@@ -1,7 +1,7 @@
 ---
 name: dev-loop
 description: バックログ（tasks/BACKLOG.md）から次のタスクを1件選び「実装→検証→ドキュメント同期→コミット」まで完了させる開発サイクルを1回実行する。引数でタスクIDを指定可（例 /dev-loop T-M1-02）。連続自動開発は /loop /dev-loop。
-model: inherit
+model: fable
 effort: xhigh
 ---
 
