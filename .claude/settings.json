@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(git status:*)",
       "Bash(git diff:*)",
@@ -12,6 +13,14 @@
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(find:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)"
     ]
+  },
+  "sandbox": {
+    "enabled": true
   }
 }

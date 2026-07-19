@@ -1,6 +1,8 @@
 ---
 name: doc-sync
 description: コード変更をdocument/配下の該当ドキュメントへ反映し、仕様とコードの同期を保つ。コミット前に実行する。引数にgit diff範囲を渡せる（例 /doc-sync HEAD~3）。--full でコード全体とドキュメントの乖離を監査する。
+model: opus
+effort: high
 ---
 
 # doc-sync：ドキュメント同期チェック
