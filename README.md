@@ -1,11 +1,13 @@
-# x-system — Space AI
+# x-system
 
-ユーザーの発信スタイルを学習したAIが、情報収集から投稿作成・投稿実行・分析改善までを自動化／半自動化するX自動投稿Webアプリケーション。
+Claude Code 中心で開発するリポジトリ。プロダクトの要件・仕様は `document/` 配下で定義する（正本）。
 
-- 要件定義（正本）: [document/PRD_SpaceAI_v1.0.md](document/PRD_SpaceAI_v1.0.md)
-- ドキュメント一覧と同期ルール: [document/README.md](document/README.md)
-- 開発バックログ: [tasks/BACKLOG.md](tasks/BACKLOG.md)
+> **現在の状態**: 旧ドキュメント一式（旧PRD「Space AI」・各仕様書・ADR・バックログ）は `old/` に退避済み。`document/`・`tasks/` は新しいドキュメントの格納待ち。
+
+- 仕様の正本: `document/`（新ドキュメント格納予定。格納後に `document/README.md` へドキュメントマップを作成）
+- 開発バックログ: `tasks/BACKLOG.md`（新ドキュメントから作成予定）
 - 開発ルール（Claude Code向け）: [CLAUDE.md](CLAUDE.md)
+- 旧版アーカイブ: [old/](old/)（参照用・同期対象外）
 
 ## 開発の始め方
 
@@ -17,10 +19,12 @@
 /doc-sync          # ドキュメント同期チェックのみ実行
 ```
 
+※ 上記は新ドキュメントと `document/README.md`（ドキュメントマップ）・`tasks/BACKLOG.md` が用意されてから有効になる。
+
 ## 現在のステータス
 
-- 開発環境セットアップ完了
+- 開発環境・ワークフロー（doc同期／エージェントループ）はセットアップ済み
 - **次のアクション**:
-  1. `document/decisions/ADR-0001-tech-stack.md`（技術スタック提案）の確認・承認
-  2. PRDから `tasks/BACKLOG.md` へタスクを起こす（開発開始時）
+  1. `document/` に新しいドキュメントを格納する
+  2. Claude Code に「セットアップし直して」と依頼（ドキュメントマップ作成・CLAUDE.md/README更新・技術スタックADR・バックログ作成）
   3. `/dev-loop` で開発開始
