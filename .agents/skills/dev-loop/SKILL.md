@@ -30,4 +30,4 @@ model: inherit
 
 - 完了条件を満たせない外部要因（アカウント未作成、キー未発行等）があれば `blocked` にして理由をBACKLOGに記録し、次のタスクへ進む。
 - テストが通らない状態でコミットしない。
-- Definition of Done は CLAUDE.md 参照。ドキュメント同期（ステップ6）を省略した完了は完了ではない。
+- Definition of Done は AGENTS.md 参照。ドキュメント同期（ステップ6）を省略した完了は完了ではない。

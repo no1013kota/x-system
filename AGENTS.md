@@ -18,7 +18,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 |---|---|
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `tasks/BACKLOG.md` | 開発バックログ。現在未作成で、次工程で作成する |
-| `.claude/skills/` | 開発用スキル（doc-sync / dev-loop） |
+| `.agents/skills/` | Codex向け開発スキル（doc-sync / dev-loop） |
 | `old/` | 旧ドキュメントのアーカイブ（参照専用・同期対象外・編集しない） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
