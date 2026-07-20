@@ -37,32 +37,8 @@ describe("plan definitions", () => {
 });
 
 describe("news categories", () => {
-  it("is the fixed 3 categories", () => {
-    expect([...NEWS_CATEGORIES]).toEqual(["ai", "web3", "investment"]);
-  });
-});
-
-describe("theme master", () => {
-  it("maps every option's newsCategory to a valid category or null", () => {
-    for (const t of THEME_OPTIONS) {
-      if (t.newsCategory !== null) {
-        expect(NEWS_CATEGORIES).toContain(t.newsCategory);
-      }
-    }
-  });
-
-  it("resolves theme ids to distinct news categories, ignoring unmapped/unknown", () => {
-    // "business" exists but has no news category; "ai"/"web3" map
-    expect(themesToNewsCategories(["ai", "web3", "business"]).sort()).toEqual([
-      "ai",
-      "web3",
-    ]);
-    // "business_ops" is unmapped, "unknown" is not in the master
-    expect(themesToNewsCategories(["business_ops", "unknown"])).toEqual([]);
-  });
-
-  it("offers the confirmed 6 themes", () => {
-    expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
+  it("is the fixed 6 categories", () => {
+    expect([...NEWS_CATEGORIES]).toEqual([
       "ai",
       "web3",
       "investment",
@@ -73,6 +49,38 @@ describe("theme master", () => {
   });
 });
 
+describe("theme master", () => {
+  it("maps every option's newsCategory to a valid category (1:1)", () => {
+    for (const t of THEME_OPTIONS) {
+      expect(NEWS_CATEGORIES).toContain(t.newsCategory);
+    }
+  });
+
+  it("offers the confirmed 6 themes each mapped 1:1 to a news category", () => {
+    expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
+      "ai",
+      "web3",
+      "investment",
+      "business",
+      "business_ops",
+      "sns",
+    ]);
+    // every news category is covered exactly once
+    expect(THEME_OPTIONS.map((t) => t.newsCategory).sort()).toEqual(
+      [...NEWS_CATEGORIES].sort(),
+    );
+  });
+
+  it("resolves theme ids to distinct news categories, ignoring unknown", () => {
+    expect(themesToNewsCategories(["ai", "business"]).sort()).toEqual([
+      "ai",
+      "business",
+    ]);
+    // duplicates collapse; unknown ids are ignored
+    expect(themesToNewsCategories(["ai", "ai", "unknown"])).toEqual(["ai"]);
+  });
+});
+
 describe("config defaults", () => {
   it("turns posted email off but others on (要件06 §3.4)", () => {
     expect(DEFAULT_NOTIFICATION_CONFIG.posted.email).toBe(false);
@@ -80,8 +88,15 @@ describe("config defaults", () => {
     expect(DEFAULT_NOTIFICATION_CONFIG.error.email).toBe(true);
   });
 
-  it("defaults news to all categories, impact high+mid, 20 items", () => {
-    expect(DEFAULT_NEWS_CONFIG.categories).toEqual(["ai", "web3", "investment"]);
+  it("defaults news to all 6 categories, impact high+mid, 20 items", () => {
+    expect(DEFAULT_NEWS_CONFIG.categories).toEqual([
+      "ai",
+      "web3",
+      "investment",
+      "business",
+      "business_ops",
+      "sns",
+    ]);
     expect(DEFAULT_NEWS_CONFIG.impact_filter).toEqual(["high", "mid"]);
     expect(DEFAULT_NEWS_CONFIG.max_items).toBe(20);
   });

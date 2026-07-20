@@ -29,7 +29,7 @@
 | `x_account_status` | `active`, `expired`, `disabled`, `error` |
 | `learning_source_type` | `ref_account`, `ref_post`, `own_posts` |
 | `learning_source_status` | `pending`, `analyzed`, `failed`, `removing`, `removed` |
-| `news_category` | `ai`, `web3`, `investment` |
+| `news_category` | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns` |
 | `impact_level` | `high`, `mid`, `low` |
 | `job_kind` | `post_generation`, `image_generation`, `post_publish`, `learning_analysis`, `md_merge`, `suggestion` |
 | `job_trigger` | `manual`, `news`, `schedule`, `system` |
@@ -189,7 +189,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `category` | `news_category` | not null | AI/Web3/投資 |
+| `category` | `news_category` | not null | 6分野（AI/Web3/投資/ビジネス/業務改善/SNS運用） |
 | `title` | `text` | not null |  |
 | `summary` | `text` | not null |  |
 | `source_url` | `text` | not null unique | canonical化して重複排除 |
@@ -474,7 +474,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 
 ```json
 {
-  "categories": ["ai", "web3", "investment"],
+  "categories": ["ai", "web3", "investment", "business", "business_ops", "sns"],
   "impact_filter": ["high", "mid"],
   "max_items": 20
 }
@@ -523,7 +523,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 }
 ```
 
-`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタから選ぶ。各選択肢は`news_category`対応（ai/web3/investment/対応なし）をコード定数で持ち、P-6の`<news_digest>`該当判定に使う。`free_text`は自由入力で、該当判定の対象外とする。
+`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）から選ぶ。6テーマは`news_category`の6分野と1対1で対応し（ai/web3/investment/business/business_ops/sns）、P-6の`<news_digest>`該当判定に使う。`free_text`は自由入力で、該当判定の対象外とする。
 
 ### 4.5 `generation_jobs.input`
 
@@ -696,8 +696,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | システム既定プロンプト | system defaultとして`p1`〜`p6`、`image`を1件ずつ作成 |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
-| テーマ選択肢マスタ | L-5の選択肢をコード定数で定義。各選択肢に`news_category`対応（ai/web3/investment/対応なし）を持たせる（§4.4） |
-| ニュースカテゴリ | `ai`, `web3`, `investment`をコード定数化 |
+| テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4） |
+| ニュースカテゴリ | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`をコード定数化 |
 | Storage | private bucket `generated-images`を作成。ユーザー/x_account単位でpathを分離 |
 
 ## 7. 保持と個別対応

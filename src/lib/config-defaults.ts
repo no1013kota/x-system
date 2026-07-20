@@ -14,7 +14,7 @@ export const DEFAULT_NOTIFICATION_CONFIG = {
 } as const;
 
 export const DEFAULT_NEWS_CONFIG = {
-  categories: ["ai", "web3", "investment"],
+  categories: ["ai", "web3", "investment", "business", "business_ops", "sns"],
   impact_filter: ["high", "mid"],
   max_items: 20,
 } as const;

@@ -20,7 +20,7 @@ create type learning_source_status as enum (
   'pending', 'analyzed', 'failed', 'removing', 'removed'
 );
 
-create type news_category as enum ('ai', 'web3', 'investment');
+create type news_category as enum ('ai', 'web3', 'investment', 'business', 'business_ops', 'sns');
 
 create type impact_level as enum ('high', 'mid', 'low');
 

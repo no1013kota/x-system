@@ -1,25 +1,23 @@
 import type { NewsCategory } from "./news";
 
 /**
- * L-5 発信テーマ選択肢マスタ（要件02 §4.4/§6）。各選択肢は news_category 対応を
- * 持ち、P-6 の <news_digest> 該当判定（プロンプト設計書 §4.2）に使う。ニュース分野は
- * AI・Web3・投資の3分野固定のため、同名テーマだけがニュース連携を持ち、それ以外
- * （ビジネス・業務改善・SNS運用）は newsCategory=null で該当判定の対象外。自由入力
- * テーマも対象外。
+ * L-5 発信テーマ選択肢マスタ（要件02 §4.4/§6）。6テーマはニュース6分野
+ * (news_category) と1対1で対応し、P-6 の <news_digest> 該当判定（プロンプト設計書
+ * §4.2）に使う。自由入力テーマ（settings.themes.free_text）は該当判定の対象外。
  */
 export interface ThemeOption {
   id: string;
   label: string;
-  newsCategory: NewsCategory | null;
+  newsCategory: NewsCategory;
 }
 
 export const THEME_OPTIONS: readonly ThemeOption[] = [
   { id: "ai", label: "AI", newsCategory: "ai" },
   { id: "web3", label: "Web3", newsCategory: "web3" },
   { id: "investment", label: "投資", newsCategory: "investment" },
-  { id: "business", label: "ビジネス", newsCategory: null },
-  { id: "business_ops", label: "業務改善", newsCategory: null },
-  { id: "sns", label: "SNS運用", newsCategory: null },
+  { id: "business", label: "ビジネス", newsCategory: "business" },
+  { id: "business_ops", label: "業務改善", newsCategory: "business_ops" },
+  { id: "sns", label: "SNS運用", newsCategory: "sns" },
 ];
 
 const BY_ID = new Map(THEME_OPTIONS.map((t) => [t.id, t]));
