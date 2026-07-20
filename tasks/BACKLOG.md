@@ -84,13 +84,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M0: リポジトリ・実行基盤
 
-### T-M0-01: Next.jsスカフォールドと開発ツールチェーン整備 `todo`
+### T-M0-01: Next.jsスカフォールドと開発ツールチェーン整備 `done`
 - 参照: 要件01 §2、要件01 §6、要件定義書 §3 / 依存: なし / サイズ: M
 - 完了条件:
   - lint・typecheck・test（サンプルテスト1件以上）の各npmスクリプトがexit 0で完走する
   - ローカルdev起動で`/`にshadcn/uiコンポーネントを使ったプレースホルダページが表示される
   - Next.js 15.1以上・App Router・TypeScript strictで構成されている
-- メモ: リポジトリ直下にスカフォールド（CLAUDE.mdの方針どおり）。Tailwind CSS + shadcn/ui導入、ESLint/型チェック/テストランナー（Vitest等）を整備。UIは共通App Shellの器のみで業務画面は作らない。
+- メモ: リポジトリ直下にスカフォールド（CLAUDEの方針どおり）。実装結果: Next.js 16.2.10（`next lint`廃止のためlintは`eslint .`）／React 19.2／Tailwind v4／shadcn/ui（@base-ui版・`src/components/ui/`）／Vitest 4（`vitest.config.ts`で`@`エイリアス解決）。Node 22.23.1をbrew（node@22）で導入しPATHは`/opt/homebrew/opt/node@22/bin`。srcディレクトリ構成を採用。
 
 ### T-M0-02: 環境変数一式の.env.exampleと起動時検証モジュール `todo`
 - 参照: 要件01 §3.1、要件01 §3.2、要件01 §3.3、要件01 §3.4、要件01 §3.5、要件01 §3.6、O-5、P-5 / 依存: T-M0-01 / サイズ: M

@@ -43,6 +43,7 @@ flowchart TB
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
 | 課金 | Stripe Checkout + Customer Portal + Webhook | カード情報は自前で扱わない |
 | ジョブ | Vercel Function + launchd/Vercel Cron + DBキュー | `generation_jobs`を中心に状態管理。手動操作は即時dispatch、定時トリガーは回収経路を兼ねる |
+| テスト | Vitest | ユニット/統合テスト。`npm run lint` / `typecheck` / `test`をDoDの検証コマンドとする |
 | 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | signup、login、password resetを保護 |
 | 暗号化 | AES-256-GCM | APIキー/OAuthトークンをアプリ層で暗号化 |
 | 監視 | Sentry | Server Actions、API、cronの例外を収集 |

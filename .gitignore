@@ -11,8 +11,12 @@ node_modules/
 dist/
 build/
 .next/
+out/
 coverage/
 *.tsbuildinfo
+next-env.d.ts
+.vercel
+*.pem
 
 # ログ・一時ファイル
 *.log
