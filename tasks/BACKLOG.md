@@ -111,13 +111,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: Supabase CLIプロジェクト初期化とmigrationsディレクトリ整備。ローカルはSupabase CLI（Docker）で検証し、リモートSupabaseプロジェクトがなくても完結する。
   実装結果: `supabase init`＋`supabase/migrations/20260720000001_enums.sql`（23 enum）。enum値の正本は`src/lib/db/enums.ts`（TS定数）、SQLとDBテストの両方がこれと一致。`src/lib/db/enums.db.test.ts`はpg経由で実DBのpg_enumを検証し、ローカルスタック未起動時はskip（`connectLocalDb`で接続失敗を検知）。`supabase/README.md`にワークフローを記載。**Docker=colimaで起動（D-2解決）**。`config.toml`は`[analytics] enabled=false`（colimaでvectorがdocker.sock bind不可のため）。`supabase db reset`成功を確認。DB接続: postgres@127.0.0.1:54322。
 
-### T-M0-04: コア7テーブルのマイグレーション（profiles〜news_items） `todo`
+### T-M0-04: コア7テーブルのマイグレーション（profiles〜news_items） `done`
 - 参照: 要件02 §1、要件02 §3.1、要件02 §3.2、要件02 §3.3、要件02 §3.4、要件02 §3.5、要件02 §3.6、要件02 §3.7 / 依存: T-M0-03 / サイズ: M
 - 完了条件:
   - profiles / user_api_keys / x_accounts / base_md_versions / prompt_templates / learning_sources / news_itemsが定義どおりのカラム・FK・indexで作成される
   - 制約テスト: unique(user_id, provider)、unique(x_account_id, version)、prompt_templatesのpartial unique index、news_items.source_url unique、base_md_version >= 0、automation_consent同時null制約の違反insertが拒否される
 - メモ: 共通ルール（uuid PK・created_at/updated_at・updated_at自動更新trigger）もここで実装。RLSは後続タスクへ分離。
-
+  実装結果: `supabase/migrations/20260720000002_core_tables.sql`。共通`set_updated_at()`トリガ関数＋updated_atを持つ5テーブルにトリガ。profiles↔x_accountsの循環FK（`active_x_account_id`は後付けALTER・on delete set null）。FK削除方針は§1準拠でbase_md_versions（履歴）のみon delete restrict、他はcascade。change_source/kindにCHECK制約も付与（正本の列挙値。任意の追加ガード）。DBテスト`core-tables.db.test.ts`（11件）はSAVEPOINTで各制約違反を隔離検証（同一tx内で複数違反を試すため）。`supabase db reset`成功。RLS有効化・ポリシーはT-M0-06。
 ### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `todo`
 - 参照: 要件02 §1、要件02 §3.8、要件02 §3.9、要件02 §3.10、要件02 §3.11、要件02 §3.12、要件02 §3.13、要件02 §3.14、要件02 §3.15、要件02 §3.16、要件02 §3.17 / 依存: T-M0-04 / サイズ: M
 - 完了条件:
