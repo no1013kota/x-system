@@ -157,13 +157,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: APP_ENCRYPTION_KEY（32 bytes相当）を使用。envelopeにversionフィールドを持たせ将来のローテーションADRに備える。
   実装結果: `src/lib/crypto/envelope.ts`（純粋関数・テスト可能。envelopeは`{v,n,c,t}`のJSON文字列）＋`src/lib/crypto/index.ts`（`server-only`・envのAPP_ENCRYPTION_KEYをbind、`encrypt`/`decrypt`をexport）。鍵はutf8 32文字/hex 64文字/base64を受理し32バイト以外は例外。テスト13件（roundtrip・nonce毎回異なる・ciphertext/tag改ざん・別鍵・version不一致・非JSON）。*_ciphertextカラムへの保存にこの`encrypt()`出力を使う。
 
-### T-M0-09: DATABASE_URL（pooler）接続とtransaction/advisory lockヘルパ `todo`
+### T-M0-09: DATABASE_URL（pooler）接続とtransaction/advisory lockヘルパ `done`
 - 参照: 要件01 §3.2、要件01 §6、要件04 §4、要件04 §6、ADR-0002 / 依存: T-M0-02、T-M0-03 / サイズ: M
 - 完了条件:
   - withTransactionヘルパが接続を都度取得・即解放し、テスト完走後に接続リークがない（pool統計で確認）
   - pg_advisory_xact_lockヘルパのintegrationテスト: 同一キーの並行2 transactionが直列化され、transaction終了でlockが自動解放される
   - x_account単位・user+post_publish・cron時間窓（job名+対象時刻窓）の3種のlockキー導出が決定的であることをユニットテストで確認する
 - メモ: Supavisor transaction mode想定でprepared statementに依存しないpg client設定にする。FOR UPDATE SKIP LOCKEDを使うクエリヘルパもここに置く。supabase-js/PostgRESTでは複文transactionを実行しない方針をコードコメントで明示。
+  実装結果: `src/lib/db/pool.ts`（getPool/withTransaction/poolStats/closePool/claimForUpdateSkipLocked。接続文字列はprocess.env.DATABASE_URL、未設定時はローカル既定。named prepared statement不使用）＋`src/lib/db/locks.ts`（LOCK_CLASS・hash32〔FNV-1a→signed int32〕・xAccount/postPublish/cronWindowのキー導出・acquireXactLockは2-int形pg_advisory_xact_lock）。テスト: `locks.test.ts`（決定性・名前空間分離）＋`pool.db.test.ts`（commit/rollback・接続リークなし・同一キー直列化とtx終了で自動解放・別キーは非ブロック）。`pg`をdependenciesへ移動（本番worker使用）、`@types/pg`はdev。全73件通過。
+  注: pool.tsはenv.ts（server-only・全必須検証）をimportするとテストで読み込み時例外になるため、DATABASE_URLはprocess.envから直接読む（本番はVercelで検証済みの値が入る）。server-onlyマーカーは付けずsrc/lib/db配下のサーバー専用コードとして扱う。
 
 ### T-M0-10: twitter-text互換の加重文字数ユーティリティ `todo`
 - 参照: PRD §8.1、要件05 §12、プロンプト設計書 §7、要件02 §4.7 / 依存: T-M0-01 / サイズ: S
