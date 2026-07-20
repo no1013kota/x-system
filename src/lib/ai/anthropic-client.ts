@@ -10,15 +10,25 @@ import {
   type RawMessageResponse,
 } from "./anthropic";
 
+export interface AnthropicClientOptions {
+  /** BYOK時はユーザー復号キーを渡す。未指定なら運営（env）キー。 */
+  apiKey?: string;
+  /** 未指定なら env のテキストモデル。 */
+  model?: string;
+  deadline?: Deadline;
+}
+
 /**
  * 実 @anthropic-ai/sdk と `AnthropicTextGen` の配線（server-only境界）。
- * モデル名・APIキーは環境設定値（§5.1）。会話状態はAnthropic Messages APIでは
- * 既定でstatelessのため無効化操作は不要（§5.1「プロバイダー側の会話状態は使用しない」）。
- * SDKの正確な引数名・戻り値は公式型が正。実行時にはSDK versionと対応機能を要再確認。
+ * 既定はモデル名・APIキーとも環境設定値（§5.1）。`apiKey`/`model` を渡すと上書きでき、
+ * BYOK（ユーザー復号キー）解決で使う。会話状態はAnthropic Messages APIでは既定でstateless
+ * のため無効化操作は不要。SDKの正確な引数名・戻り値は公式型が正。実行時にversion要再確認。
  */
-export function createAnthropicTextGen(deadline?: Deadline): AnthropicTextGen {
-  const apiKey = env.ANTHROPIC_API_KEY;
-  const model = env.ANTHROPIC_TEXT_MODEL;
+export function createAnthropicTextGen(
+  opts: AnthropicClientOptions = {},
+): AnthropicTextGen {
+  const apiKey = opts.apiKey ?? env.ANTHROPIC_API_KEY;
+  const model = opts.model ?? env.ANTHROPIC_TEXT_MODEL;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
   if (!model) throw new Error("ANTHROPIC_TEXT_MODEL is not configured");
 
@@ -31,5 +41,5 @@ export function createAnthropicTextGen(deadline?: Deadline): AnthropicTextGen {
     return res as unknown as RawMessageResponse;
   };
 
-  return new AnthropicTextGen({ createMessage, model, deadline });
+  return new AnthropicTextGen({ createMessage, model, deadline: opts.deadline });
 }

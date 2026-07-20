@@ -254,13 +254,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/ai/parse.ts`（`stripCodeFence`・`parseAndValidate`〔生→フェンス除去の順にJSON.parse+zod検証〕）、`src/lib/ai/usage-schema.ts`（要件02 §4.6の`providerCallSchema`/`generationUsageSchema`）、`src/lib/ai/pipeline.ts`（`runTextGeneration`: generate→parseAndValidate→失敗時のみ`withRepairInstruction`付き修復call **1回のみ**→なお失敗で`InvalidProviderOutputError`〔retryable=false・蓄積usage同梱〕。全callを`toProviderCall`でusage.callsへ蓄積。`PostValidationHooks`〔enforceCharLimit/ngCheck〕はIFのみ・成功時に呼ぶ。latencyは注入可能なnow）。テスト: parse 7＋pipeline 5（正常=修復なし・フェンス=修復なし・不正→修復1回で成功・修復も失敗→非retryable例外・§4.6 zod検証・フック呼出）。全166件通過。
   後続への注意: resolveProvider(T-M0-19)と`assembleContext`（context組み立て）を束ねてrunGenerationを完成させる。GEN-FIX短縮・NG照合・出典(sources)検証・下書き化はhooks本実装として生成機能(M1/M3)で。修復callはjob attemptに含めない（§5.6）— workerは`InvalidProviderOutputError`(retryable=false)を非再試行failedとして扱う。JSON修復のdeadline制御（残30秒未満なら修復callを開始しない）はrunGenerationへdeadline連携する際に追加。
 
-### T-M0-19: resolveProvider（プラン→provider/キー解決） `todo`
+### T-M0-19: resolveProvider（プラン→provider/キー解決） `done`
 - 参照: PRD §8.2、プロンプト設計書 §1、プロンプト設計書 §5.1、要件01 §3.5、要件01 §7、要件02 §4.1、A-5 / 依存: T-M0-08、T-M0-17、T-M0-04 / サイズ: M
 - 完了条件:
   - standard/md: ai_purpose_config.textのproviderについてuser_api_keysのvalidなキーを復号して解決し、未登録・invalidはapi_key_required相当のエラーを返す（ローカルDB＋テストデータで検証）
   - premium: textがPREMIUM_TEXT_PROVIDER（既定anthropic）の運営キーへ固定解決され、ユーザー設定値に依存しない
   - NEWS: NEWS_TEXT_PROVIDERの運営キーで解決し、無効・未設定時はエラーで失敗して別providerへ自動切替しない。画像providerはopenai/googleのみ解決できる
 - メモ: job（trigger/kind/plan）を入力にTextGen実装インスタンスとキー種別（BYOK/運営）を返す。運営キー・復号済みユーザーキーはserver-only境界内に閉じる。
+  実装結果: `src/lib/ai/resolve-provider.ts`（純粋・注入可能コア＝DBテスト可: `resolveTextKey`〔premium=運営PREMIUM_TEXT_PROVIDER固定・DB非参照／standard・md=BYOK: profiles.ai_purpose_config.textのvalidキーを復号〕、`resolveNewsKey`〔運営NEWS_TEXT_PROVIDER固定・sync・別provider自動切替なし〕、`resolveImageKey`〔openai/googleのみ・anthropic拒否／premiumは運営で利用可能なopenai/google〕、`isTextProvider`/`isImageProvider`/`isTextKind`、`ApiKeyRequiredError`〔code=api_key_required・reason=no_provider_selected/key_missing/key_invalid/unsupported_provider〕、運営鍵/モデル未設定は`ProviderConfigError`）、`src/lib/ai/resolve-provider-server.ts`（server-only: env/crypto(decrypt)/pool束ね→`resolveTextProvider`/`resolveNewsProvider`/`resolveImageProvider`と`buildTextGen`で実TextGen構築）。3クライアントfactoryを`{apiKey,model}`上書き対応へ拡張（BYOK鍵注入）。DBスキーマ: ai_purpose_configはprofilesのJSONB列、user_api_keysはcredentials_ciphertext+status。テスト: unit 12＋DB 8（standard/md=BYOK復号・premium=運営固定・news無切替・image openai/google・anthropic拒否・未登録/invalid/未選択/未サポート値=api_key_required）。全186件通過。
+  ultracode検証: 敵対的レビュー（セキュリティ/仕様整合/エッジケース3レンズ＋各指摘の独立検証）を実施。security・spec-correctnessは指摘なし。confirmed 1件（BYOK textのprovider未検証→'x'等が`ProviderConfigError`(500相当)へ誤分類）を修正: `isTextProvider`ガード追加＋JSONB読取をtypeof厳格化、image側と対称に`unsupported_provider`のapi_key_requiredへ。
+  後続への注意: runGeneration（T-M0-18のrunTextGeneration）へ`resolveTextProvider`/`resolveNewsProvider`と`assembleContext`を束ねて完成させる。画像アダプタ（GEN-IMG, M3）は`resolveImageProvider`が返す`ResolvedKey`から構築する。`ApiKeyRequiredError`のtoUserFacingError連携（.code/instanceofで400マッピング）はAPI層実装時に配線（現状は素のErrorへ collapse）。
 
 ### T-M0-20: X OAuth 2.0 PKCEクライアント基盤 `todo`
 - 参照: A-3、A-4、PRD §8.1、要件05 §4.3、要件05 §11、要件01 §3.4 / 依存: T-M0-02、T-M0-08 / サイズ: M
