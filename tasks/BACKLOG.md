@@ -92,13 +92,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - Next.js 15.1以上・App Router・TypeScript strictで構成されている
 - メモ: リポジトリ直下にスカフォールド（CLAUDEの方針どおり）。実装結果: Next.js 16.2.10（`next lint`廃止のためlintは`eslint .`）／React 19.2／Tailwind v4／shadcn/ui（@base-ui版・`src/components/ui/`）／Vitest 4（`vitest.config.ts`で`@`エイリアス解決）。Node 22.23.1をbrew（node@22）で導入しPATHは`/opt/homebrew/opt/node@22/bin`。srcディレクトリ構成を採用。
 
-### T-M0-02: 環境変数一式の.env.exampleと起動時検証モジュール `todo`
+### T-M0-02: 環境変数一式の.env.exampleと起動時検証モジュール `done`
 - 参照: 要件01 §3.1、要件01 §3.2、要件01 §3.3、要件01 §3.4、要件01 §3.5、要件01 §3.6、O-5、P-5 / 依存: T-M0-01 / サイズ: M
 - 完了条件:
   - .env.exampleに要件01 §3.1〜3.6の全環境変数が用途コメント付きで列挙されている
   - env検証テスト: CRON_SECRET未設定で読み込みが失敗し認証スキップのフォールバックが存在しない。APP_ENVがdevelopment/previewのときX_POSTING_MODE=liveを拒否する
   - FEATURE_QUOTE_POST_ENABLEDが未設定時にfalseへ解決され、Server onlyモジュールからのみ参照できる（Client Componentからのimportはビルドエラー）
 - メモ: zodでサーバー起動時に検証するserver-only envモジュール。X_DAILY_POST_LIMIT既定50、SUPABASE_STORAGE_BUCKET_IMAGES既定generated-images等の既定値もここで定義。P-5はflag OFF時の判定基盤（server-only・既定false）のみをM0で持ち、拒否・非表示の各実装は該当機能のマイルストーンで行う。
+  実装結果: `src/lib/env-schema.ts`（zod・純粋関数`buildServerEnv`でテスト可能）＋`src/lib/env.ts`（`server-only`付き・module load時に`process.env`検証）に分離。必須区分は§3の表どおりALWAYS_REQUIRED（全環境）とPREVIEW_PROD_REQUIRED（preview/prod）で管理。env.tsは現状どこからもimportされないためbuild/lint/typecheckでは実行されない（M1以降で利用開始）。cost系・SMTP_PORTはz.coerce.numberのため`present()`は数値も受理する必要がある点に注意。zodは4.4.3。
 
 ### T-M0-03: Supabaseマイグレーション基盤とenum定義 `todo`
 - 参照: 要件02 §2、要件01 §2 / 依存: T-M0-01 / サイズ: S

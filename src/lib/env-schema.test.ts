@@ -1,0 +1,131 @@
+import { describe, expect, it } from "vitest";
+
+import { buildServerEnv } from "./env-schema";
+
+/** Minimal set that satisfies ALWAYS_REQUIRED for a development environment. */
+function devBase(): Record<string, string | undefined> {
+  return {
+    APP_ENV: "development",
+    APP_BASE_URL: "http://localhost:3000",
+    CRON_SECRET: "dev-secret",
+    APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+    SUPPORT_EMAIL: "support@example.com",
+    NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon",
+    SUPABASE_SERVICE_ROLE_KEY: "service",
+    DATABASE_URL: "postgres://localhost:6543/postgres",
+    STRIPE_SECRET_KEY: "sk_test",
+    STRIPE_WEBHOOK_SECRET: "whsec_test",
+    STRIPE_PRICE_STANDARD_MONTHLY: "price_std",
+    STRIPE_PRICE_MD_MONTHLY: "price_md",
+    STRIPE_PRICE_PREMIUM_MONTHLY: "price_prem",
+    ANTHROPIC_TEXT_MODEL: "claude-x",
+    OPENAI_TEXT_MODEL: "gpt-x",
+    OPENAI_IMAGE_MODEL: "gpt-image-x",
+    GEMINI_TEXT_MODEL: "gemini-x",
+    GEMINI_IMAGE_MODEL: "gemini-image-x",
+  };
+}
+
+/** Adds everything PREVIEW_PROD_REQUIRED expects on top of the base. */
+function prodBase(): Record<string, string | undefined> {
+  return {
+    ...devBase(),
+    APP_ENV: "production",
+    APP_BASE_URL: "https://spaceai.example",
+    ANTHROPIC_API_KEY: "sk-ant",
+    NEWS_TEXT_PROVIDER: "anthropic",
+    X_MANAGED_CLIENT_ID: "x-client",
+    STRIPE_PORTAL_CONFIGURATION_ID: "bpc_test",
+    X_COST_CONTENT_CREATE_USD: "0.015",
+    X_COST_CONTENT_CREATE_WITH_URL_USD: "0.200",
+    X_COST_INTERACTION_DELETE_USD: "0.010",
+    SMTP_HOST: "smtp.gmail.com",
+    SMTP_PORT: "587",
+    SMTP_USER: "ops@example.com",
+    SMTP_APP_PASSWORD: "app-password",
+    EMAIL_FROM: "Space AI <ops@example.com>",
+    EMAIL_REPLY_TO: "ops@example.com",
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: "site",
+    TURNSTILE_SECRET_KEY: "secret",
+    SENTRY_DSN: "https://sentry.example/1",
+    NEXT_PUBLIC_SENTRY_DSN: "https://sentry.example/2",
+    X_POSTING_MODE: "live",
+  };
+}
+
+describe("buildServerEnv defaults", () => {
+  it("applies defaults for optional-with-default vars", () => {
+    const env = buildServerEnv(devBase());
+    expect(env.X_POSTING_MODE).toBe("dry_run");
+    expect(env.X_DAILY_POST_LIMIT).toBe(50);
+    expect(env.SUPABASE_STORAGE_BUCKET_IMAGES).toBe("generated-images");
+    expect(env.X_OAUTH_REDIRECT_PATH).toBe("/api/x/oauth/callback");
+    expect(env.NEWS_TEXT_PROVIDER).toBe("anthropic");
+    expect(env.PREMIUM_TEXT_PROVIDER).toBe("anthropic");
+  });
+
+  it("resolves FEATURE_QUOTE_POST_ENABLED to false when unset", () => {
+    const env = buildServerEnv(devBase());
+    expect(env.FEATURE_QUOTE_POST_ENABLED).toBe(false);
+  });
+
+  it("resolves FEATURE_QUOTE_POST_ENABLED to true only for the literal 'true'", () => {
+    expect(
+      buildServerEnv({ ...devBase(), FEATURE_QUOTE_POST_ENABLED: "true" })
+        .FEATURE_QUOTE_POST_ENABLED,
+    ).toBe(true);
+    expect(
+      buildServerEnv({ ...devBase(), FEATURE_QUOTE_POST_ENABLED: "1" })
+        .FEATURE_QUOTE_POST_ENABLED,
+    ).toBe(false);
+  });
+});
+
+describe("CRON_SECRET requirement", () => {
+  it("fails when CRON_SECRET is missing (no auth-skip fallback)", () => {
+    const raw = devBase();
+    delete raw.CRON_SECRET;
+    expect(() => buildServerEnv(raw)).toThrow(/CRON_SECRET/);
+  });
+
+  it("fails when CRON_SECRET is blank", () => {
+    expect(() => buildServerEnv({ ...devBase(), CRON_SECRET: "  " })).toThrow(
+      /CRON_SECRET/,
+    );
+  });
+});
+
+describe("X_POSTING_MODE guard", () => {
+  it("rejects live posting in development", () => {
+    expect(() =>
+      buildServerEnv({ ...devBase(), X_POSTING_MODE: "live" }),
+    ).toThrow(/X_POSTING_MODE=live/);
+  });
+
+  it("rejects live posting in preview", () => {
+    const raw = { ...prodBase(), APP_ENV: "preview", X_POSTING_MODE: "live" };
+    expect(() => buildServerEnv(raw)).toThrow(/X_POSTING_MODE=live/);
+  });
+
+  it("allows live posting in production", () => {
+    const env = buildServerEnv(prodBase());
+    expect(env.X_POSTING_MODE).toBe("live");
+  });
+});
+
+describe("preview/prod-only requirements", () => {
+  it("passes in development without preview/prod-only vars", () => {
+    expect(() => buildServerEnv(devBase())).not.toThrow();
+  });
+
+  it("fails in production when ANTHROPIC_API_KEY (common news) is missing", () => {
+    const raw = prodBase();
+    delete raw.ANTHROPIC_API_KEY;
+    expect(() => buildServerEnv(raw)).toThrow(/ANTHROPIC_API_KEY/);
+  });
+
+  it("passes in production with the full set", () => {
+    expect(() => buildServerEnv(prodBase())).not.toThrow();
+  });
+});
