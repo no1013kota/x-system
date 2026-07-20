@@ -138,13 +138,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `supabase/migrations/20260720000004_rls_policies.sql`。全17テーブルRLS有効化＋authenticated向けselectポリシー（x_account所有判定は`auth_owns_x_account()` security definer関数）。書き込みポリシーは作らずservice_role(BYPASSRLS)に委ねる＝ブラウザ直書き不可。§3.3のactive_x_account_id所有者検証triggerも実装。DBテスト`rls.db.test.ts`（5件）はpostgres接続から`set_config('role','authenticated')`＋`request.jwt.claims`のsub切替で検証（直接psqlのjwt claims方式）。
   **重要な知見**: (1) RLSポリシーは**テーブルレベルGRANTが無いと評価前に権限拒否される**。ローカルSupabaseはmigration作成テーブルにauthenticatedのデフォルト権限を自動付与しないため、読み取り可15テーブルへ`grant select ... to authenticated`を明示（stripe_events/external_api_usage_eventsは付与せず完全拒否＝§5「不可」）。(2) `col in (...)`のNULL素通り（T-M0-05と同種）。**後続でテーブルを追加する場合、RLS有効化・selectポリシー・authenticatedへのgrant selectをセットで行うこと。**
 
-### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `todo`
+### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `done`
 - 参照: 要件02 §6、要件02 §4.4、プロンプト設計書 §6.1、プロンプト設計書 §6.2、プロンプト設計書 §6.8、プロンプト設計書 §6.9、L-5 / 依存: T-M0-04 / サイズ: M
 - 完了条件:
   - seed適用後、prompt_templatesにsystem default 7件（p1〜p6・image、x_account_id=null）がプロンプト設計書§6の本文で存在する
   - private Storage bucket generated-imagesが作成されている
   - プラン定義（価格・Xアカウント上限・利用枠）・テーマ選択肢マスタ（news_category対応付き）・ニュースカテゴリのコード定数がユニットテストで検証される
 - メモ: SYS-GEN/SYS-NEWS/PT-FIX/PT-MD-MERGE等のコード管理プロンプト定数もこのタスクで配置する（DB seedはPT-P1〜P6とimageのみ）。通知初期値・news_config初期値の定数も定義（要件06 §3.4）。
+  実装結果: `supabase/seed.sql`（system default prompt 7件・PT-P1〜P6/PT-IMG本文はプロンプト設計書§6.2-6.8の正本・dollar quote・on conflict do nothing）。config.tomlに`[storage.buckets.generated-images]`（private/5MiB/png・jpeg・webp）。コード定数: `src/lib/plans.ts`（PLANS。plan_type enumから型導出）、`src/lib/themes.ts`（THEME_OPTIONS＋themesToNewsCategories）、`src/lib/news.ts`（NEWS_CATEGORIESはenum由来）、`src/lib/config-defaults.ts`（通知/news/ai_purpose既定）。テスト: `seed.db.test.ts`（prompt7件・bucket private）＋`constants.test.ts`（プラン価格/上限/枠・テーマ対応・既定値）。SYS-GEN等のコード管理プロンプト定数（PT-FIX/MD-MERGE/L*/SUGGEST/SYS-NEWS）は**未配置**——実際に呼び出す実行パイプライン（M3/M5）で配置する方針（M0-05のzod同様、消費先と同じ作業単位で）。
+  **要決定（既出・M2関連）**: テーマ選択肢マスタ（THEME_OPTIONS）は暫定7種。最終確定はユーザー判断待ち。
 
 ### T-M0-08: AES-256-GCM暗号化ユーティリティ `done`
 - 参照: 要件01 §2、要件01 §8、要件02 §1、PRD §7 / 依存: T-M0-02 / サイズ: S

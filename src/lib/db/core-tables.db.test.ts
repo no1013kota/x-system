@@ -185,10 +185,7 @@ describe("core tables schema & constraints", () => {
 
   it("enforces prompt_templates unique per (x_account_id, kind) and per system kind", async () => {
     await inTx(async (c) => {
-      // system default: only one row per kind where x_account_id is null
-      await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values (null, 'p1', 'a')`,
-      );
+      // system default (null, 'p1') is seeded; a second system row must violate
       await expectViolation(c, () =>
         c.query(
           `insert into prompt_templates (x_account_id, kind, content) values (null, 'p1', 'b')`,

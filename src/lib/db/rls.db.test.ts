@@ -134,20 +134,19 @@ describe("RLS policies & ownership trigger", () => {
     await inTx(async (c) => {
       const a = await makeUser(c);
       const b = await makeUser(c);
-      await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values (null, 'p1', 'sys')`,
-      );
+      // (null, 'p1') system default is seeded; add B's account override
       await c.query(
         `insert into prompt_templates (x_account_id, kind, content) values ($1, 'p1', 'b-override')`,
         [b.xid],
       );
 
       await actAs(c, a.uid);
-      const rows = await c.query<{ content: string }>(
-        `select content from prompt_templates order by content`,
+      const rows = await c.query<{ x_account_id: string | null }>(
+        `select x_account_id from prompt_templates where kind = 'p1'`,
       );
-      // A sees the system default but not B's override
-      expect(rows.rows.map((r) => r.content)).toEqual(["sys"]);
+      // A sees only the system default (x_account_id null), not B's override
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0].x_account_id).toBeNull();
     });
   });
 
