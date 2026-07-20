@@ -15,6 +15,8 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
 
+**D-2: ローカルDBランタイム(Docker)の方針（要決定・最優先）** — この開発マシンにDocker/Supabase CLIが未導入。T-M0-03〜07（DBマイグレーション群）とDB統合検証を含む後続タスクの検証に必須。選択肢: (a)colima+docker CLIをbrewで導入（GUI・ライセンス不要のヘッドレス実行。推奨。ただし初回はSupabaseの各種Dockerイメージ数GBをpull） / (b)Docker Desktopを人間が導入（GUI・ライセンス確認あり） / (c)当面ローカルDB検証をスキップしSQLの記述のみ進める。**未決の間はDB群がblockedで先へ進めないため、ここが連続開発の律速。**
+
 **M0関連**
 - [ ] Supabaseプロジェクトの作成とキー発行（NEXT_PUBLIC_SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY／DATABASE_URLのpooler接続文字列）。M0のローカル検証はSupabase CLIで代替できるが、Docker実行環境の用意も人間側の準備事項
 - [ ] Vercelアカウント・Proプラン契約とプロジェクト作成（商用productionはPro必須。M0のローカル検証には不要だがpreview環境の疎通確認に必要）
@@ -101,21 +103,22 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: zodでサーバー起動時に検証するserver-only envモジュール。X_DAILY_POST_LIMIT既定50、SUPABASE_STORAGE_BUCKET_IMAGES既定generated-images等の既定値もここで定義。P-5はflag OFF時の判定基盤（server-only・既定false）のみをM0で持ち、拒否・非表示の各実装は該当機能のマイルストーンで行う。
   実装結果: `src/lib/env-schema.ts`（zod・純粋関数`buildServerEnv`でテスト可能）＋`src/lib/env.ts`（`server-only`付き・module load時に`process.env`検証）に分離。必須区分は§3の表どおりALWAYS_REQUIRED（全環境）とPREVIEW_PROD_REQUIRED（preview/prod）で管理。env.tsは現状どこからもimportされないためbuild/lint/typecheckでは実行されない（M1以降で利用開始）。cost系・SMTP_PORTはz.coerce.numberのため`present()`は数値も受理する必要がある点に注意。zodは4.4.3。
 
-### T-M0-03: Supabaseマイグレーション基盤とenum定義 `todo`
+### T-M0-03: Supabaseマイグレーション基盤とenum定義 `blocked`
 - 参照: 要件02 §2、要件01 §2 / 依存: T-M0-01 / サイズ: S
 - 完了条件:
   - supabase db resetがローカルで成功し、マイグレーションの追加・再適用フローがREADMEまたはスクリプトで再現できる
   - 要件02 §2の全enum（plan_type〜email_delivery_statusの21種）が正しい値リストでpg_typeに存在することをテストで確認する
 - メモ: Supabase CLIプロジェクト初期化とmigrationsディレクトリ整備。ローカルはSupabase CLI（Docker）で検証し、リモートSupabaseプロジェクトがなくても完結する。
+- **blocked理由(2026-07-20)**: この開発マシンにDocker・Supabase CLIが未導入。`supabase db reset`等の検証にDockerランタイム（Docker Desktopまたはcolima）が必要。T-M0-03〜07（DBマイグレーション群）およびDB統合検証を含むT-M0-09/12以降の一部が同要因でblocked。SQL自体は記述可能だが検証手段がないため着手を保留。Dockerランタイムの用意方針（要決定D-2）が決まり次第unblock。
 
-### T-M0-04: コア7テーブルのマイグレーション（profiles〜news_items） `todo`
+### T-M0-04: コア7テーブルのマイグレーション（profiles〜news_items） `blocked`
 - 参照: 要件02 §1、要件02 §3.1、要件02 §3.2、要件02 §3.3、要件02 §3.4、要件02 §3.5、要件02 §3.6、要件02 §3.7 / 依存: T-M0-03 / サイズ: M
 - 完了条件:
   - profiles / user_api_keys / x_accounts / base_md_versions / prompt_templates / learning_sources / news_itemsが定義どおりのカラム・FK・indexで作成される
   - 制約テスト: unique(user_id, provider)、unique(x_account_id, version)、prompt_templatesのpartial unique index、news_items.source_url unique、base_md_version >= 0、automation_consent同時null制約の違反insertが拒否される
 - メモ: 共通ルール（uuid PK・created_at/updated_at・updated_at自動更新trigger）もここで実装。RLSは後続タスクへ分離。
 
-### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `todo`
+### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `blocked`
 - 参照: 要件02 §1、要件02 §3.8、要件02 §3.9、要件02 §3.10、要件02 §3.11、要件02 §3.12、要件02 §3.13、要件02 §3.14、要件02 §3.15、要件02 §3.16、要件02 §3.17 / 依存: T-M0-04 / サイズ: M
 - 完了条件:
   - generation_jobs / drafts / schedule_slots / follower_snapshots / improvement_suggestions / usage_events / usage_counters / notifications / stripe_events / external_api_usage_eventsが定義どおり作成される
@@ -123,7 +126,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - usage_eventsのdelta±1・refundのref_event_id必須・reason整合、usage_countersのpremium上限、schedule_slotsの時刻/曜日/p5不可のCHECK制約が違反insertを拒否する
 - メモ: JSONBカラム（input/usage/thread/tweet_metrics等）のzodスキーマ定義（要件02 §4）は共有型モジュールとして同時に作成し、書き込み側の検証で再利用できるようにする。
 
-### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `todo`
+### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `blocked`
 - 参照: 要件02 §5、要件02 §3.3、要件02 §1 / 依存: T-M0-05 / サイズ: M
 - 完了条件:
   - 全17テーブルでRLSが有効化され、テストで別ユーザーのrowをselectできない・本人rowはselectできることを確認する（x_account経由所有のテーブルを含む）
@@ -131,7 +134,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - profiles.active_x_account_idへ他ユーザー所有のx_accountを設定するDB triggerの拒否をテストで確認する
 - メモ: ローカルSupabaseで2ユーザーを作成しanon keyクライアントで検証するRLSテストを整備する（リリース判定要件のRLS policy testの土台。要件01 §8）。
 
-### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `todo`
+### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `blocked`
 - 参照: 要件02 §6、要件02 §4.4、プロンプト設計書 §6.1、プロンプト設計書 §6.2、プロンプト設計書 §6.8、プロンプト設計書 §6.9、L-5 / 依存: T-M0-04 / サイズ: M
 - 完了条件:
   - seed適用後、prompt_templatesにsystem default 7件（p1〜p6・image、x_account_id=null）がプロンプト設計書§6の本文で存在する
@@ -139,13 +142,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - プラン定義（価格・Xアカウント上限・利用枠）・テーマ選択肢マスタ（news_category対応付き）・ニュースカテゴリのコード定数がユニットテストで検証される
 - メモ: SYS-GEN/SYS-NEWS/PT-FIX/PT-MD-MERGE等のコード管理プロンプト定数もこのタスクで配置する（DB seedはPT-P1〜P6とimageのみ）。通知初期値・news_config初期値の定数も定義（要件06 §3.4）。
 
-### T-M0-08: AES-256-GCM暗号化ユーティリティ `todo`
+### T-M0-08: AES-256-GCM暗号化ユーティリティ `done`
 - 参照: 要件01 §2、要件01 §8、要件02 §1、PRD §7 / 依存: T-M0-02 / サイズ: S
 - 完了条件:
   - 暗号化→復号のroundtripが成功し、envelopeがversion・nonce・ciphertext・auth tagを含むJSON文字列である
   - ciphertextまたはauth tagを改ざんした復号が失敗する。nonceが呼び出しごとに異なる
   - server-onlyモジュールとしてClient Componentからimportするとビルドが失敗する
 - メモ: APP_ENCRYPTION_KEY（32 bytes相当）を使用。envelopeにversionフィールドを持たせ将来のローテーションADRに備える。
+  実装結果: `src/lib/crypto/envelope.ts`（純粋関数・テスト可能。envelopeは`{v,n,c,t}`のJSON文字列）＋`src/lib/crypto/index.ts`（`server-only`・envのAPP_ENCRYPTION_KEYをbind、`encrypt`/`decrypt`をexport）。鍵はutf8 32文字/hex 64文字/base64を受理し32バイト以外は例外。テスト13件（roundtrip・nonce毎回異なる・ciphertext/tag改ざん・別鍵・version不一致・非JSON）。*_ciphertextカラムへの保存にこの`encrypt()`出力を使う。
 
 ### T-M0-09: DATABASE_URL（pooler）接続とtransaction/advisory lockヘルパ `todo`
 - 参照: 要件01 §3.2、要件01 §6、要件04 §4、要件04 §6、ADR-0002 / 依存: T-M0-02、T-M0-03 / サイズ: M
