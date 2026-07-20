@@ -176,13 +176,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: 公式twitter-textライブラリ（またはその設定準拠実装）を利用しweighted_length算出を共通化。drafts.thread各要素のweighted_length算出とPT-FIX判定（280超過検出）の両方から使う前提のAPIにする。
   実装結果: `src/lib/text/weighted-length.ts`（公式`twitter-text`ラッパー: weightedLength / exceedsWeightedLimit / isWithinWeightedLimit / countCashtags、MAX_WEIGHTED_LENGTH=280、limit引数でPT-FIXの任意上限に対応）。`twitter-text`はdependencies、`@types/twitter-text`はdev。テスト7件（半角280/281・日本語140/141=加重x2・URLはt.co固定長・空文字・custom limit・cashtag2件検出）。要件01 §2技術スタックに追記。全80件通過。
 
-### T-M0-11: Sentry導入とログredaction `todo`
+### T-M0-11: Sentry導入とログredaction `done`
 - 参照: 要件01 §2、要件01 §8、要件01 §9 / 依存: T-M0-02 / サイズ: S
 - 完了条件:
   - SENTRY_DSN未設定のdev環境でもアプリが正常起動・動作する
   - beforeSend相当のredactionユニットテスト: Authorizationヘッダ・cookie・APIキー・token・prompt全文を含むイベントから該当値が除去される
   - サーバー側の例外がSentry送信経路（モックtransport）へ渡ることをテストで確認する
 - メモ: server/client両configを用意。ユーザー向けエラーへprovider本文・stack traceを出さないエラー変換ヘルパの雛形も併設する。
+  実装結果: `@sentry/nextjs` v10.66（Next16対応）。`src/lib/observability/redact.ts`（純粋なbeforeSend: Authorization/Cookie/token/secret/credential/api_key/prompt/base_md/instructions/user_opinion/contentを再帰マスク）、`sentry.ts`（initServerSentry/initClientSentry: DSN未設定でno-op・beforeSendにredact・captureServerException）、`errors.ts`（AppError＋toUserFacingError: 未知errは`internal_error`へ潰しstack/provider本文/causeを出さない）。計装: `src/instrumentation.ts`（register＋onRequestError）・`src/instrumentation-client.ts`（onRouterTransitionStart）。テスト10件（redaction・エラー変換・mock transportで捕捉→送信＋秘密のend-to-end除去）。dev（DSN空）でトップ表示を実機確認。全90件通過。
+  注: `withSentryConfig`（source map upload等）は未導入。ソースマップ・トンネリングが必要になった段階で next.config を包む（M6リリース準備の候補）。`@sentry/nextjs`はdependencies。
 
 ### T-M0-12: POST /api/jobs/run worker骨格（CRON_SECRET認証・202+after()・lease） `todo`
 - 参照: 要件04 §1、要件04 §4、要件05 §3、ADR-0002、要件01 §6、要件02 §3.8 / 依存: T-M0-09、T-M0-05 / サイズ: M
