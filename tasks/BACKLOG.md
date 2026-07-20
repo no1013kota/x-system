@@ -1,0 +1,1241 @@
+# 開発バックログ
+
+Space AI MVPの作業キュー。エージェントループ（/dev-loop）はこのファイルを読んでタスクを選択する。
+
+## 運用ルール
+
+- ステータス: `todo` → `doing` → `done`。外部要因で進められないものは `blocked`（理由を明記）
+- WIP = 1（`doing` は常に1件以下）。1タスク = 1コミット
+- 優先順: 上のマイルストーン・上のタスクほど優先。「依存」のタスクが `done` でないタスクには着手しない（`M0` のような依存はそのマイルストーンの全タスク完了を意味する）
+- タスクの追加・分割・並べ替えは自由（参照の要件IDは保持する）。完了タスクは消さず `done` にし、後続に影響する判断があれば「メモ:」へ追記する
+- ユーザーに判断・準備してほしいことは「要決定・外部準備」に追記する
+- 書式: `### <ID>: <タスク名> \`<status>\`` ＋ 参照/依存/サイズ行 ＋ 完了条件
+
+## 要決定・外部準備(ユーザー作業)
+
+開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
+
+**M0関連**
+- [ ] Supabaseプロジェクトの作成とキー発行（NEXT_PUBLIC_SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY／DATABASE_URLのpooler接続文字列）。M0のローカル検証はSupabase CLIで代替できるが、Docker実行環境の用意も人間側の準備事項
+- [ ] Vercelアカウント・Proプラン契約とプロジェクト作成（商用productionはPro必須。M0のローカル検証には不要だがpreview環境の疎通確認に必要）
+- [ ] 運営用生成AI APIキーの発行（ANTHROPIC_API_KEY必須、OPENAI_API_KEY／GEMINI_API_KEYはプレミアム画像・代替provider用）と採用モデル名の決定（ANTHROPIC_TEXT_MODEL等はβ計測前提の暫定値でよいか）。M0はモックで検証するが実疎通確認に必要
+- [ ] X Developerアカウント登録と運営Developer Appの作成（X_MANAGED_CLIENT_ID/SECRET、callback URL登録、credit/予算設定）。dry_run検証には不要だがOAuth実疎通に必要
+- [ ] X Developer ConsoleでのPay-Per-Use実単価確認（X_COST_CONTENT_CREATE_USD等の設定値。公開価格0.015/0.200/0.010はConsole表示が優先）
+- [ ] SentryプロジェクトのDSN発行（SENTRY_DSN／NEXT_PUBLIC_SENTRY_DSN。dev未設定でも動作するが実収集確認に必要）
+- [ ] Stripeアカウント作成・同一Product配下の3価格（Price ID）・Customer Portal configurationの設定（M0の.env.exampleにはプレースホルダのみ。課金マイルストーン開始前までに必要）
+- [ ] Cloudflare Turnstileのsite key／secret key発行（認証マイルストーンで必須）
+- [ ] Gmailの2段階認証有効化とApp Password発行（SMTP_APP_PASSWORD。preview/prodのメール送信用）
+- [ ] 常時稼働Mac（Asia/Tokyo固定・スリープ無効・LaunchDaemon）の用意（定時トリガーの実運用時に必要。M0のcron骨格はローカルcurlで検証可能）
+- [ ] production用APP_ENCRYPTION_KEY・CRON_SECRETの生成値の保管場所・受け渡し方針（生成自体は開発側で可能だが、Vercel/1Password等どこで管理するかの決定）
+
+**M1関連**
+- [ ] Stripeアカウント（test/本番）の作成と、同一Product配下の3つの月額Price（JPY税込 500円/1,000円/2,980円）の作成、STRIPE_SECRET_KEY・STRIPE_WEBHOOK_SECRET・3つのPrice IDの発行とenv設定。これが揃うまで実StripeでのCheckout〜webhook E2E（stripe listen/trigger、4242テストカード決済、trial 1回制御の実機確認）は実施できない（各タスクはSDKモック＋ローカル署名生成で検証可能）
+- [ ] Stripe Customer Portalの設定確定: setupスクリプト実行によるPortal Configuration作成（プラン変更・期間末解約・値下げ予約・continue_trial）と、STRIPE_PORTAL_CONFIGURATION_IDのenv設定、Stripe APIバージョンの確認（実行結果はADRまたは実装メモへ記録する運用。要件03 §9）
+- [ ] Cloudflare Turnstileの本番site key/secret keyの発行（開発中はCloudflare公開テストキーで進行可能）
+- [ ] Supabaseのpreview/productionプロジェクト作成と、Auth rate limit設定・Auth CAPTCHA（Turnstile）有効化・Gmail 2段階認証によるApp Password発行とcustom SMTP設定（ローカル開発はsupabase CLI＋Inbucketで代替。漏洩パスワード保護はPro移行後のため今回不要）
+- [ ] 利用規約・プライバシーポリシー・特定商取引法に基づく表記の文面確定と法務確認（signup同意で保存する現行terms/privacy versionの確定に必要。開発中は暫定version・プレースホルダ文面で進める）
+- [ ] 本番APP_BASE_URL（独自ドメイン）とVercel Proの契約・環境変数設定（Checkoutのsuccess/cancel URL・メールリンクの基準URLに必要。開発はlocalhostで進行可能）
+
+**M2関連**
+- [ ] 検証用のBYOK X Developer Appの作成（開発者登録・App作成・callback URL登録・クレジット/予算設定・Client ID/Secret発行）。モック/dry_runで開発は進められるが、OAuth実機検証とリリース判定に必須
+- [ ] premium用の運営X Developer Appの作成と、X_MANAGED_CLIENT_ID/X_MANAGED_CLIENT_SECRETの発行・preview/prod環境変数への設定
+- [ ] AI各社（Anthropic/OpenAI/Gemini）の検証用APIキーの発行（verifyApiKeyの実機疎通確認、およびpremium運用キーの用意。どのproviderの運営キーを提供するかで画像provider選択肢が変わる）
+- [ ] APP_ENCRYPTION_KEY（32 bytes相当）の生成とdev/preview/prod各環境変数への設定（漏洩時のローテーション方針は将来ADR）
+- [ ] X APIキー取得手順ガイドに掲載するDeveloper Consoleのスクリーンショット素材の準備（PRD §10。用意されるまではテキスト手順のみで実装）
+- [ ] テーマ選択肢マスタ（L-5）の選択肢リストと各選択肢のnews_category対応の最終確定（暫定案としてAI・Web3・投資・マーケティング・業務改善等をコード定数で用意し、tasks/BACKLOG.mdの「要決定」へ記載して進める）
+- [ ] X Developer Console上でdev/preview用callback URL（localhost・vercel preview URL）を登録できるかの確認（不可の場合、OAuthの実機検証はprod相当URLに限定される）
+
+**M3関連**
+- [ ] 生成AI APIキーの発行と.env設定（Anthropic／OpenAI／Gemini）：開発・CIはモックで進められるが、実プロバイダでの生成品質・プロンプト・Web検索挙動の確認には最低1つの文章系キー、画像生成の実確認にはOpenAIまたはGeminiのキーが必要
+- [ ] 採用モデル名の決定と環境変数設定（ANTHROPIC_TEXT_MODEL／OPENAI_TEXT_MODEL／GEMINI_TEXT_MODEL／OPENAI_IMAGE_MODEL／GEMINI_IMAGE_MODEL）：Web検索・構造化出力・prompt caching・pause_turnの対応可否はモデル依存のため、決定後に実キーで起動時検証が必要
+- [ ] X Developer Appの作成（callback URL登録・scope設定・クレジット/予算設定）と検証用Xアカウントの準備：X_POSTING_MODE=liveでの実投稿・reply連投・ロールバック削除・結果不明照合の最終確認に必要（開発中はdry_runで代替可能）
+- [ ] X APIのpay-per-use単価のDeveloper Console確認と原価集計env（X_COST_CONTENT_CREATE_USD／X_COST_CONTENT_CREATE_WITH_URL_USD／X_COST_INTERACTION_DELETE_USD）の設定
+- [ ] 実X投稿検証時の安全策の合意：検証用アカウントで少数ポストのthread投稿→ロールバック削除まで通す受け入れテストをリリース前に1回実施するか（X API費用が発生するため実施タイミングはユーザー判断）
+
+**M4関連**
+- [ ] 常時稼働Macの用意（timezone Asia/Tokyo固定・スリープ無効・電源/回線の常時確保）と、LaunchDaemonの実機配置（launchctl bootstrap）・初回24時間監視は人間の作業。M4はplist・スクリプトのローカル検証まで（運用メモ §1〜2）
+- [ ] CRON_SECRET本番値の生成と、Vercel環境変数およびMac側Keychain（または所有者限定秘密ファイル）への配置
+- [ ] Gmailアカウント（matsubuz.10@gmail.com）の2段階認証有効化とApp Password発行、SMTP_APP_PASSWORD等のVercel/.env設定、実メールの受信確認（開発検証はSMTPモックで完結）
+- [ ] 運営Claude APIキー（ANTHROPIC_API_KEY）の発行・課金/レート設定。news_fetchの実運用とWeb Search tool実測に必須（開発検証はproviderモックで完結）。あわせてWeb search toolの対応モデル・単価を公式ドキュメントで実装時に再確認
+- [ ] Sentryプロジェクト作成とSENTRY_DSN発行（cleanup失敗記録・queuedメール滞留警告の実配信確認用）
+- [ ] 自動投稿のlive E2E（実X投稿・自動rollback削除）確認にはX Developer App・実Xアカウント・クレジット設定が必要。M4のacceptanceはX_POSTING_MODE=dry_run＋モックで完結させ、live確認はリリース前作業とする
+- [ ] 自動投稿同意説明文（consent_version付き文面）と通知メール文面の最終確認。特に同意文はX Automation Rules準拠の観点でリリース前に専門家確認（PRD §7）
+- [ ] Vercel Cronへの切り替えは移行条件（運用メモ §3）到達後の運用判断であり、M4ではvercel.json追加・切替作業を行わない（実施タイミングはユーザー判断）
+
+**M5関連**
+- [ ] 他マイルストーンコードの前提: 本リストは M0=スカフォールド＋DBスキーマ/seed、M1=認証・課金・プラン判定、M2=X連携・APIキー・発信設定（ベースmd初版）、M3=ジョブ基盤（generation_jobs・worker lease・dispatch・cron認証・AIアダプタ・利用枠helper）、M4=投稿生成/実行（drafts・tweet_ids） と仮定して depends_on を記載した。実際のマイルストーン割当と異なる場合は読み替えが必要
+- [ ] X Developer Appとクレジット設定（人間作業）: 学習読取（20/100件）・metrics batch lookup・user lookupの実機E2E検証には、読取scope付きDeveloper App、credit/予算設定、投稿済みポストを持つテスト用Xアカウントが必要（開発中の検証はモックで代替可能）。non-public metrics（profile_clicks等）はuser contextの所有ポストでのみ取得可能なため、実機検証は自アカウントの実投稿が前提
+- [ ] X読取endpointの単価確認（人間作業）: timeline・tweets lookup・users lookupのpay-per-use単価はDeveloper Consoleでの契約表示が優先されるため、原価集計（external_api_usage_events のunit_cost_usd）に使う環境変数値の確定はリリース前に人間がConsoleで確認する必要がある（PRD 6.1「X読み取りは別途実測」）
+- [ ] 生成AI APIキーの発行（人間作業）: LRN/MD-MERGE/SUGGESTの実機検証には運営Claudeキー（ANTHROPIC_API_KEY）、BYOK経路の検証には各provider（Anthropic/OpenAI/Gemini）のテスト用キー発行が必要。採用モデル（ANTHROPIC_TEXT_MODEL等）の決定と構造化出力対応の最終確認も運用判断を含む
+- [ ] 常時稼働Macの準備（人間作業）: metrics_collector（毎時00分）・follower_snapshot（毎時10分）の初期定時実行にはJST固定・スリープ無効のMacとLaunchDaemon設定・CRON_SECRETの秘密管理（Keychain等）が必要。開発中はcron routeの手動curl起動で代替検証する
+
+**M6関連**
+- [ ] 他マイルストーンのコードは次の想定で記載した（要照合・必要なら読み替え）：M0=スカフォールド・DBスキーマ・環境変数基盤、M1=認証・Stripe課金・プラン変更同期、M2=X連携（BYOK OAuth）・キー管理・設定画面、M3=AI生成パイプライン・ジョブ基盤（worker/dispatch/scheduler_tick）、M4=投稿実行・スケジュール・下書き、M5=ニュース・通知・分析
+- [ ] 運営側AI APIキーの発行と課金設定（premium文章生成用Anthropic必須、画像用OpenAI/Geminiのいずれか1つ以上）。どのproviderを画像用に用意するかの決定を含む
+- [ ] X運営Developer Appの作成（X_MANAGED_CLIENT_ID/SECRET発行、callback URL登録、必要scope設定、credit/予算設定）。preview/prod環境変数への設定
+- [ ] X API単価のDeveloper Console確認とX_COST_CONTENT_CREATE_USD等の環境変数設定、およびPRD §6.1原価前提の更新（運営者のXアカウントが必要）
+- [ ] 利用規約・プライバシーポリシー・特定商取引法表記の文面のリリース前専門家（法務）確認
+- [ ] Stripe本番アカウントでの3価格（同一Product配下）とCustomer Portal configuration（値下げ期間末予約・trial中continue_trial等）の作成・設定（M1側の外部作業と重複する場合は統合）
+- [ ] 常時稼働Macの準備（スリープ無効・JST固定・LaunchDaemon登録・Keychainへの秘密値登録）と、週次backup・launchd監視の運用体制
+- [ ] backupの暗号化保存先（Supabase外のストレージ）の選定と用意
+- [ ] 本番リリースに必要な各種アカウント・キーの発行と環境変数設定：Vercel Pro契約、Supabase本番プロジェクト、CRON_SECRET・APP_ENCRYPTION_KEYの生成、Sentry DSN、Cloudflare Turnstileキー、Gmail 2段階認証とApp Password（SMTP）
+- [ ] X_POSTING_MODEをliveへ切り替える最終判断と、本番Xアカウントでの実投稿スモークテスト（実クレジット消費を伴うため運営者の実施・承認が必要）
+- [ ] premium原価のβ実測に基づく上限値・単価前提・価格の見直し判断（リリース後運用。external_api_usage_eventsの月次SQL集計を翌月10日までに実施する運用担当の確定）
+
+## M0: リポジトリ・実行基盤
+
+### T-M0-01: Next.jsスカフォールドと開発ツールチェーン整備 `todo`
+- 参照: 要件01 §2、要件01 §6、要件定義書 §3 / 依存: なし / サイズ: M
+- 完了条件:
+  - lint・typecheck・test（サンプルテスト1件以上）の各npmスクリプトがexit 0で完走する
+  - ローカルdev起動で`/`にshadcn/uiコンポーネントを使ったプレースホルダページが表示される
+  - Next.js 15.1以上・App Router・TypeScript strictで構成されている
+- メモ: リポジトリ直下にスカフォールド（CLAUDE.mdの方針どおり）。Tailwind CSS + shadcn/ui導入、ESLint/型チェック/テストランナー（Vitest等）を整備。UIは共通App Shellの器のみで業務画面は作らない。
+
+### T-M0-02: 環境変数一式の.env.exampleと起動時検証モジュール `todo`
+- 参照: 要件01 §3.1、要件01 §3.2、要件01 §3.3、要件01 §3.4、要件01 §3.5、要件01 §3.6、O-5、P-5 / 依存: T-M0-01 / サイズ: M
+- 完了条件:
+  - .env.exampleに要件01 §3.1〜3.6の全環境変数が用途コメント付きで列挙されている
+  - env検証テスト: CRON_SECRET未設定で読み込みが失敗し認証スキップのフォールバックが存在しない。APP_ENVがdevelopment/previewのときX_POSTING_MODE=liveを拒否する
+  - FEATURE_QUOTE_POST_ENABLEDが未設定時にfalseへ解決され、Server onlyモジュールからのみ参照できる（Client Componentからのimportはビルドエラー）
+- メモ: zodでサーバー起動時に検証するserver-only envモジュール。X_DAILY_POST_LIMIT既定50、SUPABASE_STORAGE_BUCKET_IMAGES既定generated-images等の既定値もここで定義。P-5はflag OFF時の判定基盤（server-only・既定false）のみをM0で持ち、拒否・非表示の各実装は該当機能のマイルストーンで行う。
+
+### T-M0-03: Supabaseマイグレーション基盤とenum定義 `todo`
+- 参照: 要件02 §2、要件01 §2 / 依存: T-M0-01 / サイズ: S
+- 完了条件:
+  - supabase db resetがローカルで成功し、マイグレーションの追加・再適用フローがREADMEまたはスクリプトで再現できる
+  - 要件02 §2の全enum（plan_type〜email_delivery_statusの21種）が正しい値リストでpg_typeに存在することをテストで確認する
+- メモ: Supabase CLIプロジェクト初期化とmigrationsディレクトリ整備。ローカルはSupabase CLI（Docker）で検証し、リモートSupabaseプロジェクトがなくても完結する。
+
+### T-M0-04: コア7テーブルのマイグレーション（profiles〜news_items） `todo`
+- 参照: 要件02 §1、要件02 §3.1、要件02 §3.2、要件02 §3.3、要件02 §3.4、要件02 §3.5、要件02 §3.6、要件02 §3.7 / 依存: T-M0-03 / サイズ: M
+- 完了条件:
+  - profiles / user_api_keys / x_accounts / base_md_versions / prompt_templates / learning_sources / news_itemsが定義どおりのカラム・FK・indexで作成される
+  - 制約テスト: unique(user_id, provider)、unique(x_account_id, version)、prompt_templatesのpartial unique index、news_items.source_url unique、base_md_version >= 0、automation_consent同時null制約の違反insertが拒否される
+- メモ: 共通ルール（uuid PK・created_at/updated_at・updated_at自動更新trigger）もここで実装。RLSは後続タスクへ分離。
+
+### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `todo`
+- 参照: 要件02 §1、要件02 §3.8、要件02 §3.9、要件02 §3.10、要件02 §3.11、要件02 §3.12、要件02 §3.13、要件02 §3.14、要件02 §3.15、要件02 §3.16、要件02 §3.17 / 依存: T-M0-04 / サイズ: M
+- 完了条件:
+  - generation_jobs / drafts / schedule_slots / follower_snapshots / improvement_suggestions / usage_events / usage_counters / notifications / stripe_events / external_api_usage_eventsが定義どおり作成される
+  - generation_jobsのpartial unique index（post_publish・image_generation・suggestion・learning_analysis/md_merge）とschedule_run_key/request_key uniqueが重複insertを拒否する
+  - usage_eventsのdelta±1・refundのref_event_id必須・reason整合、usage_countersのpremium上限、schedule_slotsの時刻/曜日/p5不可のCHECK制約が違反insertを拒否する
+- メモ: JSONBカラム（input/usage/thread/tweet_metrics等）のzodスキーマ定義（要件02 §4）は共有型モジュールとして同時に作成し、書き込み側の検証で再利用できるようにする。
+
+### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `todo`
+- 参照: 要件02 §5、要件02 §3.3、要件02 §1 / 依存: T-M0-05 / サイズ: M
+- 完了条件:
+  - 全17テーブルでRLSが有効化され、テストで別ユーザーのrowをselectできない・本人rowはselectできることを確認する（x_account経由所有のテーブルを含む）
+  - news_itemsは認証済み全員select可、stripe_events / external_api_usage_eventsはanon/authenticatedからselect不可、認証クライアントからの直接insert/update/deleteが主要テーブルで拒否される
+  - profiles.active_x_account_idへ他ユーザー所有のx_accountを設定するDB triggerの拒否をテストで確認する
+- メモ: ローカルSupabaseで2ユーザーを作成しanon keyクライアントで検証するRLSテストを整備する（リリース判定要件のRLS policy testの土台。要件01 §8）。
+
+### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `todo`
+- 参照: 要件02 §6、要件02 §4.4、プロンプト設計書 §6.1、プロンプト設計書 §6.2、プロンプト設計書 §6.8、プロンプト設計書 §6.9、L-5 / 依存: T-M0-04 / サイズ: M
+- 完了条件:
+  - seed適用後、prompt_templatesにsystem default 7件（p1〜p6・image、x_account_id=null）がプロンプト設計書§6の本文で存在する
+  - private Storage bucket generated-imagesが作成されている
+  - プラン定義（価格・Xアカウント上限・利用枠）・テーマ選択肢マスタ（news_category対応付き）・ニュースカテゴリのコード定数がユニットテストで検証される
+- メモ: SYS-GEN/SYS-NEWS/PT-FIX/PT-MD-MERGE等のコード管理プロンプト定数もこのタスクで配置する（DB seedはPT-P1〜P6とimageのみ）。通知初期値・news_config初期値の定数も定義（要件06 §3.4）。
+
+### T-M0-08: AES-256-GCM暗号化ユーティリティ `todo`
+- 参照: 要件01 §2、要件01 §8、要件02 §1、PRD §7 / 依存: T-M0-02 / サイズ: S
+- 完了条件:
+  - 暗号化→復号のroundtripが成功し、envelopeがversion・nonce・ciphertext・auth tagを含むJSON文字列である
+  - ciphertextまたはauth tagを改ざんした復号が失敗する。nonceが呼び出しごとに異なる
+  - server-onlyモジュールとしてClient Componentからimportするとビルドが失敗する
+- メモ: APP_ENCRYPTION_KEY（32 bytes相当）を使用。envelopeにversionフィールドを持たせ将来のローテーションADRに備える。
+
+### T-M0-09: DATABASE_URL（pooler）接続とtransaction/advisory lockヘルパ `todo`
+- 参照: 要件01 §3.2、要件01 §6、要件04 §4、要件04 §6、ADR-0002 / 依存: T-M0-02、T-M0-03 / サイズ: M
+- 完了条件:
+  - withTransactionヘルパが接続を都度取得・即解放し、テスト完走後に接続リークがない（pool統計で確認）
+  - pg_advisory_xact_lockヘルパのintegrationテスト: 同一キーの並行2 transactionが直列化され、transaction終了でlockが自動解放される
+  - x_account単位・user+post_publish・cron時間窓（job名+対象時刻窓）の3種のlockキー導出が決定的であることをユニットテストで確認する
+- メモ: Supavisor transaction mode想定でprepared statementに依存しないpg client設定にする。FOR UPDATE SKIP LOCKEDを使うクエリヘルパもここに置く。supabase-js/PostgRESTでは複文transactionを実行しない方針をコードコメントで明示。
+
+### T-M0-10: twitter-text互換の加重文字数ユーティリティ `todo`
+- 参照: PRD §8.1、要件05 §12、プロンプト設計書 §7、要件02 §4.7 / 依存: T-M0-01 / サイズ: S
+- 完了条件:
+  - 半角280字はOK・281字はNG、日本語140字（加重280）はOK・141字はNGと判定される
+  - URLが長さにかかわらずt.co固定長で計算され、絵文字・CJKが重み付きで数えられるテストが通る
+  - cashtag（$TICKER形式）の件数を返し、2件以上を検出できる
+- メモ: 公式twitter-textライブラリ（またはその設定準拠実装）を利用しweighted_length算出を共通化。drafts.thread各要素のweighted_length算出とPT-FIX判定（280超過検出）の両方から使う前提のAPIにする。
+
+### T-M0-11: Sentry導入とログredaction `todo`
+- 参照: 要件01 §2、要件01 §8、要件01 §9 / 依存: T-M0-02 / サイズ: S
+- 完了条件:
+  - SENTRY_DSN未設定のdev環境でもアプリが正常起動・動作する
+  - beforeSend相当のredactionユニットテスト: Authorizationヘッダ・cookie・APIキー・token・prompt全文を含むイベントから該当値が除去される
+  - サーバー側の例外がSentry送信経路（モックtransport）へ渡ることをテストで確認する
+- メモ: server/client両configを用意。ユーザー向けエラーへprovider本文・stack traceを出さないエラー変換ヘルパの雛形も併設する。
+
+### T-M0-12: POST /api/jobs/run worker骨格（CRON_SECRET認証・202+after()・lease） `todo`
+- 参照: 要件04 §1、要件04 §4、要件05 §3、ADR-0002、要件01 §6、要件02 §3.8 / 依存: T-M0-09、T-M0-05 / サイズ: M
+- 完了条件:
+  - Bearerなし・不一致は401、一致時はjob_id受領後202を即時返却し本処理がafter()で実行される（maxDuration=200設定済み）
+  - ローカルDBテスト: queued jobがadvisory lock＋FOR UPDATE SKIP LOCKEDのlease transactionでrunning・attempt+1・locked_at/locked_by設定へ遷移する
+  - 同一x_accountに別のrunning jobがある場合／同一userにrunning post_publishがある場合、何もせずcommitして202で終了しjobはqueuedのまま残る
+- メモ: kind別handlerはレジストリ化しM0ではプレースホルダ実装（即succeeded化するテスト用handler）。available_at <= now()検証、schedule起点post_generationのscheduled_for+10分超過チェック（canceled化）もlease内に実装する。
+
+### T-M0-13: workerのheartbeat・stale判定・retry/backoff制御 `todo`
+- 参照: 要件04 §4、要件04 §5、要件02 §4.10、ADR-0002 / 依存: T-M0-12 / サイズ: M
+- 完了条件:
+  - 外部処理中のheartbeatでlocked_atが30秒間隔相当・stage変更時に更新される
+  - stale回収テスト: locked_atが10分超のrunning jobがattempt<3ならlock解除しqueuedへ（backoff付きavailable_at設定）、attempt>=3ならfailedへ確定し§4.10形式の構造化errorが保存される
+  - deadlineヘルパ: Function開始180秒のdeadlineと「残り30秒未満なら追加provider callを開始せずretryable queuedへ戻す」判定、per-call timeout（90秒とdeadline残の短い方）がユニットテストで検証される
+- メモ: 429/5xx/networkの指数backoff+jitter（最大2回retry、初回含め最大3 attempt）の共通retryポリシーもここで実装。stale failed確定時のkind別終端処理（refund・通知）はインターフェースだけ用意し、実装は各機能マイルストーンで行う。
+
+### T-M0-14: job dispatchヘルパ（1 job = 1 Function呼び出し） `todo`
+- 参照: 要件04 §1、要件04 §3、ADR-0002 / 依存: T-M0-12 / サイズ: S
+- 完了条件:
+  - dispatchJob(jobId)がCRON_SECRET Bearer付きでPOST /api/jobs/runを呼び、202受領で返りworkerの本処理完了を待たない（モックfetchで検証）
+  - transport失敗・非2xxでも例外を伝播させずjobはqueuedのまま残る（scheduler_tick回収前提の設計をテストで確認）
+  - 子job用の決定的冪等key（parent:{parent_job_id}:{kind}:{draft_id}）とユーザー操作用request_key（ユーザーIDprefix付き）の生成ヘルパがユニットテストを通る
+- メモ: Server Action/API Routeのafter()から呼ぶ手動dispatch、親workerからの連鎖dispatch、tickからの一括dispatchの3経路すべてが同一ヘルパを使う。未管理のfire-and-forget Promiseを作らない実装にする。
+
+### T-M0-15: cron 4 route骨格（時間窓advisory lockとtick回収dispatch） `todo`
+- 参照: 要件04 §6、要件04 §1、要件05 §3、運用メモ launchd-to-vercel-cron §2、ADR-0002 / 依存: T-M0-09、T-M0-13、T-M0-14 / サイズ: M
+- 完了条件:
+  - GET /api/cron/{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}の4本がCRON_SECRET Bearerを検証（不一致401）し、force-dynamicで2xxを返す
+  - 同一時間窓の二重起動テスト: 後発がjob名+時間窓のadvisory lock/leaseを取得できず、処理済み相当の2xxを返して本処理を実行しない
+  - scheduler-tickの回収骨格: dispatchされずqueuedのまま残ったjobをscheduled_for昇順→created_at昇順で最大50件dispatchし、stale判定処理を呼び出す（ローカルDB＋モックdispatchで検証）
+- メモ: news取得・slot enqueue・metrics収集・follower保存の本処理は各機能マイルストーンで実装し、M0では認証・lock・処理順（cancel→enqueue→dispatch→回収）の骨格と各ステップのフックのみ。ローカルcurlで4本の疎通を確認できるようにする。
+
+### T-M0-16: LLM共通アダプタ契約とAnthropicアダプタ（pause_turn規則） `todo`
+- 参照: プロンプト設計書 §5.1、プロンプト設計書 §5.2、プロンプト設計書 §5.6、要件04 §5、A-5 / 依存: T-M0-02 / サイズ: M
+- 完了条件:
+  - TextGen IF（system[]/user/webSearch/jsonSchema/timeoutMs → provider/requestId/text/citations/usage/stopReason）に対し、モック応答から共通形式が返る
+  - pause_turn: 同一実行内でのみ最大2回まで継続し中断応答を永続化しない。deadline残り30秒未満では継続を開始せずretryable扱いになる。retry時のwebSearch.maxUses 1段階縮小ロジックがテストで検証される
+  - systemの固定ブロック（SYS＋base_md）にprompt cachingを適用し、可変値がsystemに混入しない組み立てになっている
+- メモ: モデル名・検索ツールversionは環境変数/アダプタ設定とし業務ロジックへ直書きしない。実装時にAnthropic公式ドキュメント（Web search tool・stop reasons）で最新仕様を確認する。temperature等の生成パラメータは対応モデルのみ送信。
+
+### T-M0-17: OpenAI/Geminiアダプタとusage正規化の統一 `todo`
+- 参照: プロンプト設計書 §5.3、プロンプト設計書 §5.4、プロンプト設計書 §5.6、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
+- 完了条件:
+  - OpenAIアダプタ: store:false・Responses APIのoutput itemsからtext・Web検索引用元・usage・request IDを抽出する（モックレスポンスで検証。output_textだけを保存せず引用を捨てない）
+  - Geminiアダプタ: store=falseで各呼び出しが独立し、groundingメタデータからcitationsを抽出、generateContentフォールバックへの切替が設定で制御できる（モックで検証）
+  - 3 providerのusageが要件02 §4.6のcalls要素（provider/model/request_id/stop_reason/token/検索回数/estimated_cost_usd等）へ同一の正規化型で変換される
+- メモ: 検索と構造化出力の併用可否はモデルごとに起動時検証するチェック関数を用意（要件01 §7）。SDK引数名は実装時点の公式型定義を正とする。
+
+### T-M0-18: JSON修復付き生成パイプライン骨格 `todo`
+- 参照: プロンプト設計書 §5.1、プロンプト設計書 §7、要件04 §5、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
+- 完了条件:
+  - 正常JSONでは修復callが呼ばれず、不正JSONではコードフェンス除去→再パース→修復指示付きprovider call 1回のみが実行される（モックproviderで呼び出し回数を検証）
+  - 修復後もparse失敗の場合にInvalidProviderOutputError相当で失敗し、job retry回数（attempt）には含めない扱いになる
+  - 全provider callの記録がusage.callsへ蓄積され、要件02 §4.6スキーマのzod検証を通る
+- メモ: runGeneration骨格（resolveProvider→assembleContext→generate→parseAndValidate→修復→文字数/NG検証フック→logUsage）を実装。文字数超過のGEN-FIX実行・NG照合・出典検証の本実装は生成機能マイルストーンで行い、M0はフックとIFまで。
+
+### T-M0-19: resolveProvider（プラン→provider/キー解決） `todo`
+- 参照: PRD §8.2、プロンプト設計書 §1、プロンプト設計書 §5.1、要件01 §3.5、要件01 §7、要件02 §4.1、A-5 / 依存: T-M0-08、T-M0-17、T-M0-04 / サイズ: M
+- 完了条件:
+  - standard/md: ai_purpose_config.textのproviderについてuser_api_keysのvalidなキーを復号して解決し、未登録・invalidはapi_key_required相当のエラーを返す（ローカルDB＋テストデータで検証）
+  - premium: textがPREMIUM_TEXT_PROVIDER（既定anthropic）の運営キーへ固定解決され、ユーザー設定値に依存しない
+  - NEWS: NEWS_TEXT_PROVIDERの運営キーで解決し、無効・未設定時はエラーで失敗して別providerへ自動切替しない。画像providerはopenai/googleのみ解決できる
+- メモ: job（trigger/kind/plan）を入力にTextGen実装インスタンスとキー種別（BYOK/運営）を返す。運営キー・復号済みユーザーキーはserver-only境界内に閉じる。
+
+### T-M0-20: X OAuth 2.0 PKCEクライアント基盤 `todo`
+- 参照: A-3、A-4、PRD §8.1、要件05 §4.3、要件05 §11、要件01 §3.4 / 依存: T-M0-02、T-M0-08 / サイズ: M
+- 完了条件:
+  - code_verifier/code_challenge（S256）の生成がRFC準拠であることをテストで確認する
+  - authorize URL構築にtweet.read tweet.write users.read media.write offline.accessの5 scope・state・PKCEパラメータが含まれ、BYOK（ユーザーClient ID）/managed（運営App）の切替が入力で決まる
+  - モックtokenエンドポイントでauthorization code交換が成功し、access/refresh tokenがAES envelope形式で保存できる。state（user ID・client種別・return path結び付け）の署名検証ヘルパがテストを通る
+- メモ: M0はクライアントライブラリ層のみ（/api/x/oauth/start・callbackのroute実装とscope検証・/2/users/me確認フローはX連携マイルストーン）。state保存は署名・暗号化・HttpOnly・短TTL cookie形式のヘルパとして用意。
+
+### T-M0-21: X token refreshのsingle-flight制御 `todo`
+- 参照: 要件05 §4.3、要件02 §3.3、PRD §8.1 / 依存: T-M0-20、T-M0-09 / サイズ: M
+- 完了条件:
+  - 並行2実行でもrefresh HTTP callが1回だけ実行され（モック）、待機側は最大10秒待って更新済みtokenを再読込する
+  - token_refresh_lock_id/locked_atの条件付き更新でleaseが取得され、1分超のstale leaseは回収されて別実行がrefreshできる
+  - rotated refresh tokenと期限がlock ID一致を条件に同一transactionで更新され、invalid_grant・必要scope不足時はstatus=expiredへ更新してleaseが解除される
+- メモ: 「access tokenが5分以内に失効するならrefresh」の判定を含むgetValidAccessTokenヘルパとして実装。expired化に伴う再連携通知の作成はフックのみ用意し通知機能マイルストーンで接続する。
+
+### T-M0-22: X投稿・読取クライアントとX_POSTING_MODE=dry_run動作 `todo`
+- 参照: PRD §8.1、要件04 §5、要件04 §10、要件01 §3.1、K-1 / 依存: T-M0-21 / サイズ: M
+- 完了条件:
+  - X_POSTING_MODE=dry_runでは投稿・削除のHTTP呼び出しが一切発生せず、dry-runであることを明示した擬似結果（擬似tweet_id）が返り、実tweet_id・利用枠を作らない
+  - 429/5xx/networkで指数backoff+jitterの最大2回retry後に失敗し、401/403はretryせず失効エラーへ正規化される（モックで検証）
+  - POST /2/tweets（reply連結in_reply_to・media_ids指定）・DELETE・GET /2/users/me・tweet読取（public/non-public metrics fields指定）の各リクエスト構築と応答の正規化がテストを通る
+- メモ: media uploadはIF定義とdry_run挙動まで（実装詳細は投稿実行マイルストーン）。X API呼び出しのexternal_api_usage_events記録は台帳機能実装時に接続するため、request ID・数量を返す共通レスポンス型だけ整えておく。実装時にX API公式ドキュメントで最新仕様を確認する。
+
+## M1: 認証・課金
+
+### T-M1-01: 認証基盤: Supabase SSRクライアントとセッション検証・signOut `todo`
+- 参照: A-2、要件03 §1、要件01 §2、要件01 §8、要件05 §4.0 / 依存: M0 / サイズ: S
+- 完了条件:
+  - ローカルSupabase（supabase start）で、Server Components／Server Actions／API Routeから共通ヘルパーでセッション有無を判定できる
+  - signOutでSupabase sessionが破棄され/loginへ遷移する
+  - service role・暗号鍵を参照するモジュールがserver-only化され、Client Componentからのimportがビルドエラーになる
+- メモ: @supabase/ssrを使用。cookieはSecure/HttpOnly/SameSite=Laxを既定（要件01 §8）。以降の全タスクの土台。
+
+### T-M1-02: profiles自動作成hookとログイン後の冪等upsert `todo`
+- 参照: A-1、要件03 §1、要件02 §3.1、要件06 §3.4 / 依存: M0、T-M1-01 / サイズ: S
+- 完了条件:
+  - ローカルSupabaseでauth.usersへのinsert時にprofiles rowが自動作成され、email・plan=standard・subscription_status=incomplete・notification_config/news_configの初期値（要件06 §3.4）が入る
+  - hook失敗を模したユーザー（profiles row欠落）でもログイン後初回アクセスの冪等upsertで補完され、2回実行しても1行のまま既存値を壊さない
+- メモ: 17テーブルのmigration・RLSはM0成果物を前提。初期値はコード定数（要件02 §6）から投入する。
+
+### T-M1-03: signUp Server ActionとSC-02会員登録画面（規約同意version保存） `todo`
+- 参照: A-1、SC-02、要件03 §1、要件05 §4.0、要件05 §12、要件06 §11 / 依存: T-M1-01、T-M1-02 / サイズ: M
+- 完了条件:
+  - ローカルSupabase＋Inbucketで登録するとpending userが作成され確認メールが届く。画面に確認メール再送導線が表示される
+  - 利用規約同意とプライバシーポリシー確認の2つのcheckboxが別々に必須で、現行version不一致は拒否。成功時にterms_version/terms_accepted_at/privacy_version/privacy_acknowledged_atがprofilesへ保存される
+  - password 12〜64文字・UTF-8 72bytes以下・確認用一致のzod検証が通り、エラー文言からメール存在有無・秘密値が漏れない
+- メモ: captcha_tokenの受け口だけ設け、Turnstile検証は後続タスクで有効化。規約・プライバシーの正式文面は法務ページ担当マイルストーンの成果物待ちのため、リンク先は/terms・/privacyの暫定ページ、versionはコード定数で管理。password managerの生成・貼り付けを妨げないこと。
+
+### T-M1-04: GET /auth/confirm（メールtoken_hash検証と遷移制御） `todo`
+- 参照: 要件01 §4、要件03 §1、要件05 §3、SC-02、SC-03 / 依存: T-M1-03 / サイズ: S
+- 完了条件:
+  - signup確認メールのリンクからServer側verifyOtpが成功し/plansへ、recovery typeは/reset-passwordへ遷移する（ローカルSupabaseで確認）
+  - 期限切れ・使用済み・不正tokenはすべて同一の汎用エラーにまとまり、signupは再送導線・recoveryは再申請導線を表示する
+  - nextは許可済みのアプリ内相対パスのみ反映され、遷移前にURLからtoken_hashとtypeが除去される
+
+### T-M1-05: signIn Server ActionとSC-03ログイン画面 `todo`
+- 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件01 §5 / 依存: T-M1-01、T-M1-04 / サイズ: M
+- 完了条件:
+  - 確認済みユーザーがログインでき、safeな相対nextがあればそこへ、なければ/app（プラン未選択なら/plans）へ遷移する。外部URLのnextは無視される
+  - メール未確認ユーザーはアプリ本体へ入れず、確認メール再送導線が表示される
+  - 認証失敗はメール存在有無・失敗理由で文言が変わらない汎用エラーで、連続失敗時は同じ文言で待機を促す
+
+### T-M1-06: パスワード再設定フロー（requestPasswordReset／updatePassword／/reset-password画面） `todo`
+- 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件05 §12 / 依存: T-M1-04、T-M1-05 / サイズ: M
+- 完了条件:
+  - 登録済み・未登録どちらのメールでも同一の受理応答を返し、登録済みにのみrecoveryメールが届く（Inbucketで確認）
+  - recoveryリンク→/auth/confirm→/reset-passwordで新passwordを設定し、新passwordでログインできる
+  - 有効なrecovery sessionがないupdatePassword呼び出し、password制約違反・確認不一致は拒否される
+
+### T-M1-07: Turnstile統合（signup／login／password reset） `todo`
+- 参照: 要件01 §2、要件01 §8、要件03 §1、要件05 §12、SC-02、SC-03 / 依存: T-M1-03、T-M1-05、T-M1-06 / サイズ: S
+- 完了条件:
+  - Cloudflare公開テストキー（常に成功／常に失敗）で、signup/login/resetの成否が切り替わることをローカルで確認できる（Supabase CLIのconfig.tomlでAuth CAPTCHAを有効化）
+  - captcha_token欠落・再利用のリクエストはServer側で拒否される
+- メモ: 本番のsite/secret key発行とSupabase Dashboard側のCAPTCHA有効化はユーザー作業（open_questions参照）。
+
+### T-M1-08: 認証ガードmiddleware（未ログイン・プラン未選択・incompleteのリダイレクト） `todo`
+- 参照: 要件01 §5、要件03 §5、SC-04 / 依存: T-M1-05 / サイズ: M
+- 完了条件:
+  - 未ログインで/app/*へアクセスすると/login?next=...へリダイレクトされ、nextはアプリ内相対パスのみ許可（外部URLは破棄）
+  - ログイン済みでプラン未選択またはincomplete/incomplete_expiredは/plansへリダイレクトされ、/app/settingsの課金・問い合わせタブへのパスだけ許可される
+  - trialing/active/past_due等のユーザーは/app配下へリダイレクトされず閲覧できる
+- メモ: 生成・投稿系mutationの契約状態別拒否は後続の「契約状態別アクセス制御」タスクで実装。/app/settings課金タブの実体はPortalタスクで作るため、ここではパス許可のみ先行。
+
+### T-M1-09: POST /api/stripe/checkout（Price ID対応表・Customer冪等作成・trial 1回制御） `todo`
+- 参照: O-1、要件03 §2、要件03 §2.1、要件05 §3、要件05 §11、要件01 §3.3 / 依存: T-M1-02、T-M1-05 / サイズ: M
+- 完了条件:
+  - planはstandard/md/premiumのみ受け付け、Price IDはサーバー側の環境変数対応表から解決される。クライアントからのPrice ID・任意の外部return URLは受け取らない（success/cancelはAPP_BASE_URL基準で組み立て）
+  - trial_used_at is nullの場合だけ7日trialが設定され、非nullでは付与されない（Stripe SDKをモックした単体テストで検証）
+  - 既存stripe_customer_idを再利用し、未作成時はuser_id metadata＋冪等keyでCustomerを1件だけ作成する。未ログイン・Origin不一致は拒否
+- メモ: Stripe SDK初期化・Price ID対応表・プラン定義コード定数（要件02 §6）はここで整備し、webhook・Portalタスクと共有する。実Stripe（test mode）でのE2Eはアカウント準備待ち（open_questions）。
+
+### T-M1-10: SC-04プラン選択画面（3プラン比較・法定表示・Checkout開始） `todo`
+- 参照: SC-04、O-1、要件03 §2、要件03 §2.1、要件06 §11、要件01 §4 / 依存: T-M1-09 / サイズ: M
+- 完了条件:
+  - 3プランの税込月額・Xアカウント上限・BYOK要否・premium月間利用枠が比較表示され、BYOKプランの別途API費用（X・生成AI）が明示される
+  - Checkout開始前に税込月額・7日trial・trial後の自動更新・支払時期・解約方法・提供開始時期が表示され、特定商取引法表記へ到達できる
+  - プラン選択で/api/stripe/checkoutが呼ばれ、モック環境でCheckout URLへのリダイレクトまで到達する
+- メモ: 特商法ページ本体は法務ページ担当マイルストーンの成果物。未完成の間は暫定ページへリンク。
+
+### T-M1-11: POST /api/stripe/webhook受信基盤（署名検証・stripe_events冪等記録） `todo`
+- 参照: O-1、要件03 §4.1、要件03 §4.2、要件02 §3.16、要件05 §11、要件04 §5 / 依存: T-M1-09 / サイズ: M
+- 完了条件:
+  - raw bodyの署名検証に失敗すると4xx、正しい署名（Stripe SDKのgenerateTestHeaderStringでローカル生成）なら2xxを返す
+  - 同一event_idの再送はstripe_events.event_idのinsert競合により処理済みとして2xx（副作用なし）
+  - 未知Price IDのイベントはprofiles未更新・stripe_events未記録のまま非2xxを返してStripe再送で復旧可能にし、Sentry（モック）へ記録される
+- メモ: アプリ内retryは実装せず、非2xxによるStripe再送へ委ねる（要件04 §5）。イベント種別ごとの処理は次タスク以降。
+
+### T-M1-12: webhook subscription同期（checkout完了・subscription作成/更新/削除・順序逆転防止） `todo`
+- 参照: O-1、要件03 §3、要件03 §4.1、要件03 §4.2、要件02 §3.1 / 依存: T-M1-11 / サイズ: M
+- 完了条件:
+  - checkout.session.completed／customer.subscription.created・updatedはsubscriptionをStripe APIから再取得（deletedのみevent最終状態でcanceled化）し、plan・subscription_status・current_period_end・cancel_at_period_end・trial_ends_at・stripe_customer_id・stripe_subscription_id・subscription_event_created_atがprofilesへ同期される（SDKモックの単体テスト）
+  - event.createdがprofiles.subscription_event_created_atより古いイベントはprofile更新をskipし、順序逆転で古い契約状態へ戻らないことをテストで確認
+  - trialingを初めて確認した時だけtrial_used_atを設定し、解約・再契約でもnullへ戻らない。profile更新とstripe_events記録が同一transactionでcommit/rollbackされる
+
+### T-M1-13: invoice.payment_failed／invoice.paid処理と課金通知作成 `todo`
+- 参照: O-1、要件03 §4.1、要件03 §8、要件02 §3.15 / 依存: T-M1-12 / サイズ: S
+- 完了条件:
+  - invoice.payment_failedでsubscriptionを再取得して現在statusを同期し、billing種別のnotifications rowがdedupe_key付き・設定snapshot付きで作成される（モックテスト）
+  - invoice.paidで支払い復旧（status回復）が同期される
+- メモ: 通知メール送信job・通知一覧UIは別マイルストーン。ここではrow作成まで。決済失敗の常設バナーは「契約状態別アクセス制御」タスクで表示する。
+
+### T-M1-14: Customer Portal SessionとSC-11課金タブ最小実装 `todo`
+- 参照: O-1、要件03 §6、要件05 §3、要件05 §11、要件01 §3.3、SC-11 / 依存: T-M1-12 / サイズ: M
+- 完了条件:
+  - ログイン済み＋Origin一致でPortal Session URLが返り、stripe_customer_id未保有・未ログイン・Origin不一致は拒否される（モックテスト）
+  - SC-11課金タブに現在プラン・subscription_status・期間終了日・解約予定（cancel_at_period_end）とPortalボタン、問い合わせ先（SUPPORT_EMAILのメールリンク）が表示される
+  - Portal configuration（値下げはdecreasing_item_amountで期間末予約・解約は期間末・trial中変更はcontinue_trial・値上げは即時日割り）を作成するsetupスクリプトがあり、dry-runで設定内容を出力できる
+- メモ: SC-11の他タブ（APIキー・Xアカウント・通知）は他マイルストーン。incompleteユーザーにも課金・問い合わせタブを許可し、認証ガードmiddlewareの許可パスと整合させる。STRIPE_PORTAL_CONFIGURATION_IDの実発行は実Stripeアカウント準備後。
+
+### T-M1-15: Checkout／Portal復帰時の未反映subscription同期 `todo`
+- 参照: 要件03 §3、SC-04、SC-11 / 依存: T-M1-12、T-M1-10、T-M1-14 / サイズ: S
+- 完了条件:
+  - Checkout success URL・Portal returnからの復帰時、profilesが未反映（webhook未着）ならsubscriptionを1回だけ再取得して同期し、反映済みならStripe APIを呼ばない（モックで呼び出し回数を検証）
+  - 通常の画面表示ではStripe APIを呼ばないことをテストで確認
+- メモ: 同期ロジックはwebhookの同期処理を共通化して再利用し、順序逆転防止（subscription_event_created_at比較）も同じ規則を適用する。
+
+### T-M1-16: 契約状態別アクセス制御（閲覧/実行マッピング・mutationガード・課金バナー） `todo`
+- 参照: 要件03 §5、要件01 §5、要件05 §2.2、要件06 §2、SC-05 / 依存: T-M1-12、T-M1-14、T-M1-08 / サイズ: M
+- 完了条件:
+  - 8つのsubscription_statusすべてについて「閲覧可否・生成/投稿/自動実行可否・主導線」のマッピングを単体テストで検証（trialing/activeのみ実行可、incomplete系は設定・プランのみ）
+  - past_due/unpaid/paused/canceledは既存データ閲覧が可能なまま、生成・投稿系mutationの共通ガードがsubscription_required（details に不足項目と設定画面パス）を返す
+  - 決済失敗・契約停止時はnotification_configにかかわらずヘッダー直下に常設バナーが表示され、支払い更新（Portal）または新規Checkoutへの導線を出す。trialingはtrial終了日を表示する
+- メモ: ガードは共通ヘルパーとして実装し、M3以降の生成・投稿Server Actionから呼び出す前提。課金停止を理由にデータを自動削除しない。
+
+### T-M1-17: プラン変更同期処理（Xアカウント無効化・AI用途設定の再検証） `todo`
+- 参照: 要件03 §6、要件02 §3.3、要件02 §4.1、A-6 / 依存: T-M1-12 / サイズ: M
+- 完了条件:
+  - md/premium→standardの同期でactive_x_account_idの1件だけactiveを維持し残りをdisabled化（active未設定ならcreated_at最古のactiveを維持）。token・ベースmd・下書き・実績データは削除されない（seedデータの単体テスト）
+  - standard/md→premiumの同期でauth_type=byokのXアカウントがexpired化され（BYOKキーは削除しない）、premium→standard/mdの同期でauth_type=managedがexpired化される。いずれもwebhook同期後の同一処理として実行される
+  - premium→BYOKの同期でai_purpose_configのtext/imageが登録済みvalidキーで再検証され、無効なら未設定へ戻る
+- メモ: M2依存部分: OAuth再連携（BYOK/運営Appでの再認可）・enableXAccountによる再有効化・キー疎通検証の実処理はM2（X連携・APIキー）で実装する。本タスクはwebhook同期transaction内のstatus/設定更新とテストまでとし、expired化に伴う再連携要求バナーの接続もM2で行う。x_accounts・user_api_keysテーブル自体はM0のmigrationで存在する前提。
+
+### T-M1-18: 利用規約の再同意ガード（重大改定時） `todo`
+- 参照: 要件03 §1、要件02 §3.1、SC-02 / 依存: T-M1-16、T-M1-03 / サイズ: S
+- 完了条件:
+  - profiles.terms_versionが現行versionより古いユーザーは、既存データの閲覧を許可されたまま、生成・投稿系の実行前に再同意画面が表示される（共通ガードの単体テストで検証）
+  - 再同意でterms_version/terms_accepted_at（必要ならprivacy側も）が更新され、以後ブロックされない
+- メモ: 契約状態ガードと同じ実行前チェック機構に組み込み、M3以降の生成・投稿Actionが自動的に対象になるようにする。
+
+## M2: X連携・キー・初期設定
+
+### T-M2-01: AES-256-GCM暗号化エンベロープユーティリティ `todo`
+- 参照: 要件01 §2、要件01 §3.1、要件02 §1、PRD §7 / 依存: M0 / サイズ: S
+- 完了条件:
+  - encrypt→decryptのラウンドトリップ、nonceの毎回変化、auth tag改竄時の復号失敗をユニットテストで確認できる
+  - 暗号文がversion・nonce・ciphertext・auth tagを含むJSON文字列のenvelope形式でtextカラムへ保存できる
+  - Server onlyモジュールとして実装され、Client Componentからのimportがビルド時に検出・拒否される
+- メモ: APP_ENCRYPTION_KEY（32 bytes相当）を使用。user_api_keysとx_accountsのtoken暗号化の共通基盤。鍵ローテーションは将来ADLのため対象外。
+
+### T-M2-02: App Shell骨格（6項目ナビ・ヘッダ・レイアウト） `todo`
+- 参照: 要件06 §2、要件01 §4、SC-05〜11 / 依存: M1 / サイズ: M
+- 完了条件:
+  - /app配下でPCは左ナビ・モバイルは下部ナビ/ドロワーに6項目（ホーム・ニュース・投稿・スケジュール・分析・AI設定）が表示され、SC-05〜10の各ルートへ遷移できる（各画面はプレースホルダで可）
+  - ヘッダにアクティブXアカウント表示枠・通知ベル・アカウント設定（SC-11）導線が配置される
+  - ナビ・ヘッダがキーボードのみで操作でき、focus表示が消えない
+- メモ: 認証ガード（M1）配下に置く。読み込み中・空・失敗の共通状態コンポーネントの雛形もここで用意する。
+
+### T-M2-03: 発信設定スキーマ・テーマ選択肢マスタ・ベースmd生成ロジック `todo`
+- 参照: L-4、L-5、L-6、L-7、要件02 §4.4、要件02 §6、要件06 §3.3、要件06 §3.4、プロンプト §3.1〜3.4 / 依存: M0 / サイズ: M
+- 完了条件:
+  - x_accounts.settingsのzodスキーマが必須項目（persona3項目・主テーマ1件以上・tone5項目・NGは空可）を検証し、不正入力を拒否する
+  - テーマ選択肢マスタがコード定数として定義され、各選択肢がnews_category対応（ai/web3/investment/対応なし）を持つ
+  - settingsからテンプレート初版（セクション5〜6空欄）生成と、セクション1〜4のみ再構築（5〜6保持）を行うpure functionが、6見出しの順序・各1回の構造検証を含めユニットテストで確認できる
+- メモ: tone初期値（です・ます調／絵文字1個まで／ハッシュタグ0件／スレッド番号あり）もここで定数化する。テンプレート全文はプロンプト設計書§3.2を正とする。
+
+### T-M2-04: updatePersonaSettings Server Action（ベースmd初版生成・版管理） `todo`
+- 参照: L-4〜L-8、要件05 §8、要件05 §9、要件02 §3.3、要件02 §3.4、要件06 §3.1 / 依存: T-M2-03、M1 / サイズ: M
+- 完了条件:
+  - base_md_version=0の初回保存でテンプレート全体から初版（version 1・change_source='settings'）が作られ、x_accounts.settings/base_md/base_md_versionとbase_md_versionsが同一トランザクションで更新される
+  - 2回目以降の保存はセクション1〜4のみ再構築しセクション5〜6を保持する。expected_base_md_version不一致は0件更新としてjob_conflictを返す
+  - 対象XアカウントにrunningのLearning_analysis/md_mergeがある場合job_conflictを返す（generation_jobsへのfixture挿入で検証。LLM非呼出・生成枠非消費）
+- メモ: x_account_id明示送信と所有権・status=active・active_x_account_id一致の検証（要件05 §1）もここで実装する。
+
+### T-M2-05: SC-10 発信設定フォームUI（L-4〜L-7） `todo`
+- 参照: L-4〜L-7、SC-10、要件06 §3.1、要件06 §3.3、要件06 §3.4、要件06 §9 / 依存: T-M2-04、T-M2-02 / サイズ: M
+- 完了条件:
+  - ペルソナ・テーマ（マスタからの選択＋自由入力）・トーン（初期値プリセット）・NGの4フォームが保存・再表示でき、必須項目のバリデーションエラーがフィールド単位でlabelと関連付けて表示される
+  - 現行base_mdのセクション1〜4がフォーム値から再構築した内容と異なる場合、保存前に上書き差分警告が表示される
+  - 保存成功後にbase_md_versionの更新が画面へ反映される
+- メモ: SC-10の学習ソース・ベースmdエディタ・プロンプト編集タブは別マイルストーン。タブ枠だけ用意する。
+
+### T-M2-06: BYOK APIキー保存Action（saveXApiKey/saveAiApiKey） `todo`
+- 参照: A-4、A-5、要件05 §4.2、要件02 §3.2 / 依存: T-M2-01、M1 / サイズ: M
+- 完了条件:
+  - saveXApiKeyはstandard/mdのみ許可（premiumはforbidden）、client_idの形式検証とconfidential client時のsecret必須検証を行い、保存値は暗号化envelopeで保存され平文がDB・ログ・レスポンスへ現れない
+  - saveAiApiKey（anthropic/openai/google）を含めunique(user_id, provider)でupsertされ、display_hintへ末尾4文字だけが保存される
+  - X client ID変更時にauth_type=byokの既存Xアカウントがexpired化される（fixtureで検証。既存tokenを新Appで使い回さない）
+- メモ: 保存直後のstatusはunchecked。Secretは受信後すぐ暗号化しログへ出さない。
+
+### T-M2-07: verifyApiKey Action（疎通確認・ai_purpose_config自動設定） `todo`
+- 参照: A-4、A-5、要件05 §4.2、要件02 §2、要件02 §4.1 / 依存: T-M2-06 / サイズ: M
+- 完了条件:
+  - AI各provider（anthropic/openai/google）への軽量疎通呼び出しをアダプタ経由で行い、成功でstatus=valid・verified_at更新、失敗でstatus=invalidになる（providerアダプタのモックで検証）
+  - Xキーは形式検証まで（疎通確認はOAuth完了時）というA-4の規則どおりに動作する
+  - 疎通成功時にai_purpose_config.textが未設定なら当該providerを自動設定し、openai/googleでimage未設定の場合も同様に設定する
+- メモ: 疎通結果のエラーはprovider本文を出さずコード化した文言へ変換する（要件01 §8）。
+
+### T-M2-08: deleteApiKey Action（用途解除・BYOK X連携失効処理） `todo`
+- 参照: A-4、A-5、要件05 §4.2、要件02 §4.1、PRD §10 / 依存: T-M2-07 / サイズ: S
+- 完了条件:
+  - AIキー削除でuser_api_keys行が削除され、ai_purpose_configの該当用途（text/image）が解除される
+  - Xキー削除でtoken revokeをbest effort実行後（HTTPモックで検証）、auth_type=byokのXアカウントがexpired化され投稿・読取・自動実行の対象外になる
+- メモ: 即時削除導線（キー漏洩対策）の要件。revoke失敗でも削除は完了させる。
+
+### T-M2-09: updateAiPurposeConfig Action（プラン別ライフサイクル） `todo`
+- 参照: A-5、要件05 §4.1、要件02 §4.1、PRD §8.2 / 依存: T-M2-07、M1 / サイズ: M
+- 完了条件:
+  - standard/mdでは登録済みかつvalidなproviderだけをtextへ設定でき、imageはopenai/googleに限定される（違反はvalidation_error）
+  - premiumのtext変更は拒否され、実行時にanthropicへ解決するヘルパを提供する（DBへは保存しない）。imageは運営キー設定済みproviderのみ選択可
+  - premium→BYOKプラン変更同期時にtext/imageを登録済みvalidキーで再検証し、無効なら未設定へ戻す関数がユニットテストで検証される
+- メモ: 再検証関数はM1のwebhookプラン変更同期から呼ばれる想定でexportする。
+
+### T-M2-10: SC-11 APIキータブUI（マスク表示・X取得手順ガイド） `todo`
+- 参照: A-4、A-5、SC-11、要件06 §3.2、PRD §8.1、PRD §10 / 依存: T-M2-08、T-M2-09、T-M2-02 / サイズ: M
+- 完了条件:
+  - X/AIキーの登録・差し替え・検証・削除が操作でき、保存後は末尾4文字のみ表示され秘密値は再表示されない
+  - Xキー欄にDeveloper Consoleで登録するcallback URL（APP_BASE_URLから組み立て）、必要scope 5種、クレジット・予算設定の確認先を含む取得手順ガイドが表示される
+  - premiumではキー入力フォームを表示せず「キー登録不要」の案内になる
+- メモ: スクリーンショット素材は未確定のためテキスト手順＋差し替え可能な画像枠で実装（open_questions参照）。
+
+### T-M2-11: SC-10 AI用途設定UI（text/image provider選択） `todo`
+- 参照: A-5、SC-10、要件05 §4.1、要件02 §4.1、要件06 §3.2 / 依存: T-M2-09、T-M2-02 / サイズ: S
+- 完了条件:
+  - BYOKでは登録済みvalidキーのproviderだけがtext選択肢に表示され、imageはopenai/googleかつvalidキーのあるものに限定される
+  - premiumではtextが運営Claudeとしてread-only表示され、imageは運営キーが利用可能なproviderからのみ選択できる（未設定providerは選択不可）
+- メモ: OpenAI/Geminiとも未登録の場合の画像生成非活性の判定材料をここで表示に反映する。
+
+### T-M2-12: X OAuthクライアントアダプタ＋startルート（state/PKCE） `todo`
+- 参照: A-3、要件05 §3、要件05 §4.3、要件05 §11、要件01 §3.4、要件01 §8、PRD §8.1 / 依存: T-M2-06、M1 / サイズ: M
+- 完了条件:
+  - GET /api/x/oauth/startが契約状態・plan上限・期待auth_type（standard/md=byok、premium=managed）を検証し、不足時はエラーと設定導線へ戻す
+  - 認可URLに`tweet.read tweet.write users.read media.write offline.access`とS256 PKCEが付与され、state（user ID・client種別・return path紐付け）とcode_verifierが署名/暗号化済み・HttpOnly・SameSite=Lax・短TTLのcookieへ保存される（URL生成・state生成のユニットテスト）
+  - BYOKは保存済みXキー、premiumはX_MANAGED_CLIENT_ID/SECRETをOAuth clientとして使い分ける
+- メモ: 実装時にX公式のOAuth 2.0 Authorization Code with PKCE仕様を再確認する（要件01 §7の注記）。
+
+### T-M2-13: X OAuth callback（token交換・新規連携ハッピーパス） `todo`
+- 参照: A-3、A-4、要件05 §3、要件05 §4.3、要件02 §3.3 / 依存: T-M2-12 / サイズ: L
+- 完了条件:
+  - モックX API（token endpoint・/2/users/me）に対し、code交換→scope 5種の付与確認→/2/users/me確認→access/refresh tokenの暗号化保存→x_accounts作成（x_user_id/handle/auth_type/oauth_scopes/status=active）までの統合テストがローカルで通る
+  - scope不足・/2/users/me失敗時はtokenを保存せずエラー表示へ戻り、tokenの平文と外部レスポンス本文をブラウザへ返さない
+  - callbackは自動投稿への同意（automation_consent_*）を一切記録しない
+- メモ: 初回連携成功時はprofiles.active_x_account_idが未設定なら当該アカウントを設定する。BYOKはこの疎通成功でXキーのstatus=valid化（A-4のOAuth完了時疎通確認）。
+
+### T-M2-14: X OAuth callback（再連携・複数アカウント上限・拒否系） `todo`
+- 参照: A-3、A-6、要件05 §4.3、要件05 §11、要件03 §6 / 依存: T-M2-13 / サイズ: M
+- 完了条件:
+  - 同一x_user_idの再連携で既存rowのtoken・auth_type・scope・statusが置き換わり、ベースmd・settings・下書き等のデータが維持される（fixtureで検証）
+  - 別x_user_idは新規アカウントとしてプラン上限（standard=1、md/premium=3）を検証し、超過時は保存せずエラー表示へ戻す
+  - state不一致・別sessionからのcallback・cookie欠落・code欠落を拒否し、エラーに秘密値やproviderレスポンス本文を含まない
+- メモ: BYOK⇔premiumのプラン変更後の再連携（auth_type置き換え）もこの経路で成立させる。
+
+### T-M2-15: Xトークンrefreshヘルパ（single-flight lease） `todo`
+- 参照: A-3、要件05 §4.3、要件02 §3.3 / 依存: T-M2-13 / サイズ: M
+- 完了条件:
+  - 期限5分以内のtokenでrefreshが1回だけ実行され、並行呼び出しはtoken_refresh_lock_id/token_refresh_locked_atの条件付き更新で直列化される（他実行は最大10秒待って再読込、1分超leaseのstale回収を含めテスト）
+  - rotatedされたrefresh tokenと期限がlock ID一致条件で同一トランザクション更新され、成功・失敗のどちらでもleaseが解除される
+  - invalid_grantまたは必要scope不足でstatus=expired化し、再連携を促すnotifications行を作成する
+- メモ: DATABASE_URL（pooler）経由の複文トランザクションで実装。後続マイルストーンのworker（投稿・読取）からも共用する。
+
+### T-M2-16: Xアカウント管理Action（list/refresh/enable/disconnect） `todo`
+- 参照: A-6、要件05 §4.3、要件06 §9、要件03 §6 / 依存: T-M2-15、T-M2-14 / サイズ: M
+- 完了条件:
+  - listXAccountsが本人のアカウントのみ返し、refreshXAccountStatusがモック/2/users/meの結果でstatusを更新する
+  - enableXAccountはplan上限の空き・planに対応するauth_type・refresh＋/2/users/me成功をすべて検証してactive化し、失敗時は再連携誘導エラーを返す
+  - disconnectXAccountはbest effortのtoken revoke→保存tokenのnull化→status=disabled→自動投稿同意停止と当該アカウント全auto slotの無効化を行い、下書き・履歴データは削除しない（schedule_slots fixtureで検証）
+- メモ: recordXAutomationConsent/disableXAutomationはスケジュール（SC-08）マイルストーンで実装。
+
+### T-M2-17: setActiveXAccount＋フォールバック選択規則 `todo`
+- 参照: A-6、要件05 §4.1、要件01 §5、要件02 §3.3 / 依存: T-M2-13 / サイズ: M
+- 完了条件:
+  - setActiveXAccountが所有権とstatus=activeを検証し、他人所有・非activeの指定を拒否する。DB trigger側でも同一profile所有以外のactive_x_account_id設定が拒否される
+  - active未選択、またはactiveが指すアカウントのexpired/disabled化時にcreated_at最古のstatus=activeを自動選択してprofiles.active_x_account_idへ永続化し、候補ゼロならnullとなる（フォールバック関数のユニットテスト）
+- メモ: フォールバックは/app系レイアウトの読み込み時に適用し、候補ゼロは初期設定ガイド表示条件へつなぐ。
+
+### T-M2-18: ヘッダXアカウント切替UI `todo`
+- 参照: A-6、要件06 §2 / 依存: T-M2-17、T-M2-16、T-M2-02 / サイズ: S
+- 完了条件:
+  - ヘッダの切替メニューにactiveなXアカウント一覧（handle・プロフィール画像）と現在の選択が表示され、選択でsetActiveXAccountが呼ばれる
+  - 切替後に表示中画面の一覧・集計が再取得される（router refresh等の再取得動作を確認）
+- メモ: mutation系Actionのx_account_id明示送信＋サーバー側一致検証（job_conflict）の前提となる「表示中アカウント」の受け渡しを確立する。
+
+### T-M2-19: SC-11 XアカウントタブUI `todo`
+- 参照: A-3、A-6、SC-11、要件06 §9、要件06 §3.2 / 依存: T-M2-16、T-M2-02 / サイズ: M
+- 完了条件:
+  - 連携済み一覧（status・auth_type・handle）、追加（上限内のみ・OAuth startへ遷移）、再連携、切断、disabledの再有効化が操作できる
+  - 切断の確認ダイアログで投稿・自動実行が停止すること、データは削除されないことが説明される
+  - プラン上限到達時は追加ボタンが無効化され、上限数が表示される
+- メモ: expired/errorアカウントには再連携導線を出す。X_POSTING_MODE=dry_run環境＋モックでE2E確認。
+
+### T-M2-20: 通知ベル・通知一覧（App Shell） `todo`
+- 参照: O-2、要件05 §10、要件02 §3.15、要件06 §2 / 依存: T-M2-02、M0 / サイズ: M
+- 完了条件:
+  - ヘッダのベルに未読件数が表示され、一覧はin_app_enabled=trueの通知のみをcursorページング（listNotifications）で表示する
+  - markNotificationRead/markAllNotificationsReadで既読化され未読数が即時更新される
+  - 通知のlink（アプリ内相対パス）から対象画面へ遷移できる（fixture通知で検証）
+- メモ: 通知rowの作成・メール送信はジョブ系マイルストーン。ここは閲覧・既読化のみ。retryNotificationEmailはメール送信実装後に追加する。
+
+### T-M2-21: 常設バナー（課金停止・X失効・キー無効・再連携要求） `todo`
+- 参照: 要件06 §2、要件03 §5、要件03 §8、要件01 §5 / 依存: T-M2-16、T-M2-07、M1 / サイズ: M
+- 完了条件:
+  - subscription_statusがpast_due/unpaid/paused/canceledのとき課金バナーが通知設定にかかわらずヘッダ直下に表示され、解決画面へリンクする
+  - x_accounts.status=expired/error、またはBYOK必須キーのstatus=invalidで対応バナーが表示され、SC-11の該当タブへ遷移できる
+  - プラン変更でauth_typeがプランと不一致になったXアカウントがある場合「Xの再連携が必要」バナーが表示される（fixtureで3系統すべて検証）
+- メモ: 再連携までの生成閲覧・編集許可／投稿・自動実行停止の制御自体は投稿系マイルストーンの実行前提検証で担保。ここは表示と導線。
+
+### T-M2-22: プロフィール・通知・ニュース設定Action＋SC-11設定タブ `todo`
+- 参照: 要件05 §4.1、要件02 §4.2、要件02 §4.3、要件06 §3.4、要件06 §9、O-2、O-3 / 依存: T-M2-02、M1 / サイズ: M
+- 完了条件:
+  - updateProfile/updateNotificationConfig/updateNewsConfigがzodスキーマ（通知は種別×channel、newsはcategories/impact_filter各1件以上・max_items 1〜100）で検証・保存される
+  - SC-11の通知タブで種別ごとにアプリ内/メールのON/OFFを変更でき、ニュース通知欄に時間単位ダイジェスト仕様（JST9〜20時・該当0件は届かない）の説明が表示される
+  - 問い合わせ導線（SUPPORT_EMAILへのメールリンク）がSC-11に表示される
+- メモ: notification_config/news_configの初期値投入はM1のprofile作成hook側。未設定時は§3.4の既定値へフォールバックする読み出しヘルパを含める。
+
+### T-M2-23: 実行前提検証ヘルパ＋設定導線エラー表示 `todo`
+- 参照: 要件06 §3.1、要件06 §3.2、要件05 §2.2、PRD §4 / 依存: T-M2-04、T-M2-07、T-M2-17 / サイズ: M
+- 完了条件:
+  - プラン（BYOK/premium）×不足状態（契約・X APIキー・X連携・文章AIキー・画像AIキー・発信設定）の組み合わせごとに、subscription_required/api_key_required/x_account_required/persona_requiredのコードと不足項目一覧・設定画面パス入りdetailsを返すことをユニットテストで網羅する
+  - premiumではX/AIキーが前提から除外され、画像AIキーは画像ON時のみ要求される。発信設定はbase_md_version>=1で充足と判定される
+  - エラーを受けた画面がメッセージと「設定へ」ボタンを表示する共通コンポーネントを提供し、Storybookまたはテストページで各エラーコードの表示を確認できる
+- メモ: 後続マイルストーンの生成・投稿・スケジュール・学習Actionが共用するサーバーヘルパとして切り出す。画面遷移は制限しない（実行時検証のみ）。
+
+### T-M2-24: ホーム初期設定ガイドカード（SC-05） `todo`
+- 参照: 要件06 §3.1、要件01 §5、PRD §4、PRD §9 / 依存: T-M2-23、T-M2-02 / サイズ: S
+- 完了条件:
+  - 前提不足時に/appへチェックリスト（X APIキー・X連携・文章AIキー・発信設定。premiumはキー項目を除外）が充足/未充足の状態付きで表示され、各項目から該当設定画面へ遷移できる
+  - 全条件充足でカードが自動的に非表示になり、activeなXアカウント候補ゼロの場合もガイドが表示される（fixtureで両状態を検証）
+- メモ: 充足判定は実行前提検証ヘルパを再利用し、判定ロジックを二重実装しない。
+
+## M3: 生成・投稿コア（手動運用の完成）
+
+### T-M3-01: 投稿検証ユーティリティ（加重文字数・cashtag・X URL・出典URL・NG照合） `todo`
+- 参照: PRD §8.1、要件05 §12、要件06 §4.3、プロンプト設計書 §7.2、プロンプト設計書 §7.3、プロンプト設計書 §7.5、L-7 / 依存: M0 / サイズ: M
+- 完了条件:
+  - 公式twitter-text互換の加重文字数計測がユニットテストで検証できる（CJK重み2・URLのt.co固定長換算・絵文字・280境界ケース、cashtag件数カウント含む）
+  - X投稿URL検証（hostはx.com/twitter.com、pathは/{handle}/status/{数値ID}のみ許可）がテストで確認できる
+  - 出典URL検証（https必須・DNS解決後のprivate/loopback/link-local拒否・redirect先再検証・timeout 10秒）とNGワードのコード文字列照合がモックDNSでテストできる
+- メモ: 生成検証・下書き編集・投稿実行の全段で共用する純粋関数群。NG照合はLLMを使わずコードで行う（プロンプト設計書 §1）。
+
+### T-M3-02: プロンプト定数とprompt_templatesのsystem default seed `todo`
+- 参照: プロンプト設計書 §6.1〜6.9、要件02 §3.5、要件02 §6、GEN-P1〜P6、GEN-IMG、GEN-FIX / 依存: M0 / サイズ: S
+- 完了条件:
+  - SYS-GEN・PT-P1〜P6・PT-IMG・PT-FIXが設計書§6の全文と一致するコード定数として定義され、スナップショットテストで乖離を検出できる
+  - seedで`prompt_templates`のsystem default 7件（x_account_id=null、kind=p1〜p6/image）が冪等に作成される
+  - テンプレート解決関数がaccountオーバーライドを優先し、なければsystem defaultを返すことをテストで確認できる
+- メモ: SYS-GEN・PT-FIXはコード管理のみで編集対象外（要件06 §9）。md/premium向けプロンプト編集UIは別マイルストーンで、本タスクは解決ロジックまで。
+
+### T-M3-03: 文章生成アダプタのGEN対応（3プロバイダ・Web検索・JSON・usage正規化） `todo`
+- 参照: プロンプト設計書 §5.1〜5.4、プロンプト設計書 §5.6、A-5、要件02 §4.6、要件02 §3.17、要件04 §5 / 依存: M2 / サイズ: L
+- 完了条件:
+  - TextGen共通インターフェース（system[]／user／webSearch／jsonSchema／timeoutMs）でanthropic/openai/googleの3アダプタが動作し、モックHTTPで本文・citations・usage・request_id・stop_reasonが共通形式へ正規化される
+  - Anthropicの`pause_turn`継続が同一Function実行内のみ・残り30秒以上・最大2回で行われ、超過時はretryable（次attemptはmaxUses縮小の新規リクエスト）となることをモックで確認できる
+  - 各callのtoken・検索回数・実行時単価・推定原価が`generation_jobs.usage`形式へ保存され、`external_api_usage_events`へ冪等記録される
+- メモ: M2のNEWS実装で作るClaudeアダプタ・原価台帳を土台に、OpenAI（Responses API・store:false）とGemini（Interactions API・store=false、generateContentフォールバック）、Web検索＋JSON出力併用、prompt cachingを追加する。モデル名・検索toolのversionは環境変数。実装時に§5.7の公式ドキュメントで最新仕様を要確認。
+
+### T-M3-04: GENコンテキスト組み立て（固定部＋可変部） `todo`
+- 参照: プロンプト設計書 §4.1、プロンプト設計書 §4.2、要件02 §4.4、GEN-P1〜P6 / 依存: T-M3-02、M0 / サイズ: M
+- 完了条件:
+  - systemが「SYS-GEN＋<base_md>」の固定バイト列、userが<pattern><input><recent_posts>で組み立てられ、未入力項目は「（未指定）」、recent_postsはDB保存済みdraftから各先頭80字・最大10件になることをテストで確認できる
+  - P-6で発信テーマがテーマ選択肢マスタのnews_category対応に該当する場合のみ<news_digest>（直近7日・impact優先high→mid→low・同impactは新しい順・最大10件・title/summary/source_url/impactのJSON配列）が入り、非該当なら空になる
+- メモ: <quote_post>枠はP-5有効化後用にインターフェースだけ確保し実装しない。recent_postsのためのX API追加読取は行わない。可変値をsystemへ混ぜないことがキャッシュ効率の要。
+
+### T-M3-05: post_generation workerハッピーパス（JSON検証・修復・draft作成・通知） `todo`
+- 参照: 要件04 §8、要件04 §14、プロンプト設計書 §5.1、プロンプト設計書 §7.1、プロンプト設計書 §7.4、要件02 §4.7、N-4、P-1〜P-4、P-6 / 依存: T-M3-03、T-M3-04、T-M3-01、M2 / サイズ: L
+- 完了条件:
+  - leaseされたpost_generation jobがモックproviderで、前提再検証→stage更新（validating→research→writing）→生成→zodによるJSON検証→draft作成（threadとinitial_threadを同値保存・weighted_length算出・ニュース起点はsource_news_item_id保存）→job succeeded→draft_created通知（dedupe_key `draft:{id}:created`）まで完走する
+  - JSON parse失敗時にコードフェンス除去→再パース→同一job内の修復指示付きcall 1回（残り30秒未満なら開始せずretryableでqueuedへ）が行われ、なお失敗ならjob failed＋error通知になる
+  - AI応答の`error`フィールド返却時はjob failedとなり、値はログ用に保存してユーザーへは安全なメッセージだけを表示する
+- メモ: lease・retry・stale回収はM2のjob基盤を利用。premium生成枠のreserve/refund（要件03 §7）はM6で追加するためフック位置のみ用意。auto mode時のpost_publish子job作成はスケジュール側マイルストーン（M4）で扱う。
+
+### T-M3-06: 生成後検証パイプライン（GEN-FIX・NG・出典・インジェクション） `todo`
+- 参照: プロンプト設計書 §6.9、プロンプト設計書 §7.2〜7.7、要件04 §5、要件06 §4.3、L-7、GEN-FIX / 依存: T-M3-05 / サイズ: M
+- 完了条件:
+  - 280超過ポストのみPT-FIXで最大2回短縮され、なお超過なら該当ポストに編集必須マーク（警告）付きで下書き化される。cashtag2件以上には自動投稿ブロック警告が付く
+  - NGワード検出ポストは警告付き下書き化＋自動投稿ブロックとなり、出典必須パターン（P-1/P-4/P-6、参考URL指定時のP-2/P-3）でsourcesが空なら再試行1回→なお空なら「出典を確認してください」警告付き下書き化となる
+  - SSRF検証を通過した出典URLだけがコードで最終ポストへ付加され同ポストのsourcesへ保存される。生成結果に指示への言及・不自然なURL・NGワードがあれば自動投稿ブロック警告が付く
+- メモ: GEN-FIXは親jobと同じキーで実行し、premiumカウントも親jobの1回に含む（追加消費なし）。
+
+### T-M3-07: 生成job Server Actions（createGenerationJob／get／retry／cancel） `todo`
+- 参照: 要件05 §5、要件05 §12、要件05 §2.2、要件06 §3.2、要件06 §4.2、要件04 §3 / 依存: T-M3-05、M1、M2 / サイズ: M
+- 完了条件:
+  - createGenerationJobがzod検証・前提検証（契約/キー/X連携/発信設定の不足時はsubscription_required等のコード＋details.不足項目と設定画面パス）・x_account_id所有権と一致検証（不一致はjob_conflict）・request_key冪等（同keyは既存job_id返却）・同時queued/running 5件制限を満たし、`after()`でworkerへdispatchされることを統合テストで確認できる
+  - retryGenerationJobはfailed jobのみparent_job_id付き新jobを冪等作成し、cancelGenerationJobはqueuedのみcanceled化（runningは拒否）、getGenerationJobは所有者のみ参照できる
+- メモ: 前提検証はM1の契約状態・M2のキー/X連携状態を参照する共通ヘルパとして実装（ニュース画面のcreateDraftFromNewsやホーム初期設定ガイドからも再利用される）。P-5のfeature_disabled拒否は本マイルストーン後段のタスクで実装。
+
+### T-M3-08: SC-07作成タブ：生成フォーム（2ペイン） `todo`
+- 参照: SC-07、要件06 §4.1、要件06 §4.2、P-1〜P-4、P-6、P-7、要件05 §12 / 依存: T-M3-07 / サイズ: M
+- 完了条件:
+  - /app/postsの作成タブが2ペイン（パターン選択＋入力／プレビュー・結果）で表示され、P-1〜P-4/P-6を選択できる（P-5はflag OFFで非表示）
+  - 共通入力（参考URL・追加指示）とP-2のみの「自分の考え」、画像ON/OFF＋provider選択（BYOKはvalidな登録キーのproviderのみ活性）が表示され、任意入力が空でも生成を開始できる
+  - 生成開始でcreateGenerationJobが呼ばれ、前提不足エラー時は不足項目一覧と「設定へ」ボタンが表示される
+
+### T-M3-09: SC-07作成タブ：進捗ポーリングと再訪復元 `todo`
+- 参照: 要件06 §4.2、要件04 §3、PRD §7 / 依存: T-M3-08 / サイズ: M
+- 完了条件:
+  - job作成後にgetGenerationJobをポーリングしてprogress_stage（validating/research/writing/image）をプログレス表示し、succeededで生成結果（draft）表示へ遷移する
+  - queuedのまま60秒超過で「開始が遅れています。自動で再開されます（最大5分）」を進行中扱いで表示し、failedの場合のみ原因と再試行導線（retryGenerationJob）を表示する
+  - 生成中に画面を離れて再訪してもactive jobの状態が復元される
+
+### T-M3-10: 下書きServer Actions（listDrafts／updateDraft／discardDraft） `todo`
+- 参照: 要件05 §5、要件06 §4.3、要件02 §3.9、要件02 §4.7、S-5 / 依存: T-M3-01、M1 / サイズ: M
+- 完了条件:
+  - updateDraftが`status=draft`のみ・expected_updated_at楽観lock（0件更新はjob_conflict）・1件以上かつpattern別最大数（P-1=6/P-2=1/P-3=7/P-4=5/P-6=7）・所有draftの既存画像のみ参照可を検証し、保存時に加重文字数・NG警告を再計算する。initial_threadは編集で更新されない
+  - discardDraftはdraft/failedのみ許可し、未解決の投稿ID・作成成否があるfailedは拒否する。破棄成功時はdraft専用pathの生成画像をbest effortで削除する
+  - listDraftsがactive_x_accountのstatus別フィルタ（下書き=draft/failed、履歴=posted）で一覧を返す
+- メモ: テストはseed済みdraftで実施可能（worker完成を待たない）。破棄はstatus=discardedへ遷移し物理削除しない。
+
+### T-M3-11: SC-07下書きタブ（一覧・詳細・破棄・警告表示） `todo`
+- 参照: SC-07、S-5、要件06 §4.3、要件06 §10、要件04 §14 / 依存: T-M3-10 / サイズ: M
+- 完了条件:
+  - 下書きタブに未投稿draft（draft/failed）が一覧表示され、警告（文字数超過・NG・出典不足・画像失敗）がポスト/下書き単位のバッジで表示される
+  - 破棄操作が確認ダイアログ付きで動作し、通知リンク形式`/app/posts?tab=drafts&draftId=...`で対象下書きを直接開ける
+  - 派生下書き（parent_draft_id）に派生元へのリンクが表示される
+
+### T-M3-12: SC-07下書き編集UI（本文編集・並べ替え・追加・削除） `todo`
+- 参照: 要件06 §4.3、要件05 §12、PRD §7 / 依存: T-M3-11 / サイズ: M
+- 完了条件:
+  - 各ポストの本文編集・並べ替え・追加・削除ができ、加重文字数カウンタと280超過警告がリアルタイム表示される
+  - pattern別最大数超過・空本文は保存できず、楽観lock競合時（job_conflict）は再読込を促すエラーが表示される
+  - モバイル幅でも下書き全文確認・本文編集・破棄が操作できる
+
+### T-M3-13: regenerateDraft（追加指示付き再生成） `todo`
+- 参照: 要件05 §5、要件06 §4.3、PRD §5.4 / 依存: T-M3-07、T-M3-11 / サイズ: M
+- 完了条件:
+  - regenerateDraftが元draft（status=draftまたは未解決投稿のないfailed）の本文・pattern・検証済みsource情報を入力snapshotとしてjobへ保存し、生成成功時にparent_draft_id付きの新draftを作成、元draftは変更・破棄されない
+  - request_key冪等で、UIから追加指示を付けて再生成→派生draftが下書きタブに現れ、採用しない版を破棄できる
+- メモ: 再生成も新しいtop-level jobとして扱う（premiumの生成枠1消費の枠管理はM6）。
+
+### T-M3-14: 画像生成アダプタ（OpenAI／Gemini）と画像正規化 `todo`
+- 参照: プロンプト設計書 §5.5、P-7、要件06 §6、要件05 §12 / 依存: M2 / サイズ: M
+- 完了条件:
+  - 画像アダプタがOpenAI/Geminiをモックで呼び分け、16:9へ最も近い対応値への変換指定、返却画像のデコード・形式/実寸/MIME/容量検証を行う
+  - JPG/PNG/WEBP・5MB以下への変換・圧縮がテスト画像で確認できる
+- メモ: モデル名は環境変数（OPENAI_IMAGE_MODEL／GEMINI_IMAGE_MODEL）。プロバイダ固有のsize文字列等の差異はアダプタへ閉じ込め共通仕様にしない。
+
+### T-M3-15: image_generation workerと生成からの連鎖 `todo`
+- 参照: 要件04 §8、要件04 §9、GEN-IMG、プロンプト設計書 §4.2、プロンプト設計書 §6.8、要件02 §4.8 / 依存: T-M3-05、T-M3-14、T-M3-02 / サイズ: L
+- 完了条件:
+  - 画像ONのpost_generationが親job終端（succeeded）へのcommit後に決定的key（`parent:{parent_job_id}:image_generation:{draft_id}`）でimage_generation子jobを作成・dispatchし、子workerがPT-IMG（base_mdセクション3＋1ポスト目本文）→画像生成→private Storage保存→drafts.images更新→draft確定・draft_created通知まで完走する（モックprovider）
+  - 画像生成またはStorage保存の最終失敗時は本文生成jobを失敗させず、draftを画像なし＋警告で確定して通知する（子jobはfailed）
+  - 子jobのrequest_keyによりworker再実行でも子jobが重複作成されない
+- メモ: premium画像枠のreserve/refundはM6。auto modeで画像workerがpost_publishを作成する経路はM4で追加。dispatch失敗時はqueuedのまま残しscheduler_tick回収（M2）に委ねる。
+
+### T-M3-16: 画像表示・再生成（regenerateImage）UI `todo`
+- 参照: 要件05 §5、要件06 §6、要件04 §9、P-7 / 依存: T-M3-15、T-M3-11 / サイズ: M
+- 完了条件:
+  - 下書き詳細で1ポスト目の添付画像が短時間の署名URL（DBへ永続化しない）で表示され、再生成ボタンでregenerateImageがimage_generation jobを冪等作成する
+  - 再生成中は既存画像を表示し続け、新画像のStorage保存とdraft参照切替の成功後に旧objectがbest effort削除される。再生成失敗時は既存画像が維持される
+- メモ: BYOKでOpenAI/Geminiがともに未登録の場合はprovider選択を非活性にする（PRD §8.2）。
+
+### T-M3-17: X投稿APIクライアント（dry_run対応・原価記録） `todo`
+- 参照: PRD §8.1、要件04 §5、要件04 §10、要件01 §3.1、要件02 §3.17 / 依存: M2 / サイズ: M
+- 完了条件:
+  - 投稿作成（reply・media_ids対応）・投稿削除・media upload・直近投稿/単一ポスト取得がモックHTTPで動作し、429/5xx/networkへ指数backoff+jitterの最大2回再試行、401/403は再試行なしでkey/token失効エラーへ正規化される
+  - `X_POSTING_MODE=dry_run`ではX APIを一切呼ばず決定的なダミーtweet_idを返し、dry-runであることが呼び出し結果から判別できる
+  - 原価集計対象の呼び出し（create/delete/read）が成功・失敗を問わず`external_api_usage_events`へ冪等記録され、media uploadは原価台帳から除外される
+- メモ: OAuth tokenの復号・single-flight refreshはM2のX連携基盤を利用。dev/previewはdry_run必須（要件01 §3.1）。単価は環境変数X_COST_*のsnapshotを使用。
+
+### T-M3-18: post_publish workerハッピーパス（スレッドreply連投・日次50上限・usage_events） `todo`
+- 参照: 要件04 §10、要件06 §7、O-5、S-6、要件03 §7.3、要件03 §7.4、要件02 §3.13、要件04 §13 / 依存: T-M3-17、T-M3-10、M2 / サイズ: L
+- 完了条件:
+  - dry_runで、draftのlock（draft/再試行可能failed→posting）→検証（契約・X token・日次上限・自動投稿を阻害する警告・thread）→画像があればmedia upload→1ポスト目投稿→以降は直前の自分のtweet_idへのreply連投→各成功直後のtweet_ids保存＋全プラン`post_create` consume event（冪等key `draft:{draft_id}:tweet:{tweet_id}:post:create`・counter_typeは最終payloadのURL有無で分類）→status=posted・root_tweet_id・posted_at・posted_mode更新→posted通知（dedupe_key `draft:{id}:posted`）まで完走する
+  - 当日JSTの同一Xアカウントのpost_create件数＋投稿予定ポスト数が`X_DAILY_POST_LIMIT`（既定50）を超える場合は実行せず、翌日まで停止の文言でエラーになる
+  - X media upload失敗時は本文を投稿せずdraftをfailed（再試行可能）にし、投稿完了時に`next_metrics_at`が1日checkpointへ設定される
+- メモ: leaseはuser単位のpost_publish直列advisory lockを含む（M2基盤）。premiumの通常/URL付き枠のロールバック安全残量検証とcounter加算はM6（本タスクは全プラン共通のusage_events記録まで）。tweet_id別実績の収集・表示（metrics_collector・SC-09）は別マイルストーン。
+
+### T-M3-19: スレッド途中失敗のresumeと逆順ロールバック `todo`
+- 参照: 要件04 §11、要件06 §7、要件03 §7.3、PRD §7、要件04 §13 / 依存: T-M3-18 / サイズ: M
+- 完了条件:
+  - 途中失敗時に保存済みtweet_ids.lengthを再開位置として同一job内で1回だけresumeし、成功すればpostedになる（モックXで失敗位置を注入して検証）
+  - resume再失敗時は成功済みtweet_idsを逆順削除し、削除成功ごとに全プラン`post_delete` consume event（冪等key `draft:{draft_id}:tweet:{tweet_id}:post:delete`・元post_createと同じcounter_type）を作成、draftはfailedとなり`last_post_error`へdeleted_tweet_ids/remaining_tweet_idsが保存されerror通知が作られる
+  - 削除失敗分はremaining_tweet_idsに残り追加消費なし、tweet_idsは監査用に保持され、残存IDが確定した場合は`next_metrics_at`が設定される
+- メモ: rollback削除にもX APIのretry方針（最大2回）を適用。手動・自動投稿とも同一規則。
+
+### T-M3-20: 投稿・削除の結果不明時の照合 `todo`
+- 参照: 要件04 §5、要件04 §10、PRD §7、要件05 §2.2、要件02 §4.10 / 依存: T-M3-19 / サイズ: M
+- 完了条件:
+  - post作成のtimeout/切断/5xxで成否不明の場合、同一本文を再送せず対象アカウントの直近投稿から本文・作成時刻・reply先が一致する候補を照合し、1件だけならそのtweet_idを保存して継続することがモックで確認できる
+  - 候補なし・複数は`post_state_unknown`でfailedとなり、`ambiguous_create_indices`が保存されXでの確認を促す通知が作られる
+  - 削除の結果不明は対象IDを再取得して存在確認し、削除済みなら成功扱い、判定不能は`ambiguous_delete_tweet_ids`へ保存してfailedになる
+- メモ: 外部API成功後にworkerが落ちる可能性に備え、tweet_id等の外部結果を先に保存してからreconcileする（要件04 §4）。
+
+### T-M3-21: publishDraft Actionと手動投稿UI（最終確認） `todo`
+- 参照: 要件05 §5、要件06 §7、SC-07、S-5 / 依存: T-M3-18、T-M3-12 / サイズ: M
+- 完了条件:
+  - publishDraftが`status=draft`（またはtweet_id作成履歴・残存ID・曖昧状態がすべてないretryable failed）のみ許可し、activeな同種jobがなければrequest_key冪等でpost_publish jobを作成・`after()`でdispatchする
+  - SC-07の投稿ボタン→最終確認modalに「thread途中失敗時は作成済みポストを自動削除し、削除後はX上で復元できない」ことが明示され、確認後にdry_runで投稿完了（下書きタブから消え履歴タブへ移動）まで動作する
+  - posting中のdraftは編集・破棄・再投稿操作が無効化される
+
+### T-M3-22: SC-07履歴タブ（投稿履歴） `todo`
+- 参照: S-6、SC-07、要件06 §4.3、要件02 §3.9、要件04 §14 / 依存: T-M3-18、T-M3-11 / サイズ: S
+- 完了条件:
+  - postedのdraftが履歴タブに投稿日時・自動/手動（posted_mode）・パターン・tweet_ids（X上ポストへのリンク）付きで一覧表示され、本文・順序は編集不可の閲覧専用で表示される
+  - 通知リンク形式`/app/posts?tab=history&draftId=...`で対象履歴を直接開ける
+
+### T-M3-23: reconcileDraftPostingとfailed下書きの復旧UI `todo`
+- 参照: 要件05 §5、要件06 §7、要件06 §10 / 依存: T-M3-20 / サイズ: M
+- 完了条件:
+  - reconcileDraftPostingがfailed draftのみ対象に、全投稿が意図したthreadとして存在すれば不足tweet_id/`post_create` consumeを冪等補完してpostedへ確定する（モックX）
+  - アプリが実行して結果不明だった削除が削除済みと確認できた場合は`post_delete` consumeを補完して未解決情報を消し、候補複数・一部残存はfailedを維持する
+  - 未解決の投稿ID・作成成否があるfailed draftは破棄が無効化され「Xと再照合」ボタンが表示される。再照合後も判定不能ならXへのリンクとサポート連絡先が表示される
+
+### T-M3-24: cloneFailedDraftForRetry（新しい下書きとして再試行） `todo`
+- 参照: 要件05 §5、要件04 §11、要件06 §7 / 依存: T-M3-23 / サイズ: M
+- 完了条件:
+  - 全tweet_idの削除・不存在が確認済み（曖昧状態・残存IDなし）のfailed draftだけに「新しい下書きとして再試行」が表示され、本文・pattern・source情報を複製したparent_draft_id付き新draftがAI呼び出し・生成枠消費なしで作成される
+  - 画像はStorage objectを新draft用pathへcopyし、全copy成功後に新しい画像参照を保存する。途中失敗はcopy済みobjectをbest effort削除して新draftを作らない
+  - 新draftは複製時本文がinitial_threadにも設定され、source_job_id・tweet_ids・投稿日時・実績・投稿errorが空で、空の投稿状態から投稿を開始できる
+- メモ: AIを使わない複製draftは下書き承認率の集計対象外（source_job_idを持たないため自然に除外される。要件06 §4.3）。
+
+### T-M3-25: P-5引用ポストのflag OFF拒否・非表示 `todo`
+- 参照: P-5、PRD §5.4、要件05 §5、要件06 §4.1、要件06 §5、要件04 §1、要件01 §3.1 / 依存: T-M3-21、T-M3-16 / サイズ: S
+- 完了条件:
+  - `FEATURE_QUOTE_POST_ENABLED=false`（既定）でcreateGenerationJobのP-5指定、およびP-5 draftへのregenerateDraft/publishDraft/regenerateImageが、外部API呼び出しと利用枠消費の前に`feature_disabled`で拒否される
+  - workerはqueuedのP-5 jobを外部API・利用枠を消費する前に`feature_disabled`でcanceledにする
+  - UIはP-5をパターン選択肢・新規生成導線から非表示にし、既存P-5 draftは本文と対象URLの閲覧のみ可（再生成・画像再生成・投稿ボタン無効＋「引用ポスト機能は現在利用できません」表示）。未解決の投稿状態がなければ破棄は可能
+- メモ: flag判定はServer only。有効化後の機能（対象ポスト取得検証・<quote_post>入力・quote_url合成投稿）は本マイルストーンでタスク化しない（有効化はLLM入力契約と自動検証の完成後に別途）。
+
+### T-M3-26: SC-05ホーム確認キュー `todo`
+- 参照: SC-05、要件06 §1、要件06 §10、S-5 / 依存: T-M3-11 / サイズ: S
+- 完了条件:
+  - /appに確認待ち下書き（未投稿draft・警告付き含む）のカードが表示され、各行からSC-07の該当下書きへ遷移できる
+  - 確認待ちが0件のときは空状態と「今すぐ作成」（SC-07作成タブへの導線）が表示される
+- メモ: ホームの他要素は各担当で追加する：次回スロット表示はM4、重要ニュースはニュース側、実績・利用残量表示は分析／M6側。初期設定ガイドカードはM1/M2の前提検証ヘルパを表示する画面で、本タスクと同居させる場合も導線のみ。
+
+## M4: 自動運用・ニュース・通知
+
+### T-M4-01: schedule_slots CRUD Server Actions（一覧・作成・更新・停止・削除） `todo`
+- 参照: S-1、S-2、S-4、SC-08、要件05 §7、要件05 §12、要件02 §3.10 / 依存: M0、M2 / サイズ: M
+- 完了条件:
+  - zod検証（pattern p5不可・weekdays 0〜6重複なし1件以上・time_jst 09:00〜22:00の00/30分・画像ON時provider必須・instructions 2,000字以下）の違反がvalidation_errorになる単体テストが通る
+  - updateScheduleSlot/disableScheduleSlot/deleteScheduleSlotでexpected_updated_at不一致が0件更新となりjob_conflictを返すことをローカルDBで確認
+  - mode=autoの作成・auto変更・再有効化は、x_accountsの現行version同意（consent_version一致かつconsented_at非null かつdisabled_at null）がない場合に拒否される
+- メモ: M0のDBスキーマ（schedule_slots）とM2のactive_x_account検証（所有権・status=active・profiles.active_x_account_id一致→不一致はjob_conflict）を前提。同意記録Action自体は次タスクだが、本タスクではx_accountsカラムを読む同意判定ヘルパーを実装して共用する。
+
+### T-M4-02: 自動投稿の明示同意Action（recordXAutomationConsent／disableXAutomation） `todo`
+- 参照: S-3、A-3、要件05 §4.3、要件05 §7、要件02 §3.3、要件06 §3.5 / 依存: M2 / サイズ: M
+- 完了条件:
+  - recordXAutomationConsentは現行説明version＋confirmed=trueのみ受理してautomation_consent_version/consented_atを保存しdisabled_atをnull化する。旧version・未checkは拒否されることをテストで確認
+  - disableXAutomationが同一transactionでautomation_disabled_atを設定し、対象Xアカウントの全auto slotをenabled=false化して無効化件数を返す
+  - disableXAutomation実行時、X投稿を未開始のqueuedなauto起点job（post_generation/post_publish）がcanceledになることをローカルDBで確認
+- メモ: OAuth認可を同意と扱わない（PRD §8.1）。opt-out即時反映の正本。disconnectXAccount（M2実装）からも同じslot無効化処理を呼べるよう関数を切り出す。
+
+### T-M4-03: auto起点投稿の同意再検証（post_publish worker・X呼び出し直前） `todo`
+- 参照: S-3、要件04 §10、要件05 §7、要件06 §7 / 依存: T-M4-02、M3 / サイズ: S
+- 完了条件:
+  - 同意撤回済み（automation_disabled_at設定済み）状態でauto起点post_publishを実行すると、X APIモックが一切呼ばれずdraftが未投稿のまま残ることをテストで確認
+  - 同意version変更後の旧version同意でも同様に投稿せず停止し、draft modeと手動投稿は影響を受けない
+- メモ: M3の投稿実行worker（要件04 §10手順2）へ同意判定ヘルパーを組み込む縦の薄い変更。検証はX_POSTING_MODE=dry_run＋モックで完結。
+
+### T-M4-04: SC-08 スケジュール画面（週間プレビュー・スロットCRUD UI・楽観lock） `todo`
+- 参照: SC-08、S-1、S-2、S-4、要件06 §1、要件06 §2、要件05 §7 / 依存: T-M4-01 / サイズ: M
+- 完了条件:
+  - 曜日×時刻（09:00〜22:00・30分刻み）の週間プレビューにslotが表示され、作成・編集・停止・削除がServer Action経由で反映されることをローカルで確認
+  - 編集競合（job_conflict）時に最新値の再読込を促すUIが表示される
+  - パターン選択肢にP-5が表示されない（P-5はスケジュール対象外・flag OFF非表示）
+- メモ: 空状態・読み込み中・失敗状態を用意（要件06 §2）。mode=auto選択時の同意modalは次タスクで接続する（本タスクでは同意なしauto保存がサーバー側で拒否されることの表示まで）。
+
+### T-M4-05: 自動投稿同意モーダルと「自動投稿をすべて停止」UI（SC-08／SC-11） `todo`
+- 参照: S-3、SC-08、SC-11、要件06 §3.5、要件06 §7、PRD §8.1 / 依存: T-M4-02、T-M4-04 / サイズ: S
+- 完了条件:
+  - 初めてmode=autoを選ぶと、指定時刻に確認なしで投稿されること・thread途中失敗時の自動rollback削除と不可逆性・投稿責任・停止方法を説明するmodalと説明文version付き明示checkboxが表示され、同意完了までauto slotを保存できない
+  - SC-08とSC-11の「自動投稿をすべて停止」がdisableXAutomationを呼び、無効化slot数が表示される
+  - 同意済みアカウントではmodalが再表示されず、説明文version更新時（consent_version不一致）は再同意が要求される
+- メモ: 説明文はコード管理のversion付き定数とし、文面変更でversionを上げる運用にする。
+
+### T-M4-06: scheduler_tick骨格＋全tick冪等enqueue `todo`
+- 参照: 要件04 §6、要件04 §7.1、要件04 §7.2、S-2、O-5、要件03 §7.4、ADR-0002、要件05 §3 / 依存: T-M4-01、T-M4-02、M1、M3 / サイズ: L
+- 完了条件:
+  - GET /api/cron/scheduler-tick（CRON_SECRET Bearer認証・force-dynamic）が「job名＋時間窓」のadvisory lockを取得し、lock取得失敗時は処理済み相当の2xxを返す
+  - 同一slot・同一定刻窓で複数回tickを実行してもjobが1件だけ作られる（schedule_run_key unique＋last_run_at同一transaction更新）ことをローカルDBで確認
+  - §7.1の条件（enabled=false／契約がtrialing・active以外／X account非active／同意なしauto／BYOKキーinvalid／premiumロールバック安全残量不足／当日JST post_create＋パターン別最大数が50超）の各ケースでenqueueされないテストが通る
+- メモ: enqueueは直前10分以内の未処理slot対象・1起動500件上限。scheduled_forをUTC保存。premiumの必要残量はP-1=通常10＋URL1／P-2=通常1／P-3=通常12＋URL1／P-4=通常8＋URL1／P-6=通常12＋URL1の保守的仮定（要件04 §7.1）。M1の契約状態同期・M3の利用枠算出ヘルパーとjob作成基盤を前提。
+
+### T-M4-07: scheduler_tick dispatch（50件）＋期限切れcancel・schedule_missed通知 `todo`
+- 参照: 要件04 §1、要件04 §6、要件04 §7.1、要件04 §7.2、要件04 §14、P-5、ADR-0002 / 依存: T-M4-06、M3 / サイズ: M
+- 完了条件:
+  - queued 51件を仕込んだ状態で1起動が最大50件だけをscheduled_for昇順→created_at昇順でPOST /api/jobs/runへdispatchする（workerはモック）ことをテストで確認
+  - scheduled_for+10分超のschedule起点post_generationがdispatchされる前にcanceled化（1起動500件まで・外部API/利用枠消費なし）され、schedule_missed通知が同一Xアカウント×時間窓でdedupe_key集約により1件になる。未enqueueのまま10分超のslotにも冪等key slot:{slot_id}:{yyyy-mm-dd}:{hh:mm}:missedで通知が作られる
+  - FEATURE_QUOTE_POST_ENABLED=falseでqueuedのP-5 jobが外部API・利用枠消費前にfeature_disabledでcanceledになる
+- メモ: tick内処理順は (1)期限切れcancel＋missed通知 → (2)enqueue → (3)dispatch → (4)メール・cleanup を骨格として固定する（要件04 §1）。dispatchは202受領までの軽量HTTPでworker完了を待たない。
+
+### T-M4-08: scheduler_tick stale回収とkind別終端処理・refund `todo`
+- 参照: 要件04 §4、要件04 §6、要件04 §14、要件03 §7.3、要件03 §7.4、要件03 §7.5 / 依存: T-M4-07、M3 / サイズ: L
+- 完了条件:
+  - locked_at<now-10分のrunning jobがattempt<3ならqueuedへ戻り、attempt>=3ならfailed確定と同一transactionで未返還reserve（job:{id}:generation/image:refund）がrefundされる。tickを2回実行しても冪等keyにより二重返還されないことをテストで確認
+  - stale post_publishでdraftがposting→failedへ戻りlast_post_errorが保存される。stale image_generationでdraftが画像なし＋警告で確定し、draft modeは通知・auto modeはpost_publish子job作成へ進む
+  - stale md_mergeでsourceがanalyzedへ戻り削除未完了通知が作られ、全kind共通でdedupe_key job:{id}:failedのerror通知が作られる
+- メモ: workerの失敗経路と同一の終端処理をtick側から呼べるよう、M3実装の終端処理関数を共通化して再利用する。
+
+### T-M4-09: scheduler_tick cleanup（40日データ削除・未参照Storage画像削除） `todo`
+- 参照: 要件04 §6、要件04 §14、要件01 §9 / 依存: T-M4-06 / サイズ: M
+- 完了条件:
+  - 41日前のnews通知→参照されないnews_items→external_api_usage_events明細の順で各500件/起動まで削除され、通知payloadから参照中のnews_itemsは削除されないことをローカルDBで確認
+  - 作成24時間超でdraftから参照されないStorage画像が1起動100件までbest effortで削除され、削除直前の再確認で参照が付いたobjectは削除されない（Storageモックで検証）
+  - cleanup失敗が投稿系処理を失敗させず、Sentry記録（モック）のうえ次回へ繰り越される
+- メモ: news通知の削除をnews_itemsより先に行う順序が要件（要件04 §14）。
+
+### T-M4-10: NEWS実行モジュール（SYS-NEWS組み立て・{{hours}}切替・出力検証・原価記録） `todo`
+- 参照: N-1、NEWS、プロンプト設計書 §6.10、プロンプト設計書 §4.2、プロンプト設計書 §5.6、プロンプト設計書 §7、要件02 §3.7、要件02 §3.17、要件01 §3.5 / 依存: M3 / サイズ: M
+- 完了条件:
+  - providerモックで、JST 9:00起動はhours=13・それ以外はhours=2、n=5、category_ja、known_urls（直近48時間のsource_url）がプロンプトへ正しく埋まることをテストで確認
+  - 応答JSONのzod検証（title30字・summary120字・source_url必須・impact high/mid/low・published_at ISO8601・最大5件・空配列許容）が不正応答を弾き、コードフェンス除去→修復callフォールバックが機能する
+  - request ID・usage・実行時単価・推定原価がexternal_api_usage_events（user_id=null）へ冪等keyで記録される
+- メモ: NEWS_TEXT_PROVIDER（既定anthropic）で解決し、無効時は失敗させて別providerへ自動切替しない（要件01 §7）。M3の共通TextGenアダプタを再利用。NEWSはgeneration_jobsへ保存しない（要件04 §2）。
+
+### T-M4-11: GET /api/cron/news-fetch（3分野並列・分野別commit・source_url重複排除） `todo`
+- 参照: N-1、要件04 §2、要件04 §6、要件05 §3、要件01 §7、要件02 §3.7 / 依存: T-M4-10 / サイズ: M
+- 完了条件:
+  - providerモックで1分野を失敗させても他2分野の新規news_itemsがcommitされ、失敗分野は既存ニュースを保持したままSentry（モック）へ記録される
+  - source_urlをcanonical化したunique制約で既存と重複する項目が保存されず、同じ時間窓の再実行が分野単位冪等keyによりAIリサーチを重複実行しない
+  - 時間窓advisory lockにより並行起動の一方が処理済み相当の2xxで終了する
+- メモ: 3分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
+
+### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `todo`
+- 参照: N-3、要件04 §6、要件04 §14、要件02 §3.15、要件02 §4.2、要件02 §4.3、O-2 / 依存: T-M4-11 / サイズ: M
+- 完了条件:
+  - news_config・notification_configの異なる複数ユーザーを仕込み、categories/impact_filter一致の新着があるtrialing/activeユーザーにだけ通知rowが作られ、該当0件・両channel OFF・非契約ユーザーには作られないことをローカルDBで確認
+  - user_id+dedupe_key（news-digest:{window_started_at}）により同一時間窓の再実行で通知rowが増えない（insert...select相当の一括fan-out）
+  - タイトル・本文へ高impact優先・同impactは新しい順で最大5件＋全件数＋一覧リンク（/app/news?from=...&to=...）が入り、payloadのnews_item_idsはmax_items（既定20）で切られtotal_countは全件数を保持する
+- メモ: news_fetchの3分野settle後に成功分野の新規保存ニュースだけを対象に実行。分野失敗自体はユーザーへニュース通知しない。メールONユーザーはemail_status=queued＋email_available_atを設定（送信は後続タスク）。
+
+### T-M4-13: 通知一覧UI＋既読管理（ヘッダー未読バッジ含む） `todo`
+- 参照: O-2、要件05 §10、要件04 §14、要件02 §3.15、要件06 §2 / 依存: M2、M3 / サイズ: M
+- 完了条件:
+  - listNotificationsがin_app_enabled=trueのrowだけをcursor・unread_onlyで返し、メール専用の台帳rowが一覧に出ないことをテストで確認
+  - 個別既読・全既読でread_atが設定され、ヘッダーの未読バッジ件数が更新される
+  - ダイジェスト通知のlinkから/app/news?from=...&to=...へ遷移できる（各typeのlink遷移が機能する）
+- メモ: App Shell（M2）とM3の通知作成基盤を前提。表示はseedした通知rowで検証できるため、ダイジェストfan-outとは独立に実装可能。
+
+### T-M4-14: SC-06 ニュース画面（一覧・絞り込み・news_config・時間窓適用） `todo`
+- 参照: N-2、SC-06、要件05 §6、要件05 §4.1、要件05 §12、要件02 §4.2、要件06 §3.4、要件06 §10 / 依存: M2 / サイズ: M
+- 完了条件:
+  - seedしたnews_itemsが分野・インパクトで絞り込めて、初期表示にnews_configの既定（3分野・高中・20件）が適用される。updateNewsConfigで表示分野・件数の変更が保存される
+  - listNewsItemsがcategories/impacts/from-to（最大24時間）/cursor/limit（1〜100）を検証し、/app/news?from=...&to=...で対象時間窓の該当ニュース（ダイジェスト掲載外を含む）だけが一覧される
+  - 最新取得失敗時に前回成功分を表示し更新失敗を注記する状態表示がある
+- メモ: 表示項目はカテゴリー・要約・遷移先URL・インパクト（N-2）。ニュースデータはseedで検証できるためnews-fetch routeとは独立に実装可能。
+
+### T-M4-15: SC-06 ニュース起点生成（createDraftFromNews）＋作成済みバッジ `todo`
+- 参照: N-4、SC-06、要件05 §6、要件06 §4.2、GEN-P1 / 依存: T-M4-14、M3 / サイズ: S
+- 完了条件:
+  - 「すぐに投稿作成」でcreateDraftFromNewsがP-1のpost_generation jobを冪等作成し（同じrequest_key再送で同じjob IDを返す）、inputへnews_item_id・source_urlが引き継がれてsource_news_item_idがdraftへ保存される（workerはモック）
+  - 画像ON時のimage_provider必須と実行前提エラー（api_key_required等のdetails＋設定導線表示）がcreateGenerationJobと同じ挙動になる
+  - 生成済みニュースカードにdrafts.source_news_item_id由来の作成済みバッジが表示される
+- メモ: M3のcreateGenerationJob基盤・GEN実行を前提とし、SC-06からの起動導線とバッジ導出のみを実装する縦の薄いタスク。
+
+### T-M4-16: Gmail SMTPメール送信モジュール＋通知commit後のafter()送信 `todo`
+- 参照: O-2、要件04 §14、要件01 §3.6、要件01 §8、要件02 §3.15 / 依存: M3 / サイズ: M
+- 完了条件:
+  - SMTPトランスポートのモック（またはローカルSMTPサーバ）で送信成功時にemail_status=sent・email_provider_id・email_sent_atが保存され、冪等key notification:{id}で同じ通知の二重送信が発生しない
+  - 429/5xx/networkエラーでemail_attempts加算＋指数backoffのemail_available_at更新のうえqueuedに留まり、3 attempt失敗または401/403でfailedとなりemail_errorへ秘密値を含まない要約だけが保存される
+  - notification作成時に設定snapshotでメールONならqueued化され、commit後のafter()から送信が起動される
+- メモ: SMTP_HOST/PORT(587 STARTTLS)/SMTP_USER/SMTP_APP_PASSWORD/EMAIL_FROM/EMAIL_REPLY_TOを使用。実Gmail送信の確認はopen_questions（App Password発行後）。M3の通知作成ヘルパーへqueued化ロジックを組み込む。
+
+### T-M4-17: queuedメール回収（tick第4段）＋retryNotificationEmail `todo`
+- 参照: 要件04 §6、要件04 §14、要件05 §10 / 依存: T-M4-16、T-M4-06 / サイズ: S
+- 完了条件:
+  - queuedかつemail_available_at<=nowのメール150件を仕込み、tick1起動で最大100件・最大10並列だけ送信処理される（SMTPモック）ことをテストで確認
+  - 最古のqueuedメールが10分超の場合にSentry（モック）へ警告が記録される
+  - retryNotificationEmailがemail_status=failedのみ受理してattemptsを0へ戻しqueued化し、同一通知の1分以内の連続実行を拒否する
+- メモ: tickの処理順(4)へ組み込む。回収上限100件/起動は要件04 §6の1起動上限表を正とする。
+
+### T-M4-18: launchd plist一式＋呼び出しスクリプト＋ローカルセットアップ検証 `todo`
+- 参照: 要件04 §6、要件01 §6、運用メモ §1、運用メモ §2、N-1 / 依存: T-M4-07、T-M4-11 / サイズ: M
+- 完了条件:
+  - 4本のLaunchDaemon plist（news-fetch: JST9〜20時毎時00分／scheduler-tick: 5分間隔12エントリ／metrics-collector: 毎時00分／follower-snapshot: 毎時10分。すべてStartCalendarInterval）がplutil -lintで妥当と判定される
+  - 呼び出しスクリプトがCRON_SECRETをKeychainまたは所有者限定秘密ファイルから読み、Bearer付きでローカル起動アプリの/api/cron/*へ到達して2xx／secret不一致時401を正しく扱う（plistへ秘密値を直書きしない）
+  - モックサーバテストで接続timeout10秒・全体210秒・5xx/timeout時の30秒→60秒の最大2回再試行・3回失敗時のローカルlog記録・HTTP redirectの非成功扱いが確認できる
+- メモ: metrics-collector/follower-snapshotのroute本体は別マイルストーン（分析系）実装のため、当該2本は認証疎通（401/404の期待挙動）確認までとし、route実装後に再検証する。実Macへの配置・launchctl bootstrap・24時間監視はopen_questions（運用メモ §1〜2）。
+
+## M5: 学習・分析
+
+### T-M5-01: T-M5-01: X API読取クライアント（タイムライン・tweet lookup・user lookup） `todo`
+- 参照: L-1、L-2、L-3、K-1、K-3、要件04 §12、要件04 §13、PRD 8.1、要件02 §3.17、要件04 §5 / 依存: M2、M3 / サイズ: M
+- 完了条件:
+  - HTTPモックで「指定ユーザーの直近ポスト取得（20件/100件・ページング）」「tweet_id最大100件のbatch lookup（public＋non-public metrics fields）」「user lookup（followers_count）」が共通型で返るテストが通る
+  - 429/5xx/networkで指数backoff＋jitterの最大2回retry後に最終失敗となり、401/403は即失敗になる
+  - 読取呼び出しごとに external_api_usage_events へ operation=x_post_read/x_user_read が冪等記録され、同一idempotency_keyの再実行で重複しない
+- メモ: OAuth user contextのtoken復号・refresh（single-flight lease）はM2の既存機構を利用。原価台帳への冪等記録helperはM3/M4のものを再利用。異なるuser tokenを同一requestへ混ぜない契約（要件04 §6）をクライアント層で強制する。学習（LRN）・metrics_collector・follower_snapshotの3機能で共用する。
+
+### T-M5-02: T-M5-02: 学習ソースCRUDのServer Actions（追加・一覧・削除の受付） `todo`
+- 参照: L-1、L-2、L-3、要件05 §8、要件05 §12、要件02 §3.6、SC-10 / 依存: M1、M2、M3 / サイズ: M
+- 完了条件:
+  - ローカルDBのテストで ref_account 4件目 / ref_post 11件目の追加が validation_error で拒否され、removed済み同一URLの再追加は既存rowが復元される
+  - removeLearningSource が analyzed→removing化＋md_merge job作成、pending/failed→AIを呼ばず直接removed に分岐し、同一アカウントにqueued/runningのlearning_analysis/md_mergeまたはremoving sourceがある場合は job_conflict になる
+  - request_key再送で既存job IDが返り（冪等）、実行前提不足（契約・キー・X連携・発信設定）時は details に不足項目と設定画面パスを含むエラーが返る
+- メモ: addLearningSource / listLearningSources / removeLearningSource。URL検証はref_account=XアカウントURL、ref_post=x.com|twitter.comの/{handle}/status/{id}形式のみ。x_account_id明示送信＋active一致検証（要件05 §1）。同一ユーザーのqueued/running 5件上限もここで適用。job作成後は after() でdispatch。md_merge workerの本体はT-M5-05。
+
+### T-M5-03: T-M5-03: learning_analysis worker（LRN-1〜3の取得・分析・保存） `todo`
+- 参照: L-1、L-2、L-3、LRN-1、LRN-2、LRN-3、プロンプト §6.11、プロンプト §6.12、プロンプト §6.13、プロンプト §4.2、プロンプト §7、要件04 §12、要件03 §7.1、要件03 §7.3 / 依存: T-M5-01、T-M5-02、M3 / サイズ: M
+- 完了条件:
+  - モックAI＋モックX読取で、3 type（参考アカウント20件・参考投稿1件＋metrics・自己投稿100件）それぞれのjobが analysis_summary をzod検証のうえ保存し succeeded になる
+  - JSON parse失敗時に同一job内で修復callが1回だけ追加され、なお失敗なら source=failed・error通知・premium生成枠refund（冪等key job:{id}:generation:refund）となる
+  - premiumでは開始時に生成枠reserve（+1）が usage_events/usage_counters へ同一transactionで記録され、BYOKでは枠を消費しない
+- メモ: 既存のlease基盤（advisory lockによる同一Xアカウント直列）とAIアダプタを利用。PT-L1〜L3はbase_mdを読まず、取得データを<posts>/<post>/<metrics>タグで素材として渡す。PT-L2にはref_postのpublic metricsを渡す。ここでは分析結果保存＋暫定analyzed化まで（merge後の確定はT-M5-04で置換）。
+
+### T-M5-04: T-M5-04: 同一job内MD-MERGEとbase_md version競合処理 `todo`
+- 参照: L-8、MD-MERGE、プロンプト §6.14、プロンプト §3.4、要件04 §1、要件04 §12、要件05 §9、要件02 §3.4 / 依存: T-M5-03、M2 / サイズ: M
+- 完了条件:
+  - モックAIで、分析成功後に同一job内でセクション5・6が「対象セクション現在値＋全active source analyses」からmergeされ、base_md新version（change_source=learning）・base_md_versions履歴・source=analyzed確定が同一transactionで反映される（セクション1〜4は不変）
+  - merge書き込み時に開始時versionと異なるversionを注入すると、最新versionから再mergeするかretryableとしてqueuedへ戻る（上書き消失しない）テストが通る
+  - merge結果が6見出し構造を保つことをコード検証し、崩れた出力はJSON/構造エラーとして修復・失敗処理される
+- メモ: progress_stage=merging。mergeカウントは親learning_analysis jobの生成枠1回に含む（追加消費なし）。updatePersonaSettings等のbase_md書き込みと競合するためexpected version条件付きupdateを必須にする（要件05 §9）。M2依存はベースmd初版（version>=1）の存在。
+
+### T-M5-05: T-M5-05: 学習ソース削除フロー（removing→md_merge→removed・生成停止） `todo`
+- 参照: L-8、要件04 §12、要件04 §4、要件05 §8、要件06 §9、MD-MERGE、要件03 §7.1 / 依存: T-M5-02、T-M5-04、M4 / サイズ: M
+- 完了条件:
+  - モックAIで、単独md_merge jobが削除対象analysisと残active analysesから対象セクションを再構築し、merge成功時に base_md新version作成と source=removed化（removed_at設定）が同一transactionで確定する（premium生成枠+1消費）
+  - merge最終失敗（およびstale確定時のtick側終端処理）で source が analyzed へ戻り、削除未完了のerror通知rowが作成され、生成枠がrefundされる
+  - removing source が存在する間、対象Xアカウントの createGenerationJob / createDraftFromNews / slot enqueue が新規生成を開始しないことをテストで確認できる
+- メモ: version競合処理はT-M5-04と共通実装を再利用。removing中はaddLearningSource/reimportOwnPostsも拒否（T-M5-02の検証に組み込み済みなら結線確認のみ）。生成停止ガードはM3/M4の生成job前提検証への追加になるため、該当箇所の変更はドキュメント同期対象。
+
+### T-M5-06: T-M5-06: reimportOwnPosts（自分の過去投稿の再取り込み・30日制御） `todo`
+- 参照: L-3、要件05 §8、要件04 §12、要件02 §3.6 / 依存: T-M5-03、T-M5-04 / サイズ: S
+- 完了条件:
+  - 前回取り込みから30日未満の再実行が validation_error で拒否され、details に次回実行可能日時が含まれる（時刻モックで30日経過後はjobが作成される）
+  - own_posts source は x_account_id ごとに1 rowのunique制約を保ち、再取り込みは既存rowのanalysis_summaryを新しい分析で置き換えてmerge経由でセクション5を更新する
+  - removing source存在中は拒否され、request_key再送は既存job IDを返す
+- メモ: 初回取り込みはaddLearningSource（type=own_posts, url=null）でも成立するが、Action契約上は reimportOwnPosts を専用Actionとして実装（要件05 §8）。premiumは生成枠+1／実行。
+
+### T-M5-07: T-M5-07: SC-10 学習ソースタブUI `todo`
+- 参照: L-1、L-2、L-3、SC-10、要件06 §2、要件06 §9、要件06 §4.2、要件05 §8 / 依存: T-M5-02、T-M5-05、T-M5-06 / サイズ: M
+- 完了条件:
+  - モックデータで、一覧（type・URL・status・分析日時）、追加フォーム（type別上限到達時の無効化・URL形式エラー表示）、削除確認、own_posts取り込み/再取り込み（30日制御の残日数表示）が表示・操作できる
+  - pending/removing中の進行表示（queued 60秒超は「開始が遅れています。自動で再開されます（最大5分）」）、failed時の原因と再試行導線、removing中は「削除完了まで新規生成を一時停止」の案内が表示される
+- メモ: App Shell（M2/M4想定）のSC-10タブ構成に学習ソースタブを追加。Xアカウント切替時の再取得に対応。
+
+### T-M5-08: T-M5-08: ベースmd手動編集・履歴・ロールバックのServer Actions（M-1） `todo`
+- 参照: M-1、要件05 §8、要件05 §9、要件05 §12、要件02 §3.4、プロンプト §3.1 / 依存: M1、M2 / サイズ: M
+- 完了条件:
+  - updateBaseMdManual が「## 1.〜## 6.の見出しが順番どおり各1回」の構造検証と5,000字上限を行い、欠落・重複・順序違反・超過を保存拒否する／expected_version不一致は409（job_conflict）を返す
+  - standardプランからの updateBaseMdManual / rollbackBaseMd が forbidden(403) になり、md/premiumでは base_md・base_md_version・base_md_versions（change_source=manual/rollback）が同一transactionで更新される
+  - rollbackBaseMd が指定版の内容を持つ新versionを作成し（履歴を書き換えない）、learning_analysis/md_merge がrunningの間は3 Actionとも job_conflict になる
+- メモ: getBaseMd（所有者のみ）も同時に実装。base_md_version=0（初版未生成）の場合の編集可否は発信設定初回保存が前提のためpersona_required相当で誘導。M1依存はプラン判定、M2依存はベースmd初版生成。
+
+### T-M5-09: T-M5-09: SC-10 ベースmdエディタUI（履歴・ロールバック・プランゲート） `todo`
+- 参照: M-1、SC-10、要件06 §9、要件06 §2、PRD 5.7 / 依存: T-M5-08 / サイズ: M
+- 完了条件:
+  - md/premiumで、エディタの保存成功／6見出し構造エラー／version競合（409→再読込促し）の3状態がモックで確認でき、履歴一覧（version・change_source・summary・日時）から指定版のロールバック確認ダイアログ→新version作成まで操作できる
+  - standardプランではタブ内容がロック表示（アップグレード導線）になり、直接のAction呼び出しも403になる
+  - 手動編集したセクション1〜4は発信設定フォーム保存で上書きされる旨の注意が表示され、学習ジョブrunning中は編集不可表示になる
+- メモ: モバイルは閲覧可・編集はPC推奨表示（要件06 §2）。発信設定フォーム保存時の差分警告本体はM2の発信設定UI側だが、警告表示の条件（手動編集済みversionの存在）はここで提供する。
+
+### T-M5-10: T-M5-10: プロンプトテンプレートServer Actionsとoverride解決（M-2/M-3） `todo`
+- 参照: M-2、M-3、要件05 §8、要件05 §12、要件02 §3.5、要件02 §6、P-5 / 依存: M1、M3 / サイズ: M
+- 完了条件:
+  - listPromptTemplates がsystem default＋account overrideを合成して返し、updatePromptTemplate（kind=p1〜p6/image・8,000字上限・expected_updated_at楽観lock）でaccount override rowが作成/更新され、resetPromptTemplate でoverrideが削除されsystem defaultへ戻る
+  - 生成パイプライン（GEN-P1〜P6のPT、GEN-IMGのPT-IMG）がaccount overrideを優先して解決することをモック生成テストで確認できる（override保存→生成入力に反映、reset→既定に復帰）
+  - standardプランは403、FEATURE_QUOTE_POST_ENABLED=false の間は kind=p5 の更新・リセットを feature_disabled で拒否する
+- メモ: system defaultプロンプトのseed（p1〜p6/image各1件）はM0/M3のseedに含まれる想定。未投入ならこのタスクでseed migrationを追加する。システム共通promptは編集対象にしない（要件06 §9）。
+
+### T-M5-11: T-M5-11: SC-10 プロンプトエディタUI `todo`
+- 参照: M-2、M-3、SC-10、要件06 §2、要件06 §9、P-5 / 依存: T-M5-10 / サイズ: S
+- 完了条件:
+  - md/premiumで kind選択（p1〜p4/p6・image。p5はflag OFF中非表示）→エディタ編集→保存／「システム既定に戻す」確認→リセットが操作でき、override有無（既定/カスタム）のバッジと文字数カウンタが表示される
+  - standardプランではロック表示になり、モバイルでは閲覧可・編集はPC推奨表示になる
+- メモ: 楽観lock競合（409）時は再読込を促す。SC-10の他タブ（学習・ベースmd）と同一のタブ構成へ組み込む。
+
+### T-M5-12: T-M5-12: metrics_collector定時トリガー（due選定・バッチ読取・checkpoint保存） `todo`
+- 参照: K-1、要件04 §6、要件04 §13、要件05 §3、要件02 §4.9、要件01 §6、S-6 / 依存: T-M5-01、M3、M4 / サイズ: M
+- 完了条件:
+  - モックXクライアント＋ローカルDBで、next_metrics_at到来のdraft（posted全tweet_id＋failedのremaining_tweet_ids、rollback削除確認済みIDは除外）が選定され、100件/バッチ・user token別分離で読取→checkpoint 1へ保存→next_metrics_atが7日dueへ前進する
+  - 取得不能field（non-public metrics等）がnullで保存され0と区別される／同一checkpoint再取得は値とcollected_atを上書きし、過去checkpointは上書きされない（要件02 §4.9のスキーマをzod検証）
+  - `/api/cron/metrics-collector` がCRON_SECRET認証＋時間窓advisory lockで二重起動時にno-op 2xxを返し、1起動50account・500tweet_id・外部request最大10並列の上限を守って残りを次回毎時起動へ委ねる
+- メモ: 投稿完了時・部分失敗で残存IDが確定した時に next_metrics_at を1日checkpointへ初期設定する処理をM4のpost_publish終端処理へ追加する（要件04 §13。M4コードへの変更としてドキュメント同期対象）。public＋所有ポストのnon-public metrics fieldsを要求。
+
+### T-M5-13: T-M5-13: metrics_collectorの30日期限・unavailable・収集完了処理 `todo`
+- 参照: K-1、要件04 §13、PRD 8.1、要件06 §8 / 依存: T-M5-12 / サイズ: M
+- 完了条件:
+  - 時刻モックで、30日checkpointが投稿後29日〜30日未満の窓で取得され、期限内取得失敗時はprivate fieldをnullのまま確定しpublic metricsも更新終了する
+  - X上で削除済み・取得不能と確定したtweet_idに unavailable_at が設定され以後のdue選定から外れる一方、同一draft内の他tweet_idの収集は継続する
+  - 対象tweet_idがすべて30日取得済みまたはunavailableになったdraftに metrics_completed_at が設定され、以後の回収対象から外れる
+- メモ: 一時的な取得失敗（429/5xx）はnext_metrics_atのretry due設定で次回毎時起動へ委ね、恒久失敗（対象不存在）だけをunavailable確定にする。1 tweet_idあたり最大3回読取（MVP）を超えないことをテストで保証する。
+
+### T-M5-14: T-M5-14: follower_snapshot定時トリガー `todo`
+- 参照: K-3、要件04 §6、要件04 §13、要件02 §3.11、要件05 §3、要件01 §6 / 依存: T-M5-01、M3 / サイズ: S
+- 完了条件:
+  - モックXクライアントで、JST当日分snapshotがない status=active のXアカウントだけが処理され、(x_account_id, snapshot_date) のupsertにより同日再実行でも重複rowが作られない
+  - `/api/cron/follower-snapshot` がCRON_SECRET認証＋時間窓lockを持ち、1起動100account・最大10並列の上限を守り、token失効等で失敗したアカウントはskipして次回毎時起動へ委ねる
+- メモ: followers_countはuser lookup（public_metrics）から取得し、external_api_usage_eventsへx_user_readを記録。書き込みはservice role経由（RLS準拠）。
+
+### T-M5-15: T-M5-15: SC-09 投稿実績表示（tweet_id別・checkpoint切替・スレッド合算） `todo`
+- 参照: K-1、SC-09、要件06 §8、要件05 §9、要件02 §4.9 / 依存: T-M5-12、M4 / サイズ: M
+- 完了条件:
+  - モックtweet_metricsデータで、tweet_idごとの行（impressions/likes/reposts/profile_clicks・取得日時）が表示され、1日/7日/30日のcheckpoint切替（既定は取得済み最長checkpoint）が動作する
+  - スレッド合算が同一checkpoint取得済みのtweet_idだけで表示時に計算され欠損ID数が併記される／profile_clicks取得不能は0ではなく`--`表示／30日checkpoint後は「更新終了」を表示する
+  - 部分失敗でX上に残ったtweet_idは「不完全なthread」と明示して1行ずつ表示し、rollback削除済みIDは監査履歴表示のみで実績集計から除外される
+- メモ: getAnalyticsSummary(period_days) Actionをあわせて実装（tweet_metricsから集計、合算の別カラム保存はしない）。M4依存は投稿履歴（posted draft・tweet_ids）の存在。Xアカウント切替で再取得。
+
+### T-M5-16: T-M5-16: SC-09 フォロワー数推移グラフ `todo`
+- 参照: K-3、SC-09、要件02 §3.11、要件06 §2 / 依存: T-M5-14 / サイズ: S
+- 完了条件:
+  - seedしたfollower_snapshotsから日次推移グラフが描画され、期間切替（例: 7日/30日/90日）と欠損日のスキップ表示が動作する
+  - snapshot未収集時の空状態（収集は日次で自動実行される旨の説明）が表示される
+- メモ: グラフはSC-09内の1セクション。レスポンシブ・色以外の状態表現（アクセシビリティ）に留意。
+
+### T-M5-17: T-M5-17: SUGGEST入力集計モジュール（<stats>/<posts>組み立て） `todo`
+- 参照: K-2、SUGGEST、プロンプト §6.15、プロンプト §4.2、要件04 §12 / 依存: T-M5-12 / サイズ: M
+- 完了条件:
+  - fixtureで、7日checkpoint取得済みの比較グループが3件以上なら7日を採用、3件未満なら1日値へフォールバックし、異なる経過日数（checkpoint）を混在させないことがunit testで検証できる
+  - <stats>が型×時間帯セルごとの件数・平均（対象metric）JSONとして、<posts>がtweet_id単位・最大50件（本文冒頭100字・pattern・JST投稿時刻・metric値）のJSON配列として生成される
+  - 対象は直近30日の投稿に限定され、rollback削除済み・unavailableのtweet_idが除外される
+- メモ: LLMを使わない純粋なコード集計（プロンプト設計書 §1の原則）。pure functionとして実装しworkerから分離してテスト可能にする。テーマの事前集計は行わない（テーマはPT-SUGGESTが本文から判断）。
+
+### T-M5-18: T-M5-18: suggestion workerとrefreshSuggestions/listSuggestions `todo`
+- 参照: K-2、SUGGEST、プロンプト §6.15、要件05 §9、要件05 §12、要件04 §12、要件02 §3.12、要件02 §4.11、要件03 §7.1 / 依存: T-M5-17、M3 / サイズ: M
+- 完了条件:
+  - モックAIで、suggestion workerがPT-SUGGEST実行→出力zod検証（最大2件・evidence.tweet_idsは<posts>内IDのみ許可、違反は修復→失敗）→window_days=30を付与して improvement_suggestions へ保存し、比較グループ不足時は提案0件で正常終了する
+  - refreshSuggestions が「active suggestion jobなし（partial unique）」「同一JST日の実行済みなし」「前回job以降に新しいmetrics更新あり」をすべて検証し、違反時は理由付きで拒否する（1日1回制御は時刻モックで検証）
+  - premiumは生成枠reserve（+1）・最終失敗時refundが冪等keyで記録され、listSuggestions が最新のsuggestion job実行分だけを返す
+- メモ: SUGGESTはbase_mdを読まない（プロンプト §4.2）。BYOK=ユーザー選択キー／premium=運営Claudeで実行。request_key冪等・5件上限job_conflictも適用。提案は表示専用でベースmd/プロンプトへの自動反映Actionは作らない。
+
+### T-M5-19: T-M5-19: SC-09 改善提案UI（表示専用） `todo`
+- 参照: K-2、SC-09、要件06 §10、要件05 §9、PRD 5.6、要件02 §4.11 / 依存: T-M5-18、T-M5-15 / サイズ: M
+- 完了条件:
+  - 「提案を更新」ボタンから実行→進行表示→最新提案（content＋evidence: 対象投稿リンク・metric・checkpoint・diff_pct・summary）の表示までがモックで動作し、承認・却下・自動反映の操作が存在しない
+  - 1日1回制限・新metricsなし・実行前提不足の各拒否理由が表示され、「発信設定やベースmd編集（md/プレミアム）で自ら反映する」旨の案内が表示される
+  - 実績不足時は比較グループごとに必要な3投稿と現在件数が表示される（要件06 §10）
+- メモ: evidence.tweet_idsから該当投稿（本文冒頭）を引いて根拠として提示する。SC-09は実績・フォロワー・提案の3セクション構成で完成。
+
+## M6: プレミアム・法務・リリース準備
+
+### T-M6-01: premium運営AIキー実行経路（PREMIUM_TEXT_PROVIDER解決とai_purpose_config制約） `todo`
+- 参照: O-4、A-5、PRD §8.2、要件01 §3.5、要件01 §7、要件02 §4.1、要件05 §4.1、プロンプト §1、プロンプト §5.1 / 依存: M1、M3 / サイズ: M
+- 完了条件:
+  - premiumユーザーの文章系jobがユーザーAIキー未登録でも運営キー設定（モックprovider）で実行され、standard/mdはユーザーキーが使われる
+  - updateAiPurposeConfigでpremiumのtext変更がforbiddenで拒否され、imageは運営キー未設定のproviderを選択できない
+  - PREMIUM_TEXT_PROVIDER未設定時はanthropicへ解決し、運営キー未設定で起動時検証が失敗する
+- メモ: resolveProviderを拡張し、premiumでは文章生成・分析（GEN/LRN/SUGGEST/MD-MERGE）をPREMIUM_TEXT_PROVIDER（既定anthropic、明示設定時のみopenai/google）の運営キーへ、画像生成を運営OpenAI/Geminiキーへ解決する。premiumのtextはDBへ保存せず実行時に解決し、updateAiPurposeConfigはpremiumのtext変更を拒否・imageは運営キー設定済みproviderのみ許可（SC-10ではread-only表示）。起動時に選択provider・モデルの検証を追加。NEWS用運営Claude経路（全プラン共通）はニュース担当マイルストーン側の実装を再利用する。
+
+### T-M6-02: premium運営X App経由のOAuth連携（managed経路） `todo`
+- 参照: A-3、PRD §8.1、要件01 §3.4、要件02 §3.3、要件03 §6、要件05 §4.3 / 依存: M1、M2 / サイズ: M
+- 完了条件:
+  - premiumユーザーのOAuth startがmanaged client設定でauthorize URLを生成し、callback（X APIモック）でauth_type=managedのx_accounts行が暗号化tokenとともに保存される
+  - standard/mdユーザーはmanaged経路を使えず、premiumユーザーはBYOK経路を使えない（期待auth_type不一致で拒否）
+  - enableXAccountがplanとauth_typeの不一致をforbiddenで拒否する
+- メモ: OAuth start/callbackがplanからclient資格情報（BYOK=user_api_keysのX App／premium=X_MANAGED_CLIENT_ID・X_MANAGED_CLIENT_SECRET）と期待auth_typeを解決する。stateにclient種別を結び付け、callbackで期待auth_typeと不一致なら拒否。managedのconfidential client（client_secret）対応。enableXAccountはplanに対応するauth_typeのみ許可。tokenは利用者ごとにx_accountsへ暗号化保存（app-only tokenで投稿しない）。
+
+### T-M6-03: プレミアム利用枠サービス基盤（reserve/refund・冪等key・月境界） `todo`
+- 参照: O-4、要件03 §7.2、要件03 §7.3、要件03 §7.4、要件02 §3.13、要件02 §3.14 / 依存: M0、M1 / サイズ: M
+- 完了条件:
+  - 同一冪等keyでreserveを2回実行してもeventは1件・counterは+1のみで、2回目はno-opになる（ローカルDBテスト）
+  - 上限到達時のreserveはusage_limit_exceededで失敗し、event・counterとも変化しない
+  - JST月境界を跨いだrefund（7月reserve→8月refund）が元のmonth=7月のcounterへ-1される
+- メモ: DATABASE_URL直結の複文transactionで、usage_countersのFOR UPDATE→上限確認→usage_events insert→counter±1を原子的に行うサーバー専用モジュール。冪等key（job:{job_id}:generation:reserve等）の重複はno-op。refundはref_event_id必須で元reserveと同じcounter/month/operationへ-1。monthはJST基準YYYY-MMで3アカウント合算・繰越なし（月初reset不要）。上限到達はusage_limit_exceededを返す。
+
+### T-M6-04: 生成・画像ジョブへの生成枠/画像枠reserve/refund組み込み `todo`
+- 参照: O-4、要件03 §7.1、要件03 §7.5、要件04 §8、要件04 §9、プロンプト §1 / 依存: T-M6-03、T-M6-01、M3 / サイズ: M
+- 完了条件:
+  - premiumのpost_generation成功で生成枠が+1のみ（GEN-FIX・JSON修復発生時も増えない）、standard/mdではreserve/counter更新が一切発生しない（モックprovider）
+  - AI最終失敗でrefund eventが作成されcounterが元に戻る
+  - 画像job最終失敗で画像枠だけrefundされ、成功済み本文の生成枠は返還されない
+- メモ: premiumのみ：文章系top-level job（GEN-P1〜P6・LRN・SUGGEST・削除時単独MD-MERGE）開始時に生成枠reserve、image_generation開始時に画像枠reserve。最終失敗でrefund（Storage保存失敗も画像refund）。内部retry・JSON修復・GEN-FIX・同一job内MD-MERGEは追加消費なし。ユーザーの再生成・retryGenerationJobは新jobとして新規消費。cloneFailedDraftForRetryと下書き破棄は消費・返還なし。ニュース基盤は対象外。
+
+### T-M6-05: staleジョブfailed確定時の利用枠refund回収 `todo`
+- 参照: 要件04 §4、要件03 §7.3、要件03 §7.4 / 依存: T-M6-04、M3 / サイズ: S
+- 完了条件:
+  - reserve済みjobを人工的にstale化（locked_atを過去に設定・attempt=3）してtick handlerをローカル実行すると、failed確定と同時にrefund eventが1件だけ作られcounterが戻る
+  - worker側で既にrefund済みのjobに対してtickが追加refundを作らない
+- メモ: scheduler_tickのstale回収でattempt>=3のrunning jobをfailed確定する同一transaction内で、当該jobの未返還reserve（job:{job_id}:generation:refund／image:refund）を同じ冪等keyでrefundする。worker通常経路のrefundと二重返還しないことを冪等keyで保証。
+
+### T-M6-06: 投稿実行の通常/URL付き枠consume（post_create/post_delete・全プラン記録） `todo`
+- 参照: O-4、要件03 §7.1、要件03 §7.4、要件04 §10、要件04 §11、要件02 §3.13 / 依存: T-M6-03、M4 / サイズ: M
+- 完了条件:
+  - モック投稿でURLなし3ポストthread全件成功時、post_normalのconsume eventが3件作られ、premiumはnormal_posts_countが+3、standard/mdはeventのみでcounter更新なし
+  - 途中失敗→rollback削除成功で、削除分が元投稿と同じcounter_typeで追加consumeされ（同枠2消費）、削除失敗分は追加消費されない
+  - X_POSTING_MODE=dry_runではconsume event・counter更新が発生しない
+- メモ: X送信直前の最終payload（P-5のquote_url合成後。flag OFF中はP-5経路自体が実行されない）でHTTP(S) URL有無を判定しcounter_type（post_normal/post_url）を決定。tweet_id成功ごとに同一transactionで全プランのconsume event＋premiumのみcounter加算。ロールバック削除成功は対応するpost_createのcounter_typeを引き継ぎ同枠へ+1（作成+削除=同枠2消費）、削除失敗は追加消費なし。日次50上限はpost_createのみ合算。冪等keyはdraft:{draft_id}:tweet:{tweet_id}:post:create|delete。DB保存だけ失敗した場合はreconcileし再送しない。
+
+### T-M6-07: 投稿直前のロールバック安全残量判定 `todo`
+- 参照: 要件03 §7.4、要件06 §7、PRD §6.1、O-4 / 依存: T-M6-06 / サイズ: S
+- 完了条件:
+  - 5ポスト（最終のみURL付き）payloadで必要残量が通常8（2×4）・URL1と算出されるユニットテストが通る
+  - 残量不足ケースで投稿jobがX API（モック）を一切呼ばずに失敗し、usage_events/countersが変化せずerror通知が作成される
+- メモ: premiumの投稿開始前に最終payload列を通常/URL付きへ分類し、通常枠にmax(R, 2×R_prefix)、URL枠にmax(U, 2×U_prefix)の残量を必須とする（全件成功と、最終投稿失敗時のprefixロールバック削除の両方を賄う）。不足時はX APIを呼ばず枠を消費せずusage_limit_exceededで失敗し通知する。同一userのpost_publish直列化はM4のadvisory lockを前提とする。
+
+### T-M6-08: スケジュールenqueue時のpremium残量・日次上限事前判定 `todo`
+- 参照: 要件04 §7.1、要件03 §7.4、O-5、S-2、S-3 / 依存: T-M6-07、M4 / サイズ: S
+- 完了条件:
+  - premium残量不足のauto slotがenqueueされずに通知される（tick handlerをローカル実行・時刻モック）
+  - 当日post_create件数＋パターン別最大数が50を超えるslotはenqueueされない
+  - BYOK（standard/md）のslotは残量判定をskipしてenqueueされる
+- メモ: enqueue条件へpremium判定を追加：生成枠、画像ONなら画像枠、auto modeならパターン別最大数から算出した必要残量（P-1=通常10＋URL1、P-2=通常1、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1）を通常/URL枠で確認。当日JSTのpost_create件数＋パターン別最大数が50以下であることも確認。不足slotはenqueueせず通知。生成後の投稿直前には実payloadで再判定（前タスク）される二段構え。
+
+### T-M6-09: external_api_usage_events原価台帳：AI呼び出しの冪等記録 `todo`
+- 参照: 要件02 §3.17、要件03 §7.4、プロンプト §5.1、プロンプト §5.6、PRD §6.1 / 依存: M0、M3 / サイズ: M
+- 完了条件:
+  - モックproviderでのjob実行後、provider call 1回につき1行が記録され、同一冪等keyの再実行で行が増えない
+  - 失敗callもstatus=failed・正規化error_code付きで記録され、本文・prompt・秘密値がどのカラムにも含まれない
+  - unit_cost_usd/estimated_cost_usdに実行時単価snapshotが保存され、算出不能時はnullになる
+- メモ: providerアダプタの全AI呼び出し（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG、共通NEWSはuser_id=null）について、provider・operation（text_generation/web_search/image_generation）・request_id・status・http_status・error_code・quantity・usage内訳・実行時単価snapshot・推定原価を冪等keyで記録するモジュールを実装し組み込む。成功・失敗を問わず記録。投稿本文・prompt・APIキー・外部レスポンス本文は保存しない。40日cleanupはM3のtick cleanupで実装済みの想定（未実装なら本タスクで追加）。usage_events（利用枠）とは責務を分離。
+
+### T-M6-10: external_api_usage_events原価台帳：X API呼び出しの記録と単価snapshot `todo`
+- 参照: 要件02 §3.17、要件01 §3.1、要件04 §10、PRD §6.1 / 依存: T-M6-09、M4 / サイズ: S
+- 完了条件:
+  - モック投稿成功でx_post_create行がURL有無に応じた単価snapshot付きで記録され、rollback削除でx_post_delete行が記録される
+  - media uploadでは台帳行が作られず、dry_runでは一切記録されない
+  - 同一tweet_id操作の再処理（reconcile）で行が重複しない
+- メモ: x_post_create／x_post_delete／x_post_read／x_user_readを冪等記録する。作成はURL有無でX_COST_CONTENT_CREATE_USD／X_COST_CONTENT_CREATE_WITH_URL_USD、削除はX_COST_INTERACTION_DELETE_USDのenv単価snapshotを採用。X media uploadは運用logのみで台帳・利用枠から除外。dry_runは記録しない。
+
+### T-M6-11: プラン変更のBYOK⇄premium切替副作用（キー再検証・Xアカウントexpired化・再連携バナー） `todo`
+- 参照: 要件03 §6、要件02 §4.1、要件06 §2、要件06 §9、A-6、O-1 / 依存: M1、T-M6-01、T-M6-02 / サイズ: M
+- 完了条件:
+  - premiumへのplan変更イベント処理後（モックwebhook＋ローカルDB）、auth_type=byokのアカウントがexpiredになり、user_api_keysは削除されない
+  - premium→md変更でmanaged認可アカウントがexpired化され、ai_purpose_configの無効providerが未設定へ戻る。standardへの変更でactive 1件以外がdisabledになる
+  - expired中のアカウントに対する投稿・自動実行系Actionが拒否され、App Shellに再連携バナーが表示される
+- メモ: 分担：M1のプラン変更タスクはStripe webhookのplan/subscription_status同期とstripe_events冪等処理までを担当。本タスクはwebhook同期後の同一処理として実行する切替副作用を担当する。(1) standard/md→premium: BYOK認可のx_accountsをexpired化（BYOKキーは削除しない）、AIは運営キーへ切替。(2) premium→standard/md: managed認可アカウントをexpired化し、ai_purpose_configのtext/imageを登録済みvalidキーで再検証（無効なら未設定へ戻し初期設定ガイドへ誘導）。(3) md/premium→standard: active_x_account_idの1件以外をdisabled化（active未設定はcreated_at最古のactive 1件維持）。App Shellへ再連携要求の常設バナーを追加し、再連携まで閲覧・編集は許可・投稿と自動実行は停止。
+
+### T-M6-12: premium残量表示（ホーム・設定）と上限到達エラー表示 `todo`
+- 参照: O-4、要件03 §8、SC-05、SC-11、要件06 §10 / 依存: T-M6-03、T-M6-06、M4 / サイズ: M
+- 完了条件:
+  - premiumユーザーのSC-05とSC-11に4枠のused/limit/remainingが表示され、standard/mdユーザーには表示されない
+  - 上限到達時のエラー表示に残量と翌月開始日時（JST）が含まれ、既存下書き・履歴の閲覧は引き続き可能
+- メモ: premiumのみusage_countersから当月の4枠（normal_posts/url_posts/generations/images）のused/limit/remainingを要件03 §8のJSON形状で算出し、SC-05ホームとSC-11設定へ表示。usage_limit_exceededエラーの画面表示には残量と翌月開始日時（JST）を含め、既存下書きの閲覧は許可する（要件06 §10）。SC-05の土台はM4までに実装済みの想定。
+
+### T-M6-13: 利用枠80%/100%通知と常設バナー `todo`
+- 参照: O-4、要件03 §8、要件02 §3.15、要件02 §4.3 / 依存: T-M6-12、M5 / サイズ: M
+- 完了条件:
+  - counterが80%を跨ぐ更新でusage通知が枠・月ごとに1件だけ作成され、再更新・再実行で重複しない（dedupe_key検証）
+  - 100%到達で全/app画面に常設バナーが表示され、notification_configでusageをOFFにしてもバナーは表示される（メールは作られない）
+- メモ: counter更新後に閾値を判定し、80%到達は各枠・各月1回のusage通知（dedupe_key例: usage:{month}:{counter_type}:80）、100%到達は通知＋常設バナー。100%バナーはnotification_configにかかわらず表示し、メール・通知一覧作成は設定を尊重。決済失敗・契約停止バナーはM1側の実装を前提とし、本タスクは利用枠100%のみ追加。通知基盤（notifications・メール送信）はM5想定。
+
+### T-M6-14: 公開法務3ページの実装（/terms・/privacy・/legal/commercial-transactions） `todo`
+- 参照: 要件06 §11、要件01 §4、PRD §7、O-1 / 依存: M0 / サイズ: M
+- 完了条件:
+  - /terms・/privacy・/legal/commercial-transactionsが未ログインで表示される
+  - 特商法ページに要件06 §11の事業者情報が全項目表示される
+  - /termsに料金・7日trial・自動更新・解約条件・生成コンテンツの最終責任・上限見直し条項が含まれる
+- メモ: 認証不要の公開routeとして3ページを実装。/termsは提供条件・禁止事項・X/生成コンテンツの責任（最終責任はユーザー）・料金・7日trial・自動更新・解約・停止免責・premium上限の見直し条項・改定・問い合わせ。/privacyは取得情報・利用目的・外部委託とAI/X APIへの送信・国外取扱い・保持削除・安全管理・開示等窓口。特商法表記は要件06 §11の事業者情報表（販売事業者・所在地・問い合わせ先・電話番号開示方針・返金・解約）を正とする。文面の専門家確認は人間側作業（open_questions参照）。
+
+### T-M6-15: 法務導線の接続（footer・signup同意リンク・Checkout直前再掲） `todo`
+- 参照: 要件06 §11、要件01 §4、要件03 §1、要件03 §2.1、A-1 / 依存: T-M6-14、M1 / サイズ: S
+- 完了条件:
+  - LP・signup・plans・アプリ設定のfooterから法務3ページへ到達できる
+  - signupの規約同意とプライバシー確認が別checkboxで、各リンクが新タブで開く
+  - Checkout開始直前の画面に税込料金・trial・自動更新・解約条件が再掲される
+- メモ: LP・会員登録・プラン選択・アプリ設定のfooterから3ページへ到達可能にする。signupは利用規約同意checkboxとプライバシー確認checkboxを別々に表示し、リンクを新タブで開く（version保存自体はM1実装済みの想定。現行version定数と実ページの紐付けを行う）。plans→Checkout直前に税込料金・7日trial・自動更新・支払時期・解約方法を再掲し、LP/plansから特商法表記へ容易に到達できるようにする。
+
+### T-M6-16: LP（SC-01）の実装 `todo`
+- 参照: SC-01、要件06 §1、PRD §6、PRD §7、要件01 §4 / 依存: T-M6-14、M0 / サイズ: M
+- 完了条件:
+  - `/`が未ログインで表示され、提供価値・3プラン税込価格・BYOKの別途API費用負担の明示・/signup導線を含む
+  - モバイル幅で本文の横スクロールが発生しない
+  - footerから法務3ページへ遷移できる
+- メモ: `/`に提供価値、3プラン比較（税込500/1,000/2,980円・7日trial）、BYOKプランはX API・生成AI APIの利用料が別途ユーザー負担であることの明示、premiumはキー不要であること、/signupへの登録導線、法務ページfooterを実装。レスポンシブ対応（PC＋スマホ閲覧）。
+
+### T-M6-17: セキュリティヘッダ・cookie属性の仕上げ（CSP/HSTS/nosniff/Referrer-Policy） `todo`
+- 参照: 要件01 §8、PRD §7 / 依存: M0 / サイズ: M
+- 完了条件:
+  - productionビルドのローカル起動で全応答にnonceベースCSP・nosniff・Referrer-Policyが付与され、nonceなしinline scriptが実行されない
+  - HSTSがproduction相当設定で付与され、認証・OAuth補助cookieにHttpOnly・SameSite=Lax（productionはSecure）が付く
+- メモ: nonceベースCSP（frame-ancestors 'none'・object-src 'none'を含む）をmiddlewareで実装し、productionでHSTS・X-Content-Type-Options: nosniff・厳格なReferrer-Policyを付与。production cookieはSecure、認証・OAuth補助cookieはHttpOnly・SameSite=Laxを既定化。既存画面のinline script/styleをnonce対応へ修正。
+
+### T-M6-18: ログredactとServer only境界・安全なエラー変換 `todo`
+- 参照: 要件01 §8、プロンプト §5.6、要件03 §1、要件02 §5 / 依存: M0、M3 / サイズ: M
+- 完了条件:
+  - redactユーティリティのユニットテストで対象フィールド（Authorization・cookie・キー・token・prompt・投稿前入力）がマスクされる
+  - 秘密値参照moduleをClient Componentからimportするとビルドが失敗する
+  - provider例外がユーザー応答でコード化された安全なメッセージへ変換され、レスポンスにstack trace・provider本文が含まれない
+- メモ: Sentry beforeSend・共通loggerでAuthorization・cookie・APIキー・token・prompt全文・投稿前の非公開入力をredactする。service role・APP_ENCRYPTION_KEY・providerキー・OAuth tokenを参照するmoduleへ`server-only`を導入しClient Componentからのimportをビルドエラー化。ユーザー向けエラーへprovider本文・stack traceを出さない共通変換層を全Server Action/API/workerへ適用。
+
+### T-M6-19: Supabase論理バックアップのスクリプトと復元手順 `todo`
+- 参照: 要件01 §9 / 依存: M0 / サイズ: S
+- 完了条件:
+  - backupスクリプトがローカル/開発DBに対して暗号化済みdumpファイルを生成する
+  - 手順書どおり空のローカルDBへ復元し、schema・seedデータが元と一致する
+- メモ: Supabase Free運用向けに`supabase db dump`による論理backupスクリプト（AES等で暗号化しSupabase外へ保存する形式）と、復元手順・週1回＋schema変更前の運用手順を整備する。RPO最大7日・RTO best effortを手順書へ明記。実行環境（常時稼働Mac等）と保存先の用意は人間側作業（open_questions参照）。
+
+### T-M6-20: リリース判定テストスイート（dependency audit・RLS・認可/CSRF/SSRF） `todo`
+- 参照: 要件01 §8、要件02 §5、要件05 §11、要件05 §12 / 依存: T-M6-17、T-M6-18、M0 / サイズ: M
+- 完了条件:
+  - 一括実行コマンドがCI相当環境（ローカル）ですべて成功する
+  - RLSテストが別ユーザーからのselect/write拒否をユーザー所有テーブル全般で検証する
+  - SSRFテストがprivate IP直指定とredirect先private IPの両方の拒否を検証する
+- メモ: リリース判定に必要なテスト群を一括実行可能にする：dependency audit（npm audit相当）、RLS policyテスト（別ユーザーからのユーザー系テーブルselect/write拒否）、認可テスト（CRON_SECRET欠落時のcron/jobs拒否・Stripe署名不正拒否・Origin検証・plan別403）、SSRF検証テスト（出典URLのprivate/loopback/link-local IP拒否・redirect先再検証・timeout 10秒）。
+
+### T-M6-21: リリース前チェックリストの作成と消化（dry_run→live切替・公式ドキュメント再確認） `todo`
+- 参照: 要件01 §3.1、要件01 §7、要件01 §9、PRD §8.1、要件定義 §7、運用メモ §2〜4、要件03 §9、プロンプト §5.7 / 依存: T-M6-20、T-M6-19、T-M6-15、T-M6-16、T-M6-08、T-M6-10、T-M6-11、T-M6-13 / サイズ: M
+- 完了条件:
+  - チェックリストがdocs/配下に存在し、開発側で消化可能な全項目に結果が記録されている（人間側残項目は担当と期日欄付きで明示）
+  - dev/preview相当のAPP_ENVでX_POSTING_MODE=liveを設定すると起動時検証が失敗することをローカルで確認済み
+  - dry_run→live切替手順・rollback手順・backup初回取得の確認項目が消化済み
+- メモ: リリース前チェックリストを作成し、開発側で消化可能な項目を実施・記録する：X_POSTING_MODEのdry_run→live切替手順とrollback手順（prodのみlive可・dev/previewはdry_run必須の起動時ガードが未実装なら本タスクで実装）、環境変数一覧（要件01 §3）の環境別充足確認、X API（docs.x.com）・Stripe・AI各社の「実装時に要確認」注記項目の再確認結果の記録（Stripe APIバージョン・Portal Configuration方針は実装メモ/ADRへ）、backup初回取得確認、launchd→Vercel Cron移行条件・手順の確認。Developer Console単価確認・法務専門家確認など運営者アカウントが必要な項目はチェックリスト上の人間側残項目として明示する。
+
