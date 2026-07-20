@@ -224,13 +224,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: news取得・slot enqueue・metrics収集・follower保存の本処理は各機能マイルストーンで実装し、M0では認証・lock・処理順（cancel→enqueue→dispatch→回収）の骨格と各ステップのフックのみ。ローカルcurlで4本の疎通を確認できるようにする。
   実装結果: `src/app/api/cron/{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}/route.ts`（GET・CRON_SECRET Bearer検証・force-dynamic・runtime nodejs）。`src/lib/jobs/cron.ts`（hourWindowKey/fiveMinWindowKey・withCronWindowLock〔セッションpg_try_advisory_lockで時間窓の二重起動防止・finallyでunlock〕・runSchedulerTick〔queued残をscheduled_for asc nulls last→created_at ascで最大50件dispatch＋recoverStaleJobs〕）。`locks.ts`にtryAdvisoryLock/advisoryUnlock追加。cancel/enqueueはM4フック（TODO）。各分野の本処理はM4(news)/M4(tick enqueue)/M5(metrics・follower)。テスト: cron unit 2＋cron DB 2（二重起動skip・tick順序/stale回収）＋route auth 4。実機curlで4本の401/2xx・scheduler-tickのdispatched/recovered出力を確認。全130件通過。
 
-### T-M0-16: LLM共通アダプタ契約とAnthropicアダプタ（pause_turn規則） `todo`
+### T-M0-16: LLM共通アダプタ契約とAnthropicアダプタ（pause_turn規則） `done`
 - 参照: プロンプト設計書 §5.1、プロンプト設計書 §5.2、プロンプト設計書 §5.6、要件04 §5、A-5 / 依存: T-M0-02 / サイズ: M
 - 完了条件:
   - TextGen IF（system[]/user/webSearch/jsonSchema/timeoutMs → provider/requestId/text/citations/usage/stopReason）に対し、モック応答から共通形式が返る
   - pause_turn: 同一実行内でのみ最大2回まで継続し中断応答を永続化しない。deadline残り30秒未満では継続を開始せずretryable扱いになる。retry時のwebSearch.maxUses 1段階縮小ロジックがテストで検証される
   - systemの固定ブロック（SYS＋base_md）にprompt cachingを適用し、可変値がsystemに混入しない組み立てになっている
 - メモ: モデル名・検索ツールversionは環境変数/アダプタ設定とし業務ロジックへ直書きしない。実装時にAnthropic公式ドキュメント（Web search tool・stop reasons）で最新仕様を確認する。temperature等の生成パラメータは対応モデルのみ送信。
+  実装結果: `src/lib/ai/types.ts`（TextGen契約・ProviderUsage・Citation。system[]/user/webSearch/jsonSchema/timeoutMs → provider/requestId/text/citations/usage/stopReason）、`src/lib/ai/anthropic.ts`（SDK非依存の中核: `AnthropicTextGen`・`buildAnthropicParams`〔system=SYS+base_mdをそのまま・最後の固定ブロックにcache_control ephemeral・可変値はmessagesのみ・webSearch時tools/なければjsonSchema→output_config〕・`extractCitations`・usage正規化・pause_turnループ〔同一generate内で最大2回・残30秒未満または上限超で`PauseTurnIncompleteError`(retryable)〕・`reduceWebSearchMaxUses`〔半減・下限1、4→2〕・注入可能な`RawCreateMessage`）、`src/lib/ai/anthropic-client.ts`（server-only、実`@anthropic-ai/sdk`配線、model/keyはenv、stateless）。`@anthropic-ai/sdk@^0.112.3`追加。検索ツールversionは`DEFAULT_WEB_SEARCH_TOOL_TYPE="web_search_20260209"`（アダプタ設定＝§5.1許容）。claude-apiスキルで`thinking:{type:"adaptive"}`/web_search_20260209/pause_turn継続法/prompt cachingを確認。テスト: モックcreateMessageで9件（正規化・pause_turn継続2回・上限超retryable・deadline<30s retryable・buildParams・maxUses縮小・citation重複排除）。全139件通過。
+  後続への注意: OpenAI/Geminiアダプタ(T-M0-17)は同じTextGen契約・ProviderUsageを満たす。runGenerationパイプライン（parse→修復1回→charLimit→NG）とresolveProviderは後続（T-M0-18/19）。JSON修復callも「残30秒未満なら開始しない」deadline制御を`createDeadline`で共有する。生成パラメータ(temperature)・thinking設定はM1/M3のGEN実装でreq側から渡す設計余地を残した（現状buildParamsは未送信）。
 
 ### T-M0-17: OpenAI/Geminiアダプタとusage正規化の統一 `todo`
 - 参照: プロンプト設計書 §5.3、プロンプト設計書 §5.4、プロンプト設計書 §5.6、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
