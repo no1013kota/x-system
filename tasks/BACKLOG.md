@@ -167,13 +167,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/db/pool.ts`（getPool/withTransaction/poolStats/closePool/claimForUpdateSkipLocked。接続文字列はprocess.env.DATABASE_URL、未設定時はローカル既定。named prepared statement不使用）＋`src/lib/db/locks.ts`（LOCK_CLASS・hash32〔FNV-1a→signed int32〕・xAccount/postPublish/cronWindowのキー導出・acquireXactLockは2-int形pg_advisory_xact_lock）。テスト: `locks.test.ts`（決定性・名前空間分離）＋`pool.db.test.ts`（commit/rollback・接続リークなし・同一キー直列化とtx終了で自動解放・別キーは非ブロック）。`pg`をdependenciesへ移動（本番worker使用）、`@types/pg`はdev。全73件通過。
   注: pool.tsはenv.ts（server-only・全必須検証）をimportするとテストで読み込み時例外になるため、DATABASE_URLはprocess.envから直接読む（本番はVercelで検証済みの値が入る）。server-onlyマーカーは付けずsrc/lib/db配下のサーバー専用コードとして扱う。
 
-### T-M0-10: twitter-text互換の加重文字数ユーティリティ `todo`
+### T-M0-10: twitter-text互換の加重文字数ユーティリティ `done`
 - 参照: PRD §8.1、要件05 §12、プロンプト設計書 §7、要件02 §4.7 / 依存: T-M0-01 / サイズ: S
 - 完了条件:
   - 半角280字はOK・281字はNG、日本語140字（加重280）はOK・141字はNGと判定される
   - URLが長さにかかわらずt.co固定長で計算され、絵文字・CJKが重み付きで数えられるテストが通る
   - cashtag（$TICKER形式）の件数を返し、2件以上を検出できる
 - メモ: 公式twitter-textライブラリ（またはその設定準拠実装）を利用しweighted_length算出を共通化。drafts.thread各要素のweighted_length算出とPT-FIX判定（280超過検出）の両方から使う前提のAPIにする。
+  実装結果: `src/lib/text/weighted-length.ts`（公式`twitter-text`ラッパー: weightedLength / exceedsWeightedLimit / isWithinWeightedLimit / countCashtags、MAX_WEIGHTED_LENGTH=280、limit引数でPT-FIXの任意上限に対応）。`twitter-text`はdependencies、`@types/twitter-text`はdev。テスト7件（半角280/281・日本語140/141=加重x2・URLはt.co固定長・空文字・custom limit・cashtag2件検出）。要件01 §2技術スタックに追記。全80件通過。
 
 ### T-M0-11: Sentry導入とログredaction `todo`
 - 参照: 要件01 §2、要件01 §8、要件01 §9 / 依存: T-M0-02 / サイズ: S
