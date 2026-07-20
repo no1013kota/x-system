@@ -265,13 +265,17 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   ultracode検証: 敵対的レビュー（セキュリティ/仕様整合/エッジケース3レンズ＋各指摘の独立検証）を実施。security・spec-correctnessは指摘なし。confirmed 1件（BYOK textのprovider未検証→'x'等が`ProviderConfigError`(500相当)へ誤分類）を修正: `isTextProvider`ガード追加＋JSONB読取をtypeof厳格化、image側と対称に`unsupported_provider`のapi_key_requiredへ。
   後続への注意: runGeneration（T-M0-18のrunTextGeneration）へ`resolveTextProvider`/`resolveNewsProvider`と`assembleContext`を束ねて完成させる。画像アダプタ（GEN-IMG, M3）は`resolveImageProvider`が返す`ResolvedKey`から構築する。`ApiKeyRequiredError`のtoUserFacingError連携（.code/instanceofで400マッピング）はAPI層実装時に配線（現状は素のErrorへ collapse）。
 
-### T-M0-20: X OAuth 2.0 PKCEクライアント基盤 `todo`
+### T-M0-20: X OAuth 2.0 PKCEクライアント基盤 `done`
 - 参照: A-3、A-4、PRD §8.1、要件05 §4.3、要件05 §11、要件01 §3.4 / 依存: T-M0-02、T-M0-08 / サイズ: M
 - 完了条件:
   - code_verifier/code_challenge（S256）の生成がRFC準拠であることをテストで確認する
   - authorize URL構築にtweet.read tweet.write users.read media.write offline.accessの5 scope・state・PKCEパラメータが含まれ、BYOK（ユーザーClient ID）/managed（運営App）の切替が入力で決まる
   - モックtokenエンドポイントでauthorization code交換が成功し、access/refresh tokenがAES envelope形式で保存できる。state（user ID・client種別・return path結び付け）の署名検証ヘルパがテストを通る
 - メモ: M0はクライアントライブラリ層のみ（/api/x/oauth/start・callbackのroute実装とscope検証・/2/users/me確認フローはX連携マイルストーン）。state保存は署名・暗号化・HttpOnly・短TTL cookie形式のヘルパとして用意。
+  実装結果: `src/lib/x/oauth.ts`（純粋・注入可能: PKCE〔generateCodeVerifier=32B→base64url 43文字・computeCodeChallenge=base64url(sha256)・S256・createPkce〕、`buildAuthorizeUrl`〔5 scope space→%20・S256・clientIdでBYOK/managed切替〕、`hasRequiredScopes`、OAuth transaction state〔newOAuthTransaction/sealOAuthTransaction=AES-256-GCM envelope〔暗号化＋auth tag=署名〕/verifyOAuthCallback〔改ざん・TTL・state不一致〔timingSafe比較〕を拒否〕、`exchangeCodeForToken`〔public=client_id in body/confidential=Basic auth・XTokenErrorはerror codeのみでtoken非漏洩〕、`sealTokenResponse`〔access/refreshをenvelope化・expiry・scope分割〕）、`src/lib/x/oauth-server.ts`（server-only: xRedirectUri・managedOAuthClient・sealState/verifyState・sealTokens・cookie属性〔HttpOnly/Secure(prod)/SameSite=Lax/maxAge 600s〕）。
+  公式仕様確認（docs.x.com, CLAUDE.md規約）: authorize=`https://x.com/i/oauth2/authorize`、token=`https://api.x.com/2/oauth2/token`、confidential=Basic/public=body、offline.accessでrefresh発行。PKCEはRFC 7636 Appendix Bのテストベクタで検証。テスト: oauth 15件。全201件・lint/typecheck通過。
+  ultracode検証: 理解ワークフロー（公式docs WebFetch含む3並列）→敵対的レビュー（暗号/PKCE・state&CSRF・API整合3レンズ＋検証）。confirmed 0件。1件のstate CSRF指摘は「session-userId検証はroute層の義務でこの純粋層の範囲外」として棄却されたが、cookie-forcing対策の重要性からverifyOAuthCallbackのdocstringに「callback routeはtx.userIdをsession userIdと一致検証必須」を明記（doc補強）。
+  後続への注意: routes（/api/x/oauth/start・callback, X連携M）実装時は必ず tx.userId===session.userId を検証（cookie-forcing/session-fixation防御）。BYOKユーザーApp資格情報（user_api_keys provider='x'のclient_id/secret）の解決はroute層で追加。X_MANAGED_CLIENT_SECRET有無でconfidential/publicが切り替わる。state TTLは技術判断で600s（`X_OAUTH_STATE_MAX_AGE_SEC`）。token refresh単一flight（lease）はT-M0-21で`exchangeCodeForToken`と同じrequest primitiveを再利用。
 
 ### T-M0-21: X token refreshのsingle-flight制御 `todo`
 - 参照: 要件05 §4.3、要件02 §3.3、PRD §8.1 / 依存: T-M0-20、T-M0-09 / サイズ: M
