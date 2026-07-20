@@ -51,12 +51,25 @@ describe("theme master", () => {
     }
   });
 
-  it("resolves theme ids to distinct news categories, ignoring unmapped", () => {
-    expect(themesToNewsCategories(["ai", "web3", "marketing"]).sort()).toEqual([
+  it("resolves theme ids to distinct news categories, ignoring unmapped/unknown", () => {
+    // "business" exists but has no news category; "ai"/"web3" map
+    expect(themesToNewsCategories(["ai", "web3", "business"]).sort()).toEqual([
       "ai",
       "web3",
     ]);
+    // "business_ops" is unmapped, "unknown" is not in the master
     expect(themesToNewsCategories(["business_ops", "unknown"])).toEqual([]);
+  });
+
+  it("offers the confirmed 6 themes", () => {
+    expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
+      "ai",
+      "web3",
+      "investment",
+      "business",
+      "business_ops",
+      "sns",
+    ]);
   });
 });
 

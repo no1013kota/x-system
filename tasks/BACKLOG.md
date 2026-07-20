@@ -44,7 +44,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - [ ] AI各社（Anthropic/OpenAI/Gemini）の検証用APIキーの発行（verifyApiKeyの実機疎通確認、およびpremium運用キーの用意。どのproviderの運営キーを提供するかで画像provider選択肢が変わる）
 - [ ] APP_ENCRYPTION_KEY（32 bytes相当）の生成とdev/preview/prod各環境変数への設定（漏洩時のローテーション方針は将来ADR）
 - [ ] X APIキー取得手順ガイドに掲載するDeveloper Consoleのスクリーンショット素材の準備（PRD §10。用意されるまではテキスト手順のみで実装）
-- [ ] テーマ選択肢マスタ（L-5）の選択肢リストと各選択肢のnews_category対応の最終確定（暫定案としてAI・Web3・投資・マーケティング・業務改善等をコード定数で用意し、tasks/BACKLOG.mdの「要決定」へ記載して進める）
+- [x] テーマ選択肢マスタ（L-5）の選択肢リストとnews_category対応 → **確定済み（2026-07-20）**: AI・Web3・投資・ビジネス・業務改善・SNS運用の6種。AI/Web3/投資のみニュース連携あり（`src/lib/themes.ts`）
 - [ ] X Developer Console上でdev/preview用callback URL（localhost・vercel preview URL）を登録できるかの確認（不可の場合、OAuthの実機検証はprod相当URLに限定される）
 
 **M3関連**
@@ -146,7 +146,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - プラン定義（価格・Xアカウント上限・利用枠）・テーマ選択肢マスタ（news_category対応付き）・ニュースカテゴリのコード定数がユニットテストで検証される
 - メモ: SYS-GEN/SYS-NEWS/PT-FIX/PT-MD-MERGE等のコード管理プロンプト定数もこのタスクで配置する（DB seedはPT-P1〜P6とimageのみ）。通知初期値・news_config初期値の定数も定義（要件06 §3.4）。
   実装結果: `supabase/seed.sql`（system default prompt 7件・PT-P1〜P6/PT-IMG本文はプロンプト設計書§6.2-6.8の正本・dollar quote・on conflict do nothing）。config.tomlに`[storage.buckets.generated-images]`（private/5MiB/png・jpeg・webp）。コード定数: `src/lib/plans.ts`（PLANS。plan_type enumから型導出）、`src/lib/themes.ts`（THEME_OPTIONS＋themesToNewsCategories）、`src/lib/news.ts`（NEWS_CATEGORIESはenum由来）、`src/lib/config-defaults.ts`（通知/news/ai_purpose既定）。テスト: `seed.db.test.ts`（prompt7件・bucket private）＋`constants.test.ts`（プラン価格/上限/枠・テーマ対応・既定値）。SYS-GEN等のコード管理プロンプト定数（PT-FIX/MD-MERGE/L*/SUGGEST/SYS-NEWS）は**未配置**——実際に呼び出す実行パイプライン（M3/M5）で配置する方針（M0-05のzod同様、消費先と同じ作業単位で）。
-  **要決定（既出・M2関連）**: テーマ選択肢マスタ（THEME_OPTIONS）は暫定7種。最終確定はユーザー判断待ち。
+  **テーマ選択肢マスタ確定（2026-07-20）**: AI・Web3・投資・ビジネス・業務改善・SNS運用の6種。AI/Web3/投資のみニュース分野連携あり（同名の3分野固定）、他はnewsCategory=null。
 
 ### T-M0-08: AES-256-GCM暗号化ユーティリティ `done`
 - 参照: 要件01 §2、要件01 §8、要件02 §1、PRD §7 / 依存: T-M0-02 / サイズ: S
