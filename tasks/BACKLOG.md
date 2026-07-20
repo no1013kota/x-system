@@ -196,13 +196,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/jobs/auth.ts`（isValidCronAuth・定数時間比較・secret未設定は常に拒否）、`handlers.ts`（kind→handlerレジストリ・M0はno-opプレースホルダ）、`worker.ts`（`leaseJob`: 対象x_account/user取得→advisory lock〔x_account、post_publishはuser追加〕→FOR UPDATE SKIP LOCKED→schedule超過cancel/queued・due判定→同一account/同一user post_publishのrunning競合チェック→running/attempt+1/locked遷移。`runJob`: lease→handler→succeeded/failed）、`src/app/api/jobs/run/route.ts`（401/400/202+after()・runtime nodejs・maxDuration 200）。テスト: auth 3件＋route 3件（401/400/202・dispatch）＋worker DB 7件（lease遷移・not_found・account競合skip・post_publish競合skip・not_queued・schedule cancel・runJob成功）。全103件・lint/typecheck通過。
   後続への注意: schedule_missed通知の作成はscheduler_tick（M4）。heartbeat/stale/retryはT-M0-13。stale確定時の終端処理（refund・kind別後始末）はT-M0-13で§4末尾に従い実装。
 
-### T-M0-13: workerのheartbeat・stale判定・retry/backoff制御 `todo`
+### T-M0-13: workerのheartbeat・stale判定・retry/backoff制御 `done`
 - 参照: 要件04 §4、要件04 §5、要件02 §4.10、ADR-0002 / 依存: T-M0-12 / サイズ: M
 - 完了条件:
   - 外部処理中のheartbeatでlocked_atが30秒間隔相当・stage変更時に更新される
   - stale回収テスト: locked_atが10分超のrunning jobがattempt<3ならlock解除しqueuedへ（backoff付きavailable_at設定）、attempt>=3ならfailedへ確定し§4.10形式の構造化errorが保存される
   - deadlineヘルパ: Function開始180秒のdeadlineと「残り30秒未満なら追加provider callを開始せずretryable queuedへ戻す」判定、per-call timeout（90秒とdeadline残の短い方）がユニットテストで検証される
 - メモ: 429/5xx/networkの指数backoff+jitter（最大2回retry、初回含め最大3 attempt）の共通retryポリシーもここで実装。stale failed確定時のkind別終端処理（refund・通知）はインターフェースだけ用意し、実装は各機能マイルストーンで行う。
+  実装結果: `retry.ts`（MAX_ATTEMPTS=3・isRetryable〔429/5xx/network〕・backoffMs〔指数base1s・cap30s・加算jitter最大0.5・rng注入可〕・shouldRetry）、`deadline.ts`（createDeadline: 180s deadline・canStartCall〔残30s未満で不可〕・callTimeoutMs〔min(90s,残)〕・now注入可）、`stale.ts`（heartbeat〔running行のlocked_at/stage更新〕・recoverStaleJobs〔stale=locked_at<now-10min。attempt<3→queued+backoff付available_at、>=3→failed+§4.10 error+終端フック〕・setStaleTerminalHandlerでkind別終端処理を差替可能=M0はno-op）。テスト: retry6+deadline… 実際はretry/deadline計8＋stale DB 2。全113件通過。
+  後続への注意: recoverStaleJobsはscheduler_tick（M4）が呼ぶ。stale failed時の終端処理（premium枠refund・kind別draft後始末・error通知）はsetStaleTerminalHandlerでM4/M6が注入する。heartbeatの30秒間隔スケジューリングは各handler実行側（M3+）の責務。
 
 ### T-M0-14: job dispatchヘルパ（1 job = 1 Function呼び出し） `todo`
 - 参照: 要件04 §1、要件04 §3、ADR-0002 / 依存: T-M0-12 / サイズ: S
