@@ -118,13 +118,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - 制約テスト: unique(user_id, provider)、unique(x_account_id, version)、prompt_templatesのpartial unique index、news_items.source_url unique、base_md_version >= 0、automation_consent同時null制約の違反insertが拒否される
 - メモ: 共通ルール（uuid PK・created_at/updated_at・updated_at自動更新trigger）もここで実装。RLSは後続タスクへ分離。
   実装結果: `supabase/migrations/20260720000002_core_tables.sql`。共通`set_updated_at()`トリガ関数＋updated_atを持つ5テーブルにトリガ。profiles↔x_accountsの循環FK（`active_x_account_id`は後付けALTER・on delete set null）。FK削除方針は§1準拠でbase_md_versions（履歴）のみon delete restrict、他はcascade。change_source/kindにCHECK制約も付与（正本の列挙値。任意の追加ガード）。DBテスト`core-tables.db.test.ts`（11件）はSAVEPOINTで各制約違反を隔離検証（同一tx内で複数違反を試すため）。`supabase db reset`成功。RLS有効化・ポリシーはT-M0-06。
-### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `todo`
+### T-M0-05: ジョブ・下書き・台帳系10テーブルのマイグレーション `done`
 - 参照: 要件02 §1、要件02 §3.8、要件02 §3.9、要件02 §3.10、要件02 §3.11、要件02 §3.12、要件02 §3.13、要件02 §3.14、要件02 §3.15、要件02 §3.16、要件02 §3.17 / 依存: T-M0-04 / サイズ: M
 - 完了条件:
   - generation_jobs / drafts / schedule_slots / follower_snapshots / improvement_suggestions / usage_events / usage_counters / notifications / stripe_events / external_api_usage_eventsが定義どおり作成される
   - generation_jobsのpartial unique index（post_publish・image_generation・suggestion・learning_analysis/md_merge）とschedule_run_key/request_key uniqueが重複insertを拒否する
   - usage_eventsのdelta±1・refundのref_event_id必須・reason整合、usage_countersのpremium上限、schedule_slotsの時刻/曜日/p5不可のCHECK制約が違反insertを拒否する
 - メモ: JSONBカラム（input/usage/thread/tweet_metrics等）のzodスキーマ定義（要件02 §4）は共有型モジュールとして同時に作成し、書き込み側の検証で再利用できるようにする。
+  実装結果: `supabase/migrations/20260720000003_jobs_drafts_ledger.sql`（10テーブル）。generation_jobs↔draftsの循環FK（draft_idは後付けALTER）、4つのpartial unique index、schedule_run_key/request_key unique、drafts.source_job_id unique、usage_events整合CHECK（delta±1・reason整合・refund ref必須・post_op・month形式・idempotency unique）、usage_counters premium上限CHECK、schedule_slots CHECK（p5不可・時刻09:00-22:00/00・30分・曜日0-6・画像ON時provider必須）、外部原価台帳CHECKを実装。DBテスト`jobs-ledger.db.test.ts`（12件）。**知見: NULL可能列を含む`col in (...)`はNULL時に結果がNULLとなりCHECKを素通りするため`is not null`を明示する**（schedule_slots image_providerで検出・修正。後続の制約追加時も注意）。
+  **zodスキーマ（§4）は本タスクでは未作成**。書き込みパスを持つ各機能タスク（M1〜）で、そのカラムを実際に書く実装と同じ作業単位で定義する方針に変更（M0では消費先がなく、先に作るとスキーマだけ孤立するため）。共有型は`src/lib/db/`配下に置く。
 
 ### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `todo`
 - 参照: 要件02 §5、要件02 §3.3、要件02 §1 / 依存: T-M0-05 / サイズ: M
