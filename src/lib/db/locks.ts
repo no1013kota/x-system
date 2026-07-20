@@ -60,3 +60,31 @@ export async function acquireXactLock(
     key[1],
   ]);
 }
+
+/**
+ * Tries to acquire a SESSION-scoped advisory lock without blocking. Returns
+ * true if granted. The lock is held on this connection until `advisoryUnlock`
+ * or the connection is released — used to guard a whole cron handler run
+ * against concurrent/duplicate starts for the same time window (要件04 §6).
+ */
+export async function tryAdvisoryLock(
+  client: PoolClient,
+  key: LockKey,
+): Promise<boolean> {
+  const res = await client.query<{ locked: boolean }>(
+    "select pg_try_advisory_lock($1::int4, $2::int4) as locked",
+    [key[0], key[1]],
+  );
+  return res.rows[0]?.locked === true;
+}
+
+/** Releases a session-scoped advisory lock acquired with `tryAdvisoryLock`. */
+export async function advisoryUnlock(
+  client: PoolClient,
+  key: LockKey,
+): Promise<void> {
+  await client.query("select pg_advisory_unlock($1::int4, $2::int4)", [
+    key[0],
+    key[1],
+  ]);
+}

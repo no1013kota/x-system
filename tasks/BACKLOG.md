@@ -215,13 +215,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: Server Action/API Routeのafter()から呼ぶ手動dispatch、親workerからの連鎖dispatch、tickからの一括dispatchの3経路すべてが同一ヘルパを使う。未管理のfire-and-forget Promiseを作らない実装にする。
   実装結果: `src/lib/jobs/dispatch.ts`（dispatchJob: `${APP_BASE_URL}/api/jobs/run`へBearer付きPOST。202受領で`{ok:true}`、非2xx/transport失敗/設定不足は例外を投げず`{ok:false}`。ジョブ行に触れないのでqueuedのまま残りscheduler_tickが回収）、`src/lib/jobs/keys.ts`（childJobKey=`parent:{parent}:{kind}:{draft}`、requestKey=`{userId}:{token}`）。テスト: dispatch 5件（fetch mock: URL/method/header/body・202・非2xx・transport失敗・設定不足）＋keys 4件。全122件通過。3経路（手動after()/連鎖/tick一括）はこのdispatchJobを呼ぶ。
 
-### T-M0-15: cron 4 route骨格（時間窓advisory lockとtick回収dispatch） `todo`
+### T-M0-15: cron 4 route骨格（時間窓advisory lockとtick回収dispatch） `done`
 - 参照: 要件04 §6、要件04 §1、要件05 §3、運用メモ launchd-to-vercel-cron §2、ADR-0002 / 依存: T-M0-09、T-M0-13、T-M0-14 / サイズ: M
 - 完了条件:
   - GET /api/cron/{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}の4本がCRON_SECRET Bearerを検証（不一致401）し、force-dynamicで2xxを返す
   - 同一時間窓の二重起動テスト: 後発がjob名+時間窓のadvisory lock/leaseを取得できず、処理済み相当の2xxを返して本処理を実行しない
   - scheduler-tickの回収骨格: dispatchされずqueuedのまま残ったjobをscheduled_for昇順→created_at昇順で最大50件dispatchし、stale判定処理を呼び出す（ローカルDB＋モックdispatchで検証）
 - メモ: news取得・slot enqueue・metrics収集・follower保存の本処理は各機能マイルストーンで実装し、M0では認証・lock・処理順（cancel→enqueue→dispatch→回収）の骨格と各ステップのフックのみ。ローカルcurlで4本の疎通を確認できるようにする。
+  実装結果: `src/app/api/cron/{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}/route.ts`（GET・CRON_SECRET Bearer検証・force-dynamic・runtime nodejs）。`src/lib/jobs/cron.ts`（hourWindowKey/fiveMinWindowKey・withCronWindowLock〔セッションpg_try_advisory_lockで時間窓の二重起動防止・finallyでunlock〕・runSchedulerTick〔queued残をscheduled_for asc nulls last→created_at ascで最大50件dispatch＋recoverStaleJobs〕）。`locks.ts`にtryAdvisoryLock/advisoryUnlock追加。cancel/enqueueはM4フック（TODO）。各分野の本処理はM4(news)/M4(tick enqueue)/M5(metrics・follower)。テスト: cron unit 2＋cron DB 2（二重起動skip・tick順序/stale回収）＋route auth 4。実機curlで4本の401/2xx・scheduler-tickのdispatched/recovered出力を確認。全130件通過。
 
 ### T-M0-16: LLM共通アダプタ契約とAnthropicアダプタ（pause_turn規則） `todo`
 - 参照: プロンプト設計書 §5.1、プロンプト設計書 §5.2、プロンプト設計書 §5.6、要件04 §5、A-5 / 依存: T-M0-02 / サイズ: M
