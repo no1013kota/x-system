@@ -128,13 +128,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `supabase/migrations/20260720000003_jobs_drafts_ledger.sql`（10テーブル）。generation_jobs↔draftsの循環FK（draft_idは後付けALTER）、4つのpartial unique index、schedule_run_key/request_key unique、drafts.source_job_id unique、usage_events整合CHECK（delta±1・reason整合・refund ref必須・post_op・month形式・idempotency unique）、usage_counters premium上限CHECK、schedule_slots CHECK（p5不可・時刻09:00-22:00/00・30分・曜日0-6・画像ON時provider必須）、外部原価台帳CHECKを実装。DBテスト`jobs-ledger.db.test.ts`（12件）。**知見: NULL可能列を含む`col in (...)`はNULL時に結果がNULLとなりCHECKを素通りするため`is not null`を明示する**（schedule_slots image_providerで検出・修正。後続の制約追加時も注意）。
   **zodスキーマ（§4）は本タスクでは未作成**。書き込みパスを持つ各機能タスク（M1〜）で、そのカラムを実際に書く実装と同じ作業単位で定義する方針に変更（M0では消費先がなく、先に作るとスキーマだけ孤立するため）。共有型は`src/lib/db/`配下に置く。
 
-### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `todo`
+### T-M0-06: 全17テーブルのRLSポリシーと整合trigger `done`
 - 参照: 要件02 §5、要件02 §3.3、要件02 §1 / 依存: T-M0-05 / サイズ: M
 - 完了条件:
   - 全17テーブルでRLSが有効化され、テストで別ユーザーのrowをselectできない・本人rowはselectできることを確認する（x_account経由所有のテーブルを含む）
   - news_itemsは認証済み全員select可、stripe_events / external_api_usage_eventsはanon/authenticatedからselect不可、認証クライアントからの直接insert/update/deleteが主要テーブルで拒否される
   - profiles.active_x_account_idへ他ユーザー所有のx_accountを設定するDB triggerの拒否をテストで確認する
 - メモ: ローカルSupabaseで2ユーザーを作成しanon keyクライアントで検証するRLSテストを整備する（リリース判定要件のRLS policy testの土台。要件01 §8）。
+  実装結果: `supabase/migrations/20260720000004_rls_policies.sql`。全17テーブルRLS有効化＋authenticated向けselectポリシー（x_account所有判定は`auth_owns_x_account()` security definer関数）。書き込みポリシーは作らずservice_role(BYPASSRLS)に委ねる＝ブラウザ直書き不可。§3.3のactive_x_account_id所有者検証triggerも実装。DBテスト`rls.db.test.ts`（5件）はpostgres接続から`set_config('role','authenticated')`＋`request.jwt.claims`のsub切替で検証（直接psqlのjwt claims方式）。
+  **重要な知見**: (1) RLSポリシーは**テーブルレベルGRANTが無いと評価前に権限拒否される**。ローカルSupabaseはmigration作成テーブルにauthenticatedのデフォルト権限を自動付与しないため、読み取り可15テーブルへ`grant select ... to authenticated`を明示（stripe_events/external_api_usage_eventsは付与せず完全拒否＝§5「不可」）。(2) `col in (...)`のNULL素通り（T-M0-05と同種）。**後続でテーブルを追加する場合、RLS有効化・selectポリシー・authenticatedへのgrant selectをセットで行うこと。**
 
 ### T-M0-07: seed（システム既定プロンプト・Storage bucket・コード定数マスタ） `todo`
 - 参照: 要件02 §6、要件02 §4.4、プロンプト設計書 §6.1、プロンプト設計書 §6.2、プロンプト設計書 §6.8、プロンプト設計書 §6.9、L-5 / 依存: T-M0-04 / サイズ: M
