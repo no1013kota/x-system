@@ -1,0 +1,184 @@
+import { randomUUID } from "node:crypto";
+
+import type { PoolClient } from "pg";
+
+import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/locks";
+import { withTransaction } from "../db/pool";
+import { getJobHandler, type JobKind } from "./handlers";
+
+/**
+ * Worker for a single job (要件04 §1/§4, ADR-0002). `leaseJob` performs the
+ * lease transaction; `runJob` wraps it, runs the kind handler, and finalizes.
+ * Heartbeat / stale recovery / retry are T-M0-13.
+ */
+
+export type LeaseOutcome =
+  | "leased"
+  | "not_found"
+  | "skipped_locked" // row locked by another worker (FOR UPDATE SKIP LOCKED)
+  | "skipped_conflict" // same-account/user running job (concurrency guard)
+  | "not_queued" // not queued or not yet due
+  | "canceled_missed"; // schedule-origin job past scheduled_for + 10min
+
+export interface LeasedJob {
+  id: string;
+  kind: JobKind;
+  attempt: number;
+  lockedBy: string;
+}
+
+export interface LeaseResult {
+  outcome: LeaseOutcome;
+  job?: LeasedJob;
+}
+
+/**
+ * Lease step (要件04 §4). Must run inside a transaction (the advisory locks are
+ * transaction-scoped and auto-release on commit/rollback).
+ */
+export async function leaseJob(
+  client: PoolClient,
+  jobId: string,
+  workerId: string,
+): Promise<LeaseResult> {
+  // 1. read job + owning user to derive lock keys
+  const meta = await client.query<{
+    x_account_id: string;
+    kind: JobKind;
+    user_id: string;
+  }>(
+    `select gj.x_account_id, gj.kind, xa.user_id
+       from generation_jobs gj
+       join x_accounts xa on xa.id = gj.x_account_id
+      where gj.id = $1`,
+    [jobId],
+  );
+  if (meta.rowCount === 0) return { outcome: "not_found" };
+  const { x_account_id, kind, user_id } = meta.rows[0];
+
+  // 2. advisory locks serialize per-account (and per-user for post_publish),
+  //    preventing write-skew where two workers both see "no running job".
+  await acquireXactLock(client, xAccountLockKey(x_account_id));
+  if (kind === "post_publish") {
+    await acquireXactLock(client, postPublishLockKey(user_id));
+  }
+
+  // 3. take the row with FOR UPDATE SKIP LOCKED
+  const locked = await client.query<{
+    status: string;
+    trigger: string;
+    attempt: number;
+    available_now: boolean;
+    schedule_expired: boolean;
+  }>(
+    `select status, trigger, attempt,
+            (available_at <= now()) as available_now,
+            (scheduled_for is not null
+               and now() > scheduled_for + interval '10 minutes') as schedule_expired
+       from generation_jobs
+      where id = $1
+      for update skip locked`,
+    [jobId],
+  );
+  if (locked.rowCount === 0) return { outcome: "skipped_locked" };
+  const row = locked.rows[0];
+
+  // schedule-origin post_generation past its window → cancel (要件04 §7.2)。
+  // schedule_missed 通知の作成は scheduler_tick（M4）が担う。
+  if (
+    kind === "post_generation" &&
+    row.trigger === "schedule" &&
+    row.status === "queued" &&
+    row.schedule_expired
+  ) {
+    await client.query(
+      `update generation_jobs set status = 'canceled', finished_at = now() where id = $1`,
+      [jobId],
+    );
+    return { outcome: "canceled_missed" };
+  }
+
+  if (row.status !== "queued" || !row.available_now) {
+    return { outcome: "not_queued" };
+  }
+
+  // 4. concurrency guard: another running job on this account?
+  const acctRunning = await client.query(
+    `select 1 from generation_jobs
+      where x_account_id = $1 and status = 'running' and id <> $2 limit 1`,
+    [x_account_id, jobId],
+  );
+  if ((acctRunning.rowCount ?? 0) > 0) return { outcome: "skipped_conflict" };
+  if (kind === "post_publish") {
+    const userPublishing = await client.query(
+      `select 1 from generation_jobs gj
+         join x_accounts xa on xa.id = gj.x_account_id
+        where xa.user_id = $1 and gj.kind = 'post_publish'
+          and gj.status = 'running' and gj.id <> $2 limit 1`,
+      [user_id, jobId],
+    );
+    if ((userPublishing.rowCount ?? 0) > 0) return { outcome: "skipped_conflict" };
+  }
+
+  // 5. lease
+  const leased = await client.query<{
+    id: string;
+    kind: JobKind;
+    attempt: number;
+    locked_by: string;
+  }>(
+    `update generation_jobs
+        set status = 'running', locked_at = now(), locked_by = $2,
+            attempt = attempt + 1, started_at = coalesce(started_at, now())
+      where id = $1
+      returning id, kind, attempt, locked_by`,
+    [jobId, workerId],
+  );
+  const j = leased.rows[0];
+  return {
+    outcome: "leased",
+    job: { id: j.id, kind: j.kind, attempt: j.attempt, lockedBy: j.locked_by },
+  };
+}
+
+export interface RunResult extends LeaseResult {
+  /** set only when a job was leased and its handler ran */
+  result?: "succeeded" | "failed";
+}
+
+/**
+ * Leases the job, runs its handler outside the lease transaction, then marks
+ * it succeeded or failed. Returns the lease outcome (and handler result when
+ * leased). Never throws for normal outcomes.
+ */
+export async function runJob(
+  jobId: string,
+  workerId: string = `worker-${randomUUID()}`,
+): Promise<RunResult> {
+  const lease = await withTransaction((c) => leaseJob(c, jobId, workerId));
+  if (lease.outcome !== "leased" || !lease.job) return lease;
+
+  const job = lease.job;
+  try {
+    await withTransaction((c) =>
+      getJobHandler(job.kind)({ jobId, kind: job.kind, workerId }, c),
+    );
+    await withTransaction((c) =>
+      c.query(
+        `update generation_jobs
+            set status = 'succeeded', finished_at = now(), progress_stage = null
+          where id = $1`,
+        [jobId],
+      ),
+    );
+    return { ...lease, result: "succeeded" };
+  } catch {
+    await withTransaction((c) =>
+      c.query(
+        `update generation_jobs set status = 'failed', finished_at = now() where id = $1`,
+        [jobId],
+      ),
+    );
+    return { ...lease, result: "failed" };
+  }
+}

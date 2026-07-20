@@ -186,13 +186,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `@sentry/nextjs` v10.66（Next16対応）。`src/lib/observability/redact.ts`（純粋なbeforeSend: Authorization/Cookie/token/secret/credential/api_key/prompt/base_md/instructions/user_opinion/contentを再帰マスク）、`sentry.ts`（initServerSentry/initClientSentry: DSN未設定でno-op・beforeSendにredact・captureServerException）、`errors.ts`（AppError＋toUserFacingError: 未知errは`internal_error`へ潰しstack/provider本文/causeを出さない）。計装: `src/instrumentation.ts`（register＋onRequestError）・`src/instrumentation-client.ts`（onRouterTransitionStart）。テスト10件（redaction・エラー変換・mock transportで捕捉→送信＋秘密のend-to-end除去）。dev（DSN空）でトップ表示を実機確認。全90件通過。
   注: `withSentryConfig`（source map upload等）は未導入。ソースマップ・トンネリングが必要になった段階で next.config を包む（M6リリース準備の候補）。`@sentry/nextjs`はdependencies。
 
-### T-M0-12: POST /api/jobs/run worker骨格（CRON_SECRET認証・202+after()・lease） `todo`
+### T-M0-12: POST /api/jobs/run worker骨格（CRON_SECRET認証・202+after()・lease） `done`
 - 参照: 要件04 §1、要件04 §4、要件05 §3、ADR-0002、要件01 §6、要件02 §3.8 / 依存: T-M0-09、T-M0-05 / サイズ: M
 - 完了条件:
   - Bearerなし・不一致は401、一致時はjob_id受領後202を即時返却し本処理がafter()で実行される（maxDuration=200設定済み）
   - ローカルDBテスト: queued jobがadvisory lock＋FOR UPDATE SKIP LOCKEDのlease transactionでrunning・attempt+1・locked_at/locked_by設定へ遷移する
   - 同一x_accountに別のrunning jobがある場合／同一userにrunning post_publishがある場合、何もせずcommitして202で終了しjobはqueuedのまま残る
 - メモ: kind別handlerはレジストリ化しM0ではプレースホルダ実装（即succeeded化するテスト用handler）。available_at <= now()検証、schedule起点post_generationのscheduled_for+10分超過チェック（canceled化）もlease内に実装する。
+  実装結果: `src/lib/jobs/auth.ts`（isValidCronAuth・定数時間比較・secret未設定は常に拒否）、`handlers.ts`（kind→handlerレジストリ・M0はno-opプレースホルダ）、`worker.ts`（`leaseJob`: 対象x_account/user取得→advisory lock〔x_account、post_publishはuser追加〕→FOR UPDATE SKIP LOCKED→schedule超過cancel/queued・due判定→同一account/同一user post_publishのrunning競合チェック→running/attempt+1/locked遷移。`runJob`: lease→handler→succeeded/failed）、`src/app/api/jobs/run/route.ts`（401/400/202+after()・runtime nodejs・maxDuration 200）。テスト: auth 3件＋route 3件（401/400/202・dispatch）＋worker DB 7件（lease遷移・not_found・account競合skip・post_publish競合skip・not_queued・schedule cancel・runJob成功）。全103件・lint/typecheck通過。
+  後続への注意: schedule_missed通知の作成はscheduler_tick（M4）。heartbeat/stale/retryはT-M0-13。stale確定時の終端処理（refund・kind別後始末）はT-M0-13で§4末尾に従い実装。
 
 ### T-M0-13: workerのheartbeat・stale判定・retry/backoff制御 `todo`
 - 参照: 要件04 §4、要件04 §5、要件02 §4.10、ADR-0002 / 依存: T-M0-12 / サイズ: M
