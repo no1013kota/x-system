@@ -234,13 +234,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/ai/types.ts`（TextGen契約・ProviderUsage・Citation。system[]/user/webSearch/jsonSchema/timeoutMs → provider/requestId/text/citations/usage/stopReason）、`src/lib/ai/anthropic.ts`（SDK非依存の中核: `AnthropicTextGen`・`buildAnthropicParams`〔system=SYS+base_mdをそのまま・最後の固定ブロックにcache_control ephemeral・可変値はmessagesのみ・webSearch時tools/なければjsonSchema→output_config〕・`extractCitations`・usage正規化・pause_turnループ〔同一generate内で最大2回・残30秒未満または上限超で`PauseTurnIncompleteError`(retryable)〕・`reduceWebSearchMaxUses`〔半減・下限1、4→2〕・注入可能な`RawCreateMessage`）、`src/lib/ai/anthropic-client.ts`（server-only、実`@anthropic-ai/sdk`配線、model/keyはenv、stateless）。`@anthropic-ai/sdk@^0.112.3`追加。検索ツールversionは`DEFAULT_WEB_SEARCH_TOOL_TYPE="web_search_20260209"`（アダプタ設定＝§5.1許容）。claude-apiスキルで`thinking:{type:"adaptive"}`/web_search_20260209/pause_turn継続法/prompt cachingを確認。テスト: モックcreateMessageで9件（正規化・pause_turn継続2回・上限超retryable・deadline<30s retryable・buildParams・maxUses縮小・citation重複排除）。全139件通過。
   後続への注意: OpenAI/Geminiアダプタ(T-M0-17)は同じTextGen契約・ProviderUsageを満たす。runGenerationパイプライン（parse→修復1回→charLimit→NG）とresolveProviderは後続（T-M0-18/19）。JSON修復callも「残30秒未満なら開始しない」deadline制御を`createDeadline`で共有する。生成パラメータ(temperature)・thinking設定はM1/M3のGEN実装でreq側から渡す設計余地を残した（現状buildParamsは未送信）。
 
-### T-M0-17: OpenAI/Geminiアダプタとusage正規化の統一 `todo`
+### T-M0-17: OpenAI/Geminiアダプタとusage正規化の統一 `done`
 - 参照: プロンプト設計書 §5.3、プロンプト設計書 §5.4、プロンプト設計書 §5.6、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
 - 完了条件:
   - OpenAIアダプタ: store:false・Responses APIのoutput itemsからtext・Web検索引用元・usage・request IDを抽出する（モックレスポンスで検証。output_textだけを保存せず引用を捨てない）
   - Geminiアダプタ: store=falseで各呼び出しが独立し、groundingメタデータからcitationsを抽出、generateContentフォールバックへの切替が設定で制御できる（モックで検証）
   - 3 providerのusageが要件02 §4.6のcalls要素（provider/model/request_id/stop_reason/token/検索回数/estimated_cost_usd等）へ同一の正規化型で変換される
 - メモ: 検索と構造化出力の併用可否はモデルごとに起動時検証するチェック関数を用意（要件01 §7）。SDK引数名は実装時点の公式型定義を正とする。
+  実装結果: `src/lib/ai/openai.ts`（`OpenAITextGen`中核: Responses API・store:false・instructions=SYS+base_md・output itemsからtext〔output_text優先〕/url_citation引用/web_search_call数/usage〔input/output/cached〕/id抽出）、`src/lib/ai/gemini.ts`（`GeminiTextGen`中核: contents+systemInstruction・groundingChunks[].web.{uri,title}引用・usageMetadata・responseId・finishReason。`useInteractions`＋`interactions`注入でInteractions/generateContentフォールバックを設定制御）、`src/lib/ai/normalize.ts`（`ProviderCall`=§4.6 calls要素・`toProviderCall`〔3provider共通のTextGenResult→ProviderCall。cache_hit=cacheRead>0, web_search_count=usage〕・`canCombineSearchAndStructuredOutput`〔既定false＝JSON指示+zod検証へ〕・`verifyTextProvider`〔key/model無なら`ProviderConfigError`, 暗黙切替なし〕）、server-only配線 `openai-client.ts`（openai@6.48.0）/`gemini-client.ts`（@google/genai@2.12.0 generateContent）。SDK型定義で形状確認、Geminiはai.google.dev対応。テスト: openai 5＋gemini 6＋normalize 6。全154件通過。
+  後続への注意: 3アダプタは同一TextGen契約＋`toProviderCall`で§4.6 calls配列へ正規化。estimated_cost_usdはモデル別価格表を持つ後続で算出（現状0）。Gemini Interactions APIの実配線は対応確認後に`interactions`へ追加。resolveProvider(T-M0-19)は`verifyTextProvider`と各`create*TextGen`を束ねる。JSON修復パイプライン(T-M0-18)は3アダプタ共通の`generate`を呼ぶ。
 
 ### T-M0-18: JSON修復付き生成パイプライン骨格 `todo`
 - 参照: プロンプト設計書 §5.1、プロンプト設計書 §7、要件04 §5、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
