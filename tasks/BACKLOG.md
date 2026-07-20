@@ -244,13 +244,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/ai/openai.ts`（`OpenAITextGen`中核: Responses API・store:false・instructions=SYS+base_md・output itemsからtext〔output_text優先〕/url_citation引用/web_search_call数/usage〔input/output/cached〕/id抽出）、`src/lib/ai/gemini.ts`（`GeminiTextGen`中核: contents+systemInstruction・groundingChunks[].web.{uri,title}引用・usageMetadata・responseId・finishReason。`useInteractions`＋`interactions`注入でInteractions/generateContentフォールバックを設定制御）、`src/lib/ai/normalize.ts`（`ProviderCall`=§4.6 calls要素・`toProviderCall`〔3provider共通のTextGenResult→ProviderCall。cache_hit=cacheRead>0, web_search_count=usage〕・`canCombineSearchAndStructuredOutput`〔既定false＝JSON指示+zod検証へ〕・`verifyTextProvider`〔key/model無なら`ProviderConfigError`, 暗黙切替なし〕）、server-only配線 `openai-client.ts`（openai@6.48.0）/`gemini-client.ts`（@google/genai@2.12.0 generateContent）。SDK型定義で形状確認、Geminiはai.google.dev対応。テスト: openai 5＋gemini 6＋normalize 6。全154件通過。
   後続への注意: 3アダプタは同一TextGen契約＋`toProviderCall`で§4.6 calls配列へ正規化。estimated_cost_usdはモデル別価格表を持つ後続で算出（現状0）。Gemini Interactions APIの実配線は対応確認後に`interactions`へ追加。resolveProvider(T-M0-19)は`verifyTextProvider`と各`create*TextGen`を束ねる。JSON修復パイプライン(T-M0-18)は3アダプタ共通の`generate`を呼ぶ。
 
-### T-M0-18: JSON修復付き生成パイプライン骨格 `todo`
+### T-M0-18: JSON修復付き生成パイプライン骨格 `done`
 - 参照: プロンプト設計書 §5.1、プロンプト設計書 §7、要件04 §5、要件02 §4.6 / 依存: T-M0-16 / サイズ: M
 - 完了条件:
   - 正常JSONでは修復callが呼ばれず、不正JSONではコードフェンス除去→再パース→修復指示付きprovider call 1回のみが実行される（モックproviderで呼び出し回数を検証）
   - 修復後もparse失敗の場合にInvalidProviderOutputError相当で失敗し、job retry回数（attempt）には含めない扱いになる
   - 全provider callの記録がusage.callsへ蓄積され、要件02 §4.6スキーマのzod検証を通る
 - メモ: runGeneration骨格（resolveProvider→assembleContext→generate→parseAndValidate→修復→文字数/NG検証フック→logUsage）を実装。文字数超過のGEN-FIX実行・NG照合・出典検証の本実装は生成機能マイルストーンで行い、M0はフックとIFまで。
+  実装結果: `src/lib/ai/parse.ts`（`stripCodeFence`・`parseAndValidate`〔生→フェンス除去の順にJSON.parse+zod検証〕）、`src/lib/ai/usage-schema.ts`（要件02 §4.6の`providerCallSchema`/`generationUsageSchema`）、`src/lib/ai/pipeline.ts`（`runTextGeneration`: generate→parseAndValidate→失敗時のみ`withRepairInstruction`付き修復call **1回のみ**→なお失敗で`InvalidProviderOutputError`〔retryable=false・蓄積usage同梱〕。全callを`toProviderCall`でusage.callsへ蓄積。`PostValidationHooks`〔enforceCharLimit/ngCheck〕はIFのみ・成功時に呼ぶ。latencyは注入可能なnow）。テスト: parse 7＋pipeline 5（正常=修復なし・フェンス=修復なし・不正→修復1回で成功・修復も失敗→非retryable例外・§4.6 zod検証・フック呼出）。全166件通過。
+  後続への注意: resolveProvider(T-M0-19)と`assembleContext`（context組み立て）を束ねてrunGenerationを完成させる。GEN-FIX短縮・NG照合・出典(sources)検証・下書き化はhooks本実装として生成機能(M1/M3)で。修復callはjob attemptに含めない（§5.6）— workerは`InvalidProviderOutputError`(retryable=false)を非再試行failedとして扱う。JSON修復のdeadline制御（残30秒未満なら修復callを開始しない）はrunGenerationへdeadline連携する際に追加。
 
 ### T-M0-19: resolveProvider（プラン→provider/キー解決） `todo`
 - 参照: PRD §8.2、プロンプト設計書 §1、プロンプト設計書 §5.1、要件01 §3.5、要件01 §7、要件02 §4.1、A-5 / 依存: T-M0-08、T-M0-17、T-M0-04 / サイズ: M
