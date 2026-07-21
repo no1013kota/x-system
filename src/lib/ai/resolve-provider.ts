@@ -14,7 +14,9 @@ import type { Provider } from "./types";
  * - text（GEN/LRN/SUGGEST/MD-MERGE）: standard/md=BYOK（ai_purpose_config.textのproviderの
  *   validなユーザーキー）、premium=運営 PREMIUM_TEXT_PROVIDER 固定（ユーザー設定に依存しない）。
  * - news: 運営 NEWS_TEXT_PROVIDER 固定。無効・未設定はエラー（別providerへ自動切替しない）。
- * - image: openai/googleのみ。standard/md=BYOK、premium=運営で利用可能なopenai/google。
+ * - image: openai/googleのみ。standard/md=BYOK、premium=ユーザー選択(openai/google)を運営キーで
+ *   解決（textと異なりimageはユーザー選択を尊重・要件02 §4.1/要件06）。未選択・無効値は利用可能な
+ *   運営providerへフォールバック。
  * BYOKキー不足/invalidは api_key_required 相当（ApiKeyRequiredError）。運営キー/モデル未設定は
  * サーバ設定エラー（ProviderConfigError）。
  */
@@ -197,13 +199,31 @@ export function resolveNewsKey(config: ResolveConfig): ResolvedKey {
   return operatorTextKey(config.newsTextProvider, config);
 }
 
-/** image（openai/googleのみ）。standard/md=BYOK、premium=運営で利用可能なopenai/google。 */
+/**
+ * image（openai/googleのみ）。standard/md=BYOK、premium=ユーザー選択(openai/google)を運営キーで解決。
+ * premiumのimageはtextと異なりユーザー選択を尊重する（要件02 §4.1・要件06）。
+ */
 export async function resolveImageKey(
   input: { plan: PlanId; userId: string },
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
   if (input.plan === "premium") {
-    // 運営キーが利用可能なopenai/googleから選ぶ（要件06 §3.2）。
+    // premiumのimageは運営キーを使うが、providerはユーザーがopenai/googleから選べる
+    //（要件02 §4.1・要件06。textの固定と異なりimageは選択を尊重する）。
+    const cfg = await getAiPurposeConfig(deps.client, input.userId);
+    if (cfg.image && isImageProvider(cfg.image)) {
+      const apiKey = deps.config.operatorApiKeys[cfg.image];
+      const model = deps.config.imageModels[cfg.image];
+      if (apiKey && model) {
+        return { provider: cfg.image, keySource: "operator", apiKey, model };
+      }
+      // ユーザーが選んだproviderの運営キー/モデルが未設定 → 別providerへ黙って切替せずサーバ設定エラー。
+      throw new ProviderConfigError(
+        `operator image provider ${cfg.image} is selected but its key/model is not configured`,
+      );
+    }
+    // 未選択、または保存値が画像provider(openai/google)でない場合は、運営キーが利用可能な
+    // provider（openai優先）へフォールバックする（premiumは常に画像生成できるようにする）。
     for (const provider of IMAGE_PROVIDERS) {
       const apiKey = deps.config.operatorApiKeys[provider];
       const model = deps.config.imageModels[provider];

@@ -12,12 +12,34 @@ import {
   type ResolveConfig,
 } from "./resolve-provider";
 
-/** A client that throws if queried — proves premium/news paths don't touch the DB. */
+/** A client that throws if queried — proves premium-text/news paths don't touch the DB. */
 const noDbClient = {
   query: () => {
     throw new Error("DB should not be queried on this path");
   },
 } as unknown as PoolClient;
+
+/**
+ * A client that returns a profile row with the given ai_purpose_config.
+ * Used for premium image, which honors the user's openai/google selection.
+ */
+function profileClient(
+  aiPurposeConfig: Record<string, unknown> | null,
+): PoolClient {
+  return {
+    query: async (sql: string) => {
+      if (/from profiles/.test(sql)) {
+        return {
+          rows:
+            aiPurposeConfig === null
+              ? []
+              : [{ ai_purpose_config: aiPurposeConfig }],
+        };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  } as unknown as PoolClient;
+}
 
 const decrypt = () => {
   throw new Error("decrypt should not be called on operator paths");
@@ -114,25 +136,58 @@ describe("resolveNewsKey — operator, no implicit switch", () => {
   });
 });
 
-describe("resolveImageKey — premium picks an available operator openai/google", () => {
-  it("prefers openai when both are available", async () => {
+describe("resolveImageKey — premium honors the user's openai/google selection", () => {
+  it("uses the user-selected provider (google) on the operator key", async () => {
     const key = await resolveImageKey(
       { plan: "premium", userId: "u1" },
-      { client: noDbClient, decrypt, config: config() },
+      { client: profileClient({ image: "google" }), decrypt, config: config() },
     );
-    expect(key).toMatchObject({ provider: "openai", keySource: "operator", model: "o-img" });
+    expect(key).toMatchObject({
+      provider: "google",
+      keySource: "operator",
+      model: "g-img",
+    });
   });
 
-  it("falls back to google when openai has no operator key", async () => {
+  it("uses the user-selected provider (openai)", async () => {
     const key = await resolveImageKey(
       { plan: "premium", userId: "u1" },
-      {
-        client: noDbClient,
-        decrypt,
-        config: config({ operatorApiKeys: { google: "op-google" } }),
-      },
+      { client: profileClient({ image: "openai" }), decrypt, config: config() },
     );
-    expect(key.provider).toBe("google");
+    expect(key.provider).toBe("openai");
+    expect(key.keySource).toBe("operator");
+  });
+
+  it("falls back to an available operator provider (openai) when unselected", async () => {
+    const key = await resolveImageKey(
+      { plan: "premium", userId: "u1" },
+      { client: profileClient({ image: null }), decrypt, config: config() },
+    );
+    expect(key.provider).toBe("openai");
+  });
+
+  it("falls back when the stored value is not an image provider", async () => {
+    const key = await resolveImageKey(
+      { plan: "premium", userId: "u1" },
+      { client: profileClient({ image: "anthropic" }), decrypt, config: config() },
+    );
+    expect(key.provider).toBe("openai");
+  });
+
+  it("throws ProviderConfigError when the selected provider's operator key/model is unconfigured", async () => {
+    await expect(
+      resolveImageKey(
+        { plan: "premium", userId: "u1" },
+        {
+          client: profileClient({ image: "google" }),
+          decrypt,
+          config: config({
+            operatorApiKeys: { openai: "op-openai" },
+            imageModels: { openai: "o-img" },
+          }),
+        },
+      ),
+    ).rejects.toBeInstanceOf(ProviderConfigError);
   });
 
   it("throws ProviderConfigError when no operator image provider is configured", async () => {
@@ -140,9 +195,9 @@ describe("resolveImageKey — premium picks an available operator openai/google"
       resolveImageKey(
         { plan: "premium", userId: "u1" },
         {
-          client: noDbClient,
+          client: profileClient({ image: null }),
           decrypt,
-          config: config({ operatorApiKeys: { anthropic: "op-anthropic" } }),
+          config: config({ operatorApiKeys: { anthropic: "op-anthropic" }, imageModels: {} }),
         },
       ),
     ).rejects.toBeInstanceOf(ProviderConfigError);
