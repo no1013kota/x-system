@@ -23,10 +23,6 @@ describe("requestKey", () => {
     expect(requestKey("u", "t")).toBe(requestKey("u", "t"));
   });
 
-  it("generates a unique token when none is given", () => {
-    const a = requestKey("u");
-    const b = requestKey("u");
-    expect(a).not.toBe(b);
-    expect(a.startsWith("u:")).toBe(true);
-  });
+  // token is required (no server-side default) so idempotency is not broken:
+  // a retry must pass the same client-generated token to get the same key.
 });

@@ -216,6 +216,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - 子job用の決定的冪等key（parent:{parent_job_id}:{kind}:{draft_id}）とユーザー操作用request_key（ユーザーIDprefix付き）の生成ヘルパがユニットテストを通る
 - メモ: Server Action/API Routeのafter()から呼ぶ手動dispatch、親workerからの連鎖dispatch、tickからの一括dispatchの3経路すべてが同一ヘルパを使う。未管理のfire-and-forget Promiseを作らない実装にする。
   実装結果: `src/lib/jobs/dispatch.ts`（dispatchJob: `${APP_BASE_URL}/api/jobs/run`へBearer付きPOST。202受領で`{ok:true}`、非2xx/transport失敗/設定不足は例外を投げず`{ok:false}`。ジョブ行に触れないのでqueuedのまま残りscheduler_tickが回収）、`src/lib/jobs/keys.ts`（childJobKey=`parent:{parent}:{kind}:{draft}`、requestKey=`{userId}:{token}`）。テスト: dispatch 5件（fetch mock: URL/method/header/body・202・非2xx・transport失敗・設定不足）＋keys 4件。全122件通過。3経路（手動after()/連鎖/tick一括）はこのdispatchJobを呼ぶ。
+  是正（2026-07-22, review-cron-claim-followup）: `requestKey(userId, token)`の既定値`= randomUUID()`を撤去し`token`を必須化。request_keyは画面（クライアント）生成UUIDで再送時も同値を使う仕様（要件04 §3・要件05 §12）のため、サーバ側で毎回新規UUIDを生成する既定値は冪等性を壊すfootgun（レビュー指摘）。実利用元は無くテストのみ（keysの「no-arg時に毎回別key」テストを削除）。
 
 ### T-M0-15: cron 4 route骨格（時間窓advisory lockとtick回収dispatch） `done`
 - 参照: 要件04 §6、要件04 §1、要件05 §3、運用メモ launchd-to-vercel-cron §2、ADR-0002 / 依存: T-M0-09、T-M0-13、T-M0-14 / サイズ: M

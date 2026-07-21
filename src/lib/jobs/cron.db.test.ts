@@ -157,7 +157,9 @@ describe("cron window claim & scheduler tick", () => {
   });
 
   it("scheduler tick catch-up: dispatches leftover queued jobs (scheduled_for→created_at) and runs stale recovery", async () => {
-    async function makeXid(c: PoolClient): Promise<string> {
+    async function makeXid(
+      c: PoolClient,
+    ): Promise<{ uid: string; xid: string }> {
       const uid = randomUUID();
       await c.query(
         `insert into auth.users (id, instance_id, aud, role, email)
@@ -173,12 +175,12 @@ describe("cron window claim & scheduler tick", () => {
          values ($1, $2, 'h', 'n', 'byok') returning id`,
         [uid, `x-${randomUUID()}`],
       );
-      return rows[0].id;
+      return { uid, xid: rows[0].id };
     }
 
-    const { xid, earlySched, lateSched, noSched, staleId } =
+    const { uid, earlySched, lateSched, noSched, staleId } =
       await withTransaction(async (c) => {
-        const xid = await makeXid(c);
+        const { uid, xid } = await makeXid(c);
         // two schedule jobs with different scheduled_for + one manual (no schedule)
         const lateSched = (
           await c.query<{ id: string }>(
@@ -209,7 +211,7 @@ describe("cron window claim & scheduler tick", () => {
             [xid],
           )
         ).rows[0].id;
-        return { xid, earlySched, lateSched, noSched, staleId };
+        return { uid, earlySched, lateSched, noSched, staleId };
       });
 
     try {
@@ -235,8 +237,10 @@ describe("cron window claim & scheduler tick", () => {
       );
       expect(rec.rows[0].status).toBe("queued");
     } finally {
+      // auth.users → profiles → x_accounts → generation_jobs は全て on delete cascade
+      // なので、auth.users を消せばこのテストが作った行をすべて掃除できる。
       await withTransaction((c) =>
-        c.query(`delete from x_accounts where id = $1`, [xid]),
+        c.query(`delete from auth.users where id = $1`, [uid]),
       );
     }
   });
