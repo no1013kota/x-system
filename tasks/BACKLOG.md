@@ -294,13 +294,17 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   設計判断: leaseは「行の値」（advisory/session lockでない）＝Supavisor transaction modeプーラ安全。refresh HTTP中はDB接続を保持しない（各操作をpool.queryで実行、要件01 §3.2/§6）。lock ID一致条件でstale回収と衝突しても他実行の更新を破壊しない。invalid_grantのみexpired扱い（401/5xxは再連携化せずlease解除＋retryable伝播）。テスト: unit 11（鮮度/1回refresh/rotated維持/invalid_grant→expired/scope不足/transient解除/no_refresh/既expired/未接続/待機再読込/待機timeout）＋DB 4（並行1回・stale回収・鮮度skip・invalid_grant→expired）。全222件・lint/typecheck通過。doc: 要件05 §4.3が既に本設計を規定・実装は準拠のためdocs変更なし。
   後続への注意: worker/Server Actionは投稿前に`getValidXAccessToken(xAccountId)`で有効tokenを取得（T-M0-22のX投稿クライアントが使用）。BYOK client資格情報解決とexpired時の再連携通知の実配線はX連携/通知MSで追加。`onExpired`は現状フックのみ。
 
-### T-M0-22: X投稿・読取クライアントとX_POSTING_MODE=dry_run動作 `todo`
+### T-M0-22: X投稿・読取クライアントとX_POSTING_MODE=dry_run動作 `done`
 - 参照: PRD §8.1、要件04 §5、要件04 §10、要件01 §3.1、K-1 / 依存: T-M0-21 / サイズ: M
 - 完了条件:
   - X_POSTING_MODE=dry_runでは投稿・削除のHTTP呼び出しが一切発生せず、dry-runであることを明示した擬似結果（擬似tweet_id）が返り、実tweet_id・利用枠を作らない
   - 429/5xx/networkで指数backoff+jitterの最大2回retry後に失敗し、401/403はretryせず失効エラーへ正規化される（モックで検証）
   - POST /2/tweets（reply連結in_reply_to・media_ids指定）・DELETE・GET /2/users/me・tweet読取（public/non-public metrics fields指定）の各リクエスト構築と応答の正規化がテストを通る
 - メモ: media uploadはIF定義とdry_run挙動まで（実装詳細は投稿実行マイルストーン）。X API呼び出しのexternal_api_usage_events記録は台帳機能実装時に接続するため、request ID・数量を返す共通レスポンス型だけ整えておく。実装時にX API公式ドキュメントで最新仕様を確認する。
+  実装結果: `src/lib/x/client.ts`（純粋・注入可能: `createPost`〔text/reply.in_reply_to_tweet_id/media.media_ids/quote_tweet_id〕・`deletePost`・`getMe`・`getTweetMetrics`〔ids＋tweet.fields=public_metrics,non_public_metrics〕・`uploadMedia`〔IF＋dry_run擬似media id、live未実装=投稿実行MS〕。共通メタ`XApiMeta`〔requestId・quantity・dryRun〕を全応答で返す。`callX`がretry込みHTTP: `../jobs/retry`の`isRetryable`/`backoffMs`/`shouldRetry`/`MAX_ATTEMPTS`を再利用し429/5xx/networkを最大2回backoff+jitter retry、401/403は`XApiError`(kind='auth')＝失効エラーへ正規化しretryしない。`X_API_BASE_URL=https://api.x.com/2`）。`client-server.ts`（server-only: global fetch→`XHttp`〔request IDをx-transaction-id/x-request-idヘッダから取得〕・`xPostingMode`=env.X_POSTING_MODE・`xClientDeps`）。公式仕様確認: docs.x.comでPOST /2/tweets body形状（text/reply/media/quote_tweet_id・応答data.id）を確認（2026-07-22）。
+  仕様判断（doc反映済み）: §10の「dry_runではX APIを呼ばず」を「投稿・削除・media upload（書き込み）を抑止、読取（users/me・tweet metrics）はtweet/枠を作らないためmodeに依らず実行」と明確化（要件04 §10更新）。
+  テスト: client unit 12（dry_run write抑止3・request構築/正規化5〔create body・省略・delete・me・metrics〕・retry 4〔5xx回復・network回復・429上限失敗・401非retry正規化〕）。全234件・lint/typecheck通過。
+  後続への注意: 投稿worker（post_publish, M4）は`getValidXAccessToken`(T-M0-21)で有効tokenを取得→`createPost`/`deletePost`をxClientDepsで呼ぶ。media upload liveと`external_api_usage_events`記録（返却request ID・quantityを使用）は投稿実行/台帳MSで接続。tweet読取のmetricsはmetrics_collector（M5）が使用。
 
 ## M1: 認証・課金
 

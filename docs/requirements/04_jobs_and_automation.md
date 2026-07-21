@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.4 |
-| 更新日 | 2026-07-21 |
+| 更新日 | 2026-07-22 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -184,7 +184,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 
 post作成でtimeout、接続切断、5xx等により作成成否が不明な場合は同じ本文を再送しない。対象アカウントの直近投稿を取得し、本文、作成時刻、reply先、quote先が一致する候補が1件だけならそのtweet_idを保存して継続する。候補なし・複数は`post_state_unknown`でfailedにし、X上の確認を促す。
 
-`X_POSTING_MODE = dry_run`ではX APIを呼ばず、実tweet_idも利用枠も作らない。UIへ明示的にdry-run結果を返す。
+`X_POSTING_MODE = dry_run`では投稿・削除・media uploadのX API書き込みを行わず、実tweet_idも利用枠も作らず、UIへ明示的にdry-run結果（擬似tweet_id）を返す。実績取得（`/2/users/me`・tweet読取）はtweet・利用枠を作らないためmodeに依らず実行する。
 
 ## 11. スレッド途中失敗
 
