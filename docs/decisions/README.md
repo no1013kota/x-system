@@ -48,3 +48,4 @@ Acceptedになった仕様は、同じ作業単位で要件詳細へ反映する
 |---|---|---|
 | [ADR-0001](./0001-initial-infrastructure-plan.md) | Accepted（一部ADR-0002で置換） | 初期launchdからVercel Cronへの移行、Vercel Pro + Supabase Free、Supabase Proへの移行条件を定義 |
 | [ADR-0002](./0002-job-dispatch-fanout.md) | Accepted | ジョブ実行を「1 job = 1 Function呼び出し」のdispatch fan-outへ変更。scheduler_tickを5分間隔化、Function上限200秒（H-1/H-2レビュー対応） |
+| [ADR-0003](./0003-cron-window-lease.md) | Accepted | 定時トリガーの時間窓重複防止を、transaction modeプーラで保持できないセッションadvisory lockから`cron_runs` lease行方式へ変更（review-m0-12-to-20対応） |

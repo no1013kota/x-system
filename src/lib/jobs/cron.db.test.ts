@@ -7,12 +7,13 @@ import { closePool, getPool, withTransaction } from "../db/pool";
 import { runSchedulerTick, withCronWindowLock } from "./cron";
 
 /**
- * DB integration tests for the cron skeleton (T-M0-15): the time-window advisory
- * lock prevents concurrent duplicate runs, and runSchedulerTick dispatches
- * leftover queued jobs in order and invokes stale recovery. Skips without the
- * local Supabase stack.
+ * DB integration tests for the cron skeleton (T-M0-15, ADR-0003): the cron_runs
+ * lease guarantees a given job+time-window runs at most once — including across
+ * post-completion HTTP retries / duplicate Cron invocations — and
+ * runSchedulerTick dispatches leftover queued jobs in order and invokes stale
+ * recovery. Skips without the local Supabase stack.
  */
-describe("cron window lock & scheduler tick", () => {
+describe("cron window lease & scheduler tick", () => {
   let available = false;
 
   beforeAll(async () => {
@@ -31,40 +32,86 @@ describe("cron window lock & scheduler tick", () => {
     if (!available) ctx.skip();
   });
 
-  const deferred = () => {
-    let resolve!: () => void;
-    const promise = new Promise<void>((r) => (resolve = r));
-    return { promise, resolve };
-  };
+  async function cleanupCronRuns(): Promise<void> {
+    await withTransaction((c) =>
+      c.query(`delete from cron_runs where window_key like 'test-%'`),
+    );
+  }
 
-  it("a second run of the same window cannot acquire the lock (skips)", async () => {
+  it("runs a job+window at most once (duplicate and post-completion retries skip)", async () => {
     const windowKey = `test-${randomUUID()}`;
-    const gate = deferred();
-    // first run holds the lock until we release the gate
-    const first = withCronWindowLock("scheduler_tick", windowKey, async () => {
-      await gate.promise;
-      return "first";
-    });
-    // give the first run a moment to acquire
-    await new Promise((r) => setTimeout(r, 50));
-    const second = await withCronWindowLock(
-      "scheduler_tick",
-      windowKey,
-      async () => "second",
-    );
-    expect(second.ran).toBe(false); // blocked by the first holder
-    gate.resolve();
-    const firstResult = await first;
-    expect(firstResult.ran).toBe(true);
-    expect(firstResult.result).toBe("first");
+    try {
+      let calls = 0;
+      const first = await withCronWindowLock(
+        "scheduler_tick",
+        windowKey,
+        async () => {
+          calls += 1;
+          return "first";
+        },
+      );
+      expect(first.ran).toBe(true);
+      expect(first.result).toBe("first");
+      expect(calls).toBe(1);
 
-    // once released, the window can be acquired again
-    const third = await withCronWindowLock(
-      "scheduler_tick",
-      windowKey,
-      async () => "third",
-    );
-    expect(third.ran).toBe(true);
+      // a second run of the SAME window after completion must NOT run again
+      // (guards against launchd HTTP retries / duplicate Cron invocations)
+      const second = await withCronWindowLock(
+        "scheduler_tick",
+        windowKey,
+        async () => {
+          calls += 1;
+          return "second";
+        },
+      );
+      expect(second.ran).toBe(false);
+      expect(second.result).toBeUndefined();
+      expect(calls).toBe(1); // fn was not invoked again
+
+      // the finished_at is recorded on the successful run
+      const row = await withTransaction((c) =>
+        c.query<{ finished_at: string | null }>(
+          `select finished_at from cron_runs where job_name = 'scheduler_tick' and window_key = $1`,
+          [windowKey],
+        ),
+      );
+      expect(row.rows[0].finished_at).not.toBeNull();
+
+      // the same window under a different job name is independent
+      const otherJob = await withCronWindowLock(
+        "news_fetch",
+        windowKey,
+        async () => "other",
+      );
+      expect(otherJob.ran).toBe(true);
+
+      // a different window runs
+      const third = await withCronWindowLock(
+        "scheduler_tick",
+        `test-${randomUUID()}`,
+        async () => "third",
+      );
+      expect(third.ran).toBe(true);
+    } finally {
+      await cleanupCronRuns();
+    }
+  });
+
+  it("concurrent runs of the same window: exactly one wins", async () => {
+    const windowKey = `test-${randomUUID()}`;
+    try {
+      let calls = 0;
+      const run = () =>
+        withCronWindowLock("scheduler_tick", windowKey, async () => {
+          calls += 1;
+          return "x";
+        });
+      const [a, b] = await Promise.all([run(), run()]);
+      expect([a.ran, b.ran].filter(Boolean)).toHaveLength(1);
+      expect(calls).toBe(1);
+    } finally {
+      await cleanupCronRuns();
+    }
   });
 
   it("dispatches leftover queued jobs in scheduled_for→created_at order and runs stale recovery", async () => {

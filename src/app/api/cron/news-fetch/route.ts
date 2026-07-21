@@ -4,6 +4,7 @@ import { hourWindowKey, withCronWindowLock } from "@/lib/jobs/cron";
 /** ニュース取得cron（要件04 §6, N-1）。本処理（6分野リサーチ）はM4で実装。 */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 200;
 
 export async function GET(request: Request): Promise<Response> {
   if (!isValidCronAuth(request.headers.get("authorization"))) {

@@ -5,7 +5,13 @@ import type { PoolClient } from "pg";
  * worker leases so write-skew cannot let two workers run conflicting jobs:
  * - per X account (all kinds serialized)
  * - per user for post_publish
- * - per cron job + time window
+ *
+ * These are transaction-scoped (`pg_advisory_xact_lock`), released automatically
+ * at transaction end, so they are safe on the Supavisor transaction-mode pooler.
+ * Cron time-window de-duplication does NOT use advisory locks — it needs to span
+ * a whole handler run across multiple transactions, which session-scoped locks
+ * cannot do on a transaction-mode pooler; it uses the `cron_runs` lease row
+ * instead (要件01 §3.2/§6, ADR-0003, `src/lib/jobs/cron.ts`).
  *
  * Keys are the two-int form `pg_advisory_xact_lock(classid, objid)`: classid
  * namespaces the lock category, objid is a deterministic 32-bit hash of the id.
@@ -15,7 +21,6 @@ import type { PoolClient } from "pg";
 export const LOCK_CLASS = {
   xAccount: 1,
   postPublish: 2,
-  cron: 3,
 } as const;
 
 export type LockKey = readonly [classid: number, objid: number];
@@ -42,10 +47,6 @@ export function postPublishLockKey(userId: string): LockKey {
   return [LOCK_CLASS.postPublish, hash32(userId)];
 }
 
-export function cronWindowLockKey(jobName: string, windowKey: string): LockKey {
-  return [LOCK_CLASS.cron, hash32(`${jobName}:${windowKey}`)];
-}
-
 /**
  * Acquires a transaction-scoped advisory lock. Blocks until granted and is
  * released automatically when the surrounding transaction ends (commit or
@@ -56,34 +57,6 @@ export async function acquireXactLock(
   key: LockKey,
 ): Promise<void> {
   await client.query("select pg_advisory_xact_lock($1::int4, $2::int4)", [
-    key[0],
-    key[1],
-  ]);
-}
-
-/**
- * Tries to acquire a SESSION-scoped advisory lock without blocking. Returns
- * true if granted. The lock is held on this connection until `advisoryUnlock`
- * or the connection is released — used to guard a whole cron handler run
- * against concurrent/duplicate starts for the same time window (要件04 §6).
- */
-export async function tryAdvisoryLock(
-  client: PoolClient,
-  key: LockKey,
-): Promise<boolean> {
-  const res = await client.query<{ locked: boolean }>(
-    "select pg_try_advisory_lock($1::int4, $2::int4) as locked",
-    [key[0], key[1]],
-  );
-  return res.rows[0]?.locked === true;
-}
-
-/** Releases a session-scoped advisory lock acquired with `tryAdvisoryLock`. */
-export async function advisoryUnlock(
-  client: PoolClient,
-  key: LockKey,
-): Promise<void> {
-  await client.query("select pg_advisory_unlock($1::int4, $2::int4)", [
     key[0],
     key[1],
   ]);

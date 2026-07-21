@@ -2,13 +2,13 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
-| 更新日 | 2026-07-20 |
+| バージョン | v1.2 |
+| 更新日 | 2026-07-21 |
 | 関連 | [システム構成](../requirements/01_system_architecture.md)／[ジョブ・自動実行](../requirements/04_jobs_and_automation.md) |
 
 ## 1. 方針
 
-定時処理の本体はVercel上の`/api/cron/*`に置き、初期は常時稼働Macの`launchd`、移行後はVercel Cronが同じendpointを呼ぶ。DB job、冪等key、advisory lock、retry規則はトリガーに依存させない。
+定時処理の本体はVercel上の`/api/cron/*`に置き、初期は常時稼働Macの`launchd`、移行後はVercel Cronが同じendpointを呼ぶ。DB job、冪等key、時間窓lease（`cron_runs`）・worker advisory lock、retry規則はトリガーに依存させない。
 
 初期のMacはtimezoneを`Asia/Tokyo`に固定し、スリープを無効化する。ユーザーloginに依存しない`LaunchDaemon`を基本とし、開発者個人の検証だけ`LaunchAgent`を許可する。秘密値はplistへ直書きせずmacOS Keychainまたは所有者だけが読める秘密ファイルから取得する。
 
@@ -23,7 +23,7 @@
 | `metrics_collector` | 毎時00分 | `/api/cron/metrics-collector` |
 | `follower_snapshot` | 毎時10分 | `/api/cron/follower-snapshot` |
 
-呼び出しは`Authorization: Bearer ${CRON_SECRET}`を付ける。接続timeoutは10秒、request全体のtimeoutはFunction上限（200秒）より長い210秒以上とする。timeout・名前解決・5xxは30秒、60秒後に最大2回再試行し、初回を含む3回すべて失敗したらmacOSのローカルlogへ記録して監視対象とする。HTTP redirectは成功扱いにしない。再試行時の重複はhandlerのlockと冪等keyで抑止する。
+呼び出しは`Authorization: Bearer ${CRON_SECRET}`を付ける。接続timeoutは10秒、request全体のtimeoutはFunction上限（200秒）より長い210秒以上とする。timeout・名前解決・5xxは30秒、60秒後に最大2回再試行し、初回を含む3回すべて失敗したらmacOSのローカルlogへ記録して監視対象とする。HTTP redirectは成功扱いにしない。再試行時の重複はhandlerの時間窓lease（`cron_runs`）と冪等keyで抑止する（完了後の再試行でも同一窓は再実行しない）。
 
 Macの停止・スリープ・回線断中は定時性を保証できない。復帰時に予定から10分を超えた投稿slotを遡って投稿せず、`schedule_missed`として通知する。
 
@@ -40,8 +40,8 @@ Macの停止・スリープ・回線断中は定時性を保証できない。�
 
 1. Vercel projectへ初期と同じ`CRON_SECRET`が設定済みであることを確認する。
 2. `vercel.json`へ次の4 scheduleを追加してproductionへdeployする。Vercel CronはUTCであることに注意する。
-3. Vercel Dashboardで4 jobが登録され、手動HTTP呼び出しで2xxとDB上のlock・処理結果を確認する。
-4. Vercel Cronの初回実行をlogで確認する。切り替え中にlaunchdと重複しても、handlerの時間窓lockと冪等keyで外部処理を重複させない。
+3. Vercel Dashboardで4 jobが登録され、手動HTTP呼び出しで2xxとDB上のlease（`cron_runs`）・処理結果を確認する。
+4. Vercel Cronの初回実行をlogで確認する。切り替え中にlaunchdと重複しても、handlerの時間窓lease（`cron_runs`）と冪等keyで外部処理を重複させない。
 5. 初回確認直後に`launchctl bootout`で4 jobを停止し、自動再読込設定も無効化する。
 6. 24時間、cron実行log、`schedule_missed`、queued件数、最古queued経過時間を監視して移行完了とする。
 

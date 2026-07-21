@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-20 |
-| 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md) |
+| バージョン | v1.4 |
+| 更新日 | 2026-07-21 |
+| 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-lease.md) |
 
 ## 1. 実行モデル
 
@@ -105,7 +105,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 metricsはXアカウントごとにtweet_idを最大100件へまとめ、異なるuser tokenを同じrequestへ混ぜない。metrics/followerの外部requestは最大10並列とし、Function deadlineで未開始分を次回へ残す。
 
-launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複・並行起動に備え、各handlerは`job名 + 対象時刻窓`のDB advisory lockまたは同等のleaseを最初に取得し、取得できなければ処理済み相当の2xxを返す。`news_fetch`は分野単位にも冪等keyを持ち、同じ時間窓のAIリサーチを重複実行しない。Vercel Cron移行後も呼び出し自体の再試行をVercelへ依存しない。
+launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複・並行起動に備え、各handlerは`job名 + 対象時刻窓`のleaseを最初に取得し、取得できなければ処理済み相当の2xxを返す。leaseは`cron_runs`テーブル（`unique (job_name, window_key)`）へ`insert ... on conflict do nothing`する方式で、行を確保できた起動だけが本処理を実行する。Supavisor transaction modeプーラではセッションscope advisory lockがcheckout間で保持されずハンドラ全体をまたげないため、advisory lockは用いない（要件01 §3.2/§6、ADR-0003）。一度確保した時間窓は完了後も再実行しない（HTTP再試行・重複Cron起動での二重実行を防ぐ）。`news_fetch`は分野単位にも冪等keyを持ち、同じ時間窓のAIリサーチを重複実行しない。Vercel Cron移行後も呼び出し自体の再試行をVercelへ依存しない。
 
 ## 7. スロットenqueue
 

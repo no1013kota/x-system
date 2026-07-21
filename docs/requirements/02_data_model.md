@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-20 |
+| バージョン | v1.4 |
+| 更新日 | 2026-07-21 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -455,6 +455,24 @@ Indexes: (`user_id`, `occurred_at desc`), (`provider`, `operation`, `occurred_at
 
 RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、token、外部レスポンス本文は保存しない。明細は`occurred_at`から40日保持し、期限後にcleanupする（前月分の月次集計・実測分析は翌月10日までにSQLで実施する。要件01 §9）。
 
+### 3.18 `cron_runs`
+
+定時トリガーの「`job名 + 時間窓`を高々一度だけ実行」を保証するleaseテーブル（要件04 §6、ADR-0003）。Supavisor transaction modeプーラではセッションscope advisory lockが接続checkout間で保持されないため、unique制約付きのlease行で重複起動・完了後の再試行を防ぐ。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`） |
+| `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
+| `started_at` | `timestamptz` | not null default now() | lease確保時刻 |
+| `finished_at` | `timestamptz` | null | 本処理の正常完了時刻。失敗・中断時はnullのまま |
+
+Constraints: `unique (job_name, window_key)`（同一窓の重複claimを防ぐ。`insert ... on conflict do nothing`で行を確保できた起動だけが本処理を実行する）
+
+Indexes: `started_at`（保持cleanup用）
+
+RLS: select/writeともservice roleのみ。行は起動ごとに増えるため`started_at`から一定期間で`scheduler_tick`がcleanupする（M4、要件01 §9）。
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -686,6 +704,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | `notifications` | `user_id = auth.uid()` | Server only |
 | `stripe_events` | 不可 | service roleのみ |
 | `external_api_usage_events` | 不可 | service roleのみ |
+| `cron_runs` | 不可 | service roleのみ |
 
 暗号化envelope（`x_accounts`のtoken類、`user_api_keys.credentials_ciphertext`）は行単位RLSにより本人のselect結果へ含まれ得る。復号鍵（`APP_ENCRYPTION_KEY`）はServer onlyであり平文はブラウザへ返さないため、ciphertextの露出は受容済みリスクとする（カラム分離・カラム単位GRANTはMVPでは行わない）。
 

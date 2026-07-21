@@ -1,18 +1,11 @@
-import type { PoolClient } from "pg";
-
-import {
-  advisoryUnlock,
-  cronWindowLockKey,
-  tryAdvisoryLock,
-} from "../db/locks";
-import { getPool, withTransaction } from "../db/pool";
+import { withTransaction } from "../db/pool";
 import { dispatchJob, type DispatchResult } from "./dispatch";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
 
 /**
- * 定時トリガー（cron）の共通部分（要件04 §6, 運用メモ §2, ADR-0002）。
+ * 定時トリガー（cron）の共通部分（要件04 §6, 運用メモ §2, ADR-0002, ADR-0003）。
  * 各分野の本処理（news取得・slot enqueue・metrics収集・follower保存）は各機能
- * マイルストーンで実装し、ここでは時間窓ロックと scheduler_tick の回収骨格のみ。
+ * マイルストーンで実装し、ここでは時間窓 lease と scheduler_tick の回収骨格のみ。
  */
 
 function pad(n: number): string {
@@ -33,35 +26,49 @@ export function fiveMinWindowKey(now: Date): string {
 }
 
 export interface CronLockResult<T> {
-  /** ロックを取得して本処理を実行したら true。二重起動で取得できなければ false。 */
+  /** lease行を確保して本処理を実行したら true。二重起動/再試行で確保できなければ false。 */
   ran: boolean;
   result?: T;
 }
 
 /**
- * 同一 job名+時間窓 のセッションadvisory lockを取得してから `fn` を実行する。
- * 取得できなければ（同一窓が既に走行中なら）本処理を実行せず ran:false を返す
- * ＝呼び出し元は処理済み相当の2xxを返せる。lockは終了時に必ず解放する。
+ * `job名 + 時間窓` の lease行（`cron_runs`）を確保してから `fn` を実行する
+ * （要件04 §6, ADR-0003）。`(job_name, window_key)` の unique 制約に対する
+ * `insert ... on conflict do nothing` で「同一時間窓を高々一度だけ実行」を保証する。
+ * 確保できなければ（並行起動でも、完了後の HTTP 再試行・重複 Cron 起動でも）本処理を
+ * 実行せず ran:false を返す＝呼び出し元は処理済み相当の 2xx を返せる。
+ *
+ * Supavisor transaction mode プーラ上でも安全: 接続を保持せず、claim は単一 transaction
+ * 内で完結し、`fn` は自前で（`withTransaction` 等で）都度接続を取得する
+ * （要件01 §3.2/§6）。セッションscope advisory lock は checkout 間で保持されないため使わない。
  */
 export async function withCronWindowLock<T>(
   jobName: string,
   windowKey: string,
-  fn: (client: PoolClient) => Promise<T>,
+  fn: () => Promise<T>,
 ): Promise<CronLockResult<T>> {
-  const key = cronWindowLockKey(jobName, windowKey);
-  const client = await getPool().connect();
-  try {
-    const locked = await tryAdvisoryLock(client, key);
-    if (!locked) return { ran: false };
-    try {
-      const result = await fn(client);
-      return { ran: true, result };
-    } finally {
-      await advisoryUnlock(client, key);
-    }
-  } finally {
-    client.release();
-  }
+  const claimedId = await withTransaction(async (client) => {
+    const res = await client.query<{ id: string }>(
+      `insert into cron_runs (job_name, window_key)
+       values ($1, $2)
+       on conflict (job_name, window_key) do nothing
+       returning id`,
+      [jobName, windowKey],
+    );
+    return res.rows[0]?.id;
+  });
+  if (!claimedId) return { ran: false };
+
+  const result = await fn();
+
+  // 正常完了を記録する（起動の可観測性・将来の保持cleanup用）。失敗時は finished_at を
+  // 残さず例外を伝播する（lease行は残るので同一窓は再実行されない＝二重実行を防ぐ）。
+  await withTransaction((client) =>
+    client.query(`update cron_runs set finished_at = now() where id = $1`, [
+      claimedId,
+    ]),
+  );
+  return { ran: true, result };
 }
 
 export interface SchedulerTickResult {

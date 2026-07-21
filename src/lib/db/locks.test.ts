@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   LOCK_CLASS,
-  cronWindowLockKey,
   hash32,
   postPublishLockKey,
   xAccountLockKey,
@@ -29,10 +28,6 @@ describe("lock key derivation", () => {
       LOCK_CLASS.postPublish,
       hash32("u1"),
     ]);
-    expect(cronWindowLockKey("news_fetch", "2026-07-20T09")).toEqual([
-      LOCK_CLASS.cron,
-      hash32("news_fetch:2026-07-20T09"),
-    ]);
   });
 
   it("gives different keys across classes even for the same id", () => {
@@ -43,6 +38,6 @@ describe("lock key derivation", () => {
 
   it("gives the same key for the same input (stable across calls)", () => {
     expect(xAccountLockKey("acc-123")).toEqual(xAccountLockKey("acc-123"));
-    expect(cronWindowLockKey("j", "w")).toEqual(cronWindowLockKey("j", "w"));
+    expect(postPublishLockKey("u-1")).toEqual(postPublishLockKey("u-1"));
   });
 });
