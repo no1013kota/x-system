@@ -50,10 +50,11 @@ export interface CronClaimResult<T> {
  * 完結し、`fn` は自前で（`withTransaction` 等で）都度接続を取得する（要件01 §3.2/§6）。
  * セッションscope advisory lock は checkout 間で保持されないため使わない。
  *
- * NOTE(M4): news_fetch は「claim と generation_jobs の INSERT を同一 transaction で行い、
- * claim だけ/ジョブだけの中間状態を作らない」必要がある。現行の本ヘルパは claim をコミットして
- * から `fn` を呼ぶため、その用途には別プリミティブ（`tryClaimCronWindow(client, ...)` 案）を
- * M4 で追加する。ADR-0003 / BACKLOG 参照。
+ * NOTE(M4): 受付とその他の DB 書き込みを同一 transaction で行いたい cron（例: scheduler_tick の
+ * enqueue を受付と原子的にしたい場合）向けに、`withTransaction` 内で呼べる汎用プリミティブ
+ * `tryClaimCronWindow(client, jobName, windowKey)` を M4 で追加できる。news_fetch は案I（各回が
+ * 直近3時間分を重ねて取得）を採用し `generation_jobs` を使わないため本プリミティブに依存しない
+ * （要件04 §2・ADR-0003）。
  */
 export async function withCronWindowClaim<T>(
   jobName: string,

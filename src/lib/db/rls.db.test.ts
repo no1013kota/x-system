@@ -130,6 +130,23 @@ describe("RLS policies & ownership trigger", () => {
     });
   });
 
+  it("denies authenticated access to cron_runs (service-role only)", async () => {
+    await inTx(async (c) => {
+      const a = await makeUser(c);
+      // service-role side can write the dedup marker
+      await c.query(
+        `insert into cron_runs (job_name, window_key) values ('scheduler_tick', $1)`,
+        [`rls-${randomUUID()}`],
+      );
+
+      await actAs(c, a.uid);
+      // cron_runs has no policy/GRANT for authenticated → access denied entirely
+      await expectViolation(c, () =>
+        c.query(`select count(*) from cron_runs`),
+      );
+    });
+  });
+
   it("shows system-default prompt_templates to all but account overrides only to owner", async () => {
     await inTx(async (c) => {
       const a = await makeUser(c);
