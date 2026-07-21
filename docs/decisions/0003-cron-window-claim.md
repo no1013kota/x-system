@@ -45,24 +45,21 @@ worker leaseの`pg_advisory_xact_lock`（transaction scope・要件04 §4）は�
 
 - transaction mode poolerでも確実に重複受付を防げる。接続を保持しないため要件01 §3.2/§6に適合する。
 - **一度受け付けた時間窓は完了後も再受付しない**。完了後のHTTP再試行・重複Cron起動でも本処理を再実行しない。
-- 受け入れる欠点: 受付後・本処理未完了でプロセスが落ちた窓は、状態ベースcron（tick/metrics/follower）は次窓のcatch-upで回復する。`news_fetch`のように窓固有の成果を作るものは、この単純なclaimでは失敗窓を回復できない（下記「未解決」参照。M4で回復方式を決める）。
+- 受け入れる欠点: 受付後・本処理未完了でプロセスが落ちた窓は、状態ベースcron（tick/metrics/follower）は次窓のcatch-upで回復する。`news_fetch`のように窓固有の成果を作るものは、この単純なclaimでは失敗窓を回復できないため、下記「news_fetchの時間窓欠落対策」の3時間ラップ取得で回復性を持たせる。
 - `cron_runs`は受付ごとに増える（tick 288行/日＋毎時cron数十行/日）。**保持は暫定40日**とし、`scheduler_tick`（M4）が他の40日保持データと同様に`claimed_at`基準でcleanupする（要件01 §9、`cron_runs_claimed_at_idx`）。
 - cleanupで古い行が消えると同一 `window_key` を再claim可能になるが、`window_key`は時刻由来で単調増加するため、保持期間を超えた過去の窓が通常運用で再来・再実行されることはない。
 
-### 未解決: news_fetch の時間窓欠落対策（M4で決定）
+### news_fetch の時間窓欠落対策（解決: 3時間ラップ取得。2026-07-21）
 
-`news_fetch`は時間窓の欠落を許容しない一方、単純な `withCronWindowClaim`（受付を先にコミットしてから`fn`を実行）は、受付後に本処理が失敗/中断した窓を回復できない（同一窓の再試行は`ran:false`になる）。
+`news_fetch`は時間窓の欠落を許容しない一方、単純な `withCronWindowClaim`（受付を先にコミットしてから`fn`を実行）は、受付後に本処理が失敗/中断した窓を回復できない（同一窓の再試行は`ran:false`）。
 
-当初「window claim と永続ジョブ（`generation_jobs`）のINSERTを同一transactionで行い、実処理はworkerに委ねる」案を検討したが、これは **要件04 §2「NEWSはユーザー所有の`generation_jobs`へ保存しない。実行結果は`news_items.fetched_at`で追跡する」と矛盾**する（加えて6分野×最大90秒はFunction上限200秒に単一jobでは収まらず、child job分割が別途必要）。したがって本ADRでは採用せず、M4で次のいずれかを決定する（要決定）。
+当初「window claim と永続ジョブ（`generation_jobs`）のINSERTを同一transactionで行い実処理をworkerに委ねる」案（案II）を検討したが、**要件04 §2「NEWSはユーザー所有の`generation_jobs`へ保存しない。実行結果は`news_items.fetched_at`で追跡する」と矛盾**する（加えて6分野×最大90秒はFunction上限200秒に単一jobでは収まらずchild job分割が必要）ため**不採用**。
 
-- 案I（§2維持・推奨候補）: `news_fetch`は`cron_runs`の恒久claimを主ゲートにせず、**分野単位の冪等性**（`source_url`のcanonical unique制約＋分野別commit）で重複と欠落に耐える。失敗窓はlaunchd再試行や次回起動が未取得分野のみを埋める（再取得は冪等）。並行重複のコスト抑制が要る場合は「分野×時間窓」単位の受付にする。完了追跡は§2どおり`news_items.fetched_at`。
-- 案II（§2改定・大）: NEWSを永続ジョブ化し、受付と分野別child jobのINSERTを同一transactionで作成、実処理はworkerが担う。要件04 §2・ADR-0002の見直し、`job_kind`追加、child job分割（200秒制約）が必要。別ADRで扱う。
-
-いずれの案でも `window_key` 由来の冪等キーと「claimだけ/成果だけ」の中間状態を作らない原則は満たす。決定はBACKLOGの「要決定」およびT-M4-10/T-M4-11で追跡する。
+採用（案I・§2維持）: `news_fetch`は**各回が直近3時間分を重ねて取得**する。1時間ごと起動で窓が重なるため、一部起動が失敗しても**3回に1回成功すれば**当該時間帯を取得できる（稼働は9:00〜20:00・12回/日を維持。前日20:00以降の夜間分は当日9:00/10:00/11:00の起動が延長ルックバック13/14/15時間で補完する。プロンプト設計書 §6.10の`{{hours}}`）。重複は`source_url`のcanonical unique制約と`<known_urls>`で排除する。したがって`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ。完了追跡は§2どおり`news_items.fetched_at`、UIは既定で過去7日分を表示する（PRD N-1/N-2、要件04 §6、T-M4-10/11）。
 
 ### M4で追加を想定する汎用プリミティブ
 
-`withCronWindowClaim`は受付をコミットしてから`fn`を呼ぶため、受付とその他のDB書き込みを同一transactionにしたいcron（例: `scheduler_tick`のenqueue、上記案II）には次のプリミティブを別途用意する。news固有の設計とは切り離した汎用部品として位置づける。
+`withCronWindowClaim`は受付をコミットしてから`fn`を呼ぶため、受付とその他のDB書き込みを同一transactionにしたいcron（例: `scheduler_tick`のenqueueを受付と原子的に行いたい場合）には次のプリミティブを別途用意できる。汎用部品として位置づける（news_fetchは案I＝3時間ラップ取得のため本プリミティブに依存しない）。
 
 - `tryClaimCronWindow(client, jobName, windowKey): Promise<boolean>` — 呼び出し側の`withTransaction`内で`insert ... on conflict do nothing`を実行し受付可否を返す。`withCronWindowClaim`もこのプリミティブを内部利用するよう整理できる。
 

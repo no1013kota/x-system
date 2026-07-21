@@ -17,7 +17,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 **D-2: ローカルDBランタイム(Docker)の方針（解決済み 2026-07-20: colima導入）** — この開発マシンにDocker/Supabase CLIが未導入。T-M0-03〜07（DBマイグレーション群）とDB統合検証を含む後続タスクの検証に必須。選択肢: (a)colima+docker CLIをbrewで導入（GUI・ライセンス不要のヘッドレス実行。推奨。ただし初回はSupabaseの各種Dockerイメージ数GBをpull） / (b)Docker Desktopを人間が導入（GUI・ライセンス確認あり） / (c)当面ローカルDB検証をスキップしSQLの記述のみ進める。**未決の間はDB群がblockedで先へ進めないため、ここが連続開発の律速。**
 
-**D-3: news_fetchの時間窓欠落対策（M4のT-M4-10/11着手前に決定）** — 「時間窓の欠落を許容しない」要件と、`cron_runs`の受付（完了後は再受付しない）は、受付後に失敗/中断した窓を再実行できないため衝突する。かつNEWSは要件04 §2で`generation_jobs`を使わず`news_items.fetched_at`で追跡するため、当初検討した「claim＋永続ジョブを同一transaction・workerに委譲」案は§2と矛盾し採用不可（6分野×90秒>200sの制約もあり）。選択肢: (案I・推奨候補) §2維持のまま分野×時間窓の冪等性（source_url canonical unique＋分野別commit）で失敗窓を次回起動が埋める / (案II) §2を改定しNEWSを永続child job化する（別ADR・enum追加・child job分割が必要）。詳細はADR-0003「未解決」節・T-M4-11の要決定メモ。
+**D-3: news_fetchの時間窓欠落対策（解決済み 2026-07-21: 案I・3時間ラップ取得）** — 「時間窓の欠落を許容しない」要件を、案I（§2維持）で解決。`news_fetch`は各回が直近3時間分を重ねて取得し、1時間ごと起動の窓の重なりで「3回に1回成功すれば取得漏れなし」の回復性を持たせる。稼働は9:00〜20:00・12回/日を維持（コスト現状維持）、前日20:00以降の夜間分は当日9:00/10:00/11:00の起動が延長ルックバック13/14/15時間で補完。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみ、欠落回復はラップ取得側が担う。NEWSを永続job化する案II（§2改定）は不採用。反映先: PRD N-1/N-2・§8.3、プロンプト設計書 §6.10（`{{hours}}`=12-20時3／9-11時13-15）、要件04 §6、要件06 SC-06（既定7日表示）、ADR-0003。受け入れ条件はT-M4-10/11へ反映済み。
 
 **M0関連**
 - [ ] Supabaseプロジェクトの作成とキー発行（NEXT_PUBLIC_SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY／DATABASE_URLのpooler接続文字列）。M0のローカル検証はSupabase CLIで代替できるが、Docker実行環境の用意も人間側の準備事項
@@ -896,7 +896,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 ### T-M4-10: NEWS実行モジュール（SYS-NEWS組み立て・{{hours}}切替・出力検証・原価記録） `todo`
 - 参照: N-1、NEWS、プロンプト設計書 §6.10、プロンプト設計書 §4.2、プロンプト設計書 §5.6、プロンプト設計書 §7、要件02 §3.7、要件02 §3.17、要件01 §3.5 / 依存: M3 / サイズ: M
 - 完了条件:
-  - providerモックで、JST 9:00起動はhours=13・それ以外はhours=2、n=5、category_ja、known_urls（直近48時間のsource_url）がプロンプトへ正しく埋まることをテストで確認
+  - providerモックで、JST 12:00〜20:00起動はhours=3、9:00/10:00/11:00起動はそれぞれhours=13/14/15（前日20:00以降の夜間補完）、n=5、category_ja、known_urls（直近48時間のsource_url）がプロンプトへ正しく埋まることをテストで確認（各回3時間ラップで3回に1回成功すれば欠落しない・D-3/ADR-0003）
   - 応答JSONのzod検証（title30字・summary120字・source_url必須・impact high/mid/low・published_at ISO8601・最大5件・空配列許容）が不正応答を弾き、コードフェンス除去→修復callフォールバックが機能する
   - request ID・usage・実行時単価・推定原価がexternal_api_usage_events（user_id=null）へ冪等keyで記録される
 - メモ: NEWS_TEXT_PROVIDER（既定anthropic）で解決し、無効時は失敗させて別providerへ自動切替しない（要件01 §7）。M3の共通TextGenアダプタを再利用。NEWSはgeneration_jobsへ保存しない（要件04 §2）。
@@ -908,7 +908,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - source_urlをcanonical化したunique制約で既存と重複する項目が保存されず、同じ時間窓の再実行が分野単位冪等keyによりAIリサーチを重複実行しない
   - 時間窓の受付（`cron_runs` window claim、ADR-0003）により並行起動の一方が処理済み相当の2xxで終了する
 - メモ: 3分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
-  要決定（M4ブロッカー・review-m0-12-to-20）: 「時間窓の欠落を許容しない」要件と、受付を先に確保する`cron_runs` claimは、受付後に失敗/中断した窓を再実行できないため衝突する。NEWSは§2で`generation_jobs`を使わず`news_items.fetched_at`で追跡する制約があるため、当初案「claim＋永続ジョブを同一transaction・workerに委譲」は採用不可。回復方式を実装前に確定する（案I: §2維持・分野×時間窓の冪等性で失敗窓を次回起動が埋める／案II: §2改定しNEWSを永続child job化＝別ADR）。詳細はADR-0003「未解決」節。
+  決定済み（2026-07-21・D-3・案I）: 「時間窓の欠落を許容しない」は、各回が直近3時間分を重ねて取得（プロンプト設計書 §6.10の`{{hours}}`）し、1時間ごと起動の窓の重なりで3回に1回成功すれば欠落しない方式で満たす。9:00/10:00/11:00は前日20:00以降を補完（13/14/15h）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみで欠落回復はラップ取得側。NEWSは`generation_jobs`を使わない（§2）。UIは既定で過去7日表示（要件06 SC-06）。詳細はADR-0003。
 
 ### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `todo`
 - 参照: N-3、要件04 §6、要件04 §14、要件02 §3.15、要件02 §4.2、要件02 §4.3、O-2 / 依存: T-M4-11 / サイズ: M

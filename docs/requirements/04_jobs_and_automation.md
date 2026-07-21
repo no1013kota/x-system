@@ -94,7 +94,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 | job | 初期launchd（JST） | Vercel Cron移行後（UTC） | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | 09:00〜20:00毎時 | `0 0-11 * * *` | 6分野取得、重複排除、時間単位ダイジェスト作成 | 6分野 |
+| `news_fetch` | 09:00〜20:00毎時 | `0 0-11 * * *` | 6分野を直近3時間ラップ取得（9〜11時は夜間補完13/14/15h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
@@ -116,7 +116,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - 副作用は冪等キーまたはDB制約（unique）で重複に耐える。
 - 本システムのどの経路も**exactly-onceは保証しない**。
 
-`news_fetch`は時間窓の欠落を許容しない。ただしNEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡するため、単純な受付（完了後に再受付しない）だけでは失敗窓を回復できない。回復方式（分野単位の冪等性で埋める案／NEWSを永続ジョブ化する案）はM4で決定する（要決定・ADR-0003・BACKLOG T-M4-10/11）。どの案でも`window_key`由来の冪等キーを用い、「受付だけ／成果だけ」の中間状態を作らない。
+`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。そこで**各回が直近3時間分を重ねて取得**し（プロンプト設計書 §6.10の`{{hours}}`＝12:00〜20:00は3、当日9:00/10:00/11:00は前日20:00以降を補うため13/14/15）、一部の起動が失敗しても**3回に1回成功すれば**当該時間帯を取得できる設計とする（D-3の解決。ADR-0003）。窓の重なりによる重複は`source_url`のcanonical unique制約と`<known_urls>`で排除するため、`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ（NEWSを`generation_jobs`化する案は不採用）。
 
 ## 7. スロットenqueue
 
