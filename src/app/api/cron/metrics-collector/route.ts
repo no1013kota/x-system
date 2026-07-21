@@ -1,5 +1,5 @@
 import { isValidCronAuth } from "@/lib/jobs/auth";
-import { hourWindowKey, withCronWindowLock } from "@/lib/jobs/cron";
+import { hourWindowKey, withCronWindowClaim } from "@/lib/jobs/cron";
 
 /** 実績収集cron（要件04 §6/§13, K-1）。本処理（tweet_id別checkpoint更新）はM5で実装。 */
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<Response> {
     return new Response("unauthorized", { status: 401 });
   }
   const windowKey = hourWindowKey(new Date());
-  const { ran } = await withCronWindowLock(
+  const { ran } = await withCronWindowClaim(
     "metrics_collector",
     windowKey,
     async () => {

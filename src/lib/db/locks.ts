@@ -10,8 +10,8 @@ import type { PoolClient } from "pg";
  * at transaction end, so they are safe on the Supavisor transaction-mode pooler.
  * Cron time-window de-duplication does NOT use advisory locks — it needs to span
  * a whole handler run across multiple transactions, which session-scoped locks
- * cannot do on a transaction-mode pooler; it uses the `cron_runs` lease row
- * instead (要件01 §3.2/§6, ADR-0003, `src/lib/jobs/cron.ts`).
+ * cannot do on a transaction-mode pooler; it uses the `cron_runs` window claim
+ * (dedup marker) row instead (要件01 §3.2/§6, ADR-0003, `src/lib/jobs/cron.ts`).
  *
  * Keys are the two-int form `pg_advisory_xact_lock(classid, objid)`: classid
  * namespaces the lock category, objid is a deterministic 32-bit hash of the id.

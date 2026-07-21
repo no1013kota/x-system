@@ -4,16 +4,17 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
-import { runSchedulerTick, withCronWindowLock } from "./cron";
+import { runSchedulerTick, withCronWindowClaim } from "./cron";
 
 /**
  * DB integration tests for the cron skeleton (T-M0-15, ADR-0003): the cron_runs
- * lease guarantees a given job+time-window runs at most once — including across
- * post-completion HTTP retries / duplicate Cron invocations — and
- * runSchedulerTick dispatches leftover queued jobs in order and invokes stale
- * recovery. Skips without the local Supabase stack.
+ * window claim (dedup marker) guarantees a given job+time-window is accepted at
+ * most once — including across post-completion HTTP retries / duplicate Cron
+ * invocations and after fn failure — carries no completion state, and
+ * runSchedulerTick dispatches leftover queued jobs (next-window catch-up) and
+ * invokes stale recovery. Skips without the local Supabase stack.
  */
-describe("cron window lease & scheduler tick", () => {
+describe("cron window claim & scheduler tick", () => {
   let available = false;
 
   beforeAll(async () => {
@@ -38,11 +39,11 @@ describe("cron window lease & scheduler tick", () => {
     );
   }
 
-  it("runs a job+window at most once (duplicate and post-completion retries skip)", async () => {
+  it("accepts a job+window at most once (duplicate and post-completion retries skip)", async () => {
     const windowKey = `test-${randomUUID()}`;
     try {
       let calls = 0;
-      const first = await withCronWindowLock(
+      const first = await withCronWindowClaim(
         "scheduler_tick",
         windowKey,
         async () => {
@@ -56,7 +57,7 @@ describe("cron window lease & scheduler tick", () => {
 
       // a second run of the SAME window after completion must NOT run again
       // (guards against launchd HTTP retries / duplicate Cron invocations)
-      const second = await withCronWindowLock(
+      const second = await withCronWindowClaim(
         "scheduler_tick",
         windowKey,
         async () => {
@@ -68,17 +69,8 @@ describe("cron window lease & scheduler tick", () => {
       expect(second.result).toBeUndefined();
       expect(calls).toBe(1); // fn was not invoked again
 
-      // the finished_at is recorded on the successful run
-      const row = await withTransaction((c) =>
-        c.query<{ finished_at: string | null }>(
-          `select finished_at from cron_runs where job_name = 'scheduler_tick' and window_key = $1`,
-          [windowKey],
-        ),
-      );
-      expect(row.rows[0].finished_at).not.toBeNull();
-
       // the same window under a different job name is independent
-      const otherJob = await withCronWindowLock(
+      const otherJob = await withCronWindowClaim(
         "news_fetch",
         windowKey,
         async () => "other",
@@ -86,7 +78,7 @@ describe("cron window lease & scheduler tick", () => {
       expect(otherJob.ran).toBe(true);
 
       // a different window runs
-      const third = await withCronWindowLock(
+      const third = await withCronWindowClaim(
         "scheduler_tick",
         `test-${randomUUID()}`,
         async () => "third",
@@ -102,7 +94,7 @@ describe("cron window lease & scheduler tick", () => {
     try {
       let calls = 0;
       const run = () =>
-        withCronWindowLock("scheduler_tick", windowKey, async () => {
+        withCronWindowClaim("scheduler_tick", windowKey, async () => {
           calls += 1;
           return "x";
         });
@@ -114,7 +106,57 @@ describe("cron window lease & scheduler tick", () => {
     }
   });
 
-  it("dispatches leftover queued jobs in scheduled_for→created_at order and runs stale recovery", async () => {
+  it("keeps the claim after fn fails; the same window is not re-accepted", async () => {
+    const windowKey = `test-${randomUUID()}`;
+    try {
+      await expect(
+        withCronWindowClaim("scheduler_tick", windowKey, async () => {
+          throw new Error("boom");
+        }),
+      ).rejects.toThrow("boom");
+
+      // the claim row persists (dedup marker is receipt-only, not tied to success)
+      const rows = await withTransaction((c) =>
+        c.query<{ n: string }>(
+          `select count(*)::int as n from cron_runs where job_name = 'scheduler_tick' and window_key = $1`,
+          [windowKey],
+        ),
+      );
+      expect(rows.rows[0].n).toBe(1);
+
+      // a retry of the same window is NOT re-accepted (fn not invoked)
+      let called = false;
+      const retry = await withCronWindowClaim(
+        "scheduler_tick",
+        windowKey,
+        async () => {
+          called = true;
+        },
+      );
+      expect(retry.ran).toBe(false);
+      expect(called).toBe(false);
+    } finally {
+      await cleanupCronRuns();
+    }
+  });
+
+  it("cron_runs carries no completion state (dedup marker only)", async () => {
+    const cols = await withTransaction((c) =>
+      c.query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+          where table_schema = 'public' and table_name = 'cron_runs'`,
+      ),
+    );
+    const names = cols.rows.map((r) => r.column_name);
+    expect(names).toEqual(
+      expect.arrayContaining(["id", "job_name", "window_key", "claimed_at"]),
+    );
+    // no completion/finished columns — completion lives in generation_jobs / business data
+    expect(names).not.toContain("finished_at");
+    expect(names).not.toContain("completed_at");
+  });
+
+  it("scheduler tick catch-up: dispatches leftover queued jobs (scheduled_for→created_at) and runs stale recovery", async () => {
     async function makeXid(c: PoolClient): Promise<string> {
       const uid = randomUUID();
       await c.query(

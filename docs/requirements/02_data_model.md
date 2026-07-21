@@ -457,21 +457,20 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 
 ### 3.18 `cron_runs`
 
-定時トリガーの「`job名 + 時間窓`を高々一度だけ実行」を保証するleaseテーブル（要件04 §6、ADR-0003）。Supavisor transaction modeプーラではセッションscope advisory lockが接続checkout間で保持されないため、unique制約付きのlease行で重複起動・完了後の再試行を防ぐ。
+定時トリガーの「`job名 + 時間窓`の受付は高々一度」を保証する重複受付防止テーブル（window claim / dedup marker、要件04 §6、ADR-0003）。Supavisor transaction modeプーラではセッションscope advisory lockが接続checkout間で保持されないため、unique制約付きの受付行で重複起動・完了後の再試行を防ぐ。**責務は重複受付防止のみで、本処理の成否・完了は持たない**（この行だけで本体成功を判断しない）。完了状態の正本は、永続ジョブは`generation_jobs.status`/`generation_jobs.finished_at`、状態ベースcron（tick/metrics/follower）は対象業務データの現在状態とする。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
-| `started_at` | `timestamptz` | not null default now() | lease確保時刻 |
-| `finished_at` | `timestamptz` | null | 本処理の正常完了時刻。失敗・中断時はnullのまま |
+| `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
-Constraints: `unique (job_name, window_key)`（同一窓の重複claimを防ぐ。`insert ... on conflict do nothing`で行を確保できた起動だけが本処理を実行する）
+Constraints: `unique (job_name, window_key)`（同一窓の重複受付を防ぐ。`insert ... on conflict do nothing`で行を確保できた起動だけが本処理へ進む）
 
-Indexes: `started_at`（保持cleanup用）
+Indexes: `claimed_at`（保持cleanup用）
 
-RLS: select/writeともservice roleのみ。行は起動ごとに増えるため`started_at`から一定期間で`scheduler_tick`がcleanupする（M4、要件01 §9）。
+RLS: select/writeともservice roleのみ。行は受付ごとに増えるため`claimed_at`から40日保持し、期限後に`scheduler_tick`がcleanupする（M4、要件01 §9）。cleanup後は同一`window_key`を再claim可能になるが、`window_key`は時刻由来で単調増加するため通常運用で保持期間超過窓が再来・再実行されることはない。
 
 ## 4. JSONスキーマ
 

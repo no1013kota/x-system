@@ -5,7 +5,7 @@ import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
 /**
  * 定時トリガー（cron）の共通部分（要件04 §6, 運用メモ §2, ADR-0002, ADR-0003）。
  * 各分野の本処理（news取得・slot enqueue・metrics収集・follower保存）は各機能
- * マイルストーンで実装し、ここでは時間窓 lease と scheduler_tick の回収骨格のみ。
+ * マイルストーンで実装し、ここでは時間窓の受付（window claim）と scheduler_tick の回収骨格のみ。
  */
 
 function pad(n: number): string {
@@ -25,49 +25,53 @@ export function fiveMinWindowKey(now: Date): string {
   return `${hourWindowKey(now)}:${pad(m)}`;
 }
 
-export interface CronLockResult<T> {
-  /** lease行を確保して本処理を実行したら true。二重起動/再試行で確保できなければ false。 */
+export interface CronClaimResult<T> {
+  /** 時間窓の受付（claim）を確保して本処理を実行したら true。重複受付/再試行なら false。 */
   ran: boolean;
   result?: T;
 }
 
 /**
- * `job名 + 時間窓` の lease行（`cron_runs`）を確保してから `fn` を実行する
- * （要件04 §6, ADR-0003）。`(job_name, window_key)` の unique 制約に対する
- * `insert ... on conflict do nothing` で「同一時間窓を高々一度だけ実行」を保証する。
- * 確保できなければ（並行起動でも、完了後の HTTP 再試行・重複 Cron 起動でも）本処理を
- * 実行せず ran:false を返す＝呼び出し元は処理済み相当の 2xx を返せる。
+ * `job名 + 時間窓` の受付（window claim）を確保してから `fn` を実行する（要件04 §6, ADR-0003）。
+ * `cron_runs` の `(job_name, window_key)` unique 制約に対する `insert ... on conflict do nothing`
+ * で「同一時間窓の受付は高々一度」を保証する重複受付防止（dedup marker）。確保できなければ
+ * （並行起動でも、完了後の HTTP 再試行・重複 Cron 起動でも）本処理を実行せず ran:false を返す
+ * ＝呼び出し元は処理済み相当の 2xx を返せる。
  *
- * Supavisor transaction mode プーラ上でも安全: 接続を保持せず、claim は単一 transaction
- * 内で完結し、`fn` は自前で（`withTransaction` 等で）都度接続を取得する
- * （要件01 §3.2/§6）。セッションscope advisory lock は checkout 間で保持されないため使わない。
+ * cron_runs は「受付済みか否か」だけを持ち、本処理の成否・完了は持たない。この行だけで本体成功を
+ * 判断してはならない。完了状態の正本は、永続ジョブは `generation_jobs.status`/`finished_at`、
+ * 状態ベースcron（tick/metrics/follower）は対象業務データの現在状態とする。
+ *
+ * 実行保証: Cronトリガーは (job_name, window_key) 単位で at-most-once。実処理の再試行付き
+ * at-least-once 相当は永続ジョブ（generation_jobs）側が担い、状態ベースcronは次窓で現在状態を
+ * 再走査して catch-up する（exactly-once は保証しない）。
+ *
+ * Supavisor transaction mode プーラ上でも安全: 接続を保持せず、claim は単一 transaction 内で
+ * 完結し、`fn` は自前で（`withTransaction` 等で）都度接続を取得する（要件01 §3.2/§6）。
+ * セッションscope advisory lock は checkout 間で保持されないため使わない。
+ *
+ * NOTE(M4): news_fetch は「claim と generation_jobs の INSERT を同一 transaction で行い、
+ * claim だけ/ジョブだけの中間状態を作らない」必要がある。現行の本ヘルパは claim をコミットして
+ * から `fn` を呼ぶため、その用途には別プリミティブ（`tryClaimCronWindow(client, ...)` 案）を
+ * M4 で追加する。ADR-0003 / BACKLOG 参照。
  */
-export async function withCronWindowLock<T>(
+export async function withCronWindowClaim<T>(
   jobName: string,
   windowKey: string,
   fn: () => Promise<T>,
-): Promise<CronLockResult<T>> {
-  const claimedId = await withTransaction(async (client) => {
-    const res = await client.query<{ id: string }>(
+): Promise<CronClaimResult<T>> {
+  const claimed = await withTransaction(async (client) => {
+    const res = await client.query(
       `insert into cron_runs (job_name, window_key)
        values ($1, $2)
-       on conflict (job_name, window_key) do nothing
-       returning id`,
+       on conflict (job_name, window_key) do nothing`,
       [jobName, windowKey],
     );
-    return res.rows[0]?.id;
+    return (res.rowCount ?? 0) > 0;
   });
-  if (!claimedId) return { ran: false };
+  if (!claimed) return { ran: false };
 
   const result = await fn();
-
-  // 正常完了を記録する（起動の可観測性・将来の保持cleanup用）。失敗時は finished_at を
-  // 残さず例外を伝播する（lease行は残るので同一窓は再実行されない＝二重実行を防ぐ）。
-  await withTransaction((client) =>
-    client.query(`update cron_runs set finished_at = now() where id = $1`, [
-      claimedId,
-    ]),
-  );
   return { ran: true, result };
 }
 

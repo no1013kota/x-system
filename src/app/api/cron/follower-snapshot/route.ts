@@ -1,5 +1,5 @@
 import { isValidCronAuth } from "@/lib/jobs/auth";
-import { hourWindowKey, withCronWindowLock } from "@/lib/jobs/cron";
+import { hourWindowKey, withCronWindowClaim } from "@/lib/jobs/cron";
 
 /** フォロワー数記録cron（要件04 §6/§13, K-4）。本処理（日次upsert）はM5で実装。 */
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<Response> {
     return new Response("unauthorized", { status: 401 });
   }
   const windowKey = hourWindowKey(new Date());
-  const { ran } = await withCronWindowLock(
+  const { ran } = await withCronWindowClaim(
     "follower_snapshot",
     windowKey,
     async () => {

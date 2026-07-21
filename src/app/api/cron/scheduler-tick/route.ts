@@ -2,7 +2,7 @@ import { isValidCronAuth } from "@/lib/jobs/auth";
 import {
   fiveMinWindowKey,
   runSchedulerTick,
-  withCronWindowLock,
+  withCronWindowClaim,
 } from "@/lib/jobs/cron";
 
 /** スケジューラtick（要件04 §1/§6/§7, ADR-0002）。5分間隔起動。 */
@@ -15,7 +15,7 @@ export async function GET(request: Request): Promise<Response> {
     return new Response("unauthorized", { status: 401 });
   }
   const windowKey = fiveMinWindowKey(new Date());
-  const { ran, result } = await withCronWindowLock(
+  const { ran, result } = await withCronWindowClaim(
     "scheduler_tick",
     windowKey,
     () => runSchedulerTick(),

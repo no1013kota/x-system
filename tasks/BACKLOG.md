@@ -17,6 +17,8 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 **D-2: ローカルDBランタイム(Docker)の方針（解決済み 2026-07-20: colima導入）** — この開発マシンにDocker/Supabase CLIが未導入。T-M0-03〜07（DBマイグレーション群）とDB統合検証を含む後続タスクの検証に必須。選択肢: (a)colima+docker CLIをbrewで導入（GUI・ライセンス不要のヘッドレス実行。推奨。ただし初回はSupabaseの各種Dockerイメージ数GBをpull） / (b)Docker Desktopを人間が導入（GUI・ライセンス確認あり） / (c)当面ローカルDB検証をスキップしSQLの記述のみ進める。**未決の間はDB群がblockedで先へ進めないため、ここが連続開発の律速。**
 
+**D-3: news_fetchの時間窓欠落対策（M4のT-M4-10/11着手前に決定）** — 「時間窓の欠落を許容しない」要件と、`cron_runs`の受付（完了後は再受付しない）は、受付後に失敗/中断した窓を再実行できないため衝突する。かつNEWSは要件04 §2で`generation_jobs`を使わず`news_items.fetched_at`で追跡するため、当初検討した「claim＋永続ジョブを同一transaction・workerに委譲」案は§2と矛盾し採用不可（6分野×90秒>200sの制約もあり）。選択肢: (案I・推奨候補) §2維持のまま分野×時間窓の冪等性（source_url canonical unique＋分野別commit）で失敗窓を次回起動が埋める / (案II) §2を改定しNEWSを永続child job化する（別ADR・enum追加・child job分割が必要）。詳細はADR-0003「未解決」節・T-M4-11の要決定メモ。
+
 **M0関連**
 - [ ] Supabaseプロジェクトの作成とキー発行（NEXT_PUBLIC_SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY／DATABASE_URLのpooler接続文字列）。M0のローカル検証はSupabase CLIで代替できるが、Docker実行環境の用意も人間側の準備事項
 - [ ] Vercelアカウント・Proプラン契約とプロジェクト作成（商用productionはPro必須。M0のローカル検証には不要だがpreview環境の疎通確認に必要）
@@ -224,6 +226,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: news取得・slot enqueue・metrics収集・follower保存の本処理は各機能マイルストーンで実装し、M0では認証・lock・処理順（cancel→enqueue→dispatch→回収）の骨格と各ステップのフックのみ。ローカルcurlで4本の疎通を確認できるようにする。
   実装結果: `src/app/api/cron/{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}/route.ts`（GET・CRON_SECRET Bearer検証・force-dynamic・runtime nodejs）。`src/lib/jobs/cron.ts`（hourWindowKey/fiveMinWindowKey・withCronWindowLock〔セッションpg_try_advisory_lockで時間窓の二重起動防止・finallyでunlock〕・runSchedulerTick〔queued残をscheduled_for asc nulls last→created_at ascで最大50件dispatch＋recoverStaleJobs〕）。`locks.ts`にtryAdvisoryLock/advisoryUnlock追加。cancel/enqueueはM4フック（TODO）。各分野の本処理はM4(news)/M4(tick enqueue)/M5(metrics・follower)。テスト: cron unit 2＋cron DB 2（二重起動skip・tick順序/stale回収）＋route auth 4。実機curlで4本の401/2xx・scheduler-tickのdispatched/recovered出力を確認。全130件通過。
   是正（2026-07-21, review-m0-12-to-20）: 独立レビューで、セッションscope `pg_try_advisory_lock`をハンドラ全体で保持する設計がSupavisor transaction modeプーラ（要件01 §3.2/§6）で保持されず、lockリーク／二重起動を招く問題（ローカル直結DBでは露見せず本番のみ顕在化）を確認。`withCronWindowLock`を`cron_runs`テーブル（`unique (job_name, window_key)`）への`insert ... on conflict do nothing` lease方式へ置換（ADR-0003・新マイグレーション`20260721000001_cron_runs.sql`）。`fn`は接続を受け取らず自前で`withTransaction`する。一度確保した窓は完了後も再実行しない（HTTP再試行・重複Cron起動の二重実行防止）。`locks.ts`から誤用しやすいセッションlockヘルパ（tryAdvisoryLock/advisoryUnlock/cronWindowLockKey/LOCK_CLASS.cron）を撤去。あわせてADR-0002不整合の`maxDuration=200`をnews-fetch/follower-snapshotへ追加（4本すべてに設定）。cron DBテストをlease意味論（同一窓は生涯1回・並行時は1回のみ・finished_at記録）へ更新。docs同期: 要件02 §3.18/§5・要件04 §6・要件定義書（18テーブル・変更履歴v1.3）・各README・ADR-0003。全202件・lint/typecheck通過。
+  フォローアップ（2026-07-21, 同レビュー・別コミット）: cron_runsを「重複受付防止（window claim / dedup marker）」として整理。`withCronWindowLock`→`withCronWindowClaim`、`CronLockResult`→`CronClaimResult`へ改名。**cron_runs.finished_atを廃止**（完了状態は持たない。完了正本は永続ジョブ=`generation_jobs.status`/`finished_at`、状態ベースcron=業務データの現在状態）。`started_at`→`claimed_at`改名。実行保証（トリガー=at-most-once／generation_jobs=retry付きat-least-once相当／状態ベースcronは次窓catch-up／exactly-once非保証）をADR-0003・要件04 §6へ明記。ADRを`0003-cron-window-claim.md`へ改名。保持を要件01 §9へ登録（暫定40日・scheduler_tick cleanupはT-M4-09）。マイグレーションは案A（未push・ローカルのみ適用のため既存migを修正）で`20260721000001_cron_runs.sql`から`finished_at`除去・`claimed_at`化。cron DBテストを更新（受付は高々一度・並行時1回・fn失敗後もclaim残存し再受付されない・完了列を持たない・tick次窓catch-up）。全202件・lint/typecheck通過。news_fetchの窓欠落対策は§2（NEWSはgeneration_jobs不使用）と衝突するため本コミットでは実装せず「要決定」＋T-M4-10/11へ記載。
 
 ### T-M0-16: LLM共通アダプタ契約とAnthropicアダプタ（pause_turn規則） `done`
 - 参照: プロンプト設計書 §5.1、プロンプト設計書 §5.2、プロンプト設計書 §5.6、要件04 §5、A-5 / 依存: T-M0-02 / サイズ: M
@@ -860,7 +863,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 ### T-M4-06: scheduler_tick骨格＋全tick冪等enqueue `todo`
 - 参照: 要件04 §6、要件04 §7.1、要件04 §7.2、S-2、O-5、要件03 §7.4、ADR-0002、要件05 §3 / 依存: T-M4-01、T-M4-02、M1、M3 / サイズ: L
 - 完了条件:
-  - GET /api/cron/scheduler-tick（CRON_SECRET Bearer認証・force-dynamic）が「job名＋時間窓」のadvisory lockを取得し、lock取得失敗時は処理済み相当の2xxを返す
+  - GET /api/cron/scheduler-tick（CRON_SECRET Bearer認証・force-dynamic）が「job名＋時間窓」の受付（`cron_runs` window claim、`withCronWindowClaim`）を確保し、確保できなければ処理済み相当の2xxを返す（ADR-0003。セッションadvisory lockは使わない）
   - 同一slot・同一定刻窓で複数回tickを実行してもjobが1件だけ作られる（schedule_run_key unique＋last_run_at同一transaction更新）ことをローカルDBで確認
   - §7.1の条件（enabled=false／契約がtrialing・active以外／X account非active／同意なしauto／BYOKキーinvalid／premiumロールバック安全残量不足／当日JST post_create＋パターン別最大数が50超）の各ケースでenqueueされないテストが通る
 - メモ: enqueueは直前10分以内の未処理slot対象・1起動500件上限。scheduled_forをUTC保存。premiumの必要残量はP-1=通常10＋URL1／P-2=通常1／P-3=通常12＋URL1／P-4=通常8＋URL1／P-6=通常12＋URL1の保守的仮定（要件04 §7.1）。M1の契約状態同期・M3の利用枠算出ヘルパーとjob作成基盤を前提。
@@ -886,8 +889,9 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 完了条件:
   - 41日前のnews通知→参照されないnews_items→external_api_usage_events明細の順で各500件/起動まで削除され、通知payloadから参照中のnews_itemsは削除されないことをローカルDBで確認
   - 作成24時間超でdraftから参照されないStorage画像が1起動100件までbest effortで削除され、削除直前の再確認で参照が付いたobjectは削除されない（Storageモックで検証）
+  - `claimed_at`が40日超の`cron_runs`行が1起動500件まで削除される（要件01 §9・要件02 §3.18・ADR-0003）ことをローカルDBで確認
   - cleanup失敗が投稿系処理を失敗させず、Sentry記録（モック）のうえ次回へ繰り越される
-- メモ: news通知の削除をnews_itemsより先に行う順序が要件（要件04 §14）。
+- メモ: news通知の削除をnews_itemsより先に行う順序が要件（要件04 §14）。cron_runsのcleanupは他の40日保持データと同様にscheduler_tickで実施する。
 
 ### T-M4-10: NEWS実行モジュール（SYS-NEWS組み立て・{{hours}}切替・出力検証・原価記録） `todo`
 - 参照: N-1、NEWS、プロンプト設計書 §6.10、プロンプト設計書 §4.2、プロンプト設計書 §5.6、プロンプト設計書 §7、要件02 §3.7、要件02 §3.17、要件01 §3.5 / 依存: M3 / サイズ: M
@@ -902,8 +906,9 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 完了条件:
   - providerモックで1分野を失敗させても他2分野の新規news_itemsがcommitされ、失敗分野は既存ニュースを保持したままSentry（モック）へ記録される
   - source_urlをcanonical化したunique制約で既存と重複する項目が保存されず、同じ時間窓の再実行が分野単位冪等keyによりAIリサーチを重複実行しない
-  - 時間窓advisory lockにより並行起動の一方が処理済み相当の2xxで終了する
+  - 時間窓の受付（`cron_runs` window claim、ADR-0003）により並行起動の一方が処理済み相当の2xxで終了する
 - メモ: 3分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
+  要決定（M4ブロッカー・review-m0-12-to-20）: 「時間窓の欠落を許容しない」要件と、受付を先に確保する`cron_runs` claimは、受付後に失敗/中断した窓を再実行できないため衝突する。NEWSは§2で`generation_jobs`を使わず`news_items.fetched_at`で追跡する制約があるため、当初案「claim＋永続ジョブを同一transaction・workerに委譲」は採用不可。回復方式を実装前に確定する（案I: §2維持・分野×時間窓の冪等性で失敗窓を次回起動が埋める／案II: §2改定しNEWSを永続child job化＝別ADR）。詳細はADR-0003「未解決」節。
 
 ### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `todo`
 - 参照: N-3、要件04 §6、要件04 §14、要件02 §3.15、要件02 §4.2、要件02 §4.3、O-2 / 依存: T-M4-11 / サイズ: M
