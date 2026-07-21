@@ -901,13 +901,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - request ID・usage・実行時単価・推定原価がexternal_api_usage_events（user_id=null）へ冪等keyで記録される
 - メモ: NEWS_TEXT_PROVIDER（既定anthropic）で解決し、無効時は失敗させて別providerへ自動切替しない（要件01 §7）。M3の共通TextGenアダプタを再利用。NEWSはgeneration_jobsへ保存しない（要件04 §2）。
 
-### T-M4-11: GET /api/cron/news-fetch（3分野並列・分野別commit・source_url重複排除） `todo`
+### T-M4-11: GET /api/cron/news-fetch（6分野・最大3並列・分野別commit・source_url重複排除） `todo`
 - 参照: N-1、要件04 §2、要件04 §6、要件05 §3、要件01 §7、要件02 §3.7 / 依存: T-M4-10 / サイズ: M
 - 完了条件:
-  - providerモックで1分野を失敗させても他2分野の新規news_itemsがcommitされ、失敗分野は既存ニュースを保持したままSentry（モック）へ記録される
+  - providerモックで1分野を失敗させても他5分野の新規news_itemsがcommitされ、失敗分野は既存ニュースを保持したままSentry（モック）へ記録される
   - source_urlをcanonical化したunique制約で既存と重複する項目が保存されず、同じ時間窓の再実行が分野単位冪等keyによりAIリサーチを重複実行しない
   - 時間窓の受付（`cron_runs` window claim、ADR-0003）により並行起動の一方が処理済み相当の2xxで終了する
-- メモ: 3分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
+- メモ: 6分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
   決定済み（2026-07-21・D-3・案I）: 「時間窓の欠落を許容しない」は、各回が直近3時間分を重ねて取得（プロンプト設計書 §6.10の`{{hours}}`）し、1時間ごと起動の窓の重なりで3回に1回成功すれば欠落しない方式で満たす。9:00/10:00/11:00は前日20:00以降を補完（13/14/15h）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみで欠落回復はラップ取得側。NEWSは`generation_jobs`を使わない（§2）。UIは既定で過去7日表示（要件06 SC-06）。詳細はADR-0003。
 
 ### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `todo`
@@ -916,7 +916,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - news_config・notification_configの異なる複数ユーザーを仕込み、categories/impact_filter一致の新着があるtrialing/activeユーザーにだけ通知rowが作られ、該当0件・両channel OFF・非契約ユーザーには作られないことをローカルDBで確認
   - user_id+dedupe_key（news-digest:{window_started_at}）により同一時間窓の再実行で通知rowが増えない（insert...select相当の一括fan-out）
   - タイトル・本文へ高impact優先・同impactは新しい順で最大5件＋全件数＋一覧リンク（/app/news?from=...&to=...）が入り、payloadのnews_item_idsはmax_items（既定20）で切られtotal_countは全件数を保持する
-- メモ: news_fetchの3分野settle後に成功分野の新規保存ニュースだけを対象に実行。分野失敗自体はユーザーへニュース通知しない。メールONユーザーはemail_status=queued＋email_available_atを設定（送信は後続タスク）。
+- メモ: news_fetchの6分野settle後に成功分野の新規保存ニュースだけを対象に実行。分野失敗自体はユーザーへニュース通知しない。メールONユーザーはemail_status=queued＋email_available_atを設定（送信は後続タスク）。
 
 ### T-M4-13: 通知一覧UI＋既読管理（ヘッダー未読バッジ含む） `todo`
 - 参照: O-2、要件05 §10、要件04 §14、要件02 §3.15、要件06 §2 / 依存: M2、M3 / サイズ: M
@@ -929,7 +929,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 ### T-M4-14: SC-06 ニュース画面（一覧・絞り込み・news_config・時間窓適用） `todo`
 - 参照: N-2、SC-06、要件05 §6、要件05 §4.1、要件05 §12、要件02 §4.2、要件06 §3.4、要件06 §10 / 依存: M2 / サイズ: M
 - 完了条件:
-  - seedしたnews_itemsが分野・インパクトで絞り込めて、初期表示にnews_configの既定（3分野・高中・20件）が適用される。updateNewsConfigで表示分野・件数の変更が保存される
+  - seedしたnews_itemsが分野・インパクトで絞り込めて、初期表示にnews_configの既定（6分野・高中・20件）が適用される。updateNewsConfigで表示分野・件数の変更が保存される
   - listNewsItemsがcategories/impacts/from-to（最大24時間）/cursor/limit（1〜100）を検証し、/app/news?from=...&to=...で対象時間窓の該当ニュース（ダイジェスト掲載外を含む）だけが一覧される
   - 最新取得失敗時に前回成功分を表示し更新失敗を注記する状態表示がある
 - メモ: 表示項目はカテゴリー・要約・遷移先URL・インパクト（N-2）。ニュースデータはseedで検証できるためnews-fetch routeとは独立に実装可能。
