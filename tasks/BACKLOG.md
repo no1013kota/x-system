@@ -283,13 +283,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   ultracode検証: 理解ワークフロー（公式docs WebFetch含む3並列）→敵対的レビュー（暗号/PKCE・state&CSRF・API整合3レンズ＋検証）。confirmed 0件。1件のstate CSRF指摘は「session-userId検証はroute層の義務でこの純粋層の範囲外」として棄却されたが、cookie-forcing対策の重要性からverifyOAuthCallbackのdocstringに「callback routeはtx.userIdをsession userIdと一致検証必須」を明記（doc補強）。
   後続への注意: routes（/api/x/oauth/start・callback, X連携M）実装時は必ず tx.userId===session.userId を検証（cookie-forcing/session-fixation防御）。BYOKユーザーApp資格情報（user_api_keys provider='x'のclient_id/secret）の解決はroute層で追加。X_MANAGED_CLIENT_SECRET有無でconfidential/publicが切り替わる。state TTLは技術判断で600s（`X_OAUTH_STATE_MAX_AGE_SEC`）。token refresh単一flight（lease）はT-M0-21で`exchangeCodeForToken`と同じrequest primitiveを再利用。
 
-### T-M0-21: X token refreshのsingle-flight制御 `todo`
+### T-M0-21: X token refreshのsingle-flight制御 `done`
 - 参照: 要件05 §4.3、要件02 §3.3、PRD §8.1 / 依存: T-M0-20、T-M0-09 / サイズ: M
 - 完了条件:
   - 並行2実行でもrefresh HTTP callが1回だけ実行され（モック）、待機側は最大10秒待って更新済みtokenを再読込する
   - token_refresh_lock_id/locked_atの条件付き更新でleaseが取得され、1分超のstale leaseは回収されて別実行がrefreshできる
   - rotated refresh tokenと期限がlock ID一致を条件に同一transactionで更新され、invalid_grant・必要scope不足時はstatus=expiredへ更新してleaseが解除される
 - メモ: 「access tokenが5分以内に失効するならrefresh」の判定を含むgetValidAccessTokenヘルパとして実装。expired化に伴う再連携通知の作成はフックのみ用意し通知機能マイルストーンで接続する。
+  実装結果: `src/lib/x/oauth.ts`に`exchangeRefreshToken`（`grant_type=refresh_token`。code交換と同じ`postToken`プリミティブ再利用）を追加。`src/lib/x/token-refresh.ts`（純粋・注入可能: `getValidAccessToken`。失効5分前判定→`token_refresh_lock_id/locked_at`の条件付きUPDATEでlease取得〔`locked_at < now()-1min`でstale回収〕→取得後に再鮮度確認→`exchangeRefreshToken`→lock ID一致を条件に同一UPDATEで access/refresh/expiry/scope反映＋lease解除。lease未取得側は最大10秒poll〔`sleep`注入可〕して更新済みtokenを再読込、超過で`XTokenRefreshTimeoutError`(retryable)。`invalid_grant`→`status=expired`＋`onExpired`フック＋`XTokenExpiredError`。必要scope不足も同様。rotated refresh未返却時は既存を維持。定数`TOKEN_REFRESH_THRESHOLD_MS`/`WAIT_MAX_MS`/`WAIT_POLL_MS`）。`token-refresh-server.ts`（server-only: pool.query〔都度取得・即解放〕・crypto・managed clientを束ねる`getValidXAccessToken`。BYOKユーザーApp資格情報の解決はX連携MSへ委譲＝明示エラー、T-M0-20後続注記どおり）。
+  設計判断: leaseは「行の値」（advisory/session lockでない）＝Supavisor transaction modeプーラ安全。refresh HTTP中はDB接続を保持しない（各操作をpool.queryで実行、要件01 §3.2/§6）。lock ID一致条件でstale回収と衝突しても他実行の更新を破壊しない。invalid_grantのみexpired扱い（401/5xxは再連携化せずlease解除＋retryable伝播）。テスト: unit 11（鮮度/1回refresh/rotated維持/invalid_grant→expired/scope不足/transient解除/no_refresh/既expired/未接続/待機再読込/待機timeout）＋DB 4（並行1回・stale回収・鮮度skip・invalid_grant→expired）。全222件・lint/typecheck通過。doc: 要件05 §4.3が既に本設計を規定・実装は準拠のためdocs変更なし。
+  後続への注意: worker/Server Actionは投稿前に`getValidXAccessToken(xAccountId)`で有効tokenを取得（T-M0-22のX投稿クライアントが使用）。BYOK client資格情報解決とexpired時の再連携通知の実配線はX連携/通知MSで追加。`onExpired`は現状フックのみ。
 
 ### T-M0-22: X投稿・読取クライアントとX_POSTING_MODE=dry_run動作 `todo`
 - 参照: PRD §8.1、要件04 §5、要件04 §10、要件01 §3.1、K-1 / 依存: T-M0-21 / サイズ: M

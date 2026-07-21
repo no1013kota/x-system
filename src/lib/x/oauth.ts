@@ -297,6 +297,25 @@ export function exchangeCodeForToken(
   );
 }
 
+/**
+ * refresh_token → 新しいtoken（rotated refresh 含む）交換（要件05 §4.3）。
+ * authorization code 交換と同じ token endpoint / client 認証プリミティブ（postToken）を再利用する。
+ */
+export function exchangeRefreshToken(
+  client: OAuthClient,
+  input: { refreshToken: string },
+  deps: { fetch: FetchLike },
+): Promise<XTokenResponse> {
+  return postToken(
+    client,
+    {
+      grant_type: "refresh_token",
+      refresh_token: input.refreshToken,
+    },
+    deps,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Token sealing (AES envelope for x_accounts storage)
 // ---------------------------------------------------------------------------
