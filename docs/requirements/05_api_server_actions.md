@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.6 |
+| バージョン | v1.7 |
 | 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -75,6 +75,8 @@
 | POST | `/api/jobs/run` | `CRON_SECRET` | queued job 1件のworker実行（内部dispatch専用。202を即時返却し本処理は`after()`で実行） |
 
 `POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返す。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
+
+`POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
 
 `POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
 

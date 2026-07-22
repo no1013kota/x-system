@@ -434,13 +434,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: 現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決し、payment_failed／paidとも署名検証後かつDB transaction前に現在のSubscriptionを再取得して既存の契約projectionへ統合した。一回払いinvoiceはeventだけを処理済みにする。payment_failedはprofile同期と同transaction内でbilling通知を作り、`billing:invoice:{invoice_id}:payment_failed`でinvoice単位に重複排除する。通知設定のin-app／emailを配信列へ反映し、attempt count・invoice／subscription ID・同期status・設定snapshotをpayloadへ保存する。両channel OFF時は通知を作らず、paidは現在statusへ復旧同期して新規通知を作らない。
   検証: Stripe SDK retrieveモックでfailed／paidがinvoice parentのSubscriptionを再取得すること、一回払いをskipすることを3 unit testで確認。ローカルPostgresで失敗status、同一invoice再送時の通知1件維持、設定snapshot／email queue、paid後のactive復旧、両channel OFF時の非作成を1統合シナリオで確認。全380件（313成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のInvoice object／Subscription webhookを2026-07-22に確認し、要件02・03へ反映した。
 
-### T-M1-14: Customer Portal SessionとSC-11課金タブ最小実装 `todo`
+### T-M1-14: Customer Portal SessionとSC-11課金タブ最小実装 `done`
 - 参照: O-1、要件03 §6、要件05 §3、要件05 §11、要件01 §3.3、SC-11 / 依存: T-M1-12 / サイズ: M
 - 完了条件:
   - ログイン済み＋Origin一致でPortal Session URLが返り、stripe_customer_id未保有・未ログイン・Origin不一致は拒否される（モックテスト）
   - SC-11課金タブに現在プラン・subscription_status・期間終了日・解約予定（cancel_at_period_end）とPortalボタン、問い合わせ先（SUPPORT_EMAILのメールリンク）が表示される
   - Portal configuration（値下げはdecreasing_item_amountで期間末予約・解約は期間末・trial中変更はcontinue_trial・値上げは即時日割り）を作成するsetupスクリプトがあり、dry-runで設定内容を出力できる
 - メモ: SC-11の他タブ（APIキー・Xアカウント・通知）は他マイルストーン。incompleteユーザーにも課金・問い合わせタブを許可し、認証ガードmiddlewareの許可パスと整合させる。STRIPE_PORTAL_CONFIGURATION_IDの実発行は実Stripeアカウント準備後。
+- 実装メモ:
+  実装結果: `POST /api/stripe/portal`を追加し、Origin完全一致→Supabase session→本人profileのCustomer IDの順に検証して、サーバー固定のConfiguration ID／`/app/settings?tab=billing&portal=return`で短寿命Sessionを作成する。Customer未作成は`subscription_required`、Stripeエラーはprovider詳細を伏せた`provider_error`に統一した。SC-11最小画面は課金・問い合わせタブを実装し、プラン、契約status、JST期間終了日、解約予定、Portalボタン、プラン導線、`SUPPORT_EMAIL`のメールリンク、Portal復帰表示をprofileから表示する。setupスクリプトは3 Priceの同一Product所属を検証し、値下げ期間末・解約期間末・trial継続・値上げ即時日割り・支払方法更新・請求履歴を固定したConfigurationを作る。実IDの発行は実Stripeアカウント準備後。
+  検証: Portal APIの正常系、development設定省略、未ログイン、Origin不一致、Customer欠損、provider失敗、クライアントのHTTPS制約、Configurationの4方針／同一Product制約を12 testで確認。ローカルブラウザで認証後の課金値、問い合わせメール、Portal復帰表示を確認し、一時ユーザーを削除した。dry-run出力、全392件（325成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のPortal Session／Configuration／期間末ダウングレード仕様を2026-07-22に確認し、要件03・05・06へ反映した。
 
 ### T-M1-15: Checkout／Portal復帰時の未反映subscription同期 `todo`
 - 参照: 要件03 §3、SC-04、SC-11 / 依存: T-M1-12、T-M1-10、T-M1-14 / サイズ: S

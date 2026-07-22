@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -30,6 +30,12 @@
 - プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
 - `checkout=canceled`は未完了として再選択を案内し、`checkout=success`は契約情報確認中と表示する。契約の確定表示はwebhook同期後のprofileを正とする。
 - `/legal/commercial-transactions`への新規タブリンクを申込条件に置く。正式な法務3ページと全体footerはT-M6-14／15で仕上げるまで、同routeに法務確認前の暫定版であることを明示する。
+
+### 1.2 SC-11 課金・問い合わせ（M1最小実装）
+
+- `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば「お支払い方法・プランを管理」から`POST /api/stripe/portal`を呼び、返されたHTTPS URLへ遷移する。Customer未作成時はボタンを無効化し、`/plans`導線を表示する。
+- Portalのreturn URLは`portal=return`を付け、復帰時は「契約情報を確認しています」と表示する。画面表示のたびにStripeへ問い合わせず、表示値はprofileを正とする。復帰直後の未反映同期は要件03 §3に従う。
+- `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達でき、他のSC-11タブは後続マイルストーンで追加する。
 
 ## 2. 共通App Shell
 

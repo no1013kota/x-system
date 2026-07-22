@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "stripe:portal:setup": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/setup-stripe-portal.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

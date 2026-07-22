@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.6 |
+| バージョン | v1.7 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -48,6 +48,13 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
 - success URLは`{APP_BASE_URL}/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。任意の外部return URLは受け取らない。
 - プラン選択からCheckoutまでに、税込月額、7日trial、trial後の自動更新、支払時期、解約方法、提供開始時期を表示する。
+
+### 2.2 Customer Portal作成
+
+- `POST /api/stripe/portal`はrequest bodyを必要とせず、Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
+- Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
+- Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/app/settings?tab=billing&portal=return`でサーバー固定とする。
+- `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実作成時は3つのPriceを取得して同一Product所属を検証した後、`STRIPE_PORTAL_CONFIGURATION_ID`へ設定するIDを出力する。秘密鍵は出力しない。
 
 ## 3. Stripeを正とする項目
 
@@ -120,6 +127,8 @@ route guardでは`incomplete`／`incomplete_expired`（およびprofile取得不
 ## 6. プラン変更
 
 3つの月額Priceは同一Stripe Product配下に作る。Customer Portalはプラン変更を有効にし、値下げを`decreasing_item_amount`条件で期間末予約、解約を期間末、trial中の変更を`continue_trial`に設定する。値上げは即時反映し、日割り請求を有効にする。
+
+Portal Configurationは`subscription_update.proration_behavior=create_prorations`により即時変更を日割りし、`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
 
 | 変更 | 仕様 |
 |---|---|
@@ -234,6 +243,8 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Retrieve a subscription](https://docs.stripe.com/api/subscriptions/retrieve?lang=node)：Customer、status、trial、metadataとSubscription ItemのPrice／current period（2026-07-22確認）
 - [Subscription webhooks](https://docs.stripe.com/billing/subscriptions/webhooks)：created／updated／deletedの契約ライフサイクル（2026-07-22確認）
 - [Invoice object](https://docs.stripe.com/api/invoices/object?lang=node)：`parent.subscription_details.subscription`、attempt count、invoice status（2026-07-22確認）
-- [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：プラン変更、解約、ダウングレード予約
+- [Create a Portal Session](https://docs.stripe.com/api/customer_portal/sessions/create?lang=node)：Customer、Configuration、return URL、Session URL（2026-07-22確認）
+- [Create a Portal Configuration](https://docs.stripe.com/api/customer_portal/configurations/create?lang=node)：日割り、期間末変更条件、trial／解約方針（2026-07-22確認）
+- [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：同一Product間の期間末ダウングレードとSubscription Schedule（2026-07-22確認）
 
-Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configuration IDはPortal実装タスクで実装メモへ記録する。外部仕様は各実装タスク開始時に再確認する。
+Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configurationの実IDはStripeアカウント準備後に環境変数へ設定する。外部仕様は各実装タスク開始時に再確認する。
