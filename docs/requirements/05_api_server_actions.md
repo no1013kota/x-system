@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -73,6 +73,8 @@
 | GET | `/api/cron/metrics-collector` | `CRON_SECRET` | tweet_id別実績取得 |
 | GET | `/api/cron/follower-snapshot` | `CRON_SECRET` | フォロワー数保存 |
 | POST | `/api/jobs/run` | `CRON_SECRET` | queued job 1件のworker実行（内部dispatch専用。202を即時返却し本処理は`after()`で実行） |
+
+`POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返す。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
 
 初期はlaunchd、移行後はVercel Cronが同じGET routeを起動する。定時routeは`force-dynamic`とし、redirect・cacheを発生させない。呼び出し元に依存する処理分岐は持たない。
 

@@ -385,13 +385,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Next.js 16の`proxy`内でSupabase session refreshとroute guardを一体化し、`getUser()`で本人性を検証する。未ログインの`/plans`・`/app`配下はrequestのpathname＋queryだけから組み立てた`/login?next=...`へ、本人profileをRLSで取得できない場合または`incomplete|incomplete_expired`は`/plans`へfail closedする。未契約者の例外URLは`/app/settings?tab=billing|support`へ固定し、`trialing|active|past_due|unpaid|paused|canceled`は閲覧を許可する。session refreshで更新されたcookieとcache禁止headerはredirect応答へ引き継ぐ。
   検証: CookieなしHTTPで`/app/posts?tab=drafts`→`/login?next=%2Fapp%2Fposts%3Ftab%3Ddrafts`、実ブラウザ＋ローカルSupabaseでincompleteの通常`/app`→`/plans`・billing/support通過、activeの`/app`通過を確認。全340テスト（275成功・DB条件なし65 skip）・lint・typecheckが成功。production buildは同じ依存・設定のT-M1-07直後に成功済みだが、この差分後の再実行はGoogle Fonts取得にネットワーク許可が必要で、ワークスペースの承認クレジット不足により再検証できなかった（TypeScript工程は独立のtypecheckで成功）。要件01／03／06へ正確なguard規則とcanonical tab URLを反映した。
 
-### T-M1-09: POST /api/stripe/checkout（Price ID対応表・Customer冪等作成・trial 1回制御） `todo`
+### T-M1-09: POST /api/stripe/checkout（Price ID対応表・Customer冪等作成・trial 1回制御） `done`
 - 参照: O-1、要件03 §2、要件03 §2.1、要件05 §3、要件05 §11、要件01 §3.3 / 依存: T-M1-02、T-M1-05 / サイズ: M
 - 完了条件:
   - planはstandard/md/premiumのみ受け付け、Price IDはサーバー側の環境変数対応表から解決される。クライアントからのPrice ID・任意の外部return URLは受け取らない（success/cancelはAPP_BASE_URL基準で組み立て）
   - trial_used_at is nullの場合だけ7日trialが設定され、非nullでは付与されない（Stripe SDKをモックした単体テストで検証）
   - 既存stripe_customer_idを再利用し、未作成時はuser_id metadata＋冪等keyでCustomerを1件だけ作成する。未ログイン・Origin不一致は拒否
 - メモ: Stripe SDK初期化・Price ID対応表・プラン定義コード定数（要件02 §6）はここで整備し、webhook・Portalタスクと共有する。実Stripe（test mode）でのE2Eはアカウント準備待ち（open_questions）。
+  実装結果: `stripe@22.3.2`（API version `2026-06-24.dahlia`固定）のserver-only client、3プラン共通定義とenv Price ID対応表、同一Origin検証、`POST /api/stripe/checkout`を追加。入力はstrictな`plan`だけで、Price ID・user/customer ID・外部return URL・未知フィールドを拒否する。本人profileの既存Customerを再利用し、未作成時はemail＋`user_id` metadataと`space-ai:customer:{user_id}`冪等keyで作成後、NULL条件付きで保存する。Sessionはsubscription mode／カード登録必須／server固定Price・success/cancel URL／user_id・plan metadataとし、`trial_used_at IS NULL`時だけ7日trialを付与する。API応答は共通JSON形式＋no-store、Stripe詳細は`provider_error`へ秘匿する。
+  検証: Stripe SDK注入モックでOrigin・未認証・plan/未知フィールド拒否、3 Price対応、既存Customer再利用、Customer冪等作成と保存、trial初回のみ、固定return URL、provider/DBエラー秘匿を19テストで確認。全359件（294成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。実Stripe test mode E2Eは資格情報待ちのため未実施。Stripe Checkout Session／Customer／idempotency公式仕様を2026-07-22に確認し、要件03／05へ反映した。
 
 ### T-M1-10: SC-04プラン選択画面（3プラン比較・法定表示・Checkout開始） `todo`
 - 参照: SC-04、O-1、要件03 §2、要件03 §2.1、要件06 §11、要件01 §4 / 依存: T-M1-09 / サイズ: M

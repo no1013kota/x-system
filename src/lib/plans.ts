@@ -55,4 +55,5 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
 };
 
-export const PLAN_IDS = Object.keys(PLANS) as PlanId[];
+/** Stable tuple shared by input schemas and Stripe price mapping. */
+export const PLAN_IDS = DB_ENUMS.plan_type;

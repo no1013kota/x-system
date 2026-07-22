@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.2 |
+| バージョン | v1.3 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -42,10 +42,11 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 
 ### 2.1 Checkout作成
 
-- リクエストされたplanをサーバー側のPrice ID対応表で検証し、クライアントからPrice IDを受け取らない。
-- 既存の`stripe_customer_id`を再利用する。未作成時はuser_idをmetadataに付け、冪等keyでCustomerを1件だけ作る。
-- `trial_used_at is null`の場合だけ7日trialを設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
-- success/cancel URLは`APP_BASE_URL`を基準にサーバーで組み立てる。任意の外部return URLは受け取らない。
+- `POST /api/stripe/checkout`は`{"plan":"standard|md|premium"}`だけを受け付け、未知フィールドも入力不正として拒否する。planをサーバー側の環境変数Price ID対応表で解決し、クライアントからPrice IDを受け取らない。
+- Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。既存の`stripe_customer_id`を再利用し、未作成時はemailと`user_id` metadataを付け、`space-ai:customer:{user_id}`を冪等keyとしてCustomerを作成してprofileへ保存する。
+- Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadataおよび`client_reference_id`へ本人user_idとplanを関連付ける。
+- `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
+- success URLは`{APP_BASE_URL}/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。任意の外部return URLは受け取らない。
 - プラン選択からCheckoutまでに、税込月額、7日trial、trial後の自動更新、支払時期、解約方法、提供開始時期を表示する。
 
 ## 3. Stripeを正とする項目
@@ -215,6 +216,9 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Supabase `resetPasswordForEmail`](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail)：recoveryメール送信とredirect指定（2026-07-22確認）
 - [Supabase password security](https://supabase.com/docs/guides/auth/password-security)：recovery後の`updateUser`によるpassword更新（2026-07-22確認）
 - [Stripe Subscriptions overview](https://docs.stripe.com/billing/subscriptions/overview)：subscription statusとライフサイクル
+- [Create a Checkout Session](https://docs.stripe.com/api/checkout/sessions/create?lang=node)：subscription mode、Price、Customer、metadata、success/cancel URL、trial設定（2026-07-22確認）
+- [Create a Customer](https://docs.stripe.com/api/customers/create?lang=node)：emailとmetadata（2026-07-22確認）
+- [Idempotent requests](https://docs.stripe.com/api/idempotent_requests)：Customer作成の冪等key（2026-07-22確認）
 - [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：プラン変更、解約、ダウングレード予約
 
-実装タスク開始時に再確認し、Stripe APIバージョンとPortal Configuration IDをADRまたは実装メモへ記録する。
+Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configuration IDはPortal実装タスクで実装メモへ記録する。外部仕様は各実装タスク開始時に再確認する。
