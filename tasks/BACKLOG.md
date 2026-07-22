@@ -405,13 +405,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: 認証必須のSC-04 `/plans`を追加し、共通`PLANS`定数からStandard／MD／Premiumの税込月額・Xアカウント上限、BYOK要否、Premium月間4枠をカード表示する。Standard／MDのX・生成AI API利用料が別途かかることをカード内と画面末尾へ明示した。ボタンより前に初回7日trial、カード登録、月次自動更新、初回／毎月の支払時期、Customer Portalでの期間末解約、提供開始を再掲する。選択時はplanだけをCheckout APIへPOSTし、HTTPSの`data.url`だけへ遷移、送信中disableと安全な再試行エラーを備える。success/canceled帰還表示と、T-M6-14まで暫定版と明示した`/legal/commercial-transactions`も追加した。
   検証: fetch／navigationモックでplanだけのPOST→Checkout URL遷移、API失敗・不正shape・非HTTPS URL・network失敗時の遷移抑止を確認。実ブラウザ＋ローカルSupabaseで認証→`/plans`、申込条件、全3カード、特商法リンク／暫定ページを確認し、1440px／390pxとも横overflowなし。全364件（299成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。外部通信許可下で既存Auth統合テストを同時実行するとCAPTCHA tokenなしの1件が失敗するため、通常の条件付きskip環境で全テストを実行し、buildは分離した。要件06 §1.1へ画面仕様を同期した。
 
-### T-M1-11: POST /api/stripe/webhook受信基盤（署名検証・stripe_events冪等記録） `todo`
+### T-M1-11: POST /api/stripe/webhook受信基盤（署名検証・stripe_events冪等記録） `done`
 - 参照: O-1、要件03 §4.1、要件03 §4.2、要件02 §3.16、要件05 §11、要件04 §5 / 依存: T-M1-09 / サイズ: M
 - 完了条件:
   - raw bodyの署名検証に失敗すると4xx、正しい署名（Stripe SDKのgenerateTestHeaderStringでローカル生成）なら2xxを返す
   - 同一event_idの再送はstripe_events.event_idのinsert競合により処理済みとして2xx（副作用なし）
   - 未知Price IDのイベントはprofiles未更新・stripe_events未記録のまま非2xxを返してStripe再送で復旧可能にし、Sentry（モック）へ記録される
 - メモ: アプリ内retryは実装せず、非2xxによるStripe再送へ委ねる（要件04 §5）。イベント種別ごとの処理は次タスク以降。
+  実装結果: Node runtimeの`POST /api/stripe/webhook`と注入可能な検証／処理coreを追加。request bodyを1回だけraw textで読み、`Stripe-Signature`＋環境別secretをSDK `constructEvent`（既定5分tolerance）で検証する。対象6 eventだけを処理し、対象外は記録なしで200。subscription eventの単一Priceをserver対応表でinsert前に検証し、未知・欠落・複数PriceはSentryへevent ID/type/Price IDだけを記録して500とする。既知eventは短いtransactionで`stripe_events`へ`ON CONFLICT DO NOTHING RETURNING`でclaimし、重複時は副作用なしで200、claim後のevent別処理callbackも同transaction内で実行するため後続タスクのprofile更新失敗時はevent記録ごとrollbackできる。署名／provider詳細は応答へ出さず全応答no-store。
+  検証: Stripe SDK `generateTestHeaderString`でraw body署名成功、header欠落／不正400、初回processed、同一event再送duplicate＋副作用1回、未知Priceの未記録／未更新／Sentry mock／500、対象外ignoredを5 unit testで確認。ローカルPostgresで同じevent IDを2回処理し、PK競合で1 row・副作用1回になるDB統合テストも成功。全370件（304成功・DB条件なし66 skip）・lint・typecheck・Next production buildが成功。Stripe公式のraw body署名、5分tolerance、非2xx再送、順序非保証、重複成功応答を2026-07-22に確認し、要件03／05へ反映した。
 
 ### T-M1-12: webhook subscription同期（checkout完了・subscription作成/更新/削除・順序逆転防止） `todo`
 - 参照: O-1、要件03 §3、要件03 §4.1、要件03 §4.2、要件02 §3.1 / 依存: T-M1-11 / サイズ: M
