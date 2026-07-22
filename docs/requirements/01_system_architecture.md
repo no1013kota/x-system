@@ -144,7 +144,7 @@ flowchart TB
 
 画面IDを持たない公開補助routeとして`/terms`、`/privacy`、`/legal/commercial-transactions`を用意する。LP、会員登録、プラン選択、アプリ設定のfooterから到達可能にする。
 
-認証補助Route Handlerとして`GET /auth/confirm`を用意する。Supabaseメールの`token_hash`と`type`をServer側で`verifyOtp`し、signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は許可済み相対パスだけに限定し、遷移前にURLから`token_hash`と`type`を除く。
+認証補助Route Handlerとして`GET /auth/confirm`を用意する。Supabaseのconfirmation／recoveryメールテンプレートは`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し、`token_hash`と`type=signup|recovery`をServer側で`verifyOtp`する。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
 
 ## 5. 認証ガード
 

@@ -339,12 +339,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `signUp` Server Action、SC-02会員登録フォーム、確認メール再送Action、暫定`/terms`・`/privacy`を追加。現行versionは両文書とも`2026-07-22-draft`で、別々の明示checkboxとversion一致をzod検証後、profileへ同意時刻とともに保存する。passwordは12〜64文字・UTF-8 72 bytes以下・確認一致を検証し、Auth/provider詳細やメール存在有無は共通文言へ隠す。`captcha_token`は受け口とSupabaseへの伝播まで実装し、必須化はT-M1-07で行う。
   検証: 実ブラウザ＋ローカルSupabaseでpending user作成、profile同意4項目保存、Mailpitへの確認メール到着（redirect先`/auth/confirm`）、成功画面と再送導線を確認。全268テスト・lint・typecheck・Next production buildが成功。Supabase Authはメール確認必須・最小password 12文字・localhostの`/auth/confirm`許可へ同期した。
 
-### T-M1-04: GET /auth/confirm（メールtoken_hash検証と遷移制御） `todo`
+### T-M1-04: GET /auth/confirm（メールtoken_hash検証と遷移制御） `done`
 - 参照: 要件01 §4、要件03 §1、要件05 §3、SC-02、SC-03 / 依存: T-M1-03 / サイズ: S
 - 完了条件:
   - signup確認メールのリンクからServer側verifyOtpが成功し/plansへ、recovery typeは/reset-passwordへ遷移する（ローカルSupabaseで確認）
   - 期限切れ・使用済み・不正tokenはすべて同一の汎用エラーにまとまり、signupは再送導線・recoveryは再申請導線を表示する
   - nextは許可済みのアプリ内相対パスのみ反映され、遷移前にURLからtoken_hashとtypeが除去される
+  実装結果: Supabaseのconfirmation／recoveryメールを`RedirectTo`＋`TokenHash`のカスタムテンプレートへ変更し、`GET /auth/confirm`が`type=signup|recovery`だけをServer側`verifyOtp`する。成功先はsignup=`/plans`、recovery=`/reset-password`で、任意`next`は`/plans`・`/reset-password`・`/app`配下のみ許可し、token_hash/type/next/fragmentを除去する。失敗はprovider詳細を含まない`/auth/error?flow=...`へ統一し、signup再送フォームとrecovery再申請導線を出す。
+  検証: 実ブラウザ＋ローカルSupabase/Mailpitでsignup token_hash検証→確認済みuser→`/plans`、recovery token_hash検証→`/reset-password`、両リンク再利用時の共通エラー導線を確認。全289テスト・lint・typecheck・Next production buildが成功。Supabase公式のNext.js SSR token_hash方式を2026-07-22に確認し要件01／03／05／06へ反映した。
 
 ### T-M1-05: signIn Server ActionとSC-03ログイン画面 `todo`
 - 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件01 §5 / 依存: T-M1-01、T-M1-04 / サイズ: M

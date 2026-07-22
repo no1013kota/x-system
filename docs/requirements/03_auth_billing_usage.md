@@ -20,7 +20,7 @@
 
 認証エラーで秘密値、メールの存在有無、外部providerレスポンス本文をそのまま表示しない。
 
-確認メールとpassword resetメールは`/auth/confirm`でServer側の`token_hash`を検証する。期限切れ・使用済み・不正tokenは同じ汎用エラーへまとめ、signup確認メールは再送導線、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
+確認メールとpassword resetメールはカスタムテンプレートから`/auth/confirm?token_hash=...&type=signup|recovery`へ直接送り、Server側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。期限切れ・使用済み・不正tokenは同じ汎用エラーへまとめ、signup確認メールは再送フォーム、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
 
 会員登録時は現行の利用規約versionへの明示同意とプライバシーポリシー確認を必須にし、versionと時刻をprofileへ保存する。重大改定で再同意が必要な場合は、既存データ閲覧を許可したまま生成・投稿前に同意画面を表示する。
 

@@ -65,7 +65,7 @@
 | POST | `/api/stripe/checkout` | user | Checkout Session作成 |
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
-| GET | `/auth/confirm` | Supabase `token_hash` | signup確認・password recoveryのServer側検証 |
+| GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans`、recoveryは`/reset-password`。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
 | GET | `/api/x/oauth/start` | user | X OAuth開始 |
 | GET | `/api/x/oauth/callback` | OAuth state | X OAuth callback |
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
