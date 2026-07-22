@@ -488,13 +488,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M2: X連携・キー・初期設定
 
-### T-M2-01: AES-256-GCM暗号化エンベロープユーティリティ `todo`
+### T-M2-01: AES-256-GCM暗号化エンベロープユーティリティ `done`
 - 参照: 要件01 §2、要件01 §3.1、要件02 §1、PRD §7 / 依存: M0 / サイズ: S
 - 完了条件:
   - encrypt→decryptのラウンドトリップ、nonceの毎回変化、auth tag改竄時の復号失敗をユニットテストで確認できる
   - 暗号文がversion・nonce・ciphertext・auth tagを含むJSON文字列のenvelope形式でtextカラムへ保存できる
   - Server onlyモジュールとして実装され、Client Componentからのimportがビルド時に検出・拒否される
 - メモ: APP_ENCRYPTION_KEY（32 bytes相当）を使用。user_api_keysとx_accountsのtoken暗号化の共通基盤。鍵ローテーションは将来ADLのため対象外。
+  実装結果: M0で先行実装したAES-256-GCM共通基盤を本タスクの完了条件に照らして再監査した。32-byteの`APP_ENCRYPTION_KEY`をUTF-8／hex／base64から厳密に解決し、12-byte random nonceで暗号化して`v/n/c/t`（version／nonce／ciphertext／auth tag）のJSON envelopeを返す。実行時入口`src/lib/crypto/index.ts`は`server-only`を先頭でimportして検証済み環境鍵を束縛し、Client ComponentからのimportをNext buildで拒否する。
+  検証: 多バイト平文のencrypt→decrypt、JSON envelope 4要素、同一平文2回のnonce／ciphertext差異、ciphertext・auth tag改竄、異なる鍵、未知version、非JSON、鍵長を単体11件で確認した。server-only境界テスト4件とNext production buildも成功。要件01 §2／§3.1と要件02 §1は実装と一致しており文書変更なし。
 
 ### T-M2-02: App Shell骨格（6項目ナビ・ヘッダ・レイアウト） `todo`
 - 参照: 要件06 §2、要件01 §4、SC-05〜11 / 依存: M1 / サイズ: M
