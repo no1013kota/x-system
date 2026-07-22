@@ -38,7 +38,7 @@ flowchart TB
 |---|---|---|
 | アプリ | Next.js App Router + TypeScript | UI、API、Server Actions、cronを同一リポジトリで管理 |
 | UI | Tailwind CSS + shadcn/ui | 画面共通部品はApp Shell配下に集約 |
-| 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。漏洩パスワード保護はPro移行後に有効化 |
+| 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。Auth側もメール確認必須・password最小12文字とし、許可済みの`APP_BASE_URL/auth/confirm`だけをメールredirect先に使う。漏洩パスワード保護はPro移行後に有効化 |
 | DB | Supabase PostgreSQL + RLS（初期Free） | すべてのユーザー系テーブルでRLSを必須化。Free中は定期的な論理backupで補完 |
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
 | 課金 | Stripe Checkout + Customer Portal + Webhook | カード情報は自前で扱わない |

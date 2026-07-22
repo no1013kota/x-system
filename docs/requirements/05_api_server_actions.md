@@ -88,6 +88,8 @@
 | `updatePassword` | password, password_confirmation | success | 有効なrecovery sessionと一致検証必須 |
 | `signOut` | none | redirect | session破棄 |
 
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。Turnstile統合前の段階でも`captcha_token`の入力・Supabaseへの受け渡し口を維持し、T-M1-07でAuth CAPTCHAとwidgetを有効化して必須検証へ切り替える。
+
 ### 4.1 アカウント・設定
 
 | Action | 入力 | 出力 | 認可/制約 |

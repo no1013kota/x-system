@@ -329,13 +329,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で、email・standard/incomplete・AI目的／ニュース／通知の初期設定を持つprofileを自動作成するmigrationを追加。認証済みユーザーのprofile欠損は共通session helperからservice-role clientで`id`競合時DO NOTHINGのinsert-only upsertを行い、既存の設定・契約値を変更せず補完する。
   検証: ローカルSupabase Authでtrigger作成値、profile削除後の補完、2回目の補完でも1行かつカスタマイズ済み値を保持することを確認。全261テスト・lint・typecheck・Next production buildが成功。shadow DBで全migrationを再適用し、schema diffなしを確認。Supabase公式のuser data trigger推奨構成も確認し、要件01／02／03へ反映した。
 
-### T-M1-03: signUp Server ActionとSC-02会員登録画面（規約同意version保存） `todo`
+### T-M1-03: signUp Server ActionとSC-02会員登録画面（規約同意version保存） `done`
 - 参照: A-1、SC-02、要件03 §1、要件05 §4.0、要件05 §12、要件06 §11 / 依存: T-M1-01、T-M1-02 / サイズ: M
 - 完了条件:
   - ローカルSupabase＋Inbucketで登録するとpending userが作成され確認メールが届く。画面に確認メール再送導線が表示される
   - 利用規約同意とプライバシーポリシー確認の2つのcheckboxが別々に必須で、現行version不一致は拒否。成功時にterms_version/terms_accepted_at/privacy_version/privacy_acknowledged_atがprofilesへ保存される
   - password 12〜64文字・UTF-8 72bytes以下・確認用一致のzod検証が通り、エラー文言からメール存在有無・秘密値が漏れない
 - メモ: captcha_tokenの受け口だけ設け、Turnstile検証は後続タスクで有効化。規約・プライバシーの正式文面は法務ページ担当マイルストーンの成果物待ちのため、リンク先は/terms・/privacyの暫定ページ、versionはコード定数で管理。password managerの生成・貼り付けを妨げないこと。
+  実装結果: `signUp` Server Action、SC-02会員登録フォーム、確認メール再送Action、暫定`/terms`・`/privacy`を追加。現行versionは両文書とも`2026-07-22-draft`で、別々の明示checkboxとversion一致をzod検証後、profileへ同意時刻とともに保存する。passwordは12〜64文字・UTF-8 72 bytes以下・確認一致を検証し、Auth/provider詳細やメール存在有無は共通文言へ隠す。`captcha_token`は受け口とSupabaseへの伝播まで実装し、必須化はT-M1-07で行う。
+  検証: 実ブラウザ＋ローカルSupabaseでpending user作成、profile同意4項目保存、Mailpitへの確認メール到着（redirect先`/auth/confirm`）、成功画面と再送導線を確認。全268テスト・lint・typecheck・Next production buildが成功。Supabase Authはメール確認必須・最小password 12文字・localhostの`/auth/confirm`許可へ同期した。
 
 ### T-M1-04: GET /auth/confirm（メールtoken_hash検証と遷移制御） `todo`
 - 参照: 要件01 §4、要件03 §1、要件05 §3、SC-02、SC-03 / 依存: T-M1-03 / サイズ: S
