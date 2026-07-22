@@ -55,6 +55,136 @@ export class StripeSubscriptionSyncError extends Error {
   }
 }
 
+interface PlanTransitionTarget {
+  active_x_account_id: string | null;
+  ai_purpose_config: unknown;
+  id: string;
+  plan: PlanId;
+}
+
+function purposeProvider(
+  config: unknown,
+  purpose: "image" | "text",
+): string | null {
+  if (!config || typeof config !== "object") return null;
+  const value = (config as Record<string, unknown>)[purpose];
+  return typeof value === "string" ? value : null;
+}
+
+async function clearInactiveSelection(
+  database: StripeEventDatabase,
+  userId: string,
+): Promise<void> {
+  await database.query(
+    `update profiles p
+        set active_x_account_id = null, updated_at = now()
+      where p.id = $1
+        and p.active_x_account_id is not null
+        and not exists (
+          select 1 from x_accounts x
+           where x.id = p.active_x_account_id
+             and x.user_id = p.id
+             and x.status = 'active'
+        )`,
+    [userId],
+  );
+}
+
+async function applyStandardAccountLimit(
+  database: StripeEventDatabase,
+  target: PlanTransitionTarget,
+): Promise<void> {
+  const keeper = await database.query<{ id: string }>(
+    `select id from x_accounts
+      where user_id = $1 and status = 'active'
+      order by (id = $2::uuid) desc, created_at asc, id asc
+      limit 1`,
+    [target.id, target.active_x_account_id],
+  );
+  const keeperId = keeper.rows[0]?.id ?? null;
+  await database.query(
+    `update x_accounts
+        set status = 'disabled', updated_at = now()
+      where user_id = $1
+        and status = 'active'
+        and ($2::uuid is null or id <> $2::uuid)`,
+    [target.id, keeperId],
+  );
+  await database.query(
+    `update profiles
+        set active_x_account_id = $2::uuid, updated_at = now()
+      where id = $1`,
+    [target.id, keeperId],
+  );
+}
+
+async function revalidateByokPurposeConfig(
+  database: StripeEventDatabase,
+  target: PlanTransitionTarget,
+): Promise<void> {
+  const keys = await database.query<{ provider: string }>(
+    `select provider::text as provider from user_api_keys
+      where user_id = $1
+        and status = 'valid'
+        and provider in ('anthropic', 'openai', 'google')`,
+    [target.id],
+  );
+  const valid = new Set(keys.rows.map((row) => row.provider));
+  const text = purposeProvider(target.ai_purpose_config, "text");
+  const image = purposeProvider(target.ai_purpose_config, "image");
+  const raw =
+    target.ai_purpose_config && typeof target.ai_purpose_config === "object"
+      ? (target.ai_purpose_config as Record<string, unknown>)
+      : {};
+  await database.query(
+    `update profiles set ai_purpose_config = $2::jsonb, updated_at = now()
+      where id = $1`,
+    [
+      target.id,
+      {
+        ...raw,
+        text: text && valid.has(text) ? text : null,
+        image:
+          image &&
+          (image === "openai" || image === "google") &&
+          valid.has(image)
+            ? image
+            : null,
+      },
+    ],
+  );
+}
+
+/** Applies plan-dependent X/account settings in the subscription transaction. */
+async function applyPlanTransition(
+  database: StripeEventDatabase,
+  target: PlanTransitionTarget,
+  nextPlan: PlanId,
+): Promise<void> {
+  if (target.plan === nextPlan) return;
+
+  if (nextPlan === "premium") {
+    await database.query(
+      `update x_accounts set status = 'expired', updated_at = now()
+        where user_id = $1 and auth_type = 'byok' and status <> 'expired'`,
+      [target.id],
+    );
+  } else if (target.plan === "premium") {
+    await database.query(
+      `update x_accounts set status = 'expired', updated_at = now()
+        where user_id = $1 and auth_type = 'managed' and status <> 'expired'`,
+      [target.id],
+    );
+    await revalidateByokPurposeConfig(database, target);
+  }
+
+  if (nextPlan === "standard") {
+    await applyStandardAccountLimit(database, target);
+  } else {
+    await clearInactiveSelection(database, target.id);
+  }
+}
+
 function expandedId(value: { id: string } | string | null): string | null {
   if (typeof value === "string") return value;
   return value?.id ?? null;
@@ -198,12 +328,16 @@ export async function applyPreparedStripeEvent(
   const projection = value.projection;
 
   const targets = await database.query<{
+    active_x_account_id: string | null;
+    ai_purpose_config: unknown;
     id: string;
     notification_config: unknown;
+    plan: PlanId;
     stripe_customer_id: string | null;
     subscription_event_created_at: Date | string | null;
   }>(
-    `select id, notification_config, stripe_customer_id, subscription_event_created_at
+    `select id, active_x_account_id, ai_purpose_config, notification_config,
+            plan, stripe_customer_id, subscription_event_created_at
        from profiles
       where stripe_customer_id = $1
          or ($2::uuid is not null and id = $2::uuid)
@@ -261,6 +395,8 @@ export async function applyPreparedStripeEvent(
       projection.trialStartedAt,
     ],
   );
+
+  await applyPlanTransition(database, target, projection.plan);
 
   if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
     const config = target.notification_config as {

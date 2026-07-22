@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
+| バージョン | v1.6 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -132,6 +132,10 @@ Indexes: (`user_id`, `status`)
 RLS: 本人select可。writeはServer Actionのみ。
 
 `active_x_account_id`は同じprofileが所有するx_accountだけを設定できるよう、Server ActionとDB triggerで検証する。
+
+プラン変更のSubscription同期では、profileと同じtransaction内でXアカウントの利用可否を更新する。BYOK（standard／md）→premiumは`auth_type=byok`、premium→BYOKは`auth_type=managed`を`expired`にする。新planがstandardの場合は、互換性のないauth typeを先に失効した後、現在の`active_x_account_id`がなおactiveならその1件、そうでなければ`created_at, id`順で最古のactive 1件を維持し、他のactiveを`disabled`にする。維持候補がなければ`active_x_account_id=null`とする。
+
+この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`base_md_versions`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す。`credentials_ciphertext`自体は保持する。
 
 自動投稿への有効な同意は、`automation_consent_version`が現行説明versionと一致し、`automation_consented_at is not null`かつ`automation_disabled_at is null`の場合に限る。OAuth scopeの付与はこの同意の代わりにしない。opt-outでは同じtransactionで`automation_disabled_at`を設定し、対象Xアカウントの`mode=auto`スロットをすべて無効化する。
 

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.9 |
+| バージョン | v1.10 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -148,6 +148,14 @@ Portal Configurationは`subscription_update.proration_behavior=create_prorations
 | 解約予定 | `cancel_at_period_end = true`でも期間終了までは現在プランを利用可 |
 
 複数Xアカウントの無効化はwebhook同期後の同一処理で行う。再アップグレード時にユーザーが再有効化する。
+
+planが変わったSubscription同期は、profileの課金projection更新と次の処理を同じtransactionでcommit／rollbackする。
+
+1. standard／md→premiumはBYOK Xアカウントを`expired`、premium→standard／mdはmanaged Xアカウントを`expired`にする。token・BYOKキーは保持する。
+2. standardへ変わる場合、失効後も選択中Xアカウントがactiveならその1件を維持する。そうでなければ最古のactive 1件を選び、残りのactiveを`disabled`にする。互換性のあるactive候補がなければ選択を解除する。
+3. premium→standard／mdは`ai_purpose_config`を登録済み`valid`キーと照合する。textはanthropic／openai／google、imageはopenai／googleだけを維持し、欠損・invalid・未対応providerを`null`へ戻す。外部疎通と再有効化はM2の設定操作で行う。
+
+planが同一のstatus／期間更新では上記副作用を再実行しない。stale eventは課金projectionと同様にプラン変更副作用もskipする。下書き、投稿履歴、実績、ベースmdと履歴、学習source、token／key ciphertext、利用台帳は削除しない。
 
 OAuth再連携で同じ`x_user_id`が返った場合は既存`x_accounts` rowのtoken、`auth_type`、scope、statusを置き換え、ベースmd・下書き・実績は維持する。別のX userが返った場合は新規アカウントとして扱い、プラン上限を検証する。
 

@@ -466,13 +466,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: 8つの`subscription_status`について閲覧範囲、生成／投稿／自動実行可否、主導線を型付き共通マッピングへ集約し、route guardとlogin後遷移も同じ定義へ統合した。`trialing|active`だけを許可する共通mutationガードは、それ以外を`subscription_required`として`missing=[subscription]`、現在status、`settingsPath`付きで拒否する。共通App Layout／最小ホームを追加し、通知設定を読まずに`past_due|unpaid|paused`へPortal、Customer欠損と`canceled`へCheckoutの常設バナーをヘッダー直下へ表示する。`trialing`はJST終了日、`active`はバナーなしとし、停止statusでも子画面を覆わず既存データ閲覧を維持する。Portalボタンは設定画面と共通component化した。
   検証: 全8 statusの閲覧範囲・実行可否・主導線、許可2 status、停止4 statusの安定error details、trial／停止／解約バナーを19 unit testで確認。通知設定billing両OFFのローカルユーザーで`past_due`のPortal常設表示、`canceled`のCheckout切替、`trialing`の2026年7月30日JST表示をブラウザ確認し、一時ユーザーを削除した。関連route／loginを含む全420件（353成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。要件03・05・06へ反映した。
 
-### T-M1-17: プラン変更同期処理（Xアカウント無効化・AI用途設定の再検証） `todo`
+### T-M1-17: プラン変更同期処理（Xアカウント無効化・AI用途設定の再検証） `done`
 - 参照: 要件03 §6、要件02 §3.3、要件02 §4.1、A-6 / 依存: T-M1-12 / サイズ: M
 - 完了条件:
   - md/premium→standardの同期でactive_x_account_idの1件だけactiveを維持し残りをdisabled化（active未設定ならcreated_at最古のactiveを維持）。token・ベースmd・下書き・実績データは削除されない（seedデータの単体テスト）
   - standard/md→premiumの同期でauth_type=byokのXアカウントがexpired化され（BYOKキーは削除しない）、premium→standard/mdの同期でauth_type=managedがexpired化される。いずれもwebhook同期後の同一処理として実行される
   - premium→BYOKの同期でai_purpose_configのtext/imageが登録済みvalidキーで再検証され、無効なら未設定へ戻る
 - メモ: M2依存部分: OAuth再連携（BYOK/運営Appでの再認可）・enableXAccountによる再有効化・キー疎通検証の実処理はM2（X連携・APIキー）で実装する。本タスクはwebhook同期transaction内のstatus/設定更新とテストまでとし、expired化に伴う再連携要求バナーの接続もM2で行う。x_accounts・user_api_keysテーブル自体はM0のmigrationで存在する前提。
+- 実装メモ:
+  実装結果: Subscription profile更新後の同一transactionで旧plan→新planを判定し、standard／md→premiumはBYOK、premium→standard／mdはmanaged Xアカウントを`expired`化する。Standard適用は互換性失効後、選択中がactiveならその1件、そうでなければ`created_at,id`順の最古active 1件を維持し、他を`disabled`、候補なしは選択解除する。premium→BYOKは`ai_purpose_config.text|image`を登録済み`valid`キーと照合し、対応providerだけを維持して無効用途をnullへ戻す。plan不変／stale eventでは副作用を実行しない。status／選択／用途設定以外のtoken、scope、同意、BYOK ciphertext、ベースmd・履歴、学習source、下書き、tweet ID、実績、台帳は更新・削除しない。
+  検証: ローカルPostgresの1 transactionシナリオで、MD→Standardの選択中1件維持、未選択時の最古1件fallback、他2件disabled、Standard→PremiumのBYOK 3件expired、Premium→MDのmanaged expired／選択解除、valid Anthropic text維持／invalid OpenAI image解除を確認した。同じseedでtoken 4件、BYOKキー2件、ベースmd 3件・履歴、下書き本文、tweet ID、実績JSONが不変であることを確認。DB統合2件、全421件（353成功・DB条件なし68 skip）・lint・typecheck・Next production buildが成功。要件02・03へ反映した。
 
 ### T-M1-18: 利用規約の再同意ガード（重大改定時） `todo`
 - 参照: 要件03 §1、要件02 §3.1、SC-02 / 依存: T-M1-16、T-M1-03 / サイズ: S
