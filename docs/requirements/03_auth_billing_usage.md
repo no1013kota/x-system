@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -69,7 +69,7 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 
 `POST /api/stripe/webhook`はbodyをJSON化する前のraw textと`Stripe-Signature`、環境別の`STRIPE_WEBHOOK_SECRET`をStripe SDK `constructEvent`へ渡す。header欠落、署名不正、既定5分のtimestamp許容範囲外は、詳細を返さず400で拒否する。署名検証後の処理失敗はSentryへevent ID／type（未知Price時はPrice IDも）だけを記録して500を返し、Stripeの再送へ委ねる。
 
-対象外の署名済みeventは副作用・`stripe_events`記録なしで200応答する。対象eventはPrice検証後、`insert ... on conflict (event_id) do nothing returning event_id`でtransaction内claimし、競合時は処理済みとして副作用なしの200を返す。claim後の業務更新も同じtransaction callback内で行い、例外時はevent記録ごとrollbackする。subscription eventはpayload内の単一Priceをサーバー対応表で先に検証し、その他の対象eventは後続処理でsubscriptionを再取得して同じ検証を行う。
+対象外の署名済みeventは副作用・`stripe_events`記録なしで200応答する。対象eventはPrice検証後、`insert ... on conflict (event_id) do nothing returning event_id`でtransaction内claimし、競合時は処理済みとして副作用なしの200を返す。claim後の業務更新も同じtransaction callback内で行い、例外時はevent記録ごとrollbackする。`checkout.session.completed`／subscription created・updatedはtransaction開始前にSubscriptionを再取得して現在状態と単一Priceを検証し、deletedだけはevent内の最終Subscriptionを`canceled`として使用する。invoice eventの再取得・同期は§4.1のinvoice処理で行う。
 
 ### 4.1 対象イベント
 
@@ -93,6 +93,10 @@ Price IDからplanへの変換に未知の値が来た場合はprofileを更新�
 5. profile更新とevent記録を同一transactionでcommitする。失敗時は両方rollbackし、Stripe再送を受けられるようにする。
 
 イベントの到着順が前後しても古い契約状態で上書きしない。
+
+同期値はSubscriptionの`customer`、`id`、`status`、`cancel_at_period_end`、`trial_end`、`trial_start`、metadata `user_id`と、単一Subscription ItemのPrice／`current_period_end`から作る。現行Stripe APIでは契約期間がitem単位のため、複数itemは未知Priceと同様に同期を拒否する。profileは既存`stripe_customer_id`、またはCustomer未保存時だけUUID形式のmetadata `user_id`で特定し、両者の不一致・複数／欠損profileはrollbackする。`plan`、`subscription_status`、`current_period_end`、`cancel_at_period_end`、`trial_ends_at`、Customer／Subscription ID、event時刻を更新する。statusを初めて`trialing`として同期するときだけ`trial_used_at`へ`trial_start`（欠落時event.created）を保存し、以後のactive・解約・再契約では上書き／null化しない。
+
+profile rowをtransaction内でlockし、保存済み`subscription_event_created_at`よりevent.createdが古い場合はprofile更新だけをskipしてeventを処理済み記録する。同時到着でもlock取得後に再判定する。新しいeventは再取得済みの現在状態を反映するため、event payloadの古いsnapshotへ戻さない。
 
 ## 5. 契約状態とアクセス
 
@@ -225,6 +229,8 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Idempotent requests](https://docs.stripe.com/api/idempotent_requests)：Customer作成の冪等key（2026-07-22確認）
 - [Receive Stripe events](https://docs.stripe.com/webhooks?lang=node)：raw body署名検証、timestamp許容範囲、重複・非同期再送・順序非保証（2026-07-22確認）
 - [Process undelivered events](https://docs.stripe.com/webhooks/process-undelivered-events)：処理済みevent再送のskip＋成功応答（2026-07-22確認）
+- [Retrieve a subscription](https://docs.stripe.com/api/subscriptions/retrieve?lang=node)：Customer、status、trial、metadataとSubscription ItemのPrice／current period（2026-07-22確認）
+- [Subscription webhooks](https://docs.stripe.com/billing/subscriptions/webhooks)：created／updated／deletedの契約ライフサイクル（2026-07-22確認）
 - [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：プラン変更、解約、ダウングレード予約
 
 Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configuration IDはPortal実装タスクで実装メモへ記録する。外部仕様は各実装タスク開始時に再確認する。

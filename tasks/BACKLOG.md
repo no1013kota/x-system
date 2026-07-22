@@ -415,12 +415,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Node runtimeの`POST /api/stripe/webhook`と注入可能な検証／処理coreを追加。request bodyを1回だけraw textで読み、`Stripe-Signature`＋環境別secretをSDK `constructEvent`（既定5分tolerance）で検証する。対象6 eventだけを処理し、対象外は記録なしで200。subscription eventの単一Priceをserver対応表でinsert前に検証し、未知・欠落・複数PriceはSentryへevent ID/type/Price IDだけを記録して500とする。既知eventは短いtransactionで`stripe_events`へ`ON CONFLICT DO NOTHING RETURNING`でclaimし、重複時は副作用なしで200、claim後のevent別処理callbackも同transaction内で実行するため後続タスクのprofile更新失敗時はevent記録ごとrollbackできる。署名／provider詳細は応答へ出さず全応答no-store。
   検証: Stripe SDK `generateTestHeaderString`でraw body署名成功、header欠落／不正400、初回processed、同一event再送duplicate＋副作用1回、未知Priceの未記録／未更新／Sentry mock／500、対象外ignoredを5 unit testで確認。ローカルPostgresで同じevent IDを2回処理し、PK競合で1 row・副作用1回になるDB統合テストも成功。全370件（304成功・DB条件なし66 skip）・lint・typecheck・Next production buildが成功。Stripe公式のraw body署名、5分tolerance、非2xx再送、順序非保証、重複成功応答を2026-07-22に確認し、要件03／05へ反映した。
 
-### T-M1-12: webhook subscription同期（checkout完了・subscription作成/更新/削除・順序逆転防止） `todo`
+### T-M1-12: webhook subscription同期（checkout完了・subscription作成/更新/削除・順序逆転防止） `done`
 - 参照: O-1、要件03 §3、要件03 §4.1、要件03 §4.2、要件02 §3.1 / 依存: T-M1-11 / サイズ: M
 - 完了条件:
   - checkout.session.completed／customer.subscription.created・updatedはsubscriptionをStripe APIから再取得（deletedのみevent最終状態でcanceled化）し、plan・subscription_status・current_period_end・cancel_at_period_end・trial_ends_at・stripe_customer_id・stripe_subscription_id・subscription_event_created_atがprofilesへ同期される（SDKモックの単体テスト）
   - event.createdがprofiles.subscription_event_created_atより古いイベントはprofile更新をskipし、順序逆転で古い契約状態へ戻らないことをテストで確認
   - trialingを初めて確認した時だけtrial_used_atを設定し、解約・再契約でもnullへ戻らない。profile更新とstripe_events記録が同一transactionでcommit/rollbackされる
+  実装結果: `checkout.session.completed`／subscription created・updatedは署名検証後かつDB transaction前にSubscriptionを再取得し、deletedだけはevent内の最終objectを`canceled`として使用するprepare/apply分離をWebhook基盤へ接続した。単一Subscription ItemのPriceをserver対応表へ変換し、現行Stripe APIのitem `current_period_end`、status、trial、解約予定、Customer／Subscription ID、metadata user_idをprojection化する。transaction内でprofile候補をrow lockし、Customer IDまたはCustomer未保存時のUUID user_idが一意に一致する場合だけ9契約項目を更新する。保存済みevent時刻より古いeventはprofile更新をskip、同時実行もlock後に再判定する。初回trialingだけ`trial_used_at=trial_start`（欠落時event.created）をcoalesce保存し、以後保持する。profile更新とevent claimは同transactionで、mapping／更新失敗時は両方rollbackする。
+  検証: Stripe SDK retrieveモックでcheckout／created／updatedがsubscription IDを再取得し、deletedだけ再取得しないこと、単一itemのPrice／期間／status／trial変換、未知・複数Price拒否を6 unit testで確認。ローカルPostgresで全同期値、初回trial保持、古いeventの逆転防止、失敗時の`stripe_events` rollbackを1統合シナリオで確認。全377件（310成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のSubscription retrieve／Item current_period_end／契約webhookライフサイクルを2026-07-22に確認し、要件03へ反映した。
 
 ### T-M1-13: invoice.payment_failed／invoice.paid処理と課金通知作成 `todo`
 - 参照: O-1、要件03 §4.1、要件03 §8、要件02 §3.15 / 依存: T-M1-12 / サイズ: S

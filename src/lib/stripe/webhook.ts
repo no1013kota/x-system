@@ -29,7 +29,9 @@ export interface StripeEventProcessorDependencies {
   applyEvent?: (
     database: StripeEventDatabase,
     event: Stripe.Event,
+    prepared: unknown,
   ) => Promise<void>;
+  prepareEvent?: (event: Stripe.Event) => Promise<unknown>;
   priceIds: Record<PlanId, string>;
   transaction<T>(
     callback: (database: StripeEventDatabase) => Promise<T>,
@@ -99,7 +101,9 @@ export async function processStripeEvent(
   dependencies: StripeEventProcessorDependencies,
 ): Promise<StripeEventProcessResult> {
   if (!SUPPORTED_EVENT_TYPES.has(event.type)) return "ignored";
-  validateEmbeddedPrices(event, dependencies.priceIds);
+  const prepared = dependencies.prepareEvent
+    ? await dependencies.prepareEvent(event)
+    : (validateEmbeddedPrices(event, dependencies.priceIds), undefined);
 
   return dependencies.transaction(async (database) => {
     const claimed = await database.query<{ event_id: string }>(
@@ -112,7 +116,7 @@ export async function processStripeEvent(
     );
     if ((claimed.rowCount ?? 0) === 0) return "duplicate";
 
-    await dependencies.applyEvent?.(database, event);
+    await dependencies.applyEvent?.(database, event, prepared);
     return "processed";
   });
 }
