@@ -33,6 +33,17 @@ function parseBooleanFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
 
+/**
+ * Coerce-number env fields: treat a blank/whitespace string as unset
+ * (`undefined`). Without this, `z.coerce.number()` turns "" into 0, which would
+ * (a) silently pass the preview/prod required check for cost fields and corrupt
+ * cost aggregation, and (b) fail `.positive()` fields set to "" with a
+ * confusing error instead of falling back to unset/default.
+ */
+function blankToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
+
 /** Variables that must be present in preview and production (optional in dev). */
 const PREVIEW_PROD_REQUIRED = [
   "ANTHROPIC_API_KEY",
@@ -91,13 +102,22 @@ const schema = z
       .string()
       .optional()
       .transform(parseBooleanFlag),
-    X_DAILY_POST_LIMIT: z.coerce.number().int().positive().default(50),
-    X_COST_CONTENT_CREATE_USD: z.coerce.number().nonnegative().optional(),
-    X_COST_CONTENT_CREATE_WITH_URL_USD: z.coerce
-      .number()
-      .nonnegative()
-      .optional(),
-    X_COST_INTERACTION_DELETE_USD: z.coerce.number().nonnegative().optional(),
+    X_DAILY_POST_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().positive().default(50),
+    ),
+    X_COST_CONTENT_CREATE_USD: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().nonnegative().optional(),
+    ),
+    X_COST_CONTENT_CREATE_WITH_URL_USD: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().nonnegative().optional(),
+    ),
+    X_COST_INTERACTION_DELETE_USD: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().nonnegative().optional(),
+    ),
 
     // §3.2 Supabase
     NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
@@ -133,7 +153,10 @@ const schema = z
 
     // §3.6 メール・監視
     SMTP_HOST: z.string().min(1).optional(),
-    SMTP_PORT: z.coerce.number().int().positive().optional(),
+    SMTP_PORT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
     SMTP_USER: z.string().min(1).optional(),
     SMTP_APP_PASSWORD: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),

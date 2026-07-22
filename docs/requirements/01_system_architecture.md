@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.4 |
-| 更新日 | 2026-07-21 |
+| 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -82,7 +82,7 @@ flowchart TB
 |---|---|---|---|
 | `STRIPE_SECRET_KEY` | dev/preview/prod | Checkout/Portal/Webhook API | Server only |
 | `STRIPE_WEBHOOK_SECRET` | dev/preview/prod | Webhook署名検証 | 環境ごとに別値 |
-| `STRIPE_PORTAL_CONFIGURATION_ID` | dev/preview/prod | プラン変更・解約方針を設定したPortal configuration | 3価格を同一Product配下に置く |
+| `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | 3価格を同一Product配下に置く。devは任意（Portal設定はpreview/prod運用時にsetupで作成。§9） |
 | `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月 |
 | `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月 |
 | `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月 |
@@ -92,7 +92,7 @@ flowchart TB
 | 変数名 | 必須環境 | 用途 | 備考 |
 |---|---|---|---|
 | `X_MANAGED_CLIENT_ID` | preview/prod | プレミアム用運営Developer App | BYOKではユーザー登録値を使用 |
-| `X_MANAGED_CLIENT_SECRET` | preview/prod | プレミアム用運営Developer App secret | confidential clientの場合のみ。環境変数管理 |
+| `X_MANAGED_CLIENT_SECRET` | 任意（confidential時） | プレミアム用運営Developer App secret | confidential clientの場合のみ必須。public/PKCE運用では不要（env検証もoptional）。環境変数管理 |
 | `X_OAUTH_REDIRECT_PATH` | dev/preview/prod | OAuth callback path | 既定値 `/api/x/oauth/callback` |
 
 ### 3.5 AI・画像

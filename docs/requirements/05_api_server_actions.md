@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-20 |
+| バージョン | v1.4 |
+| 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -54,6 +54,7 @@
 | `post_state_unknown` | 409 | X投稿の作成成否を一意に確認できない |
 | `job_conflict` | 409 | lock済み/状態競合 |
 | `not_found` | 404 | 対象なし |
+| `internal_error` | 500 | 未分類のサーバー内部例外を集約した既定コード（provider本文・stack traceは含めない） |
 
 実行前提の不足（`subscription_required`／`api_key_required`／`x_account_required`／`persona_required`）を返す場合、`details`に不足項目の一覧と設定画面への遷移先パスを含める。画面はエラーメッセージと「設定へ」ボタンを表示する（要件06 §3）。
 

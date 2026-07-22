@@ -128,4 +128,31 @@ describe("preview/prod-only requirements", () => {
   it("passes in production with the full set", () => {
     expect(() => buildServerEnv(prodBase())).not.toThrow();
   });
+
+  it("fails in production when STRIPE_PORTAL_CONFIGURATION_ID is missing", () => {
+    const raw = prodBase();
+    delete raw.STRIPE_PORTAL_CONFIGURATION_ID;
+    expect(() => buildServerEnv(raw)).toThrow(/STRIPE_PORTAL_CONFIGURATION_ID/);
+  });
+});
+
+describe("coerce-number blank handling", () => {
+  it("treats a blank cost var as unset (fails the prod required check, not a silent 0)", () => {
+    const raw = { ...prodBase(), X_COST_CONTENT_CREATE_USD: "" };
+    expect(() => buildServerEnv(raw)).toThrow(/X_COST_CONTENT_CREATE_USD/);
+  });
+
+  it("parses a real cost value (0 allowed) and keeps it as a number", () => {
+    const env = buildServerEnv({ ...prodBase(), X_COST_CONTENT_CREATE_USD: "0" });
+    expect(env.X_COST_CONTENT_CREATE_USD).toBe(0);
+  });
+
+  it("treats a blank SMTP_PORT as unset instead of erroring (dev)", () => {
+    const env = buildServerEnv({ ...devBase(), SMTP_PORT: "" });
+    expect(env.SMTP_PORT).toBeUndefined();
+  });
+
+  it("falls back to the default when X_DAILY_POST_LIMIT is blank", () => {
+    expect(buildServerEnv({ ...devBase(), X_DAILY_POST_LIMIT: "" }).X_DAILY_POST_LIMIT).toBe(50);
+  });
 });
