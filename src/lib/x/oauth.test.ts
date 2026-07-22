@@ -8,6 +8,7 @@ import {
   X_AUTHORIZE_URL,
   X_SCOPES,
   X_TOKEN_URL,
+  X_REVOKE_URL,
   XTokenError,
   buildAuthorizeUrl,
   computeCodeChallenge,
@@ -16,6 +17,7 @@ import {
   generateCodeVerifier,
   hasRequiredScopes,
   newOAuthTransaction,
+  revokeOAuthToken,
   sealOAuthTransaction,
   sealTokenResponse,
   verifyOAuthCallback,
@@ -229,6 +231,47 @@ describe("exchangeCodeForToken", () => {
     expect(err).toBeInstanceOf(XTokenError);
     expect((err as XTokenError).status).toBe(400);
     expect((err as XTokenError).errorCode).toBe("invalid_grant");
+  });
+});
+
+describe("revokeOAuthToken", () => {
+  it("posts the token and client_id as form data to the X revoke endpoint", async () => {
+    const calls: Array<{ url: string; init: Parameters<FetchLike>[1] }> = [];
+    const fetch: FetchLike = vi.fn(async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, text: async () => "{}" };
+    });
+
+    await revokeOAuthToken(
+      { clientId: "byok-client-id" },
+      { token: "user-token" },
+      { fetch },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(X_REVOKE_URL);
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers["content-type"]).toBe(
+      "application/x-www-form-urlencoded",
+    );
+    const body = new URLSearchParams(calls[0].init.body);
+    expect(body.get("client_id")).toBe("byok-client-id");
+    expect(body.get("token")).toBe("user-token");
+  });
+
+  it("throws a body-free error on revoke failure", async () => {
+    const fetch: FetchLike = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: async () => '{"detail":"must-not-leak"}',
+    }));
+    await expect(
+      revokeOAuthToken(
+        { clientId: "byok-client-id" },
+        { token: "user-token" },
+        { fetch },
+      ),
+    ).rejects.toMatchObject({ errorCode: null, status: 503 });
   });
 });
 

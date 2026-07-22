@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.9 |
+| バージョン | v1.10 |
 | 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -101,6 +101,8 @@ Constraints: unique(`user_id`, `provider`)
 RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credentials_ciphertext`を含めない。
 
 `display_hint`はX App資格情報で`{client_id_last4, client_type, has_client_secret}`、AIキーで`{api_key_last4}`とし、秘密値の全文やClient Secret末尾は保存しない。Xの`credentials_ciphertext`をServer onlyで復号した平文は`{clientId, clientSecret, clientType}`のJSONとし、AIはAPIキー文字列そのものとする。保存・差し替え時は`status=unchecked`、`verified_at=null`へ戻す。
+
+削除は即時に対象行を物理削除する。AI provider削除時は同一transactionで`profiles.ai_purpose_config`の一致する`text`／`image`だけを`null`へ戻す。X削除時は事前に保存済みaccess／refresh tokenのrevokeをbest effortで試み、同一transactionで全BYOK Xアカウントを`expired`へ変更する。revoke失敗時もApp資格情報の削除を優先し、OAuth token ciphertextは再連携・個別切断処理との整合のため保持する。
 
 ### 3.3 `x_accounts`
 

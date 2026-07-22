@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
+| バージョン | v1.14 |
 | 更新日 | 2026-07-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -126,6 +126,8 @@ Secretは受信後すぐ暗号化し、ログに出さない。保存Actionの�
 AIキーの疎通は生成課金を発生させないmodel一覧APIを1ページだけ呼ぶ。2026-07-23時点で[Anthropic `GET /v1/models`](https://platform.claude.com/docs/en/api/models/list)、[OpenAI `GET /v1/models`](https://platform.openai.com/docs/api-reference/models/list)、[Google Gen AI SDK `models.list`](https://googleapis.github.io/js-genai/release_docs/classes/models.Models.html)を公式仕様として確認した。provider本文は保存・返却せず共通`provider_error`へ変換する。疎通中に同providerのciphertextが差し替わった場合は検証結果を書き込まず`job_conflict`とする。既存の`ai_purpose_config`値は上書きしない。
 
 X App資格情報のclient IDが変わった場合、既存OAuth tokenを新しいAppで使い回さない。`auth_type=byok`のXアカウントを`expired`にし、再連携まで投稿・読取・自動実行を停止する。
+
+Xキー削除では、2026-07-23時点の[X OAuth 2.0 user access token公式手順](https://docs.x.com/fundamentals/authentication/oauth-2-0/user-access-token)に従い`POST /2/oauth2/revoke`へ`token`と`client_id`をform送信する。保存済みaccess／refresh tokenを重複排除して順にrevokeするが、復号・HTTP失敗は外部本文を返さず無視し、App資格情報の即時削除と全BYOK Xアカウントの`expired`化を必ず続行する。revoke準備後にX資格情報が差し替わった場合は新しいキーを消さず`job_conflict`とする。
 
 ### 4.3 Xアカウント
 

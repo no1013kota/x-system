@@ -19,6 +19,7 @@ import { decryptWithKey, encryptWithKey } from "../crypto/envelope";
 
 export const X_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
 export const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+export const X_REVOKE_URL = "https://api.x.com/2/oauth2/revoke";
 
 /** 要求scope（順序・space区切り。PRD §8.1 / 要件05 §4.3）。 */
 export const X_SCOPES = [
@@ -314,6 +315,28 @@ export function exchangeRefreshToken(
     },
     deps,
   );
+}
+
+/**
+ * OAuth 2.0 user access/refresh tokenを失効する（X公式 Step 6）。削除処理からbest effortで
+ * 呼ぶため、失敗時の外部レスポンス本文は解析・返却せず安全なXTokenErrorだけを送出する。
+ */
+export async function revokeOAuthToken(
+  client: Pick<OAuthClient, "clientId">,
+  input: { token: string },
+  deps: { fetch: FetchLike },
+): Promise<void> {
+  const body = new URLSearchParams({
+    client_id: client.clientId,
+    token: input.token,
+  });
+  const res = await deps.fetch(X_REVOKE_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  await res.text();
+  if (!res.ok) throw new XTokenError(res.status, null);
 }
 
 // ---------------------------------------------------------------------------

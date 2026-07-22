@@ -558,12 +558,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Anthropic／OpenAI／Googleのmodel一覧を1ページだけ取得する軽量アダプタ（10秒timeout・再試行なし）と`verifyApiKey` Actionを追加した。AIは成功時に`valid`／`verified_at`を保存し、失敗時はprovider本文を返さず`invalid`／`provider_error`へ変換する。XはOAuth完了まで`unchecked`のままとした。成功時は未設定のtext用途を補完し、OpenAI／Googleでは未設定のimage用途も補完するが、既存値は上書きしない。疎通中に暗号文が差し替わった場合は結果を破棄する競合ガードも追加した。
   検証: providerアダプタの単体5件で3社成功、共通化した失敗応答、Xの疎通非実行を確認。ローカルPostgres統合2件でstatus／verified_at、用途の自動補完と既存値保持、失敗時の用途非変更、暗号文差し替え競合、未登録、Premium拒否を確認した。全467件（393成功・DB条件なし74 skip）・lint・typecheck・Next production buildが成功。2026-07-23時点の各社公式model一覧仕様を確認し、要件05 §4.2をv1.13へ同期した。
 
-### T-M2-08: deleteApiKey Action（用途解除・BYOK X連携失効処理） `todo`
+### T-M2-08: deleteApiKey Action（用途解除・BYOK X連携失効処理） `done`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §4.1、PRD §10 / 依存: T-M2-07 / サイズ: S
 - 完了条件:
   - AIキー削除でuser_api_keys行が削除され、ai_purpose_configの該当用途（text/image）が解除される
   - Xキー削除でtoken revokeをbest effort実行後（HTTPモックで検証）、auth_type=byokのXアカウントがexpired化され投稿・読取・自動実行の対象外になる
 - メモ: 即時削除導線（キー漏洩対策）の要件。revoke失敗でも削除は完了させる。
+  実装結果: `deleteApiKey` Actionと削除調停・DB保存層を追加した。AIキーは対象行を物理削除し、同providerを参照する`ai_purpose_config.text|image`だけを同一transactionで`null`へ戻す。Xキーは保存済みBYOK access／refresh tokenを復号・重複排除し、公式`POST /2/oauth2/revoke`へ順次送った後にApp資格情報を物理削除して全BYOKアカウントを`expired`化する。復号・revoke失敗は削除を妨げず、外部本文も返さない。revoke準備中にX資格情報が差し替わった場合は新しいキーを削除しない競合ガードを設け、OAuth token ciphertextは保持する。
+  検証: 純粋調停3件とX OAuth HTTPモック2件でAI分岐、access／refresh revoke順序・重複排除、form body／endpoint、復号・HTTP失敗時の削除継続を確認。ローカルPostgres統合3件でAIキー削除と用途の選択的解除、Xキー削除とBYOKのみのexpired化・token保持、差し替え競合を確認した。全476件（399成功・DB条件なし77 skip）・lint・typecheck・Next production buildが成功。2026-07-23時点のX公式revoke仕様を確認し、要件02 §3.2をv1.10、要件05 §4.2をv1.14へ同期した。
 
 ### T-M2-09: updateAiPurposeConfig Action（プラン別ライフサイクル） `todo`
 - 参照: A-5、要件05 §4.1、要件02 §4.1、PRD §8.2 / 依存: T-M2-07、M1 / サイズ: M

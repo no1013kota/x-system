@@ -4,6 +4,7 @@ import {
   saveAiApiKeyForUser,
   saveXApiKeyForUser,
 } from "@/lib/api-key-store-server";
+import { deleteApiKeyForUser } from "@/lib/api-key-deletion-server";
 import { verifyApiKeyForUser } from "@/lib/api-key-verification-server";
 import {
   AI_KEY_PROVIDERS,
@@ -20,6 +21,7 @@ import { z } from "zod";
 
 interface ApiKeyActionResult {
   code?: string;
+  deleted?: boolean;
   displayHint?: Record<string, boolean | string>;
   message: string;
   provider?: string;
@@ -106,6 +108,29 @@ export async function verifyApiKey(
         result.provider === "x"
           ? "X APIキーはOAuth連携完了時に確認します。"
           : "APIキーの疎通を確認しました。",
+      provider: result.provider,
+      status: "success",
+    };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+export async function deleteApiKey(
+  input: unknown,
+): Promise<ApiKeyActionResult> {
+  const parsed = verifySchema.safeParse(input);
+  if (!parsed.success) return errorResult(new AppError("validation_error"));
+  const user = await getCurrentUser();
+  if (!user) return errorResult(new AppError("unauthorized"));
+  try {
+    const result = await deleteApiKeyForUser({
+      provider: parsed.data.provider,
+      userId: user.id,
+    });
+    return {
+      deleted: result.deleted,
+      message: "APIキーを削除しました。",
       provider: result.provider,
       status: "success",
     };
