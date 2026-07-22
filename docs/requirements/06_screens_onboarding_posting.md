@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
+| バージョン | v1.4 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -21,6 +21,15 @@
 | SC-09 | `/app/analytics` | 分析 | tweet_id別実績、合算、改善提案、フォロワー推移 |
 | SC-10 | `/app/ai-settings` | AI設定 | 学習ソース、発信設定、ベースmd、プロンプト |
 | SC-11 | `/app/settings` | アカウント設定 | APIキー、Xアカウント、通知、プラン、問い合わせ |
+
+### 1.1 SC-04 プラン選択
+
+- 認証済みユーザーへStandard／MD／Premiumをカード形式で比較表示し、税込月額、Xアカウント上限、BYOK要否を示す。Standard／MDはX API・生成AI APIの利用料がSpace AI月額とは別に各提供元から請求されることを、カード内と画面末尾の両方へ明示する。
+- PremiumはAPIキー不要であることと、通常投稿200件、URL付き投稿20件、文章生成100回、画像生成20枚の月間枠を表示する。
+- プランボタンより前に、税込月額、初回だけの7日trial、開始時のカード登録、trial後の月次自動更新、初回／毎月の支払時期、Customer Portalからの期間末解約、Checkout後の提供開始時期を再掲する。
+- プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
+- `checkout=canceled`は未完了として再選択を案内し、`checkout=success`は契約情報確認中と表示する。契約の確定表示はwebhook同期後のprofileを正とする。
+- `/legal/commercial-transactions`への新規タブリンクを申込条件に置く。正式な法務3ページと全体footerはT-M6-14／15で仕上げるまで、同routeに法務確認前の暫定版であることを明示する。
 
 ## 2. 共通App Shell
 

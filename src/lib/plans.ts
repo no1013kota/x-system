@@ -18,6 +18,7 @@ export interface PremiumUsageLimits {
 
 export interface PlanDefinition {
   id: PlanId;
+  displayName: string;
   monthlyPriceJpy: number;
   xAccountLimit: number;
   /** null = no app-side monthly limits (BYOK plans). */
@@ -29,6 +30,7 @@ export interface PlanDefinition {
 export const PLANS: Record<PlanId, PlanDefinition> = {
   standard: {
     id: "standard",
+    displayName: "Standard",
     monthlyPriceJpy: 500,
     xAccountLimit: 1,
     usageLimits: null,
@@ -36,6 +38,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
   md: {
     id: "md",
+    displayName: "MD",
     monthlyPriceJpy: 1000,
     xAccountLimit: 3,
     usageLimits: null,
@@ -43,6 +46,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
   premium: {
     id: "premium",
+    displayName: "Premium",
     monthlyPriceJpy: 2980,
     xAccountLimit: 3,
     usageLimits: {

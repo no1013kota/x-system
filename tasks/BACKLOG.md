@@ -395,13 +395,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `stripe@22.3.2`（API version `2026-06-24.dahlia`固定）のserver-only client、3プラン共通定義とenv Price ID対応表、同一Origin検証、`POST /api/stripe/checkout`を追加。入力はstrictな`plan`だけで、Price ID・user/customer ID・外部return URL・未知フィールドを拒否する。本人profileの既存Customerを再利用し、未作成時はemail＋`user_id` metadataと`space-ai:customer:{user_id}`冪等keyで作成後、NULL条件付きで保存する。Sessionはsubscription mode／カード登録必須／server固定Price・success/cancel URL／user_id・plan metadataとし、`trial_used_at IS NULL`時だけ7日trialを付与する。API応答は共通JSON形式＋no-store、Stripe詳細は`provider_error`へ秘匿する。
   検証: Stripe SDK注入モックでOrigin・未認証・plan/未知フィールド拒否、3 Price対応、既存Customer再利用、Customer冪等作成と保存、trial初回のみ、固定return URL、provider/DBエラー秘匿を19テストで確認。全359件（294成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。実Stripe test mode E2Eは資格情報待ちのため未実施。Stripe Checkout Session／Customer／idempotency公式仕様を2026-07-22に確認し、要件03／05へ反映した。
 
-### T-M1-10: SC-04プラン選択画面（3プラン比較・法定表示・Checkout開始） `todo`
+### T-M1-10: SC-04プラン選択画面（3プラン比較・法定表示・Checkout開始） `done`
 - 参照: SC-04、O-1、要件03 §2、要件03 §2.1、要件06 §11、要件01 §4 / 依存: T-M1-09 / サイズ: M
 - 完了条件:
   - 3プランの税込月額・Xアカウント上限・BYOK要否・premium月間利用枠が比較表示され、BYOKプランの別途API費用（X・生成AI）が明示される
   - Checkout開始前に税込月額・7日trial・trial後の自動更新・支払時期・解約方法・提供開始時期が表示され、特定商取引法表記へ到達できる
   - プラン選択で/api/stripe/checkoutが呼ばれ、モック環境でCheckout URLへのリダイレクトまで到達する
 - メモ: 特商法ページ本体は法務ページ担当マイルストーンの成果物。未完成の間は暫定ページへリンク。
+  実装結果: 認証必須のSC-04 `/plans`を追加し、共通`PLANS`定数からStandard／MD／Premiumの税込月額・Xアカウント上限、BYOK要否、Premium月間4枠をカード表示する。Standard／MDのX・生成AI API利用料が別途かかることをカード内と画面末尾へ明示した。ボタンより前に初回7日trial、カード登録、月次自動更新、初回／毎月の支払時期、Customer Portalでの期間末解約、提供開始を再掲する。選択時はplanだけをCheckout APIへPOSTし、HTTPSの`data.url`だけへ遷移、送信中disableと安全な再試行エラーを備える。success/canceled帰還表示と、T-M6-14まで暫定版と明示した`/legal/commercial-transactions`も追加した。
+  検証: fetch／navigationモックでplanだけのPOST→Checkout URL遷移、API失敗・不正shape・非HTTPS URL・network失敗時の遷移抑止を確認。実ブラウザ＋ローカルSupabaseで認証→`/plans`、申込条件、全3カード、特商法リンク／暫定ページを確認し、1440px／390pxとも横overflowなし。全364件（299成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。外部通信許可下で既存Auth統合テストを同時実行するとCAPTCHA tokenなしの1件が失敗するため、通常の条件付きskip環境で全テストを実行し、buildは分離した。要件06 §1.1へ画面仕様を同期した。
 
 ### T-M1-11: POST /api/stripe/webhook受信基盤（署名検証・stripe_events冪等記録） `todo`
 - 参照: O-1、要件03 §4.1、要件03 §4.2、要件02 §3.16、要件05 §11、要件04 §5 / 依存: T-M1-09 / サイズ: M
