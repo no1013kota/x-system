@@ -4,8 +4,27 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
+import { routeGuardDestination } from "@/lib/auth/route-guard";
 
 import { authCookieOptions, withAuthCookiePolicy } from "./cookie-options";
+
+const SESSION_RESPONSE_HEADERS = ["cache-control", "expires", "pragma"];
+
+function redirectWithSessionState(
+  request: NextRequest,
+  sessionResponse: NextResponse,
+  destination: string,
+): NextResponse {
+  const redirectResponse = NextResponse.redirect(new URL(destination, request.url));
+  sessionResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie);
+  });
+  SESSION_RESPONSE_HEADERS.forEach((name) => {
+    const value = sessionResponse.headers.get(name);
+    if (value) redirectResponse.headers.set(name, value);
+  });
+  return redirectResponse;
+}
 
 /**
  * Refreshes the cookie-backed session before rendering and forwards the cache
@@ -47,6 +66,28 @@ export async function updateSupabaseSession(request: NextRequest) {
 
   // getUser validates the token with Supabase Auth; getSession only trusts the
   // cookie payload and must not be used for authorization decisions.
-  await supabase.auth.getUser();
+  const { data } = await supabase.auth.getUser();
+  let profile: { plan: string | null; subscription_status: string } | null = null;
+  if (
+    data.user &&
+    (request.nextUrl.pathname === "/app" ||
+      request.nextUrl.pathname.startsWith("/app/"))
+  ) {
+    const result = await supabase
+      .from("profiles")
+      .select("plan, subscription_status")
+      .eq("id", data.user.id)
+      .maybeSingle();
+    profile = result.data;
+  }
+
+  const destination = routeGuardDestination({
+    profile,
+    url: request.nextUrl,
+    userId: data.user?.id ?? null,
+  });
+  if (destination) {
+    return redirectWithSessionState(request, response, destination);
+  }
   return response;
 }

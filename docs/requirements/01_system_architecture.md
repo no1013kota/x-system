@@ -150,13 +150,15 @@ flowchart TB
 
 | 条件 | 挙動 |
 |---|---|
-| 未ログインで`/app/*`へアクセス | `/login?next=...`へリダイレクト。`next`はアプリ内相対パスだけ許可 |
+| 未ログインで`/plans`または`/app`配下へアクセス | `/login?next=...`へリダイレクト。`next`はアクセスしたpathname＋queryから構築したアプリ内相対パスだけ許可 |
 | ログイン済みでプラン未選択 | `/plans`へリダイレクト |
-| `subscription_status`が`incomplete`/`incomplete_expired` | `/plans`へリダイレクト。ただし`/app/settings`の課金・問い合わせタブは許可（要件03 §5の「設定・プランのみ」と対応） |
+| `subscription_status`が`incomplete`/`incomplete_expired`、profile欠損、またはplan未選択 | `/plans`へリダイレクト。ただし`/app/settings?tab=billing`と`/app/settings?tab=support`だけ許可（要件03 §5の「設定・プランのみ」と対応） |
 | `past_due`/`unpaid`/`paused`/`canceled` | 既存データ閲覧は許可。生成・投稿系mutationを拒否し課金バナー表示 |
 | 生成・投稿系の実行前提（キー・X連携・発信設定）不足 | 画面遷移は制限しない。実行時にServer Actionがエラーコードと設定画面への導線を返し、ホームに初期設定ガイドを表示する（要件06 §3） |
 | 通常プランでmd/プロンプトタブへアクセス | タブ内容はロック表示。直接編集APIも403 |
 | Xアカウント未選択・active失効 | `created_at`最古の`status=active`アカウントを選択し`profiles.active_x_account_id`へ永続化する。activeが指すアカウントが`expired`/`disabled`になった場合も同じ規則で再選択し、候補がなければ`/app`で初期設定ガイドを表示 |
+
+proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人のRLS経由で`profiles.plan, subscription_status`を取得する。session refreshで発行されたcookieと`Cache-Control`／`Expires`／`Pragma`はredirect応答にも引き継ぐ。profile取得不能時は未契約としてfail closedし`/plans`へ送る。`past_due`／`unpaid`／`paused`／`canceled`はrouteで遮断せず、後続のmutation認可と常設バナーで制御する。
 
 ## 6. 実行環境の前提
 

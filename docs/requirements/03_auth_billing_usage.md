@@ -104,6 +104,8 @@ Price IDからplanへの変換に未知の値が来た場合はprofileを更新�
 
 `past_due`等でも、ユーザーは既存下書き・履歴・分析・設定を閲覧できる。課金停止を理由にデータを自動削除しない。
 
+route guardでは`incomplete`／`incomplete_expired`（およびprofile取得不能）を`/plans`へ送り、例外として`/app/settings?tab=billing`と`/app/settings?tab=support`だけを許可する。`trialing`／`active`／`past_due`／`unpaid`／`paused`／`canceled`は`/app`配下の閲覧を許可し、生成・投稿系の停止はServer Action側で行う。
+
 ## 6. プラン変更
 
 3つの月額Priceは同一Stripe Product配下に作る。Customer Portalはプラン変更を有効にし、値下げを`decreasing_item_amount`条件で期間末予約、解約を期間末、trial中の変更を`continue_trial`に設定する。値上げは即時反映し、日割り請求を有効にする。

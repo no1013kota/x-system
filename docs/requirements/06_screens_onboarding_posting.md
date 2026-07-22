@@ -164,6 +164,7 @@ P-5は将来の有効化後に全プランで手動生成できる。`FEATURE_QU
 
 ## 9. アカウント設定の補足
 
+- SC-11のタブURLは`/app/settings?tab=<slug>`とし、課金は`billing`、問い合わせは`support`をcanonical slugとする。未契約（`incomplete`／`incomplete_expired`）でもこの2タブだけはroute guardを通過できる。
 - 問い合わせはMVPでは`matsubuz.10@gmail.com`（`SUPPORT_EMAIL`）へのメールリンクとし、専用問い合わせテーブル・フォームは作らない。
 - セルフサービスのアカウント削除機能はMVP対象外とし、SC-11に削除ボタン、削除API、削除進捗を置かない。法令上必要な開示、訂正、利用停止、消去等の請求は`SUPPORT_EMAIL`で受け付け、本人確認と法務確認のうえ運営が個別対応する。
 - X切断時はtoken revokeをbest effortで実行後、保存tokenをnull、statusを`disabled`にし、自動投稿も停止して全auto slotを無効化する。下書き・履歴等のデータは削除しない。

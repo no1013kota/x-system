@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { updateSupabaseSession } from "@/lib/supabase/update-session";
 
-/** Session refresh only; route guards are added by T-M1-08. */
+/** Refreshes the session and applies route-level auth/subscription guards. */
 export async function proxy(request: NextRequest) {
   return updateSupabaseSession(request);
 }

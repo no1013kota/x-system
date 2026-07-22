@@ -375,13 +375,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: 依存ライブラリを追加せずCloudflare公式scriptを明示renderする共通`TurnstileWidget`を実装し、signup／確認メール再送／login／password reset申請へ配置した。Action完了・期限切れ・widget失敗時にtokenを破棄してwidgetをresetする。3 Actionのzod schemaでtoken欠落をprovider呼び出し前に拒否し、Supabase Authへ`captchaToken`を必ず渡して、不正・期限切れ・再利用の安定コード`captcha_failed`をprovider詳細なしの共通エラーへ正規化した。ローカル`config.toml`もTurnstile有効＋`env(TURNSTILE_SECRET_KEY)`参照へ変更した。
   検証: 実ブラウザ＋ローカルSupabaseでCloudflare公式の常時成功site/secretによりsignup・login・password reset申請が成功し、常時失敗secretへ切り替えると3フォームとも共通CAPTCHAエラーで拒否されることを確認。欠落・`captcha_failed`（再利用相当）はActionテストでもprovider未呼出し／安全な拒否を確認した。全311テスト（246成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。Cloudflare Turnstile（5分TTL・single-use・最大2,048文字）とSupabase Auth CAPTCHA／`captcha_failed`を2026-07-22に公式資料で確認し、要件01／05／06とローカル運用手順へ反映した。
 
-### T-M1-08: 認証ガードmiddleware（未ログイン・プラン未選択・incompleteのリダイレクト） `todo`
+### T-M1-08: 認証ガードmiddleware（未ログイン・プラン未選択・incompleteのリダイレクト） `done`
 - 参照: 要件01 §5、要件03 §5、SC-04 / 依存: T-M1-05 / サイズ: M
 - 完了条件:
   - 未ログインで/app/*へアクセスすると/login?next=...へリダイレクトされ、nextはアプリ内相対パスのみ許可（外部URLは破棄）
   - ログイン済みでプラン未選択またはincomplete/incomplete_expiredは/plansへリダイレクトされ、/app/settingsの課金・問い合わせタブへのパスだけ許可される
   - trialing/active/past_due等のユーザーは/app配下へリダイレクトされず閲覧できる
 - メモ: 生成・投稿系mutationの契約状態別拒否は後続の「契約状態別アクセス制御」タスクで実装。/app/settings課金タブの実体はPortalタスクで作るため、ここではパス許可のみ先行。
+  実装結果: Next.js 16の`proxy`内でSupabase session refreshとroute guardを一体化し、`getUser()`で本人性を検証する。未ログインの`/plans`・`/app`配下はrequestのpathname＋queryだけから組み立てた`/login?next=...`へ、本人profileをRLSで取得できない場合または`incomplete|incomplete_expired`は`/plans`へfail closedする。未契約者の例外URLは`/app/settings?tab=billing|support`へ固定し、`trialing|active|past_due|unpaid|paused|canceled`は閲覧を許可する。session refreshで更新されたcookieとcache禁止headerはredirect応答へ引き継ぐ。
+  検証: CookieなしHTTPで`/app/posts?tab=drafts`→`/login?next=%2Fapp%2Fposts%3Ftab%3Ddrafts`、実ブラウザ＋ローカルSupabaseでincompleteの通常`/app`→`/plans`・billing/support通過、activeの`/app`通過を確認。全340テスト（275成功・DB条件なし65 skip）・lint・typecheckが成功。production buildは同じ依存・設定のT-M1-07直後に成功済みだが、この差分後の再実行はGoogle Fonts取得にネットワーク許可が必要で、ワークスペースの承認クレジット不足により再検証できなかった（TypeScript工程は独立のtypecheckで成功）。要件01／03／06へ正確なguard規則とcanonical tab URLを反映した。
 
 ### T-M1-09: POST /api/stripe/checkout（Price ID対応表・Customer冪等作成・trial 1回制御） `todo`
 - 参照: O-1、要件03 §2、要件03 §2.1、要件05 §3、要件05 §11、要件01 §3.3 / 依存: T-M1-02、T-M1-05 / サイズ: M

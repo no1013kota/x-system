@@ -59,5 +59,71 @@ describe("updateSupabaseSession", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("expires")).toBe("0");
     expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("location")).toBe(
+      "https://space-ai.example/login?next=%2Fapp",
+    );
+  });
+
+  it.each(["active", "trialing", "past_due", "unpaid", "paused", "canceled"])(
+    "allows an authenticated %s profile to browse app routes",
+    async (subscriptionStatus) => {
+      const maybeSingle = vi.fn().mockResolvedValue({
+        data: { plan: "standard", subscription_status: subscriptionStatus },
+        error: null,
+      });
+      const eq = vi.fn().mockReturnValue({ maybeSingle });
+      const select = vi.fn().mockReturnValue({ eq });
+      mocks.createServerClient.mockReturnValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: "user-1" } },
+            error: null,
+          }),
+        },
+        from: vi.fn().mockReturnValue({ select }),
+      });
+
+      const response = await updateSupabaseSession(
+        new NextRequest("https://space-ai.example/app/posts?tab=drafts"),
+      );
+
+      expect(response.headers.get("location")).toBeNull();
+      expect(select).toHaveBeenCalledWith("plan, subscription_status");
+      expect(eq).toHaveBeenCalledWith("id", "user-1");
+    },
+  );
+
+  it("redirects an incomplete profile to plans but allows billing/support tabs", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { plan: null, subscription_status: "incomplete" },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    const select = vi.fn().mockReturnValue({ eq });
+    mocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      from: vi.fn().mockReturnValue({ select }),
+    });
+
+    const blocked = await updateSupabaseSession(
+      new NextRequest("https://space-ai.example/app/posts"),
+    );
+    const billing = await updateSupabaseSession(
+      new NextRequest("https://space-ai.example/app/settings?tab=billing"),
+    );
+    const support = await updateSupabaseSession(
+      new NextRequest("https://space-ai.example/app/settings?tab=support"),
+    );
+
+    expect(blocked.headers.get("location")).toBe(
+      "https://space-ai.example/plans",
+    );
+    expect(billing.headers.get("location")).toBeNull();
+    expect(support.headers.get("location")).toBeNull();
   });
 });
