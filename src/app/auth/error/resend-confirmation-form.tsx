@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { resendSignUpConfirmation } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 
 export function ResendConfirmationForm() {
@@ -25,7 +26,7 @@ export function ResendConfirmationForm() {
           type="email"
         />
       </label>
-      <input name="captcha_token" type="hidden" value="" />
+      <TurnstileWidget action="signup-resend" resetSignal={state} />
       <Button disabled={pending} type="submit" variant="outline">
         {pending ? "再送しています…" : "確認メールを再送"}
       </Button>

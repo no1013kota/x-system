@@ -8,6 +8,7 @@ import {
   signIn,
 } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 
 const inputClassName =
@@ -26,7 +27,6 @@ export function LoginForm({ next }: { next: string }) {
   return (
     <div className="space-y-5">
       <form action={formAction} className="space-y-5" noValidate>
-        <input name="captcha_token" type="hidden" value="" />
         <input name="next" type="hidden" value={next} />
 
         {state.status === "error" ? (
@@ -84,6 +84,12 @@ export function LoginForm({ next }: { next: string }) {
           ) : null}
         </div>
 
+        <TurnstileWidget
+          action="login"
+          fieldError={state.fieldErrors?.captcha_token?.[0]}
+          resetSignal={state}
+        />
+
         <Button className="h-11 w-full" disabled={pending} type="submit">
           {pending ? "ログインしています…" : "ログイン"}
         </Button>
@@ -100,7 +106,10 @@ export function LoginForm({ next }: { next: string }) {
           <p className="text-sm">{state.message}</p>
           <form action={resendAction} className="space-y-2">
             <input name="email" type="hidden" value={state.email ?? ""} />
-            <input name="captcha_token" type="hidden" value="" />
+            <TurnstileWidget
+              action="signup-resend"
+              resetSignal={resendState}
+            />
             <Button disabled={resending} type="submit" variant="outline">
               {resending ? "再送しています…" : "確認メールを再送"}
             </Button>

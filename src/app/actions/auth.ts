@@ -35,11 +35,22 @@ const RESET_REQUEST_ACCEPTED_MESSAGE =
   "再設定メールを受け付けました。登録可能なメールアドレスの場合にメールが届きます。";
 const UPDATE_PASSWORD_ERROR_MESSAGE =
   "パスワードを更新できませんでした。再設定メールをもう一度申請してください。";
+const CAPTCHA_ERROR_MESSAGE =
+  "セキュリティ確認に失敗しました。もう一度お試しください。";
 
 const PLAN_REQUIRED_STATUSES = new Set(["incomplete", "incomplete_expired"]);
 
 function confirmationRedirectUrl(): string {
   return new URL("/auth/confirm", env.APP_BASE_URL).toString();
+}
+
+function isCaptchaFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "captcha_failed"
+  );
 }
 
 /** Registers a pending email user and records the exact legal versions accepted. */
@@ -70,6 +81,9 @@ export async function signUp(
       },
     });
 
+    if (isCaptchaFailure(error)) {
+      return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
+    }
     if (error || !data.user) {
       return { status: "error", message: SIGNUP_ERROR_MESSAGE };
     }
@@ -113,17 +127,28 @@ export async function resendSignUpConfirmation(
     };
   }
 
+  const captchaResult = z
+    .string()
+    .min(1)
+    .max(2048)
+    .safeParse(formData.get("captcha_token"));
+  if (!captchaResult.success) {
+    return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
+  }
+
   try {
-    const captchaToken = String(formData.get("captcha_token") ?? "");
     const supabase = await createSupabaseServerClient();
-    await supabase.auth.resend({
+    const { error } = await supabase.auth.resend({
       email: emailResult.data,
       type: "signup",
       options: {
         emailRedirectTo: confirmationRedirectUrl(),
-        ...(captchaToken ? { captchaToken } : {}),
+        captchaToken: captchaResult.data,
       },
     });
+    if (isCaptchaFailure(error)) {
+      return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
+    }
   } catch {
     // Intentionally return the same accepted response for every provider result.
   }
@@ -152,10 +177,13 @@ export async function requestPasswordReset(
   try {
     const input = parsed.data;
     const supabase = await createSupabaseServerClient();
-    await supabase.auth.resetPasswordForEmail(input.email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(input.email, {
       redirectTo: confirmationRedirectUrl(),
-      ...(input.captcha_token ? { captchaToken: input.captcha_token } : {}),
+      captchaToken: input.captcha_token,
     });
+    if (isCaptchaFailure(error)) {
+      return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
+    }
   } catch {
     // Account existence and provider failures intentionally share one response.
   }
@@ -247,6 +275,9 @@ export async function signIn(
     });
 
     if (error) {
+      if (isCaptchaFailure(error)) {
+        return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
+      }
       if (isEmailUnconfirmed(error)) {
         return {
           status: "email_unconfirmed",

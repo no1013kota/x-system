@@ -7,6 +7,7 @@ DBスキーマの正本は `docs/requirements/02_data_model.md`。マイグレ�
 - Docker ランタイム（この環境では **colima**）。`colima start --cpu 4 --memory 8` で起動。
 - Supabase CLI（`brew install supabase`）。
 - `config.toml` は `[analytics] enabled = false`（colimaでは vector が docker.sock を bind mount できず起動失敗するため）。
+- rootのgitignore済み`.env`へ`TURNSTILE_SECRET_KEY`を設定する。ローカル自動テストはCloudflare公式の常時成功secret `1x0000000000000000000000000000000AA`、失敗経路は常時失敗secret `2x0000000000000000000000000000000AA`を使い、本番secretを置かない。
 
 ## よく使うコマンド
 
@@ -30,3 +31,4 @@ supabase stop           # スタック停止
 
 - `.db.test.ts` はローカルSupabaseが起動している時のみ実行され、未起動時はスキップする（Docker非依存の環境でも `npm run test` が通る）。
 - 秘密値（service role key 等）はコミットしない。ローカルの匿名/サービスキーは `supabase start` の出力で確認する。
+- `[auth.captcha]`はTurnstileを有効化し、`env(TURNSTILE_SECRET_KEY)`を参照する。設定変更後はデータを保持したまま`supabase stop`→`supabase start`で反映する。本番はSupabase DashboardとCloudflareで別途実キーを設定し、公式テストキーを使用しない。

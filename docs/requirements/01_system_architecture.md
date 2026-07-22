@@ -45,7 +45,7 @@ flowchart TB
 | ジョブ | Vercel Function + launchd/Vercel Cron + DBキュー | `generation_jobs`を中心に状態管理。手動操作は即時dispatch、定時トリガーは回収経路を兼ねる |
 | テスト | Vitest | ユニット/統合テスト。`npm run lint` / `typecheck` / `test`をDoDの検証コマンドとする |
 | 文字数検証 | 公式`twitter-text` | 加重文字数（URLはt.co固定長・CJK/絵文字重み）とcashtag抽出。投稿本文の280検証とPT-FIX判定に共用（要件05 §12・プロンプト設計書§7） |
-| 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | signup、login、password resetを保護 |
+| 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | 明示render widgetのtokenをsignup、login、password reset Server ActionからSupabase Authへ渡し、Auth側のTurnstile検証を必須化 |
 | 暗号化 | AES-256-GCM | APIキー/OAuthトークンをアプリ層で暗号化 |
 | 監視 | Sentry | Server Actions、API、cronの例外を収集 |
 
@@ -178,7 +178,8 @@ flowchart TB
 - P-5はfeature flagの有効化後にself-serve環境で提供し、`quote_tweet_id`を投稿APIへ指定しない。対象ポスト取得による検証後、対象X URLを1ポスト目へ付けた通常投稿として送信する。
 - OAuth 2.0 user contextでは運営Appも利用者本人の認可を受けて代理投稿できる。OAuth認可だけを自動投稿への同意とは扱わず、XのAutomation Rulesに従って対象操作を説明した明示同意と即時opt-outを別途実装する。
 - X実装の確認先：[OAuth 2.0 scopes/PKCE](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code)／[X Automation Rules](https://help.x.com/en/rules-and-policies/x-automation)／[投稿作成・引用制約](https://docs.x.com/x-api/posts/create-post)／[media upload](https://docs.x.com/x-api/media/upload-media)／[metricsの30日制約](https://docs.x.com/x-api/fundamentals/metrics)／[pay-per-use価格](https://docs.x.com/x-api/getting-started/pricing)。
-- Supabase実装の確認先：[Next.js認証・`token_hash`確認](https://supabase.com/docs/guides/getting-started/tutorials/with-nextjs)／[SSR package選択](https://supabase.com/docs/guides/auth/choosing-a-server-package)／[`getUser()`](https://supabase.com/docs/reference/javascript/auth-getuser)／[Auth user data trigger](https://supabase.com/docs/guides/auth/managing-user-data)／[Auth rate limit](https://supabase.com/docs/guides/auth/rate-limits)／[パスワード保護](https://supabase.com/docs/guides/auth/password-security)／[本番運用チェックリスト](https://supabase.com/docs/guides/deployment/going-into-prod)。SSRは`@supabase/ssr` v0.10系の`getAll`/`setAll`方式、リクエストごとのclient生成、`getSession()`ではなく`getUser()`による認可判定を2026-07-22に確認した。profile作成は`security definer`・空`search_path`の`auth.users` trigger方式を同日に確認した。
+- Supabase実装の確認先：[Next.js認証・`token_hash`確認](https://supabase.com/docs/guides/getting-started/tutorials/with-nextjs)／[SSR package選択](https://supabase.com/docs/guides/auth/choosing-a-server-package)／[`getUser()`](https://supabase.com/docs/reference/javascript/auth-getuser)／[Auth user data trigger](https://supabase.com/docs/guides/auth/managing-user-data)／[Auth rate limit](https://supabase.com/docs/guides/auth/rate-limits)／[CAPTCHA protection](https://supabase.com/docs/guides/auth/auth-captcha)／[Auth error codes](https://supabase.com/docs/guides/auth/debugging/error-codes)／[パスワード保護](https://supabase.com/docs/guides/auth/password-security)／[本番運用チェックリスト](https://supabase.com/docs/guides/deployment/going-into-prod)。SSRは`@supabase/ssr` v0.10系の`getAll`/`setAll`方式、リクエストごとのclient生成、`getSession()`ではなく`getUser()`による認可判定を2026-07-22に確認した。profile作成は`security definer`・空`search_path`の`auth.users` trigger方式、CAPTCHAは`captchaToken`をAuth APIへ渡して安定コード`captcha_failed`を扱う方式を同日に確認した。
+- Turnstile実装の確認先：[widgetの明示render](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/)／[server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)／[公式テストキー](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)。tokenは最大2,048文字・発行後5分・1回限りであることを2026-07-22に確認した。
 
 ## 8. セキュリティ基準
 
@@ -189,7 +190,7 @@ flowchart TB
 - private Storageの画像はservice roleでwriteし、表示時に短時間の署名URLを発行する。DBへ署名URLを保存しない。
 - dependency audit、RLS policy test、認可・CSRF・SSRF testをリリース判定に含める。
 - Supabase Authのメール送信・認証endpointにはDashboardのrate limitを設定する。signup、login、password resetは成功・失敗で情報量を変えず、連続失敗時は同じ汎用文言で待機を促す。
-- productionはSupabase内蔵メールproviderを使わず、認証メールとアプリ通知の送信元をGmail SMTPの`matsubuz.10@gmail.com`へ統一する。Google Accountの通常passwordは保存せず、2段階認証で発行したApp PasswordをServer onlyで管理する。signup/login/password resetへCloudflare Turnstileを適用する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行直後に有効化し、Free中は12文字以上のpassword、rate limit、Turnstileで補完する。
+- productionはSupabase内蔵メールproviderを使わず、認証メールとアプリ通知の送信元をGmail SMTPの`matsubuz.10@gmail.com`へ統一する。Google Accountの通常passwordは保存せず、2段階認証で発行したApp PasswordをServer onlyで管理する。signup、確認メール再送、login、password reset申請はCloudflare Turnstileの明示render widgetを表示し、token欠落をServer Actionのzod検証で、期限切れ・再利用・不正tokenをSupabase Authのserver-side検証で拒否する。widgetはAction完了後にresetし、同じtokenを再送しない。Supabase Freeでは利用できない漏洩パスワード保護はPro移行直後に有効化し、Free中は12文字以上のpassword、rate limit、Turnstileで補完する。
 - 主要導線はWCAG 2.2 AAを目標に、キーボードのみで操作可能にする。focusを消さず、入力にはlabelとエラー関連付け、状態は色だけで表現しない。
 
 ## 9. バックアップ・保持

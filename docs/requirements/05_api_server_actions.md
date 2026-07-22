@@ -83,12 +83,12 @@
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
-| `signIn` | email, password, captcha_token, next(optional) | session/redirect | generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app`。TurnstileはT-M1-07で必須化 |
-| `requestPasswordReset` | email, captcha_token | accepted | `resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。Turnstile検証。メール存在有無・provider結果にかかわらず同じ応答 |
+| `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app` |
+| `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。Turnstile統合前の段階でも`captcha_token`の入力・Supabaseへの受け渡し口を維持し、T-M1-07でAuth CAPTCHAとwidgetを有効化して必須検証へ切り替える。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
 
 ### 4.1 アカウント・設定
 
@@ -252,7 +252,7 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | prompt / base_md | prompt 8,000文字、base_md 5,000文字以下 |
 | image | JPG/PNG/WEBP、5MB以下、1枚 |
 | `news_config` | categories/impact_filterは重複なしで各1件以上、`max_items`は1〜100 |
-| `captcha_token` | signup/login/password reset申請ごとに発行されたTurnstile token。Server側でSupabase Authへ渡し、再利用を許可しない |
+| `captcha_token` | signup／確認メール再送／login／password reset申請ごとに発行された1〜2,048文字のTurnstile token。Server側でSupabase Authへ渡す。5分TTL・1回限りで、Action完了後にwidgetをresetして再利用を許可しない |
 
 同一ユーザーが`queued/running`のjobを5件持つ場合、新規生成・学習・提案を`job_conflict`で拒否する。投稿はさらに`X_DAILY_POST_LIMIT`とpremium残量を確認する。
 

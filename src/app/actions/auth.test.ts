@@ -57,7 +57,7 @@ const ENCRYPTION_KEY = resolveKey("0123456789abcdef0123456789abcdef");
 
 function validSignInForm(overrides: Record<string, string> = {}): FormData {
   const values = {
-    captcha_token: "",
+    captcha_token: "captcha-token",
     email: "user@example.com",
     next: "",
     password: "safe-password-123",
@@ -70,7 +70,7 @@ function validSignInForm(overrides: Record<string, string> = {}): FormData {
 
 function validSignUpForm(overrides: Record<string, string> = {}): FormData {
   const values = {
-    captcha_token: "",
+    captcha_token: "captcha-token",
     email: "new-user@example.com",
     password: "safe-password-123",
     password_confirmation: "safe-password-123",
@@ -147,6 +147,7 @@ describe("auth actions", () => {
         email: "new-user@example.com",
         password: "safe-password-123",
         options: {
+          captchaToken: "captcha-token",
           emailRedirectTo: expect.stringMatching(/\/auth\/confirm$/),
         },
       });
@@ -179,6 +180,31 @@ describe("auth actions", () => {
           options: expect.objectContaining({ captchaToken: "captcha-value" }),
         }),
       );
+    });
+
+    it("rejects a missing or already-used captcha token", async () => {
+      const missing = validSignUpForm();
+      missing.delete("captcha_token");
+      const missingResult = await signUp(INITIAL_AUTH_FORM_STATE, missing);
+
+      expect(missingResult.fieldErrors?.captcha_token).toBeDefined();
+      expect(mocks.createSupabaseServerClient).not.toHaveBeenCalled();
+
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signUp: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "captcha_failed", message: "timeout-or-duplicate" },
+          }),
+        },
+      });
+      const reusedResult = await signUp(
+        INITIAL_AUTH_FORM_STATE,
+        validSignUpForm(),
+      );
+
+      expect(reusedResult).toMatchObject({ status: "error" });
+      expect(reusedResult.message).not.toContain("timeout-or-duplicate");
     });
 
     it("requires the terms and privacy checkboxes independently", async () => {
@@ -271,6 +297,7 @@ describe("auth actions", () => {
       });
       mocks.createSupabaseServerClient.mockResolvedValue({ auth: { resend } });
       const formData = new FormData();
+      formData.set("captcha_token", "captcha-token");
       formData.set("email", "unknown@example.com");
 
       const result = await resendSignUpConfirmation(
@@ -286,6 +313,7 @@ describe("auth actions", () => {
       expect(resend).toHaveBeenCalledWith({
         email: "unknown@example.com",
         options: {
+          captchaToken: "captcha-token",
           emailRedirectTo: expect.stringMatching(/\/auth\/confirm$/),
         },
         type: "signup",
@@ -386,6 +414,31 @@ describe("auth actions", () => {
       expect(mocks.redirect).not.toHaveBeenCalled();
     });
 
+    it("rejects a missing or already-used login captcha token", async () => {
+      const missing = validSignInForm();
+      missing.delete("captcha_token");
+      const missingResult = await signIn(INITIAL_AUTH_FORM_STATE, missing);
+
+      expect(missingResult.fieldErrors?.captcha_token).toBeDefined();
+      expect(mocks.createSupabaseServerClient).not.toHaveBeenCalled();
+
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "captcha_failed", message: "timeout-or-duplicate" },
+          }),
+        },
+      });
+      const reusedResult = await signIn(
+        INITIAL_AUTH_FORM_STATE,
+        validSignInForm(),
+      );
+
+      expect(reusedResult).toMatchObject({ status: "error" });
+      expect(reusedResult.message).not.toContain("timeout-or-duplicate");
+    });
+
     it("uses one generic message for invalid credentials and rate limits", async () => {
       const messages: string[] = [];
       for (const error of [
@@ -443,6 +496,7 @@ describe("auth actions", () => {
       const messages: string[] = [];
       for (const email of ["registered@example.com", "unknown@example.com"]) {
         const formData = new FormData();
+        formData.set("captcha_token", `captcha-token-${email}`);
         formData.set("email", email);
         const result = await requestPasswordReset(
           INITIAL_AUTH_FORM_STATE,
@@ -457,7 +511,10 @@ describe("auth actions", () => {
       expect(resetPasswordForEmail).toHaveBeenNthCalledWith(
         1,
         "registered@example.com",
-        { redirectTo: "http://localhost:3000/auth/confirm" },
+        {
+          captchaToken: "captcha-token-registered@example.com",
+          redirectTo: "http://localhost:3000/auth/confirm",
+        },
       );
     });
 
@@ -483,6 +540,36 @@ describe("auth actions", () => {
           redirectTo: "http://localhost:3000/auth/confirm",
         },
       );
+    });
+
+    it("rejects a missing or already-used password-reset captcha token", async () => {
+      const missing = new FormData();
+      missing.set("email", "registered@example.com");
+      const missingResult = await requestPasswordReset(
+        INITIAL_AUTH_FORM_STATE,
+        missing,
+      );
+
+      expect(missingResult.fieldErrors?.captcha_token).toBeDefined();
+      expect(mocks.createSupabaseServerClient).not.toHaveBeenCalled();
+
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          resetPasswordForEmail: vi.fn().mockResolvedValue({
+            error: { code: "captcha_failed", message: "timeout-or-duplicate" },
+          }),
+        },
+      });
+      const reused = new FormData();
+      reused.set("captcha_token", "already-used-token");
+      reused.set("email", "registered@example.com");
+      const reusedResult = await requestPasswordReset(
+        INITIAL_AUTH_FORM_STATE,
+        reused,
+      );
+
+      expect(reusedResult).toMatchObject({ status: "error" });
+      expect(reusedResult.message).not.toContain("timeout-or-duplicate");
     });
   });
 

@@ -5,6 +5,7 @@ import { useActionState } from "react";
 
 import { requestPasswordReset } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 
 const inputClassName =
@@ -19,8 +20,6 @@ export function PasswordResetRequestForm() {
   return (
     <div className="space-y-5">
       <form action={formAction} className="space-y-5" noValidate>
-        <input name="captcha_token" type="hidden" value="" />
-
         {state.status !== "idle" ? (
           <p
             className={
@@ -53,6 +52,12 @@ export function PasswordResetRequestForm() {
             </p>
           ) : null}
         </div>
+
+        <TurnstileWidget
+          action="password-reset"
+          fieldError={state.fieldErrors?.captcha_token?.[0]}
+          resetSignal={state}
+        />
 
         <Button className="h-11 w-full" disabled={pending} type="submit">
           {pending ? "受け付けています…" : "再設定メールを送る"}

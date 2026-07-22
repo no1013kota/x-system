@@ -11,6 +11,7 @@ import {
   INITIAL_AUTH_FORM_STATE,
   type AuthFormState,
 } from "@/app/actions/auth-state";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 import {
   CURRENT_PRIVACY_VERSION,
@@ -65,7 +66,10 @@ export function SignUpForm() {
         </div>
         <form action={resendAction} className="space-y-3">
           <input name="email" type="hidden" value={state.email ?? ""} />
-          <input name="captcha_token" type="hidden" value="" />
+          <TurnstileWidget
+            action="signup-resend"
+            resetSignal={resendState}
+          />
           <Button type="submit" variant="outline" disabled={isResending}>
             {isResending ? "再送しています…" : "確認メールを再送"}
           </Button>
@@ -89,8 +93,6 @@ export function SignUpForm() {
         type="hidden"
         value={CURRENT_PRIVACY_VERSION}
       />
-      <input name="captcha_token" type="hidden" value="" />
-
       <ResultMessage state={state} />
 
       <div className="space-y-2">
@@ -189,6 +191,12 @@ export function SignUpForm() {
         </label>
         <FieldError errors={state.fieldErrors?.privacy_acknowledged} />
       </div>
+
+      <TurnstileWidget
+        action="signup"
+        fieldError={state.fieldErrors?.captcha_token?.[0]}
+        resetSignal={state}
+      />
 
       <Button className="h-11 w-full" disabled={isPending} type="submit">
         {isPending ? "登録しています…" : "メールアドレスで登録"}

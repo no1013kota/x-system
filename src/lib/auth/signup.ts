@@ -25,7 +25,10 @@ export const authPasswordSchema = z.string().superRefine((password, ctx) => {
 
 export const signUpSchema = z
   .object({
-    captcha_token: z.string().max(2048).optional().default(""),
+    captcha_token: z
+      .string()
+      .min(1, "セキュリティ確認を完了してください。")
+      .max(2048),
     email: z.string().trim().email("メールアドレスを確認してください。"),
     password: authPasswordSchema,
     password_confirmation: z.string(),

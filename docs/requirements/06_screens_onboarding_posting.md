@@ -208,5 +208,6 @@ P-5は将来の有効化後に全プランで手動生成できる。`FEATURE_QU
 - signup／recoveryの認証リンクが期限切れ・使用済み・不正の場合は理由を区別しない「リンクを確認できませんでした」を表示する。signupはメールアドレス入力付き再送フォーム、recoveryはpassword reset再申請へのリンクを表示し、providerのエラー詳細やtokenを画面・遷移先へ残さない。
 - loginはメール・password、password reset導線、会員登録導線を表示する。メール未確認時は入力フォームを残したまま「メール確認が必要です」と確認メール再送ボタンを表示し、invalid credentialsや連続失敗はメール存在有無・provider理由を区別しない共通文言とする。
 - password reset申請は`/login?mode=forgot-password`でメールを受け付け、登録有無・provider結果にかかわらず同じ受理文言を表示する。recoveryリンク経由の`/reset-password`で新passwordと確認用passwordを入力し、更新後はmarker/sessionを破棄してログイン画面に完了通知を表示する。有効なrecovery markerがない更新は再申請を促す共通エラーとする。
+- signup／確認メール再送／login／password reset申請フォームはCloudflare Turnstile widgetを表示する。token欠落・期限切れ・再利用・検証失敗は「セキュリティ確認に失敗しました」の共通文言でフォームに留め、Action完了後は新しいtokenを得るためwidgetをresetする。
 - LPとプラン画面から特定商取引法表記へ容易に到達できるようにし、Checkout直前にも料金・更新・解約条件を再掲する。
 - 表示文面は上記事業者情報を使い、リリース前に法務確認する。実装時の参照は[消費者庁の通信販売広告](https://www.no-trouble.caa.go.jp/what/mailorder/advertising.html)と[個人情報保護委員会の通則ガイドライン](https://www.ppc.go.jp/personalinfo/legal/guidelines_tsusoku/)を使用する。
