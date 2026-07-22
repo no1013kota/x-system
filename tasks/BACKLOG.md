@@ -587,12 +587,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `/app/settings?tab=api-keys`へX／Anthropic／OpenAI／Googleの登録・差し替え・確認・削除UIと、暗号文を取得しない安全な表示専用queryを追加した。保存後はpassword入力を消去し、Client ID／APIキーの末尾4文字、client種別、検証状態、最終確認時刻だけを表示する。X Developer Consoleのcallback URL、scope 5種、credits・自動チャージ・spending limitの手順と差し替え用画像枠を実装し、Premiumでは入力フォームを出さずキー登録不要を案内する。ブラウザ検証でNext.js開発サーバーがServer Function引数を記録することを確認したため、`logging.serverFunctions=false`で秘密入力のterminal出力も無効化した。
   検証: マスク表示2件とNext.js秘密値ログ設定1件を追加し、全487件（408成功・DB条件なし79 skip）、lint、typecheck、Next production build、`git diff --check`が成功。ブラウザでStandardのX／AI保存後の末尾4文字表示・入力消去・形式確認・削除、Premiumのフォーム非表示、幅390pxで横overflowなしを確認した。X Developer App、OAuth callback、料金・予算設定は2026-07-23にX公式仕様を確認した。要件01 §8をv1.5、要件06 §3.2をv1.11へ同期し、PRD・要件02／05・プロンプト設計は既存仕様内のため変更なしと確認した。
 
-### T-M2-11: SC-10 AI用途設定UI（text/image provider選択） `todo`
+### T-M2-11: SC-10 AI用途設定UI（text/image provider選択） `done`
 - 参照: A-5、SC-10、要件05 §4.1、要件02 §4.1、要件06 §3.2 / 依存: T-M2-09、T-M2-02 / サイズ: S
 - 完了条件:
   - BYOKでは登録済みvalidキーのproviderだけがtext選択肢に表示され、imageはopenai/googleかつvalidキーのあるものに限定される
   - premiumではtextが運営Claudeとしてread-only表示され、imageは運営キーが利用可能なproviderからのみ選択できる（未設定providerは選択不可）
 - メモ: OpenAI/Geminiとも未登録の場合の画像生成非活性の判定材料をここで表示に反映する。
+  実装結果: `/app/ai-settings?tab=purposes`をprofile単位の設定画面として実装し、Xアカウント未連携でも利用可能にした。standard／mdは登録済み`valid`キーから文章providerを列挙し、画像providerをOpenAI／Googleへ限定する。Premiumは文章を「運営Claude（変更不可）」としてread-only表示し、画像は運営環境にキーがあるproviderだけを列挙する。選択肢がない場合は画像生成OFFと理由を表示し、BYOKにはAPIキー設定への導線を出す。既存`updateAiPurposeConfig` Actionへplan別の安全なpatchを送信し、成功・エラーを画面内で通知する。
+  検証: provider選択肢の純粋関数3件を追加し、全490件（411成功・DB条件なし79 skip）、lint、typecheck、Next production build、`git diff --check`が成功。ブラウザでX未連携のStandardにvalidなAnthropic／Googleだけ（画像はGoogleだけ）が表示されて保存できること、Premiumの文章read-onlyと運営OpenAI／Google画像選択、BYOK providerなし案内、幅390pxで横overflowなしを確認した。要件06 §3.6をv1.12へ同期し、PRD・要件02 §4.1・要件05 §4.1・プロンプト設計は既存仕様内のため変更なしと確認した。
 
 ### T-M2-12: X OAuthクライアントアダプタ＋startルート（state/PKCE） `todo`
 - 参照: A-3、要件05 §3、要件05 §4.3、要件05 §11、要件01 §3.4、要件01 §8、PRD §8.1 / 依存: T-M2-06、M1 / サイズ: M

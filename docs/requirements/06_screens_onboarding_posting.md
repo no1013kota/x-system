@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
+| バージョン | v1.12 |
 | 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -114,6 +114,7 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 - `/app/ai-settings`は`persona`（発信設定）を既定タブとし、`purposes`（AI用途）、`learning`（学習ソース）、`base-md`、`prompts`のタブ枠を持つ。M2の各後続タスクまで未実装タブは共通空状態を表示する。
 - 発信設定はactive Xアカウント単位でL-4〜L-7を編集する。ペルソナ3項目と主テーマは必須、テーマはマスタ選択と自由入力、toneは§3.4の初期値、NG 3分類は改行区切り入力で空を許可する。入力エラーは該当labelと関連付けて表示する。
 - `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
+- `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。
 
 ## 4. 投稿作成
 

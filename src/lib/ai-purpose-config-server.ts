@@ -9,7 +9,7 @@ import type {
 } from "./ai-purpose-config";
 import { updateAiPurposeConfigRecord } from "./ai-purpose-config-store";
 
-function operatorImageProviders(): ReadonlySet<ImageAiProvider> {
+export function operatorImageProviders(): ReadonlySet<ImageAiProvider> {
   const providers = new Set<ImageAiProvider>();
   if (env.OPENAI_API_KEY) providers.add("openai");
   if (env.GEMINI_API_KEY) providers.add("google");

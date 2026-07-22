@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
 import { APP_NAME } from "@/lib/app-config";
+import type { AiKeyProvider } from "@/lib/api-keys";
+import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
+import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   DEFAULT_TONE_SETTINGS,
@@ -13,6 +16,7 @@ import {
 } from "@/lib/persona-settings";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { AiPurposeSettings } from "./ai-purpose-settings";
 import { PersonaSettingsForm } from "./persona-settings-form";
 
 export const metadata: Metadata = { title: `AI設定 | ${APP_NAME}` };
@@ -44,6 +48,12 @@ interface AccountRow {
   settings: unknown;
 }
 
+interface ProfileRow {
+  active_x_account_id: string | null;
+  ai_purpose_config: unknown;
+  plan: "md" | "premium" | "standard";
+}
+
 export default async function AiSettingsPage({
   searchParams,
 }: AiSettingsPageProps) {
@@ -55,9 +65,9 @@ export default async function AiSettingsPage({
   const supabase = await createSupabaseServerClient();
   const profile = await supabase
     .from("profiles")
-    .select("active_x_account_id")
+    .select("active_x_account_id, ai_purpose_config, plan")
     .eq("id", user.id)
-    .maybeSingle<{ active_x_account_id: string | null }>();
+    .maybeSingle<ProfileRow>();
   let account: AccountRow | null = null;
   if (profile.data?.active_x_account_id) {
     const result = await supabase
@@ -88,13 +98,25 @@ export default async function AiSettingsPage({
     }
   }
 
+  const plan = profile.data?.plan ?? "standard";
+  let validUserProviders: AiKeyProvider[] = [];
+  if (tab === "purposes" && plan !== "premium") {
+    const keys = await listApiKeyViewsForUser(user.id);
+    validUserProviders = keys
+      .filter(
+        (key): key is typeof key & { provider: AiKeyProvider } =>
+          key.provider !== "x" && key.status === "valid",
+      )
+      .map((key) => key.provider);
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
       <header>
         <p className="text-sm font-medium text-muted-foreground">SC-10</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">AI設定</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          発信の軸と、生成に使うAI・学習内容をアカウント単位で管理します。
+          発信の軸と、生成に使うAI・学習内容を管理します。
         </p>
       </header>
 
@@ -116,7 +138,14 @@ export default async function AiSettingsPage({
       </nav>
 
       <div className="mt-7">
-        {!account ? (
+        {tab === "purposes" ? (
+          <AiPurposeSettings
+            initialConfig={profile.data?.ai_purpose_config ?? { image: null, text: null }}
+            operatorImageProviders={[...operatorImageProviders()]}
+            plan={plan}
+            validUserProviders={validUserProviders}
+          />
+        ) : !account ? (
           <EmptyState
             actionHref="/app/settings?tab=x-accounts"
             actionLabel="Xアカウント設定へ"
