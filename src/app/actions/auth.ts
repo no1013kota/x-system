@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
+import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { resolveKey } from "@/lib/crypto/envelope";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -37,8 +38,6 @@ const UPDATE_PASSWORD_ERROR_MESSAGE =
   "パスワードを更新できませんでした。再設定メールをもう一度申請してください。";
 const CAPTCHA_ERROR_MESSAGE =
   "セキュリティ確認に失敗しました。もう一度お試しください。";
-
-const PLAN_REQUIRED_STATUSES = new Set(["incomplete", "incomplete_expired"]);
 
 function confirmationRedirectUrl(): string {
   return new URL("/auth/confirm", env.APP_BASE_URL).toString();
@@ -302,7 +301,8 @@ export async function signIn(
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
 
-    destination = PLAN_REQUIRED_STATUSES.has(profile.data.subscription_status)
+    destination = subscriptionAccessFor(profile.data.subscription_status)
+      ?.viewScope !== "app"
       ? "/plans"
       : (safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app");
   } catch {

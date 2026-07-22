@@ -4,11 +4,10 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { PortalButton } from "@/components/billing/portal-button";
 import { env } from "@/lib/env";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-import { PortalButton } from "./portal-button";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,

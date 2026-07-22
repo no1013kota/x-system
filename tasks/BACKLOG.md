@@ -455,13 +455,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Checkout／Portal Session作成成功時にuser ID・source・開始時刻をAES-256-GCMで封緘した30分TTLの`HttpOnly`／`SameSite=Lax`復帰cookieを発行し、戻り先を`GET /api/stripe/return`へ統一した。復帰handlerはsessionとmarkerのuser／sourceを照合し、開始後の`subscription_event_created_at`がprofileへ反映済みならStripeを呼ばない。未反映時だけ、CheckoutはSessionの`client_reference_id`／Customerを本人profileと照合してSubscription IDを解決し、Portalは保存済みSubscription IDを使い、現在Subscriptionを1回取得する。webhook共通のPrice検証・profile mapping・row lock・順序逆転防止・trial保持projectionをtransaction適用し、markerを削除して正規画面へ戻す。同期失敗は`sync=pending`としてwebhook再送へ委ねる。
   検証: Checkout／Portalの未反映時にSubscription retrieveが各1回だけで共通projectionを適用すること、反映済み2経路とmarkerのない通常表示で外部APIを一切呼ばないこと、別userのCheckout Sessionを拒否すること、markerの往復・TTL・改ざん検知・cookie属性を9 testで確認。既存Checkout／Portal契約を含む全401件（334成功・DB条件なし67 skip）・lint・typecheck・Portal dry-run・Next production buildが成功。Stripe公式のCheckout Session／Subscription retrieveを2026-07-22に確認し、要件03・05・06へ反映した。
 
-### T-M1-16: 契約状態別アクセス制御（閲覧/実行マッピング・mutationガード・課金バナー） `todo`
+### T-M1-16: 契約状態別アクセス制御（閲覧/実行マッピング・mutationガード・課金バナー） `done`
 - 参照: 要件03 §5、要件01 §5、要件05 §2.2、要件06 §2、SC-05 / 依存: T-M1-12、T-M1-14、T-M1-08 / サイズ: M
 - 完了条件:
   - 8つのsubscription_statusすべてについて「閲覧可否・生成/投稿/自動実行可否・主導線」のマッピングを単体テストで検証（trialing/activeのみ実行可、incomplete系は設定・プランのみ）
   - past_due/unpaid/paused/canceledは既存データ閲覧が可能なまま、生成・投稿系mutationの共通ガードがsubscription_required（details に不足項目と設定画面パス）を返す
   - 決済失敗・契約停止時はnotification_configにかかわらずヘッダー直下に常設バナーが表示され、支払い更新（Portal）または新規Checkoutへの導線を出す。trialingはtrial終了日を表示する
 - メモ: ガードは共通ヘルパーとして実装し、M3以降の生成・投稿Server Actionから呼び出す前提。課金停止を理由にデータを自動削除しない。
+- 実装メモ:
+  実装結果: 8つの`subscription_status`について閲覧範囲、生成／投稿／自動実行可否、主導線を型付き共通マッピングへ集約し、route guardとlogin後遷移も同じ定義へ統合した。`trialing|active`だけを許可する共通mutationガードは、それ以外を`subscription_required`として`missing=[subscription]`、現在status、`settingsPath`付きで拒否する。共通App Layout／最小ホームを追加し、通知設定を読まずに`past_due|unpaid|paused`へPortal、Customer欠損と`canceled`へCheckoutの常設バナーをヘッダー直下へ表示する。`trialing`はJST終了日、`active`はバナーなしとし、停止statusでも子画面を覆わず既存データ閲覧を維持する。Portalボタンは設定画面と共通component化した。
+  検証: 全8 statusの閲覧範囲・実行可否・主導線、許可2 status、停止4 statusの安定error details、trial／停止／解約バナーを19 unit testで確認。通知設定billing両OFFのローカルユーザーで`past_due`のPortal常設表示、`canceled`のCheckout切替、`trialing`の2026年7月30日JST表示をブラウザ確認し、一時ユーザーを削除した。関連route／loginを含む全420件（353成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。要件03・05・06へ反映した。
 
 ### T-M1-17: プラン変更同期処理（Xアカウント無効化・AI用途設定の再検証） `todo`
 - 参照: 要件03 §6、要件02 §3.3、要件02 §4.1、A-6 / 依存: T-M1-12 / サイズ: M

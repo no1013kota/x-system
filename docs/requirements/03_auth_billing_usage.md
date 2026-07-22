@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
+| バージョン | v1.9 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -128,6 +128,10 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 `past_due`等でも、ユーザーは既存下書き・履歴・分析・設定を閲覧できる。課金停止を理由にデータを自動削除しない。
 
 route guardでは`incomplete`／`incomplete_expired`（およびprofile取得不能）を`/plans`へ送り、例外として`/app/settings?tab=billing`と`/app/settings?tab=support`だけを許可する。`trialing`／`active`／`past_due`／`unpaid`／`paused`／`canceled`は`/app`配下の閲覧を許可し、生成・投稿系の停止はServer Action側で行う。
+
+8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
+
+App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`は新規Checkoutへ誘導し、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
 
 ## 6. プラン変更
 

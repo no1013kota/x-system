@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
+| バージョン | v1.9 |
 | 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -12,6 +12,7 @@
 - 外部サービスから呼ばれる処理、OAuth callback、cron、webhookはAPI Routesで実装する。
 - すべての入力はzodで検証する。
 - Server Actionsは現在ユーザー、plan、active_x_accountをサーバー側で検証する。クライアントから渡された`user_id`は信用しない。
+- 生成・投稿・自動実行に分類されるすべてのmutationは、外部API呼び出し・job作成・利用枠reserveより前に共通契約ガードを呼ぶ。`subscription_status=trialing|active`だけを許可し、他statusは`subscription_required`と不足項目／解決先を返す（要件03 §5）。
 - active Xアカウントに依存するmutation系Action（生成・下書き・スロット・学習・提案）は、クライアントが表示中の`x_account_id`を明示的に送り、サーバーは所有権・`status = active`・`profiles.active_x_account_id`との一致を検証する（不一致は`job_conflict`を返し、画面へ再読込を促す。別タブ・別端末での切替と競合して意図しないアカウントへ実行されることを防ぐ）。
 - エラー形式は全API/Actionで統一する。
 

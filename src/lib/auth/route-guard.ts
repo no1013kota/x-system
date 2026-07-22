@@ -1,7 +1,4 @@
-export const PLAN_REQUIRED_STATUSES = new Set([
-  "incomplete",
-  "incomplete_expired",
-]);
+import { subscriptionAccessFor } from "./subscription-access";
 
 interface GuardProfile {
   plan: string | null;
@@ -47,7 +44,7 @@ export function routeGuardDestination({
 
   const requiresPlan =
     !profile?.plan ||
-    PLAN_REQUIRED_STATUSES.has(profile.subscription_status);
+    subscriptionAccessFor(profile.subscription_status)?.viewScope !== "app";
   if (requiresPlan && !isLimitedSettingsRoute(url)) return "/plans";
   return null;
 }
