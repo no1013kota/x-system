@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
+| バージョン | v1.8 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -547,8 +547,8 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
     "value": "明日の実務で使える効率化"
   },
   "themes": {
-    "primary": ["業務改善"],
-    "secondary": ["AI", "マーケティング"],
+    "primary": ["business_ops"],
+    "secondary": ["ai", "sns"],
     "free_text": "個人事業主向け"
   },
   "tone": {
@@ -563,7 +563,9 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
 }
 ```
 
-`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）から選ぶ。6テーマは`news_category`の6分野と1対1で対応し（ai/web3/investment/business/business_ops/sns）、P-6の`<news_digest>`該当判定に使う。`free_text`は自由入力で、該当判定の対象外とする。
+`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。
+
+`tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、ベースmdへ展開しない。
 
 ### 4.5 `generation_jobs.input`
 

@@ -11,16 +11,29 @@ export interface ThemeOption {
   newsCategory: NewsCategory;
 }
 
-export const THEME_OPTIONS: readonly ThemeOption[] = [
+export const THEME_IDS = [
+  "ai",
+  "web3",
+  "investment",
+  "business",
+  "business_ops",
+  "sns",
+] as const;
+
+export type ThemeId = (typeof THEME_IDS)[number];
+
+export const THEME_OPTIONS = [
   { id: "ai", label: "AI", newsCategory: "ai" },
   { id: "web3", label: "Web3", newsCategory: "web3" },
   { id: "investment", label: "投資", newsCategory: "investment" },
   { id: "business", label: "ビジネス", newsCategory: "business" },
   { id: "business_ops", label: "業務改善", newsCategory: "business_ops" },
   { id: "sns", label: "SNS運用", newsCategory: "sns" },
-];
+] as const satisfies readonly ThemeOption[];
 
-const BY_ID = new Map(THEME_OPTIONS.map((t) => [t.id, t]));
+const BY_ID: ReadonlyMap<string, ThemeOption> = new Map(
+  THEME_OPTIONS.map((theme) => [theme.id, theme]),
+);
 
 /** Returns the distinct news categories a set of theme ids maps to. */
 export function themesToNewsCategories(themeIds: string[]): NewsCategory[] {
@@ -30,4 +43,8 @@ export function themesToNewsCategories(themeIds: string[]): NewsCategory[] {
     if (cat) cats.add(cat);
   }
   return [...cats];
+}
+
+export function themeLabel(themeId: ThemeId): string {
+  return BY_ID.get(themeId)?.label ?? themeId;
 }
