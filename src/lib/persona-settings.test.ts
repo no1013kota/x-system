@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_TONE_SETTINGS,
+  baseMdSettingsDiffer,
   generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
@@ -102,6 +103,21 @@ describe("base md generation", () => {
     const rebuilt = rebuildSettingsSections(current, changed);
     expect(rebuilt).toContain("- 発信者: 更新後の発信者");
     expect(rebuilt.slice(rebuilt.indexOf("## 5."))).toBe(sectionFive);
+  });
+
+  it("detects manual differences in sections 1-4 but ignores learned content", () => {
+    const generated = generateInitialBaseMd(validSettings());
+    expect(baseMdSettingsDiffer(generated, validSettings())).toBe(false);
+    const learned = generated.replace(
+      "## 5. 文体・自分らしさ",
+      "## 5. 文体・自分らしさ\n- 学習済み",
+    );
+    expect(baseMdSettingsDiffer(learned, validSettings())).toBe(false);
+    const manuallyEdited = generated.replace(
+      "- 発信者: 中小企業向け業務改善コンサルタント",
+      "- 発信者: 手動編集した内容",
+    );
+    expect(baseMdSettingsDiffer(manuallyEdited, validSettings())).toBe(true);
   });
 
   it.each([

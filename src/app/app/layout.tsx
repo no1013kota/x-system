@@ -9,7 +9,7 @@ import {
   subscriptionBannerFor,
   type SubscriptionBannerProfile,
 } from "@/lib/auth/subscription-access";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 interface AppShellProfileRow {
   active_x_account_id: string | null;
@@ -25,8 +25,8 @@ export default async function AppLayout({
   let profile: SubscriptionBannerProfile | null = null;
   let activeAccountHandle: string | null = null;
   if (user) {
-    const admin = createSupabaseAdminClient();
-    const result = await admin
+    const supabase = await createSupabaseServerClient();
+    const result = await supabase
       .from("profiles")
       .select(
         "active_x_account_id, subscription_status, trial_ends_at, stripe_customer_id",
@@ -40,7 +40,7 @@ export default async function AppLayout({
         trialEndsAt: result.data.trial_ends_at,
       };
       if (result.data.active_x_account_id) {
-        const accountResult = await admin
+        const accountResult = await supabase
           .from("x_accounts")
           .select("handle")
           .eq("id", result.data.active_x_account_id)

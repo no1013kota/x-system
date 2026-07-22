@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { THEME_IDS, themeLabel } from "./themes";
 
-const requiredText = z.string().trim().min(1);
+const requiredText = z.string().trim().min(1, "入力してください。");
 const optionalText = z.string().trim();
 const stringList = z.array(z.string().trim().min(1)).default([]);
 const themeIdSchema = z.enum(THEME_IDS);
@@ -31,7 +31,9 @@ export const personaSettingsSchema = z
     themes: z
       .object({
         free_text: optionalText.default(""),
-        primary: z.array(themeIdSchema).min(1),
+        primary: z
+          .array(themeIdSchema)
+          .min(1, "主テーマを1件以上選択してください。"),
         secondary: z.array(themeIdSchema).default([]),
       })
       .superRefine((themes, context) => {
@@ -175,4 +177,11 @@ export function rebuildSettingsSections(
   )}`;
   validateBaseMdStructure(rebuilt);
   return rebuilt;
+}
+
+export function baseMdSettingsDiffer(
+  existingContent: string,
+  input: unknown,
+): boolean {
+  return rebuildSettingsSections(existingContent, input) !== existingContent;
 }

@@ -528,13 +528,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `updatePersonaSettings` Actionを追加し、入力zod検証と本人認証後、Postgres transaction内で対象Xアカウントの所有権・active status・profileの選択一致をrow lock付きで再検証する。runningの`learning_analysis|md_merge`とexpected version不一致を`job_conflict`で拒否し、初回は全テンプレートのversion 1、2回目以降はセクション1〜4再構築／5〜6保持の新versionを生成する。`x_accounts.settings/base_md/base_md_version`更新と`base_md_versions(change_source=settings)`追加を同一transactionで行い、LLM・generation job・利用枠処理を呼ばない。
   検証: ローカルPostgres fixtureで初回version 1と履歴、学習後version 2の5〜6を保持した設定version 3、expected version不一致、running学習競合、競合後の現行md／履歴数／利用枠0件を確認した。DB統合1件、全444件（375成功・DB条件なし69 skip）・lint・typecheck・Next production buildが成功。要件05 §8のAction入力へ明示`x_account_id`を同期した。
 
-### T-M2-05: SC-10 発信設定フォームUI（L-4〜L-7） `todo`
+### T-M2-05: SC-10 発信設定フォームUI（L-4〜L-7） `done`
 - 参照: L-4〜L-7、SC-10、要件06 §3.1、要件06 §3.3、要件06 §3.4、要件06 §9 / 依存: T-M2-04、T-M2-02 / サイズ: M
 - 完了条件:
   - ペルソナ・テーマ（マスタからの選択＋自由入力）・トーン（初期値プリセット）・NGの4フォームが保存・再表示でき、必須項目のバリデーションエラーがフィールド単位でlabelと関連付けて表示される
   - 現行base_mdのセクション1〜4がフォーム値から再構築した内容と異なる場合、保存前に上書き差分警告が表示される
   - 保存成功後にbase_md_versionの更新が画面へ反映される
 - メモ: SC-10の学習ソース・ベースmdエディタ・プロンプト編集タブは別マイルストーン。タブ枠だけ用意する。
+  実装結果: SC-10へ発信設定／AI用途／学習ソース／ベースmd／プロンプトのタブ枠を追加し、active Xアカウント単位のL-4〜L-7フォームを実装した。ペルソナ3項目、主／副テーマと自由入力、tone初期値6項目、改行区切りのNG 3分類を保存・再表示できる。zodエラーを各labelと`aria-describedby`で関連付け、`base_md_version>=1`の現行1〜4差分またはフォーム編集時に5〜6保持を含む上書き警告を表示する。保存成功時は返却versionを即時更新してServer Componentも再取得する。表示用DB読取はcookie session付きRLS clientへ統一した。
+  検証: 差分判定を含む発信設定単体14件、全445件（376成功・DB条件なし69 skip）・lint・typecheck・Next production buildが成功。実ブラウザでversion 0の初期値、未入力のフィールド別エラー、主テーマ／自由テーマ、初回保存、version 1表示、再読込後の値、編集時の上書き警告、AI用途タブの空状態を確認した。要件06 §3.6を追加して同期した。
 
 ### T-M2-06: BYOK APIキー保存Action（saveXApiKey/saveAiApiKey） `todo`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §3.2 / 依存: T-M2-01、M1 / サイズ: M
