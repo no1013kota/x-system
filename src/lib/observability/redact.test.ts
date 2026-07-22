@@ -35,6 +35,14 @@ describe("redactEvent", () => {
     expect(out.extra?.harmless).toBe("keep");
   });
 
+  it("redacts OAuth client IDs as stored credentials", () => {
+    const out = redactEvent({
+      extra: { client_id: "full-client-id", clientId: "full-camel-id" },
+    });
+    expect(out.extra?.client_id).toBe(REDACTED);
+    expect(out.extra?.clientId).toBe(REDACTED);
+  });
+
   it("redacts prompt / base_md / pre-post private input", () => {
     const out = redactEvent({
       extra: {

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
-| 更新日 | 2026-07-22 |
+| バージョン | v1.12 |
+| 更新日 | 2026-07-23 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -116,12 +116,12 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `saveXApiKey` | client_id, client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須。既存値変更時はBYOK Xアカウントの再連携が必要 |
+| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。Client ID変更時はBYOK Xアカウントの再連携が必要 |
 | `saveAiApiKey` | provider, api key | masked key | providerはanthropic/openai/google |
 | `verifyApiKey` | provider | status | 失敗時は`status=invalid` |
 | `deleteApiKey` | provider | deleted | AIは関連用途設定を解除。Xはtoken revoke後にBYOK Xアカウントをexpired化 |
 
-Secretは受信後すぐ暗号化し、ログに出さない。AIキーの保存・疎通成功時、`ai_purpose_config.text`が未設定なら当該providerを自動設定する（画像対応provider〔openai/google〕で`image`未設定の場合も同様）。
+Secretは受信後すぐ暗号化し、ログに出さない。保存Actionのレスポンスはprovider、`unchecked`相当の成功状態、`display_hint`だけを返し、平文・ciphertextを含めない。AIキーの疎通成功時、`ai_purpose_config.text`が未設定なら当該providerを自動設定する（画像対応provider〔openai/google〕で`image`未設定の場合も同様）。
 
 X App資格情報のclient IDが変わった場合、既存OAuth tokenを新しいAppで使い回さない。`auth_type=byok`のXアカウントを`expired`にし、再連携まで投稿・読取・自動実行を停止する。
 

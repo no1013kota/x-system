@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
-| 更新日 | 2026-07-22 |
+| バージョン | v1.9 |
+| 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -99,6 +99,8 @@ RLS: 本人select可。writeはServer only。
 Constraints: unique(`user_id`, `provider`)
 
 RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credentials_ciphertext`を含めない。
+
+`display_hint`はX App資格情報で`{client_id_last4, client_type, has_client_secret}`、AIキーで`{api_key_last4}`とし、秘密値の全文やClient Secret末尾は保存しない。Xの`credentials_ciphertext`をServer onlyで復号した平文は`{clientId, clientSecret, clientType}`のJSONとし、AIはAPIキー文字列そのものとする。保存・差し替え時は`status=unchecked`、`verified_at=null`へ戻す。
 
 ### 3.3 `x_accounts`
 

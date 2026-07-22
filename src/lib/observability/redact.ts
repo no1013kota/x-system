@@ -34,6 +34,8 @@ function isSensitiveKey(key: string): boolean {
     k.includes("apikey") ||
     k === "api-key" ||
     k === "x-api-key" ||
+    k === "client_id" ||
+    k === "clientid" ||
     // pre-post private content / prompt material (要件01 §9)
     k === "prompt" ||
     k === "base_md" ||

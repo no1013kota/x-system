@@ -538,13 +538,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: SC-10へ発信設定／AI用途／学習ソース／ベースmd／プロンプトのタブ枠を追加し、active Xアカウント単位のL-4〜L-7フォームを実装した。ペルソナ3項目、主／副テーマと自由入力、tone初期値6項目、改行区切りのNG 3分類を保存・再表示できる。zodエラーを各labelと`aria-describedby`で関連付け、`base_md_version>=1`の現行1〜4差分またはフォーム編集時に5〜6保持を含む上書き警告を表示する。保存成功時は返却versionを即時更新してServer Componentも再取得する。表示用DB読取はcookie session付きRLS clientへ統一した。
   検証: 差分判定を含む発信設定単体14件、全445件（376成功・DB条件なし69 skip）・lint・typecheck・Next production buildが成功。実ブラウザでversion 0の初期値、未入力のフィールド別エラー、主テーマ／自由テーマ、初回保存、version 1表示、再読込後の値、編集時の上書き警告、AI用途タブの空状態を確認した。要件06 §3.6を追加して同期した。
 
-### T-M2-06: BYOK APIキー保存Action（saveXApiKey/saveAiApiKey） `todo`
+### T-M2-06: BYOK APIキー保存Action（saveXApiKey/saveAiApiKey） `done`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §3.2 / 依存: T-M2-01、M1 / サイズ: M
 - 完了条件:
   - saveXApiKeyはstandard/mdのみ許可（premiumはforbidden）、client_idの形式検証とconfidential client時のsecret必須検証を行い、保存値は暗号化envelopeで保存され平文がDB・ログ・レスポンスへ現れない
   - saveAiApiKey（anthropic/openai/google）を含めunique(user_id, provider)でupsertされ、display_hintへ末尾4文字だけが保存される
   - X client ID変更時にauth_type=byokの既存Xアカウントがexpired化される（fixtureで検証。既存tokenを新Appで使い回さない）
 - メモ: 保存直後のstatusはunchecked。Secretは受信後すぐ暗号化しログへ出さない。
+  実装結果: `saveXApiKey`／`saveAiApiKey` ActionとServer-only保存層を追加した。standard/mdだけを許可し、Xは明示`public|confidential`、Client ID文字種、confidentialのSecret必須／publicのSecret拒否を検証する。X資格情報はJSON、AIキーは文字列をAES-256-GCM envelopeへ即時暗号化し、unique(user_id, provider)へupsertして`unchecked`／`verified_at=null`へ戻す。レスポンスと`display_hint`はClient ID／APIキーの末尾4文字等だけを返す。X Client IDが既存値から変わった場合だけ全BYOK Xアカウントを`expired`化し、token自体は保持する。Sentry redactionへsnake/camelのClient IDを追加した。
+  検証: X入力と3 AI provider、資格情報serialize、末尾4文字、redactionを単体14件で確認。ローカルPostgres統合3件で暗号文の非平文／復号内容、3 provider upsert、hint、status reset、Premium拒否、同一Client IDでactive維持、変更時expiredとtoken保持を確認した。全458件（386成功・DB条件なし72 skip）・lint・typecheck・Next production buildが成功。要件02 §3.2をv1.9、要件05 §4.2をv1.12へ同期した。
 
 ### T-M2-07: verifyApiKey Action（疎通確認・ai_purpose_config自動設定） `todo`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §2、要件02 §4.1 / 依存: T-M2-06 / サイズ: M
