@@ -6,8 +6,12 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { PortalButton } from "@/components/billing/portal-button";
 import { env } from "@/lib/env";
+import type { ApiKeyViewState } from "@/lib/api-key-view";
+import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+import { ApiKeySettings } from "./api-key-settings";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -24,6 +28,12 @@ interface BillingProfile {
   stripe_customer_id: string | null;
   subscription_status: string;
 }
+
+const SETTINGS_TABS = [
+  ["api-keys", "APIキー"],
+  ["billing", "課金・プラン"],
+  ["support", "問い合わせ"],
+] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   incomplete: "お申し込み未完了",
@@ -48,7 +58,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   if (!user) redirect("/login?next=/app/settings%3Ftab%3Dbilling");
 
-  const tab = params.tab === "support" ? "support" : "billing";
+  const tab = SETTINGS_TABS.some(([slug]) => slug === params.tab)
+    ? params.tab ?? "billing"
+    : "billing";
   const admin = createSupabaseAdminClient();
   const result = await admin
     .from("profiles")
@@ -61,6 +73,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
+  let apiKeys: ApiKeyViewState[] = [];
+  if (tab === "api-keys" && profile.plan !== "premium") {
+    apiKeys = await listApiKeyViewsForUser(user.id);
+  }
 
   return (
     <main className="px-4 py-8 lg:px-8 lg:py-10">
@@ -68,15 +84,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <header className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">アカウント設定</h1>
           <p className="text-sm text-muted-foreground">
-            ご契約内容の確認とお問い合わせができます。
+            APIキー、ご契約内容、お問い合わせ先を管理できます。
           </p>
         </header>
 
         <nav aria-label="設定タブ" className="flex gap-2 border-b">
-          {[
-            ["billing", "課金・プラン"],
-            ["support", "問い合わせ"],
-          ].map(([slug, label]) => (
+          {SETTINGS_TABS.map(([slug, label]) => (
             <Link
               aria-current={tab === slug ? "page" : undefined}
               className={`border-b-2 px-4 py-3 text-sm font-medium ${
@@ -92,7 +105,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           ))}
         </nav>
 
-        {tab === "billing" ? (
+        {tab === "api-keys" ? (
+          <ApiKeySettings
+            callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
+            initialKeys={apiKeys}
+            plan={profile.plan ?? "standard"}
+          />
+        ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
             <div className="rounded-2xl border bg-card p-6 shadow-sm">
               <h2 className="text-xl font-semibold" id="billing-heading">

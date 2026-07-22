@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.10 |
-| 更新日 | 2026-07-22 |
+| バージョン | v1.11 |
+| 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
 ## 1. 画面構成
@@ -82,7 +82,7 @@
 
 エラーの`details`には不足項目の一覧と設定画面のパスを含める（要件05 §2.2）。
 
-X APIキー登録画面（SC-11）には、Developer Consoleで登録するcallback URL、必要scope、クレジット・予算設定の確認先を表示する。秘密値を再表示せず、保存後は末尾4文字のみ表示する。premiumではユーザーのX Developer App資格情報・AI APIキーを要求せず、文章生成・リサーチproviderは運営設定のClaude（SC-10でread-only表示）、画像providerはOpenAI/Geminiのうち運営キーが利用可能なものから選べる。
+X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／OpenAI／Googleの登録・差し替え・疎通確認・即時削除を置く。秘密値入力はpassword controlとし、保存後に入力を空へ戻して、Client ID／APIキーの末尾4文字、Client種別、検証状態、最終確認時刻だけを表示する。Developer Consoleで登録する`APP_BASE_URL + X_OAUTH_REDIRECT_PATH`のcallback URL、必要scope 5種、credits・自動チャージ・spending limitの確認先をテキスト手順と差し替え可能な画像枠で表示する。premiumではキー入力フォーム自体を表示せず、ユーザーのX Developer App資格情報・AI APIキーが不要なことを案内する。文章生成・リサーチproviderは運営設定のClaude（SC-10でread-only表示）、画像providerはOpenAI/Geminiのうち運営キーが利用可能なものから選べる。
 
 ### 3.3 発信設定の必須項目
 

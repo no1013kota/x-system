@@ -577,13 +577,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `updateAiPurposeConfig` Action、Server-only配線、DB保存層を追加した。部分更新と`null`解除に対応し、standard／mdでは選択した文章providerとOpenAI／Google画像providerに登録済み`valid`キーがあることをprofile lock下で検証する。Premiumは`text`入力を拒否してDBへ保存せず、画像は運営APIキーが設定済みのOpenAI／Googleだけを許可し、応答上の文章providerはユーザー設定非依存で解決する。既定`anthropic`の`resolvePremiumTextPurpose`と、Premium→BYOK時にvalidキーだけを残す`revalidateByokAiPurposeConfig`を純粋関数として追加し、既存Stripeプラン変更同期から再利用した。
   検証: 純粋関数4件でPremium既定Anthropic、valid用途維持、invalid／画像非対応provider解除、部分入力schemaを確認。ローカルPostgres統合12件（用途更新2、実行時provider解決9、プラン変更同期1）でBYOK valid制約、Premium文章拒否・運営画像制約・DB文章値非変更、Premium→BYOK再検証を確認した。全483件（404成功・DB条件なし79 skip）・lint・typecheck・Next production buildが成功。要件02 §4.1をv1.11、要件05 §4.1をv1.15へ同期した。
 
-### T-M2-10: SC-11 APIキータブUI（マスク表示・X取得手順ガイド） `todo`
+### T-M2-10: SC-11 APIキータブUI（マスク表示・X取得手順ガイド） `done`
 - 参照: A-4、A-5、SC-11、要件06 §3.2、PRD §8.1、PRD §10 / 依存: T-M2-08、T-M2-09、T-M2-02 / サイズ: M
 - 完了条件:
   - X/AIキーの登録・差し替え・検証・削除が操作でき、保存後は末尾4文字のみ表示され秘密値は再表示されない
   - Xキー欄にDeveloper Consoleで登録するcallback URL（APP_BASE_URLから組み立て）、必要scope 5種、クレジット・予算設定の確認先を含む取得手順ガイドが表示される
   - premiumではキー入力フォームを表示せず「キー登録不要」の案内になる
 - メモ: スクリーンショット素材は未確定のためテキスト手順＋差し替え可能な画像枠で実装（open_questions参照）。
+  実装結果: `/app/settings?tab=api-keys`へX／Anthropic／OpenAI／Googleの登録・差し替え・確認・削除UIと、暗号文を取得しない安全な表示専用queryを追加した。保存後はpassword入力を消去し、Client ID／APIキーの末尾4文字、client種別、検証状態、最終確認時刻だけを表示する。X Developer Consoleのcallback URL、scope 5種、credits・自動チャージ・spending limitの手順と差し替え用画像枠を実装し、Premiumでは入力フォームを出さずキー登録不要を案内する。ブラウザ検証でNext.js開発サーバーがServer Function引数を記録することを確認したため、`logging.serverFunctions=false`で秘密入力のterminal出力も無効化した。
+  検証: マスク表示2件とNext.js秘密値ログ設定1件を追加し、全487件（408成功・DB条件なし79 skip）、lint、typecheck、Next production build、`git diff --check`が成功。ブラウザでStandardのX／AI保存後の末尾4文字表示・入力消去・形式確認・削除、Premiumのフォーム非表示、幅390pxで横overflowなしを確認した。X Developer App、OAuth callback、料金・予算設定は2026-07-23にX公式仕様を確認した。要件01 §8をv1.5、要件06 §3.2をv1.11へ同期し、PRD・要件02／05・プロンプト設計は既存仕様内のため変更なしと確認した。
 
 ### T-M2-11: SC-10 AI用途設定UI（text/image provider選択） `todo`
 - 参照: A-5、SC-10、要件05 §4.1、要件02 §4.1、要件06 §3.2 / 依存: T-M2-09、T-M2-02 / サイズ: S

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
-| 更新日 | 2026-07-22 |
+| バージョン | v1.5 |
+| 更新日 | 2026-07-23 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -188,7 +188,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
 - CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
-- Sentry/logはAuthorization、cookie、API key、token、prompt全文、投稿前の非公開入力をredactする。ユーザー向けerrorへprovider本文やstack traceを出さない。
+- Sentry/logはAuthorization、cookie、API key、token、prompt全文、投稿前の非公開入力をredactする。Next.js開発サーバーのServer Function引数ログも無効化し、秘密値を受け取るAction引数をterminalへ出さない。ユーザー向けerrorへprovider本文やstack traceを出さない。
 - private Storageの画像はservice roleでwriteし、表示時に短時間の署名URLを発行する。DBへ署名URLを保存しない。
 - dependency audit、RLS policy test、認可・CSRF・SSRF testをリリース判定に含める。
 - Supabase Authのメール送信・認証endpointにはDashboardのrate limitを設定する。signup、login、password resetは成功・失敗で情報量を変えず、連続失敗時は同じ汎用文言で待機を促す。
