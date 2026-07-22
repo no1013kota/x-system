@@ -548,13 +548,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `saveXApiKey`／`saveAiApiKey` ActionとServer-only保存層を追加した。standard/mdだけを許可し、Xは明示`public|confidential`、Client ID文字種、confidentialのSecret必須／publicのSecret拒否を検証する。X資格情報はJSON、AIキーは文字列をAES-256-GCM envelopeへ即時暗号化し、unique(user_id, provider)へupsertして`unchecked`／`verified_at=null`へ戻す。レスポンスと`display_hint`はClient ID／APIキーの末尾4文字等だけを返す。X Client IDが既存値から変わった場合だけ全BYOK Xアカウントを`expired`化し、token自体は保持する。Sentry redactionへsnake/camelのClient IDを追加した。
   検証: X入力と3 AI provider、資格情報serialize、末尾4文字、redactionを単体14件で確認。ローカルPostgres統合3件で暗号文の非平文／復号内容、3 provider upsert、hint、status reset、Premium拒否、同一Client IDでactive維持、変更時expiredとtoken保持を確認した。全458件（386成功・DB条件なし72 skip）・lint・typecheck・Next production buildが成功。要件02 §3.2をv1.9、要件05 §4.2をv1.12へ同期した。
 
-### T-M2-07: verifyApiKey Action（疎通確認・ai_purpose_config自動設定） `todo`
+### T-M2-07: verifyApiKey Action（疎通確認・ai_purpose_config自動設定） `done`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §2、要件02 §4.1 / 依存: T-M2-06 / サイズ: M
 - 完了条件:
   - AI各provider（anthropic/openai/google）への軽量疎通呼び出しをアダプタ経由で行い、成功でstatus=valid・verified_at更新、失敗でstatus=invalidになる（providerアダプタのモックで検証）
   - Xキーは形式検証まで（疎通確認はOAuth完了時）というA-4の規則どおりに動作する
   - 疎通成功時にai_purpose_config.textが未設定なら当該providerを自動設定し、openai/googleでimage未設定の場合も同様に設定する
 - メモ: 疎通結果のエラーはprovider本文を出さずコード化した文言へ変換する（要件01 §8）。
+  実装結果: Anthropic／OpenAI／Googleのmodel一覧を1ページだけ取得する軽量アダプタ（10秒timeout・再試行なし）と`verifyApiKey` Actionを追加した。AIは成功時に`valid`／`verified_at`を保存し、失敗時はprovider本文を返さず`invalid`／`provider_error`へ変換する。XはOAuth完了まで`unchecked`のままとした。成功時は未設定のtext用途を補完し、OpenAI／Googleでは未設定のimage用途も補完するが、既存値は上書きしない。疎通中に暗号文が差し替わった場合は結果を破棄する競合ガードも追加した。
+  検証: providerアダプタの単体5件で3社成功、共通化した失敗応答、Xの疎通非実行を確認。ローカルPostgres統合2件でstatus／verified_at、用途の自動補完と既存値保持、失敗時の用途非変更、暗号文差し替え競合、未登録、Premium拒否を確認した。全467件（393成功・DB条件なし74 skip）・lint・typecheck・Next production buildが成功。2026-07-23時点の各社公式model一覧仕様を確認し、要件05 §4.2をv1.13へ同期した。
 
 ### T-M2-08: deleteApiKey Action（用途解除・BYOK X連携失効処理） `todo`
 - 参照: A-4、A-5、要件05 §4.2、要件02 §4.1、PRD §10 / 依存: T-M2-07 / サイズ: S

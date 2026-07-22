@@ -11,6 +11,8 @@ describe("server-only boundaries", () => {
     "src/lib/supabase/server.ts",
     "src/lib/auth/profile.ts",
     "src/lib/api-key-store-server.ts",
+    "src/lib/api-key-verification-server.ts",
+    "src/lib/api-key-verifiers-server.ts",
     "src/lib/crypto/index.ts",
   ])("marks %s as server-only", async (relativePath) => {
     const source = await readFile(path.join(ROOT, relativePath), "utf8");

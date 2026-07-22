@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
+| バージョン | v1.13 |
 | 更新日 | 2026-07-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -118,10 +118,12 @@
 |---|---|---|---|
 | `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。Client ID変更時はBYOK Xアカウントの再連携が必要 |
 | `saveAiApiKey` | provider, api key | masked key | providerはanthropic/openai/google |
-| `verifyApiKey` | provider | status | 失敗時は`status=invalid` |
+| `verifyApiKey` | provider | status | AIは軽量疎通し、成功で`valid`／`verified_at`、失敗で`invalid`。XはOAuth完了まで`unchecked` |
 | `deleteApiKey` | provider | deleted | AIは関連用途設定を解除。Xはtoken revoke後にBYOK Xアカウントをexpired化 |
 
 Secretは受信後すぐ暗号化し、ログに出さない。保存Actionのレスポンスはprovider、`unchecked`相当の成功状態、`display_hint`だけを返し、平文・ciphertextを含めない。AIキーの疎通成功時、`ai_purpose_config.text`が未設定なら当該providerを自動設定する（画像対応provider〔openai/google〕で`image`未設定の場合も同様）。
+
+AIキーの疎通は生成課金を発生させないmodel一覧APIを1ページだけ呼ぶ。2026-07-23時点で[Anthropic `GET /v1/models`](https://platform.claude.com/docs/en/api/models/list)、[OpenAI `GET /v1/models`](https://platform.openai.com/docs/api-reference/models/list)、[Google Gen AI SDK `models.list`](https://googleapis.github.io/js-genai/release_docs/classes/models.Models.html)を公式仕様として確認した。provider本文は保存・返却せず共通`provider_error`へ変換する。疎通中に同providerのciphertextが差し替わった場合は検証結果を書き込まず`job_conflict`とする。既存の`ai_purpose_config`値は上書きしない。
 
 X App資格情報のclient IDが変わった場合、既存OAuth tokenを新しいAppで使い回さない。`auth_type=byok`のXアカウントを`expired`にし、再連携まで投稿・読取・自動実行を停止する。
 
