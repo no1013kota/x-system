@@ -5,7 +5,13 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
 import { readCurrentUser } from "@/lib/auth/session-core";
+import {
+  DEFAULT_AI_PURPOSE_CONFIG,
+  DEFAULT_NEWS_CONFIG,
+  DEFAULT_NOTIFICATION_CONFIG,
+} from "@/lib/config-defaults";
 
 import { authCookieOptions } from "./cookie-options";
 
@@ -115,5 +121,67 @@ describe("Supabase SSR auth session (local)", () => {
     expect(signedOut.error).toBeNull();
     await expect(readCurrentUser(client.auth)).resolves.toBeNull();
     expect(jar.size).toBe(0);
+  });
+
+  it("creates profile defaults and idempotently repairs a missing row", async () => {
+    const email = `profile-${randomUUID()}@example.com`;
+    const created = await admin!.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      password: `Local-test-${randomUUID()}`,
+    });
+    expect(created.error).toBeNull();
+    const user = created.data.user;
+    expect(user).toBeTruthy();
+    createdUserIds.push(user!.id);
+
+    const initial = await admin!
+      .from("profiles")
+      .select(
+        "id,email,plan,subscription_status,ai_purpose_config,news_config,notification_config",
+      )
+      .eq("id", user!.id)
+      .single();
+    expect(initial.error).toBeNull();
+    expect(initial.data).toEqual({
+      id: user!.id,
+      email,
+      plan: "standard",
+      subscription_status: "incomplete",
+      ai_purpose_config: DEFAULT_AI_PURPOSE_CONFIG,
+      news_config: DEFAULT_NEWS_CONFIG,
+      notification_config: DEFAULT_NOTIFICATION_CONFIG,
+    });
+
+    const removed = await admin!.from("profiles").delete().eq("id", user!.id);
+    expect(removed.error).toBeNull();
+
+    await ensureUserProfileWithClient(user!, admin!);
+    const customizedNotification = {
+      ...DEFAULT_NOTIFICATION_CONFIG,
+      posted: { in_app: false, email: false },
+    };
+    const customized = await admin!
+      .from("profiles")
+      .update({
+        display_name: "keep-me",
+        notification_config: customizedNotification,
+      })
+      .eq("id", user!.id);
+    expect(customized.error).toBeNull();
+
+    await ensureUserProfileWithClient(user!, admin!);
+    const repaired = await admin!
+      .from("profiles")
+      .select("id,display_name,notification_config")
+      .eq("id", user!.id);
+    expect(repaired.error).toBeNull();
+    expect(repaired.data).toEqual([
+      {
+        id: user!.id,
+        display_name: "keep-me",
+        notification_config: customizedNotification,
+      },
+    ]);
   });
 });

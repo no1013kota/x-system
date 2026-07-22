@@ -15,7 +15,7 @@
 | パスワード再設定 | Supabase Authの標準フロー |
 | パスワード | 12〜64文字かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
-| profile作成 | signup hookで作成。失敗時はログイン後の初回アクセスで冪等upsert |
+| profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はログイン後の初回アクセスでservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない |
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |
 
 認証エラーで秘密値、メールの存在有無、外部providerレスポンス本文をそのまま表示しない。

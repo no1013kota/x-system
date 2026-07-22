@@ -71,10 +71,10 @@ describe("RLS policies & ownership trigger", () => {
        values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
       [uid, `${uid}@example.com`],
     );
-    await c.query(`insert into profiles (id, email) values ($1, $2)`, [
-      uid,
-      `${uid}@example.com`,
-    ]);
+    await c.query(
+      `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+      [uid, `${uid}@example.com`],
+    );
     const { rows } = await c.query<{ id: string }>(
       `insert into x_accounts (user_id, x_user_id, handle, name, auth_type)
        values ($1, $2, 'h', 'n', 'byok') returning id`,

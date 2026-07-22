@@ -61,7 +61,11 @@ describe("resolveTextKey / resolveImageKey — BYOK (local DB)", () => {
       [uid, `${uid}@example.com`],
     );
     await c.query(
-      `insert into profiles (id, email, ai_purpose_config) values ($1, $2, $3::jsonb)`,
+      `insert into profiles (id, email, ai_purpose_config)
+       values ($1, $2, $3::jsonb)
+       on conflict (id) do update set
+         email = excluded.email,
+         ai_purpose_config = excluded.ai_purpose_config`,
       [uid, `${uid}@example.com`, JSON.stringify(aiPurposeConfig)],
     );
     return uid;

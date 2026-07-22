@@ -9,6 +9,7 @@ describe("server-only boundaries", () => {
   it.each([
     "src/lib/supabase/admin.ts",
     "src/lib/supabase/server.ts",
+    "src/lib/auth/profile.ts",
     "src/lib/crypto/index.ts",
   ])("marks %s as server-only", async (relativePath) => {
     const source = await readFile(path.join(ROOT, relativePath), "utf8");

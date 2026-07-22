@@ -320,12 +320,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `@supabase/ssr` v0.10.3＋`@supabase/supabase-js` v2.110.8。リクエスト単位client、`getUser()`共通session helper、refresh専用`proxy.ts`、service-role管理client、`signOut` Server Actionを追加。認証cookieはHttpOnly/SameSite=Lax、productionのみSecureで、refresh応答へcache禁止headerも伝播する。認証フローはServer側に限定しbrowser clientは持たない。
   検証: ローカルSupabase Authでユーザー作成→password login→session検証→signOut後の無効化を確認。全255テスト・lint・typecheck・Next production buildが成功。service-role clientをClient Componentへimportする検証用routeは期待どおり`server-only`ビルドエラーになり、検証後に削除済み。T-M1-08は既存のrefresh専用proxyへ認証・契約リダイレクトguardを追加する。
 
-### T-M1-02: profiles自動作成hookとログイン後の冪等upsert `todo`
+### T-M1-02: profiles自動作成hookとログイン後の冪等upsert `done`
 - 参照: A-1、要件03 §1、要件02 §3.1、要件06 §3.4 / 依存: M0、T-M1-01 / サイズ: S
 - 完了条件:
   - ローカルSupabaseでauth.usersへのinsert時にprofiles rowが自動作成され、email・plan=standard・subscription_status=incomplete・notification_config/news_configの初期値（要件06 §3.4）が入る
   - hook失敗を模したユーザー（profiles row欠落）でもログイン後初回アクセスの冪等upsertで補完され、2回実行しても1行のまま既存値を壊さない
 - メモ: 17テーブルのmigration・RLSはM0成果物を前提。初期値はコード定数（要件02 §6）から投入する。
+  実装結果: `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で、email・standard/incomplete・AI目的／ニュース／通知の初期設定を持つprofileを自動作成するmigrationを追加。認証済みユーザーのprofile欠損は共通session helperからservice-role clientで`id`競合時DO NOTHINGのinsert-only upsertを行い、既存の設定・契約値を変更せず補完する。
+  検証: ローカルSupabase Authでtrigger作成値、profile削除後の補完、2回目の補完でも1行かつカスタマイズ済み値を保持することを確認。全261テスト・lint・typecheck・Next production buildが成功。shadow DBで全migrationを再適用し、schema diffなしを確認。Supabase公式のuser data trigger推奨構成も確認し、要件01／02／03へ反映した。
 
 ### T-M1-03: signUp Server ActionとSC-02会員登録画面（規約同意version保存） `todo`
 - 参照: A-1、SC-02、要件03 §1、要件05 §4.0、要件05 §12、要件06 §11 / 依存: T-M1-01、T-M1-02 / サイズ: M

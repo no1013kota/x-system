@@ -64,10 +64,10 @@ describe("core tables schema & constraints", () => {
        values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
       [id, `${id}@example.com`],
     );
-    await c.query(`insert into profiles (id, email) values ($1, $2)`, [
-      id,
-      `${id}@example.com`,
-    ]);
+    await c.query(
+      `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+      [id, `${id}@example.com`],
+    );
     return id;
   }
 

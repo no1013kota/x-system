@@ -5,10 +5,14 @@ import { AppError } from "@/lib/observability/errors";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
+  ensureUserProfile: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
+}));
+vi.mock("./profile", () => ({
+  ensureUserProfile: mocks.ensureUserProfile,
 }));
 
 import {
@@ -52,6 +56,7 @@ describe("session helpers", () => {
 
     await expect(getCurrentUser()).resolves.toBe(USER);
     expect(mocks.createSupabaseServerClient).toHaveBeenCalledOnce();
+    expect(mocks.ensureUserProfile).toHaveBeenCalledWith(USER);
   });
 
   it("throws the stable unauthorized error when authentication is required", async () => {
@@ -67,5 +72,6 @@ describe("session helpers", () => {
     await expect(requireCurrentUser()).rejects.toMatchObject({
       code: "unauthorized",
     } satisfies Partial<AppError>);
+    expect(mocks.ensureUserProfile).not.toHaveBeenCalled();
   });
 });

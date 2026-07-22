@@ -92,7 +92,10 @@ describe("getValidAccessToken (local DB)", () => {
        values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
       [uid, `${uid}@example.com`],
     );
-    await c.query(`insert into profiles (id, email) values ($1, $2)`, [uid, `${uid}@example.com`]);
+    await c.query(
+      `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+      [uid, `${uid}@example.com`],
+    );
     const expiresInSec = opts.expiresInSec ?? -60; // default: already stale
     const refresh = opts.refresh === undefined ? "refresh-old" : opts.refresh;
     const { rows } = await c.query<{ id: string }>(
