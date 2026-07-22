@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -411,6 +411,21 @@ RLS: 本人select可。writeはServer Action/API only。
   "window_ended_at": "2026-07-19T01:00:00Z",
   "total_count": 7,
   "news_item_ids": ["uuid-1", "uuid-2"]
+}
+```
+
+決済失敗通知は`dedupe_key=billing:invoice:{invoice_id}:payment_failed`でinvoiceごとに1件とし、`link=/app/settings?tab=billing`を保存する。`notification_config.billing`の両channelがOFFならrowを作らない。作成時の`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映し、監査可能なsnapshotもpayloadへ保存する。
+
+```json
+{
+  "attempt_count": 2,
+  "invoice_id": "in_...",
+  "subscription_id": "sub_...",
+  "subscription_status": "past_due",
+  "notification_config_snapshot": {
+    "in_app": true,
+    "email": true
+  }
 }
 ```
 

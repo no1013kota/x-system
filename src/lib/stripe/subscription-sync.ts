@@ -35,6 +35,15 @@ export interface SubscriptionProjection {
 
 export type PreparedStripeEvent =
   | { kind: "subscription_sync"; projection: SubscriptionProjection }
+  | {
+      kind: "invoice_sync";
+      invoice: {
+        attemptCount: number;
+        id: string;
+        paymentState: "failed" | "paid";
+      };
+      projection: SubscriptionProjection;
+    }
   | { kind: "none" };
 
 export type SubscriptionApplyResult = "updated" | "stale" | "not_applicable";
@@ -131,7 +140,9 @@ export async function prepareStripeEvent(
     event.type !== "checkout.session.completed" &&
     event.type !== "customer.subscription.created" &&
     event.type !== "customer.subscription.updated" &&
-    event.type !== "customer.subscription.deleted"
+    event.type !== "customer.subscription.deleted" &&
+    event.type !== "invoice.payment_failed" &&
+    event.type !== "invoice.paid"
   ) {
     return { kind: "none" };
   }
@@ -145,6 +156,24 @@ export async function prepareStripeEvent(
         priceIds,
         true,
       ),
+    };
+  }
+
+  if (event.type === "invoice.payment_failed" || event.type === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscription = invoice.parent?.subscription_details?.subscription;
+    const subscriptionId = expandedId(subscription ?? null);
+    if (!subscriptionId) return { kind: "none" };
+    const current = await stripe.subscriptions.retrieve(subscriptionId);
+    return {
+      kind: "invoice_sync",
+      invoice: {
+        attemptCount: invoice.attempt_count,
+        id: invoice.id,
+        paymentState:
+          event.type === "invoice.payment_failed" ? "failed" : "paid",
+      },
+      projection: subscriptionProjection(event, current, priceIds),
     };
   }
 
@@ -165,15 +194,16 @@ export async function applyPreparedStripeEvent(
   prepared: unknown,
 ): Promise<SubscriptionApplyResult> {
   const value = prepared as PreparedStripeEvent;
-  if (!value || value.kind !== "subscription_sync") return "not_applicable";
+  if (!value || value.kind === "none") return "not_applicable";
   const projection = value.projection;
 
   const targets = await database.query<{
     id: string;
+    notification_config: unknown;
     stripe_customer_id: string | null;
     subscription_event_created_at: Date | string | null;
   }>(
-    `select id, stripe_customer_id, subscription_event_created_at
+    `select id, notification_config, stripe_customer_id, subscription_event_created_at
        from profiles
       where stripe_customer_id = $1
          or ($2::uuid is not null and id = $2::uuid)
@@ -231,5 +261,48 @@ export async function applyPreparedStripeEvent(
       projection.trialStartedAt,
     ],
   );
+
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
+    const config = target.notification_config as {
+      billing?: { email?: unknown; in_app?: unknown };
+    } | null;
+    const inAppEnabled = config?.billing?.in_app === true;
+    const emailEnabled = config?.billing?.email === true;
+    if (inAppEnabled || emailEnabled) {
+      const dedupeKey = `billing:invoice:${value.invoice.id}:payment_failed`;
+      await database.query(
+        `insert into notifications
+          (user_id, type, dedupe_key, title, body, link, payload,
+           in_app_enabled, email_status, email_available_at)
+         values (
+           $1, 'billing', $2,
+           'お支払いを確認できませんでした',
+           'お支払い方法をご確認ください。更新後は契約状態へ自動的に反映されます。',
+           '/app/settings?tab=billing', $3::jsonb, $4,
+           case when $5 then 'queued'::email_delivery_status
+                else 'not_requested'::email_delivery_status end,
+           case when $5 then now() else null end
+         )
+         on conflict (user_id, dedupe_key) where dedupe_key is not null
+         do nothing`,
+        [
+          target.id,
+          dedupeKey,
+          {
+            attempt_count: value.invoice.attemptCount,
+            invoice_id: value.invoice.id,
+            notification_config_snapshot: {
+              email: emailEnabled,
+              in_app: inAppEnabled,
+            },
+            subscription_id: projection.subscriptionId,
+            subscription_status: projection.status,
+          },
+          inAppEnabled,
+          emailEnabled,
+        ],
+      );
+    }
+  }
   return "updated";
 }

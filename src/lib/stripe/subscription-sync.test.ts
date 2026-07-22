@@ -93,6 +93,52 @@ describe("Stripe subscription synchronization", () => {
     });
   });
 
+  it.each([
+    ["invoice.payment_failed", "failed"],
+    ["invoice.paid", "paid"],
+  ] as const)("retrieves current subscription state for %s", async (type, paymentState) => {
+    const retrieve = vi.fn(async () => subscription({ status: "active" }));
+    const invoice = {
+      id: "in_001",
+      attempt_count: 2,
+      parent: {
+        type: "subscription_details",
+        quote_details: null,
+        subscription_details: {
+          metadata: null,
+          subscription: "sub_invoice",
+        },
+      },
+    } as Stripe.Invoice;
+    const prepared = await prepareStripeEvent(
+      event(type, invoice as unknown as Record<string, unknown>),
+      { subscriptions: { retrieve } },
+      priceIds,
+    );
+
+    expect(retrieve).toHaveBeenCalledWith("sub_invoice");
+    expect(prepared).toMatchObject({
+      kind: "invoice_sync",
+      invoice: { id: "in_001", attemptCount: 2, paymentState },
+      projection: { status: "active" },
+    });
+  });
+
+  it("records a one-off invoice without trying to synchronize a subscription", async () => {
+    const retrieve = vi.fn(async () => subscription());
+    const prepared = await prepareStripeEvent(
+      event("invoice.paid", {
+        id: "in_one_off",
+        attempt_count: 1,
+        parent: null,
+      }),
+      { subscriptions: { retrieve } },
+      priceIds,
+    );
+    expect(prepared).toEqual({ kind: "none" });
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
   it("maps current-period end from the single subscription item", () => {
     const projection = subscriptionProjection(
       event("customer.subscription.updated", { id: "sub_current" }),

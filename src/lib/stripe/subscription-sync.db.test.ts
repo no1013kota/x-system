@@ -68,13 +68,15 @@ describe("Stripe subscription synchronization transaction", () => {
       premium: "price_premium",
     } as const;
 
-    const run = (
+    const processPrepared = (
       eventId: string,
+      eventType: string,
       projection: SubscriptionProjection,
+      prepared: PreparedStripeEvent,
     ) => {
       const event = {
         id: eventId,
-        type: "customer.subscription.updated",
+        type: eventType,
         created: projection.eventCreated,
         data: {
           object: {
@@ -83,10 +85,6 @@ describe("Stripe subscription synchronization transaction", () => {
           },
         },
       } as unknown as Stripe.Event;
-      const prepared: PreparedStripeEvent = {
-        kind: "subscription_sync",
-        projection,
-      };
       return processStripeEvent(event, {
         applyEvent: (db, _event, value) =>
           applyPreparedStripeEvent(db, value).then(() => undefined),
@@ -95,6 +93,27 @@ describe("Stripe subscription synchronization transaction", () => {
         transaction,
       });
     };
+    const run = (eventId: string, projection: SubscriptionProjection) =>
+      processPrepared(eventId, "customer.subscription.updated", projection, {
+        kind: "subscription_sync",
+        projection,
+      });
+    const runInvoice = (
+      eventId: string,
+      invoiceId: string,
+      paymentState: "failed" | "paid",
+      projection: SubscriptionProjection,
+    ) =>
+      processPrepared(
+        eventId,
+        paymentState === "failed" ? "invoice.payment_failed" : "invoice.paid",
+        projection,
+        {
+          kind: "invoice_sync",
+          invoice: { attemptCount: 2, id: invoiceId, paymentState },
+          projection,
+        },
+      );
 
     const trialCreated = 1_784_675_200;
     await expect(
@@ -135,7 +154,9 @@ describe("Stripe subscription synchronization transaction", () => {
       stripe_subscription_id: "sub_sync",
     });
     const firstTrialUsedAt = afterTrial.rows[0].trial_used_at.toISOString();
-    expect(firstTrialUsedAt).toBe(new Date((trialCreated - 400) * 1000).toISOString());
+    expect(firstTrialUsedAt).toBe(
+      new Date((trialCreated - 400) * 1000).toISOString(),
+    );
 
     await expect(
       run(`evt_sync_stale_${randomUUID()}`, {
@@ -182,8 +203,119 @@ describe("Stripe subscription synchronization transaction", () => {
       "select plan, subscription_status, trial_used_at from profiles where id = $1",
       [userId],
     );
-    expect(afterActive.rows[0]).toMatchObject({ plan: "md", subscription_status: "active" });
+    expect(afterActive.rows[0]).toMatchObject({
+      plan: "md",
+      subscription_status: "active",
+    });
     expect(afterActive.rows[0].trial_used_at.toISOString()).toBe(firstTrialUsedAt);
+
+    const failedProjection: SubscriptionProjection = {
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: 1_787_100_000,
+      customerId: "cus_sync",
+      eventCreated: trialCreated + 2,
+      plan: "md",
+      status: "past_due",
+      subscriptionId: "sub_sync",
+      trialEnd: null,
+      trialStartedAt: null,
+      userId,
+    };
+    await expect(
+      runInvoice(
+        `evt_invoice_failed_${randomUUID()}`,
+        "in_failed_001",
+        "failed",
+        failedProjection,
+      ),
+    ).resolves.toBe("processed");
+    await expect(
+      runInvoice(
+        `evt_invoice_failed_retry_${randomUUID()}`,
+        "in_failed_001",
+        "failed",
+        { ...failedProjection, eventCreated: trialCreated + 3 },
+      ),
+    ).resolves.toBe("processed");
+
+    const billingNotifications = await activeDatabase.query<{
+      dedupe_key: string;
+      email_available_at: Date | null;
+      email_status: string;
+      in_app_enabled: boolean;
+      link: string;
+      payload: {
+        invoice_id: string;
+        notification_config_snapshot: { email: boolean; in_app: boolean };
+        subscription_status: string;
+      };
+    }>(
+      `select dedupe_key, email_available_at, email_status, in_app_enabled,
+              link, payload
+         from notifications where user_id = $1 and type = 'billing'`,
+      [userId],
+    );
+    expect(billingNotifications.rowCount).toBe(1);
+    expect(billingNotifications.rows[0]).toMatchObject({
+      dedupe_key: "billing:invoice:in_failed_001:payment_failed",
+      email_status: "queued",
+      in_app_enabled: true,
+      link: "/app/settings?tab=billing",
+      payload: {
+        invoice_id: "in_failed_001",
+        notification_config_snapshot: { email: true, in_app: true },
+        subscription_status: "past_due",
+      },
+    });
+    expect(billingNotifications.rows[0].email_available_at).toBeInstanceOf(Date);
+
+    await expect(
+      runInvoice(
+        `evt_invoice_paid_${randomUUID()}`,
+        "in_failed_001",
+        "paid",
+        {
+          ...failedProjection,
+          eventCreated: trialCreated + 4,
+          status: "active",
+        },
+      ),
+    ).resolves.toBe("processed");
+    const afterRecovery = await activeDatabase.query(
+      `select p.subscription_status,
+              (select count(*)::int from notifications n
+                where n.user_id = p.id and n.type = 'billing') as notification_count
+         from profiles p where p.id = $1`,
+      [userId],
+    );
+    expect(afterRecovery.rows[0]).toEqual({
+      notification_count: 1,
+      subscription_status: "active",
+    });
+
+    await activeDatabase.query(
+      `update profiles
+          set notification_config = jsonb_set(
+            notification_config,
+            '{billing}',
+            '{"in_app":false,"email":false}'::jsonb
+          )
+        where id = $1`,
+      [userId],
+    );
+    await expect(
+      runInvoice(
+        `evt_invoice_muted_${randomUUID()}`,
+        "in_failed_muted",
+        "failed",
+        { ...failedProjection, eventCreated: trialCreated + 5 },
+      ),
+    ).resolves.toBe("processed");
+    const mutedCount = await activeDatabase.query<{ count: number }>(
+      "select count(*)::int as count from notifications where user_id = $1 and type = 'billing'",
+      [userId],
+    );
+    expect(mutedCount.rows[0].count).toBe(1);
 
     const failedEventId = `evt_sync_failed_${randomUUID()}`;
     await expect(
@@ -191,7 +323,7 @@ describe("Stripe subscription synchronization transaction", () => {
         cancelAtPeriodEnd: false,
         currentPeriodEnd: 1_788_000_000,
         customerId: "cus_missing",
-        eventCreated: trialCreated + 2,
+        eventCreated: trialCreated + 6,
         plan: "standard",
         status: "active",
         subscriptionId: "sub_missing",

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
+| バージョン | v1.6 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -83,6 +83,8 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 | `invoice.paid` | subscriptionを再取得して支払い復旧を同期 |
 
 Price IDからplanへの変換に未知の値が来た場合はprofileを更新せず、Sentryへ記録して非2xxを返す。`stripe_events`も記録せず、Stripeの再送で復旧できる状態にする。
+
+invoice eventは現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決する。subscription由来でない一回払いinvoiceはeventだけを処理済み記録し、profile・通知を変更しない。`invoice.payment_failed`／`invoice.paid`はいずれもSubscriptionを再取得して§4.2の全契約項目を同期する。payment failedはprofile更新後、eventと同じtransaction内で`billing:invoice:{invoice_id}:payment_failed`をdedupe keyとする課金通知を作る。同一invoiceの再試行で通知を増やさず、設定snapshot・attempt count・invoice／subscription ID・同期statusをpayloadへ保存する。課金通知のin-app／emailが両方OFFなら通知rowを作らないが、profileの停止statusを使う常設バナーは設定にかかわらず表示する。`invoice.paid`は通知を作らず、再取得したactive等の現在statusへ復旧する。
 
 ### 4.2 冪等性と順序
 
@@ -231,6 +233,7 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Process undelivered events](https://docs.stripe.com/webhooks/process-undelivered-events)：処理済みevent再送のskip＋成功応答（2026-07-22確認）
 - [Retrieve a subscription](https://docs.stripe.com/api/subscriptions/retrieve?lang=node)：Customer、status、trial、metadataとSubscription ItemのPrice／current period（2026-07-22確認）
 - [Subscription webhooks](https://docs.stripe.com/billing/subscriptions/webhooks)：created／updated／deletedの契約ライフサイクル（2026-07-22確認）
+- [Invoice object](https://docs.stripe.com/api/invoices/object?lang=node)：`parent.subscription_details.subscription`、attempt count、invoice status（2026-07-22確認）
 - [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：プラン変更、解約、ダウングレード予約
 
 Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configuration IDはPortal実装タスクで実装メモへ記録する。外部仕様は各実装タスク開始時に再確認する。

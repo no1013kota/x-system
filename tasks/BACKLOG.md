@@ -424,12 +424,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `checkout.session.completed`／subscription created・updatedは署名検証後かつDB transaction前にSubscriptionを再取得し、deletedだけはevent内の最終objectを`canceled`として使用するprepare/apply分離をWebhook基盤へ接続した。単一Subscription ItemのPriceをserver対応表へ変換し、現行Stripe APIのitem `current_period_end`、status、trial、解約予定、Customer／Subscription ID、metadata user_idをprojection化する。transaction内でprofile候補をrow lockし、Customer IDまたはCustomer未保存時のUUID user_idが一意に一致する場合だけ9契約項目を更新する。保存済みevent時刻より古いeventはprofile更新をskip、同時実行もlock後に再判定する。初回trialingだけ`trial_used_at=trial_start`（欠落時event.created）をcoalesce保存し、以後保持する。profile更新とevent claimは同transactionで、mapping／更新失敗時は両方rollbackする。
   検証: Stripe SDK retrieveモックでcheckout／created／updatedがsubscription IDを再取得し、deletedだけ再取得しないこと、単一itemのPrice／期間／status／trial変換、未知・複数Price拒否を6 unit testで確認。ローカルPostgresで全同期値、初回trial保持、古いeventの逆転防止、失敗時の`stripe_events` rollbackを1統合シナリオで確認。全377件（310成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のSubscription retrieve／Item current_period_end／契約webhookライフサイクルを2026-07-22に確認し、要件03へ反映した。
 
-### T-M1-13: invoice.payment_failed／invoice.paid処理と課金通知作成 `todo`
+### T-M1-13: invoice.payment_failed／invoice.paid処理と課金通知作成 `done`
 - 参照: O-1、要件03 §4.1、要件03 §8、要件02 §3.15 / 依存: T-M1-12 / サイズ: S
 - 完了条件:
   - invoice.payment_failedでsubscriptionを再取得して現在statusを同期し、billing種別のnotifications rowがdedupe_key付き・設定snapshot付きで作成される（モックテスト）
   - invoice.paidで支払い復旧（status回復）が同期される
 - メモ: 通知メール送信job・通知一覧UIは別マイルストーン。ここではrow作成まで。決済失敗の常設バナーは「契約状態別アクセス制御」タスクで表示する。
+- 実装メモ:
+  実装結果: 現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決し、payment_failed／paidとも署名検証後かつDB transaction前に現在のSubscriptionを再取得して既存の契約projectionへ統合した。一回払いinvoiceはeventだけを処理済みにする。payment_failedはprofile同期と同transaction内でbilling通知を作り、`billing:invoice:{invoice_id}:payment_failed`でinvoice単位に重複排除する。通知設定のin-app／emailを配信列へ反映し、attempt count・invoice／subscription ID・同期status・設定snapshotをpayloadへ保存する。両channel OFF時は通知を作らず、paidは現在statusへ復旧同期して新規通知を作らない。
+  検証: Stripe SDK retrieveモックでfailed／paidがinvoice parentのSubscriptionを再取得すること、一回払いをskipすることを3 unit testで確認。ローカルPostgresで失敗status、同一invoice再送時の通知1件維持、設定snapshot／email queue、paid後のactive復旧、両channel OFF時の非作成を1統合シナリオで確認。全380件（313成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のInvoice object／Subscription webhookを2026-07-22に確認し、要件02・03へ反映した。
 
 ### T-M1-14: Customer Portal SessionとSC-11課金タブ最小実装 `todo`
 - 参照: O-1、要件03 §6、要件05 §3、要件05 §11、要件01 §3.3、SC-11 / 依存: T-M1-12 / サイズ: M
