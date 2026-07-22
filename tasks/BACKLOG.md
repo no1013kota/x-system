@@ -357,12 +357,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `signIn` Server ActionとSC-03 `/login`を追加。成功時に欠損profileを補完し、`incomplete|incomplete_expired`は`/plans`、それ以外は許可済み`next`（`/plans`・`/reset-password`・`/app`配下）または`/app`へ遷移する。外部URLは破棄する。Supabaseの安定した`email_not_confirmed`コードだけを再送状態へ分岐し、invalid credentials・rate limit・provider障害は同じ汎用文言へ正規化する。`captcha_token`の受け口・伝播は実装済みで必須化はT-M1-07。
   検証: 実ブラウザ＋ローカルSupabaseでactiveユーザーのsafe next、未契約ユーザーの`/plans`、未確認ユーザーの再送UI・再送受理を確認。全296テスト・lint・typecheck・Next production buildが成功。Supabase公式の`signInWithPassword`と未確認email設定を2026-07-22に確認し、要件03／05／06へ反映した。
 
-### T-M1-06: パスワード再設定フロー（requestPasswordReset／updatePassword／/reset-password画面） `todo`
+### T-M1-06: パスワード再設定フロー（requestPasswordReset／updatePassword／/reset-password画面） `done`
 - 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件05 §12 / 依存: T-M1-04、T-M1-05 / サイズ: M
 - 完了条件:
   - 登録済み・未登録どちらのメールでも同一の受理応答を返し、登録済みにのみrecoveryメールが届く（Inbucketで確認）
   - recoveryリンク→/auth/confirm→/reset-passwordで新passwordを設定し、新passwordでログインできる
   - 有効なrecovery sessionがないupdatePassword呼び出し、password制約違反・確認不一致は拒否される
+  実装結果: `requestPasswordReset`／`updatePassword` Server Actions、`/login?mode=forgot-password`、`/reset-password`を追加。申請は登録有無・provider結果を隠す同一受理応答とし、recoveryの`verifyOtp`成功時だけuser_idと発行時刻を`APP_ENCRYPTION_KEY`で封緘したHttpOnly／SameSite=Lax／15分TTL marker cookieを発行する。更新時はSupabase sessionのuser_idとmarkerを照合し、成功後はlocal sessionとmarkerを破棄して完了通知付きloginへ戻す。password 12〜64文字・UTF-8 72 bytes以下・確認一致を共通zod schemaで検証する。
+  検証: 実ブラウザ＋ローカルSupabase/Mailpitで登録済み／未登録の同一受理表示、登録済みだけのrecoveryメール到着、リンク検証→password更新→新passwordログイン、marker消費後の通常sessionによる更新拒否を確認。全308テスト（243成功・DB条件なし65 skip）・lint・typecheck・Next production buildが成功。Supabase公式の`resetPasswordForEmail`／password更新仕様を2026-07-22に確認し、要件03／05／06へ反映した。
 
 ### T-M1-07: Turnstile統合（signup／login／password reset） `todo`
 - 参照: 要件01 §2、要件01 §8、要件03 §1、要件05 §12、SC-02、SC-03 / 依存: T-M1-03、T-M1-05、T-M1-06 / サイズ: S

@@ -12,7 +12,7 @@
 |---|---|
 | 登録 | Supabase Authのメール＋パスワード。確認メールを必須にする |
 | ログイン | `signInWithPassword`成功後に欠損profileを補完し、`subscription_status=incomplete|incomplete_expired`は`/plans`、それ以外は安全な`next`または`/app`へ遷移する。未確認メールはアプリ本体へ入れず、確認メール再送を表示 |
-| パスワード再設定 | Supabase Authの標準フロー |
+| パスワード再設定 | `resetPasswordForEmail`は登録有無にかかわらず同じ受理応答を返す。recoveryリンクで確立したsessionと、user_idを束縛した15分TTLの改ざん検知HttpOnly cookieが一致するときだけ`updateUser`を許可し、成功後は両方を破棄する |
 | パスワード | 12〜64文字かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
 | profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はログイン後の初回アクセスでservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない |
@@ -22,7 +22,7 @@
 
 ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。Supabaseの安定した`email_not_confirmed`コードだけは確認メール再送状態として扱い、providerのmessage文字列では分岐しない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する。
 
-確認メールとpassword resetメールはカスタムテンプレートから`/auth/confirm?token_hash=...&type=signup|recovery`へ直接送り、Server側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。期限切れ・使用済み・不正tokenは同じ汎用エラーへまとめ、signup確認メールは再送フォーム、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
+確認メールとpassword resetメールはカスタムテンプレートから`/auth/confirm?token_hash=...&type=signup|recovery`へ直接送り、Server側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。recovery成功時だけ`APP_ENCRYPTION_KEY`で封緘したuser_id・発行時刻をHttpOnly／SameSite=Lax／15分TTL cookieへ保存し、password更新時に現在sessionのuser_idとの一致とTTLを検証する。期限切れ・使用済み・不正tokenまたはmarkerはprovider理由を出さない汎用エラーへまとめ、signup確認メールは再送フォーム、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
 
 会員登録時は現行の利用規約versionへの明示同意とプライバシーポリシー確認を必須にし、versionと時刻をprofileへ保存する。重大改定で再同意が必要な場合は、既存データ閲覧を許可したまま生成・投稿前に同意画面を表示する。
 
@@ -210,6 +210,8 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 
 ## 9. 実装時の公式参照
 
+- [Supabase `resetPasswordForEmail`](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail)：recoveryメール送信とredirect指定（2026-07-22確認）
+- [Supabase password security](https://supabase.com/docs/guides/auth/password-security)：recovery後の`updateUser`によるpassword更新（2026-07-22確認）
 - [Stripe Subscriptions overview](https://docs.stripe.com/billing/subscriptions/overview)：subscription statusとライフサイクル
 - [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：プラン変更、解約、ダウングレード予約
 

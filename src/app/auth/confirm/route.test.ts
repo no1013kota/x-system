@@ -1,13 +1,22 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { RECOVERY_SESSION_COOKIE, verifyRecoverySession } from "@/lib/auth/recovery";
+import { resolveKey } from "@/lib/crypto/envelope";
+
+const ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
+
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
   verifyOtp: vi.fn(),
 }));
 
 vi.mock("@/lib/env", () => ({
-  env: { APP_BASE_URL: "https://app.example.com" },
+  env: {
+    APP_BASE_URL: "https://app.example.com",
+    APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+    APP_ENV: "production",
+  },
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
@@ -22,7 +31,10 @@ function request(query: string): NextRequest {
 describe("GET /auth/confirm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.verifyOtp.mockResolvedValue({ error: null });
+    mocks.verifyOtp.mockResolvedValue({
+      data: { user: { id: "user-1" } },
+      error: null,
+    });
     mocks.createSupabaseServerClient.mockResolvedValue({
       auth: { verifyOtp: mocks.verifyOtp },
     });
@@ -51,6 +63,19 @@ describe("GET /auth/confirm", () => {
     expect(response.headers.get("location")).toBe(
       "https://app.example.com/reset-password",
     );
+    const marker = response.cookies.get(RECOVERY_SESSION_COOKIE);
+    expect(marker).toMatchObject({
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      secure: true,
+    });
+    expect(() =>
+      verifyRecoverySession(marker?.value, resolveKey(ENCRYPTION_KEY), {
+        now: Date.now(),
+        userId: "user-1",
+      }),
+    ).not.toThrow();
   });
 
   it("uses a safe approved next path without carrying auth query values", async () => {
@@ -70,7 +95,7 @@ describe("GET /auth/confirm", () => {
     new Error("already used"),
     new Error("invalid token: secret-provider-detail"),
   ])("maps every verification failure to the same generic URL", async (error) => {
-    mocks.verifyOtp.mockResolvedValue({ error });
+    mocks.verifyOtp.mockResolvedValue({ data: { user: null }, error });
 
     const response = await GET(request("token_hash=secret&type=signup"));
     const location = response.headers.get("location");

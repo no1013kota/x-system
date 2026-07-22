@@ -5,6 +5,7 @@ import { APP_NAME } from "@/lib/app-config";
 import { safeAuthNext } from "@/lib/auth/confirm";
 import { env } from "@/lib/env";
 
+import { PasswordResetRequestForm } from "./password-reset-request-form";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -12,13 +13,19 @@ export const metadata: Metadata = {
 };
 
 interface LoginPageProps {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{
+    mode?: string;
+    next?: string;
+    password_updated?: string;
+  }>;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const requestedNext = (await searchParams).next ?? null;
+  const params = await searchParams;
+  const requestedNext = params.next ?? null;
   const next =
     safeAuthNext(requestedNext, env.APP_BASE_URL as string) ?? "";
+  const requestingReset = params.mode === "forgot-password";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">
@@ -27,12 +34,28 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <Link className="text-sm font-semibold tracking-wide" href="/">
             {APP_NAME}
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight">ログイン</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {requestingReset ? "パスワード再設定" : "ログイン"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            メールアドレスとパスワードを入力してください。
+            {requestingReset
+              ? "登録したメールアドレスへ再設定リンクを送ります。"
+              : "メールアドレスとパスワードを入力してください。"}
           </p>
         </header>
-        <LoginForm next={next} />
+        {params.password_updated === "1" && !requestingReset ? (
+          <p
+            className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"
+            role="status"
+          >
+            パスワードを更新しました。新しいパスワードでログインしてください。
+          </p>
+        ) : null}
+        {requestingReset ? (
+          <PasswordResetRequestForm />
+        ) : (
+          <LoginForm next={next} />
+        )}
       </div>
     </main>
   );

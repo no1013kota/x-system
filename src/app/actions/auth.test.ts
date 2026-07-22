@@ -4,12 +4,16 @@ import {
   CURRENT_PRIVACY_VERSION,
   CURRENT_TERMS_VERSION,
 } from "@/lib/legal";
+import { sealRecoverySession } from "@/lib/auth/recovery";
+import { resolveKey } from "@/lib/crypto/envelope";
 
 import { INITIAL_AUTH_FORM_STATE } from "./auth-state";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseAdminClient: vi.fn(),
   createSupabaseServerClient: vi.fn(),
+  cookieDelete: vi.fn(),
+  cookieGet: vi.fn(),
   profileEq: vi.fn(),
   profileFrom: vi.fn(),
   profileSelect: vi.fn(),
@@ -24,14 +28,32 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: mocks.createSupabaseAdminClient,
 }));
 vi.mock("@/lib/env", () => ({
-  env: { APP_BASE_URL: "http://localhost:3000" },
+  env: {
+    APP_BASE_URL: "http://localhost:3000",
+    APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+  },
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
 }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("next/headers", () => ({
+  cookies: vi.fn().mockResolvedValue({
+    delete: mocks.cookieDelete,
+    get: mocks.cookieGet,
+  }),
+}));
 
-import { resendSignUpConfirmation, signIn, signOut, signUp } from "./auth";
+import {
+  requestPasswordReset,
+  resendSignUpConfirmation,
+  signIn,
+  signOut,
+  signUp,
+  updatePassword,
+} from "./auth";
+
+const ENCRYPTION_KEY = resolveKey("0123456789abcdef0123456789abcdef");
 
 function validSignInForm(overrides: Record<string, string> = {}): FormData {
   const values = {
@@ -63,6 +85,19 @@ function validSignUpForm(overrides: Record<string, string> = {}): FormData {
   return formData;
 }
 
+function validUpdatePasswordForm(
+  overrides: Record<string, string> = {},
+): FormData {
+  const values = {
+    password: "new-safe-password-123",
+    password_confirmation: "new-safe-password-123",
+    ...overrides,
+  };
+  const formData = new FormData();
+  Object.entries(values).forEach(([key, value]) => formData.set(key, value));
+  return formData;
+}
+
 describe("auth actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,6 +121,7 @@ describe("auth actions", () => {
     mocks.createSupabaseAdminClient.mockReturnValue({
       from: mocks.profileFrom,
     });
+    mocks.cookieGet.mockReturnValue(undefined);
   });
 
   describe("signUp", () => {
@@ -391,6 +427,140 @@ describe("auth actions", () => {
       expect(result.status).toBe("error");
       expect(signOutSession).toHaveBeenCalledOnce();
       expect(mocks.redirect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("requestPasswordReset", () => {
+    it("returns the same accepted response for registered, unknown, and provider-error emails", async () => {
+      const resetPasswordForEmail = vi
+        .fn()
+        .mockResolvedValueOnce({ error: null })
+        .mockResolvedValueOnce({ error: new Error("user not found") });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { resetPasswordForEmail },
+      });
+
+      const messages: string[] = [];
+      for (const email of ["registered@example.com", "unknown@example.com"]) {
+        const formData = new FormData();
+        formData.set("email", email);
+        const result = await requestPasswordReset(
+          INITIAL_AUTH_FORM_STATE,
+          formData,
+        );
+        expect(result.status).toBe("success");
+        messages.push(result.message);
+      }
+
+      expect(new Set(messages).size).toBe(1);
+      expect(messages[0]).not.toContain("not found");
+      expect(resetPasswordForEmail).toHaveBeenNthCalledWith(
+        1,
+        "registered@example.com",
+        { redirectTo: "http://localhost:3000/auth/confirm" },
+      );
+    });
+
+    it("passes the captcha token without changing the accepted response", async () => {
+      const resetPasswordForEmail = vi.fn().mockResolvedValue({ error: null });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { resetPasswordForEmail },
+      });
+      const formData = new FormData();
+      formData.set("captcha_token", "captcha-value");
+      formData.set("email", "registered@example.com");
+
+      const result = await requestPasswordReset(
+        INITIAL_AUTH_FORM_STATE,
+        formData,
+      );
+
+      expect(result.status).toBe("success");
+      expect(resetPasswordForEmail).toHaveBeenCalledWith(
+        "registered@example.com",
+        {
+          captchaToken: "captcha-value",
+          redirectTo: "http://localhost:3000/auth/confirm",
+        },
+      );
+    });
+  });
+
+  describe("updatePassword", () => {
+    function mockRecoverySession(userId = "user-1") {
+      const getUser = vi.fn().mockResolvedValue({
+        data: { user: { id: userId } },
+        error: null,
+      });
+      const signOutSession = vi.fn().mockResolvedValue({ error: null });
+      const updateUser = vi.fn().mockResolvedValue({ error: null });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { getUser, signOut: signOutSession, updateUser },
+      });
+      mocks.cookieGet.mockReturnValue({
+        value: sealRecoverySession(
+          { issuedAt: Date.now(), userId },
+          ENCRYPTION_KEY,
+        ),
+      });
+      return { getUser, signOutSession, updateUser };
+    }
+
+    it("updates and signs out only a matching recovery session", async () => {
+      const { signOutSession, updateUser } = mockRecoverySession();
+
+      await expect(
+        updatePassword(INITIAL_AUTH_FORM_STATE, validUpdatePasswordForm()),
+      ).rejects.toThrow("NEXT_REDIRECT");
+
+      expect(updateUser).toHaveBeenCalledWith({
+        password: "new-safe-password-123",
+      });
+      expect(signOutSession).toHaveBeenCalledWith({ scope: "local" });
+      expect(mocks.cookieDelete).toHaveBeenCalledWith("space-ai-recovery");
+      expect(mocks.redirect).toHaveBeenCalledWith("/login?password_updated=1");
+    });
+
+    it("rejects a normal authenticated session without a recovery marker", async () => {
+      const { updateUser } = mockRecoverySession();
+      mocks.cookieGet.mockReturnValue(undefined);
+
+      const result = await updatePassword(
+        INITIAL_AUTH_FORM_STATE,
+        validUpdatePasswordForm(),
+      );
+
+      expect(result.status).toBe("error");
+      expect(updateUser).not.toHaveBeenCalled();
+      expect(mocks.redirect).not.toHaveBeenCalled();
+    });
+
+    it("rejects a marker issued for another user", async () => {
+      const { updateUser } = mockRecoverySession("user-1");
+      mocks.cookieGet.mockReturnValue({
+        value: sealRecoverySession(
+          { issuedAt: Date.now(), userId: "user-2" },
+          ENCRYPTION_KEY,
+        ),
+      });
+
+      const result = await updatePassword(
+        INITIAL_AUTH_FORM_STATE,
+        validUpdatePasswordForm(),
+      );
+
+      expect(result.status).toBe("error");
+      expect(updateUser).not.toHaveBeenCalled();
+    });
+
+    it("rejects password constraint violations before reading the session", async () => {
+      const mismatch = await updatePassword(
+        INITIAL_AUTH_FORM_STATE,
+        validUpdatePasswordForm({ password_confirmation: "different-value" }),
+      );
+
+      expect(mismatch.fieldErrors?.password_confirmation).toBeDefined();
+      expect(mocks.createSupabaseServerClient).not.toHaveBeenCalled();
     });
   });
 

@@ -65,7 +65,7 @@
 | POST | `/api/stripe/checkout` | user | Checkout Session作成 |
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
-| GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans`、recoveryは`/reset-password`。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
+| GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans`、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
 | GET | `/api/x/oauth/start` | user | X OAuth開始 |
 | GET | `/api/x/oauth/callback` | OAuth state | X OAuth callback |
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
@@ -84,8 +84,8 @@
 |---|---|---|---|
 | `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
 | `signIn` | email, password, captcha_token, next(optional) | session/redirect | generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app`。TurnstileはT-M1-07で必須化 |
-| `requestPasswordReset` | email, captcha_token | accepted | Turnstile検証。メール存在有無にかかわらず同じ応答 |
-| `updatePassword` | password, password_confirmation | success | 有効なrecovery sessionと一致検証必須 |
+| `requestPasswordReset` | email, captcha_token | accepted | `resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。Turnstile検証。メール存在有無・provider結果にかかわらず同じ応答 |
+| `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 
 `signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。Turnstile統合前の段階でも`captcha_token`の入力・Supabaseへの受け渡し口を維持し、T-M1-07でAuth CAPTCHAとwidgetを有効化して必須検証へ切り替える。

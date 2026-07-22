@@ -1,12 +1,20 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
+import {
+  passwordResetRequestInputFromFormData,
+  RECOVERY_SESSION_COOKIE,
+  updatePasswordInputFromFormData,
+  verifyRecoverySession,
+} from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
+import { resolveKey } from "@/lib/crypto/envelope";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
 import { AppError } from "@/lib/observability/errors";
@@ -23,6 +31,10 @@ const RESEND_ACCEPTED_MESSAGE =
   "確認メールを再送しました。登録可能なメールアドレスの場合にメールが届きます。";
 const SIGNIN_ERROR_MESSAGE =
   "ログインできませんでした。入力内容を確認し、時間をおいて再度お試しください。";
+const RESET_REQUEST_ACCEPTED_MESSAGE =
+  "再設定メールを受け付けました。登録可能なメールアドレスの場合にメールが届きます。";
+const UPDATE_PASSWORD_ERROR_MESSAGE =
+  "パスワードを更新できませんでした。再設定メールをもう一度申請してください。";
 
 const PLAN_REQUIRED_STATUSES = new Set(["incomplete", "incomplete_expired"]);
 
@@ -121,6 +133,82 @@ export async function resendSignUpConfirmation(
     message: RESEND_ACCEPTED_MESSAGE,
     email: emailResult.data,
   };
+}
+
+/** Requests a recovery email without disclosing account existence. */
+export async function requestPasswordReset(
+  _previousState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const parsed = passwordResetRequestInputFromFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "メールアドレスを確認してください。",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    const input = parsed.data;
+    const supabase = await createSupabaseServerClient();
+    await supabase.auth.resetPasswordForEmail(input.email, {
+      redirectTo: confirmationRedirectUrl(),
+      ...(input.captcha_token ? { captchaToken: input.captcha_token } : {}),
+    });
+  } catch {
+    // Account existence and provider failures intentionally share one response.
+  }
+
+  return {
+    status: "success",
+    message: RESET_REQUEST_ACCEPTED_MESSAGE,
+    email: parsed.data.email,
+  };
+}
+
+/** Updates a password only for the session established by a recovery link. */
+export async function updatePassword(
+  _previousState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const parsed = updatePasswordInputFromFormData(formData);
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "入力内容を確認してください。",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    const cookieStore = await cookies();
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      return { status: "error", message: UPDATE_PASSWORD_ERROR_MESSAGE };
+    }
+
+    verifyRecoverySession(
+      cookieStore.get(RECOVERY_SESSION_COOKIE)?.value,
+      resolveKey(env.APP_ENCRYPTION_KEY as string),
+      { now: Date.now(), userId: data.user.id },
+    );
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: parsed.data.password,
+    });
+    if (updateError) {
+      return { status: "error", message: UPDATE_PASSWORD_ERROR_MESSAGE };
+    }
+
+    await supabase.auth.signOut({ scope: "local" });
+    cookieStore.delete(RECOVERY_SESSION_COOKIE);
+  } catch {
+    return { status: "error", message: UPDATE_PASSWORD_ERROR_MESSAGE };
+  }
+
+  redirect("/login?password_updated=1");
 }
 
 function isEmailUnconfirmed(error: unknown): boolean {
