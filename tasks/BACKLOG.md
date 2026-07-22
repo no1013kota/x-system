@@ -498,13 +498,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: M0で先行実装したAES-256-GCM共通基盤を本タスクの完了条件に照らして再監査した。32-byteの`APP_ENCRYPTION_KEY`をUTF-8／hex／base64から厳密に解決し、12-byte random nonceで暗号化して`v/n/c/t`（version／nonce／ciphertext／auth tag）のJSON envelopeを返す。実行時入口`src/lib/crypto/index.ts`は`server-only`を先頭でimportして検証済み環境鍵を束縛し、Client ComponentからのimportをNext buildで拒否する。
   検証: 多バイト平文のencrypt→decrypt、JSON envelope 4要素、同一平文2回のnonce／ciphertext差異、ciphertext・auth tag改竄、異なる鍵、未知version、非JSON、鍵長を単体11件で確認した。server-only境界テスト4件とNext production buildも成功。要件01 §2／§3.1と要件02 §1は実装と一致しており文書変更なし。
 
-### T-M2-02: App Shell骨格（6項目ナビ・ヘッダ・レイアウト） `todo`
+### T-M2-02: App Shell骨格（6項目ナビ・ヘッダ・レイアウト） `done`
 - 参照: 要件06 §2、要件01 §4、SC-05〜11 / 依存: M1 / サイズ: M
 - 完了条件:
   - /app配下でPCは左ナビ・モバイルは下部ナビ/ドロワーに6項目（ホーム・ニュース・投稿・スケジュール・分析・AI設定）が表示され、SC-05〜10の各ルートへ遷移できる（各画面はプレースホルダで可）
   - ヘッダにアクティブXアカウント表示枠・通知ベル・アカウント設定（SC-11）導線が配置される
   - ナビ・ヘッダがキーボードのみで操作でき、focus表示が消えない
 - メモ: 認証ガード（M1）配下に置く。読み込み中・空・失敗の共通状態コンポーネントの雛形もここで用意する。
+  実装結果: `/app`認証ガード配下へPC固定左ナビ／モバイル固定下部ナビを実装し、ホーム・ニュース・投稿・スケジュール・分析・AI設定の6 routeと後続実装用プレースホルダを追加した。ヘッダーにはactive Xアカウント表示枠、通知ベル、SC-11導線を配置し、M1の契約バナーを維持した。共通のloading／empty／error（再試行）状態を部品化し、ナビ・ヘッダーの全操作へ明示的な`focus-visible`と40px以上の操作領域を設定した。
+  検証: ナビ定義の順序・route・重複なしを単体2件で確認。実ブラウザでPC左ナビとヘッダー、X未選択表示、6リンクから各route／見出しへの遷移、共通空状態を確認した。全430件（362成功・DB条件なし68 skip）・lint・typecheck・Next production buildが成功。要件06 §2をv1.9へ同期した。
 
 ### T-M2-03: 発信設定スキーマ・テーマ選択肢マスタ・ベースmd生成ロジック `todo`
 - 参照: L-4、L-5、L-6、L-7、要件02 §4.4、要件02 §6、要件06 §3.3、要件06 §3.4、プロンプト §3.1〜3.4 / 依存: M0 / サイズ: M

@@ -63,12 +63,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const profile = result.data;
 
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-8 sm:py-12">
-      <div className="mx-auto max-w-4xl space-y-7">
+    <main className="px-4 py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto max-w-6xl space-y-7">
         <header className="space-y-2">
-          <Link className="text-sm font-semibold" href="/app">
-            {APP_NAME}
-          </Link>
           <h1 className="text-3xl font-bold tracking-tight">アカウント設定</h1>
           <p className="text-sm text-muted-foreground">
             ご契約内容の確認とお問い合わせができます。

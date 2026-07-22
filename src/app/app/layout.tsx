@@ -1,5 +1,7 @@
+import { Bell, CircleUserRound, Settings } from "lucide-react";
 import Link from "next/link";
 
+import { AppNavigation } from "@/components/app-shell/app-navigation";
 import { PortalButton } from "@/components/billing/portal-button";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -9,76 +11,140 @@ import {
 } from "@/lib/auth/subscription-access";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+interface AppShellProfileRow {
+  active_x_account_id: string | null;
+  stripe_customer_id: string | null;
+  subscription_status: string;
+  trial_ends_at: string | null;
+}
+
 export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser();
   let profile: SubscriptionBannerProfile | null = null;
+  let activeAccountHandle: string | null = null;
   if (user) {
     const admin = createSupabaseAdminClient();
     const result = await admin
       .from("profiles")
-      .select("subscription_status, trial_ends_at, stripe_customer_id")
+      .select(
+        "active_x_account_id, subscription_status, trial_ends_at, stripe_customer_id",
+      )
       .eq("id", user.id)
-      .maybeSingle<{
-        stripe_customer_id: string | null;
-        subscription_status: string;
-        trial_ends_at: string | null;
-      }>();
+      .maybeSingle<AppShellProfileRow>();
     if (result.data) {
       profile = {
         stripeCustomerId: result.data.stripe_customer_id,
         subscriptionStatus: result.data.subscription_status,
         trialEndsAt: result.data.trial_ends_at,
       };
+      if (result.data.active_x_account_id) {
+        const accountResult = await admin
+          .from("x_accounts")
+          .select("handle")
+          .eq("id", result.data.active_x_account_id)
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .maybeSingle<{ handle: string }>();
+        activeAccountHandle = accountResult.data?.handle ?? null;
+      }
     }
   }
   const banner = profile ? subscriptionBannerFor(profile) : null;
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background px-4 py-3">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link className="font-semibold" href="/app">
-            {APP_NAME}
-          </Link>
-          <Link
-            className="text-sm text-muted-foreground hover:text-foreground"
-            href="/app/settings?tab=billing"
-          >
-            アカウント設定
-          </Link>
-        </div>
-      </header>
-      {banner ? (
-        <aside
-          aria-label="ご契約のお知らせ"
-          className={
-            banner.tone === "warning"
-              ? "border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"
-              : "border-b border-sky-200 bg-sky-50 px-4 py-3 text-sky-950"
-          }
+    <div className="min-h-screen bg-muted/30 lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r bg-sidebar lg:block">
+        <Link
+          className="mx-6 my-6 inline-flex rounded-md text-lg font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+          href="/app"
         >
-          <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">{banner.title}</p>
-              <p className="mt-1 text-sm leading-5">{banner.description}</p>
-            </div>
-            {banner.action === "portal" ? (
-              <PortalButton enabled={Boolean(profile?.stripeCustomerId)} />
-            ) : null}
-            {banner.action === "checkout" ? (
-              <Link
-                className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
-                href="/plans"
+          {APP_NAME}
+        </Link>
+        <AppNavigation />
+      </aside>
+
+      <div className="min-w-0 flex-1 pb-20 lg:pb-0">
+        <header className="sticky top-0 z-20 border-b bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+            <Link
+              className="rounded-md font-bold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring lg:hidden"
+              href="/app"
+            >
+              {APP_NAME}
+            </Link>
+            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+              <div
+                aria-label="現在のXアカウント"
+                className="hidden min-h-10 items-center gap-2 rounded-lg border bg-card px-3 text-sm sm:flex"
+                title={
+                  activeAccountHandle
+                    ? `@${activeAccountHandle}`
+                    : "Xアカウント未選択"
+                }
               >
-                プランを選択
+                <CircleUserRound aria-hidden="true" className="size-4" />
+                <span className="max-w-36 truncate">
+                  {activeAccountHandle
+                    ? `@${activeAccountHandle}`
+                    : "Xアカウント未選択"}
+                </span>
+              </div>
+              <Link
+                aria-label="通知"
+                className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                href="/app#notifications"
+              >
+                <Bell aria-hidden="true" className="size-5" />
               </Link>
-            ) : null}
+              <Link
+                aria-label="アカウント設定"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                href="/app/settings?tab=billing"
+              >
+                <Settings aria-hidden="true" className="size-5" />
+                <span className="hidden md:inline">アカウント設定</span>
+              </Link>
+            </div>
           </div>
-        </aside>
-      ) : null}
-      {children}
+        </header>
+
+        {banner ? (
+          <aside
+            aria-label="ご契約のお知らせ"
+            className={
+              banner.tone === "warning"
+                ? "border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"
+                : "border-b border-sky-200 bg-sky-50 px-4 py-3 text-sky-950"
+            }
+          >
+            <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">{banner.title}</p>
+                <p className="mt-1 text-sm leading-5">{banner.description}</p>
+              </div>
+              {banner.action === "portal" ? (
+                <PortalButton enabled={Boolean(profile?.stripeCustomerId)} />
+              ) : null}
+              {banner.action === "checkout" ? (
+                <Link
+                  className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  href="/plans"
+                >
+                  プランを選択
+                </Link>
+              ) : null}
+            </div>
+          </aside>
+        ) : null}
+
+        {children}
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <AppNavigation mobile />
+      </div>
     </div>
   );
 }

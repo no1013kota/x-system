@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function AppHomePage() {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10">
+    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
       <div className="rounded-2xl border bg-card p-6 shadow-sm">
         <h1 className="text-2xl font-bold">ホーム</h1>
         <p className="mt-3 text-sm text-muted-foreground">
