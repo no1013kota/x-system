@@ -119,7 +119,7 @@ function sessionParams(input: {
     client_reference_id: input.userId,
     line_items: [{ price: input.priceId, quantity: 1 }],
     payment_method_collection: "always",
-    success_url: `${appBaseUrl}/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${appBaseUrl}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appBaseUrl}/plans?checkout=canceled`,
     metadata: {
       plan: input.plan,

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
+| バージョン | v1.8 |
 | 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -64,6 +64,7 @@
 |---|---|---|---|
 | POST | `/api/stripe/checkout` | user | Checkout Session作成 |
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
+| GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
 | GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans`、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
 | GET | `/api/x/oauth/start` | user | X OAuth開始 |
@@ -74,9 +75,11 @@
 | GET | `/api/cron/follower-snapshot` | `CRON_SECRET` | フォロワー数保存 |
 | POST | `/api/jobs/run` | `CRON_SECRET` | queued job 1件のworker実行（内部dispatch専用。202を即時返却し本処理は`after()`で実行） |
 
-`POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返す。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
+`POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返し、30分TTLの暗号化済み復帰marker cookieを発行する。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
 
-`POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
+`POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、30分TTLの暗号化済み復帰marker cookieを発行する。ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
+
+`GET /api/stripe/return`は`source=checkout|portal`、認証済みsession、開始APIが発行した`HttpOnly`／`SameSite=Lax`の復帰markerを検証する。開始後のStripe event時刻がprofileへ反映済みなら外部APIなしで画面へredirectする。未反映時だけCheckout Sessionの本人性（checkoutのみ）を確認してSubscriptionを1回取得し、webhook共通projectionをtransaction適用する。markerは結果にかかわらず削除し、成功／反映済み／skip／失敗を秘密情報を含まない`sync` queryへ正規化する。markerのない通常画面はこのrouteを通らず、Stripe APIを呼ばない（要件03 §3）。
 
 `POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
 
@@ -238,6 +241,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | launchd / Vercel Cron | `Authorization: Bearer ${CRON_SECRET}` |
 | X OAuth callback | state/PKCE verifierを検証。署名・暗号化・HttpOnly・短TTL cookieへ保存 |
 | Checkout/Portal API | Supabase sessionを検証し、`Origin`をアプリの許可originと完全一致させる |
+| Checkout/Portal return | Supabase session＋暗号化済み短TTL markerのuser／source一致を検証し、markerを一度だけ消費 |
 
 Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allowedOrigins`を設定する場合は明示的な許可リストだけを登録する。Webhook、定時トリガー、OAuth callbackはそれぞれ上表の専用検証を使い、一般的なCSRF tokenの対象外とする。
 

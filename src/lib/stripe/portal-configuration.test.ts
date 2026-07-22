@@ -34,7 +34,7 @@ describe("Stripe Portal configuration setup", () => {
       trial_update_behavior: "continue_trial",
     });
     expect(configuration.default_return_url).toBe(
-      "https://app.example.com/app/settings?tab=billing&portal=return",
+      "https://app.example.com/api/stripe/return?source=portal",
     );
   });
 

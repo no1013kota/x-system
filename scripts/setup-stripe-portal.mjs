@@ -26,7 +26,7 @@ export function portalConfiguration({ appBaseUrl, priceIds, productId }) {
       privacy_policy_url: `${baseUrl}/privacy`,
       terms_of_service_url: `${baseUrl}/terms`,
     },
-    default_return_url: `${baseUrl}/app/settings?tab=billing&portal=return`,
+    default_return_url: `${baseUrl}/api/stripe/return?source=portal`,
     features: {
       invoice_history: { enabled: true },
       payment_method_update: { enabled: true },

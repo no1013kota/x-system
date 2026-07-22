@@ -94,7 +94,7 @@ export async function handlePortalRequest(
   try {
     const session = await deps.stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
-      return_url: `${baseUrl}/app/settings?tab=billing&portal=return`,
+      return_url: `${baseUrl}/api/stripe/return?source=portal`,
       ...(deps.configurationId
         ? { configuration: deps.configurationId }
         : {}),

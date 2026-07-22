@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
+| バージョン | v1.8 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -46,14 +46,14 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。既存の`stripe_customer_id`を再利用し、未作成時はemailと`user_id` metadataを付け、`space-ai:customer:{user_id}`を冪等keyとしてCustomerを作成してprofileへ保存する。
 - Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadataおよび`client_reference_id`へ本人user_idとplanを関連付ける。
 - `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
-- success URLは`{APP_BASE_URL}/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。任意の外部return URLは受け取らない。
+- success URLは`{APP_BASE_URL}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。復帰同期後は`/plans?checkout=success&sync=...`へredirectする。任意の外部return URLは受け取らない。
 - プラン選択からCheckoutまでに、税込月額、7日trial、trial後の自動更新、支払時期、解約方法、提供開始時期を表示する。
 
 ### 2.2 Customer Portal作成
 
 - `POST /api/stripe/portal`はrequest bodyを必要とせず、Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
-- Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/app/settings?tab=billing&portal=return`でサーバー固定とする。
+- Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
 - `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実作成時は3つのPriceを取得して同一Product所属を検証した後、`STRIPE_PORTAL_CONFIGURATION_ID`へ設定するIDを出力する。秘密鍵は出力しない。
 
 ## 3. Stripeを正とする項目
@@ -70,7 +70,12 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - `trial_used_at`（trialingを初めて確認した時だけ設定し、以後保持）
 - `subscription_event_created_at`
 
-画面表示のたびにStripe APIを呼ばない。ユーザーがCheckout/Portalから戻った直後だけ、未反映ならsubscriptionを再取得して同期してよい。
+画面表示のたびにStripe APIを呼ばない。Checkout／Portal Session作成成功時だけ、user ID・`source=checkout|portal`・開始時刻をAES-256-GCMで改ざん検知した30分TTLの`HttpOnly`／`SameSite=Lax` cookieへ保存する。`GET /api/stripe/return`は認証済みuserとcookieのuser／sourceを照合し、次の規則で一度だけ復帰同期してcookieを削除する。
+
+- `profiles.subscription_event_created_at >= cookie.issued_at`なら開始後のwebhookが反映済みと判断し、Stripe APIを呼ばない。
+- 未反映ならSubscriptionを1回だけ取得し、webhookと同じPrice検証・profile特定・row lock・event時刻比較・trial保持を使ってtransaction適用する。PortalはprofileのSubscription IDを使う。CheckoutはSessionを取得し、`client_reference_id`とCustomerが本人profileに一致する場合だけSessionのSubscription IDを使う。
+- 復帰marker欠落／期限切れ／user・source不一致、通常の`/plans`／`/app/settings`表示ではStripe APIを呼ばない。同期失敗時はprovider詳細を表示せず`sync=pending`で画面へ戻し、通常のwebhook再送へ復旧を委ねる。
+- 復帰同期のprojection時刻は取得時のserver時刻とするため、その直後に遅着した古いwebhookで状態を戻さない。後続のより新しいeventは通常どおり反映する。
 
 ## 4. Webhook処理
 
@@ -236,6 +241,7 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Supabase password security](https://supabase.com/docs/guides/auth/password-security)：recovery後の`updateUser`によるpassword更新（2026-07-22確認）
 - [Stripe Subscriptions overview](https://docs.stripe.com/billing/subscriptions/overview)：subscription statusとライフサイクル
 - [Create a Checkout Session](https://docs.stripe.com/api/checkout/sessions/create?lang=node)：subscription mode、Price、Customer、metadata、success/cancel URL、trial設定（2026-07-22確認）
+- [Retrieve a Checkout Session](https://docs.stripe.com/api/checkout/sessions/retrieve?lang=node)：復帰時のSubscription、Customer、client reference検証（2026-07-22確認）
 - [Create a Customer](https://docs.stripe.com/api/customers/create?lang=node)：emailとmetadata（2026-07-22確認）
 - [Idempotent requests](https://docs.stripe.com/api/idempotent_requests)：Customer作成の冪等key（2026-07-22確認）
 - [Receive Stripe events](https://docs.stripe.com/webhooks?lang=node)：raw body署名検証、timestamp許容範囲、重複・非同期再送・順序非保証（2026-07-22確認）

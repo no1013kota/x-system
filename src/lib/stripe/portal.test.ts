@@ -54,7 +54,7 @@ describe("POST /api/stripe/portal core", () => {
       configuration: "bpc_server_owned",
       customer: "cus_existing",
       return_url:
-        "https://app.example.com/app/settings?tab=billing&portal=return",
+        "https://app.example.com/api/stripe/return?source=portal",
     });
     await expect(response.json()).resolves.toEqual({
       ok: true,
@@ -69,7 +69,7 @@ describe("POST /api/stripe/portal core", () => {
     expect(deps.stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
       customer: "cus_existing",
       return_url:
-        "https://app.example.com/app/settings?tab=billing&portal=return",
+        "https://app.example.com/api/stripe/return?source=portal",
     });
   });
 

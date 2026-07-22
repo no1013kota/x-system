@@ -125,7 +125,7 @@ describe("POST /api/stripe/checkout core", () => {
       line_items: [{ price: "price_premium_server", quantity: 1 }],
       payment_method_collection: "always",
       success_url:
-        "https://app.example.com/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+        "https://app.example.com/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://app.example.com/plans?checkout=canceled",
       metadata: { plan: "premium", user_id: "user_123" },
       subscription_data: {

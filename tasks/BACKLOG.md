@@ -445,12 +445,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `POST /api/stripe/portal`を追加し、Origin完全一致→Supabase session→本人profileのCustomer IDの順に検証して、サーバー固定のConfiguration ID／`/app/settings?tab=billing&portal=return`で短寿命Sessionを作成する。Customer未作成は`subscription_required`、Stripeエラーはprovider詳細を伏せた`provider_error`に統一した。SC-11最小画面は課金・問い合わせタブを実装し、プラン、契約status、JST期間終了日、解約予定、Portalボタン、プラン導線、`SUPPORT_EMAIL`のメールリンク、Portal復帰表示をprofileから表示する。setupスクリプトは3 Priceの同一Product所属を検証し、値下げ期間末・解約期間末・trial継続・値上げ即時日割り・支払方法更新・請求履歴を固定したConfigurationを作る。実IDの発行は実Stripeアカウント準備後。
   検証: Portal APIの正常系、development設定省略、未ログイン、Origin不一致、Customer欠損、provider失敗、クライアントのHTTPS制約、Configurationの4方針／同一Product制約を12 testで確認。ローカルブラウザで認証後の課金値、問い合わせメール、Portal復帰表示を確認し、一時ユーザーを削除した。dry-run出力、全392件（325成功・DB条件なし67 skip）・lint・typecheck・Next production buildが成功。Stripe公式のPortal Session／Configuration／期間末ダウングレード仕様を2026-07-22に確認し、要件03・05・06へ反映した。
 
-### T-M1-15: Checkout／Portal復帰時の未反映subscription同期 `todo`
+### T-M1-15: Checkout／Portal復帰時の未反映subscription同期 `done`
 - 参照: 要件03 §3、SC-04、SC-11 / 依存: T-M1-12、T-M1-10、T-M1-14 / サイズ: S
 - 完了条件:
   - Checkout success URL・Portal returnからの復帰時、profilesが未反映（webhook未着）ならsubscriptionを1回だけ再取得して同期し、反映済みならStripe APIを呼ばない（モックで呼び出し回数を検証）
   - 通常の画面表示ではStripe APIを呼ばないことをテストで確認
 - メモ: 同期ロジックはwebhookの同期処理を共通化して再利用し、順序逆転防止（subscription_event_created_at比較）も同じ規則を適用する。
+- 実装メモ:
+  実装結果: Checkout／Portal Session作成成功時にuser ID・source・開始時刻をAES-256-GCMで封緘した30分TTLの`HttpOnly`／`SameSite=Lax`復帰cookieを発行し、戻り先を`GET /api/stripe/return`へ統一した。復帰handlerはsessionとmarkerのuser／sourceを照合し、開始後の`subscription_event_created_at`がprofileへ反映済みならStripeを呼ばない。未反映時だけ、CheckoutはSessionの`client_reference_id`／Customerを本人profileと照合してSubscription IDを解決し、Portalは保存済みSubscription IDを使い、現在Subscriptionを1回取得する。webhook共通のPrice検証・profile mapping・row lock・順序逆転防止・trial保持projectionをtransaction適用し、markerを削除して正規画面へ戻す。同期失敗は`sync=pending`としてwebhook再送へ委ねる。
+  検証: Checkout／Portalの未反映時にSubscription retrieveが各1回だけで共通projectionを適用すること、反映済み2経路とmarkerのない通常表示で外部APIを一切呼ばないこと、別userのCheckout Sessionを拒否すること、markerの往復・TTL・改ざん検知・cookie属性を9 testで確認。既存Checkout／Portal契約を含む全401件（334成功・DB条件なし67 skip）・lint・typecheck・Portal dry-run・Next production buildが成功。Stripe公式のCheckout Session／Subscription retrieveを2026-07-22に確認し、要件03・05・06へ反映した。
 
 ### T-M1-16: 契約状態別アクセス制御（閲覧/実行マッピング・mutationガード・課金バナー） `todo`
 - 参照: 要件03 §5、要件01 §5、要件05 §2.2、要件06 §2、SC-05 / 依存: T-M1-12、T-M1-14、T-M1-08 / サイズ: M
