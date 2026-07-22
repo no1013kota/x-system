@@ -17,6 +17,8 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 **D-2: ローカルDBランタイム(Docker)の方針（解決済み 2026-07-20: colima導入）** — この開発マシンにDocker/Supabase CLIが未導入。T-M0-03〜07（DBマイグレーション群）とDB統合検証を含む後続タスクの検証に必須。選択肢: (a)colima+docker CLIをbrewで導入（GUI・ライセンス不要のヘッドレス実行。推奨。ただし初回はSupabaseの各種Dockerイメージ数GBをpull） / (b)Docker Desktopを人間が導入（GUI・ライセンス確認あり） / (c)当面ローカルDB検証をスキップしSQLの記述のみ進める。**未決の間はDB群がblockedで先へ進めないため、ここが連続開発の律速。**
 
+**D-4: 失敗provider callのusage/原価記録の責務（M3〜台帳MS着手前に決定・m0-full-audit指摘）** — `runTextGeneration`（pipeline.ts）は`generate()`が成功returnした後にのみ`usage.calls`へ積むため、provider callが例外throw（`PauseTurnIncompleteError`・timeout・5xx等）した場合、`status:"failed"`/`error_code`付きの`ProviderCall`が記録されない。一方プロンプト設計書 §5.6は「全provider callを保存」、要件04 §10は「成功・失敗を問わず原価台帳へ記録」とする。M0では原価台帳（external_api_usage_events）連携自体が後続MS送りのため実害は潜在。要決定: 失敗callの記録を(案A)pipelineがtry/catchで`ProviderCall(status=failed)`を積む／(案B)worker/台帳MSが失敗時にexternal_api_usage_eventsへ直接記録する、のどちらにするか。※throw時はSDKがusageを返さないことが多く、記録できるのはrequest ID・error_code・発生事実に限られる点も考慮。`ProviderCallMeta`は既に`status`/`errorCode`を受け取れる（normalize.ts）。
+
 **D-3: news_fetchの時間窓欠落対策（解決済み 2026-07-21: 案I・3時間ラップ取得）** — 「時間窓の欠落を許容しない」要件を、案I（§2維持）で解決。`news_fetch`は各回が直近3時間分を重ねて取得し、1時間ごと起動の窓の重なりで「3回に1回成功すれば取得漏れなし」の回復性を持たせる。稼働は9:00〜20:00・12回/日を維持（コスト現状維持）、前日18:00以降の夜間・稼働終了間際分は当日9:00/10:00/11:00の起動が延長ルックバック15/16/17時間で補完（20:00始点だと19時台発行分が1回しか取得機会を得ず欠落し得るため18:00始点）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみ、欠落回復はラップ取得側が担う。NEWSを永続job化する案II（§2改定）は不採用。反映先: PRD N-1/N-2・§8.3、プロンプト設計書 §6.10（`{{hours}}`=12-20時3／9-11時15-17）、要件04 §6、要件06 SC-06（既定7日表示）、ADR-0003。受け入れ条件はT-M4-10/11へ反映済み。
 
 **M0関連**
