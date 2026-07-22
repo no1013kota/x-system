@@ -38,7 +38,7 @@ flowchart TB
 |---|---|---|
 | アプリ | Next.js App Router + TypeScript | UI、API、Server Actions、cronを同一リポジトリで管理 |
 | UI | Tailwind CSS + shadcn/ui | 画面共通部品はApp Shell配下に集約 |
-| 認証 | Supabase Auth（初期Free） | メール認証、ログイン、パスワード再設定。漏洩パスワード保護はPro移行後に有効化 |
+| 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。漏洩パスワード保護はPro移行後に有効化 |
 | DB | Supabase PostgreSQL + RLS（初期Free） | すべてのユーザー系テーブルでRLSを必須化。Free中は定期的な論理backupで補完 |
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
 | 課金 | Stripe Checkout + Customer Portal + Webhook | カード情報は自前で扱わない |
@@ -178,11 +178,11 @@ flowchart TB
 - P-5はfeature flagの有効化後にself-serve環境で提供し、`quote_tweet_id`を投稿APIへ指定しない。対象ポスト取得による検証後、対象X URLを1ポスト目へ付けた通常投稿として送信する。
 - OAuth 2.0 user contextでは運営Appも利用者本人の認可を受けて代理投稿できる。OAuth認可だけを自動投稿への同意とは扱わず、XのAutomation Rulesに従って対象操作を説明した明示同意と即時opt-outを別途実装する。
 - X実装の確認先：[OAuth 2.0 scopes/PKCE](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code)／[X Automation Rules](https://help.x.com/en/rules-and-policies/x-automation)／[投稿作成・引用制約](https://docs.x.com/x-api/posts/create-post)／[media upload](https://docs.x.com/x-api/media/upload-media)／[metricsの30日制約](https://docs.x.com/x-api/fundamentals/metrics)／[pay-per-use価格](https://docs.x.com/x-api/getting-started/pricing)。
-- Supabase実装の確認先：[Next.js認証・`token_hash`確認](https://supabase.com/docs/guides/getting-started/tutorials/with-nextjs)／[Auth rate limit](https://supabase.com/docs/guides/auth/rate-limits)／[パスワード保護](https://supabase.com/docs/guides/auth/password-security)／[本番運用チェックリスト](https://supabase.com/docs/guides/deployment/going-into-prod)。
+- Supabase実装の確認先：[Next.js認証・`token_hash`確認](https://supabase.com/docs/guides/getting-started/tutorials/with-nextjs)／[SSR package選択](https://supabase.com/docs/guides/auth/choosing-a-server-package)／[`getUser()`](https://supabase.com/docs/reference/javascript/auth-getuser)／[Auth rate limit](https://supabase.com/docs/guides/auth/rate-limits)／[パスワード保護](https://supabase.com/docs/guides/auth/password-security)／[本番運用チェックリスト](https://supabase.com/docs/guides/deployment/going-into-prod)。SSRは`@supabase/ssr` v0.10系の`getAll`/`setAll`方式、リクエストごとのclient生成、`getSession()`ではなく`getUser()`による認可判定を2026-07-22に確認した。
 
 ## 8. セキュリティ基準
 
-- production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。
+- production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
 - CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
 - Sentry/logはAuthorization、cookie、API key、token、prompt全文、投稿前の非公開入力をredactする。ユーザー向けerrorへprovider本文やstack traceを出さない。

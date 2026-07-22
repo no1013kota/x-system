@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.2 |
-| 更新日 | 2026-07-20 |
+| 更新日 | 2026-07-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -14,7 +14,7 @@
 | ログイン | 未確認メールはアプリ本体へ入れず、確認メール再送を表示 |
 | パスワード再設定 | Supabase Authの標準フロー |
 | パスワード | 12〜64文字かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
-| セッション | Server Components/Server Actions/APIでsessionを検証 |
+| セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
 | profile作成 | signup hookで作成。失敗時はログイン後の初回アクセスで冪等upsert |
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |
 

@@ -310,13 +310,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M1: 認証・課金
 
-### T-M1-01: 認証基盤: Supabase SSRクライアントとセッション検証・signOut `todo`
+### T-M1-01: 認証基盤: Supabase SSRクライアントとセッション検証・signOut `done`
 - 参照: A-2、要件03 §1、要件01 §2、要件01 §8、要件05 §4.0 / 依存: M0 / サイズ: S
 - 完了条件:
   - ローカルSupabase（supabase start）で、Server Components／Server Actions／API Routeから共通ヘルパーでセッション有無を判定できる
   - signOutでSupabase sessionが破棄され/loginへ遷移する
   - service role・暗号鍵を参照するモジュールがserver-only化され、Client Componentからのimportがビルドエラーになる
 - メモ: @supabase/ssrを使用。cookieはSecure/HttpOnly/SameSite=Laxを既定（要件01 §8）。以降の全タスクの土台。
+  実装結果: `@supabase/ssr` v0.10.3＋`@supabase/supabase-js` v2.110.8。リクエスト単位client、`getUser()`共通session helper、refresh専用`proxy.ts`、service-role管理client、`signOut` Server Actionを追加。認証cookieはHttpOnly/SameSite=Lax、productionのみSecureで、refresh応答へcache禁止headerも伝播する。認証フローはServer側に限定しbrowser clientは持たない。
+  検証: ローカルSupabase Authでユーザー作成→password login→session検証→signOut後の無効化を確認。全255テスト・lint・typecheck・Next production buildが成功。service-role clientをClient Componentへimportする検証用routeは期待どおり`server-only`ビルドエラーになり、検証後に削除済み。T-M1-08は既存のrefresh専用proxyへ認証・契約リダイレクトguardを追加する。
 
 ### T-M1-02: profiles自動作成hookとログイン後の冪等upsert `todo`
 - 参照: A-1、要件03 §1、要件02 §3.1、要件06 §3.4 / 依存: M0、T-M1-01 / サイズ: S
@@ -1290,4 +1292,3 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - dev/preview相当のAPP_ENVでX_POSTING_MODE=liveを設定すると起動時検証が失敗することをローカルで確認済み
   - dry_run→live切替手順・rollback手順・backup初回取得の確認項目が消化済み
 - メモ: リリース前チェックリストを作成し、開発側で消化可能な項目を実施・記録する：X_POSTING_MODEのdry_run→live切替手順とrollback手順（prodのみlive可・dev/previewはdry_run必須の起動時ガードが未実装なら本タスクで実装）、環境変数一覧（要件01 §3）の環境別充足確認、X API（docs.x.com）・Stripe・AI各社の「実装時に要確認」注記項目の再確認結果の記録（Stripe APIバージョン・Portal Configuration方針は実装メモ/ADRへ）、backup初回取得確認、launchd→Vercel Cron移行条件・手順の確認。Developer Console単価確認・法務専門家確認など運営者アカウントが必要な項目はチェックリスト上の人間側残項目として明示する。
-
