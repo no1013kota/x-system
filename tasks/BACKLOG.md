@@ -477,12 +477,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Subscription profile更新後の同一transactionで旧plan→新planを判定し、standard／md→premiumはBYOK、premium→standard／mdはmanaged Xアカウントを`expired`化する。Standard適用は互換性失効後、選択中がactiveならその1件、そうでなければ`created_at,id`順の最古active 1件を維持し、他を`disabled`、候補なしは選択解除する。premium→BYOKは`ai_purpose_config.text|image`を登録済み`valid`キーと照合し、対応providerだけを維持して無効用途をnullへ戻す。plan不変／stale eventでは副作用を実行しない。status／選択／用途設定以外のtoken、scope、同意、BYOK ciphertext、ベースmd・履歴、学習source、下書き、tweet ID、実績、台帳は更新・削除しない。
   検証: ローカルPostgresの1 transactionシナリオで、MD→Standardの選択中1件維持、未選択時の最古1件fallback、他2件disabled、Standard→PremiumのBYOK 3件expired、Premium→MDのmanaged expired／選択解除、valid Anthropic text維持／invalid OpenAI image解除を確認した。同じseedでtoken 4件、BYOKキー2件、ベースmd 3件・履歴、下書き本文、tweet ID、実績JSONが不変であることを確認。DB統合2件、全421件（353成功・DB条件なし68 skip）・lint・typecheck・Next production buildが成功。要件02・03へ反映した。
 
-### T-M1-18: 利用規約の再同意ガード（重大改定時） `todo`
+### T-M1-18: 利用規約の再同意ガード（重大改定時） `done`
 - 参照: 要件03 §1、要件02 §3.1、SC-02 / 依存: T-M1-16、T-M1-03 / サイズ: S
 - 完了条件:
   - profiles.terms_versionが現行versionより古いユーザーは、既存データの閲覧を許可されたまま、生成・投稿系の実行前に再同意画面が表示される（共通ガードの単体テストで検証）
   - 再同意でterms_version/terms_accepted_at（必要ならprivacy側も）が更新され、以後ブロックされない
 - メモ: 契約状態ガードと同じ実行前チェック機構に組み込み、M3以降の生成・投稿Actionが自動的に対象になるようにする。
+  実装結果: 共通実行ガードを「契約状態→法務version」の順に拡張し、利用規約またはprivacyが現行versionでない場合は`legal_consent_required`と不足文書・現行version・`/app/consent`を返す。通常のroute guardでは法務versionを判定せず既存データ閲覧を維持する。再同意画面は古い文書だけを表示し、Server Actionで本人profileを再読込して明示checkboxと現行versionを検証後、該当version／同意時刻だけを更新する。既に現行の文書は上書きせず、両方現行ならno-opとして`/app`へ戻す。
+  検証: 共通ガードの優先順位・閲覧継続・再同意後の解除、文書別更新、stale client version拒否、冪等no-opを単体7件で確認した。ブラウザで旧versionユーザーの`/app`閲覧、`/app/consent`の2文書表示、未選択エラー、同意後のversion／時刻更新、`/app`への復帰と再訪時redirectを確認。全428件（360成功・DB条件なし68 skip）・lint・typecheck・Next production buildが成功。要件02・03・05・06へ反映した。
 
 ## M2: X連携・キー・初期設定
 

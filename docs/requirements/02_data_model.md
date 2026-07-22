@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.6 |
+| バージョン | v1.7 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -79,6 +79,8 @@ Indexes: `stripe_customer_id`, `stripe_subscription_id`, `active_x_account_id`
 RLS: 本人select可。writeはServer only。
 
 作成ライフサイクル: `auth.users`へのinsert後、`security definer`かつ空の`search_path`を持つAFTER INSERT triggerが`profiles`を作成する。`email`は`auth.users.email`、`plan=standard`、`subscription_status=incomplete`とし、`ai_purpose_config`／`news_config`／`notification_config`は§4.1〜4.3の初期値を保存する。既存・過去ユーザーでprofileが欠落している場合は、認証後の初回アクセスでservice roleが同じ初期値を`id`競合時DO NOTHINGでinsertし、既存profileの設定・契約値を更新しない。
+
+重大改定後の再同意は、現行versionと不一致の文書だけを対象とする。利用規約は`terms_version`／`terms_accepted_at`、プライバシーポリシーは`privacy_version`／`privacy_acknowledged_at`を同時に更新する。既に現行の文書とその時刻は上書きしない。明示同意前やクライアント送信versionが現行と不一致の場合は4項目とも更新しない。
 
 ### 3.2 `user_api_keys`
 

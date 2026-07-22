@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.9 |
+| バージョン | v1.10 |
 | 更新日 | 2026-07-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -12,7 +12,7 @@
 - 外部サービスから呼ばれる処理、OAuth callback、cron、webhookはAPI Routesで実装する。
 - すべての入力はzodで検証する。
 - Server Actionsは現在ユーザー、plan、active_x_accountをサーバー側で検証する。クライアントから渡された`user_id`は信用しない。
-- 生成・投稿・自動実行に分類されるすべてのmutationは、外部API呼び出し・job作成・利用枠reserveより前に共通契約ガードを呼ぶ。`subscription_status=trialing|active`だけを許可し、他statusは`subscription_required`と不足項目／解決先を返す（要件03 §5）。
+- 生成・投稿・自動実行に分類されるすべてのmutationは、外部API呼び出し・job作成・利用枠reserveより前に共通実行ガードを呼ぶ。まず`subscription_status=trialing|active`だけを許可し、次に利用規約／privacyの現行versionを必須とする。他statusは`subscription_required`、古い文書は`legal_consent_required`と不足項目／解決先を返す（要件03 §1／§5）。
 - active Xアカウントに依存するmutation系Action（生成・下書き・スロット・学習・提案）は、クライアントが表示中の`x_account_id`を明示的に送り、サーバーは所有権・`status = active`・`profiles.active_x_account_id`との一致を検証する（不一致は`job_conflict`を返し、画面へ再読込を促す。別タブ・別端末での切替と競合して意図しないアカウントへ実行されることを防ぐ）。
 - エラー形式は全API/Actionで統一する。
 
@@ -45,6 +45,7 @@
 | `unauthorized` | 401 | 未ログイン |
 | `forbidden` | 403 | プラン/所有権/RLS相当の拒否 |
 | `validation_error` | 400 | 入力不正 |
+| `legal_consent_required` | 403 | 重大改定後の利用規約同意／privacy確認が未完了 |
 | `subscription_required` | 402 | 課金状態により実行不可 |
 | `usage_limit_exceeded` | 403 | premium利用枠不足 |
 | `x_account_required` | 400 | Xアカウント未連携 |
@@ -57,7 +58,7 @@
 | `not_found` | 404 | 対象なし |
 | `internal_error` | 500 | 未分類のサーバー内部例外を集約した既定コード（provider本文・stack traceは含めない） |
 
-実行前提の不足（`subscription_required`／`api_key_required`／`x_account_required`／`persona_required`）を返す場合、`details`に不足項目の一覧と設定画面への遷移先パスを含める。画面はエラーメッセージと「設定へ」ボタンを表示する（要件06 §3）。
+実行前提の不足（`legal_consent_required`／`subscription_required`／`api_key_required`／`x_account_required`／`persona_required`）を返す場合、`details`に不足項目の一覧と設定画面への遷移先パスを含める。画面はエラーメッセージと「設定へ」ボタンを表示する（要件06 §3）。
 
 ## 3. API Routes
 
@@ -97,6 +98,7 @@
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
+| `acceptLegalUpdates` | 現行version、文書別の明示checkbox | redirect | 本人profileを再読込し、古い文書のversion／同意時刻だけ更新。現行文書は上書きしない |
 
 `signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
 

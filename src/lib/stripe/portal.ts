@@ -33,6 +33,7 @@ const HTTP_STATUS: Record<ErrorCode, number> = {
   unauthorized: 401,
   forbidden: 403,
   validation_error: 400,
+  legal_consent_required: 403,
   subscription_required: 402,
   usage_limit_exceeded: 403,
   x_account_required: 400,

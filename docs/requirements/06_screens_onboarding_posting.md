@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
+| バージョン | v1.8 |
 | 更新日 | 2026-07-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -37,6 +37,12 @@
 - Portalは`/api/stripe/return?source=portal`へ戻り、復帰handlerで未反映時だけ同期してから`portal=return&sync=...`を付ける。画面は「契約情報を確認しています」と表示し、表示値はprofileを正とする。通常表示ではStripeへ問い合わせない（要件03 §3）。
 - `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達でき、他のSC-11タブは後続マイルストーンで追加する。
 
+### 1.3 重大改定の再同意
+
+- `/app/consent`は画面IDを持たない認証必須の補助画面とし、現行versionと不一致の文書だけを表示する。利用規約への「同意」とプライバシーポリシーの「確認」は別checkboxとし、文書リンクは新規タブで開く。
+- 未チェック、画面表示後のversion更新、保存失敗は画面内errorとして留まり、profileを更新しない。同意成功後は`/app`へ戻り、両文書が現行なら同routeへの直接アクセスも`/app`へredirectする。
+- 古いversionでもApp Shell、下書き、投稿履歴、分析、設定は閲覧できる。生成・投稿・自動実行の開始時だけ共通実行ガードがこの画面へ誘導する。
+
 ## 2. 共通App Shell
 
 - PCは左ナビ、モバイルは下部ナビまたはドロワーを使用する。ナビ項目はホーム、ニュース、投稿、スケジュール、分析、AI設定の6つ。
@@ -65,6 +71,7 @@
 
 | 前提 | BYOK（standard/md） | premium | 不足時のエラー |
 |---|---|---|---|
+| 現行規約 | 利用規約同意・privacy確認済み | 同左 | `legal_consent_required` |
 | 契約 | `subscription_status`が`trialing`/`active` | 同左 | `subscription_required` |
 | X APIキー | 登録・形式検証済み | 不要 | `api_key_required` |
 | X連携 | `x_accounts.status = active` | 同左（運営App経由） | `x_account_required` |
