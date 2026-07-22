@@ -11,7 +11,7 @@
 | 項目 | 仕様 |
 |---|---|
 | 登録 | Supabase Authのメール＋パスワード。確認メールを必須にする |
-| ログイン | 未確認メールはアプリ本体へ入れず、確認メール再送を表示 |
+| ログイン | `signInWithPassword`成功後に欠損profileを補完し、`subscription_status=incomplete|incomplete_expired`は`/plans`、それ以外は安全な`next`または`/app`へ遷移する。未確認メールはアプリ本体へ入れず、確認メール再送を表示 |
 | パスワード再設定 | Supabase Authの標準フロー |
 | パスワード | 12〜64文字かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
@@ -19,6 +19,8 @@
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |
 
 認証エラーで秘密値、メールの存在有無、外部providerレスポンス本文をそのまま表示しない。
+
+ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。Supabaseの安定した`email_not_confirmed`コードだけは確認メール再送状態として扱い、providerのmessage文字列では分岐しない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する。
 
 確認メールとpassword resetメールはカスタムテンプレートから`/auth/confirm?token_hash=...&type=signup|recovery`へ直接送り、Server側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。期限切れ・使用済み・不正tokenは同じ汎用エラーへまとめ、signup確認メールは再送フォーム、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
 

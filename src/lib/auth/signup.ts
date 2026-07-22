@@ -7,7 +7,7 @@ import {
 
 const utf8 = new TextEncoder();
 
-const passwordSchema = z.string().superRefine((password, ctx) => {
+export const authPasswordSchema = z.string().superRefine((password, ctx) => {
   const characters = Array.from(password).length;
   if (characters < 12 || characters > 64) {
     ctx.addIssue({
@@ -27,7 +27,7 @@ export const signUpSchema = z
   .object({
     captcha_token: z.string().max(2048).optional().default(""),
     email: z.string().trim().email("メールアドレスを確認してください。"),
-    password: passwordSchema,
+    password: authPasswordSchema,
     password_confirmation: z.string(),
     privacy_acknowledged: z.literal("on", {
       error: "プライバシーポリシーの確認が必要です。",

@@ -348,12 +348,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: Supabaseのconfirmation／recoveryメールを`RedirectTo`＋`TokenHash`のカスタムテンプレートへ変更し、`GET /auth/confirm`が`type=signup|recovery`だけをServer側`verifyOtp`する。成功先はsignup=`/plans`、recovery=`/reset-password`で、任意`next`は`/plans`・`/reset-password`・`/app`配下のみ許可し、token_hash/type/next/fragmentを除去する。失敗はprovider詳細を含まない`/auth/error?flow=...`へ統一し、signup再送フォームとrecovery再申請導線を出す。
   検証: 実ブラウザ＋ローカルSupabase/Mailpitでsignup token_hash検証→確認済みuser→`/plans`、recovery token_hash検証→`/reset-password`、両リンク再利用時の共通エラー導線を確認。全289テスト・lint・typecheck・Next production buildが成功。Supabase公式のNext.js SSR token_hash方式を2026-07-22に確認し要件01／03／05／06へ反映した。
 
-### T-M1-05: signIn Server ActionとSC-03ログイン画面 `todo`
+### T-M1-05: signIn Server ActionとSC-03ログイン画面 `done`
 - 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件01 §5 / 依存: T-M1-01、T-M1-04 / サイズ: M
 - 完了条件:
   - 確認済みユーザーがログインでき、safeな相対nextがあればそこへ、なければ/app（プラン未選択なら/plans）へ遷移する。外部URLのnextは無視される
   - メール未確認ユーザーはアプリ本体へ入れず、確認メール再送導線が表示される
   - 認証失敗はメール存在有無・失敗理由で文言が変わらない汎用エラーで、連続失敗時は同じ文言で待機を促す
+  実装結果: `signIn` Server ActionとSC-03 `/login`を追加。成功時に欠損profileを補完し、`incomplete|incomplete_expired`は`/plans`、それ以外は許可済み`next`（`/plans`・`/reset-password`・`/app`配下）または`/app`へ遷移する。外部URLは破棄する。Supabaseの安定した`email_not_confirmed`コードだけを再送状態へ分岐し、invalid credentials・rate limit・provider障害は同じ汎用文言へ正規化する。`captcha_token`の受け口・伝播は実装済みで必須化はT-M1-07。
+  検証: 実ブラウザ＋ローカルSupabaseでactiveユーザーのsafe next、未契約ユーザーの`/plans`、未確認ユーザーの再送UI・再送受理を確認。全296テスト・lint・typecheck・Next production buildが成功。Supabase公式の`signInWithPassword`と未確認email設定を2026-07-22に確認し、要件03／05／06へ反映した。
 
 ### T-M1-06: パスワード再設定フロー（requestPasswordReset／updatePassword／/reset-password画面） `todo`
 - 参照: A-2、SC-03、要件03 §1、要件05 §4.0、要件05 §12 / 依存: T-M1-04、T-M1-05 / サイズ: M

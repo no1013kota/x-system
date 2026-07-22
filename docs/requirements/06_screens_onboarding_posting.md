@@ -206,5 +206,6 @@ P-5は将来の有効化後に全プランで手動生成できる。`FEATURE_QU
 - signupは利用規約への同意checkboxと、プライバシーポリシー確認checkboxを別々に表示し、リンクを新しいタブで開けるようにする。
 - signup成功後はpending userとして「メールをご確認ください」を表示し、同じメールアドレスへの確認メール再送、迷惑メール確認、ログイン画面への導線を表示する。再送結果はメール存在有無を判別できない共通文言とする。
 - signup／recoveryの認証リンクが期限切れ・使用済み・不正の場合は理由を区別しない「リンクを確認できませんでした」を表示する。signupはメールアドレス入力付き再送フォーム、recoveryはpassword reset再申請へのリンクを表示し、providerのエラー詳細やtokenを画面・遷移先へ残さない。
+- loginはメール・password、password reset導線、会員登録導線を表示する。メール未確認時は入力フォームを残したまま「メール確認が必要です」と確認メール再送ボタンを表示し、invalid credentialsや連続失敗はメール存在有無・provider理由を区別しない共通文言とする。
 - LPとプラン画面から特定商取引法表記へ容易に到達できるようにし、Checkout直前にも料金・更新・解約条件を再掲する。
 - 表示文面は上記事業者情報を使い、リリース前に法務確認する。実装時の参照は[消費者庁の通信販売広告](https://www.no-trouble.caa.go.jp/what/mailorder/advertising.html)と[個人情報保護委員会の通則ガイドライン](https://www.ppc.go.jp/personalinfo/legal/guidelines_tsusoku/)を使用する。

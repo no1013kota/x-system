@@ -1,4 +1,4 @@
-export type AuthFormStatus = "idle" | "error" | "success";
+export type AuthFormStatus = "idle" | "error" | "email_unconfirmed" | "success";
 
 export interface AuthFormState {
   status: AuthFormStatus;

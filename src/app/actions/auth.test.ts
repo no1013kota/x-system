@@ -12,7 +12,11 @@ const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
   profileEq: vi.fn(),
   profileFrom: vi.fn(),
+  profileSelect: vi.fn(),
+  profileSelectEq: vi.fn(),
+  profileSingle: vi.fn(),
   profileUpdate: vi.fn(),
+  profileUpsert: vi.fn(),
   redirect: vi.fn(),
 }));
 
@@ -27,7 +31,20 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
-import { resendSignUpConfirmation, signOut, signUp } from "./auth";
+import { resendSignUpConfirmation, signIn, signOut, signUp } from "./auth";
+
+function validSignInForm(overrides: Record<string, string> = {}): FormData {
+  const values = {
+    captcha_token: "",
+    email: "user@example.com",
+    next: "",
+    password: "safe-password-123",
+    ...overrides,
+  };
+  const formData = new FormData();
+  Object.entries(values).forEach(([key, value]) => formData.set(key, value));
+  return formData;
+}
 
 function validSignUpForm(overrides: Record<string, string> = {}): FormData {
   const values = {
@@ -53,8 +70,19 @@ describe("auth actions", () => {
       throw new Error("NEXT_REDIRECT");
     });
     mocks.profileEq.mockResolvedValue({ error: null });
+    mocks.profileUpsert.mockResolvedValue({ error: null });
     mocks.profileUpdate.mockReturnValue({ eq: mocks.profileEq });
-    mocks.profileFrom.mockReturnValue({ update: mocks.profileUpdate });
+    mocks.profileSingle.mockResolvedValue({
+      data: { subscription_status: "active" },
+      error: null,
+    });
+    mocks.profileSelectEq.mockReturnValue({ single: mocks.profileSingle });
+    mocks.profileSelect.mockReturnValue({ eq: mocks.profileSelectEq });
+    mocks.profileFrom.mockReturnValue({
+      select: mocks.profileSelect,
+      update: mocks.profileUpdate,
+      upsert: mocks.profileUpsert,
+    });
     mocks.createSupabaseAdminClient.mockReturnValue({
       from: mocks.profileFrom,
     });
@@ -226,6 +254,143 @@ describe("auth actions", () => {
         },
         type: "signup",
       });
+    });
+  });
+
+  describe("signIn", () => {
+    function mockSignInSuccess(subscriptionStatus = "active") {
+      const signInWithPassword = vi.fn().mockResolvedValue({
+        data: { user: { id: "user-1", email: "user@example.com" } },
+        error: null,
+      });
+      const signOutSession = vi.fn().mockResolvedValue({ error: null });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { signInWithPassword, signOut: signOutSession },
+      });
+      mocks.profileSingle.mockResolvedValue({
+        data: { subscription_status: subscriptionStatus },
+        error: null,
+      });
+      return { signInWithPassword, signOutSession };
+    }
+
+    it("redirects an active user to an approved relative next path", async () => {
+      const { signInWithPassword } = mockSignInSuccess();
+
+      await expect(
+        signIn(
+          INITIAL_AUTH_FORM_STATE,
+          validSignInForm({
+            captcha_token: "captcha-value",
+            next: "/app/posts?tab=drafts",
+          }),
+        ),
+      ).rejects.toThrow("NEXT_REDIRECT");
+
+      expect(signInWithPassword).toHaveBeenCalledWith({
+        email: "user@example.com",
+        options: { captchaToken: "captcha-value" },
+        password: "safe-password-123",
+      });
+      expect(mocks.profileSelect).toHaveBeenCalledWith("subscription_status");
+      expect(mocks.profileUpsert).toHaveBeenCalledOnce();
+      expect(mocks.profileSelectEq).toHaveBeenCalledWith("id", "user-1");
+      expect(mocks.redirect).toHaveBeenCalledWith("/app/posts?tab=drafts");
+    });
+
+    it.each(["incomplete", "incomplete_expired"])(
+      "redirects %s subscriptions to plans even when next is present",
+      async (subscriptionStatus) => {
+        mockSignInSuccess(subscriptionStatus);
+
+        await expect(
+          signIn(
+            INITIAL_AUTH_FORM_STATE,
+            validSignInForm({ next: "/app/posts" }),
+          ),
+        ).rejects.toThrow("NEXT_REDIRECT");
+
+        expect(mocks.redirect).toHaveBeenCalledWith("/plans");
+      },
+    );
+
+    it("ignores an external next URL and redirects an active user to app", async () => {
+      mockSignInSuccess();
+
+      await expect(
+        signIn(
+          INITIAL_AUTH_FORM_STATE,
+          validSignInForm({ next: "https://evil.example/steal" }),
+        ),
+      ).rejects.toThrow("NEXT_REDIRECT");
+
+      expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    });
+
+    it("returns the resend state only for Supabase's stable unconfirmed code", async () => {
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "email_not_confirmed", message: "provider detail" },
+          }),
+        },
+      });
+
+      const result = await signIn(
+        INITIAL_AUTH_FORM_STATE,
+        validSignInForm(),
+      );
+
+      expect(result).toMatchObject({
+        email: "user@example.com",
+        status: "email_unconfirmed",
+      });
+      expect(result.message).not.toContain("provider detail");
+      expect(mocks.redirect).not.toHaveBeenCalled();
+    });
+
+    it("uses one generic message for invalid credentials and rate limits", async () => {
+      const messages: string[] = [];
+      for (const error of [
+        { code: "invalid_credentials", message: "email is missing" },
+        { code: "over_request_rate_limit", message: "too many attempts" },
+      ]) {
+        mocks.createSupabaseServerClient.mockResolvedValue({
+          auth: {
+            signInWithPassword: vi.fn().mockResolvedValue({
+              data: { user: null },
+              error,
+            }),
+          },
+        });
+        const result = await signIn(
+          INITIAL_AUTH_FORM_STATE,
+          validSignInForm(),
+        );
+        messages.push(result.message);
+        expect(result.status).toBe("error");
+        expect(result.message).not.toContain(error.message);
+      }
+
+      expect(new Set(messages).size).toBe(1);
+    });
+
+    it("invalidates the new session when profile lookup fails", async () => {
+      const { signOutSession } = mockSignInSuccess();
+      mocks.profileSingle.mockResolvedValue({
+        data: null,
+        error: new Error("profile unavailable"),
+      });
+
+      const result = await signIn(
+        INITIAL_AUTH_FORM_STATE,
+        validSignInForm(),
+      );
+
+      expect(result.status).toBe("error");
+      expect(signOutSession).toHaveBeenCalledOnce();
+      expect(mocks.redirect).not.toHaveBeenCalled();
     });
   });
 
