@@ -518,13 +518,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `x_accounts.settings`のstrictなzodスキーマを追加し、persona 3項目、主テーマ1件以上、6テーマの安定ID、tone、空を許可するNG設定を検証する。テーママスタはID／表示名／6つの`news_category`を1対1対応させ、tone初期値を定数化した。pure functionでテンプレート初版を機械生成し、`## 1.`〜`## 6.`の順序・一意性を検証する。設定再保存はセクション1〜4だけを再構築し、学習対象の5〜6をbyte-for-byteで保持する。NGワード原文はmdへ展開しない。
   検証: 必須persona、主テーマ、未知／重複テーマ、tone初期値、6見出し、初版5〜6空欄、1〜4再構築と5〜6保持、欠落／重複／順序違反を単体13件で確認した。既存テーマ定数9件を含む全443件（375成功・DB条件なし68 skip）・lint・typecheck・Next production buildが成功。要件02 §4.4をv1.8へ同期し、プロンプト設計書§3.1〜3.2と一致を確認した。
 
-### T-M2-04: updatePersonaSettings Server Action（ベースmd初版生成・版管理） `todo`
+### T-M2-04: updatePersonaSettings Server Action（ベースmd初版生成・版管理） `done`
 - 参照: L-4〜L-8、要件05 §8、要件05 §9、要件02 §3.3、要件02 §3.4、要件06 §3.1 / 依存: T-M2-03、M1 / サイズ: M
 - 完了条件:
   - base_md_version=0の初回保存でテンプレート全体から初版（version 1・change_source='settings'）が作られ、x_accounts.settings/base_md/base_md_versionとbase_md_versionsが同一トランザクションで更新される
   - 2回目以降の保存はセクション1〜4のみ再構築しセクション5〜6を保持する。expected_base_md_version不一致は0件更新としてjob_conflictを返す
   - 対象XアカウントにrunningのLearning_analysis/md_mergeがある場合job_conflictを返す（generation_jobsへのfixture挿入で検証。LLM非呼出・生成枠非消費）
 - メモ: x_account_id明示送信と所有権・status=active・active_x_account_id一致の検証（要件05 §1）もここで実装する。
+  実装結果: `updatePersonaSettings` Actionを追加し、入力zod検証と本人認証後、Postgres transaction内で対象Xアカウントの所有権・active status・profileの選択一致をrow lock付きで再検証する。runningの`learning_analysis|md_merge`とexpected version不一致を`job_conflict`で拒否し、初回は全テンプレートのversion 1、2回目以降はセクション1〜4再構築／5〜6保持の新versionを生成する。`x_accounts.settings/base_md/base_md_version`更新と`base_md_versions(change_source=settings)`追加を同一transactionで行い、LLM・generation job・利用枠処理を呼ばない。
+  検証: ローカルPostgres fixtureで初回version 1と履歴、学習後version 2の5〜6を保持した設定version 3、expected version不一致、running学習競合、競合後の現行md／履歴数／利用枠0件を確認した。DB統合1件、全444件（375成功・DB条件なし69 skip）・lint・typecheck・Next production buildが成功。要件05 §8のAction入力へ明示`x_account_id`を同期した。
 
 ### T-M2-05: SC-10 発信設定フォームUI（L-4〜L-7） `todo`
 - 参照: L-4〜L-7、SC-10、要件06 §3.1、要件06 §3.3、要件06 §3.4、要件06 §9 / 依存: T-M2-04、T-M2-02 / サイズ: M
