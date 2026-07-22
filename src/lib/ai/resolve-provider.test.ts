@@ -80,7 +80,7 @@ describe("classifiers", () => {
 });
 
 describe("resolveTextKey — premium (operator, ignores user config)", () => {
-  it("fixes to PREMIUM_TEXT_PROVIDER on the operator key without touching the DB", async () => {
+  it("fixes to Anthropic on the operator key without touching the DB", async () => {
     const key = await resolveTextKey(
       { plan: "premium", userId: "u1" },
       { client: noDbClient, decrypt, config: config() },
@@ -93,10 +93,14 @@ describe("resolveTextKey — premium (operator, ignores user config)", () => {
     });
   });
 
-  it("honors an explicit PREMIUM_TEXT_PROVIDER override", async () => {
+  it("honors an explicit operator provider override", async () => {
     const key = await resolveTextKey(
       { plan: "premium", userId: "u1" },
-      { client: noDbClient, decrypt, config: config({ premiumTextProvider: "openai" }) },
+      {
+        client: noDbClient,
+        decrypt,
+        config: config({ premiumTextProvider: "openai" }),
+      },
     );
     expect(key.provider).toBe("openai");
     expect(key.apiKey).toBe("op-openai");

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.10 |
+| バージョン | v1.11 |
 | 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -510,9 +510,9 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
 }
 ```
 
-`text`は文章生成とリサーチ（Web検索）の両方に使う単一provider。リサーチは同providerの内蔵Web検索機能で実行し、別providerを割り当てない。BYOKでは登録済みかつ`valid`のproviderのみ指定できる。premiumの`text`は運営側Claude（`anthropic`）で固定し、ユーザー設定はread-only表示とする。`image`は運営側で利用可能なOpenAI/Geminiから選択できる。
+`text`は文章生成とリサーチ（Web検索）の両方に使う単一provider。リサーチは同providerの内蔵Web検索機能で実行し、別providerを割り当てない。BYOKでは登録済みかつ`valid`のproviderのみ指定できる。premiumの`text`は運営文章provider（既定Claude／`anthropic`）で固定し、ユーザー設定はread-only表示とする。`image`は運営側で利用可能なOpenAI/Geminiから選択できる。
 
-ライフサイクル: BYOKではAIキーの保存・疎通成功時に`text`が未設定なら当該providerを自動設定し（画像対応providerの`image`も同様）、`deleteApiKey`は該当用途の設定を解除する。premiumの`text`はDBへ保存せず実行時に`anthropic`へ解決する（`updateAiPurposeConfig`はpremiumの`text`変更を拒否）。premium→BYOKのプラン変更同期時は`text`/`image`を登録済み`valid`キーで再検証し、無効なら未設定へ戻して初期設定ガイドへ誘導する。
+ライフサイクル: BYOKではAIキーの保存・疎通成功時に`text`が未設定なら当該providerを自動設定し（画像対応providerの`image`も同様）、`deleteApiKey`は該当用途の設定を解除する。premiumの`text`はDBへ保存せず、ユーザー指定に依存しない運営文章provider（未設定時`anthropic`）へ実行時に解決する（`updateAiPurposeConfig`はpremiumの`text`変更を拒否）。premium→BYOKのプラン変更同期時は`text`/`image`を登録済み`valid`キーで再検証し、無効なら未設定へ戻して初期設定ガイドへ誘導する。
 
 ### 4.2 `profiles.news_config`
 

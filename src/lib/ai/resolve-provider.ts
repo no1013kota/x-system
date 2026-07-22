@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 
+import { resolvePremiumTextPurpose } from "../ai-purpose-config";
 import type { PlanId } from "../plans";
 import { ProviderConfigError } from "./normalize";
 import type { Provider } from "./types";
@@ -12,7 +13,7 @@ import type { Provider } from "./types";
  *
  * 解決規則:
  * - text（GEN/LRN/SUGGEST/MD-MERGE）: standard/md=BYOK（ai_purpose_config.textのproviderの
- *   validなユーザーキー）、premium=運営 PREMIUM_TEXT_PROVIDER 固定（ユーザー設定に依存しない）。
+ *   validなユーザーキー）、premium=運営provider固定（既定Anthropic、ユーザー設定に依存しない）。
  * - news: 運営 NEWS_TEXT_PROVIDER 固定。無効・未設定はエラー（別providerへ自動切替しない）。
  * - image: openai/googleのみ。standard/md=BYOK、premium=ユーザー選択(openai/google)を運営キーで
  *   解決（textと異なりimageはユーザー選択を尊重・要件02 §4.1/要件06）。未選択・無効値は利用可能な
@@ -159,7 +160,10 @@ export async function resolveTextKey(
 ): Promise<ResolvedKey> {
   if (input.plan === "premium") {
     // 運営固定。ユーザー設定に依存しない。
-    return operatorTextKey(deps.config.premiumTextProvider, deps.config);
+    return operatorTextKey(
+      resolvePremiumTextPurpose(deps.config.premiumTextProvider),
+      deps.config,
+    );
   }
   // BYOK（standard/md）
   const cfg = await getAiPurposeConfig(deps.client, input.userId);

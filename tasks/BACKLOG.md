@@ -567,13 +567,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `deleteApiKey` Actionと削除調停・DB保存層を追加した。AIキーは対象行を物理削除し、同providerを参照する`ai_purpose_config.text|image`だけを同一transactionで`null`へ戻す。Xキーは保存済みBYOK access／refresh tokenを復号・重複排除し、公式`POST /2/oauth2/revoke`へ順次送った後にApp資格情報を物理削除して全BYOKアカウントを`expired`化する。復号・revoke失敗は削除を妨げず、外部本文も返さない。revoke準備中にX資格情報が差し替わった場合は新しいキーを削除しない競合ガードを設け、OAuth token ciphertextは保持する。
   検証: 純粋調停3件とX OAuth HTTPモック2件でAI分岐、access／refresh revoke順序・重複排除、form body／endpoint、復号・HTTP失敗時の削除継続を確認。ローカルPostgres統合3件でAIキー削除と用途の選択的解除、Xキー削除とBYOKのみのexpired化・token保持、差し替え競合を確認した。全476件（399成功・DB条件なし77 skip）・lint・typecheck・Next production buildが成功。2026-07-23時点のX公式revoke仕様を確認し、要件02 §3.2をv1.10、要件05 §4.2をv1.14へ同期した。
 
-### T-M2-09: updateAiPurposeConfig Action（プラン別ライフサイクル） `todo`
+### T-M2-09: updateAiPurposeConfig Action（プラン別ライフサイクル） `done`
 - 参照: A-5、要件05 §4.1、要件02 §4.1、PRD §8.2 / 依存: T-M2-07、M1 / サイズ: M
 - 完了条件:
   - standard/mdでは登録済みかつvalidなproviderだけをtextへ設定でき、imageはopenai/googleに限定される（違反はvalidation_error）
   - premiumのtext変更は拒否され、実行時にanthropicへ解決するヘルパを提供する（DBへは保存しない）。imageは運営キー設定済みproviderのみ選択可
   - premium→BYOKプラン変更同期時にtext/imageを登録済みvalidキーで再検証し、無効なら未設定へ戻す関数がユニットテストで検証される
 - メモ: 再検証関数はM1のwebhookプラン変更同期から呼ばれる想定でexportする。
+  実装結果: `updateAiPurposeConfig` Action、Server-only配線、DB保存層を追加した。部分更新と`null`解除に対応し、standard／mdでは選択した文章providerとOpenAI／Google画像providerに登録済み`valid`キーがあることをprofile lock下で検証する。Premiumは`text`入力を拒否してDBへ保存せず、画像は運営APIキーが設定済みのOpenAI／Googleだけを許可し、応答上の文章providerはユーザー設定非依存で解決する。既定`anthropic`の`resolvePremiumTextPurpose`と、Premium→BYOK時にvalidキーだけを残す`revalidateByokAiPurposeConfig`を純粋関数として追加し、既存Stripeプラン変更同期から再利用した。
+  検証: 純粋関数4件でPremium既定Anthropic、valid用途維持、invalid／画像非対応provider解除、部分入力schemaを確認。ローカルPostgres統合12件（用途更新2、実行時provider解決9、プラン変更同期1）でBYOK valid制約、Premium文章拒否・運営画像制約・DB文章値非変更、Premium→BYOK再検証を確認した。全483件（404成功・DB条件なし79 skip）・lint・typecheck・Next production buildが成功。要件02 §4.1をv1.11、要件05 §4.1をv1.15へ同期した。
 
 ### T-M2-10: SC-11 APIキータブUI（マスク表示・X取得手順ガイド） `todo`
 - 参照: A-4、A-5、SC-11、要件06 §3.2、PRD §8.1、PRD §10 / 依存: T-M2-08、T-M2-09、T-M2-02 / サイズ: M

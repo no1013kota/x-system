@@ -10,6 +10,7 @@ describe("server-only boundaries", () => {
     "src/lib/supabase/admin.ts",
     "src/lib/supabase/server.ts",
     "src/lib/auth/profile.ts",
+    "src/lib/ai-purpose-config-server.ts",
     "src/lib/api-key-deletion-server.ts",
     "src/lib/api-key-store-server.ts",
     "src/lib/api-key-verification-server.ts",

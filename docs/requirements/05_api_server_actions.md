@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
+| バージョン | v1.15 |
 | 更新日 | 2026-07-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -110,7 +110,9 @@
 | `setActiveXAccount` | `x_account_id` | active account | 所有者かつ`status=active` |
 | `updateNotificationConfig` | `notification_config` | config | 本人のみ |
 | `updateNewsConfig` | `news_config` | config | 本人のみ |
-| `updateAiPurposeConfig` | `ai_purpose_config` | config | 文章生成・リサーチは単一provider（`text`）。standard/mdは登録済みかつvalidなproviderだけ選択可。premiumの`text`は運営Claudeでread-only、画像だけ利用可能なOpenAI/Geminiから選択可 |
+| `updateAiPurposeConfig` | `ai_purpose_config` | config | 文章生成・リサーチは単一provider（`text`）。standard/mdは登録済みかつvalidなproviderだけ選択可。premiumの`text`は運営文章provider（既定Claude）でread-only、画像だけ利用可能なOpenAI/Geminiから選択可 |
+
+`updateAiPurposeConfig`は`text`／`image`の部分更新と`null`による解除を受け付ける。standard／mdで非`null`を指定する場合は対象`user_api_keys.status=valid`を同一transactionで検証し、`image`はOpenAI／Googleだけを許可する。premiumは`text`を入力した時点で拒否してDB値を変更せず、`image`も運営APIキーが設定済みのproviderだけを許可する。premium文章providerはユーザーDB設定を参照せず実行時に解決し、運営設定がない場合は`anthropic`とする。
 
 ### 4.2 BYOK APIキー
 

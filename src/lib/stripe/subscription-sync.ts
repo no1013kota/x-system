@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 
+import { revalidateByokAiPurposeConfig } from "@/lib/ai-purpose-config";
 import { DB_ENUMS } from "@/lib/db/enums";
 import type { PlanId } from "@/lib/plans";
 
@@ -62,15 +63,6 @@ interface PlanTransitionTarget {
   plan: PlanId;
 }
 
-function purposeProvider(
-  config: unknown,
-  purpose: "image" | "text",
-): string | null {
-  if (!config || typeof config !== "object") return null;
-  const value = (config as Record<string, unknown>)[purpose];
-  return typeof value === "string" ? value : null;
-}
-
 async function clearInactiveSelection(
   database: StripeEventDatabase,
   userId: string,
@@ -129,29 +121,14 @@ async function revalidateByokPurposeConfig(
         and provider in ('anthropic', 'openai', 'google')`,
     [target.id],
   );
-  const valid = new Set(keys.rows.map((row) => row.provider));
-  const text = purposeProvider(target.ai_purpose_config, "text");
-  const image = purposeProvider(target.ai_purpose_config, "image");
-  const raw =
-    target.ai_purpose_config && typeof target.ai_purpose_config === "object"
-      ? (target.ai_purpose_config as Record<string, unknown>)
-      : {};
+  const config = revalidateByokAiPurposeConfig(
+    target.ai_purpose_config,
+    new Set(keys.rows.map((row) => row.provider)),
+  );
   await database.query(
     `update profiles set ai_purpose_config = $2::jsonb, updated_at = now()
       where id = $1`,
-    [
-      target.id,
-      {
-        ...raw,
-        text: text && valid.has(text) ? text : null,
-        image:
-          image &&
-          (image === "openai" || image === "google") &&
-          valid.has(image)
-            ? image
-            : null,
-      },
-    ],
+    [target.id, config],
   );
 }
 
