@@ -45,16 +45,25 @@ describe("X OAuth callback link (local DB)", () => {
     if (!available) ctx.skip();
   });
 
-  async function makeUserWithByokKey(c: PoolClient): Promise<string> {
+  async function makeUserWithByokKey(
+    c: PoolClient,
+    opts: { plan?: string; subscriptionStatus?: string } = {},
+  ): Promise<string> {
+    const plan = opts.plan ?? "standard";
+    const subscriptionStatus = opts.subscriptionStatus ?? "active";
     const uid = randomUUID();
     await c.query(
       `insert into auth.users (id, instance_id, aud, role, email)
        values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
       [uid, `${uid}@example.com`],
     );
+    // A profile may be auto-created by a trigger on auth.users; force plan + an executable
+    // subscription so the callback's契約状態/plan上限再確認（T-M2-14）is exercised deterministically.
     await c.query(
-      `insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`,
-      [uid, `${uid}@example.com`],
+      `insert into profiles (id, email, plan, subscription_status) values ($1,$2,$3,$4)
+       on conflict (id) do update set plan = excluded.plan,
+                                      subscription_status = excluded.subscription_status`,
+      [uid, `${uid}@example.com`, plan, subscriptionStatus],
     );
     await c.query(
       `insert into user_api_keys (user_id, provider, credentials_ciphertext, display_hint, status)
@@ -68,6 +77,34 @@ describe("X OAuth callback link (local DB)", () => {
     );
     return uid;
   }
+
+  const mkToken = (access: string, refresh: string): XTokenResponse => ({
+    access_token: access,
+    refresh_token: refresh,
+    expires_in: 3600,
+    scope: X_SCOPES.join(" "),
+  });
+  const cbInput = (uid: string) => ({
+    code: "c",
+    returnedState: "st",
+    sealedStateCookie: "s",
+    sessionUserId: uid,
+  });
+  const mkUser = (username: string): XCallbackUser => ({
+    id: `x-${randomUUID()}`,
+    username,
+    name: username,
+    profileImageUrl: null,
+  });
+  const countXAccounts = async (uid: string): Promise<number> =>
+    (
+      await withTransaction((c) =>
+        c.query<{ n: number }>(
+          `select count(*)::int as n from x_accounts where user_id = $1`,
+          [uid],
+        ),
+      )
+    ).rows[0].n;
 
   function deps(
     uid: string,
@@ -215,6 +252,76 @@ describe("X OAuth callback link (local DB)", () => {
       expect(row.base_md).toBe("persona-md"); // preserved
       expect(row.base_md_version).toBe(2);
       expect(decrypt(row.access_token_ciphertext)).toBe("a2"); // rotated
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = $1`, [uid]),
+      );
+    }
+  });
+
+  // T-M2-14: 別 x_user_id は新規アカウントとしてplan上限を検証し、超過時は保存しない（要件03 §6）。
+  it("blocks a new X account once the plan limit (standard=1) is reached, without saving it", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
+    try {
+      await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser("first")));
+      expect(await countXAccounts(uid)).toBe(1);
+
+      // a different x_user_id would exceed the limit → forbidden, and nothing is persisted
+      await expect(
+        handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a2", "r2"), mkUser("second"))),
+      ).rejects.toMatchObject({ code: "forbidden" });
+      expect(await countXAccounts(uid)).toBe(1);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = $1`, [uid]),
+      );
+    }
+  });
+
+  it("md plan allows up to 3 X accounts and blocks the 4th", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c, { plan: "md" }));
+    try {
+      for (const h of ["one", "two", "three"]) {
+        await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser(h)));
+      }
+      expect(await countXAccounts(uid)).toBe(3);
+      await expect(
+        handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser("four"))),
+      ).rejects.toMatchObject({ code: "forbidden" });
+      expect(await countXAccounts(uid)).toBe(3);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = $1`, [uid]),
+      );
+    }
+  });
+
+  // T-M2-14: 同一 x_user_id の再連携は上限対象外（既存rowをupsert）。standard=1 の枠が埋まっていても成立する。
+  it("allows re-linking the same x_user_id even when the plan limit is already reached", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
+    const same = mkUser("same"); // one active account = at the limit
+    try {
+      const first = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a1", "r1"), same));
+      const second = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a2", "r2"), same));
+      expect(second.xAccountId).toBe(first.xAccountId); // same row, not blocked
+      expect(await countXAccounts(uid)).toBe(1);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = $1`, [uid]),
+      );
+    }
+  });
+
+  // T-M2-14 / 要件05 §4.3: callbackでも契約状態を再確認する（start〜callback間の失効を拒否）。
+  it("rejects the callback when the subscription cannot execute and saves nothing", async () => {
+    const uid = await withTransaction((c) =>
+      makeUserWithByokKey(c, { subscriptionStatus: "incomplete" }),
+    );
+    try {
+      await expect(
+        handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser("blocked"))),
+      ).rejects.toMatchObject({ code: "subscription_required" });
+      expect(await countXAccounts(uid)).toBe(0);
     } finally {
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = $1`, [uid]),

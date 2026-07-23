@@ -617,13 +617,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   設計判断: persistはinsertではなく`on conflict (user_id,x_user_id) do update`のupsertとし、ハッピーパスで再連携が来ても壊れずtokenのみ置換（既存データ保持）。再連携の詳細な受け入れ条件（別x_user_idの上限検証・拒否系・state不一致メッセージ）はT-M2-14で拡張する。
   後続への注意: T-M2-14は本経路に「別x_user_id新規時のplan上限検証」「Xの拒否（?error=access_denied）・state不一致・cookie/code欠落の明示拒否」「BYOK⇔premiumプラン変更後のauth_type置換」を追加する。上限のre-auth許容（既存active数が上限でも同一x_user_id再連携は許可）も要検討。
 
-### T-M2-14: X OAuth callback（再連携・複数アカウント上限・拒否系） `todo`
+### T-M2-14: X OAuth callback（再連携・複数アカウント上限・拒否系） `done`
 - 参照: A-3、A-6、要件05 §4.3、要件05 §11、要件03 §6 / 依存: T-M2-13 / サイズ: M
 - 完了条件:
   - 同一x_user_idの再連携で既存rowのtoken・auth_type・scope・statusが置き換わり、ベースmd・settings・下書き等のデータが維持される（fixtureで検証）
   - 別x_user_idは新規アカウントとしてプラン上限（standard=1、md/premium=3）を検証し、超過時は保存せずエラー表示へ戻す
   - state不一致・別sessionからのcallback・cookie欠落・code欠落を拒否し、エラーに秘密値やproviderレスポンス本文を含まない
 - メモ: BYOK⇔premiumのプラン変更後の再連携（auth_type置き換え）もこの経路で成立させる。
+- 実装メモ: `assertCanLinkXAccount`（oauth-callback.ts）を`linkXAccountRecord`冒頭で呼び、`profiles`をFOR UPDATEで読んで契約状態（requireExecutableSubscription再利用）＋plan上限を**同一transactionで再確認**（start〜callback間のplan変更・並行連携での上限超過を防止）。同一x_user_idは`select 1 from x_accounts`で再連携判定→上限対象外（既存rowをupsert）。超過はforbidden(reason=x_account_limit_reached)、非実行契約はsubscription_requiredで、いずれも保存前にthrow→未保存。期待auth_typeはsealed stateで束縛済みのため一致検証は不要（プラン変更後の再連携でauth_typeは`excluded`で置換）。条件1(再連携保持)/3(state・session拒否)はT-M2-13の既存テストで担保、code欠落はroute層(validation_error)。DBテスト4件追加(標準1件超過・md 3→4件目・at-limit再連携許可・非実行契約拒否)。docは05 §4.3/03 §6が既に本挙動を記述済みで乖離なし。
+- 後続への注意: T-M2-16(disconnect/enable)で`disconnectXAccount`後にactive枠が空くこと、`enableXAccount`が同じ上限・auth_type・token/`/users/me`検証を通すこと（要件05 §4.3）を本認可と整合させる。
 
 ### T-M2-15: Xトークンrefreshヘルパ（single-flight lease） `todo`
 - 参照: A-3、要件05 §4.3、要件02 §3.3 / 依存: T-M2-13 / サイズ: M

@@ -1,6 +1,8 @@
 import type { PoolClient } from "pg";
 
+import { requireExecutableSubscription } from "@/lib/auth/subscription-access";
 import { AppError } from "@/lib/observability/errors";
+import { PLANS, type PlanId } from "@/lib/plans";
 
 import {
   hasRequiredScopes,
@@ -9,6 +11,8 @@ import {
   type SealedTokens,
   type XTokenResponse,
 } from "./oauth";
+
+const X_SETTINGS_PATH = "/app/settings?tab=api-keys";
 
 /**
  * GET /api/x/oauth/callback の中核（T-M2-13, A-3/A-4, 要件05 §4.3, 要件02 §3.3）。
@@ -101,8 +105,54 @@ export async function handleXOAuthCallback(
 }
 
 /**
+ * 連携可否の認可（要件05 §4.3・要件03 §6, T-M2-14）。callbackでも契約状態とplan上限を再確認し、
+ * start〜callback間のplan変更や並行連携による上限超過を防ぐ。同一 (user_id, x_user_id) の再連携は
+ * 既存rowの置換なので上限対象外。profiles を FOR UPDATE で読み、同一transaction内のinsertと直列化する
+ * （並行callbackが同時に上限を通過するのを防ぐ）。期待auth_typeはsealed stateで既に束縛済み。
+ */
+export async function assertCanLinkXAccount(
+  client: PoolClient,
+  params: { userId: string; xUserId: string },
+): Promise<void> {
+  const prof = (
+    await client.query<{ plan: PlanId; subscription_status: string }>(
+      "select plan, subscription_status from profiles where id = $1 for update",
+      [params.userId],
+    )
+  ).rows[0];
+  if (!prof) throw new AppError("not_found");
+  requireExecutableSubscription(prof.subscription_status);
+
+  const isRelink =
+    (
+      await client.query(
+        "select 1 from x_accounts where user_id = $1 and x_user_id = $2",
+        [params.userId, params.xUserId],
+      )
+    ).rows.length > 0;
+  if (isRelink) return; // 別のX userでない再連携はtokenを置換するだけ→上限対象外
+
+  const active = (
+    await client.query<{ n: number }>(
+      "select count(*)::int as n from x_accounts where user_id = $1 and status = 'active'",
+      [params.userId],
+    )
+  ).rows[0].n;
+  if (active >= PLANS[prof.plan].xAccountLimit) {
+    throw new AppError("forbidden", {
+      details: {
+        reason: "x_account_limit_reached",
+        limit: PLANS[prof.plan].xAccountLimit,
+        settingsPath: X_SETTINGS_PATH,
+      },
+    });
+  }
+}
+
+/**
  * x_accounts への連携保存（要件02 §3.3）。同一 (user_id, x_user_id) は token/scope/auth_type/status
  * を置き換え、base_md・settings・automation_consent_* 等の既存データは保持する（upsert）。
+ * 別のX userは新規アカウントとして契約状態・plan上限を検証し、超過時は保存しない（T-M2-14, 要件03 §6）。
  * BYOKはOAuth完了の疎通成功でXキーを valid 化（A-4）。active_x_account_id 未設定なら当該連携を設定。
  * 呼び出し側が withTransaction で包む。sealed は暗号化済み ciphertext。
  */
@@ -111,6 +161,7 @@ export async function linkXAccountRecord(
   params: XCallbackPersistParams,
 ): Promise<string> {
   const { userId, authType, xUser, sealed } = params;
+  await assertCanLinkXAccount(client, { userId, xUserId: xUser.id });
   const inserted = await client.query<{ id: string }>(
     `insert into x_accounts
        (user_id, x_user_id, handle, name, profile_image_url, auth_type,
