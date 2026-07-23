@@ -665,13 +665,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: クライアントコンポーネント`components/app-shell/x-account-switcher.tsx`（Base UI `Menu`＝既存の`@base-ui/react`を利用、新規依存なし）。handle＋プロフィール画像を一覧し現在選択にCheck。選択で`setActiveXAccountAction`→成功後`router.refresh()`で表示中画面のサーバーコンポーネント（一覧・集計）を再取得。0件は静的「未選択」表示（初期設定ガイドは/app側=T-M2-17フォールバックがnull化）。`/app`レイアウトが`listXAccounts`でactiveのみ抽出＋`resolveActiveXAccountForUser`のactiveIdを渡す。従来の静的チップを置換。プロフィール画像は素の`<img>`（next/image remotePatterns設定回避、eslint-disable明記）。**このリポジトリはコンポーネントテスト基盤（testing-library/jsdom）が無いためUIはtypecheck＋lint＋build＋手検証**（setActive/resolve/listのロジックはT-M2-16/17でテスト済み）。全535 green・build通過。doc: 要件06 §2が既述で整合＝影響なし。
 - 後続への注意: mutation系Action（生成・下書き・スロット・学習・提案）は表示中`x_account_id`を明示送信し、サーバーで`profiles.active_x_account_id`一致を検証してjob_conflictを返す（要件05 §4.1）。切替UIが送る「表示中アカウント」はこの整合検証の入力になる。
 
-### T-M2-19: SC-11 XアカウントタブUI `todo`
+### T-M2-19: SC-11 XアカウントタブUI `done`
 - 参照: A-3、A-6、SC-11、要件06 §9、要件06 §3.2 / 依存: T-M2-16、T-M2-02 / サイズ: M
 - 完了条件:
   - 連携済み一覧（status・auth_type・handle）、追加（上限内のみ・OAuth startへ遷移）、再連携、切断、disabledの再有効化が操作できる
   - 切断の確認ダイアログで投稿・自動実行が停止すること、データは削除されないことが説明される
   - プラン上限到達時は追加ボタンが無効化され、上限数が表示される
 - メモ: expired/errorアカウントには再連携導線を出す。X_POSTING_MODE=dry_run環境＋モックでE2E確認。
+- 実装メモ: 設定ページに`x-accounts`タブを追加（SETTINGS_TABS先頭）。クライアント`app/settings/x-accounts-settings.tsx`（Base UI `AlertDialog`＝確認ダイアログ、新規依存なし）が一覧（handle・表示名・status/auth_typeバッジ・操作中の目印）＋操作を描画。追加/再連携は`GET /api/x/oauth/start?return=/app/settings?tab=x-accounts`へ遷移（BASE UI Buttonの`render`で`<a>`化）。有効数≥上限で追加ボタン無効化＋`有効 N/上限`表示。disabled→有効化（enableXAccountAction）、expired/error/disabled→再連携、全statusで状態更新（refreshXAccountStatusAction）、active/expired/error→切断（disconnectXAccountAction）。切断はAlertDialogで投稿・自動実行停止／同意取消／データ非削除を説明。成功後`router.refresh()`。OAuth復帰の`x_connected`/`x_oauth_error`をバナー表示。ページは`listXAccounts`で一覧取得。全535 green・build通過（testing-library未導入のためUIはtypecheck/lint/buildで検証）。doc: 要件06 §1.2.1（SC-11 Xアカウントタブ）を新設（v1.13）。
+- 後続への注意: 切断/再連携のエラーredirect先はstart/callbackがSETTINGS_PATH=`?tab=api-keys`固定のため、エラー時はapi-keysタブへ着地する（x-accountsタブにも復帰バナーは用意済み）。統一するならstart/callbackのSETTINGS_PATHをreturn連動にする改修が必要（別タスク候補）。X_POSTING_MODE=dry_runでの実ブラウザE2Eは未実施（自動テスト基盤外）。
 
 ### T-M2-20: 通知ベル・通知一覧（App Shell） `todo`
 - 参照: O-2、要件05 §10、要件02 §3.15、要件06 §2 / 依存: T-M2-02、M0 / サイズ: M

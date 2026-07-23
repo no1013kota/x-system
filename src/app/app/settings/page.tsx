@@ -10,15 +10,25 @@ import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  listXAccounts,
+  type XAccountListItem,
+} from "@/lib/x/account-actions-server";
 
 import { ApiKeySettings } from "./api-key-settings";
+import { XAccountsSettings } from "./x-accounts-settings";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
 };
 
 interface SettingsPageProps {
-  searchParams: Promise<{ portal?: string; tab?: string }>;
+  searchParams: Promise<{
+    portal?: string;
+    tab?: string;
+    x_connected?: string;
+    x_oauth_error?: string;
+  }>;
 }
 
 interface BillingProfile {
@@ -30,6 +40,7 @@ interface BillingProfile {
 }
 
 const SETTINGS_TABS = [
+  ["x-accounts", "Xアカウント"],
   ["api-keys", "APIキー"],
   ["billing", "課金・プラン"],
   ["support", "問い合わせ"],
@@ -77,6 +88,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (tab === "api-keys" && profile.plan !== "premium") {
     apiKeys = await listApiKeyViewsForUser(user.id);
   }
+  let xAccounts: XAccountListItem[] = [];
+  if (tab === "x-accounts") {
+    xAccounts = await listXAccounts(user.id);
+  }
 
   return (
     <main className="px-4 py-8 lg:px-8 lg:py-10">
@@ -105,7 +120,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           ))}
         </nav>
 
-        {tab === "api-keys" ? (
+        {tab === "x-accounts" ? (
+          <XAccountsSettings
+            accounts={xAccounts}
+            connected={params.x_connected === "1"}
+            oauthError={params.x_oauth_error ?? null}
+            oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
+              "/app/settings?tab=x-accounts",
+            )}`}
+            plan={profile.plan ?? "standard"}
+          />
+        ) : tab === "api-keys" ? (
           <ApiKeySettings
             callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
             initialKeys={apiKeys}

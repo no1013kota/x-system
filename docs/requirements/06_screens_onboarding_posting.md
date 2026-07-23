@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
-| 更新日 | 2026-07-23 |
+| バージョン | v1.13 |
+| 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
 ## 1. 画面構成
@@ -35,7 +35,15 @@
 
 - `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば「お支払い方法・プランを管理」から`POST /api/stripe/portal`を呼び、返されたHTTPS URLへ遷移する。Customer未作成時はボタンを無効化し、`/plans`導線を表示する。
 - Portalは`/api/stripe/return?source=portal`へ戻り、復帰handlerで未反映時だけ同期してから`portal=return&sync=...`を付ける。画面は「契約情報を確認しています」と表示し、表示値はprofileを正とする。通常表示ではStripeへ問い合わせない（要件03 §3）。
-- `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達でき、他のSC-11タブは後続マイルストーンで追加する。
+- `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達できる。Xアカウントタブは§1.2.1（M2）、通知タブは後続マイルストーンで追加する。
+
+### 1.2.1 SC-11 Xアカウントタブ（M2）
+
+- `/app/settings?tab=x-accounts`は連携済みXアカウントを一覧し、各行に`handle`・表示名・`status`（有効／要再連携／停止中／エラー）・`auth_type`（BYOK＝自分のApp／運営App＝Premium）と、現在操作中アカウントの目印を表示する。
+- 「Xアカウントを追加」はOAuth開始（`GET /api/x/oauth/start`）へ遷移する。有効アカウント数がプラン上限に達しているときはボタンを無効化し、`有効 N / 上限` 件を表示する。
+- `expired`／`error`には再連携導線、`disabled`には再有効化（`enableXAccount`）と再連携を出す。各行から状態更新（`refreshXAccountStatus`）もできる。
+- 切断（`disconnectXAccount`）は確認ダイアログを挟み、投稿と自動実行の停止・自動投稿同意の取り消しを説明し、下書き・投稿履歴・実績・ベースmd等のデータは削除しないことを明示する。
+- OAuthからの復帰は`x_connected=1`で成功、`x_oauth_error=<code>`でエラーを表示する。操作の成功後は表示中の一覧を再取得する。
 
 ### 1.3 重大改定の再同意
 
