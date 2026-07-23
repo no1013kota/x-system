@@ -1,7 +1,8 @@
-import { Bell, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import Link from "next/link";
 
 import { AppNavigation } from "@/components/app-shell/app-navigation";
+import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { PortalButton } from "@/components/billing/portal-button";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -13,6 +14,11 @@ import {
   XAccountSwitcher,
   type SwitcherAccount,
 } from "@/components/app-shell/x-account-switcher";
+import type { NotificationView } from "@/lib/notifications";
+import {
+  countUnreadNotificationsForUser,
+  listNotificationsForUser,
+} from "@/lib/notifications-server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   listXAccounts,
@@ -32,9 +38,20 @@ export default async function AppLayout({
   let profile: SubscriptionBannerProfile | null = null;
   let activeAccountId: string | null = null;
   let switcherAccounts: SwitcherAccount[] = [];
+  let unreadCount = 0;
+  let notifications: NotificationView[] = [];
+  let notificationCursor: string | null = null;
   if (user) {
     // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
     activeAccountId = await resolveActiveXAccountForUser(user.id);
+    // ヘッダ通知ベル用の初期データ（未読数＋先頭ページ, T-M2-20）。
+    const [unread, page] = await Promise.all([
+      countUnreadNotificationsForUser(user.id),
+      listNotificationsForUser(user.id),
+    ]);
+    unreadCount = unread;
+    notifications = page.items;
+    notificationCursor = page.nextCursor;
     // 切替メニューには active なアカウントだけを出す（要件06 §2・T-M2-18）。
     switcherAccounts = (await listXAccounts(user.id))
       .filter((account) => account.status === "active")
@@ -85,13 +102,11 @@ export default async function AppLayout({
                 accounts={switcherAccounts}
                 activeId={activeAccountId}
               />
-              <Link
-                aria-label="通知"
-                className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                href="/app#notifications"
-              >
-                <Bell aria-hidden="true" className="size-5" />
-              </Link>
+              <NotificationBell
+                initialCursor={notificationCursor}
+                initialItems={notifications}
+                initialUnread={unreadCount}
+              />
               <Link
                 aria-label="アカウント設定"
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

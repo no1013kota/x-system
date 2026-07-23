@@ -675,13 +675,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 設定ページに`x-accounts`タブを追加（SETTINGS_TABS先頭）。クライアント`app/settings/x-accounts-settings.tsx`（Base UI `AlertDialog`＝確認ダイアログ、新規依存なし）が一覧（handle・表示名・status/auth_typeバッジ・操作中の目印）＋操作を描画。追加/再連携は`GET /api/x/oauth/start?return=/app/settings?tab=x-accounts`へ遷移（BASE UI Buttonの`render`で`<a>`化）。有効数≥上限で追加ボタン無効化＋`有効 N/上限`表示。disabled→有効化（enableXAccountAction）、expired/error/disabled→再連携、全statusで状態更新（refreshXAccountStatusAction）、active/expired/error→切断（disconnectXAccountAction）。切断はAlertDialogで投稿・自動実行停止／同意取消／データ非削除を説明。成功後`router.refresh()`。OAuth復帰の`x_connected`/`x_oauth_error`をバナー表示。ページは`listXAccounts`で一覧取得。全535 green・build通過（testing-library未導入のためUIはtypecheck/lint/buildで検証）。doc: 要件06 §1.2.1（SC-11 Xアカウントタブ）を新設（v1.13）。
 - 後続への注意: 切断/再連携のエラーredirect先はstart/callbackがSETTINGS_PATH=`?tab=api-keys`固定のため、エラー時はapi-keysタブへ着地する（x-accountsタブにも復帰バナーは用意済み）。統一するならstart/callbackのSETTINGS_PATHをreturn連動にする改修が必要（別タスク候補）。X_POSTING_MODE=dry_runでの実ブラウザE2Eは未実施（自動テスト基盤外）。
 
-### T-M2-20: 通知ベル・通知一覧（App Shell） `todo`
+### T-M2-20: 通知ベル・通知一覧（App Shell） `done`
 - 参照: O-2、要件05 §10、要件02 §3.15、要件06 §2 / 依存: T-M2-02、M0 / サイズ: M
 - 完了条件:
   - ヘッダのベルに未読件数が表示され、一覧はin_app_enabled=trueの通知のみをcursorページング（listNotifications）で表示する
   - markNotificationRead/markAllNotificationsReadで既読化され未読数が即時更新される
   - 通知のlink（アプリ内相対パス）から対象画面へ遷移できる（fixture通知で検証）
 - メモ: 通知rowの作成・メール送信はジョブ系マイルストーン。ここは閲覧・既読化のみ。retryNotificationEmailはメール送信実装後に追加する。
+- 実装メモ: コア`lib/notifications.ts`（Queryable注入）＝`listNotifications`（in_app_enabled=trueのみ・本人スコープ・created_at desc, id descのkeyset cursor、limit+1でnextCursor）、`countUnreadNotifications`、`markNotificationRead`（coalesceで冪等・本人のみ・不在/他人はnot_found）、`markAllNotificationsRead`（更新件数返却）。server結線＋Action `app/actions/notifications.ts`（list/markRead/markAllRead、既読系は最新unreadCountを返しバッジ即時更新）。UI `components/app-shell/notification-bell.tsx`（Base UI Popover、新規依存なし）＝未読バッジ＋一覧、項目クリックで既読化＋link遷移、すべて既読、もっと見る。ヘッダ（layout）が初期unread数＋先頭ページを渡し従来のBell Linkを置換。テスト+13（ユニット10・DB3: 本人分離/in_appのみ/cursorページング・冪等既読・他人不可・link保持・一括既読）。全548 green・build通過。doc: 要件04 §247・05 §10・06 §2・02 §3.15が既述で整合＝影響なし。
+- 後続への注意: retryNotificationEmail（email_status=failed→queued化）はメール送信実装（ジョブ系MS）後に追加。通知rowの作成はX再連携（T-M2-15）以外は各ジョブが担う。バッジ初期値はレイアウト読込時点のため、他タブでの既読はページ遷移/refreshで反映。
 
 ### T-M2-21: 常設バナー（課金停止・X失効・キー無効・再連携要求） `todo`
 - 参照: 要件06 §2、要件03 §5、要件03 §8、要件01 §5 / 依存: T-M2-16、T-M2-07、M1 / サイズ: M
