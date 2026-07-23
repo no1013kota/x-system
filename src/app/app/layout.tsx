@@ -3,6 +3,12 @@ import Link from "next/link";
 
 import { AppNavigation } from "@/components/app-shell/app-navigation";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import {
+  computeXAccountBanners,
+  type AppBanner,
+} from "@/lib/app-banners";
+import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
+import type { PlanId } from "@/lib/plans";
 import { PortalButton } from "@/components/billing/portal-button";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -26,6 +32,7 @@ import {
 } from "@/lib/x/account-actions-server";
 
 interface AppShellProfileRow {
+  plan: PlanId | null;
   stripe_customer_id: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
@@ -41,19 +48,22 @@ export default async function AppLayout({
   let unreadCount = 0;
   let notifications: NotificationView[] = [];
   let notificationCursor: string | null = null;
+  let xBanners: AppBanner[] = [];
   if (user) {
     // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
     activeAccountId = await resolveActiveXAccountForUser(user.id);
     // ヘッダ通知ベル用の初期データ（未読数＋先頭ページ, T-M2-20）。
-    const [unread, page] = await Promise.all([
+    const [unread, page, allAccounts, xApiKeyStatus] = await Promise.all([
       countUnreadNotificationsForUser(user.id),
       listNotificationsForUser(user.id),
+      listXAccounts(user.id),
+      getXApiKeyStatusForUser(user.id),
     ]);
     unreadCount = unread;
     notifications = page.items;
     notificationCursor = page.nextCursor;
     // 切替メニューには active なアカウントだけを出す（要件06 §2・T-M2-18）。
-    switcherAccounts = (await listXAccounts(user.id))
+    switcherAccounts = allAccounts
       .filter((account) => account.status === "active")
       .map((account) => ({
         id: account.id,
@@ -63,7 +73,7 @@ export default async function AppLayout({
     const supabase = await createSupabaseServerClient();
     const result = await supabase
       .from("profiles")
-      .select("subscription_status, trial_ends_at, stripe_customer_id")
+      .select("plan, subscription_status, trial_ends_at, stripe_customer_id")
       .eq("id", user.id)
       .maybeSingle<AppShellProfileRow>();
     if (result.data) {
@@ -72,6 +82,17 @@ export default async function AppLayout({
         subscriptionStatus: result.data.subscription_status,
         trialEndsAt: result.data.trial_ends_at,
       };
+      // X連携の常設バナー（失効/error・キー無効・プラン変更後の再連携要求, 要件06 §2・T-M2-21）。
+      if (result.data.plan) {
+        xBanners = computeXAccountBanners({
+          plan: result.data.plan,
+          xAccounts: allAccounts.map((a) => ({
+            status: a.status,
+            authType: a.authType,
+          })),
+          xApiKeyStatus,
+        });
+      }
     }
   }
   const banner = profile ? subscriptionBannerFor(profile) : null;
@@ -147,6 +168,27 @@ export default async function AppLayout({
             </div>
           </aside>
         ) : null}
+
+        {xBanners.map((xBanner) => (
+          <aside
+            aria-label={xBanner.title}
+            className="border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"
+            key={xBanner.id}
+          >
+            <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">{xBanner.title}</p>
+                <p className="mt-1 text-sm leading-5">{xBanner.description}</p>
+              </div>
+              <Link
+                className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                href={xBanner.actionHref}
+              >
+                {xBanner.actionLabel}
+              </Link>
+            </div>
+          </aside>
+        ))}
 
         {children}
       </div>

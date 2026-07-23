@@ -685,13 +685,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: コア`lib/notifications.ts`（Queryable注入）＝`listNotifications`（in_app_enabled=trueのみ・本人スコープ・created_at desc, id descのkeyset cursor、limit+1でnextCursor）、`countUnreadNotifications`、`markNotificationRead`（coalesceで冪等・本人のみ・不在/他人はnot_found）、`markAllNotificationsRead`（更新件数返却）。server結線＋Action `app/actions/notifications.ts`（list/markRead/markAllRead、既読系は最新unreadCountを返しバッジ即時更新）。UI `components/app-shell/notification-bell.tsx`（Base UI Popover、新規依存なし）＝未読バッジ＋一覧、項目クリックで既読化＋link遷移、すべて既読、もっと見る。ヘッダ（layout）が初期unread数＋先頭ページを渡し従来のBell Linkを置換。テスト+13（ユニット10・DB3: 本人分離/in_appのみ/cursorページング・冪等既読・他人不可・link保持・一括既読）。全548 green・build通過。doc: 要件04 §247・05 §10・06 §2・02 §3.15が既述で整合＝影響なし。
 - 後続への注意: retryNotificationEmail（email_status=failed→queued化）はメール送信実装（ジョブ系MS）後に追加。通知rowの作成はX再連携（T-M2-15）以外は各ジョブが担う。バッジ初期値はレイアウト読込時点のため、他タブでの既読はページ遷移/refreshで反映。
 
-### T-M2-21: 常設バナー（課金停止・X失効・キー無効・再連携要求） `todo`
+### T-M2-21: 常設バナー（課金停止・X失効・キー無効・再連携要求） `done`
 - 参照: 要件06 §2、要件03 §5、要件03 §8、要件01 §5 / 依存: T-M2-16、T-M2-07、M1 / サイズ: M
 - 完了条件:
   - subscription_statusがpast_due/unpaid/paused/canceledのとき課金バナーが通知設定にかかわらずヘッダ直下に表示され、解決画面へリンクする
   - x_accounts.status=expired/error、またはBYOK必須キーのstatus=invalidで対応バナーが表示され、SC-11の該当タブへ遷移できる
   - プラン変更でauth_typeがプランと不一致になったXアカウントがある場合「Xの再連携が必要」バナーが表示される（fixtureで3系統すべて検証）
 - メモ: 再連携までの生成閲覧・編集許可／投稿・自動実行停止の制御自体は投稿系マイルストーンの実行前提検証で担保。ここは表示と導線。
+- 実装メモ: 課金バナー（条件1）は既存M1 `subscriptionBannerFor` で充足済み＝流用。新規はXバナー3系統をpure関数`lib/app-banners.ts` `computeXAccountBanners`で算出（`x_authtype`=auth_type≠expectedAuthTypeForPlan(plan)かつ非disabled→プラン変更後の再連携／`x_status`=expired/errorかつauth_type一致→失効・エラー／`x_key`=standard・mdでX APIキーstatus=invalid）。プラン変更で不一致accountはexpired化されるため、`x_authtype`を優先し`x_status`はauth_type一致のexpired/errorのみに絞って重複回避。server `app-banners-server.ts`でX APIキーstatus取得。layoutが既存listXAccountsを流用＋plan＋keyStatusで算出し、課金バナー直下に描画（SC-11該当タブ/APIキータブへリンク）。ユニット7（3系統個別・同時・premiumでキーバナー非表示・disabled除外・健全時ゼロ）。全555 green・build通過。doc: 要件06 §2が既述で整合＝影響なし。
+- 後続への注意: 再連携までの投稿・自動実行停止と生成閲覧許可の“制御”は投稿系MSの実行前提検証（要件03 §5 route guard／Server Action側）で担保。本タスクは表示と導線のみ。
 
 ### T-M2-22: プロフィール・通知・ニュース設定Action＋SC-11設定タブ `todo`
 - 参照: 要件05 §4.1、要件02 §4.2、要件02 §4.3、要件06 §3.4、要件06 §9、O-2、O-3 / 依存: T-M2-02、M1 / サイズ: M
