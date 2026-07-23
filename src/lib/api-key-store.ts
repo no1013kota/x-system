@@ -9,6 +9,7 @@ import {
   serializeXAppCredentials,
   type AiKeyProvider,
   type SaveXApiKeyInput,
+  type XAppCredentials,
 } from "./api-keys";
 
 export interface ApiKeyCrypto {
@@ -87,6 +88,30 @@ export async function saveXApiKeyRecord(
     );
   }
   return { displayHint, provider: "x", status: "unchecked" };
+}
+
+/**
+ * Reads and decrypts the user's stored BYOK X app OAuth credentials
+ * (`user_api_keys` provider='x'). Returns null when no key is saved. server-only
+ * caller supplies decrypt (要件05 §4.3 / T-M2-06 保存形式）.
+ */
+export async function readXAppCredentialsRecord(
+  client: PoolClient,
+  userId: string,
+  crypto: ApiKeyCrypto,
+): Promise<XAppCredentials | null> {
+  const result = await client.query<{ credentials_ciphertext: string }>(
+    `select credentials_ciphertext from user_api_keys
+      where user_id = $1 and provider = 'x'`,
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  try {
+    return parseXAppCredentials(crypto.decrypt(row.credentials_ciphertext));
+  } catch (cause) {
+    throw new AppError("internal_error", { cause });
+  }
 }
 
 export async function saveAiApiKeyRecord(

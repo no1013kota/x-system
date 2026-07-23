@@ -596,13 +596,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `/app/ai-settings?tab=purposes`をprofile単位の設定画面として実装し、Xアカウント未連携でも利用可能にした。standard／mdは登録済み`valid`キーから文章providerを列挙し、画像providerをOpenAI／Googleへ限定する。Premiumは文章を「運営Claude（変更不可）」としてread-only表示し、画像は運営環境にキーがあるproviderだけを列挙する。選択肢がない場合は画像生成OFFと理由を表示し、BYOKにはAPIキー設定への導線を出す。既存`updateAiPurposeConfig` Actionへplan別の安全なpatchを送信し、成功・エラーを画面内で通知する。
   検証: provider選択肢の純粋関数3件を追加し、全490件（411成功・DB条件なし79 skip）、lint、typecheck、Next production build、`git diff --check`が成功。ブラウザでX未連携のStandardにvalidなAnthropic／Googleだけ（画像はGoogleだけ）が表示されて保存できること、Premiumの文章read-onlyと運営OpenAI／Google画像選択、BYOK providerなし案内、幅390pxで横overflowなしを確認した。要件06 §3.6をv1.12へ同期し、PRD・要件02 §4.1・要件05 §4.1・プロンプト設計は既存仕様内のため変更なしと確認した。
 
-### T-M2-12: X OAuthクライアントアダプタ＋startルート（state/PKCE） `todo`
+### T-M2-12: X OAuthクライアントアダプタ＋startルート（state/PKCE） `done`
 - 参照: A-3、要件05 §3、要件05 §4.3、要件05 §11、要件01 §3.4、要件01 §8、PRD §8.1 / 依存: T-M2-06、M1 / サイズ: M
 - 完了条件:
   - GET /api/x/oauth/startが契約状態・plan上限・期待auth_type（standard/md=byok、premium=managed）を検証し、不足時はエラーと設定導線へ戻す
   - 認可URLに`tweet.read tweet.write users.read media.write offline.access`とS256 PKCEが付与され、state（user ID・client種別・return path紐付け）とcode_verifierが署名/暗号化済み・HttpOnly・SameSite=Lax・短TTLのcookieへ保存される（URL生成・state生成のユニットテスト）
   - BYOKは保存済みXキー、premiumはX_MANAGED_CLIENT_ID/SECRETをOAuth clientとして使い分ける
 - メモ: 実装時にX公式のOAuth 2.0 Authorization Code with PKCE仕様を再確認する（要件01 §7の注記）。
+  実装結果: `src/lib/x/oauth-start.ts`（純粋・注入可能 `buildXOAuthStart`: getProfile→`requireExecutableSubscription`で契約状態検証→`expectedAuthTypeForPlan`〔premium=managed/他=byok〕→active連携数が`PLANS[plan].xAccountLimit`以上なら`forbidden`〔reason=x_account_limit_reached・settingsPath付〕→OAuth client解決〔byok=保存Xキー無しは`api_key_required`／managed=`managedOAuthClient`〕→`createPkce`＋`newOAuthTransaction`〔userId/authType/returnPath/code_verifier〕＋`buildAuthorizeUrl`〔5 scope・S256〕→`sealState`）。`src/app/api/x/oauth/start/route.ts`（GET・`requireCurrentUser`→admin profile/active x_account count→BYOK資格情報→X認可URLへredirect＋stateをHttpOnly/SameSite=Lax/短TTL cookie〔`xOAuthStateCookieOptions`〕にset。AppErrorは`toUserFacingError`のsettingsPathへ`?x_oauth_error=code`付redirect。`return`はopen redirect防止で`/app`配下のみ許可）。BYOK資格情報readerを`api-key-store.ts`の`readXAppCredentialsRecord`＋`api-key-store-server.ts`の`getXAppCredentialsForUser`として追加。公式仕様確認（docs.x.com, T-M0-20で確認済み: authorize=x.com/i/oauth2/authorize・S256・offline.accessでrefresh）。テスト: oauth-start unit 7（byok/premium・契約不可・キー無し・上限到達・secret非漏洩・auth_type写像）。全497件・lint・typecheck・Next build通過。docは要件05 §3/§4.3に既出のため変更なし。
+  後続への注意: callback（T-M2-13）は`verifyState`で state cookie検証→tx.userIdをsession userIdと一致検証（cookie-forcing防御・T-M0-20注）→`exchangeCodeForToken`→scope 5種確認→/2/users/me→token暗号化保存→x_accounts作成。confidential/publicのtoken交換分岐は`exchangeCodeForToken`が担う。x_account上限のre-auth（既存expired再連携）許可はcallbackで要検討。
 
 ### T-M2-13: X OAuth callback（token交換・新規連携ハッピーパス） `todo`
 - 参照: A-3、A-4、要件05 §3、要件05 §4.3、要件02 §3.3 / 依存: T-M2-12 / サイズ: L

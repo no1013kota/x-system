@@ -3,8 +3,13 @@ import "server-only";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { withTransaction } from "@/lib/db/pool";
 
-import type { AiKeyProvider, SaveXApiKeyInput } from "./api-keys";
+import type {
+  AiKeyProvider,
+  SaveXApiKeyInput,
+  XAppCredentials,
+} from "./api-keys";
 import {
+  readXAppCredentialsRecord,
   saveAiApiKeyRecord,
   saveXApiKeyRecord,
   type MaskedApiKey,
@@ -25,5 +30,14 @@ export function saveAiApiKeyForUser(input: {
 }): Promise<MaskedApiKey> {
   return withTransaction((client) =>
     saveAiApiKeyRecord(client, input, { encrypt }),
+  );
+}
+
+/** BYOK X app OAuth credentials (client_id/secret/type) for the OAuth start route. */
+export function getXAppCredentialsForUser(
+  userId: string,
+): Promise<XAppCredentials | null> {
+  return withTransaction((client) =>
+    readXAppCredentialsRecord(client, userId, { decrypt, encrypt }),
   );
 }
