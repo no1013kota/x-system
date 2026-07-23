@@ -9,6 +9,8 @@ import { env } from "@/lib/env";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { PLANS, type PlanId } from "@/lib/plans";
+import { getSettingsForUser } from "@/lib/settings-server";
+import type { UserSettings } from "@/lib/settings";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   listXAccounts,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/x/account-actions-server";
 
 import { ApiKeySettings } from "./api-key-settings";
+import { SettingsPreferences } from "./settings-preferences";
 import { XAccountsSettings } from "./x-accounts-settings";
 
 export const metadata: Metadata = {
@@ -42,6 +45,7 @@ interface BillingProfile {
 const SETTINGS_TABS = [
   ["x-accounts", "Xアカウント"],
   ["api-keys", "APIキー"],
+  ["notifications", "通知・プロフィール"],
   ["billing", "課金・プラン"],
   ["support", "問い合わせ"],
 ] as const;
@@ -92,6 +96,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (tab === "x-accounts") {
     xAccounts = await listXAccounts(user.id);
   }
+  let userSettings: UserSettings | null = null;
+  if (tab === "notifications") {
+    userSettings = await getSettingsForUser(user.id);
+  }
 
   return (
     <main className="px-4 py-8 lg:px-8 lg:py-10">
@@ -135,6 +143,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
             initialKeys={apiKeys}
             plan={profile.plan ?? "standard"}
+          />
+        ) : tab === "notifications" && userSettings ? (
+          <SettingsPreferences
+            displayName={userSettings.displayName}
+            newsConfig={userSettings.newsConfig}
+            notificationConfig={userSettings.notificationConfig}
           />
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">

@@ -695,13 +695,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 課金バナー（条件1）は既存M1 `subscriptionBannerFor` で充足済み＝流用。新規はXバナー3系統をpure関数`lib/app-banners.ts` `computeXAccountBanners`で算出（`x_authtype`=auth_type≠expectedAuthTypeForPlan(plan)かつ非disabled→プラン変更後の再連携／`x_status`=expired/errorかつauth_type一致→失効・エラー／`x_key`=standard・mdでX APIキーstatus=invalid）。プラン変更で不一致accountはexpired化されるため、`x_authtype`を優先し`x_status`はauth_type一致のexpired/errorのみに絞って重複回避。server `app-banners-server.ts`でX APIキーstatus取得。layoutが既存listXAccountsを流用＋plan＋keyStatusで算出し、課金バナー直下に描画（SC-11該当タブ/APIキータブへリンク）。ユニット7（3系統個別・同時・premiumでキーバナー非表示・disabled除外・健全時ゼロ）。全555 green・build通過。doc: 要件06 §2が既述で整合＝影響なし。
 - 後続への注意: 再連携までの投稿・自動実行停止と生成閲覧許可の“制御”は投稿系MSの実行前提検証（要件03 §5 route guard／Server Action側）で担保。本タスクは表示と導線のみ。
 
-### T-M2-22: プロフィール・通知・ニュース設定Action＋SC-11設定タブ `todo`
+### T-M2-22: プロフィール・通知・ニュース設定Action＋SC-11設定タブ `done`
 - 参照: 要件05 §4.1、要件02 §4.2、要件02 §4.3、要件06 §3.4、要件06 §9、O-2、O-3 / 依存: T-M2-02、M1 / サイズ: M
 - 完了条件:
   - updateProfile/updateNotificationConfig/updateNewsConfigがzodスキーマ（通知は種別×channel、newsはcategories/impact_filter各1件以上・max_items 1〜100）で検証・保存される
   - SC-11の通知タブで種別ごとにアプリ内/メールのON/OFFを変更でき、ニュース通知欄に時間単位ダイジェスト仕様（JST9〜20時・該当0件は届かない）の説明が表示される
   - 問い合わせ導線（SUPPORT_EMAILへのメールリンク）がSC-11に表示される
 - メモ: notification_config/news_configの初期値投入はM1のprofile作成hook側。未設定時は§3.4の既定値へフォールバックする読み出しヘルパを含める。
+- 実装メモ: コア`lib/settings.ts`＝zodスキーマ（`notificationConfigSchema`=6種別×{in_app,email}のstrict／`newsConfigSchema`=categories・impact_filterがDB_ENUM値・各≥1・重複不可、max_items 1-100／`profileUpdateSchema`=display_name≤50）＋**フォールバック読出ヘルパ**（`resolveNotificationConfig`は種別ごと、`resolveNewsConfig`は全体を§3.4既定へ）＋`readSettings`/save群。server結線＋Action `app/actions/settings.ts`（update3本）。UI `settings-preferences.tsx`（プロフィール名／通知トグル表／ニュース分野・インパクト・件数＋ダイジェスト説明）を設定タブ`notifications`（"通知・プロフィール"）に追加。問い合わせ導線は既存supportタブで充足。enum値は`DB_ENUMS`をSSOTに再利用。テスト+17（ユニット15: スキーマ各種＋フォールバック／DB2: 未設定→既定・保存round-trip）。全572 green・build通過。doc: 要件06 §1.2.2を新設（v1.14）。
+- 後続への注意: news_config編集はSC-06ニュース画面（後続）でも参照/再利用可。ニュースの実際のダイジェスト送信・時間窓適用はニュースジョブ系MS。updateAiPurposeConfigは別タスク（T-M2-07系）で対応済み。
 
 ### T-M2-23: 実行前提検証ヘルパ＋設定導線エラー表示 `todo`
 - 参照: 要件06 §3.1、要件06 §3.2、要件05 §2.2、PRD §4 / 依存: T-M2-04、T-M2-07、T-M2-17 / サイズ: M

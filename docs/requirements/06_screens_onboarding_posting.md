@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
+| バージョン | v1.14 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -35,7 +35,7 @@
 
 - `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば「お支払い方法・プランを管理」から`POST /api/stripe/portal`を呼び、返されたHTTPS URLへ遷移する。Customer未作成時はボタンを無効化し、`/plans`導線を表示する。
 - Portalは`/api/stripe/return?source=portal`へ戻り、復帰handlerで未反映時だけ同期してから`portal=return&sync=...`を付ける。画面は「契約情報を確認しています」と表示し、表示値はprofileを正とする。通常表示ではStripeへ問い合わせない（要件03 §3）。
-- `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達できる。Xアカウントタブは§1.2.1（M2）、通知タブは後続マイルストーンで追加する。
+- `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達できる。Xアカウントタブは§1.2.1、通知・プロフィールタブは§1.2.2（ともにM2で追加）。
 
 ### 1.2.1 SC-11 Xアカウントタブ（M2）
 
@@ -44,6 +44,13 @@
 - `expired`／`error`には再連携導線、`disabled`には再有効化（`enableXAccount`）と再連携を出す。各行から状態更新（`refreshXAccountStatus`）もできる。
 - 切断（`disconnectXAccount`）は確認ダイアログを挟み、投稿と自動実行の停止・自動投稿同意の取り消しを説明し、下書き・投稿履歴・実績・ベースmd等のデータは削除しないことを明示する。
 - OAuthからの復帰は`x_connected=1`で成功、`x_oauth_error=<code>`でエラーを表示する。操作の成功後は表示中の一覧を再取得する。
+
+### 1.2.2 SC-11 通知・プロフィールタブ（M2）
+
+- `/app/settings?tab=notifications`は表示名（`updateProfile`）、通知の種別×channel（`updateNotificationConfig`）、ニュース設定（`updateNewsConfig`）を編集する。
+- 通知は6種別（ニュース・下書き作成・投稿完了・エラー・課金・利用枠）ごとにアプリ内／メールのON/OFFを切り替える。
+- ニュース設定は分野・インパクトを各1件以上、表示件数を1〜100で保存する（要件02 §4.2）。ニュース欄には、JST 9:00〜20:00の取得時刻ごとに最大1件へ集約され、条件一致の新着が0件の時刻には届かないことを明示する（要件06 §3.4）。
+- 未設定・不正な`notification_config`／`news_config`は§3.4の既定値へフォールバックして表示する。
 
 ### 1.3 重大改定の再同意
 
