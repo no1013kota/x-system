@@ -10,9 +10,9 @@ import {
   type SubscriptionBannerProfile,
 } from "@/lib/auth/subscription-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 interface AppShellProfileRow {
-  active_x_account_id: string | null;
   stripe_customer_id: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
@@ -25,12 +25,12 @@ export default async function AppLayout({
   let profile: SubscriptionBannerProfile | null = null;
   let activeAccountHandle: string | null = null;
   if (user) {
+    // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
+    const activeAccountId = await resolveActiveXAccountForUser(user.id);
     const supabase = await createSupabaseServerClient();
     const result = await supabase
       .from("profiles")
-      .select(
-        "active_x_account_id, subscription_status, trial_ends_at, stripe_customer_id",
-      )
+      .select("subscription_status, trial_ends_at, stripe_customer_id")
       .eq("id", user.id)
       .maybeSingle<AppShellProfileRow>();
     if (result.data) {
@@ -39,16 +39,15 @@ export default async function AppLayout({
         subscriptionStatus: result.data.subscription_status,
         trialEndsAt: result.data.trial_ends_at,
       };
-      if (result.data.active_x_account_id) {
-        const accountResult = await supabase
-          .from("x_accounts")
-          .select("handle")
-          .eq("id", result.data.active_x_account_id)
-          .eq("user_id", user.id)
-          .eq("status", "active")
-          .maybeSingle<{ handle: string }>();
-        activeAccountHandle = accountResult.data?.handle ?? null;
-      }
+    }
+    if (activeAccountId) {
+      const accountResult = await supabase
+        .from("x_accounts")
+        .select("handle")
+        .eq("id", activeAccountId)
+        .eq("user_id", user.id)
+        .maybeSingle<{ handle: string }>();
+      activeAccountHandle = accountResult.data?.handle ?? null;
     }
   }
   const banner = profile ? subscriptionBannerFor(profile) : null;

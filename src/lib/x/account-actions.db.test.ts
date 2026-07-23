@@ -9,6 +9,8 @@ import {
   disconnectXAccount,
   enableXAccount,
   listXAccountsForUser,
+  resolveActiveXAccount,
+  setActiveXAccount,
 } from "./account-actions";
 import { X_SCOPES } from "./oauth";
 import type { Queryable } from "./token-refresh";
@@ -71,13 +73,14 @@ describe("X account management actions (local DB)", () => {
   async function makeAccount(
     c: PoolClient,
     uid: string,
-    opts: { status?: string; authType?: string } = {},
+    opts: { status?: string; authType?: string; createdAt?: string } = {},
   ): Promise<string> {
     const { rows } = await c.query<{ id: string }>(
       `insert into x_accounts
          (user_id, x_user_id, handle, name, auth_type, status,
-          access_token_ciphertext, refresh_token_ciphertext, oauth_scopes, token_expires_at)
-       values ($1,$2,'h','n',$3,$4,$5,$6,$7, now() + interval '1 hour')
+          access_token_ciphertext, refresh_token_ciphertext, oauth_scopes,
+          token_expires_at, created_at)
+       values ($1,$2,'h','n',$3,$4,$5,$6,$7, now() + interval '1 hour', coalesce($8::timestamptz, now()))
        returning id`,
       [
         uid,
@@ -87,6 +90,7 @@ describe("X account management actions (local DB)", () => {
         encrypt("access"),
         encrypt("refresh"),
         X_SCOPES,
+        opts.createdAt ?? null,
       ],
     );
     return rows[0].id;
@@ -221,6 +225,90 @@ describe("X account management actions (local DB)", () => {
       expect(row.status).toBe("disabled"); // not activated
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  // T-M2-17: DB trigger（enforce_active_x_account_owner）が他人所有のactive設定を拒否する。
+  it("the owner-check trigger rejects pointing active_x_account_id at another user's account", async () => {
+    const { uidA, uidB, bId } = await withTransaction(async (c) => {
+      const uidA = await makeUser(c);
+      const uidB = await makeUser(c);
+      await makeAccount(c, uidA);
+      const bId = await makeAccount(c, uidB);
+      return { uidA, uidB, bId };
+    });
+    try {
+      await expect(
+        db.query(`update profiles set active_x_account_id = $2 where id = $1`, [uidA, bId]),
+      ).rejects.toThrow(/active_x_account_id must reference/);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = any($1)`, [[uidA, uidB]]),
+      );
+    }
+  });
+
+  // T-M2-17: フォールバック（要件01 §5）: 最古active選択→失効で再選択→候補ゼロでnull、永続化まで検証。
+  it("resolveActiveXAccount picks the oldest active, re-selects on disable, and clears when none remain", async () => {
+    const uid = await withTransaction((c) => makeUser(c));
+    const first = await withTransaction((c) =>
+      makeAccount(c, uid, { createdAt: "2020-01-01T00:00:00Z" }),
+    );
+    const second = await withTransaction((c) =>
+      makeAccount(c, uid, { createdAt: "2020-06-01T00:00:00Z" }),
+    );
+    try {
+      expect(await resolveActiveXAccount(db, uid)).toBe(first); // unselected → oldest
+
+      await db.query(`update x_accounts set status = 'disabled' where id = $1`, [first]);
+      expect(await resolveActiveXAccount(db, uid)).toBe(second); // re-select next active
+
+      await db.query(`update x_accounts set status = 'disabled' where id = $1`, [second]);
+      expect(await resolveActiveXAccount(db, uid)).toBeNull(); // no candidate → null
+
+      const prof = (
+        await db.query<{ active_x_account_id: string | null }>(
+          `select active_x_account_id from profiles where id = $1`,
+          [uid],
+        )
+      ).rows[0];
+      expect(prof.active_x_account_id).toBeNull(); // persisted
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("setActiveXAccount enforces ownership and active status", async () => {
+    const { uid, otherUid, activeId, disabledId, otherId } = await withTransaction(
+      async (c) => {
+        const uid = await makeUser(c);
+        const activeId = await makeAccount(c, uid, { status: "active" });
+        const disabledId = await makeAccount(c, uid, { status: "disabled" });
+        const otherUid = await makeUser(c);
+        const otherId = await makeAccount(c, otherUid, { status: "active" });
+        return { uid, otherUid, activeId, disabledId, otherId };
+      },
+    );
+    try {
+      await setActiveXAccount(activeId, uid, db);
+      const prof = (
+        await db.query<{ active_x_account_id: string | null }>(
+          `select active_x_account_id from profiles where id = $1`,
+          [uid],
+        )
+      ).rows[0];
+      expect(prof.active_x_account_id).toBe(activeId);
+
+      await expect(setActiveXAccount(disabledId, uid, db)).rejects.toMatchObject({
+        code: "validation_error",
+      });
+      await expect(setActiveXAccount(otherId, uid, db)).rejects.toMatchObject({
+        code: "not_found",
+      });
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = any($1)`, [[uid, otherUid]]),
+      );
     }
   });
 });

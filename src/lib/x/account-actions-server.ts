@@ -12,6 +12,8 @@ import {
   enableXAccount,
   listXAccountsForUser,
   refreshXAccountStatus,
+  resolveActiveXAccount,
+  setActiveXAccount,
   type XAccountListItem,
   type XMeFetcher,
 } from "./account-actions";
@@ -107,4 +109,18 @@ export function disconnectXAccountForUser(
     runInTx,
     revoke: revokeForAccount,
   });
+}
+
+export function setActiveXAccountForUser(
+  xAccountId: string,
+  userId: string,
+): Promise<void> {
+  return setActiveXAccount(xAccountId, userId, pooledDb);
+}
+
+/** /app系レイアウト読込時のフォールバック解決＋永続化。選択中の有効なactive idを返す（無ければnull）。 */
+export function resolveActiveXAccountForUser(
+  userId: string,
+): Promise<string | null> {
+  return resolveActiveXAccount(pooledDb, userId);
 }

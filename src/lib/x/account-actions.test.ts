@@ -7,6 +7,8 @@ import {
   enableXAccount,
   listXAccountsForUser,
   refreshXAccountStatus,
+  resolveActiveXAccount,
+  setActiveXAccount,
   type XMeFetcher,
 } from "./account-actions";
 import type { Queryable } from "./token-refresh";
@@ -239,5 +241,82 @@ describe("disconnectXAccount", () => {
     });
     expect(res.status).toBe("disabled");
     expect(writes.some((w) => /status = 'disabled'/.test(w.sql))).toBe(true);
+  });
+});
+
+describe("setActiveXAccount", () => {
+  const READ = /select status from x_accounts where id = \$1 and user_id/;
+
+  it("sets active_x_account_id for an owned, active account", async () => {
+    const { db, writes } = makeDb((sql) => (READ.test(sql) ? [{ status: "active" }] : []));
+    await setActiveXAccount("a1", "u1", db);
+    const update = writes.find((w) =>
+      /update profiles set active_x_account_id = \$2/.test(w.sql),
+    );
+    expect(update?.params).toEqual(["u1", "a1"]);
+  });
+
+  it("rejects an account the user does not own (not_found)", async () => {
+    const { db } = makeDb(() => []);
+    await expect(setActiveXAccount("a1", "u1", db)).rejects.toMatchObject({
+      code: "not_found",
+    });
+  });
+
+  it("rejects a non-active account without writing", async () => {
+    const { db, writes } = makeDb((sql) => (READ.test(sql) ? [{ status: "disabled" }] : []));
+    await expect(setActiveXAccount("a1", "u1", db)).rejects.toMatchObject({
+      code: "validation_error",
+    });
+    expect(writes.some((w) => /update profiles/.test(w.sql))).toBe(false);
+  });
+});
+
+describe("resolveActiveXAccount", () => {
+  const CURRENT = /select p\.active_x_account_id/;
+  const CANDIDATE = /select id from x_accounts\s+where user_id = \$1 and status = 'active'/;
+
+  it("keeps a still-active selection without writing", async () => {
+    const { db, writes } = makeDb((sql) =>
+      CURRENT.test(sql) ? [{ active_x_account_id: "a1", active_status: "active" }] : [],
+    );
+    const res = await resolveActiveXAccount(db, "u1");
+    expect(res).toBe("a1");
+    expect(writes.some((w) => /update profiles/.test(w.sql))).toBe(false);
+  });
+
+  it("selects the oldest active account and persists it when unselected", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (CURRENT.test(sql)) return [{ active_x_account_id: null, active_status: null }];
+      if (CANDIDATE.test(sql)) return [{ id: "oldest" }];
+      return [];
+    });
+    const res = await resolveActiveXAccount(db, "u1");
+    expect(res).toBe("oldest");
+    const update = writes.find((w) =>
+      /update profiles set active_x_account_id = \$2/.test(w.sql),
+    );
+    expect(update?.params[1]).toBe("oldest");
+  });
+
+  it("re-selects when the current pointer is expired/disabled", async () => {
+    const { db } = makeDb((sql) => {
+      if (CURRENT.test(sql)) return [{ active_x_account_id: "stale", active_status: "expired" }];
+      if (CANDIDATE.test(sql)) return [{ id: "fresh" }];
+      return [];
+    });
+    expect(await resolveActiveXAccount(db, "u1")).toBe("fresh");
+  });
+
+  it("clears to null when no active candidate remains", async () => {
+    const { db, writes } = makeDb((sql) =>
+      CURRENT.test(sql) ? [{ active_x_account_id: "stale", active_status: "disabled" }] : [],
+    );
+    const res = await resolveActiveXAccount(db, "u1");
+    expect(res).toBeNull();
+    const update = writes.find((w) =>
+      /update profiles set active_x_account_id = \$2/.test(w.sql),
+    );
+    expect(update?.params[1]).toBeNull();
   });
 });

@@ -293,3 +293,74 @@ export async function disconnectXAccount(
   });
   return { status: "disabled" };
 }
+
+/**
+ * 選択中Xアカウントを切り替える（要件05 §4.1 setActiveXAccount）。所有権と status=active を検証し、
+ * 他人所有（not_found＝列挙防止）・非activeを拒否する。DB trigger（enforce_active_x_account_owner）は
+ * 所有権のバックストップ。無効化されたアカウントの再有効化は enableXAccount の役割。
+ */
+export async function setActiveXAccount(
+  xAccountId: string,
+  userId: string,
+  db: Queryable,
+): Promise<void> {
+  const { rows } = await db.query<{ status: string }>(
+    `select status from x_accounts where id = $1 and user_id = $2`,
+    [xAccountId, userId],
+  );
+  if (!rows[0]) throw new AppError("not_found");
+  if (rows[0].status !== "active") {
+    throw new AppError("validation_error", {
+      details: { reason: "x_account_not_active", settingsPath: X_SETTINGS_PATH },
+    });
+  }
+  await db.query(
+    `update profiles set active_x_account_id = $2 where id = $1`,
+    [userId, xAccountId],
+  );
+}
+
+/**
+ * 選択中Xアカウントをフォールバック規則で解決する（要件01 §5・要件02 §3.3）。/app系レイアウト読込時に呼ぶ。
+ * 現在の active_x_account_id が有効（status=active）ならそのまま返す（書き込みなし）。未選択、または指す
+ * アカウントが expired/disabled/不在なら `created_at, id` 最古の status=active を選び active_x_account_id へ
+ * 永続化する。activeが1件も無ければ null にする。選択が変わるときだけ更新する（trigger/無駄書き込みを避ける）。
+ */
+export async function resolveActiveXAccount(
+  db: Queryable,
+  userId: string,
+): Promise<string | null> {
+  const current = (
+    await db.query<{
+      active_x_account_id: string | null;
+      active_status: string | null;
+    }>(
+      `select p.active_x_account_id,
+              (select status from x_accounts where id = p.active_x_account_id) as active_status
+         from profiles p where p.id = $1`,
+      [userId],
+    )
+  ).rows[0];
+  if (!current) return null; // profile 不在
+  if (current.active_x_account_id && current.active_status === "active") {
+    return current.active_x_account_id; // 有効な選択を維持（書き込みなし）
+  }
+
+  const candidate =
+    (
+      await db.query<{ id: string }>(
+        `select id from x_accounts
+          where user_id = $1 and status = 'active'
+          order by created_at, id
+          limit 1`,
+        [userId],
+      )
+    ).rows[0]?.id ?? null;
+  if (candidate !== (current.active_x_account_id ?? null)) {
+    await db.query(`update profiles set active_x_account_id = $2 where id = $1`, [
+      userId,
+      candidate,
+    ]);
+  }
+  return candidate;
+}

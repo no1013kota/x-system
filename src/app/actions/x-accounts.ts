@@ -10,6 +10,7 @@ import {
   enableXAccountForUser,
   listXAccounts,
   refreshXAccountStatusForUser,
+  setActiveXAccountForUser,
   type XAccountListItem,
 } from "@/lib/x/account-actions-server";
 
@@ -93,6 +94,24 @@ export async function enableXAccountAction(
     const { status } = await enableXAccountForUser(parsed.data.x_account_id, auth.userId);
     revalidatePath("/app/settings");
     return { accountStatus: status, message: "アカウントを有効化しました。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function setActiveXAccountAction(
+  input: unknown,
+): Promise<XAccountStatusActionResult> {
+  const parsed = idSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await setActiveXAccountForUser(parsed.data.x_account_id, auth.userId);
+    revalidatePath("/app");
+    return { message: "操作対象のアカウントを切り替えました。", status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

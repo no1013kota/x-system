@@ -647,12 +647,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: コア`account-actions.ts`（deps注入）＋server結線`account-actions-server.ts`＋Action`app/actions/x-accounts.ts`（4本）。list/refresh/enable/disconnectとも`readOwnedAccount`で本人所有を検証（他人/不在はnot_found＝列挙防止）。refresh: getAccessToken失敗→token-refreshが設定済みstatusを返す／tokenは有効だが/me失敗→status=error／成功→active＋handle等更新。enable: auth_type一致（expectedAuthTypeForPlan）→refresh＋/me成功→上限確認を`profiles` FOR UPDATEの同一tx内で行いactive化（並行enable直列化）。disconnect: revokeはbest effort（失敗握りつぶし）→tx内でtoken null化・status=disabled・automation同意停止(disabled_at設定)・auto slotのみenabled=false・**active_x_account_id=自分ならnull化**（フォールバック再選択はT-M2-17）。**T-M2-15で先送りしていたBYOK client解決をtoken-refresh-serverに結線**（x_account所有者のuser_api_keys='x'からclient_id/secret、confidentialのみsecret付与）。テスト+14（ユニット11・DB3: list本人分離／disconnectでauto無効化・draft維持・データ非削除／enable上限拒否）。全525 green。doc: 05 §4.3 disconnect行にactive解除・データ非削除を追記(v1.16)。
 - 後続への注意: T-M2-17（setActiveXAccount＋フォールバック）は、disconnectでactive_x_account_idがnull化された後の再選択規則（要件03 §6 L151・要件01 §5：最古のactive 1件等）を担う。UI（SC-11・要件06 §9）はT-M2-18以降。
 
-### T-M2-17: setActiveXAccount＋フォールバック選択規則 `todo`
+### T-M2-17: setActiveXAccount＋フォールバック選択規則 `done`
 - 参照: A-6、要件05 §4.1、要件01 §5、要件02 §3.3 / 依存: T-M2-13 / サイズ: M
 - 完了条件:
   - setActiveXAccountが所有権とstatus=activeを検証し、他人所有・非activeの指定を拒否する。DB trigger側でも同一profile所有以外のactive_x_account_id設定が拒否される
   - active未選択、またはactiveが指すアカウントのexpired/disabled化時にcreated_at最古のstatus=activeを自動選択してprofiles.active_x_account_idへ永続化し、候補ゼロならnullとなる（フォールバック関数のユニットテスト）
 - メモ: フォールバックは/app系レイアウトの読み込み時に適用し、候補ゼロは初期設定ガイド表示条件へつなぐ。
+- 実装メモ: `account-actions.ts`に`setActiveXAccount`（所有権＋active検証。他人所有=not_found／非active=validation_error）と`resolveActiveXAccount`（有効なら維持し書き込みなし／未選択・expired・disabled・不在なら`created_at, id`最古のactiveを選び永続化／候補ゼロでnull。選択が変わるときだけUPDATE）を追加。server結線＋`setActiveXAccountAction`。**DBトリガー`enforce_active_x_account_owner`はT-M0-06で既存＝重複作成せずDBテストで検証**。フォールバックは`/app`レイアウト（`src/app/app/layout.tsx`）の読込時に`resolveActiveXAccountForUser`で適用（従来のactive解決を置換）。テスト+10（ユニット7・DB3: trigger他人所有拒否／最古選択→失効で再選択→ゼロでnull永続化／setActive所有権・status）。全535 green・build通過。doc: 05 §4.1・01 §5・02 §3.3が既述で整合＝影響なし。
+- 後続への注意: 候補ゼロ（active_x_account_id=null）は`/app`初期設定ガイド表示条件（要件01 §5）。T-M2-18ヘッダ切替UIは`listXAccounts`＋`setActiveXAccountAction`を使う。
 
 ### T-M2-18: ヘッダXアカウント切替UI `todo`
 - 参照: A-6、要件06 §2 / 依存: T-M2-17、T-M2-16、T-M2-02 / サイズ: S
