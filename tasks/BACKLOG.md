@@ -637,13 +637,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 条件1・2はT-M0-21（`token-refresh.ts` getValidAccessToken）で実装済み＝重複実装せず。**残タスクの条件3「notifications行作成」のみ追加**。(1)`markExpired`を「active→expired遷移したか(rowCount>0)」を返す形に変更し、`onExpired`を遷移時のみ呼ぶよう厳密化（stale-lease奪取時の二重通知を防止、ユニットで検証）。(2)テスト可能なコア関数`createXRelinkNotification(db, xAccountId, reason)`を追加（`notifications` type='error'、link=/app/settings?tab=api-keys、payload={x_account_id,reason}、`notification_config.error`のin_app/email両OFFなら作成せず、dedupe_key=null＝1エピソード1件で再失効も再作成可）。(3)server層`getValidXAccessToken`の既定onExpiredに結線（呼び出し側指定があれば優先）。テスト+3（ユニット1・DB2）、全511 green。docは02 §3.15にX再連携通知の仕様を追記(v1.12)、05 §4.3 L151は既述で整合。
 - 後続への注意: 通知のメール送信（email_status=queued→送信）とin_app表示は通知配信/画面タスクで担う（本タスクは行作成まで）。BYOK(auth_type='byok')のclient解決はserver層で未実装（明示error）＝T-M2-16以降で結線。
 
-### T-M2-16: Xアカウント管理Action（list/refresh/enable/disconnect） `todo`
+### T-M2-16: Xアカウント管理Action（list/refresh/enable/disconnect） `done`
 - 参照: A-6、要件05 §4.3、要件06 §9、要件03 §6 / 依存: T-M2-15、T-M2-14 / サイズ: M
 - 完了条件:
   - listXAccountsが本人のアカウントのみ返し、refreshXAccountStatusがモック/2/users/meの結果でstatusを更新する
   - enableXAccountはplan上限の空き・planに対応するauth_type・refresh＋/2/users/me成功をすべて検証してactive化し、失敗時は再連携誘導エラーを返す
   - disconnectXAccountはbest effortのtoken revoke→保存tokenのnull化→status=disabled→自動投稿同意停止と当該アカウント全auto slotの無効化を行い、下書き・履歴データは削除しない（schedule_slots fixtureで検証）
 - メモ: recordXAutomationConsent/disableXAutomationはスケジュール（SC-08）マイルストーンで実装。
+- 実装メモ: コア`account-actions.ts`（deps注入）＋server結線`account-actions-server.ts`＋Action`app/actions/x-accounts.ts`（4本）。list/refresh/enable/disconnectとも`readOwnedAccount`で本人所有を検証（他人/不在はnot_found＝列挙防止）。refresh: getAccessToken失敗→token-refreshが設定済みstatusを返す／tokenは有効だが/me失敗→status=error／成功→active＋handle等更新。enable: auth_type一致（expectedAuthTypeForPlan）→refresh＋/me成功→上限確認を`profiles` FOR UPDATEの同一tx内で行いactive化（並行enable直列化）。disconnect: revokeはbest effort（失敗握りつぶし）→tx内でtoken null化・status=disabled・automation同意停止(disabled_at設定)・auto slotのみenabled=false・**active_x_account_id=自分ならnull化**（フォールバック再選択はT-M2-17）。**T-M2-15で先送りしていたBYOK client解決をtoken-refresh-serverに結線**（x_account所有者のuser_api_keys='x'からclient_id/secret、confidentialのみsecret付与）。テスト+14（ユニット11・DB3: list本人分離／disconnectでauto無効化・draft維持・データ非削除／enable上限拒否）。全525 green。doc: 05 §4.3 disconnect行にactive解除・データ非削除を追記(v1.16)。
+- 後続への注意: T-M2-17（setActiveXAccount＋フォールバック）は、disconnectでactive_x_account_idがnull化された後の再選択規則（要件03 §6 L151・要件01 §5：最古のactive 1件等）を担う。UI（SC-11・要件06 §9）はT-M2-18以降。
 
 ### T-M2-17: setActiveXAccount＋フォールバック選択規則 `todo`
 - 参照: A-6、要件05 §4.1、要件01 §5、要件02 §3.3 / 依存: T-M2-13 / サイズ: M
