@@ -1,4 +1,4 @@
-import { Bell, CircleUserRound, Settings } from "lucide-react";
+import { Bell, Settings } from "lucide-react";
 import Link from "next/link";
 
 import { AppNavigation } from "@/components/app-shell/app-navigation";
@@ -9,8 +9,15 @@ import {
   subscriptionBannerFor,
   type SubscriptionBannerProfile,
 } from "@/lib/auth/subscription-access";
+import {
+  XAccountSwitcher,
+  type SwitcherAccount,
+} from "@/components/app-shell/x-account-switcher";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
+import {
+  listXAccounts,
+  resolveActiveXAccountForUser,
+} from "@/lib/x/account-actions-server";
 
 interface AppShellProfileRow {
   stripe_customer_id: string | null;
@@ -23,10 +30,19 @@ export default async function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser();
   let profile: SubscriptionBannerProfile | null = null;
-  let activeAccountHandle: string | null = null;
+  let activeAccountId: string | null = null;
+  let switcherAccounts: SwitcherAccount[] = [];
   if (user) {
     // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
-    const activeAccountId = await resolveActiveXAccountForUser(user.id);
+    activeAccountId = await resolveActiveXAccountForUser(user.id);
+    // 切替メニューには active なアカウントだけを出す（要件06 §2・T-M2-18）。
+    switcherAccounts = (await listXAccounts(user.id))
+      .filter((account) => account.status === "active")
+      .map((account) => ({
+        id: account.id,
+        handle: account.handle,
+        profileImageUrl: account.profileImageUrl,
+      }));
     const supabase = await createSupabaseServerClient();
     const result = await supabase
       .from("profiles")
@@ -39,15 +55,6 @@ export default async function AppLayout({
         subscriptionStatus: result.data.subscription_status,
         trialEndsAt: result.data.trial_ends_at,
       };
-    }
-    if (activeAccountId) {
-      const accountResult = await supabase
-        .from("x_accounts")
-        .select("handle")
-        .eq("id", activeAccountId)
-        .eq("user_id", user.id)
-        .maybeSingle<{ handle: string }>();
-      activeAccountHandle = accountResult.data?.handle ?? null;
     }
   }
   const banner = profile ? subscriptionBannerFor(profile) : null;
@@ -74,22 +81,10 @@ export default async function AppLayout({
               {APP_NAME}
             </Link>
             <div className="ml-auto flex items-center gap-1 sm:gap-2">
-              <div
-                aria-label="現在のXアカウント"
-                className="hidden min-h-10 items-center gap-2 rounded-lg border bg-card px-3 text-sm sm:flex"
-                title={
-                  activeAccountHandle
-                    ? `@${activeAccountHandle}`
-                    : "Xアカウント未選択"
-                }
-              >
-                <CircleUserRound aria-hidden="true" className="size-4" />
-                <span className="max-w-36 truncate">
-                  {activeAccountHandle
-                    ? `@${activeAccountHandle}`
-                    : "Xアカウント未選択"}
-                </span>
-              </div>
+              <XAccountSwitcher
+                accounts={switcherAccounts}
+                activeId={activeAccountId}
+              />
               <Link
                 aria-label="通知"
                 className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

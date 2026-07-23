@@ -656,12 +656,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `account-actions.ts`に`setActiveXAccount`（所有権＋active検証。他人所有=not_found／非active=validation_error）と`resolveActiveXAccount`（有効なら維持し書き込みなし／未選択・expired・disabled・不在なら`created_at, id`最古のactiveを選び永続化／候補ゼロでnull。選択が変わるときだけUPDATE）を追加。server結線＋`setActiveXAccountAction`。**DBトリガー`enforce_active_x_account_owner`はT-M0-06で既存＝重複作成せずDBテストで検証**。フォールバックは`/app`レイアウト（`src/app/app/layout.tsx`）の読込時に`resolveActiveXAccountForUser`で適用（従来のactive解決を置換）。テスト+10（ユニット7・DB3: trigger他人所有拒否／最古選択→失効で再選択→ゼロでnull永続化／setActive所有権・status）。全535 green・build通過。doc: 05 §4.1・01 §5・02 §3.3が既述で整合＝影響なし。
 - 後続への注意: 候補ゼロ（active_x_account_id=null）は`/app`初期設定ガイド表示条件（要件01 §5）。T-M2-18ヘッダ切替UIは`listXAccounts`＋`setActiveXAccountAction`を使う。
 
-### T-M2-18: ヘッダXアカウント切替UI `todo`
+### T-M2-18: ヘッダXアカウント切替UI `done`
 - 参照: A-6、要件06 §2 / 依存: T-M2-17、T-M2-16、T-M2-02 / サイズ: S
 - 完了条件:
   - ヘッダの切替メニューにactiveなXアカウント一覧（handle・プロフィール画像）と現在の選択が表示され、選択でsetActiveXAccountが呼ばれる
   - 切替後に表示中画面の一覧・集計が再取得される（router refresh等の再取得動作を確認）
 - メモ: mutation系Actionのx_account_id明示送信＋サーバー側一致検証（job_conflict）の前提となる「表示中アカウント」の受け渡しを確立する。
+- 実装メモ: クライアントコンポーネント`components/app-shell/x-account-switcher.tsx`（Base UI `Menu`＝既存の`@base-ui/react`を利用、新規依存なし）。handle＋プロフィール画像を一覧し現在選択にCheck。選択で`setActiveXAccountAction`→成功後`router.refresh()`で表示中画面のサーバーコンポーネント（一覧・集計）を再取得。0件は静的「未選択」表示（初期設定ガイドは/app側=T-M2-17フォールバックがnull化）。`/app`レイアウトが`listXAccounts`でactiveのみ抽出＋`resolveActiveXAccountForUser`のactiveIdを渡す。従来の静的チップを置換。プロフィール画像は素の`<img>`（next/image remotePatterns設定回避、eslint-disable明記）。**このリポジトリはコンポーネントテスト基盤（testing-library/jsdom）が無いためUIはtypecheck＋lint＋build＋手検証**（setActive/resolve/listのロジックはT-M2-16/17でテスト済み）。全535 green・build通過。doc: 要件06 §2が既述で整合＝影響なし。
+- 後続への注意: mutation系Action（生成・下書き・スロット・学習・提案）は表示中`x_account_id`を明示送信し、サーバーで`profiles.active_x_account_id`一致を検証してjob_conflictを返す（要件05 §4.1）。切替UIが送る「表示中アカウント」はこの整合検証の入力になる。
 
 ### T-M2-19: SC-11 XアカウントタブUI `todo`
 - 参照: A-3、A-6、SC-11、要件06 §9、要件06 §3.2 / 依存: T-M2-16、T-M2-02 / サイズ: M
