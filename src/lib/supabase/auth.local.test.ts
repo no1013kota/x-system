@@ -34,6 +34,12 @@ function isLocalSupabaseUrl(value: string | undefined): boolean {
   }
 }
 
+// Local Supabase Auth has Turnstile captcha enabled (supabase/config.toml
+// [auth.captcha]). TURNSTILE_SECRET_KEY is Cloudflare's always-pass test secret,
+// so any token validates — but GoTrue still rejects a request with no token
+// (captcha_failed). Pass a dummy token on client-side auth calls.
+const CAPTCHA_TEST_TOKEN = "1x00000000000000000000AA";
+
 /** Local Supabase Auth integration; skipped when the local stack is unavailable. */
 describe("Supabase SSR auth session (local)", () => {
   const supabaseUrl = localEnv.NEXT_PUBLIC_SUPABASE_URL;
@@ -110,7 +116,11 @@ describe("Supabase SSR auth session (local)", () => {
       },
     });
 
-    const signedIn = await client.auth.signInWithPassword({ email, password });
+    const signedIn = await client.auth.signInWithPassword({
+      email,
+      password,
+      options: { captchaToken: CAPTCHA_TEST_TOKEN },
+    });
     expect(signedIn.error).toBeNull();
     await expect(readCurrentUser(client.auth)).resolves.toMatchObject({
       email,
