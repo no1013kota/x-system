@@ -5,6 +5,7 @@ import { getPool } from "../db/pool";
 import type { FetchLike } from "./oauth";
 import { managedOAuthClient } from "./oauth-server";
 import {
+  createXRelinkNotification,
   getValidAccessToken,
   type GetValidAccessTokenDeps,
   type Queryable,
@@ -44,6 +45,8 @@ const resolveClient: GetValidAccessTokenDeps["resolveClient"] = ({ authType }) =
 /**
  * x_account の有効な access token を返す（single-flight refresh 込み）。server-only。
  * 返す平文 token はブラウザへ返さないこと（要件02 §5）。
+ * 既定では status=expired 遷移時に再連携通知（type='error'）を作成する（要件05 §4.3）。
+ * 呼び出し側が onExpired を渡した場合はそれを優先する。
  */
 export function getValidXAccessToken(
   xAccountId: string,
@@ -55,6 +58,8 @@ export function getValidXAccessToken(
     decrypt,
     encrypt,
     resolveClient,
-    onExpired,
+    onExpired:
+      onExpired ??
+      ((id, reason) => createXRelinkNotification(pooledDb, id, reason)),
   });
 }

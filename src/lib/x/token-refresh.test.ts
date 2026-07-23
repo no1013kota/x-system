@@ -152,6 +152,31 @@ describe("getValidAccessToken", () => {
     expect(onExpired).toHaveBeenCalledWith("acc", "invalid_grant");
   });
 
+  it("does not call onExpired when the expired-transition is lost to a stale-lease steal", async () => {
+    // lease acquired, but the status='expired' UPDATE affects 0 rows (another run stole the
+    // lease and already handled it) → the notification (onExpired) must fire only for the winner.
+    const onExpired = vi.fn();
+    const db: Queryable = {
+      query: async <T = unknown>(sql: string) => {
+        if (/^\s*select/i.test(sql)) {
+          return { rows: [account()] as unknown as T[], rowCount: 1 };
+        }
+        if (/returning/i.test(sql)) {
+          return { rows: [account()] as unknown as T[], rowCount: 1 }; // lease acquired
+        }
+        if (/status = 'expired'/.test(sql)) {
+          return { rows: [] as unknown as T[], rowCount: 0 }; // lock stolen → 0 rows
+        }
+        return { rows: [] as unknown as T[], rowCount: 1 };
+      },
+    };
+    const fetchSpy = vi.fn<FetchLike>(async () => jsonResponse(400, { error: "invalid_grant" }));
+    await expect(
+      getValidAccessToken("acc", makeDeps(db, fetchSpy, { onExpired })),
+    ).rejects.toBeInstanceOf(XTokenExpiredError);
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
   it("marks expired when the refreshed scopes are insufficient", async () => {
     const { db, writes } = mockDb({ selectRows: [account()], leaseRows: [account()] });
     const fetchSpy = vi.fn<FetchLike>(async () =>

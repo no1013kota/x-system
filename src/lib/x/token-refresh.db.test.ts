@@ -12,6 +12,7 @@ import {
   type OAuthClient,
 } from "./oauth";
 import {
+  createXRelinkNotification,
   getValidAccessToken,
   XTokenExpiredError,
   type GetValidAccessTokenDeps,
@@ -206,6 +207,67 @@ describe("getValidAccessToken (local DB)", () => {
       expect(row.status).toBe("expired");
       expect(row.token_refresh_lock_id).toBeNull();
       expect(expiredReason).toBe("invalid_grant");
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  // T-M2-15: 再連携通知（要件05 §4.3・要件02 §3.15）。type='error' で所有者へ1件、payload に理由を残す。
+  it("createXRelinkNotification writes a type=error re-link notification honoring notification_config", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      await withTransaction((c) =>
+        c.query(
+          `update profiles set notification_config = '{"error":{"in_app":true,"email":true}}'::jsonb where id = $1`,
+          [uid],
+        ),
+      );
+      await createXRelinkNotification(db, xid, "invalid_grant");
+
+      const { rows } = await withTransaction((c) =>
+        c.query<{
+          type: string;
+          link: string;
+          in_app_enabled: boolean;
+          email_status: string;
+          reason: string;
+          account: string;
+        }>(
+          `select type, link, in_app_enabled, email_status,
+                  payload->>'reason' as reason, payload->>'x_account_id' as account
+             from notifications where user_id = $1`,
+          [uid],
+        ),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].type).toBe("error");
+      expect(rows[0].link).toBe("/app/settings?tab=api-keys");
+      expect(rows[0].in_app_enabled).toBe(true);
+      expect(rows[0].email_status).toBe("queued"); // error.email = true
+      expect(rows[0].reason).toBe("invalid_grant");
+      expect(rows[0].account).toBe(xid);
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("createXRelinkNotification writes nothing when both error channels are off", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      await withTransaction((c) =>
+        c.query(
+          `update profiles set notification_config = '{"error":{"in_app":false,"email":false}}'::jsonb where id = $1`,
+          [uid],
+        ),
+      );
+      await createXRelinkNotification(db, xid, "insufficient_scope");
+      const { rows } = await withTransaction((c) =>
+        c.query<{ n: number }>(
+          `select count(*)::int as n from notifications where user_id = $1`,
+          [uid],
+        ),
+      );
+      expect(rows[0].n).toBe(0);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

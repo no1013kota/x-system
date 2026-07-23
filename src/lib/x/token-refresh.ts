@@ -142,8 +142,9 @@ export async function getValidAccessToken(
     return deps.decrypt(leased.access_token_ciphertext);
   }
   if (!leased.refresh_token_ciphertext) {
-    await markExpired(deps.db, xAccountId, lockId);
-    await deps.onExpired?.(xAccountId, "no_refresh_token");
+    if (await markExpired(deps.db, xAccountId, lockId)) {
+      await deps.onExpired?.(xAccountId, "no_refresh_token");
+    }
     throw new XTokenExpiredError(xAccountId, "no_refresh_token");
   }
 
@@ -161,8 +162,9 @@ export async function getValidAccessToken(
     );
   } catch (err) {
     if (err instanceof XTokenError && err.errorCode === "invalid_grant") {
-      await markExpired(deps.db, xAccountId, lockId);
-      await deps.onExpired?.(xAccountId, "invalid_grant");
+      if (await markExpired(deps.db, xAccountId, lockId)) {
+        await deps.onExpired?.(xAccountId, "invalid_grant");
+      }
       throw new XTokenExpiredError(xAccountId, "invalid_grant");
     }
     // network/5xx 等の一時エラー: lease を解除して retryable のまま伝播する。
@@ -175,8 +177,9 @@ export async function getValidAccessToken(
     ? res.scope.split(" ").filter(Boolean)
     : leased.oauth_scopes;
   if (!hasRequiredScopes(newScopes)) {
-    await markExpired(deps.db, xAccountId, lockId);
-    await deps.onExpired?.(xAccountId, "insufficient_scope");
+    if (await markExpired(deps.db, xAccountId, lockId)) {
+      await deps.onExpired?.(xAccountId, "insufficient_scope");
+    }
     throw new XTokenExpiredError(xAccountId, "insufficient_scope");
   }
 
@@ -253,18 +256,60 @@ async function releaseLease(
   );
 }
 
+/**
+ * status=expired へ遷移し lease を解除する。lock ID 一致の行だけを更新するため、stale lease を
+ * 別実行に奪われていた場合は 0 行（false）を返す。呼び出し側は true のときだけ onExpired を呼ぶ
+ * ことで、再連携通知が active→expired 遷移ごとに 1 度だけ作られる（競合下の二重通知を防ぐ）。
+ */
 async function markExpired(
   db: Queryable,
   id: string,
   lockId: string,
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  const { rowCount } = await db.query(
     `update x_accounts
         set status = 'expired',
             token_refresh_lock_id = null,
             token_refresh_locked_at = null
       where id = $1 and token_refresh_lock_id = $2`,
     [id, lockId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * 再連携を促す通知を作成する（要件05 §4.3・要件02 §3.15）。x_account の所有者へ type='error' で1件。
+ * `notification_config.error` の in_app/email がどちらも OFF の場合は行を作らない（決済失敗通知と同規約）。
+ * dedupe_key は null: onExpired は active→expired 遷移で1度だけ呼ばれるため重複せず、再連携→再失効の
+ * 次エピソードでも新規に作成できる。in_app_enabled と email 配信状態は設定から反映する。
+ */
+export async function createXRelinkNotification(
+  db: Queryable,
+  xAccountId: string,
+  reason: string,
+): Promise<void> {
+  await db.query(
+    `insert into notifications
+       (user_id, type, dedupe_key, title, body, link, payload,
+        in_app_enabled, email_status, email_available_at)
+     select
+       x.user_id, 'error', null,
+       'Xとの連携が切れました',
+       '再連携するまで自動投稿・投稿・読み取りを停止します。設定から再連携してください。',
+       '/app/settings?tab=api-keys',
+       jsonb_build_object('x_account_id', x.id, 'reason', $2::text),
+       coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
+       case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
+            then 'queued'::email_delivery_status
+            else 'not_requested'::email_delivery_status end,
+       case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
+            then now() else null end
+     from x_accounts x
+     join profiles p on p.id = x.user_id
+     where x.id = $1
+       and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
+            or coalesce((p.notification_config->'error'->>'email')::boolean, false))`,
+    [xAccountId, reason],
   );
 }
 

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
+| バージョン | v1.12 |
 | 更新日 | 2026-07-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -438,6 +438,8 @@ RLS: 本人select可。writeはServer Action/API only。
   }
 }
 ```
+
+X再連携通知は、token refreshが`invalid_grant`・必要scope不足・refresh token不在で`x_accounts.status`を`active`→`expired`へ遷移させたときに`type=error`で1件作成し、`link=/app/settings?tab=api-keys`と`payload={x_account_id, reason}`を保存する。`notification_config.error`の両channelがOFFならrowを作らない（`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映）。`dedupe_key`は付けない（遷移は1エピソードにつき1度だけ通知作成が走るため重複せず、再連携後の再失効でも新規に作成できる）。
 
 ### 3.16 `stripe_events`
 
