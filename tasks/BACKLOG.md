@@ -606,13 +606,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   実装結果: `src/lib/x/oauth-start.ts`（純粋・注入可能 `buildXOAuthStart`: getProfile→`requireExecutableSubscription`で契約状態検証→`expectedAuthTypeForPlan`〔premium=managed/他=byok〕→active連携数が`PLANS[plan].xAccountLimit`以上なら`forbidden`〔reason=x_account_limit_reached・settingsPath付〕→OAuth client解決〔byok=保存Xキー無しは`api_key_required`／managed=`managedOAuthClient`〕→`createPkce`＋`newOAuthTransaction`〔userId/authType/returnPath/code_verifier〕＋`buildAuthorizeUrl`〔5 scope・S256〕→`sealState`）。`src/app/api/x/oauth/start/route.ts`（GET・`requireCurrentUser`→admin profile/active x_account count→BYOK資格情報→X認可URLへredirect＋stateをHttpOnly/SameSite=Lax/短TTL cookie〔`xOAuthStateCookieOptions`〕にset。AppErrorは`toUserFacingError`のsettingsPathへ`?x_oauth_error=code`付redirect。`return`はopen redirect防止で`/app`配下のみ許可）。BYOK資格情報readerを`api-key-store.ts`の`readXAppCredentialsRecord`＋`api-key-store-server.ts`の`getXAppCredentialsForUser`として追加。公式仕様確認（docs.x.com, T-M0-20で確認済み: authorize=x.com/i/oauth2/authorize・S256・offline.accessでrefresh）。テスト: oauth-start unit 7（byok/premium・契約不可・キー無し・上限到達・secret非漏洩・auth_type写像）。全497件・lint・typecheck・Next build通過。docは要件05 §3/§4.3に既出のため変更なし。
   後続への注意: callback（T-M2-13）は`verifyState`で state cookie検証→tx.userIdをsession userIdと一致検証（cookie-forcing防御・T-M0-20注）→`exchangeCodeForToken`→scope 5種確認→/2/users/me→token暗号化保存→x_accounts作成。confidential/publicのtoken交換分岐は`exchangeCodeForToken`が担う。x_account上限のre-auth（既存expired再連携）許可はcallbackで要検討。
 
-### T-M2-13: X OAuth callback（token交換・新規連携ハッピーパス） `todo`
+### T-M2-13: X OAuth callback（token交換・新規連携ハッピーパス） `done`
 - 参照: A-3、A-4、要件05 §3、要件05 §4.3、要件02 §3.3 / 依存: T-M2-12 / サイズ: L
 - 完了条件:
   - モックX API（token endpoint・/2/users/me）に対し、code交換→scope 5種の付与確認→/2/users/me確認→access/refresh tokenの暗号化保存→x_accounts作成（x_user_id/handle/auth_type/oauth_scopes/status=active）までの統合テストがローカルで通る
   - scope不足・/2/users/me失敗時はtokenを保存せずエラー表示へ戻り、tokenの平文と外部レスポンス本文をブラウザへ返さない
   - callbackは自動投稿への同意（automation_consent_*）を一切記録しない
 - メモ: 初回連携成功時はprofiles.active_x_account_idが未設定なら当該アカウントを設定する。BYOKはこの疎通成功でXキーのstatus=valid化（A-4のOAuth完了時疎通確認）。
+  実装結果: `src/lib/x/oauth-callback.ts`（純粋core `handleXOAuthCallback`: verifyState→**tx.userId===session一致検証**〔cookie-forcing防御・T-M0-20注、不一致=forbidden〕→resolveClient→exchangeCodeForToken→`hasRequiredScopes`でscope5種確認〔不足=forbidden・保存前〕→fetchMe(/2/users/me)〔失敗=throw・保存しない〕→sealTokens→persist。＋`linkXAccountRecord`〔x_accountsをupsert on (user_id,x_user_id): token/scope/auth_type/status=active置換・base_md/settings/automation_consent_*は保持。BYOKは`user_api_keys`をvalid化。`active_x_account_id`未設定なら当該連携を設定〕）。`src/app/api/x/oauth/callback/route.ts`（GET・requireCurrentUser→verifyState/exchange/getMe/sealTokens/withTransaction配線→成功はreturnPathへ`?x_connected=1`、失敗はsettingsPathへ`?x_oauth_error=code`redirect＋state cookie削除。token平文・外部本文は返さない）。統合はモックexchange/getMe＋実DB persist。テスト: unit 5（session不一致・scope不足・/me失敗・state不正で非保存／ハッピーパス）＋DB 2（x_accounts作成/token暗号化/BYOK valid/active設定・re-link upsertでbase_md保持）。全504件・lint・typecheck・Next build通過。docは要件05 §3/§4.3・§02 §3.3に既出のため変更なし。
+  設計判断: persistはinsertではなく`on conflict (user_id,x_user_id) do update`のupsertとし、ハッピーパスで再連携が来ても壊れずtokenのみ置換（既存データ保持）。再連携の詳細な受け入れ条件（別x_user_idの上限検証・拒否系・state不一致メッセージ）はT-M2-14で拡張する。
+  後続への注意: T-M2-14は本経路に「別x_user_id新規時のplan上限検証」「Xの拒否（?error=access_denied）・state不一致・cookie/code欠落の明示拒否」「BYOK⇔premiumプラン変更後のauth_type置換」を追加する。上限のre-auth許容（既存active数が上限でも同一x_user_id再連携は許可）も要検討。
 
 ### T-M2-14: X OAuth callback（再連携・複数アカウント上限・拒否系） `todo`
 - 参照: A-3、A-6、要件05 §4.3、要件05 §11、要件03 §6 / 依存: T-M2-13 / サイズ: M
