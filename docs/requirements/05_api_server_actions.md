@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.16 |
+| バージョン | v1.17 |
 | 更新日 | 2026-07-24 |
 | 関連 | 全画面、全ジョブ |
 
@@ -234,7 +234,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 ベースmd更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。発信設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
-対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。
+対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
 
 ## 10. 通知
 
