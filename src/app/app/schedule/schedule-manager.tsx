@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -7,9 +8,12 @@ import {
   createScheduleSlotAction,
   deleteScheduleSlotAction,
   disableScheduleSlotAction,
+  disableXAutomationAction,
+  recordXAutomationConsentAction,
   updateScheduleSlotAction,
 } from "@/app/actions/schedule";
 import { Button } from "@/components/ui/button";
+import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 
 /**
@@ -66,15 +70,25 @@ export function ScheduleManager({
   slots,
   imageProviders,
   automationConsented,
+  xAccountId,
 }: {
   slots: ScheduleSlotView[];
   imageProviders: string[];
   automationConsented: boolean;
+  xAccountId: string;
 }) {
   const [creating, setCreating] = useState(false);
+  const hasAutoSlots = slots.some((s) => s.mode === "auto" && s.enabled);
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          「自動投稿」はXへ確認なしで投稿します。停止はいつでもできます。
+        </p>
+        {hasAutoSlots ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
+      </div>
+
       <WeekPreview slots={slots} />
 
       <div className="flex justify-end">
@@ -95,6 +109,7 @@ export function ScheduleManager({
             onSubmitDone={() => setCreating(false)}
             submitLabel="作成"
             target={{ kind: "create" }}
+            xAccountId={xAccountId}
           />
         </div>
       ) : null}
@@ -103,7 +118,64 @@ export function ScheduleManager({
         automationConsented={automationConsented}
         imageProviders={imageProviders}
         slots={slots}
+        xAccountId={xAccountId}
       />
+    </div>
+  );
+}
+
+/** SC-08/SC-11 共通の「自動投稿をすべて停止」（要件06 §3.5・§7）。opt-out即時反映＋無効化件数表示。 */
+export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function stopAll() {
+    setNotice(null);
+    startTransition(async () => {
+      const res = await disableXAutomationAction({ x_account_id: xAccountId });
+      if (res.status === "success") {
+        setNotice(`自動投稿を停止しました（${res.result?.disabledSlots ?? 0}件のスロットを無効化）。`);
+        router.refresh();
+      } else {
+        setNotice(res.message);
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <AlertDialog.Root>
+        <AlertDialog.Trigger
+          render={<Button disabled={pending} size="sm" type="button" variant="outline" />}
+        >
+          自動投稿をすべて停止
+        </AlertDialog.Trigger>
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+          <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+            <AlertDialog.Title className="text-lg font-semibold">
+              自動投稿をすべて停止しますか？
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+              このXアカウントの自動投稿スロットを無効化し、未投稿の自動ジョブを停止します。下書き作成のみのスロットと手動投稿は継続できます。
+            </AlertDialog.Description>
+            <div className="mt-6 flex justify-end gap-2">
+              <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+                キャンセル
+              </AlertDialog.Close>
+              <AlertDialog.Close onClick={stopAll} render={<Button size="lg" type="button" />}>
+                すべて停止
+              </AlertDialog.Close>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+      {notice ? (
+        <p className="text-xs text-emerald-700" role="status">
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -170,10 +242,12 @@ function SlotList({
   slots,
   imageProviders,
   automationConsented,
+  xAccountId,
 }: {
   slots: ScheduleSlotView[];
   imageProviders: string[];
   automationConsented: boolean;
+  xAccountId: string;
 }) {
   if (slots.length === 0) return null;
   return (
@@ -184,6 +258,7 @@ function SlotList({
           imageProviders={imageProviders}
           key={slot.id}
           slot={slot}
+          xAccountId={xAccountId}
         />
       ))}
     </ul>
@@ -194,10 +269,12 @@ function SlotRow({
   slot,
   imageProviders,
   automationConsented,
+  xAccountId,
 }: {
   slot: ScheduleSlotView;
   imageProviders: string[];
   automationConsented: boolean;
+  xAccountId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -284,6 +361,7 @@ function SlotRow({
             onSubmitDone={() => setEditing(false)}
             submitLabel="保存"
             target={{ kind: "edit", slotId: slot.id, expectedUpdatedAt: slot.updated_at }}
+            xAccountId={xAccountId}
           />
         </div>
       ) : null}
@@ -304,6 +382,7 @@ function SlotFields({
   initial,
   imageProviders,
   automationConsented,
+  xAccountId,
   submitLabel,
   onSubmitDone,
   onCancel,
@@ -312,6 +391,7 @@ function SlotFields({
   initial?: SlotFormValues;
   imageProviders: string[];
   automationConsented: boolean;
+  xAccountId: string;
   submitLabel: string;
   onSubmitDone: () => void;
   onCancel: () => void;
@@ -330,6 +410,9 @@ function SlotFields({
     },
   );
   const [notice, setNotice] = useState<string | null>(null);
+  // 同意済み（サーバー判定）＋本フォームで同意した分。auto保存の前提。
+  const [consented, setConsented] = useState(automationConsented);
+  const [showConsent, setShowConsent] = useState(false);
 
   const toggleWeekday = (d: number) =>
     setV((cur) => ({
@@ -339,16 +422,7 @@ function SlotFields({
         : [...cur.weekdays, d].sort((a, b) => a - b),
     }));
 
-  function submit() {
-    setNotice(null);
-    if (v.weekdays.length === 0) {
-      setNotice("曜日を1つ以上選択してください。");
-      return;
-    }
-    if (v.image_enabled && !v.image_provider) {
-      setNotice("画像をONにする場合はproviderを選択してください。");
-      return;
-    }
+  function doSubmit() {
     startTransition(async () => {
       const payload = {
         pattern: v.pattern,
@@ -376,9 +450,45 @@ function SlotFields({
         res.code === "job_conflict"
           ? "他の場所で更新されました。最新の状態を再読み込みしてください。"
           : res.code === "automation_consent_required"
-            ? "自動投稿を有効にするには、現在の説明への同意が必要です（設定から同意してください）。"
+            ? "自動投稿を有効にするには、現在の説明への同意が必要です。"
             : res.message,
       );
+    });
+  }
+
+  function submit() {
+    setNotice(null);
+    if (v.weekdays.length === 0) {
+      setNotice("曜日を1つ以上選択してください。");
+      return;
+    }
+    if (v.image_enabled && !v.image_provider) {
+      setNotice("画像をONにする場合はproviderを選択してください。");
+      return;
+    }
+    // mode=auto かつ未同意なら、保存前に同意modalを表示する（要件06 §3.5）。
+    if (v.mode === "auto" && !consented) {
+      setShowConsent(true);
+      return;
+    }
+    doSubmit();
+  }
+
+  // 同意modalの「同意して続行」→ 同意記録に成功したらそのまま保存する。
+  function confirmConsentAndSubmit() {
+    startTransition(async () => {
+      const res = await recordXAutomationConsentAction({
+        x_account_id: xAccountId,
+        consent_version: CURRENT_AUTOMATION_CONSENT_VERSION,
+        confirmed: true,
+      });
+      if (res.status !== "success") {
+        setNotice(res.message);
+        return;
+      }
+      setConsented(true);
+      setShowConsent(false);
+      doSubmit();
     });
   }
 
@@ -505,6 +615,64 @@ function SlotFields({
           {notice}
         </p>
       ) : null}
+
+      <AutomationConsentModal
+        onConfirm={confirmConsentAndSubmit}
+        onOpenChange={setShowConsent}
+        open={showConsent}
+        pending={pending}
+      />
     </div>
+  );
+}
+
+/** 自動投稿の説明＋説明文version付き明示checkbox（要件06 §3.5）。同意までauto slotは保存できない。 */
+function AutomationConsentModal({
+  open,
+  onOpenChange,
+  onConfirm,
+  pending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  return (
+    <AlertDialog.Root onOpenChange={onOpenChange} open={open}>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+          <AlertDialog.Title className="text-lg font-semibold">自動投稿の同意</AlertDialog.Title>
+          <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+            自動投稿を有効にすると、次の内容に同意したものとして扱います。
+          </AlertDialog.Description>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>生成された内容が、指定時刻に<span className="font-medium text-foreground">確認なしでXへ投稿</span>されます。</li>
+            <li>スレッド途中で失敗した場合、作成済みのポストを自動削除します。<span className="font-medium text-foreground">削除したポストはX上で復元できません。</span></li>
+            <li>投稿内容の責任は利用者本人が負います。</li>
+            <li>停止は「自動投稿をすべて停止」またはスロットの停止でいつでも行えます。</li>
+          </ul>
+          <label className="mt-4 flex items-start gap-2 text-sm">
+            <input
+              checked={agreed}
+              className="mt-0.5"
+              onChange={(e) => setAgreed(e.target.checked)}
+              type="checkbox"
+            />
+            <span>上記の説明（version: {CURRENT_AUTOMATION_CONSENT_VERSION}）を理解し、自動投稿に同意します。</span>
+          </label>
+          <div className="mt-6 flex justify-end gap-2">
+            <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+              キャンセル
+            </AlertDialog.Close>
+            <Button disabled={!agreed || pending} onClick={onConfirm} size="lg" type="button">
+              同意して保存
+            </Button>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }

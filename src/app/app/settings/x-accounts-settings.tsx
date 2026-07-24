@@ -10,6 +10,7 @@ import {
   enableXAccountAction,
   refreshXAccountStatusAction,
 } from "@/app/actions/x-accounts";
+import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { Button } from "@/components/ui/button";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
@@ -230,6 +231,10 @@ export function XAccountsSettings({
                   >
                     状態を更新
                   </Button>
+
+                  {account.automationActive ? (
+                    <StopAllAutomationButton xAccountId={account.id} />
+                  ) : null}
 
                   {account.status !== "disabled" ? (
                     <DisconnectButton

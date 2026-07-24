@@ -95,6 +95,7 @@ export default async function SchedulePage() {
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           slots={slots}
+          xAccountId={activeXAccountId}
         />
       )}
     </main>

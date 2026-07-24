@@ -1015,13 +1015,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `/app/schedule/page.tsx`（placeholder→実装）でslot一覧・imageProviders・automation同意状態・active_x_accountをロード（未連携は設定導線）。client`schedule-manager.tsx`: **WeekPreview**（時刻×曜日テーブル、slotをpattern略称バッジで表示・auto/draft/停止中で色分け）＋作成/編集フォーム`SlotFields`（**パターンはp1-p4/p6のみ=P-5除外**・曜日checkbox・時刻select[09:00-22:00の30分]・mode radio[下書き/自動]・画像toggle+provider・追加指示）＋`SlotRow`（編集inline/停止/削除）。全CRUDはT-M4-01のServer Action経由（create/update/disable/delete）→成功でrouter.refresh。**job_conflict**は「他の場所で更新…再読み込み」表示。mode=auto＋未同意は事前ヒント＋保存時`automation_consent_required`をメッセージ表示（同意modal接続はT-M4-05）。空状態あり。テスト: 全824 green（UIタスク・CRUDロジックはT-M4-01のschedule-slots.testで検証済み）・build通過。doc: 要件06 §2[SC-08]・§1[空状態・初期スケジュール作成なし]・要件05 §7 に既述で一致（変更なし）。
 - 後続への注意: **T-M4-05**が自動投稿同意modal（説明文version付きcheckbox・recordXAutomationConsentAction）とSC-08/SC-11の「自動投稿をすべて停止」（disableXAutomationAction・無効化slot数表示）をこの画面へ接続する。読み込み中状態はSSR（router.refresh）依存のため明示spinnerは省略（各アクションはpending表示あり）。
 
-### T-M4-05: 自動投稿同意モーダルと「自動投稿をすべて停止」UI（SC-08／SC-11） `todo`
+### T-M4-05: 自動投稿同意モーダルと「自動投稿をすべて停止」UI（SC-08／SC-11） `done`
 - 参照: S-3、SC-08、SC-11、要件06 §3.5、要件06 §7、PRD §8.1 / 依存: T-M4-02、T-M4-04 / サイズ: S
 - 完了条件:
   - 初めてmode=autoを選ぶと、指定時刻に確認なしで投稿されること・thread途中失敗時の自動rollback削除と不可逆性・投稿責任・停止方法を説明するmodalと説明文version付き明示checkboxが表示され、同意完了までauto slotを保存できない
   - SC-08とSC-11の「自動投稿をすべて停止」がdisableXAutomationを呼び、無効化slot数が表示される
   - 同意済みアカウントではmodalが再表示されず、説明文version更新時（consent_version不一致）は再同意が要求される
 - メモ: 説明文はコード管理のversion付き定数とし、文面変更でversionを上げる運用にする。
+- 実装メモ: `schedule-manager.tsx` の `SlotFields` に同意ゲート追加。mode=auto ＋ 未同意（`automationConsented` propベース＋本フォームでの同意）で保存すると `AutomationConsentModal`（説明: 確認なし投稿・途中失敗の自動rollback削除と復元不可・投稿責任・停止方法、`CURRENT_AUTOMATION_CONSENT_VERSION`付き明示checkbox）を表示、同意checkまで「同意して保存」不可。同意→`recordXAutomationConsentAction`成功→そのままslot保存。同意済み（サーバー判定は現行version一致）はmodal非表示、version更新時は`automationConsented=false`となり再同意要求。**`StopAllAutomationButton`（export・SC-08/SC-11共通）**: 確認dialog→`disableXAutomationAction`→無効化slot数表示＋refresh。SC-08はauto slot有り時に表示、**SC-11（設定Xアカウントタブ）**は`automationActive`アカウント行に同ボタンを再利用。テスト: 全824 green（UIタスク・consent/disableロジックはT-M4-02のautomation-consent.testで検証済み）・build通過。doc: 要件06 §3.5・PRD §8.1 に既述で一致（変更なし）。
+- 後続への注意: **M4スケジュールUI一巡**（CRUD＋同意＋停止全）。scheduler_tick（T-M4-06〜）が実際にauto/draft slotをenqueueして自動運用を稼働させる。説明文の実コピー改訂時は`CURRENT_AUTOMATION_CONSENT_VERSION`を更新（既存同意が失効し再同意要求）。
 
 ### T-M4-06: scheduler_tick骨格＋全tick冪等enqueue `todo`
 - 参照: 要件04 §6、要件04 §7.1、要件04 §7.2、S-2、O-5、要件03 §7.4、ADR-0002、要件05 §3 / 依存: T-M4-01、T-M4-02、M1、M3 / サイズ: L
