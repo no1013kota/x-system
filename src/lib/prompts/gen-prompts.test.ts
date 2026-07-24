@@ -4,6 +4,9 @@ import {
   PROMPT_TEMPLATE_KINDS,
   PT_FIX,
   PT_IMG,
+  PT_L1,
+  PT_L2,
+  PT_L3,
   SYS_GEN,
   SYS_NEWS,
   SYSTEM_DEFAULT_TEMPLATES,
@@ -11,7 +14,14 @@ import {
 
 describe("GEN prompt constants", () => {
   it("match the design doc §6 snapshot (drift detection)", () => {
-    expect({ SYS_GEN, SYS_NEWS, PT_FIX, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+    expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_L3, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+  });
+
+  it("LRN prompts (PT-L1〜L3) declare their JSON output contracts (§6.11〜6.13)", () => {
+    expect(PT_L1).toContain('"style"');
+    expect(PT_L2).toContain('"why"');
+    expect(PT_L3).toContain('"signature"');
+    for (const p of [PT_L1, PT_L2, PT_L3]) expect(p).toBe(p.trim());
   });
 
   it("SYS-NEWS keeps its runtime placeholders and JSON output contract (§6.10)", () => {

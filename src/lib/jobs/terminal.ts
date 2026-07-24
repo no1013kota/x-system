@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 
+import { refundUsage } from "../usage/generation-reserve";
 import type { JobKind } from "./handlers";
 
 /**
@@ -7,9 +8,9 @@ import type { JobKind } from "./handlers";
  * `recoverStaleJobs` が failed 確定と**同一 transaction**（同じ `PoolClient`）で呼ぶ。
  * すべて冪等（tickを複数回実行しても二重に効かない）で、対象が無い場合は no-op:
  *
- * - 未返還 reserve の refund（生成/画像）。冪等key `job:{id}:generation:refund` /
+ * - 未返還 reserve の refund（生成/画像・`refundUsage`）。冪等key `job:{id}:generation:refund` /
  *   `job:{id}:image:refund` の unique と「元reserveが在る場合のみ」で二重返還を防ぐ。
- *   reserve自体の作成は M6 のため現状は no-op だが、先に配線しておき M6 で自動的に効く。
+ *   reserve作成は learning_analysis（T-M5-03）が生成枠で開始済み。生成/画像jobの reserve は M6。
  * - kind別の draft/source 後始末:
  *   - `post_publish`: draft を `posting`→`failed` に戻し `last_post_error` を保存（放置しない）。
  *   - `image_generation`: draft を画像なし＋警告(failed印)で確定し、draft mode は draft_created 通知、
@@ -52,43 +53,6 @@ async function loadJobTerminal(
     [jobId],
   );
   return rows[0] ?? null;
-}
-
-/**
- * 生成/画像 reserve の返還（要件03 §7.3/§7.4）。元reserve行から counter_type/operation/month を
- * 引き継いで delta=-1 の refund event を作り、`ref_event_id` に元reserveを記録して usage_counters を
- * 1減らす。refund の idempotency_key unique と「元reserveが在る場合のみ」で二重返還を防止する。
- */
-async function refundReserve(
-  c: PoolClient,
-  jobId: string,
-  type: "generation" | "image",
-): Promise<void> {
-  const reserveKey = `job:${jobId}:${type}:reserve`;
-  const refundKey = `job:${jobId}:${type}:refund`;
-  const { rows } = await c.query<{ user_id: string; month: string; counter_type: string }>(
-    `insert into usage_events
-       (user_id, x_account_id, job_id, draft_id, month, counter_type, operation,
-        delta, reason, idempotency_key, ref_event_id)
-     select r.user_id, r.x_account_id, r.job_id, r.draft_id, r.month, r.counter_type,
-            r.operation, -1, 'refund', $2, r.id
-       from usage_events r
-      where r.idempotency_key = $1 and r.reason = 'reserve'
-     on conflict (idempotency_key) do nothing
-     returning user_id, month, counter_type`,
-    [reserveKey, refundKey],
-  );
-  const refunded = rows[0];
-  if (!refunded) return; // reserve未作成（M6前）または既にrefund済み → no-op
-  // 列はcounter_type由来の固定値（ユーザー入力ではない）。範囲checkはgreatestで下限0に保つ。
-  const column =
-    refunded.counter_type === "generation" ? "generations_count" : "images_count";
-  await c.query(
-    `update usage_counters
-        set ${column} = greatest(0, ${column} - 1), updated_at = now()
-      where user_id = $1 and month = $2`,
-    [refunded.user_id, refunded.month],
-  );
 }
 
 /** 全kind共通の失敗通知（type='error'・dedupe_key `job:{id}:failed`・設定尊重）。 */
@@ -233,7 +197,7 @@ export async function finalizeFailedJob(
 
   switch (kind) {
     case "post_generation":
-      await refundReserve(c, jobId, "generation");
+      await refundUsage(c, jobId, "generation");
       await createFailedNotification(c, {
         userId: job.user_id,
         jobId,
@@ -243,7 +207,7 @@ export async function finalizeFailedJob(
       });
       break;
     case "image_generation":
-      await refundReserve(c, jobId, "image");
+      await refundUsage(c, jobId, "image");
       await finalizeImageStale(c, job);
       break;
     case "post_publish":

@@ -139,6 +139,34 @@ export const SYS_NEWS = `あなたはニュース編集者です。Web検索で�
 # impact基準
 high=市場・規制・大手企業の重大発表／mid=業界内で話題／low=参考程度`;
 
+/**
+ * 学習分析プロンプト（PT-L1〜L3, プロンプト設計書 §6.11〜6.13, LRN-1〜3）。運営/システム側のコード定数で
+ * account編集対象外。base_md は読まず、取得済み投稿データを `<posts>`/`<post>`/`<metrics>` の素材として渡す。
+ */
+export const PT_L1 = `# タスク
+<posts>のXアカウント直近投稿を分析し、真似るべき「型」を抽出する。
+投稿から観察できる事実だけを書く。
+
+# 出力（JSONのみ）
+{"style":"文体の特徴3点・各40字以内","structure":"よく使う構成2点",
+"topics":"投稿傾向2点","takeaway":"取り入れる点を100字以内"}`;
+
+export const PT_L2 = `# タスク
+<post>の「伸びた投稿」1件（実績: <metrics>）を分析する。
+
+# 出力（JSONのみ）
+{"why":"伸びた理由の仮説2点・各50字以内","pattern":"再利用できる型を1文で",
+"caution":"真似る際の注意1点"}`;
+
+export const PT_L3 = `# タスク
+<posts>の本人の過去投稿から「自分らしさ」を抽出する。
+
+# 出力（JSONのみ）
+{"vocabulary":"よく使う語彙・口癖を最大5個","tone":"文体の特徴3点",
+"perspective":"ものの見方・立場2点・各50字以内",
+"signature":"この人らしい書き出しと締めの例を各1つ（原文のまま）",
+"examples":"文体をよく表す投稿を1〜2件（原文のまま）"}`;
+
 /** prompt_templates で管理する種別（system default seed 対象・account上書き可能）。 */
 export const PROMPT_TEMPLATE_KINDS = [
   "p1",

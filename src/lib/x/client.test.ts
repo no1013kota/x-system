@@ -143,11 +143,12 @@ describe("X client — request construction & normalization (live)", () => {
     ]);
     const res = await getTweetMetrics("tok", ["a", "b"], liveDeps(m.http));
     expect(m.requests[0].url).toBe(
-      "https://api.x.com/2/tweets?ids=a%2Cb&tweet.fields=public_metrics,non_public_metrics",
+      "https://api.x.com/2/tweets?ids=a%2Cb&tweet.fields=public_metrics,non_public_metrics,text",
     );
     expect(res.quantity).toBe(2);
     expect(res.tweets[0]).toEqual({
       id: "a",
+      text: null,
       publicMetrics: { like_count: 3 },
       nonPublicMetrics: { impression_count: 9 },
     });

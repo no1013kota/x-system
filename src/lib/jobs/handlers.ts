@@ -44,11 +44,16 @@ const postPublish: JobHandler = async (ctx) => {
   await postPublishHandler(ctx);
 };
 
+const learningAnalysis: JobHandler = async (ctx) => {
+  const { learningAnalysisHandler } = await import("./learning-analysis-server");
+  await learningAnalysisHandler(ctx);
+};
+
 const HANDLERS: Record<JobKind, JobHandler> = {
   post_generation: postGeneration,
   image_generation: imageGeneration,
   post_publish: postPublish,
-  learning_analysis: placeholder,
+  learning_analysis: learningAnalysis,
   md_merge: placeholder,
   suggestion: placeholder,
 };

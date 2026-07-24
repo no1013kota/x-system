@@ -85,6 +85,7 @@ export interface XUserResult extends XApiMeta {
 }
 export interface XTweetMetrics {
   id: string;
+  text: string | null;
   publicMetrics: Record<string, number> | null;
   nonPublicMetrics: Record<string, number> | null;
 }
@@ -263,17 +264,47 @@ export async function getMe(
   };
 }
 
-/** GET /2/tweets?ids=…&tweet.fields=public_metrics,non_public_metrics（K-1, 要件04 §13）。 */
+/** GET /2/users/by/username/{username}（L-1 参考アカウントの user_id 解決, 要件04 §12）。 */
+export async function getUserByUsername(
+  accessToken: string,
+  username: string,
+  deps: XClientDeps,
+): Promise<XUserResult> {
+  const { body: res, requestId } = await callX<{
+    data: { id: string; username: string; name: string; profile_image_url?: string };
+  }>(
+    {
+      method: "GET",
+      url: `${baseUrl(deps)}/users/by/username/${encodeURIComponent(username)}?user.fields=profile_image_url`,
+      headers: authHeaders(accessToken, false),
+    },
+    deps,
+  );
+  return {
+    user: {
+      id: res.data.id,
+      username: res.data.username,
+      name: res.data.name,
+      profileImageUrl: res.data.profile_image_url ?? null,
+    },
+    requestId,
+    quantity: 1,
+    dryRun: false,
+  };
+}
+
+/** GET /2/tweets?ids=…&tweet.fields=public_metrics,non_public_metrics,text（K-1/L-2, 要件04 §12/§13）。 */
 export async function getTweetMetrics(
   accessToken: string,
   tweetIds: string[],
   deps: XClientDeps,
 ): Promise<XTweetMetricsResult> {
   const ids = tweetIds.join(",");
-  const fields = "public_metrics,non_public_metrics";
+  const fields = "public_metrics,non_public_metrics,text";
   const { body: res, requestId } = await callX<{
     data?: Array<{
       id: string;
+      text?: string;
       public_metrics?: Record<string, number>;
       non_public_metrics?: Record<string, number>;
     }>;
@@ -287,6 +318,7 @@ export async function getTweetMetrics(
   );
   const tweets: XTweetMetrics[] = (res.data ?? []).map((t) => ({
     id: t.id,
+    text: t.text ?? null,
     publicMetrics: t.public_metrics ?? null,
     nonPublicMetrics: t.non_public_metrics ?? null,
   }));
