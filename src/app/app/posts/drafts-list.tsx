@@ -2,11 +2,13 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import { discardDraftAction } from "@/app/actions/drafts";
 import { Button } from "@/components/ui/button";
 import type { DraftView } from "@/lib/drafts";
+
+import { DraftEditor } from "./draft-editor";
 
 const PATTERN_LABEL: Record<string, string> = {
   p1: "ニュース解説",
@@ -67,9 +69,11 @@ export function DraftsList({
 function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
 
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
+  const editable = draft.status === "draft";
 
   function discard() {
     startTransition(async () => {
@@ -104,7 +108,14 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
           <span className="text-xs text-muted-foreground">{timeLabel(draft.updated_at)}</span>
         </div>
-        <DiscardButton disabled={pending} onConfirm={discard} />
+        <div className="flex items-center gap-2">
+          {editable && !editing ? (
+            <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
+              編集
+            </Button>
+          ) : null}
+          <DiscardButton disabled={pending} onConfirm={discard} />
+        </div>
       </div>
 
       {draft.parent_draft_id ? (
@@ -115,19 +126,23 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
         </p>
       ) : null}
 
-      <ol className="mt-3 space-y-2">
-        {draft.thread.map((post) => (
-          <li className="rounded-lg border bg-background p-3" key={post.local_id}>
-            <p className="text-sm whitespace-pre-wrap">{post.text}</p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">{post.weighted_length} / 280</span>
-              {post.warnings.map((w) => (
-                <WarningBadge code={w} key={w} />
-              ))}
-            </div>
-          </li>
-        ))}
-      </ol>
+      {editing ? (
+        <DraftEditor draft={draft} onDone={() => setEditing(false)} />
+      ) : (
+        <ol className="mt-3 space-y-2">
+          {draft.thread.map((post) => (
+            <li className="rounded-lg border bg-background p-3" key={post.local_id}>
+              <p className="text-sm whitespace-pre-wrap">{post.text}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">{post.weighted_length} / 280</span>
+                {post.warnings.map((w) => (
+                  <WarningBadge code={w} key={w} />
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
     </li>
   );
 }

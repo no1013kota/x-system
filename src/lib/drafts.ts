@@ -109,6 +109,10 @@ export async function updateDraft(
       details: { reason: "post_count", min: 1, max },
     });
   }
+  // 投稿本文は空不可（要件05 §12）。
+  if (params.posts.some((p) => p.text.trim().length === 0)) {
+    throw new AppError("validation_error", { details: { reason: "empty_post" } });
+  }
 
   // 既存画像のみ参照可（他draft/未所有の画像は不可）。
   const existingIds = new Set(draft.images.map((img) => img.local_id));

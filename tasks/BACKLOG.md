@@ -832,12 +832,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `/app/posts`をタブ対応（create/drafts/history、タブはLink `?tab=`）に刷新。drafts tab=`listDraftsForAccount(active,'drafts')`→`drafts-list.tsx`（クライアント）。各下書き: pattern・failed/警告バッジ・ポスト単位の警告バッジ（length_exceeded/cashtag_multiple/ng_word/source_missing/injection_suspected＋画像failedで画像失敗）・加重文字数/280・自動投稿手動確認バッジ。破棄=AlertDialog確認→`discardDraftAction`（expected_updated_at=draft.updated_at）→router.refresh。`parent_draft_id`があれば派生元リンク（`?tab=drafts&draftId=`）。deep-link=`?draftId=`で該当cardをring強調＋`id=draft-{id}`/`scroll-mt`。`DraftView`に`parent_draft_id`追加。**T-M3-05のdraft_created通知linkを`/app/posts?tab=drafts&draftId={id}`のdeep-link形式に更新**（通知から対象下書きへ直接遷移）。全710 green・build通過（UIはtypecheck/lint/build検証）。doc: SC-07・要件06 §4.3/§10が既述で整合＝影響なし。
 - 後続への注意: 下書き“編集”UI（本文編集・並べ替え・追加・削除→updateDraftAction）はT-M3-12。履歴タブ（posted）はT-M3-22。deep-linkのscrollIntoViewはCSS `scroll-mt`＋id anchorで対応（自動スクロールが要れば別途client効果）。
 
-### T-M3-12: SC-07下書き編集UI（本文編集・並べ替え・追加・削除） `todo`
+### T-M3-12: SC-07下書き編集UI（本文編集・並べ替え・追加・削除） `done`
 - 参照: 要件06 §4.3、要件05 §12、PRD §7 / 依存: T-M3-11 / サイズ: M
 - 完了条件:
   - 各ポストの本文編集・並べ替え・追加・削除ができ、加重文字数カウンタと280超過警告がリアルタイム表示される
   - pattern別最大数超過・空本文は保存できず、楽観lock競合時（job_conflict）は再読込を促すエラーが表示される
   - モバイル幅でも下書き全文確認・本文編集・破棄が操作できる
+- 実装メモ: `draft-editor.tsx`（クライアント）＝ポスト単位のtextarea編集・↑↓並べ替え・×削除・＋追加、`weightedLength`（twitter-text、client）で加重文字数/280をリアルタイム表示＋超過警告。pattern別最大（inline map）超過・空本文・0件は保存無効化。保存=`updateDraftAction`（expected_updated_at=draft.updated_at）→success:router.refresh＋編集終了／job_conflict:「最新に再読込してください」。drafts-list.tsxのDraftCardにstatus=draftのみ「編集」トグルを追加（編集中はDraftEditor、通常は読み取りthread）。モバイルは1カラム（textarea幅100%）で全文確認・編集・破棄可。**server強化**: `updateDraft`で空本文（trim空）をvalidation_error(empty_post)に（要件05 §12）。テスト+1（空本文拒否ユニット）。全711 green・build通過（UIはtypecheck/lint/build検証）。doc: 要件06 §4.3・要件05 §12が既述で整合＝影響なし。
+- 後続への注意: 追加指示付き再生成（regenerateDraft・派生下書き）はT-M3-13。画像のpost割当編集・quote編集は画像/P-5タスク。編集時のNG/出典警告はupdateDraft保存時に再計算（表示は保存後の再読込で反映）。
 
 ### T-M3-13: regenerateDraft（追加指示付き再生成） `todo`
 - 参照: 要件05 §5、要件06 §4.3、PRD §5.4 / 依存: T-M3-07、T-M3-11 / サイズ: M

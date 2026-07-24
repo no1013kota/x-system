@@ -84,6 +84,15 @@ describe("updateDraft", () => {
     expect(err.details?.max).toBe(6);
   });
 
+  it("rejects an empty post body", async () => {
+    const { db } = makeDb((sql) => (LOAD.test(sql) ? [ownedDraft()] : []));
+    const err = await rejection(
+      updateDraft(db, { userId: "u1", draftId: "d1", expectedUpdatedAt: "t", posts: [{ text: "  " }] }),
+    );
+    expect(err.code).toBe("validation_error");
+    expect(err.details?.reason).toBe("empty_post");
+  });
+
   it("rejects referencing an unknown image", async () => {
     const { db } = makeDb((sql) =>
       LOAD.test(sql) ? [ownedDraft({ images: [{ local_id: "img1", storage_path: "p" }] })] : [],
