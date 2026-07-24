@@ -1297,13 +1297,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核 `jobs/follower-snapshot.ts`（DB/X読取/deadline注入・純粋）＝selectDue（`status=active` かつ `not exists (follower_snapshots where snapshot_date = (now() at time zone 'Asia/Tokyo')::date)`・`created_at,id`順・`limit accounts+1`で超過検知）→account単位最大10並列（metrics-collectorと同じcursor pool）でtoken取得→自 x_user_id の followers_count 読取→`insert ... on conflict (x_account_id, snapshot_date) do update`。count null（取得不能）は書かず deferred、token取得失敗/読取throwはonErrorで隔離skip＋deferred。配線 `follower-snapshot-server.ts`（token=getValidXAccessToken・読取=readUserFollowers・原価台帳idempotencyは `follower:{windowKey}:{xAccountId}` で窓別計上）、cronルート（毎時10分）は既存stubへ auth＋withCronWindowClaim＋**遅延import**で配線。JST日付・upsert・limitはSQL/中核で担保。テスト: db（当日書込&同日再実行で重複なし・count不変／token nullでskip・未書込／count nullで未書込&deferred）＋route-auth（401）。全1001 green・build通過。metrics-collectorのレビュー済みパターン踏襲のため個別レビューは省略。doc: 要件04 §13 follower行を上限/隔離込みに拡充（v1.6）、§6表・§3.11スキーマは既存で一致。
 - 後続への注意: フォロワー推移グラフUIは T-M5-16。原価台帳の idempotencyKey は毎時窓を含むため、同一アカウントの当日読取は selectDue の filter により実質1回（初回成功後は当日対象外）。
 
-### T-M5-15: T-M5-15: SC-09 投稿実績表示（tweet_id別・checkpoint切替・スレッド合算） `todo`
+### T-M5-15: T-M5-15: SC-09 投稿実績表示（tweet_id別・checkpoint切替・スレッド合算） `done`
 - 参照: K-1、SC-09、要件06 §8、要件05 §9、要件02 §4.9 / 依存: T-M5-12、M4 / サイズ: M
 - 完了条件:
   - モックtweet_metricsデータで、tweet_idごとの行（impressions/likes/reposts/profile_clicks・取得日時）が表示され、1日/7日/30日のcheckpoint切替（既定は取得済み最長checkpoint）が動作する
   - スレッド合算が同一checkpoint取得済みのtweet_idだけで表示時に計算され欠損ID数が併記される／profile_clicks取得不能は0ではなく`--`表示／30日checkpoint後は「更新終了」を表示する
   - 部分失敗でX上に残ったtweet_idは「不完全なthread」と明示して1行ずつ表示し、rollback削除済みIDは監査履歴表示のみで実績集計から除外される
 - メモ: getAnalyticsSummary(period_days) Actionをあわせて実装（tweet_metricsから集計、合算の別カラム保存はしない）。M4依存は投稿履歴（posted draft・tweet_ids）の存在。Xアカウント切替で再取得。
+- 実装メモ: 中核 `analytics.ts`（純粋）＝`buildDraftAnalytics`（posted=全tweet_id live／failed=remaining live＋deleted監査行、unavailable印、incomplete/metricsCompleted）、`defaultCheckpoint`（合算対象で取得済み最長・無ければ1）、`aggregateThread(draft,checkpoint)`（合算対象=非監査&非unavailable、選択checkpoint取得済みのみ合計・**各fieldは全present非nullの時だけ合計、1件でもnullなら null＝`--`**、欠損数=checkpoint未取得の合算対象数）、`summarize`（checkpoint別 tweets/impressions/likes/reposts/profile_clicks を非null加算）。配線 `analytics-server.ts`（`loadAnalyticsForUser`＝posted＋`remaining_tweet_ids`>0のfailedを posted_at 期間で所有権付き読取、`getAnalyticsSummaryForUser`）、Action `app/actions/analytics.ts`（`getAnalyticsSummaryAction({period_days})`・active account解決）、UI `analytics/page.tsx`（直近90日ロード・未連携はEmptyState）＋`analytics-view.tsx`（client・1/7/30切替＝既定最長・合算カード＋欠損併記・tweet別表・profile_clicks `--`・監査/取得不能/不完全thread/更新終了バッジ）。テスト: 単体9（build/default/aggregate null伝播/監査除外/summarize）＋db2（期間・posted/failed-remaining選定・remaining無しfailed/draft/期間外除外・他ユーザー除外）。全1012 green・build通過。UIはrepo方針でcomponent testなし（型/lint/build＋core/Action単体で担保）。doc: 要件06 §8 に90日窓＋summary集計を追記（v1.17）、§8既述の表示仕様（checkpoint切替/合算/`--`/更新終了/不完全thread/監査除外）と一致。
+- 後続への注意: フォロワー推移グラフは T-M5-16（follower_snapshots）。改善提案表示は T-M5-17系（SUGGEST）。実績一覧の期間は90日固定（summary Actionのみ period_days 可変）。checkpoint切替はグローバル（全draft横断・既定=最長）。
 
 ### T-M5-16: T-M5-16: SC-09 フォロワー数推移グラフ `todo`
 - 参照: K-3、SC-09、要件02 §3.11、要件06 §2 / 依存: T-M5-14 / サイズ: S

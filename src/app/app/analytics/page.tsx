@@ -1,9 +1,57 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { FeaturePlaceholder } from "@/components/app-shell/feature-placeholder";
+import { EmptyState } from "@/components/app-shell/page-state";
+import { loadAnalyticsForUser } from "@/lib/analytics-server";
+import { APP_NAME } from "@/lib/app-config";
+import { getCurrentUser } from "@/lib/auth/session";
+import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-export const metadata: Metadata = { title: "分析 | Space AI" };
+import { AnalyticsView } from "./analytics-view";
 
-export default function AnalyticsPage() {
-  return <FeaturePlaceholder description="投稿実績と改善提案はM5で追加します。" title="分析" />;
+export const metadata: Metadata = { title: `分析 | ${APP_NAME}` };
+
+/** 実績表示は直近90日の投稿を対象にする（30日checkpointの回収期間＋余裕）。 */
+const ANALYTICS_PERIOD_DAYS = 90;
+
+export default async function AnalyticsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/app/analytics");
+
+  const xAccountId = await resolveActiveXAccountForUser(user.id);
+  if (!xAccountId) {
+    return (
+      <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+        <header>
+          <p className="text-sm font-medium text-muted-foreground">SC-09</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
+        </header>
+        <div className="mt-7">
+          <EmptyState
+            actionHref="/app/settings?tab=x-accounts"
+            actionLabel="Xアカウント設定へ"
+            description="実績は連携済みのXアカウントごとに表示されます。"
+            title="Xアカウントを選択してください"
+          />
+        </div>
+      </main>
+    );
+  }
+
+  const drafts = await loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS);
+
+  return (
+    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+      <header>
+        <p className="text-sm font-medium text-muted-foreground">SC-09</p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          投稿ごとの実績を、投稿後1日・7日・30日のcheckpointで確認できます（直近90日）。
+        </p>
+      </header>
+      <div className="mt-7">
+        <AnalyticsView drafts={drafts} />
+      </div>
+    </main>
+  );
 }

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.16 |
+| バージョン | v1.17 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -224,6 +224,7 @@ P-5は将来の有効化後に全プランで手動生成できる。`FEATURE_QU
 - profile_clicksは所有ポストへのuser context取得が可能な期間だけ表示し、取得不能は`0`ではなく`--`とする。
 - 投稿後1日・7日・30日に実績を更新する。30日checkpoint後は最終取得値を保持し、更新終了をUIに表示する。
 - 部分失敗でX上に残ったtweet_idも1行ずつ実績を収集・表示し、「不完全なthread」と明示する。rollback削除済みIDは監査履歴には表示するが実績集計から除外する。
+- 実績一覧はactive Xアカウントの直近90日（30日checkpoint回収期間＋余裕）に投稿された`posted`と、`remaining_tweet_ids`を持つ`failed`のdraftを新しい順に表示する。`getAnalyticsSummary(period_days)`は同集計をcheckpoint別合計（tweets/impressions/likes/reposts/profile_clicks）で返す（別カラム保存はしない）。
 
 ## 9. アカウント設定の補足
 
