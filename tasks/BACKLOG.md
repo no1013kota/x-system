@@ -745,13 +745,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `src/lib/prompts/gen-prompts.ts`にSYS-GEN・PT-P1〜P6・PT-IMG・PT-FIXを設計書§6.1〜6.9の全文どおり定数化＋`SYSTEM_DEFAULT_TEMPLATES`（p1〜p6/image＝seed対象。SYS-GEN/PT-FIXは含めずコード専用）。`prompt-templates.ts`＝`seedSystemPromptTemplates`（`on conflict (kind) where x_account_id is null do update`でコード定数へ冪等同期＝7件、既存partial unique index活用）＋`resolvePromptTemplate`（account上書き→system default→コード定数フォールバック）。テスト+11（スナップショット1＝§6乖離検出／構造・placeholder・7種／解決優先順・null時override非照会・コードfallback＝ユニット／DB: seed二度実行で7件一致・実override>system>null）。全637 green。doc: プロンプト設計書 §6が正本で一致・要件02 §3.5整合＝影響なし。
 - 後続への注意: 生成パイプライン（T-M3-03/04）はSYS-GEN＋`resolvePromptTemplate(kind)`で本文を組み立て、短縮はPT-FIX（{{limit}}）、画像はPT-IMG（{{post_text}}/{{tone_section}}）を使う。プロンプト全文を変更したら定数を更新しスナップショット更新＋doc同期。seedはデプロイ/初期化時に実行（実行配線は利用側）。
 
-### T-M3-03: 文章生成アダプタのGEN対応（3プロバイダ・Web検索・JSON・usage正規化） `todo`
+### T-M3-03: 文章生成アダプタのGEN対応（3プロバイダ・Web検索・JSON・usage正規化） `done`
 - 参照: プロンプト設計書 §5.1〜5.4、プロンプト設計書 §5.6、A-5、要件02 §4.6、要件02 §3.17、要件04 §5 / 依存: M2 / サイズ: L
 - 完了条件:
   - TextGen共通インターフェース（system[]／user／webSearch／jsonSchema／timeoutMs）でanthropic/openai/googleの3アダプタが動作し、モックHTTPで本文・citations・usage・request_id・stop_reasonが共通形式へ正規化される
   - Anthropicの`pause_turn`継続が同一Function実行内のみ・残り30秒以上・最大2回で行われ、超過時はretryable（次attemptはmaxUses縮小の新規リクエスト）となることをモックで確認できる
   - 各callのtoken・検索回数・実行時単価・推定原価が`generation_jobs.usage`形式へ保存され、`external_api_usage_events`へ冪等記録される
 - メモ: M2のNEWS実装で作るClaudeアダプタ・原価台帳を土台に、OpenAI（Responses API・store:false）とGemini（Interactions API・store=false、generateContentフォールバック）、Web検索＋JSON出力併用、prompt cachingを追加する。モデル名・検索toolのversionは環境変数。実装時に§5.7の公式ドキュメントで最新仕様を要確認。
+- 実装メモ: ギャップ分析（Exploreエージェント）の結果、**条件1（共通契約`types.ts`＋anthropic/openai/gemini 3アダプタ＋normalize＋モックHTTPテスト）と条件2（pause_turn: `deadline.canStartCall()`のMIN_CALL_HEADROOM_MS=30s／MAX=2／`PauseTurnIncompleteError`retryable／`reduceWebSearchMaxUses`）はM0（T-M0-16〜19）で実装済み**＝重複せず流用。真の追加は**条件3（推定原価＋台帳）**のみ。(a)`ai/pricing.ts`＝provider別レート（USD/MTok＋検索単価、目安・要定期更新）＋`estimateProviderCost(provider,usage)`（6桁丸め・未知provider0）。(b)`pipeline.ts` callOnceで`estimateProviderCost`を`meta.estimatedCostUsd`へ注入→`usage.calls[].estimated_cost_usd`と`estimated_cost_usd_total`が非0に。(c)`db/api-usage-ledger.ts`＝`recordExternalApiUsage`（`on conflict (idempotency_key) do nothing`、成功/失敗とも記録＝要件04 §10）＋`providerCallToUsageEvent`マッパ。テスト+8（pricing 6・台帳DB 2冪等/失敗記録、pipeline cost検証1追加）。全645 green。doc: 要件04 §10（冪等・request_id・usage・実行時単価・推定原価・成功失敗）／要件02 §4.6・§3.17が既述で整合＝影響なし。推定原価の算出方式はpricing.ts局所の見積もり（レート変動）でADR基準外＝ADR不要。
+- 後続への注意: **generation_jobs.usageのDB書込みとper-call台帳記録の“結線”はT-M3-05 worker**が担う（jobId/userId/idempotencyKeyを供給。冪等キー例`${jobId}:${provider}:${callSeq}`）。**D-4（失敗call記録責務）**: 台帳ヘルパは`status=failed`記録に対応済み＝workerが捕捉した失敗callも`recordExternalApiUsage`で記録すればよい（案B寄り。最終決定はT-M3-05で）。`reduceWebSearchMaxUses`のretry適用・検索toolのversion env化・search+JSON併用許可リスト（normalize.ts空）はworker/実装時の公式doc確認で対応。価格改定時はpricing.tsを更新。
 
 ### T-M3-04: GENコンテキスト組み立て（固定部＋可変部） `todo`
 - 参照: プロンプト設計書 §4.1、プロンプト設計書 §4.2、要件02 §4.4、GEN-P1〜P6 / 依存: T-M3-02、M0 / サイズ: M

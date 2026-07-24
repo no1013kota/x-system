@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 
 import { parseAndValidate } from "./parse";
 import { toProviderCall, type ProviderCall } from "./normalize";
+import { estimateProviderCost } from "./pricing";
 import type { GenerationUsage } from "./usage-schema";
 import type { TextGen, TextGenRequest } from "./types";
 
@@ -82,6 +83,7 @@ export async function runTextGeneration<T>(
         model: opts.model,
         operation: opts.operation,
         latencyMs: now() - start,
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
       }),
     );
     return out;

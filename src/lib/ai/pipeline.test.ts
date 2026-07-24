@@ -53,6 +53,9 @@ describe("runTextGeneration", () => {
     expect(out.parsed.posts[0].text).toBe("ok");
     expect(out.usage.calls).toHaveLength(1);
     expect(generationUsageSchema.safeParse(out.usage).success).toBe(true);
+    // 推定原価が計上され、totalがcall合計と一致する（T-M3-03）
+    expect(out.usage.calls[0].estimated_cost_usd).toBeCloseTo(0.000105, 6); // (10*3+5*15)/1e6
+    expect(out.usage.estimated_cost_usd_total).toBe(out.usage.calls[0].estimated_cost_usd);
   });
 
   it("accepts code-fenced JSON without a repair call", async () => {
