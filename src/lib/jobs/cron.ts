@@ -1,4 +1,9 @@
 import { getPool, withTransaction } from "../db/pool";
+import {
+  recoverQueuedEmails,
+  type RecoverQueuedEmailsDeps,
+  type RecoverQueuedEmailsResult,
+} from "../email/recover-queued";
 import type { Queryable } from "../x/token-refresh";
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
@@ -93,6 +98,7 @@ export interface SchedulerTickResult {
   enqueued: EnqueueResult;
   dispatched: number;
   recovered: StaleRecoveryResult;
+  emailsRecovered: RecoverQueuedEmailsResult;
   cleaned: CleanupResult;
 }
 
@@ -111,6 +117,8 @@ export async function runSchedulerTick(
     removeStorageObjects?: (paths: string[]) => Promise<void>;
     imageBucket?: string;
     onCleanupError?: (scope: string, err: unknown) => void;
+    sendEmail?: RecoverQueuedEmailsDeps["send"];
+    onEmailStaleWarning?: (oldestAgeMs: number) => void;
   } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
@@ -146,6 +154,15 @@ export async function runSchedulerTick(
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
+  // (4') queuedメール回収（100件/10並列。要件04 §6/§14, T-M4-17）。sendEmail 未注入なら skip。
+  const emailsRecovered = opts.sendEmail
+    ? await recoverQueuedEmails({
+        db: pooledDb,
+        send: opts.sendEmail,
+        onStaleWarning: opts.onEmailStaleWarning,
+      })
+    : { processed: 0, sent: 0, requeued: 0, failed: 0 };
+
   // (5) 保持cleanup（40日超データ・24時間超の未参照Storage画像。要件04 §14）。
   // 失敗しても他段・tick本体を止めない（cleanupOldData 内で段ごとに握り潰し onError へ記録）。
   const cleaned = await cleanupOldData({
@@ -155,5 +172,5 @@ export async function runSchedulerTick(
     onError: opts.onCleanupError,
   });
 
-  return { scheduleRecovered, enqueued, dispatched, recovered, cleaned };
+  return { scheduleRecovered, enqueued, dispatched, recovered, emailsRecovered, cleaned };
 }

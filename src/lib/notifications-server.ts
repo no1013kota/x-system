@@ -6,6 +6,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  retryNotificationEmail,
   type NotificationPage,
 } from "./notifications";
 import type { Queryable } from "./x/token-refresh";
@@ -42,4 +43,11 @@ export function markNotificationReadForUser(
 
 export function markAllNotificationsReadForUser(userId: string): Promise<number> {
   return markAllNotificationsRead(pooledDb, userId);
+}
+
+export function retryNotificationEmailForUser(
+  userId: string,
+  notificationId: string,
+): Promise<void> {
+  return retryNotificationEmail(pooledDb, userId, notificationId);
 }

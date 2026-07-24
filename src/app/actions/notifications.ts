@@ -9,6 +9,7 @@ import {
   listNotificationsForUser,
   markAllNotificationsReadForUser,
   markNotificationReadForUser,
+  retryNotificationEmailForUser,
 } from "@/lib/notifications-server";
 import type { NotificationView } from "@/lib/notifications";
 
@@ -107,6 +108,23 @@ export async function markAllNotificationsReadAction(): Promise<NotificationMuta
   try {
     const count = await markAllNotificationsReadForUser(auth.userId);
     return { count, message: "", status: "success", unreadCount: 0 };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function retryNotificationEmailAction(
+  input: unknown,
+): Promise<BaseResult> {
+  const parsed = idSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await retryNotificationEmailForUser(auth.userId, parsed.data.notification_id);
+    return { message: "メールの再送を予約しました。", status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

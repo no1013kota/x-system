@@ -151,3 +151,36 @@ export async function markAllNotificationsRead(
   );
   return rowCount ?? 0;
 }
+
+/**
+ * 失敗した通知メールの再送要求（要件04 §14・要件05 §10, T-M4-17）。本人・`email_status='failed'` のみ受理し、
+ * `attempts` を0へ戻して queued 化する（scheduler_tick が回収して送る）。同一通知の1分以内の連続実行は
+ * `email_last_attempt_at` guard で拒否する（job_conflict）。不在・他人・非failedも job_conflict/not_found。
+ */
+export async function retryNotificationEmail(
+  db: Queryable,
+  userId: string,
+  notificationId: string,
+): Promise<void> {
+  const { rows } = await db.query<{ email_status: string }>(
+    `select email_status from notifications where id = $1 and user_id = $2`,
+    [notificationId, userId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("not_found");
+  if (row.email_status !== "failed") {
+    throw new AppError("job_conflict", { details: { reason: "not_failed" } });
+  }
+  const { rowCount } = await db.query(
+    `update notifications
+        set email_status = 'queued', email_attempts = 0, email_error = null,
+            email_available_at = now()
+      where id = $1 and user_id = $2 and email_status = 'failed'
+        and (email_last_attempt_at is null or email_last_attempt_at < now() - interval '1 minute')`,
+    [notificationId, userId],
+  );
+  // status は failed 確認済み。0件は時刻guard不成立＝1分以内の連続実行。
+  if ((rowCount ?? 0) === 0) {
+    throw new AppError("job_conflict", { details: { reason: "retry_too_soon" } });
+  }
+}
