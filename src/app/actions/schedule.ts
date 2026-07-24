@@ -1,0 +1,144 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { getCurrentUser } from "@/lib/auth/session";
+import { getPool, withTransaction } from "@/lib/db/pool";
+import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import {
+  createScheduleSlot,
+  createScheduleSlotSchema,
+  deleteScheduleSlot,
+  disableScheduleSlot,
+  listScheduleSlots,
+  slotLockSchema,
+  updateScheduleSlot,
+  updateScheduleSlotSchema,
+  type ScheduleSlotDeps,
+  type ScheduleSlotView,
+} from "@/lib/schedule-slots";
+import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
+import type { Queryable } from "@/lib/x/token-refresh";
+
+/**
+ * スケジュールスロットの Server Actions（要件05 §7, T-M4-01）。本人のみ・active_x_account スコープ。
+ * zod検証・楽観lock・auto同意ゲートは中核（schedule-slots.ts）で行い、ここで pool・active_x_account
+ * 解決・revalidate を束ねる。
+ */
+
+const pooledDb: Queryable = {
+  query: <T = unknown>(sql: string, params?: unknown[]) =>
+    getPool().query(sql, params) as unknown as Promise<{
+      rows: T[];
+      rowCount: number | null;
+    }>,
+};
+
+const slotDeps: ScheduleSlotDeps = {
+  runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+  resolveActiveXAccountId: (userId) => resolveActiveXAccountForUser(userId),
+};
+
+interface BaseResult {
+  code?: string;
+  details?: Record<string, unknown>;
+  message: string;
+  status: "error" | "success";
+}
+
+async function requireUserId(): Promise<
+  { ok: true; userId: string } | { ok: false; result: BaseResult }
+> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return {
+      ok: false,
+      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
+    };
+  }
+  return { ok: true, userId: user.id };
+}
+
+export async function listScheduleSlotsAction(): Promise<
+  BaseResult & { slots?: ScheduleSlotView[] }
+> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const activeId = await resolveActiveXAccountForUser(auth.userId);
+    const slots = activeId ? await listScheduleSlots(pooledDb, activeId) : [];
+    return { slots, message: "", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function createScheduleSlotAction(
+  input: unknown,
+): Promise<BaseResult & { slot?: ScheduleSlotView }> {
+  const parsed = createScheduleSlotSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const slot = await createScheduleSlot(auth.userId, parsed.data, slotDeps);
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを作成しました。", slot, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function updateScheduleSlotAction(
+  input: unknown,
+): Promise<BaseResult & { slot?: ScheduleSlotView }> {
+  const parsed = updateScheduleSlotSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const slot = await updateScheduleSlot(auth.userId, parsed.data, slotDeps);
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを更新しました。", slot, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function disableScheduleSlotAction(
+  input: unknown,
+): Promise<BaseResult & { slot?: ScheduleSlotView }> {
+  const parsed = slotLockSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const slot = await disableScheduleSlot(auth.userId, parsed.data, slotDeps);
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを停止しました。", slot, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function deleteScheduleSlotAction(input: unknown): Promise<BaseResult> {
+  const parsed = slotLockSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await deleteScheduleSlot(auth.userId, parsed.data, slotDeps);
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを削除しました。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}

@@ -46,6 +46,7 @@
 | `forbidden` | 403 | プラン/所有権/RLS相当の拒否 |
 | `validation_error` | 400 | 入力不正 |
 | `legal_consent_required` | 403 | 重大改定後の利用規約同意／privacy確認が未完了 |
+| `automation_consent_required` | 403 | 自動投稿（mode=auto）の現行version同意が未完了 |
 | `subscription_required` | 402 | 課金状態により実行不可 |
 | `usage_limit_exceeded` | 403 | premium利用枠不足 |
 | `x_account_required` | 400 | Xアカウント未連携 |

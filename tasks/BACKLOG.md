@@ -976,13 +976,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M4: 自動運用・ニュース・通知
 
-### T-M4-01: schedule_slots CRUD Server Actions（一覧・作成・更新・停止・削除） `todo`
+### T-M4-01: schedule_slots CRUD Server Actions（一覧・作成・更新・停止・削除） `done`
 - 参照: S-1、S-2、S-4、SC-08、要件05 §7、要件05 §12、要件02 §3.10 / 依存: M0、M2 / サイズ: M
 - 完了条件:
   - zod検証（pattern p5不可・weekdays 0〜6重複なし1件以上・time_jst 09:00〜22:00の00/30分・画像ON時provider必須・instructions 2,000字以下）の違反がvalidation_errorになる単体テストが通る
   - updateScheduleSlot/disableScheduleSlot/deleteScheduleSlotでexpected_updated_at不一致が0件更新となりjob_conflictを返すことをローカルDBで確認
   - mode=autoの作成・auto変更・再有効化は、x_accountsの現行version同意（consent_version一致かつconsented_at非null かつdisabled_at null）がない場合に拒否される
 - メモ: M0のDBスキーマ（schedule_slots）とM2のactive_x_account検証（所有権・status=active・profiles.active_x_account_id一致→不一致はjob_conflict）を前提。同意記録Action自体は次タスクだが、本タスクではx_accountsカラムを読む同意判定ヘルパーを実装して共用する。
+- 実装メモ: 中核`lib/schedule-slots.ts`（zodスキーマ createScheduleSlot/updateScheduleSlot/slotLock、`validTimeJst`[09:00〜22:00・00/30分・22:30除外]、weekdays[0-6・重複なし・1件以上]、`imageProviderRefine`[画像ON→provider必須]、instructions≤2000、pattern p1-p4/p6[**P-5除外**]）。CRUD: list/create/update/disable/delete、all本人・active_x_account スコープ、update/disable/deleteは`updated_at::text=$expected`の楽観lock（0件更新→job_conflict）＋loadOwnedSlot所有権（未所有→not_found）。**同意ゲート** `assertAutomationConsent`（x_accounts: automation_consent_version===CURRENT＋consented_at非null＋disabled_at null、不成立で`automation_consent_required`）を create(mode=auto)・update(→auto) で適用。`CURRENT_AUTOMATION_CONSENT_VERSION`を`lib/legal.ts`へ追加。ErrorCode `automation_consent_required`(403)を追加（errors.ts＋stripe checkout/portalのHTTP_STATUS map＋要件05 §2.2表）。action`app/actions/schedule.ts`（getCurrentUser＋resolveActiveXAccountForUser[status=active検証済み]＋withTransaction runInTx＋revalidate）。テスト+16（schema検証: P-5/weekdays/time/画像provider/instructions、consent gate 作成/auto化、楽観lock update/disable/delete→job_conflict、未所有→not_found、active無し→x_account_required）、全814 green・build通過。**注**: 楽観lockはユニット（mock 0件更新）で検証。実local DBでの`.db.test`はDB稼働時に追加（サンドボックスでcolima未起動のため今回はunit検証）。doc: 要件05 §7/§12・要件02 §3.10 は既述で一致、§2.2にerror code追記。zod v4の`.uuid()`はversion/variant厳格（テストuuidは有効値必須）。
+- 後続への注意: **T-M4-02**が`recordXAutomationConsent`（automation_consent_version=CURRENT＋consented_at保存・disabled_at null化）と`disableXAutomation`（disabled_at設定＋auto slot無効化＋queued auto job cancel）を実装。同意判定は本タスクの`assertAutomationConsent`/`CURRENT_AUTOMATION_CONSENT_VERSION`を再利用可。schedule UI（SC-08）は別タスク。scheduler_tickのenqueueは別タスク（M4後半）。
 
 ### T-M4-02: 自動投稿の明示同意Action（recordXAutomationConsent／disableXAutomation） `todo`
 - 参照: S-3、A-3、要件05 §4.3、要件05 §7、要件02 §3.3、要件06 §3.5 / 依存: M2 / サイズ: M

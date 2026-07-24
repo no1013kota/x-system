@@ -10,6 +10,7 @@ export type ErrorCode =
   | "forbidden"
   | "validation_error"
   | "legal_consent_required"
+  | "automation_consent_required"
   | "subscription_required"
   | "usage_limit_exceeded"
   | "x_account_required"
@@ -27,6 +28,7 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   forbidden: "この操作を実行する権限がありません。",
   validation_error: "入力内容を確認してください。",
   legal_consent_required: "利用規約等の更新内容をご確認ください。",
+  automation_consent_required: "自動投稿を有効にするには、現在の説明への同意が必要です。",
   subscription_required: "現在のご契約状態ではこの操作を実行できません。",
   usage_limit_exceeded: "今月の利用上限に達しています。",
   x_account_required: "Xアカウントの連携が必要です。",
