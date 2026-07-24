@@ -735,13 +735,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `src/lib/post/`に4純粋モジュール。text-metrics.ts=**公式`twitter-text` v3の`parseTweet`/`extractCashtags`**を使い加重文字数（CJK重み2・URL 23固定・280境界）＋cashtag件数、`measurePostText`（withinLimit≤280・cashtagOk≤1・empty）。x-url.ts=`parseXPostUrl`（host x.com/twitter.com＋www可、path `/{handle}/status/{数値}`、handle≤15、http/httpsのみ）。source-url.ts=`validateSourceUrl`（https必須／DNS解決の**全アドレス**をisBlockedIpで検査＝rebinding対策／redirect手動追跡で各hop再検証／HEAD・本文取得なし／AbortControllerで10秒timeout、DNS・fetch注入）＋`isBlockedIp`（IPv4 private/loopback/link-local/CGNAT/reserved、IPv6 ::1/fe80/fc00/ff・IPv4-mapped）。ng-words.ts=`matchNgWords`（コード部分一致・大小無視・重複排除、LLM不使用）。テスト+33（加重/CJK/URL/境界/cashtag・X URL各種・NG・出典URL: 公開200/http拒否/private拒否/rebinding/redirect先private拒否/公開redirect通過/location無/DNS失敗/redirect過多/timeout）。全626 green。doc: 要件05 §12・プロンプト設計書 §7が既述で整合＝影響なし。
 - 後続への注意: 生成パイプライン検証（T-M3-03系）・下書き編集・投稿実行がこれらを呼ぶ。source-urlのserver配線（node dns.lookup {all:true}＋global fetch）は利用側で注入。P-5引用検証（quote_url host/ID一致）はparseXPostUrlを再利用可。
 
-### T-M3-02: プロンプト定数とprompt_templatesのsystem default seed `todo`
+### T-M3-02: プロンプト定数とprompt_templatesのsystem default seed `done`
 - 参照: プロンプト設計書 §6.1〜6.9、要件02 §3.5、要件02 §6、GEN-P1〜P6、GEN-IMG、GEN-FIX / 依存: M0 / サイズ: S
 - 完了条件:
   - SYS-GEN・PT-P1〜P6・PT-IMG・PT-FIXが設計書§6の全文と一致するコード定数として定義され、スナップショットテストで乖離を検出できる
   - seedで`prompt_templates`のsystem default 7件（x_account_id=null、kind=p1〜p6/image）が冪等に作成される
   - テンプレート解決関数がaccountオーバーライドを優先し、なければsystem defaultを返すことをテストで確認できる
 - メモ: SYS-GEN・PT-FIXはコード管理のみで編集対象外（要件06 §9）。md/premium向けプロンプト編集UIは別マイルストーンで、本タスクは解決ロジックまで。
+- 実装メモ: `src/lib/prompts/gen-prompts.ts`にSYS-GEN・PT-P1〜P6・PT-IMG・PT-FIXを設計書§6.1〜6.9の全文どおり定数化＋`SYSTEM_DEFAULT_TEMPLATES`（p1〜p6/image＝seed対象。SYS-GEN/PT-FIXは含めずコード専用）。`prompt-templates.ts`＝`seedSystemPromptTemplates`（`on conflict (kind) where x_account_id is null do update`でコード定数へ冪等同期＝7件、既存partial unique index活用）＋`resolvePromptTemplate`（account上書き→system default→コード定数フォールバック）。テスト+11（スナップショット1＝§6乖離検出／構造・placeholder・7種／解決優先順・null時override非照会・コードfallback＝ユニット／DB: seed二度実行で7件一致・実override>system>null）。全637 green。doc: プロンプト設計書 §6が正本で一致・要件02 §3.5整合＝影響なし。
+- 後続への注意: 生成パイプライン（T-M3-03/04）はSYS-GEN＋`resolvePromptTemplate(kind)`で本文を組み立て、短縮はPT-FIX（{{limit}}）、画像はPT-IMG（{{post_text}}/{{tone_section}}）を使う。プロンプト全文を変更したら定数を更新しスナップショット更新＋doc同期。seedはデプロイ/初期化時に実行（実行配線は利用側）。
 
 ### T-M3-03: 文章生成アダプタのGEN対応（3プロバイダ・Web検索・JSON・usage正規化） `todo`
 - 参照: プロンプト設計書 §5.1〜5.4、プロンプト設計書 §5.6、A-5、要件02 §4.6、要件02 §3.17、要件04 §5 / 依存: M2 / サイズ: L
