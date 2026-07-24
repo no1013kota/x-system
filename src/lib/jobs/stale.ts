@@ -3,14 +3,15 @@ import type { PoolClient } from "pg";
 import { withTransaction } from "../db/pool";
 import type { JobKind } from "./handlers";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
+import { finalizeFailedJob } from "./terminal";
 
 /**
  * heartbeat と stale ジョブの回収（要件04 §4）。実行中は locked_at を定期更新し、
  * locked_at が10分を超えた running ジョブを stale とみなして、attempt<3 は backoff付きで
  * queued へ戻し、attempt>=3 は failed へ確定する（§4.10形式のerror）。
  *
- * stale→failed 確定時の kind別終端処理（premium枠のrefund・kind別のdraft後始末・error通知）
- * は本タスクではインターフェースのみ用意し、実装は各機能マイルストーン（M4/M6）で行う。
+ * stale→failed 確定時の kind別終端処理（reserveのrefund・kind別のdraft/source後始末・error通知）は
+ * `finalizeFailedJob`（terminal.ts, T-M4-08）が failed 更新と同一 transaction で担う。
  */
 
 export const STALE_AFTER_MINUTES = 10;
@@ -35,18 +36,14 @@ export async function heartbeat(
   });
 }
 
-/** stale→failed 確定時の kind別終端処理フック（M0はno-op。M4/M6で実装）。 */
+/** stale→failed 確定時の kind別終端処理フック（既定は `finalizeFailedJob`）。 */
 export type TerminalHandler = (
   client: PoolClient,
   jobId: string,
   kind: JobKind,
 ) => Promise<void>;
 
-const noopTerminal: TerminalHandler = async () => {
-  // TODO(M4/M6): premium枠refund・draft後始末（image/publish/md_merge）・error通知
-};
-
-let terminalHandler: TerminalHandler = noopTerminal;
+let terminalHandler: TerminalHandler = finalizeFailedJob;
 
 /** テスト・後続マイルストーンから終端処理を差し替える。 */
 export function setStaleTerminalHandler(handler: TerminalHandler): void {

@@ -62,7 +62,7 @@ workerはdispatchで指定されたjob 1件を対象に、短いDB transaction�
 5. 外部処理中は30秒ごと、またはstage変更時に`locked_at`をheartbeat更新する。
 6. `locked_at < now() - 10 minutes`のrunning jobはstaleとする。`attempt < 3`ならlockを解除してqueuedへ戻し、`attempt >= 3`ならfailedへ確定する。failed確定と同一transactionで、当該jobの未返還reserve（`job:{job_id}:generation:refund`／`image:refund`の冪等key）をrefundする（通常経路のrefundと二重返還しない。要件03 §7.3）。
 
-stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告で確定して後続（draft mode通知／auto modeの`post_publish`作成）へ進める。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。全kind共通で`error`通知（dedupe_key `job:{id}:failed`）を作成する。
+stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserve自体の作成はM6のため現状のrefundは実質no-op（先行配線）。workerの失敗経路との完全共通化はD-5（runJob中央finalizer）で行う。
 
 外部API成功後にworkerが落ちる可能性がある処理は、provider request ID、draft、tweet_idなどの外部結果を先に保存し、再取得時にreconcileしてから再送可否を決める。
 
