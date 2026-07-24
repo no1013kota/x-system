@@ -4,11 +4,13 @@ import { isXAuthError, type XTweetMetrics } from "../x/client";
 import type { Queryable } from "../x/token-refresh";
 
 /**
- * metrics_collector 定時トリガーの中核（K-1, 要件04 §6/§13, 要件02 §4.9, T-M5-12）。DB・X読取・時刻・
+ * metrics_collector 定時トリガーの中核（K-1, 要件04 §6/§13, 要件02 §4.9, T-M5-12/T-M5-13）。DB・X読取・時刻・
  * deadline を注入し純粋に保つ。dueなdraft（posted全tweet_id＋failedのremaining、rollback削除IDは除外）の
  * 未取得checkpoint（1/7/30日）をuser token別・最大100件/バッチで読み、`drafts.tweet_metrics` の
  * tweet_id配下 checkpoint へ保存（取得不能fieldはnull・0と区別）、`next_metrics_at` を次dueへ前進する。
- * unavailable確定・29〜30日窓・retry due・最大3回読取・metrics_completed_at の精密化は T-M5-13。
+ * T-M5-13: 30日checkpointは投稿後29〜30日未満で取得（non-public取得期限）、期限超過はprivate=nullで確定。
+ * 成功読取で不在（削除/取得不能確定）のtweet_idは unavailable_at を立て以後の対象から外す。対象tweet_idが
+ * すべて30日取得済みまたはunavailableなら metrics_completed_at を設定して回収対象から外す。
  */
 
 export const METRICS_ACCOUNT_LIMIT = 50;
@@ -16,6 +18,10 @@ export const METRICS_TWEET_ID_LIMIT = 500;
 export const METRICS_BATCH_SIZE = 100;
 export const METRICS_MAX_PARALLEL = 10;
 export const CHECKPOINT_DAYS = [1, 7, 30] as const;
+/** 30日checkpointの収集開始日（投稿後29日〜30日未満の窓で non-public metrics を取得する・要件04 §13）。 */
+export const CHECKPOINT_30_DUE_DAYS = 29;
+/** non-public metrics（profile_clicks）の取得期限（投稿後30日）。超過後は private を null で確定する。 */
+export const NONPUBLIC_DEADLINE_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 export type CheckpointDay = (typeof CHECKPOINT_DAYS)[number];
@@ -59,6 +65,8 @@ export interface DueDraft {
   targetDays: CheckpointDay;
   /** targetDays のcheckpoint未取得の対象tweet_id（最大 METRICS_BATCH_SIZE 件）。 */
   tweetIds: string[];
+  /** この draft の全対象tweet_id（完了判定用。posted全＋failed remaining−rollback削除）。 */
+  allTargetIds: string[];
 }
 
 /** posted全tweet_id＋failedのremaining、rollback削除確認済み（deleted_tweet_ids）は除外。 */
@@ -79,10 +87,10 @@ export function targetCheckpointDays(postedAt: Date, nextMetricsAt: Date): Check
   return CHECKPOINT_DAYS.find((d) => elapsedDays <= d) ?? 30;
 }
 
-/** targetDays 収集後の次 next_metrics_at（30日後は null＝以後は T-M5-13 で完了確定）。 */
+/** targetDays 収集後の次 next_metrics_at。7日後は 29日dueへ（29〜30日窓で30日checkpointを取る）。30日は完了。 */
 export function nextDueAfter(targetDays: CheckpointDay, postedAt: Date): Date | null {
   if (targetDays === 1) return new Date(postedAt.getTime() + 7 * DAY_MS);
-  if (targetDays === 7) return new Date(postedAt.getTime() + 30 * DAY_MS);
+  if (targetDays === 7) return new Date(postedAt.getTime() + CHECKPOINT_30_DUE_DAYS * DAY_MS);
   return null;
 }
 
@@ -98,17 +106,35 @@ function pick(
   return null;
 }
 
-/** XTweetMetrics → checkpoint値（取得不能は null・要件02 §4.9・§13 public+non_public）。 */
-export function toCheckpointMetrics(tweet: XTweetMetrics, collectedAt: string): CheckpointMetrics {
+/**
+ * XTweetMetrics → checkpoint値（取得不能は null・要件02 §4.9・§13 public+non_public）。
+ * privateAvailable=false（投稿後30日の non-public 取得期限超過）なら profile_clicks を null で確定する。
+ */
+export function toCheckpointMetrics(
+  tweet: XTweetMetrics,
+  collectedAt: string,
+  privateAvailable = true,
+): CheckpointMetrics {
   const pub = tweet.publicMetrics;
   const nonPub = tweet.nonPublicMetrics;
   return {
     impressions: pick(pub, nonPub, ["impression_count"]),
     likes: pick(pub, nonPub, ["like_count"]),
     reposts: pick(pub, nonPub, ["retweet_count"]),
-    profile_clicks: pick(pub, nonPub, ["user_profile_clicks"]),
+    profile_clicks: privateAvailable ? pick(pub, nonPub, ["user_profile_clicks"]) : null,
     collected_at: collectedAt,
   };
+}
+
+/** tweet_id を unavailable 確定にする（削除/取得不能。以後の due 対象から外す・要件04 §13）。checkpointsは保持。 */
+export function applyUnavailable(
+  current: TweetMetricsMap,
+  tweetId: string,
+  at: string,
+): TweetMetricsMap {
+  const entry = current[tweetId] ?? { checkpoints: {}, latest_checkpoint_days: null, unavailable_at: null };
+  if (entry.unavailable_at) return current;
+  return { ...current, [tweetId]: { ...entry, unavailable_at: at } };
 }
 
 /**
@@ -278,6 +304,7 @@ async function selectDue(
     const nextMetricsAt = new Date(row.next_metrics_at);
     const targetDays = targetCheckpointDays(postedAt, nextMetricsAt);
     const metricsMap = row.tweet_metrics ?? {};
+    const allTargetIds = targetTweetIds(row);
     const base: Omit<DueDraft, "tweetIds"> = {
       draftId: row.id,
       xAccountId: row.x_account_id,
@@ -285,9 +312,10 @@ async function selectDue(
       postedAt,
       nextMetricsAt,
       targetDays,
+      allTargetIds,
     };
     // targetDays を未取得かつ unavailable でない対象IDに絞る（未取得のIDから最大 batch 件）。
-    const pending = targetTweetIds(row).filter((id) => {
+    const pending = allTargetIds.filter((id) => {
       const entry = metricsMap[id];
       return !entry?.checkpoints?.[String(targetDays)] && !entry?.unavailable_at;
     });
@@ -340,8 +368,11 @@ async function readInBatches(
 
 /**
  * 読取結果を tweet_metrics へ反映し next_metrics_at を前進する（select ... for update + update を1 txで原子的に）。
- * tweet_metrics は tx 内で再読込してmergeし、他checkpoint・unavailableを保持。next_metrics_at は draft単位で
- * targetDays の次dueへ進める（tweets=[] の advance-only 呼び出しは前進のみ行う）。
+ * tweet_metrics は tx 内で再読込してmergeし、他checkpoint・unavailableを保持。
+ * - 成功読取に含まれた tweet は targetDays checkpoint を保存（30日超過時は private=null）。
+ * - 対象IDが成功読取に不在（削除/取得不能確定）なら unavailable_at を立てる（tweets=[] の advance-only 呼び出しは
+ *   実際の読取をしていないため unavailable にはしない）。
+ * - 全対象IDが 30日取得済み or unavailable なら metrics_completed_at を確定、そうでなければ targetDays の次dueへ。
  */
 async function saveDraftCheckpoints(
   deps: MetricsCollectorDeps,
@@ -349,6 +380,11 @@ async function saveDraftCheckpoints(
   tweets: XTweetMetrics[],
 ): Promise<void> {
   const collectedAt = deps.now.toISOString();
+  // non-public 取得期限（投稿後30日）超過なら private（profile_clicks）は null で確定する。
+  const privateAvailable =
+    deps.now.getTime() < draft.postedAt.getTime() + NONPUBLIC_DEADLINE_DAYS * DAY_MS;
+  const didRead = draft.tweetIds.length > 0; // advance-only（tweets収集なし）は不在=unavailable にしない
+
   await deps.runInTx(async (tx) => {
     const fresh = (
       await tx.query<{ tweet_metrics: TweetMetricsMap; metrics_completed_at: string | null }>(
@@ -362,11 +398,20 @@ async function saveDraftCheckpoints(
     let map = fresh.tweet_metrics ?? {};
     for (const id of draft.tweetIds) {
       const tweet = byId.get(id);
-      if (!tweet) continue; // 取得不能IDは checkpoint を残さない（unavailable確定は T-M5-13）
-      map = applyCheckpoint(map, id, draft.targetDays, toCheckpointMetrics(tweet, collectedAt));
+      if (tweet) {
+        map = applyCheckpoint(map, id, draft.targetDays, toCheckpointMetrics(tweet, collectedAt, privateAvailable));
+      } else if (didRead) {
+        // 成功読取に不在＝削除/取得不能確定。unavailable にして以後の対象から外す（要件04 §13）。
+        map = applyUnavailable(map, id, collectedAt);
+      }
     }
 
-    const next = nextDueAfter(draft.targetDays, draft.postedAt);
+    // 全対象IDが 30日取得済み or unavailable なら回収完了。そうでなければ targetDays の次dueへ。
+    const completed =
+      draft.allTargetIds.length > 0 &&
+      draft.allTargetIds.every((id) => map[id]?.checkpoints?.["30"] || map[id]?.unavailable_at);
+    const next = completed ? null : nextDueAfter(draft.targetDays, draft.postedAt);
+
     await tx.query(
       `update drafts
           set tweet_metrics = $2::jsonb,

@@ -127,7 +127,7 @@ describe("metrics_collector (local DB)", () => {
     try {
       const tweets: Record<string, XTweetMetrics> = {
         [t1]: { id: t1, text: null, publicMetrics: { impression_count: 100, like_count: 0, retweet_count: 3 }, nonPublicMetrics: { user_profile_clicks: 7 } },
-        // t2 omitted from response → unavailable this round → no checkpoint saved (T-M5-13 confirms unavailable)
+        // t2 omitted from a SUCCESSFUL read → confirmed gone → marked unavailable (T-M5-13)
       };
       const res = await executeMetricsCollection(mockDeps(xid, tweets));
       expect(res.draftsProcessed).toBeGreaterThanOrEqual(1);
@@ -139,7 +139,8 @@ describe("metrics_collector (local DB)", () => {
         reposts: 3,
         profile_clicks: 7,
       });
-      expect(d.tweet_metrics[t2]).toBeUndefined(); // missing tweet → no checkpoint
+      expect(d.tweet_metrics[t2]?.unavailable_at).toBeTruthy(); // absent → unavailable
+      expect(d.tweet_metrics[t2]?.checkpoints["1"]).toBeUndefined(); // no checkpoint for gone tweet
       // next_metrics_at advanced to posted_at + 7d (posted ~2d ago → ~+5d from now)
       const next = new Date(d.next_metrics_at!).getTime();
       expect(next).toBeGreaterThan(Date.now() + 4 * DAY);
@@ -178,6 +179,107 @@ describe("metrics_collector (local DB)", () => {
       expect(d.tweet_metrics[deleted]).toBeUndefined(); // rollback-deleted excluded, never read
       const next = new Date(d.next_metrics_at!).getTime();
       expect(next).toBeGreaterThan(Date.now() + 4 * DAY); // advanced to posted_at + 7d
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  async function seedWithMetrics(
+    xid: string,
+    tweetIds: string[],
+    metrics: Record<string, unknown>,
+    opts: { postedDaysAgo: number; nextDueDaysAgo: number },
+  ): Promise<string> {
+    return withTransaction(async (c: PoolClient) => {
+      return (
+        await c.query<{ id: string }>(
+          `insert into drafts
+             (x_account_id, pattern, thread, initial_thread, status, tweet_ids, tweet_metrics,
+              posted_at, next_metrics_at)
+           values ($1,'p1','[]'::jsonb,'[]'::jsonb,'posted',$2::jsonb,$3::jsonb,
+                   now() - ($4 || ' days')::interval, now() - ($5 || ' minutes')::interval)
+           returning id`,
+          [xid, JSON.stringify(tweetIds), JSON.stringify(metrics), String(opts.postedDaysAgo), String(opts.nextDueDaysAgo * 1440)],
+        )
+      ).rows[0].id;
+    });
+  }
+
+  const cp = (impressions: number) => ({ impressions, likes: 1, reposts: 0, profile_clicks: 1, collected_at: "2000-01-01T00:00:00Z" });
+
+  it("collects the 30-day checkpoint in the 29–30d window and completes the draft", async () => {
+    const { uid, xid } = await seedAccount();
+    const t1 = `t-${randomUUID()}`;
+    // posted 29d ago, next due now → targetDays snaps to 30; 1/7 already collected.
+    const draftId = await seedWithMetrics(
+      xid,
+      [t1],
+      { [t1]: { checkpoints: { "1": cp(10), "7": cp(20) }, latest_checkpoint_days: 7, unavailable_at: null } },
+      { postedDaysAgo: 29, nextDueDaysAgo: 1 },
+    );
+    try {
+      const tweets = {
+        [t1]: { id: t1, text: null, publicMetrics: { impression_count: 300, like_count: 9 }, nonPublicMetrics: { user_profile_clicks: 12 } },
+      };
+      await executeMetricsCollection(mockDeps(xid, tweets));
+      const d = await readDraft(draftId);
+      expect(d.tweet_metrics[t1].checkpoints["30"]).toMatchObject({ impressions: 300, profile_clicks: 12 });
+      expect(d.tweet_metrics[t1].checkpoints["1"]).toMatchObject({ impressions: 10 }); // untouched
+      expect(d.next_metrics_at).toBeNull(); // completed
+      const completed = (
+        await db.query<{ metrics_completed_at: string | null }>(
+          `select metrics_completed_at from drafts where id = $1`,
+          [draftId],
+        )
+      ).rows[0];
+      expect(completed.metrics_completed_at).not.toBeNull();
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("past the 30d non-public deadline, saves the 30-day checkpoint with profile_clicks=null", async () => {
+    const { uid, xid } = await seedAccount();
+    const t1 = `t-${randomUUID()}`;
+    // posted 31d ago (past deadline), next due (posted+29d) reached long ago → targetDays 30, private expired.
+    const draftId = await seedWithMetrics(
+      xid,
+      [t1],
+      { [t1]: { checkpoints: { "1": cp(10), "7": cp(20) }, latest_checkpoint_days: 7, unavailable_at: null } },
+      { postedDaysAgo: 31, nextDueDaysAgo: 2 },
+    );
+    try {
+      const tweets = {
+        [t1]: { id: t1, text: null, publicMetrics: { impression_count: 500 }, nonPublicMetrics: { user_profile_clicks: 7 } },
+      };
+      await executeMetricsCollection(mockDeps(xid, tweets));
+      const d = await readDraft(draftId);
+      expect(d.tweet_metrics[t1].checkpoints["30"]).toMatchObject({ impressions: 500, profile_clicks: null }); // private expired
+      expect(d.next_metrics_at).toBeNull();
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("completes a draft whose every tweet becomes unavailable", async () => {
+    const { uid, xid } = await seedAccount();
+    const a = `t-${randomUUID()}`;
+    const b = `t-${randomUUID()}`;
+    const draftId = await seedPostedDraft(xid, [a, b], { postedDaysAgo: 2, nextDueDaysAgo: 1 });
+    try {
+      // read returns neither → both confirmed gone → unavailable → draft completes
+      await executeMetricsCollection(mockDeps(xid, {}));
+      const d = await readDraft(draftId);
+      expect(d.tweet_metrics[a]?.unavailable_at).toBeTruthy();
+      expect(d.tweet_metrics[b]?.unavailable_at).toBeTruthy();
+      expect(d.next_metrics_at).toBeNull(); // completed (all unavailable)
+      const completed = (
+        await db.query<{ metrics_completed_at: string | null }>(
+          `select metrics_completed_at from drafts where id = $1`,
+          [draftId],
+        )
+      ).rows[0];
+      expect(completed.metrics_completed_at).not.toBeNull();
     } finally {
       await cleanup(uid);
     }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { XTweetMetrics } from "../x/client";
 import {
   applyCheckpoint,
+  applyUnavailable,
   checkpointMetricsSchema,
   nextDueAfter,
   targetCheckpointDays,
@@ -44,9 +45,9 @@ describe("targetCheckpointDays", () => {
 });
 
 describe("nextDueAfter", () => {
-  it("advances 1→+7d, 7→+30d, 30→null", () => {
+  it("advances 1→+7d, 7→+29d (29–30d window), 30→null", () => {
     expect(nextDueAfter(1, POSTED)?.getTime()).toBe(POSTED.getTime() + 7 * DAY);
-    expect(nextDueAfter(7, POSTED)?.getTime()).toBe(POSTED.getTime() + 30 * DAY);
+    expect(nextDueAfter(7, POSTED)?.getTime()).toBe(POSTED.getTime() + 29 * DAY);
     expect(nextDueAfter(30, POSTED)).toBeNull();
   });
 });
@@ -72,6 +73,28 @@ describe("toCheckpointMetrics", () => {
     const cp = toCheckpointMetrics(tweet, "x");
     expect(cp).toMatchObject({ impressions: null, likes: null, reposts: null, profile_clicks: null });
     expect(checkpointMetricsSchema.safeParse(cp).success).toBe(true);
+  });
+  it("privateAvailable=false forces profile_clicks null (30d non-public deadline)", () => {
+    const tweet: XTweetMetrics = {
+      id: "t1",
+      text: null,
+      publicMetrics: { impression_count: 50 },
+      nonPublicMetrics: { user_profile_clicks: 9 },
+    };
+    expect(toCheckpointMetrics(tweet, "x", false)).toMatchObject({ impressions: 50, profile_clicks: null });
+  });
+});
+
+describe("applyUnavailable", () => {
+  it("stamps unavailable_at and preserves existing checkpoints, idempotent", () => {
+    let map: TweetMetricsMap = {};
+    map = applyCheckpoint(map, "t1", 1, { impressions: 5, likes: 0, reposts: 0, profile_clicks: null, collected_at: "a" });
+    map = applyUnavailable(map, "t1", "2026-07-24T00:00:00.000Z");
+    expect(map.t1.unavailable_at).toBe("2026-07-24T00:00:00.000Z");
+    expect(map.t1.checkpoints["1"]?.impressions).toBe(5); // preserved
+    // idempotent: second call keeps the first timestamp
+    const again = applyUnavailable(map, "t1", "2026-08-01T00:00:00.000Z");
+    expect(again.t1.unavailable_at).toBe("2026-07-24T00:00:00.000Z");
   });
 });
 
