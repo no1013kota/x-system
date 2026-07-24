@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.5 |
-| 更新日 | 2026-07-23 |
+| 更新日 | 2026-07-24 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -125,6 +125,8 @@ flowchart TB
 | `TURNSTILE_SECRET_KEY` | preview/prod | Supabase Auth CAPTCHAのsecret | Server only |
 | `SENTRY_DSN` | preview/prod | サーバー例外収集 | Server only |
 | `NEXT_PUBLIC_SENTRY_DSN` | preview/prod | ブラウザ例外収集 | Public |
+
+通知メール送信は `nodemailer`（Gmail SMTP・587 STARTTLS）で行う（`lib/email/notification-email-server.ts`）。中核（`notification-email.ts`）はDB・トランスポート注入で純粋に保ち、`email_status='queued'` の通知を送って `sent`／`failed` を確定する。provider冪等は `Message-ID = <notification:{id}@{from-domain}>`＋`id AND email_status='queued'` guard、再送分類は 429/5xx/network=retryable（最大3 attempt・指数backoff）／401/403=終端（要件04 §14）。`email_error` には秘密値・宛先を含まない要約（`smtp:{code}[:{responseCode}]`）だけを保存する。SMTP env 未設定時は送信を skip する。通知row commit後は best-effort に `after()` で即時送信し、残りは `scheduler_tick` が回収する（回収は T-M4-17）。実Gmail送信の確認は App Password 発行後に行う（open_questions）。
 
 ## 4. ルーティング
 

@@ -43,7 +43,10 @@ export async function GET(request: Request): Promise<Response> {
     });
     // 6分野settle後、成功分野の新規ニュースを対象に時間単位ダイジェストを fan-out する（要件04 §14）。
     const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
-    return { ...fetched, digest };
+    // commit後の best-effort 即時メール送信（残りは scheduler_tick が回収, T-M4-16/17）。
+    const { dispatchNotificationEmail } = await import("@/lib/email/notification-email-server");
+    for (const id of digest.createdIds) dispatchNotificationEmail(id);
+    return { ...fetched, digest: { matchedUsers: digest.matchedUsers, notified: digest.notified } };
   });
   return Response.json({ ok: true, ran, window: windowKey, ...(result ?? {}) });
 }

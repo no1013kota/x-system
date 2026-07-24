@@ -24,6 +24,8 @@ export interface NewsDigestResult {
   matchedUsers: number;
   /** 実際に作成した通知row数（再実行時の重複はdedupeで0）。 */
   notified: number;
+  /** 新規作成した通知のid（commit後の after() メール送信に渡す）。 */
+  createdIds: string[];
 }
 
 /** hour-aligned ISO（millisを除去し `...:00:00Z` 形へ。dedupe/payload/link で一貫使用）。 */
@@ -110,7 +112,7 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
 
   const digestRows = await loadDigestRows(deps.db, windowStart, windowEnd);
 
-  let notified = 0;
+  const createdIds: string[] = [];
   for (const row of digestRows) {
     const title = `ニュースダイジェスト ${row.total_count}件`;
     const body = buildBody(row.top_titles, row.total_count);
@@ -120,20 +122,21 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
       total_count: row.total_count,
       news_item_ids: row.item_ids,
     };
-    const { rowCount } = await deps.db.query(
+    const { rows } = await deps.db.query<{ id: string }>(
       `insert into notifications
          (user_id, type, dedupe_key, title, body, link, payload,
           in_app_enabled, email_status, email_available_at)
        values ($1, 'news', $2, $3, $4, $5, $6::jsonb, $7,
                case when $8 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
                case when $8 then now() else null end)
-       on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+       on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
+       returning id`,
       [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app, row.email],
     );
-    if ((rowCount ?? 0) > 0) notified += 1;
+    if (rows[0]) createdIds.push(rows[0].id);
   }
 
-  return { matchedUsers: digestRows.length, notified };
+  return { matchedUsers: digestRows.length, notified: createdIds.length, createdIds };
 }
 
 /** UTC hour-aligned な窓開始（news_fetch起動時刻から算出）。 */

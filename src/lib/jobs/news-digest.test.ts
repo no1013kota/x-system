@@ -8,6 +8,8 @@ const INSERT = /insert into notifications/;
 
 type Row = Record<string, unknown>;
 
+let insertSeq = 0;
+
 function mockDb(
   digestRows: Row[],
   insertRowCount: (params: unknown[]) => number = () => 1,
@@ -17,7 +19,15 @@ function mockDb(
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
       if (SELECT.test(sql)) return { rows: digestRows as T[], rowCount: digestRows.length };
-      if (INSERT.test(sql)) return { rows: [] as T[], rowCount: insertRowCount(params) };
+      if (INSERT.test(sql)) {
+        // returning id: 挿入成功(rowCount 1)なら id 行を返し、conflict(0)なら空。
+        const inserted = insertRowCount(params) > 0;
+        insertSeq += 1;
+        return {
+          rows: (inserted ? [{ id: `notif-${insertSeq}` }] : []) as T[],
+          rowCount: inserted ? 1 : 0,
+        };
+      }
       return { rows: [] as T[], rowCount: 0 };
     },
   };
@@ -49,7 +59,9 @@ describe("fanOutNewsDigest", () => {
     const { db, writes } = mockDb([aggRow()]);
     const res = await fanOutNewsDigest({ db, windowStart });
 
-    expect(res).toEqual({ matchedUsers: 1, notified: 1 });
+    expect(res.matchedUsers).toBe(1);
+    expect(res.notified).toBe(1);
+    expect(res.createdIds).toHaveLength(1);
     const ins = writes.find((w) => INSERT.test(w.sql))!;
     expect(ins.params[1]).toBe("news-digest:2026-07-19T00:00:00Z"); // dedupe_key
     expect(ins.params[2]).toBe("ニュースダイジェスト 7件"); // title
@@ -74,13 +86,13 @@ describe("fanOutNewsDigest", () => {
   it("creates nothing when no user matches", async () => {
     const { db, writes } = mockDb([]);
     const res = await fanOutNewsDigest({ db, windowStart });
-    expect(res).toEqual({ matchedUsers: 0, notified: 0 });
+    expect(res).toEqual({ matchedUsers: 0, notified: 0, createdIds: [] });
     expect(writes.some((w) => INSERT.test(w.sql))).toBe(false);
   });
 
   it("counts a deduped (already-existing) row as not newly notified", async () => {
     const { db } = mockDb([aggRow()], () => 0); // on conflict do nothing → 0 rows
     const res = await fanOutNewsDigest({ db, windowStart });
-    expect(res).toEqual({ matchedUsers: 1, notified: 0 });
+    expect(res).toEqual({ matchedUsers: 1, notified: 0, createdIds: [] });
   });
 });
