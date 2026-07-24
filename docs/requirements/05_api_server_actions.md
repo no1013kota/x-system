@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.17 |
+| バージョン | v1.18 |
 | 更新日 | 2026-07-24 |
 | 関連 | 全画面、全ジョブ |
 
@@ -173,7 +173,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 対象Xアカウントに`removing`（学習ソース削除mergeが進行中）の学習ソースがある間は、`createGenerationJob`／`createDraftFromNews`を`job_conflict`（`reason=learning_removing`）で拒否し、スロットenqueueも当該アカウントをskipする（古い知見での生成を避ける・要件04 §12）。
 
-v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は`createGenerationJob`のP-5、P-5 draftの`regenerateDraft`、`publishDraft`、`regenerateImage`を外部API呼び出しと利用枠消費の前に`feature_disabled`で拒否する。既存P-5 draftの閲覧と、未解決の投稿状態がない場合の破棄は許可する。feature flagの有効化は、X APIで取得した対象ポスト本文をLLM入力へ渡す契約と自動検証が完成した後に限る。
+v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は`createGenerationJob`のP-5、P-5 draftの`regenerateDraft`、`publishDraft`、`regenerateImage`、および`kind=p5`の`updatePromptTemplate`／`resetPromptTemplate`を外部API呼び出しと利用枠消費の前に`feature_disabled`で拒否する。既存P-5 draftの閲覧と、未解決の投稿状態がない場合の破棄は許可する。feature flagの有効化は、X APIで取得した対象ポスト本文をLLM入力へ渡す契約と自動検証が完成した後に限る。
 
 `regenerateDraft`は`status=draft`または未解決投稿のない`failed`の本文、pattern、検証済みsource/quote情報を入力snapshotとしてjobへ保存する。生成成功時は新しいdraftを作り、元draftを変更・破棄しない。再生成も新しいtop-level jobとして生成枠を1消費する。
 
@@ -235,6 +235,8 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 ベースmd更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。発信設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
 対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
+
+`listPromptTemplates`はactive Xアカウントの`kind=p1〜p6/image`について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。生成パイプライン（GEN-P1〜P6・GEN-IMG）は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
 ## 10. 通知
 
