@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 
 import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/locks";
 import { withTransaction } from "../db/pool";
+import { dispatchJob } from "./dispatch";
 import { getJobHandler, type JobKind } from "./handlers";
 
 /**
@@ -171,7 +172,6 @@ export async function runJob(
         [jobId],
       ),
     );
-    return { ...lease, result: "succeeded" };
   } catch {
     await withTransaction((c) =>
       c.query(
@@ -180,5 +180,31 @@ export async function runJob(
       ),
     );
     return { ...lease, result: "failed" };
+  }
+  // 連鎖dispatch: 親succeeded確定後にqueuedの子job（画像生成・投稿実行）を起動する
+  // （ADR-0002/要件04 §1）。親がrunningの間はacctRunningガードでleaseできないため成功確定後に行う。
+  // 成功はすでに確定済みなので、dispatch段の失敗で結果を failed へ落とさない（scheduler_tickが回収）。
+  await dispatchChildJobs(jobId);
+  return { ...lease, result: "succeeded" };
+}
+
+/**
+ * 親jobのsucceeded確定後に、queuedの子job（parent_job_id一致・available）を連鎖dispatchする。
+ * dispatchJob は 202受領で返り例外を投げない（transport失敗時はqueuedのまま scheduler_tick が回収）。
+ */
+async function dispatchChildJobs(parentJobId: string): Promise<void> {
+  try {
+    const { rows } = await withTransaction((c) =>
+      c.query<{ id: string }>(
+        `select id from generation_jobs
+          where parent_job_id = $1 and status = 'queued' and available_at <= now()`,
+        [parentJobId],
+      ),
+    );
+    for (const row of rows) {
+      await dispatchJob(row.id);
+    }
+  } catch {
+    // best-effort。ここで失敗しても親は succeeded 済みで、queuedの子は scheduler_tick が回収する。
   }
 }

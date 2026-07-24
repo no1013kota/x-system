@@ -13,7 +13,7 @@
 
 ## Decision
 
-- すべてのjobを「1 job = 1 worker Function呼び出し（`POST /api/jobs/run`、`CRON_SECRET`認証）」でdispatchする。workerは202を即時返却し、本処理を`after()`で実行する。dispatch経路は (1) 手動: Server Action/API Routeの`after()`、(2) 定時: `scheduler_tick`がenqueue直後に一括dispatch（上限50件/起動）、(3) 子job: 親jobのworkerが作成直後に連鎖dispatch、の3つ。tick内でjob本処理は行わない。
+- すべてのjobを「1 job = 1 worker Function呼び出し（`POST /api/jobs/run`、`CRON_SECRET`認証）」でdispatchする。workerは202を即時返却し、本処理を`after()`で実行する。dispatch経路は (1) 手動: Server Action/API Routeの`after()`、(2) 定時: `scheduler_tick`がenqueue直後に一括dispatch（上限50件/起動）、(3) 子job: 親jobのworkerが子jobをqueuedで作成し、親のsucceeded確定後に連鎖dispatch（同一Xアカウント直列化のため親running中はleaseできず、成功確定後にdispatchする。詳細は要件04 §1）、の3つ。tick内でjob本処理は行わない。
 - `scheduler_tick`を5分間隔（毎時00・05・…・55分）で起動する。すべての起動が冪等なenqueueクエリ（直前10分以内の未処理slot）を実行してからdispatchし、あわせてdispatch失敗・stale jobの回収、期限切れcancel、通知メール・期限切れデータのcleanupを行う（定刻起動が全滅しても後続tickが+10分期限内にenqueue・dispatchできる）。初期はlaunchd、移行後はVercel Cron（`*/5`）。
 - worker/cron routeの`maxDuration`を200秒、Function内の処理deadlineを180秒とする（provider callは最大90秒のまま。初回call＋JSON修復callが1 attemptに収まる）。VercelのFluid compute上限（Hobby 300秒／Pro 800秒）内。
 

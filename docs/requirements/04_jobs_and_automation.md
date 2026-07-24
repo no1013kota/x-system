@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.4 |
-| 更新日 | 2026-07-22 |
+| 更新日 | 2026-07-24 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -11,7 +11,7 @@
 - 長時間処理は`generation_jobs`へ先に永続化し、外部APIを呼ぶ。
 - `kind`は実行内容、`trigger`は起点を表し、混同しない。
 - すべてのjobは「1 job = 1 worker Function呼び出し」でdispatchする。worker（`POST /api/jobs/run`、`CRON_SECRET`認証）はjob IDを受け取り、認証・受領後すぐ202を返して本処理を`after()`で実行する。dispatch呼び出しは202受領までの軽量HTTPで、workerの処理完了を待たない。
-- dispatch経路は3つ。(1) 手動操作: Server Action/API Routeがjob作成後、`after()`からworkerを呼ぶ。(2) 定時: `scheduler_tick`が到来スロットをenqueueした直後に各jobをdispatchする。(3) 子job: 親jobのworkerが子job作成直後にdispatchする。
+- dispatch経路は3つ。(1) 手動操作: Server Action/API Routeがjob作成後、`after()`からworkerを呼ぶ。(2) 定時: `scheduler_tick`が到来スロットをenqueueした直後に各jobをdispatchする。(3) 子job: 親jobのworkerが子job（`parent_job_id`で紐付く画像生成・投稿実行）を本処理中に`queued`で作成し、**親jobがsucceededへ確定した直後に**、queuedの子jobをdispatchする。子は同一Xアカウント直列化（下記）により親running中はleaseできないため、作成直後ではなく親の成功確定後にdispatchする（dispatch失敗はqueuedのまま`scheduler_tick`が回収）。
 - `scheduler_tick`は5分間隔（毎時00・05・…・55分）で起動する。**すべての起動が最初にenqueueクエリ（直前10分以内の未処理slotが対象）を実行する**。enqueueは`schedule_run_key`と`last_run_at`で冪等のため毎起動実行しても安全であり、定刻起動がlaunchd再試行込みで全滅しても、5分後・10分後のtickが§7.2の期限（+10分）内にenqueue・dispatchできる。初期はlaunchd、移行後はVercel Cron（`*/5`）から同じrouteを呼ぶ。
 - `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを`scheduled_for`昇順→`created_at`昇順で1起動最大50件dispatchする。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) 通知メール・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
 - 同一Xアカウントのjobと、同一userの`post_publish`は同時実行しない。workerはlease取得時にこの制約を検証し、取得できなければ何もせず終了する（jobはqueuedに残り、後続のdispatch・回収が拾う）。
@@ -159,13 +159,17 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 
 ## 9. 画像生成
 
+`image_generation`は画像ONの`post_generation`成功後に連鎖起動される子job（§1(3)）。親workerが決定的 request_key `parent:{parent_job_id}:image_generation:{draft_id}`＋on conflictで作成するため、worker再実行時も子jobは重複作成されない。
+
 1. premiumは画像枠をreserveする。
-2. PT-IMGでprompt作成後、画像providerを呼ぶ。
+2. PT-IMG（ベースmdセクション3＋1ポスト目本文）でprompt作成後、画像providerを呼ぶ。
 3. JPG/PNG/WEBP・5MB以下へ正規化する。
-4. private Storageへ保存し、`drafts.images.storage_path`を更新する。
+4. private Storageへ保存し、`drafts.images`（`storage_path`・`status`等）を更新する。
 5. 最終失敗は画像枠をrefundし、警告と再生成操作を残す。
 
 Storage upload失敗も画像job失敗としてrefundする。X media uploadは画像生成枠と無関係で、投稿job内で行う。
+
+`draft_created`通知の送信主体: 画像ON時は本文確定後に画像job（成功・失敗いずれも）が送る（画像OFFは`post_generation`が送る）。画像/Storage/PT-IMGの最終失敗時は本文を画像なしで確定し、`drafts.images`へ`status=failed`の印を残して`draft_created`を送り、子jobは`failed`にする（本文生成jobは失敗させない）。画像枠のreserve/refund（1・5）はM6で実装する。
 
 画像再生成は既存画像を残したまま新規生成し、新画像のStorage保存とdraft参照の切替が成功してから旧objectをbest effortで削除する。再生成失敗時は既存画像を維持する。
 

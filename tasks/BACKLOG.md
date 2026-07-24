@@ -858,13 +858,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: モデル名は環境変数（OPENAI_IMAGE_MODEL／GEMINI_IMAGE_MODEL）。プロバイダ固有のsize文字列等の差異はアダプタへ閉じ込め共通仕様にしない。
 - 実装メモ: 純粋コア`src/lib/ai/image.ts`（`ImageGen`契約＋`makeImageGen`でprovider呼び分け＋`pickNearestSize`でアスペクト比→最近傍。OpenAIはpixel size文字列/Geminiはaspect ratio文字列をアダプタ内で解決、b64デコードして`RawImage{bytes,declaredMime}`を返す）。正規化`src/lib/ai/image-normalize.ts`（sharp。`inspectImage`で実形式/実寸/容量検証、`normalizeForX`でJPG/PNG/WEBP・5MB以下へ変換/圧縮。許可形式かつ上限内はそのまま返す）。server配線`src/lib/ai/image-client.ts`（`resolveImageGen(ResolvedKey)`で実SDK注入）。sharp採用は[ADR-0004]、package.jsonへ直接依存追加（Next同梱でbinary取得不要）。T-M3-15はこの`resolveImageGen`＋`normalizeForX`を画像jobから呼ぶ。
 
-### T-M3-15: image_generation workerと生成からの連鎖 `todo`
+### T-M3-15: image_generation workerと生成からの連鎖 `done`
 - 参照: 要件04 §8、要件04 §9、GEN-IMG、プロンプト設計書 §4.2、プロンプト設計書 §6.8、要件02 §4.8 / 依存: T-M3-05、T-M3-14、T-M3-02 / サイズ: L
 - 完了条件:
   - 画像ONのpost_generationが親job終端（succeeded）へのcommit後に決定的key（`parent:{parent_job_id}:image_generation:{draft_id}`）でimage_generation子jobを作成・dispatchし、子workerがPT-IMG（base_mdセクション3＋1ポスト目本文）→画像生成→private Storage保存→drafts.images更新→draft確定・draft_created通知まで完走する（モックprovider）
   - 画像生成またはStorage保存の最終失敗時は本文生成jobを失敗させず、draftを画像なし＋警告で確定して通知する（子jobはfailed）
   - 子jobのrequest_keyによりworker再実行でも子jobが重複作成されない
 - メモ: premium画像枠のreserve/refundはM6。auto modeで画像workerがpost_publishを作成する経路はM4で追加。dispatch失敗時はqueuedのまま残しscheduler_tick回収（M2）に委ねる。
+- 実装メモ: 中核`jobs/image-generation.ts` `executeImageGeneration`（deps注入: db/resolveTextProvider/resolveImage/uploadImage/recordStage、pure化しモックでユニットテスト）。冪等（drafts.imagesにready印で already_done）→heartbeat(image)→PT-IMG（`resolvePromptTemplate(image)`＋`extractBaseMdSection(base_md,3)`＋1ポスト目、`runTextGeneration`でJSON{prompt,aspect}）→`resolveImageGen`で画像生成→`normalizeForX`（T-M3-14）→Storage保存（path=`user/xaccount/draft/localId.ext`）→drafts.images(ready)＋usage＋draft_created。失敗時はdrafts.images(status=failed,storage_path="")＋error＋draft_created通知してthrow（子failed・本文は残る）。server配線`image-generation-server.ts`（resolveTextProvider＋resolveImageProvider→resolveImageGen＋Supabase admin storage.upload）をhandlers.tsに動的import登録。**連鎖**: post-generation.tsに`ensureImageChildJob`（決定的key＋on conflict、already_doneパスでもensure）を追加し画像ON時はdraft_created送信をスキップ。**汎用連鎖dispatch**: runJob成功確定後に`dispatchChildJobs`（parent_job_id一致・queued）をbest-effortで起動（親running中はacctRunning直列化でleaseできないため成功後に行う）。**副次**: post-generationのheartbeatを`recordStage`注入化（ユニットテスト可能に）。worker.db.testの汎用successはimage_generation実handler化に伴いsuggestionへ変更。doc: 要件04 §1/§9・ADR-0002を「子jobは親succeeded後にdispatch」へ精緻化、要件02 §4.8/プロンプト設計書 §5.5/§6.8/§4.2は既述と整合。テスト+11（image-generation 5／post-generation chain 3／extractBaseMdSection 3）、全744 green・build通過。
+- 後続への注意: **画像表示・再生成UI（regenerateImage）はT-M3-16**。署名URL生成は表示時（要件02 §4.8）。auto投稿で画像workerがpost_publishを連鎖する経路はM4（`dispatchChildJobs`が同じ仕組みで流用可能）。
 
 ### T-M3-16: 画像表示・再生成（regenerateImage）UI `todo`
 - 参照: 要件05 §5、要件06 §6、要件04 §9、P-7 / 依存: T-M3-15、T-M3-11 / サイズ: M

@@ -87,6 +87,8 @@ export interface PostGenerationDeps {
   validateSource: (url: string) => Promise<boolean>;
   now?: () => number;
   makeDeadline?: () => Deadline;
+  /** stage 進捗の記録（既定 heartbeat・独自tx）。テストで no-op 化できるよう注入する。 */
+  recordStage?: (stage: string) => Promise<void>;
 }
 
 export interface PostGenerationResult {
@@ -140,6 +142,29 @@ async function existingDraftId(db: Queryable, jobId: string): Promise<string | n
     [jobId],
   );
   return rows[0]?.id ?? null;
+}
+
+/**
+ * 画像ON時の image_generation 子job作成（要件04 §9, ADR-0002）。決定的 request_key
+ * `parent:{parentJobId}:image_generation:{draftId}` ＋ on conflict do nothing で、
+ * worker再実行でも重複作成されない。dispatch は親job succeeded 後に runJob が連鎖起動する。
+ */
+async function ensureImageChildJob(
+  db: Queryable,
+  params: { parentJobId: string; xAccountId: string; draftId: string },
+): Promise<void> {
+  await db.query(
+    `insert into generation_jobs
+       (x_account_id, kind, trigger, parent_job_id, draft_id, request_key, status)
+     values ($1, 'image_generation', 'system', $2, $3, $4, 'queued')
+     on conflict (request_key) do nothing`,
+    [
+      params.xAccountId,
+      params.parentJobId,
+      params.draftId,
+      `parent:${params.parentJobId}:image_generation:${params.draftId}`,
+    ],
+  );
 }
 
 async function persistFailure(
@@ -219,19 +244,31 @@ export async function executePostGeneration(
 ): Promise<PostGenerationResult> {
   const { db, jobId } = deps;
   const now = deps.now ?? Date.now;
+  const recordStage =
+    deps.recordStage ?? (async (stage: string) => void (await heartbeat(jobId, stage)));
 
   const job = await loadJob(db, jobId);
   if (!job) throw new PostGenerationTerminalError("not_found", "job not found");
   const pattern = (job.pattern ?? "p1") as PromptTemplateKind;
 
-  // 冪等: 既にdraftがあれば再作成しない（worker再実行安全）。
+  // 冪等: 既にdraftがあれば再作成しない（worker再実行安全）。画像ONなら子jobの存在だけ担保する
+  //（初回が子job作成前に落ちても再実行で連鎖が成立するようにする。決定的keyで重複しない）。
   const already = await existingDraftId(db, jobId);
-  if (already) return { status: "already_done", draftId: already };
+  if (already) {
+    if (job.input.image_enabled) {
+      await ensureImageChildJob(db, {
+        parentJobId: jobId,
+        xAccountId: job.x_account_id,
+        draftId: already,
+      });
+    }
+    return { status: "already_done", draftId: already };
+  }
 
   const failCtx = { jobId, userId: job.user_id };
 
   // --- stage: validating（前提再検証）---
-  await heartbeat(jobId, "validating");
+  await recordStage("validating");
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
     imageRequested: Boolean(job.input.image_enabled),
   });
@@ -249,7 +286,7 @@ export async function executePostGeneration(
   }
 
   // --- stage: research（コンテキスト組み立て）---
-  await heartbeat(jobId, "research");
+  await recordStage("research");
   const system = buildGenSystem(job.base_md);
   const patternPrompt = await resolvePromptTemplate(db, {
     xAccountId: job.x_account_id,
@@ -307,7 +344,7 @@ export async function executePostGeneration(
   };
 
   // --- stage: writing（生成＋JSON検証＋修復）---
-  await heartbeat(jobId, "writing");
+  await recordStage("writing");
   let generated;
   try {
     generated = await runTextGeneration({
@@ -416,7 +453,17 @@ export async function executePostGeneration(
     [jobId, draftId, JSON.stringify(usage)],
   );
 
-  await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+  // 画像ON: draft_created は画像確定後に子（image_generation）が送るため、ここでは送らず子jobを作成する。
+  // 画像OFF: ここで draft_created を送る（要件04 §9・要件06 §6）。
+  if (job.input.image_enabled) {
+    await ensureImageChildJob(db, {
+      parentJobId: jobId,
+      xAccountId: job.x_account_id,
+      draftId,
+    });
+  } else {
+    await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+  }
 
   return { status: "created", draftId };
 }

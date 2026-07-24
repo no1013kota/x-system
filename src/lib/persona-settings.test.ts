@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TONE_SETTINGS,
   baseMdSettingsDiffer,
+  extractBaseMdSection,
   generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
@@ -126,5 +127,29 @@ describe("base md generation", () => {
     "## 1. a\n## 3. c\n## 2. b\n## 4. d\n## 5. e\n## 6. f",
   ])("rejects a missing, duplicate, or out-of-order structure", (content) => {
     expect(() => validateBaseMdStructure(content)).toThrow(/順番どおり各1回/);
+  });
+});
+
+describe("extractBaseMdSection", () => {
+  const md = `## 1. ペルソナ
+- 発信者: X
+## 2. 発信テーマ
+- 主テーマ: Y
+## 3. トーン&マナー
+- 文末: 断定調
+- 一人称: 私
+## 4. やらないこと
+- Z`;
+
+  it("returns a section body without its heading", () => {
+    expect(extractBaseMdSection(md, 3)).toBe("- 文末: 断定調\n- 一人称: 私");
+  });
+
+  it("returns the last section up to end of content", () => {
+    expect(extractBaseMdSection(md, 4)).toBe("- Z");
+  });
+
+  it("returns empty string for an absent section", () => {
+    expect(extractBaseMdSection(md, 6)).toBe("");
   });
 });

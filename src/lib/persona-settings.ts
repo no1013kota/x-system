@@ -150,6 +150,20 @@ export function validateBaseMdStructure(content: string): void {
   }
 }
 
+/**
+ * Extracts a single `## N.` section body (heading excluded) from a base_md
+ * document. Returns "" when the section is absent. Used by GEN-IMG, which reads
+ * only section 3 (トーン&マナー) for the image prompt (プロンプト設計書 §4.2).
+ */
+export function extractBaseMdSection(content: string, section: number): string {
+  const start = new RegExp(`^## ${section}\\.[^\\n]*$`, "m").exec(content);
+  if (start?.index === undefined) return "";
+  const rest = content.slice(start.index + start[0].length);
+  const next = /^## [1-6]\.[^\n]*$/m.exec(rest);
+  const body = next?.index === undefined ? rest : rest.slice(0, next.index);
+  return body.trim();
+}
+
 /** Creates version 1 without learned content in sections 5 and 6. */
 export function generateInitialBaseMd(input: unknown): string {
   const content = `${buildSettingsSections(input)}
