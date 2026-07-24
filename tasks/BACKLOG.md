@@ -919,12 +919,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: T-M3-18/19の`post-publish.ts`を拡張。X clientに`getRecentPosts`（GET /2/users/:id/tweets・created_at/referenced_tweets、docs.x.com 2026-07-24確認）追加。**create結果不明**（`isAmbiguousError`=XApiError kind network/server）時は再送せず`reconcileCreate`（直近投稿を本文一致＋reply先一致[i>0はtweetIds[i-1]/i=0はnull]＋created_at窓15分で照合）→1件のみ確定でtweet_id保存し継続、0/複数は`failAmbiguousCreate`（post_state_unknown・ambiguous_create_indices・remaining=作成済み・next_metrics・error通知、rollbackしない）。definite失敗は従来通りresume/rollback。**delete結果不明**（rollback中のdeletePost失敗）は`checkTweetExists`（getTweetMetrics: 存在=true/消失=false/取得不能=null）で、false→削除成功扱い（post_delete consume）、true→remaining、null→ambiguous_delete_tweet_ids。last_post_errorは§4.10形状。deps/server配線に`getRecentPosts`/`checkTweetExists`＋`x_user_id`（loadJob）追加。テスト+6（create照合1件成功/候補なしunknown/複数unknown、delete消失→成功/存在→remaining/不能→ambiguous）、全775 green・build通過。doc: 要件04 §10[行75-76・189]・§11・要件05 §2.2・要件02 §4.10 に既述で一致（変更なし）。
 - 後続への注意: **reconcileDraftPosting action（要件05 §5・未実装）**が、post_state_unknown/ambiguous を持つfailed draftをX再照合で解消する（別タスク）。**publishDraft action（T-M3-21）**が post_publish jobを作成する。
 
-### T-M3-21: publishDraft Actionと手動投稿UI（最終確認） `todo`
+### T-M3-21: publishDraft Actionと手動投稿UI（最終確認） `done`
 - 参照: 要件05 §5、要件06 §7、SC-07、S-5 / 依存: T-M3-18、T-M3-12 / サイズ: M
 - 完了条件:
   - publishDraftが`status=draft`（またはtweet_id作成履歴・残存ID・曖昧状態がすべてないretryable failed）のみ許可し、activeな同種jobがなければrequest_key冪等でpost_publish jobを作成・`after()`でdispatchする
   - SC-07の投稿ボタン→最終確認modalに「thread途中失敗時は作成済みポストを自動削除し、削除後はX上で復元できない」ことが明示され、確認後にdry_runで投稿完了（下書きタブから消え履歴タブへ移動）まで動作する
   - posting中のdraftは編集・破棄・再投稿操作が無効化される
+- 実装メモ: 中核`generation-jobs.ts` `publishDraft`（request_key＋active post_publish job[unique index]の二重冪等、draft所有/状態検証: draft はOK・failed は`hasUnresolvedPosting`[tweet_ids非空/remaining/ambiguous]なら job_conflict:unresolved_posting・その他は not_publishable、投稿prereq`assertPostingPrereqs`、`{mode}`inputでpost_publish job作成）。投稿用prereq`checkPostingPrerequisites`（execution-prereqs.ts・契約→Xキー(BYOK)→X連携のみ、AI/発信設定は不要）を追加。`publishDraftAction`（!dedupedでafter dispatch）。UI`drafts-list.tsx`: `PublishButton`（最終確認AlertDialog=「途中失敗で作成済み自動削除・復元不可」明示）＋job pollで成功→router.refresh（下書き→履歴）／失敗→通知＋refresh。**投稿中は編集/再生成/投稿/破棄を無効化＋「投稿中…」表示**（locked）。ImageSectionもpublishing中disable。テスト+8（publishDraft: draft作成/active dedup/request_key冪等/clean failed許可/unresolved[tweets]拒否/unresolved[ambiguous]拒否/posted拒否/prereq）、全783 green・build通過。doc: 要件05 §5は既述で一致、要件06 §7に「posting中disable・投稿prereqはAI不要」を追記。
+- 後続への注意: failed下書きの republish（tweet_id作成済み）は clone（cloneFailedDraftForRetry・未実装）経由。UIは status=draft のみ投稿ボタン表示（clean failed の直接再投稿はactionが許可するがUI導線は後続）。reconcileDraftPosting action は別タスク。
 
 ### T-M3-22: SC-07履歴タブ（投稿履歴） `todo`
 - 参照: S-6、SC-07、要件06 §4.3、要件02 §3.9、要件04 §14 / 依存: T-M3-18、T-M3-11 / サイズ: S

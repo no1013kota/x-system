@@ -7,6 +7,7 @@ import { useEffect, useState, useTransition } from "react";
 import { discardDraftAction } from "@/app/actions/drafts";
 import {
   getGenerationJobAction,
+  publishDraftAction,
   regenerateDraftAction,
   regenerateImageAction,
 } from "@/app/actions/generation-jobs";
@@ -94,11 +95,16 @@ function DraftCard({
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [publishJobId, setPublishJobId] = useState<string | null>(null);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   const readyImage = draft.images.find((img) => img.status === "ready");
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
   const editable = draft.status === "draft";
+  // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
+  const publishing = pending || publishJobId !== null;
+  const locked = publishing || editing;
 
   function discard() {
     startTransition(async () => {
@@ -109,6 +115,40 @@ function DraftCard({
       if (res.status === "success") router.refresh();
     });
   }
+
+  function publish() {
+    setPublishNotice(null);
+    startTransition(async () => {
+      const res = await publishDraftAction({
+        request_key: crypto.randomUUID(),
+        draft_id: draft.id,
+      });
+      if (res.status !== "success" || !res.jobId) {
+        setPublishNotice(res.message);
+        return;
+      }
+      setPublishJobId(res.jobId);
+    });
+  }
+
+  // 投稿jobを終端までpoll。成功→履歴へ（refreshで下書きから消える）、失敗→下書きに残り通知。
+  useEffect(() => {
+    if (!publishJobId) return;
+    const timer = setInterval(async () => {
+      const res = await getGenerationJobAction({ job_id: publishJobId });
+      if (res.status !== "success" || !res.job) return;
+      if (!TERMINAL.has(res.job.status)) return;
+      clearInterval(timer);
+      setPublishJobId(null);
+      if (res.job.status === "succeeded") {
+        router.refresh();
+      } else {
+        setPublishNotice("投稿に失敗しました。下書きの状態をご確認ください。");
+        router.refresh();
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [publishJobId, router]);
 
   return (
     <li
@@ -134,12 +174,17 @@ function DraftCard({
           <span className="text-xs text-muted-foreground">{timeLabel(draft.updated_at)}</span>
         </div>
         <div className="flex items-center gap-2">
-          {editable && !editing ? (
+          {publishing ? (
+            <span className="text-xs font-medium text-muted-foreground" role="status">
+              投稿中…
+            </span>
+          ) : null}
+          {editable && !editing && !publishing ? (
             <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
               編集
             </Button>
           ) : null}
-          {!editing ? (
+          {!editing && !publishing ? (
             <Button
               onClick={() => setRegenerating((v) => !v)}
               size="sm"
@@ -149,9 +194,17 @@ function DraftCard({
               再生成
             </Button>
           ) : null}
-          <DiscardButton disabled={pending} onConfirm={discard} />
+          {editable && !editing ? (
+            <PublishButton disabled={publishing} onConfirm={publish} />
+          ) : null}
+          <DiscardButton disabled={locked} onConfirm={discard} />
         </div>
       </div>
+      {publishNotice ? (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          {publishNotice}
+        </p>
+      ) : null}
 
       {regenerating ? (
         <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
@@ -159,7 +212,7 @@ function DraftCard({
 
       {readyImage || imageFailed ? (
         <ImageSection
-          enabled={imageRegenEnabled}
+          enabled={imageRegenEnabled && !publishing}
           failed={imageFailed && !readyImage}
           imageUrl={readyImage?.signed_url}
           draftId={draft.id}
@@ -347,6 +400,40 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
         </p>
       ) : null}
     </div>
+  );
+}
+
+function PublishButton({
+  disabled,
+  onConfirm,
+}: {
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger render={<Button disabled={disabled} size="sm" type="button" />}>
+        投稿
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+          <AlertDialog.Title className="text-lg font-semibold">この内容で投稿しますか？</AlertDialog.Title>
+          <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+            スレッドをXへ順に投稿します。途中で失敗した場合は、作成済みのポストを自動で削除します。
+            <span className="font-medium text-foreground">削除したポストはX上で復元できません。</span>
+          </AlertDialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+              キャンセル
+            </AlertDialog.Close>
+            <AlertDialog.Close onClick={onConfirm} render={<Button size="lg" type="button" />}>
+              投稿する
+            </AlertDialog.Close>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }
 

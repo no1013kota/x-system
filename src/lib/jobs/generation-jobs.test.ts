@@ -7,6 +7,7 @@ import {
   cancelGenerationJob,
   createGenerationJob,
   getGenerationJob,
+  publishDraft,
   regenerateDraft,
   regenerateImage,
   retryGenerationJob,
@@ -290,6 +291,105 @@ describe("regenerateImage", () => {
     await expect(
       regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db)),
     ).rejects.toMatchObject({ code: "job_conflict" });
+  });
+});
+
+describe("publishDraft", () => {
+  const PUB_LOAD = /select d\.status, d\.x_account_id, d\.tweet_ids/;
+  const ACTIVE_PUB = /kind = 'post_publish' and status in/;
+
+  const pubInput = { request_key: "pk", draft_id: "d1", mode: "manual" as const };
+
+  it("creates a post_publish job for a draft status", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (ACTIVE_PUB.test(sql)) return [];
+      if (BUDGET.test(sql)) return [{ n: 0 }];
+      if (INSERT.test(sql)) return [{ id: "pub-job" }];
+      return [];
+    });
+    const res = await publishDraft("u1", pubInput, deps(db));
+    expect(res).toEqual({ jobId: "pub-job", deduped: false });
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    expect(insert?.sql).toContain("post_publish");
+    expect(JSON.parse(insert?.params[2] as string)).toEqual({ mode: "manual" });
+  });
+
+  it("dedups to an active post_publish job", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (ACTIVE_PUB.test(sql)) return [{ id: "active-pub" }];
+      return [];
+    });
+    const res = await publishDraft("u1", pubInput, deps(db));
+    expect(res).toEqual({ jobId: "active-pub", deduped: true });
+    expect(writes.some((w) => INSERT.test(w.sql))).toBe(false);
+  });
+
+  it("is idempotent on request_key", async () => {
+    const { db } = makeDb((sql) => (EXISTING.test(sql) ? [{ id: "existing" }] : []));
+    expect(await publishDraft("u1", pubInput, deps(db))).toEqual({ jobId: "existing", deduped: true });
+  });
+
+  it("allows a clean retryable failed draft", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (ACTIVE_PUB.test(sql)) return [];
+      if (BUDGET.test(sql)) return [{ n: 0 }];
+      if (INSERT.test(sql)) return [{ id: "pub-job" }];
+      return [];
+    });
+    expect((await publishDraft("u1", pubInput, deps(db))).jobId).toBe("pub-job");
+    expect(writes.some((w) => INSERT.test(w.sql))).toBe(true);
+  });
+
+  it("rejects a failed draft with created tweets (unresolved posting)", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      return [];
+    });
+    const err = await rejection(publishDraft("u1", pubInput, deps(db)));
+    expect(err.code).toBe("job_conflict");
+    expect(err.details?.reason).toBe("unresolved_posting");
+  });
+
+  it("rejects a failed draft with remaining/ambiguous state", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql))
+        return [{ status: "failed", x_account_id: XID, tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
+      return [];
+    });
+    const err = await rejection(publishDraft("u1", pubInput, deps(db)));
+    expect(err.details?.reason).toBe("unresolved_posting");
+  });
+
+  it("rejects a non-publishable (posted) draft", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "posted", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      return [];
+    });
+    await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({ code: "job_conflict" });
+  });
+
+  it("surfaces posting prerequisite errors (no active X account)", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (ACTIVE_PUB.test(sql)) return [];
+      return [];
+    });
+    const err = await rejection(
+      publishDraft("u1", pubInput, deps(db, {
+        gatherPrereqInputs: async () => ({ ...okPrereq(), hasActiveXAccount: false }),
+      })),
+    );
+    expect(err.code).toBe("x_account_required");
   });
 });
 

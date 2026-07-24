@@ -107,6 +107,29 @@ export function checkExecutionPrerequisites(
   return { code: ITEM_CODE[primary], missing, settingsPath: ITEM_PATH[primary] };
 }
 
+/**
+ * 投稿実行（publishDraft / post_publish）の前提。契約→Xキー(BYOK)→X連携のみ検証する。
+ * 文章/画像AIキー・発信設定は投稿には不要のため含めない（要件06 §7・要件05 §5）。
+ */
+export function checkPostingPrerequisites(
+  input: ExecutionPrereqInput,
+): ExecutionPrereqError | null {
+  const premium = input.plan === "premium";
+  const missing: PrereqItem[] = [];
+  if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) {
+    missing.push("subscription");
+  }
+  if (!premium && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {
+    missing.push("x_api_key");
+  }
+  if (!input.hasActiveXAccount) {
+    missing.push("x_account");
+  }
+  if (missing.length === 0) return null;
+  const primary = missing[0];
+  return { code: ITEM_CODE[primary], missing, settingsPath: ITEM_PATH[primary] };
+}
+
 /** Actionから呼ぶ。不足があれば code/missing/settingsPath 入りの AppError を投げる。 */
 export function assertExecutionPrerequisites(input: ExecutionPrereqInput): void {
   const result = checkExecutionPrerequisites(input);

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { checkExecutionPrerequisites, type ExecutionPrereqInput } from "@/lib/execution-prereqs";
+import {
+  checkExecutionPrerequisites,
+  checkPostingPrerequisites,
+  type ExecutionPrereqInput,
+} from "@/lib/execution-prereqs";
 import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "../x/token-refresh";
@@ -100,6 +104,18 @@ async function assertPrereqs(
   const input = await deps.gatherPrereqInputs(userId, { imageRequested });
   const error = input
     ? checkExecutionPrerequisites(input)
+    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
+  if (error) {
+    throw new AppError(error.code, {
+      details: { missing: error.missing, settingsPath: error.settingsPath },
+    });
+  }
+}
+
+async function assertPostingPrereqs(deps: GenerationJobDeps, userId: string): Promise<void> {
+  const input = await deps.gatherPrereqInputs(userId, { imageRequested: false });
+  const error = input
+    ? checkPostingPrerequisites(input)
     : { code: "not_found" as const, missing: [], settingsPath: "/app" };
   if (error) {
     throw new AppError(error.code, {
@@ -343,6 +359,114 @@ export async function regenerateImage(
       )
     ).rows[0];
     if (!raced) throw new AppError("job_conflict", { details: { reason: "image_job_race" } });
+    return { jobId: raced.id, deduped: true };
+  });
+}
+
+export const publishDraftSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  draft_id: z.string().uuid(),
+  mode: z.literal("manual").default("manual"),
+});
+export type PublishDraftInput = z.infer<typeof publishDraftSchema>;
+
+interface PublishDraftRow {
+  status: string;
+  x_account_id: string;
+  tweet_ids: string[];
+  last_post_error: {
+    remaining_tweet_ids?: string[];
+    ambiguous_create_indices?: number[];
+    ambiguous_delete_tweet_ids?: string[];
+  } | null;
+}
+
+/** 未解決の投稿状態（作成履歴・残存ID・曖昧状態）があり直接再投稿できない failed か。 */
+function hasUnresolvedPosting(draft: PublishDraftRow): boolean {
+  const lpe = draft.last_post_error;
+  return (
+    (Array.isArray(draft.tweet_ids) && draft.tweet_ids.length > 0) ||
+    (lpe?.remaining_tweet_ids?.length ?? 0) > 0 ||
+    (lpe?.ambiguous_create_indices?.length ?? 0) > 0 ||
+    (lpe?.ambiguous_delete_tweet_ids?.length ?? 0) > 0
+  );
+}
+
+/**
+ * 手動投稿（要件05 §5・要件06 §7, T-M3-21）。`status=draft`、または tweet_id作成履歴・残存ID・
+ * 曖昧状態がすべて無い retryable `failed` のみ許可。activeな post_publish job（unique index）と
+ * request_key で二重に冪等化して post_publish job を作る。前提は投稿用（契約→Xキー→X連携）。
+ */
+export async function publishDraft(
+  userId: string,
+  input: PublishDraftInput,
+  deps: GenerationJobDeps,
+): Promise<CreateJobResult> {
+  const key = requestKey(userId, input.request_key);
+  return deps.runInTx(async (tx) => {
+    const existing = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs where request_key = $1`,
+        [key],
+      )
+    ).rows[0];
+    if (existing) return { jobId: existing.id, deduped: true };
+
+    const draft = (
+      await tx.query<PublishDraftRow>(
+        `select d.status, d.x_account_id, d.tweet_ids, d.last_post_error
+           from drafts d join x_accounts xa on xa.id = d.x_account_id
+          where d.id = $1 and xa.user_id = $2`,
+        [input.draft_id, userId],
+      )
+    ).rows[0];
+    if (!draft) throw new AppError("not_found");
+    if (draft.status === "draft") {
+      // ok
+    } else if (draft.status === "failed") {
+      if (hasUnresolvedPosting(draft)) {
+        // 作成履歴・残存・曖昧がある failed は複製(cloneFailedDraftForRetry)で再開する。直接再投稿しない。
+        throw new AppError("job_conflict", { details: { reason: "unresolved_posting" } });
+      }
+    } else {
+      throw new AppError("job_conflict", { details: { reason: `not_publishable:${draft.status}` } });
+    }
+
+    // 同一draftのactive post_publishが既にあれば二重投稿しない（unique index と対称）。
+    const active = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs
+          where draft_id = $1 and kind = 'post_publish' and status in ('queued', 'running')`,
+        [input.draft_id],
+      )
+    ).rows[0];
+    if (active) return { jobId: active.id, deduped: true };
+
+    await assertPostingPrereqs(deps, userId);
+    await assertJobBudget(tx, userId);
+
+    const inserted = (
+      await tx.query<{ id: string }>(
+        `insert into generation_jobs
+           (x_account_id, kind, trigger, draft_id, input, request_key, status)
+         values ($1, 'post_publish', 'manual', $2, $3::jsonb, $4, 'queued')
+         on conflict do nothing
+         returning id`,
+        [draft.x_account_id, input.draft_id, JSON.stringify({ mode: input.mode }), key],
+      )
+    ).rows[0];
+    if (inserted) return { jobId: inserted.id, deduped: false };
+
+    const raced = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs
+          where request_key = $1
+             or (draft_id = $2 and kind = 'post_publish' and status in ('queued', 'running'))
+          limit 1`,
+        [key, input.draft_id],
+      )
+    ).rows[0];
+    if (!raced) throw new AppError("job_conflict", { details: { reason: "post_publish_race" } });
     return { jobId: raced.id, deduped: true };
   });
 }

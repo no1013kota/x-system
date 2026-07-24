@@ -14,6 +14,8 @@ import {
   createGenerationJobSchema,
   getGenerationJob,
   jobIdSchema,
+  publishDraft,
+  publishDraftSchema,
   regenerateDraft,
   regenerateDraftSchema,
   regenerateImage,
@@ -127,6 +129,22 @@ export async function regenerateImageAction(input: unknown): Promise<JobIdResult
     const { jobId, deduped } = await regenerateImage(auth.userId, parsed.data, jobDeps);
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "画像を再生成しています。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
+  const parsed = publishDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { jobId, deduped } = await publishDraft(auth.userId, parsed.data, jobDeps);
+    if (!deduped) after(() => dispatchJob(jobId));
+    return { jobId, message: "投稿を開始しました。", status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }
