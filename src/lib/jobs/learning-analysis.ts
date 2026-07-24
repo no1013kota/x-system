@@ -7,6 +7,7 @@ import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { MAX_ATTEMPTS, backoffMs } from "./retry";
 import { heartbeat } from "./stale";
 
 /**
@@ -80,6 +81,11 @@ export interface LearningAnalysisDeps {
   }) => Promise<{ text: string; metrics: Record<string, number> | null } | null>;
   /** own_posts: 自己直近ポスト本文（最大100件）。 */
   fetchOwnPosts: () => Promise<string[]>;
+  /**
+   * 分析成功後の同一job内 MD-MERGE（T-M5-04）。注入時は merge が source を analyzed 確定する。
+   * 未注入時は本関数が analyzed 化する（merge非依存の単体経路）。
+   */
+  mergeAfterAnalysis?: (sourceId: string) => Promise<void>;
   now?: () => number;
   makeDeadline?: () => Deadline;
   recordStage?: (stage: string) => Promise<void>;
@@ -236,19 +242,48 @@ export async function executeLearningAnalysis(
       now,
     });
 
-    // 分析結果保存＋暫定 analyzed 化（MD-MERGE最終確定は T-M5-04）。
+    // 分析結果を保存（analyzed 確定は MD-MERGE tx が担う。T-M5-04）。
     await db.query(
-      `update learning_sources
-          set status = 'analyzed', analysis_summary = $2::jsonb, updated_at = now()
-        where id = $1`,
+      `update learning_sources set analysis_summary = $2::jsonb, updated_at = now() where id = $1`,
       [sourceId, JSON.stringify({ type: source.type, ...result.parsed })],
     );
     await db.query(`update generation_jobs set usage = $2::jsonb where id = $1`, [
       jobId,
       JSON.stringify(result.usage),
     ]);
+
+    // 同一job内 MD-MERGE（注入時）。未注入経路はここで analyzed 確定する。
+    if (deps.mergeAfterAnalysis) {
+      await deps.mergeAfterAnalysis(sourceId);
+    } else {
+      await db.query(
+        `update learning_sources set status = 'analyzed', updated_at = now() where id = $1`,
+        [sourceId],
+      );
+    }
     return { status: "analyzed", sourceId };
   } catch (error) {
+    // retryable（X読取429/5xx・MD-MERGE version競合枯渇等）は attempt<3 なら job を queued へ自己終端して
+    // scheduler_tick に再dispatchさせる（runJob の failed 化を空振りさせる）。reserve は保持（冪等）。
+    // attempt>=3 は terminal 扱い（refund＋failed＋通知）へ落として枠を漏らさない。
+    if ((error as { retryable?: boolean } | null)?.retryable === true) {
+      const attempt =
+        (await db.query<{ attempt: number }>(`select attempt from generation_jobs where id = $1`, [jobId]))
+          .rows[0]?.attempt ?? MAX_ATTEMPTS;
+      if (attempt < MAX_ATTEMPTS) {
+        await deps.runInTx((tx) =>
+          tx.query(
+            `update generation_jobs
+                set status = 'queued', locked_at = null, locked_by = null, progress_stage = null,
+                    available_at = now() + ($2 || ' milliseconds')::interval
+              where id = $1 and status = 'running'`,
+            [jobId, backoffMs(attempt)],
+          ),
+        );
+        throw error;
+      }
+      // 上限到達 → terminal（下の失敗確定＋返還へフォールスルー）
+    }
     const usage: GenerationUsage =
       error instanceof InvalidProviderOutputError
         ? error.usage

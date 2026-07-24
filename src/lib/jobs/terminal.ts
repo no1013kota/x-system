@@ -222,7 +222,27 @@ export async function finalizeFailedJob(
           : "/app/posts",
       });
       break;
+    case "learning_analysis":
+      // 生成枠を返還（premium・冪等）し、ソースを failed に戻す（stale時のworker失敗経路と同等・T-M5-03/04）。
+      await refundUsage(c, jobId, "generation");
+      if (job.learning_source_id) {
+        await c.query(
+          `update learning_sources set status = 'failed', updated_at = now()
+            where id = $1 and status <> 'analyzed'`,
+          [job.learning_source_id],
+        );
+      }
+      await createFailedNotification(c, {
+        userId: job.user_id,
+        jobId,
+        title: "学習ソースの分析に失敗しました",
+        body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
+        link: "/app/settings?tab=learning",
+      });
+      break;
     case "md_merge":
+      // 削除mergeも生成枠を1消費するため返還する（premium・冪等。T-M5-05）。
+      await refundUsage(c, jobId, "generation");
       await finalizeMdMergeStale(c, job.learning_source_id);
       await createFailedNotification(c, {
         userId: job.user_id,

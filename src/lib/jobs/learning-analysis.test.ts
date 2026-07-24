@@ -145,3 +145,62 @@ describe("executeLearningAnalysis", () => {
     expect(writes.some((w) => REFUND.test(w.sql))).toBe(true); // premium refund
   });
 });
+
+const REQUEUE = /update generation_jobs\s+set status = 'queued'/;
+const SELECT_ATTEMPT = /select attempt from generation_jobs/;
+
+class RetryableErr extends Error {
+  readonly retryable = true;
+  constructor() {
+    super("transient");
+    this.name = "RetryableErr";
+  }
+}
+
+describe("executeLearningAnalysis — retryable handling (T-M5-04 fix)", () => {
+  function retryHandler(attempt: number): Handler {
+    return (sql) => {
+      if (LOAD_JOB.test(sql))
+        return { rows: [{ learning_source_id: "s1", x_account_id: "xa1", user_id: "u1", plan: "premium" }] };
+      if (LOAD_SOURCE.test(sql)) return { rows: [{ type: "ref_account", url: "https://x.com/foo", status: "pending" }] };
+      if (RESERVE.test(sql)) return { rowCount: 1 };
+      if (SELECT_ATTEMPT.test(sql)) return { rows: [{ attempt }] };
+      if (REFUND.test(sql)) return { rows: [{ user_id: "u1", month: "2026-07", counter_type: "generation" }] };
+      return { rows: [] };
+    };
+  }
+
+  it("requeues (not fail/refund) on a retryable merge error while attempt < 3", async () => {
+    const { db, writes } = mockDb(retryHandler(1));
+    await expect(
+      executeLearningAnalysis(
+        deps({
+          db,
+          mergeAfterAnalysis: async () => {
+            throw new RetryableErr();
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(RetryableErr);
+    expect(writes.some((w) => REQUEUE.test(w.sql))).toBe(true); // self-terminated to queued
+    expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(false);
+    expect(writes.some((w) => REFUND.test(w.sql))).toBe(false); // reserve kept for retry
+  });
+
+  it("treats a retryable error as terminal (refund + failed) once attempt >= 3", async () => {
+    const { db, writes } = mockDb(retryHandler(3));
+    await expect(
+      executeLearningAnalysis(
+        deps({
+          db,
+          mergeAfterAnalysis: async () => {
+            throw new RetryableErr();
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(LearningAnalysisTerminalError); // wrapped as terminal at the cap
+    expect(writes.some((w) => REQUEUE.test(w.sql))).toBe(false);
+    expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(true);
+    expect(writes.some((w) => REFUND.test(w.sql))).toBe(true); // premium refunded at cap
+  });
+});

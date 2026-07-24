@@ -199,3 +199,27 @@ export function baseMdSettingsDiffer(
 ): boolean {
   return rebuildSettingsSections(existingContent, input) !== existingContent;
 }
+
+/** ベースmdの学習セクション見出し（MD-MERGE の再構築で使う）。 */
+export const BASE_MD_SECTION5_TITLE = BASE_MD_SECTION_TITLES[4];
+export const BASE_MD_SECTION6_TITLE = BASE_MD_SECTION_TITLES[5];
+
+/**
+ * セクション5・6の本文だけをmerge結果で置き換え、セクション1〜4は不変で保持する（MD-MERGE, L-8）。
+ * 6見出し構造を前後で検証する（崩れた出力は throw して呼び出し側が構造エラー処理する）。
+ */
+export function replaceLearningSections(
+  existingContent: string,
+  section5Body: string,
+  section6Body: string,
+): string {
+  validateBaseMdStructure(existingContent);
+  const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
+  if (sectionFive?.index === undefined) {
+    throw new Error("ベースmdのセクション5を特定できません。");
+  }
+  const prefix = existingContent.slice(0, sectionFive.index); // セクション1〜4（＋前文）
+  const rebuilt = `${prefix}## 5. ${BASE_MD_SECTION5_TITLE}\n${section5Body.trim()}\n\n## 6. ${BASE_MD_SECTION6_TITLE}\n${section6Body.trim()}\n`;
+  validateBaseMdStructure(rebuilt);
+  return rebuilt;
+}

@@ -167,6 +167,25 @@ export const PT_L3 = `# タスク
 "signature":"この人らしい書き出しと締めの例を各1つ（原文のまま）",
 "examples":"文体をよく表す投稿を1〜2件（原文のまま）"}`;
 
+/**
+ * PT-MD-MERGE（ベースmdセクション統合, プロンプト設計書 §6.14, MD-MERGE）。1セクションを現在有効な全分析で
+ * 書き直す。出力はセクション本文のみ（見出し・前置きなし）。`{{current_section}}`/`{{active_analyses}}`/
+ * `{{removed_analyses}}` を実行時に埋める。コード定数（account編集対象外）。
+ */
+export const PT_MD_MERGE = `# タスク
+ベースmdの1セクションを、現在有効な全分析結果を反映して書き直す。
+現在: <current>{{current_section}}</current>
+現在有効な全分析: <analyses>{{active_analyses}}</analyses>
+今回除外する分析: <removed>{{removed_analyses}}</removed>
+
+# 要件
+- 宣言文・1行1ルールの形式を保ち、400字以内に収める（「良い投稿例」の引用は除く）
+- <analyses>に根拠がある知見を統合し、<removed>だけに由来する記述は取り除く
+- 現在セクションのうち、分析由来ではないユーザー手動記述は保持する。分析間の矛盾は新しい分析を優先
+
+# 出力
+セクション本文のみ（見出し・前置きなし）。`;
+
 /** prompt_templates で管理する種別（system default seed 対象・account上書き可能）。 */
 export const PROMPT_TEMPLATE_KINDS = [
   "p1",
