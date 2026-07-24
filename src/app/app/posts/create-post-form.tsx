@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
 
-import { createGenerationJobAction } from "@/app/actions/generation-jobs";
+import {
+  createGenerationJobAction,
+  getGenerationJobAction,
+  retryGenerationJobAction,
+} from "@/app/actions/generation-jobs";
 import { ExecutionPrereqNotice } from "@/components/app-shell/execution-prereq-notice";
 import { Button } from "@/components/ui/button";
 import type { PrereqItem } from "@/lib/execution-prereqs";
@@ -13,10 +18,29 @@ export interface PatternOption {
   description: string;
 }
 
+export interface ActiveJob {
+  id: string;
+  status: string;
+  progressStage: string | null;
+  draftId: string | null;
+  createdAt: string;
+}
+
 const IMAGE_PROVIDER_LABEL: Record<string, string> = {
   openai: "OpenAI",
   google: "Google (Gemini)",
 };
+
+const STAGE_LABEL: Record<string, string> = {
+  validating: "前提を確認しています",
+  research: "情報をリサーチしています",
+  writing: "本文を作成しています",
+  image: "画像を生成しています",
+};
+const STAGE_ORDER = ["validating", "research", "writing", "image"];
+const POLL_MS = 2500;
+const QUEUED_SLOW_MS = 60_000;
+const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 interface ActionError {
   message: string;
@@ -28,10 +52,12 @@ export function CreatePostForm({
   xAccountId,
   patterns,
   imageProviders,
+  initialJob = null,
 }: {
   xAccountId: string;
   patterns: PatternOption[];
   imageProviders: string[];
+  initialJob?: ActiveJob | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
@@ -41,11 +67,30 @@ export function CreatePostForm({
   const [imageEnabled, setImageEnabled] = useState(false);
   const [imageProvider, setImageProvider] = useState(imageProviders[0] ?? "");
   const [error, setError] = useState<ActionError | null>(null);
-  const [startedJobId, setStartedJobId] = useState<string | null>(null);
+  const [job, setJob] = useState<ActiveJob | null>(initialJob);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // 進行中のあいだ getGenerationJob をポーリングして状態を更新する（再訪時も initialJob から再開）。
+  useEffect(() => {
+    if (!job || TERMINAL.has(job.status)) return;
+    const timer = setInterval(async () => {
+      setNowMs(Date.now());
+      const res = await getGenerationJobAction({ job_id: job.id });
+      if (res.status === "success" && res.job) {
+        setJob((prev) => ({
+          id: res.job!.id,
+          status: res.job!.status,
+          progressStage: res.job!.progress_stage,
+          draftId: res.job!.draft_id,
+          createdAt: prev?.createdAt ?? job.createdAt,
+        }));
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [job?.id, job?.status, job?.createdAt, job]);
 
   function submit() {
     setError(null);
-    setStartedJobId(null);
     startTransition(async () => {
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
@@ -65,9 +110,45 @@ export function CreatePostForm({
         });
         return;
       }
-      setStartedJobId(res.jobId ?? null);
+      if (res.jobId) {
+        setJob({
+          id: res.jobId,
+          status: "queued",
+          progressStage: null,
+          draftId: null,
+          createdAt: new Date(nowMs).toISOString(),
+        });
+      }
     });
   }
+
+  function retry() {
+    if (!job) return;
+    const failedId = job.id;
+    startTransition(async () => {
+      const res = await retryGenerationJobAction({
+        request_key: crypto.randomUUID(),
+        job_id: failedId,
+      });
+      if (res.status === "error") {
+        setError({ message: res.message });
+        return;
+      }
+      if (res.jobId) {
+        setJob({
+          id: res.jobId,
+          status: "queued",
+          progressStage: null,
+          draftId: null,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    });
+  }
+
+  const inProgress = job !== null && !TERMINAL.has(job.status);
+  const queuedSlow =
+    job?.status === "queued" && nowMs - new Date(job.createdAt).getTime() > QUEUED_SLOW_MS;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -175,14 +256,15 @@ export function CreatePostForm({
           ) : null}
         </div>
 
-        <Button disabled={pending} onClick={submit} size="lg" type="button">
-          {pending ? "生成を開始しています…" : "生成する"}
+        <Button disabled={pending || inProgress} onClick={submit} size="lg" type="button">
+          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "生成する"}
         </Button>
       </section>
 
       {/* 右ペイン: プレビュー・結果 */}
       <section className="space-y-4 rounded-2xl border bg-card p-6 shadow-sm" aria-label="プレビュー・結果">
         <h2 className="text-sm font-medium">結果</h2>
+
         {error ? (
           error.settingsPath ? (
             <ExecutionPrereqNotice
@@ -196,12 +278,62 @@ export function CreatePostForm({
             </p>
           )
         ) : null}
-        {startedJobId ? (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
-            生成を開始しました。進捗と結果はまもなくここに表示されます。
-          </p>
+
+        {inProgress ? (
+          <div aria-live="polite" className="space-y-3">
+            <ol className="space-y-1.5 text-sm">
+              {STAGE_ORDER.filter((s) => s !== "image" || imageEnabled).map((stage) => {
+                const active = job?.progressStage === stage;
+                const done =
+                  job?.progressStage != null &&
+                  STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf(job.progressStage);
+                return (
+                  <li
+                    className={`flex items-center gap-2 ${
+                      active ? "font-medium text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/60"
+                    }`}
+                    key={stage}
+                  >
+                    <span aria-hidden="true">{done ? "✓" : active ? "…" : "○"}</span>
+                    {STAGE_LABEL[stage]}
+                  </li>
+                );
+              })}
+            </ol>
+            {queuedSlow ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                開始が遅れています。自動で再開されます（最大5分）。
+              </p>
+            ) : null}
+          </div>
         ) : null}
-        {!error && !startedJobId ? (
+
+        {job?.status === "succeeded" ? (
+          <div className="space-y-3">
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
+              生成が完了し、下書きを作成しました。
+            </p>
+            <Link
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+              href="/app/posts?tab=drafts"
+            >
+              下書きを確認する
+            </Link>
+          </div>
+        ) : null}
+
+        {job?.status === "failed" ? (
+          <div className="space-y-3">
+            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
+              生成に失敗しました。時間をおいて再試行してください。
+            </p>
+            <Button disabled={pending} onClick={retry} size="lg" type="button" variant="outline">
+              再試行する
+            </Button>
+          </div>
+        ) : null}
+
+        {!error && job === null ? (
           <p className="text-sm text-muted-foreground">
             パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。
           </p>

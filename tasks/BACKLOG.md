@@ -804,12 +804,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `/app/posts/page.tsx`（server）をタブ（作成/下書き/履歴、作成のみ実装）＋作成フォームへ刷新。`resolveActiveXAccountForUser`でactive解決（無ければX連携導線）、plan＋`FEATURE_QUOTE_POST_ENABLED`でP-5表示制御、画像provider活性判定（premium=運営キー＋画像モデル設定済みのopenai/google、BYOK=user_api_keysのvalidなopenai/google）。クライアント`create-post-form.tsx`＝2ペイン（左: パターンradio＋参考URL＋P-2のみ自分の考え＋追加指示＋画像ON/OFF＋provider select／右: 結果）、`crypto.randomUUID()`をrequest_keyに`createGenerationJobAction`呼び出し、任意入力空でも送信可。前提不足エラー（details.settingsPath付き）は`ExecutionPrereqNotice`（不足項目＋設定へ）、その他はインラインエラー。**BACKLOG修正**: 前サイクル（T-M3-07）の編集でT-M3-08ヘッダ行を誤削除していたのを復元。全694 green・build通過（testing-library未導入のためUIはtypecheck/lint/build検証）。doc: SC-07・要件06 §4.1/§4.2が既述で整合＝影響なし。
 - 後続への注意: 進捗ポーリング（progress_stage表示・再訪復元・queued 60秒表示・failed再試行導線）はT-M3-09。生成結果（draft）表示はT-M3-09/11。下書き/履歴タブは後続。
 
-### T-M3-09: SC-07作成タブ：進捗ポーリングと再訪復元 `todo`
+### T-M3-09: SC-07作成タブ：進捗ポーリングと再訪復元 `done`
 - 参照: 要件06 §4.2、要件04 §3、PRD §7 / 依存: T-M3-08 / サイズ: M
 - 完了条件:
   - job作成後にgetGenerationJobをポーリングしてprogress_stage（validating/research/writing/image）をプログレス表示し、succeededで生成結果（draft）表示へ遷移する
   - queuedのまま60秒超過で「開始が遅れています。自動で再開されます（最大5分）」を進行中扱いで表示し、failedの場合のみ原因と再試行導線（retryGenerationJob）を表示する
   - 生成中に画面を離れて再訪してもactive jobの状態が復元される
+- 実装メモ: `create-post-form.tsx`にjob状態＋useEffectポーリング（2.5s、`getGenerationJobAction`、TERMINALで停止）を追加。progress_stageをステッパー表示（validating/research/writing＋imageはON時のみ、済/進行中/未）。queued&created_atから60秒超過で「開始が遅れています。自動で再開されます（最大5分）」（進行中扱い）。succeeded→「下書きを作成しました」＋下書き確認リンク。failed→再試行ボタン（`retryGenerationJobAction`）。**再訪復元**: page（server）が active x_account の queued/running な post_generation 最新1件を`initialJob`としてフォームへ渡し、ポーリングを再開。生成中は「生成する」ボタン無効化。全694 green・build通過（UIはtypecheck/lint/build検証）。doc: 要件06 §4.2 が既述で整合＝影響なし。
+- 後続への注意: succeeded時の下書き“表示”遷移は下書きタブ（T-M3-11）へリンク（`?tab=drafts`）で暫定接続。job.errorのユーザー向け表示はコード化メッセージのみ（生値は出さない）。ポーリングはserver action経由（M4でrealtimeにするなら別途）。
 
 ### T-M3-10: 下書きServer Actions（listDrafts／updateDraft／discardDraft） `todo`
 - 参照: 要件05 §5、要件06 §4.3、要件02 §3.9、要件02 §4.7、S-5 / 依存: T-M3-01、M1 / サイズ: M

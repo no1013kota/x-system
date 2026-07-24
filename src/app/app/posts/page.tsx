@@ -6,7 +6,11 @@ import { getPool } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-import { CreatePostForm, type PatternOption } from "./create-post-form";
+import {
+  CreatePostForm,
+  type ActiveJob,
+  type PatternOption,
+} from "./create-post-form";
 
 export const metadata: Metadata = { title: "投稿 | Space AI" };
 
@@ -64,6 +68,33 @@ export default async function PostsPage() {
     ? await availableImageProviders(user.id, profile?.plan ?? null)
     : [];
 
+  // 再訪復元: 進行中（queued/running）の生成jobがあればフォームがポーリングを再開する（要件06 §4.2）。
+  let initialJob: ActiveJob | null = null;
+  if (activeXAccountId) {
+    const inflight = (
+      await getPool().query<{
+        id: string;
+        status: string;
+        progress_stage: string | null;
+        created_at: Date | string;
+      }>(
+        `select id, status, progress_stage, created_at from generation_jobs
+          where x_account_id = $1 and kind = 'post_generation' and status in ('queued','running')
+          order by created_at desc limit 1`,
+        [activeXAccountId],
+      )
+    ).rows[0];
+    if (inflight) {
+      initialJob = {
+        id: inflight.id,
+        status: inflight.status,
+        progressStage: inflight.progress_stage,
+        draftId: null,
+        createdAt: new Date(inflight.created_at).toISOString(),
+      };
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 lg:px-8 lg:py-10">
       <header className="space-y-1">
@@ -86,6 +117,7 @@ export default async function PostsPage() {
       {activeXAccountId ? (
         <CreatePostForm
           imageProviders={imageProviders}
+          initialJob={initialJob}
           patterns={patterns}
           xAccountId={activeXAccountId}
         />
