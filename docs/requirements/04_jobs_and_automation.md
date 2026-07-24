@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
+| バージョン | v1.6 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -231,7 +231,7 @@ flowchart TD
 - 1起動あたり50 account・500 tweet_id・外部request最大10並列を上限とし、Function deadline超過分は次回毎時起動へ委ねる。1アカウントのtoken取得失敗（失効）や読取失敗（401/403/429枯渇/5xx）はそのaccount/draft単位で隔離してスキップし、run全体を落とさない（失効はaccountスキップ、一時失敗は`next_metrics_at`据え置きで次窓が再走査）。
 - 30日表示用checkpointはnon-public metricsの取得期限を越えないよう投稿後29日〜30日未満で取得する。期限内の取得に失敗したprivate fieldはnullのまま確定し、public metricsもMVPでは更新終了する。
 - X上で削除済み・取得不能と確定したtweet_idは`unavailable`として以後のcheckpoint対象から外し、他のtweet_idの実績は継続する。
-- `follower_snapshot`は`x_account_id + JST日付`でupsertする。
+- `follower_snapshot`はJST当日分snapshotが無い`status=active`のXアカウントを対象に、user token別で自アカウントの`followers_count`を読み`(x_account_id, snapshot_date)`へupsertする（unique制約で同日再実行でも重複rowを作らない）。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。
 
 ## 14. 通知
 
