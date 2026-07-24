@@ -1316,13 +1316,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核 `analytics.ts` に `FollowerPoint`型＋`followerSeriesSummary`（latest/delta(初点比)/min/max/points）を追加。配線 `analytics-server.ts` `loadFollowerSnapshotsForUser`（所有権付き・JST基準の直近days・日付昇順）。UI `analytics/page.tsx` が90日ロードして `follower-chart.tsx`（client・**依存追加なしのinline SVG**）へ渡す。期間切替7/30/90（既定30・client側で now 起点フィルタ、`Date.now` は `useState(()=>Date.now())` で1度確定しrender純粋性を満たす）。欠損日は点を作らず実日付でx配置（gap表現）。折れ線＋circleマーカー（色以外）＋数値サマリ（現在・期間増減）＋`<details>`データ表でa11y。未収集は空状態（日次自動記録案内）。`viewBox`＋`w-full`でレスポンシブ。テスト: 単体3（followerSeriesSummary empty/single/multi）＋db1（期間内昇順・200日前除外・所有権）。全1016 green・build通過。UIはrepo方針でcomponent testなし。doc: 要件06 §8 にフォロワー推移セクションを追記（v1.18）。
 - 後続への注意: 改善提案（SUGGEST）は T-M5-17（入力集計）→T-M5-18系（生成・表示）。チャートは外部ライブラリ不使用（inline SVG）＝将来リッチ化する場合もこの方針か、導入時はADRで技術判断を記録。
 
-### T-M5-17: T-M5-17: SUGGEST入力集計モジュール（<stats>/<posts>組み立て） `todo`
+### T-M5-17: T-M5-17: SUGGEST入力集計モジュール（<stats>/<posts>組み立て） `done`
 - 参照: K-2、SUGGEST、プロンプト §6.15、プロンプト §4.2、要件04 §12 / 依存: T-M5-12 / サイズ: M
 - 完了条件:
   - fixtureで、7日checkpoint取得済みの比較グループが3件以上なら7日を採用、3件未満なら1日値へフォールバックし、異なる経過日数（checkpoint）を混在させないことがunit testで検証できる
   - <stats>が型×時間帯セルごとの件数・平均（対象metric）JSONとして、<posts>がtweet_id単位・最大50件（本文冒頭100字・pattern・JST投稿時刻・metric値）のJSON配列として生成される
   - 対象は直近30日の投稿に限定され、rollback削除済み・unavailableのtweet_idが除外される
 - メモ: LLMを使わない純粋なコード集計（プロンプト設計書 §1の原則）。pure functionとして実装しworkerから分離してテスト可能にする。テーマの事前集計は行わない（テーマはPT-SUGGESTが本文から判断）。
+- 実装メモ: `jobs/suggestion-input.ts`（純粋・DB非依存、workerから分離）。`chooseCheckpoint(drafts, nowMs)`＝impressions非nullで7日取得済みが3件以上→7、未満→1（混在禁止）。`buildSuggestionInput`＝直近30日の posted 全tweet_id＋failed remaining（tweet_ids↔thread 同順で本文対応、rollback削除・unavailable除外）から、選択checkpointのimpressions非nullな tweet を投稿時刻降順・最大50件で `posts`（tweet_id/body冒頭100字/pattern/JST `HH:mm`/impressions）化し、同一集合を pattern×時間帯（JST 3時間バケット `0-3`〜`21-24`）で `stats`（count・avg_impressions=四捨五入）へ集計。対象metric=impressions固定。JST算出は ISO+9h の純粋計算（argless Date不使用）。テスト: 単体9（checkpoint選定7/1・混在なし・fallback・posts整形/100字/JST時刻・stats count/avg・30日除外・削除/unavailable除外・50件上限）。全1025 green・build通過。doc: プロンプト §6.15 入力形式に metric=impressions・checkpoint選定・3時間バケット・同一集合集計を追記（v1.5・変更履歴追記）。
+- 後続への注意: suggestion worker（PT-SUGGEST実行・zod検証・window_days=30付与・improvement_suggestions保存）と refreshSuggestions/listSuggestions は T-M5-18。evidence.tweet_ids は `<posts>` 内IDのみ許可（worker側で検証）。`buildSuggestionInput` の入力 draft は analytics-server の loadAnalyticsForUser 相当（posted＋remaining有りfailed・30日）を thread 付きで渡す想定。
 
 ### T-M5-18: T-M5-18: suggestion workerとrefreshSuggestions/listSuggestions `todo`
 - 参照: K-2、SUGGEST、プロンプト §6.15、要件05 §9、要件05 §12、要件04 §12、要件02 §3.12、要件02 §4.11、要件03 §7.1 / 依存: T-M5-17、M3 / サイズ: M
