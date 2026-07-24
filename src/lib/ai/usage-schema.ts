@@ -24,7 +24,7 @@ export const providerCallSchema = z.object({
   cache_hit: z.boolean(),
   citations: z.array(citationSchema),
   error_code: z.string().nullable(),
-  estimated_cost_usd: z.number(),
+  estimated_cost_usd: z.number().nullable(),
 });
 
 export const generationUsageSchema = z.object({

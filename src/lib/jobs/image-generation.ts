@@ -12,6 +12,7 @@ import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
 import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
@@ -126,17 +127,24 @@ async function loadDraft(db: Queryable, draftId: string): Promise<DraftRow | nul
 
 async function saveJobUsage(
   db: Queryable,
-  jobId: string,
+  ctx: { jobId: string; userId: string; xAccountId: string },
   calls: ProviderCall[],
 ): Promise<void> {
   const usage: GenerationUsage = {
     calls,
-    estimated_cost_usd_total: calls.reduce((sum, c) => sum + c.estimated_cost_usd, 0),
+    estimated_cost_usd_total: calls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),
   };
   await db.query(`update generation_jobs set usage = $2::jsonb where id = $1`, [
-    jobId,
+    ctx.jobId,
     JSON.stringify(usage),
   ]);
+  // 画像プロンプト生成＋画像生成の全 call を原価台帳へ冪等記録する（要件02 §3.17）。
+  await recordProviderCalls(db, calls, {
+    userId: ctx.userId,
+    xAccountId: ctx.xAccountId,
+    jobId: ctx.jobId,
+    keyPrefix: `img:${ctx.jobId}`,
+  });
 }
 
 /** draft_created 通知（本文生成側と同一 dedupe_key で重複を防ぐ）。 */
@@ -168,7 +176,7 @@ async function createDraftCreatedNotification(
 /** 画像失敗の確定：draftを画像なし＋failed印で残し、error/usageを保存して通知する。 */
 async function persistImageFailure(
   deps: ImageGenerationDeps,
-  ctx: { userId: string; draftId: string; postLocalId: string | null; provider: string | null },
+  ctx: { userId: string; xAccountId: string; draftId: string; postLocalId: string | null; provider: string | null },
   error: { code: string; providerRawError?: string | null },
   calls: ProviderCall[],
   newId: () => string,
@@ -191,7 +199,7 @@ async function persistImageFailure(
   );
   const usage: GenerationUsage = {
     calls,
-    estimated_cost_usd_total: calls.reduce((sum, c) => sum + c.estimated_cost_usd, 0),
+    estimated_cost_usd_total: calls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),
   };
   await db.query(
     `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
@@ -207,6 +215,13 @@ async function persistImageFailure(
       JSON.stringify(usage),
     ],
   );
+  // 失敗確定前に発生した call（画像プロンプト生成等）の原価も記録する（要件02 §3.17）。
+  await recordProviderCalls(db, calls, {
+    userId: ctx.userId,
+    xAccountId: ctx.xAccountId,
+    jobId,
+    keyPrefix: `img:${jobId}`,
+  });
   // 本文は使えるため draft_created は送る（UIは画像failedバッジを表示する）。
   await createDraftCreatedNotification(db, { userId: ctx.userId, draftId: ctx.draftId });
 }
@@ -299,10 +314,29 @@ export async function executeImageGeneration(
       userId: job.user_id,
     });
     provider = imageProvider;
+    const imgStart = now();
     const generated = await imageGen.generate({
       prompt: prompted.parsed.prompt,
       aspectRatio: toAspectRatio(prompted.parsed.aspect),
       timeoutMs: deadline.callTimeoutMs(),
+    });
+    // 画像生成 call を原価台帳用に記録する（要件02 §3.17）。画像は単価表を持たないため estimated_cost_usd は null。
+    calls.push({
+      // resolveImage は openai/google のみ返す（api_provider enum に含まれる）。
+      provider: imageProvider as Provider,
+      model: "",
+      operation: "image_generation",
+      request_id: generated.requestId,
+      status: "succeeded",
+      stop_reason: null,
+      latency_ms: now() - imgStart,
+      input_tokens: 0,
+      output_tokens: 0,
+      web_search_count: 0,
+      cache_hit: false,
+      citations: [],
+      error_code: null,
+      estimated_cost_usd: null,
     });
     const normalized = await normalizeForX(generated.image.bytes);
 
@@ -326,7 +360,7 @@ export async function executeImageGeneration(
         },
       ]),
     ]);
-    await saveJobUsage(db, jobId, calls);
+    await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);
     // 初回生成のみ draft_created を送る（再生成はdraft既存・UIがjob pollで検知する）。
     if (!isRegenerate) {
       await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
@@ -345,7 +379,7 @@ export async function executeImageGeneration(
     const providerRawError = error instanceof Error ? error.message : String(error);
     if (isRegenerate) {
       // 再生成失敗時は既存画像を維持する（drafts.imagesへ触れない）。error/usageだけ記録する（要件04 §9）。
-      await saveJobUsage(db, jobId, calls);
+      await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);
       await db.query(
         `update generation_jobs set error = $2::jsonb where id = $1`,
         [
@@ -363,7 +397,7 @@ export async function executeImageGeneration(
       // 初回失敗は本文を画像なしで確定して通知する（子jobはfailed）。
       await persistImageFailure(
         deps,
-        { userId: job.user_id, draftId, postLocalId, provider },
+        { userId: job.user_id, xAccountId: job.x_account_id, draftId, postLocalId, provider },
         { code: "image_generation_failed", providerRawError },
         calls,
         newId,

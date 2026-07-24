@@ -48,7 +48,7 @@ describe("toProviderCall (要件02 §4.6 calls element)", () => {
       cache_hit: true, // cacheReadInputTokens > 0
       citations: [{ url: "https://x.test", title: "X" }],
       error_code: null,
-      estimated_cost_usd: 0,
+      estimated_cost_usd: null, // meta未指定は算出不能=null（T-M6-09）
     });
   });
 

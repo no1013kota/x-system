@@ -3,6 +3,7 @@ import { z, type ZodType } from "zod";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
 import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
@@ -161,7 +162,7 @@ async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow): Pr
 /** 失敗確定: source=failed・error通知（dedupe job:{id}:failed）・usage/error保存（pool）。 */
 async function persistFailure(
   db: Queryable,
-  params: { userId: string; jobId: string; sourceId: string; code: string; usage: GenerationUsage },
+  params: { userId: string; xAccountId: string; jobId: string; sourceId: string; code: string; usage: GenerationUsage },
 ): Promise<void> {
   await db.query(
     `update learning_sources set status = 'failed', updated_at = now() where id = $1`,
@@ -175,6 +176,13 @@ async function persistFailure(
       JSON.stringify(params.usage),
     ],
   );
+  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
+  await recordProviderCalls(db, params.usage.calls, {
+    userId: params.userId,
+    xAccountId: params.xAccountId,
+    jobId: params.jobId,
+    keyPrefix: `lrn:${params.jobId}`,
+  });
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
@@ -228,7 +236,9 @@ export async function executeLearningAnalysis(
     );
   }
 
-  const failCtx = { userId: job.user_id, jobId, sourceId };
+  const failCtx = { userId: job.user_id, xAccountId: job.x_account_id, jobId, sourceId };
+  // 分析callが成功していれば、後続MD-MERGEがterminal失敗しても原価台帳へ記録できるよう保持する。
+  let analysisUsage: GenerationUsage = { calls: [], estimated_cost_usd_total: 0 };
   try {
     await recordStage("research");
     const user = await buildUserInput(deps, source);
@@ -258,8 +268,12 @@ export async function executeLearningAnalysis(
       jobId,
       JSON.stringify(result.usage),
     ]);
+    analysisUsage = result.usage;
 
     // 同一job内 MD-MERGE（注入時）。未注入経路はここで analyzed 確定する。
+    // MD-MERGE は retryable（version競合枯渇・deadline不足）で job再dispatchを起こし得るため、原価台帳への
+    // 記録は MD-MERGE 完了後（真の terminal success）に行う。分析phase成功直後に記録すると、再dispatch時の
+    // 再課金分が同一冪等key（lrn:{jobId}:{seq}）と衝突して落ち、原価を過少計上する（要件02 §3.17, T-M6-09）。
     if (deps.mergeAfterAnalysis) {
       await deps.mergeAfterAnalysis(sourceId);
     } else {
@@ -268,6 +282,13 @@ export async function executeLearningAnalysis(
         [sourceId],
       );
     }
+    // 分析の provider call を原価台帳へ冪等記録する（terminal success時に1回・要件02 §3.17）。
+    await recordProviderCalls(db, result.usage.calls, {
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      keyPrefix: `lrn:${jobId}`,
+    });
     return { status: "analyzed", sourceId };
   } catch (error) {
     // retryable（X読取429/5xx・MD-MERGE version競合枯渇等）は attempt<3 なら job を queued へ自己終端して
@@ -291,10 +312,10 @@ export async function executeLearningAnalysis(
       }
       // 上限到達 → terminal（下の失敗確定＋返還へフォールスルー）
     }
+    // 分析call失敗は error.usage、分析成功後のMD-MERGE等terminal失敗は保持した analysisUsage を記録する
+    // （実際に発生した provider call の原価を過少計上しない・要件02 §3.17）。
     const usage: GenerationUsage =
-      error instanceof InvalidProviderOutputError
-        ? error.usage
-        : { calls: [], estimated_cost_usd_total: 0 };
+      error instanceof InvalidProviderOutputError ? error.usage : analysisUsage;
     const code =
       error instanceof LearningAnalysisTerminalError ? error.code : "analysis_failed";
     await persistFailure(db, { ...failCtx, code, usage });

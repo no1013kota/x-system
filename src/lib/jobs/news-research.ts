@@ -4,10 +4,7 @@ import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration } from "../ai/pipeline";
 import type { TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
-import {
-  providerCallToUsageEvent,
-  recordExternalApiUsage,
-} from "../db/api-usage-ledger";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import type { NewsCategory } from "../news";
 import { SYS_NEWS } from "../prompts/gen-prompts";
 import { newsCategoryLabel } from "../themes";
@@ -97,15 +94,10 @@ async function recordNewsUsage(
   deps: NewsResearchDeps,
   calls: ProviderCall[],
 ): Promise<void> {
-  for (let seq = 0; seq < calls.length; seq++) {
-    await recordExternalApiUsage(
-      deps.db,
-      providerCallToUsageEvent(calls[seq], {
-        userId: null,
-        idempotencyKey: `${deps.ledgerKeyPrefix}:${seq}`,
-      }),
-    );
-  }
+  await recordProviderCalls(deps.db, calls, {
+    userId: null,
+    keyPrefix: deps.ledgerKeyPrefix,
+  });
 }
 
 /** 1分野のニュースリサーチを実行する。 */

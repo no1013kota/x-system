@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
-| 更新日 | 2026-07-24 |
+| バージョン | v1.15 |
+| 更新日 | 2026-07-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -619,6 +619,8 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
   "estimated_cost_usd_total": 0
 }
 ```
+
+各`estimated_cost_usd`は単価表を持たないprovider（画像生成等）では算出不能として`null`になる（`estimated_cost_usd_total`はnullを0として合算する）。同じcallは`operation`・数量・実行時単価snapshot・推定原価を`external_api_usage_events`（§3.17）へ`{job種別}:{job_id}:{連番}`の冪等keyで記録する。画像生成callは`operation=image_generation`・単価null（画像は単価表を持たない）で記録する。
 
 ### 4.7 `drafts.thread`
 

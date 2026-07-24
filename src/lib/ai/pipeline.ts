@@ -62,7 +62,7 @@ function buildUsage(calls: ProviderCall[]): GenerationUsage {
   return {
     calls,
     estimated_cost_usd_total: calls.reduce(
-      (sum, c) => sum + c.estimated_cost_usd,
+      (sum, c) => sum + (c.estimated_cost_usd ?? 0),
       0,
     ),
   };

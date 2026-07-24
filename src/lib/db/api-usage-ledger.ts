@@ -23,8 +23,10 @@ export interface ExternalApiUsageInput {
   quantity?: number;
   /** 監査用の呼び出しusage（jsonb）。 */
   usage?: unknown;
-  unitCostUsd: number;
-  estimatedCostUsd: number;
+  /** 実行時単価snapshot（USD）。算出不能時は null（要件02 §3.17）。 */
+  unitCostUsd: number | null;
+  /** 推定原価（USD）。算出不能時は null。 */
+  estimatedCostUsd: number | null;
   /** 冪等キー（例: `${jobId}:${provider}:${callSeq}` や request_id 由来）。 */
   idempotencyKey: string;
 }
@@ -61,6 +63,36 @@ export async function recordExternalApiUsage(
     ],
   );
   return (rowCount ?? 0) > 0;
+}
+
+/**
+ * ProviderCall 配列を原価台帳へ冪等記録する（LLM系ジョブ共通・T-M6-09）。冪等キーは
+ * `${keyPrefix}:${seq}`。同一jobIdでも job種別ごとに keyPrefix を分けて衝突を防ぐ
+ * （例: 学習分析とインラインMD-MERGEは同一jobIdを共有するため `lrn:`/`mdmerge:` と分ける）。
+ * 成功・失敗どちらの call も status/error_code を保ったまま記録する。本文・prompt・APIキーは
+ * ProviderCall に含まれないため保存されない。
+ */
+export async function recordProviderCalls(
+  db: Queryable,
+  calls: ProviderCall[],
+  ctx: {
+    userId: string | null;
+    xAccountId?: string | null;
+    jobId?: string | null;
+    keyPrefix: string;
+  },
+): Promise<void> {
+  for (let seq = 0; seq < calls.length; seq++) {
+    await recordExternalApiUsage(
+      db,
+      providerCallToUsageEvent(calls[seq], {
+        userId: ctx.userId,
+        xAccountId: ctx.xAccountId ?? null,
+        jobId: ctx.jobId ?? null,
+        idempotencyKey: `${ctx.keyPrefix}:${seq}`,
+      }),
+    );
+  }
 }
 
 /**

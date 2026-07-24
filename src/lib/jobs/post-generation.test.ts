@@ -22,6 +22,7 @@ const TEMPLATES = /from prompt_templates/;
 const INSERT_DRAFT = /insert into drafts/;
 const INSERT_JOB = /insert into generation_jobs/;
 const NOTIFY = /insert into notifications/;
+const LEDGER = /insert into external_api_usage_events/;
 
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -123,6 +124,10 @@ describe("executePostGeneration image chain", () => {
     await executePostGeneration(deps(db));
     expect(writes.some((w) => INSERT_JOB.test(w.sql))).toBe(false);
     expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+    // T-M6-09: 成功した provider call 1回につき原価台帳へ1行（冪等key gen:{jobId}:{seq}）。
+    const ledger = writes.filter((w) => LEDGER.test(w.sql));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].params[13]).toBe("gen:job-x:0");
   });
 
   it("ensures the child job even on the idempotent already-done path when image is ON", async () => {

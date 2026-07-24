@@ -2,8 +2,11 @@ import {
   extractBaseMdSection,
   replaceLearningSections,
 } from "../persona-settings";
+import { toProviderCall, type ProviderCall } from "../ai/normalize";
+import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
 import type { Provider, TextGen } from "../ai/types";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { heartbeat } from "./stale";
@@ -159,19 +162,30 @@ async function loadMergeState(
 async function mergeSection(
   provider: { textGen: TextGen; model: string },
   input: { current: string; analyses: unknown[]; removed: unknown[]; deadline: Deadline },
-): Promise<string> {
+  now: () => number,
+): Promise<{ body: string; calls: ProviderCall[] }> {
   const hadContent = input.current.trim().length > 0 || input.analyses.length > 0;
+  const calls: ProviderCall[] = [];
   const buildUser = (): string =>
     PT_MD_MERGE.replaceAll("{{current_section}}", input.current)
       .replaceAll("{{active_analyses}}", JSON.stringify(input.analyses))
       .replaceAll("{{removed_analyses}}", JSON.stringify(input.removed));
 
   const call = async (extra: string): Promise<string> => {
+    const start = now();
     const out = await provider.textGen.generate({
       system: [],
       user: extra ? `${buildUser()}\n\n${extra}` : buildUser(),
       timeoutMs: input.deadline.callTimeoutMs(),
     });
+    calls.push(
+      toProviderCall(out, {
+        model: provider.model,
+        operation: "text_generation",
+        latencyMs: now() - start,
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
+      }),
+    );
     return out.text.trim();
   };
 
@@ -186,7 +200,7 @@ async function mergeSection(
     );
   }
   if (invalid(body)) throw new MdMergeStructureError();
-  return body;
+  return { body, calls };
 }
 
 /**
@@ -201,6 +215,9 @@ export async function executeMdMerge(
   const recordStage =
     deps.recordStage ?? (async (stage: string) => void (await heartbeat(deps.jobId, stage)));
   const maxRetries = deps.maxRetries ?? MD_MERGE_MAX_RETRIES;
+  const now = deps.now ?? Date.now;
+  // 全attemptの provider call を蓄積し、成功確定時に原価台帳へ冪等記録する（要件02 §3.17）。
+  const allCalls: ProviderCall[] = [];
 
   const job = await loadJobMeta(deps.db, deps.jobId);
   if (!job) throw new Error("job not found for md-merge");
@@ -222,7 +239,7 @@ export async function executeMdMerge(
     const state = await loadMergeState(deps.db, job.x_account_id, target, opts);
     if (state.version < 1) throw new Error("base_md is not initialized (version 0)");
 
-    const merged = await mergeSection(
+    const { body: merged, calls } = await mergeSection(
       { textGen, model },
       {
         current: extractBaseMdSection(state.baseMd, target),
@@ -230,7 +247,9 @@ export async function executeMdMerge(
         removed: state.removed,
         deadline,
       },
+      now,
     );
+    allCalls.push(...calls);
     // 対象セクションだけを差し替え、非対象は現状を byte-for-byte 保持する（§4.2 該当セクションのみ）。
     const section5 = target === 5 ? merged : extractBaseMdSection(state.baseMd, 5);
     const section6 = target === 6 ? merged : extractBaseMdSection(state.baseMd, 6);
@@ -263,7 +282,15 @@ export async function executeMdMerge(
       return nextVersion;
     });
 
-    if (written != null) return { version: written, section: target };
+    if (written != null) {
+      await recordProviderCalls(deps.db, allCalls, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId: deps.jobId,
+        keyPrefix: `mdmerge:${deps.jobId}`,
+      });
+      return { version: written, section: target };
+    }
     // 競合: 次ループで最新stateを再読して再merge（並行変更を取り込み、上書き消失させない）。
   }
   throw new MdMergeConflictError();

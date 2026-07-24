@@ -14,7 +14,9 @@ const RESERVE = /insert into usage_events[\s\S]*'reserve'/;
 const REFUND = /insert into usage_events[\s\S]*'refund'/;
 const SAVE_ANALYSIS = /update learning_sources[\s\S]*analysis_summary/;
 const SOURCE_FAILED = /update learning_sources set status = 'failed'/;
+const SOURCE_ANALYZED = /update learning_sources set status = 'analyzed'/;
 const NOTIF = /insert into notifications/;
+const LEDGER = /insert into external_api_usage_events/;
 
 type Handler = (sql: string, params: unknown[]) => { rows?: unknown[]; rowCount?: number };
 
@@ -120,6 +122,20 @@ describe("executeLearningAnalysis", () => {
     expect(JSON.parse(writes.find((w) => SAVE_ANALYSIS.test(w.sql))!.params[1] as string).vocabulary).toBe("v");
   });
 
+  it("records the cost ledger only after MD-MERGE/analyzed (terminal success), keyed lrn:{jobId}:{seq}", async () => {
+    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null as unknown as string, status: "pending", plan: "premium" }));
+    await executeLearningAnalysis(
+      deps({ db, resolveProvider: async () => ({ textGen: textGen([L3]), provider: "anthropic", model: "m" }) }),
+    );
+    const ledger = writes.filter((w) => LEDGER.test(w.sql));
+    expect(ledger).toHaveLength(1); // 1 analysis call → 1 ledger row
+    expect(ledger[0].params[13]).toBe("lrn:job1:0");
+    // 記録は analyzed 確定より後（真の terminal success 時に1回）。
+    expect(writes.findIndex((w) => LEDGER.test(w.sql))).toBeGreaterThan(
+      writes.findIndex((w) => SOURCE_ANALYZED.test(w.sql)),
+    );
+  });
+
   it("reserves a generation for premium at start", async () => {
     const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
     await executeLearningAnalysis(deps({ db }));
@@ -185,6 +201,8 @@ describe("executeLearningAnalysis — retryable handling (T-M5-04 fix)", () => {
     expect(writes.some((w) => REQUEUE.test(w.sql))).toBe(true); // self-terminated to queued
     expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(false);
     expect(writes.some((w) => REFUND.test(w.sql))).toBe(false); // reserve kept for retry
+    // T-M6-09: 再dispatch前提のため原価台帳へ記録しない（再課金分が同一冪等keyと衝突して過少計上するのを防ぐ）。
+    expect(writes.some((w) => LEDGER.test(w.sql))).toBe(false);
   });
 
   it("treats a retryable error as terminal (refund + failed) once attempt >= 3", async () => {
@@ -202,5 +220,9 @@ describe("executeLearningAnalysis — retryable handling (T-M5-04 fix)", () => {
     expect(writes.some((w) => REQUEUE.test(w.sql))).toBe(false);
     expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(true);
     expect(writes.some((w) => REFUND.test(w.sql))).toBe(true); // premium refunded at cap
+    // T-M6-09: terminal失敗（merge枯渇）でも、実際に発生した分析callの原価は台帳へ記録する（過少計上しない）。
+    const ledger = writes.filter((w) => LEDGER.test(w.sql));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].params[13]).toBe("lrn:job1:0");
   });
 });

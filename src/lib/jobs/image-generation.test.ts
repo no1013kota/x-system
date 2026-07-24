@@ -37,6 +37,7 @@ const UPD_IMAGES = /update drafts set images/;
 const UPD_USAGE = /update generation_jobs set usage/;
 const UPD_ERROR = /update generation_jobs set error/;
 const NOTIFY = /insert into notifications/;
+const LEDGER = /insert into external_api_usage_events/;
 
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -165,6 +166,13 @@ describe("executeImageGeneration", () => {
     });
     expect(writes.some((w) => UPD_USAGE.test(w.sql))).toBe(true);
     expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+    // T-M6-09: 画像プロンプト生成(text_generation)＋画像生成(image_generation)を原価台帳へ記録する。
+    const ledger = writes.filter((w) => LEDGER.test(w.sql));
+    expect(ledger).toHaveLength(2);
+    expect(ledger.map((w) => w.params[4])).toEqual(["text_generation", "image_generation"]);
+    expect(ledger.map((w) => w.params[13])).toEqual(["img:job-img:0", "img:job-img:1"]);
+    // 画像生成 call は単価表がないため estimated_cost_usd は null（算出不能）。
+    expect(ledger[1].params[12]).toBeNull();
   });
 
   it("is idempotent when the draft already has a ready image", async () => {

@@ -50,7 +50,7 @@ describe("estimateProviderCost", () => {
     expect(estimateProviderCost("openai", usage)).toBe(PROVIDER_RATES.openai.inputPerMTok);
   });
 
-  it("returns 0 for an unknown provider", () => {
-    expect(estimateProviderCost("bogus" as Provider, { ...emptyUsage(), inputTokens: 100 })).toBe(0);
+  it("returns null (算出不能) for a provider without a rate table", () => {
+    expect(estimateProviderCost("bogus" as Provider, { ...emptyUsage(), inputTokens: 100 })).toBeNull();
   });
 });

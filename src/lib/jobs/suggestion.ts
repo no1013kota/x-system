@@ -3,6 +3,7 @@ import { z } from "zod";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
@@ -110,7 +111,7 @@ function renderPrompt(input: SuggestionInput): string {
 
 async function persistFailure(
   db: Queryable,
-  params: { userId: string; jobId: string; code: string; usage: GenerationUsage },
+  params: { userId: string; xAccountId: string; jobId: string; code: string; usage: GenerationUsage },
 ): Promise<void> {
   await db.query(
     `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
@@ -120,6 +121,13 @@ async function persistFailure(
       JSON.stringify(params.usage),
     ],
   );
+  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
+  await recordProviderCalls(db, params.usage.calls, {
+    userId: params.userId,
+    xAccountId: params.xAccountId,
+    jobId: params.jobId,
+    keyPrefix: `sug:${params.jobId}`,
+  });
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
@@ -210,12 +218,19 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
         JSON.stringify(result.usage),
       ]);
     });
+    // 提案生成の provider call を原価台帳へ冪等記録する（poolで確定・要件02 §3.17）。
+    await recordProviderCalls(db, result.usage.calls, {
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      keyPrefix: `sug:${jobId}`,
+    });
     return { status: suggestions.length > 0 ? "saved" : "no_suggestions", count: suggestions.length };
   } catch (error) {
     const usage: GenerationUsage =
       error instanceof InvalidProviderOutputError ? error.usage : { calls: [], estimated_cost_usd_total: 0 };
     const code = error instanceof SuggestionTerminalError ? error.code : "suggestion_failed";
-    await persistFailure(db, { userId: job.user_id, jobId, code, usage });
+    await persistFailure(db, { userId: job.user_id, xAccountId: job.x_account_id, jobId, code, usage });
     if (isPremium) {
       await deps.runInTx((tx) => refundUsage(tx, jobId, "generation"));
     }

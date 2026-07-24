@@ -22,6 +22,7 @@ import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
@@ -180,7 +181,7 @@ async function ensureImageChildJob(
 
 async function persistFailure(
   db: Queryable,
-  job: { jobId: string; userId: string },
+  job: { jobId: string; userId: string; xAccountId: string },
   error: {
     code: string;
     message: string;
@@ -203,6 +204,13 @@ async function persistFailure(
       JSON.stringify(usage),
     ],
   );
+  // 失敗確定前に発生した provider call の原価も記録する（成功・失敗を問わず記録・要件02 §3.17）。
+  await recordProviderCalls(db, usage.calls, {
+    userId: job.userId,
+    xAccountId: job.xAccountId,
+    jobId: job.jobId,
+    keyPrefix: `gen:${job.jobId}`,
+  });
   // error通知（設定を尊重・両channel OFFなら作らない）。ユーザーへは安全なmessageのみ。
   await db.query(
     `insert into notifications
@@ -286,7 +294,7 @@ export async function executePostGeneration(
     return { status: "already_done", draftId: already };
   }
 
-  const failCtx = { jobId, userId: job.user_id };
+  const failCtx = { jobId, userId: job.user_id, xAccountId: job.x_account_id };
 
   // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
   // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
@@ -474,7 +482,7 @@ export async function executePostGeneration(
   usageCalls.push(...fixCalls);
   const usage: GenerationUsage = {
     calls: usageCalls,
-    estimated_cost_usd_total: usageCalls.reduce((sum, c) => sum + c.estimated_cost_usd, 0),
+    estimated_cost_usd_total: usageCalls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),
   };
 
   // --- draft作成（thread=initial_thread同値・weighted_length・警告・ニュース起点はsource_news_item_id）---
@@ -502,6 +510,13 @@ export async function executePostGeneration(
     `update generation_jobs set draft_id = $2, usage = $3::jsonb where id = $1`,
     [jobId, draftId, JSON.stringify(usage)],
   );
+  // 成功した全 provider call（本文生成＋JSON修復＋GEN-FIX）を原価台帳へ冪等記録する（要件02 §3.17）。
+  await recordProviderCalls(db, usage.calls, {
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
+    jobId,
+    keyPrefix: `gen:${jobId}`,
+  });
 
   // 画像ON: draft_created は画像確定後に子（image_generation）が送るため、ここでは送らず子jobを作成する。
   // 画像OFF: ここで draft_created を送る（要件04 §9・要件06 §6）。

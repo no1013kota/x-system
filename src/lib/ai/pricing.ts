@@ -53,14 +53,15 @@ function round6(value: number): number {
 }
 
 /**
- * 正規化済み usage から provider call の推定原価（USD）を見積もる。未知providerは0。
+ * 正規化済み usage から provider call の推定原価（USD）を見積もる。単価表を持たない provider は
+ * 算出不能として null を返す（原価台帳の unit_cost_usd/estimated_cost_usd は null で記録・要件02 §3.17）。
  */
 export function estimateProviderCost(
   provider: Provider,
   usage: ProviderUsage,
-): number {
+): number | null {
   const rates = PROVIDER_RATES[provider];
-  if (!rates) return 0;
+  if (!rates) return null;
   const tokenCost =
     (usage.inputTokens * rates.inputPerMTok +
       usage.outputTokens * rates.outputPerMTok +

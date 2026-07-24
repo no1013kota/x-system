@@ -21,7 +21,8 @@ export interface ProviderCall {
   cache_hit: boolean;
   citations: Citation[];
   error_code: string | null;
-  estimated_cost_usd: number;
+  /** 推定原価（USD）。単価表がなく算出不能な場合は null（要件02 §3.17）。 */
+  estimated_cost_usd: number | null;
 }
 
 export interface ProviderCallMeta {
@@ -30,8 +31,8 @@ export interface ProviderCallMeta {
   latencyMs: number;
   status?: "succeeded" | "failed";
   errorCode?: string | null;
-  /** 原価はモデル別価格表を持つ後続タスクで算出。未算出時は0。 */
-  estimatedCostUsd?: number;
+  /** 推定原価（USD）。単価表がなく算出不能なら null。 */
+  estimatedCostUsd?: number | null;
 }
 
 /**
@@ -57,7 +58,7 @@ export function toProviderCall(
     cache_hit: u.cacheReadInputTokens > 0,
     citations: result.citations,
     error_code: meta.errorCode ?? null,
-    estimated_cost_usd: meta.estimatedCostUsd ?? 0,
+    estimated_cost_usd: meta.estimatedCostUsd ?? null,
   };
 }
 
