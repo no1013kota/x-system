@@ -1434,13 +1434,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: providerアダプタの全AI呼び出し（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG、共通NEWSはuser_id=null）について、provider・operation（text_generation/web_search/image_generation）・request_id・status・http_status・error_code・quantity・usage内訳・実行時単価snapshot・推定原価を冪等keyで記録するモジュールを実装し組み込む。成功・失敗を問わず記録。投稿本文・prompt・APIキー・外部レスポンス本文は保存しない。40日cleanupはM3のtick cleanupで実装済みの想定（未実装なら本タスクで追加）。usage_events（利用枠）とは責務を分離。
 - 実装結果: 台帳module（`recordExternalApiUsage`/`providerCallToUsageEvent`）はM3で存在しNEWS/X呼び出しのみ配線済みだった。共通ヘルパ`recordProviderCalls(db, calls, {userId, xAccountId, jobId, keyPrefix})`（冪等key `{keyPrefix}:{seq}`）を追加し、GEN=`gen:{jobId}`／LRN=`lrn:{jobId}`／SUGGEST=`sug:{jobId}`／MD-MERGE=`mdmerge:{jobId}`／GEN-IMG=`img:{jobId}`で各jobへ組み込み（NEWSも同ヘルパへ統一）。**インラインMD-MERGEはlearning_analysisと同一jobIdを共有するためprefixを`lrn:`/`mdmerge:`で分離**（衝突回避）。記録はterminal outcome（成功／terminal失敗のpersistFailure）で1回。retryable再dispatch経路（LRN/MD-MERGE）は記録しない（成功済みcallのusageはterminal時に記録）。**cost null化**: `estimateProviderCost`は単価表なしで`null`を返すようにし、`ProviderCall.estimated_cost_usd`と台帳`unit_cost_usd/estimated_cost_usd`を`number|null`へ変更（GenerationUsage合計は`?? 0`）。画像生成callは合成ProviderCall（`operation=image_generation`・cost=null）で記録。40日cleanupはschedule-cleanup（step3）に既存で追加不要。**敵対的レビューでHIGH 1件検出→修正**: LRNが分析phase成功直後（インラインMD-MERGE前）に記録しており、MD-MERGEがretryable失敗→再dispatchすると再課金分が同一冪等keyと衝突して過少計上＋generation_jobs.usageと不整合。記録をMD-MERGE完了後（真のterminal success）へ移動し、terminal失敗時は保持した`analysisUsage`をpersistFailureで記録（過少計上防止）。doc: 要件02 §4.6にcost null化・冪等key規約・画像op記録を追記（§3.17/§4.6は元々null許容を規定済み）。失敗**throw**（SDK例外でusage未返却）call自体の記録責務は要決定D-4（未解決）のまま—本タスクはusage.callsに現れるcall（成功＋status=failed返却）を記録する範囲。
 
-### T-M6-10: external_api_usage_events原価台帳：X API呼び出しの記録と単価snapshot `todo`
+### T-M6-10: external_api_usage_events原価台帳：X API呼び出しの記録と単価snapshot `done`
 - 参照: 要件02 §3.17、要件01 §3.1、要件04 §10、PRD §6.1 / 依存: T-M6-09、M4 / サイズ: S
 - 完了条件:
   - モック投稿成功でx_post_create行がURL有無に応じた単価snapshot付きで記録され、rollback削除でx_post_delete行が記録される
   - media uploadでは台帳行が作られず、dry_runでは一切記録されない
   - 同一tweet_id操作の再処理（reconcile）で行が重複しない
 - メモ: x_post_create／x_post_delete／x_post_read／x_user_readを冪等記録する。作成はURL有無でX_COST_CONTENT_CREATE_USD／X_COST_CONTENT_CREATE_WITH_URL_USD、削除はX_COST_INTERACTION_DELETE_USDのenv単価snapshotを採用。X media uploadは運用logのみで台帳・利用枠から除外。dry_runは記録しない。
+- 実装結果: 本体はM3/M4で実装済みだった。`x/usage.ts` `recordedXCall`（成功→単価snapshot×quantity、失敗→status=failed・estimated 0、dryRunスキップ、idempotencyKey冪等）＋`x/read-client.ts`（x_post_read/x_user_readを単価0で記録）＋post-publishのcreate（`xUnitCost(x_post_create,{hasUrl})`でURL別単価）/delete配線＋media upload非ラップ（除外）。本タスクでは統合テストを`post-publish.db.test.ts`へ追加：premium+liveで通常0.01/URL0.02のx_post_create 2行＋media行なし＋idempotency key（`draft:{id}:x_post_create:{i}` index安定＝reconcile重複防止）、rollbackでx_post_delete 0.005、dry_runで台帳0行。doc影響なし（要件04 §10・§02 §3.17が既に規定・本番コード変更なし）。
 
 ### T-M6-11: プラン変更のBYOK⇄premium切替副作用（キー再検証・Xアカウントexpired化・再連携バナー） `todo`
 - 参照: 要件03 §6、要件02 §4.1、要件06 §2、要件06 §9、A-6、O-1 / 依存: M1、T-M6-01、T-M6-02 / サイズ: M

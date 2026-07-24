@@ -132,9 +132,32 @@ describe("post_publish 投稿枠 consume/counter (local DB)", () => {
       };
     });
   }
+  // 原価台帳（X API）を idempotency_key 順で取得する（T-M6-10）。
+  async function ledger(
+    uid: string,
+  ): Promise<
+    Array<{ operation: string; status: string; unit_cost_usd: string | null; estimated_cost_usd: string | null; idempotency_key: string }>
+  > {
+    return withTransaction(async (c) => {
+      const r = await c.query<{
+        operation: string;
+        status: string;
+        unit_cost_usd: string | null;
+        estimated_cost_usd: string | null;
+        idempotency_key: string;
+      }>(
+        `select operation, status, unit_cost_usd, estimated_cost_usd, idempotency_key
+           from external_api_usage_events where user_id = $1 and provider = 'x'
+          order by idempotency_key`,
+        [uid],
+      );
+      return r.rows;
+    });
+  }
   const cleanup = async (uid: string) => {
     await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));
     await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+    await withTransaction((c) => c.query(`delete from external_api_usage_events where user_id = $1`, [uid]));
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
@@ -243,6 +266,76 @@ describe("post_publish 投稿枠 consume/counter (local DB)", () => {
       expect(u.creates).toBe(1); // 1 create (tw-1)
       expect(u.deletes).toBe(1); // rollback deleted tw-1
       expect(u.normal).toBe(2); // same slot consumed twice (create + delete)
+      // T-M6-10: rollback削除は x_post_delete を削除単価snapshotで記録する。
+      const del = (await ledger(uid)).filter((r) => r.operation === "x_post_delete");
+      expect(del).toHaveLength(1);
+      expect(Number(del[0].unit_cost_usd)).toBeCloseTo(0.005, 6);
+      expect(Number(del[0].estimated_cost_usd)).toBeCloseTo(0.005, 6);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("premium+live records x_post_create with URL-based unit-cost snapshot; media upload adds no ledger row (T-M6-10)", async () => {
+    const { uid, draftId, jobId } = await withTransaction((c) =>
+      seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "詳細は https://example.com/x")] }),
+    );
+    try {
+      // ready画像を付与し、media upload が走っても台帳に載らないことを確認する。
+      await withTransaction((c) =>
+        c.query(`update drafts set images = $2::jsonb where id = $1`, [
+          draftId,
+          JSON.stringify([
+            { local_id: "i1", post_local_id: "p1", storage_path: "u/x/d/i1.webp", mime_type: "image/webp", status: "ready" },
+          ]),
+        ]),
+      );
+      let mediaCalls = 0;
+      const res = await executePostPublish(
+        deps(jobId, {
+          uploadMedia: async () => {
+            mediaCalls += 1;
+            return { mediaId: "m", requestId: null, quantity: 1, dryRun: false };
+          },
+        }),
+      );
+      expect(res.status).toBe("posted");
+      expect(mediaCalls).toBe(1); // media upload は実行された
+
+      const rows = await ledger(uid);
+      const creates = rows.filter((r) => r.operation === "x_post_create");
+      expect(creates).toHaveLength(2);
+      // 台帳には x_post_create のみ（media upload 行は作られない・要件04 §10）。
+      expect(rows.every((r) => r.operation === "x_post_create")).toBe(true);
+      // URL有無に応じた単価snapshot（p1=通常0.01・p2=URL0.02）。ledger は idempotency_key 昇順。
+      expect(Number(creates[0].unit_cost_usd)).toBeCloseTo(0.01, 6);
+      expect(Number(creates[1].unit_cost_usd)).toBeCloseTo(0.02, 6);
+      expect(Number(creates[1].estimated_cost_usd)).toBeCloseTo(0.02, 6);
+      // 冪等keyは index ベースで安定（reconcile/再処理でも unique 制約で重複しない）。
+      expect(creates.map((r) => r.idempotency_key)).toEqual([
+        `draft:${draftId}:x_post_create:0`,
+        `draft:${draftId}:x_post_create:1`,
+      ]);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("dry_run records nothing in the cost ledger (T-M6-10)", async () => {
+    const { uid, jobId } = await withTransaction((c) =>
+      seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "本文2")] }),
+    );
+    try {
+      let k = 0;
+      const dryCreate = async (): Promise<XCreatePostResult> => ({
+        tweetId: `tw-dry-${++k}`,
+        requestId: null,
+        quantity: 1,
+        dryRun: true,
+      });
+      await executePostPublish(deps(jobId, { createPost: dryCreate }));
+      const rows = await ledger(uid);
+      expect(rows).toHaveLength(0); // dry_run は実原価が無いため記録しない
     } finally {
       await cleanup(uid);
     }
