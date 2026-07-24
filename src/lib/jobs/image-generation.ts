@@ -58,11 +58,12 @@ interface ImageJobRow {
   user_id: string;
   base_md: string;
   plan: string;
+  input: { regenerate?: boolean } | null;
 }
 
 interface DraftRow {
   thread: ThreadItem[];
-  images: { status?: string }[];
+  images: { status?: string; storage_path?: string }[];
 }
 
 export interface ImageGenerationDeps {
@@ -81,6 +82,8 @@ export interface ImageGenerationDeps {
   }) => Promise<{ imageGen: ImageGen; provider: string }>;
   /** private Storage へ保存（server配線は Supabase admin storage.upload）。 */
   uploadImage: (params: { path: string; bytes: Buffer; contentType: string }) => Promise<void>;
+  /** 旧object削除（再生成の置換後 best-effort。server配線は Supabase admin storage.remove）。 */
+  deleteImages?: (paths: string[]) => Promise<void>;
   now?: () => number;
   makeDeadline?: () => Deadline;
   /** 画像 local_id 生成（テストで固定可能）。既定 randomUUID。 */
@@ -96,7 +99,7 @@ export interface ImageGenerationResult {
 
 async function loadImageJob(db: Queryable, jobId: string): Promise<ImageJobRow | null> {
   const { rows } = await db.query<ImageJobRow>(
-    `select gj.draft_id, gj.x_account_id, xa.user_id, xa.base_md, p.plan
+    `select gj.draft_id, gj.x_account_id, gj.input, xa.user_id, xa.base_md, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -216,10 +219,16 @@ export async function executeImageGeneration(
   const draft = await loadDraft(db, draftId);
   if (!draft) throw new ImageGenerationTerminalError("not_found", "draft not found");
 
-  // 冪等: 既に画像が確定していれば再生成しない（worker再実行安全）。
-  if (draft.images.some((img) => img.status === "ready")) {
+  const isRegenerate = Boolean(job.input?.regenerate);
+  // 冪等: 初回生成は既に画像が確定していれば作り直さない（worker再実行安全）。
+  // 再生成(regenerate)は既存画像があっても新規生成する（成功後に置換する）。
+  if (!isRegenerate && draft.images.some((img) => img.status === "ready")) {
     return { status: "already_done", draftId };
   }
+  // 置換前の既存ready画像のpath（成功後に best-effort 削除する。要件04 §9）。
+  const oldReadyPaths = draft.images
+    .filter((img) => img.status === "ready" && img.storage_path)
+    .map((img) => img.storage_path as string);
 
   const firstPost = draft.thread[0];
   if (!firstPost) throw new ImageGenerationTerminalError("empty_thread", "draft has no posts");
@@ -297,22 +306,45 @@ export async function executeImageGeneration(
       ]),
     ]);
     await saveJobUsage(db, jobId, calls);
-    await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+    // 初回生成のみ draft_created を送る（再生成はdraft既存・UIがjob pollで検知する）。
+    if (!isRegenerate) {
+      await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+    }
+    // 置換成功後に旧objectを best-effort 削除（再生成時のみ対象があり得る。要件04 §9）。
+    if (oldReadyPaths.length > 0 && deps.deleteImages) {
+      await deps.deleteImages(oldReadyPaths).catch(() => {});
+    }
 
     return { status: "created", draftId };
   } catch (error) {
     if (error instanceof ImageGenerationTerminalError) throw error;
-    // 画像/Storage/PT-IMG のいずれの失敗も、本文は画像なしで確定して通知する（子jobはfailed）。
-    await persistImageFailure(
-      deps,
-      { userId: job.user_id, draftId, postLocalId, provider },
-      {
-        code: "image_generation_failed",
-        providerRawError: error instanceof Error ? error.message : String(error),
-      },
-      calls,
-      newId,
-    );
+    const providerRawError = error instanceof Error ? error.message : String(error);
+    if (isRegenerate) {
+      // 再生成失敗時は既存画像を維持する（drafts.imagesへ触れない）。error/usageだけ記録する（要件04 §9）。
+      await saveJobUsage(db, jobId, calls);
+      await db.query(
+        `update generation_jobs set error = $2::jsonb where id = $1`,
+        [
+          jobId,
+          JSON.stringify({
+            code: "image_generation_failed",
+            message: "画像を再生成できませんでした。既存の画像はそのままです。",
+            retryable: false,
+            stage: "image",
+            provider_raw_error: providerRawError,
+          }),
+        ],
+      );
+    } else {
+      // 初回失敗は本文を画像なしで確定して通知する（子jobはfailed）。
+      await persistImageFailure(
+        deps,
+        { userId: job.user_id, draftId, postLocalId, provider },
+        { code: "image_generation_failed", providerRawError },
+        calls,
+        newId,
+      );
+    }
     throw new ImageGenerationTerminalError("image_generation_failed", "image pipeline failed");
   }
 }

@@ -99,6 +99,7 @@ function baseDeps(
     resolveTextProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
     resolveImage: async () => ({ imageGen, provider: "openai" }),
     uploadImage: vi.fn(async () => {}),
+    deleteImages: vi.fn(async () => {}),
     recordStage: async () => {},
     makeDeadline: () => createDeadline(),
     newId: () => "img-1",
@@ -112,7 +113,10 @@ const JOB_ROW = {
   user_id: "user1",
   base_md: BASE_MD,
   plan: "premium",
+  input: null as { regenerate?: boolean } | null,
 };
+
+const REGEN_JOB_ROW = { ...JOB_ROW, input: { regenerate: true } };
 
 const draftRow = (images: unknown[] = []) => ({
   thread: [{ local_id: "p1", text: "1ポスト目の本文", weighted_length: 8 }],
@@ -230,5 +234,61 @@ describe("executeImageGeneration", () => {
     await expect(executeImageGeneration(baseDeps(db))).rejects.toMatchObject({
       code: "empty_thread",
     });
+  });
+});
+
+describe("executeImageGeneration regenerate", () => {
+  it("regenerates over an existing ready image and best-effort deletes the old object", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [REGEN_JOB_ROW];
+      if (LOAD_DRAFT.test(sql))
+        return [draftRow([{ status: "ready", storage_path: "user1/xacc1/draft1/old.png" }])];
+      if (TEMPLATES.test(sql)) return [];
+      return [];
+    });
+    const upload = vi.fn(async () => {});
+    const del = vi.fn(async () => {});
+
+    const res = await executeImageGeneration(
+      baseDeps(db, { uploadImage: upload, deleteImages: del }),
+    );
+
+    expect(res).toEqual({ status: "created", draftId: "draft1" });
+    // 既存readyがあっても already_done にせず再生成する
+    expect(upload).toHaveBeenCalledTimes(1);
+    // 置換後に旧objectを削除
+    expect(del).toHaveBeenCalledWith(["user1/xacc1/draft1/old.png"]);
+    const images = JSON.parse(writes.find((w) => UPD_IMAGES.test(w.sql))?.params[1] as string);
+    expect(images[0]).toMatchObject({ status: "ready", storage_path: "user1/xacc1/draft1/img-1.png" });
+    // 再生成では draft_created を送らない
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(false);
+  });
+
+  it("on regenerate failure keeps the existing image and records only the error", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [REGEN_JOB_ROW];
+      if (LOAD_DRAFT.test(sql))
+        return [draftRow([{ status: "ready", storage_path: "user1/xacc1/draft1/old.png" }])];
+      if (TEMPLATES.test(sql)) return [];
+      return [];
+    });
+    const del = vi.fn(async () => {});
+    const { imageGen } = fakeImageGen(async () => {
+      throw new Error("provider 500");
+    });
+
+    await expect(
+      executeImageGeneration(
+        baseDeps(db, { deleteImages: del, resolveImage: async () => ({ imageGen, provider: "openai" }) }),
+      ),
+    ).rejects.toBeInstanceOf(ImageGenerationTerminalError);
+
+    // 既存画像は維持（drafts.images を書き換えない）
+    expect(writes.some((w) => UPD_IMAGES.test(w.sql))).toBe(false);
+    // 旧objectは消さない
+    expect(del).not.toHaveBeenCalled();
+    // error は記録・通知は送らない
+    expect(writes.some((w) => UPD_ERROR.test(w.sql))).toBe(true);
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(false);
   });
 });

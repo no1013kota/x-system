@@ -62,5 +62,10 @@ export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
         .upload(path, bytes, { contentType, upsert: true });
       if (error) throw new Error(`storage upload failed: ${error.message}`);
     },
+    deleteImages: async (paths) => {
+      if (paths.length === 0) return;
+      const admin = createSupabaseAdminClient();
+      await admin.storage.from(bucket).remove(paths);
+    },
   });
 }

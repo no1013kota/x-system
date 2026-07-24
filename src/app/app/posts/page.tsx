@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getPool } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { env } from "@/lib/env";
+import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import type { Queryable } from "@/lib/x/token-refresh";
 
@@ -115,12 +116,17 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   const activeXAccountId = await resolveActiveXAccountForUser(user.id);
 
   let drafts: DraftView[] = [];
+  let imageRegenEnabled = false;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
-    drafts = await listDraftsForAccount(
-      pooledDb,
-      activeXAccountId,
-      tab === "history" ? "history" : "drafts",
-    );
+    const [loaded, plan] = await Promise.all([
+      listDraftsForAccount(pooledDb, activeXAccountId, tab === "history" ? "history" : "drafts"),
+      getPool()
+        .query<{ plan: string | null }>(`select plan from profiles where id = $1`, [user.id])
+        .then((r) => r.rows[0]?.plan ?? null),
+    ]);
+    drafts = await attachSignedImageUrls(loaded);
+    // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
+    imageRegenEnabled = (await availableImageProviders(user.id, plan)).length > 0;
   }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
@@ -170,7 +176,11 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           xAccountId={activeXAccountId}
         />
       ) : tab === "drafts" ? (
-        <DraftsList drafts={drafts} selectedDraftId={params.draftId} />
+        <DraftsList
+          drafts={drafts}
+          imageRegenEnabled={imageRegenEnabled}
+          selectedDraftId={params.draftId}
+        />
       ) : (
         <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
           投稿履歴はM3後半で追加します。

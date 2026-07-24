@@ -268,6 +268,85 @@ export async function regenerateDraft(
   });
 }
 
+export const regenerateImageSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  draft_id: z.string().uuid(),
+});
+export type RegenerateImageInput = z.infer<typeof regenerateImageSchema>;
+
+/**
+ * 添付画像の再生成（要件05 §5・要件06 §6・要件04 §9, T-M3-16）。draft所有・状態(draft/failed)を
+ * 検証し、`image_generation` job を冪等に作る。冪等は request_key と「1draftにactiveな画像job1件」
+ * （unique index）の二重で担保する。既存画像は保持し、workerが新画像の保存成功後に置換・旧object削除する。
+ */
+export async function regenerateImage(
+  userId: string,
+  input: RegenerateImageInput,
+  deps: GenerationJobDeps,
+): Promise<CreateJobResult> {
+  const key = requestKey(userId, input.request_key);
+  return deps.runInTx(async (tx) => {
+    const existing = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs where request_key = $1`,
+        [key],
+      )
+    ).rows[0];
+    if (existing) return { jobId: existing.id, deduped: true };
+
+    const draft = (
+      await tx.query<{ status: string; x_account_id: string }>(
+        `select d.status, d.x_account_id
+           from drafts d join x_accounts xa on xa.id = d.x_account_id
+          where d.id = $1 and xa.user_id = $2`,
+        [input.draft_id, userId],
+      )
+    ).rows[0];
+    if (!draft) throw new AppError("not_found");
+    if (draft.status !== "draft" && draft.status !== "failed") {
+      throw new AppError("job_conflict", { details: { reason: `not_regenerable:${draft.status}` } });
+    }
+
+    // 既に画像jobがqueued/running中なら二重生成しない（unique index と対称の冪等）。
+    const active = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs
+          where draft_id = $1 and kind = 'image_generation' and status in ('queued', 'running')`,
+        [input.draft_id],
+      )
+    ).rows[0];
+    if (active) return { jobId: active.id, deduped: true };
+
+    await assertPrereqs(deps, userId, true); // 画像キー必須
+    await assertJobBudget(tx, userId);
+
+    const inserted = (
+      await tx.query<{ id: string }>(
+        `insert into generation_jobs
+           (x_account_id, kind, trigger, draft_id, input, request_key, status)
+         values ($1, 'image_generation', 'manual', $2, $3::jsonb, $4, 'queued')
+         on conflict do nothing
+         returning id`,
+        [draft.x_account_id, input.draft_id, JSON.stringify({ regenerate: true }), key],
+      )
+    ).rows[0];
+    if (inserted) return { jobId: inserted.id, deduped: false };
+
+    // 競合（request_key もしくは active画像job unique）で挿入されず。既存を返す。
+    const raced = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs
+          where request_key = $1
+             or (draft_id = $2 and kind = 'image_generation' and status in ('queued', 'running'))
+          limit 1`,
+        [key, input.draft_id],
+      )
+    ).rows[0];
+    if (!raced) throw new AppError("job_conflict", { details: { reason: "image_job_race" } });
+    return { jobId: raced.id, deduped: true };
+  });
+}
+
 export interface GenerationJobView {
   id: string;
   kind: string;

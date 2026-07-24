@@ -2,14 +2,21 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { discardDraftAction } from "@/app/actions/drafts";
-import { regenerateDraftAction } from "@/app/actions/generation-jobs";
+import {
+  getGenerationJobAction,
+  regenerateDraftAction,
+  regenerateImageAction,
+} from "@/app/actions/generation-jobs";
 import { Button } from "@/components/ui/button";
 import type { DraftView } from "@/lib/drafts";
 
 import { DraftEditor } from "./draft-editor";
+
+const POLL_MS = 2500;
+const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 const PATTERN_LABEL: Record<string, string> = {
   p1: "ニュース解説",
@@ -47,9 +54,11 @@ function timeLabel(iso: string): string {
 export function DraftsList({
   drafts,
   selectedDraftId,
+  imageRegenEnabled,
 }: {
   drafts: DraftView[];
   selectedDraftId?: string;
+  imageRegenEnabled: boolean;
 }) {
   if (drafts.length === 0) {
     return (
@@ -61,18 +70,32 @@ export function DraftsList({
   return (
     <ul className="space-y-4">
       {drafts.map((draft) => (
-        <DraftCard draft={draft} highlighted={draft.id === selectedDraftId} key={draft.id} />
+        <DraftCard
+          draft={draft}
+          highlighted={draft.id === selectedDraftId}
+          imageRegenEnabled={imageRegenEnabled}
+          key={draft.id}
+        />
       ))}
     </ul>
   );
 }
 
-function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: boolean }) {
+function DraftCard({
+  draft,
+  highlighted,
+  imageRegenEnabled,
+}: {
+  draft: DraftView;
+  highlighted: boolean;
+  imageRegenEnabled: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
+  const readyImage = draft.images.find((img) => img.status === "ready");
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
   const editable = draft.status === "draft";
@@ -134,6 +157,15 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
         <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
       ) : null}
 
+      {readyImage || imageFailed ? (
+        <ImageSection
+          enabled={imageRegenEnabled}
+          failed={imageFailed && !readyImage}
+          imageUrl={readyImage?.signed_url}
+          draftId={draft.id}
+        />
+      ) : null}
+
       {draft.parent_draft_id ? (
         <p className="mt-2 text-xs text-muted-foreground">
           <a className="underline" href={`/app/posts?tab=drafts&draftId=${draft.parent_draft_id}`}>
@@ -160,6 +192,104 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
         </ol>
       )}
     </li>
+  );
+}
+
+function ImageSection({
+  draftId,
+  imageUrl,
+  failed,
+  enabled,
+}: {
+  draftId: string;
+  imageUrl?: string;
+  failed: boolean;
+  enabled: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+
+  const running = pending || jobId !== null;
+
+  // 再生成jobを終端までpollする。成功でrefresh（新画像の署名URLを取り直す）。失敗は既存画像を維持。
+  useEffect(() => {
+    if (!jobId) return;
+    const timer = setInterval(async () => {
+      const res = await getGenerationJobAction({ job_id: jobId });
+      if (res.status !== "success" || !res.job) return;
+      if (!TERMINAL.has(res.job.status)) return;
+      clearInterval(timer);
+      setJobId(null);
+      if (res.job.status === "succeeded") {
+        router.refresh();
+      } else {
+        setNotice({ tone: "error", message: "画像を再生成できませんでした。既存の画像はそのままです。" });
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [jobId, router]);
+
+  function regenerate() {
+    setNotice(null);
+    startTransition(async () => {
+      const res = await regenerateImageAction({
+        request_key: crypto.randomUUID(),
+        draft_id: draftId,
+      });
+      if (res.status !== "success" || !res.jobId) {
+        setNotice({ tone: "error", message: res.message });
+        return;
+      }
+      setJobId(res.jobId);
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="relative inline-block">
+        {imageUrl ? (
+          // 署名URLは短時間・外部domainのため next/image ではなく素の img を使う。
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt="生成画像プレビュー"
+            className="max-h-48 rounded-lg border object-contain"
+            src={imageUrl}
+          />
+        ) : failed ? (
+          <div className="flex h-24 w-40 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+            画像なし（生成失敗）
+          </div>
+        ) : null}
+        {running ? (
+          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40 text-xs font-medium text-white">
+            再生成中…
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          disabled={!enabled || running}
+          onClick={regenerate}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {running ? "再生成中…" : "画像を再生成"}
+        </Button>
+        {!enabled ? (
+          <span className="text-xs text-muted-foreground">
+            画像プロバイダのAPIキーが未登録です。
+          </span>
+        ) : null}
+      </div>
+      {notice ? (
+        <p className="text-xs text-destructive" role="alert">
+          {notice.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

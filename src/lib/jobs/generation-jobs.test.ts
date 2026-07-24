@@ -8,6 +8,7 @@ import {
   createGenerationJob,
   getGenerationJob,
   regenerateDraft,
+  regenerateImage,
   retryGenerationJob,
   type CreateGenerationJobInput,
   type GenerationJobDeps,
@@ -239,6 +240,56 @@ describe("regenerateDraft", () => {
       deps(db),
     );
     expect(res).toEqual({ jobId: "existing", deduped: true });
+  });
+});
+
+describe("regenerateImage", () => {
+  const DRAFT_LOAD = /select d\.status, d\.x_account_id/;
+  const ACTIVE_IMG = /kind = 'image_generation' and status in/;
+
+  it("creates a queued image_generation job for a regenerable draft", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID }];
+      if (ACTIVE_IMG.test(sql)) return [];
+      if (BUDGET.test(sql)) return [{ n: 0 }];
+      if (INSERT.test(sql)) return [{ id: "img-job" }];
+      return [];
+    });
+    const res = await regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db));
+    expect(res).toEqual({ jobId: "img-job", deduped: false });
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    expect(insert?.sql).toContain("image_generation");
+    expect(JSON.parse(insert?.params[2] as string)).toEqual({ regenerate: true });
+  });
+
+  it("dedups to the active image job when one is already queued/running", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID }];
+      if (ACTIVE_IMG.test(sql)) return [{ id: "active-1" }];
+      return [];
+    });
+    const res = await regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db));
+    expect(res).toEqual({ jobId: "active-1", deduped: true });
+    expect(writes.some((w) => INSERT.test(w.sql))).toBe(false);
+  });
+
+  it("is idempotent on request_key", async () => {
+    const { db } = makeDb((sql) => (EXISTING.test(sql) ? [{ id: "existing" }] : []));
+    const res = await regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db));
+    expect(res).toEqual({ jobId: "existing", deduped: true });
+  });
+
+  it("rejects a non-regenerable (posted) draft", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "posted", x_account_id: XID }];
+      return [];
+    });
+    await expect(
+      regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db)),
+    ).rejects.toMatchObject({ code: "job_conflict" });
   });
 });
 

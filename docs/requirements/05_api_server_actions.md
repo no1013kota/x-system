@@ -166,7 +166,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 | `publishDraft` | request_key, draft_id, mode=`manual` | job_id | `draft`、またはtweet_id作成履歴・残存ID・曖昧状態のすべてがないretryable `failed`。activeな同種jobがなければ冪等作成 |
 | `reconcileDraftPosting` | draft_id | draft | failedのみ。既知IDと直近投稿をXから再照合 |
 | `cloneFailedDraftForRetry` | request_key, draft_id | new_draft | 投稿ID作成履歴があり、曖昧状態・残存IDが解消済みのfailedだけ。AI呼び出しなし |
-| `regenerateImage` | request_key, draft_id, post_local_id, provider | job_id | `image_generation`を冪等作成し画像枠確認 |
+| `regenerateImage` | request_key, draft_id | job_id | `image_generation`を冪等作成。画像は1ポスト目に添付・providerはアカウント設定(ai_purpose_config)から解決（初回生成と同じ）。冪等はrequest_keyと「1draftにactive画像job1件」で担保 |
 
 `createGenerationJob`でP-5を指定する場合は`quote_url`を必須とする。サーバー側でtweet_idを抽出し、対象ポスト取得に成功した場合だけjobを作る。生成・編集時は対象URLをdraftへ別管理し、投稿時に1ポスト目の本文末尾へ合成する。`quote_tweet_id`をX投稿APIへ指定しない。
 

@@ -24,6 +24,8 @@ export interface DraftImage {
   mime_type?: string;
   size_bytes?: number;
   status?: string;
+  /** 表示専用の短時間署名URL（DBへ永続化しない・要件02 §4.8）。表示層で付与する。 */
+  signed_url?: string;
 }
 
 export interface DraftView {
