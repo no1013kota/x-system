@@ -1,4 +1,5 @@
 import type { PlanId } from "@/lib/plans";
+import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { expectedAuthTypeForPlan } from "@/lib/x/oauth-start";
 
 /**
@@ -75,4 +76,30 @@ export function computeXAccountBanners(input: XBannerInputs): AppBanner[] {
   }
 
   return banners;
+}
+
+const USAGE_SLOT_LABELS: [keyof UsageSummary, string][] = [
+  ["normal_posts", "通常投稿枠"],
+  ["url_posts", "URL付き投稿枠"],
+  ["generations", "生成枠"],
+  ["images", "画像枠"],
+];
+
+/**
+ * 利用枠100%到達の常設バナー（要件03 §8, T-M6-13）。remaining=0 の枠が1つでもあれば表示する。
+ * `notification_config` にかかわらず表示する（呼び出し側の App Shell は残量サマリから直接算出し、通知設定を
+ * 参照しない）。premium 以外は summary=null で呼ばれ、バナーは出ない。
+ */
+export function usageLimitBanner(summary: UsageSummary | null): AppBanner | null {
+  if (!summary) return null;
+  const atLimit = USAGE_SLOT_LABELS.filter(([key]) => summary[key].remaining <= 0).map(([, label]) => label);
+  if (atLimit.length === 0) return null;
+  return {
+    id: "usage_limit",
+    tone: "warning",
+    title: "今月の利用枠が上限に達しました",
+    description: `${atLimit.join("・")}が上限に達しました。翌月にリセットされます。既存の下書きの閲覧・編集は引き続きできます。`,
+    actionLabel: "利用状況を見る",
+    actionHref: "/app/settings?tab=billing",
+  };
 }

@@ -5,9 +5,11 @@ import { AppNavigation } from "@/components/app-shell/app-navigation";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import {
   computeXAccountBanners,
+  usageLimitBanner,
   type AppBanner,
 } from "@/lib/app-banners";
 import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
+import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import type { PlanId } from "@/lib/plans";
 import { PortalButton } from "@/components/billing/portal-button";
 import { APP_NAME } from "@/lib/app-config";
@@ -49,6 +51,7 @@ export default async function AppLayout({
   let notifications: NotificationView[] = [];
   let notificationCursor: string | null = null;
   let xBanners: AppBanner[] = [];
+  let usageBanner: AppBanner | null = null;
   if (user) {
     // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
     activeAccountId = await resolveActiveXAccountForUser(user.id);
@@ -92,6 +95,10 @@ export default async function AppLayout({
           })),
           xApiKeyStatus,
         });
+        // 利用枠100%到達の常設バナー（premiumのみ・notification_config非依存, 要件03 §8・T-M6-13）。
+        usageBanner = usageLimitBanner(
+          await loadUsageSummaryForUser(user.id, result.data.plan),
+        );
       }
     }
   }
@@ -169,7 +176,7 @@ export default async function AppLayout({
           </aside>
         ) : null}
 
-        {xBanners.map((xBanner) => (
+        {[...xBanners, ...(usageBanner ? [usageBanner] : [])].map((xBanner) => (
           <aside
             aria-label={xBanner.title}
             className="border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"

@@ -1,5 +1,6 @@
 import { AppError } from "../observability/errors";
 import type { Queryable } from "../x/token-refresh";
+import { notifyUsageThresholds } from "./usage-threshold";
 
 /**
  * 生成/画像 利用枠の reserve / refund（要件03 §7.1〜§7.4, T-M5-03/T-M6-03）。文章系top-level job（生成・LRN・
@@ -71,11 +72,18 @@ export async function reserveUsage(
      on conflict (idempotency_key) do nothing`,
     [params.userId, params.xAccountId ?? null, params.jobId, params.type, OPERATION[params.type], key],
   );
-  await tx.query(
+  const updated = await tx.query<{ n: number }>(
     `update usage_counters set ${column} = ${column} + 1, updated_at = now()
-      where user_id = $1 and month = ${MONTH_EXPR}`,
+      where user_id = $1 and month = ${MONTH_EXPR}
+      returning ${column} as n`,
     [params.userId],
   );
+  // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
+  await notifyUsageThresholds(tx, {
+    userId: params.userId,
+    key: params.type === "generation" ? "generations" : "images",
+    newCount: updated.rows[0]?.n ?? 0,
+  });
   return true;
 }
 

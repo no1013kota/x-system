@@ -1460,12 +1460,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: premiumのみusage_countersから当月の4枠（normal_posts/url_posts/generations/images）のused/limit/remainingを要件03 §8のJSON形状で算出し、SC-05ホームとSC-11設定へ表示。usage_limit_exceededエラーの画面表示には残量と翌月開始日時（JST）を含め、既存下書きの閲覧は許可する（要件06 §10）。SC-05の土台はM4までに実装済みの想定。
 - 実装結果: 純関数`usage-summary.ts`（`computeUsageSummary`＝§8 JSON形状 used/limit/remaining、remainingは0クランプ／`nextMonthStartJst`・`formatNextMonthStartJst`＝翌月1日00:00 JST・12月→翌1月繰上げ）＋server loader`usage-summary-server.ts`（`loadUsageSummaryForUser(userId, plan)`＝premiumのみ当月JST usage_counters読取、非premium/行なしは全0）を追加。表示専用の`UsageSummaryCard`（4枠 used/limit/remaining＋バー、remaining=0枠に「上限到達（残り0）・{翌月開始日時}にリセット・閲覧編集は継続可」の到達エラー表示）をSC-05ホーム（`app/page.tsx`）とSC-11設定・課金プランタブ（`settings/page.tsx`）へpremium限定で描画。テスト: 純関数8件（JST境界含む）＋DB loader 3件（premium/非premium null/行なし全0）。UIはtsc/lint/build検証（コンポーネントテストなし）。doc影響なし（要件03 §8・要件06 §10・SC-05が既に規定）。上限到達エラー表示は本カードの到達notice（残量0＋翌月開始日時＋閲覧可）で実現。投稿画面インラインでの動的表示や100%常設バナー・通知はT-M6-13が担当。
 
-### T-M6-13: 利用枠80%/100%通知と常設バナー `todo`
+### T-M6-13: 利用枠80%/100%通知と常設バナー `done`
 - 参照: O-4、要件03 §8、要件02 §3.15、要件02 §4.3 / 依存: T-M6-12、M5 / サイズ: M
 - 完了条件:
   - counterが80%を跨ぐ更新でusage通知が枠・月ごとに1件だけ作成され、再更新・再実行で重複しない（dedupe_key検証）
   - 100%到達で全/app画面に常設バナーが表示され、notification_configでusageをOFFにしてもバナーは表示される（メールは作られない）
 - メモ: counter更新後に閾値を判定し、80%到達は各枠・各月1回のusage通知（dedupe_key例: usage:{month}:{counter_type}:80）、100%到達は通知＋常設バナー。100%バナーはnotification_configにかかわらず表示し、メール・通知一覧作成は設定を尊重。決済失敗・契約停止バナーはM1側の実装を前提とし、本タスクは利用枠100%のみ追加。通知基盤（notifications・メール送信）はM5想定。
+- 実装結果: (A)`usage-threshold.ts` `notifyUsageThresholds(db,{userId,key,newCount})`＝閾値80%(ceil(limit×0.8))・100%(limit)以上の枠へ'usage'通知を挿入。dedupe_key `usage:{JST月}:{key}:{80|100}`をSQL内で構築し on conflict(user_id,dedupe_key) do nothing で枠/月/閾値ごと1件。`notification_config->'usage'`のin_app/emailを尊重（両OFFなら行を作らない＝メールも作らない）。counter更新と同一tx。`reserveUsage`（generation/image）と`consumePostSlot`（post_normal/post_url）の increment を `returning {col}` にして直後に呼ぶ（既存の冪等early-returnはnotifyより前なので二重発火なし）。(B)`app-banners.ts` `usageLimitBanner(summary)`＝remaining=0枠があれば常設バナー（notification_config非依存・データ駆動）。App Shell（layout.tsx）が`loadUsageSummaryForUser`(premium限定)→バナーを全/app画面へ描画。テスト: 純関数閾値4件＋DB(dedupe/config OFF/email queued/reserve端到端)4件＋banner 3件。敵対的レビュー2観点で欠陥なし（idempotency・JST月一貫・config尊重・$3二重cast・React key）。doc影響なし（要件03 §8が80%/100%通知＋config非依存バナー＋メール設定尊重を既に規定）。
 
 ### T-M6-14: 公開法務3ページの実装（/terms・/privacy・/legal/commercial-transactions） `todo`
 - 参照: 要件06 §11、要件01 §4、PRD §7、O-1 / 依存: M0 / サイズ: M

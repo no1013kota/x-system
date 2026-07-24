@@ -1,6 +1,7 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 
 import { PLANS } from "../plans";
+import { notifyUsageThresholds } from "../usage/usage-threshold";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
 import {
@@ -94,11 +95,18 @@ async function consumePostSlot(
        on conflict (user_id, month) do nothing`,
       [params.userId],
     );
-    await tx.query(
+    const updated = await tx.query<{ n: number }>(
       `update usage_counters set ${col} = ${col} + 1, updated_at = now()
-        where user_id = $1 and month = ${POST_MONTH}`,
+        where user_id = $1 and month = ${POST_MONTH}
+        returning ${col} as n`,
       [params.userId],
     );
+    // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
+    await notifyUsageThresholds(tx, {
+      userId: params.userId,
+      key: params.counterType === "post_url" ? "url_posts" : "normal_posts",
+      newCount: updated.rows[0]?.n ?? 0,
+    });
   });
 }
 
