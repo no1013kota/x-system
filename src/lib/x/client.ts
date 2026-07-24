@@ -91,6 +91,14 @@ export interface XTweetMetrics {
 export interface XTweetMetricsResult extends XApiMeta {
   tweets: XTweetMetrics[];
 }
+export interface XUserMetrics {
+  id: string;
+  username: string;
+  followersCount: number | null;
+}
+export interface XUserMetricsResult extends XApiMeta {
+  users: XUserMetrics[];
+}
 export interface XUploadMediaResult extends XApiMeta {
   mediaId: string;
 }
@@ -294,19 +302,27 @@ export interface XRecentPost {
 }
 export interface XRecentPostsResult extends XApiMeta {
   posts: XRecentPost[];
+  /** 次ページ token（無ければ null）。ページングで蓄積する呼び出し側が使う。 */
+  nextToken: string | null;
 }
 
 /**
- * GET /2/users/:id/tweets（結果不明時の照合用・直近投稿取得, 要件04 §10/§11）。読取はmode非依存。
- * 公式仕様確認（docs.x.com, 2026-07-24）: `tweet.fields=created_at,referenced_tweets` で
- * `data[].id/text/created_at/referenced_tweets[{type:'replied_to',id}]`。実装時に version 再確認。
+ * GET /2/users/:id/tweets（結果不明時の照合用・直近投稿取得, 要件04 §10/§11/§12）。読取はmode非依存。
+ * 公式仕様確認（docs.x.com, 2026-07-24）: `tweet.fields=created_at,referenced_tweets`・`max_results`
+ * は5〜100・`pagination_token` で次ページ。`data[].id/text/created_at/referenced_tweets[{type,id}]`、
+ * `meta.next_token`。実装時に version 再確認。
  */
 export async function getRecentPosts(
   accessToken: string,
-  input: { userId: string; maxResults?: number },
+  input: { userId: string; maxResults?: number; paginationToken?: string },
   deps: XClientDeps,
 ): Promise<XRecentPostsResult> {
   const max = input.maxResults ?? 20;
+  const params = new URLSearchParams({
+    max_results: String(max),
+    "tweet.fields": "created_at,referenced_tweets",
+  });
+  if (input.paginationToken) params.set("pagination_token", input.paginationToken);
   const { body: res, requestId } = await callX<{
     data?: Array<{
       id: string;
@@ -314,10 +330,11 @@ export async function getRecentPosts(
       created_at?: string;
       referenced_tweets?: Array<{ type: string; id: string }>;
     }>;
+    meta?: { next_token?: string };
   }>(
     {
       method: "GET",
-      url: `${baseUrl(deps)}/users/${encodeURIComponent(input.userId)}/tweets?max_results=${max}&tweet.fields=created_at,referenced_tweets`,
+      url: `${baseUrl(deps)}/users/${encodeURIComponent(input.userId)}/tweets?${params.toString()}`,
       headers: authHeaders(accessToken, false),
     },
     deps,
@@ -328,7 +345,45 @@ export async function getRecentPosts(
     createdAt: t.created_at ?? null,
     inReplyToId: t.referenced_tweets?.find((r) => r.type === "replied_to")?.id ?? null,
   }));
-  return { posts, requestId, quantity: Math.max(1, posts.length), dryRun: false };
+  return {
+    posts,
+    nextToken: res.meta?.next_token ?? null,
+    requestId,
+    quantity: Math.max(1, posts.length),
+    dryRun: false,
+  };
+}
+
+/**
+ * GET /2/users?ids=…&user.fields=public_metrics（K-3 フォロワー数・user lookup, 要件04 §13）。
+ * 公式仕様確認（docs.x.com, 2026-07-24）: 最大100 id・`public_metrics.followers_count`。実装時に再確認。
+ */
+export async function getUsersByIds(
+  accessToken: string,
+  userIds: string[],
+  deps: XClientDeps,
+): Promise<XUserMetricsResult> {
+  const ids = userIds.join(",");
+  const { body: res, requestId } = await callX<{
+    data?: Array<{
+      id: string;
+      username: string;
+      public_metrics?: { followers_count?: number };
+    }>;
+  }>(
+    {
+      method: "GET",
+      url: `${baseUrl(deps)}/users?ids=${encodeURIComponent(ids)}&user.fields=public_metrics`,
+      headers: authHeaders(accessToken, false),
+    },
+    deps,
+  );
+  const users: XUserMetrics[] = (res.data ?? []).map((u) => ({
+    id: u.id,
+    username: u.username,
+    followersCount: u.public_metrics?.followers_count ?? null,
+  }));
+  return { users, requestId, quantity: Math.max(1, users.length), dryRun: false };
 }
 
 /**

@@ -1159,13 +1159,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M5: 学習・分析
 
-### T-M5-01: T-M5-01: X API読取クライアント（タイムライン・tweet lookup・user lookup） `todo`
+### T-M5-01: T-M5-01: X API読取クライアント（タイムライン・tweet lookup・user lookup） `done`
 - 参照: L-1、L-2、L-3、K-1、K-3、要件04 §12、要件04 §13、PRD 8.1、要件02 §3.17、要件04 §5 / 依存: M2、M3 / サイズ: M
 - 完了条件:
   - HTTPモックで「指定ユーザーの直近ポスト取得（20件/100件・ページング）」「tweet_id最大100件のbatch lookup（public＋non-public metrics fields）」「user lookup（followers_count）」が共通型で返るテストが通る
   - 429/5xx/networkで指数backoff＋jitterの最大2回retry後に最終失敗となり、401/403は即失敗になる
   - 読取呼び出しごとに external_api_usage_events へ operation=x_post_read/x_user_read が冪等記録され、同一idempotency_keyの再実行で重複しない
 - メモ: OAuth user contextのtoken復号・refresh（single-flight lease）はM2の既存機構を利用。原価台帳への冪等記録helperはM3/M4のものを再利用。異なるuser tokenを同一requestへ混ぜない契約（要件04 §6）をクライアント層で強制する。学習（LRN）・metrics_collector・follower_snapshotの3機能で共用する。
+- 実装メモ: 既存 `client.ts`（`callX` retry/backoff・401/403即失敗＝XApiError auth・`recordedXCall` [usage.ts] の冪等台帳記録・`xUnitCost` 読取0）を土台に拡張。client.ts追加: `getUsersByIds`（GET /users?ids=…&user.fields=public_metrics→followers_count）、`getRecentPosts` に `paginationToken`＋結果 `nextToken`（GET /users/:id/tweets の max_results 5-100・meta.next_token）。新規 `read-client.ts`（共用読取層・deps注入）: `readUserTimeline`（limit までページング蓄積・各ページ x_post_read 記録 key `{base}:page:{i}`）、`readTweetMetrics`（≤100 で chunk・各 chunk x_post_read 記録 `{base}:chunk:{i}`・merge）、`readUserFollowers`（≤100・x_user_read 記録）。単一 accessToken を deps に束ね「異なるuser token混在なし」を型で強制。server `read-client-server.ts buildXReadDeps(accessToken, ctx)`（pooledDb＋xClientDeps）。テスト+5（timeline 2ページ蓄積40件＋page:0/1記録・単ページ停止・401非retry＋failed記録、tweet 150→100/50 chunk＋chunk:0/1、followers＝x_user_read）。全922 green・build通過。doc: 要件04 §12/§13・要件02 §3.17・要件04 §10 に既述で一致（影響なし）。
+- 後続への注意: **token復号・refresh（M2 token-refresh）で得た accessToken を buildXReadDeps へ渡す**のは各消費側（T-M5-03 learning／metrics_collector／follower_snapshot）。idempotencyKeyBase は消費側が安定値で決める（例 learning:{sourceId}:posts／metrics:{xAccountId}:{window}／follower:{xAccountId}:{date}）。getUsersByIds/getTweetMetrics は ids ≤100 前提（read-client が chunk 済み）。handle→user_id 解決（参考アカウントURL）は T-M5-02/03 側。
 
 ### T-M5-02: T-M5-02: 学習ソースCRUDのServer Actions（追加・一覧・削除の受付） `todo`
 - 参照: L-1、L-2、L-3、要件05 §8、要件05 §12、要件02 §3.6、SC-10 / 依存: M1、M2、M3 / サイズ: M
