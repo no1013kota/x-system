@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPool } from "../db/pool";
+import { getPool, withTransaction } from "../db/pool";
 import { env } from "../env";
 import { createSupabaseAdminClient } from "../supabase/admin";
 import {
@@ -38,6 +38,7 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
   await executePostPublish({
     db: pooledDb,
     jobId: ctx.jobId,
+    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
     getAccessToken: (xAccountId) => getValidXAccessToken(xAccountId),
     createPost: (accessToken, input) => createPost(accessToken, input, clientDeps),
     deletePost: (accessToken, tweetId) => deletePost(accessToken, tweetId, clientDeps),
@@ -63,5 +64,6 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
     },
     costConfig: xCostConfig(),
     dailyLimit: env.X_DAILY_POST_LIMIT,
+    postingLive: env.X_POSTING_MODE === "live",
   });
 }

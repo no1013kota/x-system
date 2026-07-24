@@ -32,6 +32,60 @@ function hasUrl(text: string): boolean {
   return URL_RE.test(text);
 }
 
+const POST_MONTH = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
+
+/**
+ * 投稿枠を consume する（要件03 §7.1・要件04 §10 step7）。全プランで consume event を記帳し、premium かつ
+ * live（dry_runは非加算）のときだけ月次counter（normal/url_posts_count）を **同一transaction** で +1 する。
+ * event insert は idempotency_key で冪等（新規挿入時だけcounterを加算＝worker再実行で二重加算しない）。
+ */
+async function consumePostSlot(
+  runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
+  params: {
+    userId: string;
+    xAccountId: string;
+    jobId: string;
+    draftId: string;
+    tweetId: string;
+    counterType: "post_normal" | "post_url";
+    operation: "post_create" | "post_delete";
+    idempotencyKey: string;
+    premiumLive: boolean;
+  },
+): Promise<void> {
+  await runInTx(async (tx) => {
+    const ins = await tx.query(
+      `insert into usage_events
+         (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
+       values ($1, $2, $3, $4, $5, ${POST_MONTH}, $6, $7::usage_event_operation, 1, 'consume', $8)
+       on conflict (idempotency_key) do nothing`,
+      [
+        params.userId,
+        params.xAccountId,
+        params.jobId,
+        params.draftId,
+        params.tweetId,
+        params.counterType,
+        params.operation,
+        params.idempotencyKey,
+      ],
+    );
+    if ((ins.rowCount ?? 0) !== 1) return; // 既存consume → 冪等no-op
+    if (!params.premiumLive) return; // 全プランはevent記帳のみ。premium月次counterはliveのみ加算（§10）
+    const col = params.counterType === "post_url" ? "url_posts_count" : "normal_posts_count";
+    await tx.query(
+      `insert into usage_counters (user_id, month) values ($1, ${POST_MONTH})
+       on conflict (user_id, month) do nothing`,
+      [params.userId],
+    );
+    await tx.query(
+      `update usage_counters set ${col} = ${col} + 1, updated_at = now()
+        where user_id = $1 and month = ${POST_MONTH}`,
+      [params.userId],
+    );
+  });
+}
+
 /** 照合で「直近」とみなす作成時刻の窓（要件04 §10: 本文・作成時刻・reply先で照合）。 */
 const RECONCILE_WINDOW_MS = 15 * 60 * 1000;
 
@@ -75,6 +129,8 @@ interface PublishDraftRow {
 export interface PostPublishDeps {
   db: Queryable;
   jobId: string;
+  /** consume event＋premium counterを同一transactionで束ねる（server配線は withTransaction）。 */
+  runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
   /** x_account の有効 access token（server配線は getValidXAccessToken）。失効時は throw。 */
   getAccessToken: (xAccountId: string) => Promise<string>;
   /** X 投稿（dry_run は client 内で擬似結果）。 */
@@ -98,6 +154,8 @@ export interface PostPublishDeps {
   costConfig: XCostConfig;
   /** 1 Xアカウントの JST 日次投稿上限（env X_DAILY_POST_LIMIT）。 */
   dailyLimit: number;
+  /** X_POSTING_MODE=live か（dry_runはpremium月次counterを加算しない・要件04 §10）。 */
+  postingLive: boolean;
   now?: () => number;
   recordStage?: (stage: string) => Promise<void>;
 }
@@ -215,31 +273,29 @@ async function rollbackThread(
     tweetIds: string[];
     finalTextAt: (i: number) => string;
     failedIndex: number;
+    plan: string;
   },
 ): Promise<void> {
   const { db } = deps;
   const { usageCtx, draftId, tweetIds } = params;
+  const premiumLive = params.plan === "premium" && deps.postingLive;
   const deleted: string[] = [];
   const remaining: string[] = [];
   const ambiguousDelete: string[] = [];
 
-  const recordDeleteConsume = (tweetId: string, withUrl: boolean): Promise<unknown> =>
-    db.query(
-      `insert into usage_events
-         (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
-               $6, 'post_delete', 1, 'consume', $7)
-       on conflict (idempotency_key) do nothing`,
-      [
-        usageCtx.userId,
-        usageCtx.xAccountId,
-        usageCtx.jobId,
-        draftId,
-        tweetId,
-        withUrl ? "post_url" : "post_normal",
-        `draft:${draftId}:tweet:${tweetId}:post:delete`,
-      ],
-    );
+  // rollback削除成功は元post_createと同じcounter_typeで同枠を追加消費（作成+削除=同枠2消費・要件03 §7.1）。
+  const recordDeleteConsume = (tweetId: string, withUrl: boolean): Promise<void> =>
+    consumePostSlot(deps.runInTx, {
+      userId: usageCtx.userId,
+      xAccountId: usageCtx.xAccountId,
+      jobId: usageCtx.jobId,
+      draftId,
+      tweetId,
+      counterType: withUrl ? "post_url" : "post_normal",
+      operation: "post_delete",
+      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:delete`,
+      premiumLive,
+    });
 
   for (let i = tweetIds.length - 1; i >= 0; i--) {
     const tweetId = tweetIds[i];
@@ -464,22 +520,17 @@ export async function executePostPublish(
         where id = $1`,
       [draftId, tweetId],
     );
-    await db.query(
-      `insert into usage_events
-         (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
-               $6, 'post_create', 1, 'consume', $7)
-       on conflict (idempotency_key) do nothing`,
-      [
-        userId,
-        xAccountId,
-        jobId,
-        draftId,
-        tweetId,
-        hasUrl(finalTextAt(i)) ? "post_url" : "post_normal",
-        `draft:${draftId}:tweet:${tweetId}:post:create`,
-      ],
-    );
+    await consumePostSlot(deps.runInTx, {
+      userId,
+      xAccountId,
+      jobId,
+      draftId,
+      tweetId,
+      counterType: hasUrl(finalTextAt(i)) ? "post_url" : "post_normal",
+      operation: "post_create",
+      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:create`,
+      premiumLive: job.plan === "premium" && deps.postingLive,
+    });
   };
 
   // 結果不明時: 同一本文を再送せず、直近投稿から本文/作成時刻/reply先が一致する候補を探す（要件04 §10）。
@@ -574,6 +625,7 @@ export async function executePostPublish(
       tweetIds,
       finalTextAt,
       failedIndex: failure.index,
+      plan: job.plan,
     });
     throw new PostPublishError("post_create_failed", "posting failed after resume");
   }

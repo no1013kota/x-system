@@ -1398,13 +1398,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: stale→refund の配線は既存で充足を確認＝`stale.ts recoverStaleJobs` が `attempt>=MAX_ATTEMPTS(3)` の running job を同一tx内で failed確定＋`terminalHandler`（既定=`terminal.ts finalizeFailedJob`）呼び出し。finalizeFailedJob が kind別に `refundUsage`（post_generation/learning/md_merge/suggestion→generation、image_generation→image）を冪等keyで実行。本タスクの新規は**end-to-endテスト**（stale.db.test）: premium reserve済み post_generation job を stale(locked 15分前・attempt=3)化→`recoverStaleJobs`（実 finalizeFailedJob）→failed＋refund event 1件・generations_count 0復帰／worker先行refund済みなら tick が二重refundしない（冪等key）。既存テストの mock terminal handler 差し替え漏れ防止に `afterEach(setStaleTerminalHandler(finalizeFailedJob))` を追加。全green・build通過（下記で確認）。doc: 要件04 §4・要件03 §7.4（stale時 scheduler_tick が同一冪等keyでrefund）に既述で一致（影響なし）。
 - 後続への注意: M6残: 投稿枠consume（T-M6-06〜08）・原価台帳（T-M6-09/10）・プラン変更副作用（T-M6-11）・残量表示/通知（T-M6-12/13）・法務/LP（T-M6-14〜16）。
 
-### T-M6-06: 投稿実行の通常/URL付き枠consume（post_create/post_delete・全プラン記録） `todo`
+### T-M6-06: 投稿実行の通常/URL付き枠consume（post_create/post_delete・全プラン記録） `done`
 - 参照: O-4、要件03 §7.1、要件03 §7.4、要件04 §10、要件04 §11、要件02 §3.13 / 依存: T-M6-03、M4 / サイズ: M
 - 完了条件:
   - モック投稿でURLなし3ポストthread全件成功時、post_normalのconsume eventが3件作られ、premiumはnormal_posts_countが+3、standard/mdはeventのみでcounter更新なし
   - 途中失敗→rollback削除成功で、削除分が元投稿と同じcounter_typeで追加consumeされ（同枠2消費）、削除失敗分は追加消費されない
   - X_POSTING_MODE=dry_runではconsume event・counter更新が発生しない
 - メモ: X送信直前の最終payload（P-5のquote_url合成後。flag OFF中はP-5経路自体が実行されない）でHTTP(S) URL有無を判定しcounter_type（post_normal/post_url）を決定。tweet_id成功ごとに同一transactionで全プランのconsume event＋premiumのみcounter加算。ロールバック削除成功は対応するpost_createのcounter_typeを引き継ぎ同枠へ+1（作成+削除=同枠2消費）、削除失敗は追加消費なし。日次50上限はpost_createのみ合算。冪等keyはdraft:{draft_id}:tweet:{tweet_id}:post:create|delete。DB保存だけ失敗した場合はreconcileし再送しない。
+- 実装メモ: consume EVENT記帳（post_create/post_delete・全プラン・冪等key・counter_type=finalTextでURL判定）と日次50上限はM4 post-publish実装済み。**新規=premium月次counterの加算**: `consumePostSlot(runInTx, {...})` ヘルパを追加し、event insert（on conflict do nothing）＋（新規挿入かつ premium かつ live のみ）normal/url_posts_count +1 を**同一transaction**で実行（§10「同一transaction」・crash時のunder-count窓を排除）。saveCreatedTweet（create）とrollbackThreadのrecordDeleteConsume（delete）を consumePostSlot へ集約。PostPublishDepsに `runInTx`（withTransaction配線）と `postingLive`（env.X_POSTING_MODE==='live'）を追加。rollbackThreadに `plan` を渡す。standard/mdは premiumLive=false でevent記帳のみ、dry_runも同様にcounter非加算（§10）。テスト（新規 post-publish.db.test）: premium+live 3 URL-less→post_create×3・normal +3／standard→event only・counter 0／**dry_run→event記帳あり・counter 0**／rollback（1成功→2件目失敗→t-1削除）→create×1+delete×1・同枠normal +2。全1054 green・build通過。**要注意（仕様整合）**: 完了条件3「dry_runでconsume eventも発生しない」は 要件04 §10（正本）と矛盾＝§10は「dry_runでも consume event・tweet_ids・status等は記帳（日次上限検証のため）、原価台帳とpremium月次counterのみ非実行」。正本§10に従い「dry_run=event記帳あり・counter非加算」で実装（BACKLOG条件3の文言は§10へ寄せて解釈）。doc: §10/§7.1 に既述で一致（影響なし）。
+- 後続への注意: M6残: T-M6-07（ロールバック安全残量判定）・T-M6-08（enqueue事前判定）・原価台帳（09/10）・プラン変更（11）・残量表示/通知（12/13）・法務/LP（14〜16）。
 
 ### T-M6-07: 投稿直前のロールバック安全残量判定 `todo`
 - 参照: 要件03 §7.4、要件06 §7、PRD §6.1、O-4 / 依存: T-M6-06 / サイズ: S

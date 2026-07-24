@@ -22,7 +22,9 @@ const FAILED = /update drafts\s+set status = 'failed'/;
 const REVERT_DRAFT = /update drafts set status = 'draft'/;
 const CONSENT = /select \(automation_consent_version/;
 const CANCEL_JOB = /update generation_jobs set status = 'canceled'/;
-const DELETE_CONSUME = (sql: string) => CONSUME.test(sql) && sql.includes("'post_delete'");
+// consume は create/delete で同一SQL。operation は param($7=params[6]) で判別する。
+const DELETE_CONSUME = (w: { sql: string; params: unknown[] }) =>
+  CONSUME.test(w.sql) && w.params[6] === "post_delete";
 
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -76,6 +78,7 @@ function baseDeps(db: Queryable, over: Partial<PostPublishDeps> = {}): PostPubli
   return {
     db,
     jobId: "job1",
+    runInTx: (fn) => fn(db),
     getAccessToken: async () => "tok",
     createPost,
     deletePost: vi.fn(
@@ -92,6 +95,7 @@ function baseDeps(db: Queryable, over: Partial<PostPublishDeps> = {}): PostPubli
     checkTweetExists: vi.fn(async () => true), // 既定: 削除失敗時はまだ存在（remaining）
     costConfig: COST,
     dailyLimit: 50,
+    postingLive: false, // 既定 dry_run（consume eventは記帳、premium月次counterは加算しない）
     now: () => 1_700_000_000_000,
     recordStage: async () => {},
     ...over,
@@ -126,7 +130,7 @@ describe("executePostPublish happy path (dry_run)", () => {
     expect(writes.filter((w) => APPEND_TWEET.test(w.sql))).toHaveLength(2);
     const consumes = writes.filter((w) => CONSUME.test(w.sql));
     expect(consumes).toHaveLength(2);
-    expect(consumes[0].params[6]).toBe("draft:d1:tweet:dryrun-tweet-1:post:create");
+    expect(consumes[0].params[7]).toBe("draft:d1:tweet:dryrun-tweet-1:post:create");
     expect(consumes[0].params[5]).toBe("post_normal"); // URLなし
 
     // posted 確定（root_tweet_id, posted_mode）＋ posted 通知
@@ -280,8 +284,8 @@ describe("executePostPublish resume & rollback (要件04 §11)", () => {
     expect(deletePost).toHaveBeenCalledTimes(1);
     expect(deletePost.mock.calls[0][1]).toBe("t-1");
     // post_delete consume（冪等key・counter_type）
-    const del = writes.find((w) => DELETE_CONSUME(w.sql));
-    expect(del?.params[6]).toBe("draft:d1:tweet:t-1:post:delete");
+    const del = writes.find((w) => DELETE_CONSUME(w));
+    expect(del?.params[7]).toBe("draft:d1:tweet:t-1:post:delete");
     expect(del?.params[5]).toBe("post_normal");
     // draft failed ＋ last_post_error（deleted/remaining）＋ error通知
     const failed = writes.find((w) => FAILED.test(w.sql));
@@ -311,7 +315,7 @@ describe("executePostPublish resume & rollback (要件04 §11)", () => {
     ).rejects.toMatchObject({ code: "post_create_failed" });
 
     // 削除失敗＋まだ存在 → remaining に残る・post_delete consume は作らない
-    expect(writes.some((w) => DELETE_CONSUME(w.sql))).toBe(false);
+    expect(writes.some((w) => DELETE_CONSUME(w))).toBe(false);
     const failed = writes.find((w) => FAILED.test(w.sql));
     const err = JSON.parse(failed?.params[1] as string);
     expect(err.deleted_tweet_ids).toEqual([]);
@@ -337,7 +341,7 @@ describe("executePostPublish resume & rollback (要件04 §11)", () => {
     ).rejects.toMatchObject({ code: "post_create_failed" });
 
     // 存在確認で消えている → 削除成功扱い（consume・deleted）
-    expect(writes.some((w) => DELETE_CONSUME(w.sql))).toBe(true);
+    expect(writes.some((w) => DELETE_CONSUME(w))).toBe(true);
     const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
     expect(err.deleted_tweet_ids).toEqual(["t-1"]);
     expect(err.remaining_tweet_ids).toEqual([]);
