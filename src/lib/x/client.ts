@@ -285,6 +285,52 @@ export async function getTweetMetrics(
   return { tweets, requestId, quantity: tweets.length, dryRun: false };
 }
 
+export interface XRecentPost {
+  id: string;
+  text: string;
+  createdAt: string | null;
+  /** replied_to の参照tweet id（reply連投の照合用）。無ければ null。 */
+  inReplyToId: string | null;
+}
+export interface XRecentPostsResult extends XApiMeta {
+  posts: XRecentPost[];
+}
+
+/**
+ * GET /2/users/:id/tweets（結果不明時の照合用・直近投稿取得, 要件04 §10/§11）。読取はmode非依存。
+ * 公式仕様確認（docs.x.com, 2026-07-24）: `tweet.fields=created_at,referenced_tweets` で
+ * `data[].id/text/created_at/referenced_tweets[{type:'replied_to',id}]`。実装時に version 再確認。
+ */
+export async function getRecentPosts(
+  accessToken: string,
+  input: { userId: string; maxResults?: number },
+  deps: XClientDeps,
+): Promise<XRecentPostsResult> {
+  const max = input.maxResults ?? 20;
+  const { body: res, requestId } = await callX<{
+    data?: Array<{
+      id: string;
+      text: string;
+      created_at?: string;
+      referenced_tweets?: Array<{ type: string; id: string }>;
+    }>;
+  }>(
+    {
+      method: "GET",
+      url: `${baseUrl(deps)}/users/${encodeURIComponent(input.userId)}/tweets?max_results=${max}&tweet.fields=created_at,referenced_tweets`,
+      headers: authHeaders(accessToken, false),
+    },
+    deps,
+  );
+  const posts: XRecentPost[] = (res.data ?? []).map((t) => ({
+    id: t.id,
+    text: t.text,
+    createdAt: t.created_at ?? null,
+    inReplyToId: t.referenced_tweets?.find((r) => r.type === "replied_to")?.id ?? null,
+  }));
+  return { posts, requestId, quantity: Math.max(1, posts.length), dryRun: false };
+}
+
 /**
  * POST /2/media/upload（画像添付, 要件04 §10 step4）。dry_runは擬似media idを返す（HTTP不呼）。
  * 公式仕様確認（docs.x.com, 2026-07-24）: application/json で `media`(base64)・`media_category`

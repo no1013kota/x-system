@@ -3,7 +3,14 @@ import "server-only";
 import { getPool } from "../db/pool";
 import { env } from "../env";
 import { createSupabaseAdminClient } from "../supabase/admin";
-import { createPost, deletePost, uploadMedia, type XClientDeps } from "../x/client";
+import {
+  createPost,
+  deletePost,
+  getRecentPosts,
+  getTweetMetrics,
+  uploadMedia,
+  type XClientDeps,
+} from "../x/client";
 import { xClientDeps, xCostConfig } from "../x/client-server";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import type { Queryable } from "../x/token-refresh";
@@ -41,6 +48,18 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
       if (error || !data) throw new Error(`storage download failed: ${error?.message ?? "no data"}`);
       const buffer = Buffer.from(await data.arrayBuffer());
       return { data: buffer, mimeType: data.type || "image/webp" };
+    },
+    getRecentPosts: async (accessToken, xUserId) => {
+      const res = await getRecentPosts(accessToken, { userId: xUserId }, clientDeps);
+      return res.posts;
+    },
+    checkTweetExists: async (accessToken, tweetId) => {
+      try {
+        const res = await getTweetMetrics(accessToken, [tweetId], clientDeps);
+        return res.tweets.length > 0;
+      } catch {
+        return null; // 判定不能
+      }
     },
     costConfig: xCostConfig(),
     dailyLimit: env.X_DAILY_POST_LIMIT,

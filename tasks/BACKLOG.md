@@ -909,13 +909,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: T-M3-18の`post-publish.ts`を拡張。投稿ループを`postOne(i)`（成功直後 tweet_ids append＋post_create consume）＋resumeループ（`tweetIds.length`起点、途中失敗で`resumed`フラグ1回だけ再開→再失敗で`rollbackThread`）に再構成。`rollbackThread`（成功済みtweet_idsを末尾から`deletePost`＋`recordedXCall`[x_post_delete原価]＋post_delete consume[元と同じcounter_type・tweet単位冪等key]、削除失敗はremainingへ残し追加消費なし、tweet_ids保持、`last_post_error`=§4.10形状[deleted/remaining/failed_post_index/ambiguous_*空]、残存ありで`next_metrics_at`設定、error通知）。rollback削除もX client内蔵retry（最大2回）を利用。deps/server配線に`deletePost`追加。dry_runでも同経路（実削除はclient内で擬似）。テスト+3（resume成功/rollback削除成功・deleted記録/削除失敗→remaining＋next_metrics）、全770 green・build通過。doc: 要件04 §11・§13・要件02 §4.10 は本仕様を既述で一致（変更なし）。premium月次counterの2消費はM6。
 - 後続への注意: **T-M3-20 結果不明時の照合**は、投稿create/delete のtimeout/接続断/5xx（作成成否不明）時に`ambiguous_create_indices`/`ambiguous_delete_tweet_ids`へ記録し、直近投稿の再取得で一致1件のみ確定して継続、複数/なしは`post_state_unknown`でfailed（要件04 §10末尾・§11・要件05 §2.2・要件02 §4.10）。`getTweetMetrics`/直近投稿取得を利用。
 
-### T-M3-20: 投稿・削除の結果不明時の照合 `todo`
+### T-M3-20: 投稿・削除の結果不明時の照合 `done`
 - 参照: 要件04 §5、要件04 §10、PRD §7、要件05 §2.2、要件02 §4.10 / 依存: T-M3-19 / サイズ: M
 - 完了条件:
   - post作成のtimeout/切断/5xxで成否不明の場合、同一本文を再送せず対象アカウントの直近投稿から本文・作成時刻・reply先が一致する候補を照合し、1件だけならそのtweet_idを保存して継続することがモックで確認できる
   - 候補なし・複数は`post_state_unknown`でfailedとなり、`ambiguous_create_indices`が保存されXでの確認を促す通知が作られる
   - 削除の結果不明は対象IDを再取得して存在確認し、削除済みなら成功扱い、判定不能は`ambiguous_delete_tweet_ids`へ保存してfailedになる
 - メモ: 外部API成功後にworkerが落ちる可能性に備え、tweet_id等の外部結果を先に保存してからreconcileする（要件04 §4）。
+- 実装メモ: T-M3-18/19の`post-publish.ts`を拡張。X clientに`getRecentPosts`（GET /2/users/:id/tweets・created_at/referenced_tweets、docs.x.com 2026-07-24確認）追加。**create結果不明**（`isAmbiguousError`=XApiError kind network/server）時は再送せず`reconcileCreate`（直近投稿を本文一致＋reply先一致[i>0はtweetIds[i-1]/i=0はnull]＋created_at窓15分で照合）→1件のみ確定でtweet_id保存し継続、0/複数は`failAmbiguousCreate`（post_state_unknown・ambiguous_create_indices・remaining=作成済み・next_metrics・error通知、rollbackしない）。definite失敗は従来通りresume/rollback。**delete結果不明**（rollback中のdeletePost失敗）は`checkTweetExists`（getTweetMetrics: 存在=true/消失=false/取得不能=null）で、false→削除成功扱い（post_delete consume）、true→remaining、null→ambiguous_delete_tweet_ids。last_post_errorは§4.10形状。deps/server配線に`getRecentPosts`/`checkTweetExists`＋`x_user_id`（loadJob）追加。テスト+6（create照合1件成功/候補なしunknown/複数unknown、delete消失→成功/存在→remaining/不能→ambiguous）、全775 green・build通過。doc: 要件04 §10[行75-76・189]・§11・要件05 §2.2・要件02 §4.10 に既述で一致（変更なし）。
+- 後続への注意: **reconcileDraftPosting action（要件05 §5・未実装）**が、post_state_unknown/ambiguous を持つfailed draftをX再照合で解消する（別タスク）。**publishDraft action（T-M3-21）**が post_publish jobを作成する。
 
 ### T-M3-21: publishDraft Actionと手動投稿UI（最終確認） `todo`
 - 参照: 要件05 §5、要件06 §7、SC-07、S-5 / 依存: T-M3-18、T-M3-12 / サイズ: M

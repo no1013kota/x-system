@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { XCreatePostResult, XDeletePostResult } from "../x/client";
+import { XApiError, type XCreatePostResult, type XDeletePostResult } from "../x/client";
 import type { Queryable } from "../x/token-refresh";
 import {
   PostPublishError,
@@ -45,6 +45,7 @@ const JOB = {
   input: { mode: "manual" as const },
   trigger: "manual",
   x_account_id: "xa1",
+  x_user_id: "xu1",
   user_id: "u1",
   plan: "standard",
 };
@@ -85,8 +86,11 @@ function baseDeps(db: Queryable, over: Partial<PostPublishDeps> = {}): PostPubli
     ),
     uploadMedia: vi.fn(async () => ({ mediaId: "dryrun-media", requestId: null, quantity: 1, dryRun: true })),
     downloadImage: vi.fn(async () => ({ data: Buffer.from("img"), mimeType: "image/webp" })),
+    getRecentPosts: vi.fn(async () => []),
+    checkTweetExists: vi.fn(async () => true), // 既定: 削除失敗時はまだ存在（remaining）
     costConfig: COST,
     dailyLimit: 50,
+    now: () => 1_700_000_000_000,
     recordStage: async () => {},
     ...over,
   };
@@ -287,7 +291,7 @@ describe("executePostPublish resume & rollback (要件04 §11)", () => {
     expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
   });
 
-  it("keeps undeletable tweets in remaining_tweet_ids and sets next_metrics_at", async () => {
+  it("keeps still-existing tweets in remaining_tweet_ids and sets next_metrics_at", async () => {
     const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
     const { db, writes } = makeDb(okHandler(draft));
     let n = 0;
@@ -301,15 +305,133 @@ describe("executePostPublish resume & rollback (要件04 §11)", () => {
     });
 
     await expect(
-      executePostPublish(baseDeps(db, { createPost, deletePost })),
+      executePostPublish(baseDeps(db, { createPost, deletePost, checkTweetExists: async () => true })),
     ).rejects.toMatchObject({ code: "post_create_failed" });
 
-    // 削除失敗 → remaining に残る・post_delete consume は作らない
+    // 削除失敗＋まだ存在 → remaining に残る・post_delete consume は作らない
     expect(writes.some((w) => DELETE_CONSUME(w.sql))).toBe(false);
     const failed = writes.find((w) => FAILED.test(w.sql));
     const err = JSON.parse(failed?.params[1] as string);
     expect(err.deleted_tweet_ids).toEqual([]);
     expect(err.remaining_tweet_ids).toEqual(["t-1"]);
+    expect(err.ambiguous_delete_tweet_ids).toEqual([]);
     expect(failed?.params[2]).toBe(true); // 残存あり→next_metrics設定
+  });
+
+  it("treats a delete-ambiguous tweet as deleted when re-fetch shows it is gone", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n >= 2) throw new Error("index1 always fails");
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    const deletePost = vi.fn(async () => {
+      throw new Error("delete ambiguous");
+    });
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, deletePost, checkTweetExists: async () => false })),
+    ).rejects.toMatchObject({ code: "post_create_failed" });
+
+    // 存在確認で消えている → 削除成功扱い（consume・deleted）
+    expect(writes.some((w) => DELETE_CONSUME(w.sql))).toBe(true);
+    const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
+    expect(err.deleted_tweet_ids).toEqual(["t-1"]);
+    expect(err.remaining_tweet_ids).toEqual([]);
+  });
+
+  it("records ambiguous_delete_tweet_ids when deletion result is undeterminable", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n >= 2) throw new Error("index1 always fails");
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    const deletePost = vi.fn(async () => {
+      throw new Error("delete ambiguous");
+    });
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, deletePost, checkTweetExists: async () => null })),
+    ).rejects.toMatchObject({ code: "post_create_failed" });
+
+    const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
+    expect(err.ambiguous_delete_tweet_ids).toEqual(["t-1"]);
+    expect(err.deleted_tweet_ids).toEqual([]);
+    expect(err.remaining_tweet_ids).toEqual([]);
+  });
+});
+
+describe("executePostPublish create reconciliation (要件04 §10)", () => {
+  const NOW = 1_700_000_000_000;
+  const isoNow = new Date(NOW).toISOString();
+
+  it("reconciles an ambiguous create to a single matching recent post and continues", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n === 2) throw new XApiError(503, "ServiceUnavailable", "server"); // index1で成否不明
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    // index1（本文2・t-1へのreply）に一致する直近投稿が1件
+    const getRecentPosts = vi.fn(async () => [
+      { id: "reconciled-2", text: "本文2", createdAt: isoNow, inReplyToId: "t-1" },
+    ]);
+    const deletePost = vi.fn(async () => ({ deleted: true, requestId: null, quantity: 1, dryRun: false }));
+
+    const res = await executePostPublish(
+      baseDeps(db, { createPost, getRecentPosts, deletePost, now: () => NOW }),
+    );
+
+    expect(res.status).toBe("posted");
+    expect(res.tweetIds).toEqual(["t-1", "reconciled-2"]);
+    expect(deletePost).not.toHaveBeenCalled(); // 再送もrollbackもしない
+    expect(writes.some((w) => POSTED.test(w.sql))).toBe(true);
+  });
+
+  it("fails with post_state_unknown when no matching recent post is found", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n === 2) throw new XApiError(503, "ServiceUnavailable", "server");
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    const getRecentPosts = vi.fn(async () => []); // 候補なし
+    const deletePost = vi.fn(async () => ({ deleted: true, requestId: null, quantity: 1, dryRun: false }));
+
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, getRecentPosts, deletePost, now: () => NOW })),
+    ).rejects.toMatchObject({ code: "post_state_unknown" });
+
+    expect(deletePost).not.toHaveBeenCalled(); // rollbackしない
+    const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
+    expect(err.code).toBe("post_state_unknown");
+    expect(err.ambiguous_create_indices).toEqual([1]);
+    expect(err.remaining_tweet_ids).toEqual(["t-1"]);
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+  });
+
+  it("fails with post_state_unknown when multiple candidates match", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    const createPost = vi.fn(async () => {
+      throw new XApiError(500, "ServerError", "server");
+    });
+    const getRecentPosts = vi.fn(async () => [
+      { id: "c1", text: "本文1", createdAt: isoNow, inReplyToId: null },
+      { id: "c2", text: "本文1", createdAt: isoNow, inReplyToId: null },
+    ]);
+
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, getRecentPosts, now: () => NOW })),
+    ).rejects.toMatchObject({ code: "post_state_unknown" });
+    const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
+    expect(err.ambiguous_create_indices).toEqual([0]);
   });
 });

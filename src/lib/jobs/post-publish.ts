@@ -1,9 +1,11 @@
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
-import type {
-  XCreatePostResult,
-  XDeletePostResult,
-  XUploadMediaResult,
+import {
+  XApiError,
+  type XCreatePostResult,
+  type XDeletePostResult,
+  type XRecentPost,
+  type XUploadMediaResult,
 } from "../x/client";
 import { xUnitCost, type XCostConfig } from "../x/pricing";
 import { recordedXCall } from "../x/usage";
@@ -28,6 +30,14 @@ function hasUrl(text: string): boolean {
   return URL_RE.test(text);
 }
 
+/** 照合で「直近」とみなす作成時刻の窓（要件04 §10: 本文・作成時刻・reply先で照合）。 */
+const RECONCILE_WINDOW_MS = 15 * 60 * 1000;
+
+/** 作成成否が不明（＝tweetが作られた可能性がある）エラーか。timeout/接続断/5xx のみ。 */
+function isAmbiguousError(error: unknown): boolean {
+  return error instanceof XApiError && (error.kind === "network" || error.kind === "server");
+}
+
 /** 投稿実行の終端エラー（本タスクは happy path。resume/ロールバックは T-M3-19）。 */
 export class PostPublishError extends Error {
   readonly retryable: boolean;
@@ -47,6 +57,7 @@ interface PublishJobRow {
   input: { mode?: "manual" | "auto" } | null;
   trigger: string;
   x_account_id: string;
+  x_user_id: string;
   user_id: string;
   plan: string;
 }
@@ -78,9 +89,14 @@ export interface PostPublishDeps {
   ) => Promise<XUploadMediaResult>;
   /** private Storage から画像bytesを取得（server配線は Supabase admin download）。 */
   downloadImage: (storagePath: string) => Promise<{ data: Buffer; mimeType: string }>;
+  /** 結果不明時の照合用: 対象アカウントの直近投稿を取得（server配線は getRecentPosts）。 */
+  getRecentPosts: (accessToken: string, xUserId: string) => Promise<XRecentPost[]>;
+  /** 削除結果不明時の存在確認（true=存在, false=削除済み, null=判定不能。server配線は getTweetMetrics）。 */
+  checkTweetExists: (accessToken: string, tweetId: string) => Promise<boolean | null>;
   costConfig: XCostConfig;
   /** 1 Xアカウントの JST 日次投稿上限（env X_DAILY_POST_LIMIT）。 */
   dailyLimit: number;
+  now?: () => number;
   recordStage?: (stage: string) => Promise<void>;
 }
 
@@ -92,7 +108,7 @@ export interface PostPublishResult {
 
 async function loadJob(db: Queryable, jobId: string): Promise<PublishJobRow | null> {
   const { rows } = await db.query<PublishJobRow>(
-    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, p.plan
+    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, xa.x_user_id, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -203,6 +219,25 @@ async function rollbackThread(
   const { usageCtx, draftId, tweetIds } = params;
   const deleted: string[] = [];
   const remaining: string[] = [];
+  const ambiguousDelete: string[] = [];
+
+  const recordDeleteConsume = (tweetId: string, withUrl: boolean): Promise<unknown> =>
+    db.query(
+      `insert into usage_events
+         (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
+       values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
+               $6, 'post_delete', 1, 'consume', $7)
+       on conflict (idempotency_key) do nothing`,
+      [
+        usageCtx.userId,
+        usageCtx.xAccountId,
+        usageCtx.jobId,
+        draftId,
+        tweetId,
+        withUrl ? "post_url" : "post_normal",
+        `draft:${draftId}:tweet:${tweetId}:post:delete`,
+      ],
+    );
 
   for (let i = tweetIds.length - 1; i >= 0; i--) {
     const tweetId = tweetIds[i];
@@ -219,52 +254,75 @@ async function rollbackThread(
         () => deps.deletePost(params.accessToken, tweetId),
       );
       deleted.push(tweetId);
-      await db.query(
-        `insert into usage_events
-           (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-         values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
-                 $6, 'post_delete', 1, 'consume', $7)
-         on conflict (idempotency_key) do nothing`,
-        [
-          usageCtx.userId,
-          usageCtx.xAccountId,
-          usageCtx.jobId,
-          draftId,
-          tweetId,
-          withUrl ? "post_url" : "post_normal",
-          `draft:${draftId}:tweet:${tweetId}:post:delete`,
-        ],
-      );
+      await recordDeleteConsume(tweetId, withUrl);
     } catch {
-      // 削除失敗はX上に残る（追加消費なし）。
-      remaining.push(tweetId);
+      // 削除結果不明 → 存在確認（要件04 §11）。削除済みなら成功扱い、判定不能は ambiguous。
+      const exists = await deps.checkTweetExists(params.accessToken, tweetId);
+      if (exists === false) {
+        deleted.push(tweetId);
+        await recordDeleteConsume(tweetId, withUrl);
+      } else if (exists === true) {
+        remaining.push(tweetId); // まだX上に残る（追加消費なし）
+      } else {
+        ambiguousDelete.push(tweetId); // 判定不能
+      }
     }
   }
 
   const errorObj = {
     code: "post_create_failed",
-    message: remaining.length
-      ? "投稿の途中で失敗し、一部はXに残っています。内容をご確認ください。"
-      : "投稿の途中で失敗したため、投稿済みポストを取り消しました。",
+    message:
+      remaining.length || ambiguousDelete.length
+        ? "投稿の途中で失敗し、一部がXに残っている可能性があります。内容をご確認ください。"
+        : "投稿の途中で失敗したため、投稿済みポストを取り消しました。",
     retryable: false,
     stage: "posting",
     failed_post_index: params.failedIndex,
     remaining_tweet_ids: remaining,
     deleted_tweet_ids: deleted,
     ambiguous_create_indices: [],
-    ambiguous_delete_tweet_ids: [],
+    ambiguous_delete_tweet_ids: ambiguousDelete,
     provider_request_id: null,
   };
-  // tweet_ids は監査用に保持（消さない）。残存IDが確定したら next_metrics_at を設定（要件04 §13）。
+  // tweet_ids は監査用に保持（消さない）。残存/不明IDがあれば next_metrics_at を設定（要件04 §13）。
+  const hasLive = remaining.length > 0 || ambiguousDelete.length > 0;
   await db.query(
     `update drafts
         set status = 'failed', last_post_error = $2::jsonb,
             next_metrics_at = case when $3 then now() + interval '1 day' else next_metrics_at end,
             updated_at = now()
       where id = $1`,
-    [draftId, JSON.stringify(errorObj), remaining.length > 0],
+    [draftId, JSON.stringify(errorObj), hasLive],
   );
   await createPostErrorNotification(db, { userId: usageCtx.userId, draftId });
+}
+
+/** 作成成否が一意に確定できない post_state_unknown（要件04 §10）。再送・rollbackせず記録し確認を促す。 */
+async function failAmbiguousCreate(
+  db: Queryable,
+  params: { userId: string; draftId: string; failedIndex: number; liveTweetIds: string[] },
+): Promise<void> {
+  const errorObj = {
+    code: "post_state_unknown",
+    message: "投稿の作成結果を確認できませんでした。X上で重複がないかご確認ください。",
+    retryable: false,
+    stage: "posting",
+    failed_post_index: params.failedIndex,
+    remaining_tweet_ids: params.liveTweetIds,
+    deleted_tweet_ids: [],
+    ambiguous_create_indices: [params.failedIndex],
+    ambiguous_delete_tweet_ids: [],
+    provider_request_id: null,
+  };
+  await db.query(
+    `update drafts
+        set status = 'failed', last_post_error = $2::jsonb,
+            next_metrics_at = case when $3 then now() + interval '1 day' else next_metrics_at end,
+            updated_at = now()
+      where id = $1`,
+    [params.draftId, JSON.stringify(errorObj), params.liveTweetIds.length > 0],
+  );
+  await createPostErrorNotification(db, { userId: params.userId, draftId: params.draftId });
 }
 
 export async function executePostPublish(
@@ -371,30 +429,14 @@ export async function executePostPublish(
 
   const tweetIds: string[] = Array.isArray(draft.tweet_ids) ? [...draft.tweet_ids] : [];
 
-  /** index i を投稿し、成功直後に tweet_ids 保存＋post_create consume を確定する。 */
-  const postOne = async (i: number): Promise<void> => {
-    const text = finalTextAt(i);
-    const withUrl = hasUrl(text);
-    const result = await recordedXCall(
-      db,
-      {
-        ctx: usageCtx,
-        operation: "x_post_create",
-        unitCostUsd: xUnitCost("x_post_create", deps.costConfig, { hasUrl: withUrl }),
-        idempotencyKey: `draft:${draftId}:x_post_create:${i}`,
-      },
-      () =>
-        deps.createPost(accessToken, {
-          text,
-          inReplyToTweetId: i === 0 ? undefined : tweetIds[i - 1],
-          mediaIds: i === 0 ? mediaIds : undefined,
-        }),
-    );
-    tweetIds.push(result.tweetId);
+  const now = deps.now ?? Date.now;
+
+  const saveCreatedTweet = async (i: number, tweetId: string): Promise<void> => {
+    tweetIds.push(tweetId);
     await db.query(
       `update drafts set tweet_ids = coalesce(tweet_ids, '[]'::jsonb) || to_jsonb($2::text), updated_at = now()
         where id = $1`,
-      [draftId, result.tweetId],
+      [draftId, tweetId],
     );
     await db.query(
       `insert into usage_events
@@ -407,30 +449,95 @@ export async function executePostPublish(
         xAccountId,
         jobId,
         draftId,
-        result.tweetId,
-        withUrl ? "post_url" : "post_normal",
-        `draft:${draftId}:tweet:${result.tweetId}:post:create`,
+        tweetId,
+        hasUrl(finalTextAt(i)) ? "post_url" : "post_normal",
+        `draft:${draftId}:tweet:${tweetId}:post:create`,
       ],
     );
   };
 
-  // --- スレッド投稿: tweet_ids.length を再開位置に、途中失敗時は同一job内で1回だけresume（要件04 §11）---
+  // 結果不明時: 同一本文を再送せず、直近投稿から本文/作成時刻/reply先が一致する候補を探す（要件04 §10）。
+  const reconcileCreate = async (i: number): Promise<string[]> => {
+    const expectedReply = i > 0 ? tweetIds[i - 1] : null;
+    const text = finalTextAt(i);
+    let posts: XRecentPost[];
+    try {
+      posts = await deps.getRecentPosts(accessToken, job.x_user_id);
+    } catch {
+      return []; // 取得不能 → 一意に確定できず
+    }
+    const cutoff = now() - RECONCILE_WINDOW_MS;
+    return posts
+      .filter(
+        (p) =>
+          p.text === text &&
+          p.inReplyToId === expectedReply &&
+          (p.createdAt == null || Date.parse(p.createdAt) >= cutoff),
+      )
+      .map((p) => p.id);
+  };
+
+  /** index i を投稿。成功/照合確定は tweet_ids 保存＋consume。失敗は "definite" / "ambiguous"。 */
+  const postOne = async (
+    i: number,
+  ): Promise<{ kind: "ok" } | { kind: "definite" } | { kind: "ambiguous" }> => {
+    const text = finalTextAt(i);
+    const withUrl = hasUrl(text);
+    try {
+      const result = await recordedXCall(
+        db,
+        {
+          ctx: usageCtx,
+          operation: "x_post_create",
+          unitCostUsd: xUnitCost("x_post_create", deps.costConfig, { hasUrl: withUrl }),
+          idempotencyKey: `draft:${draftId}:x_post_create:${i}`,
+        },
+        () =>
+          deps.createPost(accessToken, {
+            text,
+            inReplyToTweetId: i === 0 ? undefined : tweetIds[i - 1],
+            mediaIds: i === 0 ? mediaIds : undefined,
+          }),
+      );
+      await saveCreatedTweet(i, result.tweetId);
+      return { kind: "ok" };
+    } catch (error) {
+      if (!isAmbiguousError(error)) return { kind: "definite" };
+      // 作成成否不明 → 再送せず照合。一意に確定できたら継続、そうでなければ ambiguous。
+      const matched = await reconcileCreate(i);
+      if (matched.length === 1) {
+        await saveCreatedTweet(i, matched[0]);
+        return { kind: "ok" };
+      }
+      return { kind: "ambiguous" };
+    }
+  };
+
+  // --- スレッド投稿: tweet_ids.length を再開位置に、definite失敗は1回resume、ambiguousは照合（要件04 §10/§11）---
   let resumed = false;
-  let failedIndex = -1;
   for (;;) {
-    let ok = true;
+    let failure: { index: number; kind: "definite" | "ambiguous" } | null = null;
     for (let i = tweetIds.length; i < thread.length; i++) {
-      try {
-        await postOne(i);
-      } catch {
-        ok = false;
-        failedIndex = i;
+      const outcome = await postOne(i);
+      if (outcome.kind !== "ok") {
+        failure = { index: i, kind: outcome.kind };
         break;
       }
     }
-    if (ok) break; // 全ポスト成功
+    if (!failure) break; // 全ポスト成功
+
+    if (failure.kind === "ambiguous") {
+      // 一意に確定できない → post_state_unknown。再送・rollbackせず記録して手動確認を促す。
+      await failAmbiguousCreate(db, {
+        userId,
+        draftId,
+        failedIndex: failure.index,
+        liveTweetIds: [...tweetIds],
+      });
+      throw new PostPublishError("post_state_unknown", "post create result is ambiguous");
+    }
     if (!resumed) {
-      resumed = true; // 失敗位置から1回だけresume
+      resumed = true; // definite失敗は失敗位置から1回だけresume
       continue;
     }
     // resume再失敗 → 逆順ロールバック（削除・post_delete consume・残存ID保存・通知）
@@ -440,7 +547,7 @@ export async function executePostPublish(
       draftId,
       tweetIds,
       finalTextAt,
-      failedIndex,
+      failedIndex: failure.index,
     });
     throw new PostPublishError("post_create_failed", "posting failed after resume");
   }
