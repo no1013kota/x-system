@@ -430,6 +430,7 @@ interface PublishDraftRow {
   status: string;
   pattern: string;
   x_account_id: string;
+  x_account_status: string;
   tweet_ids: string[];
   last_post_error: {
     remaining_tweet_ids?: string[];
@@ -471,13 +472,25 @@ export async function publishDraft(
 
     const draft = (
       await tx.query<PublishDraftRow>(
-        `select d.status, d.pattern, d.x_account_id, d.tweet_ids, d.last_post_error
+        `select d.status, d.pattern, d.x_account_id, xa.status::text as x_account_status,
+                d.tweet_ids, d.last_post_error
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
         [input.draft_id, userId],
       )
     ).rows[0];
     if (!draft) throw new AppError("not_found");
+    // プラン変更等で expired/disabled になったアカウントの下書きは投稿しない（要件06 §2・§9, T-M6-11）。
+    // 再連携（設定→Xアカウント）まで投稿・自動実行は停止し、閲覧・編集のみ許可する。
+    if (draft.x_account_status !== "active") {
+      throw new AppError("x_account_required", {
+        details: {
+          missing: ["x_account"],
+          settingsPath: "/app/settings?tab=x-accounts",
+          reason: `x_account_${draft.x_account_status}`,
+        },
+      });
+    }
     if (draft.pattern === "p5" && !deps.quotePostEnabled) {
       throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
     }

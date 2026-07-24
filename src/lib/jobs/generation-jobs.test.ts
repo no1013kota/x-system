@@ -213,7 +213,7 @@ describe("regenerateDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (REGEN_LOAD.test(sql))
-        return [{ status: "posted", pattern: "p1", thread: [], x_account_id: XID, tweet_ids: [], last_post_error: null }];
+        return [{ status: "posted", pattern: "p1", thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       return [];
     });
     await expect(
@@ -225,7 +225,7 @@ describe("regenerateDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (REGEN_LOAD.test(sql))
-        return [{ status: "failed", pattern: "p1", thread: [], x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+        return [{ status: "failed", pattern: "p1", thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     const err = await rejection(
@@ -307,7 +307,7 @@ describe("regenerateImage", () => {
 });
 
 describe("publishDraft", () => {
-  const PUB_LOAD = /select d\.status, d\.pattern, d\.x_account_id, d\.tweet_ids/;
+  const PUB_LOAD = /select d\.status, d\.pattern, d\.x_account_id, xa\.status/;
   const ACTIVE_PUB = /kind = 'post_publish' and status in/;
 
   const pubInput = { request_key: "pk", draft_id: "d1", mode: "manual" as const };
@@ -315,7 +315,7 @@ describe("publishDraft", () => {
   it("creates a post_publish job for a draft status", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -328,10 +328,26 @@ describe("publishDraft", () => {
     expect(JSON.parse(insert?.params[2] as string)).toEqual({ mode: "manual" });
   });
 
+  it.each(["expired", "disabled"])(
+    "rejects publishing a draft on a %s X account (plan-change side effect, T-M6-11)",
+    async (accountStatus) => {
+      const { db, writes } = makeDb((sql) => {
+        if (EXISTING.test(sql)) return [];
+        if (PUB_LOAD.test(sql))
+          return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: accountStatus, tweet_ids: [], last_post_error: null }];
+        return [];
+      });
+      const err = await rejection(publishDraft("u1", pubInput, deps(db)));
+      expect(err.code).toBe("x_account_required");
+      expect(err.details?.reason).toBe(`x_account_${accountStatus}`);
+      expect(writes.some((w) => INSERT.test(w.sql))).toBe(false); // 投稿jobを作らない
+    },
+  );
+
   it("dedups to an active post_publish job", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [{ id: "active-pub" }];
       return [];
     });
@@ -348,7 +364,7 @@ describe("publishDraft", () => {
   it("allows a clean retryable failed draft", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -361,7 +377,7 @@ describe("publishDraft", () => {
   it("rejects a failed draft with created tweets (unresolved posting)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -373,7 +389,7 @@ describe("publishDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (PUB_LOAD.test(sql))
-        return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
+        return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -383,7 +399,7 @@ describe("publishDraft", () => {
   it("rejects a non-publishable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({ code: "job_conflict" });
@@ -392,7 +408,7 @@ describe("publishDraft", () => {
   it("surfaces posting prerequisite errors (no active X account)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       return [];
     });
@@ -408,7 +424,7 @@ describe("publishDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (PUB_LOAD.test(sql))
-        return [{ status: "draft", pattern: "p5", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+        return [{ status: "draft", pattern: "p5", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       return [];
     });
     await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({

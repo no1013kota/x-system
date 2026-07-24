@@ -1443,13 +1443,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: x_post_create／x_post_delete／x_post_read／x_user_readを冪等記録する。作成はURL有無でX_COST_CONTENT_CREATE_USD／X_COST_CONTENT_CREATE_WITH_URL_USD、削除はX_COST_INTERACTION_DELETE_USDのenv単価snapshotを採用。X media uploadは運用logのみで台帳・利用枠から除外。dry_runは記録しない。
 - 実装結果: 本体はM3/M4で実装済みだった。`x/usage.ts` `recordedXCall`（成功→単価snapshot×quantity、失敗→status=failed・estimated 0、dryRunスキップ、idempotencyKey冪等）＋`x/read-client.ts`（x_post_read/x_user_readを単価0で記録）＋post-publishのcreate（`xUnitCost(x_post_create,{hasUrl})`でURL別単価）/delete配線＋media upload非ラップ（除外）。本タスクでは統合テストを`post-publish.db.test.ts`へ追加：premium+liveで通常0.01/URL0.02のx_post_create 2行＋media行なし＋idempotency key（`draft:{id}:x_post_create:{i}` index安定＝reconcile重複防止）、rollbackでx_post_delete 0.005、dry_runで台帳0行。doc影響なし（要件04 §10・§02 §3.17が既に規定・本番コード変更なし）。
 
-### T-M6-11: プラン変更のBYOK⇄premium切替副作用（キー再検証・Xアカウントexpired化・再連携バナー） `todo`
+### T-M6-11: プラン変更のBYOK⇄premium切替副作用（キー再検証・Xアカウントexpired化・再連携バナー） `done`
 - 参照: 要件03 §6、要件02 §4.1、要件06 §2、要件06 §9、A-6、O-1 / 依存: M1、T-M6-01、T-M6-02 / サイズ: M
 - 完了条件:
   - premiumへのplan変更イベント処理後（モックwebhook＋ローカルDB）、auth_type=byokのアカウントがexpiredになり、user_api_keysは削除されない
   - premium→md変更でmanaged認可アカウントがexpired化され、ai_purpose_configの無効providerが未設定へ戻る。standardへの変更でactive 1件以外がdisabledになる
   - expired中のアカウントに対する投稿・自動実行系Actionが拒否され、App Shellに再連携バナーが表示される
 - メモ: 分担：M1のプラン変更タスクはStripe webhookのplan/subscription_status同期とstripe_events冪等処理までを担当。本タスクはwebhook同期後の同一処理として実行する切替副作用を担当する。(1) standard/md→premium: BYOK認可のx_accountsをexpired化（BYOKキーは削除しない）、AIは運営キーへ切替。(2) premium→standard/md: managed認可アカウントをexpired化し、ai_purpose_configのtext/imageを登録済みvalidキーで再検証（無効なら未設定へ戻し初期設定ガイドへ誘導）。(3) md/premium→standard: active_x_account_idの1件以外をdisabled化（active未設定はcreated_at最古のactive 1件維持）。App Shellへ再連携要求の常設バナーを追加し、再連携まで閲覧・編集は許可・投稿と自動実行は停止。
+- 実装結果: 副作用本体はM1で実装済みだった。`subscription-sync.ts` `applyPlanTransition`（→premium: byok→expired／premium→: managed→expired＋`revalidateByokPurposeConfig`でai_purpose_config再検証／standard: `applyStandardAccountLimit`でactive1件以外disabled＋active_x_account_id再選択）が条件1・2を満たし`plan-transition.db.test.ts`で検証済み（user_api_keys非削除も確認）。条件3のバナーは`app-banners.ts` `computeXAccountBanners`（auth_type不一致→x_authtype／expired・error→x_status）がApp Shell（`app/app/layout.tsx`でxBanners.map描画）で表示済み・`app-banners.test.ts`で検証済み。自動実行の拒否は`schedule-enqueue.ts` isEligibleが`status='active'`のみenqueueで担保済み。**本タスクの追加**：手動投稿`publishDraft`が下書きの所属x_accountのstatusを見ておらず（active_x_account以外の下書きでも、別のactiveアカウントがあればprereq通過し投稿可能な穴）expiredアカウントの下書きを投稿し得たため、`xa.status != 'active'`なら`x_account_required`（details missing/settingsPath/reason）で拒否するガードを追加。テスト2件（expired/disabled）。doc影響なし（要件06 §2・要件05 §2.2が投稿停止・x_account_requiredを既に規定）。※enqueue後→dispatch前にプラン変更でexpired化する狭いraceはexecutePostPublish未ガード（自動同意再確認で部分緩和・別途検討可）。
 
 ### T-M6-12: premium残量表示（ホーム・設定）と上限到達エラー表示 `todo`
 - 参照: O-4、要件03 §8、SC-05、SC-11、要件06 §10 / 依存: T-M6-03、T-M6-06、M4 / サイズ: M
