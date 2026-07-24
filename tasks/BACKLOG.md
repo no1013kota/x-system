@@ -705,13 +705,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: コア`lib/settings.ts`＝zodスキーマ（`notificationConfigSchema`=6種別×{in_app,email}のstrict／`newsConfigSchema`=categories・impact_filterがDB_ENUM値・各≥1・重複不可、max_items 1-100／`profileUpdateSchema`=display_name≤50）＋**フォールバック読出ヘルパ**（`resolveNotificationConfig`は種別ごと、`resolveNewsConfig`は全体を§3.4既定へ）＋`readSettings`/save群。server結線＋Action `app/actions/settings.ts`（update3本）。UI `settings-preferences.tsx`（プロフィール名／通知トグル表／ニュース分野・インパクト・件数＋ダイジェスト説明）を設定タブ`notifications`（"通知・プロフィール"）に追加。問い合わせ導線は既存supportタブで充足。enum値は`DB_ENUMS`をSSOTに再利用。テスト+17（ユニット15: スキーマ各種＋フォールバック／DB2: 未設定→既定・保存round-trip）。全572 green・build通過。doc: 要件06 §1.2.2を新設（v1.14）。
 - 後続への注意: news_config編集はSC-06ニュース画面（後続）でも参照/再利用可。ニュースの実際のダイジェスト送信・時間窓適用はニュースジョブ系MS。updateAiPurposeConfigは別タスク（T-M2-07系）で対応済み。
 
-### T-M2-23: 実行前提検証ヘルパ＋設定導線エラー表示 `todo`
+### T-M2-23: 実行前提検証ヘルパ＋設定導線エラー表示 `done`
 - 参照: 要件06 §3.1、要件06 §3.2、要件05 §2.2、PRD §4 / 依存: T-M2-04、T-M2-07、T-M2-17 / サイズ: M
 - 完了条件:
   - プラン（BYOK/premium）×不足状態（契約・X APIキー・X連携・文章AIキー・画像AIキー・発信設定）の組み合わせごとに、subscription_required/api_key_required/x_account_required/persona_requiredのコードと不足項目一覧・設定画面パス入りdetailsを返すことをユニットテストで網羅する
   - premiumではX/AIキーが前提から除外され、画像AIキーは画像ON時のみ要求される。発信設定はbase_md_version>=1で充足と判定される
   - エラーを受けた画面がメッセージと「設定へ」ボタンを表示する共通コンポーネントを提供し、Storybookまたはテストページで各エラーコードの表示を確認できる
 - メモ: 後続マイルストーンの生成・投稿・スケジュール・学習Actionが共用するサーバーヘルパとして切り出す。画面遷移は制限しない（実行時検証のみ）。
+- 実装メモ: pure `lib/execution-prereqs.ts` `checkExecutionPrerequisites`（優先順: 契約→Xキー→X連携→文章AIキー→画像AIキー→発信設定。premiumはX/AIキー除外、画像AIキーは`imageRequested`時のみ、発信設定は`base_md_version>=1`）→`{code, missing[], settingsPath}`または null。`assertExecutionPrerequisites`はAppErrorをthrow。契約可否は`subscriptionAccessFor().canExecute`再利用。server `execution-prereqs-server.ts` `gatherExecutionPrereqInputs`（profiles/ai_purpose_config/user_api_keys/選択中x_accountから入力を収集、AIキー有効性は割当providerのstatus='valid'、発信設定は選択中accountのbase_md_version）。共通表示`components/app-shell/execution-prereq-notice.tsx`（message＋不足項目＋「設定へ」ボタン、コードに依存せずmessage/settingsPath/missingを描画）。X APIキーはvalid/unchecked（登録・形式検証済み）で充足、null/invalidで不足。テスト+16（ユニット14: BYOK各不足個別・全不足の優先順・premium除外・assert／DB2: 未設定は全不足・充足でnull）。全588 green・build通過。doc: 要件06 §3.1/§3.2・05 §2.2が既述で整合＝影響なし。
+- 後続への注意: Storybookはスタック未導入のため「各エラーコード表示」はcheckExecutionPrerequisitesの網羅ユニット＋汎用コンポーネント（T-M2-24ガイドカードで実使用）で担保。生成・投稿・スケジュール・学習の各Action実装時に`gatherExecutionPrereqInputs`＋`assertExecutionPrerequisites`を実行前提ガードとして呼ぶ（imageRequestedは操作依存）。
 
 ### T-M2-24: ホーム初期設定ガイドカード（SC-05） `todo`
 - 参照: 要件06 §3.1、要件01 §5、PRD §4、PRD §9 / 依存: T-M2-23、T-M2-02 / サイズ: S
