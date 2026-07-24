@@ -1,0 +1,283 @@
+import { randomBytes, randomUUID } from "node:crypto";
+
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { emptyUsage, type TextGen, type TextGenResult } from "../ai/types";
+import { encryptWithKey } from "../crypto/envelope";
+import { closePool, getPool, withTransaction } from "../db/pool";
+import type { ExecutionPrereqInput } from "../execution-prereqs";
+import { X_SCOPES } from "../x/oauth";
+import { createDeadline } from "./deadline";
+import {
+  executePostGeneration,
+  PostGenerationTerminalError,
+  type PostGenerationDeps,
+} from "./post-generation";
+import { InvalidProviderOutputError } from "../ai/pipeline";
+import type { Queryable } from "../x/token-refresh";
+
+/**
+ * DB integration for the post_generation worker core (T-M3-05, 要件04 §8):
+ * happy path (draft + usage + notification), AI error field, and JSON invalid-after-repair.
+ * Provider and prereqs are injected (mock). Skips without the local Supabase stack.
+ */
+describe("executePostGeneration (local DB)", () => {
+  let available = false;
+  const testKey = randomBytes(32);
+  const encrypt = (p: string) => encryptWithKey(p, testKey);
+  const db: Queryable = {
+    query: <T = unknown>(sql: string, params?: unknown[]) =>
+      getPool().query(sql, params) as unknown as Promise<{
+        rows: T[];
+        rowCount: number | null;
+      }>,
+  };
+
+  beforeAll(async () => {
+    try {
+      const c = await getPool().connect();
+      c.release();
+      available = true;
+    } catch {
+      available = false;
+    }
+  });
+  afterAll(async () => {
+    await closePool();
+  });
+  beforeEach((ctx) => {
+    if (!available) ctx.skip();
+  });
+
+  const satisfiedPrereqs = (): ExecutionPrereqInput => ({
+    plan: "standard",
+    subscriptionStatus: "active",
+    xApiKeyStatus: "valid",
+    hasActiveXAccount: true,
+    textAiKeyValid: true,
+    imageRequested: false,
+    imageAiKeyValid: false,
+    baseMdVersion: 1,
+  });
+
+  function mockProvider(text: string, texts?: string[]): TextGen {
+    let i = 0;
+    return {
+      generate: async (): Promise<TextGenResult> => ({
+        provider: "anthropic",
+        requestId: `req_${i}`,
+        text: texts ? texts[Math.min(i++, texts.length - 1)] : text,
+        citations: [],
+        usage: { ...emptyUsage(), inputTokens: 100, outputTokens: 50, providerCalls: 1 },
+        stopReason: "end_turn",
+      }),
+    };
+  }
+
+  function deps(over: Partial<PostGenerationDeps>): PostGenerationDeps {
+    return {
+      db,
+      jobId: "",
+      resolveProvider: async () => ({
+        textGen: mockProvider(""),
+        provider: "anthropic",
+        model: "claude-test",
+      }),
+      gatherPrereqInputs: async () => satisfiedPrereqs(),
+      makeDeadline: () => createDeadline(180_000, () => 0),
+      now: () => 0,
+      ...over,
+    };
+  }
+
+  async function seed(
+    c: PoolClient,
+    opts: { pattern?: string; input?: object } = {},
+  ): Promise<{ uid: string; xid: string; jobId: string }> {
+    const uid = randomUUID();
+    await c.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
+      [uid, `${uid}@example.com`],
+    );
+    await c.query(
+      `insert into profiles (id, email, plan, subscription_status, notification_config)
+       values ($1,$2,'standard','active',
+               '{"draft_created":{"in_app":true,"email":false},"error":{"in_app":true,"email":false}}'::jsonb)
+       on conflict (id) do update set
+         plan = 'standard', subscription_status = 'active',
+         notification_config = '{"draft_created":{"in_app":true,"email":false},"error":{"in_app":true,"email":false}}'::jsonb`,
+      [uid, `${uid}@example.com`],
+    );
+    const xid = (
+      await c.query<{ id: string }>(
+        `insert into x_accounts
+           (user_id, x_user_id, handle, name, auth_type, status,
+            access_token_ciphertext, refresh_token_ciphertext, oauth_scopes,
+            token_expires_at, base_md, base_md_version)
+         values ($1,$2,'h','n','byok','active',$3,$3,$4, now()+interval '1 hour','ペルソナ定義',1)
+         returning id`,
+        [uid, `x-${randomUUID()}`, encrypt("t"), X_SCOPES],
+      )
+    ).rows[0].id;
+    const jobId = (
+      await c.query<{ id: string }>(
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern, input, status)
+         values ($1,'post_generation','manual',$2,$3::jsonb,'running')
+         returning id`,
+        [xid, opts.pattern ?? "p1", JSON.stringify(opts.input ?? {})],
+      )
+    ).rows[0].id;
+    return { uid, xid, jobId };
+  }
+
+  const cleanup = (uid: string) =>
+    withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+
+  it("happy path: creates a draft (thread=initial_thread, weighted_length), usage, and draft_created notification", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      const provider = mockProvider('{"posts":["最初の投稿","二番目の投稿"],"sources":["https://src"],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "claude-test" }) }),
+      );
+      expect(res.status).toBe("created");
+
+      const draft = (
+        await db.query<{
+          thread: Array<{ text: string; weighted_length: number }>;
+          initial_thread: unknown;
+          pattern: string;
+        }>(`select thread, initial_thread, pattern from drafts where id = $1`, [res.draftId])
+      ).rows[0];
+      expect(draft.pattern).toBe("p1");
+      expect(draft.thread).toHaveLength(2);
+      expect(draft.thread[0].text).toBe("最初の投稿");
+      expect(draft.thread[0].weighted_length).toBeGreaterThan(0);
+      expect(draft.initial_thread).toEqual(draft.thread); // saved identical
+
+      const job = (
+        await db.query<{ draft_id: string; usage: { estimated_cost_usd_total: number } }>(
+          `select draft_id, usage from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.draft_id).toBe(res.draftId);
+      expect(job.usage.estimated_cost_usd_total).toBeGreaterThan(0);
+
+      const notif = (
+        await db.query<{ n: number; dedupe_key: string }>(
+          `select count(*)::int as n, min(dedupe_key) as dedupe_key
+             from notifications where user_id = $1 and type = 'draft_created'`,
+          [uid],
+        )
+      ).rows[0];
+      expect(notif.n).toBe(1);
+      expect(notif.dedupe_key).toBe(`draft:${res.draftId}:created`);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("is idempotent: a second run returns already_done without a duplicate draft", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      const provider = mockProvider('{"posts":["p"],"sources":[],"error":null}');
+      const d = deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) });
+      const first = await executePostGeneration(d);
+      const second = await executePostGeneration(d);
+      expect(first.status).toBe("created");
+      expect(second.status).toBe("already_done");
+      expect(second.draftId).toBe(first.draftId);
+      const count = (
+        await db.query<{ n: number }>(`select count(*)::int as n from drafts where source_job_id = $1`, [jobId])
+      ).rows[0].n;
+      expect(count).toBe(1);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("AI error field: fails with a saved error (raw for logs) and an error notification, no draft", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      const provider = mockProvider('{"posts":[],"sources":[],"error":"生成材料が不足"}');
+      await expect(
+        executePostGeneration(deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) })),
+      ).rejects.toBeInstanceOf(PostGenerationTerminalError);
+
+      const job = (
+        await db.query<{ error: { code: string; message: string; provider_raw_error: string } }>(
+          `select error from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.error.code).toBe("generation_error");
+      expect(job.error.provider_raw_error).toBe("生成材料が不足"); // raw kept for logs
+      expect(job.error.message).not.toContain("生成材料が不足"); // user-facing is safe/generic
+
+      const drafts = (
+        await db.query<{ n: number }>(`select count(*)::int as n from drafts where source_job_id = $1`, [jobId])
+      ).rows[0].n;
+      expect(drafts).toBe(0);
+      const errNotif = (
+        await db.query<{ n: number }>(
+          `select count(*)::int as n from notifications where user_id = $1 and type = 'error'`,
+          [uid],
+        )
+      ).rows[0].n;
+      expect(errNotif).toBe(1);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("JSON invalid after repair: fails with invalid_output, no draft", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      const provider = mockProvider("", ["これはJSONではない", "まだJSONではない"]);
+      await expect(
+        executePostGeneration(deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) })),
+      ).rejects.toBeInstanceOf(InvalidProviderOutputError);
+
+      const job = (
+        await db.query<{ error: { code: string } | null; usage: { calls: unknown[] } }>(
+          `select error, usage from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.error?.code).toBe("invalid_output");
+      expect(job.usage.calls.length).toBe(2); // initial + repair recorded
+      const drafts = (
+        await db.query<{ n: number }>(`select count(*)::int as n from drafts where source_job_id = $1`, [jobId])
+      ).rows[0].n;
+      expect(drafts).toBe(0);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("unmet prerequisites: fails terminally with a saved error, no draft", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      await expect(
+        executePostGeneration(
+          deps({
+            jobId,
+            gatherPrereqInputs: async () => ({ ...satisfiedPrereqs(), hasActiveXAccount: false }),
+          }),
+        ),
+      ).rejects.toBeInstanceOf(PostGenerationTerminalError);
+      const job = (
+        await db.query<{ error: { code: string } | null }>(
+          `select error from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.error?.code).toBe("x_account_required");
+    } finally {
+      await cleanup(uid);
+    }
+  });
+});

@@ -188,10 +188,11 @@ describe("worker leaseJob / runJob", () => {
     });
   });
 
-  it("runJob drives a queued job to succeeded via the placeholder handler", async () => {
+  it("runJob drives a queued job to succeeded via a placeholder handler", async () => {
     const { xid, jobId } = await withTransaction(async (c) => {
       const { xid } = await makeAccount(c);
-      const jobId = await makeJob(c, xid);
+      // post_generation は実handler（T-M3-05）になったため、worker機構の検証にはplaceholder種別を使う
+      const jobId = await makeJob(c, xid, { kind: "image_generation" });
       return { xid, jobId };
     });
     try {

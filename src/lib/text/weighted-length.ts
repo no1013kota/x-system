@@ -1,4 +1,8 @@
-import { extractCashtags, parseTweet } from "twitter-text";
+// twitter-text の ESM ビルドは default export のみ（名前付きexportなし）。
+// Turbopack build と vitest の双方で解決できるよう default import で受ける。
+import twitterText from "twitter-text";
+
+const { extractCashtags, parseTweet } = twitterText;
 
 /**
  * X (Twitter) weighted-length utilities (PRD §8.1, 要件05 §12, プロンプト設計書 §7,
