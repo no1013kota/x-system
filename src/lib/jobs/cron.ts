@@ -1,5 +1,6 @@
 import { getPool, withTransaction } from "../db/pool";
 import type { Queryable } from "../x/token-refresh";
+import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
@@ -92,17 +93,25 @@ export interface SchedulerTickResult {
   enqueued: EnqueueResult;
   dispatched: number;
   recovered: StaleRecoveryResult;
+  cleaned: CleanupResult;
 }
 
 /**
- * scheduler_tick の回収骨格（要件04 §1/§6）。処理順は cancel→enqueue→dispatch→回収だが、
- * 期限切れcancel・due slotのenqueueは M4 で実装する（ここではフックのみ）。M0では:
- * (3) dispatchされず queued のまま残ったジョブを scheduled_for昇順→created_at昇順で
- * 最大50件 dispatch し、(4) stale ジョブを回収する。dispatch関数は注入可能（テスト用）。
+ * scheduler_tick の本処理（要件04 §1/§6）。処理順は cancel→enqueue→dispatch→回収→cleanup:
+ * (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel、
+ * (2) due slotのenqueue、(3) queuedジョブを scheduled_for昇順→created_at昇順で最大50件 dispatch、
+ * (4) stale ジョブの回収、(5) 40日超データ・未参照Storage画像の保持cleanup。
+ * dispatch関数・Storage削除・cleanup失敗記録は注入可能（テスト用）。
  */
 export async function runSchedulerTick(
   dispatch: (jobId: string) => Promise<DispatchResult> = dispatchJob,
-  opts: { dailyLimit?: number; quotePostEnabled?: boolean } = {},
+  opts: {
+    dailyLimit?: number;
+    quotePostEnabled?: boolean;
+    removeStorageObjects?: (paths: string[]) => Promise<void>;
+    imageBucket?: string;
+    onCleanupError?: (scope: string, err: unknown) => void;
+  } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
   const scheduleRecovered = await recoverSchedule({
@@ -137,5 +146,14 @@ export async function runSchedulerTick(
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
-  return { scheduleRecovered, enqueued, dispatched, recovered };
+  // (5) 保持cleanup（40日超データ・24時間超の未参照Storage画像。要件04 §14）。
+  // 失敗しても他段・tick本体を止めない（cleanupOldData 内で段ごとに握り潰し onError へ記録）。
+  const cleaned = await cleanupOldData({
+    db: pooledDb,
+    removeStorageObjects: opts.removeStorageObjects,
+    imageBucket: opts.imageBucket,
+    onError: opts.onCleanupError,
+  });
+
+  return { scheduleRecovered, enqueued, dispatched, recovered, cleaned };
 }
