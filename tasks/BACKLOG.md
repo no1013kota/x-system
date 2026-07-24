@@ -725,13 +725,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M3: 生成・投稿コア（手動運用の完成）
 
-### T-M3-01: 投稿検証ユーティリティ（加重文字数・cashtag・X URL・出典URL・NG照合） `todo`
+### T-M3-01: 投稿検証ユーティリティ（加重文字数・cashtag・X URL・出典URL・NG照合） `done`
 - 参照: PRD §8.1、要件05 §12、要件06 §4.3、プロンプト設計書 §7.2、プロンプト設計書 §7.3、プロンプト設計書 §7.5、L-7 / 依存: M0 / サイズ: M
 - 完了条件:
   - 公式twitter-text互換の加重文字数計測がユニットテストで検証できる（CJK重み2・URLのt.co固定長換算・絵文字・280境界ケース、cashtag件数カウント含む）
   - X投稿URL検証（hostはx.com/twitter.com、pathは/{handle}/status/{数値ID}のみ許可）がテストで確認できる
   - 出典URL検証（https必須・DNS解決後のprivate/loopback/link-local拒否・redirect先再検証・timeout 10秒）とNGワードのコード文字列照合がモックDNSでテストできる
 - メモ: 生成検証・下書き編集・投稿実行の全段で共用する純粋関数群。NG照合はLLMを使わずコードで行う（プロンプト設計書 §1）。
+- 実装メモ: `src/lib/post/`に4純粋モジュール。text-metrics.ts=**公式`twitter-text` v3の`parseTweet`/`extractCashtags`**を使い加重文字数（CJK重み2・URL 23固定・280境界）＋cashtag件数、`measurePostText`（withinLimit≤280・cashtagOk≤1・empty）。x-url.ts=`parseXPostUrl`（host x.com/twitter.com＋www可、path `/{handle}/status/{数値}`、handle≤15、http/httpsのみ）。source-url.ts=`validateSourceUrl`（https必須／DNS解決の**全アドレス**をisBlockedIpで検査＝rebinding対策／redirect手動追跡で各hop再検証／HEAD・本文取得なし／AbortControllerで10秒timeout、DNS・fetch注入）＋`isBlockedIp`（IPv4 private/loopback/link-local/CGNAT/reserved、IPv6 ::1/fe80/fc00/ff・IPv4-mapped）。ng-words.ts=`matchNgWords`（コード部分一致・大小無視・重複排除、LLM不使用）。テスト+33（加重/CJK/URL/境界/cashtag・X URL各種・NG・出典URL: 公開200/http拒否/private拒否/rebinding/redirect先private拒否/公開redirect通過/location無/DNS失敗/redirect過多/timeout）。全626 green。doc: 要件05 §12・プロンプト設計書 §7が既述で整合＝影響なし。
+- 後続への注意: 生成パイプライン検証（T-M3-03系）・下書き編集・投稿実行がこれらを呼ぶ。source-urlのserver配線（node dns.lookup {all:true}＋global fetch）は利用側で注入。P-5引用検証（quote_url host/ID一致）はparseXPostUrlを再利用可。
 
 ### T-M3-02: プロンプト定数とprompt_templatesのsystem default seed `todo`
 - 参照: プロンプト設計書 §6.1〜6.9、要件02 §3.5、要件02 §6、GEN-P1〜P6、GEN-IMG、GEN-FIX / 依存: M0 / サイズ: S
