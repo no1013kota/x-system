@@ -68,6 +68,14 @@ export const removeLearningSourceSchema = z.object({
 });
 export type RemoveLearningSourceInput = z.infer<typeof removeLearningSourceSchema>;
 
+export const reimportOwnPostsSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  x_account_id: z.string().uuid(),
+});
+export type ReimportOwnPostsInput = z.infer<typeof reimportOwnPostsSchema>;
+
+export const REIMPORT_INTERVAL_DAYS = 30;
+
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
 export interface LearningSourceDeps {
@@ -363,5 +371,88 @@ export async function removeLearningSource(
     }
     // removed / removing は再削除不可。
     throw new AppError("job_conflict", { details: { reason: `not_removable:${source.status}` } });
+  });
+}
+
+/**
+ * L-3 自己過去投稿の再取り込み（要件05 §8, 要件04 §12, T-M5-06）。own_posts ソース（Xアカウントに1件・
+ * DB unique）を find-or-create/reset して learning_analysis job を冪等作成する。前回取り込み（own_posts の
+ * 最新 learning_analysis job created_at）から30日未満は validation_error（details.next_available_at）。
+ * removing 中は拒否、request_key 再送は既存jobを返す。premiumは worker 開始時に生成枠+1消費（T-M5-03）。
+ */
+export async function reimportOwnPosts(
+  userId: string,
+  input: ReimportOwnPostsInput,
+  deps: LearningSourceDeps,
+): Promise<AddLearningSourceResult> {
+  const key = requestKey(userId, input.request_key);
+  return deps.runInTx(async (tx) => {
+    const priorJob = (
+      await tx.query<{ id: string; learning_source_id: string | null }>(
+        `select id, learning_source_id from generation_jobs where request_key = $1`,
+        [key],
+      )
+    ).rows[0];
+    if (priorJob?.learning_source_id) {
+      return { sourceId: priorJob.learning_source_id, jobId: priorJob.id, deduped: true };
+    }
+
+    await assertActiveAccount(tx, userId, input.x_account_id);
+    await assertNotBusy(tx, input.x_account_id, { includeQueuedJobs: false });
+    await assertPrereqs(deps, userId);
+
+    // own_posts は Xアカウントに1件（DB unique）。既存があれば reset、無ければ新規。
+    const existing = (
+      await tx.query<{ id: string }>(
+        `select id from learning_sources where x_account_id = $1 and type = 'own_posts' limit 1`,
+        [input.x_account_id],
+      )
+    ).rows[0];
+
+    if (existing) {
+      // 30日制御: 直近の own_posts learning_analysis job 起点から30日未満は拒否（要件05 §8）。
+      const gate = (
+        await tx.query<{ too_soon: boolean | null; next_at: string | null }>(
+          `select (max(created_at) > now() - make_interval(days => $2)) as too_soon,
+                  to_char(max(created_at) + make_interval(days => $2), 'YYYY-MM-DD"T"HH24:MI:SSOF') as next_at
+             from generation_jobs
+            where learning_source_id = $1 and kind = 'learning_analysis'`,
+          [existing.id, REIMPORT_INTERVAL_DAYS],
+        )
+      ).rows[0];
+      if (gate?.too_soon) {
+        throw new AppError("validation_error", {
+          details: { reason: "reimport_too_soon", next_available_at: gate.next_at },
+        });
+      }
+      await tx.query(
+        `update learning_sources
+            set status = 'pending', analysis_summary = null, removed_at = null, updated_at = now()
+          where id = $1`,
+        [existing.id],
+      );
+    }
+
+    let sourceId: string;
+    if (existing) {
+      sourceId = existing.id;
+    } else {
+      sourceId = (
+        await tx.query<{ id: string }>(
+          `insert into learning_sources (x_account_id, type, url, status)
+           values ($1, 'own_posts', null, 'pending') returning id`,
+          [input.x_account_id],
+        )
+      ).rows[0].id;
+    }
+
+    await assertJobBudget(tx, userId);
+    const { jobId, deduped } = await createLearningJob(tx, {
+      key,
+      xAccountId: input.x_account_id,
+      kind: "learning_analysis",
+      sourceId,
+    });
+    return { sourceId, jobId, deduped };
   });
 }

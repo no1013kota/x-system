@@ -8,6 +8,7 @@ import type { ExecutionPrereqInput } from "./execution-prereqs";
 import {
   addLearningSource,
   listLearningSources,
+  reimportOwnPosts,
   removeLearningSource,
   type LearningSourceDeps,
 } from "./learning-sources";
@@ -88,7 +89,7 @@ describe("learning sources (db)", () => {
     c: PoolClient,
     xid: string,
     type: string,
-    url: string,
+    url: string | null,
     status: string,
   ): Promise<string> {
     const removedAt = status === "removed" ? "now()" : "null";
@@ -197,6 +198,79 @@ describe("learning sources (db)", () => {
         c.query<{ status: string }>(`select status::text as status from learning_sources where id = $1`, [pending]),
       );
       expect(state.rows[0].status).toBe("removed");
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: creates own_posts source + job first time, rejects again within 30 days", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const first = await reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps);
+      expect(first.jobId).toBeDefined();
+      // own_posts source は1件（unique）で pending
+      const sources = await listLearningSources(pooledDb, uid, xid);
+      const own = sources.filter((s) => s.type === "own_posts");
+      expect(own).toHaveLength(1);
+      expect(own[0].id).toBe(first.sourceId);
+
+      // 直近ジョブ（今作成）から30日未満の再実行は拒否＋next_available_at
+      const e = await reject(reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps));
+      expect(e.code).toBe("validation_error");
+      expect(e.details?.reason).toBe("reimport_too_soon");
+      expect(e.details?.next_available_at).toBeTruthy();
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: allows re-import after 30 days and reuses the same own_posts row (analysis reset)", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const sourceId = await withTransaction((c) => seedSource(c, xid, "own_posts", null, "analyzed"));
+      // 既存 own_posts に analysis_summary を持たせ、31日前の learning_analysis job を仕込む
+      await withTransaction(async (c) => {
+        await c.query(`update learning_sources set analysis_summary = '{"type":"own_posts"}'::jsonb where id = $1`, [sourceId]);
+        await c.query(
+          `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status, created_at)
+           values ($1,'learning_analysis','manual',$2,'succeeded', now() - interval '31 days')`,
+          [xid, sourceId],
+        );
+      });
+      const res = await reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps);
+      expect(res.sourceId).toBe(sourceId); // same row reused (unique)
+      const state = await withTransaction((c) =>
+        c.query<{ status: string; analysis_summary: unknown }>(
+          `select status::text as status, analysis_summary from learning_sources where id = $1`,
+          [sourceId],
+        ),
+      );
+      expect(state.rows[0].status).toBe("pending"); // reset for re-analysis
+      expect(state.rows[0].analysis_summary).toBeNull(); // cleared
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: rejects while a source is being removed (job_conflict)", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      await withTransaction((c) => seedSource(c, xid, "ref_post", "https://x.com/p/status/9", "removing"));
+      const e = await reject(reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps));
+      expect(e.code).toBe("job_conflict");
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: is idempotent on request_key re-send", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const key = rk();
+      const first = await reimportOwnPosts(uid, { request_key: key, x_account_id: xid }, deps);
+      const second = await reimportOwnPosts(uid, { request_key: key, x_account_id: xid }, deps);
+      expect(second.jobId).toBe(first.jobId);
+      expect(second.deduped).toBe(true);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

@@ -74,7 +74,10 @@ describe("fanOutNewsDigest (db)", () => {
   }
 
   it("fans out digests only to eligible, matching users and is idempotent per window", async () => {
-    const windowStart = new Date("2026-05-15T04:00:00Z");
+    // 共有ローカルDBの並列実行で他テスト/前回残渣の news_items と窓が衝突しないよう、実行ごとに
+    // 一意な（かつ他テストが使わない過去の）hour-aligned 窓を使う。matchedUsers はこの窓に本テストの
+    // news_items しか存在しないため決定的になる。
+    const windowStart = new Date(Date.UTC(2000, 0, 1 + Math.floor(Math.random() * 9000), 4, 0, 0));
     const tag = randomUUID().slice(0, 8);
 
     const seed = await withTransaction(async (c) => {

@@ -10,6 +10,8 @@ import {
   addLearningSource,
   addLearningSourceSchema,
   listLearningSources,
+  reimportOwnPosts,
+  reimportOwnPostsSchema,
   removeLearningSource,
   removeLearningSourceSchema,
   type LearningSourceDeps,
@@ -83,6 +85,24 @@ export async function addLearningSourceAction(
     const { sourceId, jobId, deduped } = await addLearningSource(auth.userId, parsed.data, learningDeps);
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "学習ソースを追加しました。", sourceId, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function reimportOwnPostsAction(
+  input: unknown,
+): Promise<BaseResult & { jobId?: string; sourceId?: string }> {
+  const parsed = reimportOwnPostsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { sourceId, jobId, deduped } = await reimportOwnPosts(auth.userId, parsed.data, learningDeps);
+    if (!deduped) after(() => dispatchJob(jobId));
+    return { jobId, message: "過去投稿の再取り込みを開始しました。", sourceId, status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }
