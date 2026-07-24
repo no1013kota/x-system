@@ -110,10 +110,11 @@ describe("X OAuth callback link (local DB)", () => {
     uid: string,
     token: XTokenResponse,
     user: XCallbackUser,
+    authType: "byok" | "managed" = "byok",
   ): XOAuthCallbackDeps {
     const tx: OAuthTransaction = {
       userId: uid,
-      authType: "byok",
+      authType,
       returnPath: "/app/settings?tab=api-keys",
       state: "st",
       codeVerifier: "cv",
@@ -121,12 +122,31 @@ describe("X OAuth callback link (local DB)", () => {
     };
     return {
       verifyState: () => tx,
-      resolveClient: () => ({ clientId: "cid", redirectUri: "https://cb" }),
+      resolveClient: () =>
+        authType === "managed"
+          ? { clientId: "managed-cid", clientSecret: "sec", redirectUri: "https://cb" }
+          : { clientId: "cid", redirectUri: "https://cb" },
       exchangeCode: async () => token,
       fetchMe: async () => user,
       sealTokens: (res) => sealTokenResponse(res, encrypt, 1_700_000_000_000),
       persist: (record) => withTransaction((c) => linkXAccountRecord(c, record)),
     };
+  }
+
+  async function makeManagedUser(c: PoolClient): Promise<string> {
+    // premium は運営App（managed）。BYOKのXキーは持たない。
+    const uid = randomUUID();
+    await c.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
+      [uid, `${uid}@example.com`],
+    );
+    await c.query(
+      `insert into profiles (id, email, plan, subscription_status) values ($1,$2,'premium','active')
+       on conflict (id) do update set plan = excluded.plan, subscription_status = excluded.subscription_status`,
+      [uid, `${uid}@example.com`],
+    );
+    return uid;
   }
 
   it("creates an active x_account, stores encrypted tokens, validates the BYOK key, and sets the active account", async () => {
@@ -198,6 +218,38 @@ describe("X OAuth callback link (local DB)", () => {
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = $1`, [uid]),
       );
+    }
+  });
+
+  // T-M6-02: premium は managed 経路。auth_type=managed で暗号化token保存し、BYOKキーvalid化はしない。
+  it("managed (premium): persists auth_type=managed with encrypted tokens and no BYOK key side effect", async () => {
+    const uid = await withTransaction((c) => makeManagedUser(c));
+    const user = mkUser("premium-acct");
+    try {
+      const res = await handleXOAuthCallback(
+        cbInput(uid),
+        deps(uid, mkToken("m-access", "m-refresh"), user, "managed"),
+      );
+      const row = (
+        await withTransaction((c) =>
+          c.query<{ auth_type: string; status: string; access_token_ciphertext: string }>(
+            `select auth_type, status, access_token_ciphertext from x_accounts where id = $1`,
+            [res.xAccountId],
+          ),
+        )
+      ).rows[0];
+      expect(row.auth_type).toBe("managed");
+      expect(row.status).toBe("active");
+      expect(decrypt(row.access_token_ciphertext)).toBe("m-access");
+      // managed は user_api_keys(x) を触らない（そもそも存在しない）。
+      const keys = (
+        await withTransaction((c) =>
+          c.query<{ n: number }>(`select count(*)::int as n from user_api_keys where user_id=$1 and provider='x'`, [uid]),
+        )
+      ).rows[0].n;
+      expect(keys).toBe(0);
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
 

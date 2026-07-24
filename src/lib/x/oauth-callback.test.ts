@@ -82,6 +82,20 @@ describe("handleXOAuthCallback", () => {
     });
   });
 
+  it("managed (premium): resolves the managed client and persists auth_type=managed", async () => {
+    const managedTx: OAuthTransaction = { ...TX, authType: "managed" };
+    const resolveClient = vi.fn((): OAuthClient => ({ clientId: "managed-cid", clientSecret: "sec", redirectUri: "https://cb" }));
+    const { deps, persist, exchangeCode } = make({ verifyState: () => managedTx, resolveClient });
+    await handleXOAuthCallback(input("u1"), deps);
+    expect(resolveClient).toHaveBeenCalledWith("u1", "managed");
+    // confidential client（client_secret付き）で code 交換する
+    expect(exchangeCode).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "managed-cid", clientSecret: "sec" }),
+      expect.anything(),
+    );
+    expect(persist).toHaveBeenCalledWith(expect.objectContaining({ authType: "managed" }));
+  });
+
   it("rejects when the state userId does not match the session (cookie-forcing defense)", async () => {
     const { deps, persist, exchangeCode } = make();
     await expect(handleXOAuthCallback(input("someone-else"), deps)).rejects.toMatchObject({
