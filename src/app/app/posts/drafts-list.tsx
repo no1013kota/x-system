@@ -4,7 +4,7 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
-import { discardDraftAction } from "@/app/actions/drafts";
+import { discardDraftAction, reconcileDraftPostingAction } from "@/app/actions/drafts";
 import {
   getGenerationJobAction,
   publishDraftAction,
@@ -102,6 +102,14 @@ function DraftCard({
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
   const editable = draft.status === "draft";
+  // 未解決の投稿状態（作成済みID・残存・曖昧）がある failed は破棄不可・要 reconcile（要件06 §7）。
+  const lpe = draft.last_post_error;
+  const unresolvedPosting =
+    draft.status === "failed" &&
+    (draft.tweet_ids.length > 0 ||
+      (lpe?.remaining_tweet_ids?.length ?? 0) > 0 ||
+      (lpe?.ambiguous_create_indices?.length ?? 0) > 0 ||
+      (lpe?.ambiguous_delete_tweet_ids?.length ?? 0) > 0);
   // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
   const publishing = pending || publishJobId !== null;
   const locked = publishing || editing;
@@ -197,9 +205,12 @@ function DraftCard({
           {editable && !editing ? (
             <PublishButton disabled={publishing} onConfirm={publish} />
           ) : null}
-          <DiscardButton disabled={locked} onConfirm={discard} />
+          {/* 未解決の投稿状態がある間は破棄不可（先に再照合が必要, 要件06 §7）。 */}
+          <DiscardButton disabled={locked || unresolvedPosting} onConfirm={discard} />
         </div>
       </div>
+
+      {unresolvedPosting ? <ReconcilePanel draftId={draft.id} /> : null}
       {publishNotice ? (
         <p className="mt-2 text-xs text-destructive" role="alert">
           {publishNotice}
@@ -397,6 +408,68 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
           role={notice.tone === "success" ? "status" : "alert"}
         >
           {notice.message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ReconcilePanel({ draftId }: { draftId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+  // 再照合しても一意に確定できなかった場合に X リンク＋サポート導線を出す（要件06 §7）。
+  const [needsManual, setNeedsManual] = useState(false);
+
+  function reconcile() {
+    setResult(null);
+    startTransition(async () => {
+      const res = await reconcileDraftPostingAction({ draft_id: draftId });
+      if (res.status === "error") {
+        setResult({ tone: "error", message: res.message });
+        return;
+      }
+      if (res.reconcileStatus === "posted") {
+        router.refresh(); // 履歴タブへ移動
+        return;
+      }
+      setNeedsManual(res.reconcileStatus === "still_failed");
+      setResult({ tone: res.reconcileStatus === "still_failed" ? "error" : "success", message: res.message });
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+      <p className="text-xs leading-5">
+        投稿の状態が未解決です。破棄する前にXと再照合して、投稿済み・削除済みを確定してください。
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={pending} onClick={reconcile} size="sm" type="button" variant="outline">
+          {pending ? "再照合中…" : "Xと再照合"}
+        </Button>
+        {needsManual ? (
+          <a
+            className="text-xs underline"
+            href="https://x.com/home"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Xで状態を確認
+          </a>
+        ) : null}
+      </div>
+      {result ? (
+        <p
+          className={`text-xs ${result.tone === "success" ? "text-emerald-800" : "text-destructive"}`}
+          role={result.tone === "success" ? "status" : "alert"}
+        >
+          {result.message}
+        </p>
+      ) : null}
+      {needsManual ? (
+        <p className="text-xs text-muted-foreground">
+          解決しない場合は、Xの投稿状況をご確認のうえサポートへお問い合わせください。
         </p>
       ) : null}
     </div>

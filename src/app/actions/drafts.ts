@@ -12,8 +12,12 @@ import {
   type DraftView,
 } from "@/lib/drafts";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { reconcileDraftPosting } from "@/lib/reconcile-posting";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
+import { getRecentPosts, getTweetMetrics } from "@/lib/x/client";
+import { xClientDeps } from "@/lib/x/client-server";
+import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
 import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
@@ -44,6 +48,7 @@ const discardSchema = z.object({
   draft_id: z.string().uuid(),
   expected_updated_at: z.string().min(1),
 });
+const reconcileSchema = z.object({ draft_id: z.string().uuid() });
 
 interface BaseResult {
   code?: string;
@@ -104,6 +109,49 @@ export async function updateDraftAction(
     });
     revalidatePath("/app/posts");
     return { message: "下書きを保存しました。", status: "success", updatedAt: res.updatedAt };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function reconcileDraftPostingAction(
+  input: unknown,
+): Promise<BaseResult & { reconcileStatus?: string }> {
+  const parsed = reconcileSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const clientDeps = xClientDeps();
+    const res = await reconcileDraftPosting(
+      {
+        db: pooledDb,
+        getAccessToken: (xAccountId) => getValidXAccessToken(xAccountId),
+        getRecentPosts: async (accessToken, xUserId) => {
+          const r = await getRecentPosts(accessToken, { userId: xUserId }, clientDeps);
+          return r.posts;
+        },
+        checkTweetExists: async (accessToken, tweetId) => {
+          try {
+            const r = await getTweetMetrics(accessToken, [tweetId], clientDeps);
+            return r.tweets.length > 0;
+          } catch {
+            return null;
+          }
+        },
+      },
+      { userId: auth.userId, draftId: parsed.data.draft_id },
+    );
+    revalidatePath("/app/posts");
+    const message =
+      res.status === "posted"
+        ? "Xと再照合し、投稿済みとして確定しました。"
+        : res.status === "deletes_reconciled"
+          ? "削除状況を再照合しました。"
+          : "一意に確定できませんでした。X上の状態をご確認ください。";
+    return { message, reconcileStatus: res.status, status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

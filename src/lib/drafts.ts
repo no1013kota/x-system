@@ -40,6 +40,13 @@ export interface DraftView {
   tweet_ids: string[];
   /** 投稿方法（auto/manual）。履歴の自動/手動表示に使う。 */
   posted_mode: string | null;
+  /** 投稿失敗の詳細（§4.10）。復旧UIが未解決状態（残存/曖昧）の判定に使う。 */
+  last_post_error: {
+    code?: string;
+    remaining_tweet_ids?: string[];
+    ambiguous_create_indices?: number[];
+    ambiguous_delete_tweet_ids?: string[];
+  } | null;
   posted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -48,7 +55,7 @@ export interface DraftView {
 // updated_at は楽観lockのversionトークン。timestamptzはマイクロ秒精度でJS Date（ミリ秒）往復では
 // 末尾が欠落するため、::text で完全精度の文字列として返し、更新時も text 一致で照合する。
 const DRAFT_COLUMNS = `id, pattern, status, thread, images, parent_draft_id, root_tweet_id,
-  tweet_ids, posted_mode,
+  tweet_ids, posted_mode, last_post_error,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
 /** active_x_account の下書き（draft/failed）または履歴（posted）を新しい順で返す。 */

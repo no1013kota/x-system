@@ -936,12 +936,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `DraftView`＋`DRAFT_COLUMNS`に`tweet_ids`/`posted_mode`を追加（listDraftsForAccountの両tabで返る）。新規`history-list.tsx`（`HistoryList`/`HistoryCard`・**閲覧専用**: パターン・posted_mode(自動/手動)バッジ・投稿日時・thread本文・各ポストの「Xで見る（ポストN）」リンク[`https://x.com/{handle}/status/{tweetId}`・handle無しは`i`にフォールバック]、`draft-{id}`アンカー＋selectedDraftIdでring強調）。page.tsxのhistory branchをplaceholderから`HistoryList`へ差し替え（handleは`x_accounts.handle`をactiveXAccountIdで取得）。postedはdrafts tabから消えhistory tabへ（listはstatus=postedのみ）。posted通知link`/app/posts?tab=history&draftId=`はT-M3-18で設定済み→deep-link強調が機能。テスト: 既存783 green（UIタスク・DraftView変更はstatusのみ検証のDB/unit testに影響なし）・build通過。doc: 要件06 §6/§7[行168-169]・SC-07[行19]・要件04 §14 に既述で一致（変更なし）。
 - 後続への注意: 部分失敗でX上に残ったtweet_id・rollback削除済みIDの実績表示（要件06 §8 行211）・metrics_collector（SC-09）はM5。X permalink handleは`x_accounts.handle`を使用。
 
-### T-M3-23: reconcileDraftPostingとfailed下書きの復旧UI `todo`
+### T-M3-23: reconcileDraftPostingとfailed下書きの復旧UI `done`
 - 参照: 要件05 §5、要件06 §7、要件06 §10 / 依存: T-M3-20 / サイズ: M
 - 完了条件:
   - reconcileDraftPostingがfailed draftのみ対象に、全投稿が意図したthreadとして存在すれば不足tweet_id/`post_create` consumeを冪等補完してpostedへ確定する（モックX）
   - アプリが実行して結果不明だった削除が削除済みと確認できた場合は`post_delete` consumeを補完して未解決情報を消し、候補複数・一部残存はfailedを維持する
   - 未解決の投稿ID・作成成否があるfailed draftは破棄が無効化され「Xと再照合」ボタンが表示される。再照合後も判定不能ならXへのリンクとサポート連絡先が表示される
+- 実装メモ: 中核`lib/reconcile-posting.ts` `reconcileDraftPosting(deps,{userId,draftId})`（failedのみ・deps注入db/getAccessToken/getRecentPosts/checkTweetExists）。**判別**: `tweet_ids.length < thread.length`＝作成不明→直近投稿で全ポストを本文＋reply連鎖照合し全確定なら不足tweet_id補完＋新規のみpost_create consume→posted（root/posted_at/next_metrics/last_post_error=null）、一意確定不可はstill_failed。thread完了＋`ambiguous_delete_tweet_ids`＝削除不明→`checkTweetExists`で消失→post_delete consume補完＆deleted_tweet_idsへ移動、存在/不能はstillAmbiguous（remaining維持）→last_post_error更新（deletes_reconciled）。consumeは冪等key。action`app/actions/drafts.ts` `reconcileDraftPostingAction`（getValidXAccessToken＋X client getRecentPosts/getTweetMetrics配線）。UI`drafts-list.tsx`: `DraftView`に`last_post_error`追加、`unresolvedPosting`（tweet_ids非空/remaining/ambiguous）判定で**破棄無効化**＋`ReconcilePanel`（「Xと再照合」→postedでrefresh[履歴へ]／still_failedでX リンク＋サポート導線）。テスト+6（create照合→posted/照合不可→failed、delete全消失→consume補完・一部存在→remaining維持、guard: 非failed/未所有）、全789 green・build通過。doc: 要件05 §5[行167・177]・要件06 §7・要件02 §4.10 に既述で一致（変更なし）。
+- 後続への注意: **T-M3-24 cloneFailedDraftForRetry**は、reconcile後に「曖昧状態・残存IDなし」かつ tweet_id作成履歴あり（全削除確認済み）のfailed draftを本文/pattern/source/画像copyで複製（parent_draft_id・AI不使用）。remaining（確定live）の再削除フローは本タスク対象外（reconcileは消失確認のみ）。
 
 ### T-M3-24: cloneFailedDraftForRetry（新しい下書きとして再試行） `todo`
 - 参照: 要件05 §5、要件04 §11、要件06 §7 / 依存: T-M3-23 / サイズ: M
