@@ -5,12 +5,21 @@ import {
   PT_FIX,
   PT_IMG,
   SYS_GEN,
+  SYS_NEWS,
   SYSTEM_DEFAULT_TEMPLATES,
 } from "./gen-prompts";
 
 describe("GEN prompt constants", () => {
   it("match the design doc §6 snapshot (drift detection)", () => {
-    expect({ SYS_GEN, PT_FIX, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+    expect({ SYS_GEN, SYS_NEWS, PT_FIX, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+  });
+
+  it("SYS-NEWS keeps its runtime placeholders and JSON output contract (§6.10)", () => {
+    expect(SYS_NEWS).toContain("{{category_ja}}");
+    expect(SYS_NEWS).toContain("{{hours}}");
+    expect(SYS_NEWS).toContain("最大{{n}}件");
+    expect(SYS_NEWS).toContain('"impact":"high|mid|low"');
+    expect(SYS_NEWS).toBe(SYS_NEWS.trim());
   });
 
   it("SYS-GEN declares the JSON output contract", () => {

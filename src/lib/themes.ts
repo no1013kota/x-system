@@ -48,3 +48,12 @@ export function themesToNewsCategories(themeIds: string[]): NewsCategory[] {
 export function themeLabel(themeId: ThemeId): string {
   return BY_ID.get(themeId)?.label ?? themeId;
 }
+
+const LABEL_BY_CATEGORY: ReadonlyMap<NewsCategory, string> = new Map(
+  THEME_OPTIONS.map((theme) => [theme.newsCategory, theme.label]),
+);
+
+/** news_category の日本語ラベル（SYS-NEWS `{{category_ja}}`。テーマと1対1対応）。 */
+export function newsCategoryLabel(category: NewsCategory): string {
+  return LABEL_BY_CATEGORY.get(category) ?? category;
+}

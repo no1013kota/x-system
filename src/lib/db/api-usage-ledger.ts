@@ -8,7 +8,8 @@ import type { Queryable } from "../x/token-refresh";
  */
 
 export interface ExternalApiUsageInput {
-  userId: string;
+  /** 利用者。job外のNEWS（運営リサーチ）は null（要件02 §3.17・要件04 §10）。 */
+  userId: string | null;
   xAccountId?: string | null;
   jobId?: string | null;
   /** api_provider enum: 'x' | 'anthropic' | 'openai' | 'google'。 */
@@ -69,7 +70,7 @@ export async function recordExternalApiUsage(
 export function providerCallToUsageEvent(
   call: ProviderCall,
   ctx: {
-    userId: string;
+    userId: string | null;
     xAccountId?: string | null;
     jobId?: string | null;
     idempotencyKey: string;
