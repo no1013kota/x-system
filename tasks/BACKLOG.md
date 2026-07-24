@@ -1477,13 +1477,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: 認証不要の公開routeとして3ページを実装。/termsは提供条件・禁止事項・X/生成コンテンツの責任（最終責任はユーザー）・料金・7日trial・自動更新・解約・停止免責・premium上限の見直し条項・改定・問い合わせ。/privacyは取得情報・利用目的・外部委託とAI/X APIへの送信・国外取扱い・保持削除・安全管理・開示等窓口。特商法表記は要件06 §11の事業者情報表（販売事業者・所在地・問い合わせ先・電話番号開示方針・返金・解約）を正とする。文面の専門家確認は人間側作業（open_questions参照）。
 - 実装結果: 3ページはM0/M1で骨格実装済みだった（`src/app/{terms,privacy,legal/commercial-transactions}/page.tsx`・いずれも /app 配下外の認証不要routeで、build上 ○ Static prerender＝未ログイン表示を確認）。特商法ページは §11 事業者情報全項目＋価格/支払時期/提供時期/自動更新/解約/返金を網羅済みで、不足の**動作環境**を追加。/termsは料金・7日trial・自動更新・解約・生成コンテンツ最終責任を網羅済みで、不足の**Premium利用枠の見直し条項**と**お問い合わせ**を追加（§11 /terms最低内容＋完了条件3を充足）。/privacyは §11 最低内容（取得/目的/外部送信/国外/保持削除/安全管理/開示窓口）を網羅済みで変更なし。文面は全ページ「暫定版・公開前に法務確認」を明示。CURRENT_TERMS/PRIVACY_VERSIONは据え置き（実文面確定＋version確定は法務確認の人間作業・要決定M1）。doc影響なし（要件06 §11が内容を規定・本タスクは§11への準拠補完）。
 
-### T-M6-15: 法務導線の接続（footer・signup同意リンク・Checkout直前再掲） `todo`
+### T-M6-15: 法務導線の接続（footer・signup同意リンク・Checkout直前再掲） `done`
 - 参照: 要件06 §11、要件01 §4、要件03 §1、要件03 §2.1、A-1 / 依存: T-M6-14、M1 / サイズ: S
 - 完了条件:
   - LP・signup・plans・アプリ設定のfooterから法務3ページへ到達できる
   - signupの規約同意とプライバシー確認が別checkboxで、各リンクが新タブで開く
   - Checkout開始直前の画面に税込料金・trial・自動更新・解約条件が再掲される
 - メモ: LP・会員登録・プラン選択・アプリ設定のfooterから3ページへ到達可能にする。signupは利用規約同意checkboxとプライバシー確認checkboxを別々に表示し、リンクを新タブで開く（version保存自体はM1実装済みの想定。現行version定数と実ページの紐付けを行う）。plans→Checkout直前に税込料金・7日trial・自動更新・支払時期・解約方法を再掲し、LP/plansから特商法表記へ容易に到達できるようにする。
+- 実装結果: 共通`LegalFooter`（3法務ページ＝利用規約/プライバシー/特商法へのリンク）を新設し、LP（`app/page.tsx`）・会員登録（`signup/page.tsx`）・プラン選択（`plans/page.tsx`）・アプリ設定（`settings/page.tsx`）へ配置＝条件1充足（footer付与のため各pageをflex-col化）。条件2（規約同意/プライバシー確認の別checkbox＋新タブリンク target=_blank rel=noopener）はM1で実装済みを確認（signup-form.tsx・terms_accepted/privacy_acknowledged）。条件3（Checkout直前の税込料金・7日trial・自動更新・支払時期・解約・提供開始の再掲＋特商法リンク）はplans pageにCheckoutButton直前で実装済みを確認。UIはtsc/lint/build検証（3法務route静的生成）。doc影響なし（要件06 §11がfooter到達性・signup別checkbox・Checkout直前再掲を既に規定）。LP骨格はT-M6-16で刷新予定だがfooterは引き継ぐ。
 
 ### T-M6-16: LP（SC-01）の実装 `todo`
 - 参照: SC-01、要件06 §1、PRD §6、PRD §7、要件01 §4 / 依存: T-M6-14、M0 / サイズ: M

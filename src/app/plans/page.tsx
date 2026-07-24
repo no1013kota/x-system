@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Check } from "lucide-react";
 
+import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 import { PLAN_IDS, PLANS, type PlanId } from "@/lib/plans";
 
@@ -57,7 +58,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
 
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-10 sm:py-14">
+    <div className="flex min-h-screen flex-col bg-muted/30">
+      <main className="flex-1 px-4 py-10 sm:py-14">
       <div className="mx-auto max-w-6xl space-y-10">
         <header className="mx-auto max-w-3xl space-y-4 text-center">
           <Link className="text-sm font-semibold tracking-wide" href="/">
@@ -217,6 +219,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           Standard／MDはご自身のAPI契約を利用するため、Space AIの月額料金とは別にX・生成AI各社の利用料がかかります。
         </p>
       </div>
-    </main>
+      </main>
+      <LegalFooter />
+    </div>
   );
 }

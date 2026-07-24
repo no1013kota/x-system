@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
 import { env } from "@/lib/env";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
@@ -238,6 +239,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </section>
         )}
       </div>
+      <LegalFooter className="mt-10" />
     </main>
   );
 }
