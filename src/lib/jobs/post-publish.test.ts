@@ -20,6 +20,8 @@ const POSTED = /update drafts\s+set status = 'posted'/;
 const NOTIFY = /insert into notifications/;
 const FAILED = /update drafts\s+set status = 'failed'/;
 const REVERT_DRAFT = /update drafts set status = 'draft'/;
+const CONSENT = /select \(automation_consent_version/;
+const CANCEL_JOB = /update generation_jobs set status = 'canceled'/;
 const DELETE_CONSUME = (sql: string) => CONSUME.test(sql) && sql.includes("'post_delete'");
 
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
@@ -433,5 +435,51 @@ describe("executePostPublish create reconciliation (要件04 §10)", () => {
     ).rejects.toMatchObject({ code: "post_state_unknown" });
     const err = JSON.parse(writes.find((w) => FAILED.test(w.sql))?.params[1] as string);
     expect(err.ambiguous_create_indices).toEqual([0]);
+  });
+});
+
+describe("executePostPublish auto consent re-check (要件04 §10 step2, T-M4-03)", () => {
+  const autoJob = { ...JOB, input: { mode: "auto" }, trigger: "schedule" };
+
+  it("stops without any X call when consent is revoked or stale", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [autoJob];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (LOCK.test(sql)) return [{ id: "d1" }];
+      if (DAILY.test(sql)) return [{ n: 0 }];
+      if (CONSENT.test(sql)) return [{ ok: false }];
+      return [];
+    });
+    const deps = baseDeps(db);
+    await expect(executePostPublish(deps)).rejects.toMatchObject({
+      code: "automation_consent_revoked",
+    });
+    expect(deps.createPost).not.toHaveBeenCalled();
+    expect(deps.uploadMedia).not.toHaveBeenCalled();
+    // draftは未投稿(draft)へ戻し、jobはcanceled
+    expect(writes.some((w) => REVERT_DRAFT.test(w.sql))).toBe(true);
+    expect(writes.some((w) => CANCEL_JOB.test(w.sql))).toBe(true);
+  });
+
+  it("posts normally for auto when consent is current", async () => {
+    const { db } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [autoJob];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (LOCK.test(sql)) return [{ id: "d1" }];
+      if (DAILY.test(sql)) return [{ n: 0 }];
+      if (CONSENT.test(sql)) return [{ ok: true }];
+      return [];
+    });
+    const deps = baseDeps(db);
+    const res = await executePostPublish(deps);
+    expect(res.status).toBe("posted");
+    expect(deps.createPost).toHaveBeenCalled();
+  });
+
+  it("does not re-check consent for manual posting", async () => {
+    const { db, writes } = makeDb(okHandler());
+    const deps = baseDeps(db); // JOB is mode=manual
+    await executePostPublish(deps);
+    expect(writes.some((w) => CONSENT.test(w.sql))).toBe(false);
   });
 });

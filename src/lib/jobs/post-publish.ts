@@ -1,3 +1,5 @@
+import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
 import {
@@ -373,6 +375,26 @@ export async function executePostPublish(
       message: "警告があるため自動投稿を停止しました。内容を確認してください。",
     });
     throw new PostPublishError("auto_post_blocked", "warnings block auto posting");
+  }
+
+  // --- 検証: auto起点はX呼び出し直前に自動投稿同意を再確認（要件04 §10 step2・要件05 §7, T-M4-03）---
+  // 撤回済み（automation_disabled_at）や旧versionなら、X APIを一切呼ばずdraftを未投稿(draft)へ戻す。
+  if (mode === "auto") {
+    const consent = await db.query<{ ok: boolean }>(
+      `select (automation_consent_version = $2
+               and automation_consented_at is not null
+               and automation_disabled_at is null) as ok
+         from x_accounts where id = $1`,
+      [xAccountId, CURRENT_AUTOMATION_CONSENT_VERSION],
+    );
+    if (consent.rows[0]?.ok !== true) {
+      await db.query(`update drafts set status = 'draft', updated_at = now() where id = $1`, [draftId]);
+      await db.query(
+        `update generation_jobs set status = 'canceled', finished_at = now() where id = $1 and status = 'running'`,
+        [jobId],
+      );
+      throw new PostPublishError("automation_consent_revoked", "auto posting consent revoked or stale");
+    }
   }
 
   // --- 検証: 日次上限（当日JST post_create + 予定ポスト数）---

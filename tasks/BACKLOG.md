@@ -996,12 +996,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核`lib/x/automation-consent.ts`。`recordXAutomationConsent(db,userId,input)`（confirmed=true＋consent_version===CURRENT のみ受理、旧version/未checkは`validation_error`[details.reason]、x_accounts更新[version/consented_at=now/disabled_at=null] rowCount=0→not_found）。`disableAutomationForAccount(tx,xAccountId)`【切り出し・再利用】（disabled_at=coalesce(...,now())＋auto slot enabled=false＋queued auto起点job[kind post_generation/post_publish・slot_id∈auto slots]をcanceled、{disabledSlots,canceledJobs}返却）。`disableXAutomation(userId,xAccountId,deps)`（所有権→disableAutomationForAccount）。**disconnectXAccount（account-actions.ts）をリファクタ**し同関数を呼ぶ（従来のslot無効化に加えjob cancelも共通化）。action`app/actions/schedule.ts`に`recordXAutomationConsentAction`/`disableXAutomationAction`。テスト+7（consent: 保存/未check拒否/旧version拒否/未所有not_found、disableAutomationForAccount: disabled_at＋slot＋job cancel＋counts、disableXAutomation: 未所有/owned）、全821 green・build通過。**注**: queued auto job cancelはユニット（mock rowCount）で検証、実DB`.db.test`はDB稼働時（サンドボックスcolima未起動）。doc: 要件05 §4.3/§7[行143-144/150/201]・要件02 §3.3 は既述で一致（変更なし）。副次: oauth-callback.test.tsに稀にflaky（sealed token・単体/再実行で通過・本変更と無関係）。
 - 後続への注意: **T-M4-03**（post_publish worker がX呼び出し直前に automation_disabled_at を再確認し撤回済みなら投稿せず停止）。auto post_publish が slot_id を持たない場合、disableAutomationForAccount のjob cancel条件（slot_id∈auto slots）に掛からないため、T-M4-03のworker再確認が最終防波堤。running jobはcancel対象外（worker再確認で止める）。
 
-### T-M4-03: auto起点投稿の同意再検証（post_publish worker・X呼び出し直前） `todo`
+### T-M4-03: auto起点投稿の同意再検証（post_publish worker・X呼び出し直前） `done`
 - 参照: S-3、要件04 §10、要件05 §7、要件06 §7 / 依存: T-M4-02、M3 / サイズ: S
 - 完了条件:
   - 同意撤回済み（automation_disabled_at設定済み）状態でauto起点post_publishを実行すると、X APIモックが一切呼ばれずdraftが未投稿のまま残ることをテストで確認
   - 同意version変更後の旧version同意でも同様に投稿せず停止し、draft modeと手動投稿は影響を受けない
 - メモ: M3の投稿実行worker（要件04 §10手順2）へ同意判定ヘルパーを組み込む縦の薄い変更。検証はX_POSTING_MODE=dry_run＋モックで完結。
+- 実装メモ: `post-publish.ts` の検証フェーズ（auto警告チェック直後・**token取得/media/投稿の前**）に mode==='auto' 時の同意再確認を追加。x_accountsを `automation_consent_version=CURRENT ＋ consented_at非null ＋ disabled_at null` でok判定（`CURRENT_AUTOMATION_CONSENT_VERSION`使用）。ok≠trueなら draftを`status='draft'`へ戻し、jobを`canceled`（`where status='running'`ガード）にして`PostPublishError("automation_consent_revoked")`をthrow（X APIは一切呼ばない）。撤回・旧version（version不一致）はいずれもok=falseで同一停止経路。manual/draft modeは同意チェックをスキップ（手動投稿は影響なし）。テスト+3（consent revoked/stale→無投稿・draft復帰・job canceled、consent current→通常投稿、manual→consent照会なし）、全824 green・build通過。doc: 要件04 §10 step2・要件05 §7 に既述で一致（変更なし）。
+- 後続への注意: runningのpost_publish jobはT-M4-02のcancel対象外だが、本worker再確認が最終防波堤。auto post_publishの生成連鎖（auto post_generation→post_publish、slot_id/mode伝播）はM4のauto実行タスクで配線する。
 
 ### T-M4-04: SC-08 スケジュール画面（週間プレビュー・スロットCRUD UI・楽観lock） `todo`
 - 参照: SC-08、S-1、S-2、S-4、要件06 §1、要件06 §2、要件05 §7 / 依存: T-M4-01 / サイズ: M
