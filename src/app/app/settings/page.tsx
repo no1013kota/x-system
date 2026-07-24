@@ -11,6 +11,9 @@ import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
+import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
+import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
+import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   listXAccounts,
@@ -99,6 +102,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   let userSettings: UserSettings | null = null;
   if (tab === "notifications") {
     userSettings = await getSettingsForUser(user.id);
+  }
+  // premium 月間利用枠の残量（課金・プランタブ, 要件03 §8・要件06 §10, T-M6-12）。premium以外は null。
+  let usage: UsageSummary | null = null;
+  if (tab === "billing") {
+    usage = await loadUsageSummaryForUser(user.id, profile.plan ?? "standard");
   }
 
   return (
@@ -206,6 +214,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             <p className="text-sm leading-6 text-muted-foreground">
               プラン変更、お支払い方法の更新、期間末解約はStripeの安全なお支払い管理画面で行います。変更内容はStripeからの通知後に反映されます。
             </p>
+            {usage ? (
+              <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
+            ) : null}
           </section>
         ) : (
           <section

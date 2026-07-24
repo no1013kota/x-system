@@ -10,6 +10,9 @@ import {
   type SetupChecklistItem,
 } from "@/lib/execution-prereqs";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
+import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
+import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
+import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import type { Queryable } from "@/lib/x/token-refresh";
 
@@ -31,6 +34,7 @@ export default async function AppHomePage() {
   const user = await getCurrentUser();
   let checklist: SetupChecklistItem[] = [];
   let pendingDrafts: DraftView[] = [];
+  let usage: UsageSummary | null = null;
   if (user) {
     // 充足判定は実行前提検証ヘルパを再利用する（要件06 §3.1・T-M2-24）。
     const input = await gatherExecutionPrereqInputs(user.id);
@@ -41,6 +45,12 @@ export default async function AppHomePage() {
       const all = await listDraftsForAccount(pooledDb, activeXAccountId, "drafts");
       pendingDrafts = all.filter((d) => d.status === "draft");
     }
+    // premium 月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12）。premium以外は null（非表示）。
+    const { rows } = await pooledDb.query<{ plan: string }>(
+      `select plan::text as plan from profiles where id = $1`,
+      [user.id],
+    );
+    usage = await loadUsageSummaryForUser(user.id, rows[0]?.plan ?? "standard");
   }
   const showGuide = checklist.some((item) => !item.satisfied);
 
@@ -49,6 +59,9 @@ export default async function AppHomePage() {
       <h1 className="text-2xl font-bold tracking-tight">ホーム</h1>
       {showGuide ? <SetupGuideCard items={checklist} /> : null}
       <ConfirmationQueueCard drafts={pendingDrafts} />
+      {usage ? (
+        <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
+      ) : null}
     </main>
   );
 }

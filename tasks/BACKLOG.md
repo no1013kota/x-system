@@ -1452,12 +1452,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: 分担：M1のプラン変更タスクはStripe webhookのplan/subscription_status同期とstripe_events冪等処理までを担当。本タスクはwebhook同期後の同一処理として実行する切替副作用を担当する。(1) standard/md→premium: BYOK認可のx_accountsをexpired化（BYOKキーは削除しない）、AIは運営キーへ切替。(2) premium→standard/md: managed認可アカウントをexpired化し、ai_purpose_configのtext/imageを登録済みvalidキーで再検証（無効なら未設定へ戻し初期設定ガイドへ誘導）。(3) md/premium→standard: active_x_account_idの1件以外をdisabled化（active未設定はcreated_at最古のactive 1件維持）。App Shellへ再連携要求の常設バナーを追加し、再連携まで閲覧・編集は許可・投稿と自動実行は停止。
 - 実装結果: 副作用本体はM1で実装済みだった。`subscription-sync.ts` `applyPlanTransition`（→premium: byok→expired／premium→: managed→expired＋`revalidateByokPurposeConfig`でai_purpose_config再検証／standard: `applyStandardAccountLimit`でactive1件以外disabled＋active_x_account_id再選択）が条件1・2を満たし`plan-transition.db.test.ts`で検証済み（user_api_keys非削除も確認）。条件3のバナーは`app-banners.ts` `computeXAccountBanners`（auth_type不一致→x_authtype／expired・error→x_status）がApp Shell（`app/app/layout.tsx`でxBanners.map描画）で表示済み・`app-banners.test.ts`で検証済み。自動実行の拒否は`schedule-enqueue.ts` isEligibleが`status='active'`のみenqueueで担保済み。**本タスクの追加**：手動投稿`publishDraft`が下書きの所属x_accountのstatusを見ておらず（active_x_account以外の下書きでも、別のactiveアカウントがあればprereq通過し投稿可能な穴）expiredアカウントの下書きを投稿し得たため、`xa.status != 'active'`なら`x_account_required`（details missing/settingsPath/reason）で拒否するガードを追加。テスト2件（expired/disabled）。doc影響なし（要件06 §2・要件05 §2.2が投稿停止・x_account_requiredを既に規定）。※enqueue後→dispatch前にプラン変更でexpired化する狭いraceはexecutePostPublish未ガード（自動同意再確認で部分緩和・別途検討可）。
 
-### T-M6-12: premium残量表示（ホーム・設定）と上限到達エラー表示 `todo`
+### T-M6-12: premium残量表示（ホーム・設定）と上限到達エラー表示 `done`
 - 参照: O-4、要件03 §8、SC-05、SC-11、要件06 §10 / 依存: T-M6-03、T-M6-06、M4 / サイズ: M
 - 完了条件:
   - premiumユーザーのSC-05とSC-11に4枠のused/limit/remainingが表示され、standard/mdユーザーには表示されない
   - 上限到達時のエラー表示に残量と翌月開始日時（JST）が含まれ、既存下書き・履歴の閲覧は引き続き可能
 - メモ: premiumのみusage_countersから当月の4枠（normal_posts/url_posts/generations/images）のused/limit/remainingを要件03 §8のJSON形状で算出し、SC-05ホームとSC-11設定へ表示。usage_limit_exceededエラーの画面表示には残量と翌月開始日時（JST）を含め、既存下書きの閲覧は許可する（要件06 §10）。SC-05の土台はM4までに実装済みの想定。
+- 実装結果: 純関数`usage-summary.ts`（`computeUsageSummary`＝§8 JSON形状 used/limit/remaining、remainingは0クランプ／`nextMonthStartJst`・`formatNextMonthStartJst`＝翌月1日00:00 JST・12月→翌1月繰上げ）＋server loader`usage-summary-server.ts`（`loadUsageSummaryForUser(userId, plan)`＝premiumのみ当月JST usage_counters読取、非premium/行なしは全0）を追加。表示専用の`UsageSummaryCard`（4枠 used/limit/remaining＋バー、remaining=0枠に「上限到達（残り0）・{翌月開始日時}にリセット・閲覧編集は継続可」の到達エラー表示）をSC-05ホーム（`app/page.tsx`）とSC-11設定・課金プランタブ（`settings/page.tsx`）へpremium限定で描画。テスト: 純関数8件（JST境界含む）＋DB loader 3件（premium/非premium null/行なし全0）。UIはtsc/lint/build検証（コンポーネントテストなし）。doc影響なし（要件03 §8・要件06 §10・SC-05が既に規定）。上限到達エラー表示は本カードの到達notice（残量0＋翌月開始日時＋閲覧可）で実現。投稿画面インラインでの動的表示や100%常設バナー・通知はT-M6-13が担当。
 
 ### T-M6-13: 利用枠80%/100%通知と常設バナー `todo`
 - 参照: O-4、要件03 §8、要件02 §3.15、要件02 §4.3 / 依存: T-M6-12、M5 / サイズ: M
