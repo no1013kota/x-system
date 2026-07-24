@@ -823,12 +823,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: コア`lib/drafts.ts`（Queryable＋deleteImages注入）。updateDraft=owner join→status=draft限定（他statusはjob_conflict）→post数1..PATTERN_MAX_POSTS[pattern]（違反validation_error）→imageLocalIdsは既存local_id subset限定→`revalidateEditedThread`（加重文字数＋length/cashtag/ng警告のみ、FIX/SSRF/injectionなし）→楽観UPDATE（0行でjob_conflict）。initial_threadは不変。discardDraft=draft/failed限定、failedでtweet_ids非空 or last_post_error有りは`unresolved_posting`で拒否、status=discardedへ（物理削除せず）＋画像best-effort削除。listDraftsForAccount=active_x_account、drafts=draft/failed・history=posted。`generation-validation.ts`に`PATTERN_MAX_POSTS`＋`revalidateEditedThread`追加。Action`app/actions/drafts.ts`（pool・active解決・Supabase Storage remove）。**設計判断**: 楽観lockは`updated_at::text`を完全精度versionトークンに（JS Dateミリ秒往復ではtimestamptzマイクロ秒が欠落し照合が常にfailするため）。テスト+16（ユニット: drafts分岐・revalidate・PATTERN_MAX／DB4: 楽観lock・pattern max・discard(draft/failed/unresolved/posted)・list filter）。全710 green・build通過。doc: 要件05 §5・§4.3・要件02 §3.9/§4.7が既述で整合＝影響なし。
 - 後続への注意: **他のexpected_updated_at系楽観lock（updateDraftのquote fields拡張・publish等）も`updated_at::text`トークンで統一する**（ミリ秒往復回避）。下書き編集UI（T-M3-12）は本Actionを使い、version tokenにlistで得た`updated_at`（text）を渡す。P-5のquote fields編集は有効化後。画像のpost割当編集はT-M3-12/画像タスク。
 
-### T-M3-11: SC-07下書きタブ（一覧・詳細・破棄・警告表示） `todo`
+### T-M3-11: SC-07下書きタブ（一覧・詳細・破棄・警告表示） `done`
 - 参照: SC-07、S-5、要件06 §4.3、要件06 §10、要件04 §14 / 依存: T-M3-10 / サイズ: M
 - 完了条件:
   - 下書きタブに未投稿draft（draft/failed）が一覧表示され、警告（文字数超過・NG・出典不足・画像失敗）がポスト/下書き単位のバッジで表示される
   - 破棄操作が確認ダイアログ付きで動作し、通知リンク形式`/app/posts?tab=drafts&draftId=...`で対象下書きを直接開ける
   - 派生下書き（parent_draft_id）に派生元へのリンクが表示される
+- 実装メモ: `/app/posts`をタブ対応（create/drafts/history、タブはLink `?tab=`）に刷新。drafts tab=`listDraftsForAccount(active,'drafts')`→`drafts-list.tsx`（クライアント）。各下書き: pattern・failed/警告バッジ・ポスト単位の警告バッジ（length_exceeded/cashtag_multiple/ng_word/source_missing/injection_suspected＋画像failedで画像失敗）・加重文字数/280・自動投稿手動確認バッジ。破棄=AlertDialog確認→`discardDraftAction`（expected_updated_at=draft.updated_at）→router.refresh。`parent_draft_id`があれば派生元リンク（`?tab=drafts&draftId=`）。deep-link=`?draftId=`で該当cardをring強調＋`id=draft-{id}`/`scroll-mt`。`DraftView`に`parent_draft_id`追加。**T-M3-05のdraft_created通知linkを`/app/posts?tab=drafts&draftId={id}`のdeep-link形式に更新**（通知から対象下書きへ直接遷移）。全710 green・build通過（UIはtypecheck/lint/build検証）。doc: SC-07・要件06 §4.3/§10が既述で整合＝影響なし。
+- 後続への注意: 下書き“編集”UI（本文編集・並べ替え・追加・削除→updateDraftAction）はT-M3-12。履歴タブ（posted）はT-M3-22。deep-linkのscrollIntoViewはCSS `scroll-mt`＋id anchorで対応（自動スクロールが要れば別途client効果）。
 
 ### T-M3-12: SC-07下書き編集UI（本文編集・並べ替え・追加・削除） `todo`
 - 参照: 要件06 §4.3、要件05 §12、PRD §7 / 依存: T-M3-11 / サイズ: M

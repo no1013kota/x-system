@@ -197,7 +197,7 @@ async function createDraftCreatedNotification(
         in_app_enabled, email_status, email_available_at)
      select $1, 'draft_created', $2, '下書きができました',
             '生成した投稿の下書きを確認・編集できます。',
-            '/app/posts', jsonb_build_object('draft_id', $3::text),
+            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
             coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
             case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
                  then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,

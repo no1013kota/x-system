@@ -32,6 +32,7 @@ export interface DraftView {
   status: string;
   thread: ThreadItem[];
   images: DraftImage[];
+  parent_draft_id: string | null;
   root_tweet_id: string | null;
   posted_at: string | null;
   created_at: string;
@@ -40,7 +41,7 @@ export interface DraftView {
 
 // updated_at は楽観lockのversionトークン。timestamptzはマイクロ秒精度でJS Date（ミリ秒）往復では
 // 末尾が欠落するため、::text で完全精度の文字列として返し、更新時も text 一致で照合する。
-const DRAFT_COLUMNS = `id, pattern, status, thread, images, root_tweet_id,
+const DRAFT_COLUMNS = `id, pattern, status, thread, images, parent_draft_id, root_tweet_id,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
 /** active_x_account の下書き（draft/failed）または履歴（posted）を新しい順で返す。 */
