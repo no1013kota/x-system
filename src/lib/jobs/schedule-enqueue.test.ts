@@ -84,6 +84,18 @@ describe("enqueueDueSlots — eligible", () => {
     expect(res.enqueued).toBe(0);
     expect(writes.some((w) => LAST_RUN.test(w.sql))).toBe(false);
   });
+
+  // 条件3: BYOK（standard/md）は月間投稿枠を持たないため残量判定をskipしてenqueueする（要件04 §7.1）。
+  it.each(["standard", "md"])(
+    "enqueues an eligible %s (BYOK) slot without consulting the premium budget",
+    async (plan) => {
+      const { db, writes } = makeDb(handlerFor(dueSlot({ plan })));
+      const res = await enqueueDueSlots(deps(db));
+      expect(res.enqueued).toBe(1);
+      expect(writes.some((w) => BUDGET.test(w.sql))).toBe(false); // 残量判定をskip
+      expect(writes.some((w) => INSERT.test(w.sql))).toBe(true);
+    },
+  );
 });
 
 describe("enqueueDueSlots — §7.1 exclusions", () => {
@@ -131,6 +143,20 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
     await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {
       budget: () => ({
         rows: [{ normal_posts_count: 195, url_posts_count: 0, generations_count: 0, images_count: 0 }],
+      }),
+    });
+  });
+  it("skips premium auto when the URL post budget is exhausted (p1 needs url 1)", async () => {
+    await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {
+      budget: () => ({
+        rows: [{ normal_posts_count: 0, url_posts_count: 20, generations_count: 0, images_count: 0 }],
+      }),
+    });
+  });
+  it("skips premium when the image budget is exhausted and images are enabled", async () => {
+    await expectSkipped(dueSlot({ plan: "premium", image_enabled: true }), {
+      budget: () => ({
+        rows: [{ normal_posts_count: 0, url_posts_count: 0, generations_count: 0, images_count: 20 }],
       }),
     });
   });

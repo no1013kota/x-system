@@ -1416,13 +1416,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: premiumの投稿開始前に最終payload列を通常/URL付きへ分類し、通常枠にmax(R, 2×R_prefix)、URL枠にmax(U, 2×U_prefix)の残量を必須とする（全件成功と、最終投稿失敗時のprefixロールバック削除の両方を賄う）。不足時はX APIを呼ばず枠を消費せずusage_limit_exceededで失敗し通知する。同一userのpost_publish直列化はM4のadvisory lockを前提とする。
 - 実装結果: `post-publish.ts`に純関数`requiredPostSlots(finalTexts)`を追加（末尾を除くprefixのみ2倍対象。単一ポストはprefix空でロールバック余力不要）。`executePostPublish`の日次上限checkの直後・X呼び出し（getAccessToken/media upload/createPost）の前に、premium かつ postingLive のときだけ当月`usage_counters`を読み`finalTextAt`列の必要残量と突き合わせるガードを追加。不足時はdraftを未投稿へ戻し、`usage_limit_exceeded`（非retryable）で失敗させ、専用文言＋dedupe `draft:{id}:usage_limit`の error通知を出す。`finalTextAt`（P-5のquote_url合成含む）はconsumeと同一分類のため定義をガード前へ巻き上げた。`createPostErrorNotification`はtitle/body/dedupeSuffixを任意上書き可能に拡張。ガードの正当性（各枠でrequired≥実消費が全終端結果で成立するタイトな上界）は敵対的レビュー2観点で確認済み。dry_run/BYOKは月次counter対象外のためガードもskip。残量数値・翌月開始日時の詳細表示はT-M6-12/13の担当。docは要件03 §7.4・要件06 §7が既に本挙動を規定済み（影響なし）。
 
-### T-M6-08: スケジュールenqueue時のpremium残量・日次上限事前判定 `todo`
+### T-M6-08: スケジュールenqueue時のpremium残量・日次上限事前判定 `done`
 - 参照: 要件04 §7.1、要件03 §7.4、O-5、S-2、S-3 / 依存: T-M6-07、M4 / サイズ: S
 - 完了条件:
   - premium残量不足のauto slotがenqueueされずに通知される（tick handlerをローカル実行・時刻モック）
   - 当日post_create件数＋パターン別最大数が50を超えるslotはenqueueされない
   - BYOK（standard/md）のslotは残量判定をskipしてenqueueされる
 - メモ: enqueue条件へpremium判定を追加：生成枠、画像ONなら画像枠、auto modeならパターン別最大数から算出した必要残量（P-1=通常10＋URL1、P-2=通常1、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1）を通常/URL枠で確認。当日JSTのpost_create件数＋パターン別最大数が50以下であることも確認。不足slotはenqueueせず通知。生成後の投稿直前には実payloadで再判定（前タスク）される二段構え。
+- 実装結果: 本体はM4（T-M4-06/07）で実装済みだった。`schedule-enqueue.ts`の`premiumBudgetOk`（生成枠+1／画像ONなら画像枠+1／auto時は`ROLLBACK_SAFE_BUDGET[pattern]`の通常・URL枠）＋`dailyLimitOk`（当日post_create件数＋`PATTERN_MAX_POSTS[pattern]`≤50）が§7.1条件を満たし、`isEligible`はpremiumのみ残量判定・BYOKはkeysValidのみ（残量skip）で分岐。条件1の「通知」は別ステップ`schedule-recovery.ts`の`notifyUnenqueuedMissed`が担う（enqueueされないまま定刻+10〜70分の due slotへ`schedule_missed`通知・dedupe `slot:{id}:{date}:{hh:mm}:missed`）＝enqueue skipと通知は別関数・別時間窓の二段構え。本タスクでは不足していたテストを追加：BYOK（standard/md）がbudget query未発行でenqueueされること、premium autoのURL枠枯渇skip、画像枠枯渇skip。doc影響なし（§7.1が既に本挙動を規定・本体はM4実装、今回はテスト整備のみで本番コード変更なし）。PREMIUM_LIMITSはenqueue内にハードコード定数だがplans.tsと一致（将来はPLANS参照で一本化する余地・別途）。
 
 ### T-M6-09: external_api_usage_events原価台帳：AI呼び出しの冪等記録 `todo`
 - 参照: 要件02 §3.17、要件03 §7.4、プロンプト §5.1、プロンプト §5.6、PRD §6.1 / 依存: M0、M3 / サイズ: M
