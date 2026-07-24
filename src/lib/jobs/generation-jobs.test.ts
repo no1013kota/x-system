@@ -527,3 +527,19 @@ describe("createDraftFromNews", () => {
     expect(err.details?.settingsPath).toBeDefined();
   });
 });
+
+const REMOVING = /from learning_sources[\s\S]*status = 'removing'/;
+
+describe("createGenerationJob — learning removal guard (T-M5-05)", () => {
+  it("rejects new generation while a learning source is being removed", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (ACCOUNT.test(sql)) return [{ status: "active", active_x_account_id: XID }];
+      if (REMOVING.test(sql)) return [{ "?column?": 1 }];
+      return [];
+    });
+    const err = await rejection(createGenerationJob("u1", input(), deps(db)));
+    expect(err.code).toBe("job_conflict");
+    expect(err.details?.reason).toBe("learning_removing");
+  });
+});

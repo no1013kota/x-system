@@ -49,12 +49,17 @@ const learningAnalysis: JobHandler = async (ctx) => {
   await learningAnalysisHandler(ctx);
 };
 
+const mdMerge: JobHandler = async (ctx) => {
+  const { mdMergeHandler } = await import("./md-merge-server");
+  await mdMergeHandler(ctx);
+};
+
 const HANDLERS: Record<JobKind, JobHandler> = {
   post_generation: postGeneration,
   image_generation: imageGeneration,
   post_publish: postPublish,
   learning_analysis: learningAnalysis,
-  md_merge: placeholder,
+  md_merge: mdMerge,
   suggestion: placeholder,
 };
 

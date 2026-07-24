@@ -11,6 +11,7 @@ const BUDGET = /from usage_counters where user_id/;
 const DAILY = /count\(\*\)::int as n from usage_events/;
 const INSERT = /insert into generation_jobs/;
 const LAST_RUN = /update schedule_slots set last_run_at/;
+const REMOVING = /from learning_sources[\s\S]*status = 'removing'/;
 
 function makeDb(handler: (sql: string) => { rows: Row[]; rowCount?: number }) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -55,6 +56,7 @@ function dueSlot(over: Partial<Row> = {}): Row {
 function handlerFor(slot: Row, over: Partial<Record<string, () => { rows: Row[]; rowCount?: number }>> = {}) {
   return (sql: string) => {
     if (DUE.test(sql)) return over.due?.() ?? { rows: [slot] };
+    if (REMOVING.test(sql)) return over.removing?.() ?? { rows: [] };
     if (KEYS.test(sql)) return over.keys?.() ?? { rows: [{ provider: "anthropic", status: "valid" }] };
     if (BUDGET.test(sql)) return over.budget?.() ?? { rows: [] };
     if (DAILY.test(sql)) return over.daily?.() ?? { rows: [{ n: 0 }] };
@@ -103,6 +105,9 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
   });
   it("skips an auto slot without current-version consent", async () => {
     await expectSkipped(dueSlot({ mode: "auto", auto_consent_ok: false }));
+  });
+  it("skips while a learning source is being removed (removing→md_merge in progress)", async () => {
+    await expectSkipped(dueSlot(), { removing: () => ({ rows: [{}], rowCount: 1 }) });
   });
   it("skips BYOK when a required AI key is not valid", async () => {
     await expectSkipped(dueSlot(), {

@@ -171,6 +171,8 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 `createGenerationJob`でP-5を指定する場合は`quote_url`を必須とする。サーバー側でtweet_idを抽出し、対象ポスト取得に成功した場合だけjobを作る。生成・編集時は対象URLをdraftへ別管理し、投稿時に1ポスト目の本文末尾へ合成する。`quote_tweet_id`をX投稿APIへ指定しない。
 
+対象Xアカウントに`removing`（学習ソース削除mergeが進行中）の学習ソースがある間は、`createGenerationJob`／`createDraftFromNews`を`job_conflict`（`reason=learning_removing`）で拒否し、スロットenqueueも当該アカウントをskipする（古い知見での生成を避ける・要件04 §12）。
+
 v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は`createGenerationJob`のP-5、P-5 draftの`regenerateDraft`、`publishDraft`、`regenerateImage`を外部API呼び出しと利用枠消費の前に`feature_disabled`で拒否する。既存P-5 draftの閲覧と、未解決の投稿状態がない場合の破棄は許可する。feature flagの有効化は、X APIで取得した対象ポスト本文をLLM入力へ渡す契約と自動検証が完成した後に限る。
 
 `regenerateDraft`は`status=draft`または未解決投稿のない`failed`の本文、pattern、検証済みsource/quote情報を入力snapshotとしてjobへ保存する。生成成功時は新しいdraftを作り、元draftを変更・破棄しない。再生成も新しいtop-level jobとして生成枠を1消費する。

@@ -194,6 +194,21 @@ async function createLearningJob(
   return { jobId: raced.id, deduped: true };
 }
 
+/**
+ * 対象Xアカウントに `removing`（削除merge進行中）の学習ソースがあるか。削除mergeへ別の生成/変更を
+ * 混ぜないための生成停止ガード（要件04 §12・要件05 §8）。生成job作成・slot enqueue の前提検証で使う。
+ */
+export async function hasRemovingLearningSource(
+  db: Queryable,
+  xAccountId: string,
+): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `select 1 from learning_sources where x_account_id = $1 and status = 'removing' limit 1`,
+    [xAccountId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function listLearningSources(
   db: Queryable,
   userId: string,

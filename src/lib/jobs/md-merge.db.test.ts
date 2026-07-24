@@ -146,4 +146,64 @@ describe("executeMdMerge (db)", () => {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
     }
   });
+
+  it("removal path: rebuilds the target section, sets source removed(removed_at), preserves the other section", async () => {
+    const seeded = await withTransaction(async (c) => {
+      // 独自アカウント（seed の running learning_analysis job と競合しないよう別立て）。
+      const uid = randomUUID();
+      await c.query(
+        `insert into auth.users (id, instance_id, aud, role, email)
+         values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
+        [uid, `${uid}@example.com`],
+      );
+      await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
+      const xid = (
+        await c.query<{ id: string }>(
+          `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version)
+           values ($1,$2,'h','n','byok',$3,2) returning id`,
+          [uid, `x-${randomUUID()}`, BASE_MD],
+        )
+      ).rows[0].id;
+      // remove a ref_post source (→ §6). status must be 'removing' (set by removeLearningSource).
+      const removed = (
+        await c.query<{ id: string }>(
+          `insert into learning_sources (x_account_id, type, url, status, analysis_summary)
+           values ($1,'ref_post','https://x.com/a/status/1','removing',$2::jsonb) returning id`,
+          [xid, JSON.stringify({ type: "ref_post", gone: true })],
+        )
+      ).rows[0].id;
+      const mergeJob = (
+        await c.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status)
+           values ($1,'md_merge','manual',$2,'running') returning id`,
+          [xid, removed],
+        )
+      ).rows[0].id;
+      return { uid, xid, removed, mergeJob };
+    });
+    try {
+      const res = await executeMdMerge(deps(seeded.mergeJob, "残りの型で再構築"), { removedSourceId: seeded.removed });
+      expect(res.section).toBe(6); // ref_post → §6
+
+      const acct = (
+        await withTransaction((c) =>
+          c.query<{ base_md: string; base_md_version: number }>(`select base_md, base_md_version from x_accounts where id = $1`, [seeded.xid]),
+        )
+      ).rows[0];
+      expect(acct.base_md_version).toBe(3);
+      expect(acct.base_md).toContain("## 6. 参考にする型\n残りの型で再構築"); // target rebuilt
+      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5"); // non-target preserved
+
+      const rm = (
+        await withTransaction((c) =>
+          c.query<{ status: string; removed_at: string | null }>(`select status::text as status, removed_at from learning_sources where id = $1`, [seeded.removed]),
+        )
+      ).rows[0];
+      expect(rm.status).toBe("removed");
+      expect(rm.removed_at).not.toBeNull();
+    } finally {
+      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [seeded.xid]));
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [seeded.uid]));
+    }
+  });
 });

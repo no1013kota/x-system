@@ -6,6 +6,7 @@ import {
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
 import { AppError } from "@/lib/observability/errors";
+import { hasRemovingLearningSource } from "@/lib/learning-sources";
 
 import type { Queryable } from "../x/token-refresh";
 import { requestKey } from "./keys";
@@ -158,6 +159,10 @@ export async function createGenerationJob(
     if (existing) return { jobId: existing.id, deduped: true };
 
     await assertActiveAccount(tx, userId, input.x_account_id);
+    // 学習ソース削除merge中は古い知見での生成を避けるため新規生成を止める（要件04 §12, T-M5-05）。
+    if (await hasRemovingLearningSource(tx, input.x_account_id)) {
+      throw new AppError("job_conflict", { details: { reason: "learning_removing" } });
+    }
     await assertPrereqs(deps, userId, input.image_enabled);
     await assertJobBudget(tx, userId);
 

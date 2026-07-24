@@ -6,11 +6,13 @@ import { executeMdMerge, MdMergeConflictError, MdMergeStructureError } from "./m
 
 const JOB_META = /select gj\.x_account_id, xa\.user_id, p\.plan/;
 const RESOLVE_TARGET = /select type::text as type from learning_sources where id = \$1/;
+const LOAD_REMOVED = /select analysis_summary from learning_sources where id = \$1/;
 const LOAD_ACCT = /select base_md, base_md_version from x_accounts/;
 const LOAD_ANALYSES = /from learning_sources[\s\S]*analysis_summary is not null/;
 const UPDATE_ACCT = /update x_accounts set base_md = \$2, base_md_version = \$3/;
 const INSERT_VERSION = /insert into base_md_versions/;
 const CONFIRM = /update learning_sources set status = 'analyzed'/;
+const REMOVED_UPDATE = /update learning_sources set status = 'removed'/;
 
 const BASE_MD = `# 発信定義書（ベースmd）
 
@@ -50,6 +52,7 @@ interface DbOpts {
   version?: number;
   triggerType?: string; // resolveTargetSection の対象ソース種別
   analyses?: { analysis_summary: unknown }[];
+  removedAnalysis?: unknown; // removedSourceId の analysis_summary
   updateRowCounts?: number[];
 }
 
@@ -62,6 +65,8 @@ function mockDb(opts: DbOpts) {
       writes.push({ sql, params });
       if (JOB_META.test(sql)) return { rows: [{ x_account_id: "xa1", user_id: "u1", plan: "md" }] as T[], rowCount: 1 };
       if (RESOLVE_TARGET.test(sql)) return { rows: [{ type: opts.triggerType ?? "own_posts" }] as T[], rowCount: 1 };
+      if (LOAD_REMOVED.test(sql))
+        return { rows: (opts.removedAnalysis ? [{ analysis_summary: opts.removedAnalysis }] : []) as T[], rowCount: opts.removedAnalysis ? 1 : 0 };
       if (LOAD_ACCT.test(sql)) return { rows: [{ base_md: BASE_MD, base_md_version: acctVersion }] as T[], rowCount: 1 };
       if (LOAD_ANALYSES.test(sql)) return { rows: (opts.analyses ?? []) as T[], rowCount: (opts.analyses ?? []).length };
       if (UPDATE_ACCT.test(sql)) {
@@ -119,6 +124,21 @@ describe("executeMdMerge", () => {
     const newBaseMd = writes.find((w) => UPDATE_ACCT.test(w.sql))!.params[1] as string;
     expect(newBaseMd).toContain("## 6. 参考にする型\n参考型の本文");
     expect(newBaseMd).toContain("## 5. 文体・自分らしさ\n旧セクション5"); // preserved
+  });
+
+  it("removal path: excludes the removed source, passes it as <removed>, and sets it removed", async () => {
+    const { db, writes } = mockDb({
+      version: 2,
+      triggerType: "ref_post",
+      analyses: [{ analysis_summary: { type: "ref_account", keep: true } }],
+      removedAnalysis: { type: "ref_post", gone: true },
+    });
+    const res = await executeMdMerge(deps(db, textGen("残りの型で再構築")), { removedSourceId: "srm" });
+    expect(res.section).toBe(6); // ref_post → §6
+    expect(writes.some((w) => REMOVED_UPDATE.test(w.sql))).toBe(true); // source removed in same tx
+    expect(writes.some((w) => CONFIRM.test(w.sql))).toBe(false); // not a confirm path
+    const ver = writes.find((w) => INSERT_VERSION.test(w.sql))!;
+    expect(ver.params[3]).toContain("削除"); // summary mentions deletion
   });
 
   it("re-merges from the latest version on a conflict without losing the concurrent change", async () => {

@@ -1,4 +1,5 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { hasRemovingLearningSource } from "@/lib/learning-sources";
 import { PATTERN_MAX_POSTS } from "@/lib/post/generation-validation";
 
 import type { Queryable } from "../x/token-refresh";
@@ -150,6 +151,8 @@ async function isEligible(db: Queryable, slot: DueSlotRow, dailyLimit: number): 
   if (slot.base_md_version < 1) return false;
   if (slot.pattern === "p5") return false; // スケジュール対象外（保険）
   if (slot.mode === "auto" && !slot.auto_consent_ok) return false;
+  // 学習ソース削除merge中は新規生成を止める（要件04 §12, T-M5-05）。
+  if (await hasRemovingLearningSource(db, slot.x_account_id)) return false;
   if (slot.plan === "premium") {
     if (!(await premiumBudgetOk(db, slot))) return false;
   } else {
