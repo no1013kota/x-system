@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
+| バージョン | v1.8 |
 | 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -199,7 +199,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 
 ## 9. バックアップ・保持
 
-- 初期のSupabase Free運用中は自動backupがないことを受け入れ、週1回およびschemaへ影響する変更前に`supabase db dump`で論理backupを取得し、Supabase外へ暗号化保存する。初期RPOは最大7日、RTOはbest effortとする。Pro移行後は日次backupを有効化し、復元手順を確認する。必要なRPO/RTOを満たせない場合はPITRを検討する。
+- 初期のSupabase Free運用中は自動backupがないことを受け入れ、週1回およびschemaへ影響する変更前に論理backupを取得し、Supabase外へ暗号化保存する。実装は`pg_dump --no-owner --no-privileges`＋openssl AES-256-CBC暗号化（`scripts/db-backup.sh`／復元`scripts/db-restore.sh`）とし、手順・RPO/RTO・検証は運用メモ[DBバックアップと復元](../operations/database-backup-restore.md)を正とする。初期RPOは最大7日、RTOはbest effortとする。Pro移行後は日次backupを有効化し、復元手順を確認する。必要なRPO/RTOを満たせない場合はPITRを検討する。
 - SupabaseはDBまたはStorage使用量がFree上限の80%へ到達した場合、pause・backup・security制約が運用上許容できなくなった場合、日次自動backupが必要になった場合、またはpooler接続の枯渇・待ち行列が観測された場合にProへ移行する。
 - `news_items`と`news`通知は40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する。ダイジェストと遷移先の保持期間を一致させる。
 - `external_api_usage_events`の明細は40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する。40日保持により、前月分の明細は翌月10日頃まで完全に揃う。月次原価を長期比較する場合は個人・request・jobと結び付かない集計値だけを別途保持する。

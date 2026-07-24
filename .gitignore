@@ -6,6 +6,10 @@
 .env.*
 !.env.example
 
+# DB論理バックアップ（暗号化dump・平文とも絶対にコミットしない・T-M6-19）
+backups/
+*.sql.enc
+
 # 依存・ビルド成果物
 node_modules/
 dist/

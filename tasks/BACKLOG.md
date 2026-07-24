@@ -1512,12 +1512,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: Sentry beforeSend・共通loggerでAuthorization・cookie・APIキー・token・prompt全文・投稿前の非公開入力をredactする。service role・APP_ENCRYPTION_KEY・providerキー・OAuth tokenを参照するmoduleへ`server-only`を導入しClient Componentからのimportをビルドエラー化。ユーザー向けエラーへprovider本文・stack traceを出さない共通変換層を全Server Action/API/workerへ適用。
 - 実装結果: 基盤はM0-M3で実装済みだった。(1) redact `observability/redact.ts`＋`sentry.ts` beforeSend＝Authorization/cookie/token/secret/password/api_key/credentials/prompt/base_md/投稿前入力/nested/arrayをマスク、`redact.test.ts`で全項目検証済み。(3) `observability/errors.ts` `toUserFacingError`＝AppErrorは安全なcode+日本語message、未知（provider例外含む）はinternal_errorへ畳んでstack/provider本文を出さない。`errors.test.ts`でstack非漏洩・cause非公開を検証済みで、Server Action 15/18がこれを使用（残る3=auth-state型定義のみ・legal-consent/authは固定安全文言＋catch握り潰し）。**本タスクの追加**: 秘密値をenvから直接読むのに`server-only`が無かった`jobs/auth.ts`（`process.env.CRON_SECRET`）・`jobs/dispatch.ts`（CRON_SECRET/APP_BASE_URL）へマーカーを追加。`server-boundary.test.ts`を**動的走査**へ刷新（src/lib全走査で env秘密読取/createSupabaseAdminClient/getEncryptionKey を参照するモジュール＝現17件が`import "server-only"`を持つことを強制、regression検出）。純粋core（decrypt注入・env秘密を直接読まない`*.ts`）は対象外＝既存アーキテクチャ通り。build成功で新マーカーがclient transitive importを壊さないことを確認。doc影響なし（要件01 §8が境界・redact・安全エラー変換を既に規定）。
 
-### T-M6-19: Supabase論理バックアップのスクリプトと復元手順 `todo`
+### T-M6-19: Supabase論理バックアップのスクリプトと復元手順 `done`
 - 参照: 要件01 §9 / 依存: M0 / サイズ: S
 - 完了条件:
   - backupスクリプトがローカル/開発DBに対して暗号化済みdumpファイルを生成する
   - 手順書どおり空のローカルDBへ復元し、schema・seedデータが元と一致する
 - メモ: Supabase Free運用向けに`supabase db dump`による論理backupスクリプト（AES等で暗号化しSupabase外へ保存する形式）と、復元手順・週1回＋schema変更前の運用手順を整備する。RPO最大7日・RTO best effortを手順書へ明記。実行環境（常時稼働Mac等）と保存先の用意は人間側作業（open_questions参照）。
+- 実装結果: `scripts/db-backup.sh`（`pg_dump --no-owner --no-privileges "$DATABASE_URL"`→`openssl enc -aes-256-cbc -pbkdf2 -salt`でBACKUP_ENCRYPTION_KEY暗号化→`$BACKUP_OUT_DIR/spaceai-{ts}.sql.enc`）と`scripts/db-restore.sh`（openssl復号→`psql "$TARGET_DATABASE_URL"`）を新設。npm `db:backup`/`db:restore`、`.gitignore`へ`backups/`・`*.sql.enc`追加（漏洩防止）。ツールは`supabase db dump`ではなく**pg_dump採用**（フル論理dumpで復元互換・空DBへ0エラー相当で復元、supabase db dumpはCLI依存でschema寄り）。運用メモ`docs/operations/database-backup-restore.md`新設（前提PG17クライアント＋openssl・週1＋schema変更前・RPO≤7日/RTO best effort・復元/検証手順・非superuser復元時の`vault.secrets`/`log_min_messages`権限エラーは無害と明記）。**検証**: ローカルSupabase(PG17.6)で実スクリプトをpg_dump/psql（container 17.6）経由で実行、暗号化dump（Salted__始まりの暗号文・平文SQLでない）→空DBへ復元→public 18テーブル・prompt_templates seed 7件が元と一致を確認。doc: 要件01 §9をpg_dump採用＋運用メモ参照へ更新（v1.8）。実行環境・保管先・鍵管理は人間側作業。
 
 ### T-M6-20: リリース判定テストスイート（dependency audit・RLS・認可/CSRF/SSRF） `todo`
 - 参照: 要件01 §8、要件02 §5、要件05 §11、要件05 §12 / 依存: T-M6-17、T-M6-18、M0 / サイズ: M
