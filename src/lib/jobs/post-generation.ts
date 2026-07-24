@@ -56,6 +56,8 @@ interface JobRow {
     instructions?: string | null;
     image_enabled?: boolean;
     news_item_id?: string | null;
+    parent_draft_id?: string | null;
+    previous_posts?: string[];
   };
   x_account_id: string;
   user_id: string;
@@ -267,6 +269,7 @@ export async function executePostGeneration(
     input: composeUserInput(job.input),
     recentPosts,
     newsDigest,
+    previousDraft: job.input.previous_posts,
   });
 
   const deadline = (deps.makeDeadline ?? createDeadline)();
@@ -391,11 +394,19 @@ export async function executePostGeneration(
   const threadJson = JSON.stringify(finalize.thread);
   const inserted = await db.query<{ id: string }>(
     `insert into drafts
-       (x_account_id, pattern, thread, initial_thread, status, source_job_id, source_news_item_id)
-     values ($1, $2, $3::jsonb, $3::jsonb, 'draft', $4, $5)
+       (x_account_id, pattern, thread, initial_thread, status, source_job_id,
+        source_news_item_id, parent_draft_id)
+     values ($1, $2, $3::jsonb, $3::jsonb, 'draft', $4, $5, $6)
      on conflict (source_job_id) do nothing
      returning id`,
-    [job.x_account_id, pattern, threadJson, jobId, job.input.news_item_id ?? null],
+    [
+      job.x_account_id,
+      pattern,
+      threadJson,
+      jobId,
+      job.input.news_item_id ?? null,
+      job.input.parent_draft_id ?? null,
+    ],
   );
   const draftId = inserted.rows[0]?.id ?? (await existingDraftId(db, jobId));
   if (!draftId) throw new PostGenerationTerminalError("draft_persist_failed");

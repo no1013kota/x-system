@@ -7,6 +7,7 @@ import {
   cancelGenerationJob,
   createGenerationJob,
   getGenerationJob,
+  regenerateDraft,
   retryGenerationJob,
   type CreateGenerationJobInput,
   type GenerationJobDeps,
@@ -167,6 +168,77 @@ describe("retryGenerationJob", () => {
     await expect(
       retryGenerationJob("u1", { job_id: "old", request_key: "tok-2" }, deps(db)),
     ).rejects.toMatchObject({ code: "job_conflict" });
+  });
+});
+
+describe("regenerateDraft", () => {
+  const REGEN_LOAD = /select d\.status, d\.pattern, d\.thread/;
+
+  it("snapshots the source draft into a parent-linked job", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (REGEN_LOAD.test(sql))
+        return [
+          {
+            status: "draft",
+            pattern: "p3",
+            thread: [{ text: "元1" }, { text: "元2" }],
+            x_account_id: XID,
+            tweet_ids: [],
+            last_post_error: null,
+          },
+        ];
+      if (BUDGET.test(sql)) return [{ n: 0 }];
+      if (INSERT.test(sql)) return [{ id: "regen-job" }];
+      return [];
+    });
+    const res = await regenerateDraft(
+      "u1",
+      { request_key: "rg", draft_id: "src", additional_instructions: "改善して", image_enabled: false },
+      deps(db),
+    );
+    expect(res.jobId).toBe("regen-job");
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    const jobInput = JSON.parse(insert?.params[2] as string);
+    expect(jobInput.parent_draft_id).toBe("src");
+    expect(jobInput.previous_posts).toEqual(["元1", "元2"]);
+    expect(jobInput.instructions).toBe("改善して");
+    expect(jobInput.pattern).toBe("p3");
+  });
+
+  it("rejects regenerating a non-regenerable (posted) draft", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (REGEN_LOAD.test(sql))
+        return [{ status: "posted", pattern: "p1", thread: [], x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      return [];
+    });
+    await expect(
+      regenerateDraft("u1", { request_key: "rg", draft_id: "src", image_enabled: false }, deps(db)),
+    ).rejects.toMatchObject({ code: "job_conflict" });
+  });
+
+  it("rejects regenerating a failed draft with unresolved posting", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (REGEN_LOAD.test(sql))
+        return [{ status: "failed", pattern: "p1", thread: [], x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      return [];
+    });
+    const err = await rejection(
+      regenerateDraft("u1", { request_key: "rg", draft_id: "src", image_enabled: false }, deps(db)),
+    );
+    expect(err.details?.reason).toBe("unresolved_posting");
+  });
+
+  it("is idempotent on request_key", async () => {
+    const { db } = makeDb((sql) => (EXISTING.test(sql) ? [{ id: "existing" }] : []));
+    const res = await regenerateDraft(
+      "u1",
+      { request_key: "rg", draft_id: "src", image_enabled: false },
+      deps(db),
+    );
+    expect(res).toEqual({ jobId: "existing", deduped: true });
   });
 });
 

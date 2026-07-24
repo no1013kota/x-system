@@ -14,6 +14,8 @@ import {
   createGenerationJobSchema,
   getGenerationJob,
   jobIdSchema,
+  regenerateDraft,
+  regenerateDraftSchema,
   retryGenerationJob,
   retryJobSchema,
   type GenerationJobDeps,
@@ -91,6 +93,22 @@ export async function retryGenerationJobAction(input: unknown): Promise<JobIdRes
     const { jobId, deduped } = await retryGenerationJob(auth.userId, parsed.data, jobDeps);
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "再試行を開始しました。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function regenerateDraftAction(input: unknown): Promise<JobIdResult> {
+  const parsed = regenerateDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { jobId, deduped } = await regenerateDraft(auth.userId, parsed.data, jobDeps);
+    if (!deduped) after(() => dispatchJob(jobId));
+    return { jobId, message: "再生成を開始しました。", status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

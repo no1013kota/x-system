@@ -168,6 +168,106 @@ export async function createGenerationJob(
   });
 }
 
+export const regenerateDraftSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  draft_id: z.string().uuid(),
+  additional_instructions: z.string().max(2000).nullish(),
+  image_enabled: z.boolean().optional().default(false),
+  image_provider: z.enum(["openai", "google"]).nullish(),
+});
+export type RegenerateDraftInput = z.infer<typeof regenerateDraftSchema>;
+
+/**
+ * 元draftを保持し、parent_draft_id を持つ派生draftを生成する新jobを作る（要件05 §5, T-M3-13）。
+ * status=draft または未解決投稿のない failed のみ。元draftの本文/pattern/出典を snapshot として
+ * job.input へ保存し、worker が previous_draft を素材に追加指示で作り直す。新しい top-level job。
+ */
+export async function regenerateDraft(
+  userId: string,
+  input: RegenerateDraftInput,
+  deps: GenerationJobDeps,
+): Promise<CreateJobResult> {
+  const key = requestKey(userId, input.request_key);
+  return deps.runInTx(async (tx) => {
+    const existing = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs where request_key = $1`,
+        [key],
+      )
+    ).rows[0];
+    if (existing) return { jobId: existing.id, deduped: true };
+
+    const draft = (
+      await tx.query<{
+        status: string;
+        pattern: string;
+        thread: { text: string; sources?: string[] }[];
+        x_account_id: string;
+        tweet_ids: string[];
+        last_post_error: unknown;
+      }>(
+        `select d.status, d.pattern, d.thread, d.x_account_id, d.tweet_ids, d.last_post_error
+           from drafts d join x_accounts xa on xa.id = d.x_account_id
+          where d.id = $1 and xa.user_id = $2`,
+        [input.draft_id, userId],
+      )
+    ).rows[0];
+    if (!draft) throw new AppError("not_found");
+    if (draft.status !== "draft" && draft.status !== "failed") {
+      throw new AppError("job_conflict", { details: { reason: `not_regenerable:${draft.status}` } });
+    }
+    if (
+      draft.status === "failed" &&
+      ((Array.isArray(draft.tweet_ids) && draft.tweet_ids.length > 0) ||
+        draft.last_post_error != null)
+    ) {
+      throw new AppError("job_conflict", { details: { reason: "unresolved_posting" } });
+    }
+    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+      throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
+    }
+    await assertPrereqs(deps, userId, input.image_enabled);
+    await assertJobBudget(tx, userId);
+
+    const previousPosts = Array.isArray(draft.thread)
+      ? draft.thread.map((p) => p.text).filter((t): t is string => typeof t === "string")
+      : [];
+    const jobInput = {
+      pattern: draft.pattern,
+      source_url: null,
+      quote_url: null,
+      quote_tweet_id: null,
+      user_opinion: null,
+      instructions: input.additional_instructions ?? null,
+      image_enabled: input.image_enabled,
+      image_provider: input.image_provider ?? null,
+      news_item_id: null,
+      requested_mode: "draft",
+      parent_draft_id: input.draft_id,
+      previous_posts: previousPosts,
+    };
+
+    const inserted = (
+      await tx.query<{ id: string }>(
+        `insert into generation_jobs
+           (x_account_id, kind, trigger, pattern, input, request_key, status)
+         values ($1, 'post_generation', 'manual', $2, $3::jsonb, $4, 'queued')
+         on conflict (request_key) do nothing
+         returning id`,
+        [draft.x_account_id, draft.pattern, JSON.stringify(jobInput), key],
+      )
+    ).rows[0];
+    if (inserted) return { jobId: inserted.id, deduped: false };
+    const raced = (
+      await tx.query<{ id: string }>(
+        `select id from generation_jobs where request_key = $1`,
+        [key],
+      )
+    ).rows[0];
+    return { jobId: raced.id, deduped: true };
+  });
+}
+
 export interface GenerationJobView {
   id: string;
   kind: string;

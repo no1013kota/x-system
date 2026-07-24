@@ -203,6 +203,36 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
+  it("regeneration: sets parent_draft_id on the derived draft from job.input (T-M3-13)", async () => {
+    const { uid, xid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      const sourceId = (
+        await db.query<{ id: string }>(
+          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
+           values ($1,'p1','[{"text":"元"}]'::jsonb,'[{"text":"元"}]'::jsonb,'draft') returning id`,
+          [xid],
+        )
+      ).rows[0].id;
+      await db.query(
+        `update generation_jobs set input = $2::jsonb where id = $1`,
+        [jobId, JSON.stringify({ parent_draft_id: sourceId, previous_posts: ["元"] })],
+      );
+      const provider = mockProvider('{"posts":["改善版"],"sources":[],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const parent = (
+        await db.query<{ parent_draft_id: string | null }>(
+          `select parent_draft_id from drafts where id = $1`,
+          [res.draftId],
+        )
+      ).rows[0];
+      expect(parent.parent_draft_id).toBe(sourceId);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("is idempotent: a second run returns already_done without a duplicate draft", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {

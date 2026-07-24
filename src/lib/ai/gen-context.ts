@@ -49,6 +49,8 @@ export interface GenUserParams {
   recentPosts: string[];
   /** P-6のみ。undefinedならタグ自体を出さない。空配列（非該当）は `[]` を出す。 */
   newsDigest?: NewsDigestItem[];
+  /** 再生成（regenerateDraft）時の前回下書き本文。改善の素材として渡す（指示ではない）。 */
+  previousDraft?: string[];
   /** P-5有効化後のみ（インターフェース確保。現行は呼び出さない）。 */
   quotePost?: string | null;
 }
@@ -60,6 +62,11 @@ export function buildGenUser(params: GenUserParams): string {
   parts.push(`<input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</input>`);
   const recent = params.recentPosts.length > 0 ? formatRecentPosts(params.recentPosts) : UNSPECIFIED;
   parts.push(`<recent_posts>\n${recent}\n</recent_posts>`);
+  if (params.previousDraft && params.previousDraft.length > 0) {
+    parts.push(
+      `<previous_draft>\n${params.previousDraft.map((t, i) => `${i + 1}. ${t}`).join("\n")}\n</previous_draft>`,
+    );
+  }
   if (params.newsDigest !== undefined) {
     parts.push(
       `<news_digest>\n${JSON.stringify(params.newsDigest.slice(0, NEWS_DIGEST_MAX))}\n</news_digest>`,

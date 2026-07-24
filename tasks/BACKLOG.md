@@ -841,12 +841,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `draft-editor.tsx`（クライアント）＝ポスト単位のtextarea編集・↑↓並べ替え・×削除・＋追加、`weightedLength`（twitter-text、client）で加重文字数/280をリアルタイム表示＋超過警告。pattern別最大（inline map）超過・空本文・0件は保存無効化。保存=`updateDraftAction`（expected_updated_at=draft.updated_at）→success:router.refresh＋編集終了／job_conflict:「最新に再読込してください」。drafts-list.tsxのDraftCardにstatus=draftのみ「編集」トグルを追加（編集中はDraftEditor、通常は読み取りthread）。モバイルは1カラム（textarea幅100%）で全文確認・編集・破棄可。**server強化**: `updateDraft`で空本文（trim空）をvalidation_error(empty_post)に（要件05 §12）。テスト+1（空本文拒否ユニット）。全711 green・build通過（UIはtypecheck/lint/build検証）。doc: 要件06 §4.3・要件05 §12が既述で整合＝影響なし。
 - 後続への注意: 追加指示付き再生成（regenerateDraft・派生下書き）はT-M3-13。画像のpost割当編集・quote編集は画像/P-5タスク。編集時のNG/出典警告はupdateDraft保存時に再計算（表示は保存後の再読込で反映）。
 
-### T-M3-13: regenerateDraft（追加指示付き再生成） `todo`
+### T-M3-13: regenerateDraft（追加指示付き再生成） `done`
 - 参照: 要件05 §5、要件06 §4.3、PRD §5.4 / 依存: T-M3-07、T-M3-11 / サイズ: M
 - 完了条件:
   - regenerateDraftが元draft（status=draftまたは未解決投稿のないfailed）の本文・pattern・検証済みsource情報を入力snapshotとしてjobへ保存し、生成成功時にparent_draft_id付きの新draftを作成、元draftは変更・破棄されない
   - request_key冪等で、UIから追加指示を付けて再生成→派生draftが下書きタブに現れ、採用しない版を破棄できる
 - メモ: 再生成も新しいtop-level jobとして扱う（premiumの生成枠1消費の枠管理はM6）。
+- 実装メモ: `generation-jobs.ts` `regenerateDraft`＝元draft（owner・status=draft/clean-failed）を読み、pattern・previous_posts（thread本文）・additional_instructionsを`job.input`（parent_draft_id＝元draft）へsnapshotして**新しいtop-level post_generation job**を冪等作成（request_key・5件制限・prereq・P-5 feature gate共通化）。post-generation handlerを拡張: `job.input.parent_draft_id`→新draftの`parent_draft_id`に設定、`job.input.previous_posts`→`buildGenUser`の`<previous_draft>`ブロック（改善の素材）。gen-context `buildGenUser`に`previousDraft`追加。元draftは読むだけで変更・破棄しない。Action`regenerateDraftAction`（新規のみafter dispatch）。UI: drafts-list.tsxに「再生成」トグル＋`RegenerateBox`（追加指示textarea→`regenerateDraftAction`→「完了後に派生下書きが表示」）。派生draftは`parent_draft_id`でT-M3-11の派生元リンクに現れ破棄可。テスト+5（ユニット4: snapshot/parent_draft_id・非regenerable・unresolved・冪等／DB1: parent_draft_id伝播）。全716 green・build通過。doc: 要件05 §5・要件06 §4.3が既述で整合＝影響なし。
+- 後続への注意: premium生成枠のreserve/refund（1消費）はM6。regenerate結果の進捗表示は作成タブのポーリング（T-M3-09）とは別導線（下書きタブは完了後の一覧refreshで反映。必要ならjob追跡UIを後続で）。source/quote snapshotのうちquoteはP-5有効化後に拡張。
 
 ### T-M3-14: 画像生成アダプタ（OpenAI／Gemini）と画像正規化 `todo`
 - 参照: プロンプト設計書 §5.5、P-7、要件06 §6、要件05 §12 / 依存: M2 / サイズ: M

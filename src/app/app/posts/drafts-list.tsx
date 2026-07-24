@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { discardDraftAction } from "@/app/actions/drafts";
+import { regenerateDraftAction } from "@/app/actions/generation-jobs";
 import { Button } from "@/components/ui/button";
 import type { DraftView } from "@/lib/drafts";
 
@@ -70,6 +71,7 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
@@ -114,9 +116,23 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
               編集
             </Button>
           ) : null}
+          {!editing ? (
+            <Button
+              onClick={() => setRegenerating((v) => !v)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              再生成
+            </Button>
+          ) : null}
           <DiscardButton disabled={pending} onConfirm={discard} />
         </div>
       </div>
+
+      {regenerating ? (
+        <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
+      ) : null}
 
       {draft.parent_draft_id ? (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -144,6 +160,63 @@ function DraftCard({ draft, highlighted }: { draft: DraftView; highlighted: bool
         </ol>
       )}
     </li>
+  );
+}
+
+function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [instructions, setInstructions] = useState("");
+  const [notice, setNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+
+  function run() {
+    setNotice(null);
+    startTransition(async () => {
+      const res = await regenerateDraftAction({
+        request_key: crypto.randomUUID(),
+        draft_id: draftId,
+        additional_instructions: instructions.trim() || undefined,
+      });
+      setNotice({
+        message:
+          res.status === "success"
+            ? "再生成を開始しました。完了後、派生下書きがこの一覧に表示されます。"
+            : res.message,
+        tone: res.status,
+      });
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3">
+      <label className="block text-xs font-medium" htmlFor={`regen-${draftId}`}>
+        追加指示（任意）
+      </label>
+      <textarea
+        className="w-full rounded-md border px-3 py-2 text-sm"
+        id={`regen-${draftId}`}
+        maxLength={2000}
+        onChange={(e) => setInstructions(e.target.value)}
+        placeholder="例: もっと具体例を増やして、結論を先頭に"
+        rows={2}
+        value={instructions}
+      />
+      <div className="flex gap-2">
+        <Button disabled={pending} onClick={run} size="sm" type="button">
+          {pending ? "開始中…" : "再生成する"}
+        </Button>
+        <Button disabled={pending} onClick={onDone} size="sm" type="button" variant="ghost">
+          閉じる
+        </Button>
+      </div>
+      {notice ? (
+        <p
+          className={`text-xs ${notice.tone === "success" ? "text-emerald-700" : "text-destructive"}`}
+          role={notice.tone === "success" ? "status" : "alert"}
+        >
+          {notice.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
