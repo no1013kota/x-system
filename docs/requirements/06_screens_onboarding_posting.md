@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.18 |
+| バージョン | v1.19 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -226,6 +226,7 @@ P-5は将来の有効化後に全プランで手動生成できる。`FEATURE_QU
 - 部分失敗でX上に残ったtweet_idも1行ずつ実績を収集・表示し、「不完全なthread」と明示する。rollback削除済みIDは監査履歴には表示するが実績集計から除外する。
 - 実績一覧はactive Xアカウントの直近90日（30日checkpoint回収期間＋余裕）に投稿された`posted`と、`remaining_tweet_ids`を持つ`failed`のdraftを新しい順に表示する。`getAnalyticsSummary(period_days)`は同集計をcheckpoint別合計（tweets/impressions/likes/reposts/profile_clicks）で返す（別カラム保存はしない）。
 - フォロワー推移はSC-09内の1セクションとし、`follower_snapshots`の日次値を期間切替（7日/30日/90日）で折れ線表示する。欠損日は点を作らず実日付でx配置してスキップ（gap）を表す。未収集期間は空状態（フォロワー数は日次で自動記録される旨）を表示する。外部ライブラリを増やさずinline SVGで描画し、色以外の状態表現（点マーカー・数値サマリ・データ表併記）でアクセシビリティを確保する。
+- 改善提案はSC-09内の1セクション（表示専用）。「提案を更新」で`refreshSuggestions`を起動し、生成中を表示、最新の成功`suggestion` jobの提案（content＋evidence: 対象投稿へのXリンク・本文冒頭・metric・checkpoint_days・diff_pct・summary）を表示する。承認・却下・自動反映の操作は持たず、発信設定やベースmd編集（md・premium）で自ら反映する旨を常時案内する。拒否は理由別に表示する（1日1回=`already_today`／新metricsなし=`no_new_metrics`／生成中=`active_suggestion_exists`／前提不足等）。比較対象（同一計測時点の投稿）が3件未満の実績不足時は、必要3件と現在件数を表示する（要件06 §10）。evidence.tweet_idは投稿本文（tweet_ids↔thread同順）から本文冒頭を引いて根拠として提示する。SC-09は実績・フォロワー推移・改善提案の3セクション構成とする。
 
 ## 9. アカウント設定の補足
 

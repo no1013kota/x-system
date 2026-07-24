@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { loadAnalyticsForUser, loadFollowerSnapshotsForUser } from "./analytics-server";
+import {
+  loadAnalyticsForUser,
+  loadFollowerSnapshotsForUser,
+  loadSuggestionsForUser,
+} from "./analytics-server";
 import { closePool, getPool, withTransaction } from "./db/pool";
 
 /**
@@ -104,6 +108,52 @@ describe("analytics loader (local DB)", () => {
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [owner.uid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [other.uid]));
+    }
+  });
+
+  it("loads suggestions with evidence bodies/links and the generating flag", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c));
+    try {
+      await withTransaction(async (c: PoolClient) => {
+        // posted draft mapping t1 → 本文
+        await insertDraft(c, xid, { status: "posted", tweetIds: ["t1"], postedDaysAgo: 3 });
+        await c.query(`update drafts set thread = $2::jsonb where x_account_id = $1`, [
+          xid,
+          JSON.stringify([{ text: "朝9時のノウハウ投稿" }]),
+        ]);
+        const job = (
+          await c.query<{ id: string }>(
+            `insert into generation_jobs (x_account_id, kind, trigger, status, finished_at)
+             values ($1,'suggestion','manual','succeeded', now()) returning id`,
+            [xid],
+          )
+        ).rows[0].id;
+        await c.query(
+          `insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
+           values ($1,$2,'朝の投稿を増やす',$3::jsonb)`,
+          [
+            xid,
+            job,
+            JSON.stringify({ tweet_ids: ["t1"], metric: "impressions", checkpoint_days: 7, diff_pct: 40, summary: "根拠", window_days: 30 }),
+          ],
+        );
+      });
+
+      const section = await loadSuggestionsForUser(uid, xid);
+      expect(section.generating).toBe(false);
+      expect(section.suggestions).toHaveLength(1);
+      const s = section.suggestions[0];
+      expect(s).toMatchObject({ content: "朝の投稿を増やす", metric: "impressions", checkpointDays: 7, diffPct: 40 });
+      expect(s.posts[0]).toMatchObject({ tweetId: "t1", body: "朝9時のノウハウ投稿" });
+      expect(s.posts[0].url).toContain("/status/t1");
+
+      // queued suggestion job → generating true
+      await withTransaction((c) =>
+        c.query(`insert into generation_jobs (x_account_id, kind, trigger, status) values ($1,'suggestion','manual','queued')`, [xid]),
+      );
+      expect((await loadSuggestionsForUser(uid, xid)).generating).toBe(true);
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
 

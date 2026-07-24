@@ -2,13 +2,18 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
-import { loadAnalyticsForUser, loadFollowerSnapshotsForUser } from "@/lib/analytics-server";
+import {
+  loadAnalyticsForUser,
+  loadFollowerSnapshotsForUser,
+  loadSuggestionsForUser,
+} from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { AnalyticsView } from "./analytics-view";
 import { FollowerChart } from "./follower-chart";
+import { SuggestionsPanel } from "./suggestions-panel";
 
 export const metadata: Metadata = { title: `分析 | ${APP_NAME}` };
 
@@ -39,10 +44,21 @@ export default async function AnalyticsPage() {
     );
   }
 
-  const [drafts, followers] = await Promise.all([
+  const [drafts, followers, suggestionsSection] = await Promise.all([
     loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
     loadFollowerSnapshotsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
+    loadSuggestionsForUser(user.id, xAccountId),
   ]);
+
+  // 比較対象（監査・取得不能でなく、いずれかのcheckpointを取得済み）の投稿数。実績不足表示に使う。
+  const comparablePostCount = drafts.reduce(
+    (n, d) =>
+      n +
+      d.tweets.filter(
+        (t) => !t.auditOnly && !t.unavailable && (t.checkpoints["1"] || t.checkpoints["7"] || t.checkpoints["30"]),
+      ).length,
+    0,
+  );
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
@@ -56,6 +72,11 @@ export default async function AnalyticsPage() {
       <div className="mt-7 space-y-8">
         <FollowerChart points={followers} />
         <AnalyticsView drafts={drafts} />
+        <SuggestionsPanel
+          comparablePostCount={comparablePostCount}
+          generating={suggestionsSection.generating}
+          suggestions={suggestionsSection.suggestions}
+        />
       </div>
     </main>
   );

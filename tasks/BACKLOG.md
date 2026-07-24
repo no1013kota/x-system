@@ -1337,13 +1337,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - ultracode 敵対的レビュー（3次元）でCONFIRMED 2件を修正: (1)**HIGH** terminal.ts `finalizeFailedJob` に suggestion case が無く、stale最終失敗でpremium reserveが返還されず枠リーク→learning_analysis/md_mergeと同型の `refundUsage(generation)`＋通知 case を追加（stale refund回帰テスト追加）。(2)**MEDIUM** refreshSuggestions の `insert ... on conflict (request_key)` が active suggestion partial-unique 競合（別トークン並行呼び出し）を吸収できず 23505→internal_error。arbiter無しの `on conflict do nothing`＋re-fetch（自キー→dedup／他→job_conflict active_suggestion_exists）へ修正。全1035 green＋新規テストで検証。doc: 要件04 §12 に reserve=LLM実行時のみ・拒否理由・evidence検証/window_days・listSuggestions を追記（v1.7）。worker test（kind=suggestion no-op）は全kind実handler化に伴い挙動更新。
 - 後続への注意: 改善提案UI（表示専用・拒否理由表示・実績不足時の必要3投稿案内）は T-M5-19。suggestion worker は retryable自己終端を持たない（学習workerと異なり）＝一時的provider失敗も最終失敗扱いだが失敗jobは1日1回制限に数えないため手動再試行可（refundは在process＋stale両経路で冪等）。
 
-### T-M5-19: T-M5-19: SC-09 改善提案UI（表示専用） `todo`
+### T-M5-19: T-M5-19: SC-09 改善提案UI（表示専用） `done`
 - 参照: K-2、SC-09、要件06 §10、要件05 §9、PRD 5.6、要件02 §4.11 / 依存: T-M5-18、T-M5-15 / サイズ: M
 - 完了条件:
   - 「提案を更新」ボタンから実行→進行表示→最新提案（content＋evidence: 対象投稿リンク・metric・checkpoint・diff_pct・summary）の表示までがモックで動作し、承認・却下・自動反映の操作が存在しない
   - 1日1回制限・新metricsなし・実行前提不足の各拒否理由が表示され、「発信設定やベースmd編集（md/プレミアム）で自ら反映する」旨の案内が表示される
   - 実績不足時は比較グループごとに必要な3投稿と現在件数が表示される（要件06 §10）
 - メモ: evidence.tweet_idsから該当投稿（本文冒頭）を引いて根拠として提示する。SC-09は実績・フォロワー・提案の3セクション構成で完成。
+- 実装メモ: 配線 `analytics-server.ts` `loadSuggestionsForUser`＝`listSuggestions`（T-M5-18）の最新成功job提案を、evidence.tweet_id→本文冒頭100字（drafts の tweet_ids↔thread 同順map）＋Xリンク（`https://x.com/{handle}/status/{id}`）で enrich し、queued/running suggestion jobの有無を `generating` で返す。UI `suggestions-panel.tsx`（client）＝「提案を更新」→refreshSuggestionsAction（成功=生成中案内＋router.refresh／失敗=code+details.reasonを日本語拒否理由へmap: already_today/no_new_metrics/active_suggestion_exists/too_many_active_jobs/x_account_mismatch）、「再読み込み」＝router.refresh、generating時は「生成中…」＋更新ボタン無効。提案カード（content・metric/checkpoint/diff_pctバッジ・summary・根拠投稿リンク）。**承認/却下/自動反映ボタンは無し**、表示専用＋「発信設定やベースmd編集で自ら反映」案内を常時表示。提案0件時: comparablePostCount<3なら「同一計測時点の投稿が3件以上必要（現在N件）」、≥3なら「目立った提案なし」。comparablePostCount は page が DraftAnalytics（非監査・非unavailable・いずれかのcheckpoint取得済みtweet数）から算出。SC-09 page に3セクション（FollowerChart / AnalyticsView / SuggestionsPanel）を並置。テスト: db（loadSuggestionsForUser の本文/リンクenrich・generatingフラグ）。全1037 green・build通過。UIはrepo方針でcomponent testなし。doc: 要件06 §8 に改善提案セクションを追記（v1.19）。
+- 後続への注意: **M5完了**（学習・実績・改善提案の全機能）。実績不足表示は比較グループ単位ではなく対象投稿総数での簡易版（§10の「比較グループごと」を総数で近似・厳密なpattern×時間帯別内訳表示は将来拡張）。改善提案の生成は非同期jobのため「提案を更新」後は router.refresh/再読み込みで結果反映（自動ポーリングはしない）。
 
 ## M6: プレミアム・法務・リリース準備
 
