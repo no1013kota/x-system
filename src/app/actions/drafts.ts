@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool } from "@/lib/db/pool";
+import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
 import {
   discardDraft,
   listDraftsForAccount,
@@ -49,6 +50,10 @@ const discardSchema = z.object({
   expected_updated_at: z.string().min(1),
 });
 const reconcileSchema = z.object({ draft_id: z.string().uuid() });
+const cloneSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  draft_id: z.string().uuid(),
+});
 
 interface BaseResult {
   code?: string;
@@ -152,6 +157,35 @@ export async function reconcileDraftPostingAction(
           ? "削除状況を再照合しました。"
           : "一意に確定できませんでした。X上の状態をご確認ください。";
     return { message, reconcileStatus: res.status, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function cloneFailedDraftForRetryAction(
+  input: unknown,
+): Promise<BaseResult & { draftId?: string }> {
+  const parsed = cloneSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { draftId } = await cloneFailedDraftForRetry(auth.userId, parsed.data, {
+      db: pooledDb,
+      copyImage: async (from, to) => {
+        const { error } = await createSupabaseAdminClient().storage
+          .from(IMAGE_BUCKET)
+          .copy(from, to);
+        if (error) throw new Error(`storage copy failed: ${error.message}`);
+      },
+      deleteImages: async (paths) => {
+        if (paths.length > 0) await createSupabaseAdminClient().storage.from(IMAGE_BUCKET).remove(paths);
+      },
+    });
+    revalidatePath("/app/posts");
+    return { draftId, message: "本文と画像を複製した新しい下書きを作成しました。", status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

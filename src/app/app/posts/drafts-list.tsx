@@ -4,7 +4,11 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
-import { discardDraftAction, reconcileDraftPostingAction } from "@/app/actions/drafts";
+import {
+  cloneFailedDraftForRetryAction,
+  discardDraftAction,
+  reconcileDraftPostingAction,
+} from "@/app/actions/drafts";
 import {
   getGenerationJobAction,
   publishDraftAction,
@@ -102,14 +106,16 @@ function DraftCard({
   const imageFailed = draft.images.some((img) => img.status === "failed");
   const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
   const editable = draft.status === "draft";
-  // 未解決の投稿状態（作成済みID・残存・曖昧）がある failed は破棄不可・要 reconcile（要件06 §7）。
+  // failed の投稿状態（要件06 §7）: 作成履歴あり=直接再投稿/破棄不可（cloneで再開）。
+  // 残存/曖昧=未解決（reconcile必要）。全削除確認済み（履歴あり・未解決なし）=clone可能。
   const lpe = draft.last_post_error;
+  const hasCreationHistory = draft.status === "failed" && draft.tweet_ids.length > 0;
   const unresolvedPosting =
     draft.status === "failed" &&
-    (draft.tweet_ids.length > 0 ||
-      (lpe?.remaining_tweet_ids?.length ?? 0) > 0 ||
+    ((lpe?.remaining_tweet_ids?.length ?? 0) > 0 ||
       (lpe?.ambiguous_create_indices?.length ?? 0) > 0 ||
       (lpe?.ambiguous_delete_tweet_ids?.length ?? 0) > 0);
+  const cloneEligible = hasCreationHistory && !unresolvedPosting;
   // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
   const publishing = pending || publishJobId !== null;
   const locked = publishing || editing;
@@ -119,6 +125,16 @@ function DraftCard({
       const res = await discardDraftAction({
         draft_id: draft.id,
         expected_updated_at: draft.updated_at,
+      });
+      if (res.status === "success") router.refresh();
+    });
+  }
+
+  function cloneForRetry() {
+    startTransition(async () => {
+      const res = await cloneFailedDraftForRetryAction({
+        request_key: crypto.randomUUID(),
+        draft_id: draft.id,
       });
       if (res.status === "success") router.refresh();
     });
@@ -205,8 +221,17 @@ function DraftCard({
           {editable && !editing ? (
             <PublishButton disabled={publishing} onConfirm={publish} />
           ) : null}
-          {/* 未解決の投稿状態がある間は破棄不可（先に再照合が必要, 要件06 §7）。 */}
-          <DiscardButton disabled={locked || unresolvedPosting} onConfirm={discard} />
+          {/* 全削除確認済み（作成履歴あり・未解決なし）は新draftとして再試行（要件06 §7）。 */}
+          {cloneEligible ? (
+            <Button disabled={pending} onClick={cloneForRetry} size="sm" type="button">
+              新しい下書きとして再試行
+            </Button>
+          ) : null}
+          {/* 作成履歴・未解決がある間は破棄不可（clone/reconcileで扱う, 要件06 §7）。 */}
+          <DiscardButton
+            disabled={locked || hasCreationHistory || unresolvedPosting}
+            onConfirm={discard}
+          />
         </div>
       </div>
 
