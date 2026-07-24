@@ -23,6 +23,7 @@ import {
   type PatternOption,
 } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
+import { HistoryList } from "./history-list";
 
 export const metadata: Metadata = { title: "投稿 | Space AI" };
 
@@ -117,6 +118,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
 
   let drafts: DraftView[] = [];
   let imageRegenEnabled = false;
+  let xHandle: string | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     const [loaded, plan] = await Promise.all([
       listDraftsForAccount(pooledDb, activeXAccountId, tab === "history" ? "history" : "drafts"),
@@ -125,8 +127,16 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         .then((r) => r.rows[0]?.plan ?? null),
     ]);
     drafts = await attachSignedImageUrls(loaded);
-    // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
-    imageRegenEnabled = (await availableImageProviders(user.id, plan)).length > 0;
+    if (tab === "drafts") {
+      // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
+      imageRegenEnabled = (await availableImageProviders(user.id, plan)).length > 0;
+    } else {
+      xHandle = (
+        await getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
+          activeXAccountId,
+        ])
+      ).rows[0]?.handle ?? null;
+    }
   }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
@@ -182,9 +192,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           selectedDraftId={params.draftId}
         />
       ) : (
-        <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
-          投稿履歴はM3後半で追加します。
-        </div>
+        <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
       )}
     </main>
   );

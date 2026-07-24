@@ -928,11 +928,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核`generation-jobs.ts` `publishDraft`（request_key＋active post_publish job[unique index]の二重冪等、draft所有/状態検証: draft はOK・failed は`hasUnresolvedPosting`[tweet_ids非空/remaining/ambiguous]なら job_conflict:unresolved_posting・その他は not_publishable、投稿prereq`assertPostingPrereqs`、`{mode}`inputでpost_publish job作成）。投稿用prereq`checkPostingPrerequisites`（execution-prereqs.ts・契約→Xキー(BYOK)→X連携のみ、AI/発信設定は不要）を追加。`publishDraftAction`（!dedupedでafter dispatch）。UI`drafts-list.tsx`: `PublishButton`（最終確認AlertDialog=「途中失敗で作成済み自動削除・復元不可」明示）＋job pollで成功→router.refresh（下書き→履歴）／失敗→通知＋refresh。**投稿中は編集/再生成/投稿/破棄を無効化＋「投稿中…」表示**（locked）。ImageSectionもpublishing中disable。テスト+8（publishDraft: draft作成/active dedup/request_key冪等/clean failed許可/unresolved[tweets]拒否/unresolved[ambiguous]拒否/posted拒否/prereq）、全783 green・build通過。doc: 要件05 §5は既述で一致、要件06 §7に「posting中disable・投稿prereqはAI不要」を追記。
 - 後続への注意: failed下書きの republish（tweet_id作成済み）は clone（cloneFailedDraftForRetry・未実装）経由。UIは status=draft のみ投稿ボタン表示（clean failed の直接再投稿はactionが許可するがUI導線は後続）。reconcileDraftPosting action は別タスク。
 
-### T-M3-22: SC-07履歴タブ（投稿履歴） `todo`
+### T-M3-22: SC-07履歴タブ（投稿履歴） `done`
 - 参照: S-6、SC-07、要件06 §4.3、要件02 §3.9、要件04 §14 / 依存: T-M3-18、T-M3-11 / サイズ: S
 - 完了条件:
   - postedのdraftが履歴タブに投稿日時・自動/手動（posted_mode）・パターン・tweet_ids（X上ポストへのリンク）付きで一覧表示され、本文・順序は編集不可の閲覧専用で表示される
   - 通知リンク形式`/app/posts?tab=history&draftId=...`で対象履歴を直接開ける
+- 実装メモ: `DraftView`＋`DRAFT_COLUMNS`に`tweet_ids`/`posted_mode`を追加（listDraftsForAccountの両tabで返る）。新規`history-list.tsx`（`HistoryList`/`HistoryCard`・**閲覧専用**: パターン・posted_mode(自動/手動)バッジ・投稿日時・thread本文・各ポストの「Xで見る（ポストN）」リンク[`https://x.com/{handle}/status/{tweetId}`・handle無しは`i`にフォールバック]、`draft-{id}`アンカー＋selectedDraftIdでring強調）。page.tsxのhistory branchをplaceholderから`HistoryList`へ差し替え（handleは`x_accounts.handle`をactiveXAccountIdで取得）。postedはdrafts tabから消えhistory tabへ（listはstatus=postedのみ）。posted通知link`/app/posts?tab=history&draftId=`はT-M3-18で設定済み→deep-link強調が機能。テスト: 既存783 green（UIタスク・DraftView変更はstatusのみ検証のDB/unit testに影響なし）・build通過。doc: 要件06 §6/§7[行168-169]・SC-07[行19]・要件04 §14 に既述で一致（変更なし）。
+- 後続への注意: 部分失敗でX上に残ったtweet_id・rollback削除済みIDの実績表示（要件06 §8 行211）・metrics_collector（SC-09）はM5。X permalink handleは`x_accounts.handle`を使用。
 
 ### T-M3-23: reconcileDraftPostingとfailed下書きの復旧UI `todo`
 - 参照: 要件05 §5、要件06 §7、要件06 §10 / 依存: T-M3-20 / サイズ: M
