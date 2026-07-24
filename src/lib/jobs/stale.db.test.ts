@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
+import { reserveUsage } from "../usage/generation-reserve";
 import { heartbeat, recoverStaleJobs, setStaleTerminalHandler } from "./stale";
+import { finalizeFailedJob } from "./terminal";
 
 /**
  * DB integration tests for heartbeat and stale recovery (T-M0-13, 要件04 §4).
@@ -28,6 +30,8 @@ describe("heartbeat & recoverStaleJobs", () => {
   beforeEach((ctx) => {
     if (!available) ctx.skip();
   });
+  // 各テスト後に実 terminal handler（finalizeFailedJob）へ戻す（mock差し替えの漏れ防止）。
+  afterEach(() => setStaleTerminalHandler(finalizeFailedJob));
 
   async function makeXid(c: PoolClient): Promise<string> {
     const uid = randomUUID();
@@ -148,6 +152,91 @@ describe("heartbeat & recoverStaleJobs", () => {
       await withTransaction((c) =>
         c.query(`delete from x_accounts where id = $1`, [xid]),
       );
+    }
+  });
+
+  // T-M6-05: reserve済みjobがstale→failed確定する際、同一transactionで利用枠がrefundされる。
+  async function seedPremium(c: PoolClient): Promise<{ uid: string; xid: string }> {
+    const uid = randomUUID();
+    await c.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
+      [uid, `${uid}@example.com`],
+    );
+    await c.query(
+      `insert into profiles (id, email, plan) values ($1,$2,'premium') on conflict (id) do update set plan = 'premium'`,
+      [uid, `${uid}@example.com`],
+    );
+    const xid = (
+      await c.query<{ id: string }>(
+        `insert into x_accounts (user_id, x_user_id, handle, name, auth_type) values ($1,$2,'h','n','byok') returning id`,
+        [uid, `x-${randomUUID()}`],
+      )
+    ).rows[0].id;
+    return { uid, xid };
+  }
+  async function genState(uid: string, jobId: string): Promise<{ gen: number; refunds: number }> {
+    return withTransaction(async (c) => {
+      const cnt = await c.query<{ n: number }>(
+        `select coalesce(generations_count,0) as n from usage_counters where user_id=$1`,
+        [uid],
+      );
+      const rf = await c.query<{ n: number }>(
+        `select count(*)::int as n from usage_events where job_id=$1 and reason='refund'`,
+        [jobId],
+      );
+      return { gen: cnt.rows[0]?.n ?? 0, refunds: rf.rows[0].n };
+    });
+  }
+  const cleanupUsage = async (uid: string) => {
+    await withTransaction((c) => c.query(`delete from usage_events where user_id=$1`, [uid]));
+    await withTransaction((c) => c.query(`delete from usage_counters where user_id=$1`, [uid]));
+    await withTransaction((c) => c.query(`delete from auth.users where id=$1`, [uid]));
+  };
+
+  it("refunds a reserved generation slot when a stale job is finalized failed (attempt>=3)", async () => {
+    const { uid, jobId } = await withTransaction(async (c) => {
+      const { uid, xid } = await seedPremium(c);
+      const jobId = await makeRunningJob(c, xid, 15, 3); // stale, attempt>=3
+      await reserveUsage(c as unknown as Parameters<typeof reserveUsage>[0], {
+        userId: uid,
+        xAccountId: xid,
+        jobId,
+        type: "generation",
+      });
+      return { uid, xid, jobId };
+    });
+    try {
+      expect((await genState(uid, jobId)).gen).toBe(1); // reserved
+      await recoverStaleJobs(); // real finalizeFailedJob refunds in the same tx
+      const s = await genState(uid, jobId);
+      expect(s.refunds).toBe(1); // exactly one refund event
+      expect(s.gen).toBe(0); // counter restored
+    } finally {
+      await cleanupUsage(uid);
+    }
+  });
+
+  it("does not add a second refund when the worker already refunded (idempotent)", async () => {
+    const { uid, jobId } = await withTransaction(async (c) => {
+      const { uid, xid } = await seedPremium(c);
+      const jobId = await makeRunningJob(c, xid, 15, 3);
+      const tx = c as unknown as Parameters<typeof reserveUsage>[0];
+      await reserveUsage(tx, { userId: uid, xAccountId: xid, jobId, type: "generation" });
+      return { uid, xid, jobId };
+    });
+    try {
+      // worker already refunded (same idempotency key として先に refund event を作る)
+      await withTransaction(async (c) => {
+        const { refundUsage } = await import("../usage/generation-reserve");
+        await refundUsage(c as unknown as Parameters<typeof refundUsage>[0], jobId, "generation");
+      });
+      expect(await genState(uid, jobId)).toEqual({ gen: 0, refunds: 1 });
+
+      await recoverStaleJobs(); // stale finalize must not double-refund
+      expect(await genState(uid, jobId)).toEqual({ gen: 0, refunds: 1 });
+    } finally {
+      await cleanupUsage(uid);
     }
   });
 });

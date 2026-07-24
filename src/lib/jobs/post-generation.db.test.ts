@@ -211,7 +211,7 @@ describe("executePostGeneration (local DB)", () => {
     await setPremium(uid);
     try {
       // first output is invalid → runTextGeneration repairs once → valid. reserve is once at start.
-      const provider = mockProvider(undefined, ["not json", '{"posts":["修復後の投稿"],"sources":[],"error":null}']);
+      const provider = mockProvider("", ["not json", '{"posts":["修復後の投稿"],"sources":[],"error":null}']);
       const res = await executePostGeneration(
         deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
       );

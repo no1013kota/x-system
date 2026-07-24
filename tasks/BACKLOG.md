@@ -1389,12 +1389,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: (1)**post_generation**（GEN-P1〜P6）: PostGenerationDeps に `runInTx` 追加。job開始・冪等early-return後・premium時に generation を `limit=PLANS.premium.usageLimits.generations` で reserve。上限到達（usage_limit_exceeded）は persistFailure(usage_limit_exceeded)＋terminal。以降を try/catch で包み、**最終失敗（前提不足/生成error/検証不能/draft保存失敗等）は catch で refund**、成功（draft作成→return）は catch を通らず消費維持。reserveは開始時1回のみ＝GEN-FIX短縮・JSON修復・出典再生成は同一jobの内部callで追加消費しない。(2)**image_generation**: ImageGenerationDeps に `runInTx` 追加。try 先頭で premium時に image を `limit=…images` で reserve、catch 先頭で **画像枠のみ refund**（冪等・reserve未実施ならno-op）。生成枠は親jobの勘定なので不可触（refund type='image'のみ）。(3)既存の generation reserve（learning-analysis/suggestion/md-merge-server）に `limit` を配線（T-M6-03のdefer解消）。stale経路の refund は terminal.ts が既に post_generation→generation・image_generation→image で正しく実装済み。standard/md は plan≠premium で reserve自体スキップ。テスト: post-generation.db（premium成功+1/JSON修復で二重加算なし・standard reserveなし・premium最終失敗refund net0）、image-generation.db（新規: 画像失敗で画像枠のみrefund・生成枠不可触／成功で画像+1）、既存unit/dbの deps に runInTx 追加。全1048 green・build通過。doc: 要件03 §7.1/§7.5 に既述で一致（影響なし）。
 - 後続への注意: prereq検証失敗時はreserve→refundのnet0（§7.5「消費なし」= counter net0で満たす。event log にはreserve+refund両方が残る）。learning/suggestion/md-mergeの usage_limit_exceeded は現状 worker のtry外reserveで throw→runJob failed（terminal refund no-op）＝graceful message未整備（premium上限到達の稀ケース。sourceはpending残存し得る）。M6残: 課金Stripe連携・法務ページ・リリース準備。
 
-### T-M6-05: staleジョブfailed確定時の利用枠refund回収 `todo`
+### T-M6-05: staleジョブfailed確定時の利用枠refund回収 `done`
 - 参照: 要件04 §4、要件03 §7.3、要件03 §7.4 / 依存: T-M6-04、M3 / サイズ: S
 - 完了条件:
   - reserve済みjobを人工的にstale化（locked_atを過去に設定・attempt=3）してtick handlerをローカル実行すると、failed確定と同時にrefund eventが1件だけ作られcounterが戻る
   - worker側で既にrefund済みのjobに対してtickが追加refundを作らない
 - メモ: scheduler_tickのstale回収でattempt>=3のrunning jobをfailed確定する同一transaction内で、当該jobの未返還reserve（job:{job_id}:generation:refund／image:refund）を同じ冪等keyでrefundする。worker通常経路のrefundと二重返還しないことを冪等keyで保証。
+- 実装メモ: stale→refund の配線は既存で充足を確認＝`stale.ts recoverStaleJobs` が `attempt>=MAX_ATTEMPTS(3)` の running job を同一tx内で failed確定＋`terminalHandler`（既定=`terminal.ts finalizeFailedJob`）呼び出し。finalizeFailedJob が kind別に `refundUsage`（post_generation/learning/md_merge/suggestion→generation、image_generation→image）を冪等keyで実行。本タスクの新規は**end-to-endテスト**（stale.db.test）: premium reserve済み post_generation job を stale(locked 15分前・attempt=3)化→`recoverStaleJobs`（実 finalizeFailedJob）→failed＋refund event 1件・generations_count 0復帰／worker先行refund済みなら tick が二重refundしない（冪等key）。既存テストの mock terminal handler 差し替え漏れ防止に `afterEach(setStaleTerminalHandler(finalizeFailedJob))` を追加。全green・build通過（下記で確認）。doc: 要件04 §4・要件03 §7.4（stale時 scheduler_tick が同一冪等keyでrefund）に既述で一致（影響なし）。
+- 後続への注意: M6残: 投稿枠consume（T-M6-06〜08）・原価台帳（T-M6-09/10）・プラン変更副作用（T-M6-11）・残量表示/通知（T-M6-12/13）・法務/LP（T-M6-14〜16）。
 
 ### T-M6-06: 投稿実行の通常/URL付き枠consume（post_create/post_delete・全プラン記録） `todo`
 - 参照: O-4、要件03 §7.1、要件03 §7.4、要件04 §10、要件04 §11、要件02 §3.13 / 依存: T-M6-03、M4 / サイズ: M
