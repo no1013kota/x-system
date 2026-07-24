@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   finalizeThread,
   looksLikeInjection,
+  PATTERN_MAX_POSTS,
+  revalidateEditedThread,
   sourceRequired,
   threadBlocksAutoPost,
   WARNING,
@@ -116,7 +118,36 @@ describe("finalizeThread", () => {
     expect(res.autoPostBlocked).toBe(false);
   });
 
-  it("threadBlocksAutoPost reflects blocking warnings", () => {
+});
+
+describe("revalidateEditedThread", () => {
+  it("recomputes weighted_length and length/cashtag/NG warnings (no FIX/SSRF/injection)", () => {
+    const thread = revalidateEditedThread(
+      [
+        { text: "あ".repeat(200) }, // 400 weighted, over limit
+        { text: "$A $B は儲かる" },
+        { text: "普通の投稿" },
+      ],
+      ["儲かる"],
+    );
+    expect(thread[0].weighted_length).toBe(400);
+    expect(thread[0].warnings).toContain(WARNING.lengthExceeded);
+    expect(thread[1].warnings).toEqual(
+      expect.arrayContaining([WARNING.cashtagMultiple, WARNING.ngWord]),
+    );
+    expect(thread[2].warnings).toEqual([]);
+    // 編集時はインジェクション判定をしない（出典外URLでも警告を付けない）
+    const withUrl = revalidateEditedThread([{ text: "見て https://x.test/a" }], []);
+    expect(withUrl[0].warnings).not.toContain(WARNING.injectionSuspected);
+  });
+
+  it("PATTERN_MAX_POSTS matches 要件06 §4.3", () => {
+    expect(PATTERN_MAX_POSTS).toMatchObject({ p1: 6, p2: 1, p3: 7, p4: 5, p5: 3, p6: 7 });
+  });
+});
+
+describe("threadBlocksAutoPost", () => {
+  it("reflects blocking warnings", () => {
     expect(threadBlocksAutoPost([{ local_id: "p1", text: "x", weighted_length: 1, sources: [], warnings: [] }])).toBe(
       false,
     );

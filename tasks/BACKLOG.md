@@ -813,13 +813,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `create-post-form.tsx`にjob状態＋useEffectポーリング（2.5s、`getGenerationJobAction`、TERMINALで停止）を追加。progress_stageをステッパー表示（validating/research/writing＋imageはON時のみ、済/進行中/未）。queued&created_atから60秒超過で「開始が遅れています。自動で再開されます（最大5分）」（進行中扱い）。succeeded→「下書きを作成しました」＋下書き確認リンク。failed→再試行ボタン（`retryGenerationJobAction`）。**再訪復元**: page（server）が active x_account の queued/running な post_generation 最新1件を`initialJob`としてフォームへ渡し、ポーリングを再開。生成中は「生成する」ボタン無効化。全694 green・build通過（UIはtypecheck/lint/build検証）。doc: 要件06 §4.2 が既述で整合＝影響なし。
 - 後続への注意: succeeded時の下書き“表示”遷移は下書きタブ（T-M3-11）へリンク（`?tab=drafts`）で暫定接続。job.errorのユーザー向け表示はコード化メッセージのみ（生値は出さない）。ポーリングはserver action経由（M4でrealtimeにするなら別途）。
 
-### T-M3-10: 下書きServer Actions（listDrafts／updateDraft／discardDraft） `todo`
+### T-M3-10: 下書きServer Actions（listDrafts／updateDraft／discardDraft） `done`
 - 参照: 要件05 §5、要件06 §4.3、要件02 §3.9、要件02 §4.7、S-5 / 依存: T-M3-01、M1 / サイズ: M
 - 完了条件:
   - updateDraftが`status=draft`のみ・expected_updated_at楽観lock（0件更新はjob_conflict）・1件以上かつpattern別最大数（P-1=6/P-2=1/P-3=7/P-4=5/P-6=7）・所有draftの既存画像のみ参照可を検証し、保存時に加重文字数・NG警告を再計算する。initial_threadは編集で更新されない
   - discardDraftはdraft/failedのみ許可し、未解決の投稿ID・作成成否があるfailedは拒否する。破棄成功時はdraft専用pathの生成画像をbest effortで削除する
   - listDraftsがactive_x_accountのstatus別フィルタ（下書き=draft/failed、履歴=posted）で一覧を返す
 - メモ: テストはseed済みdraftで実施可能（worker完成を待たない）。破棄はstatus=discardedへ遷移し物理削除しない。
+- 実装メモ: コア`lib/drafts.ts`（Queryable＋deleteImages注入）。updateDraft=owner join→status=draft限定（他statusはjob_conflict）→post数1..PATTERN_MAX_POSTS[pattern]（違反validation_error）→imageLocalIdsは既存local_id subset限定→`revalidateEditedThread`（加重文字数＋length/cashtag/ng警告のみ、FIX/SSRF/injectionなし）→楽観UPDATE（0行でjob_conflict）。initial_threadは不変。discardDraft=draft/failed限定、failedでtweet_ids非空 or last_post_error有りは`unresolved_posting`で拒否、status=discardedへ（物理削除せず）＋画像best-effort削除。listDraftsForAccount=active_x_account、drafts=draft/failed・history=posted。`generation-validation.ts`に`PATTERN_MAX_POSTS`＋`revalidateEditedThread`追加。Action`app/actions/drafts.ts`（pool・active解決・Supabase Storage remove）。**設計判断**: 楽観lockは`updated_at::text`を完全精度versionトークンに（JS Dateミリ秒往復ではtimestamptzマイクロ秒が欠落し照合が常にfailするため）。テスト+16（ユニット: drafts分岐・revalidate・PATTERN_MAX／DB4: 楽観lock・pattern max・discard(draft/failed/unresolved/posted)・list filter）。全710 green・build通過。doc: 要件05 §5・§4.3・要件02 §3.9/§4.7が既述で整合＝影響なし。
+- 後続への注意: **他のexpected_updated_at系楽観lock（updateDraftのquote fields拡張・publish等）も`updated_at::text`トークンで統一する**（ミリ秒往復回避）。下書き編集UI（T-M3-12）は本Actionを使い、version tokenにlistで得た`updated_at`（text）を渡す。P-5のquote fields編集は有効化後。画像のpost割当編集はT-M3-12/画像タスク。
 
 ### T-M3-11: SC-07下書きタブ（一覧・詳細・破棄・警告表示） `todo`
 - 参照: SC-07、S-5、要件06 §4.3、要件06 §10、要件04 §14 / 依存: T-M3-10 / サイズ: M

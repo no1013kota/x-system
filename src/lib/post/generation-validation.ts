@@ -31,6 +31,40 @@ export const AUTO_POST_BLOCKING_WARNINGS: ReadonlySet<string> = new Set<string>(
 
 export const MAX_FIX_ATTEMPTS = 2;
 
+/** pattern別の最大ポスト数（要件06 §4.3）。 */
+export const PATTERN_MAX_POSTS: Record<string, number> = {
+  p1: 6,
+  p2: 1,
+  p3: 7,
+  p4: 5,
+  p5: 3,
+  p6: 7,
+};
+
+/**
+ * 下書き編集時のポスト再検証（要件06 §4.3, T-M3-10）。加重文字数を再計算し、length/cashtag/NG の
+ * 警告を付け直す。PT-FIX短縮・SSRF・インジェクション判定は行わない（生成時の finalizeThread が担う）。
+ */
+export function revalidateEditedThread(
+  posts: { local_id?: string; text: string; sources?: string[] }[],
+  ngWords: readonly string[],
+): ThreadItem[] {
+  return posts.map((post, index) => {
+    const metrics = measurePostText(post.text);
+    const warnings: string[] = [];
+    if (!metrics.withinLimit) warnings.push(WARNING.lengthExceeded);
+    if (!metrics.cashtagOk) warnings.push(WARNING.cashtagMultiple);
+    if (matchNgWords(post.text, ngWords).length > 0) warnings.push(WARNING.ngWord);
+    return {
+      local_id: post.local_id ?? `p${index + 1}`,
+      text: post.text,
+      weighted_length: metrics.weightedLength,
+      sources: post.sources ?? [],
+      warnings,
+    };
+  });
+}
+
 export function threadBlocksAutoPost(thread: ThreadItem[]): boolean {
   return thread.some((post) =>
     post.warnings.some((w) => AUTO_POST_BLOCKING_WARNINGS.has(w)),
