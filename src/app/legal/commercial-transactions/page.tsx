@@ -19,6 +19,10 @@ const ITEMS = [
   ["自動更新", "無料期間終了後、選択プランを月単位で自動更新"],
   ["解約", "Customer Portalから期間末解約。支払済み期間の終了まで利用可能"],
   ["返金", "法令上返金が必要な場合を除き、支払済み料金は返金不可"],
+  [
+    "動作環境",
+    "最新版のモダンブラウザ（Google Chrome・Safari・Microsoft Edge等）とインターネット接続が必要です。JavaScriptとCookieを有効にしてご利用ください。",
+  ],
 ] as const;
 
 export default function CommercialTransactionsPage() {

@@ -1468,13 +1468,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: counter更新後に閾値を判定し、80%到達は各枠・各月1回のusage通知（dedupe_key例: usage:{month}:{counter_type}:80）、100%到達は通知＋常設バナー。100%バナーはnotification_configにかかわらず表示し、メール・通知一覧作成は設定を尊重。決済失敗・契約停止バナーはM1側の実装を前提とし、本タスクは利用枠100%のみ追加。通知基盤（notifications・メール送信）はM5想定。
 - 実装結果: (A)`usage-threshold.ts` `notifyUsageThresholds(db,{userId,key,newCount})`＝閾値80%(ceil(limit×0.8))・100%(limit)以上の枠へ'usage'通知を挿入。dedupe_key `usage:{JST月}:{key}:{80|100}`をSQL内で構築し on conflict(user_id,dedupe_key) do nothing で枠/月/閾値ごと1件。`notification_config->'usage'`のin_app/emailを尊重（両OFFなら行を作らない＝メールも作らない）。counter更新と同一tx。`reserveUsage`（generation/image）と`consumePostSlot`（post_normal/post_url）の increment を `returning {col}` にして直後に呼ぶ（既存の冪等early-returnはnotifyより前なので二重発火なし）。(B)`app-banners.ts` `usageLimitBanner(summary)`＝remaining=0枠があれば常設バナー（notification_config非依存・データ駆動）。App Shell（layout.tsx）が`loadUsageSummaryForUser`(premium限定)→バナーを全/app画面へ描画。テスト: 純関数閾値4件＋DB(dedupe/config OFF/email queued/reserve端到端)4件＋banner 3件。敵対的レビュー2観点で欠陥なし（idempotency・JST月一貫・config尊重・$3二重cast・React key）。doc影響なし（要件03 §8が80%/100%通知＋config非依存バナー＋メール設定尊重を既に規定）。
 
-### T-M6-14: 公開法務3ページの実装（/terms・/privacy・/legal/commercial-transactions） `todo`
+### T-M6-14: 公開法務3ページの実装（/terms・/privacy・/legal/commercial-transactions） `done`
 - 参照: 要件06 §11、要件01 §4、PRD §7、O-1 / 依存: M0 / サイズ: M
 - 完了条件:
   - /terms・/privacy・/legal/commercial-transactionsが未ログインで表示される
   - 特商法ページに要件06 §11の事業者情報が全項目表示される
   - /termsに料金・7日trial・自動更新・解約条件・生成コンテンツの最終責任・上限見直し条項が含まれる
 - メモ: 認証不要の公開routeとして3ページを実装。/termsは提供条件・禁止事項・X/生成コンテンツの責任（最終責任はユーザー）・料金・7日trial・自動更新・解約・停止免責・premium上限の見直し条項・改定・問い合わせ。/privacyは取得情報・利用目的・外部委託とAI/X APIへの送信・国外取扱い・保持削除・安全管理・開示等窓口。特商法表記は要件06 §11の事業者情報表（販売事業者・所在地・問い合わせ先・電話番号開示方針・返金・解約）を正とする。文面の専門家確認は人間側作業（open_questions参照）。
+- 実装結果: 3ページはM0/M1で骨格実装済みだった（`src/app/{terms,privacy,legal/commercial-transactions}/page.tsx`・いずれも /app 配下外の認証不要routeで、build上 ○ Static prerender＝未ログイン表示を確認）。特商法ページは §11 事業者情報全項目＋価格/支払時期/提供時期/自動更新/解約/返金を網羅済みで、不足の**動作環境**を追加。/termsは料金・7日trial・自動更新・解約・生成コンテンツ最終責任を網羅済みで、不足の**Premium利用枠の見直し条項**と**お問い合わせ**を追加（§11 /terms最低内容＋完了条件3を充足）。/privacyは §11 最低内容（取得/目的/外部送信/国外/保持削除/安全管理/開示窓口）を網羅済みで変更なし。文面は全ページ「暫定版・公開前に法務確認」を明示。CURRENT_TERMS/PRIVACY_VERSIONは据え置き（実文面確定＋version確定は法務確認の人間作業・要決定M1）。doc影響なし（要件06 §11が内容を規定・本タスクは§11への準拠補完）。
 
 ### T-M6-15: 法務導線の接続（footer・signup同意リンク・Checkout直前再掲） `todo`
 - 参照: 要件06 §11、要件01 §4、要件03 §1、要件03 §2.1、A-1 / 依存: T-M6-14、M1 / サイズ: S
