@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { loadAnalyticsForUser } from "./analytics-server";
+import { loadAnalyticsForUser, loadFollowerSnapshotsForUser } from "./analytics-server";
 import { closePool, getPool, withTransaction } from "./db/pool";
 
 /**
@@ -104,6 +104,29 @@ describe("analytics loader (local DB)", () => {
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [owner.uid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [other.uid]));
+    }
+  });
+
+  it("loads follower snapshots in period, ascending, owner-scoped", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c));
+    await withTransaction(async (c) => {
+      await c.query(
+        `insert into follower_snapshots (x_account_id, snapshot_date, followers_count) values
+           ($1, (now() at time zone 'Asia/Tokyo')::date - 3, 100),
+           ($1, (now() at time zone 'Asia/Tokyo')::date - 1, 130),
+           ($1, (now() at time zone 'Asia/Tokyo')::date - 200, 10)`,
+        [xid],
+      );
+    });
+    try {
+      const rows = await loadFollowerSnapshotsForUser(uid, xid, 90);
+      expect(rows.map((r) => r.count)).toEqual([100, 130]); // ascending, 200d-ago excluded
+      // owner-scoped
+      const otherUser = randomUUID();
+      expect(await loadFollowerSnapshotsForUser(otherUser, xid, 90)).toHaveLength(0);
+    } finally {
+      await withTransaction((c) => c.query(`delete from follower_snapshots where x_account_id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
 });

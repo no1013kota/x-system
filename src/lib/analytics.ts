@@ -147,6 +147,37 @@ export function aggregateThread(draft: DraftAnalytics, checkpoint: CheckpointDay
   };
 }
 
+export interface FollowerPoint {
+  /** JST日付（YYYY-MM-DD）。 */
+  date: string;
+  count: number;
+}
+
+export interface FollowerSeriesSummary {
+  latest: number | null;
+  /** 期間内の最初のsnapshotからの増減（点が1件以下なら null）。 */
+  delta: number | null;
+  min: number | null;
+  max: number | null;
+  points: number;
+}
+
+/** フォロワー推移の要約（最新値・期間増減・最小/最大）。欠損日は点を作らずスキップ済み前提。 */
+export function followerSeriesSummary(points: FollowerPoint[]): FollowerSeriesSummary {
+  if (points.length === 0) {
+    return { latest: null, delta: null, min: null, max: null, points: 0 };
+  }
+  const counts = points.map((p) => p.count);
+  const latest = counts[counts.length - 1];
+  return {
+    latest,
+    delta: points.length > 1 ? latest - counts[0] : null,
+    min: Math.min(...counts),
+    max: Math.max(...counts),
+    points: points.length,
+  };
+}
+
 export interface AnalyticsSummary {
   periodDays: number;
   postCount: number;

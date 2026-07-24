@@ -6,6 +6,7 @@ import {
   type AnalyticsDraftRow,
   type AnalyticsSummary,
   type DraftAnalytics,
+  type FollowerPoint,
 } from "./analytics";
 import { getPool } from "./db/pool";
 import type { Queryable } from "./x/token-refresh";
@@ -51,4 +52,22 @@ export async function getAnalyticsSummaryForUser(
 ): Promise<AnalyticsSummary> {
   const drafts = await loadAnalyticsForUser(userId, xAccountId, periodDays);
   return summarize(drafts, periodDays);
+}
+
+/** 所有者のみ。直近 days 日のフォロワー日次snapshotを日付昇順で返す（欠損日は点を作らない）。 */
+export async function loadFollowerSnapshotsForUser(
+  userId: string,
+  xAccountId: string,
+  days: number,
+): Promise<FollowerPoint[]> {
+  const { rows } = await pooledDb.query<{ date: string; count: number }>(
+    `select fs.snapshot_date::text as date, fs.followers_count as count
+       from follower_snapshots fs
+       join x_accounts xa on xa.id = fs.x_account_id
+      where fs.x_account_id = $1 and xa.user_id = $2
+        and fs.snapshot_date >= (now() at time zone 'Asia/Tokyo')::date - ($3 || ' days')::interval
+      order by fs.snapshot_date asc`,
+    [xAccountId, userId, String(days)],
+  );
+  return rows.map((r) => ({ date: r.date, count: Number(r.count) }));
 }

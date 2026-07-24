@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
-import { loadAnalyticsForUser } from "@/lib/analytics-server";
+import { loadAnalyticsForUser, loadFollowerSnapshotsForUser } from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { AnalyticsView } from "./analytics-view";
+import { FollowerChart } from "./follower-chart";
 
 export const metadata: Metadata = { title: `分析 | ${APP_NAME}` };
 
@@ -38,7 +39,10 @@ export default async function AnalyticsPage() {
     );
   }
 
-  const drafts = await loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS);
+  const [drafts, followers] = await Promise.all([
+    loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
+    loadFollowerSnapshotsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
@@ -49,7 +53,8 @@ export default async function AnalyticsPage() {
           投稿ごとの実績を、投稿後1日・7日・30日のcheckpointで確認できます（直近90日）。
         </p>
       </header>
-      <div className="mt-7">
+      <div className="mt-7 space-y-8">
+        <FollowerChart points={followers} />
         <AnalyticsView drafts={drafts} />
       </div>
     </main>

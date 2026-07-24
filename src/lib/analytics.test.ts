@@ -4,6 +4,7 @@ import {
   aggregateThread,
   buildDraftAnalytics,
   defaultCheckpoint,
+  followerSeriesSummary,
   summarize,
   type AnalyticsDraftRow,
 } from "./analytics";
@@ -127,5 +128,28 @@ describe("summarize", () => {
     expect(s.checkpoints["1"]).toMatchObject({ tweets: 2, impressions: 150 }); // a:100 + b:50
     expect(s.checkpoints["7"]).toMatchObject({ tweets: 2, impressions: 280 }); // a:200 + b:80
     expect(s.checkpoints["30"]).toMatchObject({ tweets: 0, impressions: 0 });
+  });
+});
+
+describe("followerSeriesSummary", () => {
+  it("empty → all null", () => {
+    expect(followerSeriesSummary([])).toEqual({ latest: null, delta: null, min: null, max: null, points: 0 });
+  });
+  it("single point → no delta", () => {
+    expect(followerSeriesSummary([{ date: "2026-07-01", count: 100 }])).toMatchObject({
+      latest: 100,
+      delta: null,
+      min: 100,
+      max: 100,
+      points: 1,
+    });
+  });
+  it("multiple → latest, delta from first, min/max", () => {
+    const s = followerSeriesSummary([
+      { date: "2026-07-01", count: 100 },
+      { date: "2026-07-03", count: 90 }, // dip
+      { date: "2026-07-05", count: 130 },
+    ]);
+    expect(s).toMatchObject({ latest: 130, delta: 30, min: 90, max: 130, points: 3 });
   });
 });

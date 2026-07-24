@@ -1307,12 +1307,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核 `analytics.ts`（純粋）＝`buildDraftAnalytics`（posted=全tweet_id live／failed=remaining live＋deleted監査行、unavailable印、incomplete/metricsCompleted）、`defaultCheckpoint`（合算対象で取得済み最長・無ければ1）、`aggregateThread(draft,checkpoint)`（合算対象=非監査&非unavailable、選択checkpoint取得済みのみ合計・**各fieldは全present非nullの時だけ合計、1件でもnullなら null＝`--`**、欠損数=checkpoint未取得の合算対象数）、`summarize`（checkpoint別 tweets/impressions/likes/reposts/profile_clicks を非null加算）。配線 `analytics-server.ts`（`loadAnalyticsForUser`＝posted＋`remaining_tweet_ids`>0のfailedを posted_at 期間で所有権付き読取、`getAnalyticsSummaryForUser`）、Action `app/actions/analytics.ts`（`getAnalyticsSummaryAction({period_days})`・active account解決）、UI `analytics/page.tsx`（直近90日ロード・未連携はEmptyState）＋`analytics-view.tsx`（client・1/7/30切替＝既定最長・合算カード＋欠損併記・tweet別表・profile_clicks `--`・監査/取得不能/不完全thread/更新終了バッジ）。テスト: 単体9（build/default/aggregate null伝播/監査除外/summarize）＋db2（期間・posted/failed-remaining選定・remaining無しfailed/draft/期間外除外・他ユーザー除外）。全1012 green・build通過。UIはrepo方針でcomponent testなし（型/lint/build＋core/Action単体で担保）。doc: 要件06 §8 に90日窓＋summary集計を追記（v1.17）、§8既述の表示仕様（checkpoint切替/合算/`--`/更新終了/不完全thread/監査除外）と一致。
 - 後続への注意: フォロワー推移グラフは T-M5-16（follower_snapshots）。改善提案表示は T-M5-17系（SUGGEST）。実績一覧の期間は90日固定（summary Actionのみ period_days 可変）。checkpoint切替はグローバル（全draft横断・既定=最長）。
 
-### T-M5-16: T-M5-16: SC-09 フォロワー数推移グラフ `todo`
+### T-M5-16: T-M5-16: SC-09 フォロワー数推移グラフ `done`
 - 参照: K-3、SC-09、要件02 §3.11、要件06 §2 / 依存: T-M5-14 / サイズ: S
 - 完了条件:
   - seedしたfollower_snapshotsから日次推移グラフが描画され、期間切替（例: 7日/30日/90日）と欠損日のスキップ表示が動作する
   - snapshot未収集時の空状態（収集は日次で自動実行される旨の説明）が表示される
 - メモ: グラフはSC-09内の1セクション。レスポンシブ・色以外の状態表現（アクセシビリティ）に留意。
+- 実装メモ: 中核 `analytics.ts` に `FollowerPoint`型＋`followerSeriesSummary`（latest/delta(初点比)/min/max/points）を追加。配線 `analytics-server.ts` `loadFollowerSnapshotsForUser`（所有権付き・JST基準の直近days・日付昇順）。UI `analytics/page.tsx` が90日ロードして `follower-chart.tsx`（client・**依存追加なしのinline SVG**）へ渡す。期間切替7/30/90（既定30・client側で now 起点フィルタ、`Date.now` は `useState(()=>Date.now())` で1度確定しrender純粋性を満たす）。欠損日は点を作らず実日付でx配置（gap表現）。折れ線＋circleマーカー（色以外）＋数値サマリ（現在・期間増減）＋`<details>`データ表でa11y。未収集は空状態（日次自動記録案内）。`viewBox`＋`w-full`でレスポンシブ。テスト: 単体3（followerSeriesSummary empty/single/multi）＋db1（期間内昇順・200日前除外・所有権）。全1016 green・build通過。UIはrepo方針でcomponent testなし。doc: 要件06 §8 にフォロワー推移セクションを追記（v1.18）。
+- 後続への注意: 改善提案（SUGGEST）は T-M5-17（入力集計）→T-M5-18系（生成・表示）。チャートは外部ライブラリ不使用（inline SVG）＝将来リッチ化する場合もこの方針か、導入時はADRで技術判断を記録。
 
 ### T-M5-17: T-M5-17: SUGGEST入力集計モジュール（<stats>/<posts>組み立て） `todo`
 - 参照: K-2、SUGGEST、プロンプト §6.15、プロンプト §4.2、要件04 §12 / 依存: T-M5-12 / サイズ: M
