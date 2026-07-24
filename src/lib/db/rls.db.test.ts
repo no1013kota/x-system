@@ -210,4 +210,26 @@ describe("RLS policies & ownership trigger", () => {
       await actAsSuperuser(c); // no-op guard; keeps helper referenced
     });
   });
+
+  // 全般（要件02 §5, T-M6-20）: 個別tableのポリシーだけでなく、全public tableに横断で不変条件を課す。
+  it("enables row-level security on every public table (別ユーザーのselectを構造的に遮断)", async () => {
+    const { rows } = await db!.query<{ relname: string }>(
+      `select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity = false
+        order by 1`,
+    );
+    // RLS未有効のtableが1つでもあれば、そのtableは別ユーザーの行が見えてしまう。
+    expect(rows.map((r) => r.relname)).toEqual([]);
+  });
+
+  it("grants the authenticated role no direct write on any public table (writeはservice-role経由のみ)", async () => {
+    const { rows } = await db!.query<{ table_name: string; privilege_type: string }>(
+      `select table_name, privilege_type from information_schema.role_table_grants
+        where grantee = 'authenticated' and table_schema = 'public'
+          and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
+        order by 1, 2`,
+    );
+    // authenticated に直接write権限を持つtableは無い（別ユーザーへの書込みも構造的に不可）。
+    expect(rows).toEqual([]);
+  });
 });

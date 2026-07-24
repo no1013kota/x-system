@@ -11,7 +11,9 @@
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit:check": "node scripts/audit-check.mjs",
+    "release:check": "npm run typecheck && npm run lint && npm run audit:check && npm run test && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

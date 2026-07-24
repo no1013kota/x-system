@@ -23,6 +23,8 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 **D-4: 失敗provider callのusage/原価記録の責務（M3〜台帳MS着手前に決定・m0-full-audit指摘）** — `runTextGeneration`（pipeline.ts）は`generate()`が成功returnした後にのみ`usage.calls`へ積むため、provider callが例外throw（`PauseTurnIncompleteError`・timeout・5xx等）した場合、`status:"failed"`/`error_code`付きの`ProviderCall`が記録されない。一方プロンプト設計書 §5.6は「全provider callを保存」、要件04 §10は「成功・失敗を問わず原価台帳へ記録」とする。M0では原価台帳（external_api_usage_events）連携自体が後続MS送りのため実害は潜在。要決定: 失敗callの記録を(案A)pipelineがtry/catchで`ProviderCall(status=failed)`を積む／(案B)worker/台帳MSが失敗時にexternal_api_usage_eventsへ直接記録する、のどちらにするか。※throw時はSDKがusageを返さないことが多く、記録できるのはrequest ID・error_code・発生事実に限られる点も考慮。`ProviderCallMeta`は既に`status`/`errorCode`を受け取れる（normalize.ts）。**T-M6-09時点の状態（2026-07-25）**: 原価台帳への記録は全AI job（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG）＋NEWSへ配線済み。ただし記録対象は`usage.calls`に現れるcall（`generate()`が返却した成功call＋status=failed返却call）に限られ、**provider例外throwのcallは依然として`calls`へ積まれず未記録**（pipeline.ts `callOnce`はgenerate成功後にのみpush）。案A（pipelineがtry/catchで`ProviderCall(status=failed)`を積む）か案Bかは未決のまま。
 
+**D-7: 依存の脆弱性（breaking upgrade要）の解消方針（T-M6-20で顕在化・2026-07-25）** — `npm audit` に high 3件（`sharp`＝libvips CVEでsharp<0.35.0、`next`／`postcss`＝next同梱）とmoderate 4件がある。いずれも修正には breaking upgrade（`sharp@0.35.x`・`next` minor）が必要で、画像正規化（image-normalize）とApp全体の再検証を伴う。T-M6-20 の release ゲート（`scripts/audit-check.mjs`）はこの3 high を **package名 allowlist（next/postcss/sharp）** で通し、critical と allowlist外 high は失敗させる暫定運用。要決定: (案A)次の保守枠で `sharp`/`next` を計画的に upgrade しフルスイート＋build＋画像テストで検証してから allowlist を外す（推奨） / (案B)現状維持しリリース後に対応。リリース前チェックリスト（T-M6-21）で判断する。
+
 **D-3: news_fetchの時間窓欠落対策（解決済み 2026-07-21: 案I・3時間ラップ取得）** — 「時間窓の欠落を許容しない」要件を、案I（§2維持）で解決。`news_fetch`は各回が直近3時間分を重ねて取得し、1時間ごと起動の窓の重なりで「3回に1回成功すれば取得漏れなし」の回復性を持たせる。稼働は9:00〜20:00・12回/日を維持（コスト現状維持）、前日18:00以降の夜間・稼働終了間際分は当日9:00/10:00/11:00の起動が延長ルックバック15/16/17時間で補完（20:00始点だと19時台発行分が1回しか取得機会を得ず欠落し得るため18:00始点）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみ、欠落回復はラップ取得側が担う。NEWSを永続job化する案II（§2改定）は不採用。反映先: PRD N-1/N-2・§8.3、プロンプト設計書 §6.10（`{{hours}}`=12-20時3／9-11時15-17）、要件04 §6、要件06 SC-06（既定7日表示）、ADR-0003。受け入れ条件はT-M4-10/11へ反映済み。
 
 **M0関連**
@@ -1520,13 +1522,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: Supabase Free運用向けに`supabase db dump`による論理backupスクリプト（AES等で暗号化しSupabase外へ保存する形式）と、復元手順・週1回＋schema変更前の運用手順を整備する。RPO最大7日・RTO best effortを手順書へ明記。実行環境（常時稼働Mac等）と保存先の用意は人間側作業（open_questions参照）。
 - 実装結果: `scripts/db-backup.sh`（`pg_dump --no-owner --no-privileges "$DATABASE_URL"`→`openssl enc -aes-256-cbc -pbkdf2 -salt`でBACKUP_ENCRYPTION_KEY暗号化→`$BACKUP_OUT_DIR/spaceai-{ts}.sql.enc`）と`scripts/db-restore.sh`（openssl復号→`psql "$TARGET_DATABASE_URL"`）を新設。npm `db:backup`/`db:restore`、`.gitignore`へ`backups/`・`*.sql.enc`追加（漏洩防止）。ツールは`supabase db dump`ではなく**pg_dump採用**（フル論理dumpで復元互換・空DBへ0エラー相当で復元、supabase db dumpはCLI依存でschema寄り）。運用メモ`docs/operations/database-backup-restore.md`新設（前提PG17クライアント＋openssl・週1＋schema変更前・RPO≤7日/RTO best effort・復元/検証手順・非superuser復元時の`vault.secrets`/`log_min_messages`権限エラーは無害と明記）。**検証**: ローカルSupabase(PG17.6)で実スクリプトをpg_dump/psql（container 17.6）経由で実行、暗号化dump（Salted__始まりの暗号文・平文SQLでない）→空DBへ復元→public 18テーブル・prompt_templates seed 7件が元と一致を確認。doc: 要件01 §9をpg_dump採用＋運用メモ参照へ更新（v1.8）。実行環境・保管先・鍵管理は人間側作業。
 
-### T-M6-20: リリース判定テストスイート（dependency audit・RLS・認可/CSRF/SSRF） `todo`
+### T-M6-20: リリース判定テストスイート（dependency audit・RLS・認可/CSRF/SSRF） `done`
 - 参照: 要件01 §8、要件02 §5、要件05 §11、要件05 §12 / 依存: T-M6-17、T-M6-18、M0 / サイズ: M
 - 完了条件:
   - 一括実行コマンドがCI相当環境（ローカル）ですべて成功する
   - RLSテストが別ユーザーからのselect/write拒否をユーザー所有テーブル全般で検証する
   - SSRFテストがprivate IP直指定とredirect先private IPの両方の拒否を検証する
 - メモ: リリース判定に必要なテスト群を一括実行可能にする：dependency audit（npm audit相当）、RLS policyテスト（別ユーザーからのユーザー系テーブルselect/write拒否）、認可テスト（CRON_SECRET欠落時のcron/jobs拒否・Stripe署名不正拒否・Origin検証・plan別403）、SSRF検証テスト（出典URLのprivate/loopback/link-local IP拒否・redirect先再検証・timeout 10秒）。
+- 実装結果: 個別テストは既存（RLS `db/rls.db.test.ts`、SSRF `post/source-url.test.ts`＝private/loopback/link-local＋DNS rebinding＋redirect先再検証＋timeout、認可 `api/cron/route-auth.test.ts`・`jobs/auth.test.ts`・`api/jobs/run/route.test.ts`・`stripe/webhook.test.ts`）。本タスクの追加: (条件1) 一括実行 `npm run release:check`＝typecheck→lint→audit:check→test（全db含む）→build を新設し、ローカルで全成功を確認（exit 0）。(dependency audit) `scripts/audit-check.mjs`＝`npm audit --json`を解析し critical は必ず、high は allowlist（next/postcss/sharp＝breaking upgrade待ちの既知high・D-7で追跡）外なら失敗。moderate/lowは報告のみ。現状 critical=0/high=3(全allowlist)でOK。(条件2 全般) `rls.db.test.ts`へ横断catalogチェック2件追加＝全public tableでRLS有効（別userのselect構造的遮断）＋authenticated roleに全public tableでINSERT/UPDATE/DELETE grant無し（別userへのwrite不可）。既存の個別isolation/write-denialに横断保証を追加。doc影響なし（要件05 §11/§12・要件02 §5・要件01 §8が対象を既に規定）。既知脆弱性の解消（breaking upgrade）は要決定D-7。
 
 ### T-M6-21: リリース前チェックリストの作成と消化（dry_run→live切替・公式ドキュメント再確認） `todo`
 - 参照: 要件01 §3.1、要件01 §7、要件01 §9、PRD §8.1、要件定義 §7、運用メモ §2〜4、要件03 §9、プロンプト §5.7 / 依存: T-M6-20、T-M6-19、T-M6-15、T-M6-16、T-M6-08、T-M6-10、T-M6-11、T-M6-13 / サイズ: M
