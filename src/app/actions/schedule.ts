@@ -2,9 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 
+import { z } from "zod";
+
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, withTransaction } from "@/lib/db/pool";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import {
+  disableXAutomation,
+  recordXAutomationConsent,
+  recordXAutomationConsentSchema,
+  type AutomationConsentState,
+  type DisableAutomationResult,
+} from "@/lib/x/automation-consent";
 import {
   createScheduleSlot,
   createScheduleSlotSchema,
@@ -122,6 +131,46 @@ export async function disableScheduleSlotAction(
     const slot = await disableScheduleSlot(auth.userId, parsed.data, slotDeps);
     revalidatePath("/app/schedule");
     return { message: "スケジュールを停止しました。", slot, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+const disableAutomationSchema = z.object({ x_account_id: z.string().uuid() });
+
+export async function recordXAutomationConsentAction(
+  input: unknown,
+): Promise<BaseResult & { consent?: AutomationConsentState }> {
+  const parsed = recordXAutomationConsentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const consent = await recordXAutomationConsent(pooledDb, auth.userId, parsed.data);
+    revalidatePath("/app/schedule");
+    return { consent, message: "自動投稿への同意を記録しました。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+export async function disableXAutomationAction(
+  input: unknown,
+): Promise<BaseResult & { result?: DisableAutomationResult }> {
+  const parsed = disableAutomationSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const result = await disableXAutomation(auth.userId, parsed.data.x_account_id, {
+      runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+    });
+    revalidatePath("/app/schedule");
+    return { message: "自動投稿を停止しました。", result, status: "success" };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

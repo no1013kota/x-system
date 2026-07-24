@@ -1,6 +1,7 @@
 import { AppError } from "@/lib/observability/errors";
 import { PLANS, type PlanId } from "@/lib/plans";
 
+import { disableAutomationForAccount } from "./automation-consent";
 import { expectedAuthTypeForPlan } from "./oauth-start";
 import type { Queryable } from "./token-refresh";
 
@@ -265,6 +266,8 @@ export async function disconnectXAccount(
   }
 
   await deps.runInTx(async (tx) => {
+    // 自動投稿の停止（disabled_at・auto slot無効化・queued auto起点jobのcancel）を共通化（T-M4-02）。
+    await disableAutomationForAccount(tx, xAccountId);
     await tx.query(
       `update x_accounts
           set access_token_ciphertext = null,
@@ -275,15 +278,9 @@ export async function disconnectXAccount(
               status = 'disabled',
               automation_consent_version = null,
               automation_consented_at = null,
-              automation_disabled_at = now(),
               updated_at = now()
         where id = $1 and user_id = $2`,
       [xAccountId, userId],
-    );
-    await tx.query(
-      `update schedule_slots set enabled = false, updated_at = now()
-        where x_account_id = $1 and mode = 'auto'`,
-      [xAccountId],
     );
     await tx.query(
       `update profiles set active_x_account_id = null
