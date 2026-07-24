@@ -850,12 +850,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `generation-jobs.ts` `regenerateDraft`＝元draft（owner・status=draft/clean-failed）を読み、pattern・previous_posts（thread本文）・additional_instructionsを`job.input`（parent_draft_id＝元draft）へsnapshotして**新しいtop-level post_generation job**を冪等作成（request_key・5件制限・prereq・P-5 feature gate共通化）。post-generation handlerを拡張: `job.input.parent_draft_id`→新draftの`parent_draft_id`に設定、`job.input.previous_posts`→`buildGenUser`の`<previous_draft>`ブロック（改善の素材）。gen-context `buildGenUser`に`previousDraft`追加。元draftは読むだけで変更・破棄しない。Action`regenerateDraftAction`（新規のみafter dispatch）。UI: drafts-list.tsxに「再生成」トグル＋`RegenerateBox`（追加指示textarea→`regenerateDraftAction`→「完了後に派生下書きが表示」）。派生draftは`parent_draft_id`でT-M3-11の派生元リンクに現れ破棄可。テスト+5（ユニット4: snapshot/parent_draft_id・非regenerable・unresolved・冪等／DB1: parent_draft_id伝播）。全716 green・build通過。doc: 要件05 §5・要件06 §4.3が既述で整合＝影響なし。
 - 後続への注意: premium生成枠のreserve/refund（1消費）はM6。regenerate結果の進捗表示は作成タブのポーリング（T-M3-09）とは別導線（下書きタブは完了後の一覧refreshで反映。必要ならjob追跡UIを後続で）。source/quote snapshotのうちquoteはP-5有効化後に拡張。
 
-### T-M3-14: 画像生成アダプタ（OpenAI／Gemini）と画像正規化 `todo`
+### T-M3-14: 画像生成アダプタ（OpenAI／Gemini）と画像正規化 `done`
 - 参照: プロンプト設計書 §5.5、P-7、要件06 §6、要件05 §12 / 依存: M2 / サイズ: M
 - 完了条件:
   - 画像アダプタがOpenAI/Geminiをモックで呼び分け、16:9へ最も近い対応値への変換指定、返却画像のデコード・形式/実寸/MIME/容量検証を行う
   - JPG/PNG/WEBP・5MB以下への変換・圧縮がテスト画像で確認できる
 - メモ: モデル名は環境変数（OPENAI_IMAGE_MODEL／GEMINI_IMAGE_MODEL）。プロバイダ固有のsize文字列等の差異はアダプタへ閉じ込め共通仕様にしない。
+- 実装メモ: 純粋コア`src/lib/ai/image.ts`（`ImageGen`契約＋`makeImageGen`でprovider呼び分け＋`pickNearestSize`でアスペクト比→最近傍。OpenAIはpixel size文字列/Geminiはaspect ratio文字列をアダプタ内で解決、b64デコードして`RawImage{bytes,declaredMime}`を返す）。正規化`src/lib/ai/image-normalize.ts`（sharp。`inspectImage`で実形式/実寸/容量検証、`normalizeForX`でJPG/PNG/WEBP・5MB以下へ変換/圧縮。許可形式かつ上限内はそのまま返す）。server配線`src/lib/ai/image-client.ts`（`resolveImageGen(ResolvedKey)`で実SDK注入）。sharp採用は[ADR-0004]、package.jsonへ直接依存追加（Next同梱でbinary取得不要）。T-M3-15はこの`resolveImageGen`＋`normalizeForX`を画像jobから呼ぶ。
 
 ### T-M3-15: image_generation workerと生成からの連鎖 `todo`
 - 参照: 要件04 §8、要件04 §9、GEN-IMG、プロンプト設計書 §4.2、プロンプト設計書 §6.8、要件02 §4.8 / 依存: T-M3-05、T-M3-14、T-M3-02 / サイズ: L

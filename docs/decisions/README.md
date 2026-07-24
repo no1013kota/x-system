@@ -49,3 +49,4 @@ Acceptedになった仕様は、同じ作業単位で要件詳細へ反映する
 | [ADR-0001](./0001-initial-infrastructure-plan.md) | Accepted（一部ADR-0002で置換） | 初期launchdからVercel Cronへの移行、Vercel Pro + Supabase Free、Supabase Proへの移行条件を定義 |
 | [ADR-0002](./0002-job-dispatch-fanout.md) | Accepted | ジョブ実行を「1 job = 1 Function呼び出し」のdispatch fan-outへ変更。scheduler_tickを5分間隔化、Function上限200秒（H-1/H-2レビュー対応） |
 | [ADR-0003](./0003-cron-window-claim.md) | Accepted | 定時トリガーの時間窓重複受付防止を、transaction modeプーラで保持できないセッションadvisory lockから`cron_runs` window claim（dedup marker）へ変更。完了状態は持たず実行保証（トリガー=at-most-once／ジョブ=at-least-once相当）を明記（review-m0-12-to-20対応） |
+| [ADR-0004](./0004-image-processing-sharp.md) | Accepted | 画像正規化（デコード・形式/実寸/MIME/容量検証・JPG/PNG/WEBP・5MB以下への変換/圧縮）に`sharp`を採用。Next.js同梱のため追加binary取得不要、直接依存へ昇格（T-M3-14対応） |
