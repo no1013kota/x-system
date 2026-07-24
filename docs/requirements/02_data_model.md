@@ -211,6 +211,8 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 Indexes: (`category`, `impact`, `fetched_at desc`)
 
+`source_url`のcanonical化（保存前・T-M4-11 `canonicalizeSourceUrl`）: scheme/hostを小文字化、既定ポート（http:80/https:443）除去、fragment除去、トラッキングパラメータ（`utm_*`・`fbclid`・`gclid`等）除去、残クエリをキー順で安定化、末尾スラッシュ除去。窓の重なりで届く同一記事の別URL表記を1件へcollapseする（解釈不能なURLはtrimのみ）。
+
 RLS: 認証済みユーザーselect可。writeはservice roleのみ。
 
 ### 3.8 `generation_jobs`

@@ -61,6 +61,7 @@ function buildTextGen(key: ResolvedKey, deadline?: Deadline): TextGen {
 export interface ResolvedTextProvider {
   textGen: TextGen;
   provider: Provider;
+  model: string;
   keySource: KeySource;
 }
 
@@ -76,6 +77,7 @@ export async function resolveTextProvider(
   return {
     textGen: buildTextGen(key, opts.deadline),
     provider: key.provider,
+    model: key.model,
     keySource: key.keySource,
   };
 }
@@ -88,6 +90,7 @@ export function resolveNewsProvider(
   return {
     textGen: buildTextGen(key, opts.deadline),
     provider: key.provider,
+    model: key.model,
     keySource: key.keySource,
   };
 }
