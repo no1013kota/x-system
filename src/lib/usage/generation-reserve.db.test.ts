@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
+import { AppError } from "../observability/errors";
 import { refundUsage, reserveUsage } from "./generation-reserve";
 
 /**
@@ -106,5 +107,65 @@ describe("reserveUsage / refundUsage (db)", () => {
     const jobId = randomUUID();
     const refunded = await withTransaction((c) => refundUsage(c, jobId, "generation"));
     expect(refunded).toBe(false);
+  });
+
+  it("fails with usage_limit_exceeded at the limit, leaving event/counter unchanged", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const job1 = await makeJob(xid);
+    const job2 = await makeJob(xid);
+    try {
+      // limit=1: first reserve brings the counter to the limit.
+      await withTransaction((c) => reserveUsage(c, { userId: uid, xAccountId: xid, jobId: job1, type: "generation", limit: 1 }));
+      expect((await state(uid, job1)).gen).toBe(1);
+
+      // second reserve is at the limit → usage_limit_exceeded, no event/counter change.
+      const err = await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId: job2, type: "generation", limit: 1 }),
+      ).catch((e: unknown) => e as AppError);
+      expect((err as AppError).code).toBe("usage_limit_exceeded");
+      const s2 = await state(uid, job2);
+      expect(s2.reserves).toBe(0); // no reserve event for job2
+      expect(s2.gen).toBe(1); // counter unchanged (still 1)
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [[job1, job2]]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
+  it("refunds a cross-month reserve back to the original month (JST)", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const jobId = await makeJob(xid);
+    try {
+      // Simulate a July reserve (past month) + July counter=1, then refund in a later month.
+      await withTransaction(async (c) => {
+        await c.query(
+          `insert into usage_events
+             (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key)
+           values ($1, $2, $3, '2026-07', 'generation', 'generation', 1, 'reserve', $4)`,
+          [uid, xid, jobId, `job:${jobId}:generation:reserve`],
+        );
+        await c.query(`insert into usage_counters (user_id, month, generations_count) values ($1, '2026-07', 1)`, [uid]);
+      });
+
+      const refunded = await withTransaction((c) => refundUsage(c, jobId, "generation"));
+      expect(refunded).toBe(true);
+
+      const julyCount = (
+        await withTransaction((c) =>
+          c.query<{ generations_count: number }>(
+            `select generations_count from usage_counters where user_id = $1 and month = '2026-07'`,
+            [uid],
+          ),
+        )
+      ).rows[0].generations_count;
+      expect(julyCount).toBe(0); // refund hit the original month, not the current one
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [jobId]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
   });
 });

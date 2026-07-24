@@ -1369,13 +1369,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: managed経路は M2 の OAuth 実装（T-M2-12/13/14）で最初から作り込み済み＝(1)`oauth-start.ts` `expectedAuthTypeForPlan`（premium→managed／standard・md→byok）＋`resolveClient` が managed で `managedOAuthClient()`（`X_MANAGED_CLIENT_ID`／`X_MANAGED_CLIENT_SECRET`・secretありでconfidential）を使い authorize URL 生成、state に authType を封緘。(2)callback route `resolveOAuthClient` が `authType==='managed'→managedOAuthClient()`、`exchangeCode` は confidential で `Authorization: Basic base64(id:secret)`（oauth.ts）。`handleXOAuthCallback` は `tx.authType` を伝播し `linkXAccountRecord` が `auth_type=managed` で暗号化token保存（byok時のみ user_api_keys(x) を valid 化＝managedは触らない）。(3)`enableXAccount` が `expectedAuthTypeForPlan(plan)≠auth_type` を forbidden(auth_type_mismatch)。期待auth_typeはplan由来のため standard→managed / premium→byok は構造的に発生しない。本タスクでの新規実装は無し。**追加したのはmanaged経路のテスト**: oauth-callback.test（managed sealed state→resolveClient('managed')・confidential client でcode交換・persist authType=managed）、oauth-callback.db.test（premium managed callback→auth_type=managed・暗号化token・user_api_keys(x)なし）。既存: oauth-start.test（premium→managed）、account-actions.test（enableXAccount auth_type mismatch byok under premium）。全1041 green・build通過。doc: 要件01 §3.4／§7・要件02 §3.3・要件03 §6・要件05 §4.3 に既述で一致（影響なし）。
 - 後続への注意: managed の token refresh も confidential client（Basic auth）で行う（token-refresh 実装済み）。app-only tokenでは投稿せず、常に利用者本人のuser context token。
 
-### T-M6-03: プレミアム利用枠サービス基盤（reserve/refund・冪等key・月境界） `todo`
+### T-M6-03: プレミアム利用枠サービス基盤（reserve/refund・冪等key・月境界） `done`
 - 参照: O-4、要件03 §7.2、要件03 §7.3、要件03 §7.4、要件02 §3.13、要件02 §3.14 / 依存: M0、M1 / サイズ: M
 - 完了条件:
   - 同一冪等keyでreserveを2回実行してもeventは1件・counterは+1のみで、2回目はno-opになる（ローカルDBテスト）
   - 上限到達時のreserveはusage_limit_exceededで失敗し、event・counterとも変化しない
   - JST月境界を跨いだrefund（7月reserve→8月refund）が元のmonth=7月のcounterへ-1される
 - メモ: DATABASE_URL直結の複文transactionで、usage_countersのFOR UPDATE→上限確認→usage_events insert→counter±1を原子的に行うサーバー専用モジュール。冪等key（job:{job_id}:generation:reserve等）の重複はno-op。refundはref_event_id必須で元reserveと同じcounter/month/operationへ-1。monthはJST基準YYYY-MMで3アカウント合算・繰越なし（月初reset不要）。上限到達はusage_limit_exceededを返す。
+- 実装メモ: `usage/generation-reserve.ts`（reserveUsage/refundUsage）は T-M5-03 で基盤実装済み＝完了条件1（冪等reserve: event `on conflict (idempotency_key) do nothing`＋新規挿入時のみcounter+1、2回目no-op）と条件3（refundは元reserve行から month/counter_type/operation をコピーし ref_event_id 付きで当該monthのcounterを-1＝JST月境界跨ぎも元月へ戻る）を充足。本タスクの新規実装は**条件2の上限確認**: reserveUsage に任意 `limit` を追加し、当月 usage_counters を `for update` でロック→現在値読取→（冪等: 既存reserveなら上限判定せずno-op）→`limit`指定かつ `count>=limit` なら `usage_limit_exceeded` を投げ event/counter を一切変更しない（要件03 §7.4）。FOR UPDATE で並行reserveの上限すり抜けを防止。上限値は premium の `PLANS.premium.usageLimits`（generations=100/images=20）を呼び出し側（T-M6-04）が渡す。既存呼び出し（learning/md-merge/suggestion/terminal）は limit 未指定で従来挙動維持（後方互換）。テスト: db（idempotent既存＋**上限到達でusage_limit_exceeded・event/counter不変**＋**cross-month refundが元月へ-1**）。全1043 green・build通過。doc: 要件03 §7.4 の「上限確認」を reserveUsage に実装＝既述と一致（影響なし）。
+- 後続への注意: 生成/画像ジョブへの limit 付き reserve 組み込みは T-M6-04（premiumのみ・GEN-FIX等の重複加算防止）。既存workerは現状 limit 未指定なので premium 上限は T-M6-04 で有効化される。
 
 ### T-M6-04: 生成・画像ジョブへの生成枠/画像枠reserve/refund組み込み `todo`
 - 参照: O-4、要件03 §7.1、要件03 §7.5、要件04 §8、要件04 §9、プロンプト §1 / 依存: T-M6-03、T-M6-01、M3 / サイズ: M
