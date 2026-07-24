@@ -262,7 +262,9 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | 参考URL（`source_url`等） | `https://`形式のみ検証する。アプリは本文を取得せず、URL文字列を`<input>`でproviderへ渡し、内容確認はproviderのWeb検索が行う（確認できない場合の挙動はプロンプト側の中止条件・error返却に従う） |
 | 出典URL検証 | DNS解決後のprivate/loopback/link-local IPを拒否し、redirect先も再検証する（本文は取得しない。timeout 10秒） |
 | `request_key` | クライアント生成UUID。ユーザーIDをprefixしてjobのunique keyへ保存 |
-| X投稿URL | hostは`x.com`/`twitter.com`、pathは`/{handle}/status/{numeric_id}`だけ許可 |
+| X投稿URL（`ref_post`） | hostは`x.com`/`twitter.com`、pathは`/{handle}/status/{numeric_id}`だけ許可 |
+| 参考アカウントURL（`ref_account`） | hostは`x.com`/`twitter.com`、pathは`/{handle}`（statusを含まない）だけ許可。`handle`は`[A-Za-z0-9_]{1,15}` |
+| 学習URLのcanonical化 | `ref_account`は`https://x.com/{handle}`、`ref_post`は`https://x.com/{handle}/status/{id}`へ正規化（host統一・handle小文字化）して保存し、`removed`再追加の同一判定に使う |
 | 投稿本文 | 空不可。公式`twitter-text`互換でweighted length 280以下、cashtagは1件以下 |
 | password | 12〜64文字、UTF-8で72 bytes以下、確認用入力と一致 |
 | `time_jst` | 09:00〜22:00、分は00または30 |
