@@ -786,14 +786,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: コア`post/generation-validation.ts` `finalizeThread`（pure＋shorten/validateSource注入）。各ポスト: 加重280超過は`shorten`(PT-FIX)で最大2回→なお超過で`length_exceeded`／cashtag≥2で`cashtag_multiple`（text-metrics）／NG検出で`ng_word`（ng-words）／指示マーカーor検証済み出典に無いURLで`injection_suspected`。出典はSSRF（validateSource）通過分のみ最終ポストへ、出典必須パターン（sourceRequired: P-1/4/6常時・P-2/3はURL時）で通過ゼロなら`source_missing`＋sourcesMissing。警告コードは`AUTO_POST_BLOCKING_WARNINGS`＝下書きは自動投稿阻害（要件06 §4.3）。worker結線: post-generation.tsで`postsToThread`を`finalizeThread`に置換、shorten=textGen+PT-FIX（usageを親jobへ合算）、出典必須で空なら**runTextGenerationを1回再生成**して再finalize、FIX/再生成のProviderCallをusage.callsへ加算。SSRF server配線`post/source-url-server.ts`（node dns.lookup{all}＋fetch）。テスト+10（ユニット9: FIX最大2・cashtag・NG・SSRF選別・injection・出典必須空／DB1: NG→draft警告）。全676 green・build通過。doc: 警告コード語彙＋SSRF出典を要件02 §4.7へ追記（v1.13）。
 - 後続への注意: 自動投稿ゲート（M4）は`thread[].warnings`を`AUTO_POST_BLOCKING_WARNINGS`で判定し手動確認へ切替。injection判定はヒューリスティック（指示マーカー＋出典外URL）で誤検知の可能性あり＝将来調整可。P-5引用検証（§7.6）はfeature flag OFFで未実装。
 
-### T-M3-07: 生成job Server Actions（createGenerationJob／get／retry／cancel） `todo`
+### T-M3-07: 生成job Server Actions（createGenerationJob／get／retry／cancel） `done`
 - 参照: 要件05 §5、要件05 §12、要件05 §2.2、要件06 §3.2、要件06 §4.2、要件04 §3 / 依存: T-M3-05、M1、M2 / サイズ: M
 - 完了条件:
   - createGenerationJobがzod検証・前提検証（契約/キー/X連携/発信設定の不足時はsubscription_required等のコード＋details.不足項目と設定画面パス）・x_account_id所有権と一致検証（不一致はjob_conflict）・request_key冪等（同keyは既存job_id返却）・同時queued/running 5件制限を満たし、`after()`でworkerへdispatchされることを統合テストで確認できる
   - retryGenerationJobはfailed jobのみparent_job_id付き新jobを冪等作成し、cancelGenerationJobはqueuedのみcanceled化（runningは拒否）、getGenerationJobは所有者のみ参照できる
 - メモ: 前提検証はM1の契約状態・M2のキー/X連携状態を参照する共通ヘルパとして実装（ニュース画面のcreateDraftFromNewsやホーム初期設定ガイドからも再利用される）。P-5のfeature_disabled拒否は本マイルストーン後段のタスクで実装。
-
-### T-M3-08: SC-07作成タブ：生成フォーム（2ペイン） `todo`
+- 実装メモ: コア`jobs/generation-jobs.ts`（zod＋deps注入: runInTx/gatherPrereqInputs/quotePostEnabled）。createGenerationJob=同一tx内で request_key冪等確認→active一致（`profiles.active_x_account_id`≠指定はjob_conflict:x_account_mismatch）→前提再検証（`gatherExecutionPrereqInputs`＋`checkExecutionPrerequisites`でコード＋missing＋settingsPath）→queued/running 5件制限（MAX_ACTIVE_JOBS=job_conflict:too_many_active_jobs）→`on conflict (request_key) do nothing`挿入（競合時は既存返却）。P-5はquotePostEnabled=false時にexternal前にfeature_disabled。request_keyは`requestKey(userId, token)`。retry=failedのみparent_job_id付き冪等新job。cancel=queuedのみcanceled（running/終端はjob_conflict、canceledは冪等）。get=owner joinのみ。Action`app/actions/generation-jobs.ts`が pool・`gatherExecutionPrereqInputs`・`env.FEATURE_QUOTE_POST_ENABLED`を束ね、新規作成時のみ`after(()=>dispatchJob)`。テスト+18（ユニット14: 全分岐／DB4: 冪等・5件制限・active不一致・retry/cancel/get）。全694 green・build通過。doc: 要件05 §5/§12/§2.2が既述で整合＝影響なし。
+- 後続への注意: regenerateDraft/publishDraft/reconcile/clone等の下書き系Action（要件05 §5）は後続タスク。前提検証の共通化（createGenerationJobのassertPrereqs）はニュースcreateDraftFromNews（M4）でも再利用可。P-5有効化時はquote_url必須＋対象取得検証を追加。
 - 参照: SC-07、要件06 §4.1、要件06 §4.2、P-1〜P-4、P-6、P-7、要件05 §12 / 依存: T-M3-07 / サイズ: M
 - 完了条件:
   - /app/postsの作成タブが2ペイン（パターン選択＋入力／プレビュー・結果）で表示され、P-1〜P-4/P-6を選択できる（P-5はflag OFFで非表示）
