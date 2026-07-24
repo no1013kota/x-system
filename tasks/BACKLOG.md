@@ -1005,13 +1005,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `post-publish.ts` の検証フェーズ（auto警告チェック直後・**token取得/media/投稿の前**）に mode==='auto' 時の同意再確認を追加。x_accountsを `automation_consent_version=CURRENT ＋ consented_at非null ＋ disabled_at null` でok判定（`CURRENT_AUTOMATION_CONSENT_VERSION`使用）。ok≠trueなら draftを`status='draft'`へ戻し、jobを`canceled`（`where status='running'`ガード）にして`PostPublishError("automation_consent_revoked")`をthrow（X APIは一切呼ばない）。撤回・旧version（version不一致）はいずれもok=falseで同一停止経路。manual/draft modeは同意チェックをスキップ（手動投稿は影響なし）。テスト+3（consent revoked/stale→無投稿・draft復帰・job canceled、consent current→通常投稿、manual→consent照会なし）、全824 green・build通過。doc: 要件04 §10 step2・要件05 §7 に既述で一致（変更なし）。
 - 後続への注意: runningのpost_publish jobはT-M4-02のcancel対象外だが、本worker再確認が最終防波堤。auto post_publishの生成連鎖（auto post_generation→post_publish、slot_id/mode伝播）はM4のauto実行タスクで配線する。
 
-### T-M4-04: SC-08 スケジュール画面（週間プレビュー・スロットCRUD UI・楽観lock） `todo`
+### T-M4-04: SC-08 スケジュール画面（週間プレビュー・スロットCRUD UI・楽観lock） `done`
 - 参照: SC-08、S-1、S-2、S-4、要件06 §1、要件06 §2、要件05 §7 / 依存: T-M4-01 / サイズ: M
 - 完了条件:
   - 曜日×時刻（09:00〜22:00・30分刻み）の週間プレビューにslotが表示され、作成・編集・停止・削除がServer Action経由で反映されることをローカルで確認
   - 編集競合（job_conflict）時に最新値の再読込を促すUIが表示される
   - パターン選択肢にP-5が表示されない（P-5はスケジュール対象外・flag OFF非表示）
 - メモ: 空状態・読み込み中・失敗状態を用意（要件06 §2）。mode=auto選択時の同意modalは次タスクで接続する（本タスクでは同意なしauto保存がサーバー側で拒否されることの表示まで）。
+- 実装メモ: `/app/schedule/page.tsx`（placeholder→実装）でslot一覧・imageProviders・automation同意状態・active_x_accountをロード（未連携は設定導線）。client`schedule-manager.tsx`: **WeekPreview**（時刻×曜日テーブル、slotをpattern略称バッジで表示・auto/draft/停止中で色分け）＋作成/編集フォーム`SlotFields`（**パターンはp1-p4/p6のみ=P-5除外**・曜日checkbox・時刻select[09:00-22:00の30分]・mode radio[下書き/自動]・画像toggle+provider・追加指示）＋`SlotRow`（編集inline/停止/削除）。全CRUDはT-M4-01のServer Action経由（create/update/disable/delete）→成功でrouter.refresh。**job_conflict**は「他の場所で更新…再読み込み」表示。mode=auto＋未同意は事前ヒント＋保存時`automation_consent_required`をメッセージ表示（同意modal接続はT-M4-05）。空状態あり。テスト: 全824 green（UIタスク・CRUDロジックはT-M4-01のschedule-slots.testで検証済み）・build通過。doc: 要件06 §2[SC-08]・§1[空状態・初期スケジュール作成なし]・要件05 §7 に既述で一致（変更なし）。
+- 後続への注意: **T-M4-05**が自動投稿同意modal（説明文version付きcheckbox・recordXAutomationConsentAction）とSC-08/SC-11の「自動投稿をすべて停止」（disableXAutomationAction・無効化slot数表示）をこの画面へ接続する。読み込み中状態はSSR（router.refresh）依存のため明示spinnerは省略（各アクションはpending表示あり）。
 
 ### T-M4-05: 自動投稿同意モーダルと「自動投稿をすべて停止」UI（SC-08／SC-11） `todo`
 - 参照: S-3、SC-08、SC-11、要件06 §3.5、要件06 §7、PRD §8.1 / 依存: T-M4-02、T-M4-04 / サイズ: S
