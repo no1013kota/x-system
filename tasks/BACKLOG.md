@@ -965,12 +965,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: **既存**: createGenerationJob(T-M3-07)・regenerateDraft(T-M3-13) はP-5拒否済み、作成フォームP-5非表示(T-M3-08)。**追加**: `regenerateImage`/`publishDraft` に draft.pattern ロード＋`pattern==='p5' && !quotePostEnabled → feature_disabled`。**worker cancel**: post-generation.ts に `quotePostEnabled` dep追加、loadJob直後（外部/枠消費前）に P-5＋flag OFF なら `status='canceled'`（`where status='running'`）＋throw。**runJob**（worker.ts）の succeeded/failed 終了更新に `and status='running'` ガード追加（handlerの自己終端[canceled]を上書きしない・汎用改善）。post-generation-server で `env.FEATURE_QUOTE_POST_ENABLED` を配線。**UI** drafts-list: `quotePostEnabled` prop（page→DraftsList→DraftCard）、`p5Disabled=pattern==='p5' && !flag` で編集/再生成/画像再生成/投稿を無効化＋「引用ポスト機能は現在利用できません」表示、破棄は未解決なしなら可。テスト+5（regenerateImage/publishDraft P-5拒否、worker P-5 cancel、既存matcher更新[d.pattern追加]）、全798 green・build通過。doc: 要件05 §5[行173]・要件04 §1[行19]・要件06 §4.1[行149] に既述で一致（変更なし）。
 - 後続への注意: **runJobに`status='running'`ガードを追加**したので、以後handlerがpoolで自己終端（canceled等）した状態はrunJobの一括finalizeで上書きされない（D-5の中央finalizer検討時に前提となる挙動）。有効化後のP-5機能（対象取得検証・<quote_post>・quote_url合成）は別タスク。
 
-### T-M3-26: SC-05ホーム確認キュー `todo`
+### T-M3-26: SC-05ホーム確認キュー `done`
 - 参照: SC-05、要件06 §1、要件06 §10、S-5 / 依存: T-M3-11 / サイズ: S
 - 完了条件:
   - /appに確認待ち下書き（未投稿draft・警告付き含む）のカードが表示され、各行からSC-07の該当下書きへ遷移できる
   - 確認待ちが0件のときは空状態と「今すぐ作成」（SC-07作成タブへの導線）が表示される
 - メモ: ホームの他要素は各担当で追加する：次回スロット表示はM4、重要ニュースはニュース側、実績・利用残量表示は分析／M6側。初期設定ガイドカードはM1/M2の前提検証ヘルパを表示する画面で、本タスクと同居させる場合も導線のみ。
+- 実装メモ: `src/app/app/confirmation-queue.tsx` `ConfirmationQueueCard`（server component・表示専用）。/appホーム（page.tsx）で `resolveActiveXAccountForUser`＋`listDraftsForAccount(...,'drafts')` をロードし `status==='draft'` を確認待ちとしてfilter→カード表示（pattern・警告[thread警告 or image失敗]で「要確認」バッジ・更新時刻・本文冒頭line-clamp、各行 `/app/posts?tab=drafts&draftId=` へLink）。0件は空状態＋「今すぐ作成」（`?tab=create`）。SetupGuideCard（既存）と同居。次回スロット/ニュース/実績/残量は範囲外（M4/分析/M6）。テスト: 全798 green（UIタスク・listDraftsForAccountは既存テスト）・build通過。doc: 要件06 §1[行17 SC-05 catalog]・§10[行228 確認待ちなし→今すぐ作成] に既述で一致（変更なし）。**M3（AI生成〜投稿〜復旧）完了**。
+- 後続への注意: **M3全タスク（T-M3-01〜26）done**。次はM4（自動運用・スケジュール・ニュース・通知）。ホームの次回スロット表示はM4のschedule実装時に本カードへ追加する。
 
 ## M4: 自動運用・ニュース・通知
 
