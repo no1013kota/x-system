@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * ジョブ dispatch ヘルパ（要件04 §1/§3, ADR-0002）。「1 job = 1 Function呼び出し」で
  * `POST /api/jobs/run` を叩く。手動（Server Action/API Routeの after()）・親workerからの

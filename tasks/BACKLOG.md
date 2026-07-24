@@ -1503,13 +1503,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: nonceベースCSP（frame-ancestors 'none'・object-src 'none'を含む）をmiddlewareで実装し、productionでHSTS・X-Content-Type-Options: nosniff・厳格なReferrer-Policyを付与。production cookieはSecure、認証・OAuth補助cookieはHttpOnly・SameSite=Laxを既定化。既存画面のinline script/styleをnonce対応へ修正。
 - 実装結果: このNext(v16)は`middleware.ts`ではなく`proxy.ts`規約で、既存`proxy.ts`→`updateSupabaseSession`が唯一のproxy経路。新設`src/lib/security-headers.ts`（nonce生成・CSP構築・応答ヘッダ付与、next非依存でunit可）を`updateSupabaseSession`へ配線：request headerへnonce+CSPを載せNext.jsに自身のscript/`next/script`(Turnstile)へnonce付与させ、全応答（通常・redirect）へCSP・nosniff・Referrer-Policy（prodはHSTS）を付与。`script-src 'self' 'nonce' 'strict-dynamic'`（'unsafe-inline'無し=nonceなしinline script非実行）、`style-src 'self' 'unsafe-inline'`、`img-src https:`（Xアバター/Storage画像）、Turnstile/Sentryを許可、`frame-ancestors/object-src 'none'`。**静的prerenderはnonce付与不可のため**公開コンテンツ4ページ（LP・法務3）を`force-dynamic`化。cookie（auth/OAuth/billing）はHttpOnly/SameSite=Lax/Secure(prod)を既存setterで確認済み。**runtime検証**: `next build`→`next start`で`/`（動的化後nonce 16件付与）・`/login`（nonce付与）に全ヘッダ付与、HSTS(prod)・img-src https: をcurlで確認。テスト: security-headers 10件＋update-session既存4件パス。doc: 要件01 §8にADR参照追記＋ADR-0005新設（CSP実装方針）。
 
-### T-M6-18: ログredactとServer only境界・安全なエラー変換 `todo`
+### T-M6-18: ログredactとServer only境界・安全なエラー変換 `done`
 - 参照: 要件01 §8、プロンプト §5.6、要件03 §1、要件02 §5 / 依存: M0、M3 / サイズ: M
 - 完了条件:
   - redactユーティリティのユニットテストで対象フィールド（Authorization・cookie・キー・token・prompt・投稿前入力）がマスクされる
   - 秘密値参照moduleをClient Componentからimportするとビルドが失敗する
   - provider例外がユーザー応答でコード化された安全なメッセージへ変換され、レスポンスにstack trace・provider本文が含まれない
 - メモ: Sentry beforeSend・共通loggerでAuthorization・cookie・APIキー・token・prompt全文・投稿前の非公開入力をredactする。service role・APP_ENCRYPTION_KEY・providerキー・OAuth tokenを参照するmoduleへ`server-only`を導入しClient Componentからのimportをビルドエラー化。ユーザー向けエラーへprovider本文・stack traceを出さない共通変換層を全Server Action/API/workerへ適用。
+- 実装結果: 基盤はM0-M3で実装済みだった。(1) redact `observability/redact.ts`＋`sentry.ts` beforeSend＝Authorization/cookie/token/secret/password/api_key/credentials/prompt/base_md/投稿前入力/nested/arrayをマスク、`redact.test.ts`で全項目検証済み。(3) `observability/errors.ts` `toUserFacingError`＝AppErrorは安全なcode+日本語message、未知（provider例外含む）はinternal_errorへ畳んでstack/provider本文を出さない。`errors.test.ts`でstack非漏洩・cause非公開を検証済みで、Server Action 15/18がこれを使用（残る3=auth-state型定義のみ・legal-consent/authは固定安全文言＋catch握り潰し）。**本タスクの追加**: 秘密値をenvから直接読むのに`server-only`が無かった`jobs/auth.ts`（`process.env.CRON_SECRET`）・`jobs/dispatch.ts`（CRON_SECRET/APP_BASE_URL）へマーカーを追加。`server-boundary.test.ts`を**動的走査**へ刷新（src/lib全走査で env秘密読取/createSupabaseAdminClient/getEncryptionKey を参照するモジュール＝現17件が`import "server-only"`を持つことを強制、regression検出）。純粋core（decrypt注入・env秘密を直接読まない`*.ts`）は対象外＝既存アーキテクチャ通り。build成功で新マーカーがclient transitive importを壊さないことを確認。doc影響なし（要件01 §8が境界・redact・安全エラー変換を既に規定）。
 
 ### T-M6-19: Supabase論理バックアップのスクリプトと復元手順 `todo`
 - 参照: 要件01 §9 / 依存: M0 / サイズ: S
