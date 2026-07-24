@@ -1486,13 +1486,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: LP・会員登録・プラン選択・アプリ設定のfooterから3ページへ到達可能にする。signupは利用規約同意checkboxとプライバシー確認checkboxを別々に表示し、リンクを新タブで開く（version保存自体はM1実装済みの想定。現行version定数と実ページの紐付けを行う）。plans→Checkout直前に税込料金・7日trial・自動更新・支払時期・解約方法を再掲し、LP/plansから特商法表記へ容易に到達できるようにする。
 - 実装結果: 共通`LegalFooter`（3法務ページ＝利用規約/プライバシー/特商法へのリンク）を新設し、LP（`app/page.tsx`）・会員登録（`signup/page.tsx`）・プラン選択（`plans/page.tsx`）・アプリ設定（`settings/page.tsx`）へ配置＝条件1充足（footer付与のため各pageをflex-col化）。条件2（規約同意/プライバシー確認の別checkbox＋新タブリンク target=_blank rel=noopener）はM1で実装済みを確認（signup-form.tsx・terms_accepted/privacy_acknowledged）。条件3（Checkout直前の税込料金・7日trial・自動更新・支払時期・解約・提供開始の再掲＋特商法リンク）はplans pageにCheckoutButton直前で実装済みを確認。UIはtsc/lint/build検証（3法務route静的生成）。doc影響なし（要件06 §11がfooter到達性・signup別checkbox・Checkout直前再掲を既に規定）。LP骨格はT-M6-16で刷新予定だがfooterは引き継ぐ。
 
-### T-M6-16: LP（SC-01）の実装 `todo`
+### T-M6-16: LP（SC-01）の実装 `done`
 - 参照: SC-01、要件06 §1、PRD §6、PRD §7、要件01 §4 / 依存: T-M6-14、M0 / サイズ: M
 - 完了条件:
   - `/`が未ログインで表示され、提供価値・3プラン税込価格・BYOKの別途API費用負担の明示・/signup導線を含む
   - モバイル幅で本文の横スクロールが発生しない
   - footerから法務3ページへ遷移できる
 - メモ: `/`に提供価値、3プラン比較（税込500/1,000/2,980円・7日trial）、BYOKプランはX API・生成AI APIの利用料が別途ユーザー負担であることの明示、premiumはキー不要であること、/signupへの登録導線、法務ページfooterを実装。レスポンシブ対応（PC＋スマホ閲覧）。
+- 実装結果: M0プレースホルダ `/`（`app/page.tsx`）を実LPへ刷新。ヘッダ（ログイン導線）／Hero（提供価値見出し＋APP_DESCRIPTION＋「無料で始める」→/signup・「プランを見る」→/plans）／できること4項目（収集・生成・自動投稿・分析）／料金3プラン（PLANSから税込500/1,000/2,980円・Xアカウント上限・7日trial明示、BYOK=standard/mdは「X API・生成AI API利用料が別途ユーザー負担」をamber注記、premiumは「APIキー不要・追加API費用なし」をemerald注記）＋末尾に/signup導線。CTAは`buttonVariants`（Buttonはaschild非対応）。footerは共通`LegalFooter`（T-M6-15）で3法務ページへ。レスポンシブ: max-w-6xl/px-4/`sm:grid-cols-*`/flex-wrap で横スクロールなし。build上 `┌ ○ /`＝Static prerender（未ログイン表示）を確認。doc影響なし（要件06 §1 SC-01が内容を規定）。UIはtsc/lint/build検証。
 
 ### T-M6-17: セキュリティヘッダ・cookie属性の仕上げ（CSP/HSTS/nosniff/Referrer-Policy） `todo`
 - 参照: 要件01 §8、PRD §7 / 依存: M0 / サイズ: M
