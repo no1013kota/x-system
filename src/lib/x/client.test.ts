@@ -57,14 +57,33 @@ describe("X client — dry_run gates writes", () => {
     expect(res.dryRun).toBe(true);
   });
 
-  it("uploadMedia returns a pseudo media id in dry_run and throws in live", async () => {
+  it("uploadMedia returns a pseudo media id in dry_run without HTTP", async () => {
     const m = mockHttp([]);
     const res = await uploadMedia("tok", { data: Buffer.from("x"), mimeType: "image/png" }, dryRunDeps(m.http));
     expect(res.mediaId).toBe("dryrun-media-id1");
+    expect(res.dryRun).toBe(true);
     expect(m.calls()).toBe(0);
-    await expect(
-      uploadMedia("tok", { data: Buffer.from("x"), mimeType: "image/png" }, liveDeps(m.http)),
-    ).rejects.toThrow(/posting-execution milestone/);
+  });
+});
+
+describe("X client — uploadMedia (live)", () => {
+  it("POSTs /media/upload with base64 media + category and parses data.id", async () => {
+    const m = mockHttp([ok({ data: { id: "media-77" } }, "rq-m")]);
+    const res = await uploadMedia(
+      "tok",
+      { data: Buffer.from("PNGDATA"), mimeType: "image/png" },
+      liveDeps(m.http),
+    );
+    expect(res).toEqual({ mediaId: "media-77", requestId: "rq-m", quantity: 1, dryRun: false });
+    const req = m.requests[0];
+    expect(req.method).toBe("POST");
+    expect(req.url).toBe("https://api.x.com/2/media/upload");
+    const body = JSON.parse(req.body as string);
+    expect(body).toEqual({
+      media: Buffer.from("PNGDATA").toString("base64"),
+      media_category: "tweet_image",
+      media_type: "image/png",
+    });
   });
 });
 

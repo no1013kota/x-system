@@ -286,18 +286,32 @@ export async function getTweetMetrics(
 }
 
 /**
- * media upload（IF定義 + dry_run挙動まで。実配線は投稿実行マイルストーン, 要件04 §10 step4）。
- * dry_runは擬似media idを返す。liveはM0では未実装。
+ * POST /2/media/upload（画像添付, 要件04 §10 step4）。dry_runは擬似media idを返す（HTTP不呼）。
+ * 公式仕様確認（docs.x.com, 2026-07-24）: application/json で `media`(base64)・`media_category`
+ * (画像は `tweet_image`)・`media_type`(MIME) を送り、応答 `data.id` が media id 文字列。
+ * media upload は原価台帳から除外する（要件04 §10・運用logのみ）。
  */
 export async function uploadMedia(
-  _accessToken: string,
-  _input: { data: Buffer | Uint8Array; mimeType: string },
+  accessToken: string,
+  input: { data: Buffer | Uint8Array; mimeType: string },
   deps: XClientDeps,
 ): Promise<XUploadMediaResult> {
   if (deps.mode === "dry_run") {
     return { mediaId: `dryrun-media-${newId(deps)}`, requestId: null, quantity: 1, dryRun: true };
   }
-  throw new Error(
-    "uploadMedia (live) is implemented in the posting-execution milestone (要件04 §10 step4)",
+  const media = Buffer.from(input.data).toString("base64");
+  const { body: res, requestId } = await callX<{ data: { id: string } }>(
+    {
+      method: "POST",
+      url: `${baseUrl(deps)}/media/upload`,
+      headers: authHeaders(accessToken, true),
+      body: JSON.stringify({
+        media,
+        media_category: "tweet_image",
+        media_type: input.mimeType,
+      }),
+    },
+    deps,
   );
+  return { mediaId: res.data.id, requestId, quantity: 1, dryRun: false };
 }
