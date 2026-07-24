@@ -1531,10 +1531,11 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: リリース判定に必要なテスト群を一括実行可能にする：dependency audit（npm audit相当）、RLS policyテスト（別ユーザーからのユーザー系テーブルselect/write拒否）、認可テスト（CRON_SECRET欠落時のcron/jobs拒否・Stripe署名不正拒否・Origin検証・plan別403）、SSRF検証テスト（出典URLのprivate/loopback/link-local IP拒否・redirect先再検証・timeout 10秒）。
 - 実装結果: 個別テストは既存（RLS `db/rls.db.test.ts`、SSRF `post/source-url.test.ts`＝private/loopback/link-local＋DNS rebinding＋redirect先再検証＋timeout、認可 `api/cron/route-auth.test.ts`・`jobs/auth.test.ts`・`api/jobs/run/route.test.ts`・`stripe/webhook.test.ts`）。本タスクの追加: (条件1) 一括実行 `npm run release:check`＝typecheck→lint→audit:check→test（全db含む）→build を新設し、ローカルで全成功を確認（exit 0）。(dependency audit) `scripts/audit-check.mjs`＝`npm audit --json`を解析し critical は必ず、high は allowlist（next/postcss/sharp＝breaking upgrade待ちの既知high・D-7で追跡）外なら失敗。moderate/lowは報告のみ。現状 critical=0/high=3(全allowlist)でOK。(条件2 全般) `rls.db.test.ts`へ横断catalogチェック2件追加＝全public tableでRLS有効（別userのselect構造的遮断）＋authenticated roleに全public tableでINSERT/UPDATE/DELETE grant無し（別userへのwrite不可）。既存の個別isolation/write-denialに横断保証を追加。doc影響なし（要件05 §11/§12・要件02 §5・要件01 §8が対象を既に規定）。既知脆弱性の解消（breaking upgrade）は要決定D-7。
 
-### T-M6-21: リリース前チェックリストの作成と消化（dry_run→live切替・公式ドキュメント再確認） `todo`
+### T-M6-21: リリース前チェックリストの作成と消化（dry_run→live切替・公式ドキュメント再確認） `done`
 - 参照: 要件01 §3.1、要件01 §7、要件01 §9、PRD §8.1、要件定義 §7、運用メモ §2〜4、要件03 §9、プロンプト §5.7 / 依存: T-M6-20、T-M6-19、T-M6-15、T-M6-16、T-M6-08、T-M6-10、T-M6-11、T-M6-13 / サイズ: M
 - 完了条件:
   - チェックリストがdocs/配下に存在し、開発側で消化可能な全項目に結果が記録されている（人間側残項目は担当と期日欄付きで明示）
   - dev/preview相当のAPP_ENVでX_POSTING_MODE=liveを設定すると起動時検証が失敗することをローカルで確認済み
   - dry_run→live切替手順・rollback手順・backup初回取得の確認項目が消化済み
 - メモ: リリース前チェックリストを作成し、開発側で消化可能な項目を実施・記録する：X_POSTING_MODEのdry_run→live切替手順とrollback手順（prodのみlive可・dev/previewはdry_run必須の起動時ガードが未実装なら本タスクで実装）、環境変数一覧（要件01 §3）の環境別充足確認、X API（docs.x.com）・Stripe・AI各社の「実装時に要確認」注記項目の再確認結果の記録（Stripe APIバージョン・Portal Configuration方針は実装メモ/ADRへ）、backup初回取得確認、launchd→Vercel Cron移行条件・手順の確認。Developer Console単価確認・法務専門家確認など運営者アカウントが必要な項目はチェックリスト上の人間側残項目として明示する。
+- 実装結果: `docs/operations/release-checklist.md` を新設。§1に開発側消化済み10項目（release:check全成功・X_POSTING_MODE=live起動時ガード・backup round-trip・セキュリティヘッダ・RLS/SSRF/認可・server-only境界・redact/安全エラー・env dev充足・launchd→Cron手順・外部API注記の実装時確認）を根拠付きで記録、§2にdry_run→live切替手順＋rollback手順、§3に人間側残項目12件を担当（運営者/開発）・期日欄付きで明示。X_POSTING_MODE=live起動時ガードは既存（env-schema.ts superRefine＋env-schema.test.ts 3件、dev/preview reject・prod allow）を確認・記録。doc影響なし（要件01 §3.1がガードを既に規定・チェックリストは新規運用メモ）。人間側残項目は要決定・外部準備セクションが正本。
