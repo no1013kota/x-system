@@ -1,0 +1,35 @@
+"use server";
+
+import { getCurrentUser } from "@/lib/auth/session";
+import { listNewsItemsForUser } from "@/lib/news-items-server";
+import type { NewsItemView } from "@/lib/news-items";
+import { AppError, toUserFacingError } from "@/lib/observability/errors";
+
+/**
+ * SC-06 ニュース一覧の Server Action（要件05 §6）。認証済みユーザー向けに分野・インパクト・時間窓・
+ * cursor で `news_items` を返す。検証は `listNewsItems`（`listNewsItemsSchema`）が担う。
+ */
+
+export interface ListNewsItemsActionResult {
+  status: "error" | "success";
+  message: string;
+  code?: string;
+  details?: Record<string, unknown>;
+  items?: NewsItemView[];
+  nextCursor?: string | null;
+}
+
+export async function listNewsItemsAction(
+  input: unknown = {},
+): Promise<ListNewsItemsActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ...toUserFacingError(new AppError("unauthorized")), status: "error" };
+  }
+  try {
+    const page = await listNewsItemsForUser(input ?? {});
+    return { items: page.items, message: "", nextCursor: page.nextCursor, status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}

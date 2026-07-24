@@ -1107,13 +1107,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: **本タスクのスコープは T-M2-20（通知ベル・通知一覧, `done`）で先行実装済み**（重複実装しない）。既存資産で全完了条件を充足: (1) `lib/notifications.ts listNotifications`（`in_app_enabled=true`のみ・本人スコープ・keyset cursor・`unreadOnly`で`read_at is null`絞り込み）＝unit `notifications.test.ts:80`（unreadOnly→`read_at is null`）＋db `notifications.db.test.ts:96,158`（email-only=`in_app=false`は一覧/未読数に出ない）で確認。(2) `markNotificationRead`（coalesce冪等・本人のみ）/`markAllNotificationsRead`＋Action が最新unreadCountを返しベルのバッジ即時更新＝db `:132`（冪等）＋unit・Actionで確認。(3) link遷移: `notification-bell.tsx` が項目クリックで既読化→`router.push(item.link)`、db `:141-143`（link保持=完了条件3）。ダイジェストlink `/app/news?from=..&to=..` は T-M4-12 で生成・検証済み。既存13テスト（unit10・db3）green。コード変更なし・BACKLOGのみ更新。doc: 要件05 §10・要件06 §2・要件02 §3.15・要件04 §14 は既述で一致（影響なし）。
 - 後続への注意: `unread_only` トグルUIはベルには未搭載（Actionは対応済み）。専用の全画面通知ページも未作成だが完了条件・要件06 §2（ヘッダベル＋一覧）は満たす。必要になれば別タスクで追加。
 
-### T-M4-14: SC-06 ニュース画面（一覧・絞り込み・news_config・時間窓適用） `todo`
+### T-M4-14: SC-06 ニュース画面（一覧・絞り込み・news_config・時間窓適用） `done`
 - 参照: N-2、SC-06、要件05 §6、要件05 §4.1、要件05 §12、要件02 §4.2、要件06 §3.4、要件06 §10 / 依存: M2 / サイズ: M
 - 完了条件:
   - seedしたnews_itemsが分野・インパクトで絞り込めて、初期表示にnews_configの既定（6分野・高中・20件）が適用される。updateNewsConfigで表示分野・件数の変更が保存される
   - listNewsItemsがcategories/impacts/from-to（最大24時間）/cursor/limit（1〜100）を検証し、/app/news?from=...&to=...で対象時間窓の該当ニュース（ダイジェスト掲載外を含む）だけが一覧される
   - 最新取得失敗時に前回成功分を表示し更新失敗を注記する状態表示がある
 - メモ: 表示項目はカテゴリー・要約・遷移先URL・インパクト（N-2）。ニュースデータはseedで検証できるためnews-fetch routeとは独立に実装可能。
+- 実装メモ: 中核 `lib/news-items.ts` `listNewsItems(db, input)`（`listNewsItemsSchema` で検証＝categories/impacts列挙・from/to両揃い＋≤24h・limit 1-100、不正は AppError('validation_error')）。窓は from/to 揃い時 `fetched_at ∈ [from,to)`（ダイジェスト窓一致・掲載外含む）、無指定は `coalesce(published_at,fetched_at) >= now()-7d`。並び/keyset cursor は `coalesce(published_at,fetched_at) desc, id desc`。server `news-items-server.ts`＋Action `app/actions/news.ts listNewsItemsAction`（認証）。**updateNewsConfig は既存**（T-M2系 settings）を再利用。UI: `app/app/news/page.tsx`（server: getSettingsForUser の news_config を初期フィルタ＝既定6分野・高中・20件、searchParams from/to を parseWindow で検証適用、初期listを try/catch）＋ `news-browser.tsx`（client: 分野/インパクトchip＋表示件数→「この設定で表示・保存」で updateNewsConfigAction 保存後 re-list、もっと見る、**取得失敗時は前回成功分を保持し注記**、通知窓バナー＋全件表示リンク、集約説明）。既存placeholder page を置換。テスト+9（unit: limit/enum/from-to両揃い/≤24h検証・window vs 既定7日・cursor、db: category/impact絞り＋fetched_at窓＋7日既定）。全890 green・build通過。doc: 要件05 §6 に window=fetched_at/既定=published_at・並び・SC-06絞り込み=news_config保存 を追記（§06 §10 は既述で一致）。
+- 後続への注意: **createDraftFromNews＋作成済みバッジは T-M4-15**（news-browser の各itemに生成ボタン/バッジを追加）。SC-06フィルタUIは news_config を直接編集・保存する方式（別途 settings 画面でも編集可）。表示件数は news_config.max_items（listのlimit）と同一。
 
 ### T-M4-15: SC-06 ニュース起点生成（createDraftFromNews）＋作成済みバッジ `todo`
 - 参照: N-4、SC-06、要件05 §6、要件06 §4.2、GEN-P1 / 依存: T-M4-14、M3 / サイズ: S

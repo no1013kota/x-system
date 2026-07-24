@@ -186,7 +186,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
 | `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled, image_provider | job_id | N-4。バックグラウンド生成。画像ON時は`image_provider`必須（`createGenerationJob`と同じ制約） |
 
-作成済みバッジは`drafts.source_news_item_id`の存在から導出する。専用の更新Actionは持たない。
+`listNewsItems`は`from`/`to`が揃う場合は`fetched_at`の時間窓（ダイジェストの`window_started_at`/`window_ended_at`と一致・掲載外も含む）で、無い場合は`published_at`基準の既定7日で絞る。並び・keyset cursorは`coalesce(published_at, fetched_at) desc, id desc`。categories/impactsは列挙値のみ・未指定は全件。SC-06の絞り込みUIは選択条件を`news_config`（分野・インパクト・表示件数）として`updateNewsConfig`で保存し、その条件で一覧を取り直す。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。専用の更新Actionは持たない。
 
 ## 7. スケジュール
 
