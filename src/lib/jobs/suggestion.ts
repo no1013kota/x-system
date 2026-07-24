@@ -3,6 +3,7 @@ import { z } from "zod";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { PLANS } from "../plans";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
@@ -162,7 +163,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
   const isPremium = job.plan === "premium";
   if (isPremium) {
     await deps.runInTx((tx) =>
-      reserveUsage(tx, { userId: job.user_id, xAccountId: job.x_account_id, jobId, type: "generation" }),
+      reserveUsage(tx, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId,
+        type: "generation",
+        limit: PLANS.premium.usageLimits?.generations,
+      }),
     );
   }
 

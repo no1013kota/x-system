@@ -79,6 +79,7 @@ describe("executePostGeneration (local DB)", () => {
     return {
       db,
       jobId: "",
+      runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
       resolveProvider: async () => ({
         textGen: mockProvider(""),
         provider: "anthropic",
@@ -178,6 +179,84 @@ describe("executePostGeneration (local DB)", () => {
       expect(notif.dedupe_key).toBe(`draft:${res.draftId}:created`);
     } finally {
       await cleanup(uid);
+    }
+  });
+
+  async function setPremium(uid: string): Promise<void> {
+    await withTransaction((c) => c.query(`update profiles set plan = 'premium' where id = $1`, [uid]));
+  }
+  async function genState(uid: string, jobId: string): Promise<{ gen: number; reserves: number; refunds: number }> {
+    return withTransaction(async (c) => {
+      const cnt = await c.query<{ n: number }>(
+        `select coalesce(generations_count, 0) as n from usage_counters where user_id = $1`,
+        [uid],
+      );
+      const ev = await c.query<{ reason: string; n: number }>(
+        `select reason, count(*)::int as n from usage_events
+          where job_id = $1 and counter_type = 'generation' group by reason`,
+        [jobId],
+      );
+      const by = new Map(ev.rows.map((r) => [r.reason, r.n]));
+      return { gen: cnt.rows[0]?.n ?? 0, reserves: by.get("reserve") ?? 0, refunds: by.get("refund") ?? 0 };
+    });
+  }
+  const cleanupUsage = async (uid: string) => {
+    await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));
+    await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+    await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+  };
+
+  it("premium: reserves exactly +1 generation on success (JSON repair does not double-count)", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    await setPremium(uid);
+    try {
+      // first output is invalid → runTextGeneration repairs once → valid. reserve is once at start.
+      const provider = mockProvider(undefined, ["not json", '{"posts":["修復後の投稿"],"sources":[],"error":null}']);
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      expect(res.status).toBe("created");
+      const s = await genState(uid, jobId);
+      expect(s.gen).toBe(1); // +1 only despite the repair call
+      expect(s.reserves).toBe(1);
+      expect(s.refunds).toBe(0); // success keeps the reserve
+    } finally {
+      await cleanupUsage(uid);
+    }
+  });
+
+  it("standard/md: no reserve or counter change on success", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c)); // stays standard
+    try {
+      const provider = mockProvider('{"posts":["標準プランの投稿"],"sources":[],"error":null}');
+      await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const s = await genState(uid, jobId);
+      expect(s.gen).toBe(0);
+      expect(s.reserves).toBe(0); // BYOK never reserves
+    } finally {
+      await cleanupUsage(uid);
+    }
+  });
+
+  it("premium: refunds the generation reserve on final AI failure (counter back to 0)", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    await setPremium(uid);
+    try {
+      // always-invalid output → repair also invalid → InvalidProviderOutputError → terminal failure.
+      const provider = mockProvider("still not json");
+      await expect(
+        executePostGeneration(
+          deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+        ),
+      ).rejects.toThrow();
+      const s = await genState(uid, jobId);
+      expect(s.reserves).toBe(1);
+      expect(s.refunds).toBe(1); // reserve refunded on failure
+      expect(s.gen).toBe(0); // net 0
+    } finally {
+      await cleanupUsage(uid);
     }
   });
 

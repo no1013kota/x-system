@@ -13,15 +13,22 @@ import {
   fetchNewsDigest,
   fetchRecentPostBodies,
 } from "../ai/gen-context";
+import { AppError } from "@/lib/observability/errors";
+import { PLANS } from "@/lib/plans";
+
 import { genOutputSchema } from "../ai/gen-output";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { heartbeat } from "./stale";
+
+/** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
+const PREMIUM_GENERATION_LIMIT = PLANS.premium.usageLimits?.generations;
 
 /**
  * post_generation ジョブの中核（要件04 §8/§14, プロンプト設計書 §5.1/§7.1/§7.4, T-M3-05）。
@@ -72,6 +79,8 @@ interface JobRow {
 export interface PostGenerationDeps {
   db: Queryable;
   jobId: string;
+  /** 利用枠 reserve/refund を1 transactionで束ねる（server配線は withTransaction）。 */
+  runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
   /** plan/userId から TextGen・provider・model を解決する（server配線は resolveTextProvider）。 */
   resolveProvider: (input: {
     plan: string;
@@ -279,6 +288,35 @@ export async function executePostGeneration(
 
   const failCtx = { jobId, userId: job.user_id };
 
+  // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
+  // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
+  const isPremium = job.plan === "premium";
+  if (isPremium) {
+    try {
+      await deps.runInTx((tx) =>
+        reserveUsage(tx, {
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
+          jobId,
+          type: "generation",
+          limit: PREMIUM_GENERATION_LIMIT,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof AppError && error.code === "usage_limit_exceeded") {
+        await persistFailure(
+          db,
+          failCtx,
+          { code: "usage_limit_exceeded", message: "今月の生成上限に達しています。翌月まで自動生成をご利用いただけません。", stage: "validating" },
+          EMPTY_USAGE,
+        );
+        throw new PostGenerationTerminalError("usage_limit_exceeded", "generation limit reached");
+      }
+      throw error;
+    }
+  }
+
+  try {
   // --- stage: validating（前提再検証）---
   await recordStage("validating");
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
@@ -478,4 +516,10 @@ export async function executePostGeneration(
   }
 
   return { status: "created", draftId };
+  } catch (error) {
+    // 最終失敗（前提不足・生成error・検証不能・draft保存失敗等）は生成枠を返還する（premium・冪等）。
+    // 成功（draft作成）はreturnで catch を通らないため消費が維持される。GEN-FIXやJSON修復は追加消費しない。
+    if (isPremium) await deps.runInTx((tx) => refundUsage(tx, jobId, "generation"));
+    throw error;
+  }
 }

@@ -96,6 +96,7 @@ function baseDeps(
   return {
     db,
     jobId: "job-img",
+    runInTx: (fn) => fn(db),
     resolveTextProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
     resolveImage: async () => ({ imageGen, provider: "openai" }),
     uploadImage: vi.fn(async () => {}),

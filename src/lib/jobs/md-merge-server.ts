@@ -2,7 +2,7 @@ import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
 import { getPool, withTransaction } from "../db/pool";
-import type { PlanId } from "../plans";
+import { PLANS, type PlanId } from "../plans";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
@@ -58,6 +58,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
         xAccountId: meta.x_account_id,
         jobId: ctx.jobId,
         type: "generation",
+        limit: PLANS.premium.usageLimits?.generations,
       }),
     );
   }

@@ -1379,13 +1379,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `usage/generation-reserve.ts`（reserveUsage/refundUsage）は T-M5-03 で基盤実装済み＝完了条件1（冪等reserve: event `on conflict (idempotency_key) do nothing`＋新規挿入時のみcounter+1、2回目no-op）と条件3（refundは元reserve行から month/counter_type/operation をコピーし ref_event_id 付きで当該monthのcounterを-1＝JST月境界跨ぎも元月へ戻る）を充足。本タスクの新規実装は**条件2の上限確認**: reserveUsage に任意 `limit` を追加し、当月 usage_counters を `for update` でロック→現在値読取→（冪等: 既存reserveなら上限判定せずno-op）→`limit`指定かつ `count>=limit` なら `usage_limit_exceeded` を投げ event/counter を一切変更しない（要件03 §7.4）。FOR UPDATE で並行reserveの上限すり抜けを防止。上限値は premium の `PLANS.premium.usageLimits`（generations=100/images=20）を呼び出し側（T-M6-04）が渡す。既存呼び出し（learning/md-merge/suggestion/terminal）は limit 未指定で従来挙動維持（後方互換）。テスト: db（idempotent既存＋**上限到達でusage_limit_exceeded・event/counter不変**＋**cross-month refundが元月へ-1**）。全1043 green・build通過。doc: 要件03 §7.4 の「上限確認」を reserveUsage に実装＝既述と一致（影響なし）。
 - 後続への注意: 生成/画像ジョブへの limit 付き reserve 組み込みは T-M6-04（premiumのみ・GEN-FIX等の重複加算防止）。既存workerは現状 limit 未指定なので premium 上限は T-M6-04 で有効化される。
 
-### T-M6-04: 生成・画像ジョブへの生成枠/画像枠reserve/refund組み込み `todo`
+### T-M6-04: 生成・画像ジョブへの生成枠/画像枠reserve/refund組み込み `done`
 - 参照: O-4、要件03 §7.1、要件03 §7.5、要件04 §8、要件04 §9、プロンプト §1 / 依存: T-M6-03、T-M6-01、M3 / サイズ: M
 - 完了条件:
   - premiumのpost_generation成功で生成枠が+1のみ（GEN-FIX・JSON修復発生時も増えない）、standard/mdではreserve/counter更新が一切発生しない（モックprovider）
   - AI最終失敗でrefund eventが作成されcounterが元に戻る
   - 画像job最終失敗で画像枠だけrefundされ、成功済み本文の生成枠は返還されない
 - メモ: premiumのみ：文章系top-level job（GEN-P1〜P6・LRN・SUGGEST・削除時単独MD-MERGE）開始時に生成枠reserve、image_generation開始時に画像枠reserve。最終失敗でrefund（Storage保存失敗も画像refund）。内部retry・JSON修復・GEN-FIX・同一job内MD-MERGEは追加消費なし。ユーザーの再生成・retryGenerationJobは新jobとして新規消費。cloneFailedDraftForRetryと下書き破棄は消費・返還なし。ニュース基盤は対象外。
+- 実装メモ: (1)**post_generation**（GEN-P1〜P6）: PostGenerationDeps に `runInTx` 追加。job開始・冪等early-return後・premium時に generation を `limit=PLANS.premium.usageLimits.generations` で reserve。上限到達（usage_limit_exceeded）は persistFailure(usage_limit_exceeded)＋terminal。以降を try/catch で包み、**最終失敗（前提不足/生成error/検証不能/draft保存失敗等）は catch で refund**、成功（draft作成→return）は catch を通らず消費維持。reserveは開始時1回のみ＝GEN-FIX短縮・JSON修復・出典再生成は同一jobの内部callで追加消費しない。(2)**image_generation**: ImageGenerationDeps に `runInTx` 追加。try 先頭で premium時に image を `limit=…images` で reserve、catch 先頭で **画像枠のみ refund**（冪等・reserve未実施ならno-op）。生成枠は親jobの勘定なので不可触（refund type='image'のみ）。(3)既存の generation reserve（learning-analysis/suggestion/md-merge-server）に `limit` を配線（T-M6-03のdefer解消）。stale経路の refund は terminal.ts が既に post_generation→generation・image_generation→image で正しく実装済み。standard/md は plan≠premium で reserve自体スキップ。テスト: post-generation.db（premium成功+1/JSON修復で二重加算なし・standard reserveなし・premium最終失敗refund net0）、image-generation.db（新規: 画像失敗で画像枠のみrefund・生成枠不可触／成功で画像+1）、既存unit/dbの deps に runInTx 追加。全1048 green・build通過。doc: 要件03 §7.1/§7.5 に既述で一致（影響なし）。
+- 後続への注意: prereq検証失敗時はreserve→refundのnet0（§7.5「消費なし」= counter net0で満たす。event log にはreserve+refund両方が残る）。learning/suggestion/md-mergeの usage_limit_exceeded は現状 worker のtry外reserveで throw→runJob failed（terminal refund no-op）＝graceful message未整備（premium上限到達の稀ケース。sourceはpending残存し得る）。M6残: 課金Stripe連携・法務ページ・リリース準備。
 
 ### T-M6-05: staleジョブfailed確定時の利用枠refund回収 `todo`
 - 参照: 要件04 §4、要件03 §7.3、要件03 §7.4 / 依存: T-M6-04、M3 / サイズ: S

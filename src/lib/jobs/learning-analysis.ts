@@ -3,6 +3,7 @@ import { z, type ZodType } from "zod";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { PLANS } from "../plans";
 import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
@@ -214,10 +215,16 @@ export async function executeLearningAnalysis(
   if (source.status === "analyzed") return { status: "already_done", sourceId };
 
   const isPremium = job.plan === "premium";
-  // premium は開始時に生成枠 +1 reserve（同一tx・要件03 §7.1/§7.4）。BYOKは消費しない。
+  // premium は開始時に生成枠 +1 reserve（同一tx・月次上限確認・要件03 §7.1/§7.4）。BYOKは消費しない。
   if (isPremium) {
     await deps.runInTx((tx) =>
-      reserveUsage(tx, { userId: job.user_id, xAccountId: job.x_account_id, jobId, type: "generation" }),
+      reserveUsage(tx, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId,
+        type: "generation",
+        limit: PLANS.premium.usageLimits?.generations,
+      }),
     );
   }
 

@@ -2,7 +2,7 @@ import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
 import type { Provider } from "../ai/types";
-import { getPool } from "../db/pool";
+import { getPool, withTransaction } from "../db/pool";
 import { env } from "../env";
 import { gatherExecutionPrereqInputs } from "../execution-prereqs-server";
 import type { PlanId } from "../plans";
@@ -40,6 +40,7 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
   await executePostGeneration({
     db: pooledDb,
     jobId: ctx.jobId,
+    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
     resolveProvider: async ({ plan, userId, deadline }) => {
       const resolved = await resolveTextProvider(
         { plan: plan as PlanId, userId },

@@ -12,9 +12,14 @@ import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
+import { PLANS } from "../plans";
+import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { heartbeat } from "./stale";
+
+/** premium画像生成の月次上限（BYOKは上限なし=undefined）。 */
+const PREMIUM_IMAGE_LIMIT = PLANS.premium.usageLimits?.images;
 
 /**
  * image_generation ジョブの中核（要件04 §8/§9, プロンプト設計書 §5.5/§6.8 GEN-IMG, T-M3-15）。
@@ -69,6 +74,8 @@ interface DraftRow {
 export interface ImageGenerationDeps {
   db: Queryable;
   jobId: string;
+  /** 画像枠 reserve/refund を1 transactionで束ねる（server配線は withTransaction）。 */
+  runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
   /** PT-IMG 用の text provider 解決（server配線は resolveTextProvider）。 */
   resolveTextProvider: (input: {
     plan: string;
@@ -240,8 +247,22 @@ export async function executeImageGeneration(
   const deadline = (deps.makeDeadline ?? createDeadline)();
   const calls: ProviderCall[] = [];
   let provider: string | null = null;
+  // premium は画像枠を +1 reserve（月次上限確認・冪等）。BYOK/standard/mdは消費しない。再生成も新規消費。
+  const isPremium = job.plan === "premium";
 
   try {
+    // 開始時に画像枠を reserve（上限到達は catch で画像なし確定＋refund no-op）。生成枠(親job)は別勘定。
+    if (isPremium) {
+      await deps.runInTx((tx) =>
+        reserveUsage(tx, {
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
+          jobId,
+          type: "image",
+          limit: PREMIUM_IMAGE_LIMIT,
+        }),
+      );
+    }
     // --- PT-IMG: 英語画像プロンプトの生成（base_mdセクション3＋1ポスト目本文）---
     const template = await resolvePromptTemplate(db, {
       xAccountId: job.x_account_id,
@@ -317,6 +338,9 @@ export async function executeImageGeneration(
 
     return { status: "created", draftId };
   } catch (error) {
+    // 画像生成/保存/上限の最終失敗で画像枠を返還する（premium・冪等。reserve未実施なら no-op）。
+    // 生成枠は親jobの勘定なので触れない（要件03 §7.5・成功済み本文の枠は返還しない）。
+    if (isPremium) await deps.runInTx((tx) => refundUsage(tx, jobId, "image"));
     if (error instanceof ImageGenerationTerminalError) throw error;
     const providerRawError = error instanceof Error ? error.message : String(error);
     if (isRegenerate) {

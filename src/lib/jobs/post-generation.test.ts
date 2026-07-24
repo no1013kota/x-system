@@ -61,6 +61,7 @@ function deps(db: Queryable): PostGenerationDeps {
   return {
     db,
     jobId: "job-x",
+    runInTx: (fn) => fn(db),
     resolveProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
     gatherPrereqInputs: async () => okPrereq(),
     validateSource: async () => true,
