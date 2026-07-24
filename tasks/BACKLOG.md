@@ -1408,12 +1408,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: consume EVENT記帳（post_create/post_delete・全プラン・冪等key・counter_type=finalTextでURL判定）と日次50上限はM4 post-publish実装済み。**新規=premium月次counterの加算**: `consumePostSlot(runInTx, {...})` ヘルパを追加し、event insert（on conflict do nothing）＋（新規挿入かつ premium かつ live のみ）normal/url_posts_count +1 を**同一transaction**で実行（§10「同一transaction」・crash時のunder-count窓を排除）。saveCreatedTweet（create）とrollbackThreadのrecordDeleteConsume（delete）を consumePostSlot へ集約。PostPublishDepsに `runInTx`（withTransaction配線）と `postingLive`（env.X_POSTING_MODE==='live'）を追加。rollbackThreadに `plan` を渡す。standard/mdは premiumLive=false でevent記帳のみ、dry_runも同様にcounter非加算（§10）。テスト（新規 post-publish.db.test）: premium+live 3 URL-less→post_create×3・normal +3／standard→event only・counter 0／**dry_run→event記帳あり・counter 0**／rollback（1成功→2件目失敗→t-1削除）→create×1+delete×1・同枠normal +2。全1054 green・build通過。**要注意（仕様整合）**: 完了条件3「dry_runでconsume eventも発生しない」は 要件04 §10（正本）と矛盾＝§10は「dry_runでも consume event・tweet_ids・status等は記帳（日次上限検証のため）、原価台帳とpremium月次counterのみ非実行」。正本§10に従い「dry_run=event記帳あり・counter非加算」で実装（BACKLOG条件3の文言は§10へ寄せて解釈）。doc: §10/§7.1 に既述で一致（影響なし）。
 - 後続への注意: M6残: T-M6-07（ロールバック安全残量判定）・T-M6-08（enqueue事前判定）・原価台帳（09/10）・プラン変更（11）・残量表示/通知（12/13）・法務/LP（14〜16）。
 
-### T-M6-07: 投稿直前のロールバック安全残量判定 `todo`
+### T-M6-07: 投稿直前のロールバック安全残量判定 `done`
 - 参照: 要件03 §7.4、要件06 §7、PRD §6.1、O-4 / 依存: T-M6-06 / サイズ: S
 - 完了条件:
   - 5ポスト（最終のみURL付き）payloadで必要残量が通常8（2×4）・URL1と算出されるユニットテストが通る
   - 残量不足ケースで投稿jobがX API（モック）を一切呼ばずに失敗し、usage_events/countersが変化せずerror通知が作成される
 - メモ: premiumの投稿開始前に最終payload列を通常/URL付きへ分類し、通常枠にmax(R, 2×R_prefix)、URL枠にmax(U, 2×U_prefix)の残量を必須とする（全件成功と、最終投稿失敗時のprefixロールバック削除の両方を賄う）。不足時はX APIを呼ばず枠を消費せずusage_limit_exceededで失敗し通知する。同一userのpost_publish直列化はM4のadvisory lockを前提とする。
+- 実装結果: `post-publish.ts`に純関数`requiredPostSlots(finalTexts)`を追加（末尾を除くprefixのみ2倍対象。単一ポストはprefix空でロールバック余力不要）。`executePostPublish`の日次上限checkの直後・X呼び出し（getAccessToken/media upload/createPost）の前に、premium かつ postingLive のときだけ当月`usage_counters`を読み`finalTextAt`列の必要残量と突き合わせるガードを追加。不足時はdraftを未投稿へ戻し、`usage_limit_exceeded`（非retryable）で失敗させ、専用文言＋dedupe `draft:{id}:usage_limit`の error通知を出す。`finalTextAt`（P-5のquote_url合成含む）はconsumeと同一分類のため定義をガード前へ巻き上げた。`createPostErrorNotification`はtitle/body/dedupeSuffixを任意上書き可能に拡張。ガードの正当性（各枠でrequired≥実消費が全終端結果で成立するタイトな上界）は敵対的レビュー2観点で確認済み。dry_run/BYOKは月次counter対象外のためガードもskip。残量数値・翌月開始日時の詳細表示はT-M6-12/13の担当。docは要件03 §7.4・要件06 §7が既に本挙動を規定済み（影響なし）。
 
 ### T-M6-08: スケジュールenqueue時のpremium残量・日次上限事前判定 `todo`
 - 参照: 要件04 §7.1、要件03 §7.4、O-5、S-2、S-3 / 依存: T-M6-07、M4 / サイズ: S

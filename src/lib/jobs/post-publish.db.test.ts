@@ -182,6 +182,49 @@ describe("post_publish 投稿枠 consume/counter (local DB)", () => {
     }
   });
 
+  it("premium+live: insufficient monthly slots fail before any X call, no consume, notify (T-M6-07)", async () => {
+    const { uid, jobId, draftId } = await withTransaction((c) =>
+      seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "本文2")] }),
+    );
+    try {
+      // error.in_app を有効化して通知を受け取れるようにする。
+      await withTransaction((c) =>
+        c.query(`update profiles set notification_config = '{"error":{"in_app":true}}'::jsonb where id = $1`, [uid]),
+      );
+      // 月次counterを上限直下までseed（通常199/200）。2件投稿の required normal = 2 なので不足。
+      await withTransaction((c) =>
+        c.query(
+          `insert into usage_counters (user_id, month, normal_posts_count)
+           values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 199)`,
+          [uid],
+        ),
+      );
+      let called = 0;
+      const createPost = async (): Promise<XCreatePostResult> => {
+        called += 1;
+        throw new Error("must not post when slots are insufficient");
+      };
+      await expect(executePostPublish(deps(jobId, { createPost }))).rejects.toMatchObject({
+        code: "usage_limit_exceeded",
+      });
+      expect(called).toBe(0); // X API を一切呼ばない
+      const u = await usage(uid);
+      expect(u.creates).toBe(0); // consume event なし
+      expect(u.deletes).toBe(0);
+      expect(u.normal).toBe(199); // counter 不変
+      const notif = await withTransaction((c) =>
+        c.query(`select 1 from notifications where user_id = $1 and type = 'error'`, [uid]),
+      );
+      expect(notif.rowCount).toBe(1); // error 通知
+      const d = await withTransaction((c) =>
+        c.query<{ status: string }>(`select status from drafts where id = $1`, [draftId]),
+      );
+      expect(d.rows[0].status).toBe("draft"); // 未投稿へ戻す
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("premium+live rollback: create+delete of the same tweet consume the same slot twice", async () => {
     const { uid, jobId } = await withTransaction((c) =>
       seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "本文2")] }),

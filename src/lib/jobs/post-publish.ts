@@ -1,5 +1,6 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 
+import { PLANS } from "../plans";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
 import {
@@ -30,6 +31,21 @@ import { heartbeat } from "./stale";
 const URL_RE = /https?:\/\/\S+/;
 function hasUrl(text: string): boolean {
   return URL_RE.test(text);
+}
+
+/**
+ * premium投稿開始前に必要な通常/URL付き枠を算出する（要件03 §7.4・要件06 §7, T-M6-07）。最終payload列を
+ * 通常/URL付きへ分類し、全件成功（各1消費）と、最終投稿失敗時のprefix（先頭〜末尾直前）ロールバック削除
+ * （作成+削除=各2消費）の両方を賄える残量＝normal:max(R, 2×R_prefix)、url:max(U, 2×U_prefix) を返す。
+ */
+export function requiredPostSlots(finalTexts: string[]): { normal: number; url: number } {
+  const isUrl = finalTexts.map(hasUrl);
+  const total = (urls: boolean[], want: boolean) => urls.filter((u) => u === want).length;
+  const prefix = isUrl.slice(0, -1); // 末尾直前まで（最終投稿失敗時に削除される範囲）
+  return {
+    normal: Math.max(total(isUrl, false), 2 * total(prefix, false)),
+    url: Math.max(total(isUrl, true), 2 * total(prefix, true)),
+  };
 }
 
 const POST_MONTH = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
@@ -235,14 +251,16 @@ async function createPostedNotification(
 
 async function createPostErrorNotification(
   db: Queryable,
-  params: { userId: string; draftId: string },
+  params: { userId: string; draftId: string; title?: string; body?: string; dedupeSuffix?: string },
 ): Promise<void> {
+  const title = params.title ?? "投稿に失敗しました";
+  const body = params.body ?? "投稿の途中で失敗しました。下書きを確認して再度お試しください。";
+  const dedupeKey = `draft:${params.draftId}:${params.dedupeSuffix ?? "post_error"}`;
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
         in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '投稿に失敗しました',
-            '投稿の途中で失敗しました。下書きを確認して再度お試しください。',
+     select $1, 'error', $2, $4, $5,
             '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
             coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
             case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
@@ -254,7 +272,7 @@ async function createPostErrorNotification(
         and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
              or coalesce((p.notification_config->'error'->>'email')::boolean, false))
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `draft:${params.draftId}:post_error`, params.draftId],
+    [params.userId, dedupeKey, params.draftId, title, body],
   );
 }
 
@@ -428,6 +446,10 @@ export async function executePostPublish(
     throw new PostPublishError("empty_thread", "draft has no posts");
   }
 
+  // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
+  const finalTextAt = (i: number): string =>
+    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
+
   // --- 検証: 自動投稿を阻害する警告（auto時のみ）---
   if (mode === "auto" && threadBlocksAutoPost(thread)) {
     await setDraftFailed(db, draftId, {
@@ -471,6 +493,44 @@ export async function executePostPublish(
     );
   }
 
+  // --- 検証: premium月次投稿枠のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
+  // ロールバック（最終投稿失敗→prefixを作成+削除で各2消費）まで賄える残量を投稿前に確認する。
+  // 不足時は X API を一切呼ばず・枠を消費せず失敗させ、通知する（premium かつ live のみ・§10）。
+  if (job.plan === "premium" && deps.postingLive) {
+    const limits = PLANS.premium.usageLimits;
+    if (limits) {
+      const required = requiredPostSlots(thread.map((_, i) => finalTextAt(i)));
+      const used = await db.query<{ normal_posts_count: number; url_posts_count: number }>(
+        `select coalesce(normal_posts_count, 0) as normal_posts_count,
+                coalesce(url_posts_count, 0) as url_posts_count
+           from usage_counters where user_id = $1 and month = ${POST_MONTH}`,
+        [userId],
+      );
+      const usedNormal = used.rows[0]?.normal_posts_count ?? 0;
+      const usedUrl = used.rows[0]?.url_posts_count ?? 0;
+      if (
+        usedNormal + required.normal > limits.normalPosts ||
+        usedUrl + required.url > limits.urlPosts
+      ) {
+        // X API を呼ぶ前に draft を未投稿へ戻し、枠を消費せず失敗させる。
+        await db.query(`update drafts set status = 'draft', updated_at = now() where id = $1`, [
+          draftId,
+        ]);
+        await createPostErrorNotification(db, {
+          userId,
+          draftId,
+          title: "今月の投稿枠が不足しています",
+          body: "今月のプレミアム投稿枠が不足しているため投稿できませんでした。翌月まで待つか、内容を調整してください。",
+          dedupeSuffix: "usage_limit",
+        });
+        throw new PostPublishError(
+          "usage_limit_exceeded",
+          "monthly post quota insufficient for safe posting",
+        );
+      }
+    }
+  }
+
   // --- 検証: X token（失効は再連携が必要）---
   let accessToken: string;
   try {
@@ -504,10 +564,6 @@ export async function executePostPublish(
       throw new PostPublishError("media_upload_failed", "media upload failed", true);
     }
   }
-
-  // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
-  const finalTextAt = (i: number): string =>
-    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
 
   const tweetIds: string[] = Array.isArray(draft.tweet_ids) ? [...draft.tweet_ids] : [];
 

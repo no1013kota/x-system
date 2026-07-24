@@ -5,6 +5,7 @@ import type { Queryable } from "../x/token-refresh";
 import {
   PostPublishError,
   executePostPublish,
+  requiredPostSlots,
   type PostPublishDeps,
 } from "./post-publish";
 
@@ -485,5 +486,71 @@ describe("executePostPublish auto consent re-check (要件04 §10 step2, T-M4-03
     const deps = baseDeps(db); // JOB is mode=manual
     await executePostPublish(deps);
     expect(writes.some((w) => CONSENT.test(w.sql))).toBe(false);
+  });
+});
+
+describe("requiredPostSlots ロールバック安全残量 (T-M6-07)", () => {
+  it("5 posts with only the last carrying a URL require normal 8, url 1", () => {
+    // 通常4件＋末尾URL1件。全件成功=通常4/URL1、最終失敗時のprefix(通常4)は作成+削除で各2消費=通常8。
+    const finals = ["a", "b", "c", "d", "https://x.com/e"];
+    expect(requiredPostSlots(finals)).toEqual({ normal: 8, url: 1 });
+  });
+
+  it("single post needs no rollback buffer (prefix is empty)", () => {
+    expect(requiredPostSlots(["https://x.com/only"])).toEqual({ normal: 0, url: 1 });
+    expect(requiredPostSlots(["plain"])).toEqual({ normal: 1, url: 0 });
+  });
+
+  it("all-URL prefix doubles the URL requirement", () => {
+    // URL3件連投: 全件成功=URL3、最終失敗時prefix(URL2)作成+削除=URL4 → max(3,4)=4。
+    const finals = ["https://a", "https://b", "https://c"];
+    expect(requiredPostSlots(finals)).toEqual({ normal: 0, url: 4 });
+  });
+});
+
+describe("executePostPublish premium rollback-safe remaining (T-M6-07)", () => {
+  const PREMIUM_JOB = { ...JOB, plan: "premium" };
+  const USAGE_READ = /coalesce\(normal_posts_count/;
+
+  it("fails before any X call when remaining slots cannot cover the rollback worst case", async () => {
+    // 2件通常投稿 → required normal = max(2, 2×1) = 2。使用済み199 + 2 > 200 で不足。
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [PREMIUM_JOB];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (LOCK.test(sql)) return [{ id: "d1" }];
+      if (DAILY.test(sql)) return [{ n: 0 }];
+      if (USAGE_READ.test(sql)) return [{ normal_posts_count: 199, url_posts_count: 0 }];
+      return [];
+    });
+    const deps = baseDeps(db, { postingLive: true });
+    await expect(executePostPublish(deps)).rejects.toMatchObject({ code: "usage_limit_exceeded" });
+    expect(deps.createPost).not.toHaveBeenCalled();
+    expect(deps.uploadMedia).not.toHaveBeenCalled();
+    expect(writes.some((w) => CONSUME.test(w.sql))).toBe(false); // 枠を消費しない
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true); // error通知
+    expect(writes.some((w) => REVERT_DRAFT.test(w.sql))).toBe(true); // draftへ戻す
+  });
+
+  it("proceeds when remaining slots cover the rollback worst case", async () => {
+    const { db } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [PREMIUM_JOB];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (LOCK.test(sql)) return [{ id: "d1" }];
+      if (DAILY.test(sql)) return [{ n: 0 }];
+      if (USAGE_READ.test(sql)) return [{ normal_posts_count: 100, url_posts_count: 0 }];
+      return [];
+    });
+    const deps = baseDeps(db, { postingLive: true });
+    const res = await executePostPublish(deps);
+    expect(res.status).toBe("posted");
+    expect(deps.createPost).toHaveBeenCalled();
+  });
+
+  it("skips the premium check for BYOK plans (dry_run/standard)", async () => {
+    // standard は月次counter対象外。postingLive:false でも usage_counters を読まない。
+    const { db, writes } = makeDb(okHandler());
+    const deps = baseDeps(db); // JOB.plan = standard, postingLive false
+    await executePostPublish(deps);
+    expect(writes.some((w) => USAGE_READ.test(w.sql))).toBe(false);
   });
 });
