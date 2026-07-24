@@ -1,7 +1,10 @@
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
-import type { XCreatePostResult, XUploadMediaResult } from "../x/client";
-import { XApiError } from "../x/client";
+import type {
+  XCreatePostResult,
+  XDeletePostResult,
+  XUploadMediaResult,
+} from "../x/client";
 import { xUnitCost, type XCostConfig } from "../x/pricing";
 import { recordedXCall } from "../x/usage";
 import type { Queryable } from "../x/token-refresh";
@@ -66,6 +69,8 @@ export interface PostPublishDeps {
     accessToken: string,
     input: { text: string; inReplyToTweetId?: string; mediaIds?: string[] },
   ) => Promise<XCreatePostResult>;
+  /** X 投稿削除（ロールバック用。dry_run は client 内で擬似結果）。 */
+  deletePost: (accessToken: string, tweetId: string) => Promise<XDeletePostResult>;
   /** X media upload（dry_run は client 内で擬似結果）。 */
   uploadMedia: (
     accessToken: string,
@@ -150,6 +155,116 @@ async function createPostedNotification(
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `draft:${params.draftId}:posted`, params.draftId],
   );
+}
+
+async function createPostErrorNotification(
+  db: Queryable,
+  params: { userId: string; draftId: string },
+): Promise<void> {
+  await db.query(
+    `insert into notifications
+       (user_id, type, dedupe_key, title, body, link, payload,
+        in_app_enabled, email_status, email_available_at)
+     select $1, 'error', $2, '投稿に失敗しました',
+            '投稿の途中で失敗しました。下書きを確認して再度お試しください。',
+            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
+            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
+                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
+            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
+                 then now() else null end
+       from profiles p
+      where p.id = $1
+        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
+             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+    [params.userId, `draft:${params.draftId}:post_error`, params.draftId],
+  );
+}
+
+/**
+ * resume再失敗時の逆順ロールバック（要件04 §11）。成功済み tweet_ids を末尾から削除し、
+ * 削除成功ごとに全プラン post_delete consume event（元post_createと同じcounter_type）を作る。
+ * 削除失敗分は remaining へ残す（追加消費なし）。draft を failed にし last_post_error へ
+ * deleted/remaining を保存、残存IDがあれば next_metrics_at を設定して error 通知を作る。
+ */
+async function rollbackThread(
+  deps: PostPublishDeps,
+  params: {
+    accessToken: string;
+    usageCtx: { userId: string; xAccountId: string; jobId: string };
+    draftId: string;
+    tweetIds: string[];
+    finalTextAt: (i: number) => string;
+    failedIndex: number;
+  },
+): Promise<void> {
+  const { db } = deps;
+  const { usageCtx, draftId, tweetIds } = params;
+  const deleted: string[] = [];
+  const remaining: string[] = [];
+
+  for (let i = tweetIds.length - 1; i >= 0; i--) {
+    const tweetId = tweetIds[i];
+    const withUrl = hasUrl(params.finalTextAt(i));
+    try {
+      await recordedXCall(
+        db,
+        {
+          ctx: usageCtx,
+          operation: "x_post_delete",
+          unitCostUsd: xUnitCost("x_post_delete", deps.costConfig),
+          idempotencyKey: `draft:${draftId}:x_post_delete:${i}`,
+        },
+        () => deps.deletePost(params.accessToken, tweetId),
+      );
+      deleted.push(tweetId);
+      await db.query(
+        `insert into usage_events
+           (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
+         values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
+                 $6, 'post_delete', 1, 'consume', $7)
+         on conflict (idempotency_key) do nothing`,
+        [
+          usageCtx.userId,
+          usageCtx.xAccountId,
+          usageCtx.jobId,
+          draftId,
+          tweetId,
+          withUrl ? "post_url" : "post_normal",
+          `draft:${draftId}:tweet:${tweetId}:post:delete`,
+        ],
+      );
+    } catch {
+      // 削除失敗はX上に残る（追加消費なし）。
+      remaining.push(tweetId);
+    }
+  }
+
+  const errorObj = {
+    code: "post_create_failed",
+    message: remaining.length
+      ? "投稿の途中で失敗し、一部はXに残っています。内容をご確認ください。"
+      : "投稿の途中で失敗したため、投稿済みポストを取り消しました。",
+    retryable: false,
+    stage: "posting",
+    failed_post_index: params.failedIndex,
+    remaining_tweet_ids: remaining,
+    deleted_tweet_ids: deleted,
+    ambiguous_create_indices: [],
+    ambiguous_delete_tweet_ids: [],
+    provider_request_id: null,
+  };
+  // tweet_ids は監査用に保持（消さない）。残存IDが確定したら next_metrics_at を設定（要件04 §13）。
+  await db.query(
+    `update drafts
+        set status = 'failed', last_post_error = $2::jsonb,
+            next_metrics_at = case when $3 then now() + interval '1 day' else next_metrics_at end,
+            updated_at = now()
+      where id = $1`,
+    [draftId, JSON.stringify(errorObj), remaining.length > 0],
+  );
+  await createPostErrorNotification(db, { userId: usageCtx.userId, draftId });
 }
 
 export async function executePostPublish(
@@ -250,67 +365,84 @@ export async function executePostPublish(
     }
   }
 
-  // --- スレッド投稿（1ポスト目→以降は直前の自分のtweetへreply連投）---
-  const tweetIds: string[] = [];
-  let previousTweetId: string | undefined;
-  try {
-    for (let i = 0; i < thread.length; i++) {
-      const isFirst = i === 0;
-      // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。
-      const text =
-        isFirst && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
-      const withUrl = hasUrl(text);
-      const result = await recordedXCall(
-        db,
-        {
-          ctx: usageCtx,
-          operation: "x_post_create",
-          unitCostUsd: xUnitCost("x_post_create", deps.costConfig, { hasUrl: withUrl }),
-          idempotencyKey: `draft:${draftId}:x_post_create:${i}`,
-        },
-        () =>
-          deps.createPost(accessToken, {
-            text,
-            inReplyToTweetId: isFirst ? undefined : previousTweetId,
-            mediaIds: isFirst ? mediaIds : undefined,
-          }),
-      );
-      const tweetId = result.tweetId;
-      tweetIds.push(tweetId);
-      previousTweetId = tweetId;
+  // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
+  const finalTextAt = (i: number): string =>
+    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
 
-      // 各成功直後: tweet_ids 保存 ＋ 全プラン post_create consume event（tweet単位で冪等）。
-      await db.query(
-        `update drafts set tweet_ids = coalesce(tweet_ids, '[]'::jsonb) || to_jsonb($2::text), updated_at = now()
-          where id = $1`,
-        [draftId, tweetId],
-      );
-      await db.query(
-        `insert into usage_events
-           (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-         values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
-                 $6, 'post_create', 1, 'consume', $7)
-         on conflict (idempotency_key) do nothing`,
-        [
-          userId,
-          xAccountId,
-          jobId,
-          draftId,
-          tweetId,
-          withUrl ? "post_url" : "post_normal",
-          `draft:${draftId}:tweet:${tweetId}:post:create`,
-        ],
-      );
+  const tweetIds: string[] = Array.isArray(draft.tweet_ids) ? [...draft.tweet_ids] : [];
+
+  /** index i を投稿し、成功直後に tweet_ids 保存＋post_create consume を確定する。 */
+  const postOne = async (i: number): Promise<void> => {
+    const text = finalTextAt(i);
+    const withUrl = hasUrl(text);
+    const result = await recordedXCall(
+      db,
+      {
+        ctx: usageCtx,
+        operation: "x_post_create",
+        unitCostUsd: xUnitCost("x_post_create", deps.costConfig, { hasUrl: withUrl }),
+        idempotencyKey: `draft:${draftId}:x_post_create:${i}`,
+      },
+      () =>
+        deps.createPost(accessToken, {
+          text,
+          inReplyToTweetId: i === 0 ? undefined : tweetIds[i - 1],
+          mediaIds: i === 0 ? mediaIds : undefined,
+        }),
+    );
+    tweetIds.push(result.tweetId);
+    await db.query(
+      `update drafts set tweet_ids = coalesce(tweet_ids, '[]'::jsonb) || to_jsonb($2::text), updated_at = now()
+        where id = $1`,
+      [draftId, result.tweetId],
+    );
+    await db.query(
+      `insert into usage_events
+         (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
+       values ($1, $2, $3, $4, $5, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'),
+               $6, 'post_create', 1, 'consume', $7)
+       on conflict (idempotency_key) do nothing`,
+      [
+        userId,
+        xAccountId,
+        jobId,
+        draftId,
+        result.tweetId,
+        withUrl ? "post_url" : "post_normal",
+        `draft:${draftId}:tweet:${result.tweetId}:post:create`,
+      ],
+    );
+  };
+
+  // --- スレッド投稿: tweet_ids.length を再開位置に、途中失敗時は同一job内で1回だけresume（要件04 §11）---
+  let resumed = false;
+  let failedIndex = -1;
+  for (;;) {
+    let ok = true;
+    for (let i = tweetIds.length; i < thread.length; i++) {
+      try {
+        await postOne(i);
+      } catch {
+        ok = false;
+        failedIndex = i;
+        break;
+      }
     }
-  } catch (error) {
-    if (error instanceof PostPublishError) throw error;
-    // 途中失敗: 保存済み tweet_ids は残し failed にする（resume/ロールバックは T-M3-19）。
-    const raw = error instanceof XApiError ? `${error.status}:${error.errorCode ?? error.kind}` : "unknown";
-    await setDraftFailed(db, draftId, {
-      code: "post_create_failed",
-      message: "投稿の途中で失敗しました。再試行できます。",
+    if (ok) break; // 全ポスト成功
+    if (!resumed) {
+      resumed = true; // 失敗位置から1回だけresume
+      continue;
+    }
+    // resume再失敗 → 逆順ロールバック（削除・post_delete consume・残存ID保存・通知）
+    await rollbackThread(deps, {
+      accessToken,
+      usageCtx,
+      draftId,
+      tweetIds,
+      finalTextAt,
+      failedIndex,
     });
-    throw new PostPublishError("post_create_failed", `post failed (${raw})`);
+    throw new PostPublishError("post_create_failed", "posting failed after resume");
   }
 
   // --- 完了: posted 確定・root_tweet_id・posted_at・posted_mode・next_metrics_at（1日checkpoint）---

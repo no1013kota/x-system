@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { XCreatePostResult } from "../x/client";
+import type { XCreatePostResult, XDeletePostResult } from "../x/client";
 import type { Queryable } from "../x/token-refresh";
 import {
   PostPublishError,
@@ -18,8 +18,9 @@ const APPEND_TWEET = /update drafts set tweet_ids/;
 const CONSUME = /insert into usage_events/;
 const POSTED = /update drafts\s+set status = 'posted'/;
 const NOTIFY = /insert into notifications/;
-const FAILED = /update drafts set status = 'failed'/;
+const FAILED = /update drafts\s+set status = 'failed'/;
 const REVERT_DRAFT = /update drafts set status = 'draft'/;
+const DELETE_CONSUME = (sql: string) => CONSUME.test(sql) && sql.includes("'post_delete'");
 
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -74,6 +75,14 @@ function baseDeps(db: Queryable, over: Partial<PostPublishDeps> = {}): PostPubli
     jobId: "job1",
     getAccessToken: async () => "tok",
     createPost,
+    deletePost: vi.fn(
+      async (): Promise<XDeletePostResult> => ({
+        deleted: true,
+        requestId: null,
+        quantity: 1,
+        dryRun: true,
+      }),
+    ),
     uploadMedia: vi.fn(async () => ({ mediaId: "dryrun-media", requestId: null, quantity: 1, dryRun: true })),
     downloadImage: vi.fn(async () => ({ data: Buffer.from("img"), mimeType: "image/webp" })),
     costConfig: COST,
@@ -219,5 +228,88 @@ describe("executePostPublish validation", () => {
       return [];
     });
     await expect(executePostPublish(baseDeps(db))).rejects.toBeInstanceOf(PostPublishError);
+  });
+});
+
+describe("executePostPublish resume & rollback (要件04 §11)", () => {
+  const draft3 = () =>
+    draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2"), post("p3", "本文3")] });
+
+  it("resumes once from the saved position and reaches posted", async () => {
+    const { db, writes } = makeDb(okHandler(draft3()));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n === 2) throw new Error("boom at index 1"); // 初回passの index1 で失敗
+      return { tweetId: `t-${n}`, requestId: null, quantity: 1, dryRun: false };
+    });
+    const res = await executePostPublish(baseDeps(db, { createPost }));
+
+    expect(res.status).toBe("posted");
+    expect(res.tweetIds).toHaveLength(3);
+    // 呼び出し: index0, index1(fail), index1(resume), index2 = 4回
+    expect(createPost).toHaveBeenCalledTimes(4);
+    expect(writes.some((w) => POSTED.test(w.sql))).toBe(true);
+    expect(writes.some((w) => FAILED.test(w.sql))).toBe(false);
+  });
+
+  it("rolls back successful posts in reverse when the resume also fails", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n >= 2) throw new Error("index1 always fails"); // index1 は両passで失敗
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    const deletePost = vi.fn<(accessToken: string, tweetId: string) => Promise<XDeletePostResult>>(
+      async () => ({ deleted: true, requestId: null, quantity: 1, dryRun: false }),
+    );
+
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, deletePost })),
+    ).rejects.toMatchObject({ code: "post_create_failed" });
+
+    // 逆順削除: 成功済み t-1 を削除
+    expect(deletePost).toHaveBeenCalledTimes(1);
+    expect(deletePost.mock.calls[0][1]).toBe("t-1");
+    // post_delete consume（冪等key・counter_type）
+    const del = writes.find((w) => DELETE_CONSUME(w.sql));
+    expect(del?.params[6]).toBe("draft:d1:tweet:t-1:post:delete");
+    expect(del?.params[5]).toBe("post_normal");
+    // draft failed ＋ last_post_error（deleted/remaining）＋ error通知
+    const failed = writes.find((w) => FAILED.test(w.sql));
+    const err = JSON.parse(failed?.params[1] as string);
+    expect(err.deleted_tweet_ids).toEqual(["t-1"]);
+    expect(err.remaining_tweet_ids).toEqual([]);
+    expect(err.failed_post_index).toBe(1);
+    expect(failed?.params[2]).toBe(false); // 残存なし→next_metrics設定しない
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+  });
+
+  it("keeps undeletable tweets in remaining_tweet_ids and sets next_metrics_at", async () => {
+    const draft = draftRow({ thread: [post("p1", "本文1"), post("p2", "本文2")] });
+    const { db, writes } = makeDb(okHandler(draft));
+    let n = 0;
+    const createPost = vi.fn(async () => {
+      n += 1;
+      if (n >= 2) throw new Error("index1 always fails");
+      return { tweetId: "t-1", requestId: null, quantity: 1, dryRun: false };
+    });
+    const deletePost = vi.fn(async () => {
+      throw new Error("delete failed");
+    });
+
+    await expect(
+      executePostPublish(baseDeps(db, { createPost, deletePost })),
+    ).rejects.toMatchObject({ code: "post_create_failed" });
+
+    // 削除失敗 → remaining に残る・post_delete consume は作らない
+    expect(writes.some((w) => DELETE_CONSUME(w.sql))).toBe(false);
+    const failed = writes.find((w) => FAILED.test(w.sql));
+    const err = JSON.parse(failed?.params[1] as string);
+    expect(err.deleted_tweet_ids).toEqual([]);
+    expect(err.remaining_tweet_ids).toEqual(["t-1"]);
+    expect(failed?.params[2]).toBe(true); // 残存あり→next_metrics設定
   });
 });

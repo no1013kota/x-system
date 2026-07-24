@@ -3,7 +3,7 @@ import "server-only";
 import { getPool } from "../db/pool";
 import { env } from "../env";
 import { createSupabaseAdminClient } from "../supabase/admin";
-import { createPost, uploadMedia, type XClientDeps } from "../x/client";
+import { createPost, deletePost, uploadMedia, type XClientDeps } from "../x/client";
 import { xClientDeps, xCostConfig } from "../x/client-server";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import type { Queryable } from "../x/token-refresh";
@@ -33,6 +33,7 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
     jobId: ctx.jobId,
     getAccessToken: (xAccountId) => getValidXAccessToken(xAccountId),
     createPost: (accessToken, input) => createPost(accessToken, input, clientDeps),
+    deletePost: (accessToken, tweetId) => deletePost(accessToken, tweetId, clientDeps),
     uploadMedia: (accessToken, input) => uploadMedia(accessToken, input, clientDeps),
     downloadImage: async (storagePath) => {
       const admin = createSupabaseAdminClient();
