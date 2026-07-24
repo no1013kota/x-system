@@ -136,8 +136,10 @@ describe("fanOutNewsDigest (db)", () => {
 
     try {
       const res = await fanOutNewsDigest({ db: pooledDb, windowStart });
-      expect(res.matchedUsers).toBe(2); // A and B only
-      expect(res.notified).toBe(2);
+      // matchedUsers/notified はグローバル集計で、並行テストの news_config 一致ユーザーを含みうるため
+      // 下限のみを検査する。厳密な対象（A/Bのみ・Off/Canceled/NoMatch除外）は下の per-user load で担保。
+      expect(res.matchedUsers).toBeGreaterThanOrEqual(2); // A and B (+ 並行ユーザーの可能性)
+      expect(res.notified).toBeGreaterThanOrEqual(2);
 
       const load = async (uid: string) =>
         (
@@ -168,11 +170,12 @@ describe("fanOutNewsDigest (db)", () => {
       expect(await load(seed.userCanceled)).toHaveLength(0);
       expect(await load(seed.userNoMatch)).toHaveLength(0);
 
-      // re-run: dedupe_key prevents new rows
+      // re-run: dedupe_key prevents new rows. dedupeは対象ユーザーの行数不変で検査する
+      // （グローバル notified は並行テストの新規一致ユーザーで増えうるため）。
       const rerun = await fanOutNewsDigest({ db: pooledDb, windowStart });
-      expect(rerun.matchedUsers).toBe(2);
-      expect(rerun.notified).toBe(0);
-      expect(await load(seed.userA)).toHaveLength(1);
+      expect(rerun.matchedUsers).toBeGreaterThanOrEqual(2);
+      expect(await load(seed.userA)).toHaveLength(1); // 重複行が作られない
+      expect(await load(seed.userB)).toHaveLength(1);
     } finally {
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = any($1)`, [
