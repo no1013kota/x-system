@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
-| 更新日 | 2026-07-23 |
+| バージョン | v1.13 |
+| 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -633,6 +633,8 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
 ```
 
 `initial_thread`も同じschemaを使う。生成確定時に`thread`と同値で保存し、以後は不変とする。比較文字列は投稿順の`text`を取り出し、Unicode NFC、改行コードLF、各ポスト前後の空白除去、連続空白の1文字化を行って`\n---\n`で連結する。URL、絵文字、ハッシュタグは除外しない。投稿時の最終`thread`とのUnicode code point単位Levenshtein距離を、長い方のcode point数で割った値が10%以下なら「ほぼ修正なし」と数える。
+
+`warnings`はポスト単位の警告コード配列（生成後検証, プロンプト設計書 §7.2〜7.7）。コードは`length_exceeded`（PT-FIXで最大2回短縮してもなお加重280超過＝編集必須）／`cashtag_multiple`（cashtag2件以上）／`ng_word`（L-7 NGワード検出）／`source_missing`（出典必須パターンで通過出典なし）／`injection_suspected`（指示への言及・検証済み出典に無い不自然なURL）。これらの警告を持つポストを含む下書きは自動投稿を阻害し手動確認へ切り替える（要件06 §4.3）。`sources`はSSRF検証（要件05 §12）を通過した出典だけをコードで付加する（通常は最終ポスト）。
 
 ### 4.8 `drafts.images`
 

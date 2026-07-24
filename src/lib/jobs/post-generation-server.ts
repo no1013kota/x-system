@@ -6,6 +6,7 @@ import { getPool } from "../db/pool";
 import { env } from "../env";
 import { gatherExecutionPrereqInputs } from "../execution-prereqs-server";
 import type { PlanId } from "../plans";
+import { validateSourceUrlServer } from "../post/source-url-server";
 import type { Queryable } from "../x/token-refresh";
 import type { JobContext } from "./handlers";
 import { executePostGeneration } from "./post-generation";
@@ -51,5 +52,6 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
       };
     },
     gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),
+    validateSource: (url) => validateSourceUrlServer(url),
   });
 }

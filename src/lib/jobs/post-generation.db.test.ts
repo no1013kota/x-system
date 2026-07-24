@@ -85,6 +85,7 @@ describe("executePostGeneration (local DB)", () => {
         model: "claude-test",
       }),
       gatherPrereqInputs: async () => satisfiedPrereqs(),
+      validateSource: async () => true,
       makeDeadline: () => createDeadline(180_000, () => 0),
       now: () => 0,
       ...over,
@@ -175,6 +176,28 @@ describe("executePostGeneration (local DB)", () => {
       ).rows[0];
       expect(notif.n).toBe(1);
       expect(notif.dedupe_key).toBe(`draft:${res.draftId}:created`);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("post-generation validation: NG word in a post adds an ng_word warning to the draft (T-M3-06)", async () => {
+    const { uid, xid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      await withTransaction((c) =>
+        c.query(`update x_accounts set settings = '{"ng":{"words":["絶対儲かる"]}}'::jsonb where id = $1`, [xid]),
+      );
+      const provider = mockProvider('{"posts":["絶対儲かる投資術"],"sources":[],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const draft = (
+        await db.query<{ thread: Array<{ warnings: string[] }> }>(
+          `select thread from drafts where id = $1`,
+          [res.draftId],
+        )
+      ).rows[0];
+      expect(draft.thread[0].warnings).toContain("ng_word");
     } finally {
       await cleanup(uid);
     }

@@ -1,6 +1,10 @@
 import { checkExecutionPrerequisites, type ExecutionPrereqInput } from "@/lib/execution-prereqs";
-import type { PromptTemplateKind } from "@/lib/prompts/gen-prompts";
+import { PT_FIX, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
+import {
+  finalizeThread,
+  sourceRequired,
+} from "@/lib/post/generation-validation";
 import { themesToNewsCategories } from "@/lib/themes";
 
 import {
@@ -9,8 +13,10 @@ import {
   fetchNewsDigest,
   fetchRecentPostBodies,
 } from "../ai/gen-context";
-import { genOutputSchema, postsToThread } from "../ai/gen-output";
+import { genOutputSchema } from "../ai/gen-output";
+import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
+import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import type { Queryable } from "../x/token-refresh";
@@ -54,7 +60,10 @@ interface JobRow {
   x_account_id: string;
   user_id: string;
   base_md: string;
-  settings: { themes?: { primary?: string[]; secondary?: string[] } } | null;
+  settings: {
+    themes?: { primary?: string[]; secondary?: string[] };
+    ng?: { words?: string[] };
+  } | null;
   plan: string;
 }
 
@@ -72,6 +81,8 @@ export interface PostGenerationDeps {
     userId: string,
     opts: { imageRequested: boolean },
   ) => Promise<ExecutionPrereqInput | null>;
+  /** 出典URLのSSRF検証（server配線は validateSourceUrlServer）。 */
+  validateSource: (url: string) => Promise<boolean>;
   now?: () => number;
   makeDeadline?: () => Deadline;
 }
@@ -265,18 +276,40 @@ export async function executePostGeneration(
     deadline,
   });
 
+  // GEN-FIX 短縮（親jobと同じproviderで実行し、usageは親jobへ合算）。
+  const fixCalls: ProviderCall[] = [];
+  const shorten = async (text: string, limit: number): Promise<string> => {
+    const start = now();
+    const out = await textGen.generate({
+      system: [],
+      user: PT_FIX.replaceAll("{{limit}}", String(limit)).replaceAll("{{post}}", text),
+      timeoutMs: deadline.callTimeoutMs(),
+    });
+    fixCalls.push(
+      toProviderCall(out, {
+        model,
+        operation: "text_generation",
+        latencyMs: now() - start,
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
+      }),
+    );
+    return out.text.trim();
+  };
+
+  const request = {
+    system,
+    user,
+    webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url)),
+    timeoutMs: deadline.callTimeoutMs(),
+  };
+
   // --- stage: writing（生成＋JSON検証＋修復）---
   await heartbeat(jobId, "writing");
   let generated;
   try {
     generated = await runTextGeneration({
       provider: textGen,
-      request: {
-        system,
-        user,
-        webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url)),
-        timeoutMs: deadline.callTimeoutMs(),
-      },
+      request,
       schema: genOutputSchema,
       model,
       operation: "text_generation",
@@ -310,9 +343,52 @@ export async function executePostGeneration(
     throw new PostGenerationTerminalError("generation_error", "provider returned error");
   }
 
-  // --- draft作成（thread=initial_thread同値・weighted_length・ニュース起点はsource_news_item_id）---
-  const thread = postsToThread(generated.parsed.posts, generated.parsed.sources);
-  const threadJson = JSON.stringify(thread);
+  // --- 生成後検証（GEN-FIX短縮・cashtag・NG・出典SSRF・インジェクション, T-M3-06）---
+  const ngWords = job.settings?.ng?.words ?? [];
+  const hasReferenceUrl = Boolean(job.input.source_url);
+  const usageCalls: ProviderCall[] = [...generated.usage.calls];
+  let finalize = await finalizeThread(
+    {
+      pattern,
+      posts: generated.parsed.posts,
+      aiSources: generated.parsed.sources,
+      ngWords,
+      hasReferenceUrl,
+    },
+    { shorten, validateSource: deps.validateSource },
+  );
+  // 出典必須で通過出典が空なら1回だけ再生成する（プロンプト設計書 §7.5）。
+  if (finalize.sourcesMissing && sourceRequired(pattern, hasReferenceUrl)) {
+    const retry = await runTextGeneration({
+      provider: textGen,
+      request,
+      schema: genOutputSchema,
+      model,
+      operation: "text_generation",
+      now,
+    });
+    usageCalls.push(...retry.usage.calls);
+    if (!retry.parsed.error) {
+      finalize = await finalizeThread(
+        {
+          pattern,
+          posts: retry.parsed.posts,
+          aiSources: retry.parsed.sources,
+          ngWords,
+          hasReferenceUrl,
+        },
+        { shorten, validateSource: deps.validateSource },
+      );
+    }
+  }
+  usageCalls.push(...fixCalls);
+  const usage: GenerationUsage = {
+    calls: usageCalls,
+    estimated_cost_usd_total: usageCalls.reduce((sum, c) => sum + c.estimated_cost_usd, 0),
+  };
+
+  // --- draft作成（thread=initial_thread同値・weighted_length・警告・ニュース起点はsource_news_item_id）---
+  const threadJson = JSON.stringify(finalize.thread);
   const inserted = await db.query<{ id: string }>(
     `insert into drafts
        (x_account_id, pattern, thread, initial_thread, status, source_job_id, source_news_item_id)
@@ -326,7 +402,7 @@ export async function executePostGeneration(
 
   await db.query(
     `update generation_jobs set draft_id = $2, usage = $3::jsonb where id = $1`,
-    [jobId, draftId, JSON.stringify(generated.usage)],
+    [jobId, draftId, JSON.stringify(usage)],
   );
 
   await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
