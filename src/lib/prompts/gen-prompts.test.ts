@@ -8,6 +8,7 @@ import {
   PT_L2,
   PT_L3,
   PT_MD_MERGE,
+  PT_SUGGEST,
   SYS_GEN,
   SYS_NEWS,
   SYSTEM_DEFAULT_TEMPLATES,
@@ -15,7 +16,7 @@ import {
 
 describe("GEN prompt constants", () => {
   it("match the design doc §6 snapshot (drift detection)", () => {
-    expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_L3, PT_MD_MERGE, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+    expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_L3, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
   });
 
   it("PT-MD-MERGE keeps its placeholders and body-only contract (§6.14)", () => {
@@ -24,6 +25,14 @@ describe("GEN prompt constants", () => {
     expect(PT_MD_MERGE).toContain("{{removed_analyses}}");
     expect(PT_MD_MERGE).toContain("セクション本文のみ");
     expect(PT_MD_MERGE).toBe(PT_MD_MERGE.trim());
+  });
+
+  it("PT-SUGGEST keeps its placeholders and max-2 JSON contract (§6.15)", () => {
+    expect(PT_SUGGEST).toContain("{{stats}}");
+    expect(PT_SUGGEST).toContain("{{posts}}");
+    expect(PT_SUGGEST).toContain("最大2件");
+    expect(PT_SUGGEST).toContain('"suggestions"');
+    expect(PT_SUGGEST).toBe(PT_SUGGEST.trim());
   });
 
   it("LRN prompts (PT-L1〜L3) declare their JSON output contracts (§6.11〜6.13)", () => {

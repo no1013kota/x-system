@@ -116,6 +116,45 @@ describe("finalizeFailedJob (db)", () => {
     }
   });
 
+  it("suggestion stale: refunds the generation reserve (premium) and notifies", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const jobId = await withTransaction((c) => insertJob(c, xid, "suggestion"));
+      const month = await withTransaction(async (c) => {
+        const { rows } = await c.query<{ m: string }>(
+          `select to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM') as m`,
+        );
+        return rows[0].m;
+      });
+      await withTransaction(async (c) => {
+        await c.query(
+          `insert into usage_events
+             (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key)
+           values ($1, $2, $3, $4, 'generation', 'generation', 1, 'reserve', $5)`,
+          [uid, xid, jobId, month, `job:${jobId}:generation:reserve`],
+        );
+        await c.query(`insert into usage_counters (user_id, month, generations_count) values ($1, $2, 1)`, [uid, month]);
+      });
+
+      await withTransaction((c) => finalizeFailedJob(c, jobId, "suggestion"));
+
+      const count = (
+        await withTransaction((c) =>
+          c.query<{ generations_count: number }>(
+            `select generations_count from usage_counters where user_id = $1 and month = $2`,
+            [uid, month],
+          ),
+        )
+      ).rows[0].generations_count;
+      expect(count).toBe(0); // reserve refunded (1 → 0), no leak
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
   it("post_publish stale: reverts draft posting→failed with last_post_error", async () => {
     const { uid, xid } = await withTransaction((c) => makeAccount(c));
     try {

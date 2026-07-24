@@ -188,11 +188,11 @@ describe("worker leaseJob / runJob", () => {
     });
   });
 
-  it("runJob drives a queued job to succeeded via a placeholder handler", async () => {
+  it("runJob drives a queued job to succeeded via a clean no-op handler", async () => {
     const { xid, jobId } = await withTransaction(async (c) => {
       const { xid } = await makeAccount(c);
-      // post_generation(T-M3-05)・image_generation(T-M3-15) は実handlerになったため、
-      // worker機構の検証には未実装（placeholder）の種別を使う
+      // 全kindが実handler化したため、worker機構の検証には suggestion を使う。投稿ドラフトが無ければ
+      // 比較グループ不足で提案0件（LLM未呼び出し）となり、handlerはクリーンに succeeded する。
       const jobId = await makeJob(c, xid, { kind: "suggestion" });
       return { xid, jobId };
     });

@@ -25,10 +25,6 @@ export interface JobContext {
 /** ハンドラは lease 済みジョブの本処理を行う。throw で失敗扱い。 */
 export type JobHandler = (ctx: JobContext, client: PoolClient) => Promise<void>;
 
-const placeholder: JobHandler = async () => {
-  // M0: no-op. 実処理は後続マイルストーンで実装する。
-};
-
 const postGeneration: JobHandler = async (ctx) => {
   const { postGenerationHandler } = await import("./post-generation-server");
   await postGenerationHandler(ctx);
@@ -54,13 +50,18 @@ const mdMerge: JobHandler = async (ctx) => {
   await mdMergeHandler(ctx);
 };
 
+const suggestion: JobHandler = async (ctx) => {
+  const { suggestionHandler } = await import("./suggestion-server");
+  await suggestionHandler(ctx);
+};
+
 const HANDLERS: Record<JobKind, JobHandler> = {
   post_generation: postGeneration,
   image_generation: imageGeneration,
   post_publish: postPublish,
   learning_analysis: learningAnalysis,
   md_merge: mdMerge,
-  suggestion: placeholder,
+  suggestion,
 };
 
 export function getJobHandler(kind: JobKind): JobHandler {

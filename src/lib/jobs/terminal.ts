@@ -252,6 +252,17 @@ export async function finalizeFailedJob(
         link: "/app/settings",
       });
       break;
+    case "suggestion":
+      // 改善提案もLLM実行時に生成枠を1消費するため返還する（premium・冪等。BYOKはreserve無しでno-op。T-M5-18）。
+      await refundUsage(c, jobId, "generation");
+      await createFailedNotification(c, {
+        userId: job.user_id,
+        jobId,
+        title: "改善提案の生成に失敗しました",
+        body: "時間をおいて分析画面から再度お試しください。",
+        link: "/app/analytics",
+      });
+      break;
     default:
       await createFailedNotification(c, {
         userId: job.user_id,
