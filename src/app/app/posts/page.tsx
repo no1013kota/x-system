@@ -189,6 +189,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <DraftsList
           drafts={drafts}
           imageRegenEnabled={imageRegenEnabled}
+          quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
           selectedDraftId={params.draftId}
         />
       ) : (

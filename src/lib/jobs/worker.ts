@@ -168,14 +168,16 @@ export async function runJob(
       c.query(
         `update generation_jobs
             set status = 'succeeded', finished_at = now(), progress_stage = null
-          where id = $1`,
+          where id = $1 and status = 'running'`,
         [jobId],
       ),
     );
   } catch {
+    // status='running' の間だけ failed 化する。handlerが自己終端（canceled等）した場合は上書きしない。
     await withTransaction((c) =>
       c.query(
-        `update generation_jobs set status = 'failed', finished_at = now() where id = $1`,
+        `update generation_jobs set status = 'failed', finished_at = now()
+          where id = $1 and status = 'running'`,
         [jobId],
       ),
     );

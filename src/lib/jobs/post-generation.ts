@@ -85,6 +85,8 @@ export interface PostGenerationDeps {
   ) => Promise<ExecutionPrereqInput | null>;
   /** 出典URLのSSRF検証（server配線は validateSourceUrlServer）。 */
   validateSource: (url: string) => Promise<boolean>;
+  /** P-5引用ポストのfeature flag（OFFなら外部/枠消費前にjobをcanceledにする）。 */
+  quotePostEnabled?: boolean;
   now?: () => number;
   makeDeadline?: () => Deadline;
   /** stage 進捗の記録（既定 heartbeat・独自tx）。テストで no-op 化できるよう注入する。 */
@@ -250,6 +252,16 @@ export async function executePostGeneration(
   const job = await loadJob(db, jobId);
   if (!job) throw new PostGenerationTerminalError("not_found", "job not found");
   const pattern = (job.pattern ?? "p1") as PromptTemplateKind;
+
+  // P-5 が flag OFF の間に queued 化していた場合、外部API・利用枠を消費する前に canceled にする
+  //（要件05 §5・要件04 §1, T-M3-25）。runJob は status='running' の間だけ finalize するため上書きされない。
+  if (pattern === "p5" && deps.quotePostEnabled === false) {
+    await db.query(
+      `update generation_jobs set status = 'canceled', finished_at = now() where id = $1 and status = 'running'`,
+      [jobId],
+    );
+    throw new PostGenerationTerminalError("feature_disabled", "quote post feature disabled");
+  }
 
   // 冪等: 既にdraftがあれば再作成しない（worker再実行安全）。画像ONなら子jobの存在だけ担保する
   //（初回が子job作成前に落ちても再実行で連鎖が成立するようにする。決定的keyで重複しない）。

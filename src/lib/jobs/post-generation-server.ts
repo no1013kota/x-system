@@ -53,5 +53,6 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
     },
     gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),
     validateSource: (url) => validateSourceUrlServer(url),
+    quotePostEnabled: env.FEATURE_QUOTE_POST_ENABLED,
   });
 }

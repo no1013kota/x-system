@@ -60,10 +60,12 @@ export function DraftsList({
   drafts,
   selectedDraftId,
   imageRegenEnabled,
+  quotePostEnabled,
 }: {
   drafts: DraftView[];
   selectedDraftId?: string;
   imageRegenEnabled: boolean;
+  quotePostEnabled: boolean;
 }) {
   if (drafts.length === 0) {
     return (
@@ -80,6 +82,7 @@ export function DraftsList({
           highlighted={draft.id === selectedDraftId}
           imageRegenEnabled={imageRegenEnabled}
           key={draft.id}
+          quotePostEnabled={quotePostEnabled}
         />
       ))}
     </ul>
@@ -90,10 +93,12 @@ function DraftCard({
   draft,
   highlighted,
   imageRegenEnabled,
+  quotePostEnabled,
 }: {
   draft: DraftView;
   highlighted: boolean;
   imageRegenEnabled: boolean;
+  quotePostEnabled: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -116,6 +121,8 @@ function DraftCard({
       (lpe?.ambiguous_create_indices?.length ?? 0) > 0 ||
       (lpe?.ambiguous_delete_tweet_ids?.length ?? 0) > 0);
   const cloneEligible = hasCreationHistory && !unresolvedPosting;
+  // P-5 は flag OFF の間、閲覧のみ（編集・再生成・画像再生成・投稿を無効化, 要件06 §4.1）。
+  const p5Disabled = draft.pattern === "p5" && !quotePostEnabled;
   // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
   const publishing = pending || publishJobId !== null;
   const locked = publishing || editing;
@@ -203,12 +210,17 @@ function DraftCard({
               投稿中…
             </span>
           ) : null}
-          {editable && !editing && !publishing ? (
+          {p5Disabled ? (
+            <span className="text-xs text-muted-foreground">
+              引用ポスト機能は現在利用できません
+            </span>
+          ) : null}
+          {editable && !editing && !publishing && !p5Disabled ? (
             <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
               編集
             </Button>
           ) : null}
-          {!editing && !publishing ? (
+          {!editing && !publishing && !p5Disabled ? (
             <Button
               onClick={() => setRegenerating((v) => !v)}
               size="sm"
@@ -218,7 +230,7 @@ function DraftCard({
               再生成
             </Button>
           ) : null}
-          {editable && !editing ? (
+          {editable && !editing && !p5Disabled ? (
             <PublishButton disabled={publishing} onConfirm={publish} />
           ) : null}
           {/* 全削除確認済み（作成履歴あり・未解決なし）は新draftとして再試行（要件06 §7）。 */}
@@ -248,7 +260,7 @@ function DraftCard({
 
       {readyImage || imageFailed ? (
         <ImageSection
-          enabled={imageRegenEnabled && !publishing}
+          enabled={imageRegenEnabled && !publishing && !p5Disabled}
           failed={imageFailed && !readyImage}
           imageUrl={readyImage?.signed_url}
           draftId={draft.id}

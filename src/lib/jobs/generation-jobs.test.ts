@@ -245,13 +245,13 @@ describe("regenerateDraft", () => {
 });
 
 describe("regenerateImage", () => {
-  const DRAFT_LOAD = /select d\.status, d\.x_account_id/;
+  const DRAFT_LOAD = /select d\.status, d\.pattern, d\.x_account_id/;
   const ACTIVE_IMG = /kind = 'image_generation' and status in/;
 
   it("creates a queued image_generation job for a regenerable draft", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID }];
       if (ACTIVE_IMG.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "img-job" }];
@@ -267,7 +267,7 @@ describe("regenerateImage", () => {
   it("dedups to the active image job when one is already queued/running", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID }];
       if (ACTIVE_IMG.test(sql)) return [{ id: "active-1" }];
       return [];
     });
@@ -285,17 +285,28 @@ describe("regenerateImage", () => {
   it("rejects a non-regenerable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "posted", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID }];
       return [];
     });
     await expect(
       regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db)),
     ).rejects.toMatchObject({ code: "job_conflict" });
   });
+
+  it("rejects regenerating an image on a P-5 draft while the flag is off", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p5", x_account_id: XID }];
+      return [];
+    });
+    await expect(
+      regenerateImage("u1", { request_key: "ri", draft_id: "src" }, deps(db)),
+    ).rejects.toMatchObject({ code: "feature_disabled" });
+  });
 });
 
 describe("publishDraft", () => {
-  const PUB_LOAD = /select d\.status, d\.x_account_id, d\.tweet_ids/;
+  const PUB_LOAD = /select d\.status, d\.pattern, d\.x_account_id, d\.tweet_ids/;
   const ACTIVE_PUB = /kind = 'post_publish' and status in/;
 
   const pubInput = { request_key: "pk", draft_id: "d1", mode: "manual" as const };
@@ -303,7 +314,7 @@ describe("publishDraft", () => {
   it("creates a post_publish job for a draft status", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -319,7 +330,7 @@ describe("publishDraft", () => {
   it("dedups to an active post_publish job", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [{ id: "active-pub" }];
       return [];
     });
@@ -336,7 +347,7 @@ describe("publishDraft", () => {
   it("allows a clean retryable failed draft", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -349,7 +360,7 @@ describe("publishDraft", () => {
   it("rejects a failed draft with created tweets (unresolved posting)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -361,7 +372,7 @@ describe("publishDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (PUB_LOAD.test(sql))
-        return [{ status: "failed", x_account_id: XID, tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
+        return [{ status: "failed", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -371,7 +382,7 @@ describe("publishDraft", () => {
   it("rejects a non-publishable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "posted", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID, tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({ code: "job_conflict" });
@@ -380,7 +391,7 @@ describe("publishDraft", () => {
   it("surfaces posting prerequisite errors (no active X account)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       return [];
     });
@@ -390,6 +401,18 @@ describe("publishDraft", () => {
       })),
     );
     expect(err.code).toBe("x_account_required");
+  });
+
+  it("rejects publishing a P-5 draft while the feature flag is off", async () => {
+    const { db } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (PUB_LOAD.test(sql))
+        return [{ status: "draft", pattern: "p5", x_account_id: XID, tweet_ids: [], last_post_error: null }];
+      return [];
+    });
+    await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({
+      code: "feature_disabled",
+    });
   });
 });
 

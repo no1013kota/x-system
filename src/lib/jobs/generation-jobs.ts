@@ -311,14 +311,17 @@ export async function regenerateImage(
     if (existing) return { jobId: existing.id, deduped: true };
 
     const draft = (
-      await tx.query<{ status: string; x_account_id: string }>(
-        `select d.status, d.x_account_id
+      await tx.query<{ status: string; pattern: string; x_account_id: string }>(
+        `select d.status, d.pattern, d.x_account_id
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
         [input.draft_id, userId],
       )
     ).rows[0];
     if (!draft) throw new AppError("not_found");
+    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+      throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
+    }
     if (draft.status !== "draft" && draft.status !== "failed") {
       throw new AppError("job_conflict", { details: { reason: `not_regenerable:${draft.status}` } });
     }
@@ -372,6 +375,7 @@ export type PublishDraftInput = z.infer<typeof publishDraftSchema>;
 
 interface PublishDraftRow {
   status: string;
+  pattern: string;
   x_account_id: string;
   tweet_ids: string[];
   last_post_error: {
@@ -414,13 +418,16 @@ export async function publishDraft(
 
     const draft = (
       await tx.query<PublishDraftRow>(
-        `select d.status, d.x_account_id, d.tweet_ids, d.last_post_error
+        `select d.status, d.pattern, d.x_account_id, d.tweet_ids, d.last_post_error
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
         [input.draft_id, userId],
       )
     ).rows[0];
     if (!draft) throw new AppError("not_found");
+    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+      throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
+    }
     if (draft.status === "draft") {
       // ok
     } else if (draft.status === "failed") {

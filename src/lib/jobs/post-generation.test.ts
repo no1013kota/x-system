@@ -137,3 +137,18 @@ describe("executePostGeneration image chain", () => {
     expect(child?.params[3]).toBe("parent:job-x:image_generation:draft1");
   });
 });
+
+describe("executePostGeneration P-5 feature flag off", () => {
+  it("cancels a queued P-5 job before external/quota when the flag is off", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [{ ...jobRow(false), pattern: "p5" }];
+      return [];
+    });
+    await expect(
+      executePostGeneration({ ...deps(db), quotePostEnabled: false }),
+    ).rejects.toMatchObject({ code: "feature_disabled" });
+    // canceled 化し、下書き・provider は呼ばない
+    expect(writes.some((w) => /status = 'canceled'/.test(w.sql))).toBe(true);
+    expect(writes.some((w) => INSERT_DRAFT.test(w.sql))).toBe(false);
+  });
+});

@@ -955,13 +955,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核`lib/drafts-clone.ts` `cloneFailedDraftForRetry`（deps注入db/copyImage/deleteImages/newId）。適格性: failed＋tweet_ids非空（作成履歴）＋未解決なし（remaining/ambiguous空）、それ以外は job_conflict（not_clonable/no_creation_history/unresolved_posting）。**画像**: newDraftId=uuidを先に採番→ready画像をStorage copyで新path`{user}/{xacct}/{newDraftId}/{localId}.{ext}`へ、全copy成功後にinsert。途中失敗はcopy済みをdeleteImages（best effort）してthrow（**新draftを作らない**）。insertはid明示・thread=initial_thread・source_job_id=null・tweet_ids等default空・parent_draft_id/quote/source_news_item_id複製。冪等は「同一元draftの未投稿AI無し複製（parent一致・source_job_id null・status=draft）」のdedup（**request_keyはdraftsに列がなく列挙保存しない**→parent基準dedupで実用的二重防止。厳密request_key dedupは列追加要）。action`app/actions/drafts.ts` `cloneFailedDraftForRetryAction`（Supabase admin storage.copy/remove配線）。UI`drafts-list.tsx`: **T-M3-23のunresolvedPostingを精緻化**（tweet_ids非空を除外しremaining/ambiguousのみに）＋`hasCreationHistory`/`cloneEligible`導出。cloneEligibleで「新しい下書きとして再試行」ボタン、破棄は`hasCreationHistory||unresolved`で無効、reconcile panelは`unresolved`時のみ。テスト+6（clone成功[copy/insert/parent/initial_thread]・dedup・非failed拒否・履歴なし拒否・未解決拒否・copy失敗→削除&no-draft）、全795 green・build通過。doc: 要件05 §5[行168・179]・要件04 §11・要件06 §7[行164・188・203] に既述で一致（変更なし）。
 - 後続への注意: clone冪等はparent基準（request_key列なし）。厳密化が必要なら drafts に request_key 列を追加。remaining（確定live）の再削除フローは未実装（reconcileは消失確認のみ）。これでM3投稿系（生成→画像→投稿→resume/rollback→結果不明照合→復旧clone）が一巡。
 
-### T-M3-25: P-5引用ポストのflag OFF拒否・非表示 `todo`
+### T-M3-25: P-5引用ポストのflag OFF拒否・非表示 `done`
 - 参照: P-5、PRD §5.4、要件05 §5、要件06 §4.1、要件06 §5、要件04 §1、要件01 §3.1 / 依存: T-M3-21、T-M3-16 / サイズ: S
 - 完了条件:
   - `FEATURE_QUOTE_POST_ENABLED=false`（既定）でcreateGenerationJobのP-5指定、およびP-5 draftへのregenerateDraft/publishDraft/regenerateImageが、外部API呼び出しと利用枠消費の前に`feature_disabled`で拒否される
   - workerはqueuedのP-5 jobを外部API・利用枠を消費する前に`feature_disabled`でcanceledにする
   - UIはP-5をパターン選択肢・新規生成導線から非表示にし、既存P-5 draftは本文と対象URLの閲覧のみ可（再生成・画像再生成・投稿ボタン無効＋「引用ポスト機能は現在利用できません」表示）。未解決の投稿状態がなければ破棄は可能
 - メモ: flag判定はServer only。有効化後の機能（対象ポスト取得検証・<quote_post>入力・quote_url合成投稿）は本マイルストーンでタスク化しない（有効化はLLM入力契約と自動検証の完成後に別途）。
+- 実装メモ: **既存**: createGenerationJob(T-M3-07)・regenerateDraft(T-M3-13) はP-5拒否済み、作成フォームP-5非表示(T-M3-08)。**追加**: `regenerateImage`/`publishDraft` に draft.pattern ロード＋`pattern==='p5' && !quotePostEnabled → feature_disabled`。**worker cancel**: post-generation.ts に `quotePostEnabled` dep追加、loadJob直後（外部/枠消費前）に P-5＋flag OFF なら `status='canceled'`（`where status='running'`）＋throw。**runJob**（worker.ts）の succeeded/failed 終了更新に `and status='running'` ガード追加（handlerの自己終端[canceled]を上書きしない・汎用改善）。post-generation-server で `env.FEATURE_QUOTE_POST_ENABLED` を配線。**UI** drafts-list: `quotePostEnabled` prop（page→DraftsList→DraftCard）、`p5Disabled=pattern==='p5' && !flag` で編集/再生成/画像再生成/投稿を無効化＋「引用ポスト機能は現在利用できません」表示、破棄は未解決なしなら可。テスト+5（regenerateImage/publishDraft P-5拒否、worker P-5 cancel、既存matcher更新[d.pattern追加]）、全798 green・build通過。doc: 要件05 §5[行173]・要件04 §1[行19]・要件06 §4.1[行149] に既述で一致（変更なし）。
+- 後続への注意: **runJobに`status='running'`ガードを追加**したので、以後handlerがpoolで自己終端（canceled等）した状態はrunJobの一括finalizeで上書きされない（D-5の中央finalizer検討時に前提となる挙動）。有効化後のP-5機能（対象取得検証・<quote_post>・quote_url合成）は別タスク。
 
 ### T-M3-26: SC-05ホーム確認キュー `todo`
 - 参照: SC-05、要件06 §1、要件06 §10、S-5 / 依存: T-M3-11 / サイズ: S
