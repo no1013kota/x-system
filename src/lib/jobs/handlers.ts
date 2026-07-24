@@ -2,10 +2,10 @@ import type { PoolClient } from "pg";
 
 /**
  * kind別のジョブ処理ハンドラのレジストリ（要件04 §2）。post_generation は T-M3-05、
- * image_generation は T-M3-15 で実装済み。実処理（env・pool・provider配線）は動的importで
- * 遅延ロードし、レジストリ読込だけでenv検証を走らせない。
+ * image_generation は T-M3-15、post_publish は T-M3-18 で実装済み。実処理（env・pool・provider
+ * 配線）は動的importで遅延ロードし、レジストリ読込だけでenv検証を走らせない。
  * 残りは後続マイルストーンで差し替える:
- * post_publish→M3, learning_analysis/md_merge→M5, suggestion→M5。
+ * learning_analysis/md_merge→M5, suggestion→M5。
  */
 
 export type JobKind =
@@ -39,10 +39,15 @@ const imageGeneration: JobHandler = async (ctx) => {
   await imageGenerationHandler(ctx);
 };
 
+const postPublish: JobHandler = async (ctx) => {
+  const { postPublishHandler } = await import("./post-publish-server");
+  await postPublishHandler(ctx);
+};
+
 const HANDLERS: Record<JobKind, JobHandler> = {
   post_generation: postGeneration,
   image_generation: imageGeneration,
-  post_publish: placeholder,
+  post_publish: postPublish,
   learning_analysis: placeholder,
   md_merge: placeholder,
   suggestion: placeholder,
