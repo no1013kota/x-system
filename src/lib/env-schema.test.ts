@@ -119,10 +119,27 @@ describe("preview/prod-only requirements", () => {
     expect(() => buildServerEnv(devBase())).not.toThrow();
   });
 
-  it("fails in production when ANTHROPIC_API_KEY (common news) is missing", () => {
+  it("fails in production when ANTHROPIC_API_KEY (default premium/news provider) is missing", () => {
     const raw = prodBase();
     delete raw.ANTHROPIC_API_KEY;
     expect(() => buildServerEnv(raw)).toThrow(/ANTHROPIC_API_KEY/);
+  });
+
+  it("requires the selected PREMIUM_TEXT_PROVIDER operator key (openai) in production", () => {
+    const raw = prodBase();
+    raw.PREMIUM_TEXT_PROVIDER = "openai";
+    // ANTHROPIC_API_KEY is still present (news default), but the OpenAI operator key is missing.
+    expect(() => buildServerEnv(raw)).toThrow(/OPENAI_API_KEY/);
+    raw.OPENAI_API_KEY = "sk-openai";
+    expect(() => buildServerEnv(raw)).not.toThrow();
+  });
+
+  it("requires the selected NEWS_TEXT_PROVIDER operator key (google) in production", () => {
+    const raw = prodBase();
+    raw.NEWS_TEXT_PROVIDER = "google";
+    expect(() => buildServerEnv(raw)).toThrow(/GEMINI_API_KEY/);
+    raw.GEMINI_API_KEY = "gm-key";
+    expect(() => buildServerEnv(raw)).not.toThrow();
   });
 
   it("passes in production with the full set", () => {

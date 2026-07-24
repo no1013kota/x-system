@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
-| 更新日 | 2026-07-24 |
+| バージョン | v1.6 |
+| 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -99,7 +99,7 @@ flowchart TB
 
 | 変数名 | 必須環境 | 用途 | 備考 |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | preview/prod | 共通ニュース取得（`NEWS_TEXT_PROVIDER=anthropic`時）、プレミアム文章生成/分析 | BYOKの利用者向け生成ではユーザー登録値を使用。`NEWS_TEXT_PROVIDER`を別providerへ変える場合は該当providerのキーがpreview/prod必須 |
+| `ANTHROPIC_API_KEY` | preview/prod | 共通ニュース取得（`NEWS_TEXT_PROVIDER=anthropic`時）、プレミアム文章生成/分析（`PREMIUM_TEXT_PROVIDER=anthropic`時） | BYOKの利用者向け生成ではユーザー登録値を使用。`PREMIUM_TEXT_PROVIDER`／`NEWS_TEXT_PROVIDER`を`openai`/`google`へ変える場合は該当providerの運営キー（`OPENAI_API_KEY`／`GEMINI_API_KEY`）がpreview/prod必須（起動時に選択providerのキーを検証・§7） |
 | `OPENAI_API_KEY` | premium運用時 | プレミアム文章生成/画像生成候補 | BYOKではユーザー登録値を使用 |
 | `GEMINI_API_KEY` | premium運用時 | プレミアム文章生成/画像生成候補 | BYOKではユーザー登録値を使用 |
 | `PREMIUM_TEXT_PROVIDER` | premium運用時 | プレミアム文章生成/分析の既定provider | 既定値`anthropic`。`openai` / `google`への変更は明示設定時のみ |

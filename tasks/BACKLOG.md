@@ -1349,13 +1349,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ## M6: プレミアム・法務・リリース準備
 
-### T-M6-01: premium運営AIキー実行経路（PREMIUM_TEXT_PROVIDER解決とai_purpose_config制約） `todo`
+### T-M6-01: premium運営AIキー実行経路（PREMIUM_TEXT_PROVIDER解決とai_purpose_config制約） `done`
 - 参照: O-4、A-5、PRD §8.2、要件01 §3.5、要件01 §7、要件02 §4.1、要件05 §4.1、プロンプト §1、プロンプト §5.1 / 依存: M1、M3 / サイズ: M
 - 完了条件:
   - premiumユーザーの文章系jobがユーザーAIキー未登録でも運営キー設定（モックprovider）で実行され、standard/mdはユーザーキーが使われる
   - updateAiPurposeConfigでpremiumのtext変更がforbiddenで拒否され、imageは運営キー未設定のproviderを選択できない
   - PREMIUM_TEXT_PROVIDER未設定時はanthropicへ解決し、運営キー未設定で起動時検証が失敗する
 - メモ: resolveProviderを拡張し、premiumでは文章生成・分析（GEN/LRN/SUGGEST/MD-MERGE）をPREMIUM_TEXT_PROVIDER（既定anthropic、明示設定時のみopenai/google）の運営キーへ、画像生成を運営OpenAI/Geminiキーへ解決する。premiumのtextはDBへ保存せず実行時に解決し、updateAiPurposeConfigはpremiumのtext変更を拒否・imageは運営キー設定済みproviderのみ許可（SC-10ではread-only表示）。起動時に選択provider・モデルの検証を追加。NEWS用運営Claude経路（全プラン共通）はニュース担当マイルストーン側の実装を再利用する。
+- 実装メモ: 完了条件1・2は既存実装（M0/M2/M3）で充足済みを確認＝(1)`resolve-provider.ts` `resolveTextKey` が premium→`operatorTextKey(premiumTextProvider)`（ユーザー設定無視・keySource=operator）、`resolveImageKey` が premium→ユーザー選択openai/googleを運営キーで解決（未設定はfallback／全滅は ProviderConfigError）。standard/md=BYOK。テスト: resolve-provider.test.ts（premium operator・premiumTextProvider openai・image選択尊重）。(2)`ai-purpose-config-store.ts updateAiPurposeConfigRecord` が premium の `patch.text` を validation_error(premium_text_read_only)で拒否、`patch.image` は operatorImageProviders 未設定なら validation_error(operator_key_unavailable)。SC-10 UI（ai-purpose-settings）は premium text を read-only 表示済み。テスト: ai-purpose-config-store.db.test.ts。※完了条件の「forbidden」は既存実装の validation_error（フィールド単位の拒否理由付き）で実現＝意味的に同等のためコード変更せず踏襲。本タスクの新規実装は(3)＝`env-schema.ts` superRefine に preview/production で `PREMIUM_TEXT_PROVIDER`／`NEWS_TEXT_PROVIDER` の**選択provider運営キー動的必須化**を追加（既定anthropic→ANTHROPIC_API_KEY、明示openai/google→OPENAI/GEMINI_API_KEY）。PREVIEW_PROD_REQUIRED の静的 ANTHROPIC_API_KEY は動的判定へ移行（既定時は同等・openai/google選択時に該当キーを要求）。text modelは既に ALWAYS_REQUIRED。テスト: env-schema.test（選択openai/googleでOPENAI/GEMINI_API_KEY必須・default anthropic据置）。全1039 green・build通過。doc: 要件01 §3.5 表の ANTHROPIC_API_KEY 注記を premium/news 両provider選択の運営キー要件へ更新（v1.6）。§7 起動時検証（選択providerキー検証）は既述。
+- 後続への注意: premium text は常に運営provider（DB非保存・実行時解決）。imageのみユーザーが運営キー設定済みopenai/googleから選択可。M6残り: T-M6-02（managed OAuth）・以降。
 
 ### T-M6-02: premium運営X App経由のOAuth連携（managed経路） `todo`
 - 参照: A-3、PRD §8.1、要件01 §3.4、要件02 §3.3、要件03 §6、要件05 §4.3 / 依存: M1、M2 / サイズ: M

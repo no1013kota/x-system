@@ -46,7 +46,8 @@ function blankToUndefined(value: unknown): unknown {
 
 /** Variables that must be present in preview and production (optional in dev). */
 const PREVIEW_PROD_REQUIRED = [
-  "ANTHROPIC_API_KEY",
+  // 文章運営キー（ANTHROPIC/OPENAI/GEMINI）は PREMIUM_TEXT_PROVIDER / NEWS_TEXT_PROVIDER の選択に応じて
+  // superRefine で動的に必須化する（既定anthropicなら ANTHROPIC_API_KEY を要求）。
   "NEWS_TEXT_PROVIDER",
   "X_MANAGED_CLIENT_ID",
   "STRIPE_PORTAL_CONFIGURATION_ID",
@@ -186,6 +187,18 @@ const schema = z
     if (appEnv === "preview" || appEnv === "production") {
       for (const key of PREVIEW_PROD_REQUIRED) {
         require(key, values[key as keyof typeof values]);
+      }
+      // 運営文章キー: premium（PREMIUM_TEXT_PROVIDER・既定anthropic）と news（NEWS_TEXT_PROVIDER）は
+      // 運営キーで実行するため、実際に選択された provider の API キーを起動時に必須とする（要件01 §7・O-4）。
+      // 明示設定で openai/google を選んだ場合はその運営キーが無いと起動を失敗させる。
+      const TEXT_KEY_BY_PROVIDER: Record<string, string> = {
+        anthropic: "ANTHROPIC_API_KEY",
+        openai: "OPENAI_API_KEY",
+        google: "GEMINI_API_KEY",
+      };
+      for (const provider of new Set([values.PREMIUM_TEXT_PROVIDER, values.NEWS_TEXT_PROVIDER])) {
+        const keyName = TEXT_KEY_BY_PROVIDER[provider];
+        require(keyName, values[keyName as keyof typeof values]);
       }
     }
 
