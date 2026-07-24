@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Space AI news_fetch（要件04 §6・運用メモ §2）。JST 09:00〜20:00 の毎時00分。
+     __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.spaceai.news-fetch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__INSTALL_DIR__/ops/launchd/cron-call.sh</string>
+    <string>news-fetch</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>APP_BASE_URL</key>
+    <string>http://127.0.0.1:3000</string>
+    <key>CRON_SECRET_KEYCHAIN_SERVICE</key>
+    <string>space-ai-cron-secret</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>__INSTALL_DIR__/logs/news-fetch.log</string>
+  <key>StandardErrorPath</key>
+  <string>__INSTALL_DIR__/logs/news-fetch.log</string>
+</dict>
+</plist>

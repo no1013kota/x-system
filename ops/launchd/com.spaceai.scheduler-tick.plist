@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Space AI scheduler_tick（要件04 §6・運用メモ §2）。5分間隔（毎時00・05・…・55分の12エントリ）。
+     __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.spaceai.scheduler-tick</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__INSTALL_DIR__/ops/launchd/cron-call.sh</string>
+    <string>scheduler-tick</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>APP_BASE_URL</key>
+    <string>http://127.0.0.1:3000</string>
+    <key>CRON_SECRET_KEYCHAIN_SERVICE</key>
+    <string>space-ai-cron-secret</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Minute</key><integer>50</integer></dict>
+    <dict><key>Minute</key><integer>55</integer></dict>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>__INSTALL_DIR__/logs/scheduler-tick.log</string>
+  <key>StandardErrorPath</key>
+  <string>__INSTALL_DIR__/logs/scheduler-tick.log</string>
+</dict>
+</plist>

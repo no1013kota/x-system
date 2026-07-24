@@ -1147,13 +1147,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核 `lib/email/recover-queued.ts` `recoverQueuedEmails(deps)`＝実行可能queued(email_available_at<=now)を `email_available_at asc nulls first, created_at asc` で最大100件select→固定サイズプールで最大10並列 `send`（注入=sendNotificationEmailForId）。最古の実行可能queued(min created_at)が10分超なら `onStaleWarning(ageMs)`（Sentry想定）。outcome別tally返却。`runSchedulerTick` の第(4')段（stale回収の後・cleanupの前）に配線し `SchedulerTickResult.emailsRecovered` 追加。route が `sendEmail=sendNotificationEmailForId`＋`onEmailStaleWarning`(暫定 console.warn) を注入（sendEmail未注入なら skip）。`retryNotificationEmail(db, userId, id)`（notifications.ts）＝本人・`email_status='failed'` のみ受理し、`email_last_attempt_at < now()-1min` guard 付きで `email_status='queued'`・`email_attempts=0`・`email_error=null`・`email_available_at=now()` へ更新。非failed=job_conflict:not_failed、1分以内=job_conflict:retry_too_soon、不在=not_found。server wrapper＋Action `retryNotificationEmailAction`。テスト+8（回収: 150→100件/並列≤10・outcome tally・10分警告有無、retry: 失敗のみ受理/not_found/not_failed/too_soon）。全909 green・build通過。doc: 要件04 §6/§14・要件05 §10(line244) に既述で一致（影響なし）。
 - 後続への注意: retryNotificationEmailAction は実装済みだがUI導線（失敗メールの再送ボタン）は未接続（完了条件はAction挙動。必要時に通知/設定UIへ追加）。tick第(4')段は sendEmail 注入時のみ実行（cron.dbテスト等では skip）。SMTP未設定時は send 内で skip されるため回収は no-op で安全。
 
-### T-M4-18: launchd plist一式＋呼び出しスクリプト＋ローカルセットアップ検証 `todo`
+### T-M4-18: launchd plist一式＋呼び出しスクリプト＋ローカルセットアップ検証 `done`
 - 参照: 要件04 §6、要件01 §6、運用メモ §1、運用メモ §2、N-1 / 依存: T-M4-07、T-M4-11 / サイズ: M
 - 完了条件:
   - 4本のLaunchDaemon plist（news-fetch: JST9〜20時毎時00分／scheduler-tick: 5分間隔12エントリ／metrics-collector: 毎時00分／follower-snapshot: 毎時10分。すべてStartCalendarInterval）がplutil -lintで妥当と判定される
   - 呼び出しスクリプトがCRON_SECRETをKeychainまたは所有者限定秘密ファイルから読み、Bearer付きでローカル起動アプリの/api/cron/*へ到達して2xx／secret不一致時401を正しく扱う（plistへ秘密値を直書きしない）
   - モックサーバテストで接続timeout10秒・全体210秒・5xx/timeout時の30秒→60秒の最大2回再試行・3回失敗時のローカルlog記録・HTTP redirectの非成功扱いが確認できる
 - メモ: metrics-collector/follower-snapshotのroute本体は別マイルストーン（分析系）実装のため、当該2本は認証疎通（401/404の期待挙動）確認までとし、route実装後に再検証する。実Macへの配置・launchctl bootstrap・24時間監視はopen_questions（運用メモ §1〜2）。
+- 実装メモ: `ops/launchd/` に4 plist（`com.spaceai.{news-fetch,scheduler-tick,metrics-collector,follower-snapshot}.plist`・全て `StartCalendarInterval`。news-fetch=Hour 9〜20/Minute 0の12件、scheduler-tick=Minute 0〜55の5分刻み12件、metrics=Minute 0、follower=Minute 10。`__INSTALL_DIR__` プレースホルダ・秘密値なし・RunAtLoad false）＋`cron-call.sh`（endpoint名を引数に、`CRON_SECRET_FILE`優先→Keychain `space-ai-cron-secret` から秘密取得、`--connect-timeout 10 --max-time 210 --max-redirs 0`＋`Authorization: Bearer`、2xxのみ成功、6/7/28/35・5xx を retryable として `CRON_RETRY_DELAYS`（既定30 60）で最大2回再試行、非retryable/枯渇は `CRON_LOG` へ記録して非0終了）＋`README.md`（配置手順）。テスト `src/ops/launchd.test.ts`+8（plutil -lint 4本・StartCalendarInterval本数/値・plistに秘密なし／2xx=exit0＋Bearer到達・401非再試行・redirect非成功・5xx3回＋log・timeout3回＋log。plutil/bash/curl無ければskip）。全917 green・build通過。doc: 運用メモ §2 に `ops/launchd/` 実体の参照を追記（§1/§2の方針は既述で一致）。**M4 完了**。
+- 後続への注意: metrics-collector/follower-snapshot の route は現状stub（M5分析系で本体実装）＝launchd疎通は認証まで。実Mac配置・`launchctl bootstrap`・timezone/スリープ設定・24時間監視は open_questions（運用メモ §1/§2）。plist の `__INSTALL_DIR__` と `APP_BASE_URL` は配置時に実値へ置換する。
 
 ## M5: 学習・分析
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Space AI follower_snapshot（要件04 §6・運用メモ §2）。毎時10分。
+     __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。
+     route本体は分析系マイルストーンで実装。それまでは認証疎通（401/404）確認のみ。 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.spaceai.follower-snapshot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__INSTALL_DIR__/ops/launchd/cron-call.sh</string>
+    <string>follower-snapshot</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>APP_BASE_URL</key>
+    <string>http://127.0.0.1:3000</string>
+    <key>CRON_SECRET_KEYCHAIN_SERVICE</key>
+    <string>space-ai-cron-secret</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Minute</key>
+    <integer>10</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>__INSTALL_DIR__/logs/follower-snapshot.log</string>
+  <key>StandardErrorPath</key>
+  <string>__INSTALL_DIR__/logs/follower-snapshot.log</string>
+</dict>
+</plist>

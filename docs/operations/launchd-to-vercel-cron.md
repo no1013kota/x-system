@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.2 |
-| 更新日 | 2026-07-21 |
+| バージョン | v1.3 |
+| 更新日 | 2026-07-24 |
 | 関連 | [システム構成](../requirements/01_system_architecture.md)／[ジョブ・自動実行](../requirements/04_jobs_and_automation.md) |
 
 ## 1. 方針
@@ -26,6 +26,8 @@
 呼び出しは`Authorization: Bearer ${CRON_SECRET}`を付ける。接続timeoutは10秒、request全体のtimeoutはFunction上限（200秒）より長い210秒以上とする。timeout・名前解決・5xxは30秒、60秒後に最大2回再試行し、初回を含む3回すべて失敗したらmacOSのローカルlogへ記録して監視対象とする。HTTP redirectは成功扱いにしない。再試行時の重複はhandlerの時間窓受付（`cron_runs` window claim）と冪等keyで抑止する（完了後の再試行でも同一窓は再受付しない）。
 
 Macの停止・スリープ・回線断中は定時性を保証できない。復帰時に予定から10分を超えた投稿slotを遡って投稿せず、`schedule_missed`として通知する。
+
+実体は `ops/launchd/`（T-M4-18）: 4本の `com.spaceai.*.plist`（`StartCalendarInterval`。news-fetch=Hour 9〜20/Minute 0、scheduler-tick=Minute 0〜55の5分刻み12件、metrics-collector=Minute 0、follower-snapshot=Minute 10）＋共通呼び出し `cron-call.sh`＋`README.md`（配置手順・Keychain）。`plist` に秘密値は書かず、`cron-call.sh` が `CRON_SECRET_FILE`（所有者限定）または Keychain（`space-ai-cron-secret`）から取得し `Authorization: Bearer` を付与、接続10秒/全体210秒・timeout/DNS/5xxを30秒→60秒で最大2回再試行・3回失敗でローカルlog記録・redirectは非成功扱いとする。`metrics-collector`/`follower-snapshot` の route 本体は分析系マイルストーンで実装するため、それまでは認証疎通のみ確認する。実Macへの配置・`launchctl bootstrap`・24時間監視は open_questions。
 
 ## 3. Vercel Cronへの移行条件
 
