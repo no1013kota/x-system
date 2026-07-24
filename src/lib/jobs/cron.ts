@@ -1,6 +1,16 @@
-import { withTransaction } from "../db/pool";
+import { getPool, withTransaction } from "../db/pool";
+import type { Queryable } from "../x/token-refresh";
 import { dispatchJob, type DispatchResult } from "./dispatch";
+import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
+
+const pooledDb: Queryable = {
+  query: <T = unknown>(sql: string, params?: unknown[]) =>
+    getPool().query(sql, params) as unknown as Promise<{
+      rows: T[];
+      rowCount: number | null;
+    }>,
+};
 
 /**
  * 定時トリガー（cron）の共通部分（要件04 §6, 運用メモ §2, ADR-0002, ADR-0003）。
@@ -77,6 +87,7 @@ export async function withCronWindowClaim<T>(
 }
 
 export interface SchedulerTickResult {
+  enqueued: EnqueueResult;
   dispatched: number;
   recovered: StaleRecoveryResult;
 }
@@ -89,9 +100,18 @@ export interface SchedulerTickResult {
  */
 export async function runSchedulerTick(
   dispatch: (jobId: string) => Promise<DispatchResult> = dispatchJob,
+  opts: { dailyLimit?: number } = {},
 ): Promise<SchedulerTickResult> {
-  // TODO(M4): (1) 期限切れschedule jobのcancel＋schedule_missed通知
-  // TODO(M4): (2) due slotのenqueue（schedule_run_keyで冪等）
+  // TODO(M4): (1) 期限切れschedule jobのcancel＋schedule_missed通知（T-M4-07）
+
+  // (2) due slotのenqueue（§7.1条件・schedule_run_keyで冪等・1起動500件, T-M4-06）。
+  // env はここで読まず route から dailyLimit を渡す（cron.ts が env に依存すると test の module 読込で
+  // env 検証が走るため。既定は X_DAILY_POST_LIMIT の既定値 50）。
+  const enqueued = await enqueueDueSlots({
+    db: pooledDb,
+    runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+    dailyLimit: opts.dailyLimit ?? 50,
+  });
 
   // (3) 未dispatchのqueuedジョブを再dispatch
   const rows = await withTransaction((c) =>
@@ -111,5 +131,5 @@ export async function runSchedulerTick(
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
-  return { dispatched, recovered };
+  return { enqueued, dispatched, recovered };
 }

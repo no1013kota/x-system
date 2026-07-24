@@ -14,11 +14,11 @@ export async function GET(request: Request): Promise<Response> {
   if (!isValidCronAuth(request.headers.get("authorization"))) {
     return new Response("unauthorized", { status: 401 });
   }
+  // env は認証通過後に遅延ロード（module読込で env 検証を走らせないため）。
+  const { env } = await import("@/lib/env");
   const windowKey = fiveMinWindowKey(new Date());
-  const { ran, result } = await withCronWindowClaim(
-    "scheduler_tick",
-    windowKey,
-    () => runSchedulerTick(),
+  const { ran, result } = await withCronWindowClaim("scheduler_tick", windowKey, () =>
+    runSchedulerTick(undefined, { dailyLimit: env.X_DAILY_POST_LIMIT }),
   );
   return Response.json({ ok: true, ran, window: windowKey, ...(result ?? {}) });
 }
