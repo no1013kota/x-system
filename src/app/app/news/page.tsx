@@ -4,8 +4,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { DEFAULT_NEWS_CONFIG } from "@/lib/config-defaults";
 import { NEWS_WINDOW_MAX_HOURS, type NewsItemsPage } from "@/lib/news-items";
-import { listNewsItemsForUser } from "@/lib/news-items-server";
+import {
+  listCreatedNewsItemIdsForAccount,
+  listNewsItemsForUser,
+} from "@/lib/news-items-server";
 import { getSettingsForUser } from "@/lib/settings-server";
+import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { NewsBrowser } from "./news-browser";
 
@@ -53,10 +57,19 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     initialError = true;
   }
 
+  const activeId = await resolveActiveXAccountForUser(user.id);
+  const createdIds = activeId
+    ? await listCreatedNewsItemIdsForAccount(
+        activeId,
+        initial.items.map((i) => i.id),
+      )
+    : [];
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
       <h1 className="text-xl font-bold tracking-tight">ニュース</h1>
       <NewsBrowser
+        initialCreatedIds={createdIds}
         initialCursor={initial.nextCursor}
         initialError={initialError}
         initialItems={initial.items}

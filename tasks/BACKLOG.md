@@ -1117,13 +1117,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: 中核 `lib/news-items.ts` `listNewsItems(db, input)`（`listNewsItemsSchema` で検証＝categories/impacts列挙・from/to両揃い＋≤24h・limit 1-100、不正は AppError('validation_error')）。窓は from/to 揃い時 `fetched_at ∈ [from,to)`（ダイジェスト窓一致・掲載外含む）、無指定は `coalesce(published_at,fetched_at) >= now()-7d`。並び/keyset cursor は `coalesce(published_at,fetched_at) desc, id desc`。server `news-items-server.ts`＋Action `app/actions/news.ts listNewsItemsAction`（認証）。**updateNewsConfig は既存**（T-M2系 settings）を再利用。UI: `app/app/news/page.tsx`（server: getSettingsForUser の news_config を初期フィルタ＝既定6分野・高中・20件、searchParams from/to を parseWindow で検証適用、初期listを try/catch）＋ `news-browser.tsx`（client: 分野/インパクトchip＋表示件数→「この設定で表示・保存」で updateNewsConfigAction 保存後 re-list、もっと見る、**取得失敗時は前回成功分を保持し注記**、通知窓バナー＋全件表示リンク、集約説明）。既存placeholder page を置換。テスト+9（unit: limit/enum/from-to両揃い/≤24h検証・window vs 既定7日・cursor、db: category/impact絞り＋fetched_at窓＋7日既定）。全890 green・build通過。doc: 要件05 §6 に window=fetched_at/既定=published_at・並び・SC-06絞り込み=news_config保存 を追記（§06 §10 は既述で一致）。
 - 後続への注意: **createDraftFromNews＋作成済みバッジは T-M4-15**（news-browser の各itemに生成ボタン/バッジを追加）。SC-06フィルタUIは news_config を直接編集・保存する方式（別途 settings 画面でも編集可）。表示件数は news_config.max_items（listのlimit）と同一。
 
-### T-M4-15: SC-06 ニュース起点生成（createDraftFromNews）＋作成済みバッジ `todo`
+### T-M4-15: SC-06 ニュース起点生成（createDraftFromNews）＋作成済みバッジ `done`
 - 参照: N-4、SC-06、要件05 §6、要件06 §4.2、GEN-P1 / 依存: T-M4-14、M3 / サイズ: S
 - 完了条件:
   - 「すぐに投稿作成」でcreateDraftFromNewsがP-1のpost_generation jobを冪等作成し（同じrequest_key再送で同じjob IDを返す）、inputへnews_item_id・source_urlが引き継がれてsource_news_item_idがdraftへ保存される（workerはモック）
   - 画像ON時のimage_provider必須と実行前提エラー（api_key_required等のdetails＋設定導線表示）がcreateGenerationJobと同じ挙動になる
   - 生成済みニュースカードにdrafts.source_news_item_id由来の作成済みバッジが表示される
 - メモ: M3のcreateGenerationJob基盤・GEN実行を前提とし、SC-06からの起動導線とバッジ導出のみを実装する縦の薄いタスク。
+- 実装メモ: 中核 `generation-jobs.ts createDraftFromNews(userId, input, deps)`＝news_item の `source_url` を引き（無ければ not_found）、`pattern:'p1'`＋`news_item_id`＋`source_url` で **createGenerationJob に委譲**（前提再検証・所有権/active一致・image_provider制約・5件制限・request_key冪等をそのまま継承＝完了条件2は構造的にパリティ）。worker（既存T-M3-05）が `input.news_item_id` を `drafts.source_news_item_id` へ保存。Action `createDraftFromNewsAction`（x_account_id は `resolveActiveXAccountForUser` でサーバ解決・未連携は設定導線付きエラー、!deduped で after() dispatch）。バッジ: `news-items.ts listCreatedNewsItemIds(db, xAccountId, ids)`＋server wrapper。page が初期itemの作成済みidを算出し渡す。`listNewsItemsAction` は表示中アカウントの `createdNewsItemIds` も返す（load-more badge）。UI: news-browser の各カードに「すぐに投稿作成」（冪等 request_key `news-draft:{id}`・画像既定OFF）／「作成済み」バッジ、生成失敗時は message＋details.settingsPath の「設定を開く」導線。テスト+4（not_found・P-1委譲[source_url/news_item_id伝播]・request_key冪等・image_enabled時の前提チェック到達＝settingsPath）。全894 green・build通過。doc: 要件05 §6・要件06 §4.2/§10・N-4 に既述で一致（影響なし）。
+- 後続への注意: SC-06「すぐに投稿作成」は画像OFF固定（画像付き生成は SC-05 作成フォーム／createDraftFromNews の image_enabled 入力で可能）。request_key は news_item 単位固定のため同一ニュースの再クリックは同一jobを返す（deduped）。作成済みバッジは表示中Xアカウント基準。
 
 ### T-M4-16: Gmail SMTPメール送信モジュール＋通知commit後のafter()送信 `todo`
 - 参照: O-2、要件04 §14、要件01 §3.6、要件01 §8、要件02 §3.15 / 依存: M3 / サイズ: M

@@ -184,6 +184,54 @@ export async function createGenerationJob(
   });
 }
 
+export const createDraftFromNewsSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  x_account_id: z.string().uuid(),
+  news_item_id: z.string().uuid(),
+  instructions: z.string().max(2000).nullish(),
+  image_enabled: z.boolean().optional(),
+  image_provider: z.enum(["openai", "google"]).nullish(),
+});
+
+export type CreateDraftFromNewsInput = z.infer<typeof createDraftFromNewsSchema>;
+
+/**
+ * N-4: ニュース起点の下書き生成（要件05 §6, GEN-P1）。`news_item` の `source_url` を引き継いだ
+ * P-1 の post_generation を冪等作成する。前提再検証・所有権/active一致・image_provider必須・
+ * queued/running 5件制限・request_key 冪等は `createGenerationJob` に委譲する。作成後 worker が
+ * `input.news_item_id` を `drafts.source_news_item_id` へ保存する（作成済みバッジの導出元）。
+ */
+export async function createDraftFromNews(
+  userId: string,
+  input: CreateDraftFromNewsInput,
+  deps: GenerationJobDeps,
+): Promise<CreateJobResult> {
+  const source = await deps.runInTx((tx) =>
+    tx.query<{ source_url: string }>(
+      `select source_url from news_items where id = $1`,
+      [input.news_item_id],
+    ),
+  );
+  const sourceUrl = source.rows[0]?.source_url;
+  if (!sourceUrl) throw new AppError("not_found");
+  return createGenerationJob(
+    userId,
+    {
+      request_key: input.request_key,
+      x_account_id: input.x_account_id,
+      pattern: "p1",
+      source_url: sourceUrl,
+      quote_url: null,
+      user_opinion: null,
+      instructions: input.instructions ?? null,
+      image_enabled: input.image_enabled ?? false,
+      image_provider: input.image_provider ?? null,
+      news_item_id: input.news_item_id,
+    },
+    deps,
+  );
+}
+
 export const regenerateDraftSchema = z.object({
   request_key: z.string().min(1).max(200),
   draft_id: z.string().uuid(),

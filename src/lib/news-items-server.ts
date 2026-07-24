@@ -1,7 +1,11 @@
 import "server-only";
 
 import { getPool } from "./db/pool";
-import { listNewsItems, type NewsItemsPage } from "./news-items";
+import {
+  listCreatedNewsItemIds,
+  listNewsItems,
+  type NewsItemsPage,
+} from "./news-items";
 import type { Queryable } from "./x/token-refresh";
 
 /** SC-06 ニュース一覧の server-only 配線（要件05 §6）。pool を束ねて純粋層を実値で使う。 */
@@ -16,4 +20,11 @@ const pooledDb: Queryable = {
 
 export function listNewsItemsForUser(input: unknown): Promise<NewsItemsPage> {
   return listNewsItems(pooledDb, input);
+}
+
+export function listCreatedNewsItemIdsForAccount(
+  xAccountId: string,
+  newsItemIds: string[],
+): Promise<string[]> {
+  return listCreatedNewsItemIds(pooledDb, xAccountId, newsItemIds);
 }

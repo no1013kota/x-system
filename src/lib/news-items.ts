@@ -167,3 +167,21 @@ export async function listNewsItems(
       : null;
   return { items, nextCursor };
 }
+
+/**
+ * 指定 news_item のうち、当該Xアカウントで既に下書き化済み（drafts.source_news_item_id）の id を返す。
+ * SC-06 の「作成済み」バッジ導出用（N-4・要件06 §4.2）。
+ */
+export async function listCreatedNewsItemIds(
+  db: Queryable,
+  xAccountId: string,
+  newsItemIds: string[],
+): Promise<string[]> {
+  if (newsItemIds.length === 0) return [];
+  const { rows } = await db.query<{ source_news_item_id: string }>(
+    `select distinct source_news_item_id from drafts
+      where x_account_id = $1 and source_news_item_id = any($2::uuid[])`,
+    [xAccountId, newsItemIds],
+  );
+  return rows.map((r) => r.source_news_item_id);
+}

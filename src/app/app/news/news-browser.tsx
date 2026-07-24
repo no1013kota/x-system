@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 
+import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
 import { listNewsItemsAction } from "@/app/actions/news";
 import { updateNewsConfigAction } from "@/app/actions/settings";
 import type { NewsItemView } from "@/lib/news-items";
@@ -40,12 +41,14 @@ export function NewsBrowser({
   initialItems,
   initialCursor,
   initialError,
+  initialCreatedIds,
   newsConfig,
   window,
 }: {
   initialItems: NewsItemView[];
   initialCursor: string | null;
   initialError: boolean;
+  initialCreatedIds: string[];
   newsConfig: { categories: string[]; impacts: string[]; maxItems: number };
   window: { from: string; to: string } | null;
 }) {
@@ -55,10 +58,36 @@ export function NewsBrowser({
   const [categories, setCategories] = useState<string[]>(newsConfig.categories);
   const [impacts, setImpacts] = useState<string[]>(newsConfig.impacts);
   const [maxItems, setMaxItems] = useState<number>(newsConfig.maxItems);
+  const [created, setCreated] = useState<Set<string>>(new Set(initialCreatedIds));
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   // 最新取得に失敗した場合は前回成功分を残したまま注記する（要件06 §10）。
   const [note, setNote] = useState<string | null>(
     initialError ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。" : null,
   );
+  // 実行前提エラー（api_key_required 等）の設定導線（要件05 §12・§4.1）。
+  const [noteHref, setNoteHref] = useState<string | null>(null);
+
+  function generate(newsItemId: string) {
+    if (created.has(newsItemId) || pending) return;
+    setGeneratingId(newsItemId);
+    startTransition(async () => {
+      // 冪等: news_item ごとに固定 request_key（再送で同じjobを返す）。画像は既定OFF。
+      const res = await createDraftFromNewsAction({
+        request_key: `news-draft:${newsItemId}`,
+        news_item_id: newsItemId,
+      });
+      setGeneratingId(null);
+      if (res.status === "success") {
+        setCreated((prev) => new Set(prev).add(newsItemId));
+        setNote("下書きの生成を開始しました。下書き一覧で確認できます。");
+        setNoteHref(null);
+      } else {
+        setNote(res.message || "生成を開始できませんでした。");
+        const path = res.details?.settingsPath;
+        setNoteHref(typeof path === "string" ? path : null);
+      }
+    });
+  }
 
   const baseQuery = () => ({
     categories,
@@ -102,6 +131,13 @@ export function NewsBrowser({
       if (res.status === "success" && res.items) {
         setItems((prev) => [...prev, ...res.items!]);
         setCursor(res.nextCursor ?? null);
+        if (res.createdNewsItemIds?.length) {
+          setCreated((prev) => {
+            const next = new Set(prev);
+            for (const id of res.createdNewsItemIds!) next.add(id);
+            return next;
+          });
+        }
       } else {
         setNote("続きを取得できませんでした。時間をおいて再度お試しください。");
       }
@@ -191,6 +227,11 @@ export function NewsBrowser({
       {note ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
           {note}
+          {noteHref ? (
+            <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
+              設定を開く
+            </Link>
+          ) : null}
         </p>
       ) : null}
 
@@ -222,6 +263,22 @@ export function NewsBrowser({
                 {item.title}
               </a>
               <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>
+              <div className="mt-3">
+                {created.has(item.id) ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
+                    作成済み
+                  </span>
+                ) : (
+                  <button
+                    className="inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium hover:bg-accent disabled:opacity-50"
+                    disabled={pending}
+                    onClick={() => generate(item.id)}
+                    type="button"
+                  >
+                    {generatingId === item.id ? "生成を開始中…" : "すぐに投稿作成"}
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

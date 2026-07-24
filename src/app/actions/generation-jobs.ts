@@ -10,6 +10,7 @@ import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
+  createDraftFromNews,
   createGenerationJob,
   createGenerationJobSchema,
   getGenerationJob,
@@ -25,6 +26,8 @@ import {
   type GenerationJobDeps,
   type GenerationJobView,
 } from "@/lib/jobs/generation-jobs";
+import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
+import { z } from "zod";
 import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
@@ -79,6 +82,43 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await createGenerationJob(auth.userId, parsed.data, jobDeps);
+    if (!deduped) after(() => dispatchJob(jobId));
+    return { jobId, message: "生成を開始しました。", status: "success" };
+  } catch (error) {
+    return { ...toUserFacingError(error), status: "error" };
+  }
+}
+
+/** SC-06 の入力（x_account_id は表示中アカウントをサーバで解決するため受け取らない）。 */
+const createDraftFromNewsActionSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  news_item_id: z.string().uuid(),
+  instructions: z.string().max(2000).nullish(),
+  image_enabled: z.boolean().optional(),
+  image_provider: z.enum(["openai", "google"]).nullish(),
+});
+
+export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {
+  const parsed = createDraftFromNewsActionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  const activeId = await resolveActiveXAccountForUser(auth.userId);
+  if (!activeId) {
+    return {
+      ...toUserFacingError(new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } })),
+      message: "先にXアカウントを連携してください。",
+      status: "error",
+    };
+  }
+  try {
+    const { jobId, deduped } = await createDraftFromNews(
+      auth.userId,
+      { ...parsed.data, x_account_id: activeId },
+      jobDeps,
+    );
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "生成を開始しました。", status: "success" };
   } catch (error) {
