@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
+| バージョン | v1.16 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -126,7 +126,7 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 
 ### 3.6 SC-10 発信設定フォーム
 
-- `/app/ai-settings`は`persona`（発信設定）を既定タブとし、`purposes`（AI用途）、`learning`（学習ソース）、`base-md`、`prompts`のタブ枠を持つ。M2の各後続タスクまで未実装タブは共通空状態を表示する。
+- `/app/ai-settings`は`persona`（発信設定）を既定タブとし、`purposes`（AI用途・§3.6）、`learning`（学習ソース・§9）、`base-md`（§3.7）、`prompts`（§3.8）のタブを持つ。Xアカウント未連携時は各タブで共通の空状態（Xアカウント設定への導線）を表示する。
 - 発信設定はactive Xアカウント単位でL-4〜L-7を編集する。ペルソナ3項目と主テーマは必須、テーマはマスタ選択と自由入力、toneは§3.4の初期値、NG 3分類は改行区切り入力で空を許可する。入力エラーは該当labelと関連付けて表示する。
 - `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
 - `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。
@@ -138,6 +138,13 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 - 変更履歴（version・change_source・summary・日時）を新しい順で一覧表示し、各版から確認ダイアログを挟んで`rollbackBaseMd`（指定版の内容で新versionを作成）を実行できる。
 - standardプランではタブ内容をロック表示にし、プラン変更（`/plans`）への導線を出す。`base_md_version = 0`（初版未生成）は発信設定タブへ誘導する。
 - 手動編集したセクション1〜4は発信設定フォーム保存で上書きされる旨を常時注意表示する。ベースmd編集はPCでの操作を推奨し、モバイルでは閲覧を主とする。
+
+### 3.8 SC-10 プロンプトエディタ
+
+- `prompts`タブはactive Xアカウントの生成プロンプト（`p1`〜`p4`／`p6`／`image`）をkind選択して編集する。`p5`（引用ポスト）は`FEATURE_QUOTE_POST_ENABLED=false`の間は選択肢に表示しない。
+- 各kindに上書き有無（既定/カスタム）のバッジと文字数カウンタ（8,000字上限）を表示する。「保存」（`updatePromptTemplate`。listが返した`updated_at`を`expected_updated_at`として送る）と「システム既定に戻す」（`resetPromptTemplate`。確認ダイアログを挟む）を操作でき、リセットは上書きがある場合のみ有効にする。
+- 楽観lock競合（409）は「別の場所で更新された」旨と再読み込み導線を出す。空文字・字数超過は保存前の入力エラーとして表示する。
+- standardプランではタブ内容をロック表示にし、プラン変更（`/plans`）への導線を出す。システム共通プロンプト（SYS-GEN・文字数調整等）は編集対象にしない旨を明示する。プロンプト編集はPCでの操作を推奨し、モバイルでは閲覧を主とする。
 
 ## 4. 投稿作成
 

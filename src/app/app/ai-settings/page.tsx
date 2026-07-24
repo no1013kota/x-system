@@ -24,12 +24,15 @@ import {
   listBaseMdVersionsForUser,
 } from "@/lib/base-md-server";
 import type { BaseMdVersionView } from "@/lib/base-md";
+import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
+import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { BaseMdEditor } from "./base-md-editor";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
+import { PromptTemplatesEditor } from "./prompt-templates-editor";
 
 export const metadata: Metadata = { title: `AI設定 | ${APP_NAME}` };
 
@@ -126,6 +129,13 @@ export default async function AiSettingsPage({
       listBaseMdVersionsForUser(user.id, account.id),
       isLearningRunningForUser(user.id, account.id),
     ]);
+  }
+  let promptTemplates: PromptTemplateView[] = [];
+  let promptQuoteEnabled = false;
+  if (tab === "prompts" && account && plan !== "standard") {
+    const res = await listPromptTemplatesForUser(user.id);
+    promptTemplates = res.templates;
+    promptQuoteEnabled = res.quotePostEnabled;
   }
   let validUserProviders: AiKeyProvider[] = [];
   if (tab === "purposes" && plan !== "premium") {
@@ -226,6 +236,20 @@ export default async function AiSettingsPage({
               initialVersion={account.base_md_version}
               learningRunning={baseMdLearningRunning}
               xAccountId={account.id}
+            />
+          )
+        ) : tab === "prompts" ? (
+          plan === "standard" ? (
+            <EmptyState
+              actionHref="/plans"
+              actionLabel="プランを見る"
+              description="プロンプトのカスタマイズは md・premium プランでご利用いただけます。"
+              title="プロンプト編集はアップグレードが必要です"
+            />
+          ) : (
+            <PromptTemplatesEditor
+              initialTemplates={promptTemplates}
+              quotePostEnabled={promptQuoteEnabled}
             />
           )
         ) : (
