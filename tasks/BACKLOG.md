@@ -1219,12 +1219,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `learning-sources.ts reimportOwnPosts(userId, input, deps)`。request_key先行照合で冪等→assertActiveAccount→assertNotBusy(removing→job_conflict)→assertPrereqs→**own_posts行をfind-or-create/reset**（既存 unique index `learning_sources_own_posts_unique(x_account_id) where type='own_posts'` で1件。既存は status=pending・analysis_summary=null・removed_at=null にreset、無ければ url=null で新規）→assertJobBudget(5件)→learning_analysis job 冪等作成。**30日制御**: own_posts の直近 learning_analysis job `created_at`（`updated_at` は trigger更新のため不採用）を基準に `max(created_at) > now()-make_interval(days=>30)` を SQL で判定、too_soon なら validation_error＋`details.next_available_at`（ISO8601）。worker（T-M5-03/04）が PT-L3 で§5をmerge更新。Action `reimportOwnPostsAction`（active一致・!deduped で after() dispatch）。テスト+4（初回作成＋30日未満拒否/next_available_at、31日前jobで再取込＋既存row reset・analysis_summary null、removing中 job_conflict、request_key冪等）。副次: `news-digest.db.test` の窓を実行ごと一意化（共有DB並列の exact-count flake を解消・T-M5-05注記の対応）。全961 green（3連続）・build通過。doc: 要件05 §8/§219・要件04 §12・要件02 §3.6 に既述で一致（影響なし）。
 - 後続への注意: 30日基準は「own_posts の直近 learning_analysis job created_at」（成否問わず作成で1回消費＝spam防止）。UIは T-M5-07（SC-10）。addLearningSource は ref_account/ref_post 専用で own_posts は reimportOwnPosts が担う。
 
-### T-M5-07: T-M5-07: SC-10 学習ソースタブUI `todo`
+### T-M5-07: T-M5-07: SC-10 学習ソースタブUI `done`
 - 参照: L-1、L-2、L-3、SC-10、要件06 §2、要件06 §9、要件06 §4.2、要件05 §8 / 依存: T-M5-02、T-M5-05、T-M5-06 / サイズ: M
 - 完了条件:
   - モックデータで、一覧（type・URL・status・分析日時）、追加フォーム（type別上限到達時の無効化・URL形式エラー表示）、削除確認、own_posts取り込み/再取り込み（30日制御の残日数表示）が表示・操作できる
   - pending/removing中の進行表示（queued 60秒超は「開始が遅れています。自動で再開されます（最大5分）」）、failed時の原因と再試行導線、removing中は「削除完了まで新規生成を一時停止」の案内が表示される
 - メモ: App Shell（M2/M4想定）のSC-10タブ構成に学習ソースタブを追加。Xアカウント切替時の再取得に対応。
+- 実装メモ: `/app/ai-settings` の既存 `learning` タブ（プレースホルダ）を置換。server page が active アカウントの `listLearningSourcesForUser`＋`ownPostsReimportEligibilityForAccount`（新設 `learning-sources-server.ts`）を読み `LearningSourcesManager`（client）へ渡す（base_md_version<1 は発信設定へ誘導の空状態）。UI: 追加フォーム（種別select＝ref_account 3/ref_post 10で上限時 option/ボタン無効・URL入力→addLearningSourceAction、validation_error は message＋settingsPath導線表示）、自己過去投稿 取り込み/再取り込み（reimportOwnPostsAction・**30日残日数**表示＝サーバ算出 nextEligibleAt から daysUntil・too_soon 時 details.next_available_at で更新）、一覧（type/URL/status/**分析日時=updatedAt**）、削除（confirm→removeLearningSourceAction）。進行/状態: pending かつ updatedAt から60秒超で「開始が遅れています。自動で再開されます（最大5分）」（15秒間隔で now 更新）・pending「分析中」・failed「原因＋削除して再登録」・**removing 中は上部に「削除完了まで新規生成を一時停止」案内＋全操作無効**。各操作後 listNotifications 相当の再取得＋router.refresh。`LearningSourceView` に updatedAt 追加、`ownPostsReimportEligibility` 追加。UIは本repo方針によりcomponent testなし（型/lint/build＋既存Action単体で担保）。全961 green・build通過。doc: 要件06 §22/§3.6/§81・要件04 §12 に既述で一致（影響なし）。
+- 後続への注意: ベースmd/プロンプトタブは T-M5-09/T-M5-11。failed の「再試行」は現状「削除して再登録」導線（learning_analysis の直接retry Actionは無し・retryGenerationJob は job_id 前提のため学習UIからは未接続）。Xアカウント切替はサーバ再描画で反映（active一致）。
 
 ### T-M5-08: T-M5-08: ベースmd手動編集・履歴・ロールバックのServer Actions（M-1） `todo`
 - 参照: M-1、要件05 §8、要件05 §9、要件05 §12、要件02 §3.4、プロンプト §3.1 / 依存: M1、M2 / サイズ: M

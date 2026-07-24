@@ -92,6 +92,7 @@ export interface LearningSourceView {
   url: string | null;
   status: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface AddLearningSourceResult {
@@ -228,8 +229,9 @@ export async function listLearningSources(
     url: string | null;
     status: string;
     created_at: Date | string;
+    updated_at: Date | string;
   }>(
-    `select ls.id, ls.type::text as type, ls.url, ls.status::text as status, ls.created_at
+    `select ls.id, ls.type::text as type, ls.url, ls.status::text as status, ls.created_at, ls.updated_at
        from learning_sources ls
        join x_accounts xa on xa.id = ls.x_account_id
       where ls.x_account_id = $1 and xa.user_id = $2 and ls.status <> 'removed'
@@ -242,7 +244,28 @@ export async function listLearningSources(
     url: r.url,
     status: r.status,
     createdAt: toIso(r.created_at),
+    updatedAt: toIso(r.updated_at),
   }));
+}
+
+/**
+ * own_posts 再取り込みの次回可能時刻（30日制御・UI表示用）。own_posts が未取り込み or 直近
+ * learning_analysis job から30日以上経過なら null（今すぐ可能）。
+ */
+export async function ownPostsReimportEligibility(
+  db: Queryable,
+  xAccountId: string,
+): Promise<{ nextEligibleAt: string | null }> {
+  const { rows } = await db.query<{ next_at: string | null }>(
+    `select case when max(gj.created_at) > now() - make_interval(days => $2)
+                 then to_char(max(gj.created_at) + make_interval(days => $2), 'YYYY-MM-DD"T"HH24:MI:SSOF')
+                 else null end as next_at
+       from learning_sources ls
+       join generation_jobs gj on gj.learning_source_id = ls.id and gj.kind = 'learning_analysis'
+      where ls.x_account_id = $1 and ls.type = 'own_posts'`,
+    [xAccountId, REIMPORT_INTERVAL_DAYS],
+  );
+  return { nextEligibleAt: rows[0]?.next_at ?? null };
 }
 
 export async function addLearningSource(

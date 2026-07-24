@@ -14,9 +14,15 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
+import {
+  listLearningSourcesForUser,
+  ownPostsReimportEligibilityForAccount,
+} from "@/lib/learning-sources-server";
+import type { LearningSourceView } from "@/lib/learning-sources";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
+import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
 
 export const metadata: Metadata = { title: `AI設定 | ${APP_NAME}` };
@@ -99,6 +105,14 @@ export default async function AiSettingsPage({
   }
 
   const plan = profile.data?.plan ?? "standard";
+  let learningSources: LearningSourceView[] = [];
+  let ownPostsNextEligibleAt: string | null = null;
+  if (tab === "learning" && account) {
+    [learningSources, { nextEligibleAt: ownPostsNextEligibleAt }] = await Promise.all([
+      listLearningSourcesForUser(user.id, account.id),
+      ownPostsReimportEligibilityForAccount(account.id),
+    ]);
+  }
   let validUserProviders: AiKeyProvider[] = [];
   if (tab === "purposes" && plan !== "premium") {
     const keys = await listApiKeyViewsForUser(user.id);
@@ -160,6 +174,22 @@ export default async function AiSettingsPage({
             initialSettings={initialSettings}
             xAccountId={account.id}
           />
+        ) : tab === "learning" ? (
+          account.base_md_version < 1 ? (
+            <EmptyState
+              actionHref="/app/ai-settings?tab=persona"
+              actionLabel="発信設定へ"
+              description="学習の反映先となるベースmdを、先に発信設定から保存してください。"
+              title="先に発信設定を保存してください"
+            />
+          ) : (
+            <LearningSourcesManager
+              initialOwnPostsNextEligibleAt={ownPostsNextEligibleAt}
+              initialSources={learningSources}
+              plan={plan}
+              xAccountId={account.id}
+            />
+          )
         ) : (
           <EmptyState
             description="このタブの機能は後続タスクで追加します。発信設定タブは現在利用できます。"
