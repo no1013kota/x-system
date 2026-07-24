@@ -1097,13 +1097,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: `lib/jobs/news-digest.ts` `fanOutNewsDigest(deps)`。窓 [windowStart, +1h)（UTC hour-aligned＝`newsDigestWindowStart(now)`。JST/UTCとも時境界一致）。単一集約SQL（CTE: new_items[窓内fetched_at]→eligible[trialing/active＋news channelいずれかON]→matched[categories `?` ni.category ∧ impact_filter `?` ni.impact・`row_number() over(partition by user order by impact優先(high→mid→low),fetched_at desc)`]→group by user）で user別に total_count・item_ids(rn≤max_items)・top_titles(rn≤5) を取得。JS で title=`ニュースダイジェスト N件`、body=先頭5件`・`列挙＋`ほかN件`、payload={window_started_at/ended_at, total_count, news_item_ids} を組み、`insert ... on conflict (user_id, dedupe_key) do nothing`（dedupe `news-digest:{fromIso}`）。email ON→email_status=queued＋email_available_at=now()。route は runNewsFetch settle 後に `fanOutNewsDigest({windowStart: newsDigestWindowStart(now)})` を同一window claim内で実行。テスト+6（unit: dedupe/title/body(top5+ほか)/payload・空・email queued・再実行0、db: A(ai,web3×high,mid)=2件[high先頭]・B(ai×high)=1件[email queued]・両OFF/canceled/該当なしは0・再実行で増えない）。全881 green・build通過。doc: 要件04 §6/§14・要件02 §4.2/§4.3 に既述で一致（変更なし）。
 - 後続への注意: 一覧UI（/app/news）とメール送信（email_status=queued の回収・送信）は別タスク（**T-M4-14/16/17**）。dedupe/payload/link/impact優先順は本実装を正とする。title/body文言は他通知同様コード管理（docsは形式のみ規定）。
 
-### T-M4-13: 通知一覧UI＋既読管理（ヘッダー未読バッジ含む） `todo`
+### T-M4-13: 通知一覧UI＋既読管理（ヘッダー未読バッジ含む） `done`
 - 参照: O-2、要件05 §10、要件04 §14、要件02 §3.15、要件06 §2 / 依存: M2、M3 / サイズ: M
 - 完了条件:
   - listNotificationsがin_app_enabled=trueのrowだけをcursor・unread_onlyで返し、メール専用の台帳rowが一覧に出ないことをテストで確認
   - 個別既読・全既読でread_atが設定され、ヘッダーの未読バッジ件数が更新される
   - ダイジェスト通知のlinkから/app/news?from=...&to=...へ遷移できる（各typeのlink遷移が機能する）
 - メモ: App Shell（M2）とM3の通知作成基盤を前提。表示はseedした通知rowで検証できるため、ダイジェストfan-outとは独立に実装可能。
+- 実装メモ: **本タスクのスコープは T-M2-20（通知ベル・通知一覧, `done`）で先行実装済み**（重複実装しない）。既存資産で全完了条件を充足: (1) `lib/notifications.ts listNotifications`（`in_app_enabled=true`のみ・本人スコープ・keyset cursor・`unreadOnly`で`read_at is null`絞り込み）＝unit `notifications.test.ts:80`（unreadOnly→`read_at is null`）＋db `notifications.db.test.ts:96,158`（email-only=`in_app=false`は一覧/未読数に出ない）で確認。(2) `markNotificationRead`（coalesce冪等・本人のみ）/`markAllNotificationsRead`＋Action が最新unreadCountを返しベルのバッジ即時更新＝db `:132`（冪等）＋unit・Actionで確認。(3) link遷移: `notification-bell.tsx` が項目クリックで既読化→`router.push(item.link)`、db `:141-143`（link保持=完了条件3）。ダイジェストlink `/app/news?from=..&to=..` は T-M4-12 で生成・検証済み。既存13テスト（unit10・db3）green。コード変更なし・BACKLOGのみ更新。doc: 要件05 §10・要件06 §2・要件02 §3.15・要件04 §14 は既述で一致（影響なし）。
+- 後続への注意: `unread_only` トグルUIはベルには未搭載（Actionは対応済み）。専用の全画面通知ページも未作成だが完了条件・要件06 §2（ヘッダベル＋一覧）は満たす。必要になれば別タスクで追加。
 
 ### T-M4-14: SC-06 ニュース画面（一覧・絞り込み・news_config・時間窓適用） `todo`
 - 参照: N-2、SC-06、要件05 §6、要件05 §4.1、要件05 §12、要件02 §4.2、要件06 §3.4、要件06 §10 / 依存: M2 / サイズ: M
