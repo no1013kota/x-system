@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
+| バージョン | v1.15 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -130,6 +130,14 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 - 発信設定はactive Xアカウント単位でL-4〜L-7を編集する。ペルソナ3項目と主テーマは必須、テーマはマスタ選択と自由入力、toneは§3.4の初期値、NG 3分類は改行区切り入力で空を許可する。入力エラーは該当labelと関連付けて表示する。
 - `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
 - `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。
+
+### 3.7 SC-10 ベースmdエディタ
+
+- `base-md`タブはactive Xアカウントの現行base_mdをテキスト編集する。文字数カウンタ（5,000字上限）を表示し、`updateBaseMdManual`（現行versionを`expected_version`として送る）で保存する。保存成功はActionが返したversionを即時表示し、Server Componentも再取得する。
+- エラーは種別ごとに表示する。6見出し構造違反・字数超過は保存前提の入力エラー、version競合（409）は「別の場所で更新された」旨と再読み込み導線、学習ジョブrunning中は編集不可表示にする。
+- 変更履歴（version・change_source・summary・日時）を新しい順で一覧表示し、各版から確認ダイアログを挟んで`rollbackBaseMd`（指定版の内容で新versionを作成）を実行できる。
+- standardプランではタブ内容をロック表示にし、プラン変更（`/plans`）への導線を出す。`base_md_version = 0`（初版未生成）は発信設定タブへ誘導する。
+- 手動編集したセクション1〜4は発信設定フォーム保存で上書きされる旨を常時注意表示する。ベースmd編集はPCでの操作を推奨し、モバイルでは閲覧を主とする。
 
 ## 4. 投稿作成
 

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   getBaseMdForUser,
+  isLearningRunningForUser,
   listBaseMdVersionsForUser,
   rollbackBaseMdForUser,
   updateBaseMdManualForUser,
@@ -51,7 +52,9 @@ async function requireUserId(): Promise<
 
 export async function getBaseMdAction(
   input: unknown,
-): Promise<BaseResult & { content?: string; version?: number; history?: BaseMdVersionView[] }> {
+): Promise<
+  BaseResult & { content?: string; version?: number; history?: BaseMdVersionView[]; learningRunning?: boolean }
+> {
   const parsed = xAccountSchema.safeParse(input);
   if (!parsed.success) {
     return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
@@ -59,11 +62,12 @@ export async function getBaseMdAction(
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
   try {
-    const [base, history] = await Promise.all([
+    const [base, history, learningRunning] = await Promise.all([
       getBaseMdForUser(auth.userId, parsed.data.x_account_id),
       listBaseMdVersionsForUser(auth.userId, parsed.data.x_account_id),
+      isLearningRunningForUser(auth.userId, parsed.data.x_account_id),
     ]);
-    return { content: base.content, history, message: "", status: "success", version: base.version };
+    return { content: base.content, history, learningRunning, message: "", status: "success", version: base.version };
   } catch (error) {
     return { ...toUserFacingError(error), status: "error" };
   }

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { BASE_MD_MAX_CHARS, validateManualBaseMd } from "./base-md";
+import { BASE_MD_MAX_CHARS, isLearningRunning, validateManualBaseMd } from "./base-md";
 import { AppError } from "./observability/errors";
 
 const VALID = `# 発信定義書
@@ -61,5 +61,22 @@ describe("validateManualBaseMd", () => {
   it("rejects out-of-order headings (structure)", () => {
     const swapped = `## 2. b\n\n## 1. a\n\n## 3. c\n\n## 4. d\n\n## 5. e\n\n## 6. f\n`;
     expect(code(() => validateManualBaseMd(swapped)).reason).toBe("structure");
+  });
+});
+
+describe("isLearningRunning", () => {
+  it("scopes to owner + learning/md_merge running and returns true when a row exists", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ "?column?": 1 }], rowCount: 1 });
+    expect(await isLearningRunning({ query }, "user-1", "acct-1")).toBe(true);
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain("kind in ('learning_analysis', 'md_merge')");
+    expect(sql).toContain("status = 'running'");
+    expect(sql).toContain("x.user_id = $2");
+    expect(params).toEqual(["acct-1", "user-1"]);
+  });
+
+  it("returns false when no running job", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+    expect(await isLearningRunning({ query }, "user-1", "acct-1")).toBe(false);
   });
 });

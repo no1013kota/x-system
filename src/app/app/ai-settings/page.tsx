@@ -19,9 +19,15 @@ import {
   ownPostsReimportEligibilityForAccount,
 } from "@/lib/learning-sources-server";
 import type { LearningSourceView } from "@/lib/learning-sources";
+import {
+  isLearningRunningForUser,
+  listBaseMdVersionsForUser,
+} from "@/lib/base-md-server";
+import type { BaseMdVersionView } from "@/lib/base-md";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
+import { BaseMdEditor } from "./base-md-editor";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
 
@@ -113,6 +119,14 @@ export default async function AiSettingsPage({
       ownPostsReimportEligibilityForAccount(account.id),
     ]);
   }
+  let baseMdHistory: BaseMdVersionView[] = [];
+  let baseMdLearningRunning = false;
+  if (tab === "base-md" && account && plan !== "standard" && account.base_md_version >= 1) {
+    [baseMdHistory, baseMdLearningRunning] = await Promise.all([
+      listBaseMdVersionsForUser(user.id, account.id),
+      isLearningRunningForUser(user.id, account.id),
+    ]);
+  }
   let validUserProviders: AiKeyProvider[] = [];
   if (tab === "purposes" && plan !== "premium") {
     const keys = await listApiKeyViewsForUser(user.id);
@@ -187,6 +201,30 @@ export default async function AiSettingsPage({
               initialOwnPostsNextEligibleAt={ownPostsNextEligibleAt}
               initialSources={learningSources}
               plan={plan}
+              xAccountId={account.id}
+            />
+          )
+        ) : tab === "base-md" ? (
+          plan === "standard" ? (
+            <EmptyState
+              actionHref="/plans"
+              actionLabel="プランを見る"
+              description="ベースmdの手動編集・履歴・ロールバックは md・premium プランでご利用いただけます。"
+              title="ベースmd編集はアップグレードが必要です"
+            />
+          ) : account.base_md_version < 1 ? (
+            <EmptyState
+              actionHref="/app/ai-settings?tab=persona"
+              actionLabel="発信設定へ"
+              description="編集対象のベースmdを、先に発信設定から保存してください。"
+              title="先に発信設定を保存してください"
+            />
+          ) : (
+            <BaseMdEditor
+              initialContent={account.base_md}
+              initialHistory={baseMdHistory}
+              initialVersion={account.base_md_version}
+              learningRunning={baseMdLearningRunning}
               xAccountId={account.id}
             />
           )

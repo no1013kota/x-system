@@ -5,6 +5,7 @@ import {
   applyRollbackBaseMd,
   applyUpdateBaseMdManual,
   getBaseMd,
+  isLearningRunning,
   listBaseMdVersions,
   type BaseMdVersionView,
   type BaseMdView,
@@ -46,4 +47,8 @@ export function listBaseMdVersionsForUser(
   xAccountId: string,
 ): Promise<BaseMdVersionView[]> {
   return listBaseMdVersions(pooledDb, userId, xAccountId);
+}
+
+export function isLearningRunningForUser(userId: string, xAccountId: string): Promise<boolean> {
+  return isLearningRunning(pooledDb, userId, xAccountId);
 }

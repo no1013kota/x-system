@@ -179,6 +179,23 @@ export async function getBaseMd(
   return { content: row.base_md, version: row.base_md_version };
 }
 
+/** 所有者のアカウントで learning_analysis/md_merge がrunningか（SC-10 編集不可表示用の読み取り）。 */
+export async function isLearningRunning(
+  db: { query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount: number | null }> },
+  userId: string,
+  xAccountId: string,
+): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `select 1 from generation_jobs j
+       join x_accounts x on x.id = j.x_account_id
+      where j.x_account_id = $1 and x.user_id = $2
+        and j.kind in ('learning_analysis', 'md_merge') and j.status = 'running'
+      limit 1`,
+    [xAccountId, userId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export interface BaseMdVersionView {
   version: number;
   changeSource: string;
