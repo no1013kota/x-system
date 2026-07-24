@@ -1087,13 +1087,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: 6分野を最大3並列で実行し1分野のFunction内目安90秒（要件04 §5）。CRON_SECRET Bearer認証・force-dynamic。
   決定済み（2026-07-21・D-3・案I）: 「時間窓の欠落を許容しない」は、各回が直近3時間分を重ねて取得（プロンプト設計書 §6.10の`{{hours}}`）し、1時間ごと起動の窓の重なりで3回に1回成功すれば欠落しない方式で満たす。9:00/10:00/11:00は前日18:00以降を補完（15/16/17h・稼働終了間際の欠落防止）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみで欠落回復はラップ取得側。NEWSは`generation_jobs`を使わない（§2）。UIは既定で過去7日表示（要件06 SC-06）。詳細はADR-0003。
 
-### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `todo`
+### T-M4-12: 時間単位ニュースダイジェスト通知fan-out（news_config適用・dedupe） `done`
 - 参照: N-3、要件04 §6、要件04 §14、要件02 §3.15、要件02 §4.2、要件02 §4.3、O-2 / 依存: T-M4-11 / サイズ: M
 - 完了条件:
   - news_config・notification_configの異なる複数ユーザーを仕込み、categories/impact_filter一致の新着があるtrialing/activeユーザーにだけ通知rowが作られ、該当0件・両channel OFF・非契約ユーザーには作られないことをローカルDBで確認
   - user_id+dedupe_key（news-digest:{window_started_at}）により同一時間窓の再実行で通知rowが増えない（insert...select相当の一括fan-out）
   - タイトル・本文へ高impact優先・同impactは新しい順で最大5件＋全件数＋一覧リンク（/app/news?from=...&to=...）が入り、payloadのnews_item_idsはmax_items（既定20）で切られtotal_countは全件数を保持する
 - メモ: news_fetchの6分野settle後に成功分野の新規保存ニュースだけを対象に実行。分野失敗自体はユーザーへニュース通知しない。メールONユーザーはemail_status=queued＋email_available_atを設定（送信は後続タスク）。
+- 実装メモ: `lib/jobs/news-digest.ts` `fanOutNewsDigest(deps)`。窓 [windowStart, +1h)（UTC hour-aligned＝`newsDigestWindowStart(now)`。JST/UTCとも時境界一致）。単一集約SQL（CTE: new_items[窓内fetched_at]→eligible[trialing/active＋news channelいずれかON]→matched[categories `?` ni.category ∧ impact_filter `?` ni.impact・`row_number() over(partition by user order by impact優先(high→mid→low),fetched_at desc)`]→group by user）で user別に total_count・item_ids(rn≤max_items)・top_titles(rn≤5) を取得。JS で title=`ニュースダイジェスト N件`、body=先頭5件`・`列挙＋`ほかN件`、payload={window_started_at/ended_at, total_count, news_item_ids} を組み、`insert ... on conflict (user_id, dedupe_key) do nothing`（dedupe `news-digest:{fromIso}`）。email ON→email_status=queued＋email_available_at=now()。route は runNewsFetch settle 後に `fanOutNewsDigest({windowStart: newsDigestWindowStart(now)})` を同一window claim内で実行。テスト+6（unit: dedupe/title/body(top5+ほか)/payload・空・email queued・再実行0、db: A(ai,web3×high,mid)=2件[high先頭]・B(ai×high)=1件[email queued]・両OFF/canceled/該当なしは0・再実行で増えない）。全881 green・build通過。doc: 要件04 §6/§14・要件02 §4.2/§4.3 に既述で一致（変更なし）。
+- 後続への注意: 一覧UI（/app/news）とメール送信（email_status=queued の回収・送信）は別タスク（**T-M4-14/16/17**）。dedupe/payload/link/impact優先順は本実装を正とする。title/body文言は他通知同様コード管理（docsは形式のみ規定）。
 
 ### T-M4-13: 通知一覧UI＋既読管理（ヘッダー未読バッジ含む） `todo`
 - 参照: O-2、要件05 §10、要件04 §14、要件02 §3.15、要件06 §2 / 依存: M2、M3 / サイズ: M

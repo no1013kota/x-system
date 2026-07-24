@@ -1,0 +1,184 @@
+import { randomUUID } from "node:crypto";
+
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { closePool, getPool, withTransaction } from "../db/pool";
+import type { Queryable } from "../x/token-refresh";
+import { fanOutNewsDigest } from "./news-digest";
+
+const pooledDb: Queryable = {
+  query: <T = unknown>(sql: string, params?: unknown[]) =>
+    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
+};
+
+/**
+ * DB integration tests for the hourly news digest fan-out (T-M4-12, 要件04 §14, 要件02 §4.2/§4.3).
+ * Skips without the local Supabase stack.
+ */
+describe("fanOutNewsDigest (db)", () => {
+  let available = false;
+
+  beforeAll(async () => {
+    try {
+      const c = await getPool().connect();
+      c.release();
+      available = true;
+    } catch {
+      available = false;
+    }
+  });
+  afterAll(async () => {
+    await closePool();
+  });
+  beforeEach((ctx) => {
+    if (!available) ctx.skip();
+  });
+
+  async function makeUser(
+    c: PoolClient,
+    opts: {
+      status: string;
+      categories: string[];
+      impact: string[];
+      newsInApp: boolean;
+      newsEmail: boolean;
+    },
+  ): Promise<string> {
+    const uid = randomUUID();
+    await c.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+      [uid, `${uid}@example.com`],
+    );
+    await c.query(
+      `insert into profiles (id, email, subscription_status, news_config, notification_config)
+       values ($1, $2, $3::subscription_status,
+               jsonb_build_object('categories', $4::jsonb, 'impact_filter', $5::jsonb, 'max_items', 20),
+               jsonb_build_object('news', jsonb_build_object('in_app', $6::boolean, 'email', $7::boolean)))
+       on conflict (id) do update set
+         subscription_status = excluded.subscription_status,
+         news_config = excluded.news_config,
+         notification_config = excluded.notification_config`,
+      [
+        uid,
+        `${uid}@example.com`,
+        opts.status,
+        JSON.stringify(opts.categories),
+        JSON.stringify(opts.impact),
+        opts.newsInApp,
+        opts.newsEmail,
+      ],
+    );
+    return uid;
+  }
+
+  it("fans out digests only to eligible, matching users and is idempotent per window", async () => {
+    const windowStart = new Date("2026-05-15T04:00:00Z");
+    const tag = randomUUID().slice(0, 8);
+
+    const seed = await withTransaction(async (c) => {
+      const userA = await makeUser(c, {
+        status: "trialing",
+        categories: ["ai", "web3"],
+        impact: ["high", "mid"],
+        newsInApp: true,
+        newsEmail: false,
+      });
+      const userB = await makeUser(c, {
+        status: "active",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: false,
+        newsEmail: true,
+      });
+      const userOff = await makeUser(c, {
+        status: "trialing",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: false,
+        newsEmail: false, // both channels off → excluded
+      });
+      const userCanceled = await makeUser(c, {
+        status: "canceled",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: true,
+        newsEmail: true, // non-contract → excluded
+      });
+      const userNoMatch = await makeUser(c, {
+        status: "trialing",
+        categories: ["sns"],
+        impact: ["high"],
+        newsInApp: true,
+        newsEmail: true, // no matching items → excluded
+      });
+
+      // items inside the window (fetched_at = windowStart + 30min)
+      const mk = async (category: string, impact: string): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into news_items (category, title, summary, source_url, impact, fetched_at)
+           values ($1::news_category, $2, 's', $3, $4::impact_level, $5::timestamptz + interval '30 minutes')
+           returning id`,
+          [category, `${category}-${impact}-${tag}`, `https://ex.com/${randomUUID()}`, impact, windowStart.toISOString()],
+        );
+        return rows[0].id;
+      };
+      const aiHigh = await mk("ai", "high");
+      const web3Mid = await mk("web3", "mid");
+      await mk("ai", "low"); // excluded by impact_filter for both A and B
+      await mk("business", "high"); // excluded by category for both
+      return { userA, userB, userOff, userCanceled, userNoMatch, aiHigh, web3Mid };
+    });
+
+    try {
+      const res = await fanOutNewsDigest({ db: pooledDb, windowStart });
+      expect(res.matchedUsers).toBe(2); // A and B only
+      expect(res.notified).toBe(2);
+
+      const load = async (uid: string) =>
+        (
+          await withTransaction((c) =>
+            c.query<{ total_count: number; news_item_ids: string[]; email_status: string; in_app_enabled: boolean }>(
+              `select (payload->>'total_count')::int as total_count,
+                      payload->'news_item_ids' as news_item_ids,
+                      email_status, in_app_enabled
+                 from notifications where user_id = $1 and type = 'news'`,
+              [uid],
+            ),
+          )
+        ).rows;
+
+      const a = await load(seed.userA);
+      expect(a).toHaveLength(1);
+      expect(a[0].total_count).toBe(2); // ai/high + web3/mid
+      expect(a[0].news_item_ids[0]).toBe(seed.aiHigh); // high ranked before mid
+      expect(a[0].in_app_enabled).toBe(true);
+      expect(a[0].email_status).toBe("not_requested"); // email off
+
+      const b = await load(seed.userB);
+      expect(b).toHaveLength(1);
+      expect(b[0].total_count).toBe(1); // ai/high only
+      expect(b[0].email_status).toBe("queued"); // email on
+
+      expect(await load(seed.userOff)).toHaveLength(0);
+      expect(await load(seed.userCanceled)).toHaveLength(0);
+      expect(await load(seed.userNoMatch)).toHaveLength(0);
+
+      // re-run: dedupe_key prevents new rows
+      const rerun = await fanOutNewsDigest({ db: pooledDb, windowStart });
+      expect(rerun.matchedUsers).toBe(2);
+      expect(rerun.notified).toBe(0);
+      expect(await load(seed.userA)).toHaveLength(1);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from auth.users where id = any($1)`, [
+          [seed.userA, seed.userB, seed.userOff, seed.userCanceled, seed.userNoMatch],
+        ]),
+      );
+      await withTransaction((c) =>
+        c.query(`delete from news_items where title like $1`, [`%-${tag}`]),
+      );
+    }
+  });
+});

@@ -2,6 +2,7 @@ import { getPool } from "@/lib/db/pool";
 import { isValidCronAuth } from "@/lib/jobs/auth";
 import { hourWindowKey, withCronWindowClaim } from "@/lib/jobs/cron";
 import { createDeadline } from "@/lib/jobs/deadline";
+import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest";
 import { runNewsFetch } from "@/lib/jobs/news-fetch";
 import { researchNews } from "@/lib/jobs/news-research";
 import type { Queryable } from "@/lib/x/token-refresh";
@@ -25,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   const { ran, result } = await withCronWindowClaim("news_fetch", windowKey, async () => {
     // provider解決はenvに触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。
     const { resolveNewsProvider } = await import("@/lib/ai/resolve-provider-server");
-    return runNewsFetch({
+    const fetched = await runNewsFetch({
       db: pooledDb,
       researchCategory: (category) => {
         // 分野ごとに新しい deadline を与える（pause_turn継続予算・要件04 §5）。
@@ -40,6 +41,9 @@ export async function GET(request: Request): Promise<Response> {
       },
       onError: (category, err) => console.error(`[news_fetch] ${category}`, err),
     });
+    // 6分野settle後、成功分野の新規ニュースを対象に時間単位ダイジェストを fan-out する（要件04 §14）。
+    const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
+    return { ...fetched, digest };
   });
   return Response.json({ ok: true, ran, window: windowKey, ...(result ?? {}) });
 }
