@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -226,6 +226,9 @@ flowchart TD
 - public metricsと、所有ポストで取得可能なnon-public metricsを要求する。取得不能fieldはnullを保持する。
 - 取得値はtweet_id配下の`1`/`7`/`30` checkpointへ別々に保存し、後の取得で過去checkpointを上書きしない。
 - 投稿完了時、または部分失敗でX上の残存IDが確定した時に`next_metrics_at`を1日checkpointへ設定し、各回の完了後に次のdueへ進める。対象tweet_idがすべて30日取得済みまたはunavailableなら`metrics_completed_at`を設定して回収対象から外す。
+- checkpoint日数（1/7/30）の基準時刻は`drafts.posted_at`とする。`posted_at`は投稿成功時（投稿時刻）に加え、部分失敗でX上に残存IDが確定した時にも設定する（残存確定時刻。post_publishが両経路で設定し、metrics_collectorのアンカーとする）。アンカーを持たない行（`posted_at is null`）は収集対象にしない。
+- 収集対象IDが無くなったdue draft（全ID取得済み、または`ambiguous_delete_tweet_ids`のみでremaining空 等）も`next_metrics_at`だけ前進させてdue窓から外す（同一行の無限再選定を防ぐ）。
+- 1起動あたり50 account・500 tweet_id・外部request最大10並列を上限とし、Function deadline超過分は次回毎時起動へ委ねる。1アカウントのtoken取得失敗（失効）や読取失敗（401/403/429枯渇/5xx）はそのaccount/draft単位で隔離してスキップし、run全体を落とさない（失効はaccountスキップ、一時失敗は`next_metrics_at`据え置きで次窓が再走査）。
 - 30日表示用checkpointはnon-public metricsの取得期限を越えないよう投稿後29日〜30日未満で取得する。期限内の取得に失敗したprivate fieldはnullのまま確定し、public metricsもMVPでは更新終了する。
 - X上で削除済み・取得不能と確定したtweet_idは`unavailable`として以後のcheckpoint対象から外し、他のtweet_idの実績は継続する。
 - `follower_snapshot`は`x_account_id + JST日付`でupsertする。

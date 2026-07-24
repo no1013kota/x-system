@@ -287,10 +287,13 @@ async function rollbackThread(
     provider_request_id: null,
   };
   // tweet_ids は監査用に保持（消さない）。残存/不明IDがあれば next_metrics_at を設定（要件04 §13）。
+  // 部分失敗でも生き残ったポストの実績を回収するため posted_at をメトリクスのアンカーとして設定する
+  // （成功時=投稿時刻／部分失敗時=残存確定時刻。metrics_collector は posted_at 基準で checkpoint を刻む）。
   const hasLive = remaining.length > 0 || ambiguousDelete.length > 0;
   await db.query(
     `update drafts
         set status = 'failed', last_post_error = $2::jsonb,
+            posted_at = case when $3 then coalesce(posted_at, now()) else posted_at end,
             next_metrics_at = case when $3 then now() + interval '1 day' else next_metrics_at end,
             updated_at = now()
       where id = $1`,
@@ -319,6 +322,7 @@ async function failAmbiguousCreate(
   await db.query(
     `update drafts
         set status = 'failed', last_post_error = $2::jsonb,
+            posted_at = case when $3 then coalesce(posted_at, now()) else posted_at end,
             next_metrics_at = case when $3 then now() + interval '1 day' else next_metrics_at end,
             updated_at = now()
       where id = $1`,

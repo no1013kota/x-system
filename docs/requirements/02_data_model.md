@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
+| バージョン | v1.14 |
 | 更新日 | 2026-07-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -274,7 +274,7 @@ RLS: 本人select可。writeはServer only。
 | `root_tweet_id` | `text` | null | スレッド先頭 |
 | `tweet_ids` | `jsonb` | not null default `[]` | 投稿順のtweet_id配列 |
 | `posted_mode` | `posted_mode` | null | auto/manual |
-| `posted_at` | `timestamptz` | null | 全件投稿完了 |
+| `posted_at` | `timestamptz` | null | 投稿完了時刻。部分失敗で残存IDが確定した時も設定し、metrics_collectorのcheckpoint基準（アンカー）とする（要件04 §13） |
 | `tweet_metrics` | `jsonb` | not null default `{}` | tweet_id・checkpoint別実績 |
 | `next_metrics_at` | `timestamptz` | null | 次checkpoint/retryのdue時刻 |
 | `metrics_completed_at` | `timestamptz` | null | 全tweet_idの収集終了日時 |
