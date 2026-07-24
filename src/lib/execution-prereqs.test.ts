@@ -4,6 +4,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import {
   assertExecutionPrerequisites,
+  buildSetupChecklist,
   checkExecutionPrerequisites,
   type ExecutionPrereqInput,
 } from "./execution-prereqs";
@@ -140,6 +141,45 @@ describe("checkExecutionPrerequisites — premium", () => {
     expect(checkExecutionPrerequisites(premium({ baseMdVersion: 0 }))?.code).toBe(
       "persona_required",
     );
+  });
+});
+
+describe("buildSetupChecklist", () => {
+  const items = (list: { item: string }[]) => list.map((i) => i.item);
+
+  it("BYOK lists the 4 setup items, all satisfied when fully set up", () => {
+    const list = buildSetupChecklist(byok());
+    expect(items(list)).toEqual(["x_api_key", "x_account", "text_ai_key", "persona"]);
+    expect(list.every((i) => i.satisfied)).toBe(true);
+  });
+
+  it("marks unsatisfied items and links each to a settings path", () => {
+    const list = buildSetupChecklist(
+      byok({ xApiKeyStatus: null, hasActiveXAccount: false }),
+    );
+    const key = list.find((i) => i.item === "x_api_key")!;
+    const account = list.find((i) => i.item === "x_account")!;
+    expect(key.satisfied).toBe(false);
+    expect(key.settingsPath).toBe("/app/settings?tab=api-keys");
+    expect(account.satisfied).toBe(false);
+    expect(account.settingsPath).toBe("/app/settings?tab=x-accounts");
+  });
+
+  it("shows the guide when there is no active X account candidate", () => {
+    const list = buildSetupChecklist(byok({ hasActiveXAccount: false }));
+    expect(list.some((i) => !i.satisfied)).toBe(true);
+  });
+
+  it("premium excludes the key items (only X connection + persona)", () => {
+    const list = buildSetupChecklist(premium());
+    expect(items(list)).toEqual(["x_account", "persona"]);
+    expect(list.every((i) => i.satisfied)).toBe(true); // fully set-up premium hides the guide
+  });
+
+  it("ignores image key state (image is optional for the guide)", () => {
+    const list = buildSetupChecklist(byok({ imageRequested: true, imageAiKeyValid: false }));
+    expect(list.every((i) => i.satisfied)).toBe(true);
+    expect(items(list)).not.toContain("image_ai_key");
   });
 });
 

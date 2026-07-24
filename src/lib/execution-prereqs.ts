@@ -116,3 +116,38 @@ export function assertExecutionPrerequisites(input: ExecutionPrereqInput): void 
     });
   }
 }
+
+// 初期設定ガイド（SC-05）のチェックリスト対象。契約はバナー、画像AIキーは任意のため含めない。
+const SETUP_ITEMS_BYOK: PrereqItem[] = [
+  "x_api_key",
+  "x_account",
+  "text_ai_key",
+  "persona",
+];
+const SETUP_ITEMS_PREMIUM: PrereqItem[] = ["x_account", "persona"];
+
+export interface SetupChecklistItem {
+  item: PrereqItem;
+  label: string;
+  satisfied: boolean;
+  settingsPath: string;
+}
+
+/**
+ * ホーム初期設定ガイド（SC-05, 要件06 §3.1）のチェックリストを組み立てる。充足判定は
+ * `checkExecutionPrerequisites` を再利用し二重実装しない。premiumはキー項目（X APIキー・文章AIキー）を除外。
+ */
+export function buildSetupChecklist(
+  input: ExecutionPrereqInput,
+): SetupChecklistItem[] {
+  const missing = new Set(
+    checkExecutionPrerequisites({ ...input, imageRequested: false })?.missing ?? [],
+  );
+  const items = input.plan === "premium" ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
+  return items.map((item) => ({
+    item,
+    label: PREREQ_ITEM_LABELS[item],
+    satisfied: !missing.has(item),
+    settingsPath: ITEM_PATH[item],
+  }));
+}

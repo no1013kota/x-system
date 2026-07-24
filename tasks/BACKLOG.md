@@ -715,12 +715,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装メモ: pure `lib/execution-prereqs.ts` `checkExecutionPrerequisites`（優先順: 契約→Xキー→X連携→文章AIキー→画像AIキー→発信設定。premiumはX/AIキー除外、画像AIキーは`imageRequested`時のみ、発信設定は`base_md_version>=1`）→`{code, missing[], settingsPath}`または null。`assertExecutionPrerequisites`はAppErrorをthrow。契約可否は`subscriptionAccessFor().canExecute`再利用。server `execution-prereqs-server.ts` `gatherExecutionPrereqInputs`（profiles/ai_purpose_config/user_api_keys/選択中x_accountから入力を収集、AIキー有効性は割当providerのstatus='valid'、発信設定は選択中accountのbase_md_version）。共通表示`components/app-shell/execution-prereq-notice.tsx`（message＋不足項目＋「設定へ」ボタン、コードに依存せずmessage/settingsPath/missingを描画）。X APIキーはvalid/unchecked（登録・形式検証済み）で充足、null/invalidで不足。テスト+16（ユニット14: BYOK各不足個別・全不足の優先順・premium除外・assert／DB2: 未設定は全不足・充足でnull）。全588 green・build通過。doc: 要件06 §3.1/§3.2・05 §2.2が既述で整合＝影響なし。
 - 後続への注意: Storybookはスタック未導入のため「各エラーコード表示」はcheckExecutionPrerequisitesの網羅ユニット＋汎用コンポーネント（T-M2-24ガイドカードで実使用）で担保。生成・投稿・スケジュール・学習の各Action実装時に`gatherExecutionPrereqInputs`＋`assertExecutionPrerequisites`を実行前提ガードとして呼ぶ（imageRequestedは操作依存）。
 
-### T-M2-24: ホーム初期設定ガイドカード（SC-05） `todo`
+### T-M2-24: ホーム初期設定ガイドカード（SC-05） `done`
 - 参照: 要件06 §3.1、要件01 §5、PRD §4、PRD §9 / 依存: T-M2-23、T-M2-02 / サイズ: S
 - 完了条件:
   - 前提不足時に/appへチェックリスト（X APIキー・X連携・文章AIキー・発信設定。premiumはキー項目を除外）が充足/未充足の状態付きで表示され、各項目から該当設定画面へ遷移できる
   - 全条件充足でカードが自動的に非表示になり、activeなXアカウント候補ゼロの場合もガイドが表示される（fixtureで両状態を検証）
 - メモ: 充足判定は実行前提検証ヘルパを再利用し、判定ロジックを二重実装しない。
+- 実装メモ: `execution-prereqs.ts`に`buildSetupChecklist`を追加し**`checkExecutionPrerequisites`を再利用**（判定二重実装なし）。ガイド対象=x_api_key/x_account/text_ai_key/persona（契約はバナー・画像AIキーは任意で除外）、premiumはX/AIキー除外→x_account/personaのみ。`components/app-shell/setup-guide-card.tsx`（server component）が充足/未充足＋設定導線を描画。`/app/page.tsx`を非同期化し`gatherExecutionPrereqInputs`→`buildSetupChecklist`、未充足があればカード表示・全充足で非表示。activeアカウント候補ゼロ→x_account未充足→表示。ユニット+5（BYOK4項目全充足／未充足＋パス／候補ゼロ表示／premium除外／画像無視）。全593 green・build通過。doc: 要件06 §3.1が既述で整合＝影響なし。**M2（Web基盤・X連携・設定）完了**。
 
 ## M3: 生成・投稿コア（手動運用の完成）
 
