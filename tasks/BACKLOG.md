@@ -794,11 +794,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: 前提検証はM1の契約状態・M2のキー/X連携状態を参照する共通ヘルパとして実装（ニュース画面のcreateDraftFromNewsやホーム初期設定ガイドからも再利用される）。P-5のfeature_disabled拒否は本マイルストーン後段のタスクで実装。
 - 実装メモ: コア`jobs/generation-jobs.ts`（zod＋deps注入: runInTx/gatherPrereqInputs/quotePostEnabled）。createGenerationJob=同一tx内で request_key冪等確認→active一致（`profiles.active_x_account_id`≠指定はjob_conflict:x_account_mismatch）→前提再検証（`gatherExecutionPrereqInputs`＋`checkExecutionPrerequisites`でコード＋missing＋settingsPath）→queued/running 5件制限（MAX_ACTIVE_JOBS=job_conflict:too_many_active_jobs）→`on conflict (request_key) do nothing`挿入（競合時は既存返却）。P-5はquotePostEnabled=false時にexternal前にfeature_disabled。request_keyは`requestKey(userId, token)`。retry=failedのみparent_job_id付き冪等新job。cancel=queuedのみcanceled（running/終端はjob_conflict、canceledは冪等）。get=owner joinのみ。Action`app/actions/generation-jobs.ts`が pool・`gatherExecutionPrereqInputs`・`env.FEATURE_QUOTE_POST_ENABLED`を束ね、新規作成時のみ`after(()=>dispatchJob)`。テスト+18（ユニット14: 全分岐／DB4: 冪等・5件制限・active不一致・retry/cancel/get）。全694 green・build通過。doc: 要件05 §5/§12/§2.2が既述で整合＝影響なし。
 - 後続への注意: regenerateDraft/publishDraft/reconcile/clone等の下書き系Action（要件05 §5）は後続タスク。前提検証の共通化（createGenerationJobのassertPrereqs）はニュースcreateDraftFromNews（M4）でも再利用可。P-5有効化時はquote_url必須＋対象取得検証を追加。
+
+### T-M3-08: SC-07作成タブ：生成フォーム（2ペイン） `done`
 - 参照: SC-07、要件06 §4.1、要件06 §4.2、P-1〜P-4、P-6、P-7、要件05 §12 / 依存: T-M3-07 / サイズ: M
 - 完了条件:
   - /app/postsの作成タブが2ペイン（パターン選択＋入力／プレビュー・結果）で表示され、P-1〜P-4/P-6を選択できる（P-5はflag OFFで非表示）
   - 共通入力（参考URL・追加指示）とP-2のみの「自分の考え」、画像ON/OFF＋provider選択（BYOKはvalidな登録キーのproviderのみ活性）が表示され、任意入力が空でも生成を開始できる
   - 生成開始でcreateGenerationJobが呼ばれ、前提不足エラー時は不足項目一覧と「設定へ」ボタンが表示される
+- 実装メモ: `/app/posts/page.tsx`（server）をタブ（作成/下書き/履歴、作成のみ実装）＋作成フォームへ刷新。`resolveActiveXAccountForUser`でactive解決（無ければX連携導線）、plan＋`FEATURE_QUOTE_POST_ENABLED`でP-5表示制御、画像provider活性判定（premium=運営キー＋画像モデル設定済みのopenai/google、BYOK=user_api_keysのvalidなopenai/google）。クライアント`create-post-form.tsx`＝2ペイン（左: パターンradio＋参考URL＋P-2のみ自分の考え＋追加指示＋画像ON/OFF＋provider select／右: 結果）、`crypto.randomUUID()`をrequest_keyに`createGenerationJobAction`呼び出し、任意入力空でも送信可。前提不足エラー（details.settingsPath付き）は`ExecutionPrereqNotice`（不足項目＋設定へ）、その他はインラインエラー。**BACKLOG修正**: 前サイクル（T-M3-07）の編集でT-M3-08ヘッダ行を誤削除していたのを復元。全694 green・build通過（testing-library未導入のためUIはtypecheck/lint/build検証）。doc: SC-07・要件06 §4.1/§4.2が既述で整合＝影響なし。
+- 後続への注意: 進捗ポーリング（progress_stage表示・再訪復元・queued 60秒表示・failed再試行導線）はT-M3-09。生成結果（draft）表示はT-M3-09/11。下書き/履歴タブは後続。
 
 ### T-M3-09: SC-07作成タブ：進捗ポーリングと再訪復元 `todo`
 - 参照: 要件06 §4.2、要件04 §3、PRD §7 / 依存: T-M3-08 / サイズ: M
