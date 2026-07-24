@@ -18,7 +18,10 @@ export async function GET(request: Request): Promise<Response> {
   const { env } = await import("@/lib/env");
   const windowKey = fiveMinWindowKey(new Date());
   const { ran, result } = await withCronWindowClaim("scheduler_tick", windowKey, () =>
-    runSchedulerTick(undefined, { dailyLimit: env.X_DAILY_POST_LIMIT }),
+    runSchedulerTick(undefined, {
+      dailyLimit: env.X_DAILY_POST_LIMIT,
+      quotePostEnabled: env.FEATURE_QUOTE_POST_ENABLED,
+    }),
   );
   return Response.json({ ok: true, ran, window: windowKey, ...(result ?? {}) });
 }
