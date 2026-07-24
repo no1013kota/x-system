@@ -5,6 +5,9 @@ import { CURRENT_TERMS_VERSION } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "利用規約 | Space AI" };
 
+// nonceベースCSP（T-M6-17）のため動的レンダリング（静的prerenderはnonce付与不可）。
+export const dynamic = "force-dynamic";
+
 export default function TermsPage() {
   return (
     <main className="mx-auto w-full max-w-3xl space-y-8 px-5 py-12">

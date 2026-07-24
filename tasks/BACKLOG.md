@@ -1495,12 +1495,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: `/`に提供価値、3プラン比較（税込500/1,000/2,980円・7日trial）、BYOKプランはX API・生成AI APIの利用料が別途ユーザー負担であることの明示、premiumはキー不要であること、/signupへの登録導線、法務ページfooterを実装。レスポンシブ対応（PC＋スマホ閲覧）。
 - 実装結果: M0プレースホルダ `/`（`app/page.tsx`）を実LPへ刷新。ヘッダ（ログイン導線）／Hero（提供価値見出し＋APP_DESCRIPTION＋「無料で始める」→/signup・「プランを見る」→/plans）／できること4項目（収集・生成・自動投稿・分析）／料金3プラン（PLANSから税込500/1,000/2,980円・Xアカウント上限・7日trial明示、BYOK=standard/mdは「X API・生成AI API利用料が別途ユーザー負担」をamber注記、premiumは「APIキー不要・追加API費用なし」をemerald注記）＋末尾に/signup導線。CTAは`buttonVariants`（Buttonはaschild非対応）。footerは共通`LegalFooter`（T-M6-15）で3法務ページへ。レスポンシブ: max-w-6xl/px-4/`sm:grid-cols-*`/flex-wrap で横スクロールなし。build上 `┌ ○ /`＝Static prerender（未ログイン表示）を確認。doc影響なし（要件06 §1 SC-01が内容を規定）。UIはtsc/lint/build検証。
 
-### T-M6-17: セキュリティヘッダ・cookie属性の仕上げ（CSP/HSTS/nosniff/Referrer-Policy） `todo`
+### T-M6-17: セキュリティヘッダ・cookie属性の仕上げ（CSP/HSTS/nosniff/Referrer-Policy） `done`
 - 参照: 要件01 §8、PRD §7 / 依存: M0 / サイズ: M
 - 完了条件:
   - productionビルドのローカル起動で全応答にnonceベースCSP・nosniff・Referrer-Policyが付与され、nonceなしinline scriptが実行されない
   - HSTSがproduction相当設定で付与され、認証・OAuth補助cookieにHttpOnly・SameSite=Lax（productionはSecure）が付く
 - メモ: nonceベースCSP（frame-ancestors 'none'・object-src 'none'を含む）をmiddlewareで実装し、productionでHSTS・X-Content-Type-Options: nosniff・厳格なReferrer-Policyを付与。production cookieはSecure、認証・OAuth補助cookieはHttpOnly・SameSite=Laxを既定化。既存画面のinline script/styleをnonce対応へ修正。
+- 実装結果: このNext(v16)は`middleware.ts`ではなく`proxy.ts`規約で、既存`proxy.ts`→`updateSupabaseSession`が唯一のproxy経路。新設`src/lib/security-headers.ts`（nonce生成・CSP構築・応答ヘッダ付与、next非依存でunit可）を`updateSupabaseSession`へ配線：request headerへnonce+CSPを載せNext.jsに自身のscript/`next/script`(Turnstile)へnonce付与させ、全応答（通常・redirect）へCSP・nosniff・Referrer-Policy（prodはHSTS）を付与。`script-src 'self' 'nonce' 'strict-dynamic'`（'unsafe-inline'無し=nonceなしinline script非実行）、`style-src 'self' 'unsafe-inline'`、`img-src https:`（Xアバター/Storage画像）、Turnstile/Sentryを許可、`frame-ancestors/object-src 'none'`。**静的prerenderはnonce付与不可のため**公開コンテンツ4ページ（LP・法務3）を`force-dynamic`化。cookie（auth/OAuth/billing）はHttpOnly/SameSite=Lax/Secure(prod)を既存setterで確認済み。**runtime検証**: `next build`→`next start`で`/`（動的化後nonce 16件付与）・`/login`（nonce付与）に全ヘッダ付与、HSTS(prod)・img-src https: をcurlで確認。テスト: security-headers 10件＋update-session既存4件パス。doc: 要件01 §8にADR参照追記＋ADR-0005新設（CSP実装方針）。
 
 ### T-M6-18: ログredactとServer only境界・安全なエラー変換 `todo`
 - 参照: 要件01 §8、プロンプト §5.6、要件03 §1、要件02 §5 / 依存: M0、M3 / サイズ: M

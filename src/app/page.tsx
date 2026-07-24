@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
 };
 
+// nonceベースCSP（T-M6-17）はper-requestのnonceを要するため動的レンダリングにする
+// （静的prerenderだとNext.jsのscriptにnonceが付かずCSPで実行が阻害される）。
+export const dynamic = "force-dynamic";
+
 const VALUE_PROPS: { title: string; body: string }[] = [
   {
     title: "情報収集を自動化",

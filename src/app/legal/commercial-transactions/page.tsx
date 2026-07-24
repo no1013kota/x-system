@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${APP_NAME}`,
 };
 
+// nonceベースCSP（T-M6-17）のため動的レンダリング（静的prerenderはnonce付与不可）。
+export const dynamic = "force-dynamic";
+
 const ITEMS = [
   ["販売事業者", "松本洸太"],
   ["運営責任者", "松本洸太"],

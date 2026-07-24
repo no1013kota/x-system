@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.6 |
+| バージョン | v1.7 |
 | 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -188,7 +188,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 ## 8. セキュリティ基準
 
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
-- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。
+- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、公開コンテンツページの動的レンダリング化）はADR-0005を正とする。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
 - Sentry/logはAuthorization、cookie、API key、token、prompt全文、投稿前の非公開入力をredactする。Next.js開発サーバーのServer Function引数ログも無効化し、秘密値を受け取るAction引数をterminalへ出さない。ユーザー向けerrorへprovider本文やstack traceを出さない。
 - private Storageの画像はservice roleでwriteし、表示時に短時間の署名URLを発行する。DBへ署名URLを保存しない。

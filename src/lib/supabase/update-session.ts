@@ -5,6 +5,12 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import { routeGuardDestination } from "@/lib/auth/route-guard";
+import {
+  applySecurityResponseHeaders,
+  buildContentSecurityPolicy,
+  generateNonce,
+  isProdRuntime,
+} from "@/lib/security-headers";
 
 import { authCookieOptions, withAuthCookiePolicy } from "./cookie-options";
 
@@ -31,7 +37,16 @@ function redirectWithSessionState(
  * headers required by @supabase/ssr when it rotates auth cookies.
  */
 export async function updateSupabaseSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // セキュリティヘッダ／CSP（要件01 §8, T-M6-17）。nonce を request へ載せ Next.js に自身のscriptへ
+  // 付与させる。forward するのは元cookie＋nonceで、rotate後の新cookieはブラウザへ response.cookies で送る。
+  const isProd = isProdRuntime();
+  const nonce = generateNonce();
+  const csp = buildContentSecurityPolicy(nonce, isProd);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("content-security-policy", csp);
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
   const cookiePolicy = authCookieOptions(env.APP_ENV);
 
   const supabase = createServerClient(
@@ -48,7 +63,7 @@ export async function updateSupabaseSession(request: NextRequest) {
             request.cookies.set(name, value);
           });
 
-          response = NextResponse.next({ request });
+          response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(
               name,
@@ -86,8 +101,10 @@ export async function updateSupabaseSession(request: NextRequest) {
     url: request.nextUrl,
     userId: data.user?.id ?? null,
   });
-  if (destination) {
-    return redirectWithSessionState(request, response, destination);
-  }
-  return response;
+  const finalResponse = destination
+    ? redirectWithSessionState(request, response, destination)
+    : response;
+  // CSP・nosniff・Referrer-Policy（prodはHSTS）を最終応答へ付与する（通常・リダイレクトの両経路）。
+  applySecurityResponseHeaders(finalResponse.headers, csp, isProd);
+  return finalResponse;
 }
