@@ -1,9 +1,11 @@
+import { DB_ENUMS } from "@/lib/db/enums";
 import { AppError } from "@/lib/observability/errors";
 import { PLANS, type PlanId } from "@/lib/plans";
 
 import { disableAutomationForAccount } from "./automation-consent";
+import { type XAuthType } from "./oauth";
 import { expectedAuthTypeForPlan } from "./oauth-start";
-import type { Queryable } from "./token-refresh";
+import type { Queryable } from "../db/queryable";
 
 /**
  * Xアカウント管理Actionの中核（要件05 §4.3, A-6, 要件03 §6, 要件06 §9）。
@@ -13,13 +15,16 @@ import type { Queryable } from "./token-refresh";
 
 const X_SETTINGS_PATH = "/app/settings?tab=api-keys";
 
+/** x_account_status enum 値（'active'|'expired'|'disabled'|'error'）。DB_ENUMS が正本。 */
+export type XAccountStatus = (typeof DB_ENUMS.x_account_status)[number];
+
 export interface XAccountListItem {
   id: string;
   handle: string;
   name: string;
   profileImageUrl: string | null;
-  authType: string;
-  status: string;
+  authType: XAuthType;
+  status: XAccountStatus;
   isActive: boolean;
   automationActive: boolean;
 }
@@ -36,8 +41,8 @@ export type XMeFetcher = (accessToken: string) => Promise<{
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
 interface OwnedAccount {
-  status: string;
-  authType: string;
+  status: XAccountStatus;
+  authType: XAuthType;
   plan: PlanId;
 }
 
@@ -48,8 +53,8 @@ async function readOwnedAccount(
   userId: string,
 ): Promise<OwnedAccount> {
   const { rows } = await db.query<{
-    status: string;
-    auth_type: string;
+    status: XAccountStatus;
+    auth_type: XAuthType;
     plan: PlanId;
   }>(
     `select xa.status, xa.auth_type, p.plan
@@ -72,8 +77,8 @@ export async function listXAccountsForUser(
     handle: string;
     name: string;
     profile_image_url: string | null;
-    auth_type: string;
-    status: string;
+    auth_type: XAuthType;
+    status: XAccountStatus;
     is_active: boolean;
     automation_active: boolean;
   }>(
@@ -99,8 +104,11 @@ export async function listXAccountsForUser(
   }));
 }
 
-async function readStatus(db: Queryable, xAccountId: string): Promise<string> {
-  const { rows } = await db.query<{ status: string }>(
+async function readStatus(
+  db: Queryable,
+  xAccountId: string,
+): Promise<XAccountStatus> {
+  const { rows } = await db.query<{ status: XAccountStatus }>(
     `select status from x_accounts where id = $1`,
     [xAccountId],
   );
@@ -136,7 +144,7 @@ export async function refreshXAccountStatus(
   xAccountId: string,
   userId: string,
   deps: RefreshDeps,
-): Promise<{ status: string }> {
+): Promise<{ status: XAccountStatus }> {
   await readOwnedAccount(deps.db, xAccountId, userId);
 
   let token: string;
@@ -177,7 +185,7 @@ export async function enableXAccount(
   xAccountId: string,
   userId: string,
   deps: EnableDeps,
-): Promise<{ status: string }> {
+): Promise<{ status: XAccountStatus }> {
   const acct = await readOwnedAccount(deps.db, xAccountId, userId);
 
   const expected = expectedAuthTypeForPlan(acct.plan);
@@ -255,7 +263,7 @@ export async function disconnectXAccount(
   xAccountId: string,
   userId: string,
   deps: DisconnectDeps,
-): Promise<{ status: string }> {
+): Promise<{ status: XAccountStatus }> {
   await readOwnedAccount(deps.db, xAccountId, userId);
 
   // token revoke は best effort（保存token削除より優先度は低い）。失敗は握りつぶす。
@@ -301,7 +309,7 @@ export async function setActiveXAccount(
   userId: string,
   db: Queryable,
 ): Promise<void> {
-  const { rows } = await db.query<{ status: string }>(
+  const { rows } = await db.query<{ status: XAccountStatus }>(
     `select status from x_accounts where id = $1 and user_id = $2`,
     [xAccountId, userId],
   );
@@ -330,7 +338,7 @@ export async function resolveActiveXAccount(
   const current = (
     await db.query<{
       active_x_account_id: string | null;
-      active_status: string | null;
+      active_status: XAccountStatus | null;
     }>(
       `select p.active_x_account_id,
               (select status from x_accounts where id = p.active_x_account_id) as active_status
