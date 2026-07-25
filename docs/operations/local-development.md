@@ -6,7 +6,7 @@
 | 更新日 | 2026-07-25 |
 | 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
-Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://localhost:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
+Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
 
 ---
 
@@ -14,10 +14,10 @@ Space AI（Next.js 16 App Router + Supabase）をローカルで動かすため�
 
 | URL | 用途 |
 |---|---|
-| http://localhost:3000 | アプリ（Next.js dev） |
-| http://localhost:54323 | Supabase Studio（DB/認証のGUI管理） |
-| http://localhost:54324 | ローカルメール受信（Mailpit）— サインアップ確認メール等はここに届く |
-| http://localhost:54321 | Supabase API（kong） |
+| http://127.0.0.1:3000 | アプリ（Next.js dev） |
+| http://127.0.0.1:54323 | Supabase Studio（DB/認証のGUI管理） |
+| http://127.0.0.1:54324 | ローカルメール受信（Mailpit）— サインアップ確認メール等はここに届く |
+| http://127.0.0.1:54321 | Supabase API（kong） |
 | `127.0.0.1:54322` | ローカルDB（Postgres 17。接続: `postgresql://postgres:postgres@127.0.0.1:54322/postgres`） |
 
 ---
@@ -27,7 +27,7 @@ Space AI（Next.js 16 App Router + Supabase）をローカルで動かすため�
 ```bash
 colima start                # Dockerランタイム（停止していれば）
 supabase start              # ローカルSupabaseスタック（停止していれば）
-npm run dev                 # → http://localhost:3000
+npm run dev                 # → http://127.0.0.1:3000
 ```
 
 - 停止: dev サーバーは `Ctrl+C`（バックグラウンド起動時は `pkill -f "next dev"`）。スタックは `supabase stop`。
@@ -62,7 +62,7 @@ cp .env.example .env.local   # 下記を埋める（§3）
 # root .env に Supabase CLI用の Turnstile secret を1行だけ用意（§3の注意）
 
 # 4) 起動
-npm run dev                  # → http://localhost:3000
+npm run dev                  # → http://127.0.0.1:3000
 ```
 
 ---
@@ -72,7 +72,7 @@ npm run dev                  # → http://localhost:3000
 `.env.example` をコピーして作る。起動時に `src/lib/env-schema.ts` が検証し、**dev(`APP_ENV=development`) でも空だと起動失敗する項目**と、**preview/prod でのみ必須（dev は空/ダミー可）**がある。
 
 ### dev で必ず値が要るもの
-- `APP_BASE_URL=http://localhost:3000`, `APP_ENV=development`, `SUPPORT_EMAIL=<有効なメール形式>`
+- `APP_BASE_URL=http://127.0.0.1:3000`, `APP_ENV=development`, `SUPPORT_EMAIL=<有効なメール形式>`
 - `X_POSTING_MODE=dry_run`（**dev/preview は `dry_run` 固定。`live` にすると起動時検証で失敗**＝本番のみ）
 - Supabase 4変数（`supabase start` / `supabase status` の出力から転記）
   - `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321`
@@ -100,7 +100,7 @@ npm run dev                  # → http://localhost:3000
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | 開発サーバー（http://localhost:3000） |
+| `npm run dev` | 開発サーバー（http://127.0.0.1:3000） |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `eslint .` |
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
@@ -119,7 +119,7 @@ npm run dev                  # → http://localhost:3000
 
 ### 実キー無しで今すぐ試せる
 - サインアップ / ログイン / パスワード再設定（Turnstileテストキーで captcha 通過）
-- メール確認フロー（確認メールは **Mailpit http://localhost:54324** に届く。実SMTP不要）
+- メール確認フロー（確認メールは **Mailpit http://127.0.0.1:54324** に届く。実SMTP不要）
 - 画面閲覧全般（ホーム・プラン・設定 等）、プロフィール自動作成、法務同意保存
 - **dry_run 投稿フロー**（X APIを呼ばず擬似tweet_idを返す。日次上限・記帳ロジックは動く）
 - ジョブ/cron の手動起動（`CRON_SECRET` 実物）、BYOK の X APIキー「保存」自体（保存時は未検証）
@@ -147,11 +147,11 @@ npm run dev                  # → http://localhost:3000
 
 - `X_OAUTH_REDIRECT_PATH`（`.env.local`）: **`/api/x/oauth/callback`（既定のまま・変更不要）**。実ルートは `src/app/api/x/oauth/callback/route.ts`。
 - **X公式のローカル要件**（docs.x.com）: 「ローカル開発では **`http://127.0.0.1`（`localhost` は不可）**」「URLは**完全一致**（末尾スラッシュ含む）」。ポート付きは可。
-- したがってローカルで X OAuth を通すには **`127.0.0.1` に揃える**:
-  1. `.env.local` の `APP_BASE_URL=http://127.0.0.1:3000` にする（→ 送信 redirect_uri が `http://127.0.0.1:3000/api/x/oauth/callback` になる）。
+- **本リポジトリは既定で `127.0.0.1` に揃えてある**（`.env.example` の `APP_BASE_URL=http://127.0.0.1:3000`、`supabase/config.toml` の `site_url=http://127.0.0.1:3000`）。ローカルは次を守る:
+  1. `.env.local` の `APP_BASE_URL=http://127.0.0.1:3000`（→ 送信 redirect_uri = `http://127.0.0.1:3000/api/x/oauth/callback`）。
   2. X Dev Portal の **Callback URI = `http://127.0.0.1:3000/api/x/oauth/callback`**（完全一致）で登録。
   3. アプリには **http://127.0.0.1:3000** でアクセスする（cookie/origin を揃えるため。`localhost:3000` と混在させない）。
-  4. Supabase の `site_url`/`additional_redirect_urls`（`supabase/config.toml`）も `http://127.0.0.1:3000` に合わせると認証リンクの origin ずれを防げる（変更後 `supabase stop && supabase start`）。※X連携を試さないなら `localhost:3000` のままで他機能は動く。
+  4. `supabase/config.toml` の `site_url`/`additional_redirect_urls` は既に `127.0.0.1:3000`（config を変えたら `supabase stop && supabase start` で反映）。
 - **X Dev Portal のアプリ設定**（User authentication settings）:
   - Type of App: **Web App（confidential・Client Secret あり）** または Native/SPA（public・PKCE）。運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential。BYOK はユーザーが自分のAppで選択。
   - App permissions: **Read and write**（`tweet.write`・`media.write` に必要）。
@@ -165,8 +165,8 @@ npm run dev                  # → http://localhost:3000
 ## 6. ローカルでテストユーザーを作ってログインする
 
 いずれかで作成:
-1. **最も簡単**: Supabase Studio http://localhost:54323 → Authentication → Add user（メール確認/captcha不要で確認済みユーザーを即作成）。
-2. **UIサインアップ**: http://localhost:3000/signup で登録 → 確認メールを **Mailpit http://localhost:54324** で開いてリンクを踏む。
+1. **最も簡単**: Supabase Studio http://127.0.0.1:54323 → Authentication → Add user（メール確認/captcha不要で確認済みユーザーを即作成）。
+2. **UIサインアップ**: http://127.0.0.1:3000/signup で登録 → 確認メールを **Mailpit http://127.0.0.1:54324** で開いてリンクを踏む。
 3. service role の管理API（`supabase.auth.admin.createUser`）でスクリプト作成。
 
 ---
