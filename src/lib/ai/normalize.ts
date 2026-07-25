@@ -1,29 +1,15 @@
-import type { Citation, Provider, TextGenResult } from "./types";
+import type { Provider, TextGenResult } from "./types";
+// `ProviderCall` は検証スキーマ（usage-schema.ts）を正本に z.infer で導出する。
+// 従来どおり本モジュールからも型を参照・re-export できるようにする。
+import type { ProviderCall } from "./usage-schema";
+
+export type { ProviderCall } from "./usage-schema";
 
 /**
  * 3プロバイダ共通のusage正規化（要件02 §4.6 `generation_jobs.usage.calls` 要素）と
  * 起動時のprovider機能検証（要件01 §7）。全アダプタの `TextGenResult` を同一の
  * `ProviderCall` 型へ変換し、原価台帳・usage保存の入力を1本化する。
  */
-
-/** 要件02 §4.6 の calls 配列要素。 */
-export interface ProviderCall {
-  provider: Provider;
-  model: string;
-  operation: string;
-  request_id: string | null;
-  status: "succeeded" | "failed";
-  stop_reason: string | null;
-  latency_ms: number;
-  input_tokens: number;
-  output_tokens: number;
-  web_search_count: number;
-  cache_hit: boolean;
-  citations: Citation[];
-  error_code: string | null;
-  /** 推定原価（USD）。単価表がなく算出不能な場合は null（要件02 §3.17）。 */
-  estimated_cost_usd: number | null;
-}
 
 export interface ProviderCallMeta {
   model: string;

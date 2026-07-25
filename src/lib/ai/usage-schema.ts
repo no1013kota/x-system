@@ -33,3 +33,11 @@ export const generationUsageSchema = z.object({
 });
 
 export type GenerationUsage = z.infer<typeof generationUsageSchema>;
+
+/**
+ * 正規化済み provider call（要件02 §4.6 `generation_jobs.usage.calls` 要素）。
+ * `providerCallSchema` を単一の正本とし、TS型はここから `z.infer` で導出する
+ * （手書きの型と検証スキーマの二重定義＝ドリフトを防ぐ）。`provider` は文章3社
+ * （anthropic/openai/google）で、原価台帳側の `ApiProvider`（'x' を含む）とは別。
+ */
+export type ProviderCall = z.infer<typeof providerCallSchema>;
