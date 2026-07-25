@@ -1,7 +1,6 @@
 import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
-import type { Provider } from "../ai/types";
 import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
 import { gatherExecutionPrereqInputs } from "../execution-prereqs-server";
@@ -18,17 +17,6 @@ import { executePostGeneration } from "./post-generation";
 
 const pooledDb = pooledQueryable();
 
-function textModelFor(provider: Provider): string {
-  switch (provider) {
-    case "anthropic":
-      return env.ANTHROPIC_TEXT_MODEL ?? "";
-    case "openai":
-      return env.OPENAI_TEXT_MODEL ?? "";
-    case "google":
-      return env.GEMINI_TEXT_MODEL ?? "";
-  }
-}
-
 export async function postGenerationHandler(ctx: JobContext): Promise<void> {
   await executePostGeneration({
     db: pooledDb,
@@ -42,7 +30,7 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
       return {
         textGen: resolved.textGen,
         provider: resolved.provider,
-        model: textModelFor(resolved.provider),
+        model: resolved.model,
       };
     },
     gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),

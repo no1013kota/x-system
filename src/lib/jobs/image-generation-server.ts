@@ -3,7 +3,6 @@ import "server-only";
 import { resolveImageGen } from "../ai/image-client";
 import { resolveImageProvider } from "../ai/resolve-provider-server";
 import { resolveTextProvider } from "../ai/resolve-provider-server";
-import type { Provider } from "../ai/types";
 import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
 import type { PlanId } from "../plans";
@@ -20,17 +19,6 @@ import { executeImageGeneration } from "./image-generation";
 
 const pooledDb = pooledQueryable();
 
-function textModelFor(provider: Provider): string {
-  switch (provider) {
-    case "anthropic":
-      return env.ANTHROPIC_TEXT_MODEL ?? "";
-    case "openai":
-      return env.OPENAI_TEXT_MODEL ?? "";
-    case "google":
-      return env.GEMINI_TEXT_MODEL ?? "";
-  }
-}
-
 export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
   const bucket = env.SUPABASE_STORAGE_BUCKET_IMAGES;
   await executeImageGeneration({
@@ -42,7 +30,7 @@ export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
       return {
         textGen: resolved.textGen,
         provider: resolved.provider,
-        model: textModelFor(resolved.provider),
+        model: resolved.model,
       };
     },
     resolveImage: async ({ plan, userId }) => {
