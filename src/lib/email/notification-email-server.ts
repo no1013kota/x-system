@@ -4,13 +4,12 @@ import { after } from "next/server";
 
 import { pooledQueryable } from "../db/pool";
 import { env } from "../env";
-import type { ErrorKind } from "../jobs/retry";
 import {
-  EmailSendError,
   sendQueuedNotificationEmail,
   type EmailTransport,
   type NotificationEmailResult,
 } from "./notification-email";
+import { classifySmtpError } from "./smtp-error";
 
 /**
  * 通知メール送信の server-only 配線（要件04 §14, 要件01 §3.6/§8, T-M4-16）。SMTP（Gmail・587 STARTTLS）
@@ -19,39 +18,6 @@ import {
  */
 
 const pooledDb = pooledQueryable();
-
-interface SmtpError {
-  code?: string;
-  responseCode?: number;
-}
-
-const AUTH_RESPONSE_CODES = new Set([530, 534, 535]);
-const NETWORK_CODES = new Set([
-  "ECONNECTION",
-  "ETIMEDOUT",
-  "ESOCKET",
-  "EDNS",
-  "ECONNRESET",
-  "EENVELOPE",
-]);
-
-/** SMTP/nodemailer エラーを retry 分類へ写像する（要件04 §14: 429/5xx/network再送、401/403終端）。 */
-function classifySmtpError(error: unknown): EmailSendError {
-  const e = (error ?? {}) as SmtpError;
-  const code = typeof e.code === "string" ? e.code : undefined;
-  const responseCode = typeof e.responseCode === "number" ? e.responseCode : undefined;
-  let kind: ErrorKind = "unknown";
-  if (code === "EAUTH" || (responseCode != null && AUTH_RESPONSE_CODES.has(responseCode))) {
-    kind = "auth";
-  } else if (code && NETWORK_CODES.has(code)) {
-    kind = "network";
-  } else if (responseCode != null && responseCode >= 400 && responseCode < 600) {
-    kind = "server";
-  }
-  // 秘密値・宛先を含めない要約のみ保存する。
-  const summary = `smtp:${code ?? "err"}${responseCode != null ? `:${responseCode}` : ""}`;
-  return new EmailSendError(kind, summary);
-}
 
 let transportPromise: Promise<EmailTransport | null> | null = null;
 
