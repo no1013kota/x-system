@@ -1,4 +1,5 @@
 import { createDeadline, type Deadline } from "../jobs/deadline";
+import { createCitationCollector } from "./citations";
 import {
   emptyUsage,
   type Citation,
@@ -156,22 +157,18 @@ function accumulateUsage(acc: ProviderUsage, raw: RawUsage | undefined): void {
 
 /** content blockからWeb検索引用元を抽出しURLで重複排除する。 */
 export function extractCitations(content: RawContentBlock[]): Citation[] {
-  const byUrl = new Map<string, Citation>();
-  const add = (url?: string, title?: string) => {
-    if (!url || byUrl.has(url)) return;
-    byUrl.set(url, title ? { url, title } : { url });
-  };
+  const citations = createCitationCollector();
   for (const block of content) {
     if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
       for (const r of block.content as RawContentBlock[]) {
-        if (r && typeof r.url === "string") add(r.url, r.title);
+        if (r && typeof r.url === "string") citations.add(r.url, r.title);
       }
     }
     if (block.type === "text" && Array.isArray(block.citations)) {
-      for (const c of block.citations) add(c.url, c.title);
+      for (const c of block.citations) citations.add(c.url, c.title);
     }
   }
-  return [...byUrl.values()];
+  return citations.values();
 }
 
 function extractText(content: RawContentBlock[]): string {

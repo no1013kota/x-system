@@ -1,3 +1,4 @@
+import { createCitationCollector } from "./citations";
 import {
   emptyUsage,
   type Citation,
@@ -91,16 +92,12 @@ function extractGeminiText(response: RawGeminiResponse): string {
 export function extractGeminiCitations(
   response: RawGeminiResponse,
 ): Citation[] {
-  const byUrl = new Map<string, Citation>();
+  const citations = createCitationCollector();
   const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
   for (const chunk of chunks) {
-    const url = chunk.web?.uri;
-    if (url && !byUrl.has(url)) {
-      const title = chunk.web?.title;
-      byUrl.set(url, title ? { url, title } : { url });
-    }
+    citations.add(chunk.web?.uri, chunk.web?.title);
   }
-  return [...byUrl.values()];
+  return citations.values();
 }
 
 export class GeminiTextGen implements TextGen {

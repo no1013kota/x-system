@@ -1,3 +1,4 @@
+import { createCitationCollector } from "./citations";
 import {
   emptyUsage,
   type Citation,
@@ -94,18 +95,16 @@ function extractOpenAIText(response: RawOpenAIResponse): string {
 export function extractOpenAICitations(
   response: RawOpenAIResponse,
 ): Citation[] {
-  const byUrl = new Map<string, Citation>();
+  const citations = createCitationCollector();
   for (const item of response.output ?? []) {
     if (item.type !== "message") continue;
     for (const c of item.content ?? []) {
       for (const a of c.annotations ?? []) {
-        if (a.type === "url_citation" && a.url && !byUrl.has(a.url)) {
-          byUrl.set(a.url, a.title ? { url: a.url, title: a.title } : { url: a.url });
-        }
+        if (a.type === "url_citation") citations.add(a.url, a.title);
       }
     }
   }
-  return [...byUrl.values()];
+  return citations.values();
 }
 
 function countWebSearch(response: RawOpenAIResponse): number {

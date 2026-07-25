@@ -28,7 +28,8 @@
 | R10b | 複雑度の分割②: `update-session` の route-guard 用 profiles 取得を `loadRouteGuardProfile` helper へ抽出（getUser・/appパスガード・maybeSingle・null既定すべて等価）。`updateSupabaseSession` 本体を短縮 | complexity | S | low | done |
 | R10c | 複雑度の分割③: `jobs/terminal.finalizeFailedJob` の kind別通知文言を `FAILED_NOTICE` テーブル＋`DEFAULT_FAILED_NOTICE` に集約。switch は返還額・付随処理（finalizeImageStale/PostPublishStale/MdMergeStale・learning_sources更新）のみ担い、通知は switch 後段で一括（`image_generation` は早期returnで通知無しを維持、post_publish の link は関数解決）。順序・文言・dedupe 等価で振る舞い保存。terminal/stale テスト17件緑 | complexity | M | low〜med | done |
 | R11a | AI/プロンプト重複集約①（`textModelFor`）: post/image の各 server 配線に重複していた `textModelFor(provider)`（env text model 引き）を削除。`resolveTextProvider` が既に返す `resolved.model` を使用（BYOK/operator とも `config.textModels[provider]`=env値、未設定は resolveTextKey が throw のため常に一致＝冗長）。`Provider` import も除去 | duplication | S | low | done |
-| R11b | AI/プロンプト重複集約②: 引用dedup（3アダプタ＋anthropic継続ループ）／テンプレート三段解決／画像encodeのmetadata再取得回避（`resolveByokKey` は現状該当実装が見当たらず要再確認） | duplication/perf | M | low〜med | todo |
+| R11b | AI/プロンプト重複集約②（引用dedup）: 3アダプタ（anthropic/openai/gemini）で同一だった URL キー重複排除ロジックを `createCitationCollector`（`ai/citations.ts`）へ集約。各 `extract*Citations` は `add`/`values` を使用。anthropic 継続ループの引用マージは last-wins 挙動維持のため据え置き。アダプタ19テスト緑 | duplication | S | low | done |
+| R11c | AI/プロンプト重複集約③: テンプレート三段解決／画像encodeのmetadata再取得回避（`resolveByokKey` は現状該当実装が見当たらず要再確認） | duplication/perf | M | low〜med | todo |
 | R12 | ジョブ重複集約: `defaultRecordStage`／`STALE_ERROR` 基底定数／毎時cron受付枠 `handleClaimedCronRoute`／`stale.terminalHandler` をグローバル可変→引数注入 | duplication/testability | M | low | todo |
 | R13 | UIコンポーネント重複集約: `XAccountRequiredNotice`／focus-ring ユーティリティ定数／`page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ | duplication | M | low〜med | todo |
 | R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を純粋モジュールへ抽出しユニットテスト追加 | testability | S | low | todo |
