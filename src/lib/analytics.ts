@@ -95,10 +95,11 @@ function aggregatable(draft: DraftAnalytics): TweetAnalytics[] {
 
 /** 表示既定checkpoint = 合算対象で取得済みの最長（無ければ 1）。 */
 export function defaultCheckpoint(draft: DraftAnalytics): CheckpointDay {
+  const rows = aggregatable(draft);
   let best: CheckpointDay = 1;
   let found = false;
   for (const d of CHECKPOINT_DAYS) {
-    if (aggregatable(draft).some((t) => t.checkpoints[String(d)])) {
+    if (rows.some((t) => t.checkpoints[String(d)])) {
       best = d;
       found = true;
     }

@@ -24,11 +24,6 @@ const HTTP_STATUS_FOR_ERROR: Record<ErrorCode, number> = {
   internal_error: 500,
 };
 
-/** ErrorCode → HTTP status. */
-export function statusForErrorCode(code: ErrorCode): number {
-  return HTTP_STATUS_FOR_ERROR[code];
-}
-
 /** JSON response with `cache-control: no-store`. */
 export function apiJson(body: unknown, status = 200): Response {
   return Response.json(body, {

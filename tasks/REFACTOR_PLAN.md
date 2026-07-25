@@ -43,7 +43,7 @@
 | R15 | Server Action 共通化: `requireUserId()`＋`BaseResult` 型が各 action（base-md/x-accounts/schedule/generation-jobs/drafts 等）に重複。共有モジュールへ集約（返り値契約は不変・型のみ共有）。※広範囲に波及するため領域ごとに検証 | duplication | M | low〜med | todo |
 | R16 | `toIso`/`toIsoOrNull`（Date→ISO）集約: 非null版3ファイル（learning-sources/notifications/prompt-templates）＋nullable版1ファイル（news-items）のローカル定義を `lib/format.ts` の `toIso`/`toIsoOrNull` に一本化。news-items は呼び出しを `toIsoOrNull` へ改名。出力等価・振る舞い保存。※base-md には toIso 無し（sweep指摘は誤り）。test 1134緑 | duplication | S | low | done |
 | R17 | Server Action の `{ ...toUserFacingError(x), status: "error" }` 定型を `errorResult()` に集約（api-keys/drafts/generation-jobs/schedule/notifications 等）。返り値形は不変 | duplication | M | low〜med | todo |
-| R18 | quick win: 未使用 export `statusForErrorCode`（`http/api-response.ts:28`）のデッドコード削除／`analytics.defaultCheckpoint` 内で `aggregatable(draft)` をループ毎再計算しているのをループ外へ巻き上げ（結果不変） | deadcode/perf | S | low | todo |
+| R18 | quick win: 未使用 export `statusForErrorCode`（`http/api-response.ts`）のデッドコード削除（実地確認: 定義のみ・`apiError` は `HTTP_STATUS_FOR_ERROR` を直接参照）／`analytics.defaultCheckpoint` の `aggregatable(draft)`（ループ不変・純粋）をループ外 `const rows` へ巻き上げ（3回→1回・結果不変）。test 1134緑 | deadcode/perf | S | low | done |
 
 ## 要決定 / 除外（振る舞い変更のため今回の対象外）
 
