@@ -92,11 +92,13 @@ async function encode(
   format: AllowedFormat,
   quality: number,
   scale: number,
+  sourceWidth: number,
 ): Promise<Buffer> {
   let pipeline = sharp(bytes).rotate(); // EXIF 回転を焼き込む
   if (scale < 1) {
-    const meta = await sharp(bytes).metadata();
-    const width = Math.max(16, Math.round((meta.width ?? 16) * scale));
+    // 元画像の幅は inspectImage で判定済み（申告MIME前の実データ由来）。圧縮ループで
+    // 毎回 sharp().metadata() を呼び直さず、既知の幅から縮小先を決める。
+    const width = Math.max(16, Math.round(sourceWidth * scale));
     pipeline = pipeline.resize({ width, withoutEnlargement: true });
   }
   switch (format) {
@@ -138,7 +140,7 @@ export async function normalizeForX(
   let quality = 90;
   let scale = 1;
   for (let attempt = 0; attempt < 16; attempt++) {
-    const out = await encode(bytes, targetFormat, quality, scale);
+    const out = await encode(bytes, targetFormat, quality, scale, meta.width);
     if (out.length <= maxBytes) {
       const outMeta = await sharp(out).metadata();
       return {
