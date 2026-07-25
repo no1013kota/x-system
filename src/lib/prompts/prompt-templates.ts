@@ -5,7 +5,7 @@ import {
   SYSTEM_DEFAULT_TEMPLATES,
   type PromptTemplateKind,
 } from "./gen-prompts";
-import type { Queryable } from "../x/token-refresh";
+import type { Queryable } from "../db/queryable";
 
 /**
  * prompt_templates の system default seed と解決（要件02 §3.5, T-M3-02）。DBは注入し純粋に保つ。
@@ -32,8 +32,25 @@ export async function seedSystemPromptTemplates(db: Queryable): Promise<number> 
 }
 
 /**
- * テンプレートを解決する。account上書き→system default→コード定数の順にフォールバックする。
- * xAccountId=null なら system default（無ければコード定数）を返す。
+ * system default（x_account_id=null）の本文を返す共通の末尾フォールバック。行が無ければ
+ * コード定数（`SYSTEM_DEFAULT_TEMPLATES`）を返す。上書き非存在時の解決で共有する。
+ */
+async function systemTemplateContent(
+  db: Queryable,
+  kind: PromptTemplateKind,
+): Promise<string> {
+  const system = (
+    await db.query<{ content: string }>(
+      `select content from prompt_templates where x_account_id is null and kind = $1`,
+      [kind],
+    )
+  ).rows[0];
+  return system?.content ?? SYSTEM_DEFAULT_TEMPLATES[kind];
+}
+
+/**
+ * テンプレート本文を解決する。account上書き→system default→コード定数の順にフォールバックする。
+ * xAccountId=null なら system default（無ければコード定数）を返す。ホットパス用に本文のみ読む。
  */
 export async function resolvePromptTemplate(
   db: Queryable,
@@ -48,13 +65,7 @@ export async function resolvePromptTemplate(
     ).rows[0];
     if (override) return override.content;
   }
-  const system = (
-    await db.query<{ content: string }>(
-      `select content from prompt_templates where x_account_id is null and kind = $1`,
-      [params.kind],
-    )
-  ).rows[0];
-  return system?.content ?? SYSTEM_DEFAULT_TEMPLATES[params.kind];
+  return systemTemplateContent(db, params.kind);
 }
 
 export const PROMPT_TEMPLATE_MAX_CHARS = 8000;
@@ -144,13 +155,7 @@ async function getPromptTemplateView(
   if (override) {
     return { kind, content: override.content, isOverride: true, updatedAt: toIso(override.updated_at) };
   }
-  const system = (
-    await db.query<{ content: string }>(
-      `select content from prompt_templates where x_account_id is null and kind = $1`,
-      [kind],
-    )
-  ).rows[0];
-  return { kind, content: system?.content ?? SYSTEM_DEFAULT_TEMPLATES[kind], isOverride: false, updatedAt: null };
+  return { kind, content: await systemTemplateContent(db, kind), isOverride: false, updatedAt: null };
 }
 
 /**
