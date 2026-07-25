@@ -295,6 +295,63 @@ export async function prepareStripeEvent(
   };
 }
 
+type InvoiceSyncDetail = Extract<
+  PreparedStripeEvent,
+  { kind: "invoice_sync" }
+>["invoice"];
+
+/**
+ * 請求失敗（invoice payment_failed）時のユーザー通知を冪等に記録する。billing通知の
+ * in_app/email いずれかが有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
+ * 二重通知を防ぐ。event claim transaction 内で呼ぶ。
+ */
+async function notifyInvoicePaymentFailed(
+  database: StripeEventDatabase,
+  target: { id: string; notification_config: unknown },
+  invoice: InvoiceSyncDetail,
+  projection: SubscriptionProjection,
+): Promise<void> {
+  const config = target.notification_config as {
+    billing?: { email?: unknown; in_app?: unknown };
+  } | null;
+  const inAppEnabled = config?.billing?.in_app === true;
+  const emailEnabled = config?.billing?.email === true;
+  if (!inAppEnabled && !emailEnabled) return;
+  const dedupeKey = `billing:invoice:${invoice.id}:payment_failed`;
+  await database.query(
+    `insert into notifications
+      (user_id, type, dedupe_key, title, body, link, payload,
+       in_app_enabled, email_status, email_available_at)
+     values (
+       $1, 'billing', $2,
+       'お支払いを確認できませんでした',
+       'お支払い方法をご確認ください。更新後は契約状態へ自動的に反映されます。',
+       '/app/settings?tab=billing', $3::jsonb, $4,
+       case when $5 then 'queued'::email_delivery_status
+            else 'not_requested'::email_delivery_status end,
+       case when $5 then now() else null end
+     )
+     on conflict (user_id, dedupe_key) where dedupe_key is not null
+     do nothing`,
+    [
+      target.id,
+      dedupeKey,
+      {
+        attempt_count: invoice.attemptCount,
+        invoice_id: invoice.id,
+        notification_config_snapshot: {
+          email: emailEnabled,
+          in_app: inAppEnabled,
+        },
+        subscription_id: projection.subscriptionId,
+        subscription_status: projection.status,
+      },
+      inAppEnabled,
+      emailEnabled,
+    ],
+  );
+}
+
 /** Applies a prepared projection while the event claim transaction is open. */
 export async function applyPreparedStripeEvent(
   database: StripeEventDatabase,
@@ -376,46 +433,7 @@ export async function applyPreparedStripeEvent(
   await applyPlanTransition(database, target, projection.plan);
 
   if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
-    const config = target.notification_config as {
-      billing?: { email?: unknown; in_app?: unknown };
-    } | null;
-    const inAppEnabled = config?.billing?.in_app === true;
-    const emailEnabled = config?.billing?.email === true;
-    if (inAppEnabled || emailEnabled) {
-      const dedupeKey = `billing:invoice:${value.invoice.id}:payment_failed`;
-      await database.query(
-        `insert into notifications
-          (user_id, type, dedupe_key, title, body, link, payload,
-           in_app_enabled, email_status, email_available_at)
-         values (
-           $1, 'billing', $2,
-           'お支払いを確認できませんでした',
-           'お支払い方法をご確認ください。更新後は契約状態へ自動的に反映されます。',
-           '/app/settings?tab=billing', $3::jsonb, $4,
-           case when $5 then 'queued'::email_delivery_status
-                else 'not_requested'::email_delivery_status end,
-           case when $5 then now() else null end
-         )
-         on conflict (user_id, dedupe_key) where dedupe_key is not null
-         do nothing`,
-        [
-          target.id,
-          dedupeKey,
-          {
-            attempt_count: value.invoice.attemptCount,
-            invoice_id: value.invoice.id,
-            notification_config_snapshot: {
-              email: emailEnabled,
-              in_app: inAppEnabled,
-            },
-            subscription_id: projection.subscriptionId,
-            subscription_status: projection.status,
-          },
-          inAppEnabled,
-          emailEnabled,
-        ],
-      );
-    }
+    await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
   }
   return "updated";
 }
