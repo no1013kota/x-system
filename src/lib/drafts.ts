@@ -132,10 +132,11 @@ export async function updateDraft(
   const existingIds = new Set(draft.images.map((img) => img.local_id));
   let images = draft.images;
   if (params.imageLocalIds) {
-    if (!params.imageLocalIds.every((id) => existingIds.has(id))) {
+    const imageLocalIds = params.imageLocalIds;
+    if (!imageLocalIds.every((id) => existingIds.has(id))) {
       throw new AppError("validation_error", { details: { reason: "unknown_image" } });
     }
-    images = draft.images.filter((img) => params.imageLocalIds!.includes(img.local_id));
+    images = draft.images.filter((img) => imageLocalIds.includes(img.local_id));
   }
 
   const ngWords = draft.settings?.ng?.words ?? [];

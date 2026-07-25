@@ -23,7 +23,7 @@
 | R9a | 型の狭め①（DB_ENUMS由来ユニオン）: `ExternalApiUsageInput.provider` を `string`→`ApiProvider`（`api_provider` 由来）／`XAuthType` を `DB_ENUMS.x_auth_type` 由来へ導出（ドリフト防止・生成結果は同一）。ついでに api-usage-ledger の `Queryable` import を R3正本パス `./queryable` へ是正 | types | S | low | done |
 | R9b | 型の狭め②（`ProviderCall`↔`providerCallSchema` 単一化）: 手書き interface（normalize.ts）を廃し、`providerCallSchema` を正本に `export type ProviderCall = z.infer<...>`（usage-schema.ts）へ。normalize.ts は type-only re-export で後方互換。`Citation`/`Provider` と schema の enum は構造同一のため型不変・runtime不変 | types/duplication | S | low | done |
 | R9c | 型の狭め③（x_account status/auth_type union化）: account-actions.ts の `status: string`→`XAccountStatus`（`x_account_status` 由来）、`authType/auth_type: string`→`XAuthType`（read行generics・`XAccountListItem`・`OwnedAccount`・返り値）。server wrapper と action DTO（`accountStatus?: string`）は app境界のため string 維持。Queryable import も `../db/queryable` へ是正。consumer は read/比較のみで型のみ変更・runtime不変 | types | M | low | done |
-| R9d | 型の狭め④: `readAt` センチネル是正／非null断定（`!`）の除去（notification-bell 等） | types | S | low〜med | todo |
+| R9d | 型の狭め④（非null断定 `!` の全除去）: クロージャで narrowing が失われる 6ファイル（create-post-form/analytics/drafts/news-browser/notification-bell/api-key-settings）の postfix `!` を const退避・`?.` で除去。全て振る舞い保存。`readAt` センチネルは下記「除外」参照。src全体で postfix `!` = 0 を確認 | types | S | low | done |
 | R10 | 複雑度の分割: `subscription-sync.applyPreparedStripeEvent`（支払失敗通知INSERT抽出）／`jobs/terminal.finalizeFailedJob`（コピーテーブル化）／`update-session` のprofiles取得抽出 | complexity | M | low | todo |
 | R11 | AI/プロンプト重複集約: 引用dedup（3アダプタ＋anthropic継続ループ）／`resolveByokKey`／`textModelFor`／テンプレート三段解決／画像encodeのmetadata再取得回避 | duplication/perf | M | low〜med | todo |
 | R12 | ジョブ重複集約: `defaultRecordStage`／`STALE_ERROR` 基底定数／毎時cron受付枠 `handleClaimedCronRoute`／`stale.terminalHandler` をグローバル可変→引数注入 | duplication/testability | M | low | todo |
@@ -34,6 +34,7 @@
 
 - **成功アラートの緑色ドリフト**（emerald-900/800/700）や **resend-confirmation-form の transition 欠落**の統一は「見た目の変更＝振る舞い変更」。リファクタではなく別途 dev-loop で扱う（暫定: 現状維持）。
 - **R9 の env 型（`ALWAYS_REQUIRED` を非optional化して `as string` を全廃）** は型変更が広範に波及するため中リスク。今回は「検証後に必須項目を非nullで返す型付きアクセサ」に留め、schema自体の非optional化は要決定として保留（暫定案: アクセサ方式）。
+- **`readAt` センチネル `"read"`（notification-bell）** の是正（R9d で当初予定）は見送り。表示はローカル楽観更新の真偽値（既読ドットの有無）でしか使われず、`"read"` は「サーバ確定前のローカル目印」として機能している。型は `string | null`（ISO時刻）だが、偽のISO時刻（例 `new Date().toISOString()`）へ置換すると「本物の既読時刻」に見えてかえって誤解を招く。値は表示・送信されず上書きされるため、現状維持が安全（振る舞い保存の観点でも据え置きが妥当）。
 - **X設定パス定数 `/app/settings?tab=api-keys` の一元化**（R8c で当初予定）は見送り。値が安定（滅多に変わらない）で価値が低い一方、13+箇所に散在し token-refresh の SQL文字列リテラルや execution-prereqs の Record 値・app-banners/route/actions 等の別領域に跨るため、集約すると分散した import を各領域に張ることになり費用対効果が低い。振る舞い保存は可能だが低価値・高分散のため今回対象外（現状維持）。
 
 ## 進め方メモ

@@ -116,10 +116,11 @@ export function ApiKeySettings({
         setNotice({ message: result.message, tone: "error" });
         return;
       }
+      const displayHint = result.displayHint;
       setKeys((current) => ({
         ...current,
         x: {
-          displayHint: result.displayHint!,
+          displayHint,
           provider: "x",
           status: "unchecked",
           verifiedAt: null,
@@ -142,10 +143,11 @@ export function ApiKeySettings({
         setNotice({ message: result.message, tone: "error" });
         return;
       }
+      const displayHint = result.displayHint;
       setKeys((current) => ({
         ...current,
         [provider]: {
-          displayHint: result.displayHint!,
+          displayHint,
           provider,
           status: "unchecked",
           verifiedAt: null,

@@ -67,7 +67,8 @@ export function NotificationBell({
     startTransition(async () => {
       const res = await listNotificationsAction({ cursor });
       if (res.status === "success" && res.items) {
-        setItems((prev) => [...prev, ...res.items!]);
+        const newItems = res.items;
+        setItems((prev) => [...prev, ...newItems]);
         setCursor(res.nextCursor ?? null);
       }
     });

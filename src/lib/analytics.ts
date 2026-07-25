@@ -125,13 +125,14 @@ const FIELDS = ["impressions", "likes", "reposts", "profile_clicks"] as const;
  */
 export function aggregateThread(draft: DraftAnalytics, checkpoint: CheckpointDay): ThreadAggregate {
   const rows = aggregatable(draft);
-  const present = rows.filter((t) => t.checkpoints[String(checkpoint)]);
+  const key = String(checkpoint);
+  const present = rows.filter((t) => t.checkpoints[key]);
   const sums: Record<string, number | null> = {};
   for (const f of FIELDS) {
     let total = 0;
     let anyNull = false;
     for (const t of present) {
-      const v = t.checkpoints[String(checkpoint)]![f];
+      const v = t.checkpoints[key]?.[f];
       if (v === null || v === undefined) anyNull = true;
       else total += v;
     }

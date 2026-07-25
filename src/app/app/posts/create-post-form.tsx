@@ -77,11 +77,12 @@ export function CreatePostForm({
       setNowMs(Date.now());
       const res = await getGenerationJobAction({ job_id: job.id });
       if (res.status === "success" && res.job) {
+        const nextJob = res.job;
         setJob((prev) => ({
-          id: res.job!.id,
-          status: res.job!.status,
-          progressStage: res.job!.progress_stage,
-          draftId: res.job!.draft_id,
+          id: nextJob.id,
+          status: nextJob.status,
+          progressStage: nextJob.progress_stage,
+          draftId: nextJob.draft_id,
           createdAt: prev?.createdAt ?? job.createdAt,
         }));
       }

@@ -126,12 +126,14 @@ export function NewsBrowser({
     startTransition(async () => {
       const res = await listNewsItemsAction({ ...baseQuery(), cursor });
       if (res.status === "success" && res.items) {
-        setItems((prev) => [...prev, ...res.items!]);
+        const newItems = res.items;
+        setItems((prev) => [...prev, ...newItems]);
         setCursor(res.nextCursor ?? null);
-        if (res.createdNewsItemIds?.length) {
+        const createdIds = res.createdNewsItemIds;
+        if (createdIds?.length) {
           setCreated((prev) => {
             const next = new Set(prev);
-            for (const id of res.createdNewsItemIds!) next.add(id);
+            for (const id of createdIds) next.add(id);
             return next;
           });
         }
