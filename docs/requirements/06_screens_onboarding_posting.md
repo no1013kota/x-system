@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
-| 更新日 | 2026-07-24 |
+| バージョン | v1.20 |
+| 更新日 | 2026-07-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
 ## 1. 画面構成
@@ -28,7 +28,8 @@
 - PremiumはAPIキー不要であることと、通常投稿200件、URL付き投稿20件、文章生成100回、画像生成20枚の月間枠を表示する。
 - プランボタンより前に、税込月額、初回だけの7日trial、開始時のカード登録、trial後の月次自動更新、初回／毎月の支払時期、Customer Portalからの期間末解約、Checkout後の提供開始時期を再掲する。
 - プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
-- `checkout=canceled`は未完了として再選択を案内する。Checkout successは復帰handlerで未反映時だけ同期した後、`checkout=success&sync=...`として契約情報確認中を表示する。契約の確定表示はprofileを正とし、通常表示ではStripe APIを呼ばない。
+- `checkout=canceled`は未完了として再選択を案内する。Checkout successは復帰handlerで未反映時だけ同期した後、`checkout=success&sync=...`として契約情報確認中を表示する。契約の確定表示はprofileを正とし、通常表示ではStripe APIを呼ばない。契約が有効（`trialing`／`active`＝`canExecute`）なユーザーが`/plans`を開いた場合は`/app`へredirectし、決済成功後にこの画面で行き止まりにならないようにする。`incomplete`／`incomplete_expired`はプラン選択、`canceled`等（`canExecute=false`）は再申込導線のため`/plans`に留める。
+- 3プラン比較は表形式で表示し、CTAは「7日間無料で利用」（初回`trial_used_at=null`のみ7日trial）。特商法関連の事前開示（税込月額・7日trial・自動更新・支払時期・解約方法・提供開始）は要件03 §54に従い折りたたまず常時表示する。
 - `/legal/commercial-transactions`への新規タブリンクを申込条件に置く。正式な法務3ページと全体footerはT-M6-14／15で仕上げるまで、同routeに法務確認前の暫定版であることを明示する。
 
 ### 1.2 SC-11 課金・問い合わせ（M1最小実装）

@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Check, Minus } from "lucide-react";
 
+import { getCurrentUser } from "@/lib/auth/session";
+import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 import { PLAN_IDS, PLANS, type PlanId } from "@/lib/plans";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { CheckoutButton } from "./checkout-button";
 
@@ -102,6 +106,25 @@ function FeatureCell({ value }: { value: Cell }) {
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
+
+  // 契約が有効（trialing/active）で本編を使えるユーザーが /plans に来たら /app へ送り、
+  // 決済成功後にこの画面で行き止まりになるのを防ぐ。incomplete・canceled 等はプラン選択／
+  // 再申込のため /plans に留める（canExecute は trialing/active のみ true）。
+  const user = await getCurrentUser();
+  if (user) {
+    const admin = createSupabaseAdminClient();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("plan, subscription_status")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (
+      profile?.plan &&
+      subscriptionAccessFor(profile.subscription_status)?.canExecute
+    ) {
+      redirect("/app");
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
