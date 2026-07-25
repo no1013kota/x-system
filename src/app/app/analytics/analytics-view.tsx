@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import {
   CHECKPOINT_DAYS,
@@ -14,15 +15,6 @@ import {
  * スレッド合算は同一checkpoint取得済みIDのみで計算（欠損数併記）。profile_clicks 取得不能は `--`、
  * 30日checkpoint後は「更新終了」。部分失敗は「不完全なthread」、rollback削除IDは監査行として合算除外。
  */
-
-const PATTERN_LABEL: Record<string, string> = {
-  p1: "ニュース解説",
-  p2: "自分の考え",
-  p3: "ノウハウ",
-  p4: "トレンド便乗",
-  p5: "引用ポスト",
-  p6: "週次まとめ",
-};
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -82,7 +74,7 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
             <li className="rounded-xl border bg-background p-4" key={draft.draftId}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
-                  {PATTERN_LABEL[draft.pattern] ?? draft.pattern}
+                  {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                 </span>
                 {draft.incomplete ? (
                   <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">不完全なthread</span>

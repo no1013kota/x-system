@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
@@ -22,15 +23,6 @@ import { DraftEditor } from "./draft-editor";
 
 const POLL_MS = 2500;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
-
-const PATTERN_LABEL: Record<string, string> = {
-  p1: "ニュース解説",
-  p2: "自分の考え",
-  p3: "ノウハウ",
-  p4: "トレンド便乗",
-  p5: "引用ポスト",
-  p6: "週次まとめ",
-};
 
 const WARNING_LABEL: Record<string, string> = {
   length_exceeded: "文字数超過",
@@ -190,7 +182,7 @@ function DraftCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{PATTERN_LABEL[draft.pattern] ?? draft.pattern}</span>
+          <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
           {draft.status === "failed" ? (
             <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-800">
               失敗

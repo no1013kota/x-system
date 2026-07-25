@@ -1,19 +1,11 @@
 import type { DraftView } from "@/lib/drafts";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 /**
  * SC-07 履歴タブ（投稿済み下書きの閲覧専用一覧, T-M3-22, 要件06 §7/§8）。
  * 投稿日時・自動/手動（posted_mode）・パターン・各tweetのXリンクを表示する。本文・順序は編集不可。
  * 通知リンク `/app/posts?tab=history&draftId=...` で対象履歴を直接開けるよう deep-link を強調する。
  */
-
-const PATTERN_LABEL: Record<string, string> = {
-  p1: "ニュース解説",
-  p2: "自分の考え",
-  p3: "ノウハウ",
-  p4: "トレンド便乗",
-  p5: "引用ポスト",
-  p6: "週次まとめ",
-};
 
 const MODE_LABEL: Record<string, string> = { auto: "自動投稿", manual: "手動投稿" };
 
@@ -79,7 +71,7 @@ function HistoryCard({
       id={`draft-${draft.id}`}
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold">{PATTERN_LABEL[draft.pattern] ?? draft.pattern}</span>
+        <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
         {draft.posted_mode ? (
           <span className="rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             {MODE_LABEL[draft.posted_mode] ?? draft.posted_mode}

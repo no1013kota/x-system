@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import type { DraftView } from "@/lib/drafts";
 
@@ -7,15 +8,6 @@ import type { DraftView } from "@/lib/drafts";
  * を新しい順で一覧し、各行から SC-07 の該当下書きへ deep-link する。0件は空状態＋「今すぐ作成」導線。
  * 表示専用のため server component（クライアント JS 不要）。
  */
-
-const PATTERN_LABEL: Record<string, string> = {
-  p1: "ニュース解説",
-  p2: "自分の考え",
-  p3: "ノウハウ",
-  p4: "トレンド便乗",
-  p5: "引用ポスト",
-  p6: "週次まとめ",
-};
 
 function timeLabel(iso: string): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -63,7 +55,7 @@ export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
               >
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium">
-                    {PATTERN_LABEL[draft.pattern] ?? draft.pattern}
+                    {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                   </span>
                   {hasWarnings ? (
                     <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">

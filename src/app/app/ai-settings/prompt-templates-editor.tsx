@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { useMemo, useState, useTransition } from "react";
 
 import {
@@ -19,12 +20,7 @@ import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 const MAX_CHARS = 8000;
 
 const KIND_LABEL: Record<string, string> = {
-  p1: "ニュース解説",
-  p2: "自分の考え",
-  p3: "ノウハウ",
-  p4: "トレンド便乗",
-  p5: "引用ポスト",
-  p6: "週次まとめ",
+  ...POST_PATTERN_LABELS,
   image: "画像プロンプト",
 };
 
