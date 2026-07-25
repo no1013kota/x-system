@@ -189,7 +189,7 @@ async function persistFailure(
         in_app_enabled, email_status, email_available_at)
      select $1, 'error', $2, '学習ソースの分析に失敗しました',
             '時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。',
-            '/app/settings?tab=learning', jsonb_build_object('job_id', $3::text),
+            '/app/ai-settings?tab=learning', jsonb_build_object('job_id', $3::text),
             coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
             case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
                  then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
