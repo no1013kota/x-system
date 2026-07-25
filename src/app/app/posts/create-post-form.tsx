@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 
 import {
+  cancelGenerationJobAction,
   createGenerationJobAction,
   getGenerationJobAction,
   retryGenerationJobAction,
@@ -24,6 +25,23 @@ export interface ActiveJob {
   progressStage: string | null;
   draftId: string | null;
   createdAt: string;
+  /** 失敗理由。表示するのは code と利用者向け message だけ（provider_raw_error は使わない）。 */
+  error?: JobFailure | null;
+}
+
+export interface JobFailure {
+  code: string | null;
+  message: string | null;
+}
+
+/** job.error（jsonb）から表示に使う code / message だけを取り出す。 */
+function toJobFailure(value: unknown): JobFailure | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as { code?: unknown; message?: unknown };
+  return {
+    code: typeof raw.code === "string" ? raw.code : null,
+    message: typeof raw.message === "string" ? raw.message : null,
+  };
 }
 
 const IMAGE_PROVIDER_LABEL: Record<string, string> = {
@@ -38,6 +56,15 @@ const STAGE_LABEL: Record<string, string> = {
   image: "画像を生成しています",
 };
 const STAGE_ORDER = ["validating", "research", "writing", "image"];
+
+/** 再試行しても直らない失敗（前提不足）。それぞれの設定画面へ誘導する。 */
+const PREREQ_FAILURE_PATH: Record<string, string> = {
+  subscription_required: "/app/settings?tab=billing",
+  api_key_required: "/app/settings?tab=api-keys",
+  x_account_required: "/app/settings?tab=x-accounts",
+  persona_required: "/app/ai-settings?tab=persona",
+};
+const PREREQ_FAILURE_CODES = new Set(Object.keys(PREREQ_FAILURE_PATH));
 const POLL_MS = 2500;
 const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
@@ -84,6 +111,7 @@ export function CreatePostForm({
           progressStage: nextJob.progress_stage,
           draftId: nextJob.draft_id,
           createdAt: prev?.createdAt ?? job.createdAt,
+          error: toJobFailure(nextJob.error),
         }));
       }
     }, POLL_MS);
@@ -147,7 +175,22 @@ export function CreatePostForm({
     });
   }
 
+  function cancel() {
+    if (!job) return;
+    const jobId = job.id;
+    startTransition(async () => {
+      const res = await cancelGenerationJobAction({ job_id: jobId });
+      if (res.status === "error") {
+        setError({ message: res.message });
+        return;
+      }
+      setJob((prev) => (prev ? { ...prev, status: res.jobStatus ?? "canceled" } : prev));
+    });
+  }
+
   const inProgress = job !== null && !TERMINAL.has(job.status);
+  const elapsedSec = job ? Math.max(0, Math.floor((nowMs - new Date(job.createdAt).getTime()) / 1000)) : 0;
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
   const queuedSlow =
     job?.status === "queued" && nowMs - new Date(job.createdAt).getTime() > QUEUED_SLOW_MS;
 
@@ -194,6 +237,9 @@ export function CreatePostForm({
             placeholder="https://…"
             value={sourceUrl}
           />
+          <p className="mt-1 text-xs text-muted-foreground">
+            空欄のままでも、発信設定とベースmdからAIが題材を選んでリサーチします。
+          </p>
         </div>
 
         {pattern === "p2" ? (
@@ -282,6 +328,12 @@ export function CreatePostForm({
 
         {inProgress ? (
           <div aria-live="polite" className="space-y-3">
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm leading-6">
+              <p>
+                生成には通常60〜90秒かかります。この画面を離れても生成は続き、完了すると「下書き」タブに追加されます。
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">経過 {elapsedLabel}</p>
+            </div>
             <ol className="space-y-1.5 text-sm">
               {STAGE_ORDER.filter((s) => s !== "image" || imageEnabled).map((stage) => {
                 const active = job?.progressStage === stage;
@@ -306,6 +358,15 @@ export function CreatePostForm({
                 開始が遅れています。自動で再開されます（最大5分）。
               </p>
             ) : null}
+            {job?.status === "queued" ? (
+              <Button disabled={pending} onClick={cancel} size="sm" type="button" variant="outline">
+                生成をキャンセル
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                生成が始まっているため、途中で止めることはできません。完了までお待ちください。
+              </p>
+            )}
           </div>
         ) : null}
 
@@ -325,18 +386,35 @@ export function CreatePostForm({
 
         {job?.status === "failed" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-              生成に失敗しました。時間をおいて再試行してください。
+            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900" role="alert">
+              {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
             </p>
-            <Button disabled={pending} onClick={retry} size="lg" type="button" variant="outline">
-              再試行する
-            </Button>
+            {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
+            {job.error?.code === "usage_limit_exceeded" ? (
+              <Link
+                className="inline-flex h-9 items-center justify-center rounded-lg border px-4 text-sm font-medium"
+                href="/app/settings?tab=billing"
+              >
+                利用状況とプランを確認する
+              </Link>
+            ) : PREREQ_FAILURE_CODES.has(job.error?.code ?? "") ? (
+              <Link
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+                href={PREREQ_FAILURE_PATH[job.error?.code ?? ""] ?? "/app/settings"}
+              >
+                設定を確認する
+              </Link>
+            ) : (
+              <Button disabled={pending} onClick={retry} size="lg" type="button" variant="outline">
+                再試行する
+              </Button>
+            )}
           </div>
         ) : null}
 
         {!error && job === null ? (
           <p className="text-sm text-muted-foreground">
-            パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。
+            パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。生成される内容は毎回変わります。まず1本作って、下書きで編集するか、追加指示を付けて再生成してください。
           </p>
         ) : null}
       </section>
