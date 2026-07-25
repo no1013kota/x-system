@@ -3,7 +3,11 @@ import type { PoolClient } from "pg";
 import { withTransaction } from "../db/pool";
 import type { JobKind } from "./handlers";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
-import { finalizeFailedJob } from "./terminal";
+import {
+  STALE_TIMEOUT_CODE,
+  STALE_TIMEOUT_MESSAGE,
+  finalizeFailedJob,
+} from "./terminal";
 
 /**
  * heartbeat と stale ジョブの回収（要件04 §4）。実行中は locked_at を定期更新し、
@@ -101,9 +105,8 @@ export async function recoverStaleJobs(
         requeued += 1;
       } else {
         const error = {
-          code: "stale_timeout",
-          message:
-            "処理がタイムアウトしました。しばらくしても解消しない場合は再実行してください。",
+          code: STALE_TIMEOUT_CODE,
+          message: STALE_TIMEOUT_MESSAGE,
           retryable: false,
           stage: null,
         };

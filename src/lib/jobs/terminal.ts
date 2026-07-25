@@ -24,10 +24,17 @@ import type { JobKind } from "./handlers";
  * `input.mode` から解決する（success経路の slot mode 伝播は別タスク）。
  */
 
+/**
+ * stale→failed（タイムアウト）確定時の共通 error code / message。
+ * `generation_jobs.error`（stale.ts）と post_publish の draft `last_post_error`（本ファイル）で共有する。
+ */
+export const STALE_TIMEOUT_CODE = "stale_timeout";
+export const STALE_TIMEOUT_MESSAGE =
+  "処理がタイムアウトしました。しばらくしても解消しない場合は再実行してください。";
+
 const STALE_ERROR = {
-  code: "stale_timeout",
-  message:
-    "処理がタイムアウトしました。しばらくしても解消しない場合は再実行してください。",
+  code: STALE_TIMEOUT_CODE,
+  message: STALE_TIMEOUT_MESSAGE,
 };
 
 interface JobTerminalRow {
