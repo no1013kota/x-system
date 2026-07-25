@@ -1,7 +1,9 @@
-import { getCurrentUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { issueBillingReturnCookie } from "@/lib/stripe/billing-return-server";
+import {
+  appendBillingReturnCookie,
+  captureBillingUser,
+} from "@/lib/stripe/billing-return-server";
 import { stripe } from "@/lib/stripe/client";
 import { handlePortalRequest } from "@/lib/stripe/portal";
 
@@ -10,15 +12,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   const admin = createSupabaseAdminClient();
-  const authentication: { userId?: string } = {};
+  const billingUser = captureBillingUser();
   const response = await handlePortalRequest(request, {
     appBaseUrl: env.APP_BASE_URL as string,
     configurationId: env.STRIPE_PORTAL_CONFIGURATION_ID,
-    async getCurrentUser() {
-      const user = await getCurrentUser();
-      authentication.userId = user?.id;
-      return user;
-    },
+    getCurrentUser: billingUser.getCurrentUser,
     async getProfile(userId) {
       const result = await admin
         .from("profiles")
@@ -30,11 +28,5 @@ export async function POST(request: Request): Promise<Response> {
     },
     stripe,
   });
-  if (response.ok && authentication.userId) {
-    response.headers.append(
-      "set-cookie",
-      issueBillingReturnCookie(authentication.userId, "portal"),
-    );
-  }
-  return response;
+  return appendBillingReturnCookie(response, billingUser.capturedUserId(), "portal");
 }
