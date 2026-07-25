@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { TabNav } from "@/components/app-shell/tab-nav";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
@@ -144,22 +144,12 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         </p>
       </header>
 
-      <nav aria-label="投稿タブ" className="flex gap-2 border-b">
-        {TABS.map((t) => (
-          <Link
-            aria-current={tab === t.id ? "page" : undefined}
-            className={`border-b-2 px-4 py-3 text-sm font-medium ${
-              tab === t.id
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground"
-            }`}
-            href={`/app/posts?tab=${t.id}`}
-            key={t.id}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      <TabNav
+        active={tab}
+        hrefFor={(id) => `/app/posts?tab=${id}`}
+        items={TABS.map((t) => ({ value: t.id, label: t.label }))}
+        label="投稿タブ"
+      />
 
       {!activeXAccountId ? (
         <XAccountRequiredNotice description="投稿を生成するには、まずXアカウントを連携してください。" />

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
+import { TabNav } from "@/components/app-shell/tab-nav";
 import { APP_NAME } from "@/lib/app-config";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
@@ -158,22 +158,15 @@ export default async function AiSettingsPage({
         </p>
       </header>
 
-      <nav aria-label="AI設定タブ" className="mt-7 flex gap-1 overflow-x-auto border-b">
-        {TABS.map(([value, label]) => (
-          <Link
-            aria-current={tab === value ? "page" : undefined}
-            className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${
-              tab === value
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            href={`/app/ai-settings?tab=${value}`}
-            key={value}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <TabNav
+        active={tab}
+        className="mt-7 gap-1 overflow-x-auto"
+        hrefFor={(value) => `/app/ai-settings?tab=${value}`}
+        inactiveLinkClassName="hover:text-foreground"
+        items={TABS.map(([value, label]) => ({ value, label }))}
+        label="AI設定タブ"
+        linkClassName="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+      />
 
       <div className="mt-7">
         {tab === "purposes" ? (

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { TabNav } from "@/components/app-shell/tab-nav";
 import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
 import { env } from "@/lib/env";
@@ -120,22 +121,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </p>
         </header>
 
-        <nav aria-label="設定タブ" className="flex gap-2 border-b">
-          {SETTINGS_TABS.map(([slug, label]) => (
-            <Link
-              aria-current={tab === slug ? "page" : undefined}
-              className={`border-b-2 px-4 py-3 text-sm font-medium ${
-                tab === slug
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground"
-              }`}
-              href={`/app/settings?tab=${slug}`}
-              key={slug}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <TabNav
+          active={tab}
+          hrefFor={(slug) => `/app/settings?tab=${slug}`}
+          items={SETTINGS_TABS.map(([value, label]) => ({ value, label }))}
+          label="設定タブ"
+        />
 
         {tab === "x-accounts" ? (
           <XAccountsSettings
