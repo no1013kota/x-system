@@ -21,7 +21,9 @@ function portalUrlFromResponse(body: unknown): string | null {
 /** Starts a server-owned Customer Portal Session and navigates to it. */
 export async function startCustomerPortal(
   dependencies: PortalStartDependencies = {
-    fetcher: fetch,
+    // `fetch` loses its `this` binding to the global when stored as a property and
+    // invoked as `dependencies.fetcher(...)` ("Illegal invocation"). Wrap it.
+    fetcher: (input, init) => fetch(input, init),
     navigate: (url) => window.location.assign(url),
   },
 ): Promise<void> {

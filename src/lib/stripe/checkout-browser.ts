@@ -28,7 +28,10 @@ function checkoutUrlFromResponse(body: unknown): string | null {
 export async function startCheckout(
   plan: PlanId,
   dependencies: CheckoutStartDependencies = {
-    fetcher: fetch,
+    // `fetch` loses its `this` binding to the global when stored as a property and
+    // invoked as `dependencies.fetcher(...)` — the browser throws "Illegal
+    // invocation". Wrap it so the global fetch keeps its binding.
+    fetcher: (input, init) => fetch(input, init),
     navigate: (url) => window.location.assign(url),
   },
 ): Promise<void> {

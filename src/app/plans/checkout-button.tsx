@@ -35,13 +35,14 @@ export function CheckoutButton({
     <div className="space-y-3">
       <Button
         aria-busy={pending}
+        aria-label={`${planName}を7日間無料で利用`}
         className="h-11 w-full"
         disabled={pending}
         onClick={handleCheckout}
         type="button"
         variant={plan === "premium" ? "default" : "outline"}
       >
-        {pending ? "決済画面を開いています…" : `${planName}を選ぶ`}
+        {pending ? "決済画面を開いています…" : "7日間無料で利用"}
       </Button>
       {error ? (
         <p className="text-sm text-destructive" role="alert">
