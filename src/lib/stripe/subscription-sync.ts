@@ -162,7 +162,7 @@ async function applyPlanTransition(
   }
 }
 
-function expandedId(value: { id: string } | string | null): string | null {
+export function expandedId(value: { id: string } | string | null): string | null {
   if (typeof value === "string") return value;
   return value?.id ?? null;
 }

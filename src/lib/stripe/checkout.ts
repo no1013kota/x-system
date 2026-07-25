@@ -1,8 +1,9 @@
 import type Stripe from "stripe";
 import { z } from "zod";
 
+import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
-import { toUserFacingError, AppError, type ErrorCode } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { PLAN_IDS, type PlanId } from "@/lib/plans";
 
 export const checkoutInputSchema = z
@@ -45,40 +46,6 @@ export interface CheckoutRouteDependencies {
   priceIds: Record<PlanId, string>;
   saveStripeCustomerId(userId: string, customerId: string): Promise<void>;
   stripe: CheckoutStripeGateway;
-}
-
-const HTTP_STATUS: Record<ErrorCode, number> = {
-  unauthorized: 401,
-  forbidden: 403,
-  validation_error: 400,
-  legal_consent_required: 403,
-  automation_consent_required: 403,
-  subscription_required: 402,
-  usage_limit_exceeded: 403,
-  x_account_required: 400,
-  api_key_required: 400,
-  persona_required: 400,
-  feature_disabled: 403,
-  provider_error: 502,
-  post_state_unknown: 409,
-  job_conflict: 409,
-  not_found: 404,
-  internal_error: 500,
-};
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return Response.json(body, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
-
-function errorResponse(error: unknown): Response {
-  const safe = toUserFacingError(error);
-  return jsonResponse(
-    { ok: false, error: safe },
-    HTTP_STATUS[safe.code],
-  );
 }
 
 async function createCustomer(
@@ -143,32 +110,32 @@ export async function handleCheckoutRequest(
   deps: CheckoutRouteDependencies,
 ): Promise<Response> {
   if (!hasExactAppOrigin(request.headers.get("origin"), deps.appBaseUrl)) {
-    return errorResponse(new AppError("forbidden"));
+    return apiError(new AppError("forbidden"));
   }
 
   const parsed = checkoutInputSchema.safeParse(
     await request.json().catch(() => null),
   );
   if (!parsed.success) {
-    return errorResponse(new AppError("validation_error"));
+    return apiError(new AppError("validation_error"));
   }
 
   let user: CheckoutUser | null;
   try {
     user = await deps.getCurrentUser();
   } catch {
-    return errorResponse(new AppError("internal_error"));
+    return apiError(new AppError("internal_error"));
   }
-  if (!user) return errorResponse(new AppError("unauthorized"));
-  if (!user.email) return errorResponse(new AppError("internal_error"));
+  if (!user) return apiError(new AppError("unauthorized"));
+  if (!user.email) return apiError(new AppError("internal_error"));
 
   let profile: CheckoutProfile | null;
   try {
     profile = await deps.getProfile(user.id);
   } catch {
-    return errorResponse(new AppError("internal_error"));
+    return apiError(new AppError("internal_error"));
   }
-  if (!profile) return errorResponse(new AppError("internal_error"));
+  if (!profile) return apiError(new AppError("internal_error"));
 
   try {
     const customerId =
@@ -186,12 +153,12 @@ export async function handleCheckoutRequest(
     );
     if (!session.url) throw new Error("Checkout Session URL is missing");
 
-    return jsonResponse({
+    return apiJson({
       ok: true,
       data: { url: session.url },
     });
   } catch (error) {
-    if (error instanceof AppError) return errorResponse(error);
-    return errorResponse(new AppError("provider_error", { cause: error }));
+    if (error instanceof AppError) return apiError(error);
+    return apiError(new AppError("provider_error", { cause: error }));
   }
 }

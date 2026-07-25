@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import type { PlanId } from "@/lib/plans";
 
 import {
+  expandedId,
   subscriptionProjection,
   type SubscriptionApplyResult,
   type SubscriptionProjection,
@@ -38,10 +39,6 @@ export interface BillingReturnDependencies {
 }
 
 export type BillingReturnResult = "current" | "skipped" | "stale" | "updated";
-
-function idOf(value: string | { id: string } | null): string | null {
-  return typeof value === "string" ? value : value?.id ?? null;
-}
 
 function syntheticEvent(
   subscription: Stripe.Subscription,
@@ -97,11 +94,11 @@ export async function reconcileBillingReturn(
     if (
       session.client_reference_id !== input.userId ||
       (profile.stripe_customer_id &&
-        idOf(session.customer) !== profile.stripe_customer_id)
+        expandedId(session.customer) !== profile.stripe_customer_id)
     ) {
       return "skipped";
     }
-    subscriptionId = idOf(session.subscription);
+    subscriptionId = expandedId(session.subscription);
   }
   if (!subscriptionId) return "skipped";
 
