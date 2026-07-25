@@ -13,7 +13,7 @@ export const RECOVERY_SESSION_MAX_AGE_SEC = 15 * 60;
 export const passwordResetRequestSchema = z.object({
   captcha_token: z
     .string()
-    .min(1, "セキュリティ確認を完了してください。")
+    .min(1, "あなたが人間であることの確認を完了してください。")
     .max(2048),
   email: z.string().trim().email("メールアドレスを確認してください。"),
 });

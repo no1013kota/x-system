@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
-| 更新日 | 2026-07-22 |
+| バージョン | v1.12 |
+| 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -13,7 +13,7 @@
 | 登録 | Supabase Authのメール＋パスワード。確認メールを必須にする |
 | ログイン | `signInWithPassword`成功後に欠損profileを補完し、`subscription_status=incomplete|incomplete_expired`は`/plans`、それ以外は安全な`next`または`/app`へ遷移する。未確認メールはアプリ本体へ入れず、確認メール再送を表示 |
 | パスワード再設定 | `resetPasswordForEmail`は登録有無にかかわらず同じ受理応答を返す。recoveryリンクで確立したsessionと、user_idを束縛した15分TTLの改ざん検知HttpOnly cookieが一致するときだけ`updateUser`を許可し、成功後は両方を破棄する |
-| パスワード | 12〜64文字かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
+| パスワード | 8文字以上64文字以内かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
 | profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はログイン後の初回アクセスでservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない |
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |

@@ -37,7 +37,7 @@ const RESET_REQUEST_ACCEPTED_MESSAGE =
 const UPDATE_PASSWORD_ERROR_MESSAGE =
   "パスワードを更新できませんでした。再設定メールをもう一度申請してください。";
 const CAPTCHA_ERROR_MESSAGE =
-  "セキュリティ確認に失敗しました。もう一度お試しください。";
+  "人間であることの確認に失敗しました。もう一度お試しください。";
 
 function confirmationRedirectUrl(): string {
   return new URL("/auth/confirm", env.APP_BASE_URL).toString();

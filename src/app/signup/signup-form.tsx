@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import {
   resendSignUpConfirmation,
@@ -11,8 +11,14 @@ import {
   INITIAL_AUTH_FORM_STATE,
   type AuthFormState,
 } from "@/app/actions/auth-state";
+import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
+import {
+  PASSWORD_HELP_TEXT,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import {
   CURRENT_PRIVACY_VERSION,
   CURRENT_TERMS_VERSION,
@@ -54,6 +60,8 @@ export function SignUpForm() {
     resendSignUpConfirmation,
     INITIAL_AUTH_FORM_STATE,
   );
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
 
   if (state.status === "success") {
     return (
@@ -119,15 +127,18 @@ export function SignUpForm() {
           autoComplete="new-password"
           className={inputClassName}
           id="password"
-          maxLength={64}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="password"
+          onChange={(event) => setPassword(event.target.value)}
           required
           type="password"
+          value={password}
         />
         <p className="text-xs text-muted-foreground" id="password-help">
-          12〜64文字、UTF-8で72バイト以内
+          {PASSWORD_HELP_TEXT}
         </p>
+        <PasswordRulesHint password={password} />
         <FieldError errors={state.fieldErrors?.password} />
       </div>
 
@@ -139,11 +150,17 @@ export function SignUpForm() {
           autoComplete="new-password"
           className={inputClassName}
           id="password-confirmation"
-          maxLength={64}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="password_confirmation"
+          onChange={(event) => setPasswordConfirmation(event.target.value)}
           required
           type="password"
+          value={passwordConfirmation}
+        />
+        <PasswordMatchHint
+          confirmation={passwordConfirmation}
+          password={password}
         />
         <FieldError errors={state.fieldErrors?.password_confirmation} />
       </div>

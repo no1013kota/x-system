@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.18 |
-| 更新日 | 2026-07-24 |
+| バージョン | v1.19 |
+| 更新日 | 2026-07-25 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -270,7 +270,7 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | 参考アカウントURL（`ref_account`） | hostは`x.com`/`twitter.com`、pathは`/{handle}`（statusを含まない）だけ許可。`handle`は`[A-Za-z0-9_]{1,15}` |
 | 学習URLのcanonical化 | `ref_account`は`https://x.com/{handle}`、`ref_post`は`https://x.com/{handle}/status/{id}`へ正規化（host統一・handle小文字化）して保存し、`removed`再追加の同一判定に使う |
 | 投稿本文 | 空不可。公式`twitter-text`互換でweighted length 280以下、cashtagは1件以下 |
-| password | 12〜64文字、UTF-8で72 bytes以下、確認用入力と一致 |
+| password | 8文字以上64文字以内、UTF-8で72 bytes以下、確認用入力と一致 |
 | `time_jst` | 09:00〜22:00、分は00または30 |
 | `weekdays` | 0〜6、重複なし、1件以上 |
 | `image_provider` | `openai`/`google`のみ。BYOKはvalidな登録キー、premiumは運営キーが設定済みのproviderに限定 |

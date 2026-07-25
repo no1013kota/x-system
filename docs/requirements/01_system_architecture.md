@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
+| バージョン | v1.9 |
 | 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -38,7 +38,7 @@ flowchart TB
 |---|---|---|
 | アプリ | Next.js App Router + TypeScript | UI、API、Server Actions、cronを同一リポジトリで管理 |
 | UI | Tailwind CSS + shadcn/ui | 画面共通部品はApp Shell配下に集約 |
-| 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。Auth側もメール確認必須・password最小12文字とし、許可済みの`APP_BASE_URL/auth/confirm`だけをメールredirect先に使う。漏洩パスワード保護はPro移行後に有効化 |
+| 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。Auth側もメール確認必須・password最小8文字とし、許可済みの`APP_BASE_URL/auth/confirm`だけをメールredirect先に使う。漏洩パスワード保護はPro移行後に有効化 |
 | DB | Supabase PostgreSQL + RLS（初期Free） | すべてのユーザー系テーブルでRLSを必須化。Free中は定期的な論理backupで補完 |
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
 | 課金 | Stripe Checkout + Customer Portal + Webhook | カード情報は自前で扱わない |
@@ -194,7 +194,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - private Storageの画像はservice roleでwriteし、表示時に短時間の署名URLを発行する。DBへ署名URLを保存しない。
 - dependency audit、RLS policy test、認可・CSRF・SSRF testをリリース判定に含める。
 - Supabase Authのメール送信・認証endpointにはDashboardのrate limitを設定する。signup、login、password resetは成功・失敗で情報量を変えず、連続失敗時は同じ汎用文言で待機を促す。
-- productionはSupabase内蔵メールproviderを使わず、認証メールとアプリ通知の送信元をGmail SMTPの`matsubuz.10@gmail.com`へ統一する。Google Accountの通常passwordは保存せず、2段階認証で発行したApp PasswordをServer onlyで管理する。signup、確認メール再送、login、password reset申請はCloudflare Turnstileの明示render widgetを表示し、token欠落をServer Actionのzod検証で、期限切れ・再利用・不正tokenをSupabase Authのserver-side検証で拒否する。widgetはAction完了後にresetし、同じtokenを再送しない。Supabase Freeでは利用できない漏洩パスワード保護はPro移行直後に有効化し、Free中は12文字以上のpassword、rate limit、Turnstileで補完する。
+- productionはSupabase内蔵メールproviderを使わず、認証メールとアプリ通知の送信元をGmail SMTPの`matsubuz.10@gmail.com`へ統一する。Google Accountの通常passwordは保存せず、2段階認証で発行したApp PasswordをServer onlyで管理する。signup、確認メール再送、login、password reset申請はCloudflare Turnstileの明示render widgetを表示し、token欠落をServer Actionのzod検証で、期限切れ・再利用・不正tokenをSupabase Authのserver-side検証で拒否する。widgetはAction完了後にresetし、同じtokenを再送しない。Supabase Freeでは利用できない漏洩パスワード保護はPro移行直後に有効化し、Free中は8文字以上のpassword、rate limit、Turnstileで補完する。
 - 主要導線はWCAG 2.2 AAを目標に、キーボードのみで操作可能にする。focusを消さず、入力にはlabelとエラー関連付け、状態は色だけで表現しない。
 
 ## 9. バックアップ・保持

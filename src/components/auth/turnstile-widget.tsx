@@ -61,13 +61,13 @@ export function TurnstileWidget({
       "error-callback": () => {
         setToken("");
         setWidgetError(
-          "セキュリティ確認を完了できませんでした。もう一度お試しください。",
+          "人間であることの確認を完了できませんでした。もう一度お試しください。",
         );
       },
       "expired-callback": () => {
         setToken("");
         setWidgetError(
-          "セキュリティ確認の有効期限が切れました。もう一度お試しください。",
+          "人間であることの確認の有効期限が切れました。もう一度お試しください。",
         );
       },
       sitekey: siteKey,
@@ -90,7 +90,7 @@ export function TurnstileWidget({
   if (!siteKey) {
     return (
       <p className="text-sm text-destructive" role="alert">
-        セキュリティ確認を読み込めませんでした。
+        人間であることの確認を読み込めませんでした。
       </p>
     );
   }

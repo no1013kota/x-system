@@ -5,20 +5,25 @@ import {
   CURRENT_TERMS_VERSION,
 } from "@/lib/legal";
 
-const utf8 = new TextEncoder();
+import {
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  checkPassword,
+} from "./password-policy";
 
 export const authPasswordSchema = z.string().superRefine((password, ctx) => {
-  const characters = Array.from(password).length;
-  if (characters < 12 || characters > 64) {
+  const checks = checkPassword(password);
+  if (!checks.minLength || !checks.maxLength) {
     ctx.addIssue({
       code: "custom",
-      message: "パスワードは12〜64文字で入力してください。",
+      message: `パスワードは${PASSWORD_MIN_LENGTH}文字以上${PASSWORD_MAX_LENGTH}文字以内で入力してください。`,
     });
   }
-  if (utf8.encode(password).byteLength > 72) {
+  if (!checks.withinBytes) {
     ctx.addIssue({
       code: "custom",
-      message: "パスワードはUTF-8で72バイト以内にしてください。",
+      message: `パスワードはUTF-8で${PASSWORD_MAX_BYTES}バイト以内にしてください。`,
     });
   }
 });
@@ -27,7 +32,7 @@ export const signUpSchema = z
   .object({
     captcha_token: z
       .string()
-      .min(1, "セキュリティ確認を完了してください。")
+      .min(1, "あなたが人間であることの確認を完了してください。")
       .max(2048),
     email: z.string().trim().email("メールアドレスを確認してください。"),
     password: authPasswordSchema,

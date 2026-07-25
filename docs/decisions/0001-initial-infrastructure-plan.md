@@ -21,7 +21,8 @@ Space AIは30分刻みの予約投稿に加え、未処理job、通知メール�
 
 - 初期はVercel Cronに依存せず定時処理を検証でき、移行時もDB schemaやjob処理を変更せずに済む。
 - launchd運用中はMacの電源、スリープ、回線、timezone、秘密管理が単一障害点になる。回収は通常5分後だが、即時dispatch失敗・stale job・queuedメールの次回回収は最大30分遅れる。
-- Free運用中は自動backup、PITR、漏洩パスワード保護、稼働保証を利用できない。Turnstile、12文字以上のpassword、rate limit、手動backupで一部を補完するが、Proと同等の復旧性・securityにはならない。
+- Free運用中は自動backup、PITR、漏洩パスワード保護、稼働保証を利用できない。Turnstile、8文字以上のpassword、rate limit、手動backupで一部を補完するが、Proと同等の復旧性・securityにはならない。
+- （2026-07-25 更新）登録UXを優先し、パスワード最小長を12→8文字へ引き下げた。Free中のstrength補完がさらに弱まることを受容する。Pro移行後の漏洩パスワード保護を有効化するまでは、rate limitとTurnstileで補完する。
 - 個人向けGmailの送信上限・到達性に依存するため、通知量増加または配信品質低下が起きた場合は専用のtransactional email providerへ移行する。
 - Pro移行後は日次backupと漏洩パスワード保護を有効化し、復元手順を確認する。
 
