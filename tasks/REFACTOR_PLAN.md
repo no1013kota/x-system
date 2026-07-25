@@ -6,10 +6,10 @@
 
 ## 現況（2026-07-25 時点）
 
-R1〜R18・R4b・R15・R17 まで完了（約37コミット、全緑維持・振る舞い保存）。`/loop /refactor` の自律ループは
-**価値×低リスクの候補が尽きた**ため一旦停止。残 **R13d のみ**（低価値 or 中リスク: UIクラスのドリフトは
-typecheck/lint/build で捕捉できず、muted通知バリアント6ファイル等は個別の純関数クラステストで守る必要がある）。
-着手する場合は TabNav 同様に `tab*ClassName` 相当の純関数＋クラス集合テストで担保すること。除外項目は末尾参照。
+R1〜R18・R4b・R15・R17 と R13d（app-navigation 状態クラス）まで完了（全緑維持・振る舞い保存）。
+**価値×低リスクの候補は尽きた**ため、計画上の実行可能項目は完了。R13d の残り（タブ解決ヘルパー／muted空状態
+カードのバリアント集約／セグメント／amberカード）は低価値 or 中リスク（UIクラスのドリフトは検証ゲートで捕捉
+できず、着手時は純関数 `*ClassName`＋クラス集合テストで担保が必要）のため見送り（末尾「除外/見送り」参照）。
 
 ## 実行順（優先度順）
 
@@ -46,7 +46,7 @@ typecheck/lint/build で捕捉できず、muted通知バリアント6ファイ�
 | R13a | UIコンポーネント重複集約①（`XAccountRequiredNotice`）: posts/schedule ページに同一マークアップで重複していたX未連携アラート（amber枠＋「設定へ」導線）を `components/x-account-required-notice.tsx` へ抽出。理由文のみ `description` prop 化しクラス/role/href/文言は同一維持（レンダリング等価）。schedule の未使用 `Link` import も除去 | duplication | S | low | done |
 | R13b | UIコンポーネント重複集約②（`EmptyNotice`）: 4ファイル（x-accounts-settings/schedule-manager/history-list/drafts-list）で文字通り同一だった破線カード空状態 `<div class="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">{msg}</div>` を `page-state.tsx` の軽量 `EmptyNotice({children})` に集約（重量版 `EmptyState` と対）。role無し維持・レンダリング等価。test+build緑 | duplication | S | low | done |
 | R13c | UIコンポーネント重複集約③（`TabNav`）: URL駆動タブナビ（settings/posts/ai-settings）を共有 `TabNav`（`app-shell/tab-nav.tsx`）へ集約。クラス計算を純関数 `tabNavClassName`/`tabLinkClassName` に抽出し、**クラス集合の等価を `tab-nav.test.ts` で検証**（UIクラスdrift は typecheck/lint/build で捕捉不可のため必須）。ai-settings の追加クラス（gap-1/overflow/shrink-0/focus-ring/hover）は className/linkClassName/inactiveLinkClassName で吸収し twMerge が gap 競合を後勝ち解決。見た目等価・未使用 Link import 除去。test 1127+build 緑 | duplication | M | low〜med | done |
-| R13d | UIコンポーネント重複集約④（低〜中）: app-navigation の active三項（mobile/desktop）単一化／タブ解決（searchParams→有効タブ or 既定）ヘルパー化／軽量muted空状態カード②③④（learning-sources/base-md-editor/news-browser/analytics-view/follower-chart/suggestions-panel の3バリアント6箇所）を variant付きで集約（生成クラス完全一致を厳守・可能なら純関数テストで保証）／analytics 日数セグメント切替の共有化／ai-purpose-settings 内 amberカード2箇所のローカル抽出。見た目寄せ（radius/bg/py統一）はしない | duplication | M | med | todo |
+| R13d | UIコンポーネント重複集約④（一部）: app-navigation の active/inactive 状態クラス（mobile/desktop で同一だった2×2文字列）をループ内 `stateClass` const に単一化（連結結果はバイト同一・表示不変）。**残りは見送り**（下記「除外/見送り」参照） | duplication | S | low | done |
 | R14 | テスト容易性（`classifySmtpError`）: server-only の `notification-email-server.ts` に閉じていた SMTPエラー分類を純粋モジュール `lib/email/smtp-error.ts`（SmtpError型・AUTH/NETWORK定数含む）へ抽出し、契約テスト7件追加（auth終端/network・server再送/unknown、認証優先、summaryにcode/responseCodeのみ）。server側は import に置換し未使用 `ErrorKind`/`EmailSendError` import も除去。ロジック不変・振る舞い保存。test 1134緑 | testability | S | low | done |
 | R15 | Server Action 共通化（`requireUserId`/`BaseResult`）: 各 action に同一実装で重複していた `requireUserId()`（9ファイル）と `BaseResult` 型（10ファイル）を `app/actions/_helpers.ts` に集約。exact-block置換スクリプト（識別子regexではなく完全一致・R3の教訓）＋import入替、getCurrentUser は requireUserId 専用だった9ファイルで import 除去、suggestions は getCurrentUser 継続のため型import追加。※analytics は `BaseResult` が `details` を持たない狭い版（意図的）で共有版に寄せると型が広がるため据え置き。typecheck/lint/test1134/build 緑・振る舞い保存 | duplication | M | low〜med | done |
 | R16 | `toIso`/`toIsoOrNull`（Date→ISO）集約: 非null版3ファイル（learning-sources/notifications/prompt-templates）＋nullable版1ファイル（news-items）のローカル定義を `lib/format.ts` の `toIso`/`toIsoOrNull` に一本化。news-items は呼び出しを `toIsoOrNull` へ改名。出力等価・振る舞い保存。※base-md には toIso 無し（sweep指摘は誤り）。test 1134緑 | duplication | S | low | done |
@@ -57,6 +57,7 @@ typecheck/lint/build で捕捉できず、muted通知バリアント6ファイ�
 
 - **成功アラートの緑色ドリフト**（emerald-900/800/700）や **resend-confirmation-form の transition 欠落**の統一は「見た目の変更＝振る舞い変更」。リファクタではなく別途 dev-loop で扱う（暫定: 現状維持）。
 - **R9 の env 型（`ALWAYS_REQUIRED` を非optional化して `as string` を全廃）** は型変更が広範に波及するため中リスク。今回は「検証後に必須項目を非nullで返す型付きアクセサ」に留め、schema自体の非optional化は要決定として保留（暫定案: アクセサ方式）。
+- **R13d の残り（タブ解決ヘルパー／muted空状態カード②③④／analytics日数セグメント／ai-purpose amberカード）** は見送り。(1) タブ解決は3画面で fallback 値・`?? default`・`as Tab` cast・items形状が微妙に異なり、共通化しても各1行削減で低価値。(2) muted空状態カード②③④は radius/bg/py/要素が異なる3バリアント×各2箇所で、variant化は複雑化（監査でも「低価値・中リスク」評価）＋UIクラスのドリフトを検証ゲートが捕捉できない。(3) セグメント/amberカードも同様に低価値。いずれも「価値×低リスク」の閾値に届かないため現状維持。着手する場合は TabNav 同様に純関数 `*ClassName` ＋クラス集合テストで守ること。
 - **`readAt` センチネル `"read"`（notification-bell）** の是正（R9d で当初予定）は見送り。表示はローカル楽観更新の真偽値（既読ドットの有無）でしか使われず、`"read"` は「サーバ確定前のローカル目印」として機能している。型は `string | null`（ISO時刻）だが、偽のISO時刻（例 `new Date().toISOString()`）へ置換すると「本物の既読時刻」に見えてかえって誤解を招く。値は表示・送信されず上書きされるため、現状維持が安全（振る舞い保存の観点でも据え置きが妥当）。
 - **X設定パス定数 `/app/settings?tab=api-keys` の一元化**（R8c で当初予定）は見送り。値が安定（滅多に変わらない）で価値が低い一方、13+箇所に散在し token-refresh の SQL文字列リテラルや execution-prereqs の Record 値・app-banners/route/actions 等の別領域に跨るため、集約すると分散した import を各領域に張ることになり費用対効果が低い。振る舞い保存は可能だが低価値・高分散のため今回対象外（現状維持）。
 
