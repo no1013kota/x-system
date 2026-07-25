@@ -16,6 +16,28 @@ import { authCookieOptions, withAuthCookiePolicy } from "./cookie-options";
 
 const SESSION_RESPONSE_HEADERS = ["cache-control", "expires", "pragma"];
 
+type RouteGuardProfile = { plan: string | null; subscription_status: string };
+
+/**
+ * route-guard 判定に必要な plan/subscription_status を読む。判定は /app 配下でのみ
+ * profile を要するため、未ログインや /app 以外のパスでは DB を叩かず null を返す。
+ */
+async function loadRouteGuardProfile(
+  supabase: ReturnType<typeof createServerClient>,
+  request: NextRequest,
+  userId: string | null,
+): Promise<RouteGuardProfile | null> {
+  if (!userId) return null;
+  const path = request.nextUrl.pathname;
+  if (path !== "/app" && !path.startsWith("/app/")) return null;
+  const result = await supabase
+    .from("profiles")
+    .select("plan, subscription_status")
+    .eq("id", userId)
+    .maybeSingle();
+  return result.data;
+}
+
 function redirectWithSessionState(
   request: NextRequest,
   sessionResponse: NextResponse,
@@ -82,19 +104,11 @@ export async function updateSupabaseSession(request: NextRequest) {
   // getUser validates the token with Supabase Auth; getSession only trusts the
   // cookie payload and must not be used for authorization decisions.
   const { data } = await supabase.auth.getUser();
-  let profile: { plan: string | null; subscription_status: string } | null = null;
-  if (
-    data.user &&
-    (request.nextUrl.pathname === "/app" ||
-      request.nextUrl.pathname.startsWith("/app/"))
-  ) {
-    const result = await supabase
-      .from("profiles")
-      .select("plan, subscription_status")
-      .eq("id", data.user.id)
-      .maybeSingle();
-    profile = result.data;
-  }
+  const profile = await loadRouteGuardProfile(
+    supabase,
+    request,
+    data.user?.id ?? null,
+  );
 
   const destination = routeGuardDestination({
     profile,
