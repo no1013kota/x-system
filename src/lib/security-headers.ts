@@ -35,6 +35,9 @@ function sentryConnectSrc(): string {
 export function buildContentSecurityPolicy(nonce: string, isProd: boolean): string {
   // dev（next dev）は React Refresh 等で eval を使うため 'unsafe-eval' を許可する（productionは付けない）。
   const devEval = isProd ? "" : " 'unsafe-eval'";
+  // dev（Turbopack）は HMR の WebSocket（ws://127.0.0.1:3000/_next/webpack-hmr）へ接続する。
+  // 'self' が ws: を確実にカバーしないブラウザ実装があるため dev のみ ws: を明示許可する（prodは付けない）。
+  const devConnect = isProd ? "" : " ws:";
   const directives = [
     `default-src 'self'`,
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval} ${TURNSTILE}`,
@@ -43,7 +46,7 @@ export function buildContentSecurityPolicy(nonce: string, isProd: boolean): stri
     // 画像を表示するため https: を許可する（画像はscript実行を伴わず露出リスクが低い）。
     `img-src 'self' data: blob: https:`,
     `font-src 'self' data:`,
-    `connect-src 'self' ${TURNSTILE}${sentryConnectSrc()}`,
+    `connect-src 'self' ${TURNSTILE}${sentryConnectSrc()}${devConnect}`,
     `frame-src 'self' ${TURNSTILE}`,
     `frame-ancestors 'none'`,
     `object-src 'none'`,

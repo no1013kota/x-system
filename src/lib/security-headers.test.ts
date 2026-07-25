@@ -38,6 +38,17 @@ describe("buildContentSecurityPolicy", () => {
     expect(prod).toContain("upgrade-insecure-requests");
   });
 
+  it("allows the dev HMR WebSocket (ws:) in connect-src only in dev", () => {
+    const dev = buildContentSecurityPolicy("n", false)
+      .split("; ")
+      .find((d) => d.startsWith("connect-src "))!;
+    expect(dev).toContain(" ws:");
+    const prod = buildContentSecurityPolicy("n", true)
+      .split("; ")
+      .find((d) => d.startsWith("connect-src "))!;
+    expect(prod).not.toContain("ws:");
+  });
+
   it("includes the Sentry ingest host in connect-src when a DSN is set", () => {
     const prev = process.env.NEXT_PUBLIC_SENTRY_DSN;
     process.env.NEXT_PUBLIC_SENTRY_DSN = "https://pub@o123.ingest.sentry.io/456";

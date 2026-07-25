@@ -152,6 +152,7 @@ npm run dev                  # → http://127.0.0.1:3000
   2. X Dev Portal の **Callback URI = `http://127.0.0.1:3000/api/x/oauth/callback`**（完全一致）で登録。
   3. アプリには **http://127.0.0.1:3000** でアクセスする（cookie/origin を揃えるため。`localhost:3000` と混在させない）。
   4. `supabase/config.toml` の `site_url`/`additional_redirect_urls` は既に `127.0.0.1:3000`（config を変えたら `supabase stop && supabase start` で反映）。
+  5. `next.config.ts` に `allowedDevOrigins: ["127.0.0.1"]` を設定済み。**無いと Next dev が `127.0.0.1` からの HMR WebSocket（`/_next/webpack-hmr`）をクロスオリジンとしてブロックし、client の hydration が完了せず、サインアップ等のフォーム操作・入力中バリデーション・Turnstile ウィジェットが一切動かなくなる**（画面は表示されるが対話できない）。dev のみ有効。
 - **X Dev Portal のアプリ設定**（User authentication settings）:
   - Type of App: **Web App（confidential・Client Secret あり）** または Native/SPA（public・PKCE）。運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential。BYOK はユーザーが自分のAppで選択。
   - App permissions: **Read and write**（`tweet.write`・`media.write` に必要）。

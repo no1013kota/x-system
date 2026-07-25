@@ -8,7 +8,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // Skip all Next internals — `_next/*` (static, image, and crucially the dev
+  // `_next/webpack-hmr` WebSocket, whose upgrade the proxy would otherwise break)
+  // and dev fonts under `__nextjs_font/` — plus static asset extensions. Auth
+  // session refresh only needs to run on real navigations/route requests.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/|__nextjs_font/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)",
   ],
 };
