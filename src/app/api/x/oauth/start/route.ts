@@ -90,6 +90,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       (details?.settingsPath as string | undefined) ?? DEFAULT_SETTINGS_PATH;
     const to = new URL(settingsPath, env.APP_BASE_URL as string);
     to.searchParams.set("x_oauth_error", code);
+    // reason は作者が定義した非機密の識別子。原因別の案内文を出すために渡す（要件06 §1.2.1）。
+    if (typeof details?.reason === "string") {
+      to.searchParams.set("x_oauth_reason", details.reason);
+    }
     return NextResponse.redirect(to);
   }
 }

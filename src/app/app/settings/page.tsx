@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { TabNav } from "@/components/app-shell/tab-nav";
+import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
 import { env } from "@/lib/env";
@@ -36,6 +37,7 @@ interface SettingsPageProps {
     tab?: string;
     x_connected?: string;
     x_oauth_error?: string;
+    x_oauth_reason?: string;
   }>;
 }
 
@@ -93,8 +95,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
+  // BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも登録状況を読む
+  // （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
   let apiKeys: ApiKeyViewState[] = [];
-  if (tab === "api-keys" && profile.plan !== "premium") {
+  if ((tab === "api-keys" || tab === "x-accounts") && profile.plan !== "premium") {
     apiKeys = await listApiKeyViewsForUser(user.id);
   }
   let xAccounts: XAccountListItem[] = [];
@@ -128,15 +132,26 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           label="設定タブ"
         />
 
+        {/* X連携の失敗は戻り先がAPIキータブになることもあるため、タブに依らず先頭で表示する。 */}
+        {params.x_oauth_error ? (
+          <XOAuthErrorNotice
+            code={params.x_oauth_error}
+            reason={params.x_oauth_reason ?? null}
+          />
+        ) : null}
+
         {tab === "x-accounts" ? (
           <XAccountsSettings
             accounts={xAccounts}
             connected={params.x_connected === "1"}
-            oauthError={params.x_oauth_error ?? null}
             oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
               "/app/settings?tab=x-accounts",
             )}`}
             plan={profile.plan ?? "standard"}
+            xApiKeyRegistered={
+              profile.plan === "premium" ||
+              apiKeys.some((key) => key.provider === "x")
+            }
           />
         ) : tab === "api-keys" ? (
           <ApiKeySettings

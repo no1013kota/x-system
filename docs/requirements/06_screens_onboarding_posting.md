@@ -42,9 +42,11 @@
 
 - `/app/settings?tab=x-accounts`は連携済みXアカウントを一覧し、各行に`handle`・表示名・`status`（有効／要再連携／停止中／エラー）・`auth_type`（BYOK＝自分のApp／運営App＝Premium）と、現在操作中アカウントの目印を表示する。
 - 「Xアカウントを追加」はOAuth開始（`GET /api/x/oauth/start`）へ遷移する。有効アカウント数がプラン上限に達しているときはボタンを無効化し、`有効 N / 上限` 件を表示する。
+- BYOK（standard/md）でX APIキー未登録のときは、追加ボタンをAPIキータブへの導線（「先にX APIキーを登録」）に差し替え、Client IDが必要である旨を併記する（押してから無言でAPIキータブへ戻される事故を防ぐ）。上限到達の表示を優先する。
 - `expired`／`error`には再連携導線、`disabled`には再有効化（`enableXAccount`）と再連携を出す。各行から状態更新（`refreshXAccountStatus`）もできる。
 - 切断（`disconnectXAccount`）は確認ダイアログを挟み、投稿と自動実行の停止・自動投稿同意の取り消しを説明し、下書き・投稿履歴・実績・ベースmd等のデータは削除しないことを明示する。
-- OAuthからの復帰は`x_connected=1`で成功、`x_oauth_error=<code>`でエラーを表示する。操作の成功後は表示中の一覧を再取得する。
+- OAuthからの復帰は`x_connected=1`で成功、`x_oauth_error=<code>`（原因が判別できる場合は`x_oauth_reason=<reason>`も付与）でエラーを表示する。操作の成功後は表示中の一覧を再取得する。
+- 連携エラーは戻り先がAPIキータブ等になる場合もあるため、**設定画面の先頭でタブに依らず表示**し、codeとreasonの組み合わせごとに日本語の原因説明と次アクション（APIキー登録／プラン確認／再連携など）を示す。生のエラーコードは表示しない。
 
 ### 1.2.2 SC-11 通知・プロフィールタブ（M2）
 

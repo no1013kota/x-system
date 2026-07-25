@@ -2,6 +2,7 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { CircleUserRound, Plus, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -45,13 +46,14 @@ export function XAccountsSettings({
   plan,
   oauthStartPath,
   connected,
-  oauthError,
+  xApiKeyRegistered,
 }: {
   accounts: XAccountListItem[];
   plan: PlanId;
   oauthStartPath: string;
   connected: boolean;
-  oauthError: string | null;
+  /** BYOKプランでX APIキー（Client ID）が登録済みか。premiumは常にtrue（運営キーを使う）。 */
+  xApiKeyRegistered: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -104,12 +106,27 @@ export function XAccountsSettings({
             >
               <Plus aria-hidden="true" /> 追加（上限到達）
             </Button>
-          ) : (
+          ) : xApiKeyRegistered ? (
             <Button render={<a href={oauthStartPath} />} size="lg">
               <Plus aria-hidden="true" /> Xアカウントを追加
             </Button>
+          ) : (
+            // X APIキー未登録のまま連携を始めると無言でAPIキータブへ戻されるため、先に登録へ誘導する。
+            <Button
+              render={<Link href="/app/settings?tab=api-keys" />}
+              size="lg"
+              variant="outline"
+            >
+              先にX APIキーを登録
+            </Button>
           )}
         </div>
+
+        {!xApiKeyRegistered ? (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+            Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
+          </p>
+        ) : null}
 
         {connected ? (
           <p
@@ -117,14 +134,6 @@ export function XAccountsSettings({
             role="status"
           >
             Xアカウントを連携しました。
-          </p>
-        ) : null}
-        {oauthError ? (
-          <p
-            className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900"
-            role="alert"
-          >
-            連携を完了できませんでした（{oauthError}）。もう一度お試しください。
           </p>
         ) : null}
         {notice ? (
