@@ -9,6 +9,7 @@ import {
   updateBaseMdManualAction,
 } from "@/app/actions/base-md";
 import type { BaseMdVersionView } from "@/lib/base-md";
+import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
 
 /**
@@ -174,7 +175,7 @@ export function BaseMdEditor({
 
       {/* セクション1〜4の上書き注意（常時） */}
       <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
-        手動で編集したセクション1〜4は、次に「発信設定」フォームを保存するとフォームの値で上書きされます。恒久的な変更は発信設定側でも行ってください。
+        手で直した「1. {BASE_MD_SECTION_TITLES[0]}」〜「4. {BASE_MD_SECTION_TITLES[3]}」は、次に「発信設定」を保存すると上書きされます。恒久的に変えたい場合は、発信設定側でも同じ内容にしてください。この画面の変更履歴からは、いつでも以前の版に戻せます。
       </p>
 
       {/* 学習running中の編集不可 */}

@@ -70,7 +70,7 @@ export const personaSettingsSchema = z
 export type PersonaSettings = z.infer<typeof personaSettingsSchema>;
 
 const BASE_MD_HEADING_PATTERN = /^## ([1-6])\.[^\n]*$/gm;
-const BASE_MD_SECTION_TITLES = [
+export const BASE_MD_SECTION_TITLES = [
   "ペルソナ",
   "発信テーマ",
   "トーン&マナー",

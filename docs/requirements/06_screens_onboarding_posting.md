@@ -140,9 +140,10 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 ### 3.6 SC-10 発信設定フォーム
 
 - `/app/ai-settings`は`persona`（発信設定）を既定タブとし、`purposes`（AI用途・§3.6）、`learning`（学習ソース・§9）、`base-md`（§3.7）、`prompts`（§3.8）のタブを持つ。Xアカウント未連携時は各タブで共通の空状態（Xアカウント設定への導線）を表示する。
+- 画面には内部ID（`SC-10`等）や実装用語（`provider`・`base_md version`）を出さない。見出し下でこの画面の役割（AIが投稿を書くための取り決めを管理する／変更は次の生成から反映）と推奨手順（発信設定→AI用途→任意で学習ソース）を1〜2行で示す。versionは「発信定義書 version N」の形で表示する。
 - 発信設定はactive Xアカウント単位でL-4〜L-7を編集する。ペルソナ3項目と主テーマは必須、テーマはマスタ選択と自由入力、toneは§3.4の初期値、NG 3分類は改行区切り入力で空を許可する。入力エラーは該当labelと関連付けて表示する。
-- `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
-- `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。
+- `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。警告にはセクション名（1. ペルソナ／2. 発信テーマ／3. トーン&マナー／4. やらないこと、5. 文体・自分らしさ／6. 参考にする型）を具体的に書き、ベースmdタブの変更履歴から元に戻せることも併記する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
+- `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。表示は平易な語（「文章生成・リサーチに使うAI」「画像生成に使うAI」「接続確認に成功したAIだけが選べます」）を用い、文章AIが未設定のときは「このままでは投稿の生成・自動運用が実行できません」と警告する（未設定optionのラベルにも明示する）。
 
 ### 3.7 SC-10 ベースmdエディタ
 

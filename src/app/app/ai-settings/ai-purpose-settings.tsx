@@ -97,7 +97,7 @@ export function AiPurposeSettings({
           <div>
             <h2 className="text-xl font-semibold" id="text-purpose-heading">文章生成・リサーチ</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              投稿文の生成とWebリサーチには同じproviderを使用します。
+              投稿文の生成とWebリサーチには同じAIを使います。
             </p>
           </div>
         </div>
@@ -112,14 +112,14 @@ export function AiPurposeSettings({
           </div>
         ) : options.text.length > 0 ? (
           <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
-            文章provider
+            文章生成・リサーチに使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
               disabled={isPending}
               onChange={(event) => setTextProvider(event.target.value as AiKeyProvider | "")}
               value={textProvider}
             >
-              <option value="">未設定</option>
+              <option value="">未設定（このままでは投稿を生成できません）</option>
               {options.text.map((provider) => (
                 <option key={provider} value={provider}>{PROVIDER_LABELS[provider]}</option>
               ))}
@@ -138,14 +138,14 @@ export function AiPurposeSettings({
           <div>
             <h2 className="text-xl font-semibold" id="image-purpose-heading">画像生成</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              OpenAIまたはGoogleのうち、利用可能なproviderだけを選択できます。
+              OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
             </p>
           </div>
         </div>
 
         {options.image.length > 0 ? (
           <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
-            画像provider
+            画像生成に使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
               disabled={isPending}
@@ -164,12 +164,19 @@ export function AiPurposeSettings({
             <p className="mt-1 leading-6">
               {plan === "premium"
                 ? "運営環境にOpenAIまたはGoogleの画像生成キーが設定されるまで、画像生成はOFFになります。"
-                : "validなOpenAIまたはGoogleのAPIキーを登録すると選択できるようになります。"}
+                : "OpenAIまたはGoogleのAPIキーを登録し、接続確認に成功すると選べるようになります。"}
             </p>
             {plan !== "premium" ? <ApiKeySettingsLink /> : null}
           </div>
         )}
       </section>
+
+      {plan !== "premium" && !textProvider ? (
+        // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
+        <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950" role="status">
+          文章生成に使うAIが未設定です。このままでは投稿の生成・自動運用が実行できません。登録済みのAIを選んで保存してください。
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button className="min-h-11" disabled={isPending} onClick={save} type="button">
@@ -177,8 +184,8 @@ export function AiPurposeSettings({
         </Button>
         <p className="text-xs text-muted-foreground">
           {plan === "premium"
-            ? "画像providerには運営環境で利用可能なものだけを表示します。"
-            : "ここで選べるのは疎通確認済みのproviderだけです。"}
+            ? "画像生成に使えるAIは、運営環境で利用できるものだけを表示しています。"
+            : "接続確認に成功したAIだけが選べます。"}
         </p>
       </div>
     </div>
@@ -196,7 +203,7 @@ function ApiKeySettingsLink() {
 function MissingProviderMessage({ purpose }: { purpose: string }) {
   return (
     <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-      <p className="font-medium">{purpose}に使えるproviderがありません</p>
+      <p className="font-medium">{purpose}に使えるAIがまだありません</p>
       <p className="mt-1 leading-6">AI APIキーを登録し、疎通確認を完了してください。</p>
       <ApiKeySettingsLink />
     </div>

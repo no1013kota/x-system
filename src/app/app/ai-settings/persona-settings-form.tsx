@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { updatePersonaSettings } from "@/app/actions/persona-settings";
+import Link from "next/link";
+
 import {
+  BASE_MD_SECTION_TITLES,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
@@ -122,7 +125,10 @@ export function PersonaSettingsForm({
         <span>
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
-        <span className="font-mono text-xs">base_md version {version}</span>
+        <span className="text-xs text-muted-foreground">
+          発信定義書 version {version}
+          {version >= 1 ? `（${version}回目の更新）` : "（未作成）"}
+        </span>
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
@@ -130,7 +136,11 @@ export function PersonaSettingsForm({
           className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"
           role="status"
         >
-          保存すると、現行ベースmdのセクション1〜4をこのフォーム内容で上書きします。学習で作られたセクション5〜6は保持されます。
+          保存すると、発信定義書（ベースmd）の「1. {BASE_MD_SECTION_TITLES[0]}／2. {BASE_MD_SECTION_TITLES[1]}／3. {BASE_MD_SECTION_TITLES[2]}／4. {BASE_MD_SECTION_TITLES[3]}」をこのフォームの内容で書き換えます。学習で作られた「5. {BASE_MD_SECTION_TITLES[4]}／6. {BASE_MD_SECTION_TITLES[5]}」はそのまま残ります。書き換え前の内容は、
+          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/ai-settings?tab=base-md">
+            ベースmdタブの変更履歴
+          </Link>
+          からいつでも元に戻せます。
         </div>
       ) : null}
 
