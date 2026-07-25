@@ -1,4 +1,0 @@
-interface:
-  display_name: "UI Polish"
-  short_description: "Space AIのUIを設計・実装・実ブラウザ検証する"
-  default_prompt: "Use $ui-polish to design, implement, and visually verify this Space AI interface."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "E2Eテスト検証"
-  short_description: "主要ユーザー操作を安全な環境で一貫してE2E検証する"
-  default_prompt: "$verify-e2e を使って今回の変更に必要なE2Eテストを実行してください。"
