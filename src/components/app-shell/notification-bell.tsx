@@ -123,7 +123,7 @@ export function NotificationBell({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium">{item.title}</span>
-                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
                           {item.body}
                         </span>
                         <span className="mt-1 block text-[11px] text-muted-foreground">

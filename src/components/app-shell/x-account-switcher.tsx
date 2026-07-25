@@ -13,8 +13,9 @@ export interface SwitcherAccount {
   profileImageUrl: string | null;
 }
 
+// モバイル幅でも「どのアカウントを操作中か」を隠さない（誤アカウント投稿を防ぐ・要件06 §2）。
 const CHIP_CLASS =
-  "hidden min-h-10 items-center gap-2 rounded-lg border bg-card px-3 text-sm sm:flex focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
+  "flex min-h-10 items-center gap-2 rounded-lg border bg-card px-2 text-sm sm:px-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
 
 /**
  * ヘッダのXアカウント切替UI（要件06 §2, A-6, T-M2-18）。activeなXアカウントを一覧し、選択すると
