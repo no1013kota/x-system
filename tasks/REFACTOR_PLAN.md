@@ -33,7 +33,7 @@
 | R11d | AI/プロンプト重複集約④（画像encode metadata）: `image-normalize.ts` の `encode()` が圧縮ループ（最大16回）で毎回 `sharp(bytes).metadata()` を呼び直していたのを、`normalizeForX` 冒頭の `inspectImage` で既知の width を渡して回避。pre-rotation width 由来で等価・振る舞い保存。`resolveByokKey` は実在せず対象外 | perf | S | low | done |
 | R12a | ジョブ重複集約①（`defaultRecordStage`）: 6 handler（post-publish/learning-analysis/image-generation/suggestion/post-generation/md-merge）に重複していた `deps.recordStage ?? (async (s)=>heartbeat(jobId,s))` を `stale.ts` の `defaultRecordStage(jobId)`＋`RecordStage` 型に集約。heartbeat import は defaultRecordStage import へ置換。振る舞い保存 | duplication | S | low | done |
 | R12b | ジョブ重複集約②（`STALE_ERROR`）: terminal.ts と stale.ts に重複していた `stale_timeout` の code/長文message を `terminal.ts` の `STALE_TIMEOUT_CODE`/`STALE_TIMEOUT_MESSAGE` に一本化。各 error オブジェクトは shape（2/4フィールド）を維持しつつ定数を参照。振る舞い保存 | duplication | S | low | done |
-| R12c | ジョブ重複集約③（testability）: `stale.terminalHandler` グローバル可変＋`setStaleTerminalHandler` を廃し `recoverStaleJobs(opts?)` の引数注入へ（既定 finalizeFailedJob）。呼び出し元は cron.ts（引数なし）＋stale.db.test（注入spy）。テストは注入形へ更新 | testability | S | low | todo |
+| R12c | ジョブ重複集約③（testability）: `stale.terminalHandler` グローバル可変＋`setStaleTerminalHandler` を廃し `recoverStaleJobs(opts?: {limit?, terminalHandler?})` の引数注入へ（既定 finalizeFailedJob）。`limit` も positional→options 化（positional呼び出し元なし）。cron.ts は引数なしのまま、stale.db.test は spy を注入する形へ更新（afterEach リセット不要に）。振る舞い保存 | testability | S | low | done |
 | R12d | ジョブ重複集約④: 毎時cron受付枠（auth→hour window claim→run）の共通化。ただしレスポンスJSON形が route毎に差異（news-fetch=result spread／follower-snapshot=result nest 等）＝外部契約のため、auth＋claim部のみ共通化しレスポンス生成は各routeに残す方針で要検討 | duplication | M | low〜med | todo |
 | R13 | UIコンポーネント重複集約: `XAccountRequiredNotice`／focus-ring ユーティリティ定数／`page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ | duplication | M | low〜med | todo |
 | R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を純粋モジュールへ抽出しユニットテスト追加 | testability | S | low | todo |
@@ -44,6 +44,10 @@
 - **R9 の env 型（`ALWAYS_REQUIRED` を非optional化して `as string` を全廃）** は型変更が広範に波及するため中リスク。今回は「検証後に必須項目を非nullで返す型付きアクセサ」に留め、schema自体の非optional化は要決定として保留（暫定案: アクセサ方式）。
 - **`readAt` センチネル `"read"`（notification-bell）** の是正（R9d で当初予定）は見送り。表示はローカル楽観更新の真偽値（既読ドットの有無）でしか使われず、`"read"` は「サーバ確定前のローカル目印」として機能している。型は `string | null`（ISO時刻）だが、偽のISO時刻（例 `new Date().toISOString()`）へ置換すると「本物の既読時刻」に見えてかえって誤解を招く。値は表示・送信されず上書きされるため、現状維持が安全（振る舞い保存の観点でも据え置きが妥当）。
 - **X設定パス定数 `/app/settings?tab=api-keys` の一元化**（R8c で当初予定）は見送り。値が安定（滅多に変わらない）で価値が低い一方、13+箇所に散在し token-refresh の SQL文字列リテラルや execution-prereqs の Record 値・app-banners/route/actions 等の別領域に跨るため、集約すると分散した import を各領域に張ることになり費用対効果が低い。振る舞い保存は可能だが低価値・高分散のため今回対象外（現状維持）。
+
+## 既知の不安定テスト（リファクタ起因ではない）
+
+- `src/lib/jobs/news-digest.db.test.ts`「fans out digests...」は matchedUsers/notified の**グローバル集計下限**を検査するため、並行DBテストの news_config 一致ユーザー状態に依存し、フルスイート実行でごく稀に `matchedUsers=0` で落ちることがある（単体では安定して緑）。テスト自身のコメントも「並行テストを含みうるので下限のみ検査」と明記。リファクタ変更とは無関係。将来 dev-loop で per-window の分離（専用ユーザー限定集計）を検討。
 
 ## 進め方メモ
 

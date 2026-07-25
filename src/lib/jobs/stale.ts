@@ -58,26 +58,29 @@ export type TerminalHandler = (
   kind: JobKind,
 ) => Promise<void>;
 
-let terminalHandler: TerminalHandler = finalizeFailedJob;
-
-/** テスト・後続マイルストーンから終端処理を差し替える。 */
-export function setStaleTerminalHandler(handler: TerminalHandler): void {
-  terminalHandler = handler;
-}
-
 export interface StaleRecoveryResult {
   requeued: number;
   failed: number;
+}
+
+export interface RecoverStaleJobsOptions {
+  /** 1回の回収で処理する上限件数。 */
+  limit?: number;
+  /** stale→failed 確定時の kind別終端処理（既定 `finalizeFailedJob`）。テストで spy を注入する。 */
+  terminalHandler?: TerminalHandler;
 }
 
 /**
  * stale な running ジョブを回収する。scheduler_tick（M4）から呼ぶ想定。
  * attempt<3: lock解除しqueuedへ（available_at=now()+backoff）。
  * attempt>=3: failed確定＋§4.10形式のerror＋kind別終端処理。
+ * 終端処理は `opts.terminalHandler`（既定 `finalizeFailedJob`）で差し替え可能。
  */
 export async function recoverStaleJobs(
-  limit = 100,
+  opts: RecoverStaleJobsOptions = {},
 ): Promise<StaleRecoveryResult> {
+  const limit = opts.limit ?? 100;
+  const terminalHandler = opts.terminalHandler ?? finalizeFailedJob;
   return withTransaction(async (c) => {
     const stale = await c.query<{ id: string; attempt: number; kind: JobKind }>(
       `select id, attempt, kind

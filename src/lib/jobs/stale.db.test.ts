@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { reserveUsage } from "../usage/generation-reserve";
-import { heartbeat, recoverStaleJobs, setStaleTerminalHandler } from "./stale";
-import { finalizeFailedJob } from "./terminal";
+import { heartbeat, recoverStaleJobs } from "./stale";
 
 /**
  * DB integration tests for heartbeat and stale recovery (T-M0-13, 要件04 §4).
@@ -30,8 +29,6 @@ describe("heartbeat & recoverStaleJobs", () => {
   beforeEach((ctx) => {
     if (!available) ctx.skip();
   });
-  // 各テスト後に実 terminal handler（finalizeFailedJob）へ戻す（mock差し替えの漏れ防止）。
-  afterEach(() => setStaleTerminalHandler(finalizeFailedJob));
 
   async function makeXid(c: PoolClient): Promise<string> {
     const uid = randomUUID();
@@ -104,9 +101,6 @@ describe("heartbeat & recoverStaleJobs", () => {
 
   it("requeues stale jobs with attempt<3 (backoff) and fails attempt>=3", async () => {
     const terminalCalls: string[] = [];
-    setStaleTerminalHandler(async (_c, jobId) => {
-      terminalCalls.push(jobId);
-    });
     const { xid, youngId, staleRetryId, staleFailId } = await withTransaction(
       async (c) => {
         const xid = await makeXid(c);
@@ -117,7 +111,11 @@ describe("heartbeat & recoverStaleJobs", () => {
       },
     );
     try {
-      await recoverStaleJobs();
+      await recoverStaleJobs({
+        terminalHandler: async (_c, jobId) => {
+          terminalCalls.push(jobId);
+        },
+      });
       const rows = await withTransaction((c) =>
         c.query<{
           id: string;
