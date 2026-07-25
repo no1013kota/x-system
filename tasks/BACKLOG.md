@@ -174,7 +174,7 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - pg_advisory_xact_lockヘルパのintegrationテスト: 同一キーの並行2 transactionが直列化され、transaction終了でlockが自動解放される
   - x_account単位・user+post_publish・cron時間窓（job名+対象時刻窓）の3種のlockキー導出が決定的であることをユニットテストで確認する
 - メモ: Supavisor transaction mode想定でprepared statementに依存しないpg client設定にする。FOR UPDATE SKIP LOCKEDを使うクエリヘルパもここに置く。supabase-js/PostgRESTでは複文transactionを実行しない方針をコードコメントで明示。
-  実装結果: `src/lib/db/pool.ts`（getPool/withTransaction/poolStats/closePool/claimForUpdateSkipLocked。接続文字列はprocess.env.DATABASE_URL、未設定時はローカル既定。named prepared statement不使用）＋`src/lib/db/locks.ts`（LOCK_CLASS・hash32〔FNV-1a→signed int32〕・xAccount/postPublish/cronWindowのキー導出・acquireXactLockは2-int形pg_advisory_xact_lock）。テスト: `locks.test.ts`（決定性・名前空間分離）＋`pool.db.test.ts`（commit/rollback・接続リークなし・同一キー直列化とtx終了で自動解放・別キーは非ブロック）。`pg`をdependenciesへ移動（本番worker使用）、`@types/pg`はdev。全73件通過。
+  実装結果: `src/lib/db/pool.ts`（getPool/withTransaction/poolStats/closePool。接続文字列はprocess.env.DATABASE_URL、未設定時はローカル既定。named prepared statement不使用）＋`src/lib/db/locks.ts`（LOCK_CLASS・hash32〔FNV-1a→signed int32〕・xAccount/postPublish/cronWindowのキー導出・acquireXactLockは2-int形pg_advisory_xact_lock）。テスト: `locks.test.ts`（決定性・名前空間分離）＋`pool.db.test.ts`（commit/rollback・接続リークなし・同一キー直列化とtx終了で自動解放・別キーは非ブロック）。`pg`をdependenciesへ移動（本番worker使用）、`@types/pg`はdev。全73件通過。
   注: pool.tsはenv.ts（server-only・全必須検証）をimportするとテストで読み込み時例外になるため、DATABASE_URLはprocess.envから直接読む（本番はVercelで検証済みの値が入る）。server-onlyマーカーは付けずsrc/lib/db配下のサーバー専用コードとして扱う。
 
 ### T-M0-10: twitter-text互換の加重文字数ユーティリティ `done`

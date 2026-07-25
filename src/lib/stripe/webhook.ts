@@ -13,9 +13,6 @@ export const STRIPE_WEBHOOK_EVENT_TYPES = [
   "invoice.paid",
 ] as const;
 
-export type StripeWebhookEventType =
-  (typeof STRIPE_WEBHOOK_EVENT_TYPES)[number];
-
 const SUPPORTED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 
 export interface StripeEventDatabase {

@@ -1,11 +1,10 @@
 import "server-only";
 
-import { decrypt, encrypt } from "../crypto";
+import { encrypt } from "../crypto";
 import { resolveKey } from "../crypto/envelope";
 import { env } from "../env";
 import {
   X_OAUTH_STATE_MAX_AGE_SEC,
-  openOAuthTransaction,
   sealOAuthTransaction,
   sealTokenResponse,
   verifyOAuthCallback,
@@ -68,10 +67,6 @@ export function sealState(tx: OAuthTransaction): string {
   return sealOAuthTransaction(tx, stateKey());
 }
 
-export function openState(sealed: string): OAuthTransaction {
-  return openOAuthTransaction(sealed, stateKey());
-}
-
 export function verifyState(
   sealed: string | undefined | null,
   returnedState: string,
@@ -85,9 +80,4 @@ export function verifyState(
 /** token応答を x_accounts 保存形式（AES envelope）へ封緘する。 */
 export function sealTokens(res: XTokenResponse): SealedTokens {
   return sealTokenResponse(res, encrypt, Date.now());
-}
-
-/** 保存済み ciphertext を平文へ復号する（server-onlyでのみ）。 */
-export function openTokenCiphertext(ciphertext: string): string {
-  return decrypt(ciphertext);
 }

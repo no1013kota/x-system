@@ -70,21 +70,3 @@ export async function withTransaction<T>(
     client.release();
   }
 }
-
-/**
- * Runs a caller-authored SELECT with `FOR UPDATE SKIP LOCKED` appended, for
- * lease-style claiming of queued rows (要件04 §4). `selectSql` must be a plain
- * SELECT (code-authored, no user input) ending before any locking clause; the
- * locking clause is appended after ORDER BY/LIMIT as Postgres requires.
- */
-export async function claimForUpdateSkipLocked<T>(
-  client: PoolClient,
-  selectSql: string,
-  params: unknown[] = [],
-): Promise<T[]> {
-  const { rows } = await client.query(
-    `${selectSql} for update skip locked`,
-    params,
-  );
-  return rows as T[];
-}
