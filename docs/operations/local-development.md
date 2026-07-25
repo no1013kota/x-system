@@ -141,6 +141,25 @@ npm run dev                  # → http://localhost:3000
 
 > ⚠️ **SMTPの落とし穴**: `SMTP_USER`/`SMTP_APP_PASSWORD` が「非空ダミー」だと、通知メール処理が transport を構築して送信を試み**認証失敗（email_status=failed）**になる（GoTrue のサインアップ確認メールは別系統でMailpitに届く）。ローカルで通知メールを触るなら、この2つを**空にする**と送信skip挙動に戻る。
 
+### 5.1 X OAuth コールバックURLの設定（X連携を試すとき）
+
+アプリが X へ送る `redirect_uri` は **`APP_BASE_URL` + `X_OAUTH_REDIRECT_PATH`**（`src/lib/x/oauth-server.ts`）。X Developer Portal に登録する Callback URI は**この値と完全一致**させる必要がある。
+
+- `X_OAUTH_REDIRECT_PATH`（`.env.local`）: **`/api/x/oauth/callback`（既定のまま・変更不要）**。実ルートは `src/app/api/x/oauth/callback/route.ts`。
+- **X公式のローカル要件**（docs.x.com）: 「ローカル開発では **`http://127.0.0.1`（`localhost` は不可）**」「URLは**完全一致**（末尾スラッシュ含む）」。ポート付きは可。
+- したがってローカルで X OAuth を通すには **`127.0.0.1` に揃える**:
+  1. `.env.local` の `APP_BASE_URL=http://127.0.0.1:3000` にする（→ 送信 redirect_uri が `http://127.0.0.1:3000/api/x/oauth/callback` になる）。
+  2. X Dev Portal の **Callback URI = `http://127.0.0.1:3000/api/x/oauth/callback`**（完全一致）で登録。
+  3. アプリには **http://127.0.0.1:3000** でアクセスする（cookie/origin を揃えるため。`localhost:3000` と混在させない）。
+  4. Supabase の `site_url`/`additional_redirect_urls`（`supabase/config.toml`）も `http://127.0.0.1:3000` に合わせると認証リンクの origin ずれを防げる（変更後 `supabase stop && supabase start`）。※X連携を試さないなら `localhost:3000` のままで他機能は動く。
+- **X Dev Portal のアプリ設定**（User authentication settings）:
+  - Type of App: **Web App（confidential・Client Secret あり）** または Native/SPA（public・PKCE）。運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential。BYOK はユーザーが自分のAppで選択。
+  - App permissions: **Read and write**（`tweet.write`・`media.write` に必要）。
+  - 要求 scope（アプリが送る）: `tweet.read` / `tweet.write` / `users.read` / `media.write` / `offline.access`。
+  - **Website URL**: OAuth とは無関係のアプリ情報欄。有効なURL（本番ドメインや GitHub リポジトリ等）でよく、Callback とは一致不要。
+- **本番**: Callback URI = `https://<本番ドメイン>/api/x/oauth/callback`（https・完全一致）、`APP_BASE_URL=https://<本番ドメイン>`。
+- BYOK（standard/md）は運営Appではなく**ユーザーが自分の X App の Client ID/Secret をアプリUIで入力**する。その X App にも同じ Callback URI を登録する必要がある。
+
 ---
 
 ## 6. ローカルでテストユーザーを作ってログインする
