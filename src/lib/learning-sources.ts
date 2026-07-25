@@ -4,6 +4,7 @@ import {
   checkExecutionPrerequisites,
   type ExecutionPrereqInput,
 } from "./execution-prereqs";
+import { toIso } from "./format";
 import { requestKey } from "./jobs/keys";
 import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
@@ -104,10 +105,6 @@ export interface AddLearningSourceResult {
 export interface RemoveLearningSourceResult {
   /** analyzed→removing で md_merge job を作った場合の job id。未適用sourceの直接removedは null。 */
   jobId: string | null;
-}
-
-function toIso(v: Date | string): string {
-  return typeof v === "string" ? new Date(v).toISOString() : v.toISOString();
 }
 
 /** 表示中アカウントが本人所有かつ active 選択中か（要件05 §1）。不一致は job_conflict。 */

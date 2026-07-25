@@ -6,6 +6,7 @@ import {
   type PromptTemplateKind,
 } from "./gen-prompts";
 import type { Queryable } from "../db/queryable";
+import { toIso } from "../format";
 
 /**
  * prompt_templates の system default seed と解決（要件02 §3.5, T-M3-02）。DBは注入し純粋に保つ。
@@ -77,10 +78,6 @@ export interface PromptTemplateView {
   isOverride: boolean;
   /** 上書き行の updated_at（ISO・ms精度）。楽観lockの expected_updated_at。未上書きは null。 */
   updatedAt: string | null;
-}
-
-function toIso(v: Date | string): string {
-  return typeof v === "string" ? new Date(v).toISOString() : v.toISOString();
 }
 
 /** md/premium 以外は編集不可（standard は forbidden・要件06 §9）。 */

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DB_ENUMS } from "./db/enums";
+import { toIsoOrNull } from "./format";
 import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
 
@@ -83,11 +84,6 @@ export function decodeNewsCursor(raw: string | null | undefined): NewsCursor | n
   return { ts, id };
 }
 
-function toIso(value: Date | string | null): string | null {
-  if (value == null) return null;
-  return typeof value === "string" ? new Date(value).toISOString() : value.toISOString();
-}
-
 interface NewsItemRow {
   id: string;
   category: string;
@@ -158,12 +154,12 @@ export async function listNewsItems(
     summary: r.summary,
     sourceUrl: r.source_url,
     impact: r.impact,
-    publishedAt: toIso(r.published_at),
+    publishedAt: toIsoOrNull(r.published_at),
   }));
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? encodeNewsCursor({ ts: toIso(last.order_ts) as string, id: last.id })
+      ? encodeNewsCursor({ ts: toIsoOrNull(last.order_ts) as string, id: last.id })
       : null;
   return { items, nextCursor };
 }

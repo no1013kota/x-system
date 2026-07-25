@@ -1,5 +1,6 @@
 import { AppError } from "@/lib/observability/errors";
 
+import { toIso } from "./format";
 import type { Queryable } from "./x/token-refresh";
 
 /**
@@ -45,10 +46,6 @@ export function decodeNotificationCursor(
   const id = decoded.slice(sep + 1);
   if (!createdAt || !id) return null;
   return { createdAt, id };
-}
-
-function toIso(value: Date | string): string {
-  return typeof value === "string" ? new Date(value).toISOString() : value.toISOString();
 }
 
 interface NotificationRow {

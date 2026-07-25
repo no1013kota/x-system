@@ -18,3 +18,17 @@ export function formatJst(iso: string): string {
     timeZone: "Asia/Tokyo",
   }).format(new Date(iso));
 }
+
+/**
+ * DB の timestamp（`Date | string`）を ISO 文字列へ正規化する。string も Date を経由して
+ * 正準表記に揃える。各 view builder（drafts/notifications/learning/prompt-templates 等）で
+ * 重複していた変換の単一正本。
+ */
+export function toIso(value: Date | string): string {
+  return typeof value === "string" ? new Date(value).toISOString() : value.toISOString();
+}
+
+/** `toIso` の null 許容版（null/undefined はそのまま null を返す）。 */
+export function toIsoOrNull(value: Date | string | null): string | null {
+  return value == null ? null : toIso(value);
+}
