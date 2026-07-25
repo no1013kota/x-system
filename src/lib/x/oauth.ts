@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { decryptWithKey, encryptWithKey } from "../crypto/envelope";
+import { DB_ENUMS } from "../db/enums";
 
 /**
  * X (Twitter) OAuth 2.0 Authorization Code + PKCE クライアント基盤（PRD A-3/A-4/§8.1,
@@ -33,7 +34,8 @@ export const X_SCOPES = [
 /** OAuth stateの既定TTL。仕様は「短TTL」のみ規定のため技術判断で10分。 */
 export const X_OAUTH_STATE_MAX_AGE_SEC = 600;
 
-export type XAuthType = "byok" | "managed";
+/** x_auth_type enum 値（'byok' | 'managed'）。DB_ENUMS が正本。 */
+export type XAuthType = (typeof DB_ENUMS.x_auth_type)[number];
 
 // ---------------------------------------------------------------------------
 // PKCE (RFC 7636)

@@ -1,5 +1,6 @@
 import type { ProviderCall } from "../ai/normalize";
-import type { Queryable } from "../x/token-refresh";
+import { DB_ENUMS } from "./enums";
+import type { Queryable } from "./queryable";
 
 /**
  * 原価台帳 external_api_usage_events への冪等記録（要件02 §3.17・要件04 §10, T-M3-03）。
@@ -7,13 +8,15 @@ import type { Queryable } from "../x/token-refresh";
  * unique制約でリトライ・重複起動でも二重計上しない。service-role（pool）から実行する。
  */
 
+/** api_provider enum 値（'x' | 'anthropic' | 'openai' | 'google'）。DB_ENUMS が正本。 */
+export type ApiProvider = (typeof DB_ENUMS.api_provider)[number];
+
 export interface ExternalApiUsageInput {
   /** 利用者。job外のNEWS（運営リサーチ）は null（要件02 §3.17・要件04 §10）。 */
   userId: string | null;
   xAccountId?: string | null;
   jobId?: string | null;
-  /** api_provider enum: 'x' | 'anthropic' | 'openai' | 'google'。 */
-  provider: string;
+  provider: ApiProvider;
   /** operation CHECK: text_generation / web_search / image_generation / x_post_* / x_user_read。 */
   operation: string;
   requestId?: string | null;
