@@ -13,10 +13,7 @@ import {
 } from "@/lib/api-keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { errorResult } from "./_helpers";
-import {
-  AppError,
-  userMessageForCode,
-} from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { z } from "zod";
 
 interface ApiKeyActionResult {
@@ -90,10 +87,13 @@ export async function verifyApiKey(
       userId: user.id,
     });
     if (result.status === "invalid") {
+      // 検証失敗はprovider応答を伏せて invalid に畳むが（秘密漏洩防止）、利用者には
+      // 「時間をおいて再試行」ではなく貼り直しという正しい回復手順を示す（要件06 §3.2）。
       return {
         code: "provider_error",
         keyStatus: "invalid",
-        message: userMessageForCode("provider_error"),
+        message:
+          "このキーでは認証できませんでした。キーの貼り間違い・失効・利用権限・残高をご確認のうえ、正しいキーを貼り直して保存してください（プロバイダ側の一時的な障害の可能性もあります）。",
         provider: result.provider,
         status: "error",
       };

@@ -101,7 +101,9 @@
 
 エラーの`details`には不足項目の一覧と設定画面のパスを含める（要件05 §2.2）。
 
-X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／OpenAI／Googleの登録・差し替え・疎通確認・即時削除を置く。秘密値入力はpassword controlとし、保存後に入力を空へ戻して、Client ID／APIキーの末尾4文字、Client種別、検証状態、最終確認時刻だけを表示する。Developer Consoleで登録する`APP_BASE_URL + X_OAUTH_REDIRECT_PATH`のcallback URL、必要scope 5種、credits・自動チャージ・spending limitの確認先をテキスト手順と差し替え可能な画像枠で表示する。premiumではキー入力フォーム自体を表示せず、ユーザーのX Developer App資格情報・AI APIキーが不要なことを案内する。文章生成・リサーチproviderは運営設定のClaude（SC-10でread-only表示）、画像providerはOpenAI/Geminiのうち運営キーが利用可能なものから選べる。
+X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／OpenAI／Googleの登録・差し替え・疎通確認・即時削除を置く。秘密値入力はpassword controlとし、保存後に入力を空へ戻して、Client ID／APIキーの末尾4文字、Client種別、検証状態、最終確認時刻だけを表示する。Developer Consoleで登録する`APP_BASE_URL + X_OAUTH_REDIRECT_PATH`のcallback URL、必要scope 5種、credits・自動チャージ・spending limitの確認先をテキスト手順と差し替え可能な画像枠で表示する。premiumではキー入力フォーム自体を表示せず、ユーザーのX Developer App資格情報・AI APIキーが不要なことを案内する。
+- AIキーは保存に続けて疎通確認まで自動で実行する。検証状態が`valid`でないキーは投稿生成に使えないため、その旨と次の操作をキーごとに明示する（未確認＝「疎通確認」を促す／失敗＝貼り直しを促す）。
+- 検証失敗はprovider応答を伏せたまま、「時間をおいて再試行」ではなく回復手順（貼り間違い・失効・利用権限・残高の確認と貼り直し）を示す。成功時は続く手順（AI設定「AI用途」での文章生成への割り当て）を案内する。文章生成・リサーチproviderは運営設定のClaude（SC-10でread-only表示）、画像providerはOpenAI/Geminiのうち運営キーが利用可能なものから選べる。
 
 ### 3.3 発信設定の必須項目
 

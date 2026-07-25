@@ -73,8 +73,21 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
         <StatusBadge status={keyState.status} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        秘密値は再表示されません。{verified ? `最終確認: ${verified}` : "疎通確認は未実施です。"}
+        秘密値は再表示されません。
+        {verified
+          ? `最終確認: ${verified}`
+          : keyState.status === "invalid"
+            ? "疎通確認に失敗しました。"
+            : "疎通確認は未実施です。"}
       </p>
+      {keyState.provider !== "x" && keyState.status !== "valid" ? (
+        // 生成の前提は valid のみ（execution-prereqs）。未確認/失敗のままだと投稿生成が始まらない。
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+          {keyState.status === "invalid"
+            ? "このキーは認証できませんでした。正しいキーを貼り直すまで投稿生成には使えません。"
+            : "疎通確認が済むまで、このキーは投稿生成に使えません。「疎通確認」を実行してください。"}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -154,7 +167,28 @@ export function ApiKeySettings({
         },
       }));
       setAiSecrets((current) => ({ ...current, [provider]: "" }));
-      finishAction(result.message);
+      // 未確認のキーは投稿生成に使えないため、保存に続けて疎通確認まで自動で行う
+      // （利用者が「保存しただけで使える」と誤解して詰まるのを防ぐ・要件06 §3.2）。
+      setNotice({ message: "保存しました。疎通を確認しています…", tone: "success" });
+      const verified = await verifyApiKey({ provider });
+      setKeys((current) => {
+        const existing = current[provider];
+        if (!existing || !verified.keyStatus) return current;
+        return {
+          ...current,
+          [provider]: {
+            ...existing,
+            status: verified.keyStatus,
+            verifiedAt: verified.keyStatus === "valid" ? new Date().toISOString() : null,
+          },
+        };
+      });
+      if (verified.keyStatus === "valid") {
+        finishAction("APIキーを保存し、疎通を確認しました。AI設定の「AI用途」で、このAIを文章生成に割り当てると投稿を作成できます。");
+      } else {
+        setNotice({ message: verified.message, tone: "error" });
+        router.refresh();
+      }
     });
   }
 
