@@ -4,6 +4,9 @@ import { getPool } from "./db/pool";
 import type { ExecutionPrereqInput } from "./execution-prereqs";
 import type { PlanId } from "./plans";
 
+/** 文章生成・リサーチに使えるprovider（AI用途 text の選択肢）。 */
+const TEXT_CAPABLE_PROVIDERS = ["anthropic", "openai", "google"] as const;
+
 /**
  * 実行前提の判定入力をDBから収集する（要件06 §3.2, T-M2-23）。生成・投稿・スケジュール・学習の
  * Actionと初期設定ガイド（SC-05）が共用する。文章/画像AIキーの有効性は ai_purpose_config の割当
@@ -60,6 +63,12 @@ export async function gatherExecutionPrereqInputs(
     xApiKeyStatus: keyStatus["x"] ?? null,
     hasActiveXAccount,
     textAiKeyValid: !!ai.text && keyStatus[ai.text] === "valid",
+    textProviderAssigned: !!ai.text,
+    // 文章生成に使えるAIキー（anthropic/openai/google）が1つでもvalidか。キーはあるのに
+    // 用途未割り当て、というケースだけ割り当て画面へ誘導するために使う。
+    hasValidTextCapableKey: TEXT_CAPABLE_PROVIDERS.some(
+      (provider) => keyStatus[provider] === "valid",
+    ),
     imageRequested: opts.imageRequested ?? false,
     imageAiKeyValid: !!ai.image && keyStatus[ai.image] === "valid",
     baseMdVersion,

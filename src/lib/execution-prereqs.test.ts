@@ -181,6 +181,42 @@ describe("buildSetupChecklist", () => {
     expect(list.every((i) => i.satisfied)).toBe(true);
     expect(items(list)).not.toContain("image_ai_key");
   });
+
+  it("points to the AI purpose tab when the key is valid but no text provider is assigned", () => {
+    // キーは登録・確認済みでも AI用途 未割り当てなら textAiKeyValid は false。APIキー画面へ
+    // 戻しても「確認済み」と出るだけで進めないため、割り当て画面へ誘導する。
+    const list = buildSetupChecklist(
+      byok({
+        textAiKeyValid: false,
+        textProviderAssigned: false,
+        hasValidTextCapableKey: true,
+      }),
+    );
+    const textKey = list.find((i) => i.item === "text_ai_key")!;
+    expect(textKey.satisfied).toBe(false);
+    expect(textKey.label).toBe("文章AIの割り当て");
+    expect(textKey.settingsPath).toBe("/app/ai-settings?tab=purposes");
+  });
+
+  it("keeps pointing to the API key tab when no valid AI key exists yet", () => {
+    // 未割り当てでも、そもそも有効なキーが無いならAPIキー登録が先。
+    const list = buildSetupChecklist(
+      byok({
+        textAiKeyValid: false,
+        textProviderAssigned: false,
+        hasValidTextCapableKey: false,
+      }),
+    );
+    const textKey = list.find((i) => i.item === "text_ai_key")!;
+    expect(textKey.label).toBe("文章AIキー");
+    expect(textKey.settingsPath).toBe("/app/settings?tab=api-keys");
+  });
+
+  it("gives every item a one-line description", () => {
+    for (const item of buildSetupChecklist(byok({ hasActiveXAccount: false }))) {
+      expect(item.description.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("assertExecutionPrerequisites", () => {

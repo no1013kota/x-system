@@ -58,6 +58,13 @@ export interface ExecutionPrereqInput {
   hasActiveXAccount: boolean;
   /** BYOKの文章providerキーがvalidか。 */
   textAiKeyValid: boolean;
+  /**
+   * AI設定「AI用途」で文章生成のproviderが割り当て済みか。キーがvalidでも未割り当てだと
+   * `textAiKeyValid` は false になるため、初期設定ガイドで不足理由を出し分けるのに使う。
+   */
+  textProviderAssigned?: boolean;
+  /** 文章生成に使えるAIキーが1つでもvalidか（未割り当ての誘導先を決めるのに使う）。 */
+  hasValidTextCapableKey?: boolean;
   /** この操作が画像生成を伴うか。 */
   imageRequested: boolean;
   /** BYOKの画像providerキーがvalidか。 */
@@ -154,7 +161,27 @@ export interface SetupChecklistItem {
   label: string;
   satisfied: boolean;
   settingsPath: string;
+  /** 何をする手順かの1行説明（順序依存や所要時間の目安を含む）。 */
+  description: string;
 }
+
+/** 各手順の1行説明。何をするのか・前後関係が分かるようにする（要件06 §3.1）。 */
+const ITEM_DESCRIPTION: Record<PrereqItem, string> = {
+  subscription: "プランのお申し込み状況を確認します。",
+  x_api_key: "X Developer ConsoleでClient IDを取得して登録します。",
+  x_account: "投稿するXアカウントを認可します（X APIキーの登録後に行えます）。",
+  text_ai_key: "文章生成に使うAIのAPIキーを登録し、疎通確認まで行います。",
+  image_ai_key: "画像生成に使うAIのAPIキーを登録します。",
+  persona: "誰に何を発信するかを保存すると、AIの土台が作られます。",
+};
+
+/** 文章AIキーは valid でも「AI用途」で割り当てないと充足しないため、不足理由で表示を出し分ける。 */
+const TEXT_PROVIDER_UNASSIGNED = {
+  label: "文章AIの割り当て",
+  path: "/app/ai-settings?tab=purposes",
+  description:
+    "登録済みのAI APIキーのうち、どれで文章生成・リサーチを行うかを選びます。",
+} as const;
 
 /**
  * ホーム初期設定ガイド（SC-05, 要件06 §3.1）のチェックリストを組み立てる。充足判定は
@@ -167,10 +194,30 @@ export function buildSetupChecklist(
     checkExecutionPrerequisites({ ...input, imageRequested: false })?.missing ?? [],
   );
   const items = input.plan === "premium" ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
-  return items.map((item) => ({
-    item,
-    label: PREREQ_ITEM_LABELS[item],
-    satisfied: !missing.has(item),
-    settingsPath: ITEM_PATH[item],
-  }));
+  return items.map((item) => {
+    const satisfied = !missing.has(item);
+    // キーはvalidなのに未充足＝AI用途で文章providerが未割り当て。APIキー画面へ戻しても
+    // 「確認済み」と表示されるだけで進めないため、割り当て画面へ誘導する。
+    if (
+      item === "text_ai_key" &&
+      !satisfied &&
+      input.textProviderAssigned === false &&
+      input.hasValidTextCapableKey === true
+    ) {
+      return {
+        item,
+        label: TEXT_PROVIDER_UNASSIGNED.label,
+        satisfied,
+        settingsPath: TEXT_PROVIDER_UNASSIGNED.path,
+        description: TEXT_PROVIDER_UNASSIGNED.description,
+      };
+    }
+    return {
+      item,
+      label: PREREQ_ITEM_LABELS[item],
+      satisfied,
+      settingsPath: ITEM_PATH[item],
+      description: ITEM_DESCRIPTION[item],
+    };
+  });
 }
