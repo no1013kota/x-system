@@ -1,4 +1,5 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
 import { PATTERN_MAX_POSTS } from "@/lib/post/generation-validation";
 
@@ -64,7 +65,7 @@ async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
              and xa.automation_disabled_at is null) as auto_consent_ok,
             p.plan, p.subscription_status, p.ai_purpose_config,
             to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM-DD') as jst_date,
-            to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM') as jst_month
+            ${CURRENT_MONTH_JST_SQL} as jst_month
        from schedule_slots ss
        join x_accounts xa on xa.id = ss.x_account_id
        join profiles p on p.id = xa.user_id

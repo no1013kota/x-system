@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { yen } from "@/lib/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Check, Minus } from "lucide-react";
@@ -81,10 +82,6 @@ const CONFIRMATION_ITEMS: { term: string; description: string }[] = [
   { term: "解約方法", description: "設定のCustomer Portalからいつでも期間末解約できます" },
   { term: "提供開始", description: "Checkout完了後、契約反映が確認でき次第すぐに開始します" },
 ];
-
-function yen(value: number): string {
-  return new Intl.NumberFormat("ja-JP").format(value);
-}
 
 /** Boolean cells render an icon; string cells render text. */
 function FeatureCell({ value }: { value: Cell }) {

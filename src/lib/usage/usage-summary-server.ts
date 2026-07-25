@@ -1,4 +1,5 @@
 import "server-only";
+import { CURRENT_MONTH_JST_SQL } from "./current-month";
 
 import { getPool } from "../db/pool";
 import { PLANS } from "../plans";
@@ -21,7 +22,7 @@ export async function loadUsageSummaryForUser(
             coalesce(images_count, 0) as images_count
        from usage_counters
       where user_id = $1
-        and month = to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`,
+        and month = ${CURRENT_MONTH_JST_SQL}`,
     [userId],
   );
   const counters = rows[0] ?? {

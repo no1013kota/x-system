@@ -17,7 +17,8 @@
 | R6b | `getAppEncryptionKey()` を `lib/crypto` に追加し `resolveKey(env.APP_ENCRYPTION_KEY)` の重複（confirm route/actions/billing-return-server）を集約 | duplication | S | low | done |
 | R6c | `canBrowseApp(status)` 述語（route-guard/actions の `viewScope!=='app'` 重複を集約）＋ 未使用 `SubscriptionAccess.action`/`canBrowseApp` フィールド削除（R2繰越・テスト更新） | duplication/deadcode | S | low | done |
 | R7 | 認証フォームUI共通化: `authInputClassName` 共有定数化（4フォーム）＋ `FieldError` を `components/auth/field-error.tsx` へ切り出し、login/reset系のインラインerror<p>を置換 | duplication | M | low | done |
-| R8 | フォーマッタ/定数の集約: `formatJst()`（ja-JP/Asia/Tokyo）＋ `yen()` 通貨＋ JST当月式 `MONTH_EXPR` ＋ 投稿パターンlabel p1〜p6（badge用の一致5箇所）＋ X設定パス定数 | duplication | M | low | todo |
+| R8 | `yen()`（`lib/format.ts`）＋ JST当月式 `CURRENT_MONTH_JST_SQL`（`lib/usage/current-month.ts`, 重複6箇所）を集約 | duplication | M | low | done |
+| R8b | 残: `formatJst()`（ja-JP/Asia/Tokyo 日時フォーマッタ、null分岐は呼び出し側）＋ 投稿パターンlabel p1〜p6（badge用一致5箇所）＋ X設定パス定数（`/app/settings?tab=api-keys`） | duplication | M | low | todo |
 | R9 | 型の狭め: `api_provider` enum化（`recordExternalApiUsage`）／`ProviderCall`↔`providerCallSchema` 単一化／x_account `status`・`auth_type` union化／`readAt` センチネル是正／非null断定の除去（notification-bell 等） | types | M | low〜med | todo |
 | R10 | 複雑度の分割: `subscription-sync.applyPreparedStripeEvent`（支払失敗通知INSERT抽出）／`jobs/terminal.finalizeFailedJob`（コピーテーブル化）／`update-session` のprofiles取得抽出 | complexity | M | low | todo |
 | R11 | AI/プロンプト重複集約: 引用dedup（3アダプタ＋anthropic継続ループ）／`resolveByokKey`／`textModelFor`／テンプレート三段解決／画像encodeのmetadata再取得回避 | duplication/perf | M | low〜med | todo |

@@ -1,4 +1,5 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 
 import { PLANS } from "../plans";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
@@ -49,8 +50,6 @@ export function requiredPostSlots(finalTexts: string[]): { normal: number; url: 
   };
 }
 
-const POST_MONTH = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
-
 /**
  * 投稿枠を consume する（要件03 §7.1・要件04 §10 step7）。全プランで consume event を記帳し、premium かつ
  * live（dry_runは非加算）のときだけ月次counter（normal/url_posts_count）を **同一transaction** で +1 する。
@@ -74,7 +73,7 @@ async function consumePostSlot(
     const ins = await tx.query(
       `insert into usage_events
          (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, $5, ${POST_MONTH}, $6, $7::usage_event_operation, 1, 'consume', $8)
+       values ($1, $2, $3, $4, $5, ${CURRENT_MONTH_JST_SQL}, $6, $7::usage_event_operation, 1, 'consume', $8)
        on conflict (idempotency_key) do nothing`,
       [
         params.userId,
@@ -91,13 +90,13 @@ async function consumePostSlot(
     if (!params.premiumLive) return; // 全プランはevent記帳のみ。premium月次counterはliveのみ加算（§10）
     const col = params.counterType === "post_url" ? "url_posts_count" : "normal_posts_count";
     await tx.query(
-      `insert into usage_counters (user_id, month) values ($1, ${POST_MONTH})
+      `insert into usage_counters (user_id, month) values ($1, ${CURRENT_MONTH_JST_SQL})
        on conflict (user_id, month) do nothing`,
       [params.userId],
     );
     const updated = await tx.query<{ n: number }>(
       `update usage_counters set ${col} = ${col} + 1, updated_at = now()
-        where user_id = $1 and month = ${POST_MONTH}
+        where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}
         returning ${col} as n`,
       [params.userId],
     );
@@ -511,7 +510,7 @@ export async function executePostPublish(
       const used = await db.query<{ normal_posts_count: number; url_posts_count: number }>(
         `select coalesce(normal_posts_count, 0) as normal_posts_count,
                 coalesce(url_posts_count, 0) as url_posts_count
-           from usage_counters where user_id = $1 and month = ${POST_MONTH}`,
+           from usage_counters where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}`,
         [userId],
       );
       const usedNormal = used.rows[0]?.normal_posts_count ?? 0;

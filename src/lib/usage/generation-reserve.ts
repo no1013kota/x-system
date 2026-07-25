@@ -1,4 +1,5 @@
 import { AppError } from "../observability/errors";
+import { CURRENT_MONTH_JST_SQL } from "./current-month";
 import type { Queryable } from "../x/token-refresh";
 import { notifyUsageThresholds } from "./usage-threshold";
 
@@ -22,8 +23,6 @@ const OPERATION: Record<UsageReserveType, string> = {
   image: "image_generation",
 };
 
-const MONTH_EXPR = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
-
 /**
  * 枠を +1 reserve する（同一transactionで counter FOR UPDATE→上限確認→event insert→counter +1）。JST月へ記録。
  * 既に同一reserve keyがあれば no-op（冪等・上限判定もしない）。counter行が無ければ作る。
@@ -44,14 +43,14 @@ export async function reserveUsage(
   const column = COUNTER_COLUMN[params.type];
   await tx.query(
     `insert into usage_counters (user_id, month)
-     values ($1, ${MONTH_EXPR})
+     values ($1, ${CURRENT_MONTH_JST_SQL})
      on conflict (user_id, month) do nothing`,
     [params.userId],
   );
   // 当月counterをロックして現在値を読む（並行reserveの上限すり抜けを防ぐ・要件03 §7.4）。
   const current = (
     await tx.query<{ n: number }>(
-      `select ${column} as n from usage_counters where user_id = $1 and month = ${MONTH_EXPR} for update`,
+      `select ${column} as n from usage_counters where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL} for update`,
       [params.userId],
     )
   ).rows[0];
@@ -67,14 +66,14 @@ export async function reserveUsage(
   await tx.query(
     `insert into usage_events
        (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key)
-     values ($1, $2, $3, ${MONTH_EXPR},
+     values ($1, $2, $3, ${CURRENT_MONTH_JST_SQL},
              $4::usage_counter_type, $5::usage_event_operation, 1, 'reserve', $6)
      on conflict (idempotency_key) do nothing`,
     [params.userId, params.xAccountId ?? null, params.jobId, params.type, OPERATION[params.type], key],
   );
   const updated = await tx.query<{ n: number }>(
     `update usage_counters set ${column} = ${column} + 1, updated_at = now()
-      where user_id = $1 and month = ${MONTH_EXPR}
+      where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}
       returning ${column} as n`,
     [params.userId],
   );

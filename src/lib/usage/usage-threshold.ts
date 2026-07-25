@@ -1,4 +1,5 @@
 import { PLANS } from "../plans";
+import { CURRENT_MONTH_JST_SQL } from "./current-month";
 import type { Queryable } from "../x/token-refresh";
 
 /**
@@ -24,8 +25,6 @@ const LABEL: Record<UsageCounterKey, string> = {
   images: "画像枠",
 };
 
-const MONTH_EXPR = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
-
 async function insertUsageNotification(
   db: Queryable,
   params: { userId: string; key: UsageCounterKey; threshold: 80 | 100; limit: number },
@@ -42,7 +41,7 @@ async function insertUsageNotification(
        (user_id, type, dedupe_key, title, body, link, payload,
         in_app_enabled, email_status, email_available_at)
      select $1, 'usage',
-            'usage:' || ${MONTH_EXPR} || ':' || $2 || ':' || $3::text,
+            'usage:' || ${CURRENT_MONTH_JST_SQL} || ':' || $2 || ':' || $3::text,
             $4, $5, '/app/settings?tab=billing',
             jsonb_build_object('counter_type', $2::text, 'threshold', $3::int),
             coalesce((p.notification_config->'usage'->>'in_app')::boolean, false),

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { yen } from "@/lib/format";
 import Link from "next/link";
 
 import { LegalFooter } from "@/components/legal-footer";
@@ -39,10 +40,6 @@ const PLAN_TAGLINE: Record<string, string> = {
   md: "複数アカウントを細かく管理",
   premium: "APIキー不要でおまかせ運用",
 };
-
-function yen(value: number): string {
-  return new Intl.NumberFormat("ja-JP").format(value);
-}
 
 export default function Home() {
   return (
