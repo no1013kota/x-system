@@ -12,7 +12,7 @@
 | R2 | デッドコード削除（未使用export/型）: `planForStripePriceId` / `StripeWebhookEventType` / `pool.claimForUpdateSkipLocked` / `oauth-server.openState`・`openTokenCiphertext`。※`SubscriptionAccess.action`・`canBrowseApp`はR6で対応 | deadcode | S | low | done |
 | R3 | **`pooledQueryable()` / `runInPooledTx()` を `lib/db/pool.ts` に集約**し約30ファイルの `const pooledDb: Queryable = {...} as unknown as ...` と `runInTx` を置換。あわせて `Queryable` 型を `x/token-refresh.ts` → `lib/db/queryable.ts` へ移設し re-export（境界是正）。31ファイル修正 | duplication/boundary | L | low | done |
 | R4 | Stripe/ライブラリの重複集約: **HTTP応答基盤 `apiJson`/`apiError`/`statusForErrorCode` を `lib/http/api-response.ts` へ抽出**（checkout.ts/portal.ts の重複解消）＋ `idOf`/`expandedId` 統合。※route内 `selectProfile`/billing-return cookieラッパは次パス（R4b）へ | duplication | M | low | done |
-| R5 | ブラウザ決済フロー共通化: `checkout-browser`/`portal-browser` の URL検証＋fetch→json→navigate 骨格を共有関数へ（先の `fetch` 束縛修正済みを一本化） | duplication | M | low | todo |
+| R5 | ブラウザ決済フロー共通化: `checkout-browser`/`portal-browser` の URL検証＋fetch→json→navigate 骨格を `billing-redirect.ts`（`startBillingRedirect`/`httpsUrlFromResponse`）へ集約。2ファイルは薄いラッパに | duplication | M | low | done |
 | R6 | 認証共通化: `captchaTokenSchema`/`emailSchema` 抽出（signin/signup/recovery/resend）＋ `hasErrorCode()` ＋ `getAppEncryptionKey()` ＋ `canBrowseApp(status)` 述語 | duplication | S | low | todo |
 | R7 | 認証フォームUI共通化: `inputClassName` 共有定数化（同一文字列の4フォーム）＋ `FieldError` を `components/auth` へ切り出し全フォーム再利用 | duplication | M | low | todo |
 | R8 | フォーマッタ/定数の集約: `formatJst()`（ja-JP/Asia/Tokyo）＋ `yen()` 通貨＋ JST当月式 `MONTH_EXPR` ＋ 投稿パターンlabel p1〜p6（badge用の一致5箇所）＋ X設定パス定数 | duplication | M | low | todo |
