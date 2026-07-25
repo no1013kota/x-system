@@ -9,9 +9,11 @@ import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 import { PLAN_IDS, PLANS, type PlanId } from "@/lib/plans";
+import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { CheckoutButton } from "./checkout-button";
+import { CheckoutPending } from "./checkout-pending";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
@@ -103,6 +105,8 @@ function FeatureCell({ value }: { value: Cell }) {
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
+  // Checkout直後の反映待ち。反映が済むと下の判定で /app へリダイレクトされる。
+  const awaitingCheckout = params.checkout === "success";
 
   // 契約が有効（trialing/active）で本編を使えるユーザーが /plans に来たら /app へ送り、
   // 決済成功後にこの画面で行き止まりになるのを防ぐ。incomplete・canceled 等はプラン選択／
@@ -150,15 +154,11 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             </p>
           ) : null}
 
-          {params.checkout === "success" ? (
-            <p
-              className="mx-auto max-w-3xl rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"
-              role="status"
-            >
-              お申し込みを受け付けました。契約情報を確認しています。
-            </p>
-          ) : null}
-
+          {/* 反映待ちの間はプラン比較表とCTAを描画せず、待機カードだけを出す（二重申込の防止）。 */}
+          {awaitingCheckout ? (
+            <CheckoutPending supportEmail={env.SUPPORT_EMAIL ?? null} />
+          ) : (
+            <>
           {/* プラン比較表（SC-04: 3プラン比較） */}
           <section aria-label="料金プラン比較" className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
@@ -286,6 +286,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               をご確認ください。
             </p>
           </section>
+            </>
+          )}
         </div>
       </main>
       <LegalFooter />
