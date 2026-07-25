@@ -5,17 +5,15 @@ import {
   encryptWithKey,
 } from "@/lib/crypto/envelope";
 
+import { captchaTokenSchema, emailSchema } from "./form-schemas";
 import { authPasswordSchema } from "./signup";
 
 export const RECOVERY_SESSION_COOKIE = "space-ai-recovery";
 export const RECOVERY_SESSION_MAX_AGE_SEC = 15 * 60;
 
 export const passwordResetRequestSchema = z.object({
-  captcha_token: z
-    .string()
-    .min(1, "あなたが人間であることの確認を完了してください。")
-    .max(2048),
-  email: z.string().trim().email("メールアドレスを確認してください。"),
+  captcha_token: captchaTokenSchema,
+  email: emailSchema,
 });
 
 export const updatePasswordSchema = z

@@ -5,6 +5,7 @@ import {
   CURRENT_TERMS_VERSION,
 } from "@/lib/legal";
 
+import { captchaTokenSchema, emailSchema } from "./form-schemas";
 import {
   PASSWORD_MAX_BYTES,
   PASSWORD_MAX_LENGTH,
@@ -30,11 +31,8 @@ export const authPasswordSchema = z.string().superRefine((password, ctx) => {
 
 export const signUpSchema = z
   .object({
-    captcha_token: z
-      .string()
-      .min(1, "あなたが人間であることの確認を完了してください。")
-      .max(2048),
-    email: z.string().trim().email("メールアドレスを確認してください。"),
+    captcha_token: captchaTokenSchema,
+    email: emailSchema,
     password: authPasswordSchema,
     password_confirmation: z.string(),
     privacy_acknowledged: z.literal("on", {

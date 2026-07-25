@@ -1,13 +1,11 @@
 import { z } from "zod";
 
+import { captchaTokenSchema, emailSchema } from "./form-schemas";
 import { authPasswordSchema } from "./signup";
 
 export const signInSchema = z.object({
-  captcha_token: z
-    .string()
-    .min(1, "あなたが人間であることの確認を完了してください。")
-    .max(2048),
-  email: z.string().trim().email("メールアドレスを確認してください。"),
+  captcha_token: captchaTokenSchema,
+  email: emailSchema,
   next: z.string().max(2048).optional().default(""),
   password: authPasswordSchema,
 });

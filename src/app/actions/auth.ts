@@ -2,9 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
+import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
 import {
   passwordResetRequestInputFromFormData,
@@ -43,12 +43,12 @@ function confirmationRedirectUrl(): string {
   return new URL("/auth/confirm", env.APP_BASE_URL).toString();
 }
 
-function isCaptchaFailure(error: unknown): boolean {
+function hasErrorCode(error: unknown, code: string): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    error.code === "captcha_failed"
+    error.code === code
   );
 }
 
@@ -80,7 +80,7 @@ export async function signUp(
       },
     });
 
-    if (isCaptchaFailure(error)) {
+    if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
     if (error || !data.user) {
@@ -118,7 +118,7 @@ export async function resendSignUpConfirmation(
   _previousState: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
-  const emailResult = z.string().trim().email().safeParse(formData.get("email"));
+  const emailResult = emailSchema.safeParse(formData.get("email"));
   if (!emailResult.success) {
     return {
       status: "error",
@@ -126,11 +126,7 @@ export async function resendSignUpConfirmation(
     };
   }
 
-  const captchaResult = z
-    .string()
-    .min(1)
-    .max(2048)
-    .safeParse(formData.get("captcha_token"));
+  const captchaResult = captchaTokenSchema.safeParse(formData.get("captcha_token"));
   if (!captchaResult.success) {
     return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
   }
@@ -145,7 +141,7 @@ export async function resendSignUpConfirmation(
         captchaToken: captchaResult.data,
       },
     });
-    if (isCaptchaFailure(error)) {
+    if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
   } catch {
@@ -180,7 +176,7 @@ export async function requestPasswordReset(
       redirectTo: confirmationRedirectUrl(),
       captchaToken: input.captcha_token,
     });
-    if (isCaptchaFailure(error)) {
+    if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
   } catch {
@@ -238,15 +234,6 @@ export async function updatePassword(
   redirect("/login?password_updated=1");
 }
 
-function isEmailUnconfirmed(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "email_not_confirmed"
-  );
-}
-
 /** Signs in a confirmed user and resolves the first authorized destination. */
 export async function signIn(
   _previousState: AuthFormState,
@@ -274,10 +261,10 @@ export async function signIn(
     });
 
     if (error) {
-      if (isCaptchaFailure(error)) {
+      if (hasErrorCode(error, "captcha_failed")) {
         return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
       }
-      if (isEmailUnconfirmed(error)) {
+      if (hasErrorCode(error, "email_not_confirmed")) {
         return {
           status: "email_unconfirmed",
           message:
