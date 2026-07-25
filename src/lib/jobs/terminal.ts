@@ -184,8 +184,55 @@ async function finalizeImageStale(
 }
 
 /**
+ * stale→failed 確定時にユーザーへ出す失敗通知の kind別文言。link が draft_id 等に依存する
+ * kind は関数で解決する。`image_generation` は本文が使えるため error 通知を出さない（テーブル外・
+ * `finalizeImageStale` が draft確定/子job作成を担う）。未知kindは `DEFAULT_FAILED_NOTICE`。
+ */
+type FailedNotice = {
+  title: string;
+  body: string;
+  link: string | ((job: JobTerminalRow) => string);
+};
+
+const DEFAULT_FAILED_NOTICE: FailedNotice = {
+  title: "処理に失敗しました",
+  body: "時間をおいて再度お試しください。",
+  link: "/app",
+};
+
+const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
+  post_generation: {
+    title: "投稿の生成に失敗しました",
+    body: "時間をおいて再度お試しください。設定や入力もご確認ください。",
+    link: "/app/posts",
+  },
+  post_publish: {
+    title: "投稿に失敗しました",
+    body: "投稿の途中で失敗しました。下書きを確認して再度お試しください。",
+    link: (job) =>
+      job.draft_id ? `/app/posts?tab=drafts&draftId=${job.draft_id}` : "/app/posts",
+  },
+  learning_analysis: {
+    title: "学習ソースの分析に失敗しました",
+    body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
+    link: "/app/settings?tab=learning",
+  },
+  md_merge: {
+    title: "学習ソースの削除が完了しませんでした",
+    body: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
+    link: "/app/settings",
+  },
+  suggestion: {
+    title: "改善提案の生成に失敗しました",
+    body: "時間をおいて分析画面から再度お試しください。",
+    link: "/app/analytics",
+  },
+};
+
+/**
  * stale→failed 確定時の kind別終端処理のエントリポイント。`recoverStaleJobs` が failed 更新と
- * 同一 transaction で呼ぶ。job が消えていれば no-op。
+ * 同一 transaction で呼ぶ。job が消えていれば no-op。kind別の返還・後始末（switch）のあと、
+ * `image_generation` を除き `FAILED_NOTICE` を引いてユーザー通知を出す。
  */
 export async function finalizeFailedJob(
   c: PoolClient,
@@ -198,29 +245,14 @@ export async function finalizeFailedJob(
   switch (kind) {
     case "post_generation":
       await refundUsage(c, jobId, "generation");
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "投稿の生成に失敗しました",
-        body: "時間をおいて再度お試しください。設定や入力もご確認ください。",
-        link: "/app/posts",
-      });
       break;
     case "image_generation":
+      // 本文は使えるため error 通知は出さず、draft確定/子job作成へ進める。
       await refundUsage(c, jobId, "image");
       await finalizeImageStale(c, job);
-      break;
+      return;
     case "post_publish":
       await finalizePostPublishStale(c, job.draft_id);
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "投稿に失敗しました",
-        body: "投稿の途中で失敗しました。下書きを確認して再度お試しください。",
-        link: job.draft_id
-          ? `/app/posts?tab=drafts&draftId=${job.draft_id}`
-          : "/app/posts",
-      });
       break;
     case "learning_analysis":
       // 生成枠を返還（premium・冪等）し、ソースを failed に戻す（stale時のworker失敗経路と同等・T-M5-03/04）。
@@ -232,44 +264,24 @@ export async function finalizeFailedJob(
           [job.learning_source_id],
         );
       }
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "学習ソースの分析に失敗しました",
-        body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
-        link: "/app/settings?tab=learning",
-      });
       break;
     case "md_merge":
       // 削除mergeも生成枠を1消費するため返還する（premium・冪等。T-M5-05）。
       await refundUsage(c, jobId, "generation");
       await finalizeMdMergeStale(c, job.learning_source_id);
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "学習ソースの削除が完了しませんでした",
-        body: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
-        link: "/app/settings",
-      });
       break;
     case "suggestion":
       // 改善提案もLLM実行時に生成枠を1消費するため返還する（premium・冪等。BYOKはreserve無しでno-op。T-M5-18）。
       await refundUsage(c, jobId, "generation");
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "改善提案の生成に失敗しました",
-        body: "時間をおいて分析画面から再度お試しください。",
-        link: "/app/analytics",
-      });
       break;
-    default:
-      await createFailedNotification(c, {
-        userId: job.user_id,
-        jobId,
-        title: "処理に失敗しました",
-        body: "時間をおいて再度お試しください。",
-        link: "/app",
-      });
   }
+
+  const notice = FAILED_NOTICE[kind] ?? DEFAULT_FAILED_NOTICE;
+  await createFailedNotification(c, {
+    userId: job.user_id,
+    jobId,
+    title: notice.title,
+    body: notice.body,
+    link: typeof notice.link === "function" ? notice.link(job) : notice.link,
+  });
 }
