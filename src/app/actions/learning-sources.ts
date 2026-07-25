@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { dispatchJob } from "@/lib/jobs/dispatch";
@@ -32,26 +32,6 @@ const learningDeps: LearningSourceDeps = {
   runInTx: runInPooledTx,
   gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),
 };
-
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
-}
 
 export async function listLearningSourcesAction(): Promise<
   BaseResult & { sources?: LearningSourceView[] }

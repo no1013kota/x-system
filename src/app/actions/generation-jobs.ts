@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
@@ -43,27 +43,8 @@ const jobDeps: GenerationJobDeps = {
   quotePostEnabled: env.FEATURE_QUOTE_POST_ENABLED,
 };
 
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
 interface JobIdResult extends BaseResult {
   jobId?: string;
-}
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
 }
 
 export async function createGenerationJobAction(input: unknown): Promise<JobIdResult> {

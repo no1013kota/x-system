@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   disconnectXAccountForUser,
@@ -21,32 +21,12 @@ import {
 
 const idSchema = z.object({ x_account_id: z.string().uuid() });
 
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
-
 export interface ListXAccountsActionResult extends BaseResult {
   accounts?: XAccountListItem[];
 }
 
 export interface XAccountStatusActionResult extends BaseResult {
   accountStatus?: string;
-}
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
 }
 
 export async function listXAccountsAction(): Promise<ListXAccountsActionResult> {

@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { PROMPT_TEMPLATE_KINDS } from "@/lib/prompts/gen-prompts";
 import {
@@ -19,13 +19,6 @@ import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
  * active Xアカウント未選択は not_found（設定導線）へ変換する。
  */
 
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
-
 const kindSchema = z.enum(PROMPT_TEMPLATE_KINDS);
 const updateSchema = z.object({
   kind: kindSchema,
@@ -33,19 +26,6 @@ const updateSchema = z.object({
   expected_updated_at: z.string().nullable(),
 });
 const resetSchema = z.object({ kind: kindSchema });
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
-}
 
 function toError(error: unknown): BaseResult {
   if (error instanceof NoActiveAccountError) {

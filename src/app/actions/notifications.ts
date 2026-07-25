@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   countUnreadNotificationsForUser,
@@ -17,13 +17,6 @@ import type { NotificationView } from "@/lib/notifications";
  * アプリ内通知の Server Actions（要件05 §10）。本人のみ。閲覧・既読化を提供し、既読系は最新の
  * 未読件数を返してベルのバッジを即時更新できるようにする。
  */
-
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
 
 export interface ListNotificationsActionResult extends BaseResult {
   items?: NotificationView[];
@@ -41,19 +34,6 @@ const listSchema = z.object({
   unread_only: z.boolean().optional(),
 });
 const idSchema = z.object({ notification_id: z.string().uuid() });
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
-}
 
 export async function listNotificationsAction(
   input: unknown = {},

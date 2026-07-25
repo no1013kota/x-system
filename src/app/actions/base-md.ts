@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import {
   getBaseMdForUser,
   isLearningRunningForUser,
@@ -18,13 +18,6 @@ import { AppError, toUserFacingError } from "@/lib/observability/errors";
  * （standard forbidden）・6見出し/5,000字検証・楽観lock・learning running 拒否は中核（base-md.ts）で行う。
  */
 
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
-
 const xAccountSchema = z.object({ x_account_id: z.string().uuid() });
 const updateSchema = z.object({
   x_account_id: z.string().uuid(),
@@ -36,19 +29,6 @@ const rollbackSchema = z.object({
   version: z.number().int().min(1),
   expected_version: z.number().int().min(0),
 });
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
-}
 
 export async function getBaseMdAction(
   input: unknown,

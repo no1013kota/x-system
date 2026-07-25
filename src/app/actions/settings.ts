@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUserId, type BaseResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   newsConfigSchema,
@@ -18,26 +18,6 @@ import {
 /**
  * プロフィール・通知・ニュース設定の Server Actions（要件05 §4.1）。本人のみ。zodで検証し保存する。
  */
-
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
-
-async function requireUserId(): Promise<
-  { ok: true; userId: string } | { ok: false; result: BaseResult }
-> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return {
-      ok: false,
-      result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" },
-    };
-  }
-  return { ok: true, userId: user.id };
-}
 
 export async function updateProfileAction(input: unknown): Promise<BaseResult> {
   const parsed = profileUpdateSchema.safeParse(input);

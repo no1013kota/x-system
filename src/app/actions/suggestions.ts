@@ -14,6 +14,8 @@ import {
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
+import type { BaseResult } from "./_helpers";
+
 /**
  * 改善提案の Server Actions（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
  * refreshSuggestions は request_key 冪等・各ガード（中核 suggestion-jobs.ts）を通し、作成時のみ after() で
@@ -21,13 +23,6 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
  */
 
 const pooledDb = pooledQueryable();
-
-interface BaseResult {
-  code?: string;
-  details?: Record<string, unknown>;
-  message: string;
-  status: "error" | "success";
-}
 
 async function requireActive(): Promise<
   { ok: true; userId: string; xAccountId: string } | { ok: false; result: BaseResult }
