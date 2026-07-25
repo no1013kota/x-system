@@ -1,0 +1,4 @@
+interface:
+  display_name: "統合テスト検証"
+  short_description: "DB・API・ジョブをローカル環境で安全に統合検証する"
+  default_prompt: "$verify-integration を使って今回の変更に必要な統合テストを実行してください。"

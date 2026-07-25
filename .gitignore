@@ -29,6 +29,9 @@ tmp/
 # Claude Code（個人ローカル設定）
 .claude/settings.local.json
 
+# Playwright CLI（一時スナップショット・セッション）
+.playwright-cli/
+
 # IDE
 .idea/
 .vscode/

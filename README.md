@@ -15,9 +15,24 @@
 /dev-loop          # バックログから1タスク進める（実装→検証→doc同期→コミット）
 /loop /dev-loop    # 連続で自動開発（エージェントループ）
 /doc-sync          # ドキュメント同期チェックのみ実行
+/ui-polish         # UIを設計・実装し、3画面幅・主要状態・アクセシビリティを実ブラウザ検証
+/verify-integration # DB・API・job等の統合テストを安全に実行
+/verify-e2e         # 主要ユーザーフローをブラウザから検証
 ```
 
+`/dev-loop`は新規実装か既存更新かでは分けず、変更影響に応じて`/verify-integration`と`/verify-e2e`を呼び分ける。
 
+### Claude CodeでUI開発する場合
+
+初回のみ公式Frontend DesignプラグインとPlaywright CLIを導入する。
+
+```bash
+claude plugin install frontend-design@claude-plugins-official
+npm install -g @playwright/cli@latest
+playwright-cli install --skills
+```
+
+プロジェクトのshadcn/ui・Next.js DevTools MCPは`.mcp.json`から読み込まれる。初回起動時の確認画面で、この2サーバーを承認する。
 
 ## 現在のステータス
 

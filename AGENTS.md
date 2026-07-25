@@ -18,7 +18,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 |---|---|
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
-| `.agents/skills/` | Codex向け開発スキル（doc-sync / dev-loop） |
+| `.agents/skills/` | Codex向け開発スキル（doc-sync / dev-loop / verify-integration / verify-e2e） |
 | `old/` | 旧ドキュメントのアーカイブ（参照専用・同期対象外・編集しない） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
@@ -34,6 +34,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 - タスクは`tasks/BACKLOG.md`で管理する。ステータス運用ルールは同ファイル冒頭に記載。
 - `/dev-loop` で「次のタスク選択 → 実装 → 検証 → ドキュメント同期 → コミット」を1サイクル実行する。
 - 連続で自動開発する場合は `/loop /dev-loop`。
+- `/dev-loop` は変更影響に応じ、DB・API・job等では `/verify-integration`、主要ユーザーフローでは `/verify-e2e` を実行する。新規実装か既存更新かでは分けない。
 - 1タスク = 1コミット。コミットメッセージにタスクIDを含める（例: `feat(T-M1-01): メール認証を実装`）。
 - ユーザー判断が必要な事項は勝手に決めず、`tasks/BACKLOG.md` の「要決定」セクションに追記して先へ進む（可能なら暫定案を添える）。
 
