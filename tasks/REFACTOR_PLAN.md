@@ -35,7 +35,8 @@
 | R12b | ジョブ重複集約②（`STALE_ERROR`）: terminal.ts と stale.ts に重複していた `stale_timeout` の code/長文message を `terminal.ts` の `STALE_TIMEOUT_CODE`/`STALE_TIMEOUT_MESSAGE` に一本化。各 error オブジェクトは shape（2/4フィールド）を維持しつつ定数を参照。振る舞い保存 | duplication | S | low | done |
 | R12c | ジョブ重複集約③（testability）: `stale.terminalHandler` グローバル可変＋`setStaleTerminalHandler` を廃し `recoverStaleJobs(opts?: {limit?, terminalHandler?})` の引数注入へ（既定 finalizeFailedJob）。`limit` も positional→options 化（positional呼び出し元なし）。cron.ts は引数なしのまま、stale.db.test は spy を注入する形へ更新（afterEach リセット不要に）。振る舞い保存 | testability | S | low | done |
 | R12d | ジョブ重複集約④（cron受付枠）: 4 cron route 共通の「CRON_SECRET認証→windowKey算出→window claim→JSON応答」を `handleCronRoute`（`jobs/cron-route.ts`）へ集約。認証を1箇所に集約し新route の認証書き忘れ事故を防ぐ。windowKey種別（hour/5min）・本処理・応答JSON形（spread/nest）は route毎に注入し外部契約を厳密維持。`now` は helper で単一生成し work へ渡す（news-fetch の clock/digest整合）。route-auth 4テスト緑・build緑・振る舞い保存 | duplication | M | low〜med | done |
-| R13 | UIコンポーネント重複集約: `XAccountRequiredNotice`／focus-ring ユーティリティ定数／`page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ | duplication | M | low〜med | todo |
+| R13a | UIコンポーネント重複集約①（`XAccountRequiredNotice`）: posts/schedule ページに同一マークアップで重複していたX未連携アラート（amber枠＋「設定へ」導線）を `components/x-account-required-notice.tsx` へ抽出。理由文のみ `description` prop 化しクラス/role/href/文言は同一維持（レンダリング等価）。schedule の未使用 `Link` import も除去 | duplication | S | low | done |
+| R13b | UIコンポーネント重複集約②: `page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ。※focus-ring ユーティリティは4箇所・値バラバラで低価値のため対象外 | duplication | M | low〜med | todo |
 | R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を純粋モジュールへ抽出しユニットテスト追加 | testability | S | low | todo |
 
 ## 要決定 / 除外（振る舞い変更のため今回の対象外）

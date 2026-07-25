@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { env } from "@/lib/env";
@@ -73,16 +73,7 @@ export default async function SchedulePage() {
       </header>
 
       {!activeXAccountId ? (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
-          <p className="font-semibold">Xアカウントの連携が必要です</p>
-          <p className="mt-1 text-sm">スケジュールを作成するには、まずXアカウントを連携してください。</p>
-          <Link
-            className="mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
-            href="/app/settings?tab=x-accounts"
-          >
-            設定へ
-          </Link>
-        </div>
+        <XAccountRequiredNotice description="スケジュールを作成するには、まずXアカウントを連携してください。" />
       ) : (
         <ScheduleManager
           automationConsented={automationConsented}
