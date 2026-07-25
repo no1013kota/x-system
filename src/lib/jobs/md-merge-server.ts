@@ -1,10 +1,9 @@
 import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
-import { getPool, withTransaction } from "../db/pool";
+import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
 import { PLANS, type PlanId } from "../plans";
 import { reserveUsage } from "../usage/generation-reserve";
-import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { executeMdMerge } from "./md-merge";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
@@ -19,13 +18,9 @@ import type { JobContext } from "./handlers";
  * 自己終端して scheduler_tick に委ね、reserve を保持する。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
-const runInTx = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> =>
-  withTransaction((c) => fn(c as unknown as Queryable));
+const runInTx = runInPooledTx;
 
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   return resolveTextProvider({ plan: input.plan as PlanId, userId: input.userId }, { deadline: input.deadline });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
 import { createSupabaseAdminClient } from "../supabase/admin";
 import {
@@ -13,7 +13,6 @@ import {
 } from "../x/client";
 import { xClientDeps, xCostConfig } from "../x/client-server";
 import { getValidXAccessToken } from "../x/token-refresh-server";
-import type { Queryable } from "../x/token-refresh";
 import type { JobContext } from "./handlers";
 import { executePostPublish } from "./post-publish";
 
@@ -23,13 +22,7 @@ import { executePostPublish } from "./post-publish";
  * DB は pool（都度取得・即解放）で、各ポスト成功直後の tweet_ids/consume を確定させる。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 export async function postPublishHandler(ctx: JobContext): Promise<void> {
   const clientDeps: XClientDeps = xClientDeps();
@@ -38,7 +31,7 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
   await executePostPublish({
     db: pooledDb,
     jobId: ctx.jobId,
-    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
+    runInTx: runInPooledTx,
     getAccessToken: (xAccountId) => getValidXAccessToken(xAccountId),
     createPost: (accessToken, input) => createPost(accessToken, input, clientDeps),
     deletePost: (accessToken, tweetId) => deletePost(accessToken, tweetId, clientDeps),

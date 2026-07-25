@@ -1,10 +1,9 @@
 import "server-only";
 
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { buildXReadDeps } from "../x/read-client-server";
 import { readTweetMetrics } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
-import type { Queryable } from "../x/token-refresh";
 import { createDeadline } from "./deadline";
 import {
   executeMetricsCollection,
@@ -17,16 +16,13 @@ import {
  * run全体を落とさず次窓へ委ねる。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 export async function runMetricsCollector(now: Date): Promise<MetricsCollectorResult> {
   const deadline = createDeadline();
   return executeMetricsCollection({
     db: pooledDb,
-    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
+    runInTx: runInPooledTx,
     now,
     isPastDeadline: () => !deadline.canStartCall(),
     onError: (scope, err) =>

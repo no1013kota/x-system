@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPool } from "./db/pool";
+import { pooledQueryable } from "./db/pool";
 import {
   countUnreadNotifications,
   listNotifications,
@@ -9,19 +9,12 @@ import {
   retryNotificationEmail,
   type NotificationPage,
 } from "./notifications";
-import type { Queryable } from "./x/token-refresh";
 
 /**
  * アプリ内通知の server-only 配線（要件05 §10）。pool を束ねて純粋層（`notifications.ts`）を実値で使う。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 export function listNotificationsForUser(
   userId: string,

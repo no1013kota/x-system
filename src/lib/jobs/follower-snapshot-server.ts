@@ -1,10 +1,9 @@
 import "server-only";
 
-import { getPool } from "../db/pool";
+import { pooledQueryable } from "../db/pool";
 import { buildXReadDeps } from "../x/read-client-server";
 import { readUserFollowers } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
-import type { Queryable } from "../x/token-refresh";
 import { createDeadline } from "./deadline";
 import {
   executeFollowerSnapshot,
@@ -16,10 +15,7 @@ import {
  * Function deadline を束ねて中核へ渡す。token取得不能や読取失敗はaccount単位で隔離し次窓へ委ねる。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 export async function runFollowerSnapshot(windowKey: string): Promise<FollowerSnapshotResult> {
   const deadline = createDeadline();

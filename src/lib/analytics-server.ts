@@ -8,19 +8,15 @@ import {
   type DraftAnalytics,
   type FollowerPoint,
 } from "./analytics";
-import { getPool } from "./db/pool";
+import { pooledQueryable } from "./db/pool";
 import { listSuggestions } from "./jobs/suggestion-jobs";
-import type { Queryable } from "./x/token-refresh";
 
 /**
  * 投稿実績の server-only 配線（SC-09, T-M5-15）。active Xアカウントの posted / 部分失敗(failed)で残存ID
  * を持つ draft を期間で読み、実績表示用に整形する。集計は表示時に行い別カラムへ保存しない（要件06 §8）。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 /** 所有者のみ。posted と、remaining を持つ failed を posted_at 期間で新しい順に返す。 */
 export async function loadAnalyticsForUser(

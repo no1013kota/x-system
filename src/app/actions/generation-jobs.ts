@@ -3,7 +3,7 @@
 import { after } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool, withTransaction } from "@/lib/db/pool";
+import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
@@ -28,7 +28,6 @@ import {
 } from "@/lib/jobs/generation-jobs";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { z } from "zod";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
  * 生成jobの Server Actions（要件05 §5, T-M3-07）。本人のみ。zod検証・前提/所有権/冪等/5件制限は
@@ -36,16 +35,10 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * `after()` で worker へ dispatch する。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 const jobDeps: GenerationJobDeps = {
-  runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+  runInTx: runInPooledTx,
   gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),
   quotePostEnabled: env.FEATURE_QUOTE_POST_ENABLED,
 };

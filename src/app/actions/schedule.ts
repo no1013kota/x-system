@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool, withTransaction } from "@/lib/db/pool";
+import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   disableXAutomation,
@@ -27,7 +27,6 @@ import {
   type ScheduleSlotView,
 } from "@/lib/schedule-slots";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
  * スケジュールスロットの Server Actions（要件05 §7, T-M4-01）。本人のみ・active_x_account スコープ。
@@ -35,16 +34,10 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * 解決・revalidate を束ねる。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 const slotDeps: ScheduleSlotDeps = {
-  runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+  runInTx: runInPooledTx,
   resolveActiveXAccountId: (userId) => resolveActiveXAccountForUser(userId),
 };
 
@@ -167,7 +160,7 @@ export async function disableXAutomationAction(
   if (!auth.ok) return auth.result;
   try {
     const result = await disableXAutomation(auth.userId, parsed.data.x_account_id, {
-      runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+      runInTx: runInPooledTx,
     });
     revalidatePath("/app/schedule");
     return { message: "自動投稿を停止しました。", result, status: "success" };

@@ -1,21 +1,17 @@
-import { getPool } from "@/lib/db/pool";
+import { pooledQueryable } from "@/lib/db/pool";
 import { isValidCronAuth } from "@/lib/jobs/auth";
 import { hourWindowKey, withCronWindowClaim } from "@/lib/jobs/cron";
 import { createDeadline } from "@/lib/jobs/deadline";
 import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest";
 import { runNewsFetch } from "@/lib/jobs/news-fetch";
 import { researchNews } from "@/lib/jobs/news-research";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。毎時起動・6分野最大3並列・分野別commit。 */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 200;
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 export async function GET(request: Request): Promise<Response> {
   if (!isValidCronAuth(request.headers.get("authorization"))) {

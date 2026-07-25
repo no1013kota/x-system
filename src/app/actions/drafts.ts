@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool } from "@/lib/db/pool";
+import { pooledQueryable } from "@/lib/db/pool";
 import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
 import {
   discardDraft,
@@ -19,7 +19,6 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { getRecentPosts, getTweetMetrics } from "@/lib/x/client";
 import { xClientDeps } from "@/lib/x/client-server";
 import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
  * 下書きの Server Actions（要件05 §5, T-M3-10）。本人のみ。一覧は active_x_account スコープ、
@@ -28,13 +27,7 @@ import type { Queryable } from "@/lib/x/token-refresh";
 
 const IMAGE_BUCKET = "generated-images";
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 const listSchema = z.object({ tab: z.enum(["drafts", "history"]).default("drafts") });
 const updateSchema = z.object({

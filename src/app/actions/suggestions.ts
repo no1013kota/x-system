@@ -3,7 +3,7 @@
 import { after } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool, withTransaction } from "@/lib/db/pool";
+import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   listSuggestions,
@@ -13,7 +13,6 @@ import {
 } from "@/lib/jobs/suggestion-jobs";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
  * 改善提案の Server Actions（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
@@ -21,10 +20,7 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * worker へ dispatch する。listSuggestions は最新の成功 suggestion job の提案を返す。提案は表示専用。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 interface BaseResult {
   code?: string;
@@ -58,7 +54,7 @@ export async function refreshSuggestionsAction(
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await refreshSuggestions(auth.userId, auth.xAccountId, parsed.data, {
-      runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
+      runInTx: runInPooledTx,
     });
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "改善提案を更新しています。", status: "success" };

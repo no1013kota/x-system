@@ -2,7 +2,7 @@ import "server-only";
 
 import { getXAppCredentialsForUser } from "../api-key-store-server";
 import { decrypt, encrypt } from "../crypto";
-import { getPool } from "../db/pool";
+import { pooledQueryable } from "../db/pool";
 import { AppError } from "../observability/errors";
 import type { FetchLike } from "./oauth";
 import { managedOAuthClient, xRedirectUri } from "./oauth-server";
@@ -10,7 +10,6 @@ import {
   createXRelinkNotification,
   getValidAccessToken,
   type GetValidAccessTokenDeps,
-  type Queryable,
 } from "./token-refresh";
 
 /**
@@ -22,13 +21,7 @@ import {
  * OAuth clientとして解決する。confidential clientのみsecretを付ける（要件05 §4.1）。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 const fetchLike: FetchLike = (url, init) =>
   fetch(url, {

@@ -2,7 +2,7 @@ import "server-only";
 
 import { getXAppCredentialsForUser } from "../api-key-store-server";
 import { decrypt } from "../crypto";
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { getMe } from "./client";
 import { xClientDeps } from "./client-server";
 import { revokeOAuthToken, type FetchLike } from "./oauth";
@@ -18,7 +18,6 @@ import {
   type XMeFetcher,
 } from "./account-actions";
 import { getValidXAccessToken } from "./token-refresh-server";
-import type { Queryable } from "./token-refresh";
 
 export type { XAccountListItem } from "./account-actions";
 
@@ -27,16 +26,9 @@ export type { XAccountListItem } from "./account-actions";
  * token refresh・token revoke を束ねて純粋層（`account-actions.ts`）をアプリの実値で使う。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
-const runInTx = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> =>
-  withTransaction((client) => fn(client as unknown as Queryable));
+const runInTx = runInPooledTx;
 
 const fetchLike: FetchLike = (url, init) =>
   fetch(url, { method: init.method, headers: init.headers, body: init.body });

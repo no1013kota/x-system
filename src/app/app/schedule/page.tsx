@@ -2,24 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool } from "@/lib/db/pool";
+import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 import { ScheduleManager } from "./schedule-manager";
 
 export const metadata: Metadata = { title: "スケジュール | Space AI" };
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 /** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。 */
 async function availableImageProviders(userId: string, plan: string | null): Promise<string[]> {

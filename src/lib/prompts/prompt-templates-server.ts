@@ -1,10 +1,8 @@
 import "server-only";
 
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
-import { resolveActiveXAccountForUser } from "../x/account-actions-server";
-import type { Queryable } from "../x/token-refresh";
-import type { PromptTemplateKind } from "./gen-prompts";
+import { resolveActiveXAccountForUser } from "../x/account-actions-server";import type { PromptTemplateKind } from "./gen-prompts";
 import {
   applyResetPromptTemplate,
   applyUpdatePromptTemplate,
@@ -17,10 +15,7 @@ import {
  * 解決し、profiles.plan と FEATURE_QUOTE_POST_ENABLED を中核へ渡す。書き込みは withTransaction で束ねる。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 async function planForUser(userId: string): Promise<string> {
   const row = (
@@ -57,8 +52,8 @@ export async function updatePromptTemplateForUser(input: {
     planForUser(input.userId),
   ]);
   if (!xAccountId) throw new NoActiveAccountError();
-  return withTransaction((client) =>
-    applyUpdatePromptTemplate(client as unknown as Queryable, {
+  return runInPooledTx((tx) =>
+    applyUpdatePromptTemplate(tx, {
       xAccountId,
       kind: input.kind,
       content: input.content,
@@ -78,8 +73,8 @@ export async function resetPromptTemplateForUser(input: {
     planForUser(input.userId),
   ]);
   if (!xAccountId) throw new NoActiveAccountError();
-  return withTransaction((client) =>
-    applyResetPromptTemplate(client as unknown as Queryable, {
+  return runInPooledTx((tx) =>
+    applyResetPromptTemplate(tx, {
       xAccountId,
       kind: input.kind,
       plan,

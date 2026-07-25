@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { SetupGuideCard } from "@/components/app-shell/setup-guide-card";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool } from "@/lib/db/pool";
+import { pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import {
   buildSetupChecklist,
@@ -14,17 +14,10 @@ import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 import { ConfirmationQueueCard } from "./confirmation-queue";
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 export const metadata: Metadata = {
   title: `ホーム | ${APP_NAME}`,

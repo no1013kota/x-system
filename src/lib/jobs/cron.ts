@@ -1,23 +1,16 @@
-import { getPool, withTransaction } from "../db/pool";
+import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
 import {
   recoverQueuedEmails,
   type RecoverQueuedEmailsDeps,
   type RecoverQueuedEmailsResult,
 } from "../email/recover-queued";
-import type { Queryable } from "../x/token-refresh";
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 /**
  * 定時トリガー（cron）の共通部分（要件04 §6, 運用メモ §2, ADR-0002, ADR-0003）。
@@ -132,7 +125,7 @@ export async function runSchedulerTick(
   // env 検証が走るため。既定は X_DAILY_POST_LIMIT の既定値 50）。
   const enqueued = await enqueueDueSlots({
     db: pooledDb,
-    runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+    runInTx: runInPooledTx,
     dailyLimit: opts.dailyLimit ?? 50,
   });
 

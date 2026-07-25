@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getPool, withTransaction } from "./db/pool";
+import { withTransaction, pooledQueryable } from "./db/pool";
 import {
   applyRollbackBaseMd,
   applyUpdateBaseMdManual,
@@ -11,14 +11,10 @@ import {
   type BaseMdView,
   type BaseMdWriteResult,
 } from "./base-md";
-import type { Queryable } from "./x/token-refresh";
 
 /** ベースmd手動編集の server-only 配線（M-1, T-M5-08）。書き込みは withTransaction で束ねる。 */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 export function updateBaseMdManualForUser(input: {
   userId: string;

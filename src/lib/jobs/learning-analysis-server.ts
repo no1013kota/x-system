@@ -1,14 +1,13 @@
 import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import type { PlanId } from "../plans";
 import { xClientDeps } from "../x/client-server";
 import { getUserByUsername } from "../x/client";
 import { buildXReadDeps } from "../x/read-client-server";
 import { readTweetMetrics, readUserTimeline } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
-import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { executeLearningAnalysis } from "./learning-analysis";
 import { executeMdMerge } from "./md-merge";
@@ -19,13 +18,9 @@ import type { JobContext } from "./handlers";
  * refresh・handle→user_id 解決・read-client）を束ね、分析成功後は同一job内 MD-MERGE を実行する。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
-const runInTx = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> =>
-  withTransaction((c) => fn(c as unknown as Queryable));
+const runInTx = runInPooledTx;
 
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   return resolveTextProvider({ plan: input.plan as PlanId, userId: input.userId }, { deadline: input.deadline });

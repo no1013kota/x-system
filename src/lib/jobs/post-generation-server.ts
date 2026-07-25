@@ -2,12 +2,11 @@ import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
 import type { Provider } from "../ai/types";
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
 import { gatherExecutionPrereqInputs } from "../execution-prereqs-server";
 import type { PlanId } from "../plans";
 import { validateSourceUrlServer } from "../post/source-url-server";
-import type { Queryable } from "../x/token-refresh";
 import type { JobContext } from "./handlers";
 import { executePostGeneration } from "./post-generation";
 
@@ -17,13 +16,7 @@ import { executePostGeneration } from "./post-generation";
  * error/usage/通知が handler tx のロールバックに巻き込まれないようにする。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 function textModelFor(provider: Provider): string {
   switch (provider) {
@@ -40,7 +33,7 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
   await executePostGeneration({
     db: pooledDb,
     jobId: ctx.jobId,
-    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
+    runInTx: runInPooledTx,
     resolveProvider: async ({ plan, userId, deadline }) => {
       const resolved = await resolveTextProvider(
         { plan: plan as PlanId, userId },

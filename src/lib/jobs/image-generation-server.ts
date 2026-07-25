@@ -4,11 +4,10 @@ import { resolveImageGen } from "../ai/image-client";
 import { resolveImageProvider } from "../ai/resolve-provider-server";
 import { resolveTextProvider } from "../ai/resolve-provider-server";
 import type { Provider } from "../ai/types";
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
 import type { PlanId } from "../plans";
 import { createSupabaseAdminClient } from "../supabase/admin";
-import type { Queryable } from "../x/token-refresh";
 import type { JobContext } from "./handlers";
 import { executeImageGeneration } from "./image-generation";
 
@@ -19,13 +18,7 @@ import { executeImageGeneration } from "./image-generation";
  * 巻き込まれないようにする（post_generation と同じ方針）。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 function textModelFor(provider: Provider): string {
   switch (provider) {
@@ -43,7 +36,7 @@ export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
   await executeImageGeneration({
     db: pooledDb,
     jobId: ctx.jobId,
-    runInTx: (fn) => withTransaction((c) => fn(c as unknown as Queryable)),
+    runInTx: runInPooledTx,
     resolveTextProvider: async ({ plan, userId, deadline }) => {
       const resolved = await resolveTextProvider({ plan: plan as PlanId, userId }, { deadline });
       return {

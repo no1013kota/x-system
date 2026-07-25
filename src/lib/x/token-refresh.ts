@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { Queryable } from "../db/queryable";
 import {
   exchangeRefreshToken,
   hasRequiredScopes,
@@ -31,13 +32,7 @@ export const TOKEN_REFRESH_WAIT_MAX_MS = 10 * 1000;
 export const TOKEN_REFRESH_WAIT_POLL_MS = 250;
 // stale lease は SQL 側で 1 分（`now() - interval '1 minute'`）で判定する。
 
-/** pg.Pool（および PoolClient）が満たす最小の問い合わせIF。`query` は接続を都度取得・即解放する。 */
-export interface Queryable {
-  query<T = unknown>(
-    sql: string,
-    params?: unknown[],
-  ): Promise<{ rows: T[]; rowCount: number | null }>;
-}
+export type { Queryable };
 
 export class XAccountNotConnectedError extends Error {
   readonly code = "x_account_not_connected";

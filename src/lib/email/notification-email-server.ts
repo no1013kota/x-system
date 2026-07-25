@@ -2,10 +2,9 @@ import "server-only";
 
 import { after } from "next/server";
 
-import { getPool } from "../db/pool";
+import { pooledQueryable } from "../db/pool";
 import { env } from "../env";
 import type { ErrorKind } from "../jobs/retry";
-import type { Queryable } from "../x/token-refresh";
 import {
   EmailSendError,
   sendQueuedNotificationEmail,
@@ -19,13 +18,7 @@ import {
  * skip する（ローカル・未発行環境で安全）。実Gmail送信の確認は App Password 発行後（open_questions）。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{
-      rows: T[];
-      rowCount: number | null;
-    }>,
-};
+const pooledDb = pooledQueryable();
 
 interface SmtpError {
   code?: string;

@@ -2,6 +2,7 @@ import "server-only";
 
 import { Pool, type PoolClient } from "pg";
 
+import type { Queryable } from "./queryable";
 import { LOCAL_DB_URL } from "./test-utils";
 
 /**
@@ -69,4 +70,27 @@ export async function withTransaction<T>(
   } finally {
     client.release();
   }
+}
+
+/**
+ * A `Queryable` backed by the shared pool: each `query` acquires a connection,
+ * runs, and releases it. Replaces the per-file `const pooledDb: Queryable = {…}`
+ * boilerplate (and its `as unknown as` cast) that was duplicated across ~30
+ * server modules.
+ */
+export function pooledQueryable(): Queryable {
+  return {
+    query: <T = unknown>(sql: string, params?: unknown[]) =>
+      getPool().query(sql, params) as unknown as Promise<{
+        rows: T[];
+        rowCount: number | null;
+      }>,
+  };
+}
+
+/** Runs `fn` in a transaction, exposing the tx client as a `Queryable`. */
+export function runInPooledTx<T>(
+  fn: (tx: Queryable) => Promise<T>,
+): Promise<T> {
+  return withTransaction((client) => fn(client as unknown as Queryable));
 }

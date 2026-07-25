@@ -1,8 +1,7 @@
 import "server-only";
 
-import { getPool, withTransaction } from "../db/pool";
+import { pooledQueryable, runInPooledTx } from "../db/pool";
 import type { PlanId } from "../plans";
-import type { Queryable } from "../x/token-refresh";
 import type { Deadline } from "./deadline";
 import type { JobContext } from "./handlers";
 import { executeSuggestion } from "./suggestion";
@@ -13,13 +12,9 @@ import type { SuggestionInputDraft } from "./suggestion-input";
  * 集計対象draftの読取を束ねて中核へ渡す。base_md/X読取はしない（集計は保存済み tweet_metrics のみ）。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
-const runInTx = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> =>
-  withTransaction((c) => fn(c as unknown as Queryable));
+const runInTx = runInPooledTx;
 
 async function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   // provider解決はenv検証に触れるため、実際にLLMを呼ぶ時点（比較グループ十分時）まで遅延ロードする。

@@ -3,7 +3,7 @@
 import { after } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPool, withTransaction } from "@/lib/db/pool";
+import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
@@ -19,7 +19,6 @@ import {
 } from "@/lib/learning-sources";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import type { Queryable } from "@/lib/x/token-refresh";
 
 /**
  * 学習ソースCRUDの Server Actions（要件05 §8, T-M5-02）。本人のみ。zod検証・前提/所有権/冪等/限度・
@@ -27,13 +26,10 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * worker へ dispatch する。
  */
 
-const pooledDb: Queryable = {
-  query: <T = unknown>(sql: string, params?: unknown[]) =>
-    getPool().query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
-};
+const pooledDb = pooledQueryable();
 
 const learningDeps: LearningSourceDeps = {
-  runInTx: (fn) => withTransaction((client) => fn(client as unknown as Queryable)),
+  runInTx: runInPooledTx,
   gatherPrereqInputs: (userId, opts) => gatherExecutionPrereqInputs(userId, opts),
 };
 
