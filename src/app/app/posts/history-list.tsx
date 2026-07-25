@@ -1,3 +1,4 @@
+import { EmptyNotice } from "@/components/app-shell/page-state";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
@@ -32,9 +33,9 @@ export function HistoryList({
 }) {
   if (drafts.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+      <EmptyNotice>
         投稿履歴はまだありません。下書きを投稿すると、ここに表示されます。
-      </div>
+      </EmptyNotice>
     );
   }
   return (

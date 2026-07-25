@@ -16,6 +16,7 @@ import {
   regenerateDraftAction,
   regenerateImageAction,
 } from "@/app/actions/generation-jobs";
+import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
@@ -54,9 +55,9 @@ export function DraftsList({
 }) {
   if (drafts.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+      <EmptyNotice>
         未投稿の下書きはありません。「作成」タブから生成できます。
-      </div>
+      </EmptyNotice>
     );
   }
   return (

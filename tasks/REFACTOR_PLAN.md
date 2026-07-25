@@ -36,8 +36,14 @@
 | R12c | ジョブ重複集約③（testability）: `stale.terminalHandler` グローバル可変＋`setStaleTerminalHandler` を廃し `recoverStaleJobs(opts?: {limit?, terminalHandler?})` の引数注入へ（既定 finalizeFailedJob）。`limit` も positional→options 化（positional呼び出し元なし）。cron.ts は引数なしのまま、stale.db.test は spy を注入する形へ更新（afterEach リセット不要に）。振る舞い保存 | testability | S | low | done |
 | R12d | ジョブ重複集約④（cron受付枠）: 4 cron route 共通の「CRON_SECRET認証→windowKey算出→window claim→JSON応答」を `handleCronRoute`（`jobs/cron-route.ts`）へ集約。認証を1箇所に集約し新route の認証書き忘れ事故を防ぐ。windowKey種別（hour/5min）・本処理・応答JSON形（spread/nest）は route毎に注入し外部契約を厳密維持。`now` は helper で単一生成し work へ渡す（news-fetch の clock/digest整合）。route-auth 4テスト緑・build緑・振る舞い保存 | duplication | M | low〜med | done |
 | R13a | UIコンポーネント重複集約①（`XAccountRequiredNotice`）: posts/schedule ページに同一マークアップで重複していたX未連携アラート（amber枠＋「設定へ」導線）を `components/x-account-required-notice.tsx` へ抽出。理由文のみ `description` prop 化しクラス/role/href/文言は同一維持（レンダリング等価）。schedule の未使用 `Link` import も除去 | duplication | S | low | done |
-| R13b | UIコンポーネント重複集約②: `page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ。※focus-ring ユーティリティは4箇所・値バラバラで低価値のため対象外 | duplication | M | low〜med | todo |
-| R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を純粋モジュールへ抽出しユニットテスト追加 | testability | S | low | todo |
+| R13b | UIコンポーネント重複集約②（`EmptyNotice`）: 4ファイル（x-accounts-settings/schedule-manager/history-list/drafts-list）で文字通り同一だった破線カード空状態 `<div class="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">{msg}</div>` を `page-state.tsx` の軽量 `EmptyNotice({children})` に集約（重量版 `EmptyState` と対）。role無し維持・レンダリング等価。test+build緑 | duplication | S | low | done |
+| R13c | UIコンポーネント重複集約③（タブナビ/ナビ状態）: URL駆動タブナビ（settings/posts/ai-settings の `<nav>`+Link群、共通クラス `border-b-2 px-4 py-3 text-sm font-medium`＋active三項＋`aria-current`）を共有 `TabNav` へ／app-navigation の active三項（mobile/desktop）単一化／タブ解決（searchParams→有効タブ or 既定）ヘルパー化。ai-settings のみ nav追加クラスありのため className注入で吸収し見た目維持 | duplication | M | low〜med | todo |
+| R13d | UIコンポーネント重複集約④（低〜中）: 軽量muted空状態カード②③④（learning-sources/base-md-editor/news-browser/analytics-view/follower-chart/suggestions-panel の3バリアント6箇所）を variant付きで集約（生成クラス完全一致を厳守）／analytics 日数セグメント切替の共有化／ai-purpose-settings 内 amberカード2箇所のローカル抽出。見た目寄せ（radius/bg/py統一）はしない | duplication | M | med | todo |
+| R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を `notification-email-server.ts`（39-54行付近）から純粋モジュール（例 `lib/email/smtp-error.ts`）へ抽出しユニットテスト追加。入力エラー→分類（transient/permanent 等）の写像を契約化 | testability | S | low | todo |
+| R15 | Server Action 共通化: `requireUserId()`＋`BaseResult` 型が各 action（base-md/x-accounts/schedule/generation-jobs/drafts 等）に重複。共有モジュールへ集約（返り値契約は不変・型のみ共有）。※広範囲に波及するため領域ごとに検証 | duplication | M | low〜med | todo |
+| R16 | `toIso()`/`toIsoOrNull()`（Date→ISO）が learning-sources/notifications/prompt-templates/news-items/base-md に重複。`lib/format.ts` 等へ集約（出力等価） | duplication | S | low | todo |
+| R17 | Server Action の `{ ...toUserFacingError(x), status: "error" }` 定型を `errorResult()` に集約（api-keys/drafts/generation-jobs/schedule/notifications 等）。返り値形は不変 | duplication | M | low〜med | todo |
+| R18 | quick win: 未使用 export `statusForErrorCode`（`http/api-response.ts:28`）のデッドコード削除／`analytics.defaultCheckpoint` 内で `aggregatable(draft)` をループ毎再計算しているのをループ外へ巻き上げ（結果不変） | deadcode/perf | S | low | todo |
 
 ## 要決定 / 除外（振る舞い変更のため今回の対象外）
 

@@ -1,5 +1,6 @@
 import { CircleAlert, Inbox, LoaderCircle } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 interface StateProps {
   description: string;
@@ -17,6 +18,19 @@ interface EmptyStateProps extends StateProps {
 
 const cardClassName =
   "rounded-2xl border border-dashed bg-card px-6 py-12 text-center shadow-sm";
+
+/**
+ * 軽量な空状態カード（破線枠・中央寄せ・muted の1行メッセージ）。アイコン付きの重量版
+ * `EmptyState` と対で、一覧が空のときのインライン表示に使う。各一覧に手書きで重複していた
+ * 同一マークアップの単一正本。
+ */
+export function EmptyNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
 
 export function LoadingState({
   description = "画面を準備しています。",

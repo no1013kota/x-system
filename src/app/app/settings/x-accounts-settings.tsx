@@ -11,6 +11,7 @@ import {
   refreshXAccountStatusAction,
 } from "@/app/actions/x-accounts";
 import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
+import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
@@ -141,9 +142,9 @@ export function XAccountsSettings({
       </div>
 
       {accounts.length === 0 ? (
-        <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+        <EmptyNotice>
           まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。
-        </div>
+        </EmptyNotice>
       ) : (
         <ul className="space-y-3">
           {accounts.map((account) => {

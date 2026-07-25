@@ -12,6 +12,7 @@ import {
   recordXAutomationConsentAction,
   updateScheduleSlotAction,
 } from "@/app/actions/schedule";
+import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
@@ -184,9 +185,9 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
   const times = [...new Set(slots.map((s) => s.time_jst.slice(0, 5)))].sort();
   if (slots.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+      <EmptyNotice>
         スケジュールはまだありません。曜日と時刻を決めて追加すると、ここに週間プレビューが表示されます。
-      </div>
+      </EmptyNotice>
     );
   }
   return (
