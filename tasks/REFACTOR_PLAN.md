@@ -14,7 +14,8 @@
 | R4 | Stripe/ライブラリの重複集約: **HTTP応答基盤 `apiJson`/`apiError`/`statusForErrorCode` を `lib/http/api-response.ts` へ抽出**（checkout.ts/portal.ts の重複解消）＋ `idOf`/`expandedId` 統合。※route内 `selectProfile`/billing-return cookieラッパは次パス（R4b）へ | duplication | M | low | done |
 | R5 | ブラウザ決済フロー共通化: `checkout-browser`/`portal-browser` の URL検証＋fetch→json→navigate 骨格を `billing-redirect.ts`（`startBillingRedirect`/`httpsUrlFromResponse`）へ集約。2ファイルは薄いラッパに | duplication | M | low | done |
 | R6 | 認証共通化: `captchaTokenSchema`/`emailSchema` 抽出（signin/signup/recovery/resend, `form-schemas.ts`）＋ `hasErrorCode()` 集約（isCaptchaFailure/isEmailUnconfirmed） | duplication | S | low | done |
-| R6b | `getAppEncryptionKey()`（resolveKey(env.APP_ENCRYPTION_KEY) の重複4箇所）＋ `canBrowseApp(status)` 述語（route-guard/actions重複）＋ 未使用 `SubscriptionAccess.action`/`canBrowseApp` フィールド削除（R2からの繰越・テスト期待値更新） | duplication/deadcode | S | low | todo |
+| R6b | `getAppEncryptionKey()` を `lib/crypto` に追加し `resolveKey(env.APP_ENCRYPTION_KEY)` の重複（confirm route/actions/billing-return-server）を集約 | duplication | S | low | done |
+| R6c | `canBrowseApp(status)` 述語（route-guard/actions の `viewScope!=='app'` 重複）＋ 未使用 `SubscriptionAccess.action`/`canBrowseApp` フィールド削除（R2繰越・テスト期待値更新） | duplication/deadcode | S | low | todo |
 | R7 | 認証フォームUI共通化: `inputClassName` 共有定数化（同一文字列の4フォーム）＋ `FieldError` を `components/auth` へ切り出し全フォーム再利用 | duplication | M | low | todo |
 | R8 | フォーマッタ/定数の集約: `formatJst()`（ja-JP/Asia/Tokyo）＋ `yen()` 通貨＋ JST当月式 `MONTH_EXPR` ＋ 投稿パターンlabel p1〜p6（badge用の一致5箇所）＋ X設定パス定数 | duplication | M | low | todo |
 | R9 | 型の狭め: `api_provider` enum化（`recordExternalApiUsage`）／`ProviderCall`↔`providerCallSchema` 単一化／x_account `status`・`auth_type` union化／`readAt` センチネル是正／非null断定の除去（notification-bell 等） | types | M | low〜med | todo |

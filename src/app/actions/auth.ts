@@ -15,7 +15,7 @@ import {
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
-import { resolveKey } from "@/lib/crypto/envelope";
+import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
 import { AppError } from "@/lib/observability/errors";
@@ -214,7 +214,7 @@ export async function updatePassword(
 
     verifyRecoverySession(
       cookieStore.get(RECOVERY_SESSION_COOKIE)?.value,
-      resolveKey(env.APP_ENCRYPTION_KEY as string),
+      getAppEncryptionKey(),
       { now: Date.now(), userId: data.user.id },
     );
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { resolveKey } from "@/lib/crypto/envelope";
+import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 
 import {
@@ -12,7 +12,7 @@ import {
 } from "./billing-return-marker";
 
 function key(): Buffer {
-  return resolveKey(env.APP_ENCRYPTION_KEY as string);
+  return getAppEncryptionKey();
 }
 
 export function issueBillingReturnCookie(

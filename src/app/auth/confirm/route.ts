@@ -10,7 +10,7 @@ import {
   RECOVERY_SESSION_MAX_AGE_SEC,
   sealRecoverySession,
 } from "@/lib/auth/recovery";
-import { resolveKey } from "@/lib/crypto/envelope";
+import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         RECOVERY_SESSION_COOKIE,
         sealRecoverySession(
           { issuedAt: Date.now(), userId: data.user.id },
-          resolveKey(env.APP_ENCRYPTION_KEY as string),
+          getAppEncryptionKey(),
         ),
         {
           httpOnly: true,

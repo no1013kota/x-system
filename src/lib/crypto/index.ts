@@ -18,3 +18,11 @@ export function encrypt(plaintext: string): string {
 export function decrypt(serialized: string): string {
   return decryptWithKey(serialized, key);
 }
+
+/**
+ * The validated APP_ENCRYPTION_KEY, resolved once at module load. Use this
+ * instead of re-running `resolveKey(env.APP_ENCRYPTION_KEY)` at each call site.
+ */
+export function getAppEncryptionKey(): Buffer {
+  return key;
+}
