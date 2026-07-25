@@ -1,3 +1,5 @@
+import "server-only";
+
 import { Pool, type PoolClient } from "pg";
 
 import { LOCAL_DB_URL } from "./test-utils";
