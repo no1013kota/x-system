@@ -28,11 +28,32 @@ const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 const WARNING_LABEL: Record<string, string> = {
   length_exceeded: "文字数超過",
-  cashtag_multiple: "cashtag2件以上",
+  cashtag_multiple: "$タグ2件以上",
   ng_word: "NGワード",
-  source_missing: "出典不足",
+  source_missing: "出典なし",
   injection_suspected: "要確認",
+  image_failed: "画像なし（生成失敗）",
 };
+
+/** 投稿前の確認で「何が起きるか」を伝える説明文（バッジだけでは分からないため）。 */
+const WARNING_DETAIL: Record<string, string> = {
+  length_exceeded: "280字を超えています",
+  cashtag_multiple: "$タグが2件以上あります",
+  ng_word: "NG設定の語が含まれています",
+  source_missing: "出典URLがありません",
+  injection_suspected: "不審な指示が混じっている可能性があります",
+};
+
+/** 「2ポスト目にNGワード」のような要約を作る。 */
+function warningSummary(thread: { warnings: string[] }[]): string[] {
+  const lines: string[] = [];
+  thread.forEach((post, index) => {
+    for (const code of post.warnings) {
+      lines.push(`${index + 1}ポスト目: ${WARNING_DETAIL[code] ?? WARNING_LABEL[code] ?? code}`);
+    }
+  });
+  return lines;
+}
 
 function WarningBadge({ code }: { code: string }) {
   return (
@@ -110,26 +131,35 @@ function DraftCard({
   // P-5 は flag OFF の間、閲覧のみ（編集・再生成・画像再生成・投稿を無効化, 要件06 §4.1）。
   const p5Disabled = draft.pattern === "p5" && !quotePostEnabled;
   // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
-  const publishing = pending || publishJobId !== null;
+  // 投稿中はリロードしても復元できるよう draft.status も見る（要件06 §7）。
+  const publishing = pending || publishJobId !== null || draft.status === "posting";
+  const warningLines = warningSummary(draft.thread);
+  // 文字数超過はXが受け付けないため、編集するまで投稿させない（投稿前の再検証と同じ判定）。
+  const lengthExceeded = draft.thread.some((p) => p.warnings.includes("length_exceeded"));
   const locked = publishing || editing;
 
   function discard() {
+    setPublishNotice(null);
     startTransition(async () => {
       const res = await discardDraftAction({
         draft_id: draft.id,
         expected_updated_at: draft.updated_at,
       });
+      // 失敗を握り潰すと「押しても何も起きない」状態になるため理由を出す。
       if (res.status === "success") router.refresh();
+      else setPublishNotice(res.message);
     });
   }
 
   function cloneForRetry() {
+    setPublishNotice(null);
     startTransition(async () => {
       const res = await cloneFailedDraftForRetryAction({
         request_key: crypto.randomUUID(),
         draft_id: draft.id,
       });
       if (res.status === "success") router.refresh();
+      else setPublishNotice(res.message);
     });
   }
 
@@ -184,7 +214,7 @@ function DraftCard({
           ) : null}
           {hasWarnings ? (
             <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
-              自動投稿は手動確認が必要
+              警告あり（自動投稿は停止します）
             </span>
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
@@ -193,7 +223,7 @@ function DraftCard({
         <div className="flex items-center gap-2">
           {publishing ? (
             <span className="text-xs font-medium text-muted-foreground" role="status">
-              投稿中…
+              投稿中…（この画面を離れても続きます）
             </span>
           ) : null}
           {p5Disabled ? (
@@ -217,7 +247,17 @@ function DraftCard({
             </Button>
           ) : null}
           {editable && !editing && !p5Disabled ? (
-            <PublishButton disabled={publishing} onConfirm={publish} />
+            lengthExceeded ? (
+              <span className="text-xs text-amber-900">
+                280字を超えているポストがあります。編集してから投稿できます。
+              </span>
+            ) : (
+              <PublishButton
+                disabled={publishing}
+                onConfirm={publish}
+                warnings={warningLines}
+              />
+            )
           ) : null}
           {/* 全削除確認済み（作成履歴あり・未解決なし）は新draftとして再試行（要件06 §7）。 */}
           {cloneEligible ? (
@@ -232,6 +272,15 @@ function DraftCard({
           />
         </div>
       </div>
+
+      {hasCreationHistory || unresolvedPosting ? (
+        <p className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+          Xに作成されたポストの記録があるため、この下書きは破棄できません（監査のため保持します）。
+          {cloneEligible
+            ? "投稿は「新しい下書きとして再試行」からやり直せます。本文と画像を複製した新しい下書きが作られ、この下書きは失敗記録として残ります。"
+            : "まずX上の残ったポストの扱いを確定してください。"}
+        </p>
+      ) : null}
 
       {unresolvedPosting ? <ReconcilePanel draftId={draft.id} /> : null}
       {publishNotice ? (
@@ -502,9 +551,12 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
 function PublishButton({
   disabled,
   onConfirm,
+  warnings,
 }: {
   disabled: boolean;
   onConfirm: () => void;
+  /** 「2ポスト目: NG設定の語が含まれています」形式の警告要約。 */
+  warnings: string[];
 }) {
   return (
     <AlertDialog.Root>
@@ -515,6 +567,16 @@ function PublishButton({
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
           <AlertDialog.Title className="text-lg font-semibold">この内容で投稿しますか？</AlertDialog.Title>
+          {warnings.length > 0 ? (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-medium">注意: 次の警告があります</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {warnings.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
             スレッドをXへ順に投稿します。途中で失敗した場合は、作成済みのポストを自動で削除します。
             <span className="font-medium text-foreground">削除したポストはX上で復元できません。</span>
