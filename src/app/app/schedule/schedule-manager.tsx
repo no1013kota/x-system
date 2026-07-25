@@ -15,6 +15,7 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 
 /**
@@ -80,14 +81,41 @@ export function ScheduleManager({
 }) {
   const [creating, setCreating] = useState(false);
   const hasAutoSlots = slots.some((s) => s.mode === "auto" && s.enabled);
+  const activeSlots = slots.filter((s) => s.enabled);
+  // 有効スロットのうち最も近い次回実行（「次にいつ何が投稿されるか」を先頭に出す）。
+  const upcoming = activeSlots
+    .map((slot) => ({ slot, run: nextScheduleRun(slot) }))
+    .filter((entry): entry is { slot: ScheduleSlotView; run: NextRun } => entry.run !== null)
+    .sort((a, b) => a.run.at.getTime() - b.run.at.getTime())[0];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          「自動投稿」はXへ確認なしで投稿します。停止はいつでもできます。
-        </p>
-        {hasAutoSlots ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1 text-sm">
+          {/* 同意状態を基準に「いま自動投稿が有効か」を常時示す（要件06 §3.5）。 */}
+          <p className="font-medium">
+            自動投稿:{" "}
+            {automationConsented
+              ? hasAutoSlots
+                ? "有効 — 指定時刻に確認なしでXへ投稿されます"
+                : "同意済み（有効な自動スロットなし）"
+              : "未設定 — 現在は下書きの作成までです"}
+          </p>
+          {upcoming ? (
+            <p className="text-muted-foreground">
+              次回の実行: {upcoming.run.label} —「
+              {PATTERN_LABEL[upcoming.slot.pattern] ?? upcoming.slot.pattern}」を
+              {upcoming.slot.mode === "auto"
+                ? "生成し、確認なしでXへ投稿します"
+                : "下書きとして作成します（投稿はしません）"}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">
+              有効なスケジュールがないため、自動での生成・投稿は行われません。
+            </p>
+          )}
+        </div>
+        {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
       </div>
 
       <WeekPreview slots={slots} />
@@ -181,6 +209,49 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
   );
 }
 
+/** スケジュール削除の確認（要件06 §1 SC-08）。停止との違いを説明し、誤操作で設定を失わせない。 */
+function DeleteSlotButton({
+  description,
+  disabled,
+  onConfirm,
+}: {
+  description: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger
+        render={<Button disabled={disabled} size="sm" type="button" variant="destructive" />}
+      >
+        削除
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+          <AlertDialog.Title className="text-lg font-semibold">
+            このスケジュールを削除しますか？
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+            {description}
+          </AlertDialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+              キャンセル
+            </AlertDialog.Close>
+            <AlertDialog.Close
+              onClick={onConfirm}
+              render={<Button size="lg" type="button" variant="destructive" />}
+            >
+              削除する
+            </AlertDialog.Close>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
 function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
   const times = [...new Set(slots.map((s) => s.time_jst.slice(0, 5)))].sort();
   if (slots.length === 0) {
@@ -222,8 +293,9 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                               : "bg-muted text-foreground"
                             : "bg-muted/40 text-muted-foreground line-through"
                         }`}
+                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿" : "下書き"}`}
+                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
                       >
                         {PATTERN_LABEL[s.pattern]?.slice(0, 2) ?? s.pattern}
                       </span>
@@ -235,6 +307,21 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
           ))}
         </tbody>
       </table>
+      {/* 色だけで意味を伝えないための凡例（要件06 §2 SC-08）。 */}
+      <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          <span className="mr-1 inline-block rounded bg-foreground px-1.5 py-0.5 text-background">例</span>
+          自動投稿（確認なしでXへ）
+        </span>
+        <span>
+          <span className="mr-1 inline-block rounded bg-muted px-1.5 py-0.5 text-foreground">例</span>
+          下書きのみ（確認してから自分で投稿）
+        </span>
+        <span>
+          <span className="mr-1 inline-block rounded bg-muted/40 px-1.5 py-0.5 text-muted-foreground line-through">例</span>
+          停止中
+        </span>
+      </p>
     </div>
   );
 }
@@ -281,6 +368,7 @@ function SlotRow({
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const nextRun = nextScheduleRun(slot);
 
   function run(action: () => Promise<{ status: string; code?: string; message: string }>) {
     setNotice(null);
@@ -311,9 +399,17 @@ function SlotRow({
           </span>
           {!slot.enabled ? (
             <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
-              停止中
+              停止中（実行されません）
             </span>
           ) : null}
+          {/* 「次にいつ動くか」を行ごとに出す（要件06 §2 SC-08）。 */}
+          <span className="text-xs text-muted-foreground">
+            {slot.enabled
+              ? nextRun
+                ? `次回 ${nextRun.label}`
+                : "次回の予定を計算できません"
+              : "停止中のため次回はありません"}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {!editing ? (
@@ -336,19 +432,15 @@ function SlotRow({
               停止
             </Button>
           ) : null}
-          <Button
+          <DeleteSlotButton
+            description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」（${slot.mode === "auto" ? "自動投稿" : "下書き"}）を削除します。曜日・時刻・追加指示の設定は復元できません。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}
-            onClick={() =>
+            onConfirm={() =>
               run(() =>
                 deleteScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
               )
             }
-            size="sm"
-            type="button"
-            variant="destructive"
-          >
-            削除
-          </Button>
+          />
         </div>
       </div>
 
