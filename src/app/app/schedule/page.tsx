@@ -44,12 +44,13 @@ export default async function SchedulePage() {
   let slots: ScheduleSlotView[] = [];
   let imageProviders: string[] = [];
   let automationConsented = false;
+  let accountHandle: string | null = null;
   if (activeXAccountId) {
     const [loaded, meta] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
       getPool()
-        .query<{ plan: string | null; consented: boolean }>(
-          `select p.plan,
+        .query<{ plan: string | null; consented: boolean; handle: string }>(
+          `select p.plan, xa.handle,
                   (xa.automation_consent_version = $2 and xa.automation_consented_at is not null
                    and xa.automation_disabled_at is null) as consented
              from x_accounts xa join profiles p on p.id = xa.user_id
@@ -61,6 +62,7 @@ export default async function SchedulePage() {
     slots = loaded;
     imageProviders = await availableImageProviders(user.id, meta?.plan ?? null);
     automationConsented = meta?.consented === true;
+    accountHandle = meta?.handle ?? null;
   }
 
   return (
@@ -76,6 +78,7 @@ export default async function SchedulePage() {
         <XAccountRequiredNotice description="スケジュールを作成するには、まずXアカウントを連携してください。" />
       ) : (
         <ScheduleManager
+          accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           slots={slots}

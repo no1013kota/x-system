@@ -15,7 +15,7 @@ import {
 } from "@/app/actions/schedule";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
-import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 
@@ -74,11 +74,14 @@ export function ScheduleManager({
   imageProviders,
   automationConsented,
   xAccountId,
+  accountHandle,
 }: {
   slots: ScheduleSlotView[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
+  /** 同意modalで対象を明示するためのアカウント名（@なし）。 */
+  accountHandle: string | null;
 }) {
   const [creating, setCreating] = useState(false);
   const hasAutoSlots = slots.some((s) => s.mode === "auto" && s.enabled);
@@ -133,6 +136,7 @@ export function ScheduleManager({
         <div className="rounded-2xl border bg-card p-5 shadow-sm">
           <h2 className="text-sm font-semibold">新しいスケジュール</h2>
           <SlotFields
+            accountHandle={accountHandle}
             automationConsented={automationConsented}
             imageProviders={imageProviders}
             onCancel={() => setCreating(false)}
@@ -145,6 +149,7 @@ export function ScheduleManager({
       ) : null}
 
       <SlotList
+        accountHandle={accountHandle}
         automationConsented={automationConsented}
         imageProviders={imageProviders}
         slots={slots}
@@ -332,17 +337,20 @@ function SlotList({
   imageProviders,
   automationConsented,
   xAccountId,
+  accountHandle,
 }: {
   slots: ScheduleSlotView[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
+  accountHandle: string | null;
 }) {
   if (slots.length === 0) return null;
   return (
     <ul className="space-y-3">
       {slots.map((slot) => (
         <SlotRow
+          accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           key={slot.id}
@@ -359,11 +367,13 @@ function SlotRow({
   imageProviders,
   automationConsented,
   xAccountId,
+  accountHandle,
 }: {
   slot: ScheduleSlotView;
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
+  accountHandle: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -462,6 +472,7 @@ function SlotRow({
       {editing ? (
         <div className="mt-4 border-t pt-4">
           <SlotFields
+            accountHandle={accountHandle}
             automationConsented={automationConsented}
             imageProviders={imageProviders}
             initial={toFormValues(slot)}
@@ -491,6 +502,7 @@ function SlotFields({
   imageProviders,
   automationConsented,
   xAccountId,
+  accountHandle,
   submitLabel,
   onSubmitDone,
   onCancel,
@@ -500,6 +512,7 @@ function SlotFields({
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
+  accountHandle: string | null;
   submitLabel: string;
   onSubmitDone: () => void;
   onCancel: () => void;
@@ -725,10 +738,17 @@ function SlotFields({
       ) : null}
 
       <AutomationConsentModal
+        accountHandle={accountHandle}
+        firstRunLabel={nextScheduleRun({ weekdays: v.weekdays, time_jst: v.time_jst })?.label ?? null}
         onConfirm={confirmConsentAndSubmit}
         onOpenChange={setShowConsent}
         open={showConsent}
         pending={pending}
+        settingSummary={`毎週 ${v.weekdays
+          .slice()
+          .sort((a, b) => a - b)
+          .map((d) => WEEKDAY_LABELS[d])
+          .join("・")} ${v.time_jst} に「${PATTERN_LABEL[v.pattern] ?? v.pattern}」を生成し、確認なしでXへ投稿します。`}
       />
     </div>
   );
@@ -740,11 +760,20 @@ function AutomationConsentModal({
   onOpenChange,
   onConfirm,
   pending,
+  accountHandle,
+  settingSummary,
+  firstRunLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   pending: boolean;
+  /** 対象アカウント（@handle）。どのアカウントの話かを明示するため。 */
+  accountHandle: string | null;
+  /** 「毎週 月・水 9:00 に「ニュース解説」を生成し…」の要約。 */
+  settingSummary: string;
+  /** 初回実行の日時表示。算出できないときは null。 */
+  firstRunLabel: string | null;
 }) {
   const [agreed, setAgreed] = useState(false);
   return (
@@ -752,10 +781,18 @@ function AutomationConsentModal({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">自動投稿の同意</AlertDialog.Title>
+          <AlertDialog.Title className="text-lg font-semibold">
+            {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
+          </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            自動投稿を有効にすると、次の内容に同意したものとして扱います。
+            この設定: {settingSummary}
+            {firstRunLabel ? `　最初の実行は ${firstRunLabel} です。` : ""}
           </AlertDialog.Description>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            この同意は
+            {accountHandle ? `@${accountHandle}` : "このアカウント"}
+            の自動投稿すべて（今後追加するスケジュールを含む）に適用されます。
+          </p>
           <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
             <li>生成された内容が、指定時刻に<span className="font-medium text-foreground">確認なしでXへ投稿</span>されます。</li>
             <li>スレッド途中で失敗した場合、作成済みのポストを自動削除します。<span className="font-medium text-foreground">削除したポストはX上で復元できません。</span></li>
@@ -769,7 +806,9 @@ function AutomationConsentModal({
               onChange={(e) => setAgreed(e.target.checked)}
               type="checkbox"
             />
-            <span>上記の説明（version: {CURRENT_AUTOMATION_CONSENT_VERSION}）を理解し、自動投稿に同意します。</span>
+            <span>
+              上記の説明（{consentVersionLabel(CURRENT_AUTOMATION_CONSENT_VERSION)}）を理解し、自動投稿に同意します。
+            </span>
           </label>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
