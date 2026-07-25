@@ -159,6 +159,40 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <CheckoutPending supportEmail={env.SUPPORT_EMAIL ?? null} />
           ) : (
             <>
+          {/* お申し込み前の確認：要件06 §1.1・要件03 §54 により、申込ボタン（比較表内のCTA）
+              より前に税込月額・初回のみ7日trial・カード登録・自動更新・支払時期・解約方法・
+              提供開始を再掲する。折りたたみで隠さない。 */}
+          <section
+            aria-labelledby="pre-application-heading"
+            className="mx-auto max-w-3xl rounded-2xl border bg-card p-5 text-xs leading-5 text-muted-foreground"
+          >
+            <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
+              お申し込み前の確認
+            </h2>
+            <p className="mt-2 text-foreground/80">
+              7日間無料でお試しいただけます。開始にはカード登録（Stripe）が必要で、無料期間中に解約すれば料金はかかりません。
+            </p>
+            <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+              {CONFIRMATION_ITEMS.map((item) => (
+                <div className="sm:flex sm:gap-2" key={item.term}>
+                  <dt className="shrink-0 font-medium text-foreground/80">{item.term}</dt>
+                  <dd>{item.description}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3">
+              詳細は
+              <Link
+                className="mx-1 font-medium text-foreground underline underline-offset-4"
+                href="/legal/commercial-transactions"
+                target="_blank"
+              >
+                特定商取引法に基づく表記
+              </Link>
+              をご確認ください。
+            </p>
+          </section>
+
           {/* プラン比較表（SC-04: 3プラン比較） */}
           <section aria-label="料金プラン比較" className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
@@ -256,36 +290,6 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             Standard／MDはご自身のAPI契約を利用するため、Space AIの月額料金とは別にX・生成AI各社の利用料がかかります。
           </p>
 
-          {/* お申し込み前の確認：目立たないよう最下部に小さく・淡色で配置。
-              ただし要件03 §54（税込月額/7日trial/自動更新/支払時期/解約方法/提供開始の
-              表示義務）を満たすため、折りたたみで隠さず常時表示する。 */}
-          <section
-            aria-labelledby="pre-application-heading"
-            className="mx-auto max-w-3xl border-t pt-6 text-xs leading-5 text-muted-foreground"
-          >
-            <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
-              お申し込み前の確認
-            </h2>
-            <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
-              {CONFIRMATION_ITEMS.map((item) => (
-                <div className="sm:flex sm:gap-2" key={item.term}>
-                  <dt className="shrink-0 font-medium text-foreground/80">{item.term}</dt>
-                  <dd>{item.description}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-3">
-              詳細は
-              <Link
-                className="mx-1 font-medium text-foreground underline underline-offset-4"
-                href="/legal/commercial-transactions"
-                target="_blank"
-              >
-                特定商取引法に基づく表記
-              </Link>
-              をご確認ください。
-            </p>
-          </section>
             </>
           )}
         </div>

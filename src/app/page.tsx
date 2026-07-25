@@ -73,6 +73,10 @@ export default function Home() {
               プランを見る
             </Link>
           </div>
+          {/* 決済直前で期待とズレないよう、CTA直下でカード登録が必要なことを明示する（要件06 §1.1）。 */}
+          <p className="mt-4 text-xs leading-5 text-muted-foreground">
+            開始にはカード登録が必要です（7日間は無料。期間中の解約で料金はかかりません）。
+          </p>
         </section>
 
         {/* 提供価値 */}
