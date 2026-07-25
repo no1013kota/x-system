@@ -31,7 +31,8 @@
 | R11b | AI/プロンプト重複集約②（引用dedup）: 3アダプタ（anthropic/openai/gemini）で同一だった URL キー重複排除ロジックを `createCitationCollector`（`ai/citations.ts`）へ集約。各 `extract*Citations` は `add`/`values` を使用。anthropic 継続ループの引用マージは last-wins 挙動維持のため据え置き。アダプタ19テスト緑 | duplication | S | low | done |
 | R11c | AI/プロンプト重複集約③（テンプレート解決）: `resolvePromptTemplate`／`getPromptTemplateView` に重複していた「system default→コード定数」末尾を `systemTemplateContent` に集約。上書きクエリは各関数の必要列（content only / content+updated_at）を維持しホットパスに updated_at/toIso を持ち込まない（当初の統合案はホットパスに toIso を混入させテスト失敗→末尾のみ共通化に修正）。Queryable import も `../db/queryable` へ是正 | duplication | S | low | done |
 | R11d | AI/プロンプト重複集約④（画像encode metadata）: `image-normalize.ts` の `encode()` が圧縮ループ（最大16回）で毎回 `sharp(bytes).metadata()` を呼び直していたのを、`normalizeForX` 冒頭の `inspectImage` で既知の width を渡して回避。pre-rotation width 由来で等価・振る舞い保存。`resolveByokKey` は実在せず対象外 | perf | S | low | done |
-| R12 | ジョブ重複集約: `defaultRecordStage`／`STALE_ERROR` 基底定数／毎時cron受付枠 `handleClaimedCronRoute`／`stale.terminalHandler` をグローバル可変→引数注入 | duplication/testability | M | low | todo |
+| R12a | ジョブ重複集約①（`defaultRecordStage`）: 6 handler（post-publish/learning-analysis/image-generation/suggestion/post-generation/md-merge）に重複していた `deps.recordStage ?? (async (s)=>heartbeat(jobId,s))` を `stale.ts` の `defaultRecordStage(jobId)`＋`RecordStage` 型に集約。heartbeat import は defaultRecordStage import へ置換。振る舞い保存 | duplication | S | low | done |
+| R12b | ジョブ重複集約②: `STALE_ERROR` 基底定数（terminal.ts と stale.ts の `stale_timeout` 重複）／毎時cron受付枠 `handleClaimedCronRoute`／`stale.terminalHandler` をグローバル可変→引数注入 | duplication/testability | M | low | todo |
 | R13 | UIコンポーネント重複集約: `XAccountRequiredNotice`／focus-ring ユーティリティ定数／`page-state` の scaffold共通化（a11y維持）／`app-navigation` 状態クラス一元化／タブナビ | duplication | M | low〜med | todo |
 | R14 | テスト容易性: SMTPエラー分類 `classifySmtpError` を純粋モジュールへ抽出しユニットテスト追加 | testability | S | low | todo |
 

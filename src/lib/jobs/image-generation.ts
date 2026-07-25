@@ -17,7 +17,7 @@ import { PLANS } from "../plans";
 import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 
 /** premium画像生成の月次上限（BYOKは上限なし=undefined）。 */
 const PREMIUM_IMAGE_LIMIT = PLANS.premium.usageLimits?.images;
@@ -256,7 +256,7 @@ export async function executeImageGeneration(
   if (!firstPost) throw new ImageGenerationTerminalError("empty_thread", "draft has no posts");
   const postLocalId = firstPost.local_id;
 
-  const recordStage = deps.recordStage ?? (async (stage: string) => void (await heartbeat(jobId, stage)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
   await recordStage("image");
 
   const deadline = (deps.makeDeadline ?? createDeadline)();

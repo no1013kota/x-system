@@ -26,7 +26,7 @@ import { recordProviderCalls } from "../db/api-usage-ledger";
 import { refundUsage, reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
 const PREMIUM_GENERATION_LIMIT = PLANS.premium.usageLimits?.generations;
@@ -263,8 +263,7 @@ export async function executePostGeneration(
 ): Promise<PostGenerationResult> {
   const { db, jobId } = deps;
   const now = deps.now ?? Date.now;
-  const recordStage =
-    deps.recordStage ?? (async (stage: string) => void (await heartbeat(jobId, stage)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
 
   const job = await loadJob(db, jobId);
   if (!job) throw new PostGenerationTerminalError("not_found", "job not found");

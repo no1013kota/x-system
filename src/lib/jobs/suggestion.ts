@@ -9,7 +9,7 @@ import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { reserveUsage, refundUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 import {
   SUGGEST_MIN_GROUP,
   buildSuggestionInput,
@@ -152,8 +152,7 @@ async function persistFailure(
 export async function executeSuggestion(deps: SuggestionDeps): Promise<SuggestionResult> {
   const { db, jobId } = deps;
   const now = deps.now ?? Date.now;
-  const recordStage =
-    deps.recordStage ?? (async (stage: string) => void (await heartbeat(jobId, stage)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
 
   const job = await loadJob(db, jobId);
   if (!job) throw new SuggestionTerminalError("not_found", "job not found");

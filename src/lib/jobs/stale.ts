@@ -36,6 +36,17 @@ export async function heartbeat(
   });
 }
 
+/** progress stage 記録関数の型（各 handler が任意で注入。既定は heartbeat 更新）。 */
+export type RecordStage = (stage: string) => Promise<void>;
+
+/**
+ * heartbeat による既定の stage 記録関数。各 job handler の `deps.recordStage` 未指定時に使う。
+ * running 行の locked_at と progress_stage を更新する（独自 tx）。テストは deps で no-op 化する。
+ */
+export function defaultRecordStage(jobId: string): RecordStage {
+  return async (stage) => void (await heartbeat(jobId, stage));
+}
+
 /** stale→failed 確定時の kind別終端処理フック（既定は `finalizeFailedJob`）。 */
 export type TerminalHandler = (
   client: PoolClient,

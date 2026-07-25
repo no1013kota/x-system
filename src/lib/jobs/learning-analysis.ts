@@ -10,7 +10,7 @@ import { reserveUsage, refundUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 
 /**
  * learning_analysis worker（LRN-1〜3, プロンプト設計書 §6.11〜6.13/§4.2/§7, 要件04 §12, 要件03 §7.1/§7.3,
@@ -209,8 +209,7 @@ export async function executeLearningAnalysis(
 ): Promise<LearningAnalysisResult> {
   const { db, jobId } = deps;
   const now = deps.now ?? Date.now;
-  const recordStage =
-    deps.recordStage ?? (async (stage: string) => void (await heartbeat(jobId, stage)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
 
   const job = await loadJob(db, jobId);
   if (!job) throw new LearningAnalysisTerminalError("not_found", "job not found");

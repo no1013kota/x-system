@@ -15,7 +15,7 @@ import {
 import { xUnitCost, type XCostConfig } from "../x/pricing";
 import { recordedXCall } from "../x/usage";
 import type { Queryable } from "../x/token-refresh";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 
 /**
  * post_publish ジョブの中核（要件04 §10, 要件06 §7, O-5/S-6, T-M3-18）。
@@ -416,7 +416,7 @@ export async function executePostPublish(
   deps: PostPublishDeps,
 ): Promise<PostPublishResult> {
   const { db, jobId } = deps;
-  const recordStage = deps.recordStage ?? (async (s: string) => void (await heartbeat(jobId, s)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
 
   const job = await loadJob(db, jobId);
   if (!job) throw new PostPublishError("not_found", "job not found");

@@ -9,7 +9,7 @@ import type { Provider, TextGen } from "../ai/types";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { heartbeat } from "./stale";
+import { defaultRecordStage } from "./stale";
 
 /**
  * 同一job内 MD-MERGE（L-8, プロンプト設計書 §4.2/§6.14, 要件04 §1/§12, 要件05 §9, 要件02 §3.4, T-M5-04）。
@@ -212,8 +212,7 @@ export async function executeMdMerge(
   deps: MdMergeDeps,
   opts: { confirmSourceId?: string; removedSourceId?: string } = {},
 ): Promise<MdMergeResult> {
-  const recordStage =
-    deps.recordStage ?? (async (stage: string) => void (await heartbeat(deps.jobId, stage)));
+  const recordStage = deps.recordStage ?? defaultRecordStage(deps.jobId);
   const maxRetries = deps.maxRetries ?? MD_MERGE_MAX_RETRIES;
   const now = deps.now ?? Date.now;
   // 全attemptの provider call を蓄積し、成功確定時に原価台帳へ冪等記録する（要件02 §3.17）。
