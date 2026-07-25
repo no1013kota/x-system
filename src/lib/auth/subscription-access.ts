@@ -5,9 +5,7 @@ export type SubscriptionStatus =
   (typeof DB_ENUMS.subscription_status)[number];
 
 export interface SubscriptionAccess {
-  action: "checkout" | "none" | "portal";
   actionPath: "/app/settings?tab=billing" | "/plans" | null;
-  canBrowseApp: boolean;
   canExecute: boolean;
   viewScope: "app" | "settings_plans";
 }
@@ -17,58 +15,42 @@ export const SUBSCRIPTION_ACCESS: Record<
   SubscriptionAccess
 > = {
   incomplete: {
-    action: "checkout",
     actionPath: "/plans",
-    canBrowseApp: false,
     canExecute: false,
     viewScope: "settings_plans",
   },
   incomplete_expired: {
-    action: "checkout",
     actionPath: "/plans",
-    canBrowseApp: false,
     canExecute: false,
     viewScope: "settings_plans",
   },
   trialing: {
-    action: "none",
     actionPath: "/app/settings?tab=billing",
-    canBrowseApp: true,
     canExecute: true,
     viewScope: "app",
   },
   active: {
-    action: "none",
     actionPath: null,
-    canBrowseApp: true,
     canExecute: true,
     viewScope: "app",
   },
   past_due: {
-    action: "portal",
     actionPath: "/app/settings?tab=billing",
-    canBrowseApp: true,
     canExecute: false,
     viewScope: "app",
   },
   paused: {
-    action: "portal",
     actionPath: "/app/settings?tab=billing",
-    canBrowseApp: true,
     canExecute: false,
     viewScope: "app",
   },
   canceled: {
-    action: "checkout",
     actionPath: "/plans",
-    canBrowseApp: true,
     canExecute: false,
     viewScope: "app",
   },
   unpaid: {
-    action: "portal",
     actionPath: "/app/settings?tab=billing",
-    canBrowseApp: true,
     canExecute: false,
     viewScope: "app",
   },
@@ -78,6 +60,11 @@ export function subscriptionAccessFor(
   status: string,
 ): SubscriptionAccess | null {
   return SUBSCRIPTION_ACCESS[status as SubscriptionStatus] ?? null;
+}
+
+/** True when the status grants access to the app body (viewScope === "app"). */
+export function canBrowseApp(status: string): boolean {
+  return subscriptionAccessFor(status)?.viewScope === "app";
 }
 
 /** Shared execution gate for generation, posting, and automation mutations. */

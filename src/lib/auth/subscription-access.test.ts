@@ -4,32 +4,43 @@ import { AppError } from "@/lib/observability/errors";
 
 import {
   SUBSCRIPTION_ACCESS,
+  canBrowseApp,
   requireExecutableSubscription,
   subscriptionBannerFor,
 } from "./subscription-access";
 
 describe("subscription access matrix", () => {
   it.each([
-    ["incomplete", "settings_plans", false, "checkout", "/plans"],
-    ["incomplete_expired", "settings_plans", false, "checkout", "/plans"],
-    ["trialing", "app", true, "none", "/app/settings?tab=billing"],
-    ["active", "app", true, "none", null],
-    ["past_due", "app", false, "portal", "/app/settings?tab=billing"],
-    ["paused", "app", false, "portal", "/app/settings?tab=billing"],
-    ["canceled", "app", false, "checkout", "/plans"],
-    ["unpaid", "app", false, "portal", "/app/settings?tab=billing"],
+    ["incomplete", "settings_plans", false, "/plans"],
+    ["incomplete_expired", "settings_plans", false, "/plans"],
+    ["trialing", "app", true, "/app/settings?tab=billing"],
+    ["active", "app", true, null],
+    ["past_due", "app", false, "/app/settings?tab=billing"],
+    ["paused", "app", false, "/app/settings?tab=billing"],
+    ["canceled", "app", false, "/plans"],
+    ["unpaid", "app", false, "/app/settings?tab=billing"],
   ] as const)(
     "%s maps browsing, execution, and primary action",
-    (status, viewScope, canExecute, action, actionPath) => {
+    (status, viewScope, canExecute, actionPath) => {
       expect(SUBSCRIPTION_ACCESS[status]).toEqual({
-        action,
         actionPath,
-        canBrowseApp: viewScope === "app",
         canExecute,
         viewScope,
       });
     },
   );
+
+  it.each([
+    ["trialing", true],
+    ["active", true],
+    ["past_due", true],
+    ["canceled", true],
+    ["incomplete", false],
+    ["incomplete_expired", false],
+    ["unknown-status", false],
+  ] as const)("canBrowseApp(%s) = %s", (status, expected) => {
+    expect(canBrowseApp(status)).toBe(expected);
+  });
 
   it.each(["trialing", "active"])("allows execution for %s", (status) => {
     expect(() => requireExecutableSubscription(status)).not.toThrow();

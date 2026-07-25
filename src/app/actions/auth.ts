@@ -14,7 +14,7 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
-import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
+import { canBrowseApp } from "@/lib/auth/subscription-access";
 import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -288,8 +288,7 @@ export async function signIn(
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
 
-    destination = subscriptionAccessFor(profile.data.subscription_status)
-      ?.viewScope !== "app"
+    destination = !canBrowseApp(profile.data.subscription_status)
       ? "/plans"
       : (safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app");
   } catch {

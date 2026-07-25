@@ -1,4 +1,4 @@
-import { subscriptionAccessFor } from "./subscription-access";
+import { canBrowseApp } from "./subscription-access";
 
 interface GuardProfile {
   plan: string | null;
@@ -43,8 +43,7 @@ export function routeGuardDestination({
   if (!url.pathname.startsWith("/app")) return null;
 
   const requiresPlan =
-    !profile?.plan ||
-    subscriptionAccessFor(profile.subscription_status)?.viewScope !== "app";
+    !profile?.plan || !canBrowseApp(profile.subscription_status);
   if (requiresPlan && !isLimitedSettingsRoute(url)) return "/plans";
   return null;
 }
