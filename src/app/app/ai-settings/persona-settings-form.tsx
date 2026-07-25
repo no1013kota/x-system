@@ -22,6 +22,8 @@ const inputClassName =
   "mt-2 min-h-11 w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const groupClassName = "rounded-2xl border bg-card p-5 shadow-sm sm:p-6";
 
+type NgField = "words" | "topics" | "rules";
+
 function lines(value: string): string[] {
   return value
     .split("\n")
@@ -45,6 +47,13 @@ export function PersonaSettingsForm({
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState<"error" | "success" | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  // NG設定は入力中の生テキストを保持する。表示値を正規化済み配列から作ると、改行した瞬間に
+  // 末尾の空行が捨てられて2行目が打てなくなるため（保存する値は従来どおり正規化した配列）。
+  const [ngText, setNgText] = useState<Record<NgField, string>>({
+    rules: initialSettings.ng.rules.join("\n"),
+    topics: initialSettings.ng.topics.join("\n"),
+    words: initialSettings.ng.words.join("\n"),
+  });
 
   const updateSettings = (next: PersonaSettings) => {
     setSettings(next);
@@ -376,13 +385,15 @@ export function PersonaSettingsForm({
               <textarea
                 className={`${inputClassName} min-h-28`}
                 id={`ng.${field}`}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setNgText((current) => ({ ...current, [field]: raw }));
                   updateSettings({
                     ...settings,
-                    ng: { ...settings.ng, [field]: lines(event.target.value) },
-                  })
-                }
-                value={settings.ng[field].join("\n")}
+                    ng: { ...settings.ng, [field]: lines(raw) },
+                  });
+                }}
+                value={ngText[field]}
               />
             </div>
           ))}
