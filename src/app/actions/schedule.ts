@@ -19,6 +19,7 @@ import {
   createScheduleSlotSchema,
   deleteScheduleSlot,
   disableScheduleSlot,
+  enableScheduleSlot,
   listScheduleSlots,
   slotLockSchema,
   updateScheduleSlot,
@@ -104,6 +105,25 @@ export async function disableScheduleSlotAction(
     const slot = await disableScheduleSlot(auth.userId, parsed.data, slotDeps);
     revalidatePath("/app/schedule");
     return { message: "スケジュールを停止しました。", slot, status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/** 停止したスロットの再開（要件05 §7）。auto は中核側で同意ゲートを通す。 */
+export async function enableScheduleSlotAction(
+  input: unknown,
+): Promise<BaseResult & { slot?: ScheduleSlotView }> {
+  const parsed = slotLockSchema.safeParse(input);
+  if (!parsed.success) {
+    return errorResult(new AppError("validation_error"));
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const slot = await enableScheduleSlot(auth.userId, parsed.data, slotDeps);
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを再開しました。", slot, status: "success" };
   } catch (error) {
     return errorResult(error);
   }

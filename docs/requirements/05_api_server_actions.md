@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
-| 更新日 | 2026-07-25 |
+| バージョン | v1.20 |
+| 更新日 | 2026-07-26 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -198,6 +198,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `createScheduleSlot` | pattern, weekdays, time_jst, mode, instructions, image_enabled, image_provider | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
 | `updateScheduleSlot` | slot_id, expected_updated_at, fields | slot | 所有者のみ。楽観lock。autoへの変更・再有効化は現行versionの明示同意必須 |
 | `disableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ |
+| `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |
 | `deleteScheduleSlot` | slot_id, expected_updated_at | deleted | 所有者のみ |
 
 `disableXAutomation`は即時opt-outの正本とする。実行後はauto slotを無効化し、すでにqueuedでもX投稿を開始していないauto起点jobをcancelする。running jobもX API呼び出し直前に同意状態を再確認し、撤回済みなら投稿せず停止する。draft modeと手動投稿は継続できる。

@@ -8,6 +8,7 @@ import {
   createScheduleSlotSchema,
   deleteScheduleSlot,
   disableScheduleSlot,
+  enableScheduleSlot,
   updateScheduleSlot,
   updateScheduleSlotSchema,
   type ScheduleSlotDeps,
@@ -24,6 +25,7 @@ const OWNED = /select ss\.mode, ss\.x_account_id/;
 const INSERT = /insert into schedule_slots/;
 const UPDATE = /update schedule_slots\s+set pattern/;
 const DISABLE = /update schedule_slots set enabled = false/;
+const ENABLE = /update schedule_slots set enabled = true/;
 const DELETE = /delete from schedule_slots/;
 
 function makeDb(handler: (sql: string) => { rows: Row[]; rowCount?: number }) {
@@ -154,6 +156,44 @@ describe("optimistic lock (expected_updated_at)", () => {
     await expect(
       updateScheduleSlot("u1", { ...validCreate, ...lock }, deps(db)),
     ).rejects.toMatchObject({ code: "job_conflict" });
+  });
+
+  it("enableScheduleSlot re-enables a stopped draft slot", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (OWNED.test(sql)) return { rows: [{ mode: "draft", x_account_id: XID }] };
+      if (ENABLE.test(sql)) return { rows: [{ ...slotRow(), enabled: true }] };
+      return { rows: [] };
+    });
+    const slot = await enableScheduleSlot("u1", lock, deps(db));
+    expect(slot.enabled).toBe(true);
+    // draft の再開では同意確認は不要
+    expect(writes.some((w) => CONSENT.test(w.sql))).toBe(false);
+  });
+
+  it("enableScheduleSlot requires automation consent for auto slots", async () => {
+    const { db } = makeDb((sql) => {
+      if (OWNED.test(sql)) return { rows: [{ mode: "auto", x_account_id: XID }] };
+      // 未同意
+      if (CONSENT.test(sql)) {
+        return { rows: [{ automation_consent_version: null, consented: false, disabled: false }] };
+      }
+      if (ENABLE.test(sql)) return { rows: [{ ...slotRow(), mode: "auto", enabled: true }] };
+      return { rows: [] };
+    });
+    await expect(enableScheduleSlot("u1", lock, deps(db))).rejects.toMatchObject({
+      code: "automation_consent_required",
+    });
+  });
+
+  it("enableScheduleSlot returns job_conflict on stale version", async () => {
+    const { db } = makeDb((sql) => {
+      if (OWNED.test(sql)) return { rows: [{ mode: "draft", x_account_id: XID }] };
+      if (ENABLE.test(sql)) return { rows: [] };
+      return { rows: [] };
+    });
+    await expect(enableScheduleSlot("u1", lock, deps(db))).rejects.toMatchObject({
+      code: "job_conflict",
+    });
   });
 
   it("disableScheduleSlot returns job_conflict on stale version", async () => {

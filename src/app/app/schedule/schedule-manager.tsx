@@ -9,6 +9,7 @@ import {
   deleteScheduleSlotAction,
   disableScheduleSlotAction,
   disableXAutomationAction,
+  enableScheduleSlotAction,
   recordXAutomationConsentAction,
   updateScheduleSlotAction,
 } from "@/app/actions/schedule";
@@ -431,7 +432,21 @@ function SlotRow({
             >
               停止
             </Button>
-          ) : null}
+          ) : (
+            // 停止したまま削除しか残らない行き止まりを避ける（autoは中核側で同意を再確認）。
+            <Button
+              disabled={pending}
+              onClick={() =>
+                run(() =>
+                  enableScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                )
+              }
+              size="sm"
+              type="button"
+            >
+              再開
+            </Button>
+          )}
           <DeleteSlotButton
             description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」（${slot.mode === "auto" ? "自動投稿" : "下書き"}）を削除します。曜日・時刻・追加指示の設定は復元できません。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}

@@ -228,6 +228,30 @@ export async function disableScheduleSlot(
   });
 }
 
+/**
+ * 停止したスロットを再開する（要件05 §7・要件06 §1 SC-08）。停止したまま削除しか残らない
+ * 行き止まりを避けるため。mode=auto の再開は新規作成と同じく自動投稿の同意を必須にする。
+ */
+export async function enableScheduleSlot(
+  userId: string,
+  input: SlotLockInput,
+  deps: ScheduleSlotDeps,
+): Promise<ScheduleSlotView> {
+  return deps.runInTx(async (tx) => {
+    const slot = await loadOwnedSlot(tx, userId, input.slot_id);
+    if (!slot) throw new AppError("not_found");
+    if (slot.mode === "auto") await assertAutomationConsent(tx, slot.x_account_id);
+    const { rows } = await tx.query<ScheduleSlotView>(
+      `update schedule_slots set enabled = true, updated_at = now()
+        where id = $1 and updated_at::text = $2
+      returning ${SLOT_COLUMNS}`,
+      [input.slot_id, input.expected_updated_at],
+    );
+    if (rows.length === 0) throw new AppError("job_conflict", { details: { reason: "stale_slot" } });
+    return rows[0];
+  });
+}
+
 export async function deleteScheduleSlot(
   userId: string,
   input: SlotLockInput,
