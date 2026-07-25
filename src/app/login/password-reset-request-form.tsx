@@ -5,11 +5,9 @@ import { useActionState } from "react";
 
 import { requestPasswordReset } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
-
-const inputClassName =
-  "h-11 w-full rounded-lg border bg-background px-3 text-base outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20";
 
 export function PasswordResetRequestForm() {
   const [state, formAction, pending] = useActionState(
@@ -39,18 +37,14 @@ export function PasswordResetRequestForm() {
           </label>
           <input
             autoComplete="email"
-            className={inputClassName}
+            className={authInputClassName}
             defaultValue={state.email}
             id="reset-email"
             name="email"
             required
             type="email"
           />
-          {state.fieldErrors?.email?.[0] ? (
-            <p className="text-sm text-destructive" role="alert">
-              {state.fieldErrors.email[0]}
-            </p>
-          ) : null}
+          <FieldError errors={state.fieldErrors?.email} />
         </div>
 
         <TurnstileWidget

@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 
 import { updatePassword } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,9 +13,6 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
-
-const inputClassName =
-  "h-11 w-full rounded-lg border bg-background px-3 text-base outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20";
 
 export function ResetPasswordForm() {
   const [state, formAction, pending] = useActionState(
@@ -42,7 +40,7 @@ export function ResetPasswordForm() {
           </label>
           <input
             autoComplete="new-password"
-            className={inputClassName}
+            className={authInputClassName}
             id="new-password"
             maxLength={PASSWORD_MAX_LENGTH}
             minLength={PASSWORD_MIN_LENGTH}
@@ -56,11 +54,7 @@ export function ResetPasswordForm() {
             {PASSWORD_HELP_TEXT}
           </p>
           <PasswordRulesHint password={password} />
-          {state.fieldErrors?.password?.[0] ? (
-            <p className="text-sm text-destructive" role="alert">
-              {state.fieldErrors.password[0]}
-            </p>
-          ) : null}
+          <FieldError errors={state.fieldErrors?.password} />
         </div>
 
         <div className="space-y-2">
@@ -72,7 +66,7 @@ export function ResetPasswordForm() {
           </label>
           <input
             autoComplete="new-password"
-            className={inputClassName}
+            className={authInputClassName}
             id="new-password-confirmation"
             maxLength={PASSWORD_MAX_LENGTH}
             minLength={PASSWORD_MIN_LENGTH}
@@ -86,11 +80,7 @@ export function ResetPasswordForm() {
             confirmation={passwordConfirmation}
             password={password}
           />
-          {state.fieldErrors?.password_confirmation?.[0] ? (
-            <p className="text-sm text-destructive" role="alert">
-              {state.fieldErrors.password_confirmation[0]}
-            </p>
-          ) : null}
+          <FieldError errors={state.fieldErrors?.password_confirmation} />
         </div>
 
         <Button className="h-11 w-full" disabled={pending} type="submit">

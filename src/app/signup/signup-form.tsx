@@ -11,6 +11,7 @@ import {
   INITIAL_AUTH_FORM_STATE,
   type AuthFormState,
 } from "@/app/actions/auth-state";
+import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
@@ -24,17 +25,6 @@ import {
   CURRENT_TERMS_VERSION,
 } from "@/lib/legal";
 
-const inputClassName =
-  "h-11 w-full rounded-lg border bg-background px-3 text-base outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20";
-
-function FieldError({ errors }: { errors: string[] | undefined }) {
-  if (!errors?.length) return null;
-  return (
-    <p className="text-sm text-destructive" role="alert">
-      {errors[0]}
-    </p>
-  );
-}
 function ResultMessage({ state }: { state: AuthFormState }) {
   if (state.status === "idle") return null;
   return (
@@ -109,7 +99,7 @@ export function SignUpForm() {
         </label>
         <input
           autoComplete="email"
-          className={inputClassName}
+          className={authInputClassName}
           id="email"
           name="email"
           required
@@ -125,7 +115,7 @@ export function SignUpForm() {
         <input
           aria-describedby="password-help"
           autoComplete="new-password"
-          className={inputClassName}
+          className={authInputClassName}
           id="password"
           maxLength={PASSWORD_MAX_LENGTH}
           minLength={PASSWORD_MIN_LENGTH}
@@ -148,7 +138,7 @@ export function SignUpForm() {
         </label>
         <input
           autoComplete="new-password"
-          className={inputClassName}
+          className={authInputClassName}
           id="password-confirmation"
           maxLength={PASSWORD_MAX_LENGTH}
           minLength={PASSWORD_MIN_LENGTH}

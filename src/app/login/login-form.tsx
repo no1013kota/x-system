@@ -8,11 +8,9 @@ import {
   signIn,
 } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
-
-const inputClassName =
-  "h-11 w-full rounded-lg border bg-background px-3 text-base outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, formAction, pending] = useActionState(
@@ -44,17 +42,13 @@ export function LoginForm({ next }: { next: string }) {
           </label>
           <input
             autoComplete="email"
-            className={inputClassName}
+            className={authInputClassName}
             id="login-email"
             name="email"
             required
             type="email"
           />
-          {state.fieldErrors?.email?.[0] ? (
-            <p className="text-sm text-destructive" role="alert">
-              {state.fieldErrors.email[0]}
-            </p>
-          ) : null}
+          <FieldError errors={state.fieldErrors?.email} />
         </div>
 
         <div className="space-y-2">
@@ -71,17 +65,13 @@ export function LoginForm({ next }: { next: string }) {
           </div>
           <input
             autoComplete="current-password"
-            className={inputClassName}
+            className={authInputClassName}
             id="login-password"
             name="password"
             required
             type="password"
           />
-          {state.fieldErrors?.password?.[0] ? (
-            <p className="text-sm text-destructive" role="alert">
-              {state.fieldErrors.password[0]}
-            </p>
-          ) : null}
+          <FieldError errors={state.fieldErrors?.password} />
         </div>
 
         <TurnstileWidget
