@@ -18,6 +18,7 @@ import {
 } from "@/app/actions/generation-jobs";
 import { Button } from "@/components/ui/button";
 import type { DraftView } from "@/lib/drafts";
+import { formatJst } from "@/lib/format";
 
 import { DraftEditor } from "./draft-editor";
 
@@ -38,14 +39,6 @@ function WarningBadge({ code }: { code: string }) {
       {WARNING_LABEL[code] ?? code}
     </span>
   );
-}
-
-function timeLabel(iso: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
 }
 
 export function DraftsList({
@@ -194,7 +187,7 @@ function DraftCard({
             </span>
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
-          <span className="text-xs text-muted-foreground">{timeLabel(draft.updated_at)}</span>
+          <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
         </div>
         <div className="flex items-center gap-2">
           {publishing ? (

@@ -19,7 +19,7 @@
 | R7 | 認証フォームUI共通化: `authInputClassName` 共有定数化（4フォーム）＋ `FieldError` を `components/auth/field-error.tsx` へ切り出し、login/reset系のインラインerror<p>を置換 | duplication | M | low | done |
 | R8 | `yen()`（`lib/format.ts`）＋ JST当月式 `CURRENT_MONTH_JST_SQL`（`lib/usage/current-month.ts`, 重複6箇所）を集約 | duplication | M | low | done |
 | R8b | 投稿パターンlabel p1〜p6 を `lib/post/pattern-labels.ts`（`POST_PATTERN_LABELS`）に集約（badge4ファイル＋prompt-editorはspread再利用。schedule-managerのoptions由来は別） | duplication | M | low | done |
-| R8c | 残: `formatJst()`（ja-JP/Asia/Tokyo 日時フォーマッタ、null分岐は呼び出し側）＋ X設定パス定数（`/app/settings?tab=api-keys`）の集約 | duplication | M | low | todo |
+| R8c | `formatJst()`（ja-JP/Asia/Tokyo・short+short 日時フォーマッタ）を `lib/format.ts` に集約。完全一致の8ファイル（confirmation-queue/history-list/base-md-editor/learning-sources-manager/news-browser/analytics-view/drafts-list/notification-bell）のローカル整形を置換。null分岐（`"-"`/`""`/`"—"`）は呼び出し側維持。※オプションの異なる settings/page（long）・api-key-settings（medium/tz無）・follower-chart（月日）・usage-summary（long）は対象外。X設定パス定数は下記「除外」参照 | duplication | M | low | done |
 | R9 | 型の狭め: `api_provider` enum化（`recordExternalApiUsage`）／`ProviderCall`↔`providerCallSchema` 単一化／x_account `status`・`auth_type` union化／`readAt` センチネル是正／非null断定の除去（notification-bell 等） | types | M | low〜med | todo |
 | R10 | 複雑度の分割: `subscription-sync.applyPreparedStripeEvent`（支払失敗通知INSERT抽出）／`jobs/terminal.finalizeFailedJob`（コピーテーブル化）／`update-session` のprofiles取得抽出 | complexity | M | low | todo |
 | R11 | AI/プロンプト重複集約: 引用dedup（3アダプタ＋anthropic継続ループ）／`resolveByokKey`／`textModelFor`／テンプレート三段解決／画像encodeのmetadata再取得回避 | duplication/perf | M | low〜med | todo |
@@ -31,6 +31,7 @@
 
 - **成功アラートの緑色ドリフト**（emerald-900/800/700）や **resend-confirmation-form の transition 欠落**の統一は「見た目の変更＝振る舞い変更」。リファクタではなく別途 dev-loop で扱う（暫定: 現状維持）。
 - **R9 の env 型（`ALWAYS_REQUIRED` を非optional化して `as string` を全廃）** は型変更が広範に波及するため中リスク。今回は「検証後に必須項目を非nullで返す型付きアクセサ」に留め、schema自体の非optional化は要決定として保留（暫定案: アクセサ方式）。
+- **X設定パス定数 `/app/settings?tab=api-keys` の一元化**（R8c で当初予定）は見送り。値が安定（滅多に変わらない）で価値が低い一方、13+箇所に散在し token-refresh の SQL文字列リテラルや execution-prereqs の Record 値・app-banners/route/actions 等の別領域に跨るため、集約すると分散した import を各領域に張ることになり費用対効果が低い。振る舞い保存は可能だが低価値・高分散のため今回対象外（現状維持）。
 
 ## 進め方メモ
 

@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
 import { listNewsItemsAction } from "@/app/actions/news";
 import { updateNewsConfigAction } from "@/app/actions/settings";
+import { formatJst } from "@/lib/format";
 import type { NewsItemView } from "@/lib/news-items";
 import { THEME_OPTIONS } from "@/lib/themes";
 
@@ -26,11 +27,7 @@ const IMPACT_BADGE: Record<string, string> = {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
+  return formatJst(iso);
 }
 
 function toggle<T>(list: T[], value: T): T[] {

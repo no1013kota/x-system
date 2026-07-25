@@ -10,15 +10,8 @@ import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
 } from "@/app/actions/notifications";
+import { formatJst } from "@/lib/format";
 import type { NotificationView } from "@/lib/notifications";
-
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
-}
 
 /**
  * ヘッダの通知ベル＋一覧（要件05 §10・要件06 §2, O-2, T-M2-20）。未読件数バッジを出し、Popoverで
@@ -133,7 +126,7 @@ export function NotificationBell({
                           {item.body}
                         </span>
                         <span className="mt-1 block text-[11px] text-muted-foreground">
-                          {formatTime(item.createdAt)}
+                          {formatJst(item.createdAt)}
                         </span>
                       </span>
                     </button>

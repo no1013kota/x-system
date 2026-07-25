@@ -10,6 +10,7 @@ import {
   reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
+import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 
 /**
@@ -33,10 +34,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 function uuid(): string {
   return crypto.randomUUID();
-}
-
-function fmt(iso: string): string {
-  return new Intl.DateTimeFormat("ja-JP", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Tokyo" }).format(new Date(iso));
 }
 
 function daysUntil(iso: string): number {
@@ -234,7 +231,7 @@ export function LearningSourcesManager({
                   <span className="rounded px-2 py-0.5 text-xs font-medium">
                     {STATUS_LABEL[s.status] ?? s.status}
                   </span>
-                  <span className="ml-auto text-xs text-muted-foreground">分析日時: {fmt(s.updatedAt)}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">分析日時: {formatJst(s.updatedAt)}</span>
                 </div>
                 {s.url ? (
                   <a className="mt-1 block truncate text-sm hover:underline" href={s.url} rel="noopener noreferrer" target="_blank">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import {
@@ -18,7 +19,7 @@ import {
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("ja-JP", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Tokyo" }).format(new Date(iso));
+  return formatJst(iso);
 }
 
 function num(v: number | null): string {

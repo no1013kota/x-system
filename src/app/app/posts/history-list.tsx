@@ -1,4 +1,5 @@
 import type { DraftView } from "@/lib/drafts";
+import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 /**
@@ -11,11 +12,7 @@ const MODE_LABEL: Record<string, string> = { auto: "自動投稿", manual: "手�
 
 function timeLabel(iso: string | null): string {
   if (!iso) return "-";
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
+  return formatJst(iso);
 }
 
 /** X 上ポストへのpermalink。handle が空でも開ける i/status 形式にフォールバックする。 */

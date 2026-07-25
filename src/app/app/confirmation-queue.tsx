@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import type { DraftView } from "@/lib/drafts";
@@ -8,14 +9,6 @@ import type { DraftView } from "@/lib/drafts";
  * を新しい順で一覧し、各行から SC-07 の該当下書きへ deep-link する。0件は空状態＋「今すぐ作成」導線。
  * 表示専用のため server component（クライアント JS 不要）。
  */
-
-function timeLabel(iso: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
-}
 
 export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
   if (drafts.length === 0) {
@@ -63,7 +56,7 @@ export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
                     </span>
                   ) : null}
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {timeLabel(draft.updated_at)}
+                    {formatJst(draft.updated_at)}
                   </span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">

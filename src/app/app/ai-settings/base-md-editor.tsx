@@ -9,6 +9,7 @@ import {
   updateBaseMdManualAction,
 } from "@/app/actions/base-md";
 import type { BaseMdVersionView } from "@/lib/base-md";
+import { formatJst } from "@/lib/format";
 
 /**
  * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
@@ -25,14 +26,6 @@ const CHANGE_SOURCE_LABEL: Record<string, string> = {
   manual: "手動編集",
   rollback: "ロールバック",
 };
-
-function fmt(iso: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(iso));
-}
 
 type Note =
   | { kind: "success"; text: string }
@@ -268,7 +261,7 @@ export function BaseMdEditor({
                 <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">v{h.version}</span>
                 <span className="rounded px-2 py-0.5 text-xs">{CHANGE_SOURCE_LABEL[h.changeSource] ?? h.changeSource}</span>
                 {h.summary ? <span className="text-xs text-muted-foreground">{h.summary}</span> : null}
-                <span className="ml-auto text-xs text-muted-foreground">{fmt(h.createdAt)}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{formatJst(h.createdAt)}</span>
                 {h.version !== version ? (
                   <button
                     className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
