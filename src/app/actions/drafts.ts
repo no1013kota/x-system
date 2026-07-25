@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
 import {
@@ -12,7 +12,7 @@ import {
   updateDraft,
   type DraftView,
 } from "@/lib/drafts";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { reconcileDraftPosting } from "@/lib/reconcile-posting";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
@@ -53,7 +53,7 @@ export async function listDraftsAction(
 ): Promise<BaseResult & { drafts?: DraftView[] }> {
   const parsed = listSchema.safeParse(input ?? {});
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -64,7 +64,7 @@ export async function listDraftsAction(
       : [];
     return { drafts, message: "", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -73,7 +73,7 @@ export async function updateDraftAction(
 ): Promise<BaseResult & { updatedAt?: string }> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -88,7 +88,7 @@ export async function updateDraftAction(
     revalidatePath("/app/posts");
     return { message: "下書きを保存しました。", status: "success", updatedAt: res.updatedAt };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -97,7 +97,7 @@ export async function reconcileDraftPostingAction(
 ): Promise<BaseResult & { reconcileStatus?: string }> {
   const parsed = reconcileSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -131,7 +131,7 @@ export async function reconcileDraftPostingAction(
           : "一意に確定できませんでした。X上の状態をご確認ください。";
     return { message, reconcileStatus: res.status, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -140,7 +140,7 @@ export async function cloneFailedDraftForRetryAction(
 ): Promise<BaseResult & { draftId?: string }> {
   const parsed = cloneSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -160,14 +160,14 @@ export async function cloneFailedDraftForRetryAction(
     revalidatePath("/app/posts");
     return { draftId, message: "本文と画像を複製した新しい下書きを作成しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function discardDraftAction(input: unknown): Promise<BaseResult> {
   const parsed = discardSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -188,6 +188,6 @@ export async function discardDraftAction(input: unknown): Promise<BaseResult> {
     revalidatePath("/app/posts");
     return { message: "下書きを破棄しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

@@ -5,7 +5,8 @@ import { z } from "zod";
 import type { AnalyticsSummary } from "@/lib/analytics";
 import { getAnalyticsSummaryForUser } from "@/lib/analytics-server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { errorResult } from "./_helpers";
+import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 /**
@@ -26,20 +27,20 @@ export async function getAnalyticsSummaryAction(
 ): Promise<BaseResult & { summary?: AnalyticsSummary }> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const user = await getCurrentUser();
   if (!user) {
-    return { ...toUserFacingError(new AppError("unauthorized")), status: "error" };
+    return errorResult(new AppError("unauthorized"));
   }
   try {
     const xAccountId = await resolveActiveXAccountForUser(user.id);
     if (!xAccountId) {
-      return { ...toUserFacingError(new AppError("not_found")), status: "error" };
+      return errorResult(new AppError("not_found"));
     }
     const summary = await getAnalyticsSummaryForUser(user.id, xAccountId, parsed.data.period_days);
     return { message: "", status: "success", summary };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

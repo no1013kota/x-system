@@ -1,12 +1,13 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { errorResult } from "./_helpers";
 import {
   listCreatedNewsItemIdsForAccount,
   listNewsItemsForUser,
 } from "@/lib/news-items-server";
 import type { NewsItemView } from "@/lib/news-items";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 /**
@@ -30,7 +31,7 @@ export async function listNewsItemsAction(
 ): Promise<ListNewsItemsActionResult> {
   const user = await getCurrentUser();
   if (!user) {
-    return { ...toUserFacingError(new AppError("unauthorized")), status: "error" };
+    return errorResult(new AppError("unauthorized"));
   }
   try {
     const page = await listNewsItemsForUser(input ?? {});
@@ -49,6 +50,6 @@ export async function listNewsItemsAction(
       status: "success",
     };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

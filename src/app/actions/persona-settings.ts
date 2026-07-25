@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { errorResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { personaSettingsSchema } from "@/lib/persona-settings";
 import { updatePersonaSettingsForUser } from "@/lib/persona-settings-store";
@@ -50,6 +51,6 @@ export async function updatePersonaSettings(
       version: result.version,
     };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

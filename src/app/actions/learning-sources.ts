@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { dispatchJob } from "@/lib/jobs/dispatch";
@@ -17,7 +17,7 @@ import {
   type LearningSourceDeps,
   type LearningSourceView,
 } from "@/lib/learning-sources";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 /**
@@ -44,7 +44,7 @@ export async function listLearningSourcesAction(): Promise<
     const sources = await listLearningSources(pooledDb, auth.userId, activeId);
     return { message: "", sources, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -53,7 +53,7 @@ export async function addLearningSourceAction(
 ): Promise<BaseResult & { jobId?: string; sourceId?: string }> {
   const parsed = addLearningSourceSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -62,7 +62,7 @@ export async function addLearningSourceAction(
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "学習ソースを追加しました。", sourceId, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -71,7 +71,7 @@ export async function reimportOwnPostsAction(
 ): Promise<BaseResult & { jobId?: string; sourceId?: string }> {
   const parsed = reimportOwnPostsSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -80,7 +80,7 @@ export async function reimportOwnPostsAction(
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "過去投稿の再取り込みを開始しました。", sourceId, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -89,7 +89,7 @@ export async function removeLearningSourceAction(
 ): Promise<BaseResult & { jobId?: string | null }> {
   const parsed = removeLearningSourceSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -102,6 +102,6 @@ export async function removeLearningSourceAction(
       status: "success",
     };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

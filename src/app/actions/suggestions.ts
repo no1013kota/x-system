@@ -11,10 +11,10 @@ import {
   refreshSuggestionsSchema,
   type SuggestionView,
 } from "@/lib/jobs/suggestion-jobs";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-import type { BaseResult } from "./_helpers";
+import { errorResult, type BaseResult } from "./_helpers";
 
 /**
  * 改善提案の Server Actions（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
@@ -29,11 +29,11 @@ async function requireActive(): Promise<
 > {
   const user = await getCurrentUser();
   if (!user) {
-    return { ok: false, result: { ...toUserFacingError(new AppError("unauthorized")), status: "error" } };
+    return { ok: false, result: errorResult(new AppError("unauthorized")) };
   }
   const xAccountId = await resolveActiveXAccountForUser(user.id);
   if (!xAccountId) {
-    return { ok: false, result: { ...toUserFacingError(new AppError("not_found")), status: "error" } };
+    return { ok: false, result: errorResult(new AppError("not_found")) };
   }
   return { ok: true, userId: user.id, xAccountId };
 }
@@ -43,7 +43,7 @@ export async function refreshSuggestionsAction(
 ): Promise<BaseResult & { jobId?: string }> {
   const parsed = refreshSuggestionsSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireActive();
   if (!auth.ok) return auth.result;
@@ -54,7 +54,7 @@ export async function refreshSuggestionsAction(
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "改善提案を更新しています。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -67,6 +67,6 @@ export async function listSuggestionsAction(): Promise<
     const suggestions = await listSuggestions(pooledDb, auth.userId, auth.xAccountId);
     return { message: "", status: "success", suggestions };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

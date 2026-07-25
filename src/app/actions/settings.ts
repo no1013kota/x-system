@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   newsConfigSchema,
@@ -22,7 +22,7 @@ import {
 export async function updateProfileAction(input: unknown): Promise<BaseResult> {
   const parsed = profileUpdateSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -32,7 +32,7 @@ export async function updateProfileAction(input: unknown): Promise<BaseResult> {
     revalidatePath("/app/settings");
     return { message: "プロフィールを保存しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -41,7 +41,7 @@ export async function updateNotificationConfigAction(
 ): Promise<BaseResult> {
   const parsed = notificationConfigSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -50,7 +50,7 @@ export async function updateNotificationConfigAction(
     revalidatePath("/app/settings");
     return { message: "通知設定を保存しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -73,6 +73,6 @@ export async function updateNewsConfigAction(input: unknown): Promise<BaseResult
     revalidatePath("/app/news");
     return { message: "ニュース設定を保存しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

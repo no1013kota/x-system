@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import {
   getBaseMdForUser,
   isLearningRunningForUser,
@@ -11,7 +11,7 @@ import {
   updateBaseMdManualForUser,
 } from "@/lib/base-md-server";
 import type { BaseMdVersionView } from "@/lib/base-md";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 
 /**
  * ベースmd手動編集・履歴・ロールバックの Server Actions（M-1, 要件05 §8/§9）。本人のみ。プラン制限
@@ -37,7 +37,7 @@ export async function getBaseMdAction(
 > {
   const parsed = xAccountSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -49,7 +49,7 @@ export async function getBaseMdAction(
     ]);
     return { content: base.content, history, learningRunning, message: "", status: "success", version: base.version };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -58,7 +58,7 @@ export async function updateBaseMdManualAction(
 ): Promise<BaseResult & { version?: number }> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -71,7 +71,7 @@ export async function updateBaseMdManualAction(
     });
     return { message: "ベースmdを保存しました。", status: "success", version };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -80,7 +80,7 @@ export async function rollbackBaseMdAction(
 ): Promise<BaseResult & { version?: number }> {
   const parsed = rollbackSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -93,6 +93,6 @@ export async function rollbackBaseMdAction(
     });
     return { message: "指定のバージョンへロールバックしました。", status: "success", version };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

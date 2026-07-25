@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { AppError } from "@/lib/observability/errors";
 import {
   disconnectXAccountForUser,
   enableXAccountForUser,
@@ -36,7 +36,7 @@ export async function listXAccountsAction(): Promise<ListXAccountsActionResult> 
     const accounts = await listXAccounts(auth.userId);
     return { accounts, message: "", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -45,7 +45,7 @@ export async function refreshXAccountStatusAction(
 ): Promise<XAccountStatusActionResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -57,7 +57,7 @@ export async function refreshXAccountStatusAction(
     revalidatePath("/app/settings");
     return { accountStatus: status, message: "最新の状態を確認しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -66,7 +66,7 @@ export async function enableXAccountAction(
 ): Promise<XAccountStatusActionResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -75,7 +75,7 @@ export async function enableXAccountAction(
     revalidatePath("/app/settings");
     return { accountStatus: status, message: "アカウントを有効化しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -84,7 +84,7 @@ export async function setActiveXAccountAction(
 ): Promise<XAccountStatusActionResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -93,7 +93,7 @@ export async function setActiveXAccountAction(
     revalidatePath("/app");
     return { message: "操作対象のアカウントを切り替えました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -102,7 +102,7 @@ export async function disconnectXAccountAction(
 ): Promise<XAccountStatusActionResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -115,6 +115,6 @@ export async function disconnectXAccountAction(
     revalidatePath("/app");
     return { accountStatus: status, message: "連携を解除しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

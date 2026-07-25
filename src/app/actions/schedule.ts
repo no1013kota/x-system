@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { AppError } from "@/lib/observability/errors";
 import {
   disableXAutomation,
   recordXAutomationConsent,
@@ -51,7 +51,7 @@ export async function listScheduleSlotsAction(): Promise<
     const slots = activeId ? await listScheduleSlots(pooledDb, activeId) : [];
     return { slots, message: "", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -60,7 +60,7 @@ export async function createScheduleSlotAction(
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
   const parsed = createScheduleSlotSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -69,7 +69,7 @@ export async function createScheduleSlotAction(
     revalidatePath("/app/schedule");
     return { message: "スケジュールを作成しました。", slot, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -78,7 +78,7 @@ export async function updateScheduleSlotAction(
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
   const parsed = updateScheduleSlotSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -87,7 +87,7 @@ export async function updateScheduleSlotAction(
     revalidatePath("/app/schedule");
     return { message: "スケジュールを更新しました。", slot, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -96,7 +96,7 @@ export async function disableScheduleSlotAction(
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
   const parsed = slotLockSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -105,7 +105,7 @@ export async function disableScheduleSlotAction(
     revalidatePath("/app/schedule");
     return { message: "スケジュールを停止しました。", slot, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -116,7 +116,7 @@ export async function recordXAutomationConsentAction(
 ): Promise<BaseResult & { consent?: AutomationConsentState }> {
   const parsed = recordXAutomationConsentSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -125,7 +125,7 @@ export async function recordXAutomationConsentAction(
     revalidatePath("/app/schedule");
     return { consent, message: "自動投稿への同意を記録しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -134,7 +134,7 @@ export async function disableXAutomationAction(
 ): Promise<BaseResult & { result?: DisableAutomationResult }> {
   const parsed = disableAutomationSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -145,14 +145,14 @@ export async function disableXAutomationAction(
     revalidatePath("/app/schedule");
     return { message: "自動投稿を停止しました。", result, status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function deleteScheduleSlotAction(input: unknown): Promise<BaseResult> {
   const parsed = slotLockSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -161,6 +161,6 @@ export async function deleteScheduleSlotAction(input: unknown): Promise<BaseResu
     revalidatePath("/app/schedule");
     return { message: "スケジュールを削除しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

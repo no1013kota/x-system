@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { AppError } from "@/lib/observability/errors";
 import { PROMPT_TEMPLATE_KINDS } from "@/lib/prompts/gen-prompts";
 import {
   NoActiveAccountError,
@@ -29,9 +29,9 @@ const resetSchema = z.object({ kind: kindSchema });
 
 function toError(error: unknown): BaseResult {
   if (error instanceof NoActiveAccountError) {
-    return { ...toUserFacingError(new AppError("not_found")), status: "error" };
+    return errorResult(new AppError("not_found"));
   }
-  return { ...toUserFacingError(error), status: "error" };
+  return errorResult(error);
 }
 
 export async function listPromptTemplatesAction(): Promise<
@@ -64,7 +64,7 @@ export async function updatePromptTemplateAction(
 ): Promise<BaseResult & { template?: PromptTemplateView }> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -86,7 +86,7 @@ export async function resetPromptTemplateAction(
 ): Promise<BaseResult & { template?: PromptTemplateView }> {
   const parsed = resetSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

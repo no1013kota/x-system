@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 
-import { requireUserId, type BaseResult } from "./_helpers";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { AppError } from "@/lib/observability/errors";
 import {
   countUnreadNotificationsForUser,
   listNotificationsForUser,
@@ -40,7 +40,7 @@ export async function listNotificationsAction(
 ): Promise<ListNotificationsActionResult> {
   const parsed = listSchema.safeParse(input ?? {});
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -60,7 +60,7 @@ export async function listNotificationsAction(
       unreadCount,
     };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -69,7 +69,7 @@ export async function markNotificationReadAction(
 ): Promise<NotificationMutationResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -78,7 +78,7 @@ export async function markNotificationReadAction(
     const unreadCount = await countUnreadNotificationsForUser(auth.userId);
     return { message: "", status: "success", unreadCount };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -89,7 +89,7 @@ export async function markAllNotificationsReadAction(): Promise<NotificationMuta
     const count = await markAllNotificationsReadForUser(auth.userId);
     return { count, message: "", status: "success", unreadCount: 0 };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -98,7 +98,7 @@ export async function retryNotificationEmailAction(
 ): Promise<BaseResult> {
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -106,6 +106,6 @@ export async function retryNotificationEmailAction(
     await retryNotificationEmailForUser(auth.userId, parsed.data.notification_id);
     return { message: "メールの再送を予約しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

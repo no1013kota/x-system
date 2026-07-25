@@ -12,9 +12,9 @@ import {
   saveXApiKeySchema,
 } from "@/lib/api-keys";
 import { getCurrentUser } from "@/lib/auth/session";
+import { errorResult } from "./_helpers";
 import {
   AppError,
-  toUserFacingError,
   userMessageForCode,
 } from "@/lib/observability/errors";
 import { z } from "zod";
@@ -27,10 +27,6 @@ interface ApiKeyActionResult {
   provider?: string;
   keyStatus?: "invalid" | "unchecked" | "valid";
   status: "error" | "success";
-}
-
-function errorResult(error: unknown): ApiKeyActionResult {
-  return { ...toUserFacingError(error), status: "error" };
 }
 
 export async function saveXApiKey(

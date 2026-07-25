@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 
-import { requireUserId, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
@@ -50,7 +50,7 @@ interface JobIdResult extends BaseResult {
 export async function createGenerationJobAction(input: unknown): Promise<JobIdResult> {
   const parsed = createGenerationJobSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -59,7 +59,7 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "生成を開始しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -75,7 +75,7 @@ const createDraftFromNewsActionSchema = z.object({
 export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {
   const parsed = createDraftFromNewsActionSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -96,14 +96,14 @@ export async function createDraftFromNewsAction(input: unknown): Promise<JobIdRe
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "生成を開始しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function retryGenerationJobAction(input: unknown): Promise<JobIdResult> {
   const parsed = retryJobSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -112,14 +112,14 @@ export async function retryGenerationJobAction(input: unknown): Promise<JobIdRes
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "再試行を開始しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function regenerateDraftAction(input: unknown): Promise<JobIdResult> {
   const parsed = regenerateDraftSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -128,14 +128,14 @@ export async function regenerateDraftAction(input: unknown): Promise<JobIdResult
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "再生成を開始しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function regenerateImageAction(input: unknown): Promise<JobIdResult> {
   const parsed = regenerateImageSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -144,14 +144,14 @@ export async function regenerateImageAction(input: unknown): Promise<JobIdResult
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "画像を再生成しています。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
 export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
   const parsed = publishDraftSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -160,7 +160,7 @@ export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "投稿を開始しました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -169,7 +169,7 @@ export async function getGenerationJobAction(
 ): Promise<BaseResult & { job?: GenerationJobView }> {
   const parsed = jobIdSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -177,7 +177,7 @@ export async function getGenerationJobAction(
     const job = await getGenerationJob(pooledDb, auth.userId, parsed.data.job_id);
     return { job, message: "", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
 
@@ -186,7 +186,7 @@ export async function cancelGenerationJobAction(
 ): Promise<BaseResult & { jobStatus?: string }> {
   const parsed = jobIdSchema.safeParse(input);
   if (!parsed.success) {
-    return { ...toUserFacingError(new AppError("validation_error")), status: "error" };
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -194,6 +194,6 @@ export async function cancelGenerationJobAction(
     const { status } = await cancelGenerationJob(pooledDb, auth.userId, parsed.data.job_id);
     return { jobStatus: status, message: "生成をキャンセルしました。", status: "success" };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }

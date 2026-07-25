@@ -3,6 +3,7 @@
 import { updateAiPurposeConfigForUser } from "@/lib/ai-purpose-config-server";
 import { updateAiPurposeConfigSchema } from "@/lib/ai-purpose-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { errorResult } from "./_helpers";
 import {
   AppError,
   toUserFacingError,
@@ -47,6 +48,6 @@ export async function updateAiPurposeConfig(
       status: "success",
     };
   } catch (error) {
-    return { ...toUserFacingError(error), status: "error" };
+    return errorResult(error);
   }
 }
