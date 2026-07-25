@@ -22,8 +22,14 @@ function fmtDate(iso: string | null): string {
   return formatJst(iso);
 }
 
+/** 取得不能は `--`（要件06 §8）。0件と誤解されないよう説明はセル側で補う。 */
 function num(v: number | null): string {
   return v === null ? "--" : v.toLocaleString();
+}
+
+/** この時点をまだ計測していないセル。取得不能（--）と区別する。 */
+function NotCollected() {
+  return <span className="text-muted-foreground">未取得</span>;
 }
 
 export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
@@ -51,7 +57,7 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-muted-foreground">表示するcheckpoint:</span>
+        <span className="text-sm font-medium text-muted-foreground">実績を見る時点:</span>
         <div className="inline-flex rounded-lg border p-0.5">
           {CHECKPOINT_DAYS.map((d) => (
             <button
@@ -62,7 +68,7 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
               onClick={() => setCheckpoint(d)}
               type="button"
             >
-              {d}日
+              投稿後{d}日
             </button>
           ))}
         </div>
@@ -81,7 +87,7 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
                   <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">不完全なthread</span>
                 ) : null}
                 {draft.metricsCompleted ? (
-                  <span className="rounded px-2 py-0.5 text-xs text-muted-foreground">更新終了</span>
+                  <span className="rounded px-2 py-0.5 text-xs text-muted-foreground" title="投稿後30日までの計測がすべて終わりました">計測完了</span>
                 ) : null}
                 <span className="ml-auto text-xs text-muted-foreground">{fmtDate(draft.postedAt)}</span>
               </div>
@@ -89,20 +95,32 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
               {/* スレッド合算（選択checkpoint） */}
               <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {([
-                  ["インプレッション", agg.impressions],
+                  ["表示回数（インプレッション）", agg.impressions],
                   ["いいね", agg.likes],
                   ["リポスト", agg.reposts],
-                  ["プロフクリック", agg.profile_clicks],
+                  ["プロフィール表示", agg.profile_clicks],
                 ] as const).map(([label, value]) => (
                   <div className="rounded-lg bg-muted/40 px-3 py-2" key={label}>
                     <dt className="text-xs text-muted-foreground">{label}</dt>
-                    <dd className="text-lg font-semibold tabular-nums">{num(value)}</dd>
+                    <dd className="text-lg font-semibold tabular-nums">
+                      {agg.present === 0 ? (
+                        <span className="text-base font-normal text-muted-foreground">未取得</span>
+                      ) : (
+                        num(value)
+                      )}
+                    </dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-2 text-xs text-muted-foreground">
-                合算対象 {agg.present} 件
-                {agg.missing > 0 ? `／${checkpoint}日checkpoint未取得 ${agg.missing} 件` : ""}
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {agg.present === 0
+                  ? `投稿後${checkpoint}日の実績はまだ記録されていません（対象ポスト ${agg.missing} 件）。投稿から${checkpoint}日が経つと自動で記録されます。`
+                  : `投稿後${checkpoint}日の実績があるポスト ${agg.present}/${agg.present + agg.missing} 件を合計しています${
+                      agg.missing > 0 ? `（残り${agg.missing}件はこの時点をまだ計測していません）` : ""
+                    }。`}
+                {agg.present > 0
+                  ? "「--」はXから取得できなかった項目で、0件ではありません。"
+                  : ""}
               </p>
 
               {/* tweet_id別 */}
@@ -110,12 +128,12 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
                 <table className="w-full min-w-[36rem] text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
-                      <th className="py-1 pr-2 font-medium">tweet_id</th>
-                      <th className="py-1 pr-2 font-medium">Imp</th>
+                      <th className="py-1 pr-2 font-medium">ポスト</th>
+                      <th className="py-1 pr-2 font-medium">表示回数</th>
                       <th className="py-1 pr-2 font-medium">いいね</th>
-                      <th className="py-1 pr-2 font-medium">RP</th>
-                      <th className="py-1 pr-2 font-medium">プロフ</th>
-                      <th className="py-1 font-medium">取得日時</th>
+                      <th className="py-1 pr-2 font-medium">リポスト</th>
+                      <th className="py-1 pr-2 font-medium">プロフィール表示</th>
+                      <th className="py-1 font-medium">計測日時</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -132,11 +150,11 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
                               <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">取得不能</span>
                             ) : null}
                           </td>
-                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.impressions) : "—"}</td>
-                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.likes) : "—"}</td>
-                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.reposts) : "—"}</td>
-                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.profile_clicks) : "—"}</td>
-                          <td className="py-1 text-xs text-muted-foreground">{c ? fmtDate(c.collected_at) : "—"}</td>
+                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.impressions) : <NotCollected />}</td>
+                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.likes) : <NotCollected />}</td>
+                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.reposts) : <NotCollected />}</td>
+                          <td className="py-1 pr-2 tabular-nums">{c ? num(c.profile_clicks) : <NotCollected />}</td>
+                          <td className="py-1 text-xs text-muted-foreground">{c ? fmtDate(c.collected_at) : <NotCollected />}</td>
                         </tr>
                       );
                     })}

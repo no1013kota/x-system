@@ -63,6 +63,27 @@ export function NewsBrowser({
   );
   // 実行前提エラー（api_key_required 等）の設定導線（要件05 §12・§4.1）。
   const [noteHref, setNoteHref] = useState<string | null>(null);
+  const [noteLinkLabel, setNoteLinkLabel] = useState("設定を開く");
+  const [noteTone, setNoteTone] = useState<"error" | "success">("error");
+  // 全分野・インパクト高中が既定。既定より絞っているときだけ「条件を戻す」を出す。
+  const allCategories = THEME_OPTIONS.map((option) => option.newsCategory);
+  const narrowedFilter =
+    categories.length < allCategories.length || impacts.length < 2 || !impacts.includes("high");
+
+  function setNoteWith(
+    message: string,
+    options: { href?: string | null; label?: string; tone?: "error" | "success" } = {},
+  ) {
+    setNote(message);
+    setNoteHref(options.href ?? null);
+    setNoteLinkLabel(options.label ?? "設定を開く");
+    setNoteTone(options.tone ?? "error");
+  }
+
+  function resetFilter() {
+    setCategories(allCategories);
+    setImpacts(["high", "mid"]);
+  }
 
   function generate(newsItemId: string) {
     if (created.has(newsItemId) || pending) return;
@@ -76,12 +97,31 @@ export function NewsBrowser({
       setGeneratingId(null);
       if (res.status === "success") {
         setCreated((prev) => new Set(prev).add(newsItemId));
-        setNote("下書きの生成を開始しました。下書き一覧で確認できます。");
-        setNoteHref(null);
+        // 生成は1分ほどかかる。どこで結果を見られるかまで示す（要件06 §10）。
+        setNoteWith("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
+          href: "/app/posts?tab=create",
+          label: "進行状況を見る",
+          tone: "success",
+        });
       } else {
-        setNote(res.message || "生成を開始できませんでした。");
+        // 競合系は「再読み込み」では直らないため、原因別に次の操作を示す。
+        const reason = res.details?.reason;
         const path = res.details?.settingsPath;
-        setNoteHref(typeof path === "string" ? path : null);
+        if (reason === "too_many_active_jobs") {
+          setNoteWith("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
+            href: "/app/posts?tab=create",
+            label: "進行状況を見る",
+          });
+        } else if (reason === "learning_removing") {
+          setNoteWith("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
+            href: "/app/ai-settings?tab=learning",
+            label: "学習ソースを見る",
+          });
+        } else {
+          setNoteWith(res.message || "生成を開始できませんでした。", {
+            href: typeof path === "string" ? path : null,
+          });
+        }
       }
     });
   }
@@ -113,7 +153,7 @@ export function NewsBrowser({
       if (res.status === "success" && res.items) {
         setItems(res.items);
         setCursor(res.nextCursor ?? null);
-        setNote(null);
+        setNoteWith("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
       } else {
         // 取得失敗時は前回成功分を保持し注記する。
         setNote("最新のニュースを取得できませんでした。表示は前回の内容です。");
@@ -162,6 +202,10 @@ export function NewsBrowser({
       )}
 
       <section aria-label="絞り込み" className="space-y-3 rounded-xl border bg-background p-4">
+        {/* この条件は news_config として保存され通知にも使われる（要件06 §3.4）。副作用を明示する。 */}
+        <p className="text-xs leading-5 text-muted-foreground">
+          この条件は保存され、ニュース通知の対象にも使われます。
+        </p>
         <div>
           <p className="text-xs font-semibold text-muted-foreground">分野</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -218,26 +262,51 @@ export function NewsBrowser({
             onClick={applyConfig}
             type="button"
           >
-            この設定で表示・保存
+            この条件で表示して保存
           </button>
         </div>
       </section>
 
       {note ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+        <p
+          className={`rounded-lg border px-4 py-2 text-sm ${
+            noteTone === "success"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+              : "border-amber-300 bg-amber-50 text-amber-950"
+          }`}
+          role="status"
+        >
           {note}
           {noteHref ? (
             <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
-              設定を開く
+              {noteLinkLabel}
             </Link>
           ) : null}
         </p>
       ) : null}
 
       {items.length === 0 ? (
-        <p className="rounded-xl border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
-          該当するニュースはありません。
-        </p>
+        <div className="rounded-xl border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
+          {window ? (
+            <p>この時間帯に該当するニュースはありません。</p>
+          ) : narrowedFilter ? (
+            <>
+              <p>この条件に一致するニュースはありません。分野やインパクトを増やしてみてください。</p>
+              <button
+                className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent"
+                disabled={pending}
+                onClick={resetFilter}
+                type="button"
+              >
+                絞り込みを既定に戻す（全分野・インパクト高と中）
+              </button>
+            </>
+          ) : (
+            <p>
+              まだ表示できるニュースがありません。ニュースはJST 9:00〜20:00に毎時取得しています。次の取得までお待ちください。
+            </p>
+          )}
+        </div>
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (

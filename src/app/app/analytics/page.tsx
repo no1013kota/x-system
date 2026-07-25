@@ -29,8 +29,7 @@ export default async function AnalyticsPage() {
     return (
       <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
         <header>
-          <p className="text-sm font-medium text-muted-foreground">SC-09</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
         </header>
         <div className="mt-7">
           <EmptyState
@@ -63,10 +62,9 @@ export default async function AnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
       <header>
-        <p className="text-sm font-medium text-muted-foreground">SC-09</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          投稿ごとの実績を、投稿後1日・7日・30日のcheckpointで確認できます（直近90日）。
+          投稿の反応は、投稿後1日・7日・30日の3回だけ記録します。ここでは直近90日の投稿を新しい順に表示します。
         </p>
       </header>
       <div className="mt-7 space-y-8">
