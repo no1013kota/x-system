@@ -1,5 +1,5 @@
-import { isValidCronAuth } from "@/lib/jobs/auth";
-import { hourWindowKey, withCronWindowClaim } from "@/lib/jobs/cron";
+import { hourWindowKey } from "@/lib/jobs/cron";
+import { handleCronRoute } from "@/lib/jobs/cron-route";
 
 /**
  * フォロワー数記録cron（要件04 §6/§13, K-3, T-M5-14）。CRON_SECRET認証＋時間窓claimで二重起動時はno-op 2xx。
@@ -11,14 +11,19 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200;
 
 export async function GET(request: Request): Promise<Response> {
-  if (!isValidCronAuth(request.headers.get("authorization"))) {
-    return new Response("unauthorized", { status: 401 });
-  }
-  const windowKey = hourWindowKey(new Date());
-  const { ran, result } = await withCronWindowClaim("follower_snapshot", windowKey, async () => {
-    // X token/env に触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。
-    const { runFollowerSnapshot } = await import("@/lib/jobs/follower-snapshot-server");
-    return runFollowerSnapshot(windowKey);
+  return handleCronRoute(request, {
+    name: "follower_snapshot",
+    windowKey: hourWindowKey,
+    work: async ({ windowKey }) => {
+      // X token/env に触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。
+      const { runFollowerSnapshot } = await import("@/lib/jobs/follower-snapshot-server");
+      return runFollowerSnapshot(windowKey);
+    },
+    response: ({ ran, windowKey, result }) => ({
+      ok: true,
+      ran,
+      window: windowKey,
+      result: result ?? null,
+    }),
   });
-  return Response.json({ ok: true, ran, window: windowKey, result: result ?? null });
 }
