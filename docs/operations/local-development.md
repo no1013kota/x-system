@@ -160,6 +160,32 @@ npm run dev                  # → http://127.0.0.1:3000
 - **本番**: Callback URI = `https://<本番ドメイン>/api/x/oauth/callback`（https・完全一致）、`APP_BASE_URL=https://<本番ドメイン>`。
 - BYOK（standard/md）は運営Appではなく**ユーザーが自分の X App の Client ID/Secret をアプリUIで入力**する。その X App にも同じ Callback URI を登録する必要がある。
 
+### 5.2 Stripe（課金）のローカル設定と落とし穴
+
+課金E2E（Checkout/Webhook/Portal）をローカルで試すときの必須ルールは **Stripe の全値を「同じ1つの環境（同一サンドボックス、または同一 test mode）」に揃える**こと。混在すると Price 不明・署名不一致・イベント不達で失敗する。
+
+- **対象の値**: `STRIPE_SECRET_KEY` / `STRIPE_PRICE_{STANDARD,MD,PREMIUM}_MONTHLY` / `STRIPE_PORTAL_CONFIGURATION_ID` / `STRIPE_WEBHOOK_SECRET` をすべて同じサンドボックス由来にする。
+- **Price は `price_...`（価格ID）を使う。`prod_...`（商品ID）は不可**。取得: ダッシュボード → Product catalog → Products → 対象商品 → Pricing セクションの `price_...` をコピー（商品ページ上部に大きく出る `prod_...` は別物なので注意）。
+- **webhook secret は `stripe listen` が発行する `whsec_...`**（ダッシュボードの endpoint secret ではない）。
+- **`stripe login` の既定アカウント/サンドボックスが `.env.local` のキーと違うと、`stripe listen` が別サンドボックスを監視してイベントが届かない**（署名検証以前に不達）。対処のどちらか:
+  1. キーに合わせて listen する（`STRIPE_API_KEY` 環境変数は `stripe listen` でも有効）:
+     ```bash
+     export STRIPE_API_KEY="$(grep -E '^STRIPE_SECRET_KEY=' .env.local | cut -d= -f2- | tr -d '\r"')"
+     stripe listen --print-secret          # 出た whsec_ を .env.local の STRIPE_WEBHOOK_SECRET へ
+     stripe listen --forward-to http://127.0.0.1:3000/api/stripe/webhook
+     ```
+  2. `stripe login` をやり直して該当サンドボックスを選ぶ。
+- **一致確認**: `.env.local` の Secret key の account と CLI の account が同じか突き合わせる（`curl -s https://api.stripe.com/v1/account -u "<secret>:"` の `id` ／ `stripe get /v1/account` の `id`）。別 account なら上記で合わせる。
+- 発火テスト: listen 常駐中に別ターミナルで `stripe trigger checkout.session.completed`。
+
+### 5.3 AIプロバイダ実キーの確認（落とし穴）
+
+キーが「認証OK（`/models` が 200）」でも**実際の生成が通るとは限らない**。ローカルで実生成を試す前に最小コールで疎通確認する。
+
+- **課金残高**: 認証が通っても残高が無いと生成は失敗する（例: Anthropic `credit balance is too low`）。使うプロバイダの運営キーに残高・課金設定が要る。
+- **`/models` 一覧に載る ≠ 呼べる**: 一覧に出るモデルでも「新規ユーザーには提供終了」等で `generateContent`/生成が 404 になることがある（旧世代モデルで発生）。**実生成コールで確認**し、通るモデル名を `ANTHROPIC_TEXT_MODEL` 等の `*_TEXT_MODEL`/`*_IMAGE_MODEL` に設定する。
+- 既定の文章 provider は `PREMIUM_TEXT_PROVIDER`／`NEWS_TEXT_PROVIDER`（既定 `anthropic`）。既定プロバイダに残高が無い場合は、残高のあるプロバイダへ切り替えるか残高を追加する。
+
 ---
 
 ## 6. ローカルでテストユーザーを作ってログインする
