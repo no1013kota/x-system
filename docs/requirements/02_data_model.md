@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.17 |
+| バージョン | v1.18 |
 | 更新日 | 2026-07-26 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -13,6 +13,7 @@
 - DB保存時刻はUTC、表示・月次カウント・スケジュール判定・日次上限はJST。
 - ユーザー所有データは`user_id`または`x_account_id`経由でRLSを適用する。
 - 認証済みクライアントには原則selectだけを許可し、insert/update/deleteはzod検証と所有権確認を行うServer Action/APIだけに許可する。
+- `service_role`にはpublicスキーマ全体のDML権限を付与する（Supabase既定と同じ姿勢。以降追加されるテーブルにも既定権限で自動付与）。RLSをバイパスするserver-only専用ロールであり、PostgREST経由の管理系クエリが権限エラーで落ちないようにする。付与漏れは直結pg（postgresで接続）では露見しないため、`service-role-grants.db.test.ts`で全テーブルを検査する。
 - APIキーとOAuth tokenはversion、nonce、ciphertext、auth tagを含む暗号化envelopeをJSON文字列化して`text`へ保存し、Server onlyで復号する。
 - JSONBは本書のスキーマを正とし、書き込み前後にzodで検証する。
 - FKの削除方針は、履歴・台帳は`RESTRICT`、一時的参照は`SET NULL`を基本とする。MVPではセルフサービスのアカウント一括削除と、それを前提にした専用cascade・削除手順を定義しない。
