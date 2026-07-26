@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { destroyUserByEmail, query } from "./fixtures/account";
-import { alertIn, expect, test } from "./fixtures/test";
+import { alertIn, expect, signIn, test } from "./fixtures/test";
 
 /**
  * A-1/A-2 サインアップ→メール確認→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
@@ -102,9 +102,14 @@ test("サインアップ→確認メール→ログインまで通り、未契�
     );
     expect(profile?.terms_version, "利用規約バージョンが記録されること").toBeTruthy();
 
-    // ログアウト相当（sessionを捨てる）→ 画面のログインフォームから入り直せる。
-    // 未契約なのでアプリ本体ではなくプラン選択へ入る（要件03 §2 の閲覧ゲート）。
-    await page.context().clearCookies();
+    // 未契約は /plans に留められる（App Shellのヘッダへ到達できない）ので、
+    // この画面のログアウトから抜けられること（PRD A-2・T-M7-19）。
+    await page.getByRole("button", { name: "ログアウト" }).click();
+    await expect(page).toHaveURL(/\/login/);
+    // sessionが破棄されており、保護routeへ戻れない
+    await page.goto("/app");
+    await expect(page).toHaveURL(/\/login/);
+
     await page.goto("/login");
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
@@ -137,4 +142,18 @@ test("未登録のメールではログインできず、原因を推測させ�
   await expect(alert).toBeVisible();
   // 「このメールは登録されていません」等、アカウントの存在を教えない（列挙対策）
   await expect(alert).not.toContainText("登録されていません");
+});
+
+test("アプリ内のどの画面からでもヘッダのログアウトで抜けられる", async ({ accounts, page }) => {
+  const account = await accounts.create("signout");
+  await signIn(page, account);
+
+  // ホーム以外の画面からでも到達できる（ヘッダはApp Shell共通・要件06 §2）
+  await page.goto("/app/posts?tab=drafts");
+  await page.getByRole("button", { name: "ログアウト" }).click();
+  await expect(page).toHaveURL(/\/login/);
+
+  // session破棄後は保護routeへ戻れない（要件03 §1）
+  await page.goto("/app/posts");
+  await expect(page).toHaveURL(/\/login/);
 });

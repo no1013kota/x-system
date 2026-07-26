@@ -12,6 +12,8 @@ import { PLAN_IDS, PLANS, type PlanId } from "@/lib/plans";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+import { SignOutButton } from "@/components/app-shell/sign-out-button";
+
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
 
@@ -132,9 +134,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
       <main className="flex-1 px-4 py-10 sm:py-14">
         <div className="mx-auto max-w-5xl space-y-10">
           <header className="mx-auto max-w-3xl space-y-4 text-center">
-            <Link className="text-sm font-semibold tracking-wide" href="/">
-              {APP_NAME}
-            </Link>
+            <div className="flex items-center justify-between gap-3">
+              <Link className="text-sm font-semibold tracking-wide" href="/">
+                {APP_NAME}
+              </Link>
+              {/* 未契約の利用者はこの画面に留められ App Shell のヘッダへ到達できないため、
+                  ログアウトの導線をここにも置く（PRD A-2・要件03 §1）。 */}
+              {user ? <SignOutButton label={false} /> : null}
+            </div>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-muted-foreground">
                 すべてのプランを7日間無料でお試し
