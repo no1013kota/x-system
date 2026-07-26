@@ -96,12 +96,13 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 
 ### T-M7-17: Gemini画像生成が predict エンドポイントで404になる `blocked`
 - 参照: プロンプト設計書 §5.4、要件01 §3（`GEMINI_IMAGE_MODEL`） / 依存: T-M7-16 / サイズ: M
-- ブロック理由: **運営Gemini APIキーのquotaが枯渇している**（テキスト側も `429 RESOURCE_EXHAUSTED`）。修正しても実APIで検証できないため、quota回復（ユーザー作業）まで着手しない。T-M7-15と同じ「未検証のまま外部API連携を書く」ことを繰り返さないための保留。
+- ブロック理由: **2026-07-27 ユーザー判断「一旦Googleは不要」**。加えて運営Gemini APIキーのquotaが枯渇している（テキスト側も `429 RESOURCE_EXHAUSTED`）。修正しても実APIで検証できないため、quota回復（ユーザー作業）まで着手しない。T-M7-15と同じ「未検証のまま外部API連携を書く」ことを繰り返さないための保留。
 - 完了条件:
   - 画像provider=Google の生成が404にならず、画像バイト列が取得できる
   - `npm run check:providers` のGemini画像1件が通る
 - 内容: `createGeminiImageGen`（`image-client.ts:43`）が `ai.models.generateImages`（`:predict`）を呼んでいる。公式ドキュメント（2026-07-27確認）によれば **`:predict` は Imagen 専用**で、設定値の `gemini-3.1-flash-lite-image`（Nano Banana系）は **Interactions API または `generateContent`** で使う。実APIの応答は `models/gemini-3.1-flash-lite-image is not found for API version v1beta, or is not supported for predict`。プロンプト設計書 §5.4 は既に「新規実装はInteractions APIを第一候補とし、未対応の場合だけ `generateContent` へフォールバック」と定めており、**実装が正本から外れている**（docs側の修正は不要）。
 - 影響: 画像providerにGoogleを選んだ場合の画像生成が常に失敗する（BYOK・プレミアム共通）。OpenAI（`gpt-image-1-mini`）は正常。既定の解決は `resolveImageProvider`（アカウント設定 `ai_purpose_config.image`）なので、Googleを選んでいる利用者だけが影響を受ける。
+- 対応: `npm run check:providers` はGoogleを既定で対象外にした（`PROVIDER_CHECK_GOOGLE=1` で復帰）。常に赤いチェックは読まれなくなり他providerの退行を隠すため。
 - 選択肢: (案A)`generateImages`をやめ Interactions API（未対応時 `generateContent`）へ寄せる＝§5.4どおり。推奨 / (案B)`GEMINI_IMAGE_MODEL` を Imagen系モデルに変え `generateImages` を維持（コード変更なし。ただし§5.4の方針と、Nano Banana推奨という公式の案内から外れる）。
 
 ## 要決定・外部準備(ユーザー作業)
