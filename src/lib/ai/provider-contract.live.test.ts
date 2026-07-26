@@ -30,6 +30,14 @@ else Reflect.set(process.env, "NODE_ENV", testNodeEnv);
 
 const ENABLED = process.env.PROVIDER_CHECK === "1";
 
+/**
+ * Google は既定で検査しない。2026-07-27 時点で運営キーのquotaが枯渇（429）し、画像は
+ * `:predict` 呼び出しで404になる（T-M7-17）。常に赤いチェックは読まれなくなり、他providerの
+ * 本物の退行を隠すため、**ユーザー判断で一旦対象外**とした。復帰時は
+ * `PROVIDER_CHECK_GOOGLE=1 npm run check:providers` で検査する。
+ */
+const GOOGLE_ENABLED = process.env.PROVIDER_CHECK_GOOGLE === "1";
+
 /** 実行のたびに課金されるので、応答は最小限で足りる。 */
 const MINIMAL = {
   system: ["Answer with the single word OK. Do not search unless required."],
@@ -112,7 +120,7 @@ describe.runIf(ENABLED)("provider契約（実API）", () => {
     );
   });
 
-  describe("Google", () => {
+  describe.runIf(GOOGLE_ENABLED)("Google", () => {
     it.runIf(hasKey("GEMINI_API_KEY"))(
       "Google Search grounding 付きリクエストが受理される",
       async () => {
@@ -168,7 +176,7 @@ describe.runIf(ENABLED)("provider契約（実API）", () => {
       180_000,
     );
 
-    it.runIf(hasKey("GEMINI_API_KEY") && hasKey("GEMINI_IMAGE_MODEL"))(
+    it.runIf(GOOGLE_ENABLED && hasKey("GEMINI_API_KEY") && hasKey("GEMINI_IMAGE_MODEL"))(
       "Gemini が画像を返し、デコードできる",
       async () => {
         const { createGeminiImageGen } = await import("./image-client");
