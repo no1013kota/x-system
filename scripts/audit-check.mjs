@@ -32,6 +32,24 @@ try {
   process.exit(2);
 }
 
+// registry がエラーを返すと npm は `{ "message": ..., "error": {...} }` を stdout へ出す。
+// これも valid JSON なので、監査結果として扱うと「脆弱性0件」に見えてゲートを素通りする。
+// 監査レポートの体裁（auditReportVersion と metadata.vulnerabilities の件数）を必ず確認する。
+const counts = audit?.metadata?.vulnerabilities;
+const looksLikeReport =
+  audit?.auditReportVersion !== undefined &&
+  counts !== null &&
+  typeof counts === "object" &&
+  typeof counts.total === "number";
+if (!looksLikeReport) {
+  console.error(
+    `audit-check: npm audit が監査レポートを返しませんでした（registry エラーの可能性）: ${
+      audit?.message ?? "metadata.vulnerabilities がありません"
+    }`,
+  );
+  process.exit(2);
+}
+
 const vulns = audit.vulnerabilities ?? {};
 const blocking = [];
 for (const [name, info] of Object.entries(vulns)) {
