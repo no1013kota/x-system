@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-07-27 |
 | 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
@@ -109,6 +109,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
+| `npm run check:providers` | **実APIへの provider 契約テスト**（Anthropic/OpenAI/Gemini のWeb検索・構造化出力・画像生成が受理されるか）。実キーと少額の費用が必要なためCI・`release:check` には入れない。外部APIの仕様変更・リクエスト形状の誤りを検出する唯一の層 |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |

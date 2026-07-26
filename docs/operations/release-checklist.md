@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.2 |
+| バージョン | v1.3 |
 | 更新日 | 2026-07-27 |
 | 関連 | [デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
@@ -21,7 +21,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 | 7 | ログ redact／安全なエラー変換（provider 本文・stack を返さない） | ✅ 済 | T-M6-18（`observability/redact.test.ts`・`errors.test.ts`） |
 | 8 | 環境変数一覧（要件01 §3）の dev 充足で全テスト・build が稼働 | ✅ 済 | `.env.local`＋`release:check` 稼働。preview/prod 必須変数の充足は §3（人間側） |
 | 9 | launchd→Vercel Cron 移行条件・手順の確認 | ✅ 済（手順整備） | [launchd-to-vercel-cron.md](./launchd-to-vercel-cron.md)。実移行はコスト/運用判断（人間側） |
-| 10 | 外部API「実装時に要確認」注記の実装時点での確認 | ✅ 済（実装時） | 各コード/ドキュメントに確認日を記載（例: 要件05 §2.2 AI models list 2026-07-23、要件03 §9 Stripe、要件04 X OAuth 2026-07-23）。**リリース直前の pay-per-use 単価・API バージョン最終再確認は §3（Developer Console 要）** |
+| 10 | 外部API「実装時に要確認」注記の実装時点での確認 | ✅ 済（実装時） | 各コード/ドキュメントに確認日を記載（例: 要件05 §2.2 AI models list 2026-07-23、要件03 §9 Stripe、要件04 X OAuth 2026-07-23）。**AI providerのリクエスト形状は `npm run check:providers` で実APIに対して確認する**（2026-07-27追加。同日の初回実行でAnthropicのWeb検索400とGemini画像生成の404を検出）。**リリース直前の pay-per-use 単価・API バージョン最終再確認は §3（Developer Console 要）** |
 
 ## 2. dry_run → live 切替手順と rollback
 

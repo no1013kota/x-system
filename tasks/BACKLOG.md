@@ -83,6 +83,27 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: `buildAnthropicParams` が組む Web Search tool に `allowed_callers: ["direct"]` を明示。`web_search_20260209` は省略時に **programmatic tool calling（コード実行からのtool呼び出し）を要求する既定**になり、非対応モデルが `invalid_request_error` で400を返す。ローカルの `ANTHROPIC_TEXT_MODEL=claude-haiku-4-5` が非対応で、**Web検索を使う全パターンが常に失敗**していた（検索を使わないP-2/P-5は無影響のため気付きにくかった）。実APIで同一リクエストを比較し `allowed_callers` なし=400／`["direct"]`=200 を確認。回帰テストは `anthropic.test.ts` に2件（tool形状の完全一致＋maxUses 1〜4で常に `direct` が付くこと）。
 - 後続への注意: **この型の不具合はCI・E2E・DBテストのどれでも検出できない**（外部APIの契約違反であり、テストは全てモックしている）。同種の再発防止には実APIへ最小リクエストを投げるprovider契約テストが必要で、費用と実キーが要るためCIには入れられない。リリース前チェックリスト §1 #10（外部API「実装時に要確認」）の運用でカバーする想定。tool version を上げるときは `allowed_callers` の既定が変わり得るため実APIで再確認する。
 
+### T-M7-16: provider契約テスト（実APIへ最小リクエスト）を追加 `done`
+- 参照: プロンプト設計書 §5.1〜§5.5、[CI](../docs/operations/ci.md) §4 / 依存: T-M7-15 / サイズ: M
+- 完了条件:
+  - 各AI providerへ実際にリクエストを投げ、受理されることを確認できるコマンドがある
+  - 既定では実行されない（CI・`npm test`・`release:check` を汚さない）
+  - 本番と同じペイロード組み立てを通る
+- メモ: T-M7-15（Web検索の `allowed_callers` 欠落で P-1/P-3/P-4/P-6・NEWS が常に400）は、単体1,237件・E2E 5件・CI のいずれでも検出できなかった。テストが外部APIを全てモックするため、**「送っているリクエストがAPIに受理されるか」を見る層が存在しなかった**。
+- 実装結果: `src/lib/ai/provider-contract.live.test.ts` ＋ `npm run check:providers`（`PROVIDER_CHECK=1 vitest run <file>`）。**本番のファクトリ**（`createAnthropicTextGen`／`createOpenAITextGen`／`createGeminiTextGen`／`createOpenAIImageGen`／`createGeminiImageGen`）をそのまま呼び、独自にペイロードを組まない（組むと検証対象が本番の形でなくなる）。検証は「受理されること」＋requestId・usageが取れること（原価台帳の前提）に限り、モデル出力の内容は見ない。費用最小化のため max_tokens 最小・検索を誘発しない指示・画像1枚。`PROVIDER_CHECK` 未設定時は8件をskipし、代わりに「未実行」を示す1件だけが通る（0 testsで静かに緑になるのを防ぐ）。キーが無い provider は個別にskip。
+- 初回実行結果（2026-07-27）: **6 passed / 2 failed**。Anthropic（Web検索・構造化出力）とOpenAI（Web検索・構造化出力・画像）は受理。**Google は2件とも失敗し、下記2件の実問題を検出した**（T-M7-17へ）。
+- 後続への注意: CI・`release:check` には**入れない**（実キーをCIへ置かない方針を崩すため。ci.md §4 に明記）。provider・モデル名・tool versionを変えたときは手で実行する。テキスト6件で数円、画像2件を含めて数十円程度。
+
+### T-M7-17: Gemini画像生成が predict エンドポイントで404になる `blocked`
+- 参照: プロンプト設計書 §5.4、要件01 §3（`GEMINI_IMAGE_MODEL`） / 依存: T-M7-16 / サイズ: M
+- ブロック理由: **運営Gemini APIキーのquotaが枯渇している**（テキスト側も `429 RESOURCE_EXHAUSTED`）。修正しても実APIで検証できないため、quota回復（ユーザー作業）まで着手しない。T-M7-15と同じ「未検証のまま外部API連携を書く」ことを繰り返さないための保留。
+- 完了条件:
+  - 画像provider=Google の生成が404にならず、画像バイト列が取得できる
+  - `npm run check:providers` のGemini画像1件が通る
+- 内容: `createGeminiImageGen`（`image-client.ts:43`）が `ai.models.generateImages`（`:predict`）を呼んでいる。公式ドキュメント（2026-07-27確認）によれば **`:predict` は Imagen 専用**で、設定値の `gemini-3.1-flash-lite-image`（Nano Banana系）は **Interactions API または `generateContent`** で使う。実APIの応答は `models/gemini-3.1-flash-lite-image is not found for API version v1beta, or is not supported for predict`。プロンプト設計書 §5.4 は既に「新規実装はInteractions APIを第一候補とし、未対応の場合だけ `generateContent` へフォールバック」と定めており、**実装が正本から外れている**（docs側の修正は不要）。
+- 影響: 画像providerにGoogleを選んだ場合の画像生成が常に失敗する（BYOK・プレミアム共通）。OpenAI（`gpt-image-1-mini`）は正常。既定の解決は `resolveImageProvider`（アカウント設定 `ai_purpose_config.image`）なので、Googleを選んでいる利用者だけが影響を受ける。
+- 選択肢: (案A)`generateImages`をやめ Interactions API（未対応時 `generateContent`）へ寄せる＝§5.4どおり。推奨 / (案B)`GEMINI_IMAGE_MODEL` を Imagen系モデルに変え `generateImages` を維持（コード変更なし。ただし§5.4の方針と、Nano Banana推奨という公式の案内から外れる）。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
