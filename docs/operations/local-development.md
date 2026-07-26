@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
+| バージョン | v1.2 |
 | 更新日 | 2026-07-26 |
 | 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
@@ -110,6 +110,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
+| `npm run db:clean-test-data` | ローカルDBに残るテストユーザーと関連データを掃除（既定はdry-run、`-- --apply` で実行）。実メールのアカウントには触れない |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---

@@ -10,6 +10,7 @@
     "stripe:portal:setup": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/setup-stripe-portal.mjs",
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
+    "db:clean-test-data": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/clean-test-data.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node --env-file-if-exists=.env --env-file-if-exists=.env.local node_modules/@playwright/test/cli.js test",
