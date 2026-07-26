@@ -13,5 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // REQUIRE_DB=1 のときだけローカルSupabaseの到達性を先に検証する（skipの静かな緑を防ぐ）。
+    globalSetup: ["./vitest.global-setup.ts"],
   },
 });
