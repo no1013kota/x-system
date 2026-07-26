@@ -107,12 +107,13 @@ export function XAccountsSettings({
               <Plus aria-hidden="true" /> 追加（上限到達）
             </Button>
           ) : xApiKeyRegistered ? (
-            <Button render={<a href={oauthStartPath} />} size="lg">
+            <Button nativeButton={false} render={<a href={oauthStartPath} />} size="lg">
               <Plus aria-hidden="true" /> Xアカウントを追加
             </Button>
           ) : (
             // X APIキー未登録のまま連携を始めると無言でAPIキータブへ戻されるため、先に登録へ誘導する。
             <Button
+              nativeButton={false}
               render={<Link href="/app/settings?tab=api-keys" />}
               size="lg"
               variant="outline"
@@ -218,6 +219,7 @@ export function XAccountsSettings({
 
                   {account.status !== "active" ? (
                     <Button
+                      nativeButton={false}
                       render={<a href={oauthStartPath} />}
                       size="sm"
                       variant="outline"
