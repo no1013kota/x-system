@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:e2e": "node --env-file-if-exists=.env --env-file-if-exists=.env.local node_modules/@playwright/test/cli.js test",
     "audit:check": "node scripts/audit-check.mjs",
-    "release:check": "npm run typecheck && npm run lint && npm run audit:check && npm run test && npm run build"
+    "release:check": "npm run typecheck && npm run lint && npm run audit:check && npm run test:db && npm run build && npm run test:e2e",
+    "test:db": "REQUIRE_DB=1 vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
