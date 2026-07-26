@@ -31,10 +31,14 @@ export interface AnalyticsDraftRow {
   posted_at: string | null;
   metrics_completed_at: string | null;
   tweet_metrics: Record<string, TweetMetricEntry> | null;
+  /** 本文（`tweet_ids`と同順）。どの投稿の実績かを識別するために表示する。 */
+  thread?: { text?: string }[] | null;
 }
 
 export interface TweetAnalytics {
   tweetId: string;
+  /** 該当ポストの本文（`tweet_ids`と同順で対応付け）。不明なら空文字。 */
+  body: string;
   /** rollback削除確認済み（監査表示のみ・合算から除外）。 */
   auditOnly: boolean;
   /** X上で取得不能確定（合算から除外）。 */
@@ -47,6 +51,8 @@ export interface DraftAnalytics {
   draftId: string;
   pattern: string;
   postedAt: string | null;
+  /** 先頭ポストの本文（カード見出しの識別用）。 */
+  excerpt: string;
   /** 部分失敗でX上に残ったthread（「不完全なthread」表示）。 */
   incomplete: boolean;
   /** 30日checkpoint後などで回収終了。 */
@@ -60,8 +66,15 @@ export function buildDraftAnalytics(row: AnalyticsDraftRow): DraftAnalytics {
   const live = isFailed ? row.last_post_error?.remaining_tweet_ids ?? [] : row.tweet_ids ?? [];
   const audit = isFailed ? row.last_post_error?.deleted_tweet_ids ?? [] : [];
   const metrics = row.tweet_metrics ?? {};
+  // 本文は tweet_ids と同順（要件06 §8）。部分失敗で一部しか採番されていなくても先頭から対応する。
+  const bodies = new Map<string, string>();
+  (row.tweet_ids ?? []).forEach((id, i) => {
+    const text = row.thread?.[i]?.text;
+    if (id && typeof text === "string") bodies.set(id, text);
+  });
   const toTweet = (tweetId: string, auditOnly: boolean): TweetAnalytics => ({
     tweetId,
+    body: bodies.get(tweetId) ?? "",
     auditOnly,
     unavailable: Boolean(metrics[tweetId]?.unavailable_at),
     checkpoints: metrics[tweetId]?.checkpoints ?? {},
@@ -82,6 +95,7 @@ export function buildDraftAnalytics(row: AnalyticsDraftRow): DraftAnalytics {
     draftId: row.id,
     pattern: row.pattern,
     postedAt: row.posted_at,
+    excerpt: row.thread?.[0]?.text ?? "",
     incomplete: isFailed,
     metricsCompleted: Boolean(row.metrics_completed_at),
     tweets,
@@ -105,6 +119,27 @@ export function defaultCheckpoint(draft: DraftAnalytics): CheckpointDay {
     }
   }
   return found ? best : 1;
+}
+
+/**
+ * 一覧全体の既定checkpoint = その時点の実績を持つ合算対象tweetが最も多い時点（同数なら長い方）。
+ * 「取得済みの最長」を全draft横断で採ると、古い1件が30日を持つだけで直近投稿が全て未取得の表に
+ * 見えてしまうため、最も多くの投稿を比較できる時点を初期表示にする（要件06 §8）。
+ */
+export function mostMeasuredCheckpoint(drafts: DraftAnalytics[]): CheckpointDay {
+  let best: CheckpointDay = 1;
+  let bestCount = 0;
+  for (const d of CHECKPOINT_DAYS) {
+    let count = 0;
+    for (const draft of drafts) {
+      count += aggregatable(draft).filter((t) => t.checkpoints[String(d)]).length;
+    }
+    if (count >= bestCount && count > 0) {
+      best = d;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 export interface ThreadAggregate {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
@@ -7,6 +8,7 @@ import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import {
   CHECKPOINT_DAYS,
   aggregateThread,
+  mostMeasuredCheckpoint,
   type CheckpointDay,
   type DraftAnalytics,
 } from "@/lib/analytics";
@@ -15,11 +17,23 @@ import {
  * SC-09 投稿実績（tweet_id別・checkpoint切替・スレッド合算, 要件06 §8, T-M5-15）。1/7/30日を切替表示し、
  * スレッド合算は同一checkpoint取得済みIDのみで計算（欠損数併記）。profile_clicks 取得不能は `--`、
  * 30日checkpoint後は「更新終了」。部分失敗は「不完全なthread」、rollback削除IDは監査行として合算除外。
+ * 既定の時点は「その時点の実績を持つ投稿が最も多い時点」とし、各行は本文冒頭とXリンクで識別する。
  */
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   return formatJst(iso);
+}
+
+/** 一覧で識別できる長さに本文を切り詰める。 */
+function excerpt(text: string, max: number): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
+}
+
+/** X 上ポストへのpermalink。handle が空でも開ける i/status 形式にフォールバックする。 */
+function tweetUrl(handle: string | null, tweetId: string): string {
+  return `https://x.com/${handle ? handle.replace(/^@/, "") : "i"}/status/${tweetId}`;
 }
 
 /** 取得不能は `--`（要件06 §8）。0件と誤解されないよう説明はセル側で補う。 */
@@ -32,18 +46,15 @@ function NotCollected() {
   return <span className="text-muted-foreground">未取得</span>;
 }
 
-export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
-  // 既定は取得済みの最長checkpoint（全draft横断）。
-  const defaultDay = useMemo<CheckpointDay>(() => {
-    let best: CheckpointDay = 1;
-    for (const d of CHECKPOINT_DAYS) {
-      const has = drafts.some((draft) =>
-        draft.tweets.some((t) => !t.auditOnly && !t.unavailable && t.checkpoints[String(d)]),
-      );
-      if (has) best = d;
-    }
-    return best;
-  }, [drafts]);
+export function AnalyticsView({
+  drafts,
+  handle,
+}: {
+  drafts: DraftAnalytics[];
+  handle: string | null;
+}) {
+  // 既定は「その時点の実績を持つ投稿が最も多い時点」（要件06 §8）。
+  const defaultDay = useMemo<CheckpointDay>(() => mostMeasuredCheckpoint(drafts), [drafts]);
   const [checkpoint, setCheckpoint] = useState<CheckpointDay>(defaultDay);
 
   if (drafts.length === 0) {
@@ -92,6 +103,17 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
                 <span className="ml-auto text-xs text-muted-foreground">{fmtDate(draft.postedAt)}</span>
               </div>
 
+              {/* どの投稿かを識別できるように本文冒頭と履歴への導線を置く */}
+              {draft.excerpt ? (
+                <p className="mt-2 line-clamp-2 text-sm">{draft.excerpt}</p>
+              ) : null}
+              <Link
+                className="mt-1 inline-block text-xs text-primary underline"
+                href={`/app/posts?tab=history&draftId=${draft.draftId}`}
+              >
+                履歴で開く
+              </Link>
+
               {/* スレッド合算（選択checkpoint） */}
               <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {([
@@ -137,12 +159,28 @@ export function AnalyticsView({ drafts }: { drafts: DraftAnalytics[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {draft.tweets.map((t) => {
+                    {draft.tweets.map((t, index) => {
                       const c = t.checkpoints[String(checkpoint)];
+                      const label = t.body
+                        ? excerpt(t.body, 32)
+                        : `${index + 1}件目のポスト`;
                       return (
                         <tr className="border-b last:border-0" key={t.tweetId}>
                           <td className="py-1 pr-2">
-                            <span className="font-mono text-xs">{t.tweetId}</span>
+                            {draft.tweets.length > 1 ? (
+                              <span className="mr-1 text-xs text-muted-foreground tabular-nums">
+                                {index + 1}/{draft.tweets.length}
+                              </span>
+                            ) : null}
+                            <a
+                              aria-label={`Xで開く: ${label}`}
+                              className="text-primary underline"
+                              href={tweetUrl(handle, t.tweetId)}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              {label}
+                            </a>
                             {t.auditOnly ? (
                               <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">監査（削除済み）</span>
                             ) : null}

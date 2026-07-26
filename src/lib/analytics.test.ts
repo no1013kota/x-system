@@ -5,6 +5,7 @@ import {
   buildDraftAnalytics,
   defaultCheckpoint,
   followerSeriesSummary,
+  mostMeasuredCheckpoint,
   summarize,
   type AnalyticsDraftRow,
 } from "./analytics";
@@ -73,6 +74,72 @@ describe("defaultCheckpoint", () => {
   it("returns 1 when nothing collected", () => {
     const d = buildDraftAnalytics(postedRow({ tweet_metrics: { a: { checkpoints: {} }, b: { checkpoints: {} } } }));
     expect(defaultCheckpoint(d)).toBe(1);
+  });
+});
+
+describe("mostMeasuredCheckpoint", () => {
+  it("その時点の実績を持つポストが最も多い時点を選ぶ", () => {
+    // 古い1件だけが30日を持ち、新しい2件は1日のみ → 30日ではなく1日を既定にする
+    const old = postedRow({
+      id: "old",
+      tweet_ids: ["o1"],
+      tweet_metrics: { o1: { checkpoints: { "1": cp(10), "7": cp(20), "30": cp(30) } } },
+    });
+    const recentA = postedRow({
+      id: "r1",
+      tweet_ids: ["r1a"],
+      tweet_metrics: { r1a: { checkpoints: { "1": cp(10) } } },
+    });
+    const recentB = postedRow({
+      id: "r2",
+      tweet_ids: ["r2a"],
+      tweet_metrics: { r2a: { checkpoints: { "1": cp(10) } } },
+    });
+    const drafts = [old, recentA, recentB].map(buildDraftAnalytics);
+    expect(mostMeasuredCheckpoint(drafts)).toBe(1);
+  });
+
+  it("同数なら長い時点（より成熟した実績）を選ぶ", () => {
+    expect(mostMeasuredCheckpoint([buildDraftAnalytics(postedRow())])).toBe(7);
+  });
+
+  it("実績が1件も無ければ1日", () => {
+    const none = buildDraftAnalytics(
+      postedRow({ tweet_metrics: { a: { checkpoints: {} }, b: { checkpoints: {} } } }),
+    );
+    expect(mostMeasuredCheckpoint([none])).toBe(1);
+    expect(mostMeasuredCheckpoint([])).toBe(1);
+  });
+
+  it("監査行・取得不能は数えない", () => {
+    const audited = buildDraftAnalytics(
+      postedRow({
+        status: "failed",
+        tweet_ids: ["a", "b"],
+        last_post_error: { remaining_tweet_ids: ["a"], deleted_tweet_ids: ["b"] },
+        tweet_metrics: {
+          a: { checkpoints: { "1": cp(10) } },
+          b: { checkpoints: { "1": cp(10), "7": cp(20), "30": cp(30) } },
+        },
+      }),
+    );
+    expect(mostMeasuredCheckpoint([audited])).toBe(1);
+  });
+});
+
+describe("本文の対応付け（識別表示）", () => {
+  it("tweet_ids と同順で本文を割り当て、先頭を excerpt にする", () => {
+    const d = buildDraftAnalytics(
+      postedRow({ thread: [{ text: "1本目の本文" }, { text: "2本目の本文" }] }),
+    );
+    expect(d.excerpt).toBe("1本目の本文");
+    expect(d.tweets.map((t) => t.body)).toEqual(["1本目の本文", "2本目の本文"]);
+  });
+
+  it("thread が無くても落ちず空文字になる", () => {
+    const d = buildDraftAnalytics(postedRow());
+    expect(d.excerpt).toBe("");
+    expect(d.tweets.every((t) => t.body === "")).toBe(true);
   });
 });
 

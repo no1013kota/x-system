@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { refreshSuggestionsAction } from "@/app/actions/suggestions";
 import type { SuggestionDisplay } from "@/lib/analytics-server";
+import { formatJst } from "@/lib/format";
 
 /**
  * SC-09 改善提案（表示専用, K-2, 要件06 §10, PRD 5.6, T-M5-19）。「提案を更新」でSUGGESTを起動し、生成中を
@@ -14,6 +15,17 @@ import type { SuggestionDisplay } from "@/lib/analytics-server";
  */
 
 const SUGGEST_MIN_GROUP = 3;
+/** 生成中の自動再取得（間隔・上限）。上限に達したら手動の「再読み込み」へ委ねる。 */
+const POLL_INTERVAL_MS = 5000;
+const POLL_MAX = 24;
+
+/** 内部の metric キーを画面表記へ（要件06 §8: 画面に内部用語を出さない）。 */
+const METRIC_LABEL: Record<string, string> = {
+  impressions: "表示回数",
+  likes: "いいね",
+  reposts: "リポスト",
+  profile_clicks: "プロフィール表示",
+};
 
 function uuid(): string {
   return crypto.randomUUID();
@@ -52,12 +64,29 @@ export function SuggestionsPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const [polls, setPolls] = useState(0);
+
+  // 生成中は完了まで自動で取り直す（利用者に手動再読み込みを強いない）。上限で自動停止する。
+  const polling = generating && polls < POLL_MAX;
+  useEffect(() => {
+    if (!generating) {
+      setPolls(0);
+      return;
+    }
+    if (polls >= POLL_MAX) return;
+    const timer = setTimeout(() => {
+      setPolls((n) => n + 1);
+      router.refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [generating, polls, router]);
 
   function refresh() {
     startTransition(async () => {
       const res = await refreshSuggestionsAction({ request_key: uuid() });
       if (res.status === "success") {
-        setNote({ kind: "info", text: "改善提案を生成中です。少し待ってから再読み込みしてください。" });
+        setNote({ kind: "info", text: "改善提案を生成中です。完了すると自動で表示に反映されます。" });
+        setPolls(0);
         router.refresh();
       } else {
         setNote({ kind: "error", text: rejectionMessage(res) });
@@ -65,12 +94,25 @@ export function SuggestionsPanel({
     });
   }
 
+  // listSuggestions は created_at 昇順のため、最終更新は最大値を採る。
+  const latestAt = suggestions.reduce<string | null>(
+    (max, s) => (max === null || s.createdAt > max ? s.createdAt : max),
+    null,
+  );
+
   return (
     <section className="rounded-xl border bg-background p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">改善提案</h2>
         {generating ? (
-          <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">生成中…</span>
+          <span
+            aria-live="polite"
+            className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+          >
+            {polling ? "生成中…（完了すると自動で表示されます）" : "生成中…"}
+          </span>
+        ) : latestAt ? (
+          <span className="text-xs text-muted-foreground">最終更新 {formatJst(latestAt)}</span>
         ) : null}
         <div className="ml-auto flex gap-2">
           <button
@@ -126,8 +168,12 @@ export function SuggestionsPanel({
             <li className="rounded-xl border bg-background p-4" key={i}>
               <p className="text-sm font-medium">{s.content}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span className="rounded bg-muted px-2 py-0.5">{s.metric}</span>
-                {s.checkpointDays !== null ? <span className="rounded bg-muted px-2 py-0.5">{s.checkpointDays}日checkpoint</span> : null}
+                <span className="rounded bg-muted px-2 py-0.5">
+                  {METRIC_LABEL[s.metric] ?? s.metric}
+                </span>
+                {s.checkpointDays !== null ? (
+                  <span className="rounded bg-muted px-2 py-0.5">投稿後{s.checkpointDays}日の実績</span>
+                ) : null}
                 {s.diffPct !== null ? <span className="rounded bg-muted px-2 py-0.5">差 {s.diffPct}%</span> : null}
               </div>
               {s.summary ? <p className="mt-2 text-sm text-muted-foreground">{s.summary}</p> : null}

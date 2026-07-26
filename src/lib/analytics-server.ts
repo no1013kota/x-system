@@ -25,7 +25,7 @@ export async function loadAnalyticsForUser(
   periodDays: number,
 ): Promise<DraftAnalytics[]> {
   const { rows } = await pooledDb.query<AnalyticsDraftRow>(
-    `select d.id, d.pattern, d.status, d.tweet_ids, d.last_post_error,
+    `select d.id, d.pattern, d.status, d.tweet_ids, d.last_post_error, d.thread,
             d.posted_at::text as posted_at, d.metrics_completed_at::text as metrics_completed_at,
             d.tweet_metrics
        from drafts d

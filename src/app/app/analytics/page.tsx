@@ -9,6 +9,7 @@ import {
 } from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { pooledQueryable } from "@/lib/db/pool";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { AnalyticsView } from "./analytics-view";
@@ -43,11 +44,16 @@ export default async function AnalyticsPage() {
     );
   }
 
-  const [drafts, followers, suggestionsSection] = await Promise.all([
+  const [drafts, followers, suggestionsSection, account] = await Promise.all([
     loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
     loadFollowerSnapshotsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
     loadSuggestionsForUser(user.id, xAccountId),
+    pooledQueryable().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
+      xAccountId,
+    ]),
   ]);
+  // X上のポストへリンクするため handle を渡す（未取得でも i/status で開ける）。
+  const handle = account.rows[0]?.handle ?? null;
 
   // 比較対象（監査・取得不能でなく、いずれかのcheckpointを取得済み）の投稿数。実績不足表示に使う。
   const comparablePostCount = drafts.reduce(
@@ -69,7 +75,7 @@ export default async function AnalyticsPage() {
       </header>
       <div className="mt-7 space-y-8">
         <FollowerChart points={followers} />
-        <AnalyticsView drafts={drafts} />
+        <AnalyticsView drafts={drafts} handle={handle} />
         <SuggestionsPanel
           comparablePostCount={comparablePostCount}
           generating={suggestionsSection.generating}
