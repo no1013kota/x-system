@@ -1539,3 +1539,48 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
   - dry_run→live切替手順・rollback手順・backup初回取得の確認項目が消化済み
 - メモ: リリース前チェックリストを作成し、開発側で消化可能な項目を実施・記録する：X_POSTING_MODEのdry_run→live切替手順とrollback手順（prodのみlive可・dev/previewはdry_run必須の起動時ガードが未実装なら本タスクで実装）、環境変数一覧（要件01 §3）の環境別充足確認、X API（docs.x.com）・Stripe・AI各社の「実装時に要確認」注記項目の再確認結果の記録（Stripe APIバージョン・Portal Configuration方針は実装メモ/ADRへ）、backup初回取得確認、launchd→Vercel Cron移行条件・手順の確認。Developer Console単価確認・法務専門家確認など運営者アカウントが必要な項目はチェックリスト上の人間側残項目として明示する。
 - 実装結果: `docs/operations/release-checklist.md` を新設。§1に開発側消化済み10項目（release:check全成功・X_POSTING_MODE=live起動時ガード・backup round-trip・セキュリティヘッダ・RLS/SSRF/認可・server-only境界・redact/安全エラー・env dev充足・launchd→Cron手順・外部API注記の実装時確認）を根拠付きで記録、§2にdry_run→live切替手順＋rollback手順、§3に人間側残項目12件を担当（運営者/開発）・期日欄付きで明示。X_POSTING_MODE=live起動時ガードは既存（env-schema.ts superRefine＋env-schema.test.ts 3件、dev/preview reject・prod allow）を確認・記録。doc影響なし（要件01 §3.1がガードを既に規定・チェックリストは新規運用メモ）。人間側残項目は要決定・外部準備セクションが正本。
+
+## M7: UX改善の後続（全画面UX監査 2026-07-26 の残件）
+
+全画面のUX監査（10領域並列・60指摘）で洗い出した改善のうち、UI改善サイクルで扱いきれなかった残件。
+先行して実装済みの内容は `git log --grep="feat(.*):"`（2026-07-25〜26）を参照。
+
+### T-M7-01: ローカルDBに残る旧テスト残骸の掃除 `done`
+- 参照: 要件02 §5 / 依存: なし / サイズ: S
+- 完了条件:
+  - ローカルSupabaseに残る 2026-07-24 由来の孤児レコード（handle='h' の x_accounts 4件、running のまま放置された learning_analysis job 2件）が消えている
+  - フルスイート（`npm test`）が緑のままで、削除がテストのfixture前提を壊していない
+- メモ: DBテストが後片付けし損ねた残骸。実データではなくローカル検証環境のみの掃除。今後の再発防止として、残骸を作るテストがどれか特定できれば併せてcleanupを補う。
+- 実装結果: ローカルSupabaseのみを対象に、合成テストデータを依存順（external_api_usage_events→notifications→user_api_keys→usage_counters→usage_events→x_accounts→auth.users）で削除。内訳は `handle='h'` の x_accounts 4件＋その依存、UUID合成メール等の auth.users 2457件（`%@example.com` かつ UUID形式/tm10*/verify-*/e2e-* のみを対象）。**実メールアカウント（no.1013kota@gmail.com）とその通知83件は対象外として保持**。削除後 x_accounts/generation_jobs/drafts/schedule_slots はいずれも0件、`npm test` 1154件緑（fixture前提を壊していない）。再発防止調査: 残骸を作り得る *.db.test.ts 19ファイルはいずれも `delete from auth.users` の後片付けを持っており、コード上の欠落ではなく2026-07-24のテスト中断・失敗時の取り残しと判断（コード修正は不要）。
+
+### T-M7-02: job失敗時に必ず原因を残す（runJobの汎用finalizer最小対応） `todo`
+- 参照: 要件06 §10、要件04 §4 / 依存: なし / サイズ: M
+- 完了条件:
+  - handlerがerrorを保存する前にthrowした失敗でも `generation_jobs.error` に code と利用者向け message が残る
+  - handlerが既に保存したerrorを上書きしない（冪等）
+  - 画面（投稿作成の結果ペイン）で汎用文ではなく保存された理由が表示される
+- メモ: 現状 `runJob`（worker.ts）は throw 時に `status='failed'` だけを書き、error jsonb を書かない。post-generation 等は persistFailure で自前保存するが、provider設定エラー等はその前に throw するため error=null になり、UIは「生成に失敗しました。時間をおいて再試行してください。」しか出せない（2026-07-26のE2Eで実確認）。要決定 D-5（中央finalizer化）の全面対応は行わず、上書きしない最小追加に留める。
+
+### T-M7-03: ホーム（SC-05）に次回の予定と直近の実績を表示 `todo`
+- 参照: 要件06 §1 SC-05、要件06 §10 / 依存: なし / サイズ: M
+- 完了条件:
+  - 有効スケジュールがあるとき「次回の予定（日時・パターン・自動/下書きの別）」がホームに出る
+  - 直近の投稿実績サマリが出る（0件時は次の一手を示す空状態）
+  - 前提未設定・スケジュール未登録それぞれで行き止まりにならない導線がある
+- メモ: 現状ホームは初期設定ガイド・確認待ち・利用枠の3カードのみで、要件06 §10 が求める「予定・実績」が未実装。次回実行の算出は `src/lib/schedule/next-run.ts` の `nextScheduleRun` を再利用する。
+
+### T-M7-04: 分析（SC-09）の既定計測時点・投稿の識別・提案の鮮度 `todo`
+- 参照: 要件06 §8、要件06 §10 / 依存: なし / サイズ: M
+- 完了条件:
+  - 既定の計測時点が「その時点の実績を持つ投稿が最も多い時点」になり、直近投稿が空表に見えない
+  - 各投稿カードから本文冒頭とXポストへのリンク、投稿履歴へのdeep linkで対象を識別できる
+  - 改善提案の最終更新時刻が分かり、生成中は完了まで自動で反映される
+- メモ: 用語の平易化（checkpoint→実績を見る時点 等）と未取得/取得不能の区別は 2026-07-26 に対応済み。残りは既定値・識別性・鮮度。`loadAnalyticsForUser` のselectに thread と handle を追加する必要がある。
+
+### T-M7-05: 自動E2E基盤（Playwright）の導入 `todo`
+- 参照: 要件01 §7、要件06 全般 / 依存: なし / サイズ: L
+- 完了条件:
+  - `npm run test:e2e` 相当でリポジトリ管理のE2Eシナリオが実行でき、全assertionが通る
+  - 認証済み状態・Xアカウント連携済み状態のfixtureを再現でき、実行後に作成データだけを片付ける
+  - 安全既定（`APP_ENV=development`・`X_POSTING_MODE=dry_run`・ローカルSupabase）から外れた環境では実行を止める
+- メモ: 現在は自動E2Eが無く、`/verify-e2e` は playwright-cli による探索的確認どまり（「E2E合格」と呼べない）。fixtureのX tokenは `APP_ENCRYPTION_KEY` での封緘が必要、後片付けは `base_md_versions`→`x_accounts` のFK順に注意（2026-07-26の検証で判明）。最初のシナリオ候補: 下書き→dry-run投稿→履歴、スケジュール停止→再開、初期設定ガイドの出し分け。
