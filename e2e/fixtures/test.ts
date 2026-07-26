@@ -1,4 +1,4 @@
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type Locator, type Page } from "@playwright/test";
 
 import {
   createTestAccount,
@@ -32,6 +32,15 @@ export const test = base.extend<{ accounts: AccountFactory }>({
 });
 
 export { expect };
+
+/**
+ * 画面が出したエラー表示だけを掴む。Next.js の route announcer
+ * （`#__next-route-announcer__`）も `role="alert"` を持つため、素の `getByRole("alert")` は
+ * 常に2要素へ当たって strict mode 違反になる。
+ */
+export function alertIn(page: Page): Locator {
+  return page.locator('[role="alert"]:not(#__next-route-announcer__)');
+}
 
 /**
  * ログインフォームから認証してAppへ入る。Turnstileはローカルのテストキー

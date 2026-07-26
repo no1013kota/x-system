@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
+| バージョン | v1.2 |
 | 更新日 | 2026-07-27 |
 | 関連 | [リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
@@ -52,7 +52,7 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 ## 4. 限界（CIで防げないこと）
 
 - **本番デプロイをブロックしない。** `main` への push でCIとVercelのproductionビルドは並行して走る。CIが赤でもデプロイは進む。止めたいなら GitHub の branch protection で `main` を保護し、`static`／`verify` を required status checks にしてPR経由でのみマージする（PRが緑にならないと `main` に入らない＝productionビルドも始まらない）。
-- **E2Eは5シナリオのみ**（`e2e/` 4ファイル）。画面の全経路は覆っていない。
+- **E2Eは13シナリオ**（`e2e/` 8ファイル）。認証・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
 - **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は `npm run check:providers`（provider契約テスト・実キーと費用が必要）が担う。CIへは入れられないので、providerやモデルを変えたときは手で実行する。
 - **Node のメジャーがVercelと異なる。** CIはローカル開発と同じ Node 26 で走る（手元のゲートと同一結果にするため）。Vercelは自身のLTS既定でビルドするので、Nodeバージョン依存のビルド差はCIでは検出できない。揃えるならVercelのNodeバージョン設定と `ci.yml` の `node-version` を同じ値にする。
 - **preview / production の環境差は検証しない。** CIは `APP_ENV=development` で走るため、Vercel側の環境変数の欠落・誤りは[デプロイ後の検証](./deployment.md)で見る。

@@ -105,6 +105,30 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 対応: `npm run check:providers` はGoogleを既定で対象外にした（`PROVIDER_CHECK_GOOGLE=1` で復帰）。常に赤いチェックは読まれなくなり他providerの退行を隠すため。
 - 選択肢: (案A)`generateImages`をやめ Interactions API（未対応時 `generateContent`）へ寄せる＝§5.4どおり。推奨 / (案B)`GEMINI_IMAGE_MODEL` を Imagen系モデルに変え `generateImages` を維持（コード変更なし。ただし§5.4の方針と、Nano Banana推奨という公式の案内から外れる）。
 
+### T-M7-18: E2Eシナリオの拡充（5→13件） `done`
+- 参照: 要件06 全般、[CI](../docs/operations/ci.md) §4 / 依存: T-M7-05 / サイズ: L
+- 完了条件:
+  - 未カバーだった主要フローにE2Eがあり、全件緑
+  - AI・X・課金の実通信をE2Eで起こさない（費用と不確定性を持ち込まない）
+  - 実行後に作成データが残らない
+- メモ: T-M7-05 で基盤は入ったが4ファイル5件どまりで、**画面のサインアップとメール確認は一度も通っていなかった**（既存fixtureはSupabase Admin APIで確認済みユーザーを直接作るため）。ニュース・分析・投稿生成の表示契約も未検証だった。
+- 実装結果: 4ファイル8件を追加し 13件（8ファイル）へ。
+  - `auth.spec.ts` 2件: 画面のサインアップ→**Mailpitで確認メールを受信**→`/auth/confirm` を踏む→`email_confirmed_at` と同意バージョンの記録→cookie破棄→ログインフォームで再入場→**未契約は `/plans` で止まる**（`/app` 直打ちも戻される）。未登録メールでのログイン失敗時にアカウントの存在を教えないこと（列挙対策）も確認。
+  - `news.spec.ts` 2件: `news_items` をseedし、SC-06一覧が既定（全分野・high+mid）で絞られること・分野トグル＋「この条件で表示して保存」で追従し `news_config` に保存されること、ホームの重要ニュースが**high固定・新しい順・最大3件**であること（4件目とmidが出ない）。
+  - `analytics.spec.ts` 2件: 直近3件が1日のみ・古い1件が30日まで持つ状態で**既定が「投稿後1日」**になること（T-M7-04の仕様。「取得済みの最長」だと直近が空表に見える退行）、本文冒頭で対象を識別できること、実績なしの空状態。
+  - `generation.spec.ts` 2件: `generation_jobs` をseedして進行中は「生成中…」でdisabled、失敗時に**保存された理由が汎用文の代わりに出る**こと（T-M7-02）、前提不足コードでは「再試行する」を出さず解決先へ送ること、分類不能な失敗では再試行を出すこと。
+  - 共通: `fixtures/test.ts` に `alertIn(page)` を追加（Next.js の route announcer も `role="alert"` を持つため素の `getByRole("alert")` は必ず strict mode 違反になる）。`fixtures/account.ts` に `destroyUserByEmail`（画面のサインアップで作られた利用者は `accounts` fixture の後片付け対象外）。
+- 実行結果: 13件緑（47.9s）。実行後の残データ0件（e2eユーザー0・news_items 0・e2e x_accounts 0）。実アカウント（no.1013kota@gmail.com）とその失敗job 3件は対象外として保持。
+- 後続への注意: **「生成する」ボタンは押さない**方針にした（実AI呼び出しで費用・不確定性・1分待ちが入るため）。生成のリクエスト形状は `npm run check:providers`（T-M7-16）が担当し、E2Eは表示契約だけを見る。未カバーは**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定**。課金はcheckout/portalが外部サービスへ実際にセッションを作るため、E2Eに入れるなら `maxRedirects: 0` で遷移先だけを見る形（`x-oauth.spec.ts` と同じ）にする。
+
+### T-M7-19: ログアウトのUIが存在しない（PRD A-2 Must） `todo`
+- 参照: PRD A-2、要件03 §1（「ログアウト＝Supabase sessionを破棄し `/login` へ遷移」） / 依存: なし / サイズ: S
+- 完了条件:
+  - 画面からログアウトでき、session破棄後に `/login` へ遷移する
+  - E2Eでログアウトを検証する（`auth.spec.ts` は現在 cookie破棄で代用している）
+- メモ: 2026-07-27 のE2E拡充中に発見。Server Action `signOut`（`src/app/actions/auth.ts:318`）は実装済みだが、**呼び出す UI が1つも無い**（`rg signOut src/` の結果が actions とそのテストだけ）。ナビゲーション（`navigation-items.ts`）はホーム/ニュース/投稿/スケジュール/分析/AI設定のみで、設定画面にもログアウトが無い。PRDで Must の機能が画面から到達できない状態。
+- 注意: UI追加なので `/ui-polish`（画面幅・主要状態・アクセシビリティ・ランタイム検証）を通す。配置は設定画面かアカウント切替メニューが候補で、要件06 の画面カタログに追記が必要。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
