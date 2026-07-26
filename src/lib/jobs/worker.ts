@@ -7,7 +7,8 @@ import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
 import { getJobHandler, type JobKind } from "./handlers";
 import { decideJobOutcome } from "./job-error";
-import { fallbackJobError, RESERVE_TYPE_BY_KIND } from "./terminal";
+import { fallbackJobError, GENERIC_JOB_ERROR_CODE, RESERVE_TYPE_BY_KIND } from "./terminal";
+import { recordUnexpectedError } from "../observability/sentry";
 import { refundUsage } from "../usage/generation-reserve";
 
 /**
@@ -186,6 +187,11 @@ export async function failJob(
   error: unknown,
 ): Promise<void> {
   const fallback = fallbackJobError(kind, error);
+  // DBへ書くのは安全な定型 code/message だけなので、生の例外はここで記録しないと失われる
+  // （job は画面から見えないため、記録が無いと失敗原因の追跡手段がゼロになる）。
+  if (fallback.code === GENERIC_JOB_ERROR_CODE) {
+    recordUnexpectedError(error, { at: "job", kind, jobId });
+  }
   const reserveType = RESERVE_TYPE_BY_KIND[kind];
   await withTransaction(async (c) => {
     await c.query(

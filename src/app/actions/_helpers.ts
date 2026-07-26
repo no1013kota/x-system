@@ -4,6 +4,7 @@ import {
   toUserFacingError,
   type UserFacingError,
 } from "@/lib/observability/errors";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 /**
  * Server Action 共通の結果形（要件05 §2）。成功/失敗の判別＋ユーザー向けメッセージに、任意の
@@ -23,7 +24,13 @@ export interface BaseResult {
 export function errorResult(
   error: unknown,
 ): UserFacingError & { status: "error" } {
-  return { ...toUserFacingError(error), status: "error" };
+  const safe = toUserFacingError(error);
+  // throw せず値で返すため `onRequestError` が発火しない。未知の例外はここで記録する
+  // （要件01 §8。AppError は仕様どおりの分岐なので記録しない）。
+  if (safe.code === "internal_error") {
+    recordUnexpectedError(error, { at: "server-action" });
+  }
+  return { ...safe, status: "error" };
 }
 
 /**

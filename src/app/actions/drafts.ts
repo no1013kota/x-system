@@ -19,6 +19,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { getRecentPosts, getTweetMetrics } from "@/lib/x/client";
 import { xClientDeps } from "@/lib/x/client-server";
 import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 /**
  * 下書きの Server Actions（要件05 §5, T-M3-10）。本人のみ。一覧は active_x_account スコープ、
@@ -115,7 +116,10 @@ export async function reconcileDraftPostingAction(
           try {
             const r = await getTweetMetrics(accessToken, [tweetId], clientDeps);
             return r.tweets.length > 0;
-          } catch {
+          } catch (error) {
+            // null は「存在を判定できなかった」を表す戻り値で、reconcile 側が曖昧として扱う。
+            // 判定不能が続く原因（権限・token・X側障害）を追えるように記録する。
+            recordUnexpectedError(error, { at: "drafts:check-tweet-exists", tweetId });
             return null;
           }
         },

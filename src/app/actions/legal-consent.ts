@@ -6,6 +6,7 @@ import type { AuthFormState } from "@/app/actions/auth-state";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { acceptCurrentLegalConsents } from "@/lib/auth/legal-consent";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 export async function acceptLegalUpdates(
   _previousState: AuthFormState,
@@ -30,7 +31,9 @@ export async function acceptLegalUpdates(
         if (result.error) throw result.error;
       },
     });
-  } catch {
+  } catch (error) {
+    // service_role で profiles を読み書きする経路。失敗すると同意ゲートを通れず /app に入れない。
+    recordUnexpectedError(error, { at: "legal-consent" });
     return {
       message: "同意内容を更新できませんでした。時間をおいて再度お試しください。",
       status: "error",

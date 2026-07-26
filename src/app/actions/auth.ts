@@ -23,6 +23,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { AuthFormState } from "./auth-state";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 const SIGNUP_ACCEPTED_MESSAGE =
   "確認メールを送信しました。メール内のリンクから登録を完了してください。";
@@ -108,7 +109,8 @@ export async function signUp(
       message: SIGNUP_ACCEPTED_MESSAGE,
       email: input.email,
     };
-  } catch {
+  } catch (error) {
+    recordUnexpectedError(error, { at: "sign-up" });
     return { status: "error", message: SIGNUP_ERROR_MESSAGE };
   }
 }
@@ -144,8 +146,10 @@ export async function resendSignUpConfirmation(
     if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
-  } catch {
-    // Intentionally return the same accepted response for every provider result.
+  } catch (error) {
+    // 利用者へはアカウントの存在を漏らさないため常に同じ応答を返す（列挙防止）。
+    // ただし原因を捨てるとメール送信不能が誰にも気付かれないため、記録だけは行う。
+    recordUnexpectedError(error, { at: "resend-confirmation" });
   }
 
   return {
@@ -179,8 +183,10 @@ export async function requestPasswordReset(
     if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
-  } catch {
-    // Account existence and provider failures intentionally share one response.
+  } catch (error) {
+    // 利用者へはアカウントの存在を漏らさないため常に同じ応答を返す（列挙防止）。
+    // ただし原因を捨てるとメール送信不能が誰にも気付かれないため、記録だけは行う。
+    recordUnexpectedError(error, { at: "password-reset-request" });
   }
 
   return {
@@ -227,7 +233,9 @@ export async function updatePassword(
 
     await supabase.auth.signOut({ scope: "local" });
     cookieStore.delete(RECOVERY_SESSION_COOKIE);
-  } catch {
+  } catch (error) {
+    // 復号鍵の設定ミスとトークン期限切れが同じ文言になるため、原因は記録する。
+    recordUnexpectedError(error, { at: "update-password" });
     return { status: "error", message: UPDATE_PASSWORD_ERROR_MESSAGE };
   }
 
@@ -284,6 +292,12 @@ export async function signIn(
       .eq("id", data.user.id)
       .single();
     if (profile.error || !profile.data) {
+      // ここは service_role で profiles を読む経路。権限・接続の失敗が「入力内容を確認して」
+      // という誤案内になり原因も残らないため必ず記録する（2026-07-26 のGRANT漏れと同型）。
+      recordUnexpectedError(profile.error ?? new Error("profile not found after sign-in"), {
+        at: "sign-in:profile",
+        userId: data.user.id,
+      });
       await supabase.auth.signOut();
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
@@ -291,7 +305,9 @@ export async function signIn(
     destination = !canBrowseApp(profile.data.subscription_status)
       ? "/plans"
       : (safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app");
-  } catch {
+  } catch (error) {
+    // 認証情報の誤りは上の error 分岐で処理済み。ここへ来るのは想定外の失敗だけなので記録する。
+    recordUnexpectedError(error, { at: "sign-in" });
     return { status: "error", message: SIGNIN_ERROR_MESSAGE };
   }
 

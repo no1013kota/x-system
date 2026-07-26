@@ -1,4 +1,5 @@
 import { toUserFacingError, type ErrorCode } from "@/lib/observability/errors";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 /**
  * Shared JSON API response helpers for Route Handlers (要件05 §2.2). Centralizes
@@ -35,5 +36,9 @@ export function apiJson(body: unknown, status = 200): Response {
 /** Maps any error to a safe `{ ok: false, error }` JSON response. */
 export function apiError(error: unknown): Response {
   const safe = toUserFacingError(error);
+  // Server Action と同様、throw せず Response で返すため `onRequestError` が発火しない。
+  if (safe.code === "internal_error") {
+    recordUnexpectedError(error, { at: "api-route" });
+  }
   return apiJson({ ok: false, error: safe }, HTTP_STATUS_FOR_ERROR[safe.code]);
 }
