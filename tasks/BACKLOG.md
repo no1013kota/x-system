@@ -37,6 +37,14 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: `ai/normalize.ts` に `failedProviderCall`（token 0・原価null・安全なerror codeのみ）、`ai/pipeline.ts` の `callOnce` を try/catch して失敗callを `calls` へ積み、蓄積usageを**例外オブジェクトへ載せて**再throw（型を変えないので `classifyJobError` の分類が壊れない）。取り出しは `usageFromError`。error code は HTTP status→`http_<status>`／SDKの`code`・`name`（`^[A-Za-z][A-Za-z0-9_.-]{0,62}$` のみ採用）／既定 `unknown_error`。`RunTextGenerationOptions` に `providerId` を必須追加し、6箇所の呼び出し（post_generation×2・learning_analysis・suggestion・image_generation・news_research）と news-fetch route の配線を更新。記帳側は post_generation の catch に「記帳だけ行いthrow」経路を追加（error/通知はrunJobの判断に委ねる）、news_research の catch に `recordNewsUsage`、learning_analysis と suggestion は既存の usage 抽出を `usageFromError` に置き換えて自動的に失敗callを含めるようにした。テスト+2（例外時の失敗call・修復callで例外の混在）、全1185件緑・build通過。
 - 後續への注意: **画像生成（`ai/image.ts`）の例外callは対象外**（text pipelineのみ）。同じ扱いにするなら別タスク。**副次修正**: `news-digest.db.test.ts` の `matchedUsers >= 2` はDB全体の集計に依存し他のDBテストと並行すると0になり得たため、対象ユーザーの行数不変で dedupe を検査する形へ変更（既知のflakyを解消）。
 
+### T-M7-10: next を 16.2.12 へ更新（D-7 の一部解消） `done`
+- 参照: 要決定D-7、要件01 §8 / 依存: なし / サイズ: S
+- 完了条件:
+  - `next` の high 4件・moderate 5件（`>=16.0.0 <16.2.11` 対象）が解消し、audit allowlist から `next` を外せる
+  - typecheck / lint / 全テスト / build / E2E が緑
+- 実装結果: `next` と `eslint-config-next` を 16.2.10 → **16.2.12**（exact pin を維持）。当初 D-7 は「minor upgrade が必要」としていたが、再調査の結果**パッチで解消**することが分かったため先行実施した。解消した high は SSRF in Server Actions on custom servers（GHSA-89xv-2m56-2m9x）／middleware・proxy bypass with Turbopack + single locale（GHSA-6gpp-xcg3-4w24）／DoS in App Router Server Actions（GHSA-m99w-x7hq-7vfj。**本アプリに該当**）／SSRF in rewrites（GHSA-p9j2-gv94-2wf4）。`scripts/audit-check.mjs` の HIGH_ALLOWLIST から `next` を削除（残りは sharp / postcss に理由付きで限定）。typecheck・lint・全1185件緑・build通過・E2E 4件緑。
+- 後續への注意: **残る high は2つ**。(1) `sharp 0.34.5`（`<0.35.0` 対象・libvips CVE-2026-33327/33328/35590/35591）。`image-normalize.ts` が **AI生成画像という外部由来バイナリ**を処理するため実害が最も大きい。0.35 系は breaking のため保守枠で対応（2026-07-26 に据え置き判断）。(2) `postcss 8.4.31` は **next が pin する nested 依存**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。自分のCSSのみをビルド時に処理するため実害は低いと判断し、next 側の修正待ちで追跡（overrides での強制上げは未検証の組み合わせになるため見送り）。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。

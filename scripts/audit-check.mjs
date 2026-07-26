@@ -4,14 +4,17 @@
 //   - critical は必ず失敗（allowlist に関わらず）
 //   - high は allowlist 外なら失敗
 //   - moderate / low は報告のみ（ゲートしない）
-// allowlist（next / postcss / sharp）は breaking upgrade が必要な既知の high で、
-// tasks/BACKLOG.md の「要決定」で追跡する。新規の high/critical はここで release を止める。
+// allowlist（postcss / sharp）は upgrade に追加検証が要る既知の high で、tasks/BACKLOG.md の
+// 「要決定」D-7 で追跡する。新規の high/critical はここで release を止める。
 //
 // ネットワーク（registry）が必要。CI では利用可能。ローカル検証時も registry へ到達できること。
 import { execSync } from "node:child_process";
 
-// breaking upgrade 待ちの既知 high（要決定で追跡）。critical には適用しない。
-const HIGH_ALLOWLIST = new Set(["next", "postcss", "sharp"]);
+// 既知 high のうち、対応に追加検証が要るもの（要決定 D-7 で追跡）。critical には適用しない。
+//   sharp   : 0.34→0.35 の breaking upgrade（libvips CVE群）。画像正規化の再検証が必要。
+//   postcss : next が pin する nested 8.4.31。next を上げても解消しないため next 側の修正待ち。
+// next は 16.2.12 で解消済みのため allowlist から外した（再発したらここで止まる）。
+const HIGH_ALLOWLIST = new Set(["postcss", "sharp"]);
 
 function runAudit() {
   try {

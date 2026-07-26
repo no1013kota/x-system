@@ -50,7 +50,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 | 6 | 本番 `APP_ENCRYPTION_KEY`・`CRON_SECRET` の生成と安全な保管（Vercel/1Password 等） | 運営者 | リリース前 |
 | 7 | 独自ドメイン・`APP_BASE_URL`・Vercel Pro 契約 | 運営者 | リリース前 |
 | 8 | 利用規約／プライバシー／特定商取引法表記の文面確定と法務専門家確認、`CURRENT_TERMS/PRIVACY_VERSION` 確定 | 運営者 | リリース前 |
-| 9 | 依存脆弱性（`sharp`/`next`/`postcss` の high）の breaking upgrade と再検証（要決定 D-7） | 開発 | リリース前の保守枠 |
+| 9 | 依存脆弱性の残り high（`sharp` 0.35系へのbreaking upgrade／`next` が pin する nested `postcss` 8.4.31）の解消と再検証（要決定 D-7。`next` は 16.2.12 で解消済み） | 開発 | リリース前の保守枠 |
 | 10 | 常時稼働 Mac（Asia/Tokyo・スリープ無効・launchd）の実配置、バックアップ実行環境・暗号化ファイル保管先・`BACKUP_ENCRYPTION_KEY` の保管 | 運営者 | リリース前 |
 | 11 | X live E2E（少数ポスト投稿→自動 rollback 削除）の本番相当での1回実施 | 運営者 | 切替直前 |
 | 12 | 自動投稿同意文（consent_version）・通知メール文面の最終確認（X Automation Rules 準拠の専門家確認含む） | 運営者 | リリース前 |
