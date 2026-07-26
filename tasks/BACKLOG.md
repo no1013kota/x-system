@@ -74,6 +74,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: `.github/workflows/ci.yml`（job 2本）。`static`＝typecheck+lint（数十秒で失敗を返す）、`verify`＝`supabase start` → `.env.local` 生成 → service_role 権限テスト単独実行 → Playwright chromium 取得 → **`npm run release:check` をそのまま呼ぶ**（CI側に手順を書き写すと release:check への追加が反映されず穴が開くため分解しない）。`scripts/ci-env.mjs` が `.env.example` を土台に env を組み立て、Supabase接続情報は `supabase status -o env`（`SUPABASE_STATUS_ENV` でファイル指定）、`APP_ENCRYPTION_KEY`/`CRON_SECRET` は実行ごとに `randomBytes(32)` で生成、Turnstile は Cloudflare 公開テストキー、Stripe/X/AI/SMTP はダミー、Sentry DSN は**出力しない**（空文字だと `optional` ではなく「短すぎる」で env 検証に落ちる）。したがって **GitHub Secrets は不要**。`supabase start` が migration をクリーン適用するため migration 自体の適用可否も毎回検証される。併せて `playwright.config.ts` の待ち時間を `process.env.CI` で拡大（test 150s／expect 30s／webServer 240s）。2コアランナーでの初回route compile がアプリ不具合と混ざるのを防ぐ目的で、`retries` は 0 のまま。
 - 後続への注意: **CIは本番デプロイをブロックしない**（`main` への push でCIとVercelのproductionビルドが並行する）。止めるには GitHub branch protection で `main` を保護し `static`/`verify` を required status check にしてPR経由マージへ切り替える必要がある（ユーザー作業。要決定へ記載）。CIは Node 26（ローカルと同じ）で走るが Vercel は自身のLTS既定でビルドするため、Nodeバージョン依存のビルド差は検出できない。ワークフロー自体は GitHub 上で未実行（push 後の初回実行で確認が必要）。
 
+### T-M7-15: Web検索を使う生成パターンが全滅していた不具合を修正 `done`
+- 参照: プロンプト設計書 §5.2、PRD P-1/P-3/P-4/P-6 / 依存: なし / サイズ: S
+- 完了条件:
+  - Web検索を使うパターン（P-1/P-3/P-4/P-6・URL付きP-2）の生成がproviderの400で失敗しない
+  - 同じ取り違えが再発したらテストで気付ける
+- メモ: 2026-07-27 に「週次まとめ（P-6）で下書き作成 → 『時間をおいて再度お試しください。設定や入力もご確認ください。』」として報告された。`generation_jobs.error` は `code=job_failed`（分類不能）で、**原因はT-M7直前に入れた `recordUnexpectedError` のログにだけ残っていた**（`[unexpected] job Error: 400 ...`）。ログを埋めていなければ画面の汎用文とDBの `job_failed` しか手掛かりが無く、追跡できなかった。
+- 実装結果: `buildAnthropicParams` が組む Web Search tool に `allowed_callers: ["direct"]` を明示。`web_search_20260209` は省略時に **programmatic tool calling（コード実行からのtool呼び出し）を要求する既定**になり、非対応モデルが `invalid_request_error` で400を返す。ローカルの `ANTHROPIC_TEXT_MODEL=claude-haiku-4-5` が非対応で、**Web検索を使う全パターンが常に失敗**していた（検索を使わないP-2/P-5は無影響のため気付きにくかった）。実APIで同一リクエストを比較し `allowed_callers` なし=400／`["direct"]`=200 を確認。回帰テストは `anthropic.test.ts` に2件（tool形状の完全一致＋maxUses 1〜4で常に `direct` が付くこと）。
+- 後続への注意: **この型の不具合はCI・E2E・DBテストのどれでも検出できない**（外部APIの契約違反であり、テストは全てモックしている）。同種の再発防止には実APIへ最小リクエストを投げるprovider契約テストが必要で、費用と実キーが要るためCIには入れられない。リリース前チェックリスト §1 #10（外部API「実装時に要確認」）の運用でカバーする想定。tool version を上げるときは `allowed_callers` の既定が変わり得るため実APIで再確認する。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
