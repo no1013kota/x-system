@@ -119,9 +119,12 @@ export async function cloneFailedDraftForRetry(
         status: "ready",
       });
     }
-  } catch {
+  } catch (error) {
     await deps.deleteImages(copied).catch(() => {});
-    throw new AppError("internal_error", { details: { reason: "image_copy_failed" } });
+    throw new AppError("internal_error", {
+      cause: error,
+      details: { reason: "image_copy_failed" },
+    });
   }
 
   const threadJson = JSON.stringify(src.thread);

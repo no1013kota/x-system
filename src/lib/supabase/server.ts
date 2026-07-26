@@ -43,6 +43,7 @@ export function createSupabaseServerClientFromStore(
                 withAuthCookiePolicy(options, env.APP_ENV),
               );
             });
+          // eslint-disable-next-line no-restricted-syntax -- Server Componentからcookieを書けないのは既知の正常系。proxyが更新する
           } catch {
             // Server Components cannot write cookies. The request proxy refreshes
             // sessions and persists any rotated token before rendering.

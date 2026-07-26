@@ -6,6 +6,7 @@ import {
 } from "@/lib/post/generation-validation";
 
 import type { Queryable } from "./x/token-refresh";
+import { recordUnexpectedError } from "./observability/sentry";
 
 /**
  * 下書きの一覧・編集・破棄の中核（要件05 §5・要件06 §4.3・要件02 §3.9/§4.7, T-M3-10）。
@@ -195,8 +196,9 @@ export async function discardDraft(
   if (paths.length > 0) {
     try {
       await deps.deleteImages(paths);
-    } catch {
-      // best effort
+    } catch (error) {
+      // 下書き破棄はStorage削除の失敗では止めない。ただし未参照画像が静かに残るため記録する。
+      recordUnexpectedError(error, { at: "drafts:delete-images" });
     }
   }
   return { status: "discarded" };

@@ -23,6 +23,7 @@ export function validateManualBaseMd(content: string): void {
   }
   try {
     validateBaseMdStructure(content);
+  // eslint-disable-next-line no-restricted-syntax -- 構造検証の失敗が判定結果。AppError(validation_error) で伝わる
   } catch {
     throw new AppError("validation_error", { details: { reason: "structure" } });
   }

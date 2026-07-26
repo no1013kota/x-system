@@ -339,8 +339,9 @@ async function rollbackThread(
       );
       deleted.push(tweetId);
       await recordDeleteConsume(tweetId, withUrl);
-    } catch {
+    } catch (error) {
       // 削除結果不明 → 存在確認（要件04 §11）。削除済みなら成功扱い、判定不能は ambiguous。
+      recordUnexpectedError(error, { at: "post-publish:delete", tweetId });
       const exists = await deps.checkTweetExists(params.accessToken, tweetId);
       if (exists === false) {
         deleted.push(tweetId);
@@ -567,7 +568,9 @@ export async function executePostPublish(
         mimeType: readyImage.mime_type ?? file.mimeType,
       });
       mediaIds = [up.mediaId];
-    } catch {
+    } catch (error) {
+      // 「画像のアップロードに失敗」はStorage権限ミスでもX側障害でも同じ文言になるため記録する。
+      recordUnexpectedError(error, { at: "post-publish:media-upload", draftId });
       await setDraftFailed(db, draftId, {
         code: "media_upload_failed",
         message: "画像のアップロードに失敗しました。時間をおいて再度お試しください。",
@@ -607,8 +610,10 @@ export async function executePostPublish(
     let posts: XRecentPost[];
     try {
       posts = await deps.getRecentPosts(accessToken, job.x_user_id);
-    } catch {
-      return []; // 取得不能 → 一意に確定できず
+    } catch (error) {
+      // 空配列は「照合できなかった」を意味し、投稿の重複防止判断に影響するため記録する。
+      recordUnexpectedError(error, { at: "post-publish:recent-posts" });
+      return [];
     }
     const cutoff = now() - RECONCILE_WINDOW_MS;
     return posts

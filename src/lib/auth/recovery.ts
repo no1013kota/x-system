@@ -76,6 +76,7 @@ export function verifyRecoverySession(
   let marker: RecoverySessionMarker;
   try {
     marker = JSON.parse(decryptWithKey(sealed, key)) as RecoverySessionMarker;
+  // eslint-disable-next-line no-restricted-syntax -- 復号/JSON失敗＝markerが不正。RecoverySessionError で伝わる
   } catch {
     throw new RecoverySessionError("recovery marker is invalid");
   }

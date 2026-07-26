@@ -76,6 +76,7 @@ export function decryptWithKey(serialized: string, key: Buffer): string {
   let envelope: Envelope;
   try {
     envelope = JSON.parse(serialized) as Envelope;
+  // eslint-disable-next-line no-restricted-syntax -- JSONでないこと自体が判定結果。明示的なErrorで伝わる
   } catch {
     throw new Error("Invalid encryption envelope: not valid JSON.");
   }

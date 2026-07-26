@@ -28,6 +28,7 @@ export function parseAndValidate<T>(
     let json: unknown;
     try {
       json = JSON.parse(candidate);
+    // eslint-disable-next-line no-restricted-syntax -- 候補を順に試す走査。parse失敗は次候補へ進む正常系
     } catch {
       continue;
     }

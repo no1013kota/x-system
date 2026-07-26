@@ -54,6 +54,7 @@ export async function inspectImage(bytes: Buffer): Promise<InspectedImage> {
   let meta: sharp.Metadata;
   try {
     meta = await sharp(bytes).metadata();
+  // eslint-disable-next-line no-restricted-syntax -- デコード不能そのものが判定結果。ImageValidationError で呼び出し元へ伝わる
   } catch {
     throw new ImageValidationError("unreadable", "image could not be decoded");
   }

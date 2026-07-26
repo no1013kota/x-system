@@ -33,6 +33,7 @@ export function canonicalizeSourceUrl(raw: string): string {
   let u: URL;
   try {
     u = new URL(raw.trim());
+  // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できない場合は原文をそのまま返す仕様
   } catch {
     return raw.trim();
   }

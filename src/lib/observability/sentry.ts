@@ -31,6 +31,7 @@ function isUsableDsn(dsn: string | undefined): dsn is string {
   try {
     const { protocol } = new URL(dsn);
     return protocol === "http:" || protocol === "https:";
+  // eslint-disable-next-line no-restricted-syntax -- DSNがURLとして不正であること自体が判定結果。不正時の警告は呼び出し側で出す
   } catch {
     return false;
   }
@@ -38,7 +39,12 @@ function isUsableDsn(dsn: string | undefined): dsn is string {
 
 /** Server/edge runtime init. Reads SENTRY_DSN; no-op when unset or invalid. */
 export function initServerSentry(dsn = process.env.SENTRY_DSN): void {
-  if (!isUsableDsn(dsn)) return;
+  if (!isUsableDsn(dsn)) {
+    // DSN未設定はローカル開発の正常系。しかし「設定したのに不正」を黙って無効化すると
+    // 観測基盤そのものが沈黙し、記録されていないことに誰も気付けない。
+    if (dsn) console.warn("[sentry] SENTRY_DSN が不正なため Sentry を無効化しました");
+    return;
+  }
   Sentry.init({ dsn, ...COMMON });
 }
 
@@ -46,7 +52,10 @@ export function initServerSentry(dsn = process.env.SENTRY_DSN): void {
 export function initClientSentry(
   dsn = process.env.NEXT_PUBLIC_SENTRY_DSN,
 ): void {
-  if (!isUsableDsn(dsn)) return;
+  if (!isUsableDsn(dsn)) {
+    if (dsn) console.warn("[sentry] NEXT_PUBLIC_SENTRY_DSN が不正なため Sentry を無効化しました");
+    return;
+  }
   Sentry.init({ dsn, ...COMMON });
 }
 

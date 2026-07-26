@@ -16,6 +16,7 @@ export function parseXPostUrl(input: string): XPostRef | null {
   let url: URL;
   try {
     url = new URL(input.trim());
+  // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できないことが判定結果（null）
   } catch {
     return null;
   }

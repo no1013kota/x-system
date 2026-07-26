@@ -87,6 +87,7 @@ async function hostAllowed(hostname: string, deps: SourceUrlDeps): Promise<boole
   let addresses: ResolvedAddress[];
   try {
     addresses = await deps.resolve(hostname);
+  // eslint-disable-next-line no-restricted-syntax -- DNS解決の失敗が判定結果（null＝解決不能としてSSRF検証を落とす）
   } catch {
     return null; // DNS失敗
   }
@@ -109,6 +110,7 @@ export async function validateSourceUrl(
       let url: URL;
       try {
         url = new URL(current);
+      // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できないことが判定結果（invalid_url）
       } catch {
         return { ok: false, reason: "invalid_url" };
       }
@@ -125,6 +127,7 @@ export async function validateSourceUrl(
           redirect: "manual",
           signal: controller.signal,
         });
+      // eslint-disable-next-line no-restricted-syntax -- 失敗理由は timeout / http_error として戻り値に残る
       } catch {
         return { ok: false, reason: controller.signal.aborted ? "timeout" : "http_error" };
       }

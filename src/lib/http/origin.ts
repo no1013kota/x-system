@@ -11,6 +11,7 @@ export function hasExactAppOrigin(
 
   try {
     return requestOrigin === new URL(appBaseUrl).origin;
+  // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できない設定値は不一致として扱う（false）
   } catch {
     return false;
   }

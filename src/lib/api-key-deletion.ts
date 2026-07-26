@@ -1,4 +1,5 @@
 import type { AiKeyProvider } from "./api-keys";
+import { recordUnexpectedError } from "./observability/sentry";
 
 export type DeletableApiKeyProvider = "x" | AiKeyProvider;
 
@@ -33,7 +34,9 @@ export async function deleteStoredApiKey(
   if (target.credentialsCiphertext) {
     try {
       clientId = deps.readXClientId(target.credentialsCiphertext);
-    } catch {
+    } catch (error) {
+      // 復号できなくてもキー削除は進める。ただし clientId が無いと revoke が打てないため記録する。
+      recordUnexpectedError(error, { at: "api-key-deletion:client-id" });
       clientId = null;
     }
   }
@@ -43,15 +46,19 @@ export async function deleteStoredApiKey(
     for (const ciphertext of target.tokenCiphertexts) {
       try {
         tokens.add(deps.decrypt(ciphertext));
-      } catch {
+      } catch (error) {
         // A broken stored token must not block deleting the leaked App key.
+        // ただし復号失敗は revoke のスキップを意味するため記録する。
+        recordUnexpectedError(error, { at: "api-key-deletion:decrypt-token" });
       }
     }
     for (const token of tokens) {
       try {
         await deps.revoke({ clientId, token });
-      } catch {
+      } catch (error) {
         // X revoke is intentionally best effort; local deletion remains authoritative.
+        // X 側にtokenが残るため、失敗の事実だけは残す。
+        recordUnexpectedError(error, { at: "api-key-deletion:revoke" });
       }
     }
   }

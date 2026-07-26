@@ -42,6 +42,7 @@ export function safeAuthNext(
     candidate.searchParams.delete("next");
     candidate.hash = "";
     return `${candidate.pathname}${candidate.search}`;
+  // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できないことが判定結果（null＝不正なnext）
   } catch {
     return null;
   }

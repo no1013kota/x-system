@@ -22,6 +22,7 @@ export async function connectLocalDb(): Promise<Client | null> {
   try {
     await client.connect();
     return client;
+  // eslint-disable-next-line no-restricted-syntax -- 接続不可＝ローカルSupabase未起動。null を返してテストをskipさせる正常系
   } catch {
     await client.end().catch(() => {});
     return null;

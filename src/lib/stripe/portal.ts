@@ -38,16 +38,18 @@ export async function handlePortalRequest(
   let user: { id: string } | null;
   try {
     user = await deps.getCurrentUser();
-  } catch {
-    return apiError(new AppError("internal_error"));
+  } catch (error) {
+    // cause を捨てると apiError の記録に原因が乗らない（要件01 §8）。
+    return apiError(new AppError("internal_error", { cause: error }));
   }
   if (!user) return apiError(new AppError("unauthorized"));
 
   let profile: PortalProfile | null;
   try {
     profile = await deps.getProfile(user.id);
-  } catch {
-    return apiError(new AppError("internal_error"));
+  } catch (error) {
+    // cause を捨てると apiError の記録に原因が乗らない（要件01 §8）。
+    return apiError(new AppError("internal_error", { cause: error }));
   }
   if (!profile) return apiError(new AppError("internal_error"));
   if (!profile.stripe_customer_id) {

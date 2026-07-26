@@ -5,6 +5,7 @@ import { buildXReadDeps } from "../x/read-client-server";
 import { readTweetMetrics } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import { createDeadline } from "./deadline";
+import { recordUnexpectedError } from "../observability/sentry";
 import {
   executeMetricsCollection,
   type MetricsCollectorResult,
@@ -30,8 +31,10 @@ export async function runMetricsCollector(now: Date): Promise<MetricsCollectorRe
     getAccessToken: async (xAccountId) => {
       try {
         return await getValidXAccessToken(xAccountId);
-      } catch {
-        return null; // 失効・refresh不能は次窓で再走査
+      } catch (error) {
+        // 同上。中核（metrics-collector.ts）のログ経路をこのcatchが無効化していた。
+        recordUnexpectedError(error, { at: "metrics-collector:token", xAccountId });
+        return null;
       }
     },
     readTweetMetrics: async ({ xAccountId, userId, accessToken, tweetIds, keyBase }) => {

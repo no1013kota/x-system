@@ -41,13 +41,13 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // 境界以外は既存箇所が多く（URL検証など失敗が答えのものを含む）、まずは可視化に留める。
-    // 新規追加時に気付ける状態を作り、段階的に境界と同じ基準へ寄せる。
+    // src/lib も同じ基準。既存の検証系（URL/JSONのparse等、失敗が答えのもの）は理由を書いた
+    // eslint-disable で宣言済みなので、新規の無宣言な握りつぶしはここで止まる。
     files: ["src/lib/**/*.ts"],
     ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-syntax": [
-        "warn",
+        "error",
         {
           selector: "CatchClause[param=null]",
           message:
