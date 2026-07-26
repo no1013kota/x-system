@@ -4,6 +4,7 @@ import { getXAppCredentialsForUser } from "@/lib/api-key-store-server";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { toUserFacingError } from "@/lib/observability/errors";
+import { captureServerException } from "@/lib/observability/sentry";
 import type { PlanId } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -86,6 +87,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return response;
   } catch (error) {
     const { code, details } = toUserFacingError(error);
+    // AppError 以外は internal_error に丸められ、原因が画面にもログにも残らず追跡できなくなる。
+    // 想定外の失敗だけ記録する（AppError は仕様どおりの分岐なので記録しない）。
+    if (code === "internal_error") {
+      captureServerException(error, { route: "GET /api/x/oauth/start" });
+      console.error("[x/oauth/start]", error);
+    }
     const settingsPath =
       (details?.settingsPath as string | undefined) ?? DEFAULT_SETTINGS_PATH;
     const to = new URL(settingsPath, env.APP_BASE_URL as string);
