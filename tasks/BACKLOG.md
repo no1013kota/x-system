@@ -1583,10 +1583,12 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: (1) **既定の計測時点を仕様変更**。「取得済みの最長」→「その時点の実績を持つ合算対象ポストが最も多い時点（同数なら長い方）」＝ `analytics.ts` の `mostMeasuredCheckpoint`。古い1件が30日を持つだけで直近投稿が空表に見える問題を解消（要件06 §8を更新）。(2) **識別性**: `loadAnalyticsForUser` の select に `d.thread` を追加し、`buildDraftAnalytics` が `tweet_ids` と同順で本文を割り当て（`TweetAnalytics.body`／`DraftAnalytics.excerpt`）。表のポスト列はtweet_id生値をやめ本文冒頭のXリンク（スレッドは `1/3` 付き）、カードに本文冒頭＋履歴deep-link。(3) **提案の鮮度**: 「最終更新 <日時>」を表示し、生成中は5秒間隔・最大24回で自動再取得（完了で自動反映、上限後は手動再読み込み）。併せて `{n}日checkpoint`→「投稿後{n}日の実績」、metric生値→日本語表記に修正（§8「内部用語を出さない」違反）。テスト+6、全1173件緑。ブラウザ実確認: 既定が1日に変わること、本文リンク/履歴リンク、最終更新表示、生成中→完了の自動反映（手動操作なしで7秒以内に切替）、390px幅で横スクロールなし。
 - 後続への注意: 提案パネルのポーリングは client の `setTimeout`＋`router.refresh()`。job系の他画面（投稿作成）と方式が異なるため、共通化するなら別タスクで。`mostMeasuredCheckpoint` は一覧全体の既定用で、draft単位の `defaultCheckpoint` は別用途のまま残している。
 
-### T-M7-05: 自動E2E基盤（Playwright）の導入 `todo`
+### T-M7-05: 自動E2E基盤（Playwright）の導入 `done`
 - 参照: 要件01 §7、要件06 全般 / 依存: なし / サイズ: L
 - 完了条件:
   - `npm run test:e2e` 相当でリポジトリ管理のE2Eシナリオが実行でき、全assertionが通る
   - 認証済み状態・Xアカウント連携済み状態のfixtureを再現でき、実行後に作成データだけを片付ける
   - 安全既定（`APP_ENV=development`・`X_POSTING_MODE=dry_run`・ローカルSupabase）から外れた環境では実行を止める
 - メモ: 現在は自動E2Eが無く、`/verify-e2e` は playwright-cli による探索的確認どまり（「E2E合格」と呼べない）。fixtureのX tokenは `APP_ENCRYPTION_KEY` での封緘が必要、後片付けは `base_md_versions`→`x_accounts` のFK順に注意（2026-07-26の検証で判明）。最初のシナリオ候補: 下書き→dry-run投稿→履歴、スケジュール停止→再開、初期設定ガイドの出し分け。
+- 実装結果: `@playwright/test` を devDependency に追加し、`playwright.config.ts`（testDir=`e2e/`・workers 1・baseURL 127.0.0.1:3000・devサーバーは `reuseExistingServer`・失敗時のみtrace/screenshot）と `npm run test:e2e`（`node --env-file-if-exists` で .env/.env.local を読む）を用意。**安全ゲート** `e2e/fixtures/guard.ts` を globalSetup にし、`APP_ENV=development`／`X_POSTING_MODE=dry_run`／Supabase・DB・baseURLがローカル／`APP_ENCRYPTION_KEY`・`SUPABASE_SERVICE_ROLE_KEY` の存在を検査、外れたら1件も動かさず中止（`X_POSTING_MODE=live`・`APP_ENV=production` で中止することを実確認）。**fixture** `e2e/fixtures/account.ts` は service role で確認済みユーザー＋premium/trialing＋active Xアカウント（tokenは `encryptWithKey`＋`resolveKey` で封緘した偽値）を作り、終了時に作成分だけをFK順で削除する（`usage_events` 等の参照元を列挙）。ログインは Turnstile テストキーのtokenが hidden input に入るまで待ってから送信する。**シナリオ4件**（ホーム: 初期設定ガイドと空状態の導線／有効スロットの次回表示と全停止／SC-08 停止→再開のDB追従／下書き→確認ダイアログ→dry-run投稿→posted・履歴のXリンク）が全て緑、実行後の残データ0件を確認。vitest は `src/**/*.test.ts` のみを見るため衝突なし。
+- 後続への注意: **`e2e/**` は eslint の `react-hooks/rules-of-hooks` を無効化**（Playwrightのfixtureが取る `use` コールバックを誤検知するため）。CIで動かすには `npx playwright install chromium` とローカルSupabase起動が前提。実行結果（`test-results/`・`playwright-report/`）は gitignore 済み。今後シナリオを増やすときは fixture の削除対象テーブル一覧の追随を忘れないこと。

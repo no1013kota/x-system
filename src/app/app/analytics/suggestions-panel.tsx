@@ -66,20 +66,17 @@ export function SuggestionsPanel({
   const [note, setNote] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const [polls, setPolls] = useState(0);
 
-  // 生成中は完了まで自動で取り直す（利用者に手動再読み込みを強いない）。上限で自動停止する。
+  // 生成中は完了まで自動で取り直す（利用者に手動再読み込みを強いない）。上限で自動停止し、
+  // 以降は手動の「再読み込み」に委ねる。カウンタは「提案を更新」を押したときにリセットする。
   const polling = generating && polls < POLL_MAX;
   useEffect(() => {
-    if (!generating) {
-      setPolls(0);
-      return;
-    }
-    if (polls >= POLL_MAX) return;
+    if (!polling) return;
     const timer = setTimeout(() => {
       setPolls((n) => n + 1);
       router.refresh();
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [generating, polls, router]);
+  }, [polling, polls, router]);
 
   function refresh() {
     startTransition(async () => {

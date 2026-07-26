@@ -32,6 +32,10 @@ tmp/
 # Playwright CLI（一時スナップショット・セッション）
 .playwright-cli/
 
+# Playwright E2E（実行結果・レポート・trace）
+test-results/
+playwright-report/
+
 # IDE
 .idea/
 .vscode/

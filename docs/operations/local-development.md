@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.0 |
-| 更新日 | 2026-07-25 |
+| バージョン | v1.1 |
+| 更新日 | 2026-07-26 |
 | 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -104,6 +104,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `eslint .` |
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
+| `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
 | `npm run release:check` | typecheck → lint → 依存監査 → 全テスト → build（要ネットワーク＝npm audit） |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
@@ -195,6 +196,16 @@ npm run dev                  # → http://127.0.0.1:3000
 1. **最も簡単**: Supabase Studio http://127.0.0.1:54323 → Authentication → Add user（メール確認/captcha不要で確認済みユーザーを即作成）。
 2. **UIサインアップ**: http://127.0.0.1:3000/signup で登録 → 確認メールを **Mailpit http://127.0.0.1:54324** で開いてリンクを踏む。
 3. service role の管理API（`supabase.auth.admin.createUser`）でスクリプト作成。
+
+---
+
+## 6.1 E2E（Playwright）
+
+- 実行: `npm run test:e2e`（`.env` / `.env.local` を読み込む）。devサーバーが起動していなければ Playwright が `npm run dev` を立ち上げる（起動済みなら再利用）。ブラウザ未取得なら `npx playwright install chromium` を先に1回だけ実行する。
+- 構成: 設定は `playwright.config.ts`、シナリオとfixtureは `e2e/`。DBを共有するため直列実行（`workers: 1`）。
+- 安全ゲート: `e2e/fixtures/guard.ts` が globalSetup で `APP_ENV=development`・`X_POSTING_MODE=dry_run`・SupabaseとDBとbase URLがローカル・`APP_ENCRYPTION_KEY`／`SUPABASE_SERVICE_ROLE_KEY` の存在を確認し、外れていれば**テストを1件も動かさずに中止**する。
+- テストデータ: `e2e/fixtures/account.ts` が service role で確認済みユーザー＋active Xアカウント（tokenは`APP_ENCRYPTION_KEY`で封緘した偽値）を作り、終了時に**作成分だけ**をFK順で削除する。ログインはTurnstileテストキーで自動通過する。
+- 投稿シナリオは `X_POSTING_MODE=dry_run` のため実際のXへは送信されない（擬似tweet_id）。
 
 ---
 
