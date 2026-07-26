@@ -11,13 +11,22 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - ユーザーに判断・準備してほしいことは「要決定・外部準備」に追記する
 - 書式: `### <ID>: <タスク名> \`<status>\`` ＋ 参照/依存/サイズ行 ＋ 完了条件
 
+### T-M7-07: D-5 案A — runJob中央finalizer（retry分類・backoff差し戻し） `done`
+- 参照: 要決定D-5、要件04 §4・§5、プロンプト設計書 §5.2 / 依存: T-M7-02 / サイズ: M
+- 完了条件:
+  - handlerが投げた retryable(429/5xx/network) が上限まで backoff 付きで queued へ戻り、即 failed にならない
+  - auth/invalid/不明な例外と上限到達は従来どおり failed で確定する
+  - 再試行時に post_generation の Web検索 maxUses が縮退する
+- 実装結果: 純関数 `jobs/job-error.ts`（`classifyJobError`＝明示kind→retryable宣言→HTTP status→network code(`cause`も)→名前の順、材料が無ければ`unknown`／`decideJobOutcome`＝`shouldRetry`＋`backoffMs`で retry/fail を決める）を追加し、`runJob` の catch から呼ぶ。retry時は `requeueJob`（`status='running'` の行だけを queued へ戻し、lock・stage・error をクリアして `available_at = now()+backoff`）→ backoff 分 sleep → 同jobを再dispatch（tickを待つと最大5分の空白になるため。dispatch失敗はqueuedのままtickが回収）。`RunResult.result` に `"retry"` を追加。`post_generation` は `loadJob` に `gj.attempt` を足し、`webSearchForPattern(..., attempt)` が `reduceWebSearchMaxUses` で1段階ずつ縮小する。併せて失敗通知の dedupe key を `job:{id}:error` → **`job:{id}:failed`** に統一（要件04 §14・stale経路と一致）。テスト+10（分類/判断8・requeue DB 2）、全1183件緑・build通過。
+- 後続への注意: **D-5の残件はreserveのrefundのみ**。worker失敗経路で `finalizeFailedJob` は呼ばない（handlerが既にdraft確定・通知を自前で行うため二重実行になる）。reserve作成が実装されるM6で、refundだけをworker経路にも通す設計を再検討する。`runJob` の retry sleep は最大4.5秒（attempt2で2〜3秒）で maxDuration 200秒に対し十分小さい。retryはhandlerが `persistFailure` を呼ぶ前に throw する経路（provider transport error・PauseTurnIncomplete）でのみ起きるため、再試行される失敗でerror通知が出ることはない。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
 
 **D-2: ローカルDBランタイム(Docker)の方針（解決済み 2026-07-20: colima導入）** — この開発マシンにDocker/Supabase CLIが未導入。T-M0-03〜07（DBマイグレーション群）とDB統合検証を含む後続タスクの検証に必須。選択肢: (a)colima+docker CLIをbrewで導入（GUI・ライセンス不要のヘッドレス実行。推奨。ただし初回はSupabaseの各種Dockerイメージ数GBをpull） / (b)Docker Desktopを人間が導入（GUI・ライセンス確認あり） / (c)当面ローカルDB検証をスキップしSQLの記述のみ進める。**未決の間はDB群がblockedで先へ進めないため、ここが連続開発の律速。**
 
-**D-5: runJob汎用finalizerの中央化（T-M3-05で顕在化・M3投稿系着手前に決定）** — `runJob`（worker.ts）はhandlerを`withTransaction`で包み、throw時はhandler txをロールバックして`status='failed'`（`finished_at`のみ）に更新する。error jsonb・usage・retry/backoff差し戻し・失敗通知を一切書かない。T-M3-05のpost_generation handlerは暫定対応として、失敗系のerror/usage/通知をpool（handler txとは別）で確定保存してからthrowしている。しかし「retryable(429/5xx/timeout)のbackoff付きqueued差し戻し」「pause_turn <30秒でのretryable差し戻し＋reduceWebSearchMaxUses適用」は**runJob側にretry分類（retry.ts `shouldRetry`/`backoffMs`は現状未配線）と差し戻し（stale.ts §84-93が参照実装）を中央実装しないと成立しない**。要決定: (案A)runJobを拡張し、handlerが構造化結果（succeeded/failed(error,usage)/retry(delay)）を返せるようにして中央でstatus/error/usage/backoff/通知を処理する（全handler共通化・推奨） / (案B)各handlerが個別にpoolで失敗確定＋差し戻しを行う（重複増）。M3のimage_generation/post_publish handler着手前に決めると重複実装を避けられる。
+**D-5: runJob汎用finalizerの中央化（解決済み 2026-07-26: 案A・T-M7-02/T-M7-07で実装。refundの共通化のみM6へ残す）** — `runJob`（worker.ts）はhandlerを`withTransaction`で包み、throw時はhandler txをロールバックして`status='failed'`（`finished_at`のみ）に更新する。error jsonb・usage・retry/backoff差し戻し・失敗通知を一切書かない。T-M3-05のpost_generation handlerは暫定対応として、失敗系のerror/usage/通知をpool（handler txとは別）で確定保存してからthrowしている。しかし「retryable(429/5xx/timeout)のbackoff付きqueued差し戻し」「pause_turn <30秒でのretryable差し戻し＋reduceWebSearchMaxUses適用」は**runJob側にretry分類（retry.ts `shouldRetry`/`backoffMs`は現状未配線）と差し戻し（stale.ts §84-93が参照実装）を中央実装しないと成立しない**。要決定: (案A)runJobを拡張し、handlerが構造化結果（succeeded/failed(error,usage)/retry(delay)）を返せるようにして中央でstatus/error/usage/backoff/通知を処理する（全handler共通化・推奨） / (案B)各handlerが個別にpoolで失敗確定＋差し戻しを行う（重複増）。M3のimage_generation/post_publish handler着手前に決めると重複実装を避けられる。
 
 **D-6: 生成ごとの画像provider指定の扱い（T-M3-15/16で顕在化）** — `createGenerationJob`/`createDraftFromNews`は`image_provider`を受け取り（要件05 §5・作成フォームでも選択）、`regenerateImage`も当初は`provider`引数を想定していた。しかし画像job（`executeImageGeneration`）は`resolveImageProvider`（T-M0）でアカウント設定`ai_purpose_config.image`からproviderを解決し、**per-jobのimage_provider選択を使っていない**。premiumでユーザーが生成ごとにopenai/googleを選んでも、保存済み設定と異なると選択が反映されない。要決定: (案A)per-jobの`image_provider`を`resolveImageProvider`へ渡して尊重する（作成フォームの選択を活かす。`resolve-provider`にpreferred引数追加が必要） / (案B)providerは常にアカウント設定を正とし、作成フォーム/actionのper-job provider選択・引数を廃止する（UI簡素化）。暫定: 現状はアカウント設定解決（案B寄り）で動作。T-M3-16では`regenerateImage`引数を`(request_key, draft_id)`に確定し要件05 §5を更新済み。作成フォームの`image_provider`選択を活かすなら案Aで別途対応。
 

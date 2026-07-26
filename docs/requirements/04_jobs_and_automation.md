@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
+| バージョン | v1.9 |
 | 更新日 | 2026-07-26 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -62,7 +62,7 @@ workerはdispatchで指定されたjob 1件を対象に、短いDB transaction�
 5. 外部処理中は30秒ごと、またはstage変更時に`locked_at`をheartbeat更新する。
 6. `locked_at < now() - 10 minutes`のrunning jobはstaleとする。`attempt < 3`ならlockを解除してqueuedへ戻し、`attempt >= 3`ならfailedへ確定する。failed確定と同一transactionで、当該jobの未返還reserve（`job:{job_id}:generation:refund`／`image:refund`の冪等key）をrefundする（通常経路のrefundと二重返還しない。要件03 §7.3）。
 
-stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserve自体の作成はM6のため現状のrefundは実質no-op（先行配線）。workerの失敗経路との完全共通化はD-5（runJob中央finalizer）で行う。
+stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserve自体の作成はM6のため現状のrefundは実質no-op（先行配線）。workerの失敗経路では各handlerが自分の終端処理（draft確定・ソース差し戻し・error通知）をpoolで行うため、`finalizeFailedJob`は呼ばない（二重実行を避ける）。両経路の失敗通知は同じdedupe key `job:{id}:failed` を使うため重複しない。reserveのrefundを worker 失敗経路でも行う共通化は、reserve作成が実装されるM6で扱う（D-5の残件）。
 
 workerがhandlerの例外を受けてfailedへ確定する際は、失敗理由を必ず残す。handlerが既に`error`を保存していればそれを尊重して上書きせず、未保存のときだけ§4.10形式の汎用`error`（`code`／`message`／`retryable: false`／`stage`＝到達済みの`progress_stage`）を保存する。`code`は例外が持つエラーコード（`^[a-z][a-z0-9_]{0,62}$`に一致するもののみ）を使い、該当しなければ汎用の`job_failed`とする。`message`はコードから決まる定型文またはkind別の失敗通知本文であり、例外メッセージ・スタック・providerの応答をそのまま入れない。この確定は`status = running`の行のみを対象とするため、自己終端済み・stale回収でqueuedへ戻った行を書き換えず、再実行しても結果が変わらない。lease時（§4の手順4）は前attemptの`error`をクリアし、前回の失敗理由が現在の実行の結果として表示されないようにする。
 
@@ -82,6 +82,10 @@ workerがhandlerの例外を受けてfailedへ確定する際は、失敗理由�
 | Stripe webhook | アプリ内retryなし | 非2xxでStripe再送 |
 
 `attempt >= 3`は自動取得しない。provider内部retryは`attempt`ではなく`usage.calls`に記録する。
+
+retryの判定と差し戻しはworkerの中央finalizerが行い、handlerは分類を持たずに例外を投げるだけでよい。handlerが投げた例外は「明示の種別 → 自ら宣言する`retryable` → HTTP status（429=rate_limit／5xx=server／401・403=auth／その他=invalid）→ network系のerror code（`cause`側も見る）→ `AbortError`等の名前」の順で分類し、判断材料が無ければ`unknown`（＝再試行しない）とする。retryableかつ`attempt < 3`なら`status='queued'`へ戻し、`available_at = now() + backoff`、`locked_at`/`locked_by`/`progress_stage`/`error`をクリアする（まだ失敗が確定していないため画面に理由を出さない）。この差し戻しも`status='running'`の行だけを対象とし、handlerの自己終端は上書きしない。差し戻し後はbackoff分だけ待って同じjobを再dispatchする（次の`scheduler_tick`を待つと最大5分の空白になるため）。dispatchに失敗してもqueuedのままなのでtickが回収する。
+
+再試行時の縮退: `post_generation`は`attempt`が増えるごとにWeb検索の`maxUses`を1段階（半減・下限1）縮小し、`pause_turn`が再びdeadlineに達することを避ける（プロンプト設計書 §5.2）。
 
 Function開始から180秒を処理deadlineとする（maxDuration 200秒）。JSON修復や`pause_turn`継続など追加provider callは、残り時間が30秒未満なら開始せずretryableとしてqueuedへ戻す。各callのtimeoutは90秒とdeadlineまでの残り時間の短い方にする（初回call 90秒＋修復call 90秒が1 attemptに収まる）。
 

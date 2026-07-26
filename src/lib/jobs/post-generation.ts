@@ -14,6 +14,7 @@ import {
   fetchRecentPostBodies,
 } from "../ai/gen-context";
 import { AppError } from "@/lib/observability/errors";
+import { reduceWebSearchMaxUses } from "../ai/anthropic";
 import { PLANS } from "@/lib/plans";
 
 import { genOutputSchema } from "../ai/gen-output";
@@ -68,6 +69,8 @@ interface JobRow {
     previous_posts?: string[];
   };
   x_account_id: string;
+  /** 今回のattempt番号（leaseで加算済み）。再試行時のWeb検索縮退に使う。 */
+  attempt: number;
   user_id: string;
   base_md: string;
   settings: {
@@ -116,8 +119,23 @@ function composeUserInput(input: JobRow["input"]): string {
   return parts.join("\n");
 }
 
-/** パターン別のWeb検索設定（プロンプト設計書 §6の検索回数上限）。P-2はURL指定時のみ。 */
+/**
+ * パターン別のWeb検索設定（プロンプト設計書 §6の検索回数上限）。P-2はURL指定時のみ。
+ * 再試行（attempt >= 2）では pause_turn の未完了を避けるため1段階ずつ縮小する（§5.2「4→2」）。
+ */
 function webSearchForPattern(
+  pattern: string,
+  hasUrl: boolean,
+  attempt = 1,
+): { maxUses: number } | undefined {
+  const base = baseWebSearchForPattern(pattern, hasUrl);
+  if (!base) return undefined;
+  let maxUses = base.maxUses;
+  for (let i = 1; i < attempt; i++) maxUses = reduceWebSearchMaxUses(maxUses);
+  return { maxUses };
+}
+
+function baseWebSearchForPattern(
   pattern: string,
   hasUrl: boolean,
 ): { maxUses: number } | undefined {
@@ -137,7 +155,7 @@ function webSearchForPattern(
 
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.pattern, gj.trigger, gj.input, gj.x_account_id,
+    `select gj.pattern, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
             xa.user_id, xa.base_md, xa.settings, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
@@ -229,7 +247,7 @@ async function persistFailure(
         and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
              or coalesce((p.notification_config->'error'->>'email')::boolean, false))
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [job.userId, `job:${job.jobId}:error`, job.jobId],
+    [job.userId, `job:${job.jobId}:failed`, job.jobId],
   );
 }
 
@@ -396,7 +414,7 @@ export async function executePostGeneration(
   const request = {
     system,
     user,
-    webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url)),
+    webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url), job.attempt),
     timeoutMs: deadline.callTimeoutMs(),
   };
 

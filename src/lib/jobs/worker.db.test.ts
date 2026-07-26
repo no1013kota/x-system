@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { withTransaction, closePool, getPool } from "../db/pool";
-import { failJob, leaseJob, runJob } from "./worker";
+import { failJob, leaseJob, requeueJob, runJob } from "./worker";
 
 /**
  * DB integration tests for the worker lease (T-M0-12, 要件04 §4): lease
@@ -315,6 +315,66 @@ describe("worker leaseJob / runJob", () => {
         const row = await readJob(jobId);
         expect(row.status).toBe("running");
         expect(row.error).toBeNull();
+      } finally {
+        await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      }
+    });
+  });
+
+  describe("requeueJob（retryable差し戻し）", () => {
+    it("running を backoff 付きで queued へ戻し、lock・stage・error を消す", async () => {
+      const { xid, jobId } = await withTransaction(async (c) => {
+        const { xid } = await makeAccount(c);
+        const jobId = await makeJob(c, xid, { status: "running" });
+        await c.query(
+          `update generation_jobs
+              set locked_at = now(), locked_by = 'w', progress_stage = 'writing',
+                  error = '{"code":"job_failed"}'::jsonb
+            where id = $1`,
+          [jobId],
+        );
+        return { xid, jobId };
+      });
+      try {
+        await requeueJob(jobId, 5_000);
+        const { rows } = await withTransaction((c) =>
+          c.query<{
+            status: string;
+            locked_by: string | null;
+            progress_stage: string | null;
+            error: unknown;
+            not_yet: boolean;
+          }>(
+            `select status, locked_by, progress_stage::text as progress_stage, error,
+                    (available_at > now()) as not_yet
+               from generation_jobs where id = $1`,
+            [jobId],
+          ),
+        );
+        expect(rows[0]).toMatchObject({
+          status: "queued",
+          locked_by: null,
+          progress_stage: null,
+          error: null,
+          not_yet: true,
+        });
+      } finally {
+        await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      }
+    });
+
+    it("running 以外（handlerの自己終端）は変更しない", async () => {
+      const { xid, jobId } = await withTransaction(async (c) => {
+        const { xid } = await makeAccount(c);
+        const jobId = await makeJob(c, xid, { status: "canceled" });
+        return { xid, jobId };
+      });
+      try {
+        await requeueJob(jobId, 5_000);
+        const { rows } = await withTransaction((c) =>
+          c.query<{ status: string }>(`select status from generation_jobs where id = $1`, [jobId]),
+        );
+        expect(rows[0].status).toBe("canceled");
       } finally {
         await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
       }

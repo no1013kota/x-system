@@ -6,6 +6,7 @@ import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/lock
 import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
 import { getJobHandler, type JobKind } from "./handlers";
+import { decideJobOutcome } from "./job-error";
 import { fallbackJobError } from "./terminal";
 
 /**
@@ -146,9 +147,30 @@ export async function leaseJob(
   };
 }
 
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface RunResult extends LeaseResult {
-  /** set only when a job was leased and its handler ran */
-  result?: "succeeded" | "failed";
+  /** set only when a job was leased and its handler ran。`retry` は queued へ差し戻した場合 */
+  result?: "succeeded" | "failed" | "retry";
+}
+
+/**
+ * retryable な失敗を backoff 付きで queued へ戻す（要件04 §5）。`status='running'` の間だけ
+ * 更新するため、handlerが自己終端した場合は触らない。前attemptの `error` は残さない
+ * （まだ失敗が確定していないため、画面に失敗理由を見せない）。
+ */
+export async function requeueJob(jobId: string, delayMs: number): Promise<void> {
+  await withTransaction((c) =>
+    c.query(
+      `update generation_jobs
+          set status = 'queued', locked_at = null, locked_by = null,
+              progress_stage = null, error = null,
+              available_at = now() + ($2 || ' milliseconds')::interval
+        where id = $1 and status = 'running'`,
+      [jobId, delayMs],
+    ),
+  );
 }
 
 /**
@@ -187,6 +209,7 @@ export async function failJob(
 export async function runJob(
   jobId: string,
   workerId: string = `worker-${randomUUID()}`,
+  deps: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<RunResult> {
   const lease = await withTransaction((c) => leaseJob(c, jobId, workerId));
   if (lease.outcome !== "leased" || !lease.job) return lease;
@@ -205,6 +228,17 @@ export async function runJob(
       ),
     );
   } catch (error) {
+    // 中央finalizer（要件04 §5・D-5）: retryable(429/5xx/network) は上限まで backoff 付きで
+    // queued へ戻し、それ以外と上限到達は failed で確定する。
+    const outcome = decideJobOutcome(error, job.attempt);
+    if (outcome.action === "retry") {
+      await requeueJob(jobId, outcome.delayMs);
+      // backoff は数秒なので、その場で待って再dispatchする（次の scheduler_tick を待つと
+      // 最大5分の空白になるため）。dispatch失敗時も queued のまま tick が回収する。
+      await (deps.sleep ?? defaultSleep)(outcome.delayMs);
+      await dispatchJob(jobId).catch(() => undefined);
+      return { ...lease, result: "retry" };
+    }
     await failJob(jobId, job.kind, error);
     return { ...lease, result: "failed" };
   }
