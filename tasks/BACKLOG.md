@@ -1583,6 +1583,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: (1) **既定の計測時点を仕様変更**。「取得済みの最長」→「その時点の実績を持つ合算対象ポストが最も多い時点（同数なら長い方）」＝ `analytics.ts` の `mostMeasuredCheckpoint`。古い1件が30日を持つだけで直近投稿が空表に見える問題を解消（要件06 §8を更新）。(2) **識別性**: `loadAnalyticsForUser` の select に `d.thread` を追加し、`buildDraftAnalytics` が `tweet_ids` と同順で本文を割り当て（`TweetAnalytics.body`／`DraftAnalytics.excerpt`）。表のポスト列はtweet_id生値をやめ本文冒頭のXリンク（スレッドは `1/3` 付き）、カードに本文冒頭＋履歴deep-link。(3) **提案の鮮度**: 「最終更新 <日時>」を表示し、生成中は5秒間隔・最大24回で自動再取得（完了で自動反映、上限後は手動再読み込み）。併せて `{n}日checkpoint`→「投稿後{n}日の実績」、metric生値→日本語表記に修正（§8「内部用語を出さない」違反）。テスト+6、全1173件緑。ブラウザ実確認: 既定が1日に変わること、本文リンク/履歴リンク、最終更新表示、生成中→完了の自動反映（手動操作なしで7秒以内に切替）、390px幅で横スクロールなし。
 - 後続への注意: 提案パネルのポーリングは client の `setTimeout`＋`router.refresh()`。job系の他画面（投稿作成）と方式が異なるため、共通化するなら別タスクで。`mostMeasuredCheckpoint` は一覧全体の既定用で、draft単位の `defaultCheckpoint` は別用途のまま残している。
 
+### T-M7-06: ホーム（SC-05）に重要ニュースカード `done`
+- 参照: 要件06 §1 SC-05・§1.4・§10 / 依存: なし / サイズ: S
+- 完了条件:
+  - 利用者のニュース設定の分野でインパクトが高い新着が、ホームに新しい順で数件表示される
+  - 該当なし・取得失敗それぞれで行き止まりにならない（ニュース設定／SC-06への導線と注記）
+- メモ: T-M3-26 が「重要ニュースはニュース側」と委譲したまま、M4のニュース系（T-M4-10〜15）で受け皿タスクが起票されず落ちていた分。PRDのスコープ外指定ではない。
+- 実装結果: `src/app/app/important-news.tsx` `ImportantNewsCard`（server component・表示専用）。ホームは `getSettingsForUser` の `news_config.categories` ＋ `impacts: ["high"]` ＋ `limit 3` で `listNewsItemsForUser` を呼ぶ（`impact_filter` はSC-06一覧用のためホームでは使わず常に high）。カード順は要件06 §1のカタログに合わせ 予定→重要ニュース→実績。分野ラベルは既存の `themes.ts` `newsCategoryLabel` を再利用。取得失敗は try/catch して「更新できなかった」注記に落とす（ホーム全体を落とさない）。ブラウザ実確認: high 3件のみ表示・low除外・新しい順、分野を絞った空状態（ニュース設定＋SC-06導線）、390px幅で横スクロールなし。全1173件緑・E2E 4件緑。
+- 後続への注意: `news-browser.tsx` は独自の `CATEGORY_LABEL` マップを持っており `newsCategoryLabel` と重複している（次のリファクタ枠で統合候補）。ホームは常に high 固定のため、「mid も出したい」という要望が出たら `news_config` に別項目を足すか §1.4 の仕様を変える判断が要る。
+
 ### T-M7-05: 自動E2E基盤（Playwright）の導入 `done`
 - 参照: 要件01 §7、要件06 全般 / 依存: なし / サイズ: L
 - 完了条件:
