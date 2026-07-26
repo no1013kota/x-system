@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.0 |
-| 更新日 | 2026-07-26 |
-| 関連 | [システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
+| バージョン | v1.1 |
+| 更新日 | 2026-07-27 |
+| 関連 | [CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
 
@@ -17,9 +17,10 @@ Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ�
 デプロイ前に、ローカルで次がすべて緑であること。
 
 ```bash
-npm run release:check    # typecheck → lint → 依存監査 → 全テスト → build
-npm run test:e2e         # Playwright E2E（ローカルSupabase必須）
+npm run release:check    # typecheck → lint → 依存監査 → test:db → build → test:e2e
 ```
+
+同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。ただし **CIはデプロイをブロックしない**（`main` への push でCIとVercelのproductionビルドは並行して走る）。ブロックしたい場合は branch protection で `main` を保護し、CIをrequired status checkにしてPR経由でのみマージする。
 
 ---
 
