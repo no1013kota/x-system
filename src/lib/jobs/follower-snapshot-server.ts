@@ -5,6 +5,7 @@ import { buildXReadDeps } from "../x/read-client-server";
 import { readUserFollowers } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import { createDeadline } from "./deadline";
+import { recordUnexpectedError } from "../observability/sentry";
 import {
   executeFollowerSnapshot,
   type FollowerSnapshotResult,
@@ -26,8 +27,11 @@ export async function runFollowerSnapshot(windowKey: string): Promise<FollowerSn
     getAccessToken: async (xAccountId) => {
       try {
         return await getValidXAccessToken(xAccountId);
-      } catch {
-        return null; // 失効・refresh不能は次窓で再走査
+      } catch (error) {
+        // null は「次窓で再走査」を意味する。token失効とDB権限漏れが区別できず、後者は
+        // 永久に持ち越されるため記録する（中核側のログ経路をこのcatchが潰していた）。
+        recordUnexpectedError(error, { at: "follower-snapshot:token", xAccountId });
+        return null;
       }
     },
     readFollowersCount: async ({ xAccountId, userId, xUserId, accessToken }) => {

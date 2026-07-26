@@ -27,6 +27,7 @@ export function httpsUrlFromResponse(body: unknown): string | null {
   try {
     const url = new URL(value.data.url);
     return url.protocol === "https:" ? url.toString() : null;
+  // eslint-disable-next-line no-restricted-syntax -- URL/protocolが不正であること自体が判定結果（null）
   } catch {
     return null;
   }
@@ -45,8 +46,9 @@ export async function startBillingRedirect(
   let response: Response;
   try {
     response = await dependencies.fetcher(endpoint, { method: "POST", ...init });
-  } catch {
-    throw new Error(errorMessage);
+  } catch (error) {
+    // 利用者向けの文言へ差し替えるが、cause を捨てると通信失敗の原因が追えなくなる。
+    throw new Error(errorMessage, { cause: error });
   }
   const body: unknown = await response.json().catch(() => null);
   const url = response.ok ? httpsUrlFromResponse(body) : null;

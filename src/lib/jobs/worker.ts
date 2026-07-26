@@ -277,7 +277,9 @@ async function dispatchChildJobs(parentJobId: string): Promise<void> {
     for (const row of rows) {
       await dispatchJob(row.id);
     }
-  } catch {
+  } catch (error) {
     // best-effort。ここで失敗しても親は succeeded 済みで、queuedの子は scheduler_tick が回収する。
+    // ただし子jobが起動しない原因が残らないため記録する。
+    recordUnexpectedError(error, { at: "worker:dispatch-children", jobId: parentJobId });
   }
 }

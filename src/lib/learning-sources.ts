@@ -39,6 +39,7 @@ export function normalizeLearningUrl(
   let u: URL;
   try {
     u = new URL(raw.trim());
+  // eslint-disable-next-line no-restricted-syntax -- URLとして解釈できないことが判定結果（null）
   } catch {
     return null;
   }

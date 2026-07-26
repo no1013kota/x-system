@@ -1,4 +1,5 @@
 import type { AiKeyProvider } from "./api-keys";
+import { recordUnexpectedError } from "./observability/sentry";
 
 export type VerifiableApiKeyProvider = "x" | AiKeyProvider;
 
@@ -35,7 +36,10 @@ export async function verifyStoredApiKey(
   let status: "invalid" | "valid" = "valid";
   try {
     await dependencies.verify(target.provider, apiKey);
-  } catch {
+  } catch (error) {
+    // provider が「キーが無効」と答えた場合も、自コードのバグ・接続失敗もここへ来る。
+    // 利用者へは「貼り直してください」と案内するため、区別できるよう原因を記録する。
+    recordUnexpectedError(error, { at: "api-key-verification", provider: target.provider });
     status = "invalid";
   }
   await dependencies.persist({ ciphertext: target.ciphertext, status });

@@ -6,6 +6,7 @@ import { disableAutomationForAccount } from "./automation-consent";
 import { type XAuthType } from "./oauth";
 import { expectedAuthTypeForPlan } from "./oauth-start";
 import type { Queryable } from "../db/queryable";
+import { recordUnexpectedError } from "../observability/sentry";
 
 /**
  * Xアカウント管理Actionの中核（要件05 §4.3, A-6, 要件03 §6, 要件06 §9）。
@@ -150,8 +151,10 @@ export async function refreshXAccountStatus(
   let token: string;
   try {
     token = await deps.getAccessToken(xAccountId);
-  } catch {
-    // token refresh が invalid_grant/scope不足で status=expired にしている想定。
+  } catch (error) {
+    // token refresh が invalid_grant/scope不足で status=expired にしている想定。想定が崩れた
+    // 場合（鍵設定ミス・DB権限漏れ）は古い status をそのまま返すため、原因を記録する。
+    recordUnexpectedError(error, { at: "x-account:refresh-status:token", xAccountId });
     return { status: await readStatus(deps.db, xAccountId) };
   }
 
@@ -159,7 +162,9 @@ export async function refreshXAccountStatus(
     const me = await deps.fetchMe(token);
     await applyMe(deps.db, xAccountId, me);
     return { status: "active" };
-  } catch {
+  } catch (error) {
+    // 画面の「エラー」バッジの理由を残す列が無いため、記録しないと原因が完全に消える。
+    recordUnexpectedError(error, { at: "x-account:refresh-status:me", xAccountId });
     await deps.db.query(
       `update x_accounts set status = 'error', updated_at = now() where id = $1`,
       [xAccountId],
@@ -203,7 +208,10 @@ export async function enableXAccount(
   try {
     const token = await deps.getAccessToken(xAccountId);
     me = await deps.fetchMe(token);
-  } catch {
+  } catch (error) {
+    // 利用者へは「再連携してください」と案内するが、鍵・権限・X側障害でも同じ文言になるため
+    // 原因を記録する（2026-07-26 のGRANT漏れが同型の誤案内を生んだ）。
+    recordUnexpectedError(error, { at: "x-account:require-active", xAccountId });
     throw new AppError("forbidden", {
       details: { reason: "reauth_required", settingsPath: X_SETTINGS_PATH },
     });
@@ -269,8 +277,9 @@ export async function disconnectXAccount(
   // token revoke は best effort（保存token削除より優先度は低い）。失敗は握りつぶす。
   try {
     await deps.revoke(xAccountId);
-  } catch {
-    // ignore: revoke failure must not block disconnect
+  } catch (error) {
+    // 切断はローカル側を正とするため revoke 失敗では止めない。ただし X 側にtokenが残るため記録する。
+    recordUnexpectedError(error, { at: "x-account:revoke", xAccountId });
   }
 
   await deps.runInTx(async (tx) => {

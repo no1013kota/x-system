@@ -189,6 +189,7 @@ export function verifyOAuthCallback(
   let tx: OAuthTransaction;
   try {
     tx = openOAuthTransaction(sealed, key);
+  // eslint-disable-next-line no-restricted-syntax -- state cookieの復号失敗＝改ざん/欠落。OAuthStateError で伝わる
   } catch {
     throw new OAuthStateError("state cookie is missing or tampered");
   }
@@ -274,6 +275,7 @@ async function postToken(
     let errorCode: string | null = null;
     try {
       errorCode = (JSON.parse(text) as { error?: string }).error ?? null;
+    // eslint-disable-next-line no-restricted-syntax -- エラー本文がJSONでないだけ。HTTP status は呼び出し元に残る
     } catch {
       errorCode = null;
     }

@@ -15,6 +15,7 @@ import { xClientDeps, xCostConfig } from "../x/client-server";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import type { JobContext } from "./handlers";
 import { executePostPublish } from "./post-publish";
+import { recordUnexpectedError } from "../observability/sentry";
 
 /**
  * post_publish ハンドラの server-only 配線（要件04 §10, T-M3-18）。pool・X token・X client
@@ -51,8 +52,10 @@ export async function postPublishHandler(ctx: JobContext): Promise<void> {
       try {
         const res = await getTweetMetrics(accessToken, [tweetId], clientDeps);
         return res.tweets.length > 0;
-      } catch {
-        return null; // 判定不能
+      } catch (error) {
+        // null は reconcile 側が「曖昧」として扱う。判定不能が続く原因を追えるように記録する。
+        recordUnexpectedError(error, { at: "post-publish:check-tweet-exists", tweetId });
+        return null;
       }
     },
     costConfig: xCostConfig(),

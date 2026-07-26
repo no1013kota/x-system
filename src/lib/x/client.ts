@@ -135,6 +135,7 @@ function parseErrorCode(text: string): string | null {
       j.title ??
       (j.errors?.[0]?.code != null ? String(j.errors[0].code) : null)
     );
+  // eslint-disable-next-line no-restricted-syntax -- エラー本文がJSONでないだけ。status と kind は XApiError に残る
   } catch {
     return null;
   }

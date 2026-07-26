@@ -123,8 +123,9 @@ export async function handleCheckoutRequest(
   let user: CheckoutUser | null;
   try {
     user = await deps.getCurrentUser();
-  } catch {
-    return apiError(new AppError("internal_error"));
+  } catch (error) {
+    // cause を捨てると apiError の記録に原因が乗らない（要件01 §8）。
+    return apiError(new AppError("internal_error", { cause: error }));
   }
   if (!user) return apiError(new AppError("unauthorized"));
   if (!user.email) return apiError(new AppError("internal_error"));
@@ -132,8 +133,9 @@ export async function handleCheckoutRequest(
   let profile: CheckoutProfile | null;
   try {
     profile = await deps.getProfile(user.id);
-  } catch {
-    return apiError(new AppError("internal_error"));
+  } catch (error) {
+    // cause を捨てると apiError の記録に原因が乗らない（要件01 §8）。
+    return apiError(new AppError("internal_error", { cause: error }));
   }
   if (!profile) return apiError(new AppError("internal_error"));
 

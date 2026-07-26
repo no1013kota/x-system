@@ -27,6 +27,7 @@ function sentryConnectSrc(): string {
   if (!dsn) return "";
   try {
     return ` https://${new URL(dsn).host}`;
+  // eslint-disable-next-line no-restricted-syntax -- DSNが不正ならCSPへ何も足さない。不正の通知はSentry初期化側が行う
   } catch {
     return "";
   }
