@@ -62,9 +62,18 @@ function messageFor(code: string, reason: string | null): OAuthErrorMessage {
   if (code === "unauthorized") {
     return { body: "ログインの有効期限が切れたため中断しました。もう一度ログインしてからお試しください。" };
   }
-  if (code === "provider_error" || code === "internal_error") {
+  // provider_error は「X側との通信が失敗した」と判明している場合のみ。原因を断定して案内できる。
+  if (code === "provider_error") {
     return {
       body: "X側との通信に失敗したため連携を完了できませんでした。時間をおいて、もう一度お試しください。",
+      action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },
+    };
+  }
+  // internal_error は原因不明の catch-all。X側の障害と決めつけると誤案内になる
+  // （2026-07-26: DBの権限エラーが「X側との通信に失敗」と表示され切り分けを誤らせた）。
+  if (code === "internal_error") {
+    return {
+      body: "予期しないエラーで連携を完了できませんでした。もう一度お試しいただき、解消しない場合はお問い合わせください。",
       action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },
     };
   }

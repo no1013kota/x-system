@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.9 |
-| 更新日 | 2026-07-25 |
+| バージョン | v1.10 |
+| 更新日 | 2026-07-26 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -190,6 +190,8 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
 - CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、公開コンテンツページの動的レンダリング化）はADR-0005を正とする。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
+- 未知の例外（`AppError` 以外＝`internal_error` に丸められるもの）は、利用者向けの結果へ変換される境界で必ず1度記録する（`recordUnexpectedError`）。`onRequestError`（`src/instrumentation.ts`）はthrowされた例外だけをSentryへ送るため、catchして値を返す共通出口——Server Actionの`errorResult`／API Routeの`apiError`／jobの`failJob`——では発火せず、記録が無いと原因が画面にもログにもDBにも残らない。`AppError`は仕様どおりの分岐なので記録しない（本物の異常がノイズに埋もれるため）。引数なし`catch {}`はServer Action / API Routeでlintが禁止し、記録しない場合は理由をコメントで宣言する。
+- 原因不明（`internal_error`）を特定の原因として断定する画面文言を出さない。X連携では`provider_error`（X通信失敗と判明）と`internal_error`（原因不明）を別文言にする。
 - Sentry/logはAuthorization、cookie、API key、token、prompt全文、投稿前の非公開入力をredactする。Next.js開発サーバーのServer Function引数ログも無効化し、秘密値を受け取るAction引数をterminalへ出さない。ユーザー向けerrorへprovider本文やstack traceを出さない。
 - private Storageの画像はservice roleでwriteし、表示時に短時間の署名URLを発行する。DBへ署名URLを保存しない。
 - dependency audit、RLS policy test、認可・CSRF・SSRF testをリリース判定に含める。

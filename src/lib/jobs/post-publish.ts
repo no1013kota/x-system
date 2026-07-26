@@ -16,6 +16,7 @@ import { xUnitCost, type XCostConfig } from "../x/pricing";
 import { recordedXCall } from "../x/usage";
 import type { Queryable } from "../x/token-refresh";
 import { defaultRecordStage } from "./stale";
+import { recordUnexpectedError } from "../observability/sentry";
 
 /**
  * post_publish ジョブの中核（要件04 §10, 要件06 §7, O-5/S-6, T-M3-18）。
@@ -542,7 +543,10 @@ export async function executePostPublish(
   let accessToken: string;
   try {
     accessToken = await deps.getAccessToken(xAccountId);
-  } catch {
+  } catch (error) {
+    // token失効だけでなく、復号鍵の設定ミス・DB権限漏れ・pool枯渇もここへ来る。利用者へは
+    // 「再連携してください」と案内するが、原因が残らないと誤案内のまま追跡できないため記録する。
+    recordUnexpectedError(error, { at: "post-publish:access-token", draftId, xAccountId });
     await setDraftFailed(db, draftId, {
       code: "x_token_invalid",
       message: "Xの連携が切れています。設定から再連携してください。",

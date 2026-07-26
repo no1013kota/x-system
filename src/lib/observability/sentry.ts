@@ -60,3 +60,23 @@ export function captureServerException(
 ): void {
   Sentry.captureException(error, context ? { extra: context } : undefined);
 }
+
+/**
+ * 未知の例外が利用者向けの結果へ変換される境界で、原因を1度だけ記録する。
+ *
+ * Next.js の `onRequestError`（`src/instrumentation.ts`）は **throw された** 例外を Sentry へ送る。
+ * しかし Server Action / API Route / job の共通出口は catch して値を返すため、その経路では発火せず、
+ * 原因が画面にもログにもDBにも残らない（2026-07-26 のX連携不具合がこれで追跡不能になった）。
+ * そこで「未知＝`internal_error` に丸められた」ときだけここで記録する。
+ *
+ * `AppError`（上限到達・キー未登録など仕様どおりの分岐）は記録しない。記録すると本物の異常が
+ * ノイズに埋もれるため。呼び出し側は `toUserFacingError` の結果コードで判定して渡すこと。
+ */
+export function recordUnexpectedError(
+  error: unknown,
+  context: { at: string } & Record<string, unknown>,
+): void {
+  captureServerException(error, context);
+  // Sentry未設定（DSNなし＝ローカル開発）でも原因が追えるように、標準エラー出力にも残す。
+  console.error(`[unexpected] ${context.at}`, error);
+}

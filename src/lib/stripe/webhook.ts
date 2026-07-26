@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import type { PlanId } from "@/lib/plans";
+import { recordUnexpectedError } from "../observability/sentry";
 
 export const STRIPE_WEBHOOK_EVENT_TYPES = [
   "checkout.session.completed",
@@ -151,7 +152,10 @@ export async function handleStripeWebhookRequest(
   let event: Stripe.Event;
   try {
     event = dependencies.verifyEvent(payload, signature);
-  } catch {
+  } catch (error) {
+    // 署名検証の失敗。攻撃だけでなく STRIPE_WEBHOOK_SECRET の設定ミスでも起き、その場合は
+    // 全webhookが黙って400になり課金同期が永久に止まる。無記録にはしない。
+    recordUnexpectedError(error, { at: "stripe-webhook:verify" });
     return webhookResponse(
       { ok: false, error: toUserFacingError(new AppError("forbidden")) },
       400,

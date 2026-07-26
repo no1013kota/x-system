@@ -5,6 +5,7 @@ import { requireCurrentUser } from "@/lib/auth/session";
 import { withTransaction } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { getMe } from "@/lib/x/client";
 import { xClientDeps } from "@/lib/x/client-server";
 import {
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let sessionUserId: string;
   try {
     sessionUserId = (await requireCurrentUser()).id;
+    // eslint-disable-next-line no-restricted-syntax -- 未ログインは正常系。記録すると常時ノイズになる
   } catch {
     return NextResponse.redirect(
       new URL("/login?next=/app/settings", env.APP_BASE_URL as string),
@@ -113,6 +115,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return clearStateCookie(NextResponse.redirect(to));
   } catch (error) {
     const { code: errorCode, details } = toUserFacingError(error);
+    // AppError 以外は internal_error に丸められ、原因が画面にもログにも残らない（start routeと同様）。
+    if (errorCode === "internal_error") {
+      recordUnexpectedError(error, { at: "x-oauth-callback" });
+    }
     const to = new URL(
       (details?.settingsPath as string | undefined) ?? SETTINGS_PATH,
       env.APP_BASE_URL as string,
