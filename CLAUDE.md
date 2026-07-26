@@ -20,7 +20,6 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
 | `.claude/skills/` | 開発用スキル（doc-sync / dev-loop / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
-| `old/` | 旧ドキュメントのアーカイブ（参照専用・同期対象外・編集しない） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
@@ -58,4 +57,3 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 - ドキュメント・コミットメッセージ・ユーザーへの応答は日本語。コードの識別子・コード内コメントは英語。
 - 秘密情報（APIキー・トークン・暗号鍵等）は `.env`（gitignore済み）のみに置く。コード・ドキュメント・コミットに実キーを書かない。
 - 外部API（X API・Claude/OpenAI/Gemini・Stripe）の仕様は変更が頻繁。ドキュメント内にも「実装時に要確認」注記があるため、該当箇所の実装時は必ず公式ドキュメントで最新仕様を確認する。
-- `old/` は参照専用のアーカイブ。同期対象に含めず、編集しない。
