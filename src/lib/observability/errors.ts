@@ -86,3 +86,8 @@ export function toUserFacingError(error: unknown): UserFacingError {
 export function userMessageForCode(code: ErrorCode): string {
   return USER_MESSAGES[code];
 }
+
+/** 任意の値が既知の ErrorCode か判定する（外部由来のcodeをそのまま信用しないため）。 */
+export function isErrorCode(value: unknown): value is ErrorCode {
+  return typeof value === "string" && Object.hasOwn(USER_MESSAGES, value);
+}

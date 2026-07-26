@@ -1553,13 +1553,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - メモ: DBテストが後片付けし損ねた残骸。実データではなくローカル検証環境のみの掃除。今後の再発防止として、残骸を作るテストがどれか特定できれば併せてcleanupを補う。
 - 実装結果: ローカルSupabaseのみを対象に、合成テストデータを依存順（external_api_usage_events→notifications→user_api_keys→usage_counters→usage_events→x_accounts→auth.users）で削除。内訳は `handle='h'` の x_accounts 4件＋その依存、UUID合成メール等の auth.users 2457件（`%@example.com` かつ UUID形式/tm10*/verify-*/e2e-* のみを対象）。**実メールアカウント（no.1013kota@gmail.com）とその通知83件は対象外として保持**。削除後 x_accounts/generation_jobs/drafts/schedule_slots はいずれも0件、`npm test` 1154件緑（fixture前提を壊していない）。再発防止調査: 残骸を作り得る *.db.test.ts 19ファイルはいずれも `delete from auth.users` の後片付けを持っており、コード上の欠落ではなく2026-07-24のテスト中断・失敗時の取り残しと判断（コード修正は不要）。
 
-### T-M7-02: job失敗時に必ず原因を残す（runJobの汎用finalizer最小対応） `todo`
+### T-M7-02: job失敗時に必ず原因を残す（runJobの汎用finalizer最小対応） `done`
 - 参照: 要件06 §10、要件04 §4 / 依存: なし / サイズ: M
 - 完了条件:
   - handlerがerrorを保存する前にthrowした失敗でも `generation_jobs.error` に code と利用者向け message が残る
   - handlerが既に保存したerrorを上書きしない（冪等）
   - 画面（投稿作成の結果ペイン）で汎用文ではなく保存された理由が表示される
 - メモ: 現状 `runJob`（worker.ts）は throw 時に `status='failed'` だけを書き、error jsonb を書かない。post-generation 等は persistFailure で自前保存するが、provider設定エラー等はその前に throw するため error=null になり、UIは「生成に失敗しました。時間をおいて再試行してください。」しか出せない（2026-07-26のE2Eで実確認）。要決定 D-5（中央finalizer化）の全面対応は行わず、上書きしない最小追加に留める。
+- 実装結果: `worker.ts` の catch を `failJob(jobId, kind, error)` に置換。`update ... set error = coalesce(error, jsonb_build_object(...)) where id = $1 and status = 'running'` で**handler保存済みerrorを上書きせず**、running以外（自己終端・stale回収）も触らない。理由の組み立ては `terminal.ts` の `fallbackJobError(kind, error)`＝ codeは `AppError.code`／handler例外の `code` のうち `^[a-z][a-z0-9_]{0,62}$` に一致するものだけ採用（`23505`・`ECONNREFUSED` 等は棄却）、非該当は `job_failed`。messageは既知ErrorCodeなら `userMessageForCode`、それ以外は `FAILED_NOTICE[kind]`／既定文で、**例外messageやproviderの生値を混ぜない**（`isErrorCode` を `observability/errors.ts` に追加）。併せてlease時に `error = null` を入れ、前attemptの理由が現在の実行結果として残らないようにした。UI側は `create-post-form.tsx:390` が既に `job.error?.message` を優先表示するため配線変更は不要。テスト+9（terminal 5・worker.db 4）、全1163件緑。
+- 後続への注意: これは D-5 の**最小対応**であり、retryable判定によるbackoff付きqueued差し戻し・失敗通知・usage refund の中央化は未実施（stale経路のみ `finalizeFailedJob`）。`fallbackJobError` は D-5 本対応時に中央finalizerへ取り込む想定。`post-generation.ts` の worker失敗通知 dedupe が `job:{id}:error`（§14は `:failed`）である既存不整合も D-5 で統一する。
 
 ### T-M7-03: ホーム（SC-05）に次回の予定と直近の実績を表示 `todo`
 - 参照: 要件06 §1 SC-05、要件06 §10 / 依存: なし / サイズ: M

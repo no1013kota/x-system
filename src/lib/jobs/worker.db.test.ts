@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { withTransaction, closePool, getPool } from "../db/pool";
-import { leaseJob, runJob } from "./worker";
+import { failJob, leaseJob, runJob } from "./worker";
 
 /**
  * DB integration tests for the worker lease (T-M0-12, 要件04 §4): lease
@@ -214,5 +214,110 @@ describe("worker leaseJob / runJob", () => {
         c.query(`delete from x_accounts where id = $1`, [xid]),
       );
     }
+  });
+
+  describe("failJob", () => {
+    /** running のjobを1件作り、テスト後に x_accounts ごと後片付けする。 */
+    async function withRunningJob(
+      setup: (c: PoolClient, jobId: string) => Promise<void>,
+      assert: (jobId: string) => Promise<void>,
+    ): Promise<void> {
+      const { xid, jobId } = await withTransaction(async (c) => {
+        const { xid } = await makeAccount(c);
+        const jobId = await makeJob(c, xid, { status: "running" });
+        await setup(c, jobId);
+        return { xid, jobId };
+      });
+      try {
+        await assert(jobId);
+      } finally {
+        await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      }
+    }
+
+    async function readJob(jobId: string) {
+      const { rows } = await withTransaction((c) =>
+        c.query<{ status: string; error: { code?: string; message?: string; stage?: string } | null }>(
+          `select status, error from generation_jobs where id = $1`,
+          [jobId],
+        ),
+      );
+      return rows[0];
+    }
+
+    it("handlerがerror未保存なら汎用の理由を残す", async () => {
+      await withRunningJob(
+        (c, jobId) =>
+          c.query(`update generation_jobs set progress_stage = 'writing' where id = $1`, [jobId]).then(
+            () => undefined,
+          ),
+        async (jobId) => {
+          await failJob(jobId, "post_generation", new Error("boom"));
+          const row = await readJob(jobId);
+          expect(row.status).toBe("failed");
+          expect(row.error?.code).toBe("job_failed");
+          expect(row.error?.message).toBeTruthy();
+          expect(row.error?.stage).toBe("writing");
+          // 例外のmessageは保存しない
+          expect(JSON.stringify(row.error)).not.toContain("boom");
+        },
+      );
+    });
+
+    it("handlerが保存済みのerrorを上書きしない", async () => {
+      await withRunningJob(
+        (c, jobId) =>
+          c
+            .query(
+              `update generation_jobs set error = '{"code":"invalid_output","message":"生成結果を検証できませんでした。"}'::jsonb where id = $1`,
+              [jobId],
+            )
+            .then(() => undefined),
+        async (jobId) => {
+          await failJob(jobId, "post_generation", new Error("boom"));
+          const row = await readJob(jobId);
+          expect(row.status).toBe("failed");
+          expect(row.error?.code).toBe("invalid_output");
+        },
+      );
+    });
+
+    it("running以外（自己終端・差し戻し）は変更しない・二重呼び出しでも同じ", async () => {
+      for (const status of ["canceled", "queued"]) {
+        const { xid, jobId } = await withTransaction(async (c) => {
+          const { xid } = await makeAccount(c);
+          const jobId = await makeJob(c, xid, { status });
+          return { xid, jobId };
+        });
+        try {
+          await failJob(jobId, "post_generation", new Error("boom"));
+          await failJob(jobId, "post_generation", new Error("boom"));
+          const row = await readJob(jobId);
+          expect(row.status).toBe(status);
+          expect(row.error).toBeNull();
+        } finally {
+          await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+        }
+      }
+    });
+
+    it("leaseは前attemptのerrorをクリアする", async () => {
+      const { xid, jobId } = await withTransaction(async (c) => {
+        const { xid } = await makeAccount(c);
+        const jobId = await makeJob(c, xid, { status: "queued" });
+        await c.query(`update generation_jobs set error = '{"code":"job_failed"}'::jsonb where id = $1`, [
+          jobId,
+        ]);
+        return { xid, jobId };
+      });
+      try {
+        await withTransaction((c) => leaseJob(c, jobId, "worker-lease"));
+        const row = await readJob(jobId);
+        expect(row.status).toBe("running");
+        expect(row.error).toBeNull();
+      } finally {
+        await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      }
+    });
   });
 });

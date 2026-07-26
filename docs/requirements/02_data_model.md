@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
-| 更新日 | 2026-07-25 |
+| バージョン | v1.16 |
+| 更新日 | 2026-07-26 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -703,6 +703,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
   "provider_request_id": null
 }
 ```
+
+`code`は原因が特定できた場合のエラーコード（`invalid_output`、`x_token_invalid`等）。特定できない失敗にはworkerが汎用の`job_failed`を入れる（要件04 §4）。
 
 ### 4.11 `improvement_suggestions.evidence`
 

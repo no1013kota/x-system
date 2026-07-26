@@ -1,5 +1,10 @@
 import type { PoolClient } from "pg";
 
+import {
+  AppError,
+  isErrorCode,
+  userMessageForCode,
+} from "../observability/errors";
 import { refundUsage } from "../usage/generation-reserve";
 import type { JobKind } from "./handlers";
 
@@ -235,6 +240,38 @@ const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
     link: "/app/analytics",
   },
 };
+
+/** 例外から原因を特定できなかったときに使う汎用コード（要件02 §4.10）。 */
+export const GENERIC_JOB_ERROR_CODE = "job_failed";
+
+/** 自前のterminal errorが持つ code の許容形（snake_case）。pgのSQLSTATEやnodeのECONNREFUSED等は弾く。 */
+const SAFE_CODE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+
+function safeCodeOf(error: unknown): string | null {
+  if (error instanceof AppError) return error.code;
+  if (error && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && SAFE_CODE_PATTERN.test(code)) return code;
+  }
+  return null;
+}
+
+/**
+ * handler が理由を保存しないまま throw したときに `generation_jobs.error` へ入れる内容を作る
+ * （要件04 §4・要件06 §10）。例外の message / stack / provider応答は**含めない**
+ * （generation_jobs は所有者がRLSで参照できるため）。message は既知コードなら利用者向け文言、
+ * それ以外は kind別の失敗通知と同じ定型文を使い、画面と通知で言い回しを揃える。
+ */
+export function fallbackJobError(
+  kind: JobKind,
+  error: unknown,
+): { code: string; message: string } {
+  const code = safeCodeOf(error) ?? GENERIC_JOB_ERROR_CODE;
+  const message = isErrorCode(code)
+    ? userMessageForCode(code)
+    : (FAILED_NOTICE[kind]?.body ?? DEFAULT_FAILED_NOTICE.body);
+  return { code, message };
+}
 
 /**
  * stale→failed 確定時の kind別終端処理のエントリポイント。`recoverStaleJobs` が failed 更新と

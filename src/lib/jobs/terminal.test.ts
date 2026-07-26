@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { PoolClient } from "pg";
 
-import { finalizeFailedJob } from "./terminal";
+import { AppError, userMessageForCode } from "@/lib/observability/errors";
+
+import { fallbackJobError, finalizeFailedJob } from "./terminal";
 
 type Row = Record<string, unknown>;
 
@@ -123,5 +125,51 @@ describe("finalizeFailedJob", () => {
     await finalizeFailedJob(db, "j6", "md_merge");
     expect(writes.some((w) => MD_MERGE.test(w.sql))).toBe(true);
     expect(writes.find((w) => NOTIF_ERROR.test(w.sql))?.params[1]).toBe("job:j6:failed");
+  });
+});
+
+describe("fallbackJobError", () => {
+  it("AppError の code を採用し、利用者向け文言を使う", () => {
+    const r = fallbackJobError("post_generation", new AppError("api_key_required"));
+    expect(r.code).toBe("api_key_required");
+    expect(r.message).toBe(userMessageForCode("api_key_required"));
+  });
+
+  it("handler の terminal error が持つ snake_case の code を採用する", () => {
+    const err = Object.assign(new Error("internal detail"), { code: "invalid_output" });
+    const r = fallbackJobError("post_generation", err);
+    expect(r.code).toBe("invalid_output");
+    // 未知コードなので kind別の定型文になる（例外の message は使わない）
+    expect(r.message).not.toContain("internal detail");
+    expect(r.message.length).toBeGreaterThan(0);
+  });
+
+  it("未知の例外は job_failed とkind別の定型文になる", () => {
+    for (const kind of ["post_generation", "post_publish", "md_merge", "image_generation"] as const) {
+      const r = fallbackJobError(kind, new Error("boom"));
+      expect(r.code).toBe("job_failed");
+      expect(r.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("危険・非対象の code は採用しない（SQLSTATE・errno・長すぎる値・非文字列）", () => {
+    const cases: unknown[] = [
+      Object.assign(new Error("dup"), { code: "23505" }),
+      Object.assign(new Error("net"), { code: "ECONNREFUSED" }),
+      Object.assign(new Error("long"), { code: "a".repeat(80) }),
+      Object.assign(new Error("num"), { code: 500 }),
+      null,
+      "just a string",
+    ];
+    for (const error of cases) {
+      expect(fallbackJobError("post_generation", error).code).toBe("job_failed");
+    }
+  });
+
+  it("例外の message を返り値に含めない（秘密値の流出防止）", () => {
+    const secret = "sk-live-should-not-leak provider said unauthorized";
+    const r = fallbackJobError("post_generation", new Error(secret));
+    expect(JSON.stringify(r)).not.toContain("sk-live");
+    expect(JSON.stringify(r)).not.toContain("provider said");
   });
 });

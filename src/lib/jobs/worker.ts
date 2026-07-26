@@ -6,6 +6,7 @@ import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/lock
 import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
 import { getJobHandler, type JobKind } from "./handlers";
+import { fallbackJobError } from "./terminal";
 
 /**
  * Worker for a single job (要件04 §1/§4, ADR-0002). `leaseJob` performs the
@@ -128,9 +129,12 @@ export async function leaseJob(
     attempt: number;
     locked_by: string;
   }>(
+    // error を消してから走らせる。coalesce による「今回のattemptでhandlerが保存したか」判定を
+    // 前回attemptの残骸で誤らせないため（要件04 §4）。
     `update generation_jobs
         set status = 'running', locked_at = now(), locked_by = $2,
-            attempt = attempt + 1, started_at = coalesce(started_at, now())
+            attempt = attempt + 1, started_at = coalesce(started_at, now()),
+            error = null
       where id = $1
       returning id, kind, attempt, locked_by`,
     [jobId, workerId],
@@ -145,6 +149,34 @@ export async function leaseJob(
 export interface RunResult extends LeaseResult {
   /** set only when a job was leased and its handler ran */
   result?: "succeeded" | "failed";
+}
+
+/**
+ * 失敗を確定する（要件04 §4）。`status='running'` の間だけ更新するため、handlerが自己終端
+ * （canceled・queuedへの差し戻し）した場合は上書きしない。`error` は `coalesce` で補完するので、
+ * handlerが既に理由を保存していればそれを尊重し、未保存のときだけ汎用の理由を残す
+ * （理由が無いと画面が「時間をおいて再試行」しか出せないため）。例外の生メッセージは保存しない。
+ */
+export async function failJob(
+  jobId: string,
+  kind: JobKind,
+  error: unknown,
+): Promise<void> {
+  const fallback = fallbackJobError(kind, error);
+  await withTransaction((c) =>
+    c.query(
+      `update generation_jobs
+          set status = 'failed', finished_at = now(),
+              error = coalesce(error, jsonb_build_object(
+                'code', $2::text,
+                'message', $3::text,
+                'retryable', false,
+                'stage', progress_stage::text
+              ))
+        where id = $1 and status = 'running'`,
+      [jobId, fallback.code, fallback.message],
+    ),
+  );
 }
 
 /**
@@ -172,15 +204,8 @@ export async function runJob(
         [jobId],
       ),
     );
-  } catch {
-    // status='running' の間だけ failed 化する。handlerが自己終端（canceled等）した場合は上書きしない。
-    await withTransaction((c) =>
-      c.query(
-        `update generation_jobs set status = 'failed', finished_at = now()
-          where id = $1 and status = 'running'`,
-        [jobId],
-      ),
-    );
+  } catch (error) {
+    await failJob(jobId, job.kind, error);
     return { ...lease, result: "failed" };
   }
   // 連鎖dispatch: 親succeeded確定後にqueuedの子job（画像生成・投稿実行）を起動する
