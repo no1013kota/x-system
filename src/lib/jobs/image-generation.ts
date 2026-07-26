@@ -288,13 +288,14 @@ export async function executeImageGeneration(
       .replaceAll("{{post_text}}", firstPost.text)
       .replaceAll("{{tone_section}}", toneSection);
 
-    const { textGen, model } = await deps.resolveTextProvider({
+    const { textGen, provider: textProviderId, model } = await deps.resolveTextProvider({
       plan: job.plan,
       userId: job.user_id,
       deadline,
     });
     const prompted = await runTextGeneration({
       provider: textGen,
+      providerId: textProviderId,
       request: {
         system: [],
         user: promptUser,

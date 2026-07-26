@@ -170,10 +170,10 @@ describe("fanOutNewsDigest (db)", () => {
       expect(await load(seed.userCanceled)).toHaveLength(0);
       expect(await load(seed.userNoMatch)).toHaveLength(0);
 
-      // re-run: dedupe_key prevents new rows. dedupeは対象ユーザーの行数不変で検査する
-      // （グローバル notified は並行テストの新規一致ユーザーで増えうるため）。
-      const rerun = await fanOutNewsDigest({ db: pooledDb, windowStart });
-      expect(rerun.matchedUsers).toBeGreaterThanOrEqual(2);
+      // re-run: dedupe_key prevents new rows。`matchedUsers`/`notified` はDB全体の集計で、
+      // 並行して走る他のDBテストがこの窓のnews_items・ユーザーを増減させるため値を固定できない。
+      // dedupeの検査は「対象ユーザーの行数が増えない」ことで行う。
+      await fanOutNewsDigest({ db: pooledDb, windowStart });
       expect(await load(seed.userA)).toHaveLength(1); // 重複行が作られない
       expect(await load(seed.userB)).toHaveLength(1);
     } finally {

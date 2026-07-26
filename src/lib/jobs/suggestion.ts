@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
+import { runTextGeneration, usageFromError } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -183,7 +183,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
   try {
     await recordStage("writing");
     const deadline = (deps.makeDeadline ?? createDeadline)();
-    const { textGen, model } = await deps.resolveProvider({
+    const { textGen, provider: textProviderId, model } = await deps.resolveProvider({
       plan: job.plan,
       userId: job.user_id,
       deadline,
@@ -191,6 +191,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     const allowedIds = new Set(input.posts.map((p) => p.tweet_id));
     const result = await runTextGeneration({
       provider: textGen,
+      providerId: textProviderId,
       request: {
         system: [renderPrompt(input)],
         user: "上記の実績データから改善提案をJSONで出力してください。",
@@ -227,7 +228,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     return { status: suggestions.length > 0 ? "saved" : "no_suggestions", count: suggestions.length };
   } catch (error) {
     const usage: GenerationUsage =
-      error instanceof InvalidProviderOutputError ? error.usage : { calls: [], estimated_cost_usd_total: 0 };
+      usageFromError(error) ?? { calls: [], estimated_cost_usd_total: 0 };
     const code = error instanceof SuggestionTerminalError ? error.code : "suggestion_failed";
     await persistFailure(db, { userId: job.user_id, xAccountId: job.x_account_id, jobId, code, usage });
     if (isPremium) {

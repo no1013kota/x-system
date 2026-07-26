@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import type { ProviderCall } from "../ai/normalize";
-import { runTextGeneration } from "../ai/pipeline";
-import type { TextGen } from "../ai/types";
+import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import type { NewsCategory } from "../news";
@@ -60,6 +60,8 @@ export interface NewsResearchDeps {
   db: Queryable;
   /** 解決済み NEWS provider アダプタ（server配線は resolveNewsKey→アダプタ構築）。 */
   textGen: TextGen;
+  /** 解決済みprovider（例外で終わったcallの台帳記録に使う）。 */
+  provider: Provider;
   model: string;
   /** 起動時刻。`{{hours}}` 算出に使う（テストで固定可能）。 */
   clock: Date;
@@ -115,19 +117,30 @@ export async function researchNews(
 
   const deadline = (deps.makeDeadline ?? createDeadline)();
   // Web検索併用のため構造化出力(jsonSchema)は使わず、JSON出力指示＋コード検証へフォールバックする（§5.1）。
-  const result = await runTextGeneration({
-    provider: deps.textGen,
-    request: {
-      system: [system],
-      user,
-      webSearch: { maxUses: deps.webSearchMaxUses ?? NEWS_WEB_SEARCH_MAX_USES },
-      timeoutMs: deadline.callTimeoutMs(),
-    },
-    schema: newsOutputSchema,
-    model: deps.model,
-    operation: "text_generation",
-    now: deps.now,
-  });
+  let result;
+  try {
+    result = await runTextGeneration({
+      provider: deps.textGen,
+      providerId: deps.provider,
+      request: {
+        system: [system],
+        user,
+        webSearch: { maxUses: deps.webSearchMaxUses ?? NEWS_WEB_SEARCH_MAX_USES },
+        timeoutMs: deadline.callTimeoutMs(),
+      },
+      schema: newsOutputSchema,
+      model: deps.model,
+      operation: "text_generation",
+      now: deps.now,
+    });
+  } catch (error) {
+    // 例外で終わったcallも原価台帳へ残す（D-4 案A・要件04 §10）。分野単位で失敗しても記帳は行う。
+    const failedUsage = usageFromError(error);
+    if (failedUsage && failedUsage.calls.length > 0) {
+      await recordNewsUsage(deps, failedUsage.calls);
+    }
+    throw error;
+  }
 
   await recordNewsUsage(deps, result.usage.calls);
   return { items: result.parsed.items, usage: result.usage, hours };

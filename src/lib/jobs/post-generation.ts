@@ -19,7 +19,7 @@ import { PLANS } from "@/lib/plans";
 
 import { genOutputSchema } from "../ai/gen-output";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
-import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
+import { InvalidProviderOutputError, runTextGeneration, usageFromError } from "../ai/pipeline";
 import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
@@ -385,7 +385,7 @@ export async function executePostGeneration(
   });
 
   const deadline = (deps.makeDeadline ?? createDeadline)();
-  const { textGen, model } = await deps.resolveProvider({
+  const { textGen, provider: textProviderId, model } = await deps.resolveProvider({
     plan: job.plan,
     userId: job.user_id,
     deadline,
@@ -424,6 +424,7 @@ export async function executePostGeneration(
   try {
     generated = await runTextGeneration({
       provider: textGen,
+      providerId: textProviderId,
       request,
       schema: genOutputSchema,
       model,
@@ -438,8 +439,20 @@ export async function executePostGeneration(
         { code: "invalid_output", message: "生成結果を検証できませんでした。もう一度お試しください。", stage: "writing" },
         error.usage,
       );
+    } else {
+      // 例外で終わったcallも原価台帳へ残す（D-4 案A・要件04 §10）。失敗確定か再試行かは
+      // runJob が判断するため、ここでは error/通知を書かず記帳だけを行う。
+      const failedUsage = usageFromError(error);
+      if (failedUsage && failedUsage.calls.length > 0) {
+        await recordProviderCalls(db, failedUsage.calls, {
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
+          jobId,
+          keyPrefix: `gen:${jobId}`,
+        });
+      }
     }
-    throw error; // runJob が status='failed'
+    throw error; // runJob が retry か failed かを決める
   }
 
   // AIが error を返した場合は job failed（生値はログ用に保存・ユーザーへは安全な文言のみ）。
@@ -476,6 +489,7 @@ export async function executePostGeneration(
   if (finalize.sourcesMissing && sourceRequired(pattern, hasReferenceUrl)) {
     const retry = await runTextGeneration({
       provider: textGen,
+      providerId: textProviderId,
       request,
       schema: genOutputSchema,
       model,

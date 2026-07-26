@@ -49,6 +49,37 @@ export function toProviderCall(
 }
 
 /**
+ * provider callが例外で終わった場合の `ProviderCall`（D-4 案A・要件04 §10「成功・失敗を問わず記録」）。
+ * SDKはthrow時にusageを返さないことが多いため、記録できるのは発生事実・request ID・error codeに限る。
+ * トークン数は0とし、原価は算出不能として null にする。
+ */
+export function failedProviderCall(meta: {
+  provider: Provider;
+  model: string;
+  operation: string;
+  latencyMs: number;
+  requestId?: string | null;
+  errorCode?: string | null;
+}): ProviderCall {
+  return {
+    provider: meta.provider,
+    model: meta.model,
+    operation: meta.operation,
+    request_id: meta.requestId ?? null,
+    status: "failed",
+    stop_reason: null,
+    latency_ms: meta.latencyMs,
+    input_tokens: 0,
+    output_tokens: 0,
+    web_search_count: 0,
+    cache_hit: false,
+    citations: [],
+    error_code: meta.errorCode ?? null,
+    estimated_cost_usd: null,
+  };
+}
+
+/**
  * 検索と構造化出力の併用可否（モデル別・起動時検証用, §5.1/要件01 §7）。
  * 併用可のモデルだけを許可リストに載せ、既定は false（＝JSON出力指示＋コード検証へフォールバック）。
  * 実装時に各社公式ドキュメントで対応可否を確認して更新する。

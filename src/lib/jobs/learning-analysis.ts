@@ -1,6 +1,6 @@
 import { z, type ZodType } from "zod";
 
-import { InvalidProviderOutputError, runTextGeneration } from "../ai/pipeline";
+import { runTextGeneration, usageFromError } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -244,13 +244,14 @@ export async function executeLearningAnalysis(
 
     await recordStage("writing");
     const deadline = (deps.makeDeadline ?? createDeadline)();
-    const { textGen, model } = await deps.resolveProvider({
+    const { textGen, provider: textProviderId, model } = await deps.resolveProvider({
       plan: job.plan,
       userId: job.user_id,
       deadline,
     });
     const result = await runTextGeneration({
       provider: textGen,
+      providerId: textProviderId,
       request: { system: [PROMPT_BY_TYPE[source.type]], user, timeoutMs: deadline.callTimeoutMs() },
       schema: SCHEMA_BY_TYPE[source.type],
       model,
@@ -314,7 +315,7 @@ export async function executeLearningAnalysis(
     // 分析call失敗は error.usage、分析成功後のMD-MERGE等terminal失敗は保持した analysisUsage を記録する
     // （実際に発生した provider call の原価を過少計上しない・要件02 §3.17）。
     const usage: GenerationUsage =
-      error instanceof InvalidProviderOutputError ? error.usage : analysisUsage;
+      usageFromError(error) ?? analysisUsage;
     const code =
       error instanceof LearningAnalysisTerminalError ? error.code : "analysis_failed";
     await persistFailure(db, { ...failCtx, code, usage });

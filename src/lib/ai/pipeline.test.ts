@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   InvalidProviderOutputError,
   runTextGeneration,
+  usageFromError,
   withRepairInstruction,
 } from "./pipeline";
 import { generationUsageSchema } from "./usage-schema";
@@ -43,6 +44,7 @@ describe("runTextGeneration", () => {
     const { provider, generate } = providerReturning('{"posts":[{"text":"ok"}]}');
     const out = await runTextGeneration({
       provider,
+      providerId: "anthropic",
       request: req,
       schema,
       model: "m",
@@ -64,6 +66,7 @@ describe("runTextGeneration", () => {
     );
     const out = await runTextGeneration({
       provider,
+      providerId: "anthropic",
       request: req,
       schema,
       model: "m",
@@ -81,6 +84,7 @@ describe("runTextGeneration", () => {
     );
     const out = await runTextGeneration({
       provider,
+      providerId: "anthropic",
       request: req,
       schema,
       model: "m",
@@ -95,12 +99,82 @@ describe("runTextGeneration", () => {
     expect(generationUsageSchema.safeParse(out.usage).success).toBe(true);
   });
 
+
+  it("provider例外でも失敗callを積み、usageを例外に載せる（D-4 案A）", async () => {
+    class ApiError extends Error {
+      readonly status = 429;
+      readonly requestId = "req-1";
+    }
+    const generate = vi.fn().mockRejectedValue(new ApiError("rate limited"));
+    let thrown: unknown;
+    try {
+      await runTextGeneration({
+        provider: { generate },
+        providerId: "openai",
+        request: req,
+        schema,
+        model: "m",
+        operation: "generate",
+        now: clock(),
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    // 例外の型は変えない（retry分類が status を見るため）
+    expect(thrown).toBeInstanceOf(ApiError);
+    const usage = usageFromError(thrown);
+    expect(usage?.calls).toHaveLength(1);
+    expect(usage?.calls[0]).toMatchObject({
+      provider: "openai",
+      status: "failed",
+      request_id: "req-1",
+      error_code: "http_429",
+      input_tokens: 0,
+      output_tokens: 0,
+      estimated_cost_usd: null,
+    });
+    expect(generationUsageSchema.safeParse(usage).success).toBe(true);
+  });
+
+  it("修復callで例外になった場合は成功callと失敗callの両方が残る", async () => {
+    const ok = {
+      provider: "anthropic" as const,
+      requestId: "r1",
+      text: "bad json",
+      citations: [],
+      usage: { ...emptyUsage(), inputTokens: 10, outputTokens: 5, providerCalls: 1 },
+      stopReason: null,
+    };
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(ok)
+      .mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "ECONNRESET" }));
+    let thrown: unknown;
+    try {
+      await runTextGeneration({
+        provider: { generate },
+        providerId: "anthropic",
+        request: req,
+        schema,
+        model: "m",
+        operation: "generate",
+        now: clock(),
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    const usage = usageFromError(thrown);
+    expect(usage?.calls.map((c) => c.status)).toEqual(["succeeded", "failed"]);
+    expect(usage?.calls[1].error_code).toBe("ECONNRESET");
+  });
+
   it("throws non-retryable InvalidProviderOutputError when repair also fails", async () => {
     const { provider, generate } = providerReturning("bad 1", "bad 2");
     let thrown: unknown;
     try {
       await runTextGeneration({
         provider,
+        providerId: "anthropic",
         request: req,
         schema,
         model: "m",
@@ -125,6 +199,7 @@ describe("runTextGeneration", () => {
     const ngCheck = vi.fn();
     await runTextGeneration({
       provider,
+      providerId: "anthropic",
       request: req,
       schema,
       model: "m",

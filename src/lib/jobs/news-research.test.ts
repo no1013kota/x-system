@@ -62,6 +62,7 @@ const validResponse = JSON.stringify({
 
 function makeDeps(over: Partial<NewsResearchDeps> & Pick<NewsResearchDeps, "db" | "textGen">): NewsResearchDeps {
   return {
+    provider: "anthropic",
     model: "claude-x",
     clock: new Date("2026-07-24T03:00:00Z"), // JST 12:00 → hours 3
     ledgerKeyPrefix: "news:w1:ai",

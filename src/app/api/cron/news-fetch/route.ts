@@ -24,10 +24,11 @@ export async function GET(request: Request): Promise<Response> {
         db: pooledDb,
         researchCategory: (category) => {
           // 分野ごとに新しい deadline を与える（pause_turn継続予算・要件04 §5）。
-          const { textGen, model } = resolveNewsProvider({ deadline: createDeadline() });
+          const { textGen, provider, model } = resolveNewsProvider({ deadline: createDeadline() });
           return researchNews(category, {
             db: pooledDb,
             textGen,
+            provider,
             model,
             clock: now,
             ledgerKeyPrefix: `news:${windowKey}:${category}`,

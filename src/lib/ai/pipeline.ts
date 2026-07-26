@@ -1,10 +1,10 @@
 import type { ZodType } from "zod";
 
 import { parseAndValidate } from "./parse";
-import { toProviderCall, type ProviderCall } from "./normalize";
+import { failedProviderCall, toProviderCall, type ProviderCall } from "./normalize";
 import { estimateProviderCost } from "./pricing";
 import type { GenerationUsage } from "./usage-schema";
-import type { TextGen, TextGenRequest } from "./types";
+import type { Provider, TextGen, TextGenRequest } from "./types";
 
 /**
  * JSON修復付き生成パイプライン骨格（プロンプト設計書 §5.1/§7, 要件04 §5）。
@@ -42,6 +42,8 @@ export interface PostValidationHooks<T> {
 
 export interface RunTextGenerationOptions<T> {
   provider: TextGen;
+  /** 解決済みprovider（例外時の失敗call記録に使う。アダプタからは取れないため呼び出し側が渡す）。 */
+  providerId: Provider;
   request: TextGenRequest;
   schema: ZodType<T>;
   model: string;
@@ -56,6 +58,52 @@ export interface RunTextGenerationOptions<T> {
 export interface RunTextGenerationResult<T> {
   parsed: T;
   usage: GenerationUsage;
+}
+
+/** 例外へ蓄積usageを載せる（型は変えない）。 */
+function attachUsage(error: unknown, usage: GenerationUsage): void {
+  if (typeof error === "object" && error !== null) {
+    (error as { usage?: GenerationUsage }).usage = usage;
+  }
+}
+
+/**
+ * `runTextGeneration` が投げた例外に載っている usage を取り出す（D-4 案A）。
+ * 例外で終わったcallも原価台帳へ記録するために使う。載っていなければ null。
+ */
+export function usageFromError(error: unknown): GenerationUsage | null {
+  const usage =
+    typeof error === "object" && error !== null
+      ? (error as { usage?: unknown }).usage
+      : undefined;
+  if (!usage || typeof usage !== "object") return null;
+  const calls = (usage as { calls?: unknown }).calls;
+  return Array.isArray(calls) ? (usage as GenerationUsage) : null;
+}
+
+function readString(error: unknown, key: string): string | null {
+  const value =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)[key]
+      : undefined;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * 台帳へ残す error code。providerの応答本文は入れず、安全な短い識別子だけにする
+ * （HTTP status → `http_<status>`、SDKのcode/name → そのまま、いずれも無ければ `unknown_error`）。
+ */
+function failureCode(error: unknown): string {
+  const status =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>).status
+      : undefined;
+  if (typeof status === "number" && Number.isFinite(status)) return `http_${status}`;
+  const code = readString(error, "code");
+  if (code && /^[A-Za-z][A-Za-z0-9_.-]{0,62}$/.test(code)) return code;
+  const name = readString(error, "name");
+  if (name && /^[A-Za-z][A-Za-z0-9_.-]{0,62}$/.test(name)) return name;
+  return "unknown_error";
 }
 
 function buildUsage(calls: ProviderCall[]): GenerationUsage {
@@ -77,7 +125,27 @@ export async function runTextGeneration<T>(
 
   const callOnce = async (req: TextGenRequest) => {
     const start = now();
-    const out = await opts.provider.generate(req);
+    let out;
+    try {
+      out = await opts.provider.generate(req);
+    } catch (error) {
+      // 例外で終わったcallも「発生事実」として残す（要件04 §10・D-4 案A）。SDKはthrow時に
+      // usageを返さないため、記録できるのは request ID と error code に限られる。
+      calls.push(
+        failedProviderCall({
+          provider: opts.providerId,
+          model: opts.model,
+          operation: opts.operation,
+          latencyMs: now() - start,
+          requestId: readString(error, "requestId") ?? readString(error, "request_id"),
+          errorCode: failureCode(error),
+        }),
+      );
+      // 例外はそのまま投げる（retry分類が status/kind を見るため型を変えない）。蓄積済みの
+      // usage だけを載せ、呼び出し側が catch で台帳へ記録できるようにする。
+      attachUsage(error, buildUsage(calls));
+      throw error;
+    }
     calls.push(
       toProviderCall(out, {
         model: opts.model,
