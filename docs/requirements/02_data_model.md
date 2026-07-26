@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.16 |
+| バージョン | v1.17 |
 | 更新日 | 2026-07-26 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -300,13 +300,12 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
-| `image_provider` | `text` | null | `openai`/`google` |
 | `enabled` | `boolean` | not null default true |  |
 | `last_run_at` | `timestamptz` | null | 最後のenqueue |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分、画像ON時はprovider必須。
+Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
@@ -586,7 +585,6 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
   "user_opinion": null,
   "instructions": null,
   "image_enabled": true,
-  "image_provider": "openai",
   "news_item_id": "uuid",
   "requested_mode": "draft"
 }

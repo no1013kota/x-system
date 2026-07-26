@@ -35,31 +35,13 @@ const baseSlotFields = {
   mode: z.enum(["draft", "auto"]),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
-  image_provider: z.enum(["openai", "google"]).nullish(),
 };
 
-/** 画像ON時は provider（openai/google）必須（要件02 §3.10 CHECK と対称）。 */
-const imageProviderRefine = (
-  v: { image_enabled?: boolean; image_provider?: string | null },
-  ctx: z.RefinementCtx,
-): void => {
-  if (v.image_enabled && !v.image_provider) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["image_provider"],
-      message: "画像をONにする場合はproviderを選択してください",
-    });
-  }
-};
-
-export const createScheduleSlotSchema = z
-  .object(baseSlotFields)
-  .superRefine(imageProviderRefine);
+export const createScheduleSlotSchema = z.object(baseSlotFields);
 export type CreateScheduleSlotInput = z.infer<typeof createScheduleSlotSchema>;
 
 export const updateScheduleSlotSchema = z
-  .object({ slot_id: z.string().uuid(), expected_updated_at: z.string().min(1), ...baseSlotFields })
-  .superRefine(imageProviderRefine);
+  .object({ slot_id: z.string().uuid(), expected_updated_at: z.string().min(1), ...baseSlotFields });
 export type UpdateScheduleSlotInput = z.infer<typeof updateScheduleSlotSchema>;
 
 export const slotLockSchema = z.object({
@@ -76,13 +58,12 @@ export interface ScheduleSlotView {
   mode: string;
   instructions: string | null;
   image_enabled: boolean;
-  image_provider: string | null;
   enabled: boolean;
   updated_at: string;
 }
 
 const SLOT_COLUMNS = `id, pattern, weekdays, time_jst::text as time_jst, mode, instructions,
-  image_enabled, image_provider, enabled, updated_at::text as updated_at`;
+  image_enabled, enabled, updated_at::text as updated_at`;
 
 export interface ScheduleSlotDeps {
   runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
@@ -144,8 +125,8 @@ export async function createScheduleSlot(
     if (input.mode === "auto") await assertAutomationConsent(tx, xAccountId);
     const { rows } = await tx.query<ScheduleSlotView>(
       `insert into schedule_slots
-         (x_account_id, pattern, weekdays, time_jst, mode, instructions, image_enabled, image_provider)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+         (x_account_id, pattern, weekdays, time_jst, mode, instructions, image_enabled)
+       values ($1, $2, $3, $4, $5, $6, $7)
        returning ${SLOT_COLUMNS}`,
       [
         xAccountId,
@@ -155,7 +136,6 @@ export async function createScheduleSlot(
         input.mode,
         input.instructions ?? null,
         input.image_enabled,
-        input.image_provider ?? null,
       ],
     );
     return rows[0];
@@ -189,7 +169,7 @@ export async function updateScheduleSlot(
     const { rows } = await tx.query<ScheduleSlotView>(
       `update schedule_slots
           set pattern = $3, weekdays = $4, time_jst = $5, mode = $6, instructions = $7,
-              image_enabled = $8, image_provider = $9, updated_at = now()
+              image_enabled = $8, updated_at = now()
         where id = $1 and updated_at::text = $2
       returning ${SLOT_COLUMNS}`,
       [
@@ -201,7 +181,6 @@ export async function updateScheduleSlot(
         input.mode,
         input.instructions ?? null,
         input.image_enabled,
-        input.image_provider ?? null,
       ],
     );
     if (rows.length === 0) throw new AppError("job_conflict", { details: { reason: "stale_slot" } });

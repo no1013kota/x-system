@@ -69,7 +69,6 @@ const createDraftFromNewsActionSchema = z.object({
   news_item_id: z.string().uuid(),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional(),
-  image_provider: z.enum(["openai", "google"]).nullish(),
 });
 
 export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {

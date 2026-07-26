@@ -33,7 +33,6 @@ export const createGenerationJobSchema = z.object({
   user_opinion: z.string().max(2000).nullish(),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
-  image_provider: z.enum(["openai", "google"]).nullish(),
   news_item_id: z.string().uuid().nullish(),
 });
 
@@ -71,7 +70,6 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     user_opinion: input.user_opinion ?? null,
     instructions: input.instructions ?? null,
     image_enabled: input.image_enabled,
-    image_provider: input.image_provider ?? null,
     news_item_id: input.news_item_id ?? null,
     requested_mode: "draft",
   };
@@ -195,14 +193,13 @@ export const createDraftFromNewsSchema = z.object({
   news_item_id: z.string().uuid(),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional(),
-  image_provider: z.enum(["openai", "google"]).nullish(),
 });
 
 export type CreateDraftFromNewsInput = z.infer<typeof createDraftFromNewsSchema>;
 
 /**
  * N-4: ニュース起点の下書き生成（要件05 §6, GEN-P1）。`news_item` の `source_url` を引き継いだ
- * P-1 の post_generation を冪等作成する。前提再検証・所有権/active一致・image_provider必須・
+ * P-1 の post_generation を冪等作成する。前提再検証・所有権/active一致・
  * queued/running 5件制限・request_key 冪等は `createGenerationJob` に委譲する。作成後 worker が
  * `input.news_item_id` を `drafts.source_news_item_id` へ保存する（作成済みバッジの導出元）。
  */
@@ -230,7 +227,6 @@ export async function createDraftFromNews(
       user_opinion: null,
       instructions: input.instructions ?? null,
       image_enabled: input.image_enabled ?? false,
-      image_provider: input.image_provider ?? null,
       news_item_id: input.news_item_id,
     },
     deps,
@@ -242,7 +238,6 @@ export const regenerateDraftSchema = z.object({
   draft_id: z.string().uuid(),
   additional_instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
-  image_provider: z.enum(["openai", "google"]).nullish(),
 });
 export type RegenerateDraftInput = z.infer<typeof regenerateDraftSchema>;
 
@@ -309,7 +304,6 @@ export async function regenerateDraft(
       user_opinion: null,
       instructions: input.additional_instructions ?? null,
       image_enabled: input.image_enabled,
-      image_provider: input.image_provider ?? null,
       news_item_id: null,
       requested_mode: "draft",
       parent_draft_id: input.draft_id,

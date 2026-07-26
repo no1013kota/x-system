@@ -171,7 +171,7 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     });
   });
 
-  it("enforces schedule_slots CHECKs (p5 forbidden, time, weekdays, image provider)", async () => {
+  it("enforces schedule_slots CHECKs (p5 forbidden, time, weekdays)", async () => {
     await inTx(async (c) => {
       const { xid } = await makeAccount(c);
       // valid baseline
@@ -212,13 +212,11 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
           [xid],
         ),
       );
-      // image enabled but no provider
-      await expectViolation(c, () =>
-        c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled)
-           values ($1, 'p1', '{1}', '09:00', 'draft', true)`,
-          [xid],
-        ),
+      // 画像ONにproviderの指定は不要（D-6 案B: AI設定のAI用途を正とする）
+      await c.query(
+        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled)
+         values ($1, 'p1', '{1}', '09:00', 'draft', true)`,
+        [xid],
       );
     });
   });

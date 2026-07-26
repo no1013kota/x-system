@@ -32,7 +32,6 @@ interface DueSlotRow {
   mode: string;
   instructions: string | null;
   image_enabled: boolean;
-  image_provider: string | null;
   user_id: string;
   x_status: string;
   base_md_version: number;
@@ -59,7 +58,7 @@ export interface EnqueueResult {
 async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
   const { rows } = await db.query<DueSlotRow>(
     `select ss.id, ss.x_account_id, ss.pattern, ss.time_jst::text as time_jst, ss.mode,
-            ss.instructions, ss.image_enabled, ss.image_provider,
+            ss.instructions, ss.image_enabled,
             xa.user_id, xa.status as x_status, xa.base_md_version,
             (xa.automation_consent_version = $1 and xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as auto_consent_ok,
@@ -169,7 +168,6 @@ async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise
   const input = JSON.stringify({
     instructions: slot.instructions ?? null,
     image_enabled: slot.image_enabled,
-    image_provider: slot.image_provider ?? null,
     mode: slot.mode,
     requested_mode: slot.mode,
   });

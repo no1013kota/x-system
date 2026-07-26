@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.20 |
+| バージョン | v1.21 |
 | 更新日 | 2026-07-26 |
 | 関連 | 全画面、全ジョブ |
 
@@ -156,8 +156,8 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, source_url, quote_url, user_opinion, instructions, image_enabled, image_provider, news_item_id | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須 |
-| `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled, image_provider | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
+| `createGenerationJob` | request_key, pattern, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須 |
+| `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |
 | `cancelGenerationJob` | job_id | job | queuedのみ。runningはキャンセル不可 |
@@ -186,7 +186,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
-| `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled, image_provider | job_id | N-4。バックグラウンド生成。画像ON時は`image_provider`必須（`createGenerationJob`と同じ制約） |
+| `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled | job_id | N-4。バックグラウンド生成 |
 
 `listNewsItems`は`from`/`to`が揃う場合は`fetched_at`の時間窓（ダイジェストの`window_started_at`/`window_ended_at`と一致・掲載外も含む）で、無い場合は`published_at`基準の既定7日で絞る。並び・keyset cursorは`coalesce(published_at, fetched_at) desc, id desc`。categories/impactsは列挙値のみ・未指定は全件。SC-06の絞り込みUIは選択条件を`news_config`（分野・インパクト・表示件数）として`updateNewsConfig`で保存し、その条件で一覧を取り直す。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。専用の更新Actionは持たない。
 
@@ -195,7 +195,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listScheduleSlots` | none | slots | active_x_account |
-| `createScheduleSlot` | pattern, weekdays, time_jst, mode, instructions, image_enabled, image_provider | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
+| `createScheduleSlot` | pattern, weekdays, time_jst, mode, instructions, image_enabled | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
 | `updateScheduleSlot` | slot_id, expected_updated_at, fields | slot | 所有者のみ。楽観lock。autoへの変更・再有効化は現行versionの明示同意必須 |
 | `disableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ |
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |
@@ -274,7 +274,6 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | password | 8文字以上64文字以内、UTF-8で72 bytes以下、確認用入力と一致 |
 | `time_jst` | 09:00〜22:00、分は00または30 |
 | `weekdays` | 0〜6、重複なし、1件以上 |
-| `image_provider` | `openai`/`google`のみ。BYOKはvalidな登録キー、premiumは運営キーが設定済みのproviderに限定 |
 | `instructions` / `user_opinion` | 各2,000文字以下 |
 | prompt / base_md | prompt 8,000文字、base_md 5,000文字以下 |
 | image | JPG/PNG/WEBP、5MB以下、1枚 |

@@ -38,7 +38,6 @@ function dueSlot(over: Partial<Row> = {}): Row {
     mode: "draft",
     instructions: null,
     image_enabled: false,
-    image_provider: null,
     user_id: "u1",
     x_status: "active",
     base_md_version: 1,

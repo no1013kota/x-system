@@ -84,9 +84,8 @@ describe("createScheduleSlotSchema validation", () => {
     expect(parse({ time_jst: "22:00" }).success).toBe(true);
     expect(parse({ time_jst: "09:00" }).success).toBe(true);
   });
-  it("requires image_provider when image is enabled", () => {
-    expect(parse({ image_enabled: true }).success).toBe(false);
-    expect(parse({ image_enabled: true, image_provider: "openai" }).success).toBe(true);
+  it("画像ONにproviderの指定は要らない（AI設定のAI用途を正とする・D-6 案B）", () => {
+    expect(parse({ image_enabled: true }).success).toBe(true);
   });
   it("rejects instructions longer than 2000 chars", () => {
     expect(parse({ instructions: "あ".repeat(2001) }).success).toBe(false);

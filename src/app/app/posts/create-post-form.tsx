@@ -44,11 +44,6 @@ function toJobFailure(value: unknown): JobFailure | null {
   };
 }
 
-const IMAGE_PROVIDER_LABEL: Record<string, string> = {
-  openai: "OpenAI",
-  google: "Google (Gemini)",
-};
-
 const STAGE_LABEL: Record<string, string> = {
   validating: "前提を確認しています",
   research: "情報をリサーチしています",
@@ -92,7 +87,6 @@ export function CreatePostForm({
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
   const [imageEnabled, setImageEnabled] = useState(false);
-  const [imageProvider, setImageProvider] = useState(imageProviders[0] ?? "");
   const [error, setError] = useState<ActionError | null>(null);
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -129,7 +123,6 @@ export function CreatePostForm({
         user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
-        image_provider: imageEnabled && imageProvider ? imageProvider : undefined,
       });
       if (res.status === "error") {
         setError({
@@ -287,19 +280,10 @@ export function CreatePostForm({
               </span>
             ) : null}
           </label>
-          {imageEnabled && imageProviders.length > 0 ? (
-            <select
-              aria-label="画像プロバイダ"
-              className="h-10 w-full max-w-xs rounded-lg border px-3 text-sm"
-              onChange={(e) => setImageProvider(e.target.value)}
-              value={imageProvider}
-            >
-              {imageProviders.map((p) => (
-                <option key={p} value={p}>
-                  {IMAGE_PROVIDER_LABEL[p] ?? p}
-                </option>
-              ))}
-            </select>
+          {imageEnabled ? (
+            <p className="text-xs text-muted-foreground">
+              画像を作るAIは、AI設定の「AI用途」で選んだものを使います。
+            </p>
           ) : null}
         </div>
 

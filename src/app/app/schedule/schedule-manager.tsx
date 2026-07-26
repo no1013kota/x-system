@@ -54,7 +54,6 @@ interface SlotFormValues {
   mode: "draft" | "auto";
   instructions: string;
   image_enabled: boolean;
-  image_provider: string;
 }
 
 function toFormValues(slot: ScheduleSlotView): SlotFormValues {
@@ -65,7 +64,6 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
     mode: slot.mode === "auto" ? "auto" : "draft",
     instructions: slot.instructions ?? "",
     image_enabled: slot.image_enabled,
-    image_provider: slot.image_provider ?? "",
   };
 }
 
@@ -527,7 +525,6 @@ function SlotFields({
       mode: "draft",
       instructions: "",
       image_enabled: false,
-      image_provider: imageProviders[0] ?? "",
     },
   );
   const [notice, setNotice] = useState<string | null>(null);
@@ -552,7 +549,6 @@ function SlotFields({
         mode: v.mode,
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
-        image_provider: v.image_enabled ? v.image_provider : undefined,
       };
       const res =
         target.kind === "create"
@@ -581,10 +577,6 @@ function SlotFields({
     setNotice(null);
     if (v.weekdays.length === 0) {
       setNotice("曜日を1つ以上選択してください。");
-      return;
-    }
-    if (v.image_enabled && !v.image_provider) {
-      setNotice("画像をONにする場合はproviderを選択してください。");
       return;
     }
     // mode=auto かつ未同意なら、保存前に同意modalを表示する（要件06 §3.5）。
@@ -691,25 +683,10 @@ function SlotFields({
         />
         画像を生成して添付する
       </label>
-      {v.image_enabled ? (
-        imageProviders.length > 0 ? (
-          <label className="flex flex-col gap-1">
-            <span className="font-medium">画像provider</span>
-            <select
-              className="rounded-md border px-3 py-2"
-              onChange={(e) => setV((cur) => ({ ...cur, image_provider: e.target.value }))}
-              value={v.image_provider}
-            >
-              {imageProviders.map((p) => (
-                <option key={p} value={p}>
-                  {p === "openai" ? "OpenAI" : "Gemini"}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p className="text-xs text-muted-foreground">画像providerのAPIキーが未登録です。</p>
-        )
+      {v.image_enabled && imageProviders.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          画像を生成するAIが未設定です。AI設定の「AI用途」で画像AIを選ぶまでは画像なしで作成されます。
+        </p>
       ) : null}
 
       <label className="flex flex-col gap-1">
