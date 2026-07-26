@@ -156,6 +156,28 @@ export async function destroyTestAccount(account: TestAccount): Promise<void> {
   }
 }
 
+/**
+ * 画面のサインアップで作られた利用者を消す（`createTestAccount` を経ないため
+ * `accounts` fixture の後片付け対象にならない）。auth.users の cascade で profiles も消える。
+ */
+export async function destroyUserByEmail(email: string): Promise<void> {
+  try {
+    await withDb(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `select id from auth.users where email = $1`,
+        [email],
+      );
+      for (const { id } of rows) {
+        await c.query(`delete from notifications where user_id = $1`, [id]);
+        await c.query(`delete from usage_counters where user_id = $1`, [id]);
+        await c.query(`delete from auth.users where id = $1`, [id]);
+      }
+    });
+  } catch (error) {
+    console.warn(`[e2e] cleanup failed for ${email}:`, (error as Error).message);
+  }
+}
+
 /** テスト内でDBを直接読み書きする（前提の作り込みと結果の検証に使う）。 */
 export async function query<T extends Record<string, unknown>>(
   sql: string,
