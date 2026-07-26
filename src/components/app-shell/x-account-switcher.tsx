@@ -41,7 +41,7 @@ export function XAccountSwitcher({
     return (
       <div aria-label="現在のXアカウント" className={CHIP_CLASS} title="Xアカウント未選択">
         <CircleUserRound aria-hidden="true" className="size-4" />
-        <span className="max-w-36 truncate">Xアカウント未選択</span>
+        <span className="max-w-20 truncate sm:max-w-36">Xアカウント未選択</span>
       </div>
     );
   }
@@ -71,7 +71,7 @@ export function XAccountSwitcher({
           title={label}
         >
           <CircleUserRound aria-hidden="true" className="size-4" />
-          <span className="max-w-36 truncate">{label}</span>
+          <span className="max-w-20 truncate sm:max-w-36">{label}</span>
           <ChevronsUpDown aria-hidden="true" className="size-3.5 opacity-60" />
         </Menu.Trigger>
         <Menu.Portal>

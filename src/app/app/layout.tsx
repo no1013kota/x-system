@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AppNavigation } from "@/components/app-shell/app-navigation";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { SignOutButton } from "@/components/app-shell/sign-out-button";
 import {
   computeXAccountBanners,
   usageLimitBanner,
@@ -137,12 +138,13 @@ export default async function AppLayout({
               />
               <Link
                 aria-label="アカウント設定"
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="inline-flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 href="/app/settings?tab=billing"
               >
                 <Settings aria-hidden="true" className="size-5" />
                 <span className="hidden md:inline">アカウント設定</span>
               </Link>
+              <SignOutButton />
             </div>
           </div>
         </header>

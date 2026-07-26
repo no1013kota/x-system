@@ -121,13 +121,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実行結果: 13件緑（47.9s）。実行後の残データ0件（e2eユーザー0・news_items 0・e2e x_accounts 0）。実アカウント（no.1013kota@gmail.com）とその失敗job 3件は対象外として保持。
 - 後続への注意: **「生成する」ボタンは押さない**方針にした（実AI呼び出しで費用・不確定性・1分待ちが入るため）。生成のリクエスト形状は `npm run check:providers`（T-M7-16）が担当し、E2Eは表示契約だけを見る。未カバーは**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定**。課金はcheckout/portalが外部サービスへ実際にセッションを作るため、E2Eに入れるなら `maxRedirects: 0` で遷移先だけを見る形（`x-oauth.spec.ts` と同じ）にする。
 
-### T-M7-19: ログアウトのUIが存在しない（PRD A-2 Must） `todo`
+### T-M7-19: ログアウトのUIが存在しない（PRD A-2 Must） `done`
 - 参照: PRD A-2、要件03 §1（「ログアウト＝Supabase sessionを破棄し `/login` へ遷移」） / 依存: なし / サイズ: S
 - 完了条件:
   - 画面からログアウトでき、session破棄後に `/login` へ遷移する
   - E2Eでログアウトを検証する（`auth.spec.ts` は現在 cookie破棄で代用している）
 - メモ: 2026-07-27 のE2E拡充中に発見。Server Action `signOut`（`src/app/actions/auth.ts:318`）は実装済みだが、**呼び出す UI が1つも無い**（`rg signOut src/` の結果が actions とそのテストだけ）。ナビゲーション（`navigation-items.ts`）はホーム/ニュース/投稿/スケジュール/分析/AI設定のみで、設定画面にもログアウトが無い。PRDで Must の機能が画面から到達できない状態。
-- 注意: UI追加なので `/ui-polish`（画面幅・主要状態・アクセシビリティ・ランタイム検証）を通す。配置は設定画面かアカウント切替メニューが候補で、要件06 の画面カタログに追記が必要。
+- 実装結果: `src/components/app-shell/sign-out-button.tsx`（client・`useTransition` で押下中は disabled）を **App Shell のヘッダー**（全 `/app` 画面共通）と **`/plans`** の2箇所に置いた。`/plans` にも置いたのは、未契約の利用者が `routeGuardDestination` で `/plans` に留められ、`isLimitedSettingsRoute`（`?tab=billing|support`）以外の App 画面へ入れないため。ここにログアウトが無いと**サインアップ直後の利用者が抜け出せない**（実際にE2Eで確認）。遷移先の判断は持たず、`signOut` の `redirect("/login")` に委ねる。
+- 検証: E2E +2件（`/plans` からのログアウトで `/login` へ抜け、以後 `/app` に戻れない／アプリ内の任意画面のヘッダーから抜けられる）。`auth.spec.ts` の cookie 破棄による代用を実操作へ置換。実ブラウザで 1440/768/390 を確認（横あふれ0・focus outline 2px・コンソールエラー0）。
+- 副次修正: ログアウト追加でヘッダーが 390px 幅を 23px あふれた。Xアカウント切替チップのハンドル表示幅を `max-w-36` → `max-w-20 sm:max-w-36` に変更して解消（**長いハンドルなら追加前からあふれ得た潜在的な問題**）。併せてアイコンのみ表示時の操作領域を 36px→40px にした（要件06 §2「最低40px」。隣接する「アカウント設定」も同じ36pxだったので揃えた）。
 
 ## 要決定・外部準備(ユーザー作業)
 
