@@ -57,9 +57,27 @@ describe("buildAnthropicParams", () => {
       { model: "m", webSearchToolType: "web_search_20260209", maxTokens: 100 },
     );
     expect(params.tools).toEqual([
-      { type: "web_search_20260209", name: "web_search", max_uses: 4 },
+      {
+        type: "web_search_20260209",
+        name: "web_search",
+        max_uses: 4,
+        allowed_callers: ["direct"],
+      },
     ]);
     expect(params.output_config).toBeUndefined();
+  });
+
+  it("always declares allowed_callers=direct so Haiku系 でも 400 にならない", () => {
+    // 省略すると `web_search_20260209` は programmatic tool calling を要求する既定になり、
+    // 非対応モデル（claude-haiku-4-5 等）が invalid_request_error を返す（2026-07-27の不具合）。
+    for (const maxUses of [1, 2, 3, 4]) {
+      const params = buildAnthropicParams(
+        { ...baseReq, webSearch: { maxUses } },
+        [{ role: "user", content: baseReq.user }],
+        { model: "claude-haiku-4-5", webSearchToolType: "web_search_20260209", maxTokens: 100 },
+      );
+      expect(params.tools?.[0]?.allowed_callers).toEqual(["direct"]);
+    }
   });
 
   it("uses output_config for jsonSchema when web search is not used", () => {

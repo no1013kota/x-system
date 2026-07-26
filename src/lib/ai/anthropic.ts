@@ -39,7 +39,12 @@ export interface RawCreateParams {
   max_tokens: number;
   system: RawSystemBlock[];
   messages: Array<{ role: "user" | "assistant"; content: unknown }>;
-  tools?: Array<{ type: string; name: string; max_uses?: number }>;
+  tools?: Array<{
+    type: string;
+    name: string;
+    max_uses?: number;
+    allowed_callers?: string[];
+  }>;
   output_config?: { format: { type: "json_schema"; schema: object } };
 }
 
@@ -131,6 +136,11 @@ export function buildAnthropicParams(
         type: opts.webSearchToolType,
         name: "web_search",
         max_uses: req.webSearch.maxUses,
+        // `web_search_20260209` は allowed_callers を省くと programmatic tool calling を
+        // 要求する既定になり、Haiku系（programmatic tool calling 非対応）が 400 を返す。
+        // モデルに直接呼ばせる（`direct`）用途しか無いので常に明示する。
+        // 2026-07-27: 400 invalid_request_error で P-1/P-3/P-4/P-6 の生成が全滅していた。
+        allowed_callers: ["direct"],
       },
     ];
   } else if (req.jsonSchema) {
