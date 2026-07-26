@@ -158,7 +158,8 @@ describe("executeLearningAnalysis", () => {
     ).rejects.toBeInstanceOf(LearningAnalysisTerminalError);
     expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(true);
     expect(writes.find((w) => NOTIF.test(w.sql))?.params[1]).toBe("job:job1:failed");
-    expect(writes.some((w) => REFUND.test(w.sql))).toBe(true); // premium refund
+    // 生成枠の返還は runJob の failJob が失敗確定時に行うため、handler単体では書かない（要件03 §7.3）。
+    expect(writes.some((w) => REFUND.test(w.sql))).toBe(false);
   });
 });
 
@@ -219,7 +220,7 @@ describe("executeLearningAnalysis — retryable handling (T-M5-04 fix)", () => {
     ).rejects.toBeInstanceOf(LearningAnalysisTerminalError); // wrapped as terminal at the cap
     expect(writes.some((w) => REQUEUE.test(w.sql))).toBe(false);
     expect(writes.some((w) => SOURCE_FAILED.test(w.sql))).toBe(true);
-    expect(writes.some((w) => REFUND.test(w.sql))).toBe(true); // premium refunded at cap
+    expect(writes.some((w) => REFUND.test(w.sql))).toBe(false); // 返還は failJob 側
     // T-M6-09: terminal失敗（merge枯渇）でも、実際に発生した分析callの原価は台帳へ記録する（過少計上しない）。
     const ledger = writes.filter((w) => LEDGER.test(w.sql));
     expect(ledger).toHaveLength(1);

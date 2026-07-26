@@ -16,6 +16,7 @@ import {
 } from "./post-generation";
 import { InvalidProviderOutputError } from "../ai/pipeline";
 import type { Queryable } from "../x/token-refresh";
+import { failJob } from "./worker";
 
 /**
  * DB integration for the post_generation worker core (T-M3-05, 要件04 §8):
@@ -240,7 +241,7 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-  it("premium: refunds the generation reserve on final AI failure (counter back to 0)", async () => {
+  it("premium: 失敗確定（failJob）で生成枠が返還される。handler単体では返還しない", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -251,10 +252,17 @@ describe("executePostGeneration (local DB)", () => {
           deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
         ),
       ).rejects.toThrow();
+      // 返還は handler ではなく runJob の failJob が失敗確定時に行う（要件03 §7.3）。
+      // handler 単体では reserve が残ったままであることを確認する。
       const s = await genState(uid, jobId);
       expect(s.reserves).toBe(1);
-      expect(s.refunds).toBe(1); // reserve refunded on failure
-      expect(s.gen).toBe(0); // net 0
+      expect(s.refunds).toBe(0);
+      expect(s.gen).toBe(1);
+      // 失敗が確定すると返還される
+      await failJob(jobId, "post_generation", new Error("terminal"));
+      const after = await genState(uid, jobId);
+      expect(after.refunds).toBe(1);
+      expect(after.gen).toBe(0);
     } finally {
       await cleanupUsage(uid);
     }

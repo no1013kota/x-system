@@ -8,6 +8,7 @@ import { closePool, getPool, withTransaction } from "../db/pool";
 import type { Queryable } from "../x/token-refresh";
 import { executeSuggestion } from "./suggestion";
 import type { SuggestionInputDraft } from "./suggestion-input";
+import { failJob } from "./worker";
 
 /**
  * DB integration for suggestion worker (SUGGEST, T-M5-18). fetchDrafts/AI は注入し、improvement_suggestions
@@ -180,7 +181,7 @@ describe("suggestion worker (local DB)", () => {
     }
   });
 
-  it("rejects evidence.tweet_ids not in <posts> and refunds premium on failure", async () => {
+  it("rejects evidence.tweet_ids not in <posts>。返還は失敗確定（failJob）で行う", async () => {
     const { uid, xid, jobId } = await seed("premium");
     try {
       const drafts = [draft("t1", 100), draft("t2", 300), draft("t3", 200)];
@@ -188,7 +189,9 @@ describe("suggestion worker (local DB)", () => {
       await expect(executeSuggestion(deps(jobId, VALID("not-a-real-id"), drafts))).rejects.toThrow();
       expect(await suggestions(xid)).toHaveLength(0);
       expect(await hasEvent(jobId, "reserve")).toBe(true);
-      expect(await hasEvent(jobId, "refund")).toBe(true); // failure refunds
+      expect(await hasEvent(jobId, "refund")).toBe(false); // handlerは返還しない
+      await failJob(jobId, "suggestion", new Error("terminal"));
+      expect(await hasEvent(jobId, "refund")).toBe(true); // 失敗確定で返還
     } finally {
       await cleanup(uid);
     }

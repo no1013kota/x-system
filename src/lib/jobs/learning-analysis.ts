@@ -6,7 +6,7 @@ import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
 import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
-import { reserveUsage, refundUsage } from "../usage/generation-reserve";
+import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
@@ -319,10 +319,7 @@ export async function executeLearningAnalysis(
     const code =
       error instanceof LearningAnalysisTerminalError ? error.code : "analysis_failed";
     await persistFailure(db, { ...failCtx, code, usage });
-    // premium は最終失敗で生成枠を返還（冪等）。
-    if (isPremium) {
-      await deps.runInTx((tx) => refundUsage(tx, jobId, "generation"));
-    }
+    // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。
     throw error instanceof LearningAnalysisTerminalError
       ? error
       : new LearningAnalysisTerminalError("analysis_failed", "learning analysis failed");

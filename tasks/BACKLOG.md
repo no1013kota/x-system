@@ -45,6 +45,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: `next` と `eslint-config-next` を 16.2.10 → **16.2.12**（exact pin を維持）。当初 D-7 は「minor upgrade が必要」としていたが、再調査の結果**パッチで解消**することが分かったため先行実施した。解消した high は SSRF in Server Actions on custom servers（GHSA-89xv-2m56-2m9x）／middleware・proxy bypass with Turbopack + single locale（GHSA-6gpp-xcg3-4w24）／DoS in App Router Server Actions（GHSA-m99w-x7hq-7vfj。**本アプリに該当**）／SSRF in rewrites（GHSA-p9j2-gv94-2wf4）。`scripts/audit-check.mjs` の HIGH_ALLOWLIST から `next` を削除（残りは sharp / postcss に理由付きで限定）。typecheck・lint・全1185件緑・build通過・E2E 4件緑。
 - 後續への注意: **残る high は2つ**。(1) `sharp 0.34.5`（`<0.35.0` 対象・libvips CVE-2026-33327/33328/35590/35591）。`image-normalize.ts` が **AI生成画像という外部由来バイナリ**を処理するため実害が最も大きい。0.35 系は breaking のため保守枠で対応（2026-07-26 に据え置き判断）。(2) `postcss 8.4.31` は **next が pin する nested 依存**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。自分のCSSのみをビルド時に処理するため実害は低いと判断し、next 側の修正待ちで追跡（overrides での強制上げは未検証の組み合わせになるため見送り）。
 
+### T-M7-11: 利用枠のrefundを失敗確定時のみに寄せる（T-M7-07の回帰修正） `done`
+- 参照: 要件03 §7.1・§7.3、要件04 §4 / 依存: T-M7-07 / サイズ: S
+- 完了条件:
+  - retryで差し戻される失敗では枠を返還せず、次のattemptが予約を保持したまま実行できる
+  - 失敗が確定したときだけ返還される（worker終端・stale終端の両方）
+- メモ: T-M7-07 でretry差し戻しを入れた結果、handlerのcatch-allが「まだ失敗が確定していない失敗」でも返還してしまい、reserve冪等keyがjob単位のため次のattemptが再予約できず、**retryで成功したjobの枠が0のまま**になっていた。ローカルDBで実測して確認（attempt1 reserve=true → refund → attempt2 reserve=false → counter 0）。
+- 実装結果: `refundUsage` の呼び出しを4つのhandler（post_generation／image_generation／learning_analysis／suggestion）のcatchから削除し、`worker.ts` の `failJob` へ集約（status更新と同一transaction）。kind→枠種別の対応は `terminal.ts` の `RESERVE_TYPE_BY_KIND` に置き、stale経路の `finalizeFailedJob` と同じ表を使う。**md_merge は元々handlerが返還しておらずstale経路頼みだったため、この集約で worker 失敗経路でも返還されるようになった**（副次的な修正）。BYOK・reserve未実施は `refundUsage` 側で no-op。テスト: 責務移動に合わせて5件を更新（handlerは返還しない→failJobで返還される、を両方assert）＋回帰テスト1件追加、全1186件緑・build通過・E2E 4件緑。docs: 要件03 §7.1、要件04 §4。
+- 後続への注意: **D-5 の残件はこれで解消**。要件04 §4 の「reserve作成はM6のためrefundは実質no-op」という記述も古かったため更新した（reserveは5 kindで実装済み）。handlerが自己終端（canceled）してから例外を投げる経路では `failJob` の `where status='running'` が効かず status は変わらないが、refund は無条件に呼ぶため予約は解放される。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。

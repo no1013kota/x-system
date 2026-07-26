@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
+| バージョン | v1.13 |
 | 更新日 | 2026-07-25 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -175,6 +175,8 @@ OAuth再連携で同じ`x_user_id`が返った場合は既存`x_accounts` rowの
 | 画像 | 20 | 画像生成job 1実行 |
 
 ニュース共通基盤だけ対象外。内部retry、GEN-FIX、学習分析に続く同一job内MD-MERGEは追加カウントしない。ユーザーが明示的に再生成・再分析した場合は新しいjobとして1回消費する。
+
+reserveはjob開始時に1回だけ行い、**返還は失敗が確定したときだけ**行う（worker終端＝`failJob`／stale終端＝`finalizeFailedJob`）。handlerは返還しない。retryable失敗でqueuedへ差し戻される間は予約を保持する: 冪等keyがjob単位（§7.3）のため、差し戻し前に返還すると次のattemptが再予約できず、retryで成功したjobの枠が計上されないまま終わる。
 
 投稿種別はX APIへ送る直前の最終payloadで判定する。HTTPSへ正規化済みのURLが1つ以上あれば、URL数にかかわらず`post_url`を1消費する。P-5で別管理する`quote_url`も1ポスト目のpayloadへ合成してから判定する。ロールバック削除は対応する`post_create` eventのcounter typeを引き継ぐため、同じtweet_idの作成と削除成功は同じ枠を合計2消費する。
 

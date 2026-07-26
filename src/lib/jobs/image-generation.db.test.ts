@@ -10,6 +10,7 @@ import { emptyUsage, type TextGen } from "../ai/types";
 import { X_SCOPES } from "../x/oauth";
 import type { Queryable } from "../x/token-refresh";
 import { executeImageGeneration, type ImageGenerationDeps } from "./image-generation";
+import { failJob } from "./worker";
 
 /**
  * DB integration for image_generation の画像枠 reserve/refund（T-M6-04, 要件03 §7.5）。
@@ -141,11 +142,15 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
-  it("image final failure refunds only the image slot; the parent generation slot is untouched", async () => {
+  it("失敗確定（failJob）で画像枠だけが返り、親の生成枠は触らない", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
       await expect(executeImageGeneration(deps(jobId, true))).rejects.toThrow();
-      expect(await counts(uid)).toEqual({ gen: 1, img: 0 }); // image reserved+refunded, generation kept
+      // handler は返還しない（retry差し戻しで枠が消える事故を防ぐため）。
+      expect(await counts(uid)).toEqual({ gen: 1, img: 1 });
+      // 失敗確定で画像枠だけが返る。生成枠（親jobの勘定）は触らない。
+      await failJob(jobId, "image_generation", new Error("terminal"));
+      expect(await counts(uid)).toEqual({ gen: 1, img: 0 });
     } finally {
       await cleanup(uid);
     }

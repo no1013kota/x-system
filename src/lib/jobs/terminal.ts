@@ -5,7 +5,7 @@ import {
   isErrorCode,
   userMessageForCode,
 } from "../observability/errors";
-import { refundUsage } from "../usage/generation-reserve";
+import { refundUsage, type UsageReserveType } from "../usage/generation-reserve";
 import type { JobKind } from "./handlers";
 
 /**
@@ -242,6 +242,18 @@ const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
 };
 
 /** 例外から原因を特定できなかったときに使う汎用コード（要件02 §4.10）。 */
+/**
+ * kind → 返還する利用枠の種別（要件03 §7.3）。reserve していない kind（post_publish）は無し。
+ * `finalizeFailedJob`（stale経路）と worker の `failJob` で同じ対応を使う。
+ */
+export const RESERVE_TYPE_BY_KIND: Partial<Record<JobKind, UsageReserveType>> = {
+  post_generation: "generation",
+  image_generation: "image",
+  learning_analysis: "generation",
+  md_merge: "generation",
+  suggestion: "generation",
+};
+
 export const GENERIC_JOB_ERROR_CODE = "job_failed";
 
 /** 自前のterminal errorが持つ code の許容形（snake_case）。pgのSQLSTATEやnodeのECONNREFUSED等は弾く。 */

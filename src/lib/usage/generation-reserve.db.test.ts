@@ -103,6 +103,33 @@ describe("reserveUsage / refundUsage (db)", () => {
     }
   });
 
+  it("retryで差し戻された後も再予約でき、成功時に枠が計上される（T-M7-11）", async () => {
+    // reserve keyはjob単位で冪等なため、失敗確定前に返還してしまうと次のattemptが再予約できず
+    // 「retryで成功したのに枠が0のまま」になる。返還は失敗確定時だけに寄せてあることを確認する。
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const jobId = await makeJob(xid);
+    try {
+      // attempt1: reserve → provider 429（retryable）。ここでは返還しない。
+      await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId, type: "generation", limit: 100 }));
+      let s = await state(uid, jobId);
+      expect(s.gen).toBe(1);
+      expect(s.refunds).toBe(0);
+
+      // attempt2（差し戻し後）: 既存予約が残っているので二重計上もされない
+      await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId, type: "generation", limit: 100 }));
+      s = await state(uid, jobId);
+      expect(s.gen).toBe(1); // 成功すればこの1回分が正しく残る
+      expect(s.reserves).toBe(1);
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [jobId]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
   it("refund is a no-op when there is no reserve", async () => {
     const jobId = randomUUID();
     const refunded = await withTransaction((c) => refundUsage(c, jobId, "generation"));

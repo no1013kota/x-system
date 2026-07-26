@@ -7,7 +7,8 @@ import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
 import { getJobHandler, type JobKind } from "./handlers";
 import { decideJobOutcome } from "./job-error";
-import { fallbackJobError } from "./terminal";
+import { fallbackJobError, RESERVE_TYPE_BY_KIND } from "./terminal";
+import { refundUsage } from "../usage/generation-reserve";
 
 /**
  * Worker for a single job (要件04 §1/§4, ADR-0002). `leaseJob` performs the
@@ -185,8 +186,9 @@ export async function failJob(
   error: unknown,
 ): Promise<void> {
   const fallback = fallbackJobError(kind, error);
-  await withTransaction((c) =>
-    c.query(
+  const reserveType = RESERVE_TYPE_BY_KIND[kind];
+  await withTransaction(async (c) => {
+    await c.query(
       `update generation_jobs
           set status = 'failed', finished_at = now(),
               error = coalesce(error, jsonb_build_object(
@@ -197,8 +199,12 @@ export async function failJob(
               ))
         where id = $1 and status = 'running'`,
       [jobId, fallback.code, fallback.message],
-    ),
-  );
+    );
+    // 利用枠の返還は「失敗が確定したとき」だけ行う（要件03 §7.3）。handler側で返還すると、
+    // retryで差し戻される失敗でも返還してしまい、reserve keyがjob単位で冪等なため次のattemptが
+    // 再予約できず枠が計上されないまま成功してしまう。BYOK・reserve未実施の場合は no-op。
+    if (reserveType) await refundUsage(c, jobId, reserveType);
+  });
 }
 
 /**

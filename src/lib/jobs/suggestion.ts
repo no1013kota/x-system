@@ -6,7 +6,7 @@ import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
-import { reserveUsage, refundUsage } from "../usage/generation-reserve";
+import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { defaultRecordStage } from "./stale";
@@ -231,9 +231,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       usageFromError(error) ?? { calls: [], estimated_cost_usd_total: 0 };
     const code = error instanceof SuggestionTerminalError ? error.code : "suggestion_failed";
     await persistFailure(db, { userId: job.user_id, xAccountId: job.x_account_id, jobId, code, usage });
-    if (isPremium) {
-      await deps.runInTx((tx) => refundUsage(tx, jobId, "generation"));
-    }
+    // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。
     throw error instanceof SuggestionTerminalError
       ? error
       : new SuggestionTerminalError("suggestion_failed", "suggestion failed");

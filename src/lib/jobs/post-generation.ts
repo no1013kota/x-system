@@ -24,7 +24,7 @@ import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { refundUsage, reserveUsage } from "../usage/generation-reserve";
+import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { defaultRecordStage } from "./stale";
@@ -563,9 +563,8 @@ export async function executePostGeneration(
 
   return { status: "created", draftId };
   } catch (error) {
-    // 最終失敗（前提不足・生成error・検証不能・draft保存失敗等）は生成枠を返還する（premium・冪等）。
-    // 成功（draft作成）はreturnで catch を通らないため消費が維持される。GEN-FIXやJSON修復は追加消費しない。
-    if (isPremium) await deps.runInTx((tx) => refundUsage(tx, jobId, "generation"));
+    // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。ここで返還すると
+    // retryで差し戻される失敗でも返してしまい、次のattemptが再予約できなくなる。
     throw error;
   }
 }

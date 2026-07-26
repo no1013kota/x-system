@@ -14,7 +14,7 @@ import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PLANS } from "../plans";
-import { refundUsage, reserveUsage } from "../usage/generation-reserve";
+import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { defaultRecordStage } from "./stale";
@@ -373,9 +373,8 @@ export async function executeImageGeneration(
 
     return { status: "created", draftId };
   } catch (error) {
-    // 画像生成/保存/上限の最終失敗で画像枠を返還する（premium・冪等。reserve未実施なら no-op）。
-    // 生成枠は親jobの勘定なので触れない（要件03 §7.5・成功済み本文の枠は返還しない）。
-    if (isPremium) await deps.runInTx((tx) => refundUsage(tx, jobId, "image"));
+    // 画像枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。生成枠は親jobの勘定
+    // なので触れない（要件03 §7.5・成功済み本文の枠は返還しない）。
     if (error instanceof ImageGenerationTerminalError) throw error;
     const providerRawError = error instanceof Error ? error.message : String(error);
     if (isRegenerate) {
