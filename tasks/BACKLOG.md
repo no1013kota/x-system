@@ -1563,13 +1563,15 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 実装結果: `worker.ts` の catch を `failJob(jobId, kind, error)` に置換。`update ... set error = coalesce(error, jsonb_build_object(...)) where id = $1 and status = 'running'` で**handler保存済みerrorを上書きせず**、running以外（自己終端・stale回収）も触らない。理由の組み立ては `terminal.ts` の `fallbackJobError(kind, error)`＝ codeは `AppError.code`／handler例外の `code` のうち `^[a-z][a-z0-9_]{0,62}$` に一致するものだけ採用（`23505`・`ECONNREFUSED` 等は棄却）、非該当は `job_failed`。messageは既知ErrorCodeなら `userMessageForCode`、それ以外は `FAILED_NOTICE[kind]`／既定文で、**例外messageやproviderの生値を混ぜない**（`isErrorCode` を `observability/errors.ts` に追加）。併せてlease時に `error = null` を入れ、前attemptの理由が現在の実行結果として残らないようにした。UI側は `create-post-form.tsx:390` が既に `job.error?.message` を優先表示するため配線変更は不要。テスト+9（terminal 5・worker.db 4）、全1163件緑。
 - 後続への注意: これは D-5 の**最小対応**であり、retryable判定によるbackoff付きqueued差し戻し・失敗通知・usage refund の中央化は未実施（stale経路のみ `finalizeFailedJob`）。`fallbackJobError` は D-5 本対応時に中央finalizerへ取り込む想定。`post-generation.ts` の worker失敗通知 dedupe が `job:{id}:error`（§14は `:failed`）である既存不整合も D-5 で統一する。
 
-### T-M7-03: ホーム（SC-05）に次回の予定と直近の実績を表示 `todo`
+### T-M7-03: ホーム（SC-05）に次回の予定と直近の実績を表示 `done`
 - 参照: 要件06 §1 SC-05、要件06 §10 / 依存: なし / サイズ: M
 - 完了条件:
   - 有効スケジュールがあるとき「次回の予定（日時・パターン・自動/下書きの別）」がホームに出る
   - 直近の投稿実績サマリが出る（0件時は次の一手を示す空状態）
   - 前提未設定・スケジュール未登録それぞれで行き止まりにならない導線がある
 - メモ: 現状ホームは初期設定ガイド・確認待ち・利用枠の3カードのみで、要件06 §10 が求める「予定・実績」が未実装。次回実行の算出は `src/lib/schedule/next-run.ts` の `nextScheduleRun` を再利用する。
+- 実装結果: ホームに「次回の予定」「直近の実績」カードを追加（確認待ちと利用枠の間）。予定は純関数 `lib/home/overview.ts` の `scheduleOutlook`（有効スロットのみ `nextScheduleRun` で算出→時刻昇順→最大3件、`no_slots`／`all_disabled` を区別）。実績は `lib/home/overview-server.ts` の `loadRecentPosts`（posted を最大3件・本文冒頭・先頭tweet_id）＋ SC-09 と同じ `getAnalyticsSummaryForUser(…, 7)`。**未計測は0でなく「未取得」**表示（§8の `--`＝取得不能と区別）。初期設定が未完了なら予定カードに「時刻になっても実行されません」警告＋「次にやること」と同じ設定画面への導線。テスト+4（`overview.test.ts`）、全1167件緑。ブラウザ実確認: 予定の並び順・停止中除外・警告表示、全停止／未登録／実績なしの各空状態、履歴deep-linkとXリンク、390px幅で横スクロールなし。
+- 後続への注意: 要件06 §1 の SC-05 に挙がる**「重要ニュース」カードは未実装**（§1.4 に未実装と明記）。実績カードは1日checkpointのみを見るため、30日checkpointしか無い古い投稿では「未取得」になる（ホームは直近7日前提）。
 
 ### T-M7-04: 分析（SC-09）の既定計測時点・投稿の識別・提案の鮮度 `todo`
 - 参照: 要件06 §8、要件06 §10 / 依存: なし / サイズ: M

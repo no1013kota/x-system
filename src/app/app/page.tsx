@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { SetupGuideCard } from "@/components/app-shell/setup-guide-card";
+import type { AnalyticsSummary } from "@/lib/analytics";
+import { getAnalyticsSummaryForUser } from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { pooledQueryable } from "@/lib/db/pool";
@@ -10,12 +12,20 @@ import {
   type SetupChecklistItem,
 } from "@/lib/execution-prereqs";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
+import { scheduleOutlook, type ScheduleOutlook } from "@/lib/home/overview";
+import { loadRecentPosts, type RecentPostView } from "@/lib/home/overview-server";
+import { listScheduleSlots } from "@/lib/schedule-slots";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ConfirmationQueueCard } from "./confirmation-queue";
+import { RecentResultsCard } from "./recent-results";
+import { UpcomingScheduleCard } from "./upcoming-schedule";
+
+/** 直近の実績カードの集計期間（日）。SC-09の期間切替とは独立の固定値。 */
+const RECENT_PERIOD_DAYS = 7;
 
 const pooledDb = pooledQueryable();
 
@@ -28,6 +38,10 @@ export default async function AppHomePage() {
   let checklist: SetupChecklistItem[] = [];
   let pendingDrafts: DraftView[] = [];
   let usage: UsageSummary | null = null;
+  let outlook: ScheduleOutlook | null = null;
+  let recentPosts: RecentPostView[] = [];
+  let recentSummary: AnalyticsSummary | null = null;
+  let handle: string | null = null;
   if (user) {
     // 充足判定は実行前提検証ヘルパを再利用する（要件06 §3.1・T-M2-24）。
     const input = await gatherExecutionPrereqInputs(user.id);
@@ -37,6 +51,19 @@ export default async function AppHomePage() {
     if (activeXAccountId) {
       const all = await listDraftsForAccount(pooledDb, activeXAccountId, "drafts");
       pendingDrafts = all.filter((d) => d.status === "draft");
+      // 次回の予定と直近の実績（要件06 §1・§10, T-M7-03）。
+      const [slots, posts, summary, account] = await Promise.all([
+        listScheduleSlots(pooledDb, activeXAccountId),
+        loadRecentPosts(user.id, activeXAccountId),
+        getAnalyticsSummaryForUser(user.id, activeXAccountId, RECENT_PERIOD_DAYS),
+        pooledDb.query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
+          activeXAccountId,
+        ]),
+      ]);
+      outlook = scheduleOutlook(slots);
+      recentPosts = posts;
+      recentSummary = summary;
+      handle = account.rows[0]?.handle ?? null;
     }
     // premium 月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12）。premium以外は null（非表示）。
     const { rows } = await pooledDb.query<{ plan: string }>(
@@ -45,13 +72,22 @@ export default async function AppHomePage() {
     );
     usage = await loadUsageSummaryForUser(user.id, rows[0]?.plan ?? "standard");
   }
-  const showGuide = checklist.some((item) => !item.satisfied);
+  const nextSetupItem = checklist.find((item) => !item.satisfied);
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 lg:px-8 lg:py-10">
       <h1 className="text-2xl font-bold tracking-tight">ホーム</h1>
-      {showGuide ? <SetupGuideCard items={checklist} /> : null}
+      {nextSetupItem ? <SetupGuideCard items={checklist} /> : null}
       <ConfirmationQueueCard drafts={pendingDrafts} />
+      {outlook ? (
+        <UpcomingScheduleCard
+          outlook={outlook}
+          setupPendingHref={nextSetupItem?.settingsPath}
+        />
+      ) : null}
+      {recentSummary ? (
+        <RecentResultsCard handle={handle} posts={recentPosts} summary={recentSummary} />
+      ) : null}
       {usage ? (
         <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
       ) : null}
