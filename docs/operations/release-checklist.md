@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
-| 更新日 | 2026-07-26 |
-| 関連 | [デプロイ手順](./deployment.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
+| バージョン | v1.2 |
+| 更新日 | 2026-07-27 |
+| 関連 | [デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
 MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キー・法務確認が要る項目は §3 に担当・期日欄付きで残す。
 
@@ -12,7 +12,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 
 | # | 項目 | 結果 | 根拠 |
 |---|---|---|---|
-| 1 | リリース判定ゲート `npm run release:check`（typecheck→lint→依存監査→**test:db**→build→**test:e2e**）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト52本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25） |
+| 1 | リリース判定ゲート `npm run release:check`（typecheck→lint→依存監査→**test:db**→build→**test:e2e**）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
 | 2 | dev/preview で `X_POSTING_MODE=live` を設定すると起動時 env 検証が失敗（prodのみ live 可） | ✅ 済 | `env-schema.ts` superRefine ＋ `env-schema.test.ts`「rejects live in development/preview」「allows in production」 |
 | 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 7件一致、暗号化 dump は `Salted__` 暗号文） |
 | 4 | セキュリティヘッダ（nonce CSP／HSTS／nosniff／Referrer-Policy）が production build で全応答に付与 | ✅ 済 | T-M6-17（`next start`＋curl 確認・ADR-0005） |

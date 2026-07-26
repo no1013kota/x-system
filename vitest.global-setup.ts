@@ -3,7 +3,7 @@ import { Client } from "pg";
 /**
  * `REQUIRE_DB=1` のときだけ、ローカルSupabaseの到達性を**テスト実行前**に検証する。
  *
- * `*.db.test.ts`（52本）は DB が無いと `ctx.skip()` で静かに skip され、vitest はファイルを
+ * `*.db.test.ts`（58本）は DB が無いと `ctx.skip()` で静かに skip され、vitest はファイルを
  * 「passed」として数える。そのため Supabase を起動し忘れると **DB・RLS・ロール権限の検証が
  * まるごと消えたまま `npm test` と `release:check` が緑になる**（2026-07-26 に実測で確認）。
  * リリース判定でそれを許すと、再発防止テスト自体が「動いているつもり」になる。
@@ -56,7 +56,7 @@ export default async function globalSetup(): Promise<void> {
     throw new Error(
       `REQUIRE_DB=1 ですがローカルSupabaseに到達できません。\n- ${problems.join(
         "\n- ",
-      )}\n\n\`supabase start\` で起動してから再実行してください（DBテスト52本が静かにskipされるのを防ぐためのゲートです）。`,
+      )}\n\n\`supabase start\` で起動してから再実行してください（DBテスト58本が静かにskipされるのを防ぐためのゲートです）。`,
     );
   }
 }

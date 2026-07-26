@@ -17,9 +17,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
+  // flakyをretryで隠さない（原因を見る）。CIでも0のまま。
   retries: 0,
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // CIの2コアランナーでは各routeの初回コンパイルが数十秒かかるため待ち時間を広げる。
+  // ここを詰めるとアプリの不具合ではなくコンパイル待ちで落ち、CIが信用されなくなる。
+  timeout: process.env.CI ? 150_000 : 60_000,
+  expect: { timeout: process.env.CI ? 30_000 : 10_000 },
   reporter: [["list"]],
   use: {
     baseURL: E2E_BASE_URL,
@@ -36,7 +39,7 @@ export default defineConfig({
     command: "npm run dev",
     url: E2E_BASE_URL,
     reuseExistingServer: true,
-    timeout: 120_000,
+    timeout: process.env.CI ? 240_000 : 120_000,
     stdout: "ignore",
     stderr: "pipe",
   },

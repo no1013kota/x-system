@@ -1,0 +1,98 @@
+name: CI
+
+# `npm run release:check`（typecheck → lint → 依存監査 → DBテスト → build → E2E）を
+# push / PR ごとに機械的に実行する。ゲートが整っていても「手元で実行し忘れる」限り
+# 意味が無いため、実行そのものを強制するのがこのワークフローの目的。
+#
+# 秘密情報は使わない。テストは外部API（Stripe / X / AI各社 / SMTP）をモックし、実データは
+# `supabase start` で立ち上げるローカルSupabaseだけを使う。env は scripts/ci-env.mjs が組む。
+
+on:
+  push:
+    branches: [main, stg]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Cloudflare が公開しているTurnstileのテストsecret（常に成功）。秘密情報ではない。
+  # supabase/config.toml の [auth.captcha] が env() で参照するため start 前に必要。
+  # scripts/ci-env.mjs も同じ値を .env.local へ書く（変えるなら両方）。
+  TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+  # config.toml が Studio 用に参照するだけのダミー（AI機能は使わない）。
+  OPENAI_API_KEY: ci-placeholder
+
+jobs:
+  # 数十秒で落ちる検査を先に回し、重い verify を待たずに失敗を返す。
+  # verify 側でも release:check の一部として再実行されるので、ここを消しても穴は開かない。
+  static:
+    name: 型・lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # ローカル開発と同じメジャーに揃える（差があると型・build結果がずれる）。
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  verify:
+    name: release:check（DB・build・E2E）
+    runs-on: ubuntu-latest
+    # supabase のイメージ取得と Playwright を含むため長め。
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # ローカルと同じCLIを使う（migration適用の挙動差を避ける）。
+          version: 2.109.1
+
+      - name: ローカルSupabaseを起動（migration＋seedを適用）
+        run: supabase start
+
+      - name: CI用の .env.local を生成
+        run: |
+          set -euo pipefail
+          # 出力には local 用のANON/SERVICE_ROLEキーが含まれるのでログへ出さずファイルへ。
+          supabase status -o env > "$RUNNER_TEMP/supabase-status.env"
+          SUPABASE_STATUS_ENV="$RUNNER_TEMP/supabase-status.env" node scripts/ci-env.mjs > .env.local
+          echo "生成キー数: $(grep -cE '^[A-Z_0-9]+=' .env.local)"
+
+      - name: service_role の権限が適用されているか（migration 20260726000002 の確認）
+        # 2026-07-26 のX連携不具合の原因。ここが落ちたら以降のテストは全滞するので先に見る。
+        run: |
+          set -euo pipefail
+          npx vitest run src/lib/db/service-role-grants.db.test.ts
+
+      - name: Playwright のブラウザを取得
+        run: npx playwright install --with-deps chromium
+
+      - name: release:check
+        # 手元で実行するゲートと同一コマンド。CI側で手順を書き写すと release:check への
+        # 追加がCIに反映されず穴が開くため、分解せずそのまま呼ぶ。
+        run: npm run release:check
+
+      - name: 失敗時の証跡を保存
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

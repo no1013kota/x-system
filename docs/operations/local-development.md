@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-26 |
-| 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
+| バージョン | v1.4 |
+| 更新日 | 2026-07-27 |
+| 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
 
@@ -104,9 +104,10 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `eslint .` |
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
-| `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipで52本のDBテストが静かに消えるのを防ぐ（`release:check` が使う） |
+| `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipで58本のDBテストが静かに消えるのを防ぐ（`release:check` が使う） |
 | `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
 | `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
+| — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
