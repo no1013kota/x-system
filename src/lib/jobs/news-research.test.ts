@@ -8,6 +8,7 @@ import {
   newsLookbackHours,
   researchNews,
   type NewsResearchDeps,
+  pickValidItems,
 } from "./news-research";
 
 const KNOWN_URLS = /from news_items/;
@@ -120,11 +121,26 @@ describe("researchNews", () => {
     expect(res.items).toEqual([]);
   });
 
-  it("attempts a repair call then throws on persistently invalid output (title > 30 chars)", async () => {
-    const tooLong = JSON.stringify({
-      items: [{ title: "あ".repeat(31), summary: "s", source_url: "https://e.com/x", impact: "high" }],
+  it("規定を外れたitemは落とし、他のitemと分野そのものは残す（修復callも呼ばない）", async () => {
+    // 2026-07-28 まではここで応答全体を捨てて例外にしていた。英語ソース中心の分野（web3）は
+    // title/summary が上限を超えやすく、修復callも空配列を返すため**常に0件**になっていた。
+    const mixed = JSON.stringify({
+      items: [
+        { title: "あ".repeat(31), summary: "s", source_url: "https://e.com/x", impact: "high" },
+        { title: "短いタイトル", summary: "要約", source_url: "https://e.com/y", impact: "mid" },
+      ],
     });
-    const { gen, requests } = mockTextGen([tooLong, tooLong]);
+    const { gen, requests } = mockTextGen([mixed]);
+    const { db } = mockDb([]);
+    const res = await researchNews("ai", makeDeps({ db, textGen: gen }));
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].source_url).toBe("https://e.com/y");
+    expect(requests).toHaveLength(1); // 器は妥当なので修復callは不要
+  });
+
+  it("JSONとして壊れている場合は従来どおり修復call→例外", async () => {
+    const broken = "これはJSONではありません";
+    const { gen, requests } = mockTextGen([broken, broken]);
     const { db } = mockDb([]);
     await expect(researchNews("ai", makeDeps({ db, textGen: gen }))).rejects.toBeInstanceOf(
       InvalidProviderOutputError,
@@ -140,5 +156,45 @@ describe("researchNews", () => {
     expect(ledger).toHaveLength(1);
     expect(ledger[0].params[0]).toBeNull(); // user_id
     expect(ledger[0].params[13]).toBe("news:w1:ai:0"); // idempotency_key
+  });
+});
+
+describe("pickValidItems（item単位の選別）", () => {
+  const valid = {
+    title: "GPT-5.6が一般提供開始",
+    summary: "OpenAIがGPT-5.6を一般提供開始した。",
+    source_url: "https://example.com/a",
+    impact: "high" as const,
+  };
+
+  it("規定を満たすitemだけを残し、落とした件数を返す", () => {
+    // 2026-07-28 web3 実測: 英語ソースで title 38〜56字・summary 210〜293字。
+    const tooLong = {
+      ...valid,
+      title: "Storj Labs files Chapter 11 bankruptcy protection",
+      summary: "x".repeat(200),
+      source_url: "https://example.com/b",
+    };
+    const r = pickValidItems([valid, tooLong, { ...valid, source_url: "https://example.com/c" }]);
+    expect(r.items).toHaveLength(2);
+    expect(r.dropped).toBe(1);
+  });
+
+  it("1件でも規定外なら全部捨てる、という挙動にはしない", () => {
+    const r = pickValidItems([{ nonsense: true }, valid]);
+    expect(r.items).toHaveLength(1);
+    expect(r.dropped).toBe(1);
+  });
+
+  it("最大件数で打ち切る", () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({
+      ...valid,
+      source_url: `https://example.com/${i}`,
+    }));
+    expect(pickValidItems(many).items.length).toBeLessThanOrEqual(5);
+  });
+
+  it("空配列はそのまま0件（落とした件数も0）", () => {
+    expect(pickValidItems([])).toEqual({ items: [], dropped: 0 });
   });
 });
