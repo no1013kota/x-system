@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   applySecurityResponseHeaders,
@@ -86,5 +86,44 @@ describe("generateNonce", () => {
     const b = generateNonce();
     expect(a).toBeTruthy();
     expect(a).not.toBe(b);
+  });
+});
+
+describe("img-src と Supabase オリジン", () => {
+  const original = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  afterEach(() => {
+    if (original === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = original;
+  });
+
+  it("ローカルのhttpオリジンを明示する（https: に含まれず画像が弾かれるため）", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
+    const csp = buildContentSecurityPolicy("n", false);
+    const imgSrc = csp.split("; ").find((d) => d.startsWith("img-src")) as string;
+    expect(imgSrc).toContain("http://127.0.0.1:54321");
+  });
+
+  it("本番のオリジンも明示する（https: と重複しても害はない）", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abcdefg.supabase.co";
+    const imgSrc = buildContentSecurityPolicy("n", true)
+      .split("; ")
+      .find((d) => d.startsWith("img-src")) as string;
+    expect(imgSrc).toContain("https://abcdefg.supabase.co");
+  });
+
+  it("パス付きのURLでもオリジンだけを足す", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abcdefg.supabase.co/rest/v1";
+    const imgSrc = buildContentSecurityPolicy("n", true)
+      .split("; ")
+      .find((d) => d.startsWith("img-src")) as string;
+    expect(imgSrc).toContain("https://abcdefg.supabase.co");
+    expect(imgSrc).not.toContain("/rest/v1");
+  });
+
+  it("URLが不正・未設定でもCSPを壊さない", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
+    expect(buildContentSecurityPolicy("n", true)).toContain("img-src 'self' data: blob: https:;");
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    expect(buildContentSecurityPolicy("n", true)).toContain("img-src 'self' data: blob: https:;");
   });
 });

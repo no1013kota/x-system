@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
-| 更新日 | 2026-07-27 |
+| バージョン | v1.6 |
+| 更新日 | 2026-07-28 |
 | 関連 | [supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -144,6 +144,10 @@ npm run dev                  # → http://127.0.0.1:3000
 | 通知メール（SMTP送信） | Gmail 2段階認証＋App Password | 本番のみ（ローカルは下記の注意参照） |
 | 監視（Sentry） | `SENTRY_DSN` | 本番のみ（dev未設定でOK） |
 
+> ⚠️ **通知メールは production 以外では送られない**（2026-07-27 追加）。`APP_ENV` が `production` でなく `SMTP_HOST` がループバック（`localhost`／`127.0.0.1`／`::1`）以外なら、transport を作らず送信をskipして警告を出す。`.env.local` に実Gmailの認証情報が入っていると、`scheduler_tick` が溜まっていた queued 通知を**まとめて実送信してしまう**ため（同日に98通を送信して判明）。設定を空にする運用は忘れられるので環境で機械的に止めている。
+>
+> ローカルで通知メールの中身を確認したい場合は、`supabase/config.toml` の `[local_smtp]` で `smtp_port` を有効化して Supabase を再起動し、`SMTP_HOST=127.0.0.1` / `SMTP_PORT=<その番号>` を向ける（Mailpit http://127.0.0.1:54324 で読める）。
+>
 > ⚠️ **SMTPの落とし穴**: `SMTP_USER`/`SMTP_APP_PASSWORD` が「非空ダミー」だと、通知メール処理が transport を構築して送信を試み**認証失敗（email_status=failed）**になる（GoTrue のサインアップ確認メールは別系統でMailpitに届く）。ローカルで通知メールを触るなら、この2つを**空にする**と送信skip挙動に戻る。
 
 ### 5.1 X OAuth コールバックURLの設定（X連携を試すとき）

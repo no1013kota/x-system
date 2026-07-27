@@ -33,6 +33,25 @@ function sentryConnectSrc(): string {
   }
 }
 
+/**
+ * Supabase Storage のオリジン（署名URLの配信元）。
+ *
+ * 本番は `https://<ref>.supabase.co` なので `https:` に含まれるが、**ローカルは
+ * `http://127.0.0.1:54321` で http かつ別オリジンのため `img-src` に弾かれ、
+ * 生成画像のプレビューが必ず表示されない**（2026-07-27 に実ブラウザで確認）。
+ * 環境ごとの実オリジンを明示して、開発でも本番と同じ見え方にする。
+ */
+function supabaseOrigin(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return "";
+  try {
+    return ` ${new URL(url).origin}`;
+  // eslint-disable-next-line no-restricted-syntax -- 不正ならCSPへ何も足さない。env検証側が起動時に弾く
+  } catch {
+    return "";
+  }
+}
+
 export function buildContentSecurityPolicy(nonce: string, isProd: boolean): string {
   // dev（next dev）は React Refresh 等で eval を使うため 'unsafe-eval' を許可する（productionは付けない）。
   const devEval = isProd ? "" : " 'unsafe-eval'";
@@ -45,7 +64,8 @@ export function buildContentSecurityPolicy(nonce: string, isProd: boolean): stri
     `style-src 'self' 'unsafe-inline'`,
     // X アバター（pbs.twimg.com）・Supabase Storage の下書き画像・ニュース画像など任意ホストの
     // 画像を表示するため https: を許可する（画像はscript実行を伴わず露出リスクが低い）。
-    `img-src 'self' data: blob: https:`,
+    // Supabase のオリジンは明示する（ローカルは http のため https: に含まれない）。
+    `img-src 'self' data: blob: https:${supabaseOrigin()}`,
     `font-src 'self' data:`,
     `connect-src 'self' ${TURNSTILE}${sentryConnectSrc()}${devConnect}`,
     `frame-src 'self' ${TURNSTILE}`,

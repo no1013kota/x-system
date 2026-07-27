@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Queryable } from "../x/token-refresh";
 import {
+  canSendViaSmtp,
   EmailSendError,
   sendQueuedNotificationEmail,
   type EmailTransport,
@@ -141,5 +142,26 @@ describe("sendQueuedNotificationEmail", () => {
     expect(res.outcome).toBe("failed"); // unknown → terminal
     const upd = writes.find((w) => FAIL.test(w.sql))!;
     expect(upd.params[2]).toBe("send_failed");
+  });
+});
+
+describe("canSendViaSmtp（環境による実送信の抑止）", () => {
+  it("productionは外部SMTPへ送れる", () => {
+    expect(canSendViaSmtp({ appEnv: "production", host: "smtp.gmail.com" })).toBe(true);
+  });
+
+  it("development/previewから外部SMTPへは送らない", () => {
+    // .env.local に実Gmailの認証情報が入っていると tick が溜まった通知を実送信してしまう
+    // （2026-07-27 に98通送信）。環境で機械的に止める。
+    for (const appEnv of ["development", "preview"]) {
+      expect(canSendViaSmtp({ appEnv, host: "smtp.gmail.com" })).toBe(false);
+      expect(canSendViaSmtp({ appEnv, host: "smtp.sendgrid.net" })).toBe(false);
+    }
+  });
+
+  it("ローカル宛（Mailpit等）は非productionでも許す", () => {
+    for (const host of ["localhost", "127.0.0.1", "::1", "[::1]", "  LOCALHOST  "]) {
+      expect(canSendViaSmtp({ appEnv: "development", host })).toBe(true);
+    }
   });
 });
