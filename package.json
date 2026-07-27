@@ -17,7 +17,8 @@
     "audit:check": "node scripts/audit-check.mjs",
     "release:check": "npm run typecheck && npm run lint && npm run audit:check && npm run test:db && npm run build && npm run test:e2e",
     "test:db": "REQUIRE_DB=1 vitest run",
-    "check:providers": "PROVIDER_CHECK=1 vitest run src/lib/ai/provider-contract.live.test.ts"
+    "check:providers": "PROVIDER_CHECK=1 vitest run src/lib/ai/provider-contract.live.test.ts",
+    "smoke:live": "node scripts/smoke-live.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

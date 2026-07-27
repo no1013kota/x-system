@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
-| 更新日 | 2026-07-27 |
+| バージョン | v1.2 |
+| 更新日 | 2026-07-28 |
 | 関連 | [CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -117,7 +117,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 
 ## 5. デプロイ後の検証
 
-環境ごとに次を確認する。
+環境ごとに次を確認する。**7 は実APIを叩き費用が発生する**（1周 約$0.30）。
 
 1. `/` `/login` `/signup` `/terms` `/privacy` が 200。
 2. サインアップ → 確認メール受信 → ログイン（Turnstile が動作すること）。
@@ -130,6 +130,13 @@ npx supabase migration list      # ローカルとリモートの差分が無い
    ```
 
 5. Sentry にイベントが届くこと。
+6. 実物スモーク（その環境で生成・画像・ニュースが実際に通ること）。ローカルでは出ない環境差（env欠落・migration未適用・CSP）はここで初めて分かる。
+
+   ```bash
+   npm run smoke:live -- --base <その環境のURL> --account <検証用xAccountIdのUUID>
+   ```
+
+   `/api/cron/canary` は **cron へ登録していない**（手動実行のみ）。定期実行にするかは要決定 D-11。
 6. staging では **X_POSTING_MODE が dry_run のまま**であることを確認する（実投稿しない）。
 
 ---

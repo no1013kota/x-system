@@ -42,7 +42,9 @@ describe("runNewsFetch (db)", () => {
       source_url: u,
       impact: "high",
     }));
-    return { items, usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
+    return { items, dropped: 0,
+  dropReasons: {},
+  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
   }
 
   it("skips items whose canonical source_url already exists and saves new ones", async () => {

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.2 |
-| 更新日 | 2026-07-27 |
+| バージョン | v1.3 |
+| 更新日 | 2026-07-28 |
 | 関連 | [リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
 `.github/workflows/ci.yml`。リリース判定ゲート `npm run release:check` を push / PR ごとに機械的に実行する。ゲートが整っていても手元で実行し忘れれば意味が無いため、**実行そのものを強制すること**が目的。
@@ -53,7 +53,9 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 
 - **本番デプロイをブロックしない。** `main` への push でCIとVercelのproductionビルドは並行して走る。CIが赤でもデプロイは進む。止めたいなら GitHub の branch protection で `main` を保護し、`static`／`verify` を required status checks にしてPR経由でのみマージする（PRが緑にならないと `main` に入らない＝productionビルドも始まらない）。
 - **E2Eは13シナリオ**（`e2e/` 8ファイル）。認証・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
-- **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は `npm run check:providers`（provider契約テスト・実キーと費用が必要）が担う。CIへは入れられないので、providerやモデルを変えたときは手で実行する。
+- **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は2つに分かれ、どちらも実キーと費用が必要なためCIへは入れられない。providerやモデルを変えたときは手で実行する。
+  - `npm run check:providers` — **リクエストが受理されるか**（本番のファクトリとschemaで最小リクエストを投げる）
+  - `npm run smoke:live` — **応答をアプリが扱えるか**（生成・画像・ニュースを1周し、下書き・画像・itemという成果物まで検証）。受理されても後段で落ちる型（前置き文でJSON検証が落ちる／字数上限で全件破棄）はこちらでしか捕まらない
 - **Node のメジャーがVercelと異なる。** CIはローカル開発と同じ Node 26 で走る（手元のゲートと同一結果にするため）。Vercelは自身のLTS既定でビルドするので、Nodeバージョン依存のビルド差はCIでは検出できない。揃えるならVercelのNodeバージョン設定と `ci.yml` の `node-version` を同じ値にする。
 - **preview / production の環境差は検証しない。** CIは `APP_ENV=development` で走るため、Vercel側の環境変数の欠落・誤りは[デプロイ後の検証](./deployment.md)で見る。
 

@@ -49,13 +49,13 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 |---|---|
 | DB schema / RLS / GRANT / migration | `/verify-integration`（**ロール権限＝`service_role`のGRANT**を含む） |
 | Server Action / API route | 本番実装を通す `*.db.test.ts`（DBとSupabaseクライアントをモックしない） |
-| **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **実物を1周**（該当パターンを1回実行し、成果物まで確認する） |
+| **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
 | 上記以外 | `npm run release:check` |
 
-**「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。現状これは手動（該当jobを1回実行してDBの結果を確認）。自動化（`smoke:live`）は未実装。
+**「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。手段は **`npm run smoke:live -- --account <xAccountId>`**（要 `npm run dev`）。判定は `src/lib/smoke/scenarios.ts` にあり、デプロイ先では同じものを `/api/cron/canary` で叩ける。
 
 **費用**: 実物を1周させるとAI APIの実費が発生する。dev-loopが自動で実行してよいか・1周あたりの上限額は要決定（`tasks/BACKLOG.md` D-10）。決まるまでは、外部境界に触れる変更では**実行の可否をユーザーに確認**する。
 
