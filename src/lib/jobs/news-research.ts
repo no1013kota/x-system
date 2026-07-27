@@ -35,10 +35,35 @@ const newsItemSchema = z.object({
   published_at: z.iso.datetime({ offset: true }).optional(),
 });
 
-/** SYS-NEWS 応答契約（最大5件・空配列許容, §6.10/§7）。 */
+/** SYS-NEWS 応答契約（最大5件・空配列許容, §6.10/§7）。1件でも欠ければ応答全体が不正。 */
 export const newsOutputSchema = z.object({
   items: z.array(newsItemSchema).max(NEWS_MAX_ITEMS),
 });
+
+/**
+ * 検証に渡す外側の器。**item単位の妥当性はここでは見ない**。
+ *
+ * 厳密な `newsOutputSchema` をそのまま検証に使うと、1件でも規定を外れた瞬間に応答全体が捨てられ、
+ * 修復callも空配列を返して**その分野のニュースが常にゼロ件**になる（2026-07-28、web3で実測:
+ * 英語ソースのため title 38〜56字・summary 210〜293字となり上限30/120字に抵触、4件すべて破棄）。
+ * 器だけを検証して item は個別に選別する（`pickValidItems`）。
+ */
+const newsEnvelopeSchema = z.object({
+  items: z.array(z.unknown()).max(NEWS_MAX_ITEMS * 4),
+});
+
+/** 規定を満たす item だけを残す。落とした件数は呼び出し側が記録できるよう返す。 */
+export function pickValidItems(raw: unknown[]): { items: NewsItemOut[]; dropped: number } {
+  const items: NewsItemOut[] = [];
+  let dropped = 0;
+  for (const candidate of raw) {
+    const parsed = newsItemSchema.safeParse(candidate);
+    if (parsed.success) items.push(parsed.data);
+    else dropped++;
+    if (items.length >= NEWS_MAX_ITEMS) break;
+  }
+  return { items, dropped };
+}
 
 export type NewsItemOut = z.infer<typeof newsItemSchema>;
 
@@ -128,7 +153,7 @@ export async function researchNews(
         webSearch: { maxUses: deps.webSearchMaxUses ?? NEWS_WEB_SEARCH_MAX_USES },
         timeoutMs: deadline.callTimeoutMs(),
       },
-      schema: newsOutputSchema,
+      schema: newsEnvelopeSchema,
       model: deps.model,
       operation: "text_generation",
       now: deps.now,
@@ -143,5 +168,10 @@ export async function researchNews(
   }
 
   await recordNewsUsage(deps, result.usage.calls);
-  return { items: result.parsed.items, usage: result.usage, hours };
+  const { items, dropped } = pickValidItems(result.parsed.items);
+  if (dropped > 0) {
+    // 規定外は捨てるが、黙って減らすと「取得0件」と区別が付かないので必ず残す。
+    console.warn(`[news_fetch] ${category}: 規定を満たさない ${dropped} 件を除外しました`);
+  }
+  return { items, usage: result.usage, hours };
 }
