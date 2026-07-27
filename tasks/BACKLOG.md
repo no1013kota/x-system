@@ -155,6 +155,21 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 検証: 実APIで P-2＋画像ありを実行し、子 image job が **succeeded**・`drafts.images[0].status=ready`（openai / image/png / 2.6MB / Storage保存済み）を確認。
 - 後続への注意: **契約テスト（T-M7-16）がこれを見逃した**。テスト側が独自の最小schema（`TINY_SCHEMA`。たまたま `additionalProperties: false` を持っていた）を使っており、「本番のペイロードを送る」という自分で決めた原則を schema について破っていた。`PRODUCTION_SCHEMAS` として **本番が実際に送るschemaを import して回す**形へ変更済み。今後 structured output を使う実行を足したら、このマップへ追加すること。
 
+### T-M7-22: 生成画像プレビューがCSPで表示できない（ローカル） `done`
+- 参照: 要件01 §8（CSP）、要件06 §6 / 依存: なし / サイズ: S
+- 完了条件: 下書き画面で生成画像が表示され、コンソールエラーが出ない
+- メモ: 署名URL自体は正常（sign API 200・画像GET 200・2.6MB）で、**ブラウザのCSPが弾いていた**。`img-src 'self' data: blob: https:` に対しローカルSupabaseは `http://127.0.0.1:54321` で **http かつ別オリジン**のため不一致。本番は `https://<ref>.supabase.co` で `https:` に含まれるため表示される＝**ローカルでだけ必ず壊れる**種類の不具合で、テストもE2Eも画像描画を見ていなかった。
+- 実装結果: `security-headers.ts` に `supabaseOrigin()` を追加し、`NEXT_PUBLIC_SUPABASE_URL` のオリジンを `img-src` へ明示（本番では `https:` と重複するが害はなく、将来 `https:` を外す下地にもなる）。不正・未設定のURLではCSPへ何も足さない。テスト+4。
+- 検証: 実ブラウザで修正前=`naturalWidth 0`／CSP違反エラー4件、修正後=`1536x1024` が `287x192` で描画・エラー0・横あふれ0（1440/390）。
+
+### T-M7-23: development から実SMTPへ通知メールが送信される `done`
+- 参照: 要件04 §14、要件01 §8 / 依存: なし / サイズ: S
+- 完了条件: production 以外の環境から外部SMTPへ実送信しない
+- メモ: **2026-07-27、動作確認で `scheduler_tick` を実行したところ、溜まっていた queued 通知98通が実際にGmailから送信された**（宛先は本人 `no.1013kota@gmail.com` のみ。第三者への送信なし）。`.env.local` に実Gmailの App Password が入っており、コード側に環境ガードが無かった。`local-development.md` には「SMTP_USER/SMTP_APP_PASSWORD を空にする」という**手動の**回避策しか無く、忘れれば必ず再発する。
+- 実装結果: 純粋関数 `canSendViaSmtp({appEnv, host})` を `notification-email.ts` に追加し、`buildTransport` が false なら transport を作らず警告して skip する。`production` は従来どおり、それ以外は**ループバック宛（Mailpit等）だけ**を許す。テスト+3。
+- 検証: 同じ tick を再実行し `emailsRecovered: {processed:49, sent:0}`＋警告ログを確認（送信済みは98件のまま増えない）。
+- 後続への注意: **queued が49件残っている**。production で初めて tick が回ると一括送信されるため、本番移行前に古い通知を `not_requested` にするか掃除するか決めること（要決定 D-9）。ローカルで中身を見たい場合は `[local_smtp]` の `smtp_port` を有効化して Mailpit へ向ける（手順は local-development.md）。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
@@ -168,6 +183,8 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 **D-4: 失敗provider callのusage/原価記録の責務（解決済み 2026-07-26: 案A・T-M7-09で実装）** — `runTextGeneration`（pipeline.ts）は`generate()`が成功returnした後にのみ`usage.calls`へ積むため、provider callが例外throw（`PauseTurnIncompleteError`・timeout・5xx等）した場合、`status:"failed"`/`error_code`付きの`ProviderCall`が記録されない。一方プロンプト設計書 §5.6は「全provider callを保存」、要件04 §10は「成功・失敗を問わず原価台帳へ記録」とする。M0では原価台帳（external_api_usage_events）連携自体が後続MS送りのため実害は潜在。要決定: 失敗callの記録を(案A)pipelineがtry/catchで`ProviderCall(status=failed)`を積む／(案B)worker/台帳MSが失敗時にexternal_api_usage_eventsへ直接記録する、のどちらにするか。※throw時はSDKがusageを返さないことが多く、記録できるのはrequest ID・error_code・発生事実に限られる点も考慮。`ProviderCallMeta`は既に`status`/`errorCode`を受け取れる（normalize.ts）。**T-M6-09時点の状態（2026-07-25）**: 原価台帳への記録は全AI job（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG）＋NEWSへ配線済み。ただし記録対象は`usage.calls`に現れるcall（`generate()`が返却した成功call＋status=failed返却call）に限られ、**provider例外throwのcallは依然として`calls`へ積まれず未記録**（pipeline.ts `callOnce`はgenerate成功後にのみpush）。案A（pipelineがtry/catchで`ProviderCall(status=failed)`を積む）か案Bかは未決のまま。
 
 **D-7: 依存の脆弱性の解消方針（T-M6-20で顕在化・2026-07-25／2026-07-26に前提を再調査）** — `npm audit` に high 3件（`sharp`＝libvips CVEでsharp<0.35.0、`next`／`postcss`＝next同梱）とmoderate 4件がある。いずれも修正には breaking upgrade（`sharp@0.35.x`・`next` minor）が必要で、画像正規化（image-normalize）とApp全体の再検証を伴う。T-M6-20 の release ゲート（`scripts/audit-check.mjs`）はこの3 high を **package名 allowlist（next/postcss/sharp）** で通し、critical と allowlist外 high は失敗させる暫定運用。要決定: (案A)次の保守枠で `sharp`/`next` を計画的に upgrade しフルスイート＋build＋画像テストで検証してから allowlist を外す（推奨） / (案B)現状維持しリリース後に対応。リリース前チェックリスト（T-M6-21）で判断する。**2026-07-26 決定: sharp/postcss は据え置き（案B）・next は先行upgrade（T-M7-10）**。ただし同日の再調査で前提が変わった: (1) `next` は 16.2.10→**16.2.12 のパッチ**で high 4件・moderate 5件が解消する（`>=16.0.0 <16.2.11` が対象。当初想定した minor upgrade は不要）。(2) `sharp` は依然 `<0.35.0` が対象で 0.35 系への breaking upgrade が必要（libvips CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）。(3) high の `postcss` は **next が pin する nested の 8.4.31**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。sharp/postcss の扱いは保守枠で再判断する。
+
+**D-9: 溜まった queued 通知メールの扱い（2026-07-28・T-M7-23で顕在化）** — ローカル検証で作られた通知が `email_status='queued'` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**production で初めて `scheduler_tick` が回ると宛先に一括送信される**（本人宛だが、古い内容が大量に届く）。要決定: (案A)本番移行前にローカル由来の古い通知を `not_requested` へ落とす／削除する（`npm run db:clean-test-data` の対象へ加える。推奨） / (案B)そのまま送る（内容は本人の下書き作成・投稿完了通知なので実害は小さい） / (案C)一定期間より古い queued は tick 側で送らず落とす仕様にする（要件04 §14 の変更を伴う）。なお本番DBはローカルとは別なので、影響するのは「このローカルDBを本番へ持ち込む場合」に限る。
 
 **D-8: CIを本番デプロイのブロック条件にするか（2026-07-27・T-M7-14で顕在化）** — `.github/workflows/ci.yml` は push / PR で `npm run release:check` を実行するが、**`main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む**。CIは「壊れたことを事後に知る」までしか担保しない。要決定: (案A)GitHub の branch protection で `main` を保護し `static`/`verify` を required status check にして、直push禁止・PR経由マージのみにする（緑でないと `main` に入らない＝productionビルドも始まらない。推奨。ただし1人開発でもPRを切る手間が増える） / (案B)現状維持（CIは通知用。デプロイ後に赤に気付いたら revert して再デプロイ）。設定はGitHub Settings → Branches の操作でユーザー作業。ローカルの `stg`／`main` 運用を変える判断も伴う。
 

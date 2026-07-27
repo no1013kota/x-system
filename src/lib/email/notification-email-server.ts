@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { pooledQueryable } from "../db/pool";
 import { env } from "../env";
 import {
+  canSendViaSmtp,
   sendQueuedNotificationEmail,
   type EmailTransport,
   type NotificationEmailResult,
@@ -29,6 +30,17 @@ function fromDomain(fromAddress: string): string {
 
 async function buildTransport(): Promise<EmailTransport | null> {
   if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER || !env.SMTP_APP_PASSWORD || !env.EMAIL_FROM) {
+    return null;
+  }
+  // production 以外から外部SMTPへ送らない（要件01 §8・verify-e2e「第三者への実メールを実行しない」）。
+  // ローカルの `.env.local` に実Gmailの認証情報が入っていると、scheduler tick が溜まっていた
+  // queued 通知をまとめて**実際に送信**する（2026-07-27 に98通を送信して判明）。設定を空にする
+  // 運用（local-development.md §5）は忘れられるので、環境で機械的に止める。
+  if (!canSendViaSmtp({ appEnv: env.APP_ENV, host: env.SMTP_HOST })) {
+    console.warn(
+      `[email] APP_ENV=${env.APP_ENV} のため外部SMTP(${env.SMTP_HOST})への送信をskipしました。` +
+        "ローカルで通知メールを確認するにはSMTP_HOSTをMailpit等のループバックへ向けてください。",
+    );
     return null;
   }
   const nodemailer = await import("nodemailer");

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
-| 更新日 | 2026-07-26 |
+| バージョン | v1.12 |
+| 更新日 | 2026-07-28 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -244,6 +244,8 @@ flowchart TD
 - `follower_snapshot`はJST当日分snapshotが無い`status=active`のXアカウントを対象に、user token別で自アカウントの`followers_count`を読み`(x_account_id, snapshot_date)`へupsertする（unique制約で同日再実行でも重複rowを作らない）。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。
 
 ## 14. 通知
+
+- **production 以外は外部SMTPへ送信しない**。`APP_ENV != production` かつ `SMTP_HOST` がループバック以外なら transport を構築せず skip する（開発機の `.env.local` に実SMTP資格情報が入っていると `scheduler_tick` が溜まった queued 通知を一括実送信するため。2026-07-27）。
 
 | event | type | dedupe key例 | link |
 |---|---|---|---|

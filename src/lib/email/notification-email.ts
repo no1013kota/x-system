@@ -142,3 +142,16 @@ export async function sendQueuedNotificationEmail(
     return { outcome: "failed", attempts };
   }
 }
+
+/**
+ * その環境からそのSMTPホストへ実送信してよいか。
+ *
+ * production 以外は**ループバック（Mailpit等）宛だけ**を許す。ローカルの `.env.local` に実Gmailの
+ * 認証情報が入っていると、scheduler tick が溜まっていた queued 通知をまとめて実送信してしまう
+ * （2026-07-27 に98通を送信して判明）。「設定を空にする」運用は忘れられるため機械的に止める。
+ */
+export function canSendViaSmtp(input: { appEnv: string; host: string }): boolean {
+  if (input.appEnv === "production") return true;
+  const host = input.host.trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
