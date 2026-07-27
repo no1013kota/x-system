@@ -1,6 +1,8 @@
 import { loadEnvConfig } from "@next/env";
 import { describe, expect, it } from "vitest";
 
+import { IMAGE_PROMPT_JSON_SCHEMA } from "../jobs/image-generation";
+
 /**
  * provider契約テスト（**実APIを呼ぶ**。既定では動かない）。
  *
@@ -45,13 +47,16 @@ const MINIMAL = {
   timeoutMs: 60_000,
 };
 
-/** 構造化出力の受理だけを見る最小schema。 */
-const TINY_SCHEMA = {
-  type: "object",
-  properties: { ok: { type: "boolean" } },
-  required: ["ok"],
-  additionalProperties: false,
-} as const;
+/**
+ * 構造化出力の検証には **本番が実際に送るschema** を使う。
+ *
+ * 2026-07-27、ここで独自の最小schemaを使っていたためにPT-IMGのschema不備を見逃した
+ * （`additionalProperties` 未指定でAnthropicが400、画像生成が必ず失敗。T-M7-21）。
+ * 自前で「正しいschema」を書くと、検証しているのが本番の形でなくなる。
+ */
+const PRODUCTION_SCHEMAS: Record<string, object> = {
+  "PT-IMG（画像プロンプト）": IMAGE_PROMPT_JSON_SCHEMA,
+};
 
 function hasKey(name: string): boolean {
   return Boolean(process.env[name]);
@@ -77,15 +82,16 @@ describe.runIf(ENABLED)("provider契約（実API）", () => {
     );
 
     it.runIf(hasKey("ANTHROPIC_API_KEY"))(
-      "構造化出力（output_config）が受理される",
+      "本番のschemaで構造化出力が受理される",
       async () => {
         const { createAnthropicTextGen } = await import("./anthropic-client");
         const gen = createAnthropicTextGen();
 
-        const res = await gen.generate({ ...MINIMAL, jsonSchema: TINY_SCHEMA });
-
-        expect(res.provider).toBe("anthropic");
-        expect(res.text.length).toBeGreaterThan(0);
+        for (const [label, schema] of Object.entries(PRODUCTION_SCHEMAS)) {
+          const res = await gen.generate({ ...MINIMAL, jsonSchema: schema });
+          expect(res.provider, label).toBe("anthropic");
+          expect(res.text.length, label).toBeGreaterThan(0);
+        }
       },
       120_000,
     );
@@ -107,14 +113,15 @@ describe.runIf(ENABLED)("provider契約（実API）", () => {
     );
 
     it.runIf(hasKey("OPENAI_API_KEY"))(
-      "構造化出力が受理される",
+      "本番のschemaで構造化出力が受理される",
       async () => {
         const { createOpenAITextGen } = await import("./openai-client");
         const gen = createOpenAITextGen();
 
-        const res = await gen.generate({ ...MINIMAL, jsonSchema: TINY_SCHEMA });
-
-        expect(res.provider).toBe("openai");
+        for (const [label, schema] of Object.entries(PRODUCTION_SCHEMAS)) {
+          const res = await gen.generate({ ...MINIMAL, jsonSchema: schema });
+          expect(res.provider, label).toBe("openai");
+        }
       },
       120_000,
     );
@@ -135,14 +142,15 @@ describe.runIf(ENABLED)("provider契約（実API）", () => {
     );
 
     it.runIf(hasKey("GEMINI_API_KEY"))(
-      "構造化出力が受理される",
+      "本番のschemaで構造化出力が受理される",
       async () => {
         const { createGeminiTextGen } = await import("./gemini-client");
         const gen = createGeminiTextGen();
 
-        const res = await gen.generate({ ...MINIMAL, jsonSchema: TINY_SCHEMA });
-
-        expect(res.provider).toBe("google");
+        for (const [label, schema] of Object.entries(PRODUCTION_SCHEMAS)) {
+          const res = await gen.generate({ ...MINIMAL, jsonSchema: schema });
+          expect(res.provider, label).toBe("google");
+        }
       },
       120_000,
     );

@@ -145,6 +145,16 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 検証: 実APIでP-6を生成し **succeeded（provider call 1回・7ポストの下書き作成・修復callなし）** を確認。テスト+14（実測した2つの応答形・括弧入り本文・後書き・配列・誤検出しないこと・cite除去と文字数の整合）。全1,249件緑。
 - 後続への注意: 修正前に生成された下書き `757b996e`（P-6・7ポスト）は **`<cite>` タグが本文に残ったまま**DBにある。表示・投稿する前に再生成するか手で消すこと。今回のような「実APIは通るがアプリの後段で落ちる」型は `npm run check:providers`（T-M7-16）では検出できない。契約テストは受理可否だけを見て、応答の形は見ないため。**Web検索を使う生成の実行確認は手動で1回通す**必要がある。
 
+### T-M7-21: 画像生成が structured output のschema不備で必ず失敗する `done`
+- 参照: プロンプト設計書 §5.1・§6.8、要件06 §3 / 依存: T-M7-16 / サイズ: S
+- 完了条件:
+  - 「画像を生成する」で下書きに画像が付く
+  - 同じschema不備を契約テストで検出できる
+- メモ: 「画像なし（生成失敗）」の報告。`generation_jobs.error.provider_raw_error` に原因がそのまま残っていた（T-M7-09 の失敗call記録が効いた）: `400 invalid_request_error: output_config.format.schema: For 'object' type, 'additionalProperties' must be explicitly set to false`。画像そのものではなく **前段のPT-IMG（画像プロンプト生成・structured output）** が落ちていた。
+- 実装結果: `image-generation.ts` のインラインJSON Schemaを `IMAGE_PROMPT_JSON_SCHEMA` として切り出し、`additionalProperties: false` を明示。あわせて `aspect` も `required` に入れた（OpenAIのstrictモードは全プロパティのrequiredを要求するため。想定外の値は `toAspectRatio` が 16:9 へ倒すので実害なし）。実APIで修正前=400／修正後=200 を確認。
+- 検証: 実APIで P-2＋画像ありを実行し、子 image job が **succeeded**・`drafts.images[0].status=ready`（openai / image/png / 2.6MB / Storage保存済み）を確認。
+- 後続への注意: **契約テスト（T-M7-16）がこれを見逃した**。テスト側が独自の最小schema（`TINY_SCHEMA`。たまたま `additionalProperties: false` を持っていた）を使っており、「本番のペイロードを送る」という自分で決めた原則を schema について破っていた。`PRODUCTION_SCHEMAS` として **本番が実際に送るschemaを import して回す**形へ変更済み。今後 structured output を使う実行を足したら、このマップへ追加すること。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。

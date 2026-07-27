@@ -39,6 +39,26 @@ const imagePromptSchema = z.object({
   aspect: z.string().optional(),
 });
 
+/**
+ * PT-IMG に渡す structured output のJSON Schema（プロンプト設計書 §5.1・§6.8）。
+ *
+ * providerのstrictな検証に合わせて **`additionalProperties: false` を明示し、全プロパティを
+ * `required` に入れる**。2026-07-27 に Anthropic が
+ * `output_config.format.schema: For 'object' type, 'additionalProperties' must be explicitly
+ * set to false` を返し、画像生成が必ず「画像なし（生成失敗）」になっていた。OpenAIのstrict
+ * モードは加えて全プロパティのrequiredを要求するため、両方を満たす形にしてある。
+ * `aspect` を必須にしても、想定外の値・空文字は `toAspectRatio` が 16:9 へ倒す。
+ */
+export const IMAGE_PROMPT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    prompt: { type: "string" },
+    aspect: { type: "string" },
+  },
+  required: ["prompt", "aspect"],
+  additionalProperties: false,
+} as const;
+
 const SUPPORTED_ASPECTS: readonly AspectRatio[] = ["16:9", "1:1", "9:16"];
 function toAspectRatio(raw: string | undefined): AspectRatio {
   return SUPPORTED_ASPECTS.find((a) => a === raw) ?? "16:9";
@@ -299,7 +319,12 @@ export async function executeImageGeneration(
       request: {
         system: [],
         user: promptUser,
-        jsonSchema: { type: "object", properties: { prompt: { type: "string" }, aspect: { type: "string" } }, required: ["prompt"] },
+        // provider の strict な structured output に合わせる（2026-07-27 実測）:
+        // Anthropic は object に `additionalProperties: false` の明示を要求し、無いと
+        // `400 invalid_request_error` で画像プロンプト生成が必ず失敗する。OpenAI の strict
+        // モードは加えて全プロパティが `required` にあることを要求するため、`aspect` も
+        // 必須にして常に返させる（値の既定化は `toAspectRatio` が担う）。
+        jsonSchema: IMAGE_PROMPT_JSON_SCHEMA,
         timeoutMs: deadline.callTimeoutMs(),
       },
       schema: imagePromptSchema,
