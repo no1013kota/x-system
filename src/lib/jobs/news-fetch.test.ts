@@ -12,7 +12,9 @@ function item(url: string): NewsItemOut {
 }
 
 function research(urls: string[]): NewsResearchResult {
-  return { items: urls.map(item), usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
+  return { items: urls.map(item), dropped: 0,
+  dropReasons: {},
+  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
 }
 
 /** mock db where a source_url in `existing` (canonical) returns rowCount 0 (on conflict). */

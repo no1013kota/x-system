@@ -9,6 +9,7 @@ import {
   researchNews,
   type NewsResearchDeps,
   pickValidItems,
+  formatDropReasons,
 } from "./news-research";
 
 const KNOWN_URLS = /from news_items/;
@@ -194,7 +195,20 @@ describe("pickValidItems（item単位の選別）", () => {
     expect(pickValidItems(many).items.length).toBeLessThanOrEqual(5);
   });
 
-  it("空配列はそのまま0件（落とした件数も0）", () => {
-    expect(pickValidItems([])).toEqual({ items: [], dropped: 0 });
+  it("空配列はそのまま0件（落とした件数も理由も0）", () => {
+    expect(pickValidItems([])).toEqual({ items: [], dropped: 0, reasons: {} });
+  });
+
+  it("除外理由を内訳で返す（0件の原因を説明できるように）", () => {
+    const tooLongSummary = {
+      title: "短いタイトル",
+      summary: "x".repeat(200),
+      source_url: "https://example.com/a",
+      impact: "high" as const,
+    };
+    const r = pickValidItems([tooLongSummary, { ...tooLongSummary, source_url: "https://example.com/b" }]);
+    expect(r.dropped).toBe(2);
+    expect(r.reasons["summary:too_big"]).toBe(2);
+    expect(formatDropReasons(r.reasons)).toBe("summary:too_big×2");
   });
 });

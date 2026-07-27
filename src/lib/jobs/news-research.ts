@@ -52,17 +52,43 @@ const newsEnvelopeSchema = z.object({
   items: z.array(z.unknown()).max(NEWS_MAX_ITEMS * 4),
 });
 
-/** 規定を満たす item だけを残す。落とした件数は呼び出し側が記録できるよう返す。 */
-export function pickValidItems(raw: unknown[]): { items: NewsItemOut[]; dropped: number } {
+/**
+ * 規定を満たす item だけを残す。落とした件数と**理由**を返す。
+ *
+ * 理由を返すのは、0件になったときに「該当ニュースが無い」のか「応答が契約を満たさず全滅した」のかを
+ * 呼び出し側が説明できるようにするため。件数だけだと運用でどちらか判別できない（T-M7-24）。
+ */
+export function pickValidItems(raw: unknown[]): {
+  items: NewsItemOut[];
+  dropped: number;
+  /** 落とした理由の内訳（例 `title:too_big` → 3）。 */
+  reasons: Record<string, number>;
+} {
   const items: NewsItemOut[] = [];
+  const reasons: Record<string, number> = {};
   let dropped = 0;
   for (const candidate of raw) {
     const parsed = newsItemSchema.safeParse(candidate);
-    if (parsed.success) items.push(parsed.data);
-    else dropped++;
+    if (parsed.success) {
+      items.push(parsed.data);
+    } else {
+      dropped++;
+      for (const issue of parsed.error.issues) {
+        const key = `${issue.path.join(".") || "(root)"}:${issue.code}`;
+        reasons[key] = (reasons[key] ?? 0) + 1;
+      }
+    }
     if (items.length >= NEWS_MAX_ITEMS) break;
   }
-  return { items, dropped };
+  return { items, dropped, reasons };
+}
+
+/** 除外理由を1行に畳む（ログ・スモークの表示用）。 */
+export function formatDropReasons(reasons: Record<string, number>): string {
+  return Object.entries(reasons)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, n]) => `${key}×${n}`)
+    .join(", ");
 }
 
 export type NewsItemOut = z.infer<typeof newsItemSchema>;
@@ -100,6 +126,10 @@ export interface NewsResearchDeps {
 
 export interface NewsResearchResult {
   items: NewsItemOut[];
+  /** 規定を満たさず除外したitem数。**0件が「該当なし」か「全滅」かを呼び出し側が区別するために返す**。 */
+  dropped: number;
+  /** 除外理由の内訳（例 `title:too_big` → 3）。 */
+  dropReasons: Record<string, number>;
   usage: GenerationUsage;
   hours: number;
 }
@@ -168,10 +198,12 @@ export async function researchNews(
   }
 
   await recordNewsUsage(deps, result.usage.calls);
-  const { items, dropped } = pickValidItems(result.parsed.items);
+  const { items, dropped, reasons } = pickValidItems(result.parsed.items);
   if (dropped > 0) {
     // 規定外は捨てるが、黙って減らすと「取得0件」と区別が付かないので必ず残す。
-    console.warn(`[news_fetch] ${category}: 規定を満たさない ${dropped} 件を除外しました`);
+    console.warn(
+      `[news_fetch] ${category}: 規定を満たさない ${dropped} 件を除外しました（${formatDropReasons(reasons)}）`,
+    );
   }
-  return { items, usage: result.usage, hours };
+  return { items, dropped, dropReasons: reasons, usage: result.usage, hours };
 }
