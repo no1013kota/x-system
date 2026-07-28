@@ -10,6 +10,7 @@ import {
   type NewsResearchDeps,
   pickValidItems,
   formatDropReasons,
+  normalizePublishedAt,
 } from "./news-research";
 
 const KNOWN_URLS = /from news_items/;
@@ -173,7 +174,7 @@ describe("pickValidItems（item単位の選別）", () => {
     const tooLong = {
       ...valid,
       title: "Storj Labs files Chapter 11 bankruptcy protection",
-      summary: "x".repeat(200),
+      summary: "x".repeat(220),
       source_url: "https://example.com/b",
     };
     const r = pickValidItems([valid, tooLong, { ...valid, source_url: "https://example.com/c" }]);
@@ -202,7 +203,7 @@ describe("pickValidItems（item単位の選別）", () => {
   it("除外理由を内訳で返す（0件の原因を説明できるように）", () => {
     const tooLongSummary = {
       title: "短いタイトル",
-      summary: "x".repeat(200),
+      summary: "x".repeat(220),
       source_url: "https://example.com/a",
       impact: "high" as const,
     };
@@ -210,5 +211,80 @@ describe("pickValidItems（item単位の選別）", () => {
     expect(r.dropped).toBe(2);
     expect(r.reasons["summary:too_big"]).toBe(2);
     expect(formatDropReasons(r.reasons)).toBe("summary:too_big×2");
+  });
+});
+
+describe("summary の上限（D-12 案B: 200字）", () => {
+  const base = {
+    title: "短いタイトル",
+    source_url: "https://example.com/a",
+    impact: "high" as const,
+  };
+
+  it("200字ちょうどは通る", () => {
+    const r = pickValidItems([{ ...base, summary: "あ".repeat(200) }]);
+    expect(r.items).toHaveLength(1);
+  });
+
+  it("201字は落とす（上限そのものは残す）", () => {
+    const r = pickValidItems([{ ...base, summary: "あ".repeat(201) }]);
+    expect(r.dropped).toBe(1);
+    expect(r.reasons["summary:too_big"]).toBe(1);
+  });
+
+  it("旧上限（120字）超でも200字以内なら通る＝全滅の原因が解消している", () => {
+    const r = pickValidItems([{ ...base, summary: "あ".repeat(160) }]);
+    expect(r.items).toHaveLength(1);
+  });
+});
+
+describe("normalizePublishedAt（任意項目でitemを失わない）", () => {
+  it("日付のみは00:00 UTCとして受ける", () => {
+    expect(normalizePublishedAt("2026-07-28")).toBe("2026-07-28T00:00:00Z");
+  });
+
+  it("タイムゾーン無しはUTCとみなす", () => {
+    expect(normalizePublishedAt("2026-07-28T09:43:00")).toBe("2026-07-28T09:43:00Z");
+    expect(normalizePublishedAt("2026-07-28 09:43:00")).toBe("2026-07-28T09:43:00Z");
+  });
+
+  it("既にISO（Z・オフセット付き）ならそのまま通る", () => {
+    for (const v of ["2026-07-28T09:43:00Z", "2026-07-28T09:43:00+09:00"]) {
+      expect(normalizePublishedAt(v)).toBeTruthy();
+    }
+  });
+
+  it("解釈できない値・欠落は undefined（itemは残す）", () => {
+    for (const v of ["", "  ", "先週", undefined, null, 123]) {
+      expect(normalizePublishedAt(v)).toBeUndefined();
+    }
+  });
+
+  it("published_at が壊れていても item は採用される（0件化させない）", () => {
+    const r = pickValidItems([
+      {
+        title: "短いタイトル",
+        summary: "要約",
+        source_url: "https://example.com/a",
+        impact: "high",
+        published_at: "先週ごろ",
+      },
+    ]);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].published_at).toBeUndefined();
+  });
+
+  it("日付のみで届いても item は採用される（D-12検証時に5件すべて失っていた形）", () => {
+    const r = pickValidItems([
+      {
+        title: "短いタイトル",
+        summary: "要約",
+        source_url: "https://example.com/a",
+        impact: "high",
+        published_at: "2026-07-28",
+      },
+    ]);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].published_at).toBe("2026-07-28T00:00:00Z");
   });
 });

@@ -27,12 +27,37 @@ const KNOWN_URLS_WINDOW_HOURS = 48;
 const KNOWN_URLS_LIMIT = 200;
 const NEWS_WEB_SEARCH_MAX_USES = 5;
 
+/**
+ * `published_at` をISO 8601（オフセット付き）へ寄せる。寄せられなければ `undefined` を返し、
+ * **itemそのものは残す**（任意項目のために本体を失わないため）。
+ * 受け付ける形: `2026-07-28` / `2026-07-28T09:43:00` / `2026-07-28 09:43:00` / 既にISOのもの。
+ */
+export function normalizePublishedAt(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (value === "") return undefined;
+  // 日付のみ → その日の00:00 UTCとして扱う（時刻不明を捏造しない範囲で最小の補完）。
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00Z`;
+  // 「日付 時刻」区切りの空白をTへ、タイムゾーンが無ければUTCとみなす。
+  const iso = value.replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(iso)) return `${iso}Z`;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
 const newsItemSchema = z.object({
   title: z.string().min(1).max(30),
-  summary: z.string().min(1).max(120),
+  // 200字上限（要決定D-12 案B・2026-07-28）。当初120字だったが、モデルが安定して守れず
+  // `summary:too_big` で分野ごと全滅する事象が実測で2回連続発生した（T-M7-25）。
+  // 表示側は `line-clamp-2` なので長くてもレイアウトは破綻しない。
+  summary: z.string().min(1).max(200),
   source_url: z.url(),
   impact: z.enum(["high", "mid", "low"]),
-  published_at: z.iso.datetime({ offset: true }).optional(),
+  // **任意項目なので、形式が違っても item ごと捨てない**（正規化できなければ落とすだけ）。
+  // ニュース記事は日付だけ（`2026-07-28`）やタイムゾーン無しで書かれることが多く、
+  // 厳密な ISO 8601 を要求していたため 5件すべてが弾かれ分野が0件になっていた（D-12検証時に実測）。
+  published_at: z.preprocess(normalizePublishedAt, z.iso.datetime({ offset: true }).optional()),
 });
 
 /** SYS-NEWS 応答契約（最大5件・空配列許容, §6.10/§7）。1件でも欠ければ応答全体が不正。 */
@@ -45,7 +70,7 @@ export const newsOutputSchema = z.object({
  *
  * 厳密な `newsOutputSchema` をそのまま検証に使うと、1件でも規定を外れた瞬間に応答全体が捨てられ、
  * 修復callも空配列を返して**その分野のニュースが常にゼロ件**になる（2026-07-28、web3で実測:
- * 英語ソースのため title 38〜56字・summary 210〜293字となり上限30/120字に抵触、4件すべて破棄）。
+ * 英語ソースのため title 38〜56字・summary 210〜293字となり当時の上限30/120字に抵触、4件すべて破棄）。
  * 器だけを検証して item は個別に選別する（`pickValidItems`）。
  */
 const newsEnvelopeSchema = z.object({
