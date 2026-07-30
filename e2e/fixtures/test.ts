@@ -73,3 +73,47 @@ export async function runJobNow(page: Page, jobId: string): Promise<void> {
   });
   expect(res.status(), "worker dispatch").toBe(202);
 }
+
+/* ---- Mailpit（ローカルのメール受信）--------------------------------------
+ * サインアップ確認・パスワード再設定はどちらもメールのリンクを踏む必要がある。
+ * 外部へは送信されず、`supabase start` が立てるMailpitが受け取る。
+ */
+const MAILPIT = process.env.MAILPIT_URL ?? "http://127.0.0.1:54324";
+
+export interface MailpitMessage {
+  ID: string;
+  To: { Address: string }[];
+  Subject: string;
+}
+
+/** 宛先が一致する最新のメールを待つ（Mailpitは共有なので宛先で絞る）。 */
+export async function waitForMail(to: string): Promise<MailpitMessage> {
+  let last: MailpitMessage | undefined;
+  await expect
+    .poll(
+      async () => {
+        const res = await fetch(`${MAILPIT}/api/v1/messages?limit=50`);
+        if (!res.ok) return false;
+        const body = (await res.json()) as { messages: MailpitMessage[] };
+        last = body.messages.find((m) => m.To.some((t) => t.Address === to));
+        return Boolean(last);
+      },
+      { timeout: 30_000, message: `${to} 宛の確認メールが届くこと` },
+    )
+    .toBe(true);
+  return last as MailpitMessage;
+}
+
+/** メール本文から `/auth/confirm` のURLを取り出す。 */
+export async function confirmUrlFromMail(messageId: string): Promise<string> {
+  const res = await fetch(`${MAILPIT}/api/v1/message/${messageId}`);
+  expect(res.ok, "Mailpitからメール本文を取得できること").toBe(true);
+  const body = (await res.json()) as { HTML?: string; Text?: string };
+  const source = `${body.HTML ?? ""}\n${body.Text ?? ""}`;
+  const match = /https?:\/\/[^\s"'<>]*\/auth\/confirm\?[^\s"'<>]+/.exec(source);
+  expect(match, "確認メールに /auth/confirm のリンクが含まれること").not.toBeNull();
+  // HTMLメールでは & が &amp; にエスケープされるため戻す。
+  return (match as RegExpExecArray)[0].replace(/&amp;/g, "&");
+}
+
+
