@@ -1,0 +1,136 @@
+import { randomUUID } from "node:crypto";
+
+import { deleteTestImage, query, uploadTestImage } from "./fixtures/account";
+import { expect, signIn, test } from "./fixtures/test";
+
+/**
+ * 生成画像プレビューの描画（要件06 §6、T-M7-22 の回帰・T-M7-26）。
+ *
+ * **要素があることではなく、ブラウザが実際に読み込めたことを見る。** 2026-07-27、CSPの
+ * `img-src` が署名URL（ローカルSupabaseの http オリジン）を弾き、生成画像が必ず非表示に
+ * なっていた。DOMには `<img>` が存在し、エラーも出ず、`naturalWidth` だけが 0 だった。
+ * 当時この経路をE2Eが一度も踏んでいなかったため、人が画面を見るまで誰も気付けなかった。
+ *
+ * 画像生成jobは実APIを叩くのでE2Eでは動かさない。**実物のPNGをStorageへ置き**、それを指す
+ * 下書きを作って描画だけを検証する（生成そのものは `npm run smoke:live` が見る）。
+ */
+
+interface Seeded {
+  draftId: string;
+  storagePath: string;
+}
+
+/** ready な画像を1枚持つ下書きを作る。Storageへ実物のPNGも置く。 */
+async function seedDraftWithImage(account: {
+  userId: string;
+  xAccountId: string;
+}): Promise<Seeded> {
+  const localId = randomUUID();
+  const draftId = randomUUID();
+  // 本番と同じ階層（user/xAccount/draft/local_id.png）に置く。
+  const storagePath = `${account.userId}/${account.xAccountId}/${draftId}/${localId}.png`;
+  await uploadTestImage(storagePath);
+
+  const thread = [
+    {
+      local_id: "p1",
+      text: "画像付きの下書きです。プレビューが表示されることを確認します。",
+      weighted_length: 32,
+      sources: [],
+      warnings: [],
+    },
+  ];
+  const images = [
+    {
+      local_id: localId,
+      post_local_id: "p1",
+      status: "ready",
+      provider: "openai",
+      mime_type: "image/png",
+      size_bytes: 4096,
+      storage_path: storagePath,
+    },
+  ];
+  await query(
+    `insert into drafts (id, x_account_id, pattern, thread, initial_thread, status, images)
+     values ($1, $2, 'p2', $3::jsonb, $3::jsonb, 'draft', $4::jsonb)`,
+    [draftId, account.xAccountId, JSON.stringify(thread), JSON.stringify(images)],
+  );
+  return { draftId, storagePath };
+}
+
+test("生成画像プレビューが実際に読み込めて表示される", async ({ accounts, page }) => {
+  const account = await accounts.create("draft-image");
+  const seeded = await seedDraftWithImage(account);
+
+  const consoleErrors: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") consoleErrors.push(m.text());
+  });
+  page.on("requestfailed", (r) => {
+    consoleErrors.push(`requestfailed: ${r.failure()?.errorText} ${r.url().slice(0, 60)}`);
+  });
+
+  try {
+    await signIn(page, account);
+
+    for (const [label, width, height] of [
+      ["desktop", 1440, 900],
+      ["mobile", 390, 844],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto(`/app/posts?tab=drafts&draftId=${seeded.draftId}`);
+
+      const img = page.getByAltText("生成画像プレビュー");
+      await expect(img, `${label}: プレビューのimgが出ること`).toBeVisible();
+
+      // **ここが本題**: 要素の存在ではなく、ブラウザが実際にデコードできたこと。
+      // CSP違反・署名URL失効・デコード失敗はすべて naturalWidth === 0 に現れる。
+      const loaded = await img.evaluate((el: HTMLImageElement) => ({
+        complete: el.complete,
+        naturalWidth: el.naturalWidth,
+        naturalHeight: el.naturalHeight,
+        renderWidth: Math.round(el.getBoundingClientRect().width),
+      }));
+      expect(loaded.naturalWidth, `${label}: 画像が読み込めていること（CSP/署名URL）`).toBeGreaterThan(0);
+      expect(loaded.naturalHeight, `${label}: 高さも取れていること`).toBeGreaterThan(0);
+      expect(loaded.renderWidth, `${label}: 実際に描画されていること`).toBeGreaterThan(0);
+
+      // 画像を入れてもページが横にはみ出さない
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `${label}: 横スクロールが出ないこと`).toBeLessThanOrEqual(0);
+    }
+
+    // CSP違反はコンソールエラーとして出るため、0件であることも確かめる
+    expect(consoleErrors, `コンソールエラー: ${consoleErrors.join(" / ")}`).toEqual([]);
+  } finally {
+    await deleteTestImage(seeded.storagePath);
+  }
+});
+
+test("画像生成に失敗した下書きは「画像なし」と分かる形で出る", async ({ accounts, page }) => {
+  const account = await accounts.create("draft-image-failed");
+  const thread = [
+    { local_id: "p1", text: "画像生成が失敗した下書きです。", weighted_length: 16, sources: [], warnings: [] },
+  ];
+  // 失敗時は storage_path が空で status=failed（image-generation の persistImageFailure と同じ形）。
+  const images = [
+    { local_id: randomUUID(), post_local_id: "p1", status: "failed", storage_path: "" },
+  ];
+  const [draft] = await query<{ id: string }>(
+    `insert into drafts (x_account_id, pattern, thread, initial_thread, status, images)
+     values ($1, 'p2', $2::jsonb, $2::jsonb, 'draft', $3::jsonb) returning id`,
+    [account.xAccountId, JSON.stringify(thread), JSON.stringify(images)],
+  );
+
+  await signIn(page, account);
+  await page.goto(`/app/posts?tab=drafts&draftId=${draft.id}`);
+
+  // 本文は読めて、画像だけが失敗したと分かる（行き止まりにしない）
+  await expect(page.getByText("画像生成が失敗した下書きです。")).toBeVisible();
+  // バッジ（カード上部）とプレースホルダ（画像の場所）の2箇所に出る作りなので first を見る。
+  await expect(page.getByText("画像なし（生成失敗）").first()).toBeVisible();
+  await expect(page.getByAltText("生成画像プレビュー")).toHaveCount(0);
+});
