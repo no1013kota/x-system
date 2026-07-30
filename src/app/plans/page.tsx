@@ -200,8 +200,15 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             </p>
           </section>
 
-          {/* プラン比較表（SC-04: 3プラン比較） */}
-          <section aria-label="料金プラン比較" className="overflow-x-auto">
+          {/*
+           * プラン比較表（SC-04: 3プラン比較）。
+           *
+           * `relative` is required, not cosmetic: the cells hold `sr-only` labels
+           * (`position: absolute`). Without a positioned ancestor their containing block is the
+           * initial containing block, so the scroll container does not clip them and they stretch
+           * the page itself — the whole page scrolled sideways 183px at 390px wide (T-M7-26).
+           */}
+          <section aria-label="料金プラン比較" className="relative overflow-x-auto">
             <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
               <caption className="sr-only">Space AI 料金プラン比較</caption>
               <colgroup>

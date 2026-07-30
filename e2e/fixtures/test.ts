@@ -43,11 +43,27 @@ export function alertIn(page: Page): Locator {
 }
 
 /**
+ * ページ全体が横に何pxはみ出しているか（0なら横スクロールが出ない）。
+ *
+ * 絶対配置の要素（`sr-only` を含む）は、位置指定されていないスクロール容器では**クリップされず
+ * ページ自体を伸ばす**。要素の矩形を1つずつ見ても気づけないため、ページ全体の値で判定する。
+ */
+export async function horizontalOverflow(page: Page): Promise<number> {
+  return page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+}
+
+/**
  * ログインフォームから認証してAppへ入る。Turnstileはローカルのテストキー
  * （`1x00000000000000000000AA`＝常に通過）で自動的に解決されるため、hidden の
  * `captcha_token` に値が入るまで待ってから送信する（空のまま送ると検証エラーになる）。
  */
-export async function signIn(page: Page, account: TestAccount): Promise<void> {
+export async function signIn(
+  page: Page,
+  account: TestAccount,
+  options: { waitFor?: RegExp } = {},
+): Promise<void> {
   await page.goto("/login");
   await page.locator('input[type="email"]').fill(account.email);
   await page.locator('input[type="password"]').fill(account.password);
@@ -58,7 +74,8 @@ export async function signIn(page: Page, account: TestAccount): Promise<void> {
     })
     .not.toBe("");
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL(/\/app(\/|$|\?)/);
+  // 契約状態によって遷移先が変わる（未契約は /plans。要件03 §2）。既定はアプリ本体。
+  await page.waitForURL(options.waitFor ?? /\/app(\/|$|\?)/);
 }
 
 /**
