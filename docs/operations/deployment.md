@@ -20,7 +20,16 @@ Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ�
 npm run release:check    # typecheck → lint → 依存監査 → test:db → build → test:e2e
 ```
 
-同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。ただし **CIはデプロイをブロックしない**（`main` への push でCIとVercelのproductionビルドは並行して走る）。ブロックしたい場合は branch protection で `main` を保護し、CIをrequired status checkにしてPR経由でのみマージする。
+同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。
+
+**リリースの流れ（要決定D-8 案A・2026-07-30）**
+
+1. `stg` へ push → CI が緑になるのを確認
+2. staging の Supabase へ `supabase db push` → §5 の検証
+3. `stg` → `main` の **プルリクエストを作る**（`main` への直pushは branch protection で禁止）
+4. PR上でCIが緑になったらマージ → production ビルドが始まる
+
+`main` は branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にする。**CIが緑でないと `main` に入らないため、production ビルドも始まらない。** GitHub側の設定手順は `tasks/BACKLOG.md` の「外部準備 → リリース運用」に記載（**未実施のあいだは赤でもデプロイが進む**点に注意）。
 
 ---
 
