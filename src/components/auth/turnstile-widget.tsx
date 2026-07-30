@@ -25,6 +25,9 @@ declare global {
   }
 }
 
+/** スクリプトの読み込みを待つ上限。超えたら黙って空欄にせず、再読み込みを促す。 */
+const SCRIPT_WAIT_MS = 15_000;
+
 const TURNSTILE_SCRIPT_URL =
   "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
@@ -45,6 +48,39 @@ export function TurnstileWidget({
   const [token, setToken] = useState("");
   const [widgetError, setWidgetError] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  /**
+   * `onReady` だけに依存しない（2026-07-31）。
+   *
+   * `next/script` は同じ `id` のスクリプトを内部でキャッシュするため、**読み込み中に unmount
+   * されると次のマウントで `onReady` が発火しない**。ログイン画面で初期化が終わる前に
+   * 「パスワードを忘れた方」へ遷移すると、再設定フォームのウィジェットが永久に描画されず
+   * （iframeもトークンもエラーも無し）、申請ができなくなっていた（E2Eで30秒待っても復帰せず）。
+   * そこで `window.turnstile` の存在自体も準備完了の合図として扱う。
+   */
+  useEffect(() => {
+    if (scriptReady) return;
+    // setState は必ずコールバック側で呼ぶ（effect本文での同期setStateは連鎖renderを招く）。
+    const timer = setInterval(() => {
+      if (window.turnstile) {
+        setScriptReady(true);
+        clearInterval(timer);
+      }
+    }, 100);
+    // 読み込めないまま黙って空欄になるのを防ぐ（原因不明の行き止まりにしない）。
+    const giveUp = setTimeout(() => {
+      clearInterval(timer);
+      if (!window.turnstile) {
+        setWidgetError(
+          "人間であることの確認を読み込めませんでした。ページを再読み込みしてください。",
+        );
+      }
+    }, SCRIPT_WAIT_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(giveUp);
+    };
+  }, [scriptReady]);
 
   useEffect(() => {
     if (!scriptReady || !siteKey || !containerRef.current || !window.turnstile) {

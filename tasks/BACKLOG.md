@@ -29,7 +29,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 3. **`stg` → `main` のPRを作ってマージ**（staging検証後）。`main` 保護後は直pushできない。マージで production ビルドが走る
 4. 検証カバレッジの残り（T-M7-26〜28）→ 運用の可視化（T-M7-29・30）→ 決定に伴う後始末（T-M7-31 通知の掃除・T-M7-32 sharp upgrade）
 
-**リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 16件緑（9ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` へは**PR経由**で反映する運用（D-8 案A。GitHub側の保護設定は未実施）。**未pushのコミットがあるので `git branch -vv` で確認する**。
+**リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 19件緑（10ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` へは**PR経由**で反映する運用（D-8 案A。GitHub側の保護設定は未実施）。**未pushのコミットがあるので `git branch -vv` で確認する**。
 
 > 開発の進め方とテストの層ごとの役割は [開発とテストの進め方](../docs/operations/development-and-testing.md) を読む。
 
@@ -222,8 +222,19 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
   - 課金（プラン選択→checkout導線）・学習ソース追加削除・ベースmd編集・パスワード再設定の主要フローにE2Eがある
   - ~~**生成画像プレビューを実データで描画するspecがある**（`naturalWidth > 0` を確認する）~~ → **2026-07-31 完了**（`e2e/draft-image.spec.ts` 2件）
   - 外部サービスへ実際のセッションを作らずに検証する（遷移先の検査で足りる範囲に留める）
+- 進捗（2026-07-31）: パスワード再設定を実装（`e2e/password-reset.spec.ts` 3件）。申請→Mailpitのリンク→新パスワード設定→新パスワードでログイン→**旧パスワードでは入れない**まで通す。未登録メールでも「受け付けた」表示になり利用者が作られないこと（列挙対策）も固定。Mailpitヘルパー（`waitForMail`／`confirmUrlFromMail`）は `auth.spec.ts` から `fixtures/test.ts` へ移して共有した。
+  **この過程で本物の不具合を発見・修正した**（下記メモ）。
 - 進捗（2026-07-31）: **画像描画を先に実装した**（`e2e/draft-image.spec.ts`・E2Eは9ファイル16件へ）。`uploadTestImage`／`deleteTestImage` を fixture に追加し、**sharpで実物の16:9 PNGを作ってprivate Storageへ置き**、署名URL経由でブラウザが読み込めたこと（`naturalWidth > 0`・横あふれ0・コンソールエラー0）をdesktop/mobileの両幅で検証する。画像生成失敗時に「画像なし（生成失敗）」がバッジとプレースホルダの2箇所へ出て本文は読めることも固定した。**検出力を実測**: CSPから `supabaseOrigin()` を外すと `naturalWidth=0` で落ちることを確認（T-M7-22 の再現）。残りは課金・学習ソース・ベースmd編集・パスワード再設定。
 - メモ: 当初のE2Eは8ファイル14件で、認証・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆う。上記4領域が未カバー（`ci.md` §4 に明記済み）。課金は checkout/portal が Stripe へ実際にセッションを作るため、`x-oauth.spec.ts` と同じ `maxRedirects: 0` で**遷移先だけを見る**形にする。パスワード再設定はMailpitからリンクを取る（`auth.spec.ts` と同じ方式が使える）。
+
+### T-M7-33: パスワード再設定の人間確認が表示されず申請できない不具合を修正 `done`
+- 参照: PRD A-2、要件06 SC-02 / 依存: なし / サイズ: S
+- 完了条件:
+  - ログイン画面から即座に「パスワードを忘れた方」へ遷移しても人間確認（Turnstile）が表示され、申請できる
+  - 読み込めなかった場合に黙って空欄にせず、利用者に次の操作を示す
+- メモ: T-M7-26 のE2Eを書いていて発見。**ログイン画面のTurnstile初期化が終わる前にリンクを押すと、再設定フォームのウィジェットが永久に描画されない**（iframe・トークン・コンソールエラーのすべてが無く、30秒待っても復帰しない＝申請不能）。原因は `next/script` が同じ `id` のスクリプトを内部でキャッシュするため、**読み込み中にunmountされると次のマウントで `onReady` が発火しない**こと。`scriptReady` が永久にfalseのままで `turnstile.render()` が呼ばれなかった。
+- 実装結果: `turnstile-widget.tsx` で `onReady` だけに依存せず、`window.turnstile` の存在自体も準備完了の合図として扱う（100msごとに確認）。あわせて15秒で諦めて「ページを再読み込みしてください」を表示し、**原因不明の行き止まりにしない**（要件04 §14 と同じ「空と失敗を区別する」方針）。effect本文での同期setStateはlintで禁じられているためコールバック側で呼ぶ。
+- 検証: 修正前は30秒でトークン0・iframe0を実測。修正後は3秒でトークンが入る。回帰テストを `password-reset.spec.ts` に「ログイン画面から即座に遷移しても人間確認が表示される」として固定した。**単体テストは追加していない**（Reactコンポーネントのテスト環境が未導入〈vitestは`environment: node`・testing-library未導入〉で、かつ `next/script` のキャッシュ挙動はjsdomでは再現しないため、実ブラウザのE2Eが唯一有効な回帰テスト）。
 
 ### T-M7-27: Server Actionの本番実装テストを主要actionへ広げる `todo`
 - 参照: [開発とテストの進め方](../docs/operations/development-and-testing.md) §4 / 依存: なし / サイズ: L
