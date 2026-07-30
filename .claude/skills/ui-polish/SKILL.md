@@ -16,7 +16,7 @@ description: Space AIのNext.js画面・Reactコンポーネントを新規作�
 3. **実装**: App Router／Server・Client境界／Tailwind 4／shadcn/ui の既存構成に従う。色・余白・角丸・影は CSS変数か既存ユーティリティを使う。該当する状態（hover / focus-visible / disabled / loading / empty / error / success）を実装。主要導線は WCAG 2.2 AA（キーボード操作・明瞭なfocus・label・色以外の状態表現）。`prefers-reduced-motion` を尊重。仕様や画面挙動を変えたら同じ作業で正本docsを更新する。
 
 4. **実ブラウザ検証**（実装だけで完了にしない）:
-   - `npm run dev` を起動し **`http://127.0.0.1:3000`** を使う（`localhost` は `allowedDevOrigins` により HMR が弾かれる）。
+   - `npm run dev` を起動し **`http://127.0.0.1:3000`** を使う（X OAuth が `localhost` を許さないため。`next.config.ts` の `allowedDevOrigins` で 127.0.0.1 からの HMR は許可済み）。
    - Next.js DevTools MCP があればランタイム／ビルド／Hydration エラーを確認。
    - 認証必須画面はテストユーザーでログインして開く（playwright-cli の storage-state 参照）。
    - Playwright CLI で Desktop 1440 / Tablet 768 / Mobile 390 のスクショを取り、該当テーマ・主要状態・キーボード導線を確認。

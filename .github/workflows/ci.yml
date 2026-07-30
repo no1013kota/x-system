@@ -91,8 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts
-          path: |
-            playwright-report/
-            test-results/
+          # html reporter は未設定のため playwright-report/ は生成されない（trace/screenshot は test-results/）。
+          path: test-results/
           retention-days: 7
           if-no-files-found: ignore

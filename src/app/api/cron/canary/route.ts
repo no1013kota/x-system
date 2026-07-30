@@ -13,8 +13,9 @@ import { isValidCronAuth } from "@/lib/jobs/auth";
  * 生成対象は必ず呼び出し側が明示する）。作成した下書き・jobはシナリオ側で削除する。
  *
  * 判定は `src/lib/smoke/scenarios.ts` に集約し、`npm run smoke:live` と同じものを使う。
- * ローカルとデプロイ先で違う結果になるもの（CSP・env欠落・migration未適用）は、
- * デプロイ先でこのrouteを叩いて初めて分かる。
+ * ローカルとデプロイ先で違う結果になるもの（env欠落・migration未適用・provider設定）は、
+ * デプロイ先でこのrouteを叩いて初めて分かる。**ブラウザは起動しないのでCSP・署名URL・
+ * 描画崩れは検出できない**（その環境を実際に開いて確認する）。
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
