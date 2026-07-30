@@ -29,7 +29,9 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 3. `stg` → `main` の **プルリクエストを作る**（`main` への直pushは branch protection で禁止）
 4. PR上でCIが緑になったらマージ → production ビルドが始まる
 
-`main` は branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にする。**CIが緑でないと `main` に入らないため、production ビルドも始まらない。** GitHub側の設定手順は `tasks/BACKLOG.md` の「外部準備 → リリース運用」に記載（**未実施のあいだは赤でもデプロイが進む**点に注意）。
+`main` は branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にする想定。**ただし private × GitHub Free では保護機能が使えない**ことが2026-07-30に判明しており、実現方法は要決定D-14で選ぶ（`tasks/BACKLOG.md`）。
+
+**保護が有効になるまでは、CIが赤でも `main` への push でproductionビルドが進む。** それまでは push の前に必ずCIの結果を確認する（緑でなければ push しない）。
 
 ---
 
