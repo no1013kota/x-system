@@ -51,7 +51,8 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 
 ## 4. 限界（CIで防げないこと）
 
-- **本番デプロイをブロックしない（branch protection を設定するまで）。** `main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む。要決定D-8で**案A（保護する）を2026-07-30に決定済み**だが、**GitHub側の設定はユーザー作業でまだ未実施**。設定内容: `main` を保護し、`型・lint` と `release:check（DB・build・E2E）` を required status checks にして、`Require a pull request before merging` と `Do not allow bypassing` を有効化する。設定後は `stg` → `main` のPRが緑にならないと `main` に入らない＝productionビルドも始まらない。
+- **本番デプロイをブロックしない（branch protection を設定するまで）。** `main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む。要決定D-8で**案A（保護する）を2026-07-30に決定**したが、同日の確認で**private × GitHub Free ではブランチ保護もRulesetも使えない**ことが判明した（APIが403 `Upgrade to GitHub Pro or make this repository public` を返す）。実現方法は**要決定D-14**で選ぶ（GitHub Proへ課金／public化／Vercel側で止める／CIからデプロイ／運用で担保）。
+  Proが使えるようになった場合の設定内容: `main` を対象に `Require a pull request before merging` と `Require status checks to pass` を有効化し、必須チェックへ **`型・lint`** と **`release:check（DB・build・E2E）`**（GitHubが記録している実際のチェック名）を指定、`Do not allow bypassing the above settings` も入れる。設定後は `stg` → `main` のPRが緑にならないと `main` に入らない＝productionビルドも始まらない。
 - **E2Eは14シナリオ**（`e2e/` 8ファイル）。認証・ログアウト・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
 - **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は2つに分かれ、どちらも実キーと費用が必要なためCIへは入れられない。providerやモデルを変えたときは手で実行する。
   - `npm run check:providers` — **リクエストが受理されるか**（本番のファクトリとschemaで最小リクエストを投げる）
