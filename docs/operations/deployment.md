@@ -4,7 +4,7 @@
 |---|---|
 | バージョン | v1.2 |
 | 更新日 | 2026-07-28 |
-| 関連 | [CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
+| 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
 
@@ -136,7 +136,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
    npm run smoke:live -- --base <その環境のURL> --account <検証用xAccountIdのUUID>
    ```
 
-   `/api/cron/canary` は **cron へ登録していない**（手動実行のみ）。定期実行にするかは要決定 D-11。
+   `/api/cron/canary` は **cron へ登録していない**（手動実行のみ。D-11で2026-07-28に決定）。定期実行へ切り替えるなら `vercel.json` に `crons` を追加する。
 6. staging では **X_POSTING_MODE が dry_run のまま**であることを確認する（実投稿しない）。
 
 ---

@@ -11,6 +11,30 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - ユーザーに判断・準備してほしいことは「要決定・外部準備」に追記する
 - 書式: `### <ID>: <タスク名> \`<status>\`` ＋ 参照/依存/サイズ行 ＋ 完了条件
 
+## 現在の状況と次の一手（2026-07-30）
+
+M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 まで完了。**機能実装は出揃っており、残りは「検証カバレッジ・運用の可視化」と「要決定」「外部準備（人間側）」**。
+
+| 区分 | 残り | 場所 |
+|---|---|---|
+| 開発タスク（着手可） | 5件（T-M7-26〜30・すべて`todo`） | 下記M7セクション |
+| 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。ユーザー判断で一旦不要） | 同 |
+| 要決定 | 4件（D-7 / D-8 / D-9 / D-13） | 「要決定・外部準備」 |
+| 外部準備（人間側） | **重複排除後12項目**（アカウント・実キー・法務・単価確認）。[リリース前チェックリスト §3](../docs/operations/release-checklist.md) が正本 | 同（下記の未チェックは49行だがマイルストーンごとの重複を含む） |
+
+**次の一手（推奨順）**
+
+1. **要決定4件を片付ける**（いずれも数分。D-8とD-13は方針が決まれば実装は小さい）
+2. **`stg` を push → CI を通す → staging の器を整える**（Vercel Domains で `x-system-stg` を `stg` ブランチへ割当・Preview の `APP_BASE_URL` を一致・X App の callback URL 登録）→ **staging Supabase へ `supabase db push`**（未適用のままだとX連携が `internal_error` で失敗する）→ [デプロイ手順 §5](../docs/operations/deployment.md) の検証＋`npm run smoke:live -- --base <stgURL>`
+3. **`main` を `stg` へ ff-merge**（staging検証後）。push すると production ビルドが走る
+4. 検証カバレッジの残り（T-M7-26〜28）→ 運用の可視化（T-M7-29・30）
+
+**リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 14件緑（8ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` は ff-merge で追従させる運用。**未pushのコミットがあるので `git branch -vv` で確認する**。
+
+> 開発の進め方とテストの層ごとの役割は [開発とテストの進め方](../docs/operations/development-and-testing.md) を読む。
+
+---
+
 ### T-M7-07: D-5 案A — runJob中央finalizer（retry分類・backoff差し戻し） `done`
 - 参照: 要決定D-5、要件04 §4・§5、プロンプト設計書 §5.2 / 依存: T-M7-02 / サイズ: M
 - 完了条件:
@@ -192,6 +216,43 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - 後続への注意: 生成枠を消費する（1周で生成2回）。カナリアを定期実行に変えるときは `vercel.json` に crons を足し、**専用の検証用Xアカウント**を対象にすること（実利用者のアカウントで回すと下書きと枠を汚す）。
 
 
+### T-M7-26: E2Eの未カバー領域を埋める（課金・学習ソース・ベースmd編集・パスワード再設定） `todo`
+- 参照: 要件06 SC-10/SC-11、[CI](../docs/operations/ci.md) §4 / 依存: T-M7-18 / サイズ: L
+- 完了条件:
+  - 課金（プラン選択→checkout導線）・学習ソース追加削除・ベースmd編集・パスワード再設定の主要フローにE2Eがある
+  - **生成画像プレビューを実データで描画するspecがある**（`naturalWidth > 0` を確認する。現状ゼロで、T-M7-22 のCSP回帰は層2の `security-headers.test.ts` でしか押さえていない）
+  - 外部サービスへ実際のセッションを作らずに検証する（遷移先の検査で足りる範囲に留める）
+- メモ: 現在のE2Eは8ファイル14件で、認証・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆う。上記4領域が未カバー（`ci.md` §4 に明記済み）。課金は checkout/portal が Stripe へ実際にセッションを作るため、`x-oauth.spec.ts` と同じ `maxRedirects: 0` で**遷移先だけを見る**形にする。パスワード再設定はMailpitからリンクを取る（`auth.spec.ts` と同じ方式が使える）。
+
+### T-M7-27: Server Actionの本番実装テストを主要actionへ広げる `todo`
+- 参照: [開発とテストの進め方](../docs/operations/development-and-testing.md) §4 / 依存: なし / サイズ: L
+- 完了条件:
+  - 利用者が触る主要 Server Action が、DBとSupabaseクライアントをモックせずに1本以上のテストで通っている
+  - 少なくとも happy path が `internal_error` にならないことを assert する
+- メモ: API route 側は `dac6dfc`＋`a35870d` で `*.db.test.ts` 7本（43件）まで整備したが、**Server Action 側は `auth.test.ts` の1本だけ**（しかも本番実装を通していない）。`src/app/actions` はテストを除いて19ファイルあり、`x-accounts`・`drafts`・`generation-jobs`・`schedule`・`api-keys`・`settings`・`persona-settings` が優先。2026-07-26 の `service_role` GRANT漏れは「純粋関数のテストが充実しているほどテスト済みに見える」型の穴で、同じ構造が actions 側に残っている。
+
+### T-M7-28: 外向き副作用チャネルのガード網羅テスト `todo`
+- 参照: 要件01 §8、要件04 §14 / 依存: なし / サイズ: S
+- 完了条件:
+  - 外向きチャネル（X投稿・SMTP・Stripe・Storage削除・外部HTTP）を列挙し、各々に非productionガードがあることを1本のテストで検査する
+  - 新しいチャネルを足したらそのテストが落ちる
+- メモ: 2026-07-27、X投稿は `X_POSTING_MODE` で守られていたのにSMTPは素通りで、動作確認の `scheduler_tick` が実際に98通送信した（T-M7-23）。個別にガードを足すだけでは「次に増えたチャネル」を守れない。**どのチャネルにガードが要るかの一覧をテストとして持つ**のが目的。
+
+### T-M7-29: ジョブ結果の構造化記録と日次サマリ（静かな劣化の可視化） `todo`
+- 参照: 要件04 §6・§14、[開発とテストの進め方](../docs/operations/development-and-testing.md) §5 / 依存: なし / サイズ: M
+- 完了条件:
+  - 各jobの結果（保存件数・除外件数・失敗分野・コスト）が構造化して残り、後から追える
+  - 1日1通のサマリで「web3が3日連続0件」のような劣化に気付ける
+- メモ: 現状 除外件数は `console.warn` だけで運用では拾えない。2026-07-28 の web3 は `ok:true fetched:0` を返し続け、**成功として記録される失敗**だった。ダッシュボードは1人運用では見なくなるので、push（通知/メール）で1日1通にまとめる方針。閾値超過時だけ強調する。
+
+### T-M7-30: 週次メンテナンス枠（`/maintenance` スキル） `todo`
+- 参照: [開発とテストの進め方](../docs/operations/development-and-testing.md)、要件01 §7 / 依存: T-M7-25 / サイズ: S
+- 完了条件:
+  - 週次で `check:providers` ＋ `smoke:live` ＋ 依存監査 ＋ 外部API変更の確認を回す手順がスキルとして存在する
+  - 月次でコスト実績・queued/staleの掃除・バックアップ復元テストを回す手順がある
+- メモ: 外部APIは予告なく変わる（`allowed_callers` の件）。変更起点の検査（CI）だけでは時間経過による破綻を捕まえられない。`/loop` かクラウドスケジュールで回せる形にする。
+
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
@@ -266,17 +327,17 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - [ ] Sentryプロジェクト作成とSENTRY_DSN発行（cleanup失敗記録・queuedメール滞留警告の実配信確認用）
 - [ ] 自動投稿のlive E2E（実X投稿・自動rollback削除）確認にはX Developer App・実Xアカウント・クレジット設定が必要。M4のacceptanceはX_POSTING_MODE=dry_run＋モックで完結させ、live確認はリリース前作業とする
 - [ ] 自動投稿同意説明文（consent_version付き文面）と通知メール文面の最終確認。特に同意文はX Automation Rules準拠の観点でリリース前に専門家確認（PRD §7）
-- [ ] Vercel Cronへの切り替えは移行条件（運用メモ §3）到達後の運用判断であり、M4ではvercel.json追加・切替作業を行わない（実施タイミングはユーザー判断）
+> 注記（準備作業ではない）: Vercel Cronへの切り替えは移行条件（運用メモ §3）到達後の運用判断であり、M4ではvercel.json追加・切替作業を行わない（実施タイミングはユーザー判断）
 
 **M5関連**
-- [ ] 他マイルストーンコードの前提: 本リストは M0=スカフォールド＋DBスキーマ/seed、M1=認証・課金・プラン判定、M2=X連携・APIキー・発信設定（ベースmd初版）、M3=ジョブ基盤（generation_jobs・worker lease・dispatch・cron認証・AIアダプタ・利用枠helper）、M4=投稿生成/実行（drafts・tweet_ids） と仮定して depends_on を記載した。実際のマイルストーン割当と異なる場合は読み替えが必要
+> 注記（準備作業ではない）: 他マイルストーンコードの前提: 本リストは M0=スカフォールド＋DBスキーマ/seed、M1=認証・課金・プラン判定、M2=X連携・APIキー・発信設定（ベースmd初版）、M3=ジョブ基盤（generation_jobs・worker lease・dispatch・cron認証・AIアダプタ・利用枠helper）、M4=投稿生成/実行（drafts・tweet_ids） と仮定して depends_on を記載した。実際のマイルストーン割当と異なる場合は読み替えが必要
 - [ ] X Developer Appとクレジット設定（人間作業）: 学習読取（20/100件）・metrics batch lookup・user lookupの実機E2E検証には、読取scope付きDeveloper App、credit/予算設定、投稿済みポストを持つテスト用Xアカウントが必要（開発中の検証はモックで代替可能）。non-public metrics（profile_clicks等）はuser contextの所有ポストでのみ取得可能なため、実機検証は自アカウントの実投稿が前提
 - [ ] X読取endpointの単価確認（人間作業）: timeline・tweets lookup・users lookupのpay-per-use単価はDeveloper Consoleでの契約表示が優先されるため、原価集計（external_api_usage_events のunit_cost_usd）に使う環境変数値の確定はリリース前に人間がConsoleで確認する必要がある（PRD 6.1「X読み取りは別途実測」）
 - [ ] 生成AI APIキーの発行（人間作業）: LRN/MD-MERGE/SUGGESTの実機検証には運営Claudeキー（ANTHROPIC_API_KEY）、BYOK経路の検証には各provider（Anthropic/OpenAI/Gemini）のテスト用キー発行が必要。採用モデル（ANTHROPIC_TEXT_MODEL等）の決定と構造化出力対応の最終確認も運用判断を含む
 - [ ] 常時稼働Macの準備（人間作業）: metrics_collector（毎時00分）・follower_snapshot（毎時10分）の初期定時実行にはJST固定・スリープ無効のMacとLaunchDaemon設定・CRON_SECRETの秘密管理（Keychain等）が必要。開発中はcron routeの手動curl起動で代替検証する
 
 **M6関連**
-- [ ] 他マイルストーンのコードは次の想定で記載した（要照合・必要なら読み替え）：M0=スカフォールド・DBスキーマ・環境変数基盤、M1=認証・Stripe課金・プラン変更同期、M2=X連携（BYOK OAuth）・キー管理・設定画面、M3=AI生成パイプライン・ジョブ基盤（worker/dispatch/scheduler_tick）、M4=投稿実行・スケジュール・下書き、M5=ニュース・通知・分析
+> 注記（準備作業ではない）: 他マイルストーンのコードは次の想定で記載した（要照合・必要なら読み替え）：M0=スカフォールド・DBスキーマ・環境変数基盤、M1=認証・Stripe課金・プラン変更同期、M2=X連携（BYOK OAuth）・キー管理・設定画面、M3=AI生成パイプライン・ジョブ基盤（worker/dispatch/scheduler_tick）、M4=投稿実行・スケジュール・下書き、M5=ニュース・通知・分析
 - [ ] 運営側AI APIキーの発行と課金設定（premium文章生成用Anthropic必須、画像用OpenAI/Geminiのいずれか1つ以上）。どのproviderを画像用に用意するかの決定を含む
 - [ ] X運営Developer Appの作成（X_MANAGED_CLIENT_ID/SECRET発行、callback URL登録、必要scope設定、credit/予算設定）。preview/prod環境変数への設定
 - [ ] X API単価のDeveloper Console確認とX_COST_CONTENT_CREATE_USD等の環境変数設定、およびPRD §6.1原価前提の更新（運営者のXアカウントが必要）
