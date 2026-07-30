@@ -19,7 +19,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト7層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
-| `.claude/skills/` | 開発用スキル（doc-sync / dev-loop / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
+| `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
@@ -33,6 +33,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 ## 開発の進め方（エージェントループ）
 
 - タスクは`tasks/BACKLOG.md`で管理する。ステータス運用ルールは同ファイル冒頭に記載。
+- **要望を受け取ったら `/add-task` で起票してから実装へ進む。** 利用者の「〜したい」「〜が動かない」を、docs の正本と照合したうえでBACKLOGのタスクへ変える（実装はしない）。`todo` が1件も無いと `/dev-loop` は動かないため、これが入口になる。
 - `/dev-loop` で「次のタスク選択 → 実装 → 検証 → ドキュメント同期 → コミット」を1サイクル実行する。
 - 連続で自動開発する場合は `/loop /dev-loop`。
 - `/dev-loop` の検証手段は下の「変更影響 → 必須の検証」表で決める。新規実装か既存更新かでは分けない。
