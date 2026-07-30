@@ -27,7 +27,9 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 1. **D-14 を決める**（`main` 保護の実現方法。private × GitHub Free ではブランチ保護が使えない）。本番公開までは先送り可能で、それまでは「pushの前にCIの緑を確認する」運用で足りる
 2. **`stg` を push → CI を通す → staging の器を整える**（Vercel Domains で `x-system-stg` を `stg` ブランチへ割当・Preview の `APP_BASE_URL` を一致・X App の callback URL 登録）→ **staging Supabase へ `supabase db push`**（未適用のままだとX連携が `internal_error` で失敗する）→ [デプロイ手順 §5](../docs/operations/deployment.md) の検証＋`npm run smoke:live -- --base <stgURL>`
 3. **`stg` → `main` のPRを作ってマージ**（staging検証後）。`main` 保護後は直pushできない。マージで production ビルドが走る
-4. 検証カバレッジの残り（T-M7-26〜28）→ 運用の可視化（T-M7-29・30）→ 決定に伴う後始末（T-M7-31 通知の掃除・T-M7-32 sharp upgrade）
+4. 検証カバレッジの残り（T-M7-26〜28）→ **運営のしやすさ（T-M7-34 状態確認・T-M7-35 手順の畳み込み・T-M7-29 日次サマリ・T-M7-30 週次メンテ）** → 決定に伴う後始末（T-M7-31 通知の掃除・T-M7-32 sharp upgrade）
+
+> **`CLAUDE.md`「前提：運営者は個人」の5原則に対する現状**: ①黙って壊れない=T-M7-29で残り／②原因が辿れる=**T-M7-34で未対応**／③手順を記憶に依存させない=**T-M7-35で未対応**／④費用が見える=**T-M7-34に含める**／⑤判断をまとめて求める=「要決定」で運用中。
 
 **リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 19件緑（10ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` へは**PR経由**で反映する運用（D-8 案A。GitHub側の保護設定は未実施）。**未pushのコミットがあるので `git branch -vv` で確認する**。
 
@@ -235,6 +237,23 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - メモ: T-M7-26 のE2Eを書いていて発見。**ログイン画面のTurnstile初期化が終わる前にリンクを押すと、再設定フォームのウィジェットが永久に描画されない**（iframe・トークン・コンソールエラーのすべてが無く、30秒待っても復帰しない＝申請不能）。原因は `next/script` が同じ `id` のスクリプトを内部でキャッシュするため、**読み込み中にunmountされると次のマウントで `onReady` が発火しない**こと。`scriptReady` が永久にfalseのままで `turnstile.render()` が呼ばれなかった。
 - 実装結果: `turnstile-widget.tsx` で `onReady` だけに依存せず、`window.turnstile` の存在自体も準備完了の合図として扱う（100msごとに確認）。あわせて15秒で諦めて「ページを再読み込みしてください」を表示し、**原因不明の行き止まりにしない**（要件04 §14 と同じ「空と失敗を区別する」方針）。effect本文での同期setStateはlintで禁じられているためコールバック側で呼ぶ。
 - 検証: 修正前は30秒でトークン0・iframe0を実測。修正後は3秒でトークンが入る。回帰テストを `password-reset.spec.ts` に「ログイン画面から即座に遷移しても人間確認が表示される」として固定した。**単体テストは追加していない**（Reactコンポーネントのテスト環境が未導入〈vitestは`environment: node`・testing-library未導入〉で、かつ `next/script` のキャッシュ挙動はjsdomでは再現しないため、実ブラウザのE2Eが唯一有効な回帰テスト）。
+
+### T-M7-34: 運営者が「いま何が壊れているか」を1コマンドで見られるようにする `todo`
+- 参照: CLAUDE.md「前提：運営者は個人」原則2・4 / 依存: なし / サイズ: M
+- 完了条件:
+  - `npm run doctor` で、開発知識なしに読める形の状態一覧が出る（環境・DB・job・cron・費用）
+  - 異常があれば**次にやること**が1行で示される（ログを読ませない）
+  - 本番/staging に対しても実行できる（デプロイ先の状態確認）
+- メモ: 現在、状態を知る手段が「DBを直接引く」「dev サーバーの標準エラー出力を読む」「Sentryを開く」しかない。**非エンジニアの運営者には辿れない**（原則2違反）。出す内容の候補: ローカルスタックの起動状況／未適用migration／直近24hのjob成功失敗内訳／失敗中のcron分野／`email_status='queued'` の滞留件数／当月の従量課金実績（`external_api_usage_events`）と想定比／X token の期限。原則4のコスト可視化もここに寄せる。表示は日本語で、内部用語（`service_role`・`checkpoint` 等）を出さない。
+
+### T-M7-35: 忘れると壊れる手順を1コマンドへ畳む `todo`
+- 参照: CLAUDE.md「前提：運営者は個人」原則3、[デプロイ手順](../docs/operations/deployment.md) / 依存: なし / サイズ: M
+- 完了条件:
+  - staging への反映が1コマンドで完了する（CI待ち→migration適用→デプロイ後検証まで）
+  - **migration の適用を忘れたら止まる**（忘れても進める形にしない）
+  - 本番反映も同様に、順番を守らないと進めない
+- メモ: `deployment.md` の番号付き手順は24ステップあり、**migration適用（`supabase db push`）を飛ばすとX連携が `internal_error` で壊れる**。この「忘れたら壊れる」を人間の記憶に依存させているのが原則3違反。案: `npm run release:staging` が (1)CIの結果をGitHub APIで確認 (2)未適用migrationの有無を検査 (3)適用 (4)`smoke:live --base` (5)結果を日本語で要約、を順に行い、どこで止まったかを明示する。CIが赤い/未完了なら止める。
+
 
 ### T-M7-27: Server Actionの本番実装テストを主要actionへ広げる `todo`
 - 参照: [開発とテストの進め方](../docs/operations/development-and-testing.md) §4 / 依存: なし / サイズ: L
