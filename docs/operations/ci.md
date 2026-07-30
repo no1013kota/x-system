@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.4 |
-| 更新日 | 2026-07-30 |
+| 更新日 | 2026-07-31 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
 `.github/workflows/ci.yml`。リリース判定ゲート `npm run release:check` を push / PR ごとに機械的に実行する。ゲートが整っていても手元で実行し忘れれば意味が無いため、**実行そのものを強制すること**が目的。
@@ -53,7 +53,7 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 
 - **本番デプロイをブロックしない（branch protection を設定するまで）。** `main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む。要決定D-8で**案A（保護する）を2026-07-30に決定**したが、同日の確認で**private × GitHub Free ではブランチ保護もRulesetも使えない**ことが判明した（APIが403 `Upgrade to GitHub Pro or make this repository public` を返す）。実現方法は**要決定D-14**で選ぶ（GitHub Proへ課金／public化／Vercel側で止める／CIからデプロイ／運用で担保）。
   Proが使えるようになった場合の設定内容: `main` を対象に `Require a pull request before merging` と `Require status checks to pass` を有効化し、必須チェックへ **`型・lint`** と **`release:check（DB・build・E2E）`**（GitHubが記録している実際のチェック名）を指定、`Do not allow bypassing the above settings` も入れる。設定後は `stg` → `main` のPRが緑にならないと `main` に入らない＝productionビルドも始まらない。
-- **E2Eは14シナリオ**（`e2e/` 8ファイル）。認証・ログアウト・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
+- **E2Eは27シナリオ**（`e2e/` 13ファイル）。認証・ログアウト・パスワード再設定・ホーム・投稿・下書き画像・スケジュール・ニュース・分析・AI設定（ベースmd・学習ソース）・課金（プラン選択と閲覧権限）・X連携入口・スマホ幅の崩れを覆う（2026-07-31にT-M7-26で4領域を追加）。ただし**外部サービスへ実際のセッションは作らない**（Stripeのcheckout/portalボタンは押さず、遷移先と表示だけを見る。ボタンの先の配線は `route.db.test.ts` がSDKモックで検証する）。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
 - **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は2つに分かれ、どちらも実キーと費用が必要なためCIへは入れられない。providerやモデルを変えたときは手で実行する。
   - `npm run check:providers` — **リクエストが受理されるか**（本番のファクトリとschemaで最小リクエストを投げる）
   - `npm run smoke:live` — **応答をアプリが扱えるか**（生成・画像・ニュースを1周し、下書き・画像・itemという成果物まで検証）。受理されても後段で落ちる型（前置き文でJSON検証が落ちる／字数上限で全件破棄）はこちらでしか捕まらない
