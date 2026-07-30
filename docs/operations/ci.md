@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-28 |
+| バージョン | v1.4 |
+| 更新日 | 2026-07-30 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
 `.github/workflows/ci.yml`。リリース判定ゲート `npm run release:check` を push / PR ごとに機械的に実行する。ゲートが整っていても手元で実行し忘れれば意味が無いため、**実行そのものを強制すること**が目的。
@@ -52,7 +52,7 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 ## 4. 限界（CIで防げないこと）
 
 - **本番デプロイをブロックしない。** `main` への push でCIとVercelのproductionビルドは並行して走る。CIが赤でもデプロイは進む。止めたいなら GitHub の branch protection で `main` を保護し、`static`／`verify` を required status checks にしてPR経由でのみマージする（PRが緑にならないと `main` に入らない＝productionビルドも始まらない）。
-- **E2Eは13シナリオ**（`e2e/` 8ファイル）。認証・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
+- **E2Eは14シナリオ**（`e2e/` 8ファイル）。認証・ログアウト・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
 - **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は2つに分かれ、どちらも実キーと費用が必要なためCIへは入れられない。providerやモデルを変えたときは手で実行する。
   - `npm run check:providers` — **リクエストが受理されるか**（本番のファクトリとschemaで最小リクエストを投げる）
   - `npm run smoke:live` — **応答をアプリが扱えるか**（生成・画像・ニュースを1周し、下書き・画像・itemという成果物まで検証）。受理されても後段で落ちる型（前置き文でJSON検証が落ちる／字数上限で全件破棄）はこちらでしか捕まらない
