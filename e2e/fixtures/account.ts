@@ -157,6 +157,54 @@ export async function destroyTestAccount(account: TestAccount): Promise<void> {
 }
 
 /**
+ * 生成画像の表示を検証するため、**実物のPNGをprivate Storageへ置く**（T-M7-26）。
+ *
+ * 画像プレビューは署名URL経由でブラウザが読み込むため、**実際に読み込めるオブジェクトが無いと
+ * 何も検証できない**。2026-07-27、CSP（`img-src`）が署名URLを弾いて生成画像が必ず非表示に
+ * なっていたが、E2Eが画像を持つ下書きを一度も描画していなかったため気付けなかった（T-M7-22）。
+ * 既存オブジェクトのパスを借りると他のデータに依存して壊れるので、テストごとに作って消す。
+ */
+export async function uploadTestImage(storagePath: string): Promise<void> {
+  // sharp は本番依存。16:9 の実寸を持つPNGを作り、レイアウトも実物と同じ条件で見る。
+  const sharp = (await import("sharp")).default;
+  const bytes = await sharp({
+    create: { width: 320, height: 180, channels: 3, background: { r: 220, g: 220, b: 230 } },
+  })
+    .png()
+    .toBuffer();
+
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET_IMAGES ?? "generated-images";
+  const res = await fetch(`${base}/storage/v1/object/${bucket}/${storagePath}`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRole,
+      authorization: `Bearer ${serviceRole}`,
+      "content-type": "image/png",
+      "x-upsert": "true",
+    },
+    body: new Uint8Array(bytes),
+  });
+  if (!res.ok) {
+    throw new Error(`テスト画像をStorageへ置けませんでした（status=${res.status}）`);
+  }
+}
+
+/** 置いたテスト画像を消す（作成分だけ）。失敗しても他のテストを止めない。 */
+export async function deleteTestImage(storagePath: string): Promise<void> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET_IMAGES ?? "generated-images";
+  await fetch(`${base}/storage/v1/object/${bucket}/${storagePath}`, {
+    method: "DELETE",
+    headers: { apikey: serviceRole, authorization: `Bearer ${serviceRole}` },
+  }).catch((error: unknown) => {
+    console.warn("[e2e] テスト画像の削除に失敗:", (error as Error).message);
+  });
+}
+
+/**
  * 画面のサインアップで作られた利用者を消す（`createTestAccount` を経ないため
  * `accounts` fixture の後片付け対象にならない）。auth.users の cascade で profiles も消える。
  */
