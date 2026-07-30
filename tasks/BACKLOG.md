@@ -11,25 +11,25 @@ Space AI MVPの作業キュー。エージェントループ（/dev-loop）は�
 - ユーザーに判断・準備してほしいことは「要決定・外部準備」に追記する
 - 書式: `### <ID>: <タスク名> \`<status>\`` ＋ 参照/依存/サイズ行 ＋ 完了条件
 
-## 現在の状況と次の一手（2026-07-30）
+## 現在の状況と次の一手（2026-07-30 更新）
 
 M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 まで完了。**機能実装は出揃っており、残りは「検証カバレッジ・運用の可視化」と「要決定」「外部準備（人間側）」**。
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | 5件（T-M7-26〜30・すべて`todo`） | 下記M7セクション |
+| 開発タスク（着手可） | 7件（T-M7-26〜32・すべて`todo`） | 下記M7セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。ユーザー判断で一旦不要） | 同 |
-| 要決定 | 4件（D-7 / D-8 / D-9 / D-13） | 「要決定・外部準備」 |
+| 要決定 | **0件**（D-1〜D-13すべて決定済み） | 「要決定・外部準備」 |
 | 外部準備（人間側） | **重複排除後12項目**（アカウント・実キー・法務・単価確認）。[リリース前チェックリスト §3](../docs/operations/release-checklist.md) が正本 | 同（下記の未チェックは49行だがマイルストーンごとの重複を含む） |
 
 **次の一手（推奨順）**
 
-1. **要決定4件を片付ける**（いずれも数分。D-8とD-13は方針が決まれば実装は小さい）
+1. **GitHubで `main` を保護する**（D-8 案Aの設定。外部準備「リリース運用」参照）。これを入れるまでは、自動テストが赤でも本番へ反映されてしまう
 2. **`stg` を push → CI を通す → staging の器を整える**（Vercel Domains で `x-system-stg` を `stg` ブランチへ割当・Preview の `APP_BASE_URL` を一致・X App の callback URL 登録）→ **staging Supabase へ `supabase db push`**（未適用のままだとX連携が `internal_error` で失敗する）→ [デプロイ手順 §5](../docs/operations/deployment.md) の検証＋`npm run smoke:live -- --base <stgURL>`
-3. **`main` を `stg` へ ff-merge**（staging検証後）。push すると production ビルドが走る
-4. 検証カバレッジの残り（T-M7-26〜28）→ 運用の可視化（T-M7-29・30）
+3. **`stg` → `main` のPRを作ってマージ**（staging検証後）。`main` 保護後は直pushできない。マージで production ビルドが走る
+4. 検証カバレッジの残り（T-M7-26〜28）→ 運用の可視化（T-M7-29・30）→ 決定に伴う後始末（T-M7-31 通知の掃除・T-M7-32 sharp upgrade）
 
-**リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 14件緑（8ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` は ff-merge で追従させる運用。**未pushのコミットがあるので `git branch -vv` で確認する**。
+**リポジトリの状態**: 単体+DB 1,277件緑（183ファイル）/ E2E 14件緑（8ファイル）/ `check:providers` 5件緑 / `smoke:live` 3シナリオ緑。CI（GitHub Actions）稼働中。作業ブランチは `stg`、`main` へは**PR経由**で反映する運用（D-8 案A。GitHub側の保護設定は未実施）。**未pushのコミットがあるので `git branch -vv` で確認する**。
 
 > 開発の進め方とテストの層ごとの役割は [開発とテストの進め方](../docs/operations/development-and-testing.md) を読む。
 
@@ -253,6 +253,23 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - メモ: 外部APIは予告なく変わる（`allowed_callers` の件）。変更起点の検査（CI）だけでは時間経過による破綻を捕まえられない。`/loop` かクラウドスケジュールで回せる形にする。
 
 
+### T-M7-31: ローカル由来の古い queued 通知を掃除できるようにする（D-9 案A） `todo`
+- 参照: 要件04 §14、要決定D-9 / 依存: なし / サイズ: S
+- 完了条件:
+  - `npm run db:clean-test-data` が「一定期間より古い `email_status='queued'` の通知」を掃除対象に含める（既定はdry-runで件数を表示し、`-- --apply` で実行）
+  - **ローカルDB以外へは接続しない**既存のガードが効いたままである
+  - 実メールのアカウント（`no.1013kota@gmail.com` 等）宛の通知も対象になるが、`in_app` の表示は壊さない（`email_status` を `not_requested` に落とすだけで行は消さない、が既定）
+- メモ: ローカル検証で作られた通知が `queued` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**このDBを本番へ持ち込むと初回の `scheduler_tick` で一括送信される**。行を消すと画面の通知履歴が欠けるため、`email_status` を落とす方式を既定にする（削除は別オプション）。しきい値の既定は「7日より古い」を暫定とし、実装時に `db:clean-test-data` の既存オプション設計へ合わせる。
+
+### T-M7-32: sharp を 0.35系へ upgrade し依存の high を減らす（D-7 案A） `todo`
+- 参照: 要件01 §8、要決定D-7 / 依存: なし / サイズ: M
+- 完了条件:
+  - `sharp` が 0.35系で動き、画像正規化（JPG/PNG/WEBP・5MB以下・16:9）の挙動が変わっていない（`image-normalize` のテストと `smoke:live` の画像シナリオが緑）
+  - `scripts/audit-check.mjs` の `HIGH_ALLOWLIST` から `sharp` を外す
+  - `postcss` については `overrides` で 8.4.31 を上書きできるか検証し、可否と理由を allowlist の理由文へ反映する
+- メモ: libvips の CVE群（CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）が `sharp<0.35.0` 対象。現在 `^0.34.5`。breaking upgrade なので API 差分を確認してから上げる。`postcss` は next が nested で pin しており upgrade では解消しないため、`overrides` が唯一の手段だが next のビルドを壊す恐れがある（壊れるなら allowlist に残す判断を理由付きで記録する）。`next` は T-M7-10 で 16.2.12 済み、`brace-expansion` はビルド時のみの到達経路で allowlist 継続。
+
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
@@ -265,7 +282,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 
 **D-4: 失敗provider callのusage/原価記録の責務（解決済み 2026-07-26: 案A・T-M7-09で実装）** — `runTextGeneration`（pipeline.ts）は`generate()`が成功returnした後にのみ`usage.calls`へ積むため、provider callが例外throw（`PauseTurnIncompleteError`・timeout・5xx等）した場合、`status:"failed"`/`error_code`付きの`ProviderCall`が記録されない。一方プロンプト設計書 §5.6は「全provider callを保存」、要件04 §10は「成功・失敗を問わず原価台帳へ記録」とする。M0では原価台帳（external_api_usage_events）連携自体が後続MS送りのため実害は潜在。要決定: 失敗callの記録を(案A)pipelineがtry/catchで`ProviderCall(status=failed)`を積む／(案B)worker/台帳MSが失敗時にexternal_api_usage_eventsへ直接記録する、のどちらにするか。※throw時はSDKがusageを返さないことが多く、記録できるのはrequest ID・error_code・発生事実に限られる点も考慮。`ProviderCallMeta`は既に`status`/`errorCode`を受け取れる（normalize.ts）。**T-M6-09時点の状態（2026-07-25）**: 原価台帳への記録は全AI job（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG）＋NEWSへ配線済み。ただし記録対象は`usage.calls`に現れるcall（`generate()`が返却した成功call＋status=failed返却call）に限られ、**provider例外throwのcallは依然として`calls`へ積まれず未記録**（pipeline.ts `callOnce`はgenerate成功後にのみpush）。案A（pipelineがtry/catchで`ProviderCall(status=failed)`を積む）か案Bかは未決のまま。
 
-**D-7: 依存の脆弱性の解消方針（T-M6-20で顕在化・2026-07-25／2026-07-26に前提を再調査）** — `npm audit` に high 3件（`sharp`＝libvips CVEでsharp<0.35.0、`next`／`postcss`＝next同梱）とmoderate 4件がある。いずれも修正には breaking upgrade（`sharp@0.35.x`・`next` minor）が必要で、画像正規化（image-normalize）とApp全体の再検証を伴う。T-M6-20 の release ゲート（`scripts/audit-check.mjs`）はこの3 high を **package名 allowlist（next/postcss/sharp）** で通し、critical と allowlist外 high は失敗させる暫定運用。要決定: (案A)次の保守枠で `sharp`/`next` を計画的に upgrade しフルスイート＋build＋画像テストで検証してから allowlist を外す（推奨） / (案B)現状維持しリリース後に対応。リリース前チェックリスト（T-M6-21）で判断する。**2026-07-26 決定: sharp/postcss は据え置き（案B）・next は先行upgrade（T-M7-10）**。ただし同日の再調査で前提が変わった: (1) `next` は 16.2.10→**16.2.12 のパッチ**で high 4件・moderate 5件が解消する（`>=16.0.0 <16.2.11` が対象。当初想定した minor upgrade は不要）。(2) `sharp` は依然 `<0.35.0` が対象で 0.35 系への breaking upgrade が必要（libvips CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）。(3) high の `postcss` は **next が pin する nested の 8.4.31**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。sharp/postcss の扱いは保守枠で再判断する。
+**D-7: 依存の脆弱性の解消方針（解決済み 2026-07-30: 案A）** — `npm audit` に high 3件（`sharp`＝libvips CVEでsharp<0.35.0、`next`／`postcss`＝next同梱）とmoderate 4件がある。いずれも修正には breaking upgrade（`sharp@0.35.x`・`next` minor）が必要で、画像正規化（image-normalize）とApp全体の再検証を伴う。T-M6-20 の release ゲート（`scripts/audit-check.mjs`）はこの3 high を **package名 allowlist（next/postcss/sharp）** で通し、critical と allowlist外 high は失敗させる暫定運用。要決定: (案A)次の保守枠で `sharp`/`next` を計画的に upgrade しフルスイート＋build＋画像テストで検証してから allowlist を外す（推奨） / (案B)現状維持しリリース後に対応。リリース前チェックリスト（T-M6-21）で判断する。**2026-07-26 決定: sharp/postcss は据え置き（案B）・next は先行upgrade（T-M7-10）**。ただし同日の再調査で前提が変わった: (1) `next` は 16.2.10→**16.2.12 のパッチ**で high 4件・moderate 5件が解消する（`>=16.0.0 <16.2.11` が対象。当初想定した minor upgrade は不要）。(2) `sharp` は依然 `<0.35.0` が対象で 0.35 系への breaking upgrade が必要（libvips CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）。(3) high の `postcss` は **next が pin する nested の 8.4.31**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。sharp/postcss の扱いは保守枠で再判断する。**2026-07-30 決定: 案A**。`sharp` を 0.35系へ計画的に upgrade し、画像正規化を再検証してから allowlist から外す（T-M7-32）。`postcss` は next が nested で 8.4.31 を pin しているため upgrade では解消せず、`overrides` の可否検証も同タスクに含める。`next` は T-M7-10 で 16.2.12 済み。
 
 **D-10: dev-loopが実AI APIを自動で叩いてよいか・1周あたりの上限額（解決済み 2026-07-28: 案A）** — CLAUDE.md「変更影響 → 必須の検証」で、AI provider・プロンプト・出力schemaに触れた変更は「実物を1周」させることを必須にした。これは**実費が発生する**（P-6のWeb検索付き生成が約$0.10〜0.21、画像1枚が約$0.05）。`/loop /dev-loop` で自動連続実行するとタスクごとに積み上がる。要決定: (案A)差分が `src/lib/ai/**`・`src/lib/jobs/**`・`src/lib/prompts/**` に触れたときだけ自動実行し、1周あたり上限$0.50・超過時は停止して報告（推奨。検証の実効性と費用制御を両立） / (案B)常にユーザー確認を挟む（安全だが自動ループが止まる） / (案C)自動実行しない（今日と同じ見落としが再発する）。**2026-07-28 決定: 案A**。差分が `src/lib/ai/**`・`src/lib/jobs/**`・`src/lib/prompts/**` に触れたときだけ `npm run smoke:live` を実行し、1周あたり上限$0.50・超過時は停止して報告する。実測は1周 約$0.30（検索あり生成$0.13＋画像$0.008＋ニュース$0.16）。上限は provider 側でかけられないため**事後測定・超過したら停止**になる。パス判定は取りこぼしうるので「表に無くても provider へ送る内容・受け取る内容に影響しうるなら実行」を併用する。
 
@@ -274,13 +291,16 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 
 **D-12: ニュース要約の120字上限をどう守らせるか（解決済み 2026-07-28: 案B＋published_atの正規化）** — `smoke:live` が `ai` 分野の全滅を2回連続で検出した（5件すべて `summary:too_big`）。T-M7-24 のプロンプト修正でタイトル（30字）は守られるようになったが、**要約（120字）は守られない**。プロンプトで頼む方式の限界で、放置すると分野単位でニュースが0件になり続ける。要決定: (案A)検証時に120字へ丸める（`stripProviderMarkup` と同じく「指示ではなく仕組みで保証する」。文末（。）優先で切り、無ければ末尾に…。itemを失わない。推奨） / (案B)上限を緩める（例200字。UIは`line-clamp-2`なので表示は破綻しないが、プロンプト設計書 §6.10 の仕様変更） / (案C)現状維持（分野が空になる頻度を許容し、smokeの警告で気付く）。**2026-07-28 決定: 案B**（`summary` 200字へ緩和。プロンプト設計書 v1.9）。実APIで確認したところ `summary:too_big` は解消したが、**それに隠れていた別の原因が2つ露出した**: `published_at:invalid_format`×5 と `title:too_big`×4。前者は「**任意項目なのに形式違いでitem全体を捨てていた**」設計の誤りだったため同時に修正（`normalizePublishedAt` で日付のみ・タイムゾーン無しを正規化し、解釈できなければフィールドだけ落としてitemは残す）。結果、実APIで **3件取得（除外1件）** となり全滅から回復した。**残件: `title` 30字はまだ時々超える**（1/4件）。全滅にはならず取りこぼしに留まるため、緩和するかは D-13 で別途判断する。
 
-**D-13: ニュースtitleの30字上限を緩めるか（2026-07-28・D-12検証で残った）** — `summary` を200字へ緩め `published_at` を正規化した結果、ニュースは全滅しなくなった（実測3件取得）が、**`title:too_big` で毎回1件前後を取りこぼす**。titleはSC-06一覧とホームの重要ニュースカードで1行表示され、30字はUI都合の制約。要決定: (案A)現状維持（取りこぼしは1件程度で全滅はしない。まずはこれで運用し、smokeの警告で頻度を見る。推奨） / (案B)45字程度へ緩める（プロンプト設計書 §6.10 の変更。英語の固有名詞が入るとすぐ超えるため） / (案C)検証時に丸める（一覧の見た目は安定するが、途中で切れたタイトルが出る）。
+**D-13: ニュースtitleの30字上限を緩めるか（解決済み 2026-07-30: 案A・現状維持）** — `summary` を200字へ緩め `published_at` を正規化した結果、ニュースは全滅しなくなった（実測3件取得）が、**`title:too_big` で毎回1件前後を取りこぼす**。titleはSC-06一覧とホームの重要ニュースカードで1行表示され、30字はUI都合の制約。要決定: (案A)現状維持（取りこぼしは1件程度で全滅はしない。まずはこれで運用し、smokeの警告で頻度を見る。推奨） / (案B)45字程度へ緩める（プロンプト設計書 §6.10 の変更。英語の固有名詞が入るとすぐ超えるため） / (案C)検証時に丸める（一覧の見た目は安定するが、途中で切れたタイトルが出る）。**2026-07-30 決定: 案A（現状維持）**。全滅はせず取りこぼしが1件程度に留まるため変更しない。`smoke:live` の警告（`title:too_big×N`）で頻度を観測し、恒常的に増えるなら案Bを再検討する。コード変更なし。
 
-**D-9: 溜まった queued 通知メールの扱い（2026-07-28・T-M7-23で顕在化）** — ローカル検証で作られた通知が `email_status='queued'` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**production で初めて `scheduler_tick` が回ると宛先に一括送信される**（本人宛だが、古い内容が大量に届く）。要決定: (案A)本番移行前にローカル由来の古い通知を `not_requested` へ落とす／削除する（`npm run db:clean-test-data` の対象へ加える。推奨） / (案B)そのまま送る（内容は本人の下書き作成・投稿完了通知なので実害は小さい） / (案C)一定期間より古い queued は tick 側で送らず落とす仕様にする（要件04 §14 の変更を伴う）。なお本番DBはローカルとは別なので、影響するのは「このローカルDBを本番へ持ち込む場合」に限る。
+**D-9: 溜まった queued 通知メールの扱い（解決済み 2026-07-30: 案A）** — ローカル検証で作られた通知が `email_status='queued'` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**production で初めて `scheduler_tick` が回ると宛先に一括送信される**（本人宛だが、古い内容が大量に届く）。要決定: (案A)本番移行前にローカル由来の古い通知を `not_requested` へ落とす／削除する（`npm run db:clean-test-data` の対象へ加える。推奨） / (案B)そのまま送る（内容は本人の下書き作成・投稿完了通知なので実害は小さい） / (案C)一定期間より古い queued は tick 側で送らず落とす仕様にする（要件04 §14 の変更を伴う）。なお本番DBはローカルとは別なので、影響するのは「このローカルDBを本番へ持ち込む場合」に限る。**2026-07-30 決定: 案A**。`npm run db:clean-test-data` の対象へ「ローカル由来の古い queued 通知」を加えて掃除できるようにする（T-M7-31）。
 
-**D-8: CIを本番デプロイのブロック条件にするか（2026-07-27・T-M7-14で顕在化）** — `.github/workflows/ci.yml` は push / PR で `npm run release:check` を実行するが、**`main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む**。CIは「壊れたことを事後に知る」までしか担保しない。要決定: (案A)GitHub の branch protection で `main` を保護し `static`/`verify` を required status check にして、直push禁止・PR経由マージのみにする（緑でないと `main` に入らない＝productionビルドも始まらない。推奨。ただし1人開発でもPRを切る手間が増える） / (案B)現状維持（CIは通知用。デプロイ後に赤に気付いたら revert して再デプロイ）。設定はGitHub Settings → Branches の操作でユーザー作業。ローカルの `stg`／`main` 運用を変える判断も伴う。
+**D-8: CIを本番デプロイのブロック条件にするか（解決済み 2026-07-30: 案A）** — `.github/workflows/ci.yml` は push / PR で `npm run release:check` を実行するが、**`main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む**。CIは「壊れたことを事後に知る」までしか担保しない。要決定: (案A)GitHub の branch protection で `main` を保護し `static`/`verify` を required status check にして、直push禁止・PR経由マージのみにする（緑でないと `main` に入らない＝productionビルドも始まらない。推奨。ただし1人開発でもPRを切る手間が増える） / (案B)現状維持（CIは通知用。デプロイ後に赤に気付いたら revert して再デプロイ）。**2026-07-30 決定: 案A**。`main` を branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にして、`main` への直pushを禁止・PR経由マージのみにする。これにより **CIが緑でないと `main` に入らない＝productionビルドも始まらない**。リリースの流れは「`stg` へ push → CI緑 → `stg` → `main` のPRを作る → 緑を確認してマージ」に変わる（[デプロイ手順](../docs/operations/deployment.md)・[開発とテストの進め方](../docs/operations/development-and-testing.md) §7 を更新済み）。**GitHub側の設定はユーザー作業で未実施**（下の外部準備へ追加）。
 
 **D-3: news_fetchの時間窓欠落対策（解決済み 2026-07-21: 案I・3時間ラップ取得）** — 「時間窓の欠落を許容しない」要件を、案I（§2維持）で解決。`news_fetch`は各回が直近3時間分を重ねて取得し、1時間ごと起動の窓の重なりで「3回に1回成功すれば取得漏れなし」の回復性を持たせる。稼働は9:00〜20:00・12回/日を維持（コスト現状維持）、前日18:00以降の夜間・稼働終了間際分は当日9:00/10:00/11:00の起動が延長ルックバック15/16/17時間で補完（20:00始点だと19時台発行分が1回しか取得機会を得ず欠落し得るため18:00始点）。重複は`source_url` canonical unique＋`<known_urls>`で排除。`cron_runs`受付は並行/重複起動の抑止のみ、欠落回復はラップ取得側が担う。NEWSを永続job化する案II（§2改定）は不採用。反映先: PRD N-1/N-2・§8.3、プロンプト設計書 §6.10（`{{hours}}`=12-20時3／9-11時15-17）、要件04 §6、要件06 SC-06（既定7日表示）、ADR-0003。受け入れ条件はT-M4-10/11へ反映済み。
+
+**リリース運用（2026-07-30 決定・D-8 案A）**
+- [ ] GitHub Settings → Branches で `main` を保護する。**Require a pull request before merging** を有効化し、**Require status checks to pass** で `型・lint` と `release:check（DB・build・E2E）` を必須にする。**Do not allow bypassing the above settings** も入れる（1人開発でも自分の直pushを止めるため）。設定後は `main` への直pushができなくなり、リリースは `stg` → `main` のPR経由になる
 
 **M0関連**
 - [ ] Supabaseプロジェクトの作成とキー発行（NEXT_PUBLIC_SUPABASE_URL／ANON_KEY／SERVICE_ROLE_KEY／DATABASE_URLのpooler接続文字列）。M0のローカル検証はSupabase CLIで代替できるが、Docker実行環境の用意も人間側の準備事項

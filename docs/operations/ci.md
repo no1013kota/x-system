@@ -51,7 +51,7 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 
 ## 4. 限界（CIで防げないこと）
 
-- **本番デプロイをブロックしない。** `main` への push でCIとVercelのproductionビルドは並行して走る。CIが赤でもデプロイは進む。止めたいなら GitHub の branch protection で `main` を保護し、`static`／`verify` を required status checks にしてPR経由でのみマージする（PRが緑にならないと `main` に入らない＝productionビルドも始まらない）。
+- **本番デプロイをブロックしない（branch protection を設定するまで）。** `main` への push ではCIとVercelのproductionビルドが並行して走るため、CIが赤でもデプロイは進む。要決定D-8で**案A（保護する）を2026-07-30に決定済み**だが、**GitHub側の設定はユーザー作業でまだ未実施**。設定内容: `main` を保護し、`型・lint` と `release:check（DB・build・E2E）` を required status checks にして、`Require a pull request before merging` と `Do not allow bypassing` を有効化する。設定後は `stg` → `main` のPRが緑にならないと `main` に入らない＝productionビルドも始まらない。
 - **E2Eは14シナリオ**（`e2e/` 8ファイル）。認証・ログアウト・ホーム・投稿・スケジュール・ニュース・分析・X連携入口を覆うが、**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定は未カバー**。またAI生成と実投稿はE2Eでは実行しない（費用と不確定性のため。生成のリクエスト形状は `npm run check:providers` が担当）。
 - **外部APIとの実通信は検証しない。** provider側の仕様変更・リクエスト形状の誤りはCIでは検出できない（テストが全てモックするため）。この層は2つに分かれ、どちらも実キーと費用が必要なためCIへは入れられない。providerやモデルを変えたときは手で実行する。
   - `npm run check:providers` — **リクエストが受理されるか**（本番のファクトリとschemaで最小リクエストを投げる）
