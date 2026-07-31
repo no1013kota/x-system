@@ -19,6 +19,15 @@ const SUGGEST_MIN_GROUP = 3;
 const POLL_INTERVAL_MS = 5000;
 const POLL_MAX = 24;
 
+/** 分析軸を画面表記へ（要件06 §8: 画面に内部用語を出さない）。 */
+const AXIS_LABEL: Record<string, string> = {
+  pattern_time: "型と時間帯",
+  length: "投稿の長さ",
+  line_blocks: "改行の入れ方",
+  image: "画像の有無",
+  url: "本文のURL",
+};
+
 /** 内部の metric キーを画面表記へ（要件06 §8: 画面に内部用語を出さない）。 */
 const METRIC_LABEL: Record<string, string> = {
   impressions: "表示回数",
@@ -165,6 +174,11 @@ export function SuggestionsPanel({
             <li className="rounded-xl border bg-background p-4" key={i}>
               <p className="text-sm font-medium">{s.content}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {s.axis ? (
+                  <span className="rounded bg-muted px-2 py-0.5">
+                    {AXIS_LABEL[s.axis] ?? s.axis}
+                  </span>
+                ) : null}
                 <span className="rounded bg-muted px-2 py-0.5">
                   {METRIC_LABEL[s.metric] ?? s.metric}
                 </span>

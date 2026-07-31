@@ -14,6 +14,7 @@ import {
   SUGGEST_MIN_GROUP,
   buildSuggestionInput,
   type SuggestionInput,
+  SUGGESTION_AXES,
   type SuggestionInputDraft,
 } from "./suggestion-input";
 
@@ -50,6 +51,8 @@ function makeSuggestionSchema(allowedIds: Set<string>) {
               .refine((ids) => ids.every((id) => allowedIds.has(id)), {
                 message: "evidence.tweet_ids must be a subset of <posts> ids",
               }),
+            /** どの軸で差が出たか（T-M7-38）。何を根拠にした提案かを後から辿れるようにする。 */
+            axis: z.enum(SUGGESTION_AXES),
             metric: z.string().min(1),
             checkpoint_days: z.union([z.literal(1), z.literal(7), z.literal(30)]),
             diff_pct: z.number(),

@@ -166,13 +166,13 @@ describe("finalizeThread — 目標字数とポスト数を仕組みで担保す
   const withinTarget = "あ".repeat(100); // 加重200
 
   it("280以内でも目標（加重240）を超えたら1回だけ短縮する", async () => {
-    const shorten = vi.fn(async (_text: string, _limit: number) => "あ".repeat(110)); // 加重220 → 目標内
+    const shorten: FinalizeThreadDeps["shorten"] = vi.fn(async () => "あ".repeat(110)); // 加重220 → 目標内
     const res = await finalizeThread(
       { pattern: "p2", posts: [over], aiSources: [], ngWords: [], hasReferenceUrl: false },
       deps({ shorten }),
     );
     expect(shorten).toHaveBeenCalledTimes(1);
-    expect(shorten.mock.calls[0][1], "目標値で短縮を頼む").toBe(240);
+    expect(vi.mocked(shorten).mock.calls[0][1], "目標値で短縮を頼む").toBe(240);
     expect(res.thread[0].weighted_length).toBe(220);
     expect(res.thread[0].warnings).not.toContain(WARNING.lengthOverTarget);
   });
