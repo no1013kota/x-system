@@ -17,6 +17,7 @@ const SOURCE_FAILED = /update learning_sources set status = 'failed'/;
 const SOURCE_ANALYZED = /update learning_sources set status = 'analyzed'/;
 const NOTIF = /insert into notifications/;
 const LEDGER = /insert into external_api_usage_events/;
+const JOB_ERROR = /update generation_jobs set error =/;
 
 type Handler = (sql: string, params: unknown[]) => { rows?: unknown[]; rowCount?: number };
 
@@ -74,7 +75,7 @@ function deps(
   };
 }
 
-function jobHandler(opts: { type: string; url: string; status: string; plan: string }): Handler {
+function jobHandler(opts: { type: string; url: string | null; status: string; plan: string }): Handler {
   return (sql) => {
     if (LOAD_JOB.test(sql))
       return { rows: [{ learning_source_id: "s1", x_account_id: "xa1", user_id: "u1", plan: opts.plan }] };
@@ -160,6 +161,63 @@ describe("executeLearningAnalysis", () => {
     expect(writes.find((w) => NOTIF.test(w.sql))?.params[1]).toBe("job:job1:failed");
     // 生成枠の返還は runJob の failJob が失敗確定時に行うため、handler単体では書かない（要件03 §7.3）。
     expect(writes.some((w) => REFUND.test(w.sql))).toBe(false);
+  });
+
+  // T-M7-39: 失敗記録に原因が残らないと、運営者も開発者も**何が起きたか辿れない**。
+  // 2026-07-26 の own_posts 失敗は code だけが保存され、原因が特定できなかった。
+  it("失敗時に落ちた段と生の原因を error へ残す（分析call段）", async () => {
+    const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
+    await expect(
+      executeLearningAnalysis(
+        deps({
+          db,
+          resolveProvider: async () => {
+            throw new Error("anthropic 400: schema mismatch at posts[0]");
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(LearningAnalysisTerminalError);
+
+    const saved = writes.find((w) => JOB_ERROR.test(w.sql));
+    expect(saved, "error を保存していること").toBeDefined();
+    const error = JSON.parse(String(saved?.params[1])) as Record<string, unknown>;
+    expect(error.code).toBe("analysis_failed");
+    expect(error.stage, "分析call以降で落ちたことが分かる").toBe("writing");
+    expect(error.provider_raw_error, "providerの生の応答が残る").toContain("schema mismatch");
+  });
+
+  it("X読取で落ちた場合は research 段として残す", async () => {
+    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null, status: "pending", plan: "premium" }));
+    await expect(
+      executeLearningAnalysis(
+        deps({
+          db,
+          fetchOwnPosts: async () => {
+            throw new Error("x api 403: forbidden");
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(LearningAnalysisTerminalError);
+    const error = JSON.parse(String(writes.find((w) => JOB_ERROR.test(w.sql))?.params[1])) as Record<string, unknown>;
+    expect(error.stage, "素材の取得段で落ちたことが分かる").toBe("research");
+    expect(error.provider_raw_error).toContain("403");
+  });
+
+  it("生の原因が長すぎる場合は切り詰めて保存する", async () => {
+    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null, status: "pending", plan: "premium" }));
+    await expect(
+      executeLearningAnalysis(
+        deps({
+          db,
+          fetchOwnPosts: async () => {
+            throw new Error("x".repeat(5000));
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(LearningAnalysisTerminalError);
+    const error = JSON.parse(String(writes.find((w) => JOB_ERROR.test(w.sql))?.params[1])) as Record<string, unknown>;
+    expect(String(error.provider_raw_error).length).toBeLessThanOrEqual(2100);
+    expect(String(error.provider_raw_error).endsWith("…")).toBe(true);
   });
 });
 

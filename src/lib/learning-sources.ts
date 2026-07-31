@@ -247,8 +247,12 @@ export async function listLearningSources(
 }
 
 /**
- * own_posts 再取り込みの次回可能時刻（30日制御・UI表示用）。own_posts が未取り込み or 直近
- * learning_analysis job から30日以上経過なら null（今すぐ可能）。
+ * own_posts 再取り込みの次回可能時刻（30日制御・UI表示用）。
+ *
+ * **数えるのは成功した取り込みだけ**（T-M7-39）。以前は status を問わず job の作成時刻を数えていたため、
+ * 分析が失敗すると30日間ボタンが押せず、**壊れた機能を直せない行き止まり**になっていた
+ * （2026-07-26 の失敗で実際に発生）。30日制御の目的は取り込みの頻度制限なので、成功しなかった試行を
+ * 数える必要はない。失敗の繰り返しは生成枠（premium）とBYOKの自前キーで上限が掛かる。
  */
 export async function ownPostsReimportEligibility(
   db: Queryable,
@@ -260,6 +264,7 @@ export async function ownPostsReimportEligibility(
                  else null end as next_at
        from learning_sources ls
        join generation_jobs gj on gj.learning_source_id = ls.id and gj.kind = 'learning_analysis'
+                              and gj.status = 'succeeded'
       where ls.x_account_id = $1 and ls.type = 'own_posts'`,
     [xAccountId, REIMPORT_INTERVAL_DAYS],
   );
@@ -419,7 +424,9 @@ export async function reimportOwnPosts(
     }
 
     await assertActiveAccount(tx, userId, input.x_account_id);
-    await assertNotBusy(tx, input.x_account_id, { includeQueuedJobs: false });
+    // 進行中（queued/running）の学習jobがあれば拒否する。30日ゲートが成功だけを数えるようになった分
+    // （T-M7-39）、二重送信をここで止める必要がある。待てば解消するため行き止まりにはならない。
+    await assertNotBusy(tx, input.x_account_id, { includeQueuedJobs: true });
     await assertPrereqs(deps, userId);
 
     // own_posts は Xアカウントに1件（DB unique）。既存があれば reset、無ければ新規。
@@ -431,13 +438,16 @@ export async function reimportOwnPosts(
     ).rows[0];
 
     if (existing) {
-      // 30日制御: 直近の own_posts learning_analysis job 起点から30日未満は拒否（要件05 §8）。
+      // 30日制御: **成功した** own_posts learning_analysis job 起点から30日未満は拒否（要件05 §8）。
+      // 失敗を数えると直せないまま30日待たされる（T-M7-39）。進行中の重複は上の
+      // assertNotBusy(includeQueuedJobs: true) が job_conflict で止める。
       const gate = (
         await tx.query<{ too_soon: boolean | null; next_at: string | null }>(
           `select (max(created_at) > now() - make_interval(days => $2)) as too_soon,
                   to_char(max(created_at) + make_interval(days => $2), 'YYYY-MM-DD"T"HH24:MI:SSOF') as next_at
              from generation_jobs
-            where learning_source_id = $1 and kind = 'learning_analysis'`,
+            where learning_source_id = $1 and kind = 'learning_analysis'
+              and status = 'succeeded'`,
           [existing.id, REIMPORT_INTERVAL_DAYS],
         )
       ).rows[0];

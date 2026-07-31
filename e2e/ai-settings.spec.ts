@@ -153,3 +153,35 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     )
     .not.toBe("analyzed");
 });
+
+test("学習の取り込みが失敗しても行き止まりにならず、その場でやり直せる（T-M7-39の回帰）", async ({
+  accounts,
+  page,
+}) => {
+  // 2026-07-26、own_posts の分析が失敗した状態で30日ゲートが効き、「次回の再取り込みまであと25日」と
+  // 出たままボタンが押せなくなっていた（壊れた機能を直せない行き止まり）。失敗はゲートに数えない。
+  const account = await accounts.create("learning-failed");
+  await query(
+    `insert into learning_sources (x_account_id, type, url, status)
+     values ($1, 'own_posts', null, 'failed')`,
+    [account.xAccountId],
+  );
+  await query(
+    `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status, created_at)
+     select $1, 'learning_analysis', 'manual', id, 'failed', now() - interval '1 hour'
+       from learning_sources where x_account_id = $1 and type = 'own_posts'`,
+    [account.xAccountId],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/ai-settings?tab=learning");
+
+  // 失敗が見え、次に何をすればよいかが書かれている
+  await expect(page.getByText("分析に失敗しました", { exact: false })).toBeVisible();
+  await expect(page.getByText("「再取り込み」からやり直せます", { exact: false })).toBeVisible();
+
+  // ボタンが押せる（30日待たされない）
+  const reimport = page.getByRole("button", { name: "再取り込み" });
+  await expect(reimport).toBeEnabled();
+  await expect(page.getByText("次回の再取り込みまであと", { exact: false })).toHaveCount(0);
+});

@@ -8,6 +8,7 @@ import type { ExecutionPrereqInput } from "./execution-prereqs";
 import {
   addLearningSource,
   listLearningSources,
+  ownPostsReimportEligibility,
   reimportOwnPosts,
   removeLearningSource,
   type LearningSourceDeps,
@@ -214,11 +215,63 @@ describe("learning sources (db)", () => {
       expect(own).toHaveLength(1);
       expect(own[0].id).toBe(first.sourceId);
 
-      // 直近ジョブ（今作成）から30日未満の再実行は拒否＋next_available_at
+      // 進行中（queued）のjobがあるので二重送信は job_conflict で止まる（30日ゲートではない・T-M7-39）
+      const e = await reject(reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps));
+      expect(e.code).toBe("job_conflict");
+      expect(e.details?.reason).toBe("learning_busy");
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: 成功した取り込みの直後は30日ゲートで拒否する", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const sourceId = await withTransaction((c) => seedSource(c, xid, "own_posts", null, "analyzed"));
+      await withTransaction((c) =>
+        c.query(
+          `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status, created_at)
+           values ($1,'learning_analysis','manual',$2,'succeeded', now() - interval '1 day')`,
+          [xid, sourceId],
+        ),
+      );
       const e = await reject(reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps));
       expect(e.code).toBe("validation_error");
       expect(e.details?.reason).toBe("reimport_too_soon");
       expect(e.details?.next_available_at).toBeTruthy();
+
+      // 表示用の次回可能時刻も出る
+      const { nextEligibleAt } = await ownPostsReimportEligibility(pooledDb, xid);
+      expect(nextEligibleAt).toBeTruthy();
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
+  it("reimportOwnPosts: 失敗した取り込みの直後はすぐやり直せる（T-M7-39の回帰）", async () => {
+    // 2026-07-26、own_posts の分析が失敗した状態で30日ゲートが効き、**直せないまま30日待たされた**。
+    // 30日制御は「成功した取り込み」の頻度制限であり、失敗した試行を数えてはいけない。
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const sourceId = await withTransaction((c) => seedSource(c, xid, "own_posts", null, "failed"));
+      await withTransaction((c) =>
+        c.query(
+          `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status, created_at)
+           values ($1,'learning_analysis','manual',$2,'failed', now() - interval '1 hour')`,
+          [xid, sourceId],
+        ),
+      );
+
+      // 画面のボタンも押せる状態（次回可能時刻が出ない）
+      const { nextEligibleAt } = await ownPostsReimportEligibility(pooledDb, xid);
+      expect(nextEligibleAt, "失敗はゲートに数えない").toBeNull();
+
+      const res = await reimportOwnPosts(uid, { request_key: rk(), x_account_id: xid }, deps);
+      expect(res.sourceId).toBe(sourceId);
+      const state = await withTransaction((c) =>
+        c.query<{ status: string }>(`select status::text as status from learning_sources where id = $1`, [sourceId]),
+      );
+      expect(state.rows[0].status, "やり直しで pending へ戻る").toBe("pending");
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
