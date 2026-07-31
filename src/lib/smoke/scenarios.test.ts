@@ -46,6 +46,7 @@ describe("describeGenerated（生成物の形を測って見せる・T-M7-37）"
     const out = describeGenerated([post, "2ポスト目 #タグ https://example.com/a"]);
     expect(out).toContain("全2ポスト");
     expect(out).toContain("改行塊2");
+    expect(out, "判定単位の加重文字数も出す").toMatch(/加重\d+/);
     expect(out).toContain("タグ1");
     expect(out).toContain("URL1");
   });

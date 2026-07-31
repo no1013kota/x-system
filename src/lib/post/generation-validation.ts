@@ -1,7 +1,13 @@
 import type { ThreadItem } from "@/lib/ai/gen-output";
 
 import { matchNgWords } from "./ng-words";
-import { MAX_WEIGHTED_LENGTH, measurePostText } from "./text-metrics";
+import {
+  MAX_WEIGHTED_LENGTH,
+  measurePostText,
+  MIN_SHORTENED_WEIGHTED_LENGTH,
+  TARGET_WEIGHTED_LENGTH,
+} from "./text-metrics";
+import { capPostCount } from "./thread-limits";
 
 /**
  * 生成後検証（プロンプト設計書 §7.2〜7.7, 要件06 §4.3, T-M3-06）。
@@ -16,11 +22,20 @@ export const WARNING = {
   ngWord: "ng_word",
   sourceMissing: "source_missing",
   injectionSuspected: "injection_suspected",
+  /** 読みやすさの目標（加重240）を超えたまま（T-M7-41）。品質の目印で、投稿は止めない。 */
+  lengthOverTarget: "length_over_target",
+  /** ポスト数の上限を超えたため途中のポストを落とした（T-M7-41）。投稿は止めない。 */
+  postCountTrimmed: "post_count_trimmed",
 } as const;
 
 export type WarningCode = (typeof WARNING)[keyof typeof WARNING];
 
-/** これらの警告があるポストを含む下書きは自動投稿しない（要件06 §4.3）。 */
+/**
+ * これらの警告があるポストを含む下書きは自動投稿しない（要件06 §4.3）。
+ *
+ * `lengthOverTarget` と `postCountTrimmed` は**含めない**。読みやすさの目標や長さの調整で
+ * 予約投稿が黙って止まる方が害が大きい（運営者は下書き画面で気付ければよい）。
+ */
 export const AUTO_POST_BLOCKING_WARNINGS: ReadonlySet<string> = new Set<string>([
   WARNING.lengthExceeded,
   WARNING.cashtagMultiple,
@@ -140,9 +155,12 @@ export async function finalizeThread(
   const required = sourceRequired(input.pattern, input.hasReferenceUrl);
   const sourcesMissing = required && validatedSources.length === 0;
 
+  // ポスト数の上限をコードで担保する（プロンプトの分量指示は守られない・T-M7-41）。
+  const capped = capPostCount(input.pattern, input.posts);
+
   const thread: ThreadItem[] = [];
-  for (let index = 0; index < input.posts.length; index++) {
-    let text = input.posts[index];
+  for (let index = 0; index < capped.posts.length; index++) {
+    let text = capped.posts[index];
     const warnings: string[] = [];
 
     // 加重文字数280超過はPT-FIXで最大2回短縮（なお超過は編集必須警告）。
@@ -154,6 +172,25 @@ export async function finalizeThread(
       attempts++;
     }
     if (!metrics.withinLimit) warnings.push(WARNING.lengthExceeded);
+
+    // 読みやすさの目標（加重240）超過は1回だけ縮める。契約ではないので失敗にはしない。
+    // 縮めた結果が短すぎる（内容を削り過ぎた）場合は元の本文を採る。
+    if (metrics.withinLimit && metrics.weightedLength > TARGET_WEIGHTED_LENGTH) {
+      const shortened = await deps.shorten(text, TARGET_WEIGHTED_LENGTH);
+      const candidate = measurePostText(shortened);
+      const usable =
+        candidate.withinLimit &&
+        !candidate.empty &&
+        candidate.weightedLength >= MIN_SHORTENED_WEIGHTED_LENGTH &&
+        candidate.weightedLength < metrics.weightedLength;
+      if (usable) {
+        text = shortened;
+        metrics = candidate;
+      }
+      if (metrics.weightedLength > TARGET_WEIGHTED_LENGTH) {
+        warnings.push(WARNING.lengthOverTarget);
+      }
+    }
     if (!metrics.cashtagOk) warnings.push(WARNING.cashtagMultiple);
     if (matchNgWords(text, input.ngWords).length > 0) warnings.push(WARNING.ngWord);
     if (looksLikeInjection(text, validatedSources)) warnings.push(WARNING.injectionSuspected);
@@ -172,6 +209,8 @@ export async function finalizeThread(
     const last = thread[thread.length - 1];
     last.sources = validatedSources;
     if (sourcesMissing) last.warnings.push(WARNING.sourceMissing);
+    // ポストを落としたことは黙って済ませない（運営者が下書きで気付ける）。
+    if (capped.dropped > 0) last.warnings.push(WARNING.postCountTrimmed);
   }
 
   return {
