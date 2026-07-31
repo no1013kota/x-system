@@ -80,6 +80,7 @@ describe("settings (local DB)", () => {
         error: { in_app: true, email: true },
         billing: { in_app: true, email: true },
         usage: { in_app: true, email: true },
+        summary: { in_app: true, email: true },
       });
       await saveNewsConfig(db, uid, {
         categories: ["ai", "sns"],

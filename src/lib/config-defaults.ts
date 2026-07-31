@@ -11,6 +11,8 @@ export const DEFAULT_NOTIFICATION_CONFIG = {
   error: { in_app: true, email: true },
   billing: { in_app: true, email: true },
   usage: { in_app: true, email: true },
+  /** 日次サマリ（T-M7-29）。1日1通なのでメールも既定ON（見に行かなくても気付ける形）。 */
+  summary: { in_app: true, email: true },
 } as const;
 
 export const DEFAULT_NEWS_CONFIG = {

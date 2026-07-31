@@ -68,6 +68,7 @@ export const DB_ENUMS = {
     "error",
     "billing",
     "usage",
+    "summary",
   ],
   email_delivery_status: ["not_requested", "queued", "sent", "failed"],
 } as const satisfies Record<string, readonly string[]>;

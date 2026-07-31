@@ -20,6 +20,7 @@ export const NOTIFICATION_TYPES = [
   "error",
   "billing",
   "usage",
+  "summary",
 ] as const;
 
 const channelSchema = z
@@ -34,6 +35,7 @@ export const notificationConfigSchema = z
     error: channelSchema,
     billing: channelSchema,
     usage: channelSchema,
+    summary: channelSchema,
   })
   .strict();
 
