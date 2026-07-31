@@ -9,6 +9,7 @@ import { dispatchJob, type DispatchResult } from "./dispatch";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
+import { seedSystemPromptTemplates } from "../prompts/prompt-templates";
 
 const pooledDb = pooledQueryable();
 
@@ -93,6 +94,8 @@ export interface SchedulerTickResult {
   recovered: StaleRecoveryResult;
   emailsRecovered: RecoverQueuedEmailsResult;
   cleaned: CleanupResult;
+  /** コード定数へ追随させた system default プロンプトの件数（通常は0）。 */
+  promptsSynced: number;
 }
 
 /**
@@ -165,5 +168,24 @@ export async function runSchedulerTick(
     onError: opts.onCleanupError,
   });
 
-  return { scheduleRecovered, enqueued, dispatched, recovered, emailsRecovered, cleaned };
+  // (6) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
+  // 解決順は「account上書き → system default行 → コード定数」で、DB行が古いままだと
+  // プロンプトを直しても反映されない。内容が同じときは何も書かないので通常は0件。
+  // 失敗しても tick 本体を止めない（cleanupと同じ扱い）。
+  let promptsSynced = 0;
+  try {
+    promptsSynced = await seedSystemPromptTemplates(pooledDb);
+  } catch (err) {
+    opts.onCleanupError?.("prompt_templates", err);
+  }
+
+  return {
+    scheduleRecovered,
+    enqueued,
+    dispatched,
+    recovered,
+    emailsRecovered,
+    cleaned,
+    promptsSynced,
+  };
 }

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
+| バージョン | v1.20 |
 | 更新日 | 2026-07-31 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -178,6 +178,8 @@ Constraints: `kind in ('p1','p2','p3','p4','p5','p6','image')`
 Unique indexes: (`x_account_id`, `kind`) where `x_account_id is not null`; (`kind`) where `x_account_id is null`
 
 RLS: system defaultは認証ユーザーselect可。account別は所有者select可。writeはmd/premium向けServer Actionのみ。
+
+**system default行はコード定数（`SYSTEM_DEFAULT_TEMPLATES`）の写しで、`scheduler_tick`が毎回差分同期する**（T-M7-37）。解決順は「account上書き → system default行 → コード定数」なので、DB行が古いままだとコード側でプロンプトを直しても反映されない。人が思い出して実行する手順にしない（CLAUDE.md 原則3）。内容が同じときは更新しないため`updated_at`は動かない（編集画面の楽観lockに影響しない）。
 
 ### 3.6 `learning_sources`
 

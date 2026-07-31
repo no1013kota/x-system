@@ -61,6 +61,35 @@ describe("prompt-templates (local DB)", () => {
     }
   });
 
+  it("コード定数と同じなら更新せず0件を返す（updated_at を無駄に動かさない・T-M7-37）", async () => {
+    await seedSystemPromptTemplates(db);
+    const before = await db.query<{ updated_at: string }>(
+      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'p1'`,
+    );
+    const applied = await seedSystemPromptTemplates(db);
+    const after = await db.query<{ updated_at: string }>(
+      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'p1'`,
+    );
+    expect(applied, "内容が同じなら0件").toBe(0);
+    expect(after.rows[0].updated_at).toBe(before.rows[0].updated_at);
+  });
+
+  it("行が古いままでもコード定数へ追随させる（プロンプト修正が反映されない状態を残さない）", async () => {
+    // 解決順は「account上書き → system default行 → コード定数」で、DB行があるとコード定数の
+    // 変更が反映されない。2026-07-31、この関数がテストからしか呼ばれておらず、プロンプトを直しても
+    // 古い行が使われ続ける状態だった（現在は scheduler_tick が毎回呼ぶ）。
+    await seedSystemPromptTemplates(db);
+    await db.query(
+      `update prompt_templates set content = '古い内容' where x_account_id is null and kind = 'p1'`,
+    );
+    const applied = await seedSystemPromptTemplates(db);
+    expect(applied, "差分がある1件だけ更新").toBe(1);
+    const { rows } = await db.query<{ content: string }>(
+      `select content from prompt_templates where x_account_id is null and kind = 'p1'`,
+    );
+    expect(rows[0].content).toBe(SYSTEM_DEFAULT_TEMPLATES.p1);
+  });
+
   it("resolves account override first, else the system default", async () => {
     await seedSystemPromptTemplates(db);
     const { uid, xid } = await withTransaction(async (c: PoolClient) => {

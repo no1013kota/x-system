@@ -69,6 +69,8 @@ for (const r of body.results) {
   console.log(`${r.ok ? "✅" : "❌"} ${r.name}`);
   console.log(`   ${r.detail}  ($${r.costUsd.toFixed(4)})`);
   if (r.warning) console.log(`   ⚠️  ${r.warning}`);
+  // 生成物の実物を出す。シナリオは下書きを削除するため、ここで見せないと目で確認できない。
+  if (r.sample) console.log(r.sample.split("\n").map((line) => `   │ ${line}`).join("\n"));
 }
 for (const s of body.skipped ?? []) console.log(`⏭️  skip: ${s}`);
 
