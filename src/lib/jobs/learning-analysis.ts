@@ -159,10 +159,40 @@ async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow): Pr
   return `<posts>\n${JSON.stringify(posts.slice(0, 100))}\n</posts>`;
 }
 
+/** `provider_raw_error` の保存上限。生の応答は長くなり得るため頭を残して切る。 */
+const RAW_ERROR_MAX = 2000;
+
+/**
+ * 失敗の原因を残すための生の文面（T-M7-39）。
+ *
+ * これが無いと `code` だけが残り、**何が起きたか誰にも分からない**（2026-07-26 の own_posts 失敗は
+ * `analysis_failed` だけが記録され、原因を追えなかった）。生成・画像jobと同じ扱いにする
+ * （`post-generation.ts`・`image-generation.ts`）。画面には出さない（要件06 §5）。
+ */
+function rawErrorOf(error: unknown): string | null {
+  const text =
+    error instanceof Error
+      ? `${error.name}: ${error.message}${error.cause ? ` / cause: ${String(error.cause)}` : ""}`
+      : String(error);
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return trimmed.length > RAW_ERROR_MAX ? `${trimmed.slice(0, RAW_ERROR_MAX)}…` : trimmed;
+}
+
 /** 失敗確定: source=failed・error通知（dedupe job:{id}:failed）・usage/error保存（pool）。 */
 async function persistFailure(
   db: Queryable,
-  params: { userId: string; xAccountId: string; jobId: string; sourceId: string; code: string; usage: GenerationUsage },
+  params: {
+    userId: string;
+    xAccountId: string;
+    jobId: string;
+    sourceId: string;
+    code: string;
+    usage: GenerationUsage;
+    /** どこで落ちたか。`research`=X読取/素材組み立て、`writing`=分析call以降。 */
+    stage: string;
+    providerRawError: string | null;
+  },
 ): Promise<void> {
   await db.query(
     `update learning_sources set status = 'failed', updated_at = now() where id = $1`,
@@ -172,7 +202,13 @@ async function persistFailure(
     `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
     [
       params.jobId,
-      JSON.stringify({ code: params.code, message: "学習ソースの分析に失敗しました。", retryable: false, stage: "writing" }),
+      JSON.stringify({
+        code: params.code,
+        message: "学習ソースの分析に失敗しました。",
+        retryable: false,
+        stage: params.stage,
+        provider_raw_error: params.providerRawError,
+      }),
       JSON.stringify(params.usage),
     ],
   );
@@ -236,12 +272,15 @@ export async function executeLearningAnalysis(
   }
 
   const failCtx = { userId: job.user_id, xAccountId: job.x_account_id, jobId, sourceId };
+  // どの段で落ちたかを失敗記録へ残す（T-M7-39）。固定値だと原因の切り分けができない。
+  let stage: "research" | "writing" = "research";
   // 分析callが成功していれば、後続MD-MERGEがterminal失敗しても原価台帳へ記録できるよう保持する。
   let analysisUsage: GenerationUsage = { calls: [], estimated_cost_usd_total: 0 };
   try {
     await recordStage("research");
     const user = await buildUserInput(deps, source);
 
+    stage = "writing";
     await recordStage("writing");
     const deadline = (deps.makeDeadline ?? createDeadline)();
     const { textGen, provider: textProviderId, model } = await deps.resolveProvider({
@@ -318,7 +357,13 @@ export async function executeLearningAnalysis(
       usageFromError(error) ?? analysisUsage;
     const code =
       error instanceof LearningAnalysisTerminalError ? error.code : "analysis_failed";
-    await persistFailure(db, { ...failCtx, code, usage });
+    await persistFailure(db, {
+      ...failCtx,
+      code,
+      usage,
+      stage,
+      providerRawError: rawErrorOf(error),
+    });
     // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。
     throw error instanceof LearningAnalysisTerminalError
       ? error

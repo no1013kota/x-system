@@ -197,7 +197,8 @@ export function LearningSourcesManager({
       <section className="rounded-xl border bg-background p-4">
         <h2 className="text-sm font-semibold">自分の過去投稿から学習</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは30日ごとに1回まで。
+          直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
+          <strong className="font-medium">成功した取り込みから</strong>30日ごとに1回まで（失敗したときはすぐやり直せます）。
           {plan === "premium" ? "（生成枠を1消費）" : ""}
         </p>
         <div className="mt-3 flex items-center gap-3">
@@ -245,7 +246,10 @@ export function LearningSourcesManager({
                 ) : null}
                 {s.status === "failed" ? (
                   <p className="mt-2 text-xs text-red-700">
-                    分析に失敗しました。対象が非公開/削除されていないかご確認のうえ、削除して再登録してください。
+                    分析に失敗しました。対象が非公開/削除されていないかご確認ください。
+                    {s.type === "own_posts"
+                      ? "上の「再取り込み」からやり直せます。"
+                      : "削除して再登録するとやり直せます。"}
                   </p>
                 ) : null}
                 {s.status !== "removing" ? (

@@ -19,13 +19,28 @@ interface SeedItem {
   minutesAgo: number;
 }
 
-/** 投入したidを覚えて後片付けする。 */
+/**
+ * 投入したidを覚えて後片付けする。
+ *
+ * **既存の全行より新しい時刻で入れる**（`minutesAgo` は投入分どうしの並び順のみを決める）。
+ * `news_items` は利用者に紐づかない共通表で、ホームの重要ニュースは
+ * `coalesce(published_at, fetched_at)` の降順で上位3件しか出さない。ローカルDBに実データが
+ * あると3件に入れず落ちる。2026-07-31、**AIが1時間先の日時を返した実ニュース**が最上位に
+ * 居座り、この理由で1件落ちた（published_at をコード側で検証していない件は T-M7-40）。
+ */
 async function seedNews(items: SeedItem[]): Promise<void> {
+  // 基準時刻はバッチで1回だけ求める。1件ごとに求めると直前の投入分が最大値になり、並び順が反転する。
+  const [{ base }] = await query<{ base: string }>(
+    `select (greatest(
+              now(),
+              coalesce((select max(coalesce(published_at, fetched_at)) from news_items), now())
+            ) + interval '1 minute')::text as base`,
+  );
   for (const item of items) {
     await query(
       `insert into news_items (id, category, title, summary, source_url, impact, published_at, fetched_at)
        values ($1, $2::news_category, $3, $4, $5, $6::impact_level,
-               now() - make_interval(mins => $7), now())`,
+               $8::timestamptz + make_interval(mins => 60 - $7), now())`,
       [
         item.id,
         item.category,
@@ -35,6 +50,7 @@ async function seedNews(items: SeedItem[]): Promise<void> {
         `https://example.com/e2e-news/${item.id}`,
         item.impact,
         item.minutesAgo,
+        base,
       ],
     );
   }

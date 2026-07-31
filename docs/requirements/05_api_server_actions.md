@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
-| 更新日 | 2026-07-26 |
+| バージョン | v1.22 |
+| 更新日 | 2026-07-31 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -211,7 +211,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
 | `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
-| `reimportOwnPosts` | request_key | job_id | 直近100件、30日ごとに1回まで |
+| `reimportOwnPosts` | request_key | job_id | 直近100件。**成功した取り込み**から30日ごとに1回まで（失敗した試行は数えない。`refreshSuggestions`の`already_today`と同じ規則）。進行中（queued/running）の学習jobがあれば`job_conflict`（`learning_busy`） |
 | `getBaseMd` | x_account_id | content/version | 所有者のみ |
 | `updateBaseMdManual` | content, expected_version | version | md/premiumのみ。6見出し構造を検証し、現行version不一致は409 |
 | `rollbackBaseMd` | version, expected_version | new_version | md/premium。指定版を内容とする新versionを作成 |
