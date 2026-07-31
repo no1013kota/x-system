@@ -20,9 +20,10 @@ import { gunzipSync } from "node:zlib";
  * 追加するときは必ず「なぜ今直さないか」を書く。
  */
 const HIGH_ALLOWLIST = new Map([
-  ["sharp", "0.34→0.35 の breaking upgrade（libvips CVE群）。画像正規化の再検証が必要。"],
-  ["postcss", "next が pin する nested 8.4.31。next を上げても解消しないため next 側の修正待ち。"],
-  ["next", "自身の advisory ではなく、上記 nested postcss の依存として high 判定されているもの。"],
+  // sharp / postcss / next は 2026-08-01（T-M7-32）に解消した。
+  // sharp は 0.35.3 へ上げ、next が optionalDependencies で pin する nested 0.34.5 も
+  // package.json の overrides で 0.35.3 へ寄せた（0.34 系のままでは libvips CVE群が残る）。
+  // postcss も overrides で 8.5.x へ寄せ、next のビルドが通ることを実測して確認した。
   ["brace-expansion", "DoS。到達経路はビルド時のみ（Sentry bundler plugin / lint ツールチェーン）。"],
 ]);
 

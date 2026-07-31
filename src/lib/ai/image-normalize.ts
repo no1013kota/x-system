@@ -1,4 +1,5 @@
-import sharp from "sharp";
+// sharp 0.35 で `sharp.Metadata` の名前空間型が無くなったため、型は名前付きでimportする（T-M7-32）。
+import sharp, { type Metadata } from "sharp";
 
 /**
  * プロバイダ返却画像の検証と正規化（プロンプト設計書 §5.5, 要件06 §6）。
@@ -51,7 +52,7 @@ export interface InspectedImage {
  * デコード不能・寸法不明は検証エラーにする。
  */
 export async function inspectImage(bytes: Buffer): Promise<InspectedImage> {
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(bytes).metadata();
   // eslint-disable-next-line no-restricted-syntax -- デコード不能そのものが判定結果。ImageValidationError で呼び出し元へ伝わる

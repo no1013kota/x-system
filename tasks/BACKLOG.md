@@ -404,12 +404,19 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - 実行結果（2026-07-31）: 送信待ち53件（news 45・draft_created 5・error 3、すべて `no.1013kota@gmail.com` 宛）を送信対象から外した。あわせて滞留していたテストユーザー693件も削除（実アカウント1件は温存）。`npm run doctor` の「お知らせメール」が ⚠️ → ✅ になった。`failed` の1件は残るが、**送信されるのは `queued` だけ**で `failed` は利用者の明示的な再送要求でしか送られないため一斉送信の risk は無い（`notification-email.ts` の抽出条件で確認）。
 - メモ: ローカル検証で作られた通知が `queued` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**このDBを本番へ持ち込むと初回の `scheduler_tick` で一括送信される**。行を消すと画面の通知履歴が欠けるため、`email_status` を落とす方式を既定にする（削除は別オプション）。しきい値の既定は「7日より古い」を暫定とし、実装時に `db:clean-test-data` の既存オプション設計へ合わせる。
 
-### T-M7-32: sharp を 0.35系へ upgrade し依存の high を減らす（D-7 案A） `todo`
+### T-M7-32: sharp を 0.35系へ upgrade し依存の high を減らす（D-7 案A） `done`
 - 参照: 要件01 §8、要決定D-7 / 依存: なし / サイズ: M
 - 完了条件:
   - `sharp` が 0.35系で動き、画像正規化（JPG/PNG/WEBP・5MB以下・16:9）の挙動が変わっていない（`image-normalize` のテストと `smoke:live` の画像シナリオが緑）
   - `scripts/audit-check.mjs` の `HIGH_ALLOWLIST` から `sharp` を外す
   - `postcss` については `overrides` で 8.4.31 を上書きできるか検証し、可否と理由を allowlist の理由文へ反映する
+- 実装結果（2026-08-01）:
+  - `sharp` を **0.35.3**（libvips 8.18.3）へ上げた。**破壊的変更が1つあった**: `sharp.Metadata` の名前空間型が無くなり、`import sharp, { type Metadata } from "sharp"` へ変更（型のみ・実行時の呼び出しは変更なし）。
+  - **nested 版も `overrides` で寄せた**。`next` が `optionalDependencies` で `sharp@^0.34.5` を pin しており、トップレベルを上げるだけでは `node_modules/next/node_modules/sharp` に 0.34.5 が残って CVE群も残っていた。
+  - **`postcss` も `overrides` で解消できた**（完了条件3の検証）。8.5系へ寄せて `npm run build` が通ることを実測。next のビルドは壊れなかったため allowlist から外した。
+  - `HIGH_ALLOWLIST` は `brace-expansion`（ビルド時のみ到達）の1件だけになった。**本番依存の high は 4件 → 1件**。
+- 検証（2026-08-01）: `image-normalize` の単体8件緑。`npm run build` 通過。**実物1周**（`smoke:live`）で画像1.7MBが `ready` になることを確認。release:check 完全通過（1,372件・E2E 29件）。
+- 途中で踏んだ落とし穴: `npm install` でネイティブモジュールを差し替えても**動いている dev サーバーは古いバイナリを掴み続ける**。再起動前は画像jobが `job_failed`（理由なし）で落ち、原因が分からなかった。手順書 §11 へ記録した。
 - メモ: libvips の CVE群（CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）が `sharp<0.35.0` 対象。現在 `^0.34.5`。breaking upgrade なので API 差分を確認してから上げる。`postcss` は next が nested で pin しており upgrade では解消しないため、`overrides` が唯一の手段だが next のビルドを壊す恐れがある（壊れるなら allowlist に残す判断を理由付きで記録する）。`next` は T-M7-10 で 16.2.12 済み、`brace-expansion` はビルド時のみの到達経路で allowlist 継続。
 
 
