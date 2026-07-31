@@ -10,6 +10,7 @@ import {
   type NewsResearchDeps,
   pickValidItems,
   formatDropReasons,
+  applyRecencyPolicy,
   normalizePublishedAt,
 } from "./news-research";
 
@@ -286,5 +287,65 @@ describe("normalizePublishedAt（任意項目でitemを失わない）", () => {
     ]);
     expect(r.items).toHaveLength(1);
     expect(r.items[0].published_at).toBe("2026-07-28T00:00:00Z");
+  });
+});
+
+
+describe("applyRecencyPolicy（取得窓の新しさで選別・T-M7-40）", () => {
+  const NOW = new Date("2026-07-31T14:30:00Z");
+  const base = { title: "t", summary: "s", source_url: "https://example.com/a", impact: "high" as const };
+  const at = (iso: string) => ({ ...base, source_url: `https://example.com/${iso}`, published_at: iso });
+
+  it("窓内の記事はそのまま残す", () => {
+    const r = applyRecencyPolicy([at("2026-07-31T13:00:00Z")], { now: NOW, hours: 3 });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].published_at).toBe("2026-07-31T13:00:00Z");
+    expect(r.dropped).toBe(0);
+    expect(r.futureAdjusted).toBe(0);
+  });
+
+  it("未来の日時は published_at を落として item は残す（取得時刻扱いへ寄せる）", () => {
+    // 2026-07-31、AIが1時間先の日時を返し、ホームの重要ニュース最上位に居座った。
+    const r = applyRecencyPolicy([at("2026-07-31T15:30:00Z")], { now: NOW, hours: 3 });
+    expect(r.items, "本体は捨てない").toHaveLength(1);
+    expect(r.items[0].published_at, "並び順は fetched_at に委ねる").toBeUndefined();
+    expect(r.futureAdjusted).toBe(1);
+    expect(r.dropped).toBe(0);
+  });
+
+  it("時計ずれの範囲（5分以内）の未来は許す", () => {
+    const r = applyRecencyPolicy([at("2026-07-31T14:33:00Z")], { now: NOW, hours: 3 });
+    expect(r.items[0].published_at).toBe("2026-07-31T14:33:00Z");
+    expect(r.futureAdjusted).toBe(0);
+  });
+
+  it("窓＋24時間より古い記事は捨て、理由を残す", () => {
+    // 3時間窓の指示に対して4か月前の記事が保存された（2026-07-31 実測）。
+    const r = applyRecencyPolicy(
+      [at("2026-04-01T00:00:00Z"), at("2026-07-31T13:00:00Z")],
+      { now: NOW, hours: 3 },
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.dropped).toBe(1);
+    expect(r.reasons["published_at:too_old"]).toBe(1);
+  });
+
+  it("窓＋24時間の内側なら残す（日付だけの記事・更新記事を落とさない）", () => {
+    // hours=3 なので 27時間前まで許す。26時間前は残る。
+    const r = applyRecencyPolicy([at("2026-07-30T12:30:00Z")], { now: NOW, hours: 3 });
+    expect(r.items).toHaveLength(1);
+    expect(r.dropped).toBe(0);
+  });
+
+  it("朝の長い窓（hours=17）では前日夕方の記事も残る", () => {
+    const r = applyRecencyPolicy([at("2026-07-30T09:00:00Z")], { now: NOW, hours: 17 });
+    expect(r.items).toHaveLength(1);
+  });
+
+  it("published_at が無い item は判定材料が無いだけなので残す", () => {
+    const r = applyRecencyPolicy([base], { now: NOW, hours: 3 });
+    expect(r.items).toHaveLength(1);
+    expect(r.dropped).toBe(0);
+    expect(r.futureAdjusted).toBe(0);
   });
 });

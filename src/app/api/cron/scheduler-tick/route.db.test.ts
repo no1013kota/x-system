@@ -323,6 +323,7 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
       newsItems: expect.any(Number),
       usageEvents: expect.any(Number),
       cronRuns: expect.any(Number),
+      newsFetchOutcomes: expect.any(Number),
       images: expect.any(Number),
     });
     expect(errors.filter((e) => e.includes("[scheduler_tick cleanup]"))).toEqual([]);

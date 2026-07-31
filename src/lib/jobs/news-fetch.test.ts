@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { NewsCategory } from "../news";
 import type { Queryable } from "../x/token-refresh";
-import { runNewsFetch } from "./news-fetch";
+import { emptyReasonOf, runNewsFetch } from "./news-fetch";
 import type { NewsItemOut, NewsResearchResult } from "./news-research";
 
 const INSERT = /insert into news_items/;
@@ -14,6 +14,7 @@ function item(url: string): NewsItemOut {
 function research(urls: string[]): NewsResearchResult {
   return { items: urls.map(item), dropped: 0,
   dropReasons: {},
+  futureAdjusted: 0,
   usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
 }
 
@@ -92,5 +93,82 @@ describe("runNewsFetch", () => {
     expect(maxActive).toBeLessThanOrEqual(3);
     expect(maxActive).toBeGreaterThan(1); // actually parallelised
     expect(res.totalSaved).toBe(6);
+  });
+});
+
+
+describe("0件の意味を区別できる（T-M7-40）", () => {
+  // 2026-07-31、web3・snsが0件になったが、応答からは「該当ニュースが無かった」のか
+  // 「取得したが全件破棄した」のか分からなかった。除外理由はログにしか出ていなかった。
+  const base = { category: "ai" as NewsCategory, ok: true, saved: 0, dropReasons: {}, futureAdjusted: 0 };
+
+  it("該当なし（0件・除外0）と全件破棄（0件・除外あり）を別の値で表す", () => {
+    expect(emptyReasonOf({ ...base, fetched: 0, dropped: 0 })).toBe("no_match");
+    expect(emptyReasonOf({ ...base, fetched: 0, dropped: 3, dropReasons: { "title:too_big": 3 } })).toBe(
+      "all_dropped",
+    );
+    expect(emptyReasonOf({ ...base, ok: false, fetched: 0, dropped: 0 })).toBe("failed");
+    expect(emptyReasonOf({ ...base, fetched: 2, dropped: 1 }), "取れていれば0件ではない").toBeNull();
+  });
+
+  it("結果に除外件数・理由と、0件分野の内訳を載せる", async () => {
+    const { db } = mockDb();
+    const res = await runNewsFetch({
+      db,
+      categories: ["ai", "web3"] as NewsCategory[],
+      researchCategory: async (category) =>
+        category === "ai"
+          ? research(["https://example.com/a"])
+          : {
+              items: [],
+              dropped: 4,
+              dropReasons: { "title:too_big": 4 },
+              futureAdjusted: 0,
+              usage: { calls: [], estimated_cost_usd_total: 0 },
+              hours: 3,
+            },
+    });
+    const web3 = res.categories.find((c) => c.category === "web3");
+    expect(web3?.dropped).toBe(4);
+    expect(web3?.dropReasons["title:too_big"]).toBe(4);
+    expect(res.emptyCategories).toEqual([{ category: "web3", reason: "all_dropped" }]);
+  });
+
+  it("windowKey を渡すと分野ごとの結果を保存する", async () => {
+    const saved: unknown[][] = [];
+    const db: Queryable = {
+      query: async <T = unknown>(sql: string, params: unknown[] = []) => {
+        if (/insert into news_fetch_outcomes/.test(sql)) saved.push(params);
+        return { rows: [] as T[], rowCount: 1 };
+      },
+    };
+    await runNewsFetch({
+      db,
+      windowKey: "2026-07-31T13",
+      categories: ["ai"] as NewsCategory[],
+      researchCategory: async () => research(["https://example.com/a"]),
+    });
+    expect(saved).toHaveLength(1);
+    expect(saved[0][0]).toBe("2026-07-31T13");
+    expect(saved[0][1]).toBe("ai");
+  });
+
+  it("結果の保存に失敗しても取得結果は返す（記録のために本処理を落とさない）", async () => {
+    const errors: unknown[] = [];
+    const db: Queryable = {
+      query: async <T = unknown>(sql: string) => {
+        if (/insert into news_fetch_outcomes/.test(sql)) throw new Error("記録失敗");
+        return { rows: [] as T[], rowCount: 1 };
+      },
+    };
+    const res = await runNewsFetch({
+      db,
+      windowKey: "w1",
+      categories: ["ai"] as NewsCategory[],
+      researchCategory: async () => research(["https://example.com/a"]),
+      onError: (_c, err) => errors.push(err),
+    });
+    expect(res.totalSaved).toBe(1);
+    expect(errors).toHaveLength(1);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describeEmptyCategories,
   judgeCost,
   judgeJobs,
   judgeNews,
@@ -80,6 +81,80 @@ describe("judgeNews（定時実行が動かない環境で赤くしない）", (
 
   it("本番で一度も実行されていなければ異常", () => {
     expect(judgeNews({ itemsLast48h: 0, hoursSinceLastRun: null, schedulerExpected: true }).level).toBe("error");
+  });
+});
+
+describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () => {
+  const ok = (category: string, fetched: number) => ({
+    category,
+    ok: true,
+    fetched,
+    dropped: 0,
+    dropReasons: {},
+  });
+  const allDropped = (category: string, n: number) => ({
+    category,
+    ok: true,
+    fetched: 0,
+    dropped: n,
+    dropReasons: { "title:too_big": n },
+  });
+
+  it("該当なしと全件破棄と失敗を分けて返す", () => {
+    const r = describeEmptyCategories([
+      ok("ai", 3),
+      ok("web3", 0),
+      allDropped("sns", 4),
+      { category: "business", ok: false, fetched: 0, dropped: 0, dropReasons: {} },
+    ]);
+    expect(r.noMatch).toEqual(["web3"]);
+    expect(r.allDropped).toEqual([{ category: "sns", reasons: "title:too_big×4" }]);
+    expect(r.failed).toEqual(["business"]);
+  });
+
+  it("全件破棄は取得件数があっても注意として上げる（分野が永久に0件になるのを見逃さない）", () => {
+    const r = judgeNews({
+      itemsLast48h: 10,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [ok("ai", 3), allDropped("web3", 4)],
+    });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("全件破棄された分野: web3");
+    expect(r.detail).toContain("title:too_big×4");
+    expect(r.nextAction).toContain("除外理由");
+  });
+
+  it("全件破棄で総取得も0件なら異常", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [allDropped("web3", 4)],
+    });
+    expect(r.level).toBe("error");
+  });
+
+  it("該当なしだけなら正常のまま、どの分野かは伝える", () => {
+    const r = judgeNews({
+      itemsLast48h: 10,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [ok("ai", 3), ok("web3", 0)],
+    });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toContain("該当ニュースが無かった分野: web3");
+  });
+
+  it("定時実行が動かない環境でも全件破棄は注意として上げる", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 2,
+      schedulerExpected: false,
+      outcomes: [allDropped("web3", 4)],
+    });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("全件破棄された分野: web3");
   });
 });
 

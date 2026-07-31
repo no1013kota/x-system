@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.18 |
-| 更新日 | 2026-07-26 |
+| バージョン | v1.19 |
+| 更新日 | 2026-07-31 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -502,6 +502,31 @@ Constraints: `unique (job_name, window_key)`（同一窓の重複受付を防ぐ
 Indexes: `claimed_at`（保持cleanup用）
 
 RLS: select/writeともservice roleのみ。行は受付ごとに増えるため`claimed_at`から40日保持し、期限後に`scheduler_tick`がcleanupする（M4、要件01 §9）。cleanup後は同一`window_key`を再claim可能になるが、`window_key`は時刻由来で単調増加するため通常運用で保持期間超過窓が再来・再実行されることはない。
+
+### 3.19 `news_fetch_outcomes`
+
+`news_fetch`の**分野ごとの結果**を残す表（要件04 §6、T-M7-40）。`cron_runs`が「受付は高々一度」だけを保証するのに対し、こちらは**業務結果**を持ち、運営者向けの状態確認（`npm run doctor`／`GET /api/cron/doctor`）が「0件」の意味を説明するために読む。cronの受付判定には使わない。
+
+これが無いと、ある分野が0件のとき「該当ニュースが無かった（正常な空）」のか「取得したが規定を満たさず全件破棄した（失敗による空）」のかを運営者が区別できない。除外理由が`console.warn`にしか出ていなかったため、2026-07-28のweb3全滅（T-M7-24）と2026-07-31の0件がどちらも見えなかった。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `window_key` | `text` | not null | 対象時刻窓（`cron_runs`と同じ`YYYY-MM-DDTHH`・UTC） |
+| `category` | `news_category` | not null | 分野 |
+| `ok` | `boolean` | not null | 分野の処理が例外で終わらなかったか。falseは既存ニュースを保持して次回起動へ委ねた場合 |
+| `fetched` | `integer` | not null default 0 | 契約と新しさの検証を通った件数 |
+| `saved` | `integer` | not null default 0 | 重複除外後に保存した件数 |
+| `dropped` | `integer` | not null default 0 | 規定を満たさず捨てた件数。**`fetched = 0 and dropped > 0`が「全件破棄」** |
+| `future_adjusted` | `integer` | not null default 0 | 未来日時のため`published_at`を落として取得時刻扱いへ寄せた件数 |
+| `drop_reasons` | `jsonb` | not null default `'{}'` | 除外理由の内訳（例`{"title:too_big": 3}`）。運営者向け表示の材料 |
+| `ran_at` | `timestamptz` | not null default now() | 記録時刻 |
+
+Constraints: `unique (window_key, category)`（同一窓の再実行は行を増やさず上書きする）
+
+Indexes: `ran_at desc`（直近の結果を引く／保持cleanup用）
+
+RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する（要件01 §9）。
 
 ## 4. JSONスキーマ
 

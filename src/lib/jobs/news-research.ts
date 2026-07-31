@@ -108,6 +108,78 @@ export function pickValidItems(raw: unknown[]): {
   return { items, dropped, reasons };
 }
 
+/**
+ * `published_at` が未来だと判断する許容幅（分）。時計ずれの分だけ許す。
+ * ホームの重要ニュースは `coalesce(published_at, fetched_at)` の降順で上位3件しか出さないため、
+ * 未来日時が1件入ると**そこに居座り続ける**（2026-07-31、1時間先の日時で実測・T-M7-40）。
+ */
+export const PUBLISHED_AT_FUTURE_TOLERANCE_MIN = 5;
+
+/**
+ * 取得窓（`{{hours}}`）より何時間古いものまで許すか。
+ *
+ * プロンプトで「直近{{hours}}時間」と指示しても守られない前提で組む（開発とテストの進め方 §12）。
+ * 一方で窓ぴったりで切ると、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を
+ * 正当に落としてしまう。そのため**窓＋24時間**までは許し、それより古いものは分野違いの
+ * 混入として捨てる（2026-07-31、3時間窓の指示に対し4か月前の記事が保存された）。
+ */
+export const PUBLISHED_AT_AGE_SLACK_HOURS = 24;
+
+export interface RecencyPolicyResult {
+  items: NewsItemOut[];
+  /** 古すぎて捨てた件数。 */
+  dropped: number;
+  reasons: Record<string, number>;
+  /** 未来日時だったため `published_at` を落として `fetched_at` 扱いに寄せた件数。 */
+  futureAdjusted: number;
+}
+
+/**
+ * 取得窓に対する新しさで item を選別する。
+ *
+ * - **未来**（now + 許容幅より後）: `published_at` を落として item は残す。任意項目のために
+ *   本体を捨てない方針（開発とテストの進め方 §12）に従い、並び順だけを `fetched_at` へ寄せる。
+ * - **古すぎる**（now - (hours + slack) より前）: item を捨てる。窓外の記事は「今のニュース」として
+ *   出すと運営者を誤解させるため。
+ * - `published_at` が無い item はそのまま残す（判定材料が無いだけで、内容は有効）。
+ */
+export function applyRecencyPolicy(
+  items: NewsItemOut[],
+  opts: { now: Date; hours: number },
+): RecencyPolicyResult {
+  const nowMs = opts.now.getTime();
+  const futureLimit = nowMs + PUBLISHED_AT_FUTURE_TOLERANCE_MIN * 60_000;
+  const oldestAllowed = nowMs - (opts.hours + PUBLISHED_AT_AGE_SLACK_HOURS) * 3_600_000;
+  const kept: NewsItemOut[] = [];
+  const reasons: Record<string, number> = {};
+  let dropped = 0;
+  let futureAdjusted = 0;
+
+  for (const item of items) {
+    if (!item.published_at) {
+      kept.push(item);
+      continue;
+    }
+    const ts = new Date(item.published_at).getTime();
+    if (Number.isNaN(ts)) {
+      kept.push({ ...item, published_at: undefined });
+      continue;
+    }
+    if (ts > futureLimit) {
+      kept.push({ ...item, published_at: undefined });
+      futureAdjusted += 1;
+      continue;
+    }
+    if (ts < oldestAllowed) {
+      dropped += 1;
+      reasons["published_at:too_old"] = (reasons["published_at:too_old"] ?? 0) + 1;
+      continue;
+    }
+    kept.push(item);
+  }
+  return { items: kept, dropped, reasons, futureAdjusted };
+}
+
 /** 除外理由を1行に畳む（ログ・スモークの表示用）。 */
 export function formatDropReasons(reasons: Record<string, number>): string {
   return Object.entries(reasons)
@@ -155,6 +227,8 @@ export interface NewsResearchResult {
   dropped: number;
   /** 除外理由の内訳（例 `title:too_big` → 3）。 */
   dropReasons: Record<string, number>;
+  /** 未来日時だったため `published_at` を落として並び順を `fetched_at` へ寄せた件数。 */
+  futureAdjusted: number;
   usage: GenerationUsage;
   hours: number;
 }
@@ -223,12 +297,28 @@ export async function researchNews(
   }
 
   await recordNewsUsage(deps, result.usage.calls);
-  const { items, dropped, reasons } = pickValidItems(result.parsed.items);
+  const picked = pickValidItems(result.parsed.items);
+  // 契約を満たした item を、さらに取得窓の新しさで選別する（プロンプトの指示だけに頼らない）。
+  const recency = applyRecencyPolicy(picked.items, { now: deps.clock, hours });
+  const dropped = picked.dropped + recency.dropped;
+  const reasons = { ...picked.reasons, ...recency.reasons };
   if (dropped > 0) {
     // 規定外は捨てるが、黙って減らすと「取得0件」と区別が付かないので必ず残す。
     console.warn(
       `[news_fetch] ${category}: 規定を満たさない ${dropped} 件を除外しました（${formatDropReasons(reasons)}）`,
     );
   }
-  return { items, dropped, dropReasons: reasons, usage: result.usage, hours };
+  if (recency.futureAdjusted > 0) {
+    console.warn(
+      `[news_fetch] ${category}: 未来の日時 ${recency.futureAdjusted} 件を取得時刻扱いへ寄せました`,
+    );
+  }
+  return {
+    items: recency.items,
+    dropped,
+    dropReasons: reasons,
+    futureAdjusted: recency.futureAdjusted,
+    usage: result.usage,
+    hours,
+  };
 }
