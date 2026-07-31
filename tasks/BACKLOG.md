@@ -360,11 +360,14 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
   - 少なくとも happy path が `internal_error` にならないことを assert する
 - メモ: API route 側は `dac6dfc`＋`a35870d` で `*.db.test.ts` 7本（43件）まで整備したが、**Server Action 側は `auth.test.ts` の1本だけ**（しかも本番実装を通していない）。`src/app/actions` はテストを除いて19ファイルあり、`x-accounts`・`drafts`・`generation-jobs`・`schedule`・`api-keys`・`settings`・`persona-settings` が優先。2026-07-26 の `service_role` GRANT漏れは「純粋関数のテストが充実しているほどテスト済みに見える」型の穴で、同じ構造が actions 側に残っている。
 
-### T-M7-28: 外向き副作用チャネルのガード網羅テスト `todo`
+### T-M7-28: 外向き副作用チャネルのガード網羅テスト `done`
 - 参照: 要件01 §8、要件04 §14 / 依存: なし / サイズ: S
 - 完了条件:
   - 外向きチャネル（X投稿・SMTP・Stripe・Storage削除・外部HTTP）を列挙し、各々に非productionガードがあることを1本のテストで検査する
   - 新しいチャネルを足したらそのテストが落ちる
+- 実装結果（2026-08-01）: `src/lib/ops/outbound-channels.ts` に**外へ出るファイルの一覧**を持ち（8チャネル: X API・SMTP・AI provider・Stripe・Storage削除・APIキー失効・出典URL検証・自アプリworker）、各チャネルに「何が外へ出るか」と「非productionで実害が出ない仕組み」を日本語で書いた。`outbound-channels.test.ts` が `src/` を静的に走査し、**一覧に無いファイルが外向き呼び出し（`fetch`・nodemailer・AI SDK・Stripe SDK・Storage削除）を持ったら落ちる**。逆に、外向き呼び出しが無くなったファイルが一覧に残っていても落とす（腐った登録を残さない）。
+  ガードの振る舞いも同じテストで固定した: SMTPは production 以外でループバック宛のみ／X投稿は `dry_run` でHTTPを1度も呼ばない／`live` は production 以外では起動時のenv検証で落ちる。
+- 検証（2026-08-01）: 単体6件。**検出力を実測**（`fetch` を1行含む一時ファイルを置くと `lib/_probe-outbound.ts（http）` を指して落ちることを確認）。走査で `schedule-cleanup.ts` は削除関数を注入されるだけで自分では呼ばないことも分かり、一覧から外した（純粋に保つ設計が確認できた）。release:check 相当（型・lint・単体+DB 1,372件）緑。
 - メモ: 2026-07-27、X投稿は `X_POSTING_MODE` で守られていたのにSMTPは素通りで、動作確認の `scheduler_tick` が実際に98通送信した（T-M7-23）。個別にガードを足すだけでは「次に増えたチャネル」を守れない。**どのチャネルにガードが要るかの一覧をテストとして持つ**のが目的。
 
 ### T-M7-29: ジョブ結果の構造化記録と日次サマリ（静かな劣化の可視化） `done`

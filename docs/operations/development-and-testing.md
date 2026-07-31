@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v3.5 |
+| バージョン | v3.6 |
 | 更新日 | 2026-08-01 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
@@ -437,7 +437,9 @@ npm run doctor の結果を見て、直せるものは直してください。
 
 ### production 以外から外向きの副作用を出さない
 
-X投稿は `X_POSTING_MODE`、通知メールは `canSendViaSmtp`（production以外はループバック宛のみ）で止めています。**新しい外向きチャネルを足したら同じガードを付けてください。** 2026-07-27、SMTPにガードが無く、動作確認で実際に98通送信しました。
+X投稿は `X_POSTING_MODE`、通知メールは `canSendViaSmtp`（production以外はループバック宛のみ）で止めています。2026-07-27、SMTPにガードが無く、動作確認で実際に98通送信しました。
+
+**新しい外向きチャネルは「気付く仕組み」で守ります。** `src/lib/ops/outbound-channels.ts` が外へ出るファイルの一覧で、`outbound-channels.test.ts` が**一覧に無いファイルが外向き呼び出し（`fetch`・nodemailer・AI SDK・Stripe SDK・Storage削除）を持ったら落ちます**。外部へ出る処理を足したら一覧へ追記してガードを書いてください（T-M7-28）。
 
 ---
 
