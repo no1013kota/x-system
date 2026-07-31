@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
+| バージョン | v1.12 |
 | 更新日 | 2026-07-31 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -186,6 +186,9 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - Turnstile実装の確認先：[widgetの明示render](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/)／[server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)／[公式テストキー](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)。tokenは最大2,048文字・発行後5分・1回限りであることを2026-07-22に確認した。
 
 ## 8. セキュリティ基準
+
+**外向き副作用チャネルの一覧はコードが正本**（`src/lib/ops/outbound-channels.ts`）。どのファイルが外部へ出るか（X API・SMTP・AI provider・Stripe・Storage削除・APIキー失効・出典URL検証・自アプリのworker）と、非productionで実害が出ないようにしている仕組みを列挙し、`outbound-channels.test.ts` が **一覧に無いファイルが外向き呼び出しを持ったら落ちる**。2026-07-27にSMTPだけガードが無く98通を誤送信した（T-M7-23）ため、個別のガードではなく「増えたチャネルに気付く仕組み」を持つ（T-M7-28）。新しく外部へ出る処理を書いたら一覧へ追記し、ガードを書く。
+
 
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
 - CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、公開コンテンツページの動的レンダリング化）はADR-0005を正とする。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
