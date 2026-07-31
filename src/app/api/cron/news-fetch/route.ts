@@ -22,6 +22,8 @@ export async function GET(request: Request): Promise<Response> {
       const { resolveNewsProvider } = await import("@/lib/ai/resolve-provider-server");
       const fetched = await runNewsFetch({
         db: pooledDb,
+        // 分野ごとの結果を残す（0件が「該当なし」か「全件破棄」かを後から説明できるように・T-M7-40）。
+        windowKey,
         researchCategory: (category) => {
           // 分野ごとに新しい deadline を与える（pause_turn継続予算・要件04 §5）。
           const { textGen, provider, model } = resolveNewsProvider({ deadline: createDeadline() });

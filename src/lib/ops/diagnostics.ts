@@ -87,22 +87,98 @@ export function judgeJobs(input: { succeeded: number; failed: number }): Check {
  * ただし**定時実行は本番でしか動かない**ため、それ以外の環境で「止まっている」と赤くしない。
  * 常に赤いチェックは読まれなくなり、本物の異常を隠すため（`check:providers` のGoogleと同じ判断）。
  */
+export interface NewsCategoryOutcome {
+  category: string;
+  /** 分野の処理が例外で終わらなかったか。 */
+  ok: boolean;
+  fetched: number;
+  dropped: number;
+  dropReasons: Record<string, number>;
+}
+
+/**
+ * 0件だった分野を運営者の言葉にする（T-M7-40）。
+ *
+ * **「該当なし」と「全件破棄」は別物**。前者は正常、後者はプロンプトか検証条件の不具合で、
+ * 放置すると分野が永久に0件のまま気付けない（2026-07-28 の web3 がこれだった）。
+ */
+export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
+  failed: string[];
+  allDropped: { category: string; reasons: string }[];
+  noMatch: string[];
+} {
+  const failed: string[] = [];
+  const allDropped: { category: string; reasons: string }[] = [];
+  const noMatch: string[] = [];
+  for (const o of outcomes) {
+    if (!o.ok) {
+      failed.push(o.category);
+      continue;
+    }
+    if (o.fetched > 0) continue;
+    if (o.dropped > 0) {
+      const reasons = Object.entries(o.dropReasons)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `${k}×${n}`)
+        .join(", ");
+      allDropped.push({ category: o.category, reasons: reasons || `${o.dropped}件` });
+    } else {
+      noMatch.push(o.category);
+    }
+  }
+  return { failed, allDropped, noMatch };
+}
+
 export function judgeNews(input: {
   itemsLast48h: number;
   hoursSinceLastRun: number | null;
   /** この環境で定時実行が動く前提か（本番のみ true）。 */
   schedulerExpected: boolean;
+  /** 直近1回の分野ごとの結果（無ければ空）。0件の意味を説明するために使う。 */
+  outcomes?: NewsCategoryOutcome[];
 }): Check {
   const name = "ニュースの取得";
+  const empty = describeEmptyCategories(input.outcomes ?? []);
+  // 直近1回で全件破棄・失敗した分野があれば、取得件数の多少に関わらず必ず伝える。
+  const problem =
+    empty.failed.length > 0 || empty.allDropped.length > 0
+      ? [
+          empty.failed.length > 0 ? `取得に失敗した分野: ${empty.failed.join("・")}` : null,
+          empty.allDropped.length > 0
+            ? `全件破棄された分野: ${empty.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・")}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" / ")
+      : null;
+  const noMatchNote =
+    empty.noMatch.length > 0 ? `該当ニュースが無かった分野: ${empty.noMatch.join("・")}` : null;
   if (!input.schedulerExpected) {
     const last =
       input.hoursSinceLastRun === null
         ? "まだ一度も実行されていません"
         : `最後の実行は ${Math.round(input.hoursSinceLastRun)} 時間前`;
+    const detail = [
+      `${last}（この環境では定時実行が自動で動きません。直近48時間の取得は ${input.itemsLast48h} 件）`,
+      problem,
+      noMatchNote,
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    // 定時実行が動かない環境でも、**全件破棄は不具合**なので注意として上げる（常に赤くはしない）。
+    if (problem) {
+      return {
+        name,
+        level: "warn",
+        detail,
+        nextAction:
+          "Claudeに「全件破棄された分野の除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+      };
+    }
     return {
       name,
       level: "ok",
-      detail: `${last}（この環境では定時実行が自動で動きません。直近48時間の取得は ${input.itemsLast48h} 件）`,
+      detail,
       nextAction:
         "動作を確かめたいときは Claude に「ニュース取得を1回実行して」と伝えてください",
     };
@@ -115,13 +191,29 @@ export function judgeNews(input: {
       nextAction: "定時実行の設定が済んでいるか確認してください",
     };
   }
-  const detail = `直近48時間で ${input.itemsLast48h} 件取得（最後の実行は ${Math.round(input.hoursSinceLastRun)} 時間前）`;
+  const detail = [
+    `直近48時間で ${input.itemsLast48h} 件取得（最後の実行は ${Math.round(input.hoursSinceLastRun)} 時間前）`,
+    problem,
+    noMatchNote,
+  ]
+    .filter(Boolean)
+    .join(" / ");
   if (input.hoursSinceLastRun > 6) {
     return {
       name,
       level: "error",
       detail,
       nextAction: "6時間以上実行されていません。定時実行が止まっている可能性があります",
+    };
+  }
+  if (problem) {
+    // 全件破棄・分野失敗は「0件」と同じに見えるが原因が違う。件数に関わらず必ず上げる。
+    return {
+      name,
+      level: input.itemsLast48h === 0 ? "error" : "warn",
+      detail,
+      nextAction:
+        "Claudeに「全件破棄された分野の除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
     };
   }
   if (input.itemsLast48h === 0) {
@@ -243,11 +335,30 @@ export async function collectDiagnostics(
             (select (extract(epoch from (now() - max(claimed_at))) / 3600)::text
                from cron_runs where job_name = 'news_fetch') as hours`,
   );
+  // 直近1回の分野ごとの結果（T-M7-40）。0件が「該当なし」か「全件破棄」かをここで区別する。
+  const outcomes = await db.query<{
+    category: string;
+    ok: boolean;
+    fetched: number;
+    dropped: number;
+    drop_reasons: Record<string, number> | null;
+  }>(
+    `select category::text as category, ok, fetched, dropped, drop_reasons
+       from news_fetch_outcomes
+      where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)`,
+  );
   checks.push(
     judgeNews({
       itemsLast48h: Number(news.rows[0]?.items ?? 0),
       hoursSinceLastRun: news.rows[0]?.hours == null ? null : Number(news.rows[0].hours),
       schedulerExpected: options.schedulerExpected,
+      outcomes: outcomes.rows.map((r) => ({
+        category: r.category,
+        ok: r.ok,
+        fetched: Number(r.fetched),
+        dropped: Number(r.dropped),
+        dropReasons: r.drop_reasons ?? {},
+      })),
     }),
   );
 

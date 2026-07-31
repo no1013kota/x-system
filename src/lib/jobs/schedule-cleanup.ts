@@ -4,7 +4,7 @@ import type { Queryable } from "../x/token-refresh";
  * scheduler_tick の保持cleanup（要件04 §14, 要件01 §9, 要件02 §3.18, ADR-0003, T-M4-09）。
  * 40日を過ぎた保持データと、24時間を過ぎて未参照のStorage画像を各上限まで削除する。
  * 順序は §14 準拠: (1)news通知 → (2)未参照 news_items → (3)external_api_usage_events 明細 →
- * (4)cron_runs → (5)未参照 Storage画像。news通知を先に消すことで、それが参照していた news_items が
+ * (4)cron_runs → (4b)news_fetch_outcomes → (5)未参照 Storage画像。news通知を先に消すことで、それが参照していた news_items が
  * 未参照になり削除対象へ移る。各段は独立の try/catch で、失敗しても他段・tick本体を止めず onError
  * （Sentry想定）へ記録して次回起動へ繰り越す（cleanup失敗は投稿系処理を失敗させない）。
  */
@@ -29,6 +29,7 @@ export interface CleanupResult {
   newsItems: number;
   usageEvents: number;
   cronRuns: number;
+  newsFetchOutcomes: number;
   images: number;
 }
 
@@ -92,6 +93,20 @@ async function deleteOldCronRuns(db: Queryable): Promise<number> {
   return rowCount ?? 0;
 }
 
+/** (4b) ran_at が40日超の news_fetch_outcomes（分野ごとの取得結果）を削除（要件02 §3.18・T-M7-40）。 */
+async function deleteOldNewsFetchOutcomes(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from news_fetch_outcomes
+      where id in (
+        select id from news_fetch_outcomes
+         where ran_at < now() - make_interval(days => $1)
+         order by ran_at
+         limit $2)`,
+    [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
 /** 画像 storage path が現行 draft から参照されているか（drafts.images[].storage_path）。 */
 async function isImageReferenced(db: Queryable, path: string): Promise<boolean> {
   const { rowCount } = await db.query(
@@ -149,6 +164,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     newsItems: 0,
     usageEvents: 0,
     cronRuns: 0,
+    newsFetchOutcomes: 0,
     images: 0,
   };
 
@@ -171,6 +187,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("cron_runs", async () => {
     result.cronRuns = await deleteOldCronRuns(db);
+  });
+  await step("news_fetch_outcomes", async () => {
+    result.newsFetchOutcomes = await deleteOldNewsFetchOutcomes(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;

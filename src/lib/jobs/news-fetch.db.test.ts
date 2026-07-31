@@ -44,6 +44,7 @@ describe("runNewsFetch (db)", () => {
     }));
     return { items, dropped: 0,
   dropReasons: {},
+  futureAdjusted: 0,
   usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
   }
 
@@ -82,6 +83,61 @@ describe("runNewsFetch (db)", () => {
     } finally {
       await withTransaction((c) =>
         c.query(`delete from news_items where source_url = any($1)`, [[existing, fresh]]),
+      );
+    }
+  });
+
+  it("分野ごとの結果を実DBへ残し、同じ窓の再実行では上書きする（T-M7-40）", async () => {
+    const windowKey = `test-${randomUUID().slice(0, 8)}`;
+    try {
+      await runNewsFetch({
+        db: pooledDb,
+        windowKey,
+        categories: ["web3"],
+        researchCategory: async () => ({
+          items: [],
+          dropped: 4,
+          dropReasons: { "title:too_big": 4 },
+          futureAdjusted: 1,
+          usage: { calls: [], estimated_cost_usd_total: 0 },
+          hours: 3,
+        }),
+      });
+
+      const first = await withTransaction((c) =>
+        c.query<{ fetched: number; dropped: number; future_adjusted: number; drop_reasons: Record<string, number> }>(
+          `select fetched, dropped, future_adjusted, drop_reasons from news_fetch_outcomes
+            where window_key = $1 and category = 'web3'`,
+          [windowKey],
+        ),
+      );
+      expect(first.rows).toHaveLength(1);
+      // 0件でも「除外4件」が残るので、該当なしと全件破棄を後から区別できる。
+      expect(first.rows[0].fetched).toBe(0);
+      expect(first.rows[0].dropped).toBe(4);
+      expect(first.rows[0].future_adjusted).toBe(1);
+      expect(first.rows[0].drop_reasons["title:too_big"]).toBe(4);
+
+      // 同じ窓を再実行しても行は増えず、最新の結果へ更新される。
+      await runNewsFetch({
+        db: pooledDb,
+        windowKey,
+        categories: ["web3"],
+        researchCategory: async () => research([`https://example.com/${randomUUID()}`]),
+      });
+      const second = await withTransaction((c) =>
+        c.query<{ n: string; fetched: number; dropped: number }>(
+          `select count(*)::text as n, max(fetched) as fetched, max(dropped) as dropped
+             from news_fetch_outcomes where window_key = $1 and category = 'web3'`,
+          [windowKey],
+        ),
+      );
+      expect(second.rows[0].n).toBe("1");
+      expect(second.rows[0].fetched).toBe(1);
+      expect(second.rows[0].dropped).toBe(0);
+    } finally {
+      await withTransaction((c) =>
+        c.query(`delete from news_fetch_outcomes where window_key = $1`, [windowKey]),
       );
     }
   });
