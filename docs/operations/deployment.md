@@ -2,13 +2,39 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.2 |
-| 更新日 | 2026-07-28 |
+| バージョン | v1.3 |
+| 更新日 | 2026-08-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
 
 環境の分離方針: **Supabase プロジェクトは staging と production で分ける**。同一DBを共有すると、staging の検証データが本番の利用枠・実績・課金状態へ混入する。
+
+---
+
+## 0.0 反映は1コマンドで行う（T-M7-35）
+
+**初回の環境構築（§1〜§4）が済んだあとは、毎回の反映はこのコマンドだけで足りる。**
+
+```bash
+npm run release:staging      # stg → staging
+npm run release:production   # main → production
+```
+
+順番をコマンドが強制する。**どれか1つでも欠けていれば、そこで止まって理由と次の一手を出す**（黙って進めない）。
+
+1. ブランチが期待どおりか（staging=`stg` / production=`main`）
+2. 未コミットの変更が無いか
+3. 未pushのコミットが無いか（反映されるのはリモートの内容）
+4. 自動テスト（CI）が緑か（赤・実行中・結果なしは止まる）
+5. 反映先のURLが設定されているか（`STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
+6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
+
+すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`SMOKE_X_ACCOUNT_ID` を設定すると生成・画像も含め、未設定ならニュース取得だけを検証する。
+
+> migration適用を飛ばすと**X連携が `internal_error` で壊れる**。ここを警告ではなく停止にしているのは、警告では忘れたときと同じ結果になるため（`CLAUDE.md` 原則3）。判定は `src/lib/ops/release-gate.ts`（単体テストあり）。
+
+以下の§1〜§4は**環境を作るときだけ**必要な手順、§5以降は各段の詳細と手動で確認したいときの内容。
 
 ---
 

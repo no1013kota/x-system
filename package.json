@@ -19,7 +19,9 @@
     "test:db": "REQUIRE_DB=1 vitest run",
     "check:providers": "PROVIDER_CHECK=1 vitest run src/lib/ai/provider-contract.live.test.ts",
     "smoke:live": "node scripts/smoke-live.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "release:staging": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs staging",
+    "release:production": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
