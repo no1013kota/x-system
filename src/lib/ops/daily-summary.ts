@@ -274,14 +274,17 @@ export async function deliverDailySummaries(
       if ((already.rowCount ?? 0) > 0) continue;
 
       const summary = buildDailySummary(await collectDailySummary(db, user.id, nowIso));
+      // 利用者が消えていたら何もしない（`select from profiles` で存在を条件にする）。
+      // 集めてから作るまでの間に退会・削除が起きても、FK違反を「異常」として報告しない。
       const { rows } = await db.query<{ id: string }>(
         `insert into notifications
            (user_id, type, dedupe_key, title, body, link, payload,
             in_app_enabled, email_status, email_available_at)
-         values ($1, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text),
-                 $6, case when $7 then 'queued'::email_delivery_status
-                          else 'not_requested'::email_delivery_status end,
-                 case when $7 then now() else null end)
+         select p.id, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text),
+                $6, case when $7 then 'queued'::email_delivery_status
+                         else 'not_requested'::email_delivery_status end,
+                case when $7 then now() else null end
+           from profiles p where p.id = $1
          on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
          returning id`,
         [user.id, dedupeKey, summary.title, summary.body, date, user.in_app, user.email],

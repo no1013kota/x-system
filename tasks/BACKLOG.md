@@ -357,11 +357,17 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - メモ: `deployment.md` の番号付き手順は24ステップあり、**migration適用（`supabase db push`）を飛ばすとX連携が `internal_error` で壊れる**。この「忘れたら壊れる」を人間の記憶に依存させているのが原則3違反。案: `npm run release:staging` が (1)CIの結果をGitHub APIで確認 (2)未適用migrationの有無を検査 (3)適用 (4)`smoke:live --base` (5)結果を日本語で要約、を順に行い、どこで止まったかを明示する。CIが赤い/未完了なら止める。
 
 
-### T-M7-27: Server Actionの本番実装テストを主要actionへ広げる `todo`
+### T-M7-27: Server Actionの本番実装テストを主要actionへ広げる `done`
 - 参照: [開発とテストの進め方](../docs/operations/development-and-testing.md) §4 / 依存: なし / サイズ: L
 - 完了条件:
   - 利用者が触る主要 Server Action が、DBとSupabaseクライアントをモックせずに1本以上のテストで通っている
   - 少なくとも happy path が `internal_error` にならないことを assert する
+- 実装結果（2026-08-01）: `src/app/actions/actions.db.test.ts`（10件）を追加。**モックはセッションと Next のリクエストAPI（`revalidatePath`・`after`・`redirect`）だけ**で、DB・Supabaseクライアント・ビジネスロジックは本番実装のまま実DBへ通す。対象は優先7領域: 設定（表示名・通知・ニュース）／Xアカウント（一覧・active切替）／スケジュール（作成・停止・再開。楽観lockを含む）／発信設定（ベースmd初版の生成）／下書き（一覧・破棄）／生成job（前提不足の扱い）／APIキー（premiumは権限エラー・BYOKは暗号化保存）／通知（一覧・既読）。
+  **`internal_error` にならないこと**を主眼に置いた。実際、生成jobは前提不足で `persona_required` 系を返すこと、APIキーはpremiumで `forbidden` を返すことを確認できた（どちらも「何をすればよいか分かる」形）。
+- 途中で見つけて直した2件:
+  - **自テストの後片付け漏れ**: 利用者を毎テスト作って最後の1人しか消していなかった。10人が残ると `follower_snapshot`（全アカウント対象・1起動100件上限）の対象を食い、**無関係なテストが落ちた**。FK順に消す `afterEach` へ修正し、手順書へも「テストごとに作った利用者はそのテストの終わりで消す」を追記した。
+  - **日次サマリのFK違反**: 対象利用者を集めてから通知を作る間に、並行するテストがその利用者を削除すると FK 違反が `onCleanupError` へ上がり、`scheduler-tick` の route テストが落ちた。`insert ... select from profiles where id = $1` にして**利用者が消えていたら静かに飛ばす**形へ直した（退会と同時に走った場合も同じ）。
+- 検証（2026-08-01）: release:check 完全通過（1,392件・E2E 29件）。**3回連続で緑**を確認（flakeが残っていないこと）。テスト後の残留データも `db:clean-test-data` で0にした。
 - メモ: API route 側は `dac6dfc`＋`a35870d` で `*.db.test.ts` 7本（43件）まで整備したが、**Server Action 側は `auth.test.ts` の1本だけ**（しかも本番実装を通していない）。`src/app/actions` はテストを除いて19ファイルあり、`x-accounts`・`drafts`・`generation-jobs`・`schedule`・`api-keys`・`settings`・`persona-settings` が優先。2026-07-26 の `service_role` GRANT漏れは「純粋関数のテストが充実しているほどテスト済みに見える」型の穴で、同じ構造が actions 側に残っている。
 
 ### T-M7-28: 外向き副作用チャネルのガード網羅テスト `done`
