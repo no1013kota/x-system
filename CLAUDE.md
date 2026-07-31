@@ -67,6 +67,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
+| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する |
 | 上記以外 | `npm run release:check` |
 
 **「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。手段は **`npm run smoke:live -- --account <xAccountId>`**（要 `npm run dev`）。判定は `src/lib/smoke/scenarios.ts` にあり、デプロイ先では同じものを `/api/cron/canary` で叩ける。
