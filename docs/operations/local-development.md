@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.7 |
-| 更新日 | 2026-07-28 |
+| 更新日 | 2026-07-31 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -115,7 +115,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
-| `npm run db:clean-test-data` | ローカルDBに残るテストユーザーと関連データを掃除（既定はdry-run、`-- --apply` で実行）。実メールのアカウントには触れない |
+| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---
