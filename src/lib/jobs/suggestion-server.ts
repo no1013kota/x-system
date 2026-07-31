@@ -24,6 +24,7 @@ async function resolveProvider(input: { plan: string; userId: string; deadline: 
 
 interface DraftRow {
   pattern: string;
+  image_count: number;
   posted_at: string | null;
   thread: { text?: string }[] | null;
   tweet_ids: string[] | null;
@@ -36,7 +37,8 @@ interface DraftRow {
 async function fetchDrafts(xAccountId: string): Promise<SuggestionInputDraft[]> {
   const { rows } = await pooledDb.query<DraftRow>(
     `select d.pattern, d.posted_at::text as posted_at, d.thread, d.tweet_ids, d.status,
-            d.last_post_error, d.tweet_metrics
+            d.last_post_error, d.tweet_metrics,
+            jsonb_array_length(coalesce(d.images, '[]'::jsonb)) as image_count
        from drafts d
       where d.x_account_id = $1
         and d.posted_at is not null
@@ -49,6 +51,7 @@ async function fetchDrafts(xAccountId: string): Promise<SuggestionInputDraft[]> 
   );
   return rows.map((r) => ({
     pattern: r.pattern,
+    imageCount: Number(r.image_count ?? 0),
     postedAt: r.posted_at,
     thread: (r.thread ?? []).map((t) => ({ text: t.text })),
     tweet_ids: r.tweet_ids ?? [],

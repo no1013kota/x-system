@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildSuggestionInput,
   chooseCheckpoint,
+  hasUrl,
+  lengthBucket,
+  lineBlockBucket,
   type SuggestionInputDraft,
 } from "./suggestion-input";
 
@@ -115,5 +118,96 @@ describe("buildSuggestionInput", () => {
     const many = Array.from({ length: 60 }, (_, i) => mk(`t${i}`));
     const out = buildSuggestionInput(many, NOW);
     expect(out.posts).toHaveLength(50);
+  });
+});
+
+describe("分析軸の集計（T-M7-38）", () => {
+  // 型×時間帯だけでは「短くした」「改行を入れた」「画像を付けた」「URLを外した」が
+  // 効いたかを実績で確かめられない。軸ごとに独立集計する。
+  const shaped = (
+    id: string,
+    text: string,
+    impressions: number,
+    over: Partial<SuggestionInputDraft> = {},
+  ): SuggestionInputDraft =>
+    mk(id, {
+      thread: [{ text }],
+      // 1日/7日の両方を入れる（3件未満だとcheckpointが1日へ落ちるため）。
+      tweet_metrics: { [id]: { checkpoints: { "1": { impressions }, "7": { impressions } } } },
+      ...over,
+    });
+
+  it("加重文字数の帯ごとに平均を出す（境界は生成目標の240に合わせる）", () => {
+    expect(lengthBucket(160)).toBe("短(〜160)");
+    expect(lengthBucket(161)).toBe("中(161〜240)");
+    expect(lengthBucket(240)).toBe("中(161〜240)");
+    expect(lengthBucket(241)).toBe("長(241〜)");
+
+    const out = buildSuggestionInput(
+      [
+        shaped("a", "あ".repeat(50), 300), // 加重100 → 短
+        shaped("b", "あ".repeat(50), 500), // 短
+        shaped("c", "あ".repeat(140), 100), // 加重280 → 長
+      ],
+      NOW,
+    );
+    const byLength = Object.fromEntries(out.axes.length.map((c) => [c.value, c]));
+    expect(byLength["短(〜160)"].count).toBe(2);
+    expect(byLength["短(〜160)"].avg_impressions).toBe(400);
+    expect(byLength["長(241〜)"].avg_impressions).toBe(100);
+  });
+
+  it("改行の塊数を数える（空行区切り）", () => {
+    expect(lineBlockBucket("1行だけ")).toBe("1");
+    expect(lineBlockBucket("塊1\n\n塊2")).toBe("2");
+    expect(lineBlockBucket("塊1\n\n塊2\n\n塊3")).toBe("3+");
+    // 単なる改行（空行なし）は塊を分けない
+    expect(lineBlockBucket("行1\n行2")).toBe("1");
+
+    const out = buildSuggestionInput(
+      [shaped("a", "塊1\n\n塊2", 400), shaped("b", "1行だけ", 200)],
+      NOW,
+    );
+    const byBlocks = Object.fromEntries(out.axes.line_blocks.map((c) => [c.value, c]));
+    expect(byBlocks["2"].avg_impressions).toBe(400);
+    expect(byBlocks["1"].avg_impressions).toBe(200);
+  });
+
+  it("画像の有無で分ける（画像は下書き単位なので全ポストへ及ぶ）", () => {
+    const out = buildSuggestionInput(
+      [shaped("a", "本文", 500, { imageCount: 1 }), shaped("b", "本文", 100, { imageCount: 0 })],
+      NOW,
+    );
+    const byImage = Object.fromEntries(out.axes.image.map((c) => [c.value, c]));
+    expect(byImage["あり"].avg_impressions).toBe(500);
+    expect(byImage["なし"].avg_impressions).toBe(100);
+  });
+
+  it("本文のURL有無で分ける（外部リンクは露出が落ちるため）", () => {
+    expect(hasUrl("出典 https://example.com/a")).toBe(true);
+    expect(hasUrl("URLなしの本文")).toBe(false);
+
+    const out = buildSuggestionInput(
+      [shaped("a", "https://example.com/a を見て", 100), shaped("b", "URLなし", 600)],
+      NOW,
+    );
+    const byUrl = Object.fromEntries(out.axes.url.map((c) => [c.value, c]));
+    expect(byUrl["あり"].avg_impressions).toBe(100);
+    expect(byUrl["なし"].avg_impressions).toBe(600);
+  });
+
+  it("形の計測は本文全体で行う（表示用の100字切り詰めに影響されない）", () => {
+    // 100字を超える位置に空行を置く。body は切られるが塊数は全文で数える。
+    const text = `${"あ".repeat(120)}\n\n続き`;
+    const out = buildSuggestionInput([shaped("a", text, 100)], NOW);
+    expect(out.posts[0].body.length, "表示は100字で切る").toBe(100);
+    expect(out.axes.line_blocks[0].value, "計測は全文").toBe("2");
+  });
+
+  it("従来の型×時間帯の集計は変わらない", () => {
+    const out = buildSuggestionInput([mk("a"), mk("b")], NOW);
+    expect(out.stats[0].pattern).toBe("p1");
+    expect(out.stats[0].time_bucket).toBe("12-15");
+    expect(out.stats[0].count).toBe(2);
   });
 });

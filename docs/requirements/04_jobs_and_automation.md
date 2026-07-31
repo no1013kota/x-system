@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
-| 更新日 | 2026-07-31 |
+| バージョン | v1.16 |
+| 更新日 | 2026-08-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -232,6 +232,7 @@ flowchart TD
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTはユーザー操作だけで起動し、同一JST日かつ新しいmetrics更新がなければ拒否する。比較は同じcheckpoint同士に限定し、7日値を優先、比較グループが3件未満なら1日値を使い、異なる経過日数を混ぜない。
+- **分析軸は「型×時間帯」だけでなく、加重文字数の帯・改行の塊数・画像の有無・本文のURL有無も集計する**（T-M7-38）。伸びを左右する主要な変数がこれらで、軸が無いと投稿の書き方を変えた効果を実績で確かめられない。集計はコード側（`buildSuggestionInput`）で行い、プロンプトへは集計済みの値を渡す。軸ごとに独立集計する（多次元セルにすると最大50件では大半が1件になり判断材料にならない）。文字数の帯の境界は生成時の目標（加重240）に合わせる。提案には差が出た軸を`evidence.axis`として保存し、画面にも表示する。
 - `refreshSuggestions`の拒否判定: active（queued/running）な`suggestion` jobがある（`active_suggestion_exists`）／同一JST日に成功済みの`suggestion` jobがある（`already_today`。失敗ジョブは再試行を許す）／前回`suggestion` job作成以降に新しいmetrics取得（`drafts.tweet_metrics`のcheckpoint `collected_at`が前回job `created_at`より新しい）が無い（`no_new_metrics`。初回は許可）。request_key冪等・active一致・queued/running 5件上限も適用する。
 - 生成枠は実際にLLMを実行する時（比較対象が3件以上）にのみ+1 reserveし、最終失敗で冪等refundする。比較グループ不足でLLMを呼ばない場合は提案0件で正常終了し、枠を消費しない（premium）。BYOKは枠を消費しない。SUGGESTはbase_mdを読まない。
 - 提案は最大2件で、表示専用とする。`evidence.tweet_ids`は`<posts>`に含まれるIDだけを許可し（zod検証、違反は修復1回→失敗）、`evidence.window_days=30`をコードで付与して保存する。ベースmd・プロンプトへの自動反映は行わず、ユーザーが発信設定やmd編集（md/プレミアム）で自ら反映する。テーマ軸の分析はSUGGESTプロンプトが対象投稿の本文から判断する（テーマの事前集計・専用カラムは持たない）。`listSuggestions`は最新の成功`suggestion` jobの提案分だけを返す。

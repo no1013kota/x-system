@@ -134,7 +134,7 @@ describe("suggestion worker (local DB)", () => {
       suggestions: [
         {
           content: "朝の時間帯に投稿頻度を上げる",
-          evidence: { tweet_ids: [id], metric: "impressions", checkpoint_days: 7, diff_pct: 40, summary: "根拠" },
+          evidence: { axis: "length", tweet_ids: [id], metric: "impressions", checkpoint_days: 7, diff_pct: 40, summary: "根拠" },
         },
       ],
     });

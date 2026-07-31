@@ -58,6 +58,8 @@ export interface SuggestionEvidencePost {
 }
 export interface SuggestionDisplay {
   content: string;
+  /** どの軸で差が出たか（T-M7-38）。古い提案には無いので null を許す。 */
+  axis: string | null;
   metric: string;
   checkpointDays: number | null;
   diffPct: number | null;
@@ -116,6 +118,7 @@ export async function loadSuggestionsForUser(
     const tweetIds = Array.isArray(ev.tweet_ids) ? (ev.tweet_ids as unknown[]).filter((x): x is string => typeof x === "string") : [];
     return {
       content: r.content,
+      axis: str(ev.axis) || null,
       metric: str(ev.metric) || "impressions",
       checkpointDays: numOrNull(ev.checkpoint_days),
       diffPct: numOrNull(ev.diff_pct),

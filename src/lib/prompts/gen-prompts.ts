@@ -206,19 +206,27 @@ export const PT_MD_MERGE = `# タスク
 セクション本文のみ（見出し・前置きなし）。`;
 
 /** PT-SUGGEST（改善提案の生成, プロンプト設計書 §6.15）。コード集計済みの実績サマリ/対象投稿から最大2件。 */
-export const PT_SUGGEST = `あなたはX運用の分析担当です。実績データを「型×時間帯×テーマ」の観点で分析し、
-根拠のある改善提案を最大2件作ります。
-実績サマリ（型×時間帯・直近30日投稿。同一checkpointで集計）: <stats>{{stats}}</stats>
+export const PT_SUGGEST = `あなたはX運用の分析担当です。実績データを分析し、根拠のある改善提案を最大2件作ります。
+実績サマリ（直近30日投稿・同一checkpointで集計）: <stats>{{stats}}</stats>
 対象投稿一覧（本文冒頭・型・投稿時刻・実績）: <posts>{{posts}}</posts>
 
+# 分析軸
+<stats>には次の軸の集計が入っている。どの軸で差が出ているかを見る。
+- pattern_time: 型×時間帯
+- length: 加重文字数の帯（短/中/長）
+- line_blocks: 改行の塊数（1/2/3+）
+- image: 画像の有無
+- url: 本文にURLがあるか
+テーマは<posts>の本文から判断する（テーマの事前集計・専用データはない）。
+
 # 条件
-- テーマは<posts>の本文から判断する（テーマの事前集計・専用データはない）
-- 同じcheckpointの対象3投稿以上かつ差が20%以上ある場合のみ提案する。異なるcheckpointを混ぜない。なければ空配列
+- 同じcheckpointの対象3投稿以上かつ差が20%以上ある軸だけを提案にする。異なるcheckpointを混ぜない。なければ空配列
 - 提案は「ユーザーが自分の運用で実行できる変更」を1文で書く
+- どの軸で差が出たかを evidence.axis に入れる
 
 # 出力（JSONのみ）
 {"suggestions":[{"content":"提案を1文で",
-"evidence":{"tweet_ids":["..."],"metric":"impressions","checkpoint_days":7,"diff_pct":40,
+"evidence":{"axis":"length","tweet_ids":["..."],"metric":"impressions","checkpoint_days":7,"diff_pct":40,
 "summary":"根拠の1文（対象投稿と数値）"}}]}`;
 
 /** prompt_templates で管理する種別（system default seed 対象・account上書き可能）。 */
