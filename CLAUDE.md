@@ -31,7 +31,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト7層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
-| `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
+| `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / maintenance / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
