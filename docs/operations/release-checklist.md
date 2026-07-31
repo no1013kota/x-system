@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.3 |
-| 更新日 | 2026-07-27 |
+| 更新日 | 2026-07-31 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
 MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キー・法務確認が要る項目は §3 に担当・期日欄付きで残す。
@@ -26,6 +26,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 ## 2. dry_run → live 切替手順と rollback
 
 ### 切替手順（本番のみ）
+0. **ローカルDBを本番へ持ち込む場合に限り**、先に `npm run db:clean-test-data -- --apply` を実行する。ローカル検証で作られた送信待ちのお知らせメールが残っていると、**本番で初回の定時実行がまとめて送信する**（T-M7-31・D-9 案A）。滞留の有無は `npm run doctor` の「お知らせメール」で分かる。別DBを新規に用意する通常の流れでは不要。
 1. §3 の人間側項目（本番キー・アカウント・単価確認・法務確認）がすべて完了していることを確認する。
 2. X 検証用アカウントで「少数ポスト投稿 → 自動 rollback 削除」の live E2E を本番相当で1回実施する（要決定 M3・費用発生のため実施タイミングは運営判断）。
 3. Vercel 本番環境変数に `X_POSTING_MODE=live` を設定する（dev/preview は `dry_run` のまま。設定すると起動時検証で弾かれる）。

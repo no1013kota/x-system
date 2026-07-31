@@ -372,6 +372,8 @@ npm run doctor の結果を見て、直せるものは直してください。
 - job はローカルで自動進行しない。worker（`/api/jobs/run`）や該当cron routeを明示的に叩き、完了は**期限付きで**pollする。
 - 安全ゲート `e2e/fixtures/guard.ts` が `APP_ENV=development`・`X_POSTING_MODE=dry_run`・ローカルSupabase・ローカルbaseURLを起動前に検査する。外れたら1件も実行しない。
 - retry は 0。flakyを無条件retryで隠すと「動いているつもり」になる。
+- **サンドボックス内では1件も動かない。** ブラウザが起動できず、全件が `bootstrap_check_in ... Permission denied (1100)` で落ちる（Chromiumのフラグが数十行出るのでアプリが壊れたように見えるが、**ブラウザが立ち上がっていないだけ**）。エージェントから実行するときはサンドボックスを外す。
+- **`npm run ... | tail` で結果を判断しない。** 終了コードが `tail` のものになり、**全件失敗でも成功に見える**（2026-07-31 に実際に誤読した）。件数の行（`27 passed` / `27 failed`）を必ず確認する。
 
 ### provider契約テスト（層5）
 
