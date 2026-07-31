@@ -13,6 +13,22 @@ const { extractCashtags, parseTweet } = twitterText;
 export const MAX_WEIGHTED_LENGTH = 280;
 export const MAX_CASHTAGS = 1;
 
+/**
+ * 読みやすさの目標上限（加重240＝日本語で約120字）。**契約ではなく品質目標**（T-M7-41）。
+ *
+ * 加重280（約140字）まで書けるが、上限まで詰めた投稿は読まれない。プロンプトで「60〜120字」と
+ * 指示しても守られないことを実測した（2026-08-01、`smoke:live` で139〜140字）。
+ * 「出力形式は指示ではなく仕組みで保証する」（プロンプト設計書 §2 原則5）に従い、超過分は
+ * PT-FIXで1回だけ縮める。縮められなくても失敗にはしない（自動投稿も止めない）。
+ */
+export const TARGET_WEIGHTED_LENGTH = 240;
+
+/**
+ * 短縮しすぎの下限（加重100＝日本語で約50字）。PT-FIXが内容を削り過ぎた場合は元の本文を使う。
+ * 長いことより、意味が壊れることの方が害が大きい。
+ */
+export const MIN_SHORTENED_WEIGHTED_LENGTH = 100;
+
 export interface PostTextMetrics {
   weightedLength: number;
   withinLimit: boolean;

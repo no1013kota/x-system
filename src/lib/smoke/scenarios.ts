@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { pooledQueryable } from "../db/pool";
 import { runJob } from "../jobs/worker";
+import { weightedLength } from "../post/text-metrics";
 
 /**
  * 実物スモーク（T-M7-25）。**実APIを叩いてアプリの最終成果物まで検証する**。
@@ -51,10 +52,12 @@ export interface SmokeResult {
 export function describeGenerated(texts: string[]): string {
   const shape = (text: string) => {
     const chars = text.replace(/\n/g, "").length;
+    // 判定に使う単位は加重文字数（CJKは2）。字数だけ見ると上限との関係が読めない。
+    const weighted = weightedLength(text);
     const blocks = text.split(/\n{2,}/).length;
     const tags = (text.match(/(?:^|\s)#[^\s#]+/g) ?? []).length;
     const urls = (text.match(/https?:\/\//g) ?? []).length;
-    return `${chars}字/改行塊${blocks}/タグ${tags}/URL${urls}`;
+    return `${chars}字（加重${weighted}）/改行塊${blocks}/タグ${tags}/URL${urls}`;
   };
   const head = texts.slice(0, 2).map((text, i) => `[${i + 1}] ${shape(text)}\n${text}`);
   return `全${texts.length}ポスト\n${head.join("\n")}`;

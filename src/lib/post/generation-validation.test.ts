@@ -158,3 +158,72 @@ describe("threadBlocksAutoPost", () => {
     ).toBe(true);
   });
 });
+
+describe("finalizeThread — 目標字数とポスト数を仕組みで担保する（T-M7-41）", () => {
+  // 2026-08-01の実測: プロンプトで「60〜120字」「3〜5ポスト」と指示しても
+  // 139〜140字・6ポストが返った。指示ではなく検証で収める（§2 原則5）。
+  const over = "あ".repeat(135); // 加重270（280以内だが目標240超）
+  const withinTarget = "あ".repeat(100); // 加重200
+
+  it("280以内でも目標（加重240）を超えたら1回だけ短縮する", async () => {
+    const shorten = vi.fn(async (_text: string, _limit: number) => "あ".repeat(110)); // 加重220 → 目標内
+    const res = await finalizeThread(
+      { pattern: "p2", posts: [over], aiSources: [], ngWords: [], hasReferenceUrl: false },
+      deps({ shorten }),
+    );
+    expect(shorten).toHaveBeenCalledTimes(1);
+    expect(shorten.mock.calls[0][1], "目標値で短縮を頼む").toBe(240);
+    expect(res.thread[0].weighted_length).toBe(220);
+    expect(res.thread[0].warnings).not.toContain(WARNING.lengthOverTarget);
+  });
+
+  it("目標内のポストには短縮を呼ばない（無駄な費用を使わない）", async () => {
+    const shorten = vi.fn(async (t: string) => t);
+    await finalizeThread(
+      { pattern: "p2", posts: [withinTarget], aiSources: [], ngWords: [], hasReferenceUrl: false },
+      deps({ shorten }),
+    );
+    expect(shorten).not.toHaveBeenCalled();
+  });
+
+  it("短縮しても目標を超えたままなら警告を付けるが、自動投稿は止めない", async () => {
+    const shorten = vi.fn(async () => "あ".repeat(130)); // 加重260 → まだ目標超
+    const res = await finalizeThread(
+      { pattern: "p2", posts: [over], aiSources: [], ngWords: [], hasReferenceUrl: false },
+      deps({ shorten }),
+    );
+    expect(res.thread[0].warnings).toContain(WARNING.lengthOverTarget);
+    expect(res.autoPostBlocked, "読みやすさの目標で予約投稿を止めない").toBe(false);
+  });
+
+  it("短縮が削り過ぎたら元の本文を採る（意味が壊れる方が害が大きい）", async () => {
+    const shorten = vi.fn(async () => "短い"); // 加重4 → 下限100未満
+    const res = await finalizeThread(
+      { pattern: "p2", posts: [over], aiSources: [], ngWords: [], hasReferenceUrl: false },
+      deps({ shorten }),
+    );
+    expect(res.thread[0].text, "元の本文を保つ").toBe(over);
+    expect(res.thread[0].warnings).toContain(WARNING.lengthOverTarget);
+  });
+
+  it("ポスト数が生成上限を超えたら締めを残して落とし、警告を付ける", async () => {
+    const posts = ["1", "2", "3", "4", "5", "締め"]; // P-6は生成上限5
+    const res = await finalizeThread(
+      { pattern: "p6", posts, aiSources: ["https://ok.test/a"], ngWords: [], hasReferenceUrl: false },
+      deps(),
+    );
+    expect(res.thread).toHaveLength(5);
+    expect(res.thread[4].text, "スレッドの締めを残す").toBe("締め");
+    expect(res.thread[4].warnings).toContain(WARNING.postCountTrimmed);
+    expect(res.autoPostBlocked, "長さの調整で予約投稿を止めない").toBe(false);
+  });
+
+  it("上限内なら落とさず警告も付けない", async () => {
+    const res = await finalizeThread(
+      { pattern: "p6", posts: ["1", "2", "3"], aiSources: ["https://ok.test/a"], ngWords: [], hasReferenceUrl: false },
+      deps(),
+    );
+    expect(res.thread).toHaveLength(3);
+    expect(res.thread[2].warnings).not.toContain(WARNING.postCountTrimmed);
+  });
+});
