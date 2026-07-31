@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
+| バージョン | v1.15 |
 | 更新日 | 2026-07-31 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -101,7 +101,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | job | 初期launchd（JST） | Vercel Cron移行後（UTC） | 内容 | 1起動上限 |
 |---|---|---|---|---:|
 | `news_fetch` | 09:00〜20:00毎時 | `0 0-11 * * *` | 6分野を直近3時間ラップ取得（9〜11時は夜間・終了間際補完15/16/17h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
-| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
+| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
 

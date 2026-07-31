@@ -16,7 +16,16 @@ import { toIso } from "../format";
  * 8,000字上限・expected_updated_at 楽観lock。p5 は FEATURE_QUOTE_POST_ENABLED=false の間 feature_disabled。
  */
 
-/** system default 7件（kind=p1〜p6/image）を冪等にseed/同期する。適用件数を返す。 */
+/**
+ * system default 7件（kind=p1〜p6/image）を冪等にseed/同期する。**変更があった件数**を返す。
+ *
+ * コード定数が正本で、DB行はその写し。`scheduler_tick` から毎回呼ぶため、内容が同じときは
+ * 更新しない（`updated_at` を無駄に動かさない。編集画面の楽観lockにも影響する）。
+ *
+ * これを自動で呼ぶ理由（T-M7-37）: 解決順は「account上書き → system default行 → コード定数」で、
+ * **DB行があるとコード定数の変更が反映されない**。以前はこの関数がテストからしか呼ばれておらず、
+ * プロンプトを直しても古い行が使われ続ける状態だった（人が思い出して実行する手順にしない・原則3）。
+ */
 export async function seedSystemPromptTemplates(db: Queryable): Promise<number> {
   let applied = 0;
   for (const kind of PROMPT_TEMPLATE_KINDS) {
@@ -24,7 +33,8 @@ export async function seedSystemPromptTemplates(db: Queryable): Promise<number> 
       `insert into prompt_templates (x_account_id, kind, content)
        values (null, $1, $2)
        on conflict (kind) where x_account_id is null
-       do update set content = excluded.content, updated_at = now()`,
+       do update set content = excluded.content, updated_at = now()
+        where prompt_templates.content is distinct from excluded.content`,
       [kind, SYSTEM_DEFAULT_TEMPLATES[kind]],
     );
     applied += res.rowCount ?? 0;

@@ -76,3 +76,43 @@ describe("GEN prompt constants", () => {
     expect(PT_FIX).toBe(PT_FIX.trim());
   });
 });
+
+describe("日本のXで不利にならない規約（T-M7-37）", () => {
+  it("共通ルールに改行・字数・ハッシュタグ・URLの扱いがある", () => {
+    // どれも欠けると「140字ベタ打ち・タグ乱用・本文にURL」という伸びない形が出る。
+    expect(SYS_GEN).toContain("改行で読ませる");
+    expect(SYS_GEN).toContain("60〜120字");
+    expect(SYS_GEN).toContain("ハッシュタグは使わない");
+    expect(SYS_GEN).toContain("URLは本文へ書かない");
+  });
+
+  it("1ポスト目が単独で読まれる前提と、フックの型が列挙されている", () => {
+    expect(SYS_GEN).toContain("単独で読まれる");
+    for (const pattern of ["意外な数字", "常識の否定", "対比", "読者の名指し"]) {
+      expect(SYS_GEN).toContain(pattern);
+    }
+  });
+
+  it("本文へURLを書かせる指示が型プロンプトに残っていない", () => {
+    // 以前は P1・P4・P6 が「最終ポスト=まとめ＋出典URL」でURLを必須にしていた。
+    // アプリは出典を本文ではなく `sources` として保存し、投稿本文には付けない
+    // （要件: プロンプト設計書 §7-7・generation-validation.ts）。本文にURLを書かせると
+    // 投稿の露出を自分で下げることになる。
+    for (const [kind, body] of Object.entries(SYSTEM_DEFAULT_TEMPLATES)) {
+      expect(body, `${kind} に「＋出典URL」が残っている`).not.toContain("＋出典URL");
+      expect(body, `${kind} が本文へURLを書かせている`).not.toContain("「出典: URL」");
+    }
+    expect(SYS_GEN, "出典は sources へ入れる契約を明記する").toContain("sources 配列へ入れる");
+  });
+
+  it("スレッドの長さが日本のXに合わせて短い", () => {
+    expect(SYSTEM_DEFAULT_TEMPLATES.p1).toContain("全体2〜4ポスト");
+    expect(SYSTEM_DEFAULT_TEMPLATES.p4).toContain("全体1〜2ポスト");
+    expect(SYSTEM_DEFAULT_TEMPLATES.p6).toContain("全体3〜5ポスト");
+  });
+
+  it("P2は立場を明示し、P3は手順を3〜5個で完結させる", () => {
+    expect(SYSTEM_DEFAULT_TEMPLATES.p2).toContain("賛否が分かれ得る立場");
+    expect(SYSTEM_DEFAULT_TEMPLATES.p3).toContain("手順は3〜5個で完結");
+  });
+});

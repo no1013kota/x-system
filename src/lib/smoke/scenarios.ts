@@ -32,9 +32,33 @@ export interface SmokeResult {
   costUsd: number;
   /** 失敗ではないが注意すべき事象（除外件数など）。 */
   warning?: string;
+  /**
+   * 生成物の実物（先頭2ポストと形の計測）。**シナリオは作った下書きを削除する**ため、
+   * ここへ残さないと「実物を1周させて成果物を目で確認する」ができない（T-M7-37で判明）。
+   * 秘密値は含まない（生成本文のみ）。
+   */
+  sample?: string;
 }
 
 // --- 純粋な判定（ここだけは単体テストで固定する） ---
+
+/**
+ * 生成物の形を運営者が読める1文へ畳む（先頭2ポストの本文＋計測）。
+ *
+ * 見るのは、指示が実際に守られたかを判断できる項目に絞る: 字数・改行の塊数・ハッシュタグ・URL。
+ * 「プロンプトで頼んだことは守られない前提で組む」ため、**守られたかを毎回測る**（プロンプト設計書 §2 原則5）。
+ */
+export function describeGenerated(texts: string[]): string {
+  const shape = (text: string) => {
+    const chars = text.replace(/\n/g, "").length;
+    const blocks = text.split(/\n{2,}/).length;
+    const tags = (text.match(/(?:^|\s)#[^\s#]+/g) ?? []).length;
+    const urls = (text.match(/https?:\/\//g) ?? []).length;
+    return `${chars}字/改行塊${blocks}/タグ${tags}/URL${urls}`;
+  };
+  const head = texts.slice(0, 2).map((text, i) => `[${i + 1}] ${shape(text)}\n${text}`);
+  return `全${texts.length}ポスト\n${head.join("\n")}`;
+}
 
 /** providerのマークアップが本文に残っていないか（T-M7-20）。見つかったタグを返す。 */
 export function findProviderMarkup(texts: string[]): string[] {
@@ -177,7 +201,13 @@ async function generationWithSearch(xAccountId: string): Promise<SmokeResult> {
         detail: `本文にproviderのマークアップが残っている: ${markup.join(" ")}`,
       };
     }
-    return { name, ok: true, costUsd, detail: `${texts.length}ポストの下書きを作成` };
+    return {
+      name,
+      ok: true,
+      costUsd,
+      detail: `${texts.length}ポストの下書きを作成`,
+      sample: describeGenerated(texts),
+    };
   } catch (error) {
     return { name, ok: false, costUsd: 0, detail: `例外: ${(error as Error).message}` };
   } finally {
@@ -247,7 +277,17 @@ async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
     if (!image.size_bytes || image.size_bytes < 1000) {
       return { name, ok: false, costUsd, detail: `画像が小さすぎる（${image.size_bytes}バイト）` };
     }
-    return { name, ok: true, costUsd, detail: `画像 ready（${image.size_bytes}バイト）` };
+    const { rows: threadRows } = await db.query<{ thread: { text?: string }[] }>(
+      `select thread from drafts where id = $1`,
+      [parent.draft_id],
+    );
+    return {
+      name,
+      ok: true,
+      costUsd,
+      detail: `画像 ready（${image.size_bytes}バイト）`,
+      sample: describeGenerated((threadRows[0]?.thread ?? []).map((p) => p.text ?? "")),
+    };
   } catch (error) {
     return { name, ok: false, costUsd, detail: `例外: ${(error as Error).message}` };
   } finally {
