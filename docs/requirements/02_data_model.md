@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.20 |
-| 更新日 | 2026-07-31 |
+| バージョン | v1.21 |
+| 更新日 | 2026-08-01 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -43,7 +43,7 @@
 | `usage_counter_type` | `post_normal`, `post_url`, `generation`, `image` |
 | `usage_event_reason` | `reserve`, `refund`, `consume` |
 | `usage_event_operation` | `generation`, `image_generation`, `post_create`, `post_delete` |
-| `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage` |
+| `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary` |
 | `email_delivery_status` | `not_requested`, `queued`, `sent`, `failed` |
 
 ## 3. テーブル定義
@@ -566,11 +566,14 @@ RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期�
   "posted": { "in_app": true, "email": false },
   "error": { "in_app": true, "email": true },
   "billing": { "in_app": true, "email": true },
-  "usage": { "in_app": true, "email": true }
+  "usage": { "in_app": true, "email": true },
+  "summary": { "in_app": true, "email": true }
 }
 ```
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
+
+`summary`は日次サマリ（T-M7-29）。**1日1通なのでメールも既定ON**とする（画面を見に行かなくても静かな劣化に気付ける形にするのが目的で、既定OFFでは目的を果たさない）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成triggerの両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。
 
 ### 4.4 `x_accounts.settings`
 

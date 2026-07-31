@@ -16,6 +16,7 @@ const fullNotification = {
   error: { in_app: true, email: true },
   billing: { in_app: true, email: true },
   usage: { in_app: false, email: true },
+        summary: { in_app: true, email: true },
 };
 
 describe("notificationConfigSchema", () => {

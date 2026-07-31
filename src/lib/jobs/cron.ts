@@ -96,6 +96,8 @@ export interface SchedulerTickResult {
   cleaned: CleanupResult;
   /** コード定数へ追随させた system default プロンプトの件数（通常は0）。 */
   promptsSynced: number;
+  /** 作成した日次サマリ通知の件数（1日1通なので通常は0か1）。 */
+  dailySummaries: number;
 }
 
 /**
@@ -168,7 +170,24 @@ export async function runSchedulerTick(
     onError: opts.onCleanupError,
   });
 
-  // (6) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
+  // (6) 日次サマリ（T-M7-29）。JST8時以降のtickで、その日の分を1通だけ作る（dedupe keyで冪等）。
+  // 静かな劣化（分野が何日も0件など）は「いまの状態」だけでは見えないため、日をまたぐ推移を届ける。
+  let dailySummaries = 0;
+  try {
+    const { deliverDailySummaries } = await import("../ops/daily-summary");
+    const delivered = await deliverDailySummaries(pooledDb, new Date(Date.now()).toISOString(), {
+      onError: (userId, err) => opts.onCleanupError?.(`daily_summary:${userId}`, err),
+    });
+    dailySummaries = delivered.created;
+    // commit後の best-effort 即時メール（残りは下の通知メール回収が拾う）。
+    if (opts.sendEmail) {
+      for (const id of delivered.createdIds) await opts.sendEmail(id).catch(() => {});
+    }
+  } catch (err) {
+    opts.onCleanupError?.("daily_summary", err);
+  }
+
+  // (7) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
   // 解決順は「account上書き → system default行 → コード定数」で、DB行が古いままだと
   // プロンプトを直しても反映されない。内容が同じときは何も書かないので通常は0件。
   // 失敗しても tick 本体を止めない（cleanupと同じ扱い）。
@@ -187,5 +206,6 @@ export async function runSchedulerTick(
     emailsRecovered,
     cleaned,
     promptsSynced,
+    dailySummaries,
   };
 }

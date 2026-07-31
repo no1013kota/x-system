@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   error: "エラー",
   billing: "課金",
   usage: "利用枠",
+  summary: "毎日のまとめ",
 };
 const CATEGORY_LABEL: Record<string, string> = {
   ai: "AI",

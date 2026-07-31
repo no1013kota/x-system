@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.16 |
+| バージョン | v1.17 |
 | 更新日 | 2026-08-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -101,7 +101,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | job | 初期launchd（JST） | Vercel Cron移行後（UTC） | 内容 | 1起動上限 |
 |---|---|---|---|---:|
 | `news_fetch` | 09:00〜20:00毎時 | `0 0-11 * * *` | 6分野を直近3時間ラップ取得（9〜11時は夜間・終了間際補完15/16/17h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
-| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
+| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
 
@@ -229,6 +229,7 @@ flowchart TD
 - LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件、自己投稿は直近100件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。mergeには対象セクションの現在値と、同セクションへ反映する全active sourceのanalysisを渡す。
 - own_posts再取り込みの30日制御は**成功した`learning_analysis` jobだけ**を数える。失敗を数えると、分析が壊れているときに直すための再実行まで塞がれ、行き止まりになる（2026-07-26に発生・T-M7-39）。二重送信は進行中jobの`job_conflict`で止める。
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面・2,000字で切る）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
+- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**分野ごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄された分野と理由、止まっている処理、送信待ちメール、当月費用。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTはユーザー操作だけで起動し、同一JST日かつ新しいmetrics更新がなければ拒否する。比較は同じcheckpoint同士に限定し、7日値を優先、比較グループが3件未満なら1日値を使い、異なる経過日数を混ぜない。
