@@ -89,7 +89,7 @@ const baseUrl = (() => {
   return (target === "staging" ? process.env.STAGING_BASE_URL : process.env.PRODUCTION_BASE_URL) ?? "";
 })();
 
-/** 検証に使うXアカウント。`-- --account <uuid>` が最優先、無ければ環境変数。 */
+/** 検証に使うXアカウント。`-- --account <Xのユーザー名 または UUID>` が最優先、無ければ環境変数。 */
 const smokeAccount = (() => {
   const i = process.argv.indexOf("--account");
   if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
@@ -170,12 +170,13 @@ try {
 }
 
 console.log("\n[2/2] 実物スモーク");
-console.log(`${baseUrl} に対して実行します（実費 約$0.30・要 xAccountId）。`);
+console.log(`${baseUrl} に対して実行します（実費 約$0.30・要 Xアカウントの指定）。`);
 const args = [`--base ${baseUrl}`, smokeAccount ? `--account ${smokeAccount}` : ""]
   .filter(Boolean)
   .join(" ");
 if (!smokeAccount) {
-  console.log("⚠️  SMOKE_X_ACCOUNT_ID が未設定のため、ニュース取得だけを検証します。");
+  console.log("⚠️  検証するXアカウントの指定が無いため、ニュース取得だけを検証します。");
+  console.log("    生成・画像も見るには `-- --account <Xのユーザー名>`（または SMOKE_X_ACCOUNT_ID）を渡してください。");
 }
 let smokeOk = true;
 try {
