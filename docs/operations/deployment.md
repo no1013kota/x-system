@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.6 |
+| バージョン | v1.7 |
 | 更新日 | 2026-08-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -164,7 +164,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 |---|---|
 | X Developer App | callback URL に `APP_BASE_URL + X_OAUTH_REDIRECT_PATH` を登録。scope 5種。staging と production で**別App**にする |
 | Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ |
-| Turnstile | サイトのドメインを登録（staging/production 別キー） |
+| Turnstile | **Hostname Management にそのドメインを登録**（staging/production 別キー）。登録漏れだと `error-callback` 110200 になり**ログインも新規登録もできない**。`npm run check:turnstile -- --base <URL>` で確認する |
 | Supabase Auth | Site URL / Redirect URLs に `APP_BASE_URL` を登録 |
 
 ---
@@ -178,8 +178,10 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 | `401: 鍵が一致しません` | **`CRON_SECRET` は環境ごとに違う**（違うのが正しい）。ローカルの鍵でデプロイ先を叩いていた | 対象環境の鍵を `.env.local` へ `STAGING_CRON_SECRET` / `PRODUCTION_CRON_SECRET` として置く |
 | Redeploy が `can not be redeployed` | 古いデプロイは再実行できない | **新しいコミットをpush**する（空コミットでも可） |
 | 「未適用migrationが11件」と言い続ける | CLIの出力形式（JSON）を読めていなかった | 修正済み（`parseAppliedRemote`。両形式対応・解釈不能なら止まる） |
+| **ログインも新規登録もできない**。人間確認の欄が空で「もう一度お試しください」だけ出る | Cloudflare の Turnstile で**そのドメインを許可していない**（エラーコード110200）。何度再試行しても直らない | Cloudflare → Turnstile → 該当ウィジェット → **Hostname Management** へそのドメイン（例 `x-system-stg.vercel.app`）を追加。`npm run check:turnstile -- --base <URL>` で確認できる |
+| 人間確認の欄が出ず「読み込めませんでした」 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` が未設定、または**設定後に再デプロイしていない**（この値はビルド時にバンドルへ埋まる） | Vercelへ設定し、**新しいデプロイを作る**（Redeployでも可） |
 
-**デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。
+**デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。`check:turnstile -- --base <URL>` はログイン画面を見るだけなので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。
 
 ---
 
@@ -188,24 +190,32 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 環境ごとに次を確認する。**7 は実APIを叩き費用が発生する**（1周 約$0.30）。
 
 1. `/` `/login` `/signup` `/terms` `/privacy` が 200。
-2. サインアップ → 確認メール受信 → ログイン（Turnstile が動作すること）。
-3. セキュリティヘッダ: `curl -sI <URL> | grep -iE "content-security-policy|strict-transport-security|x-content-type-options|referrer-policy"`
-4. cron エンドポイントの認証: `CRON_SECRET` 無しで 401、有りで 2xx。
+2. **人間確認（Turnstile）がその環境で動くこと。** 許可ドメインの登録漏れだと**ログインも新規登録もできない**うえ、画面には「もう一度お試しください」しか出ない（2026-08-01に staging で発生）。Cloudflare側の設定が原因なのでモックしたテストでは検出できない。
+
+   ```bash
+   npm run check:turnstile -- --base <その環境のURL>
+   ```
+
+3. サインアップ → 確認メール受信 → ログイン（実ブラウザ。メール内リンクの遷移先が正しいこと）。
+4. セキュリティヘッダ: `curl -sI <URL> | grep -iE "content-security-policy|strict-transport-security|x-content-type-options|referrer-policy"`
+5. cron エンドポイントの認証: `CRON_SECRET` 無しで 401、有りで 2xx。
 
    ```bash
    curl -s -o /dev/null -w "%{http_code}\n" -X POST "$APP_BASE_URL/api/cron/scheduler-tick"                              # 401
    curl -s -o /dev/null -w "%{http_code}\n" -X POST "$APP_BASE_URL/api/cron/scheduler-tick" -H "authorization: Bearer $CRON_SECRET"  # 2xx
    ```
 
-5. Sentry にイベントが届くこと。
-6. 実物スモーク（その環境で生成・画像・ニュースが実際に通ること）。ローカルでは出ない環境差（env欠落・migration未適用・CSP）はここで初めて分かる。
+6. Sentry にイベントが届くこと。
+7. 実物スモーク（その環境で生成・画像・ニュースが実際に通ること）。ローカルでは出ない環境差（env欠落・migration未適用・CSP）はここで初めて分かる。
 
    ```bash
    npm run smoke:live -- --base <その環境のURL> --account <検証用xAccountIdのUUID>
    ```
 
    `/api/cron/canary` は **cron へ登録していない**（手動実行のみ。D-11で2026-07-28に決定）。定期実行へ切り替えるなら `vercel.json` に `crons` を追加する。
-6. staging では **X_POSTING_MODE が dry_run のまま**であることを確認する（実投稿しない）。
+8. staging では **X_POSTING_MODE が dry_run のまま**であることを確認する（実投稿しない）。
+
+**2 と 7 は `npm run release:staging` / `release:production` が自動で実行する**（この順。2は費用ゼロ、7は約$0.30）。片方が失敗しても両方の結果を出してから終わる。
 
 ---
 

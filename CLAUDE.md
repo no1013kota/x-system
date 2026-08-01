@@ -29,7 +29,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | パス | 内容 |
 |---|---|
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
-| `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト7層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
+| `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト8層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
 | `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / maintenance / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
@@ -66,6 +66,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
+| **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
 | **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する |
 | 上記以外 | `npm run release:check` |

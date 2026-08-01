@@ -155,17 +155,47 @@ if (!stop) {
 // --- デプロイ後の検証（ここまで来たら全部通っている） ---
 
 console.log("\n■ デプロイ後の検証");
-console.log(`実物スモークを ${baseUrl} に対して実行します（実費 約$0.30・要 xAccountId）。`);
+
+// 1) 人間確認（Turnstile）。費用ゼロなので先に見る。**壊れていると誰もログインできない**。
+//    許可ドメインは Cloudflare 側の設定で、モックしたテストでは原理的に検出できない（T-M7-48）。
+let turnstileOk = true;
+console.log("\n[1/2] 人間確認（Turnstile）");
+try {
+  execSync(
+    `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-turnstile.mjs --base ${baseUrl}`,
+    { stdio: "inherit" },
+  );
+} catch {
+  turnstileOk = false;
+}
+
+console.log("\n[2/2] 実物スモーク");
+console.log(`${baseUrl} に対して実行します（実費 約$0.30・要 xAccountId）。`);
 const args = [`--base ${baseUrl}`, smokeAccount ? `--account ${smokeAccount}` : ""]
   .filter(Boolean)
   .join(" ");
 if (!smokeAccount) {
   console.log("⚠️  SMOKE_X_ACCOUNT_ID が未設定のため、ニュース取得だけを検証します。");
 }
+let smokeOk = true;
 try {
-  execSync(`node scripts/smoke-live.mjs ${args}`, { stdio: "inherit" });
+  execSync(`node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-live.mjs ${args}`, {
+    stdio: "inherit",
+  });
 } catch {
-  console.error("\n❌ デプロイ後の検証で失敗しました。ロールバックの判断は deployment.md §8 を見てください。");
+  smokeOk = false;
+}
+
+// 片方で止めず、両方の結果を出してから判断を求める（CLAUDE.md 原則5）。
+if (turnstileOk && smokeOk) {
+  console.log(`\n✅ ${target} への反映と検証が完了しました。`);
+} else {
+  console.error("\n❌ デプロイ後の検証で問題が見つかりました:");
+  if (!turnstileOk) {
+    console.error("  - 人間確認（Turnstile）: 上の指示どおり設定を直してください（ログイン・新規登録が止まります）");
+  }
+  if (!smokeOk) {
+    console.error("  - 実物スモーク: ロールバックの判断は deployment.md §8 を見てください");
+  }
   process.exit(1);
 }
-console.log(`\n✅ ${target} への反映と検証が完了しました。`);
