@@ -3,8 +3,8 @@
 // 実物スモーク（T-M7-25）。起動中のアプリの `/api/cron/canary` を叩き、結果を整形して返す。
 //
 //   npm run smoke:live                      # ニュースのみ
-//   npm run smoke:live -- --account <uuid>  # 生成・画像も含める
-//   npm run smoke:live -- --base https://x-system-stg.vercel.app --account <uuid>
+//   npm run smoke:live -- --account ai_newinfo   # 生成・画像も含める（Xのユーザー名でよい）
+//   npm run smoke:live -- --base https://x-system-stg.vercel.app --account ai_newinfo
 //
 // 判定は route 側（`src/lib/smoke/scenarios.ts`）にあり、ローカルもデプロイ先も同じものを使う。
 // ここはトリガーと表示だけを持つ。**実費が発生し、生成枠も消費する。**
@@ -48,7 +48,7 @@ if (!secret) {
 }
 
 const url = new URL(`${base}/api/cron/canary`);
-if (account) url.searchParams.set("xAccountId", account);
+if (account) url.searchParams.set("account", account);
 
 console.log(`実物スモークを実行します: ${base}${account ? "" : "（生成系はskip: --account 未指定）"}`);
 console.log("実APIを叩くため費用が発生します。数十秒かかります。\n");

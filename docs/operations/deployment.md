@@ -40,11 +40,11 @@ npm run release:production   # main → production
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
-すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`-- --account <xAccountIdのUUID>`（または `SMOKE_X_ACCOUNT_ID`）を渡すと生成・画像も含め、無ければニュース取得だけを検証する。
+すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`-- --account <Xのユーザー名>`（UUIDも可。または `SMOKE_X_ACCOUNT_ID`）を渡すと生成・画像も含め、無ければニュース取得だけを検証する。
 
 ```bash
 # 引数で渡す例（.env.local を触らずに済む）
-npm run release:staging -- --base https://x-system-stg.vercel.app --account <xAccountIdのUUID>
+npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_newinfo
 ```
 
 > **これらは「手元のコマンドがどこを検証するか」を知るための値**で、アプリが読む環境変数ではない。アプリ自身が使う `APP_BASE_URL` 等は Vercel 側に設定する（§1）。両者は別物なので、Vercelに入れてあっても手元のコマンドには別途渡す必要がある。
@@ -136,7 +136,10 @@ openssl rand -hex 32      # CRON_SECRET
 
 3. seed（`prompt_templates` 等）が必要なら投入する。`supabase/seed.sql` はローカル用なので、本番へ入れる範囲を確認してから流す。
 4. Auth 設定: メール確認を有効化、**rate limit** を設定、Turnstile（CAPTCHA）を有効化。
-5. `profiles` 自動作成トリガーが入っていることを確認（マイグレーション同梱）。
+5. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
+   - **stagingの動作確認だけなら**: 自分（Supabaseの組織メンバー）のアドレスで登録すれば内蔵送信で足りる。
+   - **本番、または他人のアドレスで試すなら**: Supabase の Authentication → Emails → SMTP Settings へ**カスタムSMTPを設定する**（アプリ用と同じGmail App Passwordを流用できる）。設定後の上限は 30通/時から。
+6. `profiles` 自動作成トリガーが入っていることを確認（マイグレーション同梱）。
 
 適用結果の確認:
 
@@ -180,6 +183,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 | 「未適用migrationが11件」と言い続ける | CLIの出力形式（JSON）を読めていなかった | 修正済み（`parseAppliedRemote`。両形式対応・解釈不能なら止まる） |
 | **ログインも新規登録もできない**。人間確認の欄が空で「もう一度お試しください」だけ出る | Cloudflare の Turnstile で**そのドメインを許可していない**（エラーコード110200）。何度再試行しても直らない | Cloudflare → Turnstile → 該当ウィジェット → **Hostname Management** へそのドメイン（例 `x-system-stg.vercel.app`）を追加。`npm run check:turnstile -- --base <URL>` で確認できる |
 | 人間確認の欄が出ず「読み込めませんでした」 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` が未設定、または**設定後に再デプロイしていない**（この値はビルド時にバンドルへ埋まる） | Vercelへ設定し、**新しいデプロイを作る**（Redeployでも可） |
+| サインアップしても**確認メールが届かない** | 確認メールは**Supabase Authが送る**（アプリの `SMTP_*` とは別）。内蔵送信は**2通/時・組織メンバー宛のみ** | 自分のアドレスで試す、または Supabase → Authentication → Emails → **SMTP Settings** にカスタムSMTPを設定する（§2-5） |
 
 **デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。`check:turnstile -- --base <URL>` はログイン画面を見るだけなので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。
 
@@ -209,7 +213,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 7. 実物スモーク（その環境で生成・画像・ニュースが実際に通ること）。ローカルでは出ない環境差（env欠落・migration未適用・CSP）はここで初めて分かる。
 
    ```bash
-   npm run smoke:live -- --base <その環境のURL> --account <検証用xAccountIdのUUID>
+   npm run smoke:live -- --base <その環境のURL> --account <検証用アカウントのXユーザー名>
    ```
 
    `/api/cron/canary` は **cron へ登録していない**（手動実行のみ。D-11で2026-07-28に決定）。定期実行へ切り替えるなら `vercel.json` に `crons` を追加する。

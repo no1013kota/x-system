@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { pooledQueryable } from "../db/pool";
 import { runJob } from "../jobs/worker";
 import { weightedLength } from "../post/text-metrics";
+import { resolveXAccountId } from "./resolve-account";
 
 /**
  * 実物スモーク（T-M7-25）。**実APIを叩いてアプリの最終成果物まで検証する**。
@@ -364,18 +365,31 @@ export interface SmokeReport {
 }
 
 /**
- * 実物スモークを1周する。`xAccountId` を渡さない場合は生成系をskipし、ニュースだけ検証する
+ * 実物スモークを1周する。`account` を渡さない場合は生成系をskipし、ニュースだけ検証する
  * （本番で他人のアカウントを使わないよう、対象は必ず呼び出し側が明示する）。
+ *
+ * `account` は **UUID でも `@handle` でも指定できる**（T-M7-49）。運営者に内部のUUIDを
+ * 探させないため。解決できなければ生成系は実行せず、理由を結果として返す。
  */
-export async function runSmoke(xAccountId?: string): Promise<SmokeReport> {
+export async function runSmoke(account?: string): Promise<SmokeReport> {
   const results: SmokeResult[] = [];
   const skipped: string[] = [];
 
-  if (xAccountId) {
-    results.push(await generationWithSearch(xAccountId));
-    results.push(await generationWithImage(xAccountId));
+  if (account) {
+    const resolved = await resolveXAccountId(account, { db });
+    if (resolved.ok) {
+      results.push(await generationWithSearch(resolved.id));
+      results.push(await generationWithImage(resolved.id));
+    } else {
+      results.push({
+        name: "Xアカウントの指定",
+        ok: false,
+        costUsd: 0,
+        detail: resolved.message,
+      });
+    }
   } else {
-    skipped.push("生成・画像（xAccountId が指定されていない）");
+    skipped.push("生成・画像（検証するXアカウントが指定されていない）");
   }
   results.push(await newsResearch());
 

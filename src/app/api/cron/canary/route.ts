@@ -7,10 +7,12 @@ import { isValidCronAuth } from "@/lib/jobs/auth";
  * 実費が発生し生成枠も消費するため、定期実行にするかは別途判断する（BACKLOG D-11）。
  * `handleCronRoute` を使わないのはこのため（時間窓 claim は定期実行専用の仕組み）。
  *
- *   curl "<base>/api/cron/canary?xAccountId=<uuid>" -H "authorization: Bearer $CRON_SECRET"
+ *   curl "<base>/api/cron/canary?account=ai_newinfo" -H "authorization: Bearer $CRON_SECRET"
  *
- * `xAccountId` 未指定ならニュースだけ検証する（本番で他人のアカウントを使わないため、
- * 生成対象は必ず呼び出し側が明示する）。作成した下書き・jobはシナリオ側で削除する。
+ * `account` は **UUID でも Xのユーザー名（handle）でも受ける**（T-M7-49。運営者に内部のUUIDを
+ * 探させないため）。旧名 `xAccountId` も受け続ける。未指定ならニュースだけ検証する
+ * （本番で他人のアカウントを使わないため、生成対象は必ず呼び出し側が明示する）。
+ * 作成した下書き・jobはシナリオ側で削除する。
  *
  * 判定は `src/lib/smoke/scenarios.ts` に集約し、`npm run smoke:live` と同じものを使う。
  * ローカルとデプロイ先で違う結果になるもの（env欠落・migration未適用・provider設定）は、
@@ -25,10 +27,11 @@ export async function GET(request: Request): Promise<Response> {
   if (!isValidCronAuth(request.headers.get("authorization"))) {
     return new Response("unauthorized", { status: 401 });
   }
-  const xAccountId = new URL(request.url).searchParams.get("xAccountId") ?? undefined;
+  const params = new URL(request.url).searchParams;
+  const account = params.get("account") ?? params.get("xAccountId") ?? undefined;
   // env/provider解決に触れるため、認証通過後に遅延ロードする。
   const { runSmoke } = await import("@/lib/smoke/scenarios");
-  const report = await runSmoke(xAccountId);
+  const report = await runSmoke(account);
   // 失敗を5xxで返し、監視や `smoke:live` が判定しやすいようにする。
   return Response.json(report, { status: report.ok ? 200 : 500 });
 }
