@@ -82,8 +82,31 @@ export function findProviderMarkup(texts: string[]): string[] {
  * ときだけ全滅＝異常とする。この2つを区別できなかったため、web3分野は長期間0件のまま
  * 「成功」として記録され続けていた。
  */
-export function newsOutcome(items: number, dropped: number): { ok: boolean; detail: string } {
+/**
+ * 除外理由が「取得窓より古い」だけかどうか（T-M7-44）。
+ *
+ * `published_at:too_old` は**応答が壊れているのではなく、その時間帯に新しい記事が無かった**だけ。
+ * 運営者に直せるものは無い。一方 `title:too_big` のような契約違反は、プロンプトか検証条件の
+ * 不具合なので直す必要がある。**同じ「0件」でも意味が違うので分けて扱う。**
+ */
+export function onlyOutsideWindow(reasons: Record<string, number>): boolean {
+  const keys = Object.keys(reasons);
+  return keys.length > 0 && keys.every((k) => k === "published_at:too_old");
+}
+
+export function newsOutcome(
+  items: number,
+  dropped: number,
+  reasons: Record<string, number> = {},
+): { ok: boolean; detail: string } {
   if (items === 0 && dropped > 0) {
+    // 窓外だけなら「該当なし」と同じ扱い（成功）。件数は出して黙って流さない。
+    if (onlyOutsideWindow(reasons)) {
+      return {
+        ok: true,
+        detail: `取得0件（${dropped}件はいずれも取得窓より古い記事＝その時間帯に新しいニュースが無い）`,
+      };
+    }
     return {
       ok: false,
       detail: `全滅: 取得0件だが${dropped}件を規定外で除外した（応答が出力契約を満たしていない）`,
@@ -316,7 +339,7 @@ async function newsResearch(): Promise<SmokeResult> {
       ledgerKeyPrefix: `smoke:${randomUUID()}`,
     });
     const costUsd = res.usage.estimated_cost_usd_total ?? 0;
-    const outcome = newsOutcome(res.items.length, res.dropped);
+    const outcome = newsOutcome(res.items.length, res.dropped, res.dropReasons);
     // 取得できたitemはDBへ保存しない（スモークは成果物を残さない）。
     return {
       name,
