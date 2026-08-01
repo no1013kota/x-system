@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
+| バージョン | v1.22 |
 | 更新日 | 2026-08-01 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -784,7 +784,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
 | テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4） |
 | ニュースカテゴリ | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`をコード定数化 |
-| Storage | private bucket `generated-images`を作成。ユーザー/x_account単位でpathを分離 |
+| Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 
 ## 7. 保持と個別対応
 

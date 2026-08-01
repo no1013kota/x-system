@@ -257,6 +257,15 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - 後続への注意: **字数（60〜120字）とポスト数は指示では守られない**（実測140字・P-6が6ポスト）。仕組みでの保証は T-M7-41 へ分離した。
 - メモ: 2026-07-31 の分析で判明。**Xは外部リンクを含む投稿の露出を抑える傾向があるのに、現行プロンプトはURLを必須にしている**（自分から不利を選んでいる）。文言の磨き込み（禁止表現リスト・「〜と見られます」の多用制限・文字数の目標帯・出力前の自己チェック）は効果が読みにくいため別タスクに分ける。
 
+### T-M7-45: 生成画像のStorage bucketをmigrationで作る `done`
+- 参照: 要件02 §6、CLAUDE.md 原則3 / 依存: なし / サイズ: S
+- 完了条件:
+  - `generated-images` bucket がどの環境でもmigrationで作られる（手動作成に頼らない）
+  - private・5MiB・画像3形式が `config.toml` と一致する
+- メモ: 2026-08-01のネクストアクション洗い出しで発覚。bucket定義は `supabase/config.toml` にしか無く、**ローカルの `supabase start` でしか作られていなかった**。migrationが作らないため、staging/production では**画像生成の最後（保存）だけが失敗する**。stagingで `supabase storage ls` が0件であることを実測して確認した。手順書に「Dashboardで作る」と書いても忘れる（原則3）。
+- 実装結果（2026-08-01）: migration `20260801000003_storage_bucket_images.sql` を追加（`insert ... on conflict do update` で冪等）。RLSポリシーは作らない（読み書きは service_role と署名URLのみ）。DB統合テスト2件で「private・5MiB・3形式・bucket名がアプリ既定と一致」を固定した。
+- 検証（2026-08-01）: ローカルとstagingの両方へ適用し、stagingで `{"paths":["generated-images/"]}` を確認。
+
 ### T-M7-44: 「取得窓より古い」だけの0件を失敗にしない `done`
 - 参照: 要件04 §6、CLAUDE.md 原則1 / 依存: T-M7-40 / サイズ: S
 - 完了条件:
