@@ -59,16 +59,19 @@ function unappliedMigrations() {
     .map((f) => f.split("_")[0]);
   const raw = sh("supabase migration list --linked 2>/dev/null", { allowFail: true });
   if (!raw) return { list: local, linked: false };
-  // 出力例: "  20260720000001 | 20260720000001 | 2026-07-20 ..." （Local | Remote | 時刻）
-  const appliedRemote = new Set(
-    raw
-      .split("\n")
-      .map((line) => line.split("|").map((c) => c.trim()))
-      .filter((cols) => cols.length >= 2 && /^\d{14}$/.test(cols[1]))
-      .map((cols) => cols[1]),
-  );
+
+  // CLIのバージョンで出力形式が変わる。**両方に対応する**。
+  // 誤って「未適用」と読むと、適用済みなのに永久に先へ進めなくなる（2026-08-01に実際に発生）。
+  const appliedRemote = parseAppliedRemote(raw);
+  if (appliedRemote === null) {
+    // 解釈できない出力。**適用済みと決めつけない**（安全側＝未適用として止める）。
+    console.error("release: migrationの一覧を解釈できませんでした。出力の先頭:");
+    console.error(`  ${raw.split("\n").slice(0, 2).join(" / ").slice(0, 200)}`);
+    return { list: local, linked: false };
+  }
   return { list: local.filter((v) => !appliedRemote.has(v)), linked: true };
 }
+
 
 /** 反映先URL。`-- --base <URL>` が最優先、無ければ環境変数。 */
 const baseUrl = (() => {
@@ -84,15 +87,16 @@ const smokeAccount = (() => {
   return process.env.SMOKE_X_ACCOUNT_ID ?? "";
 })();
 
-const { list: unapplied, linked } = unappliedMigrations();
-
-const { evaluateReleaseGate, firstStop, onlyMigrationsPending, summarizeGate } = await import(
-  "../src/lib/ops/release-gate.ts"
-).catch(async () => {
+// 判定ロジックは純粋関数側（単体テストあり）。migrationの解釈にも使うので先に読み込む。
+const { evaluateReleaseGate, firstStop, onlyMigrationsPending, parseAppliedRemote, summarizeGate } =
+  await import("../src/lib/ops/release-gate.ts").catch(async () => {
   // TypeScript を直接 import できない実行環境向けのフォールバック（tsx等が無い場合）。
   console.error("release: 判定モジュールを読み込めませんでした。`npx tsx scripts/release.mjs` で実行してください。");
   process.exit(2);
 });
+
+const { list: unapplied, linked } = unappliedMigrations();
+
 
 const steps = evaluateReleaseGate({
   target,
