@@ -119,8 +119,8 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
           detail: `${ctx.target} のURLが設定されていません`,
           nextAction:
             ctx.target === "staging"
-              ? "`.env.local` へ STAGING_BASE_URL を設定してください（Vercelのstaging URL）"
-              : "`.env.local` へ PRODUCTION_BASE_URL を設定してください",
+              ? "`-- --base https://<stagingのURL>` を付けるか、`.env.local` へ STAGING_BASE_URL を設定してください"
+              : "`-- --base https://<本番のURL>` を付けるか、`.env.local` へ PRODUCTION_BASE_URL を設定してください",
         },
   );
 

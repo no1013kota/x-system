@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
+| バージョン | v1.4 |
 | 更新日 | 2026-08-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -27,10 +27,17 @@ npm run release:production   # main → production
 2. 未コミットの変更が無いか
 3. 未pushのコミットが無いか（反映されるのはリモートの内容）
 4. 自動テスト（CI）が緑か（赤・実行中・結果なしは止まる）
-5. 反映先のURLが設定されているか（`STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
+5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
-すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`SMOKE_X_ACCOUNT_ID` を設定すると生成・画像も含め、未設定ならニュース取得だけを検証する。
+すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`-- --account <xAccountIdのUUID>`（または `SMOKE_X_ACCOUNT_ID`）を渡すと生成・画像も含め、無ければニュース取得だけを検証する。
+
+```bash
+# 引数で渡す例（.env.local を触らずに済む）
+npm run release:staging -- --base https://x-system-stg.vercel.app --account <xAccountIdのUUID>
+```
+
+> **これらは「手元のコマンドがどこを検証するか」を知るための値**で、アプリが読む環境変数ではない。アプリ自身が使う `APP_BASE_URL` 等は Vercel 側に設定する（§1）。両者は別物なので、Vercelに入れてあっても手元のコマンドには別途渡す必要がある。
 
 > migration適用を飛ばすと**X連携が `internal_error` で壊れる**。ここを警告ではなく停止にしているのは、警告では忘れたときと同じ結果になるため（`CLAUDE.md` 原則3）。判定は `src/lib/ops/release-gate.ts`（単体テストあり）。
 

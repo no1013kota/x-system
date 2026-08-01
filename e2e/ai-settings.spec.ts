@@ -125,7 +125,17 @@ test("学習ソースを追加すると分析中として並び、削除でき�
   // 画面にも「分析中」として出る（進行が分かる）
   await expect(page.getByText(handle, { exact: false })).toBeVisible();
 
-  // 分析が終わった状態にしてから削除する（AIは呼ばない）
+  // 分析が終わった状態にしてから削除する（AIは呼ばない）。
+  //
+  // **実行中の分析jobも終端させる。** 削除は「同一アカウントに queued/running の学習jobがあれば
+  // job_conflict」で弾く仕様（要件05 §8）。追加時にdispatchされたjobが残っていると削除が通らず、
+  // 環境によって結果が変わる（2026-08-01、CIはダミーキーでjobが残り続けて落ちた。手元は実キーで
+  // jobが早く終わるため通っていた）。状態を作るテストなので、前提を揃えてから操作する。
+  await query(
+    `update generation_jobs set status = 'canceled', finished_at = now()
+      where x_account_id = $1 and kind = 'learning_analysis' and status in ('queued','running')`,
+    [account.xAccountId],
+  );
   await query(
     `update learning_sources set status = 'analyzed',
         analysis_summary = jsonb_build_object('style', 'テスト')
