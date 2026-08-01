@@ -12,7 +12,7 @@
 // 日本語の表示だけを担う。**止まったら理由と次の一手を出して終わる**（黙って進めない）。
 //
 import { execSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const target = process.argv[2] === "production" ? "production" : "staging";
 const apply = process.argv.includes("--apply");
@@ -97,7 +97,8 @@ const smokeAccount = (() => {
 })();
 
 // 判定ロジックは純粋関数側（単体テストあり）。migrationの解釈にも使うので先に読み込む。
-const { evaluateReleaseGate, firstStop, onlyMigrationsPending, parseAppliedRemote, summarizeGate } =
+const { evaluateReleaseGate, firstStop, onlyMigrationsPending, parseAppliedRemote,
+        projectRefFromCsp, summarizeGate } =
   await import("../src/lib/ops/release-gate.ts").catch(async () => {
   // TypeScript を直接 import できない実行環境向けのフォールバック（tsx等が無い場合）。
   console.error("release: 判定モジュールを読み込めませんでした。`npx tsx scripts/release.mjs` で実行してください。");
@@ -105,6 +106,27 @@ const { evaluateReleaseGate, firstStop, onlyMigrationsPending, parseAppliedRemot
 });
 
 const { list: unapplied, linked } = unappliedMigrations();
+
+/** いま `supabase link` で繋がっているプロジェクトref。 */
+function linkedProjectRef() {
+  try {
+    const value = readFileSync("supabase/.temp/project-ref", "utf8").trim();
+    return /^[a-z0-9]{20}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 反映先のアプリが実際に使っているプロジェクトref（CSPヘッダから読む）。 */
+async function targetProjectRef() {
+  if (!baseUrl) return null;
+  try {
+    const res = await fetch(baseUrl, { signal: AbortSignal.timeout(10_000) });
+    return projectRefFromCsp(res.headers.get("content-security-policy"));
+  } catch {
+    return null;
+  }
+}
 
 
 const steps = evaluateReleaseGate({
@@ -116,6 +138,8 @@ const steps = evaluateReleaseGate({
   ciConclusion: ciConclusion(),
   unappliedMigrations: unapplied,
   baseUrl,
+  linkedProjectRef: linkedProjectRef(),
+  targetProjectRef: await targetProjectRef(),
 });
 
 // --- 表示 ---

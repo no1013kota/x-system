@@ -257,6 +257,23 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - 後続への注意: **字数（60〜120字）とポスト数は指示では守られない**（実測140字・P-6が6ポスト）。仕組みでの保証は T-M7-41 へ分離した。
 - メモ: 2026-07-31 の分析で判明。**Xは外部リンクを含む投稿の露出を抑える傾向があるのに、現行プロンプトはURLを必須にしている**（自分から不利を選んでいる）。文言の磨き込み（禁止表現リスト・「〜と見られます」の多用制限・文字数の目標帯・出力前の自己チェック）は効果が読みにくいため別タスクに分ける。
 
+### T-M7-53: 人間確認のトークンをアプリ自身で検証する `todo`
+- 参照: 要件02（SC-01/02）、CLAUDE.md 原則1 / 依存: T-M7-48 / サイズ: M
+- 完了条件: Server Action が Cloudflare の `siteverify` でトークンを検証し、失敗時は Supabase を呼ばない。テストで検証の有無を保証する
+- なぜ必要か（2026-08-02 に判明）:
+  - **アプリはトークンの真偽を一切検証していない。** `captchaTokenSchema` は「空でない文字列」しか見ておらず、実際の検証は `supabase.auth.*` へ渡した `captchaToken` を**Supabase側が**行う。つまり保護の有無は**Supabaseダッシュボードの Attack Protection → CAPTCHA の設定次第**で、OFFなら人間確認の欄は飾りになる（任意の文字列で通る）。画面は正常に見えるので**永久に気付けない**。
+  - `TURNSTILE_SECRET_KEY` は preview/production で必須なのに**コードのどこからも読まれていない**（`grep` で `siteverify` の実装が0件）。必須にした秘密値が使われていないのは、設定したつもりで効いていない状態を生む。
+  - 自分で検証すればダッシュボードの一設定に依存しなくなり、**単体テストで保護の有無を固定できる**（いまは原理的にテストできない）。
+- 暫定案: Supabase側のCAPTCHAは**有効のまま**にして二重にする（片方が外れても保護が残る）。E2Eは常時成功のテストキー（`1x0000…AA` / テストsecret）で通す。
+
+### T-M7-52: 別のSupabaseプロジェクトへmigrationを流す事故を防ぐ `done`
+- 参照: CLAUDE.md 原則3、[デプロイ手順](../docs/operations/deployment.md) §0.0 / 依存: T-M7-35 / サイズ: S
+- 実装メモ:
+  - `supabase link` は作業ディレクトリに**1つしか保持しない**のに、`release.mjs` は `db push --linked` / `migration list --linked` を**どこに繋がっているか確認せず**使っていた。production に繋いだまま `release:staging -- --apply` を実行すると**本番DBへmigrationが入る**。逆向きだと本番が未適用のまま「全部通りました」と出る。どちらも黙って起きる。
+  - 反映先のアプリが**実際に使っている**プロジェクトを、デプロイ先の**CSPヘッダ**から読んで突き合わせる（`projectRefFromCsp`）。認証情報が不要で、refは秘密値ではない。クライアントバンドルを探す方法は当てにならない（認証をServer Actionで行うためログイン画面にSupabaseクライアントが載らない）。
+  - **判定できないときは止める**（`parseAppliedRemote` と同じ方針）。接続先が違うと stop が2つになり `onlyMigrationsPending` が false になるので、`--apply` でも進めない。
+  - 実機確認: staging に対して「✅ データベースの接続先 uykffujqpsogqffbnsrz（staging のプロジェクト）」が出た。
+
 ### T-M7-51: 非productionへStripe本番キーを置けてしまう穴を塞ぐ `done`
 - 参照: 要件01 §3.1、`src/lib/ops/outbound-channels.ts` / 依存: なし / サイズ: S
 - 実装メモ:
