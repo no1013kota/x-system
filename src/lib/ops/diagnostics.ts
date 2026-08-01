@@ -311,11 +311,59 @@ export function judgeCost(input: { monthUsd: number; byProvider: { provider: str
   return { name, level: "ok", detail };
 }
 
+/**
+ * 無料プランのDBサイズ上限（バイト）。**プロジェクトではなく組織単位で効く**（要件01 §8・T-M7-43）。
+ * Proへ上げた場合は `SUPABASE_DB_SIZE_LIMIT_MB` で上書きする。
+ */
+export const FREE_DB_SIZE_LIMIT_BYTES = 500 * 1024 * 1024;
+
+/** 警告に変える割合。ここを超えたら「まだ動くが手を打つ時期」。 */
+export const DB_SIZE_WARN_RATIO = 0.8;
+/** 異常に変える割合。超過すると**組織内の全プロジェクトが停止**するため、手前で赤くする。 */
+export const DB_SIZE_ERROR_RATIO = 0.95;
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+/**
+ * データベースの使用量（T-M7-43）。原則1・4。
+ *
+ * 2026-08-01、Supabaseの組織が容量超過で停止し、**組織内の全プロジェクトが402になった**。
+ * 停止すると使用量が0と表示されて原因の特定すらできない。**止まる前に気付ける**ようにする。
+ */
+export function judgeDatabaseSize(input: { bytes: number; limitBytes: number }): Check {
+  const name = "データベースの使用量";
+  const ratio = input.limitBytes > 0 ? input.bytes / input.limitBytes : 0;
+  const detail = `${formatBytes(input.bytes)} / ${formatBytes(input.limitBytes)}（${Math.round(ratio * 100)}%）`;
+  if (ratio >= DB_SIZE_ERROR_RATIO) {
+    return {
+      name,
+      level: "error",
+      detail,
+      nextAction:
+        "上限を超えると同じ組織のプロジェクトがすべて停止します。古いデータの削除かプランの見直しをしてください",
+    };
+  }
+  if (ratio >= DB_SIZE_WARN_RATIO) {
+    return {
+      name,
+      level: "warn",
+      detail,
+      nextAction: "上限に近づいています。Claudeに「大きいテーブルを調べて」と伝えてください",
+    };
+  }
+  return { name, level: "ok", detail };
+}
+
 // --- 収集（実DBを叩く。routeとscriptの両方から使う） ---
 
 export interface DiagnosticsOptions {
   /** 定時実行が動く前提の環境か（本番のみ true）。ローカルで常に赤くしないための切り替え。 */
   schedulerExpected: boolean;
+  /** DBサイズの上限（バイト）。未指定なら無料プランの500MB。 */
+  dbSizeLimitBytes?: number;
 }
 
 export async function collectDiagnostics(
@@ -413,6 +461,17 @@ export async function collectDiagnostics(
     judgeCost({
       monthUsd: byProvider.reduce((s, p) => s + p.usd, 0),
       byProvider,
+    }),
+  );
+
+  // データベースの使用量（T-M7-43）。上限は無料プラン既定で、Proなら env で上書きする。
+  const size = await db.query<{ bytes: string }>(
+    `select pg_database_size(current_database())::text as bytes`,
+  );
+  checks.push(
+    judgeDatabaseSize({
+      bytes: Number(size.rows[0]?.bytes ?? 0),
+      limitBytes: options.dbSizeLimitBytes ?? FREE_DB_SIZE_LIMIT_BYTES,
     }),
   );
 

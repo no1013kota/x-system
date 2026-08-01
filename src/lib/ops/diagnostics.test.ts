@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeEmptyCategories,
+  judgeDatabaseSize,
+  FREE_DB_SIZE_LIMIT_BYTES,
   judgeCost,
   judgeJobs,
   judgeNews,
@@ -241,5 +243,52 @@ describe("judgeCost（原則4: 費用が見える）", () => {
 
   it("0円でも数字を出す（見えないことが問題なので黙らせない）", () => {
     expect(judgeCost({ monthUsd: 0, byProvider: [] }).detail).toContain("$0.00");
+  });
+});
+
+/**
+ * データベースの使用量（T-M7-43）。2026-08-01、Supabaseの組織が容量超過で停止し、
+ * **組織内の全プロジェクトが402になった**。停止すると使用量が0表示になり原因の特定すらできない。
+ * 止まる前に気付けるようにするための判定。
+ */
+describe("judgeDatabaseSize", () => {
+  const MB = 1024 * 1024;
+  const limit = FREE_DB_SIZE_LIMIT_BYTES;
+
+  it("無料枠の上限は500MB", () => {
+    expect(limit).toBe(500 * MB);
+  });
+
+  it("余裕があれば正常（数字は必ず出す）", () => {
+    const r = judgeDatabaseSize({ bytes: 26 * MB, limitBytes: limit });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toBe("26 MB / 500 MB（5%）");
+  });
+
+  it("80%を超えたら注意", () => {
+    const r = judgeDatabaseSize({ bytes: 400 * MB, limitBytes: limit });
+    expect(r.level).toBe("warn");
+    expect(r.nextAction).toContain("大きいテーブルを調べて");
+  });
+
+  it("95%を超えたら異常（超えると組織全体が止まるため手前で赤くする）", () => {
+    const r = judgeDatabaseSize({ bytes: 480 * MB, limitBytes: limit });
+    expect(r.level).toBe("error");
+    expect(r.nextAction).toContain("すべて停止");
+  });
+
+  it("境界: ちょうど80%は注意、79%は正常", () => {
+    expect(judgeDatabaseSize({ bytes: 400 * MB, limitBytes: limit }).level).toBe("warn");
+    expect(judgeDatabaseSize({ bytes: 395 * MB, limitBytes: limit }).level).toBe("ok");
+  });
+
+  it("GB単位でも読める表記にする（Proの8GB等）", () => {
+    const r = judgeDatabaseSize({ bytes: 2 * 1024 * MB, limitBytes: 8 * 1024 * MB });
+    expect(r.detail).toBe("2.00 GB / 8.00 GB（25%）");
+    expect(r.level).toBe("ok");
+  });
+
+  it("上限0でも壊れない（設定ミス時に例外を出さない）", () => {
+    expect(() => judgeDatabaseSize({ bytes: 100, limitBytes: 0 })).not.toThrow();
   });
 });

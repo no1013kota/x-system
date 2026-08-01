@@ -1,5 +1,6 @@
 import "server-only";
 
+import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 import type { Queryable } from "../x/token-refresh";
 
 /**
@@ -72,6 +73,9 @@ export interface DailySummaryData {
   stuckJobs: number;
   queuedEmails: number;
   monthUsd: number;
+  /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
+  dbBytes: number;
+  dbLimitBytes: number;
 }
 
 export interface DailySummary {
@@ -124,6 +128,11 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
   }
 
   lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${Math.round(data.monthUsd * 150)}円）`);
+
+  // 容量は「止まってから気付く」種類なので、毎日必ず数字を出す（2026-08-01に組織ごと停止した）。
+  const dbCheck = judgeDatabaseSize({ bytes: data.dbBytes, limitBytes: data.dbLimitBytes });
+  lines.push(`データベースの使用量: ${dbCheck.detail}`);
+  if (dbCheck.level !== "ok") attention.push(`データベースの使用量が ${dbCheck.detail}`);
 
   const needsAttention = attention.length > 0;
   const title = needsAttention
@@ -189,8 +198,14 @@ export async function collectDailySummary(
     [userId],
   );
 
+  const dbSize = await db.query<{ bytes: string }>(
+    `select pg_database_size(current_database())::text as bytes`,
+  );
+
   return {
     date,
+    dbBytes: Number(dbSize.rows[0]?.bytes ?? 0),
+    dbLimitBytes: FREE_DB_SIZE_LIMIT_BYTES,
     jobs: {
       succeeded: Number(jobs.rows[0]?.succeeded ?? 0),
       failed: Number(jobs.rows[0]?.failed ?? 0),
