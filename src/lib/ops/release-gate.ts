@@ -159,3 +159,40 @@ export function summarizeGate(steps: GateStep[]): string {
   if (!stop) return `${steps.length} 項目すべて問題ありません`;
   return `「${stop.name}」で止まりました: ${stop.detail}`;
 }
+
+/**
+ * `supabase migration list --linked` の出力から、**リモートへ適用済み**のversionを取り出す。
+ * 解釈できなければ `null`（呼び出し側は安全側＝未適用として扱う）。
+ *
+ * CLIのバージョンで出力形式が変わる。2026-08-01、表形式だけを想定していたため、JSONを返す
+ * CLI v2系で**適用済みなのに「未適用11件」と誤判定**し、リリースが永久に完了しない状態になった。
+ * 誤読が「適用済み」側へ倒れるとDBが古いまま反映されてしまうため、**判断できないときは止める**。
+ *
+ * 対応する形式:
+ * - JSON: `{"migrations":[{"local":"2026...","remote":"2026...","time":"..."}]}`
+ * - 表:   `  20260720000001 | 20260720000001 | 2026-07-20 ...`（Local | Remote | 時刻）
+ */
+export function parseAppliedRemote(raw: string): Set<string> | null {
+  const jsonStart = raw.indexOf('{"migrations"');
+  if (jsonStart !== -1) {
+    try {
+      const parsed: unknown = JSON.parse(raw.slice(jsonStart, raw.lastIndexOf("}") + 1));
+      const migrations = (parsed as { migrations?: unknown }).migrations;
+      if (!Array.isArray(migrations)) return null;
+      return new Set(
+        migrations
+          .map((m) => String((m as { remote?: unknown }).remote ?? "").trim())
+          .filter((v) => /^\d{14}$/.test(v)),
+      );
+    // eslint-disable-next-line no-restricted-syntax -- 壊れたJSONは「解釈できない」が判定結果
+    } catch {
+      return null;
+    }
+  }
+  const rows = raw
+    .split("\n")
+    .map((line) => line.split("|").map((c) => c.trim()))
+    .filter((cols) => cols.length >= 2);
+  if (rows.length === 0) return null;
+  return new Set(rows.map((cols) => cols[1]).filter((v) => /^\d{14}$/.test(v)));
+}
