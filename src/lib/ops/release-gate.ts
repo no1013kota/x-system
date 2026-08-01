@@ -196,3 +196,28 @@ export function parseAppliedRemote(raw: string): Set<string> | null {
   if (rows.length === 0) return null;
   return new Set(rows.map((cols) => cols[1]).filter((v) => /^\d{14}$/.test(v)));
 }
+
+/**
+ * 検証先URLに対して、どの設定名の `CRON_SECRET` を使うかを決める（T-M7-35）。
+ *
+ * **鍵は環境ごとに違う**（同じにすると片方の漏洩で両方が破られる）。ローカル宛はローカルの鍵、
+ * デプロイ先宛はその環境の鍵を使う。この鍵が要るのは**デプロイ先を覗く2つのコマンド**だけで、
+ * E2Eはローカル限定なので関係しない（`e2e/fixtures/guard.ts` がローカル以外を拒否する）。
+ *
+ * - `npm run smoke:live -- --base <URL>`（実物スモーク＝デプロイ後検証）
+ * - `npm run doctor -- --base <URL>`（状態確認）
+ *
+ * 対応が判別できないURLは **staging用を既定**にする。本番の鍵で意図せず本番を叩く方が害が大きい。
+ */
+export function cronSecretEnvName(
+  baseUrl: string,
+  known: { stagingBaseUrl?: string; productionBaseUrl?: string } = {},
+): "CRON_SECRET" | "STAGING_CRON_SECRET" | "PRODUCTION_CRON_SECRET" {
+  if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(baseUrl)) return "CRON_SECRET";
+  const trim = (u?: string) => u?.replace(/\/$/, "");
+  const production = trim(known.productionBaseUrl);
+  const staging = trim(known.stagingBaseUrl);
+  if (production && baseUrl.startsWith(production)) return "PRODUCTION_CRON_SECRET";
+  if (staging && baseUrl.startsWith(staging)) return "STAGING_CRON_SECRET";
+  return "STAGING_CRON_SECRET";
+}

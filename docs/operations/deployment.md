@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
+| バージョン | v1.6 |
 | 更新日 | 2026-08-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -166,6 +166,20 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 | Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ |
 | Turnstile | サイトのドメインを登録（staging/production 別キー） |
 | Supabase Auth | Site URL / Redirect URLs に `APP_BASE_URL` を登録 |
+
+---
+
+## 4.5 つまずきやすい設定（実際に踏んだもの）
+
+| 症状 | 原因 | 直し方 |
+|---|---|---|
+| デプロイ先が全部 `vercel.com/sso-api` へ飛ぶ | Vercel の **Deployment Protection**（Preview既定でON）。X のOAuthコールバック・Stripe webhook・`smoke:live` が全部弾かれる | Settings → Deployment Protection → **Vercel Authentication を Off**。stagingでもアプリ側のログインは必要なので二重の保護は不要 |
+| `getaddrinfo ENOTFOUND db.<ref>.supabase.co` | `DATABASE_URL` に**直接接続**の文字列を入れた。Supabaseの直接接続はIPv6のみで、VercelはIPv4のため名前解決に失敗する | Supabase → Settings → Database → **Transaction pooler**（ポート**6543**・ホストが `pooler.supabase.com`）の文字列へ差し替えてRedeploy。**ホストに `db.` が付いていたら直接接続**で誤り |
+| `401: 鍵が一致しません` | **`CRON_SECRET` は環境ごとに違う**（違うのが正しい）。ローカルの鍵でデプロイ先を叩いていた | 対象環境の鍵を `.env.local` へ `STAGING_CRON_SECRET` / `PRODUCTION_CRON_SECRET` として置く |
+| Redeploy が `can not be redeployed` | 古いデプロイは再実行できない | **新しいコミットをpush**する（空コミットでも可） |
+| 「未適用migrationが11件」と言い続ける | CLIの出力形式（JSON）を読めていなかった | 修正済み（`parseAppliedRemote`。両形式対応・解釈不能なら止まる） |
+
+**デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。
 
 ---
 

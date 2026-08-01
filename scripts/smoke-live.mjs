@@ -15,12 +15,12 @@ function argOf(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/** CRON_SECRET は .env.local → .env → 環境変数の順で探す（値は出力しない）。 */
-function cronSecret() {
-  if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
+/** 指定した名前の値を .env.local → .env → 環境変数 の順で探す（値は出力しない）。 */
+function envValue(name) {
+  if (process.env[name]) return process.env[name];
   for (const file of [".env.local", ".env"]) {
     try {
-      const m = /^CRON_SECRET=(.*)$/m.exec(readFileSync(file, "utf8"));
+      const m = new RegExp(`^${name}=(.*)$`, "m").exec(readFileSync(file, "utf8"));
       if (m?.[1]) return m[1].trim();
     } catch {
       // ファイルが無いのは正常。次の候補へ。
@@ -31,10 +31,19 @@ function cronSecret() {
 
 const base = (argOf("base") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 const account = argOf("account");
-const secret = cronSecret();
+const { cronSecretEnvName } = await import("../src/lib/ops/release-gate.ts");
+const secretName =
+  argOf("secret-env") ??
+  cronSecretEnvName(base, {
+    stagingBaseUrl: envValue("STAGING_BASE_URL"),
+    productionBaseUrl: envValue("PRODUCTION_BASE_URL"),
+  });
+const secret = envValue(secretName);
 
 if (!secret) {
-  console.error("CRON_SECRET が見つかりません（.env.local / .env / 環境変数）。");
+  console.error(`${secretName} が見つかりません（.env.local / .env / 環境変数）。`);
+  console.error(`  ${base} を検証するには、その環境の CRON_SECRET を ${secretName} として置いてください。`);
+  console.error("  （鍵は環境ごとに違います。ローカルの鍵ではデプロイ先の認証を通れません）");
   process.exit(2);
 }
 
@@ -55,7 +64,8 @@ try {
 }
 
 if (res.status === 401) {
-  console.error("401: CRON_SECRET が一致しません。");
+  console.error(`401: 鍵が一致しません（使用した設定名: ${secretName}）。`);
+  console.error(`  ${base} の環境に設定されている CRON_SECRET と同じ値か確認してください。`);
   process.exit(2);
 }
 
