@@ -226,8 +226,12 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
     const a = await makeAccount({ categories: ["ai"] });
     const b = await makeAccount({ categories: ["web3"] });
 
-    const now = new Date();
-    const windowStart = newsDigestWindowStart(now);
+    // **窓を過去の一意な1時間へずらす。** `news_items` は利用者に紐づかない共有データなので、
+    // 現在時刻の窓を使うと他テストが挿入した記事と混ざる。ダイジェスト本文は先頭5件＋「ほかN件」
+    // なので、混ざるとこの記事が押し出されて落ちる（2026-08-02、実際にflakyになった）。
+    // 他テストは `now` 付近しか使わないため、遠い過去の窓なら交わらない。
+    const uniquePast = new Date(Date.now() - (2000 + Math.floor(Math.random() * 2000)) * 3_600_000);
+    const windowStart = newsDigestWindowStart(uniquePast);
     const marker = randomUUID().slice(0, 8);
     const newsIds: string[] = [];
     for (const [category, title] of [
@@ -250,10 +254,9 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
         [[a.userId, b.userId]],
       );
       const byUser = Object.fromEntries(notifications.rows.map((r) => [r.user_id, r.body]));
-      expect(byUser[a.userId], "Aへはaiのニュースが届く").toContain(`AI-${marker}`);
-      expect(byUser[a.userId], "Aへweb3は混ざらない").not.toContain(`WEB3-${marker}`);
-      expect(byUser[b.userId], "Bへはweb3のニュースが届く").toContain(`WEB3-${marker}`);
-      expect(byUser[b.userId], "Bへaiは混ざらない").not.toContain(`AI-${marker}`);
+      // 窓を専有しているので「自分の1件だけ」を厳密に主張できる（混入すれば行数が増える）。
+      expect(byUser[a.userId], "Aへはaiのニュースだけが届く").toBe(`・AI-${marker}`);
+      expect(byUser[b.userId], "Bへはweb3のニュースだけが届く").toBe(`・WEB3-${marker}`);
     } finally {
       await db.query(`delete from news_items where id = any($1::uuid[])`, [newsIds]);
     }
