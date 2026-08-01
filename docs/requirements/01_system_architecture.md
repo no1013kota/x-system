@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
+| バージョン | v1.13 |
 | 更新日 | 2026-07-31 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -186,6 +186,8 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - Turnstile実装の確認先：[widgetの明示render](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/)／[server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)／[公式テストキー](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)。tokenは最大2,048文字・発行後5分・1回限りであることを2026-07-22に確認した。
 
 ## 8. セキュリティ基準
+
+**利用者どうしの分離は2層で担保する**（T-M7-42）。(1)データの越境はRLS（全public表で有効・`authenticated`に書き込みGRANTを与えない）と所有権チェックで防ぎ、`rls.db.test.ts` が**表を足したときに落ちる**構造検査を持つ。(2)挙動の干渉は「上限を利用者ごとに持つ（生成枠・同時実行5件・X日次上限）」「失敗を分野・利用者単位で閉じる」「選択順序を時刻順にする」で抑え、`tenant-isolation.db.test.ts` が固定する。**1起動あたりの上限（dispatch 50／follower 100／metrics 50）は全利用者で共有**するため、片方の大量投入でもう片方は次の起動まで遅れ得る（飢餓はしない）。
 
 **外向き副作用チャネルの一覧はコードが正本**（`src/lib/ops/outbound-channels.ts`）。どのファイルが外部へ出るか（X API・SMTP・AI provider・Stripe・Storage削除・APIキー失効・出典URL検証・自アプリのworker）と、非productionで実害が出ないようにしている仕組みを列挙し、`outbound-channels.test.ts` が **一覧に無いファイルが外向き呼び出しを持ったら落ちる**。2026-07-27にSMTPだけガードが無く98通を誤送信した（T-M7-23）ため、個別のガードではなく「増えたチャネルに気付く仕組み」を持つ（T-M7-28）。新しく外部へ出る処理を書いたら一覧へ追記し、ガードを書く。
 
