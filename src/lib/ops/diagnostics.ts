@@ -117,6 +117,13 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
     }
     if (o.fetched > 0) continue;
     if (o.dropped > 0) {
+      // 「取得窓より古い」だけなら該当なしと同じ（その時間帯に新しい記事が無かっただけで、
+      // 運営者に直せるものは無い）。直せない理由で警告を出すと読まれなくなる（T-M7-44）。
+      const keys = Object.keys(o.dropReasons);
+      if (keys.length > 0 && keys.every((k) => k === "published_at:too_old")) {
+        noMatch.push(o.category);
+        continue;
+      }
       const reasons = Object.entries(o.dropReasons)
         .sort((a, b) => b[1] - a[1])
         .map(([k, n]) => `${k}×${n}`)

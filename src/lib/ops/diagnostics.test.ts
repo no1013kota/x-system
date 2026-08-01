@@ -135,6 +135,28 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
     expect(r.level).toBe("error");
   });
 
+  it("「取得窓より古い」だけの除外は該当なし扱い（直せない理由で警告しない・T-M7-44）", () => {
+    const r = describeEmptyCategories([
+      { category: "ai", ok: true, fetched: 0, dropped: 5, dropReasons: { "published_at:too_old": 5 } },
+    ]);
+    expect(r.allDropped, "全件破棄には数えない").toEqual([]);
+    expect(r.noMatch).toEqual(["ai"]);
+  });
+
+  it("契約違反が混じれば全件破棄として扱う", () => {
+    const r = describeEmptyCategories([
+      {
+        category: "ai",
+        ok: true,
+        fetched: 0,
+        dropped: 4,
+        dropReasons: { "published_at:too_old": 3, "title:too_big": 1 },
+      },
+    ]);
+    expect(r.allDropped).toHaveLength(1);
+    expect(r.noMatch).toEqual([]);
+  });
+
   it("該当なしだけなら正常のまま、どの分野かは伝える", () => {
     const r = judgeNews({
       itemsLast48h: 10,
