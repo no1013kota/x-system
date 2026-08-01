@@ -93,7 +93,7 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 | `SUPPORT_EMAIL` | 問い合わせ先 |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase プロジェクト設定 → API |
 | `DATABASE_URL` | Supabase → Connect → **Transaction pooler**（Supavisor）。直結ではなくpooler側 |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe（stagingはtest、本番はlive） |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe。**非productionでは `sk_test_` のみ**（`sk_live_` を置くと起動時検証で落ちる。実課金を防ぐため・T-M7-51） |
 | `STRIPE_PRICE_STANDARD_MONTHLY` / `_MD_` / `_PREMIUM_` | Stripe の Price ID 3種 |
 | `ANTHROPIC_TEXT_MODEL` / `OPENAI_TEXT_MODEL` / `OPENAI_IMAGE_MODEL` / `GEMINI_TEXT_MODEL` / `GEMINI_IMAGE_MODEL` | 採用モデル名 |
 
@@ -139,6 +139,9 @@ openssl rand -hex 32      # CRON_SECRET
 5. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
    - **stagingの動作確認だけなら**: 自分（Supabaseの組織メンバー）のアドレスで登録すれば内蔵送信で足りる。
    - **本番、または他人のアドレスで試すなら**: Supabase の Authentication → Emails → SMTP Settings へ**カスタムSMTPを設定する**（アプリ用と同じGmail App Passwordを流用できる）。設定後の上限は 30通/時から。
+5.5. **認証メールのテンプレートを差し替える。** `supabase/config.toml` の `[auth.email.template.*]` は**ローカル専用**で、リモートには効かない。既定テンプレートは `{{ .ConfirmationURL }}` を使うため、アプリの `/auth/confirm` が要求する `token_hash` がリンクに付かず、**確認リンクが「リンクを確認できませんでした」になる**（2026-08-02に実際に発生。T-M7-45 のStorage bucketと同じ「config.tomlにしか無い」型）。
+   - Authentication → Emails → Templates の **Confirm signup** と **Reset password** を、`supabase/templates/confirmation.html` / `recovery.html` と同じ内容へ貼り替える（`{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup` / `&type=recovery`）。
+   - Authentication → URL Configuration → **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する。無いと `{{ .RedirectTo }}` が Site URL へ戻され、リンクが `/auth/confirm` を通らない。
 6. `profiles` 自動作成トリガーが入っていることを確認（マイグレーション同梱）。
 
 適用結果の確認:
@@ -184,6 +187,8 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 | **ログインも新規登録もできない**。人間確認の欄が空で「もう一度お試しください」だけ出る | Cloudflare の Turnstile で**そのドメインを許可していない**（エラーコード110200）。何度再試行しても直らない | Cloudflare → Turnstile → 該当ウィジェット → **Hostname Management** へそのドメイン（例 `x-system-stg.vercel.app`）を追加。`npm run check:turnstile -- --base <URL>` で確認できる |
 | 人間確認の欄が出ず「読み込めませんでした」 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` が未設定、または**設定後に再デプロイしていない**（この値はビルド時にバンドルへ埋まる） | Vercelへ設定し、**新しいデプロイを作る**（Redeployでも可） |
 | サインアップしても**確認メールが届かない** | 確認メールは**Supabase Authが送る**（アプリの `SMTP_*` とは別）。内蔵送信は**2通/時・組織メンバー宛のみ** | 自分のアドレスで試す、または Supabase → Authentication → Emails → **SMTP Settings** にカスタムSMTPを設定する（§2-5） |
+| 確認メールのリンクを開くと**「リンクを確認できませんでした」** | メールテンプレートは `supabase/config.toml` で指定しているが**これはローカル専用**。リモートは既定テンプレートで、アプリが要求する `token_hash` がリンクに付かない（T-M7-45 のStorage bucketと同じ型） | Supabase → Authentication → Emails → Templates の **Confirm signup / Reset password** を `supabase/templates/*.html` と同じ内容へ差し替える。あわせて URL Configuration の **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する（§2-5.5）。※既定テンプレートでもSupabase側の確認自体は完了するので、**そのままログインできる**ことがある |
+| stagingの動作確認で**本当に課金されないか不安** | 判定はキーの種別だけで決まる | 非productionに `sk_live_` を置くと**起動時に落ちる**ので、起動していれば `sk_test_` である（T-M7-51）。Checkout画面に **TEST MODE** の帯が出ること、テストカード `4242 4242 4242 4242` が通ることでも確認できる |
 
 **デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。`check:turnstile -- --base <URL>` はログイン画面を見るだけなので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。
 
