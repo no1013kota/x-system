@@ -35,17 +35,26 @@ const unpushed = Number(
   sh(`git rev-list --count origin/${expectedBranch}..${expectedBranch}`, { allowFail: true }) || "0",
 );
 
-/** GitHub Actions の結論（gh CLI が無い/未認証なら null）。 */
+/**
+ * **いまのコミット（HEAD）に対する** GitHub Actions の結論（gh が無い/未認証/未実行なら null）。
+ *
+ * ブランチの「最新の実行」を見てはいけない。pushした直後にCIがまだ始まっていないと、**1つ前の
+ * コミットの緑を自分の緑と誤認する**（2026-08-01に実装の穴として発見）。そのまま反映すると
+ * 「CIを通っていないコミットが本番へ出る」ことになる。SHAで突き合わせる。
+ */
 function ciConclusion() {
+  const head = sh("git rev-parse HEAD", { allowFail: true });
+  if (!head) return null;
   const raw = sh(
-    `gh run list --branch ${expectedBranch} --limit 1 --json status,conclusion 2>/dev/null`,
+    `gh run list --branch ${expectedBranch} --limit 20 --json headSha,status,conclusion 2>/dev/null`,
     { allowFail: true },
   );
   if (!raw) return null;
   try {
     const runs = JSON.parse(raw);
-    if (!Array.isArray(runs) || runs.length === 0) return null;
-    const run = runs[0];
+    if (!Array.isArray(runs)) return null;
+    const run = runs.find((r) => r.headSha === head);
+    if (!run) return null; // このコミットのCIはまだ無い＝止める
     return run.status === "completed" ? run.conclusion : run.status;
   } catch {
     return null;
