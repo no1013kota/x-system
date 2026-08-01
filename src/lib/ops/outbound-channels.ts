@@ -80,7 +80,8 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
     id: "stripe",
     label: "Stripe（Checkout・Customer Portal・購読同期・webhook検証）",
     guard:
-      "production 以外では test モードのキー（`sk_test_`）しか置かない。webhookは署名検証が必須で、" +
+      "production 以外では `sk_live_` を**起動時のenv検証で弾く**（T-M7-51。文章の方針だけでは" +
+      "貼れてしまい、実際に課金される状態だった）。webhookは署名検証が必須で、" +
       "非productionのキーでは本番イベントを受け付けられない。",
     files: [
       "lib/stripe/client.ts",

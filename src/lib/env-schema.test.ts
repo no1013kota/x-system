@@ -114,6 +114,35 @@ describe("X_POSTING_MODE guard", () => {
   });
 });
 
+describe("STRIPE_SECRET_KEY guard", () => {
+  it("rejects a live key in development（実課金を防ぐ）", () => {
+    expect(() =>
+      buildServerEnv({ ...devBase(), STRIPE_SECRET_KEY: "sk_live_abc123" }),
+    ).toThrow(/sk_live_/);
+  });
+
+  it("rejects a live key in preview", () => {
+    expect(() =>
+      buildServerEnv({ ...prodBase(), APP_ENV: "preview", STRIPE_SECRET_KEY: "sk_live_abc123" }),
+    ).toThrow(/sk_live_/);
+  });
+
+  it("allows a test key in preview", () => {
+    const env = buildServerEnv({
+      ...prodBase(),
+      APP_ENV: "preview",
+      X_POSTING_MODE: "dry_run",
+      STRIPE_SECRET_KEY: "sk_test_abc123",
+    });
+    expect(env.STRIPE_SECRET_KEY).toBe("sk_test_abc123");
+  });
+
+  it("allows a live key in production", () => {
+    const env = buildServerEnv({ ...prodBase(), STRIPE_SECRET_KEY: "sk_live_abc123" });
+    expect(env.STRIPE_SECRET_KEY).toBe("sk_live_abc123");
+  });
+});
+
 describe("preview/prod-only requirements", () => {
   it("passes in development without preview/prod-only vars", () => {
     expect(() => buildServerEnv(devBase())).not.toThrow();

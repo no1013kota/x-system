@@ -210,6 +210,20 @@ const schema = z
         message: `X_POSTING_MODE=live は production 環境でのみ許可されます（現在: ${appEnv}）`,
       });
     }
+
+    // dev/preview must never charge real money (T-M7-51).
+    // X_POSTING_MODE には守りがあったのに Stripe には無く、staging の Vercel へ live キーを
+    // 貼れば**実際に課金される**状態だった（2026-08-02、動作確認で決済しようとして判明）。
+    // 方針は `lib/ops/outbound-channels.ts` に文章としてあるだけで強制されていなかった。
+    if (appEnv !== "production" && values.STRIPE_SECRET_KEY?.startsWith("sk_live_")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["STRIPE_SECRET_KEY"],
+        message:
+          `STRIPE_SECRET_KEY に本番キー（sk_live_）は production 環境でのみ許可されます（現在: ${appEnv}）。` +
+          `テストキー（sk_test_）へ差し替えてください。本番キーでは実際に課金されます`,
+      });
+    }
   });
 
 export type ServerEnv = z.infer<typeof schema>;
