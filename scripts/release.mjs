@@ -70,8 +70,19 @@ function unappliedMigrations() {
   return { list: local.filter((v) => !appliedRemote.has(v)), linked: true };
 }
 
-const baseUrl =
-  (target === "staging" ? process.env.STAGING_BASE_URL : process.env.PRODUCTION_BASE_URL) ?? "";
+/** 反映先URL。`-- --base <URL>` が最優先、無ければ環境変数。 */
+const baseUrl = (() => {
+  const i = process.argv.indexOf("--base");
+  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  return (target === "staging" ? process.env.STAGING_BASE_URL : process.env.PRODUCTION_BASE_URL) ?? "";
+})();
+
+/** 検証に使うXアカウント。`-- --account <uuid>` が最優先、無ければ環境変数。 */
+const smokeAccount = (() => {
+  const i = process.argv.indexOf("--account");
+  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  return process.env.SMOKE_X_ACCOUNT_ID ?? "";
+})();
 
 const { list: unapplied, linked } = unappliedMigrations();
 
@@ -132,9 +143,10 @@ if (!stop) {
 
 console.log("\n■ デプロイ後の検証");
 console.log(`実物スモークを ${baseUrl} に対して実行します（実費 約$0.30・要 xAccountId）。`);
-const account = process.env.SMOKE_X_ACCOUNT_ID ?? "";
-const args = [`--base ${baseUrl}`, account ? `--account ${account}` : ""].filter(Boolean).join(" ");
-if (!account) {
+const args = [`--base ${baseUrl}`, smokeAccount ? `--account ${smokeAccount}` : ""]
+  .filter(Boolean)
+  .join(" ");
+if (!smokeAccount) {
   console.log("⚠️  SMOKE_X_ACCOUNT_ID が未設定のため、ニュース取得だけを検証します。");
 }
 try {

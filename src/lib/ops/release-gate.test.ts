@@ -85,6 +85,8 @@ describe("evaluateReleaseGate", () => {
     expect(firstStop(evaluateReleaseGate({ ...ok, baseUrl: "" }))?.nextAction).toContain(
       "STAGING_BASE_URL",
     );
+    // 引数でも渡せることを案内に含める（Vercel側に設定済みでも手元のコマンドは別途知る必要がある）。
+    expect(firstStop(evaluateReleaseGate({ ...ok, baseUrl: "" }))?.nextAction).toContain("--base");
     expect(
       firstStop(
         evaluateReleaseGate({
