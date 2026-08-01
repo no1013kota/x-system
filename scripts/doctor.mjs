@@ -31,6 +31,7 @@ function envValue(name) {
 
 const base = (argOf("base") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 const isLocal = base.includes("127.0.0.1") || base.includes("localhost");
+const { cronSecretEnvName } = await import("../src/lib/ops/release-gate.ts");
 const checks = [];
 
 // --- ローカル基盤（デプロイ先には当てはまらないので飛ばす） ---
@@ -105,13 +106,20 @@ try {
 
 // --- データの状態（アプリ経由。判定はサーバー側と共通） ---
 if (appUp) {
-  const secret = envValue("CRON_SECRET");
+  // 鍵は環境ごとに違う。ローカルの鍵でデプロイ先を叩くと401になり、「壊れている」と
+  // 見分けがつかない（2026-08-01、staging宛の doctor が実際にそうなった）。
+  // 対応表は smoke:live と共通の `cronSecretEnvName`（release-gate.ts）に集約する。
+  const secretName = argOf("secret-env") ?? cronSecretEnvName(base, {
+    stagingBaseUrl: envValue("STAGING_BASE_URL"),
+    productionBaseUrl: envValue("PRODUCTION_BASE_URL"),
+  });
+  const secret = envValue(secretName);
   if (!secret) {
     checks.push({
       name: "データの状態",
       level: "warn",
-      detail: "確認用の鍵（CRON_SECRET）が見つからないため確認できません",
-      nextAction: "`.env.local` に CRON_SECRET があるか確認してください",
+      detail: `確認用の鍵（${secretName}）が見つからないため確認できません`,
+      nextAction: `\`.env.local\` に ${secretName} があるか確認してください`,
     });
   } else {
     try {
@@ -124,8 +132,10 @@ if (appUp) {
         checks.push({
           name: "データの状態",
           level: "warn",
-          detail: "確認用の鍵が一致しません",
-          nextAction: "その環境の CRON_SECRET を指定してください",
+          detail: `確認用の鍵（${secretName}）の値が ${isLocal ? "ローカル" : base} 側と一致しません`,
+          nextAction: isLocal
+            ? "`.env.local` の CRON_SECRET と `npm run dev` の起動時の値をそろえてください"
+            : `Vercel のこの環境に設定した CRON_SECRET と同じ値を、\`.env.local\` の ${secretName} へ入れてください`,
         });
       } else if (!body?.checks) {
         checks.push({
