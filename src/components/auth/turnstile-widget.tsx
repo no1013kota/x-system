@@ -3,13 +3,16 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
+import { classifyTurnstileError } from "@/lib/auth/turnstile-errors";
+
 interface TurnstileApi {
   render(
     container: HTMLElement,
     options: {
       action: string;
       callback: (token: string) => void;
-      "error-callback": () => void;
+      /** Turnstile はエラーコード（例 "110200"）を渡してくる。捨てずに文言へ反映する。 */
+      "error-callback": (code?: string) => void;
       "expired-callback": () => void;
       sitekey: string;
       theme: "auto";
@@ -94,11 +97,11 @@ export function TurnstileWidget({
         setToken(nextToken);
         setWidgetError("");
       },
-      "error-callback": () => {
+      "error-callback": (code) => {
         setToken("");
-        setWidgetError(
-          "人間であることの確認を完了できませんでした。もう一度お試しください。",
-        );
+        // 設定の問題（ドメイン未許可など）で「もう一度お試しください」と出すと、直らない再試行を
+        // 延々と繰り返させることになる。コードで種類を分ける（T-M7-48）。
+        setWidgetError(classifyTurnstileError(code).message);
       },
       "expired-callback": () => {
         setToken("");
