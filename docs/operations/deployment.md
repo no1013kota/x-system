@@ -2,13 +2,23 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.4 |
+| バージョン | v1.5 |
 | 更新日 | 2026-08-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
 
 環境の分離方針: **Supabase プロジェクトは staging と production で分ける**。同一DBを共有すると、staging の検証データが本番の利用枠・実績・課金状態へ混入する。
+
+さらに **organization（組織）も分ける**（2026-08-01 決定）。Supabase の無料枠（DBサイズ・転送量・ストレージ）は**プロジェクトではなく組織単位**で、超過すると `All services are restricted` として**組織内の全プロジェクトが402で停止する**。同一組織に staging を置くと、検証で枠を使い切ったときに**本番が巻き添えで止まる**。2026-08-01、実際に「DB Size Exceeded」で組織全体が停止し、新規に作った staging プロジェクトすら restore できなくなった。
+
+| | 同一組織 | 組織を分ける |
+|---|---|---|
+| stagingの枠超過 | **本番も停止する** | 本番は無事 |
+| 無料枠 | 2プロジェクトで共有 | それぞれに1組織分 |
+| Pro化 | 組織単位の課金なので**stagingも対象**になる | **本番だけPro**にできる |
+
+停止中のプロジェクトは使用量が0と表示され**原因の特定ができない**（計測が止まるため）。復旧も restore が制限で弾かれるので、**枠に近づく前に気付く**必要がある（`npm run doctor` のDBサイズ表示）。
 
 ---
 
