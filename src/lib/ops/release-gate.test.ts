@@ -4,7 +4,9 @@ import {
   evaluateReleaseGate,
   expectedBranchFor,
   firstStop,
+  judgeLinkedProject,
   onlyMigrationsPending,
+  projectRefFromCsp,
   summarizeGate,
   type ReleaseContext,
 } from "./release-gate";
@@ -23,6 +25,8 @@ const ok: ReleaseContext = {
   ciConclusion: "success",
   unappliedMigrations: [],
   baseUrl: "https://x-system-stg.vercel.app",
+  linkedProjectRef: "uykffujqpsogqffbnsrz",
+  targetProjectRef: "uykffujqpsogqffbnsrz",
 };
 
 describe("expectedBranchFor", () => {
@@ -103,5 +107,67 @@ describe("evaluateReleaseGate", () => {
   it("止まった理由は運営者が読める1文になる", () => {
     const steps = evaluateReleaseGate({ ...ok, ciConclusion: "failure" });
     expect(summarizeGate(steps)).toBe("「自動テスト（CI）」で止まりました: 結果が failure です");
+  });
+});
+
+describe("projectRefFromCsp", () => {
+  it("CSPからSupabaseプロジェクトのrefを読む", () => {
+    const csp =
+      "default-src 'self'; connect-src 'self' https://uykffujqpsogqffbnsrz.supabase.co https://challenges.cloudflare.com";
+    expect(projectRefFromCsp(csp)).toBe("uykffujqpsogqffbnsrz");
+  });
+
+  it("Supabaseが含まれない・空・未設定なら null", () => {
+    expect(projectRefFromCsp("default-src 'self'")).toBeNull();
+    expect(projectRefFromCsp("")).toBeNull();
+    expect(projectRefFromCsp(null)).toBeNull();
+    expect(projectRefFromCsp(undefined)).toBeNull();
+  });
+});
+
+describe("judgeLinkedProject", () => {
+  const target = "staging" as const;
+
+  it("一致していれば通す", () => {
+    const step = judgeLinkedProject({ target, linkedProjectRef: "a".repeat(20), targetProjectRef: "a".repeat(20) });
+    expect(step.level).toBe("ok");
+  });
+
+  it("**別のプロジェクトに繋がっていたら止める**（本番DBを更新する事故を防ぐ）", () => {
+    const step = judgeLinkedProject({
+      target,
+      linkedProjectRef: "b".repeat(20),
+      targetProjectRef: "a".repeat(20),
+    });
+    expect(step.level).toBe("stop");
+    expect(step.detail).toContain("b".repeat(20));
+    expect(step.detail).toContain("a".repeat(20));
+    expect(step.nextAction).toContain(`supabase link --project-ref ${"a".repeat(20)}`);
+  });
+
+  it("未リンクなら止め、繋ぐ先を具体的に示す", () => {
+    const step = judgeLinkedProject({ target, linkedProjectRef: null, targetProjectRef: "a".repeat(20) });
+    expect(step.level).toBe("stop");
+    expect(step.nextAction).toContain("a".repeat(20));
+  });
+
+  it("反映先のプロジェクトが判定できなければ止める（安全側）", () => {
+    for (const linked of [null, "a".repeat(20)]) {
+      const step = judgeLinkedProject({ target, linkedProjectRef: linked, targetProjectRef: null });
+      expect(step.level).toBe("stop");
+    }
+  });
+});
+
+describe("接続先の取り違えとmigration適用の関係", () => {
+  it("接続先が違うと、未適用migrationがあっても --apply では進めない", () => {
+    const steps = evaluateReleaseGate({
+      ...ok,
+      unappliedMigrations: ["20260801000001_x.sql"],
+      linkedProjectRef: "z".repeat(20),
+    });
+    // stop が2つになるため onlyMigrationsPending が false になり、--apply が効かない。
+    expect(onlyMigrationsPending(steps)).toBe(false);
+    expect(firstStop(steps)?.name).toBe("データベースの接続先");
   });
 });

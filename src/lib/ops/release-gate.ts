@@ -36,6 +36,16 @@ export interface ReleaseContext {
   unappliedMigrations: string[];
   /** 反映先のURL（未設定なら空文字）。 */
   baseUrl: string;
+  /**
+   * いま `supabase link` で繋がっている Supabase プロジェクトのref（未リンク・読めない場合は null）。
+   * `supabase/.temp/project-ref` から読む。
+   */
+  linkedProjectRef?: string | null;
+  /**
+   * **反映先のアプリが実際に使っている** Supabase プロジェクトのref（判定できない場合は null）。
+   * デプロイ先のCSPヘッダから読む（秘密値ではない）。
+   */
+  targetProjectRef?: string | null;
 }
 
 /** 期待ブランチ。 */
@@ -124,6 +134,14 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
         },
   );
 
+  // **どのデータベースへmigrationを流すか**の確認（T-M7-52）。
+  //
+  // `supabase link` は作業ディレクトリに1つしか保持しない。production に繋いだまま
+  // `release:staging -- --apply` を実行すると**本番DBへmigrationが入る**。逆向きだと本番が
+  // 未適用のまま「全部通りました」と出る。どちらも黙って起き、後から気付けない。
+  // 反映先のアプリが実際に使っているプロジェクトと突き合わせて、違えば止める。
+  steps.push(judgeLinkedProject(ctx));
+
   steps.push(
     ctx.unappliedMigrations.length > 0
       ? {
@@ -137,6 +155,48 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
   );
 
   return steps;
+}
+
+/**
+ * 繋がっているSupabaseプロジェクトが、反映先のアプリが使っているものと一致するか。
+ *
+ * **判定できないときは止める**（安全側）。取り違えると本番DBを壊すため、警告では足りない。
+ */
+export function judgeLinkedProject(ctx: {
+  target: "staging" | "production";
+  linkedProjectRef?: string | null;
+  targetProjectRef?: string | null;
+}): GateStep {
+  const name = "データベースの接続先";
+  const linked = ctx.linkedProjectRef ?? null;
+  const wanted = ctx.targetProjectRef ?? null;
+
+  if (!wanted) {
+    return {
+      name,
+      level: "stop",
+      detail: `${ctx.target} のアプリがどのSupabaseプロジェクトを使っているか確認できませんでした`,
+      nextAction:
+        "デプロイ先が起動しているか確認してください。判定できないまま migration を流すと、別の環境のデータベースを更新する恐れがあります",
+    };
+  }
+  if (!linked) {
+    return {
+      name,
+      level: "stop",
+      detail: "Supabase プロジェクトへ繋がっていません",
+      nextAction: `\`npx supabase link --project-ref ${wanted}\` を実行してください（${ctx.target} のプロジェクトです）`,
+    };
+  }
+  if (linked !== wanted) {
+    return {
+      name,
+      level: "stop",
+      detail: `いま繋がっているのは ${linked} ですが、${ctx.target} が使っているのは ${wanted} です`,
+      nextAction: `\`npx supabase link --project-ref ${wanted}\` で繋ぎ直してください。このまま進めると**別の環境のデータベース**を更新します`,
+    };
+  }
+  return { name, level: "ok", detail: `${linked}（${ctx.target} のプロジェクト）` };
 }
 
 /** 最初に止まった段（無ければ null）。 */
@@ -195,6 +255,19 @@ export function parseAppliedRemote(raw: string): Set<string> | null {
     .filter((cols) => cols.length >= 2);
   if (rows.length === 0) return null;
   return new Set(rows.map((cols) => cols[1]).filter((v) => /^\d{14}$/.test(v)));
+}
+
+/**
+ * デプロイ先の CSP ヘッダから Supabase プロジェクトのrefを読む（T-M7-52）。
+ *
+ * `NEXT_PUBLIC_SUPABASE_URL` はCSPの `connect-src` に載る。**認証情報が不要で、refは秘密値でない**。
+ * クライアントバンドルを探すより確実（認証をServer Actionで行うため、ログイン画面のバンドルには
+ * Supabaseクライアントが載らないことがある）。
+ */
+export function projectRefFromCsp(csp: string | null | undefined): string | null {
+  if (!csp) return null;
+  const m = /https:\/\/([a-z0-9]{20})\.supabase\.co/.exec(csp);
+  return m ? m[1] : null;
 }
 
 /**
