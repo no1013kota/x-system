@@ -10,7 +10,9 @@ import {
   retryGenerationJobAction,
 } from "@/app/actions/generation-jobs";
 import { ExecutionPrereqNotice } from "@/components/app-shell/execution-prereq-notice";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 
 export interface PatternOption {
@@ -188,42 +190,62 @@ export function CreatePostForm({
     job?.status === "queued" && nowMs - new Date(job.createdAt).getTime() > QUEUED_SLOW_MS;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* 左ペイン: パターン選択＋入力 */}
-      <section className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm" aria-label="生成入力">
+    // デザインは入力→生成中→確認の**順に進む**1カラム（左右2ペインではない）。
+    // 横に並べるとパターン6枚が潰れ、選びにくくなる（実測で3列が2列に落ちた）。
+    <div className="space-y-3.5">
+      {/* 入力（ステート1） */}
+      <section
+        aria-label="生成入力"
+        className="space-y-5 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]"
+      >
         <div>
-          <h2 className="text-sm font-medium">パターン</h2>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {patterns.map((p) => (
-              <label
-                className={`flex cursor-pointer flex-col rounded-lg border p-3 text-sm ${
-                  pattern === p.id ? "border-foreground bg-accent" : "hover:bg-accent/50"
-                }`}
-                key={p.id}
-              >
-                <span className="flex items-center gap-2 font-medium">
+          <h2 className="text-[13px] font-bold text-ink">パターン</h2>
+          {/* 3列のカードグリッド（デザイン §画面一覧 3.投稿作成 ステート1）。選択中は1.5pxのキー色枠＋チェック。 */}
+          <div className="mt-2 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            {patterns.map((p) => {
+              const selected = pattern === p.id;
+              return (
+                <label
+                  className={`relative flex cursor-pointer flex-col rounded-card border p-3 transition-colors duration-150 ${
+                    selected
+                      ? "border-[1.5px] border-brand bg-brand-subtle/30"
+                      : "border-hairline hover:bg-black/[0.02]"
+                  }`}
+                  key={p.id}
+                >
                   <input
-                    checked={pattern === p.id}
+                    checked={selected}
                     className="sr-only"
                     name="pattern"
                     onChange={() => setPattern(p.id)}
                     type="radio"
                     value={p.id}
                   />
-                  {p.label}
-                </span>
-                <span className="mt-1 text-xs text-muted-foreground">{p.description}</span>
-              </label>
-            ))}
+                  <span className="flex items-center gap-2">
+                    <Badge tone={selected ? "brand" : "neutral"}>{p.id.toUpperCase()}</Badge>
+                    {selected ? (
+                      <Icon
+                        className="ml-auto text-brand"
+                        filled
+                        name="check_circle"
+                        size={17}
+                      />
+                    ) : null}
+                  </span>
+                  <span className="mt-1.5 text-[13.5px] font-bold text-ink">{p.label}</span>
+                  <span className="mt-0.5 text-[11.5px] leading-4 text-ink-2">{p.description}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium" htmlFor="source_url">
+          <label className="block text-[13px] font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
           </label>
           <input
-            className="mt-1 h-10 w-full rounded-lg border px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
             id="source_url"
             inputMode="url"
             onChange={(e) => setSourceUrl(e.target.value)}
@@ -237,11 +259,11 @@ export function CreatePostForm({
 
         {pattern === "p2" ? (
           <div>
-            <label className="block text-sm font-medium" htmlFor="user_opinion">
+            <label className="block text-[13px] font-medium text-ink" htmlFor="user_opinion">
               自分の考え（任意）
             </label>
             <textarea
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
               id="user_opinion"
               maxLength={2000}
               onChange={(e) => setUserOpinion(e.target.value)}
@@ -252,11 +274,11 @@ export function CreatePostForm({
         ) : null}
 
         <div>
-          <label className="block text-sm font-medium" htmlFor="instructions">
+          <label className="block text-[13px] font-medium text-ink" htmlFor="instructions">
             追加指示（任意）
           </label>
           <textarea
-            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
             id="instructions"
             maxLength={2000}
             onChange={(e) => setInstructions(e.target.value)}
@@ -266,7 +288,7 @@ export function CreatePostForm({
         </div>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
             <input
               checked={imageEnabled}
               disabled={imageProviders.length === 0}
@@ -287,13 +309,22 @@ export function CreatePostForm({
           ) : null}
         </div>
 
-        <Button disabled={pending || inProgress} onClick={submit} size="lg" type="button">
-          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "生成する"}
+        {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
+        <Button
+          className="h-10 w-full gap-1.5 text-[13.5px]"
+          disabled={pending || inProgress}
+          onClick={submit}
+          type="button"
+          variant="gradient"
+        >
+          <Icon name="star_shine" size={17} />
+          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "スレッドを生成する"}
         </Button>
       </section>
 
-      {/* 右ペイン: プレビュー・結果 */}
-      <section className="space-y-4 rounded-2xl border bg-card p-6 shadow-sm" aria-label="プレビュー・結果">
+      {/* 結果（ステート2・3） */}
+      <section aria-label="プレビュー・結果"
+        className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
         <h2 className="text-sm font-medium">結果</h2>
 
         {error ? (
@@ -318,7 +349,8 @@ export function CreatePostForm({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">経過 {elapsedLabel}</p>
             </div>
-            <ol className="space-y-1.5 text-sm">
+            {/* 進捗ステップ（デザイン §画面一覧 3.投稿作成 ステート2）。完了=緑チェック／実行中=キー色の脈動／待機=灰丸。 */}
+            <ol className="space-y-1.5">
               {STAGE_ORDER.filter((s) => s !== "image" || imageEnabled).map((stage) => {
                 const active = job?.progressStage === stage;
                 const done =
@@ -326,12 +358,18 @@ export function CreatePostForm({
                   STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf(job.progressStage);
                 return (
                   <li
-                    className={`flex items-center gap-2 ${
-                      active ? "font-medium text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/60"
+                    className={`flex items-center gap-2 text-[13px] ${
+                      active ? "font-medium text-ink" : done ? "text-ink-2" : "text-ink-3"
                     }`}
                     key={stage}
                   >
-                    <span aria-hidden="true">{done ? "✓" : active ? "…" : "○"}</span>
+                    {done ? (
+                      <Icon className="text-success-icon" filled name="check_circle" size={16} />
+                    ) : active ? (
+                      <Icon className="animate-pulse text-brand" name="progress_activity" size={16} />
+                    ) : (
+                      <Icon className="text-ink-3/60" name="radio_button_unchecked" size={16} />
+                    )}
                     {STAGE_LABEL[stage]}
                   </li>
                 );
