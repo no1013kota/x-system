@@ -30,19 +30,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { BaseMdEditor } from "./base-md-editor";
+import { AI_SETTINGS_TABS } from "./tabs";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
 import { PromptTemplatesEditor } from "./prompt-templates-editor";
 
 export const metadata: Metadata = { title: `AI設定 | ${APP_NAME}` };
-
-const TABS = [
-  ["persona", "発信設定"],
-  ["purposes", "AI用途"],
-  ["learning", "学習ソース"],
-  ["base-md", "ベースmd"],
-  ["prompts", "プロンプト"],
-] as const;
 
 const EMPTY_SETTINGS: PersonaSettings = {
   ng: { rules: [], topics: [], words: [] },
@@ -74,7 +67,7 @@ export default async function AiSettingsPage({
 }: AiSettingsPageProps) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   if (!user) redirect("/login?next=/app/ai-settings");
-  const tab = TABS.some(([value]) => value === params.tab)
+  const tab = AI_SETTINGS_TABS.some(([value]) => value === params.tab)
     ? params.tab ?? "persona"
     : "persona";
   const supabase = await createSupabaseServerClient();
@@ -165,7 +158,7 @@ export default async function AiSettingsPage({
         className="mt-7 gap-1 overflow-x-auto"
         hrefFor={(value) => `/app/ai-settings?tab=${value}`}
         inactiveLinkClassName="hover:text-foreground"
-        items={TABS.map(([value, label]) => ({ value, label }))}
+        items={AI_SETTINGS_TABS.map(([value, label]) => ({ value, label }))}
         label="AI設定タブ"
         linkClassName="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
       />
@@ -250,7 +243,7 @@ export default async function AiSettingsPage({
         ) : (
           <EmptyState
             description="このタブの機能は後続タスクで追加します。発信設定タブは現在利用できます。"
-            title={`${TABS.find(([value]) => value === tab)?.[1]}は準備中です`}
+            title={`${AI_SETTINGS_TABS.find(([value]) => value === tab)?.[1]}は準備中です`}
           />
         )}
       </div>

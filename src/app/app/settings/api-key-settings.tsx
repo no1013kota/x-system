@@ -10,7 +10,9 @@ import {
   saveXApiKey,
   verifyApiKey,
 } from "@/app/actions/api-keys";
+import { aiSettingsTabHref } from "@/app/app/ai-settings/tabs";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider, XClientType } from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
@@ -30,11 +32,6 @@ const STATUS_LABELS = {
   unchecked: "未確認",
   valid: "確認済み",
 } as const;
-
-interface ActionNotice {
-  message: string;
-  tone: "error" | "success";
-}
 
 interface ApiKeySettingsProps {
   callbackUrl: string;
@@ -102,7 +99,7 @@ export function ApiKeySettings({
   const [keys, setKeys] = useState<Record<string, ApiKeyViewState>>(() =>
     Object.fromEntries(initialKeys.map((key) => [key.provider, key])),
   );
-  const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const toast = useToast();
   const [clientType, setClientType] = useState<XClientType>("public");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -112,13 +109,17 @@ export function ApiKeySettings({
     openai: "",
   });
   const [copied, setCopied] = useState(false);
-  function finishAction(message: string) {
-    setNotice({ message, tone: "success" });
+  /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
+  function showError(message: string) {
+    toast.show({ tone: "error", title: "実行できませんでした", description: message });
+  }
+
+  function finishAction(title: string) {
+    toast.show({ tone: "success", title });
     router.refresh();
   }
 
   function saveX() {
-    setNotice(null);
     startTransition(async () => {
       const result = await saveXApiKey({
         client_id: clientId,
@@ -126,7 +127,7 @@ export function ApiKeySettings({
         client_type: clientType,
       });
       if (result.status === "error" || !result.displayHint) {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       const displayHint = result.displayHint;
@@ -146,14 +147,13 @@ export function ApiKeySettings({
   }
 
   function saveAi(provider: AiKeyProvider) {
-    setNotice(null);
     startTransition(async () => {
       const result = await saveAiApiKey({
         api_key: aiSecrets[provider],
         provider,
       });
       if (result.status === "error" || !result.displayHint) {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       const displayHint = result.displayHint;
@@ -169,7 +169,7 @@ export function ApiKeySettings({
       setAiSecrets((current) => ({ ...current, [provider]: "" }));
       // 未確認のキーは投稿生成に使えないため、保存に続けて疎通確認まで自動で行う
       // （利用者が「保存しただけで使える」と誤解して詰まるのを防ぐ・要件06 §3.2）。
-      setNotice({ message: "保存しました。疎通を確認しています…", tone: "success" });
+      toast.show({ tone: "success", title: "保存しました", description: "疎通を確認しています…" });
       const verified = await verifyApiKey({ provider });
       setKeys((current) => {
         const existing = current[provider];
@@ -184,20 +184,27 @@ export function ApiKeySettings({
         };
       });
       if (verified.keyStatus === "valid") {
-        finishAction("APIキーを保存し、疎通を確認しました。AI設定の「AI用途」で、このAIを文章生成に割り当てると投稿を作成できます。");
+        // **次にやることまで出す。** 保存しただけでは投稿を作れず、AI用途への割り当てが要る
+        // （要件06 §3.2）。5秒で消えるトーストに手順を書くと読み切れないので導線を添える。
+        toast.show({
+          tone: "success",
+          title: "APIキーを保存し、疎通を確認しました",
+          description: "「AI用途」でこのAIを文章生成に割り当てると投稿を作成できます。",
+          action: { href: aiSettingsTabHref("purposes"), label: "AI用途を開く" },
+        });
+        router.refresh();
       } else {
-        setNotice({ message: verified.message, tone: "error" });
+        showError(verified.message);
         router.refresh();
       }
     });
   }
 
   function verify(provider: ApiKeyViewProvider) {
-    setNotice(null);
     startTransition(async () => {
       const result = await verifyApiKey({ provider });
       if (result.status === "error" && result.keyStatus !== "invalid") {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       setKeys((current) => {
@@ -213,10 +220,8 @@ export function ApiKeySettings({
           },
         };
       });
-      setNotice({
-        message: result.message,
-        tone: result.status === "error" ? "error" : "success",
-      });
+      if (result.status === "error") showError(result.message);
+      else toast.show({ tone: "success", title: result.message });
       router.refresh();
     });
   }
@@ -225,11 +230,10 @@ export function ApiKeySettings({
     if (!window.confirm("このAPIキーを削除します。元に戻せません。続行しますか？")) {
       return;
     }
-    setNotice(null);
     startTransition(async () => {
       const result = await deleteApiKey({ provider });
       if (result.status === "error") {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       setKeys((current) => {
@@ -269,19 +273,6 @@ export function ApiKeySettings({
 
   return (
     <div className="space-y-7">
-      {notice ? (
-        <p
-          className={`rounded-xl border p-4 text-sm ${
-            notice.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-red-200 bg-red-50 text-red-900"
-          }`}
-          role={notice.tone === "error" ? "alert" : "status"}
-        >
-          {notice.message}
-        </p>
-      ) : null}
-
       <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-foreground p-2 text-background">
