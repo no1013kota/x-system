@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
-| 更新日 | 2026-08-01 |
+| バージョン | v1.8 |
+| 更新日 | 2026-08-02 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -149,6 +149,31 @@ openssl rand -hex 32      # CRON_SECRET
 ```bash
 npx supabase migration list      # ローカルとリモートの差分が無いこと
 ```
+
+### 2.9 ホスト版Supabaseで手で設定する項目（**環境ごとに1回ずつ**）
+
+**これらはプロジェクト単位の設定で、stagingで設定してもproductionには一切引き継がれない。** `supabase/config.toml` はローカルのスタックにしか効かず、migrationでも表現できないため、**ダッシュボードで手作業するしかない**（2026-08-01〜02に、Storage bucket・メールテンプレート・CAPTCHAの3件が続けてこの穴で壊れた）。
+
+> ⚠️ **`supabase config push` は使わない。** 一見「設定を同期するコマンド」だが、いまの `config.toml` にはローカル用の値（`site_url = http://127.0.0.1:3000`・localhostのredirect URLs・**Turnstileの常時成功テストsecret**）が入っており、送るとリモートの人間確認が無効化される。`[remotes.*]` を整備するまで実行しないこと。
+
+| 設定 | 場所 | staging と production で | 抜けたときの症状 |
+|---|---|---|---|
+| **カスタムSMTP** | Authentication → Emails → SMTP Settings | **同じGmailでよい**（Sender name は `Space AI`。本番は独自ドメインのアドレスが望ましい） | 内蔵送信のままだと**2通/時・組織メンバー宛のみ**。他人には永久に届かないのに画面は「送信しました」と出る。**カスタムSMTPを有効にしないとテンプレートを編集できない** |
+| **メールテンプレート**（Confirm signup / Reset password） | Authentication → Emails → Templates | **同じ内容でよい**（`{{ .RedirectTo }}` を使うためドメインに依存しない） | 確認リンクとパスワード再設定が「リンクを確認できませんでした」になる |
+| **メール送信数/時** | Authentication → Rate Limits | **同じ（30以上）** | 数通で黙って止まる |
+| **CAPTCHA** | Authentication → Attack Protection | **環境ごとに違う**（Turnstileウィジェットを分けるため secret が異なる） | OFFだと人間確認が飾りになる（アプリはトークンの真偽を検証しない → T-M7-53）。secret不一致だとログイン・登録・再設定が全滅 |
+| **Site URL / Redirect URLs** | Authentication → URL Configuration | **環境ごとに違う**（各環境の `APP_BASE_URL` と `<APP_BASE_URL>/auth/confirm`） | メール内リンクが別の場所を指し、押しても何も起きない |
+| **Confirm email** 有効 / **最小パスワード長 8**（既定6）/ **Secure email change** 有効 / **Secure password change** は触らない | Authentication → Providers → Email | **同じ** | 最小長6のままだとアプリの案内（8文字）と食い違う。Secure password change を有効にすると**パスワード再設定が完全に死ぬ** |
+| **Upload file size limit を 50MiB のまま**（5MiB未満に下げない） | Storage → Settings | **同じ** | 画像アップロードだけが失敗する（`smoke:live` が検出する） |
+| Storage bucket `generated-images` | — | **migrationで自動**（`20260801000003`）。手作業不要 | — |
+
+**Redirect URLs が効いているかは外から確認できる**（認証情報不要）:
+
+```bash
+curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x&type=email&redirect_to=<確かめたいURL>" | grep -i ^location
+```
+
+指定したURLがそのまま返れば許可されている。Site URL に化けていれば未許可。
 
 ---
 
