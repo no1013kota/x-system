@@ -25,6 +25,7 @@ import {
 
 import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
+import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
 
 export const metadata: Metadata = {
@@ -48,14 +49,6 @@ interface BillingProfile {
   stripe_customer_id: string | null;
   subscription_status: string;
 }
-
-const SETTINGS_TABS = [
-  ["x-accounts", "Xアカウント"],
-  ["api-keys", "APIキー"],
-  ["notifications", "通知・プロフィール"],
-  ["billing", "課金・プラン"],
-  ["support", "問い合わせ"],
-] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   incomplete: "お申し込み未完了",

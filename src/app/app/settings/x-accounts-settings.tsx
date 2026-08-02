@@ -14,6 +14,7 @@ import {
 import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
 
@@ -36,11 +37,6 @@ const AUTH_TYPE_LABEL: Record<string, string> = {
   managed: "運営App（Premium）",
 };
 
-interface Notice {
-  message: string;
-  tone: "error" | "success";
-}
-
 export function XAccountsSettings({
   accounts,
   plan,
@@ -58,7 +54,7 @@ export function XAccountsSettings({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
 
   const limit = PLANS[plan].xAccountLimit;
   const activeCount = accounts.filter((a) => a.status === "active").length;
@@ -71,15 +67,18 @@ export function XAccountsSettings({
   ) {
     if (pending) return;
     setBusyId(id);
-    setNotice(null);
     startTransition(async () => {
       const res = await action();
       setBusyId(null);
       if (res.status === "error") {
-        setNotice({ message: res.message || "操作に失敗しました。", tone: "error" });
+        toast.show({
+          tone: "error",
+          title: "操作できませんでした",
+          description: res.message || "操作に失敗しました。",
+        });
         return;
       }
-      setNotice({ message: successMessage, tone: "success" });
+      toast.show({ tone: "success", title: successMessage });
       router.refresh();
     });
   }
@@ -135,18 +134,6 @@ export function XAccountsSettings({
             role="status"
           >
             Xアカウントを連携しました。
-          </p>
-        ) : null}
-        {notice ? (
-          <p
-            className={`mt-4 rounded-lg border p-3 text-sm ${
-              notice.tone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-red-200 bg-red-50 text-red-900"
-            }`}
-            role={notice.tone === "success" ? "status" : "alert"}
-          >
-            {notice.message}
           </p>
         ) : null}
       </div>
