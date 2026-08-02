@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 
 import { updateAiPurposeConfig } from "@/app/actions/ai-purpose-config";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ImageAiProvider } from "@/lib/ai-purpose-config";
 import {
@@ -28,11 +29,6 @@ interface AiPurposeSettingsProps {
   validUserProviders: AiKeyProvider[];
 }
 
-interface Notice {
-  message: string;
-  tone: "error" | "success";
-}
-
 export function AiPurposeSettings({
   initialConfig,
   operatorImageProviders,
@@ -52,10 +48,9 @@ export function AiPurposeSettings({
   const [imageProvider, setImageProvider] = useState<ImageAiProvider | "">(() =>
     (configuredPurpose(initialConfig, "image", options.image) as ImageAiProvider | null) ?? "",
   );
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
 
   function save() {
-    setNotice(null);
     startTransition(async () => {
       const result = await updateAiPurposeConfig(
         plan === "premium"
@@ -66,28 +61,16 @@ export function AiPurposeSettings({
             },
       );
       if (result.status === "error") {
-        setNotice({ message: result.message, tone: "error" });
+        toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
         return;
       }
-      setNotice({ message: result.message, tone: "success" });
+      toast.show({ tone: "success", title: "AI用途設定を更新しました" });
       router.refresh();
     });
   }
 
   return (
     <div className="space-y-6">
-      {notice ? (
-        <p
-          className={`rounded-xl border p-4 text-sm ${
-            notice.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-red-200 bg-red-50 text-red-900"
-          }`}
-          role={notice.tone === "error" ? "alert" : "status"}
-        >
-          {notice.message}
-        </p>
-      ) : null}
 
       <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
         <div className="flex items-start gap-3">

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
@@ -10,6 +9,7 @@ import {
   reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
+import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 
@@ -57,8 +57,7 @@ export function LearningSourcesManager({
   const [ownPostsNextEligibleAt, setNextEligible] = useState<string | null>(initialOwnPostsNextEligibleAt);
   const [type, setType] = useState<"ref_account" | "ref_post">("ref_account");
   const [url, setUrl] = useState("");
-  const [note, setNote] = useState<string | null>(null);
-  const [noteHref, setNoteHref] = useState<string | null>(null);
+  const toast = useToast();
   const [now, setNow] = useState(() => Date.now());
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
@@ -78,10 +77,15 @@ export function LearningSourcesManager({
     if (res.status === "success" && res.sources) setSources(res.sources);
   }
 
-  function setError(res: { message?: string; details?: Record<string, unknown> }) {
-    setNote(res.message ?? "処理に失敗しました。");
+  /** 失敗をトーストで伝える（T-M8-18）。設定導線があれば一緒に載せる。 */
+  function showError(res: { message?: string; details?: Record<string, unknown> }) {
     const path = res.details?.settingsPath;
-    setNoteHref(typeof path === "string" ? path : null);
+    toast.show({
+      tone: "error",
+      title: "実行できませんでした",
+      description: res.message ?? "処理に失敗しました。",
+      ...(typeof path === "string" ? { action: { href: path, label: "設定を開く" } } : {}),
+    });
   }
 
   function add() {
@@ -90,11 +94,10 @@ export function LearningSourcesManager({
       const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url: url.trim() });
       if (res.status === "success") {
         setUrl("");
-        setNote(null);
-        setNoteHref(null);
+        toast.show({ tone: "success", title: "学習ソースを追加しました" });
         await refresh();
       } else {
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -104,10 +107,10 @@ export function LearningSourcesManager({
     startTransition(async () => {
       const res = await removeLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, source_id: sourceId });
       if (res.status === "success") {
-        setNote(null);
+        toast.show({ tone: "success", title: "学習ソースを削除しました" });
         await refresh();
       } else {
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -116,14 +119,18 @@ export function LearningSourcesManager({
     startTransition(async () => {
       const res = await reimportOwnPostsAction({ request_key: uuid(), x_account_id: xAccountId });
       if (res.status === "success") {
-        setNote(null);
+        toast.show({
+          tone: "success",
+          title: "再取り込みを開始しました",
+          description: "完了すると学習の反映状況が更新されます。",
+        });
         await refresh();
         router.refresh(); // サーバの次回可能日時を更新
       } else {
         if (res.details?.next_available_at) {
           setNextEligible(String(res.details.next_available_at));
         }
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -137,16 +144,6 @@ export function LearningSourcesManager({
       {removing ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
           学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
-        </p>
-      ) : null}
-      {note ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
-          {note}
-          {noteHref ? (
-            <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
-              設定を開く
-            </Link>
-          ) : null}
         </p>
       ) : null}
 

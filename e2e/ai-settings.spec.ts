@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query } from "./fixtures/account";
-import { expect, signIn, test } from "./fixtures/test";
+import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
  * SC-10 AI設定のうち**ベースmd編集**と**学習ソース**（要件06 §9・§3.6、T-M7-26）。
@@ -106,6 +106,10 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     `https://x.com/${handle}`,
   );
   await page.getByRole("button", { name: "追加", exact: true }).click();
+
+  // **成功したことが利用者に分かる**（T-M8-18）。以前は追加が通っても画面は無言で、
+  // 一覧に行が増えたことに気づけるかどうかに委ねていた。
+  await expect(toastIn(page)).toContainText("学習ソースを追加しました");
 
   // DBに登録され、分析待ちになる
   await expect

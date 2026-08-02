@@ -12,6 +12,7 @@ import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { THEME_OPTIONS } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
+import { useToast } from "@/components/ui/toast";
 
 const IMPACTS: { id: string; label: string }[] = [
   { id: "high", label: "高" },
@@ -74,10 +75,7 @@ export function NewsBrowser({
   const [note, setNote] = useState<string | null>(
     initialError ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。" : null,
   );
-  // 実行前提エラー（api_key_required 等）の設定導線（要件05 §12・§4.1）。
-  const [noteHref, setNoteHref] = useState<string | null>(null);
-  const [noteLinkLabel, setNoteLinkLabel] = useState("設定を開く");
-  const [noteTone, setNoteTone] = useState<"error" | "success">("error");
+  const toast = useToast();
   // 既定は**取得している分野**すべて・インパクト高中。既定より絞っているときだけ「条件を戻す」を出す。
   // 発信テーマ（THEME_OPTIONS・6テーマ）とは別で、記事が来ない分野は絞り込みにも出さない（T-M7-55）。
   const allCategories: string[] = [...NEWS_FETCH_CATEGORIES];
@@ -85,14 +83,22 @@ export function NewsBrowser({
   const narrowedFilter =
     categories.length < allCategories.length || impacts.length < 2 || !impacts.includes("high");
 
-  function setNoteWith(
+  /**
+   * 操作の結果はトーストへ（T-M8-18）。**以前は `role="status"` 固定で、失敗も成功として
+   * 読み上げられていた。** 画面に残すのは「いま何が表示されているか」（取得失敗の注記・
+   * 入力検証）だけにする。
+   */
+  function notify(
     message: string,
     options: { href?: string | null; label?: string; tone?: "error" | "success" } = {},
   ) {
-    setNote(message);
-    setNoteHref(options.href ?? null);
-    setNoteLinkLabel(options.label ?? "設定を開く");
-    setNoteTone(options.tone ?? "error");
+    const tone = options.tone ?? "error";
+    toast.show({
+      tone,
+      title: tone === "success" ? message : "実行できませんでした",
+      description: tone === "success" ? undefined : message,
+      ...(options.href ? { action: { href: options.href, label: options.label ?? "設定を開く" } } : {}),
+    });
   }
 
   function resetFilter() {
@@ -113,7 +119,7 @@ export function NewsBrowser({
       if (res.status === "success") {
         setCreated((prev) => new Set(prev).add(newsItemId));
         // 生成は1分ほどかかる。どこで結果を見られるかまで示す（要件06 §10）。
-        setNoteWith("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
+        notify("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
           href: "/app/posts?tab=create",
           label: "進行状況を見る",
           tone: "success",
@@ -123,17 +129,17 @@ export function NewsBrowser({
         const reason = res.details?.reason;
         const path = res.details?.settingsPath;
         if (reason === "too_many_active_jobs") {
-          setNoteWith("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
+          notify("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
             href: "/app/posts?tab=create",
             label: "進行状況を見る",
           });
         } else if (reason === "learning_removing") {
-          setNoteWith("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
+          notify("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
             href: "/app/ai-settings?tab=learning",
             label: "学習ソースを見る",
           });
         } else {
-          setNoteWith(res.message || "生成を開始できませんでした。", {
+          notify(res.message || "生成を開始できませんでした。", {
             href: typeof path === "string" ? path : null,
           });
         }
@@ -161,16 +167,16 @@ export function NewsBrowser({
         max_items: maxItems,
       });
       if (saved.status === "error") {
-        setNote(saved.message || "設定を保存できませんでした。");
+        notify(saved.message || "設定を保存できませんでした。");
         return;
       }
       const res = await listNewsItemsAction(baseQuery());
       if (res.status === "success" && res.items) {
         setItems(res.items);
         setCursor(res.nextCursor ?? null);
-        setNoteWith("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
+        notify("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
       } else {
-        // 取得失敗時は前回成功分を保持し注記する。
+        // 取得失敗は**画面の状態**なので注記として残す（トーストは消えてしまう）。
         setNote("最新のニュースを取得できませんでした。表示は前回の内容です。");
       }
     });
@@ -282,21 +288,17 @@ export function NewsBrowser({
         </div>
       </section>
 
+      {/*
+        ここに残すのは**画面の状態**だけ（取得失敗の注記・入力検証）。操作の結果はトーストへ。
+        以前は両方をここへ出しており、`role="status"` 固定だったため失敗も成功として
+        読み上げられていた（T-M8-18）。
+      */}
       {note ? (
         <p
-          className={`rounded-lg border px-4 py-2 text-sm ${
-            noteTone === "success"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-              : "border-amber-300 bg-amber-50 text-amber-950"
-          }`}
-          role="status"
+          className="rounded-card border border-warn-fg/25 bg-warn-bg px-4 py-2 text-[12.5px] text-warn-fg"
+          role="alert"
         >
           {note}
-          {noteHref ? (
-            <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
-              {noteLinkLabel}
-            </Link>
-          ) : null}
         </p>
       ) : null}
 
