@@ -1,10 +1,29 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/**
+ * フォントは**すべて自前配信**する（T-M8-02）。
+ *
+ * CSPが `font-src 'self' data:` / `style-src 'self' 'unsafe-inline'` なので、Google Fonts の
+ * CDNからは読み込めない（読み込むとコンソールエラー0件を検証するE2Eが落ちる）。
+ * `next/font/google` はビルド時にフォントを取得して自ドメインから配信するため、CSPに適合する。
+ *
+ * 日本語=Noto Sans JP / 英数・数値=Inter。
+ * アイコンはフォントではなくインラインSVG（`components/ui/icon.tsx`）。可変フォントが3.8MBと
+ * 重すぎるため、使う41個だけをSVGで持つ（12.6KB）。
+ */
+const notoSansJp = Noto_Sans_JP({
+  variable: "--font-noto-sans-jp",
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  display: "swap",
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -25,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="ja"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${notoSansJp.variable} ${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

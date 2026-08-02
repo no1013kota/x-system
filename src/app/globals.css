@@ -7,7 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /*
+    本文は Noto Sans JP、英数・数値は Inter を先に当てる（T-M8-02）。
+    以前は `--font-sans: var(--font-sans)` という自己参照で**本文フォントが一切効いておらず**、
+    ブラウザ既定フォントで描画されていた（`--font-mono` だけ正しく繋がっていた）。
+  */
+  --font-sans: var(--font-inter), var(--font-noto-sans-jp), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -46,6 +51,38 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /*
+    ここから下は新デザイン（design_handoff_spaceai_ui）のトークン（T-M8-02）。
+    **既存のトークンは1つも消していない**。未対象の画面が参照しているため、
+    全画面の置換が終わるまで両方が並存する。
+  */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-subtle-hover: var(--brand-subtle-hover);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-success-bg: var(--success-bg);
+  --color-success-fg: var(--success-fg);
+  --color-success-icon: var(--success-icon);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-dot: var(--danger-dot);
+
+  /* 角丸: カード/ボタン/入力 8px・チップ 6px・ピル 9999px（デザイン §形状） */
+  --radius-card: 8px;
+  --radius-chip: 6px;
+  --radius-modal: 16px;
+  --radius-pill: 9999px;
 }
 
 :root {
@@ -81,6 +118,44 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* --- 新デザインのトークン（T-M8-02）。値はデザイン実物（HTML）を正とする --- */
+  --brand: #7d1f75;
+  --brand-hover: #6a1a64;
+  --brand-subtle: #f4e8f3;
+  --brand-subtle-hover: #ecdcea;
+  --page: #f6f6f7;
+  --surface: #ffffff;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --ink: rgba(0, 0, 0, 0.9);
+  --ink-2: rgba(0, 0, 0, 0.55);
+  --ink-3: rgba(0, 0, 0, 0.45);
+  --success-bg: #f0f9ee;
+  --success-fg: #3f8f2c;
+  --success-icon: #4ea836;
+  --info-bg: #e8f4fb;
+  --info-fg: #1c7fb5;
+  --warn-bg: #fff4d6;
+  --warn-fg: #a86f00;
+  --danger-bg: #ffd9dc;
+  --danger-fg: #c2333c;
+  --danger-dot: #ff4750;
+
+  /*
+    ブランドグラデーション。**使ってよい場所を限定する**（デザイン §カラー）:
+    ロゴ・AI生成の瞬間（生成ボタン／生成中／投稿実行）・プレミアムバッジのみ。
+    多用すると「AIが動いている」という合図としての意味が失われる。
+  */
+  --brand-gradient: linear-gradient(90deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
+  --brand-gradient-logo: linear-gradient(135deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
+
+  /* 影（デザイン実物より）。モーダルは 0 8px 32px rgba(0,0,0,.12) */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  /* トランジション（デザイン §形状・余白） */
+  --motion-fast: 150ms ease-out;
 }
 
 .dark {
@@ -126,5 +201,12 @@
   }
   html {
     @apply font-sans;
+  }
+
+  /* 数値は等幅で揃える（デザイン §タイポグラフィ）。桁が変わっても列がずれない。 */
+  .tabular-nums,
+  th,
+  td {
+    font-variant-numeric: tabular-nums;
   }
 }
