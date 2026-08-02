@@ -3,23 +3,23 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
 
 export function PortalButton({ enabled }: { enabled: boolean }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function openPortal() {
     setPending(true);
-    setError(null);
     try {
       await startCustomerPortal();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "お支払い管理画面を開けませんでした。",
-      );
+      toast.show({
+        tone: "error",
+        title: "お支払い管理画面を開けませんでした",
+        description: cause instanceof Error ? cause.message : "時間をおいてもう一度お試しください。",
+      });
       setPending(false);
     }
   }
@@ -37,11 +37,6 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
       {!enabled ? (
         <p className="text-sm text-muted-foreground">
           お申し込み後にお支払い管理をご利用いただけます。
-        </p>
-      ) : null}
-      {error ? (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
         </p>
       ) : null}
     </div>

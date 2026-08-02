@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { updateDraftAction } from "@/app/actions/drafts";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { weightedLength } from "@/lib/text/weighted-length";
 
@@ -30,7 +31,7 @@ export function DraftEditor({
   const [posts, setPosts] = useState<EditablePost[]>(() =>
     draft.thread.map((p, i) => ({ localId: p.local_id || `p${i + 1}`, text: p.text })),
   );
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const max = PATTERN_MAX[draft.pattern] ?? 1;
   const hasEmpty = posts.some((p) => p.text.trim().length === 0);
@@ -58,7 +59,6 @@ export function DraftEditor({
     setPosts((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
 
   function save() {
-    setError(null);
     startTransition(async () => {
       const res = await updateDraftAction({
         draft_id: draft.id,
@@ -66,13 +66,18 @@ export function DraftEditor({
         posts: posts.map((p) => ({ local_id: p.localId, text: p.text })),
       });
       if (res.status === "error") {
-        setError(
-          res.code === "job_conflict"
-            ? "下書きが他の場所で更新されました。最新の状態に再読み込みしてください。"
-            : res.message,
-        );
+        toast.show({
+          tone: "error",
+          title: "保存できませんでした",
+          description:
+            res.code === "job_conflict"
+              ? "下書きが他の場所で更新されました。最新の状態に再読み込みしてください。"
+              : res.message,
+        });
         return;
       }
+      // **保存できたことを伝える**（T-M8-18）。編集画面が閉じるだけで、これまでは無言だった。
+      toast.show({ tone: "success", title: "下書きを保存しました" });
       router.refresh();
       onDone();
     });
@@ -156,11 +161,6 @@ export function DraftEditor({
       {overCount ? (
         <p className="text-sm text-destructive" role="alert">
           このパターンの最大 {max} ポストを超えています。
-        </p>
-      ) : null}
-      {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-          {error}
         </p>
       ) : null}
 

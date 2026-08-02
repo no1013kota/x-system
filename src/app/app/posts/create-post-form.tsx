@@ -13,6 +13,7 @@ import { ExecutionPrereqNotice } from "@/components/app-shell/execution-prereq-n
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 
 export interface PatternOption {
@@ -66,9 +67,14 @@ const POLL_MS = 2500;
 const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
-interface ActionError {
+/**
+ * **前提が足りずに始められなかった**ときだけ画面へ残す（T-M8-18）。解決先へのリンクを伴い、
+ * 直しに行って戻ってきたときにも見えている必要があるため、消えるトーストにはしない。
+ * それ以外の「始められなかった」はトーストへ出す。
+ */
+interface PrereqError {
   message: string;
-  settingsPath?: string;
+  settingsPath: string;
   missing?: PrereqItem[];
 }
 
@@ -89,7 +95,8 @@ export function CreatePostForm({
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
   const [imageEnabled, setImageEnabled] = useState(false);
-  const [error, setError] = useState<ActionError | null>(null);
+  const [prereq, setPrereq] = useState<PrereqError | null>(null);
+  const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -115,7 +122,7 @@ export function CreatePostForm({
   }, [job?.id, job?.status, job?.createdAt, job]);
 
   function submit() {
-    setError(null);
+    setPrereq(null);
     startTransition(async () => {
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
@@ -127,11 +134,16 @@ export function CreatePostForm({
         image_enabled: imageEnabled,
       });
       if (res.status === "error") {
-        setError({
-          message: res.message,
-          settingsPath: res.details?.settingsPath as string | undefined,
-          missing: res.details?.missing as PrereqItem[] | undefined,
-        });
+        const settingsPath = res.details?.settingsPath as string | undefined;
+        if (settingsPath) {
+          setPrereq({
+            message: res.message,
+            settingsPath,
+            missing: res.details?.missing as PrereqItem[] | undefined,
+          });
+        } else {
+          toast.show({ tone: "error", title: "生成を開始できませんでした", description: res.message });
+        }
         return;
       }
       if (res.jobId) {
@@ -155,7 +167,7 @@ export function CreatePostForm({
         job_id: failedId,
       });
       if (res.status === "error") {
-        setError({ message: res.message });
+        toast.show({ tone: "error", title: "再試行できませんでした", description: res.message });
         return;
       }
       if (res.jobId) {
@@ -176,7 +188,7 @@ export function CreatePostForm({
     startTransition(async () => {
       const res = await cancelGenerationJobAction({ job_id: jobId });
       if (res.status === "error") {
-        setError({ message: res.message });
+        toast.show({ tone: "error", title: "キャンセルできませんでした", description: res.message });
         return;
       }
       setJob((prev) => (prev ? { ...prev, status: res.jobStatus ?? "canceled" } : prev));
@@ -327,18 +339,12 @@ export function CreatePostForm({
         className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
         <h2 className="text-sm font-medium">結果</h2>
 
-        {error ? (
-          error.settingsPath ? (
-            <ExecutionPrereqNotice
-              message={error.message}
-              missing={error.missing}
-              settingsPath={error.settingsPath}
-            />
-          ) : (
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-              {error.message}
-            </p>
-          )
+        {prereq ? (
+          <ExecutionPrereqNotice
+            message={prereq.message}
+            missing={prereq.missing}
+            settingsPath={prereq.settingsPath}
+          />
         ) : null}
 
         {inProgress ? (
@@ -434,7 +440,7 @@ export function CreatePostForm({
           </div>
         ) : null}
 
-        {!error && job === null ? (
+        {!prereq && job === null ? (
           <p className="text-sm text-muted-foreground">
             パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。生成される内容は毎回変わります。まず1本作って、下書きで編集するか、追加指示を付けて再生成してください。
           </p>
