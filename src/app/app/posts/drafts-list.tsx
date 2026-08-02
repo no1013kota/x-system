@@ -18,6 +18,7 @@ import {
 } from "@/app/actions/generation-jobs";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 
@@ -109,10 +110,10 @@ function DraftCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
-  const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   const readyImage = draft.images.find((img) => img.status === "ready");
   const imageFailed = draft.images.some((img) => img.status === "failed");
@@ -139,39 +140,44 @@ function DraftCard({
   const locked = publishing || editing;
 
   function discard() {
-    setPublishNotice(null);
     startTransition(async () => {
       const res = await discardDraftAction({
         draft_id: draft.id,
         expected_updated_at: draft.updated_at,
       });
-      // 失敗を握り潰すと「押しても何も起きない」状態になるため理由を出す。
-      if (res.status === "success") router.refresh();
-      else setPublishNotice(res.message);
+      // 失敗を握り潰すと「押しても何も起きない」状態になるため理由を出す（T-M8-16）。
+      if (res.status === "success") {
+        toast.show({ tone: "success", title: "下書きを破棄しました" });
+        router.refresh();
+      } else {
+        toast.show({ tone: "error", title: "破棄できませんでした", description: res.message });
+      }
     });
   }
 
   function cloneForRetry() {
-    setPublishNotice(null);
     startTransition(async () => {
       const res = await cloneFailedDraftForRetryAction({
         request_key: crypto.randomUUID(),
         draft_id: draft.id,
       });
-      if (res.status === "success") router.refresh();
-      else setPublishNotice(res.message);
+      if (res.status === "success") {
+        toast.show({ tone: "success", title: "新しい下書きとして複製しました" });
+        router.refresh();
+      } else {
+        toast.show({ tone: "error", title: "再試行できませんでした", description: res.message });
+      }
     });
   }
 
   function publish() {
-    setPublishNotice(null);
     startTransition(async () => {
       const res = await publishDraftAction({
         request_key: crypto.randomUUID(),
         draft_id: draft.id,
       });
       if (res.status !== "success" || !res.jobId) {
-        setPublishNotice(res.message);
+        toast.show({ tone: "error", title: "投稿を開始できませんでした", description: res.message });
         return;
       }
       setPublishJobId(res.jobId);
@@ -188,14 +194,24 @@ function DraftCard({
       clearInterval(timer);
       setPublishJobId(null);
       if (res.job.status === "succeeded") {
+        // これまで成功は無言で、押しても何が起きたか分からなかった（T-M8-16）。
+        toast.show({
+          tone: "success",
+          title: "投稿しました",
+          action: { href: "/app/posts?tab=history", label: "履歴で見る" },
+        });
         router.refresh();
       } else {
-        setPublishNotice("投稿に失敗しました。下書きの状態をご確認ください。");
+        toast.show({
+          tone: "error",
+          title: "投稿に失敗しました",
+          description: "下書きの状態をご確認ください。",
+        });
         router.refresh();
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [publishJobId, router]);
+  }, [publishJobId, router, toast]);
 
   return (
     <li
@@ -283,11 +299,6 @@ function DraftCard({
       ) : null}
 
       {unresolvedPosting ? <ReconcilePanel draftId={draft.id} /> : null}
-      {publishNotice ? (
-        <p className="mt-2 text-xs text-destructive" role="alert">
-          {publishNotice}
-        </p>
-      ) : null}
 
       {regenerating ? (
         <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
@@ -345,7 +356,7 @@ function ImageSection({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [jobId, setJobId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+  const toast = useToast();
 
   const running = pending || jobId !== null;
 
@@ -359,23 +370,32 @@ function ImageSection({
       clearInterval(timer);
       setJobId(null);
       if (res.job.status === "succeeded") {
+        // 成功が無言だと「押しても何も起きない」ように見える（T-M8-16）。
+        toast.show({ tone: "success", title: "画像を再生成しました" });
         router.refresh();
       } else {
-        setNotice({ tone: "error", message: "画像を再生成できませんでした。既存の画像はそのままです。" });
+        toast.show({
+          tone: "error",
+          title: "画像を再生成できませんでした",
+          description: "既存の画像はそのままです。",
+        });
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [jobId, router]);
+  }, [jobId, router, toast]);
 
   function regenerate() {
-    setNotice(null);
     startTransition(async () => {
       const res = await regenerateImageAction({
         request_key: crypto.randomUUID(),
         draft_id: draftId,
       });
       if (res.status !== "success" || !res.jobId) {
-        setNotice({ tone: "error", message: res.message });
+        toast.show({
+          tone: "error",
+          title: "画像の再生成を開始できませんでした",
+          description: res.message,
+        });
         return;
       }
       setJobId(res.jobId);
@@ -420,11 +440,6 @@ function ImageSection({
           </span>
         ) : null}
       </div>
-      {notice ? (
-        <p className="text-xs text-destructive" role="alert">
-          {notice.message}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -432,23 +447,25 @@ function ImageSection({
 function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const [instructions, setInstructions] = useState("");
-  const [notice, setNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+  const toast = useToast();
 
   function run() {
-    setNotice(null);
     startTransition(async () => {
       const res = await regenerateDraftAction({
         request_key: crypto.randomUUID(),
         draft_id: draftId,
         additional_instructions: instructions.trim() || undefined,
       });
-      setNotice({
-        message:
-          res.status === "success"
-            ? "再生成を開始しました。完了後、派生下書きがこの一覧に表示されます。"
-            : res.message,
-        tone: res.status,
-      });
+      if (res.status === "success") {
+        toast.show({
+          tone: "success",
+          title: "再生成を開始しました",
+          description: "完了すると、派生した下書きがこの一覧に並びます。",
+        });
+        onDone();
+      } else {
+        toast.show({ tone: "error", title: "再生成を開始できませんでした", description: res.message });
+      }
     });
   }
 
@@ -474,14 +491,6 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
           閉じる
         </Button>
       </div>
-      {notice ? (
-        <p
-          className={`text-xs ${notice.tone === "success" ? "text-emerald-700" : "text-destructive"}`}
-          role={notice.tone === "success" ? "status" : "alert"}
-        >
-          {notice.message}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -489,24 +498,29 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
 function ReconcilePanel({ draftId }: { draftId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<{ tone: "error" | "success"; message: string } | null>(null);
+  const toast = useToast();
   // 再照合しても一意に確定できなかった場合に X リンク＋サポート導線を出す（要件06 §7）。
   const [needsManual, setNeedsManual] = useState(false);
 
   function reconcile() {
-    setResult(null);
     startTransition(async () => {
       const res = await reconcileDraftPostingAction({ draft_id: draftId });
       if (res.status === "error") {
-        setResult({ tone: "error", message: res.message });
+        toast.show({ tone: "error", title: "再照合できませんでした", description: res.message });
         return;
       }
       if (res.reconcileStatus === "posted") {
+        toast.show({ tone: "success", title: "投稿済みと確認しました" });
         router.refresh(); // 履歴タブへ移動
         return;
       }
-      setNeedsManual(res.reconcileStatus === "still_failed");
-      setResult({ tone: res.reconcileStatus === "still_failed" ? "error" : "success", message: res.message });
+      const stillFailed = res.reconcileStatus === "still_failed";
+      setNeedsManual(stillFailed);
+      toast.show({
+        tone: stillFailed ? "error" : "success",
+        title: stillFailed ? "状態を確定できませんでした" : "状態を確定しました",
+        description: res.message,
+      });
       router.refresh();
     });
   }
@@ -531,14 +545,6 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
           </a>
         ) : null}
       </div>
-      {result ? (
-        <p
-          className={`text-xs ${result.tone === "success" ? "text-emerald-800" : "text-destructive"}`}
-          role={result.tone === "success" ? "status" : "alert"}
-        >
-          {result.message}
-        </p>
-      ) : null}
       {needsManual ? (
         <p className="text-xs text-muted-foreground">
           解決しない場合は、Xの投稿状況をご確認のうえサポートへお問い合わせください。

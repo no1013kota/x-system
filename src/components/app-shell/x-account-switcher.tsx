@@ -3,9 +3,10 @@
 import { Menu } from "@base-ui/react/menu";
 import { Check, ChevronsUpDown, CircleUserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 
 import { setActiveXAccountAction } from "@/app/actions/x-accounts";
+import { useToast } from "@/components/ui/toast";
 
 export interface SwitcherAccount {
   id: string;
@@ -32,7 +33,7 @@ export function XAccountSwitcher({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const active = accounts.find((a) => a.id === activeId) ?? null;
   const label = active ? `@${active.handle}` : "Xアカウント未選択";
@@ -48,11 +49,16 @@ export function XAccountSwitcher({
 
   function switchTo(id: string) {
     if (id === activeId || pending) return;
-    setError(null);
     startTransition(async () => {
       const res = await setActiveXAccountAction({ x_account_id: id });
       if (res.status === "error") {
-        setError(res.message || "アカウントの切り替えに失敗しました。");
+        // 操作の結果はトーストへ集約する（T-M8-16）。この通知はApp Shell常駐で
+        // `/app/**` の全画面に `role="alert"` を1個足していた。
+        toast.show({
+          tone: "error",
+          title: "アカウントを切り替えられませんでした",
+          description: res.message || undefined,
+        });
         return;
       }
       // 表示中画面（一覧・集計）を再取得して、切替後のアカウントの内容を反映する。
@@ -103,14 +109,6 @@ export function XAccountSwitcher({
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>
-      {error ? (
-        <p
-          className="absolute top-full right-0 mt-1 w-max max-w-64 rounded-md border border-destructive/40 bg-background px-2 py-1 text-xs text-destructive shadow-sm"
-          role="alert"
-        >
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }
