@@ -30,7 +30,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
         className="h-2 w-full overflow-hidden rounded-full bg-muted"
       >
         <div
-          className={atLimit ? "h-full bg-destructive" : "h-full bg-foreground"}
+          className={atLimit ? "h-full bg-danger-fg" : "h-full bg-brand"}
           style={{ width: `${pct}%` }}
         />
       </div>

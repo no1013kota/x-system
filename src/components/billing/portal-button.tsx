@@ -28,9 +28,12 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
     <div className="space-y-2">
       <Button
         aria-busy={pending}
+        className="h-9"
         disabled={!enabled || pending}
         onClick={openPortal}
+        size="lg"
         type="button"
+        variant="brand"
       >
         {pending ? "お支払い管理画面を開いています…" : "お支払い方法・プランを管理"}
       </Button>

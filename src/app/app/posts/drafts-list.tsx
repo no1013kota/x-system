@@ -58,7 +58,7 @@ function warningSummary(thread: { warnings: string[] }[]): string[] {
 
 function WarningBadge({ code }: { code: string }) {
   return (
-    <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
+    <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
       {WARNING_LABEL[code] ?? code}
     </span>
   );
@@ -215,7 +215,7 @@ function DraftCard({
 
   return (
     <li
-      className={`scroll-mt-24 rounded-2xl border bg-card p-5 shadow-sm ${
+      className={`scroll-mt-24 rounded-card border bg-card p-5 shadow-sm ${
         highlighted ? "ring-2 ring-ring" : ""
       }`}
       id={`draft-${draft.id}`}
@@ -224,12 +224,12 @@ function DraftCard({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
           {draft.status === "failed" ? (
-            <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-800">
+            <span className="rounded-full border border-danger-fg/25 bg-danger-bg px-2 py-0.5 text-xs text-danger-fg">
               失敗
             </span>
           ) : null}
           {hasWarnings ? (
-            <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+            <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
               警告あり（自動投稿は停止します）
             </span>
           ) : null}
@@ -264,7 +264,7 @@ function DraftCard({
           ) : null}
           {editable && !editing && !p5Disabled ? (
             lengthExceeded ? (
-              <span className="text-xs text-amber-900">
+              <span className="text-xs text-warn-fg">
                 280字を超えているポストがあります。編集してから投稿できます。
               </span>
             ) : (
@@ -526,7 +526,7 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
   }
 
   return (
-    <div className="mt-3 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+    <div className="mt-3 space-y-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-warn-fg">
       <p className="text-xs leading-5">
         投稿の状態が未解決です。破棄する前にXと再照合して、投稿済み・削除済みを確定してください。
       </p>
@@ -574,7 +574,7 @@ function PublishButton({
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
-            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <div className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg">
               <p className="font-medium">注意: 次の警告があります</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 {warnings.map((line) => (

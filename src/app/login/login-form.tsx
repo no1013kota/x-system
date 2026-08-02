@@ -93,7 +93,7 @@ export function LoginForm({ next }: { next: string }) {
 
       {state.status === "email_unconfirmed" ? (
         <section
-          className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+          className="space-y-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-4 text-warn-fg"
           aria-labelledby="email-unconfirmed-heading"
         >
           <h2 className="font-semibold" id="email-unconfirmed-heading">

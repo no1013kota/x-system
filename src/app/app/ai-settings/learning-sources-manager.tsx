@@ -142,7 +142,7 @@ export function LearningSourcesManager({
   return (
     <div className="space-y-6">
       {removing ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
           学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
         </p>
       ) : null}
@@ -217,7 +217,7 @@ export function LearningSourcesManager({
       <section>
         <h2 className="text-sm font-semibold">登録済みの学習ソース</h2>
         {sources.length === 0 ? (
-          <p className="mt-2 rounded-xl border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ学習ソースはありません。
           </p>
         ) : (
@@ -237,12 +237,12 @@ export function LearningSourcesManager({
                   </a>
                 ) : null}
                 {isStalePending(s) ? (
-                  <p className="mt-2 text-xs text-amber-700">開始が遅れています。自動で再開されます（最大5分）。</p>
+                  <p className="mt-2 text-xs text-warn-fg">開始が遅れています。自動で再開されます（最大5分）。</p>
                 ) : s.status === "pending" ? (
                   <p className="mt-2 text-xs text-muted-foreground">分析中です…</p>
                 ) : null}
                 {s.status === "failed" ? (
-                  <p className="mt-2 text-xs text-red-700">
+                  <p className="mt-2 text-xs text-danger-fg">
                     分析に失敗しました。対象が非公開/削除されていないかご確認ください。
                     {s.type === "own_posts"
                       ? "上の「再取り込み」からやり直せます。"

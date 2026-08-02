@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 
 /**
  * Checkout完了後、契約情報の反映を待つ間の表示（要件06 §1.1）。反映が終わると
@@ -32,7 +33,7 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
   return (
     <section
       aria-live="polite"
-      className="mx-auto max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-950"
+      className="mx-auto max-w-3xl rounded-card border border-success-fg/25 bg-success-bg p-6 text-success-fg"
       role="status"
     >
       <h2 className="text-lg font-semibold">お申し込みを受け付けました</h2>
@@ -41,7 +42,7 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
       </p>
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
-          className="inline-flex min-h-11 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
+          className={`${primaryLinkClassName} min-h-11 disabled:opacity-60`}
           disabled={pending}
           onClick={() => {
             setAttempts(0);
@@ -51,13 +52,13 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
         >
           {pending ? "確認しています…" : "状況を再確認"}
         </button>
-        <span className="text-xs text-emerald-900">
+        <span className="text-xs text-success-fg">
           {exhausted
             ? "自動確認を停止しました。"
             : "数秒ごとに自動で確認しています。"}
         </span>
       </div>
-      <p className="mt-4 text-xs leading-5 text-emerald-900">
+      <p className="mt-4 text-xs leading-5 text-success-fg">
         カードのお支払いは完了しています。反映待ちの間に
         <strong className="mx-1">重ねてお申し込みしないでください</strong>
         （二重に請求される場合があります）。5分以上変わらない場合は

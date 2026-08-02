@@ -84,7 +84,7 @@ export default function Home() {
           <h2 className="text-center text-2xl font-bold tracking-tight">できること</h2>
           <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {VALUE_PROPS.map((v) => (
-              <li className="rounded-2xl border bg-card p-6 shadow-sm" key={v.title}>
+              <li className="rounded-card border bg-card p-6 shadow-sm" key={v.title}>
                 <h3 className="font-semibold">{v.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{v.body}</p>
               </li>
@@ -103,7 +103,7 @@ export default function Home() {
               const plan = PLANS[planId];
               const byok = planId !== "premium";
               return (
-                <article className="flex flex-col rounded-2xl border bg-card p-6 shadow-sm" key={planId}>
+                <article className="flex flex-col rounded-card border bg-card p-6 shadow-sm" key={planId}>
                   <h3 className="text-lg font-semibold">{plan.displayName}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{PLAN_TAGLINE[planId]}</p>
                   <p className="mt-4">
@@ -118,7 +118,7 @@ export default function Home() {
                   </p>
                   <p
                     className={`mt-3 rounded-lg p-3 text-xs leading-5 ${
-                      byok ? "bg-amber-50 text-amber-950" : "bg-emerald-50 text-emerald-950"
+                      byok ? "bg-warn-bg text-warn-fg" : "bg-success-bg text-success-fg"
                     }`}
                   >
                     {byok

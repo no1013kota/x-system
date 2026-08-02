@@ -118,7 +118,7 @@ export function NotificationBell({
                       <span
                         aria-hidden="true"
                         className={`mt-1.5 size-2 shrink-0 rounded-full ${
-                          item.readAt ? "bg-transparent" : "bg-sky-500"
+                          item.readAt ? "bg-transparent" : "bg-brand"
                         }`}
                       />
                       <span className="min-w-0 flex-1">

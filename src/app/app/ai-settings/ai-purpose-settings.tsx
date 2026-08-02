@@ -72,9 +72,9 @@ export function AiPurposeSettings({
   return (
     <div className="space-y-6">
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
         <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-violet-100 p-2.5 text-violet-800">
+          <span className="rounded-card bg-violet-100 p-2.5 text-violet-800">
             <Bot aria-hidden="true" className="size-5" />
           </span>
           <div>
@@ -86,7 +86,7 @@ export function AiPurposeSettings({
         </div>
 
         {plan === "premium" ? (
-          <div className="mt-5 rounded-xl border bg-muted/35 p-4">
+          <div className="mt-5 rounded-card border bg-muted/35 p-4">
             <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
             <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
             <p className="mt-2 text-xs text-muted-foreground">
@@ -113,9 +113,9 @@ export function AiPurposeSettings({
         )}
       </section>
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="image-purpose-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="image-purpose-heading">
         <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-sky-100 p-2.5 text-sky-800">
+          <span className="rounded-card bg-info-bg p-2.5 text-info-fg">
             <ImageIcon aria-hidden="true" className="size-5" />
           </span>
           <div>
@@ -142,7 +142,7 @@ export function AiPurposeSettings({
             </select>
           </label>
         ) : (
-          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
             <p className="font-medium">画像生成は現在利用できません</p>
             <p className="mt-1 leading-6">
               {plan === "premium"
@@ -156,7 +156,7 @@ export function AiPurposeSettings({
 
       {plan !== "premium" && !textProvider ? (
         // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
-        <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950" role="status">
+        <p className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg" role="status">
           文章生成に使うAIが未設定です。このままでは投稿の生成・自動運用が実行できません。登録済みのAIを選んで保存してください。
         </p>
       ) : null}
@@ -177,7 +177,7 @@ export function AiPurposeSettings({
 
 function ApiKeySettingsLink() {
   return (
-    <Link className="mt-3 inline-flex min-h-10 items-center gap-2 font-medium text-sky-800 underline underline-offset-4" href="/app/settings?tab=api-keys">
+    <Link className="mt-3 inline-flex min-h-10 items-center gap-2 font-medium text-info-fg underline underline-offset-4" href="/app/settings?tab=api-keys">
       <KeyRound aria-hidden="true" className="size-4" />APIキー設定へ
     </Link>
   );
@@ -185,7 +185,7 @@ function ApiKeySettingsLink() {
 
 function MissingProviderMessage({ purpose }: { purpose: string }) {
   return (
-    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+    <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
       <p className="font-medium">{purpose}に使えるAIがまだありません</p>
       <p className="mt-1 leading-6">AI APIキーを登録し、疎通確認を完了してください。</p>
       <ApiKeySettingsLink />

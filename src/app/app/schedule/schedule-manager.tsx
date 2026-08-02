@@ -132,7 +132,7 @@ export function ScheduleManager({
       </div>
 
       {creating ? (
-        <div className="rounded-2xl border bg-card p-5 shadow-sm">
+        <div className="rounded-card border bg-card p-5 shadow-sm">
           <h2 className="text-sm font-semibold">新しいスケジュール</h2>
           <SlotFields
             accountHandle={accountHandle}
@@ -267,7 +267,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-2xl border bg-card p-4 shadow-sm">
+    <div className="overflow-x-auto rounded-card border bg-card p-4 shadow-sm">
       <table className="w-full min-w-[520px] border-collapse text-center text-xs">
         <thead>
           <tr>
@@ -315,7 +315,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
       {/* 色だけで意味を伝えないための凡例（要件06 §2 SC-08）。 */}
       <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
-          <span className="mr-1 inline-block rounded bg-foreground px-1.5 py-0.5 text-background">例</span>
+          <span className="mr-1 inline-block rounded-chip bg-black/[0.06] px-1.5 py-0.5 text-ink-2">例</span>
           自動投稿（確認なしでXへ）
         </span>
         <span>
@@ -404,7 +404,7 @@ function SlotRow({
   }
 
   return (
-    <li className="rounded-2xl border bg-card p-4 shadow-sm">
+    <li className="rounded-card border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
@@ -415,7 +415,7 @@ function SlotRow({
             {slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} {slot.time_jst.slice(0, 5)}
           </span>
           {!slot.enabled ? (
-            <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
+            <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
               停止中（実行されません）
             </span>
           ) : null}
@@ -688,7 +688,7 @@ function SlotFields({
       </div>
 
       {v.mode === "auto" && !automationConsented ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-xs text-warn-fg">
           自動投稿には現在の説明への同意が必要です。同意していない場合、保存は拒否されます。
         </p>
       ) : null}

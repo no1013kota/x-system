@@ -8,6 +8,7 @@ import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
+import { primaryLinkClassName, secondaryLinkClassName } from "@/components/ui/link-button";
 import { env } from "@/lib/env";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
@@ -170,7 +171,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </h2>
               {params.portal === "return" ? (
                 <p
-                  className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+                  className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
                   role="status"
                 >
                   お支払い管理画面から戻りました。契約情報を確認しています。
@@ -207,10 +208,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </dl>
               <div className="mt-7 flex flex-wrap items-start gap-3">
                 <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
-                <Link
-                  className="inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium"
-                  href="/plans"
-                >
+                <Link className={secondaryLinkClassName} href="/plans">
                   プランを見る
                 </Link>
               </div>
@@ -234,7 +232,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               課金、アカウント、データに関するお問い合わせはメールで受け付けています。
             </p>
             <a
-              className="mt-5 inline-flex h-10 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background"
+              className={`mt-5 ${primaryLinkClassName}`}
               href={`mailto:${env.SUPPORT_EMAIL}`}
             >
               {env.SUPPORT_EMAIL}へメール

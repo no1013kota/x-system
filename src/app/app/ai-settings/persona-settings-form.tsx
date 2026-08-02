@@ -24,7 +24,16 @@ interface PersonaSettingsFormProps {
 
 const inputClassName =
   "mt-2 min-h-11 w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
-const groupClassName = "rounded-2xl border bg-card p-5 shadow-sm sm:p-6";
+/**
+ * 入力の束（T-M8-23）。
+ *
+ * **`<fieldset>` + `<legend>` は使わない。** `<legend>` はブラウザがカードの上枠の中へ描くため、
+ * 枠線が途切れて背景の灰色が覗く。`display:block` では直らず、`float` で流れへ戻すと
+ * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
+ * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
+ */
+const groupClassName = "rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6";
+const groupHeadingClassName = "text-[15px] font-bold text-ink";
 
 type NgField = "words" | "topics" | "rules";
 
@@ -128,7 +137,7 @@ export function PersonaSettingsForm({
 
   return (
     <form className="space-y-6" noValidate onSubmit={submit}>
-      <div className="flex flex-col gap-2 rounded-xl border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-card border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <span>
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
@@ -140,7 +149,7 @@ export function PersonaSettingsForm({
 
       {version >= 1 && (savedDifference || dirty) ? (
         <div
-          className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"
+          className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg"
           role="status"
         >
           保存すると、発信定義書（ベースmd）の「1. {BASE_MD_SECTION_TITLES[0]}／2. {BASE_MD_SECTION_TITLES[1]}／3. {BASE_MD_SECTION_TITLES[2]}／4. {BASE_MD_SECTION_TITLES[3]}」をこのフォームの内容で書き換えます。学習で作られた「5. {BASE_MD_SECTION_TITLES[4]}／6. {BASE_MD_SECTION_TITLES[5]}」はそのまま残ります。書き換え前の内容は、
@@ -151,8 +160,10 @@ export function PersonaSettingsForm({
         </div>
       ) : null}
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">ペルソナ</legend>
+      <section aria-labelledby="persona-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="persona-group">
+          ペルソナ
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           誰が、誰に、どんな価値を届けるかを定義します。
         </p>
@@ -195,13 +206,17 @@ export function PersonaSettingsForm({
             );
           })}
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset
+      <section
         aria-describedby={errorFor("themes.primary") ? "themes-primary-error" : undefined}
+        aria-labelledby="themes-group"
         className={groupClassName}
+        role="group"
       >
-        <legend className="px-1 text-lg font-semibold">テーマ</legend>
+        <h2 className={groupHeadingClassName} id="themes-group">
+          テーマ
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           主テーマを1件以上選択してください。同じテーマを主・副の両方には設定できません。
         </p>
@@ -252,10 +267,12 @@ export function PersonaSettingsForm({
             value={settings.themes.free_text}
           />
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">トーン</legend>
+      <section aria-labelledby="tone-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="tone-group">
+          トーン
+        </h2>
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium" htmlFor="tone.sentence_style">
@@ -382,10 +399,12 @@ export function PersonaSettingsForm({
             スレッド番号を付ける
           </label>
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">NG設定（任意）</legend>
+      <section aria-labelledby="ng-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="ng-group">
+          NG設定（任意）
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           1行に1件ずつ入力してください。すべて空でも保存できます。
         </p>
@@ -415,7 +434,7 @@ export function PersonaSettingsForm({
             </div>
           ))}
         </div>
-      </fieldset>
+      </section>
 
       {validationMessage ? (
         <p
@@ -428,7 +447,7 @@ export function PersonaSettingsForm({
 
       <div className="flex justify-end">
         <button
-          className="min-h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+          className="min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           disabled={submitting}
           type="submit"
         >

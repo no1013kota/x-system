@@ -187,13 +187,13 @@ export function BaseMdEditor({
       </p>
 
       {/* セクション1〜4の上書き注意（常時） */}
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+      <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
         手で直した「1. {BASE_MD_SECTION_TITLES[0]}」〜「4. {BASE_MD_SECTION_TITLES[3]}」は、次に「発信設定」を保存すると上書きされます。恒久的に変えたい場合は、発信設定側でも同じ内容にしてください。この画面の変更履歴からは、いつでも以前の版に戻せます。
       </p>
 
       {/* 学習running中の編集不可 */}
       {learningRunning ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
           学習の反映処理中のため、ベースmdは編集できません。完了までお待ちください。
         </p>
       ) : null}
@@ -222,7 +222,7 @@ export function BaseMdEditor({
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold">ベースmd（現在: version {version}）</h2>
           <span
-            className={`ml-auto text-xs ${overLimit ? "font-semibold text-red-700" : "text-muted-foreground"}`}
+            className={`ml-auto text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
             {content.length.toLocaleString()} / {MAX_CHARS.toLocaleString()} 字
           </span>
@@ -262,7 +262,7 @@ export function BaseMdEditor({
       <section>
         <h2 className="text-sm font-semibold">変更履歴</h2>
         {history.length === 0 ? (
-          <p className="mt-2 rounded-xl border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ履歴はありません。
           </p>
         ) : (

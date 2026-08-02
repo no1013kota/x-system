@@ -191,15 +191,15 @@ export function PromptTemplatesEditor({
             <span
               className={`mt-4 rounded px-2 py-0.5 text-xs font-medium ${
                 current.isOverride
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground"
+                  ? "bg-brand-subtle text-brand"
+                  : "bg-black/[0.05] text-ink-3"
               }`}
             >
               {current.isOverride ? "カスタム" : "既定"}
             </span>
           ) : null}
           <span
-            className={`ml-auto mt-4 text-xs ${overLimit ? "font-semibold text-red-700" : "text-muted-foreground"}`}
+            className={`ml-auto mt-4 text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
             {draft.length.toLocaleString()} / {MAX_CHARS.toLocaleString()} 字
           </span>

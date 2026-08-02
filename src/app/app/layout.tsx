@@ -29,6 +29,7 @@ import {
   countUnreadNotificationsForUser,
   listNotificationsForUser,
 } from "@/lib/notifications-server";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   listXAccounts,
@@ -158,8 +159,8 @@ export default async function AppLayout({
             aria-label="ご契約のお知らせ"
             className={
               banner.tone === "warning"
-                ? "border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"
-                : "border-b border-sky-200 bg-sky-50 px-4 py-3 text-sky-950"
+                ? "border-b border-warn-fg/25 bg-warn-bg px-4 py-4 text-warn-fg"
+                : "border-b border-info-fg/25 bg-info-bg px-4 py-3 text-info-fg"
             }
           >
             <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -172,7 +173,7 @@ export default async function AppLayout({
               ) : null}
               {banner.action === "checkout" ? (
                 <Link
-                  className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className={`shrink-0 ${primaryLinkClassName}`}
                   href="/plans"
                 >
                   プランを選択
@@ -185,7 +186,7 @@ export default async function AppLayout({
         {[...xBanners, ...(usageBanner ? [usageBanner] : [])].map((xBanner) => (
           <aside
             aria-label={xBanner.title}
-            className="border-b border-amber-300 bg-amber-50 px-4 py-4 text-amber-950"
+            className="border-b border-warn-fg/25 bg-warn-bg px-4 py-4 text-warn-fg"
             key={xBanner.id}
           >
             <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -194,7 +195,7 @@ export default async function AppLayout({
                 <p className="mt-1 text-sm leading-5">{xBanner.description}</p>
               </div>
               <Link
-                className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className={`shrink-0 ${primaryLinkClassName}`}
                 href={xBanner.actionHref}
               >
                 {xBanner.actionLabel}

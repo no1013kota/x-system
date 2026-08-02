@@ -207,7 +207,7 @@ export function NewsBrowser({
   return (
     <div className="mt-4 space-y-4">
       {window ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info-fg/25 bg-info-bg px-4 py-3 text-sm text-info-fg">
           <span>
             通知の時間窓（{formatDate(window.from)}〜{formatDate(window.to)}）のニュースを表示しています。
           </span>

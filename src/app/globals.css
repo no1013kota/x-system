@@ -86,30 +86,43 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /*
+   * shadcn/ui 由来の汎用トークンは**新デザインの値へ寄せる**（T-M8-23）。
+   *
+   * リデザインで置き換えた画面は `ink` / `surface` / `hairline` などの新トークンを直接使うが、
+   * 補助画面には `text-muted-foreground` のような旧トークンが**162箇所**残っている。
+   * 呼び出し側を1つずつ書き換えるより、**トークンの中身を合わせる**方が漏れが出ない。
+   * 見た目が揃わない箇所を1つずつ探して直す作業を、ここで一度に終わらせる。
+   */
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-subtle);
+  --secondary-foreground: var(--brand);
+  --muted: rgba(0, 0, 0, 0.03);
+  --muted-foreground: var(--ink-2);
+  --accent: rgba(0, 0, 0, 0.04);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger-fg);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--brand);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /*
+   * 角丸の基準を 8px へ（デザイン §形状）。既定の 10px のままだと、`rounded-lg` を使っている
+   * **85箇所**が新デザインのカード（8px）と2px違いで並び、揃っていないことだけが分かる状態になる。
+   * `rounded-md`（6.4px）もチップの 6px に近づく。呼び出し側を書き換えずに全体を寄せる。
+   */
+  --radius: 8px;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);

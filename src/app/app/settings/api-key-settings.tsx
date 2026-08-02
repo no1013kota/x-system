@@ -50,10 +50,10 @@ function verificationDate(value: string | null): string | null {
 function StatusBadge({ status }: { status: ApiKeyViewState["status"] }) {
   const tone =
     status === "valid"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      ? "border-success-fg/25 bg-success-bg text-success-fg"
       : status === "invalid"
-        ? "border-red-200 bg-red-50 text-red-800"
-        : "border-amber-200 bg-amber-50 text-amber-800";
+        ? "border-danger-fg/25 bg-danger-bg text-danger-fg"
+        : "border-warn-fg/25 bg-warn-bg text-warn-fg";
   return (
     <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}>
       {STATUS_LABELS[status]}
@@ -64,7 +64,7 @@ function StatusBadge({ status }: { status: ApiKeyViewState["status"] }) {
 function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
   const verified = verificationDate(keyState.verifiedAt);
   return (
-    <div className="rounded-xl border bg-muted/35 p-4">
+    <div className="rounded-card border bg-muted/35 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-sm">{maskedApiKeyLabel(keyState)}</p>
         <StatusBadge status={keyState.status} />
@@ -79,7 +79,7 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
       </p>
       {keyState.provider !== "x" && keyState.status !== "valid" ? (
         // 生成の前提は valid のみ（execution-prereqs）。未確認/失敗のままだと投稿生成が始まらない。
-        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+        <p className="mt-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-2 text-xs leading-5 text-warn-fg">
           {keyState.status === "invalid"
             ? "このキーは認証できませんでした。正しいキーを貼り直すまで投稿生成には使えません。"
             : "疎通確認が済むまで、このキーは投稿生成に使えません。「疎通確認」を実行してください。"}
@@ -255,7 +255,7 @@ export function ApiKeySettings({
     return (
       <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
-          <div className="rounded-xl bg-emerald-100 p-3 text-emerald-800">
+          <div className="rounded-card bg-success-bg p-3 text-success-fg">
             <ShieldCheck aria-hidden="true" className="size-6" />
           </div>
           <div>
@@ -273,9 +273,9 @@ export function ApiKeySettings({
 
   return (
     <div className="space-y-7">
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-foreground p-2 text-background">
+          <div className="rounded-card bg-brand-subtle p-2 text-brand">
             <KeyRound aria-hidden="true" className="size-5" />
           </div>
           <div>
@@ -349,7 +349,7 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
         <h2 className="text-xl font-semibold" id="ai-key-heading">AI APIキー</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
@@ -358,7 +358,7 @@ export function ApiKeySettings({
           {AI_PROVIDERS.map(({ label, provider }) => {
             const keyState = keys[provider];
             return (
-              <article className="rounded-xl border p-4" key={provider}>
+              <article className="rounded-card border p-4" key={provider}>
                 <h3 className="font-semibold">{label}</h3>
                 {keyState ? <div className="mt-3"><SavedKeySummary keyState={keyState} /></div> : (
                   <p className="mt-3 text-sm text-muted-foreground">未登録</p>
@@ -408,9 +408,9 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-full bg-sky-100 text-sm font-bold text-sky-800">?</span>
+          <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
           <h2 className="text-xl font-semibold" id="x-guide-heading">X Developer Appの取得・設定手順</h2>
         </div>
         <ol className="mt-5 space-y-5 text-sm leading-6">
@@ -418,7 +418,7 @@ export function ApiKeySettings({
             <span className="font-bold">1.</span>
             <div>
               <p className="font-medium">Developer ConsoleでAppを作成</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-sky-700 underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
+              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<ExternalLink aria-hidden="true" className="size-4" />
               </a>
             </div>
@@ -452,13 +452,13 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
               <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-sky-700 underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
+              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
                 X公式の料金・予算設定を確認<ExternalLink aria-hidden="true" className="size-4" />
               </a>
             </div>
           </li>
         </ol>
-        <div className="mt-6 flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 flex min-h-40 items-center justify-center rounded-card border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
           Developer Console設定画面のスクリーンショット（差し替え準備中）
         </div>
       </section>

@@ -26,10 +26,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  active: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  expired: "border-amber-200 bg-amber-50 text-amber-800",
-  disabled: "border-slate-200 bg-slate-50 text-slate-700",
-  error: "border-red-200 bg-red-50 text-red-800",
+  active: "border-success-fg/25 bg-success-bg text-success-fg",
+  expired: "border-warn-fg/25 bg-warn-bg text-warn-fg",
+  disabled: "border-hairline bg-black/[0.04] text-ink-2",
+  error: "border-danger-fg/25 bg-danger-bg text-danger-fg",
 };
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
@@ -123,14 +123,14 @@ export function XAccountsSettings({
         </div>
 
         {!xApiKeyRegistered ? (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+          <p className="mt-4 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm leading-6 text-warn-fg">
             Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
           </p>
         ) : null}
 
         {connected ? (
           <p
-            className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+            className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
             role="status"
           >
             Xアカウントを連携しました。
@@ -148,7 +148,7 @@ export function XAccountsSettings({
             const busy = busyId === account.id;
             return (
               <li
-                className="flex flex-wrap items-center gap-4 rounded-2xl border bg-card p-4 shadow-sm"
+                className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
                 key={account.id}
               >
                 {account.profileImageUrl ? (
@@ -165,7 +165,7 @@ export function XAccountsSettings({
                   <p className="flex items-center gap-2 font-medium">
                     @{account.handle}
                     {account.isActive ? (
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs text-sky-800">
+                      <span className="rounded-full border border-info-fg/25 bg-info-bg px-2 py-0.5 text-xs text-info-fg">
                         操作中
                       </span>
                     ) : null}
@@ -174,7 +174,7 @@ export function XAccountsSettings({
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                     <span
                       className={`rounded-full border px-2 py-0.5 ${
-                        STATUS_TONE[account.status] ?? "border-slate-200 bg-slate-50"
+                        STATUS_TONE[account.status] ?? "border-hairline bg-black/[0.04]"
                       }`}
                     >
                       {STATUS_LABEL[account.status] ?? account.status}
