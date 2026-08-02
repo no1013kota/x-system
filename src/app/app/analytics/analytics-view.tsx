@@ -72,6 +72,10 @@ export function AnalyticsView({
         <div className="inline-flex rounded-lg border p-0.5">
           {CHECKPOINT_DAYS.map((d) => (
             <button
+              // 選択状態は `aria-pressed` を正とする（T-M8-01）。見た目のクラス名を状態の
+              // 表明に使うと、配色を変えただけでテストが落ちる（実際 `bg-foreground` に
+              // E2Eが依存していた）。支援技術にも正しく伝わる。
+              aria-pressed={checkpoint === d}
               className={`rounded-md px-3 py-1 text-sm font-medium ${
                 checkpoint === d ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
               }`}

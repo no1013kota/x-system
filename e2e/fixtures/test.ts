@@ -65,15 +65,19 @@ export async function signIn(
   options: { waitFor?: RegExp } = {},
 ): Promise<void> {
   await page.goto("/login");
-  await page.locator('input[type="email"]').fill(account.email);
-  await page.locator('input[type="password"]').fill(account.password);
+  // ログインフォームへ限定して操作する（T-M8-01）。以前は画面全体から
+  // `input[type=email]` / `button[type=submit]` を拾っており、要素が1つずつしか
+  // 無いことに暗黙に依存していた。UIリデザインで要素が増えると全テストが落ちる。
+  const form = page.getByTestId("login-form");
+  await form.locator('input[type="email"]').fill(account.email);
+  await form.locator('input[type="password"]').fill(account.password);
   await expect
-    .poll(() => page.locator('input[name="captcha_token"]').inputValue(), {
+    .poll(() => form.locator('input[name="captcha_token"]').inputValue(), {
       timeout: 30_000,
       message: "Turnstileのトークンが入らない（challenges.cloudflare.com へ到達できない可能性）",
     })
     .not.toBe("");
-  await page.locator('button[type="submit"]').click();
+  await page.getByTestId("login-submit").click();
   // 契約状態によって遷移先が変わる（未契約は /plans。要件03 §2）。既定はアプリ本体。
   await page.waitForURL(options.waitFor ?? /\/app(\/|$|\?)/);
 }
