@@ -260,7 +260,7 @@ export function ApiKeySettings({
           </div>
           <div>
             <h2 className="text-xl font-semibold" id="premium-key-heading">
-              Premiumはキー登録不要です
+              プレミアムプランはキー登録不要です
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。

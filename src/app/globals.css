@@ -209,4 +209,16 @@
   td {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * チェック済みの色をキー色に合わせる（T-M8-22）。
+   *
+   * 素のチェックボックス・ラジオはOS既定の青で塗られる。設定画面のように数十個並ぶ画面では
+   * **その青が画面で一番強い色**になり、ブランドの中で浮く。個別にクラスを足すと必ず付け忘れが
+   * 出るので、ここで一度に揃える。
+   */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--brand);
+  }
 }

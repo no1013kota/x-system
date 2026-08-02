@@ -27,7 +27,7 @@
 - 認証済みユーザーへ通常プラン／mdプラン／プレミアムプランを**3枚のカードで横並びに**比較表示し、税込月額、Xアカウント上限、BYOK要否を示す。プラン名の表示はPRD §プランと同じ日本語表記を正とする（コードの `PLANS[].displayName`）。
 - BYOK（通常・md）でX API・生成AI APIの利用料がSpace AI月額とは別に各提供元から請求されることは、**カード直下の注意ブロックで明示**する（折りたたまない）。カードの特長に書く件数・月間上限は `PLANS` から導出し、画面に数値を書き写さない。
 - カードの下に「ご登録の流れ」（4ステップ）と、BYOK／プレミアムの初期設定手順を並べる。専用のオンボーディング画面は持たないため、登録前にここで全体像を示す。
-- PremiumはAPIキー不要であることと、通常投稿200件、URL付き投稿20件、文章生成100回、画像生成20枚の月間枠を表示する。
+- プレミアムプランはAPIキー不要であることと、通常投稿200件、URL付き投稿20件、文章生成100回、画像生成20枚の月間枠を表示する。
 - プランボタンより前に、税込月額、初回だけの7日trial、開始時のカード登録、trial後の月次自動更新、初回／毎月の支払時期、Customer Portalからの期間末解約、Checkout後の提供開始時期を再掲する。
 - プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
 - `checkout=canceled`は未完了として再選択を案内する。Checkout successは復帰handlerで未反映時だけ同期した後、`checkout=success&sync=...`として契約情報確認中を表示する。契約の確定表示はprofileを正とし、通常表示ではStripe APIを呼ばない。契約が有効（`trialing`／`active`＝`canExecute`）なユーザーが`/plans`を開いた場合は`/app`へredirectし、決済成功後にこの画面で行き止まりにならないようにする。`incomplete`／`incomplete_expired`はプラン選択、`canceled`等（`canExecute=false`）は再申込導線のため`/plans`に留める。
@@ -44,7 +44,7 @@
 
 ### 1.2.1 SC-11 Xアカウントタブ（M2）
 
-- `/app/settings?tab=x-accounts`は連携済みXアカウントを一覧し、各行に`handle`・表示名・`status`（有効／要再連携／停止中／エラー）・`auth_type`（BYOK＝自分のApp／運営App＝Premium）と、現在操作中アカウントの目印を表示する。
+- `/app/settings?tab=x-accounts`は連携済みXアカウントを一覧し、各行に`handle`・表示名・`status`（有効／要再連携／停止中／エラー）・`auth_type`（BYOK＝自分のApp／運営App＝プレミアムプラン）と、現在操作中アカウントの目印を表示する。
 - 「Xアカウントを追加」はOAuth開始（`GET /api/x/oauth/start`）へ遷移する。有効アカウント数がプラン上限に達しているときはボタンを無効化し、`有効 N / 上限` 件を表示する。
 - BYOK（standard/md）でX APIキー未登録のときは、追加ボタンをAPIキータブへの導線（「先にX APIキーを登録」）に差し替え、Client IDが必要である旨を併記する（押してから無言でAPIキータブへ戻される事故を防ぐ）。上限到達の表示を優先する。
 - `expired`／`error`には再連携導線、`disabled`には再有効化（`enableXAccount`）と再連携を出す。各行から状態更新（`refreshXAccountStatus`）もできる。
@@ -177,7 +177,7 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 - 画面には内部ID（`SC-10`等）や実装用語（`provider`・`base_md version`）を出さない。見出し下でこの画面の役割（AIが投稿を書くための取り決めを管理する／変更は次の生成から反映）と推奨手順（発信設定→AI用途→任意で学習ソース）を1〜2行で示す。versionは「発信定義書 version N」の形で表示する。
 - 発信設定はactive Xアカウント単位でL-4〜L-7を編集する。ペルソナ3項目と主テーマは必須、テーマはマスタ選択と自由入力、toneは§3.4の初期値、NG 3分類は改行区切り入力で空を許可する。入力エラーは該当labelと関連付けて表示する。
 - `base_md_version >= 1`で現行mdのセクション1〜4が保存settingsと異なる場合、またはフォームを編集した場合は、保存前に「1〜4を上書きし5〜6は保持する」と明示する。警告にはセクション名（1. ペルソナ／2. 発信テーマ／3. トーン&マナー／4. やらないこと、5. 文体・自分らしさ／6. 参考にする型）を具体的に書き、ベースmdタブの変更履歴から元に戻せることも併記する。保存成功時はActionが返したversionを即時表示し、Server Componentも再取得する。
-- `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。Premiumの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。表示は平易な語（「文章生成・リサーチに使うAI」「画像生成に使うAI」「接続確認に成功したAIだけが選べます」）を用い、文章AIが未設定のときは「このままでは投稿の生成・自動運用が実行できません」と警告する（未設定optionのラベルにも明示する）。
+- `purposes`はXアカウント未連携でもprofile単位で編集できる。standard／mdの文章providerには`valid`なAnthropic／OpenAI／Googleだけ、画像providerにはそのうちOpenAI／Googleだけを表示する。プレミアムプランの文章providerは「運営Claude（変更不可）」とread-only表示し、画像providerは運営キーが存在するOpenAI／Googleだけを表示する。選択肢がない場合は画像生成OFFを明示し、BYOKではAPIキー設定への導線を表示する。表示は平易な語（「文章生成・リサーチに使うAI」「画像生成に使うAI」「接続確認に成功したAIだけが選べます」）を用い、文章AIが未設定のときは「このままでは投稿の生成・自動運用が実行できません」と警告する（未設定optionのラベルにも明示する）。
 
 ### 3.7 SC-10 ベースmdエディタ
 
