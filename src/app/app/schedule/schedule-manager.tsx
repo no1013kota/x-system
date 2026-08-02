@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/schedule";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
@@ -161,17 +162,22 @@ export function ScheduleManager({
 export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
 
   function stopAll() {
-    setNotice(null);
     startTransition(async () => {
       const res = await disableXAutomationAction({ x_account_id: xAccountId });
       if (res.status === "success") {
-        setNotice(`自動投稿を停止しました（${res.result?.disabledSlots ?? 0}件のスロットを無効化）。`);
+        toast.show({
+          tone: "success",
+          title: "自動投稿を停止しました",
+          description: `${res.result?.disabledSlots ?? 0}件のスケジュールを無効にしました。`,
+        });
         router.refresh();
       } else {
-        setNotice(res.message);
+        // **失敗も緑色の `role="status"` で出ていた**（T-M8-17）。同じstateに成功と失敗を
+        // 入れていたため色と読み上げが成功のままだった。トーストは種別を分けて持つ。
+        toast.show({ tone: "error", title: "自動投稿を停止できませんでした", description: res.message });
       }
     });
   }
@@ -204,11 +210,6 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
           </AlertDialog.Popup>
         </AlertDialog.Portal>
       </AlertDialog.Root>
-      {notice ? (
-        <p className="text-xs text-emerald-700" role="status">
-          {notice}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -376,22 +377,29 @@ function SlotRow({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
   const nextRun = nextScheduleRun(slot);
 
-  function run(action: () => Promise<{ status: string; code?: string; message: string }>) {
-    setNotice(null);
+  function run(
+    action: () => Promise<{ status: string; code?: string; message: string }>,
+    successTitle: string,
+  ) {
     startTransition(async () => {
       const res = await action();
       if (res.status === "success") {
+        // これまで成功は無言で、トグルの見た目以外に手応えが無かった（T-M8-17）。
+        toast.show({ tone: "success", title: successTitle });
         router.refresh();
         return;
       }
-      setNotice(
-        res.code === "job_conflict"
-          ? "他の場所で更新されました。最新の状態を再読み込みしてください。"
-          : res.message,
-      );
+      toast.show({
+        tone: "error",
+        title: "スケジュールを更新できませんでした",
+        description:
+          res.code === "job_conflict"
+            ? "他の場所で更新されました。画面を再読み込みしてください。"
+            : res.message,
+      });
     });
   }
 
@@ -430,8 +438,10 @@ function SlotRow({
             <Button
               disabled={pending}
               onClick={() =>
-                run(() =>
-                  disableScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                run(
+                  () =>
+                    disableScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                  "スケジュールを停止しました",
                 )
               }
               size="sm"
@@ -445,8 +455,10 @@ function SlotRow({
             <Button
               disabled={pending}
               onClick={() =>
-                run(() =>
-                  enableScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                run(
+                  () =>
+                    enableScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                  "スケジュールを再開しました",
                 )
               }
               size="sm"
@@ -459,8 +471,10 @@ function SlotRow({
             description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」（${slot.mode === "auto" ? "自動投稿" : "下書き"}）を削除します。曜日・時刻・追加指示の設定は復元できません。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}
             onConfirm={() =>
-              run(() =>
-                deleteScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+              run(
+                () =>
+                  deleteScheduleSlotAction({ slot_id: slot.id, expected_updated_at: slot.updated_at }),
+                "スケジュールを削除しました",
               )
             }
           />
@@ -481,12 +495,6 @@ function SlotRow({
             xAccountId={xAccountId}
           />
         </div>
-      ) : null}
-
-      {notice ? (
-        <p className="mt-2 text-xs text-destructive" role="alert">
-          {notice}
-        </p>
       ) : null}
     </li>
   );
@@ -527,7 +535,10 @@ function SlotFields({
       image_enabled: false,
     },
   );
-  const [notice, setNotice] = useState<string | null>(null);
+  // 入力検証はその場に残し、操作の結果だけをトーストへ出す（T-M8-17）。
+  // 同じstateに混ぜると、検証エラーまで5秒で消えて何を直せばよいか分からなくなる。
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const toast = useToast();
   // 同意済み（サーバー判定）＋本フォームで同意した分。auto保存の前提。
   const [consented, setConsented] = useState(automationConsented);
   const [showConsent, setShowConsent] = useState(false);
@@ -559,24 +570,31 @@ function SlotFields({
               expected_updated_at: target.expectedUpdatedAt,
             });
       if (res.status === "success") {
+        toast.show({
+          tone: "success",
+          title: target.kind === "create" ? "スケジュールを追加しました" : "スケジュールを保存しました",
+        });
         router.refresh();
         onSubmitDone();
         return;
       }
-      setNotice(
-        res.code === "job_conflict"
-          ? "他の場所で更新されました。最新の状態を再読み込みしてください。"
-          : res.code === "automation_consent_required"
-            ? "自動投稿を有効にするには、現在の説明への同意が必要です。"
-            : res.message,
-      );
+      toast.show({
+        tone: "error",
+        title: "スケジュールを保存できませんでした",
+        description:
+          res.code === "job_conflict"
+            ? "他の場所で更新されました。画面を再読み込みしてください。"
+            : res.code === "automation_consent_required"
+              ? "自動投稿を有効にするには、現在の説明への同意が必要です。"
+              : res.message,
+      });
     });
   }
 
   function submit() {
-    setNotice(null);
+    setValidationError(null);
     if (v.weekdays.length === 0) {
-      setNotice("曜日を1つ以上選択してください。");
+      setValidationError("曜日を1つ以上選択してください。");
       return;
     }
     // mode=auto かつ未同意なら、保存前に同意modalを表示する（要件06 §3.5）。
@@ -596,7 +614,7 @@ function SlotFields({
         confirmed: true,
       });
       if (res.status !== "success") {
-        setNotice(res.message);
+        toast.show({ tone: "error", title: "同意を記録できませんでした", description: res.message });
         return;
       }
       setConsented(true);
@@ -708,9 +726,9 @@ function SlotFields({
           キャンセル
         </Button>
       </div>
-      {notice ? (
+      {validationError ? (
         <p className="text-xs text-destructive" role="alert">
-          {notice}
+          {validationError}
         </p>
       ) : null}
 

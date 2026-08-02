@@ -139,8 +139,26 @@ describe("fanOutNewsDigest (db)", () => {
       const res = await fanOutNewsDigest({ db: pooledDb, windowStart });
       // matchedUsers/notified はグローバル集計で、並行テストの news_config 一致ユーザーを含みうるため
       // 下限のみを検査する。厳密な対象（A/Bのみ・Off/Canceled/NoMatch除外）は下の per-user load で担保。
-      expect(res.matchedUsers).toBeGreaterThanOrEqual(2); // A and B (+ 並行ユーザーの可能性)
-      expect(res.notified).toBeGreaterThanOrEqual(2);
+      //
+      // 稀に落ちるため、失敗時に状態を出す（T-M8-11）。並列実行で何が食い違ったのかを
+      // 次の occurrence で特定できるようにする。推測で直さない。
+      const ctx = await withTransaction(async (c) => {
+        const items = await c.query(
+          `select count(*)::int as n from news_items
+            where fetched_at >= $1::timestamptz
+              and fetched_at < $1::timestamptz + interval '1 hour'`,
+          [windowStart.toISOString()],
+        );
+        const users = await c.query(
+          `select id, subscription_status, news_config, notification_config
+             from profiles where id = any($1::uuid[])`,
+          [[seed.userA, seed.userB]],
+        );
+        return { 窓: windowStart.toISOString(), 窓内のnews_items: items.rows[0]?.n, 対象利用者: users.rows, 結果: res };
+      });
+      const detail = JSON.stringify(ctx);
+      expect(res.matchedUsers, `対象が2人未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
+      expect(res.notified, `配信が2件未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
 
       const load = async (uid: string) =>
         (
