@@ -4,6 +4,7 @@ import type { AnalyticsSummary } from "@/lib/analytics";
 import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 
 /**
  * SC-05 ホームの「直近の実績」（要件06 §1・§8・§10, T-M7-03）。直近7日の投稿件数と投稿翌日時点の
@@ -36,7 +37,7 @@ export function RecentResultsCard({
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
         </p>
         <Link
-          className="mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+          className={`mt-4 ${primaryLinkClassName}`}
           href="/app/posts?tab=create"
         >
           今すぐ作成

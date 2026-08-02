@@ -13,7 +13,7 @@ function HintItem({ ok, children }: { ok: boolean; children: ReactNode }) {
   return (
     <li
       className={`flex items-center gap-1.5 ${
-        ok ? "text-emerald-600" : "text-muted-foreground"
+        ok ? "text-success-fg" : "text-muted-foreground"
       }`}
     >
       <span aria-hidden="true">{ok ? "✓" : "○"}</span>

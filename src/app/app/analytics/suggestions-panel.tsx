@@ -147,7 +147,7 @@ export function SuggestionsPanel({
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">
-        提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（md・premiumプラン）でご自身で反映してください。
+        提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（mdプラン・プレミアムプラン）でご自身で反映してください。
       </p>
 
       {suggestions.length === 0 ? (
@@ -190,7 +190,7 @@ export function SuggestionsPanel({
                   <ul className="mt-1 space-y-1">
                     {s.posts.map((p) => (
                       <li className="text-xs" key={p.tweetId}>
-                        <a className="text-sky-700 hover:underline" href={p.url} rel="noopener noreferrer" target="_blank">
+                        <a className="text-info-fg hover:underline" href={p.url} rel="noopener noreferrer" target="_blank">
                           {p.body ? `${p.body}${p.body.length >= 100 ? "…" : ""}` : `投稿 ${p.tweetId}`}
                         </a>
                       </li>

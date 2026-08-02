@@ -63,7 +63,7 @@ export function UpcomingScheduleCard({
         </Link>
       </div>
       {setupPendingHref ? (
-        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-sm text-warn-fg">
           初期設定が未完了のため、予定の時刻になっても実行されません。
           <Link className="ml-1 underline" href={setupPendingHref}>
             設定を続ける

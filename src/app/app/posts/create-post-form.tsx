@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 
 export interface PatternOption {
   id: string;
@@ -382,7 +383,7 @@ export function CreatePostForm({
               })}
             </ol>
             {queuedSlow ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+              <p className="rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg" role="status">
                 開始が遅れています。自動で再開されます（最大5分）。
               </p>
             ) : null}
@@ -400,11 +401,11 @@ export function CreatePostForm({
 
         {job?.status === "succeeded" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
+            <p className="rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg" role="status">
               生成が完了し、下書きを作成しました。
             </p>
             <Link
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+              className={primaryLinkClassName}
               href="/app/posts?tab=drafts"
             >
               下書きを確認する
@@ -414,7 +415,7 @@ export function CreatePostForm({
 
         {job?.status === "failed" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900" role="alert">
+            <p className="rounded-lg border border-danger-fg/25 bg-danger-bg p-3 text-sm leading-6 text-danger-fg" role="alert">
               {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
             </p>
             {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
@@ -427,7 +428,7 @@ export function CreatePostForm({
               </Link>
             ) : PREREQ_FAILURE_CODES.has(job.error?.code ?? "") ? (
               <Link
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+                className={primaryLinkClassName}
                 href={PREREQ_FAILURE_PATH[job.error?.code ?? ""] ?? "/app/settings"}
               >
                 設定を確認する

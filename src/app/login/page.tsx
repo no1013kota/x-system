@@ -54,7 +54,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </header>
         {params.password_updated === "1" && !requestingReset ? (
           <p
-            className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"
+            className="rounded-lg bg-success-bg p-3 text-sm text-success-fg"
             role="status"
           >
             パスワードを更新しました。新しいパスワードでログインしてください。

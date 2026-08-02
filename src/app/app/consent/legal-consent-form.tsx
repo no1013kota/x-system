@@ -36,7 +36,7 @@ export function LegalConsentForm({
         </p>
       ) : null}
       {requireTerms ? (
-        <label className="flex items-start gap-3 rounded-xl border p-4 text-sm">
+        <label className="flex items-start gap-3 rounded-card border p-4 text-sm">
           <input className="mt-1 size-4" name="terms_accepted" type="checkbox" />
           <span>
             更新された
@@ -53,7 +53,7 @@ export function LegalConsentForm({
         </p>
       ) : null}
       {requirePrivacy ? (
-        <label className="flex items-start gap-3 rounded-xl border p-4 text-sm">
+        <label className="flex items-start gap-3 rounded-card border p-4 text-sm">
           <input
             className="mt-1 size-4"
             name="privacy_acknowledged"
