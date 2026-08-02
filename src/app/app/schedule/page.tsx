@@ -5,6 +5,12 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import Link from "next/link";
+
+import { Badge } from "@/components/ui/badge";
+import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
+import { formatJst } from "@/lib/format";
+import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -45,6 +51,9 @@ export default async function SchedulePage() {
   let imageProviders: string[] = [];
   let automationConsented = false;
   let accountHandle: string | null = null;
+  // デザインは「下書き・スケジュール」が1画面（T-M8-10）。**URLは変えない**方針なので、
+  // どちらのURLでも両方を出す。ここでは下書きも読み込む。
+  let drafts: DraftView[] = [];
   if (activeXAccountId) {
     const [loaded, meta] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
@@ -63,14 +72,15 @@ export default async function SchedulePage() {
     imageProviders = await availableImageProviders(user.id, meta?.plan ?? null);
     automationConsented = meta?.consented === true;
     accountHandle = meta?.handle ?? null;
+    drafts = await listDraftsForAccount(pooledDb, activeXAccountId, "drafts");
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 lg:px-8 lg:py-10">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">スケジュール</h1>
-        <p className="text-sm text-muted-foreground">
-          曜日と時刻を決めて、下書き生成または自動投稿を定期実行します。
+    <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+      <header>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">下書き・スケジュール</h1>
+        <p className="mt-1 text-[12.5px] text-ink-2">
+          曜日と時刻を決めて、下書き生成または自動投稿を定期実行します。作成された下書きは下に並びます。
         </p>
       </header>
 
@@ -85,6 +95,51 @@ export default async function SchedulePage() {
           xAccountId={activeXAccountId}
         />
       )}
+
+      {activeXAccountId ? (
+        <section
+          aria-label="未確認の下書き"
+          className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[15px] font-bold text-ink">未確認の下書き</h2>
+            <Link
+              className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+              href="/app/posts?tab=drafts"
+            >
+              編集・投稿する
+            </Link>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {drafts.length === 0 ? (
+              <li className="rounded-card border border-hairline px-4 py-8 text-center text-[12.5px] text-ink-2">
+                未確認の下書きはありません。
+              </li>
+            ) : (
+              drafts.slice(0, 5).map((draft) => (
+                <li key={draft.id}>
+                  <Link
+                    className="block rounded-card border border-hairline p-3 transition-colors duration-150 hover:bg-black/[0.02]"
+                    href={`/app/posts?tab=drafts&draftId=${draft.id}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge tone="brand">
+                        {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
+                      </Badge>
+                      <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                        {formatJst(draft.updated_at)}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-5 text-ink-2">
+                      {draft.thread[0]?.text ?? ""}
+                    </p>
+                  </Link>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      ) : null}
     </main>
   );
 }
