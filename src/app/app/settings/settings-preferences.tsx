@@ -70,6 +70,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
@@ -137,6 +138,7 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
@@ -227,6 +229,7 @@ function NewsForm({ config }: { config: NewsConfig }) {
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
@@ -250,11 +253,15 @@ export function SettingsPreferences({
   notificationConfig: NotificationConfig;
   newsConfig: NewsConfig;
 }) {
+  // 2カラム（デザイン §設定）。1カラムのままだと、幅の広い画面で**中身は狭いのに縦に長い**という
+  // 一番読みにくい形になる（デスクトップ最適化・2026-08-02 決定）。列は高さの近いもので分ける。
   return (
-    <div className="space-y-6">
-      <ProfileForm displayName={displayName} />
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       <NotificationForm config={notificationConfig} />
-      <NewsForm config={newsConfig} />
+      <div className="grid items-start gap-4">
+        <ProfileForm displayName={displayName} />
+        <NewsForm config={newsConfig} />
+      </div>
     </div>
   );
 }

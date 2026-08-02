@@ -90,7 +90,7 @@ export function AiPurposeSettings({
             <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
             <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              PremiumではSpace AIの運営環境で文章生成とリサーチを実行します。
+              プレミアムプランではSpace AIの運営環境で文章生成とリサーチを実行します。
             </p>
           </div>
         ) : options.text.length > 0 ? (

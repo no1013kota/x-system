@@ -34,7 +34,7 @@ const STATUS_TONE: Record<string, string> = {
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
-  managed: "運営App（Premium）",
+  managed: "運営App（プレミアムプラン）",
 };
 
 export function XAccountsSettings({
