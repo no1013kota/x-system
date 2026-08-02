@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist_Mono, Inter, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
+import { ToastProvider } from "@/components/ui/toast";
+
 /**
  * フォントは**すべて自前配信**する（T-M8-02）。
  *
@@ -53,7 +55,10 @@ export default function RootLayout({
       lang="ja"
       className={`${notoSansJp.variable} ${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* 操作結果の通知はここへ1本化する（T-M8-15）。 */}
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }
