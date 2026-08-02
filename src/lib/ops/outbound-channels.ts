@@ -121,6 +121,15 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
     files: ["lib/post/source-url-server.ts"],
   },
   {
+    id: "captcha_status",
+    label: "人間確認が有効かの確認（自分のSupabaseプロジェクトへの読み取り試行）",
+    guard:
+      "存在しない資格情報（`@example.invalid`）でログインを試すだけで、**副作用が無い**" +
+      "（アカウントを作らない・メールを送らない・実在ユーザーに触れない）。宛先は自分の" +
+      "Supabaseプロジェクトに固定される（T-M7-53）。",
+    files: ["lib/ops/captcha-status.ts"],
+  },
+  {
     id: "self_worker",
     label: "自分のアプリのworker route呼び出し（jobのdispatch）",
     guard:

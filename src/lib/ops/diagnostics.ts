@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Queryable } from "../x/token-refresh";
 
+import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
+
 /**
  * 運営者向けの状態診断（T-M7-34）。
  *
@@ -364,6 +366,8 @@ export interface DiagnosticsOptions {
   schedulerExpected: boolean;
   /** DBサイズの上限（バイト）。未指定なら無料プランの500MB。 */
   dbSizeLimitBytes?: number;
+  /** 人間確認の確認に使う接続情報（T-M7-53）。未指定なら「判定できません」になる。 */
+  captcha?: CaptchaProbeDeps;
 }
 
 export async function collectDiagnostics(
@@ -474,6 +478,10 @@ export async function collectDiagnostics(
       limitBytes: options.dbSizeLimitBytes ?? FREE_DB_SIZE_LIMIT_BYTES,
     }),
   );
+
+  // 人間確認が実際に効いているか（T-M7-53）。**ダッシュボードのトグル1つに依存していて
+  // コードからは見えない**ため、状態確認で毎回見る。副作用は無い（存在しない資格情報で試すだけ）。
+  checks.push(judgeCaptcha(await probeCaptcha(options.captcha ?? {})));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

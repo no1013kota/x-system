@@ -28,6 +28,11 @@ export async function GET(request: Request): Promise<Response> {
   // 定時実行は本番でしか動かない。それ以外で「止まっている」と赤くしない（常に赤い表示は読まれなくなる）。
   const report = await collectDiagnostics(pooledQueryable(), {
     schedulerExpected: env.APP_ENV === "production",
+    // 人間確認が実際に効いているかを、その環境自身のSupabaseへ問い合わせて確かめる（T-M7-53）。
+    captcha: {
+      supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+      anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    },
   });
   // 対応が必要な問題があれば5xxで返し、監視や `doctor` が判定しやすいようにする。
   return Response.json(report, { status: report.level === "error" ? 500 : 200 });
