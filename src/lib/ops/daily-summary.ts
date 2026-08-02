@@ -291,6 +291,10 @@ export async function deliverDailySummaries(
       const summary = buildDailySummary(await collectDailySummary(db, user.id, nowIso));
       // 利用者が消えていたら何もしない（`select from profiles` で存在を条件にする）。
       // 集めてから作るまでの間に退会・削除が起きても、FK違反を「異常」として報告しない。
+      // `for key share of p` まで要る理由は `jobs/news-digest.ts` と同じ（T-M8-19）。存在確認と
+      // 外部キー検査は同じ文の中でも別のスナップショットを見るため、親行を先にロックしないと
+      // 「確認した直後に退会がコミットされる」競合が残り、**1人の退会で残り全員の配信が止まる**。
+      // 仕組みの回帰テストは `jobs/news-digest.db.test.ts`（同じSQL形なのでここでは重複させない）。
       const { rows } = await db.query<{ id: string }>(
         `insert into notifications
            (user_id, type, dedupe_key, title, body, link, payload,
@@ -299,7 +303,7 @@ export async function deliverDailySummaries(
                 $6, case when $7 then 'queued'::email_delivery_status
                          else 'not_requested'::email_delivery_status end,
                 case when $7 then now() else null end
-           from profiles p where p.id = $1
+           from profiles p where p.id = $1 for key share of p
          on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
          returning id`,
         [user.id, dedupeKey, summary.title, summary.body, date, user.in_app, user.email],

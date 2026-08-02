@@ -122,11 +122,16 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
       total_count: row.total_count,
       news_item_ids: row.item_ids,
     };
-    // **`values` ではなく `select ... from profiles` にする**（T-M7-54）。
+    // **`values` ではなく `select ... from profiles ... for key share` にする**（T-M7-54, T-M8-19）。
     // 対象を選んでから挿入するまでの間にその利用者が退会すると、`values` では外部キー違反で
     // 例外になり、**まだ配信していない他の利用者の分まで巻き添えで止まる**。
     // 消えていれば0行になるだけ、という形にして1人の退会が全体を壊さないようにする
     // （日次サマリで同じ修正を入れた `ops/daily-summary.ts` と同じ考え方）。
+    //
+    // `for key share of p` が要る理由（T-M8-19）: **同じ文の中でも、SELECT が見る行と外部キー検査が
+    // 見る行は別のスナップショット**で決まる。SELECT の直後に退会がコミットされると、検査時点では
+    // 親行が無く外部キー違反になった（2026-08-03、`npm test` の並列実行で3回に1回ほど再現）。
+    // 親行を先にロックしておけば、退会はこの文の完了まで待たされ、先に消えていれば0行になる。
     const { rows } = await deps.db.query<{ id: string }>(
       `insert into notifications
          (user_id, type, dedupe_key, title, body, link, payload,
@@ -136,6 +141,7 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
               case when $8 then now() else null end
          from profiles p
         where p.id = $1
+          for key share of p
        on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
        returning id`,
       [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app, row.email],
