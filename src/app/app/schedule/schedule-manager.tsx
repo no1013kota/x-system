@@ -40,6 +40,27 @@ const PATTERN_LABEL: Record<string, string> = Object.fromEntries(
 );
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
+/**
+ * 週間プレビューのセルの見た目（T-M8-24）。
+ *
+ * **凡例と本体が同じ関数を使う**ようにする。以前は同じクラス文字列を2か所に書いていて、
+ * 配色をまとめて直したとき凡例だけ取り残され、3種類が同じ見た目＝凡例が意味を失っていた。
+ * 色だけに頼らないため、停止中は取り消し線も併せて付ける（要件06 §2 SC-08）。
+ */
+function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
+  const base = "inline-block rounded-chip px-1.5 py-0.5 font-sans text-[11px] font-bold";
+  if (!slot.enabled) return `${base} bg-black/[0.04] text-ink-3 line-through`;
+  return slot.mode === "auto"
+    ? `${base} bg-brand text-white`
+    : `${base} bg-brand-subtle text-brand`;
+}
+
+const SLOT_CELL_LEGEND = [
+  { enabled: true, mode: "auto", label: "自動投稿（確認なしでXへ）" },
+  { enabled: true, mode: "draft", label: "下書きのみ（確認してから自分で投稿）" },
+  { enabled: false, mode: "draft", label: "停止中" },
+];
+
 const TIME_OPTIONS: string[] = (() => {
   const out: string[] = [];
   for (let h = 9; h <= 22; h++) {
@@ -292,18 +313,12 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                   <td className="p-1" key={day}>
                     {cell.map((s) => (
                       <span
-                        className={`m-0.5 inline-block rounded px-1.5 py-0.5 ${
-                          s.enabled
-                            ? s.mode === "auto"
-                              ? "bg-brand text-white"
-                              : "bg-muted text-foreground"
-                            : "bg-muted/40 text-muted-foreground line-through"
-                        }`}
+                        className={`m-0.5 ${slotCellClassName(s)}`}
                         aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
                         title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
                       >
-                        {PATTERN_LABEL[s.pattern]?.slice(0, 2) ?? s.pattern}
+                        {s.pattern.toUpperCase()}
                       </span>
                     ))}
                   </td>
@@ -313,20 +328,18 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
           ))}
         </tbody>
       </table>
-      {/* 色だけで意味を伝えないための凡例（要件06 §2 SC-08）。 */}
+      {/*
+        色だけで意味を伝えないための凡例（要件06 §2 SC-08）。
+        **見本のクラスはセルと同じ関数から取る。** 別々に書いていたため、配色をまとめて直したとき
+        凡例だけ取り残されて3種類が同じ見た目になり、凡例が意味を失っていた（T-M8-24）。
+      */}
       <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          <span className="mr-1 inline-block rounded-chip bg-black/[0.06] px-1.5 py-0.5 text-ink-2">例</span>
-          自動投稿（確認なしでXへ）
-        </span>
-        <span>
-          <span className="mr-1 inline-block rounded bg-muted px-1.5 py-0.5 text-foreground">例</span>
-          下書きのみ（確認してから自分で投稿）
-        </span>
-        <span>
-          <span className="mr-1 inline-block rounded bg-muted/40 px-1.5 py-0.5 text-muted-foreground line-through">例</span>
-          停止中
-        </span>
+        {SLOT_CELL_LEGEND.map((item) => (
+          <span key={item.label}>
+            <span className={`mr-1 inline-block ${slotCellClassName(item)}`}>例</span>
+            {item.label}
+          </span>
+        ))}
       </p>
     </div>
   );

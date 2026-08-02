@@ -235,7 +235,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-ink bg-ink text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={t.newsCategory}
                   onClick={() => setCategories((prev) => toggle(prev, t.newsCategory))}
                   type="button"
@@ -254,7 +254,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-ink bg-ink text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={i.id}
                   onClick={() => setImpacts((prev) => toggle(prev, i.id))}
                   type="button"
