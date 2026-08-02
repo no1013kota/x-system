@@ -24,6 +24,11 @@ const buttonVariants = cva(
         /** 副操作。淡いキー色。ニュースの「すぐに投稿作成」など。 */
         subtle: "bg-brand-subtle text-brand hover:bg-brand-subtle-hover",
         /**
+         * 取り消せない操作の確定（削除ダイアログの「削除する」）。**塗りの赤**（デザイン M-3）。
+         * 既存の `destructive`（淡い赤）は「危険だが確定ではない」箇所で使い続けるため残す。
+         */
+        danger: "bg-danger-fg text-white hover:bg-[#a8262f]",
+        /**
          * **AI生成の瞬間だけ**に使うグラデーション（生成ボタン・投稿実行）。
          * デザイン §カラーの指定。多用すると合図としての意味が失われるので広げない。
          */

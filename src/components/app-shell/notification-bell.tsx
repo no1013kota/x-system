@@ -1,7 +1,7 @@
 "use client";
 
 import { Popover } from "@base-ui/react/popover";
-import { Bell } from "lucide-react";
+import { Icon } from "@/components/ui/icon";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -78,22 +78,22 @@ export function NotificationBell({
     <Popover.Root onOpenChange={setOpen} open={open}>
       <Popover.Trigger
         aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
-        className="relative inline-flex size-10 items-center justify-center rounded-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="relative inline-flex size-9 items-center justify-center rounded-card text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        <Bell aria-hidden="true" className="size-5" />
+        <Icon name="notifications" size={20} />
         {unread > 0 ? (
-          <span className="absolute top-1.5 right-1.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-4 font-semibold text-destructive-foreground">
+          <span className="absolute top-1 right-1 inline-flex min-w-4 items-center justify-center rounded-pill bg-danger-dot px-1 text-[10px] leading-4 font-bold text-white">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner align="end" className="z-40" sideOffset={8}>
-          <Popover.Popup className="w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-xl border bg-background shadow-lg outline-none">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <p className="text-sm font-semibold">通知</p>
+          <Popover.Popup className="w-[min(340px,calc(100vw-1rem))] overflow-hidden rounded-card border border-hairline bg-surface shadow-[var(--shadow-modal)] outline-none">
+            <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+              <p className="text-[13.5px] font-bold text-ink">通知</p>
               <button
-                className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                className="text-[11.5px] text-brand hover:underline disabled:opacity-50"
                 disabled={pending || unread === 0}
                 onClick={markAll}
                 type="button"
@@ -103,15 +103,15 @@ export function NotificationBell({
             </div>
 
             {items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              <p className="px-4 py-9 text-center text-[12.5px] text-ink-2">
                 通知はありません。
               </p>
             ) : (
-              <ul className="max-h-96 divide-y overflow-y-auto">
+              <ul className="max-h-96 divide-y divide-hairline overflow-y-auto">
                 {items.map((item) => (
                   <li key={item.id}>
                     <button
-                      className="flex w-full items-start gap-2 px-4 py-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                      className="flex w-full items-start gap-2 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.02] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                       onClick={() => openNotification(item)}
                       type="button"
                     >
@@ -122,11 +122,11 @@ export function NotificationBell({
                         }`}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">{item.title}</span>
-                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+                        <span className="block text-[13px] font-medium text-ink">{item.title}</span>
+                        <span className="mt-0.5 block text-[11.5px] leading-4 text-ink-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
                           {item.body}
                         </span>
-                        <span className="mt-1 block text-[11px] text-muted-foreground">
+                        <span className="mt-1 block text-[11px] text-ink-3">
                           {formatJst(item.createdAt)}
                         </span>
                       </span>
