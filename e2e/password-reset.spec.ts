@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { destroyUserByEmail, query } from "./fixtures/account";
-import { alertIn, confirmUrlFromMail, expect, test, waitForMail } from "./fixtures/test";
+import {
+  alertIn,
+  confirmUrlFromMail,
+  expect,
+  statusIn,
+  test,
+  waitForMail,
+} from "./fixtures/test";
 
 /**
  * A-2 パスワード再設定（PRD §A、要件03 §1、要件06 SC-02・T-M7-26）。
@@ -44,7 +51,7 @@ test("再設定メールから新しいパスワードを設定してログイ�
     await page.getByRole("button", { name: "再設定メールを送る" }).click();
 
     // 受け付けた旨が出る（アカウントの存在は明かさない文面）
-    await expect(page.getByRole("status")).toBeVisible();
+    await expect(statusIn(page)).toBeVisible();
 
     // --- メールのリンクから新パスワードを設定 ---
     const mail = await waitForMail(email);
@@ -121,7 +128,7 @@ test("未登録のメールで申請しても、アカウントの有無を教�
   await page.getByRole("button", { name: "再設定メールを送る" }).click();
 
   // 存在するときと同じ「受け付けた」表示になる（列挙対策）
-  const notice = page.getByRole("status");
+  const notice = statusIn(page);
   await expect(notice).toBeVisible();
   await expect(notice).not.toContainText("登録されていません");
   await expect(notice).not.toContainText("見つかりません");
