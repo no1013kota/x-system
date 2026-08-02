@@ -55,6 +55,26 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     } catch {
       available = false;
     }
+    if (!available) return;
+    /**
+     * **Server Action のモジュールをここで先に読み込む**（T-M8-07）。
+     *
+     * 各テストは env を流し込んだ後に読む必要があるため `await import()` を使っているが、
+     * それをテスト本文で行うと**モジュールのコンパイル時間がそのテストの制限時間に加算される**。
+     * 並列実行で負荷が上がると既定の5秒を超え、実際に「Test timed out」で断続的に落ちていた
+     * （4〜5回に1回）。ここで一度読めば以降はキャッシュに当たるので、本文側は書き換えずに済む。
+     */
+    await Promise.all([
+      import("./settings"),
+      import("./x-accounts"),
+      import("./schedule"),
+      import("./persona-settings"),
+      import("./notifications"),
+      import("./drafts"),
+      import("./generation-jobs"),
+      import("./api-keys"),
+      import("@/lib/persona-settings"),
+    ]);
   });
 
   // **テストごとに作った利用者は必ずその場で消す。** 残すと他のテスト（follower_snapshot 等の
