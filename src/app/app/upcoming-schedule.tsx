@@ -14,9 +14,9 @@ const MODE_LABEL: Record<string, string> = {
   draft: "下書きを作成",
 };
 
-const cardClassName = "rounded-2xl border bg-card p-6 shadow-sm";
+const cardClassName = "rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]";
 const primaryLinkClassName =
-  "mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background";
+  "mt-4 inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover";
 
 export function UpcomingScheduleCard({
   outlook,
@@ -29,7 +29,7 @@ export function UpcomingScheduleCard({
   if (outlook.kind === "no_slots") {
     return (
       <section className={cardClassName}>
-        <h2 className="text-lg font-semibold">次回の予定</h2>
+        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           定期実行のスケジュールはまだありません。曜日と時刻を決めておくと、下書きの作成や投稿を自動で行えます。
         </p>
@@ -43,7 +43,7 @@ export function UpcomingScheduleCard({
   if (outlook.kind === "all_disabled") {
     return (
       <section className={cardClassName}>
-        <h2 className="text-lg font-semibold">次回の予定</h2>
+        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           スケジュールはすべて停止中です。再開するまで自動では実行されません。
         </p>
@@ -57,7 +57,7 @@ export function UpcomingScheduleCard({
   return (
     <section className={cardClassName}>
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">次回の予定</h2>
+        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
         <Link className="text-sm text-primary underline" href="/app/schedule">
           スケジュールを編集
         </Link>

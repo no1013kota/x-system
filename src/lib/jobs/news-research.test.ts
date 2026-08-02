@@ -365,3 +365,29 @@ describe("applyRecencyPolicy（取得窓の新しさで選別・T-M7-40）", () 
     expect(r.futureAdjusted).toBe(0);
   });
 });
+
+describe("引用タグの除去（T-M8-06）", () => {
+  it("**title と summary から <cite> を落とす**（そのまま画面に出ていた）", () => {
+    const { items, dropped } = pickValidItems([
+      {
+        title: '<cite index="43-1">ソニーG、最高益予想</cite>',
+        summary: '<cite index="43-1">ソニーグループが31日に決算を発表した。</cite>続報あり。',
+        source_url: "https://example.com/a",
+        impact: "high",
+      },
+    ]);
+    expect(dropped).toBe(0);
+    expect(items[0].title).toBe("ソニーG、最高益予想");
+    expect(items[0].summary).toBe("ソニーグループが31日に決算を発表した。続報あり。");
+  });
+
+  it("タグを含めた長さで上限判定しない（タグ込みだと30字を超える）", () => {
+    // 実体は26字だが、タグを含めると60字を超える。除去前に数えると不当に捨てられる。
+    const title = '<cite index="12-3">' + "あ".repeat(26) + "</cite>";
+    const { items, dropped } = pickValidItems([
+      { title, summary: "要約", source_url: "https://example.com/b", impact: "mid" },
+    ]);
+    expect(dropped).toBe(0);
+    expect(items[0].title).toBe("あ".repeat(26));
+  });
+});
