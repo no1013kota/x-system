@@ -5,6 +5,7 @@ import { afterEach, afterAll, beforeAll, beforeEach, describe, expect, it } from
 
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
+import { uniqueTestHourWindow } from "../db/test-window";
 import { X_SCOPES } from "../x/oauth";
 import type { Queryable } from "../x/token-refresh";
 
@@ -222,16 +223,13 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
   });
 
   it("ニュースの配信: 分野設定が違う2人には、それぞれの分野だけが届く", async () => {
-    const { fanOutNewsDigest, newsDigestWindowStart } = await import("../jobs/news-digest");
+    const { fanOutNewsDigest } = await import("../jobs/news-digest");
     const a = await makeAccount({ categories: ["ai"] });
     const b = await makeAccount({ categories: ["web3"] });
 
-    // **窓を過去の一意な1時間へずらす。** `news_items` は利用者に紐づかない共有データなので、
-    // 現在時刻の窓を使うと他テストが挿入した記事と混ざる。ダイジェスト本文は先頭5件＋「ほかN件」
-    // なので、混ざるとこの記事が押し出されて落ちる（2026-08-02、実際にflakyになった）。
-    // 他テストは `now` 付近しか使わないため、遠い過去の窓なら交わらない。
-    const uniquePast = new Date(Date.now() - (2000 + Math.floor(Math.random() * 2000)) * 3_600_000);
-    const windowStart = newsDigestWindowStart(uniquePast);
+    // `news_items` は利用者に紐づかない共有データ。現在の窓は実データと混ざり、遠い過去は
+    // cleanup に消される。**未来の窓**なら自分の行しか存在しない（T-M7-54）。
+    const windowStart = uniqueTestHourWindow();
     const marker = randomUUID().slice(0, 8);
     const newsIds: string[] = [];
     for (const [category, title] of [
