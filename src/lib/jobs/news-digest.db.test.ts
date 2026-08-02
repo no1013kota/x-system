@@ -276,4 +276,82 @@ describe("fanOutNewsDigest (db)", () => {
       });
     }
   });
+
+  it("配信の**最中**に退会がコミットされても外部キー違反で全体が落ちない（T-M8-19）", async () => {
+    // 2026-08-03、`npm test` の並列実行で3回に1回ほど notifications_user_id_fkey 違反で落ちていた。
+    // T-M7-54 の `select ... from profiles` は「抽出済みの対象が既に消えていたら0行」にする修正で、
+    // **同じ文の中で SELECT と外部キー検査が別のスナップショットを見る**ことまでは塞げていなかった。
+    // SELECT の直後に退会がコミットされると検査時点で親行が無く、例外＝**その利用者以降の配信が全滅**。
+    //
+    // 並列実行の運任せにせず順序を固定して再現する。退会トランザクションを開いたまま fan-out を走らせ、
+    // 挿入がロック待ちに入ったことを確認してから commit する。
+    const windowStart = uniqueTestHourWindow();
+    const tag = randomUUID().slice(0, 8);
+
+    const seed = await withTransaction(async (c) => {
+      const opts = {
+        status: "active",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: true,
+        newsEmail: false,
+      };
+      const gone = await makeUser(c, opts);
+      const alive = await makeUser(c, opts);
+      await c.query(
+        `insert into news_items (category, title, summary, source_url, impact, fetched_at)
+         values ('ai', $1, 's', $2, 'high', $3::timestamptz + interval '30 minutes')`,
+        [`ai-high-${tag}`, `https://ex.com/${randomUUID()}`, windowStart.toISOString()],
+      );
+      return { gone, alive };
+    });
+
+    // 退会を「コミットせずに」保持する専用接続。この間、当該行はロックされている。
+    const blocker = await getPool().connect();
+    let fanOut: Promise<unknown> | null = null;
+    try {
+      await blocker.query("begin");
+      await blocker.query(`delete from auth.users where id = $1`, [seed.gone]);
+
+      fanOut = fanOutNewsDigest({ db: pooledDb, windowStart });
+
+      // 挿入が親行のロック待ちに入るまで待つ。**ここを待たずに commit すると競合が起きず、
+      // 修正前のコードでも通ってしまう**（＝再現しないテストになる）。
+      await expect
+        .poll(
+          async () =>
+            (
+              await withTransaction((c) =>
+                c.query<{ n: number }>(
+                  `select count(*)::int as n from pg_stat_activity
+                    where wait_event_type = 'Lock'
+                      and query ilike '%insert into notifications%'`,
+                ),
+              )
+            ).rows[0].n,
+          { timeout: 15_000, message: "通知の挿入が親行のロック待ちに入ること" },
+        )
+        .toBeGreaterThan(0);
+
+      await blocker.query("commit");
+
+      // 例外にならず、残っている利用者へは届く。
+      await fanOut;
+      fanOut = null;
+      const alive = await withTransaction((c) =>
+        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+      );
+      expect(alive.rows, "退会の巻き添えにならず配信される").toHaveLength(1);
+    } finally {
+      // 失敗経路で開いたままのトランザクションを残さない（後続テストがロック待ちで固まる）。
+      await blocker.query("rollback").catch(() => {});
+      blocker.release();
+      await fanOut?.catch(() => {});
+      await withTransaction(async (c) => {
+        await c.query(`delete from notifications where user_id = $1`, [seed.alive]);
+        await c.query(`delete from auth.users where id = any($1)`, [[seed.alive, seed.gone]]);
+        await c.query(`delete from news_items where title like $1`, [`%-${tag}`]);
+      });
+    }
+  });
 });
