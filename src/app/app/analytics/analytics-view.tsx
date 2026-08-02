@@ -59,7 +59,7 @@ export function AnalyticsView({
 
   if (drafts.length === 0) {
     return (
-      <p className="rounded-xl border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
+      <p className="rounded-card border border-hairline bg-surface px-4 py-10 text-center text-sm text-muted-foreground">
         まだ投稿実績はありません。投稿すると1日・7日・30日の実績がここに表示されます。
       </p>
     );
@@ -93,7 +93,7 @@ export function AnalyticsView({
         {drafts.map((draft) => {
           const agg = aggregateThread(draft, checkpoint);
           return (
-            <li className="rounded-xl border bg-background p-4" key={draft.draftId}>
+            <li className="rounded-card border border-hairline bg-surface p-4" key={draft.draftId}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
                   {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}

@@ -151,7 +151,7 @@ export function LearningSourcesManager({
       ) : null}
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <h2 className="text-sm font-semibold">参考ソースを追加</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
@@ -183,7 +183,7 @@ export function LearningSourcesManager({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || removing || (refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX))}
             onClick={add}
             type="button"
@@ -194,7 +194,7 @@ export function LearningSourcesManager({
       </section>
 
       {/* 自己過去投稿の取り込み/再取り込み */}
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <h2 className="text-sm font-semibold">自分の過去投稿から学習</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
@@ -226,7 +226,7 @@ export function LearningSourcesManager({
         ) : (
           <ul className="mt-2 space-y-2">
             {sources.map((s) => (
-              <li className="rounded-xl border bg-background p-4" key={s.id}>
+              <li className="rounded-card border border-hairline bg-surface p-4" key={s.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded bg-muted px-2 py-0.5 text-xs">{TYPE_LABEL[s.type] ?? s.type}</span>
                   <span className="rounded px-2 py-0.5 text-xs font-medium">

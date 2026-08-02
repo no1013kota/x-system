@@ -86,7 +86,7 @@ export function XAccountsSettings({
 
   return (
     <section aria-labelledby="x-accounts-heading" className="space-y-6">
-      <div className="rounded-2xl border bg-card p-6 shadow-sm">
+      <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold" id="x-accounts-heading">
@@ -292,7 +292,7 @@ function DisconnectButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">

@@ -167,7 +167,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm">
+            <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
               <h2 className="text-xl font-semibold" id="billing-heading">
                 現在のご契約
               </h2>
@@ -228,7 +228,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ) : (
           <section
             aria-labelledby="support-heading"
-            className="rounded-2xl border bg-card p-6 shadow-sm"
+            className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
           >
             <h2 className="text-xl font-semibold" id="support-heading">
               お問い合わせ

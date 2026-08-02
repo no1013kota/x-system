@@ -149,7 +149,7 @@ export default async function AiSettingsPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
         <h1 className="text-3xl font-bold tracking-tight">AI設定</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
