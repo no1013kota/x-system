@@ -37,3 +37,20 @@ test("下書きを破棄すると結果がトーストで出る", async ({ accou
   // 成功は読み上げを妨げない status（割り込まない）。
   await expect(toast).toHaveAttribute("role", "status");
 });
+
+test("スケジュールを停止すると結果がトーストで出る", async ({ accounts, page }) => {
+  const account = await accounts.create("toast-slot", { personaReady: true });
+  await query(
+    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled)
+     values ($1,'p1','{1,3}','09:30','draft',false,true)`,
+    [account.xAccountId],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+  await page.getByRole("button", { name: "停止", exact: true }).first().click();
+
+  const toast = toastIn(page);
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText("スケジュールを停止しました");
+});
