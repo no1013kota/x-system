@@ -1,63 +1,48 @@
 "use client";
 
-import {
-  CalendarDays,
-  ChartNoAxesCombined,
-  Home,
-  Newspaper,
-  Sparkles,
-  SquarePen,
-  type LucideIcon,
-} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import {
-  APP_NAVIGATION_ITEMS,
-  type AppNavigationIcon,
-} from "./navigation-items";
+import { Icon } from "@/components/ui/icon";
 
-const ICONS: Record<AppNavigationIcon, LucideIcon> = {
-  ai: Sparkles,
-  analytics: ChartNoAxesCombined,
-  home: Home,
-  news: Newspaper,
-  posts: SquarePen,
-  schedule: CalendarDays,
-};
+import { APP_NAVIGATION_ITEMS } from "./navigation-items";
 
 function isCurrentPath(pathname: string, href: string): boolean {
   return href === "/app" ? pathname === href : pathname.startsWith(href);
 }
 
+/**
+ * 左サイドバーのナビ（T-M8-04）。
+ *
+ * 選択中は淡いキー色の下地＋キー色の文字＋塗りアイコン（デザイン §レイアウト骨格）。
+ * 選択状態は `aria-current="page"` を正とし、**見た目のクラスを状態の表明に使わない**。
+ */
 export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav
       aria-label={mobile ? "メインナビゲーション（モバイル）" : "メインナビゲーション"}
-      className={mobile ? "grid grid-cols-6" : "space-y-1 px-3"}
+      className={mobile ? "grid grid-cols-7" : "space-y-0.5 px-3"}
     >
       {APP_NAVIGATION_ITEMS.map((item) => {
-        const Icon = ICONS[item.icon];
         const current = isCurrentPath(pathname, item.href);
-        // active/inactive の状態クラスは mobile/desktop で共通（レイアウト用の基底クラスのみ分岐）。
         const stateClass = current
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground";
+          ? "bg-brand-subtle text-brand"
+          : "text-ink-2 hover:bg-black/[0.03] hover:text-ink";
         return (
           <Link
             aria-current={current ? "page" : undefined}
             className={
               mobile
-                ? `flex min-h-16 flex-col items-center justify-center gap-1 rounded-md px-0.5 text-[10px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${stateClass}`
-                : `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${stateClass}`
+                ? `flex min-h-16 flex-col items-center justify-center gap-1 rounded-card px-0.5 text-[10px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${stateClass}`
+                : `flex min-h-10 items-center gap-2.5 rounded-card px-3 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${stateClass}`
             }
             href={item.href}
             key={item.href}
           >
-            <Icon aria-hidden="true" className="size-5 shrink-0" />
-            <span>{item.label}</span>
+            <Icon filled={current} name={item.icon} size={mobile ? 20 : 19} />
+            <span className={mobile ? "" : "leading-tight"}>{item.label}</span>
           </Link>
         );
       })}

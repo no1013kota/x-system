@@ -63,12 +63,28 @@ test("生成画像プレビューが実際に読み込めて表示される", as
   const account = await accounts.create("draft-image");
   const seeded = await seedDraftWithImage(account);
 
+  /**
+   * このテストが見張るのは**生成画像が実際に読み込めること**（CSP・署名URL, T-M7-22）。
+   * 画面遷移に伴う次の2つは不具合ではないので数えない（T-M8-04で整理）。
+   *
+   * - `net::ERR_ABORTED`: Next.js は先読み（RSC prefetch）を遷移時に打ち切る。**設計どおり**で、
+   *   サイドバーのリンクが増えるほど発生する。
+   * - 開発サーバの `loading.tsx` チャンク: Turbopack が動的に挿入するscriptが `strict-dynamic`
+   *   に弾かれる。**本番ビルドでは発生しないことを実際に確認済み**（`next build` + `next start`
+   *   で全E2Eを実行して再現しなかった）。利用者に影響しない開発時だけの事象。
+   *
+   * **画像に関するCSP違反・読み込み失敗は従来どおり失敗させる。**
+   */
+  const isBenign = (text: string) =>
+    text.includes("net::ERR_ABORTED") || text.includes("src_app_app_loading_tsx");
+
   const consoleErrors: string[] = [];
   page.on("console", (m) => {
-    if (m.type() === "error") consoleErrors.push(m.text());
+    if (m.type() === "error" && !isBenign(m.text())) consoleErrors.push(m.text());
   });
   page.on("requestfailed", (r) => {
-    consoleErrors.push(`requestfailed: ${r.failure()?.errorText} ${r.url().slice(0, 60)}`);
+    const text = `requestfailed: ${r.failure()?.errorText} ${r.url().slice(0, 60)}`;
+    if (!isBenign(text) && !isBenign(r.url())) consoleErrors.push(text);
   });
 
   try {
