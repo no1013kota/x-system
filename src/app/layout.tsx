@@ -13,10 +13,17 @@ import "./globals.css";
  * アイコンはフォントではなくインラインSVG（`components/ui/icon.tsx`）。可変フォントが3.8MBと
  * 重すぎるため、使う41個だけをSVGで持つ（12.6KB）。
  */
+/**
+ * `subsets` を指定せず `preload: false` にする。
+ *
+ * **日本語フォントで `subsets: ["latin"]` を指定すると、latin以外のグリフが入らず日本語が
+ * フォールバックする**（当初そう書いていた）。Noto Sans JP は unicode-range で細かく分割
+ * 配信されるので、preloadせずブラウザに必要な範囲だけ取らせるのが正しい。
+ */
 const notoSansJp = Noto_Sans_JP({
   variable: "--font-noto-sans-jp",
-  subsets: ["latin"],
   weight: ["400", "500", "700"],
+  preload: false,
   display: "swap",
 });
 

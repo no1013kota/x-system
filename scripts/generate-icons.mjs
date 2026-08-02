@@ -29,6 +29,15 @@ const ICON_NAMES = [
   "visibility", "warning", "workspace_premium",
 ];
 
+/**
+ * 塗り（FILL 1）版も持つアイコン。デザインは**選択状態と完了チェック**で塗りを使う。
+ * ここに挙げたものだけ `-fill` を生成する（全部作ると無駄に増える）。
+ */
+const FILLED_NAMES = [
+  "output", "newspaper", "edit_square", "schedule", "monitoring", "description",
+  "tune", "check_circle", "workspace_premium",
+];
+
 const SRC = "node_modules/@material-symbols/svg-400/outlined";
 
 /**
@@ -47,6 +56,11 @@ const entries = ICON_NAMES.map((name) => {
   return `  ${JSON.stringify(name)}: ${JSON.stringify(ds.join(" "))},`;
 }).join("\n");
 
+const filledEntries = FILLED_NAMES.map((name) => {
+  const ds = pathsOf(`${name}-fill`);
+  return `  ${JSON.stringify(name)}: ${JSON.stringify(ds.join(" "))},`;
+}).join("\n");
+
 const out = `// このファイルは \`npm run icons:generate\` が生成する。**手で編集しない。**
 //
 // アイコンを増やすときは scripts/generate-icons.mjs の ICON_NAMES へ追記して再生成する。
@@ -58,7 +72,14 @@ ${entries}
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
+
+/** 塗り版（FILL 1）。選択状態・完了チェックで使う。無い名前は輪郭版のまま。 */
+export const ICON_PATHS_FILLED: Partial<Record<IconName, string>> = {
+${filledEntries}
+};
 `;
 
 writeFileSync("src/components/ui/icon-paths.ts", out);
-console.log(`アイコン ${ICON_NAMES.length} 個を src/components/ui/icon-paths.ts へ生成しました。`);
+console.log(
+  `アイコン ${ICON_NAMES.length} 個（うち塗り版 ${FILLED_NAMES.length} 個）を src/components/ui/icon-paths.ts へ生成しました。`,
+);

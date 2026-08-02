@@ -1,8 +1,10 @@
-import { Settings } from "lucide-react";
 import Link from "next/link";
 
 import { AppNavigation } from "@/components/app-shell/app-navigation";
+import { BrandLogo } from "@/components/app-shell/brand-logo";
+import { CurrentScreenTitle } from "@/components/app-shell/current-screen-title";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { Icon } from "@/components/ui/icon";
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
 import {
   computeXAccountBanners,
@@ -13,7 +15,6 @@ import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import type { PlanId } from "@/lib/plans";
 import { PortalButton } from "@/components/billing/portal-button";
-import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   subscriptionBannerFor,
@@ -106,46 +107,49 @@ export default async function AppLayout({
   const banner = profile ? subscriptionBannerFor(profile) : null;
 
   return (
-    <div className="min-h-screen bg-muted/30 lg:flex">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r bg-sidebar lg:block">
-        <Link
-          className="mx-6 my-6 inline-flex rounded-md text-lg font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-          href="/app"
-        >
-          {APP_NAME}
-        </Link>
+    // 新デザインの骨格（T-M8-04）: サイドバー234px固定・ページ背景 #f6f6f7。
+    // デスクトップ最適化だが、モバイルでは既存の下部タブバーへ落ちる構造を保つ。
+    <div className="min-h-screen bg-page lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-[234px] shrink-0 flex-col border-r border-hairline bg-surface lg:flex">
+        <div className="px-4 py-4">
+          <BrandLogo />
+        </div>
         <AppNavigation />
+        <div className="mt-auto border-t border-hairline px-3 py-3">
+          <Link
+            className="flex min-h-10 items-center gap-2.5 rounded-card px-3 text-[13.5px] font-medium text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            href="/plans"
+          >
+            <Icon name="workspace_premium" size={19} />
+            料金プラン
+          </Link>
+        </div>
       </aside>
 
       <div className="min-w-0 flex-1 pb-20 lg:pb-0">
-        <header className="sticky top-0 z-20 border-b bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+        {/* トップバー54px。左=現在の画面名、右=通知・Xアカウント（デザイン §レイアウト骨格）。 */}
+        <header className="sticky top-0 z-20 flex h-[54px] items-center gap-3 border-b border-hairline bg-surface px-4 lg:px-6">
+          <BrandLogo className="lg:hidden" />
+          <CurrentScreenTitle />
+          <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <XAccountSwitcher
+              accounts={switcherAccounts}
+              activeId={activeAccountId}
+            />
+            <NotificationBell
+              initialCursor={notificationCursor}
+              initialItems={notifications}
+              initialUnread={unreadCount}
+            />
             <Link
-              className="rounded-md font-bold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring lg:hidden"
-              href="/app"
+              aria-label="アカウント設定"
+              className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              href="/app/settings?tab=billing"
             >
-              {APP_NAME}
+              <Icon name="tune" size={18} />
+              <span className="hidden md:inline">アカウント設定</span>
             </Link>
-            <div className="ml-auto flex items-center gap-1 sm:gap-2">
-              <XAccountSwitcher
-                accounts={switcherAccounts}
-                activeId={activeAccountId}
-              />
-              <NotificationBell
-                initialCursor={notificationCursor}
-                initialItems={notifications}
-                initialUnread={unreadCount}
-              />
-              <Link
-                aria-label="アカウント設定"
-                className="inline-flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                href="/app/settings?tab=billing"
-              >
-                <Settings aria-hidden="true" className="size-5" />
-                <span className="hidden md:inline">アカウント設定</span>
-              </Link>
-              <SignOutButton />
-            </div>
+            <SignOutButton />
           </div>
         </header>
 

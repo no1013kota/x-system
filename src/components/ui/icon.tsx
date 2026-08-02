@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { ICON_PATHS, type IconName } from "./icon-paths";
+import { ICON_PATHS, ICON_PATHS_FILLED, type IconName } from "./icon-paths";
 
 /**
  * アイコン（T-M8-02）。デザインは Material Symbols Outlined を指定している。
@@ -17,6 +17,11 @@ import { ICON_PATHS, type IconName } from "./icon-paths";
 export interface IconProps extends Omit<ComponentProps<"svg">, "children"> {
   name: IconName;
   /**
+   * 塗りつぶし版を使う。デザインでは**選択状態と完了チェック**が塗り（FILL 1）。
+   * 塗り版を持たないアイコンでは輪郭版のまま描画する。
+   */
+  filled?: boolean;
+  /**
    * 読み上げるラベル。**省略時は装飾として読み上げから除外する**（`aria-hidden`）。
    * アイコンだけで意味を伝えるボタンには必ず渡す。
    */
@@ -25,7 +30,8 @@ export interface IconProps extends Omit<ComponentProps<"svg">, "children"> {
   size?: number;
 }
 
-export function Icon({ className, label, name, size = 20, ...props }: IconProps) {
+export function Icon({ className, filled = false, label, name, size = 20, ...props }: IconProps) {
+  const d = (filled ? ICON_PATHS_FILLED[name] : undefined) ?? ICON_PATHS[name];
   return (
     <svg
       aria-hidden={label ? undefined : true}
@@ -38,7 +44,7 @@ export function Icon({ className, label, name, size = 20, ...props }: IconProps)
       width={size}
       {...props}
     >
-      <path d={ICON_PATHS[name]} />
+      <path d={d} />
     </svg>
   );
 }
