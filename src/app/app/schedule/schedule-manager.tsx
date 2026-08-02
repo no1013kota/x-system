@@ -185,8 +185,8 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
           自動投稿をすべて停止
         </AlertDialog.Trigger>
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-          <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+          <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
             <AlertDialog.Title className="text-[15px] font-bold text-ink">
               自動投稿をすべて停止しますか？
             </AlertDialog.Title>
@@ -231,8 +231,8 @@ function DeleteSlotButton({
         削除
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">
             このスケジュールを削除しますか？
           </AlertDialog.Title>
@@ -245,7 +245,7 @@ function DeleteSlotButton({
             </AlertDialog.Close>
             <AlertDialog.Close
               onClick={onConfirm}
-              render={<Button size="lg" type="button" variant="destructive" />}
+              render={<Button size="lg" type="button" variant="danger" />}
             >
               削除する
             </AlertDialog.Close>
@@ -756,8 +756,8 @@ function AutomationConsentModal({
   return (
     <AlertDialog.Root onOpenChange={onOpenChange} open={open}>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">
             {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
           </AlertDialog.Title>

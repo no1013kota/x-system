@@ -290,8 +290,8 @@ function DisconnectButton({
         連携を解除
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
@@ -308,7 +308,7 @@ function DisconnectButton({
             </AlertDialog.Close>
             <AlertDialog.Close
               onClick={onConfirm}
-              render={<Button size="lg" type="button" variant="destructive" />}
+              render={<Button size="lg" type="button" variant="danger" />}
             >
               連携を解除する
             </AlertDialog.Close>

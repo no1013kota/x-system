@@ -564,8 +564,8 @@ function PublishButton({
         投稿
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
@@ -610,8 +610,8 @@ function DiscardButton({
         破棄
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className="text-[15px] font-bold text-ink">
             下書きを破棄しますか？
           </AlertDialog.Title>
@@ -624,7 +624,7 @@ function DiscardButton({
             </AlertDialog.Close>
             <AlertDialog.Close
               onClick={onConfirm}
-              render={<Button size="lg" type="button" variant="destructive" />}
+              render={<Button size="lg" type="button" variant="danger" />}
             >
               破棄する
             </AlertDialog.Close>

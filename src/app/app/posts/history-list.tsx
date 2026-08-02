@@ -1,4 +1,5 @@
 import { EmptyNotice } from "@/components/app-shell/page-state";
+import { Badge } from "@/components/ui/badge";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
@@ -39,20 +40,36 @@ export function HistoryList({
     );
   }
   return (
-    <ul className="space-y-4">
-      {drafts.map((draft) => (
-        <HistoryCard
-          draft={draft}
-          handle={handle}
-          highlighted={draft.id === selectedDraftId}
-          key={draft.id}
-        />
-      ))}
-    </ul>
+    // デザイン H-1 は6列のテーブル。**本文が読めなくなるのは機能低下**なので、
+    // 内容セルに折りたたみを残して全文へ到達できるようにする（表示の既定は1行）。
+    <div className="overflow-x-auto rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]">
+      <table className="w-full min-w-[52rem] text-[12.5px]">
+        <thead>
+          <tr className="border-b border-hairline text-left text-[11.5px] text-ink-2">
+            <th className="px-4 py-2.5 font-medium">投稿日時</th>
+            <th className="px-2 py-2.5 font-medium">型</th>
+            <th className="px-2 py-2.5 font-medium">実行</th>
+            <th className="px-2 py-2.5 font-medium">内容</th>
+            <th className="px-2 py-2.5 font-medium">形式</th>
+            <th className="px-4 py-2.5 font-medium">ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          {drafts.map((draft) => (
+            <HistoryRow
+              draft={draft}
+              handle={handle}
+              highlighted={draft.id === selectedDraftId}
+              key={draft.id}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function HistoryCard({
+function HistoryRow({
   draft,
   handle,
   highlighted,
@@ -61,40 +78,79 @@ function HistoryCard({
   handle: string | null;
   highlighted: boolean;
 }) {
+  const posted = draft.tweet_ids.length;
+  const total = draft.thread.length;
+  // 一部だけ投稿できた場合はロールバック済み（要件06）。成功と区別して黄色で示す。
+  const rolledBack = posted > 0 && posted < total;
+  const firstTweetId = draft.tweet_ids[0];
+
   return (
-    <li
-      className={`scroll-mt-24 rounded-2xl border bg-card p-5 shadow-sm ${
-        highlighted ? "ring-2 ring-ring" : ""
+    <tr
+      className={`border-b border-hairline last:border-0 align-top ${
+        highlighted ? "bg-brand-subtle/40" : ""
       }`}
       id={`draft-${draft.id}`}
     >
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
-        {draft.posted_mode ? (
-          <span className="rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {MODE_LABEL[draft.posted_mode] ?? draft.posted_mode}
-          </span>
-        ) : null}
-        <span className="text-xs text-muted-foreground">{timeLabel(draft.posted_at)}</span>
-      </div>
-
-      <ol className="mt-3 space-y-2">
-        {draft.thread.map((post, index) => (
-          <li className="rounded-lg border bg-background p-3" key={post.local_id}>
-            <p className="text-sm whitespace-pre-wrap">{post.text}</p>
-            {draft.tweet_ids[index] ? (
+      <td className="px-4 py-3 whitespace-nowrap text-ink-2 tabular-nums">
+        {timeLabel(draft.posted_at)}
+      </td>
+      <td className="px-2 py-3">
+        <Badge>{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</Badge>
+      </td>
+      <td className="px-2 py-3 whitespace-nowrap text-ink-2">
+        {draft.posted_mode ? (MODE_LABEL[draft.posted_mode] ?? draft.posted_mode) : "—"}
+      </td>
+      <td className="max-w-[26rem] px-2 py-3">
+        <details>
+          <summary className="cursor-pointer truncate text-ink">
+            {draft.thread[0]?.text ?? ""}
+          </summary>
+          <ol className="mt-2 space-y-2">
+            {draft.thread.map((post, index) => (
+              <li className="rounded-card border border-hairline p-2.5" key={post.local_id}>
+                <p className="whitespace-pre-wrap text-ink-2">{post.text}</p>
+                {draft.tweet_ids[index] ? (
+                  <a
+                    className="mt-1.5 inline-block text-[11.5px] text-brand underline-offset-2 hover:underline"
+                    href={tweetUrl(handle, draft.tweet_ids[index])}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Xで見る（ポスト{index + 1}）
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </details>
+      </td>
+      <td className="px-2 py-3 whitespace-nowrap text-ink-2">
+        {total > 1 ? `スレッド(${total})` : "単発"}
+      </td>
+      <td className="px-4 py-3">
+        {rolledBack ? (
+          <>
+            <Badge tone="warn">ロールバック済み</Badge>
+            <p className="mt-1 text-[11px] leading-4 text-warn-fg">
+              {posted + 1}/{total}ポスト目の送信に失敗 — 投稿済み{posted}件をロールバック削除（下書きは保持）
+            </p>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-2">
+            <Badge tone="success">成功</Badge>
+            {firstTweetId ? (
               <a
-                className="mt-1.5 inline-block text-xs text-primary underline"
-                href={tweetUrl(handle, draft.tweet_ids[index])}
+                className="text-[11.5px] text-brand underline-offset-2 hover:underline"
+                href={tweetUrl(handle, firstTweetId)}
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                Xで見る（ポスト{index + 1}）
+                Xで表示
               </a>
             ) : null}
-          </li>
-        ))}
-      </ol>
-    </li>
+          </span>
+        )}
+      </td>
+    </tr>
   );
 }
