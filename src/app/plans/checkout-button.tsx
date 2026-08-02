@@ -40,7 +40,7 @@ export function CheckoutButton({
         disabled={pending}
         onClick={handleCheckout}
         type="button"
-        variant={plan === "premium" ? "default" : "outline"}
+        variant="brand"
       >
         {pending ? "決済画面を開いています…" : "7日間無料で利用"}
       </Button>
