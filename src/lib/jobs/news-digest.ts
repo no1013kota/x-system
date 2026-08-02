@@ -122,13 +122,20 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
       total_count: row.total_count,
       news_item_ids: row.item_ids,
     };
+    // **`values` ではなく `select ... from profiles` にする**（T-M7-54）。
+    // 対象を選んでから挿入するまでの間にその利用者が退会すると、`values` では外部キー違反で
+    // 例外になり、**まだ配信していない他の利用者の分まで巻き添えで止まる**。
+    // 消えていれば0行になるだけ、という形にして1人の退会が全体を壊さないようにする
+    // （日次サマリで同じ修正を入れた `ops/daily-summary.ts` と同じ考え方）。
     const { rows } = await deps.db.query<{ id: string }>(
       `insert into notifications
          (user_id, type, dedupe_key, title, body, link, payload,
           in_app_enabled, email_status, email_available_at)
-       values ($1, 'news', $2, $3, $4, $5, $6::jsonb, $7,
-               case when $8 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-               case when $8 then now() else null end)
+       select p.id, 'news', $2, $3, $4, $5, $6::jsonb, $7,
+              case when $8 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
+              case when $8 then now() else null end
+         from profiles p
+        where p.id = $1
        on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
        returning id`,
       [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app, row.email],

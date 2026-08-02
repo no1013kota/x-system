@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { uniqueTestHourWindow } from "../db/test-window";
+
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -74,10 +76,9 @@ describe("fanOutNewsDigest (db)", () => {
   }
 
   it("fans out digests only to eligible, matching users and is idempotent per window", async () => {
-    // 共有ローカルDBの並列実行で他テスト/前回残渣の news_items と窓が衝突しないよう、実行ごとに
-    // 一意な（かつ他テストが使わない過去の）hour-aligned 窓を使う。matchedUsers はこの窓に本テストの
-    // news_items しか存在しないため決定的になる。
-    const windowStart = new Date(Date.UTC(2000, 0, 1 + Math.floor(Math.random() * 9000), 4, 0, 0));
+    // 共有ローカルDBには実データのニュースがあり、遠い過去は cleanup に消される。**未来の窓**なら
+    // どちらも避けられ、この窓には本テストの行しか存在しない（T-M7-54）。
+    const windowStart = uniqueTestHourWindow();
     const tag = randomUUID().slice(0, 8);
 
     const seed = await withTransaction(async (c) => {
@@ -185,6 +186,55 @@ describe("fanOutNewsDigest (db)", () => {
       await withTransaction((c) =>
         c.query(`delete from news_items where title like $1`, [`%-${tag}`]),
       );
+    }
+  });
+
+  it("配信の途中で利用者が退会しても、他の利用者への配信は止まらない（T-M7-54）", async () => {
+    // 対象を選んでから挿入するまでの間に退会されると、`values` 版では外部キー違反で例外になり、
+    // **まだ配信していない利用者の分まで巻き添えで止まっていた**。並列テストで実際に再現した。
+    const windowStart = uniqueTestHourWindow();
+    const tag = randomUUID().slice(0, 8);
+
+    const seed = await withTransaction(async (c) => {
+      const gone = await makeUser(c, {
+        status: "active",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: true,
+        newsEmail: false,
+      });
+      const alive = await makeUser(c, {
+        status: "active",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: true,
+        newsEmail: false,
+      });
+      await c.query(
+        `insert into news_items (category, title, summary, source_url, impact, fetched_at)
+         values ('ai', $1, 's', $2, 'high', $3::timestamptz + interval '30 minutes')`,
+        [`ai-high-${tag}`, `https://ex.com/${randomUUID()}`, windowStart.toISOString()],
+      );
+      return { gone, alive };
+    });
+
+    // 対象の抽出後・挿入前に片方が消える状況を、抽出前の削除で等価に再現する
+    // （挿入時点で user_id が存在しない、という同じ条件になる）。
+    await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [seed.gone]));
+
+    try {
+      const res = await fanOutNewsDigest({ db: pooledDb, windowStart });
+      expect(res.notified).toBeGreaterThanOrEqual(1);
+      const alive = await withTransaction((c) =>
+        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+      );
+      expect(alive.rows, "残っている利用者へは届く").toHaveLength(1);
+    } finally {
+      await withTransaction(async (c) => {
+        await c.query(`delete from notifications where user_id = $1`, [seed.alive]);
+        await c.query(`delete from auth.users where id = $1`, [seed.alive]);
+        await c.query(`delete from news_items where title like $1`, [`%-${tag}`]);
+      });
     }
   });
 });
