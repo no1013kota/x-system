@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { refreshSuggestionsAction } from "@/app/actions/suggestions";
+import { useToast } from "@/components/ui/toast";
 import type { SuggestionDisplay } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
 
@@ -72,7 +73,7 @@ export function SuggestionsPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [note, setNote] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const toast = useToast();
   const [polls, setPolls] = useState(0);
 
   // 生成中は完了まで自動で取り直す（利用者に手動再読み込みを強いない）。上限で自動停止し、
@@ -91,11 +92,16 @@ export function SuggestionsPanel({
     startTransition(async () => {
       const res = await refreshSuggestionsAction({ request_key: uuid() });
       if (res.status === "success") {
-        setNote({ kind: "info", text: "改善提案を生成中です。完了すると自動で表示に反映されます。" });
+        // 進行中であること自体は見出し横の「生成中…」が出し続ける（トーストは5秒で消える）。
+        toast.show({
+          tone: "success",
+          title: "改善提案の生成を始めました",
+          description: "完了すると自動で表示に反映されます。",
+        });
         setPolls(0);
         router.refresh();
       } else {
-        setNote({ kind: "error", text: rejectionMessage(res) });
+        toast.show({ tone: "error", title: "更新できませんでした", description: rejectionMessage(res) });
       }
     });
   }
@@ -143,16 +149,6 @@ export function SuggestionsPanel({
       <p className="mt-2 text-xs text-muted-foreground">
         提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（md・premiumプラン）でご自身で反映してください。
       </p>
-
-      {note ? (
-        <p
-          className={`mt-3 rounded-lg border px-4 py-2 text-sm ${
-            note.kind === "error" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-300 bg-sky-50 text-sky-950"
-          }`}
-        >
-          {note.text}
-        </p>
-      ) : null}
 
       {suggestions.length === 0 ? (
         <div className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
