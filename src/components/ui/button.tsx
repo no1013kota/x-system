@@ -18,6 +18,17 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // --- 新デザイン（T-M8-06）。既存の種別は変えずに追加する（未対象画面へ影響させない） ---
+        /** 主操作。キー色の塗り。 */
+        brand: "bg-brand text-white hover:bg-brand-hover",
+        /** 副操作。淡いキー色。ニュースの「すぐに投稿作成」など。 */
+        subtle: "bg-brand-subtle text-brand hover:bg-brand-subtle-hover",
+        /**
+         * **AI生成の瞬間だけ**に使うグラデーション（生成ボタン・投稿実行）。
+         * デザイン §カラーの指定。多用すると合図としての意味が失われるので広げない。
+         */
+        gradient:
+          "text-white [background-image:var(--brand-gradient)] hover:opacity-90 active:opacity-80",
       },
       size: {
         default:

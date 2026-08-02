@@ -2,71 +2,78 @@ import Link from "next/link";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
+import { Badge } from "@/components/ui/badge";
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DraftView } from "@/lib/drafts";
 
 /**
  * SC-05 ホームの確認待ち下書きキュー（要件06 §1, T-M3-26）。未投稿の下書き（status=draft・警告付き含む）
  * を新しい順で一覧し、各行から SC-07 の該当下書きへ deep-link する。0件は空状態＋「今すぐ作成」導線。
  * 表示専用のため server component（クライアント JS 不要）。
+ *
+ * 見た目は新デザイン（T-M8-06）。器は `components/ui/card` を使い、余白・角丸を直書きしない。
  */
 
 export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
   if (drafts.length === 0) {
     return (
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">確認待ちの下書き</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          確認待ちの下書きはありません。新しい投稿を作成しましょう。
-        </p>
-        <Link
-          className="mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
-          href="/app/posts?tab=create"
-        >
-          今すぐ作成
-        </Link>
-      </section>
+      <Card>
+        <CardBody>
+          <CardTitle>確認待ちの下書き</CardTitle>
+          <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">
+            確認待ちの下書きはありません。新しい投稿を作成しましょう。
+          </p>
+          <Link
+            className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            href="/app/posts?tab=create"
+          >
+            今すぐ作成
+          </Link>
+        </CardBody>
+      </Card>
     );
   }
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">確認待ちの下書き（{drafts.length}）</h2>
-        <Link className="text-sm text-primary underline" href="/app/posts?tab=drafts">
+    <Card>
+      <CardHeader>
+        <CardTitle>確認待ちの下書き（{drafts.length}）</CardTitle>
+        <Link
+          className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+          href="/app/posts?tab=drafts"
+        >
           すべて見る
         </Link>
-      </div>
-      <ul className="mt-3 space-y-2">
-        {drafts.map((draft) => {
-          const hasWarnings =
-            draft.thread.some((p) => p.warnings.length > 0) ||
-            draft.images.some((img) => img.status === "failed");
-          return (
-            <li key={draft.id}>
-              <Link
-                className="block rounded-lg border bg-background p-3 transition-colors hover:bg-muted/50"
-                href={`/app/posts?tab=drafts&draftId=${draft.id}`}
-              >
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium">
-                    {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
-                  </span>
-                  {hasWarnings ? (
-                    <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
-                      要確認
+      </CardHeader>
+      <CardBody className="pt-0">
+        <ul className="space-y-2">
+          {drafts.map((draft) => {
+            const hasWarnings =
+              draft.thread.some((p) => p.warnings.length > 0) ||
+              draft.images.some((img) => img.status === "failed");
+            return (
+              <li key={draft.id}>
+                <Link
+                  className="block rounded-card border border-hairline p-3 transition-colors duration-150 hover:bg-black/[0.02]"
+                  href={`/app/posts?tab=drafts&draftId=${draft.id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge tone="brand">
+                      {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
+                    </Badge>
+                    {hasWarnings ? <Badge tone="warn">要確認</Badge> : null}
+                    <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                      {formatJst(draft.updated_at)}
                     </span>
-                  ) : null}
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {formatJst(draft.updated_at)}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {draft.thread[0]?.text ?? ""}
-                </p>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-5 text-ink-2">
+                    {draft.thread[0]?.text ?? ""}
+                  </p>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </CardBody>
+    </Card>
   );
 }
