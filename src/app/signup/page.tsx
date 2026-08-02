@@ -13,14 +13,14 @@ export const metadata: Metadata = {
 export default function SignUpPage() {
   return (
     <div className="flex min-h-screen flex-col bg-muted/40">
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md space-y-7 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+      <main className="bg-page flex flex-1 items-center justify-center px-4 py-12">
+        <div className="w-full max-w-[400px] space-y-6 rounded-card border border-hairline bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
           <header className="space-y-2 text-center">
             <Link className="text-sm font-semibold tracking-wide" href="/">
               {APP_NAME}
             </Link>
-            <h1 className="text-3xl font-bold tracking-tight">会員登録</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-[22px] font-bold tracking-tight text-ink">会員登録</h1>
+            <p className="text-[12.5px] leading-5 text-ink-2">
               登録後、確認メールからメールアドレスを認証してください。
             </p>
           </header>
