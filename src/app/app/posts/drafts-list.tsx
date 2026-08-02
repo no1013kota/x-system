@@ -17,6 +17,7 @@ import {
   regenerateImageAction,
 } from "@/app/actions/generation-jobs";
 import { EmptyNotice } from "@/components/app-shell/page-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
@@ -58,9 +59,7 @@ function warningSummary(thread: { warnings: string[] }[]): string[] {
 
 function WarningBadge({ code }: { code: string }) {
   return (
-    <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
-      {WARNING_LABEL[code] ?? code}
-    </span>
+    <Badge tone="warn">{WARNING_LABEL[code] ?? code}</Badge>
   );
 }
 
@@ -224,14 +223,10 @@ function DraftCard({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
           {draft.status === "failed" ? (
-            <span className="rounded-full border border-danger-fg/25 bg-danger-bg px-2 py-0.5 text-xs text-danger-fg">
-              失敗
-            </span>
+            <Badge tone="danger">失敗</Badge>
           ) : null}
           {hasWarnings ? (
-            <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
-              警告あり（自動投稿は停止します）
-            </span>
+            <Badge tone="warn">警告あり（自動投稿は停止します）</Badge>
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
           <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
