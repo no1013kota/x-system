@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..700,0..1,0&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f6f6f7;-webkit-font-smoothing:antialiased}
+a{color:#7d1f75}a:hover{color:#5d1757}
+.ms{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;line-height:1;display:inline-block;letter-spacing:normal;white-space:nowrap;direction:ltr;font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;user-select:none}
+.msf{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:-420px 0}100%{background-position:420px 0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+input,textarea{font-family:'Noto Sans JP',sans-serif;box-sizing:border-box}
+input::placeholder,textarea::placeholder{color:rgba(0,0,0,.3)}
+</style>
+</helmet>
+<div style="display:flex;min-width:1150px;min-height:100vh;font-family:'Noto Sans JP',system-ui,sans-serif;color:rgba(0,0,0,.9);font-size:14px;line-height:1.6">
+  <aside style="width:234px;flex:none;background:#fff;border-right:1px solid rgba(0,0,0,.08);position:sticky;top:0;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;padding:18px 12px 14px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 8px 16px">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#ff0000 0%,#7d1f75 55%,#00afff 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-family:Inter,sans-serif;font-weight:800;font-size:14px;flex:none">S</div>
+      <div style="font-family:Inter,sans-serif;font-weight:700;font-size:15.5px;letter-spacing:.01em">Space AI</div>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:2px">
+      <sc-for list="{{ nav }}" as="it" hint-placeholder-count="7">
+        <div onClick="{{ it.go }}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{ it.bg }};color:{{ it.co }};font-weight:{{ it.fw }};font-size:13.5px;transition:background 150ms ease-out" style-hover="background:{{ it.hbg }}">
+          <span class="ms" style="font-size:20px;color:{{ it.ico }}">{{ it.icon }}</span>
+          <span style="flex:1">{{ it.label }}</span>
+          <span style="display:{{ it.bd }};background:#7d1f75;color:#fff;border-radius:9999px;font-size:10.5px;font-weight:700;padding:1px 7px;font-family:Inter,sans-serif;line-height:1.6">{{ it.badge }}</span>
+          <span class="ms" style="display:{{ it.lockD }};font-size:15px;color:rgba(0,0,0,.32)">lock</span>
+        </div>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+      <div onClick="{{ goPricing }}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;color:rgba(0,0,0,.72);font-size:13.5px;font-weight:500" style-hover="background:rgba(0,0,0,.045)">
+        <span class="ms" style="font-size:20px;color:rgba(0,0,0,.6)">workspace_premium</span><span>料金プラン</span>
+      </div>
+      <div style="border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:7px;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:rgba(0,0,0,.5)">現在のプラン</span>
+          <span onClick="{{ goPricing }}" style="font-size:11px;font-weight:700;color:#7d1f75;cursor:pointer">変更</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span style="font-weight:700;font-size:13.5px">{{ planName }}</span>
+          <span style="font-family:Inter,sans-serif;font-weight:700;font-size:12px;color:rgba(0,0,0,.55)">{{ planPrice }}<span style="font-weight:400;font-family:'Noto Sans JP'">/月</span></span>
+        </div>
+        <sc-if value="{{ isPremium }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;font-size:10.5px;color:rgba(0,0,0,.5)"><span>文章生成</span><span style="font-family:Inter,sans-serif">41 / 100</span></div>
+            <div style="height:4px;border-radius:9999px;background:rgba(0,0,0,.07)"><div style="height:4px;width:41%;border-radius:9999px;background:#7d1f75"></div></div>
+          </div>
+        </sc-if>
+        <div style="display:{{ trialD }};align-items:center;gap:5px;background:#f4e8f3;color:#7d1f75;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700">
+          <span class="ms" style="font-size:14px">hourglass_top</span>無料トライアル 残り{{ trialDays }}日
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:54px;flex:none;background:#fff;border-bottom:1px solid rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 24px">
+      <div style="font-size:12.5px;color:rgba(0,0,0,.5)">{{ crumb }}</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="position:relative;width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(0,0,0,.05)">
+          <span class="ms" style="font-size:21px;color:rgba(0,0,0,.65)">notifications</span>
+          <span style="position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:9999px;background:#ff4750;border:1.5px solid #fff"></span>
+        </div>
+        <div style="width:1px;height:22px;background:rgba(0,0,0,.1)"></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;cursor:pointer" style-hover="background:rgba(0,0,0,.05)">
+          <div style="width:26px;height:26px;border-radius:9999px;background:linear-gradient(135deg,#7d1f75,#00afff);display:flex;align-items:center;justify-content:center;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:12px">K</div>
+          <div style="font-size:13px;font-weight:600;font-family:Inter,sans-serif">@kenji_consult</div>
+          <span class="ms" style="font-size:18px;color:rgba(0,0,0,.45)">expand_more</span>
+        </div>
+      </div>
+    </header>
+    <main style="flex:1;padding:26px 32px 56px;box-sizing:border-box;width:100%;max-width:1180px;margin:0 auto">
+
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="ホーム" style="display:flex;flex-direction:column;gap:18px">
+        <div>
+          <h1 style="margin:0;font-size:20px;font-weight:700;line-height:1.4">おはようございます、上田さん</h1>
+          <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">2026年8月1日(土) · 次回の自動実行は 今日 18:00 に予定されています</p>
+        </div>
+        <div style="display:{{ trialD }};align-items:center;gap:10px;background:#f4e8f3;border-radius:8px;padding:11px 16px">
+          <span class="ms" style="font-size:19px;color:#7d1f75">hourglass_top</span>
+          <span style="flex:1;font-size:13px;color:rgba(0,0,0,.75)">無料トライアル中（残り{{ trialDays }}日）— 8月8日に {{ planName }} {{ planPrice }}/月 の課金が開始されます。期間中の解約で課金は発生しません。</span>
+          <span onClick="{{ goPricing }}" style="font-size:12.5px;font-weight:700;color:#7d1f75;cursor:pointer;flex:none">プランを管理</span>
+        </div>
+        <sc-if value="{{ showGuide }}" hint-placeholder-val="{{ true }}">
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:20px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+            <h2 style="margin:0;font-size:15px;font-weight:700">初期設定ガイド</h2>
+            <span style="font-family:Inter,sans-serif;font-weight:700;font-size:12.5px;color:#7d1f75">{{ guideCount }} 完了</span>
+            <div style="flex:1;max-width:220px;height:6px;border-radius:9999px;background:rgba(0,0,0,.07)"><div style="height:6px;width:{{ guidePct }}%;border-radius:9999px;background:linear-gradient(90deg,#7d1f75,#00afff)"></div></div>
+          </div>
+          <p style="margin:0 0 10px;font-size:12px;color:rgba(0,0,0,.5)">設定が不足したまま生成・投稿を実行した場合は、不足項目をエラーでご案内します。</p>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ guide }}" as="g" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 4px;border-top:1px solid rgba(0,0,0,.06)">
+                <span class="ms {{ g.cls }}" style="font-size:20px;color:{{ g.ic }}">{{ g.icon }}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px;font-weight:{{ g.fw }};color:{{ g.tco }}">{{ g.t }}</div>
+                  <div style="font-size:11.5px;color:rgba(0,0,0,.45)">{{ g.d }}</div>
+                </div>
+                <button onClick="{{ goSettings }}" style="display:{{ g.btnD }};border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:5px 14px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75)" style-hover="background:rgba(0,0,0,.04)">設定する</button>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:14px 16px">
+              <div style="font-size:11.5px;color:rgba(0,0,0,.5);margin-bottom:6px">{{ k.l }}</div>
+              <div style="display:flex;align-items:baseline;gap:3px">
+                <span style="font-family:Inter,sans-serif;font-weight:700;font-size:23px;line-height:1.1;font-variant-numeric:tabular-nums">{{ k.v }}</span>
+                <span style="font-size:12px;font-weight:700;color:rgba(0,0,0,.6)">{{ k.u }}</span>
+              </div>
+              <div style="font-size:11.5px;margin-top:5px;color:{{ k.subCo }};font-weight:{{ k.subFw }}">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:14px;align-items:start">
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <h2 style="margin:0;font-size:14.5px;font-weight:700">最新ニュース</h2>
+              <span onClick="{{ goNews }}" style="font-size:12px;font-weight:700;color:#7d1f75;cursor:pointer;display:flex;align-items:center;gap:2px">すべて見る<span class="ms" style="font-size:15px">chevron_right</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ digest }}" as="n" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-top:1px solid rgba(0,0,0,.06)">
+                  <span style="flex:none;background:{{ n.impBg }};color:{{ n.impCo }};border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 8px">{{ n.imp }}</span>
+                  <span style="flex:1;min-width:0;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.title }}</span>
+                  <span style="flex:none;font-family:Inter,sans-serif;font-size:11px;color:rgba(0,0,0,.4)">{{ n.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:rgba(0,0,0,.45);display:flex;align-items:center;gap:5px"><span class="ms" style="font-size:14px">sync</span>9:00〜20:00・1時間ごとに自動取得 · 最終取得 12:00</div>
+          </section>
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <h2 style="margin:0;font-size:14.5px;font-weight:700">未確認の下書き</h2>
+              <span onClick="{{ goDrafts }}" style="font-size:12px;font-weight:700;color:#7d1f75;cursor:pointer;display:flex;align-items:center;gap:2px">下書き管理<span class="ms" style="font-size:15px">chevron_right</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ homeDrafts }}" as="d" hint-placeholder-count="2">
+                <div style="padding:10px 2px;border-top:1px solid rgba(0,0,0,.06)">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+                    <span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px;font-family:Inter,sans-serif;white-space:nowrap;flex:none">{{ d.pat }}</span>
+                    <span style="background:{{ d.viaBg }};color:{{ d.viaCo }};border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px;white-space:nowrap;flex:none">{{ d.via }}</span>
+                    <span style="font-size:11px;color:rgba(0,0,0,.4)">{{ d.created }}</span>
+                  </div>
+                  <div style="font-size:12.5px;color:rgba(0,0,0,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.text }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.06);font-size:11.5px;color:rgba(0,0,0,.5);display:flex;align-items:center;gap:6px">
+              <span class="ms" style="font-size:15px;color:#7d1f75">schedule</span>今日の予定：18:00 ノウハウ(P-3) · 下書きまで
+            </div>
+          </section>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isNews }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="最新ニュース" style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+          <div>
+            <h1 style="margin:0;font-size:20px;font-weight:700">最新ニュース</h1>
+            <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">運営側で9:00〜20:00・1時間ごとに自動取得 · 最終取得 12:00 · 過去7日分を表示</p>
+          </div>
+          <button onClick="{{ goSettings }}" style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75);display:flex;align-items:center;gap:6px" style-hover="background:rgba(0,0,0,.04)"><span class="ms" style="font-size:17px">tune</span>通知・表示設定</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="7">
+            <span style="padding:6px 14px;border-radius:9999px;font-size:12.5px;font-weight:{{ tb.fw }};background:{{ tb.bg }};color:{{ tb.co }};border:1px solid {{ tb.bc }};cursor:pointer">{{ tb.t }}</span>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px">
+          <sc-for list="{{ news }}" as="n" hint-placeholder-count="6">
+            <article style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="background:{{ n.catBg }};color:{{ n.catCo }};border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px">{{ n.cat }}</span>
+                <span style="background:{{ n.impBg }};color:{{ n.impCo }};border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px">インパクト {{ n.imp }}</span>
+                <span style="margin-left:auto;font-family:Inter,sans-serif;font-size:11px;color:rgba(0,0,0,.4)">{{ n.time }}</span>
+              </div>
+              <h3 style="margin:0;font-size:14px;font-weight:700;line-height:1.55">{{ n.title }}</h3>
+              <p style="margin:0;font-size:12.5px;color:rgba(0,0,0,.6);line-height:1.65">{{ n.sum }}</p>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:6px">
+                <span class="ms" style="font-size:15px;color:rgba(0,0,0,.4)">link</span>
+                <span style="font-family:Inter,sans-serif;font-size:11.5px;color:rgba(0,0,0,.5)">{{ n.src }}</span>
+                <span class="ms" style="font-size:13px;color:rgba(0,0,0,.35)">open_in_new</span>
+                <button onClick="{{ goComposeNew }}" style="margin-left:auto;border:none;background:#f4e8f3;color:#7d1f75;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;display:flex;align-items:center;gap:5px" style-hover="background:#ecdcea"><span class="ms" style="font-size:16px">bolt</span>すぐに投稿作成</button>
+              </div>
+            </article>
+          </sc-for>
+        </div>
+        <p style="margin:0;font-size:11.5px;color:rgba(0,0,0,.45)">ニュースは運営側APIで取得され、全ユーザーに共通配信されます。投稿の生成はご自身のプランのキーで実行されます。</p>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isCompose }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="投稿作成" style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+          <div>
+            <h1 style="margin:0;font-size:20px;font-weight:700">投稿作成</h1>
+            <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">パターンを選ぶだけで、ベースmdに沿った「あなたらしい」投稿を作成します</p>
+          </div>
+          <div style="display:flex;background:rgba(0,0,0,.055);border-radius:9999px;padding:3px">
+            <sc-for list="{{ pills }}" as="pl" hint-placeholder-count="3">
+              <span onClick="{{ pl.go }}" style="padding:5px 14px;border-radius:9999px;font-size:12px;font-weight:{{ pl.fw }};color:{{ pl.co }};background:{{ pl.bg }};box-shadow:{{ pl.sh }};cursor:pointer;white-space:nowrap">{{ pl.t }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ cs1 }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <sc-for list="{{ patterns }}" as="p" hint-placeholder-count="6">
+              <div style="position:relative;background:{{ p.bg }};border:{{ p.bd }};border-radius:8px;padding:14px 16px;cursor:{{ p.cur }};opacity:{{ p.op }};display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="ms" style="font-size:20px;color:{{ p.ico }}">{{ p.icon }}</span>
+                  <span style="font-family:Inter,sans-serif;font-weight:700;font-size:11px;background:rgba(0,0,0,.06);border-radius:6px;padding:1px 7px;color:rgba(0,0,0,.6)">{{ p.chip }}</span>
+                  <span style="display:{{ p.stD }};background:rgba(0,0,0,.08);color:rgba(0,0,0,.55);border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px">初期提供停止</span>
+                  <span class="ms msf" style="display:{{ p.ckD }};margin-left:auto;font-size:19px;color:#7d1f75">check_circle</span>
+                </div>
+                <div style="font-size:13.5px;font-weight:700">{{ p.name }}</div>
+                <div style="font-size:11.5px;color:rgba(0,0,0,.5);line-height:1.55">{{ p.desc }}</div>
+                <div style="font-size:10.5px;font-weight:700;color:rgba(0,0,0,.45);display:flex;align-items:center;gap:4px"><span class="ms" style="font-size:13px">output</span>{{ p.out }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <h2 style="margin:0;font-size:14.5px;font-weight:700">ニュース解説（P-1）の入力</h2>
+              <span style="font-size:11px;color:rgba(0,0,0,.45)">すべて任意 — 未入力ならベースmd＋発信テーマから自動でリサーチします</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <label style="font-size:12px;font-weight:700;color:rgba(0,0,0,.65)">参考URL <span style="font-weight:400;color:rgba(0,0,0,.4)">任意</span></label>
+              <input defaultValue="https://about.x.com/blog/thread-ranking-update" style="border:1px solid rgba(0,0,0,.14);border-radius:8px;padding:9px 12px;font-size:13px;font-family:Inter,sans-serif;color:rgba(0,0,0,.75);outline:none;width:100%">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <label style="font-size:12px;font-weight:700;color:rgba(0,0,0,.65)">追加指示 <span style="font-weight:400;color:rgba(0,0,0,.4)">任意</span></label>
+              <textarea rows="2" placeholder="例：個人事業主への影響を中心に、今日からできる対応を1つ入れてください" style="border:1px solid rgba(0,0,0,.14);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;resize:vertical;width:100%"></textarea>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 14px;background:#fafafa;border-radius:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:36px;height:20px;border-radius:9999px;background:#7d1f75;position:relative;flex:none"><div style="position:absolute;top:2px;left:18px;width:16px;height:16px;border-radius:9999px;background:#fff"></div></div>
+                <span style="font-size:12.5px;font-weight:700">画像を生成する</span>
+                <span style="font-size:11px;color:rgba(0,0,0,.45)">1ポスト目に添付</span>
+              </div>
+              <div style="display:flex;background:rgba(0,0,0,.06);border-radius:8px;padding:2px">
+                <span style="padding:4px 12px;border-radius:6px;font-size:11.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1)">OpenAI</span>
+                <span style="padding:4px 12px;border-radius:6px;font-size:11.5px;color:rgba(0,0,0,.55)">Gemini</span>
+              </div>
+              <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11.5px;color:rgba(0,0,0,.5)"><span class="ms" style="font-size:15px;color:#7d1f75">auto_awesome</span>ベースmd・NG設定を自動適用</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;border-top:1px solid rgba(0,0,0,.06);padding-top:14px">
+              <span style="font-size:11.5px;color:rgba(0,0,0,.5)">{{ keyNote }}</span>
+              <button onClick="{{ st2 }}" style="margin-left:auto;border:none;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);color:#fff;border-radius:8px;padding:11px 26px;font-size:13.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 2px 8px rgba(125,31,117,.25)" style-hover="opacity:.9"><span class="ms" style="font-size:18px">auto_awesome</span>スレッドを生成する</button>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ cs2 }}" hint-placeholder-val="{{ false }}">
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;overflow:hidden">
+          <div style="height:3px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%)"></div>
+          <div style="padding:26px 28px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="width:26px;height:26px;border-radius:9999px;border:3px solid rgba(125,31,117,.15);border-top-color:#7d1f75;animation:spin .8s linear infinite;flex:none"></div>
+              <div>
+                <div style="font-size:15px;font-weight:700">スレッドを生成しています…</div>
+                <div style="font-size:12px;color:rgba(0,0,0,.5)">ニュース解説（P-1） · @kenji_consult · {{ genEngine }}</div>
+              </div>
+              <button onClick="{{ st1 }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.65)" style-hover="background:rgba(0,0,0,.04)">中断する</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;max-width:520px">
+              <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:rgba(0,0,0,.65)"><span class="ms msf" style="font-size:18px;color:#4ea836">check_circle</span>ベースmd・発信テーマを読み込みました</div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:rgba(0,0,0,.65)"><span class="ms msf" style="font-size:18px;color:#4ea836">check_circle</span>Webリサーチが完了しました（4件を参照）</div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;color:#7d1f75"><span class="ms" style="font-size:18px;animation:pulse 1.2s ease-in-out infinite">progress_activity</span>スレッド構成と本文を作成しています…</div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:rgba(0,0,0,.4)"><span class="ms" style="font-size:18px">radio_button_unchecked</span>文字数・NGワードをチェック</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;border:1px solid rgba(0,0,0,.07);border-radius:8px;padding:16px;background:#fcfcfc">
+              <div style="height:13px;width:62%;border-radius:6px;background:linear-gradient(90deg,#efefef 25%,#e4e4e4 37%,#efefef 63%);background-size:840px 100%;animation:shimmer 1.4s linear infinite"></div>
+              <div style="height:13px;width:88%;border-radius:6px;background:linear-gradient(90deg,#efefef 25%,#e4e4e4 37%,#efefef 63%);background-size:840px 100%;animation:shimmer 1.4s linear infinite"></div>
+              <div style="height:13px;width:74%;border-radius:6px;background:linear-gradient(90deg,#efefef 25%,#e4e4e4 37%,#efefef 63%);background-size:840px 100%;animation:shimmer 1.4s linear infinite"></div>
+              <div style="height:96px;width:160px;border-radius:8px;background:linear-gradient(90deg,#efefef 25%,#e4e4e4 37%,#efefef 63%);background-size:840px 100%;animation:shimmer 1.4s linear infinite;margin-top:4px"></div>
+            </div>
+            <div style="font-size:11.5px;color:rgba(0,0,0,.45)">通常10〜30秒ほどかかります。完了すると通知でもお知らせします。</div>
+          </div>
+        </section>
+        </sc-if>
+
+        <sc-if value="{{ cs3 }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:10px 14px">
+              <span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;font-family:Inter,sans-serif;white-space:nowrap;flex:none">P-1</span>
+              <span style="font-size:12.5px;font-weight:700">ニュース解説</span>
+              <span style="font-size:11.5px;color:rgba(0,0,0,.45);display:flex;align-items:center;gap:4px"><span class="ms" style="font-size:14px">link</span>about.x.com</span>
+              <span style="margin-left:auto;font-size:11px;color:rgba(0,0,0,.45)">生成 12:04 · {{ genEngine }}</span>
+            </div>
+            <sc-for list="{{ tposts }}" as="p" hint-placeholder-count="4">
+              <article style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-family:Inter,sans-serif;font-weight:700;font-size:11px;background:rgba(0,0,0,.06);border-radius:6px;padding:2px 8px;color:rgba(0,0,0,.65)">{{ p.n }}</span>
+                  <span style="font-size:11px;font-weight:700;color:rgba(0,0,0,.45)">{{ p.tag }}</span>
+                  <div style="margin-left:auto;display:flex;align-items:center;gap:7px">
+                    <div style="width:56px;height:4px;border-radius:9999px;background:rgba(0,0,0,.08)"><div style="height:4px;width:{{ p.pct }}%;border-radius:9999px;background:#7d1f75"></div></div>
+                    <span style="font-family:Inter,sans-serif;font-size:11px;color:rgba(0,0,0,.5);font-variant-numeric:tabular-nums">{{ p.chars }}</span>
+                  </div>
+                </div>
+                <div style="font-size:13.5px;line-height:1.75;color:rgba(0,0,0,.85);white-space:pre-wrap">{{ p.text }}</div>
+                <div style="display:{{ p.imgD }};flex-direction:column;gap:8px">
+                  <div style="aspect-ratio:16/9;max-width:420px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:repeating-linear-gradient(45deg,#fafafa,#fafafa 10px,#f1f1f1 10px,#f1f1f1 20px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+                    <span class="ms" style="font-size:30px;color:rgba(0,0,0,.35)">image</span>
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:rgba(0,0,0,.45)">生成画像 1024×576 — OpenAI</span>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.7);display:flex;align-items:center;gap:5px" style-hover="background:rgba(0,0,0,.04)"><span class="ms" style="font-size:15px">refresh</span>画像を再生成</button>
+                    <button style="border:none;background:none;padding:5px 8px;font-size:11.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.45)">削除</button>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid rgba(0,0,0,.05);padding-top:8px">
+                  <span style="font-size:11.5px;font-weight:700;color:rgba(0,0,0,.55);cursor:pointer;display:flex;align-items:center;gap:4px" style-hover="color:#7d1f75"><span class="ms" style="font-size:14px">edit</span>編集</span>
+                  <span style="font-size:11.5px;font-weight:700;color:rgba(0,0,0,.55);cursor:pointer;display:flex;align-items:center;gap:4px" style-hover="color:#7d1f75"><span class="ms" style="font-size:14px">refresh</span>このポストのみ再生成</span>
+                </div>
+              </article>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;position:sticky;top:70px">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+              <h3 style="margin:0;font-size:13px;font-weight:700">投稿前チェック</h3>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:rgba(0,0,0,.7)"><span class="ms msf" style="font-size:17px;color:#4ea836">check_circle</span>文字数 — 全4ポストが140字以内です</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:rgba(0,0,0,.7)"><span class="ms msf" style="font-size:17px;color:#4ea836">check_circle</span>NGワード・NGトピック — 検出なし</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:rgba(0,0,0,.7)"><span class="ms msf" style="font-size:17px;color:#4ea836">check_circle</span>本日の投稿 6 / 50（安全上限）</div>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+              <h3 style="margin:0;font-size:13px;font-weight:700">追加指示で再生成</h3>
+              <textarea rows="3" placeholder="例：3ポスト目に具体的な事例を1つ追加してください" style="border:1px solid rgba(0,0,0,.14);border-radius:8px;padding:9px 12px;font-size:12.5px;outline:none;resize:vertical;width:100%"></textarea>
+              <button style="border:none;background:#f4e8f3;color:#7d1f75;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px" style-hover="background:#ecdcea"><span class="ms" style="font-size:16px">refresh</span>スレッド全体を再生成</button>
+              <span style="font-size:10.5px;color:rgba(0,0,0,.45)">{{ regenNote }}</span>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:9px">
+              <button style="border:none;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);color:#fff;border-radius:8px;padding:12px;font-size:13.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;box-shadow:0 2px 8px rgba(125,31,117,.25)" style-hover="opacity:.9">今すぐ投稿する</button>
+              <button onClick="{{ goDrafts }}" style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:11px;font-size:13px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75)" style-hover="background:rgba(0,0,0,.04)">下書きに保存</button>
+              <span style="font-size:11px;color:rgba(0,0,0,.5);text-align:center">@kenji_consult として4ポストを連続投稿します</span>
+            </section>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isDrafts }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="下書き・スケジュール" style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <h1 style="margin:0;font-size:20px;font-weight:700">下書き・スケジュール</h1>
+          <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">スロット単位で「どのパターンを・いつ・どこまで自動で」実行するかを設定します</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;background:#f0f9ee;border-radius:8px;padding:11px 16px">
+          <span class="ms msf" style="font-size:19px;color:#4ea836">verified</span>
+          <span style="flex:1;font-size:12.5px;color:rgba(0,0,0,.72)">自動投稿に同意済み（2026/07/12）。同意はいつでも撤回でき、停止は即時反映されます。</span>
+          <span style="font-size:12px;font-weight:700;color:rgba(0,0,0,.55);cursor:pointer;text-decoration:underline">自動投稿を停止する</span>
+        </div>
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <h2 style="margin:0;font-size:14.5px;font-weight:700">自動実行スケジュール</h2>
+            <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75);display:flex;align-items:center;gap:5px" style-hover="background:rgba(0,0,0,.04)"><span class="ms" style="font-size:16px">add</span>スロットを追加</button>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ slots }}" as="s" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:16px;padding:13px 4px;border-top:1px solid rgba(0,0,0,.06);opacity:{{ s.op }}">
+                <span style="font-family:Inter,sans-serif;font-weight:700;font-size:18px;width:58px;font-variant-numeric:tabular-nums">{{ s.time }}</span>
+                <div style="display:flex;gap:4px;width:150px">
+                  <sc-for list="{{ s.days }}" as="dy" hint-placeholder-count="3">
+                    <span style="width:22px;height:22px;border-radius:6px;background:{{ dy.bg }};color:{{ dy.co }};font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ dy.t }}</span>
+                  </sc-for>
+                </div>
+                <span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;font-family:Inter,sans-serif">{{ s.pid }}</span>
+                <span style="font-size:12.5px;font-weight:700;width:110px">{{ s.pat }}</span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11.5px;color:rgba(0,0,0,.5);width:76px;white-space:nowrap;flex:none"><span class="ms" style="font-size:15px">{{ s.imgIcon }}</span>{{ s.img }}</span>
+                <span style="background:{{ s.modeBg }};color:{{ s.modeCo }};border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;white-space:nowrap;flex:none">{{ s.mode }}</span>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+                  <span class="ms" style="font-size:17px;color:rgba(0,0,0,.35);cursor:pointer" style-hover="color:rgba(0,0,0,.7)">edit</span>
+                  <div style="width:36px;height:20px;border-radius:9999px;background:{{ s.tbg }};position:relative;cursor:pointer;flex:none"><div style="position:absolute;top:2px;left:{{ s.tkn }};width:16px;height:16px;border-radius:9999px;background:#fff;transition:left 150ms ease-out"></div></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:8px 0 0;font-size:11.5px;color:rgba(0,0,0,.45)">実行時刻は 9:00〜22:00・30分刻みで設定できます。「下書きまで」は作成時に通知し、ご自身の確認後に投稿します。</p>
+        </section>
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="margin:0;font-size:14.5px;font-weight:700">下書き</h2>
+            <span style="font-family:Inter,sans-serif;font-weight:700;font-size:12px;color:#7d1f75">3件</span>
+            <span style="margin-left:auto;font-size:12px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer;display:flex;align-items:center;gap:3px" style-hover="color:#7d1f75"><span class="ms" style="font-size:15px">history</span>投稿履歴を見る</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ drafts }}" as="d" hint-placeholder-count="3">
+              <div style="display:flex;align-items:flex-start;gap:16px;padding:14px 4px;border-top:1px solid rgba(0,0,0,.06)">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+                    <span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px;font-family:Inter,sans-serif;white-space:nowrap;flex:none">{{ d.pat }}</span>
+                    <span style="background:{{ d.viaBg }};color:{{ d.viaCo }};border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px;white-space:nowrap;flex:none">{{ d.via }}</span>
+                    <span style="font-size:11px;color:rgba(0,0,0,.4)">{{ d.created }}</span>
+                    <span style="font-size:11px;color:rgba(0,0,0,.4)">· {{ d.meta }}</span>
+                  </div>
+                  <div style="font-size:13px;color:rgba(0,0,0,.8);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ d.text }}</div>
+                </div>
+                <div style="display:flex;gap:8px;flex:none;padding-top:2px">
+                  <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75)" style-hover="background:rgba(0,0,0,.04)">編集</button>
+                  <button style="border:none;background:#7d1f75;color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer" style-hover="background:#6a1a64">投稿する</button>
+                  <span class="ms" style="font-size:18px;color:rgba(0,0,0,.35);cursor:pointer;padding:6px 2px" style-hover="color:#ff4750">delete</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:8px 0 0;font-size:11.5px;color:rgba(0,0,0,.45)">本日の投稿 6 / 50（1アカウントあたりの安全上限）。投稿が完了した下書きは自動で履歴へ移動します。</p>
+        </section>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="分析・改善" style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+          <div>
+            <h1 style="margin:0;font-size:20px;font-weight:700">分析・改善</h1>
+            <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">実績は自動取得。改善提案は「提案を更新」で最新の分析を実行します（1日1回まで）</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11.5px;color:rgba(0,0,0,.45)">本日の更新 残り1回</span>
+            <button style="border:none;background:#7d1f75;color:#fff;border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:#6a1a64"><span class="ms" style="font-size:16px">refresh</span>提案を更新</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+          <sc-for list="{{ akpis }}" as="k" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:14px 16px">
+              <div style="font-size:11.5px;color:rgba(0,0,0,.5);margin-bottom:6px">{{ k.l }}</div>
+              <div style="display:flex;align-items:baseline;gap:3px">
+                <span style="font-family:Inter,sans-serif;font-weight:700;font-size:23px;line-height:1.1;font-variant-numeric:tabular-nums">{{ k.v }}</span>
+                <span style="font-size:12px;font-weight:700;color:rgba(0,0,0,.6)">{{ k.u }}</span>
+              </div>
+              <div style="font-size:11.5px;margin-top:5px;color:{{ k.subCo }};font-weight:700">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <h2 style="margin:0;font-size:14.5px;font-weight:700">フォロワー数推移</h2>
+            <span style="font-size:11.5px;font-weight:700;color:#3f8f2c;background:#f0f9ee;border-radius:6px;padding:1px 8px;font-family:Inter,sans-serif">+47 / 30日</span>
+            <div style="margin-left:auto;display:flex;background:rgba(0,0,0,.055);border-radius:9999px;padding:2px">
+              <span style="padding:3px 12px;border-radius:9999px;font-size:11px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08)">30日</span>
+              <span style="padding:3px 12px;border-radius:9999px;font-size:11px;color:rgba(0,0,0,.5)">90日</span>
+            </div>
+          </div>
+          <svg viewBox="0 0 680 150" style="width:100%;height:auto;display:block">
+            <line x1="8" y1="15" x2="672" y2="15" stroke="rgba(0,0,0,.05)" stroke-width="1"></line>
+            <line x1="8" y1="65" x2="672" y2="65" stroke="rgba(0,0,0,.05)" stroke-width="1"></line>
+            <line x1="8" y1="115" x2="672" y2="115" stroke="rgba(0,0,0,.05)" stroke-width="1"></line>
+            <path d="{{ areaPath }}" fill="#f4e8f3" opacity="0.7"></path>
+            <polyline points="{{ chartPoints }}" fill="none" stroke="#7d1f75" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            <circle cx="672" cy="15" r="4" fill="#7d1f75"></circle>
+            <text x="668" y="34" text-anchor="end" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="#7d1f75">1,284</text>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-family:Inter,sans-serif;font-size:10.5px;color:rgba(0,0,0,.4);padding:6px 2px 0">
+            <span>7/2</span><span>7/9</span><span>7/16</span><span>7/23</span><span>7/30</span><span>8/1</span>
+          </div>
+        </section>
+        <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px;align-items:start">
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;overflow:hidden">
+            <h2 style="margin:0 0 10px;font-size:14.5px;font-weight:700">投稿別実績</h2>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 76px 58px 46px 40px 50px;gap:8px;font-size:10.5px;font-weight:700;color:rgba(0,0,0,.45);padding:0 2px 8px;border-bottom:1px solid rgba(0,0,0,.08)">
+              <span>投稿</span><span>型</span><span>投稿日時</span><span style="text-align:right">インプ</span><span style="text-align:right">いいね</span><span style="text-align:right">RP</span><span style="text-align:right">プロフ</span>
+            </div>
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 76px 58px 46px 40px 50px;gap:8px;align-items:center;padding:10px 2px;border-bottom:1px solid rgba(0,0,0,.05);font-size:12px">
+                <div style="min-width:0">
+                  <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ r.t }}</div>
+                  <div style="font-size:10.5px;color:rgba(0,0,0,.4);white-space:nowrap">{{ r.th }}</div>
+                </div>
+                <span><span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 7px;font-family:Inter,sans-serif">{{ r.type }}</span></span>
+                <span style="font-family:Inter,sans-serif;font-size:11px;color:rgba(0,0,0,.5)">{{ r.d }}</span>
+                <span style="text-align:right;font-family:Inter,sans-serif;font-weight:700;font-variant-numeric:tabular-nums">{{ r.imp }}</span>
+                <span style="text-align:right;font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;color:rgba(0,0,0,.65)">{{ r.lk }}</span>
+                <span style="text-align:right;font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;color:rgba(0,0,0,.65)">{{ r.rp }}</span>
+                <span style="text-align:right;font-family:Inter,sans-serif;font-variant-numeric:tabular-nums;color:rgba(0,0,0,.65)">{{ r.pf }}</span>
+              </div>
+            </sc-for>
+            <p style="margin:10px 0 0;font-size:11px;color:rgba(0,0,0,.45)">スレッドは合算値を表示（行の展開でポスト別内訳）。取得できない指標は「—」と表示され、0とは区別されます。</p>
+          </section>
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <h2 style="margin:0;font-size:14.5px;font-weight:700">改善提案</h2>
+              <span style="font-size:11px;color:rgba(0,0,0,.45)">最終更新 今日 08:12</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ sugs }}" as="sg" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:5px;border:1px solid rgba(0,0,0,.07);border-radius:8px;padding:12px 14px">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span class="ms" style="font-size:17px;color:#7d1f75">lightbulb</span>
+                    <span style="font-size:13px;font-weight:700">{{ sg.t }}</span>
+                  </div>
+                  <p style="margin:0;font-size:12px;color:rgba(0,0,0,.65);line-height:1.65">{{ sg.d }}</p>
+                  <div style="background:#f7f7f7;border-radius:6px;padding:7px 10px;font-size:11px;color:rgba(0,0,0,.55)">根拠：{{ sg.e }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:12px 0 0;font-size:11px;color:rgba(0,0,0,.45)">提案は表示のみです。反映は発信テーマ・トンマナ設定の変更、またはベースmd編集（md／プレミアム）からご自身で行ってください。</p>
+          </section>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="設定" style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <h1 style="margin:0;font-size:20px;font-weight:700">設定</h1>
+          <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">設定・学習・ベースmd・下書き・分析は、Xアカウント（@kenji_consult）単位で保存されます</p>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">連携Xアカウント <span style="font-weight:400;font-size:11.5px;color:rgba(0,0,0,.45)">{{ acctNote }}</span></h2>
+              <div style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:10px 12px">
+                <div style="width:30px;height:30px;border-radius:9999px;background:linear-gradient(135deg,#7d1f75,#00afff);display:flex;align-items:center;justify-content:center;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:13px">K</div>
+                <div style="flex:1">
+                  <div style="font-size:13px;font-weight:700;font-family:Inter,sans-serif">@kenji_consult</div>
+                  <div style="font-size:11px;color:rgba(0,0,0,.45)">上田健二｜業務改善コンサル</div>
+                </div>
+                <span style="background:#f0f9ee;color:#3f8f2c;border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;white-space:nowrap;flex:none">接続済み</span>
+                <span style="font-size:11.5px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer;white-space:nowrap;flex:none" style-hover="color:#7d1f75">再連携</span>
+              </div>
+              <div style="font-size:11.5px;color:rgba(0,0,0,.45)">{{ oauthNote }}</div>
+              <button style="border:1px dashed rgba(0,0,0,.2);background:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:{{ addAcctCo }};display:flex;align-items:center;justify-content:center;gap:5px" style-hover="background:rgba(0,0,0,.03)"><span class="ms" style="font-size:16px">add</span>{{ addAcctLabel }}</button>
+            </section>
+            <sc-if value="{{ isByok }}" hint-placeholder-val="{{ true }}">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h2 style="margin:0;font-size:14px;font-weight:700">APIキー</h2>
+                <span style="background:#e8f4fb;color:#1c7fb5;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">BYOK</span>
+                <a href="#guide" style="margin-left:auto;font-size:11.5px;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:3px">取得手順ガイド<span class="ms" style="font-size:13px">open_in_new</span></a>
+              </div>
+              <div style="border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px">
+                <span class="ms" style="font-size:18px;color:rgba(0,0,0,.55)">key</span>
+                <div style="flex:1">
+                  <div style="font-size:12.5px;font-weight:700">X API（Client ID）</div>
+                  <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:rgba(0,0,0,.45)">SHBwc************M0x3</div>
+                </div>
+                <span style="background:#f0f9ee;color:#3f8f2c;border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;white-space:nowrap;flex:none">接続確認済み</span>
+                <span style="font-size:11.5px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer" style-hover="color:#7d1f75">編集</span>
+              </div>
+              <sc-for list="{{ genkeys }}" as="gk" hint-placeholder-count="3">
+                <div style="border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px">
+                  <span class="ms" style="font-size:18px;color:rgba(0,0,0,.55)">smart_toy</span>
+                  <div style="flex:1">
+                    <div style="font-size:12.5px;font-weight:700">{{ gk.n }}</div>
+                    <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:rgba(0,0,0,.45)">{{ gk.k }}</div>
+                  </div>
+                  <span style="background:{{ gk.roleBg }};color:{{ gk.roleCo }};border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;white-space:nowrap;flex:none">{{ gk.role }}</span>
+                  <span style="font-size:11.5px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer" style-hover="color:#7d1f75">{{ gk.act }}</span>
+                </div>
+              </sc-for>
+              <p style="margin:0;font-size:11px;color:rgba(0,0,0,.45)">文章生成とリサーチは同一プロバイダで実行されます。画像生成に割り当てられるのは OpenAI／Gemini のみです。API利用料はご自身のご負担となります。</p>
+            </section>
+            </sc-if>
+            <sc-if value="{{ isPremium }}" hint-placeholder-val="{{ false }}">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h2 style="margin:0;font-size:14px;font-weight:700">APIキー</h2>
+                <span style="background:linear-gradient(90deg,#ff0000,#7d1f75 50%,#00afff);color:#fff;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">プレミアム</span>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:10px;background:#f4e8f3;border-radius:8px;padding:12px 14px">
+                <span class="ms msf" style="font-size:19px;color:#7d1f75">check_circle</span>
+                <div style="font-size:12.5px;color:rgba(0,0,0,.75);line-height:1.6"><b>APIキーの登録は不要です。</b>X・生成AIとも運営キーで動作し、API費用の追加負担はありません。X連携は運営のDeveloper App経由で認可されます。</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <sc-for list="{{ usage }}" as="u" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:5px;border:1px solid rgba(0,0,0,.07);border-radius:8px;padding:10px 12px">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(0,0,0,.55)"><span style="font-weight:700">{{ u.l }}</span><span style="font-family:Inter,sans-serif;font-variant-numeric:tabular-nums">{{ u.u }} / {{ u.m }}</span></div>
+                    <div style="height:5px;border-radius:9999px;background:rgba(0,0,0,.07)"><div style="height:5px;width:{{ u.pct }}%;border-radius:9999px;background:#7d1f75"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:0;font-size:11px;color:rgba(0,0,0,.45)">月間利用上限（今月の残量）。再生成・学習分析・改善提案も文章生成の回数に含まれます。</p>
+            </section>
+            </sc-if>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+              <h2 style="margin:0 0 2px;font-size:14px;font-weight:700">学習 <span style="font-weight:400;font-size:11.5px;color:rgba(0,0,0,.45)">結果はベースmdへ差分反映されます</span></h2>
+              <sc-for list="{{ learn }}" as="ln" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(0,0,0,.06)">
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:13px;font-weight:700">{{ ln.t }}</span>
+                      <span style="font-family:Inter,sans-serif;font-size:11.5px;font-weight:700;color:#7d1f75">{{ ln.c }}</span>
+                    </div>
+                    <div style="font-size:11.5px;color:rgba(0,0,0,.45)">{{ ln.d }}</div>
+                  </div>
+                  <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:5px 13px;font-size:11.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:{{ ln.aco }};opacity:{{ ln.aop }}" style-hover="background:rgba(0,0,0,.04)">{{ ln.a }}</button>
+                </div>
+              </sc-for>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">通知設定 <span style="font-weight:400;font-size:11.5px;color:rgba(0,0,0,.45)">メール＋アプリ内</span></h2>
+              <sc-for list="{{ notifs }}" as="nt" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:12px;padding:7px 0;border-top:1px solid rgba(0,0,0,.06)">
+                  <div style="flex:1">
+                    <div style="font-size:12.5px;font-weight:700">{{ nt.l }}</div>
+                    <div style="font-size:11px;color:rgba(0,0,0,.45)">{{ nt.d }}</div>
+                  </div>
+                  <div style="width:36px;height:20px;border-radius:9999px;background:{{ nt.bg }};position:relative;cursor:pointer;flex:none"><div style="position:absolute;top:2px;left:{{ nt.kn }};width:16px;height:16px;border-radius:9999px;background:#fff"></div></div>
+                </div>
+              </sc-for>
+            </section>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h2 style="margin:0;font-size:14px;font-weight:700">ペルソナ</h2>
+                <span style="margin-left:auto;font-size:11.5px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer" style-hover="color:#7d1f75">編集</span>
+              </div>
+              <div style="background:#fafafa;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.7;color:rgba(0,0,0,.75)">中小企業向けの<b>業務改善コンサルタント</b>として、DX・AI活用に取り組む<b>経営者・個人事業主</b>に向けて発信する。現場目線で、ツール紹介より「業務の変え方」を語る。</div>
+              <p style="margin:0;font-size:11px;color:rgba(0,0,0,.45)">保存時にベースmdファイルへ自動反映されます。</p>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">発信テーマ <span style="font-weight:400;font-size:11.5px;color:rgba(0,0,0,.45)">ニュース6分野と対応</span></h2>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{ themes }}" as="th" hint-placeholder-count="6">
+                  <span style="padding:6px 14px;border-radius:9999px;font-size:12.5px;font-weight:{{ th.fw }};background:{{ th.bg }};color:{{ th.co }};border:1px solid {{ th.bc }};cursor:pointer;display:flex;align-items:center;gap:5px"><span class="ms" style="display:{{ th.ckD }};font-size:14px">check</span>{{ th.t }}</span>
+                </sc-for>
+                <span style="padding:6px 14px;border-radius:9999px;font-size:12.5px;font-weight:700;background:#f4e8f3;color:#7d1f75;border:1px solid #f4e8f3;display:flex;align-items:center;gap:5px"><span class="ms" style="font-size:14px">check</span>中小企業のDX <span style="font-weight:400;font-size:10.5px">自由入力</span></span>
+              </div>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:9px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">トーン＆マナー</h2>
+              <sc-for list="{{ tones }}" as="tn" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;padding:6px 0;border-top:1px solid rgba(0,0,0,.06)">
+                  <span style="font-size:12.5px;font-weight:700;width:92px;flex:none">{{ tn.l }}</span>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <sc-for list="{{ tn.opts }}" as="op" hint-placeholder-count="2">
+                      <span style="padding:4px 12px;border-radius:9999px;font-size:11.5px;font-weight:{{ op.fw }};background:{{ op.bg }};color:{{ op.co }};border:1px solid {{ op.bc }};cursor:pointer">{{ op.t }}</span>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">NG設定 <span style="font-weight:400;font-size:11.5px;color:rgba(0,0,0,.45)">すべての生成と投稿前チェックに適用</span></h2>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{ ngs }}" as="ng" hint-placeholder-count="4">
+                  <span style="padding:5px 8px 5px 12px;border-radius:9999px;font-size:12px;background:rgba(0,0,0,.05);color:rgba(0,0,0,.7);display:flex;align-items:center;gap:5px">{{ ng.t }}<span class="ms" style="font-size:14px;color:rgba(0,0,0,.4);cursor:pointer">close</span></span>
+                </sc-for>
+                <span style="padding:5px 12px;border-radius:9999px;font-size:12px;font-weight:700;border:1px dashed rgba(0,0,0,.25);color:rgba(0,0,0,.5);cursor:pointer;display:flex;align-items:center;gap:4px"><span class="ms" style="font-size:14px">add</span>追加</span>
+              </div>
+            </section>
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <h2 style="margin:0;font-size:14px;font-weight:700">プラン・お支払い</h2>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:13.5px;font-weight:700">{{ planName }}</span>
+                <span style="font-family:Inter,sans-serif;font-weight:700;font-size:13px;color:rgba(0,0,0,.6)">{{ planPrice }}/月</span>
+                <span style="margin-left:auto;font-size:11.5px;color:rgba(0,0,0,.45)">次回請求 2026/08/08</span>
+              </div>
+              <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:9px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;gap:6px" style-hover="background:rgba(0,0,0,.04)">Stripeカスタマーポータルを開く<span class="ms" style="font-size:15px">open_in_new</span></button>
+              <p style="margin:0;font-size:11px;color:rgba(0,0,0,.45)">プラン変更・解約・カード情報の更新はStripeの安全な画面で行われます。カード情報を当サービスが保持することはありません。お困りの際は<a href="#contact">お問い合わせ</a>へ。</p>
+            </section>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isMd }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="ベースmd">
+        <sc-if value="{{ mdLocked }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div>
+            <h1 style="margin:0;font-size:20px;font-weight:700">ベースmdファイル</h1>
+            <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">すべての投稿生成の中核となる「発信定義書」です</p>
+          </div>
+          <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:44px 32px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+            <div style="width:52px;height:52px;border-radius:9999px;background:#f4e8f3;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:26px;color:#7d1f75">lock</span></div>
+            <div style="font-size:15.5px;font-weight:700">ベースmdの確認・編集は mdプラン以上でご利用いただけます</div>
+            <p style="margin:0;max-width:460px;font-size:12.5px;color:rgba(0,0,0,.55);line-height:1.7">学習・設定の結果はベースmdに反映され、投稿生成に使用されています。mdプランでは内容を直接確認・編集でき、投稿パターン別のプロンプトもカスタマイズできます。</p>
+            <button onClick="{{ goPricing }}" style="border:none;background:#7d1f75;color:#fff;border-radius:8px;padding:11px 24px;font-size:13px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;margin-top:4px" style-hover="background:#6a1a64">mdプランにアップグレード（¥1,000/月）</button>
+          </section>
+        </div>
+        </sc-if>
+        <sc-if value="{{ mdOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+            <div>
+              <h1 style="margin:0;font-size:20px;font-weight:700">ベースmdファイル</h1>
+              <p style="margin:4px 0 0;font-size:12.5px;color:rgba(0,0,0,.55)">@kenji_consult · 最終更新 2026/07/28 09:14 · 学習・設定の保存時に自動で差分反映されます</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer;color:rgba(0,0,0,.75);display:flex;align-items:center;gap:5px" style-hover="background:rgba(0,0,0,.04)"><span class="ms" style="font-size:16px">history</span>編集履歴</button>
+              <button style="border:none;background:#7d1f75;color:#fff;border-radius:8px;padding:8px 18px;font-size:12.5px;font-weight:700;font-family:'Noto Sans JP';cursor:pointer" style-hover="background:#6a1a64">保存する</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:14px;align-items:start">
+            <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid rgba(0,0,0,.07);background:#fafafa">
+                <span class="ms" style="font-size:16px;color:rgba(0,0,0,.5)">description</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:rgba(0,0,0,.65)">base_kenji_consult.md</span>
+                <span style="margin-left:auto;background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">編集モード</span>
+              </div>
+              <pre style="margin:0;padding:18px 20px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.85;color:rgba(0,0,0,.78);white-space:pre-wrap;max-height:560px;overflow:auto">{{ mdText }}</pre>
+            </section>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:2px">
+                <h3 style="margin:0 0 6px;font-size:13px;font-weight:700">編集履歴</h3>
+                <sc-for list="{{ mdHist }}" as="h" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(0,0,0,.06)">
+                    <span style="font-family:Inter,sans-serif;font-size:11px;color:rgba(0,0,0,.45);width:86px;flex:none">{{ h.d }}</span>
+                    <span style="flex:1;font-size:12px;color:rgba(0,0,0,.75)">{{ h.t }}</span>
+                    <span style="font-size:11px;font-weight:700;color:#7d1f75;cursor:pointer;flex:none;white-space:nowrap">この版に戻す</span>
+                  </div>
+                </sc-for>
+              </section>
+              <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:2px">
+                <h3 style="margin:0 0 2px;font-size:13px;font-weight:700">プロンプト編集</h3>
+                <p style="margin:0 0 6px;font-size:11px;color:rgba(0,0,0,.45)">投稿パターン別の生成プロンプト。「既定に戻す」でシステム標準へ復帰できます。</p>
+                <sc-for list="{{ mdPrompts }}" as="pr" hint-placeholder-count="7">
+                  <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid rgba(0,0,0,.06)">
+                    <span style="flex:1;font-size:12px;font-weight:500">{{ pr.n }}</span>
+                    <span style="background:{{ pr.stBg }};color:{{ pr.stCo }};border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">{{ pr.st }}</span>
+                    <span style="font-size:11px;font-weight:700;color:rgba(0,0,0,.5);cursor:pointer;flex:none" style-hover="color:#7d1f75">編集</span>
+                  </div>
+                </sc-for>
+              </section>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isPricing }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="料金プラン" style="display:flex;flex-direction:column;gap:18px">
+        <div style="text-align:center;padding:8px 0 2px">
+          <h1 style="margin:0;font-size:22px;font-weight:700">料金プラン</h1>
+          <p style="margin:6px 0 0;font-size:13px;color:rgba(0,0,0,.55)">表示価格はすべて税込。全プラン7日間の無料トライアル付き（カード登録が必要です）</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:stretch">
+          <sc-for list="{{ plans }}" as="pn" hint-placeholder-count="3">
+            <div style="position:relative;background:#fff;border:{{ pn.bd }};border-radius:8px;padding:22px;display:flex;flex-direction:column;gap:12px">
+              <span style="display:{{ pn.tagD }};position:absolute;top:-10px;left:18px;background:{{ pn.tagBg }};color:#fff;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 10px">{{ pn.tag }}</span>
+              <div>
+                <div style="font-size:14px;font-weight:700">{{ pn.n }}</div>
+                <div style="font-size:11.5px;color:rgba(0,0,0,.5)">{{ pn.sub }}</div>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:3px">
+                <span style="font-family:Inter,sans-serif;font-weight:800;font-size:30px;line-height:1">¥{{ pn.p }}</span>
+                <span style="font-size:12px;color:rgba(0,0,0,.5);white-space:nowrap">/月（税込）</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;flex:1">
+                <sc-for list="{{ pn.feats }}" as="f" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:flex-start;gap:7px;font-size:12px;color:rgba(0,0,0,.7);line-height:1.55"><span class="ms" style="font-size:15px;color:#7d1f75;margin-top:2px;flex:none">check</span><span>{{ f.t }}</span></div>
+                </sc-for>
+              </div>
+              <button style="border:{{ pn.btnBd }};background:{{ pn.btnBg }};color:{{ pn.btnCo }};border-radius:8px;padding:10px;font-size:13px;font-weight:700;font-family:'Noto Sans JP';cursor:{{ pn.btnCur }}">{{ pn.btn }}</button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;background:#fff4d6;border-radius:8px;padding:12px 16px">
+          <span class="ms" style="font-size:18px;color:#a86f00">error</span>
+          <span style="font-size:12px;color:rgba(0,0,0,.7);line-height:1.65"><b>BYOKプラン（通常・md）のご注意：</b>X APIの利用料（従量課金）と生成AI APIの従量課金が別途発生します。プレミアムプランではAPI費用の追加負担はありません。トライアル期間中に解約された場合、課金は発生しません。</span>
+        </div>
+        <section style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:22px">
+          <h2 style="margin:0 0 16px;font-size:15px;font-weight:700">ご登録の流れ</h2>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+            <sc-for list="{{ flow }}" as="fl" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="width:24px;height:24px;border-radius:9999px;background:#7d1f75;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">{{ fl.n }}</span>
+                  <span style="font-size:13px;font-weight:700">{{ fl.t }}</span>
+                </div>
+                <div style="font-size:11.5px;color:rgba(0,0,0,.55);line-height:1.6;padding-left:32px">{{ fl.d }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px">
+            <div style="border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:14px 16px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:12.5px;font-weight:700">初期設定（BYOK：通常・mdプラン）</span>
+                <span style="background:#e8f4fb;color:#1c7fb5;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">キーはご自身で用意</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ byokFlow }}" as="b" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(0,0,0,.65)"><span style="width:5px;height:5px;border-radius:9999px;background:#1c7fb5;flex:none"></span>{{ b.t }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:14px 16px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:12.5px;font-weight:700">初期設定（プレミアムプラン）</span>
+                <span style="background:#f4e8f3;color:#7d1f75;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 8px">キー登録は一切不要</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ premFlow }}" as="b" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(0,0,0,.65)"><span style="width:5px;height:5px;border-radius:9999px;background:#7d1f75;flex:none"></span>{{ b.t }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <p style="margin:14px 0 0;font-size:11px;color:rgba(0,0,0,.45)">決済はStripeホスト型Checkoutで安全に行われます。プラン変更・解約・カード更新はStripeカスタマーポータルから。専用のオンボーディング画面はなく、設定が不足している場合はホームの初期設定ガイドとエラー表示でご案内します。</p>
+        </section>
+      </div>
+      </sc-if>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;plan&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;md&quot;,&quot;premium&quot;],&quot;default&quot;:&quot;md&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;プラン分岐&quot;},&quot;trialDaysLeft&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5,&quot;min&quot;:0,&quot;max&quot;:7,&quot;unit&quot;:&quot;日&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;状態&quot;},&quot;setupComplete&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;状態&quot;}}">
+class Component extends DCLogic {
+  state = { screen: 'home', cstep: 1 };
+  go(s) { this.setState({ screen: s }); try { window.scrollTo(0, 0); } catch (e) {} }
+  renderVals() {
+    const plan = this.props.plan ?? 'md';
+    const isPremium = plan === 'premium', isByok = !isPremium;
+    const trialDays = this.props.trialDaysLeft ?? 5;
+    const setupComplete = this.props.setupComplete ?? false;
+    const s = this.state.screen, cs = this.state.cstep;
+    const planName = { normal: '通常プラン', md: 'mdプラン', premium: 'プレミアムプラン' }[plan];
+    const planPrice = { normal: '¥500', md: '¥1,000', premium: '¥2,980' }[plan];
+    const KEY = '#7d1f75', SUB = '#f4e8f3';
+
+    const navDef = [
+      { id: 'home', icon: 'home', label: 'ホーム' },
+      { id: 'news', icon: 'newspaper', label: '最新ニュース' },
+      { id: 'compose', icon: 'edit_square', label: '投稿作成' },
+      { id: 'drafts', icon: 'calendar_clock', label: '下書き・スケジュール', badge: '3' },
+      { id: 'analytics', icon: 'monitoring', label: '分析・改善' },
+      { id: 'md', icon: 'description', label: 'ベースmd', lock: plan === 'normal' },
+      { id: 'settings', icon: 'settings', label: '設定' }
+    ];
+    const nav = navDef.map(it => {
+      const on = s === it.id;
+      return {
+        icon: it.icon, label: it.label, go: () => this.go(it.id),
+        bg: on ? SUB : 'transparent', co: on ? KEY : 'rgba(0,0,0,.72)',
+        fw: on ? 700 : 500, ico: on ? KEY : 'rgba(0,0,0,.6)',
+        hbg: on ? SUB : 'rgba(0,0,0,.045)',
+        bd: it.badge ? 'inline-block' : 'none', badge: it.badge ?? '',
+        lockD: it.lock ? 'inline-block' : 'none'
+      };
+    });
+    const crumbs = { home: 'ホーム', news: '最新ニュース', compose: '投稿作成', drafts: '下書き・スケジュール', analytics: '分析・改善', md: 'ベースmdファイル', settings: '設定', pricing: '料金プラン' };
+
+    const impSt = { '高': ['#ffd9dc', '#c2333c'], '中': ['#fff4d6', '#a86f00'], '低': ['#efefef', 'rgba(0,0,0,.55)'] };
+    const catSt = { 'AI': ['#e8f4fb', '#1c7fb5'], 'Web3': ['#f4e8f3', KEY], '投資': ['#f0f9ee', '#3f8f2c'], 'ビジネス': ['#eef1f9', '#4c71ba'], '業務改善': ['#fff4d6', '#a86f00'], 'SNS運用': ['#fdeee6', '#c94a06'] };
+    const newsDef = [
+      { cat: 'SNS運用', imp: '高', time: '12:00', title: 'X、長文ポストとスレッドの表示アルゴリズムを変更 — 2ポスト目以降の露出が向上', sum: '公式ブログで配信面の変更を発表。スレッド形式の滞在時間評価が強化され、連投型の発信が有利に。個人の発信者への影響が大きい変更です。', src: 'about.x.com' },
+      { cat: 'AI', imp: '高', time: '12:00', title: 'OpenAI、エージェントAPIを一般提供開始 — 従量価格を最大40%引き下げ', sum: '業務自動化向けのエージェント実行基盤が正式版に。中小規模の導入ハードルが下がり、受託・コンサルティング案件への波及が見込まれます。', src: 'openai.com' },
+      { cat: 'AI', imp: '中', time: '11:00', title: 'Google、Gemini 3.1をWorkspaceに統合 — 日本語ドキュメントの要約精度が向上', sum: 'スプレッドシートの関数生成と議事録要約が強化。無償枠でも利用可能になり、業務改善用途での採用が進みそうです。', src: 'blog.google' },
+      { cat: 'Web3', imp: '高', time: '10:00', title: '金融庁、ステーブルコインの国内発行基準を改定へ — 年内にパブリックコメント', sum: '信託型以外の発行スキームを含む改定案。決済事業者の参入余地が広がる一方、広告表示の規制は強化される見通しです。', src: 'fsa.go.jp' },
+      { cat: '投資', imp: '中', time: '9:00', title: '日銀短観、大企業製造業DIが2期連続で改善 — 設備投資計画は上方修正', sum: '円安の一服と半導体需要の回復が寄与。中小非製造業は横ばいで、業種間の格差が続いています。', src: 'boj.or.jp' },
+      { cat: '業務改善', imp: '中', time: '12:00', title: 'IT導入補助金、2026年度2次公募を開始 — 生成AI活用が重点枠に', sum: 'クラウド利用料2年分と導入支援費が対象。個人事業主も申請でき、事前のgBizID取得が必要です。', src: 'chusho.meti.go.jp' },
+      { cat: 'ビジネス', imp: '低', time: '9:00', title: 'フリーランス新法の施行から2年 — 取引適正化の実態調査が公表', sum: '書面交付率は改善傾向。一方で報酬減額の相談は依然多く、相談体制が拡充されます。', src: 'mhlw.go.jp' },
+      { cat: 'SNS運用', imp: '低', time: '10:00', title: '国内SNS利用動向調査：40代の情報収集チャネル1位にXが復帰', sum: 'ビジネス層の利用が再拡大。「専門家の一次情報」への需要が高く、個人の専門発信に追い風となっています。', src: 'research.example.jp' }
+    ];
+    const news = newsDef.map(n => ({ ...n, impBg: impSt[n.imp][0], impCo: impSt[n.imp][1], catBg: catSt[n.cat][0], catCo: catSt[n.cat][1] }));
+
+    const guideDef = isByok ? [
+      { done: true, t: 'アカウント作成', d: 'メールアドレスの本人認証が完了しています' },
+      { done: true, t: 'カード登録（無料トライアル開始）', d: 'Stripeで登録済み · 残り' + trialDays + '日' },
+      { done: true, t: 'X APIキー登録', d: 'Client IDの形式検証・疎通確認が完了しています' },
+      { done: true, t: 'Xアカウント連携（OAuth）', d: '@kenji_consult をご自身のDeveloper App経由で接続済み' },
+      { done: true, t: '生成AI APIキー登録', d: 'Claude（文章・リサーチ）／OpenAI（画像）を登録済み' },
+      { done: false, t: 'ペルソナ・発信テーマ・トンマナ・NG設定', d: '保存時にベースmdファイルを自動生成します' },
+      { done: false, t: '学習（任意）', d: '参考アカウント・参考投稿・過去投稿の取り込みで「自分らしさ」が向上します' }
+    ] : [
+      { done: true, t: 'アカウント作成', d: 'メールアドレスの本人認証が完了しています' },
+      { done: true, t: 'カード登録（無料トライアル開始）', d: 'Stripeで登録済み · 残り' + trialDays + '日' },
+      { done: true, t: 'Xアカウント連携（OAuth）', d: '@kenji_consult を運営のDeveloper App経由で接続済み — APIキー登録は不要です' },
+      { done: false, t: 'ペルソナ・発信テーマ・トンマナ・NG設定', d: '保存時にベースmdファイルを自動生成します' },
+      { done: false, t: '学習（任意）', d: '参考アカウント・参考投稿・過去投稿の取り込みで「自分らしさ」が向上します' }
+    ];
+    const doneN = guideDef.filter(g => g.done).length;
+    const guide = guideDef.map(g => ({
+      t: g.t, d: g.d,
+      icon: g.done ? 'check_circle' : 'radio_button_unchecked', cls: g.done ? 'msf' : '',
+      ic: g.done ? '#4ea836' : 'rgba(0,0,0,.3)', fw: g.done ? 500 : 700,
+      tco: g.done ? 'rgba(0,0,0,.55)' : 'rgba(0,0,0,.9)', btnD: g.done ? 'none' : 'inline-block'
+    }));
+
+    const kpis = [
+      { l: 'フォロワー数', v: '1,284', u: '', sub: '+12 今週', subCo: '#3f8f2c', subFw: 700 },
+      { l: '今週の投稿', v: '9', u: '件', sub: 'うち自動 6件', subCo: 'rgba(0,0,0,.45)', subFw: 400 },
+      { l: '未確認の下書き', v: '3', u: '件', sub: '通知送信済み', subCo: 'rgba(0,0,0,.45)', subFw: 400 },
+      { l: '次回の自動実行', v: '18:00', u: '今日', sub: 'ノウハウ（P-3）· 下書きまで', subCo: 'rgba(0,0,0,.45)', subFw: 400 }
+    ];
+
+    const draftsDef = [
+      { pat: 'P-1', via: '自動', created: '昨日 7:30', meta: 'スレッド 4ポスト · 画像あり', text: 'Xのアルゴリズム変更、スレッドで発信している人には追い風です。変更点と、個人事業主が今日からやるべきことを3分で整理します。（1/4）' },
+      { pat: 'P-3', via: '自動', created: '7/30 18:00', meta: 'スレッド 5ポスト', text: '「請求書業務を月3時間に」— 個人事業主のためのAI活用、最初の一歩を解説します。特別なツールは不要、今お使いの環境でできる方法です。（1/5）' },
+      { pat: 'P-2', via: '手動', created: '7/29 21:12', meta: '単発ポスト', text: '値決めの相談で最近増えているのが「AI導入支援をいくらで受けるか」。安売りする必要はありませんが、根拠の説明責任は重くなったと感じます。' }
+    ];
+    const drafts = draftsDef.map(d => ({ ...d, viaBg: d.via === '自動' ? '#e8f4fb' : 'rgba(0,0,0,.06)', viaCo: d.via === '自動' ? '#1c7fb5' : 'rgba(0,0,0,.6)' }));
+
+    const tabsDef = ['すべて', 'AI', 'Web3', '投資', 'ビジネス', '業務改善', 'SNS運用'];
+    const tabs = tabsDef.map((t, i) => ({ t, fw: i === 0 ? 700 : 500, bg: i === 0 ? 'rgba(0,0,0,.85)' : '#fff', co: i === 0 ? '#fff' : 'rgba(0,0,0,.65)', bc: i === 0 ? 'rgba(0,0,0,.85)' : 'rgba(0,0,0,.12)' }));
+
+    const pillsDef = [{ n: 1, t: '1. パターン選択・入力' }, { n: 2, t: '2. 生成中' }, { n: 3, t: '3. 確認・編集' }];
+    const pills = pillsDef.map(p => {
+      const on = cs === p.n;
+      return { t: p.t, go: () => this.setState({ cstep: p.n }), fw: on ? 700 : 500, co: on ? 'rgba(0,0,0,.85)' : 'rgba(0,0,0,.5)', bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(0,0,0,.12)' : 'none' };
+    });
+
+    const patDef = [
+      { chip: 'P-1', icon: 'newspaper', name: 'ニュース解説', desc: '最新ニュースをリサーチし、要点＋解説のスレッドを作成します', out: 'スレッド（フック＋解説）', sel: true },
+      { chip: 'P-2', icon: 'chat', name: '考え・意見投稿', desc: 'URLやご自身の考えをもとに、単発の意見ポストを作成します', out: '単発ポスト' },
+      { chip: 'P-3', icon: 'school', name: 'ノウハウ・ハウツー', desc: '専門知識を手順化し、解説スレッドとして構成します', out: 'スレッド（フック＋解説）' },
+      { chip: 'P-4', icon: 'trending_up', name: 'トレンド便乗', desc: 'いま伸びている話題をリサーチし、便乗スレッドを作成します', out: 'スレッド（フック＋解説）' },
+      { chip: 'P-5', icon: 'format_quote', name: '引用ポスト', desc: '指定ポストのURLを付けた通常投稿＋補足リプライで構成します', out: '引用＋リプライ', off: true },
+      { chip: 'P-6', icon: 'calendar_view_week', name: '週次まとめ', desc: '1週間分の動きをリサーチし、まとめスレッドを作成します', out: 'スレッド（まとめ）' }
+    ];
+    const patterns = patDef.map(p => ({
+      chip: p.chip, icon: p.icon, name: p.name, desc: p.desc, out: p.out,
+      bd: p.sel ? '1.5px solid #7d1f75' : '1px solid rgba(0,0,0,.1)',
+      bg: p.sel ? '#fdfbfe' : '#fff', op: p.off ? .55 : 1, cur: p.off ? 'not-allowed' : 'pointer',
+      ico: p.sel ? KEY : 'rgba(0,0,0,.55)', ckD: p.sel ? 'inline-block' : 'none', stD: p.off ? 'inline-block' : 'none'
+    }));
+
+    const genEngine = isByok ? 'Claude（あなたのキー）' : 'Claude（運営キー）';
+    const keyNote = isByok
+      ? 'Claude API（ご自身のキー）で生成します · リサーチはClaudeのWeb検索を使用 · API利用料はご自身のご負担です'
+      : '運営キーで生成します · 今月の文章生成 残り59/100回 · 追加のAPI費用はかかりません';
+    const regenNote = isByok ? '再生成にはご自身のAPI利用料が発生します' : '再生成は文章生成の回数（残り59回）を1回分消費します';
+
+    const tposts = [
+      { n: '1/4', tag: 'フック', chars: '82 / 140', pct: 59, imgD: 'flex', text: 'Xのアルゴリズム変更、スレッドで発信している人には追い風です。変更点と、個人事業主が今日からやるべきことを3分で整理します。（1/4）' },
+      { n: '2/4', tag: '解説', chars: '104 / 140', pct: 74, imgD: 'none', text: '変更の要点は3つ。\n①スレッド2ポスト目以降の表示率が向上\n②外部リンクは1ポスト目より最終ポストに置く方が到達が伸びる\n③滞在時間がこれまで以上に重視される\n公式発表と各種テストで確認されています。（2/4）' },
+      { n: '3/4', tag: '解説', chars: '89 / 140', pct: 64, imgD: 'none', text: '個人事業主への影響はシンプルです。「単発の宣伝ポスト」より「ノウハウを分割したスレッド」が伸びやすくなります。実績や事例は1テーマ1スレッドで出す運用がおすすめです。（3/4）' },
+      { n: '4/4', tag: 'まとめ', chars: '71 / 140', pct: 51, imgD: 'none', text: 'まとめ：\n①発信はスレッドを基本に\n②リンクは最終ポストへ\n③1テーマ1スレッド\n明日の朝、最初の1本から試してみてください。（4/4）' }
+    ];
+
+    const dayChip = (arr, on) => ['月', '火', '水', '木', '金', '土', '日'].filter(d => arr.includes(d)).map(d => ({ t: d, bg: on ? '#f4e8f3' : 'rgba(0,0,0,.05)', co: on ? KEY : 'rgba(0,0,0,.45)' }));
+    const slotsDef = [
+      { time: '7:30', days: ['月', '水', '金'], pid: 'P-1', pat: 'ニュース解説', img: '画像あり', mode: '自動投稿', on: true },
+      { time: '18:00', days: ['火', '木', '土'], pid: 'P-3', pat: 'ノウハウ', img: 'なし', mode: '下書きまで', on: true },
+      { time: '20:00', days: ['日'], pid: 'P-6', pat: '週次まとめ', img: '画像あり', mode: '下書きまで', on: false }
+    ];
+    const slots = slotsDef.map(sl => ({
+      time: sl.time, days: dayChip(sl.days, sl.on), pid: sl.pid, pat: sl.pat,
+      img: sl.img, imgIcon: sl.img === 'なし' ? 'hide_image' : 'image',
+      mode: sl.mode, modeBg: sl.mode === '自動投稿' ? '#f4e8f3' : 'rgba(0,0,0,.06)', modeCo: sl.mode === '自動投稿' ? KEY : 'rgba(0,0,0,.6)',
+      tbg: sl.on ? KEY : 'rgba(0,0,0,.25)', tkn: sl.on ? '18px' : '2px', op: sl.on ? 1 : .55
+    }));
+
+    const akpis = [
+      { l: '平均インプレッション（30日）', v: '1,842', u: '', sub: '+18% 前月比', subCo: '#3f8f2c' },
+      { l: '平均エンゲージメント率', v: '3.2', u: '%', sub: '+0.4pt 前月比', subCo: '#3f8f2c' },
+      { l: '今月の投稿', v: '24', u: '件', sub: 'うち自動 17件', subCo: 'rgba(0,0,0,.45)' },
+      { l: 'プロフィールアクセス', v: '412', u: '', sub: '+63 前月比', subCo: '#3f8f2c' }
+    ];
+    const series = [1237, 1240, 1239, 1244, 1246, 1252, 1251, 1255, 1257, 1262, 1260, 1263, 1266, 1264, 1268, 1271, 1270, 1273, 1275, 1274, 1277, 1276, 1278, 1280, 1279, 1281, 1280, 1282, 1283, 1283, 1284];
+    const mn = Math.min(...series), mx = Math.max(...series);
+    const pts = series.map((v, i) => {
+      const x = 8 + i * (664 / (series.length - 1));
+      const y = 15 + (mx - v) / (mx - mn) * 100;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    const chartPoints = pts.join(' ');
+    const areaPath = 'M8,132 L' + pts.join(' L') + ' L672,132 Z';
+
+    const rows = [
+      { t: 'Xのアルゴリズム変更、スレッドで発信している人には追い風です…', th: 'スレッド（4）', type: 'P-1', d: '7/31 7:30', imp: '4,213', lk: '96', rp: '31', pf: '58' },
+      { t: '「請求書業務を月3時間に」個人事業主のAI活用、最初の一歩', th: 'スレッド（5）', type: 'P-3', d: '7/30 18:00', imp: '3,542', lk: '128', rp: '44', pf: '71' },
+      { t: '補助金頼みのDXが失敗しやすい、たった1つの理由', th: '単発', type: 'P-2', d: '7/27 7:30', imp: '1,986', lk: '54', rp: '12', pf: '23' },
+      { t: '今週のAI・業務改善ニュースまとめ（7/20-7/26）', th: 'スレッド（6）', type: 'P-6', d: '7/26 20:00', imp: '2,864', lk: '71', rp: '26', pf: '34' },
+      { t: '生成AIの導入で最初に自動化すべき3つの業務', th: 'スレッド（4）', type: 'P-3', d: '7/23 18:00', imp: '5,102', lk: '163', rp: '57', pf: '89' }
+    ];
+    const sugs = [
+      { t: 'ノウハウ型（P-3）の比率を上げる', d: '手順を分割したスレッドが安定して伸びています。週1回→週2回への増枠を検討してください。', e: 'P-3の平均インプレッションは全体平均比 +42%（7/23・7/30 ほか計5投稿）' },
+      { t: '朝7:30の枠を優先する', d: '朝の時間帯はエンゲージメント率が高く、フォロワー増にも寄与しています。', e: '7時台のエンゲージメント率は18時台の1.9倍（直近30日・12投稿の比較）' },
+      { t: 'テーマ「業務改善」を週2回以上に', d: 'プロフィールアクセスへの貢献が最も大きいテーマです。P-3との組み合わせが有効です。', e: '「業務改善」テーマ投稿のプロフィールアクセスは平均 +63%（該当8投稿）' }
+    ];
+
+    const genkeys = [
+      { n: 'Claude API', k: 'sk-ant-api03-****-9dK2', role: '文章・リサーチ（選択中）', roleBg: SUB, roleCo: KEY, act: '編集' },
+      { n: 'OpenAI', k: 'sk-proj-****-k31A', role: '画像生成に割当', roleBg: '#e8f4fb', roleCo: '#1c7fb5', act: '編集' },
+      { n: 'Gemini', k: '未登録', role: '—', roleBg: 'rgba(0,0,0,.05)', roleCo: 'rgba(0,0,0,.5)', act: '登録' }
+    ];
+    const usage = [
+      { l: '通常投稿', u: '62', m: '200', pct: 31 }, { l: 'URL付き投稿', u: '8', m: '20', pct: 40 },
+      { l: '文章生成', u: '41', m: '100', pct: 41 }, { l: '画像生成', u: '9', m: '20', pct: 45 }
+    ];
+    const learn = [
+      { t: '参考アカウント', c: '2 / 3件', d: '@ai_biz_labo・@consult_ueda の直近20ポストから文体・構成・投稿傾向を分析', a: '追加する', aco: 'rgba(0,0,0,.75)', aop: 1 },
+      { t: '参考投稿（伸びた投稿）', c: '6 / 10件', d: '伸びた理由・型を分析して反映', a: '追加する', aco: 'rgba(0,0,0,.75)', aop: 1 },
+      { t: '自分の過去投稿', c: '100件 取り込み済み', d: '2026/07/18 取り込み。再取り込みは30日ごと（次回 8/17以降）', a: '再取り込み', aco: 'rgba(0,0,0,.4)', aop: .55 }
+    ];
+    const themesDef = [{ t: 'AI', on: true }, { t: 'Web3', on: false }, { t: '投資', on: false }, { t: 'ビジネス', on: true }, { t: '業務改善', on: true }, { t: 'SNS運用', on: false }];
+    const themes = themesDef.map(t => ({ t: t.t, fw: t.on ? 700 : 500, bg: t.on ? SUB : '#fff', co: t.on ? KEY : 'rgba(0,0,0,.6)', bc: t.on ? SUB : 'rgba(0,0,0,.14)', ckD: t.on ? 'inline-block' : 'none' }));
+    const toneOpt = (arr, sel) => arr.map(o => ({ t: o, fw: o === sel ? 700 : 500, bg: o === sel ? SUB : '#fff', co: o === sel ? KEY : 'rgba(0,0,0,.55)', bc: o === sel ? SUB : 'rgba(0,0,0,.14)' }));
+    const tones = [
+      { l: '文体', opts: toneOpt(['ですます調', '断定調'], 'ですます調') },
+      { l: '絵文字', opts: toneOpt(['使わない', '使う'], '使わない') },
+      { l: 'ハッシュタグ', opts: toneOpt(['なし', '1〜2個', '積極的に'], '1〜2個') }
+    ];
+    const ngs = [{ t: '政治・宗教の話題' }, { t: '他社・個人への批判' }, { t: '断定的な投資助言' }, { t: '「絶対」「100%」等の誇張表現' }];
+    const notifs = [
+      { l: 'ニュース通知', d: '選択した分野・インパクトの新着を、取得時刻ごとに1件のダイジェストで', on: true },
+      { l: '下書き作成', d: '自動実行で下書きが作成されたとき', on: true },
+      { l: '投稿完了', d: '自動投稿・手動投稿の完了時', on: false },
+      { l: 'エラー通知', d: 'API失敗・残高不足・利用上限の到達など', on: true }
+    ].map(n => ({ ...n, bg: n.on ? KEY : 'rgba(0,0,0,.25)', kn: n.on ? '18px' : '2px' }));
+
+    const mdText = `# ベース発信定義書 — @kenji_consult
+最終更新: 2026-07-28 09:14 · Space AI v1.0
+
+## 1. ペルソナ
+- 発信者: 中小企業向け業務改善コンサルタント（独立8年目）
+- 読者: DX・AI活用に関心のある経営者・個人事業主
+- 立ち位置: 現場目線。ツール紹介より「業務の変え方」を語る
+
+## 2. 発信テーマ
+- 主軸: 業務改善 / AI / ビジネス
+- 自由テーマ: 中小企業のDX
+- 避ける: 投機的な投資話題
+
+## 3. トーン＆マナー
+- 文体: ですます調。断定は根拠とセットで
+- 絵文字: 使用しない / ハッシュタグ: 最大2個
+- 数字・固有名詞を積極的に使う
+
+## 4. NG事項
+- 政治・宗教への言及 / 他社・個人への批判
+- 断定的な投資助言 / 「絶対」「100%」等の誇張
+
+## 5. 文体サンプル（過去投稿より自動抽出）
+- 「〜を3分で整理します」で始まるフック
+- 箇条書きは①②③、結論→理由→事例の順
+- 1ポスト60〜110字、スレッドは4〜6本で構成
+
+## 6. 学習サマリー（自動生成）
+- 参考アカウント: @ai_biz_labo, @consult_ueda
+- 伸びた型: ノウハウ分割型 / 手順提示型
+- 過去100ポスト取り込み: 2026-07-18`;
+
+    const mdHist = [
+      { d: '07/28 09:14', t: 'トンマナ調整（手動編集）' },
+      { d: '07/18 08:02', t: '過去投稿の再学習を反映（自動）' },
+      { d: '07/12 21:40', t: '初回生成（設定の保存時）' }
+    ];
+    const mdPrompts = [
+      { n: 'P-1 ニュース解説', st: 'カスタム' }, { n: 'P-2 考え・意見投稿', st: '既定' },
+      { n: 'P-3 ノウハウ・ハウツー', st: 'カスタム' }, { n: 'P-4 トレンド便乗', st: '既定' },
+      { n: 'P-5 引用ポスト', st: '停止中' }, { n: 'P-6 週次まとめ', st: '既定' },
+      { n: '画像生成プロンプト', st: '既定' }
+    ].map(p => ({ ...p, stBg: p.st === 'カスタム' ? SUB : 'rgba(0,0,0,.05)', stCo: p.st === 'カスタム' ? KEY : 'rgba(0,0,0,.5)' }));
+
+    const plansDef = [
+      { id: 'normal', n: '通常プラン', sub: 'まず低コストで試したい方に', p: '500', feats: ['基本機能すべて（生成・自動運用・分析）', 'X APIキー・生成AIキーはご自身で用意（BYOK）', '連携Xアカウント 1', '月間利用上限なし（ご自身のAPI課金の範囲）'] },
+      { id: 'md', n: 'mdプラン', sub: '発信の中身まで作り込みたい方に', p: '1,000', tag: '人気', tagBg: '#7d1f75', feats: ['通常プランの全機能', 'ベースmd・プロンプトの直接編集', '編集履歴とロールバック', '連携Xアカウント 3'] },
+      { id: 'premium', n: 'プレミアムプラン', sub: 'キー取得の手間なく始めたい方に', p: '2,980', tag: 'キー登録不要', tagBg: 'linear-gradient(90deg,#ff0000,#7d1f75 50%,#00afff)', feats: ['mdプランの全機能', 'APIキー登録が一切不要（運営キーで動作）', '月間上限：通常投稿200／URL付き20／文章生成100／画像20', '連携Xアカウント 3（利用上限は合算）'] }
+    ];
+    const plans = plansDef.map(pn => {
+      const cur = pn.id === plan;
+      return {
+        n: pn.n, sub: pn.sub, p: pn.p, feats: pn.feats.map(f => ({ t: f })),
+        tag: pn.tag ?? '', tagD: pn.tag ? 'inline-block' : 'none', tagBg: pn.tagBg ?? KEY,
+        bd: cur ? '1.5px solid #7d1f75' : '1px solid rgba(0,0,0,.08)',
+        btn: cur ? '現在のプラン' : 'このプランに変更',
+        btnBg: cur ? 'rgba(0,0,0,.05)' : '#7d1f75', btnCo: cur ? 'rgba(0,0,0,.45)' : '#fff',
+        btnBd: 'none', btnCur: cur ? 'default' : 'pointer'
+      };
+    });
+    const flow = [
+      { n: '1', t: 'アカウント作成', d: 'メールアドレス＋パスワードで登録し、確認メールで本人認証' },
+      { n: '2', t: 'カード登録', d: 'Stripe Checkoutで安全に登録。7日間無料トライアルが開始' },
+      { n: '3', t: '初期設定', d: '設定画面から任意の順で。不足はホームのガイドでご案内' },
+      { n: '4', t: '運用開始', d: '1日数分の確認だけで、自分らしい発信が継続できます' }
+    ];
+    const byokFlow = ['X APIキー登録（取得手順ガイド付き）', 'X連携 — ご自身のDeveloper App経由でOAuth認可', '生成AI APIキー登録（Claude／OpenAI／Gemini から1つ以上）', 'ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）', '学習（任意）— 参考アカウント・過去投稿の取り込み'].map(t => ({ t }));
+    const premFlow = ['X連携 — 運営のDeveloper App経由でOAuth認可', 'ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）', '学習（任意）— 参考アカウント・過去投稿の取り込み'].map(t => ({ t }));
+
+    return {
+      nav, crumb: crumbs[s], planName, planPrice, trialDays,
+      trialD: trialDays > 0 ? 'flex' : 'none', isPremium, isByok,
+      isHome: s === 'home', isNews: s === 'news', isCompose: s === 'compose', isDrafts: s === 'drafts',
+      isAnalytics: s === 'analytics', isMd: s === 'md', isSettings: s === 'settings', isPricing: s === 'pricing',
+      cs1: cs === 1, cs2: cs === 2, cs3: cs === 3,
+      mdLocked: plan === 'normal', mdOpen: plan !== 'normal',
+      goPricing: () => this.go('pricing'), goSettings: () => this.go('settings'),
+      goNews: () => this.go('news'), goDrafts: () => this.go('drafts'),
+      goComposeNew: () => { this.setState({ screen: 'compose', cstep: 1 }); try { window.scrollTo(0, 0); } catch (e) {} },
+      st1: () => this.setState({ cstep: 1 }), st2: () => this.setState({ cstep: 2 }),
+      showGuide: !setupComplete, guideCount: doneN + ' / ' + guideDef.length, guidePct: Math.round(doneN / guideDef.length * 100), guide,
+      kpis, digest: news.slice(0, 3), homeDrafts: drafts.slice(0, 2),
+      news, tabs, pills, patterns, genEngine, keyNote, regenNote, tposts,
+      slots, drafts, akpis, chartPoints, areaPath, rows, sugs,
+      acctNote: plan === 'normal' ? '1 / 1（通常プランの上限）' : '1 / 3 アカウント',
+      oauthNote: isByok ? 'OAuth 2.0（ご自身のDeveloper App経由）で投稿・読み取り権限を取得しています。OAuth認可は自動投稿への同意とは別に管理されます。' : 'OAuth 2.0（運営のDeveloper App経由）で投稿・読み取り権限を取得しています。OAuth認可は自動投稿への同意とは別に管理されます。',
+      addAcctLabel: plan === 'normal' ? 'アカウント追加は mdプラン以上（上限3）' : 'Xアカウントを追加',
+      addAcctCo: plan === 'normal' ? 'rgba(0,0,0,.35)' : 'rgba(0,0,0,.6)',
+      genkeys, usage, learn, themes, tones, ngs, notifs,
+      mdText, mdHist, mdPrompts, plans, flow, byokFlow, premFlow
+    };
+  }
+}
+</script>
+</body>
+</html>
