@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import {
   updateNewsConfigAction,
   updateNotificationConfigAction,
@@ -38,31 +39,10 @@ const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "�
 const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
-interface Notice {
-  message: string;
-  tone: "error" | "success";
-}
-
-function NoticeLine({ notice }: { notice: Notice | null }) {
-  if (!notice) return null;
-  return (
-    <p
-      className={`mt-3 rounded-lg border p-2.5 text-sm ${
-        notice.tone === "success"
-          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-          : "border-red-200 bg-red-50 text-red-900"
-      }`}
-      role={notice.tone === "success" ? "status" : "alert"}
-    >
-      {notice.message}
-    </p>
-  );
-}
-
 function ProfileForm({ displayName }: { displayName: string | null }) {
   const [value, setValue] = useState(displayName ?? "");
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   return (
     <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
       <h2 className="text-[15px] font-bold text-ink">プロフィール</h2>
@@ -81,9 +61,12 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateProfileAction({ display_name: value });
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "プロフィールを保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
@@ -92,7 +75,6 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      <NoticeLine notice={notice} />
     </section>
   );
 }
@@ -100,7 +82,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
 function NotificationForm({ config }: { config: NotificationConfig }) {
   const [state, setState] = useState<NotificationConfig>(config);
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   const toggle = (
     type: (typeof NOTIFICATION_TYPES)[number],
     channel: "in_app" | "email",
@@ -146,9 +128,12 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateNotificationConfigAction(state);
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "通知設定を保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
@@ -157,7 +142,6 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      <NoticeLine notice={notice} />
     </section>
   );
 }
@@ -167,7 +151,7 @@ function NewsForm({ config }: { config: NewsConfig }) {
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
   const [maxItems, setMaxItems] = useState(config.max_items);
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   const invalid = categories.length === 0 || impacts.length === 0;
@@ -230,13 +214,16 @@ function NewsForm({ config }: { config: NewsConfig }) {
           disabled={pending || invalid}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateNewsConfigAction({
                 categories,
                 impact_filter: impacts,
                 max_items: maxItems,
               });
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "ニュース設定を保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
@@ -250,7 +237,6 @@ function NewsForm({ config }: { config: NewsConfig }) {
           分野とインパクトはそれぞれ1件以上選択してください。
         </p>
       ) : null}
-      <NoticeLine notice={notice} />
     </section>
   );
 }

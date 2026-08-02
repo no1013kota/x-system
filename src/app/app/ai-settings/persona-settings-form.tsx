@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { updatePersonaSettings } from "@/app/actions/persona-settings";
+import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
@@ -47,8 +48,12 @@ export function PersonaSettingsForm({
   const [dirty, setDirty] = useState(false);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<"error" | "success" | null>(null);
+  /**
+   * **入力検証のまとめだけ**を画面に残す（T-M8-18）。項目ごとのエラーの直上に置く必要があるため
+   * トーストにしない。保存の成否（サーバの応答）はトーストへ出す。
+   */
+  const [validationMessage, setValidationMessage] = useState("");
+  const toast = useToast();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   // NG設定は入力中の生テキストを保持する。表示値を正規化済み配列から作ると、改行した瞬間に
   // 末尾の空行が捨てられて2行目が打てなくなるため（保存する値は従来どおり正規化した配列）。
@@ -61,8 +66,7 @@ export function PersonaSettingsForm({
   const updateSettings = (next: PersonaSettings) => {
     setSettings(next);
     setDirty(true);
-    setStatus(null);
-    setMessage("");
+    setValidationMessage("");
   };
   const errorFor = (path: string) => fieldErrors[path]?.[0];
 
@@ -97,11 +101,11 @@ export function PersonaSettingsForm({
         errors[path] = [...(errors[path] ?? []), issue.message];
       }
       setFieldErrors(errors);
-      setStatus("error");
-      setMessage("入力内容を確認してください。");
+      setValidationMessage("入力内容を確認してください。");
       return;
     }
     setFieldErrors({});
+    setValidationMessage("");
     setSubmitting(true);
     const result = await updatePersonaSettings({
       expected_base_md_version: version,
@@ -109,9 +113,12 @@ export function PersonaSettingsForm({
       x_account_id: xAccountId,
     });
     setSubmitting(false);
-    setStatus(result.status);
-    setMessage(result.message);
-    if (result.status === "success" && result.version !== undefined) {
+    if (result.status !== "success") {
+      toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
+      return;
+    }
+    toast.show({ tone: "success", title: "発信設定を保存しました" });
+    if (result.version !== undefined) {
       setVersion(result.version);
       setDirty(false);
       setSavedDifference(false);
@@ -410,16 +417,12 @@ export function PersonaSettingsForm({
         </div>
       </fieldset>
 
-      {message ? (
+      {validationMessage ? (
         <p
-          className={`rounded-lg border p-3 text-sm ${
-            status === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-destructive/30 bg-destructive/5 text-destructive"
-          }`}
-          role={status === "success" ? "status" : "alert"}
+          className="rounded-card border border-hairline bg-danger-bg p-3 text-[13px] text-danger-fg"
+          role="alert"
         >
-          {message}
+          {validationMessage}
         </p>
       ) : null}
 
