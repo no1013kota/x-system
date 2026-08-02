@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { yen } from "@/lib/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Check, Minus } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
@@ -13,6 +13,8 @@ import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
+import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
 
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
@@ -31,51 +33,67 @@ const PLAN_TAGLINE: Record<PlanId, string> = {
   premium: "APIキーなしで、運用をまとめておまかせ",
 };
 
-type Cell = boolean | string;
-
-interface FeatureRow {
-  label: string;
-  value: (planId: PlanId) => Cell;
+/**
+ * カードに並べる特長（デザイン §料金プラン）。
+ *
+ * **件数・上限は `PLANS` から引く**。ここへ数字を書き写すと、プラン定義を変えたときに
+ * この画面だけ古い数字を出し続ける（利用者から見れば「書いてある内容と違う」）。
+ */
+function planFeatures(planId: PlanId): string[] {
+  const plan = PLANS[planId];
+  const accounts = `連携Xアカウント ${plan.xAccountLimit}`;
+  if (planId === "standard") {
+    return [
+      "基本機能すべて（生成・自動運用・分析）",
+      "X APIキー・生成AIキーはご自身で用意（BYOK）",
+      accounts,
+      "月間利用上限なし（ご自身のAPI課金の範囲）",
+    ];
+  }
+  if (planId === "md") {
+    return [
+      "通常プランの全機能",
+      "ベースmd・プロンプトの直接編集",
+      "編集履歴とロールバック",
+      accounts,
+    ];
+  }
+  const limits = plan.usageLimits;
+  return [
+    "mdプランの全機能",
+    "APIキー登録が一切不要（運営キーで動作）",
+    limits
+      ? `月間上限：通常投稿${limits.normalPosts}／URL付き${limits.urlPosts}／文章生成${limits.generations}／画像${limits.images}`
+      : "月間上限なし",
+    `${accounts}（利用上限は合算）`,
+  ];
 }
 
-/** Comparison rows are derived from PLANS so the table never drifts from spec. */
-const FEATURE_ROWS: FeatureRow[] = [
-  { label: "Xアカウント", value: (id) => `${PLANS[id].xAccountLimit}件` },
-  {
-    label: "X・生成AIのAPIキー",
-    value: (id) => (PLANS[id].usageLimits ? "不要（運営が用意）" : "必要（ご自身で用意）"),
-  },
-  { label: "AI投稿生成・スケジュール", value: () => true },
-  { label: "投稿分析・改善提案", value: () => true },
-  { label: "ベースmd・プロンプト編集", value: (id) => PLANS[id].canEditMdAndPrompts },
-  {
-    label: "文章生成（運営枠）",
-    value: (id) => {
-      const u = PLANS[id].usageLimits;
-      return u ? `${u.generations}回／月` : "ご自身のAPI枠";
-    },
-  },
-  {
-    label: "画像生成（運営枠）",
-    value: (id) => {
-      const u = PLANS[id].usageLimits;
-      return u ? `${u.images}枚／月` : "ご自身のAPI枠";
-    },
-  },
-  {
-    label: "通常投稿",
-    value: (id) => {
-      const u = PLANS[id].usageLimits;
-      return u ? `${u.normalPosts}件／月` : "従量（ご自身のAPI）";
-    },
-  },
-  {
-    label: "URL付き投稿",
-    value: (id) => {
-      const u = PLANS[id].usageLimits;
-      return u ? `${u.urlPosts}件／月` : "従量（ご自身のAPI）";
-    },
-  },
+/** カード左上のタグ。プレミアムだけキーのグラデーション（デザイン §料金プラン）。 */
+const PLAN_TAG: Partial<Record<PlanId, { label: string; className: string }>> = {
+  md: { label: "人気", className: "bg-brand" },
+  premium: { label: "キー登録不要", className: "[background-image:var(--brand-gradient)]" },
+};
+
+const SIGNUP_FLOW: { step: string; title: string; description: string }[] = [
+  { step: "1", title: "アカウント作成", description: "メールアドレス＋パスワードで登録し、確認メールで本人認証" },
+  { step: "2", title: "カード登録", description: "Stripe Checkoutで安全に登録。7日間無料トライアルが開始" },
+  { step: "3", title: "初期設定", description: "設定画面から任意の順で。不足はホームのガイドでご案内" },
+  { step: "4", title: "運用開始", description: "1日数分の確認だけで、自分らしい発信が継続できます" },
+];
+
+const BYOK_SETUP = [
+  "X APIキー登録（取得手順ガイド付き）",
+  "X連携 — ご自身のDeveloper App経由でOAuth認可",
+  "生成AI APIキー登録（Claude／OpenAI／Gemini から1つ以上）",
+  "ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）",
+  "学習（任意）— 参考アカウント・過去投稿の取り込み",
+];
+
+const PREMIUM_SETUP = [
+  "X連携 — 運営のDeveloper App経由でOAuth認可",
+  "ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）",
+  "学習（任意）— 参考アカウント・過去投稿の取り込み",
 ];
 
 const CONFIRMATION_ITEMS: { term: string; description: string }[] = [
@@ -86,24 +104,6 @@ const CONFIRMATION_ITEMS: { term: string; description: string }[] = [
   { term: "解約方法", description: "設定のCustomer Portalからいつでも期間末解約できます" },
   { term: "提供開始", description: "Checkout完了後、契約反映が確認でき次第すぐに開始します" },
 ];
-
-/** Boolean cells render an icon; string cells render text. */
-function FeatureCell({ value }: { value: Cell }) {
-  if (typeof value === "boolean") {
-    return value ? (
-      <>
-        <Check aria-hidden="true" className="mx-auto size-4 text-emerald-600" />
-        <span className="sr-only">対応</span>
-      </>
-    ) : (
-      <>
-        <Minus aria-hidden="true" className="mx-auto size-4 text-muted-foreground/60" />
-        <span className="sr-only">非対応</span>
-      </>
-    );
-  }
-  return <span>{value}</span>;
-}
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
@@ -201,108 +201,120 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           </section>
 
           {/*
-           * プラン比較表（SC-04: 3プラン比較）。
+           * プランカード（SC-04: 3プラン比較・デザイン §料金プラン）。
            *
-           * `relative` is required, not cosmetic: the cells hold `sr-only` labels
-           * (`position: absolute`). Without a positioned ancestor their containing block is the
-           * initial containing block, so the scroll container does not clip them and they stretch
-           * the page itself — the whole page scrolled sideways 183px at 390px wide (T-M7-26).
+           * 以前は横スクロールする比較表だった。表のセルは `sr-only` ラベル（`position:absolute`）を
+           * 持つため、位置指定された祖先が無いとスクロール容器にクリップされず**ページ自体を
+           * 横に伸ばす**という罠があった（T-M7-26）。カードは縦に積むだけなのでその制約が消える。
            */}
-          <section aria-label="料金プラン比較" className="relative overflow-x-auto">
-            <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
-              <caption className="sr-only">Space AI 料金プラン比較</caption>
-              <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[24%]" />
-                <col className="w-[24%]" />
-                <col className="w-[26%]" />
-              </colgroup>
-              <thead>
-                <tr className="align-bottom">
-                  <th className="p-3 text-left" scope="col">
-                    <span className="sr-only">機能</span>
-                  </th>
-                  {PLAN_IDS.map((planId) => {
-                    const plan = PLANS[planId];
-                    const featured = planId === "premium";
-                    return (
-                      <th
-                        className={`rounded-t-2xl border-t border-x p-4 text-center align-top ${
-                          featured ? "border-foreground bg-card shadow-sm" : "border-transparent"
-                        }`}
-                        key={planId}
-                        scope="col"
-                      >
-                        {featured ? (
-                          <span className="mb-2 inline-block rounded-full bg-foreground px-3 py-0.5 text-xs font-semibold text-background">
-                            おすすめ
-                          </span>
-                        ) : null}
-                        <span className="block text-lg font-bold">{plan.displayName}</span>
-                        <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
-                          {PLAN_TAGLINE[planId]}
-                        </span>
-                        <span className="mt-3 block">
-                          <span className="text-[30px] font-extrabold tracking-tight tabular-nums text-ink">
-                            ¥{yen(plan.monthlyPriceJpy)}
-                          </span>
-                          <span className="ml-1 text-xs font-normal text-muted-foreground">
-                            ／月（税込）
-                          </span>
-                        </span>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {FEATURE_ROWS.map((row) => (
-                  <tr key={row.label}>
-                    <th
-                      className="border-b p-3 text-left font-medium text-muted-foreground"
-                      scope="row"
+          <section aria-label="料金プラン" className="grid items-stretch gap-3.5 sm:grid-cols-3">
+            {PLAN_IDS.map((planId) => {
+              const plan = PLANS[planId];
+              const tag = PLAN_TAG[planId];
+              return (
+                <div
+                  className={`relative flex flex-col gap-3 rounded-card bg-surface p-[22px] shadow-[var(--shadow-card)] ${
+                    planId === "premium" ? "border-[1.5px] border-brand" : "border border-hairline"
+                  }`}
+                  key={planId}
+                >
+                  {tag ? (
+                    <span
+                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-[10.5px] font-bold text-white ${tag.className}`}
                     >
-                      {row.label}
-                    </th>
-                    {PLAN_IDS.map((planId) => {
-                      const featured = planId === "premium";
-                      return (
-                        <td
-                          className={`border-b p-3 text-center align-middle ${
-                            featured ? "border-x border-foreground bg-card" : ""
-                          }`}
-                          key={planId}
-                        >
-                          <FeatureCell value={row.value(planId)} />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-                <tr>
-                  <td className="p-3" />
-                  {PLAN_IDS.map((planId) => {
-                    const plan = PLANS[planId];
-                    const featured = planId === "premium";
-                    return (
-                      <td
-                        className={`p-4 align-top ${
-                          featured ? "rounded-b-2xl border-x border-b border-foreground bg-card shadow-sm" : ""
-                        }`}
-                        key={planId}
-                      >
-                        <CheckoutButton plan={planId} planName={plan.displayName} />
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            </table>
+                      {tag.label}
+                    </span>
+                  ) : null}
+                  <div>
+                    <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
+                    <p className="text-[11.5px] text-ink-3">{PLAN_TAGLINE[planId]}</p>
+                  </div>
+                  <p className="flex items-baseline gap-0.5">
+                    <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
+                      ¥{yen(plan.monthlyPriceJpy)}
+                    </span>
+                    <span className="whitespace-nowrap text-xs text-ink-3">／月（税込）</span>
+                  </p>
+                  <ul className="flex flex-1 flex-col gap-[7px]">
+                    {planFeatures(planId).map((feature) => (
+                      <li className="flex items-start gap-[7px] text-xs leading-[1.55] text-ink-2" key={feature}>
+                        <Check aria-hidden="true" className="mt-0.5 size-[15px] shrink-0 text-brand" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <CheckoutButton plan={planId} planName={plan.displayName} />
+                </div>
+              );
+            })}
           </section>
 
-          <p className="text-center text-xs leading-5 text-muted-foreground">
-            Standard／MDはご自身のAPI契約を利用するため、Space AIの月額料金とは別にX・生成AI各社の利用料がかかります。
-          </p>
+          {/* BYOKの追加費用は申込前に必ず読ませる（要件03 §54）。折りたたまない。 */}
+          <section
+            aria-label="BYOKプランのご注意"
+            className="flex items-start gap-2.5 rounded-card bg-warn-bg px-4 py-3"
+          >
+            <Icon className="mt-0.5 shrink-0 text-warn-fg" name="error" size={18} />
+            <p className="text-xs leading-[1.65] text-ink-2">
+              <strong className="font-bold">BYOKプラン（通常・md）のご注意：</strong>
+              X APIの利用料（従量課金）と生成AI APIの従量課金が別途発生します。プレミアムプランではAPI費用の追加負担はありません。トライアル期間中に解約された場合、課金は発生しません。
+            </p>
+          </section>
+
+          <section
+            aria-labelledby="signup-flow-heading"
+            className="rounded-card border border-hairline bg-surface p-[22px] shadow-[var(--shadow-card)]"
+          >
+            <h2 className="text-[15px] font-bold text-ink" id="signup-flow-heading">
+              ご登録の流れ
+            </h2>
+            <ol className="mt-4 grid gap-3 sm:grid-cols-4">
+              {SIGNUP_FLOW.map((item) => (
+                <li className="flex flex-col gap-[7px]" key={item.step}>
+                  <div className="flex items-center gap-2">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-brand font-sans text-xs font-bold text-white">
+                      {item.step}
+                    </span>
+                    <span className="text-[13px] font-bold text-ink">{item.title}</span>
+                  </div>
+                  <p className="pl-8 text-[11.5px] leading-[1.6] text-ink-3">{item.description}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-[18px] grid gap-3 sm:grid-cols-2">
+              <div className="rounded-card border border-hairline px-4 py-3.5">
+                <div className="mb-2 flex items-center gap-2">
+                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
+                  <Badge tone="info">キーはご自身で用意</Badge>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {BYOK_SETUP.map((step) => (
+                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                      <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-info-fg" />
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-card border border-hairline px-4 py-3.5">
+                <div className="mb-2 flex items-center gap-2">
+                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（プレミアムプラン）</h3>
+                  <Badge tone="brand">キー登録は一切不要</Badge>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {PREMIUM_SETUP.map((step) => (
+                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                      <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-brand" />
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <p className="mt-3.5 text-[11px] leading-5 text-ink-3">
+              決済はStripeホスト型Checkoutで安全に行われます。プラン変更・解約・カード更新はStripeカスタマーポータルから。専用のオンボーディング画面はなく、設定が不足している場合はホームの初期設定ガイドとエラー表示でご案内します。
+            </p>
+          </section>
 
             </>
           )}

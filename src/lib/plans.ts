@@ -30,7 +30,7 @@ export interface PlanDefinition {
 export const PLANS: Record<PlanId, PlanDefinition> = {
   standard: {
     id: "standard",
-    displayName: "Standard",
+    displayName: "通常プラン",
     monthlyPriceJpy: 500,
     xAccountLimit: 1,
     usageLimits: null,
@@ -38,7 +38,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
   md: {
     id: "md",
-    displayName: "MD",
+    displayName: "mdプラン",
     monthlyPriceJpy: 1000,
     xAccountLimit: 3,
     usageLimits: null,
@@ -46,7 +46,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
   premium: {
     id: "premium",
-    displayName: "Premium",
+    displayName: "プレミアムプラン",
     monthlyPriceJpy: 2980,
     xAccountLimit: 3,
     usageLimits: {
