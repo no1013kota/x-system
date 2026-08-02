@@ -7,7 +7,7 @@
 
 | ファイル | job | 実行時刻(JST) | endpoint |
 |---|---|---|---|
-| `com.spaceai.news-fetch.plist` | news_fetch | 09:00〜20:00 毎時00分 | `/api/cron/news-fetch` |
+| `com.spaceai.news-fetch.plist` | news_fetch | **10:00〜20:00 2時間おき**（10/12/14/16/18/20時） | `/api/cron/news-fetch` |
 | `com.spaceai.scheduler-tick.plist` | scheduler_tick | 5分間隔（00・05・…・55の12エントリ） | `/api/cron/scheduler-tick` |
 | `com.spaceai.metrics-collector.plist` | metrics_collector | 毎時00分 | `/api/cron/metrics-collector` |
 | `com.spaceai.follower-snapshot.plist` | follower_snapshot | 毎時10分 | `/api/cron/follower-snapshot` |

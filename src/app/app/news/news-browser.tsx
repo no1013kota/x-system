@@ -8,6 +8,7 @@ import { listNewsItemsAction } from "@/app/actions/news";
 import { updateNewsConfigAction } from "@/app/actions/settings";
 import { formatJst } from "@/lib/format";
 import type { NewsItemView } from "@/lib/news-items";
+import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { THEME_OPTIONS } from "@/lib/themes";
 
 const IMPACTS: { id: string; label: string }[] = [
@@ -65,8 +66,10 @@ export function NewsBrowser({
   const [noteHref, setNoteHref] = useState<string | null>(null);
   const [noteLinkLabel, setNoteLinkLabel] = useState("設定を開く");
   const [noteTone, setNoteTone] = useState<"error" | "success">("error");
-  // 全分野・インパクト高中が既定。既定より絞っているときだけ「条件を戻す」を出す。
-  const allCategories = THEME_OPTIONS.map((option) => option.newsCategory);
+  // 既定は**取得している分野**すべて・インパクト高中。既定より絞っているときだけ「条件を戻す」を出す。
+  // 発信テーマ（THEME_OPTIONS・6テーマ）とは別で、記事が来ない分野は絞り込みにも出さない（T-M7-55）。
+  const allCategories: string[] = [...NEWS_FETCH_CATEGORIES];
+  const filterThemes = THEME_OPTIONS.filter((t) => allCategories.includes(t.newsCategory));
   const narrowedFilter =
     categories.length < allCategories.length || impacts.length < 2 || !impacts.includes("high");
 
@@ -209,7 +212,7 @@ export function NewsBrowser({
         <div>
           <p className="text-xs font-semibold text-muted-foreground">分野</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {THEME_OPTIONS.map((t) => {
+            {filterThemes.map((t) => {
               const active = categories.includes(t.newsCategory);
               return (
                 <button

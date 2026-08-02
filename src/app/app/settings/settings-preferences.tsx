@@ -13,6 +13,7 @@ import {
   type NewsConfig,
   type NotificationConfig,
 } from "@/lib/settings";
+import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 
 const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   news: "ニュース",
@@ -32,7 +33,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   sns: "SNS",
 };
 const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "低" };
-const ALL_CATEGORIES = ["ai", "web3", "investment", "business", "business_ops", "sns"];
+// **選べるのは実際に取得している分野だけ**にする（T-M7-55）。取得していない分野を選べると、
+// 設定はできるのに記事が永久に0件という「黙って壊れた」状態になる（CLAUDE.md 原則1）。
+const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
 interface Notice {
@@ -172,8 +175,9 @@ function NewsForm({ config }: { config: NewsConfig }) {
     <section className="rounded-2xl border bg-card p-6 shadow-sm">
       <h2 className="text-lg font-semibold">ニュース通知</h2>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースはJST 9:00〜20:00の取得時刻ごとに最大1件へ集約されて届きます。設定条件に一致する新着が
-        0件の時刻には通知は届きません。ここでの分野・インパクト・表示件数は一覧表示にも適用されます。
+        ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
+        設定条件に一致する新着が0件の時刻には通知は届きません。ここでの分野・インパクト・表示件数は
+        一覧表示にも適用されます。
       </p>
 
       <fieldset className="mt-4">

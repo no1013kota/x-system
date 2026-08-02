@@ -4,7 +4,7 @@ import {
   DEFAULT_NEWS_CONFIG,
   DEFAULT_NOTIFICATION_CONFIG,
 } from "./config-defaults";
-import { NEWS_CATEGORIES } from "./news";
+import { NEWS_CATEGORIES, NEWS_FETCH_CATEGORIES } from "./news";
 import { PLANS } from "./plans";
 import { THEME_OPTIONS, themesToNewsCategories } from "./themes";
 
@@ -88,15 +88,8 @@ describe("config defaults", () => {
     expect(DEFAULT_NOTIFICATION_CONFIG.error.email).toBe(true);
   });
 
-  it("defaults news to all 6 categories, impact high+mid, 20 items", () => {
-    expect(DEFAULT_NEWS_CONFIG.categories).toEqual([
-      "ai",
-      "web3",
-      "investment",
-      "business",
-      "business_ops",
-      "sns",
-    ]);
+  it("既定のニュース分野は**取得している3分野**だけ（記事の来ない分野を既定にしない）", () => {
+    expect(DEFAULT_NEWS_CONFIG.categories).toEqual([...NEWS_FETCH_CATEGORIES]);
     expect(DEFAULT_NEWS_CONFIG.impact_filter).toEqual(["high", "mid"]);
     expect(DEFAULT_NEWS_CONFIG.max_items).toBe(20);
   });

@@ -13,7 +13,7 @@ import { expect, signIn, test } from "./fixtures/test";
 
 interface SeedItem {
   id: string;
-  category: "ai" | "web3";
+  category: "ai" | "investment";
   impact: "high" | "mid" | "low";
   title: string;
   minutesAgo: number;
@@ -71,9 +71,9 @@ test("ニュース一覧は既定の分野・インパクトで絞られ、絞�
     { id: randomUUID(), category: "ai", impact: "low", title: `E2E-${run} AI軽微`, minutesAgo: 10 },
     {
       id: randomUUID(),
-      category: "web3",
+      category: "investment",
       impact: "high",
-      title: `E2E-${run} Web3重要`,
+      title: `E2E-${run} 投資重要`,
       minutesAgo: 15,
     },
   ];
@@ -86,15 +86,15 @@ test("ニュース一覧は既定の分野・インパクトで絞られ、絞�
 
     // 既定は全分野・high+mid（要件02 §3.4）。low は出ない。
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
-    await expect(page.getByText(`E2E-${run} Web3重要`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} 投資重要`)).toBeVisible();
     await expect(page.getByText(`E2E-${run} AI軽微`)).toHaveCount(0);
 
     // 分野トグルを外して「この条件で表示して保存」を押すと、対象外が消える。
     // トグルだけでは取り直さない（保存と一覧再取得が同じ操作にまとまっている・要件06 §3.4）。
     const filter = page.getByRole("region", { name: "絞り込み" });
-    await filter.getByRole("button", { name: "Web3", exact: true }).click();
+    await filter.getByRole("button", { name: "投資", exact: true }).click();
     await filter.getByRole("button", { name: "この条件で表示して保存" }).click();
-    await expect(page.getByText(`E2E-${run} Web3重要`)).toHaveCount(0);
+    await expect(page.getByText(`E2E-${run} 投資重要`)).toHaveCount(0);
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
 
     // 条件は news_config として保存され、通知にも使われる（副作用の明示）。
@@ -102,7 +102,7 @@ test("ニュース一覧は既定の分野・インパクトで絞られ、絞�
       `select news_config->'categories' as categories from profiles where id = $1`,
       [account.userId],
     );
-    expect(saved.categories, "外した分野が保存されていないこと").not.toContain("web3");
+    expect(saved.categories, "外した分野が保存されていないこと").not.toContain("investment");
   } finally {
     await removeNews(items.map((i) => i.id));
   }
@@ -114,8 +114,8 @@ test("ホームの重要ニュースは high だけを新しい順に最大3件�
   const items: SeedItem[] = [
     { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} 高1`, minutesAgo: 1 },
     { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} 高2`, minutesAgo: 2 },
-    { id: randomUUID(), category: "web3", impact: "high", title: `E2E-${run} 高3`, minutesAgo: 3 },
-    { id: randomUUID(), category: "web3", impact: "high", title: `E2E-${run} 高4`, minutesAgo: 4 },
+    { id: randomUUID(), category: "investment", impact: "high", title: `E2E-${run} 高3`, minutesAgo: 3 },
+    { id: randomUUID(), category: "investment", impact: "high", title: `E2E-${run} 高4`, minutesAgo: 4 },
     { id: randomUUID(), category: "ai", impact: "mid", title: `E2E-${run} 中1`, minutesAgo: 1 },
   ];
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { NEWS_FETCH_CATEGORIES } from "./news";
+
 import { DEFAULT_NOTIFICATION_CONFIG } from "./config-defaults";
 import {
   newsConfigSchema,
@@ -136,8 +138,9 @@ describe("resolveNotificationConfig (fallback)", () => {
 
 describe("resolveNewsConfig (fallback)", () => {
   it("falls back to §3.4 defaults when unset ({})", () => {
+    // 既定は**取得している分野**（記事の来ない分野を既定にしない・T-M7-55）。
     expect(resolveNewsConfig({})).toEqual({
-      categories: ["ai", "web3", "investment", "business", "business_ops", "sns"],
+      categories: [...NEWS_FETCH_CATEGORIES],
       impact_filter: ["high", "mid"],
       max_items: 20,
     });
