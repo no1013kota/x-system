@@ -86,7 +86,7 @@ export function LoginForm({ next }: { next: string }) {
           resetSignal={state}
         />
 
-        <Button className="h-11 w-full" data-testid="login-submit" disabled={pending} type="submit">
+        <Button className="h-11 w-full text-[14px]" data-testid="login-submit" disabled={pending} type="submit" variant="brand">
           {pending ? "ログインしています…" : "ログイン"}
         </Button>
       </form>

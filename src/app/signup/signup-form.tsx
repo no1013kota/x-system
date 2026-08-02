@@ -205,7 +205,7 @@ export function SignUpForm() {
         resetSignal={state}
       />
 
-      <Button className="h-11 w-full" disabled={isPending} type="submit">
+      <Button className="h-11 w-full text-[14px]" disabled={isPending} type="submit" variant="brand">
         {isPending ? "登録しています…" : "メールアドレスで登録"}
       </Button>
 
