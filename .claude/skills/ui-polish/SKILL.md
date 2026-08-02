@@ -15,6 +15,11 @@ description: Space AIのNext.js画面・Reactコンポーネントを新規作�
 
 3. **実装**: App Router／Server・Client境界／Tailwind 4／shadcn/ui の既存構成に従う。色・余白・角丸・影は CSS変数か既存ユーティリティを使う。該当する状態（hover / focus-visible / disabled / loading / empty / error / success）を実装。主要導線は WCAG 2.2 AA（キーボード操作・明瞭なfocus・label・色以外の状態表現）。`prefers-reduced-motion` を尊重。仕様や画面挙動を変えたら同じ作業で正本docsを更新する。
 
+   **操作結果の通知は `useToast()` を使う**（要件06 §2.1）。画面内へ独自の成功/失敗メッセージを足さない。判断は次の3つだけ。
+   - **成功も必ず出す。** 無言で終わらせると、成功したのか何も起きなかったのか利用者に区別できない（CLAUDE.md 原則1）。
+   - **トーストに残さないのは3種類**: 入力検証／ボタンを伴う案内／恒常表示・画面状態。理由と例は要件06 §2.1 の表。
+   - **インライン通知を消すのとトーストを足すのは同じコミットで行う。** 片方だけだと「2か所に出る」か「どこにも出ない」になる。`useToast()` は Provider の外で呼んでも例外を投げない no-op なので、**呼んでいるのに何も出ない事故が静かに起きる**。移行した画面ごとに `e2e/toast.spec.ts` へ「実際に出る」テストを1件足し、`show()` を消すと落ちることを確認する。
+
 4. **実ブラウザ検証**（実装だけで完了にしない）:
    - `npm run dev` を起動し **`http://127.0.0.1:3000`** を使う（X OAuth が `localhost` を許さないため。`next.config.ts` の `allowedDevOrigins` で 127.0.0.1 からの HMR は許可済み）。
    - Next.js DevTools MCP があればランタイム／ビルド／Hydration エラーを確認。
