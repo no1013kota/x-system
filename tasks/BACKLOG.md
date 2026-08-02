@@ -19,7 +19,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 |---|---|---|
 | 開発タスク（着手可） | **0件**（M7の44タスクすべて`done`。T-M7-17 Gemini画像のみ`blocked`＝ユーザー判断で一旦不要） | 下記M7セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。ユーザー判断で一旦不要） | 同 |
-| 要決定 | **0件**（D-14は2026-07-31に「いまは現状のまま」で保留。本番公開前に再判断） | 「要決定・外部準備」 |
+| 要決定 | **0件**（D-14は2026-08-02に**案B＝リポジトリ公開で解決済み**。`main` のブランチ保護を設定した） | 「要決定・外部準備」 |
 | 外部準備（人間側） | **重複排除後12項目**（アカウント・実キー・法務・単価確認）。[リリース前チェックリスト §3](../docs/operations/release-checklist.md) が正本 | 同（下記の未チェックは49行だがマイルストーンごとの重複を含む） |
 
 **次の一手（推奨順）**
@@ -29,7 +29,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 1. **push して CI を通す**（27→33コミットが未push）。`npm run release:staging` は未pushだと止まる
 2. **staging の器を用意する**（Vercel Domains・Supabase staging プロジェクト・X App の callback URL）。用意できたら `npm run release:staging` を1回通す（成功経路はまだ未実行）
 3. **画面から1クリックしてほしいもの**: AI設定→学習ソース→「再取り込み」（T-M7-39 で直したので、失敗しても原因が残る）。Stripeのテスト決済は代行済み
-4. **本番公開の前に D-14 を再判断**（CIが赤いとき本番を止める仕組み。いまは `release:production` が止めるが、コマンドを使わなければ通せてしまう）
+4. ~~本番公開の前に D-14 を再判断~~ **完了（2026-08-02）**。リポジトリ公開＋`main` のブランチ保護により、**CIが緑でなければ `main` にマージできない**（管理者も迂回不可）
 5. 以降は `/maintenance` を週1回・`/add-task` で要望を起票 →`/dev-loop` の運用へ
 
 > **`CLAUDE.md`「前提：運営者は個人」の5原則に対する現状**: ①黙って壊れない=T-M7-29で残り／②原因が辿れる=**T-M7-34で対応済み**／③手順を記憶に依存させない=**T-M7-35で未対応**／④費用が見える=**T-M7-34で対応済み**／⑤判断をまとめて求める=「要決定」で運用中。
@@ -256,6 +256,16 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - 検証（2026-08-01）: 単体+11件（規約6・スモークの計測3・seedの差分同期2）。`check:providers` 5件緑。**`npm run smoke:live` を実物で3回**（合計 $1.01）。最終の実測: 全シナリオ成功・87秒・$0.34。1ポスト目は「【重要3件】①…②…③…」の箇条書き凝縮＋**改行塊2〜3**、URL0・ハッシュタグ0。release:check 完全通過。
 - 後続への注意: **字数（60〜120字）とポスト数は指示では守られない**（実測140字・P-6が6ポスト）。仕組みでの保証は T-M7-41 へ分離した。
 - メモ: 2026-07-31 の分析で判明。**Xは外部リンクを含む投稿の露出を抑える傾向があるのに、現行プロンプトはURLを必須にしている**（自分から不利を選んでいる）。文言の磨き込み（禁止表現リスト・「〜と見られます」の多用制限・文字数の目標帯・出力前の自己チェック）は効果が読みにくいため別タスクに分ける。
+
+### T-M7-55: ニュース取得を3分野×2時間おきへ縮小し、費用を運用可能な水準にする `done`
+- 参照: PRD v1.5（N-1/N-2・§6.1）、要件04 §6、CLAUDE.md 原則1・4 / 依存: T-M7-44 / サイズ: M
+- 実装メモ:
+  - **決定（2026-08-02 ユーザー）**: 分野を **ai・investment・sns の3つ**へ、実行を **10:00〜20:00の2時間おき**（10/12/14/16/18/20時）へ。
+  - **根拠（実測）**: stagingで1分野1回あたり **$0.2388 / $0.4957**。従来（6分野×毎時12回）だと**月$518〜1,071**。PRDの旧見積もり（月$64.80〜$108.00）は**検索料金しか数えておらず誤り**だった（費用の主因は検索結果本文の入力token）。新設定では**月$130〜270**。
+  - **頻度だけ変えると取りこぼす**。毎時×直近3時間ラップという冗長性の設計なので、窓も作り直した（`newsLookbackHours`）。初回10:00は前日20:00からの空白を埋める**14時間**、以降は間隔2h＋重なり1hの**3時間**。「窓は起動間隔より広い」ことをテストで固定した。
+  - **取得しない分野を選べる状態を残さない**（原則1）。設定画面・ニュース一覧の絞り込み・既定値（コード／DBトリガー migration `20260802000001`）をすべて3分野へ揃えた。**発信テーマ（L-5）は6のまま**（生成の方向づけにも使うため縮小しない）。
+  - launchd の起動時刻とコードの `NEWS_FETCH_JST_HOURS` が**ずれたらテストが落ちる**ようにした（費用に直結するため）。
+- 後続への注意: さらに下げるなら「検索3〜5回」を減らす（`SYS_NEWS`）のが次に効く。**品質への影響が読みにくい**ので実測してから決める。
 
 ### T-M7-54: ニュース配信が「配信中の退会」で全体停止するのを直す `done`
 - 参照: 要件04 §6、CLAUDE.md 原則1 / 依存: T-M7-42 / サイズ: S
@@ -581,7 +591,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 
 **D-4: 失敗provider callのusage/原価記録の責務（解決済み 2026-07-26: 案A・T-M7-09で実装）** — `runTextGeneration`（pipeline.ts）は`generate()`が成功returnした後にのみ`usage.calls`へ積むため、provider callが例外throw（`PauseTurnIncompleteError`・timeout・5xx等）した場合、`status:"failed"`/`error_code`付きの`ProviderCall`が記録されない。一方プロンプト設計書 §5.6は「全provider callを保存」、要件04 §10は「成功・失敗を問わず原価台帳へ記録」とする。M0では原価台帳（external_api_usage_events）連携自体が後続MS送りのため実害は潜在。要決定: 失敗callの記録を(案A)pipelineがtry/catchで`ProviderCall(status=failed)`を積む／(案B)worker/台帳MSが失敗時にexternal_api_usage_eventsへ直接記録する、のどちらにするか。※throw時はSDKがusageを返さないことが多く、記録できるのはrequest ID・error_code・発生事実に限られる点も考慮。`ProviderCallMeta`は既に`status`/`errorCode`を受け取れる（normalize.ts）。**T-M6-09時点の状態（2026-07-25）**: 原価台帳への記録は全AI job（GEN/LRN/SUGGEST/MD-MERGE/GEN-IMG）＋NEWSへ配線済み。ただし記録対象は`usage.calls`に現れるcall（`generate()`が返却した成功call＋status=failed返却call）に限られ、**provider例外throwのcallは依然として`calls`へ積まれず未記録**（pipeline.ts `callOnce`はgenerate成功後にのみpush）。案A（pipelineがtry/catchで`ProviderCall(status=failed)`を積む）か案Bかは未決のまま。
 
-**D-14: `main` 保護（CIが緑でないと本番を更新しない）をどう実現するか（保留・現状維持 2026-07-31）** — **2026-07-31 ユーザー判断: いまは現状のまま**（GitHub Proへの課金もpublic化も実施せず、リポジトリ内の個人メールもそのまま）。したがって当面は**案E相当（運用で担保）**＝`main` へ反映する前に人／エージェントがCIの緑を確認する。**本番公開の前に再判断する**（それまでは赤いまま反映することが技術的に可能な状態が残る）。以下は判明した経緯と選択肢。 D-8で案A（ブランチ保護）を決めたが、**private × GitHub Free ではブランチ保護もRulesetも使えない**ことが判明した（APIが403で `Upgrade to GitHub Pro or make this repository public` を返す）。目的は「CIが赤いあいだ本番が更新されないこと」。要決定: (案A)**GitHub Pro へ課金**（個人 $4/月）。決定どおりのブランチ保護が即使える。実装作業ゼロ。**推奨**（リリース時にはVercel Proも契約する前提なので、月$4は許容範囲。外部準備7と同時に判断できる） / (案B)リポジトリを public にする（無料で保護が使えるが、事業内容・プロンプト設計・要件が公開される。**非推奨**） / (案C)Vercelの Ignored Build Step でCIの結果を見てビルドをスキップする（無料。ただしVercelのビルドはpush直後に始まりCIより早いため、緑になった後に**手動で Redeploy** する運用になる。GitHubトークンをVercelの環境変数へ置く必要もある） / (案D)Vercelの Git 自動デプロイ（production）を止め、**CIが緑になった後にGitHub Actionsから `vercel deploy --prod`** する（保証は最も固い。ただしVercelトークンをGitHub Secretsへ置くことになり、「秘密情報をCIに置かない」現方針の変更を伴う。実装もそれなり） / (案E)当面は運用で担保（`main` へ push する前にCIの結果を人／エージェントが確認する。`.githooks/pre-push` で機械化も可能だがローカル設定なので回避できる）。
+**D-14: `main` 保護（CIが緑でないと本番を更新しない）をどう実現するか（解決済み 2026-08-02: 案B）** — **2026-08-02、リポジトリを public にした（案B）ことでブランチ保護が無料で使えるようになり、設定を投入して解決した。** `main` は PR 必須・必須チェック `型・lint` と `release:check（DB・build・E2E）`・**管理者も迂回不可**（`enforce_admins`）・force push と削除を禁止。`gh api repos/:owner/:repo/branches/main/protection` で確認できる。以下は経緯（旧記載）。 — **2026-07-31 ユーザー判断: いまは現状のまま**（GitHub Proへの課金もpublic化も実施せず、リポジトリ内の個人メールもそのまま）。したがって当面は**案E相当（運用で担保）**＝`main` へ反映する前に人／エージェントがCIの緑を確認する。**本番公開の前に再判断する**（それまでは赤いまま反映することが技術的に可能な状態が残る）。以下は判明した経緯と選択肢。 D-8で案A（ブランチ保護）を決めたが、**private × GitHub Free ではブランチ保護もRulesetも使えない**ことが判明した（APIが403で `Upgrade to GitHub Pro or make this repository public` を返す）。目的は「CIが赤いあいだ本番が更新されないこと」。要決定: (案A)**GitHub Pro へ課金**（個人 $4/月）。決定どおりのブランチ保護が即使える。実装作業ゼロ。**推奨**（リリース時にはVercel Proも契約する前提なので、月$4は許容範囲。外部準備7と同時に判断できる） / (案B)リポジトリを public にする（無料で保護が使えるが、事業内容・プロンプト設計・要件が公開される。**非推奨**） / (案C)Vercelの Ignored Build Step でCIの結果を見てビルドをスキップする（無料。ただしVercelのビルドはpush直後に始まりCIより早いため、緑になった後に**手動で Redeploy** する運用になる。GitHubトークンをVercelの環境変数へ置く必要もある） / (案D)Vercelの Git 自動デプロイ（production）を止め、**CIが緑になった後にGitHub Actionsから `vercel deploy --prod`** する（保証は最も固い。ただしVercelトークンをGitHub Secretsへ置くことになり、「秘密情報をCIに置かない」現方針の変更を伴う。実装もそれなり） / (案E)当面は運用で担保（`main` へ push する前にCIの結果を人／エージェントが確認する。`.githooks/pre-push` で機械化も可能だがローカル設定なので回避できる）。
 **時期**: production はまだ公開していない（独自ドメイン・Vercel Pro が未契約）ため、**この決定は本番公開の直前まで先送りできる**。それまでは案Eで足りる。
 
 **D-7: 依存の脆弱性の解消方針（解決済み 2026-07-30: 案A）** — `npm audit` に high 3件（`sharp`＝libvips CVEでsharp<0.35.0、`next`／`postcss`＝next同梱）とmoderate 4件がある。いずれも修正には breaking upgrade（`sharp@0.35.x`・`next` minor）が必要で、画像正規化（image-normalize）とApp全体の再検証を伴う。T-M6-20 の release ゲート（`scripts/audit-check.mjs`）はこの3 high を **package名 allowlist（next/postcss/sharp）** で通し、critical と allowlist外 high は失敗させる暫定運用。要決定: (案A)次の保守枠で `sharp`/`next` を計画的に upgrade しフルスイート＋build＋画像テストで検証してから allowlist を外す（推奨） / (案B)現状維持しリリース後に対応。リリース前チェックリスト（T-M6-21）で判断する。**2026-07-26 決定: sharp/postcss は据え置き（案B）・next は先行upgrade（T-M7-10）**。ただし同日の再調査で前提が変わった: (1) `next` は 16.2.10→**16.2.12 のパッチ**で high 4件・moderate 5件が解消する（`>=16.0.0 <16.2.11` が対象。当初想定した minor upgrade は不要）。(2) `sharp` は依然 `<0.35.0` が対象で 0.35 系への breaking upgrade が必要（libvips CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）。(3) high の `postcss` は **next が pin する nested の 8.4.31**（hoisted の 8.5.20 は無害）で、`next@16.2.12` も 8.4.31 を pin するため **next を上げても解消しない**。sharp/postcss の扱いは保守枠で再判断する。**2026-07-30 決定: 案A**。`sharp` を 0.35系へ計画的に upgrade し、画像正規化を再検証してから allowlist から外す（T-M7-32）。`postcss` は next が nested で 8.4.31 を pin しているため upgrade では解消せず、`overrides` の可否検証も同タスクに含める。`next` は T-M7-10 で 16.2.12 済み。

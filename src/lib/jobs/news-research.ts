@@ -190,13 +190,30 @@ export function formatDropReasons(reasons: Record<string, number>): string {
 
 export type NewsItemOut = z.infer<typeof newsItemSchema>;
 
+/** 定時取得の起動時刻（JST）。2時間おき（2026-08-02 ユーザー決定・T-M7-55）。 */
+export const NEWS_FETCH_JST_HOURS = [10, 12, 14, 16, 18, 20] as const;
+
+/** 起動間隔（時間）。窓はこれより広く取り、隣の回と必ず重ねる。 */
+const FETCH_INTERVAL_HOURS = 2;
+/** 重なり分。1回失敗しても次の回が拾えるようにするための余裕。 */
+const OVERLAP_HOURS = 1;
+
 /**
- * `{{hours}}` 切替（§6.10）。JST 9/10/11時起動は前日18:00始点で夜間・稼働終了間際を補完するため
- * それぞれ 15/16/17（=起動時刻から前日18:00までの時間数）、12:00〜20:00起動は直近3時間ラップの 3。
+ * `{{hours}}` 切替（§6.10）。**起動間隔より広い窓**にして、隣の回と必ず重ねる
+ * （1回失敗しても次で拾える＝欠落しない）。
+ *
+ * 2026-08-02、毎時×6分野の実費が月$518〜1,071と判明したため、10〜20時の**2時間おき×3分野**へ
+ * 変更した（T-M7-55）。**頻度だけ変えると窓が足りずニュースを取りこぼす**ので、窓も広げる。
+ *
+ * - 初回（10:00）: 前日の最終回（20:00）からの空白を埋めるため **14時間**さかのぼる。
+ * - 以降（12:00〜20:00）: 間隔2時間＋重なり1時間の **3時間**。
+ * - 想定外の時刻に起動された場合も欠落させない方へ倒し、初回と同じ14時間を使う。
  */
 export function newsLookbackHours(jstHour: number): number {
-  if (jstHour >= 9 && jstHour <= 11) return jstHour + 6;
-  return 3;
+  const [first, ...rest] = NEWS_FETCH_JST_HOURS;
+  if (jstHour === first) return 24 - NEWS_FETCH_JST_HOURS[NEWS_FETCH_JST_HOURS.length - 1] + first;
+  if ((rest as readonly number[]).includes(jstHour)) return FETCH_INTERVAL_HOURS + OVERLAP_HOURS;
+  return 24 - NEWS_FETCH_JST_HOURS[NEWS_FETCH_JST_HOURS.length - 1] + first;
 }
 
 /** UTC時刻→JSTの時（0-23）。 */

@@ -1,4 +1,4 @@
-import { NEWS_CATEGORIES, type NewsCategory } from "../news";
+import { NEWS_FETCH_CATEGORIES, type NewsCategory } from "../news";
 import { canonicalizeSourceUrl } from "../news-url";
 import type { Queryable } from "../x/token-refresh";
 import type { NewsItemOut, NewsResearchResult } from "./news-research";
@@ -140,7 +140,9 @@ async function runPool<T, R>(
 }
 
 export async function runNewsFetch(deps: NewsFetchDeps): Promise<NewsFetchResult> {
-  const categories = deps.categories ?? NEWS_CATEGORIES;
+  // 既定は**定時取得する分野**（全分野ではない）。費用は分野数に比例するため、
+  // 運用しない分野を取りに行かない（T-M7-55）。
+  const categories = deps.categories ?? NEWS_FETCH_CATEGORIES;
   const concurrency = deps.concurrency ?? DEFAULT_CONCURRENCY;
   const onError = deps.onError ?? (() => {});
 

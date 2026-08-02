@@ -50,7 +50,7 @@ Macの停止・スリープ・回線断中は定時性を保証できない。�
 ```json
 {
   "crons": [
-    { "path": "/api/cron/news-fetch", "schedule": "0 0-11 * * *" },
+    { "path": "/api/cron/news-fetch", "schedule": "0 1-11/2 * * *" },
     { "path": "/api/cron/scheduler-tick", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/metrics-collector", "schedule": "0 * * * *" },
     { "path": "/api/cron/follower-snapshot", "schedule": "10 * * * *" }
