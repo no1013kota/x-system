@@ -116,12 +116,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   }
 
   return (
-    <main className="px-4 py-8 lg:px-8 lg:py-10">
-      <div className="mx-auto max-w-6xl space-y-7">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">アカウント設定</h1>
-          <p className="text-sm text-muted-foreground">
-            APIキー、ご契約内容、お問い合わせ先を管理できます。
+    <main className="px-4 py-[26px] lg:px-8">
+      <div className="mx-auto max-w-[1180px] space-y-3.5">
+        <header>
+          <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
+          <p className="mt-1 text-[12.5px] text-ink-2">
+            Xアカウント連携・APIキー・通知・ご契約内容を管理できます。発信の内容に関わる設定は
+            <Link className="mx-1 font-medium text-brand underline-offset-2 hover:underline" href="/app/ai-settings">
+              AI設定
+            </Link>
+            にあります。
           </p>
         </header>
 
