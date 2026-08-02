@@ -5,6 +5,8 @@ import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
+import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
+import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
@@ -115,6 +117,9 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   let drafts: DraftView[] = [];
   let imageRegenEnabled = false;
   let xHandle: string | null = null;
+  // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
+  // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
+  let slots: ScheduleSlotView[] = [];
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     const [loaded, plan] = await Promise.all([
       listDraftsForAccount(pooledDb, activeXAccountId, tab === "history" ? "history" : "drafts"),
@@ -134,13 +139,16 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       ).rows[0]?.handle ?? null;
     }
   }
+  if (activeXAccountId && tab === "drafts") {
+    slots = await listScheduleSlots(pooledDb, activeXAccountId);
+  }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 lg:px-8 lg:py-10">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">投稿</h1>
+    <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+      <header>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿作成</h1>
         <p className="text-sm text-muted-foreground">
           パターンを選んで投稿を生成し、下書きで確認・編集して投稿します。
         </p>
@@ -163,12 +171,15 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           xAccountId={activeXAccountId}
         />
       ) : tab === "drafts" ? (
-        <DraftsList
-          drafts={drafts}
-          imageRegenEnabled={imageRegenEnabled}
-          quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
-          selectedDraftId={params.draftId}
-        />
+        <>
+          <ScheduleSummary slots={slots} />
+          <DraftsList
+            drafts={drafts}
+            imageRegenEnabled={imageRegenEnabled}
+            quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
+            selectedDraftId={params.draftId}
+          />
+        </>
       ) : (
         <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
       )}

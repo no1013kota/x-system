@@ -566,7 +566,7 @@ function PublishButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">この内容で投稿しますか？</AlertDialog.Title>
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
               <p className="font-medium">注意: 次の警告があります</p>
@@ -612,7 +612,7 @@ function DiscardButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">
             下書きを破棄しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">

@@ -124,7 +124,7 @@ export function ScheduleManager({
 
       <div className="flex justify-end">
         {!creating ? (
-          <Button onClick={() => setCreating(true)} size="sm" type="button">
+          <Button className="h-9 px-4 text-[13px]" onClick={() => setCreating(true)} type="button" variant="brand">
             スケジュールを追加
           </Button>
         ) : null}
@@ -187,7 +187,7 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
           <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-            <AlertDialog.Title className="text-lg font-semibold">
+            <AlertDialog.Title className="text-[15px] font-bold text-ink">
               自動投稿をすべて停止しますか？
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -233,7 +233,7 @@ function DeleteSlotButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">
             このスケジュールを削除しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -293,7 +293,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                         className={`m-0.5 inline-block rounded px-1.5 py-0.5 ${
                           s.enabled
                             ? s.mode === "auto"
-                              ? "bg-foreground text-background"
+                              ? "bg-brand text-white"
                               : "bg-muted text-foreground"
                             : "bg-muted/40 text-muted-foreground line-through"
                         }`}
@@ -758,7 +758,7 @@ function AutomationConsentModal({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">
             {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
