@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
@@ -99,7 +100,7 @@ export function AnalyticsView({
                   {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                 </span>
                 {draft.incomplete ? (
-                  <span className="rounded bg-warn-bg px-2 py-0.5 text-xs font-medium text-warn-fg">不完全なthread</span>
+                  <Badge tone="warn">不完全なthread</Badge>
                 ) : null}
                 {draft.metricsCompleted ? (
                   <span className="rounded px-2 py-0.5 text-xs text-muted-foreground" title="投稿後30日までの計測がすべて終わりました">計測完了</span>

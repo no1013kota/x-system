@@ -14,6 +14,7 @@ import {
   updateScheduleSlotAction,
 } from "@/app/actions/schedule";
 import { EmptyNotice } from "@/components/app-shell/page-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
@@ -408,16 +409,12 @@ function SlotRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
-          <span className="rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {slot.mode === "auto" ? "自動投稿" : "下書き"}
-          </span>
+          <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
           <span className="text-xs text-muted-foreground">
             {slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} {slot.time_jst.slice(0, 5)}
           </span>
           {!slot.enabled ? (
-            <span className="rounded-full border border-warn-fg/25 bg-warn-bg px-2 py-0.5 text-xs text-warn-fg">
-              停止中（実行されません）
-            </span>
+            <Badge tone="warn">停止中（実行されません）</Badge>
           ) : null}
           {/* 「次にいつ動くか」を行ごとに出す（要件06 §2 SC-08）。 */}
           <span className="text-xs text-muted-foreground">

@@ -11,6 +11,7 @@ import {
   verifyApiKey,
 } from "@/app/actions/api-keys";
 import { aiSettingsTabHref } from "@/app/app/ai-settings/tabs";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider, XClientType } from "@/lib/api-keys";
@@ -48,17 +49,9 @@ function verificationDate(value: string | null): string | null {
 }
 
 function StatusBadge({ status }: { status: ApiKeyViewState["status"] }) {
-  const tone =
-    status === "valid"
-      ? "border-success-fg/25 bg-success-bg text-success-fg"
-      : status === "invalid"
-        ? "border-danger-fg/25 bg-danger-bg text-danger-fg"
-        : "border-warn-fg/25 bg-warn-bg text-warn-fg";
-  return (
-    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}>
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  const tone: BadgeTone =
+    status === "valid" ? "success" : status === "invalid" ? "danger" : "warn";
+  return <Badge tone={tone}>{STATUS_LABELS[status]}</Badge>;
 }
 
 function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {

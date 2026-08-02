@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/x-accounts";
 import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
@@ -25,11 +26,12 @@ const STATUS_LABEL: Record<string, string> = {
   error: "エラー（要確認）",
 };
 
-const STATUS_TONE: Record<string, string> = {
-  active: "border-success-fg/25 bg-success-bg text-success-fg",
-  expired: "border-warn-fg/25 bg-warn-bg text-warn-fg",
-  disabled: "border-hairline bg-black/[0.04] text-ink-2",
-  error: "border-danger-fg/25 bg-danger-bg text-danger-fg",
+/** 状態→色は**意味で決める**（`Badge` の tone・デザイン §カラー）。 */
+const STATUS_TONE: Record<string, BadgeTone> = {
+  active: "success",
+  expired: "warn",
+  disabled: "neutral",
+  error: "danger",
 };
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
@@ -165,9 +167,7 @@ export function XAccountsSettings({
                   <p className="flex items-center gap-2 font-medium">
                     @{account.handle}
                     {account.isActive ? (
-                      <span className="rounded-full border border-info-fg/25 bg-info-bg px-2 py-0.5 text-xs text-info-fg">
-                        操作中
-                      </span>
+                      <Badge tone="info">操作中</Badge>
                     ) : null}
                   </p>
                   <p className="text-sm text-muted-foreground">{account.name}</p>
