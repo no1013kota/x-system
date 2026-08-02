@@ -47,7 +47,10 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
                 }`}
                 key={slot.id}
               >
-                <span className="text-[18px] font-bold tabular-nums text-ink">{slot.time_jst}</span>
+                {/* DBは `HH:MM:SS` で持つ。秒は運用に意味が無いので落とす（T-M8-24）。 */}
+                <span className="text-[18px] font-bold tabular-nums text-ink">
+                  {slot.time_jst.slice(0, 5)}
+                </span>
                 <span className="text-[11.5px] text-ink-2">
                   {slot.weekdays.map((d) => WEEKDAY[d]).join("・")}
                 </span>
