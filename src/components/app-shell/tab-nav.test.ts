@@ -15,12 +15,12 @@ const AI_LINK_EXTRA =
 
 describe("tabNavClassName", () => {
   it("settings/posts の nav 共通クラス", () => {
-    expect(set(tabNavClassName())).toEqual(set("flex gap-2 border-b"));
+    expect(set(tabNavClassName())).toEqual(set("flex gap-2 border-b border-hairline"));
   });
 
   it("ai-settings の nav（gap-1 が gap-2 を上書き）", () => {
     expect(set(tabNavClassName("mt-7 gap-1 overflow-x-auto"))).toEqual(
-      set("mt-7 flex gap-1 overflow-x-auto border-b"),
+      set("mt-7 flex gap-1 overflow-x-auto border-b border-hairline"),
     );
   });
 });
@@ -28,22 +28,22 @@ describe("tabNavClassName", () => {
 describe("tabLinkClassName", () => {
   it("settings/posts の active/inactive 共通クラス", () => {
     expect(set(tabLinkClassName(true))).toEqual(
-      set("border-b-2 px-4 py-3 text-sm font-medium border-foreground text-foreground"),
+      set("border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 border-brand text-brand"),
     );
     expect(set(tabLinkClassName(false))).toEqual(
-      set("border-b-2 px-4 py-3 text-sm font-medium border-transparent text-muted-foreground"),
+      set("border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 border-transparent text-ink-2 hover:text-ink"),
     );
   });
 
   it("ai-settings の active/inactive（追加クラス差し込み後も集合等価）", () => {
     expect(set(tabLinkClassName(true, AI_LINK_EXTRA))).toEqual(
       set(
-        "shrink-0 border-b-2 px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-foreground text-foreground",
+        "shrink-0 border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-brand text-brand",
       ),
     );
     expect(set(tabLinkClassName(false, AI_LINK_EXTRA, "hover:text-foreground"))).toEqual(
       set(
-        "shrink-0 border-b-2 px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-transparent text-muted-foreground hover:text-foreground",
+        "shrink-0 border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-transparent text-ink-2 hover:text-foreground",
       ),
     );
   });
