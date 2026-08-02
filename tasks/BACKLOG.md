@@ -147,7 +147,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
   - `analytics.spec.ts` 2件: 直近3件が1日のみ・古い1件が30日まで持つ状態で**既定が「投稿後1日」**になること（T-M7-04の仕様。「取得済みの最長」だと直近が空表に見える退行）、本文冒頭で対象を識別できること、実績なしの空状態。
   - `generation.spec.ts` 2件: `generation_jobs` をseedして進行中は「生成中…」でdisabled、失敗時に**保存された理由が汎用文の代わりに出る**こと（T-M7-02）、前提不足コードでは「再試行する」を出さず解決先へ送ること、分類不能な失敗では再試行を出すこと。
   - 共通: `fixtures/test.ts` に `alertIn(page)` を追加（Next.js の route announcer も `role="alert"` を持つため素の `getByRole("alert")` は必ず strict mode 違反になる）。`fixtures/account.ts` に `destroyUserByEmail`（画面のサインアップで作られた利用者は `accounts` fixture の後片付け対象外）。
-- 実行結果: 13件緑（47.9s）。実行後の残データ0件（e2eユーザー0・news_items 0・e2e x_accounts 0）。実アカウント（no.1013kota@gmail.com）とその失敗job 3件は対象外として保持。
+- 実行結果: 13件緑（47.9s）。実行後の残データ0件（e2eユーザー0・news_items 0・e2e x_accounts 0）。実アカウント（運営者本人のアドレス）とその失敗job 3件は対象外として保持。
 - 後続への注意: **「生成する」ボタンは押さない**方針にした（実AI呼び出しで費用・不確定性・1分待ちが入るため）。生成のリクエスト形状は `npm run check:providers`（T-M7-16）が担当し、E2Eは表示契約だけを見る。未カバーは**課金（Stripe）・学習ソース・ベースmd編集・パスワード再設定**。課金はcheckout/portalが外部サービスへ実際にセッションを作るため、E2Eに入れるなら `maxRedirects: 0` で遷移先だけを見る形（`x-oauth.spec.ts` と同じ）にする。
 
 ### T-M7-19: ログアウトのUIが存在しない（PRD A-2 Must） `done`
@@ -194,7 +194,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 ### T-M7-23: development から実SMTPへ通知メールが送信される `done`
 - 参照: 要件04 §14、要件01 §8 / 依存: なし / サイズ: S
 - 完了条件: production 以外の環境から外部SMTPへ実送信しない
-- メモ: **2026-07-27、動作確認で `scheduler_tick` を実行したところ、溜まっていた queued 通知98通が実際にGmailから送信された**（宛先は本人 `no.1013kota@gmail.com` のみ。第三者への送信なし）。`.env.local` に実Gmailの App Password が入っており、コード側に環境ガードが無かった。`local-development.md` には「SMTP_USER/SMTP_APP_PASSWORD を空にする」という**手動の**回避策しか無く、忘れれば必ず再発する。
+- メモ: **2026-07-27、動作確認で `scheduler_tick` を実行したところ、溜まっていた queued 通知98通が実際にGmailから送信された**（宛先は本人 運営者本人のアドレス のみ。第三者への送信なし）。`.env.local` に実Gmailの App Password が入っており、コード側に環境ガードが無かった。`local-development.md` には「SMTP_USER/SMTP_APP_PASSWORD を空にする」という**手動の**回避策しか無く、忘れれば必ず再発する。
 - 実装結果: 純粋関数 `canSendViaSmtp({appEnv, host})` を `notification-email.ts` に追加し、`buildTransport` が false なら transport を作らず警告して skip する。`production` は従来どおり、それ以外は**ループバック宛（Mailpit等）だけ**を許す。テスト+3。
 - 検証: 同じ tick を再実行し `emailsRecovered: {processed:49, sent:0}`＋警告ログを確認（送信済みは98件のまま増えない）。
 - 後続への注意: **queued が49件残っている**。production で初めて tick が回ると一括送信されるため、本番移行前に古い通知を `not_requested` にするか掃除するか決めること（要決定 D-9）。ローカルで中身を見たい場合は `[local_smtp]` の `smtp_port` を有効化して Mailpit へ向ける（手順は local-development.md）。
@@ -557,10 +557,10 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
 - 完了条件:
   - `npm run db:clean-test-data` が「一定期間より古い `email_status='queued'` の通知」を掃除対象に含める（既定はdry-runで件数を表示し、`-- --apply` で実行）
   - **ローカルDB以外へは接続しない**既存のガードが効いたままである
-  - 実メールのアカウント（`no.1013kota@gmail.com` 等）宛の通知も対象になるが、`in_app` の表示は壊さない（`email_status` を `not_requested` に落とすだけで行は消さない、が既定）
+  - 実メールのアカウント（運営者本人のアドレス等）宛の通知も対象になるが、`in_app` の表示は壊さない（`email_status` を `not_requested` に落とすだけで行は消さない、が既定）
 - 実装結果（2026-07-31）: `scripts/clean-test-data.mjs` に掃除対象(2)として追加した。`email_status='queued'` を `not_requested` に落とし、`email_available_at` を消す（**行は消さない**ので画面の通知履歴182件はそのまま）。既定はdry-runで「件数・人数・最古の経過時間」を出し、`-- --apply` で反映。`-- --older-than <日数>` で絞れる。
   **既定を「7日より古い」から「送信待ちすべて」へ変更した**。ローカルDBの `queued` はすべてローカル検証で作られたもので（本番は別DB）、スクリプトはローカル以外へ接続しないため期間で絞る意味がない。実際、暫定案の7日だと**53件のうち0件しか掃除されなかった**（最古が148時間＝6.2日前）。「掃除したつもりで残る」形は原則1に反するため既定を変えた。
-- 実行結果（2026-07-31）: 送信待ち53件（news 45・draft_created 5・error 3、すべて `no.1013kota@gmail.com` 宛）を送信対象から外した。あわせて滞留していたテストユーザー693件も削除（実アカウント1件は温存）。`npm run doctor` の「お知らせメール」が ⚠️ → ✅ になった。`failed` の1件は残るが、**送信されるのは `queued` だけ**で `failed` は利用者の明示的な再送要求でしか送られないため一斉送信の risk は無い（`notification-email.ts` の抽出条件で確認）。
+- 実行結果（2026-07-31）: 送信待ち53件（news 45・draft_created 5・error 3、すべて 運営者本人のアドレス 宛）を送信対象から外した。あわせて滞留していたテストユーザー693件も削除（実アカウント1件は温存）。`npm run doctor` の「お知らせメール」が ⚠️ → ✅ になった。`failed` の1件は残るが、**送信されるのは `queued` だけ**で `failed` は利用者の明示的な再送要求でしか送られないため一斉送信の risk は無い（`notification-email.ts` の抽出条件で確認）。
 - メモ: ローカル検証で作られた通知が `queued` のまま49件残っている。T-M7-23 で development からの実送信は止めたが、**このDBを本番へ持ち込むと初回の `scheduler_tick` で一括送信される**。行を消すと画面の通知履歴が欠けるため、`email_status` を落とす方式を既定にする（削除は別オプション）。しきい値の既定は「7日より古い」を暫定とし、実装時に `db:clean-test-data` の既存オプション設計へ合わせる。
 
 ### T-M7-32: sharp を 0.35系へ upgrade し依存の high を減らす（D-7 案A） `done`
@@ -2138,7 +2138,7 @@ M0〜M6は`done`。M7（UX改善の後続＋検証基盤の強化）は T-M7-25 
   - ローカルSupabaseに残る 2026-07-24 由来の孤児レコード（handle='h' の x_accounts 4件、running のまま放置された learning_analysis job 2件）が消えている
   - フルスイート（`npm test`）が緑のままで、削除がテストのfixture前提を壊していない
 - メモ: DBテストが後片付けし損ねた残骸。実データではなくローカル検証環境のみの掃除。今後の再発防止として、残骸を作るテストがどれか特定できれば併せてcleanupを補う。
-- 実装結果: ローカルSupabaseのみを対象に、合成テストデータを依存順（external_api_usage_events→notifications→user_api_keys→usage_counters→usage_events→x_accounts→auth.users）で削除。内訳は `handle='h'` の x_accounts 4件＋その依存、UUID合成メール等の auth.users 2457件（`%@example.com` かつ UUID形式/tm10*/verify-*/e2e-* のみを対象）。**実メールアカウント（no.1013kota@gmail.com）とその通知83件は対象外として保持**。削除後 x_accounts/generation_jobs/drafts/schedule_slots はいずれも0件、`npm test` 1154件緑（fixture前提を壊していない）。再発防止調査: 残骸を作り得る *.db.test.ts 19ファイルはいずれも `delete from auth.users` の後片付けを持っており、コード上の欠落ではなく2026-07-24のテスト中断・失敗時の取り残しと判断（コード修正は不要）。
+- 実装結果: ローカルSupabaseのみを対象に、合成テストデータを依存順（external_api_usage_events→notifications→user_api_keys→usage_counters→usage_events→x_accounts→auth.users）で削除。内訳は `handle='h'` の x_accounts 4件＋その依存、UUID合成メール等の auth.users 2457件（`%@example.com` かつ UUID形式/tm10*/verify-*/e2e-* のみを対象）。**実メールアカウント（運営者本人のアドレス）とその通知83件は対象外として保持**。削除後 x_accounts/generation_jobs/drafts/schedule_slots はいずれも0件、`npm test` 1154件緑（fixture前提を壊していない）。再発防止調査: 残骸を作り得る *.db.test.ts 19ファイルはいずれも `delete from auth.users` の後片付けを持っており、コード上の欠落ではなく2026-07-24のテスト中断・失敗時の取り残しと判断（コード修正は不要）。
 
 ### T-M7-02: job失敗時に必ず原因を残す（runJobの汎用finalizer最小対応） `done`
 - 参照: 要件06 §10、要件04 §4 / 依存: なし / サイズ: M
