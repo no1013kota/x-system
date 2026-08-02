@@ -208,7 +208,7 @@ export function BaseMdEditor({
       ) : null}
 
       {/* エディタ */}
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold">ベースmd（現在: version {version}）</h2>
           <span
@@ -230,7 +230,7 @@ export function BaseMdEditor({
         />
         <div className="mt-3 flex items-center gap-3">
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={editingDisabled || overLimit || !dirty}
             onClick={save}
             type="button"
@@ -258,7 +258,7 @@ export function BaseMdEditor({
         ) : (
           <ul className="mt-2 space-y-2">
             {history.map((h) => (
-              <li className="flex flex-wrap items-center gap-2 rounded-xl border bg-background p-4" key={h.version}>
+              <li className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface p-4" key={h.version}>
                 <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">v{h.version}</span>
                 <span className="rounded px-2 py-0.5 text-xs">{CHANGE_SOURCE_LABEL[h.changeSource] ?? h.changeSource}</span>
                 {h.summary ? <span className="text-xs text-muted-foreground">{h.summary}</span> : null}

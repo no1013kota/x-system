@@ -107,7 +107,7 @@ export function SuggestionsPanel({
   );
 
   return (
-    <section className="rounded-xl border bg-background p-4">
+    <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">改善提案</h2>
         {generating ? (
@@ -130,7 +130,7 @@ export function SuggestionsPanel({
             再読み込み
           </button>
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || generating}
             onClick={refresh}
             type="button"
@@ -171,7 +171,7 @@ export function SuggestionsPanel({
       ) : (
         <ul className="mt-4 space-y-3">
           {suggestions.map((s, i) => (
-            <li className="rounded-xl border bg-background p-4" key={i}>
+            <li className="rounded-card border border-hairline bg-surface p-4" key={i}>
               <p className="text-sm font-medium">{s.content}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                 {s.axis ? (

@@ -224,7 +224,28 @@ describe("fanOutNewsDigest (db)", () => {
 
     try {
       const res = await fanOutNewsDigest({ db: pooledDb, windowStart });
-      expect(res.notified).toBeGreaterThanOrEqual(1);
+      // 失敗したとき原因が分かるように状態を添える（並列実行で稀に落ちるため・T-M8-11）。
+      // 何が食い違ったのかを次の失敗で特定できるようにする。
+      const ctx = await withTransaction(async (c) => {
+        const items = await c.query(
+          `select count(*)::int as n from news_items
+            where fetched_at >= $1::timestamptz
+              and fetched_at < $1::timestamptz + interval '1 hour'`,
+          [windowStart.toISOString()],
+        );
+        const alive = await c.query(
+          `select subscription_status, news_config, notification_config from profiles where id = $1`,
+          [seed.alive],
+        );
+        const gone = await c.query(`select 1 from profiles where id = $1`, [seed.gone]);
+        return {
+          窓内のnews_items: items.rows[0]?.n,
+          残る利用者: alive.rows[0] ?? "profiles に居ない",
+          退会した利用者がまだ居るか: gone.rows.length > 0,
+          結果: res,
+        };
+      });
+      expect(res.notified, `配信されなかった。状態: ${JSON.stringify(ctx)}`).toBeGreaterThanOrEqual(1);
       const alive = await withTransaction((c) =>
         c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
       );

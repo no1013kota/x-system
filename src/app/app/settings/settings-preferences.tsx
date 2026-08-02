@@ -64,8 +64,8 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
   const [pending, startTransition] = useTransition();
   const [notice, setNotice] = useState<Notice | null>(null);
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">プロフィール</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">プロフィール</h2>
       <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
         表示名
       </label>
@@ -110,8 +110,8 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
       [type]: { ...prev[type], [channel]: !prev[type][channel] },
     }));
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">通知</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">通知</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         種別ごとにアプリ内通知とメールの受け取りを設定できます。
       </p>
@@ -172,8 +172,8 @@ function NewsForm({ config }: { config: NewsConfig }) {
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   const invalid = categories.length === 0 || impacts.length === 0;
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">ニュース通知</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">ニュース通知</h2>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
         ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
         設定条件に一致する新着が0件の時刻には通知は届きません。ここでの分野・インパクト・表示件数は

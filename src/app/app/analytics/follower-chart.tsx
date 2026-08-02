@@ -54,14 +54,15 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
   }, [filtered, summary.min, summary.max]);
 
   return (
-    <section className="rounded-xl border bg-background p-4">
+    <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">フォロワー数の推移</h2>
         <div className="ml-auto inline-flex rounded-lg border p-0.5">
           {PERIODS.map((d) => (
             <button
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
-                days === d ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              aria-pressed={days === d}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${
+                days === d ? "bg-ink text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}
               onClick={() => setDays(d)}
@@ -98,25 +99,64 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
             role="img"
             viewBox={`0 0 ${W} ${H}`}
           >
+            {/* 水平グリッド（デザイン §画面一覧 5.分析）。薄い線で目盛りだけを示す。 */}
+            {[0, 0.25, 0.5, 0.75, 1].map((r) => {
+              const y = PAD.top + (H - PAD.top - PAD.bottom) * r;
+              return (
+                <line
+                  key={r}
+                  stroke="rgba(0,0,0,.05)"
+                  strokeWidth="1"
+                  x1={PAD.left}
+                  x2={W - PAD.right}
+                  y1={y}
+                  y2={y}
+                />
+              );
+            })}
             {/* y軸ラベル（最小・最大） */}
-            <text className="fill-muted-foreground" fontSize="10" x="4" y={PAD.top + 4}>
+            <text fill="rgba(0,0,0,.45)" fontSize="10" x="4" y={PAD.top + 4}>
               {geom.yMax.toLocaleString()}
             </text>
-            <text className="fill-muted-foreground" fontSize="10" x="4" y={H - PAD.bottom}>
+            <text fill="rgba(0,0,0,.45)" fontSize="10" x="4" y={H - PAD.bottom}>
               {geom.yMin.toLocaleString()}
             </text>
+            {/* 面塗り（線の下）。淡いキー色で推移の量感を出す。 */}
+            {geom.pts.length > 1 ? (
+              <polygon
+                fill="var(--brand-subtle)"
+                points={[
+                  `${geom.pts[0].cx},${H - PAD.bottom}`,
+                  ...geom.pts.map((p) => `${p.cx},${p.cy}`),
+                  `${geom.pts[geom.pts.length - 1].cx},${H - PAD.bottom}`,
+                ].join(" ")}
+              />
+            ) : null}
             {/* 折れ線（2点以上） */}
             {geom.pts.length > 1 ? (
               <polyline
                 fill="none"
                 points={geom.pts.map((p) => `${p.cx},${p.cy}`).join(" ")}
-                stroke="currentColor"
-                strokeWidth="2"
+                stroke="var(--brand)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
               />
             ) : null}
             {/* 各snapshotの点（色以外の形状マーカー） */}
-            {geom.pts.map((p) => (
-              <circle cx={p.cx} cy={p.cy} fill="currentColor" key={p.date} r="3">
+            {/*
+              最新値の数値ラベルはデザインでは折れ線の右に置くが、この幅では最終点と必ず重なる
+              （実際に描いて確認した）。同じ数値は上の「現在」に出しているので、ここでは
+              **最終点を大きくする**ことで最新であることだけを示す。
+            */}
+            {geom.pts.map((p, i) => (
+              <circle
+                cx={p.cx}
+                cy={p.cy}
+                fill="var(--brand)"
+                key={p.date}
+                r={i === geom.pts.length - 1 ? 4.5 : 3}
+              >
                 <title>{`${fmtDate(p.date)}: ${p.count.toLocaleString()}人`}</title>
               </circle>
             ))}

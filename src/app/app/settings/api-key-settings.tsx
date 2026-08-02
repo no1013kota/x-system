@@ -249,7 +249,7 @@ export function ApiKeySettings({
 
   if (plan === "premium") {
     return (
-      <section className="rounded-2xl border bg-card p-6 shadow-sm" aria-labelledby="premium-key-heading">
+      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
           <div className="rounded-xl bg-emerald-100 p-3 text-emerald-800">
             <ShieldCheck aria-hidden="true" className="size-6" />

@@ -28,7 +28,7 @@ export default async function AnalyticsPage() {
   const xAccountId = await resolveActiveXAccountForUser(user.id);
   if (!xAccountId) {
     return (
-      <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+      <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
         <header>
             <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
         </header>
@@ -66,7 +66,7 @@ export default async function AnalyticsPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
