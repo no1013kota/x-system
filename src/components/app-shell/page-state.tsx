@@ -85,6 +85,41 @@ export function EmptyState({
   );
 }
 
+/**
+ * プラン制限で使えない機能の案内（デザイン §ベースmd ロック）。
+ *
+ * **「空」とは別物として扱う**（T-M8-20）。空状態は「まだ何も無い」＝自分の操作で埋められるが、
+ * ここは「このプランでは開けない」＝**契約を変えるまで何をしても変わらない**。同じ灰色の空状態で
+ * 出すと、利用者は自分の操作不足だと思って設定画面を探しに行く。鍵アイコンとキー色で
+ * 「行き先はプラン変更しかない」ことを先に伝える。
+ */
+export function LockedState({
+  actionHref,
+  actionLabel,
+  description,
+  title,
+}: EmptyStateProps) {
+  return (
+    <section className={cardClassName}>
+      <span className="mx-auto grid size-13 place-items-center rounded-pill bg-brand-subtle text-brand">
+        <Icon name="lock" size={26} />
+      </span>
+      <h2 className="mt-3 text-[15.5px] font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-2 max-w-[460px] text-[12.5px] leading-7 text-ink-2">
+        {description}
+      </p>
+      {actionHref && actionLabel ? (
+        <Link
+          className="mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-[13px] font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          href={actionHref}
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
+    </section>
+  );
+}
+
 export function ErrorState({ description, retry, title }: ErrorStateProps) {
   return (
     <section aria-live="assertive" className={cardClassName} role="alert">
