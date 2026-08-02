@@ -54,3 +54,46 @@ test("スケジュールを停止すると結果がトーストで出る", async
   await expect(toast).toBeVisible();
   await expect(toast).toContainText("スケジュールを停止しました");
 });
+
+test("下書きを編集して保存すると結果がトーストで出る（T-M8-18）", async ({ accounts, page }) => {
+  // 保存すると編集画面が閉じるだけで、**成功したことがどこにも出ていなかった**。
+  const account = await accounts.create("toast-draft-save", { personaReady: true });
+  const text = `保存トースト確認用 ${randomUUID().slice(0, 6)}`;
+  await query(
+    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
+     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    [
+      account.xAccountId,
+      JSON.stringify([
+        { local_id: "p1", text, weighted_length: text.length * 2, sources: [], warnings: [] },
+      ]),
+    ],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=drafts");
+  await page.getByRole("button", { name: "編集", exact: true }).first().click();
+
+  const editor = page.getByLabel("1ポスト目の本文");
+  await expect(editor).toBeVisible();
+  await editor.fill(`${text} 追記`);
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+
+  const toast = toastIn(page);
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText("下書きを保存しました");
+
+  // 表示だけでなく実際に保存されている。
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ thread: { text: string }[] }>(
+            `select thread from drafts where x_account_id = $1`,
+            [account.xAccountId],
+          )
+        )[0]?.thread[0]?.text,
+      { message: "編集内容が保存されること" },
+    )
+    .toContain("追記");
+});
