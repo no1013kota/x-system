@@ -146,7 +146,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               <p className="text-sm font-semibold text-muted-foreground">
                 すべてのプランを7日間無料でお試し
               </p>
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="text-[26px] font-bold tracking-tight text-ink sm:text-[30px]">
                 あなたの運用に合うプランを選択
               </h1>
               <p className="text-sm leading-6 text-muted-foreground sm:text-base">
@@ -243,7 +243,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                           {PLAN_TAGLINE[planId]}
                         </span>
                         <span className="mt-3 block">
-                          <span className="text-3xl font-bold tracking-tight">
+                          <span className="text-[30px] font-extrabold tracking-tight tabular-nums text-ink">
                             ¥{yen(plan.monthlyPriceJpy)}
                           </span>
                           <span className="ml-1 text-xs font-normal text-muted-foreground">

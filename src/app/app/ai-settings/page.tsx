@@ -151,11 +151,11 @@ export default async function AiSettingsPage({
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">AI設定</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">AI設定</h1>
+        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
           AIがあなたの代わりに投稿を書くための取り決めを、ここでまとめて管理します。変更は次の投稿生成から反映されます。
         </p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
           まず「発信設定」→「AI用途」の順に設定してください。精度を上げたい場合は「学習ソース」（任意）も登録できます。
         </p>
       </header>
