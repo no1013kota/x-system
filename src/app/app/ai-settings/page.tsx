@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { EmptyState } from "@/components/app-shell/page-state";
+import { EmptyState, LockedState } from "@/components/app-shell/page-state";
+import { PLANS } from "@/lib/plans";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { APP_NAME } from "@/lib/app-config";
 import type { AiKeyProvider } from "@/lib/api-keys";
@@ -204,11 +205,11 @@ export default async function AiSettingsPage({
           )
         ) : tab === "base-md" ? (
           plan === "standard" ? (
-            <EmptyState
+            <LockedState
               actionHref="/plans"
-              actionLabel="プランを見る"
-              description="ベースmdの手動編集・履歴・ロールバックは md・premium プランでご利用いただけます。"
-              title="ベースmd編集はアップグレードが必要です"
+              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              description="学習・設定の結果はベースmdに反映され、投稿生成に使われています。mdプラン以上では内容を直接確認・編集でき、変更履歴からいつでも元に戻せます。"
+              title="ベースmdの確認・編集は mdプラン以上でご利用いただけます"
             />
           ) : account.base_md_version < 1 ? (
             <EmptyState
@@ -228,11 +229,11 @@ export default async function AiSettingsPage({
           )
         ) : tab === "prompts" ? (
           plan === "standard" ? (
-            <EmptyState
+            <LockedState
               actionHref="/plans"
-              actionLabel="プランを見る"
-              description="プロンプトのカスタマイズは md・premium プランでご利用いただけます。"
-              title="プロンプト編集はアップグレードが必要です"
+              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              description="投稿パターンごとのプロンプトを直接編集できます。既定に戻すこともできるので、試して合わなければ元に戻せます。"
+              title="プロンプトのカスタマイズは mdプラン以上でご利用いただけます"
             />
           ) : (
             <PromptTemplatesEditor
