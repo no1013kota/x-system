@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   countCashtags,
+  findOverLengthText,
   measurePostText,
   weightedLength,
 } from "./text-metrics";
@@ -60,5 +61,26 @@ describe("measurePostText", () => {
 
   it("flags whitespace-only text as empty", () => {
     expect(measurePostText("   ").empty).toBe(true);
+  });
+});
+
+describe("findOverLengthText（投稿直前の長さ再検証・T-M8-39）", () => {
+  it("すべて上限内なら null", () => {
+    expect(findOverLengthText(["あ".repeat(140), "hello"])).toBeNull();
+  });
+
+  it("上限（加重280）ちょうどは通す", () => {
+    expect(weightedLength("あ".repeat(140))).toBe(280);
+    expect(findOverLengthText(["あ".repeat(140)])).toBeNull();
+  });
+
+  it("超過した**最初の**ポストを返す（そこまでの本数を伝えられるように）", () => {
+    const found = findOverLengthText(["ok", "あ".repeat(141), "あ".repeat(200)]);
+    expect(found).toEqual({ index: 1, weightedLength: 282 });
+  });
+
+  it("URLはt.co固定長で数える（本文の見た目より長くなり得る）", () => {
+    const text = `${"あ".repeat(130)}https://example.com/very/long/path/that/is/ignored`;
+    expect(findOverLengthText([text])).toEqual({ index: 0, weightedLength: 283 });
   });
 });
