@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.6 |
+| バージョン | v4.7 |
 | 更新日 | 2026-08-03 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
@@ -415,6 +415,8 @@ npm run doctor の結果を見て、直せるものは直してください。
 - **生成物は実データで描画する。** 画像・グラフ・ニュースカード・分析表を表示する画面は、本物のデータを載せて実際に描画するところまで見る。要素の存在ではなく**読み込めたこと**（画像なら `naturalWidth > 0`）を確認する。
 - **スマホ幅（390px）で横に伸びないことを見る。** 要素を1つずつ見ても気づけないので、`horizontalOverflow(page)`（ページ全体のはみ出しpx）で判定する。主要画面は `e2e/mobile-layout.spec.ts` がまとめて見張る。
 - **外部サービスへ実際のセッションを作るボタンは押さない。** Stripeの決済・管理ボタンは遷移先と表示だけを見る（CIはダミーキーなので必ず失敗する）。ボタンの先の配線は層3が担当する。
+- **「生成する」を押すE2Eは書かない（＝毎回課金される）。** Server Action が job を作ると `after()` が worker へ渡して**本物のAIを呼ぶ**（1回約$0.13）。`release:check` はE2Eを含むので、保存前チェックのたびに課金される。2026-08-03、テーマの配線を確かめるために押すテストを書いてしまい、**全体実行を10回ほど回した分（約$0.7）が課金されていた**（`external_api_usage_events` の時間別集計で気付いた）。押す必要があるものは `E2E_LIVE_AI=1` で明示的に有効化したときだけ走らせる（`check:providers` と同じ形）。jobの状態を見たいだけなら `seedRunningJob` のように**DBへ直接置く**。
+- **E2E全体が課金しないことを数字で確かめられる**: 実行の前後で `select sum(estimated_cost_usd) from external_api_usage_events` を比べ、差が0であること。
 - **「生成する」ボタンは押さない。** 実AI呼び出しは費用・不確定性・1分待ちをE2Eへ持ち込む。job の状態は `generation_jobs` を直接seedして表示だけを検証し、生成そのものは層6に任せる。
 - `getByRole("alert")` は使わない。Next.js の route announcer も `role="alert"` を持つため必ず2要素に当たる。`alertIn(page)`（`e2e/fixtures/test.ts`）を使う。
 - job はローカルで自動進行しない。worker（`/api/jobs/run`）や該当cron routeを明示的に叩き、完了は**期限付きで**pollする。
