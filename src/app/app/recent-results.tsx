@@ -5,6 +5,7 @@ import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-05 ホームの「直近の実績」（要件06 §1・§8・§10, T-M7-03）。直近7日の投稿件数と投稿翌日時点の
@@ -32,7 +33,7 @@ export function RecentResultsCard({
   if (posts.length === 0) {
     return (
       <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-        <h2 className="text-[15px] font-bold text-ink">直近の実績</h2>
+        <CardTitle>直近の実績</CardTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
         </p>
@@ -52,7 +53,7 @@ export function RecentResultsCard({
   return (
     <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold text-ink">直近の実績</h2>
+        <CardTitle>直近の実績</CardTitle>
         <Link className="text-sm text-primary underline" href="/app/analytics">
           分析を見る
         </Link>

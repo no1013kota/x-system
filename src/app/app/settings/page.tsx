@@ -27,6 +27,7 @@ import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
 import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
+import { CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -168,9 +169,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
             <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-              <h2 className="text-xl font-semibold" id="billing-heading">
+              <CardTitle id="billing-heading">
                 現在のご契約
-              </h2>
+              </CardTitle>
               {params.portal === "return" ? (
                 <p
                   className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
@@ -230,9 +231,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             aria-labelledby="support-heading"
             className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
           >
-            <h2 className="text-xl font-semibold" id="support-heading">
+            <CardTitle id="support-heading">
               お問い合わせ
-            </h2>
+            </CardTitle>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
               課金、アカウント、データに関するお問い合わせはメールで受け付けています。
             </p>

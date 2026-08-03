@@ -15,6 +15,7 @@ import {
   configuredPurpose,
 } from "@/lib/ai-purpose-view";
 import type { PlanId } from "@/lib/plans";
+import { CardTitle } from "@/components/ui/card";
 
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
@@ -78,7 +79,7 @@ export function AiPurposeSettings({
             <Bot aria-hidden="true" className="size-5" />
           </span>
           <div>
-            <h2 className="text-xl font-semibold" id="text-purpose-heading">文章生成・リサーチ</h2>
+            <CardTitle id="text-purpose-heading">文章生成・リサーチ</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               投稿文の生成とWebリサーチには同じAIを使います。
             </p>
@@ -119,7 +120,7 @@ export function AiPurposeSettings({
             <ImageIcon aria-hidden="true" className="size-5" />
           </span>
           <div>
-            <h2 className="text-xl font-semibold" id="image-purpose-heading">画像生成</h2>
+            <CardTitle id="image-purpose-heading">画像生成</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
             </p>

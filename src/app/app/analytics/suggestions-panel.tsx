@@ -7,6 +7,7 @@ import { refreshSuggestionsAction } from "@/app/actions/suggestions";
 import { useToast } from "@/components/ui/toast";
 import type { SuggestionDisplay } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-09 改善提案（表示専用, K-2, 要件06 §10, PRD 5.6, T-M5-19）。「提案を更新」でSUGGESTを起動し、生成中を
@@ -115,7 +116,7 @@ export function SuggestionsPanel({
   return (
     <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">改善提案</h2>
+        <CardTitle>改善提案</CardTitle>
         {generating ? (
           <span
             aria-live="polite"

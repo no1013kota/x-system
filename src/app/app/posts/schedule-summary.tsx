@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
+import { CardTitle } from "@/components/ui/card";
 
 const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -23,7 +24,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
       className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-ink">スケジュール</h2>
+        <CardTitle>スケジュール</CardTitle>
         <Link
           className="inline-flex items-center gap-1 text-[12px] font-medium text-brand underline-offset-2 hover:underline"
           href="/app/schedule"

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
+import { CardTitle } from "@/components/ui/card";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -91,9 +92,9 @@ export function XAccountsSettings({
       <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold" id="x-accounts-heading">
+            <CardTitle id="x-accounts-heading">
               Xアカウント
-            </h2>
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               有効なアカウント {activeCount} / {limit} 件（プラン上限）
             </p>

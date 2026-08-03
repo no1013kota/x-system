@@ -13,6 +13,7 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-10 学習ソースタブ（L-1〜3, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
@@ -168,7 +169,7 @@ export function LearningSourcesManager({
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}
       <section className="rounded-card border border-hairline bg-surface p-4">
-        <h2 className="text-sm font-semibold">参考ソースを追加</h2>
+        <CardTitle>参考ソースを追加</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
         </p>
@@ -220,7 +221,7 @@ export function LearningSourcesManager({
 
       {/* 自己過去投稿の取り込み/再取り込み */}
       <section className="rounded-card border border-hairline bg-surface p-4">
-        <h2 className="text-sm font-semibold">自分の過去投稿から学習</h2>
+        <CardTitle>自分の過去投稿から学習</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
           <strong className="font-medium">成功した取り込みから</strong>30日ごとに1回まで（失敗したときはすぐやり直せます）。
@@ -243,7 +244,7 @@ export function LearningSourcesManager({
 
       {/* 一覧 */}
       <section>
-        <h2 className="text-sm font-semibold">登録済みの学習ソース</h2>
+        <CardTitle>登録済みの学習ソース</CardTitle>
         {sources.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ学習ソースはありません。
