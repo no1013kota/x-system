@@ -14,7 +14,13 @@ import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import type { AiKeyProvider, XClientType } from "@/lib/api-keys";
+import {
+  AI_SECRET_MIN_LENGTH,
+  X_CLIENT_ID_MIN_LENGTH,
+  X_CLIENT_SECRET_MIN_LENGTH,
+  type AiKeyProvider,
+  type XClientType,
+} from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
   type ApiKeyViewProvider,
@@ -116,6 +122,15 @@ export function ApiKeySettings({
     openai: "",
   });
   const [copied, setCopied] = useState(false);
+  /**
+   * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
+   * 以前は `clientId.length < 5` が直書きで、Confidential のときに Secret が要ることは
+   * 画面から読めなかった（押せない理由がどこにも無い状態だった）。
+   */
+  const xSavable =
+    clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
+    (clientType !== "confidential" ||
+      clientSecret.trim().length >= X_CLIENT_SECRET_MIN_LENGTH);
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -367,7 +382,7 @@ export function ApiKeySettings({
           ) : null}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button className="min-h-10" disabled={isPending || clientId.length < 5} onClick={saveX} type="button">
+          <Button className="min-h-10" disabled={isPending || !xSavable} onClick={saveX} type="button">
             {keys.x ? "Xキーを差し替え" : "Xキーを保存"}
           </Button>
           {keys.x ? (
@@ -381,6 +396,17 @@ export function ApiKeySettings({
             </>
           ) : null}
         </div>
+        {/*
+          **押せない理由を書く**（T-M8-46）。以前は薄いボタンだけが出ていて、何を入れれば
+          押せるようになるのかが画面のどこにも無かった（T-M8-37 と同型）。
+        */}
+        {!xSavable ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {clientType === "confidential"
+              ? "Client ID と Client Secret を入力すると保存できます。"
+              : "Client ID を入力すると保存できます。"}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
@@ -418,7 +444,7 @@ export function ApiKeySettings({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
                     className="min-h-10"
-                    disabled={isPending || aiSecrets[provider].length < 16}
+                    disabled={isPending || aiSecrets[provider].length < AI_SECRET_MIN_LENGTH}
                     onClick={() => saveAi(provider)}
                     size="sm"
                     type="button"
@@ -436,6 +462,12 @@ export function ApiKeySettings({
                     </>
                   ) : null}
                 </div>
+                {/* 16文字という条件はどこにも書かれていなかった（T-M8-46）。 */}
+                {aiSecrets[provider].length > 0 && aiSecrets[provider].length < AI_SECRET_MIN_LENGTH ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    APIキーは{AI_SECRET_MIN_LENGTH}文字以上です（いま{aiSecrets[provider].length}文字）。
+                  </p>
+                ) : null}
               </article>
             );
           })}
