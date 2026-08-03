@@ -467,6 +467,31 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 検証: E2E 1件。`addInitScript` で `navigator.clipboard.writeText` を必ず reject させ、
   **エラートーストが出て「コピー済み」にならない**ことを確認する。
 
+### T-M8-41: 判定と共通部品の重複を畳む（可否boolean・ローカル定数・ラベル導出） `done`
+- 参照: 要件06 §7、ADR-0006 原則5、CLAUDE.md「保守運用がしやすいコード」 / 依存: T-M8-38 / サイズ: M
+- **振る舞いは変えていない**（条件式を移動しただけ）。3件をまとめた。
+- (1) **失敗下書きの可否boolean 8個を純関数へ**（`lib/post/draft-actions.ts`）。
+  「Xに残ったポストをどう扱うか」という取り返しのつかない領域のルールが `drafts-list.tsx` の
+  中にあり、**単体テストが1件も届いていなかった**（`vitest.config.ts` の `include` は
+  `src/**/*.test.ts` で `.tsx` は対象外。`.test.tsx` は0件、RTL・jsdom も未導入）。
+  表形式で15件のテストを付けた（作成履歴×未解決の組み合わせ・空配列・failed以外・警告・P-5フラグ）。
+  画面の一時状態（`pending` / `publishJobId` / `editing`）だけは component 側に残す。
+  **なおサーバー側にも同じ判定がある**（`drafts-clone.ts` / `drafts.ts` / `generation-jobs.ts` /
+  `post-publish.ts` に単体テスト付き）ので、ここが壊れてもXへ誤爆はしない。画面側は
+  「押せてしまってサーバーに弾かれる」を防ぐ一次ゲート。
+- (2) **`upcoming-schedule.tsx` のローカル定数を共通へ**。共通の `primaryLinkClassName` と
+  **同名のローカル定数**を持ち、中身は `focus-visible` の3クラスが抜けていた。ホームの主操作2本
+  だけキーボードフォーカスの見え方が他画面と違い、名前が同じなので grep でも取り違えやすかった。
+  `cardClassName` も `Card` へ寄せ、`confirmation-queue.tsx` の直書きも共通へ。
+  **`Card` に `as` を足した**（既定 `div`）。`section` を `div` にすると landmark が消え、
+  支援技術からもテストからも「1つのまとまり」として扱えなくなる（実際にE2Eが落ちて気付いた）。
+- (3) **`CategoryChip` がラベルを自分で引く**。色を決めるために `category` を受け取っているのに
+  ラベルは `children` で呼び出し側に作らせていたため、2つの呼び出し側が別の方法で同じラベルを
+  引いていた（一方は自前Map、もう一方は `as NewsCategory` キャスト付き）。`children` を渡せば
+  従来どおり上書きできる。
+- 検証: 単体 1,585件（新規15件）／typecheck・lint 緑／**E2E 44件すべて緑**（1 skip は実AI）。
+  ホーム1440pxを実ブラウザで確認。
+
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M
 - 経緯: 利用者から「要件と実装が違う部分がないか。実装時に要件も変更済みか」（2026-08-03）。
