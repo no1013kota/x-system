@@ -19,7 +19,7 @@ M8 で既存画面の**見た目だけ**を新デザイン（`design_handoff_spa
 
 **4. アイコンは可変フォントではなくインラインSVG。** Material Symbols の可変フォントは3.8MBで重すぎる。使う41個（＋塗り9種）だけを `@material-symbols/svg-400` から抽出し、`src/components/ui/icon-paths.ts` へ生成する（`npm run icons:generate`）。合計12.6KB。**アイコン名の打ち間違いは実行時に空のSVGになるだけで気付けない**ため、名前が定義に実在することを単体テストで固定する。
 
-**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
+**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・インラインバナー（`ui/notice.tsx`。**危険色は1系統**——`bg-destructive/*` はボタンの塗りだけに許し、`notice.test.ts` が機械的に検査する）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
 
 **6. 操作結果の通知はトーストへ集約する**（要件06 §2.1）。判断（読み上げ種別・自動で消えるか）は `toast-policy.ts` の純関数へ出し、DOMを持たない単体テスト（`environment: node`）で固定する。
 

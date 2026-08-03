@@ -8,6 +8,7 @@ import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import {
   PASSWORD_HELP_TEXT,
   PASSWORD_MAX_LENGTH,
@@ -26,12 +27,9 @@ export function ResetPasswordForm() {
     <div className="space-y-5">
       <form action={formAction} className="space-y-5" noValidate>
         {state.status === "error" ? (
-          <p
-            className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-            role="alert"
-          >
+          <Notice role="alert" tone="danger">
             {state.message}
-          </p>
+          </Notice>
         ) : null}
 
         <div className="space-y-2">

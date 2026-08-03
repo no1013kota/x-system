@@ -15,6 +15,7 @@ import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import {
   PASSWORD_HELP_TEXT,
   PASSWORD_MAX_LENGTH,
@@ -28,16 +29,12 @@ import {
 function ResultMessage({ state }: { state: AuthFormState }) {
   if (state.status === "idle") return null;
   return (
-    <p
-      className={
-        state.status === "success"
-          ? "rounded-lg bg-success-bg p-3 text-sm text-success-fg"
-          : "rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-      }
+    <Notice
       role={state.status === "error" ? "alert" : "status"}
+      tone={state.status === "success" ? "success" : "danger"}
     >
       {state.message}
-    </p>
+    </Notice>
   );
 }
 

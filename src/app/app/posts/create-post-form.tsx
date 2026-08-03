@@ -19,6 +19,7 @@ import type { PostPatternOption } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 export interface ActiveJob {
   id: string;
@@ -420,9 +421,9 @@ export function CreatePostForm({
 
         {job?.status === "failed" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-danger-fg/25 bg-danger-bg p-3 text-sm leading-6 text-danger-fg" role="alert">
+            <Notice role="alert" tone="danger">
               {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
-            </p>
+            </Notice>
             {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
             {job.error?.code === "usage_limit_exceeded" ? (
               <Link
