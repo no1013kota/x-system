@@ -127,15 +127,24 @@ const LIVE_AI = process.env.E2E_LIVE_AI === "1";
     .toBe("investment");
 });
 
-test("テーマを選ばないと生成を始められない（T-M8-29）", async ({ accounts, page }) => {
-  // 「指定なし」を既定にすると、選んだつもりで選んでいない状態が起きる。必須にした。
+test("テーマを選ばないと生成を始められず、理由が画面に出る（T-M8-29 / T-M8-37）", async ({
+  accounts,
+  page,
+}) => {
+  // 「指定なし」を既定にすると、選んだつもりで選んでいない状態が起きる。必須にした（T-M8-29）。
+  //
+  // T-M8-37: 以前は**押せてしまい**、サーバーの `z.enum` で弾かれて「入力内容を確認してください」
+  // という**どの項目が悪いか分からない**トーストが5秒で消えるだけだった。フィールドの強調も無く、
+  // 非エンジニアの運営者には原因を辿る手段が無かった。**押す前に止め、理由を画面に置く。**
   const account = await accounts.create("gen-theme-required", { personaReady: true });
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");
 
-  await page.getByRole("button", { name: /生成する/ }).click();
+  const generate = page.getByRole("button", { name: /生成する/ });
+  await expect(generate).toBeDisabled();
+  await expect(page.getByText("テーマを選ぶと生成できます。")).toBeVisible();
 
-  // jobは作られない（押しても進まないことがブラウザの検証で分かる）
+  // jobは作られない
   await expect
     .poll(
       async () =>
@@ -149,8 +158,9 @@ test("テーマを選ばないと生成を始められない（T-M8-29）", asyn
     )
     .toBe(0);
 
-  // 選べばボタンの検証を通る（実際に生成させると本物のAIを叩いて課金されるので、
-  // ここでは「押せる状態になる」ことまでを見る。jobが作られる側は上の実AIテストが担当する）。
+  // 選べば押せる状態になり、理由の文字も消える（実際に生成させると本物のAIを叩いて課金される
+  // ので、ここでは押せる状態になることまでを見る。jobが作られる側は上の実AIテストが担当する）。
   await page.getByLabel("テーマ", { exact: true }).selectOption("other");
-  await expect(page.getByLabel("テーマ", { exact: true })).toHaveJSProperty("validity.valid", true);
+  await expect(generate).toBeEnabled();
+  await expect(page.getByText("テーマを選ぶと生成できます。")).toHaveCount(0);
 });

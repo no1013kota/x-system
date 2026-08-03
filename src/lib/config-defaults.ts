@@ -27,3 +27,21 @@ export const DEFAULT_AI_PURPOSE_CONFIG = {
   text: null,
   image: null,
 } as const;
+
+/**
+ * ニュースの表示件数の範囲（要件05 §4.1 の `max_items`・T-M8-37）。
+ *
+ * **画面とサーバー検証で同じ値を使う。** 以前は `settings.ts` の zod（1〜100）と、2つの画面の
+ * `min`/`max` 属性に同じ数字が3回書かれていた。設定画面はクランプしておらず、欄を空にすると
+ * `Number("")` で 0 が送られ、`z.number().min(1)` で弾かれて「入力内容を確認してください」という
+ * **どの項目が悪いか分からない**エラーになっていた。ニュース一覧の同じ欄はクランプ済みで、
+ * 同じ設定項目が画面によって挙動が違った。
+ */
+export const NEWS_MAX_ITEMS_MIN = 1;
+export const NEWS_MAX_ITEMS_MAX = 100;
+
+/** 範囲内へ丸める。数値にならない入力（空文字など）は下限へ寄せる。 */
+export function clampNewsMaxItems(value: number): number {
+  if (!Number.isFinite(value)) return NEWS_MAX_ITEMS_MIN;
+  return Math.min(NEWS_MAX_ITEMS_MAX, Math.max(NEWS_MAX_ITEMS_MIN, Math.trunc(value)));
+}

@@ -103,7 +103,12 @@ export function LearningSourcesManager({
   }
 
   function add() {
-    if (!url.trim()) return;
+    // 押せない状態にしてあるので通常は到達しない（保険）。**黙って return しない**のが要点で、
+    // 以前はここで無言で抜けており、ボタンは押せるのに何も起きなかった（T-M8-37）。
+    if (!url.trim()) {
+      toast.show({ tone: "error", title: "XのURLを入力してください" });
+      return;
+    }
     startTransition(async () => {
       const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url: url.trim() });
       if (res.status === "success") {
@@ -195,13 +200,22 @@ export function LearningSourcesManager({
           </label>
           <button
             className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
-            disabled={pending || removing || (refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX))}
+            disabled={
+              pending ||
+              removing ||
+              !url.trim() ||
+              refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX)
+            }
             onClick={add}
             type="button"
           >
             追加
           </button>
         </div>
+        {/* **押せない理由を出す**（T-M8-37）。無効化だけだと壊れているのか区別できない。 */}
+        {!url.trim() && !removing ? (
+          <p className="mt-2 text-xs text-muted-foreground">XのURLを入力すると追加できます。</p>
+        ) : null}
       </section>
 
       {/* 自己過去投稿の取り込み/再取り込み */}
