@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { followerSeriesSummary, type FollowerPoint } from "@/lib/analytics";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-09 フォロワー数推移グラフ（K-3, 要件06 §2, T-M5-16）。依存を増やさず inline SVG で描画する。
@@ -56,7 +57,7 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
   return (
     <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">フォロワー数の推移</h2>
+        <CardTitle>フォロワー数の推移</CardTitle>
         <div className="ml-auto inline-flex rounded-lg border p-0.5">
           {PERIODS.map((d) => (
             <button

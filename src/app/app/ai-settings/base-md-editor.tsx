@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import type { BaseMdVersionView } from "@/lib/base-md";
 import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
@@ -220,7 +221,7 @@ export function BaseMdEditor({
       {/* エディタ */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold">ベースmd（現在: version {version}）</h2>
+          <CardTitle>ベースmd（現在: version {version}）</CardTitle>
           <span
             className={`ml-auto text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
@@ -260,7 +261,7 @@ export function BaseMdEditor({
 
       {/* 履歴・ロールバック */}
       <section>
-        <h2 className="text-sm font-semibold">変更履歴</h2>
+        <CardTitle>変更履歴</CardTitle>
         {history.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ履歴はありません。

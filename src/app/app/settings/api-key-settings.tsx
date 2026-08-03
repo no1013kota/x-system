@@ -23,6 +23,7 @@ import {
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
+import { CardTitle } from "@/components/ui/card";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -287,9 +288,9 @@ export function ApiKeySettings({
             <ShieldCheck aria-hidden="true" className="size-6" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold" id="premium-key-heading">
+            <CardTitle id="premium-key-heading">
               プレミアムプランはキー登録不要です
-            </h2>
+            </CardTitle>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
             </p>
@@ -312,7 +313,7 @@ export function ApiKeySettings({
             <KeyRound aria-hidden="true" className="size-5" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold" id="x-key-heading">X APIキー</h2>
+            <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               OAuth 2.0のClient IDを登録します。差し替えると既存のBYOK X連携は再認証が必要です。
             </p>
@@ -383,7 +384,7 @@ export function ApiKeySettings({
       </section>
 
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
-        <h2 className="text-xl font-semibold" id="ai-key-heading">AI APIキー</h2>
+        <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
         </p>
@@ -444,7 +445,7 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
-          <h2 className="text-xl font-semibold" id="x-guide-heading">X Developer Appの取得・設定手順</h2>
+          <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>
         </div>
         <ol className="mt-5 space-y-5 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">

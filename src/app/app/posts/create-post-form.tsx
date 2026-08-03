@@ -18,6 +18,7 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import type { PostPatternOption } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { CardTitle } from "@/components/ui/card";
 
 export interface ActiveJob {
   id: string;
@@ -342,7 +343,7 @@ export function CreatePostForm({
       {/* 結果（ステート2・3） */}
       <section aria-label="プレビュー・結果"
         className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
-        <h2 className="text-sm font-medium">結果</h2>
+        <CardTitle>結果</CardTitle>
 
         {prereq ? (
           <ExecutionPrereqNotice

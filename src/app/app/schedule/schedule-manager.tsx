@@ -23,6 +23,7 @@ import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -160,7 +161,7 @@ export function ScheduleManager({
 
       {creating ? (
         <div className="rounded-card border bg-card p-5 shadow-sm">
-          <h2 className="text-sm font-semibold">新しいスケジュール</h2>
+          <CardTitle>新しいスケジュール</CardTitle>
           <SlotFields
             accountHandle={accountHandle}
             automationConsented={automationConsented}
