@@ -1,4 +1,5 @@
-import { expect, signIn, test } from "./fixtures/test";
+import { query } from "./fixtures/account";
+import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
  * SC-11 Xアカウント連携の入口（要件06 §1.2.1・要件05 §3）。
@@ -40,4 +41,39 @@ test("設定画面の「Xアカウントを追加」からX認可URLへリダイ
 
   // PKCE/state は HttpOnly cookie で渡る（URLに秘密を載せない）。
   expect(res.headers()["set-cookie"] ?? "").toContain("HttpOnly");
+});
+
+/**
+ * callback URL のコピーが**失敗したときに気付ける**こと（T-M8-38）。
+ *
+ * この文字列は X Developer Console へ**完全一致で登録**する値。コピーできたつもりで古い
+ * クリップボード内容を貼ると、X側の設定が食い違ってログイン・連携が失敗する。相手側の設定ミスは
+ * コードに現れず、モックしたテストでは原理的に見えない（2026-08-01、stagingでログイン・新規登録が
+ * 両方不可だったのと同型）。以前は try/catch が無く、失敗すると unhandled rejection になって
+ * ボタンは「コピー」のまま**何も起きなかった**。
+ */
+test("callback URLのコピーが失敗したら理由が出る（黙って捨てない）", async ({ accounts, page }) => {
+  const account = await accounts.create("copy-callback", { personaReady: true });
+  // 手順（callback URLの登録）はBYOKプランの画面にある。fixtureの既定は premium なので落とす。
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+  await signIn(page, account);
+
+  // クリップボードを必ず失敗させる（権限拒否・非セキュアコンテキストと同じ状態を作る）。
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error("denied")),
+      },
+    });
+  });
+  await page.goto("/app/settings?tab=api-keys");
+
+  const copy = page.getByRole("button", { name: "callback URLをコピー" });
+  await expect(copy).toBeVisible();
+  await copy.click();
+
+  await expect(toastIn(page)).toContainText("コピーできませんでした");
+  // 失敗したのに成功の見た目にならない
+  await expect(page.getByRole("button", { name: "コピー済み" })).toHaveCount(0);
 });

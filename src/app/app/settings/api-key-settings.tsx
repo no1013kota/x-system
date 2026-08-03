@@ -251,8 +251,30 @@ export function ApiKeySettings({
     });
   }
 
+  /**
+   * callback URL のコピー（T-M8-38）。
+   *
+   * **失敗を黙って捨てない。** クリップボード書き込みは非セキュアコンテキスト
+   * （`navigator.clipboard` が undefined）・権限拒否・ドキュメント非フォーカスのいずれでも失敗する。
+   * 以前は try/catch が無く、失敗すると unhandled rejection になって `setCopied(true)` に到達せず、
+   * ボタンは「コピー」のまま**何も起きなかった**。
+   *
+   * この文字列は X Developer Console へ**完全一致で登録**する値なので、コピーできたつもりで
+   * 古いクリップボード内容を貼るとX側の設定が食い違い、ログイン・連携が失敗する。
+   * 相手側の設定ミスはコードに現れず、モックしたテストでは原理的に見えない
+   * （2026-08-01、stagingでログイン・新規登録が両方不可だったのと同型）。
+   */
   async function copyCallbackUrl() {
-    await navigator.clipboard.writeText(callbackUrl);
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+    } catch {
+      toast.show({
+        tone: "error",
+        title: "コピーできませんでした",
+        description: "左のURLを選択して手動でコピーしてください。",
+      });
+      return;
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   }
@@ -439,10 +461,16 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">OAuth 2.0 callback URLを完全一致で登録</p>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <code className="break-all text-xs sm:text-sm">{callbackUrl}</code>
-                <Button aria-label="callback URLをコピー" className="min-h-10" onClick={copyCallbackUrl} size="sm" type="button" variant="outline">
+                {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
+                <code className="break-all text-xs select-all sm:text-sm">{callbackUrl}</code>
+                {/*
+                  `aria-label` を**置かない**（T-M8-38）。付けると読み上げ名が固定され、
+                  「コピー」→「コピー済み」の変化が支援技術に伝わらない（アイコンは aria-hidden）。
+                  文脈は可視テキストへ入れる。
+                */}
+                <Button className="min-h-10" onClick={copyCallbackUrl} size="sm" type="button" variant="outline">
                   {copied ? <Check aria-hidden="true" className="size-4" /> : <Clipboard aria-hidden="true" className="size-4" />}
-                  {copied ? "コピー済み" : "コピー"}
+                  {copied ? "コピー済み" : "callback URLをコピー"}
                 </Button>
               </div>
             </div>
