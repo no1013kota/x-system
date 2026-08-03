@@ -72,6 +72,8 @@ export interface DailySummaryData {
   allDropped: { category: string; reasons: string }[];
   stuckJobs: number;
   queuedEmails: number;
+  /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
+  failedEmails: number;
   monthUsd: number;
   /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
   dbBytes: number;
@@ -122,6 +124,14 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
   if (data.stuckJobs > 0) {
     lines.push(`止まっている処理: ${data.stuckJobs} 件`);
     attention.push(`止まっている処理が ${data.stuckJobs} 件`);
+  }
+  // 失敗は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
+  // **黙って届かないまま**になるので「気になる点」に数える（T-M8-40）。
+  if (data.failedEmails > 0) {
+    lines.push(
+      `送れなかったお知らせメール: ${data.failedEmails} 件（メール設定を確認し、通知ベルから再送してください）`,
+    );
+    attention.push(`送れなかったお知らせメールが ${data.failedEmails} 件`);
   }
   if (data.queuedEmails > 0) {
     lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
@@ -186,8 +196,10 @@ export async function collectDailySummary(
     [userId],
   );
 
-  const emails = await db.query<{ n: string }>(
-    `select count(*)::text as n from notifications where user_id = $1 and email_status = 'queued'`,
+  const emails = await db.query<{ queued: string; failed: string }>(
+    `select count(*) filter (where email_status = 'queued')::text as queued,
+            count(*) filter (where email_status = 'failed')::text as failed
+       from notifications where user_id = $1 and email_status in ('queued', 'failed')`,
     [userId],
   );
 
@@ -227,7 +239,8 @@ export async function collectDailySummary(
           .join(", ") || `${r.dropped}件`,
     })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
-    queuedEmails: Number(emails.rows[0]?.n ?? 0),
+    queuedEmails: Number(emails.rows[0]?.queued ?? 0),
+    failedEmails: Number(emails.rows[0]?.failed ?? 0),
     monthUsd: Number(cost.rows[0]?.usd ?? 0),
   };
 }

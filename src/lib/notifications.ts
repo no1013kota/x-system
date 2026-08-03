@@ -19,6 +19,14 @@ export interface NotificationView {
   link: string | null;
   createdAt: string;
   readAt: string | null;
+  /**
+   * メール配信の状態（T-M8-40）。`failed` のときだけ画面に再送の導線を出すために持つ。
+   *
+   * これを持たない間、`failed` は**運営者からまったく見えなかった**。終端状態なので
+   * `recoverQueuedEmails`（queued のみ対象）も拾わず、`retryNotificationEmailAction` は
+   * 実装済みなのに呼び出し元が無かった＝**復旧手段がコード上どこからも到達できない**状態だった。
+   */
+  emailStatus: string;
 }
 
 export interface NotificationCursor {
@@ -56,6 +64,7 @@ interface NotificationRow {
   link: string | null;
   read_at: Date | string | null;
   created_at: Date | string;
+  email_status: string;
 }
 
 /**
@@ -80,7 +89,7 @@ export async function listNotifications(
   params.push(limit + 1);
 
   const { rows } = await db.query<NotificationRow>(
-    `select id, type, title, body, link, read_at, created_at
+    `select id, type, title, body, link, read_at, created_at, email_status::text as email_status
        from notifications
       where ${where}
       order by created_at desc, id desc
@@ -98,6 +107,7 @@ export async function listNotifications(
     link: r.link,
     createdAt: toIso(r.created_at),
     readAt: r.read_at ? toIso(r.read_at) : null,
+    emailStatus: r.email_status,
   }));
   const last = page[page.length - 1];
   const nextCursor =
