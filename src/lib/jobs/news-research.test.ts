@@ -145,7 +145,8 @@ describe("researchNews", () => {
     // title/summary が上限を超えやすく、修復callも空配列を返すため**常に0件**になっていた。
     const mixed = JSON.stringify({
       items: [
-        { title: "あ".repeat(31), summary: "s", source_url: "https://e.com/x", impact: "high" },
+        // 受理上限（60字）を超える見出し。T-M8-47 で30→60へ緩めたので31字では落ちない。
+        { title: "あ".repeat(61), summary: "s", source_url: "https://e.com/x", impact: "high" },
         { title: "短いタイトル", summary: "要約", source_url: "https://e.com/y", impact: "mid" },
       ],
     });
@@ -188,6 +189,7 @@ describe("pickValidItems（item単位の選別）", () => {
 
   it("規定を満たすitemだけを残し、落とした件数を返す", () => {
     // 2026-07-28 web3 実測: 英語ソースで title 38〜56字・summary 210〜293字。
+    // 見出し48字は受理上限（60字）内なので、ここで落ちるのは summary 超過が理由（T-M8-47）。
     const tooLong = {
       ...valid,
       title: "Storj Labs files Chapter 11 bankruptcy protection",
@@ -215,6 +217,24 @@ describe("pickValidItems（item単位の選別）", () => {
 
   it("空配列はそのまま0件（落とした件数も理由も0）", () => {
     expect(pickValidItems([])).toEqual({ items: [], dropped: 0, reasons: {} });
+  });
+
+  // T-M8-47: 2026-08-04 の実物スモークで ai テーマの4件中2件が `title:too_big` で落ち、
+  // 分野が0件になった。英語ソースの見出しは実測38〜56字で、30字上限では届かない。
+  it("英語ソースの見出し（38〜56字）を受理する", () => {
+    for (const title of [
+      "Storj Labs files Chapter 11 bankruptcy protection", // 48字
+      "EU AI Act transparency obligations take effect on August 2", // 57字
+    ]) {
+      const r = pickValidItems([{ ...valid, title }]);
+      expect(r.items, `${title.length}字の見出しを受理すること`).toHaveLength(1);
+    }
+  });
+
+  it("受理上限（60字）を超える見出しは落とし、理由を返す", () => {
+    const r = pickValidItems([{ ...valid, title: "x".repeat(61) }]);
+    expect(r.items).toHaveLength(0);
+    expect(r.reasons["title:too_big"]).toBe(1);
   });
 
   it("除外理由を内訳で返す（0件の原因を説明できるように）", () => {
