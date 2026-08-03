@@ -62,3 +62,24 @@ export function measurePostText(text: string): PostTextMetrics {
     empty: text.trim().length === 0,
   };
 }
+
+/**
+ * 投稿直前の長さ再検証（T-M8-39）。上限を超えた**最初の**ポストを返す。
+ *
+ * **X APIは加重280超過を400で拒否する。** スレッドは1ポストずつ作るので、3本目で拒否されると
+ * **1〜2本目はX上に残ったまま**になり、取り返しがつかない（reconcileが必要な状態）。
+ * したがって「1本でも超過していたら1本も作らない」を投稿実行の入口で判定する。
+ *
+ * 保存済みの `weighted_length` や警告ではなく**そのとき投稿する本文**から測り直す。理由は2つ。
+ * P-5は引用URLを1本目の末尾へ合成するため保存値より長くなる。また保存値は編集や
+ * 検証ロジックの変更で古くなり得るが、Xが見るのは本文そのものである。
+ */
+export function findOverLengthText(
+  texts: readonly string[],
+): { index: number; weightedLength: number } | null {
+  for (const [index, text] of texts.entries()) {
+    const weighted = weightedLength(text);
+    if (weighted > MAX_WEIGHTED_LENGTH) return { index, weightedLength: weighted };
+  }
+  return null;
+}
