@@ -173,13 +173,14 @@ export function XAccountsSettings({
                   </p>
                   <p className="text-sm text-muted-foreground">{account.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 ${
-                        STATUS_TONE[account.status] ?? "border-hairline bg-black/[0.04]"
-                      }`}
-                    >
+                    {/*
+                      tone は **prop で渡す**。className へ文字列展開すると
+                      `class="... success"` という存在しないユーティリティになり、4状態すべてが
+                      同じ見た目になる（T-M8-36 で実際に起きた退行）。
+                    */}
+                    <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
                       {STATUS_LABEL[account.status] ?? account.status}
-                    </span>
+                    </Badge>
                     <span className="text-muted-foreground">
                       {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
                     </span>

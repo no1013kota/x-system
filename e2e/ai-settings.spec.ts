@@ -198,6 +198,14 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
   const reimport = page.getByRole("button", { name: "再取り込み" });
   await expect(reimport).toBeEnabled();
   await expect(page.getByText("次回の再取り込みまであと", { exact: false })).toHaveCount(0);
+
+  // 一覧の「失敗」が**色でも**分かる（T-M8-36）。以前は背景色の指定が無い生の span で、
+  // 「分析待ち」「反映済み」「失敗」「削除処理中」が全部同じ見た目だった。
+  // 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+  const statusChip = page.getByText("失敗", { exact: true });
+  await expect(statusChip).toBeVisible();
+  const background = await statusChip.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("通常プランではベースmd・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({

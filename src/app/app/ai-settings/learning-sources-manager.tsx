@@ -9,6 +9,7 @@ import {
   reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
@@ -30,6 +31,19 @@ const STATUS_LABEL: Record<string, string> = {
   analyzed: "反映済み",
   failed: "失敗",
   removing: "削除処理中",
+};
+/**
+ * 状態→色は**意味で決める**（`Badge` の tone・デザイン §カラー）。x-accounts と同じ形にして、
+ * 状態色の決め方をアプリ全体で1つに揃える（T-M8-36）。
+ *
+ * 以前は背景色・文字色の指定が無い生の span で、4状態が**すべて同じ見た目**だった。
+ * 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+ */
+const STATUS_TONE: Record<string, BadgeTone> = {
+  pending: "info",
+  analyzed: "success",
+  failed: "danger",
+  removing: "warn",
 };
 
 function uuid(): string {
@@ -225,10 +239,10 @@ export function LearningSourcesManager({
             {sources.map((s) => (
               <li className="rounded-card border border-hairline bg-surface p-4" key={s.id}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-muted px-2 py-0.5 text-xs">{TYPE_LABEL[s.type] ?? s.type}</span>
-                  <span className="rounded px-2 py-0.5 text-xs font-medium">
+                  <Badge>{TYPE_LABEL[s.type] ?? s.type}</Badge>
+                  <Badge tone={STATUS_TONE[s.status] ?? "neutral"}>
                     {STATUS_LABEL[s.status] ?? s.status}
-                  </span>
+                  </Badge>
                   <span className="ml-auto text-xs text-muted-foreground">分析日時: {formatJst(s.updatedAt)}</span>
                 </div>
                 {s.url ? (
