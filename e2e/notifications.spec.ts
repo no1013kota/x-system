@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query } from "./fixtures/account";
-import { expect, signIn, test } from "./fixtures/test";
+import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
  * ヘッダの通知ベル（O-2, 要件06 §2, T-M8-32）。
@@ -78,4 +78,52 @@ test("すべて既読で未読バッジが消え、DBにも反映される", asy
       { timeout: 10_000, message: "すべて既読がDBへ反映されること" },
     )
     .toBe(0);
+});
+
+/**
+ * メール送信に失敗した通知を、運営者が画面から送り直せること（T-M8-40）。
+ *
+ * `email_status = 'failed'` は終端状態で、`recoverQueuedEmails`（queued のみ対象）も拾わない。
+ * **通知の中身はアプリ内に残るが、メールは黙って届かないまま**になる。再送する関数は
+ * T-M4-17 から実装済みだったのに**呼び出し元が1つも無く**、コード上どこからも到達できなかった。
+ */
+test("メール送信に失敗した通知は再送できる（黙って届かないままにしない）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("bell-retry", { personaReady: true });
+  const marker = randomUUID().slice(0, 6);
+  await query(
+    `insert into notifications
+       (user_id, type, title, body, link, in_app_enabled,
+        email_status, email_attempts, email_error, email_last_attempt_at)
+     values ($1,'error',$2,'投稿に失敗しました。',null,true,
+             'failed', 3, 'smtp auth failed', now() - interval '10 minutes')`,
+    [account.userId, `メール失敗 ${marker}`],
+  );
+
+  await signIn(page, account);
+  await page.getByRole("button", { name: /通知/ }).click();
+
+  const row = page.locator("li", { hasText: `メール失敗 ${marker}` });
+  await expect(row.getByText("メールが送れませんでした")).toBeVisible();
+  await row.getByRole("button", { name: "メールを再送" }).click();
+  await expect(toastIn(page)).toContainText("メールの再送を予約しました");
+
+  // 押した結果が消える（もう一度押せる状態のまま残さない）
+  await expect(row.getByRole("button", { name: "メールを再送" })).toHaveCount(0);
+
+  // DBでも送信待ちへ戻っている（見た目だけ変えて終わりにしない）
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ status: string }>(
+            `select email_status::text as status from notifications where user_id = $1`,
+            [account.userId],
+          )
+        )[0].status,
+      { timeout: 10_000, message: "再送で email_status が queued へ戻ること" },
+    )
+    .toBe("queued");
 });

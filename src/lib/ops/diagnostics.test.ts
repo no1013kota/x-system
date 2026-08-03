@@ -184,18 +184,32 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
 
 describe("judgeQueuedEmails", () => {
   it("溜まっていなければ正常", () => {
-    expect(judgeQueuedEmails({ queued: 0, oldestHours: null }).level).toBe("ok");
+    expect(judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0 }).level).toBe("ok");
   });
 
   it("24時間より古い滞留は注意（本番で一斉送信される・D-9）", () => {
-    const r = judgeQueuedEmails({ queued: 53, oldestHours: 128 });
+    const r = judgeQueuedEmails({ queued: 53, oldestHours: 128, failed: 0 });
     expect(r.level).toBe("warn");
     expect(r.detail).toContain("53");
     expect(r.nextAction).toBeTruthy();
   });
 
   it("直近の滞留は送信待ちとして正常", () => {
-    expect(judgeQueuedEmails({ queued: 2, oldestHours: 1 }).level).toBe("ok");
+    expect(judgeQueuedEmails({ queued: 2, oldestHours: 1, failed: 0 }).level).toBe("ok");
+  });
+
+  // T-M8-40: `queued = 0` を無条件に「ok」としていたため、**SMTP認証が間違っていて
+  // 通知メールが全滅している状態**（全件 failed・queued は0）で doctor が ✅ を出していた。
+  it("送信待ちが0でも失敗が残っていればエラー（正常な空と失敗による空を区別する）", () => {
+    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 7 });
+    expect(r.level).toBe("error");
+    expect(r.detail).toContain("7");
+    expect(r.nextAction).toContain("SMTP");
+  });
+
+  it("失敗は送信待ちより先に扱う（自動では回収されないため）", () => {
+    const r = judgeQueuedEmails({ queued: 3, oldestHours: 1, failed: 1 });
+    expect(r.level).toBe("error");
   });
 });
 

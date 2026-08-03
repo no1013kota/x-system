@@ -20,6 +20,7 @@ const base: DailySummaryData = {
   allDropped: [],
   stuckJobs: 0,
   queuedEmails: 0,
+  failedEmails: 0,
   monthUsd: 18.35,
   dbBytes: 26 * 1024 * 1024,
   dbLimitBytes: 500 * 1024 * 1024,
@@ -118,6 +119,15 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("失敗 2 件");
     expect(s.body).toContain("止まっている処理: 1 件");
     expect(s.title).toContain("気になる点が 2 件");
+  });
+
+  it("送れなかったお知らせメールを出す（送信待ちと別物として扱う・T-M8-40）", () => {
+    // `failed` は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
+    // サマリに載せないと、運営者は通知メールが届いていないことに気付けない。
+    const s = buildDailySummary({ ...base, failedEmails: 4 });
+    expect(s.body).toContain("送れなかったお知らせメール: 4 件");
+    expect(s.body).toContain("再送");
+    expect(s.needsAttention).toBe(true);
   });
 
   it("実行が無かった日も「実行なし」と分かる（0件と混同しない）", () => {

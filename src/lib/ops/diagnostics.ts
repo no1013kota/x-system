@@ -237,10 +237,32 @@ export function judgeNews(input: {
   return { name, level: "ok", detail };
 }
 
-/** 送られずに溜まっているお知らせメール。 */
-export function judgeQueuedEmails(input: { queued: number; oldestHours: number | null }): Check {
+/**
+ * お知らせメールの状態。
+ *
+ * **`failed` を数える**（T-M8-40）。以前は `queued` だけを見て `queued === 0` を「ok」としていた。
+ * `failed` は終端状態（401/403 または3回失敗で確定）なので、**SMTP認証が間違っていて通知メールが
+ * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
+ * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
+ */
+export function judgeQueuedEmails(input: {
+  queued: number;
+  oldestHours: number | null;
+  failed: number;
+}): Check {
   const name = "お知らせメール";
-  if (input.queued === 0) return { name, level: "ok", detail: "送信待ちはありません" };
+  // 失敗は自動では回収されない（`recoverQueuedEmails` は queued だけを拾う）。
+  // 放置すると届かないままなので、送信待ちより先に扱う。
+  if (input.failed > 0) {
+    return {
+      name,
+      level: "error",
+      detail: `送れなかったメールが ${input.failed} 件あります（送信待ちは ${input.queued} 件）`,
+      nextAction:
+        "メール設定（SMTP）が正しいか確認してください。直したら通知ベルの「メールを再送」で送り直せます",
+    };
+  }
+  if (input.queued === 0) return { name, level: "ok", detail: "送信待ち・送信失敗はありません" };
   const detail = `送信待ちが ${input.queued} 件（最も古いものは ${Math.round(input.oldestHours ?? 0)} 時間前）`;
   if ((input.oldestHours ?? 0) > 24) {
     return {
@@ -424,15 +446,18 @@ export async function collectDiagnostics(
     }),
   );
 
-  const emails = await db.query<{ queued: string; oldest: string | null }>(
-    `select count(*)::text as queued,
-            (extract(epoch from (now() - min(created_at))) / 3600)::text as oldest
-       from notifications where email_status = 'queued'`,
+  const emails = await db.query<{ queued: string; oldest: string | null; failed: string }>(
+    `select count(*) filter (where email_status = 'queued')::text as queued,
+            (extract(epoch from (now() - min(created_at)
+                                 filter (where email_status = 'queued'))) / 3600)::text as oldest,
+            count(*) filter (where email_status = 'failed')::text as failed
+       from notifications where email_status in ('queued', 'failed')`,
   );
   checks.push(
     judgeQueuedEmails({
       queued: Number(emails.rows[0]?.queued ?? 0),
       oldestHours: emails.rows[0]?.oldest == null ? null : Number(emails.rows[0].oldest),
+      failed: Number(emails.rows[0]?.failed ?? 0),
     }),
   );
 
