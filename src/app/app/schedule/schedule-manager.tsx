@@ -319,9 +319,9 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                     {cell.map((s) => (
                       <span
                         className={`m-0.5 ${slotCellClassName(s)}`}
-                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・分野 ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
+                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・分野 ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
+                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
                       >
                         {PATTERN_LABEL[s.pattern] ?? s.pattern}
                       </span>
@@ -428,7 +428,7 @@ function SlotRow({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
           <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
-          {/* 分野を行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
+          {/* テーマを行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
           {slot.theme && slot.theme !== "other" ? (
             <Badge tone="brand">{postThemeLabel(slot.theme)}</Badge>
           ) : null}
@@ -657,12 +657,12 @@ function SlotFields({
 
       {/*
         `<label>` で包まず `htmlFor` で結ぶ（T-M8-29）。包むと補足文まで読み上げ名に入り、
-        「分野 曜日ごとに分野を変えられます…」という名前になってしまう。
+        「テーマ 曜日ごとにテーマを変えられます…」という名前になってしまう。
         idはスロットごとに複数のフォームが並ぶので一意にする。
       */}
       <div className="max-w-xs">
         <label className="block font-medium" htmlFor={themeFieldId}>
-          分野
+          テーマ
         </label>
         <select
           aria-describedby={`${themeFieldId}-help`}
@@ -680,7 +680,7 @@ function SlotFields({
           ))}
         </select>
         <p className="mt-1 text-xs text-muted-foreground" id={`${themeFieldId}-help`}>
-          曜日ごとに分野を変えられます（例: 月曜はAI、木曜は業務改善）。決めずに書かせたいときは
+          曜日ごとにテーマを変えられます（例: 月曜はAI、木曜は業務改善）。決めずに書かせたいときは
           「その他」を選び、追加指示に書いてください。
         </p>
       </div>

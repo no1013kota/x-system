@@ -162,12 +162,12 @@ function NewsForm({ config }: { config: NewsConfig }) {
       <h2 className="text-[15px] font-bold text-ink">ニュース通知</h2>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
         ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
-        設定条件に一致する新着が0件の時刻には通知は届きません。ここでの分野・インパクト・表示件数は
+        設定条件に一致する新着が0件の時刻には通知は届きません。ここでのテーマ・インパクト・表示件数は
         一覧表示にも適用されます。
       </p>
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">分野（1件以上）</legend>
+        <legend className="text-sm font-medium">テーマ（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_CATEGORIES.map((c) => (
             <label className="flex items-center gap-1.5 text-sm" key={c}>
@@ -237,7 +237,7 @@ function NewsForm({ config }: { config: NewsConfig }) {
       </div>
       {invalid ? (
         <p className="mt-3 text-sm text-destructive" role="alert">
-          分野とインパクトはそれぞれ1件以上選択してください。
+          テーマとインパクトはそれぞれ1件以上選択してください。
         </p>
       ) : null}
     </section>

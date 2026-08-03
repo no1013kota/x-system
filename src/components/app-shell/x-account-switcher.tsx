@@ -71,7 +71,11 @@ export function XAccountSwitcher({
       <Menu.Root>
         <Menu.Trigger
           aria-busy={pending}
-          aria-label="Xアカウントを切り替え"
+          // **操作中のアカウントを読み上げ名にも入れる**（T-M8-31）。`aria-label` は中の文字を
+          // 上書きするため、以前は支援技術には「Xアカウントを切り替え」だけが伝わり、
+          // **いまどのアカウントを操作しているのかが分からなかった**（要件06 §2 は
+          // 「誤ったアカウントへの投稿を防ぐため常時表示」を求めている）。
+          aria-label={`Xアカウントを切り替え（操作中: ${label}）`}
           className={CHIP_CLASS}
           disabled={pending}
           title={label}

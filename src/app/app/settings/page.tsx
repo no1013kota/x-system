@@ -218,7 +218,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </div>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              プラン変更、お支払い方法の更新、期間末解約はStripeの安全な管理画面で行います。変更内容はStripeからの通知後に反映されます。
+              {/* 行き先の説明はボタン直下にあるので、ここは反映のタイミングだけにする（T-M8-31）。 */}
+              変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）。
             </p>
             {usage ? (
               <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />

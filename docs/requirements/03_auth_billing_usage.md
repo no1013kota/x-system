@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
-| 更新日 | 2026-07-25 |
+| バージョン | v1.14 |
+| 更新日 | 2026-08-03 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -55,7 +55,9 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 
 ### 2.2 Customer Portal作成
 
-- `POST /api/stripe/portal`はrequest bodyを必要とせず、Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
+- `POST /api/stripe/portal`はSupabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
+- **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。`intent`が無い場合と本人の`stripe_subscription_id`が不明な場合は`flow_data`を付けずPortalのトップを開く（Stripeが400を返して「押しても開かない」状態になるのを避ける）。完了後は`after_completion`で同じreturn URLへ戻す。
+- 契約前（`stripe_customer_id`なし）はPortalを作れないため、**画面に押せないボタンを出さず**`/plans`へのリンクにする（要件06 §10）。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
 - `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実作成時は3つのPriceを取得して同一Product所属を検証した後、`STRIPE_PORTAL_CONFIGURATION_ID`へ設定するIDを出力する。秘密鍵は出力しない。

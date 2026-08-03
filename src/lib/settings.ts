@@ -51,8 +51,8 @@ export const newsConfigSchema = z
   .object({
     categories: z
       .array(newsCategorySchema)
-      .min(1, "分野を1件以上選択してください")
-      .refine(unique, "分野が重複しています"),
+      .min(1, "テーマを1件以上選択してください")
+      .refine(unique, "テーマが重複しています"),
     impact_filter: z
       .array(impactLevelSchema)
       .min(1, "インパクトを1件以上選択してください")

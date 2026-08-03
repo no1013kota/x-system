@@ -10,6 +10,7 @@ import {
   disconnectXAccountAction,
   enableXAccountAction,
   refreshXAccountStatusAction,
+  setActiveXAccountAction,
 } from "@/app/actions/x-accounts";
 import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
@@ -186,6 +187,30 @@ export function XAccountsSettings({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {/*
+                    操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
+                    ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
+                    「どこで切り替えるのか」を探すことになる。
+                    切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
+                  */}
+                  {!account.isActive && account.status === "active" ? (
+                    <Button
+                      disabled={pending}
+                      onClick={() =>
+                        run(
+                          account.id,
+                          () => setActiveXAccountAction({ x_account_id: account.id }),
+                          `@${account.handle} に切り替えました`,
+                        )
+                      }
+                      size="sm"
+                      type="button"
+                      variant="subtle"
+                    >
+                      {busy ? "切り替え中…" : "このアカウントを操作する"}
+                    </Button>
+                  ) : null}
+
                   {account.status === "disabled" ? (
                     <Button
                       disabled={pending}

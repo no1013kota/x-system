@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 const VALUE_PROPS: { title: string; body: string }[] = [
   {
     title: "情報収集を自動化",
-    body: "関心分野の重要ニュースを自動で収集し、投稿ネタとして活用できます。",
+    body: "関心テーマの重要ニュースを自動で収集し、投稿ネタとして活用できます。",
   },
   {
     title: "あなたらしい文章をAIが生成",
