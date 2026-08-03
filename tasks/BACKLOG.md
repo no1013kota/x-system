@@ -526,6 +526,22 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **残り（別タスク T-M8-45）**: warn/info/success のバナー約37箇所。危険色ほどの実害はないが
   padding・文字サイズ・枠線が揃っていない。45箇所を一度に置換するとリスクが高いので分けた。
 
+### T-M8-44: 手書きチップを `Badge` へ寄せる（背景色が抜けた3箇所を含む） `done`
+- 参照: ADR-0006 原則5、デザイン §形状 / 依存: T-M8-43 / サイズ: S
+- 症状: `Badge`（`rounded-chip px-2 py-0.5 text-[11px]` ＋ tone配色）が12ファイルで使われている
+  一方、`rounded bg-muted px-2 py-0.5 text-xs` 系の手書きチップが13箇所残っていた。
+  角丸（bare `rounded`＝4px vs `rounded-chip`＝6px）・文字サイズ（12px vs 11px）・背景
+  （`bg-muted`＝rgba(0,0,0,.03) vs Badge neutral の `bg-black/[0.04]`）がすべてわずかに違い、
+  同じ一覧の中で並ぶと**揃っていないことだけが伝わる**。
+- **3箇所は背景色そのものが抜けていた**（形が隣のチップと揃わない）。tone を決めて寄せた。
+  - ベースmdの変更理由（`base-md-editor.tsx`）→ 分類なので neutral
+  - 分析の「計測完了」（`analytics-view.tsx`）→ 完了なので success
+  - プロンプトの「カスタム／既定」（`prompt-templates-editor.tsx`）→ 手書きの色分岐を
+    `tone={isOverride ? "brand" : "neutral"}` へ（値ではなく意味で選ぶ形にした）
+- 改善提案の「生成中…」は info、根拠のメタ情報（軸・metric・計測時点・差）は neutral。
+- 対象外: `api-key-settings.tsx` の scope 一覧は `<code>`（チップではなくコード片）なので残した。
+- 検証: 単体1,586件・typecheck・lint 緑／E2E（analytics・suggestions・ai-settings・home）緑。
+
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M
 - 経緯: 利用者から「要件と実装が違う部分がないか。実装時に要件も変更済みか」（2026-08-03）。

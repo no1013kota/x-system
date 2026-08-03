@@ -6,6 +6,7 @@ import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * SC-05 ホームの「直近の実績」（要件06 §1・§8・§10, T-M7-03）。直近7日の投稿件数と投稿翌日時点の
@@ -85,9 +86,7 @@ export function RecentResultsCard({
         {posts.map((post) => (
           <li className="rounded-lg border bg-background p-3" key={post.draftId}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
-                {POST_PATTERN_LABELS[post.pattern] ?? post.pattern}
-              </span>
+              <Badge>{POST_PATTERN_LABELS[post.pattern] ?? post.pattern}</Badge>
               {post.postedMode ? (
                 <span className="text-xs text-muted-foreground">
                   {MODE_LABEL[post.postedMode] ?? post.postedMode}
