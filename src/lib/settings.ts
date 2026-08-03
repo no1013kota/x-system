@@ -5,6 +5,8 @@ import { DB_ENUMS } from "@/lib/db/enums";
 import {
   DEFAULT_NEWS_CONFIG,
   DEFAULT_NOTIFICATION_CONFIG,
+  NEWS_MAX_ITEMS_MAX,
+  NEWS_MAX_ITEMS_MIN,
 } from "./config-defaults";
 import type { Queryable } from "./x/token-refresh";
 
@@ -57,7 +59,7 @@ export const newsConfigSchema = z
       .array(impactLevelSchema)
       .min(1, "インパクトを1件以上選択してください")
       .refine(unique, "インパクトが重複しています"),
-    max_items: z.number().int().min(1).max(100),
+    max_items: z.number().int().min(NEWS_MAX_ITEMS_MIN).max(NEWS_MAX_ITEMS_MAX),
   })
   .strict();
 
