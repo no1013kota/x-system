@@ -8,8 +8,8 @@ import { ICON_PATHS, ICON_PATHS_FILLED, type IconName } from "./icon-paths";
  * アイコン（T-M8-02）。デザインは Material Symbols Outlined を指定している。
  *
  * **フォントではなくインラインSVGで持つ。** Material Symbols の可変フォントは3.8MBあり、
- * 全ページへ載せるには重すぎる（実際にダウンロードして確認した）。使う41個だけをSVGの
- * pathとして持つと12.6KBで済み、CSPのフォント制限とも無関係になる。
+ * 全ページへ載せるには重すぎる（実際にダウンロードして確認した）。使う44個だけをSVGの
+ * pathとして持つと十数KBで済み、CSPのフォント制限とも無関係になる。
  *
  * 定義は `icon-paths.ts`（`npm run icons:generate` で再生成）。増やすときは
  * `scripts/generate-icons.mjs` の一覧へ追記する。**手で貼らない。**

@@ -1,9 +1,9 @@
 "use client";
 
-import { LogOut } from "lucide-react";
 import { useTransition } from "react";
 
 import { signOut } from "@/app/actions/auth";
+import { Icon } from "@/components/ui/icon";
 
 /**
  * ログアウト（PRD A-2・要件03 §1「Supabase sessionを破棄し `/login` へ遷移」）。
@@ -24,7 +24,7 @@ export function SignOutButton({ label = true }: { label?: boolean }) {
       onClick={() => startTransition(async () => void (await signOut()))}
       type="button"
     >
-      <LogOut aria-hidden="true" className="size-5" />
+      <Icon name="output" size={20} />
       {label ? (
         <span className="hidden md:inline">{pending ? "ログアウトしています…" : "ログアウト"}</span>
       ) : (
