@@ -107,16 +107,16 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     .sort((a, b) => b[1] - a[1]);
   if (streaks.length > 0) {
     const text = streaks.map(([category, days]) => `${category}（${days}日連続）`).join("・");
-    lines.push(`ニュースが取れていない分野: ${text}`);
-    attention.push(`ニュースが取れていない分野: ${text}`);
+    lines.push(`ニュースが取れていないテーマ: ${text}`);
+    attention.push(`ニュースが取れていないテーマ: ${text}`);
   } else {
-    lines.push("ニュース: 各分野で取得できています");
+    lines.push("ニュース: 各テーマで取得できています");
   }
 
   if (data.allDropped.length > 0) {
     const text = data.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・");
-    lines.push(`直近の取得で全件破棄された分野: ${text}`);
-    attention.push(`全件破棄された分野: ${text}`);
+    lines.push(`直近の取得で全件破棄されたテーマ: ${text}`);
+    attention.push(`全件破棄されたテーマ: ${text}`);
   }
 
   if (data.stuckJobs > 0) {

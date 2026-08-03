@@ -11,7 +11,7 @@ describe("startCustomerPortal", () => {
       }),
     );
     const navigate = vi.fn();
-    await startCustomerPortal({ fetcher, navigate });
+    await startCustomerPortal(undefined, { fetcher, navigate });
     expect(fetcher).toHaveBeenCalledWith("/api/stripe/portal", {
       method: "POST",
     });
@@ -27,11 +27,29 @@ describe("startCustomerPortal", () => {
   ])("rejects an API error or unsafe response", async (response) => {
     const navigate = vi.fn();
     await expect(
-      startCustomerPortal({
+      startCustomerPortal(undefined, {
         fetcher: vi.fn(async () => response.clone()),
         navigate,
       }),
-    ).rejects.toThrow("お支払い管理画面を開けませんでした");
+    ).rejects.toThrow("プラン管理画面を開けませんでした");
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("startCustomerPortal（やりたいことを指定する・T-M8-31）", () => {
+  const okResponse = () =>
+    Response.json({
+      ok: true,
+      data: { url: "https://billing.stripe.test/p/session/test_123" },
+    });
+
+  it.each(["update", "cancel"] as const)("intent=%s を本文へ載せる", async (intent) => {
+    const fetcher = vi.fn(async () => okResponse());
+    await startCustomerPortal(intent, { fetcher, navigate: vi.fn() });
+    expect(fetcher).toHaveBeenCalledWith("/api/stripe/portal", {
+      method: "POST",
+      body: JSON.stringify({ intent }),
+      headers: { "content-type": "application/json" },
+    });
   });
 });

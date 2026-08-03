@@ -1,0 +1,123 @@
+import { randomUUID } from "node:crypto";
+
+import { query } from "./fixtures/account";
+import { expect, signIn, test, toastIn } from "./fixtures/test";
+
+/**
+ * 複数Xアカウントの切り替え（A-6, 要件06 §2/§3, T-M8-31）。
+ *
+ * **切り替えたら中身も入れ替わることまで見る。** 「切り替えた表示になる」だけでは足りない。
+ * 下書き・履歴・スケジュールがアカウント単位で分離されているのが要件（PRD A-6）なので、
+ * 2つ目のアカウントに別のデータを置いて、画面が本当に入れ替わるかを確かめる。
+ */
+
+/** 同じ利用者へ2つ目のXアカウントを足す（1つ目は fixture が作る）。 */
+async function addSecondAccount(userId: string): Promise<{ id: string; handle: string }> {
+  const suffix = randomUUID().slice(0, 8);
+  const handle = `e2e_second_${suffix}`;
+  const [row] = await query<{ id: string }>(
+    `insert into x_accounts
+       (user_id, x_user_id, handle, name, auth_type, status,
+        access_token_ciphertext, refresh_token_ciphertext, oauth_scopes,
+        token_expires_at, base_md, base_md_version)
+     values ($1, $2, $3, '2つ目のアカウント', 'managed', 'active',
+             'e2e-fake', 'e2e-fake',
+             array['tweet.read','tweet.write','users.read','offline.access'],
+             now() + interval '1 hour', '# 発信定義書\n\n2つ目用。', 1)
+     returning id`,
+    [userId, `x-second-${suffix}`, handle],
+  );
+  return { id: row.id, handle };
+}
+
+async function addDraft(xAccountId: string, text: string): Promise<void> {
+  await query(
+    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
+     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    [
+      xAccountId,
+      JSON.stringify([
+        { local_id: "p1", text, weighted_length: text.length * 2, sources: [], warnings: [] },
+      ]),
+    ],
+  );
+}
+
+async function addPosted(xAccountId: string, text: string): Promise<void> {
+  const tweetId = `sw-${randomUUID().slice(0, 8)}`;
+  await query(
+    `insert into drafts
+       (x_account_id, pattern, thread, initial_thread, status, posted_mode, posted_at,
+        root_tweet_id, tweet_ids)
+     values ($1,'p2',$2::jsonb,$2::jsonb,'posted','manual', now() - interval '1 day', $3, $4::jsonb)`,
+    [
+      xAccountId,
+      JSON.stringify([
+        { local_id: "p1", text, weighted_length: text.length * 2, sources: [], warnings: [] },
+      ]),
+      tweetId,
+      JSON.stringify([tweetId]),
+    ],
+  );
+}
+
+test("設定のXアカウント一覧から操作対象を切り替えられ、下書き・履歴・スケジュールも入れ替わる", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("switch", { personaReady: true });
+  const second = await addSecondAccount(account.userId);
+
+  const firstDraft = `1つ目の下書き ${randomUUID().slice(0, 6)}`;
+  const secondDraft = `2つ目の下書き ${randomUUID().slice(0, 6)}`;
+  const firstPosted = `1つ目の投稿済み ${randomUUID().slice(0, 6)}`;
+  const secondPosted = `2つ目の投稿済み ${randomUUID().slice(0, 6)}`;
+  await addDraft(account.xAccountId, firstDraft);
+  await addDraft(second.id, secondDraft);
+  await addPosted(account.xAccountId, firstPosted);
+  await addPosted(second.id, secondPosted);
+  await query(
+    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
+     values ($1,'p3','{1}','09:00','draft','ai',true)`,
+    [second.id],
+  );
+
+  await signIn(page, account);
+
+  // 1つ目が操作中。下書きも履歴も1つ目のものだけ。
+  await page.goto("/app/posts?tab=drafts");
+  await expect(page.getByText(firstDraft)).toBeVisible();
+  await expect(page.getByText(secondDraft)).toHaveCount(0);
+
+  // 一覧から切り替える（ヘッダーのメニューを探させない）
+  await page.goto("/app/settings?tab=x-accounts");
+  const secondRow = page.locator("li", { hasText: `@${second.handle}` });
+  await secondRow.getByRole("button", { name: "このアカウントを操作する" }).click();
+  await expect(toastIn(page)).toContainText(`@${second.handle} に切り替えました`);
+
+  // ヘッダーの表示も追従する（読み上げ名にも操作中のアカウントが入る）
+  await expect(
+    page.getByRole("button", { name: new RegExp(`操作中: @${second.handle}`) }),
+  ).toBeVisible();
+
+  // 下書きが入れ替わる
+  await page.goto("/app/posts?tab=drafts");
+  await expect(page.getByText(secondDraft)).toBeVisible();
+  await expect(page.getByText(firstDraft)).toHaveCount(0);
+
+  // 履歴も入れ替わる
+  await page.goto("/app/posts?tab=history");
+  await expect(page.getByText(secondPosted)).toBeVisible();
+  await expect(page.getByText(firstPosted)).toHaveCount(0);
+
+  // スケジュールも2つ目のものになる（1つ目にはスロットが無い）
+  await page.goto("/app/schedule");
+  await expect(page.getByText("ノウハウ・ハウツー").first()).toBeVisible();
+
+  // 戻せる（行き止まりにしない）
+  await page.goto("/app/settings?tab=x-accounts");
+  const firstRow = page.locator("li", { hasText: `@${account.handle}` });
+  await firstRow.getByRole("button", { name: "このアカウントを操作する" }).click();
+  await page.goto("/app/posts?tab=drafts");
+  await expect(page.getByText(firstDraft)).toBeVisible();
+});

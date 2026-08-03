@@ -223,7 +223,7 @@ export function CreatePostForm({
 
         <div>
           <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
-            分野
+            テーマ
           </label>
           <select
             aria-describedby="theme-help"
@@ -241,7 +241,7 @@ export function CreatePostForm({
             ))}
           </select>
           <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
-            その分野に絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ分野です。
+            そのテーマに絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ選択肢です。
             決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
           </p>
         </div>
@@ -259,7 +259,7 @@ export function CreatePostForm({
             value={sourceUrl}
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            空欄のままでも、上の分野と発信設定・ベースmdからAIが題材を選んでリサーチします。
+            空欄のままでも、上のテーマと発信設定・ベースmdからAIが題材を選んでリサーチします。
           </p>
         </div>
 

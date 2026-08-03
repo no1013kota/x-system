@@ -156,7 +156,7 @@ export function NewsBrowser({
 
   function applyConfig() {
     if (categories.length === 0 || impacts.length === 0) {
-      setNote("分野とインパクトを各1件以上選択してください。");
+      setNote("テーマとインパクトを各1件以上選択してください。");
       return;
     }
     startTransition(async () => {
@@ -228,7 +228,7 @@ export function NewsBrowser({
           この条件は保存され、ニュース通知の対象にも使われます。
         </p>
         <div>
-          <p className="text-xs font-semibold text-muted-foreground">分野</p>
+          <p className="text-xs font-semibold text-muted-foreground">テーマ</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {filterThemes.map((t) => {
               const active = categories.includes(t.newsCategory);
@@ -308,14 +308,14 @@ export function NewsBrowser({
             <p>この時間帯に該当するニュースはありません。</p>
           ) : narrowedFilter ? (
             <>
-              <p>この条件に一致するニュースはありません。分野やインパクトを増やしてみてください。</p>
+              <p>この条件に一致するニュースはありません。テーマやインパクトを増やしてみてください。</p>
               <button
                 className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent"
                 disabled={pending}
                 onClick={resetFilter}
                 type="button"
               >
-                絞り込みを既定に戻す（全分野・インパクト高と中）
+                絞り込みを既定に戻す（全テーマ・インパクト高と中）
               </button>
             </>
           ) : (

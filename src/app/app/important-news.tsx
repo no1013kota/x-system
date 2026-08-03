@@ -38,7 +38,7 @@ export function ImportantNewsCard({
           <p className="text-[12.5px] leading-5 text-ink-2">
           {loadFailed
             ? "ニュースを取得できませんでした。時間をおいて開き直すか、ニュース画面で確認してください。"
-            : "設定した分野で、インパクトが高い新着はまだありません。分野やインパクトの条件は通知設定で変更できます。"}
+            : "設定したテーマで、インパクトが高い新着はまだありません。テーマやインパクトの条件は通知設定で変更できます。"}
         </p>
           {loadFailed ? null : (
             <Link

@@ -59,7 +59,7 @@ describe("zeroStreakByCategory", () => {
     expect(zeroStreakByCategory(rows).ai).toBe(0);
   });
 
-  it("実行のなかった日は数えない（定時実行が動かない環境で全分野が警告にならない）", () => {
+  it("実行のなかった日は数えない（定時実行が動かない環境で全テーマが警告にならない）", () => {
     // 8/1 と 7/25 しか行がない場合、間の日は「0件」ではなく「実行なし」として扱う。
     const rows = [
       { date: "2026-08-01", category: "ai", saved: 0, dropped: 0 },
@@ -68,7 +68,7 @@ describe("zeroStreakByCategory", () => {
     expect(zeroStreakByCategory(rows).ai).toBe(1);
   });
 
-  it("分野ごとに独立して数える", () => {
+  it("テーマごとに独立して数える", () => {
     const rows = [
       { date: "2026-08-01", category: "web3", saved: 0, dropped: 0 },
       { date: "2026-08-01", category: "ai", saved: 4, dropped: 0 },
@@ -96,7 +96,7 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("データベースの使用量が 450 MB / 500 MB（90%）");
   });
 
-  it("3日連続で取れていない分野を強調する（T-M7-24の再発検知）", () => {
+  it("3日連続で取れていないテーマを強調する（T-M7-24の再発検知）", () => {
     const s = buildDailySummary({ ...base, zeroStreaks: { web3: ZERO_STREAK_ALERT_DAYS, ai: 1 } });
     expect(s.needsAttention).toBe(true);
     expect(s.body).toContain("web3（3日連続）");
@@ -104,7 +104,7 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("対応が必要かもしれない点");
   });
 
-  it("全件破棄された分野と理由を出す", () => {
+  it("全件破棄されたテーマと理由を出す", () => {
     const s = buildDailySummary({
       ...base,
       allDropped: [{ category: "ai", reasons: "title:too_big×2" }],

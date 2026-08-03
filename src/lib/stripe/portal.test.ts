@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   handlePortalRequest,
+  portalFlowData,
   type PortalRouteDependencies,
 } from "./portal";
 
@@ -110,5 +111,38 @@ describe("POST /api/stripe/portal core", () => {
     const body = JSON.stringify(await response.json());
     expect(body).toContain("provider_error");
     expect(body).not.toContain("sk_test_secret");
+  });
+});
+
+describe("portalFlowData（やりたいことを先に選ばせる・T-M8-31）", () => {
+  const RETURN_URL = "https://app.test/api/stripe/return?source=portal";
+
+  it("プラン変更はsubscription_updateへ入る", () => {
+    expect(portalFlowData("update", "sub_1", RETURN_URL)).toMatchObject({
+      type: "subscription_update",
+      subscription_update: { subscription: "sub_1" },
+    });
+  });
+
+  it("解約はsubscription_cancelへ入る", () => {
+    expect(portalFlowData("cancel", "sub_1", RETURN_URL)).toMatchObject({
+      type: "subscription_cancel",
+      subscription_cancel: { subscription: "sub_1" },
+    });
+  });
+
+  it("完了後はアプリへ戻す（Stripeに残して迷子にしない）", () => {
+    expect(portalFlowData("cancel", "sub_1", RETURN_URL)).toMatchObject({
+      after_completion: { type: "redirect", redirect: { return_url: RETURN_URL } },
+    });
+  });
+
+  it("**subscriptionが分からなければ組まない**（Stripeが400を返すため、Portalのトップを開く）", () => {
+    expect(portalFlowData("cancel", null, RETURN_URL)).toBeUndefined();
+    expect(portalFlowData("update", undefined, RETURN_URL)).toBeUndefined();
+  });
+
+  it("intent無しなら組まない（従来どおりPortalのトップ）", () => {
+    expect(portalFlowData(null, "sub_1", RETURN_URL)).toBeUndefined();
   });
 });

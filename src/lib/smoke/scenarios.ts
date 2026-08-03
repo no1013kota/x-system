@@ -324,7 +324,7 @@ async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
 
 /** ニュース取得が例外にならず、0件のときはそれが「該当なし」だと説明できること。 */
 async function newsResearch(): Promise<SmokeResult> {
-  const name = "ニュース取得（ai分野）";
+  const name = "ニュース取得（aiテーマ）";
   try {
     const { researchNews, formatDropReasons } = await import("../jobs/news-research");
     const { resolveNewsProvider } = await import("../ai/resolve-provider-server");
