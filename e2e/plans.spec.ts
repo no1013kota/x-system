@@ -73,6 +73,12 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await expect(page.getByText("プレミアムプラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("契約状態", { exact: false }).first()).toBeVisible();
 
+  // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
+  await page.goto("/app/settings?tab=api-keys");
+  await expect(page.getByRole("heading", { name: /キー登録不要/ })).toBeVisible();
+  await expect(page.getByText("生成枠")).toBeVisible();
+  await page.goto("/app/settings?tab=billing");
+
   // 支払い管理ボタンは、Stripeの顧客IDが無い間は押せない（押しても直らない操作を出さない）
   const portal = page.getByRole("button", { name: /お支払い|管理/ }).first();
   if (await portal.count()) {
