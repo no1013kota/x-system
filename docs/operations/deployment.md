@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
-| 更新日 | 2026-08-02 |
+| バージョン | v1.9 |
+| 更新日 | 2026-08-04 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -48,6 +48,17 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 ```
 
 > **これらは「手元のコマンドがどこを検証するか」を知るための値**で、アプリが読む環境変数ではない。アプリ自身が使う `APP_BASE_URL` 等は Vercel 側に設定する（§1）。両者は別物なので、Vercelに入れてあっても手元のコマンドには別途渡す必要がある。
+
+**`.env.local` へ置く手元用の値**（`.env.example` にも記載がある。2026-08-04 に追記。**どこにも書かれておらず、初回のリリースで「反映先のURLが設定されていません」で詰まった**）。
+
+| 変数 | 用途 |
+|---|---|
+| `STAGING_BASE_URL` / `PRODUCTION_BASE_URL` | `release:*`・`doctor -- --base`・`smoke:live` の対象URL |
+| `STAGING_CRON_SECRET` / `PRODUCTION_CRON_SECRET` | デプロイ先の cron エンドポイントを叩く鍵（**環境ごとに違う**のが正しい） |
+
+### migration 適用時に出る警告
+
+`supabase db push` の後に `failed to cache migrations catalog: ... pgdelta-target-ca.crt: ENOENT` が出ることがある。**migration 自体は適用されている**（`Applying migration ...` が各ファイルに出て `Finished supabase db push.` で終わる）。CLIのカタログキャッシュだけが失敗しているので、`release:staging` をもう一度実行して「データ構造の更新: すべて適用済みです」を確認すればよい。
 
 > migration適用を飛ばすと**X連携が `internal_error` で壊れる**。ここを警告ではなく停止にしているのは、警告では忘れたときと同じ結果になるため（`CLAUDE.md` 原則3）。判定は `src/lib/ops/release-gate.ts`（単体テストあり）。
 
