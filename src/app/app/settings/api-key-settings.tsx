@@ -1,6 +1,5 @@
 "use client";
 
-import { Check, Clipboard, ExternalLink, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -24,6 +23,7 @@ import {
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -285,7 +285,7 @@ export function ApiKeySettings({
       <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
           <div className="rounded-card bg-success-bg p-3 text-success-fg">
-            <ShieldCheck aria-hidden="true" className="size-6" />
+            <Icon name="verified_user" className="size-6" />
           </div>
           <div>
             <CardTitle id="premium-key-heading">
@@ -310,7 +310,7 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-card bg-brand-subtle p-2 text-brand">
-            <KeyRound aria-hidden="true" className="size-5" />
+            <Icon name="key" size={20} />
           </div>
           <div>
             <CardTitle id="x-key-heading">X APIキー</CardTitle>
@@ -376,7 +376,7 @@ export function ApiKeySettings({
                 形式を確認
               </Button>
               <Button className="min-h-10" disabled={isPending} onClick={() => remove("x")} type="button" variant="outline">
-                <Trash2 aria-hidden="true" className="size-4" />削除
+                <Icon name="delete" size={16} />削除
               </Button>
             </>
           ) : null}
@@ -431,7 +431,7 @@ export function ApiKeySettings({
                         疎通確認
                       </Button>
                       <Button aria-label={`${label} APIキーを削除`} className="min-h-10 min-w-10" disabled={isPending} onClick={() => remove(provider)} size="sm" type="button" variant="outline">
-                        <Trash2 aria-hidden="true" className="size-4" />
+                        <Icon name="delete" size={16} />
                       </Button>
                     </>
                   ) : null}
@@ -453,7 +453,7 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">Developer ConsoleでAppを作成</p>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
-                X Developer Consoleを開く<ExternalLink aria-hidden="true" className="size-4" />
+                X Developer Consoleを開く<Icon name="open_in_new" size={16} />
               </a>
             </div>
           </li>
@@ -470,7 +470,7 @@ export function ApiKeySettings({
                   文脈は可視テキストへ入れる。
                 */}
                 <Button className="min-h-10" onClick={copyCallbackUrl} size="sm" type="button" variant="outline">
-                  {copied ? <Check aria-hidden="true" className="size-4" /> : <Clipboard aria-hidden="true" className="size-4" />}
+                  {copied ? <Icon name="check" size={16} /> : <Icon name="content_copy" size={16} />}
                   {copied ? "コピー済み" : "callback URLをコピー"}
                 </Button>
               </div>
@@ -493,7 +493,7 @@ export function ApiKeySettings({
               <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
               <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
-                X公式の料金・予算設定を確認<ExternalLink aria-hidden="true" className="size-4" />
+                X公式の料金・予算設定を確認<Icon name="open_in_new" size={16} />
               </a>
             </div>
           </li>

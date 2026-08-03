@@ -347,10 +347,10 @@ UI側boolean を壊しても投稿は誤爆しない）。
 | A | T-M8-39 | 手動投稿の長さ超過をサーバが止めない |
 | A | T-M8-40 | doctorがメール全滅を ✅ と表示（`failed` を数えていない） |
 | B（保守性） | T-M8-41 | 失敗下書きの可否boolean 8個を純関数へ抽出／`upcoming-schedule` のローカル定数／`CategoryChip` のラベル導出（3件まとめて実施） |
-| C（統一） | T-M8-43 | インラインバナーの危険色2系統 → `Notice` 新設（残り37箇所は T-M8-45） |
+| C（統一） | T-M8-43 | インラインバナーの危険色2系統 → `Notice` 新設（warn/info/success の約37箇所は未着手） |
 | C | T-M8-44 | 手書きチップ13箇所 → `Badge` |
 | C | T-M8-42 | カード見出し3規格 → `CardTitle` |
-| C | T-M8-46 | `lucide-react` 撤去（6ファイル） |
+| C | T-M8-45 | `lucide-react` 撤去（6ファイル） |
 
 ### T-M8-36: 状態チップの無色化を直し、tone名がclassNameへ流れないようにする `done`
 - 参照: 要件06 §2/§9、デザイン §カラー、CLAUDE.md 原則1 / 依存: T-M8-35 / サイズ: S
@@ -541,6 +541,23 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 改善提案の「生成中…」は info、根拠のメタ情報（軸・metric・計測時点・差）は neutral。
 - 対象外: `api-key-settings.tsx` の scope 一覧は `<code>`（チップではなくコード片）なので残した。
 - 検証: 単体1,586件・typecheck・lint 緑／E2E（analytics・suggestions・ai-settings・home）緑。
+
+### T-M8-45: `lucide-react` を撤去し、アイコンを1系統にする `done`
+- 参照: ADR-0006 原則4、デザイン §アイコン / 依存: T-M8-44 / サイズ: M
+- 症状: M8でアイコンを Material Symbols のインラインSVG化（`ui/icon.tsx` ＋ `icons:generate`）
+  したが、**6ファイルが `lucide-react` を import したままだった**。`plans/page.tsx` は同一ファイルで
+  lucide の `Check` と自前 `Icon` の両方を使っており、しかも `ICON_PATHS` には `check` が
+  生成済みで未使用。同じ意味のアイコンが2つの描画系統で並ぶため線幅・グリッドが揃わず、
+  クライアントバンドルにアイコンライブラリが1つ余分に載っていた。
+- 直したもの: 13種を等価へ置換（Check→check / ExternalLink→open_in_new / Bot→smart_toy /
+  ShieldCheck→verified_user / Plus→add / LogOut→output / ImageIcon→image / KeyRound→key /
+  Trash2→delete / RefreshCw→refresh / CircleUserRound→account_circle /
+  ChevronsUpDown→unfold_more / Clipboard→content_copy）。未収録の3つは
+  `scripts/generate-icons.mjs` の一覧へ足して再生成した（41→44個）。
+  Tailwind の `size-*` は `Icon` の `size` prop（px）へ移した。`npm uninstall lucide-react` 済み。
+- 検証: typecheck・lint・単体1,586件・`npm run build`・**E2E 45件**すべて緑。
+  **アイコンの取り違えはテストでは出ない**ため、差し替えた5画面を1440pxの実ブラウザで目視確認した
+  （Xアカウント設定・AI用途・アカウント切替・プラン選択・ログアウト）。
 
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M

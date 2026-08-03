@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { yen } from "@/lib/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Check } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
@@ -238,7 +237,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                   <ul className="flex flex-1 flex-col gap-[7px]">
                     {planFeatures(planId).map((feature) => (
                       <li className="flex items-start gap-[7px] text-xs leading-[1.55] text-ink-2" key={feature}>
-                        <Check aria-hidden="true" className="mt-0.5 size-[15px] shrink-0 text-brand" />
+                        <Icon name="check" className="mt-0.5 shrink-0 text-brand" />
                         <span>{feature}</span>
                       </li>
                     ))}

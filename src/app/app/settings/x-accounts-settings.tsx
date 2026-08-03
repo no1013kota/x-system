@@ -1,7 +1,6 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { CircleUserRound, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -20,6 +19,7 @@ import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
 import { CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -107,11 +107,11 @@ export function XAccountsSettings({
               type="button"
               variant="outline"
             >
-              <Plus aria-hidden="true" /> 追加（上限到達）
+              <Icon name="add" /> 追加（上限到達）
             </Button>
           ) : xApiKeyRegistered ? (
             <Button nativeButton={false} render={<a href={oauthStartPath} />} size="lg">
-              <Plus aria-hidden="true" /> Xアカウントを追加
+              <Icon name="add" /> Xアカウントを追加
             </Button>
           ) : (
             // X APIキー未登録のまま連携を始めると無言でAPIキータブへ戻されるため、先に登録へ誘導する。
@@ -163,7 +163,7 @@ export function XAccountsSettings({
                     src={account.profileImageUrl}
                   />
                 ) : (
-                  <CircleUserRound aria-hidden="true" className="size-10 shrink-0 text-muted-foreground" />
+                  <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
                 )}
                 <div className="min-w-40 flex-1">
                   <p className="flex items-center gap-2 font-medium">
@@ -238,7 +238,7 @@ export function XAccountsSettings({
                       size="sm"
                       variant="outline"
                     >
-                      <RefreshCw aria-hidden="true" /> 再連携
+                      <Icon name="refresh" /> 再連携
                     </Button>
                   ) : null}
 
