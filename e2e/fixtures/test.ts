@@ -37,9 +37,27 @@ export { expect };
  * 画面が出したエラー表示だけを掴む。Next.js の route announcer
  * （`#__next-route-announcer__`）も `role="alert"` を持つため、素の `getByRole("alert")` は
  * 常に2要素へ当たって strict mode 違反になる。
+ *
+ * **トーストも除外する**（T-M8-15）。エラートーストは `role="alert"` を持つので、
+ * 除外しないと「画面内の通知」と「トースト」の2要素に当たって同じ違反が起きる。
+ * トーストを見たいときは `toastIn` を使う。
  */
 export function alertIn(page: Page): Locator {
-  return page.locator('[role="alert"]:not(#__next-route-announcer__)');
+  return page.locator('[role="alert"]:not(#__next-route-announcer__):not([data-testid="toast"])');
+}
+
+/**
+ * 画面内の `role="status"` だけを掴む（トーストを除く）。
+ * 素の `getByRole("status")` は成功トーストにも当たるうえ、**トーストは5秒で消える**ため、
+ * 同じロケータを使い回すと2回目以降が解決できない。
+ */
+export function statusIn(page: Page): Locator {
+  return page.locator('[role="status"]:not([data-testid="toast"])');
+}
+
+/** トースト（成功・失敗の両方）。操作結果の通知はここへ集約されている。 */
+export function toastIn(page: Page): Locator {
+  return page.getByTestId("toast");
 }
 
 /**
@@ -65,15 +83,19 @@ export async function signIn(
   options: { waitFor?: RegExp } = {},
 ): Promise<void> {
   await page.goto("/login");
-  await page.locator('input[type="email"]').fill(account.email);
-  await page.locator('input[type="password"]').fill(account.password);
+  // ログインフォームへ限定して操作する（T-M8-01）。以前は画面全体から
+  // `input[type=email]` / `button[type=submit]` を拾っており、要素が1つずつしか
+  // 無いことに暗黙に依存していた。UIリデザインで要素が増えると全テストが落ちる。
+  const form = page.getByTestId("login-form");
+  await form.locator('input[type="email"]').fill(account.email);
+  await form.locator('input[type="password"]').fill(account.password);
   await expect
-    .poll(() => page.locator('input[name="captcha_token"]').inputValue(), {
+    .poll(() => form.locator('input[name="captcha_token"]').inputValue(), {
       timeout: 30_000,
       message: "Turnstileのトークンが入らない（challenges.cloudflare.com へ到達できない可能性）",
     })
     .not.toBe("");
-  await page.locator('button[type="submit"]').click();
+  await page.getByTestId("login-submit").click();
   // 契約状態によって遷移先が変わる（未契約は /plans。要件03 §2）。既定はアプリ本体。
   await page.waitForURL(options.waitFor ?? /\/app(\/|$|\?)/);
 }

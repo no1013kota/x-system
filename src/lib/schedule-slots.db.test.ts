@@ -10,6 +10,7 @@ import {
   createScheduleSlot,
   disableScheduleSlot,
   enableScheduleSlot,
+  updateScheduleSlot,
   type ScheduleSlotDeps,
 } from "./schedule-slots";
 import { X_SCOPES } from "./x/oauth";
@@ -104,6 +105,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [1, 3],
           time_jst: "09:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -144,6 +146,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [2],
           time_jst: "10:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -178,6 +181,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [4],
           time_jst: "11:00",
           mode: "auto",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -223,6 +227,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [5],
           time_jst: "12:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         ownerDeps,
@@ -252,4 +257,80 @@ describe("enableScheduleSlot (local DB)", () => {
       await cleanup(intruder.userId);
     }
   });
+
+  /**
+   * 分野（発信テーマ）の保存（T-M8-28）。DBには CHECK 制約を付けてある。
+   * **画面のzodだけでは守れない**（Server Action を直接叩けば通る）ので、実DBで往復を確かめる。
+   */
+  it("分野を保存して読み戻せる。「その他」も値として入る（NULLは入らない）", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
+    try {
+      const deps = depsFor(xAccountId);
+      const withTheme = await createScheduleSlot(
+        userId,
+        {
+          pattern: "p1",
+          weekdays: [1],
+          time_jst: "09:00",
+          mode: "draft",
+          theme: "business_ops",
+          image_enabled: false,
+        },
+        deps,
+      );
+      expect(withTheme.theme).toBe("business_ops");
+
+      // 「その他」は追加指示に分野を書く意思表示。null は**入らない**（DBが NOT NULL）。
+      const other = await createScheduleSlot(
+        userId,
+        {
+          pattern: "p3",
+          weekdays: [2],
+          time_jst: "10:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+        },
+        deps,
+      );
+      expect(other.theme).toBe("other");
+
+      // 編集で「その他」へ戻せる（一度選んだら変えられない、にしない）。
+      const cleared = await updateScheduleSlot(
+        userId,
+        {
+          slot_id: withTheme.id,
+          expected_updated_at: withTheme.updated_at,
+          pattern: "p1",
+          weekdays: [1],
+          time_jst: "09:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+        },
+        deps,
+      );
+      expect(cleared.theme).toBe("other");
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it("**DBが未知の分野を拒否する**（Server Actionを迂回しても入らない）", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
+    try {
+      await expect(
+        withTransaction((c) =>
+          c.query(
+            `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled, theme)
+             values ($1, 'p1', '{1}', '09:00', 'draft', false, true, 'bogus')`,
+            [xAccountId],
+          ),
+        ),
+      ).rejects.toThrow(/schedule_slots_theme_valid/);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
 });

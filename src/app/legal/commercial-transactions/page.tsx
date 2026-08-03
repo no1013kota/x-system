@@ -16,7 +16,7 @@ const ITEMS = [
   ["所在地", "神奈川県川崎市川崎区池田1-8-10-101"],
   ["問い合わせ先", "matsubuz.10@gmail.com"],
   ["電話番号", "請求があった場合に遅滞なく開示します"],
-  ["販売価格", "Standard 500円、MD 1,000円、Premium 2,980円（各税込月額）"],
+  ["販売価格", "通常プラン 500円、mdプラン 1,000円、プレミアムプラン 2,980円（各税込月額）"],
   ["支払時期・方法", "初回は7日間の無料期間終了時、以後毎月の更新日にカード決済"],
   ["提供時期", "Checkout完了後、契約反映が確認でき次第提供を開始"],
   ["自動更新", "無料期間終了後、選択プランを月単位で自動更新"],
@@ -31,7 +31,7 @@ const ITEMS = [
 export default function CommercialTransactionsPage() {
   return (
     <main className="min-h-screen bg-muted/40 px-4 py-12">
-      <article className="mx-auto max-w-3xl rounded-2xl border bg-card p-6 shadow-sm sm:p-10">
+      <article className="mx-auto max-w-3xl rounded-card border bg-card p-6 shadow-sm sm:p-10">
         <header className="space-y-3">
           <Link className="text-sm font-semibold" href="/plans">
             {APP_NAME}
@@ -39,11 +39,11 @@ export default function CommercialTransactionsPage() {
           <h1 className="text-3xl font-bold tracking-tight">
             特定商取引法に基づく表記
           </h1>
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="rounded-lg bg-warn-bg p-3 text-sm text-warn-fg">
             開発中の暫定版です。公開前に専門家による法務確認を行います。
           </p>
         </header>
-        <dl className="mt-8 divide-y rounded-xl border">
+        <dl className="mt-8 divide-y rounded-card border">
           {ITEMS.map(([term, description]) => (
             <div className="grid gap-2 p-4 sm:grid-cols-[11rem_1fr]" key={term}>
               <dt className="font-medium">{term}</dt>

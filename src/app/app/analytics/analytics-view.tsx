@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
@@ -59,7 +59,7 @@ export function AnalyticsView({
 
   if (drafts.length === 0) {
     return (
-      <p className="rounded-xl border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
+      <p className="rounded-card border border-hairline bg-surface px-4 py-10 text-center text-sm text-muted-foreground">
         まだ投稿実績はありません。投稿すると1日・7日・30日の実績がここに表示されます。
       </p>
     );
@@ -72,8 +72,12 @@ export function AnalyticsView({
         <div className="inline-flex rounded-lg border p-0.5">
           {CHECKPOINT_DAYS.map((d) => (
             <button
+              // 選択状態は `aria-pressed` を正とする（T-M8-01）。見た目のクラス名を状態の
+              // 表明に使うと、配色を変えただけでテストが落ちる（実際 `bg-foreground` に
+              // E2Eが依存していた）。支援技術にも正しく伝わる。
+              aria-pressed={checkpoint === d}
               className={`rounded-md px-3 py-1 text-sm font-medium ${
-                checkpoint === d ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                checkpoint === d ? "bg-brand text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}
               onClick={() => setCheckpoint(d)}
@@ -89,13 +93,13 @@ export function AnalyticsView({
         {drafts.map((draft) => {
           const agg = aggregateThread(draft, checkpoint);
           return (
-            <li className="rounded-xl border bg-background p-4" key={draft.draftId}>
+            <li className="rounded-card border border-hairline bg-surface p-4" key={draft.draftId}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
                   {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                 </span>
                 {draft.incomplete ? (
-                  <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">不完全なthread</span>
+                  <Badge tone="warn">不完全なthread</Badge>
                 ) : null}
                 {draft.metricsCompleted ? (
                   <span className="rounded px-2 py-0.5 text-xs text-muted-foreground" title="投稿後30日までの計測がすべて終わりました">計測完了</span>
@@ -103,16 +107,14 @@ export function AnalyticsView({
                 <span className="ml-auto text-xs text-muted-foreground">{fmtDate(draft.postedAt)}</span>
               </div>
 
-              {/* どの投稿かを識別できるように本文冒頭と履歴への導線を置く */}
+              {/*
+                どの投稿かを識別できるように本文冒頭を置く。**履歴への導線は出さない**
+                （2026-08-03 ユーザー判断）。下の表に各ポストの本文と実績が並ぶので、
+                同じ内容を別画面で開き直す必要が無い。
+              */}
               {draft.excerpt ? (
                 <p className="mt-2 line-clamp-2 text-sm">{draft.excerpt}</p>
               ) : null}
-              <Link
-                className="mt-1 inline-block text-xs text-primary underline"
-                href={`/app/posts?tab=history&draftId=${draft.draftId}`}
-              >
-                履歴で開く
-              </Link>
 
               {/* スレッド合算（選択checkpoint） */}
               <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">

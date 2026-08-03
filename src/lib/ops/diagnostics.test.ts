@@ -86,7 +86,7 @@ describe("judgeNews（定時実行が動かない環境で赤くしない）", (
   });
 });
 
-describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () => {
+describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", () => {
   const ok = (category: string, fetched: number) => ({
     category,
     ok: true,
@@ -114,7 +114,7 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
     expect(r.failed).toEqual(["business"]);
   });
 
-  it("全件破棄は取得件数があっても注意として上げる（分野が永久に0件になるのを見逃さない）", () => {
+  it("全件破棄は取得件数があっても注意として上げる（テーマが永久に0件になるのを見逃さない）", () => {
     const r = judgeNews({
       itemsLast48h: 10,
       hoursSinceLastRun: 1,
@@ -122,7 +122,7 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
       outcomes: [ok("ai", 3), allDropped("web3", 4)],
     });
     expect(r.level).toBe("warn");
-    expect(r.detail).toContain("全件破棄された分野: web3");
+    expect(r.detail).toContain("全件破棄されたテーマ: web3");
     expect(r.detail).toContain("title:too_big×4");
     expect(r.nextAction).toContain("除外理由");
   });
@@ -159,7 +159,7 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
     expect(r.noMatch).toEqual([]);
   });
 
-  it("該当なしだけなら正常のまま、どの分野かは伝える", () => {
+  it("該当なしだけなら正常のまま、どのテーマかは伝える", () => {
     const r = judgeNews({
       itemsLast48h: 10,
       hoursSinceLastRun: 1,
@@ -167,7 +167,7 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
       outcomes: [ok("ai", 3), ok("web3", 0)],
     });
     expect(r.level).toBe("ok");
-    expect(r.detail).toContain("該当ニュースが無かった分野: web3");
+    expect(r.detail).toContain("該当ニュースが無かったテーマ: web3");
   });
 
   it("定時実行が動かない環境でも全件破棄は注意として上げる", () => {
@@ -178,7 +178,7 @@ describe("分野ごとの0件の意味を運営者へ出す（T-M7-40）", () =>
       outcomes: [allDropped("web3", 4)],
     });
     expect(r.level).toBe("warn");
-    expect(r.detail).toContain("全件破棄された分野: web3");
+    expect(r.detail).toContain("全件破棄されたテーマ: web3");
   });
 });
 

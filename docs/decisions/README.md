@@ -51,3 +51,4 @@ Acceptedになった仕様は、同じ作業単位で要件詳細へ反映する
 | [ADR-0003](./0003-cron-window-claim.md) | Accepted | 定時トリガーの時間窓重複受付防止を、transaction modeプーラで保持できないセッションadvisory lockから`cron_runs` window claim（dedup marker）へ変更。完了状態は持たず実行保証（トリガー=at-most-once／ジョブ=at-least-once相当）を明記（review-m0-12-to-20対応） |
 | [ADR-0004](./0004-image-processing-sharp.md) | Accepted | 画像正規化（デコード・形式/実寸/MIME/容量検証・JPG/PNG/WEBP・5MB以下への変換/圧縮）に`sharp`を採用。Next.js同梱のため追加binary取得不要、直接依存へ昇格（T-M3-14対応） |
 | [ADR-0005](./0005-csp-nonce-strategy.md) | Accepted | nonceベースCSPをproxyで実装（script-srcはnonce＋strict-dynamic）。Turnstile・外部画像(https:)・Sentryを許可し、公開コンテンツページ（LP・法務）はnonce付与のためforce-dynamic化。HSTS/nosniff/Referrer-Policyをprod付与（T-M6-17対応） |
+| [ADR-0006](./0006-ui-design-foundation.md) | Accepted | UIデザイン基盤。トークンを`globals.css`のCSS変数へ一元化しshadcn由来のトークンも新デザインへ向ける、フォントは`next/font/google`で自前配信（日本語は`subsets`を指定しない）、アイコンは可変フォント3.8MBを避け41個をインラインSVG化、器/チップ/空状態/パターン選択などを単一の正へ集約（M8対応） |

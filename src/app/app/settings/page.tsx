@@ -6,8 +6,8 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
-import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 import { env } from "@/lib/env";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
@@ -25,6 +25,7 @@ import {
 
 import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
+import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
 
 export const metadata: Metadata = {
@@ -48,14 +49,6 @@ interface BillingProfile {
   stripe_customer_id: string | null;
   subscription_status: string;
 }
-
-const SETTINGS_TABS = [
-  ["x-accounts", "Xアカウント"],
-  ["api-keys", "APIキー"],
-  ["notifications", "通知・プロフィール"],
-  ["billing", "課金・プラン"],
-  ["support", "問い合わせ"],
-] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   incomplete: "お申し込み未完了",
@@ -109,19 +102,24 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (tab === "notifications") {
     userSettings = await getSettingsForUser(user.id);
   }
-  // premium 月間利用枠の残量（課金・プランタブ, 要件03 §8・要件06 §10, T-M6-12）。premium以外は null。
+  // premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・要件06 §10, T-M6-12/T-M8-25）。
+  // premium以外は null。APIキータブは「キー登録不要」の代わりに何が付くかをここで見せる。
   let usage: UsageSummary | null = null;
-  if (tab === "billing") {
+  if (tab === "billing" || tab === "api-keys") {
     usage = await loadUsageSummaryForUser(user.id, profile.plan ?? "standard");
   }
 
   return (
-    <main className="px-4 py-8 lg:px-8 lg:py-10">
-      <div className="mx-auto max-w-6xl space-y-7">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">アカウント設定</h1>
-          <p className="text-sm text-muted-foreground">
-            APIキー、ご契約内容、お問い合わせ先を管理できます。
+    <main className="px-4 py-[26px] lg:px-8">
+      <div className="mx-auto max-w-[1180px] space-y-3.5">
+        <header>
+          <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
+          <p className="mt-1 text-[12.5px] text-ink-2">
+            Xアカウント連携・APIキー・通知・ご契約内容を管理できます。発信の内容に関わる設定は
+            <Link className="mx-1 font-medium text-brand underline-offset-2 hover:underline" href="/app/ai-settings">
+              AI設定
+            </Link>
+            にあります。
           </p>
         </header>
 
@@ -158,6 +156,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
             initialKeys={apiKeys}
             plan={profile.plan ?? "standard"}
+            usage={usage}
+            usageResetLabel={formatNextMonthStartJst(new Date())}
           />
         ) : tab === "notifications" && userSettings ? (
           <SettingsPreferences
@@ -167,13 +167,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm">
+            <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
               <h2 className="text-xl font-semibold" id="billing-heading">
                 現在のご契約
               </h2>
               {params.portal === "return" ? (
                 <p
-                  className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+                  className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
                   role="status"
                 >
                   お支払い管理画面から戻りました。契約情報を確認しています。
@@ -208,18 +208,18 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   </dd>
                 </div>
               </dl>
-              <div className="mt-7 flex flex-wrap items-start gap-3">
+              {/*
+                導線は1つにする（T-M8-29）。`PortalButton` が契約状態で行き先を変える
+                （契約中→Stripeのプラン管理／契約前→料金プラン）ので、`/plans` への
+                別リンクを並べると同じ行き先が2つ出る。
+              */}
+              <div className="mt-7">
                 <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
-                <Link
-                  className="inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium"
-                  href="/plans"
-                >
-                  プランを見る
-                </Link>
               </div>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              プラン変更、お支払い方法の更新、期間末解約はStripeの安全なお支払い管理画面で行います。変更内容はStripeからの通知後に反映されます。
+              {/* 行き先の説明はボタン直下にあるので、ここは反映のタイミングだけにする（T-M8-31）。 */}
+              変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）。
             </p>
             {usage ? (
               <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
@@ -228,7 +228,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ) : (
           <section
             aria-labelledby="support-heading"
-            className="rounded-2xl border bg-card p-6 shadow-sm"
+            className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
           >
             <h2 className="text-xl font-semibold" id="support-heading">
               お問い合わせ
@@ -237,7 +237,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               課金、アカウント、データに関するお問い合わせはメールで受け付けています。
             </p>
             <a
-              className="mt-5 inline-flex h-10 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background"
+              className={`mt-5 ${primaryLinkClassName}`}
               href={`mailto:${env.SUPPORT_EMAIL}`}
             >
               {env.SUPPORT_EMAIL}へメール
@@ -245,7 +245,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </section>
         )}
       </div>
-      <LegalFooter className="mt-10" />
     </main>
   );
 }

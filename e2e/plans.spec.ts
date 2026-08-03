@@ -27,10 +27,12 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 未契約はアプリ本体へ入れず、プラン選択へ送られる（要件03 §2）
   await signIn(page, account, { waitFor: /\/plans/ });
 
-  // 3プランが比較できる
-  for (const name of ["Standard", "MD", "Premium"]) {
-    await expect(page.getByText(name, { exact: false }).first()).toBeVisible();
+  // 3プランが比較できる（見出しはPRDと同じ日本語表記・T-M8-21）
+  for (const name of ["通常プラン", "mdプラン", "プレミアムプラン"]) {
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
+  // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
+  await expect(page.getByText("X APIの利用料（従量課金）", { exact: false })).toBeVisible();
 
   // 申込前の確認は折りたたまず常に見える（要件06 §1.1・要件03 §54）
   const preApply = page.getByRole("region", { name: "お申し込み前の確認" });
@@ -44,10 +46,9 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 申込ボタンは各プランにあるが、押さない（Stripeへ実際に作りに行くため）
   await expect(page.getByRole("button", { name: /7日間無料で利用/ }).first()).toBeVisible();
 
-  // スマホ幅でも比較表が読める（横スクロールは表の中だけに閉じる）
+  // スマホ幅でもカードが縦に積まれて読める
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  // 表の中だけが横スクロールし、ページ自体は伸びないこと（原因は `page.tsx` のコメント参照）。
   expect(await horizontalOverflow(page), "ページ全体が横に伸びないこと").toBeLessThanOrEqual(0);
 });
 
@@ -69,14 +70,26 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
   await expect(page.getByText("プラン", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("Premium", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("プレミアムプラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("契約状態", { exact: false }).first()).toBeVisible();
 
-  // 支払い管理ボタンは、Stripeの顧客IDが無い間は押せない（押しても直らない操作を出さない）
-  const portal = page.getByRole("button", { name: /お支払い|管理/ }).first();
-  if (await portal.count()) {
-    await expect(portal).toBeDisabled();
-  }
+  // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
+  await page.goto("/app/settings?tab=api-keys");
+  await expect(page.getByRole("heading", { name: /キー登録不要/ })).toBeVisible();
+  await expect(page.getByText("生成枠")).toBeVisible();
+  await page.goto("/app/settings?tab=billing");
+  // `goto` の直後に `count()` を取ると描画前を見てしまうので、先に見出しを待つ。
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+
+  // プラン管理の導線は**必ずどこかへ着く**（T-M8-29）。Stripeの顧客が無い契約前は
+  // 押せないボタンを出さず、料金プランへのリンクに切り替える。
+  const manage = page.getByRole("button", { name: "プランを管理" });
+  const choose = page.getByRole("link", { name: "プランを選ぶ" });
+  expect(
+    (await manage.count()) + (await choose.count()),
+    "プラン管理の導線が1つある",
+  ).toBeGreaterThan(0);
+  if (await choose.count()) await expect(choose).toHaveAttribute("href", "/plans");
 });
 
 test("契約が切れた利用者は閲覧はできるが、実行はできずプラン選択へ案内される", async ({

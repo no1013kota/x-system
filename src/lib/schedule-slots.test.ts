@@ -59,6 +59,8 @@ const validCreate = {
   weekdays: [1, 3, 5],
   time_jst: "09:30",
   mode: "draft" as const,
+  // 分野は必須（T-M8-29）。"other" は「追加指示に記載」＝プロンプトへ分野を出さない。
+  theme: "other" as const,
   image_enabled: false,
 };
 

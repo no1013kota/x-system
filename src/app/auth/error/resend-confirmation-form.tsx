@@ -34,7 +34,7 @@ export function ResendConfirmationForm() {
         <p
           className={
             state.status === "success"
-              ? "text-sm text-emerald-700"
+              ? "text-sm text-success-fg"
               : "text-sm text-destructive"
           }
           role={state.status === "success" ? "status" : "alert"}

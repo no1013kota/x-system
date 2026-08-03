@@ -11,13 +11,13 @@ import {
 } from "@/app/actions/generation-jobs";
 import { ExecutionPrereqNotice } from "@/components/app-shell/execution-prereq-notice";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
-
-export interface PatternOption {
-  id: string;
-  label: string;
-  description: string;
-}
+import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
+import type { PostPatternOption } from "@/lib/post/post-patterns";
+import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 
 export interface ActiveJob {
   id: string;
@@ -64,9 +64,14 @@ const POLL_MS = 2500;
 const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
-interface ActionError {
+/**
+ * **前提が足りずに始められなかった**ときだけ画面へ残す（T-M8-18）。解決先へのリンクを伴い、
+ * 直しに行って戻ってきたときにも見えている必要があるため、消えるトーストにはしない。
+ * それ以外の「始められなかった」はトーストへ出す。
+ */
+interface PrereqError {
   message: string;
-  settingsPath?: string;
+  settingsPath: string;
   missing?: PrereqItem[];
 }
 
@@ -77,17 +82,20 @@ export function CreatePostForm({
   initialJob = null,
 }: {
   xAccountId: string;
-  patterns: PatternOption[];
+  patterns: PostPatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
   const [sourceUrl, setSourceUrl] = useState("");
+  /** 分野（発信テーマ）。空文字は「指定なし」＝AIがベースmdの発信テーマから選ぶ（T-M8-28）。 */
+  const [theme, setTheme] = useState("");
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
   const [imageEnabled, setImageEnabled] = useState(false);
-  const [error, setError] = useState<ActionError | null>(null);
+  const [prereq, setPrereq] = useState<PrereqError | null>(null);
+  const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -113,23 +121,29 @@ export function CreatePostForm({
   }, [job?.id, job?.status, job?.createdAt, job]);
 
   function submit() {
-    setError(null);
+    setPrereq(null);
     startTransition(async () => {
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
         pattern,
         source_url: sourceUrl.trim() || undefined,
+        theme: theme || null,
         user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
       });
       if (res.status === "error") {
-        setError({
-          message: res.message,
-          settingsPath: res.details?.settingsPath as string | undefined,
-          missing: res.details?.missing as PrereqItem[] | undefined,
-        });
+        const settingsPath = res.details?.settingsPath as string | undefined;
+        if (settingsPath) {
+          setPrereq({
+            message: res.message,
+            settingsPath,
+            missing: res.details?.missing as PrereqItem[] | undefined,
+          });
+        } else {
+          toast.show({ tone: "error", title: "生成を開始できませんでした", description: res.message });
+        }
         return;
       }
       if (res.jobId) {
@@ -153,7 +167,7 @@ export function CreatePostForm({
         job_id: failedId,
       });
       if (res.status === "error") {
-        setError({ message: res.message });
+        toast.show({ tone: "error", title: "再試行できませんでした", description: res.message });
         return;
       }
       if (res.jobId) {
@@ -174,7 +188,7 @@ export function CreatePostForm({
     startTransition(async () => {
       const res = await cancelGenerationJobAction({ job_id: jobId });
       if (res.status === "error") {
-        setError({ message: res.message });
+        toast.show({ tone: "error", title: "キャンセルできませんでした", description: res.message });
         return;
       }
       setJob((prev) => (prev ? { ...prev, status: res.jobStatus ?? "canceled" } : prev));
@@ -188,42 +202,56 @@ export function CreatePostForm({
     job?.status === "queued" && nowMs - new Date(job.createdAt).getTime() > QUEUED_SLOW_MS;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* 左ペイン: パターン選択＋入力 */}
-      <section className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm" aria-label="生成入力">
+    // デザインは入力→生成中→確認の**順に進む**1カラム（左右2ペインではない）。
+    // 横に並べるとパターン6枚が潰れ、選びにくくなる（実測で3列が2列に落ちた）。
+    <div className="space-y-3.5">
+      {/* 入力（ステート1） */}
+      <section
+        aria-label="生成入力"
+        className="space-y-5 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]"
+      >
+        {/*
+          パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
+          同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
+        */}
+        <PatternRadioGroup
+          name="pattern"
+          onChange={setPattern}
+          options={patterns}
+          value={pattern}
+        />
+
         <div>
-          <h2 className="text-sm font-medium">パターン</h2>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {patterns.map((p) => (
-              <label
-                className={`flex cursor-pointer flex-col rounded-lg border p-3 text-sm ${
-                  pattern === p.id ? "border-foreground bg-accent" : "hover:bg-accent/50"
-                }`}
-                key={p.id}
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  <input
-                    checked={pattern === p.id}
-                    className="sr-only"
-                    name="pattern"
-                    onChange={() => setPattern(p.id)}
-                    type="radio"
-                    value={p.id}
-                  />
-                  {p.label}
-                </span>
-                <span className="mt-1 text-xs text-muted-foreground">{p.description}</span>
-              </label>
+          <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
+            テーマ
+          </label>
+          <select
+            aria-describedby="theme-help"
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            id="theme"
+            onChange={(e) => setTheme(e.target.value)}
+            required
+            value={theme}
+          >
+            <option value="">選択してください</option>
+            {POST_THEME_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
             ))}
-          </div>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
+            そのテーマに絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ選択肢です。
+            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
+          </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium" htmlFor="source_url">
+          <label className="block text-[13px] font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
           </label>
           <input
-            className="mt-1 h-10 w-full rounded-lg border px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
             id="source_url"
             inputMode="url"
             onChange={(e) => setSourceUrl(e.target.value)}
@@ -231,17 +259,17 @@ export function CreatePostForm({
             value={sourceUrl}
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            空欄のままでも、発信設定とベースmdからAIが題材を選んでリサーチします。
+            空欄のままでも、上のテーマと発信設定・ベースmdからAIが題材を選んでリサーチします。
           </p>
         </div>
 
         {pattern === "p2" ? (
           <div>
-            <label className="block text-sm font-medium" htmlFor="user_opinion">
+            <label className="block text-[13px] font-medium text-ink" htmlFor="user_opinion">
               自分の考え（任意）
             </label>
             <textarea
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
               id="user_opinion"
               maxLength={2000}
               onChange={(e) => setUserOpinion(e.target.value)}
@@ -252,11 +280,11 @@ export function CreatePostForm({
         ) : null}
 
         <div>
-          <label className="block text-sm font-medium" htmlFor="instructions">
+          <label className="block text-[13px] font-medium text-ink" htmlFor="instructions">
             追加指示（任意）
           </label>
           <textarea
-            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
             id="instructions"
             maxLength={2000}
             onChange={(e) => setInstructions(e.target.value)}
@@ -266,7 +294,7 @@ export function CreatePostForm({
         </div>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
             <input
               checked={imageEnabled}
               disabled={imageProviders.length === 0}
@@ -287,27 +315,30 @@ export function CreatePostForm({
           ) : null}
         </div>
 
-        <Button disabled={pending || inProgress} onClick={submit} size="lg" type="button">
-          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "生成する"}
+        {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
+        <Button
+          className="h-10 w-full gap-1.5 text-[13.5px]"
+          disabled={pending || inProgress}
+          onClick={submit}
+          type="button"
+          variant="gradient"
+        >
+          <Icon name="star_shine" size={17} />
+          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "スレッドを生成する"}
         </Button>
       </section>
 
-      {/* 右ペイン: プレビュー・結果 */}
-      <section className="space-y-4 rounded-2xl border bg-card p-6 shadow-sm" aria-label="プレビュー・結果">
+      {/* 結果（ステート2・3） */}
+      <section aria-label="プレビュー・結果"
+        className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
         <h2 className="text-sm font-medium">結果</h2>
 
-        {error ? (
-          error.settingsPath ? (
-            <ExecutionPrereqNotice
-              message={error.message}
-              missing={error.missing}
-              settingsPath={error.settingsPath}
-            />
-          ) : (
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-              {error.message}
-            </p>
-          )
+        {prereq ? (
+          <ExecutionPrereqNotice
+            message={prereq.message}
+            missing={prereq.missing}
+            settingsPath={prereq.settingsPath}
+          />
         ) : null}
 
         {inProgress ? (
@@ -318,7 +349,8 @@ export function CreatePostForm({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">経過 {elapsedLabel}</p>
             </div>
-            <ol className="space-y-1.5 text-sm">
+            {/* 進捗ステップ（デザイン §画面一覧 3.投稿作成 ステート2）。完了=緑チェック／実行中=キー色の脈動／待機=灰丸。 */}
+            <ol className="space-y-1.5">
               {STAGE_ORDER.filter((s) => s !== "image" || imageEnabled).map((stage) => {
                 const active = job?.progressStage === stage;
                 const done =
@@ -326,19 +358,25 @@ export function CreatePostForm({
                   STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf(job.progressStage);
                 return (
                   <li
-                    className={`flex items-center gap-2 ${
-                      active ? "font-medium text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/60"
+                    className={`flex items-center gap-2 text-[13px] ${
+                      active ? "font-medium text-ink" : done ? "text-ink-2" : "text-ink-3"
                     }`}
                     key={stage}
                   >
-                    <span aria-hidden="true">{done ? "✓" : active ? "…" : "○"}</span>
+                    {done ? (
+                      <Icon className="text-success-icon" filled name="check_circle" size={16} />
+                    ) : active ? (
+                      <Icon className="animate-pulse text-brand" name="progress_activity" size={16} />
+                    ) : (
+                      <Icon className="text-ink-3/60" name="radio_button_unchecked" size={16} />
+                    )}
                     {STAGE_LABEL[stage]}
                   </li>
                 );
               })}
             </ol>
             {queuedSlow ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+              <p className="rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg" role="status">
                 開始が遅れています。自動で再開されます（最大5分）。
               </p>
             ) : null}
@@ -356,11 +394,11 @@ export function CreatePostForm({
 
         {job?.status === "succeeded" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
+            <p className="rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg" role="status">
               生成が完了し、下書きを作成しました。
             </p>
             <Link
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+              className={primaryLinkClassName}
               href="/app/posts?tab=drafts"
             >
               下書きを確認する
@@ -370,7 +408,7 @@ export function CreatePostForm({
 
         {job?.status === "failed" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900" role="alert">
+            <p className="rounded-lg border border-danger-fg/25 bg-danger-bg p-3 text-sm leading-6 text-danger-fg" role="alert">
               {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
             </p>
             {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
@@ -383,7 +421,7 @@ export function CreatePostForm({
               </Link>
             ) : PREREQ_FAILURE_CODES.has(job.error?.code ?? "") ? (
               <Link
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+                className={primaryLinkClassName}
                 href={PREREQ_FAILURE_PATH[job.error?.code ?? ""] ?? "/app/settings"}
               >
                 設定を確認する
@@ -396,7 +434,7 @@ export function CreatePostForm({
           </div>
         ) : null}
 
-        {!error && job === null ? (
+        {!prereq && job === null ? (
           <p className="text-sm text-muted-foreground">
             パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。生成される内容は毎回変わります。まず1本作って、下書きで編集するか、追加指示を付けて再生成してください。
           </p>

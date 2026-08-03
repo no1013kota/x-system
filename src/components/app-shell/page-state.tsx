@@ -1,6 +1,7 @@
-import { CircleAlert, Inbox, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+
+import { Icon } from "@/components/ui/icon";
 
 interface StateProps {
   description: string;
@@ -16,8 +17,22 @@ interface EmptyStateProps extends StateProps {
   actionLabel?: string;
 }
 
+// 空状態はカード内 padding 44px・中央寄せ・灰円アイコン48px（デザイン §補助画面 E）。
 const cardClassName =
-  "rounded-2xl border border-dashed bg-card px-6 py-12 text-center shadow-sm";
+  "rounded-card border border-hairline bg-surface px-6 py-11 text-center shadow-[var(--shadow-card)]";
+
+/** 空状態・エラーの丸アイコン。周囲に淡い円を敷いて視線を集める。 */
+function StateIcon({ name, tone = "neutral" }: { name: Parameters<typeof Icon>[0]["name"]; tone?: "neutral" | "danger" }) {
+  return (
+    <span
+      className={`mx-auto grid size-12 place-items-center rounded-pill ${
+        tone === "danger" ? "bg-danger-bg text-danger-fg" : "bg-black/[0.04] text-ink-3"
+      }`}
+    >
+      <Icon name={name} size={24} />
+    </span>
+  );
+}
 
 /**
  * 軽量な空状態カード（破線枠・中央寄せ・muted の1行メッセージ）。アイコン付きの重量版
@@ -26,7 +41,7 @@ const cardClassName =
  */
 export function EmptyNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+    <div className="rounded-card border border-hairline bg-surface px-6 py-11 text-center text-[12.5px] leading-5 text-ink-2 shadow-[var(--shadow-card)]">
       {children}
     </div>
   );
@@ -38,9 +53,9 @@ export function LoadingState({
 }: Partial<StateProps>) {
   return (
     <div aria-live="polite" className={cardClassName} role="status">
-      <LoaderCircle aria-hidden="true" className="mx-auto size-8 animate-spin text-muted-foreground" />
-      <p className="mt-4 font-semibold">{title}</p>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      <Icon className="mx-auto animate-spin text-ink-3" name="progress_activity" size={28} />
+      <p className="mt-4 text-[14px] font-bold text-ink">{title}</p>
+      <p className="mt-2 text-[12.5px] leading-5 text-ink-2">{description}</p>
     </div>
   );
 }
@@ -53,14 +68,49 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <section className={cardClassName}>
-      <Inbox aria-hidden="true" className="mx-auto size-8 text-muted-foreground" />
-      <h2 className="mt-4 font-semibold">{title}</h2>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
+      <StateIcon name="drafts" />
+      <h2 className="mt-3.5 text-[14px] font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-1.5 max-w-lg text-[12.5px] leading-5 text-ink-2">
         {description}
       </p>
       {actionHref && actionLabel ? (
         <Link
-          className="mt-5 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-4 inline-flex min-h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          href={actionHref}
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * プラン制限で使えない機能の案内（デザイン §ベースmd ロック）。
+ *
+ * **「空」とは別物として扱う**（T-M8-20）。空状態は「まだ何も無い」＝自分の操作で埋められるが、
+ * ここは「このプランでは開けない」＝**契約を変えるまで何をしても変わらない**。同じ灰色の空状態で
+ * 出すと、利用者は自分の操作不足だと思って設定画面を探しに行く。鍵アイコンとキー色で
+ * 「行き先はプラン変更しかない」ことを先に伝える。
+ */
+export function LockedState({
+  actionHref,
+  actionLabel,
+  description,
+  title,
+}: EmptyStateProps) {
+  return (
+    <section className={cardClassName}>
+      <span className="mx-auto grid size-13 place-items-center rounded-pill bg-brand-subtle text-brand">
+        <Icon name="lock" size={26} />
+      </span>
+      <h2 className="mt-3 text-[15.5px] font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-2 max-w-[460px] text-[12.5px] leading-7 text-ink-2">
+        {description}
+      </p>
+      {actionHref && actionLabel ? (
+        <Link
+          className="mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-[13px] font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           href={actionHref}
         >
           {actionLabel}
@@ -73,14 +123,14 @@ export function EmptyState({
 export function ErrorState({ description, retry, title }: ErrorStateProps) {
   return (
     <section aria-live="assertive" className={cardClassName} role="alert">
-      <CircleAlert aria-hidden="true" className="mx-auto size-8 text-destructive" />
-      <h2 className="mt-4 font-semibold">{title}</h2>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
+      <StateIcon name="error" tone="danger" />
+      <h2 className="mt-3.5 text-[14px] font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-1.5 max-w-lg text-[12.5px] leading-5 text-ink-2">
         {description}
       </p>
       {retry ? (
         <button
-          className="mt-5 min-h-10 rounded-lg border px-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-4 min-h-9 rounded-card border border-hairline px-4 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onClick={retry}
           type="button"
         >

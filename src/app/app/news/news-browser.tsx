@@ -10,6 +10,9 @@ import { formatJst } from "@/lib/format";
 import type { NewsItemView } from "@/lib/news-items";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { THEME_OPTIONS } from "@/lib/themes";
+import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
+import { useToast } from "@/components/ui/toast";
 
 const IMPACTS: { id: string; label: string }[] = [
   { id: "high", label: "高" },
@@ -20,11 +23,21 @@ const IMPACTS: { id: string; label: string }[] = [
 const CATEGORY_LABEL = new Map<string, string>(THEME_OPTIONS.map((t) => [t.newsCategory, t.label]));
 const IMPACT_LABEL = new Map<string, string>(IMPACTS.map((i) => [i.id, i.label]));
 
-const IMPACT_BADGE: Record<string, string> = {
-  high: "bg-red-100 text-red-800",
-  mid: "bg-amber-100 text-amber-800",
-  low: "bg-slate-100 text-slate-700",
+/** インパクトの色。意味で選ぶ（高=注意を引く／中=情報／低=補助）。 */
+const IMPACT_TONE: Record<string, BadgeTone> = {
+  high: "warn",
+  mid: "info",
+  low: "neutral",
 };
+
+/** 出典のドメインだけを出す（デザインはカードのフッタにドメインを置く）。 */
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -62,10 +75,7 @@ export function NewsBrowser({
   const [note, setNote] = useState<string | null>(
     initialError ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。" : null,
   );
-  // 実行前提エラー（api_key_required 等）の設定導線（要件05 §12・§4.1）。
-  const [noteHref, setNoteHref] = useState<string | null>(null);
-  const [noteLinkLabel, setNoteLinkLabel] = useState("設定を開く");
-  const [noteTone, setNoteTone] = useState<"error" | "success">("error");
+  const toast = useToast();
   // 既定は**取得している分野**すべて・インパクト高中。既定より絞っているときだけ「条件を戻す」を出す。
   // 発信テーマ（THEME_OPTIONS・6テーマ）とは別で、記事が来ない分野は絞り込みにも出さない（T-M7-55）。
   const allCategories: string[] = [...NEWS_FETCH_CATEGORIES];
@@ -73,14 +83,22 @@ export function NewsBrowser({
   const narrowedFilter =
     categories.length < allCategories.length || impacts.length < 2 || !impacts.includes("high");
 
-  function setNoteWith(
+  /**
+   * 操作の結果はトーストへ（T-M8-18）。**以前は `role="status"` 固定で、失敗も成功として
+   * 読み上げられていた。** 画面に残すのは「いま何が表示されているか」（取得失敗の注記・
+   * 入力検証）だけにする。
+   */
+  function notify(
     message: string,
     options: { href?: string | null; label?: string; tone?: "error" | "success" } = {},
   ) {
-    setNote(message);
-    setNoteHref(options.href ?? null);
-    setNoteLinkLabel(options.label ?? "設定を開く");
-    setNoteTone(options.tone ?? "error");
+    const tone = options.tone ?? "error";
+    toast.show({
+      tone,
+      title: tone === "success" ? message : "実行できませんでした",
+      description: tone === "success" ? undefined : message,
+      ...(options.href ? { action: { href: options.href, label: options.label ?? "設定を開く" } } : {}),
+    });
   }
 
   function resetFilter() {
@@ -101,7 +119,7 @@ export function NewsBrowser({
       if (res.status === "success") {
         setCreated((prev) => new Set(prev).add(newsItemId));
         // 生成は1分ほどかかる。どこで結果を見られるかまで示す（要件06 §10）。
-        setNoteWith("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
+        notify("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
           href: "/app/posts?tab=create",
           label: "進行状況を見る",
           tone: "success",
@@ -111,17 +129,17 @@ export function NewsBrowser({
         const reason = res.details?.reason;
         const path = res.details?.settingsPath;
         if (reason === "too_many_active_jobs") {
-          setNoteWith("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
+          notify("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
             href: "/app/posts?tab=create",
             label: "進行状況を見る",
           });
         } else if (reason === "learning_removing") {
-          setNoteWith("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
+          notify("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
             href: "/app/ai-settings?tab=learning",
             label: "学習ソースを見る",
           });
         } else {
-          setNoteWith(res.message || "生成を開始できませんでした。", {
+          notify(res.message || "生成を開始できませんでした。", {
             href: typeof path === "string" ? path : null,
           });
         }
@@ -138,7 +156,7 @@ export function NewsBrowser({
 
   function applyConfig() {
     if (categories.length === 0 || impacts.length === 0) {
-      setNote("分野とインパクトを各1件以上選択してください。");
+      setNote("テーマとインパクトを各1件以上選択してください。");
       return;
     }
     startTransition(async () => {
@@ -149,16 +167,16 @@ export function NewsBrowser({
         max_items: maxItems,
       });
       if (saved.status === "error") {
-        setNote(saved.message || "設定を保存できませんでした。");
+        notify(saved.message || "設定を保存できませんでした。");
         return;
       }
       const res = await listNewsItemsAction(baseQuery());
       if (res.status === "success" && res.items) {
         setItems(res.items);
         setCursor(res.nextCursor ?? null);
-        setNoteWith("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
+        notify("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
       } else {
-        // 取得失敗時は前回成功分を保持し注記する。
+        // 取得失敗は**画面の状態**なので注記として残す（トーストは消えてしまう）。
         setNote("最新のニュースを取得できませんでした。表示は前回の内容です。");
       }
     });
@@ -189,7 +207,7 @@ export function NewsBrowser({
   return (
     <div className="mt-4 space-y-4">
       {window ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info-fg/25 bg-info-bg px-4 py-3 text-sm text-info-fg">
           <span>
             通知の時間窓（{formatDate(window.from)}〜{formatDate(window.to)}）のニュースを表示しています。
           </span>
@@ -199,25 +217,25 @@ export function NewsBrowser({
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          過去7日分のニュースを表示します。ニュースはJST 9:00〜20:00の取得時刻ごとに最大1件へ集約され、
+          過去7日分のニュースを表示します。ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されます。
           設定条件に一致する新着が0件の時刻には届きません。
         </p>
       )}
 
-      <section aria-label="絞り込み" className="space-y-3 rounded-xl border bg-background p-4">
+      <section aria-label="絞り込み" className="space-y-3 rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]">
         {/* この条件は news_config として保存され通知にも使われる（要件06 §3.4）。副作用を明示する。 */}
         <p className="text-xs leading-5 text-muted-foreground">
           この条件は保存され、ニュース通知の対象にも使われます。
         </p>
         <div>
-          <p className="text-xs font-semibold text-muted-foreground">分野</p>
+          <p className="text-xs font-semibold text-muted-foreground">テーマ</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {filterThemes.map((t) => {
               const active = categories.includes(t.newsCategory);
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-full border px-3 py-1 text-sm ${active ? "border-foreground bg-foreground text-background" : "hover:bg-accent"}`}
+                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={t.newsCategory}
                   onClick={() => setCategories((prev) => toggle(prev, t.newsCategory))}
                   type="button"
@@ -236,7 +254,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-full border px-3 py-1 text-sm ${active ? "border-foreground bg-foreground text-background" : "hover:bg-accent"}`}
+                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={i.id}
                   onClick={() => setImpacts((prev) => toggle(prev, i.id))}
                   type="button"
@@ -260,7 +278,7 @@ export function NewsBrowser({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending}
             onClick={applyConfig}
             type="button"
@@ -270,85 +288,89 @@ export function NewsBrowser({
         </div>
       </section>
 
+      {/*
+        ここに残すのは**画面の状態**だけ（取得失敗の注記・入力検証）。操作の結果はトーストへ。
+        以前は両方をここへ出しており、`role="status"` 固定だったため失敗も成功として
+        読み上げられていた（T-M8-18）。
+      */}
       {note ? (
         <p
-          className={`rounded-lg border px-4 py-2 text-sm ${
-            noteTone === "success"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-              : "border-amber-300 bg-amber-50 text-amber-950"
-          }`}
-          role="status"
+          className="rounded-card border border-warn-fg/25 bg-warn-bg px-4 py-2 text-[12.5px] text-warn-fg"
+          role="alert"
         >
           {note}
-          {noteHref ? (
-            <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
-              {noteLinkLabel}
-            </Link>
-          ) : null}
         </p>
       ) : null}
 
       {items.length === 0 ? (
-        <div className="rounded-xl border bg-background px-4 py-10 text-center text-sm text-muted-foreground">
+        <div className="rounded-card border border-hairline bg-surface px-4 py-11 text-center text-[12.5px] text-ink-2 shadow-[var(--shadow-card)]">
           {window ? (
             <p>この時間帯に該当するニュースはありません。</p>
           ) : narrowedFilter ? (
             <>
-              <p>この条件に一致するニュースはありません。分野やインパクトを増やしてみてください。</p>
+              <p>この条件に一致するニュースはありません。テーマやインパクトを増やしてみてください。</p>
               <button
                 className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent"
                 disabled={pending}
                 onClick={resetFilter}
                 type="button"
               >
-                絞り込みを既定に戻す（全分野・インパクト高と中）
+                絞り込みを既定に戻す（全テーマ・インパクト高と中）
               </button>
             </>
           ) : (
             <p>
-              まだ表示できるニュースがありません。ニュースはJST 9:00〜20:00に毎時取得しています。次の取得までお待ちください。
+              まだ表示できるニュースがありません。ニュースはJST 10:00〜20:00の2時間おきに取得しています。次の取得までお待ちください。
             </p>
           )}
         </div>
       ) : (
-        <ul className="space-y-3">
+        // 2カラム。`minmax(0,1fr)` で長いタイトルによる潰れを防ぐ（デザイン §形状・余白）。
+        <ul className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(0,1fr))] xl:grid-cols-2">
           {items.map((item) => (
-            <li className="rounded-xl border bg-background p-4" key={item.id}>
+            <li
+              className="flex flex-col rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]"
+              key={item.id}
+            >
               <div className="flex items-center gap-2">
-                <span className="rounded bg-muted px-2 py-0.5 text-xs">
+                <CategoryChip category={item.category}>
                   {CATEGORY_LABEL.get(item.category) ?? item.category}
-                </span>
-                <span className={`rounded px-2 py-0.5 text-xs font-medium ${IMPACT_BADGE[item.impact] ?? "bg-muted"}`}>
+                </CategoryChip>
+                <Badge tone={IMPACT_TONE[item.impact] ?? "neutral"}>
                   {IMPACT_LABEL.get(item.impact) ?? item.impact}
-                </span>
+                </Badge>
                 {item.publishedAt ? (
-                  <span className="ml-auto text-xs text-muted-foreground">{formatDate(item.publishedAt)}</span>
+                  <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                    {formatDate(item.publishedAt)}
+                  </span>
                 ) : null}
               </div>
               <a
-                className="mt-2 block font-medium hover:underline"
+                className="mt-2 block text-[14px] font-bold leading-5 text-ink hover:underline"
                 href={item.sourceUrl}
                 rel="noopener noreferrer"
                 target="_blank"
               >
                 {item.title}
               </a>
-              <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>
-              <div className="mt-3">
-                {created.has(item.id) ? (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
-                    作成済み
-                  </span>
-                ) : (
-                  <button
-                    className="inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium hover:bg-accent disabled:opacity-50"
-                    disabled={pending}
-                    onClick={() => generate(item.id)}
-                    type="button"
-                  >
-                    {generatingId === item.id ? "生成を開始中…" : "すぐに投稿作成"}
-                  </button>
-                )}
+              <p className="mt-1 text-[12.5px] leading-5 text-ink-2">{item.summary}</p>
+              <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
+                <span className="truncate text-[11.5px] text-ink-3">{domainOf(item.sourceUrl)}</span>
+                <span className="ml-auto">
+                  {created.has(item.id) ? (
+                    <Badge tone="success">作成済み</Badge>
+                  ) : (
+                    <button
+                      className="inline-flex h-8 items-center gap-1 rounded-card bg-brand-subtle px-3 text-[12.5px] font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
+                      disabled={pending}
+                      onClick={() => generate(item.id)}
+                      type="button"
+                    >
+                      <Icon name="bolt" size={15} />
+                      {generatingId === item.id ? "生成を開始中…" : "すぐに投稿作成"}
+                    </button>
+                  )}
+                </span>
               </div>
             </li>
           ))}

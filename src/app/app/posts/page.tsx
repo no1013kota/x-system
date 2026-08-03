@@ -5,17 +5,17 @@ import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
+import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
+import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 const pooledDb = pooledQueryable();
 
-import {
-  CreatePostForm,
-  type ActiveJob,
-  type PatternOption,
-} from "./create-post-form";
+import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "@/lib/post/post-patterns";
+
+import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
 
@@ -26,16 +26,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "create", label: "作成" },
   { id: "drafts", label: "下書き" },
   { id: "history", label: "履歴" },
-];
-
-// 説明にはポスト数の目安を入れる（要件06 §4.1）。何が作られるか押す前に分かるようにする。
-const ALL_PATTERNS: PatternOption[] = [
-  { id: "p1", label: "ニュース解説", description: "話題のニュースを解説するスレッド（4〜6ポスト）" },
-  { id: "p2", label: "自分の考え・意見", description: "本人の視点で述べる単発ポスト（1ポスト）" },
-  { id: "p3", label: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド（3〜5ポスト）" },
-  { id: "p4", label: "トレンド便乗", description: "いま話題のトピックに便乗するスレッド（3〜5ポスト）" },
-  { id: "p6", label: "週次まとめ", description: "直近7日の関連ニュースまとめ（5〜7ポスト）" },
-  // P-5（引用ポスト）は FEATURE_QUOTE_POST_ENABLED=true のときだけ追加する。
 ];
 
 interface PostsPageProps {
@@ -67,12 +57,10 @@ async function createTabData(userId: string, activeXAccountId: string) {
       userId,
     ])
   ).rows[0];
+  // 選択肢は `lib/post/post-patterns.ts` が唯一の定義（スケジュール画面と共有・T-M8-29）。
   const patterns = env.FEATURE_QUOTE_POST_ENABLED
-    ? [
-        ...ALL_PATTERNS,
-        { id: "p5", label: "引用ポスト", description: "対象ポストへの引用（URL付き投稿・1ポスト）" },
-      ]
-    : ALL_PATTERNS;
+    ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
+    : POST_PATTERN_OPTIONS;
   const imageProviders = await availableImageProviders(userId, profile?.plan ?? null);
   const inflight = (
     await getPool().query<{
@@ -115,6 +103,9 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   let drafts: DraftView[] = [];
   let imageRegenEnabled = false;
   let xHandle: string | null = null;
+  // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
+  // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
+  let slots: ScheduleSlotView[] = [];
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     const [loaded, plan] = await Promise.all([
       listDraftsForAccount(pooledDb, activeXAccountId, tab === "history" ? "history" : "drafts"),
@@ -134,13 +125,16 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       ).rows[0]?.handle ?? null;
     }
   }
+  if (activeXAccountId && tab === "drafts") {
+    slots = await listScheduleSlots(pooledDb, activeXAccountId);
+  }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 lg:px-8 lg:py-10">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">投稿</h1>
+    <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+      <header>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿作成</h1>
         <p className="text-sm text-muted-foreground">
           パターンを選んで投稿を生成し、下書きで確認・編集して投稿します。
         </p>
@@ -163,12 +157,15 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           xAccountId={activeXAccountId}
         />
       ) : tab === "drafts" ? (
-        <DraftsList
-          drafts={drafts}
-          imageRegenEnabled={imageRegenEnabled}
-          quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
-          selectedDraftId={params.draftId}
-        />
+        <>
+          <ScheduleSummary slots={slots} />
+          <DraftsList
+            drafts={drafts}
+            imageRegenEnabled={imageRegenEnabled}
+            quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
+            selectedDraftId={params.draftId}
+          />
+        </>
       ) : (
         <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
       )}

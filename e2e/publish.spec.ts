@@ -56,7 +56,10 @@ test("下書きを確認ダイアログ経由で投稿すると履歴に移る",
   await page.goto(`/app/posts?tab=history&draftId=${draft.id}`);
   const history = page.locator(`#draft-${draft.id}, li`, { hasText: "E2Eテストの下書きです" }).first();
   await expect(history).toBeVisible();
+  // 履歴からXのポストへ到達できること。**表示されているリンク**を見る（T-M8-14）。
+  // 各ポストのリンクは折りたたみの中にあり既定では非表示なので、`:visible` を付けないと
+  // 隠れている方を拾って落ちる。利用者が実際に押せるのは行の「Xで表示」。
   await expect(
-    page.locator(`a[href^="https://x.com/${account.handle}/status/"]`).first(),
+    page.locator(`a[href^="https://x.com/${account.handle}/status/"]:visible`).first(),
   ).toBeVisible();
 });

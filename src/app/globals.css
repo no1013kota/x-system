@@ -7,7 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /*
+    本文は Noto Sans JP、英数・数値は Inter を先に当てる（T-M8-02）。
+    以前は `--font-sans: var(--font-sans)` という自己参照で**本文フォントが一切効いておらず**、
+    ブラウザ既定フォントで描画されていた（`--font-mono` だけ正しく繋がっていた）。
+  */
+  --font-sans: var(--font-inter), var(--font-noto-sans-jp), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -46,33 +51,78 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /*
+    ここから下は新デザイン（design_handoff_spaceai_ui）のトークン（T-M8-02）。
+    **既存のトークンは1つも消していない**。未対象の画面が参照しているため、
+    全画面の置換が終わるまで両方が並存する。
+  */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-subtle-hover: var(--brand-subtle-hover);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-success-bg: var(--success-bg);
+  --color-success-fg: var(--success-fg);
+  --color-success-icon: var(--success-icon);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-dot: var(--danger-dot);
+
+  /* 角丸: カード/ボタン/入力 8px・チップ 6px・ピル 9999px（デザイン §形状） */
+  --radius-card: 8px;
+  --radius-chip: 6px;
+  --radius-modal: 16px;
+  --radius-pill: 9999px;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /*
+   * shadcn/ui 由来の汎用トークンは**新デザインの値へ寄せる**（T-M8-23）。
+   *
+   * リデザインで置き換えた画面は `ink` / `surface` / `hairline` などの新トークンを直接使うが、
+   * 補助画面には `text-muted-foreground` のような旧トークンが**162箇所**残っている。
+   * 呼び出し側を1つずつ書き換えるより、**トークンの中身を合わせる**方が漏れが出ない。
+   * 見た目が揃わない箇所を1つずつ探して直す作業を、ここで一度に終わらせる。
+   */
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-subtle);
+  --secondary-foreground: var(--brand);
+  --muted: rgba(0, 0, 0, 0.03);
+  --muted-foreground: var(--ink-2);
+  --accent: rgba(0, 0, 0, 0.04);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger-fg);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--brand);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /*
+   * 角丸の基準を 8px へ（デザイン §形状）。既定の 10px のままだと、`rounded-lg` を使っている
+   * **85箇所**が新デザインのカード（8px）と2px違いで並び、揃っていないことだけが分かる状態になる。
+   * `rounded-md`（6.4px）もチップの 6px に近づく。呼び出し側を書き換えずに全体を寄せる。
+   */
+  --radius: 8px;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -81,6 +131,44 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* --- 新デザインのトークン（T-M8-02）。値はデザイン実物（HTML）を正とする --- */
+  --brand: #7d1f75;
+  --brand-hover: #6a1a64;
+  --brand-subtle: #f4e8f3;
+  --brand-subtle-hover: #ecdcea;
+  --page: #f6f6f7;
+  --surface: #ffffff;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --ink: rgba(0, 0, 0, 0.9);
+  --ink-2: rgba(0, 0, 0, 0.55);
+  --ink-3: rgba(0, 0, 0, 0.45);
+  --success-bg: #f0f9ee;
+  --success-fg: #3f8f2c;
+  --success-icon: #4ea836;
+  --info-bg: #e8f4fb;
+  --info-fg: #1c7fb5;
+  --warn-bg: #fff4d6;
+  --warn-fg: #a86f00;
+  --danger-bg: #ffd9dc;
+  --danger-fg: #c2333c;
+  --danger-dot: #ff4750;
+
+  /*
+    ブランドグラデーション。**使ってよい場所を限定する**（デザイン §カラー）:
+    ロゴ・AI生成の瞬間（生成ボタン／生成中／投稿実行）・プレミアムバッジのみ。
+    多用すると「AIが動いている」という合図としての意味が失われる。
+  */
+  --brand-gradient: linear-gradient(90deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
+  --brand-gradient-logo: linear-gradient(135deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
+
+  /* 影（デザイン実物より）。モーダルは 0 8px 32px rgba(0,0,0,.12) */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  /* トランジション（デザイン §形状・余白） */
+  --motion-fast: 150ms ease-out;
 }
 
 .dark {
@@ -126,5 +214,24 @@
   }
   html {
     @apply font-sans;
+  }
+
+  /* 数値は等幅で揃える（デザイン §タイポグラフィ）。桁が変わっても列がずれない。 */
+  .tabular-nums,
+  th,
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * チェック済みの色をキー色に合わせる（T-M8-22）。
+   *
+   * 素のチェックボックス・ラジオはOS既定の青で塗られる。設定画面のように数十個並ぶ画面では
+   * **その青が画面で一番強い色**になり、ブランドの中で浮く。個別にクラスを足すと必ず付け忘れが
+   * 出るので、ここで一度に揃える。
+   */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--brand);
   }
 }

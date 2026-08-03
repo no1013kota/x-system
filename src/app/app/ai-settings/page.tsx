@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { EmptyState } from "@/components/app-shell/page-state";
+import { EmptyState, LockedState } from "@/components/app-shell/page-state";
+import { PLANS } from "@/lib/plans";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { APP_NAME } from "@/lib/app-config";
 import type { AiKeyProvider } from "@/lib/api-keys";
@@ -30,19 +31,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { BaseMdEditor } from "./base-md-editor";
+import { AI_SETTINGS_TABS } from "./tabs";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
 import { PromptTemplatesEditor } from "./prompt-templates-editor";
 
 export const metadata: Metadata = { title: `AI設定 | ${APP_NAME}` };
-
-const TABS = [
-  ["persona", "発信設定"],
-  ["purposes", "AI用途"],
-  ["learning", "学習ソース"],
-  ["base-md", "ベースmd"],
-  ["prompts", "プロンプト"],
-] as const;
 
 const EMPTY_SETTINGS: PersonaSettings = {
   ng: { rules: [], topics: [], words: [] },
@@ -74,7 +68,7 @@ export default async function AiSettingsPage({
 }: AiSettingsPageProps) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   if (!user) redirect("/login?next=/app/ai-settings");
-  const tab = TABS.some(([value]) => value === params.tab)
+  const tab = AI_SETTINGS_TABS.some(([value]) => value === params.tab)
     ? params.tab ?? "persona"
     : "persona";
   const supabase = await createSupabaseServerClient();
@@ -149,13 +143,13 @@ export default async function AiSettingsPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8 lg:py-10">
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">AI設定</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">AI設定</h1>
+        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
           AIがあなたの代わりに投稿を書くための取り決めを、ここでまとめて管理します。変更は次の投稿生成から反映されます。
         </p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
           まず「発信設定」→「AI用途」の順に設定してください。精度を上げたい場合は「学習ソース」（任意）も登録できます。
         </p>
       </header>
@@ -165,7 +159,7 @@ export default async function AiSettingsPage({
         className="mt-7 gap-1 overflow-x-auto"
         hrefFor={(value) => `/app/ai-settings?tab=${value}`}
         inactiveLinkClassName="hover:text-foreground"
-        items={TABS.map(([value, label]) => ({ value, label }))}
+        items={AI_SETTINGS_TABS.map(([value, label]) => ({ value, label }))}
         label="AI設定タブ"
         linkClassName="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
       />
@@ -211,11 +205,11 @@ export default async function AiSettingsPage({
           )
         ) : tab === "base-md" ? (
           plan === "standard" ? (
-            <EmptyState
+            <LockedState
               actionHref="/plans"
-              actionLabel="プランを見る"
-              description="ベースmdの手動編集・履歴・ロールバックは md・premium プランでご利用いただけます。"
-              title="ベースmd編集はアップグレードが必要です"
+              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              description="学習・設定の結果はベースmdに反映され、投稿生成に使われています。mdプラン以上では内容を直接確認・編集でき、変更履歴からいつでも元に戻せます。"
+              title="ベースmdの確認・編集は mdプラン以上でご利用いただけます"
             />
           ) : account.base_md_version < 1 ? (
             <EmptyState
@@ -235,11 +229,11 @@ export default async function AiSettingsPage({
           )
         ) : tab === "prompts" ? (
           plan === "standard" ? (
-            <EmptyState
+            <LockedState
               actionHref="/plans"
-              actionLabel="プランを見る"
-              description="プロンプトのカスタマイズは md・premium プランでご利用いただけます。"
-              title="プロンプト編集はアップグレードが必要です"
+              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              description="投稿パターンごとのプロンプトを直接編集できます。既定に戻すこともできるので、試して合わなければ元に戻せます。"
+              title="プロンプトのカスタマイズは mdプラン以上でご利用いただけます"
             />
           ) : (
             <PromptTemplatesEditor
@@ -250,7 +244,7 @@ export default async function AiSettingsPage({
         ) : (
           <EmptyState
             description="このタブの機能は後続タスクで追加します。発信設定タブは現在利用できます。"
-            title={`${TABS.find(([value]) => value === tab)?.[1]}は準備中です`}
+            title={`${AI_SETTINGS_TABS.find(([value]) => value === tab)?.[1]}は準備中です`}
           />
         )}
       </div>

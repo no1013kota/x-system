@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.22 |
-| 更新日 | 2026-07-31 |
+| バージョン | v1.23 |
+| 更新日 | 2026-08-03 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -156,7 +156,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須 |
+| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須 |
 | `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |
@@ -195,7 +195,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listScheduleSlots` | none | slots | active_x_account |
-| `createScheduleSlot` | pattern, weekdays, time_jst, mode, instructions, image_enabled | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
+| `createScheduleSlot` | pattern, weekdays, time_jst, mode, theme, instructions, image_enabled | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
 | `updateScheduleSlot` | slot_id, expected_updated_at, fields | slot | 所有者のみ。楽観lock。autoへの変更・再有効化は現行versionの明示同意必須 |
 | `disableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ |
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |

@@ -39,3 +39,6 @@ playwright-report/
 # IDE
 .idea/
 .vscode/
+
+# UIリデザインの作業用スクリーンショット（コミットしない）
+_design_shots/

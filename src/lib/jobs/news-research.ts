@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { stripProviderMarkup } from "../ai/gen-output";
 
 import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration, usageFromError } from "../ai/pipeline";
@@ -46,12 +47,29 @@ export function normalizePublishedAt(raw: unknown): string | undefined {
   return parsed.toISOString();
 }
 
+/**
+ * 引用タグの除去を zod の前処理として使うための包み（T-M8-06）。
+ *
+ * **文字列以外はそのまま通す。** ここで例外を投げると、欠けた項目を検出して item を捨てる
+ * という本来の判定に到達できなくなる（`title` 未指定の応答で実際に落ちた）。
+ */
+function stripMarkupLoose(value: unknown): unknown {
+  return typeof value === "string" ? stripProviderMarkup(value) : value;
+}
+
 const newsItemSchema = z.object({
-  title: z.string().min(1).max(30),
+  /**
+   * **文字数を数える前に引用タグを落とす**（T-M8-06）。
+   *
+   * Web検索を使う実行では Anthropic が `<cite index="43-1">…</cite>` を JSON文字列の中へ
+   * 混ぜてくる。生成側は T-M7-20 で対処済みだったが、**ニュース側は未対応で、タグがそのまま
+   * 画面に出ていた**（ローカルDBに実データを確認）。タグ込みで字数を数えると上限判定も狂う。
+   */
+  title: z.preprocess(stripMarkupLoose, z.string().min(1).max(30)),
   // 200字上限（要決定D-12 案B・2026-07-28）。当初120字だったが、モデルが安定して守れず
   // `summary:too_big` で分野ごと全滅する事象が実測で2回連続発生した（T-M7-25）。
   // 表示側は `line-clamp-2` なので長くてもレイアウトは破綻しない。
-  summary: z.string().min(1).max(200),
+  summary: z.preprocess(stripMarkupLoose, z.string().min(1).max(200)),
   source_url: z.url(),
   impact: z.enum(["high", "mid", "low"]),
   // **任意項目なので、形式が違っても item ごと捨てない**（正規化できなければ落とすだけ）。

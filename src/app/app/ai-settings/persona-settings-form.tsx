@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { updatePersonaSettings } from "@/app/actions/persona-settings";
+import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
@@ -23,7 +24,16 @@ interface PersonaSettingsFormProps {
 
 const inputClassName =
   "mt-2 min-h-11 w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
-const groupClassName = "rounded-2xl border bg-card p-5 shadow-sm sm:p-6";
+/**
+ * 入力の束（T-M8-23）。
+ *
+ * **`<fieldset>` + `<legend>` は使わない。** `<legend>` はブラウザがカードの上枠の中へ描くため、
+ * 枠線が途切れて背景の灰色が覗く。`display:block` では直らず、`float` で流れへ戻すと
+ * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
+ * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
+ */
+const groupClassName = "rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6";
+const groupHeadingClassName = "text-[15px] font-bold text-ink";
 
 type NgField = "words" | "topics" | "rules";
 
@@ -47,8 +57,12 @@ export function PersonaSettingsForm({
   const [dirty, setDirty] = useState(false);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<"error" | "success" | null>(null);
+  /**
+   * **入力検証のまとめだけ**を画面に残す（T-M8-18）。項目ごとのエラーの直上に置く必要があるため
+   * トーストにしない。保存の成否（サーバの応答）はトーストへ出す。
+   */
+  const [validationMessage, setValidationMessage] = useState("");
+  const toast = useToast();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   // NG設定は入力中の生テキストを保持する。表示値を正規化済み配列から作ると、改行した瞬間に
   // 末尾の空行が捨てられて2行目が打てなくなるため（保存する値は従来どおり正規化した配列）。
@@ -61,8 +75,7 @@ export function PersonaSettingsForm({
   const updateSettings = (next: PersonaSettings) => {
     setSettings(next);
     setDirty(true);
-    setStatus(null);
-    setMessage("");
+    setValidationMessage("");
   };
   const errorFor = (path: string) => fieldErrors[path]?.[0];
 
@@ -97,11 +110,11 @@ export function PersonaSettingsForm({
         errors[path] = [...(errors[path] ?? []), issue.message];
       }
       setFieldErrors(errors);
-      setStatus("error");
-      setMessage("入力内容を確認してください。");
+      setValidationMessage("入力内容を確認してください。");
       return;
     }
     setFieldErrors({});
+    setValidationMessage("");
     setSubmitting(true);
     const result = await updatePersonaSettings({
       expected_base_md_version: version,
@@ -109,9 +122,12 @@ export function PersonaSettingsForm({
       x_account_id: xAccountId,
     });
     setSubmitting(false);
-    setStatus(result.status);
-    setMessage(result.message);
-    if (result.status === "success" && result.version !== undefined) {
+    if (result.status !== "success") {
+      toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
+      return;
+    }
+    toast.show({ tone: "success", title: "発信設定を保存しました" });
+    if (result.version !== undefined) {
       setVersion(result.version);
       setDirty(false);
       setSavedDifference(false);
@@ -121,7 +137,7 @@ export function PersonaSettingsForm({
 
   return (
     <form className="space-y-6" noValidate onSubmit={submit}>
-      <div className="flex flex-col gap-2 rounded-xl border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-card border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <span>
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
@@ -133,7 +149,7 @@ export function PersonaSettingsForm({
 
       {version >= 1 && (savedDifference || dirty) ? (
         <div
-          className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"
+          className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg"
           role="status"
         >
           保存すると、発信定義書（ベースmd）の「1. {BASE_MD_SECTION_TITLES[0]}／2. {BASE_MD_SECTION_TITLES[1]}／3. {BASE_MD_SECTION_TITLES[2]}／4. {BASE_MD_SECTION_TITLES[3]}」をこのフォームの内容で書き換えます。学習で作られた「5. {BASE_MD_SECTION_TITLES[4]}／6. {BASE_MD_SECTION_TITLES[5]}」はそのまま残ります。書き換え前の内容は、
@@ -144,8 +160,10 @@ export function PersonaSettingsForm({
         </div>
       ) : null}
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">ペルソナ</legend>
+      <section aria-labelledby="persona-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="persona-group">
+          ペルソナ
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           誰が、誰に、どんな価値を届けるかを定義します。
         </p>
@@ -188,13 +206,17 @@ export function PersonaSettingsForm({
             );
           })}
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset
+      <section
         aria-describedby={errorFor("themes.primary") ? "themes-primary-error" : undefined}
+        aria-labelledby="themes-group"
         className={groupClassName}
+        role="group"
       >
-        <legend className="px-1 text-lg font-semibold">テーマ</legend>
+        <h2 className={groupHeadingClassName} id="themes-group">
+          テーマ
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           主テーマを1件以上選択してください。同じテーマを主・副の両方には設定できません。
         </p>
@@ -245,10 +267,12 @@ export function PersonaSettingsForm({
             value={settings.themes.free_text}
           />
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">トーン</legend>
+      <section aria-labelledby="tone-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="tone-group">
+          トーン
+        </h2>
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium" htmlFor="tone.sentence_style">
@@ -375,10 +399,12 @@ export function PersonaSettingsForm({
             スレッド番号を付ける
           </label>
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset className={groupClassName}>
-        <legend className="px-1 text-lg font-semibold">NG設定（任意）</legend>
+      <section aria-labelledby="ng-group" className={groupClassName} role="group">
+        <h2 className={groupHeadingClassName} id="ng-group">
+          NG設定（任意）
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           1行に1件ずつ入力してください。すべて空でも保存できます。
         </p>
@@ -408,24 +434,20 @@ export function PersonaSettingsForm({
             </div>
           ))}
         </div>
-      </fieldset>
+      </section>
 
-      {message ? (
+      {validationMessage ? (
         <p
-          className={`rounded-lg border p-3 text-sm ${
-            status === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-destructive/30 bg-destructive/5 text-destructive"
-          }`}
-          role={status === "success" ? "status" : "alert"}
+          className="rounded-card border border-hairline bg-danger-bg p-3 text-[13px] text-danger-fg"
+          role="alert"
         >
-          {message}
+          {validationMessage}
         </p>
       ) : null}
 
       <div className="flex justify-end">
         <button
-          className="min-h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+          className="min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           disabled={submitting}
           type="submit"
         >

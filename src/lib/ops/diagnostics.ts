@@ -3,6 +3,7 @@ import "server-only";
 import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
+import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
 
 /**
  * 運営者向けの状態診断（T-M7-34）。
@@ -152,16 +153,16 @@ export function judgeNews(input: {
   const problem =
     empty.failed.length > 0 || empty.allDropped.length > 0
       ? [
-          empty.failed.length > 0 ? `取得に失敗した分野: ${empty.failed.join("・")}` : null,
+          empty.failed.length > 0 ? `取得に失敗したテーマ: ${empty.failed.join("・")}` : null,
           empty.allDropped.length > 0
-            ? `全件破棄された分野: ${empty.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・")}`
+            ? `全件破棄されたテーマ: ${empty.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・")}`
             : null,
         ]
           .filter(Boolean)
           .join(" / ")
       : null;
   const noMatchNote =
-    empty.noMatch.length > 0 ? `該当ニュースが無かった分野: ${empty.noMatch.join("・")}` : null;
+    empty.noMatch.length > 0 ? `該当ニュースが無かったテーマ: ${empty.noMatch.join("・")}` : null;
   if (!input.schedulerExpected) {
     const last =
       input.hoursSinceLastRun === null
@@ -181,7 +182,7 @@ export function judgeNews(input: {
         level: "warn",
         detail,
         nextAction:
-          "Claudeに「全件破棄された分野の除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+          "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
       };
     }
     return {
@@ -222,7 +223,7 @@ export function judgeNews(input: {
       level: input.itemsLast48h === 0 ? "error" : "warn",
       detail,
       nextAction:
-        "Claudeに「全件破棄された分野の除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+        "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
     };
   }
   if (input.itemsLast48h === 0) {
@@ -368,6 +369,8 @@ export interface DiagnosticsOptions {
   dbSizeLimitBytes?: number;
   /** 人間確認の確認に使う接続情報（T-M7-53）。未指定なら「判定できません」になる。 */
   captcha?: CaptchaProbeDeps;
+  /** プラン管理（Stripe Portal）の設定確認（T-M8-32）。未指定なら「判定できません」になる。 */
+  portal?: PortalProbeDeps;
 }
 
 export async function collectDiagnostics(
@@ -482,6 +485,10 @@ export async function collectDiagnostics(
   // 人間確認が実際に効いているか（T-M7-53）。**ダッシュボードのトグル1つに依存していて
   // コードからは見えない**ため、状態確認で毎回見る。副作用は無い（存在しない資格情報で試すだけ）。
   checks.push(judgeCaptcha(await probeCaptcha(options.captcha ?? {})));
+
+  // プラン管理の操作がStripe側で有効か（T-M8-32）。**相手側の設定はコードに現れない**ため、
+  // ボタンを押して初めて分かる状態にしない。読み取りのみで費用は無い。
+  checks.push(judgePortal(await probePortalFeatures(options.portal ?? {})));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

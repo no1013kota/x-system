@@ -30,7 +30,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
         className="h-2 w-full overflow-hidden rounded-full bg-muted"
       >
         <div
-          className={atLimit ? "h-full bg-destructive" : "h-full bg-foreground"}
+          className={atLimit ? "h-full bg-danger-fg" : "h-full bg-brand"}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -52,9 +52,9 @@ export function UsageSummaryCard({
   nextResetLabel: string;
 }) {
   return (
-    <section aria-labelledby="usage-summary-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
+    <section aria-labelledby="usage-summary-heading" className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold" id="usage-summary-heading">
+        <h2 className="text-[15px] font-bold text-ink" id="usage-summary-heading">
           今月の利用枠
         </h2>
         <span className="text-xs text-muted-foreground">{nextResetLabel}にリセット</span>

@@ -10,10 +10,13 @@ import {
   disconnectXAccountAction,
   enableXAccountAction,
   refreshXAccountStatusAction,
+  setActiveXAccountAction,
 } from "@/app/actions/x-accounts";
 import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
 
@@ -24,22 +27,18 @@ const STATUS_LABEL: Record<string, string> = {
   error: "エラー（要確認）",
 };
 
-const STATUS_TONE: Record<string, string> = {
-  active: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  expired: "border-amber-200 bg-amber-50 text-amber-800",
-  disabled: "border-slate-200 bg-slate-50 text-slate-700",
-  error: "border-red-200 bg-red-50 text-red-800",
+/** 状態→色は**意味で決める**（`Badge` の tone・デザイン §カラー）。 */
+const STATUS_TONE: Record<string, BadgeTone> = {
+  active: "success",
+  expired: "warn",
+  disabled: "neutral",
+  error: "danger",
 };
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
-  managed: "運営App（Premium）",
+  managed: "運営App（プレミアムプラン）",
 };
-
-interface Notice {
-  message: string;
-  tone: "error" | "success";
-}
 
 export function XAccountsSettings({
   accounts,
@@ -58,7 +57,7 @@ export function XAccountsSettings({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
 
   const limit = PLANS[plan].xAccountLimit;
   const activeCount = accounts.filter((a) => a.status === "active").length;
@@ -71,22 +70,25 @@ export function XAccountsSettings({
   ) {
     if (pending) return;
     setBusyId(id);
-    setNotice(null);
     startTransition(async () => {
       const res = await action();
       setBusyId(null);
       if (res.status === "error") {
-        setNotice({ message: res.message || "操作に失敗しました。", tone: "error" });
+        toast.show({
+          tone: "error",
+          title: "操作できませんでした",
+          description: res.message || "操作に失敗しました。",
+        });
         return;
       }
-      setNotice({ message: successMessage, tone: "success" });
+      toast.show({ tone: "success", title: successMessage });
       router.refresh();
     });
   }
 
   return (
     <section aria-labelledby="x-accounts-heading" className="space-y-6">
-      <div className="rounded-2xl border bg-card p-6 shadow-sm">
+      <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold" id="x-accounts-heading">
@@ -124,29 +126,17 @@ export function XAccountsSettings({
         </div>
 
         {!xApiKeyRegistered ? (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+          <p className="mt-4 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm leading-6 text-warn-fg">
             Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
           </p>
         ) : null}
 
         {connected ? (
           <p
-            className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+            className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
             role="status"
           >
             Xアカウントを連携しました。
-          </p>
-        ) : null}
-        {notice ? (
-          <p
-            className={`mt-4 rounded-lg border p-3 text-sm ${
-              notice.tone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-red-200 bg-red-50 text-red-900"
-            }`}
-            role={notice.tone === "success" ? "status" : "alert"}
-          >
-            {notice.message}
           </p>
         ) : null}
       </div>
@@ -161,7 +151,7 @@ export function XAccountsSettings({
             const busy = busyId === account.id;
             return (
               <li
-                className="flex flex-wrap items-center gap-4 rounded-2xl border bg-card p-4 shadow-sm"
+                className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
                 key={account.id}
               >
                 {account.profileImageUrl ? (
@@ -178,16 +168,14 @@ export function XAccountsSettings({
                   <p className="flex items-center gap-2 font-medium">
                     @{account.handle}
                     {account.isActive ? (
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs text-sky-800">
-                        操作中
-                      </span>
+                      <Badge tone="info">操作中</Badge>
                     ) : null}
                   </p>
                   <p className="text-sm text-muted-foreground">{account.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                     <span
                       className={`rounded-full border px-2 py-0.5 ${
-                        STATUS_TONE[account.status] ?? "border-slate-200 bg-slate-50"
+                        STATUS_TONE[account.status] ?? "border-hairline bg-black/[0.04]"
                       }`}
                     >
                       {STATUS_LABEL[account.status] ?? account.status}
@@ -199,6 +187,30 @@ export function XAccountsSettings({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {/*
+                    操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
+                    ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
+                    「どこで切り替えるのか」を探すことになる。
+                    切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
+                  */}
+                  {!account.isActive && account.status === "active" ? (
+                    <Button
+                      disabled={pending}
+                      onClick={() =>
+                        run(
+                          account.id,
+                          () => setActiveXAccountAction({ x_account_id: account.id }),
+                          `@${account.handle} に切り替えました`,
+                        )
+                      }
+                      size="sm"
+                      type="button"
+                      variant="subtle"
+                    >
+                      {busy ? "切り替え中…" : "このアカウントを操作する"}
+                    </Button>
+                  ) : null}
+
                   {account.status === "disabled" ? (
                     <Button
                       disabled={pending}
@@ -290,9 +302,9 @@ function DisconnectButton({
         連携を解除
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background p-6 shadow-lg outline-none">
-          <AlertDialog.Title className="text-lg font-semibold">
+        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+          <AlertDialog.Title className="text-[15px] font-bold text-ink">
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -308,7 +320,7 @@ function DisconnectButton({
             </AlertDialog.Close>
             <AlertDialog.Close
               onClick={onConfirm}
-              render={<Button size="lg" type="button" variant="destructive" />}
+              render={<Button size="lg" type="button" variant="danger" />}
             >
               連携を解除する
             </AlertDialog.Close>

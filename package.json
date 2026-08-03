@@ -22,7 +22,9 @@
     "smoke:live": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-live.mjs",
     "doctor": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/doctor.mjs",
     "release:staging": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs staging",
-    "release:production": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production"
+    "release:production": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "seed:review": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-review-account.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
@@ -50,6 +52,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@material-symbols/svg-400": "^0.45.10",
     "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

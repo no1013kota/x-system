@@ -91,3 +91,66 @@ test("理由が保存されないまま失敗した場合も行き止まりに�
   // 原因不明なので再試行に意味があり、ボタンを出す
   await expect(page.getByRole("button", { name: "再試行する" })).toBeVisible();
 });
+
+/**
+ * **実AIを叩くので既定では実行しない**（T-M8-32）。
+ *
+ * 「生成する」を押すと Server Action が job を作り、`after()` が worker へ渡して**本物のAIを呼ぶ**
+ * （1回あたり約$0.13）。`release:check` はE2Eを含むため、既定で実行すると保存前チェックのたびに
+ * 課金される。`check:providers` と同じ形で **明示的に有効化したときだけ**走らせる。
+ *
+ *   E2E_LIVE_AI=1 npm run test:e2e -- e2e/generation.spec.ts
+ */
+const LIVE_AI = process.env.E2E_LIVE_AI === "1";
+
+(LIVE_AI ? test : test.skip)("投稿作成でテーマを選ぶと、そのテーマが生成jobへ渡る（T-M8-28・実AI）", async ({ accounts, page }) => {
+  // 画面で選べても、AIへ渡る入力に入っていなければ何も変わらない。job の input まで見る。
+  const account = await accounts.create("gen-theme", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  await page.getByLabel("テーマ", { exact: true }).selectOption("investment");
+  await page.getByRole("button", { name: /生成する/ }).click();
+
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ theme: string | null }>(
+            `select input->>'theme' as theme from generation_jobs
+              where x_account_id = $1 and kind = 'post_generation'`,
+            [account.xAccountId],
+          )
+        )[0]?.theme,
+      { timeout: 20_000, message: "テーマが生成jobの入力へ入ること" },
+    )
+    .toBe("investment");
+});
+
+test("テーマを選ばないと生成を始められない（T-M8-29）", async ({ accounts, page }) => {
+  // 「指定なし」を既定にすると、選んだつもりで選んでいない状態が起きる。必須にした。
+  const account = await accounts.create("gen-theme-required", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  await page.getByRole("button", { name: /生成する/ }).click();
+
+  // jobは作られない（押しても進まないことがブラウザの検証で分かる）
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ n: number }>(
+            `select count(*)::int as n from generation_jobs where x_account_id = $1`,
+            [account.xAccountId],
+          )
+        )[0].n,
+      { timeout: 5_000, message: "テーマ未選択では生成jobが作られないこと" },
+    )
+    .toBe(0);
+
+  // 選べばボタンの検証を通る（実際に生成させると本物のAIを叩いて課金されるので、
+  // ここでは「押せる状態になる」ことまでを見る。jobが作られる側は上の実AIテストが担当する）。
+  await page.getByLabel("テーマ", { exact: true }).selectOption("other");
+  await expect(page.getByLabel("テーマ", { exact: true })).toHaveJSProperty("validity.valid", true);
+});

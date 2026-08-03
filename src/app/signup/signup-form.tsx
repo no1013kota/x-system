@@ -31,7 +31,7 @@ function ResultMessage({ state }: { state: AuthFormState }) {
     <p
       className={
         state.status === "success"
-          ? "rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800"
+          ? "rounded-lg bg-success-bg p-3 text-sm text-success-fg"
           : "rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
       }
       role={state.status === "error" ? "alert" : "status"}
@@ -205,7 +205,7 @@ export function SignUpForm() {
         resetSignal={state}
       />
 
-      <Button className="h-11 w-full" disabled={isPending} type="submit">
+      <Button className="h-11 w-full text-[14px]" disabled={isPending} type="submit" variant="brand">
         {isPending ? "登録しています…" : "メールアドレスで登録"}
       </Button>
 

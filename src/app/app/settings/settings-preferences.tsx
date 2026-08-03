@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import {
   updateNewsConfigAction,
   updateNotificationConfigAction,
@@ -38,34 +39,13 @@ const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "�
 const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
-interface Notice {
-  message: string;
-  tone: "error" | "success";
-}
-
-function NoticeLine({ notice }: { notice: Notice | null }) {
-  if (!notice) return null;
-  return (
-    <p
-      className={`mt-3 rounded-lg border p-2.5 text-sm ${
-        notice.tone === "success"
-          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-          : "border-red-200 bg-red-50 text-red-900"
-      }`}
-      role={notice.tone === "success" ? "status" : "alert"}
-    >
-      {notice.message}
-    </p>
-  );
-}
-
 function ProfileForm({ displayName }: { displayName: string | null }) {
   const [value, setValue] = useState(displayName ?? "");
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">プロフィール</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">プロフィール</h2>
       <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
         表示名
       </label>
@@ -81,18 +61,21 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateProfileAction({ display_name: value });
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "プロフィールを保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      <NoticeLine notice={notice} />
     </section>
   );
 }
@@ -100,7 +83,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
 function NotificationForm({ config }: { config: NotificationConfig }) {
   const [state, setState] = useState<NotificationConfig>(config);
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   const toggle = (
     type: (typeof NOTIFICATION_TYPES)[number],
     channel: "in_app" | "email",
@@ -110,8 +93,8 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
       [type]: { ...prev[type], [channel]: !prev[type][channel] },
     }));
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">通知</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">通知</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         種別ごとにアプリ内通知とメールの受け取りを設定できます。
       </p>
@@ -146,18 +129,21 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateNotificationConfigAction(state);
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "通知設定を保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      <NoticeLine notice={notice} />
     </section>
   );
 }
@@ -167,21 +153,21 @@ function NewsForm({ config }: { config: NewsConfig }) {
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
   const [maxItems, setMaxItems] = useState(config.max_items);
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   const invalid = categories.length === 0 || impacts.length === 0;
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">ニュース通知</h2>
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <h2 className="text-[15px] font-bold text-ink">ニュース通知</h2>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
         ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
-        設定条件に一致する新着が0件の時刻には通知は届きません。ここでの分野・インパクト・表示件数は
+        設定条件に一致する新着が0件の時刻には通知は届きません。ここでのテーマ・インパクト・表示件数は
         一覧表示にも適用されます。
       </p>
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">分野（1件以上）</legend>
+        <legend className="text-sm font-medium">テーマ（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_CATEGORIES.map((c) => (
             <label className="flex items-center gap-1.5 text-sm" key={c}>
@@ -230,16 +216,20 @@ function NewsForm({ config }: { config: NewsConfig }) {
           disabled={pending || invalid}
           onClick={() =>
             startTransition(async () => {
-              setNotice(null);
               const res = await updateNewsConfigAction({
                 categories,
                 impact_filter: impacts,
                 max_items: maxItems,
               });
-              setNotice({ message: res.message, tone: res.status });
+              toast.show({
+                tone: res.status === "success" ? "success" : "error",
+                title: res.status === "success" ? "ニュース設定を保存しました" : "保存できませんでした",
+                description: res.status === "success" ? undefined : res.message,
+              });
             })
           }
           size="lg"
+          variant="brand"
           type="button"
         >
           {pending ? "保存中…" : "保存"}
@@ -247,10 +237,9 @@ function NewsForm({ config }: { config: NewsConfig }) {
       </div>
       {invalid ? (
         <p className="mt-3 text-sm text-destructive" role="alert">
-          分野とインパクトはそれぞれ1件以上選択してください。
+          テーマとインパクトはそれぞれ1件以上選択してください。
         </p>
       ) : null}
-      <NoticeLine notice={notice} />
     </section>
   );
 }
@@ -264,11 +253,15 @@ export function SettingsPreferences({
   notificationConfig: NotificationConfig;
   newsConfig: NewsConfig;
 }) {
+  // 2カラム（デザイン §設定）。1カラムのままだと、幅の広い画面で**中身は狭いのに縦に長い**という
+  // 一番読みにくい形になる（デスクトップ最適化・2026-08-02 決定）。列は高さの近いもので分ける。
   return (
-    <div className="space-y-6">
-      <ProfileForm displayName={displayName} />
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       <NotificationForm config={notificationConfig} />
-      <NewsForm config={newsConfig} />
+      <div className="grid items-start gap-4">
+        <ProfileForm displayName={displayName} />
+        <NewsForm config={newsConfig} />
+      </div>
     </div>
   );
 }

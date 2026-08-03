@@ -70,8 +70,10 @@ test("既定の計測時点は実績を持つポストが最も多い時点に�
   await page.goto("/app/analytics");
 
   // 既定は「投稿後1日」（4件が1日の実績を持ち、30日は1件だけ）
+  // 選択状態は aria-pressed で確認する。クラス名（bg-foreground）に依存すると
+  // 配色を変えただけで落ちるため、UIリデザインに先立って移行した（T-M8-01）。
   const selected = page.getByRole("button", { name: "投稿後1日" });
-  await expect(selected).toHaveClass(/bg-foreground/);
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
 
   // 直近投稿の実績が数値として出ている（空表になっていない）
   await expect(page.getByText("111", { exact: false }).first()).toBeVisible();

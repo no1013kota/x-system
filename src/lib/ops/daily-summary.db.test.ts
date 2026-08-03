@@ -72,11 +72,23 @@ describe("deliverDailySummaries (local DB)", () => {
     return uid;
   }
 
+  /**
+   * この日（2026-08-01 JST）のサマリだけを見る（T-M8-30）。
+   *
+   * **利用者IDだけで絞ると他のテストの分を拾う。** `jobs/cron.ts` の tick は
+   * `deliverDailySummaries` を**利用者を絞らず現在時刻で**呼ぶので、tickを実際に走らせる
+   * DBテスト（`cron.db.test.ts` / `scheduler-tick/route.db.test.ts`）と並行すると、
+   * ここで作った利用者にも「今日」のサマリが1通増える。日付で絞れば影響を受けない。
+   */
+  const TARGET_DEDUPE_KEY = "summary:2026-08-01";
+
   async function summariesOf(uid: string) {
     const { rows } = await db.query<{ title: string; body: string; email_status: string; in_app_enabled: boolean }>(
       `select title, body, email_status::text as email_status, in_app_enabled
-         from notifications where user_id = $1 and type = 'summary' order by created_at`,
-      [uid],
+         from notifications
+        where user_id = $1 and type = 'summary' and dedupe_key = $2
+        order by created_at`,
+      [uid, TARGET_DEDUPE_KEY],
     );
     return rows;
   }

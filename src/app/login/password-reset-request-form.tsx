@@ -22,7 +22,7 @@ export function PasswordResetRequestForm() {
           <p
             className={
               state.status === "success"
-                ? "rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"
+                ? "rounded-lg bg-success-bg p-3 text-sm text-success-fg"
                 : "rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
             }
             role={state.status === "success" ? "status" : "alert"}
@@ -53,7 +53,7 @@ export function PasswordResetRequestForm() {
           resetSignal={state}
         />
 
-        <Button className="h-11 w-full" disabled={pending} type="submit">
+        <Button className="h-11 w-full text-[14px]" disabled={pending} type="submit" variant="brand">
           {pending ? "受け付けています…" : "再設定メールを送る"}
         </Button>
       </form>

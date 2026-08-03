@@ -4,6 +4,7 @@ import type { AnalyticsSummary } from "@/lib/analytics";
 import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 
 /**
  * SC-05 ホームの「直近の実績」（要件06 §1・§8・§10, T-M7-03）。直近7日の投稿件数と投稿翌日時点の
@@ -30,13 +31,13 @@ export function RecentResultsCard({
 }) {
   if (posts.length === 0) {
     return (
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">直近の実績</h2>
+      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+        <h2 className="text-[15px] font-bold text-ink">直近の実績</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
         </p>
         <Link
-          className="mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+          className={`mt-4 ${primaryLinkClassName}`}
           href="/app/posts?tab=create"
         >
           今すぐ作成
@@ -49,9 +50,9 @@ export function RecentResultsCard({
   const measured = (day1?.tweets ?? 0) > 0;
 
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-sm">
+    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">直近の実績</h2>
+        <h2 className="text-[15px] font-bold text-ink">直近の実績</h2>
         <Link className="text-sm text-primary underline" href="/app/analytics">
           分析を見る
         </Link>

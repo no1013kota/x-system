@@ -4,6 +4,7 @@ import Link from "next/link";
 import { APP_NAME } from "@/lib/app-config";
 import { safeAuthNext } from "@/lib/auth/confirm";
 import { env } from "@/lib/env";
+import { LegalFooter } from "@/components/legal-footer";
 
 import { PasswordResetRequestForm } from "./password-reset-request-form";
 import { LoginForm } from "./login-form";
@@ -28,16 +29,28 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const requestingReset = params.mode === "forgot-password";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">
-      <div className="w-full max-w-md space-y-7 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+    // 法務3ページへの導線を置く（T-M8-30）。会員登録には前からあり、**ログインだけ無かった**。
+    // ログインから入る利用者が規約へ辿れない状態を残さない（要件06 §11）。
+    <div className="bg-page flex min-h-screen flex-col">
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <div className="w-full max-w-[400px] space-y-6 rounded-card border border-hairline bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
         <header className="space-y-2 text-center">
-          <Link className="text-sm font-semibold tracking-wide" href="/">
-            {APP_NAME}
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <span className="inline-flex items-center justify-center gap-2">
+            <span
+              aria-hidden="true"
+              className="grid size-7 place-items-center rounded-card text-[15px] font-bold text-white"
+              style={{ backgroundImage: "var(--brand-gradient-logo)" }}
+            >
+              S
+            </span>
+            <Link className="text-[16px] font-bold tracking-tight text-ink" href="/">
+              {APP_NAME}
+            </Link>
+          </span>
+          <h1 className="text-[22px] font-bold tracking-tight text-ink">
             {requestingReset ? "パスワード再設定" : "ログイン"}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[12.5px] leading-5 text-ink-2">
             {requestingReset
               ? "登録したメールアドレスへ再設定リンクを送ります。"
               : "メールアドレスとパスワードを入力してください。"}
@@ -45,7 +58,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </header>
         {params.password_updated === "1" && !requestingReset ? (
           <p
-            className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"
+            className="rounded-lg bg-success-bg p-3 text-sm text-success-fg"
             role="status"
           >
             パスワードを更新しました。新しいパスワードでログインしてください。
@@ -56,7 +69,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         ) : (
           <LoginForm next={next} />
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+      <LegalFooter />
+    </div>
   );
 }

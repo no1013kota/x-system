@@ -2,6 +2,8 @@ import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 
 import { PLANS } from "../plans";
+import { canPostThreadToday } from "../usage/daily-post-limit";
+import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
@@ -211,16 +213,6 @@ async function loadDraft(db: Queryable, draftId: string): Promise<PublishDraftRo
 }
 
 /** 当日JST・同一Xアカウントの post_create consume 件数。 */
-async function todaysPostCount(db: Queryable, xAccountId: string): Promise<number> {
-  const { rows } = await db.query<{ n: number }>(
-    `select count(*)::int as n from usage_events
-      where x_account_id = $1 and operation = 'post_create' and reason = 'consume'
-        and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date`,
-    [xAccountId],
-  );
-  return rows[0]?.n ?? 0;
-}
-
 async function setDraftFailed(
   db: Queryable,
   draftId: string,
@@ -489,8 +481,10 @@ export async function executePostPublish(
   }
 
   // --- 検証: 日次上限（当日JST post_create + 予定ポスト数）---
-  const todays = await todaysPostCount(db, xAccountId);
-  if (todays + thread.length > deps.dailyLimit) {
+  // 数え方と判定は画面のバナーと共有する（T-M8-26）。別々に持つと「バナーは出ないのに
+  // 投稿は弾かれる」というもっとも分かりにくい食い違いが起きる。
+  const todays = await countTodaysPostsForXAccount(db, xAccountId);
+  if (!canPostThreadToday(todays, deps.dailyLimit, thread.length)) {
     // 実行せず draft へ戻す（明日以降に再試行できる）。
     await db.query(
       `update drafts set status = 'draft', updated_at = now() where id = $1`,

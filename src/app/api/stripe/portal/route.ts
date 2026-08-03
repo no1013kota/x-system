@@ -20,7 +20,7 @@ export async function POST(request: Request): Promise<Response> {
     async getProfile(userId) {
       const result = await admin
         .from("profiles")
-        .select("stripe_customer_id")
+        .select("stripe_customer_id, stripe_subscription_id")
         .eq("id", userId)
         .maybeSingle();
       if (result.error) throw result.error;

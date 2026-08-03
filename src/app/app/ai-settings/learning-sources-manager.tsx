@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
@@ -10,6 +9,7 @@ import {
   reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
+import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 
@@ -57,8 +57,7 @@ export function LearningSourcesManager({
   const [ownPostsNextEligibleAt, setNextEligible] = useState<string | null>(initialOwnPostsNextEligibleAt);
   const [type, setType] = useState<"ref_account" | "ref_post">("ref_account");
   const [url, setUrl] = useState("");
-  const [note, setNote] = useState<string | null>(null);
-  const [noteHref, setNoteHref] = useState<string | null>(null);
+  const toast = useToast();
   const [now, setNow] = useState(() => Date.now());
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
@@ -78,10 +77,15 @@ export function LearningSourcesManager({
     if (res.status === "success" && res.sources) setSources(res.sources);
   }
 
-  function setError(res: { message?: string; details?: Record<string, unknown> }) {
-    setNote(res.message ?? "処理に失敗しました。");
+  /** 失敗をトーストで伝える（T-M8-18）。設定導線があれば一緒に載せる。 */
+  function showError(res: { message?: string; details?: Record<string, unknown> }) {
     const path = res.details?.settingsPath;
-    setNoteHref(typeof path === "string" ? path : null);
+    toast.show({
+      tone: "error",
+      title: "実行できませんでした",
+      description: res.message ?? "処理に失敗しました。",
+      ...(typeof path === "string" ? { action: { href: path, label: "設定を開く" } } : {}),
+    });
   }
 
   function add() {
@@ -90,11 +94,10 @@ export function LearningSourcesManager({
       const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url: url.trim() });
       if (res.status === "success") {
         setUrl("");
-        setNote(null);
-        setNoteHref(null);
+        toast.show({ tone: "success", title: "学習ソースを追加しました" });
         await refresh();
       } else {
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -104,10 +107,10 @@ export function LearningSourcesManager({
     startTransition(async () => {
       const res = await removeLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, source_id: sourceId });
       if (res.status === "success") {
-        setNote(null);
+        toast.show({ tone: "success", title: "学習ソースを削除しました" });
         await refresh();
       } else {
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -116,14 +119,18 @@ export function LearningSourcesManager({
     startTransition(async () => {
       const res = await reimportOwnPostsAction({ request_key: uuid(), x_account_id: xAccountId });
       if (res.status === "success") {
-        setNote(null);
+        toast.show({
+          tone: "success",
+          title: "再取り込みを開始しました",
+          description: "完了すると学習の反映状況が更新されます。",
+        });
         await refresh();
         router.refresh(); // サーバの次回可能日時を更新
       } else {
         if (res.details?.next_available_at) {
           setNextEligible(String(res.details.next_available_at));
         }
-        setError(res);
+        showError(res);
       }
     });
   }
@@ -135,23 +142,13 @@ export function LearningSourcesManager({
   return (
     <div className="space-y-6">
       {removing ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
           学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
-        </p>
-      ) : null}
-      {note ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950">
-          {note}
-          {noteHref ? (
-            <Link className="ml-2 font-medium underline underline-offset-2" href={noteHref}>
-              設定を開く
-            </Link>
-          ) : null}
         </p>
       ) : null}
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <h2 className="text-sm font-semibold">参考ソースを追加</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
@@ -183,7 +180,7 @@ export function LearningSourcesManager({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || removing || (refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX))}
             onClick={add}
             type="button"
@@ -194,7 +191,7 @@ export function LearningSourcesManager({
       </section>
 
       {/* 自己過去投稿の取り込み/再取り込み */}
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <h2 className="text-sm font-semibold">自分の過去投稿から学習</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
@@ -220,13 +217,13 @@ export function LearningSourcesManager({
       <section>
         <h2 className="text-sm font-semibold">登録済みの学習ソース</h2>
         {sources.length === 0 ? (
-          <p className="mt-2 rounded-xl border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ学習ソースはありません。
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
             {sources.map((s) => (
-              <li className="rounded-xl border bg-background p-4" key={s.id}>
+              <li className="rounded-card border border-hairline bg-surface p-4" key={s.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded bg-muted px-2 py-0.5 text-xs">{TYPE_LABEL[s.type] ?? s.type}</span>
                   <span className="rounded px-2 py-0.5 text-xs font-medium">
@@ -240,12 +237,12 @@ export function LearningSourcesManager({
                   </a>
                 ) : null}
                 {isStalePending(s) ? (
-                  <p className="mt-2 text-xs text-amber-700">開始が遅れています。自動で再開されます（最大5分）。</p>
+                  <p className="mt-2 text-xs text-warn-fg">開始が遅れています。自動で再開されます（最大5分）。</p>
                 ) : s.status === "pending" ? (
                   <p className="mt-2 text-xs text-muted-foreground">分析中です…</p>
                 ) : null}
                 {s.status === "failed" ? (
-                  <p className="mt-2 text-xs text-red-700">
+                  <p className="mt-2 text-xs text-danger-fg">
                     分析に失敗しました。対象が非公開/削除されていないかご確認ください。
                     {s.type === "own_posts"
                       ? "上の「再取り込み」からやり直せます。"

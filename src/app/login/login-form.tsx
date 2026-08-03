@@ -24,7 +24,13 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <div className="space-y-5">
-      <form action={formAction} className="space-y-5" noValidate>
+      {/*
+        `data-testid` はUIリデザインの安全網（T-M8-01）。E2Eは入力欄の型やボタンの数へ
+        暗黙に依存していた（`input[type=email]` が画面に1つだけ、という前提）。この画面には
+        「確認メール再送」の第2フォームがあり、状態次第で送信ボタンが2つになるため、
+        見た目を変える前に**印で特定できる**形へ移す。
+      */}
+      <form action={formAction} className="space-y-5" data-testid="login-form" noValidate>
         <input name="next" type="hidden" value={next} />
 
         {state.status === "error" ? (
@@ -80,14 +86,14 @@ export function LoginForm({ next }: { next: string }) {
           resetSignal={state}
         />
 
-        <Button className="h-11 w-full" disabled={pending} type="submit">
+        <Button className="h-11 w-full text-[14px]" data-testid="login-submit" disabled={pending} type="submit" variant="brand">
           {pending ? "ログインしています…" : "ログイン"}
         </Button>
       </form>
 
       {state.status === "email_unconfirmed" ? (
         <section
-          className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+          className="space-y-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-4 text-warn-fg"
           aria-labelledby="email-unconfirmed-heading"
         >
           <h2 className="font-semibold" id="email-unconfirmed-heading">

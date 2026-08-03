@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query } from "./fixtures/account";
-import { expect, signIn, test } from "./fixtures/test";
+import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
  * SC-10 AI設定のうち**ベースmd編集**と**学習ソース**（要件06 §9・§3.6、T-M7-26）。
@@ -107,6 +107,10 @@ test("学習ソースを追加すると分析中として並び、削除でき�
   );
   await page.getByRole("button", { name: "追加", exact: true }).click();
 
+  // **成功したことが利用者に分かる**（T-M8-18）。以前は追加が通っても画面は無言で、
+  // 一覧に行が増えたことに気づけるかどうかに委ねていた。
+  await expect(toastIn(page)).toContainText("学習ソースを追加しました");
+
   // DBに登録され、分析待ちになる
   await expect
     .poll(
@@ -194,4 +198,31 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
   const reimport = page.getByRole("button", { name: "再取り込み" });
   await expect(reimport).toBeEnabled();
   await expect(page.getByText("次回の再取り込みまであと", { exact: false })).toHaveCount(0);
+});
+
+test("通常プランではベースmd・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
+  accounts,
+  page,
+}) => {
+  // 「まだ何も無い（＝自分で埋められる）」と「このプランでは開けない（＝契約を変えるしかない）」を
+  // 同じ空状態で出していた。前者だと思った利用者は設定画面を探しに行って行き止まりになる。
+  const account = await accounts.create("md-locked");
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+
+  await signIn(page, account);
+  await page.goto("/app/ai-settings?tab=base-md");
+
+  await expect(
+    page.getByRole("heading", { name: /ベースmdの確認・編集は mdプラン以上/ }),
+  ).toBeVisible();
+  // 行き先は料金プランだけ。**設定を触れば直る**かのような導線を出さない。
+  const upgrade = page.getByRole("link", { name: /mdプランにアップグレード/ });
+  await expect(upgrade).toBeVisible();
+  await expect(upgrade).toHaveAttribute("href", "/plans");
+
+  // プロンプトタブも同じ扱い。
+  await page.goto("/app/ai-settings?tab=prompts");
+  await expect(
+    page.getByRole("heading", { name: /プロンプトのカスタマイズは mdプラン以上/ }),
+  ).toBeVisible();
 });

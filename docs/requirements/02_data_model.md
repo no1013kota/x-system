@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.22 |
-| 更新日 | 2026-08-01 |
+| バージョン | v1.25 |
+| 更新日 | 2026-08-03 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -301,6 +301,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
+| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。値は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
 | `enabled` | `boolean` | not null default true |  |

@@ -13,7 +13,7 @@ export interface TabNavItem {
  * 競合は twMerge が後勝ちで解決するため、生成クラス集合は各ページの現行と等価（tab-nav.test.ts で検証）。
  */
 export function tabNavClassName(extra?: string): string {
-  return cn("flex gap-2 border-b", extra);
+  return cn("flex gap-2 border-b border-hairline", extra);
 }
 
 /**
@@ -25,12 +25,14 @@ export function tabLinkClassName(
   extra?: string,
   inactiveExtra?: string,
 ): string {
+  // 選択中はキー色の下線（デザイン §形状）。状態の表明は `aria-current` 側が担うので、
+  // ここは見た目だけを持つ。
   return cn(
-    "border-b-2 px-4 py-3 text-sm font-medium",
+    "border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150",
     extra,
     active
-      ? "border-foreground text-foreground"
-      : cn("border-transparent text-muted-foreground", inactiveExtra),
+      ? "border-brand text-brand"
+      : cn("border-transparent text-ink-2 hover:text-ink", inactiveExtra),
   );
 }
 

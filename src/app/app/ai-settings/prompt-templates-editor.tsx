@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/toast";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { useMemo, useState, useTransition } from "react";
 
@@ -24,9 +25,12 @@ const KIND_LABEL: Record<string, string> = {
   image: "画像プロンプト",
 };
 
+/**
+ * **画面に残す通知だけ**（T-M8-18）。判断は `base-md-editor.tsx` と同じ。
+ * 操作の成否はトーストへ出し、入力検証と「再読み込み」ボタンを伴う競合だけをここに残す。
+ */
 type Note =
-  | { kind: "success"; text: string }
-  | { kind: "error"; text: string }
+  | { kind: "validation"; text: string }
   | { kind: "conflict"; text: string }
   | null;
 
@@ -57,6 +61,7 @@ export function PromptTemplatesEditor({
   const current = templates.find((t) => t.kind === selectedKind) ?? null;
   const [draft, setDraft] = useState<string>(current?.content ?? "");
   const [note, setNote] = useState<Note>(null);
+  const toast = useToast();
 
   const overLimit = draft.length > MAX_CHARS;
   const dirty = current ? draft !== current.content : false;
@@ -82,14 +87,14 @@ export function PromptTemplatesEditor({
       return;
     }
     if (res.code === "validation_error" && reason === "too_long") {
-      setNote({ kind: "error", text: `本文が長すぎます（${MAX_CHARS.toLocaleString()}字以内）。` });
+      setNote({ kind: "validation", text: `本文が長すぎます（${MAX_CHARS.toLocaleString()}字以内）。` });
       return;
     }
     if (res.code === "validation_error" && reason === "empty") {
-      setNote({ kind: "error", text: "本文を入力してください。" });
+      setNote({ kind: "validation", text: "本文を入力してください。" });
       return;
     }
-    setNote({ kind: "error", text: res.message ?? "処理に失敗しました。" });
+    toast.show({ tone: "error", title: "実行できませんでした", description: res.message ?? "処理に失敗しました。" });
   }
 
   async function reload() {
@@ -97,7 +102,8 @@ export function PromptTemplatesEditor({
     if (res.status === "success" && res.templates) {
       setTemplates(res.templates);
       setDraft(res.templates.find((t) => t.kind === selectedKind)?.content ?? "");
-      setNote({ kind: "success", text: "最新の内容を読み込みました。" });
+      setNote(null);
+      toast.show({ tone: "success", title: "最新の内容を読み込みました" });
     } else {
       applyError(res);
     }
@@ -113,7 +119,8 @@ export function PromptTemplatesEditor({
       });
       if (res.status === "success" && res.template) {
         applyTemplate(res.template);
-        setNote({ kind: "success", text: "保存しました。" });
+        setNote(null);
+        toast.show({ tone: "success", title: "保存しました" });
         router.refresh();
       } else {
         applyError(res);
@@ -130,7 +137,8 @@ export function PromptTemplatesEditor({
       const res = await resetPromptTemplateAction({ kind: selectedKind });
       if (res.status === "success" && res.template) {
         applyTemplate(res.template);
-        setNote({ kind: "success", text: "システム既定に戻しました。" });
+        setNote(null);
+        toast.show({ tone: "success", title: "システム既定に戻しました" });
         router.refresh();
       } else {
         applyError(res);
@@ -146,11 +154,8 @@ export function PromptTemplatesEditor({
 
       {note ? (
         <div
-          className={`rounded-lg border px-4 py-2 text-sm ${
-            note.kind === "success"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-              : "border-amber-300 bg-amber-50 text-amber-950"
-          }`}
+          className="rounded-card border border-hairline bg-warn-bg px-4 py-2 text-sm text-warn-fg"
+          role="alert"
         >
           {note.text}
           {note.kind === "conflict" ? (
@@ -166,7 +171,7 @@ export function PromptTemplatesEditor({
         </div>
       ) : null}
 
-      <section className="rounded-xl border bg-background p-4">
+      <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">プロンプト種別</span>
@@ -186,15 +191,15 @@ export function PromptTemplatesEditor({
             <span
               className={`mt-4 rounded px-2 py-0.5 text-xs font-medium ${
                 current.isOverride
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground"
+                  ? "bg-brand-subtle text-brand"
+                  : "bg-black/[0.05] text-ink-3"
               }`}
             >
               {current.isOverride ? "カスタム" : "既定"}
             </span>
           ) : null}
           <span
-            className={`ml-auto mt-4 text-xs ${overLimit ? "font-semibold text-red-700" : "text-muted-foreground"}`}
+            className={`ml-auto mt-4 text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
             {draft.length.toLocaleString()} / {MAX_CHARS.toLocaleString()} 字
           </span>
@@ -211,7 +216,7 @@ export function PromptTemplatesEditor({
 
         <div className="mt-3 flex items-center gap-3">
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || overLimit || !dirty}
             onClick={save}
             type="button"

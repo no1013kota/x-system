@@ -10,7 +10,11 @@ import {
   saveXApiKey,
   verifyApiKey,
 } from "@/app/actions/api-keys";
+import { aiSettingsTabHref } from "@/app/app/ai-settings/tabs";
+import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider, XClientType } from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
@@ -18,6 +22,7 @@ import {
   type ApiKeyViewState,
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
+import type { UsageSummary } from "@/lib/usage/usage-summary";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -31,15 +36,19 @@ const STATUS_LABELS = {
   valid: "確認済み",
 } as const;
 
-interface ActionNotice {
-  message: string;
-  tone: "error" | "success";
-}
-
 interface ApiKeySettingsProps {
   callbackUrl: string;
   initialKeys: ApiKeyViewState[];
   plan: PlanId;
+  /**
+   * プレミアムの月間利用枠（デザイン §設定・T-M8-25）。premium以外・未取得は null。
+   *
+   * キー登録が不要なプランでは、このタブは「不要です」の一文だけで**何も操作できない行き止まり**
+   * だった。キーの代わりに何が付いてくるのか（月間の枠と残量）をここで見せる。
+   * カードはホーム・課金タブと同じ `UsageSummaryCard` を使う（表示の定義を増やさない）。
+   */
+  usage?: UsageSummary | null;
+  usageResetLabel?: string;
 }
 
 function verificationDate(value: string | null): string | null {
@@ -51,23 +60,15 @@ function verificationDate(value: string | null): string | null {
 }
 
 function StatusBadge({ status }: { status: ApiKeyViewState["status"] }) {
-  const tone =
-    status === "valid"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : status === "invalid"
-        ? "border-red-200 bg-red-50 text-red-800"
-        : "border-amber-200 bg-amber-50 text-amber-800";
-  return (
-    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}>
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  const tone: BadgeTone =
+    status === "valid" ? "success" : status === "invalid" ? "danger" : "warn";
+  return <Badge tone={tone}>{STATUS_LABELS[status]}</Badge>;
 }
 
 function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
   const verified = verificationDate(keyState.verifiedAt);
   return (
-    <div className="rounded-xl border bg-muted/35 p-4">
+    <div className="rounded-card border bg-muted/35 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-sm">{maskedApiKeyLabel(keyState)}</p>
         <StatusBadge status={keyState.status} />
@@ -82,7 +83,7 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
       </p>
       {keyState.provider !== "x" && keyState.status !== "valid" ? (
         // 生成の前提は valid のみ（execution-prereqs）。未確認/失敗のままだと投稿生成が始まらない。
-        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+        <p className="mt-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-2 text-xs leading-5 text-warn-fg">
           {keyState.status === "invalid"
             ? "このキーは認証できませんでした。正しいキーを貼り直すまで投稿生成には使えません。"
             : "疎通確認が済むまで、このキーは投稿生成に使えません。「疎通確認」を実行してください。"}
@@ -96,13 +97,15 @@ export function ApiKeySettings({
   callbackUrl,
   initialKeys,
   plan,
+  usage = null,
+  usageResetLabel = "",
 }: ApiKeySettingsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [keys, setKeys] = useState<Record<string, ApiKeyViewState>>(() =>
     Object.fromEntries(initialKeys.map((key) => [key.provider, key])),
   );
-  const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const toast = useToast();
   const [clientType, setClientType] = useState<XClientType>("public");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -112,13 +115,17 @@ export function ApiKeySettings({
     openai: "",
   });
   const [copied, setCopied] = useState(false);
-  function finishAction(message: string) {
-    setNotice({ message, tone: "success" });
+  /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
+  function showError(message: string) {
+    toast.show({ tone: "error", title: "実行できませんでした", description: message });
+  }
+
+  function finishAction(title: string) {
+    toast.show({ tone: "success", title });
     router.refresh();
   }
 
   function saveX() {
-    setNotice(null);
     startTransition(async () => {
       const result = await saveXApiKey({
         client_id: clientId,
@@ -126,7 +133,7 @@ export function ApiKeySettings({
         client_type: clientType,
       });
       if (result.status === "error" || !result.displayHint) {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       const displayHint = result.displayHint;
@@ -146,14 +153,13 @@ export function ApiKeySettings({
   }
 
   function saveAi(provider: AiKeyProvider) {
-    setNotice(null);
     startTransition(async () => {
       const result = await saveAiApiKey({
         api_key: aiSecrets[provider],
         provider,
       });
       if (result.status === "error" || !result.displayHint) {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       const displayHint = result.displayHint;
@@ -169,7 +175,7 @@ export function ApiKeySettings({
       setAiSecrets((current) => ({ ...current, [provider]: "" }));
       // 未確認のキーは投稿生成に使えないため、保存に続けて疎通確認まで自動で行う
       // （利用者が「保存しただけで使える」と誤解して詰まるのを防ぐ・要件06 §3.2）。
-      setNotice({ message: "保存しました。疎通を確認しています…", tone: "success" });
+      toast.show({ tone: "success", title: "保存しました", description: "疎通を確認しています…" });
       const verified = await verifyApiKey({ provider });
       setKeys((current) => {
         const existing = current[provider];
@@ -184,20 +190,27 @@ export function ApiKeySettings({
         };
       });
       if (verified.keyStatus === "valid") {
-        finishAction("APIキーを保存し、疎通を確認しました。AI設定の「AI用途」で、このAIを文章生成に割り当てると投稿を作成できます。");
+        // **次にやることまで出す。** 保存しただけでは投稿を作れず、AI用途への割り当てが要る
+        // （要件06 §3.2）。5秒で消えるトーストに手順を書くと読み切れないので導線を添える。
+        toast.show({
+          tone: "success",
+          title: "APIキーを保存し、疎通を確認しました",
+          description: "「AI用途」でこのAIを文章生成に割り当てると投稿を作成できます。",
+          action: { href: aiSettingsTabHref("purposes"), label: "AI用途を開く" },
+        });
+        router.refresh();
       } else {
-        setNotice({ message: verified.message, tone: "error" });
+        showError(verified.message);
         router.refresh();
       }
     });
   }
 
   function verify(provider: ApiKeyViewProvider) {
-    setNotice(null);
     startTransition(async () => {
       const result = await verifyApiKey({ provider });
       if (result.status === "error" && result.keyStatus !== "invalid") {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       setKeys((current) => {
@@ -213,10 +226,8 @@ export function ApiKeySettings({
           },
         };
       });
-      setNotice({
-        message: result.message,
-        tone: result.status === "error" ? "error" : "success",
-      });
+      if (result.status === "error") showError(result.message);
+      else toast.show({ tone: "success", title: result.message });
       router.refresh();
     });
   }
@@ -225,11 +236,10 @@ export function ApiKeySettings({
     if (!window.confirm("このAPIキーを削除します。元に戻せません。続行しますか？")) {
       return;
     }
-    setNotice(null);
     startTransition(async () => {
       const result = await deleteApiKey({ provider });
       if (result.status === "error") {
-        setNotice({ message: result.message, tone: "error" });
+        showError(result.message);
         return;
       }
       setKeys((current) => {
@@ -249,42 +259,34 @@ export function ApiKeySettings({
 
   if (plan === "premium") {
     return (
-      <section className="rounded-2xl border bg-card p-6 shadow-sm" aria-labelledby="premium-key-heading">
+      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
-          <div className="rounded-xl bg-emerald-100 p-3 text-emerald-800">
+          <div className="rounded-card bg-success-bg p-3 text-success-fg">
             <ShieldCheck aria-hidden="true" className="size-6" />
           </div>
           <div>
             <h2 className="text-xl font-semibold" id="premium-key-heading">
-              Premiumはキー登録不要です
+              プレミアムプランはキー登録不要です
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。
+              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
             </p>
           </div>
         </div>
+        {usage ? (
+          <div className="mt-5">
+            <UsageSummaryCard nextResetLabel={usageResetLabel} summary={usage} />
+          </div>
+        ) : null}
       </section>
     );
   }
 
   return (
     <div className="space-y-7">
-      {notice ? (
-        <p
-          className={`rounded-xl border p-4 text-sm ${
-            notice.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-red-200 bg-red-50 text-red-900"
-          }`}
-          role={notice.tone === "error" ? "alert" : "status"}
-        >
-          {notice.message}
-        </p>
-      ) : null}
-
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-foreground p-2 text-background">
+          <div className="rounded-card bg-brand-subtle p-2 text-brand">
             <KeyRound aria-hidden="true" className="size-5" />
           </div>
           <div>
@@ -358,7 +360,7 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
         <h2 className="text-xl font-semibold" id="ai-key-heading">AI APIキー</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
@@ -367,7 +369,7 @@ export function ApiKeySettings({
           {AI_PROVIDERS.map(({ label, provider }) => {
             const keyState = keys[provider];
             return (
-              <article className="rounded-xl border p-4" key={provider}>
+              <article className="rounded-card border p-4" key={provider}>
                 <h3 className="font-semibold">{label}</h3>
                 {keyState ? <div className="mt-3"><SavedKeySummary keyState={keyState} /></div> : (
                   <p className="mt-3 text-sm text-muted-foreground">未登録</p>
@@ -417,9 +419,9 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
+      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-full bg-sky-100 text-sm font-bold text-sky-800">?</span>
+          <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
           <h2 className="text-xl font-semibold" id="x-guide-heading">X Developer Appの取得・設定手順</h2>
         </div>
         <ol className="mt-5 space-y-5 text-sm leading-6">
@@ -427,7 +429,7 @@ export function ApiKeySettings({
             <span className="font-bold">1.</span>
             <div>
               <p className="font-medium">Developer ConsoleでAppを作成</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-sky-700 underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
+              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<ExternalLink aria-hidden="true" className="size-4" />
               </a>
             </div>
@@ -461,13 +463,13 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
               <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-sky-700 underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
+              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
                 X公式の料金・予算設定を確認<ExternalLink aria-hidden="true" className="size-4" />
               </a>
             </div>
           </li>
         </ol>
-        <div className="mt-6 flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 flex min-h-40 items-center justify-center rounded-card border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
           Developer Console設定画面のスクリーンショット（差し替え準備中）
         </div>
       </section>

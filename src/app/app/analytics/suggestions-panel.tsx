@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { refreshSuggestionsAction } from "@/app/actions/suggestions";
+import { useToast } from "@/components/ui/toast";
 import type { SuggestionDisplay } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
 
@@ -72,7 +73,7 @@ export function SuggestionsPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [note, setNote] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const toast = useToast();
   const [polls, setPolls] = useState(0);
 
   // 生成中は完了まで自動で取り直す（利用者に手動再読み込みを強いない）。上限で自動停止し、
@@ -91,11 +92,16 @@ export function SuggestionsPanel({
     startTransition(async () => {
       const res = await refreshSuggestionsAction({ request_key: uuid() });
       if (res.status === "success") {
-        setNote({ kind: "info", text: "改善提案を生成中です。完了すると自動で表示に反映されます。" });
+        // 進行中であること自体は見出し横の「生成中…」が出し続ける（トーストは5秒で消える）。
+        toast.show({
+          tone: "success",
+          title: "改善提案の生成を始めました",
+          description: "完了すると自動で表示に反映されます。",
+        });
         setPolls(0);
         router.refresh();
       } else {
-        setNote({ kind: "error", text: rejectionMessage(res) });
+        toast.show({ tone: "error", title: "更新できませんでした", description: rejectionMessage(res) });
       }
     });
   }
@@ -107,7 +113,7 @@ export function SuggestionsPanel({
   );
 
   return (
-    <section className="rounded-xl border bg-background p-4">
+    <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">改善提案</h2>
         {generating ? (
@@ -130,7 +136,7 @@ export function SuggestionsPanel({
             再読み込み
           </button>
           <button
-            className="inline-flex h-9 items-center rounded-lg bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || generating}
             onClick={refresh}
             type="button"
@@ -141,18 +147,8 @@ export function SuggestionsPanel({
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">
-        提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（md・premiumプラン）でご自身で反映してください。
+        提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（mdプラン・プレミアムプラン）でご自身で反映してください。
       </p>
-
-      {note ? (
-        <p
-          className={`mt-3 rounded-lg border px-4 py-2 text-sm ${
-            note.kind === "error" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-300 bg-sky-50 text-sky-950"
-          }`}
-        >
-          {note.text}
-        </p>
-      ) : null}
 
       {suggestions.length === 0 ? (
         <div className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -171,7 +167,7 @@ export function SuggestionsPanel({
       ) : (
         <ul className="mt-4 space-y-3">
           {suggestions.map((s, i) => (
-            <li className="rounded-xl border bg-background p-4" key={i}>
+            <li className="rounded-card border border-hairline bg-surface p-4" key={i}>
               <p className="text-sm font-medium">{s.content}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                 {s.axis ? (
@@ -194,7 +190,7 @@ export function SuggestionsPanel({
                   <ul className="mt-1 space-y-1">
                     {s.posts.map((p) => (
                       <li className="text-xs" key={p.tweetId}>
-                        <a className="text-sky-700 hover:underline" href={p.url} rel="noopener noreferrer" target="_blank">
+                        <a className="text-info-fg hover:underline" href={p.url} rel="noopener noreferrer" target="_blank">
                           {p.body ? `${p.body}${p.body.length >= 100 ? "…" : ""}` : `投稿 ${p.tweetId}`}
                         </a>
                       </li>

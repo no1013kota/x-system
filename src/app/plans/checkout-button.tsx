@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import type { PlanId } from "@/lib/plans";
 import { startCheckout } from "@/lib/stripe/checkout-browser";
 
@@ -14,19 +15,18 @@ export function CheckoutButton({
   planName: string;
 }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleCheckout() {
     setPending(true);
-    setError(null);
     try {
       await startCheckout(plan);
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "決済画面を開けませんでした。",
-      );
+      toast.show({
+        tone: "error",
+        title: "決済画面を開けませんでした",
+        description: cause instanceof Error ? cause.message : "時間をおいてもう一度お試しください。",
+      });
       setPending(false);
     }
   }
@@ -40,15 +40,10 @@ export function CheckoutButton({
         disabled={pending}
         onClick={handleCheckout}
         type="button"
-        variant={plan === "premium" ? "default" : "outline"}
+        variant="brand"
       >
         {pending ? "決済画面を開いています…" : "7日間無料で利用"}
       </Button>
-      {error ? (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }
