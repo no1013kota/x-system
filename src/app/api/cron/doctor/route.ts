@@ -33,6 +33,12 @@ export async function GET(request: Request): Promise<Response> {
       supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
       anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     },
+    // プラン管理の操作がStripe側で有効かを読み取る（T-M8-32）。鍵が無い環境では
+    // 「判定できません」になるだけで、赤くはしない。
+    portal: {
+      configurationId: env.STRIPE_PORTAL_CONFIGURATION_ID,
+      stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,
+    },
   });
   // 対応が必要な問題があれば5xxで返し、監視や `doctor` が判定しやすいようにする。
   return Response.json(report, { status: report.level === "error" ? 500 : 200 });

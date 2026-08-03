@@ -17,7 +17,22 @@ function configuredPriceIds() {
   ];
 }
 
-export function portalConfiguration({ appBaseUrl, priceIds, productId }) {
+/**
+ * Portalの `subscription_update.products` は **Product ごとの配列**（T-M8-32）。
+ *
+ * 以前は「3つのPriceは同一Product配下」であることを前提に1件だけ渡していた。実際のStripe
+ * アカウントではPriceが3つのProductに分かれており、そのため setup が例外で止まり、
+ * **`subscription_update` が無効な configuration が残ったまま**になっていた（画面の
+ * 「プランを変更」を押すとStripeが拒否する）。Stripeは複数Productを列挙できるので、
+ * 同一Productを要求せず**あるがままをグループ化して渡す**。
+ */
+export function portalUpdateProducts(pricesByProduct) {
+  return Object.entries(pricesByProduct)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([product, prices]) => ({ product, prices: [...prices].sort() }));
+}
+
+export function portalConfiguration({ appBaseUrl, updateProducts }) {
   const baseUrl = appBaseUrl.replace(/\/$/, "");
   return {
     name: "Space AI subscription management",
@@ -39,7 +54,7 @@ export function portalConfiguration({ appBaseUrl, priceIds, productId }) {
         enabled: true,
         default_allowed_updates: ["price"],
         proration_behavior: "create_prorations",
-        products: [{ product: productId, prices: priceIds }],
+        products: updateProducts,
         schedule_at_period_end: {
           conditions: [{ type: "decreasing_item_amount" }],
         },
@@ -51,16 +66,18 @@ export function portalConfiguration({ appBaseUrl, priceIds, productId }) {
   };
 }
 
-function productIdOf(price) {
+export function productIdOf(price) {
   return typeof price.product === "string" ? price.product : price.product.id;
 }
 
-export function sharedProductId(prices) {
-  const productIds = new Set(prices.map(productIdOf));
-  if (productIds.size !== 1) {
-    throw new Error("Configured Stripe Prices must belong to one shared Product.");
+/** Price を Product ごとにまとめる（同一Productであることは要求しない）。 */
+export function groupPricesByProduct(prices) {
+  const out = {};
+  for (const price of prices) {
+    const product = productIdOf(price);
+    out[product] = [...(out[product] ?? []), price.id];
   }
-  return [...productIds][0];
+  return out;
 }
 
 async function main() {
@@ -76,8 +93,7 @@ async function main() {
             "Retrieve the three configured Prices and require one shared Product before creation.",
           configuration: portalConfiguration({
             appBaseUrl,
-            priceIds,
-            productId: "<shared_product_from_prices>",
+            updateProducts: [{ product: "<product_from_price>", prices: priceIds }],
           }),
         },
         null,
@@ -91,20 +107,50 @@ async function main() {
     apiVersion: API_VERSION,
   });
   const prices = await Promise.all(priceIds.map((id) => stripe.prices.retrieve(id)));
-  const productId = sharedProductId(prices);
-  const configuration = await stripe.billingPortal.configurations.create(
-    portalConfiguration({ appBaseUrl, priceIds, productId }),
-  );
+  const desired = portalConfiguration({
+    appBaseUrl,
+    updateProducts: portalUpdateProducts(groupPricesByProduct(prices)),
+  });
+
+  // **既にIDがあるなら作り直さず更新する**（T-M8-32）。
+  //
+  // 以前は毎回 create していたため、走らせるたびに新しい configuration ができ、
+  // env の `STRIPE_PORTAL_CONFIGURATION_ID` を人が書き換える手順が要った。書き換え漏れで
+  // **古い設定を指したまま**になり、「プランを変更」が Stripe 側で無効なまま気付かなかった
+  // （2026-08-03）。IDを変えなければ、env を触らずにコードと設定を一致させられる。
+  const existingId = process.env.STRIPE_PORTAL_CONFIGURATION_ID;
+  const configuration = existingId
+    ? await stripe.billingPortal.configurations.update(existingId, desired)
+    : await stripe.billingPortal.configurations.create(desired);
+
+  // 画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
+  // （「更新した」だけでは、送った内容が反映された保証にならない）。
+  const applied = await stripe.billingPortal.configurations.retrieve(configuration.id);
+  const features = {
+    subscription_update: applied.features?.subscription_update?.enabled === true,
+    subscription_cancel: applied.features?.subscription_cancel?.enabled === true,
+  };
+  const missing = Object.entries(features)
+    .filter(([, enabled]) => !enabled)
+    .map(([key]) => key);
   console.log(
     JSON.stringify(
       {
         configurationId: configuration.id,
-        nextStep: "Set STRIPE_PORTAL_CONFIGURATION_ID to this ID in the target environment.",
+        mode: existingId ? "updated-in-place" : "created",
+        features,
+        ...(existingId
+          ? {}
+          : { nextStep: "Set STRIPE_PORTAL_CONFIGURATION_ID to this ID in the target environment." }),
       },
       null,
       2,
     ),
   );
+  if (missing.length > 0) {
+    console.error(`Portal features still disabled after apply: ${missing.join(", ")}`);
+    process.exitCode = 1;
+  }
 }
 
 const isEntrypoint = process.argv[1] &&
