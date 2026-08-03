@@ -6,7 +6,6 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
-import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { env } from "@/lib/env";
@@ -245,7 +244,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </section>
         )}
       </div>
-      <LegalFooter className="mt-10" />
     </main>
   );
 }

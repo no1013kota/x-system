@@ -4,6 +4,7 @@ import Link from "next/link";
 import { APP_NAME } from "@/lib/app-config";
 import { safeAuthNext } from "@/lib/auth/confirm";
 import { env } from "@/lib/env";
+import { LegalFooter } from "@/components/legal-footer";
 
 import { PasswordResetRequestForm } from "./password-reset-request-form";
 import { LoginForm } from "./login-form";
@@ -28,7 +29,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const requestingReset = params.mode === "forgot-password";
 
   return (
-    <main className="bg-page flex min-h-screen items-center justify-center px-4 py-12">
+    // 法務3ページへの導線を置く（T-M8-30）。会員登録には前からあり、**ログインだけ無かった**。
+    // ログインから入る利用者が規約へ辿れない状態を残さない（要件06 §11）。
+    <div className="bg-page flex min-h-screen flex-col">
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-[400px] space-y-6 rounded-card border border-hairline bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
         <header className="space-y-2 text-center">
           <span className="inline-flex items-center justify-center gap-2">
@@ -65,7 +69,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         ) : (
           <LoginForm next={next} />
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+      <LegalFooter />
+    </div>
   );
 }

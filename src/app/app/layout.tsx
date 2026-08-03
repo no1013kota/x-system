@@ -17,6 +17,7 @@ import { loadTodaysPostCount } from "@/lib/usage/daily-post-limit-server";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import type { PlanId } from "@/lib/plans";
 import { PortalButton } from "@/components/billing/portal-button";
+import { LegalFooter } from "@/components/legal-footer";
 import { getCurrentUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import {
@@ -136,7 +137,7 @@ export default async function AppLayout({
         <AppNavigation />
       </aside>
 
-      <div className="min-w-0 flex-1 pb-20 lg:pb-0">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-20 lg:pb-0">
         {/* トップバー54px。左=現在の画面名、右=通知・Xアカウント（デザイン §レイアウト骨格）。 */}
         <header className="sticky top-0 z-20 flex h-[54px] items-center gap-3 border-b border-hairline bg-surface px-4 lg:px-6">
           <BrandLogo className="lg:hidden" />
@@ -214,6 +215,13 @@ export default async function AppLayout({
         ))}
 
         {children}
+
+        {/*
+          法務3ページへの導線はApp Shellの最下部に1つ置く（T-M8-30）。
+          以前は設定画面だけが自前で出していて、**設定以外の画面からは辿れない**うえ、
+          中身が短いと画面の途中に浮いて見えた（`mt-auto` で最下部へ寄せる）。
+        */}
+        <LegalFooter className="mt-auto" />
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
