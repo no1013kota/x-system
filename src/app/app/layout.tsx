@@ -8,14 +8,17 @@ import { Icon } from "@/components/ui/icon";
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
 import {
   computeXAccountBanners,
+  dailyPostLimitBanner,
   usageLimitBanner,
   type AppBanner,
 } from "@/lib/app-banners";
 import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
+import { loadTodaysPostCount } from "@/lib/usage/daily-post-limit-server";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import type { PlanId } from "@/lib/plans";
 import { PortalButton } from "@/components/billing/portal-button";
 import { getCurrentUser } from "@/lib/auth/session";
+import { env } from "@/lib/env";
 import {
   subscriptionBannerFor,
   type SubscriptionBannerProfile,
@@ -55,6 +58,7 @@ export default async function AppLayout({
   let notificationCursor: string | null = null;
   let xBanners: AppBanner[] = [];
   let usageBanner: AppBanner | null = null;
+  let dailyPostBanner: AppBanner | null = null;
   if (user) {
     // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
     activeAccountId = await resolveActiveXAccountForUser(user.id);
@@ -102,6 +106,15 @@ export default async function AppLayout({
         usageBanner = usageLimitBanner(
           await loadUsageSummaryForUser(user.id, result.data.plan),
         );
+        // 日次投稿上限（全プラン共通・Xアカウント単位）に達したことの常設バナー
+        // （要決定D-15・案A, T-M8-26）。**上限は選択中のアカウント単位**なので、
+        // 切り替えると別のアカウントの状況が出る（それが正しい）。
+        if (activeAccountId) {
+          dailyPostBanner = dailyPostLimitBanner({
+            todaysPosts: await loadTodaysPostCount(activeAccountId),
+            dailyLimit: env.X_DAILY_POST_LIMIT,
+          });
+        }
       }
     }
   }
@@ -183,7 +196,7 @@ export default async function AppLayout({
           </aside>
         ) : null}
 
-        {[...xBanners, ...(usageBanner ? [usageBanner] : [])].map((xBanner) => (
+        {[...xBanners, ...(usageBanner ? [usageBanner] : []), ...(dailyPostBanner ? [dailyPostBanner] : [])].map((xBanner) => (
           <aside
             aria-label={xBanner.title}
             className="border-b border-warn-fg/25 bg-warn-bg px-4 py-4 text-warn-fg"
