@@ -105,6 +105,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [1, 3],
           time_jst: "09:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -145,6 +146,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [2],
           time_jst: "10:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -179,6 +181,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [4],
           time_jst: "11:00",
           mode: "auto",
+          theme: "other",
           image_enabled: false,
         },
         deps,
@@ -224,6 +227,7 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [5],
           time_jst: "12:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         ownerDeps,
@@ -258,7 +262,7 @@ describe("enableScheduleSlot (local DB)", () => {
    * 分野（発信テーマ）の保存（T-M8-28）。DBには CHECK 制約を付けてある。
    * **画面のzodだけでは守れない**（Server Action を直接叩けば通る）ので、実DBで往復を確かめる。
    */
-  it("分野を保存して読み戻せる。未指定は null のまま（従来の挙動を変えない）", async () => {
+  it("分野を保存して読み戻せる。「その他」も値として入る（NULLは入らない）", async () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {
       const deps = depsFor(xAccountId);
@@ -276,20 +280,22 @@ describe("enableScheduleSlot (local DB)", () => {
       );
       expect(withTheme.theme).toBe("business_ops");
 
-      const withoutTheme = await createScheduleSlot(
+      // 「その他」は追加指示に分野を書く意思表示。null は**入らない**（DBが NOT NULL）。
+      const other = await createScheduleSlot(
         userId,
         {
           pattern: "p3",
           weekdays: [2],
           time_jst: "10:00",
           mode: "draft",
+          theme: "other",
           image_enabled: false,
         },
         deps,
       );
-      expect(withoutTheme.theme).toBeNull();
+      expect(other.theme).toBe("other");
 
-      // 編集で外せる（一度選んだら戻せない、にしない）。
+      // 編集で「その他」へ戻せる（一度選んだら変えられない、にしない）。
       const cleared = await updateScheduleSlot(
         userId,
         {
@@ -299,12 +305,12 @@ describe("enableScheduleSlot (local DB)", () => {
           weekdays: [1],
           time_jst: "09:00",
           mode: "draft",
-          theme: null,
+          theme: "other",
           image_enabled: false,
         },
         deps,
       );
-      expect(cleared.theme).toBeNull();
+      expect(cleared.theme).toBe("other");
     } finally {
       await cleanup(userId);
     }

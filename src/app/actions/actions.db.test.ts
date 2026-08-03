@@ -204,6 +204,8 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
       weekdays: [1, 3],
       time_jst: "09:00",
       mode: "draft",
+      // 分野は必須（T-M8-29）。"other" は「追加指示に記載」。
+      theme: "other",
       image_enabled: false,
     });
     expect(created.status, JSON.stringify(created)).toBe("success");

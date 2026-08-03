@@ -176,46 +176,61 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
       const { xid } = await makeAccount(c);
       // valid baseline
       await c.query(
-        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-         values ($1, 'p1', '{1,3,5}', '09:30', 'draft')`,
+        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+         values ($1, 'p1', '{1,3,5}', '09:30', 'draft', 'other')`,
         [xid],
       );
       // p5 forbidden
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-           values ($1, 'p5', '{1}', '09:00', 'draft')`,
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+           values ($1, 'p5', '{1}', '09:00', 'draft', 'other')`,
           [xid],
         ),
       );
       // time out of range
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-           values ($1, 'p1', '{1}', '22:30', 'draft')`,
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+           values ($1, 'p1', '{1}', '22:30', 'draft', 'other')`,
           [xid],
         ),
       );
       // minute not 00/30
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-           values ($1, 'p1', '{1}', '09:15', 'draft')`,
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+           values ($1, 'p1', '{1}', '09:15', 'draft', 'other')`,
           [xid],
         ),
       );
       // weekday out of range
       await expectViolation(c, () =>
         c.query(
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+           values ($1, 'p1', '{7}', '09:00', 'draft', 'other')`,
+          [xid],
+        ),
+      );
+      // 分野は必須で、値は選択肢マスタ＋other に限る（T-M8-29）
+      await expectViolation(c, () =>
+        c.query(
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
+           values ($1, 'p1', '{1}', '09:00', 'draft', 'bogus')`,
+          [xid],
+        ),
+      );
+      await expectViolation(c, () =>
+        c.query(
           `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-           values ($1, 'p1', '{7}', '09:00', 'draft')`,
+           values ($1, 'p1', '{1}', '09:00', 'draft')`,
           [xid],
         ),
       );
       // 画像ONにproviderの指定は不要（D-6 案B: AI設定のAI用途を正とする）
       await c.query(
-        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled)
-         values ($1, 'p1', '{1}', '09:00', 'draft', true)`,
+        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled)
+         values ($1, 'p1', '{1}', '09:00', 'draft', 'other', true)`,
         [xid],
       );
     });

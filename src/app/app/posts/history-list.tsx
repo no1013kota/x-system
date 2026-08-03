@@ -100,29 +100,25 @@ function HistoryRow({
       <td className="px-2 py-3 whitespace-nowrap text-ink-2">
         {draft.posted_mode ? (MODE_LABEL[draft.posted_mode] ?? draft.posted_mode) : "—"}
       </td>
-      <td className="max-w-[26rem] px-2 py-3">
-        <details>
-          <summary className="cursor-pointer truncate text-ink">
-            {draft.thread[0]?.text ?? ""}
-          </summary>
-          <ol className="mt-2 space-y-2">
-            {draft.thread.map((post, index) => (
-              <li className="rounded-card border border-hairline p-2.5" key={post.local_id}>
-                <p className="whitespace-pre-wrap text-ink-2">{post.text}</p>
-                {draft.tweet_ids[index] ? (
-                  <a
-                    className="mt-1.5 inline-block text-[11.5px] text-brand underline-offset-2 hover:underline"
-                    href={tweetUrl(handle, draft.tweet_ids[index])}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    Xで見る（ポスト{index + 1}）
-                  </a>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </details>
+      {/*
+        内容は**全文をそのまま出す**（2026-08-03 ユーザー判断）。以前は1ポスト目だけを
+        1行に切って `<details>` で畳んでいたが、履歴の列に求められているのは「何を投稿したか」
+        そのもの。折りたたむと開く操作が必要で、切るとどの投稿か分からない。
+        Xへのリンクは出さない（この列は投稿内容を読むためのもの）。
+      */}
+      <td className="max-w-[34rem] px-2 py-3 align-top">
+        <ol className="space-y-1.5">
+          {draft.thread.map((post, index) => (
+            <li className="flex gap-2" key={post.local_id}>
+              {total > 1 ? (
+                <span className="shrink-0 pt-px font-sans text-[11px] tabular-nums text-ink-3">
+                  {index + 1}
+                </span>
+              ) : null}
+              <p className="whitespace-pre-wrap text-[12.5px] leading-5 text-ink">{post.text}</p>
+            </li>
+          ))}
+        </ol>
       </td>
       <td className="px-2 py-3 whitespace-nowrap text-ink-2">
         {total > 1 ? `スレッド(${total})` : "単発"}

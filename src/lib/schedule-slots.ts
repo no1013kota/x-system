@@ -4,7 +4,7 @@ import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
-import { THEME_IDS } from "@/lib/themes";
+import { POST_THEME_IDS } from "@/lib/post/post-theme";
 
 /**
  * schedule_slots CRUD の中核（要件05 §7・要件02 §3.10, S-1/S-2/S-4, T-M4-01）。本人のみ・active_x_account
@@ -35,11 +35,11 @@ const baseSlotFields = {
   time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください"),
   mode: z.enum(["draft", "auto"]),
   /**
-   * 分野（発信テーマ）。未指定なら従来どおりベースmdの発信テーマからAIが選ぶ（T-M8-28）。
-   * `<select>` の「指定なし」は空文字になるので、**呼び出し側が null へ寄せて渡す**
-   * （ここで transform すると出力型が必須になり、既存の呼び出しがすべて壊れる）。
+   * 分野。**必須**（T-M8-29）。「その他」は追加指示へ分野を書く意思表示。
+   * 「指定なし」という選択肢は置かない——既定のまま押されると、選んだつもりで選んでいない
+   * 状態になる。DBも NOT NULL ＋ CHECK で縛ってある（migration `20260803000002`）。
    */
-  theme: z.enum(THEME_IDS).nullish(),
+  theme: z.enum(POST_THEME_IDS),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
 };
@@ -63,7 +63,7 @@ export interface ScheduleSlotView {
   weekdays: number[];
   time_jst: string;
   mode: string;
-  theme: string | null;
+  theme: string;
   instructions: string | null;
   image_enabled: boolean;
   enabled: boolean;
@@ -142,7 +142,7 @@ export async function createScheduleSlot(
         input.weekdays,
         input.time_jst,
         input.mode,
-        input.theme ?? null,
+        input.theme,
         input.instructions ?? null,
         input.image_enabled,
       ],
@@ -188,7 +188,7 @@ export async function updateScheduleSlot(
         input.weekdays,
         input.time_jst,
         input.mode,
-        input.theme ?? null,
+        input.theme,
         input.instructions ?? null,
         input.image_enabled,
       ],

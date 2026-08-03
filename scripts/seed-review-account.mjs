@@ -188,17 +188,18 @@ async function main() {
     }
 
     // --- スケジュール（有効2件・停止中1件）---
+    // 分野は必須（T-M8-29）。曜日ごとに分野を変えた状態を見られるようにする。
     const slots = [
-      { pattern: "p1", weekdays: "{1,3,5}", time: "09:30", mode: "draft", enabled: true },
-      { pattern: "p3", weekdays: "{2,4}", time: "19:00", mode: "auto", enabled: true },
-      { pattern: "p6", weekdays: "{0}", time: "21:00", mode: "draft", enabled: false },
+      { pattern: "p1", weekdays: "{1,3,5}", time: "09:30", mode: "draft", theme: "ai", enabled: true },
+      { pattern: "p3", weekdays: "{2,4}", time: "19:00", mode: "auto", theme: "business_ops", enabled: true },
+      { pattern: "p6", weekdays: "{0}", time: "21:00", mode: "draft", theme: "other", enabled: false },
     ];
     for (const slot of slots) {
       await client.query(
         `insert into schedule_slots
-           (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled)
-         values ($1, $2::post_pattern, $3, $4, $5::schedule_mode, false, $6)`,
-        [xAccountId, slot.pattern, slot.weekdays, slot.time, slot.mode, slot.enabled],
+           (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled, enabled)
+         values ($1, $2::post_pattern, $3, $4, $5::schedule_mode, $6, false, $7)`,
+        [xAccountId, slot.pattern, slot.weekdays, slot.time, slot.mode, slot.theme, slot.enabled],
       );
     }
 
