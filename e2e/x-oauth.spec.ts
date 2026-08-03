@@ -77,3 +77,51 @@ test("callback URLのコピーが失敗したら理由が出る（黙って捨�
   // 失敗したのに成功の見た目にならない
   await expect(page.getByRole("button", { name: "コピー済み" })).toHaveCount(0);
 });
+
+/**
+ * 保存ボタンが**理由なく薄い**状態にしない（T-M8-46）。
+ *
+ * `disabled` に `clientId.length < 5` / `length < 16` が直書きされており、**何文字必要かも、
+ * Confidential では Secret が要ることも、画面のどこにも書かれていなかった**。
+ * 押せないボタンだけが出ている状態は、壊れているのと利用者から区別できない。
+ */
+test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46）", async ({ accounts, page }) => {
+  const account = await accounts.create("api-key-hint", { personaReady: true });
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=api-keys");
+
+  const save = page.getByRole("button", { name: "Xキーを保存" });
+  await expect(save).toBeDisabled();
+  await expect(page.getByText("Client ID を入力すると保存できます。")).toBeVisible();
+
+  // Confidential にすると Secret も必要になり、案内が切り替わる
+  await page.getByLabel("Client種別").selectOption("confidential");
+  await expect(
+    page.getByText("Client ID と Client Secret を入力すると保存できます。"),
+  ).toBeVisible();
+
+  await page.getByLabel("Client ID").fill("abcdef-123456");
+  await expect(save).toBeDisabled(); // Secret がまだ無い
+  await page.getByLabel("Client Secret").fill("secret-value-1234");
+  await expect(save).toBeEnabled();
+  await expect(
+    page.getByText("Client ID と Client Secret を入力すると保存できます。"),
+  ).toHaveCount(0);
+});
+
+/** AI APIキーの最小長を画面に出す（T-M8-46）。 */
+test("AI APIキーが短いあいだは必要な文字数が画面に出る（T-M8-46）", async ({ accounts, page }) => {
+  const account = await accounts.create("ai-key-hint", { personaReady: true });
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=api-keys");
+
+  const card = page.locator("article", { hasText: "Anthropic (Claude)" });
+  await card.getByLabel("APIキー").fill("short");
+  await expect(card.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+  await expect(card.getByText("APIキーは16文字以上です（いま5文字）。")).toBeVisible();
+
+  await card.getByLabel("APIキー").fill("sk-ant-0123456789abcdef");
+  await expect(card.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
+});
