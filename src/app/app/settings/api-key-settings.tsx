@@ -11,6 +11,7 @@ import {
   verifyApiKey,
 } from "@/app/actions/api-keys";
 import { aiSettingsTabHref } from "@/app/app/ai-settings/tabs";
+import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -21,6 +22,7 @@ import {
   type ApiKeyViewState,
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
+import type { UsageSummary } from "@/lib/usage/usage-summary";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -38,6 +40,15 @@ interface ApiKeySettingsProps {
   callbackUrl: string;
   initialKeys: ApiKeyViewState[];
   plan: PlanId;
+  /**
+   * プレミアムの月間利用枠（デザイン §設定・T-M8-25）。premium以外・未取得は null。
+   *
+   * キー登録が不要なプランでは、このタブは「不要です」の一文だけで**何も操作できない行き止まり**
+   * だった。キーの代わりに何が付いてくるのか（月間の枠と残量）をここで見せる。
+   * カードはホーム・課金タブと同じ `UsageSummaryCard` を使う（表示の定義を増やさない）。
+   */
+  usage?: UsageSummary | null;
+  usageResetLabel?: string;
 }
 
 function verificationDate(value: string | null): string | null {
@@ -86,6 +97,8 @@ export function ApiKeySettings({
   callbackUrl,
   initialKeys,
   plan,
+  usage = null,
+  usageResetLabel = "",
 }: ApiKeySettingsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -256,10 +269,15 @@ export function ApiKeySettings({
               プレミアムプランはキー登録不要です
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。
+              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
             </p>
           </div>
         </div>
+        {usage ? (
+          <div className="mt-5">
+            <UsageSummaryCard nextResetLabel={usageResetLabel} summary={usage} />
+          </div>
+        ) : null}
       </section>
     );
   }

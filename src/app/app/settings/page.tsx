@@ -103,9 +103,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (tab === "notifications") {
     userSettings = await getSettingsForUser(user.id);
   }
-  // premium 月間利用枠の残量（課金・プランタブ, 要件03 §8・要件06 §10, T-M6-12）。premium以外は null。
+  // premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・要件06 §10, T-M6-12/T-M8-25）。
+  // premium以外は null。APIキータブは「キー登録不要」の代わりに何が付くかをここで見せる。
   let usage: UsageSummary | null = null;
-  if (tab === "billing") {
+  if (tab === "billing" || tab === "api-keys") {
     usage = await loadUsageSummaryForUser(user.id, profile.plan ?? "standard");
   }
 
@@ -156,6 +157,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
             initialKeys={apiKeys}
             plan={profile.plan ?? "standard"}
+            usage={usage}
+            usageResetLabel={formatNextMonthStartJst(new Date())}
           />
         ) : tab === "notifications" && userSettings ? (
           <SettingsPreferences
