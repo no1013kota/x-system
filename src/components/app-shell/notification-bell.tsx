@@ -2,7 +2,7 @@
 
 import { Popover } from "@base-ui/react/popover";
 import { Icon } from "@/components/ui/icon";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import {
@@ -15,8 +15,18 @@ import type { NotificationView } from "@/lib/notifications";
 
 /**
  * ヘッダの通知ベル＋一覧（要件05 §10・要件06 §2, O-2, T-M2-20）。未読件数バッジを出し、Popoverで
- * in_app 通知を新しい順に表示する。項目クリックで既読化し、link があれば対象画面へ遷移する。
- * 「すべて既読」で一括既読化し、未読数を即時更新する。閲覧・既読化のみ（作成・メールはジョブ系MS）。
+ * in_app 通知を新しい順に表示する。「すべて既読」で一括既読化し、未読数を即時更新する。
+ * 閲覧・既読化のみ（作成・メールはジョブ系MS）。
+ *
+ * ## 押した瞬間に動かす（T-M8-32）
+ *
+ * 以前は**既読化のサーバ往復を待ってから**閉じて遷移していた（手元で370ms、デプロイ先では
+ * 1〜2秒）。押しても何も起きない時間があると、利用者はもう一度押すか壊れたと思う。
+ * **閉じる・遷移は即座に行い、既読化は投げるだけ**にする（失敗しても次に開いたときに未読のまま
+ * 出るので、取り返しがつく）。
+ *
+ * リンクの無い通知は押せる形にしない。押しても何も起きないものをボタンにすると、
+ * 反応しないアプリだと受け取られる（既読は「すべて既読」で行える）。
  */
 export function NotificationBell({
   initialUnread,
@@ -28,6 +38,8 @@ export function NotificationBell({
   initialCursor: string | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
@@ -39,27 +51,26 @@ export function NotificationBell({
       prev.map((n) => (n.id === id && !n.readAt ? { ...n, readAt: "read" } : n)),
     );
 
-  function openNotification(item: NotificationView) {
-    if (!item.readAt) markReadLocal(item.id);
-    startTransition(async () => {
-      const res = await markNotificationReadAction({ notification_id: item.id });
-      if (res.status === "success" && typeof res.unreadCount === "number") {
-        setUnread(res.unreadCount);
-      }
-      if (item.link) {
-        setOpen(false);
-        router.push(item.link);
-      }
-    });
+  function openNotification(item: NotificationView & { link: string }) {
+    // 先に見た目を確定させる（サーバの応答を待たない）。
+    if (!item.readAt) {
+      markReadLocal(item.id);
+      setUnread((n) => Math.max(0, n - 1));
+    }
+    setOpen(false);
+    // 同じ画面へのリンクは `push` だけでは何も起きない。再取得して「押した結果」を見せる。
+    if (item.link === `${pathname}${search ? `?${search}` : ""}`) router.refresh();
+    else router.push(item.link);
+    // 既読化は投げるだけ。落ちても次に開いたとき未読のまま出るので取り返しがつく。
+    void markNotificationReadAction({ notification_id: item.id });
   }
 
   function markAll() {
+    // 表示はここで確定させる。`router.refresh()` は呼ばない——開いたままページ全体を
+    // 再取得すると重く、ポップアップがちらつく（未読数はこのstateが持っている）。
     setUnread(0);
     setItems((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? "read" })));
-    startTransition(async () => {
-      await markAllNotificationsReadAction();
-      router.refresh();
-    });
+    void markAllNotificationsReadAction();
   }
 
   function loadMore() {
@@ -108,17 +119,29 @@ export function NotificationBell({
               </p>
             ) : (
               <ul className="max-h-96 divide-y divide-hairline overflow-y-auto">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const Row = item.link ? "button" : "div";
+                  return (
                   <li key={item.id}>
-                    <button
-                      className="flex w-full items-start gap-2 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.02] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                      onClick={() => openNotification(item)}
-                      type="button"
+                    <Row
+                      className={`flex w-full items-start gap-2 px-4 py-2.5 text-left ${
+                        item.link
+                          ? "transition-colors duration-150 hover:bg-black/[0.02] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                          : ""
+                      }`}
+                      {...(item.link
+                        ? { onClick: () => openNotification({ ...item, link: item.link as string }), type: "button" as const }
+                        : {})}
                     >
+                      {/* 未読の印。**失敗は赤**にして、ニュースの通知に埋もれないようにする。 */}
                       <span
                         aria-hidden="true"
-                        className={`mt-1.5 size-2 shrink-0 rounded-full ${
-                          item.readAt ? "bg-transparent" : "bg-brand"
+                        className={`mt-1.5 size-2 shrink-0 rounded-pill ${
+                          item.readAt
+                            ? "bg-transparent"
+                            : item.type === "error"
+                              ? "bg-danger-dot"
+                              : "bg-brand"
                         }`}
                       />
                       <span className="min-w-0 flex-1">
@@ -130,9 +153,10 @@ export function NotificationBell({
                           {formatJst(item.createdAt)}
                         </span>
                       </span>
-                    </button>
+                    </Row>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
 
