@@ -23,7 +23,8 @@
     "doctor": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/doctor.mjs",
     "release:staging": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs staging",
     "release:production": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production",
-    "icons:generate": "node scripts/generate-icons.mjs"
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "seed:review": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-review-account.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
