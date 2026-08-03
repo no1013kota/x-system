@@ -121,3 +121,45 @@ test("設定のXアカウント一覧から操作対象を切り替えられ、�
   await page.goto("/app/posts?tab=drafts");
   await expect(page.getByText(firstDraft)).toBeVisible();
 });
+
+/**
+ * 状態は**色でも**分かること（T-M8-36）。
+ *
+ * M8で `Badge` の tone 名を className へ文字列展開してしまい、`class="... success"` という
+ * 存在しないユーティリティになって「有効」「要再連携」「停止中」「エラー」が全部同じ見た目に
+ * なっていた。**typecheck・lint・既存E2Eはすべて緑**で、色が消えたことは誰も見ていなかった。
+ *
+ * クラス名ではなく**実際に計算された背景色**を見る。クラス名を確かめても、Tailwindが
+ * そのユーティリティを持たなければ色は出ないので、同じ見落としが再発する。
+ */
+test("Xアカウントの状態は色でも区別できる（要再連携が有効と同じ見た目にならない）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("tone", { personaReady: true });
+  const second = await addSecondAccount(account.userId);
+  await query(`update x_accounts set status = 'expired' where id = $1`, [second.id]);
+
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=x-accounts");
+  await expect(page.getByRole("heading", { name: "Xアカウント" })).toBeVisible();
+
+  const activeChip = page
+    .locator("li", { hasText: `@${account.handle}` })
+    .getByText("有効", { exact: true });
+  const expiredChip = page
+    .locator("li", { hasText: `@${second.handle}` })
+    .getByText("要再連携（トークン失効）", { exact: true });
+  await expect(activeChip).toBeVisible();
+  await expect(expiredChip).toBeVisible();
+
+  const background = (locator: typeof activeChip) =>
+    locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const [activeBg, expiredBg] = await Promise.all([background(activeChip), background(expiredChip)]);
+
+  // 透明（＝トーンが当たっていない）ではないこと
+  expect(activeBg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(expiredBg).not.toBe("rgba(0, 0, 0, 0)");
+  // 2つの状態が同じ色にならないこと
+  expect(activeBg).not.toBe(expiredBg);
+});
