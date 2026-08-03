@@ -13,11 +13,9 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 const pooledDb = pooledQueryable();
 
-import {
-  CreatePostForm,
-  type ActiveJob,
-  type PatternOption,
-} from "./create-post-form";
+import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "@/lib/post/post-patterns";
+
+import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
 
@@ -28,16 +26,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "create", label: "作成" },
   { id: "drafts", label: "下書き" },
   { id: "history", label: "履歴" },
-];
-
-// 説明にはポスト数の目安を入れる（要件06 §4.1）。何が作られるか押す前に分かるようにする。
-const ALL_PATTERNS: PatternOption[] = [
-  { id: "p1", label: "ニュース解説", description: "話題のニュースを解説するスレッド（4〜6ポスト）" },
-  { id: "p2", label: "自分の考え・意見", description: "本人の視点で述べる単発ポスト（1ポスト）" },
-  { id: "p3", label: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド（3〜5ポスト）" },
-  { id: "p4", label: "トレンド便乗", description: "いま話題のトピックに便乗するスレッド（3〜5ポスト）" },
-  { id: "p6", label: "週次まとめ", description: "直近7日の関連ニュースまとめ（5〜7ポスト）" },
-  // P-5（引用ポスト）は FEATURE_QUOTE_POST_ENABLED=true のときだけ追加する。
 ];
 
 interface PostsPageProps {
@@ -69,12 +57,10 @@ async function createTabData(userId: string, activeXAccountId: string) {
       userId,
     ])
   ).rows[0];
+  // 選択肢は `lib/post/post-patterns.ts` が唯一の定義（スケジュール画面と共有・T-M8-29）。
   const patterns = env.FEATURE_QUOTE_POST_ENABLED
-    ? [
-        ...ALL_PATTERNS,
-        { id: "p5", label: "引用ポスト", description: "対象ポストへの引用（URL付き投稿・1ポスト）" },
-      ]
-    : ALL_PATTERNS;
+    ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
+    : POST_PATTERN_OPTIONS;
   const imageProviders = await availableImageProviders(userId, profile?.plan ?? null);
   const inflight = (
     await getPool().query<{

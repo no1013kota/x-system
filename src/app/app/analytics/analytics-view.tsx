@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatJst } from "@/lib/format";
@@ -108,16 +107,14 @@ export function AnalyticsView({
                 <span className="ml-auto text-xs text-muted-foreground">{fmtDate(draft.postedAt)}</span>
               </div>
 
-              {/* どの投稿かを識別できるように本文冒頭と履歴への導線を置く */}
+              {/*
+                どの投稿かを識別できるように本文冒頭を置く。**履歴への導線は出さない**
+                （2026-08-03 ユーザー判断）。下の表に各ポストの本文と実績が並ぶので、
+                同じ内容を別画面で開き直す必要が無い。
+              */}
               {draft.excerpt ? (
                 <p className="mt-2 line-clamp-2 text-sm">{draft.excerpt}</p>
               ) : null}
-              <Link
-                className="mt-1 inline-block text-xs text-primary underline"
-                href={`/app/posts?tab=history&draftId=${draft.draftId}`}
-              >
-                履歴で開く
-              </Link>
 
               {/* スレッド合算（選択checkpoint） */}
               <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">

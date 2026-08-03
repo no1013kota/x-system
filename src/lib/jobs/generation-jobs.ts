@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { THEME_IDS } from "@/lib/themes";
+import { OTHER_POST_THEME, POST_THEME_IDS } from "@/lib/post/post-theme";
 
 import {
   checkExecutionPrerequisites,
@@ -35,10 +35,10 @@ export const createGenerationJobSchema = z.object({
   user_opinion: z.string().max(2000).nullish(),
   instructions: z.string().max(2000).nullish(),
   /**
-   * 分野（発信テーマ）。未指定なら従来どおりベースmdの発信テーマからAIが選ぶ（T-M8-28）。
-   * 値は `lib/themes.ts` の THEME_IDS と同じ集合。
+   * 分野。**必須**（T-M8-29）。「その他」は追加指示へ分野を書く意思表示で、
+   * プロンプトへは分野を出さない（`lib/post/post-theme.ts`）。
    */
-  theme: z.enum(THEME_IDS).nullish(),
+  theme: z.enum(POST_THEME_IDS),
   image_enabled: z.boolean().optional().default(false),
   news_item_id: z.string().uuid().nullish(),
 });
@@ -76,7 +76,7 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     quote_tweet_id: null,
     user_opinion: input.user_opinion ?? null,
     instructions: input.instructions ?? null,
-    theme: input.theme ?? null,
+    theme: input.theme,
     image_enabled: input.image_enabled,
     news_item_id: input.news_item_id ?? null,
     requested_mode: "draft",
@@ -230,6 +230,8 @@ export async function createDraftFromNews(
       request_key: input.request_key,
       x_account_id: input.x_account_id,
       pattern: "p1",
+      // ニュースから作る場合は分野を選ばせない（記事そのものが題材なので、分野で絞る意味が無い）。
+      theme: OTHER_POST_THEME,
       source_url: sourceUrl,
       quote_url: null,
       user_opinion: null,

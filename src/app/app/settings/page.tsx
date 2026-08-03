@@ -8,7 +8,7 @@ import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { LegalFooter } from "@/components/legal-footer";
 import { PortalButton } from "@/components/billing/portal-button";
-import { primaryLinkClassName, secondaryLinkClassName } from "@/components/ui/link-button";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 import { env } from "@/lib/env";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
@@ -209,15 +209,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   </dd>
                 </div>
               </dl>
-              <div className="mt-7 flex flex-wrap items-start gap-3">
+              {/*
+                導線は1つにする（T-M8-29）。`PortalButton` が契約状態で行き先を変える
+                （契約中→Stripeのプラン管理／契約前→料金プラン）ので、`/plans` への
+                別リンクを並べると同じ行き先が2つ出る。
+              */}
+              <div className="mt-7">
                 <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
-                <Link className={secondaryLinkClassName} href="/plans">
-                  プランを見る
-                </Link>
               </div>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              プラン変更、お支払い方法の更新、期間末解約はStripeの安全なお支払い管理画面で行います。変更内容はStripeからの通知後に反映されます。
+              プラン変更、お支払い方法の更新、期間末解約はStripeの安全な管理画面で行います。変更内容はStripeからの通知後に反映されます。
             </p>
             {usage ? (
               <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />

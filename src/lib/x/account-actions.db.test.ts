@@ -128,15 +128,15 @@ describe("X account management actions (local DB)", () => {
       );
       const auto = (
         await c.query<{ id: string }>(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, enabled)
-           values ($1,'p1','{1,2,3}','09:00','auto',true) returning id`,
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
+           values ($1,'p1','{1,2,3}','09:00','auto','other',true) returning id`,
           [xid],
         )
       ).rows[0].id;
       const draft = (
         await c.query<{ id: string }>(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, enabled)
-           values ($1,'p1','{4,5}','10:00','draft',true) returning id`,
+          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
+           values ($1,'p1','{4,5}','10:00','draft','other',true) returning id`,
           [xid],
         )
       ).rows[0].id;

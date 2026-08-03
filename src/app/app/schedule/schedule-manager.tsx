@@ -20,7 +20,9 @@ import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
-import { THEME_OPTIONS, themeLabel, type ThemeId } from "@/lib/themes";
+import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
+import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
+import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -29,15 +31,11 @@ import { THEME_OPTIONS, themeLabel, type ThemeId } from "@/lib/themes";
  */
 
 // P-5（引用ポスト）はスケジュール対象外（要件04 §12）。
-const PATTERN_OPTIONS: { id: string; label: string }[] = [
-  { id: "p1", label: "ニュース解説" },
-  { id: "p2", label: "自分の考え" },
-  { id: "p3", label: "ノウハウ" },
-  { id: "p4", label: "トレンド便乗" },
-  { id: "p6", label: "週次まとめ" },
-];
+// ラベルは選択肢の定義から引く（`post-patterns.ts` が唯一の定義・T-M8-29）。
+// 以前はこの画面に短縮版のラベルを別に持っていて、投稿作成側と表記が違っていた
+// （「自分の考え」/「自分の考え・意見」など）。
 const PATTERN_LABEL: Record<string, string> = Object.fromEntries(
-  PATTERN_OPTIONS.map((p) => [p.id, p.label]),
+  SCHEDULE_PATTERN_OPTIONS.map((p) => [p.id, p.label]),
 );
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -321,9 +319,9 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                     {cell.map((s) => (
                       <span
                         className={`m-0.5 ${slotCellClassName(s)}`}
-                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme ? `・分野 ${themeLabel(s.theme as ThemeId)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
+                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・分野 ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme ? `・分野 ${themeLabel(s.theme as ThemeId)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
+                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・分野 ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
                       >
                         {PATTERN_LABEL[s.pattern] ?? s.pattern}
                       </span>
@@ -431,7 +429,9 @@ function SlotRow({
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
           <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
           {/* 分野を行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
-          {slot.theme ? <Badge tone="brand">{themeLabel(slot.theme as ThemeId)}</Badge> : null}
+          {slot.theme && slot.theme !== "other" ? (
+            <Badge tone="brand">{postThemeLabel(slot.theme)}</Badge>
+          ) : null}
           <span className="text-xs text-muted-foreground">
             {slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} {slot.time_jst.slice(0, 5)}
           </span>
@@ -559,6 +559,7 @@ function SlotFields({
   // 同じstateに混ぜると、検証エラーまで5秒で消えて何を直せばよいか分からなくなる。
   const [validationError, setValidationError] = useState<string | null>(null);
   const toast = useToast();
+  const themeFieldId = `slot-theme-${target.kind === "edit" ? target.slotId : "new"}`;
   // 同意済み（サーバー判定）＋本フォームで同意した分。auto保存の前提。
   const [consented, setConsented] = useState(automationConsented);
   const [showConsent, setShowConsent] = useState(false);
@@ -646,41 +647,43 @@ function SlotFields({
 
   return (
     <div className="space-y-4 text-sm">
-      <fieldset>
-        <legend className="mb-1 font-medium">パターン</legend>
-        <div className="flex flex-wrap gap-2">
-          {PATTERN_OPTIONS.map((p) => (
-            <label className="flex items-center gap-1" key={p.id}>
-              <input
-                checked={v.pattern === p.id}
-                name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
-                onChange={() => setV((cur) => ({ ...cur, pattern: p.id }))}
-                type="radio"
-              />
-              {p.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {/* 投稿作成と同じ部品（T-M8-29）。 */}
+      <PatternRadioGroup
+        name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
+        onChange={(id) => setV((cur) => ({ ...cur, pattern: id }))}
+        options={SCHEDULE_PATTERN_OPTIONS}
+        value={v.pattern}
+      />
 
-      <label className="flex max-w-xs flex-col gap-1">
-        <span className="font-medium">分野（任意）</span>
+      {/*
+        `<label>` で包まず `htmlFor` で結ぶ（T-M8-29）。包むと補足文まで読み上げ名に入り、
+        「分野 曜日ごとに分野を変えられます…」という名前になってしまう。
+        idはスロットごとに複数のフォームが並ぶので一意にする。
+      */}
+      <div className="max-w-xs">
+        <label className="block font-medium" htmlFor={themeFieldId}>
+          分野
+        </label>
         <select
-          className="h-9 rounded-card border border-hairline bg-surface px-2 text-[13px]"
+          aria-describedby={`${themeFieldId}-help`}
+          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-[13px]"
+          id={themeFieldId}
           onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
+          required
           value={v.theme}
         >
-          <option value="">指定なし（発信テーマからAIが選ぶ）</option>
-          {THEME_OPTIONS.map((option) => (
+          <option value="">選択してください</option>
+          {POST_THEME_OPTIONS.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
         </select>
-        <span className="text-xs text-muted-foreground">
-          曜日ごとに分野を変えられます（例: 月曜はAI、木曜は業務改善）。
-        </span>
-      </label>
+        <p className="mt-1 text-xs text-muted-foreground" id={`${themeFieldId}-help`}>
+          曜日ごとに分野を変えられます（例: 月曜はAI、木曜は業務改善）。決めずに書かせたいときは
+          「その他」を選び、追加指示に書いてください。
+        </p>
+      </div>
 
       <fieldset>
         <legend className="mb-1 font-medium">曜日</legend>

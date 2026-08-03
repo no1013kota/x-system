@@ -9,8 +9,8 @@ import { expect, signIn, test } from "./fixtures/test";
 test("スロットを停止して再開でき、DBの enabled が追従する", async ({ accounts, page }) => {
   const account = await accounts.create("schedule");
   const [slot] = await query<{ id: string }>(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, enabled)
-     values ($1, 'p3', '{1,3,5}', '19:00', 'draft', true) returning id`,
+    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
+     values ($1, 'p3', '{1,3,5}', '19:00', 'draft', 'other', true) returning id`,
     [account.xAccountId],
   );
   await signIn(page, account);
@@ -70,7 +70,7 @@ test("スケジュールに分野を設定でき、行に出てDBへ入る（T-M
 
   await page.getByRole("button", { name: "スケジュールを追加" }).click();
   await page.getByRole("radio", { name: "ノウハウ" }).check();
-  await page.getByLabel("分野（任意）").selectOption("business_ops");
+  await page.getByLabel("分野", { exact: true }).selectOption("business_ops");
   await page.getByRole("checkbox", { name: "月", exact: true }).check();
   await page.getByRole("button", { name: "作成", exact: true }).click();
 

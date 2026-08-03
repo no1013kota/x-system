@@ -10,19 +10,14 @@ import {
   retryGenerationJobAction,
 } from "@/app/actions/generation-jobs";
 import { ExecutionPrereqNotice } from "@/components/app-shell/execution-prereq-notice";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
-import { THEME_OPTIONS } from "@/lib/themes";
+import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
+import type { PostPatternOption } from "@/lib/post/post-patterns";
+import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-
-export interface PatternOption {
-  id: string;
-  label: string;
-  description: string;
-}
 
 export interface ActiveJob {
   id: string;
@@ -87,7 +82,7 @@ export function CreatePostForm({
   initialJob = null,
 }: {
   xAccountId: string;
-  patterns: PatternOption[];
+  patterns: PostPatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
 }) {
@@ -215,67 +210,39 @@ export function CreatePostForm({
         aria-label="生成入力"
         className="space-y-5 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]"
       >
-        <div>
-          <h2 className="text-[13px] font-bold text-ink">パターン</h2>
-          {/* 3列のカードグリッド（デザイン §画面一覧 3.投稿作成 ステート1）。選択中は1.5pxのキー色枠＋チェック。 */}
-          <div className="mt-2 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-            {patterns.map((p) => {
-              const selected = pattern === p.id;
-              return (
-                <label
-                  className={`relative flex cursor-pointer flex-col rounded-card border p-3 transition-colors duration-150 ${
-                    selected
-                      ? "border-[1.5px] border-brand bg-brand-subtle/30"
-                      : "border-hairline hover:bg-black/[0.02]"
-                  }`}
-                  key={p.id}
-                >
-                  <input
-                    checked={selected}
-                    className="sr-only"
-                    name="pattern"
-                    onChange={() => setPattern(p.id)}
-                    type="radio"
-                    value={p.id}
-                  />
-                  <span className="flex items-center gap-2">
-                    <Badge tone={selected ? "brand" : "neutral"}>{p.id.toUpperCase()}</Badge>
-                    {selected ? (
-                      <Icon
-                        className="ml-auto text-brand"
-                        filled
-                        name="check_circle"
-                        size={17}
-                      />
-                    ) : null}
-                  </span>
-                  <span className="mt-1.5 text-[13.5px] font-bold text-ink">{p.label}</span>
-                  <span className="mt-0.5 text-[11.5px] leading-4 text-ink-2">{p.description}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
+        {/*
+          パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
+          同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
+        */}
+        <PatternRadioGroup
+          name="pattern"
+          onChange={setPattern}
+          options={patterns}
+          value={pattern}
+        />
 
         <div>
           <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
-            分野（任意）
+            分野
           </label>
           <select
+            aria-describedby="theme-help"
             className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
             id="theme"
             onChange={(e) => setTheme(e.target.value)}
+            required
             value={theme}
           >
-            <option value="">指定なし（発信テーマからAIが選ぶ）</option>
-            {THEME_OPTIONS.map((option) => (
+            <option value="">選択してください</option>
+            {POST_THEME_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            選ぶとその分野に絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ分野です。
+          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
+            その分野に絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ分野です。
+            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
           </p>
         </div>
 

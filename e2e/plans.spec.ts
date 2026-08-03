@@ -78,12 +78,18 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await expect(page.getByRole("heading", { name: /キー登録不要/ })).toBeVisible();
   await expect(page.getByText("生成枠")).toBeVisible();
   await page.goto("/app/settings?tab=billing");
+  // `goto` の直後に `count()` を取ると描画前を見てしまうので、先に見出しを待つ。
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
-  // 支払い管理ボタンは、Stripeの顧客IDが無い間は押せない（押しても直らない操作を出さない）
-  const portal = page.getByRole("button", { name: /お支払い|管理/ }).first();
-  if (await portal.count()) {
-    await expect(portal).toBeDisabled();
-  }
+  // プラン管理の導線は**必ずどこかへ着く**（T-M8-29）。Stripeの顧客が無い契約前は
+  // 押せないボタンを出さず、料金プランへのリンクに切り替える。
+  const manage = page.getByRole("button", { name: "プランを管理" });
+  const choose = page.getByRole("link", { name: "プランを選ぶ" });
+  expect(
+    (await manage.count()) + (await choose.count()),
+    "プラン管理の導線が1つある",
+  ).toBeGreaterThan(0);
+  if (await choose.count()) await expect(choose).toHaveAttribute("href", "/plans");
 });
 
 test("契約が切れた利用者は閲覧はできるが、実行はできずプラン選択へ案内される", async ({

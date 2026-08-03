@@ -41,8 +41,8 @@ test("下書きを破棄すると結果がトーストで出る", async ({ accou
 test("スケジュールを停止すると結果がトーストで出る", async ({ accounts, page }) => {
   const account = await accounts.create("toast-slot", { personaReady: true });
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled)
-     values ($1,'p1','{1,3}','09:30','draft',false,true)`,
+    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled, enabled)
+     values ($1,'p1','{1,3}','09:30','draft','other',false,true)`,
     [account.xAccountId],
   );
 

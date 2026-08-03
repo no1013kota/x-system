@@ -98,7 +98,7 @@ test("投稿作成で分野を選ぶと、その分野が生成jobへ渡る（T-
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");
 
-  await page.getByLabel("分野（任意）").selectOption("investment");
+  await page.getByLabel("分野", { exact: true }).selectOption("investment");
   await page.getByRole("button", { name: /生成する/ }).click();
 
   await expect
@@ -114,4 +114,43 @@ test("投稿作成で分野を選ぶと、その分野が生成jobへ渡る（T-
       { timeout: 20_000, message: "分野が生成jobの入力へ入ること" },
     )
     .toBe("investment");
+});
+
+test("分野を選ばないと生成を始められない（T-M8-29）", async ({ accounts, page }) => {
+  // 「指定なし」を既定にすると、選んだつもりで選んでいない状態が起きる。必須にした。
+  const account = await accounts.create("gen-theme-required", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  await page.getByRole("button", { name: /生成する/ }).click();
+
+  // jobは作られない（押しても進まないことがブラウザの検証で分かる）
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ n: number }>(
+            `select count(*)::int as n from generation_jobs where x_account_id = $1`,
+            [account.xAccountId],
+          )
+        )[0].n,
+      { timeout: 5_000, message: "分野未選択では生成jobが作られないこと" },
+    )
+    .toBe(0);
+
+  // 選べば進む
+  await page.getByLabel("分野", { exact: true }).selectOption("other");
+  await page.getByRole("button", { name: /生成する/ }).click();
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ n: number }>(
+            `select count(*)::int as n from generation_jobs where x_account_id = $1`,
+            [account.xAccountId],
+          )
+        )[0].n,
+      { timeout: 20_000, message: "分野を選べば生成jobが作られること" },
+    )
+    .toBe(1);
 });

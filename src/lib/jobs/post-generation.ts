@@ -5,7 +5,8 @@ import {
   finalizeThread,
   sourceRequired,
 } from "@/lib/post/generation-validation";
-import { themeLabel, themesToNewsCategories, type ThemeId } from "@/lib/themes";
+import { promptThemeLabel } from "@/lib/post/post-theme";
+import { themesToNewsCategories } from "@/lib/themes";
 
 import {
   buildGenSystem,
@@ -122,7 +123,7 @@ export function composeUserInput(input: JobRow["input"]): string {
   const parts: string[] = [];
   // 分野を先に置く（題材の選び方を最初に縛る・T-M8-28）。未指定なら行を出さず、
   // 従来どおりベースmdの発信テーマからAIが選ぶ。
-  const theme = input.theme ? themeLabel(input.theme as ThemeId) : null;
+  const theme = promptThemeLabel(input.theme);
   if (theme) parts.push(`分野: ${theme}`);
   if (input.source_url) parts.push(`参考URL: ${input.source_url}`);
   if (input.user_opinion) parts.push(`自分の考え: ${input.user_opinion}`);
