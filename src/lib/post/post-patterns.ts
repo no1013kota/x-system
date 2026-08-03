@@ -16,19 +16,26 @@ export interface PostPatternOption {
   description: string;
 }
 
-/** P-5（引用ポスト）は `FEATURE_QUOTE_POST_ENABLED` のときだけ足す。 */
+/**
+ * P-5（引用ポスト）は `FEATURE_QUOTE_POST_ENABLED` のときだけ足す。
+ *
+ * **ポスト数は実際に作られる数（`GENERATION_MAX_POSTS`）に合わせる**（T-M8-33）。
+ * 以前は編集で許す上限（`PATTERN_MAX_POSTS`）に近い古い数字が書かれていて、
+ * 画面の説明（例: P-1「4〜6ポスト」）と実際の生成（最大4）が食い違っていた。
+ * **押す前に分かるようにするための説明が、実際と違っていては意味がない。**
+ */
 export const POST_PATTERN_OPTIONS: PostPatternOption[] = [
-  { id: "p1", label: "ニュース解説", description: "話題のニュースを解説するスレッド（4〜6ポスト）" },
+  { id: "p1", label: "ニュース解説", description: "話題のニュースを解説するスレッド（2〜4ポスト）" },
   { id: "p2", label: "自分の考え・意見", description: "本人の視点で述べる単発ポスト（1ポスト）" },
-  { id: "p3", label: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド（3〜5ポスト）" },
-  { id: "p4", label: "トレンド便乗", description: "いま話題のトピックに便乗するスレッド（3〜5ポスト）" },
-  { id: "p6", label: "週次まとめ", description: "直近7日の関連ニュースまとめ（5〜7ポスト）" },
+  { id: "p3", label: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド（4〜6ポスト）" },
+  { id: "p4", label: "トレンド便乗", description: "いま話題のトピックに便乗する短いスレッド（1〜2ポスト）" },
+  { id: "p6", label: "週次まとめ", description: "直近7日の関連ニュースまとめ（3〜5ポスト）" },
 ];
 
 export const QUOTE_PATTERN_OPTION: PostPatternOption = {
   id: "p5",
   label: "引用ポスト",
-  description: "対象ポストへの引用（URL付き投稿・1ポスト）",
+  description: "対象ポストへの引用（URL付き投稿・1〜3ポスト）",
 };
 
 /**
