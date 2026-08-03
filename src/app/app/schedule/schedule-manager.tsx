@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
+import { THEME_OPTIONS, themeLabel, type ThemeId } from "@/lib/themes";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -46,9 +47,12 @@ const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
  * **凡例と本体が同じ関数を使う**ようにする。以前は同じクラス文字列を2か所に書いていて、
  * 配色をまとめて直したとき凡例だけ取り残され、3種類が同じ見た目＝凡例が意味を失っていた。
  * 色だけに頼らないため、停止中は取り消し線も併せて付ける（要件06 §2 SC-08）。
+ *
+ * セルに出すのは**パターン名**（T-M8-28）。当初は `P1` のようなIDを出していたが、
+ * 利用者から「P1・P3・P6 とはどういう意味か」と聞かれた。**画面の中に答えが無い表記は使わない。**
  */
 function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
-  const base = "inline-block rounded-chip px-1.5 py-0.5 font-sans text-[11px] font-bold";
+  const base = "inline-block rounded-chip px-1.5 py-0.5 text-[11px] font-bold leading-4";
   if (!slot.enabled) return `${base} bg-black/[0.04] text-ink-3 line-through`;
   return slot.mode === "auto"
     ? `${base} bg-brand text-white`
@@ -75,6 +79,8 @@ interface SlotFormValues {
   weekdays: number[];
   time_jst: string;
   mode: "draft" | "auto";
+  /** 分野（発信テーマ）。空文字は「指定なし」＝AIが発信テーマから選ぶ（T-M8-28）。 */
+  theme: string;
   instructions: string;
   image_enabled: boolean;
 }
@@ -85,6 +91,7 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
     weekdays: [...slot.weekdays].sort((a, b) => a - b),
     time_jst: slot.time_jst.slice(0, 5),
     mode: slot.mode === "auto" ? "auto" : "draft",
+    theme: slot.theme ?? "",
     instructions: slot.instructions ?? "",
     image_enabled: slot.image_enabled,
   };
@@ -290,7 +297,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
   }
   return (
     <div className="overflow-x-auto rounded-card border bg-card p-4 shadow-sm">
-      <table className="w-full min-w-[520px] border-collapse text-center text-xs">
+      <table className="w-full min-w-[760px] border-collapse text-center text-xs">
         <thead>
           <tr>
             <th className="p-2 text-muted-foreground">時刻</th>
@@ -314,11 +321,11 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                     {cell.map((s) => (
                       <span
                         className={`m-0.5 ${slotCellClassName(s)}`}
-                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
+                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme ? `・分野 ${themeLabel(s.theme as ThemeId)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
+                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme ? `・分野 ${themeLabel(s.theme as ThemeId)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
                       >
-                        {s.pattern.toUpperCase()}
+                        {PATTERN_LABEL[s.pattern] ?? s.pattern}
                       </span>
                     ))}
                   </td>
@@ -423,6 +430,8 @@ function SlotRow({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
           <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
+          {/* 分野を行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
+          {slot.theme ? <Badge tone="brand">{themeLabel(slot.theme as ThemeId)}</Badge> : null}
           <span className="text-xs text-muted-foreground">
             {slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} {slot.time_jst.slice(0, 5)}
           </span>
@@ -541,6 +550,7 @@ function SlotFields({
       weekdays: [],
       time_jst: "09:00",
       mode: "draft",
+      theme: "",
       instructions: "",
       image_enabled: false,
     },
@@ -568,6 +578,7 @@ function SlotFields({
         weekdays: v.weekdays,
         time_jst: v.time_jst,
         mode: v.mode,
+        theme: v.theme || null,
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
       };
@@ -651,6 +662,25 @@ function SlotFields({
           ))}
         </div>
       </fieldset>
+
+      <label className="flex max-w-xs flex-col gap-1">
+        <span className="font-medium">分野（任意）</span>
+        <select
+          className="h-9 rounded-card border border-hairline bg-surface px-2 text-[13px]"
+          onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
+          value={v.theme}
+        >
+          <option value="">指定なし（発信テーマからAIが選ぶ）</option>
+          {THEME_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-muted-foreground">
+          曜日ごとに分野を変えられます（例: 月曜はAI、木曜は業務改善）。
+        </span>
+      </label>
 
       <fieldset>
         <legend className="mb-1 font-medium">曜日</legend>

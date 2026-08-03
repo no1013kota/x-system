@@ -4,6 +4,7 @@ import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
+import { THEME_IDS } from "@/lib/themes";
 
 /**
  * schedule_slots CRUD の中核（要件05 §7・要件02 §3.10, S-1/S-2/S-4, T-M4-01）。本人のみ・active_x_account
@@ -33,6 +34,12 @@ const baseSlotFields = {
   weekdays: weekdaysSchema,
   time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください"),
   mode: z.enum(["draft", "auto"]),
+  /**
+   * 分野（発信テーマ）。未指定なら従来どおりベースmdの発信テーマからAIが選ぶ（T-M8-28）。
+   * `<select>` の「指定なし」は空文字になるので、**呼び出し側が null へ寄せて渡す**
+   * （ここで transform すると出力型が必須になり、既存の呼び出しがすべて壊れる）。
+   */
+  theme: z.enum(THEME_IDS).nullish(),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
 };
@@ -56,13 +63,14 @@ export interface ScheduleSlotView {
   weekdays: number[];
   time_jst: string;
   mode: string;
+  theme: string | null;
   instructions: string | null;
   image_enabled: boolean;
   enabled: boolean;
   updated_at: string;
 }
 
-const SLOT_COLUMNS = `id, pattern, weekdays, time_jst::text as time_jst, mode, instructions,
+const SLOT_COLUMNS = `id, pattern, weekdays, time_jst::text as time_jst, mode, theme, instructions,
   image_enabled, enabled, updated_at::text as updated_at`;
 
 export interface ScheduleSlotDeps {
@@ -125,8 +133,8 @@ export async function createScheduleSlot(
     if (input.mode === "auto") await assertAutomationConsent(tx, xAccountId);
     const { rows } = await tx.query<ScheduleSlotView>(
       `insert into schedule_slots
-         (x_account_id, pattern, weekdays, time_jst, mode, instructions, image_enabled)
-       values ($1, $2, $3, $4, $5, $6, $7)
+         (x_account_id, pattern, weekdays, time_jst, mode, theme, instructions, image_enabled)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning ${SLOT_COLUMNS}`,
       [
         xAccountId,
@@ -134,6 +142,7 @@ export async function createScheduleSlot(
         input.weekdays,
         input.time_jst,
         input.mode,
+        input.theme ?? null,
         input.instructions ?? null,
         input.image_enabled,
       ],
@@ -168,8 +177,8 @@ export async function updateScheduleSlot(
     if (input.mode === "auto") await assertAutomationConsent(tx, slot.x_account_id);
     const { rows } = await tx.query<ScheduleSlotView>(
       `update schedule_slots
-          set pattern = $3, weekdays = $4, time_jst = $5, mode = $6, instructions = $7,
-              image_enabled = $8, updated_at = now()
+          set pattern = $3, weekdays = $4, time_jst = $5, mode = $6, theme = $7,
+              instructions = $8, image_enabled = $9, updated_at = now()
         where id = $1 and updated_at::text = $2
       returning ${SLOT_COLUMNS}`,
       [
@@ -179,6 +188,7 @@ export async function updateScheduleSlot(
         input.weekdays,
         input.time_jst,
         input.mode,
+        input.theme ?? null,
         input.instructions ?? null,
         input.image_enabled,
       ],

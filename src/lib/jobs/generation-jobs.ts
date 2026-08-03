@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { THEME_IDS } from "@/lib/themes";
+
 import {
   checkExecutionPrerequisites,
   checkPostingPrerequisites,
@@ -32,6 +34,11 @@ export const createGenerationJobSchema = z.object({
   quote_url: z.string().url().nullish(),
   user_opinion: z.string().max(2000).nullish(),
   instructions: z.string().max(2000).nullish(),
+  /**
+   * 分野（発信テーマ）。未指定なら従来どおりベースmdの発信テーマからAIが選ぶ（T-M8-28）。
+   * 値は `lib/themes.ts` の THEME_IDS と同じ集合。
+   */
+  theme: z.enum(THEME_IDS).nullish(),
   image_enabled: z.boolean().optional().default(false),
   news_item_id: z.string().uuid().nullish(),
 });
@@ -69,6 +76,7 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     quote_tweet_id: null,
     user_opinion: input.user_opinion ?? null,
     instructions: input.instructions ?? null,
+    theme: input.theme ?? null,
     image_enabled: input.image_enabled,
     news_item_id: input.news_item_id ?? null,
     requested_mode: "draft",

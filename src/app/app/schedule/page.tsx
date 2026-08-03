@@ -78,7 +78,7 @@ export default async function SchedulePage() {
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">下書き・スケジュール</h1>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">スケジュール</h1>
         <p className="mt-1 text-[12.5px] text-ink-2">
           曜日と時刻を決めて、下書き生成または自動投稿を定期実行します。作成された下書きは下に並びます。
         </p>

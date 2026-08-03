@@ -12,7 +12,7 @@ describe("APP_NAVIGATION_ITEMS", () => {
       { href: "/app", label: "ホーム" },
       { href: "/app/news", label: "最新ニュース" },
       { href: "/app/posts", label: "投稿作成" },
-      { href: "/app/schedule", label: "下書き・スケジュール" },
+      { href: "/app/schedule", label: "スケジュール" },
       { href: "/app/analytics", label: "分析・改善" },
       { href: "/app/ai-settings", label: "AI設定" },
       { href: "/app/settings", label: "設定" },

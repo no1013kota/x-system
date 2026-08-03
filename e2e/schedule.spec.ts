@@ -61,3 +61,32 @@ test("本日の投稿上限に達したら、投稿を試す前にバナーで�
   await page.goto("/app/posts?tab=create");
   await expect(page.getByRole("complementary", { name: "本日の投稿上限に達しました" })).toBeVisible();
 });
+
+test("スケジュールに分野を設定でき、行に出てDBへ入る（T-M8-28）", async ({ accounts, page }) => {
+  // 分野はAIへ渡す指示になる。画面で選べても保存されなければ意味が無いので、DBまで見る。
+  const account = await accounts.create("slot-theme", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+
+  await page.getByRole("button", { name: "スケジュールを追加" }).click();
+  await page.getByRole("radio", { name: "ノウハウ" }).check();
+  await page.getByLabel("分野（任意）").selectOption("business_ops");
+  await page.getByRole("checkbox", { name: "月", exact: true }).check();
+  await page.getByRole("button", { name: "作成", exact: true }).click();
+
+  // 行に分野が出る（編集画面を開かないと分からない状態にしない）
+  await expect(page.getByText("業務改善", { exact: true }).first()).toBeVisible();
+
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ theme: string | null }>(
+            `select theme from schedule_slots where x_account_id = $1`,
+            [account.xAccountId],
+          )
+        )[0]?.theme,
+      { message: "分野がDBへ保存されること" },
+    )
+    .toBe("business_ops");
+});
