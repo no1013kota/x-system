@@ -1,4 +1,5 @@
 import type { PlanId } from "@/lib/plans";
+import { remainingDailyPosts } from "@/lib/usage/daily-post-limit";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { expectedAuthTypeForPlan } from "@/lib/x/oauth-start";
 
@@ -101,5 +102,30 @@ export function usageLimitBanner(summary: UsageSummary | null): AppBanner | null
     description: `${atLimit.join("・")}が上限に達しました。翌月にリセットされます。既存の下書きの閲覧・編集は引き続きできます。`,
     actionLabel: "利用状況を見る",
     actionHref: "/app/settings?tab=billing",
+  };
+}
+
+/**
+ * 日次投稿上限に達したことの常設バナー（要決定D-15・案A, T-M8-26）。
+ *
+ * 上限そのものは前からあったが、判定が投稿jobの中にしか無く、**投稿しようとして初めて
+ * 分かる**状態だった（`daily_limit_reached` で下書きへ戻る）。それでは利用者は「なぜ投稿
+ * されないのか」を都度エラーで知ることになる（CLAUDE.md 原則1）。
+ *
+ * 出すのは**上限に達したときだけ**。残りが少ないだけの状態で出すと、毎日出ることになって
+ * バナーそのものが読まれなくなる。
+ */
+export function dailyPostLimitBanner(input: {
+  todaysPosts: number;
+  dailyLimit: number;
+}): AppBanner | null {
+  if (remainingDailyPosts(input.todaysPosts, input.dailyLimit) > 0) return null;
+  return {
+    id: "daily_post_limit",
+    tone: "warning",
+    title: "本日の投稿上限に達しました",
+    description: `安全のため1日${input.dailyLimit}件までに制限しています。新しい投稿は翌日0:00（JST）に再開できます。自動実行は下書きの作成まで続きます。`,
+    actionLabel: "下書きを見る",
+    actionHref: "/app/posts?tab=drafts",
   };
 }
