@@ -95,14 +95,14 @@ export function AnalyticsView({
           return (
             <li className="rounded-card border border-hairline bg-surface p-4" key={draft.draftId}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
-                  {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
-                </span>
+                <Badge>{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</Badge>
                 {draft.incomplete ? (
                   <Badge tone="warn">不完全なthread</Badge>
                 ) : null}
                 {draft.metricsCompleted ? (
-                  <span className="rounded px-2 py-0.5 text-xs text-muted-foreground" title="投稿後30日までの計測がすべて終わりました">計測完了</span>
+                  <Badge title="投稿後30日までの計測がすべて終わりました" tone="success">
+                    計測完了
+                  </Badge>
                 ) : null}
                 <span className="ml-auto text-xs text-muted-foreground">{fmtDate(draft.postedAt)}</span>
               </div>
