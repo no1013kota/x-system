@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * Xアカウント連携（OAuth）の失敗を、原因別の日本語と次アクションで伝える（要件06 §1.2.1）。
@@ -93,10 +94,7 @@ export function XOAuthErrorNotice({
 }) {
   const message = messageFor(code, reason);
   return (
-    <div
-      className="rounded-card border border-danger-fg/25 bg-danger-bg p-5 text-sm text-danger-fg"
-      role="alert"
-    >
+    <Notice className="px-5 py-4" role="alert" tone="danger">
       <p className="font-semibold">Xアカウントの連携が完了しませんでした</p>
       <p className="mt-1 leading-6">{message.body}</p>
       {message.action ? (
@@ -107,6 +105,6 @@ export function XOAuthErrorNotice({
           {message.action.label}
         </Link>
       ) : null}
-    </div>
+    </Notice>
   );
 }

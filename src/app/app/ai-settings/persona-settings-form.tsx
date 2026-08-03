@@ -14,6 +14,7 @@ import {
 } from "@/lib/persona-settings";
 import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
 import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
   accountHandle: string;
@@ -437,12 +438,9 @@ export function PersonaSettingsForm({
       </section>
 
       {validationMessage ? (
-        <p
-          className="rounded-card border border-hairline bg-danger-bg p-3 text-[13px] text-danger-fg"
-          role="alert"
-        >
+        <Notice role="alert" tone="danger">
           {validationMessage}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="flex justify-end">
