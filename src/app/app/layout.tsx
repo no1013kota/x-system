@@ -128,16 +128,12 @@ export default async function AppLayout({
         <div className="px-4 py-4">
           <BrandLogo />
         </div>
+        {/*
+          サイドバーに「料金プラン」は置かない（2026-08-03 ユーザー判断）。
+          契約中の利用者の行き先は「設定 → 課金・プラン」で、そこに「プランを見る」がある。
+          未契約の利用者はそもそも `/plans` に留められる（要件03 §2）ため、常設の導線は要らない。
+        */}
         <AppNavigation />
-        <div className="mt-auto border-t border-hairline px-3 py-3">
-          <Link
-            className="flex min-h-10 items-center gap-2.5 rounded-card px-3 text-[13.5px] font-medium text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            href="/plans"
-          >
-            <Icon name="workspace_premium" size={19} />
-            料金プラン
-          </Link>
-        </div>
       </aside>
 
       <div className="min-w-0 flex-1 pb-20 lg:pb-0">

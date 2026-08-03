@@ -1,5 +1,7 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
+import { countTodaysPostsForXAccount } from "@/lib/usage/daily-post-limit-server";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
 import { PATTERN_MAX_POSTS } from "@/lib/post/generation-validation";
 
@@ -31,6 +33,8 @@ interface DueSlotRow {
   time_jst: string;
   mode: string;
   instructions: string | null;
+  /** 分野（発信テーマ）。NULL は指定なし＝AIがベースmdの発信テーマから選ぶ（T-M8-28）。 */
+  theme: string | null;
   image_enabled: boolean;
   user_id: string;
   x_status: string;
@@ -58,7 +62,7 @@ export interface EnqueueResult {
 async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
   const { rows } = await db.query<DueSlotRow>(
     `select ss.id, ss.x_account_id, ss.pattern, ss.time_jst::text as time_jst, ss.mode,
-            ss.instructions, ss.image_enabled,
+            ss.instructions, ss.theme, ss.image_enabled,
             xa.user_id, xa.status as x_status, xa.base_md_version,
             (xa.automation_consent_version = $1 and xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as auto_consent_ok,
@@ -128,20 +132,21 @@ async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean
   return true;
 }
 
+/**
+ * 日次上限に収まるか。数え方と判定は**投稿jobと画面のバナーと共有する**（T-M8-28）。
+ *
+ * ここには同じSQLの3つ目の写しがあった（`post-publish.ts`・App Shell のバナー・ここ）。
+ * T-M8-26 で2つは共通化したがここを見落としていた。3か所に散っていると、
+ * 「予約は積まれるのに投稿で弾かれる」ような食い違いが静かに生まれる。
+ */
 async function dailyLimitOk(
   db: Queryable,
   slot: DueSlotRow,
   dailyLimit: number,
 ): Promise<boolean> {
-  const { rows } = await db.query<{ n: number }>(
-    `select count(*)::int as n from usage_events
-      where x_account_id = $1 and operation = 'post_create' and reason = 'consume'
-        and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date`,
-    [slot.x_account_id],
-  );
-  const today = rows[0]?.n ?? 0;
+  const today = await countTodaysPostsForXAccount(db, slot.x_account_id);
   const planned = PATTERN_MAX_POSTS[slot.pattern] ?? 0;
-  return today + planned <= dailyLimit;
+  return canPostThreadToday(today, dailyLimit, planned);
 }
 
 /** §7.1 の各条件を評価し、enqueue すべきか返す。 */
@@ -167,6 +172,7 @@ async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise
   const runKey = `slot:${slot.id}:${slot.jst_date}:${timeHhmm}`;
   const input = JSON.stringify({
     instructions: slot.instructions ?? null,
+    theme: slot.theme ?? null,
     image_enabled: slot.image_enabled,
     mode: slot.mode,
     requested_mode: slot.mode,

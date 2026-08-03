@@ -5,7 +5,7 @@ import {
   finalizeThread,
   sourceRequired,
 } from "@/lib/post/generation-validation";
-import { themesToNewsCategories } from "@/lib/themes";
+import { themeLabel, themesToNewsCategories, type ThemeId } from "@/lib/themes";
 
 import {
   buildGenSystem,
@@ -63,6 +63,7 @@ interface JobRow {
     source_url?: string | null;
     user_opinion?: string | null;
     instructions?: string | null;
+    theme?: string | null;
     image_enabled?: boolean;
     news_item_id?: string | null;
     parent_draft_id?: string | null;
@@ -111,8 +112,18 @@ export interface PostGenerationResult {
   draftId: string;
 }
 
-function composeUserInput(input: JobRow["input"]): string {
+/**
+ * `<input>` ブロックの本文。**未指定の項目は行を出さない**（「（未指定）」という文字列を
+ * 素材として渡すと、モデルがそれを題材だと解釈することがある）。
+ *
+ * export しているのはテストのため（並び順と分野の扱いを固定する）。
+ */
+export function composeUserInput(input: JobRow["input"]): string {
   const parts: string[] = [];
+  // 分野を先に置く（題材の選び方を最初に縛る・T-M8-28）。未指定なら行を出さず、
+  // 従来どおりベースmdの発信テーマからAIが選ぶ。
+  const theme = input.theme ? themeLabel(input.theme as ThemeId) : null;
+  if (theme) parts.push(`分野: ${theme}`);
   if (input.source_url) parts.push(`参考URL: ${input.source_url}`);
   if (input.user_opinion) parts.push(`自分の考え: ${input.user_opinion}`);
   if (input.instructions) parts.push(`追加指示: ${input.instructions}`);

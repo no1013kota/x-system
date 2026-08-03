@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
+import { THEME_OPTIONS } from "@/lib/themes";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 
 export interface PatternOption {
@@ -93,6 +94,8 @@ export function CreatePostForm({
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
   const [sourceUrl, setSourceUrl] = useState("");
+  /** 分野（発信テーマ）。空文字は「指定なし」＝AIがベースmdの発信テーマから選ぶ（T-M8-28）。 */
+  const [theme, setTheme] = useState("");
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
   const [imageEnabled, setImageEnabled] = useState(false);
@@ -130,6 +133,7 @@ export function CreatePostForm({
         x_account_id: xAccountId,
         pattern,
         source_url: sourceUrl.trim() || undefined,
+        theme: theme || null,
         user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
@@ -254,6 +258,28 @@ export function CreatePostForm({
         </div>
 
         <div>
+          <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
+            分野（任意）
+          </label>
+          <select
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            id="theme"
+            onChange={(e) => setTheme(e.target.value)}
+            value={theme}
+          >
+            <option value="">指定なし（発信テーマからAIが選ぶ）</option>
+            {THEME_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            選ぶとその分野に絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ分野です。
+          </p>
+        </div>
+
+        <div>
           <label className="block text-[13px] font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
           </label>
@@ -266,7 +292,7 @@ export function CreatePostForm({
             value={sourceUrl}
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            空欄のままでも、発信設定とベースmdからAIが題材を選んでリサーチします。
+            空欄のままでも、上の分野と発信設定・ベースmdからAIが題材を選んでリサーチします。
           </p>
         </div>
 

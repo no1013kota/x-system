@@ -91,3 +91,27 @@ test("理由が保存されないまま失敗した場合も行き止まりに�
   // 原因不明なので再試行に意味があり、ボタンを出す
   await expect(page.getByRole("button", { name: "再試行する" })).toBeVisible();
 });
+
+test("投稿作成で分野を選ぶと、その分野が生成jobへ渡る（T-M8-28）", async ({ accounts, page }) => {
+  // 画面で選べても、AIへ渡る入力に入っていなければ何も変わらない。job の input まで見る。
+  const account = await accounts.create("gen-theme", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  await page.getByLabel("分野（任意）").selectOption("investment");
+  await page.getByRole("button", { name: /生成する/ }).click();
+
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ theme: string | null }>(
+            `select input->>'theme' as theme from generation_jobs
+              where x_account_id = $1 and kind = 'post_generation'`,
+            [account.xAccountId],
+          )
+        )[0]?.theme,
+      { timeout: 20_000, message: "分野が生成jobの入力へ入ること" },
+    )
+    .toBe("investment");
+});
