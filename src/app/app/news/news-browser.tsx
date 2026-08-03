@@ -25,7 +25,6 @@ const IMPACTS: { id: string; label: string }[] = [
   { id: "low", label: "低" },
 ];
 
-const CATEGORY_LABEL = new Map<string, string>(THEME_OPTIONS.map((t) => [t.newsCategory, t.label]));
 const IMPACT_LABEL = new Map<string, string>(IMPACTS.map((i) => [i.id, i.label]));
 
 /** インパクトの色。意味で選ぶ（高=注意を引く／中=情報／低=補助）。 */
@@ -338,9 +337,7 @@ export function NewsBrowser({
               key={item.id}
             >
               <div className="flex items-center gap-2">
-                <CategoryChip category={item.category}>
-                  {CATEGORY_LABEL.get(item.category) ?? item.category}
-                </CategoryChip>
+                <CategoryChip category={item.category} />
                 <Badge tone={IMPACT_TONE[item.impact] ?? "neutral"}>
                   {IMPACT_LABEL.get(item.impact) ?? item.impact}
                 </Badge>

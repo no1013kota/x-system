@@ -1,9 +1,7 @@
 import Link from "next/link";
 
 import { formatJst } from "@/lib/format";
-import type { NewsCategory } from "@/lib/news";
 import type { NewsItemView } from "@/lib/news-items";
-import { newsCategoryLabel } from "@/lib/themes";
 
 import { Badge, CategoryChip } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,9 +72,7 @@ export function ImportantNewsCard({
         {items.map((item) => (
             <li className="rounded-card border border-hairline p-3" key={item.id}>
               <div className="flex flex-wrap items-center gap-2">
-                <CategoryChip category={item.category}>
-                  {newsCategoryLabel(item.category as NewsCategory)}
-                </CategoryChip>
+                <CategoryChip category={item.category} />
                 <Badge tone="warn">インパクト高</Badge>
                 {item.publishedAt ? (
                   <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">

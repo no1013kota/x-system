@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { Badge } from "@/components/ui/badge";
+import { Card, CardTitle } from "@/components/ui/card";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 import type { ScheduleOutlook } from "@/lib/home/overview";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
@@ -14,10 +17,13 @@ const MODE_LABEL: Record<string, string> = {
   draft: "下書きを作成",
 };
 
-const cardClassName = "rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]";
-const primaryLinkClassName =
-  "mt-4 inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover";
-
+/**
+ * 器とリンクは共通部品を使う（T-M8-41）。
+ *
+ * 以前このファイルだけが `primaryLinkClassName` と**同名のローカル定数**を持っており、中身は
+ * 共通版から `focus-visible` の3クラスが抜けていた。ホームの主操作2本だけキーボード
+ * フォーカスの見え方が他画面と違い、しかも名前が同じなので grep でも取り違えやすかった。
+ */
 export function UpcomingScheduleCard({
   outlook,
   setupPendingHref,
@@ -28,36 +34,36 @@ export function UpcomingScheduleCard({
 }) {
   if (outlook.kind === "no_slots") {
     return (
-      <section className={cardClassName}>
-        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
+      <Card as="section" className="px-5 py-4">
+        <CardTitle>次回の予定</CardTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           定期実行のスケジュールはまだありません。曜日と時刻を決めておくと、下書きの作成や投稿を自動で行えます。
         </p>
-        <Link className={primaryLinkClassName} href="/app/schedule">
+        <Link className={`mt-4 ${primaryLinkClassName}`} href="/app/schedule">
           スケジュールを設定
         </Link>
-      </section>
+      </Card>
     );
   }
 
   if (outlook.kind === "all_disabled") {
     return (
-      <section className={cardClassName}>
-        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
+      <Card as="section" className="px-5 py-4">
+        <CardTitle>次回の予定</CardTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           スケジュールはすべて停止中です。再開するまで自動では実行されません。
         </p>
-        <Link className={primaryLinkClassName} href="/app/schedule">
+        <Link className={`mt-4 ${primaryLinkClassName}`} href="/app/schedule">
           スケジュールを確認
         </Link>
-      </section>
+      </Card>
     );
   }
 
   return (
-    <section className={cardClassName}>
+    <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold text-ink">次回の予定</h2>
+        <CardTitle>次回の予定</CardTitle>
         <Link className="text-sm text-primary underline" href="/app/schedule">
           スケジュールを編集
         </Link>
@@ -77,9 +83,7 @@ export function UpcomingScheduleCard({
             key={run.slotId}
           >
             <span className="font-medium tabular-nums">{run.label}</span>
-            <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
-              {POST_PATTERN_LABELS[run.pattern] ?? run.pattern}
-            </span>
+            <Badge>{POST_PATTERN_LABELS[run.pattern] ?? run.pattern}</Badge>
             <span className="text-xs text-muted-foreground">
               {MODE_LABEL[run.mode] ?? run.mode}
               {run.imageEnabled ? "・画像あり" : ""}
@@ -87,6 +91,6 @@ export function UpcomingScheduleCard({
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

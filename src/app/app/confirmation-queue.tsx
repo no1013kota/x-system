@@ -4,6 +4,7 @@ import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
+import { primaryLinkClassName } from "@/components/ui/link-button";
 import type { DraftView } from "@/lib/drafts";
 
 /**
@@ -23,10 +24,7 @@ export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
           <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">
             確認待ちの下書きはありません。新しい投稿を作成しましょう。
           </p>
-          <Link
-            className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            href="/app/posts?tab=create"
-          >
+          <Link className={`mt-3.5 ${primaryLinkClassName}`} href="/app/posts?tab=create">
             今すぐ作成
           </Link>
         </CardBody>
