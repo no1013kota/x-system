@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.10 |
+| バージョン | v1.11 |
 | 更新日 | 2026-08-04 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -138,18 +138,32 @@ openssl rand -hex 32      # CRON_SECRET
 画面の「プランを管理」は Portal の `subscription_update` / `subscription_cancel` が**Stripe側で有効**でないと、ボタンは出るのに押すと失敗する。有効化はコードでは決まらないので、環境ごとに1回実行する。
 
 ```bash
-# 1. 対象環境の構成IDと（必要なら）secret key を .env.local へ置く
-#    STAGING_STRIPE_PORTAL_CONFIGURATION_ID=bpc_...   ← Vercelの環境変数からコピー
-#    STAGING_BASE_URL=https://<staging>.vercel.app
-# 2. どの環境を触るかを必ず明示して実行する
+# 1. まず実行する。足りない値を**5件まとめて**教えてくれるので、それを .env.local へ貼る
 npm run stripe:portal:setup -- --target staging
-# 3. 出力の target / appBaseUrl / configurationId が意図した環境か目で確認する
+# 2. 言われた5つをVercelの環境変数（staging=Preview / production=Production）からコピーして .env.local へ
+#    STAGING_STRIPE_SECRET_KEY / _PRICE_STANDARD_MONTHLY / _PRICE_MD_MONTHLY /
+#    _PRICE_PREMIUM_MONTHLY / _PORTAL_CONFIGURATION_ID（＋ STAGING_BASE_URL）
+# 3. もう一度実行し、出力の target / appBaseUrl / configurationId / valueSources を目で確認する
+npm run stripe:portal:setup -- --target staging
 # 4. 画面側の判定でも確認する
 npm run doctor -- --base "$STAGING_BASE_URL"     # 「プラン管理（Stripe）」が ✅ になる
 ```
 
 - **`--target` は必須**。既定を持たせていない。2026-08-04、stagingを直すつもりで実行したところ `.env.local` のローカル値が読まれ、**ローカルの構成を更新して「成功」と表示**した（stagingは直っていないのに出力は緑だった）。
-- 構成IDは環境ごとに違うので接頭辞付き変数から読む（`STAGING_` / `PRODUCTION_`）。Price ID と secret key は同じStripeアカウントなら共通で、接頭辞なしへ落ちる。**どの変数から読んだかは出力の `valueSources` に出る**。
+- **環境ごとに別のStripeアカウント**（2026-08-04 実測）。したがって鍵・price 3つ・構成IDの**5つすべて**が接頭辞付きで必須で、接頭辞なしの値へは落とさない。落とすと *staging の鍵でローカルの price を参照して `No such price`* になる（実際に踏んだ）か、最悪**別環境を書き換える**。
+- **足りない値は5件まとめて出る**（T-M8-50）。以前は1件ずつ止めていたため「1つ足す→また別のが足りないと言われる」を3往復した（原則5に反していた）。
+- **`valueSources` を目で確認する**。すべて `STAGING_` 付きになっていること。接頭辞なしが混じっていたら別環境を触ろうとしている。
+- 「別アカウントかどうか」の確かめ方: 手元の鍵で `billingPortal.configurations.list` を叩き、対象環境の構成が**一覧に出てこない**こと。doctorが「使えない操作があります」と言えている（＝対象環境からは取得できている）と組み合わせると、別アカウントだと確定できる。
+- **構成IDだけが足りないときは、コマンドが候補を一覧して教える**（T-M8-50）。鍵が揃っていればアカウントの中は見えるので、Vercelを開かずに済むことが多い。1件だけなら doctor が機能名まで出せている事実と合わせて、それが対象だと確定できる。**IDの採用は人が決める**（自動採用すると「取り違えたまま成功と表示する」に戻る）。
+
+### 実測: staging を設定したときの記録（2026-08-04）
+
+初回は3往復した（1件ずつしか足りない値を教えていなかったため）。改善後は次の2手で済む。
+
+1. `npm run stripe:portal:setup -- --target staging` → 足りない5件が並ぶ
+2. Vercel の Preview から5つコピーして `.env.local` へ貼り、もう一度実行
+
+stagingのStripeアカウントには **Stripeが自動生成した既定の構成が1件だけ**あり、`subscription_update` が無効・`default_return_url` が未設定だった（＝このスクリプトが一度も適用されていない状態）。適用後は `features` が両方 `true` になり、`npm run doctor -- --base <stg>` の「プラン管理（Stripe）」が ✅ になる。
 - スクリプトは既存の構成を**上書き更新**する（新規作成しない）。IDが変わらないので Vercel 側の書き換えは不要。
 - 実行後に読み戻して機能が有効か確認し、無効なら exit 1 する。
 

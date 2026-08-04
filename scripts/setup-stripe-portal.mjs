@@ -36,49 +36,93 @@ function resolveTarget() {
 let TARGET = "local";
 
 /**
- * 環境ごとに**必ず**分かれている値。接頭辞なしへ落とさない（取り違えると別環境を壊す）。
- * `STRIPE_PORTAL_CONFIGURATION_ID` がこれ。**どの configuration を書き換えるかを決める値**なので、
- * ここが取り違いの本体だった（2026-08-04）。
+ * Stripeアカウントに紐づく値。**環境ごとに別のアカウントなら全部が別物になる。**
+ *
+ * 2026-08-04、staging がローカルと別のStripeアカウントであることが実測で分かった
+ * （手元の鍵では staging の Portal Configuration が一覧に出てこない）。当初は
+ * 「price は同じアカウントなら共通」と考えて接頭辞なしへ落としていたが、その前提が崩れると
+ * **staging の鍵でローカルの price を参照して `No such price` になる**。
+ * アカウント単位の値は接頭辞なしへ落とさない。
  */
-function requiredPerTarget(name) {
-  const prefixed = `${PREFIX[TARGET]}${name}`;
-  const value = process.env[prefixed]?.trim();
-  if (!value) {
-    throw new Error(
-      `${prefixed} is required.` +
-        (PREFIX[TARGET]
-          ? `（${TARGET} 用の値を .env.local へ置いてください。Vercelの環境変数からコピーします）`
-          : ""),
-    );
-  }
-  return value;
+const ACCOUNT_SCOPED = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_PRICE_STANDARD_MONTHLY",
+  "STRIPE_PRICE_MD_MONTHLY",
+  "STRIPE_PRICE_PREMIUM_MONTHLY",
+  "STRIPE_PORTAL_CONFIGURATION_ID",
+];
+
+const sourceUsed = {};
+
+/**
+ * 足りない値を**まとめて**返す（1つずつ止めない）。
+ *
+ * 以前は最初に見つかった1件で例外を投げていたため、利用者は「1つ足す→また別のが足りないと言われる」
+ * を3往復した（2026-08-04 実測）。CLAUDE.md 原則5「判断はまとめて求める」に反する。
+ */
+export function missingEnvNames(names, env, prefix) {
+  return names.map((name) => `${prefix}${name}`).filter((key) => !env[key]?.trim());
 }
 
 /**
- * 同じStripeアカウントを使う環境では共通になり得る値（secret key・price）。
- * 接頭辞付きがあればそれを使い、無ければ接頭辞なしへ落ちる。**どちらを使ったかを出力に載せる**
- * ので、黙って別環境の値を使うことはない。
+ * 構成IDだけが足りないとき、**そのアカウントの構成を一覧して候補を示す**（T-M8-50）。
+ *
+ * secret key があればアカウントの中は見える。構成が1件だけなら、Vercelを開かなくても
+ * それが対象だと分かる（2026-08-04、staging はまさにこの状態で、既定の構成1件だけだった）。
+ * 一覧は**読み取りのみ**で、候補を出すだけ——**IDの決定は人に委ねる**。ここで自動採用すると
+ * T-M8-35 で防いだ「取り違えたまま成功と表示する」に戻る。
  */
-const sourceUsed = {};
-function required(name) {
-  const prefixed = `${PREFIX[TARGET]}${name}`;
-  const prefixedValue = PREFIX[TARGET] ? process.env[prefixed]?.trim() : undefined;
-  if (prefixedValue) {
-    sourceUsed[name] = prefixed;
-    return prefixedValue;
+async function describeConfigurationCandidates(secretKey) {
+  try {
+    const stripe = new Stripe(secretKey, { apiVersion: API_VERSION });
+    const list = await stripe.billingPortal.configurations.list({ limit: 20 });
+    if (list.data.length === 0) {
+      return "\nこのStripeアカウントには Portal Configuration がまだありません。Stripe Dashboard で1つ作ってからIDを設定してください。";
+    }
+    const rows = list.data.map(
+      (c) =>
+        `  ${c.id}${c.is_default ? "（Stripeの既定）" : ""}` +
+        ` プラン変更=${c.features?.subscription_update?.enabled ? "有効" : "無効"}` +
+        ` 戻り先=${c.default_return_url ?? "未設定"}`,
+    );
+    return (
+      `\nこの鍵で見える Portal Configuration は ${list.data.length} 件です:\n` +
+      rows.join("\n") +
+      (list.data.length === 1
+        ? "\n1件だけなので、Vercelの値もこれと一致するはずです（doctorが機能名まで出せているなら、その環境はこのIDを指しています）。"
+        : "\n複数あるので、どれが対象かはVercelの環境変数で確認してください（戻り先URLが手がかりになります）。")
+    );
+  } catch {
+    return "";
   }
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${prefixed} または ${name} is required.`);
-  sourceUsed[name] = name;
-  return value;
 }
 
-function configuredPriceIds() {
-  return [
-    required("STRIPE_PRICE_STANDARD_MONTHLY"),
-    required("STRIPE_PRICE_MD_MONTHLY"),
-    required("STRIPE_PRICE_PREMIUM_MONTHLY"),
-  ];
+async function requireAccountScoped() {
+  const prefix = PREFIX[TARGET];
+  const missing = missingEnvNames(ACCOUNT_SCOPED, process.env, prefix);
+  if (missing.length > 0) {
+    const where =
+      TARGET === "staging" ? "Preview" : TARGET === "production" ? "Production" : "ローカル";
+    // 構成IDだけが足りないなら候補を出す（鍵は揃っているので一覧が引ける）。
+    const onlyConfigMissing =
+      missing.length === 1 && missing[0].endsWith("STRIPE_PORTAL_CONFIGURATION_ID");
+    const hint = onlyConfigMissing
+      ? await describeConfigurationCandidates(process.env[`${prefix}STRIPE_SECRET_KEY`].trim())
+      : "";
+    throw new Error(
+      `${TARGET} 用のStripeの値が ${missing.length} 件足りません。Vercelの環境変数（${where}）からコピーして .env.local へ追記してください:\n` +
+        missing.map((key) => `  ${key}=`).join("\n") +
+        `\n\n${TARGET} は**別のStripeアカウント**なので、鍵・price・構成IDのすべてが手元とは違う値になります。` +
+        `\n（コピー元の変数名は接頭辞 ${prefix} を外したものです）` +
+        hint,
+    );
+  }
+  const values = {};
+  for (const name of ACCOUNT_SCOPED) {
+    values[name] = process.env[`${prefix}${name}`].trim();
+    sourceUsed[name] = `${prefix}${name}`;
+  }
+  return values;
 }
 
 /**
@@ -149,8 +193,12 @@ export function groupPricesByProduct(prices) {
  * 同じ変数。同じものに2つの名前を作らない・T-M8-35）。
  */
 function resolveAppBaseUrl() {
-  if (TARGET === "local") return required("APP_BASE_URL");
-  const name = TARGET === "staging" ? "STAGING_BASE_URL" : "PRODUCTION_BASE_URL";
+  const name =
+    TARGET === "local"
+      ? "APP_BASE_URL"
+      : TARGET === "staging"
+        ? "STAGING_BASE_URL"
+        : "PRODUCTION_BASE_URL";
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required.（デプロイ手順・doctor と同じ変数です）`);
   return value;
@@ -159,7 +207,12 @@ function resolveAppBaseUrl() {
 async function main() {
   TARGET = DRY_RUN ? "local" : resolveTarget();
   const appBaseUrl = resolveAppBaseUrl();
-  const priceIds = configuredPriceIds();
+  const account = await requireAccountScoped();
+  const priceIds = [
+    account.STRIPE_PRICE_STANDARD_MONTHLY,
+    account.STRIPE_PRICE_MD_MONTHLY,
+    account.STRIPE_PRICE_PREMIUM_MONTHLY,
+  ];
 
   if (DRY_RUN) {
     console.log(
@@ -180,10 +233,22 @@ async function main() {
     return;
   }
 
-  const stripe = new Stripe(required("STRIPE_SECRET_KEY"), {
-    apiVersion: API_VERSION,
-  });
-  const prices = await Promise.all(priceIds.map((id) => stripe.prices.retrieve(id)));
+  const stripe = new Stripe(account.STRIPE_SECRET_KEY, { apiVersion: API_VERSION });
+  // **`No such price` を運営者に分かる言葉へ変える。** 生のStripeエラーだけだと、
+  // 「別アカウントの鍵で手元のprice IDを参照した」ことが読み取れない（2026-08-04 に実際に踏んだ）。
+  const prices = await Promise.all(
+    priceIds.map((id) =>
+      stripe.prices.retrieve(id).catch((error) => {
+        throw new Error(
+          `price ${id} が ${TARGET} のStripeアカウントに見つかりません。` +
+            `${PREFIX[TARGET]}STRIPE_PRICE_* が ${TARGET} 側の値になっているか確認してください` +
+            `（別アカウントなので手元の price ID は使えません）。元のエラー: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+        );
+      }),
+    ),
+  );
   const desired = portalConfiguration({
     appBaseUrl,
     updateProducts: portalUpdateProducts(groupPricesByProduct(prices)),
@@ -195,7 +260,7 @@ async function main() {
   // env の `STRIPE_PORTAL_CONFIGURATION_ID` を人が書き換える手順が要った。書き換え漏れで
   // **古い設定を指したまま**になり、「プランを変更」が Stripe 側で無効なまま気付かなかった
   // （2026-08-03）。IDを変えなければ、env を触らずにコードと設定を一致させられる。
-  const existingId = requiredPerTarget("STRIPE_PORTAL_CONFIGURATION_ID");
+  const existingId = account.STRIPE_PORTAL_CONFIGURATION_ID;
   const configuration = await stripe.billingPortal.configurations.update(existingId, desired);
 
   // 画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
