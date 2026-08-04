@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { PLANS } from "@/lib/plans";
+
 import {
   groupPricesByProduct,
   missingEnvNames,
   portalConfiguration,
   portalUpdateProducts,
+  PRODUCT_NAMES,
 } from "../../../scripts/setup-stripe-portal.mjs";
 
 describe("Stripe Portal configuration setup", () => {
@@ -104,5 +107,18 @@ describe("missingEnvNames（足りない値をまとめて返す）", () => {
     expect(missingEnvNames(NAMES, { STRIPE_SECRET_KEY: "sk" }, "")).toEqual([
       "STRIPE_PRICE_STANDARD_MONTHLY",
     ]);
+  });
+});
+
+/**
+ * Stripe側の商品名はアプリの表示名と同じにする（T-M8-58）。
+ * Checkout・Portal・請求書にそのまま出るので、ここが英語のままだと日本語のサービスの中で
+ * Stripeの画面だけ英語の商品名になる。対応表が `plans.ts` から乖離したらここで落ちる。
+ */
+describe("PRODUCT_NAMES はアプリの表示名と1対1", () => {
+  it("standard / md / premium の表示名と一致する", () => {
+    expect(PRODUCT_NAMES.STRIPE_PRICE_STANDARD_MONTHLY).toBe(PLANS.standard.displayName);
+    expect(PRODUCT_NAMES.STRIPE_PRICE_MD_MONTHLY).toBe(PLANS.md.displayName);
+    expect(PRODUCT_NAMES.STRIPE_PRICE_PREMIUM_MONTHLY).toBe(PLANS.premium.displayName);
   });
 });

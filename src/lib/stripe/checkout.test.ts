@@ -120,6 +120,7 @@ describe("POST /api/stripe/checkout core", () => {
     expect(deps.saveStripeCustomerId).not.toHaveBeenCalled();
     expect(deps.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
+      locale: "ja",
       customer: "cus_existing",
       client_reference_id: "user_123",
       line_items: [{ price: "price_premium_server", quantity: 1 }],

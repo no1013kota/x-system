@@ -50,6 +50,18 @@ let TARGET = "local";
  * **staging の鍵でローカルの price を参照して `No such price` になる**。
  * アカウント単位の値は接頭辞なしへ落とさない。
  */
+/**
+ * Stripe側の商品名（T-M8-58）。**Checkout・Portal・請求書にそのまま出る**。
+ * 英語のまま（Standard/md/Premium）だと、日本語で作っている画面の中でStripeの画面だけ
+ * 英語の商品名になる。アプリの表示名（`src/lib/plans.ts` の displayName）と同じにする——
+ * 対応が崩れていないことは `portal-configuration.test.ts` が検査する。
+ */
+export const PRODUCT_NAMES = {
+  STRIPE_PRICE_STANDARD_MONTHLY: "通常プラン",
+  STRIPE_PRICE_MD_MONTHLY: "mdプラン",
+  STRIPE_PRICE_PREMIUM_MONTHLY: "プレミアムプラン",
+};
+
 const ACCOUNT_SCOPED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_STANDARD_MONTHLY",
@@ -246,6 +258,17 @@ async function main() {
   }
 
   const stripe = new Stripe(account.STRIPE_SECRET_KEY, { apiVersion: API_VERSION });
+
+  // 商品名をアプリの表示名へ揃える（違うときだけ更新。何度実行しても同じ結果）。
+  const renamed = [];
+  for (const [envName, name] of Object.entries(PRODUCT_NAMES)) {
+    const price = await stripe.prices.retrieve(account[envName], { expand: ["product"] });
+    const product = price.product;
+    if (typeof product !== "string" && !product.deleted && product.name !== name) {
+      await stripe.products.update(product.id, { name });
+      renamed.push(`${product.name} → ${name}`);
+    }
+  }
   // **`No such price` を運営者に分かる言葉へ変える。** 生のStripeエラーだけだと、
   // 「別アカウントの鍵で手元のprice IDを参照した」ことが読み取れない（2026-08-04 に実際に踏んだ）。
   const prices = await Promise.all(
@@ -296,6 +319,7 @@ async function main() {
         mode: "updated-in-place",
         // どの変数から値を読んだか（別環境の鍵を黙って使っていないことを確認できるように）。
         valueSources: sourceUsed,
+        productNames: renamed.length > 0 ? renamed : "既に揃っています",
         features,
       },
       null,

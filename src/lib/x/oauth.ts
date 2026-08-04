@@ -23,13 +23,11 @@ export const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 export const X_REVOKE_URL = "https://api.x.com/2/oauth2/revoke";
 
 /** 要求scope（順序・space区切り。PRD §8.1 / 要件05 §4.3）。 */
-export const X_SCOPES = [
-  "tweet.read",
-  "tweet.write",
-  "users.read",
-  "media.write",
-  "offline.access",
-] as const;
+// 定義は scopes.ts（client component からも読める純粋モジュール）。import + 再export で
+// 既存のimport元（server側）とこのファイル内の使用の両方を成立させる。
+import { X_SCOPES } from "./scopes";
+
+export { X_SCOPES };
 
 /** OAuth stateの既定TTL。仕様は「短TTL」のみ規定のため技術判断で10分。 */
 export const X_OAUTH_STATE_MAX_AGE_SEC = 600;

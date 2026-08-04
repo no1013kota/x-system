@@ -46,7 +46,8 @@ describe("auth confirmation routing", () => {
   });
 
   it("uses type-specific defaults when next is absent or rejected", () => {
-    expect(confirmationSuccessPath("signup", null, BASE_URL)).toBe("/plans");
+    // signup成功は「確認完了」の目印つきで着地する（T-M8-58。着地側が成功を言えるように）。
+    expect(confirmationSuccessPath("signup", null, BASE_URL)).toBe("/plans?confirmed=1");
     expect(
       confirmationSuccessPath("recovery", "https://evil.example", BASE_URL),
     ).toBe("/reset-password");

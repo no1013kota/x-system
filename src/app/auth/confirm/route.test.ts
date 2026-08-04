@@ -48,7 +48,7 @@ describe("GET /auth/confirm", () => {
       type: "signup",
     });
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://app.example.com/plans");
+    expect(response.headers.get("location")).toBe("https://app.example.com/plans?confirmed=1");
   });
 
   it("redirects a verified recovery token to reset-password", async () => {
@@ -121,6 +121,6 @@ describe("GET /auth/confirm", () => {
       ),
     );
 
-    expect(response.headers.get("location")).toBe("https://app.example.com/plans");
+    expect(response.headers.get("location")).toBe("https://app.example.com/plans?confirmed=1");
   });
 });
