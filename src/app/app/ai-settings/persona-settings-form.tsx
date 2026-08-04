@@ -13,7 +13,7 @@ import {
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
-import { CardTitle } from "@/components/ui/card";
+import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
@@ -34,7 +34,7 @@ const inputClassName =
  * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
  * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
  */
-const groupClassName = "rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6";
+const groupClassName = `${cardClassName} p-5 sm:p-6`;
 
 type NgField = "words" | "topics" | "rules";
 

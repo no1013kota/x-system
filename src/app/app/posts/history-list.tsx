@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { cardClassName } from "@/components/ui/card";
 
 /**
  * SC-07 履歴タブ（投稿済み下書きの閲覧専用一覧, T-M3-22, 要件06 §7/§8）。
@@ -42,7 +43,7 @@ export function HistoryList({
   return (
     // デザイン H-1 は6列のテーブル。**本文が読めなくなるのは機能低下**なので、
     // 内容セルに折りたたみを残して全文へ到達できるようにする（表示の既定は1行）。
-    <div className="overflow-x-auto rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]">
+    <div className={`${cardClassName} overflow-x-auto`}>
       <table className="w-full min-w-[52rem] text-[12.5px]">
         <thead>
           <tr className="border-b border-hairline text-left text-[11.5px] text-ink-2">

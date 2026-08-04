@@ -27,7 +27,7 @@ import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
 import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -168,7 +168,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
-            <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+            <Card as="div" className="px-5 py-4">
               <CardTitle id="billing-heading">
                 現在のご契約
               </CardTitle>
@@ -217,7 +217,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <div className="mt-7">
                 <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
               </div>
-            </div>
+            </Card>
             <p className="text-sm leading-6 text-muted-foreground">
               {/* 行き先の説明はボタン直下にあるので、ここは反映のタイミングだけにする（T-M8-31）。 */}
               変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）。
@@ -229,7 +229,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ) : (
           <section
             aria-labelledby="support-heading"
-            className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
+            className={`${cardClassName} px-5 py-4`}
           >
             <CardTitle id="support-heading">
               お問い合わせ

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Card, CardBody } from "@/components/ui/card";
+import { Card, CardBody, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import type { SetupChecklistItem } from "@/lib/execution-prereqs";
 
@@ -23,9 +23,9 @@ export function SetupGuideCard({ items }: { items: SetupChecklistItem[] }) {
     <Card aria-labelledby="setup-guide-heading" className="overflow-hidden" role="region">
       <CardBody>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-[15px] font-bold text-ink" id="setup-guide-heading">
+          <CardTitle id="setup-guide-heading">
             初期設定ガイド
-          </h2>
+          </CardTitle>
           <span className="text-[12px] font-bold tabular-nums text-brand">
             {done} / {items.length} 完了
           </span>

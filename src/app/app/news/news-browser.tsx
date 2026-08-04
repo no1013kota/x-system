@@ -18,6 +18,7 @@ import { THEME_OPTIONS } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { cardClassName } from "@/components/ui/card";
 
 const IMPACTS: { id: string; label: string }[] = [
   { id: "high", label: "高" },
@@ -226,7 +227,7 @@ export function NewsBrowser({
         </p>
       )}
 
-      <section aria-label="絞り込み" className="space-y-3 rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]">
+      <section aria-label="絞り込み" className={`${cardClassName} space-y-3 p-4`}>
         {/* この条件は news_config として保存され通知にも使われる（要件06 §3.4）。副作用を明示する。 */}
         <p className="text-xs leading-5 text-muted-foreground">
           この条件は保存され、ニュース通知の対象にも使われます。
@@ -307,7 +308,7 @@ export function NewsBrowser({
       ) : null}
 
       {items.length === 0 ? (
-        <div className="rounded-card border border-hairline bg-surface px-4 py-11 text-center text-[12.5px] text-ink-2 shadow-[var(--shadow-card)]">
+        <div className={`${cardClassName} px-4 py-11 text-center text-[12.5px] text-ink-2`}>
           {window ? (
             <p>この時間帯に該当するニュースはありません。</p>
           ) : narrowedFilter ? (
@@ -333,7 +334,7 @@ export function NewsBrowser({
         <ul className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(0,1fr))] xl:grid-cols-2">
           {items.map((item) => (
             <li
-              className="flex flex-col rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]"
+              className={`${cardClassName} flex flex-col p-4`}
               key={item.id}
             >
               <div className="flex items-center gap-2">

@@ -17,6 +17,7 @@ import { Icon } from "@/components/ui/icon";
 
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
@@ -262,11 +263,11 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
 
           <section
             aria-labelledby="signup-flow-heading"
-            className="rounded-card border border-hairline bg-surface p-[22px] shadow-[var(--shadow-card)]"
+            className={`${cardClassName} p-[22px]`}
           >
-            <h2 className="text-[15px] font-bold text-ink" id="signup-flow-heading">
+            <CardTitle id="signup-flow-heading">
               ご登録の流れ
-            </h2>
+            </CardTitle>
             <ol className="mt-4 grid gap-3 sm:grid-cols-4">
               {SIGNUP_FLOW.map((item) => (
                 <li className="flex flex-col gap-[7px]" key={item.step}>
