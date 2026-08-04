@@ -54,19 +54,24 @@ export function PortalButton({
   }
 
   if (!enabled) {
-    // 契約は有効だが顧客が未紐づけ → `/plans` は弾き返すので、行き先を出さずに状況を伝える。
-    if (awaitingSync) {
-      return (
-        <Notice role="status" tone="info">
-          ご契約の情報をStripeから受け取っています（数十秒かかることがあります）。反映されると、
-          ここでプラン変更と解約ができるようになります。時間をおいて画面を再読み込みしてください。
-        </Notice>
-      );
-    }
     return (
-      <Link className={primaryLinkClassName} href="/plans">
-        プランを選ぶ
-      </Link>
+      <div className="space-y-3">
+        {/*
+          **状況を伝えても、行き先は必ず残す**（T-M8-54）。
+          最初の修正で説明文だけにしたところ、押せるものが何も無い行き止まりになった
+          （同期が来なければ永久に「再読み込みしてください」のまま）。
+          `/plans` 側も顧客が未紐づけの契約者を送り返さないようにしたので、ここから申し込みへ進める。
+        */}
+        {awaitingSync ? (
+          <Notice role="status" tone="info">
+            ご契約の情報をStripeから受け取っています（数十秒かかることがあります）。反映されると、
+            ここでプラン変更と解約ができるようになります。反映されない場合は、下からもう一度お申し込みください。
+          </Notice>
+        ) : null}
+        <Link className={primaryLinkClassName} href="/plans">
+          プランを選ぶ
+        </Link>
+      </div>
     );
   }
 
