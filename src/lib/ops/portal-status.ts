@@ -40,10 +40,18 @@ export async function probePortalFeatures(
       deps.configurationId,
     );
     return { features: configuration.features ?? {} };
-    // eslint-disable-next-line no-restricted-syntax -- 到達できないこと自体が判定結果（warn）。設定の誤りと区別する。
-  } catch {
-    return { features: null };
+  } catch (error) {
+    // **「設定IDが無い」と「Stripeへ届かない」を区別する**（T-M8-55）。
+    // 前者は別環境の値が入っている典型的な事故で、待っても直らない。
+    return { features: null, ...(isMissingResource(error) ? { configurationNotFound: true } : {}) };
   }
+}
+
+/** Stripe の `resource_missing`（No such ...）か。 */
+function isMissingResource(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  const message = error instanceof Error ? error.message : "";
+  return code === "resource_missing" || /No such configuration/i.test(message);
 }
 
 export function judgePortal(snapshot: PortalFeatureSnapshot): Check {

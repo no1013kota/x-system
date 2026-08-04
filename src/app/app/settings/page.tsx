@@ -29,6 +29,7 @@ import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -214,7 +215,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 別リンクを並べると同じ行き先が2つ出る。
               */}
               <div className="mt-7">
-                <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
+                <PortalButton
+                  effects={planChangeEffects({
+                    cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
+                    currentPeriodEnd: profile.current_period_end,
+                    subscriptionStatus: profile.subscription_status,
+                  })}
+                  enabled={Boolean(profile.stripe_customer_id)}
+                />
               </div>
             </Card>
             <p className="text-sm leading-6 text-muted-foreground">
