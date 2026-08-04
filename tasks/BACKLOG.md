@@ -633,6 +633,26 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 据え置いた30件のうち目立つもの: warn/info/success バナー約37箇所の `Notice` 移行、
   未使用アイコン11個（`origin/stg` でも未使用＝今回の退行ではない）、プロンプト設計書 v1.10〜v1.13 の履歴欠落。
 
+### T-M8-49: doctorが案内するコマンドがそのまま動くことを機械的に守る `done`
+- 参照: CLAUDE.md 原則2（原因が開発知識なしで辿れる）・原則3（記憶に依存させない） / 依存: T-M8-48 / サイズ: S
+- **見つけ方**: stagingへ反映後の `npm run doctor -- --base <stg>` の出力。
+  ❌ プラン管理（Stripe）の次の一手が `npm run stripe:portal:setup` のままだった。
+  T-M8-35 で `--target` を**必須**にしたので、**運営者が言われた通り打つとエラーで止まる**。
+- なぜ実害か: `doctor` の `nextAction` は「いま何が壊れていて次に何をすればよいか」を
+  非エンジニアへ伝える**唯一の出口**。原則2は示したコマンドが**そのまま通ること**まで含む。
+  「コマンドを変えたら案内も直す」を人の記憶に任せていたのが原因（原則3）。
+- 直したもの: `portal-status.ts` の案内を
+  `npm run stripe:portal:setup -- --target <local|staging|production>` ＋ deployment.md §1.4 への参照へ。
+- 再発防止: `src/lib/ops/next-action-commands.test.ts` が `src/lib/ops/**` と `scripts/**` の
+  文言から `npm run <script>` を抽出し、(a) **package.json に実在するか**、
+  (b) **引数が必須のスクリプトは引数まで含めて案内しているか**を検査する。
+  (b) の対象は「既定を持たせず指定漏れで止める」と決めたものだけ（現状 `stripe:portal:setup` の
+  `--target` 1件）。旧形式へ戻すと落ちることを確認した。
+- 調べたが問題ではなかったこと: stagingで `smoke:live` が「ニュース2件取得」なのに `doctor` は
+  「まだ一度も実行されていません」と出る。**両方正しい**——スモークは `researchNews` を直接呼び
+  **成果物をDBへ保存しない**（`scenarios.ts:346`）。`doctor` は `news_fetch_outcomes` を見るが、
+  定時実行（launchd）はローカル専用でstagingでは動いていない。
+
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M
 - 経緯: 利用者から「要件と実装が違う部分がないか。実装時に要件も変更済みか」（2026-08-03）。
