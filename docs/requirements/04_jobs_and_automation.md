@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
-| 更新日 | 2026-08-03 |
+| バージョン | v1.20 |
+| 更新日 | 2026-08-04 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -186,7 +186,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 ## 10. 投稿実行
 
 1. draftをlockし、`draft`または再試行可能な`failed`を`posting`へ変更する。
-2. 契約、X token、日次上限、premiumの通常/URL付き投稿残量、thread、警告を検証する。auto起点の`post_publish`はこの時点でも現行versionの自動投稿同意と未撤回を再検証する。残量は要件03 §7.4の通常/URL付き別ロールバック安全量を必須とし、同一userの他の投稿jobがrunningなら処理しない。
+2. 契約、X token、日次上限、premiumの通常/URL付き投稿残量、thread、警告を検証する。auto起点の`post_publish`はこの時点でも現行versionの自動投稿同意と未撤回を再検証する。**加重文字数の上限（280）超過は`mode`を問わずここで失敗させ、X APIを1件も呼ばない**（要件06 §7と同じ判定をサーバー側でも行う。Xは超過を400で拒否するため、スレッド途中で拒否されると先行ポストがX上に残り取り返しがつかない）。判定は保存済みの`weighted_length`ではなく**そのとき投稿する本文**（P-5は`quote_url`合成後）から測り直す。残量は要件03 §7.4の通常/URL付き別ロールバック安全量を必須とし、同一userの他の投稿jobがrunningなら処理しない。
 3. P-5は`quote_tweet_id`で対象ポストを再取得し、取得成功後に正規化済み`quote_url`を1ポスト目の本文末尾へ合成する。対象取得不能、URL不正、合成後の加重文字数超過はX APIを呼ばず失敗にする。
 4. 画像があればX media uploadを完了し、media idを得る。失敗時は本文を投稿しない。
 5. 1ポスト目を通常投稿として送信する。P-5も`quote_tweet_id`は指定せず、対象URLを含む本文を使う。画像ありは`media_ids`を指定する。
@@ -229,7 +229,7 @@ flowchart TD
 - LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件、自己投稿は直近100件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。mergeには対象セクションの現在値と、同セクションへ反映する全active sourceのanalysisを渡す。
 - own_posts再取り込みの30日制御は**成功した`learning_analysis` jobだけ**を数える。失敗を数えると、分析が壊れているときに直すための再実行まで塞がれ、行き止まりになる（2026-07-26に発生・T-M7-39）。二重送信は進行中jobの`job_conflict`で止める。
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面・2,000字で切る）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
-- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由、止まっている処理、送信待ちメール、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
+- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTはユーザー操作だけで起動し、同一JST日かつ新しいmetrics更新がなければ拒否する。比較は同じcheckpoint同士に限定し、7日値を優先、比較グループが3件未満なら1日値を使い、異なる経過日数を混ぜない。

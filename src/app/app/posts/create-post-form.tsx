@@ -18,6 +18,8 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import type { PostPatternOption } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 export interface ActiveJob {
   id: string;
@@ -89,7 +91,10 @@ export function CreatePostForm({
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
   const [sourceUrl, setSourceUrl] = useState("");
-  /** 分野（発信テーマ）。空文字は「指定なし」＝AIがベースmdの発信テーマから選ぶ（T-M8-28）。 */
+  /**
+   * テーマ。**選択は必須**（2026-08-03 ユーザー判断）。空文字は「まだ選んでいない」状態で、
+   * 生成ボタンを押せない状態にする（`lib/post/post-theme.ts` の判断）。
+   */
   const [theme, setTheme] = useState("");
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
@@ -128,7 +133,7 @@ export function CreatePostForm({
         x_account_id: xAccountId,
         pattern,
         source_url: sourceUrl.trim() || undefined,
-        theme: theme || null,
+        theme,
         user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
@@ -318,7 +323,7 @@ export function CreatePostForm({
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
           className="h-10 w-full gap-1.5 text-[13.5px]"
-          disabled={pending || inProgress}
+          disabled={pending || inProgress || !theme}
           onClick={submit}
           type="button"
           variant="gradient"
@@ -326,12 +331,20 @@ export function CreatePostForm({
           <Icon name="star_shine" size={17} />
           {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "スレッドを生成する"}
         </Button>
+        {/*
+          **押せない理由を画面に出す**（T-M8-37）。無効化だけだと「なぜ押せないのか」が分からない。
+          以前はテーマ未選択でも押せて、サーバ側の `z.enum` で弾かれ「入力内容を確認してください」
+          という**どの項目が悪いか分からない**トーストが5秒で消えるだけだった。
+        */}
+        {!theme && !inProgress ? (
+          <p className="text-[12px] text-ink-2">テーマを選ぶと生成できます。</p>
+        ) : null}
       </section>
 
       {/* 結果（ステート2・3） */}
       <section aria-label="プレビュー・結果"
         className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
-        <h2 className="text-sm font-medium">結果</h2>
+        <CardTitle>結果</CardTitle>
 
         {prereq ? (
           <ExecutionPrereqNotice
@@ -408,9 +421,9 @@ export function CreatePostForm({
 
         {job?.status === "failed" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-danger-fg/25 bg-danger-bg p-3 text-sm leading-6 text-danger-fg" role="alert">
+            <Notice role="alert" tone="danger">
               {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
-            </p>
+            </Notice>
             {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
             {job.error?.code === "usage_limit_exceeded" ? (
               <Link

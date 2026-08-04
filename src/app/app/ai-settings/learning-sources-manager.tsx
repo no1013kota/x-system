@@ -9,9 +9,11 @@ import {
   reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-10 学習ソースタブ（L-1〜3, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
@@ -30,6 +32,19 @@ const STATUS_LABEL: Record<string, string> = {
   analyzed: "反映済み",
   failed: "失敗",
   removing: "削除処理中",
+};
+/**
+ * 状態→色は**意味で決める**（`Badge` の tone・デザイン §カラー）。x-accounts と同じ形にして、
+ * 状態色の決め方をアプリ全体で1つに揃える（T-M8-36）。
+ *
+ * 以前は背景色・文字色の指定が無い生の span で、4状態が**すべて同じ見た目**だった。
+ * 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+ */
+const STATUS_TONE: Record<string, BadgeTone> = {
+  pending: "info",
+  analyzed: "success",
+  failed: "danger",
+  removing: "warn",
 };
 
 function uuid(): string {
@@ -89,7 +104,12 @@ export function LearningSourcesManager({
   }
 
   function add() {
-    if (!url.trim()) return;
+    // 押せない状態にしてあるので通常は到達しない（保険）。**黙って return しない**のが要点で、
+    // 以前はここで無言で抜けており、ボタンは押せるのに何も起きなかった（T-M8-37）。
+    if (!url.trim()) {
+      toast.show({ tone: "error", title: "XのURLを入力してください" });
+      return;
+    }
     startTransition(async () => {
       const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url: url.trim() });
       if (res.status === "success") {
@@ -149,7 +169,7 @@ export function LearningSourcesManager({
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}
       <section className="rounded-card border border-hairline bg-surface p-4">
-        <h2 className="text-sm font-semibold">参考ソースを追加</h2>
+        <CardTitle>参考ソースを追加</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
         </p>
@@ -181,18 +201,27 @@ export function LearningSourcesManager({
           </label>
           <button
             className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
-            disabled={pending || removing || (refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX))}
+            disabled={
+              pending ||
+              removing ||
+              !url.trim() ||
+              refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX)
+            }
             onClick={add}
             type="button"
           >
             追加
           </button>
         </div>
+        {/* **押せない理由を出す**（T-M8-37）。無効化だけだと壊れているのか区別できない。 */}
+        {!url.trim() && !removing ? (
+          <p className="mt-2 text-xs text-muted-foreground">XのURLを入力すると追加できます。</p>
+        ) : null}
       </section>
 
       {/* 自己過去投稿の取り込み/再取り込み */}
       <section className="rounded-card border border-hairline bg-surface p-4">
-        <h2 className="text-sm font-semibold">自分の過去投稿から学習</h2>
+        <CardTitle>自分の過去投稿から学習</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
           <strong className="font-medium">成功した取り込みから</strong>30日ごとに1回まで（失敗したときはすぐやり直せます）。
@@ -215,7 +244,7 @@ export function LearningSourcesManager({
 
       {/* 一覧 */}
       <section>
-        <h2 className="text-sm font-semibold">登録済みの学習ソース</h2>
+        <CardTitle>登録済みの学習ソース</CardTitle>
         {sources.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ学習ソースはありません。
@@ -225,10 +254,10 @@ export function LearningSourcesManager({
             {sources.map((s) => (
               <li className="rounded-card border border-hairline bg-surface p-4" key={s.id}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-muted px-2 py-0.5 text-xs">{TYPE_LABEL[s.type] ?? s.type}</span>
-                  <span className="rounded px-2 py-0.5 text-xs font-medium">
+                  <Badge>{TYPE_LABEL[s.type] ?? s.type}</Badge>
+                  <Badge tone={STATUS_TONE[s.status] ?? "neutral"}>
                     {STATUS_LABEL[s.status] ?? s.status}
-                  </span>
+                  </Badge>
                   <span className="ml-auto text-xs text-muted-foreground">分析日時: {formatJst(s.updatedAt)}</span>
                 </div>
                 {s.url ? (

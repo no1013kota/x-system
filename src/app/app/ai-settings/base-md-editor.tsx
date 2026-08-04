@@ -12,6 +12,8 @@ import { useToast } from "@/components/ui/toast";
 import type { BaseMdVersionView } from "@/lib/base-md";
 import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
+import { CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
@@ -220,7 +222,7 @@ export function BaseMdEditor({
       {/* エディタ */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold">ベースmd（現在: version {version}）</h2>
+          <CardTitle>ベースmd（現在: version {version}）</CardTitle>
           <span
             className={`ml-auto text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
@@ -260,7 +262,7 @@ export function BaseMdEditor({
 
       {/* 履歴・ロールバック */}
       <section>
-        <h2 className="text-sm font-semibold">変更履歴</h2>
+        <CardTitle>変更履歴</CardTitle>
         {history.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ履歴はありません。
@@ -269,8 +271,9 @@ export function BaseMdEditor({
           <ul className="mt-2 space-y-2">
             {history.map((h) => (
               <li className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface p-4" key={h.version}>
-                <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">v{h.version}</span>
-                <span className="rounded px-2 py-0.5 text-xs">{CHANGE_SOURCE_LABEL[h.changeSource] ?? h.changeSource}</span>
+                <Badge>v{h.version}</Badge>
+                {/* 「誰が変えたか」は分類なので neutral。以前は背景色の指定が無く、隣のチップと形が揃っていなかった。 */}
+                <Badge>{CHANGE_SOURCE_LABEL[h.changeSource] ?? h.changeSource}</Badge>
                 {h.summary ? <span className="text-xs text-muted-foreground">{h.summary}</span> : null}
                 <span className="ml-auto text-xs text-muted-foreground">{formatJst(h.createdAt)}</span>
                 {h.version !== version ? (

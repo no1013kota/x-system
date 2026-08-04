@@ -6,6 +6,7 @@ import { useActionState } from "react";
 import { acceptLegalUpdates } from "@/app/actions/legal-consent";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import {
   CURRENT_PRIVACY_VERSION,
   CURRENT_TERMS_VERSION,
@@ -31,9 +32,9 @@ export function LegalConsentForm({
         value={CURRENT_PRIVACY_VERSION}
       />
       {state.status === "error" ? (
-        <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+        <Notice role="alert" tone="danger">
           {state.message}
-        </p>
+        </Notice>
       ) : null}
       {requireTerms ? (
         <label className="flex items-start gap-3 rounded-card border p-4 text-sm">

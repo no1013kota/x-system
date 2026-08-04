@@ -1,6 +1,5 @@
 "use client";
 
-import { Bot, ImageIcon, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -15,6 +14,8 @@ import {
   configuredPurpose,
 } from "@/lib/ai-purpose-view";
 import type { PlanId } from "@/lib/plans";
+import { CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
@@ -75,10 +76,10 @@ export function AiPurposeSettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-violet-100 p-2.5 text-violet-800">
-            <Bot aria-hidden="true" className="size-5" />
+            <Icon name="smart_toy" size={20} />
           </span>
           <div>
-            <h2 className="text-xl font-semibold" id="text-purpose-heading">文章生成・リサーチ</h2>
+            <CardTitle id="text-purpose-heading">文章生成・リサーチ</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               投稿文の生成とWebリサーチには同じAIを使います。
             </p>
@@ -116,10 +117,10 @@ export function AiPurposeSettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="image-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-info-bg p-2.5 text-info-fg">
-            <ImageIcon aria-hidden="true" className="size-5" />
+            <Icon name="image" size={20} />
           </span>
           <div>
-            <h2 className="text-xl font-semibold" id="image-purpose-heading">画像生成</h2>
+            <CardTitle id="image-purpose-heading">画像生成</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
             </p>
@@ -178,7 +179,7 @@ export function AiPurposeSettings({
 function ApiKeySettingsLink() {
   return (
     <Link className="mt-3 inline-flex min-h-10 items-center gap-2 font-medium text-info-fg underline underline-offset-4" href="/app/settings?tab=api-keys">
-      <KeyRound aria-hidden="true" className="size-4" />APIキー設定へ
+      <Icon name="key" size={16} />APIキー設定へ
     </Link>
   );
 }

@@ -9,9 +9,18 @@ import { cn } from "@/lib/utils";
  * これまで各画面が `rounded-xl border bg-background p-4` のような組み合わせを直書きしており、
  * 値が少しずつ違っていた。**器はここへ集約する**（保守運用のため）。
  */
-export function Card({ className, ...props }: ComponentProps<"div">) {
+/**
+ * `as` で要素を選べる（既定は `div`）。見出しを持つ独立した領域は `section` にする——
+ * `div` にすると landmark が消え、支援技術からもテストからも「1つのまとまり」として
+ * 扱えなくなる（T-M8-41）。
+ */
+export function Card({
+  as: Tag = "div",
+  className,
+  ...props
+}: ComponentProps<"div"> & { as?: "div" | "section" | "article" }) {
   return (
-    <div
+    <Tag
       className={cn(
         "rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]",
         className,

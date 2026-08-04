@@ -15,6 +15,7 @@ import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
+import { CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "スケジュール | Space AI" };
 
@@ -102,7 +103,7 @@ export default async function SchedulePage() {
           className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-[15px] font-bold text-ink">未確認の下書き</h2>
+            <CardTitle>未確認の下書き</CardTitle>
             <Link
               className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
               href="/app/posts?tab=drafts"

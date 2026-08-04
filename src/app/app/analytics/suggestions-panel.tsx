@@ -7,6 +7,8 @@ import { refreshSuggestionsAction } from "@/app/actions/suggestions";
 import { useToast } from "@/components/ui/toast";
 import type { SuggestionDisplay } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
+import { CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * SC-09 改善提案（表示専用, K-2, 要件06 §10, PRD 5.6, T-M5-19）。「提案を更新」でSUGGESTを起動し、生成中を
@@ -115,14 +117,11 @@ export function SuggestionsPanel({
   return (
     <section className="rounded-card border border-hairline bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">改善提案</h2>
+        <CardTitle>改善提案</CardTitle>
         {generating ? (
-          <span
-            aria-live="polite"
-            className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-          >
+          <Badge aria-live="polite" tone="info">
             {polling ? "生成中…（完了すると自動で表示されます）" : "生成中…"}
-          </span>
+          </Badge>
         ) : latestAt ? (
           <span className="text-xs text-muted-foreground">最終更新 {formatJst(latestAt)}</span>
         ) : null}
@@ -171,17 +170,13 @@ export function SuggestionsPanel({
               <p className="text-sm font-medium">{s.content}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                 {s.axis ? (
-                  <span className="rounded bg-muted px-2 py-0.5">
-                    {AXIS_LABEL[s.axis] ?? s.axis}
-                  </span>
+                  <Badge>{AXIS_LABEL[s.axis] ?? s.axis}</Badge>
                 ) : null}
-                <span className="rounded bg-muted px-2 py-0.5">
-                  {METRIC_LABEL[s.metric] ?? s.metric}
-                </span>
+                <Badge>{METRIC_LABEL[s.metric] ?? s.metric}</Badge>
                 {s.checkpointDays !== null ? (
-                  <span className="rounded bg-muted px-2 py-0.5">投稿後{s.checkpointDays}日の実績</span>
+                  <Badge>投稿後{s.checkpointDays}日の実績</Badge>
                 ) : null}
-                {s.diffPct !== null ? <span className="rounded bg-muted px-2 py-0.5">差 {s.diffPct}%</span> : null}
+                {s.diffPct !== null ? <Badge>差 {s.diffPct}%</Badge> : null}
               </div>
               {s.summary ? <p className="mt-2 text-sm text-muted-foreground">{s.summary}</p> : null}
               {s.posts.length > 0 ? (

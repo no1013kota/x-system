@@ -198,6 +198,14 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
   const reimport = page.getByRole("button", { name: "再取り込み" });
   await expect(reimport).toBeEnabled();
   await expect(page.getByText("次回の再取り込みまであと", { exact: false })).toHaveCount(0);
+
+  // 一覧の「失敗」が**色でも**分かる（T-M8-36）。以前は背景色の指定が無い生の span で、
+  // 「分析待ち」「反映済み」「失敗」「削除処理中」が全部同じ見た目だった。
+  // 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+  const statusChip = page.getByText("失敗", { exact: true });
+  await expect(statusChip).toBeVisible();
+  const background = await statusChip.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("通常プランではベースmd・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
@@ -225,4 +233,29 @@ test("通常プランではベースmd・プロンプトが鍵付きで案内さ
   await expect(
     page.getByRole("heading", { name: /プロンプトのカスタマイズは mdプラン以上/ }),
   ).toBeVisible();
+});
+
+/**
+ * URL未入力の「追加」が**完全に無反応**だった問題（T-M8-37）。
+ *
+ * `add()` は先頭で `if (!url.trim()) return;` と黙って抜けており、ボタンは押せる状態だった。
+ * 押してもトースト無し・強調無し・進行表示無しで、利用者からは壊れているのか自分の操作が
+ * 悪いのか区別できなかった（CLAUDE.md 原則1）。同じ画面の他の操作は全てトーストを出しており、
+ * ここだけが例外だった。
+ */
+test("URLが空のあいだ「追加」は押せず、理由が画面に出る（T-M8-37）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("learning-empty-url", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/ai-settings?tab=learning");
+
+  const add = page.getByRole("button", { name: "追加", exact: true });
+  await expect(add).toBeDisabled();
+  await expect(page.getByText("XのURLを入力すると追加できます。")).toBeVisible();
+
+  await page.getByRole("textbox", { name: "URL" }).fill("https://x.com/example");
+  await expect(add).toBeEnabled();
+  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(0);
 });

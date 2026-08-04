@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 /**
  * 使用するアイコン（Material Symbols の名前）。
- * デザイン2ファイルから抽出した41個。**増やすときはここへ足して再生成する**。
+ * デザイン2ファイルから抽出した41個＋lucide撤去で足した3個。**増やすときはここへ足して再生成する**。
  *
  * 2つはMaterial Symbols側で改名されている（パッケージ0.45系）:
  * `auto_awesome` → `star_shine` ／ `expand_more` → `keyboard_arrow_down`。
@@ -27,6 +27,8 @@ const ICON_NAMES = [
   "open_in_new", "output", "progress_activity", "radio_button_unchecked", "refresh",
   "schedule", "search_off", "smart_toy", "sync", "tune", "verified_user",
   "visibility", "warning", "workspace_premium",
+  // T-M8-45: `lucide-react` を撤去するために足した3つ（等価が未収録だったもの）。
+  "account_circle", "unfold_more", "content_copy",
 ];
 
 /**

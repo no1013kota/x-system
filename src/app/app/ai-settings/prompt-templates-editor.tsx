@@ -11,6 +11,7 @@ import {
   updatePromptTemplateAction,
 } from "@/app/actions/prompt-templates";
 import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * SC-10 プロンプトエディタ（M-2/M-3, 要件06 §9, T-M5-11）。md/premium のみ編集可。kind選択（p1〜p4/p6・
@@ -188,15 +189,9 @@ export function PromptTemplatesEditor({
             </select>
           </label>
           {current ? (
-            <span
-              className={`mt-4 rounded px-2 py-0.5 text-xs font-medium ${
-                current.isOverride
-                  ? "bg-brand-subtle text-brand"
-                  : "bg-black/[0.05] text-ink-3"
-              }`}
-            >
+            <Badge className="mt-4" tone={current.isOverride ? "brand" : "neutral"}>
               {current.isOverride ? "カスタム" : "既定"}
-            </span>
+            </Badge>
           ) : null}
           <span
             className={`ml-auto mt-4 text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}

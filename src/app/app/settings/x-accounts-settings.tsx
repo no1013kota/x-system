@@ -1,7 +1,6 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { CircleUserRound, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -19,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
+import { CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -91,9 +92,9 @@ export function XAccountsSettings({
       <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold" id="x-accounts-heading">
+            <CardTitle id="x-accounts-heading">
               Xアカウント
-            </h2>
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               有効なアカウント {activeCount} / {limit} 件（プラン上限）
             </p>
@@ -106,11 +107,11 @@ export function XAccountsSettings({
               type="button"
               variant="outline"
             >
-              <Plus aria-hidden="true" /> 追加（上限到達）
+              <Icon name="add" /> 追加（上限到達）
             </Button>
           ) : xApiKeyRegistered ? (
             <Button nativeButton={false} render={<a href={oauthStartPath} />} size="lg">
-              <Plus aria-hidden="true" /> Xアカウントを追加
+              <Icon name="add" /> Xアカウントを追加
             </Button>
           ) : (
             // X APIキー未登録のまま連携を始めると無言でAPIキータブへ戻されるため、先に登録へ誘導する。
@@ -162,7 +163,7 @@ export function XAccountsSettings({
                     src={account.profileImageUrl}
                   />
                 ) : (
-                  <CircleUserRound aria-hidden="true" className="size-10 shrink-0 text-muted-foreground" />
+                  <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
                 )}
                 <div className="min-w-40 flex-1">
                   <p className="flex items-center gap-2 font-medium">
@@ -173,13 +174,14 @@ export function XAccountsSettings({
                   </p>
                   <p className="text-sm text-muted-foreground">{account.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 ${
-                        STATUS_TONE[account.status] ?? "border-hairline bg-black/[0.04]"
-                      }`}
-                    >
+                    {/*
+                      tone は **prop で渡す**。className へ文字列展開すると
+                      `class="... success"` という存在しないユーティリティになり、4状態すべてが
+                      同じ見た目になる（T-M8-36 で実際に起きた退行）。
+                    */}
+                    <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
                       {STATUS_LABEL[account.status] ?? account.status}
-                    </span>
+                    </Badge>
                     <span className="text-muted-foreground">
                       {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
                     </span>
@@ -236,7 +238,7 @@ export function XAccountsSettings({
                       size="sm"
                       variant="outline"
                     >
-                      <RefreshCw aria-hidden="true" /> 再連携
+                      <Icon name="refresh" /> 再連携
                     </Button>
                   ) : null}
 

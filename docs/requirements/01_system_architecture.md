@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
-| 更新日 | 2026-07-31 |
+| バージョン | v1.14 |
+| 更新日 | 2026-08-04 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -82,7 +82,7 @@ flowchart TB
 |---|---|---|---|
 | `STRIPE_SECRET_KEY` | dev/preview/prod | Checkout/Portal/Webhook API | Server only |
 | `STRIPE_WEBHOOK_SECRET` | dev/preview/prod | Webhook署名検証 | 環境ごとに別値 |
-| `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | 3価格を同一Product配下に置く。devは任意（Portal設定はpreview/prod運用時にsetupで作成。§9） |
+| `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | **環境ごとに別のID**。Stripe Dashboardで1つ作り、内容は `npm run stripe:portal:setup -- --target <env>` で合わせる（既存を上書き更新する。新規作成はしない）。3価格は**同一Product配下でなくてよい**（要件03 §2.2）。devは任意。手順は[デプロイ手順 §1.4](../operations/deployment.md) |
 | `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月 |
 | `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月 |
 | `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月 |

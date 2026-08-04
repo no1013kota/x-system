@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.23 |
-| 更新日 | 2026-08-03 |
+| バージョン | v1.24 |
+| 更新日 | 2026-08-04 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -243,10 +243,10 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `listNotifications` | cursor, unread_only | notifications | 本人のみ |
+| `listNotifications` | cursor, unread_only | notifications（`email_status`を含む） | 本人のみ |
 | `markNotificationRead` | notification_id | notification | 本人のみ |
 | `markAllNotificationsRead` | none | count | 本人のみ |
-| `retryNotificationEmail` | notification_id | notification | `email_status=failed`のみ。attemptを0へ戻しqueued化。通知ごとに1分1回まで |
+| `retryNotificationEmail` | notification_id | notification | `email_status=failed`のみ。attemptを0へ戻しqueued化。通知ごとに1分1回まで。**導線は通知ベルの該当行**（要件06 §2） |
 
 ## 11. Webhook/cronの認可
 

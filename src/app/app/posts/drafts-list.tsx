@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
+import { draftActionState } from "@/lib/post/draft-actions";
 import { formatJst } from "@/lib/format";
 
 import { DraftEditor } from "./draft-editor";
@@ -115,27 +116,23 @@ function DraftCard({
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
 
   const readyImage = draft.images.find((img) => img.status === "ready");
-  const imageFailed = draft.images.some((img) => img.status === "failed");
-  const hasWarnings = draft.thread.some((p) => p.warnings.length > 0) || imageFailed;
-  const editable = draft.status === "draft";
-  // failed の投稿状態（要件06 §7）: 作成履歴あり=直接再投稿/破棄不可（cloneで再開）。
-  // 残存/曖昧=未解決（reconcile必要）。全削除確認済み（履歴あり・未解決なし）=clone可能。
-  const lpe = draft.last_post_error;
-  const hasCreationHistory = draft.status === "failed" && draft.tweet_ids.length > 0;
-  const unresolvedPosting =
-    draft.status === "failed" &&
-    ((lpe?.remaining_tweet_ids?.length ?? 0) > 0 ||
-      (lpe?.ambiguous_create_indices?.length ?? 0) > 0 ||
-      (lpe?.ambiguous_delete_tweet_ids?.length ?? 0) > 0);
-  const cloneEligible = hasCreationHistory && !unresolvedPosting;
-  // P-5 は flag OFF の間、閲覧のみ（編集・再生成・画像再生成・投稿を無効化, 要件06 §4.1）。
-  const p5Disabled = draft.pattern === "p5" && !quotePostEnabled;
-  // 投稿中は編集・破棄・再生成・再投稿を無効化する（要件06 §7）。
-  // 投稿中はリロードしても復元できるよう draft.status も見る（要件06 §7）。
-  const publishing = pending || publishJobId !== null || draft.status === "posting";
+  // 下書きから決まる可否は純関数へ（T-M8-41）。`.tsx` は単体テストの網に入らないため、
+  // 「Xに残ったポストをどう扱うか」のルールをここに置いておくとテストで守れない。
+  const {
+    cloneEligible,
+    editable,
+    hasCreationHistory,
+    hasWarnings,
+    imageFailed,
+    lengthExceeded,
+    posting,
+    quoteDisabled: p5Disabled,
+    unresolvedPosting,
+  } = draftActionState(draft, { quotePostEnabled });
+  // 画面の一時状態と合成する（ここだけは純関数に渡せない）。
+  // 投稿中は編集・破棄・再生成・再投稿を無効化する。リロードしても復元できるよう status も見る（要件06 §7）。
+  const publishing = pending || publishJobId !== null || posting;
   const warningLines = warningSummary(draft.thread);
-  // 文字数超過はXが受け付けないため、編集するまで投稿させない（投稿前の再検証と同じ判定）。
-  const lengthExceeded = draft.thread.some((p) => p.warnings.includes("length_exceeded"));
   const locked = publishing || editing;
 
   function discard() {

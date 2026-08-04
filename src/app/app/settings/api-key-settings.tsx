@@ -1,6 +1,5 @@
 "use client";
 
-import { Check, Clipboard, ExternalLink, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -15,7 +14,13 @@ import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import type { AiKeyProvider, XClientType } from "@/lib/api-keys";
+import {
+  AI_SECRET_MIN_LENGTH,
+  X_CLIENT_ID_MIN_LENGTH,
+  X_CLIENT_SECRET_MIN_LENGTH,
+  type AiKeyProvider,
+  type XClientType,
+} from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
   type ApiKeyViewProvider,
@@ -23,6 +28,8 @@ import {
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
+import { CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -115,6 +122,15 @@ export function ApiKeySettings({
     openai: "",
   });
   const [copied, setCopied] = useState(false);
+  /**
+   * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
+   * 以前は `clientId.length < 5` が直書きで、Confidential のときに Secret が要ることは
+   * 画面から読めなかった（押せない理由がどこにも無い状態だった）。
+   */
+  const xSavable =
+    clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
+    (clientType !== "confidential" ||
+      clientSecret.trim().length >= X_CLIENT_SECRET_MIN_LENGTH);
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -251,8 +267,30 @@ export function ApiKeySettings({
     });
   }
 
+  /**
+   * callback URL のコピー（T-M8-38）。
+   *
+   * **失敗を黙って捨てない。** クリップボード書き込みは非セキュアコンテキスト
+   * （`navigator.clipboard` が undefined）・権限拒否・ドキュメント非フォーカスのいずれでも失敗する。
+   * 以前は try/catch が無く、失敗すると unhandled rejection になって `setCopied(true)` に到達せず、
+   * ボタンは「コピー」のまま**何も起きなかった**。
+   *
+   * この文字列は X Developer Console へ**完全一致で登録**する値なので、コピーできたつもりで
+   * 古いクリップボード内容を貼るとX側の設定が食い違い、ログイン・連携が失敗する。
+   * 相手側の設定ミスはコードに現れず、モックしたテストでは原理的に見えない
+   * （2026-08-01、stagingでログイン・新規登録が両方不可だったのと同型）。
+   */
   async function copyCallbackUrl() {
-    await navigator.clipboard.writeText(callbackUrl);
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+    } catch {
+      toast.show({
+        tone: "error",
+        title: "コピーできませんでした",
+        description: "左のURLを選択して手動でコピーしてください。",
+      });
+      return;
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   }
@@ -262,12 +300,12 @@ export function ApiKeySettings({
       <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
           <div className="rounded-card bg-success-bg p-3 text-success-fg">
-            <ShieldCheck aria-hidden="true" className="size-6" />
+            <Icon name="verified_user" className="size-6" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold" id="premium-key-heading">
+            <CardTitle id="premium-key-heading">
               プレミアムプランはキー登録不要です
-            </h2>
+            </CardTitle>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
             </p>
@@ -287,10 +325,10 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-card bg-brand-subtle p-2 text-brand">
-            <KeyRound aria-hidden="true" className="size-5" />
+            <Icon name="key" size={20} />
           </div>
           <div>
-            <h2 className="text-xl font-semibold" id="x-key-heading">X APIキー</h2>
+            <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               OAuth 2.0のClient IDを登録します。差し替えると既存のBYOK X連携は再認証が必要です。
             </p>
@@ -344,7 +382,7 @@ export function ApiKeySettings({
           ) : null}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button className="min-h-10" disabled={isPending || clientId.length < 5} onClick={saveX} type="button">
+          <Button className="min-h-10" disabled={isPending || !xSavable} onClick={saveX} type="button">
             {keys.x ? "Xキーを差し替え" : "Xキーを保存"}
           </Button>
           {keys.x ? (
@@ -353,15 +391,26 @@ export function ApiKeySettings({
                 形式を確認
               </Button>
               <Button className="min-h-10" disabled={isPending} onClick={() => remove("x")} type="button" variant="outline">
-                <Trash2 aria-hidden="true" className="size-4" />削除
+                <Icon name="delete" size={16} />削除
               </Button>
             </>
           ) : null}
         </div>
+        {/*
+          **押せない理由を書く**（T-M8-46）。以前は薄いボタンだけが出ていて、何を入れれば
+          押せるようになるのかが画面のどこにも無かった（T-M8-37 と同型）。
+        */}
+        {!xSavable ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {clientType === "confidential"
+              ? "Client ID と Client Secret を入力すると保存できます。"
+              : "Client ID を入力すると保存できます。"}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
-        <h2 className="text-xl font-semibold" id="ai-key-heading">AI APIキー</h2>
+        <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
         </p>
@@ -395,7 +444,7 @@ export function ApiKeySettings({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
                     className="min-h-10"
-                    disabled={isPending || aiSecrets[provider].length < 16}
+                    disabled={isPending || aiSecrets[provider].length < AI_SECRET_MIN_LENGTH}
                     onClick={() => saveAi(provider)}
                     size="sm"
                     type="button"
@@ -408,11 +457,17 @@ export function ApiKeySettings({
                         疎通確認
                       </Button>
                       <Button aria-label={`${label} APIキーを削除`} className="min-h-10 min-w-10" disabled={isPending} onClick={() => remove(provider)} size="sm" type="button" variant="outline">
-                        <Trash2 aria-hidden="true" className="size-4" />
+                        <Icon name="delete" size={16} />
                       </Button>
                     </>
                   ) : null}
                 </div>
+                {/* 16文字という条件はどこにも書かれていなかった（T-M8-46）。 */}
+                {aiSecrets[provider].length > 0 && aiSecrets[provider].length < AI_SECRET_MIN_LENGTH ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    APIキーは{AI_SECRET_MIN_LENGTH}文字以上です（いま{aiSecrets[provider].length}文字）。
+                  </p>
+                ) : null}
               </article>
             );
           })}
@@ -422,7 +477,7 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
-          <h2 className="text-xl font-semibold" id="x-guide-heading">X Developer Appの取得・設定手順</h2>
+          <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>
         </div>
         <ol className="mt-5 space-y-5 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
@@ -430,7 +485,7 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">Developer ConsoleでAppを作成</p>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
-                X Developer Consoleを開く<ExternalLink aria-hidden="true" className="size-4" />
+                X Developer Consoleを開く<Icon name="open_in_new" size={16} />
               </a>
             </div>
           </li>
@@ -439,10 +494,16 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">OAuth 2.0 callback URLを完全一致で登録</p>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <code className="break-all text-xs sm:text-sm">{callbackUrl}</code>
-                <Button aria-label="callback URLをコピー" className="min-h-10" onClick={copyCallbackUrl} size="sm" type="button" variant="outline">
-                  {copied ? <Check aria-hidden="true" className="size-4" /> : <Clipboard aria-hidden="true" className="size-4" />}
-                  {copied ? "コピー済み" : "コピー"}
+                {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
+                <code className="break-all text-xs select-all sm:text-sm">{callbackUrl}</code>
+                {/*
+                  `aria-label` を**置かない**（T-M8-38）。付けると読み上げ名が固定され、
+                  「コピー」→「コピー済み」の変化が支援技術に伝わらない（アイコンは aria-hidden）。
+                  文脈は可視テキストへ入れる。
+                */}
+                <Button className="min-h-10" onClick={copyCallbackUrl} size="sm" type="button" variant="outline">
+                  {copied ? <Icon name="check" size={16} /> : <Icon name="content_copy" size={16} />}
+                  {copied ? "コピー済み" : "callback URLをコピー"}
                 </Button>
               </div>
             </div>
@@ -464,7 +525,7 @@ export function ApiKeySettings({
               <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
               <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
-                X公式の料金・予算設定を確認<ExternalLink aria-hidden="true" className="size-4" />
+                X公式の料金・予算設定を確認<Icon name="open_in_new" size={16} />
               </a>
             </div>
           </li>

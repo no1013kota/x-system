@@ -6,6 +6,11 @@ import { useState, useTransition } from "react";
 import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
 import { listNewsItemsAction } from "@/app/actions/news";
 import { updateNewsConfigAction } from "@/app/actions/settings";
+import {
+  clampNewsMaxItems,
+  NEWS_MAX_ITEMS_MAX,
+  NEWS_MAX_ITEMS_MIN,
+} from "@/lib/config-defaults";
 import { formatJst } from "@/lib/format";
 import type { NewsItemView } from "@/lib/news-items";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
@@ -20,7 +25,6 @@ const IMPACTS: { id: string; label: string }[] = [
   { id: "low", label: "低" },
 ];
 
-const CATEGORY_LABEL = new Map<string, string>(THEME_OPTIONS.map((t) => [t.newsCategory, t.label]));
 const IMPACT_LABEL = new Map<string, string>(IMPACTS.map((i) => [i.id, i.label]));
 
 /** インパクトの色。意味で選ぶ（高=注意を引く／中=情報／低=補助）。 */
@@ -270,9 +274,9 @@ export function NewsBrowser({
             <span className="block text-xs font-semibold text-muted-foreground">表示件数</span>
             <input
               className="mt-1 w-24 rounded-md border px-2 py-1"
-              max={100}
-              min={1}
-              onChange={(e) => setMaxItems(Math.min(100, Math.max(1, Number(e.target.value) || 1)))}
+              max={NEWS_MAX_ITEMS_MAX}
+              min={NEWS_MAX_ITEMS_MIN}
+              onChange={(e) => setMaxItems(clampNewsMaxItems(Number(e.target.value)))}
               type="number"
               value={maxItems}
             />
@@ -333,9 +337,7 @@ export function NewsBrowser({
               key={item.id}
             >
               <div className="flex items-center gap-2">
-                <CategoryChip category={item.category}>
-                  {CATEGORY_LABEL.get(item.category) ?? item.category}
-                </CategoryChip>
+                <CategoryChip category={item.category} />
                 <Badge tone={IMPACT_TONE[item.impact] ?? "neutral"}>
                   {IMPACT_LABEL.get(item.impact) ?? item.impact}
                 </Badge>

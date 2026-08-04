@@ -4,10 +4,21 @@ export const AI_KEY_PROVIDERS = ["anthropic", "openai", "google"] as const;
 export type AiKeyProvider = (typeof AI_KEY_PROVIDERS)[number];
 export type XClientType = "public" | "confidential";
 
+/**
+ * 画面とサーバー検証で同じ最小長を使う（T-M8-46）。以前は画面の `disabled` に `16` が
+ * 直書きされていて、**16文字という条件が画面のどこにも書かれていなかった**（保存ボタンが
+ * 薄いだけで、何を入れれば押せるのか分からない）。
+ */
+export const AI_SECRET_MIN_LENGTH = 16;
+/** Client ID の最小長。同上。 */
+export const X_CLIENT_ID_MIN_LENGTH = 5;
+/** Confidential client の Client Secret 最小長。同上。 */
+export const X_CLIENT_SECRET_MIN_LENGTH = 8;
+
 const secretValue = z
   .string()
   .trim()
-  .min(16, "APIキーを確認してください。")
+  .min(AI_SECRET_MIN_LENGTH, "APIキーを確認してください。")
   .max(512)
   .regex(/^\S+$/, "空白を含まない値を入力してください。");
 
@@ -21,7 +32,7 @@ export const saveXApiKeySchema = z
     client_id: z
       .string()
       .trim()
-      .min(5, "Client IDを確認してください。")
+      .min(X_CLIENT_ID_MIN_LENGTH, "Client IDを確認してください。")
       .max(200)
       .regex(
         /^[A-Za-z0-9_-]+$/,
@@ -33,7 +44,7 @@ export const saveXApiKeySchema = z
   .superRefine((value, context) => {
     if (
       value.client_type === "confidential" &&
-      (!value.client_secret || value.client_secret.length < 8)
+      (!value.client_secret || value.client_secret.length < X_CLIENT_SECRET_MIN_LENGTH)
     ) {
       context.addIssue({
         code: "custom",

@@ -23,6 +23,7 @@ import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
+import { CardTitle } from "@/components/ui/card";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -160,7 +161,7 @@ export function ScheduleManager({
 
       {creating ? (
         <div className="rounded-card border bg-card p-5 shadow-sm">
-          <h2 className="text-sm font-semibold">新しいスケジュール</h2>
+          <CardTitle>新しいスケジュール</CardTitle>
           <SlotFields
             accountHandle={accountHandle}
             automationConsented={automationConsented}
@@ -579,7 +580,7 @@ function SlotFields({
         weekdays: v.weekdays,
         time_jst: v.time_jst,
         mode: v.mode,
-        theme: v.theme || null,
+        theme: v.theme,
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
       };
@@ -617,6 +618,12 @@ function SlotFields({
     setValidationError(null);
     if (v.weekdays.length === 0) {
       setValidationError("曜日を1つ以上選択してください。");
+      return;
+    }
+    // テーマは必須（`schedule-slots.ts` の `z.enum(POST_THEME_IDS)`）。ここで止めないと
+    // 「入力内容を確認してください」という**どの項目が悪いか分からない**エラーになる（T-M8-37）。
+    if (!v.theme) {
+      setValidationError("テーマを選択してください。");
       return;
     }
     // mode=auto かつ未同意なら、保存前に同意modalを表示する（要件06 §3.5）。

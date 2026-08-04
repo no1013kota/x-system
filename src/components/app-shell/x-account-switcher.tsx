@@ -1,12 +1,12 @@
 "use client";
 
 import { Menu } from "@base-ui/react/menu";
-import { Check, ChevronsUpDown, CircleUserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { setActiveXAccountAction } from "@/app/actions/x-accounts";
 import { useToast } from "@/components/ui/toast";
+import { Icon } from "@/components/ui/icon";
 
 export interface SwitcherAccount {
   id: string;
@@ -41,7 +41,7 @@ export function XAccountSwitcher({
   if (accounts.length === 0) {
     return (
       <div aria-label="現在のXアカウント" className={CHIP_CLASS} title="Xアカウント未選択">
-        <CircleUserRound aria-hidden="true" className="size-4" />
+        <Icon name="account_circle" size={16} />
         <span className="max-w-20 truncate sm:max-w-36">Xアカウント未選択</span>
       </div>
     );
@@ -80,9 +80,9 @@ export function XAccountSwitcher({
           disabled={pending}
           title={label}
         >
-          <CircleUserRound aria-hidden="true" className="size-4" />
+          <Icon name="account_circle" size={16} />
           <span className="max-w-20 truncate sm:max-w-36">{label}</span>
-          <ChevronsUpDown aria-hidden="true" className="size-3.5 opacity-60" />
+          <Icon name="unfold_more" className="opacity-60" size={14} />
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6} className="z-40">
@@ -101,11 +101,11 @@ export function XAccountSwitcher({
                       src={account.profileImageUrl}
                     />
                   ) : (
-                    <CircleUserRound aria-hidden="true" className="size-5 shrink-0" />
+                    <Icon name="account_circle" className="shrink-0" size={20} />
                   )}
                   <span className="flex-1 truncate">@{account.handle}</span>
                   {account.id === activeId ? (
-                    <Check aria-hidden="true" className="size-4 shrink-0" />
+                    <Icon name="check" className="shrink-0" size={16} />
                   ) : null}
                 </Menu.Item>
               ))}

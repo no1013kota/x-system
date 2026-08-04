@@ -13,6 +13,8 @@ import {
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
+import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
   accountHandle: string;
@@ -33,7 +35,6 @@ const inputClassName =
  * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
  */
 const groupClassName = "rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6";
-const groupHeadingClassName = "text-[15px] font-bold text-ink";
 
 type NgField = "words" | "topics" | "rules";
 
@@ -161,9 +162,9 @@ export function PersonaSettingsForm({
       ) : null}
 
       <section aria-labelledby="persona-group" className={groupClassName} role="group">
-        <h2 className={groupHeadingClassName} id="persona-group">
+        <CardTitle id="persona-group">
           ペルソナ
-        </h2>
+        </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           誰が、誰に、どんな価値を届けるかを定義します。
         </p>
@@ -214,9 +215,9 @@ export function PersonaSettingsForm({
         className={groupClassName}
         role="group"
       >
-        <h2 className={groupHeadingClassName} id="themes-group">
+        <CardTitle id="themes-group">
           テーマ
-        </h2>
+        </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           主テーマを1件以上選択してください。同じテーマを主・副の両方には設定できません。
         </p>
@@ -270,9 +271,9 @@ export function PersonaSettingsForm({
       </section>
 
       <section aria-labelledby="tone-group" className={groupClassName} role="group">
-        <h2 className={groupHeadingClassName} id="tone-group">
+        <CardTitle id="tone-group">
           トーン
-        </h2>
+        </CardTitle>
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium" htmlFor="tone.sentence_style">
@@ -402,9 +403,9 @@ export function PersonaSettingsForm({
       </section>
 
       <section aria-labelledby="ng-group" className={groupClassName} role="group">
-        <h2 className={groupHeadingClassName} id="ng-group">
+        <CardTitle id="ng-group">
           NG設定（任意）
-        </h2>
+        </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           1行に1件ずつ入力してください。すべて空でも保存できます。
         </p>
@@ -437,12 +438,9 @@ export function PersonaSettingsForm({
       </section>
 
       {validationMessage ? (
-        <p
-          className="rounded-card border border-hairline bg-danger-bg p-3 text-[13px] text-danger-fg"
-          role="alert"
-        >
+        <Notice role="alert" tone="danger">
           {validationMessage}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="flex justify-end">

@@ -24,6 +24,11 @@ import { createDeadline, type Deadline } from "./deadline";
  */
 
 export const NEWS_MAX_ITEMS = 5;
+
+/** 受理できる見出しの長さ。プロンプトの目標は30字（`SYS_NEWS`）で、これはその安全側の上限。 */
+export const NEWS_TITLE_MAX_LENGTH = 60;
+/** 受理できる要約の長さ（要決定D-12 案B・2026-07-28）。 */
+export const NEWS_SUMMARY_MAX_LENGTH = 200;
 const KNOWN_URLS_WINDOW_HOURS = 48;
 const KNOWN_URLS_LIMIT = 200;
 const NEWS_WEB_SEARCH_MAX_USES = 5;
@@ -65,11 +70,21 @@ const newsItemSchema = z.object({
    * 混ぜてくる。生成側は T-M7-20 で対処済みだったが、**ニュース側は未対応で、タグがそのまま
    * 画面に出ていた**（ローカルDBに実データを確認）。タグ込みで字数を数えると上限判定も狂う。
    */
-  title: z.preprocess(stripMarkupLoose, z.string().min(1).max(30)),
+  // **プロンプトの目標（30字）と受理の上限（60字）を分ける**（T-M8-47）。
+  //
+  // 30字はプロンプトで明示していれば守られる、という前提でD-12のときに据え置いた。
+  // その前提は実測で崩れた——2026-08-04 の `smoke:live` で ai テーマの4件のうち
+  // **2件が `title:too_big` で落ち、分野が0件になった**（英語ソースの見出しは実測38〜56字）。
+  // 投稿側の `TARGET_WEIGHTED_LENGTH`(240) と `MAX_WEIGHTED_LENGTH`(280) と同じ考え方で、
+  // 「短く書かせる指示」と「受理できる限界」を別の数にする。
+  //
+  // 表示は折り返すだけでレイアウトは壊れない（DBの列は `text`、見出しに固定高さは無い）。
+  // **長い見出しが出ることより、ニュースが1件も来ないことの方が害が大きい。**
+  title: z.preprocess(stripMarkupLoose, z.string().min(1).max(NEWS_TITLE_MAX_LENGTH)),
   // 200字上限（要決定D-12 案B・2026-07-28）。当初120字だったが、モデルが安定して守れず
   // `summary:too_big` で分野ごと全滅する事象が実測で2回連続発生した（T-M7-25）。
   // 表示側は `line-clamp-2` なので長くてもレイアウトは破綻しない。
-  summary: z.preprocess(stripMarkupLoose, z.string().min(1).max(200)),
+  summary: z.preprocess(stripMarkupLoose, z.string().min(1).max(NEWS_SUMMARY_MAX_LENGTH)),
   source_url: z.url(),
   impact: z.enum(["high", "mid", "low"]),
   // **任意項目なので、形式が違っても item ごと捨てない**（正規化できなければ落とすだけ）。

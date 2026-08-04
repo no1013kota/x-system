@@ -11,6 +11,7 @@ import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, formAction, pending] = useActionState(
@@ -34,12 +35,9 @@ export function LoginForm({ next }: { next: string }) {
         <input name="next" type="hidden" value={next} />
 
         {state.status === "error" ? (
-          <p
-            className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-            role="alert"
-          >
+          <Notice role="alert" tone="danger">
             {state.message}
-          </p>
+          </Notice>
         ) : null}
 
         <div className="space-y-2">

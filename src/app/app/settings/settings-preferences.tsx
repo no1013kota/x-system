@@ -15,6 +15,12 @@ import {
   type NotificationConfig,
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
+import { CardTitle } from "@/components/ui/card";
+import {
+  clampNewsMaxItems,
+  NEWS_MAX_ITEMS_MAX,
+  NEWS_MAX_ITEMS_MIN,
+} from "@/lib/config-defaults";
 
 const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   news: "ニュース",
@@ -45,7 +51,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
   const toast = useToast();
   return (
     <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-      <h2 className="text-[15px] font-bold text-ink">プロフィール</h2>
+      <CardTitle>プロフィール</CardTitle>
       <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
         表示名
       </label>
@@ -94,7 +100,7 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
     }));
   return (
     <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-      <h2 className="text-[15px] font-bold text-ink">通知</h2>
+      <CardTitle>通知</CardTitle>
       <p className="mt-1 text-sm text-muted-foreground">
         種別ごとにアプリ内通知とメールの受け取りを設定できます。
       </p>
@@ -156,10 +162,14 @@ function NewsForm({ config }: { config: NewsConfig }) {
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
-  const invalid = categories.length === 0 || impacts.length === 0;
+  // **押す前に止める**（T-M8-37）。以前は件数が対象外で、欄を空にする（`Number("")` → 0）か
+  // 101以上を入れた状態でも保存でき、サーバー検証で「入力内容を確認してください」という
+  // どの項目が悪いか分からないエラーになっていた。
+  const maxItemsInvalid = maxItems < NEWS_MAX_ITEMS_MIN || maxItems > NEWS_MAX_ITEMS_MAX;
+  const invalid = categories.length === 0 || impacts.length === 0 || maxItemsInvalid;
   return (
     <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-      <h2 className="text-[15px] font-bold text-ink">ニュース通知</h2>
+      <CardTitle>ニュース通知</CardTitle>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
         ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
         設定条件に一致する新着が0件の時刻には通知は届きません。ここでのテーマ・インパクト・表示件数は
@@ -202,11 +212,14 @@ function NewsForm({ config }: { config: NewsConfig }) {
         表示件数（1〜100）
       </label>
       <input
+        aria-describedby="max_items-error"
+        aria-invalid={maxItemsInvalid}
         className="mt-1 h-10 w-28 rounded-lg border px-3 text-sm"
         id="max_items"
-        max={100}
-        min={1}
-        onChange={(e) => setMaxItems(Number(e.target.value))}
+        max={NEWS_MAX_ITEMS_MAX}
+        min={NEWS_MAX_ITEMS_MIN}
+        // ニュース一覧の同じ欄と同じ丸め方をする（同じ設定項目が画面によって違う挙動をしない）。
+        onChange={(e) => setMaxItems(clampNewsMaxItems(Number(e.target.value)))}
         type="number"
         value={maxItems}
       />
@@ -236,8 +249,10 @@ function NewsForm({ config }: { config: NewsConfig }) {
         </Button>
       </div>
       {invalid ? (
-        <p className="mt-3 text-sm text-destructive" role="alert">
-          テーマとインパクトはそれぞれ1件以上選択してください。
+        <p className="mt-3 text-sm text-destructive" id="max_items-error" role="alert">
+          {maxItemsInvalid
+            ? `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`
+            : "テーマとインパクトはそれぞれ1件以上選択してください。"}
         </p>
       ) : null}
     </section>

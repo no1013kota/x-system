@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.8 |
-| 更新日 | 2026-08-02 |
+| バージョン | v1.10 |
+| 更新日 | 2026-08-04 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -48,6 +48,17 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 ```
 
 > **これらは「手元のコマンドがどこを検証するか」を知るための値**で、アプリが読む環境変数ではない。アプリ自身が使う `APP_BASE_URL` 等は Vercel 側に設定する（§1）。両者は別物なので、Vercelに入れてあっても手元のコマンドには別途渡す必要がある。
+
+**`.env.local` へ置く手元用の値**（`.env.example` にも記載がある。2026-08-04 に追記。**どこにも書かれておらず、初回のリリースで「反映先のURLが設定されていません」で詰まった**）。
+
+| 変数 | 用途 |
+|---|---|
+| `STAGING_BASE_URL` / `PRODUCTION_BASE_URL` | `release:*`・`doctor -- --base`・`smoke:live` の対象URL |
+| `STAGING_CRON_SECRET` / `PRODUCTION_CRON_SECRET` | デプロイ先の cron エンドポイントを叩く鍵（**環境ごとに違う**のが正しい） |
+
+### migration 適用時に出る警告
+
+`supabase db push` の後に `failed to cache migrations catalog: ... pgdelta-target-ca.crt: ENOENT` が出ることがある。**migration 自体は適用されている**（`Applying migration ...` が各ファイルに出て `Finished supabase db push.` で終わる）。CLIのカタログキャッシュだけが失敗しているので、`release:staging` をもう一度実行して「データ構造の更新: すべて適用済みです」を確認すればよい。
 
 > migration適用を飛ばすと**X連携が `internal_error` で壊れる**。ここを警告ではなく停止にしているのは、警告では忘れたときと同じ結果になるため（`CLAUDE.md` 原則3）。判定は `src/lib/ops/release-gate.ts`（単体テストあり）。
 
@@ -103,7 +114,7 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 |---|---|
 | `NEWS_TEXT_PROVIDER` | `anthropic` / `openai` / `google` |
 | `X_MANAGED_CLIENT_ID` | 運営 X App（premium 用）の Client ID |
-| `STRIPE_PORTAL_CONFIGURATION_ID` | Customer Portal 構成ID（`npm run stripe:portal:setup` で作成可） |
+| `STRIPE_PORTAL_CONFIGURATION_ID` | Customer Portal 構成ID（Stripe Dashboard で1つ作り、内容は下の §1.4 で合わせる） |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` | X Developer Console の pay-per-use 実単価 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等 |
 | `EMAIL_FROM` / `EMAIL_REPLY_TO` | 送信元・返信先 |
@@ -121,6 +132,26 @@ openssl rand -hex 32      # CRON_SECRET
 ```
 
 `.env*` はコミットしない。値は Vercel の環境変数と保管庫にだけ置く。
+
+### 1.4 Stripe Customer Portal の設定（環境ごとに1回＋設定を変えたとき）
+
+画面の「プランを管理」は Portal の `subscription_update` / `subscription_cancel` が**Stripe側で有効**でないと、ボタンは出るのに押すと失敗する。有効化はコードでは決まらないので、環境ごとに1回実行する。
+
+```bash
+# 1. 対象環境の構成IDと（必要なら）secret key を .env.local へ置く
+#    STAGING_STRIPE_PORTAL_CONFIGURATION_ID=bpc_...   ← Vercelの環境変数からコピー
+#    STAGING_BASE_URL=https://<staging>.vercel.app
+# 2. どの環境を触るかを必ず明示して実行する
+npm run stripe:portal:setup -- --target staging
+# 3. 出力の target / appBaseUrl / configurationId が意図した環境か目で確認する
+# 4. 画面側の判定でも確認する
+npm run doctor -- --base "$STAGING_BASE_URL"     # 「プラン管理（Stripe）」が ✅ になる
+```
+
+- **`--target` は必須**。既定を持たせていない。2026-08-04、stagingを直すつもりで実行したところ `.env.local` のローカル値が読まれ、**ローカルの構成を更新して「成功」と表示**した（stagingは直っていないのに出力は緑だった）。
+- 構成IDは環境ごとに違うので接頭辞付き変数から読む（`STAGING_` / `PRODUCTION_`）。Price ID と secret key は同じStripeアカウントなら共通で、接頭辞なしへ落ちる。**どの変数から読んだかは出力の `valueSources` に出る**。
+- スクリプトは既存の構成を**上書き更新**する（新規作成しない）。IDが変わらないので Vercel 側の書き換えは不要。
+- 実行後に読み戻して機能が有効か確認し、無効なら exit 1 する。
 
 ---
 

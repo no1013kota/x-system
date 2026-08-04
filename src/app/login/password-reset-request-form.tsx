@@ -8,6 +8,7 @@ import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 
 export function PasswordResetRequestForm() {
   const [state, formAction, pending] = useActionState(
@@ -19,16 +20,12 @@ export function PasswordResetRequestForm() {
     <div className="space-y-5">
       <form action={formAction} className="space-y-5" noValidate>
         {state.status !== "idle" ? (
-          <p
-            className={
-              state.status === "success"
-                ? "rounded-lg bg-success-bg p-3 text-sm text-success-fg"
-                : "rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-            }
+          <Notice
             role={state.status === "success" ? "status" : "alert"}
+            tone={state.status === "success" ? "success" : "danger"}
           >
             {state.message}
-          </p>
+          </Notice>
         ) : null}
 
         <div className="space-y-2">

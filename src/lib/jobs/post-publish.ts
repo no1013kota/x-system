@@ -7,6 +7,7 @@ import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
+import { findOverLengthText } from "../post/text-metrics";
 import {
   XApiError,
   type XCreatePostResult,
@@ -450,6 +451,25 @@ export async function executePostPublish(
   // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
   const finalTextAt = (i: number): string =>
     i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
+
+  // --- 検証: 加重280超過は **mode を問わず** 止める（T-M8-39）---
+  //
+  // X APIは280超過を400で拒否する。スレッドは1ポストずつ作るので、3本目で拒否されると
+  // **1〜2本目はX上に残ったまま**になり、取り返しがつかない。
+  //
+  // 以前は下の `mode === "auto"` の警告判定だけがゲートで、**画面からの手動投稿には
+  // サーバ側の対応物が無かった**（`drafts-list.tsx` の表示分岐が唯一の砦だった）。
+  // UIの分岐は単体テストの網に入らない（`.tsx` は対象外）ため、壊れても緑のまま通る。
+  const overLength = findOverLengthText(thread.map((_, index) => finalTextAt(index)));
+  if (overLength) {
+    await setDraftFailed(db, draftId, {
+      code: "length_exceeded",
+      message:
+        `${overLength.index + 1}本目の本文が長すぎます（上限280・いま${overLength.weightedLength}）。` +
+        `編集して短くしてから投稿してください。Xへの投稿は1件も行っていません。`,
+    });
+    throw new PostPublishError("length_exceeded", "post exceeds the weighted length limit");
+  }
 
   // --- 検証: 自動投稿を阻害する警告（auto時のみ）---
   if (mode === "auto" && threadBlocksAutoPost(thread)) {

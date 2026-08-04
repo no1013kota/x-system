@@ -1,5 +1,7 @@
 import type { ComponentProps } from "react";
 
+import type { NewsCategory } from "@/lib/news";
+import { newsCategoryLabel } from "@/lib/themes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,8 +60,17 @@ export const NEWS_CATEGORY_CHIP: Record<string, string> = {
   sns: "bg-[#fdeee6] text-[#c94a06]",
 };
 
+/**
+ * ニューステーマのチップ。**ラベルは自分で引く**（T-M8-41）。
+ *
+ * 色を決めるために `category` を受け取っているのに、ラベルは `children` で呼び出し側に作らせて
+ * いた。そのため2つの呼び出し側がそれぞれ別の方法で同じラベルを引いており（一方は
+ * `THEME_OPTIONS` から自前のMapを組み、もう一方は `newsCategoryLabel` に `as NewsCategory`
+ * キャストを足していた）、導出が2か所に散っていた。`children` を渡せば従来どおり上書きできる。
+ */
 export function CategoryChip({
   category,
+  children,
   className,
   ...props
 }: ComponentProps<"span"> & { category: string }) {
@@ -71,6 +82,8 @@ export function CategoryChip({
         className,
       )}
       {...props}
-    />
+    >
+      {children ?? newsCategoryLabel(category as NewsCategory)}
+    </span>
   );
 }

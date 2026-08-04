@@ -220,6 +220,36 @@ describe("executePostPublish validation", () => {
     expect(writes.some((w) => FAILED.test(w.sql))).toBe(true);
   });
 
+  it("stops手動投稿 without any X call when a post exceeds the weighted limit (T-M8-39)", async () => {
+    // 手動投稿でもサーバ側で止める。Xは280超過を400で拒否するため、3本目で拒否されると
+    // 1〜2本目がX上に残る（取り返しがつかない）。**1本も作らない**ことまで確かめる。
+    const draft = draftRow({
+      thread: [post("p1", "短い"), post("p2", "あ".repeat(141)), post("p3", "短い")],
+    });
+    const { db, writes } = makeDb(okHandler(draft));
+    const deps = baseDeps(db);
+    await expect(executePostPublish(deps)).rejects.toMatchObject({ code: "length_exceeded" });
+    expect(deps.createPost).not.toHaveBeenCalled();
+    const failed = writes.find((w) => FAILED.test(w.sql));
+    expect(failed).toBeDefined();
+    // 運営者が何をすればよいか分かる文言か（何本目・Xには出ていない）
+    expect(JSON.stringify(failed?.params)).toContain("2本目");
+    expect(JSON.stringify(failed?.params)).toContain("1件も行っていません");
+  });
+
+  it("quote_url を合成した結果で超過する場合も止める（P-5・T-M8-39）", async () => {
+    // 保存済みの weighted_length では見えない超過。引用URLは1本目の末尾へ足されるため、
+    // 「そのとき投稿する本文」から測り直さないと通り抜ける。
+    const draft = draftRow({
+      thread: [post("p1", "あ".repeat(135))],
+      quote_url: "https://x.com/someone/status/1234567890",
+    });
+    const { db } = makeDb(okHandler(draft));
+    const deps = baseDeps(db);
+    await expect(executePostPublish(deps)).rejects.toMatchObject({ code: "length_exceeded" });
+    expect(deps.createPost).not.toHaveBeenCalled();
+  });
+
   it("fails when the X token is unavailable", async () => {
     const { db, writes } = makeDb(okHandler());
     const deps = baseDeps(db, {
