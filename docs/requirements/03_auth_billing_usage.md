@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
-| 更新日 | 2026-08-03 |
+| バージョン | v1.15 |
+| 更新日 | 2026-08-04 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -60,7 +60,7 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - 契約前（`stripe_customer_id`なし）はPortalを作れないため、**画面に押せないボタンを出さず**`/plans`へのリンクにする（要件06 §10）。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
-- `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実行時は**`STRIPE_PORTAL_CONFIGURATION_ID`があればそのconfigurationを更新する**（IDが変わらないのでenvを触らずコードと設定を一致させられる）。未設定のときだけ作成してIDを出力する。適用後に読み戻して`subscription_update`／`subscription_cancel`が有効になったかを確認し、無効なままなら終了コード1で失敗する。秘密鍵は出力しない。
+- `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実行時は**既存のconfigurationを上書き更新する**（新規作成はしない。IDが変わらないのでenvを触らずコードと設定を一致させられる）。**どの環境を設定するかは呼び出し側が明示し、構成IDは環境ごとに別の変数から読む**（既定へ落とさない。2026-08-04、既定でローカルの値を読んで**別環境を更新して「成功」と表示した**・T-M8-35）。適用後に読み戻して`subscription_update`／`subscription_cancel`が有効になったかを確認し、無効なままなら終了コード1で失敗する。秘密鍵は出力しない。手順とコマンドの正本は[デプロイ手順 §1.4](../operations/deployment.md)。
 - **Portalの設定はコードに現れない**ため、状態確認（`npm run doctor` / `/api/cron/doctor`）で毎回読み取り、画面のボタンが依存する機能が有効かを判定する（無効なら error）。2026-08-03、この確認が無かったため「プランを変更」を押して初めて無効だと分かった。
 
 ## 3. Stripeを正とする項目

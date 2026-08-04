@@ -118,6 +118,11 @@ test("設定のXアカウント一覧から操作対象を切り替えられ、�
   await page.goto("/app/settings?tab=x-accounts");
   const firstRow = page.locator("li", { hasText: `@${account.handle}` });
   await firstRow.getByRole("button", { name: "このアカウントを操作する" }).click();
+  // **切り替えの完了を待ってから遷移する。** `click()` は Server Action の受理を待たないので、
+  // 直後に `page.goto` すると in-flight のPOSTが中断され、切替先（`profiles.active_x_account_id`）
+  // がDBへ届かないまま次の画面を見に行く。上の1回目と同じ形に揃える。
+  // CPU負荷をかけて `--repeat-each=8` で走らせると実際に半分落ちた（負荷の無い手元では出ない）。
+  await expect(toastIn(page)).toContainText(`@${account.handle} に切り替えました`);
   await page.goto("/app/posts?tab=drafts");
   await expect(page.getByText(firstDraft)).toBeVisible();
 });

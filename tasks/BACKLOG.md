@@ -599,6 +599,40 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 生成結果に**加重289字のポスト**が出た（PT-FIXが280以下へ収束しなかった）。画面は
     `length_exceeded` 警告で投稿を止めるので黙って壊れてはいないが、収束率は測っていない。
 
+### T-M8-48: push前の点検で見つかった5件を直す（CI赤・E2E flake・docs矛盾） `done`
+- 参照: CLAUDE.md 最重要ルール（docs同期）、docs/operations/ci.md / 依存: T-M8-47 / サイズ: M
+- 経緯: pushの直前に5観点（CI固有／取り残し／同じ不具合の他箇所／docs同期／変更の正しさ）で
+  並列点検し、所見38件を否定側から検証した（確認35／棄却3）。うち**push前に直すべき5件**を修正。
+  残り30件は「あとでよい改善」として据え置いた。
+- (1) **`npm run audit:check` が落ちていた＝CIが確実に赤**（最重要）。新しい advisory が出たため、
+  `fast-uri`（GHSA-7p8r-x3mc-p8w7・<3.1.5）と `ip-address`（GHSA-mwp4-54f8-5fhr・<=10.3.0）が
+  本番依存で high 判定になっていた。**この差分が原因ではなく `origin/stg` でも同じ**（lockの版が同一）。
+  つまり**stgのCIも今は赤になる**。`release:check` は audit:check が3番目なので build・E2Eへ到達しない。
+  → `npm update fast-uri ip-address` で lock だけを更新（3.1.5 / 10.4.0）。**overrides は使わない**——
+  親の宣言レンジ内（`ajv` は `^3.0.1`、`express-rate-limit` は `^10.2.0`）なので不要で、
+  overrides に寄せると2パッケージを恒久 pin して上流の追随に気付けなくなる（原則3に逆行）。
+  `package.json` は無変更、差分は `package-lock.json` のみ。
+- (2) **E2Eのflakeの原因を特定して直した**。`x-account-switch.spec.ts:120` の「1つ目へ戻す」だけが
+  Server Action の完了を待たずに `page.goto` していた。切替先は cookie ではなく DB列
+  （`profiles.active_x_account_id`）なので、in-flightのPOSTが中断されると切替が届かない。
+  **CPU負荷をかけて `--repeat-each=8` で4/8失敗を再現**し、1回目と同じトースト待ちを入れて8/8成功にした。
+  `retries` や `waitForTimeout` では原因が隠れるだけなので入れない。**既存の欠陥**で、
+  この差分は同ファイルへテストを追記しただけ（118-122行は未変更）。
+- (3) **ADR-0006 の使用箇所の数が実態と乖離**。「`Badge` は5画面」のまま（実測 18ファイル・8画面）で、
+  同じ差分でこのADRの別の行を更新しているのに漏れていた。数字が古いと「小さいと思って触ると広く影響する」
+  という警告の役目を果たさない。**この数は増える前提で、正は `rg` の結果**と明記した。
+  あわせて「アイコン名の打ち間違いは単体テストで固定する」を実態へ修正（実際は `IconName` 型で
+  typecheck が落とす。`as IconName` は0件。動的に渡すナビだけ `navigation-items.test.ts` が検査）。
+- (4) **要件04 §12 の日次サマリに `failed` メールが未反映**（T-M8-40 の同期漏れ）。実装は
+  `failedEmails` を本文と「気になる点」に出しているのに、正本は「送信待ちメール」のままだった。
+- (5) **要件03 §2.2 と要件01:85 の `stripe:portal:setup` が旧仕様**。「未設定のときだけ作成してIDを出力する」
+  という**実装に存在しない挙動**（`create` 呼び出しは0件）が残り、`deployment.md` §1.4 と正面から矛盾していた。
+  要件01 の「3価格を同一Product配下に置く」も T-M8-32 で否定済みなのに残存していた（要件03 §145 は修正済み）。
+- 検証: `npm run release:check` **exit 0**（typecheck / lint / audit:check / test:db / build / E2E 46 passed・1 skipped）。
+  `npm ci --dry-run` exit 0。flakeは負荷下 8/8 成功。
+- 据え置いた30件のうち目立つもの: warn/info/success バナー約37箇所の `Notice` 移行、
+  未使用アイコン11個（`origin/stg` でも未使用＝今回の退行ではない）、プロンプト設計書 v1.10〜v1.13 の履歴欠落。
+
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M
 - 経緯: 利用者から「要件と実装が違う部分がないか。実装時に要件も変更済みか」（2026-08-03）。
