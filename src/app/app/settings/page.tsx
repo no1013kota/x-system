@@ -28,6 +28,7 @@ import { SettingsPreferences } from "./settings-preferences";
 import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -173,12 +174,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 現在のご契約
               </CardTitle>
               {params.portal === "return" ? (
-                <p
-                  className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
-                  role="status"
-                >
+                <Notice className="mt-4" tone="success"
+                  role="status">
                   お支払い管理画面から戻りました。契約情報を確認しています。
-                </p>
+                </Notice>
               ) : null}
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div>

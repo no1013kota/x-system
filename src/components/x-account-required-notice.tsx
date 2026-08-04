@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * Xアカウント未連携時の共通アラート（要件06 §1/§9）。active な X アカウントが無いと投稿生成・
@@ -8,7 +9,7 @@ import { primaryLinkClassName } from "@/components/ui/link-button";
  */
 export function XAccountRequiredNotice({ description }: { description: string }) {
   return (
-    <div className="rounded-card border border-warn-fg/25 bg-warn-bg p-5 text-warn-fg" role="alert">
+    <Notice tone="warn" role="alert">
       <p className="font-semibold">Xアカウントの連携が必要です</p>
       <p className="mt-1 text-sm">{description}</p>
       <Link
@@ -17,6 +18,6 @@ export function XAccountRequiredNotice({ description }: { description: string })
       >
         設定へ
       </Link>
-    </div>
+    </Notice>
   );
 }

@@ -16,6 +16,7 @@ import {
 import type { PlanId } from "@/lib/plans";
 import { CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
@@ -143,7 +144,7 @@ export function AiPurposeSettings({
             </select>
           </label>
         ) : (
-          <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
+          <Notice className="mt-5" tone="warn">
             <p className="font-medium">画像生成は現在利用できません</p>
             <p className="mt-1 leading-6">
               {plan === "premium"
@@ -151,15 +152,15 @@ export function AiPurposeSettings({
                 : "OpenAIまたはGoogleのAPIキーを登録し、接続確認に成功すると選べるようになります。"}
             </p>
             {plan !== "premium" ? <ApiKeySettingsLink /> : null}
-          </div>
+          </Notice>
         )}
       </section>
 
       {plan !== "premium" && !textProvider ? (
         // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
-        <p className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg" role="status">
+        <Notice tone="warn" role="status">
           文章生成に使うAIが未設定です。このままでは投稿の生成・自動運用が実行できません。登録済みのAIを選んで保存してください。
-        </p>
+        </Notice>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -186,10 +187,10 @@ function ApiKeySettingsLink() {
 
 function MissingProviderMessage({ purpose }: { purpose: string }) {
   return (
-    <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
+    <Notice className="mt-5" tone="warn">
       <p className="font-medium">{purpose}に使えるAIがまだありません</p>
       <p className="mt-1 leading-6">AI APIキーを登録し、疎通確認を完了してください。</p>
       <ApiKeySettingsLink />
-    </div>
+    </Notice>
   );
 }

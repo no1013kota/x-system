@@ -30,6 +30,7 @@ import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
   { label: "Anthropic (Claude)", provider: "anthropic" },
@@ -90,11 +91,11 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
       </p>
       {keyState.provider !== "x" && keyState.status !== "valid" ? (
         // 生成の前提は valid のみ（execution-prereqs）。未確認/失敗のままだと投稿生成が始まらない。
-        <p className="mt-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-2 text-xs leading-5 text-warn-fg">
+        <Notice className="mt-2" tone="warn">
           {keyState.status === "invalid"
             ? "このキーは認証できませんでした。正しいキーを貼り直すまで投稿生成には使えません。"
             : "疎通確認が済むまで、このキーは投稿生成に使えません。「疎通確認」を実行してください。"}
-        </p>
+        </Notice>
       ) : null}
     </div>
   );

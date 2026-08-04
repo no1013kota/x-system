@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * Checkout完了後、契約情報の反映を待つ間の表示（要件06 §1.1）。反映が終わると
@@ -31,10 +32,12 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
   }, [attempts, exhausted, router]);
 
   return (
-    <section
+    <Notice
+      as="section"
       aria-live="polite"
-      className="mx-auto max-w-3xl rounded-card border border-success-fg/25 bg-success-bg p-6 text-success-fg"
+      className="mx-auto max-w-3xl px-6 py-5"
       role="status"
+      tone="success"
     >
       <h2 className="text-lg font-semibold">お申し込みを受け付けました</h2>
       <p className="mt-2 text-sm leading-6">
@@ -74,6 +77,6 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
           "、お問い合わせください。"
         )}
       </p>
-    </section>
+    </Notice>
   );
 }

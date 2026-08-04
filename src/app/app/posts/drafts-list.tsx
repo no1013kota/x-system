@@ -555,7 +555,7 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
   }
 
   return (
-    <div className="mt-3 space-y-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-warn-fg">
+    <Notice className="mt-3 space-y-2" tone="warn">
       <p className="text-xs leading-5">
         投稿の状態が未解決です。破棄する前にXと再照合して、投稿済み・削除済みを確定してください。
       </p>
@@ -579,7 +579,7 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
           解決しない場合は、Xの投稿状況をご確認のうえサポートへお問い合わせください。
         </p>
       ) : null}
-    </div>
+    </Notice>
   );
 }
 
@@ -603,14 +603,14 @@ function PublishButton({
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
           <AlertDialog.Title className={cardTitleClassName}>この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
-            <div className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg">
+            <Notice className="mt-3" tone="warn">
               <p className="font-medium">注意: 次の警告があります</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 {warnings.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-            </div>
+            </Notice>
           ) : null}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
             スレッドをXへ順に投稿します。途中で失敗した場合は、作成済みのポストを自動で削除します。

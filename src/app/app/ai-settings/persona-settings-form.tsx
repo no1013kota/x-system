@@ -149,16 +149,14 @@ export function PersonaSettingsForm({
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
-        <div
-          className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg"
-          role="status"
-        >
+        <Notice tone="warn"
+          role="status">
           保存すると、発信定義書（ベースmd）の「1. {BASE_MD_SECTION_TITLES[0]}／2. {BASE_MD_SECTION_TITLES[1]}／3. {BASE_MD_SECTION_TITLES[2]}／4. {BASE_MD_SECTION_TITLES[3]}」をこのフォームの内容で書き換えます。学習で作られた「5. {BASE_MD_SECTION_TITLES[4]}／6. {BASE_MD_SECTION_TITLES[5]}」はそのまま残ります。書き換え前の内容は、
           <Link className="mx-1 font-medium underline underline-offset-4" href="/app/ai-settings?tab=base-md">
             ベースmdタブの変更履歴
           </Link>
           からいつでも元に戻せます。
-        </div>
+        </Notice>
       ) : null}
 
       <section aria-labelledby="persona-group" className={groupClassName} role="group">
