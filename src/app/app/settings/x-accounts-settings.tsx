@@ -180,20 +180,28 @@ export function XAccountsSettings({
                   </Button>
                 ) : null}
 
+                {/*
+                  **何を確認するのかをラベルに書き、結果を文言で返す**（T-M8-56）。
+                  以前は「状態を更新」で、何の状態をどう更新するのか読めなかった。
+                  実体は「Xに問い合わせて、この連携がまだ使えるかを確かめる」操作。
+                */}
                 <Button
                   disabled={pending}
                   onClick={() =>
                     run(
                       account.id,
                       () => refreshXAccountStatusAction({ x_account_id: account.id }),
-                      "最新の状態を確認しました。",
+                      (res) =>
+                        `Xとの接続を確認しました（${
+                          STATUS_LABEL[res.accountStatus ?? ""] ?? "状態不明"
+                        }）`,
                     )
                   }
                   size="sm"
                   type="button"
                   variant="ghost"
                 >
-                  状態を更新
+                  接続を確認
                 </Button>
 
                 {account.automationActive ? (
@@ -224,10 +232,10 @@ export function XAccountsSettings({
   const activeCount = accounts.filter((a) => a.status === "active").length;
   const atLimit = activeCount >= limit;
 
-  function run(
+  function run<T extends { status: "error" | "success"; message: string }>(
     id: string,
-    action: () => Promise<{ status: "error" | "success"; message: string }>,
-    successMessage: string,
+    action: () => Promise<T>,
+    successMessage: string | ((result: T) => string),
   ) {
     if (pending) return;
     setBusyId(id);
@@ -242,7 +250,10 @@ export function XAccountsSettings({
         });
         return;
       }
-      toast.show({ tone: "success", title: successMessage });
+      toast.show({
+        tone: "success",
+        title: typeof successMessage === "function" ? successMessage(res) : successMessage,
+      });
       router.refresh();
     });
   }
