@@ -18,7 +18,7 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import type { PostPatternOption } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
@@ -223,7 +223,7 @@ export function CreatePostForm({
       {/* 入力（ステート1） */}
       <section
         aria-label="生成入力"
-        className="space-y-5 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]"
+        className={`${cardClassName} space-y-5 p-5`}
       >
         {/*
           パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
@@ -353,7 +353,7 @@ export function CreatePostForm({
 
       {/* 結果（ステート2・3） */}
       <section aria-label="プレビュー・結果"
-        className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
+        className={`${cardClassName} space-y-4 p-5`}>
         <CardTitle>結果</CardTitle>
 
         {prereq ? (

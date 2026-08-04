@@ -15,7 +15,7 @@ import {
   type NotificationConfig,
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import {
   clampNewsMaxItems,
   NEWS_MAX_ITEMS_MAX,
@@ -50,7 +50,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <CardTitle>プロフィール</CardTitle>
       <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
         表示名
@@ -82,7 +82,7 @@ function ProfileForm({ displayName }: { displayName: string | null }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -99,7 +99,7 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
       [type]: { ...prev[type], [channel]: !prev[type][channel] },
     }));
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <CardTitle>通知</CardTitle>
       <p className="mt-1 text-sm text-muted-foreground">
         種別ごとにアプリ内通知とメールの受け取りを設定できます。
@@ -150,25 +150,38 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
 function NewsForm({ config }: { config: NewsConfig }) {
   const [categories, setCategories] = useState<string[]>(config.categories);
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
-  const [maxItems, setMaxItems] = useState(config.max_items);
+  /**
+   * 表示件数は**入力中は文字列で保持する**（T-M8-51）。
+   *
+   * 打鍵ごとに `clampNewsMaxItems` を掛けると、欄を空にできず（0が即1へ丸められる）
+   * 「100」を消して打ち直すことすらできない。丸めるのは blur と保存のときだけにする。
+   * 一方で「押す前に止める」（T-M8-37）は維持し、範囲外のあいだは保存させない。
+   */
+  const [maxItemsText, setMaxItemsText] = useState(String(config.max_items));
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  const maxItemsNumber = Number(maxItemsText);
   // **押す前に止める**（T-M8-37）。以前は件数が対象外で、欄を空にする（`Number("")` → 0）か
   // 101以上を入れた状態でも保存でき、サーバー検証で「入力内容を確認してください」という
   // どの項目が悪いか分からないエラーになっていた。
-  const maxItemsInvalid = maxItems < NEWS_MAX_ITEMS_MIN || maxItems > NEWS_MAX_ITEMS_MAX;
-  const invalid = categories.length === 0 || impacts.length === 0 || maxItemsInvalid;
+  const maxItemsInvalid =
+    maxItemsText.trim() === "" ||
+    !Number.isFinite(maxItemsNumber) ||
+    maxItemsNumber < NEWS_MAX_ITEMS_MIN ||
+    maxItemsNumber > NEWS_MAX_ITEMS_MAX;
+  const selectionInvalid = categories.length === 0 || impacts.length === 0;
+  const invalid = selectionInvalid || maxItemsInvalid;
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <CardTitle>ニュース通知</CardTitle>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
         ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
@@ -212,17 +225,25 @@ function NewsForm({ config }: { config: NewsConfig }) {
         表示件数（1〜100）
       </label>
       <input
-        aria-describedby="max_items-error"
+        // **この欄のメッセージだけを指す**（T-M8-51）。以前は選択項目（テーマ・インパクト）の
+        // 文言と id を共有していたため、読み上げが別項目の理由を読んでいた。
+        aria-describedby={maxItemsInvalid ? "max_items-error" : undefined}
         aria-invalid={maxItemsInvalid}
         className="mt-1 h-10 w-28 rounded-lg border px-3 text-sm"
         id="max_items"
         max={NEWS_MAX_ITEMS_MAX}
         min={NEWS_MAX_ITEMS_MIN}
-        // ニュース一覧の同じ欄と同じ丸め方をする（同じ設定項目が画面によって違う挙動をしない）。
-        onChange={(e) => setMaxItems(clampNewsMaxItems(Number(e.target.value)))}
+        // 入力中は丸めない（打ち直せなくなる）。確定時にニュース一覧と同じ丸め方をする。
+        onBlur={() => setMaxItemsText(String(clampNewsMaxItems(Number(maxItemsText))))}
+        onChange={(e) => setMaxItemsText(e.target.value)}
         type="number"
-        value={maxItems}
+        value={maxItemsText}
       />
+      {maxItemsInvalid ? (
+        <p className="mt-1 text-sm text-destructive" id="max_items-error" role="alert">
+          表示件数は{NEWS_MAX_ITEMS_MIN}〜{NEWS_MAX_ITEMS_MAX}で指定してください。
+        </p>
+      ) : null}
 
       <div className="mt-4">
         <Button
@@ -232,7 +253,8 @@ function NewsForm({ config }: { config: NewsConfig }) {
               const res = await updateNewsConfigAction({
                 categories,
                 impact_filter: impacts,
-                max_items: maxItems,
+                // 保存時にも丸める（blur を経ずにEnterで送るときの保険）。
+                max_items: clampNewsMaxItems(maxItemsNumber),
               });
               toast.show({
                 tone: res.status === "success" ? "success" : "error",
@@ -248,14 +270,12 @@ function NewsForm({ config }: { config: NewsConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      {invalid ? (
-        <p className="mt-3 text-sm text-destructive" id="max_items-error" role="alert">
-          {maxItemsInvalid
-            ? `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`
-            : "テーマとインパクトはそれぞれ1件以上選択してください。"}
+      {selectionInvalid ? (
+        <p className="mt-3 text-sm text-destructive" role="alert">
+          テーマとインパクトはそれぞれ1件以上選択してください。
         </p>
       ) : null}
-    </section>
+    </Card>
   );
 }
 

@@ -24,7 +24,7 @@ M8 で既存画面の**見た目だけ**を新デザイン（`design_handoff_spa
   **`components.json` の `iconLibrary` は `lucide` のまま**なので、shadcn MCP で部品を足すと
   lucide を import したコードが入ってくる。(a) がその入口で止める。
 
-**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・インラインバナー（`ui/notice.tsx`。**危険色は1系統**——`bg-destructive/*` はボタンの塗りだけに許し、`notice.test.ts` が機械的に検査する）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
+**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ。素の容器は `<Card as=...>`、他のレイアウト指定と混ざる／ライブラリの要素へ渡す場合は `cardClassName`。見出しは `CardTitle`、使えない場所は `cardTitleClassName`。**面だけの `rounded-card border border-hairline bg-surface` は寄せない**——入力欄・トースト・Popover・ラジオも同じ組み合わせを使っており、カードを変えたときに入力欄の枠まで動くのは誤り。影まで含めた並びだけを単一の正とする）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・インラインバナー（`ui/notice.tsx`。**危険色は1系統**——`bg-destructive/*` はボタンの塗りだけに許し、`notice.test.ts` が機械的に検査する）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
 
 **6. 操作結果の通知はトーストへ集約する**（要件06 §2.1）。判断（読み上げ種別・自動で消えるか）は `toast-policy.ts` の純関数へ出し、DOMを持たない単体テスト（`environment: node`）で固定する。
 

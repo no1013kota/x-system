@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -89,7 +89,7 @@ export function XAccountsSettings({
 
   return (
     <section aria-labelledby="x-accounts-heading" className="space-y-6">
-      <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <Card as="div" className="px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <CardTitle id="x-accounts-heading">
@@ -140,7 +140,7 @@ export function XAccountsSettings({
             Xアカウントを連携しました。
           </p>
         ) : null}
-      </div>
+      </Card>
 
       {accounts.length === 0 ? (
         <EmptyNotice>
@@ -306,7 +306,7 @@ function DisconnectButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">

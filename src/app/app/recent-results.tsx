@@ -5,7 +5,7 @@ import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -33,7 +33,7 @@ export function RecentResultsCard({
 }) {
   if (posts.length === 0) {
     return (
-      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <Card as="section" className="px-5 py-4">
         <CardTitle>直近の実績</CardTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
@@ -44,7 +44,7 @@ export function RecentResultsCard({
         >
           今すぐ作成
         </Link>
-      </section>
+      </Card>
     );
   }
 
@@ -52,7 +52,7 @@ export function RecentResultsCard({
   const measured = (day1?.tweets ?? 0) > 0;
 
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>直近の実績</CardTitle>
         <Link className="text-sm text-primary underline" href="/app/analytics">
@@ -118,6 +118,6 @@ export function RecentResultsCard({
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

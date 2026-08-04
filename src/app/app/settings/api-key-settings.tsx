@@ -28,7 +28,7 @@ import {
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 
 const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
@@ -297,7 +297,7 @@ export function ApiKeySettings({
 
   if (plan === "premium") {
     return (
-      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
+      <Card as="section" className="px-5 py-4" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
           <div className="rounded-card bg-success-bg p-3 text-success-fg">
             <Icon name="verified_user" className="size-6" />
@@ -316,7 +316,7 @@ export function ApiKeySettings({
             <UsageSummaryCard nextResetLabel={usageResetLabel} summary={usage} />
           </div>
         ) : null}
-      </section>
+      </Card>
     );
   }
 

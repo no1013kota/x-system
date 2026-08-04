@@ -125,3 +125,47 @@ test("AI APIキーが短いあいだは必要な文字数が画面に出る（T-
   await card.getByLabel("APIキー").fill("sk-ant-0123456789abcdef");
   await expect(card.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
 });
+
+/**
+ * 表示件数の欄が**打ち直せる**こと（T-M8-51）。
+ *
+ * T-M8-37 で打鍵ごとに `clampNewsMaxItems` を掛けたため、欄を空にできず（0が即1へ丸められる）
+ * 「100」を消して打ち直すこともできなくなっていた。丸めるのは確定時（blur・保存）だけにする。
+ * 「押す前に止める」は維持し、範囲外のあいだは保存させない。
+ */
+test("ニュースの表示件数は入力中に丸められず、範囲外では保存できない（T-M8-51）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("news-max-items", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=notifications");
+
+  const field = page.getByLabel("表示件数", { exact: false });
+  await expect(field).toBeVisible();
+  const save = page.locator("section", { hasText: "ニュース通知" }).getByRole("button", {
+    name: "保存",
+    exact: true,
+  });
+
+  // 空にできる（打ち直せる）
+  await field.fill("");
+  await expect(field).toHaveValue("");
+  await expect(save).toBeDisabled();
+  await expect(page.getByText("表示件数は1〜100で指定してください。")).toBeVisible();
+
+  // 範囲外も入力自体は許し、保存だけ止める
+  await field.fill("101");
+  await expect(field).toHaveValue("101");
+  await expect(save).toBeDisabled();
+
+  // 範囲内へ直すと保存できるようになり、理由の文字も消える
+  await field.fill("30");
+  await expect(save).toBeEnabled();
+  await expect(page.getByText("表示件数は1〜100で指定してください。")).toHaveCount(0);
+
+  // 確定（blur）で丸められる
+  await field.fill("999");
+  await field.blur();
+  await expect(field).toHaveValue("100");
+});

@@ -14,6 +14,17 @@ import { cn } from "@/lib/utils";
  * `div` にすると landmark が消え、支援技術からもテストからも「1つのまとまり」として
  * 扱えなくなる（T-M8-41）。
  */
+/**
+ * カードの見た目（T-M8-51）。`Card` を使えない場所（`page-state.tsx` の状態カードなど）と共有する。
+ *
+ * **`rounded-card border border-hairline bg-surface` 単体は寄せない。** 調べると入力欄・トースト・
+ * Popover・ラジオ・認証画面でも使われており、これらは「白地＋hairline」という汎用の組み合わせを
+ * たまたま共有しているだけ。カードの見た目を変えたときに入力欄の枠まで動くのは誤り。
+ * **影まで含めた「カードそのもの」の並びだけ**を単一の正とする（`card-surface.test.ts` が直書きを禁止）。
+ */
+export const cardClassName =
+  "rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]";
+
 export function Card({
   as: Tag = "div",
   className,
@@ -21,10 +32,7 @@ export function Card({
 }: ComponentProps<"div"> & { as?: "div" | "section" | "article" }) {
   return (
     <Tag
-      className={cn(
-        "rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]",
-        className,
-      )}
+      className={cn(cardClassName, className)}
       {...props}
     />
   );
@@ -46,12 +54,19 @@ export function CardHeader({ className, ...props }: ComponentProps<"div">) {
  * **見出しはロールを保つ**（`as` で `h1`〜`h3` を選ぶ）。`p` に置き換えると
  * `getByRole("heading")` で拾えなくなり、支援技術からも見出しとして扱われない。
  */
+/**
+ * カード見出しの見た目（T-M8-51）。**ダイアログのタイトルなど、`CardTitle` を使えない場所と共有する。**
+ * 同じクラス文字列を手書きすると、次にスケールを変えたときに追随しない
+ * （`card-title.test.ts` が直書きを禁止する）。
+ */
+export const cardTitleClassName = "text-[15px] font-bold text-ink";
+
 export function CardTitle({
   as: Tag = "h2",
   className,
   ...props
 }: ComponentProps<"h2"> & { as?: "h1" | "h2" | "h3" }) {
-  return <Tag className={cn("text-[15px] font-bold text-ink", className)} {...props} />;
+  return <Tag className={cn(cardTitleClassName, className)} {...props} />;
 }
 
 /** カードの本体。見出しが無いカードでは単体で使ってよい。 */

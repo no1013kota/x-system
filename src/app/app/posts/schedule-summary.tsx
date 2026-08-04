@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 
 const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -21,7 +21,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
   return (
     <section
       aria-label="スケジュール"
-      className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
+      className={`${cardClassName} px-5 py-4`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <CardTitle>スケジュール</CardTitle>

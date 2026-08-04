@@ -4,15 +4,17 @@ import { InvalidProviderOutputError } from "../ai/pipeline";
 import { emptyUsage, type TextGen, type TextGenRequest } from "../ai/types";
 import type { Queryable } from "../x/token-refresh";
 import {
-  jstHourOf,
   NEWS_FETCH_JST_HOURS,
+  NEWS_SUMMARY_MAX_LENGTH,
+  NEWS_TITLE_MAX_LENGTH,
+  applyRecencyPolicy,
+  formatDropReasons,
+  jstHourOf,
   newsLookbackHours,
+  normalizePublishedAt,
+  pickValidItems,
   researchNews,
   type NewsResearchDeps,
-  pickValidItems,
-  formatDropReasons,
-  applyRecencyPolicy,
-  normalizePublishedAt,
 } from "./news-research";
 
 const KNOWN_URLS = /from news_items/;
@@ -146,7 +148,12 @@ describe("researchNews", () => {
     const mixed = JSON.stringify({
       items: [
         // 受理上限（60字）を超える見出し。T-M8-47 で30→60へ緩めたので31字では落ちない。
-        { title: "あ".repeat(61), summary: "s", source_url: "https://e.com/x", impact: "high" },
+        {
+          title: "あ".repeat(NEWS_TITLE_MAX_LENGTH + 1),
+          summary: "s",
+          source_url: "https://e.com/x",
+          impact: "high",
+        },
         { title: "短いタイトル", summary: "要約", source_url: "https://e.com/y", impact: "mid" },
       ],
     });
@@ -179,6 +186,15 @@ describe("researchNews", () => {
   });
 });
 
+describe("受理上限（プロンプト設計書 §6.10・§7.1 と一致させる）", () => {
+  // 相対的な振る舞いは定数から導くが、**文書に書いた数字そのもの**はここで固定する
+  // （変えるならプロンプト設計書の変更履歴も直す・T-M8-51）。
+  it("title は60字・summary は200字", () => {
+    expect(NEWS_TITLE_MAX_LENGTH).toBe(60);
+    expect(NEWS_SUMMARY_MAX_LENGTH).toBe(200);
+  });
+});
+
 describe("pickValidItems（item単位の選別）", () => {
   const valid = {
     title: "GPT-5.6が一般提供開始",
@@ -193,7 +209,7 @@ describe("pickValidItems（item単位の選別）", () => {
     const tooLong = {
       ...valid,
       title: "Storj Labs files Chapter 11 bankruptcy protection",
-      summary: "x".repeat(220),
+      summary: "x".repeat(NEWS_SUMMARY_MAX_LENGTH + 20),
       source_url: "https://example.com/b",
     };
     const r = pickValidItems([valid, tooLong, { ...valid, source_url: "https://example.com/c" }]);
@@ -231,8 +247,8 @@ describe("pickValidItems（item単位の選別）", () => {
     }
   });
 
-  it("受理上限（60字）を超える見出しは落とし、理由を返す", () => {
-    const r = pickValidItems([{ ...valid, title: "x".repeat(61) }]);
+  it(`受理上限（${NEWS_TITLE_MAX_LENGTH}字）を超える見出しは落とし、理由を返す`, () => {
+    const r = pickValidItems([{ ...valid, title: "x".repeat(NEWS_TITLE_MAX_LENGTH + 1) }]);
     expect(r.items).toHaveLength(0);
     expect(r.reasons["title:too_big"]).toBe(1);
   });
@@ -240,7 +256,7 @@ describe("pickValidItems（item単位の選別）", () => {
   it("除外理由を内訳で返す（0件の原因を説明できるように）", () => {
     const tooLongSummary = {
       title: "短いタイトル",
-      summary: "x".repeat(220),
+      summary: "x".repeat(NEWS_SUMMARY_MAX_LENGTH + 20),
       source_url: "https://example.com/a",
       impact: "high" as const,
     };

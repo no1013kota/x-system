@@ -51,7 +51,8 @@ export function Badge({
  * 選んでいた分野の表示で使われるため（T-M7-55 で取得は3分野へ絞ったが、
  * 既存データは消していない）。
  */
-export const NEWS_CATEGORY_CHIP: Record<string, string> = {
+/** `CategoryChip` 専用（外へ出さない・T-M8-51）。色は意味で決まるので個別に使わせない。 */
+const NEWS_CATEGORY_CHIP: Record<string, string> = {
   ai: "bg-info-bg text-info-fg",
   web3: "bg-brand-subtle text-brand",
   investment: "bg-success-bg text-success-fg",

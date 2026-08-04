@@ -19,6 +19,7 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cardTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 import { useToast } from "@/components/ui/toast";
@@ -600,7 +601,7 @@ function PublishButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">この内容で投稿しますか？</AlertDialog.Title>
+          <AlertDialog.Title className={cardTitleClassName}>この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
             <div className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg">
               <p className="font-medium">注意: 次の警告があります</p>
@@ -646,7 +647,7 @@ function DiscardButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             下書きを破棄しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
