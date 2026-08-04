@@ -225,6 +225,29 @@ async function setDraftFailed(
   );
 }
 
+/**
+ * **Xへ1件も出していない失敗は `draft` へ戻す**（T-M8-51）。理由だけ残して編集可能なままにする。
+ *
+ * `failed` にすると `draftActionState` の `editable`（`status === "draft"`）が false になり、
+ * `tweet_ids` が空なので `cloneEligible` も false ——**編集も複製も投稿もできない行き止まり**に
+ * なる。T-M8-39 で長さ超過のゲートを足したとき、失敗メッセージに「編集して短くしてから投稿して
+ * ください」と書いたのに、その編集ができない状態を作っていた（要件06 §7 は
+ * 「投稿ボタンの代わりに理由と編集導線を出す」と定めている）。
+ *
+ * 日次上限の経路が同じ考えで `draft` へ戻している（あちらは理由を残していないので、
+ * こちらは理由も残す形にする）。
+ */
+async function revertDraftWithReason(
+  db: Queryable,
+  draftId: string,
+  error: { code: string; message: string },
+): Promise<void> {
+  await db.query(
+    `update drafts set status = 'draft', last_post_error = $2::jsonb, updated_at = now() where id = $1`,
+    [draftId, JSON.stringify({ code: error.code, message: error.message })],
+  );
+}
+
 async function createPostedNotification(
   db: Queryable,
   params: { userId: string; draftId: string },
@@ -462,7 +485,8 @@ export async function executePostPublish(
   // UIの分岐は単体テストの網に入らない（`.tsx` は対象外）ため、壊れても緑のまま通る。
   const overLength = findOverLengthText(thread.map((_, index) => finalTextAt(index)));
   if (overLength) {
-    await setDraftFailed(db, draftId, {
+    // Xへは1件も出していないので `draft` へ戻す（編集して直せる状態にする）。
+    await revertDraftWithReason(db, draftId, {
       code: "length_exceeded",
       message:
         `${overLength.index + 1}本目の本文が長すぎます（上限280・いま${overLength.weightedLength}）。` +

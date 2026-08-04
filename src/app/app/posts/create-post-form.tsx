@@ -20,6 +20,7 @@ import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
 export interface ActiveJob {
   id: string;
@@ -62,7 +63,6 @@ const PREREQ_FAILURE_PATH: Record<string, string> = {
   persona_required: "/app/ai-settings?tab=persona",
 };
 const PREREQ_FAILURE_CODES = new Set(Object.keys(PREREQ_FAILURE_PATH));
-const POLL_MS = 2500;
 const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
@@ -105,12 +105,22 @@ export function CreatePostForm({
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // 進行中のあいだ getGenerationJob をポーリングして状態を更新する（再訪時も initialJob から再開）。
+  //
+  // **取得できない状態が続いたら打ち切って伝える**（T-M8-51）。以前は失敗を黙って捨てて回り続けて
+  // いたため、「生成中…」が永遠に出たままトーストが1つも出なかった。
   useEffect(() => {
     if (!job || TERMINAL.has(job.status)) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       setNowMs(Date.now());
       const res = await getGenerationJobAction({ job_id: job.id });
-      if (res.status === "success" && res.job) {
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        return;
+      }
+      if (ok && res.job) {
         const nextJob = res.job;
         setJob((prev) => ({
           id: nextJob.id,
@@ -121,9 +131,9 @@ export function CreatePostForm({
           error: toJobFailure(nextJob.error),
         }));
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [job?.id, job?.status, job?.createdAt, job]);
+  }, [job?.id, job?.status, job?.createdAt, job, toast]);
 
   function submit() {
     setPrereq(null);

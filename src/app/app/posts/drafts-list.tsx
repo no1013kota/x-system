@@ -19,6 +19,8 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
+import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
@@ -26,7 +28,6 @@ import { formatJst } from "@/lib/format";
 
 import { DraftEditor } from "./draft-editor";
 
-const POLL_MS = 2500;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 const WARNING_LABEL: Record<string, string> = {
@@ -181,11 +182,24 @@ function DraftCard({
   }
 
   // 投稿jobを終端までpoll。成功→履歴へ（refreshで下書きから消える）、失敗→下書きに残り通知。
+  //
+  // **取得できない状態が続いたら打ち切って伝える**（T-M8-51）。以前は失敗を黙って return して
+  // いたため、通信やサーバーが継続的に失敗すると「投稿中…」が永遠に出たままトーストが1つも
+  // 出なかった（進んでいるのか壊れているのか区別できない）。
   useEffect(() => {
     if (!publishJobId) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       const res = await getGenerationJobAction({ job_id: publishJobId });
-      if (res.status !== "success" || !res.job) return;
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        setPublishJobId(null);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        router.refresh();
+        return;
+      }
+      if (!ok || !res.job) return;
       if (!TERMINAL.has(res.job.status)) return;
       clearInterval(timer);
       setPublishJobId(null);
@@ -205,7 +219,7 @@ function DraftCard({
         });
         router.refresh();
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [publishJobId, router, toast]);
 
@@ -281,6 +295,18 @@ function DraftCard({
         </div>
       </div>
 
+      {/*
+        **保存された失敗理由をそのまま出す**（T-M8-51）。
+        投稿実行は「2本目の本文が長すぎます…Xへの投稿は1件も行っていません」のように、
+        何が起きて何をすればよいかを書いて保存している。ここで出さないと利用者へ届かず、
+        汎用の失敗文しか見えない（「Xへ出ていない」が伝わらないと、Xを見に行くまで確認できない）。
+      */}
+      {draft.last_post_error?.message ? (
+        <Notice className="mt-3" role="alert" tone="danger">
+          {draft.last_post_error.message}
+        </Notice>
+      ) : null}
+
       {hasCreationHistory || unresolvedPosting ? (
         <p className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
           Xに作成されたポストの記録があるため、この下書きは破棄できません（監査のため保持します）。
@@ -353,11 +379,21 @@ function ImageSection({
   const running = pending || jobId !== null;
 
   // 再生成jobを終端までpollする。成功でrefresh（新画像の署名URLを取り直す）。失敗は既存画像を維持。
+  // 取得できない状態が続いたら打ち切って伝える（T-M8-51）。
   useEffect(() => {
     if (!jobId) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       const res = await getGenerationJobAction({ job_id: jobId });
-      if (res.status !== "success" || !res.job) return;
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        setJobId(null);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        router.refresh();
+        return;
+      }
+      if (!ok || !res.job) return;
       if (!TERMINAL.has(res.job.status)) return;
       clearInterval(timer);
       setJobId(null);
@@ -372,7 +408,7 @@ function ImageSection({
           description: "既存の画像はそのままです。",
         });
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [jobId, router, toast]);
 

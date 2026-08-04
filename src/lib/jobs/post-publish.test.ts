@@ -21,6 +21,7 @@ const POSTED = /update drafts\s+set status = 'posted'/;
 const NOTIFY = /insert into notifications/;
 const FAILED = /update drafts\s+set status = 'failed'/;
 const REVERT_DRAFT = /update drafts set status = 'draft'/;
+const REVERT_WITH_REASON = /update drafts set status = 'draft', last_post_error/;
 const CONSENT = /select \(automation_consent_version/;
 const CANCEL_JOB = /update generation_jobs set status = 'canceled'/;
 // consume は create/delete で同一SQL。operation は param($7=params[6]) で判別する。
@@ -230,11 +231,15 @@ describe("executePostPublish validation", () => {
     const deps = baseDeps(db);
     await expect(executePostPublish(deps)).rejects.toMatchObject({ code: "length_exceeded" });
     expect(deps.createPost).not.toHaveBeenCalled();
-    const failed = writes.find((w) => FAILED.test(w.sql));
-    expect(failed).toBeDefined();
+    // **`failed` にしない**（T-M8-51）。`failed` にすると `editable` が false になり、
+    // `tweet_ids` が空なので複製もできず、メッセージの「編集して短くしてから投稿してください」を
+    // 実行できない行き止まりになる。Xへ1件も出していないので `draft` へ戻して理由だけ残す。
+    expect(writes.some((w) => FAILED.test(w.sql))).toBe(false);
+    const reverted = writes.find((w) => REVERT_WITH_REASON.test(w.sql));
+    expect(reverted).toBeDefined();
     // 運営者が何をすればよいか分かる文言か（何本目・Xには出ていない）
-    expect(JSON.stringify(failed?.params)).toContain("2本目");
-    expect(JSON.stringify(failed?.params)).toContain("1件も行っていません");
+    expect(JSON.stringify(reverted?.params)).toContain("2本目");
+    expect(JSON.stringify(reverted?.params)).toContain("1件も行っていません");
   });
 
   it("quote_url を合成した結果で超過する場合も止める（P-5・T-M8-39）", async () => {
