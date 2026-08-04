@@ -283,3 +283,25 @@ test("要再連携のアカウントは畳まず一覧に残す", async ({ accou
   ).toBeVisible();
   await expect(page.getByText("停止中のアカウント", { exact: false })).toHaveCount(0);
 });
+
+/**
+ * 「接続を確認」は結果まで伝える（T-M8-56）。
+ *
+ * 以前のラベルは「状態を更新」で、**何の状態をどう更新するのか読めなかった**（利用者指摘）。
+ * 実体は「Xに問い合わせて、この連携がまだ使えるかを確かめる」操作なので、そのとおりに書き、
+ * 押した結果（有効／要再連携…）をトーストで返す。
+ */
+test("「接続を確認」を押すと結果の状態がトーストで分かる（T-M8-56）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("check-conn", { personaReady: true });
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=x-accounts");
+
+  await expect(page.getByRole("button", { name: "状態を更新" })).toHaveCount(0);
+  await page.getByRole("button", { name: "接続を確認" }).click();
+  // dry_run 環境では偽トークンのため /2/users/me は失敗し「エラー（要確認）」へ落ちる。
+  // ここで見たいのは**結果の状態が文言に含まれる**こと（無言で終わらない・原則1）。
+  await expect(toastIn(page)).toContainText(/Xとの接続を確認しました（.+）/);
+});

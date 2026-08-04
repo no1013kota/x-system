@@ -58,6 +58,34 @@ export interface PortalStripeGateway {
       }>;
     };
   };
+  subscriptions: {
+    list(params: {
+      customer: string;
+      status: "all";
+      limit: number;
+    }): Promise<{ data: { id: string; status: string }[] }>;
+  };
+}
+
+/**
+ * `flow_data` に使う subscription を決める（T-M8-56）。
+ *
+ * 正本は `profiles.stripe_subscription_id`（webhookが同期する）だが、**同期前・同期漏れでは
+ * null になる**。以前はそのとき flow_data を組まずに Portal のトップを開いていたため、
+ * 「プランを変更」を押してもプラン選択に着かず、「解約する」を押しても解約の画面に着かなかった
+ * （利用者が実際に踏んだ。押した先がトップでは、何が起きたのか分からない）。
+ * null のときは Stripe から**その顧客の変更できる契約**を引いて補う。
+ */
+export async function resolveSubscriptionForFlow(
+  stripe: PortalStripeGateway,
+  customerId: string,
+  storedSubscriptionId: string | null,
+): Promise<string | null> {
+  if (storedSubscriptionId) return storedSubscriptionId;
+  const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+  // 変更・解約の対象になり得る契約だけ（listは新しい順）。canceled/incomplete は対象にしない。
+  const candidates = new Set(["active", "trialing", "past_due"]);
+  return subs.data.find((sub) => candidates.has(sub.status))?.id ?? null;
 }
 
 export interface PortalRouteDependencies {
@@ -107,6 +135,21 @@ export async function handlePortalRequest(
   // 本文が無い・壊れていても続行する（intent無し＝Portalのトップ）。
   const intent = intentFromBody(await request.json().catch(() => null));
   try {
+    let subscriptionId: string | null = profile.stripe_subscription_id ?? null;
+    if (intent) {
+      subscriptionId = await resolveSubscriptionForFlow(
+        deps.stripe,
+        profile.stripe_customer_id,
+        subscriptionId,
+      );
+      // **黙ってトップを開かない**（T-M8-56）。変更できる契約が無いのに「プランを変更」を
+      // 押させても、着いた先で何もできない。正直に理由を返す。
+      if (!subscriptionId) {
+        return apiError(
+          new AppError("subscription_required", { details: { settingsPath: "/plans" } }),
+        );
+      }
+    }
     const session = await deps.stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
       return_url: returnUrl,
@@ -114,7 +157,7 @@ export async function handlePortalRequest(
         ? { configuration: deps.configurationId }
         : {}),
       ...(() => {
-        const flowData = portalFlowData(intent, profile.stripe_subscription_id, returnUrl);
+        const flowData = portalFlowData(intent, subscriptionId, returnUrl);
         return flowData ? { flow_data: flowData } : {};
       })(),
     });
