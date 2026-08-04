@@ -66,9 +66,19 @@ export function XAccountsSettings({
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // 「解除したもの」は畳む（T-M8-54）。プラン変更による自動停止は畳まない。
-  const connectedAccounts = accounts.filter((a) => !a.disconnected);
-  const disconnectedAccounts = accounts.filter((a) => a.disconnected);
+  /**
+   * **停止中は畳む**（T-M8-54）。使っていないアカウントが一覧に並び続けると、いま動いている
+   * ものが埋もれる（実際にローカルで3件のうち2件が不要なまま並んだ）。
+   *
+   * 対象は `disabled` だけ。**`expired`／`error` は畳まない**——こちらは再連携という
+   * やることが残っているので、隠すと気付けない（CLAUDE.md 原則1）。
+   *
+   * **行は消さない**（下書き・履歴・実績が参照する・要件06 §14）ので、`<details>` で辿れる
+   * 場所へ移すだけにする。「解除した」ではなく「停止中」と呼ぶ——プラン変更で自動停止された
+   * ものも同じ `disabled` で、利用者の操作とは限らないため。
+   */
+  const connectedAccounts = accounts.filter((a) => a.status !== "disabled");
+  const inactiveAccounts = accounts.filter((a) => a.status === "disabled");
 
   /**
    * 1アカウント分の行。連携中と「解除したもの」の2か所で同じものを描くため関数にする（T-M8-54）。
@@ -290,18 +300,10 @@ export function XAccountsSettings({
         ) : null}
       </Card>
 
-      {/*
-        **解除したアカウントは一覧から畳む**（T-M8-54）。利用者が「連携を解除」したものが
-        「停止中」として残り続けると、片付けたつもりの行がいつまでも見えて紛らわしい。
-        ただし**行は消せない**（下書き・履歴・実績が参照している・要件06 §14）ので、
-        `<details>` で辿れる場所へ移すだけにする。**プラン変更で自動停止されたもの
-        （`disconnected` が false の `disabled`）は畳まない**——隠すと「なぜ止まったのか」が
-        分からなくなる（CLAUDE.md 原則1）。
-      */}
       {connectedAccounts.length === 0 ? (
         <EmptyNotice>
-          {disconnectedAccounts.length > 0
-            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください（解除したアカウントは下に畳んであります）。"
+          {inactiveAccounts.length > 0
+            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください（停止中のアカウントは下に畳んであります）。"
             : "まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。"}
         </EmptyNotice>
       ) : (
@@ -310,15 +312,15 @@ export function XAccountsSettings({
         </ul>
       )}
 
-      {disconnectedAccounts.length > 0 ? (
+      {inactiveAccounts.length > 0 ? (
         <details className="rounded-card border border-hairline bg-surface px-5 py-3">
           <summary className="cursor-pointer text-[13px] text-ink-2">
-            解除したアカウント {disconnectedAccounts.length} 件（投稿履歴と実績は残っています）
+            停止中のアカウント {inactiveAccounts.length} 件（投稿履歴と実績は残っています）
           </summary>
           <p className="mt-2 text-[12.5px] leading-5 text-ink-3">
             もう一度使うときは「有効化」または「再連携」を押してください。連携中の一覧へ戻ります。
           </p>
-          <ul className="mt-3 space-y-3">{disconnectedAccounts.map(renderAccount)}</ul>
+          <ul className="mt-3 space-y-3">{inactiveAccounts.map(renderAccount)}</ul>
         </details>
       ) : null}
     </section>

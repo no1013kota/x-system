@@ -188,8 +188,6 @@ export async function linkXAccountRecord(
            oauth_scopes = excluded.oauth_scopes,
            token_expires_at = excluded.token_expires_at,
            status = 'active',
-           -- 解除したアカウントを連携し直したら一覧へ戻す（T-M8-54）。
-           disconnected_at = null,
            token_refresh_lock_id = null,
            token_refresh_locked_at = null
      returning id`,

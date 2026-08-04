@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/notice";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
 import type { PortalIntent } from "@/lib/stripe/portal";
@@ -20,20 +19,7 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  * **Stripeの顧客がまだ無いときは押せないボタンを出さない**（T-M8-29）。押しても何も起きない
  * ボタンは「壊れている」と読める。契約前の行き先は料金プランなので、そこへのリンクにする。
  */
-export function PortalButton({
-  enabled,
-  awaitingSync = false,
-}: {
-  enabled: boolean;
-  /**
-   * 契約は有効なのに Stripe の顧客がまだ紐づいていない状態（T-M8-53）。
-   *
-   * このとき「プランを選ぶ」を出すと、押した先の `/plans` が**契約済みを理由に `/app` へ
-   * 送り返す**ので、ホームへ弾かれて何も起きない（利用者からは壊れて見える）。
-   * Webhookの到着順で一時的に起こり得るため、押せるボタンではなく待ち状態として伝える。
-   */
-  awaitingSync?: boolean;
-}) {
+export function PortalButton({ enabled }: { enabled: boolean }) {
   const [pending, setPending] = useState<PortalIntent | null>(null);
   const toast = useToast();
 
@@ -54,24 +40,16 @@ export function PortalButton({
   }
 
   if (!enabled) {
+    // Stripeの顧客が無いあいだは Portal を作れないので、行き先は `/plans` にする。
+    //
+    // **説明文は足さない**（T-M8-54）。同期の遅延はカード直下の
+    // 「変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）」
+    // が既に伝えている。同じことを2か所で言うと、常時出る注意書きとして読み飛ばされる。
+    // 跳ね返り（`/plans` が契約者を `/app` へ送り返す）は `/plans` 側で直した。
     return (
-      <div className="space-y-3">
-        {/*
-          **状況を伝えても、行き先は必ず残す**（T-M8-54）。
-          最初の修正で説明文だけにしたところ、押せるものが何も無い行き止まりになった
-          （同期が来なければ永久に「再読み込みしてください」のまま）。
-          `/plans` 側も顧客が未紐づけの契約者を送り返さないようにしたので、ここから申し込みへ進める。
-        */}
-        {awaitingSync ? (
-          <Notice role="status" tone="info">
-            ご契約の情報をStripeから受け取っています（数十秒かかることがあります）。反映されると、
-            ここでプラン変更と解約ができるようになります。反映されない場合は、下からもう一度お申し込みください。
-          </Notice>
-        ) : null}
-        <Link className={primaryLinkClassName} href="/plans">
-          プランを選ぶ
-        </Link>
-      </div>
+      <Link className={primaryLinkClassName} href="/plans">
+        プランを選ぶ
+      </Link>
     );
   }
 
