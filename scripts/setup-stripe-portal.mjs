@@ -16,9 +16,15 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const TARGETS = ["local", "staging", "production"];
 const PREFIX = { local: "", staging: "STAGING_", production: "PRODUCTION_" };
 
-function resolveTarget() {
+/** `--target` の値（未指定なら undefined）。 */
+function targetArg() {
   const index = process.argv.indexOf("--target");
   const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value && TARGETS.includes(value) ? value : undefined;
+}
+
+function resolveTarget() {
+  const value = targetArg();
   if (!value || !TARGETS.includes(value)) {
     throw new Error(
       `--target <${TARGETS.join("|")}> を指定してください（どの環境のStripe設定を変えるかを間違えないため）。` +
@@ -205,7 +211,8 @@ function resolveAppBaseUrl() {
 }
 
 async function main() {
-  TARGET = DRY_RUN ? "local" : resolveTarget();
+  // `--dry-run` は通信しないので `--target` 省略を許すが、**指定されたら尊重する**（T-M8-51）。
+  TARGET = DRY_RUN ? (targetArg() ?? "local") : resolveTarget();
   const appBaseUrl = resolveAppBaseUrl();
   const account = await requireAccountScoped();
   const priceIds = [
@@ -219,6 +226,11 @@ async function main() {
       JSON.stringify(
         {
           mode: "dry-run",
+          // **どの環境の下書きかを出す**（T-M8-51）。以前は `--target` を黙って無視して常に
+          // ローカルの値で表示していたため、`--dry-run --target staging` の出力を
+          // staging の内容だと誤解できた。
+          target: TARGET,
+          appBaseUrl,
           productResolution:
             "Retrieve the three configured Prices and group them by Product (multiple Products are allowed).",
           configuration: portalConfiguration({

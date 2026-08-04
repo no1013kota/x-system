@@ -158,13 +158,18 @@ test("Xアカウントの状態は色でも区別できる（要再連携が有�
   await expect(activeChip).toBeVisible();
   await expect(expiredChip).toBeVisible();
 
+  // **poll してから比べる**（T-M8-51）。1発勝負だと、落ちたときに「一瞬だけ透明だった」のか
+  // 「ずっと透明」なのかが分からず原因を切り分けられない。
   const background = (locator: typeof activeChip) =>
     locator.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const [activeBg, expiredBg] = await Promise.all([background(activeChip), background(expiredChip)]);
-
-  // 透明（＝トーンが当たっていない）ではないこと
-  expect(activeBg).not.toBe("rgba(0, 0, 0, 0)");
-  expect(expiredBg).not.toBe("rgba(0, 0, 0, 0)");
+  for (const [label, chip] of [
+    ["有効", activeChip],
+    ["要再連携", expiredChip],
+  ] as const) {
+    await expect
+      .poll(() => background(chip), { message: `${label} のチップに tone の背景色が当たること` })
+      .not.toBe("rgba(0, 0, 0, 0)");
+  }
   // 2つの状態が同じ色にならないこと
-  expect(activeBg).not.toBe(expiredBg);
+  expect(await background(activeChip)).not.toBe(await background(expiredChip));
 });
