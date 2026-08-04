@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.26 |
+| バージョン | v1.27 |
 | 更新日 | 2026-08-04 |
 | 関連 | 全画面、全ジョブ |
 
@@ -107,7 +107,6 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `updateProfile` | `display_name` | profile | 本人のみ |
 | `setActiveXAccount` | `x_account_id` | active account | 所有者かつ`status=active` |
 | `updateNotificationConfig` | `notification_config` | config | 本人のみ |
 | `updateNewsConfig` | `news_config` | config | 本人のみ |

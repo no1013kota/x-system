@@ -5,7 +5,6 @@ import {
   readSettings,
   saveNewsConfig,
   saveNotificationConfig,
-  updateProfileDisplayName,
   type NewsConfig,
   type NotificationConfig,
   type UserSettings,
@@ -21,12 +20,6 @@ export function getSettingsForUser(userId: string): Promise<UserSettings | null>
   return readSettings(pooledDb, userId);
 }
 
-export function updateProfileForUser(
-  userId: string,
-  displayName: string | null,
-): Promise<void> {
-  return updateProfileDisplayName(pooledDb, userId, displayName);
-}
 
 export function saveNotificationConfigForUser(
   userId: string,

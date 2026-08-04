@@ -7,34 +7,16 @@ import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import {
   newsConfigSchema,
   notificationConfigSchema,
-  profileUpdateSchema,
 } from "@/lib/settings";
 import {
   saveNewsConfigForUser,
   saveNotificationConfigForUser,
-  updateProfileForUser,
 } from "@/lib/settings-server";
 
 /**
- * プロフィール・通知・ニュース設定の Server Actions（要件05 §4.1）。本人のみ。zodで検証し保存する。
+ * 通知・ニュース設定の Server Actions（要件05 §4.1）。本人のみ。zodで検証し保存する。
+ * 表示名（プロフィール）は T-M8-59 で削除した（どこにも使われていなかった）。
  */
-
-export async function updateProfileAction(input: unknown): Promise<BaseResult> {
-  const parsed = profileUpdateSchema.safeParse(input);
-  if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
-  }
-  const auth = await requireUserId();
-  if (!auth.ok) return auth.result;
-  try {
-    const displayName = parsed.data.display_name?.trim() || null;
-    await updateProfileForUser(auth.userId, displayName);
-    revalidatePath("/app/settings");
-    return { message: "プロフィールを保存しました。", status: "success" };
-  } catch (error) {
-    return errorResult(error);
-  }
-}
 
 export async function updateNotificationConfigAction(
   input: unknown,

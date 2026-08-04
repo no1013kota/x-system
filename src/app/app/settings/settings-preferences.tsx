@@ -7,7 +7,6 @@ import { useToast } from "@/components/ui/toast";
 import {
   updateNewsConfigAction,
   updateNotificationConfigAction,
-  updateProfileAction,
 } from "@/app/actions/settings";
 import {
   NOTIFICATION_TYPES,
@@ -45,46 +44,6 @@ const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "�
 const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
-function ProfileForm({ displayName }: { displayName: string | null }) {
-  const [value, setValue] = useState(displayName ?? "");
-  const [pending, startTransition] = useTransition();
-  const toast = useToast();
-  return (
-    <Card as="section" className="px-5 py-4">
-      <CardTitle>プロフィール</CardTitle>
-      <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
-        表示名
-      </label>
-      <input
-        className="mt-1 h-10 w-full max-w-sm rounded-lg border px-3 text-sm"
-        id="display_name"
-        maxLength={50}
-        onChange={(e) => setValue(e.target.value)}
-        value={value}
-      />
-      <div className="mt-4">
-        <Button
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const res = await updateProfileAction({ display_name: value });
-              toast.show({
-                tone: res.status === "success" ? "success" : "error",
-                title: res.status === "success" ? "プロフィールを保存しました" : "保存できませんでした",
-                description: res.status === "success" ? undefined : res.message,
-              });
-            })
-          }
-          size="lg"
-          variant="brand"
-          type="button"
-        >
-          {pending ? "保存中…" : "保存"}
-        </Button>
-      </div>
-    </Card>
-  );
-}
 
 function NotificationForm({ config }: { config: NotificationConfig }) {
   const [state, setState] = useState<NotificationConfig>(config);
@@ -280,11 +239,9 @@ function NewsForm({ config }: { config: NewsConfig }) {
 }
 
 export function SettingsPreferences({
-  displayName,
   notificationConfig,
   newsConfig,
 }: {
-  displayName: string | null;
   notificationConfig: NotificationConfig;
   newsConfig: NewsConfig;
 }) {
@@ -293,10 +250,9 @@ export function SettingsPreferences({
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
       <NotificationForm config={notificationConfig} />
-      <div className="grid items-start gap-4">
-        <ProfileForm displayName={displayName} />
-        <NewsForm config={newsConfig} />
-      </div>
+      {/* 表示名（プロフィール）は削除した（T-M8-59）。どこにも使われておらず、
+          「何のための入力か分からない欄」だけが残っていた（2026-08-05 ユーザー判断）。 */}
+      <NewsForm config={newsConfig} />
     </div>
   );
 }
