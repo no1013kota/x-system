@@ -31,20 +31,43 @@ import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { settingsTabHref } from "./tabs";
 import { X_SCOPES } from "@/lib/x/scopes";
 
 /**
  * 取得ページへのリンクを各社に持たせる（T-M8-58）。X側には手順ガイドがあるのにAI側には
  * 取得方法が無く、非エンジニアはどこでキーを作ればよいか分からなかった。
  */
-const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider; consoleUrl: string }> = [
+/**
+ * 各社の**できること**をカードに明示する（T-M8-59）。「Claudeしかできないのでは」という
+ * 誤解が実際に出た——プレミアムでは文章が運営Claude固定なので、そう見える。BYOKでは
+ * 3社とも文章生成＋Webリサーチに対応している（`openai.ts`／`gemini.ts` に webSearch 実装、
+ * 実APIの契約テストも3社分）。画像だけは OpenAI / Google のみ。
+ */
+const AI_PROVIDERS: Array<{
+  label: string;
+  provider: AiKeyProvider;
+  consoleUrl: string;
+  capabilities: string;
+}> = [
   {
     label: "Anthropic (Claude)",
     provider: "anthropic",
     consoleUrl: "https://console.anthropic.com/settings/keys",
+    capabilities: "文章生成・リサーチ",
   },
-  { label: "OpenAI", provider: "openai", consoleUrl: "https://platform.openai.com/api-keys" },
-  { label: "Google (Gemini)", provider: "google", consoleUrl: "https://aistudio.google.com/apikey" },
+  {
+    label: "OpenAI",
+    provider: "openai",
+    consoleUrl: "https://platform.openai.com/api-keys",
+    capabilities: "文章生成・リサーチ・画像生成",
+  },
+  {
+    label: "Google (Gemini)",
+    provider: "google",
+    consoleUrl: "https://aistudio.google.com/apikey",
+    capabilities: "文章生成・リサーチ・画像生成",
+  },
 ];
 
 const STATUS_LABELS = {
@@ -91,7 +114,7 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
         <StatusBadge status={keyState.status} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        秘密値は再表示されません。
+        保存したキーは再表示されません。
         {verified
           ? `最終確認: ${verified}`
           : keyState.status === "invalid"
@@ -123,7 +146,16 @@ export function ApiKeySettings({
     Object.fromEntries(initialKeys.map((key) => [key.provider, key])),
   );
   const toast = useToast();
-  const [clientType, setClientType] = useState<XClientType>("public");
+  /**
+   * **保存済みの種別から初期化する**（T-M8-59・bug）。常に "public" で初期化すると、
+   * Confidentialで保存済みの利用者がClient IDだけ差し替えて保存したとき、
+   * **無警告でPublicとして上書き**され、以後のtoken交換（Basic認証必須）が全滅する。
+   */
+  const [clientType, setClientType] = useState<XClientType>(() =>
+    initialKeys.find((key) => key.provider === "x")?.displayHint.client_type === "confidential"
+      ? "confidential"
+      : "public",
+  );
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [aiSecrets, setAiSecrets] = useState<Record<AiKeyProvider, string>>({
@@ -174,7 +206,15 @@ export function ApiKeySettings({
       }));
       setClientId("");
       setClientSecret("");
-      finishAction(result.message);
+      // **次にやること（X連携）まで出す**（T-M8-59）。保存だけでは投稿できず、
+      // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AI用途を開く」と同じ形。
+      toast.show({
+        tone: "success",
+        title: result.message,
+        description: "次に「Xアカウント」タブから、投稿するアカウントを連携してください。",
+        action: { href: settingsTabHref("x-accounts"), label: "Xアカウント連携を開く" },
+      });
+      router.refresh();
     });
   }
 
@@ -259,7 +299,11 @@ export function ApiKeySettings({
   }
 
   function remove(provider: ApiKeyViewProvider) {
-    if (!window.confirm("このAPIキーを削除します。元に戻せません。続行しますか？")) {
+    if (!window.confirm(
+        provider === "x"
+          ? "X APIキーを削除します。連携中のXアカウントはX側の許可も取り消され、再連携するまで予約・自動投稿が止まります。続行しますか？"
+          : "このAPIキーを削除します。このAIを文章・画像づくりに割り当てている場合は割り当てが解除され、別のAIを設定するまで生成が止まります。続行しますか？",
+      )) {
       return;
     }
     startTransition(async () => {
@@ -351,7 +395,10 @@ export function ApiKeySettings({
           <div>
             <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              OAuth 2.0のClient IDを登録します。差し替えると既存のBYOK X連携は再認証が必要です。
+              OAuth 2.0のClient IDを登録します。差し替えると、このキーで連携済みのXアカウントは再認証が必要になります。{" "}
+              <a className="text-info-fg underline underline-offset-2" href="#x-guide-heading">
+                取得・設定手順を見る
+              </a>
             </p>
           </div>
         </div>
@@ -412,9 +459,10 @@ export function ApiKeySettings({
           </Button>
           {keys.x ? (
             <>
-              <Button className="min-h-10" disabled={isPending} onClick={() => verify("x")} type="button" variant="outline">
-                形式を確認
-              </Button>
+              {/*
+                「形式を確認」は出さない（T-M8-59）。Xキーは実装上ここでは何も確認できず
+                （検証はOAuth連携が行う）、押すと確認済み表示を「未確認」へ戻すだけだった。
+              */}
               <Button className="min-h-10" disabled={isPending} onClick={() => remove("x")} type="button" variant="outline">
                 <Icon name="delete" size={16} />削除
               </Button>
@@ -429,7 +477,9 @@ export function ApiKeySettings({
           <p className="mt-2 text-xs text-muted-foreground">
             {clientType === "confidential"
               ? "Client ID と Client Secret を入力すると保存できます。"
-              : "Client ID を入力すると保存できます。"}
+              : clientId.trim().length > 0
+                ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
+                : "Client ID を入力すると保存できます。"}
           </p>
         ) : null}
       </section>
@@ -441,12 +491,15 @@ export function ApiKeySettings({
           文章生成・リサーチはAnthropic、OpenAI、Googleのどれでも。画像生成に使えるのはOpenAIとGoogleです。
           いずれも従量課金です。予期しない支出を防ぐため、取得時に支払い設定と利用上限（budget）の設定をおすすめします。
         </p>
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {AI_PROVIDERS.map(({ label, provider, consoleUrl }) => {
+        <div className="mt-5 grid gap-4">
+          {AI_PROVIDERS.map(({ label, provider, consoleUrl, capabilities }) => {
             const keyState = keys[provider];
             return (
               <article className="rounded-card border p-4" key={provider}>
-                <h3 className="font-semibold">{label}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold">{label}</h3>
+                  <Badge>{capabilities}</Badge>
+                </div>
                 <a
                   className="mt-0.5 inline-flex items-center gap-1 text-xs text-info-fg underline underline-offset-2"
                   href={consoleUrl}
@@ -472,7 +525,7 @@ export function ApiKeySettings({
                         [provider]: event.target.value,
                       }))
                     }
-                    placeholder="秘密値を入力"
+                    placeholder="APIキーを入力"
                     type="password"
                     value={aiSecrets[provider]}
                   />
@@ -515,11 +568,19 @@ export function ApiKeySettings({
           <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
           <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>
         </div>
+        {/*
+          手順は公式ドキュメントで確認した実際のConsoleの構成に合わせる（T-M8-59。以前の手順は
+          「必要scopeを5つ許可」を**Console側の設定**として書いていたが、そのような設定は存在しない。
+          scopeは連携時にこのアプリが要求し、Xの許可画面で本人が承認する）。
+        */}
         <ol className="mt-5 space-y-5 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">1.</span>
             <div>
-              <p className="font-medium">Developer ConsoleでAppを作成</p>
+              <p className="font-medium">X Developer Consoleにサインインし、Appを作成</p>
+              <p className="mt-1 text-muted-foreground">
+                Xアカウントでサインインし、開発者契約に同意してAppを作ります。作成するとClient ID等の認証情報が発行されます。
+              </p>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<Icon name="open_in_new" size={16} />
               </a>
@@ -528,7 +589,21 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">2.</span>
             <div>
-              <p className="font-medium">OAuth 2.0 callback URLを完全一致で登録</p>
+              <p className="font-medium">Appの設定でアプリタイプを選ぶ</p>
+              <p className="mt-1 text-muted-foreground">
+                「Web App / Automated App or Bot」＝Confidential、「Native App / Single Page App」＝Public（PKCE）です。
+                ここで選んだ種類を、上の「Client種別」でも同じに設定してください（迷ったらどちらも
+                Public（PKCE）のままで構いません）。
+              </p>
+            </div>
+          </li>
+          <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
+            <span className="font-bold">3.</span>
+            <div>
+              <p className="font-medium">同じ設定画面でcallback URLを登録</p>
+              <p className="mt-1 text-muted-foreground">
+                プロトコル・末尾スラッシュまで<strong>完全一致</strong>で登録します（下のURLをそのまま貼り付け）。
+              </p>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
                 <code className="break-all text-xs select-all sm:text-sm">{callbackUrl}</code>
@@ -545,18 +620,16 @@ export function ApiKeySettings({
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
-            <span className="font-bold">3.</span>
+            <span className="font-bold">4.</span>
             <div>
-              <p className="font-medium">必要scopeを5つ許可</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {X_SCOPES.map((scope) => (
-                  <code className="rounded-md bg-muted px-2 py-1 text-xs" key={scope}>{scope}</code>
-                ))}
-              </div>
+              <p className="font-medium">Client IDをコピーして、このページの「X APIキー」へ保存</p>
+              <p className="mt-1 text-muted-foreground">
+                Client IDはAppの「Keys and Tokens」にあります。Confidentialを選んだ場合はClient Secretも保存してください。
+              </p>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
-            <span className="font-bold">4.</span>
+            <span className="font-bold">5.</span>
             <div>
               <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
               <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
@@ -566,6 +639,10 @@ export function ApiKeySettings({
             </div>
           </li>
         </ol>
+        <p className="mt-4 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+          権限（scope）はConsoleでは設定しません。保存後に「Xアカウント」タブから連携すると、
+          Xの許可画面で {X_SCOPES.join("・")} の許可を求めます。すべて許可してください。
+        </p>
       </section>
     </div>
   );

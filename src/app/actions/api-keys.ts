@@ -30,7 +30,13 @@ export async function saveXApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
   const parsed = saveXApiKeySchema.safeParse(input);
-  if (!parsed.success) return errorResult(new AppError("validation_error"));
+  if (!parsed.success) {
+    // **zodの具体的な文言を捨てない**（T-M8-59）。入力はpassword型で空白・全角が目視できず、
+    // 「入力内容を確認してください」だけでは原因に辿り着けない（文言は作者管理の日本語のみ）。
+    const first = parsed.error.issues[0]?.message;
+    const base = errorResult(new AppError("validation_error"));
+    return first ? { ...base, message: first } : base;
+  }
   const user = await getCurrentUser();
   if (!user) return errorResult(new AppError("unauthorized"));
   try {
@@ -50,7 +56,13 @@ export async function saveAiApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
   const parsed = saveAiApiKeySchema.safeParse(input);
-  if (!parsed.success) return errorResult(new AppError("validation_error"));
+  if (!parsed.success) {
+    // **zodの具体的な文言を捨てない**（T-M8-59）。入力はpassword型で空白・全角が目視できず、
+    // 「入力内容を確認してください」だけでは原因に辿り着けない（文言は作者管理の日本語のみ）。
+    const first = parsed.error.issues[0]?.message;
+    const base = errorResult(new AppError("validation_error"));
+    return first ? { ...base, message: first } : base;
+  }
   const user = await getCurrentUser();
   if (!user) return errorResult(new AppError("unauthorized"));
   try {

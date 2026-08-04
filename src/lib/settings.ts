@@ -63,14 +63,6 @@ export const newsConfigSchema = z
   })
   .strict();
 
-export const profileUpdateSchema = z.object({
-  display_name: z
-    .string()
-    .trim()
-    .max(50, "表示名は50文字以内で入力してください")
-    .optional()
-    .nullable(),
-});
 
 export type NotificationConfig = z.infer<typeof notificationConfigSchema>;
 export type NewsConfig = z.infer<typeof newsConfigSchema>;
@@ -126,16 +118,6 @@ export async function readSettings(
   };
 }
 
-export async function updateProfileDisplayName(
-  db: Queryable,
-  userId: string,
-  displayName: string | null,
-): Promise<void> {
-  await db.query(
-    `update profiles set display_name = $2, updated_at = now() where id = $1`,
-    [userId, displayName],
-  );
-}
 
 export async function saveNotificationConfig(
   db: Queryable,

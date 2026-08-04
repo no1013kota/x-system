@@ -6,7 +6,7 @@
 export const SETTINGS_TABS = [
   ["x-accounts", "Xアカウント"],
   ["api-keys", "APIキー"],
-  ["notifications", "通知・プロフィール"],
+  ["notifications", "通知"],
   ["billing", "課金・プラン"],
   ["support", "問い合わせ"],
 ] as const;

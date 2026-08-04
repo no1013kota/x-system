@@ -168,7 +168,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "notifications" && userSettings ? (
           <SettingsPreferences
-            displayName={userSettings.displayName}
             newsConfig={userSettings.newsConfig}
             notificationConfig={userSettings.notificationConfig}
           />

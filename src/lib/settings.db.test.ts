@@ -8,7 +8,6 @@ import {
   readSettings,
   saveNewsConfig,
   saveNotificationConfig,
-  updateProfileDisplayName,
 } from "./settings";
 import type { Queryable } from "./x/token-refresh";
 
@@ -69,10 +68,9 @@ describe("settings (local DB)", () => {
     }
   });
 
-  it("round-trips saved profile / notification / news settings", async () => {
+  it("round-trips saved notification / news settings", async () => {
     const uid = await withTransaction((c) => makeUser(c));
     try {
-      await updateProfileDisplayName(db, uid, "Acme Bot");
       await saveNotificationConfig(db, uid, {
         news: { in_app: true, email: false },
         draft_created: { in_app: true, email: true },
@@ -89,7 +87,6 @@ describe("settings (local DB)", () => {
       });
 
       const settings = await readSettings(db, uid);
-      expect(settings?.displayName).toBe("Acme Bot");
       expect(settings?.notificationConfig.news).toEqual({ in_app: true, email: false });
       expect(settings?.newsConfig).toEqual({
         categories: ["ai", "sns"],

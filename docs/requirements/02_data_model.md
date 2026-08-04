@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.25 |
+| バージョン | v1.26 |
 | 更新日 | 2026-08-03 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -54,7 +54,7 @@
 |---|---|---|---|
 | `id` | `uuid` | PK, FK `auth.users.id` | ユーザーID |
 | `email` | `text` | not null | メールアドレス |
-| `display_name` | `text` | null | 表示名 |
+| `display_name` | `text` | null | 旧・表示名。**UIからは設定できない**（T-M8-59で入力欄を削除。列は既存データ保持のため残す） |
 | `plan` | `plan_type` | not null default `standard` | 現在プラン |
 | `stripe_customer_id` | `text` | unique null | Stripe customer |
 | `stripe_subscription_id` | `text` | unique null | Stripe subscription |

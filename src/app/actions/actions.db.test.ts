@@ -149,12 +149,9 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     session.getCurrentUser.mockResolvedValue({ id: userId, email: `${userId}@example.com` });
   });
 
-  it("設定: 表示名・通知・ニュース設定を保存できる", async () => {
-    const { updateProfileAction, updateNotificationConfigAction, updateNewsConfigAction } =
-      await import("./settings");
-
-    const profile = await updateProfileAction({ display_name: "運営者テスト" });
-    expect(profile.status, JSON.stringify(profile)).toBe("success");
+  it("設定: 通知・ニュース設定を保存できる", async () => {
+    // 表示名（プロフィール）は T-M8-59 で削除（どこにも使われていなかった）。
+    const { updateNotificationConfigAction, updateNewsConfigAction } = await import("./settings");
 
     const notifications = await updateNotificationConfigAction({
       news: { in_app: true, email: false },
@@ -175,12 +172,11 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     expect(news.status, JSON.stringify(news)).toBe("success");
 
     const saved = await withTransaction((c) =>
-      c.query<{ display_name: string; notification_config: Record<string, unknown> }>(
-        `select display_name, notification_config from profiles where id = $1`,
+      c.query<{ notification_config: Record<string, unknown> }>(
+        `select notification_config from profiles where id = $1`,
         [userId],
       ),
     );
-    expect(saved.rows[0].display_name).toBe("運営者テスト");
     expect(saved.rows[0].notification_config.news).toEqual({ in_app: true, email: false });
   });
 
@@ -347,6 +343,50 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     expect(saved.rows.length, "行が作られる").toBeGreaterThan(0);
     expect(saved.rows[0].cipher, "平文で保存していない").not.toContain("test-client-secret-value");
     expect(saved.rows[0].cipher, "暗号化されている").not.toContain("test-client-id");
+  });
+
+  it("APIキー: AIキーの保存→検証（X）→削除が本番実装で通る（T-M8-59）", async () => {
+    // saveAiApiKey / verifyApiKey / deleteApiKey はどのテストからも呼ばれていなかった
+    // （store層のdbテストはあるが、Action層の配線は未検証だった）。外部APIは呼ばない。
+    await withTransaction((c) =>
+      c.query(`update profiles set plan = 'md' where id = $1`, [userId]),
+    );
+    const { deleteApiKey, saveAiApiKey, verifyApiKey } = await import("./api-keys");
+
+    const saved = await saveAiApiKey({
+      provider: "anthropic",
+      api_key: "sk-ant-test-0123456789abcdef",
+    });
+    expect(saved.status, JSON.stringify(saved)).toBe("success");
+    const row = await withTransaction((c) =>
+      c.query<{ cipher: string }>(
+        `select credentials_ciphertext as cipher from user_api_keys
+          where user_id = $1 and provider = 'anthropic'`,
+        [userId],
+      ),
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].cipher, "平文で保存していない").not.toContain("sk-ant-test");
+
+    // Xキーの「検証」は外部を呼ばず unchecked を返す（検証はOAuth連携が担う・要件05 §5）
+    const { saveXApiKey } = await import("./api-keys");
+    const savedX = await saveXApiKey({
+      client_id: "verify-check-client",
+      client_secret: null,
+      client_type: "public",
+    });
+    expect(savedX.status, JSON.stringify(savedX)).toBe("success");
+    const verified = await verifyApiKey({ provider: "x" });
+    expect(verified.status).toBe("success");
+    expect(verified.keyStatus).toBe("unchecked");
+
+    // AIキーの削除は行が消える（AI providerは revoke 呼び出しなし）
+    const removed = await deleteApiKey({ provider: "anthropic" });
+    expect(removed.status, JSON.stringify(removed)).toBe("success");
+    const after = await withTransaction((c) =>
+      c.query(`select 1 from user_api_keys where user_id = $1 and provider = 'anthropic'`, [userId]),
+    );
+    expect(after.rows).toHaveLength(0);
   });
 
   it("認証されていなければ内部エラーではなく認可エラーを返す", async () => {
