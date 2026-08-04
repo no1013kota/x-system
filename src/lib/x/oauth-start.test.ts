@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/observability/errors";
 
@@ -104,6 +104,36 @@ describe("buildXOAuthStart", () => {
     expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).code).toBe("forbidden");
     expect((err as AppError).details?.reason).toBe("x_account_limit_reached");
+  });
+
+  /**
+   * 上限まで使っていても**再連携はできる**（T-M8-53）。
+   * できないと「失効しているのに直す手段が無い」行き止まりになる
+   * （callback 側の `assertCanLinkXAccount` も同一 `x_user_id` を上限対象外にしている）。
+   */
+  it("上限に達していても再連携は通す（新規ではないので数えない）", async () => {
+    const count = vi.fn(async () => 1); // standard limit = 1
+    const res = await buildXOAuthStart(
+      { userId: "u", reconnectXUserId: "x-1" },
+      deps({ getActiveXAccountCount: count }),
+    );
+    expect(res.authorizeUrl).toContain("state=");
+    // 数えるクエリ自体を走らせない（無駄なDBアクセスも避ける）
+    expect(count).not.toHaveBeenCalled();
+  });
+
+  it("再連携の対象は封緘するstateへ載る（callbackで一致を確かめられる）", async () => {
+    const sealed: unknown[] = [];
+    await buildXOAuthStart(
+      { userId: "u", reconnectXUserId: "x-1" },
+      deps({
+        sealState: (tx) => {
+          sealed.push(tx);
+          return "sealed";
+        },
+      }),
+    );
+    expect(sealed[0]).toMatchObject({ reconnectXUserId: "x-1" });
   });
 
   it("never leaks a confidential client secret into the authorize URL", async () => {

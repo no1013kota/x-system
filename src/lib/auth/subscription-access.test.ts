@@ -5,6 +5,7 @@ import { AppError } from "@/lib/observability/errors";
 import {
   SUBSCRIPTION_ACCESS,
   canBrowseApp,
+  canExecuteSubscription,
   requireExecutableSubscription,
   subscriptionBannerFor,
 } from "./subscription-access";
@@ -114,5 +115,29 @@ describe("subscription banner", () => {
         trialEndsAt: null,
       }),
     ).toBeNull();
+  });
+});
+
+/**
+ * 「プランを選ぶ」の跳ね返りを防ぐ判定（T-M8-53）。
+ *
+ * 設定＞課金は `stripe_customer_id` の有無だけでボタンを切り替えていたため、**契約は有効なのに
+ * 顧客が未紐づけ**のとき「プランを選ぶ」が出た。押すと `/plans` が契約済みを理由に `/app` へ
+ * 送り返すので、ホームへ弾かれて何も起きない（Webhookの到着順で一時的に起こり得る）。
+ */
+describe("canExecuteSubscription", () => {
+  it("trialing / active は実行できる（＝プラン選択へ送ってはいけない）", () => {
+    expect(canExecuteSubscription("trialing")).toBe(true);
+    expect(canExecuteSubscription("active")).toBe(true);
+  });
+
+  it("未契約・停止中は実行できない（プラン選択へ送ってよい）", () => {
+    for (const status of ["incomplete", "canceled", "past_due", "unpaid", "paused"]) {
+      expect(canExecuteSubscription(status), status).toBe(false);
+    }
+  });
+
+  it("未知の値は実行できない扱いにする（黙って通さない）", () => {
+    expect(canExecuteSubscription("something_new")).toBe(false);
   });
 });

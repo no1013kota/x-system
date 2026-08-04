@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.24 |
+| バージョン | v1.25 |
 | 更新日 | 2026-08-04 |
 | 関連 | 全画面、全ジョブ |
 
@@ -70,7 +70,7 @@
 | GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
 | GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans`、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
-| GET | `/api/x/oauth/start` | user | X OAuth開始 |
+| GET | `/api/x/oauth/start` | user | X OAuth開始。`?account=<x_account_id>`（任意）は**再連携の対象**を束縛する（本人所有のみ。未知IDは`not_found`） |
 | GET | `/api/x/oauth/callback` | OAuth state | X OAuth callback |
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
 | GET | `/api/cron/scheduler-tick` | `CRON_SECRET` | スロットenqueue・dispatch／回収・cleanup |
@@ -146,6 +146,8 @@ Xキー削除では、2026-07-23時点の[X OAuth 2.0 user access token公式手
 X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAuth clientとして使い、premiumは運営Appを使う。どちらもOAuth 2.0 user contextで利用者本人の権限を取得し、利用者に代わって投稿する。premiumも運営Appのapp-only tokenで投稿するのではなく、利用者ごとのaccess/refresh tokenを`x_accounts`へ暗号化保存して使うため、利用者自身のDeveloper App登録は不要である。
 
 - OAuth startとcallbackの両方で契約状態、plan上限、期待する`auth_type`を確認する。stateはuser ID、client種別、return pathと結び付け、別sessionからのcallbackを拒否する。
+- **再連携は対象アカウントを指定して開始する**（`?account=<x_account_id>` → stateへ `x_user_id` を封緘）。callbackで認可されたX userが対象と一致しなければ**新規連携を作らずに中断**し、`forbidden`（`reason=reconnect_account_mismatch`）として理由を画面へ出す。指定しない場合（「Xアカウントを追加」）は従来どおり任意のX userを連携できる。
+- **再連携はplan上限に数えない**（start・callbackの両方）。上限まで使っていると失効アカウントを直せず、「壊れているのに直す手段が無い」行き止まりになる。同一 `(user_id, x_user_id)` は既存行の置換なので新規ではない。
 - callbackでauthorization codeをtokenへ交換し、`tweet.read tweet.write users.read media.write offline.access`が付与されていることと`/2/users/me`を確認してから暗号化保存する。
 - OAuth callbackは自動投稿への明示同意を記録しない。`recordXAutomationConsent`は、自動投稿の対象、実行条件、失敗時の自動rollback削除とその不可逆性、停止方法、利用者本人がX上の投稿責任を負うことを専用画面で表示した後にだけ呼べる。
 - access tokenが5分以内に失効する場合は、短いDB transactionで`token_refresh_lock_id`と`token_refresh_locked_at`を条件付き更新し、single-flight leaseを取ってからrefreshする。他の実行は最大10秒待って再読込し、1分超のleaseはstaleとして回収する。rotated refresh tokenと期限はlock ID一致を条件に同一transactionで更新する。

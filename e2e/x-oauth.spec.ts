@@ -169,3 +169,49 @@ test("ニュースの表示件数は入力中に丸められず、範囲外で�
   await field.blur();
   await expect(field).toHaveValue("100");
 });
+
+/**
+ * 「再連携」は対象を指定する（T-M8-53）。
+ *
+ * 以前は「Xアカウントを追加」と**同じURL**へ飛んでいたため、再連携を押したのに別のXアカウントで
+ * 認可すると**新しい行が増え、壊れた行はそのまま残った**（押した本人は直ったつもりになる）。
+ * 対象は封緘したstateへ載せ、callbackで一致を確かめる（一致しなければ保存しない）。
+ */
+test("再連携リンクが対象アカウントを指定している（T-M8-53）", async ({ accounts, page }) => {
+  const account = await accounts.create("verify-reconnect", { personaReady: true });
+  await query(`update x_accounts set status = 'expired' where id = $1`, [account.xAccountId]);
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=x-accounts");
+  await expect(page.getByRole("heading", { name: "Xアカウント" })).toBeVisible();
+  const row = page.locator("li", { hasText: `@${account.handle}` });
+  const href = await row.locator('a[href*="oauth/start"]').first().getAttribute("href");
+  expect(href).toContain(`account=${account.xAccountId}`);
+  const add = await page
+    .locator('a[href*="oauth/start"]')
+    .filter({ hasText: "Xアカウントを追加" })
+    .first()
+    .getAttribute("href");
+  expect(add).not.toContain("account=");
+});
+
+test("契約は有効だが顧客未紐づけなら「プランを選ぶ」を出さない（T-M8-53）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("verify-plans", { personaReady: true });
+  await query(`update profiles set stripe_customer_id = null where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=billing");
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "プランを選ぶ" })).toHaveCount(0);
+  await expect(page.getByText("ご契約の情報をStripeから受け取っています", { exact: false })).toBeVisible();
+
+  // 未契約なら従来どおりプラン選択へ送る（弾き返されない側）
+  await query(
+    `update profiles set subscription_status = 'incomplete', trial_ends_at = null,
+        current_period_end = null where id = $1`,
+    [account.userId],
+  );
+  await page.goto("/app/settings?tab=billing");
+  await expect(page.getByRole("link", { name: "プランを選ぶ" })).toBeVisible();
+});

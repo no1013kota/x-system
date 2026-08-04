@@ -94,6 +94,16 @@ export async function handleXOAuthCallback(
   // /2/users/me 確認。失敗時はthrow→token保存しない。
   const xUser = await deps.fetchMe(token.access_token);
 
+  // **再連携で別のXアカウントを認可したら、黙って新規追加しない**（T-M8-53）。
+  //
+  // 「再連携」は特定の行を直す操作なので、違うアカウントで認可されたら**利用者の意図と違う**。
+  // 以前はここが無く、新しい行が増えて壊れた行はそのまま残った（押した本人は直ったつもりになる）。
+  if (tx.reconnectXUserId && tx.reconnectXUserId !== xUser.id) {
+    throw new AppError("forbidden", {
+      details: { reason: "reconnect_account_mismatch", authorizedHandle: xUser.username },
+    });
+  }
+
   const sealed = deps.sealTokens(token);
   const xAccountId = await deps.persist({
     userId: tx.userId,
