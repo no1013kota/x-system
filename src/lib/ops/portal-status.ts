@@ -54,8 +54,12 @@ export function judgePortal(snapshot: PortalFeatureSnapshot): Check {
     detail: judged.detail,
     ...(judged.level === "error"
       ? {
+          // **どの環境を直すかまで書く**（T-M8-49）。`--target` を必須にした（T-M8-35）のに
+          // ここが旧形式のままで、運営者が言われた通り打つとエラーで止まっていた。
+          // 原則2「原因が開発知識なしで辿れる」は、示したコマンドがそのまま動くことまで含む。
           nextAction:
-            "`npm run stripe:portal:setup` を実行してStripe側の設定をコードへ合わせてください（IDは変わりません）",
+            "`npm run stripe:portal:setup -- --target <local|staging|production>` を実行して" +
+            "Stripe側の設定をコードへ合わせてください（IDは変わりません）。手順は docs/operations/deployment.md §1.4",
         }
       : {}),
   };
