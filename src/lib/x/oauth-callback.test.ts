@@ -126,6 +126,37 @@ describe("handleXOAuthCallback", () => {
     expect(persist).not.toHaveBeenCalled();
   });
 
+  /**
+   * 「再連携」は特定のアカウントを直す操作（T-M8-53）。
+   *
+   * 以前は「Xアカウントを追加」と同じURLへ飛んでいたため、**再連携を押したのに別のXアカウントで
+   * 認可すると新しい行が増え、壊れた行はそのまま残った**（押した本人は直ったつもりになる）。
+   */
+  it("再連携で対象と同じXアカウントなら保存する（失効行が置き換わる）", async () => {
+    const { deps, persist } = make({
+      verifyState: () => ({ ...TX, reconnectXUserId: USER.id }),
+    });
+    const res = await handleXOAuthCallback(input("u1"), deps);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(res.xUserId).toBe(USER.id);
+  });
+
+  it("再連携で別のXアカウントを認可したら保存せず止める（黙って新規追加しない）", async () => {
+    const { deps, persist } = make({
+      verifyState: () => ({ ...TX, reconnectXUserId: "x-other" }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      details: { reason: "reconnect_account_mismatch", authorizedHandle: USER.username },
+    });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("再連携の指定が無いときは従来どおり（どのアカウントでも新規連携できる）", async () => {
+    const { deps, persist } = make();
+    await handleXOAuthCallback(input("u1"), deps);
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
   it("propagates a verifyState failure (tampered/expired/mismatched state) without persisting", async () => {
     const { deps, persist } = make({
       verifyState: () => {

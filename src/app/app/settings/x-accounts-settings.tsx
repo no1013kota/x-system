@@ -37,6 +37,12 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   error: "danger",
 };
 
+/** 「このアカウントを再連携する」URL。`?account=` が対象を束縛する（T-M8-53）。 */
+function reconnectPath(startPath: string, accountId: string): string {
+  const separator = startPath.includes("?") ? "&" : "?";
+  return `${startPath}${separator}account=${encodeURIComponent(accountId)}`;
+}
+
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
   managed: "運営App（プレミアムプラン）",
@@ -233,7 +239,9 @@ export function XAccountsSettings({
                   {account.status !== "active" ? (
                     <Button
                       nativeButton={false}
-                      render={<a href={oauthStartPath} />}
+                      // **どのアカウントを再連携するかを渡す**（T-M8-53）。以前は「追加」と同じURLで、
+                      // 別のアカウントで認可すると新しい行が増え、壊れた行はそのまま残った。
+                      render={<a href={reconnectPath(oauthStartPath, account.id)} />}
                       size="sm"
                       variant="outline"
                     >

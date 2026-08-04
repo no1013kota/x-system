@@ -121,6 +121,14 @@ export interface OAuthTransaction {
   codeVerifier: string;
   /** epoch ms。TTL検証に使う。 */
   issuedAt: number;
+  /**
+   * 「このアカウントを再連携する」対象の `x_user_id`（T-M8-53）。
+   *
+   * 以前は「Xアカウントを追加」と「再連携」が同じURLへ飛んでいたため、**再連携を押したのに
+   * 別のXアカウントで認可すると新しい行が増え、壊れた行はそのまま残った**。
+   * 対象を封緘した state に載せ、callback で一致を確かめる。
+   */
+  reconnectXUserId?: string;
 }
 
 export class OAuthStateError extends Error {
@@ -139,6 +147,7 @@ export function newOAuthTransaction(input: {
   now: number;
   state?: string;
   codeVerifier?: string;
+  reconnectXUserId?: string;
 }): OAuthTransaction {
   return {
     userId: input.userId,
@@ -147,6 +156,7 @@ export function newOAuthTransaction(input: {
     state: input.state ?? base64url(randomBytes(24)),
     codeVerifier: input.codeVerifier ?? generateCodeVerifier(),
     issuedAt: input.now,
+    ...(input.reconnectXUserId ? { reconnectXUserId: input.reconnectXUserId } : {}),
   };
 }
 

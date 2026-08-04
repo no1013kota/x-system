@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
 import type { PortalIntent } from "@/lib/stripe/portal";
@@ -19,7 +20,20 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  * **Stripeの顧客がまだ無いときは押せないボタンを出さない**（T-M8-29）。押しても何も起きない
  * ボタンは「壊れている」と読める。契約前の行き先は料金プランなので、そこへのリンクにする。
  */
-export function PortalButton({ enabled }: { enabled: boolean }) {
+export function PortalButton({
+  enabled,
+  awaitingSync = false,
+}: {
+  enabled: boolean;
+  /**
+   * 契約は有効なのに Stripe の顧客がまだ紐づいていない状態（T-M8-53）。
+   *
+   * このとき「プランを選ぶ」を出すと、押した先の `/plans` が**契約済みを理由に `/app` へ
+   * 送り返す**ので、ホームへ弾かれて何も起きない（利用者からは壊れて見える）。
+   * Webhookの到着順で一時的に起こり得るため、押せるボタンではなく待ち状態として伝える。
+   */
+  awaitingSync?: boolean;
+}) {
   const [pending, setPending] = useState<PortalIntent | null>(null);
   const toast = useToast();
 
@@ -40,6 +54,15 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
   }
 
   if (!enabled) {
+    // 契約は有効だが顧客が未紐づけ → `/plans` は弾き返すので、行き先を出さずに状況を伝える。
+    if (awaitingSync) {
+      return (
+        <Notice role="status" tone="info">
+          ご契約の情報をStripeから受け取っています（数十秒かかることがあります）。反映されると、
+          ここでプラン変更と解約ができるようになります。時間をおいて画面を再読み込みしてください。
+        </Notice>
+      );
+    }
     return (
       <Link className={primaryLinkClassName} href="/plans">
         プランを選ぶ

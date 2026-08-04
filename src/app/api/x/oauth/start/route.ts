@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getXAppCredentialsForUser } from "@/lib/api-key-store-server";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { env } from "@/lib/env";
-import { toUserFacingError } from "@/lib/observability/errors";
+import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 import type { PlanId } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -31,6 +31,24 @@ function safeReturnPath(value: string | null): string | undefined {
   return value && value.startsWith("/app") ? value : undefined;
 }
 
+/** `?account=<id>` を本人所有の `x_user_id` へ解決する。指定なしは undefined（新規連携）。 */
+async function resolveReconnectTarget(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  accountId: string | null,
+): Promise<string | undefined> {
+  if (!accountId) return undefined;
+  const r = await admin
+    .from("x_accounts")
+    .select("x_user_id")
+    .eq("id", accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (r.error) throw r.error;
+  if (!r.data) throw new AppError("not_found", { details: { reason: "x_account_not_found" } });
+  return r.data.x_user_id as string;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   let userId: string;
   try {
@@ -44,10 +62,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const admin = createSupabaseAdminClient();
   try {
+    // `?account=<id>` は「この連携を再連携する」指定（T-M8-53）。**本人所有のものだけ**を受け付け、
+    // 対象の `x_user_id` を state へ載せる。未知のIDは黙って無視せず新規連携として扱わない
+    // （指定したのに新規追加されるのが元の不具合なので、指定が効かないなら止める）。
+    const reconnectXUserId = await resolveReconnectTarget(
+      admin,
+      userId,
+      request.nextUrl.searchParams.get("account"),
+    );
     const result = await buildXOAuthStart(
       {
         userId,
         returnPath: safeReturnPath(request.nextUrl.searchParams.get("return")),
+        ...(reconnectXUserId ? { reconnectXUserId } : {}),
       },
       {
         async getProfile(id) {

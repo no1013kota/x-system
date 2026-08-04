@@ -44,6 +44,14 @@ function messageFor(code: string, reason: string | null): OAuthErrorMessage {
         action: { href: X_ACCOUNTS_TAB, label: "Xアカウント設定へ戻る" },
       };
     }
+    if (reason === "reconnect_account_mismatch") {
+      return {
+        // **何が起きたかを行動で説明する**（T-M8-53）。「再連携」は特定のアカウントを直す操作なので、
+        // 別のアカウントで認可されたら新規追加せず止める。止めた理由と次の一手を具体的に出す。
+        body: "再連携しようとしたアカウントとは別のXアカウントで許可されたため、中断しました（新しい連携は作っていません）。Xで対象のアカウントに切り替えてから、もう一度「再連携」をお試しください。別のアカウントを増やしたい場合は「Xアカウントを追加」からどうぞ。",
+        action: { href: X_ACCOUNTS_TAB, label: "Xアカウント設定へ戻る" },
+      };
+    }
     if (reason === "insufficient_scope") {
       return {
         body: "Xの許可画面で必要な権限がすべて許可されませんでした。投稿・画像添付・アカウント情報の読み取りをすべて許可して、もう一度お試しください。",
