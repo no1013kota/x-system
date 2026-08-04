@@ -154,6 +154,41 @@ describe("Stripe subscription synchronization", () => {
     });
   });
 
+  /**
+   * トライアル中の解約は `cancel_at_period_end: true` ではなく **`cancel_at` だけ**が設定される
+   * （T-M8-57・実測）。booleanしか読まないと、Portalで解約しても profile は「解約予定なし」の
+   * ままになり、画面に何も出ない。
+   */
+  it("cancel_at が設定されていれば解約予定として扱う（トライアル中の解約）", () => {
+    const sub = subscription({ cancel_at: 1_785_279_600, cancel_at_period_end: false });
+    const projection = subscriptionProjection(
+      event("customer.subscription.updated", sub as unknown as Record<string, unknown>),
+      sub,
+      priceIds,
+    );
+    expect(projection.cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("cancel_at_period_end だけの解約予定も従来どおり扱う", () => {
+    const sub = subscription({ cancel_at_period_end: true });
+    const projection = subscriptionProjection(
+      event("customer.subscription.updated", sub as unknown as Record<string, unknown>),
+      sub,
+      priceIds,
+    );
+    expect(projection.cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("どちらも無ければ解約予定なし", () => {
+    const sub = subscription();
+    const projection = subscriptionProjection(
+      event("customer.subscription.updated", sub as unknown as Record<string, unknown>),
+      sub,
+      priceIds,
+    );
+    expect(projection.cancelAtPeriodEnd).toBe(false);
+  });
+
   it("rejects unknown and multiple Prices", () => {
     expect(() =>
       subscriptionProjection(

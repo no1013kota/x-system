@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.49 |
+| バージョン | v1.50 |
 | 更新日 | 2026-08-04 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -48,7 +48,7 @@
 ### 1.2 SC-11 課金・問い合わせ（M1最小実装）
 
 - `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば**「プランを変更」「解約する」の2つ**を出し（やりたいことを先に選ばせる）、`POST /api/stripe/portal`へ`intent`を渡してStripeの該当画面へ直接入る。Customer未作成時はボタンを出さず`/plans`へのリンクにする。
-- **押す前に「いつから・支払いがどう変わるか」を画面に出す**（`lib/billing/plan-change-effects.ts`）。上位プラン＝すぐ切り替わり差額を日割り／下位プラン＝期間終了日に切り替わり返金なし／解約＝期間終了日まで使えて返金なし／トライアル中＝終了日は変わらず終了後に新料金。**日付は実際の`current_period_end`をJSTで出す**（無い・壊れている場合は日付を作らず「現在の期間の終了日」と書く）。文言はStripeのPortal configuration（要件03 §2.2）と1対1で対応させる——片方だけ変えると、画面の説明と実際の請求が食い違う。
+- **押す前に「いつから・支払いがどう変わるか」を画面に出す**（`lib/billing/plan-change-effects.ts`）。上位プラン＝すぐ切り替わり差額を日割り／下位プラン＝期間終了日に切り替わり返金なし／解約＝期間終了日まで使えて返金なし／トライアル中＝終了日は変わらず終了後に新料金。**日付は実際の`current_period_end`をJSTで出す**（無い・壊れている場合は日付を作らず「現在の期間の終了日」と書く）。文言はStripeのPortal configuration（要件03 §2.2）と1対1で対応させる——片方だけ変えると、画面の説明と実際の請求が食い違う。**解約が予約済み（`cancel_at_period_end`）のときは「解約する」を出さず「解約予定を取り消す」に替える**（Portalのトップを開く。取り消しはStripeが「プランを続ける」として提供し、`flow_data`に専用の型は無い）。予約済みなのに「解約する」を出し続けると、同じ操作をもう一度促すことになる（T-M8-57）。
 - Portalは`/api/stripe/return?source=portal`へ戻り、復帰handlerで未反映時だけ同期してから`portal=return&sync=...`を付ける。画面は「契約情報を確認しています」と表示し、表示値はprofileを正とする。通常表示ではStripeへ問い合わせない（要件03 §3）。
 - `/app/settings?tab=support`は`SUPPORT_EMAIL`への`mailto:`リンクを表示する。未契約ユーザーも課金・問い合わせの2タブへ到達できる。Xアカウントタブは§1.2.1、通知・プロフィールタブは§1.2.2（ともにM2で追加）。
 

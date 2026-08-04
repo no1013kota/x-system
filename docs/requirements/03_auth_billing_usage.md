@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
+| バージョン | v1.20 |
 | 更新日 | 2026-08-04 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -66,6 +66,8 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 ## 3. Stripeを正とする項目
 
 `profiles`は画面・認可用のprojectionであり、契約の正本はStripeとする。次の項目だけをwebhookで同期する。
+
+**解約予定（`cancel_at_period_end`）は、Stripeの `cancel_at_period_end` と `cancel_at` の**どちらか**が立っていればtrueとして同期する**（T-M8-57）。トライアル中にPortalで解約すると、Stripeはbooleanではなく`cancel_at`（=trial_endの日時）だけを設定するため、booleanしか読まないと「解約したのに画面は解約予定なしのまま」になる（2026-08-05に実測）。
 
 - `stripe_customer_id`
 - `stripe_subscription_id`
