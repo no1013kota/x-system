@@ -206,9 +206,13 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
-  // 状況の説明と、進める行き先の両方がある
+  // 進める行き先がある。**説明文は足さない**（同期の遅延はカード直下の既存文が伝えている。
+  // 同じことを2か所で言うと常時出る注意書きとして読み飛ばされる・T-M8-54）。
   await expect(
     page.getByText("ご契約の情報をStripeから受け取っています", { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("変更内容はStripeからの通知を受けて", { exact: false }),
   ).toBeVisible();
   const choose = page.getByRole("link", { name: "プランを選ぶ" });
   await expect(choose).toBeVisible();
@@ -227,11 +231,12 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
 });
 
 /**
- * 「連携を解除」したアカウントは一覧から畳む（T-M8-54）。
+ * 停止中（`disabled`）のアカウントは一覧から畳む（T-M8-54）。
  *
- * 解除しても「停止中」として残り続けると、片付けたつもりの行がいつまでも見えて紛らわしい。
- * ただし**行は消せない**（下書き・履歴・実績が参照している）ので、`<details>` で辿れる場所へ移す。
- * **プラン変更で自動停止されたものは畳まない**——隠すと「なぜ止まったのか」が分からなくなる。
+ * 使っていないアカウントが並び続けると、いま動いているものが埋もれる（ローカルで実際に
+ * 3件のうち2件が不要なまま並んだ）。**行は消せない**（下書き・履歴・実績が参照している）ので、
+ * `<details>` で辿れる場所へ移す。**`expired`／`error` は畳まない**——再連携という
+ * やることが残っているので、隠すと気付けない。
  */
 test("連携を解除すると一覧から消え、畳んだ場所から辿れる（T-M8-54）", async ({
   accounts,
@@ -243,7 +248,7 @@ test("連携を解除すると一覧から消え、畳んだ場所から辿れ�
 
   const list = page.locator("ul").first();
   await expect(list.locator("li", { hasText: `@${account.handle}` })).toBeVisible();
-  await expect(page.getByText("解除したアカウント", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("停止中のアカウント", { exact: false })).toHaveCount(0);
 
   // 解除する（確認ダイアログを挟む）
   await page.getByRole("button", { name: "連携を解除" }).click();
@@ -251,7 +256,7 @@ test("連携を解除すると一覧から消え、畳んだ場所から辿れ�
   await expect(toastIn(page)).toContainText("連携を解除しました");
 
   // 一覧から消え、畳んだ見出しへ移る
-  await expect(page.getByText("解除したアカウント 1 件", { exact: false })).toBeVisible();
+  await expect(page.getByText("停止中のアカウント 1 件", { exact: false })).toBeVisible();
   await expect(
     page.getByText("まだXアカウントを連携していません", { exact: false }).or(
       page.getByText("連携中のXアカウントはありません", { exact: false }),
@@ -259,20 +264,22 @@ test("連携を解除すると一覧から消え、畳んだ場所から辿れ�
   ).toBeVisible();
 
   // 畳んだ中には残っている（履歴へ辿れる・行き止まりにしない）
-  await page.getByText("解除したアカウント 1 件", { exact: false }).click();
+  await page.getByText("停止中のアカウント 1 件", { exact: false }).click();
   await expect(page.locator("details").getByText(`@${account.handle}`)).toBeVisible();
 });
 
 /**
- * プラン変更などで自動停止されたアカウントは畳まない（T-M8-54）。
- * 隠すと「なぜ止まったのか分からない」状態になる（CLAUDE.md 原則1）。
+ * **要再連携は畳まない**（T-M8-54）。再連携というやることが残っているので、
+ * 隠すと気付けない（CLAUDE.md 原則1）。畳むのは `disabled` だけ。
  */
-test("自動で停止されたアカウントは一覧に残る（畳まない）", async ({ accounts, page }) => {
-  const account = await accounts.create("auto-disabled", { personaReady: true });
-  await query(`update x_accounts set status = 'disabled' where id = $1`, [account.xAccountId]);
+test("要再連携のアカウントは畳まず一覧に残す", async ({ accounts, page }) => {
+  const account = await accounts.create("expired-visible", { personaReady: true });
+  await query(`update x_accounts set status = 'expired' where id = $1`, [account.xAccountId]);
   await signIn(page, account);
   await page.goto("/app/settings?tab=x-accounts");
 
-  await expect(page.locator("ul").first().locator("li", { hasText: `@${account.handle}` })).toBeVisible();
-  await expect(page.getByText("解除したアカウント", { exact: false })).toHaveCount(0);
+  await expect(
+    page.locator("ul").first().locator("li", { hasText: `@${account.handle}` }),
+  ).toBeVisible();
+  await expect(page.getByText("停止中のアカウント", { exact: false })).toHaveCount(0);
 });

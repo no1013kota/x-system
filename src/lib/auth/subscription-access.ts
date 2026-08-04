@@ -67,11 +67,6 @@ export function canBrowseApp(status: string): boolean {
   return subscriptionAccessFor(status)?.viewScope === "app";
 }
 
-/** True when the status allows generation/posting (trialing / active)。 */
-export function canExecuteSubscription(status: string): boolean {
-  return subscriptionAccessFor(status)?.canExecute === true;
-}
-
 /** Shared execution gate for generation, posting, and automation mutations. */
 export function requireExecutableSubscription(status: string): void {
   const access = subscriptionAccessFor(status);

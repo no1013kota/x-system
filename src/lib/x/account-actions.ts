@@ -28,13 +28,6 @@ export interface XAccountListItem {
   status: XAccountStatus;
   isActive: boolean;
   automationActive: boolean;
-  /**
-   * 利用者が自分で「連携を解除」した（T-M8-54）。一覧では既定で畳む。
-   *
-   * **プラン変更による自動停止（`status='disabled'`）とは区別する。** 後者を隠すと
-   * 「なぜ止まったのか分からない」状態になる（CLAUDE.md 原則1）。
-   */
-  disconnected: boolean;
 }
 
 /** GET /2/users/me の正規化結果。 */
@@ -89,13 +82,11 @@ export async function listXAccountsForUser(
     status: XAccountStatus;
     is_active: boolean;
     automation_active: boolean;
-    disconnected: boolean;
   }>(
     `select xa.id, xa.handle, xa.name, xa.profile_image_url, xa.auth_type, xa.status,
             (p.active_x_account_id = xa.id) as is_active,
             (xa.automation_consented_at is not null
-             and xa.automation_disabled_at is null) as automation_active,
-            (xa.disconnected_at is not null) as disconnected
+             and xa.automation_disabled_at is null) as automation_active
        from x_accounts xa
        join profiles p on p.id = xa.user_id
       where xa.user_id = $1
@@ -111,7 +102,6 @@ export async function listXAccountsForUser(
     status: r.status,
     isActive: r.is_active,
     automationActive: r.automation_active,
-    disconnected: r.disconnected,
   }));
 }
 
@@ -246,8 +236,6 @@ export async function enableXAccount(
     await tx.query(
       `update x_accounts
           set status = 'active', handle = $3, name = $4, profile_image_url = $5,
-              -- 有効化したら一覧へ戻す（T-M8-54）。
-              disconnected_at = null,
               updated_at = now()
         where id = $1 and user_id = $2`,
       [xAccountId, userId, me.username, me.name, me.profileImageUrl],
@@ -305,9 +293,6 @@ export async function disconnectXAccount(
               token_refresh_lock_id = null,
               token_refresh_locked_at = null,
               status = 'disabled',
-              -- **利用者自身の解除であることを残す**（T-M8-54）。プラン変更による自動停止と
-              -- 区別できないと、一覧から畳んだときに「なぜ止まったのか」が見えなくなる。
-              disconnected_at = now(),
               automation_consent_version = null,
               automation_consented_at = null,
               updated_at = now()

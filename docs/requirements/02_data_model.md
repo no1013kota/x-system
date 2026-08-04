@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.26 |
+| バージョン | v1.25 |
 | 更新日 | 2026-08-03 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -126,7 +126,6 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `token_refresh_locked_at` | `timestamptz` | null | refresh single-flight lease |
 | `token_refresh_lock_id` | `uuid` | null | refresh実行者識別子 |
 | `status` | `x_account_status` | not null default `active` | 連携状態 |
-| `disconnected_at` | `timestamptz` | null | 利用者が「連携を解除」した日時。**プラン変更による自動停止では設定しない**（`disabled`の理由を区別するため）。再連携・再有効化でnullへ戻す |
 | `settings` | `jsonb` | not null default `{}` | L-4〜L-7フォーム値 |
 | `base_md` | `text` | not null default `''` | 現行ベースmd |
 | `base_md_version` | `integer` | not null default 0 | 未生成は0 |
