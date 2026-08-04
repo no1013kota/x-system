@@ -152,6 +152,8 @@ export async function handlePortalRequest(
     }
     const session = await deps.stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
+      // Checkoutと同じく日本語へ固定（T-M8-58）。
+      locale: "ja",
       return_url: returnUrl,
       ...(deps.configurationId
         ? { configuration: deps.configurationId }

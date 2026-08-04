@@ -31,11 +31,20 @@ import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { X_SCOPES } from "@/lib/x/scopes";
 
-const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
-  { label: "Anthropic (Claude)", provider: "anthropic" },
-  { label: "OpenAI", provider: "openai" },
-  { label: "Google (Gemini)", provider: "google" },
+/**
+ * 取得ページへのリンクを各社に持たせる（T-M8-58）。X側には手順ガイドがあるのにAI側には
+ * 取得方法が無く、非エンジニアはどこでキーを作ればよいか分からなかった。
+ */
+const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider; consoleUrl: string }> = [
+  {
+    label: "Anthropic (Claude)",
+    provider: "anthropic",
+    consoleUrl: "https://console.anthropic.com/settings/keys",
+  },
+  { label: "OpenAI", provider: "openai", consoleUrl: "https://platform.openai.com/api-keys" },
+  { label: "Google (Gemini)", provider: "google", consoleUrl: "https://aistudio.google.com/apikey" },
 ];
 
 const STATUS_LABELS = {
@@ -323,6 +332,17 @@ export function ApiKeySettings({
 
   return (
     <div className="space-y-7">
+      {/*
+        **最初に全体像を出す**（T-M8-58）。フォームが先に並ぶと、いくつ登録すれば使えるのかが
+        読めない。必要なのは2つ（Xキー1つ＋AIキーどれか1社）だと先に言う。
+      */}
+      <Notice tone="info">
+        このプランで投稿の生成・投稿を行うには、<strong>2つのキー</strong>が必要です:
+        ① X APIキー（Xへの投稿に使う）
+        ② 生成AIのAPIキー（文章・画像づくりに使う。<strong>3社のうちどれか1社でOK</strong>）。
+        取得方法は各カードの案内と、ページ下部の手順ガイドをご覧ください。
+      </Notice>
+
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-card bg-brand-subtle p-2 text-brand">
@@ -354,6 +374,10 @@ export function ApiKeySettings({
               <option value="public">Public（PKCE）</option>
               <option value="confidential">Confidential</option>
             </select>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              通常は「Public（PKCE）」のままで構いません。X Developer Console側で
+              Confidential client として作成した場合のみ切り替えてください。
+            </span>
           </label>
           <label className="space-y-2 text-sm font-medium">
             Client ID
@@ -413,14 +437,25 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
         <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
+          <strong>3社のうちどれか1社を登録すれば使えます</strong>（複数登録して使い分けることもできます）。
+          文章生成・リサーチはAnthropic、OpenAI、Googleのどれでも。画像生成に使えるのはOpenAIとGoogleです。
+          いずれも従量課金です。予期しない支出を防ぐため、取得時に支払い設定と利用上限（budget）の設定をおすすめします。
         </p>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {AI_PROVIDERS.map(({ label, provider }) => {
+          {AI_PROVIDERS.map(({ label, provider, consoleUrl }) => {
             const keyState = keys[provider];
             return (
               <article className="rounded-card border p-4" key={provider}>
                 <h3 className="font-semibold">{label}</h3>
+                <a
+                  className="mt-0.5 inline-flex items-center gap-1 text-xs text-info-fg underline underline-offset-2"
+                  href={consoleUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  APIキーの取得ページを開く
+                  <Icon name="open_in_new" size={13} />
+                </a>
                 {keyState ? <div className="mt-3"><SavedKeySummary keyState={keyState} /></div> : (
                   <p className="mt-3 text-sm text-muted-foreground">未登録</p>
                 )}
@@ -514,7 +549,7 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">必要scopeを5つ許可</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].map((scope) => (
+                {X_SCOPES.map((scope) => (
                   <code className="rounded-md bg-muted px-2 py-1 text-xs" key={scope}>{scope}</code>
                 ))}
               </div>
@@ -531,9 +566,6 @@ export function ApiKeySettings({
             </div>
           </li>
         </ol>
-        <div className="mt-6 flex min-h-40 items-center justify-center rounded-card border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
-          Developer Console設定画面のスクリーンショット（差し替え準備中）
-        </div>
       </section>
     </div>
   );

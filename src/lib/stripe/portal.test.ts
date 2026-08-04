@@ -57,6 +57,7 @@ describe("POST /api/stripe/portal core", () => {
     expect(deps.stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
       configuration: "bpc_server_owned",
       customer: "cus_existing",
+      locale: "ja",
       return_url:
         "https://app.example.com/api/stripe/return?source=portal",
     });
@@ -72,6 +73,7 @@ describe("POST /api/stripe/portal core", () => {
     expect(response.status).toBe(200);
     expect(deps.stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
       customer: "cus_existing",
+      locale: "ja",
       return_url:
         "https://app.example.com/api/stripe/return?source=portal",
     });

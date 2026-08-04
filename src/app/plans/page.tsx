@@ -18,13 +18,14 @@ import { Icon } from "@/components/ui/icon";
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
 import { CardTitle, cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
 };
 
 interface PlansPageProps {
-  searchParams: Promise<{ checkout?: string }>;
+  searchParams: Promise<{ checkout?: string; confirmed?: string }>;
 }
 
 const PLAN_TAGLINE: Record<PlanId, string> = {
@@ -165,6 +166,17 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <p className="mx-auto max-w-3xl rounded-card border bg-card p-4 text-sm" role="status">
               決済手続きは完了していません。プランを確認して、もう一度お試しください。
             </p>
+          ) : null}
+
+          {/*
+            メール確認からの着地（T-M8-58）。**成功も必ず言う**——失敗時は「リンクを確認
+            できませんでした」が出るのに、成功は無言で料金表に変わるだけだった。
+            確認メールのリンクを押した人は「確認できたのか」をまずここで知りたい。
+          */}
+          {params.confirmed === "1" ? (
+            <Notice className="mx-auto max-w-3xl" role="status" tone="success">
+              メールアドレスの確認が完了しました。プランを選ぶと7日間の無料トライアルを開始できます。
+            </Notice>
           ) : null}
 
           {/* 反映待ちの間はプラン比較表とCTAを描画せず、待機カードだけを出す（二重申込の防止）。 */}

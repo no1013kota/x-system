@@ -53,8 +53,12 @@ export function confirmationSuccessPath(
   requestedNext: string | null,
   appBaseUrl: string,
 ): string {
-  return (
-    safeAuthNext(requestedNext, appBaseUrl) ??
-    (type === "recovery" ? "/reset-password" : "/plans")
-  );
+  const next = safeAuthNext(requestedNext, appBaseUrl);
+  if (next) return next;
+  if (type === "recovery") return "/reset-password";
+  // **確認が済んだことを着地側で言えるように目印を付ける**（T-M8-58）。
+  // メールのリンクを押した結果が無言で料金表に変わるだけだと、確認が成功したのか分からない
+  // （失敗時は「リンクを確認できませんでした」が出るのに、成功は何も言わなかった）。
+  // URL由来の画面状態なのでトーストではなくインライン表示にする（要件06 §2.1）。
+  return "/plans?confirmed=1";
 }

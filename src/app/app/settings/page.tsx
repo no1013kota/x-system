@@ -30,6 +30,7 @@ import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
+import { xRedirectUri } from "@/lib/x/oauth-server";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -156,7 +157,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "api-keys" ? (
           <ApiKeySettings
-            callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
+            // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
+            // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
+            // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
+            callbackUrl={xRedirectUri()}
             initialKeys={apiKeys}
             plan={profile.plan ?? "standard"}
             usage={usage}
