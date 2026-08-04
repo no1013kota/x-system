@@ -44,6 +44,14 @@ export interface DraftView {
   /** 投稿失敗の詳細（§4.10）。復旧UIが未解決状態（残存/曖昧）の判定に使う。 */
   last_post_error: {
     code?: string;
+    /**
+     * 利用者向けの失敗理由（T-M8-51）。**画面に出す**。
+     *
+     * これを通していなかったため、投稿実行が保存した丁寧な文言（「2本目の本文が長すぎます…
+     * Xへの投稿は1件も行っていません」）が**どこにも表示されず**、利用者には汎用の失敗文しか
+     * 届いていなかった。「Xへ出ていない」と伝わらないと、Xを見に行くまで確認できない。
+     */
+    message?: string;
     remaining_tweet_ids?: string[];
     ambiguous_create_indices?: number[];
     ambiguous_delete_tweet_ids?: string[];

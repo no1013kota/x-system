@@ -245,21 +245,43 @@ export function judgeNews(input: {
  * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
  * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
  */
+/** `failed` を「いま対応すべき失敗」として数える期間（T-M8-51）。 */
+export const FAILED_EMAIL_WINDOW_DAYS = 7;
+
 export function judgeQueuedEmails(input: {
   queued: number;
   oldestHours: number | null;
+  /** 直近 `FAILED_EMAIL_WINDOW_DAYS` 日の失敗。 */
   failed: number;
+  /** それより古い失敗（記録として出すだけで、赤くしない）。 */
+  failedOlder?: number;
 }): Check {
   const name = "お知らせメール";
   // 失敗は自動では回収されない（`recoverQueuedEmails` は queued だけを拾う）。
   // 放置すると届かないままなので、送信待ちより先に扱う。
+  //
+  // **ただし期間で区切る**（T-M8-51）。窓が無いと、1件失敗しただけで doctor が恒久的に赤・
+  // 日次サマリに毎日出続け、**赤が常態化して他の異常が埋もれる**（原則1の逆効果）。
+  // 古い失敗は「もう送る意味が薄い」ものでもあるので、記録として添えるだけにする。
+  const older = input.failedOlder ?? 0;
+  const olderNote = older > 0 ? `。${FAILED_EMAIL_WINDOW_DAYS}日より前の失敗が別に ${older} 件` : "";
   if (input.failed > 0) {
     return {
       name,
       level: "error",
-      detail: `送れなかったメールが ${input.failed} 件あります（送信待ちは ${input.queued} 件）`,
+      detail:
+        `直近${FAILED_EMAIL_WINDOW_DAYS}日で送れなかったメールが ${input.failed} 件あります` +
+        `（送信待ちは ${input.queued} 件）${olderNote}`,
       nextAction:
         "メール設定（SMTP）が正しいか確認してください。直したら通知ベルの「メールを再送」で送り直せます",
+    };
+  }
+  if (older > 0 && input.queued === 0) {
+    return {
+      name,
+      level: "warn",
+      detail: `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったメールが ${older} 件あります（直近の失敗はありません）`,
+      nextAction: "古い失敗なので急ぎではありません。送り直すなら通知ベルの「メールを再送」から行えます",
     };
   }
   if (input.queued === 0) return { name, level: "ok", detail: "送信待ち・送信失敗はありません" };
@@ -273,6 +295,55 @@ export function judgeQueuedEmails(input: {
     };
   }
   return { name, level: "ok", detail };
+}
+
+/**
+ * 定時実行（`scheduler_tick`）が生きているか（T-M8-51）。
+ *
+ * `judgeQueuedEmails` と**同じ型の見落とし**が残っていた——止まっていても doctor はどこも赤く
+ * ならない。tick が死ぬと予約投稿・通知メール送信・日次サマリ・期限切れ回収の**すべてが静かに
+ * 止まる**（「実行はありません」は正常時と同じ表示になる）。5分間隔なので、15分以上音沙汰が
+ * 無ければ異常。
+ *
+ * `schedulerExpected` が false の環境（ローカル・preview）では**そもそも動かないのが正しい**ので、
+ * 赤くしない（`judgeNews` と同じ扱い）。
+ */
+export const SCHEDULER_STALE_MINUTES = 15;
+
+export function judgeScheduler(input: {
+  minutesSinceLastRun: number | null;
+  schedulerExpected: boolean;
+}): Check {
+  const name = "定時実行";
+  if (!input.schedulerExpected) {
+    return {
+      name,
+      level: "ok",
+      detail:
+        input.minutesSinceLastRun === null
+          ? "この環境では自動で動きません（手動で叩いたときだけ動きます）"
+          : `この環境では自動で動きません（最後の実行は ${Math.round(input.minutesSinceLastRun)} 分前）`,
+    };
+  }
+  if (input.minutesSinceLastRun === null) {
+    return {
+      name,
+      level: "error",
+      detail: "まだ一度も動いていません",
+      nextAction:
+        "予約投稿・通知メール・日次サマリがすべて止まります。Vercel Cron（またはlaunchd）の設定を確認してください",
+    };
+  }
+  if (input.minutesSinceLastRun > SCHEDULER_STALE_MINUTES) {
+    return {
+      name,
+      level: "error",
+      detail: `最後の実行が ${Math.round(input.minutesSinceLastRun)} 分前です（5分間隔で動く想定）`,
+      nextAction:
+        "予約投稿・通知メール・日次サマリが止まっています。Vercel Cron（またはlaunchd）の設定と実行ログを確認してください",
+    };
+  }
+  return { name, level: "ok", detail: `${Math.round(input.minutesSinceLastRun)} 分前に動いています` };
 }
 
 /** X（Twitter）連携の有効期限。 */
@@ -414,6 +485,18 @@ export async function collectDiagnostics(
     }),
   );
 
+  const tick = await db.query<{ minutes: string | null }>(
+    `select (extract(epoch from (now() - max(claimed_at))) / 60)::text as minutes
+       from cron_runs where job_name = 'scheduler_tick'`,
+  );
+  checks.push(
+    judgeScheduler({
+      minutesSinceLastRun:
+        tick.rows[0]?.minutes == null ? null : Number(tick.rows[0].minutes),
+      schedulerExpected: options.schedulerExpected,
+    }),
+  );
+
   const news = await db.query<{ items: string; hours: string | null }>(
     `select (select count(*)::text from news_items where fetched_at > now() - interval '48 hours') as items,
             (select (extract(epoch from (now() - max(claimed_at))) / 3600)::text
@@ -446,18 +529,32 @@ export async function collectDiagnostics(
     }),
   );
 
-  const emails = await db.query<{ queued: string; oldest: string | null; failed: string }>(
+  const emails = await db.query<{
+    queued: string;
+    oldest: string | null;
+    failed: string;
+    failed_older: string;
+  }>(
     `select count(*) filter (where email_status = 'queued')::text as queued,
             (extract(epoch from (now() - min(created_at)
                                  filter (where email_status = 'queued'))) / 3600)::text as oldest,
-            count(*) filter (where email_status = 'failed')::text as failed
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) > now() - ($1 || ' days')::interval
+            )::text as failed,
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) <= now() - ($1 || ' days')::interval
+            )::text as failed_older
        from notifications where email_status in ('queued', 'failed')`,
+    [String(FAILED_EMAIL_WINDOW_DAYS)],
   );
   checks.push(
     judgeQueuedEmails({
       queued: Number(emails.rows[0]?.queued ?? 0),
       oldestHours: emails.rows[0]?.oldest == null ? null : Number(emails.rows[0].oldest),
       failed: Number(emails.rows[0]?.failed ?? 0),
+      failedOlder: Number(emails.rows[0]?.failed_older ?? 0),
     }),
   );
 
