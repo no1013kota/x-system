@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   groupPricesByProduct,
+  missingEnvNames,
   portalConfiguration,
   portalUpdateProducts,
 } from "../../../scripts/setup-stripe-portal.mjs";
@@ -61,6 +62,47 @@ describe("Stripe Portal configuration setup", () => {
     expect(portalUpdateProducts({ prod_2: ["price_b"], prod_1: ["price_c", "price_a"] })).toEqual([
       { product: "prod_1", prices: ["price_a", "price_c"] },
       { product: "prod_2", prices: ["price_b"] },
+    ]);
+  });
+});
+
+/**
+ * 足りない値は**まとめて**返す（T-M8-50）。
+ *
+ * 以前は最初に見つかった1件で止めていたため、利用者は「1つ足す → また別のが足りないと言われる」を
+ * 3往復した（2026-08-04 実測。構成ID → secret key → price ID の順に1つずつ怒られた）。
+ * CLAUDE.md 原則5「判断はまとめて求める」に反する。
+ */
+describe("missingEnvNames（足りない値をまとめて返す）", () => {
+  const NAMES = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_STANDARD_MONTHLY"];
+
+  it("接頭辞付きで足りないものを全部返す（1件で打ち切らない）", () => {
+    expect(missingEnvNames(NAMES, {}, "STAGING_")).toEqual([
+      "STAGING_STRIPE_SECRET_KEY",
+      "STAGING_STRIPE_PRICE_STANDARD_MONTHLY",
+    ]);
+  });
+
+  it("揃っていれば空", () => {
+    const env = { STAGING_STRIPE_SECRET_KEY: "sk", STAGING_STRIPE_PRICE_STANDARD_MONTHLY: "price" };
+    expect(missingEnvNames(NAMES, env, "STAGING_")).toEqual([]);
+  });
+
+  // **接頭辞なしの値では代用させない。** staging は別のStripeアカウントなので、
+  // 手元の鍵・price を使うと `No such price` になるか、最悪別環境を書き換える。
+  it("接頭辞なしの値があっても足りない扱いにする", () => {
+    const env = { STRIPE_SECRET_KEY: "sk_local", STRIPE_PRICE_STANDARD_MONTHLY: "price_local" };
+    expect(missingEnvNames(NAMES, env, "STAGING_")).toHaveLength(2);
+  });
+
+  it("空文字・空白だけの値は足りない扱いにする", () => {
+    const env = { STAGING_STRIPE_SECRET_KEY: "   ", STAGING_STRIPE_PRICE_STANDARD_MONTHLY: "" };
+    expect(missingEnvNames(NAMES, env, "STAGING_")).toHaveLength(2);
+  });
+
+  it("local（接頭辞なし）でも同じ判定ができる", () => {
+    expect(missingEnvNames(NAMES, { STRIPE_SECRET_KEY: "sk" }, "")).toEqual([
+      "STRIPE_PRICE_STANDARD_MONTHLY",
     ]);
   });
 });
