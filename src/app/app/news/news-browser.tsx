@@ -19,6 +19,7 @@ import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 const IMPACTS: { id: string; label: string }[] = [
   { id: "high", label: "高" },
@@ -212,14 +213,14 @@ export function NewsBrowser({
   return (
     <div className="mt-4 space-y-4">
       {window ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info-fg/25 bg-info-bg px-4 py-3 text-sm text-info-fg">
+        <Notice className="flex flex-wrap items-center justify-between gap-2" tone="info">
           <span>
             通知の時間窓（{formatDate(window.from)}〜{formatDate(window.to)}）のニュースを表示しています。
           </span>
           <Link className="font-medium underline underline-offset-2" href="/app/news">
             すべてのニュースを表示
           </Link>
-        </div>
+        </Notice>
       ) : (
         <p className="text-sm text-muted-foreground">
           過去7日分のニュースを表示します。ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されます。
@@ -299,12 +300,10 @@ export function NewsBrowser({
         読み上げられていた（T-M8-18）。
       */}
       {note ? (
-        <p
-          className="rounded-card border border-warn-fg/25 bg-warn-bg px-4 py-2 text-[12.5px] text-warn-fg"
-          role="alert"
-        >
+        <Notice tone="warn"
+          role="alert">
           {note}
-        </p>
+        </Notice>
       ) : null}
 
       {items.length === 0 ? (

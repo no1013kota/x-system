@@ -14,6 +14,7 @@ import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
 import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
@@ -189,15 +190,15 @@ export function BaseMdEditor({
       </p>
 
       {/* セクション1〜4の上書き注意（常時） */}
-      <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
+      <Notice tone="warn">
         手で直した「1. {BASE_MD_SECTION_TITLES[0]}」〜「4. {BASE_MD_SECTION_TITLES[3]}」は、次に「発信設定」を保存すると上書きされます。恒久的に変えたい場合は、発信設定側でも同じ内容にしてください。この画面の変更履歴からは、いつでも以前の版に戻せます。
-      </p>
+      </Notice>
 
       {/* 学習running中の編集不可 */}
       {learningRunning ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
+        <Notice tone="warn">
           学習の反映処理中のため、ベースmdは編集できません。完了までお待ちください。
-        </p>
+        </Notice>
       ) : null}
 
       {note ? (

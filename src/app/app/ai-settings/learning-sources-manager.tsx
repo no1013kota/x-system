@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-10 学習ソースタブ（L-1〜3, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
@@ -162,9 +163,9 @@ export function LearningSourcesManager({
   return (
     <div className="space-y-6">
       {removing ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
+        <Notice tone="warn">
           学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
-        </p>
+        </Notice>
       ) : null}
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}

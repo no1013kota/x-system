@@ -24,6 +24,7 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardTitleClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -738,9 +739,9 @@ function SlotFields({
       </div>
 
       {v.mode === "auto" && !automationConsented ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-xs text-warn-fg">
+        <Notice tone="warn">
           自動投稿には現在の説明への同意が必要です。同意していない場合、保存は拒否されます。
-        </p>
+        </Notice>
       ) : null}
 
       <label className="flex items-center gap-2">

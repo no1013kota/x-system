@@ -20,6 +20,7 @@ import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
 import { Card, CardTitle, cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -127,18 +128,16 @@ export function XAccountsSettings({
         </div>
 
         {!xApiKeyRegistered ? (
-          <p className="mt-4 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm leading-6 text-warn-fg">
+          <Notice className="mt-4" tone="warn">
             Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
-          </p>
+          </Notice>
         ) : null}
 
         {connected ? (
-          <p
-            className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
-            role="status"
-          >
+          <Notice className="mt-4" tone="success"
+            role="status">
             Xアカウントを連携しました。
-          </p>
+          </Notice>
         ) : null}
       </Card>
 

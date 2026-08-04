@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-03
+- Amended: 2026-08-04（T-M8-41/43/45/51。共通部品の追加と機械検査、lucide-react 撤去、器・見出しの集約）
 
 ## Context
 
@@ -24,7 +25,7 @@ M8 で既存画面の**見た目だけ**を新デザイン（`design_handoff_spa
   **`components.json` の `iconLibrary` は `lucide` のまま**なので、shadcn MCP で部品を足すと
   lucide を import したコードが入ってくる。(a) がその入口で止める。
 
-**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ。素の容器は `<Card as=...>`、他のレイアウト指定と混ざる／ライブラリの要素へ渡す場合は `cardClassName`。見出しは `CardTitle`、使えない場所は `cardTitleClassName`。**面だけの `rounded-card border border-hairline bg-surface` は寄せない**——入力欄・トースト・Popover・ラジオも同じ組み合わせを使っており、カードを変えたときに入力欄の枠まで動くのは誤り。影まで含めた並びだけを単一の正とする）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・インラインバナー（`ui/notice.tsx`。**危険色は1系統**——`bg-destructive/*` はボタンの塗りだけに許し、`notice.test.ts` が機械的に検査する）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
+**5. 「同じものを2か所で描かない」を徹底する。** 器（Card。`as` で `section` にでき、見出しを持つ領域は landmark を保つ。素の容器は `<Card as=...>`、他のレイアウト指定と混ざる／ライブラリの要素へ渡す場合は `cardClassName`。見出しは `CardTitle`、使えない場所は `cardTitleClassName`。**面だけの `rounded-card border border-hairline bg-surface` は寄せない**——入力欄・トースト・Popover・ラジオも同じ組み合わせを使っており、カードを変えたときに入力欄の枠まで動くのは誤り。影まで含めた並びだけを単一の正とする）・状態チップ（Badge。**tone は prop で渡す**。className へ文字列展開すると存在しないユーティリティになり色が消える——`badge-tone.test.ts` が機械的に禁止する）・テーマチップ（CategoryChip。ラベルは自分で引く）・インラインバナー（`ui/notice.tsx`。`as` で `section` にでき、見出しを持つ通知は landmark を保つ。**危険色は1系統**——`bg-destructive/*` はボタンの塗りだけに許し、`notice.test.ts` が検査する。**枠＋背景＋文字色の3点セットの手書きも禁止**し、`notice-banner.test.ts` が検査する。アイコンチップやApp Shell上部の全幅バーはバナーではないので対象外）・空状態／ロック状態（`page-state.tsx`）・パターン選択（`pattern-radio-group.tsx`）・パターンの選択肢とラベル（`lib/post/post-patterns.ts`）・リンクをボタンに見せるクラス（`ui/link-button.ts`）・**失敗した下書きの可否判定**（`lib/post/draft-actions.ts`。`.tsx` は単体テストの網に入らないため純関数へ出す）を単一の正とする。M8 の作業中、**同じパターンの定義が3か所に散ってラベルまで違っていた**（「自分の考え」/「自分の考え・意見」）例が実際にあった。
 
 **6. 操作結果の通知はトーストへ集約する**（要件06 §2.1）。判断（読み上げ種別・自動で消えるか）は `toast-policy.ts` の純関数へ出し、DOMを持たない単体テスト（`environment: node`）で固定する。
 
@@ -35,4 +36,4 @@ M8 で既存画面の**見た目だけ**を新デザイン（`design_handoff_spa
 - 配色・角丸・影の変更はトークン1か所で済む。反面、**CSS変数名の誤りは静的検査を素通りする**（`--gradient-brand` と書いてプレミアムのタグが透明になった実例がある）。**実ブラウザでの目視確認が最後の砦**であり、E2Eと型検査では代替できない。
 - Tailwind v4 のため設定ファイルが無く、トークンの一覧性は `globals.css` を読むことに依存する。
 - 33個のアイコンで足りなくなったら `scripts/generate-icons.mjs` の一覧へ足して再生成する（手で `icon-paths.ts` を編集しない）。
-- 共通部品へ寄せたことで、1つの変更が複数画面へ同時に効く。**変更時は使用箇所を `rg` で確認する**（2026-08-04時点で `Badge` は18ファイル・8画面、`Notice` は9ファイル、`CardTitle` は19ファイル、`PatternRadioGroup` は2画面が使う）。**この数は増える前提で、正は `rg` の結果**——ここに書いた数字は「小さいと思って触ると広く影響する」ことの目安にすぎない（T-M8-44 でチップを寄せた結果 `Badge` が5画面→8画面へ増え、この行の更新が漏れていた）。
+- 共通部品へ寄せたことで、1つの変更が複数画面へ同時に効く。**変更時は使用箇所を `rg` で確認する**（2026-08-04時点で `Badge` は18ファイル・8画面、`Notice` は21ファイル、`CardTitle` は19ファイル、`PatternRadioGroup` は2画面が使う）。**この数は増える前提で、正は `rg` の結果**——ここに書いた数字は「小さいと思って触ると広く影響する」ことの目安にすぎない（T-M8-44 でチップを寄せた結果 `Badge` が5画面→8画面へ増え、この行の更新が漏れていた）。

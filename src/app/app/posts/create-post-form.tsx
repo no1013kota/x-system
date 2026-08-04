@@ -399,9 +399,9 @@ export function CreatePostForm({
               })}
             </ol>
             {queuedSlow ? (
-              <p className="rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg" role="status">
+              <Notice tone="warn" role="status">
                 開始が遅れています。自動で再開されます（最大5分）。
-              </p>
+              </Notice>
             ) : null}
             {job?.status === "queued" ? (
               <Button disabled={pending} onClick={cancel} size="sm" type="button" variant="outline">
@@ -417,9 +417,9 @@ export function CreatePostForm({
 
         {job?.status === "succeeded" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg" role="status">
+            <Notice tone="success" role="status">
               生成が完了し、下書きを作成しました。
-            </p>
+            </Notice>
             <Link
               className={primaryLinkClassName}
               href="/app/posts?tab=drafts"
