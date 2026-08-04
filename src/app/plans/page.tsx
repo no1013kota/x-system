@@ -113,16 +113,22 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 契約が有効（trialing/active）で本編を使えるユーザーが /plans に来たら /app へ送り、
   // 決済成功後にこの画面で行き止まりになるのを防ぐ。incomplete・canceled 等はプラン選択／
   // 再申込のため /plans に留める（canExecute は trialing/active のみ true）。
+  //
+  // **ただし Stripe の顧客が紐づいていない契約者は送り返さない**（T-M8-54）。
+  // 送り返すと、設定＞課金の「プランを選ぶ」を押してもホームへ戻るだけで**何もできない**。
+  // この状態はwebhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まるので、
+  // 申し込みをやり直せる場所（この画面）へ入れる。
   const user = await getCurrentUser();
   if (user) {
     const admin = createSupabaseAdminClient();
     const { data: profile } = await admin
       .from("profiles")
-      .select("plan, subscription_status")
+      .select("plan, subscription_status, stripe_customer_id")
       .eq("id", user.id)
       .maybeSingle();
     if (
       profile?.plan &&
+      profile.stripe_customer_id &&
       subscriptionAccessFor(profile.subscription_status)?.canExecute
     ) {
       redirect("/app");

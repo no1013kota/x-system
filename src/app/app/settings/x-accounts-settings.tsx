@@ -65,6 +65,149 @@ export function XAccountsSettings({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // 「解除したもの」は畳む（T-M8-54）。プラン変更による自動停止は畳まない。
+  const connectedAccounts = accounts.filter((a) => !a.disconnected);
+  const disconnectedAccounts = accounts.filter((a) => a.disconnected);
+
+  /**
+   * 1アカウント分の行。連携中と「解除したもの」の2か所で同じものを描くため関数にする（T-M8-54）。
+   * 同じ行を2回書くと、片方だけ直して見た目と操作が食い違う。
+   */
+  function renderAccount(account: XAccountListItem) {
+          const busy = busyId === account.id;
+          return (
+            <li
+              className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
+              key={account.id}
+            >
+              {account.profileImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt=""
+                  className="size-10 shrink-0 rounded-full object-cover"
+                  src={account.profileImageUrl}
+                />
+              ) : (
+                <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
+              )}
+              <div className="min-w-40 flex-1">
+                <p className="flex items-center gap-2 font-medium">
+                  @{account.handle}
+                  {account.isActive ? (
+                    <Badge tone="info">操作中</Badge>
+                  ) : null}
+                </p>
+                <p className="text-sm text-muted-foreground">{account.name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  {/*
+                    tone は **prop で渡す**。className へ文字列展開すると
+                    `class="... success"` という存在しないユーティリティになり、4状態すべてが
+                    同じ見た目になる（T-M8-36 で実際に起きた退行）。
+                  */}
+                  <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
+                    {STATUS_LABEL[account.status] ?? account.status}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/*
+                  操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
+                  ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
+                  「どこで切り替えるのか」を探すことになる。
+                  切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
+                */}
+                {!account.isActive && account.status === "active" ? (
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        account.id,
+                        () => setActiveXAccountAction({ x_account_id: account.id }),
+                        `@${account.handle} に切り替えました`,
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="subtle"
+                  >
+                    {busy ? "切り替え中…" : "このアカウントを操作する"}
+                  </Button>
+                ) : null}
+
+                {account.status === "disabled" ? (
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        account.id,
+                        () => enableXAccountAction({ x_account_id: account.id }),
+                        "アカウントを有効化しました。",
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {busy ? "処理中…" : "有効化"}
+                  </Button>
+                ) : null}
+
+                {account.status !== "active" ? (
+                  <Button
+                    nativeButton={false}
+                    // **どのアカウントを再連携するかを渡す**（T-M8-53）。以前は「追加」と同じURLで、
+                    // 別のアカウントで認可すると新しい行が増え、壊れた行はそのまま残った。
+                    render={<a href={reconnectPath(oauthStartPath, account.id)} />}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Icon name="refresh" /> 再連携
+                  </Button>
+                ) : null}
+
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    run(
+                      account.id,
+                      () => refreshXAccountStatusAction({ x_account_id: account.id }),
+                      "最新の状態を確認しました。",
+                    )
+                  }
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  状態を更新
+                </Button>
+
+                {account.automationActive ? (
+                  <StopAllAutomationButton xAccountId={account.id} />
+                ) : null}
+
+                {account.status !== "disabled" ? (
+                  <DisconnectButton
+                    disabled={pending}
+                    handle={account.handle}
+                    onConfirm={() =>
+                      run(
+                        account.id,
+                        () => disconnectXAccountAction({ x_account_id: account.id }),
+                        "連携を解除しました。",
+                      )
+                    }
+                  />
+                ) : null}
+              </div>
+            </li>
+          );
+  }
+
   const toast = useToast();
 
   const limit = PLANS[plan].xAccountLimit;
@@ -147,147 +290,37 @@ export function XAccountsSettings({
         ) : null}
       </Card>
 
-      {accounts.length === 0 ? (
+      {/*
+        **解除したアカウントは一覧から畳む**（T-M8-54）。利用者が「連携を解除」したものが
+        「停止中」として残り続けると、片付けたつもりの行がいつまでも見えて紛らわしい。
+        ただし**行は消せない**（下書き・履歴・実績が参照している・要件06 §14）ので、
+        `<details>` で辿れる場所へ移すだけにする。**プラン変更で自動停止されたもの
+        （`disconnected` が false の `disabled`）は畳まない**——隠すと「なぜ止まったのか」が
+        分からなくなる（CLAUDE.md 原則1）。
+      */}
+      {connectedAccounts.length === 0 ? (
         <EmptyNotice>
-          まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。
+          {disconnectedAccounts.length > 0
+            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください（解除したアカウントは下に畳んであります）。"
+            : "まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。"}
         </EmptyNotice>
       ) : (
         <ul className="space-y-3">
-          {accounts.map((account) => {
-            const busy = busyId === account.id;
-            return (
-              <li
-                className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
-                key={account.id}
-              >
-                {account.profileImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    alt=""
-                    className="size-10 shrink-0 rounded-full object-cover"
-                    src={account.profileImageUrl}
-                  />
-                ) : (
-                  <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
-                )}
-                <div className="min-w-40 flex-1">
-                  <p className="flex items-center gap-2 font-medium">
-                    @{account.handle}
-                    {account.isActive ? (
-                      <Badge tone="info">操作中</Badge>
-                    ) : null}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{account.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                    {/*
-                      tone は **prop で渡す**。className へ文字列展開すると
-                      `class="... success"` という存在しないユーティリティになり、4状態すべてが
-                      同じ見た目になる（T-M8-36 で実際に起きた退行）。
-                    */}
-                    <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
-                      {STATUS_LABEL[account.status] ?? account.status}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/*
-                    操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
-                    ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
-                    「どこで切り替えるのか」を探すことになる。
-                    切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
-                  */}
-                  {!account.isActive && account.status === "active" ? (
-                    <Button
-                      disabled={pending}
-                      onClick={() =>
-                        run(
-                          account.id,
-                          () => setActiveXAccountAction({ x_account_id: account.id }),
-                          `@${account.handle} に切り替えました`,
-                        )
-                      }
-                      size="sm"
-                      type="button"
-                      variant="subtle"
-                    >
-                      {busy ? "切り替え中…" : "このアカウントを操作する"}
-                    </Button>
-                  ) : null}
-
-                  {account.status === "disabled" ? (
-                    <Button
-                      disabled={pending}
-                      onClick={() =>
-                        run(
-                          account.id,
-                          () => enableXAccountAction({ x_account_id: account.id }),
-                          "アカウントを有効化しました。",
-                        )
-                      }
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {busy ? "処理中…" : "有効化"}
-                    </Button>
-                  ) : null}
-
-                  {account.status !== "active" ? (
-                    <Button
-                      nativeButton={false}
-                      // **どのアカウントを再連携するかを渡す**（T-M8-53）。以前は「追加」と同じURLで、
-                      // 別のアカウントで認可すると新しい行が増え、壊れた行はそのまま残った。
-                      render={<a href={reconnectPath(oauthStartPath, account.id)} />}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Icon name="refresh" /> 再連携
-                    </Button>
-                  ) : null}
-
-                  <Button
-                    disabled={pending}
-                    onClick={() =>
-                      run(
-                        account.id,
-                        () => refreshXAccountStatusAction({ x_account_id: account.id }),
-                        "最新の状態を確認しました。",
-                      )
-                    }
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    状態を更新
-                  </Button>
-
-                  {account.automationActive ? (
-                    <StopAllAutomationButton xAccountId={account.id} />
-                  ) : null}
-
-                  {account.status !== "disabled" ? (
-                    <DisconnectButton
-                      disabled={pending}
-                      handle={account.handle}
-                      onConfirm={() =>
-                        run(
-                          account.id,
-                          () => disconnectXAccountAction({ x_account_id: account.id }),
-                          "連携を解除しました。",
-                        )
-                      }
-                    />
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
+          {connectedAccounts.map(renderAccount)}
         </ul>
       )}
+
+      {disconnectedAccounts.length > 0 ? (
+        <details className="rounded-card border border-hairline bg-surface px-5 py-3">
+          <summary className="cursor-pointer text-[13px] text-ink-2">
+            解除したアカウント {disconnectedAccounts.length} 件（投稿履歴と実績は残っています）
+          </summary>
+          <p className="mt-2 text-[12.5px] leading-5 text-ink-3">
+            もう一度使うときは「有効化」または「再連携」を押してください。連携中の一覧へ戻ります。
+          </p>
+          <ul className="mt-3 space-y-3">{disconnectedAccounts.map(renderAccount)}</ul>
+        </details>
+      ) : null}
     </section>
   );
 }
