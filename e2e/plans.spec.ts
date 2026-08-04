@@ -57,6 +57,12 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   page,
 }) => {
   const account = await accounts.create("plans-active");
+  // **Stripeの顧客が紐づいていることが「契約中」の条件**（T-M8-54）。
+  // 顧客が無いまま送り返すと、設定＞課金の「プランを選ぶ」を押してもホームへ戻るだけで
+  // 何もできない行き止まりになるため、`/plans` は顧客がある契約者だけを送り返す。
+  await query(`update profiles set stripe_customer_id = 'cus_e2e_plans_active' where id = $1`, [
+    account.userId,
+  ]);
   await signIn(page, account);
 
   // 契約が有効ならアプリ本体に入れる（/plans へは行かない）
@@ -81,15 +87,20 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   // `goto` の直後に `count()` を取ると描画前を見てしまうので、先に見出しを待つ。
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
-  // プラン管理の導線は**必ずどこかへ着く**（T-M8-29）。Stripeの顧客が無い契約前は
-  // 押せないボタンを出さず、料金プランへのリンクに切り替える。
-  const manage = page.getByRole("button", { name: "プランを管理" });
+  // プラン管理の導線は**必ずどこかへ着く**（T-M8-29）。Stripeの顧客があれば「プランを変更」
+  // 「解約する」の2つ（T-M8-31 でやりたいことを先に選ばせる形にした）、顧客が無ければ
+  // 料金プランへのリンクに切り替える（T-M8-54）。
+  const update = page.getByRole("button", { name: "プランを変更" });
+  const cancel = page.getByRole("button", { name: "解約する" });
   const choose = page.getByRole("link", { name: "プランを選ぶ" });
-  expect(
-    (await manage.count()) + (await choose.count()),
-    "プラン管理の導線が1つある",
-  ).toBeGreaterThan(0);
+  const routes = (await update.count()) + (await cancel.count()) + (await choose.count());
+  expect(routes, "プラン管理の導線がある").toBeGreaterThan(0);
   if (await choose.count()) await expect(choose).toHaveAttribute("href", "/plans");
+  // 顧客がある契約者なら、変更と解約の両方が出る
+  if (!(await choose.count())) {
+    await expect(update).toBeVisible();
+    await expect(cancel).toBeVisible();
+  }
 });
 
 test("契約が切れた利用者は閲覧はできるが、実行はできずプラン選択へ案内される", async ({
@@ -120,4 +131,42 @@ test("契約が切れた利用者は閲覧はできるが、実行はできず�
   // 設定の課金タブは開ける
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+});
+
+/**
+ * プラン変更・解約の結果を**押す前に**読めること（T-M8-55）。
+ *
+ * 利用者からの質問「プラン変更を完了したらいつからプラン変更になりますか？支払いはどう変わりますか？」
+ * が画面から読めなかった。金額と時期が変わる操作なので、Stripeへ移動する前に示す。
+ * 文言はStripe側の設定（`setup-stripe-portal.mjs`）と1対1で対応する。
+ */
+test("プラン変更で何が起きるかを押す前に読める（T-M8-55）", async ({ accounts, page }) => {
+  const account = await accounts.create("plan-effects");
+  await query(
+    `update profiles set stripe_customer_id = 'cus_e2e_effects',
+        current_period_end = '2026-08-12T00:00:00Z' where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=billing");
+
+  await expect(page.getByRole("button", { name: "プランを変更" })).toBeVisible();
+  // 上位＝即時＋日割り、下位＝期間末（日付つき）、解約＝期間末まで使える
+  await expect(page.getByText("すぐに切り替わります")).toBeVisible();
+  await expect(page.getByText("差額は日割りで計算され", { exact: false })).toBeVisible();
+  await expect(page.getByText("2026年8月12日に切り替わります")).toBeVisible();
+  await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toBeVisible();
+  // トライアル中は終了日が変わらないことを添える
+  await expect(
+    page.getByText("トライアルの終了日（2026年8月12日）は変わりません"),
+  ).toBeVisible();
+
+  // **Markdownの記号が画面に出ていない**（強調は要素で表す・実際に `**` が出た）
+  await expect(page.getByText("**", { exact: false })).toHaveCount(0);
+
+  // 解約予約済みなら、その旨に切り替わる
+  await query(`update profiles set cancel_at_period_end = true where id = $1`, [account.userId]);
+  await page.reload();
+  await expect(page.getByText("2026年8月12日に解約されます")).toBeVisible();
+  await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
 });

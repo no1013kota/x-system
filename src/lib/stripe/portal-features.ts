@@ -25,6 +25,15 @@ export interface PortalFeatureSnapshot {
   features: Partial<Record<PortalFeatureKey, { enabled?: boolean } | undefined>> | null;
   /** `STRIPE_PORTAL_CONFIGURATION_ID` が未設定なら true（Stripeの既定設定が使われる）。 */
   configurationMissing?: boolean;
+  /**
+   * 設定IDがこのStripeアカウントに存在しない（T-M8-55）。
+   *
+   * **別環境の値が入っている典型的な事故。** 2026-08-05、`.env.local` の
+   * `STRIPE_PORTAL_CONFIGURATION_ID` が staging の値へ上書きされており、ローカルの鍵で
+   * staging の設定を参照して `No such configuration` になった。「確認できませんでした」
+   * では原因に辿り着けないので、これだけは名指しする（CLAUDE.md 原則2）。
+   */
+  configurationNotFound?: boolean;
 }
 
 export interface PortalFeatureJudgement {
@@ -44,6 +53,15 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
       level: "warn",
       detail:
         "プラン管理画面の設定（STRIPE_PORTAL_CONFIGURATION_ID）が未設定です。Stripeの既定設定で開くため、プラン変更や解約ができない場合があります",
+      disabled: [],
+    };
+  }
+  if (snapshot.configurationNotFound) {
+    return {
+      // **error にする**。画面のボタンは出るが押すと必ず失敗するので「注意」では弱い。
+      level: "error",
+      detail:
+        "設定ID（STRIPE_PORTAL_CONFIGURATION_ID）がこのStripeアカウントに見つかりません。別の環境の値が入っている可能性があります",
       disabled: [],
     };
   }

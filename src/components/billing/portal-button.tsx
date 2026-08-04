@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
+import type { PlanChangeEffects } from "@/lib/billing/plan-change-effects";
 import type { PortalIntent } from "@/lib/stripe/portal";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
 
@@ -19,7 +20,14 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  * **Stripeの顧客がまだ無いときは押せないボタンを出さない**（T-M8-29）。押しても何も起きない
  * ボタンは「壊れている」と読める。契約前の行き先は料金プランなので、そこへのリンクにする。
  */
-export function PortalButton({ enabled }: { enabled: boolean }) {
+export function PortalButton({
+  effects,
+  enabled,
+}: {
+  /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
+  effects?: PlanChangeEffects;
+  enabled: boolean;
+}) {
   const [pending, setPending] = useState<PortalIntent | null>(null);
   const toast = useToast();
 
@@ -79,8 +87,34 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
           {pending === "cancel" ? "開いています…" : "解約する"}
         </Button>
       </div>
+      {/*
+        **押す前に「いつから・いくら」を出す**（T-M8-55）。以前はここが1行で、
+        上位プランへ変えると即時に日割り請求が走ることも、下位プランは期間末まで
+        切り替わらないことも画面から読めなかった。金額と時期が変わる操作なので、
+        Stripeへ移動する前に結果を示す（文言はStripe側の設定と1対1で対応する）。
+      */}
+      {effects ? (
+        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-[12.5px] leading-5 sm:grid-cols-2">
+          {(
+            [
+              ["上位プランへ変更", effects.upgrade],
+              ["下位プランへ変更", effects.downgrade],
+              ["解約", effects.cancel],
+              ...(effects.trialNote ? [["無料トライアル中の変更", effects.trialNote] as const] : []),
+            ] as const
+          ).map(([label, effect]) => (
+            <div key={label}>
+              <dt className="text-[11.5px] text-ink-3">{label}</dt>
+              <dd className="mt-0.5">
+                <span className="font-bold text-ink">{effect.headline}</span>
+                <span className="mt-0.5 block text-ink-2">{effect.detail}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       <p className="text-xs leading-5 text-ink-3">
-        どちらもStripeの安全な画面へ移動します。解約は期間末で、支払い済みの期間は続けて使えます。お支払い方法の変更と請求書は「プランを変更」の先から辿れます。
+        どちらもStripeの安全な画面へ移動します。お支払い方法の変更と請求書は「プランを変更」の先から辿れます。
       </p>
     </div>
   );
