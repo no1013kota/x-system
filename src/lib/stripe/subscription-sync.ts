@@ -223,7 +223,11 @@ export function subscriptionProjection(
   }
 
   return {
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    // **`cancel_at` も「解約予定」として読む**（T-M8-57）。トライアル中の解約では、Stripeは
+    // `cancel_at_period_end: true` ではなく **`cancel_at`（=trial_end の日時）だけ**を設定する。
+    // boolean しか読んでいなかったため、Portalで解約しても同期後の profile は「解約予定なし」の
+    // ままで、画面に何も出なかった（2026-08-05、利用者が実際に踏んだ）。
+    cancelAtPeriodEnd: subscription.cancel_at_period_end || subscription.cancel_at != null,
     currentPeriodEnd,
     customerId,
     eventCreated: event.created,

@@ -164,9 +164,14 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   // **Markdownの記号が画面に出ていない**（強調は要素で表す・実際に `**` が出た）
   await expect(page.getByText("**", { exact: false })).toHaveCount(0);
 
-  // 解約予約済みなら、その旨に切り替わる
+  // 解約予約済みなら、説明とボタンの両方が切り替わる（T-M8-57）。
+  // 予約済みなのに「解約する」を出し続けると同じ操作を促すことになるため、
+  // 取り消し（StripeのPortalトップにある「プランを続ける」）へ導線を替える。
   await query(`update profiles set cancel_at_period_end = true where id = $1`, [account.userId]);
   await page.reload();
   await expect(page.getByText("2026年8月12日に解約されます")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "解約する" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toBeVisible();
+  await expect(page.getByText("期間終了日に解約予定")).toBeVisible();
 });

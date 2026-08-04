@@ -21,21 +21,30 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  * ボタンは「壊れている」と読める。契約前の行き先は料金プランなので、そこへのリンクにする。
  */
 export function PortalButton({
+  cancelAtPeriodEnd = false,
   effects,
   enabled,
 }: {
+  /**
+   * 期間末解約が予約済みか（T-M8-57）。予約済みのとき「解約する」を出し続けると、
+   * もう予約されているのに同じ操作を促すことになる。取り消し（Stripeの「プランを続ける」）へ
+   * 導線を替える。
+   */
+  cancelAtPeriodEnd?: boolean;
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
 }) {
-  const [pending, setPending] = useState<PortalIntent | null>(null);
+  const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
   const toast = useToast();
 
-  function open(intent: PortalIntent) {
+  function open(intent: PortalIntent | "manage") {
     return async () => {
       setPending(intent);
       try {
-        await startCustomerPortal(intent);
+        // "manage" はPortalのトップ（解約予定の取り消しはStripeが「プランを続ける」として出す。
+        // flow_data に取り消し専用の型は無いため、トップから行うのが正規の経路）。
+        await startCustomerPortal(intent === "manage" ? undefined : intent);
       } catch (cause) {
         toast.show({
           tone: "error",
@@ -75,17 +84,31 @@ export function PortalButton({
         >
           {pending === "update" ? "開いています…" : "プランを変更"}
         </Button>
-        <Button
-          aria-busy={pending === "cancel"}
-          className="h-9"
-          disabled={pending !== null}
-          onClick={open("cancel")}
-          size="lg"
-          type="button"
-          variant="outline"
-        >
-          {pending === "cancel" ? "開いています…" : "解約する"}
-        </Button>
+        {cancelAtPeriodEnd ? (
+          <Button
+            aria-busy={pending === "manage"}
+            className="h-9"
+            disabled={pending !== null}
+            onClick={open("manage")}
+            size="lg"
+            type="button"
+            variant="outline"
+          >
+            {pending === "manage" ? "開いています…" : "解約予定を取り消す"}
+          </Button>
+        ) : (
+          <Button
+            aria-busy={pending === "cancel"}
+            className="h-9"
+            disabled={pending !== null}
+            onClick={open("cancel")}
+            size="lg"
+            type="button"
+            variant="outline"
+          >
+            {pending === "cancel" ? "開いています…" : "解約する"}
+          </Button>
+        )}
       </div>
       {/*
         **押す前に「いつから・いくら」を出す**（T-M8-55）。以前はここが1行で、

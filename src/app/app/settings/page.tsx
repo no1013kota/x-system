@@ -216,6 +216,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               */}
               <div className="mt-7">
                 <PortalButton
+                  cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
                   effects={planChangeEffects({
                     cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
                     currentPeriodEnd: profile.current_period_end,
