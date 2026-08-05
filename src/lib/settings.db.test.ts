@@ -59,7 +59,6 @@ describe("settings (local DB)", () => {
     const uid = await withTransaction((c) => makeUser(c));
     try {
       const settings = await readSettings(db, uid);
-      expect(settings?.displayName).toBeNull();
       expect(settings?.newsConfig.max_items).toBe(20);
       expect(settings?.newsConfig.categories).toContain("ai");
       expect(settings?.notificationConfig.posted).toEqual({ in_app: true, email: false });

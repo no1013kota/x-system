@@ -199,7 +199,6 @@ async function main() {
               trial_ends_at = coalesce($2::timestamptz, now() + interval '7 days'),
               stripe_customer_id = $3,
               stripe_subscription_id = $4,
-              display_name = '確認用アカウント',
               terms_version = '2026-07-20', terms_accepted_at = now(),
               privacy_version = '2026-07-20', privacy_acknowledged_at = now()
         where id = $1`,

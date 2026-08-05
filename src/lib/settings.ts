@@ -93,7 +93,6 @@ export function resolveNewsConfig(raw: unknown): NewsConfig {
 }
 
 export interface UserSettings {
-  displayName: string | null;
   notificationConfig: NotificationConfig;
   newsConfig: NewsConfig;
 }
@@ -103,16 +102,14 @@ export async function readSettings(
   userId: string,
 ): Promise<UserSettings | null> {
   const { rows } = await db.query<{
-    display_name: string | null;
     notification_config: unknown;
     news_config: unknown;
   }>(
-    `select display_name, notification_config, news_config from profiles where id = $1`,
+    `select notification_config, news_config from profiles where id = $1`,
     [userId],
   );
   if (!rows[0]) return null;
   return {
-    displayName: rows[0].display_name,
     notificationConfig: resolveNotificationConfig(rows[0].notification_config),
     newsConfig: resolveNewsConfig(rows[0].news_config),
   };
