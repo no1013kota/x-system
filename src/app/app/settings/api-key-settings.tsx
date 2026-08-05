@@ -573,14 +573,16 @@ export function ApiKeySettings({
           「必要scopeを5つ許可」を**Console側の設定**として書いていたが、そのような設定は存在しない。
           scopeは連携時にこのアプリが要求し、Xの許可画面で本人が承認する）。
         */}
-        <ol className="mt-5 space-y-5 text-sm leading-6">
+        <ol className="mt-5 space-y-6 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">1.</span>
             <div>
-              <p className="font-medium">X Developer Consoleにサインインし、Appを作成</p>
-              <p className="mt-1 text-muted-foreground">
-                Xアカウントでサインインし、開発者契約に同意してAppを作ります。作成するとClient ID等の認証情報が発行されます。
-              </p>
+              <p className="font-medium">開発者アカウントを作る（無料・5分ほど）</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>下のリンクから X Developer Console を開き、ふだんお使いの<strong>Xアカウントでサインイン</strong>します。</li>
+                <li>初回は開発者向けの利用規約（英語）への同意を求められます。内容を確認して同意してください。</li>
+                <li>名前や利用目的などの登録フォームが出た場合は、利用目的に「自分のXアカウントへの投稿の自動化」の旨を入力すれば大丈夫です。</li>
+              </ul>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<Icon name="open_in_new" size={16} />
               </a>
@@ -589,21 +591,31 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">2.</span>
             <div>
-              <p className="font-medium">Appの設定でアプリタイプを選ぶ</p>
-              <p className="mt-1 text-muted-foreground">
-                「Web App / Automated App or Bot」＝Confidential、「Native App / Single Page App」＝Public（PKCE）です。
-                ここで選んだ種類を、上の「Client種別」でも同じに設定してください（迷ったらどちらも
-                Public（PKCE）のままで構いません）。
-              </p>
+              <p className="font-medium">Appを作る</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li><strong>App名</strong>: 好きな名前でかまいません（例: <code className="rounded bg-muted px-1">MyPostTool</code>。他の開発者と重複しない名前にします）。</li>
+                <li><strong>説明・ユースケース</strong>を聞かれたら: 「自分のアカウントへの投稿を自動化するため」の旨を書けば大丈夫です。</li>
+                <li>作成すると、このAppの認証情報（Client ID など）が発行されます。</li>
+              </ul>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">3.</span>
             <div>
-              <p className="font-medium">同じ設定画面でcallback URLを登録</p>
-              <p className="mt-1 text-muted-foreground">
-                プロトコル・末尾スラッシュまで<strong>完全一致</strong>で登録します（下のURLをそのまま貼り付け）。
-              </p>
+              <p className="font-medium">Appの設定で「アプリタイプ」と「callback URL」を登録する</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>作ったAppの設定画面（認証設定）を開きます。</li>
+                <li>
+                  <strong>アプリタイプ</strong>: 「Native App」または「Single Page App」を選びます（＝Public。
+                  上の「Client種別」の既定と同じです）。「Web App / Automated App or Bot」を選んだ場合は
+                  Confidential なので、上の「Client種別」も Confidential に切り替えてください。
+                </li>
+                <li>
+                  <strong>Callback URI / Redirect URL</strong>: 下のURLを<strong>そのまま</strong>貼り付けます。
+                  1文字でも違うと連携できません（httpsとhttp、末尾の / の有無まで完全一致）。
+                </li>
+                <li>Website URL など他の必須欄が出た場合は、ご自身のXプロフィールのURL（例: <code className="rounded bg-muted px-1">https://x.com/あなたのID</code>）で大丈夫です。</li>
+              </ul>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
                 <code className="break-all text-xs select-all sm:text-sm">{callbackUrl}</code>
@@ -622,18 +634,47 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">4.</span>
             <div>
-              <p className="font-medium">Client IDをコピーして、このページの「X APIキー」へ保存</p>
-              <p className="mt-1 text-muted-foreground">
-                Client IDはAppの「Keys and Tokens」にあります。Confidentialを選んだ場合はClient Secretも保存してください。
-              </p>
+              <p className="font-medium">Client IDをコピーして、このページに保存する</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>Appの「<strong>Keys and Tokens</strong>」（キーとトークン）ページを開きます。</li>
+                <li><strong>Client ID</strong> をコピーし、このページ上部の「X APIキー」の入力欄に貼って「Xキーを保存」を押します。</li>
+                <li>手順3で Confidential を選んだ場合だけ、<strong>Client Secret</strong> も同じ画面からコピーして保存します（Publicなら不要）。</li>
+                <li>同じページには API Key や Bearer Token など他の値も並びますが、<strong>使うのは Client ID（と必要なら Client Secret）だけ</strong>です。</li>
+              </ul>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">5.</span>
             <div>
-              <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
-              <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
+              <p className="font-medium">支払い（クレジット）を設定する</p>
+              <p className="mt-1 text-muted-foreground">
+                X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Consoleの支払い設定でカードを登録し、
+                クレジット（米ドル）を購入しておくと、投稿のたびにそこから差し引かれます。
+              </p>
+              <dl className="mt-2 space-y-2 rounded-lg border bg-muted/40 p-3 text-xs leading-5">
+                <div>
+                  <dt className="font-bold">かかる費用の目安（2026年8月時点の公式単価）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    投稿1件 約$0.015（約2円）／URL付き投稿1件 約$0.200（約30円）。
+                    たとえば1日3投稿を1か月続けると約$1.35（約200円）です。単価は変わることがあるので、購入前にConsoleの表示を確認してください。
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-bold">自動チャージ（auto-recharge）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    残高が設定額を下回ると自動でカードから買い足す機能です。便利ですが<strong>気づかないうちに課金が続く</strong>ため、
+                    最初はオフのまま少額（例: $5〜10）を手動購入するのがおすすめです。
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-bold">支出上限（spending limit）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    請求期間ごとの上限額です。<strong>必ず設定してください</strong>——上限に達するとAPIが止まるだけなので、
+                    想定外の高額請求を防ぐ安全装置になります（止まった場合はチャージすれば再開できます）。
+                  </dd>
+                </div>
+              </dl>
+              <a className="mt-2 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
                 X公式の料金・予算設定を確認<Icon name="open_in_new" size={16} />
               </a>
             </div>

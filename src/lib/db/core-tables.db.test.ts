@@ -116,7 +116,7 @@ describe("core tables schema & constraints", () => {
         `update profiles set updated_at = to_timestamp(0) where id = $1`,
         [id],
       );
-      await c.query(`update profiles set display_name = 'x' where id = $1`, [id]);
+      await c.query(`update profiles set cancel_at_period_end = true where id = $1`, [id]);
       const { rows } = await c.query<{ updated_at: Date }>(
         `select updated_at from profiles where id = $1`,
         [id],

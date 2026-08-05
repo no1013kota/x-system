@@ -181,7 +181,7 @@ describe("RLS policies & ownership trigger", () => {
       );
       // authenticated has no UPDATE grant/policy → denied
       await expectViolation(c, () =>
-        c.query(`update profiles set display_name = 'x' where id = $1`, [a.uid]),
+        c.query(`update profiles set cancel_at_period_end = true where id = $1`, [a.uid]),
       );
     });
   });

@@ -174,7 +174,6 @@ describe("Supabase SSR auth session (local)", () => {
     const customized = await admin!
       .from("profiles")
       .update({
-        display_name: "keep-me",
         notification_config: customizedNotification,
       })
       .eq("id", user!.id);
@@ -183,13 +182,12 @@ describe("Supabase SSR auth session (local)", () => {
     await ensureUserProfileWithClient(user!, admin!);
     const repaired = await admin!
       .from("profiles")
-      .select("id,display_name,notification_config")
+      .select("id,notification_config")
       .eq("id", user!.id);
     expect(repaired.error).toBeNull();
     expect(repaired.data).toEqual([
       {
         id: user!.id,
-        display_name: "keep-me",
         notification_config: customizedNotification,
       },
     ]);
