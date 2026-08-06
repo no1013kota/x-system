@@ -74,6 +74,20 @@ function messageFor(code: string, reason: string | null): OAuthErrorMessage {
   }
   // provider_error は「X側との通信が失敗した」と判明している場合のみ。原因を断定して案内できる。
   if (code === "provider_error") {
+    if (reason === "token_auth_failed") {
+      return {
+        // Xが「アプリの認証情報が足りない」と拒否した状態（401 unauthorized_client）。
+        // 手順どおり「Web App, Automated App or Bot」で作ったAppはClient Secretが必須（T-M8-63）。
+        body: "Xがアプリの認証情報を受け付けませんでした。Developer Consoleで「Web App, Automated App or Bot」として作ったAppは、Client IDに加えてClient Secretの保存が必要です。「X APIキー」でClient Secretも保存してから、もう一度連携してください。",
+        action: { href: API_KEYS_TAB, label: "X APIキーの設定を開く" },
+      };
+    }
+    if (reason === "token_grant_invalid") {
+      return {
+        body: "連携手続きの有効時間が切れたため完了できませんでした（Xの許可画面で時間が経った場合などに起きます）。もう一度最初から連携をお試しください。",
+        action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },
+      };
+    }
     return {
       body: "X側との通信に失敗したため連携を完了できませんでした。時間をおいて、もう一度お試しください。",
       action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },

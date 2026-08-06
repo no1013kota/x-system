@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   AI_SECRET_MIN_LENGTH,
   X_CLIENT_ID_MIN_LENGTH,
+  X_CLIENT_SECRET_MIN_LENGTH,
   type AiKeyProvider,
 } from "@/lib/api-keys";
 import {
@@ -145,6 +146,7 @@ export function ApiKeySettings({
   );
   const toast = useToast();
   const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [aiSecrets, setAiSecrets] = useState<Record<AiKeyProvider, string>>({
     anthropic: "",
     google: "",
@@ -154,8 +156,12 @@ export function ApiKeySettings({
   /**
    * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
    * 以前は `clientId.length < 5` が直書きで、何文字必要かが画面から読めなかった。
+   * Client Secret は空（Native App等のpublic client）か、入れるなら最小長以上（T-M8-63）。
    */
-  const xSavable = clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH;
+  const secretTrimmed = clientSecret.trim();
+  const xSavable =
+    clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
+    (secretTrimmed.length === 0 || secretTrimmed.length >= X_CLIENT_SECRET_MIN_LENGTH);
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -169,16 +175,17 @@ export function ApiKeySettings({
   function saveX() {
     startTransition(async () => {
       /**
-       * 常に Public（PKCE）として保存する。現在の X Developer Console には Public /
-       * Confidential を選ぶ場所が無く、Client ID のみで連携できることを利用者が実機で
-       * 確認した（2026-08-06）。以前あった「Client種別」セレクタと Client Secret 欄は、
-       * 利用者に選ばせても答えが存在しないため撤去した。Server Action と OAuth 側は
-       * confidential の既存行も引き続き扱える（保存済みキーを壊さない）。
+       * 種別は**Client Secretの有無から導出する**（T-M8-63）。現在のDeveloper Consoleに
+       * Public/Confidentialを選ぶUIは無いが、Type of Appで「Web App, Automated App or Bot」
+       * を選ぶとconfidential clientになり、**token交換にClient Secretが必須**
+       * （実測: Secretなしの交換は 401 unauthorized_client で拒否された・2026-08-06）。
+       * 「Client種別」という利用者が答えられない質問を復活させず、入力の有無で決める。
        */
+      const secret = clientSecret.trim();
       const result = await saveXApiKey({
         client_id: clientId,
-        client_secret: null,
-        client_type: "public",
+        client_secret: secret.length > 0 ? secret : null,
+        client_type: secret.length > 0 ? "confidential" : "public",
       });
       if (result.status === "error" || !result.displayHint) {
         showError(result.message);
@@ -195,6 +202,7 @@ export function ApiKeySettings({
         },
       }));
       setClientId("");
+      setClientSecret("");
       // **次にやること（X連携）まで出す**（T-M8-59）。保存だけでは投稿できず、
       // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AI用途を開く」と同じ形。
       toast.show({
@@ -384,7 +392,7 @@ export function ApiKeySettings({
           <div>
             <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              OAuth 2.0のClient IDを登録します。差し替えると、このキーで連携済みのXアカウントは再認証が必要になります。{" "}
+              OAuth 2.0のClient IDとClient Secretを登録します。差し替えると、このキーで連携済みのXアカウントは再認証が必要になります。{" "}
               <a className="text-info-fg underline underline-offset-2" href="#x-guide-heading">
                 取得・設定手順を見る
               </a>
@@ -395,8 +403,8 @@ export function ApiKeySettings({
         {keys.x ? <div className="mt-5"><SavedKeySummary keyState={keys.x} /></div> : null}
 
         {/*
-          入力は Client ID の1つだけ（T-M8-62）。現在のConsoleに Public / Confidential の
-          選択は無いため「Client種別」セレクタを撤去した（saveX のコメント参照）。
+          「Client種別」セレクタは置かない（T-M8-62。現在のConsoleにPublic/Confidentialの
+          選択は無い）。種別はSecretの有無から導出する（saveX のコメント参照・T-M8-63）。
         */}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="space-y-2 text-sm font-medium">
@@ -410,6 +418,22 @@ export function ApiKeySettings({
               type="password"
               value={clientId}
             />
+          </label>
+          <label className="space-y-2 text-sm font-medium">
+            Client Secret
+            <input
+              autoComplete="new-password"
+              className="h-11 w-full rounded-lg border bg-background px-3 font-mono text-sm"
+              disabled={isPending}
+              onChange={(event) => setClientSecret(event.target.value)}
+              placeholder="Client Secretを入力"
+              type="password"
+              value={clientSecret}
+            />
+            <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+              手順どおり「Web App, Automated App or Bot」でAppを作った場合は<strong>必須</strong>です
+              （空のまま保存すると、連携時にXに拒否されます）。
+            </span>
           </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -434,9 +458,11 @@ export function ApiKeySettings({
         */}
         {!xSavable ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            {clientId.trim().length > 0
-              ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
-              : "Client ID を入力すると保存できます。"}
+            {clientId.trim().length === 0
+              ? "Client ID を入力すると保存できます。"
+              : clientId.trim().length < X_CLIENT_ID_MIN_LENGTH
+                ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
+                : `Client Secretは${X_CLIENT_SECRET_MIN_LENGTH}文字以上です（いま${secretTrimmed.length}文字）。`}
           </p>
         ) : null}
       </section>
@@ -528,10 +554,12 @@ export function ApiKeySettings({
         {/*
           手順は**利用者が実機のConsoleを操作して確認した構成**に合わせる（T-M8-62・2026-08-06）:
           ①開発者アカウント → ②AppタブでApp作成（Environment: Production）→ ③OAuth 2.0の
-          セットアップ（Read and Write / Web App, Automated App or Bot）→ ④Client ID → ⑤Credit。
-          scopeはConsole側の設定ではない（連携時にこのアプリが要求し、Xの許可画面で本人が承認する。
-          T-M8-59）。Consumer Key・Bearer Token・Client Secret は使わないことを明記する——
+          セットアップ（Read and Write / Web App, Automated App or Bot）→ ④Client ID＋Secret →
+          ⑤Credit。scopeはConsole側の設定ではない（連携時にこのアプリが要求し、Xの許可画面で
+          本人が承認する。T-M8-59）。Consumer Key・Bearer Token は使わないことを明記する——
           「どれをコピーすればいいのか」が非エンジニアの最初の詰まりどころのため。
+          **Client Secret は必要**（T-M8-63。「Web App, Automated App or Bot」=confidential client
+          で、Secretなしのtoken交換は401で拒否されることを実測で確認した）。
         */}
         <ol className="mt-5 space-y-6 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
@@ -558,7 +586,7 @@ export function ApiKeySettings({
                 <li><strong>説明・ユースケース</strong>を聞かれたら: 「自分のアカウントへの投稿を自動化するため」の旨を書けば大丈夫です。</li>
                 <li>
                   作成すると <strong>Consumer Key（API KeyとSecret）</strong>や<strong> Bearer Token </strong>が表示されますが、
-                  <strong>このアプリでは使いません</strong>。控えなくて大丈夫です（使うのは手順4のClient IDだけ）。
+                  <strong>このアプリでは使いません</strong>。控えなくて大丈夫です（使うのは手順3の後に発行される Client ID と Client Secret です）。
                 </li>
               </ul>
             </div>
@@ -595,11 +623,11 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">4.</span>
             <div>
-              <p className="font-medium">Client IDをコピーして、このページに保存する</p>
+              <p className="font-medium">Client IDとClient Secretをコピーして、このページに保存する</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>セットアップを終えると <strong>Client ID</strong> が表示されます（Appの「Keys and Tokens」ページからも確認できます）。</li>
-                <li><strong>Client ID</strong> をコピーし、このページ上部の「X APIキー」の入力欄に貼って「Xキーを保存」を押します。</li>
-                <li><strong>Client Secret も表示されますが、使いません</strong>。控えなくて大丈夫です。</li>
+                <li>セットアップを終えると <strong>Client ID</strong> と <strong>Client Secret</strong> が表示されます。<strong>Client Secretはこの1回しか表示されない</strong>ので、この場で両方コピーします（Client IDはAppの「Keys and Tokens」ページからも確認できます）。</li>
+                <li>このページ上部の「X APIキー」の入力欄に<strong>両方とも</strong>貼って、「Xキーを保存」を押します。</li>
+                <li>Client Secretを控え損ねた場合は、「Keys and Tokens」ページで<strong>再発行（Regenerate）</strong>できます。</li>
               </ul>
             </div>
           </li>
