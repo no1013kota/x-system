@@ -62,6 +62,21 @@ export const PRODUCT_NAMES = {
   STRIPE_PRICE_PREMIUM_MONTHLY: "プレミアムプラン",
 };
 
+/**
+ * Stripe側の商品説明（T-M8-65）。**Portalの「プランを変更」画面で商品名の下にそのまま出る**。
+ * 説明が無いと、プラン変更画面には名前と金額しか出ず、何が違うのかその場で判断できない
+ * （利用者の要望）。文言は `/plans` のプランカード（`src/app/plans/page.tsx`）と揃え、
+ * 数字（アカウント数・月間上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
+ */
+export const PRODUCT_DESCRIPTIONS = {
+  STRIPE_PRICE_STANDARD_MONTHLY:
+    "まずは1つのXアカウントを着実に運用。X APIキー・生成AIキーはご自身で用意（利用料は実費）。月間の利用上限なし。",
+  STRIPE_PRICE_MD_MONTHLY:
+    "Xアカウント3つまで＋AIへの指示文（ベースmd・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+  STRIPE_PRICE_PREMIUM_MONTHLY:
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: 通常投稿200・URL付き20・文章生成100・画像20。",
+};
+
 const ACCOUNT_SCOPED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_STANDARD_MONTHLY",
@@ -259,14 +274,21 @@ async function main() {
 
   const stripe = new Stripe(account.STRIPE_SECRET_KEY, { apiVersion: API_VERSION });
 
-  // 商品名をアプリの表示名へ揃える（違うときだけ更新。何度実行しても同じ結果）。
+  // 商品名・説明をアプリの表示へ揃える（違うときだけ更新。何度実行しても同じ結果）。
   const renamed = [];
+  const described = [];
   for (const [envName, name] of Object.entries(PRODUCT_NAMES)) {
     const price = await stripe.prices.retrieve(account[envName], { expand: ["product"] });
     const product = price.product;
-    if (typeof product !== "string" && !product.deleted && product.name !== name) {
-      await stripe.products.update(product.id, { name });
-      renamed.push(`${product.name} → ${name}`);
+    if (typeof product === "string" || product.deleted) continue;
+    const description = PRODUCT_DESCRIPTIONS[envName];
+    const patch = {};
+    if (product.name !== name) patch.name = name;
+    if (product.description !== description) patch.description = description;
+    if (Object.keys(patch).length > 0) {
+      await stripe.products.update(product.id, patch);
+      if (patch.name) renamed.push(`${product.name} → ${name}`);
+      if (patch.description) described.push(name);
     }
   }
   // **`No such price` を運営者に分かる言葉へ変える。** 生のStripeエラーだけだと、
@@ -320,6 +342,7 @@ async function main() {
         // どの変数から値を読んだか（別環境の鍵を黙って使っていないことを確認できるように）。
         valueSources: sourceUsed,
         productNames: renamed.length > 0 ? renamed : "既に揃っています",
+        productDescriptions: described.length > 0 ? `更新: ${described.join("・")}` : "既に揃っています",
         features,
       },
       null,
