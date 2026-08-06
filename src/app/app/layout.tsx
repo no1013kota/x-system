@@ -61,15 +61,28 @@ export default async function AppLayout({
   let usageBanner: AppBanner | null = null;
   let dailyPostBanner: AppBanner | null = null;
   if (user) {
-    // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
-    activeAccountId = await resolveActiveXAccountForUser(user.id);
-    // ヘッダ通知ベル用の初期データ（未読数＋先頭ページ, T-M2-20）。
-    const [unread, page, allAccounts, xApiKeyStatus] = await Promise.all([
-      countUnreadNotificationsForUser(user.id),
-      listNotificationsForUser(user.id),
-      listXAccounts(user.id),
-      getXApiKeyStatusForUser(user.id),
-    ]);
+    /**
+     * user.id にしか依存しない取得は1波にまとめる（T-M8-67）。以前は5段の直列awaitで、
+     * このレイアウトは全画面の初回表示と操作後の router.refresh() のたびに再実行されるため、
+     * 直列往復がそのまま全操作の体感遅延に乗っていた。
+     */
+    const supabase = await createSupabaseServerClient();
+    const [resolvedAccountId, unread, page, allAccounts, xApiKeyStatus, result] =
+      await Promise.all([
+        // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
+        resolveActiveXAccountForUser(user.id),
+        // ヘッダ通知ベル用の初期データ（未読数＋先頭ページ, T-M2-20）。
+        countUnreadNotificationsForUser(user.id),
+        listNotificationsForUser(user.id),
+        listXAccounts(user.id),
+        getXApiKeyStatusForUser(user.id),
+        supabase
+          .from("profiles")
+          .select("plan, subscription_status, trial_ends_at, stripe_customer_id")
+          .eq("id", user.id)
+          .maybeSingle<AppShellProfileRow>(),
+      ]);
+    activeAccountId = resolvedAccountId;
     unreadCount = unread;
     notifications = page.items;
     notificationCursor = page.nextCursor;
@@ -81,12 +94,6 @@ export default async function AppLayout({
         handle: account.handle,
         profileImageUrl: account.profileImageUrl,
       }));
-    const supabase = await createSupabaseServerClient();
-    const result = await supabase
-      .from("profiles")
-      .select("plan, subscription_status, trial_ends_at, stripe_customer_id")
-      .eq("id", user.id)
-      .maybeSingle<AppShellProfileRow>();
     if (result.data) {
       profile = {
         stripeCustomerId: result.data.stripe_customer_id,
@@ -103,16 +110,17 @@ export default async function AppLayout({
           })),
           xApiKeyStatus,
         });
-        // 利用枠100%到達の常設バナー（premiumのみ・notification_config非依存, 要件03 §8・T-M6-13）。
-        usageBanner = usageLimitBanner(
-          await loadUsageSummaryForUser(user.id, result.data.plan),
-        );
-        // 日次投稿上限（全プラン共通・Xアカウント単位）に達したことの常設バナー
-        // （要決定D-15・案A, T-M8-26）。**上限は選択中のアカウント単位**なので、
-        // 切り替えると別のアカウントの状況が出る（それが正しい）。
-        if (activeAccountId) {
+        // 利用枠100%到達（premium・要件03 §8）と日次投稿上限（要決定D-15・T-M8-26。
+        // **上限は選択中のアカウント単位**なので切り替えると別アカウントの状況が出る）の
+        // 常設バナー。互いに独立なので並列に取得する。
+        const [usageSummary, todaysPosts] = await Promise.all([
+          loadUsageSummaryForUser(user.id, result.data.plan),
+          activeAccountId ? loadTodaysPostCount(activeAccountId) : Promise.resolve(null),
+        ]);
+        usageBanner = usageLimitBanner(usageSummary);
+        if (todaysPosts !== null) {
           dailyPostBanner = dailyPostLimitBanner({
-            todaysPosts: await loadTodaysPostCount(activeAccountId),
+            todaysPosts,
             dailyLimit: env.X_DAILY_POST_LIMIT,
           });
         }

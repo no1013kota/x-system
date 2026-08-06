@@ -21,20 +21,24 @@ export const metadata: Metadata = { title: "スケジュール | Space AI" };
 
 const pooledDb = pooledQueryable();
 
-/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。 */
-async function availableImageProviders(userId: string, plan: string | null): Promise<string[]> {
+/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。
+ *  クエリと判定を分離してあるのは、plan取得と並列に走らせるため（T-M8-67）。 */
+function imageKeyRowsQuery(userId: string) {
+  return getPool().query<{ provider: string }>(
+    `select provider from user_api_keys
+      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
+    [userId],
+  );
+}
+
+function imageProvidersFor(plan: string | null, keyRows: { provider: string }[]): string[] {
   if (plan === "premium") {
     const providers: string[] = [];
     if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
     if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
     return providers;
   }
-  const { rows } = await getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
-  return rows.map((r) => r.provider);
+  return keyRows.map((r) => r.provider);
 }
 
 export default async function SchedulePage() {
@@ -56,7 +60,9 @@ export default async function SchedulePage() {
   // どちらのURLでも両方を出す。ここでは下書きも読み込む。
   let drafts: DraftView[] = [];
   if (activeXAccountId) {
-    const [loaded, meta] = await Promise.all([
+    // 4取得は相互に独立（T-M8-67。以前は slots+meta → providers → drafts の3段直列で、
+    // 停止/再開/削除/保存のたびの router.refresh() でも毎回この直列分を待っていた）。
+    const [loaded, meta, keyRows, draftRows] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
       getPool()
         .query<{ plan: string | null; consented: boolean; handle: string }>(
@@ -68,12 +74,15 @@ export default async function SchedulePage() {
           [activeXAccountId, CURRENT_AUTOMATION_CONSENT_VERSION],
         )
         .then((r) => r.rows[0]),
+      imageKeyRowsQuery(user.id),
+      // この画面が描画するのは先頭5件だけ（下のカード）。全件は取得しない。
+      listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
     ]);
     slots = loaded;
-    imageProviders = await availableImageProviders(user.id, meta?.plan ?? null);
+    imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
     accountHandle = meta?.handle ?? null;
-    drafts = await listDraftsForAccount(pooledDb, activeXAccountId, "drafts");
+    drafts = draftRows;
   }
 
   return (

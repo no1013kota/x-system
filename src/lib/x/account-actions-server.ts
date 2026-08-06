@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { getXAppCredentialsForUser } from "../api-key-store-server";
 import { decrypt } from "../crypto";
 import { pooledQueryable, runInPooledTx } from "../db/pool";
@@ -110,9 +112,12 @@ export function setActiveXAccountForUser(
   return setActiveXAccount(xAccountId, userId, pooledDb);
 }
 
-/** /app系レイアウト読込時のフォールバック解決＋永続化。選択中の有効なactive idを返す（無ければnull）。 */
-export function resolveActiveXAccountForUser(
-  userId: string,
-): Promise<string | null> {
-  return resolveActiveXAccount(pooledDb, userId);
-}
+/**
+ * /app系レイアウト読込時のフォールバック解決＋永続化。選択中の有効なactive idを返す（無ければnull）。
+ *
+ * React `cache()` でリクエスト内メモ化する（T-M8-67）: layout と各ページの両方が呼ぶため、
+ * 素のままだと同じ解決処理（1〜2クエリ＋条件次第でUPDATE）が毎画面2回走っていた。
+ */
+export const resolveActiveXAccountForUser = cache(
+  (userId: string): Promise<string | null> => resolveActiveXAccount(pooledDb, userId),
+);

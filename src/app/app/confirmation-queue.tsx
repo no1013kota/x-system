@@ -15,14 +15,21 @@ import type { DraftView } from "@/lib/drafts";
  * 見た目は新デザイン（T-M8-06）。器は `components/ui/card` を使い、余白・角丸を直書きしない。
  */
 
-export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
+export function ConfirmationQueueCard({
+  drafts,
+  total,
+}: {
+  drafts: DraftView[];
+  /** 総数（表示はlimit付きで取得するため、件数はこちらが正・T-M8-67）。 */
+  total: number;
+}) {
   if (drafts.length === 0) {
     return (
       <Card>
         <CardBody>
           <CardTitle>確認待ちの下書き</CardTitle>
           <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">
-            確認待ちの下書きはありません。新しい投稿を作成しましょう。
+            確認待ちの下書きはありません。
           </p>
           <Link className={`mt-3.5 ${primaryLinkClassName}`} href="/app/posts?tab=create">
             今すぐ作成
@@ -34,7 +41,7 @@ export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>確認待ちの下書き（{drafts.length}）</CardTitle>
+        <CardTitle>確認待ちの下書き（{total}）</CardTitle>
         <Link
           className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
           href="/app/posts?tab=drafts"
@@ -71,6 +78,12 @@ export function ConfirmationQueueCard({ drafts }: { drafts: DraftView[] }) {
             );
           })}
         </ul>
+        {total > drafts.length ? (
+          // 全件は取得しない（T-M8-67）。切り捨てを黙らせず、残りの行き先を示す。
+          <p className="mt-2 text-[11.5px] text-ink-3">
+            ほか{total - drafts.length}件は「すべて見る」からご確認ください。
+          </p>
+        ) : null}
       </CardBody>
     </Card>
   );
