@@ -298,8 +298,9 @@ export function XAccountsSettings({
         </div>
 
         {!xApiKeyRegistered ? (
+          // 誘導はボタン「先にX APIキーを登録」と同内容なので1文に留める（T-M8-66）。
           <Notice className="mt-4" tone="warn">
-            Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
+            Xアカウントの連携には、先に「APIキー」タブでX APIキーの登録が必要です。
           </Notice>
         ) : null}
 
@@ -313,8 +314,9 @@ export function XAccountsSettings({
 
       {connectedAccounts.length === 0 ? (
         <EmptyNotice>
+          {/* 停止中の存在は直下のdetailsのsummaryが伝えるため、括弧書きで繰り返さない（T-M8-66）。 */}
           {inactiveAccounts.length > 0
-            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください（停止中のアカウントは下に畳んであります）。"
+            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください。"
             : "まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。"}
         </EmptyNotice>
       ) : (
@@ -328,9 +330,7 @@ export function XAccountsSettings({
           <summary className="cursor-pointer text-[13px] text-ink-2">
             停止中のアカウント {inactiveAccounts.length} 件（投稿履歴と実績は残っています）
           </summary>
-          <p className="mt-2 text-[12.5px] leading-5 text-ink-3">
-            もう一度使うときは「有効化」または「再連携」を押してください。連携中の一覧へ戻ります。
-          </p>
+          {/* 操作は各行の「有効化」「再連携」ボタン自体が示す。前置きの説明は置かない（T-M8-66）。 */}
           <ul className="mt-3 space-y-3">{inactiveAccounts.map(renderAccount)}</ul>
         </details>
       ) : null}
@@ -362,10 +362,10 @@ function DisconnectButton({
           <AlertDialog.Title className={cardTitleClassName}>
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
+          {/* 破壊的操作の確認なので影響の要旨は残す。内部概念（同意の取り消し）とデータ列挙は削る（T-M8-66）。 */}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            解除すると、このアカウントへの投稿と自動実行を停止し、自動投稿の同意も取り消します。
-            下書き・投稿履歴・実績・ベースmdなどのデータは削除されません。再連携すればいつでも
-            再開できます。
+            このアカウントへの投稿と自動実行を停止します。下書きや履歴などのデータは残り、
+            再連携すればいつでも再開できます。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close

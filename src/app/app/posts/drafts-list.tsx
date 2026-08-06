@@ -309,11 +309,12 @@ function DraftCard({
       ) : null}
 
       {hasCreationHistory || unresolvedPosting ? (
+        // 押せない理由と次の一手だけを書く。複製の仕組みの説明は読まなくても操作できる（T-M8-66）。
         <p className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
-          Xに作成されたポストの記録があるため、この下書きは破棄できません（監査のため保持します）。
+          Xに投稿された記録が残っているため、この下書きは破棄できません。
           {cloneEligible
-            ? "投稿は「新しい下書きとして再試行」からやり直せます。本文と画像を複製した新しい下書きが作られ、この下書きは失敗記録として残ります。"
-            : "まずX上の残ったポストの扱いを確定してください。"}
+            ? "「新しい下書きとして再試行」からやり直せます。"
+            : "まずX上に残ったポストの扱いを確定してください。"}
         </p>
       ) : null}
 
@@ -612,9 +613,9 @@ function PublishButton({
               </ul>
             </Notice>
           ) : null}
+          {/* 失敗時のロールバックは実行後にバッジと失敗理由で伝わる。操作前に読ませない（T-M8-66）。 */}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            スレッドをXへ順に投稿します。途中で失敗した場合は、作成済みのポストを自動で削除します。
-            <span className="font-medium text-foreground">削除したポストはX上で復元できません。</span>
+            スレッドをXへ順に投稿します。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
@@ -651,7 +652,7 @@ function DiscardButton({
             下書きを破棄しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            破棄すると下書き一覧から外れます。生成した画像は削除されます。この操作は取り消せません。
+            下書きと生成画像を削除します。この操作は取り消せません。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>

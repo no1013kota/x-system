@@ -142,10 +142,9 @@ function NewsForm({ config }: { config: NewsConfig }) {
   return (
     <Card as="section" className="px-5 py-4">
       <CardTitle>ニュース通知</CardTitle>
+      {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
-        設定条件に一致する新着が0件の時刻には通知は届きません。ここでのテーマ・インパクト・表示件数は
-        一覧表示にも適用されます。
+        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定はニュース一覧の表示にも使われます。
       </p>
 
       <fieldset className="mt-4">

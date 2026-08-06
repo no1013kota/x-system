@@ -19,6 +19,8 @@ export interface PremiumUsageLimits {
 export interface PlanDefinition {
   id: PlanId;
   displayName: string;
+  /** 1行の売り文句。ランディングと/plansで共有する（別々に持つと文言が食い違う・T-M8-66）。 */
+  tagline: string;
   monthlyPriceJpy: number;
   xAccountLimit: number;
   /** null = no app-side monthly limits (BYOK plans). */
@@ -31,6 +33,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   standard: {
     id: "standard",
     displayName: "通常プラン",
+    tagline: "まずは1つのXアカウントを着実に運用",
     monthlyPriceJpy: 500,
     xAccountLimit: 1,
     usageLimits: null,
@@ -39,6 +42,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   md: {
     id: "md",
     displayName: "mdプラン",
+    tagline: "複数アカウントと発信設計を細かく管理",
     monthlyPriceJpy: 1000,
     xAccountLimit: 3,
     usageLimits: null,
@@ -47,6 +51,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   premium: {
     id: "premium",
     displayName: "プレミアムプラン",
+    tagline: "APIキーなしで、運用をまとめておまかせ",
     monthlyPriceJpy: 2980,
     xAccountLimit: 3,
     usageLimits: {

@@ -27,7 +27,7 @@ const VALUE_PROPS: { title: string; body: string }[] = [
   },
   {
     title: "予定時刻に自動投稿",
-    body: "同意した内容だけを指定時刻に自動投稿。thread途中失敗時は自動で取り消します。",
+    body: "同意した内容だけを、指定した時刻に自動で投稿します。",
   },
   {
     title: "実績を分析して改善",
@@ -35,11 +35,6 @@ const VALUE_PROPS: { title: string; body: string }[] = [
   },
 ];
 
-const PLAN_TAGLINE: Record<string, string> = {
-  standard: "まずは1アカウントを着実に",
-  md: "複数アカウントを細かく管理",
-  premium: "APIキー不要でおまかせ運用",
-};
 
 export default function Home() {
   return (
@@ -95,8 +90,9 @@ export default function Home() {
         {/* 3プラン */}
         <section className="mx-auto w-full max-w-6xl px-4 py-12">
           <h2 className="text-center text-2xl font-bold tracking-tight">料金プラン</h2>
+          {/* トライアルはヒーロー直下とカード登録注記に記載済み（T-M8-66）。 */}
           <p className="mt-3 text-center text-sm text-muted-foreground">
-            表示価格はすべて税込月額です。初回に限り7日間の無料トライアルをご利用いただけます。
+            表示価格はすべて税込月額です。
           </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {PLAN_IDS.map((planId) => {
@@ -105,7 +101,7 @@ export default function Home() {
               return (
                 <article className="flex flex-col rounded-card border bg-card p-6 shadow-sm" key={planId}>
                   <h3 className="text-lg font-semibold">{plan.displayName}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{PLAN_TAGLINE[planId]}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{plan.tagline}</p>
                   <p className="mt-4">
                     <span className="text-3xl font-bold">{yen(plan.monthlyPriceJpy)}</span>
                     <span className="ml-1 text-sm text-muted-foreground">円／月（税込）</span>
@@ -122,8 +118,8 @@ export default function Home() {
                     }`}
                   >
                     {byok
-                      ? "X API・生成AI APIの利用料は、Space AIの月額とは別に各提供元から請求されます（ユーザー負担）。"
-                      : "生成・投稿にかかるX API・生成AI APIの費用は追加負担なし（月間利用枠あり）。"}
+                      ? "X API・生成AI APIの利用料は別途ユーザー負担です。"
+                      : "API費用の追加負担なし（月間利用枠あり）。"}
                   </p>
                 </article>
               );

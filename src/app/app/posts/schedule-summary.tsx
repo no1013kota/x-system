@@ -16,8 +16,6 @@ const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
  * （同じ編集UIを2か所に置くと、片方だけ直す事故が起きる）。
  */
 export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
-  const enabled = slots.filter((s) => s.enabled);
-
   return (
     <section
       aria-label="スケジュール"
@@ -65,9 +63,6 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11.5px] text-ink-3">
-            有効なスケジュールは {enabled.length} 件です。実行できる時刻は9:00〜22:00の30分刻みです。
-          </p>
         </>
       )}
     </section>

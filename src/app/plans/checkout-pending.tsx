@@ -61,20 +61,18 @@ export function CheckoutPending({ supportEmail }: { supportEmail: string | null 
             : "数秒ごとに自動で確認しています。"}
         </span>
       </div>
+      {/* この画面では申込ボタン自体が出ないため、二重申込の警告は問い合わせ文へ畳む（T-M8-66）。 */}
       <p className="mt-4 text-xs leading-5 text-success-fg">
-        カードのお支払いは完了しています。反映待ちの間に
-        <strong className="mx-1">重ねてお申し込みしないでください</strong>
-        （二重に請求される場合があります）。5分以上変わらない場合は
+        5分以上反映されない場合は、再度お申し込みせず
         {supportEmail ? (
           <>
-            、
             <a className="mx-1 font-medium underline underline-offset-4" href={`mailto:${supportEmail}`}>
               {supportEmail}
             </a>
             までお問い合わせください。
           </>
         ) : (
-          "、お問い合わせください。"
+          "お問い合わせください。"
         )}
       </p>
     </Notice>

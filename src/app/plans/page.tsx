@@ -28,11 +28,6 @@ interface PlansPageProps {
   searchParams: Promise<{ checkout?: string; confirmed?: string }>;
 }
 
-const PLAN_TAGLINE: Record<PlanId, string> = {
-  standard: "まずは1つのXアカウントを着実に運用",
-  md: "複数アカウントと発信設計を細かく管理",
-  premium: "APIキーなしで、運用をまとめておまかせ",
-};
 
 /**
  * カードに並べる特長（デザイン §料金プラン）。
@@ -156,9 +151,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               <h1 className="text-[26px] font-bold tracking-tight text-ink sm:text-[30px]">
                 あなたの運用に合うプランを選択
               </h1>
-              <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-                表示価格はすべて税込です。初回のお申し込みに限り、7日間の無料トライアルをご利用いただけます。
-              </p>
+              {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチと「お申し込み前の確認」にある（T-M8-66）。 */}
             </div>
           </header>
 
@@ -194,9 +187,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
               お申し込み前の確認
             </h2>
-            <p className="mt-2 text-foreground/80">
-              7日間無料でお試しいただけます。開始にはカード登録（Stripe）が必要で、無料期間中に解約すれば料金はかかりません。
-            </p>
+            {/* リード文は直下のdl（無料期間・解約方法）の言い直しだった（T-M8-66）。 */}
             <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
               {CONFIRMATION_ITEMS.map((item) => (
                 <div className="sm:flex sm:gap-2" key={item.term}>
@@ -245,7 +236,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                   ) : null}
                   <div>
                     <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
-                    <p className="text-[11.5px] text-ink-3">{PLAN_TAGLINE[planId]}</p>
+                    <p className="text-[11.5px] text-ink-3">{plan.tagline}</p>
                   </div>
                   <p className="flex items-baseline gap-0.5">
                     <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
@@ -273,9 +264,10 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             className="flex items-start gap-2.5 rounded-card bg-warn-bg px-4 py-3"
           >
             <Icon className="mt-0.5 shrink-0 text-warn-fg" name="error" size={18} />
+            {/* 申込前のBYOK追加費用の明示（要件03）は1文で満たす。トライアル解約時の扱いは確認dlにある（T-M8-66）。 */}
             <p className="text-xs leading-[1.65] text-ink-2">
-              <strong className="font-bold">BYOKプラン（通常・md）のご注意：</strong>
-              X APIの利用料（従量課金）と生成AI APIの従量課金が別途発生します。プレミアムプランではAPI費用の追加負担はありません。トライアル期間中に解約された場合、課金は発生しません。
+              <strong className="font-bold">通常・mdプランのご注意：</strong>
+              X APIと生成AI APIの利用料が別途発生します（プレミアムプランは追加負担なし）。
             </p>
           </section>
 
@@ -329,9 +321,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 </ul>
               </div>
             </div>
-            <p className="mt-3.5 text-[11px] leading-5 text-ink-3">
-              決済はStripeホスト型Checkoutで安全に行われます。プラン変更・解約・カード更新はStripeカスタマーポータルから。専用のオンボーディング画面はなく、設定が不足している場合はホームの初期設定ガイドとエラー表示でご案内します。
-            </p>
+            {/* Stripeの安全性はSIGNUP_FLOW step2、解約方法は確認dl、不足時の案内はstep3に記載済み（T-M8-66）。 */}
           </section>
 
             </>

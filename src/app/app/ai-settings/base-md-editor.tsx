@@ -10,7 +10,6 @@ import {
 } from "@/app/actions/base-md";
 import { useToast } from "@/components/ui/toast";
 import type { BaseMdVersionView } from "@/lib/base-md";
-import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
 import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -189,9 +188,9 @@ export function BaseMdEditor({
         ベースmdの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
       </p>
 
-      {/* セクション1〜4の上書き注意（常時） */}
+      {/* セクション1〜4の上書き注意（常時）。対処の助言は自明なので事実と復元手段だけ（T-M8-66）。 */}
       <Notice tone="warn">
-        手で直した「1. {BASE_MD_SECTION_TITLES[0]}」〜「4. {BASE_MD_SECTION_TITLES[3]}」は、次に「発信設定」を保存すると上書きされます。恒久的に変えたい場合は、発信設定側でも同じ内容にしてください。この画面の変更履歴からは、いつでも以前の版に戻せます。
+        1〜4章は「発信設定」を保存すると上書きされます。以前の版には下の変更履歴からいつでも戻せます。
       </Notice>
 
       {/* 学習running中の編集不可 */}

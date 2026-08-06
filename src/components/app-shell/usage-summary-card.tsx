@@ -23,7 +23,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         <span className="text-sm text-muted-foreground">
-          残り {slot.remaining} / 上限 {slot.limit}（使用 {slot.used}）
+          残り {slot.remaining} / {slot.limit}
         </span>
       </div>
       <div
@@ -37,7 +37,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       </div>
       {atLimit ? (
         <p className="text-xs font-medium text-destructive" role="status">
-          今月の上限に達しました（残り0）。{resetLabel}にリセットされます。既存の下書きの閲覧・編集は引き続きできます。
+          今月の上限に達しました。{resetLabel}にリセットされます。
         </p>
       ) : null}
     </li>

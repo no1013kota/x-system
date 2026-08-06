@@ -119,8 +119,9 @@ export function SuggestionsPanel({
       <div className="flex flex-wrap items-center gap-2">
         <CardTitle>改善提案</CardTitle>
         {generating ? (
+          // 自動反映は更新開始トーストが伝え済み。括弧書きで繰り返さない（T-M8-66）。
           <Badge aria-live="polite" tone="info">
-            {polling ? "生成中…（完了すると自動で表示されます）" : "生成中…"}
+            生成中…
           </Badge>
         ) : latestAt ? (
           <span className="text-xs text-muted-foreground">最終更新 {formatJst(latestAt)}</span>
@@ -145,17 +146,18 @@ export function SuggestionsPanel({
         </div>
       </div>
 
+      {/* 存在しないUI（承認・却下）の不存在説明はしない（T-M8-66）。 */}
       <p className="mt-2 text-xs text-muted-foreground">
-        提案は表示専用です。承認・却下や自動反映は行いません。内容は発信設定や、ベースmd編集（mdプラン・プレミアムプラン）でご自身で反映してください。
+        提案は自動では反映されません。取り入れる場合は発信設定から変更してください。
       </p>
 
       {suggestions.length === 0 ? (
         <div className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
           {comparablePostCount < SUGGEST_MIN_GROUP ? (
+            // 空である理由（件数不足）と現在値は残し、計測時点の内部仕様は削る（T-M8-66）。
             <>
-              改善提案には、同じ計測時点（投稿後1日または7日）の実績がある投稿が{SUGGEST_MIN_GROUP}件以上必要です。
-              <br />
-              現在の対象投稿は {comparablePostCount} 件です。投稿を続けて実績が集まると提案が表示されます。
+              改善提案には実績のある投稿が{SUGGEST_MIN_GROUP}件以上必要です（現在
+              {comparablePostCount}件）。投稿が増えると自動で表示されます。
             </>
           ) : generating ? (
             "改善提案を生成中です。"

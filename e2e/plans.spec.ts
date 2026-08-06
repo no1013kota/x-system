@@ -32,7 +32,9 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
   // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
-  await expect(page.getByText("X APIの利用料（従量課金）", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),
+  ).toBeVisible();
 
   // 申込前の確認は折りたたまず常に見える（要件06 §1.1・要件03 §54）
   const preApply = page.getByRole("region", { name: "お申し込み前の確認" });

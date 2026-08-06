@@ -171,8 +171,9 @@ export function LearningSourcesManager({
       {/* 追加フォーム（参考アカウント/参考投稿） */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>参考ソースを追加</CardTitle>
+        {/* 上限は種別セレクトの (n/3) 表示に一本化する（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
+          参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してベースmdへ反映します。
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">
@@ -223,9 +224,9 @@ export function LearningSourcesManager({
       {/* 自己過去投稿の取り込み/再取り込み */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>自分の過去投稿から学習</CardTitle>
+        {/* 30日ルールの例外（失敗時）は失敗表示側の導線が伝える。事前に読ませない（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
-          <strong className="font-medium">成功した取り込みから</strong>30日ごとに1回まで（失敗したときはすぐやり直せます）。
+          直近100件の投稿から「自分らしさ」を学習し、ベースmdへ反映します。再取り込みは30日に1回までです。
           {plan === "premium" ? "（生成枠を1消費）" : ""}
         </p>
         <div className="mt-3 flex items-center gap-3">

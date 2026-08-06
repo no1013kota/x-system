@@ -39,9 +39,8 @@ export function SetupGuideCard({ items }: { items: SetupChecklistItem[] }) {
             />
           </div>
         </div>
-        <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">
-          投稿の生成・自動運用を始めるには、残り{pending.length}件の設定が必要です。上から順に進めてください。
-        </p>
+        {/* 残り件数はヘッダの「n / m 完了」と進捗バーが示す。同じ情報を3重に言わない（T-M8-66）。 */}
+        <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">上から順に進めてください。</p>
 
         {next ? (
           <div className="mt-3.5 rounded-card border border-brand/25 bg-brand-subtle/40 p-4">

@@ -31,7 +31,6 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { settingsTabHref } from "./tabs";
-import { X_SCOPES } from "@/lib/x/scopes";
 
 /**
  * 取得ページへのリンクを各社に持たせる（T-M8-58）。X側には手順ガイドがあるのにAI側には
@@ -357,8 +356,9 @@ export function ApiKeySettings({
             <CardTitle id="premium-key-heading">
               プレミアムプランはキー登録不要です
             </CardTitle>
+            {/* 「登録不要」の言い直しは見出しと重複するため書かない（T-M8-66）。 */}
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
+              X連携と文章生成にはSpace AIの運営キーを使います。API費用の追加負担もありません。
             </p>
           </div>
         </div>
@@ -378,10 +378,8 @@ export function ApiKeySettings({
         読めない。必要なのは2つ（Xキー1つ＋AIキーどれか1社）だと先に言う。
       */}
       <Notice tone="info">
-        このプランで投稿の生成・投稿を行うには、<strong>2つのキー</strong>が必要です:
-        ① X APIキー（Xへの投稿に使う）
-        ② 生成AIのAPIキー（文章・画像づくりに使う。<strong>3社のうちどれか1社でOK</strong>）。
-        取得方法は各カードの案内と、ページ下部の手順ガイドをご覧ください。
+        投稿を作って投稿するには、① X APIキー（Xへの投稿に使う）と
+        ② 生成AIのAPIキー（文章・画像づくりに使う）の2つが必要です。
       </Notice>
 
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
@@ -392,7 +390,7 @@ export function ApiKeySettings({
           <div>
             <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              OAuth 2.0のClient IDとClient Secretを登録します。差し替えると、このキーで連携済みのXアカウントは再認証が必要になります。{" "}
+              OAuth 2.0のClient IDとClient Secretを登録します。{" "}
               <a className="text-info-fg underline underline-offset-2" href="#x-guide-heading">
                 取得・設定手順を見る
               </a>
@@ -430,10 +428,6 @@ export function ApiKeySettings({
               type="password"
               value={clientSecret}
             />
-            <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
-              手順どおり「Web App, Automated App or Bot」でAppを作った場合は<strong>必須</strong>です
-              （空のまま保存すると、連携時にXに拒否されます）。
-            </span>
           </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -459,7 +453,7 @@ export function ApiKeySettings({
         {!xSavable ? (
           <p className="mt-2 text-xs text-muted-foreground">
             {clientId.trim().length === 0
-              ? "Client ID を入力すると保存できます。"
+              ? "Client IDとClient Secretを入力すると保存できます。"
               : clientId.trim().length < X_CLIENT_ID_MIN_LENGTH
                 ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
                 : `Client Secretは${X_CLIENT_SECRET_MIN_LENGTH}文字以上です（いま${secretTrimmed.length}文字）。`}
@@ -470,9 +464,7 @@ export function ApiKeySettings({
       <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
         <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          <strong>3社のうちどれか1社を登録すれば使えます</strong>（複数登録して使い分けることもできます）。
-          文章生成・リサーチはAnthropic、OpenAI、Googleのどれでも。画像生成に使えるのはOpenAIとGoogleです。
-          いずれも従量課金です。予期しない支出を防ぐため、取得時に支払い設定と利用上限（budget）の設定をおすすめします。
+          文章生成・リサーチはAnthropic、OpenAI、Googleのいずれかの登録が必要です。画像生成はOpenAIとGoogleのいずれかの登録が必要です。
         </p>
         <div className="mt-5 grid gap-4">
           {AI_PROVIDERS.map(({ label, provider, consoleUrl, capabilities }) => {
@@ -569,7 +561,7 @@ export function ApiKeySettings({
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
                 <li>下のリンクから X Developer Console を開き、ふだんお使いの<strong>Xアカウントでサインイン</strong>します。</li>
                 <li>初回は開発者向けの利用規約（英語）への同意を求められます。内容を確認して同意してください。</li>
-                <li>名前や利用目的などの登録フォームが出た場合は、利用目的に「自分のXアカウントへの投稿の自動化」の旨を入力すれば大丈夫です。</li>
+                <li>利用目的などを聞かれた場合は、「I want to automate posts on my X account to save time and maintain a consistent schedule, and improve audience engagement.」などと入力すれば大丈夫です。</li>
               </ul>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<Icon name="open_in_new" size={16} />
@@ -583,7 +575,6 @@ export function ApiKeySettings({
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
                 <li><strong>Environment（環境）</strong>: 「<strong>Production</strong>」を選びます（実際に投稿するための本番用という意味です）。</li>
                 <li><strong>App名</strong>: 好きな名前でかまいません（例: <code className="rounded bg-muted px-1">MyPostTool</code>。他の開発者と重複しない名前にします）。</li>
-                <li><strong>説明・ユースケース</strong>を聞かれたら: 「自分のアカウントへの投稿を自動化するため」の旨を書けば大丈夫です。</li>
                 <li>
                   作成すると <strong>Consumer Key（API KeyとSecret）</strong>や<strong> Bearer Token </strong>が表示されますが、
                   <strong>このアプリでは使いません</strong>。控えなくて大丈夫です（使うのは手順3の後に発行される Client ID と Client Secret です）。
@@ -594,9 +585,9 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">3.</span>
             <div>
-              <p className="font-medium">OAuth 2.0 をセットアップする</p>
+              <p className="font-medium">OAuth 2.0をセットアップする</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>作ったAppの設定画面で、OAuth 2.0（ユーザー認証）のセットアップを開きます。</li>
+                <li>作ったAppの設定画面で、OAuth 2.0 Keys → User authentication settings → Set upを開きます。</li>
                 <li><strong>App permissions（権限）</strong>: 「<strong>Read and Write</strong>」を選びます（投稿するには書き込み権限が必要です）。</li>
                 <li><strong>Type of App（アプリの種類）</strong>: 「<strong>Web App, Automated App or Bot</strong>」を選びます。</li>
                 <li>
@@ -636,7 +627,7 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">Credit（前払いクレジット）の支払いを設定する</p>
               <p className="mt-1 text-muted-foreground">
-                X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Consoleの支払い設定でカードを登録し、
+                X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Billing → Credits → Purchase Creditsから購入できます。
                 クレジット（米ドル）を購入しておくと、投稿のたびにそこから差し引かれます。
               </p>
               <dl className="mt-2 space-y-2 rounded-lg border bg-muted/40 p-3 text-xs leading-5">
@@ -644,21 +635,19 @@ export function ApiKeySettings({
                   <dt className="font-bold">かかる費用の目安（2026年8月時点の公式単価）</dt>
                   <dd className="mt-0.5 text-muted-foreground">
                     投稿1件 約$0.015（約2円）／URL付き投稿1件 約$0.200（約30円）。
-                    たとえば1日3投稿を1か月続けると約$1.35（約200円）です。単価は変わることがあるので、購入前にConsoleの表示を確認してください。
+                    たとえば1日3投稿を1か月続けると約$1.35（約200円）です。単価は変わることがあるので、購入前にDeveloper Consoleの表示を確認してください。
                   </dd>
                 </div>
                 <div>
                   <dt className="font-bold">自動チャージ（auto-recharge）</dt>
                   <dd className="mt-0.5 text-muted-foreground">
-                    残高が設定額を下回ると自動でカードから買い足す機能です。便利ですが<strong>気づかないうちに課金が続く</strong>ため、
-                    最初はオフのまま少額（例: $5〜10）を手動購入するのがおすすめです。
+                    残高が設定額を下回ると自動でカードから買い足す機能です。
                   </dd>
                 </div>
                 <div>
                   <dt className="font-bold">支出上限（spending limit）</dt>
                   <dd className="mt-0.5 text-muted-foreground">
-                    請求期間ごとの上限額です。<strong>必ず設定してください</strong>——上限に達するとAPIが止まるだけなので、
-                    想定外の高額請求を防ぐ安全装置になります（止まった場合はチャージすれば再開できます）。
+                    請求期間ごとの上限額です。上限に達するとAPIが止まるので、想定外の高額請求を防ぐ安全装置になります（止まった場合はチャージすれば再開できます）。
                   </dd>
                 </div>
               </dl>
@@ -668,10 +657,6 @@ export function ApiKeySettings({
             </div>
           </li>
         </ol>
-        <p className="mt-4 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
-          権限（scope）はConsoleでは設定しません。保存後に「Xアカウント」タブから連携すると、
-          Xの許可画面で {X_SCOPES.join("・")} の許可を求めます。すべて許可してください。
-        </p>
       </section>
     </div>
   );

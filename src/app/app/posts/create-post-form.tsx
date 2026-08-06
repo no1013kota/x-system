@@ -256,7 +256,6 @@ export function CreatePostForm({
             ))}
           </select>
           <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
-            そのテーマに絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ選択肢です。
             決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
           </p>
         </div>
@@ -273,9 +272,7 @@ export function CreatePostForm({
             placeholder="https://…"
             value={sourceUrl}
           />
-          <p className="mt-1 text-xs text-muted-foreground">
-            空欄のままでも、上のテーマと発信設定・ベースmdからAIが題材を選んでリサーチします。
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">空欄ならAIが題材を選んでリサーチします。</p>
         </div>
 
         {pattern === "p2" ? (
@@ -323,11 +320,7 @@ export function CreatePostForm({
               </span>
             ) : null}
           </label>
-          {imageEnabled ? (
-            <p className="text-xs text-muted-foreground">
-              画像を作るAIは、AI設定の「AI用途」で選んだものを使います。
-            </p>
-          ) : null}
+          {/* どのAIが使われるかは操作に影響しない内部説明のため出さない（T-M8-66）。 */}
         </div>
 
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
@@ -409,7 +402,7 @@ export function CreatePostForm({
               </Button>
             ) : (
               <p className="text-xs text-muted-foreground">
-                生成が始まっているため、途中で止めることはできません。完了までお待ちください。
+                生成が始まったため、途中では止められません。
               </p>
             )}
           </div>
@@ -459,7 +452,7 @@ export function CreatePostForm({
 
         {!prereq && job === null ? (
           <p className="text-sm text-muted-foreground">
-            パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。生成される内容は毎回変わります。まず1本作って、下書きで編集するか、追加指示を付けて再生成してください。
+            「スレッドを生成する」を押すと、ここに結果が表示されます。
           </p>
         ) : null}
       </section>
