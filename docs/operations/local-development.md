@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
+| バージョン | v1.12 |
 | 更新日 | 2026-08-06 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
@@ -166,7 +166,7 @@ npm run dev                  # → http://127.0.0.1:3000
   4. `supabase/config.toml` の `site_url`/`additional_redirect_urls` は既に `127.0.0.1:3000`（config を変えたら `supabase stop && supabase start` で反映）。
   5. `next.config.ts` に `allowedDevOrigins: ["127.0.0.1"]` を設定済み。**無いと Next dev が `127.0.0.1` からの HMR WebSocket（`/_next/webpack-hmr`）をクロスオリジンとしてブロックし、client の hydration が完了せず、サインアップ等のフォーム操作・入力中バリデーション・Turnstile ウィジェットが一切動かなくなる**（画面は表示されるが対話できない）。dev のみ有効。
 - **X Dev Portal のアプリ設定**（User authentication settings）:
-  - Type of App: 運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential（Web App）。BYOK は **Web App, Automated App or Bot** を選び、アプリが使うのは **Client ID のみ**（Secret不要。2026-08-06 実機確認。設定画面のClient種別セレクタは撤去済み・常にpublic/PKCEで保存）。
+  - Type of App: 運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential（Web App）。BYOK は **Web App, Automated App or Bot** を選ぶ＝confidential client なので、**Client ID と Client Secret の両方**を設定画面で保存する（Secretなしのtoken交換は 401 unauthorized_client で拒否される・2026-08-06 実測。設定画面にClient種別セレクタは無く、Secretの有無から種別を導出する）。
   - App permissions: **Read and write**（`tweet.write`・`media.write` に必要）。
   - 要求 scope（アプリが送る）: `tweet.read` / `tweet.write` / `users.read` / `media.write` / `offline.access`。
   - **Website URL**: OAuth とは無関係のアプリ情報欄。有効なURL（本番ドメインや GitHub リポジトリ等）でよく、Callback とは一致不要。

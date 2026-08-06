@@ -918,7 +918,43 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **Client種別（Public/Confidential）セレクタとClient Secret欄を撤去**——現Consoleに選択が存在せず、
   利用者に選ばせても答えが無い。保存は常にpublic/PKCE（Client IDのみ）。保存済み表示の「（Public）」表記も削除。
   Server Action／OAuth側はconfidentialの既存行を引き続き扱える（後方互換）。
+- **→ 後日訂正（T-M8-63）**: 「Client IDのみで連携できる」は誤りだった。Web App/Bot型はSecret必須で、連携が401で失敗。Secret欄のみ復活（セレクタは戻さない）。
 - 検証: 単体1,649緑・E2E x-oauth 10件緑（Client種別・Secret欄が無いことをE2Eで固定）。1280pxで手順の描画を目視確認。
+
+### T-M8-63: X連携の「予期しないエラー」を直す（Client Secret必須の実測反映） `done`
+- 参照: 要件05 §4.3、要件06 §1.2.1/§3.2 / 依存: T-M8-62 / サイズ: M
+- 利用者報告:「Xアカウントを連携しようとしたら『予期しないエラーで連携を完了できませんでした』」。
+- **原因（実測で確定）**: 保存済みClient IDで token endpoint へ交換を試すと `401 unauthorized_client
+  ("Missing valid authorization header")`。現Consoleの「Web App, Automated App or Bot」=confidential client
+  で、**token交換にClient Secret（Basic認証）が必須**。T-M8-62の「Secretは使わない」は誤りだった。
+  XTokenError が internal_error に丸められ、原因が画面に出ていなかった（原則2違反）。
+- 修正:
+  - **Client Secret欄を復活**（「Client種別」セレクタは戻さない。**Secretの有無から種別を導出**:
+    空=public／あり=confidential）。欄に「Web App/Botで作った場合は必須」の注記。
+  - **token交換の失敗を原因別に表示**: 401/invalid_client→「Client Secretの保存が必要」（APIキータブへの導線付き）、
+    invalid_grant→「やり直せば直る」、その他→X側の通信失敗。internal_errorに丸めない。
+  - 手順ガイド④を「Client IDとClient Secretを両方保存」へ（Secretは1回しか表示されない・再発行可も明記）。
+- 検証: oauth-callback単体（写像3件追加）・E2E x-oauth 10件緑。**実際の連携成功は利用者の再操作待ち**
+  （Client Secretを保存 → Xアカウント連携。こちらではXの認可画面を通せない）。
+
+### T-M8-64: テストが実アカウントへ残す偽ニュース通知を止める `done`
+- 参照: 開発とテストの進め方 §DB統合テスト / サイズ: S
+- 利用者報告:「通知からニュースへ飛んでもニュースが表示されない」。
+- **原因**: `news-digest.db.test.ts` のfan-outは条件が合う**全利用者**へ通知を作るが、後片付けが
+  テスト用ユーザーの分しか消していなかった。共有ローカルDBの実アカウントに**未来窓（2027年等）の
+  偽ダイジェストが3,436件**残り、押しても常に0件のニュース画面になっていた（ローカル固有。staging/本番には無い）。
+- 修正: `newsDigestDedupeKey()` を公開し、3テストの後片付けを**窓のdedupe_keyで全員分削除**へ変更。
+  ローカルDBの偽通知3,436件を削除（正当な282件は保持）。修正後にテストを回し汚染ゼロを確認。
+- 実装メモ: fan-out系テストの後片付けは「行の所有者」ではなく「イベントのキー」で消す（開発とテストの進め方 v4.10へ追記）。
+
+### T-M8-65: プラン変更画面（Stripe Portal）に各プランの説明を出す `done`
+- 参照: 要件03 §課金画面 / サイズ: S
+- 利用者要望:「プランを変更を押した後の画面に、簡単に各プランの説明を記載できますか？」
+- Portalのプラン選択はStripeホスト画面のため直接は編集できないが、**商品のdescriptionが商品名の下に表示される**。
+  `stripe:portal:setup` に `PRODUCT_DESCRIPTIONS` を追加し、名前と同様に冪等に同期するようにした。
+  文言は `/plans` のプランカードと揃え、数字（アカウント数・月間上限）は `portal-configuration.test.ts` が
+  `plans.ts` との一致を検査（乖離したら落ちる）。ローカルへ適用しAPI読み戻しで反映を確認済み。
+- **staging/productionへは `npm run stripe:portal:setup -- --target <env>` の再実行が必要**（別Stripeアカウントのため）。
 
 ### T-M8-60: カード器の別系統（bg-card shadow-sm）18箇所を統一する `todo`
 - 参照: ADR-0006 原則5、T-M8-51 / 依存: なし / サイズ: M

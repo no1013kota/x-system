@@ -4,6 +4,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import {
   X_SCOPES,
+  XTokenError,
   type OAuthClient,
   type OAuthTransaction,
   type SealedTokens,
@@ -114,6 +115,54 @@ describe("handleXOAuthCallback", () => {
     });
     expect(fetchMe).not.toHaveBeenCalled();
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  /**
+   * token交換の失敗を「予期しないエラー」に丸めない（T-M8-63・bug）。
+   *
+   * 実際に起きた事象: Consoleで「Web App, Automated App or Bot」（=confidential client）
+   * として作ったAppをClient IDのみで保存し、連携すると **401 unauthorized_client** で
+   * 交換が拒否される。以前は XTokenError がそのまま internal_error になり、原因が
+   * キー設定にあることが画面から読めなかった。
+   */
+  it("token交換が401で拒否されたら、Secret不足として案内する（T-M8-63）", async () => {
+    const { deps, persist } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(401, "unauthorized_client");
+      }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      code: "provider_error",
+      details: {
+        reason: "token_auth_failed",
+        settingsPath: "/app/settings?tab=api-keys",
+      },
+    });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("認可コードの期限切れ（invalid_grant）は、やり直しで直る旨を伝える（T-M8-63）", async () => {
+    const { deps } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(400, "invalid_grant");
+      }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      code: "provider_error",
+      details: { reason: "token_grant_invalid" },
+    });
+  });
+
+  it("その他のtoken交換失敗はX側の通信失敗として伝える（internal_errorにしない）", async () => {
+    const { deps } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(503, null);
+      }),
+    });
+    const error = await handleXOAuthCallback(input("u1"), deps).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AppError);
+    expect((error as AppError).code).toBe("provider_error");
+    expect((error as AppError).details?.reason).toBeUndefined();
   });
 
   it("does not persist when /2/users/me fails", async () => {
