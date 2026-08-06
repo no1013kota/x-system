@@ -68,8 +68,8 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     : [];
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
-      <h1 className="text-xl font-bold tracking-tight">ニュース</h1>
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
+      <h1 className="text-[20px] font-bold tracking-tight text-ink">ニュース</h1>
       <NewsBrowser
         initialCreatedIds={createdIds}
         initialCursor={initial.nextCursor}

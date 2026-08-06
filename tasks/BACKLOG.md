@@ -991,6 +991,11 @@ UI側boolean を壊しても投稿は誤爆しない）。
   要件06の「共有定数から描画」要求も撤回。
 - 検証: 単体1,656緑・E2E全54件緑。
 
+### T-M8-69: check:providers に各社の models.list 疎通を足す `todo`
+- 参照: 旧T-M8-60のメモから分離 / サイズ: S
+- check:providers は生成呼び出しの受理までを見るが、モデル名の廃止（404）は生成時まで分からない。
+  各providerの models.list（またはモデル取得API）で **設定中のモデルIDが実在すること** を検査に足す。
+
 ### T-M8-68: 残りの体感速度改善（分析ポーリング・不要refresh・bundle） `todo`
 - 参照: 監査findings 61-63/98-99/123 / 依存: T-M8-67 / サイズ: M
 - (1) 分析の提案生成ポーリングが5秒ごとに router.refresh()（ページ全クエリ再実行）×最大24回
@@ -1001,13 +1006,20 @@ UI側boolean を壊しても投稿は誤爆しない）。
   → 削除（各コンポーネントのpropsがuseState初期値にしか使われないことを確認済み）。
 - (4) draft-editor の twitter-text（1.2MB）静的import → 編集モード突入時の動的importへ。
 
-### T-M8-60: カード器の別系統（bg-card shadow-sm）18箇所を統一する `todo`
-- 参照: ADR-0006 原則5、T-M8-51 / 依存: なし / サイズ: M
-- `rounded-card border bg-card p-5 shadow-sm` という別系統の手書きがrepo全体に18箇所。
-  現状 `--card` は `--surface` と同値で**見た目の差は無い**が、`card-surface.test.ts` の
-  検査対象外で、トークンを変えたときにここだけ追随しない。`cardClassName` へ一括置換し、
-  検査対象へ `bg-card`+`shadow-sm` の並びを足す。あわせて `check:providers` へ各社
-  `models.list` 疎通を1件ずつ追加（キー検証SDKの契約がliveテストに無い）。
+### T-M8-60: デザインの不揃いを統一する（カード器・アイコン・画面幅・フォーム部品） `done`
+- 参照: 要件06 §2、`components/ui/card.tsx`、全画面監査（design 23件） / サイズ: M
+- **カード器の統一**: 旧系統 `rounded-card border bg-card ... shadow-sm` 18箇所を `cardClassName`
+  （bg-surface＋hairline＋カードの影）へ置換。`card-surface.test.ts` に旧系統の禁止guardを追加。
+- **ホームのナビアイコン**: "output"（ログアウトと同一の絵）→ 新規生成した "home" へ。
+- **画面の骨格**: 分析h1（text-3xl→20px）・ニュースのコンテナ幅（max-w-6xl→1180px）を他画面と統一。
+  reset-passwordをlogin/signupと同じカード・ロゴ構成へ刷新（LegalFooter追加）。signupにロゴマーク。
+- **ホームのカード内トークン**: recent-results / upcoming-schedule のリンク・行アイテムを
+  確認待ちカードと同系（text-brand・border-hairline）へ。
+- **フォーム部品**: 下書き編集/再生成/スケジュールのtextarea・時刻select、AI設定の小さすぎる
+  select/input（30px→44px）を統一。通知ベルの「もっと見る」・ログアウト・分析のセグメント・
+  ランディング副CTA（buttonVariants化）も揃えた。
+- 残タスク: ネイティブcheckbox/radioの装飾统一・AI設定の保存ボタンの共有Button化（軽微のため見送り。
+  必要になったら起票）。check:providersのmodels.list追加は別途（旧todoから分離）。
 
 ### T-M8-33: 要件と実装の突き合わせ（M8の同期漏れを回収する） `done`
 - 参照: docs/README.md（ドキュメントマップ）、CLAUDE.md「最重要ルール」 / 依存: T-M8-32 / サイズ: M

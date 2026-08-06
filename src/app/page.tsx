@@ -6,6 +6,7 @@ import { LegalFooter } from "@/components/legal-footer";
 import { buttonVariants } from "@/components/ui/button";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-config";
 import { PLAN_IDS, PLANS } from "@/lib/plans";
+import { cardClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `${APP_NAME} — AIで学習・生成・投稿・分析まで自動化するX運用アプリ`,
@@ -62,7 +63,7 @@ export default function Home() {
               無料で始める
             </Link>
             <Link
-              className="inline-flex h-11 items-center rounded-md border px-6 text-sm font-medium"
+              className={buttonVariants({ variant: "outline", className: "h-11 px-6" })}
               href="/plans"
             >
               プランを見る
@@ -79,7 +80,7 @@ export default function Home() {
           <h2 className="text-center text-2xl font-bold tracking-tight">できること</h2>
           <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {VALUE_PROPS.map((v) => (
-              <li className="rounded-card border bg-card p-6 shadow-sm" key={v.title}>
+              <li className={`${cardClassName} p-6`} key={v.title}>
                 <h3 className="font-semibold">{v.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{v.body}</p>
               </li>
@@ -99,7 +100,7 @@ export default function Home() {
               const plan = PLANS[planId];
               const byok = planId !== "premium";
               return (
-                <article className="flex flex-col rounded-card border bg-card p-6 shadow-sm" key={planId}>
+                <article className={`${cardClassName} flex flex-col p-6`} key={planId}>
                   <h3 className="text-lg font-semibold">{plan.displayName}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{plan.tagline}</p>
                   <p className="mt-4">
@@ -130,7 +131,7 @@ export default function Home() {
               無料で始める
             </Link>
             <Link
-              className="inline-flex h-11 items-center rounded-md border px-6 text-sm font-medium"
+              className={buttonVariants({ variant: "outline", className: "h-11 px-6" })}
               href="/plans"
             >
               プランの詳細

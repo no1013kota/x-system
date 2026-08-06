@@ -27,7 +27,7 @@ import {
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
-import { Card, CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { settingsTabHref } from "./tabs";
@@ -372,7 +372,7 @@ export function ApiKeySettings({
   }
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       {/*
         **最初に全体像を出す**（T-M8-58）。フォームが先に並ぶと、いくつ登録すれば使えるのかが
         読めない。必要なのは2つ（Xキー1つ＋AIキーどれか1社）だと先に言う。
@@ -382,7 +382,7 @@ export function ApiKeySettings({
         ② 生成AIのAPIキー（文章・画像づくりに使う）の2つが必要です。
       </Notice>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-card bg-brand-subtle p-2 text-brand">
             <Icon name="key" size={20} />
@@ -461,7 +461,7 @@ export function ApiKeySettings({
         ) : null}
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="ai-key-heading">
         <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           文章生成・リサーチはAnthropic、OpenAI、Googleのいずれかの登録が必要です。画像生成はOpenAIとGoogleのいずれかの登録が必要です。
@@ -538,7 +538,7 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
           <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>

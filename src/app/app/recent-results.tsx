@@ -35,7 +35,7 @@ export function RecentResultsCard({
     return (
       <Card as="section" className="px-5 py-4">
         <CardTitle>直近の実績</CardTitle>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-[12.5px] leading-5 text-ink-2">
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
         </p>
         <Link
@@ -55,7 +55,7 @@ export function RecentResultsCard({
     <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>直近の実績</CardTitle>
-        <Link className="text-sm text-primary underline" href="/app/analytics">
+        <Link className="text-[12px] font-medium text-brand underline-offset-2 hover:underline" href="/app/analytics">
           分析を見る
         </Link>
       </div>
@@ -84,7 +84,7 @@ export function RecentResultsCard({
 
       <ul className="mt-3 space-y-2">
         {posts.map((post) => (
-          <li className="rounded-lg border bg-background p-3" key={post.draftId}>
+          <li className="rounded-card border border-hairline p-3" key={post.draftId}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge>{POST_PATTERN_LABELS[post.pattern] ?? post.pattern}</Badge>
               {post.postedMode ? (
@@ -96,17 +96,17 @@ export function RecentResultsCard({
                 {formatJst(post.postedAt)}
               </span>
             </div>
-            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{post.excerpt}</p>
+            <p className="mt-1 line-clamp-2 text-[12.5px] leading-5 text-ink-2">{post.excerpt}</p>
             <div className="mt-2 flex flex-wrap gap-3 text-xs">
               <Link
-                className="text-primary underline"
+                className="text-brand underline-offset-2 hover:underline"
                 href={`/app/posts?tab=history&draftId=${post.draftId}`}
               >
                 履歴で開く
               </Link>
               {post.firstTweetId ? (
                 <a
-                  className="text-primary underline"
+                  className="text-brand underline-offset-2 hover:underline"
                   href={tweetUrl(handle, post.firstTweetId)}
                   rel="noopener noreferrer"
                   target="_blank"

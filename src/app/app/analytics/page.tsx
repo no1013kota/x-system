@@ -30,7 +30,7 @@ export default async function AnalyticsPage() {
     return (
       <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
         <header>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
+            <h1 className="text-[20px] font-bold tracking-tight text-ink">分析</h1>
         </header>
         <div className="mt-7">
           <EmptyState
@@ -68,7 +68,7 @@ export default async function AnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">分析</h1>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           投稿の反応は、投稿後1日・7日・30日の3回だけ記録します。ここでは直近90日の投稿を新しい順に表示します。
         </p>

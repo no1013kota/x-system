@@ -14,7 +14,7 @@ import {
   configuredPurpose,
 } from "@/lib/ai-purpose-view";
 import type { PlanId } from "@/lib/plans";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 
@@ -74,7 +74,7 @@ export function AiPurposeSettings({
   return (
     <div className="space-y-6">
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="text-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-violet-100 p-2.5 text-violet-800">
             <Icon name="smart_toy" size={20} />
@@ -116,7 +116,7 @@ export function AiPurposeSettings({
         )}
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="image-purpose-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="image-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-info-bg p-2.5 text-info-fg">
             <Icon name="image" size={20} />

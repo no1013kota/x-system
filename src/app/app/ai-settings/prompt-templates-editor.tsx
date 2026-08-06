@@ -177,7 +177,7 @@ export function PromptTemplatesEditor({
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">プロンプト種別</span>
             <select
-              className="mt-1 rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
               onChange={(e) => select(e.target.value)}
               value={selectedKind}
             >

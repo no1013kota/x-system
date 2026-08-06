@@ -128,7 +128,7 @@ export function SuggestionsPanel({
         ) : null}
         <div className="ml-auto flex gap-2">
           <button
-            className="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card border px-4 text-[13px] font-medium transition-colors duration-150 hover:bg-accent disabled:opacity-50"
             disabled={pending}
             onClick={() => startTransition(() => router.refresh())}
             type="button"

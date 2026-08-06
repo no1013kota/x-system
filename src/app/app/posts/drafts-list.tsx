@@ -19,7 +19,7 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cardTitleClassName } from "@/components/ui/card";
+import { cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 import { useToast } from "@/components/ui/toast";
@@ -226,7 +226,7 @@ function DraftCard({
 
   return (
     <li
-      className={`scroll-mt-24 rounded-card border bg-card p-5 shadow-sm ${
+      className={`${cardClassName} scroll-mt-24 p-5 ${
         highlighted ? "ring-2 ring-ring" : ""
       }`}
       id={`draft-${draft.id}`}
@@ -505,7 +505,7 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
         追加指示（任意）
       </label>
       <textarea
-        className="w-full rounded-md border px-3 py-2 text-sm"
+        className="w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
         id={`regen-${draftId}`}
         maxLength={2000}
         onChange={(e) => setInstructions(e.target.value)}

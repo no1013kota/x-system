@@ -19,7 +19,7 @@ export function SignOutButton({ label = true }: { label?: boolean }) {
   return (
     <button
       aria-label="ログアウト"
-      className="inline-flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60"
+      className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60"
       disabled={pending}
       onClick={() => startTransition(async () => void (await signOut()))}
       type="button"

@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
-import { Card, CardTitle, cardTitleClassName } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 
@@ -88,7 +88,7 @@ export function XAccountsSettings({
           const busy = busyId === account.id;
           return (
             <li
-              className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
+              className={`${cardClassName} flex flex-wrap items-center gap-4 p-4`}
               key={account.id}
             >
               {account.profileImageUrl ? (

@@ -179,7 +179,7 @@ export function LearningSourcesManager({
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">種別</span>
             <select
-              className="mt-1 rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
               onChange={(e) => setType(e.target.value as "ref_account" | "ref_post")}
               value={type}
             >
@@ -194,7 +194,7 @@ export function LearningSourcesManager({
           <label className="min-w-0 flex-1 text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">URL</span>
             <input
-              className="mt-1 w-full rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 w-full rounded-lg border bg-background px-3"
               onChange={(e) => setUrl(e.target.value)}
               placeholder={type === "ref_account" ? "https://x.com/handle" : "https://x.com/handle/status/123"}
               type="url"

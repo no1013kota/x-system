@@ -207,7 +207,7 @@ export function NotificationBell({
             {cursor ? (
               <div className="border-t p-2">
                 <button
-                  className="w-full rounded-md py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                  className="w-full rounded-card py-2 text-[12.5px] text-ink-2 transition-colors duration-150 hover:bg-black/[0.02] hover:text-ink disabled:opacity-50"
                   disabled={pending}
                   onClick={loadMore}
                   type="button"

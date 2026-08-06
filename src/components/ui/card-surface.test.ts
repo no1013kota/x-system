@@ -39,6 +39,15 @@ function handWrittenCard(source: string): boolean {
   });
 }
 
+/**
+ * 旧系統の器（`rounded-card border bg-card`）も禁止する（T-M8-60）。
+ * shadcn由来の `bg-card` 系が18箇所残っており、正規の器（bg-surface＋hairline＋カードの影）と
+ * 枠線色・背景・影が微妙に違うカードが1画面に混在していた。
+ */
+function legacyCard(source: string): boolean {
+  return source.includes("rounded-card border bg-card");
+}
+
 describe("カードの見た目は直書きしない", () => {
   it("`Card` か `cardClassName` を使っている（面＋影の手書きが無い）", () => {
     const offenders = collect(SRC)
@@ -48,6 +57,13 @@ describe("カードの見た目は直書きしない", () => {
       offenders,
       "素の容器なら `<Card as=...>`、他のレイアウト指定と混ざるなら `cardClassName` を使う",
     ).toEqual([]);
+  });
+
+  it("旧系統の器（rounded-card border bg-card）を使っていない（T-M8-60）", () => {
+    const offenders = collect(SRC)
+      .filter((file) => legacyCard(readFileSync(file, "utf8")))
+      .map((file) => file.slice(ROOT.length));
+    expect(offenders, "カードの器は cardClassName（bg-surface系）に統一する").toEqual([]);
   });
 
   it("定義元は面と影を持つ（検査が空振りしていない）", () => {
