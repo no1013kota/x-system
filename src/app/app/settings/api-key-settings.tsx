@@ -17,9 +17,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   AI_SECRET_MIN_LENGTH,
   X_CLIENT_ID_MIN_LENGTH,
-  X_CLIENT_SECRET_MIN_LENGTH,
   type AiKeyProvider,
-  type XClientType,
 } from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
@@ -146,18 +144,7 @@ export function ApiKeySettings({
     Object.fromEntries(initialKeys.map((key) => [key.provider, key])),
   );
   const toast = useToast();
-  /**
-   * **保存済みの種別から初期化する**（T-M8-59・bug）。常に "public" で初期化すると、
-   * Confidentialで保存済みの利用者がClient IDだけ差し替えて保存したとき、
-   * **無警告でPublicとして上書き**され、以後のtoken交換（Basic認証必須）が全滅する。
-   */
-  const [clientType, setClientType] = useState<XClientType>(() =>
-    initialKeys.find((key) => key.provider === "x")?.displayHint.client_type === "confidential"
-      ? "confidential"
-      : "public",
-  );
   const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
   const [aiSecrets, setAiSecrets] = useState<Record<AiKeyProvider, string>>({
     anthropic: "",
     google: "",
@@ -166,13 +153,9 @@ export function ApiKeySettings({
   const [copied, setCopied] = useState(false);
   /**
    * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
-   * 以前は `clientId.length < 5` が直書きで、Confidential のときに Secret が要ることは
-   * 画面から読めなかった（押せない理由がどこにも無い状態だった）。
+   * 以前は `clientId.length < 5` が直書きで、何文字必要かが画面から読めなかった。
    */
-  const xSavable =
-    clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
-    (clientType !== "confidential" ||
-      clientSecret.trim().length >= X_CLIENT_SECRET_MIN_LENGTH);
+  const xSavable = clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH;
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -185,10 +168,17 @@ export function ApiKeySettings({
 
   function saveX() {
     startTransition(async () => {
+      /**
+       * 常に Public（PKCE）として保存する。現在の X Developer Console には Public /
+       * Confidential を選ぶ場所が無く、Client ID のみで連携できることを利用者が実機で
+       * 確認した（2026-08-06）。以前あった「Client種別」セレクタと Client Secret 欄は、
+       * 利用者に選ばせても答えが存在しないため撤去した。Server Action と OAuth 側は
+       * confidential の既存行も引き続き扱える（保存済みキーを壊さない）。
+       */
       const result = await saveXApiKey({
         client_id: clientId,
-        client_secret: clientType === "confidential" ? clientSecret : null,
-        client_type: clientType,
+        client_secret: null,
+        client_type: "public",
       });
       if (result.status === "error" || !result.displayHint) {
         showError(result.message);
@@ -205,7 +195,6 @@ export function ApiKeySettings({
         },
       }));
       setClientId("");
-      setClientSecret("");
       // **次にやること（X連携）まで出す**（T-M8-59）。保存だけでは投稿できず、
       // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AI用途を開く」と同じ形。
       toast.show({
@@ -405,27 +394,11 @@ export function ApiKeySettings({
 
         {keys.x ? <div className="mt-5"><SavedKeySummary keyState={keys.x} /></div> : null}
 
+        {/*
+          入力は Client ID の1つだけ（T-M8-62）。現在のConsoleに Public / Confidential の
+          選択は無いため「Client種別」セレクタを撤去した（saveX のコメント参照）。
+        */}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className="space-y-2 text-sm font-medium">
-            Client種別
-            <select
-              className="h-11 w-full rounded-lg border bg-background px-3"
-              disabled={isPending}
-              onChange={(event) => {
-                const value = event.target.value as XClientType;
-                setClientType(value);
-                if (value === "public") setClientSecret("");
-              }}
-              value={clientType}
-            >
-              <option value="public">Public（PKCE）</option>
-              <option value="confidential">Confidential</option>
-            </select>
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">
-              通常は「Public（PKCE）」のままで構いません。X Developer Console側で
-              Confidential client として作成した場合のみ切り替えてください。
-            </span>
-          </label>
           <label className="space-y-2 text-sm font-medium">
             Client ID
             <input
@@ -438,20 +411,6 @@ export function ApiKeySettings({
               value={clientId}
             />
           </label>
-          {clientType === "confidential" ? (
-            <label className="space-y-2 text-sm font-medium sm:col-start-2">
-              Client Secret
-              <input
-                autoComplete="new-password"
-                className="h-11 w-full rounded-lg border bg-background px-3 font-mono text-sm"
-                disabled={isPending}
-                onChange={(event) => setClientSecret(event.target.value)}
-                placeholder="Client Secretを入力"
-                type="password"
-                value={clientSecret}
-              />
-            </label>
-          ) : null}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button className="min-h-10" disabled={isPending || !xSavable} onClick={saveX} type="button">
@@ -475,11 +434,9 @@ export function ApiKeySettings({
         */}
         {!xSavable ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            {clientType === "confidential"
-              ? "Client ID と Client Secret を入力すると保存できます。"
-              : clientId.trim().length > 0
-                ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
-                : "Client ID を入力すると保存できます。"}
+            {clientId.trim().length > 0
+              ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
+              : "Client ID を入力すると保存できます。"}
           </p>
         ) : null}
       </section>
@@ -569,9 +526,12 @@ export function ApiKeySettings({
           <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>
         </div>
         {/*
-          手順は公式ドキュメントで確認した実際のConsoleの構成に合わせる（T-M8-59。以前の手順は
-          「必要scopeを5つ許可」を**Console側の設定**として書いていたが、そのような設定は存在しない。
-          scopeは連携時にこのアプリが要求し、Xの許可画面で本人が承認する）。
+          手順は**利用者が実機のConsoleを操作して確認した構成**に合わせる（T-M8-62・2026-08-06）:
+          ①開発者アカウント → ②AppタブでApp作成（Environment: Production）→ ③OAuth 2.0の
+          セットアップ（Read and Write / Web App, Automated App or Bot）→ ④Client ID → ⑤Credit。
+          scopeはConsole側の設定ではない（連携時にこのアプリが要求し、Xの許可画面で本人が承認する。
+          T-M8-59）。Consumer Key・Bearer Token・Client Secret は使わないことを明記する——
+          「どれをコピーすればいいのか」が非エンジニアの最初の詰まりどころのため。
         */}
         <ol className="mt-5 space-y-6 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
@@ -591,30 +551,31 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">2.</span>
             <div>
-              <p className="font-medium">Appを作る</p>
+              <p className="font-medium">「App」タブへ移動して、Appを作る</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li><strong>Environment（環境）</strong>: 「<strong>Production</strong>」を選びます（実際に投稿するための本番用という意味です）。</li>
                 <li><strong>App名</strong>: 好きな名前でかまいません（例: <code className="rounded bg-muted px-1">MyPostTool</code>。他の開発者と重複しない名前にします）。</li>
                 <li><strong>説明・ユースケース</strong>を聞かれたら: 「自分のアカウントへの投稿を自動化するため」の旨を書けば大丈夫です。</li>
-                <li>作成すると、このAppの認証情報（Client ID など）が発行されます。</li>
+                <li>
+                  作成すると <strong>Consumer Key（API KeyとSecret）</strong>や<strong> Bearer Token </strong>が表示されますが、
+                  <strong>このアプリでは使いません</strong>。控えなくて大丈夫です（使うのは手順4のClient IDだけ）。
+                </li>
               </ul>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">3.</span>
             <div>
-              <p className="font-medium">Appの設定で「アプリタイプ」と「callback URL」を登録する</p>
+              <p className="font-medium">OAuth 2.0 をセットアップする</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>作ったAppの設定画面（認証設定）を開きます。</li>
-                <li>
-                  <strong>アプリタイプ</strong>: 「Native App」または「Single Page App」を選びます（＝Public。
-                  上の「Client種別」の既定と同じです）。「Web App / Automated App or Bot」を選んだ場合は
-                  Confidential なので、上の「Client種別」も Confidential に切り替えてください。
-                </li>
+                <li>作ったAppの設定画面で、OAuth 2.0（ユーザー認証）のセットアップを開きます。</li>
+                <li><strong>App permissions（権限）</strong>: 「<strong>Read and Write</strong>」を選びます（投稿するには書き込み権限が必要です）。</li>
+                <li><strong>Type of App（アプリの種類）</strong>: 「<strong>Web App, Automated App or Bot</strong>」を選びます。</li>
                 <li>
                   <strong>Callback URI / Redirect URL</strong>: 下のURLを<strong>そのまま</strong>貼り付けます。
                   1文字でも違うと連携できません（httpsとhttp、末尾の / の有無まで完全一致）。
                 </li>
-                <li>Website URL など他の必須欄が出た場合は、ご自身のXプロフィールのURL（例: <code className="rounded bg-muted px-1">https://x.com/あなたのID</code>）で大丈夫です。</li>
+                <li><strong>Website URL</strong>: ご自身のXプロフィールのURL（例: <code className="rounded bg-muted px-1">https://x.com/あなたのユーザー名</code>）を入力すれば大丈夫です。</li>
               </ul>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
@@ -636,17 +597,16 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">Client IDをコピーして、このページに保存する</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>Appの「<strong>Keys and Tokens</strong>」（キーとトークン）ページを開きます。</li>
+                <li>セットアップを終えると <strong>Client ID</strong> が表示されます（Appの「Keys and Tokens」ページからも確認できます）。</li>
                 <li><strong>Client ID</strong> をコピーし、このページ上部の「X APIキー」の入力欄に貼って「Xキーを保存」を押します。</li>
-                <li>手順3で Confidential を選んだ場合だけ、<strong>Client Secret</strong> も同じ画面からコピーして保存します（Publicなら不要）。</li>
-                <li>同じページには API Key や Bearer Token など他の値も並びますが、<strong>使うのは Client ID（と必要なら Client Secret）だけ</strong>です。</li>
+                <li><strong>Client Secret も表示されますが、使いません</strong>。控えなくて大丈夫です。</li>
               </ul>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">5.</span>
             <div>
-              <p className="font-medium">支払い（クレジット）を設定する</p>
+              <p className="font-medium">Credit（前払いクレジット）の支払いを設定する</p>
               <p className="mt-1 text-muted-foreground">
                 X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Consoleの支払い設定でカードを登録し、
                 クレジット（米ドル）を購入しておくと、投稿のたびにそこから差し引かれます。

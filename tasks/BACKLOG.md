@@ -909,6 +909,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
   **stagingへの反映には migration 適用が必要**（`release:staging -- --apply`）。
 - 検証: 単体1,649・DBテスト・E2E（x-oauth 10件）緑。1440pxで手順ガイドの描画を目視確認。
 
+### T-M8-62: X手順を実機のConsole構成へ直し、Client種別セレクタを撤去する `done`
+- 参照: 要件06 §3.2、要件05 §5、CLAUDE.md 原則2 / 依存: T-M8-61 / サイズ: S
+- **利用者が実機のDeveloper Consoleを操作して確認した構成**へ手順を修正（正確さの根拠は実機。公式docs由来の旧タクソノミより優先）:
+  ①開発者アカウント → ②「App」タブでApp作成（**Environment: Production**。Consumer Key・Bearer Tokenは使わないと明記）→
+  ③OAuth 2.0セットアップ（**App permissions: Read and Write**／**Type of App: Web App, Automated App or Bot**／
+  Website URLは自分のXプロフィールURLでよい）→ ④Client IDコピー（**Client Secretは使わない**と明記）→ ⑤Creditの支払い。
+- **Client種別（Public/Confidential）セレクタとClient Secret欄を撤去**——現Consoleに選択が存在せず、
+  利用者に選ばせても答えが無い。保存は常にpublic/PKCE（Client IDのみ）。保存済み表示の「（Public）」表記も削除。
+  Server Action／OAuth側はconfidentialの既存行を引き続き扱える（後方互換）。
+- 検証: 単体1,649緑・E2E x-oauth 10件緑（Client種別・Secret欄が無いことをE2Eで固定）。1280pxで手順の描画を目視確認。
+
 ### T-M8-60: カード器の別系統（bg-card shadow-sm）18箇所を統一する `todo`
 - 参照: ADR-0006 原則5、T-M8-51 / 依存: なし / サイズ: M
 - `rounded-card border bg-card p-5 shadow-sm` という別系統の手書きがrepo全体に18箇所。

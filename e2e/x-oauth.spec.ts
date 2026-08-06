@@ -81,9 +81,10 @@ test("callback URLのコピーが失敗したら理由が出る（黙って捨�
 /**
  * 保存ボタンが**理由なく薄い**状態にしない（T-M8-46）。
  *
- * `disabled` に `clientId.length < 5` / `length < 16` が直書きされており、**何文字必要かも、
- * Confidential では Secret が要ることも、画面のどこにも書かれていなかった**。
- * 押せないボタンだけが出ている状態は、壊れているのと利用者から区別できない。
+ * `disabled` に `clientId.length < 5` が直書きされており、**何文字必要かが画面のどこにも
+ * 書かれていなかった**。押せないボタンだけが出ている状態は、壊れているのと利用者から
+ * 区別できない。入力が Client ID の1つだけであること（Client種別・Secret欄が無いこと）も
+ * ここで守る（T-M8-62。現在のConsoleに Public/Confidential の選択は無い）。
  */
 test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46）", async ({ accounts, page }) => {
   const account = await accounts.create("api-key-hint", { personaReady: true });
@@ -95,19 +96,17 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
   await expect(save).toBeDisabled();
   await expect(page.getByText("Client ID を入力すると保存できます。")).toBeVisible();
 
-  // Confidential にすると Secret も必要になり、案内が切り替わる
-  await page.getByLabel("Client種別").selectOption("confidential");
-  await expect(
-    page.getByText("Client ID と Client Secret を入力すると保存できます。"),
-  ).toBeVisible();
+  // 短いあいだは必要な文字数と現在の文字数が出る
+  await page.getByLabel("Client ID").fill("abc");
+  await expect(save).toBeDisabled();
+  await expect(page.getByText("Client IDは5文字以上です（いま3文字）。")).toBeVisible();
 
   await page.getByLabel("Client ID").fill("abcdef-123456");
-  await expect(save).toBeDisabled(); // Secret がまだ無い
-  await page.getByLabel("Client Secret").fill("secret-value-1234");
   await expect(save).toBeEnabled();
-  await expect(
-    page.getByText("Client ID と Client Secret を入力すると保存できます。"),
-  ).toHaveCount(0);
+
+  // 入力は Client ID の1つだけ。撤去した「Client種別」「Client Secret」を戻さない（T-M8-62）
+  await expect(page.getByLabel("Client種別")).toHaveCount(0);
+  await expect(page.getByLabel("Client Secret")).toHaveCount(0);
 });
 
 /** AI APIキーの最小長を画面に出す（T-M8-46）。 */
