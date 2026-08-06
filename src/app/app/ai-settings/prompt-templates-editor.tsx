@@ -235,9 +235,7 @@ export function PromptTemplatesEditor({
             再読み込み
           </button>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          システム共通プロンプト（SYS-GEN・文字数調整等）は編集対象ではありません。ここで編集できるのは投稿生成・画像生成の指示テンプレートです。
-        </p>
+        {/* 編集できる対象は「プロンプト種別」の選択肢が示す。内部ID（SYS-GEN）は出さない（T-M8-66）。 */}
       </section>
     </div>
   );

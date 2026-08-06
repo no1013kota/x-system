@@ -90,7 +90,7 @@ export default async function SchedulePage() {
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">スケジュール</h1>
         <p className="mt-1 text-[12.5px] text-ink-2">
-          曜日と時刻を決めて、下書き生成または自動投稿を定期実行します。作成された下書きは下に並びます。
+          曜日と時刻を決めて、下書き作成や自動投稿を定期実行します。
         </p>
       </header>
 

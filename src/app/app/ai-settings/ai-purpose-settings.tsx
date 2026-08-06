@@ -104,7 +104,8 @@ export function AiPurposeSettings({
               onChange={(event) => setTextProvider(event.target.value as AiKeyProvider | "")}
               value={textProvider}
             >
-              <option value="">未設定（このままでは投稿を生成できません）</option>
+              {/* 動かない理由の説明は下のNoticeが担う。選択肢内で繰り返さない（T-M8-66）。 */}
+              <option value="">未設定</option>
               {options.text.map((provider) => (
                 <option key={provider} value={provider}>{PROVIDER_LABELS[provider]}</option>
               ))}
@@ -159,7 +160,7 @@ export function AiPurposeSettings({
       {plan !== "premium" && !textProvider ? (
         // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
         <Notice tone="warn" role="status">
-          文章生成に使うAIが未設定です。このままでは投稿の生成・自動運用が実行できません。登録済みのAIを選んで保存してください。
+          文章生成に使うAIが未設定のため、投稿の生成・自動運用は実行できません。AIを選んで保存してください。
         </Notice>
       ) : null}
 
@@ -167,11 +168,7 @@ export function AiPurposeSettings({
         <Button className="min-h-11" disabled={isPending} onClick={save} type="button">
           {isPending ? "保存中…" : "AI用途設定を保存"}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          {plan === "premium"
-            ? "画像生成に使えるAIは、運営環境で利用できるものだけを表示しています。"
-            : "接続確認に成功したAIだけが選べます。"}
-        </p>
+        {/* 選べる条件の注記は各セクションの説明・MissingProviderMessageと重複していたため置かない（T-M8-66）。 */}
       </div>
     </div>
   );

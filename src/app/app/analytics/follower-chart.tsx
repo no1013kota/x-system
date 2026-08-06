@@ -77,7 +77,7 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
 
       {geom === null ? (
         <p className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          この期間のフォロワー数記録はまだありません。フォロワー数は毎日自動で記録され、日を追うごとに推移が表示されます。
+          フォロワー数の記録はまだありません。毎日自動で記録されます。
         </p>
       ) : (
         <>

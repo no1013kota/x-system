@@ -152,10 +152,7 @@ export default async function AiSettingsPage({
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">AI設定</h1>
         <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
-          AIがあなたの代わりに投稿を書くための取り決めを、ここでまとめて管理します。変更は次の投稿生成から反映されます。
-        </p>
-        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
-          まず「発信設定」→「AI用途」の順に設定してください。精度を上げたい場合は「学習ソース」（任意）も登録できます。
+          AIがあなたの代わりに投稿を書くための設定です。まず「発信設定」→「AI用途」の順に設定してください。
         </p>
       </header>
 
@@ -237,7 +234,7 @@ export default async function AiSettingsPage({
             <LockedState
               actionHref="/plans"
               actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
-              description="投稿パターンごとのプロンプトを直接編集できます。既定に戻すこともできるので、試して合わなければ元に戻せます。"
+              description="投稿パターンごとのプロンプトを直接編集できます。いつでもシステム既定に戻せます。"
               title="プロンプトのカスタマイズは mdプラン以上でご利用いただけます"
             />
           ) : (

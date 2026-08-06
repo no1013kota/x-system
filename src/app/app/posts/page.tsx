@@ -154,11 +154,9 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+      {/* 見出し下の流れ説明は置かない。タブとフォームから読み取れる（T-M8-66）。 */}
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿作成</h1>
-        <p className="text-sm text-muted-foreground">
-          パターンを選んで投稿を生成し、下書きで確認・編集して投稿します。
-        </p>
       </header>
 
       <TabNav

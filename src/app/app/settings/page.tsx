@@ -117,8 +117,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <div className="mx-auto max-w-[1180px] space-y-3.5">
         <header>
           <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
+          {/* 管理項目の列挙はタブラベルと同じ情報なので書かない（T-M8-66）。 */}
           <p className="mt-1 text-[12.5px] text-ink-2">
-            Xアカウント連携・APIキー・通知・ご契約内容を管理できます。発信の内容に関わる設定は
+            発信の内容に関わる設定は
             <Link className="mx-1 font-medium text-brand underline-offset-2 hover:underline" href="/app/ai-settings">
               AI設定
             </Link>
@@ -177,9 +178,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 現在のご契約
               </CardTitle>
               {params.portal === "return" ? (
+                // 反映待ちの説明は「実際に待ちが起きるこの瞬間」だけに出す（T-M8-66）。
                 <Notice className="mt-4" tone="success"
                   role="status">
-                  お支払い管理画面から戻りました。契約情報を確認しています。
+                  お支払い管理画面から戻りました。変更は数十秒ほどでこの画面に反映されます。
                 </Notice>
               ) : null}
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -228,10 +230,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 />
               </div>
             </Card>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {/* 行き先の説明はボタン直下にあるので、ここは反映のタイミングだけにする（T-M8-31）。 */}
-              変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）。
-            </p>
             {usage ? (
               <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
             ) : null}

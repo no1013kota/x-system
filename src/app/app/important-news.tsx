@@ -36,7 +36,8 @@ export function ImportantNewsCard({
           <p className="text-[12.5px] leading-5 text-ink-2">
           {loadFailed
             ? "ニュースを取得できませんでした。時間をおいて開き直すか、ニュース画面で確認してください。"
-            : "設定したテーマで、インパクトが高い新着はまだありません。テーマやインパクトの条件は通知設定で変更できます。"}
+            : // 条件の変え方は直下の「ニュース設定を変更」ボタンが示す。文で繰り返さない（T-M8-66）。
+              "インパクトが高い新着はまだありません。"}
         </p>
           {loadFailed ? null : (
             <Link
@@ -93,9 +94,6 @@ export function ImportantNewsCard({
             </li>
         ))}
         </ul>
-        <p className="mt-3 text-[11.5px] text-ink-3">
-          このニュースから投稿を作るには「すべて見る」からニュース画面を開いてください。
-        </p>
       </CardBody>
     </Card>
   );

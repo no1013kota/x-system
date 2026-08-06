@@ -95,7 +95,7 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
 
   const save = page.getByRole("button", { name: "Xキーを保存" });
   await expect(save).toBeDisabled();
-  await expect(page.getByText("Client ID を入力すると保存できます。")).toBeVisible();
+  await expect(page.getByText("Client IDとClient Secretを入力すると保存できます。")).toBeVisible();
 
   // 短いあいだは必要な文字数と現在の文字数が出る
   await page.getByLabel("Client ID").fill("abc");
@@ -213,14 +213,14 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
-  // 進める行き先がある。**説明文は足さない**（同期の遅延はカード直下の既存文が伝えている。
-  // 同じことを2か所で言うと常時出る注意書きとして読み飛ばされる・T-M8-54）。
+  // 進める行き先がある。常時表示の反映待ち説明は**どちらも置かない**（T-M8-66。
+  // 反映待ちの説明はStripeから戻った瞬間のNoticeだけが出す。常時出る注意書きは読み飛ばされる）。
   await expect(
     page.getByText("ご契約の情報をStripeから受け取っています", { exact: false }),
   ).toHaveCount(0);
   await expect(
     page.getByText("変更内容はStripeからの通知を受けて", { exact: false }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   const choose = page.getByRole("link", { name: "プランを選ぶ" });
   await expect(choose).toBeVisible();
 
