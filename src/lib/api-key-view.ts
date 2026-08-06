@@ -17,9 +17,9 @@ function maskedLastFour(value: unknown): string {
 
 export function maskedApiKeyLabel(key: ApiKeyViewState): string {
   if (key.provider === "x") {
-    const type =
-      key.displayHint.client_type === "confidential" ? "Confidential" : "Public";
-    return `Client ID ${maskedLastFour(key.displayHint.client_id_last4)}（${type}）`;
+    // Public/Confidential の表記は出さない。現在のConsoleに選択が無く、画面からも
+    // 「Client種別」を撤去したため、ここに出すと利用者が知らない概念になる（T-M8-62）。
+    return `Client ID ${maskedLastFour(key.displayHint.client_id_last4)}`;
   }
   return `APIキー ${maskedLastFour(key.displayHint.api_key_last4)}`;
 }

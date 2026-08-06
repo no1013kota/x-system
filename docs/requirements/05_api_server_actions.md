@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.27 |
+| バージョン | v1.28 |
 | 更新日 | 2026-08-04 |
 | 関連 | 全画面、全ジョブ |
 
@@ -118,7 +118,7 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。Client ID変更時はBYOK Xアカウントの再連携が必要 |
+| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。**UIは常に`client_type=public`・secretなしで送る**（現ConsoleにPublic/Confidentialの選択が無いため。T-M8-62）。Client ID変更時はBYOK Xアカウントの再連携が必要 |
 | `saveAiApiKey` | provider, api key | masked key | providerはanthropic/openai/google |
 | `verifyApiKey` | provider | status | AIは軽量疎通し、成功で`valid`／`verified_at`、失敗で`invalid`。XはOAuth完了まで`unchecked` |
 | `deleteApiKey` | provider | deleted | AIは関連用途設定を解除。Xはtoken revoke後にBYOK Xアカウントをexpired化 |
