@@ -65,7 +65,7 @@ export function UpcomingScheduleCard({
     <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>次回の予定</CardTitle>
-        <Link className="text-sm text-primary underline" href="/app/schedule">
+        <Link className="text-[12px] font-medium text-brand underline-offset-2 hover:underline" href="/app/schedule">
           スケジュールを編集
         </Link>
       </div>
@@ -80,7 +80,7 @@ export function UpcomingScheduleCard({
       <ul className="mt-3 space-y-2">
         {outlook.runs.map((run) => (
           <li
-            className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3 text-sm"
+            className="flex flex-wrap items-center gap-2 rounded-card border border-hairline p-3 text-sm"
             key={run.slotId}
           >
             <span className="font-medium tabular-nums">{run.label}</span>

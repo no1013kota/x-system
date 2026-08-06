@@ -15,7 +15,8 @@ import type { IconName } from "@/components/ui/icon";
  * `icon` は `components/ui/icon.tsx` の Material Symbols 名。
  */
 export const APP_NAVIGATION_ITEMS = [
-  { href: "/app", icon: "output", label: "ホーム" },
+  // "output"（箱から出る矢印）はログアウトと同じ絵で紛らわしかった（T-M8-60）。
+  { href: "/app", icon: "home", label: "ホーム" },
   { href: "/app/news", icon: "newspaper", label: "最新ニュース" },
   { href: "/app/posts", icon: "edit_square", label: "投稿作成" },
   { href: "/app/schedule", icon: "schedule", label: "スケジュール" },

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { APP_NAME } from "@/lib/app-config";
+import { cardClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${APP_NAME}`,
@@ -31,7 +32,7 @@ const ITEMS = [
 export default function CommercialTransactionsPage() {
   return (
     <main className="min-h-screen bg-muted/40 px-4 py-12">
-      <article className="mx-auto max-w-3xl rounded-card border bg-card p-6 shadow-sm sm:p-10">
+      <article className={`${cardClassName} mx-auto max-w-3xl p-6 sm:p-10`}>
         <header className="space-y-3">
           <Link className="text-sm font-semibold" href="/plans">
             {APP_NAME}

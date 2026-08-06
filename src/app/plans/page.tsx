@@ -156,7 +156,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           </header>
 
           {params.checkout === "canceled" ? (
-            <p className="mx-auto max-w-3xl rounded-card border bg-card p-4 text-sm" role="status">
+            <p className={`${cardClassName} mx-auto max-w-3xl p-4 text-sm`} role="status">
               決済手続きは完了していません。プランを確認して、もう一度お試しください。
             </p>
           ) : null}
@@ -182,7 +182,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               提供開始を再掲する。折りたたみで隠さない。 */}
           <section
             aria-labelledby="pre-application-heading"
-            className="mx-auto max-w-3xl rounded-card border bg-card p-5 text-xs leading-5 text-muted-foreground"
+            className={`${cardClassName} mx-auto max-w-3xl p-5 text-xs leading-5 text-muted-foreground`}
           >
             <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
               お申し込み前の確認

@@ -23,7 +23,7 @@ import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
-import { CardTitle, cardTitleClassName } from "@/components/ui/card";
+import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -159,7 +159,7 @@ export function ScheduleManager({
       </div>
 
       {creating ? (
-        <div className="rounded-card border bg-card p-5 shadow-sm">
+        <div className={`${cardClassName} p-4`}>
           <CardTitle>新しいスケジュール</CardTitle>
           <SlotFields
             accountHandle={accountHandle}
@@ -295,7 +295,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-card border bg-card p-4 shadow-sm">
+    <div className={`${cardClassName} overflow-x-auto p-4`}>
       <table className="w-full min-w-[760px] border-collapse text-center text-xs">
         <thead>
           <tr>
@@ -424,7 +424,7 @@ function SlotRow({
   }
 
   return (
-    <li className="rounded-card border bg-card p-4 shadow-sm">
+    <li className={`${cardClassName} p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
@@ -707,7 +707,7 @@ function SlotFields({
         <label className="flex flex-col gap-1">
           <span className="font-medium">時刻</span>
           <select
-            className="rounded-md border px-3 py-2"
+            className="h-9 rounded-card border border-hairline bg-surface px-2 text-[13px]"
             onChange={(e) => setV((cur) => ({ ...cur, time_jst: e.target.value }))}
             value={v.time_jst}
           >
@@ -759,7 +759,7 @@ function SlotFields({
       <label className="flex flex-col gap-1">
         <span className="font-medium">追加指示（任意）</span>
         <textarea
-          className="w-full rounded-md border px-3 py-2"
+          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
           maxLength={2000}
           onChange={(e) => setV((cur) => ({ ...cur, instructions: e.target.value }))}
           rows={2}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { APP_NAME } from "@/lib/app-config";
 
 import { ResendConfirmationForm } from "./resend-confirmation-form";
+import { cardClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: `認証リンクエラー | ${APP_NAME}`,
@@ -20,7 +21,7 @@ export default async function AuthErrorPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">
-      <section className="w-full max-w-md space-y-6 rounded-card border bg-card p-6 shadow-sm sm:p-8">
+      <section className={`${cardClassName} w-full max-w-md space-y-6 p-6 sm:p-8`}>
         <div className="space-y-2">
           <p className="text-sm font-semibold">{APP_NAME}</p>
           <h1 className="text-2xl font-bold">リンクを確認できませんでした</h1>
