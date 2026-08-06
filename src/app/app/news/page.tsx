@@ -34,14 +34,18 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const settings = await getSettingsForUser(user.id);
+  // user.id にしか依存しない3つは並列に取得する（T-M8-67。以前は4段直列）。
+  const [settings, activeId, { from, to }] = await Promise.all([
+    getSettingsForUser(user.id),
+    resolveActiveXAccountForUser(user.id),
+    searchParams,
+  ]);
   const config = settings?.newsConfig ?? {
     categories: [...DEFAULT_NEWS_CONFIG.categories],
     impact_filter: [...DEFAULT_NEWS_CONFIG.impact_filter],
     max_items: DEFAULT_NEWS_CONFIG.max_items,
   };
 
-  const { from, to } = await searchParams;
   const window = parseWindow(from, to);
 
   let initial: NewsItemsPage = { items: [], nextCursor: null };
@@ -56,8 +60,6 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   } catch {
     initialError = true;
   }
-
-  const activeId = await resolveActiveXAccountForUser(user.id);
   const createdIds = activeId
     ? await listCreatedNewsItemIdsForAccount(
         activeId,

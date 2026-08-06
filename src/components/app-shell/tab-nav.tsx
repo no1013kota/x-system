@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
+import { TabLabel } from "./tab-nav-label";
+
 export interface TabNavItem {
   value: string;
   label: string;
@@ -38,6 +40,8 @@ export function tabLinkClassName(
 
 /**
  * URL(searchParams)駆動のタブナビ（settings/posts/ai-settings 共通, 要件06 各画面のタブ）。
+ * 押した直後のフィードバックは `TabLabel`（client・useLinkStatus）が担う。本体は
+ * server component のまま（`hrefFor` が関数propsのため client 化できない）。
  * `active` と各 `item.value` の一致でアクティブ判定し `aria-current="page"` を付与、href は
  * `hrefFor(value)` で生成する。nav/リンクのページ固有クラスは className/linkClassName/
  * inactiveLinkClassName で吸収し、各画面の見た目を維持する。
@@ -72,7 +76,7 @@ export function TabNav({
           href={hrefFor(item.value)}
           key={item.value}
         >
-          {item.label}
+          <TabLabel label={item.label} />
         </Link>
       ))}
     </nav>

@@ -81,37 +81,36 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     ? params.tab ?? "billing"
     : "billing";
   const admin = createSupabaseAdminClient();
-  const result = await admin
-    .from("profiles")
-    .select(
-      "plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
-    )
-    .eq("id", user.id)
-    .maybeSingle<BillingProfile>();
+  // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
+  const [result, xAccounts, userSettings] = await Promise.all([
+    admin
+      .from("profiles")
+      .select(
+        "plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
+      )
+      .eq("id", user.id)
+      .maybeSingle<BillingProfile>(),
+    tab === "x-accounts" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
+    tab === "notifications"
+      ? getSettingsForUser(user.id)
+      : Promise.resolve(null as UserSettings | null),
+  ]);
   if (result.error || !result.data) {
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
-  // BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも登録状況を読む
-  // （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
-  let apiKeys: ApiKeyViewState[] = [];
-  if ((tab === "api-keys" || tab === "x-accounts") && profile.plan !== "premium") {
-    apiKeys = await listApiKeyViewsForUser(user.id);
-  }
-  let xAccounts: XAccountListItem[] = [];
-  if (tab === "x-accounts") {
-    xAccounts = await listXAccounts(user.id);
-  }
-  let userSettings: UserSettings | null = null;
-  if (tab === "notifications") {
-    userSettings = await getSettingsForUser(user.id);
-  }
-  // premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・要件06 §10, T-M6-12/T-M8-25）。
-  // premium以外は null。APIキータブは「キー登録不要」の代わりに何が付くかをここで見せる。
-  let usage: UsageSummary | null = null;
-  if (tab === "billing" || tab === "api-keys") {
-    usage = await loadUsageSummaryForUser(user.id, profile.plan ?? "standard");
-  }
+  // planに依存する2つは第2波で並列に。
+  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも
+  //   登録状況を読む（前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
+  // - 利用枠: premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・T-M6-12/T-M8-25）。
+  const [apiKeys, usage] = await Promise.all([
+    (tab === "api-keys" || tab === "x-accounts") && profile.plan !== "premium"
+      ? listApiKeyViewsForUser(user.id)
+      : Promise.resolve([] as ApiKeyViewState[]),
+    tab === "billing" || tab === "api-keys"
+      ? loadUsageSummaryForUser(user.id, profile.plan ?? "standard")
+      : Promise.resolve(null as UsageSummary | null),
+  ]);
 
   return (
     <main className="px-4 py-[26px] lg:px-8">

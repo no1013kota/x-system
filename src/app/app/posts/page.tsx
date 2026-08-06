@@ -22,6 +22,13 @@ import { HistoryList } from "./history-list";
 export const metadata: Metadata = { title: "投稿 | Space AI" };
 
 type Tab = "create" | "drafts" | "history";
+
+/**
+ * 履歴タブの取得上限（T-M8-67）。自動投稿を続けると履歴は際限なく増え、全件取得だと
+ * thread/imagesのJSON転送と画像の署名URL発行（1枚1HTTP）が件数分走る。
+ * 上限に達したときは「直近N件」と画面に明示する（黙って切り捨てない）。
+ */
+const HISTORY_LIMIT = 50;
 const TABS: { id: Tab; label: string }[] = [
   { id: "create", label: "作成" },
   { id: "drafts", label: "下書き" },
@@ -32,38 +39,37 @@ interface PostsPageProps {
   searchParams: Promise<{ tab?: string; draftId?: string }>;
 }
 
+/** valid な openai/google キーの行（plan判定前に並列で引けるよう、クエリと判定を分離・T-M8-67）。 */
+function imageKeyRowsQuery(userId: string) {
+  return getPool().query<{ provider: string }>(
+    `select provider from user_api_keys
+      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
+    [userId],
+  );
+}
+
 /** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。 */
-async function availableImageProviders(
-  userId: string,
+function imageProvidersFor(
   plan: string | null,
-): Promise<string[]> {
+  keyRows: { provider: string }[],
+): string[] {
   if (plan === "premium") {
     const providers: string[] = [];
     if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
     if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
     return providers;
   }
-  const { rows } = await getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
-  return rows.map((r) => r.provider);
+  return keyRows.map((r) => r.provider);
 }
 
 async function createTabData(userId: string, activeXAccountId: string) {
-  const profile = (
-    await getPool().query<{ plan: string | null }>(`select plan from profiles where id = $1`, [
+  // 3クエリは相互に独立（T-M8-67。以前は plan → キー → 実行中job の3段直列だった）。
+  const [profileResult, keyRows, inflightResult] = await Promise.all([
+    getPool().query<{ plan: string | null }>(`select plan from profiles where id = $1`, [
       userId,
-    ])
-  ).rows[0];
-  // 選択肢は `lib/post/post-patterns.ts` が唯一の定義（スケジュール画面と共有・T-M8-29）。
-  const patterns = env.FEATURE_QUOTE_POST_ENABLED
-    ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
-    : POST_PATTERN_OPTIONS;
-  const imageProviders = await availableImageProviders(userId, profile?.plan ?? null);
-  const inflight = (
-    await getPool().query<{
+    ]),
+    imageKeyRowsQuery(userId),
+    getPool().query<{
       id: string;
       status: string;
       progress_stage: string | null;
@@ -73,8 +79,14 @@ async function createTabData(userId: string, activeXAccountId: string) {
         where x_account_id = $1 and kind = 'post_generation' and status in ('queued','running')
         order by created_at desc limit 1`,
       [activeXAccountId],
-    )
-  ).rows[0];
+    ),
+  ]);
+  // 選択肢は `lib/post/post-patterns.ts` が唯一の定義（スケジュール画面と共有・T-M8-29）。
+  const patterns = env.FEATURE_QUOTE_POST_ENABLED
+    ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
+    : POST_PATTERN_OPTIONS;
+  const imageProviders = imageProvidersFor(profileResult.rows[0]?.plan ?? null, keyRows.rows);
+  const inflight = inflightResult.rows[0];
   const initialJob: ActiveJob | null = inflight
     ? {
         id: inflight.id,
@@ -106,27 +118,36 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
   let slots: ScheduleSlotView[] = [];
+  let historyTruncated = false;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
-    const [loaded, plan] = await Promise.all([
-      listDraftsForAccount(pooledDb, activeXAccountId, tab === "history" ? "history" : "drafts"),
+    // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
+    const [loaded, plan, keyRows, loadedSlots, handleRow] = await Promise.all([
+      listDraftsForAccount(
+        pooledDb,
+        activeXAccountId,
+        tab === "history" ? "history" : "drafts",
+        tab === "history" ? { limit: HISTORY_LIMIT } : {},
+      ),
       getPool()
         .query<{ plan: string | null }>(`select plan from profiles where id = $1`, [user.id])
         .then((r) => r.rows[0]?.plan ?? null),
+      tab === "drafts" ? imageKeyRowsQuery(user.id) : Promise.resolve(null),
+      tab === "drafts" ? listScheduleSlots(pooledDb, activeXAccountId) : Promise.resolve([]),
+      tab === "history"
+        ? getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
+            activeXAccountId,
+          ])
+        : Promise.resolve(null),
     ]);
     drafts = await attachSignedImageUrls(loaded);
+    slots = loadedSlots;
+    historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
     if (tab === "drafts") {
       // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
-      imageRegenEnabled = (await availableImageProviders(user.id, plan)).length > 0;
+      imageRegenEnabled = imageProvidersFor(plan, keyRows?.rows ?? []).length > 0;
     } else {
-      xHandle = (
-        await getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
-          activeXAccountId,
-        ])
-      ).rows[0]?.handle ?? null;
+      xHandle = handleRow?.rows[0]?.handle ?? null;
     }
-  }
-  if (activeXAccountId && tab === "drafts") {
-    slots = await listScheduleSlots(pooledDb, activeXAccountId);
   }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
@@ -167,7 +188,12 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           />
         </>
       ) : (
-        <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
+        <>
+          <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
+          {historyTruncated ? (
+            <p className="text-[11.5px] text-ink-3">直近{HISTORY_LIMIT}件を表示しています。</p>
+          ) : null}
+        </>
       )}
     </main>
   );

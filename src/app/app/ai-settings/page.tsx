@@ -77,17 +77,23 @@ export default async function AiSettingsPage({
     .select("active_x_account_id, ai_purpose_config, plan")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
-  let account: AccountRow | null = null;
-  if (profile.data?.active_x_account_id) {
-    const result = await supabase
-      .from("x_accounts")
-      .select("id, handle, settings, base_md, base_md_version")
-      .eq("id", profile.data.active_x_account_id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle<AccountRow>();
-    account = result.data;
-  }
+  const planForKeys = profile.data?.plan ?? "standard";
+  // アカウント行とAI用途タブのキー一覧は互いに独立なので並列に取る（T-M8-67）。
+  const [accountResult, purposeKeys] = await Promise.all([
+    profile.data?.active_x_account_id
+      ? supabase
+          .from("x_accounts")
+          .select("id, handle, settings, base_md, base_md_version")
+          .eq("id", profile.data.active_x_account_id)
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .maybeSingle<AccountRow>()
+      : Promise.resolve(null),
+    tab === "purposes" && planForKeys !== "premium"
+      ? listApiKeyViewsForUser(user.id)
+      : Promise.resolve(null),
+  ]);
+  const account: AccountRow | null = accountResult?.data ?? null;
 
   const parsedSettings = account
     ? personaSettingsSchema.safeParse(account.settings)
@@ -132,9 +138,8 @@ export default async function AiSettingsPage({
     promptQuoteEnabled = res.quotePostEnabled;
   }
   let validUserProviders: AiKeyProvider[] = [];
-  if (tab === "purposes" && plan !== "premium") {
-    const keys = await listApiKeyViewsForUser(user.id);
-    validUserProviders = keys
+  if (purposeKeys) {
+    validUserProviders = purposeKeys
       .filter(
         (key): key is typeof key & { provider: AiKeyProvider } =>
           key.provider !== "x" && key.status === "valid",

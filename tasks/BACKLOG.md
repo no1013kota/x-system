@@ -956,6 +956,32 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `plans.ts` との一致を検査（乖離したら落ちる）。ローカルへ適用しAPI読み戻しで反映を確認済み。
 - **staging/productionへは `npm run stripe:portal:setup -- --target <env>` の再実行が必要**（別Stripeアカウントのため）。
 
+### T-M8-67: 本番の体感速度を上げる（直列DB往復の解消・タブ応答・取得上限） `done`
+- 参照: 要件06 §1/§2/§8、CLAUDE.md 前提（全画面監査 124件のうち perf 31件） / サイズ: L
+- 利用者要望:「本番環境になった際に画面遷移に時間がかかりすぎそうなものがあれば改善したい」。
+- **直列await→並列化**: layout（5段→2段）・ホーム（約9段→2段）・投稿（4段→2段）・スケジュール
+  （3段→1段）・設定（4段→2段）・ニュース（4段→3段）・AI設定（AI用途タブ3段→2段）。
+- **リクエスト内メモ化**: `getCurrentUser`（auth往復＋プロフィール確認が毎画面2回→1回）と
+  `resolveActiveXAccountForUser` を React cache() でラップ。`ensureUserProfile` はread-first化
+  （毎表示のupsert書き込み→正常系は読み取り1回）。
+- **タブ切替の無反応解消**: TabNavのラベルに `useLinkStatus` のスピナー（`tab-nav-label.tsx`）。
+  **TabNav本体をclient化してはいけない**——`hrefFor`（関数props）が境界を越えられず全タブページが
+  実行時エラーになる（typecheckでは検出不能。実際に踏んでE2E10件全滅→切り戻した）。
+- **取得上限**: ホーム確認待ち5件＋総数count／履歴タブ直近50件（上限到達は画面に明示）／
+  スケジュール画面の下書きカードlimit 5。`listDraftsForAccount` に limit 追加。
+- **loading**: /plans に loading.tsx 追加。/app の loading コンテナ幅をページと一致。
+- 検証: 単体1,656緑・E2E全54件緑（4.8分。改善前の完走は12.6分だった）。
+
+### T-M8-68: 残りの体感速度改善（分析ポーリング・不要refresh・bundle） `todo`
+- 参照: 監査findings 61-63/98-99/123 / 依存: T-M8-67 / サイズ: M
+- (1) 分析の提案生成ポーリングが5秒ごとに router.refresh()（ページ全クエリ再実行）×最大24回
+  → 軽量なServer Action（generation_jobsのexists 1クエリ）を叩き、完了時だけrefreshする。
+- (2) `loadSuggestionsForUser` が投稿済み全draftのthread JSONBを無制限取得
+  → evidenceのtweet_idsに絞る（`tweet_ids && $2::text[]`）。
+- (3) ai-settings系の保存後 router.refresh() 3箇所はクライアントstateが正で再取得が表示に寄与しない
+  → 削除（各コンポーネントのpropsがuseState初期値にしか使われないことを確認済み）。
+- (4) draft-editor の twitter-text（1.2MB）静的import → 編集モード突入時の動的importへ。
+
 ### T-M8-60: カード器の別系統（bg-card shadow-sm）18箇所を統一する `todo`
 - 参照: ADR-0006 原則5、T-M8-51 / 依存: なし / サイズ: M
 - `rounded-card border bg-card p-5 shadow-sm` という別系統の手書きがrepo全体に18箇所。
