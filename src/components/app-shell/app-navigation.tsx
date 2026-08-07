@@ -35,8 +35,8 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
             aria-current={current ? "page" : undefined}
             className={
               mobile
-                ? `flex min-h-16 flex-col items-center justify-center gap-1 rounded-card px-0.5 text-[10px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${stateClass}`
-                : `flex min-h-10 items-center gap-2.5 rounded-card px-3 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${stateClass}`
+                ? `flex min-h-16 flex-col items-center justify-center gap-1 rounded-card px-0.5 text-[11px] leading-tight font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${stateClass}`
+                : `flex min-h-10 items-center gap-2.5 rounded-card px-3 text-body font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${stateClass}`
             }
             href={item.href}
             key={item.href}

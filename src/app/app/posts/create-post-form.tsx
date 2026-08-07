@@ -237,12 +237,12 @@ export function CreatePostForm({
         />
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
+          <label className="block text-body font-medium text-ink" htmlFor="theme">
             テーマ
           </label>
           <select
             aria-describedby="theme-help"
-            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="theme"
             onChange={(e) => setTheme(e.target.value)}
             required
@@ -261,11 +261,11 @@ export function CreatePostForm({
         </div>
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="source_url">
+          <label className="block text-body font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
           </label>
           <input
-            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="source_url"
             inputMode="url"
             onChange={(e) => setSourceUrl(e.target.value)}
@@ -277,11 +277,11 @@ export function CreatePostForm({
 
         {pattern === "p2" ? (
           <div>
-            <label className="block text-[13px] font-medium text-ink" htmlFor="user_opinion">
+            <label className="block text-body font-medium text-ink" htmlFor="user_opinion">
               自分の考え（任意）
             </label>
             <textarea
-              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
               id="user_opinion"
               maxLength={2000}
               onChange={(e) => setUserOpinion(e.target.value)}
@@ -292,11 +292,11 @@ export function CreatePostForm({
         ) : null}
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="instructions">
+          <label className="block text-body font-medium text-ink" htmlFor="instructions">
             追加指示（任意）
           </label>
           <textarea
-            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="instructions"
             maxLength={2000}
             onChange={(e) => setInstructions(e.target.value)}
@@ -306,9 +306,10 @@ export function CreatePostForm({
         </div>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
+          <label className="flex min-h-9 cursor-pointer items-center gap-2 text-body font-medium text-ink">
             <input
               checked={imageEnabled}
+              className="size-4"
               disabled={imageProviders.length === 0}
               onChange={(e) => setImageEnabled(e.target.checked)}
               type="checkbox"
@@ -325,7 +326,7 @@ export function CreatePostForm({
 
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
-          className="h-10 w-full gap-1.5 text-[13.5px]"
+          className="h-10 w-full gap-1.5 text-body"
           disabled={pending || inProgress || !theme}
           onClick={submit}
           type="button"
@@ -340,7 +341,7 @@ export function CreatePostForm({
           という**どの項目が悪いか分からない**トーストが5秒で消えるだけだった。
         */}
         {!theme && !inProgress ? (
-          <p className="text-[12px] text-ink-2">テーマを選ぶと生成できます。</p>
+          <p className="text-caption text-ink-2">テーマを選ぶと生成できます。</p>
         ) : null}
       </section>
 
@@ -374,7 +375,7 @@ export function CreatePostForm({
                   STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf(job.progressStage);
                 return (
                   <li
-                    className={`flex items-center gap-2 text-[13px] ${
+                    className={`flex items-center gap-2 text-body ${
                       active ? "font-medium text-ink" : done ? "text-ink-2" : "text-ink-3"
                     }`}
                     key={stage}

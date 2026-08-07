@@ -89,7 +89,7 @@ export default async function SchedulePage() {
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">スケジュール</h1>
-        <p className="mt-1 text-[12.5px] text-ink-2">
+        <p className="mt-1 text-body text-ink-2">
           曜日と時刻を決めて、下書き作成や自動投稿を定期実行します。
         </p>
       </header>
@@ -114,7 +114,7 @@ export default async function SchedulePage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>未確認の下書き</CardTitle>
             <Link
-              className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+              className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
               href="/app/posts?tab=drafts"
             >
               編集・投稿する
@@ -122,7 +122,7 @@ export default async function SchedulePage() {
           </div>
           <ul className="mt-3 space-y-2">
             {drafts.length === 0 ? (
-              <li className="rounded-card border border-hairline px-4 py-8 text-center text-[12.5px] text-ink-2">
+              <li className="rounded-card border border-hairline px-4 py-8 text-center text-body text-ink-2">
                 未確認の下書きはありません。
               </li>
             ) : (
@@ -136,11 +136,11 @@ export default async function SchedulePage() {
                       <Badge tone="brand">
                         {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                       </Badge>
-                      <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                      <span className="ml-auto text-caption text-ink-3 tabular-nums">
                         {formatJst(draft.updated_at)}
                       </span>
                     </div>
-                    <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-5 text-ink-2">
+                    <p className="mt-1.5 line-clamp-2 text-body leading-5 text-ink-2">
                       {draft.thread[0]?.text ?? ""}
                     </p>
                   </Link>

@@ -83,6 +83,21 @@
   --radius-chip: 6px;
   --radius-modal: 16px;
   --radius-pill: 9999px;
+
+  /*
+   * タイプスケール（T-M8-71）。以前は 10〜48px で**21種**のサイズが直書きされ、特に
+   * 12/12.5/13/13.5/14px の5段が約380箇所で併存していた（0.5px差は意図として区別できない）。
+   * 本文系はこの2トークン＋ text-sm(14px) の3段だけを使う:
+   *   text-caption(12px) … タイムスタンプ・メタ情報・注記
+   *   text-body(13px)    … UI本文・ラベル・説明文
+   *   text-sm(14px)      … フォーム本文・テーブル（Tailwind既定）
+   * 見出し系は 15px（カードタイトル）/ 20px（h1）/ 22・26px（認証・マーケ）。
+   * 12〜14px帯の任意値（text-[12.5px]等）の再発は type-scale.test.ts が禁止する。
+   */
+  --text-caption: 12px;
+  --text-caption--line-height: 1rem;
+  --text-body: 13px;
+  --text-body--line-height: 1.25rem;
 }
 
 :root {
@@ -142,7 +157,12 @@
   --hairline: rgba(0, 0, 0, 0.08);
   --ink: rgba(0, 0, 0, 0.9);
   --ink-2: rgba(0, 0, 0, 0.55);
-  --ink-3: rgba(0, 0, 0, 0.45);
+  /*
+   * 0.45 → 0.56 へ引き上げ（T-M8-70）。0.45は白地でコントラスト比3.36:1しかなく、
+   * WCAG 1.4.3（AA・通常テキストは4.5:1以上）に全32箇所が不適合だった。しかも使用箇所は
+   * すべて15px以下＝「最小の字が最も薄い」状態。0.56で約4.6:1になりAAを満たす。
+   */
+  --ink-3: rgba(0, 0, 0, 0.56);
   --success-bg: #f0f9ee;
   --success-fg: #3f8f2c;
   --success-icon: #4ea836;
@@ -233,5 +253,20 @@
   input[type="checkbox"],
   input[type="radio"] {
     accent-color: var(--brand);
+  }
+}
+
+/*
+ * iOS Safariはfont-size<16pxの入力欄にフォーカスすると画面を自動ズームする（T-M8-70）。
+ * アプリの入力欄は13〜14pxが主流のため、スマホでは入力のたびにズーム→手で戻すことになっていた。
+ * 個別のクラス指定では付け忘れが必ず出るので、モバイル幅だけ入力系のfont-sizeを一括で16pxにする。
+ * このルールは意図的に @layer の外に置く（無層のCSSはTailwindのユーティリティ層より優先されるため、
+ * text-[13px] 等の指定があっても勝つ）。再発はe2e（mobile-layout.spec.ts）が検査する。
+ */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
   }
 }

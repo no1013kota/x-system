@@ -26,14 +26,14 @@ export function ImportantNewsCard({
         <CardHeader>
           <CardTitle>重要ニュース</CardTitle>
           <Link
-            className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+            className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
             href="/app/news"
           >
             ニュースを見る
           </Link>
         </CardHeader>
         <CardBody className="pt-0">
-          <p className="text-[12.5px] leading-5 text-ink-2">
+          <p className="text-body leading-5 text-ink-2">
           {loadFailed
             ? "ニュースを取得できませんでした。時間をおいて開き直すか、ニュース画面で確認してください。"
             : // 条件の変え方は直下の「ニュース設定を変更」ボタンが示す。文で繰り返さない（T-M8-66）。
@@ -41,7 +41,7 @@ export function ImportantNewsCard({
         </p>
           {loadFailed ? null : (
             <Link
-              className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card border border-hairline px-4 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03]"
+              className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card border border-hairline px-4 text-body font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03]"
               href="/app/settings?tab=notifications"
             >
               ニュース設定を変更
@@ -57,7 +57,7 @@ export function ImportantNewsCard({
       <CardHeader>
         <CardTitle>重要ニュース</CardTitle>
         <Link
-          className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+          className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
           href="/app/news"
         >
           すべて見る
@@ -65,7 +65,7 @@ export function ImportantNewsCard({
       </CardHeader>
       <CardBody className="pt-0">
         {loadFailed ? (
-          <p className="mb-2 text-[11.5px] text-ink-3">
+          <p className="mb-2 text-caption text-ink-3">
             最新の取得に失敗したため、前回までの内容を表示しています。
           </p>
         ) : null}
@@ -76,15 +76,15 @@ export function ImportantNewsCard({
                 <CategoryChip category={item.category} />
                 <Badge tone="warn">インパクト高</Badge>
                 {item.publishedAt ? (
-                  <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                  <span className="ml-auto text-caption text-ink-3 tabular-nums">
                     {formatJst(item.publishedAt)}
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1.5 text-[14px] font-bold leading-5 text-ink">{item.title}</p>
-              <p className="mt-1 line-clamp-2 text-[12.5px] leading-5 text-ink-2">{item.summary}</p>
+              <p className="mt-1.5 text-sm font-bold leading-5 text-ink">{item.title}</p>
+              <p className="mt-1 line-clamp-2 text-body leading-5 text-ink-2">{item.summary}</p>
               <a
-                className="mt-2 inline-block text-[11.5px] text-brand underline-offset-2 hover:underline"
+                className="mt-2 inline-block text-caption text-brand underline-offset-2 hover:underline"
                 href={item.sourceUrl}
                 rel="noopener noreferrer"
                 target="_blank"

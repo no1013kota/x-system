@@ -76,13 +76,17 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
             <tr className="border-b last:border-0" key={type}>
               <td className="py-2">{TYPE_LABEL[type]}</td>
               {(["in_app", "email"] as const).map((channel) => (
-                <td className="py-2 text-center" key={channel}>
-                  <input
-                    aria-label={`${TYPE_LABEL[type]}の${channel === "in_app" ? "アプリ内" : "メール"}通知`}
-                    checked={state[type][channel]}
-                    onChange={() => toggle(type, channel)}
-                    type="checkbox"
-                  />
+                <td className="text-center" key={channel}>
+                  {/* タップ対象はラベル全体（約40px四方）。素のcheckboxは13px四方しかない（T-M8-70）。 */}
+                  <label className="inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
+                    <input
+                      aria-label={`${TYPE_LABEL[type]}の${channel === "in_app" ? "アプリ内" : "メール"}通知`}
+                      checked={state[type][channel]}
+                      className="size-4"
+                      onChange={() => toggle(type, channel)}
+                      type="checkbox"
+                    />
+                  </label>
                 </td>
               ))}
             </tr>
@@ -151,9 +155,10 @@ function NewsForm({ config }: { config: NewsConfig }) {
         <legend className="text-sm font-medium">テーマ（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_CATEGORIES.map((c) => (
-            <label className="flex items-center gap-1.5 text-sm" key={c}>
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={c}>
               <input
                 checked={categories.includes(c)}
+                className="size-4"
                 onChange={() => toggle(categories, setCategories, c)}
                 type="checkbox"
               />
@@ -167,9 +172,10 @@ function NewsForm({ config }: { config: NewsConfig }) {
         <legend className="text-sm font-medium">インパクト（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_IMPACTS.map((i) => (
-            <label className="flex items-center gap-1.5 text-sm" key={i}>
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={i}>
               <input
                 checked={impacts.includes(i)}
+                className="size-4"
                 onChange={() => toggle(impacts, setImpacts, i)}
                 type="checkbox"
               />

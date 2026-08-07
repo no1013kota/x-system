@@ -51,7 +51,7 @@ const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
  * 利用者から「P1・P3・P6 とはどういう意味か」と聞かれた。**画面の中に答えが無い表記は使わない。**
  */
 function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
-  const base = "inline-block rounded-chip px-1.5 py-0.5 text-[11px] font-bold leading-4";
+  const base = "inline-block rounded-chip px-1.5 py-0.5 text-caption font-bold leading-4";
   if (!slot.enabled) return `${base} bg-black/[0.04] text-ink-3 line-through`;
   return slot.mode === "auto"
     ? `${base} bg-brand text-white`
@@ -152,7 +152,7 @@ export function ScheduleManager({
 
       <div className="flex justify-end">
         {!creating ? (
-          <Button className="h-9 px-4 text-[13px]" onClick={() => setCreating(true)} type="button" variant="brand">
+          <Button className="h-9 px-4 text-body" onClick={() => setCreating(true)} type="button" variant="brand">
             スケジュールを追加
           </Button>
         ) : null}
@@ -673,7 +673,7 @@ function SlotFields({
         </label>
         <select
           aria-describedby={`${themeFieldId}-help`}
-          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-[13px]"
+          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-body"
           id={themeFieldId}
           onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
           required
@@ -695,8 +695,8 @@ function SlotFields({
         <legend className="mb-1 font-medium">曜日</legend>
         <div className="flex flex-wrap gap-2">
           {WEEKDAY_LABELS.map((w, d) => (
-            <label className="flex items-center gap-1" key={w}>
-              <input checked={v.weekdays.includes(d)} onChange={() => toggleWeekday(d)} type="checkbox" />
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1" key={w}>
+              <input checked={v.weekdays.includes(d)} className="size-4" onChange={() => toggleWeekday(d)} type="checkbox" />
               {w}
             </label>
           ))}
@@ -707,7 +707,7 @@ function SlotFields({
         <label className="flex flex-col gap-1">
           <span className="font-medium">時刻</span>
           <select
-            className="h-9 rounded-card border border-hairline bg-surface px-2 text-[13px]"
+            className="h-9 rounded-card border border-hairline bg-surface px-2 text-body"
             onChange={(e) => setV((cur) => ({ ...cur, time_jst: e.target.value }))}
             value={v.time_jst}
           >
@@ -722,9 +722,10 @@ function SlotFields({
           <legend className="mb-1 font-medium">モード</legend>
           <div className="flex gap-3">
             {(["draft", "auto"] as const).map((m) => (
-              <label className="flex items-center gap-1" key={m}>
+              <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1" key={m}>
                 <input
                   checked={v.mode === m}
+                  className="size-4"
                   name={`mode-${target.kind === "edit" ? target.slotId : "new"}`}
                   onChange={() => setV((cur) => ({ ...cur, mode: m }))}
                   type="radio"
@@ -742,9 +743,10 @@ function SlotFields({
         通常フローでは起きない。サーバーが拒否したときのトースト表示は残る。
       */}
 
-      <label className="flex items-center gap-2">
+      <label className="flex min-h-9 cursor-pointer items-center gap-2">
         <input
           checked={v.image_enabled}
+          className="size-4"
           onChange={(e) => setV((cur) => ({ ...cur, image_enabled: e.target.checked }))}
           type="checkbox"
         />
@@ -759,7 +761,7 @@ function SlotFields({
       <label className="flex flex-col gap-1">
         <span className="font-medium">追加指示（任意）</span>
         <textarea
-          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
           maxLength={2000}
           onChange={(e) => setV((cur) => ({ ...cur, instructions: e.target.value }))}
           rows={2}

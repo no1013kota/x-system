@@ -122,13 +122,13 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         size={18}
       />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-bold text-ink">{item.title}</p>
+        <p className="text-body font-bold text-ink">{item.title}</p>
         {item.description ? (
-          <p className="mt-0.5 text-[12px] leading-4 text-ink-2">{item.description}</p>
+          <p className="mt-0.5 text-caption leading-4 text-ink-2">{item.description}</p>
         ) : null}
         {item.action ? (
           <a
-            className="mt-1 inline-block text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+            className="mt-1 inline-block text-caption font-medium text-brand underline-offset-2 hover:underline"
             href={item.action.href}
           >
             {item.action.label}
@@ -137,7 +137,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       </div>
       <button
         aria-label="通知を閉じる"
-        className="-mt-1 -mr-1 shrink-0 self-start rounded-card p-1 text-ink-3 transition-colors duration-150 hover:bg-black/[0.04] hover:text-ink"
+        className="-mt-2 -mr-2 shrink-0 self-start rounded-card p-2 text-ink-3 transition-colors duration-150 hover:bg-black/[0.04] hover:text-ink"
         onClick={onDismiss}
         type="button"
       >
