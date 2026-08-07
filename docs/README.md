@@ -13,6 +13,8 @@
 | [運用メモ](./operations/) | **開発とテストの進め方**、ローカル開発起動、CI（GitHub Actions）、デプロイ（staging/production）、launchd/Vercel Cron、DBバックアップ・復元、リリース前チェックリスト等の手順 | 実行基盤・開発手順・運用手順が変わるとき |
 | [ADR](./decisions/README.md) | 上記で表現しきれない重要な技術判断 | 技術選定や不可逆な判断を行うとき |
 
+**正本ではない補助資料**: [制作依頼（marketing/）](./marketing/) — LP等の外部制作へ渡す依頼文。数値・文言の正はPRDと`src/lib/plans.ts`で、こちらは作成時点のスナップショット。
+
 **このリポジトリで実装を始める人は、まず [開発とテストの進め方](./operations/development-and-testing.md) を読む**（テストの層ごとの役割と限界、書き方の規約、このリポジトリ固有の落とし穴）。
 
 ## 仕様の所有ルール
