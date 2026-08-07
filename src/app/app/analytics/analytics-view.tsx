@@ -76,7 +76,7 @@ export function AnalyticsView({
               // 表明に使うと、配色を変えただけでテストが落ちる（実際 `bg-foreground` に
               // E2Eが依存していた）。支援技術にも正しく伝わる。
               aria-pressed={checkpoint === d}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${
+              className={`rounded-md px-3 py-1 text-body font-medium transition-colors duration-150 ${
                 checkpoint === d ? "bg-brand text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}
@@ -189,10 +189,10 @@ export function AnalyticsView({
                               {label}
                             </a>
                             {t.auditOnly ? (
-                              <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">監査（削除済み）</span>
+                              <span className="ml-1 rounded bg-muted px-1 text-caption text-muted-foreground">監査（削除済み）</span>
                             ) : null}
                             {t.unavailable && !t.auditOnly ? (
-                              <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">取得不能</span>
+                              <span className="ml-1 rounded bg-muted px-1 text-caption text-muted-foreground">取得不能</span>
                             ) : null}
                           </td>
                           <td className="py-1 pr-2 tabular-nums">{c ? num(c.impressions) : <NotCollected />}</td>

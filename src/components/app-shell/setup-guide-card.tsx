@@ -26,7 +26,7 @@ export function SetupGuideCard({ items }: { items: SetupChecklistItem[] }) {
           <CardTitle id="setup-guide-heading">
             初期設定ガイド
           </CardTitle>
-          <span className="text-[12px] font-bold tabular-nums text-brand">
+          <span className="text-caption font-bold tabular-nums text-brand">
             {done} / {items.length} 完了
           </span>
           <div
@@ -40,15 +40,15 @@ export function SetupGuideCard({ items }: { items: SetupChecklistItem[] }) {
           </div>
         </div>
         {/* 残り件数はヘッダの「n / m 完了」と進捗バーが示す。同じ情報を3重に言わない（T-M8-66）。 */}
-        <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">上から順に進めてください。</p>
+        <p className="mt-1.5 text-body leading-5 text-ink-2">上から順に進めてください。</p>
 
         {next ? (
           <div className="mt-3.5 rounded-card border border-brand/25 bg-brand-subtle/40 p-4">
-            <p className="text-[11px] font-bold text-brand">次にやること</p>
-            <p className="mt-1 text-[14px] font-bold text-ink">{next.label}</p>
-            <p className="mt-1 text-[12.5px] leading-5 text-ink-2">{next.description}</p>
+            <p className="text-caption font-bold text-brand">次にやること</p>
+            <p className="mt-1 text-sm font-bold text-ink">{next.label}</p>
+            <p className="mt-1 text-body leading-5 text-ink-2">{next.description}</p>
             <Link
-              className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               href={next.settingsPath}
             >
               この手順から始める
@@ -72,12 +72,12 @@ export function SetupGuideCard({ items }: { items: SetupChecklistItem[] }) {
                     size={19}
                   />
                   <span className="flex-1">
-                    <span className="block text-[13.5px] font-medium text-ink">{item.label}</span>
-                    <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-3">
+                    <span className="block text-body font-medium text-ink">{item.label}</span>
+                    <span className="mt-0.5 block text-caption leading-5 text-ink-3">
                       {item.description}
                     </span>
                   </span>
-                  <span className="shrink-0 text-[11.5px] text-ink-3">
+                  <span className="shrink-0 text-caption text-ink-3">
                     {item.satisfied ? "設定済み" : "未設定"}
                   </span>
                   <Icon className="shrink-0 text-ink-3" name="chevron_right" size={16} />

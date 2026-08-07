@@ -76,5 +76,5 @@ export function CardBody({ className, ...props }: ComponentProps<"div">) {
 
 /** 見出しの下の補足文。 */
 export function CardDescription({ className, ...props }: ComponentProps<"p">) {
-  return <p className={cn("text-[12.5px] leading-5 text-ink-2", className)} {...props} />;
+  return <p className={cn("text-body leading-5 text-ink-2", className)} {...props} />;
 }

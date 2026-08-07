@@ -229,14 +229,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 >
                   {tag ? (
                     <span
-                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-[10.5px] font-bold text-white ${tag.className}`}
+                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-caption font-bold text-white ${tag.className}`}
                     >
                       {tag.label}
                     </span>
                   ) : null}
                   <div>
                     <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
-                    <p className="text-[11.5px] text-ink-3">{plan.tagline}</p>
+                    <p className="text-caption text-ink-3">{plan.tagline}</p>
                   </div>
                   <p className="flex items-baseline gap-0.5">
                     <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
@@ -285,21 +285,21 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                     <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-brand font-sans text-xs font-bold text-white">
                       {item.step}
                     </span>
-                    <span className="text-[13px] font-bold text-ink">{item.title}</span>
+                    <span className="text-body font-bold text-ink">{item.title}</span>
                   </div>
-                  <p className="pl-8 text-[11.5px] leading-[1.6] text-ink-3">{item.description}</p>
+                  <p className="pl-8 text-caption leading-[1.6] text-ink-3">{item.description}</p>
                 </li>
               ))}
             </ol>
             <div className="mt-[18px] grid gap-3 sm:grid-cols-2">
               <div className="rounded-card border border-hairline px-4 py-3.5">
                 <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
+                  <h3 className="text-body font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
                   <Badge tone="info">キーはご自身で用意</Badge>
                 </div>
                 <ul className="flex flex-col gap-1.5">
                   {BYOK_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
                       <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-info-fg" />
                       {step}
                     </li>
@@ -308,12 +308,12 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               </div>
               <div className="rounded-card border border-hairline px-4 py-3.5">
                 <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（プレミアムプラン）</h3>
+                  <h3 className="text-body font-bold text-ink">初期設定（プレミアムプラン）</h3>
                   <Badge tone="brand">キー登録は一切不要</Badge>
                 </div>
                 <ul className="flex flex-col gap-1.5">
                   {PREMIUM_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
                       <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-brand" />
                       {step}
                     </li>

@@ -327,7 +327,7 @@ export function XAccountsSettings({
 
       {inactiveAccounts.length > 0 ? (
         <details className="rounded-card border border-hairline bg-surface px-5 py-3">
-          <summary className="cursor-pointer text-[13px] text-ink-2">
+          <summary className="cursor-pointer text-body text-ink-2">
             停止中のアカウント {inactiveAccounts.length} 件（投稿履歴と実績は残っています）
           </summary>
           {/* 操作は各行の「有効化」「再連携」ボタン自体が示す。前置きの説明は置かない（T-M8-66）。 */}

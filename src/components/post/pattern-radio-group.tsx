@@ -26,7 +26,7 @@ export function PatternRadioGroup({
 }) {
   return (
     <fieldset>
-      <legend className="mb-2 text-[13px] font-medium text-ink">{legend}</legend>
+      <legend className="mb-2 text-body font-medium text-ink">{legend}</legend>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {options.map((option) => (
           <label
@@ -43,8 +43,8 @@ export function PatternRadioGroup({
               value={option.id}
             />
             <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-ink">{option.label}</span>
-              <span className="mt-0.5 block text-[11.5px] leading-4 text-ink-3">
+              <span className="block text-body font-medium text-ink">{option.label}</span>
+              <span className="mt-0.5 block text-caption leading-4 text-ink-3">
                 {option.description}
               </span>
             </span>

@@ -117,7 +117,7 @@ export function PortalButton({
         Stripeへ移動する前に結果を示す（文言はStripe側の設定と1対1で対応する）。
       */}
       {effects ? (
-        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-[12.5px] leading-5 sm:grid-cols-2">
+        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-body leading-5 sm:grid-cols-2">
           {(
             [
               ["上位プランへ変更", effects.upgrade],
@@ -127,7 +127,7 @@ export function PortalButton({
             ] as const
           ).map(([label, effect]) => (
             <div key={label}>
-              <dt className="text-[11.5px] text-ink-3">{label}</dt>
+              <dt className="text-caption text-ink-3">{label}</dt>
               <dd className="mt-0.5">
                 <span className="font-bold text-ink">{effect.headline}</span>
                 <span className="mt-0.5 block text-ink-2">{effect.detail}</span>

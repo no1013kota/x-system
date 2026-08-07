@@ -33,7 +33,7 @@ export default function ResetPasswordPage() {
             <h1 className="text-[22px] font-bold tracking-tight text-ink">
               新しいパスワードを設定
             </h1>
-            <p className="text-[12.5px] leading-5 text-ink-2">
+            <p className="text-body leading-5 text-ink-2">
               今後のログインに使用するパスワードを入力してください。
             </p>
           </header>
