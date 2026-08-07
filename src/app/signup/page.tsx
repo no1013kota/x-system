@@ -30,7 +30,7 @@ export default function SignUpPage() {
               </Link>
             </span>
             <h1 className="text-[22px] font-bold tracking-tight text-ink">会員登録</h1>
-            <p className="text-[12.5px] leading-5 text-ink-2">
+            <p className="text-body leading-5 text-ink-2">
               登録後、確認メールからメールアドレスを認証してください。
             </p>
           </header>

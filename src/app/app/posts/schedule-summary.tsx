@@ -24,7 +24,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <CardTitle>スケジュール</CardTitle>
         <Link
-          className="inline-flex items-center gap-1 text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+          className="inline-flex items-center gap-1 text-caption font-medium text-brand underline-offset-2 hover:underline"
           href="/app/schedule"
         >
           <Icon name="tune" size={14} />
@@ -33,7 +33,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
       </div>
 
       {slots.length === 0 ? (
-        <p className="mt-2 text-[12.5px] leading-5 text-ink-2">
+        <p className="mt-2 text-body leading-5 text-ink-2">
           定期実行のスケジュールはまだありません。曜日と時刻を決めておくと、下書きの作成や投稿を自動で行えます。
         </p>
       ) : (
@@ -50,7 +50,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
                 <span className="text-[18px] font-bold tabular-nums text-ink">
                   {slot.time_jst.slice(0, 5)}
                 </span>
-                <span className="text-[11.5px] text-ink-2">
+                <span className="text-caption text-ink-2">
                   {slot.weekdays.map((d) => WEEKDAY[d]).join("・")}
                 </span>
                 <Badge>{POST_PATTERN_LABELS[slot.pattern] ?? slot.pattern}</Badge>
@@ -58,7 +58,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
                   {slot.mode === "auto" ? "自動投稿" : "下書きまで"}
                 </Badge>
                 {slot.enabled ? null : (
-                  <span className="text-[11.5px] text-ink-3">停止中</span>
+                  <span className="text-caption text-ink-3">停止中</span>
                 )}
               </li>
             ))}

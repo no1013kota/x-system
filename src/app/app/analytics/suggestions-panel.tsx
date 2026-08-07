@@ -128,7 +128,7 @@ export function SuggestionsPanel({
         ) : null}
         <div className="ml-auto flex gap-2">
           <button
-            className="inline-flex h-9 items-center rounded-card border px-4 text-[13px] font-medium transition-colors duration-150 hover:bg-accent disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card border px-4 text-body font-medium transition-colors duration-150 hover:bg-accent disabled:opacity-50"
             disabled={pending}
             onClick={() => startTransition(() => router.refresh())}
             type="button"
@@ -136,7 +136,7 @@ export function SuggestionsPanel({
             再読み込み
           </button>
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || generating}
             onClick={refresh}
             type="button"

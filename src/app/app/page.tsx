@@ -149,7 +149,7 @@ export default async function AppHomePage() {
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <div>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">ホーム</h1>
-        <p className="mt-1 text-[12.5px] text-ink-2">{greeting}</p>
+        <p className="mt-1 text-body text-ink-2">{greeting}</p>
       </div>
 
       {/* KPI 4カード。実データに繋ぐ（記録が無いときは0ではなく「記録なし」と出す）。 */}

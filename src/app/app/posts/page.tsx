@@ -189,7 +189,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <>
           <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
           {historyTruncated ? (
-            <p className="text-[11.5px] text-ink-3">直近{HISTORY_LIMIT}件を表示しています。</p>
+            <p className="text-caption text-ink-3">直近{HISTORY_LIMIT}件を表示しています。</p>
           ) : null}
         </>
       )}

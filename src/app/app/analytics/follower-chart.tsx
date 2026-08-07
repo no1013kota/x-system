@@ -62,7 +62,7 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
           {PERIODS.map((d) => (
             <button
               aria-pressed={days === d}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${
+              className={`rounded-md px-3 py-1 text-body font-medium transition-colors duration-150 ${
                 days === d ? "bg-brand text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}

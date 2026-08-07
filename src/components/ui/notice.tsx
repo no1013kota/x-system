@@ -42,7 +42,7 @@ export function Notice({
   return (
     <Tag
       className={cn(
-        "rounded-card border px-4 py-3 text-[13px] leading-6",
+        "rounded-card border px-4 py-3 text-body leading-6",
         TONES[tone],
         className,
       )}

@@ -42,7 +42,7 @@ function StateIcon({ name, tone = "neutral" }: { name: Parameters<typeof Icon>[0
  */
 export function EmptyNotice({ children }: { children: ReactNode }) {
   return (
-    <div className={`${stateCardClassName} text-[12.5px] leading-5 text-ink-2`}>
+    <div className={`${stateCardClassName} text-body leading-5 text-ink-2`}>
       {children}
     </div>
   );
@@ -55,8 +55,8 @@ export function LoadingState({
   return (
     <div aria-live="polite" className={stateCardClassName} role="status">
       <Icon className="mx-auto animate-spin text-ink-3" name="progress_activity" size={28} />
-      <p className="mt-4 text-[14px] font-bold text-ink">{title}</p>
-      <p className="mt-2 text-[12.5px] leading-5 text-ink-2">{description}</p>
+      <p className="mt-4 text-sm font-bold text-ink">{title}</p>
+      <p className="mt-2 text-body leading-5 text-ink-2">{description}</p>
     </div>
   );
 }
@@ -70,13 +70,13 @@ export function EmptyState({
   return (
     <section className={stateCardClassName}>
       <StateIcon name="drafts" />
-      <h2 className="mt-3.5 text-[14px] font-bold text-ink">{title}</h2>
-      <p className="mx-auto mt-1.5 max-w-lg text-[12.5px] leading-5 text-ink-2">
+      <h2 className="mt-3.5 text-sm font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-1.5 max-w-lg text-body leading-5 text-ink-2">
         {description}
       </p>
       {actionHref && actionLabel ? (
         <Link
-          className="mt-4 inline-flex min-h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-4 inline-flex min-h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           href={actionHref}
         >
           {actionLabel}
@@ -106,12 +106,12 @@ export function LockedState({
         <Icon name="lock" size={26} />
       </span>
       <h2 className="mt-3 text-[15.5px] font-bold text-ink">{title}</h2>
-      <p className="mx-auto mt-2 max-w-[460px] text-[12.5px] leading-7 text-ink-2">
+      <p className="mx-auto mt-2 max-w-[460px] text-body leading-7 text-ink-2">
         {description}
       </p>
       {actionHref && actionLabel ? (
         <Link
-          className="mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-[13px] font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-body font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           href={actionHref}
         >
           {actionLabel}
@@ -125,13 +125,13 @@ export function ErrorState({ description, retry, title }: ErrorStateProps) {
   return (
     <section aria-live="assertive" className={stateCardClassName} role="alert">
       <StateIcon name="error" tone="danger" />
-      <h2 className="mt-3.5 text-[14px] font-bold text-ink">{title}</h2>
-      <p className="mx-auto mt-1.5 max-w-lg text-[12.5px] leading-5 text-ink-2">
+      <h2 className="mt-3.5 text-sm font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-1.5 max-w-lg text-body leading-5 text-ink-2">
         {description}
       </p>
       {retry ? (
         <button
-          className="mt-4 min-h-9 rounded-card border border-hairline px-4 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-4 min-h-9 rounded-card border border-hairline px-4 text-body font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onClick={retry}
           type="button"
         >

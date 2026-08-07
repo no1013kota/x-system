@@ -151,7 +151,7 @@ export default async function AiSettingsPage({
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">AI設定</h1>
-        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
+        <p className="mt-1 text-body leading-5 text-ink-2">
           AIがあなたの代わりに投稿を書くための設定です。まず「発信設定」→「AI用途」の順に設定してください。
         </p>
       </header>

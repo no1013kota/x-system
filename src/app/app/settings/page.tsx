@@ -118,7 +118,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <header>
           <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
           {/* 管理項目の列挙はタブラベルと同じ情報なので書かない（T-M8-66）。 */}
-          <p className="mt-1 text-[12.5px] text-ink-2">
+          <p className="mt-1 text-body text-ink-2">
             発信の内容に関わる設定は
             <Link className="mx-1 font-medium text-brand underline-offset-2 hover:underline" href="/app/ai-settings">
               AI設定

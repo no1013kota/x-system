@@ -18,6 +18,6 @@ export function CurrentScreenTitle() {
     .find((nav) => (nav.href === "/app" ? pathname === nav.href : pathname.startsWith(nav.href)));
 
   return (
-    <span className="hidden text-[13.5px] font-medium text-ink lg:inline">{item?.label ?? ""}</span>
+    <span className="hidden text-body font-medium text-ink lg:inline">{item?.label ?? ""}</span>
   );
 }

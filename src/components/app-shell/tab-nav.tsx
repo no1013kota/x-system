@@ -30,7 +30,7 @@ export function tabLinkClassName(
   // 選択中はキー色の下線（デザイン §形状）。状態の表明は `aria-current` 側が担うので、
   // ここは見た目だけを持つ。
   return cn(
-    "border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150",
+    "border-b-2 px-4 py-2.5 text-body font-medium transition-colors duration-150",
     extra,
     active
       ? "border-brand text-brand"
