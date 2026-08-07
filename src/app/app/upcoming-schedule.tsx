@@ -65,7 +65,7 @@ export function UpcomingScheduleCard({
     <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>次回の予定</CardTitle>
-        <Link className="text-[12px] font-medium text-brand underline-offset-2 hover:underline" href="/app/schedule">
+        <Link className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline" href="/app/schedule">
           スケジュールを編集
         </Link>
       </div>

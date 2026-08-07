@@ -241,7 +241,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={t.newsCategory}
                   onClick={() => setCategories((prev) => toggle(prev, t.newsCategory))}
                   type="button"
@@ -260,7 +260,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={i.id}
                   onClick={() => setImpacts((prev) => toggle(prev, i.id))}
                   type="button"
@@ -284,7 +284,7 @@ export function NewsBrowser({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending}
             onClick={applyConfig}
             type="button"
@@ -307,7 +307,7 @@ export function NewsBrowser({
       ) : null}
 
       {items.length === 0 ? (
-        <div className={`${cardClassName} px-4 py-11 text-center text-[12.5px] text-ink-2`}>
+        <div className={`${cardClassName} px-4 py-11 text-center text-body text-ink-2`}>
           {window ? (
             <p>この時間帯に該当するニュースはありません。</p>
           ) : narrowedFilter ? (
@@ -340,28 +340,28 @@ export function NewsBrowser({
                   {IMPACT_LABEL.get(item.impact) ?? item.impact}
                 </Badge>
                 {item.publishedAt ? (
-                  <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                  <span className="ml-auto text-caption text-ink-3 tabular-nums">
                     {formatDate(item.publishedAt)}
                   </span>
                 ) : null}
               </div>
               <a
-                className="mt-2 block text-[14px] font-bold leading-5 text-ink hover:underline"
+                className="mt-2 block text-sm font-bold leading-5 text-ink hover:underline"
                 href={item.sourceUrl}
                 rel="noopener noreferrer"
                 target="_blank"
               >
                 {item.title}
               </a>
-              <p className="mt-1 text-[12.5px] leading-5 text-ink-2">{item.summary}</p>
+              <p className="mt-1 text-body leading-5 text-ink-2">{item.summary}</p>
               <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
-                <span className="truncate text-[11.5px] text-ink-3">{domainOf(item.sourceUrl)}</span>
+                <span className="truncate text-caption text-ink-3">{domainOf(item.sourceUrl)}</span>
                 <span className="ml-auto">
                   {created.has(item.id) ? (
                     <Badge tone="success">作成済み</Badge>
                   ) : (
                     <button
-                      className="inline-flex h-8 items-center gap-1 rounded-card bg-brand-subtle px-3 text-[12.5px] font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
+                      className="inline-flex h-9 items-center gap-1 rounded-card bg-brand-subtle px-3 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
                       disabled={pending}
                       onClick={() => generate(item.id)}
                       type="button"

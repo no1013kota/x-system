@@ -28,7 +28,7 @@ export function ConfirmationQueueCard({
       <Card>
         <CardBody>
           <CardTitle>確認待ちの下書き</CardTitle>
-          <p className="mt-1.5 text-[12.5px] leading-5 text-ink-2">
+          <p className="mt-1.5 text-body leading-5 text-ink-2">
             確認待ちの下書きはありません。
           </p>
           <Link className={`mt-3.5 ${primaryLinkClassName}`} href="/app/posts?tab=create">
@@ -43,7 +43,7 @@ export function ConfirmationQueueCard({
       <CardHeader>
         <CardTitle>確認待ちの下書き（{total}）</CardTitle>
         <Link
-          className="text-[12px] font-medium text-brand underline-offset-2 hover:underline"
+          className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
           href="/app/posts?tab=drafts"
         >
           すべて見る
@@ -66,11 +66,11 @@ export function ConfirmationQueueCard({
                       {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
                     </Badge>
                     {hasWarnings ? <Badge tone="warn">要確認</Badge> : null}
-                    <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                    <span className="ml-auto text-caption text-ink-3 tabular-nums">
                       {formatJst(draft.updated_at)}
                     </span>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-5 text-ink-2">
+                  <p className="mt-1.5 line-clamp-2 text-body leading-5 text-ink-2">
                     {draft.thread[0]?.text ?? ""}
                   </p>
                 </Link>
@@ -80,7 +80,7 @@ export function ConfirmationQueueCard({
         </ul>
         {total > drafts.length ? (
           // 全件は取得しない（T-M8-67）。切り捨てを黙らせず、残りの行き先を示す。
-          <p className="mt-2 text-[11.5px] text-ink-3">
+          <p className="mt-2 text-caption text-ink-3">
             ほか{total - drafts.length}件は「すべて見る」からご確認ください。
           </p>
         ) : null}

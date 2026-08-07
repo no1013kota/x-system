@@ -243,7 +243,8 @@ function DraftCard({
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
           <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
         </div>
-        <div className="flex items-center gap-2">
+        {/* 状態テキストとボタンが同居する行。折り返せないと狭い幅で横にはみ出す（T-M8-70）。 */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {publishing ? (
             <span className="text-xs font-medium text-muted-foreground" role="status">
               投稿中…（この画面を離れても続きます）
@@ -505,7 +506,7 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
         追加指示（任意）
       </label>
       <textarea
-        className="w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+        className="w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
         id={`regen-${draftId}`}
         maxLength={2000}
         onChange={(e) => setInstructions(e.target.value)}
