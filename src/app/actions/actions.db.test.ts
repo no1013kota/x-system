@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { encryptWithKey } from "@/lib/crypto/envelope";
 import { closePool, getPool, withTransaction } from "@/lib/db/pool";
+import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
 import { X_SCOPES } from "@/lib/x/oauth";
 
 /**
@@ -129,9 +130,14 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
         [uid, `${uid}@example.com`],
       );
       await c.query(
+        // 法務同意も入れる（T-M8-73で実行系Actionが現行版の同意を要求するようになった。
+        // 入れないと本番実装どおり legal_consent_required で弾かれる）。
         `update profiles set plan = 'premium', subscription_status = 'active',
-            current_period_end = now() + interval '30 days' where id = $1`,
-        [uid],
+            current_period_end = now() + interval '30 days',
+            terms_version = $2, terms_accepted_at = now(),
+            privacy_version = $3, privacy_acknowledged_at = now()
+          where id = $1`,
+        [uid, CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION],
       );
       const { rows } = await c.query<{ id: string }>(
         `insert into x_accounts

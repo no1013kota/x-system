@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import {
+  errorResult,
+  requireExecutionUserId,
+  requireUserId,
+  type BaseResult,
+} from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { AppError } from "@/lib/observability/errors";
 import {
@@ -63,7 +68,7 @@ export async function createScheduleSlotAction(
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const slot = await createScheduleSlot(auth.userId, parsed.data, slotDeps);
@@ -81,7 +86,7 @@ export async function updateScheduleSlotAction(
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const slot = await updateScheduleSlot(auth.userId, parsed.data, slotDeps);
@@ -118,7 +123,7 @@ export async function enableScheduleSlotAction(
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const slot = await enableScheduleSlot(auth.userId, parsed.data, slotDeps);
@@ -138,7 +143,7 @@ export async function recordXAutomationConsentAction(
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const consent = await recordXAutomationConsent(pooledDb, auth.userId, parsed.data);
