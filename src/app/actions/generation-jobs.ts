@@ -2,7 +2,12 @@
 
 import { after } from "next/server";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import {
+  errorResult,
+  requireExecutionUserId,
+  requireUserId,
+  type BaseResult,
+} from "./_helpers";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
@@ -52,7 +57,7 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await createGenerationJob(auth.userId, parsed.data, jobDeps);
@@ -76,7 +81,7 @@ export async function createDraftFromNewsAction(input: unknown): Promise<JobIdRe
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   const activeId = await resolveActiveXAccountForUser(auth.userId);
   if (!activeId) {
@@ -104,7 +109,7 @@ export async function retryGenerationJobAction(input: unknown): Promise<JobIdRes
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await retryGenerationJob(auth.userId, parsed.data, jobDeps);
@@ -120,7 +125,7 @@ export async function regenerateDraftAction(input: unknown): Promise<JobIdResult
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await regenerateDraft(auth.userId, parsed.data, jobDeps);
@@ -136,7 +141,7 @@ export async function regenerateImageAction(input: unknown): Promise<JobIdResult
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await regenerateImage(auth.userId, parsed.data, jobDeps);
@@ -152,7 +157,7 @@ export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const auth = await requireUserId();
+  const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   try {
     const { jobId, deduped } = await publishDraft(auth.userId, parsed.data, jobDeps);
