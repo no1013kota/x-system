@@ -9,7 +9,15 @@
  *
  * ニュースは既にDBにある分を使う（このスクリプトは作らない）。
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";/**
+ * 同意済みとして書き込む法務文書のversion（T-M8-72）。
+ * `.mjs` からは `src/lib/legal.ts` を import できないため値を持つが、
+ * `legal-pages.test.ts` が `CURRENT_TERMS_VERSION` との一致を検査する
+ * （古い値のままだと、配線済みの再同意ガードでレビュー用アカウントが弾かれる）。
+ */
+export const LEGAL_VERSION = "2026-08-08";
+
+
 
 import { Client } from "pg";
 import Stripe from "stripe";
@@ -199,10 +207,16 @@ async function main() {
               trial_ends_at = coalesce($2::timestamptz, now() + interval '7 days'),
               stripe_customer_id = $3,
               stripe_subscription_id = $4,
-              terms_version = '2026-07-20', terms_accepted_at = now(),
-              privacy_version = '2026-07-20', privacy_acknowledged_at = now()
+              terms_version = $5, terms_accepted_at = now(),
+              privacy_version = $5, privacy_acknowledged_at = now()
         where id = $1`,
-      [userId, stripeState.periodEnd ?? null, stripeState.customerId ?? null, stripeState.subscriptionId ?? null],
+      [
+        userId,
+        stripeState.periodEnd ?? null,
+        stripeState.customerId ?? null,
+        stripeState.subscriptionId ?? null,
+        LEGAL_VERSION,
+      ],
     );
 
     // --- Xアカウント（連携済み・発信設定まで完了・自動投稿に同意済み）---
