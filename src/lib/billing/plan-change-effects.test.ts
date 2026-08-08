@@ -25,7 +25,9 @@ describe("planChangeEffects", () => {
   it("下位プランは期間末（schedule_at_period_end=decreasing_item_amount）で、日付を出す", () => {
     const e = planChangeEffects(base);
     expect(e.downgrade.headline).toContain("2026年8月12日");
-    expect(e.downgrade.detail).toContain("返金はありません");
+    // 返金なしの明示は解約側に残す（下位変更の注記はT-M8-66の簡潔化で削減。
+    // 返金条件の正式な開示は利用規約第5条・特商法表記・申込前確認事項が担う）。
+    expect(e.downgrade.detail).toContain("今のプランのまま使えます");
   });
 
   it("解約は期間末まで使えて返金なし（mode=at_period_end / proration_behavior=none）", () => {

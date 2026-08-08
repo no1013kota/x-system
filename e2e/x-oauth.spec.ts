@@ -216,10 +216,10 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   // 進める行き先がある。常時表示の反映待ち説明は**どちらも置かない**（T-M8-66。
   // 反映待ちの説明はStripeから戻った瞬間のNoticeだけが出す。常時出る注意書きは読み飛ばされる）。
   await expect(
-    page.getByText("ご契約の情報をStripeから受け取っています", { exact: false }),
+    page.getByText("ご契約の情報を取得しています", { exact: false }),
   ).toHaveCount(0);
   await expect(
-    page.getByText("変更内容はStripeからの通知を受けて", { exact: false }),
+    page.getByText("変更内容は", { exact: false }),
   ).toHaveCount(0);
   const choose = page.getByRole("link", { name: "プランを選ぶ" });
   await expect(choose).toBeVisible();
