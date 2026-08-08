@@ -18,11 +18,16 @@ import { describe, expect, it } from "vitest";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SRC = join(ROOT, "src");
 
-/** 装飾として11pxを意図的に使うファイル（バッジ・未読数ドット・モバイル下部ナビのラベル）。 */
+/**
+ * 装飾として11pxを意図的に使うファイル（バッジ・未読数ドット・モバイル下部ナビのラベル、
+ * LPのCSS図版内の極小テキスト。図版は aria-hidden の装飾で本文ではない）。
+ */
 const ALLOW_11PX = new Set([
   "src/components/ui/badge.tsx",
   "src/components/app-shell/app-navigation.tsx",
   "src/components/app-shell/notification-bell.tsx",
+  "src/components/lp/hero-mock.tsx",
+  "src/components/lp/figures.tsx",
 ]);
 
 function collect(dir: string): string[] {

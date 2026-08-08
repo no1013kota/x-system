@@ -270,3 +270,80 @@
     font-size: 16px;
   }
 }
+
+/*
+ * LP（SC-01, T-M8-74）の演出。design_handoff_space_ai_lp/README.md §インタラクション & モーション。
+ * 生成ループ（7s: バーが伸び、ラベルが「生成中…」⇄「完了」でクロスフェード）とフロートカード。
+ * prefers-reduced-motion では止める（スクロール出現の即時表示は Reveal 側の motion-reduce: が担う）。
+ */
+@keyframes sai-bar {
+  0% {
+    width: 6%;
+  }
+  58% {
+    width: 88%;
+  }
+  66%,
+  100% {
+    width: 100%;
+  }
+}
+@keyframes sai-lbl-a {
+  0%,
+  58% {
+    opacity: 1;
+  }
+  66%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sai-lbl-b {
+  0%,
+  60% {
+    opacity: 0;
+  }
+  68%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sai-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+.lp-anim-bar {
+  animation: sai-bar 7s ease-in-out infinite;
+}
+.lp-anim-label-a {
+  animation: sai-lbl-a 7s ease-in-out infinite;
+}
+.lp-anim-label-b {
+  animation: sai-lbl-b 7s ease-in-out infinite;
+}
+.lp-anim-float {
+  animation: sai-float 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-anim-bar,
+  .lp-anim-label-a,
+  .lp-anim-label-b,
+  .lp-anim-float {
+    animation: none;
+  }
+}
+
+/* LPのアンカー移動（#pricing 等）を滑らかに。reduced-motion では即時ジャンプのまま。 */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
