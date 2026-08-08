@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space AI — X運用を自動化</title>
+<style>
+:root{
+--brand:#7d1f75;
+--brand-hover:#6a1a64;
+--brand-subtle:#f4e8f3;
+--page:#f6f6f7;
+--surface:#ffffff;
+--hairline:rgba(0,0,0,0.08);
+--ink:rgba(0,0,0,0.9);
+--ink-2:rgba(0,0,0,0.55);
+--ink-3:rgba(0,0,0,0.56);
+}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--page);color:var(--ink);font-family:Inter,"Noto Sans JP",system-ui,sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;text-wrap:pretty}
+a{color:var(--brand)}
+a:hover{color:var(--brand-hover)}
+summary::-webkit-details-marker{display:none}
+.flow{display:grid;grid-template-columns:1fr 26px 1.18fr 26px 1fr 26px 1fr;gap:14px;align-items:stretch}
+.fa{display:flex;align-items:center;justify-content:center;align-self:center}
+@media (max-width:960px){.flow{grid-template-columns:1fr}.fa{transform:rotate(90deg);min-height:16px}}
+.bento{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.b7{grid-column:span 7}
+.b5{grid-column:span 5}
+@media (max-width:900px){.b7,.b5{grid-column:span 12}}
+.navlinks{display:flex;gap:24px;align-items:center}
+@media (max-width:880px){.navlinks{display:none}}
+details[open] .fx{transform:rotate(45deg)}
+[data-motion="off"] [data-reveal]{opacity:1!important;transform:none!important;transition:none!important}
+[data-motion="off"] *{animation:none!important}
+@media (prefers-reduced-motion:reduce){[data-reveal]{opacity:1!important;transform:none!important;transition:none!important}*{animation:none!important}}
+@keyframes sai-bar{0%{width:6%}58%{width:88%}66%,100%{width:100%}}
+@keyframes sai-lblA{0%,58%{opacity:1}66%,100%{opacity:0}}
+@keyframes sai-lblB{0%,60%{opacity:0}68%,94%{opacity:1}100%{opacity:0}}
+@keyframes sai-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+</style>
+</helmet>
+<div data-screen-label="Space AI LP v2" data-motion="{{ motionAttr }}" style="min-height:100vh;background:var(--page);color:var(--ink);font-size:14px;line-height:1.8">
+
+  <header data-screen-label="ヘッダー" style="position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.82);backdrop-filter:blur(10px) saturate(1.4);-webkit-backdrop-filter:blur(10px) saturate(1.4);border-bottom:1px solid var(--hairline)">
+    <div style="max-width:1180px;margin:0 auto;padding:0 clamp(16px,3.5vw,32px);height:64px;display:flex;align-items:center;justify-content:space-between;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);display:flex;align-items:center;justify-content:center;color:#ffffff;font-weight:700;font-size:15px;flex:none">S</div>
+        <div style="font-weight:700;font-size:16px;letter-spacing:-0.01em">Space AI</div>
+      </div>
+      <nav class="navlinks">
+        <a href="#features" style="font-size:13px;color:var(--ink-2);text-decoration:none;font-weight:500" style-hover="color:var(--brand)">できること</a>
+        <a href="#how" style="font-size:13px;color:var(--ink-2);text-decoration:none;font-weight:500" style-hover="color:var(--brand)">しくみ</a>
+        <a href="#safety" style="font-size:13px;color:var(--ink-2);text-decoration:none;font-weight:500" style-hover="color:var(--brand)">安全性</a>
+        <a href="#pricing" style="font-size:13px;color:var(--ink-2);text-decoration:none;font-weight:500" style-hover="color:var(--brand)">料金</a>
+      </nav>
+      <div style="display:flex;align-items:center;gap:10px">
+        <a href="#" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:13px;font-weight:500" style-hover="background:var(--brand-subtle);color:var(--brand)">ログイン</a>
+        <a href="#" style="display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:8px;background:var(--brand);color:#ffffff;text-decoration:none;font-size:13px;font-weight:700;transition:background .2s" style-hover="background:var(--brand-hover)">無料で始める</a>
+      </div>
+    </div>
+  </header>
+
+  <section data-screen-label="ヒーロー" style="background:var(--surface);border-bottom:1px solid var(--hairline);position:relative;overflow:hidden">
+    <div aria-hidden="true" style="position:absolute;top:0;right:0;bottom:0;width:56%;background-image:radial-gradient(rgba(0,0,0,0.06) 1px,transparent 1px);background-size:22px 22px;-webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,1) 45%);mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,1) 45%)"></div>
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,104px) clamp(16px,3.5vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:clamp(28px,4.5vw,56px);align-items:center;position:relative">
+      <div>
+        <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1)">
+          <span style="display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 12px;border-radius:9999px;border:1px solid var(--hairline);background:var(--surface);font-size:12px;color:var(--ink-2)"><span style="width:6px;height:6px;border-radius:9999px;background:var(--brand)"></span>X（旧Twitter）運用を自動化するWebアプリ</span>
+        </div>
+        <sc-if value="{{ heroC }}" hint-placeholder-val="{{ true }}">
+          <h1 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:22px 0 0;font-size:clamp(31px,calc(17px + 3.4vw),44px);line-height:1.34;font-weight:700;letter-spacing:-0.01em;font-feature-settings:'palt'">ネタ探しから投稿、分析まで。<br>X運用の毎日を<span style="color:var(--brand)">自動化</span>。</h1>
+        </sc-if>
+        <sc-if value="{{ heroA }}" hint-placeholder-val="{{ false }}">
+          <h1 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:22px 0 0;font-size:clamp(31px,calc(17px + 3.4vw),44px);line-height:1.34;font-weight:700;letter-spacing:-0.01em;font-feature-settings:'palt'">1日数分の確認だけで、<br>自分らしいX運用が<span style="color:var(--brand)">続く</span>。</h1>
+        </sc-if>
+        <sc-if value="{{ heroB }}" hint-placeholder-val="{{ false }}">
+          <h1 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:22px 0 0;font-size:clamp(31px,calc(17px + 3.4vw),44px);line-height:1.34;font-weight:700;letter-spacing:-0.01em;font-feature-settings:'palt'">あなたのスタイルを学んだAIが、<br>投稿づくりを<span style="color:var(--brand)">引き受ける</span>。</h1>
+        </sc-if>
+        <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:20px 0 0;font-size:14px;color:var(--ink-2);max-width:42em">あなたの発信スタイルを学習したAIが、情報収集から投稿作成・予約・分析までを引き受けます。あなたは1日数分、下書きを確認するだけ。</p>
+        <div data-reveal="180" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1)">
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:28px;align-items:center">
+            <a href="#" style="display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 28px;border-radius:8px;background:var(--brand);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;transition:background .2s,transform .2s,box-shadow .2s" style-hover="background:var(--brand-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(125,31,117,0.25)">無料で始める</a>
+            <a href="#pricing" style="display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 20px;border-radius:8px;background:var(--brand-subtle);color:var(--brand);text-decoration:none;font-size:14px;font-weight:500;transition:background .2s" style-hover="background:#ecd9ea;color:var(--brand-hover)">料金を見る</a>
+          </div>
+          <p style="margin:10px 0 0;font-size:12px;color:var(--ink-3)">開始にはカード登録が必要です（7日間は無料。期間中の解約で料金はかかりません）。</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:22px;font-size:12px;color:var(--ink-2)">
+            <span style="display:inline-flex;align-items:center;gap:6px"><span style="color:var(--brand);font-weight:700">✓</span>勝手には投稿しません</span>
+            <span style="display:inline-flex;align-items:center;gap:6px"><span style="color:var(--brand);font-weight:700">✓</span>いつでも即座に停止</span>
+            <span style="display:inline-flex;align-items:center;gap:6px"><span style="color:var(--brand);font-weight:700">✓</span>月額500円から</span>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ showMock }}" hint-placeholder-val="{{ true }}">
+      <div aria-hidden="true" data-reveal="200" style="opacity:0;transform:translateY(16px);transition:opacity .8s cubic-bezier(.2,.6,.2,1),transform .8s cubic-bezier(.2,.6,.2,1);min-width:0;position:relative;padding-bottom:26px">
+        <div style="background:var(--surface);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-bottom:1px solid var(--hairline)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);display:flex;align-items:center;justify-content:center;color:#ffffff;font-weight:700;font-size:11px">S</div>
+              <span style="font-size:13px;font-weight:700">下書きの確認</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:11px;font-weight:500">下書き 3</span>
+              <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:6px;color:var(--ink-3);font-size:11px">予約</span>
+              <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:6px;color:var(--ink-3);font-size:11px">分析</span>
+            </div>
+          </div>
+          <div style="padding:14px;display:grid;gap:10px;background:var(--page)">
+            <div style="border:1px solid var(--hairline);border-radius:8px;padding:12px 14px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:11px;font-weight:500">ニュース解説</span>
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--hairline);color:var(--ink-2);font-size:11px">重要度：高</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">予約 9:30</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--ink)">生成AIの業務利用がさらに拡大というニュース。個人事業主が今日から試せるポイントを3つに整理しました…</p>
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <span style="display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:8px;background:var(--brand);color:#ffffff;font-size:12px;font-weight:500">投稿する</span>
+                <span style="display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--hairline);color:var(--ink-2);font-size:12px;background:var(--surface)">編集</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--hairline);border-radius:8px;padding:12px 14px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:11px;font-weight:500">自分の考え・意見</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">予約 12:30</span>
+              </div>
+              <div style="margin-top:12px;height:4px;border-radius:9999px;background:var(--page);overflow:hidden">
+                <div style="width:62%;height:100%;border-radius:9999px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);animation:sai-bar 7s ease-in-out infinite"></div>
+              </div>
+              <div style="position:relative;margin-top:7px;height:17px;font-size:11px;color:var(--ink-3)">
+                <span style="position:absolute;left:0;top:0;animation:sai-lblA 7s ease-in-out infinite">生成中… 通常60〜90秒</span>
+                <span style="position:absolute;left:0;top:0;opacity:0;animation:sai-lblB 7s ease-in-out infinite;color:var(--brand);font-weight:500">生成が完了しました。内容を確認してください</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--hairline);border-radius:8px;padding:12px 14px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:11px;font-weight:500">週次まとめ</span>
+                <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--hairline);color:var(--ink-2);font-size:11px">下書きのまま</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">明日 12:00</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--ink)">今週のAIニュース振り返り。反応の大きかった話題と、来週おさえておきたい動きをスレッドで…</p>
+            </div>
+          </div>
+          <p style="margin:0;padding:10px 16px;border-top:1px solid var(--hairline);font-size:11px;color:var(--ink-3);background:var(--surface)">既定は「下書きまで」。自動投稿には明示的な同意が別途必要です。</p>
+        </div>
+        <div style="position:absolute;right:-8px;bottom:0;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);padding:12px 14px;display:flex;align-items:center;gap:10px;animation:sai-float 7s ease-in-out infinite">
+          <div style="display:flex;align-items:flex-end;gap:3px;height:26px">
+            <span style="width:5px;height:10px;border-radius:2px;background:var(--brand-subtle)"></span>
+            <span style="width:5px;height:14px;border-radius:2px;background:var(--brand-subtle)"></span>
+            <span style="width:5px;height:12px;border-radius:2px;background:var(--brand-subtle)"></span>
+            <span style="width:5px;height:18px;border-radius:2px;background:var(--brand)"></span>
+            <span style="width:5px;height:24px;border-radius:2px;background:var(--brand)"></span>
+          </div>
+          <div>
+            <p style="margin:0;font-size:11px;font-weight:700;line-height:1.5">フォロワー推移</p>
+            <p style="margin:0;font-size:11px;color:var(--ink-3);line-height:1.5">日次で自動記録</p>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+  </section>
+
+  <section data-screen-label="ファクト" style="background:var(--surface);border-bottom:1px solid var(--hairline)">
+    <div style="max-width:1180px;margin:0 auto;padding:22px clamp(16px,3.5vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:14px">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:10px"><span style="font-size:26px;font-weight:700;letter-spacing:-0.02em">3<span style="font-size:14px;font-weight:500">分野</span></span><span style="font-size:12px;color:var(--ink-2)">ニュースを自動収集</span></div>
+      <div data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:10px"><span style="font-size:26px;font-weight:700;letter-spacing:-0.02em">5<span style="font-size:14px;font-weight:500">種類</span></span><span style="font-size:12px;color:var(--ink-2)">投稿パターン</span></div>
+      <div data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:10px"><span style="font-size:26px;font-weight:700;letter-spacing:-0.02em">60<span style="font-size:14px;font-weight:500">〜90秒</span></span><span style="font-size:12px;color:var(--ink-2)">で投稿を生成</span></div>
+      <div data-reveal="180" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:10px"><span style="font-size:26px;font-weight:700;letter-spacing:-0.02em">500<span style="font-size:14px;font-weight:500">円〜</span></span><span style="font-size:12px;color:var(--ink-2)">月額（税込）</span></div>
+    </div>
+  </section>
+
+  <section data-screen-label="課題" style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:clamp(24px,4vw,56px)">
+      <div>
+        <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+          <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">01</span>
+          <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">課題</span>
+        </div>
+        <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">毎日のX運用、<br>こんな悩みはありませんか</h2>
+        <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:14px 0 0;font-size:14px;color:var(--ink-2);max-width:30em">発信したいことはある。でも、続けるための作業が多すぎる。Space AIはこの3つのために作られています。</p>
+      </div>
+      <div>
+        <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:18px 0;display:flex;gap:18px">
+          <span style="font-size:13px;font-weight:700;color:var(--brand);flex:none;padding-top:2px">1</span>
+          <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">毎日回すには、作業が多すぎる</p><p style="margin:6px 0 0;font-size:14px;color:var(--ink-2)">ネタ探し、情報収集、文章、画像、投稿、分析。本業の合間に全部は続かない。</p></div>
+        </div>
+        <div data-reveal="70" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:18px 0;display:flex;gap:18px">
+          <span style="font-size:13px;font-weight:700;color:var(--brand);flex:none;padding-top:2px">2</span>
+          <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">運用代行は、個人には高すぎる</p><p style="margin:6px 0 0;font-size:14px;color:var(--ink-2)">SNS運用代行は高額で、個人事業主にはなかなか手が出せない。</p></div>
+        </div>
+        <div data-reveal="140" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);padding:18px 0;display:flex;gap:18px">
+          <span style="font-size:13px;font-weight:700;color:var(--brand);flex:none;padding-top:2px">3</span>
+          <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">AIに書かせると、自分らしくない</p><p style="margin:6px 0 0;font-size:14px;color:var(--ink-2)">予約投稿ツールは投稿の作成までは助けてくれない。汎用のAIチャットは毎回指示が面倒で、文体もぶれる。</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" data-screen-label="できること" style="background:var(--surface);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);scroll-margin-top:76px">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+        <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">02</span>
+        <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">できること</span>
+      </div>
+      <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">情報収集から分析まで、4つの仕事を引き受けます</h2>
+      <div class="bento" style="margin-top:30px">
+        <div class="b7" data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,0.04)" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <p style="margin:0;font-size:12px;font-weight:700;color:var(--brand);letter-spacing:0.06em">情報収集の自動化</p>
+          <p style="margin:8px 0 0;font-size:15px;font-weight:700">ニュースが2時間おきに届く</p>
+          <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">AI・投資・SNS運用の3分野を、日本時間10:00〜20:00に2時間おきに自動収集。重要度（高・中・低）つきで届き、気になった記事から1タップで投稿の作成を始められます。</p>
+          <div style="margin-top:16px;border:1px solid var(--hairline);border-radius:8px;background:var(--page);padding:10px 12px;display:grid;gap:8px">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;color:var(--ink-3);flex:none;width:34px">10:00</span><span style="height:7px;border-radius:4px;background:var(--hairline);flex:1;max-width:62%"></span><span style="margin-left:auto;display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:10px;font-weight:500">高</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;color:var(--ink-3);flex:none;width:34px">12:00</span><span style="height:7px;border-radius:4px;background:var(--hairline);flex:1;max-width:48%"></span><span style="margin-left:auto;display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:6px;border:1px solid var(--hairline);color:var(--ink-2);font-size:10px">中</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;color:var(--ink-3);flex:none;width:34px">14:00</span><span style="height:7px;border-radius:4px;background:var(--hairline);flex:1;max-width:55%"></span><span style="margin-left:auto;display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:10px;font-weight:500">高</span></div>
+          </div>
+        </div>
+        <div class="b5" data-reveal="80" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,0.04);position:relative;overflow:hidden" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%)"></div>
+          <p style="margin:0;font-size:12px;font-weight:700;color:var(--brand);letter-spacing:0.06em">投稿の生成</p>
+          <p style="margin:8px 0 0;font-size:15px;font-weight:700">5種類の型で、あなたの文体に</p>
+          <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">スレッド形式で出力し、画像の自動生成も選べます。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:16px">
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:12px">ニュース解説</span>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:12px">考え・意見</span>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:12px">ノウハウ</span>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:12px">トレンド便乗</span>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-subtle);color:var(--brand);font-size:12px">週次まとめ</span>
+          </div>
+        </div>
+        <div class="b5" data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,0.04)" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <p style="margin:0;font-size:12px;font-weight:700;color:var(--brand);letter-spacing:0.06em">予約と自動運用</p>
+          <p style="margin:8px 0 0;font-size:15px;font-weight:700">曜日×時刻で回し続ける</p>
+          <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">9:00〜22:00の30分刻みでスケジュールを設定。スロットごとに「下書きまで」か「そのまま投稿」かを選べます。</p>
+          <div style="margin-top:16px;border:1px solid var(--hairline);border-radius:8px;background:var(--page);padding:12px;display:grid;gap:8px">
+            <div style="display:grid;grid-template-columns:44px repeat(7,1fr);gap:6px;align-items:center;font-size:10px;color:var(--ink-3);text-align:center">
+              <span></span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
+            </div>
+            <div style="display:grid;grid-template-columns:44px repeat(7,1fr);gap:6px;align-items:center">
+              <span style="font-size:10px;color:var(--ink-3)">9:00</span>
+              <span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1.5px solid var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1px solid var(--hairline);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1px solid var(--hairline);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1px solid var(--hairline);justify-self:center"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:44px repeat(7,1fr);gap:6px;align-items:center">
+              <span style="font-size:10px;color:var(--ink-3)">19:30</span>
+              <span style="width:10px;height:10px;border-radius:9999px;border:1.5px solid var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1px solid var(--hairline);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1.5px solid var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;background:var(--brand);justify-self:center"></span><span style="width:10px;height:10px;border-radius:9999px;border:1px solid var(--hairline);justify-self:center"></span>
+            </div>
+            <div style="display:flex;gap:14px;font-size:10px;color:var(--ink-3);margin-top:2px">
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:9999px;background:var(--brand)"></span>そのまま投稿</span>
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:9999px;border:1.5px solid var(--brand)"></span>下書きまで</span>
+            </div>
+          </div>
+        </div>
+        <div class="b7" data-reveal="80" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,0.04)" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <p style="margin:0;font-size:12px;font-weight:700;color:var(--brand);letter-spacing:0.06em">分析と改善提案</p>
+          <p style="margin:8px 0 0;font-size:15px;font-weight:700">何が伸びたかを、根拠つきで</p>
+          <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">表示回数・いいね・リポスト・プロフィール表示を投稿後1日・7日・30日で記録。フォロワー数も日次で自動記録します。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで提示（1日1回・表示のみ）。</p>
+          <div style="margin-top:16px;border:1px solid var(--hairline);border-radius:8px;background:var(--page);padding:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <div style="display:flex;align-items:flex-end;gap:8px;height:56px">
+              <span style="width:16px;height:14px;border-radius:3px 3px 0 0;background:var(--brand-subtle)"></span>
+              <span style="width:16px;border-radius:3px 3px 0 0;background:var(--brand-subtle);height:24px"></span>
+              <span style="width:16px;border-radius:3px 3px 0 0;background:var(--brand-subtle);height:20px"></span>
+              <span style="width:16px;border-radius:3px 3px 0 0;background:var(--brand);height:40px"></span>
+              <span style="width:16px;border-radius:3px 3px 0 0;background:var(--brand);height:54px"></span>
+              <span style="width:16px;border-radius:3px 3px 0 0;background:var(--brand-subtle);height:30px"></span>
+            </div>
+            <div style="font-size:10px;color:var(--ink-3)">記録タイミング：投稿後 1日・7日・30日</div>
+            <span style="display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--hairline);background:var(--surface);color:var(--brand);font-size:12px;font-weight:500">提案を更新</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" data-screen-label="しくみ" style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px);scroll-margin-top:76px">
+    <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">03</span>
+      <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">しくみ</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px 40px;align-items:baseline;justify-content:space-between">
+      <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">「発信定義書」が、あなたらしさの土台になる</h2>
+    </div>
+    <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:14px 0 0;font-size:14px;color:var(--ink-2);max-width:52em">ペルソナ・発信テーマ・トーン＆マナー・NG設定と、学習させた文章を、Xアカウントごとに1つの定義書にまとめます。すべての投稿生成がこの定義書を土台にするため、毎回指示を書き直さなくても文体と方針がぶれません。</p>
+    <div class="flow" style="margin-top:32px">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+        <p style="margin:0;font-size:12px;font-weight:700;color:var(--ink-3);letter-spacing:0.06em">STEP 1</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">学習させる素材</p>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--ink-2)">ペルソナ／発信テーマ／トーン＆マナー／NG設定</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--page);border:1px solid var(--hairline);color:var(--ink-2);font-size:12px">参考アカウント</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--page);border:1px solid var(--hairline);color:var(--ink-2);font-size:12px">伸びた投稿</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--page);border:1px solid var(--hairline);color:var(--ink-2);font-size:12px">自分の過去投稿</span>
+        </div>
+      </div>
+      <div class="fa" aria-hidden="true" style="color:var(--ink-3);font-size:15px">→</div>
+      <div data-reveal="80" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);background:var(--surface);border:1.5px solid var(--brand);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--hairline);background:var(--brand-subtle)">
+          <span style="width:8px;height:8px;border-radius:9999px;background:var(--brand)"></span>
+          <span style="font-size:12px;font-weight:700;color:var(--brand)">発信定義書（ベースmd）</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--brand)">アカウントごとに1つ</span>
+        </div>
+        <div style="padding:14px 16px">
+          <p style="margin:0 0 8px;font-size:12px;color:var(--ink-2)">STEP 2 — すべての生成の土台になる1枚。</p>
+          <div style="font-size:12px;line-height:2;color:var(--ink-2)">
+            <div><span style="color:var(--brand);font-weight:700">##</span> ペルソナ／発信テーマ</div>
+            <div><span style="color:var(--brand);font-weight:700">##</span> トーン＆マナー</div>
+            <div><span style="color:var(--brand);font-weight:700">##</span> NG設定</div>
+            <div><span style="color:var(--brand);font-weight:700">##</span> 学習させた文章</div>
+          </div>
+        </div>
+      </div>
+      <div class="fa" aria-hidden="true" style="color:var(--ink-3);font-size:15px">→</div>
+      <div data-reveal="160" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,0.04);position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%)"></div>
+        <p style="margin:0;font-size:12px;font-weight:700;color:var(--ink-3);letter-spacing:0.06em">STEP 3</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">AIが投稿を生成</p>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--ink-2)">定義書を土台に、5つの型で生成。スレッド形式・画像も選べます。</p>
+        <div style="margin-top:10px;height:4px;border-radius:9999px;background:var(--page);overflow:hidden;max-width:180px">
+          <div style="width:70%;height:100%;border-radius:9999px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);animation:sai-bar 7s ease-in-out infinite"></div>
+        </div>
+        <p style="margin:6px 0 0;font-size:11px;color:var(--ink-3)">通常60〜90秒</p>
+      </div>
+      <div class="fa" aria-hidden="true" style="color:var(--ink-3);font-size:15px">→</div>
+      <div data-reveal="240" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+        <p style="margin:0;font-size:12px;font-weight:700;color:var(--ink-3);letter-spacing:0.06em">STEP 4</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">ぶれない投稿に</p>
+        <div style="margin-top:10px;border:1px solid var(--hairline);border-radius:8px;padding:12px;background:var(--page)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);flex:none"></div>
+            <div style="min-width:0">
+              <p style="margin:0;font-size:12px;font-weight:700;line-height:1.4">あなたのアカウント</p>
+              <p style="margin:0;font-size:11px;color:var(--ink-3);line-height:1.4">いつもの文体・いつもの方針</p>
+            </div>
+          </div>
+          <div style="margin-top:8px;height:6px;border-radius:3px;background:var(--hairline);width:92%"></div>
+          <div style="margin-top:6px;height:6px;border-radius:3px;background:var(--hairline);width:70%"></div>
+        </div>
+        <p style="margin:10px 0 0;font-size:13px;color:var(--ink-2)">毎回指示を書き直す必要はありません。</p>
+      </div>
+    </div>
+    <p data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:13px;color:var(--ink-2)">mdプラン以上では、この定義書とプロンプトを直接編集できます（編集履歴とロールバック付き）。</p>
+  </section>
+
+  <section id="safety" data-screen-label="安全性" style="background:var(--surface);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);scroll-margin-top:76px">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:clamp(24px,4vw,56px)">
+        <div>
+          <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+            <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">04</span>
+            <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">安全性</span>
+          </div>
+          <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">勝手には、投稿しません。</h2>
+          <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:14px 0 0;font-size:14px;color:var(--ink-2);max-width:30em">大切なアカウントを預かる前提で設計しています。できないことは、できないままにしてあります。</p>
+        </div>
+        <div>
+          <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:16px 0;display:flex;gap:14px">
+            <span style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none">✓</span>
+            <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">既定は「下書きまで」モード</p><p style="margin:4px 0 0;font-size:13px;color:var(--ink-2)">自動投稿を使うには、対象・実行条件・停止方法を説明した画面での明示的な同意が別途必要です。Xと連携しただけでは始まりません。</p></div>
+          </div>
+          <div data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:16px 0;display:flex;gap:14px">
+            <span style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none">✓</span>
+            <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">いつでも即座に止められます</p><p style="margin:4px 0 0;font-size:13px;color:var(--ink-2)">設定から停止すると、実行待ちの自動投稿もキャンセルされます。</p></div>
+          </div>
+          <div data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:16px 0;display:flex;gap:14px">
+            <span style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none">✓</span>
+            <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">1日50投稿の安全上限</p><p style="margin:4px 0 0;font-size:13px;color:var(--ink-2)">1アカウントあたり1日50投稿の上限を、全プランに設けています。</p></div>
+          </div>
+          <div data-reveal="180" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);padding:16px 0;display:flex;gap:14px">
+            <span style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none">✓</span>
+            <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">自動いいね・フォロー・リプライはしません</p><p style="margin:4px 0 0;font-size:13px;color:var(--ink-2)">アカウント凍結のリスクを避けるため、実装していません。</p></div>
+          </div>
+          <div data-reveal="240" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);padding:16px 0;display:flex;gap:14px">
+            <span style="width:24px;height:24px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none">✓</span>
+            <div><p style="margin:0;font-size:15px;font-weight:700;line-height:1.6">APIキーは暗号化して保存</p><p style="margin:4px 0 0;font-size:13px;color:var(--ink-2)">画面上は末尾4桁のみ表示します。いつでも削除できます。</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="使い方の流れ" style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+    <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">05</span>
+      <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">使い方</span>
+    </div>
+    <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">始め方は4ステップ</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:24px 14px;margin-top:30px">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:2px solid var(--brand);padding-top:16px">
+        <p style="margin:0;font-size:20px;font-weight:700;color:var(--brand)">1</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">アカウント作成</p>
+        <p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">メールアドレスとパスワードで登録。確認メールで本人認証します。</p>
+      </div>
+      <div data-reveal="70" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:2px solid var(--brand);padding-top:16px">
+        <p style="margin:0;font-size:20px;font-weight:700;color:var(--brand)">2</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">カード登録</p>
+        <p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">Stripeで安全に登録。ここから7日間の無料トライアルが始まります。</p>
+      </div>
+      <div data-reveal="140" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:2px solid var(--brand);padding-top:16px">
+        <p style="margin:0;font-size:20px;font-weight:700;color:var(--brand)">3</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">初期設定</p>
+        <p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">設定画面から、任意の順で進められます。</p>
+      </div>
+      <div data-reveal="210" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);border-top:2px solid var(--brand);padding-top:16px">
+        <p style="margin:0;font-size:20px;font-weight:700;color:var(--brand)">4</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700">運用開始</p>
+        <p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">下書きの確認から、あなたのペースで。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" data-screen-label="料金" style="background:var(--surface);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);scroll-margin-top:76px">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">06</span>
+        <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">料金</span>
+      </div>
+      <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:18px 0 0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">月額500円から。すべて税込です</h2>
+      <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:12px 0 0;font-size:14px;color:var(--ink-2)">全プラン7日間の無料トライアル付き（初回のみ）。</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:14px;margin-top:30px;align-items:stretch">
+        <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;flex-direction:column;overflow:hidden" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <div style="height:3px;background:transparent"></div>
+          <div style="padding:20px;display:flex;flex-direction:column;flex:1">
+            <p style="margin:0;font-size:15px;font-weight:700">通常プラン</p>
+            <p style="margin:10px 0 0;font-size:13px;color:var(--ink-2)"><span style="font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-0.01em">500円</span> ／月（税込）</p>
+            <div style="margin-top:16px;border-top:1px solid var(--hairline);padding-top:14px;display:grid;gap:8px;font-size:13px">
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">Xアカウント</span><span style="font-weight:500">1件</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">APIキー</span><span style="font-weight:500">自分で用意（BYOK）</span></div>
+            </div>
+            <p style="margin:14px 0 0;font-size:13px;color:var(--ink-2);flex:1">基本機能すべて（生成・自動運用・分析）。月間利用上限なし。</p>
+            <a href="#" style="margin-top:16px;display:inline-flex;align-items:center;justify-content:center;height:40px;border-radius:8px;background:var(--brand-subtle);color:var(--brand);text-decoration:none;font-size:14px;font-weight:700;transition:background .2s" style-hover="background:#ecd9ea;color:var(--brand-hover)">無料で始める</a>
+          </div>
+        </div>
+        <div data-reveal="80" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;flex-direction:column;overflow:hidden" style-hover="box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+          <div style="height:3px;background:transparent"></div>
+          <div style="padding:20px;display:flex;flex-direction:column;flex:1">
+            <p style="margin:0;font-size:15px;font-weight:700">mdプラン</p>
+            <p style="margin:10px 0 0;font-size:13px;color:var(--ink-2)"><span style="font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-0.01em">1,000円</span> ／月（税込）</p>
+            <div style="margin-top:16px;border-top:1px solid var(--hairline);padding-top:14px;display:grid;gap:8px;font-size:13px">
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">Xアカウント</span><span style="font-weight:500">3件</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">APIキー</span><span style="font-weight:500">自分で用意（BYOK）</span></div>
+            </div>
+            <p style="margin:14px 0 0;font-size:13px;color:var(--ink-2);flex:1">通常プランの全機能＋発信定義書・プロンプトの直接編集、編集履歴とロールバック。</p>
+            <a href="#" style="margin-top:16px;display:inline-flex;align-items:center;justify-content:center;height:40px;border-radius:8px;background:var(--brand-subtle);color:var(--brand);text-decoration:none;font-size:14px;font-weight:700;transition:background .2s" style-hover="background:#ecd9ea;color:var(--brand-hover)">無料で始める</a>
+          </div>
+        </div>
+        <div data-reveal="160" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1),box-shadow .25s;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow:hidden">
+          <div style="height:3px;background:linear-gradient(90deg,#ff0000 0%,#7d1f75 50%,#00afff 100%)"></div>
+          <div style="padding:20px;display:flex;flex-direction:column;flex:1">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <p style="margin:0;font-size:15px;font-weight:700">プレミアムプラン</p>
+              <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:9999px;background:var(--brand-subtle);color:var(--brand);font-size:12px;font-weight:500">APIキー不要</span>
+            </div>
+            <p style="margin:10px 0 0;font-size:13px;color:var(--ink-2)"><span style="font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-0.01em">2,980円</span> ／月（税込）</p>
+            <div style="margin-top:16px;border-top:1px solid var(--hairline);padding-top:14px;display:grid;gap:8px;font-size:13px">
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">Xアカウント</span><span style="font-weight:500">3件</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--ink-2)">APIキー</span><span style="font-weight:500">不要（運営が用意）</span></div>
+            </div>
+            <p style="margin:14px 0 0;font-size:13px;color:var(--ink-2);flex:1">mdプランの全機能。月間上限：通常投稿200件／URL付き投稿20件／文章生成100回／画像生成20枚。</p>
+            <a href="#" style="margin-top:16px;display:inline-flex;align-items:center;justify-content:center;height:40px;border-radius:8px;background:var(--brand);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;transition:background .2s" style-hover="background:var(--brand-hover)">無料で始める</a>
+          </div>
+        </div>
+      </div>
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin-top:14px;border:1px solid var(--hairline);border-radius:8px;background:var(--page);padding:16px 20px">
+        <p style="margin:0;font-size:13px;font-weight:700">APIキーの費用について</p>
+        <p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">通常プラン・mdプランは「APIキーをご自身でご用意いただく方式（BYOK）」です。月額とは別に、X APIと生成AI APIの利用料が各提供元に対してかかります。プレミアムプランは運営がAPIキーを用意するため、追加負担はありません。</p>
+      </div>
+      <div data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin-top:14px;border:1px solid var(--hairline);border-radius:8px;background:var(--surface);padding:16px 20px">
+        <p style="margin:0;font-size:13px;font-weight:700">お申し込み前にご確認ください</p>
+        <ul style="margin:8px 0 0;padding-left:1.3em;font-size:12px;color:var(--ink-2);display:grid;gap:4px">
+          <li>料金：上記のとおり、すべて税込月額です。</li>
+          <li>無料期間：全プラン7日間・初回のみ。開始にはカード登録が必要です。</li>
+          <li>自動更新：無料期間の終了後は、選択したプランで自動的に課金が始まります。期間中に解約すれば料金はかかりません。</li>
+          <li>支払時期：無料期間終了時に初回のお支払い。以後は月ごとの自動更新です。</li>
+          <li>解約方法：設定内のカスタマーポータルから、期間末での解約となります。日割り返金は行いません。</li>
+          <li>提供開始：カード登録の完了後、すぐにご利用いただけます。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="よくある質問" style="max-width:1180px;margin:0 auto;padding:clamp(56px,8vw,96px) clamp(16px,3.5vw,32px)">
+    <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;align-items:baseline;gap:12px;border-top:1px solid var(--ink);padding-top:16px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:0.08em">07</span>
+      <span style="font-size:12px;color:var(--ink-2);letter-spacing:0.08em">よくある質問</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:clamp(24px,4vw,56px);margin-top:18px">
+      <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:0;font-size:clamp(20px,calc(12px + 1.2vw),26px);font-weight:700;line-height:1.5;letter-spacing:-0.01em;font-feature-settings:'palt'">気になることは、<br>先に答えておきます</h2>
+      <div data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1)">
+        <details style="border-top:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">APIキーとは何ですか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">Xや生成AIのサービスを利用するための「鍵」となる文字列です。通常プラン・mdプランではご自身でご用意いただき、月額とは別に各提供元の利用料がかかります。プレミアムプランでは運営が用意するため不要です。お預かりしたキーは暗号化して保存し、画面上は末尾4桁のみ表示。いつでも削除できます。</p>
+        </details>
+        <details style="border-top:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">勝手に投稿されませんか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">されません。既定は「下書きまで」モードです。自動投稿を使うには、対象・実行条件・停止方法を説明した画面での明示的な同意が別途必要で、Xと連携しただけでは始まりません。停止すると実行待ちの自動投稿もキャンセルされます。</p>
+        </details>
+        <details style="border-top:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">解約はいつでもできますか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">はい。設定内のカスタマーポータルからいつでも手続きでき、期間末での解約となります（日割り返金はありません）。無料トライアル期間中に解約すれば、料金はかかりません。</p>
+        </details>
+        <details style="border-top:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">スマホで使えますか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">Webアプリのため、スマホのブラウザからご利用いただけます。専用のスマホアプリはありません。通知はメールとアプリ内でお届けします。</p>
+        </details>
+        <details style="border-top:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">X以外のSNSにも対応していますか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">現在はX（旧Twitter）のみの対応です。</p>
+        </details>
+        <details style="border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)">
+          <summary style="list-style:none;cursor:pointer;padding:16px 4px;font-size:14px;font-weight:500;display:flex;gap:12px;align-items:baseline"><span style="flex:1">投稿の生成にはどのくらい時間がかかりますか？</span><span class="fx" style="color:var(--brand);font-weight:500;flex:none;transition:transform .25s;display:inline-block">＋</span></summary>
+          <p style="margin:0;padding:0 4px 16px;font-size:13px;color:var(--ink-2)">通常60〜90秒です。生成後は編集や、追加指示を付けた再生成ができます。生成された内容は、投稿前にご自身でご確認ください。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="最終CTA" style="background:var(--surface);border-top:1px solid var(--hairline);position:relative;overflow:hidden">
+    <div aria-hidden="true" style="position:absolute;inset:0;background-image:radial-gradient(rgba(0,0,0,0.05) 1px,transparent 1px);background-size:22px 22px;-webkit-mask-image:radial-gradient(ellipse at center,rgba(0,0,0,1) 0%,transparent 70%);mask-image:radial-gradient(ellipse at center,rgba(0,0,0,1) 0%,transparent 70%)"></div>
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(64px,9vw,110px) clamp(16px,3.5vw,32px);text-align:center;position:relative">
+      <div data-reveal="0" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);display:flex;justify-content:center">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);display:flex;align-items:center;justify-content:center;color:#ffffff;font-weight:700;font-size:20px">S</div>
+      </div>
+      <h2 data-reveal="60" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:22px 0 0;font-size:clamp(24px,calc(14px + 1.8vw),34px);font-weight:700;line-height:1.45;letter-spacing:-0.01em;font-feature-settings:'palt'">1日数分の確認から、<br>始めませんか。</h2>
+      <p data-reveal="120" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1);margin:14px auto 0;font-size:14px;color:var(--ink-2);max-width:36em">7日間、すべての機能を無料で試せます。</p>
+      <div data-reveal="180" style="opacity:0;transform:translateY(16px);transition:opacity .65s cubic-bezier(.2,.6,.2,1),transform .65s cubic-bezier(.2,.6,.2,1)">
+        <div style="display:flex;justify-content:center;margin-top:26px">
+          <a href="#" style="display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 34px;border-radius:8px;background:var(--brand);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;transition:background .2s,transform .2s,box-shadow .2s" style-hover="background:var(--brand-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(125,31,117,0.25)">無料で始める</a>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;color:var(--ink-3)">開始にはカード登録が必要です（7日間は無料。期間中の解約で料金はかかりません）。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer data-screen-label="フッター" style="background:var(--page);border-top:1px solid var(--hairline)">
+    <div style="max-width:1180px;margin:0 auto;padding:32px clamp(16px,3.5vw,32px);display:flex;flex-wrap:wrap;gap:16px 24px;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#ff0000 0%,#7d1f75 50%,#00afff 100%);display:flex;align-items:center;justify-content:center;color:#ffffff;font-weight:700;font-size:12px;flex:none">S</div>
+        <span style="font-size:13px;font-weight:700">Space AI</span>
+        <span style="font-size:12px;color:var(--ink-3)">© 2026</span>
+      </div>
+      <nav style="display:flex;flex-wrap:wrap;gap:8px 20px">
+        <a href="#" style="font-size:12px;color:var(--ink-2);text-decoration:none;display:inline-flex;align-items:center;min-height:24px" style-hover="color:var(--brand)">利用規約</a>
+        <a href="#" style="font-size:12px;color:var(--ink-2);text-decoration:none;display:inline-flex;align-items:center;min-height:24px" style-hover="color:var(--brand)">プライバシーポリシー</a>
+        <a href="#" style="font-size:12px;color:var(--ink-2);text-decoration:none;display:inline-flex;align-items:center;min-height:24px" style-hover="color:var(--brand)">特定商取引法に基づく表記</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;heroHeadline&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;課題直撃（自動化を宣言）&quot;, &quot;options&quot;: [&quot;課題直撃（自動化を宣言）&quot;, &quot;時間の約束（1日数分）&quot;, &quot;学習が主役（自分らしさ）&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;ヒーロー&quot;},
+  &quot;showHeroVisual&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;ヒーロー&quot;},
+  &quot;motion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;演出&quot;}
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const h = this.props.heroHeadline ?? "課題直撃（自動化を宣言）";
+    return {
+      heroA: h === "時間の約束（1日数分）",
+      heroB: h === "学習が主役（自分らしさ）",
+      heroC: h !== "時間の約束（1日数分）" && h !== "学習が主役（自分らしさ）",
+      showMock: this.props.showHeroVisual ?? true,
+      motionAttr: (this.props.motion ?? true) ? "on" : "off"
+    };
+  }
+  componentDidMount() {
+    const show = (el) => { el.style.opacity = "1"; el.style.transform = "none"; el._revealed = true; };
+    const showAll = () => document.querySelectorAll("[data-reveal]").forEach(show);
+    if (!("IntersectionObserver" in window)) { this._fallback = setInterval(showAll, 400); return; }
+    this._io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          const el = e.target;
+          setTimeout(() => show(el), parseInt(el.dataset.reveal || "0", 10));
+          this._io.unobserve(el);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -30px 0px" });
+    const observeNew = () => {
+      document.querySelectorAll("[data-reveal]").forEach((el) => {
+        if (!el._observed && !el._revealed) { el._observed = true; this._io.observe(el); }
+      });
+    };
+    observeNew();
+    // Streamed/late-mounted nodes: re-scan as the DOM grows, stop once stable
+    this._mo = new MutationObserver(observeNew);
+    this._mo.observe(document.body, { childList: true, subtree: true });
+    this._scan = setInterval(observeNew, 500);
+    setTimeout(() => { clearInterval(this._scan); if (this._mo) this._mo.disconnect(); }, 12000);
+    // Failsafe: anything still hidden but in viewport after load settles gets shown
+    this._failsafe = setTimeout(() => {
+      document.querySelectorAll("[data-reveal]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (!el._revealed && r.top < window.innerHeight && r.bottom > 0) show(el);
+      });
+    }, 3000);
+  }
+  componentWillUnmount() {
+    if (this._io) this._io.disconnect();
+    if (this._mo) this._mo.disconnect();
+    clearInterval(this._scan); clearInterval(this._fallback); clearTimeout(this._failsafe);
+  }
+}
+</script>
+</body>
+</html>

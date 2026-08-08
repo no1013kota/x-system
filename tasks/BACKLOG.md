@@ -1063,7 +1063,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   (2) レビュー用seedが `'2026-07-20'` をハードコードしており、配線後に弾かれる状態だった
   → 現行版を書き込むよう修正し、テストで一致を固定。
 
-### T-M8-74: LP（`/`）を design_handoff_space_ai_lp のデザインへ刷新する `todo`
+### T-M8-74: LP（`/`）を design_handoff_space_ai_lp のデザインへ刷新する `done`
 - 参照: 要件06 §1 SC-01・§11（法務導線）、PRD §6（プラン）、`design_handoff_space_ai_lp/README.md`（デザイン正本・hifi） / 依存: なし / サイズ: M
 - 完了条件:
   - `/` がデザインリファレンス「Space AI LP v2」の12セクション構成（ヘッダー／ヒーロー／ファクト／01課題／02できること／03しくみ／04安全性／05使い方／06料金／07FAQ／最終CTA／フッター）で表示される
@@ -1073,6 +1073,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 390px／768px／1180pxで崩れ・横スクロールがない。`prefers-reduced-motion: reduce` で全アニメーションが無効になり全要素が即時表示される
   - ハンドオフREADMEの禁止表現を含まない。ブランドグラデーションの使用が規定3種（ロゴ／生成バー・上端3pxバー／プレミアム上端3pxバー）のみ
 - メモ: リファレンスHTML（`Space AI LP v2.dc.html`）はプロトタイプでありコピーしない。Next.js＋Tailwindで再現実装する。ヒーロー見出しは既定の「課題直撃」案（ネタ探しから投稿、分析まで。／X運用の毎日を自動化。）を採用。スクロール出現はIntersectionObserverの共通フック（クライアント側）で実装し、LPは`force-dynamic`＋nonce CSPを維持する。既存E2E・単体テストがLPの現行文言を固定している場合は新文言へ更新する。図版はすべてCSS/DOMで描く（画像アセットなし）。
+- 実装結果（2026-08-08）: `src/components/lp/`（reveal / hero-mock / figures / pricing / faq）＋`page.tsx`全面書き換え。ロゴは`LogoTile`（brand-logo.tsxへ追加、20/24/28/40px）、法務リンクは`LegalFooterLinks`（legal-footer.tsxへ追加。LegalFooterと正本を共有）。固定文言・禁止表現・plans.ts参照・グラデーション5箇所制限は`landing-page.test.ts`、導線実動作とreduced-motionは`e2e/landing.spec.ts`が固定。図版の極小テキストは11pxに統一し`type-scale.test.ts`の許可リストへ2ファイル追加（参照デザインの10px相当は11pxへ寄せた＝唯一の意図的乖離）。ヘッダーのロゴワードマークは既存BrandLogo（17px）を再利用（参照は16px。単一ロゴ部品を優先）。仕様は要件06 §1.5 に追記。
 
 ### T-M8-69: check:providers に各社の models.list 疎通を足す `todo`
 - 参照: 旧T-M8-60のメモから分離 / サイズ: S
