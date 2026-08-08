@@ -68,11 +68,11 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
   return {
     upgrade: {
       headline: "すぐに切り替わります",
-      detail: "差額は日割りで計算され、次回の請求に加算されます（Stripeが自動で計算します）。",
+      detail: "差額は日割りで計算され、次回の請求に加算されます",
     },
     downgrade: {
       headline: `${end}に切り替わります`,
-      detail: "それまでは今のプランのまま使えます（差額の返金はありません）。",
+      detail: "それまでは今のプランのまま使えます。",
     },
     cancel: input.cancelAtPeriodEnd
       ? {

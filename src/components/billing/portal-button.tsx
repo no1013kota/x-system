@@ -136,9 +136,6 @@ export function PortalButton({
           ))}
         </dl>
       ) : null}
-      <p className="text-xs leading-5 text-ink-3">
-        どちらもStripeの安全な画面へ移動します。お支払い方法の変更と請求書は「プランを変更」の先から辿れます。
-      </p>
     </div>
   );
 }
