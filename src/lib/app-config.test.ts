@@ -4,7 +4,7 @@ import { APP_DESCRIPTION, APP_NAME } from "./app-config";
 
 describe("app-config", () => {
   it("defines the product name", () => {
-    expect(APP_NAME).toBe("Space AI");
+    expect(APP_NAME).toBe("Exos AI");
   });
 
   it("defines a non-empty description", () => {

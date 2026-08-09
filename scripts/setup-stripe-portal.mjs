@@ -176,9 +176,9 @@ export function portalUpdateProducts(pricesByProduct) {
 export function portalConfiguration({ appBaseUrl, updateProducts }) {
   const baseUrl = appBaseUrl.replace(/\/$/, "");
   return {
-    name: "Space AI subscription management",
+    name: "Exos AI subscription management",
     business_profile: {
-      headline: "Space AIのプランとお支払い情報を管理できます",
+      headline: "Exos AIのプランとお支払い情報を管理できます",
       privacy_policy_url: `${baseUrl}/privacy`,
       terms_of_service_url: `${baseUrl}/terms`,
     },

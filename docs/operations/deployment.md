@@ -203,7 +203,7 @@ npx supabase migration list      # ローカルとリモートの差分が無い
 
 | 設定 | 場所 | staging と production で | 抜けたときの症状 |
 |---|---|---|---|
-| **カスタムSMTP** | Authentication → Emails → SMTP Settings | **同じGmailでよい**（Sender name は `Space AI`。本番は独自ドメインのアドレスが望ましい） | 内蔵送信のままだと**2通/時・組織メンバー宛のみ**。他人には永久に届かないのに画面は「送信しました」と出る。**カスタムSMTPを有効にしないとテンプレートを編集できない** |
+| **カスタムSMTP** | Authentication → Emails → SMTP Settings | **同じGmailでよい**（Sender name は `Exos AI`。本番は独自ドメインのアドレスが望ましい） | 内蔵送信のままだと**2通/時・組織メンバー宛のみ**。他人には永久に届かないのに画面は「送信しました」と出る。**カスタムSMTPを有効にしないとテンプレートを編集できない** |
 | **メールテンプレート**（Confirm signup / Reset password） | Authentication → Emails → Templates | **同じ内容でよい**（`{{ .RedirectTo }}` を使うためドメインに依存しない） | 確認リンクとパスワード再設定が「リンクを確認できませんでした」になる |
 | **メール送信数/時** | Authentication → Rate Limits | **同じ（30以上）** | 数通で黙って止まる |
 | **CAPTCHA** | Authentication → Attack Protection | **環境ごとに違う**（Turnstileウィジェットを分けるため secret が異なる） | OFFだと人間確認が飾りになる（アプリはトークンの真偽を検証しない → T-M7-53）。secret不一致だとログイン・登録・再設定が全滅 |

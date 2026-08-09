@@ -42,9 +42,18 @@ const TWO_COL = "grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] g
 const HEADING = "font-bold tracking-[-0.01em] [font-feature-settings:'palt']";
 const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-normal ${HEADING}`;
 
-/** 決済直前で期待とズレないよう、主CTA直下（ヒーロー・最終CTAの2箇所）に必ず出す（要件06 §1.1）。 */
+/**
+ * 決済直前で期待とズレないよう、主CTA直下（ヒーロー・最終CTAの2箇所）に必ず出す（要件06 §1.1）。
+ * 末尾は申込前確認事項の「期間中に解約すれば料金はかかりません。」と同じ言い回しに揃える
+ * （同じことを別の言い方で2箇所に書くと、読み手はどちらが正か迷う）。
+ */
 const CARD_REGISTRATION_NOTE =
-  "開始にはカード登録が必要です（7日間は無料。期間中の解約で料金はかかりません）。";
+  "開始にはカード登録が必要です（7日間は無料。期間中に解約すれば料金はかかりません）。";
+
+/** 主CTA（無料で始める）と副CTA（料金を見る）は同じ寸法にする（T-M8-79）。 */
+const CTA_SIZE = "h-11 px-7 text-sm font-bold";
+const CTA_PRIMARY_HOVER =
+  "hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(125,31,117,0.25)] motion-reduce:hover:translate-y-0";
 
 /** 「01 課題」のようなセクション番号行。上の1px罫が各章の区切りになる。 */
 function SectionMark({ no, label }: { no: string; label: string }) {
@@ -64,13 +73,16 @@ const NAV_LINKS: [string, string][] = [
 
 const PROBLEMS: [string, string][] = [
   [
-    "毎日回すには、作業が多すぎる",
-    "ネタ探し、情報収集、文章、画像、投稿、分析。本業の合間に全部は続かない。",
+    "毎日続けるには、やることが多すぎる",
+    "ネタを探し、情報を集め、文章と画像を作り、投稿して、反応を確かめる。本業の合間にこれを毎日続けるのは、なかなか難しいものです。",
   ],
-  ["運用代行は、個人には高すぎる", "SNS運用代行は高額で、個人事業主にはなかなか手が出せない。"],
   [
-    "AIに書かせると、自分らしくない",
-    "予約投稿ツールは投稿の作成までは助けてくれない。汎用のAIチャットは毎回指示が面倒で、文体もぶれる。",
+    "運用を人に頼むには、費用が見合わない",
+    "SNS運用の代行は費用が大きく、個人や小規模の事業では割に合わないことがほとんどです。",
+  ],
+  [
+    "AIに任せると、自分の言葉から離れていく",
+    "汎用のAIチャットは毎回こまかく指示を出す必要があり、書き上がる文章の調子も安定しません。予約投稿ツールは、投稿そのものを作るところまでは助けてくれません。",
   ],
 ];
 
@@ -99,9 +111,9 @@ const FEATURES: {
     figure: <NewsFeedFigure />,
   },
   {
-    eyebrow: "投稿の生成",
-    title: "5種類の型で、あなたの文体に",
-    body: "スレッド形式で出力し、画像の自動生成も選べます。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。",
+    eyebrow: "投稿・画像の自動作成",
+    title: "5種類の型で、文章も画像も",
+    body: "スレッド形式の文章と、添える画像をまとめて生成します。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。",
     gradientTop: true,
     figure: (
       <div className="flex flex-wrap gap-1.5">
@@ -117,13 +129,13 @@ const FEATURES: {
     ),
   },
   {
-    eyebrow: "予約と自動運用",
-    title: "曜日×時刻で回し続ける",
-    body: "9:00〜22:00の30分刻みでスケジュールを設定。スロットごとに「下書きまで」か「そのまま投稿」かを選べます。",
+    eyebrow: "融通の効くスケジュール設定",
+    title: "曜日×時刻で、自分の型に合わせて",
+    body: "9:00〜22:00の30分刻みで枠を組めます。枠ごとに「下書きまで」か「そのまま投稿」かを選べるので、忙しい日は下書きだけにもできます。",
     figure: <ScheduleFigure />,
   },
   {
-    eyebrow: "分析と改善提案",
+    eyebrow: "投稿を自動で分析して改善",
     title: "何が伸びたかを、根拠つきで",
     // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
     body: "表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで示します（1日1回・表示のみ）。",
@@ -170,9 +182,9 @@ const HOW_STEPS: {
     figure: <GenerationProgressFigure />,
   },
   {
-    title: "ぶれない投稿に",
-    // 定義書はXアカウントごとに1枚（STEP2）なので、複数アカウントでも取り違えない。
-    body: "型やテーマが変わっても、文体と方針は同じまま。Xアカウントを増やしても、それぞれの定義書に沿った投稿になります。",
+    title: "投稿を自動で分析して改善",
+    // 提案は表示専用（自動では反映しない）。禁止表現「AIが自動で学習し続けて最適化」を避ける。
+    body: "投稿後の反応を自動で記録し、どの型・時間帯・テーマが伸びたかを提案します。次の生成に何を活かすかは、あなたが決めます。",
   },
 ];
 
@@ -238,21 +250,22 @@ export default function Home() {
                 X運用の毎日を<span className="text-brand">自動化</span>。
               </h1>
               <p className="mt-5 max-w-[42em] text-sm text-ink-2">
-                あなたの発信スタイルを学習したAIが、情報収集から投稿作成・予約・分析までを引き受けます。あなたは1日数分、下書きを確認するだけ。
+                AIが情報収集から投稿作成・予約・分析までを自動で引き受けます。あなたは1日数分の確認をするだけ。
               </p>
               <div>
                 <div className="mt-7 flex flex-wrap items-center gap-3">
                   <Link
                     className={cn(
                       buttonVariants({ variant: "brand" }),
-                      "h-11 px-7 text-sm font-bold hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(125,31,117,0.25)] motion-reduce:hover:translate-y-0",
+                      CTA_SIZE,
+                      CTA_PRIMARY_HOVER,
                     )}
                     href="/signup"
                   >
                     無料で始める
                   </Link>
                   <a
-                    className={cn(buttonVariants({ variant: "subtle" }), "h-10 px-5 text-sm")}
+                    className={cn(buttonVariants({ variant: "subtle" }), CTA_SIZE)}
                     href="#pricing"
                   >
                     料金を見る
@@ -260,7 +273,11 @@ export default function Home() {
                 </div>
                 <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
                 <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-caption text-ink-2">
-                  {["勝手には投稿しません", "いつでも即座に停止", `月額${startingPrice}から`].map(
+                  {/*
+                    「高品質な」は生成品質を運営が保証する表現（ハンドオフ §禁止表現）に当たるため、
+                    事実だけを言う表現へ置き換えた（T-M8-79）。
+                  */}
+                  {["文章も画像も自動で作成", "融通の効くスケジュール設定", `月額${startingPrice}から`].map(
                     (item) => (
                       <span className="inline-flex items-center gap-1.5" key={item}>
                         <span aria-hidden="true" className="font-bold text-brand">
@@ -448,10 +465,7 @@ export default function Home() {
         <section className="scroll-mt-[76px] border-y border-hairline bg-surface" id="pricing">
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="料金" no="05" />
-                          <h2 className={H2}>月額{startingPrice}から。すべて税込です</h2>
-                          <p className="mt-3 text-sm text-ink-2">
-                全プラン7日間の無料トライアル付き。
-              </p>
+                          <h2 className={H2}>月額{startingPrice}から。全プラン7日間の無料トライアル付き。</h2>
             <PricingCards />
           </div>
         </section>
@@ -496,7 +510,8 @@ export default function Home() {
                 <Link
                   className={cn(
                     buttonVariants({ variant: "brand" }),
-                    "h-11 px-[34px] text-sm font-bold hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(125,31,117,0.25)] motion-reduce:hover:translate-y-0",
+                    CTA_SIZE,
+                    CTA_PRIMARY_HOVER,
                   )}
                   href="/signup"
                 >

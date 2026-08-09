@@ -17,7 +17,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { ScheduleManager } from "./schedule-manager";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "スケジュール | Space AI" };
+export const metadata: Metadata = { title: "スケジュール | Exos AI" };
 
 const pooledDb = pooledQueryable();
 

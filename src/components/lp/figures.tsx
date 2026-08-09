@@ -6,32 +6,43 @@ import { cn } from "@/lib/utils";
  * 図版内の極小テキストは11pxで統一する（参照デザインの10px相当。type-scale.test.ts の許可リスト対象）。
  */
 
-/** 情報収集の自動化: 時刻・見出しバー・重要度チップの3行。 */
+/**
+ * 情報収集の自動化: **ニュースが一覧で並んでいる**見え方にする（T-M8-79）。
+ * 分野・時刻・重要度は実際の仕様（AI／投資／SNS運用の3分野・2時間おき・高中低）と揃える。
+ * 見出しそのものは実在しない記事を作らないよう、バーで表す。
+ */
 export function NewsFeedFigure() {
-  const rows: { time: string; width: string; high: boolean }[] = [
-    { time: "10:00", width: "max-w-[62%]", high: true },
-    { time: "12:00", width: "max-w-[48%]", high: false },
-    { time: "14:00", width: "max-w-[55%]", high: true },
+  const items: { field: string; time: string; lines: [string, string]; high: boolean }[] = [
+    { field: "AI", time: "10:00", lines: ["w-[92%]", "w-[64%]"], high: true },
+    { field: "投資", time: "12:00", lines: ["w-[78%]", "w-[44%]"], high: false },
+    { field: "SNS運用", time: "14:00", lines: ["w-[86%]", "w-[56%]"], high: true },
   ];
   return (
     <div
       aria-hidden="true"
-      className="grid gap-2 rounded-card border border-hairline bg-page px-3 py-2.5"
+      className="overflow-hidden rounded-card border border-hairline bg-page"
     >
-      {rows.map((row) => (
-        <div className="flex items-center gap-2.5" key={row.time}>
-          <span className="w-[34px] flex-none text-[11px] text-ink-3">{row.time}</span>
-          <span className={cn("h-[7px] flex-1 rounded bg-hairline", row.width)} />
-          <span
-            className={cn(
-              "ml-auto inline-flex h-[18px] items-center rounded-chip px-[7px] text-[11px]",
-              row.high
-                ? "bg-brand-subtle font-medium text-brand"
-                : "border border-hairline text-ink-2",
-            )}
-          >
-            {row.high ? "高" : "中"}
-          </span>
+      {items.map((item, index) => (
+        <div className={cn("px-3 py-2.5", index > 0 && "border-t border-hairline")} key={item.field}>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
+              {item.field}
+            </span>
+            <span className="text-[11px] text-ink-3">{item.time}</span>
+            <span
+              className={cn(
+                "ml-auto inline-flex h-[18px] items-center rounded-chip px-[7px] text-[11px]",
+                item.high
+                  ? "bg-brand-subtle font-medium text-brand"
+                  : "border border-hairline text-ink-2",
+              )}
+            >
+              重要度 {item.high ? "高" : "中"}
+            </span>
+          </div>
+          {/* 見出し2行ぶん。実在しない記事名を書かないための抽象表現。 */}
+          <div className={cn("mt-2 h-[7px] rounded bg-hairline", item.lines[0])} />
+          <div className={cn("mt-1.5 h-[7px] rounded bg-hairline/60", item.lines[1])} />
         </div>
       ))}
     </div>

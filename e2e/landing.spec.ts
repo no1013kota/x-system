@@ -34,9 +34,11 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // FAQはネイティブdetailsで開閉できる。
   // 回答の全文ではなく<details>の開閉状態を見る（文言を1文字直すたびにE2Eが落ちるのを避ける。
   // 文言そのものは landing-page.test.ts が担当する）。
-  const faq = page.locator("details", { hasText: "勝手に投稿されませんか？" });
+  // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため）。
+  const faq = page.locator("details").filter({ hasText: /投稿されませんか/ });
+  await expect(faq).toHaveCount(1);
   await expect(faq).not.toHaveAttribute("open", /.*/);
-  await faq.getByText("勝手に投稿されませんか？").click();
+  await faq.locator("summary").click();
   await expect(faq).toHaveAttribute("open", /.*/);
   await expect(faq.getByText("されません。", { exact: false })).toBeVisible();
 
@@ -89,15 +91,17 @@ test.describe("JSが動かない環境", () => {
     // 検査が空振りしていないこと（要素が0個なら上のfilterは常に空になる）。
     expect(await page.locator("main *").count()).toBeGreaterThan(50);
 
-    // 主要セクションの本文が実際に読める。
-    for (const text of [
-      "毎日のX運用、",
-      "情報収集から分析まで、4つの仕事を引き受けます",
-      "始め方は4ステップ",
-      "全プラン7日間の無料トライアル付き。",
-      "全プラン7日間・初回のみ",
+    // 主要セクションの本文が実際に読める。文言ではなく「その節が出ていること」を見る。
+    for (const pattern of [
+      /こんな悩みはありませんか/, // 01 課題
+      /4つの仕事を引き受けます/, // 02 できること
+      /土台になる/, // 03 しくみ
+      /始め方は4ステップ/, // 04 使い方
+      /無料トライアル/, // 05 料金
+      /初回のみ/, // 申込前確認事項（法定開示）
+      /気になることは/, // 06 FAQ
     ]) {
-      await expect(page.getByText(text, { exact: false }).first()).toBeVisible();
+      await expect(page.getByText(pattern).first()).toBeVisible();
     }
   });
 });
