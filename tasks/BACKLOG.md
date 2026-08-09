@@ -1077,6 +1077,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 390px／768px／1180pxで崩れ・横スクロールがない。`prefers-reduced-motion: reduce` で全アニメーションが無効になり全要素が即時表示される
   - ハンドオフREADMEの禁止表現を含まない。ブランドグラデーションの使用が規定3種（ロゴ／生成バー・上端3pxバー／プレミアム上端3pxバー）のみ
 - メモ: リファレンスHTML（`Space AI LP v2.dc.html`）はプロトタイプでありコピーしない。Next.js＋Tailwindで再現実装する。ヒーロー見出しは既定の「課題直撃」案（ネタ探しから投稿、分析まで。／X運用の毎日を自動化。）を採用。スクロール出現はIntersectionObserverの共通フック（クライアント側）で実装し、LPは`force-dynamic`＋nonce CSPを維持する。既存E2E・単体テストがLPの現行文言を固定している場合は新文言へ更新する。図版はすべてCSS/DOMで描く（画像アセットなし）。
+- 追記（2026-08-09・利用者の手元編集の取り込み）: LP文言をさらに簡潔化（「（BYOK）」「（運営が用意）」の括弧書き・「Stripeで」「設定画面から、」・料金見出しの「（初回のみ）」を削除）。ハンドオフREADME・参照HTML・`docs/marketing/lp-design-brief.md`も同じ内容へ同期。**「（初回のみ）」を見出しから外した結果、初回限定である旨の開示が申込前確認事項の1行だけになった**ため、その1行を`landing-page.test.ts`で固定した（消すと「無条件で7日間無料」の表示になり2回目以降の申込みで事実と異なる）。実際に消して落ちることを確認済み。
 - 実装結果（2026-08-08）: `src/components/lp/`（reveal / hero-mock / figures / pricing / faq）＋`page.tsx`全面書き換え。ロゴは`LogoTile`（brand-logo.tsxへ追加、20/24/28/40px）、法務リンクは`LegalFooterLinks`（legal-footer.tsxへ追加。LegalFooterと正本を共有）。固定文言・禁止表現・plans.ts参照・グラデーション5箇所制限は`landing-page.test.ts`、導線実動作とreduced-motionは`e2e/landing.spec.ts`が固定。図版の極小テキストは11pxに統一し`type-scale.test.ts`の許可リストへ2ファイル追加（参照デザインの10px相当は11pxへ寄せた＝唯一の意図的乖離）。ヘッダーのロゴワードマークは既存BrandLogo（17px）を再利用（参照は16px。単一ロゴ部品を優先）。仕様は要件06 §1.5 に追記。
 
 ### T-M8-75: 利用規約・プライバシーポリシーの運営者保護を強化する `done`

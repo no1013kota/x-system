@@ -69,7 +69,7 @@ function PlanCard({ plan, delay }: { plan: PlanDefinition; delay: number }) {
             </div>
             <div className="flex justify-between gap-2.5">
               <span className="text-ink-2">APIキー</span>
-              <span className="font-medium">{byok ? "自分で用意（BYOK）" : "不要（運営が用意）"}</span>
+              <span className="font-medium">{byok ? "自分で用意" : "不要"}</span>
             </div>
           </div>
           <p className="mt-3.5 flex-1 text-body text-ink-2">{planFeatureText(plan)}</p>
