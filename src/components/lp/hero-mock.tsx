@@ -25,25 +25,28 @@ function Chip({ label }: { label: string }) {
  * 数字を3つ並べただけでは、その3つがどんな画面なのか想像できなかった。
  */
 function WorkspaceStrip() {
-  const drafts: [string, string][] = [
-    ["ニュース解説", "予約 9:30"],
-    ["週次まとめ", "明日 12:00"],
+  // 見出しは架空の一般文。02の型チップ（ニュース解説／週次まとめ）を流用すると「型の一覧」に見える。
+  const rows: { title: string; meta: string; state: "draft" | "scheduled" }[] = [
+    { title: "AI活用の始め方を3ステップで", meta: "下書き", state: "draft" },
+    { title: "今週読んだ記事のまとめ", meta: "予約 19:30", state: "scheduled" },
   ];
+  // ドットの意味は④のスケジュール表と同じ（○=下書きまで ●=そのまま投稿）。3種類目を増やさない。
+  const dotClass = { draft: "border-[1.5px] border-brand", scheduled: "bg-brand" } as const;
   return (
     <div className={cn(cardClassName, "overflow-hidden")}>
-      <div className="flex items-center gap-1 border-b border-hairline px-3 pt-2.5">
-        <span className="rounded-t-chip border-b-2 border-brand px-2 pb-1.5 text-[11px] font-bold text-brand">
-          下書き 3
+      <div className="flex items-end gap-3 border-b border-hairline px-3.5 pt-2.5">
+        <span className="border-b-2 border-brand pb-1.5 text-[11px] font-medium text-brand">
+          下書き
         </span>
-        <span className="px-2 pb-1.5 text-[11px] text-ink-3">予約 5</span>
-        <span className="px-2 pb-1.5 text-[11px] text-ink-3">分析</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">予約</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">分析</span>
       </div>
-      <div className="grid gap-1.5 px-3.5 py-2.5">
-        {drafts.map(([title, when]) => (
-          <div className="flex items-center gap-2" key={title}>
-            <span className="size-1.5 flex-none rounded-pill bg-brand-subtle" />
-            <span className="truncate text-[11px] text-ink">{title}</span>
-            <span className="ml-auto flex-none text-[11px] text-ink-3">{when}</span>
+      <div className="grid gap-2 px-3.5 py-2.5">
+        {rows.map((row) => (
+          <div className="flex items-center gap-2" key={row.title}>
+            <span className={cn("size-2 flex-none rounded-pill", dotClass[row.state])} />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-ink">{row.title}</span>
+            <span className="flex-none text-[11px] text-ink-3">{row.meta}</span>
           </div>
         ))}
       </div>

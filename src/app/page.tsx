@@ -6,8 +6,6 @@ import { BrandLogo, LogoTile } from "@/components/app-shell/brand-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
   AnalyticsFigure,
-  BaseMdFigure,
-  GenerationProgressFigure,
   NewsFeedFigure,
   ScheduleFigure,
 } from "@/components/lp/figures";
@@ -114,7 +112,7 @@ const FEATURES: {
   {
     eyebrow: "投稿・画像の自動作成",
     title: "5種類の型で、文章も画像も",
-    body: "スレッド形式の文章と、添える画像をまとめて生成します。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。",
+    body: "スレッド形式の文章と、添える画像をまとめて生成します。編集や、追加指示つきの再生成もできます。",
     gradientTop: true,
     figure: (
       <div className="flex flex-wrap gap-1.5">
@@ -145,47 +143,49 @@ const FEATURES: {
 ];
 
 /**
- * 「03 しくみ」の4ステップ。器・構造はすべて同じにする（T-M8-78）。
- * 各ステップは前のステップの結果を受けて次へ渡す関係なので、同じ内容を2箇所で言わない
- * （例: 定義書の中身はSTEP2の図版だけが列挙し、STEP1は「何を渡すか」に絞る）。
+ * 「03 しくみ」の4ステップ＝**サービスの4つの特徴を1周の流れ**として並べる（T-M8-80）。
+ *
+ * 以前は「学習させる素材 → 発信定義書 → 生成 → 分析」で、(1)特徴1（ニュースの自動取得）が
+ * どこにも無く (2)最後の「分析」が次へ戻らない一方通行だった。
+ * **仕様値（3分野・5種類・9:00〜22:00・記録タイミング）は書かない**——それは「02 できること」の
+ * 担当で、ここは「何を受け取って何を次へ渡すか」だけを言う（02の言い直しにしない）。
  */
 const HOW_STEPS: {
+  eyebrow: string;
   title: string;
   body: string;
-  figure?: ReactNode;
+  /** 次のステップへ渡すもの。4枚とも同じ器に入れて高さのばらつきを消す。 */
+  slot: string;
+  /** 生成中バー。AIが動く瞬間を示すブランドグラデーションはこの1枚だけ。 */
+  bar?: boolean;
   gradientTop?: boolean;
 }[] = [
   {
-    title: "学習させる素材",
-    body: "ペルソナや発信テーマを入力し、参考にしたい投稿を登録します。",
-    figure: (
-      <div className="flex flex-wrap gap-1.5">
-        {["参考アカウント", "伸びた投稿", "自分の過去投稿"].map((chip) => (
-          <span
-            className="inline-flex h-[22px] items-center rounded-chip border border-hairline bg-page px-2 text-caption text-ink-2"
-            key={chip}
-          >
-            {chip}
-          </span>
-        ))}
-      </div>
-    ),
+    eyebrow: "01 集める",
+    title: "ニュースが自動で届く",
+    body: "決めた分野のニュースが自動で集まり、その日の素材になります。",
+    slot: "次へ渡す：その日のニュース",
   },
   {
-    title: "発信定義書（ベースmd）",
-    body: "入力と学習の結果が、Xアカウントごとに1枚へまとまります。",
-    figure: <BaseMdFigure />,
-  },
-  {
-    title: "AIが投稿を生成",
-    body: "定義書を土台に、5つの型で生成。スレッド形式・画像も選べます。",
+    eyebrow: "02 作る",
+    title: "文章と画像ができる",
+    body: "素材と発信定義書から、文章と画像のそろった下書きができます。毎回の指示は要りません。",
+    slot: "次へ渡す：下書き（通常60〜90秒）",
+    bar: true,
     gradientTop: true,
-    figure: <GenerationProgressFigure />,
   },
   {
-    title: "投稿を自動で分析して改善",
-    // 提案は表示専用（自動では反映しない）。禁止表現「AIが自動で学習し続けて最適化」を避ける。
-    body: "投稿後の反応を自動で記録し、どの型・時間帯・テーマが伸びたかを提案します。次の生成に何を活かすかは、あなたが決めます。",
+    eyebrow: "03 出す",
+    title: "決めた枠のとおりに出る",
+    body: "できた下書きは、組んでおいた枠の順に出ていきます。",
+    slot: "次へ渡す：予約ずみの投稿",
+  },
+  {
+    eyebrow: "04 測る",
+    // 「1日1回・表示のみ」は落とさない（落とすと禁止表現「AIが自動で学習し続けて最適化」に触れる）。
+    title: "伸びた条件がわかる",
+    body: "出した投稿の反応が自動で記録され、何が伸びたかを根拠つきで示します（1日1回・表示のみ）。",
+    slot: "次へ渡す：伸びた条件",
   },
 ];
 
@@ -386,18 +386,16 @@ export default function Home() {
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
           {/*
-            見出しは**4ステップ全体**を指す（T-M8-79）。STEP4を「投稿を自動で分析して改善」へ
-            変えた結果、「発信定義書が土台」という見出しでは最後のステップが説明できなくなっていた。
-            差別化の核である発信定義書は、強調はせずリード文で役割を述べる。
+            見出しは**4ステップ全体（＝サービスの4つの特徴）**を指す。「発信定義書が土台」という
+            見出しでは、最後の「測る」を説明できなかった。発信定義書は強調せずリード文で役割を述べる。
           */}
-                      <h2 className={H2}>一度設定すれば、学習・生成・分析が回り続けます</h2>
+                      <h2 className={H2}>集める・作る・出す・測る。この4つが1周でまわります</h2>
                       <p className="mt-3.5 max-w-[42em] text-sm text-ink-2">
-              学習した内容はXアカウントごとの「発信定義書」にまとまり、すべての生成がこれを土台にします。毎回、指示を書き直す必要はありません。
+              最初の設定でできる1枚（発信定義書）を土台に、4つの工程が順にまわります。あなたが手を動かすのは、上がってきた下書きを確認するところだけです。
             </p>
           {/*
-            4ステップを**同じ器・同じ構造**で並べる（T-M8-78）。以前はSTEP2（発信定義書）だけ
-            brand枠＋浮き影＋広いカラム(1.18fr)で強調し、しかも見出し(h3)を持たない別構造だった。
-            上端3pxグラデはSTEP3（AIが動く瞬間）だけに残す（デザイン §カラーの規定）。
+            4ステップは**同じ器・同じ構造**で並べる（T-M8-78）。特定のステップを強調しない。
+            上端3pxグラデと生成バーは「作る」＝AIが動く瞬間の1枚だけ（デザイン §カラーの規定）。
           */}
           <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
             {HOW_STEPS.map((step, index) => (
@@ -414,7 +412,7 @@ export default function Home() {
                   <div
                     className={cn(
                       cardClassName,
-                      "relative h-full overflow-hidden p-[18px]",
+                      "relative flex h-full flex-col overflow-hidden p-[18px]",
                     )}
                   >
                     {step.gradientTop && (
@@ -424,19 +422,40 @@ export default function Home() {
                       />
                     )}
                     <p className="text-caption font-bold tracking-[0.06em] text-ink-3">
-                      STEP {index + 1}
+                      {step.eyebrow}
                     </p>
                     <CardTitle as="h3" className="mt-1.5">
                       {step.title}
                     </CardTitle>
-                    <p className="mt-2 text-body text-ink-2">{step.body}</p>
-                    {step.figure && <div className="mt-2.5">{step.figure}</div>}
+                    <p className="mt-2 flex-1 text-body text-ink-2">{step.body}</p>
+                    {/* 4枚とも同じ器の「次へ渡すもの」。STEP4だけ図版が無い不揃いを解消する。 */}
+                    <div
+                      aria-hidden="true"
+                      className="mt-2.5 flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-caption text-ink-3"
+                    >
+                      {step.bar && (
+                        <span className="h-1 w-10 flex-none overflow-hidden rounded-pill bg-surface">
+                          <span className="lp-anim-bar block h-full w-[70%] rounded-pill [background-image:var(--brand-gradient)]" />
+                        </span>
+                      )}
+                      {step.slot}
+                    </div>
                   </div>
                 </div>
               </Fragment>
             ))}
           </div>
-          {/* 末尾注記（mdプラン以上は直接編集可）は料金セクションのmdプラン説明と重複のため削除（T-M8-76）。 */}
+          {/*
+            「測る」から次の1周へ戻る線。これが無いと最後のステップが一方通行に見える。
+            同時に「取り入れると決めたことだけ」＝提案は自動反映しないことの開示になる
+            （禁止表現「AIが自動で学習し続けて最適化」を避ける）。
+          */}
+          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-caption text-ink-3">
+            <span aria-hidden="true">←</span>
+            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
+            <span>取り入れると決めたことだけが、次の1周に効きます</span>
+            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
+          </div>
         </section>
 
         {/*

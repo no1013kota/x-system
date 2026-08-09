@@ -15,38 +15,55 @@ import { cn } from "@/lib/utils";
  * （AI／投資／SNS運用の3分野・10:00〜20:00に2時間おき・重要度 高中低）。
  */
 export function NewsFeedFigure() {
-  const items: { field: string; time: string; headline: string; high: boolean }[] = [
-    { field: "AI", time: "10:00", headline: "生成AIの業務利用がさらに拡大", high: true },
-    { field: "投資", time: "12:00", headline: "個人の資産形成に関する新しい調査", high: false },
-    { field: "SNS運用", time: "14:00", headline: "短い動画から文章投稿への揺り戻し", high: true },
+  // 新着が上に積まれるフィードに見えるよう時刻は降順。収集の間隔はヘッダーが担うので行を6本にしない。
+  const items: { field: string; time: string; headline: string; level: "high" | "mid" | "low" }[] = [
+    { field: "SNS運用", time: "16:00", headline: "投稿の時間帯で表示回数に差", level: "high" },
+    { field: "AI", time: "14:00", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
+    { field: "投資", time: "12:00", headline: "少額から始める資産形成に関心", level: "low" },
+    { field: "AI", time: "10:00", headline: "画像生成の新しいモデルが公開", level: "high" },
   ];
+  // 重要度は仕様どおり3段。既存トークンだけで濃淡を作る（新しい面の色を増やさない）。
+  const levelClass = {
+    high: "bg-brand-subtle font-medium text-brand",
+    mid: "border border-hairline text-ink-2",
+    low: "text-ink-3",
+  } as const;
+  const levelLabel = { high: "高", mid: "中", low: "低" } as const;
   return (
     <div aria-hidden="true" className="overflow-hidden rounded-card border border-hairline bg-page">
+      <div className="flex items-center gap-2 border-b border-hairline bg-surface px-3 py-2">
+        <span className="text-[11px] font-bold text-ink">今日のニュース</span>
+        <span className="ml-auto text-[11px] text-ink-3">10:00〜20:00 ／ 2時間おき</span>
+      </div>
       {items.map((item, index) => (
-        <div className={cn("px-3 py-2.5", index > 0 && "border-t border-hairline")} key={item.field}>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
-              {item.field}
-            </span>
-            <span className="text-[11px] text-ink-3">{item.time}</span>
-            <span
-              className={cn(
-                "ml-auto inline-flex h-[18px] items-center rounded-chip px-[7px] text-[11px]",
-                item.high
-                  ? "bg-brand-subtle font-medium text-brand"
-                  : "border border-hairline text-ink-2",
-              )}
-            >
-              重要度 {item.high ? "高" : "中"}
-            </span>
-          </div>
-          <p className="mt-1.5 truncate text-caption font-medium text-ink">{item.headline}</p>
-          {/* 記事から投稿作成へ進める導線があることを示す（実際の画面にあるボタン）。 */}
-          <span className="mt-1.5 inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
-            この記事から投稿を作る
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2",
+            index > 0 && "border-t border-hairline",
+          )}
+          key={item.time}
+        >
+          <span className="w-[34px] flex-none text-[11px] text-ink-3">{item.time}</span>
+          <span className="inline-flex h-[18px] flex-none items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
+            {item.field}
+          </span>
+          <p className="min-w-[180px] flex-1 truncate text-caption text-ink">{item.headline}</p>
+          <span
+            className={cn(
+              "ml-auto inline-flex h-[18px] flex-none items-center rounded-chip px-[7px] text-[11px]",
+              levelClass[item.level],
+            )}
+          >
+            重要度 {levelLabel[item.level]}
           </span>
         </div>
       ))}
+      {/* 導線は器の外周に1回だけ。各行に繰り返すと情報1つぶんに面積を4倍使う。 */}
+      <div className="border-t border-hairline bg-surface px-3 py-2">
+        <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+          この記事から投稿を作る
+        </span>
+      </div>
     </div>
   );
 }
@@ -134,40 +151,11 @@ export function AnalyticsFigure() {
   );
 }
 
-/**
- * しくみSTEP2: 発信定義書（ベースmd）の中身。md風の「##」見出しを並べる。
- *
- * 以前はここだけ brand枠1.5px＋浮き影＋brand-subtleのヘッダー行で強調し、グリッドも1.18fr と
- * 広く取っていた。4ステップの中で1枚だけ器が違ううえ**見出し（h3）を持たない**ため、
- * 見出しの並びからも抜けていた。他のステップと同じ図版の器へ揃える（T-M8-78）。
+/*
+ * しくみの図版（BaseMdFigure / GenerationProgressFigure）は削除した（T-M8-80）。
+ * 03を「集める→作る→出す→測る」の4ステップへ組み替えた際、4枚とも同じ「次へ渡すもの」の
+ * 器に統一したため専用の図版が不要になった。生成中バーはそのスロット内にインラインで持つ。
  */
-export function BaseMdFigure() {
-  const sections = ["ペルソナ／発信テーマ", "トーン＆マナー", "NG設定", "学習させた文章"];
-  return (
-    <div
-      aria-hidden="true"
-      className="rounded-card border border-hairline bg-page px-3 py-2 text-caption leading-6 text-ink-2"
-    >
-      {sections.map((section) => (
-        <div key={section}>
-          <span className="font-bold text-brand">##</span> {section}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** しくみSTEP3: 生成中プログレスバー（7sループ）＋所要時間の注記。 */
-export function GenerationProgressFigure() {
-  return (
-    <div aria-hidden="true">
-      <div className="mt-2.5 h-1 max-w-[180px] overflow-hidden rounded-pill bg-page">
-        <div className="lp-anim-bar h-full w-[70%] rounded-pill [background-image:var(--brand-gradient)]" />
-      </div>
-      <p className="mt-1.5 text-[11px] text-ink-3">通常60〜90秒</p>
-    </div>
-  );
-}
 
 /*
  * しくみSTEP4のミニ投稿カード（MiniPostFigure）は削除した（T-M8-76）。
