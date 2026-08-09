@@ -121,26 +121,25 @@ export function AnalyticsFigure() {
   );
 }
 
-/** しくみSTEP2: 発信定義書（ベースmd）。フローの中心で、brand枠と浮き影で強調する。 */
+/**
+ * しくみSTEP2: 発信定義書（ベースmd）の中身。md風の「##」見出しを並べる。
+ *
+ * 以前はここだけ brand枠1.5px＋浮き影＋brand-subtleのヘッダー行で強調し、グリッドも1.18fr と
+ * 広く取っていた。4ステップの中で1枚だけ器が違ううえ**見出し（h3）を持たない**ため、
+ * 見出しの並びからも抜けていた。他のステップと同じ図版の器へ揃える（T-M8-78）。
+ */
 export function BaseMdFigure() {
   const sections = ["ペルソナ／発信テーマ", "トーン＆マナー", "NG設定", "学習させた文章"];
   return (
-    <div className="overflow-hidden rounded-card border-[1.5px] border-brand bg-surface shadow-[var(--shadow-pop)]">
-      <div className="flex items-center gap-2 border-b border-hairline bg-brand-subtle px-3.5 py-[9px]">
-        <span aria-hidden="true" className="size-2 rounded-pill bg-brand" />
-        <span className="text-caption font-bold text-brand">発信定義書（ベースmd）</span>
-        <span className="ml-auto text-[11px] text-brand">アカウントごとに1つ</span>
-      </div>
-      <div className="px-4 py-3.5">
-        <p className="mb-2 text-caption text-ink-2">STEP 2 — すべての生成の土台になる1枚。</p>
-        <div aria-hidden="true" className="text-caption leading-8 text-ink-2">
-          {sections.map((section) => (
-            <div key={section}>
-              <span className="font-bold text-brand">##</span> {section}
-            </div>
-          ))}
+    <div
+      aria-hidden="true"
+      className="rounded-card border border-hairline bg-page px-3 py-2 text-caption leading-6 text-ink-2"
+    >
+      {sections.map((section) => (
+        <div key={section}>
+          <span className="font-bold text-brand">##</span> {section}
         </div>
-      </div>
+      ))}
     </div>
   );
 }

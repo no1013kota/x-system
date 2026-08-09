@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
 import { BrandLogo, LogoTile } from "@/components/app-shell/brand-logo";
@@ -128,6 +128,51 @@ const FEATURES: {
     // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
     body: "表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで示します（1日1回・表示のみ）。",
     figure: <AnalyticsFigure />,
+  },
+];
+
+/**
+ * 「03 しくみ」の4ステップ。器・構造はすべて同じにする（T-M8-78）。
+ * 各ステップは前のステップの結果を受けて次へ渡す関係なので、同じ内容を2箇所で言わない
+ * （例: 定義書の中身はSTEP2の図版だけが列挙し、STEP1は「何を渡すか」に絞る）。
+ */
+const HOW_STEPS: {
+  title: string;
+  body: string;
+  figure?: ReactNode;
+  gradientTop?: boolean;
+}[] = [
+  {
+    title: "学習させる素材",
+    body: "ペルソナや発信テーマを入力し、参考にしたい投稿を登録します。",
+    figure: (
+      <div className="flex flex-wrap gap-1.5">
+        {["参考アカウント", "伸びた投稿", "自分の過去投稿"].map((chip) => (
+          <span
+            className="inline-flex h-[22px] items-center rounded-chip border border-hairline bg-page px-2 text-caption text-ink-2"
+            key={chip}
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+    ),
+  },
+  {
+    title: "発信定義書（ベースmd）",
+    body: "入力と学習の結果が、Xアカウントごとに1枚へまとまります。",
+    figure: <BaseMdFigure />,
+  },
+  {
+    title: "AIが投稿を生成",
+    body: "定義書を土台に、5つの型で生成。スレッド形式・画像も選べます。",
+    gradientTop: true,
+    figure: <GenerationProgressFigure />,
+  },
+  {
+    title: "ぶれない投稿に",
+    // 定義書はXアカウントごとに1枚（STEP2）なので、複数アカウントでも取り違えない。
+    body: "型やテーマが変わっても、文体と方針は同じまま。Xアカウントを増やしても、それぞれの定義書に沿った投稿になります。",
   },
 ];
 
@@ -331,77 +376,47 @@ export default function Home() {
                       <p className="mt-3.5 max-w-[42em] text-sm text-ink-2">
               すべての投稿生成がこの1枚を土台にするため、毎回指示を書き直さなくても文体と方針がぶれません。
             </p>
-          <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1.18fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
-            <div className="min-w-0">
-              <div className={cn(cardClassName, "h-full p-[18px]")}>
-                <p className="text-caption font-bold tracking-[0.06em] text-ink-3">STEP 1</p>
-                <CardTitle as="h3" className="mt-1.5">
-                  学習させる素材
-                </CardTitle>
-                <p className="mt-2 text-body text-ink-2">
-                  ペルソナ／発信テーマ／トーン＆マナー／NG設定
-                </p>
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {["参考アカウント", "伸びた投稿", "自分の過去投稿"].map((chip) => (
-                    <span
-                      className="inline-flex h-[22px] items-center rounded-chip border border-hairline bg-page px-2 text-caption text-ink-2"
-                      key={chip}
-                    >
-                      {chip}
-                    </span>
-                  ))}
+          {/*
+            4ステップを**同じ器・同じ構造**で並べる（T-M8-78）。以前はSTEP2（発信定義書）だけ
+            brand枠＋浮き影＋広いカラム(1.18fr)で強調し、しかも見出し(h3)を持たない別構造だった。
+            上端3pxグラデはSTEP3（AIが動く瞬間）だけに残す（デザイン §カラーの規定）。
+          */}
+          <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
+            {HOW_STEPS.map((step, index) => (
+              <Fragment key={step.title}>
+                {index > 0 && (
+                  <div
+                    aria-hidden="true"
+                    className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
+                  >
+                    →
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div
+                    className={cn(
+                      cardClassName,
+                      "relative h-full overflow-hidden p-[18px]",
+                    )}
+                  >
+                    {step.gradientTop && (
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
+                      />
+                    )}
+                    <p className="text-caption font-bold tracking-[0.06em] text-ink-3">
+                      STEP {index + 1}
+                    </p>
+                    <CardTitle as="h3" className="mt-1.5">
+                      {step.title}
+                    </CardTitle>
+                    <p className="mt-2 text-body text-ink-2">{step.body}</p>
+                    {step.figure && <div className="mt-2.5">{step.figure}</div>}
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div
-              aria-hidden="true"
-              className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
-            >
-              →
-            </div>
-            <div className="min-w-0">
-              <BaseMdFigure />
-            </div>
-            <div
-              aria-hidden="true"
-              className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
-            >
-              →
-            </div>
-            <div className="min-w-0">
-              <div className={cn(cardClassName, "relative h-full overflow-hidden p-[18px]")}>
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
-                />
-                <p className="text-caption font-bold tracking-[0.06em] text-ink-3">STEP 3</p>
-                <CardTitle as="h3" className="mt-1.5">
-                  AIが投稿を生成
-                </CardTitle>
-                <p className="mt-2 text-body text-ink-2">
-                  定義書を土台に、5つの型で生成。スレッド形式・画像も選べます。
-                </p>
-                <GenerationProgressFigure />
-              </div>
-            </div>
-            <div
-              aria-hidden="true"
-              className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
-            >
-              →
-            </div>
-            <div className="min-w-0">
-              <div className={cn(cardClassName, "h-full p-[18px]")}>
-                <p className="text-caption font-bold tracking-[0.06em] text-ink-3">STEP 4</p>
-                <CardTitle as="h3" className="mt-1.5">
-                  ぶれない投稿に
-                </CardTitle>
-                {/* 抽象的なミニ投稿カードの図版は情報量が薄いため削除（T-M8-76）。 */}
-                <p className="mt-2 text-body text-ink-2">
-                  いつもの文体・いつもの方針で、毎回指示を書き直す必要はありません。
-                </p>
-              </div>
-            </div>
+              </Fragment>
+            ))}
           </div>
           {/* 末尾注記（mdプラン以上は直接編集可）は料金セクションのmdプラン説明と重複のため削除（T-M8-76）。 */}
         </section>
