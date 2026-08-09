@@ -29,6 +29,8 @@ export default function CommercialTransactionsPage() {
     .join("／");
 
   const items = [
+    { term: "屋号", description: LEGAL_ENTITY.tradeName },
+    // 個人事業者は屋号だけでは足りず、氏名の表示が要る（法11条「販売業者の氏名（名称）」）。
     { term: "販売事業者", description: LEGAL_ENTITY.name },
     { term: "運営責任者", description: LEGAL_ENTITY.representative },
     { term: "所在地", description: LEGAL_ENTITY.address },

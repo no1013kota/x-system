@@ -34,7 +34,8 @@ export default function TermsPage() {
       versionLabel={consentVersionLabel(CURRENT_TERMS_VERSION)}
     >
       <p>
-        本利用規約（以下「本規約」）は、{LEGAL_ENTITY.name}（以下「当方」）が提供する
+        本利用規約（以下「本規約」）は、{LEGAL_ENTITY.name}（屋号: {LEGAL_ENTITY.tradeName}
+        。以下「当方」）が提供する
         {APP_NAME}（以下「本サービス」）の利用条件を定めるものです。本サービスをご利用の方
         （以下「利用者」）は、本規約に同意したうえでご利用ください。
       </p>
