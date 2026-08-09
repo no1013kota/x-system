@@ -44,7 +44,7 @@ describe("updateSupabaseSession", () => {
         }),
       },
     }));
-    const request = new NextRequest("https://space-ai.example/app");
+    const request = new NextRequest("https://exos-ai.example/app");
 
     const response = await updateSupabaseSession(request);
 
@@ -60,7 +60,7 @@ describe("updateSupabaseSession", () => {
     expect(response.headers.get("expires")).toBe("0");
     expect(response.headers.get("pragma")).toBe("no-cache");
     expect(response.headers.get("location")).toBe(
-      "https://space-ai.example/login?next=%2Fapp",
+      "https://exos-ai.example/login?next=%2Fapp",
     );
   });
 
@@ -84,7 +84,7 @@ describe("updateSupabaseSession", () => {
       });
 
       const response = await updateSupabaseSession(
-        new NextRequest("https://space-ai.example/app/posts?tab=drafts"),
+        new NextRequest("https://exos-ai.example/app/posts?tab=drafts"),
       );
 
       expect(response.headers.get("location")).toBeNull();
@@ -111,17 +111,17 @@ describe("updateSupabaseSession", () => {
     });
 
     const blocked = await updateSupabaseSession(
-      new NextRequest("https://space-ai.example/app/posts"),
+      new NextRequest("https://exos-ai.example/app/posts"),
     );
     const billing = await updateSupabaseSession(
-      new NextRequest("https://space-ai.example/app/settings?tab=billing"),
+      new NextRequest("https://exos-ai.example/app/settings?tab=billing"),
     );
     const support = await updateSupabaseSession(
-      new NextRequest("https://space-ai.example/app/settings?tab=support"),
+      new NextRequest("https://exos-ai.example/app/settings?tab=support"),
     );
 
     expect(blocked.headers.get("location")).toBe(
-      "https://space-ai.example/plans",
+      "https://exos-ai.example/plans",
     );
     expect(billing.headers.get("location")).toBeNull();
     expect(support.headers.get("location")).toBeNull();

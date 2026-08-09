@@ -59,7 +59,7 @@ async function createCustomer(
         email: user.email,
         metadata: { user_id: user.id },
       },
-      { idempotencyKey: `space-ai:customer:${user.id}` },
+      { idempotencyKey: `exos-ai:customer:${user.id}` },
     );
   } catch (cause) {
     throw new AppError("provider_error", { cause });

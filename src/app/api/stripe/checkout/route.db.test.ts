@@ -205,7 +205,7 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
     expect(JSON.stringify(body)).not.toContain("internal_error");
     expect(stripeCalls.customerCreate[0]).toMatchObject({
       params: { email: currentUser.value?.email, metadata: { user_id: id } },
-      options: { idempotencyKey: `space-ai:customer:${id}` },
+      options: { idempotencyKey: `exos-ai:customer:${id}` },
     });
     // 保存が実際にDBへ届いていること（モックDBなら気付けない箇所）。
     expect((await profileRow(id)).stripe_customer_id).toBe(nextCustomerId.value);

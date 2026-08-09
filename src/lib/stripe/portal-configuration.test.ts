@@ -16,7 +16,7 @@ describe("Stripe Portal configuration setup", () => {
     const configuration = portalConfiguration({
       appBaseUrl: "https://app.example.com/",
       updateProducts: [
-        { product: "prod_space_ai", prices: ["price_standard", "price_md", "price_premium"] },
+        { product: "prod_exos_ai", prices: ["price_standard", "price_md", "price_premium"] },
       ],
     });
 
@@ -31,7 +31,7 @@ describe("Stripe Portal configuration setup", () => {
       proration_behavior: "create_prorations",
       products: [
         {
-          product: "prod_space_ai",
+          product: "prod_exos_ai",
           prices: ["price_standard", "price_md", "price_premium"],
         },
       ],

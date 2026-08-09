@@ -168,7 +168,7 @@ describe("POST /api/stripe/checkout core", () => {
         email: "user@example.com",
         metadata: { user_id: "user_123" },
       },
-      { idempotencyKey: "space-ai:customer:user_123" },
+      { idempotencyKey: "exos-ai:customer:user_123" },
     );
     expect(deps.saveStripeCustomerId).toHaveBeenCalledWith("user_123", "cus_created");
     expect(deps.stripe.checkout.sessions.create).toHaveBeenCalledWith(

@@ -173,7 +173,7 @@ export const COOKIES: readonly { name: string; use: string; lifetime: string }[]
     lifetime: "ログアウトまで（アクセストークンは1時間ごとに更新）",
   },
   {
-    name: "space-ai-recovery",
+    name: "exos-ai-recovery",
     use: "パスワード再設定の手続き中であることの保持",
     lifetime: "15分",
   },

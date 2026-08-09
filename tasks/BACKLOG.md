@@ -1211,6 +1211,22 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `legal-pages.test.ts` に**屋号と氏名が両方あること**の検査を追加（屋号へ置き換えると落ちる）。
 - あわせて `.env.example` の `EMAIL_FROM` 例に残っていた旧サービス名を修正。
 
+### T-M8-82: プライバシーポリシーに残った旧名（識別子）を直す `done`
+- 参照: 要件06 §11、`src/lib/legal-entity.ts` / 依存: T-M8-81 / サイズ: S
+- **利用者の指摘**: プライバシーポリシーに `space-ai` が残っている。
+- 原因: T-M8-79の改称は**表示文字列「Space AI」だけ**を置換したため、識別子
+  `space-ai-recovery`（`src/lib/auth/recovery.ts` のCookie名）が残っていた。
+  プライバシーのCookie表は**実装の実際のCookie名を載せる**ので、そのまま画面に出ていた。
+- 修正: Cookie名を `exos-ai-recovery` へ。あわせて内部識別子（Stripeの冪等キー接頭辞など）と
+  テストの旧名も一掃した。パスワード再設定のE2E 3件で経路が壊れていないことを確認。
+- **改称しなかったもの（意図的）**: `ops/launchd/` のplistラベル・Keychain項目名・ログパス。
+  OSに登録される識別子で、変更すると `launchctl` の入れ直しとKeychain項目の再作成が要る。
+  かつVercel Cronへの移行対象（`docs/operations/launchd-to-vercel-cron.md`）。必要なら別タスクで。
+- **今回の失敗**: 一括 sed が実在するフォルダ名（`design_handoff_space_ai_lp` /
+  `design_handoff_spaceai_ui`）への参照と、テストの入出力対応（`SpaceAI` → `spaceai`）、
+  launchdのplist名まで書き換えて3件のテストを壊した。**識別子の一括置換は、実体（ファイル名・
+  OS登録名・テストの期待値）を先に洗い出してから行う。**
+
 ### T-M8-69: check:providers に各社の models.list 疎通を足す `todo`
 - 参照: 旧T-M8-60のメモから分離 / サイズ: S
 - check:providers は生成呼び出しの受理までを見るが、モデル名の廃止（404）は生成時まで分からない。
