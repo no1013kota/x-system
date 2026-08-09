@@ -86,9 +86,7 @@ export function HeroMock() {
             </p>
           </div>
         </div>
-        <p className="border-t border-hairline bg-surface px-4 py-2.5 text-[11px] text-ink-3">
-          既定は「下書きまで」。自動投稿には明示的な同意が別途必要です。
-        </p>
+        {/* 「既定は下書きまで」の注記は「04 安全性」の1項目目と重複のため削除（T-M8-76）。 */}
       </div>
       <div className="lp-anim-float absolute right-[-8px] bottom-0 flex items-center gap-2.5 rounded-card border border-hairline bg-surface px-3.5 py-3 shadow-[var(--shadow-pop)]">
         <div className="flex h-[26px] items-end gap-[3px]">

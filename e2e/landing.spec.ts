@@ -31,11 +31,14 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // BYOK注記は折りたたみなしで最初から見えている
   await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
 
-  // FAQはネイティブdetailsで開閉できる
-  const answer = page.getByText("されません。既定は「下書きまで」モードです。", { exact: false });
-  await expect(answer).not.toBeVisible();
-  await page.getByText("勝手に投稿されませんか？").click();
-  await expect(answer).toBeVisible();
+  // FAQはネイティブdetailsで開閉できる。
+  // 回答の全文ではなく<details>の開閉状態を見る（文言を1文字直すたびにE2Eが落ちるのを避ける。
+  // 文言そのものは landing-page.test.ts が担当する）。
+  const faq = page.locator("details", { hasText: "勝手に投稿されませんか？" });
+  await expect(faq).not.toHaveAttribute("open", /.*/);
+  await faq.getByText("勝手に投稿されませんか？").click();
+  await expect(faq).toHaveAttribute("open", /.*/);
+  await expect(faq.getByText("されません。", { exact: false })).toBeVisible();
 
   // 法務3リンク（LegalFooterLinks）
   const footer = page.getByRole("contentinfo");
@@ -48,12 +51,55 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   }
 });
 
-test("スクロールで要素が出現する（IntersectionObserver）", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  const target = page.locator("#safety [data-reveal]").first();
-  await target.scrollIntoViewIfNeeded();
-  // 出現後は opacity が1になる（transition 650ms を待つ）
-  await expect(target).toHaveCSS("opacity", "1");
+/**
+ * JSが1行も動かなくてもLPが読める（T-M8-76）。
+ *
+ * 以前は出現演出を IntersectionObserver で行っており、初期状態が `opacity:0` だったため、
+ * **JSのロード失敗・CSPブロック・JS無効のいずれでもLPがヘッダーだけの白紙**になった。
+ * LPは新規登録の唯一の入口なので、これは申込みが黙って0件になることを意味する。
+ * サーバーは200を返しテストも緑だったので、運営者が気付く経路は無かった（CLAUDE.md 原則1）。
+ * `javaScriptEnabled: false` はその状態を最も安く再現できる。
+ */
+test.describe("JSが動かない環境", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("LPの主要な内容とCTAがすべて読める（白紙にならない）", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "無料で始める" }).first()).toBeVisible();
+
+    // **`toBeVisible()` では足りない。** Playwright は `opacity:0` の要素を可視と判定するため、
+    // 旧実装（JSが解除するまで opacity:0）でも上の2行は通ってしまう。この不具合の本体は
+    // 「そこにあるのに読めない」ことなので、**実際に計算された opacity** まで見る。
+    // aria-hidden の装飾（ヒーローモックのクロスフェード）は読ませる情報ではないので除く。
+    const unreadable = await page.locator("main *").evaluateAll((els) =>
+      els
+        .filter((el) => {
+          if (el.closest('[aria-hidden="true"]')) return false;
+          const text = (el.textContent || "").trim();
+          if (!text) return false;
+          const style = getComputedStyle(el);
+          return Number(style.opacity) < 0.99 || style.visibility === "hidden";
+        })
+        .map((el) => (el.textContent || "").trim().slice(0, 30)),
+    );
+    expect(unreadable, "JS無効で読めない要素がLPにある").toEqual([]);
+
+    // 検査が空振りしていないこと（要素が0個なら上のfilterは常に空になる）。
+    expect(await page.locator("main *").count()).toBeGreaterThan(50);
+
+    // 主要セクションの本文が実際に読める。
+    for (const text of [
+      "毎日のX運用、",
+      "情報収集から分析まで、4つの仕事を引き受けます",
+      "勝手には、投稿しません。",
+      "全プラン7日間の無料トライアル付き。",
+      "全プラン7日間・初回のみ",
+    ]) {
+      await expect(page.getByText(text, { exact: false }).first()).toBeVisible();
+    }
+  });
 });
 
 test("reduced-motion では全要素が即時表示され、3幅で横に伸びない", async ({ page }) => {

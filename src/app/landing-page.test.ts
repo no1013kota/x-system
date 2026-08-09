@@ -23,9 +23,10 @@ const PRICING = read("src/components/lp/pricing.tsx");
 const HERO_MOCK = read("src/components/lp/hero-mock.tsx");
 const FIGURES = read("src/components/lp/figures.tsx");
 const FAQ = read("src/components/lp/faq.tsx");
-const REVEAL = read("src/components/lp/reveal.tsx");
 const GLOBALS_CSS = read("src/app/globals.css");
-const LP_SOURCES = [PAGE, PRICING, HERO_MOCK, FIGURES, FAQ, REVEAL].join("\n");
+/** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
+const CSS_RULES = GLOBALS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
+const LP_SOURCES = [PAGE, PRICING, HERO_MOCK, FIGURES, FAQ].join("\n");
 
 describe("SC-01 LP: 導線", () => {
   it("会員登録・ログイン・ページ内アンカーへの導線がある", () => {
@@ -125,13 +126,31 @@ describe("SC-01 LP: デザイン制約", () => {
     expect(direct.length).toBe(5);
   });
 
-  it("reduced-motion で出現アニメと生成ループが止まる", () => {
-    expect(REVEAL).toContain("motion-reduce:opacity-100");
-    expect(REVEAL).toContain("motion-reduce:transition-none");
-    expect(GLOBALS_CSS).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(GLOBALS_CSS).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.lp-anim-bar/,
+  it("reduced-motion で生成ループの装飾が止まる", () => {
+    expect(GLOBALS_CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.lp-anim-bar/);
+  });
+
+  it("LPの内容を透明にする仕掛けが無い（JSが死んでも白紙にならない）", () => {
+    // 当初は IntersectionObserver で初期 opacity:0 を解除する作りで、JSのロード失敗・
+    // CSPブロック・JS無効のいずれでも **LPがヘッダーだけの白紙**になった（実測）。
+    // 新規登録の唯一の入口が無言で消え、サーバーは200・テストも緑なので運営者は気付けない。
+    // 次に animation-timeline: view() へ移したが、画面外を opacity:0 に保つ点は同じだった。
+    // 結論として出現演出は廃止し、**LPは常に不透明**にした。二度と戻さないよう固定する。
+    // 対象は**内容を持つソース**。ヒーローモック（全体が aria-hidden の装飾）だけは、
+    // 「生成中…」⇄「完了」のクロスフェードで opacity を使うので除く。読ませる情報は入っていない。
+    const CONTENT_SOURCES = [PAGE, PRICING, FIGURES, FAQ].join("\n");
+    expect(CONTENT_SOURCES, "LPの内容を透明にしない").not.toContain("opacity-0");
+    expect(LP_SOURCES, "LPをクライアントコンポーネントにしない").not.toContain("use client");
+    expect(CSS_RULES, "スクロール連動アニメーションを復活させない").not.toContain(
+      "animation-timeline",
     );
+    // 残っている装飾アニメ（生成バー・フロート）は情報を隠さないものだけ。
+    for (const name of CSS_RULES.match(/@keyframes\s+([\w-]+)/g) ?? []) {
+      expect(
+        ["@keyframes sai-bar", "@keyframes sai-lbl-a", "@keyframes sai-lbl-b", "@keyframes sai-float"],
+        `未知のkeyframes ${name} が増えている。内容を隠さないか確認すること`,
+      ).toContain(name);
+    }
   });
 
   it("ヒーローの見出しと固定コピーがハンドオフどおり", () => {

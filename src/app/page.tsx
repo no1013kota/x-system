@@ -7,14 +7,12 @@ import {
   AnalyticsFigure,
   BaseMdFigure,
   GenerationProgressFigure,
-  MiniPostFigure,
   NewsFeedFigure,
   ScheduleFigure,
 } from "@/components/lp/figures";
 import { FaqList } from "@/components/lp/faq";
 import { HeroMock } from "@/components/lp/hero-mock";
 import { PricingCards } from "@/components/lp/pricing";
-import { Reveal } from "@/components/lp/reveal";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-config";
@@ -48,19 +46,12 @@ const CARD_REGISTRATION_NOTE =
   "開始にはカード登録が必要です（7日間は無料。期間中の解約で料金はかかりません）。";
 
 /** 「01 課題」のようなセクション番号行。上の1px罫が各章の区切りになる。 */
-function SectionMark({ no, label, ink = false }: { no: string; label: string; ink?: boolean }) {
+function SectionMark({ no, label }: { no: string; label: string }) {
   return (
-    <Reveal>
-      <div
-        className={cn(
-          "flex items-baseline gap-3 border-t pt-4",
-          ink ? "border-ink" : "border-hairline",
-        )}
-      >
-        <span className="text-caption font-bold tracking-[0.08em]">{no}</span>
-        <span className="text-caption tracking-[0.08em] text-ink-2">{label}</span>
-      </div>
-    </Reveal>
+    <div className="flex items-baseline gap-3 border-t border-ink pt-4">
+      <span className="text-caption font-bold tracking-[0.08em]">{no}</span>
+      <span className="text-caption tracking-[0.08em] text-ink-2">{label}</span>
+    </div>
   );
 }
 
@@ -113,10 +104,14 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-hairline bg-[rgba(255,255,255,0.82)] backdrop-blur-[10px] backdrop-saturate-[1.4]">
         <div className={`${CONTAINER} flex h-16 items-center justify-between gap-3.5`}>
           <BrandLogo href="/" />
-          <nav className="hidden items-center gap-6 min-[880px]:flex">
+          {/*
+            aria-label はフッタの「法務情報」navと区別するために要る（navが2つあるため）。
+            min-h-6 は WCAG 2.5.8（24x24px）。テキスト高さのままだと20pxしかなかった。
+          */}
+          <nav aria-label="セクション" className="hidden items-center gap-6 min-[880px]:flex">
             {NAV_LINKS.map(([href, label]) => (
               <a
-                className="text-body font-medium text-ink-2 transition-colors hover:text-brand"
+                className="inline-flex min-h-6 items-center text-body font-medium text-ink-2 transition-colors hover:text-brand"
                 href={href}
                 key={href}
               >
@@ -155,25 +150,18 @@ export default function Home() {
             className={`${CONTAINER} relative grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] items-center gap-[clamp(28px,4.5vw,56px)] py-[clamp(56px,8vw,104px)]`}
           >
             <div>
-              <Reveal>
-                <span className="inline-flex h-[26px] items-center gap-2 rounded-pill border border-hairline bg-surface px-3 text-caption text-ink-2">
-                  <span aria-hidden="true" className="size-1.5 rounded-pill bg-brand" />
-                  X（旧Twitter）運用を自動化するWebアプリ
-                </span>
-              </Reveal>
-              <Reveal delay={60}>
-                <h1 className={`mt-[22px] text-[length:clamp(31px,calc(17px_+_3.4vw),44px)] leading-[1.34] ${HEADING}`}>
-                  ネタ探しから投稿、分析まで。
-                  <br />
-                  X運用の毎日を<span className="text-brand">自動化</span>。
-                </h1>
-              </Reveal>
-              <Reveal delay={120}>
-                <p className="mt-5 max-w-[42em] text-sm text-ink-2">
-                  あなたの発信スタイルを学習したAIが、情報収集から投稿作成・予約・分析までを引き受けます。あなたは1日数分、下書きを確認するだけ。
-                </p>
-              </Reveal>
-              <Reveal delay={180}>
+              {/* ピルバッジ「X（旧Twitter）運用を自動化するWebアプリ」はh1とほぼ同義のため削除（T-M8-76）。 */}
+              <h1
+                className={`text-[length:clamp(31px,calc(17px_+_3.4vw),44px)] leading-[1.34] ${HEADING}`}
+              >
+                ネタ探しから投稿、分析まで。
+                <br />
+                X運用の毎日を<span className="text-brand">自動化</span>。
+              </h1>
+              <p className="mt-5 max-w-[42em] text-sm text-ink-2">
+                あなたの発信スタイルを学習したAIが、情報収集から投稿作成・予約・分析までを引き受けます。あなたは1日数分、下書きを確認するだけ。
+              </p>
+              <div>
                 <div className="mt-7 flex flex-wrap items-center gap-3">
                   <Link
                     className={cn(
@@ -204,65 +192,39 @@ export default function Home() {
                     ),
                   )}
                 </div>
-              </Reveal>
+              </div>
             </div>
-            <Reveal className="min-w-0 duration-[800ms]" delay={200}>
+            <div className="min-w-0 duration-[800ms]">
               <HeroMock />
-            </Reveal>
+            </div>
           </div>
         </section>
 
-        {/* ファクトストリップ */}
-        <section className="border-b border-hairline bg-surface">
-          <div
-            className={`${CONTAINER} grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-3.5 py-[22px]`}
-          >
-            {(
-              [
-                ["3", "分野", "ニュースを自動収集"],
-                ["5", "種類", "投稿パターン"],
-                ["60", "〜90秒", "で投稿を生成"],
-                [yen(PLANS.standard.monthlyPriceJpy), "円〜", "月額（税込）"],
-              ] as [string, string, string][]
-            ).map(([value, unit, label], index) => (
-              <Reveal className="flex items-baseline gap-2.5" delay={index * 60} key={label}>
-                <span className="text-[26px] font-bold tracking-[-0.02em]">
-                  {value}
-                  <span className="text-sm font-medium">{unit}</span>
-                </span>
-                <span className="text-caption text-ink-2">{label}</span>
-              </Reveal>
-            ))}
-          </div>
-        </section>
+        {/*
+          ファクトストリップ（分野数／型の種類／生成時間／最安月額）は削除した（T-M8-76）。
+          4項目すべてが後続セクションの再掲で、新しい情報が1つも無かった:
+          前3つは「02 できること」、月額はヒーローのチェックと料金セクションの見出し。
+        */}
 
         {/* 01 課題 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           <div className={TWO_COL}>
             <div>
-              <SectionMark ink label="課題" no="01" />
-              <Reveal delay={60}>
-                <h2 className={H2}>
+              <SectionMark label="課題" no="01" />
+                              <h2 className={H2}>
                   毎日のX運用、
                   <br />
                   こんな悩みはありませんか
                 </h2>
-              </Reveal>
-              <Reveal delay={120}>
-                <p className="mt-3.5 max-w-[30em] text-sm text-ink-2">
-                  発信したいことはある。でも、続けるための作業が多すぎる。Space
-                  AIはこの3つのために作られています。
-                </p>
-              </Reveal>
+              {/* リード文は見出しと3項目で足りるため削除（T-M8-76）。 */}
             </div>
             <div>
               {PROBLEMS.map(([title, body], index) => (
-                <Reveal
+                <div
                   className={cn(
                     "border-t border-hairline",
                     index === PROBLEMS.length - 1 && "border-b",
                   )}
-                  delay={index * 70}
                   key={title}
                 >
                   <div className="flex gap-[18px] py-[18px]">
@@ -274,7 +236,7 @@ export default function Home() {
                       <p className="mt-1.5 text-sm text-ink-2">{body}</p>
                     </div>
                   </div>
-                </Reveal>
+                </div>
               ))}
             </div>
           </div>
@@ -286,12 +248,10 @@ export default function Home() {
           id="features"
         >
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
-            <SectionMark ink label="できること" no="02" />
-            <Reveal delay={60}>
-              <h2 className={H2}>情報収集から分析まで、4つの仕事を引き受けます</h2>
-            </Reveal>
+            <SectionMark label="できること" no="02" />
+                          <h2 className={H2}>情報収集から分析まで、4つの仕事を引き受けます</h2>
             <div className="mt-[30px] grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-12">
-              <Reveal className="min-w-0 min-[900px]:col-span-7">
+              <div className="min-w-0 min-[900px]:col-span-7">
                 <div
                   className={cn(
                     cardClassName,
@@ -304,13 +264,14 @@ export default function Home() {
                   <CardTitle as="h3" className="mt-2">
                     ニュースが2時間おきに届く
                   </CardTitle>
+                  {/* 重要度チップと時刻は図版が示すので文からは外した（T-M8-76）。 */}
                   <p className="mt-2 text-sm text-ink-2">
-                    AI・投資・SNS運用の3分野を、日本時間10:00〜20:00に2時間おきに自動収集。重要度（高・中・低）つきで届き、気になった記事から1タップで投稿の作成を始められます。
+                    AI・投資・SNS運用の3分野を、10:00〜20:00に2時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。
                   </p>
                   <NewsFeedFigure />
                 </div>
-              </Reveal>
-              <Reveal className="min-w-0 min-[900px]:col-span-5" delay={80}>
+              </div>
+              <div className="min-w-0 min-[900px]:col-span-5">
                 <div
                   className={cn(
                     cardClassName,
@@ -339,8 +300,8 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
-              </Reveal>
-              <Reveal className="min-w-0 min-[900px]:col-span-5">
+              </div>
+              <div className="min-w-0 min-[900px]:col-span-5">
                 <div
                   className={cn(
                     cardClassName,
@@ -358,8 +319,8 @@ export default function Home() {
                   </p>
                   <ScheduleFigure />
                 </div>
-              </Reveal>
-              <Reveal className="min-w-0 min-[900px]:col-span-7" delay={80}>
+              </div>
+              <div className="min-w-0 min-[900px]:col-span-7">
                 <div
                   className={cn(
                     cardClassName,
@@ -372,29 +333,27 @@ export default function Home() {
                   <CardTitle as="h3" className="mt-2">
                     何が伸びたかを、根拠つきで
                   </CardTitle>
+                  {/* 記録タイミングは図版が示すので文からは外した（T-M8-76）。 */}
                   <p className="mt-2 text-sm text-ink-2">
-                    表示回数・いいね・リポスト・プロフィール表示を投稿後1日・7日・30日で記録。フォロワー数も日次で自動記録します。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで提示（1日1回・表示のみ）。
+                    表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで示します（1日1回・表示のみ）。
                   </p>
                   <AnalyticsFigure />
                 </div>
-              </Reveal>
+              </div>
             </div>
           </div>
         </section>
 
         {/* 03 しくみ */}
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
-          <SectionMark ink label="しくみ" no="03" />
-          <Reveal delay={60}>
-            <h2 className={H2}>「発信定義書」が、あなたらしさの土台になる</h2>
-          </Reveal>
-          <Reveal delay={120}>
-            <p className="mt-3.5 max-w-[52em] text-sm text-ink-2">
-              ペルソナ・発信テーマ・トーン＆マナー・NG設定と、学習させた文章を、Xアカウントごとに1つの定義書にまとめます。すべての投稿生成がこの定義書を土台にするため、毎回指示を書き直さなくても文体と方針がぶれません。
+          <SectionMark label="しくみ" no="03" />
+                      <h2 className={H2}>「発信定義書」が、あなたらしさの土台になる</h2>
+          {/* 定義書の中身はSTEP2の図版が列挙するので、リード文は役割の説明だけに絞った（T-M8-76）。 */}
+                      <p className="mt-3.5 max-w-[42em] text-sm text-ink-2">
+              すべての投稿生成がこの1枚を土台にするため、毎回指示を書き直さなくても文体と方針がぶれません。
             </p>
-          </Reveal>
           <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1.18fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
-            <Reveal className="min-w-0">
+            <div className="min-w-0">
               <div className={cn(cardClassName, "h-full p-[18px]")}>
                 <p className="text-caption font-bold tracking-[0.06em] text-ink-3">STEP 1</p>
                 <CardTitle as="h3" className="mt-1.5">
@@ -414,23 +373,23 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-            </Reveal>
+            </div>
             <div
               aria-hidden="true"
               className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
             >
               →
             </div>
-            <Reveal className="min-w-0" delay={80}>
+            <div className="min-w-0">
               <BaseMdFigure />
-            </Reveal>
+            </div>
             <div
               aria-hidden="true"
               className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
             >
               →
             </div>
-            <Reveal className="min-w-0" delay={160}>
+            <div className="min-w-0">
               <div className={cn(cardClassName, "relative h-full overflow-hidden p-[18px]")}>
                 <div
                   aria-hidden="true"
@@ -445,29 +404,27 @@ export default function Home() {
                 </p>
                 <GenerationProgressFigure />
               </div>
-            </Reveal>
+            </div>
             <div
               aria-hidden="true"
               className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
             >
               →
             </div>
-            <Reveal className="min-w-0" delay={240}>
+            <div className="min-w-0">
               <div className={cn(cardClassName, "h-full p-[18px]")}>
                 <p className="text-caption font-bold tracking-[0.06em] text-ink-3">STEP 4</p>
                 <CardTitle as="h3" className="mt-1.5">
                   ぶれない投稿に
                 </CardTitle>
-                <MiniPostFigure />
-                <p className="mt-2.5 text-body text-ink-2">毎回指示を書き直す必要はありません。</p>
+                {/* 抽象的なミニ投稿カードの図版は情報量が薄いため削除（T-M8-76）。 */}
+                <p className="mt-2 text-body text-ink-2">
+                  いつもの文体・いつもの方針で、毎回指示を書き直す必要はありません。
+                </p>
               </div>
-            </Reveal>
+            </div>
           </div>
-          <Reveal>
-            <p className="mt-[18px] text-body text-ink-2">
-              mdプラン以上では、この定義書とプロンプトを直接編集できます（編集履歴とロールバック付き）。
-            </p>
-          </Reveal>
+          {/* 末尾注記（mdプラン以上は直接編集可）は料金セクションのmdプラン説明と重複のため削除（T-M8-76）。 */}
         </section>
 
         {/* 04 安全性 */}
@@ -475,24 +432,19 @@ export default function Home() {
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <div className={TWO_COL}>
               <div>
-                <SectionMark ink label="安全性" no="04" />
-                <Reveal delay={60}>
-                  <h2 className={H2}>勝手には、投稿しません。</h2>
-                </Reveal>
-                <Reveal delay={120}>
-                  <p className="mt-3.5 max-w-[30em] text-sm text-ink-2">
+                <SectionMark label="安全性" no="04" />
+                                  <h2 className={H2}>勝手には、投稿しません。</h2>
+                                  <p className="mt-3.5 max-w-[30em] text-sm text-ink-2">
                     大切なアカウントを預かる前提で設計しています。できないことは、できないままにしてあります。
                   </p>
-                </Reveal>
               </div>
               <div>
                 {SAFETY_ITEMS.map(([title, body], index) => (
-                  <Reveal
+                  <div
                     className={cn(
                       "border-t border-hairline",
                       index === SAFETY_ITEMS.length - 1 && "border-b",
                     )}
-                    delay={index * 60}
                     key={title}
                   >
                     <div className="flex gap-3.5 py-4">
@@ -507,7 +459,7 @@ export default function Home() {
                         <p className="mt-1 text-body text-ink-2">{body}</p>
                       </div>
                     </div>
-                  </Reveal>
+                  </div>
                 ))}
               </div>
             </div>
@@ -516,19 +468,17 @@ export default function Home() {
 
         {/* 05 使い方 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark ink label="使い方" no="05" />
-          <Reveal delay={60}>
-            <h2 className={H2}>始め方は4ステップ</h2>
-          </Reveal>
+          <SectionMark label="使い方" no="05" />
+                      <h2 className={H2}>始め方は4ステップ</h2>
           <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-x-3.5 gap-y-6">
             {HOW_TO_STEPS.map(([title, body], index) => (
-              <Reveal className="border-t-2 border-brand pt-4" delay={index * 70} key={title}>
+              <div className="border-t-2 border-brand pt-4" key={title}>
                 <p aria-hidden="true" className="text-[20px] font-bold text-brand">
                   {index + 1}
                 </p>
                 <h3 className="mt-1.5 text-[15px] font-bold">{title}</h3>
                 <p className="mt-1.5 text-body text-ink-2">{body}</p>
-              </Reveal>
+              </div>
             ))}
           </div>
         </section>
@@ -536,33 +486,29 @@ export default function Home() {
         {/* 06 料金 */}
         <section className="scroll-mt-[76px] border-y border-hairline bg-surface" id="pricing">
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
-            <SectionMark ink label="料金" no="06" />
-            <Reveal delay={60}>
-              <h2 className={H2}>月額{startingPrice}から。すべて税込です</h2>
-            </Reveal>
-            <Reveal delay={120}>
-              <p className="mt-3 text-sm text-ink-2">
+            <SectionMark label="料金" no="06" />
+                          <h2 className={H2}>月額{startingPrice}から。すべて税込です</h2>
+                          <p className="mt-3 text-sm text-ink-2">
                 全プラン7日間の無料トライアル付き。
               </p>
-            </Reveal>
             <PricingCards />
           </div>
         </section>
 
         {/* 07 よくある質問 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark ink label="よくある質問" no="07" />
+          <SectionMark label="よくある質問" no="07" />
           <div className={`${TWO_COL} mt-[18px]`}>
-            <Reveal delay={60}>
+            <div>
               <h2 className={`text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-normal ${HEADING}`}>
                 気になることは、
                 <br />
                 先に答えておきます
               </h2>
-            </Reveal>
-            <Reveal delay={120}>
+            </div>
+            <div>
               <FaqList />
-            </Reveal>
+            </div>
           </div>
         </section>
 
@@ -573,22 +519,18 @@ export default function Home() {
             className="absolute inset-0 bg-[radial-gradient(rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:22px_22px] [-webkit-mask-image:radial-gradient(ellipse_at_center,rgba(0,0,0,1)_0%,transparent_70%)] [mask-image:radial-gradient(ellipse_at_center,rgba(0,0,0,1)_0%,transparent_70%)]"
           />
           <div className={`${CONTAINER} relative py-[clamp(64px,9vw,110px)] text-center`}>
-            <Reveal className="flex justify-center">
+            <div className="flex justify-center">
               <LogoTile size={40} />
-            </Reveal>
-            <Reveal delay={60}>
+            </div>
+            <div>
               <h2 className={`mt-[22px] text-[length:clamp(24px,calc(14px_+_1.8vw),34px)] leading-[1.45] ${HEADING}`}>
                 1日数分の確認から、
                 <br />
                 始めませんか。
               </h2>
-            </Reveal>
-            <Reveal delay={120}>
-              <p className="mx-auto mt-3.5 max-w-[36em] text-sm text-ink-2">
-                7日間、すべての機能を無料で試せます。
-              </p>
-            </Reveal>
-            <Reveal delay={180}>
+            </div>
+            {/* 「7日間、すべての機能を無料で試せます。」は直下のカード登録注記と重複のため削除（T-M8-76）。 */}
+            <div>
               <div className="mt-[26px] flex justify-center">
                 <Link
                   className={cn(
@@ -601,7 +543,7 @@ export default function Home() {
                 </Link>
               </div>
               <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
-            </Reveal>
+            </div>
           </div>
         </section>
       </main>
