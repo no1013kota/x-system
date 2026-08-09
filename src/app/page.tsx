@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { BrandLogo, LogoTile } from "@/components/app-shell/brand-logo";
@@ -58,7 +59,6 @@ function SectionMark({ no, label }: { no: string; label: string }) {
 const NAV_LINKS: [string, string][] = [
   ["#features", "できること"],
   ["#how", "しくみ"],
-  ["#safety", "安全性"],
   ["#pricing", "料金"],
 ];
 
@@ -74,20 +74,6 @@ const PROBLEMS: [string, string][] = [
   ],
 ];
 
-const SAFETY_ITEMS: [string, string][] = [
-  [
-    "既定は「下書きまで」モード",
-    "自動投稿を使うには、対象・実行条件・停止方法を説明した画面での明示的な同意が別途必要です。Xと連携しただけでは始まりません。",
-  ],
-  ["いつでも即座に止められます", "設定から停止すると、実行待ちの自動投稿もキャンセルされます。"],
-  ["1日50投稿の安全上限", "1アカウントあたり1日50投稿の上限を、全プランに設けています。"],
-  [
-    "自動いいね・フォロー・リプライはしません",
-    "アカウント凍結のリスクを避けるため、実装していません。",
-  ],
-  ["APIキーは暗号化して保存", "画面上は末尾4桁のみ表示します。いつでも削除できます。"],
-];
-
 const HOW_TO_STEPS: [string, string][] = [
   ["アカウント作成", "メールアドレスとパスワードで登録。確認メールで本人認証します。"],
   ["カード登録", "安全に登録。ここから7日間の無料トライアルが始まります。"],
@@ -96,6 +82,54 @@ const HOW_TO_STEPS: [string, string][] = [
 ];
 
 const POST_TYPE_CHIPS = ["ニュース解説", "考え・意見", "ノウハウ", "トレンド便乗", "週次まとめ"];
+
+/** 「02 できること」の4枚。上端グラデ3pxは「投稿の生成」＝AIが動く瞬間だけ（デザイン §カラー）。 */
+const FEATURES: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  figure: ReactNode;
+  gradientTop?: boolean;
+}[] = [
+  {
+    eyebrow: "情報収集の自動化",
+    title: "ニュースが2時間おきに届く",
+    // 重要度チップと時刻は図版が示すので文からは外してある（T-M8-76）。
+    body: "AI・投資・SNS運用の3分野を、10:00〜20:00に2時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。",
+    figure: <NewsFeedFigure />,
+  },
+  {
+    eyebrow: "投稿の生成",
+    title: "5種類の型で、あなたの文体に",
+    body: "スレッド形式で出力し、画像の自動生成も選べます。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。",
+    gradientTop: true,
+    figure: (
+      <div className="flex flex-wrap gap-1.5">
+        {POST_TYPE_CHIPS.map((chip) => (
+          <span
+            className="inline-flex h-[22px] items-center rounded-chip bg-brand-subtle px-2 text-caption text-brand"
+            key={chip}
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+    ),
+  },
+  {
+    eyebrow: "予約と自動運用",
+    title: "曜日×時刻で回し続ける",
+    body: "9:00〜22:00の30分刻みでスケジュールを設定。スロットごとに「下書きまで」か「そのまま投稿」かを選べます。",
+    figure: <ScheduleFigure />,
+  },
+  {
+    eyebrow: "分析と改善提案",
+    title: "何が伸びたかを、根拠つきで",
+    // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
+    body: "表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで示します（1日1回・表示のみ）。",
+    figure: <AnalyticsFigure />,
+  },
+];
 
 export default function Home() {
   const startingPrice = `${yen(PLANS.standard.monthlyPriceJpy)}円`;
@@ -250,96 +284,41 @@ export default function Home() {
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="できること" no="02" />
                           <h2 className={H2}>情報収集から分析まで、4つの仕事を引き受けます</h2>
-            <div className="mt-[30px] grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-12">
-              <div className="min-w-0 min-[900px]:col-span-7">
+            {/*
+              ベントーグリッド（12col・7/5→5/7）から**4枚の縦積み**へ変更（T-M8-77）。
+              各カードは全幅になるので、本文を左・図版を右の2カラムに置く
+              （1180px幅いっぱいに本文を流すと1行が長くなりすぎて読みにくい）。
+              760px未満では本文→図版の縦積みに戻る。
+            */}
+            <div className="mt-[30px] grid gap-3.5">
+              {FEATURES.map((feature) => (
                 <div
                   className={cn(
                     cardClassName,
-                    "h-full p-5 transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]",
+                    "relative overflow-hidden p-5 transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]",
                   )}
+                  key={feature.title}
                 >
-                  <p className="text-caption font-bold tracking-[0.06em] text-brand">
-                    情報収集の自動化
-                  </p>
-                  <CardTitle as="h3" className="mt-2">
-                    ニュースが2時間おきに届く
-                  </CardTitle>
-                  {/* 重要度チップと時刻は図版が示すので文からは外した（T-M8-76）。 */}
-                  <p className="mt-2 text-sm text-ink-2">
-                    AI・投資・SNS運用の3分野を、10:00〜20:00に2時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。
-                  </p>
-                  <NewsFeedFigure />
-                </div>
-              </div>
-              <div className="min-w-0 min-[900px]:col-span-5">
-                <div
-                  className={cn(
-                    cardClassName,
-                    "relative h-full overflow-hidden p-5 transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]",
+                  {feature.gradientTop && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
+                    />
                   )}
-                >
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
-                  />
-                  <p className="text-caption font-bold tracking-[0.06em] text-brand">投稿の生成</p>
-                  <CardTitle as="h3" className="mt-2">
-                    5種類の型で、あなたの文体に
-                  </CardTitle>
-                  <p className="mt-2 text-sm text-ink-2">
-                    スレッド形式で出力し、画像の自動生成も選べます。生成は通常60〜90秒。編集や、追加指示つきの再生成もできます。
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {POST_TYPE_CHIPS.map((chip) => (
-                      <span
-                        className="inline-flex h-[22px] items-center rounded-chip bg-brand-subtle px-2 text-caption text-brand"
-                        key={chip}
-                      >
-                        {chip}
-                      </span>
-                    ))}
+                  <div className="grid items-center gap-x-8 gap-y-4 min-[760px]:grid-cols-2">
+                    <div className="min-w-0">
+                      <p className="text-caption font-bold tracking-[0.06em] text-brand">
+                        {feature.eyebrow}
+                      </p>
+                      <CardTitle as="h3" className="mt-2">
+                        {feature.title}
+                      </CardTitle>
+                      <p className="mt-2 text-sm text-ink-2">{feature.body}</p>
+                    </div>
+                    <div className="min-w-0">{feature.figure}</div>
                   </div>
                 </div>
-              </div>
-              <div className="min-w-0 min-[900px]:col-span-5">
-                <div
-                  className={cn(
-                    cardClassName,
-                    "h-full p-5 transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]",
-                  )}
-                >
-                  <p className="text-caption font-bold tracking-[0.06em] text-brand">
-                    予約と自動運用
-                  </p>
-                  <CardTitle as="h3" className="mt-2">
-                    曜日×時刻で回し続ける
-                  </CardTitle>
-                  <p className="mt-2 text-sm text-ink-2">
-                    9:00〜22:00の30分刻みでスケジュールを設定。スロットごとに「下書きまで」か「そのまま投稿」かを選べます。
-                  </p>
-                  <ScheduleFigure />
-                </div>
-              </div>
-              <div className="min-w-0 min-[900px]:col-span-7">
-                <div
-                  className={cn(
-                    cardClassName,
-                    "h-full p-5 transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]",
-                  )}
-                >
-                  <p className="text-caption font-bold tracking-[0.06em] text-brand">
-                    分析と改善提案
-                  </p>
-                  <CardTitle as="h3" className="mt-2">
-                    何が伸びたかを、根拠つきで
-                  </CardTitle>
-                  {/* 記録タイミングは図版が示すので文からは外した（T-M8-76）。 */}
-                  <p className="mt-2 text-sm text-ink-2">
-                    表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。「提案を更新」を押すと、どの型×時間帯×テーマが伸びたかを根拠つきで示します（1日1回・表示のみ）。
-                  </p>
-                  <AnalyticsFigure />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
@@ -427,48 +406,15 @@ export default function Home() {
           {/* 末尾注記（mdプラン以上は直接編集可）は料金セクションのmdプラン説明と重複のため削除（T-M8-76）。 */}
         </section>
 
-        {/* 04 安全性 */}
-        <section className="scroll-mt-[76px] border-y border-hairline bg-surface" id="safety">
-          <div className={`${CONTAINER} ${SECTION_PAD}`}>
-            <div className={TWO_COL}>
-              <div>
-                <SectionMark label="安全性" no="04" />
-                                  <h2 className={H2}>勝手には、投稿しません。</h2>
-                                  <p className="mt-3.5 max-w-[30em] text-sm text-ink-2">
-                    大切なアカウントを預かる前提で設計しています。できないことは、できないままにしてあります。
-                  </p>
-              </div>
-              <div>
-                {SAFETY_ITEMS.map(([title, body], index) => (
-                  <div
-                    className={cn(
-                      "border-t border-hairline",
-                      index === SAFETY_ITEMS.length - 1 && "border-b",
-                    )}
-                    key={title}
-                  >
-                    <div className="flex gap-3.5 py-4">
-                      <span
-                        aria-hidden="true"
-                        className="grid size-6 flex-none place-items-center rounded-pill bg-brand-subtle text-body font-bold text-brand"
-                      >
-                        ✓
-                      </span>
-                      <div>
-                        <p className="text-[15px] leading-[1.6] font-bold">{title}</p>
-                        <p className="mt-1 text-body text-ink-2">{body}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
+        {/*
+          「04 安全性」セクションは削除した（T-M8-77）。主張の中心（勝手に投稿しない／即座に停止）は
+          ヒーローのチェック3点とFAQ「勝手に投稿されませんか？」が担う。
+          **APIキーの暗号化・末尾4桁だけはここが唯一の置き場所だったので、FAQの回答へ戻した。**
+        */}
 
-        {/* 05 使い方 */}
+        {/* 04 使い方 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="使い方" no="05" />
+          <SectionMark label="使い方" no="04" />
                       <h2 className={H2}>始め方は4ステップ</h2>
           <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-x-3.5 gap-y-6">
             {HOW_TO_STEPS.map(([title, body], index) => (
@@ -483,10 +429,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 06 料金 */}
+        {/* 05 料金 */}
         <section className="scroll-mt-[76px] border-y border-hairline bg-surface" id="pricing">
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
-            <SectionMark label="料金" no="06" />
+            <SectionMark label="料金" no="05" />
                           <h2 className={H2}>月額{startingPrice}から。すべて税込です</h2>
                           <p className="mt-3 text-sm text-ink-2">
                 全プラン7日間の無料トライアル付き。
@@ -495,9 +441,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 07 よくある質問 */}
+        {/* 06 よくある質問 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="よくある質問" no="07" />
+          <SectionMark label="よくある質問" no="06" />
           <div className={`${TWO_COL} mt-[18px]`}>
             <div>
               <h2 className={`text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-normal ${HEADING}`}>

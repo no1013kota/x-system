@@ -33,7 +33,7 @@ describe("SC-01 LP: 導線", () => {
     expect(PAGE).toContain('href="/signup"');
     expect(PAGE).toContain('href="/login"');
     expect(PRICING).toContain('href="/signup"'); // プランカードのCTA
-    for (const anchor of ["#features", "#how", "#safety", "#pricing"]) {
+    for (const anchor of ["#features", "#how", "#pricing"]) {
       expect(PAGE, `ヘッダーnavに ${anchor} がある`).toContain(`"${anchor}"`);
       expect(PAGE, `セクションに id=${anchor.slice(1)} がある`).toContain(
         `id="${anchor.slice(1)}"`,
@@ -156,7 +156,19 @@ describe("SC-01 LP: デザイン制約", () => {
   it("ヒーローの見出しと固定コピーがハンドオフどおり", () => {
     expect(PAGE).toContain("ネタ探しから投稿、分析まで。");
     expect(PAGE).toContain("X運用の毎日を");
-    expect(PAGE).toContain("勝手には、投稿しません。");
     expect(PAGE).toContain("1日数分の確認から、");
+  });
+
+  it("安全性セクションの削除で消えた要素が、別の場所に残っている", () => {
+    // 「04 安全性」を削除した（T-M8-77）。そこにしか無かった内容が黙って消えないよう固定する。
+    // 「勝手に投稿しない」「即座に停止」はヒーローのチェック3点が引き継ぐ。
+    expect(PAGE, "ヒーローのチェックから安心材料が消えている").toContain("勝手には投稿しません");
+    expect(PAGE).toContain("いつでも即座に停止");
+    // APIキーの暗号化と自動投稿の停止は、FAQがLP唯一の置き場所になった。
+    expect(FAQ, "APIキーの保管方法がLPから消えている").toContain("暗号化して保存");
+    expect(FAQ).toContain("末尾4桁");
+    expect(FAQ, "自動投稿を止められることがLPから消えている").toContain(
+      "実行待ちの自動投稿もキャンセル",
+    );
   });
 });

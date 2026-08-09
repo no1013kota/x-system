@@ -16,7 +16,7 @@ export function NewsFeedFigure() {
   return (
     <div
       aria-hidden="true"
-      className="mt-4 grid gap-2 rounded-card border border-hairline bg-page px-3 py-2.5"
+      className="grid gap-2 rounded-card border border-hairline bg-page px-3 py-2.5"
     >
       {rows.map((row) => (
         <div className="flex items-center gap-2.5" key={row.time}>
@@ -53,7 +53,7 @@ export function ScheduleFigure() {
   return (
     <div
       aria-hidden="true"
-      className="mt-4 grid gap-2 rounded-card border border-hairline bg-page p-3"
+      className="grid gap-2 rounded-card border border-hairline bg-page p-3"
     >
       <div className="grid grid-cols-[44px_repeat(7,1fr)] items-center gap-1.5 text-center text-[11px] text-ink-3">
         <span />
@@ -99,7 +99,7 @@ export function AnalyticsFigure() {
   return (
     <div
       aria-hidden="true"
-      className="mt-4 flex flex-wrap items-end justify-between gap-3.5 rounded-card border border-hairline bg-page p-3.5"
+      className="flex flex-wrap items-end justify-between gap-3.5 rounded-card border border-hairline bg-page p-3.5"
     >
       <div className="flex h-14 items-end gap-2">
         {bars.map((bar, i) => (
