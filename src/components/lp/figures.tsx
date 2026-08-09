@@ -8,20 +8,20 @@ import { cn } from "@/lib/utils";
 
 /**
  * 情報収集の自動化: **ニュースが一覧で並んでいる**見え方にする（T-M8-79）。
- * 分野・時刻・重要度は実際の仕様（AI／投資／SNS運用の3分野・2時間おき・高中低）と揃える。
- * 見出しそのものは実在しない記事を作らないよう、バーで表す。
+ *
+ * 以前は見出しを灰色のバーで表していたが、それでは「ニュースが並んでいる」ようには見えなかった。
+ * 見出しは文字で書く（ヒーローのモックが既に架空の例文を使っているのと同じ扱い）。
+ * **実在の記事・企業名は書かない。** 分野・時刻・重要度は実際の仕様と揃える
+ * （AI／投資／SNS運用の3分野・10:00〜20:00に2時間おき・重要度 高中低）。
  */
 export function NewsFeedFigure() {
-  const items: { field: string; time: string; lines: [string, string]; high: boolean }[] = [
-    { field: "AI", time: "10:00", lines: ["w-[92%]", "w-[64%]"], high: true },
-    { field: "投資", time: "12:00", lines: ["w-[78%]", "w-[44%]"], high: false },
-    { field: "SNS運用", time: "14:00", lines: ["w-[86%]", "w-[56%]"], high: true },
+  const items: { field: string; time: string; headline: string; high: boolean }[] = [
+    { field: "AI", time: "10:00", headline: "生成AIの業務利用がさらに拡大", high: true },
+    { field: "投資", time: "12:00", headline: "個人の資産形成に関する新しい調査", high: false },
+    { field: "SNS運用", time: "14:00", headline: "短い動画から文章投稿への揺り戻し", high: true },
   ];
   return (
-    <div
-      aria-hidden="true"
-      className="overflow-hidden rounded-card border border-hairline bg-page"
-    >
+    <div aria-hidden="true" className="overflow-hidden rounded-card border border-hairline bg-page">
       {items.map((item, index) => (
         <div className={cn("px-3 py-2.5", index > 0 && "border-t border-hairline")} key={item.field}>
           <div className="flex items-center gap-2">
@@ -40,9 +40,11 @@ export function NewsFeedFigure() {
               重要度 {item.high ? "高" : "中"}
             </span>
           </div>
-          {/* 見出し2行ぶん。実在しない記事名を書かないための抽象表現。 */}
-          <div className={cn("mt-2 h-[7px] rounded bg-hairline", item.lines[0])} />
-          <div className={cn("mt-1.5 h-[7px] rounded bg-hairline/60", item.lines[1])} />
+          <p className="mt-1.5 truncate text-caption font-medium text-ink">{item.headline}</p>
+          {/* 記事から投稿作成へ進める導線があることを示す（実際の画面にあるボタン）。 */}
+          <span className="mt-1.5 inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+            この記事から投稿を作る
+          </span>
         </div>
       ))}
     </div>

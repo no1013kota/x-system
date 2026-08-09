@@ -20,25 +20,32 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-/** ③ 下書き・予約・分析。3つの入口が並んでいることだけを示す。 */
+/**
+ * ③ 下書き・予約・分析。**タブと中身がある「画面」に見える形**にする。
+ * 数字を3つ並べただけでは、その3つがどんな画面なのか想像できなかった。
+ */
 function WorkspaceStrip() {
+  const drafts: [string, string][] = [
+    ["ニュース解説", "予約 9:30"],
+    ["週次まとめ", "明日 12:00"],
+  ];
   return (
-    <div className={cn(cardClassName, "grid grid-cols-3 gap-2 px-3.5 py-3")}>
-      <div className="border-r border-hairline pr-2">
-        <p className="text-[11px] text-ink-3">下書き</p>
-        <p className="mt-1 text-[15px] leading-none font-bold text-ink">3</p>
+    <div className={cn(cardClassName, "overflow-hidden")}>
+      <div className="flex items-center gap-1 border-b border-hairline px-3 pt-2.5">
+        <span className="rounded-t-chip border-b-2 border-brand px-2 pb-1.5 text-[11px] font-bold text-brand">
+          下書き 3
+        </span>
+        <span className="px-2 pb-1.5 text-[11px] text-ink-3">予約 5</span>
+        <span className="px-2 pb-1.5 text-[11px] text-ink-3">分析</span>
       </div>
-      <div className="border-r border-hairline pr-2">
-        <p className="text-[11px] text-ink-3">予約</p>
-        <p className="mt-1 text-[15px] leading-none font-bold text-ink">5</p>
-      </div>
-      <div>
-        <p className="text-[11px] text-ink-3">分析</p>
-        <div className="mt-1 flex h-3 items-end gap-[3px]">
-          <span className="h-1.5 w-1.5 rounded-[1px] bg-brand-subtle" />
-          <span className="h-2.5 w-1.5 rounded-[1px] bg-brand-subtle" />
-          <span className="h-3 w-1.5 rounded-[1px] bg-brand" />
-        </div>
+      <div className="grid gap-1.5 px-3.5 py-2.5">
+        {drafts.map(([title, when]) => (
+          <div className="flex items-center gap-2" key={title}>
+            <span className="size-1.5 flex-none rounded-pill bg-brand-subtle" />
+            <span className="truncate text-[11px] text-ink">{title}</span>
+            <span className="ml-auto flex-none text-[11px] text-ink-3">{when}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
