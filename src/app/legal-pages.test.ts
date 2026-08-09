@@ -55,6 +55,7 @@ describe("法務3ページに開発中の表示が残っていない", () => {
 describe("特定商取引法11条の表示項目が揃っている", () => {
   // 法11条＋消費者庁の運用（電話番号は請求時の遅滞ない開示で足りる）に対応する項目。
   const REQUIRED = [
+    "屋号",
     "販売事業者",
     "運営責任者",
     "所在地",
@@ -78,6 +79,16 @@ describe("特定商取引法11条の表示項目が揃っている", () => {
       expect(TOKUSHOHO).toContain(term);
     });
   }
+
+  it("屋号だけでなく氏名も表示している（個人事業者の法定表示）", () => {
+    // 特商法11条「販売業者の氏名（名称）」は、個人事業者では**氏名**の表示が要る。
+    // 屋号（Exos AI）へ置き換えてしまうと表示義務を満たさなくなるので、両方あることを固定する。
+    expect(TOKUSHOHO, "屋号の行が消えている").toContain("LEGAL_ENTITY.tradeName");
+    expect(TOKUSHOHO, "氏名（販売事業者）の行が消えている").toContain("LEGAL_ENTITY.name");
+    const entity = read("src/lib/legal-entity.ts");
+    expect(entity, "屋号と氏名は別々に持つ").toMatch(/tradeName:\s*"[^"]+"/);
+    expect(entity).toMatch(/\n\s*name:\s*"[^"]+"/);
+  });
 
   it("事業者情報は単一の正本（legal-entity.ts）から描画している", () => {
     expect(TOKUSHOHO).toContain("LEGAL_ENTITY");

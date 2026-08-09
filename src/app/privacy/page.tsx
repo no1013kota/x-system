@@ -124,13 +124,14 @@ export default function PrivacyPage() {
       versionLabel={consentVersionLabel(CURRENT_PRIVACY_VERSION)}
     >
       <p>
-        {LEGAL_ENTITY.name}（以下「当方」）は、{APP_NAME}
+        {LEGAL_ENTITY.name}（屋号: {LEGAL_ENTITY.tradeName}。以下「当方」）は、{APP_NAME}
         （以下「本サービス」）における個人情報の取扱いについて、次のとおり定めます。
       </p>
 
       <LegalArticle n={1} title="事業者の情報">
         <LegalDefinitions
           items={[
+            { term: "屋号", description: LEGAL_ENTITY.tradeName },
             { term: "個人情報取扱事業者", description: LEGAL_ENTITY.name },
             { term: "所在地", description: LEGAL_ENTITY.address },
             { term: "個人情報の管理責任者", description: LEGAL_ENTITY.representative },
