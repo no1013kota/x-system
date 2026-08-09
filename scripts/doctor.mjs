@@ -157,7 +157,7 @@ if (appUp) {
 }
 
 // --- 表示 ---
-console.log(`\n■ Space AI の状態（${isLocal ? "ローカル" : base}）\n`);
+console.log(`\n■ Exos AI の状態（${isLocal ? "ローカル" : base}）\n`);
 for (const c of checks) {
   console.log(`${MARK[c.level] ?? "  "} ${c.name}`);
   console.log(`    ${c.detail}`);

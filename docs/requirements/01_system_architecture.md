@@ -8,7 +8,7 @@
 
 ## 1. 全体構成
 
-Space AIはNext.js単一アプリとして実装し、Vercel上でUI、API Routes、Server Actions、定時処理handlerを動かす。初期環境の永続化、認証、StorageはSupabase Free、課金はStripe、外部投稿はX API、AI実行はClaude/OpenAI/Geminiを利用する。定時handlerは初期に常時稼働Macの`launchd`から呼び、移行条件到達後にVercel Cronへ切り替える。Supabaseの移行条件は§9、実行基盤の判断は[ADR-0001](../decisions/0001-initial-infrastructure-plan.md)を正とする。
+Exos AIはNext.js単一アプリとして実装し、Vercel上でUI、API Routes、Server Actions、定時処理handlerを動かす。初期環境の永続化、認証、StorageはSupabase Free、課金はStripe、外部投稿はX API、AI実行はClaude/OpenAI/Geminiを利用する。定時handlerは初期に常時稼働Macの`launchd`から呼び、移行条件到達後にVercel Cronへ切り替える。Supabaseの移行条件は§9、実行基盤の判断は[ADR-0001](../decisions/0001-initial-infrastructure-plan.md)を正とする。
 
 ```mermaid
 flowchart TB
@@ -118,7 +118,7 @@ flowchart TB
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
 | `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password |
-| `EMAIL_FROM` | preview/prod | Fromアドレス | `Space AI <matsubuz.10@gmail.com>` |
+| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>` |
 | `EMAIL_REPLY_TO` | preview/prod | Reply-Toアドレス | `matsubuz.10@gmail.com` |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | preview/prod | Supabase Auth CAPTCHAのsite key | signup/login/password reset |

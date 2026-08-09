@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Environment-variable schema for Space AI (要件01 §3).
+ * Environment-variable schema for Exos AI (要件01 §3).
  *
  * Kept free of the `server-only` marker so it can be unit-tested directly; the
  * runtime entrypoint (`env.ts`) adds `server-only` and calls `buildServerEnv`.

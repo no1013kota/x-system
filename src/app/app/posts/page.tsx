@@ -19,7 +19,7 @@ import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
 
-export const metadata: Metadata = { title: "投稿 | Space AI" };
+export const metadata: Metadata = { title: "投稿 | Exos AI" };
 
 type Tab = "create" | "drafts" | "history";
 

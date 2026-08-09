@@ -1,6 +1,6 @@
 # ドキュメントマップ
 
-`docs/`はSpace AIの仕様の正本（Single Source of Truth）。実装と食い違った状態を放置しない。
+`docs/`はExos AIの仕様の正本（Single Source of Truth）。実装と食い違った状態を放置しない。
 
 ## 正本の構成
 

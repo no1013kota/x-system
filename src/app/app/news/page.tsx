@@ -13,7 +13,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { NewsBrowser } from "./news-browser";
 
-export const metadata: Metadata = { title: "ニュース | Space AI" };
+export const metadata: Metadata = { title: "ニュース | Exos AI" };
 
 interface NewsPageProps {
   searchParams: Promise<{ from?: string; to?: string }>;

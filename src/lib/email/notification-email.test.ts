@@ -60,7 +60,7 @@ function deps(db: Queryable, transport: EmailTransport): NotificationEmailDeps {
   return {
     db,
     transport,
-    from: "Space AI <noreply@space.example>",
+    from: "Exos AI <noreply@space.example>",
     replyTo: "support@space.example",
     appBaseUrl: "https://app.space.example",
     domain: "space.example",
