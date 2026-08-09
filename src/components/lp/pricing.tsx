@@ -6,8 +6,6 @@ import { yen } from "@/lib/format";
 import { PLAN_IDS, PLANS, type PlanDefinition } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { Reveal } from "./reveal";
-
 /**
  * LP 06 料金（design_handoff_space_ai_lp）。価格・プラン名・アカウント数・プレミアムの月間上限は
  * `plans.ts` を正とし、ここに数値を直書きしない（landing-page.test.ts が固定する）。
@@ -29,11 +27,11 @@ function planFeatureText(plan: PlanDefinition): string {
     : "基本機能すべて（生成・自動運用・分析）。月間利用上限なし。";
 }
 
-function PlanCard({ plan, delay }: { plan: PlanDefinition; delay: number }) {
+function PlanCard({ plan }: { plan: PlanDefinition }) {
   // BYOKかどうかはアプリ側上限の有無と一致する（plans.ts の定義参照）。
   const byok = plan.usageLimits === null;
   return (
-    <Reveal className="min-w-0" delay={delay}>
+    <div className="min-w-0">
       <div
         className={cn(
           cardClassName,
@@ -84,7 +82,7 @@ function PlanCard({ plan, delay }: { plan: PlanDefinition; delay: number }) {
           </Link>
         </div>
       </div>
-    </Reveal>
+    </div>
   );
 }
 
@@ -92,11 +90,11 @@ export function PricingCards() {
   return (
     <>
       <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] items-stretch gap-3.5">
-        {PLAN_IDS.map((planId, index) => (
-          <PlanCard delay={index * 80} key={planId} plan={PLANS[planId]} />
+        {PLAN_IDS.map((planId) => (
+          <PlanCard key={planId} plan={PLANS[planId]} />
         ))}
       </div>
-      <Reveal className="mt-3.5">
+      <div className="mt-3.5">
         <div className="rounded-card border border-hairline bg-page px-5 py-4">
           <p className="text-body font-bold">APIキーの費用について</p>
           <p className="mt-1.5 text-body text-ink-2">
@@ -105,8 +103,8 @@ export function PricingCards() {
             APIの利用料が各提供元に対してかかります。プレミアムプランは運営がAPIキーを用意するため、追加負担はありません。
           </p>
         </div>
-      </Reveal>
-      <Reveal className="mt-3.5" delay={60}>
+      </div>
+      <div className="mt-3.5">
         <div className={cn(cardClassName, "px-5 py-4")}>
           <p className="text-body font-bold">お申し込み前にご確認ください</p>
           <ul className="mt-2 grid list-disc gap-1 pl-[1.3em] text-caption text-ink-2">
@@ -120,7 +118,7 @@ export function PricingCards() {
             <li>提供開始：カード登録の完了後、すぐにご利用いただけます。</li>
           </ul>
         </div>
-      </Reveal>
+      </div>
     </>
   );
 }

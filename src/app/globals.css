@@ -274,7 +274,7 @@
 /*
  * LP（SC-01, T-M8-74）の演出。design_handoff_space_ai_lp/README.md §インタラクション & モーション。
  * 生成ループ（7s: バーが伸び、ラベルが「生成中…」⇄「完了」でクロスフェード）とフロートカード。
- * prefers-reduced-motion では止める（スクロール出現の即時表示は Reveal 側の motion-reduce: が担う）。
+ * どちらもヒーローモック内の装飾で、止まっても情報は失われない（prefers-reduced-motion で停止）。
  */
 @keyframes sai-bar {
   0% {
@@ -347,3 +347,16 @@
     scroll-behavior: smooth;
   }
 }
+
+/*
+ * LPのスクロール出現演出は**廃止した**（T-M8-76）。復活させないこと。
+ *
+ * 当初は IntersectionObserver で初期 opacity:0 を解除する作りだった。これは JSのロード失敗・
+ * CSPブロック・JS無効のいずれでも **LPがヘッダーだけの白紙**になる（実測済み）。新規登録の
+ * 唯一の入口が無言で消えるのに、サーバーは200・テストも緑で運営者は気付けない。
+ * 次に `animation-timeline: view()`（JS不要）へ移したが、こちらも**画面外の要素を opacity:0 に
+ * 保つ**性質は同じで、「ページ全体が読める状態か」を一度に検証できず、印刷でも空白になった。
+ *
+ * 装飾のために負うリスクではないので、LPの内容は常に不透明で表示する。
+ * `landing-page.test.ts` と `e2e/landing.spec.ts` が、透明な要素が再び現れないことを検査する。
+ */

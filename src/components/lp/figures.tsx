@@ -157,22 +157,7 @@ export function GenerationProgressFigure() {
   );
 }
 
-/** しくみSTEP4: ぶれない投稿のミニカード。 */
-export function MiniPostFigure() {
-  return (
-    <div
-      aria-hidden="true"
-      className="mt-2.5 rounded-card border border-hairline bg-page p-3"
-    >
-      <div className="flex items-center gap-2">
-        <span className="size-6 flex-none rounded-pill bg-brand-subtle" />
-        <div className="min-w-0">
-          <p className="text-caption leading-[1.4] font-bold">あなたのアカウント</p>
-          <p className="text-[11px] leading-[1.4] text-ink-3">いつもの文体・いつもの方針</p>
-        </div>
-      </div>
-      <div className="mt-2 h-1.5 w-[92%] rounded-[3px] bg-hairline" />
-      <div className="mt-1.5 h-1.5 w-[70%] rounded-[3px] bg-hairline" />
-    </div>
-  );
-}
+/*
+ * しくみSTEP4のミニ投稿カード（MiniPostFigure）は削除した（T-M8-76）。
+ * 抽象的な棒線だけで新しい情報が無く、しくみセクションの図版4つのうち最も密度を上げていた。
+ */
