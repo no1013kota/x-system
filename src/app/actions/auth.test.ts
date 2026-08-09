@@ -604,7 +604,7 @@ describe("auth actions", () => {
         password: "new-safe-password-123",
       });
       expect(signOutSession).toHaveBeenCalledWith({ scope: "local" });
-      expect(mocks.cookieDelete).toHaveBeenCalledWith("space-ai-recovery");
+      expect(mocks.cookieDelete).toHaveBeenCalledWith("exos-ai-recovery");
       expect(mocks.redirect).toHaveBeenCalledWith("/login?password_updated=1");
     });
 

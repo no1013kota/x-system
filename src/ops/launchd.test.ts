@@ -100,7 +100,7 @@ describe("cron-call.sh", () => {
 
   beforeAll(async () => {
     toolsOk = (await have("bash")) && (await have("curl"));
-    tmp = mkdtempSync(join(tmpdir(), "spaceai-cron-"));
+    tmp = mkdtempSync(join(tmpdir(), "exosai-cron-"));
     writeFileSync(join(tmp, "secret"), "test-secret\n");
     server = createServer((req, res) => {
       requests.push({ url: req.url ?? "", auth: req.headers.authorization });

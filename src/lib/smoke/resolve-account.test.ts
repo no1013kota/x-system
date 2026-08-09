@@ -59,12 +59,12 @@ describe("resolveXAccountId", () => {
   });
 
   it("見つからないときは連携済みの候補を出す", async () => {
-    const db = fakeDb({ byKey: [], all: [{ handle: "ai_newinfo" }, { handle: "space_ai" }] });
+    const db = fakeDb({ byKey: [], all: [{ handle: "ai_newinfo" }, { handle: "exos_ai" }] });
     const result = await resolveXAccountId("typo_handle", { db });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toContain("@ai_newinfo");
-    expect(result.message).toContain("@space_ai");
+    expect(result.message).toContain("@exos_ai");
   });
 
   it("1件も連携されていないときは連携方法を案内する", async () => {

@@ -32,7 +32,7 @@ function prodBase(): Record<string, string | undefined> {
   return {
     ...devBase(),
     APP_ENV: "production",
-    APP_BASE_URL: "https://spaceai.example",
+    APP_BASE_URL: "https://exosai.example",
     ANTHROPIC_API_KEY: "sk-ant",
     NEWS_TEXT_PROVIDER: "anthropic",
     X_MANAGED_CLIENT_ID: "x-client",
