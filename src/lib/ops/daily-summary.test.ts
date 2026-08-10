@@ -18,6 +18,7 @@ const base: DailySummaryData = {
   jobs: { succeeded: 3, failed: 0 },
   zeroStreaks: {},
   allDropped: [],
+  mostlyDropped: [],
   stuckJobs: 0,
   queuedEmails: 0,
   failedEmails: 0,
@@ -112,6 +113,22 @@ describe("buildDailySummary", () => {
     });
     expect(s.needsAttention).toBe(true);
     expect(s.body).toContain("ai（title:too_big×2）");
+  });
+
+  /**
+   * 「取れてはいるが大半落ちた」を**警告にせず数字だけ出す**（T-M8-83）。
+   *
+   * 以前はこの状態を拾う経路が無く（doctorは `fetched > 0` を素通り、サマリの抽出は
+   * `fetched = 0`）、**日に30件から3件へ静かに減っても気付けなかった**。
+   * 一方これは運営者が直せる問題ではないので、警告にすると通知が読まれなくなる（T-M7-44）。
+   */
+  it("取れた数より捨てた数が多いテーマは、数字を出すが警告にはしない", () => {
+    const s = buildDailySummary({
+      ...base,
+      mostlyDropped: [{ category: "ai", fetched: 1, dropped: 3, ages: "28時間〜40時間前" }],
+    });
+    expect(s.body).toContain("ai（1件取得 / 3件除外・28時間〜40時間前の記事）");
+    expect(s.needsAttention, "運営者が直せないことで警告を出すと通知が読まれなくなる").toBe(false);
   });
 
   it("失敗した生成・止まっている処理を出す", () => {
