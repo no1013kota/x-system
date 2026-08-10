@@ -6,6 +6,7 @@ import { pooledQueryable } from "../db/pool";
 import { runJob } from "../jobs/worker";
 import { weightedLength } from "../post/text-metrics";
 import { resolveXAccountId } from "./resolve-account";
+import { formatTooOldAges, onlyOutsideWindow } from "@/lib/news-outcome";
 
 /**
  * 実物スモーク（T-M7-25）。**実APIを叩いてアプリの最終成果物まで検証する**。
@@ -84,16 +85,10 @@ export function findProviderMarkup(texts: string[]): string[] {
  * 「成功」として記録され続けていた。
  */
 /**
- * 除外理由が「取得窓より古い」だけかどうか（T-M7-44）。
- *
- * `published_at:too_old` は**応答が壊れているのではなく、その時間帯に新しい記事が無かった**だけ。
- * 運営者に直せるものは無い。一方 `title:too_big` のような契約違反は、プロンプトか検証条件の
- * 不具合なので直す必要がある。**同じ「0件」でも意味が違うので分けて扱う。**
+ * 判定・整形の実体は `lib/news-outcome.ts`（診断・通知・スモークの単一の正本）。
+ * 以前はここと `ops/diagnostics.ts` に同じ判定が二重にあり、通知側には無かった（T-M8-83）。
  */
-export function onlyOutsideWindow(reasons: Record<string, number>): boolean {
-  const keys = Object.keys(reasons);
-  return keys.length > 0 && keys.every((k) => k === "published_at:too_old");
-}
+export { onlyOutsideWindow } from "@/lib/news-outcome";
 
 export function newsOutcome(
   items: number,
@@ -331,25 +326,38 @@ async function newsResearch(): Promise<SmokeResult> {
     const { createDeadline } = await import("../jobs/deadline");
     const { textGen, provider, model } = resolveNewsProvider({ deadline: createDeadline() });
 
+    // 実行時刻で取得窓が変わる（10時=14時間 / 12〜20時=3時間 / それ以外=14時間）。
+    // どの窓が使われたかを出さないと、除外の多さが「窓が短かっただけ」なのか判断できなかった（T-M8-83）。
+    const clock = new Date();
+    const { jstHourOf, newsLookbackHours, PUBLISHED_AT_AGE_SLACK_HOURS } = await import(
+      "../jobs/news-research"
+    );
+    const jstHour = jstHourOf(clock);
+    const hours = newsLookbackHours(jstHour);
+
     const res = await researchNews("ai", {
       db,
       textGen,
       provider,
       model,
-      clock: new Date(),
+      clock,
       ledgerKeyPrefix: `smoke:${randomUUID()}`,
     });
     const costUsd = res.usage.estimated_cost_usd_total ?? 0;
     const outcome = newsOutcome(res.items.length, res.dropped, res.dropReasons);
+    const window = `JST${jstHour}時に実行 / 取得窓${hours}時間（${hours + PUBLISHED_AT_AGE_SLACK_HOURS}時間前まで許容）`;
+    const ages = formatTooOldAges(res.dropReasons);
     // 取得できたitemはDBへ保存しない（スモークは成果物を残さない）。
     return {
       name,
       ok: outcome.ok,
       costUsd,
-      detail: outcome.detail,
+      detail: `${outcome.detail}／${window}`,
       warning:
         res.dropped > 0
-          ? `${res.dropped}件を規定外で除外（${formatDropReasons(res.dropReasons)}）`
+          ? `${res.dropped}件を規定外で除外（${formatDropReasons(res.dropReasons)}${
+              ages ? `・${ages}の記事` : ""
+            }）`
           : undefined,
     };
   } catch (error) {

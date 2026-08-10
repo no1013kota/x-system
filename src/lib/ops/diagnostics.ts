@@ -4,6 +4,12 @@ import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
+import {
+  formatDropReasons,
+  formatTooOldAges,
+  mostlyDropped,
+  onlyOutsideWindow,
+} from "@/lib/news-outcome";
 
 /**
  * 運営者向けの状態診断（T-M7-34）。
@@ -109,34 +115,55 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
   failed: string[];
   allDropped: { category: string; reasons: string }[];
   noMatch: string[];
+  /**
+   * 取得できてはいるが**大半が落ちている**分野（T-M8-83）。
+   *
+   * 以前は `fetched > 0` の分野を素通りしていたため、**日に30件から3件へ静かに減っても
+   * 運営者は気付けなかった**（CLAUDE.md 原則1）。0件ではないので「対応が必要」ではなく
+   * 注意として出す。古さの範囲を添えて、窓を広げれば入るのかを判断できるようにする。
+   */
+  mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
 } {
   const failed: string[] = [];
   const allDropped: { category: string; reasons: string }[] = [];
   const noMatch: string[] = [];
+  const mostly: {
+    category: string;
+    fetched: number;
+    dropped: number;
+    ages: string | null;
+  }[] = [];
   for (const o of outcomes) {
     if (!o.ok) {
       failed.push(o.category);
       continue;
     }
-    if (o.fetched > 0) continue;
+    if (o.fetched > 0) {
+      if (mostlyDropped(o.fetched, o.dropped)) {
+        mostly.push({
+          category: o.category,
+          fetched: o.fetched,
+          dropped: o.dropped,
+          ages: formatTooOldAges(o.dropReasons),
+        });
+      }
+      continue;
+    }
     if (o.dropped > 0) {
       // 「取得窓より古い」だけなら該当なしと同じ（その時間帯に新しい記事が無かっただけで、
       // 運営者に直せるものは無い）。直せない理由で警告を出すと読まれなくなる（T-M7-44）。
-      const keys = Object.keys(o.dropReasons);
-      if (keys.length > 0 && keys.every((k) => k === "published_at:too_old")) {
+      // 判定は `lib/news-outcome.ts` に1つだけ置く（以前はここと通知側で食い違っていた）。
+      if (onlyOutsideWindow(o.dropReasons)) {
         noMatch.push(o.category);
         continue;
       }
-      const reasons = Object.entries(o.dropReasons)
-        .sort((a, b) => b[1] - a[1])
-        .map(([k, n]) => `${k}×${n}`)
-        .join(", ");
+      const reasons = formatDropReasons(o.dropReasons);
       allDropped.push({ category: o.category, reasons: reasons || `${o.dropped}件` });
     } else {
       noMatch.push(o.category);
     }
   }
-  return { failed, allDropped, noMatch };
+  return { failed, allDropped, noMatch, mostlyDropped: mostly };
 }
 
 export function judgeNews(input: {
@@ -163,6 +190,20 @@ export function judgeNews(input: {
       : null;
   const noMatchNote =
     empty.noMatch.length > 0 ? `該当ニュースが無かったテーマ: ${empty.noMatch.join("・")}` : null;
+  /**
+   * 取得できてはいるが大半が落ちている分野（T-M8-83）。**注意までに留める**。
+   * 「窓より古いだけ」は運営者に直せないので、赤くすると読まれなくなる（T-M7-44と同じ理由）。
+   * ただし黙って減っていくのは原則1に反するので、古さの範囲を添えて必ず1行出す。
+   */
+  const mostlyNote =
+    empty.mostlyDropped.length > 0
+      ? `取れた数より捨てた数が多いテーマ: ${empty.mostlyDropped
+          .map(
+            (m) =>
+              `${m.category}（${m.fetched}件取得 / ${m.dropped}件除外${m.ages ? `・${m.ages}の記事` : ""}）`,
+          )
+          .join("・")}`
+      : null;
   if (!input.schedulerExpected) {
     const last =
       input.hoursSinceLastRun === null
@@ -172,6 +213,7 @@ export function judgeNews(input: {
       `${last}（この環境では定時実行が自動で動きません。直近48時間の取得は ${input.itemsLast48h} 件）`,
       problem,
       noMatchNote,
+      mostlyNote,
     ]
       .filter(Boolean)
       .join(" / ");
@@ -205,6 +247,7 @@ export function judgeNews(input: {
     `直近48時間で ${input.itemsLast48h} 件取得（最後の実行は ${Math.round(input.hoursSinceLastRun)} 時間前）`,
     problem,
     noMatchNote,
+    mostlyNote,
   ]
     .filter(Boolean)
     .join(" / ");

@@ -2,6 +2,12 @@ import "server-only";
 
 import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 import type { Queryable } from "../x/token-refresh";
+import {
+  formatDropReasons,
+  formatTooOldAges,
+  mostlyDropped,
+  onlyOutsideWindow,
+} from "@/lib/news-outcome";
 
 /**
  * 日次サマリ（T-M7-29）。`CLAUDE.md`「前提：運営者は個人」原則1に対応する。
@@ -68,8 +74,13 @@ export interface DailySummaryData {
   jobs: { succeeded: number; failed: number };
   /** 分野ごとの連続0件日数。 */
   zeroStreaks: Record<string, number>;
-  /** 直近1回の実行で全件破棄だった分野と理由。 */
+  /** 直近1回の実行で全件破棄だった分野と理由（「窓より古いだけ」は除く）。 */
   allDropped: { category: string; reasons: string }[];
+  /**
+   * 直近1回で**取れた数より捨てた数が多かった**分野（T-M8-83）。
+   * 0件ではないので警告にはしないが、黙って減っていくのを見逃さないため数字だけ載せる。
+   */
+  mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
   stuckJobs: number;
   queuedEmails: number;
   /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
@@ -119,6 +130,18 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     const text = data.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・");
     lines.push(`直近の取得で全件破棄されたテーマ: ${text}`);
     attention.push(`全件破棄されたテーマ: ${text}`);
+  }
+
+  // **警告にはしない**（運営者が直せる問題ではない）。ただし数字を出さないと、
+  // 取得件数が静かに減っていくことに誰も気付けない（T-M8-83）。
+  if (data.mostlyDropped.length > 0) {
+    const text = data.mostlyDropped
+      .map(
+        (m) =>
+          `${m.category}（${m.fetched}件取得 / ${m.dropped}件除外${m.ages ? `・${m.ages}の記事` : ""}）`,
+      )
+      .join("・");
+    lines.push(`直近の取得で取れた数より捨てた数が多かったテーマ: ${text}`);
   }
 
   if (data.stuckJobs > 0) {
@@ -181,11 +204,21 @@ export async function collectDailySummary(
       order by 1 desc`,
   );
 
-  const latest = await db.query<{ category: string; dropped: number; drop_reasons: Record<string, number> | null }>(
-    `select category::text as category, dropped, drop_reasons
+  /**
+   * 直近1回の窓の結果。**`fetched = 0` で絞らない**（T-M8-83）。
+   * 以前は0件の分野だけを見ていたため、「1件は取れたが大半落ちた」状態が誰にも見えなかった。
+   * 良性の除外を落とすのと、大半落ちの判定は、取得後に `lib/news-outcome.ts` で行う。
+   */
+  const latest = await db.query<{
+    category: string;
+    fetched: number;
+    dropped: number;
+    drop_reasons: Record<string, number> | null;
+  }>(
+    `select category::text as category, fetched, dropped, drop_reasons
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)
-        and ok and fetched = 0 and dropped > 0`,
+        and ok and dropped > 0`,
   );
 
   const stuck = await db.query<{ n: string }>(
@@ -230,14 +263,31 @@ export async function collectDailySummary(
         dropped: Number(r.dropped),
       })),
     ),
-    allDropped: latest.rows.map((r) => ({
-      category: r.category,
-      reasons:
-        Object.entries(r.drop_reasons ?? {})
-          .sort((a, b) => b[1] - a[1])
-          .map(([k, n]) => `${k}×${n}`)
-          .join(", ") || `${r.dropped}件`,
-    })),
+    /**
+     * **「取得窓より古いだけ」は除く**（T-M8-83）。
+     *
+     * 以前はSQLで拾った行をそのまま「全件破棄されたテーマ」として通知していたため、
+     * その時間帯に新しい記事が無かっただけの日にも警告メールが飛んでいた。
+     * doctor 側には T-M7-44 で良性判定が入っていたのに通知側には無く、**同じ状況を
+     * doctorは「該当なし」、通知は「全件破棄」と正反対に伝えていた**。
+     * 新しい記事が無い日は普通にあるので、この誤報は繰り返し届き、
+     * 「直せない理由で赤くすると本物の異常が隠れる」という当の判断を通知側が壊していた。
+     * 判定は `lib/news-outcome.ts` の1つだけを使う。
+     */
+    allDropped: latest.rows
+      .filter((r) => Number(r.fetched) === 0 && !onlyOutsideWindow(r.drop_reasons ?? {}))
+      .map((r) => ({
+        category: r.category,
+        reasons: formatDropReasons(r.drop_reasons ?? {}) || `${r.dropped}件`,
+      })),
+    mostlyDropped: latest.rows
+      .filter((r) => mostlyDropped(Number(r.fetched), Number(r.dropped)))
+      .map((r) => ({
+        category: r.category,
+        fetched: Number(r.fetched),
+        dropped: Number(r.dropped),
+        ages: formatTooOldAges(r.drop_reasons ?? {}),
+      })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
     queuedEmails: Number(emails.rows[0]?.queued ?? 0),
     failedEmails: Number(emails.rows[0]?.failed ?? 0),
