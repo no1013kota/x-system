@@ -42,6 +42,9 @@ test("未ログインで見える画面が横に伸びない（390px）", async 
     "/",
     "/login",
     "/signup",
+    "/reset-password",
+    // このspecを生んだ当の画面（比較表が183px横スクロールしていた）。巡回から漏れていた。
+    "/plans",
     "/terms",
     "/privacy",
     "/legal/commercial-transactions",
@@ -50,5 +53,32 @@ test("未ログインで見える画面が横に伸びない（390px）", async 
     await page.goto(path, { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).toBeVisible();
     expect(await horizontalOverflow(page), `${path} が横に伸びないこと`).toBeLessThanOrEqual(0);
+  }
+});
+
+/**
+ * 入力欄のfont-sizeがモバイル幅で16px以上あること（T-M8-70）。
+ *
+ * iOS Safariは**font-size<16pxの入力欄にフォーカスすると画面を自動ズーム**し、閉じても拡大が
+ * 残る。以前は38箇所中37箇所が13〜14pxで、スマホでは入力のたびにズーム→手で戻す状態だった。
+ * 対策は globals.css の無層メディアクエリ1本（個別クラスでは付け忘れが出る）。ここでは
+ * 入力欄が多い代表2画面で、実際に計算されたfont-sizeを機械で確かめる。
+ */
+test("モバイル幅では入力欄のfont-sizeが16px以上（iOSズーム防止）", async ({ accounts, page }) => {
+  const account = await accounts.create("mobile-input", { personaReady: true });
+  await signIn(page, account);
+  await page.setViewportSize({ width: WIDTH, height: 844 });
+
+  for (const path of ["/app/posts?tab=create", "/app/settings?tab=notifications"]) {
+    await page.goto(path);
+    await expect(page.getByRole("main")).toBeVisible();
+    const small = await page.$$eval(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea',
+      (els) =>
+        els
+          .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16)
+          .map((el) => `${el.tagName}#${el.id || el.getAttribute("aria-label") || "?"}`),
+    );
+    expect(small, `${path} に16px未満の入力欄が無いこと`).toEqual([]);
   }
 });

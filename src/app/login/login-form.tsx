@@ -84,15 +84,17 @@ export function LoginForm({ next }: { next: string }) {
           resetSignal={state}
         />
 
-        <Button className="h-11 w-full text-[14px]" data-testid="login-submit" disabled={pending} type="submit" variant="brand">
+        <Button className="h-11 w-full text-sm" data-testid="login-submit" disabled={pending} type="submit" variant="brand">
           {pending ? "ログインしています…" : "ログイン"}
         </Button>
       </form>
 
       {state.status === "email_unconfirmed" ? (
-        <section
-          className="space-y-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-4 text-warn-fg"
+        <Notice
+          as="section"
           aria-labelledby="email-unconfirmed-heading"
+          className="space-y-3"
+          tone="warn"
         >
           <h2 className="font-semibold" id="email-unconfirmed-heading">
             メール確認が必要です
@@ -113,7 +115,7 @@ export function LoginForm({ next }: { next: string }) {
               {resendState.message}
             </p>
           ) : null}
-        </section>
+        </Notice>
       ) : null}
 
       <p className="text-center text-sm text-muted-foreground">

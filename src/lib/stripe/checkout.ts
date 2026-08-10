@@ -59,7 +59,7 @@ async function createCustomer(
         email: user.email,
         metadata: { user_id: user.id },
       },
-      { idempotencyKey: `space-ai:customer:${user.id}` },
+      { idempotencyKey: `exos-ai:customer:${user.id}` },
     );
   } catch (cause) {
     throw new AppError("provider_error", { cause });
@@ -84,6 +84,9 @@ function sessionParams(input: {
   const appBaseUrl = input.appBaseUrl.replace(/\/$/, "");
   return {
     mode: "subscription",
+    // ブラウザ言語推定（auto）に任せず日本語へ固定する（T-M8-58）。日本語のみのサービスで、
+    // 推定が外れたときに決済画面だけ英語になる方が混乱が大きい。
+    locale: "ja",
     customer: input.customerId,
     client_reference_id: input.userId,
     line_items: [{ price: input.priceId, quantity: 1 }],

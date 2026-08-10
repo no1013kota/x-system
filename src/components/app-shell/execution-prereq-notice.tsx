@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { PREREQ_ITEM_LABELS, type PrereqItem } from "@/lib/execution-prereqs";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * 実行前提不足を受けた画面が共通で表示する通知（要件06 §3.1・要件05 §2.2, T-M2-23）。
@@ -20,10 +21,8 @@ export function ExecutionPrereqNotice({
   settingsLabel?: string;
 }) {
   return (
-    <div
-      className="rounded-card border border-warn-fg/25 bg-warn-bg p-5 text-warn-fg"
-      role="alert"
-    >
+    <Notice tone="warn"
+      role="alert">
       <p className="font-semibold">{message}</p>
       {missing && missing.length > 0 ? (
         <ul className="mt-2 list-disc pl-5 text-sm">
@@ -38,6 +37,6 @@ export function ExecutionPrereqNotice({
       >
         {settingsLabel}
       </Link>
-    </div>
+    </Notice>
   );
 }

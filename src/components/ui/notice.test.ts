@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +14,13 @@ import { describe, expect, it } from "vitest";
  * `bg-destructive/*` はボタン（`destructive` variant）の塗りにだけ許す。バナーは `Notice` を使う。
  */
 
-const SRC = join(process.cwd(), "src");
+/**
+ * **`process.cwd()` に依存しない**（T-M8-51）。cwd 基準だとリポジトリ直下以外から
+ * `vitest` を起動したとき（サブディレクトリ実行・エディタ統合）に必ず落ちる。
+ * このファイル自身の位置からリポジトリ root を求める。
+ */
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const SRC = join(ROOT, "src");
 const ALLOWED = new Set([
   // `destructive` variant のボタンの塗り。バナーではない。
   "src/components/ui/button.tsx",
@@ -33,9 +40,9 @@ function collect(dir: string): string[] {
 describe("危険色は1系統に保つ", () => {
   it("bg-destructive/* を使うのはボタンだけ（バナーは Notice を使う）", () => {
     const offenders = collect(SRC)
-      .map((file) => file.slice(process.cwd().length + 1))
+      .map((file) => file.slice(ROOT.length))
       .filter((rel) => !ALLOWED.has(rel))
-      .filter((rel) => /bg-destructive\//.test(readFileSync(join(process.cwd(), rel), "utf8")));
+      .filter((rel) => /bg-destructive\//.test(readFileSync(join(ROOT, rel), "utf8")));
     expect(offenders).toEqual([]);
   });
 });

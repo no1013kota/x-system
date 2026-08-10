@@ -10,10 +10,10 @@ import {
 } from "@/app/actions/base-md";
 import { useToast } from "@/components/ui/toast";
 import type { BaseMdVersionView } from "@/lib/base-md";
-import { BASE_MD_SECTION_TITLES } from "@/lib/persona-settings";
 import { formatJst } from "@/lib/format";
 import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
@@ -188,16 +188,16 @@ export function BaseMdEditor({
         ベースmdの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
       </p>
 
-      {/* セクション1〜4の上書き注意（常時） */}
-      <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
-        手で直した「1. {BASE_MD_SECTION_TITLES[0]}」〜「4. {BASE_MD_SECTION_TITLES[3]}」は、次に「発信設定」を保存すると上書きされます。恒久的に変えたい場合は、発信設定側でも同じ内容にしてください。この画面の変更履歴からは、いつでも以前の版に戻せます。
-      </p>
+      {/* セクション1〜4の上書き注意（常時）。対処の助言は自明なので事実と復元手段だけ（T-M8-66）。 */}
+      <Notice tone="warn">
+        1〜4章は「発信設定」を保存すると上書きされます。以前の版には下の変更履歴からいつでも戻せます。
+      </Notice>
 
       {/* 学習running中の編集不可 */}
       {learningRunning ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
+        <Notice tone="warn">
           学習の反映処理中のため、ベースmdは編集できません。完了までお待ちください。
-        </p>
+        </Notice>
       ) : null}
 
       {note ? (
@@ -242,7 +242,7 @@ export function BaseMdEditor({
         />
         <div className="mt-3 flex items-center gap-3">
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={editingDisabled || overLimit || !dirty}
             onClick={save}
             type="button"

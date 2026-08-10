@@ -130,7 +130,7 @@ export function DraftEditor({
               </div>
               <textarea
                 aria-label={`${index + 1}ポスト目の本文`}
-                className="w-full rounded-md border px-3 py-2 text-sm"
+                className="w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
                 onChange={(e) => setText(index, e.target.value)}
                 rows={4}
                 value={post.text}

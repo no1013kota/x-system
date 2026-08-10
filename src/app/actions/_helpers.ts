@@ -1,3 +1,4 @@
+import { requireLegalConsent } from "@/lib/auth/legal-consent-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   AppError,
@@ -46,4 +47,26 @@ export async function requireUserId(): Promise<
     return { ok: false, result: errorResult(new AppError("unauthorized")) };
   }
   return { ok: true, userId: user.id };
+}
+
+/**
+ * 生成・投稿・自動実行の Server Action 共通ガード（T-M8-73）。
+ *
+ * ログイン確認に加えて、**現行版の利用規約・プライバシーポリシーへの同意**を確認する。
+ * 利用規約が「変更後は生成・投稿・自動実行の前に再同意をお願いする」と定めているため、
+ * この確認が無いと規約の記載が実装に裏付けられない（要件06 §1.3）。
+ * 失敗時の `details.settingsPath` は同意画面（`/app/consent`）を指し、
+ * 各画面の既存の前提不足表示がそのまま誘導に使える。
+ */
+export async function requireExecutionUserId(): Promise<
+  { ok: true; userId: string } | { ok: false; result: BaseResult }
+> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth;
+  try {
+    await requireLegalConsent(auth.userId);
+  } catch (error) {
+    return { ok: false, result: errorResult(error) };
+  }
+  return auth;
 }

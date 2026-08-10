@@ -27,7 +27,10 @@ import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
 import { SETTINGS_TABS } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
+import { planChangeEffects } from "@/lib/billing/plan-change-effects";
+import { xRedirectUri } from "@/lib/x/oauth-server";
 
 export const metadata: Metadata = {
   title: `アカウント設定 | ${APP_NAME}`,
@@ -78,45 +81,45 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     ? params.tab ?? "billing"
     : "billing";
   const admin = createSupabaseAdminClient();
-  const result = await admin
-    .from("profiles")
-    .select(
-      "plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
-    )
-    .eq("id", user.id)
-    .maybeSingle<BillingProfile>();
+  // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
+  const [result, xAccounts, userSettings] = await Promise.all([
+    admin
+      .from("profiles")
+      .select(
+        "plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
+      )
+      .eq("id", user.id)
+      .maybeSingle<BillingProfile>(),
+    tab === "x-accounts" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
+    tab === "notifications"
+      ? getSettingsForUser(user.id)
+      : Promise.resolve(null as UserSettings | null),
+  ]);
   if (result.error || !result.data) {
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
-  // BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも登録状況を読む
-  // （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
-  let apiKeys: ApiKeyViewState[] = [];
-  if ((tab === "api-keys" || tab === "x-accounts") && profile.plan !== "premium") {
-    apiKeys = await listApiKeyViewsForUser(user.id);
-  }
-  let xAccounts: XAccountListItem[] = [];
-  if (tab === "x-accounts") {
-    xAccounts = await listXAccounts(user.id);
-  }
-  let userSettings: UserSettings | null = null;
-  if (tab === "notifications") {
-    userSettings = await getSettingsForUser(user.id);
-  }
-  // premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・要件06 §10, T-M6-12/T-M8-25）。
-  // premium以外は null。APIキータブは「キー登録不要」の代わりに何が付くかをここで見せる。
-  let usage: UsageSummary | null = null;
-  if (tab === "billing" || tab === "api-keys") {
-    usage = await loadUsageSummaryForUser(user.id, profile.plan ?? "standard");
-  }
+  // planに依存する2つは第2波で並列に。
+  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも
+  //   登録状況を読む（前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
+  // - 利用枠: premium 月間利用枠の残量（課金・プランタブとAPIキータブ, 要件03 §8・T-M6-12/T-M8-25）。
+  const [apiKeys, usage] = await Promise.all([
+    (tab === "api-keys" || tab === "x-accounts") && profile.plan !== "premium"
+      ? listApiKeyViewsForUser(user.id)
+      : Promise.resolve([] as ApiKeyViewState[]),
+    tab === "billing" || tab === "api-keys"
+      ? loadUsageSummaryForUser(user.id, profile.plan ?? "standard")
+      : Promise.resolve(null as UsageSummary | null),
+  ]);
 
   return (
     <main className="px-4 py-[26px] lg:px-8">
       <div className="mx-auto max-w-[1180px] space-y-3.5">
         <header>
           <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
-          <p className="mt-1 text-[12.5px] text-ink-2">
-            Xアカウント連携・APIキー・通知・ご契約内容を管理できます。発信の内容に関わる設定は
+          {/* 管理項目の列挙はタブラベルと同じ情報なので書かない（T-M8-66）。 */}
+          <p className="mt-1 text-body text-ink-2">
+            発信の内容に関わる設定は
             <Link className="mx-1 font-medium text-brand underline-offset-2 hover:underline" href="/app/ai-settings">
               AI設定
             </Link>
@@ -154,7 +157,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "api-keys" ? (
           <ApiKeySettings
-            callbackUrl={`${env.APP_BASE_URL}${env.X_OAUTH_REDIRECT_PATH}`}
+            // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
+            // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
+            // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
+            callbackUrl={xRedirectUri()}
             initialKeys={apiKeys}
             plan={profile.plan ?? "standard"}
             usage={usage}
@@ -162,23 +168,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           />
         ) : tab === "notifications" && userSettings ? (
           <SettingsPreferences
-            displayName={userSettings.displayName}
             newsConfig={userSettings.newsConfig}
             notificationConfig={userSettings.notificationConfig}
           />
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
-            <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+            <Card as="div" className="px-5 py-4">
               <CardTitle id="billing-heading">
                 現在のご契約
               </CardTitle>
               {params.portal === "return" ? (
-                <p
-                  className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
-                  role="status"
-                >
-                  お支払い管理画面から戻りました。契約情報を確認しています。
-                </p>
+                // 反映待ちの説明は「実際に待ちが起きるこの瞬間」だけに出す（T-M8-66）。
+                <Notice className="mt-4" tone="success"
+                  role="status">
+                  お支払い管理画面から戻りました。変更は数十秒ほどでこの画面に反映されます。
+                </Notice>
               ) : null}
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div>
@@ -215,13 +219,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 別リンクを並べると同じ行き先が2つ出る。
               */}
               <div className="mt-7">
-                <PortalButton enabled={Boolean(profile.stripe_customer_id)} />
+                <PortalButton
+                  cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
+                  effects={planChangeEffects({
+                    cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
+                    currentPeriodEnd: profile.current_period_end,
+                    subscriptionStatus: profile.subscription_status,
+                  })}
+                  enabled={Boolean(profile.stripe_customer_id)}
+                />
               </div>
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {/* 行き先の説明はボタン直下にあるので、ここは反映のタイミングだけにする（T-M8-31）。 */}
-              変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）。
-            </p>
+            </Card>
             {usage ? (
               <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
             ) : null}
@@ -229,7 +237,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ) : (
           <section
             aria-labelledby="support-heading"
-            className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
+            className={`${cardClassName} px-5 py-4`}
           >
             <CardTitle id="support-heading">
               お問い合わせ

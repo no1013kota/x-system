@@ -6,7 +6,6 @@ import { DEFAULT_NOTIFICATION_CONFIG } from "./config-defaults";
 import {
   newsConfigSchema,
   notificationConfigSchema,
-  profileUpdateSchema,
   resolveNewsConfig,
   resolveNotificationConfig,
 } from "./settings";
@@ -110,17 +109,6 @@ describe("newsConfigSchema", () => {
   });
 });
 
-describe("profileUpdateSchema", () => {
-  it("accepts a display name and null", () => {
-    expect(profileUpdateSchema.safeParse({ display_name: "Alice" }).success).toBe(true);
-    expect(profileUpdateSchema.safeParse({ display_name: null }).success).toBe(true);
-  });
-  it("rejects an over-long display name", () => {
-    expect(
-      profileUpdateSchema.safeParse({ display_name: "x".repeat(51) }).success,
-    ).toBe(false);
-  });
-});
 
 describe("resolveNotificationConfig (fallback)", () => {
   it("falls back to §3.4 defaults when unset ({})", () => {

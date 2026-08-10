@@ -15,7 +15,7 @@ describe("maskedApiKeyLabel", () => {
         status: "unchecked",
         verifiedAt: null,
       }),
-    ).toBe("Client ID ••••1234（Confidential）");
+    ).toBe("Client ID ••••1234");
   });
 
   it("renders only the AI key last four", () => {

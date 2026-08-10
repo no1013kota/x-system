@@ -8,7 +8,7 @@ import {
   type StripeEventDatabase,
 } from "./webhook";
 
-const WEBHOOK_SECRET = "whsec_test_space_ai";
+const WEBHOOK_SECRET = "whsec_test_exos_ai";
 const stripe = new Stripe("sk_test_not_used");
 const priceIds = {
   standard: "price_standard",

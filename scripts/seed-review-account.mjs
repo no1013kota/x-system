@@ -9,9 +9,18 @@
  *
  * ニュースは既にDBにある分を使う（このスクリプトは作らない）。
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";/**
+ * 同意済みとして書き込む法務文書のversion（T-M8-72）。
+ * `.mjs` からは `src/lib/legal.ts` を import できないため値を持つが、
+ * `legal-pages.test.ts` が `CURRENT_TERMS_VERSION` との一致を検査する
+ * （古い値のままだと、配線済みの再同意ガードでレビュー用アカウントが弾かれる）。
+ */
+export const LEGAL_VERSION = "2026-08-08";
+
+
 
 import { Client } from "pg";
+import Stripe from "stripe";
 
 const EMAIL = "review@example.com";
 const PASSWORD = "Review-Local-Pw1";
@@ -132,6 +141,54 @@ function post(text) {
   };
 }
 
+/**
+ * Stripeのテスト用契約を用意する（T-M8-56）。
+ *
+ * これが無いと設定＞課金の「プランを変更」「解約する」が**必ず失敗する**——flow_data は
+ * 実在する subscription を要求し、無ければ「現在のご契約状態ではこの操作を実行できません」で
+ * 止まる（黙ってPortalのトップを開くよりは正直だが、ローカルで動作確認ができない）。
+ * テストモード（`sk_test_`）ではトライアル付きの subscription を支払い方法なしで作れる。
+ *
+ * 鍵が無い・テスト鍵でない場合は**作らずにその旨を出力する**（実課金の可能性を残さない）。
+ */
+async function ensureStripeTestSubscription() {
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  const price = process.env.STRIPE_PRICE_PREMIUM_MONTHLY?.trim();
+  if (!key || !price) {
+    return { note: "STRIPE_SECRET_KEY / STRIPE_PRICE_PREMIUM_MONTHLY が未設定のため、プラン変更・解約の動作確認はできません" };
+  }
+  if (!key.startsWith("sk_test_")) {
+    return { note: "STRIPE_SECRET_KEY がテスト鍵（sk_test_）でないため、Stripeには何も作りません" };
+  }
+  const stripe = new Stripe(key, { apiVersion: "2026-06-24.dahlia" });
+
+  // 何度実行しても同じ状態へ（メールで顧客を特定して再利用する）。
+  const existing = await stripe.customers.list({ email: EMAIL, limit: 1 });
+  const customer =
+    existing.data[0] ??
+    (await stripe.customers.create({ email: EMAIL, name: "動作確認用アカウント" }));
+
+  const subs = await stripe.subscriptions.list({ customer: customer.id, status: "all", limit: 10 });
+  const reusable = subs.data.find((sub) => ["active", "trialing"].includes(sub.status));
+  const subscription =
+    reusable ??
+    (await stripe.subscriptions.create({
+      customer: customer.id,
+      items: [{ price }],
+      trial_period_days: 7,
+      // 支払い方法が無いままトライアルが終わったら課金を試みず終了させる（テスト残骸を残さない）。
+      trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
+    }));
+  const periodEndEpoch =
+    subscription.items?.data?.[0]?.current_period_end ?? subscription.trial_end ?? null;
+  return {
+    customerId: customer.id,
+    subscriptionId: subscription.id,
+    status: subscription.status,
+    periodEnd: periodEndEpoch ? new Date(periodEndEpoch * 1000).toISOString() : null,
+  };
+}
+
 async function main() {
   assertLocal();
   const client = new Client({ connectionString: DB_URL, connectionTimeoutMillis: 5000 });
@@ -140,16 +197,26 @@ async function main() {
     await removeExisting(client);
     const userId = await createAuthUser();
     // --- 契約（プレミアム・トライアル中）---
+    // Stripeテスト鍵があれば**本物のテスト契約**を作って紐づける。これが無いと
+    // 「プランを変更」「解約する」がローカルで動作確認できない（T-M8-56）。
+    const stripeState = await ensureStripeTestSubscription();
     await client.query(
       `update profiles
           set plan = 'premium', subscription_status = 'trialing',
-              current_period_end = now() + interval '7 days',
-              trial_ends_at = now() + interval '7 days',
-              display_name = '確認用アカウント',
-              terms_version = '2026-07-20', terms_accepted_at = now(),
-              privacy_version = '2026-07-20', privacy_acknowledged_at = now()
+              current_period_end = coalesce($2::timestamptz, now() + interval '7 days'),
+              trial_ends_at = coalesce($2::timestamptz, now() + interval '7 days'),
+              stripe_customer_id = $3,
+              stripe_subscription_id = $4,
+              terms_version = $5, terms_accepted_at = now(),
+              privacy_version = $5, privacy_acknowledged_at = now()
         where id = $1`,
-      [userId],
+      [
+        userId,
+        stripeState.periodEnd ?? null,
+        stripeState.customerId ?? null,
+        stripeState.subscriptionId ?? null,
+        LEGAL_VERSION,
+      ],
     );
 
     // --- Xアカウント（連携済み・発信設定まで完了・自動投稿に同意済み）---
@@ -160,7 +227,7 @@ async function main() {
           access_token_ciphertext, refresh_token_ciphertext, oauth_scopes,
           token_expires_at, base_md, base_md_version,
           automation_consent_version, automation_consented_at)
-       values ($1, $2, $3, '確認用 X アカウント', 'managed', 'active',
+       values ($1, $2, $3, '動作確認用アカウント', 'managed', 'active',
                'review-fake-token', 'review-fake-token',
                array['tweet.read','tweet.write','users.read','offline.access'],
                now() + interval '30 days', $4, 3, '2026-07-20', now())
@@ -313,6 +380,11 @@ async function main() {
   入っているもの: プレミアム（トライアル中）・X連携済み・発信設定とベースmd（version 3・履歴2件）
                  スケジュール3件（有効2・停止1）・下書き3件（うち警告あり1）・投稿履歴3件と実績
                  フォロワー数31日分・未読通知2件・ニュース（DBにある分をそのまま表示）
+  Stripe:       ${
+    stripeState.subscriptionId
+      ? `テスト契約を紐づけました（${stripeState.status}）。「プランを変更」「解約する」を実際に試せます`
+      : `未接続（${stripeState.note}）`
+  }
 
   もう一度実行すると同じ状態に作り直します（npm run seed:review）。
 `);

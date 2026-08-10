@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { cardClassName } from "@/components/ui/card";
 
 /**
  * SC-07 履歴タブ（投稿済み下書きの閲覧専用一覧, T-M3-22, 要件06 §7/§8）。
@@ -42,10 +43,10 @@ export function HistoryList({
   return (
     // デザイン H-1 は6列のテーブル。**本文が読めなくなるのは機能低下**なので、
     // 内容セルに折りたたみを残して全文へ到達できるようにする（表示の既定は1行）。
-    <div className="overflow-x-auto rounded-card border border-hairline bg-surface shadow-[var(--shadow-card)]">
-      <table className="w-full min-w-[52rem] text-[12.5px]">
+    <div className={`${cardClassName} overflow-x-auto`}>
+      <table className="w-full min-w-[52rem] text-body">
         <thead>
-          <tr className="border-b border-hairline text-left text-[11.5px] text-ink-2">
+          <tr className="border-b border-hairline text-left text-caption text-ink-2">
             <th className="px-4 py-2.5 font-medium">投稿日時</th>
             <th className="px-2 py-2.5 font-medium">型</th>
             <th className="px-2 py-2.5 font-medium">実行</th>
@@ -111,11 +112,11 @@ function HistoryRow({
           {draft.thread.map((post, index) => (
             <li className="flex gap-2" key={post.local_id}>
               {total > 1 ? (
-                <span className="shrink-0 pt-px font-sans text-[11px] tabular-nums text-ink-3">
+                <span className="shrink-0 pt-px font-sans text-caption tabular-nums text-ink-3">
                   {index + 1}
                 </span>
               ) : null}
-              <p className="whitespace-pre-wrap text-[12.5px] leading-5 text-ink">{post.text}</p>
+              <p className="whitespace-pre-wrap text-body leading-5 text-ink">{post.text}</p>
             </li>
           ))}
         </ol>
@@ -127,7 +128,7 @@ function HistoryRow({
         {rolledBack ? (
           <>
             <Badge tone="warn">ロールバック済み</Badge>
-            <p className="mt-1 text-[11px] leading-4 text-warn-fg">
+            <p className="mt-1 text-caption leading-4 text-warn-fg">
               {posted + 1}/{total}ポスト目の送信に失敗 — 投稿済み{posted}件をロールバック削除（下書きは保持）
             </p>
           </>
@@ -136,7 +137,7 @@ function HistoryRow({
             <Badge tone="success">成功</Badge>
             {firstTweetId ? (
               <a
-                className="text-[11.5px] text-brand underline-offset-2 hover:underline"
+                className="text-caption text-brand underline-offset-2 hover:underline"
                 href={tweetUrl(handle, firstTweetId)}
                 rel="noopener noreferrer"
                 target="_blank"

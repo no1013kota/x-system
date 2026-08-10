@@ -48,6 +48,26 @@ describe("draftActionState", () => {
     });
   });
 
+  // T-M8-51: 長さ超過のゲートは `draft` へ戻して理由だけ残す。編集できないと
+  // 「編集して短くしてから投稿してください」を実行できない行き止まりになる。
+  it("Xへ出さずに止めた下書きは編集できる（理由が残っていても draft なら editable）", () => {
+    const s = draftActionState(
+      draft({
+        status: "draft",
+        tweet_ids: [],
+        last_post_error: { code: "length_exceeded", message: "2本目の本文が長すぎます" },
+        thread: [
+          { local_id: "p1", text: "a", weighted_length: 300, sources: [], warnings: ["length_exceeded"] },
+        ],
+      }),
+      enabled,
+    );
+    expect(s.editable).toBe(true);
+    expect(s.hasCreationHistory).toBe(false);
+    expect(s.unresolvedPosting).toBe(false);
+    expect(s.lengthExceeded).toBe(true);
+  });
+
   it("投稿中は posting になる（リロードしても復元できるよう status から決める）", () => {
     expect(draftActionState(draft({ status: "posting" }), enabled).posting).toBe(true);
     // `posting` は編集可否とは別物（editable は draft のみ）

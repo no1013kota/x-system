@@ -28,22 +28,22 @@ describe("tabNavClassName", () => {
 describe("tabLinkClassName", () => {
   it("settings/posts の active/inactive 共通クラス", () => {
     expect(set(tabLinkClassName(true))).toEqual(
-      set("border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 border-brand text-brand"),
+      set("border-b-2 px-4 py-2.5 text-body font-medium transition-colors duration-150 border-brand text-brand"),
     );
     expect(set(tabLinkClassName(false))).toEqual(
-      set("border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 border-transparent text-ink-2 hover:text-ink"),
+      set("border-b-2 px-4 py-2.5 text-body font-medium transition-colors duration-150 border-transparent text-ink-2 hover:text-ink"),
     );
   });
 
   it("ai-settings の active/inactive（追加クラス差し込み後も集合等価）", () => {
     expect(set(tabLinkClassName(true, AI_LINK_EXTRA))).toEqual(
       set(
-        "shrink-0 border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-brand text-brand",
+        "shrink-0 border-b-2 px-4 py-2.5 text-body font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-brand text-brand",
       ),
     );
     expect(set(tabLinkClassName(false, AI_LINK_EXTRA, "hover:text-foreground"))).toEqual(
       set(
-        "shrink-0 border-b-2 px-4 py-2.5 text-[13.5px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-transparent text-ink-2 hover:text-foreground",
+        "shrink-0 border-b-2 px-4 py-2.5 text-body font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring border-transparent text-ink-2 hover:text-foreground",
       ),
     );
   });

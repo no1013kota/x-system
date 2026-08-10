@@ -13,7 +13,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { NewsBrowser } from "./news-browser";
 
-export const metadata: Metadata = { title: "ニュース | Space AI" };
+export const metadata: Metadata = { title: "ニュース | Exos AI" };
 
 interface NewsPageProps {
   searchParams: Promise<{ from?: string; to?: string }>;
@@ -34,14 +34,18 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const settings = await getSettingsForUser(user.id);
+  // user.id にしか依存しない3つは並列に取得する（T-M8-67。以前は4段直列）。
+  const [settings, activeId, { from, to }] = await Promise.all([
+    getSettingsForUser(user.id),
+    resolveActiveXAccountForUser(user.id),
+    searchParams,
+  ]);
   const config = settings?.newsConfig ?? {
     categories: [...DEFAULT_NEWS_CONFIG.categories],
     impact_filter: [...DEFAULT_NEWS_CONFIG.impact_filter],
     max_items: DEFAULT_NEWS_CONFIG.max_items,
   };
 
-  const { from, to } = await searchParams;
   const window = parseWindow(from, to);
 
   let initial: NewsItemsPage = { items: [], nextCursor: null };
@@ -56,8 +60,6 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   } catch {
     initialError = true;
   }
-
-  const activeId = await resolveActiveXAccountForUser(user.id);
   const createdIds = activeId
     ? await listCreatedNewsItemIdsForAccount(
         activeId,
@@ -66,8 +68,8 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     : [];
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
-      <h1 className="text-xl font-bold tracking-tight">ニュース</h1>
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
+      <h1 className="text-[20px] font-bold tracking-tight text-ink">ニュース</h1>
       <NewsBrowser
         initialCreatedIds={createdIds}
         initialCursor={initial.nextCursor}

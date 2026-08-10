@@ -8,12 +8,11 @@ import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
-  BASE_MD_SECTION_TITLES,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
-import { CardTitle } from "@/components/ui/card";
+import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
@@ -34,7 +33,7 @@ const inputClassName =
  * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
  * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
  */
-const groupClassName = "rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)] sm:p-6";
+const groupClassName = `${cardClassName} p-5 sm:p-6`;
 
 type NgField = "words" | "topics" | "rules";
 
@@ -142,23 +141,24 @@ export function PersonaSettingsForm({
         <span>
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
+        {/* 呼称は他タブと同じ「ベースmd」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
         <span className="text-xs text-muted-foreground">
-          発信定義書 version {version}
-          {version >= 1 ? `（${version}回目の更新）` : "（未作成）"}
+          ベースmd version {version}
+          {version >= 1 ? "" : "（未作成）"}
         </span>
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
-        <div
-          className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg"
-          role="status"
-        >
-          保存すると、発信定義書（ベースmd）の「1. {BASE_MD_SECTION_TITLES[0]}／2. {BASE_MD_SECTION_TITLES[1]}／3. {BASE_MD_SECTION_TITLES[2]}／4. {BASE_MD_SECTION_TITLES[3]}」をこのフォームの内容で書き換えます。学習で作られた「5. {BASE_MD_SECTION_TITLES[4]}／6. {BASE_MD_SECTION_TITLES[5]}」はそのまま残ります。書き換え前の内容は、
+        // 6セクションのタイトル列挙は読み飛ばされるだけだった（T-M8-66）。
+        // 「戻せる」導線があれば安心して保存できるので、要点2文に絞る。
+        <Notice tone="warn"
+          role="status">
+          保存すると、ベースmdの1〜4章をこのフォームの内容で書き換えます（学習で作られた5〜6章は残ります）。以前の内容は
           <Link className="mx-1 font-medium underline underline-offset-4" href="/app/ai-settings?tab=base-md">
             ベースmdタブの変更履歴
           </Link>
-          からいつでも元に戻せます。
-        </div>
+          からいつでも戻せます。
+        </Notice>
       ) : null}
 
       <section aria-labelledby="persona-group" className={groupClassName} role="group">

@@ -32,7 +32,7 @@ function prodBase(): Record<string, string | undefined> {
   return {
     ...devBase(),
     APP_ENV: "production",
-    APP_BASE_URL: "https://spaceai.example",
+    APP_BASE_URL: "https://exosai.example",
     ANTHROPIC_API_KEY: "sk-ant",
     NEWS_TEXT_PROVIDER: "anthropic",
     X_MANAGED_CLIENT_ID: "x-client",
@@ -44,7 +44,7 @@ function prodBase(): Record<string, string | undefined> {
     SMTP_PORT: "587",
     SMTP_USER: "ops@example.com",
     SMTP_APP_PASSWORD: "app-password",
-    EMAIL_FROM: "Space AI <ops@example.com>",
+    EMAIL_FROM: "Exos AI <ops@example.com>",
     EMAIL_REPLY_TO: "ops@example.com",
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: "site",
     TURNSTILE_SECRET_KEY: "secret",

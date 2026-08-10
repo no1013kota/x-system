@@ -50,7 +50,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <h1 className="text-[22px] font-bold tracking-tight text-ink">
             {requestingReset ? "パスワード再設定" : "ログイン"}
           </h1>
-          <p className="text-[12.5px] leading-5 text-ink-2">
+          <p className="text-body leading-5 text-ink-2">
             {requestingReset
               ? "登録したメールアドレスへ再設定リンクを送ります。"
               : "メールアドレスとパスワードを入力してください。"}

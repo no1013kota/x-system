@@ -10,8 +10,8 @@
 
 /** 主操作（キー色の塗り）。`<Button variant="brand">` と同じ見た目。 */
 export const primaryLinkClassName =
-  "inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "inline-flex h-9 items-center justify-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** 副操作（枠線のみ）。主操作と並べるときに使う。 */
 export const secondaryLinkClassName =
-  "inline-flex h-9 items-center justify-center rounded-card border border-hairline bg-surface px-4 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "inline-flex h-9 items-center justify-center rounded-card border border-hairline bg-surface px-4 text-body font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";

@@ -50,7 +50,7 @@ export function PasswordResetRequestForm() {
           resetSignal={state}
         />
 
-        <Button className="h-11 w-full text-[14px]" disabled={pending} type="submit" variant="brand">
+        <Button className="h-11 w-full text-sm" disabled={pending} type="submit" variant="brand">
           {pending ? "受け付けています…" : "再設定メールを送る"}
         </Button>
       </form>

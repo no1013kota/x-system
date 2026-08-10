@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
 import type { Queryable } from "../x/token-refresh";
-import { fanOutNewsDigest } from "./news-digest";
+import { fanOutNewsDigest, newsDigestDedupeKey } from "./news-digest";
 
 const pooledDb: Queryable = {
   query: <T = unknown>(sql: string, params?: unknown[]) =>
@@ -196,6 +196,14 @@ describe("fanOutNewsDigest (db)", () => {
       expect(await load(seed.userA)).toHaveLength(1); // 重複行が作られない
       expect(await load(seed.userB)).toHaveLength(1);
     } finally {
+      // **通知は窓のdedupe keyで消す**（T-M8-64・bug）。fan-outは条件が合う全利用者へ配るので、
+      // テスト用ユーザーの行だけ消すと、共有ローカルDBの**実アカウントに未来窓の偽ダイジェスト
+      // が残り続ける**（通知を押しても常に0件のニュース画面になり、利用者が実際に踏んだ）。
+      await withTransaction((c) =>
+        c.query(`delete from notifications where dedupe_key = $1`, [
+          newsDigestDedupeKey(windowStart),
+        ]),
+      );
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = any($1)`, [
           [seed.userA, seed.userB, seed.userOff, seed.userCanceled, seed.userNoMatch],
@@ -270,7 +278,10 @@ describe("fanOutNewsDigest (db)", () => {
       expect(alive.rows, "残っている利用者へは届く").toHaveLength(1);
     } finally {
       await withTransaction(async (c) => {
-        await c.query(`delete from notifications where user_id = $1`, [seed.alive]);
+        // 窓のkeyで消す（テスト用ユーザー以外へ配られた分も含めて）。理由は上のテストの後片付け参照。
+        await c.query(`delete from notifications where dedupe_key = $1`, [
+          newsDigestDedupeKey(windowStart),
+        ]);
         await c.query(`delete from auth.users where id = $1`, [seed.alive]);
         await c.query(`delete from news_items where title like $1`, [`%-${tag}`]);
       });
@@ -348,7 +359,10 @@ describe("fanOutNewsDigest (db)", () => {
       blocker.release();
       await fanOut?.catch(() => {});
       await withTransaction(async (c) => {
-        await c.query(`delete from notifications where user_id = $1`, [seed.alive]);
+        // 窓のkeyで消す（テスト用ユーザー以外へ配られた分も含めて）。理由は最初のテストの後片付け参照。
+        await c.query(`delete from notifications where dedupe_key = $1`, [
+          newsDigestDedupeKey(windowStart),
+        ]);
         await c.query(`delete from auth.users where id = any($1)`, [[seed.alive, seed.gone]]);
         await c.query(`delete from news_items where title like $1`, [`%-${tag}`]);
       });

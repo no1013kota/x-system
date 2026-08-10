@@ -44,6 +44,14 @@ function messageFor(code: string, reason: string | null): OAuthErrorMessage {
         action: { href: X_ACCOUNTS_TAB, label: "Xアカウント設定へ戻る" },
       };
     }
+    if (reason === "reconnect_account_mismatch") {
+      return {
+        // **何が起きたかを行動で説明する**（T-M8-53）。「再連携」は特定のアカウントを直す操作なので、
+        // 別のアカウントで認可されたら新規追加せず止める。止めた理由と次の一手を具体的に出す。
+        body: "再連携しようとしたアカウントとは別のXアカウントで許可されたため、中断しました（新しい連携は作っていません）。Xで対象のアカウントに切り替えてから、もう一度「再連携」をお試しください。別のアカウントを増やしたい場合は「Xアカウントを追加」からどうぞ。",
+        action: { href: X_ACCOUNTS_TAB, label: "Xアカウント設定へ戻る" },
+      };
+    }
     if (reason === "insufficient_scope") {
       return {
         body: "Xの許可画面で必要な権限がすべて許可されませんでした。投稿・画像添付・アカウント情報の読み取りをすべて許可して、もう一度お試しください。",
@@ -66,6 +74,20 @@ function messageFor(code: string, reason: string | null): OAuthErrorMessage {
   }
   // provider_error は「X側との通信が失敗した」と判明している場合のみ。原因を断定して案内できる。
   if (code === "provider_error") {
+    if (reason === "token_auth_failed") {
+      return {
+        // Xが「アプリの認証情報が足りない」と拒否した状態（401 unauthorized_client）。
+        // 手順どおり「Web App, Automated App or Bot」で作ったAppはClient Secretが必須（T-M8-63）。
+        body: "Xがアプリの認証情報を受け付けませんでした。Developer Consoleで「Web App, Automated App or Bot」として作ったAppは、Client IDに加えてClient Secretの保存が必要です。「X APIキー」でClient Secretも保存してから、もう一度連携してください。",
+        action: { href: API_KEYS_TAB, label: "X APIキーの設定を開く" },
+      };
+    }
+    if (reason === "token_grant_invalid") {
+      return {
+        body: "連携手続きの有効時間が切れたため完了できませんでした（Xの許可画面で時間が経った場合などに起きます）。もう一度最初から連携をお試しください。",
+        action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },
+      };
+    }
     return {
       body: "X側との通信に失敗したため連携を完了できませんでした。時間をおいて、もう一度お試しください。",
       action: { href: X_ACCOUNTS_TAB, label: "もう一度連携する" },

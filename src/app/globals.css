@@ -83,6 +83,21 @@
   --radius-chip: 6px;
   --radius-modal: 16px;
   --radius-pill: 9999px;
+
+  /*
+   * タイプスケール（T-M8-71）。以前は 10〜48px で**21種**のサイズが直書きされ、特に
+   * 12/12.5/13/13.5/14px の5段が約380箇所で併存していた（0.5px差は意図として区別できない）。
+   * 本文系はこの2トークン＋ text-sm(14px) の3段だけを使う:
+   *   text-caption(12px) … タイムスタンプ・メタ情報・注記
+   *   text-body(13px)    … UI本文・ラベル・説明文
+   *   text-sm(14px)      … フォーム本文・テーブル（Tailwind既定）
+   * 見出し系は 15px（カードタイトル）/ 20px（h1）/ 22・26px（認証・マーケ）。
+   * 12〜14px帯の任意値（text-[12.5px]等）の再発は type-scale.test.ts が禁止する。
+   */
+  --text-caption: 12px;
+  --text-caption--line-height: 1rem;
+  --text-body: 13px;
+  --text-body--line-height: 1.25rem;
 }
 
 :root {
@@ -142,7 +157,12 @@
   --hairline: rgba(0, 0, 0, 0.08);
   --ink: rgba(0, 0, 0, 0.9);
   --ink-2: rgba(0, 0, 0, 0.55);
-  --ink-3: rgba(0, 0, 0, 0.45);
+  /*
+   * 0.45 → 0.56 へ引き上げ（T-M8-70）。0.45は白地でコントラスト比3.36:1しかなく、
+   * WCAG 1.4.3（AA・通常テキストは4.5:1以上）に全32箇所が不適合だった。しかも使用箇所は
+   * すべて15px以下＝「最小の字が最も薄い」状態。0.56で約4.6:1になりAAを満たす。
+   */
+  --ink-3: rgba(0, 0, 0, 0.56);
   --success-bg: #f0f9ee;
   --success-fg: #3f8f2c;
   --success-icon: #4ea836;
@@ -235,3 +255,108 @@
     accent-color: var(--brand);
   }
 }
+
+/*
+ * iOS Safariはfont-size<16pxの入力欄にフォーカスすると画面を自動ズームする（T-M8-70）。
+ * アプリの入力欄は13〜14pxが主流のため、スマホでは入力のたびにズーム→手で戻すことになっていた。
+ * 個別のクラス指定では付け忘れが必ず出るので、モバイル幅だけ入力系のfont-sizeを一括で16pxにする。
+ * このルールは意図的に @layer の外に置く（無層のCSSはTailwindのユーティリティ層より優先されるため、
+ * text-[13px] 等の指定があっても勝つ）。再発はe2e（mobile-layout.spec.ts）が検査する。
+ */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/*
+ * LP（SC-01, T-M8-74）の演出。design_handoff_space_ai_lp/README.md §インタラクション & モーション。
+ * 生成ループ（7s: バーが伸び、ラベルが「生成中…」⇄「完了」でクロスフェード）とフロートカード。
+ * どちらもヒーローモック内の装飾で、止まっても情報は失われない（prefers-reduced-motion で停止）。
+ */
+@keyframes sai-bar {
+  0% {
+    width: 6%;
+  }
+  58% {
+    width: 88%;
+  }
+  66%,
+  100% {
+    width: 100%;
+  }
+}
+@keyframes sai-lbl-a {
+  0%,
+  58% {
+    opacity: 1;
+  }
+  66%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sai-lbl-b {
+  0%,
+  60% {
+    opacity: 0;
+  }
+  68%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sai-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+.lp-anim-bar {
+  animation: sai-bar 7s ease-in-out infinite;
+}
+.lp-anim-label-a {
+  animation: sai-lbl-a 7s ease-in-out infinite;
+}
+.lp-anim-label-b {
+  animation: sai-lbl-b 7s ease-in-out infinite;
+}
+.lp-anim-float {
+  animation: sai-float 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-anim-bar,
+  .lp-anim-label-a,
+  .lp-anim-label-b,
+  .lp-anim-float {
+    animation: none;
+  }
+}
+
+/* LPのアンカー移動（#pricing 等）を滑らかに。reduced-motion では即時ジャンプのまま。 */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/*
+ * LPのスクロール出現演出は**廃止した**（T-M8-76）。復活させないこと。
+ *
+ * 当初は IntersectionObserver で初期 opacity:0 を解除する作りだった。これは JSのロード失敗・
+ * CSPブロック・JS無効のいずれでも **LPがヘッダーだけの白紙**になる（実測済み）。新規登録の
+ * 唯一の入口が無言で消えるのに、サーバーは200・テストも緑で運営者は気付けない。
+ * 次に `animation-timeline: view()`（JS不要）へ移したが、こちらも**画面外の要素を opacity:0 に
+ * 保つ**性質は同じで、「ページ全体が読める状態か」を一度に検証できず、印刷でも空白になった。
+ *
+ * 装飾のために負うリスクではないので、LPの内容は常に不透明で表示する。
+ * `landing-page.test.ts` と `e2e/landing.spec.ts` が、透明な要素が再び現れないことを検査する。
+ */

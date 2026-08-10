@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -15,7 +16,8 @@ import { describe, expect, it } from "vitest";
  * コマンド名の実在は機械的に検査できるので、人の記憶に任せない（原則3）。
  */
 
-const ROOT = process.cwd();
+/** `process.cwd()` に依存しない（T-M8-51。サブディレクトリからの実行で落ちないように）。 */
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPTS: Record<string, string> = JSON.parse(
   readFileSync(join(ROOT, "package.json"), "utf8"),
 ).scripts;
@@ -55,7 +57,7 @@ describe("運営者へ示すコマンドはそのまま動く", () => {
   const found = SEARCH_DIRS.flatMap(collectFiles).flatMap((file) =>
     quotedCommands(readFileSync(file, "utf8")).map((c) => ({
       ...c,
-      file: file.slice(ROOT.length + 1),
+      file: file.slice(ROOT.length),
     })),
   );
 

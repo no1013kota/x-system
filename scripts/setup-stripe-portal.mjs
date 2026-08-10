@@ -16,9 +16,15 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const TARGETS = ["local", "staging", "production"];
 const PREFIX = { local: "", staging: "STAGING_", production: "PRODUCTION_" };
 
-function resolveTarget() {
+/** `--target` の値（未指定なら undefined）。 */
+function targetArg() {
   const index = process.argv.indexOf("--target");
   const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value && TARGETS.includes(value) ? value : undefined;
+}
+
+function resolveTarget() {
+  const value = targetArg();
   if (!value || !TARGETS.includes(value)) {
     throw new Error(
       `--target <${TARGETS.join("|")}> を指定してください（どの環境のStripe設定を変えるかを間違えないため）。` +
@@ -44,6 +50,33 @@ let TARGET = "local";
  * **staging の鍵でローカルの price を参照して `No such price` になる**。
  * アカウント単位の値は接頭辞なしへ落とさない。
  */
+/**
+ * Stripe側の商品名（T-M8-58）。**Checkout・Portal・請求書にそのまま出る**。
+ * 英語のまま（Standard/md/Premium）だと、日本語で作っている画面の中でStripeの画面だけ
+ * 英語の商品名になる。アプリの表示名（`src/lib/plans.ts` の displayName）と同じにする——
+ * 対応が崩れていないことは `portal-configuration.test.ts` が検査する。
+ */
+export const PRODUCT_NAMES = {
+  STRIPE_PRICE_STANDARD_MONTHLY: "通常プラン",
+  STRIPE_PRICE_MD_MONTHLY: "mdプラン",
+  STRIPE_PRICE_PREMIUM_MONTHLY: "プレミアムプラン",
+};
+
+/**
+ * Stripe側の商品説明（T-M8-65）。**Portalの「プランを変更」画面で商品名の下にそのまま出る**。
+ * 説明が無いと、プラン変更画面には名前と金額しか出ず、何が違うのかその場で判断できない
+ * （利用者の要望）。文言は `/plans` のプランカード（`src/app/plans/page.tsx`）と揃え、
+ * 数字（アカウント数・月間上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
+ */
+export const PRODUCT_DESCRIPTIONS = {
+  STRIPE_PRICE_STANDARD_MONTHLY:
+    "まずは1つのXアカウントを着実に運用。X APIキー・生成AIキーはご自身で用意（利用料は実費）。月間の利用上限なし。",
+  STRIPE_PRICE_MD_MONTHLY:
+    "Xアカウント3つまで＋AIへの指示文（ベースmd・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+  STRIPE_PRICE_PREMIUM_MONTHLY:
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: 通常投稿200・URL付き20・文章生成100・画像20。",
+};
+
 const ACCOUNT_SCOPED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_STANDARD_MONTHLY",
@@ -143,9 +176,9 @@ export function portalUpdateProducts(pricesByProduct) {
 export function portalConfiguration({ appBaseUrl, updateProducts }) {
   const baseUrl = appBaseUrl.replace(/\/$/, "");
   return {
-    name: "Space AI subscription management",
+    name: "Exos AI subscription management",
     business_profile: {
-      headline: "Space AIのプランとお支払い情報を管理できます",
+      headline: "Exos AIのプランとお支払い情報を管理できます",
       privacy_policy_url: `${baseUrl}/privacy`,
       terms_of_service_url: `${baseUrl}/terms`,
     },
@@ -205,7 +238,8 @@ function resolveAppBaseUrl() {
 }
 
 async function main() {
-  TARGET = DRY_RUN ? "local" : resolveTarget();
+  // `--dry-run` は通信しないので `--target` 省略を許すが、**指定されたら尊重する**（T-M8-51）。
+  TARGET = DRY_RUN ? (targetArg() ?? "local") : resolveTarget();
   const appBaseUrl = resolveAppBaseUrl();
   const account = await requireAccountScoped();
   const priceIds = [
@@ -219,6 +253,11 @@ async function main() {
       JSON.stringify(
         {
           mode: "dry-run",
+          // **どの環境の下書きかを出す**（T-M8-51）。以前は `--target` を黙って無視して常に
+          // ローカルの値で表示していたため、`--dry-run --target staging` の出力を
+          // staging の内容だと誤解できた。
+          target: TARGET,
+          appBaseUrl,
           productResolution:
             "Retrieve the three configured Prices and group them by Product (multiple Products are allowed).",
           configuration: portalConfiguration({
@@ -234,6 +273,24 @@ async function main() {
   }
 
   const stripe = new Stripe(account.STRIPE_SECRET_KEY, { apiVersion: API_VERSION });
+
+  // 商品名・説明をアプリの表示へ揃える（違うときだけ更新。何度実行しても同じ結果）。
+  const renamed = [];
+  const described = [];
+  for (const [envName, name] of Object.entries(PRODUCT_NAMES)) {
+    const price = await stripe.prices.retrieve(account[envName], { expand: ["product"] });
+    const product = price.product;
+    if (typeof product === "string" || product.deleted) continue;
+    const description = PRODUCT_DESCRIPTIONS[envName];
+    const patch = {};
+    if (product.name !== name) patch.name = name;
+    if (product.description !== description) patch.description = description;
+    if (Object.keys(patch).length > 0) {
+      await stripe.products.update(product.id, patch);
+      if (patch.name) renamed.push(`${product.name} → ${name}`);
+      if (patch.description) described.push(name);
+    }
+  }
   // **`No such price` を運営者に分かる言葉へ変える。** 生のStripeエラーだけだと、
   // 「別アカウントの鍵で手元のprice IDを参照した」ことが読み取れない（2026-08-04 に実際に踏んだ）。
   const prices = await Promise.all(
@@ -284,6 +341,8 @@ async function main() {
         mode: "updated-in-place",
         // どの変数から値を読んだか（別環境の鍵を黙って使っていないことを確認できるように）。
         valueSources: sourceUsed,
+        productNames: renamed.length > 0 ? renamed : "既に揃っています",
+        productDescriptions: described.length > 0 ? `更新: ${described.join("・")}` : "既に揃っています",
         features,
       },
       null,

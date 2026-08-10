@@ -9,6 +9,40 @@ import { cn } from "@/lib/utils";
  * グラデーションは**ロゴ・AI生成の瞬間・プレミアムバッジだけ**に使う（デザイン §カラー）。
  * 多用すると「AIが動いている」という合図としての意味が失われる。
  */
+/** タイルの寸法セット。LP（ヒーローモック20・フッター24・ヘッダー28・最終CTA40）と共有する。 */
+const TILE_SIZES = {
+  20: { radius: 6, font: 11 },
+  24: { radius: 7, font: 12 },
+  28: { radius: 8, font: 15 },
+  40: { radius: 10, font: 20 },
+} as const;
+
+/** ロゴのグラデーションタイル単体。ワードマーク無しで置く場所（LPのフッター・最終CTA等）用。 */
+export function LogoTile({
+  size = 28,
+  className,
+}: {
+  size?: keyof typeof TILE_SIZES;
+  className?: string;
+}) {
+  const tile = TILE_SIZES[size];
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("grid flex-none place-items-center font-bold text-white", className)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: tile.radius,
+        fontSize: tile.font,
+        backgroundImage: "var(--brand-gradient-logo)",
+      }}
+    >
+      S
+    </span>
+  );
+}
+
 export function BrandLogo({
   className,
   href = "/app",
@@ -24,13 +58,7 @@ export function BrandLogo({
       )}
       href={href}
     >
-      <span
-        aria-hidden="true"
-        className="grid size-7 place-items-center rounded-card text-[15px] font-bold text-white"
-        style={{ backgroundImage: "var(--brand-gradient-logo)" }}
-      >
-        S
-      </span>
+      <LogoTile size={28} />
       <span className="text-[17px] font-bold tracking-tight text-ink">{APP_NAME}</span>
     </Link>
   );

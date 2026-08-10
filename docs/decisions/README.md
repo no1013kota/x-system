@@ -52,3 +52,4 @@ Acceptedになった仕様は、同じ作業単位で要件詳細へ反映する
 | [ADR-0004](./0004-image-processing-sharp.md) | Accepted | 画像正規化（デコード・形式/実寸/MIME/容量検証・JPG/PNG/WEBP・5MB以下への変換/圧縮）に`sharp`を採用。Next.js同梱のため追加binary取得不要、直接依存へ昇格（T-M3-14対応） |
 | [ADR-0005](./0005-csp-nonce-strategy.md) | Accepted | nonceベースCSPをproxyで実装（script-srcはnonce＋strict-dynamic）。Turnstile・外部画像(https:)・Sentryを許可し、公開コンテンツページ（LP・法務）はnonce付与のためforce-dynamic化。HSTS/nosniff/Referrer-Policyをprod付与（T-M6-17対応） |
 | [ADR-0006](./0006-ui-design-foundation.md) | Accepted | UIデザイン基盤。トークンを`globals.css`のCSS変数へ一元化しshadcn由来のトークンも新デザインへ向ける、フォントは`next/font/google`で自前配信（日本語は`subsets`を指定しない）、アイコンは可変フォント3.8MBを避け41個をインラインSVG化、器/チップ/空状態/パターン選択などを単一の正へ集約（M8対応） |
+| [ADR-0007](./0007-type-scale-and-target-sizes.md) | Accepted | タイプスケールとタップ対象寸法の規約。本文系フォントは3段（caption 12/body 13/sm 14px）に統一しguardテストで固定、ink-3のコントラストをWCAG AAへ、ボタン高の基準（sm32/default36/lg40px・主要CTA44px）、入力欄のiOSズーム対策はグローバルCSS1本（T-M8-70/71） |

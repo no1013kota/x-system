@@ -35,6 +35,9 @@ function dependencies(
           })),
         },
       },
+      subscriptions: {
+        list: vi.fn(async () => ({ data: [] })),
+      },
     },
     ...overrides,
   };
@@ -54,6 +57,7 @@ describe("POST /api/stripe/portal core", () => {
     expect(deps.stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
       configuration: "bpc_server_owned",
       customer: "cus_existing",
+      locale: "ja",
       return_url:
         "https://app.example.com/api/stripe/return?source=portal",
     });
@@ -69,6 +73,7 @@ describe("POST /api/stripe/portal core", () => {
     expect(response.status).toBe(200);
     expect(deps.stripe.billingPortal.sessions.create).toHaveBeenCalledWith({
       customer: "cus_existing",
+      locale: "ja",
       return_url:
         "https://app.example.com/api/stripe/return?source=portal",
     });
@@ -144,5 +149,83 @@ describe("portalFlowData（やりたいことを先に選ばせる・T-M8-31）"
 
   it("intent無しなら組まない（従来どおりPortalのトップ）", () => {
     expect(portalFlowData(null, "sub_1", RETURN_URL)).toBeUndefined();
+  });
+});
+
+/**
+ * `flow_data` の subscription 解決（T-M8-56）。
+ *
+ * 正本（`profiles.stripe_subscription_id`）が null のとき、以前は flow_data を組まずに
+ * Portal の**トップ**を開いていた。「プランを変更」を押してもプラン選択に着かず、
+ * 「解約する」を押しても解約の画面に着かない——利用者が実際に踏んだ。
+ */
+describe("intentつきの subscription 解決", () => {
+  const body = (intent: string) =>
+    new Request(`${APP_BASE_URL}/api/stripe/portal`, {
+      method: "POST",
+      headers: new Headers({ origin: APP_BASE_URL, "content-type": "application/json" }),
+      body: JSON.stringify({ intent }),
+    });
+
+  it("正本にIDがあればそれを使い、Stripeへは問い合わせない", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({
+        stripe_customer_id: "cus_existing",
+        stripe_subscription_id: "sub_stored",
+      })),
+    });
+    const response = await handlePortalRequest(body("update"), deps);
+    expect(response.status).toBe(200);
+    expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
+    const params = vi.mocked(deps.stripe.billingPortal.sessions.create).mock.calls[0][0];
+    expect(params.flow_data?.type).toBe("subscription_update");
+    expect(params.flow_data?.subscription_update?.subscription).toBe("sub_stored");
+  });
+
+  it("正本がnullならStripeから変更できる契約を引いて補う（webhook同期前でも正しい画面に着く）", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing" })),
+      stripe: {
+        billingPortal: {
+          sessions: {
+            create: vi.fn(async () => ({ url: "https://billing.stripe.test/p/session/x" })),
+          },
+        },
+        subscriptions: {
+          // list は新しい順。canceled は対象外なので trialing が選ばれる。
+          list: vi.fn(async () => ({
+            data: [
+              { id: "sub_canceled", status: "canceled" },
+              { id: "sub_trialing", status: "trialing" },
+            ],
+          })),
+        },
+      },
+    });
+    const response = await handlePortalRequest(body("cancel"), deps);
+    expect(response.status).toBe(200);
+    const params = vi.mocked(deps.stripe.billingPortal.sessions.create).mock.calls[0][0];
+    expect(params.flow_data?.type).toBe("subscription_cancel");
+    expect(params.flow_data?.subscription_cancel?.subscription).toBe("sub_trialing");
+  });
+
+  it("変更できる契約が無ければ黙ってトップを開かず、理由を返す", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing" })),
+    });
+    const response = await handlePortalRequest(body("update"), deps);
+    expect(response.status).not.toBe(200);
+    expect(deps.stripe.billingPortal.sessions.create).not.toHaveBeenCalled();
+    const payload = await response.json();
+    expect(payload.error.code).toBe("subscription_required");
+  });
+
+  it("intentが無ければ従来どおりトップを開く（問い合わせもしない）", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing" })),
+    });
+    const response = await handlePortalRequest(request(), deps);
+    expect(response.status).toBe(200);
+    expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
   });
 });

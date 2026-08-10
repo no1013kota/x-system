@@ -76,7 +76,7 @@ export function AnalyticsView({
               // 表明に使うと、配色を変えただけでテストが落ちる（実際 `bg-foreground` に
               // E2Eが依存していた）。支援技術にも正しく伝わる。
               aria-pressed={checkpoint === d}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
+              className={`rounded-md px-3 py-1 text-body font-medium transition-colors duration-150 ${
                 checkpoint === d ? "bg-brand text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}
@@ -87,6 +87,10 @@ export function AnalyticsView({
             </button>
           ))}
         </div>
+        {/* 「--」の説明は全カード共通なので、ここに1回だけ出す（T-M8-66。以前は各カードで繰り返していた）。 */}
+        <span className="text-xs text-muted-foreground">
+          「--」はXから取得できなかった項目です（0ではありません）。
+        </span>
       </div>
 
       <ul className="space-y-4">
@@ -97,7 +101,8 @@ export function AnalyticsView({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge>{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</Badge>
                 {draft.incomplete ? (
-                  <Badge tone="warn">不完全なthread</Badge>
+                  // 内部用語（thread）を画面に出さない（要件06 §8・T-M8-66）。
+                  <Badge tone="warn">一部のみ投稿済み</Badge>
                 ) : null}
                 {draft.metricsCompleted ? (
                   <Badge title="投稿後30日までの計測がすべて終わりました" tone="success">
@@ -136,16 +141,16 @@ export function AnalyticsView({
                   </div>
                 ))}
               </dl>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {agg.present === 0
-                  ? `投稿後${checkpoint}日の実績はまだ記録されていません（対象ポスト ${agg.missing} 件）。投稿から${checkpoint}日が経つと自動で記録されます。`
-                  : `投稿後${checkpoint}日の実績があるポスト ${agg.present}/${agg.present + agg.missing} 件を合計しています${
-                      agg.missing > 0 ? `（残り${agg.missing}件はこの時点をまだ計測していません）` : ""
-                    }。`}
-                {agg.present > 0
-                  ? "「--」はXから取得できなかった項目で、0件ではありません。"
-                  : ""}
-              </p>
+              {/* 全件計測済みなら注記なし。部分計測は割合だけ、未計測は「いつ記録されるか」だけ（T-M8-66）。 */}
+              {agg.present === 0 ? (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  投稿後{checkpoint}日になると自動で記録されます。
+                </p>
+              ) : agg.missing > 0 ? (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {agg.present}/{agg.present + agg.missing}件のポストの合計です。
+                </p>
+              ) : null}
 
               {/* tweet_id別 */}
               <div className="mt-3 overflow-x-auto">
@@ -184,10 +189,10 @@ export function AnalyticsView({
                               {label}
                             </a>
                             {t.auditOnly ? (
-                              <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">監査（削除済み）</span>
+                              <span className="ml-1 rounded bg-muted px-1 text-caption text-muted-foreground">監査（削除済み）</span>
                             ) : null}
                             {t.unavailable && !t.auditOnly ? (
-                              <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">取得不能</span>
+                              <span className="ml-1 rounded bg-muted px-1 text-caption text-muted-foreground">取得不能</span>
                             ) : null}
                           </td>
                           <td className="py-1 pr-2 tabular-nums">{c ? num(c.impressions) : <NotCollected />}</td>

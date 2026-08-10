@@ -5,6 +5,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import type { ScheduleOutlook } from "@/lib/home/overview";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-05 ホームの「次回の予定」（要件06 §1・§10, T-M7-03）。有効スロットの次回実行を早い順に示し、
@@ -64,22 +65,22 @@ export function UpcomingScheduleCard({
     <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>次回の予定</CardTitle>
-        <Link className="text-sm text-primary underline" href="/app/schedule">
+        <Link className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline" href="/app/schedule">
           スケジュールを編集
         </Link>
       </div>
       {setupPendingHref ? (
-        <p className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-sm text-warn-fg">
+        <Notice className="mt-3" tone="warn">
           初期設定が未完了のため、予定の時刻になっても実行されません。
           <Link className="ml-1 underline" href={setupPendingHref}>
             設定を続ける
           </Link>
-        </p>
+        </Notice>
       ) : null}
       <ul className="mt-3 space-y-2">
         {outlook.runs.map((run) => (
           <li
-            className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3 text-sm"
+            className="flex flex-wrap items-center gap-2 rounded-card border border-hairline p-3 text-sm"
             key={run.slotId}
           >
             <span className="font-medium tabular-nums">{run.label}</span>

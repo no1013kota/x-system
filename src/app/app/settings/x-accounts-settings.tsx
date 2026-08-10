@@ -18,8 +18,9 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PLANS, type PlanId } from "@/lib/plans";
 import type { XAccountListItem } from "@/lib/x/account-actions-server";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -35,6 +36,12 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   disabled: "neutral",
   error: "danger",
 };
+
+/** 「このアカウントを再連携する」URL。`?account=` が対象を束縛する（T-M8-53）。 */
+function reconnectPath(startPath: string, accountId: string): string {
+  const separator = startPath.includes("?") ? "&" : "?";
+  return `${startPath}${separator}account=${encodeURIComponent(accountId)}`;
+}
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
@@ -58,16 +65,177 @@ export function XAccountsSettings({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  /**
+   * **停止中は畳む**（T-M8-54）。使っていないアカウントが一覧に並び続けると、いま動いている
+   * ものが埋もれる（実際にローカルで3件のうち2件が不要なまま並んだ）。
+   *
+   * 対象は `disabled` だけ。**`expired`／`error` は畳まない**——こちらは再連携という
+   * やることが残っているので、隠すと気付けない（CLAUDE.md 原則1）。
+   *
+   * **行は消さない**（下書き・履歴・実績が参照する・要件06 §14）ので、`<details>` で辿れる
+   * 場所へ移すだけにする。「解除した」ではなく「停止中」と呼ぶ——プラン変更で自動停止された
+   * ものも同じ `disabled` で、利用者の操作とは限らないため。
+   */
+  const connectedAccounts = accounts.filter((a) => a.status !== "disabled");
+  const inactiveAccounts = accounts.filter((a) => a.status === "disabled");
+
+  /**
+   * 1アカウント分の行。連携中と「解除したもの」の2か所で同じものを描くため関数にする（T-M8-54）。
+   * 同じ行を2回書くと、片方だけ直して見た目と操作が食い違う。
+   */
+  function renderAccount(account: XAccountListItem) {
+          const busy = busyId === account.id;
+          return (
+            <li
+              className={`${cardClassName} flex flex-wrap items-center gap-4 p-4`}
+              key={account.id}
+            >
+              {account.profileImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt=""
+                  className="size-10 shrink-0 rounded-full object-cover"
+                  src={account.profileImageUrl}
+                />
+              ) : (
+                <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
+              )}
+              <div className="min-w-40 flex-1">
+                <p className="flex items-center gap-2 font-medium">
+                  @{account.handle}
+                  {account.isActive ? (
+                    <Badge tone="info">操作中</Badge>
+                  ) : null}
+                </p>
+                <p className="text-sm text-muted-foreground">{account.name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  {/*
+                    tone は **prop で渡す**。className へ文字列展開すると
+                    `class="... success"` という存在しないユーティリティになり、4状態すべてが
+                    同じ見た目になる（T-M8-36 で実際に起きた退行）。
+                  */}
+                  <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
+                    {STATUS_LABEL[account.status] ?? account.status}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/*
+                  操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
+                  ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
+                  「どこで切り替えるのか」を探すことになる。
+                  切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
+                */}
+                {!account.isActive && account.status === "active" ? (
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        account.id,
+                        () => setActiveXAccountAction({ x_account_id: account.id }),
+                        `@${account.handle} に切り替えました`,
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="subtle"
+                  >
+                    {busy ? "切り替え中…" : "このアカウントを操作する"}
+                  </Button>
+                ) : null}
+
+                {account.status === "disabled" ? (
+                  <Button
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        account.id,
+                        () => enableXAccountAction({ x_account_id: account.id }),
+                        "アカウントを有効化しました。",
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {busy ? "処理中…" : "有効化"}
+                  </Button>
+                ) : null}
+
+                {account.status !== "active" ? (
+                  <Button
+                    nativeButton={false}
+                    // **どのアカウントを再連携するかを渡す**（T-M8-53）。以前は「追加」と同じURLで、
+                    // 別のアカウントで認可すると新しい行が増え、壊れた行はそのまま残った。
+                    render={<a href={reconnectPath(oauthStartPath, account.id)} />}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Icon name="refresh" /> 再連携
+                  </Button>
+                ) : null}
+
+                {/*
+                  **何を確認するのかをラベルに書き、結果を文言で返す**（T-M8-56）。
+                  以前は「状態を更新」で、何の状態をどう更新するのか読めなかった。
+                  実体は「Xに問い合わせて、この連携がまだ使えるかを確かめる」操作。
+                */}
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    run(
+                      account.id,
+                      () => refreshXAccountStatusAction({ x_account_id: account.id }),
+                      (res) =>
+                        `Xとの接続を確認しました（${
+                          STATUS_LABEL[res.accountStatus ?? ""] ?? "状態不明"
+                        }）`,
+                    )
+                  }
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  接続を確認
+                </Button>
+
+                {account.automationActive ? (
+                  <StopAllAutomationButton xAccountId={account.id} />
+                ) : null}
+
+                {account.status !== "disabled" ? (
+                  <DisconnectButton
+                    disabled={pending}
+                    handle={account.handle}
+                    onConfirm={() =>
+                      run(
+                        account.id,
+                        () => disconnectXAccountAction({ x_account_id: account.id }),
+                        "連携を解除しました。",
+                      )
+                    }
+                  />
+                ) : null}
+              </div>
+            </li>
+          );
+  }
+
   const toast = useToast();
 
   const limit = PLANS[plan].xAccountLimit;
   const activeCount = accounts.filter((a) => a.status === "active").length;
   const atLimit = activeCount >= limit;
 
-  function run(
+  function run<T extends { status: "error" | "success"; message: string }>(
     id: string,
-    action: () => Promise<{ status: "error" | "success"; message: string }>,
-    successMessage: string,
+    action: () => Promise<T>,
+    successMessage: string | ((result: T) => string),
   ) {
     if (pending) return;
     setBusyId(id);
@@ -82,14 +250,17 @@ export function XAccountsSettings({
         });
         return;
       }
-      toast.show({ tone: "success", title: successMessage });
+      toast.show({
+        tone: "success",
+        title: typeof successMessage === "function" ? successMessage(res) : successMessage,
+      });
       router.refresh();
     });
   }
 
   return (
     <section aria-labelledby="x-accounts-heading" className="space-y-6">
-      <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <Card as="div" className="px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <CardTitle id="x-accounts-heading">
@@ -127,160 +298,42 @@ export function XAccountsSettings({
         </div>
 
         {!xApiKeyRegistered ? (
-          <p className="mt-4 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm leading-6 text-warn-fg">
-            Xアカウントの連携には、ご自身のX Developer AppのClient IDが必要です。「APIキー」タブで登録すると、この画面から連携できるようになります。
-          </p>
+          // 誘導はボタン「先にX APIキーを登録」と同内容なので1文に留める（T-M8-66）。
+          <Notice className="mt-4" tone="warn">
+            Xアカウントの連携には、先に「APIキー」タブでX APIキーの登録が必要です。
+          </Notice>
         ) : null}
 
         {connected ? (
-          <p
-            className="mt-4 rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg"
-            role="status"
-          >
+          <Notice className="mt-4" tone="success"
+            role="status">
             Xアカウントを連携しました。
-          </p>
+          </Notice>
         ) : null}
-      </div>
+      </Card>
 
-      {accounts.length === 0 ? (
+      {connectedAccounts.length === 0 ? (
         <EmptyNotice>
-          まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。
+          {/* 停止中の存在は直下のdetailsのsummaryが伝えるため、括弧書きで繰り返さない（T-M8-66）。 */}
+          {inactiveAccounts.length > 0
+            ? "連携中のXアカウントはありません。「Xアカウントを追加」から連携してください。"
+            : "まだXアカウントを連携していません。「Xアカウントを追加」から連携してください。"}
         </EmptyNotice>
       ) : (
         <ul className="space-y-3">
-          {accounts.map((account) => {
-            const busy = busyId === account.id;
-            return (
-              <li
-                className="flex flex-wrap items-center gap-4 rounded-card border bg-card p-4 shadow-sm"
-                key={account.id}
-              >
-                {account.profileImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    alt=""
-                    className="size-10 shrink-0 rounded-full object-cover"
-                    src={account.profileImageUrl}
-                  />
-                ) : (
-                  <Icon name="account_circle" className="shrink-0 text-muted-foreground" size={40} />
-                )}
-                <div className="min-w-40 flex-1">
-                  <p className="flex items-center gap-2 font-medium">
-                    @{account.handle}
-                    {account.isActive ? (
-                      <Badge tone="info">操作中</Badge>
-                    ) : null}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{account.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                    {/*
-                      tone は **prop で渡す**。className へ文字列展開すると
-                      `class="... success"` という存在しないユーティリティになり、4状態すべてが
-                      同じ見た目になる（T-M8-36 で実際に起きた退行）。
-                    */}
-                    <Badge tone={STATUS_TONE[account.status] ?? "neutral"}>
-                      {STATUS_LABEL[account.status] ?? account.status}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      {AUTH_TYPE_LABEL[account.authType] ?? account.authType}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/*
-                    操作対象の切り替えをこの一覧からもできるようにする（T-M8-31）。
-                    ヘッダーの切替メニューだけだと、設定画面で一覧を見ている人が
-                    「どこで切り替えるのか」を探すことになる。
-                    切り替えると下書き・履歴・分析・スケジュールもそのアカウントのものになる。
-                  */}
-                  {!account.isActive && account.status === "active" ? (
-                    <Button
-                      disabled={pending}
-                      onClick={() =>
-                        run(
-                          account.id,
-                          () => setActiveXAccountAction({ x_account_id: account.id }),
-                          `@${account.handle} に切り替えました`,
-                        )
-                      }
-                      size="sm"
-                      type="button"
-                      variant="subtle"
-                    >
-                      {busy ? "切り替え中…" : "このアカウントを操作する"}
-                    </Button>
-                  ) : null}
-
-                  {account.status === "disabled" ? (
-                    <Button
-                      disabled={pending}
-                      onClick={() =>
-                        run(
-                          account.id,
-                          () => enableXAccountAction({ x_account_id: account.id }),
-                          "アカウントを有効化しました。",
-                        )
-                      }
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {busy ? "処理中…" : "有効化"}
-                    </Button>
-                  ) : null}
-
-                  {account.status !== "active" ? (
-                    <Button
-                      nativeButton={false}
-                      render={<a href={oauthStartPath} />}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Icon name="refresh" /> 再連携
-                    </Button>
-                  ) : null}
-
-                  <Button
-                    disabled={pending}
-                    onClick={() =>
-                      run(
-                        account.id,
-                        () => refreshXAccountStatusAction({ x_account_id: account.id }),
-                        "最新の状態を確認しました。",
-                      )
-                    }
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    状態を更新
-                  </Button>
-
-                  {account.automationActive ? (
-                    <StopAllAutomationButton xAccountId={account.id} />
-                  ) : null}
-
-                  {account.status !== "disabled" ? (
-                    <DisconnectButton
-                      disabled={pending}
-                      handle={account.handle}
-                      onConfirm={() =>
-                        run(
-                          account.id,
-                          () => disconnectXAccountAction({ x_account_id: account.id }),
-                          "連携を解除しました。",
-                        )
-                      }
-                    />
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
+          {connectedAccounts.map(renderAccount)}
         </ul>
       )}
+
+      {inactiveAccounts.length > 0 ? (
+        <details className="rounded-card border border-hairline bg-surface px-5 py-3">
+          <summary className="cursor-pointer text-body text-ink-2">
+            停止中のアカウント {inactiveAccounts.length} 件（投稿履歴と実績は残っています）
+          </summary>
+          {/* 操作は各行の「有効化」「再連携」ボタン自体が示す。前置きの説明は置かない（T-M8-66）。 */}
+          <ul className="mt-3 space-y-3">{inactiveAccounts.map(renderAccount)}</ul>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -306,13 +359,13 @@ function DisconnectButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>
+          {/* 破壊的操作の確認なので影響の要旨は残す。内部概念（同意の取り消し）とデータ列挙は削る（T-M8-66）。 */}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            解除すると、このアカウントへの投稿と自動実行を停止し、自動投稿の同意も取り消します。
-            下書き・投稿履歴・実績・ベースmdなどのデータは削除されません。再連携すればいつでも
-            再開できます。
+            このアカウントへの投稿と自動実行を停止します。下書きや履歴などのデータは残り、
+            再連携すればいつでも再開できます。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close

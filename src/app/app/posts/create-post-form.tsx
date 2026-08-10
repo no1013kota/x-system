@@ -18,8 +18,9 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import type { PostPatternOption } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
 export interface ActiveJob {
   id: string;
@@ -62,7 +63,6 @@ const PREREQ_FAILURE_PATH: Record<string, string> = {
   persona_required: "/app/ai-settings?tab=persona",
 };
 const PREREQ_FAILURE_CODES = new Set(Object.keys(PREREQ_FAILURE_PATH));
-const POLL_MS = 2500;
 const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
@@ -105,12 +105,22 @@ export function CreatePostForm({
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // 進行中のあいだ getGenerationJob をポーリングして状態を更新する（再訪時も initialJob から再開）。
+  //
+  // **取得できない状態が続いたら打ち切って伝える**（T-M8-51）。以前は失敗を黙って捨てて回り続けて
+  // いたため、「生成中…」が永遠に出たままトーストが1つも出なかった。
   useEffect(() => {
     if (!job || TERMINAL.has(job.status)) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       setNowMs(Date.now());
       const res = await getGenerationJobAction({ job_id: job.id });
-      if (res.status === "success" && res.job) {
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        return;
+      }
+      if (ok && res.job) {
         const nextJob = res.job;
         setJob((prev) => ({
           id: nextJob.id,
@@ -121,9 +131,9 @@ export function CreatePostForm({
           error: toJobFailure(nextJob.error),
         }));
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [job?.id, job?.status, job?.createdAt, job]);
+  }, [job?.id, job?.status, job?.createdAt, job, toast]);
 
   function submit() {
     setPrereq(null);
@@ -213,7 +223,7 @@ export function CreatePostForm({
       {/* 入力（ステート1） */}
       <section
         aria-label="生成入力"
-        className="space-y-5 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]"
+        className={`${cardClassName} space-y-5 p-5`}
       >
         {/*
           パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
@@ -227,12 +237,12 @@ export function CreatePostForm({
         />
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="theme">
+          <label className="block text-body font-medium text-ink" htmlFor="theme">
             テーマ
           </label>
           <select
             aria-describedby="theme-help"
-            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="theme"
             onChange={(e) => setTheme(e.target.value)}
             required
@@ -246,35 +256,32 @@ export function CreatePostForm({
             ))}
           </select>
           <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
-            そのテーマに絞って題材を探します。「AI設定 → 発信設定」の発信テーマと同じ選択肢です。
             決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
           </p>
         </div>
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="source_url">
+          <label className="block text-body font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
           </label>
           <input
-            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 h-10 w-full rounded-card border border-hairline px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="source_url"
             inputMode="url"
             onChange={(e) => setSourceUrl(e.target.value)}
             placeholder="https://…"
             value={sourceUrl}
           />
-          <p className="mt-1 text-xs text-muted-foreground">
-            空欄のままでも、上のテーマと発信設定・ベースmdからAIが題材を選んでリサーチします。
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">空欄ならAIが題材を選んでリサーチします。</p>
         </div>
 
         {pattern === "p2" ? (
           <div>
-            <label className="block text-[13px] font-medium text-ink" htmlFor="user_opinion">
+            <label className="block text-body font-medium text-ink" htmlFor="user_opinion">
               自分の考え（任意）
             </label>
             <textarea
-              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
               id="user_opinion"
               maxLength={2000}
               onChange={(e) => setUserOpinion(e.target.value)}
@@ -285,11 +292,11 @@ export function CreatePostForm({
         ) : null}
 
         <div>
-          <label className="block text-[13px] font-medium text-ink" htmlFor="instructions">
+          <label className="block text-body font-medium text-ink" htmlFor="instructions">
             追加指示（任意）
           </label>
           <textarea
-            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-[13px] transition-colors duration-150 focus:border-brand focus:outline-none"
+            className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
             id="instructions"
             maxLength={2000}
             onChange={(e) => setInstructions(e.target.value)}
@@ -299,9 +306,10 @@ export function CreatePostForm({
         </div>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
+          <label className="flex min-h-9 cursor-pointer items-center gap-2 text-body font-medium text-ink">
             <input
               checked={imageEnabled}
+              className="size-4"
               disabled={imageProviders.length === 0}
               onChange={(e) => setImageEnabled(e.target.checked)}
               type="checkbox"
@@ -313,16 +321,12 @@ export function CreatePostForm({
               </span>
             ) : null}
           </label>
-          {imageEnabled ? (
-            <p className="text-xs text-muted-foreground">
-              画像を作るAIは、AI設定の「AI用途」で選んだものを使います。
-            </p>
-          ) : null}
+          {/* どのAIが使われるかは操作に影響しない内部説明のため出さない（T-M8-66）。 */}
         </div>
 
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
-          className="h-10 w-full gap-1.5 text-[13.5px]"
+          className="h-10 w-full gap-1.5 text-body"
           disabled={pending || inProgress || !theme}
           onClick={submit}
           type="button"
@@ -337,13 +341,13 @@ export function CreatePostForm({
           という**どの項目が悪いか分からない**トーストが5秒で消えるだけだった。
         */}
         {!theme && !inProgress ? (
-          <p className="text-[12px] text-ink-2">テーマを選ぶと生成できます。</p>
+          <p className="text-caption text-ink-2">テーマを選ぶと生成できます。</p>
         ) : null}
       </section>
 
       {/* 結果（ステート2・3） */}
       <section aria-label="プレビュー・結果"
-        className="space-y-4 rounded-card border border-hairline bg-surface p-5 shadow-[var(--shadow-card)]">
+        className={`${cardClassName} space-y-4 p-5`}>
         <CardTitle>結果</CardTitle>
 
         {prereq ? (
@@ -371,7 +375,7 @@ export function CreatePostForm({
                   STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf(job.progressStage);
                 return (
                   <li
-                    className={`flex items-center gap-2 text-[13px] ${
+                    className={`flex items-center gap-2 text-body ${
                       active ? "font-medium text-ink" : done ? "text-ink-2" : "text-ink-3"
                     }`}
                     key={stage}
@@ -389,9 +393,9 @@ export function CreatePostForm({
               })}
             </ol>
             {queuedSlow ? (
-              <p className="rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg" role="status">
+              <Notice tone="warn" role="status">
                 開始が遅れています。自動で再開されます（最大5分）。
-              </p>
+              </Notice>
             ) : null}
             {job?.status === "queued" ? (
               <Button disabled={pending} onClick={cancel} size="sm" type="button" variant="outline">
@@ -399,7 +403,7 @@ export function CreatePostForm({
               </Button>
             ) : (
               <p className="text-xs text-muted-foreground">
-                生成が始まっているため、途中で止めることはできません。完了までお待ちください。
+                生成が始まったため、途中では止められません。
               </p>
             )}
           </div>
@@ -407,9 +411,9 @@ export function CreatePostForm({
 
         {job?.status === "succeeded" ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-success-fg/25 bg-success-bg p-3 text-sm text-success-fg" role="status">
+            <Notice tone="success" role="status">
               生成が完了し、下書きを作成しました。
-            </p>
+            </Notice>
             <Link
               className={primaryLinkClassName}
               href="/app/posts?tab=drafts"
@@ -449,7 +453,7 @@ export function CreatePostForm({
 
         {!prereq && job === null ? (
           <p className="text-sm text-muted-foreground">
-            パターンと入力を選んで「生成する」を押すと、ここに生成結果が表示されます。生成される内容は毎回変わります。まず1本作って、下書きで編集するか、追加指示を付けて再生成してください。
+            「スレッドを生成する」を押すと、ここに結果が表示されます。
           </p>
         ) : null}
       </section>

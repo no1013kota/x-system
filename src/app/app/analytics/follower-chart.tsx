@@ -62,7 +62,7 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
           {PERIODS.map((d) => (
             <button
               aria-pressed={days === d}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${
+              className={`rounded-md px-3 py-1 text-body font-medium transition-colors duration-150 ${
                 days === d ? "bg-brand text-white" : "text-ink-2 hover:text-ink"
               }`}
               key={d}
@@ -77,7 +77,7 @@ export function FollowerChart({ points }: { points: FollowerPoint[] }) {
 
       {geom === null ? (
         <p className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          この期間のフォロワー数記録はまだありません。フォロワー数は毎日自動で記録され、日を追うごとに推移が表示されます。
+          フォロワー数の記録はまだありません。毎日自動で記録されます。
         </p>
       ) : (
         <>

@@ -19,6 +19,9 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cardClassName, cardTitleClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
+import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
@@ -26,7 +29,6 @@ import { formatJst } from "@/lib/format";
 
 import { DraftEditor } from "./draft-editor";
 
-const POLL_MS = 2500;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 const WARNING_LABEL: Record<string, string> = {
@@ -181,11 +183,24 @@ function DraftCard({
   }
 
   // 投稿jobを終端までpoll。成功→履歴へ（refreshで下書きから消える）、失敗→下書きに残り通知。
+  //
+  // **取得できない状態が続いたら打ち切って伝える**（T-M8-51）。以前は失敗を黙って return して
+  // いたため、通信やサーバーが継続的に失敗すると「投稿中…」が永遠に出たままトーストが1つも
+  // 出なかった（進んでいるのか壊れているのか区別できない）。
   useEffect(() => {
     if (!publishJobId) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       const res = await getGenerationJobAction({ job_id: publishJobId });
-      if (res.status !== "success" || !res.job) return;
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        setPublishJobId(null);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        router.refresh();
+        return;
+      }
+      if (!ok || !res.job) return;
       if (!TERMINAL.has(res.job.status)) return;
       clearInterval(timer);
       setPublishJobId(null);
@@ -205,13 +220,13 @@ function DraftCard({
         });
         router.refresh();
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [publishJobId, router, toast]);
 
   return (
     <li
-      className={`scroll-mt-24 rounded-card border bg-card p-5 shadow-sm ${
+      className={`${cardClassName} scroll-mt-24 p-5 ${
         highlighted ? "ring-2 ring-ring" : ""
       }`}
       id={`draft-${draft.id}`}
@@ -228,7 +243,8 @@ function DraftCard({
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
           <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
         </div>
-        <div className="flex items-center gap-2">
+        {/* 状態テキストとボタンが同居する行。折り返せないと狭い幅で横にはみ出す（T-M8-70）。 */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {publishing ? (
             <span className="text-xs font-medium text-muted-foreground" role="status">
               投稿中…（この画面を離れても続きます）
@@ -281,12 +297,25 @@ function DraftCard({
         </div>
       </div>
 
+      {/*
+        **保存された失敗理由をそのまま出す**（T-M8-51）。
+        投稿実行は「2本目の本文が長すぎます…Xへの投稿は1件も行っていません」のように、
+        何が起きて何をすればよいかを書いて保存している。ここで出さないと利用者へ届かず、
+        汎用の失敗文しか見えない（「Xへ出ていない」が伝わらないと、Xを見に行くまで確認できない）。
+      */}
+      {draft.last_post_error?.message ? (
+        <Notice className="mt-3" role="alert" tone="danger">
+          {draft.last_post_error.message}
+        </Notice>
+      ) : null}
+
       {hasCreationHistory || unresolvedPosting ? (
+        // 押せない理由と次の一手だけを書く。複製の仕組みの説明は読まなくても操作できる（T-M8-66）。
         <p className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
-          Xに作成されたポストの記録があるため、この下書きは破棄できません（監査のため保持します）。
+          Xに投稿された記録が残っているため、この下書きは破棄できません。
           {cloneEligible
-            ? "投稿は「新しい下書きとして再試行」からやり直せます。本文と画像を複製した新しい下書きが作られ、この下書きは失敗記録として残ります。"
-            : "まずX上の残ったポストの扱いを確定してください。"}
+            ? "「新しい下書きとして再試行」からやり直せます。"
+            : "まずX上に残ったポストの扱いを確定してください。"}
         </p>
       ) : null}
 
@@ -353,11 +382,21 @@ function ImageSection({
   const running = pending || jobId !== null;
 
   // 再生成jobを終端までpollする。成功でrefresh（新画像の署名URLを取り直す）。失敗は既存画像を維持。
+  // 取得できない状態が続いたら打ち切って伝える（T-M8-51）。
   useEffect(() => {
     if (!jobId) return;
+    const guard = createPollGuard();
     const timer = setInterval(async () => {
       const res = await getGenerationJobAction({ job_id: jobId });
-      if (res.status !== "success" || !res.job) return;
+      const ok = res.status === "success" && Boolean(res.job);
+      if (guard.tick(ok) === "give-up") {
+        clearInterval(timer);
+        setJobId(null);
+        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
+        router.refresh();
+        return;
+      }
+      if (!ok || !res.job) return;
       if (!TERMINAL.has(res.job.status)) return;
       clearInterval(timer);
       setJobId(null);
@@ -372,7 +411,7 @@ function ImageSection({
           description: "既存の画像はそのままです。",
         });
       }
-    }, POLL_MS);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [jobId, router, toast]);
 
@@ -467,7 +506,7 @@ function RegenerateBox({ draftId, onDone }: { draftId: string; onDone: () => voi
         追加指示（任意）
       </label>
       <textarea
-        className="w-full rounded-md border px-3 py-2 text-sm"
+        className="w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
         id={`regen-${draftId}`}
         maxLength={2000}
         onChange={(e) => setInstructions(e.target.value)}
@@ -518,7 +557,7 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
   }
 
   return (
-    <div className="mt-3 space-y-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-warn-fg">
+    <Notice className="mt-3 space-y-2" tone="warn">
       <p className="text-xs leading-5">
         投稿の状態が未解決です。破棄する前にXと再照合して、投稿済み・削除済みを確定してください。
       </p>
@@ -542,7 +581,7 @@ function ReconcilePanel({ draftId }: { draftId: string }) {
           解決しない場合は、Xの投稿状況をご確認のうえサポートへお問い合わせください。
         </p>
       ) : null}
-    </div>
+    </Notice>
   );
 }
 
@@ -564,20 +603,20 @@ function PublishButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">この内容で投稿しますか？</AlertDialog.Title>
+          <AlertDialog.Title className={cardTitleClassName}>この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
-            <div className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg p-3 text-sm text-warn-fg">
+            <Notice className="mt-3" tone="warn">
               <p className="font-medium">注意: 次の警告があります</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 {warnings.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-            </div>
+            </Notice>
           ) : null}
+          {/* 失敗時のロールバックは実行後にバッジと失敗理由で伝わる。操作前に読ませない（T-M8-66）。 */}
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            スレッドをXへ順に投稿します。途中で失敗した場合は、作成済みのポストを自動で削除します。
-            <span className="font-medium text-foreground">削除したポストはX上で復元できません。</span>
+            スレッドをXへ順に投稿します。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
@@ -610,11 +649,11 @@ function DiscardButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             下書きを破棄しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            破棄すると下書き一覧から外れます。生成した画像は削除されます。この操作は取り消せません。
+            下書きと生成画像を削除します。この操作は取り消せません。
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>

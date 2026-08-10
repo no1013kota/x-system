@@ -19,7 +19,6 @@ import {
   X_CLIENT_ID_MIN_LENGTH,
   X_CLIENT_SECRET_MIN_LENGTH,
   type AiKeyProvider,
-  type XClientType,
 } from "@/lib/api-keys";
 import {
   maskedApiKeyLabel,
@@ -28,13 +27,45 @@ import {
 } from "@/lib/api-key-view";
 import type { PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
+import { settingsTabHref } from "./tabs";
 
-const AI_PROVIDERS: Array<{ label: string; provider: AiKeyProvider }> = [
-  { label: "Anthropic (Claude)", provider: "anthropic" },
-  { label: "OpenAI", provider: "openai" },
-  { label: "Google (Gemini)", provider: "google" },
+/**
+ * 取得ページへのリンクを各社に持たせる（T-M8-58）。X側には手順ガイドがあるのにAI側には
+ * 取得方法が無く、非エンジニアはどこでキーを作ればよいか分からなかった。
+ */
+/**
+ * 各社の**できること**をカードに明示する（T-M8-59）。「Claudeしかできないのでは」という
+ * 誤解が実際に出た——プレミアムでは文章が運営Claude固定なので、そう見える。BYOKでは
+ * 3社とも文章生成＋Webリサーチに対応している（`openai.ts`／`gemini.ts` に webSearch 実装、
+ * 実APIの契約テストも3社分）。画像だけは OpenAI / Google のみ。
+ */
+const AI_PROVIDERS: Array<{
+  label: string;
+  provider: AiKeyProvider;
+  consoleUrl: string;
+  capabilities: string;
+}> = [
+  {
+    label: "Anthropic (Claude)",
+    provider: "anthropic",
+    consoleUrl: "https://console.anthropic.com/settings/keys",
+    capabilities: "文章生成・リサーチ",
+  },
+  {
+    label: "OpenAI",
+    provider: "openai",
+    consoleUrl: "https://platform.openai.com/api-keys",
+    capabilities: "文章生成・リサーチ・画像生成",
+  },
+  {
+    label: "Google (Gemini)",
+    provider: "google",
+    consoleUrl: "https://aistudio.google.com/apikey",
+    capabilities: "文章生成・リサーチ・画像生成",
+  },
 ];
 
 const STATUS_LABELS = {
@@ -81,7 +112,7 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
         <StatusBadge status={keyState.status} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        秘密値は再表示されません。
+        保存したキーは再表示されません。
         {verified
           ? `最終確認: ${verified}`
           : keyState.status === "invalid"
@@ -90,11 +121,11 @@ function SavedKeySummary({ keyState }: { keyState: ApiKeyViewState }) {
       </p>
       {keyState.provider !== "x" && keyState.status !== "valid" ? (
         // 生成の前提は valid のみ（execution-prereqs）。未確認/失敗のままだと投稿生成が始まらない。
-        <p className="mt-2 rounded-lg border border-warn-fg/25 bg-warn-bg p-2 text-xs leading-5 text-warn-fg">
+        <Notice className="mt-2" tone="warn">
           {keyState.status === "invalid"
             ? "このキーは認証できませんでした。正しいキーを貼り直すまで投稿生成には使えません。"
             : "疎通確認が済むまで、このキーは投稿生成に使えません。「疎通確認」を実行してください。"}
-        </p>
+        </Notice>
       ) : null}
     </div>
   );
@@ -113,7 +144,6 @@ export function ApiKeySettings({
     Object.fromEntries(initialKeys.map((key) => [key.provider, key])),
   );
   const toast = useToast();
-  const [clientType, setClientType] = useState<XClientType>("public");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [aiSecrets, setAiSecrets] = useState<Record<AiKeyProvider, string>>({
@@ -124,13 +154,13 @@ export function ApiKeySettings({
   const [copied, setCopied] = useState(false);
   /**
    * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
-   * 以前は `clientId.length < 5` が直書きで、Confidential のときに Secret が要ることは
-   * 画面から読めなかった（押せない理由がどこにも無い状態だった）。
+   * 以前は `clientId.length < 5` が直書きで、何文字必要かが画面から読めなかった。
+   * Client Secret は空（Native App等のpublic client）か、入れるなら最小長以上（T-M8-63）。
    */
+  const secretTrimmed = clientSecret.trim();
   const xSavable =
     clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
-    (clientType !== "confidential" ||
-      clientSecret.trim().length >= X_CLIENT_SECRET_MIN_LENGTH);
+    (secretTrimmed.length === 0 || secretTrimmed.length >= X_CLIENT_SECRET_MIN_LENGTH);
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -143,10 +173,18 @@ export function ApiKeySettings({
 
   function saveX() {
     startTransition(async () => {
+      /**
+       * 種別は**Client Secretの有無から導出する**（T-M8-63）。現在のDeveloper Consoleに
+       * Public/Confidentialを選ぶUIは無いが、Type of Appで「Web App, Automated App or Bot」
+       * を選ぶとconfidential clientになり、**token交換にClient Secretが必須**
+       * （実測: Secretなしの交換は 401 unauthorized_client で拒否された・2026-08-06）。
+       * 「Client種別」という利用者が答えられない質問を復活させず、入力の有無で決める。
+       */
+      const secret = clientSecret.trim();
       const result = await saveXApiKey({
         client_id: clientId,
-        client_secret: clientType === "confidential" ? clientSecret : null,
-        client_type: clientType,
+        client_secret: secret.length > 0 ? secret : null,
+        client_type: secret.length > 0 ? "confidential" : "public",
       });
       if (result.status === "error" || !result.displayHint) {
         showError(result.message);
@@ -164,7 +202,15 @@ export function ApiKeySettings({
       }));
       setClientId("");
       setClientSecret("");
-      finishAction(result.message);
+      // **次にやること（X連携）まで出す**（T-M8-59）。保存だけでは投稿できず、
+      // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AI用途を開く」と同じ形。
+      toast.show({
+        tone: "success",
+        title: result.message,
+        description: "次に「Xアカウント」タブから、投稿するアカウントを連携してください。",
+        action: { href: settingsTabHref("x-accounts"), label: "Xアカウント連携を開く" },
+      });
+      router.refresh();
     });
   }
 
@@ -249,7 +295,11 @@ export function ApiKeySettings({
   }
 
   function remove(provider: ApiKeyViewProvider) {
-    if (!window.confirm("このAPIキーを削除します。元に戻せません。続行しますか？")) {
+    if (!window.confirm(
+        provider === "x"
+          ? "X APIキーを削除します。連携中のXアカウントはX側の許可も取り消され、再連携するまで予約・自動投稿が止まります。続行しますか？"
+          : "このAPIキーを削除します。このAIを文章・画像づくりに割り当てている場合は割り当てが解除され、別のAIを設定するまで生成が止まります。続行しますか？",
+      )) {
       return;
     }
     startTransition(async () => {
@@ -297,7 +347,7 @@ export function ApiKeySettings({
 
   if (plan === "premium") {
     return (
-      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]" aria-labelledby="premium-key-heading">
+      <Card as="section" className="px-5 py-4" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
           <div className="rounded-card bg-success-bg p-3 text-success-fg">
             <Icon name="verified_user" className="size-6" />
@@ -306,8 +356,9 @@ export function ApiKeySettings({
             <CardTitle id="premium-key-heading">
               プレミアムプランはキー登録不要です
             </CardTitle>
+            {/* 「登録不要」の言い直しは見出しと重複するため書かない（T-M8-66）。 */}
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              X連携と文章生成にはSpace AIの運営キーを使用します。あなた自身のX Developer App資格情報やAI APIキーを入力する必要はありません。API費用の追加負担もありません。
+              X連携と文章生成にはExos AIの運営キーを使います。API費用の追加負担もありません。
             </p>
           </div>
         </div>
@@ -316,13 +367,22 @@ export function ApiKeySettings({
             <UsageSummaryCard nextResetLabel={usageResetLabel} summary={usage} />
           </div>
         ) : null}
-      </section>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-7">
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-key-heading">
+    <div className="space-y-6">
+      {/*
+        **最初に全体像を出す**（T-M8-58）。フォームが先に並ぶと、いくつ登録すれば使えるのかが
+        読めない。必要なのは2つ（Xキー1つ＋AIキーどれか1社）だと先に言う。
+      */}
+      <Notice tone="info">
+        投稿を作って投稿するには、① X APIキー（Xへの投稿に使う）と
+        ② 生成AIのAPIキー（文章・画像づくりに使う）の2つが必要です。
+      </Notice>
+
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="x-key-heading">
         <div className="flex items-start gap-3">
           <div className="rounded-card bg-brand-subtle p-2 text-brand">
             <Icon name="key" size={20} />
@@ -330,30 +390,21 @@ export function ApiKeySettings({
           <div>
             <CardTitle id="x-key-heading">X APIキー</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              OAuth 2.0のClient IDを登録します。差し替えると既存のBYOK X連携は再認証が必要です。
+              OAuth 2.0のClient IDとClient Secretを登録します。{" "}
+              <a className="text-info-fg underline underline-offset-2" href="#x-guide-heading">
+                取得・設定手順を見る
+              </a>
             </p>
           </div>
         </div>
 
         {keys.x ? <div className="mt-5"><SavedKeySummary keyState={keys.x} /></div> : null}
 
+        {/*
+          「Client種別」セレクタは置かない（T-M8-62。現在のConsoleにPublic/Confidentialの
+          選択は無い）。種別はSecretの有無から導出する（saveX のコメント参照・T-M8-63）。
+        */}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className="space-y-2 text-sm font-medium">
-            Client種別
-            <select
-              className="h-11 w-full rounded-lg border bg-background px-3"
-              disabled={isPending}
-              onChange={(event) => {
-                const value = event.target.value as XClientType;
-                setClientType(value);
-                if (value === "public") setClientSecret("");
-              }}
-              value={clientType}
-            >
-              <option value="public">Public（PKCE）</option>
-              <option value="confidential">Confidential</option>
-            </select>
-          </label>
           <label className="space-y-2 text-sm font-medium">
             Client ID
             <input
@@ -366,20 +417,18 @@ export function ApiKeySettings({
               value={clientId}
             />
           </label>
-          {clientType === "confidential" ? (
-            <label className="space-y-2 text-sm font-medium sm:col-start-2">
-              Client Secret
-              <input
-                autoComplete="new-password"
-                className="h-11 w-full rounded-lg border bg-background px-3 font-mono text-sm"
-                disabled={isPending}
-                onChange={(event) => setClientSecret(event.target.value)}
-                placeholder="Client Secretを入力"
-                type="password"
-                value={clientSecret}
-              />
-            </label>
-          ) : null}
+          <label className="space-y-2 text-sm font-medium">
+            Client Secret
+            <input
+              autoComplete="new-password"
+              className="h-11 w-full rounded-lg border bg-background px-3 font-mono text-sm"
+              disabled={isPending}
+              onChange={(event) => setClientSecret(event.target.value)}
+              placeholder="Client Secretを入力"
+              type="password"
+              value={clientSecret}
+            />
+          </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button className="min-h-10" disabled={isPending || !xSavable} onClick={saveX} type="button">
@@ -387,9 +436,10 @@ export function ApiKeySettings({
           </Button>
           {keys.x ? (
             <>
-              <Button className="min-h-10" disabled={isPending} onClick={() => verify("x")} type="button" variant="outline">
-                形式を確認
-              </Button>
+              {/*
+                「形式を確認」は出さない（T-M8-59）。Xキーは実装上ここでは何も確認できず
+                （検証はOAuth連携が行う）、押すと確認済み表示を「未確認」へ戻すだけだった。
+              */}
               <Button className="min-h-10" disabled={isPending} onClick={() => remove("x")} type="button" variant="outline">
                 <Icon name="delete" size={16} />削除
               </Button>
@@ -402,24 +452,38 @@ export function ApiKeySettings({
         */}
         {!xSavable ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            {clientType === "confidential"
-              ? "Client ID と Client Secret を入力すると保存できます。"
-              : "Client ID を入力すると保存できます。"}
+            {clientId.trim().length === 0
+              ? "Client IDとClient Secretを入力すると保存できます。"
+              : clientId.trim().length < X_CLIENT_ID_MIN_LENGTH
+                ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
+                : `Client Secretは${X_CLIENT_SECRET_MIN_LENGTH}文字以上です（いま${secretTrimmed.length}文字）。`}
           </p>
         ) : null}
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="ai-key-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="ai-key-heading">
         <CardTitle id="ai-key-heading">AI APIキー</CardTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          文章生成・リサーチはAnthropic、OpenAI、Googleから選べます。画像生成に使えるのはOpenAIとGoogleです。
+          文章生成・リサーチはAnthropic、OpenAI、Googleのいずれかの登録が必要です。画像生成はOpenAIとGoogleのいずれかの登録が必要です。
         </p>
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {AI_PROVIDERS.map(({ label, provider }) => {
+        <div className="mt-5 grid gap-4">
+          {AI_PROVIDERS.map(({ label, provider, consoleUrl, capabilities }) => {
             const keyState = keys[provider];
             return (
               <article className="rounded-card border p-4" key={provider}>
-                <h3 className="font-semibold">{label}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold">{label}</h3>
+                  <Badge>{capabilities}</Badge>
+                </div>
+                <a
+                  className="mt-0.5 inline-flex items-center gap-1 text-xs text-info-fg underline underline-offset-2"
+                  href={consoleUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  APIキーの取得ページを開く
+                  <Icon name="open_in_new" size={13} />
+                </a>
                 {keyState ? <div className="mt-3"><SavedKeySummary keyState={keyState} /></div> : (
                   <p className="mt-3 text-sm text-muted-foreground">未登録</p>
                 )}
@@ -436,7 +500,7 @@ export function ApiKeySettings({
                         [provider]: event.target.value,
                       }))
                     }
-                    placeholder="秘密値を入力"
+                    placeholder="APIキーを入力"
                     type="password"
                     value={aiSecrets[provider]}
                   />
@@ -474,16 +538,31 @@ export function ApiKeySettings({
         </div>
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="x-guide-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="x-guide-heading">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-full bg-info-bg text-sm font-bold text-info-fg">?</span>
           <CardTitle id="x-guide-heading">X Developer Appの取得・設定手順</CardTitle>
         </div>
-        <ol className="mt-5 space-y-5 text-sm leading-6">
+        {/*
+          手順は**利用者が実機のConsoleを操作して確認した構成**に合わせる（T-M8-62・2026-08-06）:
+          ①開発者アカウント → ②AppタブでApp作成（Environment: Production）→ ③OAuth 2.0の
+          セットアップ（Read and Write / Web App, Automated App or Bot）→ ④Client ID＋Secret →
+          ⑤Credit。scopeはConsole側の設定ではない（連携時にこのアプリが要求し、Xの許可画面で
+          本人が承認する。T-M8-59）。Consumer Key・Bearer Token は使わないことを明記する——
+          「どれをコピーすればいいのか」が非エンジニアの最初の詰まりどころのため。
+          **Client Secret は必要**（T-M8-63。「Web App, Automated App or Bot」=confidential client
+          で、Secretなしのtoken交換は401で拒否されることを実測で確認した）。
+        */}
+        <ol className="mt-5 space-y-6 text-sm leading-6">
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">1.</span>
             <div>
-              <p className="font-medium">Developer ConsoleでAppを作成</p>
+              <p className="font-medium">開発者アカウントを作る（無料・5分ほど）</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>下のリンクから X Developer Console を開き、ふだんお使いの<strong>Xアカウントでサインイン</strong>します。</li>
+                <li>初回は開発者向けの利用規約（英語）への同意を求められます。内容を確認して同意してください。</li>
+                <li>利用目的などを聞かれた場合は、「I want to automate posts on my X account to save time and maintain a consistent schedule, and improve audience engagement.」などと入力すれば大丈夫です。</li>
+              </ul>
               <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://console.x.com/" rel="noreferrer" target="_blank">
                 X Developer Consoleを開く<Icon name="open_in_new" size={16} />
               </a>
@@ -492,7 +571,31 @@ export function ApiKeySettings({
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
             <span className="font-bold">2.</span>
             <div>
-              <p className="font-medium">OAuth 2.0 callback URLを完全一致で登録</p>
+              <p className="font-medium">「App」タブへ移動して、Appを作る</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li><strong>Environment（環境）</strong>: 「<strong>Production</strong>」を選びます（実際に投稿するための本番用という意味です）。</li>
+                <li><strong>App名</strong>: 好きな名前でかまいません（例: <code className="rounded bg-muted px-1">MyPostTool</code>。他の開発者と重複しない名前にします）。</li>
+                <li>
+                  作成すると <strong>Consumer Key（API KeyとSecret）</strong>や<strong> Bearer Token </strong>が表示されますが、
+                  <strong>このアプリでは使いません</strong>。控えなくて大丈夫です（使うのは手順3の後に発行される Client ID と Client Secret です）。
+                </li>
+              </ul>
+            </div>
+          </li>
+          <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
+            <span className="font-bold">3.</span>
+            <div>
+              <p className="font-medium">OAuth 2.0をセットアップする</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>作ったAppの設定画面で、OAuth 2.0 Keys → User authentication settings → Set upを開きます。</li>
+                <li><strong>App permissions（権限）</strong>: 「<strong>Read and Write</strong>」を選びます（投稿するには書き込み権限が必要です）。</li>
+                <li><strong>Type of App（アプリの種類）</strong>: 「<strong>Web App, Automated App or Bot</strong>」を選びます。</li>
+                <li>
+                  <strong>Callback URI / Redirect URL</strong>: 下のURLを<strong>そのまま</strong>貼り付けます。
+                  1文字でも違うと連携できません（httpsとhttp、末尾の / の有無まで完全一致）。
+                </li>
+                <li><strong>Website URL</strong>: ご自身のXプロフィールのURL（例: <code className="rounded bg-muted px-1">https://x.com/あなたのユーザー名</code>）を入力すれば大丈夫です。</li>
+              </ul>
               <div className="mt-2 flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* コピーできない環境でも手順を終えられるように、手で選びやすくする。 */}
                 <code className="break-all text-xs select-all sm:text-sm">{callbackUrl}</code>
@@ -509,30 +612,51 @@ export function ApiKeySettings({
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
-            <span className="font-bold">3.</span>
+            <span className="font-bold">4.</span>
             <div>
-              <p className="font-medium">必要scopeを5つ許可</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].map((scope) => (
-                  <code className="rounded-md bg-muted px-2 py-1 text-xs" key={scope}>{scope}</code>
-                ))}
-              </div>
+              <p className="font-medium">Client IDとClient Secretをコピーして、このページに保存する</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>セットアップを終えると <strong>Client ID</strong> と <strong>Client Secret</strong> が表示されます。<strong>Client Secretはこの1回しか表示されない</strong>ので、この場で両方コピーします（Client IDはAppの「Keys and Tokens」ページからも確認できます）。</li>
+                <li>このページ上部の「X APIキー」の入力欄に<strong>両方とも</strong>貼って、「Xキーを保存」を押します。</li>
+                <li>Client Secretを控え損ねた場合は、「Keys and Tokens」ページで<strong>再発行（Regenerate）</strong>できます。</li>
+              </ul>
             </div>
           </li>
           <li className="grid gap-1 sm:grid-cols-[2rem_1fr]">
-            <span className="font-bold">4.</span>
+            <span className="font-bold">5.</span>
             <div>
-              <p className="font-medium">credits残高・自動チャージ・spending limitを確認</p>
-              <p className="mt-1 text-muted-foreground">X APIは従量課金です。予期しない停止や支出を防ぐため、利用開始前に予算を設定してください。</p>
-              <a className="mt-1 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
+              <p className="font-medium">Credit（前払いクレジット）の支払いを設定する</p>
+              <p className="mt-1 text-muted-foreground">
+                X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Billing → Credits → Purchase Creditsから購入できます。
+                クレジット（米ドル）を購入しておくと、投稿のたびにそこから差し引かれます。
+              </p>
+              <dl className="mt-2 space-y-2 rounded-lg border bg-muted/40 p-3 text-xs leading-5">
+                <div>
+                  <dt className="font-bold">かかる費用の目安（2026年8月時点の公式単価）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    投稿1件 約$0.015（約2円）／URL付き投稿1件 約$0.200（約30円）。
+                    たとえば1日3投稿を1か月続けると約$1.35（約200円）です。単価は変わることがあるので、購入前にDeveloper Consoleの表示を確認してください。
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-bold">自動チャージ（auto-recharge）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    残高が設定額を下回ると自動でカードから買い足す機能です。
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-bold">支出上限（spending limit）</dt>
+                  <dd className="mt-0.5 text-muted-foreground">
+                    請求期間ごとの上限額です。上限に達するとAPIが止まるので、想定外の高額請求を防ぐ安全装置になります（止まった場合はチャージすれば再開できます）。
+                  </dd>
+                </div>
+              </dl>
+              <a className="mt-2 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
                 X公式の料金・予算設定を確認<Icon name="open_in_new" size={16} />
               </a>
             </div>
           </li>
         </ol>
-        <div className="mt-6 flex min-h-40 items-center justify-center rounded-card border-2 border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
-          Developer Console設定画面のスクリーンショット（差し替え準備中）
-        </div>
       </section>
     </div>
   );

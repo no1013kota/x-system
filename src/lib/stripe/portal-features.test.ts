@@ -44,3 +44,32 @@ describe("judgePortalFeatures", () => {
     expect(judgePortalFeatures({ features: null }).level).toBe("warn");
   });
 });
+
+/**
+ * 「設定IDが別環境のもの」を名指しする（T-M8-55）。
+ *
+ * 2026-08-05、`.env.local` の `STRIPE_PORTAL_CONFIGURATION_ID` が staging の値へ上書きされ、
+ * ローカルの鍵で staging の設定を参照して `No such configuration` になった。
+ * 画面には「プラン管理画面を開けませんでした。時間をおいてもう一度お試しください」と出るが、
+ * **待っても直らない**。汎用の「確認できませんでした」では原因に辿り着けない（原則2）。
+ */
+describe("設定IDが見つからないとき", () => {
+  it("エラーとして扱い、別環境の値の可能性を名指しする", () => {
+    const r = judgePortalFeatures({ features: null, configurationNotFound: true });
+    expect(r.level).toBe("error");
+    expect(r.detail).toContain("STRIPE_PORTAL_CONFIGURATION_ID");
+    expect(r.detail).toContain("別の環境の値");
+  });
+
+  it("単に届かなかった場合とは区別する（そちらは注意のまま）", () => {
+    const r = judgePortalFeatures({ features: null });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("確認できませんでした");
+  });
+
+  it("未設定とも区別する（Stripeの既定が使われるだけなので注意）", () => {
+    const r = judgePortalFeatures({ features: null, configurationMissing: true });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("未設定");
+  });
+});

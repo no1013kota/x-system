@@ -53,7 +53,7 @@ export interface XOAuthStartResult {
 }
 
 export async function buildXOAuthStart(
-  input: { userId: string; returnPath?: string },
+  input: { userId: string; returnPath?: string; reconnectXUserId?: string },
   deps: XOAuthStartDeps,
 ): Promise<XOAuthStartResult> {
   const profile = await deps.getProfile(input.userId);
@@ -65,7 +65,11 @@ export async function buildXOAuthStart(
   const authType = expectedAuthTypeForPlan(profile.plan);
 
   // plan上限: active な連携が上限に達していたら新規連携を止める（設定導線へ戻す）。
-  const active = await deps.getActiveXAccountCount(input.userId);
+  //
+  // **再連携は新規ではないので数えない**（T-M8-53）。上限まで使っていると失効アカウントを
+  // 直せなくなり、「壊れているのに直す手段が無い」行き止まりになる（callback側の
+  // `assertCanLinkXAccount` も同一 x_user_id を上限対象外にしている）。
+  const active = input.reconnectXUserId ? 0 : await deps.getActiveXAccountCount(input.userId);
   if (active >= PLANS[profile.plan].xAccountLimit) {
     throw new AppError("forbidden", {
       details: {
@@ -86,6 +90,7 @@ export async function buildXOAuthStart(
     returnPath: input.returnPath ?? DEFAULT_RETURN_PATH,
     now: deps.now(),
     codeVerifier: pkce.codeVerifier,
+    ...(input.reconnectXUserId ? { reconnectXUserId: input.reconnectXUserId } : {}),
   });
   const authorizeUrl = buildAuthorizeUrl({
     clientId: client.clientId,

@@ -44,6 +44,14 @@ export interface DraftView {
   /** 投稿失敗の詳細（§4.10）。復旧UIが未解決状態（残存/曖昧）の判定に使う。 */
   last_post_error: {
     code?: string;
+    /**
+     * 利用者向けの失敗理由（T-M8-51）。**画面に出す**。
+     *
+     * これを通していなかったため、投稿実行が保存した丁寧な文言（「2本目の本文が長すぎます…
+     * Xへの投稿は1件も行っていません」）が**どこにも表示されず**、利用者には汎用の失敗文しか
+     * 届いていなかった。「Xへ出ていない」と伝わらないと、Xを見に行くまで確認できない。
+     */
+    message?: string;
     remaining_tweet_ids?: string[];
     ambiguous_create_indices?: number[];
     ambiguous_delete_tweet_ids?: string[];
@@ -59,20 +67,58 @@ const DRAFT_COLUMNS = `id, pattern, status, thread, images, parent_draft_id, roo
   tweet_ids, posted_mode, last_post_error,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
-/** active_x_account の下書き（draft/failed）または履歴（posted）を新しい順で返す。 */
+/**
+ * active_x_account の下書き（draft/failed）または履歴（posted）を新しい順で返す。
+ *
+ * `limit` はT-M8-67で追加: LIMITなしだと履歴が数百件に育ったとき、thread/images のJSONを
+ * 全件転送し、画像の署名URL発行も件数分走る。呼び出し側は件数が上限に達したら
+ * 「直近N件を表示」と明示する（黙って切り捨てない）。
+ */
 export async function listDraftsForAccount(
   db: Queryable,
   xAccountId: string,
   tab: DraftTab,
+  options: { limit?: number } = {},
 ): Promise<DraftView[]> {
   const statuses = tab === "history" ? ["posted"] : ["draft", "failed"];
+  const params: unknown[] = [xAccountId, statuses];
+  let limitClause = "";
+  if (options.limit) {
+    params.push(options.limit);
+    limitClause = ` limit $${params.length}`;
+  }
   const { rows } = await db.query<DraftView>(
     `select ${DRAFT_COLUMNS} from drafts
       where x_account_id = $1 and status = any($2)
-      order by coalesce(posted_at, updated_at) desc, created_at desc`,
-    [xAccountId, statuses],
+      order by coalesce(posted_at, updated_at) desc, created_at desc${limitClause}`,
+    params,
   );
   return rows;
+}
+
+/**
+ * ホームの確認待ちキュー（T-M8-67）: status=draft のみを新しい順に limit 件と、
+ * KPI用の総数を返す。以前は全下書き（thread/images込み）を取得してから
+ * アプリ側でフィルタしており、下書きが溜まるほどホームが際限なく重くなった。
+ */
+export async function listPendingDraftsForHome(
+  db: Queryable,
+  xAccountId: string,
+  limit: number,
+): Promise<{ drafts: DraftView[]; total: number }> {
+  const [list, count] = await Promise.all([
+    db.query<DraftView>(
+      `select ${DRAFT_COLUMNS} from drafts
+        where x_account_id = $1 and status = 'draft'
+        order by updated_at desc, created_at desc limit $2`,
+      [xAccountId, limit],
+    ),
+    db.query<{ n: number }>(
+      `select count(*)::int as n from drafts where x_account_id = $1 and status = 'draft'`,
+      [xAccountId],
+    ),
+  ]);
+  return { drafts: list.rows, total: count.rows[0]?.n ?? 0 };
 }
 
 interface OwnedDraftRow {

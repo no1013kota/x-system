@@ -18,6 +18,8 @@ import { THEME_OPTIONS } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 const IMPACTS: { id: string; label: string }[] = [
   { id: "high", label: "高" },
@@ -123,7 +125,7 @@ export function NewsBrowser({
       if (res.status === "success") {
         setCreated((prev) => new Set(prev).add(newsItemId));
         // 生成は1分ほどかかる。どこで結果を見られるかまで示す（要件06 §10）。
-        notify("生成を開始しました。1分ほどかかります。この画面を離れても続きます。", {
+        notify("生成を開始しました。1分ほどで下書きに追加されます。", {
           href: "/app/posts?tab=create",
           label: "進行状況を見る",
           tone: "success",
@@ -211,26 +213,26 @@ export function NewsBrowser({
   return (
     <div className="mt-4 space-y-4">
       {window ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info-fg/25 bg-info-bg px-4 py-3 text-sm text-info-fg">
+        <Notice className="flex flex-wrap items-center justify-between gap-2" tone="info">
           <span>
-            通知の時間窓（{formatDate(window.from)}〜{formatDate(window.to)}）のニュースを表示しています。
+            通知でお知らせした時間帯（{formatDate(window.from)}〜{formatDate(window.to)}）のニュースを表示しています。
           </span>
           <Link className="font-medium underline underline-offset-2" href="/app/news">
             すべてのニュースを表示
           </Link>
-        </div>
+        </Notice>
       ) : (
+        // 集約仕様・通知の配信条件は一覧を見る操作に不要なため書かない（T-M8-66）。
         <p className="text-sm text-muted-foreground">
-          過去7日分のニュースを表示します。ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されます。
-          設定条件に一致する新着が0件の時刻には届きません。
+          過去7日分のニュースを表示します（10時〜20時の間、2時間おきに自動取得）。
         </p>
       )}
 
-      <section aria-label="絞り込み" className="space-y-3 rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]">
-        {/* この条件は news_config として保存され通知にも使われる（要件06 §3.4）。副作用を明示する。 */}
-        <p className="text-xs leading-5 text-muted-foreground">
-          この条件は保存され、ニュース通知の対象にも使われます。
-        </p>
+      <section aria-label="絞り込み" className={`${cardClassName} space-y-3 p-4`}>
+        {/*
+          「保存され通知にも使われる」の前置きは置かない（T-M8-66）。保存されることは
+          ボタンラベル「この条件で表示して保存」が、通知への影響は保存直後のトーストが伝える。
+        */}
         <div>
           <p className="text-xs font-semibold text-muted-foreground">テーマ</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -239,7 +241,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={t.newsCategory}
                   onClick={() => setCategories((prev) => toggle(prev, t.newsCategory))}
                   type="button"
@@ -258,7 +260,7 @@ export function NewsBrowser({
               return (
                 <button
                   aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1 text-[12.5px] font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
+                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
                   key={i.id}
                   onClick={() => setImpacts((prev) => toggle(prev, i.id))}
                   type="button"
@@ -282,7 +284,7 @@ export function NewsBrowser({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending}
             onClick={applyConfig}
             type="button"
@@ -298,16 +300,14 @@ export function NewsBrowser({
         読み上げられていた（T-M8-18）。
       */}
       {note ? (
-        <p
-          className="rounded-card border border-warn-fg/25 bg-warn-bg px-4 py-2 text-[12.5px] text-warn-fg"
-          role="alert"
-        >
+        <Notice tone="warn"
+          role="alert">
           {note}
-        </p>
+        </Notice>
       ) : null}
 
       {items.length === 0 ? (
-        <div className="rounded-card border border-hairline bg-surface px-4 py-11 text-center text-[12.5px] text-ink-2 shadow-[var(--shadow-card)]">
+        <div className={`${cardClassName} px-4 py-11 text-center text-body text-ink-2`}>
           {window ? (
             <p>この時間帯に該当するニュースはありません。</p>
           ) : narrowedFilter ? (
@@ -319,13 +319,11 @@ export function NewsBrowser({
                 onClick={resetFilter}
                 type="button"
               >
-                絞り込みを既定に戻す（全テーマ・インパクト高と中）
+                絞り込みを既定に戻す
               </button>
             </>
           ) : (
-            <p>
-              まだ表示できるニュースがありません。ニュースはJST 10:00〜20:00の2時間おきに取得しています。次の取得までお待ちください。
-            </p>
+            <p>まだ表示できるニュースがありません。次の自動取得までお待ちください。</p>
           )}
         </div>
       ) : (
@@ -333,7 +331,7 @@ export function NewsBrowser({
         <ul className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(0,1fr))] xl:grid-cols-2">
           {items.map((item) => (
             <li
-              className="flex flex-col rounded-card border border-hairline bg-surface p-4 shadow-[var(--shadow-card)]"
+              className={`${cardClassName} flex flex-col p-4`}
               key={item.id}
             >
               <div className="flex items-center gap-2">
@@ -342,28 +340,28 @@ export function NewsBrowser({
                   {IMPACT_LABEL.get(item.impact) ?? item.impact}
                 </Badge>
                 {item.publishedAt ? (
-                  <span className="ml-auto text-[11.5px] text-ink-3 tabular-nums">
+                  <span className="ml-auto text-caption text-ink-3 tabular-nums">
                     {formatDate(item.publishedAt)}
                   </span>
                 ) : null}
               </div>
               <a
-                className="mt-2 block text-[14px] font-bold leading-5 text-ink hover:underline"
+                className="mt-2 block text-sm font-bold leading-5 text-ink hover:underline"
                 href={item.sourceUrl}
                 rel="noopener noreferrer"
                 target="_blank"
               >
                 {item.title}
               </a>
-              <p className="mt-1 text-[12.5px] leading-5 text-ink-2">{item.summary}</p>
+              <p className="mt-1 text-body leading-5 text-ink-2">{item.summary}</p>
               <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
-                <span className="truncate text-[11.5px] text-ink-3">{domainOf(item.sourceUrl)}</span>
+                <span className="truncate text-caption text-ink-3">{domainOf(item.sourceUrl)}</span>
                 <span className="ml-auto">
                   {created.has(item.id) ? (
                     <Badge tone="success">作成済み</Badge>
                   ) : (
                     <button
-                      className="inline-flex h-8 items-center gap-1 rounded-card bg-brand-subtle px-3 text-[12.5px] font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
+                      className="inline-flex h-9 items-center gap-1 rounded-card bg-brand-subtle px-3 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
                       disabled={pending}
                       onClick={() => generate(item.id)}
                       type="button"

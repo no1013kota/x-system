@@ -23,13 +23,11 @@ export const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 export const X_REVOKE_URL = "https://api.x.com/2/oauth2/revoke";
 
 /** 要求scope（順序・space区切り。PRD §8.1 / 要件05 §4.3）。 */
-export const X_SCOPES = [
-  "tweet.read",
-  "tweet.write",
-  "users.read",
-  "media.write",
-  "offline.access",
-] as const;
+// 定義は scopes.ts（client component からも読める純粋モジュール）。import + 再export で
+// 既存のimport元（server側）とこのファイル内の使用の両方を成立させる。
+import { X_SCOPES } from "./scopes";
+
+export { X_SCOPES };
 
 /** OAuth stateの既定TTL。仕様は「短TTL」のみ規定のため技術判断で10分。 */
 export const X_OAUTH_STATE_MAX_AGE_SEC = 600;
@@ -121,6 +119,14 @@ export interface OAuthTransaction {
   codeVerifier: string;
   /** epoch ms。TTL検証に使う。 */
   issuedAt: number;
+  /**
+   * 「このアカウントを再連携する」対象の `x_user_id`（T-M8-53）。
+   *
+   * 以前は「Xアカウントを追加」と「再連携」が同じURLへ飛んでいたため、**再連携を押したのに
+   * 別のXアカウントで認可すると新しい行が増え、壊れた行はそのまま残った**。
+   * 対象を封緘した state に載せ、callback で一致を確かめる。
+   */
+  reconnectXUserId?: string;
 }
 
 export class OAuthStateError extends Error {
@@ -139,6 +145,7 @@ export function newOAuthTransaction(input: {
   now: number;
   state?: string;
   codeVerifier?: string;
+  reconnectXUserId?: string;
 }): OAuthTransaction {
   return {
     userId: input.userId,
@@ -147,6 +154,7 @@ export function newOAuthTransaction(input: {
     state: input.state ?? base64url(randomBytes(24)),
     codeVerifier: input.codeVerifier ?? generateCodeVerifier(),
     issuedAt: input.now,
+    ...(input.reconnectXUserId ? { reconnectXUserId: input.reconnectXUserId } : {}),
   };
 }
 

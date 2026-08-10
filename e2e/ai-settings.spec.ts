@@ -204,8 +204,12 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
   // 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
   const statusChip = page.getByText("失敗", { exact: true });
   await expect(statusChip).toBeVisible();
-  const background = await statusChip.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(background).not.toBe("rgba(0, 0, 0, 0)");
+  // poll してから比べる（1発勝負だと落ちた原因が切り分けられない・T-M8-51）。
+  await expect
+    .poll(() => statusChip.evaluate((el) => getComputedStyle(el).backgroundColor), {
+      message: "「失敗」のチップに tone の背景色が当たること",
+    })
+    .not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("通常プランではベースmd・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({

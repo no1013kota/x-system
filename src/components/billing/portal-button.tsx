@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
+import type { PlanChangeEffects } from "@/lib/billing/plan-change-effects";
 import type { PortalIntent } from "@/lib/stripe/portal";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
 
@@ -19,15 +20,31 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  * **Stripeの顧客がまだ無いときは押せないボタンを出さない**（T-M8-29）。押しても何も起きない
  * ボタンは「壊れている」と読める。契約前の行き先は料金プランなので、そこへのリンクにする。
  */
-export function PortalButton({ enabled }: { enabled: boolean }) {
-  const [pending, setPending] = useState<PortalIntent | null>(null);
+export function PortalButton({
+  cancelAtPeriodEnd = false,
+  effects,
+  enabled,
+}: {
+  /**
+   * 期間末解約が予約済みか（T-M8-57）。予約済みのとき「解約する」を出し続けると、
+   * もう予約されているのに同じ操作を促すことになる。取り消し（Stripeの「プランを続ける」）へ
+   * 導線を替える。
+   */
+  cancelAtPeriodEnd?: boolean;
+  /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
+  effects?: PlanChangeEffects;
+  enabled: boolean;
+}) {
+  const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
   const toast = useToast();
 
-  function open(intent: PortalIntent) {
+  function open(intent: PortalIntent | "manage") {
     return async () => {
       setPending(intent);
       try {
-        await startCustomerPortal(intent);
+        // "manage" はPortalのトップ（解約予定の取り消しはStripeが「プランを続ける」として出す。
+        // flow_data に取り消し専用の型は無いため、トップから行うのが正規の経路）。
+        await startCustomerPortal(intent === "manage" ? undefined : intent);
       } catch (cause) {
         toast.show({
           tone: "error",
@@ -40,6 +57,12 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
   }
 
   if (!enabled) {
+    // Stripeの顧客が無いあいだは Portal を作れないので、行き先は `/plans` にする。
+    //
+    // **説明文は足さない**（T-M8-54）。同期の遅延はカード直下の
+    // 「変更内容はStripeからの通知を受けてこの画面へ反映されます（数十秒かかることがあります）」
+    // が既に伝えている。同じことを2か所で言うと、常時出る注意書きとして読み飛ばされる。
+    // 跳ね返り（`/plans` が契約者を `/app` へ送り返す）は `/plans` 側で直した。
     return (
       <Link className={primaryLinkClassName} href="/plans">
         プランを選ぶ
@@ -61,21 +84,58 @@ export function PortalButton({ enabled }: { enabled: boolean }) {
         >
           {pending === "update" ? "開いています…" : "プランを変更"}
         </Button>
-        <Button
-          aria-busy={pending === "cancel"}
-          className="h-9"
-          disabled={pending !== null}
-          onClick={open("cancel")}
-          size="lg"
-          type="button"
-          variant="outline"
-        >
-          {pending === "cancel" ? "開いています…" : "解約する"}
-        </Button>
+        {cancelAtPeriodEnd ? (
+          <Button
+            aria-busy={pending === "manage"}
+            className="h-9"
+            disabled={pending !== null}
+            onClick={open("manage")}
+            size="lg"
+            type="button"
+            variant="outline"
+          >
+            {pending === "manage" ? "開いています…" : "解約予定を取り消す"}
+          </Button>
+        ) : (
+          <Button
+            aria-busy={pending === "cancel"}
+            className="h-9"
+            disabled={pending !== null}
+            onClick={open("cancel")}
+            size="lg"
+            type="button"
+            variant="outline"
+          >
+            {pending === "cancel" ? "開いています…" : "解約する"}
+          </Button>
+        )}
       </div>
-      <p className="text-xs leading-5 text-ink-3">
-        どちらもStripeの安全な画面へ移動します。解約は期間末で、支払い済みの期間は続けて使えます。お支払い方法の変更と請求書は「プランを変更」の先から辿れます。
-      </p>
+      {/*
+        **押す前に「いつから・いくら」を出す**（T-M8-55）。以前はここが1行で、
+        上位プランへ変えると即時に日割り請求が走ることも、下位プランは期間末まで
+        切り替わらないことも画面から読めなかった。金額と時期が変わる操作なので、
+        Stripeへ移動する前に結果を示す（文言はStripe側の設定と1対1で対応する）。
+      */}
+      {effects ? (
+        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-body leading-5 sm:grid-cols-2">
+          {(
+            [
+              ["上位プランへ変更", effects.upgrade],
+              ["下位プランへ変更", effects.downgrade],
+              ["解約", effects.cancel],
+              ...(effects.trialNote ? [["無料トライアル中の変更", effects.trialNote] as const] : []),
+            ] as const
+          ).map(([label, effect]) => (
+            <div key={label}>
+              <dt className="text-caption text-ink-3">{label}</dt>
+              <dd className="mt-0.5">
+                <span className="font-bold text-ink">{effect.headline}</span>
+                <span className="mt-0.5 block text-ink-2">{effect.detail}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }

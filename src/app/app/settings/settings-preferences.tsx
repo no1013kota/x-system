@@ -7,7 +7,6 @@ import { useToast } from "@/components/ui/toast";
 import {
   updateNewsConfigAction,
   updateNotificationConfigAction,
-  updateProfileAction,
 } from "@/app/actions/settings";
 import {
   NOTIFICATION_TYPES,
@@ -15,7 +14,7 @@ import {
   type NotificationConfig,
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import {
   clampNewsMaxItems,
   NEWS_MAX_ITEMS_MAX,
@@ -45,46 +44,6 @@ const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "�
 const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
-function ProfileForm({ displayName }: { displayName: string | null }) {
-  const [value, setValue] = useState(displayName ?? "");
-  const [pending, startTransition] = useTransition();
-  const toast = useToast();
-  return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-      <CardTitle>プロフィール</CardTitle>
-      <label className="mt-4 block text-sm font-medium" htmlFor="display_name">
-        表示名
-      </label>
-      <input
-        className="mt-1 h-10 w-full max-w-sm rounded-lg border px-3 text-sm"
-        id="display_name"
-        maxLength={50}
-        onChange={(e) => setValue(e.target.value)}
-        value={value}
-      />
-      <div className="mt-4">
-        <Button
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const res = await updateProfileAction({ display_name: value });
-              toast.show({
-                tone: res.status === "success" ? "success" : "error",
-                title: res.status === "success" ? "プロフィールを保存しました" : "保存できませんでした",
-                description: res.status === "success" ? undefined : res.message,
-              });
-            })
-          }
-          size="lg"
-          variant="brand"
-          type="button"
-        >
-          {pending ? "保存中…" : "保存"}
-        </Button>
-      </div>
-    </section>
-  );
-}
 
 function NotificationForm({ config }: { config: NotificationConfig }) {
   const [state, setState] = useState<NotificationConfig>(config);
@@ -99,7 +58,7 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
       [type]: { ...prev[type], [channel]: !prev[type][channel] },
     }));
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <CardTitle>通知</CardTitle>
       <p className="mt-1 text-sm text-muted-foreground">
         種別ごとにアプリ内通知とメールの受け取りを設定できます。
@@ -117,13 +76,17 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
             <tr className="border-b last:border-0" key={type}>
               <td className="py-2">{TYPE_LABEL[type]}</td>
               {(["in_app", "email"] as const).map((channel) => (
-                <td className="py-2 text-center" key={channel}>
-                  <input
-                    aria-label={`${TYPE_LABEL[type]}の${channel === "in_app" ? "アプリ内" : "メール"}通知`}
-                    checked={state[type][channel]}
-                    onChange={() => toggle(type, channel)}
-                    type="checkbox"
-                  />
+                <td className="text-center" key={channel}>
+                  {/* タップ対象はラベル全体（約40px四方）。素のcheckboxは13px四方しかない（T-M8-70）。 */}
+                  <label className="inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
+                    <input
+                      aria-label={`${TYPE_LABEL[type]}の${channel === "in_app" ? "アプリ内" : "メール"}通知`}
+                      checked={state[type][channel]}
+                      className="size-4"
+                      onChange={() => toggle(type, channel)}
+                      type="checkbox"
+                    />
+                  </label>
                 </td>
               ))}
             </tr>
@@ -150,39 +113,52 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
 function NewsForm({ config }: { config: NewsConfig }) {
   const [categories, setCategories] = useState<string[]>(config.categories);
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
-  const [maxItems, setMaxItems] = useState(config.max_items);
+  /**
+   * 表示件数は**入力中は文字列で保持する**（T-M8-51）。
+   *
+   * 打鍵ごとに `clampNewsMaxItems` を掛けると、欄を空にできず（0が即1へ丸められる）
+   * 「100」を消して打ち直すことすらできない。丸めるのは blur と保存のときだけにする。
+   * 一方で「押す前に止める」（T-M8-37）は維持し、範囲外のあいだは保存させない。
+   */
+  const [maxItemsText, setMaxItemsText] = useState(String(config.max_items));
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  const maxItemsNumber = Number(maxItemsText);
   // **押す前に止める**（T-M8-37）。以前は件数が対象外で、欄を空にする（`Number("")` → 0）か
   // 101以上を入れた状態でも保存でき、サーバー検証で「入力内容を確認してください」という
   // どの項目が悪いか分からないエラーになっていた。
-  const maxItemsInvalid = maxItems < NEWS_MAX_ITEMS_MIN || maxItems > NEWS_MAX_ITEMS_MAX;
-  const invalid = categories.length === 0 || impacts.length === 0 || maxItemsInvalid;
+  const maxItemsInvalid =
+    maxItemsText.trim() === "" ||
+    !Number.isFinite(maxItemsNumber) ||
+    maxItemsNumber < NEWS_MAX_ITEMS_MIN ||
+    maxItemsNumber > NEWS_MAX_ITEMS_MAX;
+  const selectionInvalid = categories.length === 0 || impacts.length === 0;
+  const invalid = selectionInvalid || maxItemsInvalid;
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <CardTitle>ニュース通知</CardTitle>
+      {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースはJST 10:00〜20:00の2時間おきに取得され、取得時刻ごとに最大1件へ集約されて届きます。
-        設定条件に一致する新着が0件の時刻には通知は届きません。ここでのテーマ・インパクト・表示件数は
-        一覧表示にも適用されます。
+        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定はニュース一覧の表示にも使われます。
       </p>
 
       <fieldset className="mt-4">
         <legend className="text-sm font-medium">テーマ（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_CATEGORIES.map((c) => (
-            <label className="flex items-center gap-1.5 text-sm" key={c}>
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={c}>
               <input
                 checked={categories.includes(c)}
+                className="size-4"
                 onChange={() => toggle(categories, setCategories, c)}
                 type="checkbox"
               />
@@ -196,9 +172,10 @@ function NewsForm({ config }: { config: NewsConfig }) {
         <legend className="text-sm font-medium">インパクト（1件以上）</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {ALL_IMPACTS.map((i) => (
-            <label className="flex items-center gap-1.5 text-sm" key={i}>
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={i}>
               <input
                 checked={impacts.includes(i)}
+                className="size-4"
                 onChange={() => toggle(impacts, setImpacts, i)}
                 type="checkbox"
               />
@@ -212,17 +189,25 @@ function NewsForm({ config }: { config: NewsConfig }) {
         表示件数（1〜100）
       </label>
       <input
-        aria-describedby="max_items-error"
+        // **この欄のメッセージだけを指す**（T-M8-51）。以前は選択項目（テーマ・インパクト）の
+        // 文言と id を共有していたため、読み上げが別項目の理由を読んでいた。
+        aria-describedby={maxItemsInvalid ? "max_items-error" : undefined}
         aria-invalid={maxItemsInvalid}
         className="mt-1 h-10 w-28 rounded-lg border px-3 text-sm"
         id="max_items"
         max={NEWS_MAX_ITEMS_MAX}
         min={NEWS_MAX_ITEMS_MIN}
-        // ニュース一覧の同じ欄と同じ丸め方をする（同じ設定項目が画面によって違う挙動をしない）。
-        onChange={(e) => setMaxItems(clampNewsMaxItems(Number(e.target.value)))}
+        // 入力中は丸めない（打ち直せなくなる）。確定時にニュース一覧と同じ丸め方をする。
+        onBlur={() => setMaxItemsText(String(clampNewsMaxItems(Number(maxItemsText))))}
+        onChange={(e) => setMaxItemsText(e.target.value)}
         type="number"
-        value={maxItems}
+        value={maxItemsText}
       />
+      {maxItemsInvalid ? (
+        <p className="mt-1 text-sm text-destructive" id="max_items-error" role="alert">
+          表示件数は{NEWS_MAX_ITEMS_MIN}〜{NEWS_MAX_ITEMS_MAX}で指定してください。
+        </p>
+      ) : null}
 
       <div className="mt-4">
         <Button
@@ -232,7 +217,8 @@ function NewsForm({ config }: { config: NewsConfig }) {
               const res = await updateNewsConfigAction({
                 categories,
                 impact_filter: impacts,
-                max_items: maxItems,
+                // 保存時にも丸める（blur を経ずにEnterで送るときの保険）。
+                max_items: clampNewsMaxItems(maxItemsNumber),
               });
               toast.show({
                 tone: res.status === "success" ? "success" : "error",
@@ -248,23 +234,19 @@ function NewsForm({ config }: { config: NewsConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      {invalid ? (
-        <p className="mt-3 text-sm text-destructive" id="max_items-error" role="alert">
-          {maxItemsInvalid
-            ? `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`
-            : "テーマとインパクトはそれぞれ1件以上選択してください。"}
+      {selectionInvalid ? (
+        <p className="mt-3 text-sm text-destructive" role="alert">
+          テーマとインパクトはそれぞれ1件以上選択してください。
         </p>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
 export function SettingsPreferences({
-  displayName,
   notificationConfig,
   newsConfig,
 }: {
-  displayName: string | null;
   notificationConfig: NotificationConfig;
   newsConfig: NewsConfig;
 }) {
@@ -273,10 +255,9 @@ export function SettingsPreferences({
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
       <NotificationForm config={notificationConfig} />
-      <div className="grid items-start gap-4">
-        <ProfileForm displayName={displayName} />
-        <NewsForm config={newsConfig} />
-      </div>
+      {/* 表示名（プロフィール）は削除した（T-M8-59）。どこにも使われておらず、
+          「何のための入力か分からない欄」だけが残っていた（2026-08-05 ユーザー判断）。 */}
+      <NewsForm config={newsConfig} />
     </div>
   );
 }

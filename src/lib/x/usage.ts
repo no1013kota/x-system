@@ -1,4 +1,5 @@
 import { recordExternalApiUsage } from "../db/api-usage-ledger";
+import { recordUnexpectedError } from "../observability/sentry";
 import type { Queryable } from "./token-refresh";
 import { XApiError, type XApiMeta } from "./client";
 import type { XCostOperation } from "./pricing";
@@ -10,6 +11,11 @@ import type { XCostOperation } from "./pricing";
  *
  * - dry_run（実 API を呼ばず実 tweet_id / 利用枠を作らない）は原価が発生しないため記録しない。
  * - media upload は原価台帳から除外するため、本ラッパで包まない（運用logのみ）。
+ *
+ * **台帳の記録失敗は握り潰さない**（T-M8-51）。以前は `.catch(() => {})` で完全に捨てていたため、
+ * 記録に失敗した分だけ**費用が実費より小さく見える**。運営者は「費用が見える」ことを前提に
+ * 従量課金を判断する（CLAUDE.md 原則4）ので、小さく出るのは最も避けたい壊れ方。
+ * X API の結果自体は今と同じく台帳の失敗で左右させない（投稿は成功しているため）。
  * - 台帳記録の失敗で API 結果を握り潰さない（記録は best-effort）。
  */
 
@@ -26,6 +32,11 @@ export interface RecordedXCallParams {
   unitCostUsd: number;
   /** 冪等キー（例: `draft:{draft_id}:tweet:{seq}:x_post_create`）。 */
   idempotencyKey: string;
+}
+
+/** 台帳の書き込み失敗を記録する（X API 呼び出し自体は続行する）。 */
+function reportLedgerFailure(error: unknown, operation: XCostOperation, status: string): void {
+  recordUnexpectedError(error, { at: "x_usage_ledger", operation, callStatus: status });
 }
 
 export async function recordedXCall<T extends XApiMeta>(
@@ -54,7 +65,7 @@ export async function recordedXCall<T extends XApiMeta>(
       unitCostUsd,
       estimatedCostUsd: 0,
       idempotencyKey,
-    }).catch(() => {});
+    }).catch((ledgerError) => reportLedgerFailure(ledgerError, operation, "failed"));
     throw error;
   }
 
@@ -73,7 +84,7 @@ export async function recordedXCall<T extends XApiMeta>(
       unitCostUsd,
       estimatedCostUsd: unitCostUsd * quantity,
       idempotencyKey,
-    }).catch(() => {});
+    }).catch((ledgerError) => reportLedgerFailure(ledgerError, operation, "succeeded"));
   }
   return result;
 }

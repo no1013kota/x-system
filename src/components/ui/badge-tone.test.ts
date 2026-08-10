@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -19,7 +20,13 @@ import { describe, expect, it } from "vitest";
  * tone から**クラス文字列を引いた**変数（`toneClass` 等）は別物なので対象にしない。
  */
 
-const SRC = join(process.cwd(), "src");
+/**
+ * **`process.cwd()` に依存しない**（T-M8-51）。cwd 基準だとリポジトリ直下以外から
+ * `vitest` を起動したとき（サブディレクトリ実行・エディタ統合）に必ず落ちる。
+ * このファイル自身の位置からリポジトリ root を求める。
+ */
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const SRC = join(ROOT, "src");
 
 function collectTsx(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -29,10 +36,36 @@ function collectTsx(dir: string): string[] {
   });
 }
 
-/** `BadgeTone` 型として宣言された識別子（tone のマップ・tone そのもの）。 */
-function badgeToneIdentifiers(source: string): string[] {
+/**
+ * `src/components/ui/*.tsx` が公開している tone 型の名前を集める（T-M8-51）。
+ *
+ * 以前は `BadgeTone` だけを見ていたため、**`Notice` 側で同じ無色化が起きても緑**だった。
+ * 型名を列挙して自動で対象に含めれば、tone 型が増えても取りこぼしが構造的に消える。
+ */
+function toneTypeNames(): string[] {
+  const names = readdirSync(join(SRC, "components", "ui"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
+    .flatMap((entry) => [
+      ...readFileSync(join(SRC, "components", "ui", entry.name), "utf8").matchAll(
+        /export type (\w*Tone)\b/g,
+      ),
+    ])
+    .map((match) => match[1]);
+  return [...new Set(names)];
+}
+
+/** tone 型として宣言された識別子（tone のマップ・tone そのもの）。 */
+function badgeToneIdentifiers(source: string, toneTypes: string[]): string[] {
+  const alternation = toneTypes.join("|");
   return [
-    ...source.matchAll(/(?:const|let)\s+(\w+)\s*:\s*(?:Record<[^>]*BadgeTone\s*>|BadgeTone)/g),
+    ...source.matchAll(
+      // `as const` / `satisfies` の形も拾う（型注釈が無い書き方で漏れないように）。
+      new RegExp(
+        `(?:const|let)\\s+(\\w+)\\s*(?::\\s*(?:Record<[^>]*(?:${alternation})\\s*>|(?:${alternation}))` +
+          `|=[^;]*satisfies\\s+Record<[^>]*(?:${alternation})\\s*>)`,
+        "g",
+      ),
+    ),
   ].map((match) => match[1]);
 }
 
@@ -53,17 +86,25 @@ function classNameExpressions(source: string): string[] {
   return out;
 }
 
-describe("BadgeTone は className へ展開しない", () => {
+const TONE_TYPES = toneTypeNames();
+
+describe("tone は className へ展開しない", () => {
+  it("検査対象の tone 型を自動で集めている（Badge だけを見て終わらない）", () => {
+    // `Notice` を足したときに検査が追随しなかった穴を塞ぐ（T-M8-51）。
+    expect(TONE_TYPES).toContain("BadgeTone");
+    expect(TONE_TYPES).toContain("NoticeTone");
+  });
+
   it("tone として宣言された識別子が className の中に現れない", () => {
     const offenders: string[] = [];
     for (const file of collectTsx(SRC)) {
       const source = readFileSync(file, "utf8");
-      const toneNames = badgeToneIdentifiers(source);
+      const toneNames = badgeToneIdentifiers(source, TONE_TYPES);
       if (toneNames.length === 0) continue;
       for (const expression of classNameExpressions(source)) {
         for (const name of toneNames) {
           if (new RegExp(`\\b${name}\\b`).test(expression)) {
-            offenders.push(`${file.slice(process.cwd().length + 1)}: className に ${name} が入っている`);
+            offenders.push(`${file.slice(ROOT.length)}: className に ${name} が入っている`);
           }
         }
       }
@@ -73,7 +114,7 @@ describe("BadgeTone は className へ展開しない", () => {
 
   it("tone のマップを持つファイルを実際に検出できている（検査が空振りしていない）", () => {
     const withToneMaps = collectTsx(SRC).filter(
-      (file) => badgeToneIdentifiers(readFileSync(file, "utf8")).length > 0,
+      (file) => badgeToneIdentifiers(readFileSync(file, "utf8"), TONE_TYPES).length > 0,
     );
     expect(withToneMaps.length).toBeGreaterThan(0);
   });

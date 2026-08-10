@@ -5,7 +5,7 @@ import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-import { CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -33,9 +33,9 @@ export function RecentResultsCard({
 }) {
   if (posts.length === 0) {
     return (
-      <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+      <Card as="section" className="px-5 py-4">
         <CardTitle>直近の実績</CardTitle>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-body leading-5 text-ink-2">
           まだ投稿がありません。投稿すると、表示回数などの実績がここに表示されます。
         </p>
         <Link
@@ -44,7 +44,7 @@ export function RecentResultsCard({
         >
           今すぐ作成
         </Link>
-      </section>
+      </Card>
     );
   }
 
@@ -52,10 +52,10 @@ export function RecentResultsCard({
   const measured = (day1?.tweets ?? 0) > 0;
 
   return (
-    <section className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" className="px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <CardTitle>直近の実績</CardTitle>
-        <Link className="text-sm text-primary underline" href="/app/analytics">
+        <Link className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline" href="/app/analytics">
           分析を見る
         </Link>
       </div>
@@ -84,7 +84,7 @@ export function RecentResultsCard({
 
       <ul className="mt-3 space-y-2">
         {posts.map((post) => (
-          <li className="rounded-lg border bg-background p-3" key={post.draftId}>
+          <li className="rounded-card border border-hairline p-3" key={post.draftId}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge>{POST_PATTERN_LABELS[post.pattern] ?? post.pattern}</Badge>
               {post.postedMode ? (
@@ -96,17 +96,17 @@ export function RecentResultsCard({
                 {formatJst(post.postedAt)}
               </span>
             </div>
-            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{post.excerpt}</p>
+            <p className="mt-1 line-clamp-2 text-body leading-5 text-ink-2">{post.excerpt}</p>
             <div className="mt-2 flex flex-wrap gap-3 text-xs">
               <Link
-                className="text-primary underline"
+                className="inline-flex items-center py-2 -my-2 text-brand underline-offset-2 hover:underline"
                 href={`/app/posts?tab=history&draftId=${post.draftId}`}
               >
                 履歴で開く
               </Link>
               {post.firstTweetId ? (
                 <a
-                  className="text-primary underline"
+                  className="inline-flex items-center py-2 -my-2 text-brand underline-offset-2 hover:underline"
                   href={tweetUrl(handle, post.firstTweetId)}
                   rel="noopener noreferrer"
                   target="_blank"
@@ -118,6 +118,6 @@ export function RecentResultsCard({
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

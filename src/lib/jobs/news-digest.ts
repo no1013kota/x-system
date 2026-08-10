@@ -33,6 +33,18 @@ function hourIso(d: Date): string {
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+/**
+ * 窓ごとのdedupe key。**テストの後片付けでも使う**ため公開する（T-M8-64・bug）。
+ *
+ * fan-outは条件が合う**全利用者**へ配る。DBテストが後片付けでテスト用ユーザーの通知しか
+ * 消していなかったため、共有ローカルDBでは**開発者の実アカウントにも未来窓の偽ダイジェスト
+ * が届き、残り続けた**（通知を押すと未来の時間窓のニュース＝常に0件）。窓のkeyで消せば
+ * 誰に配られたかを知らなくても全部消せる。
+ */
+export function newsDigestDedupeKey(windowStart: Date): string {
+  return `news-digest:${hourIso(windowStart)}`;
+}
+
 interface DigestRow {
   user_id: string;
   in_app: boolean;
@@ -107,7 +119,7 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
   const windowEnd = new Date(windowStart.getTime() + 3600 * 1000);
   const fromIso = hourIso(windowStart);
   const toIso = hourIso(windowEnd);
-  const dedupeKey = `news-digest:${fromIso}`;
+  const dedupeKey = newsDigestDedupeKey(windowStart);
   const link = `/app/news?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
 
   const digestRows = await loadDigestRows(deps.db, windowStart, windowEnd);

@@ -248,11 +248,11 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.confirmation]
-subject = "Space AIのメールアドレス確認"
+subject = "Exos AIのメールアドレス確認"
 content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.recovery]
-subject = "Space AIのパスワード再設定"
+subject = "Exos AIのパスワード再設定"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template

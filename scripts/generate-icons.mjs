@@ -14,21 +14,18 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 /**
  * 使用するアイコン（Material Symbols の名前）。
- * デザイン2ファイルから抽出した41個＋lucide撤去で足した3個。**増やすときはここへ足して再生成する**。
+ * 実際に使っている33個（デザイン抽出41個 → lucide撤去で3個追加 → 未使用11個を棚卸し・T-M8-51）。**増やすときはここへ足して再生成する**。
  *
  * 2つはMaterial Symbols側で改名されている（パッケージ0.45系）:
  * `auto_awesome` → `star_shine` ／ `expand_more` → `keyboard_arrow_down`。
  */
 const ICON_NAMES = [
-  "add", "star_shine", "block", "bolt", "check", "check_circle", "chevron_right",
-  "close", "data_usage", "delete", "description", "drafts", "edit", "edit_square",
-  "error", "keyboard_arrow_down", "history", "hourglass_top", "image", "key", "lightbulb",
-  "link", "lock", "mark_email_unread", "monitoring", "newspaper", "notifications",
-  "open_in_new", "output", "progress_activity", "radio_button_unchecked", "refresh",
-  "schedule", "search_off", "smart_toy", "sync", "tune", "verified_user",
-  "visibility", "warning", "workspace_premium",
-  // T-M8-45: `lucide-react` を撤去するために足した3つ（等価が未収録だったもの）。
-  "account_circle", "unfold_more", "content_copy",
+  "add", "star_shine", "bolt", "check", "check_circle", "chevron_right", "close",
+  "delete", "description", "drafts", "edit", "edit_square", "error", "history",
+  "home", "image", "key", "lock", "monitoring", "newspaper", "notifications", "open_in_new",
+  "output", "progress_activity", "radio_button_unchecked", "refresh", "schedule", "smart_toy", "tune",
+  "verified_user", "warning", "account_circle", "unfold_more", "content_copy",
+  // T-M8-51: 未使用11個を棚卸しした（`icon-source.test.ts` が再発を検査する）。
 ];
 
 /**
@@ -36,8 +33,8 @@ const ICON_NAMES = [
  * ここに挙げたものだけ `-fill` を生成する（全部作ると無駄に増える）。
  */
 const FILLED_NAMES = [
-  "output", "newspaper", "edit_square", "schedule", "monitoring", "description",
-  "tune", "check_circle", "workspace_premium",
+  "home", "output", "newspaper", "edit_square", "schedule", "monitoring", "description",
+  "tune", "check_circle",
 ];
 
 const SRC = "node_modules/@material-symbols/svg-400/outlined";

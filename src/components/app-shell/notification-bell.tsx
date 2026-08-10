@@ -124,7 +124,7 @@ export function NotificationBell({
       >
         <Icon name="notifications" size={20} />
         {unread > 0 ? (
-          <span className="absolute top-1 right-1 inline-flex min-w-4 items-center justify-center rounded-pill bg-danger-dot px-1 text-[10px] leading-4 font-bold text-white">
+          <span className="absolute top-1 right-1 inline-flex min-w-4 items-center justify-center rounded-pill bg-danger-dot px-1 text-[11px] leading-4 font-bold text-white">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
@@ -133,9 +133,9 @@ export function NotificationBell({
         <Popover.Positioner align="end" className="z-40" sideOffset={8}>
           <Popover.Popup className="w-[min(340px,calc(100vw-1rem))] overflow-hidden rounded-card border border-hairline bg-surface shadow-[var(--shadow-modal)] outline-none">
             <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-              <p className="text-[13.5px] font-bold text-ink">通知</p>
+              <p className="text-body font-bold text-ink">通知</p>
               <button
-                className="text-[11.5px] text-brand hover:underline disabled:opacity-50"
+                className="-mx-2 -my-2 rounded-card px-2 py-2 text-caption text-brand hover:underline disabled:opacity-50"
                 disabled={pending || unread === 0}
                 onClick={markAll}
                 type="button"
@@ -145,7 +145,7 @@ export function NotificationBell({
             </div>
 
             {items.length === 0 ? (
-              <p className="px-4 py-9 text-center text-[12.5px] text-ink-2">
+              <p className="px-4 py-9 text-center text-body text-ink-2">
                 通知はありません。
               </p>
             ) : (
@@ -176,20 +176,20 @@ export function NotificationBell({
                         }`}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-medium text-ink">{item.title}</span>
-                        <span className="mt-0.5 block text-[11.5px] leading-4 text-ink-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+                        <span className="block text-body font-medium text-ink">{item.title}</span>
+                        <span className="mt-0.5 block text-caption leading-4 text-ink-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
                           {item.body}
                         </span>
-                        <span className="mt-1 block text-[11px] text-ink-3">
+                        <span className="mt-1 block text-caption text-ink-3">
                           {formatJst(item.createdAt)}
                         </span>
                       </span>
                     </Row>
                     {item.emailStatus === "failed" ? (
-                      <p className="flex flex-wrap items-center gap-2 px-4 pb-2.5 text-[11px] text-danger-fg">
+                      <p className="flex flex-wrap items-center gap-2 px-4 pb-2.5 text-caption text-danger-fg">
                         メールが送れませんでした
                         <button
-                          className="rounded-chip border border-hairline px-2 py-0.5 text-[11px] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                          className="inline-flex min-h-8 items-center rounded-card border border-hairline px-2.5 text-caption font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                           disabled={pending}
                           onClick={() => retryEmail(item.id)}
                           type="button"
@@ -207,7 +207,7 @@ export function NotificationBell({
             {cursor ? (
               <div className="border-t p-2">
                 <button
-                  className="w-full rounded-md py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                  className="w-full rounded-card py-2 text-body text-ink-2 transition-colors duration-150 hover:bg-black/[0.02] hover:text-ink disabled:opacity-50"
                   disabled={pending}
                   onClick={loadMore}
                   type="button"

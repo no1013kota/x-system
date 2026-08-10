@@ -29,15 +29,20 @@ const TONES = {
 
 export type NoticeTone = keyof typeof TONES;
 
+/**
+ * `as` で要素を選べる（既定は `div`）。**見出しを持つ通知は `section`** にする——
+ * `div` にすると `aria-labelledby` の指す landmark が消える（`Card` と同じ考え方・T-M8-52）。
+ */
 export function Notice({
+  as: Tag = "div",
   className,
   tone = "info",
   ...props
-}: ComponentProps<"div"> & { tone?: NoticeTone }) {
+}: ComponentProps<"div"> & { as?: "div" | "section" | "p"; tone?: NoticeTone }) {
   return (
-    <div
+    <Tag
       className={cn(
-        "rounded-card border px-4 py-3 text-[13px] leading-6",
+        "rounded-card border px-4 py-3 text-body leading-6",
         TONES[tone],
         className,
       )}

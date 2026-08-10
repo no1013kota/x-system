@@ -51,6 +51,12 @@ test("サインアップ→確認メール→ログインまで通り、未契�
     await page.goto(await confirmUrlFromMail(mail.ID));
     await expect(page).toHaveURL(/\/plans/);
 
+    // **確認が済んだことを画面が言う**（T-M8-58）。以前は無言で料金表に変わるだけで、
+    // リンクを押した結果（確認できたのか）が分からなかった（失敗時だけ文言があった）。
+    await expect(
+      page.getByText("メールアドレスの確認が完了しました", { exact: false }),
+    ).toBeVisible();
+
     const [confirmed] = await query<{ confirmed_at: string | null }>(
       `select email_confirmed_at as confirmed_at from auth.users where email = $1`,
       [email],

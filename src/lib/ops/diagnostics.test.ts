@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  describeEmptyCategories,
-  judgeDatabaseSize,
   FREE_DB_SIZE_LIMIT_BYTES,
+  describeEmptyCategories,
   judgeCost,
+  judgeDatabaseSize,
   judgeJobs,
   judgeNews,
   judgeQueuedEmails,
+  judgeScheduler,
   judgeStuckJobs,
   judgeXAccounts,
   summarize,
-  worstLevel,
   type Check,
+  worstLevel,
 } from "./diagnostics";
 
 /**
@@ -210,6 +211,57 @@ describe("judgeQueuedEmails", () => {
   it("失敗は送信待ちより先に扱う（自動では回収されないため）", () => {
     const r = judgeQueuedEmails({ queued: 3, oldestHours: 1, failed: 1 });
     expect(r.level).toBe("error");
+  });
+});
+
+/**
+ * 定時実行の生存（T-M8-51）。`judgeQueuedEmails` と同型の見落としで、止まっていても
+ * doctor はどこも赤くならなかった。tick が死ぬと予約投稿・通知メール・日次サマリが静かに全部止まる。
+ */
+describe("judgeScheduler", () => {
+  it("本番で15分以内に動いていれば正常", () => {
+    expect(judgeScheduler({ minutesSinceLastRun: 4, schedulerExpected: true }).level).toBe("ok");
+  });
+
+  it("本番で15分を超えたらエラー（5分間隔で動く想定）", () => {
+    const r = judgeScheduler({ minutesSinceLastRun: 40, schedulerExpected: true });
+    expect(r.level).toBe("error");
+    expect(r.detail).toContain("40");
+    expect(r.nextAction).toContain("Vercel Cron");
+  });
+
+  it("本番で一度も動いていなければエラー（「実行なし」と正常を混同しない）", () => {
+    const r = judgeScheduler({ minutesSinceLastRun: null, schedulerExpected: true });
+    expect(r.level).toBe("error");
+    expect(r.nextAction).toBeTruthy();
+  });
+
+  // ローカル・previewでは動かないのが正しいので赤くしない（judgeNews と同じ扱い）。
+  it("定時実行が前提でない環境では赤くしない", () => {
+    expect(judgeScheduler({ minutesSinceLastRun: null, schedulerExpected: false }).level).toBe("ok");
+    expect(judgeScheduler({ minutesSinceLastRun: 999, schedulerExpected: false }).level).toBe("ok");
+  });
+});
+
+describe("judgeQueuedEmails の期間の窓（T-M8-51）", () => {
+  // 窓が無いと1件失敗しただけで恒久的に赤くなり、赤が常態化して他の異常が埋もれる。
+  it("古い失敗だけなら注意に落とす（恒久的に赤くしない）", () => {
+    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 3 });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("3");
+  });
+
+  it("直近の失敗があればエラーで、古い分は件数として添える", () => {
+    const r = judgeQueuedEmails({ queued: 1, oldestHours: 2, failed: 2, failedOlder: 5 });
+    expect(r.level).toBe("error");
+    expect(r.detail).toContain("2");
+    expect(r.detail).toContain("5");
+  });
+
+  it("どちらも無ければ正常", () => {
+    expect(
+      judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 0 }).level,
+    ).toBe("ok");
   });
 });
 

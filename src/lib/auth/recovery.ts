@@ -8,7 +8,7 @@ import {
 import { captchaTokenSchema, emailSchema } from "./form-schemas";
 import { authPasswordSchema } from "./signup";
 
-export const RECOVERY_SESSION_COOKIE = "space-ai-recovery";
+export const RECOVERY_SESSION_COOKIE = "exos-ai-recovery";
 export const RECOVERY_SESSION_MAX_AGE_SEC = 15 * 60;
 
 export const passwordResetRequestSchema = z.object({

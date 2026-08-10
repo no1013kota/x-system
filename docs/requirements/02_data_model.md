@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.25 |
+| バージョン | v1.26 |
 | 更新日 | 2026-08-03 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -54,7 +54,6 @@
 |---|---|---|---|
 | `id` | `uuid` | PK, FK `auth.users.id` | ユーザーID |
 | `email` | `text` | not null | メールアドレス |
-| `display_name` | `text` | null | 表示名 |
 | `plan` | `plan_type` | not null default `standard` | 現在プラン |
 | `stripe_customer_id` | `text` | unique null | Stripe customer |
 | `stripe_subscription_id` | `text` | unique null | Stripe subscription |
@@ -790,6 +789,6 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 ## 7. 保持と個別対応
 
 - MVPではアカウント削除用の画面、Server Action、API、DB一括削除functionを実装しない。
-- 契約解約はStripe Customer Portal、X連携解除は`disconnectXAccount`で扱い、どちらもSpace AIのアカウントや投稿履歴を自動削除しない。
+- 契約解約はStripe Customer Portal、X連携解除は`disconnectXAccount`で扱い、どちらもExos AIのアカウントや投稿履歴を自動削除しない。
 - 法令上必要な開示、訂正、利用停止、消去等の請求は問い合わせ窓口で受け付け、本人確認と法務確認のうえ運営が個別対応する。この手続きはMVPのproduct機能・通常jobとして定義しない。
 - 自動cleanup対象と保持期間は[システム構成 §9](./01_system_architecture.md#9-バックアップ保持)を正とする。Stripeが保持する決済記録はStripe側の方針に従う。

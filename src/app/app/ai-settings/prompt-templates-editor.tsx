@@ -177,7 +177,7 @@ export function PromptTemplatesEditor({
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">プロンプト種別</span>
             <select
-              className="mt-1 rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
               onChange={(e) => select(e.target.value)}
               value={selectedKind}
             >
@@ -211,7 +211,7 @@ export function PromptTemplatesEditor({
 
         <div className="mt-3 flex items-center gap-3">
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={pending || overLimit || !dirty}
             onClick={save}
             type="button"
@@ -235,9 +235,7 @@ export function PromptTemplatesEditor({
             再読み込み
           </button>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          システム共通プロンプト（SYS-GEN・文字数調整等）は編集対象ではありません。ここで編集できるのは投稿生成・画像生成の指示テンプレートです。
-        </p>
+        {/* 編集できる対象は「プロンプト種別」の選択肢が示す。内部ID（SYS-GEN）は出さない（T-M8-66）。 */}
       </section>
     </div>
   );

@@ -23,7 +23,7 @@ import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -51,16 +51,18 @@ const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
  * 利用者から「P1・P3・P6 とはどういう意味か」と聞かれた。**画面の中に答えが無い表記は使わない。**
  */
 function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
-  const base = "inline-block rounded-chip px-1.5 py-0.5 text-[11px] font-bold leading-4";
+  const base = "inline-block rounded-chip px-1.5 py-0.5 text-caption font-bold leading-4";
   if (!slot.enabled) return `${base} bg-black/[0.04] text-ink-3 line-through`;
   return slot.mode === "auto"
     ? `${base} bg-brand text-white`
     : `${base} bg-brand-subtle text-brand`;
 }
 
+// 括弧の説明は付けない。「確認なしでXへ」はステータス行・同意モーダルでも言っており、
+// 同じ説明の3〜4回目の繰り返しになっていた（T-M8-66）。
 const SLOT_CELL_LEGEND = [
-  { enabled: true, mode: "auto", label: "自動投稿（確認なしでXへ）" },
-  { enabled: true, mode: "draft", label: "下書きのみ（確認してから自分で投稿）" },
+  { enabled: true, mode: "auto", label: "自動投稿" },
+  { enabled: true, mode: "draft", label: "下書きのみ" },
   { enabled: false, mode: "draft", label: "停止中" },
 ];
 
@@ -129,21 +131,18 @@ export function ScheduleManager({
             {automationConsented
               ? hasAutoSlots
                 ? "有効 — 指定時刻に確認なしでXへ投稿されます"
-                : "同意済み（有効な自動スロットなし）"
-              : "未設定 — 現在は下書きの作成までです"}
+                : "同意済み（自動投稿のスケジュールはありません）"
+              : "未設定（下書き作成のみ）"}
           </p>
           {upcoming ? (
+            // 「確認なしで」等の説明は上のステータス行が担う。ここは事実だけ（T-M8-66）。
             <p className="text-muted-foreground">
               次回の実行: {upcoming.run.label} —「
-              {PATTERN_LABEL[upcoming.slot.pattern] ?? upcoming.slot.pattern}」を
-              {upcoming.slot.mode === "auto"
-                ? "生成し、確認なしでXへ投稿します"
-                : "下書きとして作成します（投稿はしません）"}
+              {PATTERN_LABEL[upcoming.slot.pattern] ?? upcoming.slot.pattern}」
+              {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
             </p>
           ) : (
-            <p className="text-muted-foreground">
-              有効なスケジュールがないため、自動での生成・投稿は行われません。
-            </p>
+            <p className="text-muted-foreground">有効なスケジュールはありません。</p>
           )}
         </div>
         {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
@@ -153,14 +152,14 @@ export function ScheduleManager({
 
       <div className="flex justify-end">
         {!creating ? (
-          <Button className="h-9 px-4 text-[13px]" onClick={() => setCreating(true)} type="button" variant="brand">
+          <Button className="h-9 px-4 text-body" onClick={() => setCreating(true)} type="button" variant="brand">
             スケジュールを追加
           </Button>
         ) : null}
       </div>
 
       {creating ? (
-        <div className="rounded-card border bg-card p-5 shadow-sm">
+        <div className={`${cardClassName} p-4`}>
           <CardTitle>新しいスケジュール</CardTitle>
           <SlotFields
             accountHandle={accountHandle}
@@ -221,11 +220,12 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
           <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-            <AlertDialog.Title className="text-[15px] font-bold text-ink">
+            <AlertDialog.Title className={cardTitleClassName}>
               自動投稿をすべて停止しますか？
             </AlertDialog.Title>
+            {/* 「スロット」「ジョブ」は内部用語。画面には出さない（T-M8-66・要件06 §8と同方針）。 */}
             <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-              このXアカウントの自動投稿スロットを無効化し、未投稿の自動ジョブを停止します。下書き作成のみのスロットと手動投稿は継続できます。
+              このアカウントの自動投稿をすべて停止します。下書きの作成と手動での投稿はそのまま使えます。
             </AlertDialog.Description>
             <div className="mt-6 flex justify-end gap-2">
               <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
@@ -262,7 +262,7 @@ function DeleteSlotButton({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             このスケジュールを削除しますか？
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -290,12 +290,12 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
   if (slots.length === 0) {
     return (
       <EmptyNotice>
-        スケジュールはまだありません。曜日と時刻を決めて追加すると、ここに週間プレビューが表示されます。
+        スケジュールはまだありません。「スケジュールを追加」から作成してください。
       </EmptyNotice>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-card border bg-card p-4 shadow-sm">
+    <div className={`${cardClassName} overflow-x-auto p-4`}>
       <table className="w-full min-w-[760px] border-collapse text-center text-xs">
         <thead>
           <tr>
@@ -322,7 +322,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                         className={`m-0.5 ${slotCellClassName(s)}`}
                         aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿（確認なしでXへ）" : "下書きのみ（自分で投稿）"}${s.enabled ? "" : "・停止中"}`}
+                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
                       >
                         {PATTERN_LABEL[s.pattern] ?? s.pattern}
                       </span>
@@ -424,7 +424,7 @@ function SlotRow({
   }
 
   return (
-    <li className="rounded-card border bg-card p-4 shadow-sm">
+    <li className={`${cardClassName} p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
@@ -488,7 +488,7 @@ function SlotRow({
             </Button>
           )}
           <DeleteSlotButton
-            description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」（${slot.mode === "auto" ? "自動投稿" : "下書き"}）を削除します。曜日・時刻・追加指示の設定は復元できません。一時的に止めたいだけなら「停止」を使ってください。`}
+            description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」を削除します。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}
             onConfirm={() =>
               run(
@@ -673,7 +673,7 @@ function SlotFields({
         </label>
         <select
           aria-describedby={`${themeFieldId}-help`}
-          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-[13px]"
+          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-body"
           id={themeFieldId}
           onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
           required
@@ -687,8 +687,7 @@ function SlotFields({
           ))}
         </select>
         <p className="mt-1 text-xs text-muted-foreground" id={`${themeFieldId}-help`}>
-          曜日ごとにテーマを変えられます（例: 月曜はAI、木曜は業務改善）。決めずに書かせたいときは
-          「その他」を選び、追加指示に書いてください。
+          テーマを決めずにAIに任せるときは「その他」を選んでください。
         </p>
       </div>
 
@@ -696,8 +695,8 @@ function SlotFields({
         <legend className="mb-1 font-medium">曜日</legend>
         <div className="flex flex-wrap gap-2">
           {WEEKDAY_LABELS.map((w, d) => (
-            <label className="flex items-center gap-1" key={w}>
-              <input checked={v.weekdays.includes(d)} onChange={() => toggleWeekday(d)} type="checkbox" />
+            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1" key={w}>
+              <input checked={v.weekdays.includes(d)} className="size-4" onChange={() => toggleWeekday(d)} type="checkbox" />
               {w}
             </label>
           ))}
@@ -708,7 +707,7 @@ function SlotFields({
         <label className="flex flex-col gap-1">
           <span className="font-medium">時刻</span>
           <select
-            className="rounded-md border px-3 py-2"
+            className="h-9 rounded-card border border-hairline bg-surface px-2 text-body"
             onChange={(e) => setV((cur) => ({ ...cur, time_jst: e.target.value }))}
             value={v.time_jst}
           >
@@ -723,9 +722,10 @@ function SlotFields({
           <legend className="mb-1 font-medium">モード</legend>
           <div className="flex gap-3">
             {(["draft", "auto"] as const).map((m) => (
-              <label className="flex items-center gap-1" key={m}>
+              <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1" key={m}>
                 <input
                   checked={v.mode === m}
+                  className="size-4"
                   name={`mode-${target.kind === "edit" ? target.slotId : "new"}`}
                   onChange={() => setV((cur) => ({ ...cur, mode: m }))}
                   type="radio"
@@ -737,15 +737,16 @@ function SlotFields({
         </fieldset>
       </div>
 
-      {v.mode === "auto" && !automationConsented ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-xs text-warn-fg">
-          自動投稿には現在の説明への同意が必要です。同意していない場合、保存は拒否されます。
-        </p>
-      ) : null}
+      {/*
+        未同意の予告Noticeは置かない（T-M8-66）。mode=autoで未同意のまま保存すると
+        submit() が同意モーダルを自動で開くため、「拒否されます」という予告が示す状況は
+        通常フローでは起きない。サーバーが拒否したときのトースト表示は残る。
+      */}
 
-      <label className="flex items-center gap-2">
+      <label className="flex min-h-9 cursor-pointer items-center gap-2">
         <input
           checked={v.image_enabled}
+          className="size-4"
           onChange={(e) => setV((cur) => ({ ...cur, image_enabled: e.target.checked }))}
           type="checkbox"
         />
@@ -760,7 +761,7 @@ function SlotFields({
       <label className="flex flex-col gap-1">
         <span className="font-medium">追加指示（任意）</span>
         <textarea
-          className="w-full rounded-md border px-3 py-2"
+          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
           maxLength={2000}
           onChange={(e) => setV((cur) => ({ ...cur, instructions: e.target.value }))}
           rows={2}
@@ -826,7 +827,7 @@ function AutomationConsentModal({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
-          <AlertDialog.Title className="text-[15px] font-bold text-ink">
+          <AlertDialog.Title className={cardTitleClassName}>
             {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">

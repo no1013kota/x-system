@@ -1,4 +1,5 @@
 import type { UsageSlot, UsageSummary } from "@/lib/usage/usage-summary";
+import { Card, CardTitle } from "@/components/ui/card";
 
 /**
  * premium 月間利用枠の残量カード（要件03 §8・要件06 §10, T-M6-12）。SC-05ホーム・SC-11設定に置く。
@@ -22,7 +23,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         <span className="text-sm text-muted-foreground">
-          残り {slot.remaining} / 上限 {slot.limit}（使用 {slot.used}）
+          残り {slot.remaining} / {slot.limit}
         </span>
       </div>
       <div
@@ -36,7 +37,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       </div>
       {atLimit ? (
         <p className="text-xs font-medium text-destructive" role="status">
-          今月の上限に達しました（残り0）。{resetLabel}にリセットされます。既存の下書きの閲覧・編集は引き続きできます。
+          今月の上限に達しました。{resetLabel}にリセットされます。
         </p>
       ) : null}
     </li>
@@ -52,11 +53,11 @@ export function UsageSummaryCard({
   nextResetLabel: string;
 }) {
   return (
-    <section aria-labelledby="usage-summary-heading" className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+    <Card as="section" aria-labelledby="usage-summary-heading" className="px-5 py-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-[15px] font-bold text-ink" id="usage-summary-heading">
+        <CardTitle id="usage-summary-heading">
           今月の利用枠
-        </h2>
+        </CardTitle>
         <span className="text-xs text-muted-foreground">{nextResetLabel}にリセット</span>
       </div>
       <ul className="mt-4 space-y-4">
@@ -64,6 +65,6 @@ export function UsageSummaryCard({
           <SlotRow key={key} label={label} resetLabel={nextResetLabel} slot={summary[key]} />
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

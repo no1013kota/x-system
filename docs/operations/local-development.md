@@ -2,11 +2,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.9 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.12 |
+| 更新日 | 2026-08-06 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
-Space AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
+Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
 
 ---
 
@@ -109,7 +109,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
-| `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**何度実行しても同じ状態に戻す**（消してから入れ直す）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
+| `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
 | `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |
 | `npm run check:providers` | **実APIへの provider 契約テスト**（Web検索・構造化出力・画像生成が受理されるか）。実キーと少額の費用が必要なためCI・`release:check` には入れない。外部APIの仕様変更・リクエスト形状の誤りを検出する唯一の層。Googleは既定で対象外（T-M7-17。`PROVIDER_CHECK_GOOGLE=1` で有効化） |
@@ -166,7 +166,7 @@ npm run dev                  # → http://127.0.0.1:3000
   4. `supabase/config.toml` の `site_url`/`additional_redirect_urls` は既に `127.0.0.1:3000`（config を変えたら `supabase stop && supabase start` で反映）。
   5. `next.config.ts` に `allowedDevOrigins: ["127.0.0.1"]` を設定済み。**無いと Next dev が `127.0.0.1` からの HMR WebSocket（`/_next/webpack-hmr`）をクロスオリジンとしてブロックし、client の hydration が完了せず、サインアップ等のフォーム操作・入力中バリデーション・Turnstile ウィジェットが一切動かなくなる**（画面は表示されるが対話できない）。dev のみ有効。
 - **X Dev Portal のアプリ設定**（User authentication settings）:
-  - Type of App: **Web App（confidential・Client Secret あり）** または Native/SPA（public・PKCE）。運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential。BYOK はユーザーが自分のAppで選択。
+  - Type of App: 運営App(premium)で `X_MANAGED_CLIENT_SECRET` を入れるなら confidential（Web App）。BYOK は **Web App, Automated App or Bot** を選ぶ＝confidential client なので、**Client ID と Client Secret の両方**を設定画面で保存する（Secretなしのtoken交換は 401 unauthorized_client で拒否される・2026-08-06 実測。設定画面にClient種別セレクタは無く、Secretの有無から種別を導出する）。
   - App permissions: **Read and write**（`tweet.write`・`media.write` に必要）。
   - 要求 scope（アプリが送る）: `tweet.read` / `tweet.write` / `users.read` / `media.write` / `offline.access`。
   - **Website URL**: OAuth とは無関係のアプリ情報欄。有効なURL（本番ドメインや GitHub リポジトリ等）でよく、Callback とは一致不要。

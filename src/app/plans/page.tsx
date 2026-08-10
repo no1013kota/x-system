@@ -17,20 +17,17 @@ import { Icon } from "@/components/ui/icon";
 
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
+import { CardTitle, cardClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
 };
 
 interface PlansPageProps {
-  searchParams: Promise<{ checkout?: string }>;
+  searchParams: Promise<{ checkout?: string; confirmed?: string }>;
 }
 
-const PLAN_TAGLINE: Record<PlanId, string> = {
-  standard: "まずは1つのXアカウントを着実に運用",
-  md: "複数アカウントと発信設計を細かく管理",
-  premium: "APIキーなしで、運用をまとめておまかせ",
-};
 
 /**
  * カードに並べる特長（デザイン §料金プラン）。
@@ -112,16 +109,22 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 契約が有効（trialing/active）で本編を使えるユーザーが /plans に来たら /app へ送り、
   // 決済成功後にこの画面で行き止まりになるのを防ぐ。incomplete・canceled 等はプラン選択／
   // 再申込のため /plans に留める（canExecute は trialing/active のみ true）。
+  //
+  // **ただし Stripe の顧客が紐づいていない契約者は送り返さない**（T-M8-54）。
+  // 送り返すと、設定＞課金の「プランを選ぶ」を押してもホームへ戻るだけで**何もできない**。
+  // この状態はwebhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まるので、
+  // 申し込みをやり直せる場所（この画面）へ入れる。
   const user = await getCurrentUser();
   if (user) {
     const admin = createSupabaseAdminClient();
     const { data: profile } = await admin
       .from("profiles")
-      .select("plan, subscription_status")
+      .select("plan, subscription_status, stripe_customer_id")
       .eq("id", user.id)
       .maybeSingle();
     if (
       profile?.plan &&
+      profile.stripe_customer_id &&
       subscriptionAccessFor(profile.subscription_status)?.canExecute
     ) {
       redirect("/app");
@@ -148,16 +151,25 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               <h1 className="text-[26px] font-bold tracking-tight text-ink sm:text-[30px]">
                 あなたの運用に合うプランを選択
               </h1>
-              <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-                表示価格はすべて税込です。初回のお申し込みに限り、7日間の無料トライアルをご利用いただけます。
-              </p>
+              {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチと「お申し込み前の確認」にある（T-M8-66）。 */}
             </div>
           </header>
 
           {params.checkout === "canceled" ? (
-            <p className="mx-auto max-w-3xl rounded-card border bg-card p-4 text-sm" role="status">
+            <p className={`${cardClassName} mx-auto max-w-3xl p-4 text-sm`} role="status">
               決済手続きは完了していません。プランを確認して、もう一度お試しください。
             </p>
+          ) : null}
+
+          {/*
+            メール確認からの着地（T-M8-58）。**成功も必ず言う**——失敗時は「リンクを確認
+            できませんでした」が出るのに、成功は無言で料金表に変わるだけだった。
+            確認メールのリンクを押した人は「確認できたのか」をまずここで知りたい。
+          */}
+          {params.confirmed === "1" ? (
+            <Notice className="mx-auto max-w-3xl" role="status" tone="success">
+              メールアドレスの確認が完了しました。プランを選ぶと7日間の無料トライアルを開始できます。
+            </Notice>
           ) : null}
 
           {/* 反映待ちの間はプラン比較表とCTAを描画せず、待機カードだけを出す（二重申込の防止）。 */}
@@ -170,14 +182,12 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               提供開始を再掲する。折りたたみで隠さない。 */}
           <section
             aria-labelledby="pre-application-heading"
-            className="mx-auto max-w-3xl rounded-card border bg-card p-5 text-xs leading-5 text-muted-foreground"
+            className={`${cardClassName} mx-auto max-w-3xl p-5 text-xs leading-5 text-muted-foreground`}
           >
             <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
               お申し込み前の確認
             </h2>
-            <p className="mt-2 text-foreground/80">
-              7日間無料でお試しいただけます。開始にはカード登録（Stripe）が必要で、無料期間中に解約すれば料金はかかりません。
-            </p>
+            {/* リード文は直下のdl（無料期間・解約方法）の言い直しだった（T-M8-66）。 */}
             <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
               {CONFIRMATION_ITEMS.map((item) => (
                 <div className="sm:flex sm:gap-2" key={item.term}>
@@ -219,14 +229,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 >
                   {tag ? (
                     <span
-                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-[10.5px] font-bold text-white ${tag.className}`}
+                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-caption font-bold text-white ${tag.className}`}
                     >
                       {tag.label}
                     </span>
                   ) : null}
                   <div>
                     <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
-                    <p className="text-[11.5px] text-ink-3">{PLAN_TAGLINE[planId]}</p>
+                    <p className="text-caption text-ink-3">{plan.tagline}</p>
                   </div>
                   <p className="flex items-baseline gap-0.5">
                     <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
@@ -254,19 +264,20 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             className="flex items-start gap-2.5 rounded-card bg-warn-bg px-4 py-3"
           >
             <Icon className="mt-0.5 shrink-0 text-warn-fg" name="error" size={18} />
+            {/* 申込前のBYOK追加費用の明示（要件03）は1文で満たす。トライアル解約時の扱いは確認dlにある（T-M8-66）。 */}
             <p className="text-xs leading-[1.65] text-ink-2">
-              <strong className="font-bold">BYOKプラン（通常・md）のご注意：</strong>
-              X APIの利用料（従量課金）と生成AI APIの従量課金が別途発生します。プレミアムプランではAPI費用の追加負担はありません。トライアル期間中に解約された場合、課金は発生しません。
+              <strong className="font-bold">通常・mdプランのご注意：</strong>
+              X APIと生成AI APIの利用料が別途発生します（プレミアムプランは追加負担なし）。
             </p>
           </section>
 
           <section
             aria-labelledby="signup-flow-heading"
-            className="rounded-card border border-hairline bg-surface p-[22px] shadow-[var(--shadow-card)]"
+            className={`${cardClassName} p-[22px]`}
           >
-            <h2 className="text-[15px] font-bold text-ink" id="signup-flow-heading">
+            <CardTitle id="signup-flow-heading">
               ご登録の流れ
-            </h2>
+            </CardTitle>
             <ol className="mt-4 grid gap-3 sm:grid-cols-4">
               {SIGNUP_FLOW.map((item) => (
                 <li className="flex flex-col gap-[7px]" key={item.step}>
@@ -274,21 +285,21 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                     <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-brand font-sans text-xs font-bold text-white">
                       {item.step}
                     </span>
-                    <span className="text-[13px] font-bold text-ink">{item.title}</span>
+                    <span className="text-body font-bold text-ink">{item.title}</span>
                   </div>
-                  <p className="pl-8 text-[11.5px] leading-[1.6] text-ink-3">{item.description}</p>
+                  <p className="pl-8 text-caption leading-[1.6] text-ink-3">{item.description}</p>
                 </li>
               ))}
             </ol>
             <div className="mt-[18px] grid gap-3 sm:grid-cols-2">
               <div className="rounded-card border border-hairline px-4 py-3.5">
                 <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
+                  <h3 className="text-body font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
                   <Badge tone="info">キーはご自身で用意</Badge>
                 </div>
                 <ul className="flex flex-col gap-1.5">
                   {BYOK_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
                       <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-info-fg" />
                       {step}
                     </li>
@@ -297,12 +308,12 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               </div>
               <div className="rounded-card border border-hairline px-4 py-3.5">
                 <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-[12.5px] font-bold text-ink">初期設定（プレミアムプラン）</h3>
+                  <h3 className="text-body font-bold text-ink">初期設定（プレミアムプラン）</h3>
                   <Badge tone="brand">キー登録は一切不要</Badge>
                 </div>
                 <ul className="flex flex-col gap-1.5">
                   {PREMIUM_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-[11.5px] text-ink-2" key={step}>
+                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
                       <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-brand" />
                       {step}
                     </li>
@@ -310,9 +321,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 </ul>
               </div>
             </div>
-            <p className="mt-3.5 text-[11px] leading-5 text-ink-3">
-              決済はStripeホスト型Checkoutで安全に行われます。プラン変更・解約・カード更新はStripeカスタマーポータルから。専用のオンボーディング画面はなく、設定が不足している場合はホームの初期設定ガイドとエラー表示でご案内します。
-            </p>
+            {/* Stripeの安全性はSIGNUP_FLOW step2、解約方法は確認dl、不足時の案内はstep3に記載済み（T-M8-66）。 */}
           </section>
 
             </>

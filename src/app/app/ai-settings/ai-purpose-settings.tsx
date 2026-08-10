@@ -14,8 +14,9 @@ import {
   configuredPurpose,
 } from "@/lib/ai-purpose-view";
 import type { PlanId } from "@/lib/plans";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Notice } from "@/components/ui/notice";
 
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
@@ -73,7 +74,7 @@ export function AiPurposeSettings({
   return (
     <div className="space-y-6">
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="text-purpose-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="text-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-violet-100 p-2.5 text-violet-800">
             <Icon name="smart_toy" size={20} />
@@ -91,7 +92,7 @@ export function AiPurposeSettings({
             <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
             <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              プレミアムプランではSpace AIの運営環境で文章生成とリサーチを実行します。
+              プレミアムプランではExos AIの運営環境で文章生成とリサーチを実行します。
             </p>
           </div>
         ) : options.text.length > 0 ? (
@@ -103,7 +104,8 @@ export function AiPurposeSettings({
               onChange={(event) => setTextProvider(event.target.value as AiKeyProvider | "")}
               value={textProvider}
             >
-              <option value="">未設定（このままでは投稿を生成できません）</option>
+              {/* 動かない理由の説明は下のNoticeが担う。選択肢内で繰り返さない（T-M8-66）。 */}
+              <option value="">未設定</option>
               {options.text.map((provider) => (
                 <option key={provider} value={provider}>{PROVIDER_LABELS[provider]}</option>
               ))}
@@ -114,7 +116,7 @@ export function AiPurposeSettings({
         )}
       </section>
 
-      <section className="rounded-card border bg-card p-5 shadow-sm sm:p-6" aria-labelledby="image-purpose-heading">
+      <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="image-purpose-heading">
         <div className="flex items-start gap-3">
           <span className="rounded-card bg-info-bg p-2.5 text-info-fg">
             <Icon name="image" size={20} />
@@ -143,7 +145,7 @@ export function AiPurposeSettings({
             </select>
           </label>
         ) : (
-          <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
+          <Notice className="mt-5" tone="warn">
             <p className="font-medium">画像生成は現在利用できません</p>
             <p className="mt-1 leading-6">
               {plan === "premium"
@@ -151,26 +153,22 @@ export function AiPurposeSettings({
                 : "OpenAIまたはGoogleのAPIキーを登録し、接続確認に成功すると選べるようになります。"}
             </p>
             {plan !== "premium" ? <ApiKeySettingsLink /> : null}
-          </div>
+          </Notice>
         )}
       </section>
 
       {plan !== "premium" && !textProvider ? (
         // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
-        <p className="rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm leading-6 text-warn-fg" role="status">
-          文章生成に使うAIが未設定です。このままでは投稿の生成・自動運用が実行できません。登録済みのAIを選んで保存してください。
-        </p>
+        <Notice tone="warn" role="status">
+          文章生成に使うAIが未設定のため、投稿の生成・自動運用は実行できません。AIを選んで保存してください。
+        </Notice>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button className="min-h-11" disabled={isPending} onClick={save} type="button">
           {isPending ? "保存中…" : "AI用途設定を保存"}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          {plan === "premium"
-            ? "画像生成に使えるAIは、運営環境で利用できるものだけを表示しています。"
-            : "接続確認に成功したAIだけが選べます。"}
-        </p>
+        {/* 選べる条件の注記は各セクションの説明・MissingProviderMessageと重複していたため置かない（T-M8-66）。 */}
       </div>
     </div>
   );
@@ -186,10 +184,10 @@ function ApiKeySettingsLink() {
 
 function MissingProviderMessage({ purpose }: { purpose: string }) {
   return (
-    <div className="mt-5 rounded-card border border-warn-fg/25 bg-warn-bg p-4 text-sm text-warn-fg">
+    <Notice className="mt-5" tone="warn">
       <p className="font-medium">{purpose}に使えるAIがまだありません</p>
       <p className="mt-1 leading-6">AI APIキーを登録し、疎通確認を完了してください。</p>
       <ApiKeySettingsLink />
-    </div>
+    </Notice>
   );
 }

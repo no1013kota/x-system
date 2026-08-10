@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { CardTitle } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 /**
  * SC-10 学習ソースタブ（L-1〜3, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
@@ -162,22 +163,23 @@ export function LearningSourcesManager({
   return (
     <div className="space-y-6">
       {removing ? (
-        <p className="rounded-lg border border-warn-fg/25 bg-warn-bg px-4 py-2 text-sm text-warn-fg">
+        <Notice tone="warn">
           学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
-        </p>
+        </Notice>
       ) : null}
 
       {/* 追加フォーム（参考アカウント/参考投稿） */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>参考ソースを追加</CardTitle>
+        {/* 上限は種別セレクトの (n/3) 表示に一本化する（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          参考アカウント（最大{REF_ACCOUNT_MAX}）・参考投稿（最大{REF_POST_MAX}）のX URLを登録すると、文体・型を学習してベースmdへ反映します。
+          参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してベースmdへ反映します。
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">種別</span>
             <select
-              className="mt-1 rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
               onChange={(e) => setType(e.target.value as "ref_account" | "ref_post")}
               value={type}
             >
@@ -192,7 +194,7 @@ export function LearningSourcesManager({
           <label className="min-w-0 flex-1 text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">URL</span>
             <input
-              className="mt-1 w-full rounded-md border px-2 py-1"
+              className="mt-1 min-h-11 w-full rounded-lg border bg-background px-3"
               onChange={(e) => setUrl(e.target.value)}
               placeholder={type === "ref_account" ? "https://x.com/handle" : "https://x.com/handle/status/123"}
               type="url"
@@ -200,7 +202,7 @@ export function LearningSourcesManager({
             />
           </label>
           <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
             disabled={
               pending ||
               removing ||
@@ -222,9 +224,9 @@ export function LearningSourcesManager({
       {/* 自己過去投稿の取り込み/再取り込み */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>自分の過去投稿から学習</CardTitle>
+        {/* 30日ルールの例外（失敗時）は失敗表示側の導線が伝える。事前に読ませない（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          直近100件の投稿から「自分らしさ」を抽出してベースmdへ反映します。再取り込みは
-          <strong className="font-medium">成功した取り込みから</strong>30日ごとに1回まで（失敗したときはすぐやり直せます）。
+          直近100件の投稿から「自分らしさ」を学習し、ベースmdへ反映します。再取り込みは30日に1回までです。
           {plan === "premium" ? "（生成枠を1消費）" : ""}
         </p>
         <div className="mt-3 flex items-center gap-3">

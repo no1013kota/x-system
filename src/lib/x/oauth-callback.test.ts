@@ -4,6 +4,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import {
   X_SCOPES,
+  XTokenError,
   type OAuthClient,
   type OAuthTransaction,
   type SealedTokens,
@@ -116,6 +117,54 @@ describe("handleXOAuthCallback", () => {
     expect(persist).not.toHaveBeenCalled();
   });
 
+  /**
+   * token交換の失敗を「予期しないエラー」に丸めない（T-M8-63・bug）。
+   *
+   * 実際に起きた事象: Consoleで「Web App, Automated App or Bot」（=confidential client）
+   * として作ったAppをClient IDのみで保存し、連携すると **401 unauthorized_client** で
+   * 交換が拒否される。以前は XTokenError がそのまま internal_error になり、原因が
+   * キー設定にあることが画面から読めなかった。
+   */
+  it("token交換が401で拒否されたら、Secret不足として案内する（T-M8-63）", async () => {
+    const { deps, persist } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(401, "unauthorized_client");
+      }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      code: "provider_error",
+      details: {
+        reason: "token_auth_failed",
+        settingsPath: "/app/settings?tab=api-keys",
+      },
+    });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("認可コードの期限切れ（invalid_grant）は、やり直しで直る旨を伝える（T-M8-63）", async () => {
+    const { deps } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(400, "invalid_grant");
+      }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      code: "provider_error",
+      details: { reason: "token_grant_invalid" },
+    });
+  });
+
+  it("その他のtoken交換失敗はX側の通信失敗として伝える（internal_errorにしない）", async () => {
+    const { deps } = make({
+      exchangeCode: vi.fn(async () => {
+        throw new XTokenError(503, null);
+      }),
+    });
+    const error = await handleXOAuthCallback(input("u1"), deps).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AppError);
+    expect((error as AppError).code).toBe("provider_error");
+    expect((error as AppError).details?.reason).toBeUndefined();
+  });
+
   it("does not persist when /2/users/me fails", async () => {
     const { deps, persist } = make({
       fetchMe: vi.fn(async () => {
@@ -124,6 +173,37 @@ describe("handleXOAuthCallback", () => {
     });
     await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toThrow();
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 「再連携」は特定のアカウントを直す操作（T-M8-53）。
+   *
+   * 以前は「Xアカウントを追加」と同じURLへ飛んでいたため、**再連携を押したのに別のXアカウントで
+   * 認可すると新しい行が増え、壊れた行はそのまま残った**（押した本人は直ったつもりになる）。
+   */
+  it("再連携で対象と同じXアカウントなら保存する（失効行が置き換わる）", async () => {
+    const { deps, persist } = make({
+      verifyState: () => ({ ...TX, reconnectXUserId: USER.id }),
+    });
+    const res = await handleXOAuthCallback(input("u1"), deps);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(res.xUserId).toBe(USER.id);
+  });
+
+  it("再連携で別のXアカウントを認可したら保存せず止める（黙って新規追加しない）", async () => {
+    const { deps, persist } = make({
+      verifyState: () => ({ ...TX, reconnectXUserId: "x-other" }),
+    });
+    await expect(handleXOAuthCallback(input("u1"), deps)).rejects.toMatchObject({
+      details: { reason: "reconnect_account_mismatch", authorizedHandle: USER.username },
+    });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("再連携の指定が無いときは従来どおり（どのアカウントでも新規連携できる）", async () => {
+    const { deps, persist } = make();
+    await handleXOAuthCallback(input("u1"), deps);
+    expect(persist).toHaveBeenCalledTimes(1);
   });
 
   it("propagates a verifyState failure (tampered/expired/mismatched state) without persisting", async () => {

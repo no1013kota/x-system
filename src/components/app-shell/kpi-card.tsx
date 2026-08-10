@@ -17,7 +17,7 @@ export function KpiCard({ kpi, label }: { kpi: KpiValue; label: string }) {
 
   return (
     <Card className="px-4 py-3.5">
-      <p className="text-[12px] font-medium text-ink-2">{label}</p>
+      <p className="text-caption font-medium text-ink-2">{label}</p>
       <p className="mt-1 flex items-baseline gap-1">
         {kpi.value === null ? (
           <span className="text-[15px] font-medium text-ink-3">記録なし</span>
@@ -26,12 +26,12 @@ export function KpiCard({ kpi, label }: { kpi: KpiValue; label: string }) {
             <span className="text-[23px] font-bold tabular-nums text-ink">
               {kpi.value.toLocaleString()}
             </span>
-            {kpi.unit ? <span className="text-[12px] text-ink-2">{kpi.unit}</span> : null}
+            {kpi.unit ? <span className="text-caption text-ink-2">{kpi.unit}</span> : null}
           </>
         )}
       </p>
-      {kpi.delta ? <p className={`mt-0.5 text-[11.5px] font-medium ${toneClass}`}>{kpi.delta.text}</p> : null}
-      {kpi.note ? <p className="mt-0.5 text-[11.5px] text-ink-3">{kpi.note}</p> : null}
+      {kpi.delta ? <p className={`mt-0.5 text-caption font-medium ${toneClass}`}>{kpi.delta.text}</p> : null}
+      {kpi.note ? <p className="mt-0.5 text-caption text-ink-3">{kpi.note}</p> : null}
     </Card>
   );
 }
@@ -43,7 +43,7 @@ export function KpiCard({ kpi, label }: { kpi: KpiValue; label: string }) {
 export function NextRunCard({ label, note }: { label: string | null; note: string | null }) {
   return (
     <Card className="px-4 py-3.5">
-      <p className="text-[12px] font-medium text-ink-2">次回の自動実行</p>
+      <p className="text-caption font-medium text-ink-2">次回の自動実行</p>
       <p className="mt-1">
         {label ? (
           <span className="text-[23px] font-bold tabular-nums text-ink">{label}</span>
@@ -51,7 +51,7 @@ export function NextRunCard({ label, note }: { label: string | null; note: strin
           <span className="text-[15px] font-medium text-ink-3">予定なし</span>
         )}
       </p>
-      {note ? <p className="mt-0.5 text-[11.5px] text-ink-3">{note}</p> : null}
+      {note ? <p className="mt-0.5 text-caption text-ink-3">{note}</p> : null}
     </Card>
   );
 }

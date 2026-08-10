@@ -41,7 +41,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Space AI",
+  title: "Exos AI",
   description: "AIによるX運用の自動化・半自動化",
 };
 

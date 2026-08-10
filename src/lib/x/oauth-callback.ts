@@ -6,6 +6,7 @@ import { PLANS, type PlanId } from "@/lib/plans";
 
 import {
   hasRequiredScopes,
+  XTokenError,
   type OAuthClient,
   type OAuthTransaction,
   type SealedTokens,
@@ -80,10 +81,44 @@ export async function handleXOAuthCallback(
   }
 
   const client = await deps.resolveClient(tx.userId, tx.authType);
-  const token = await deps.exchangeCode(client, {
-    code: input.code,
-    codeVerifier: tx.codeVerifier,
-  });
+  let token: XTokenResponse;
+  try {
+    token = await deps.exchangeCode(client, {
+      code: input.code,
+      codeVerifier: tx.codeVerifier,
+    });
+  } catch (error) {
+    /**
+     * token交換の失敗を原因別に画面へ伝える（T-M8-63・bug）。
+     *
+     * 以前は XTokenError がそのまま internal_error に丸められ、「予期しないエラー」としか
+     * 出なかった。実際に起きたのは **401 unauthorized_client（Basic認証ヘッダ不足）**——
+     * Consoleで「Web App, Automated App or Bot」として作ったAppはconfidential clientで、
+     * Client Secretなしの交換をXが拒否する。原因がキー設定にあるのに、利用者は
+     * 「もう一度お試しください」を何度繰り返しても直せなかった（CLAUDE.md 原則2）。
+     */
+    if (error instanceof XTokenError) {
+      if (
+        error.status === 401 ||
+        error.errorCode === "invalid_client" ||
+        error.errorCode === "unauthorized_client"
+      ) {
+        throw new AppError("provider_error", {
+          cause: error,
+          details: { reason: "token_auth_failed", settingsPath: X_SETTINGS_PATH },
+        });
+      }
+      // invalid_grant = 認可コードの期限切れ・再利用。最初からやり直せば直る。
+      if (error.errorCode === "invalid_grant") {
+        throw new AppError("provider_error", {
+          cause: error,
+          details: { reason: "token_grant_invalid" },
+        });
+      }
+      throw new AppError("provider_error", { cause: error });
+    }
+    throw error;
+  }
 
   // scope 5種の付与確認。不足はtoken保存前にエラー。
   const scopes = token.scope ? token.scope.split(" ").filter(Boolean) : [];
@@ -93,6 +128,16 @@ export async function handleXOAuthCallback(
 
   // /2/users/me 確認。失敗時はthrow→token保存しない。
   const xUser = await deps.fetchMe(token.access_token);
+
+  // **再連携で別のXアカウントを認可したら、黙って新規追加しない**（T-M8-53）。
+  //
+  // 「再連携」は特定の行を直す操作なので、違うアカウントで認可されたら**利用者の意図と違う**。
+  // 以前はここが無く、新しい行が増えて壊れた行はそのまま残った（押した本人は直ったつもりになる）。
+  if (tx.reconnectXUserId && tx.reconnectXUserId !== xUser.id) {
+    throw new AppError("forbidden", {
+      details: { reason: "reconnect_account_mismatch", authorizedHandle: xUser.username },
+    });
+  }
 
   const sealed = deps.sealTokens(token);
   const xAccountId = await deps.persist({
