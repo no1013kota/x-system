@@ -1,4 +1,7 @@
-import { checkExecutionPrerequisites, type ExecutionPrereqInput } from "@/lib/execution-prereqs";
+import {
+  resolveExecutionPrereqError,
+  type ExecutionPrereqInput,
+} from "@/lib/execution-prereqs";
 import { PT_FIX, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
 import {
@@ -311,9 +314,8 @@ export async function executePostGeneration(
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
     imageRequested: Boolean(job.input.image_enabled),
   });
-  const prereqError = prereqInput
-    ? checkExecutionPrerequisites(prereqInput)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
+  // throw せず code だけを失敗確定へ回すので、判定だけを共有関数から借りる。
+  const prereqError = resolveExecutionPrereqError(prereqInput);
   if (prereqError) {
     await persistFailure(
       db,
