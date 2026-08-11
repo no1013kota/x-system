@@ -196,4 +196,36 @@ describe("suggestion worker (local DB)", () => {
       await cleanup(uid);
     }
   });
+
+  /**
+   * 失敗時に保存される `error` JSON の**キー集合**を固定する（R23の特性テスト）。
+   *
+   * 他2つの job（post_generation・learning_analysis）は `provider_raw_error` を持つが、
+   * suggestion は**持たない**。失敗確定の3手順を共通化するときに、揃えるつもりで
+   * `provider_raw_error: null` を足すと保存JSONが変わる（＝振る舞い変更）。
+   * ここが無いと、その差が誰にも見えないまま通ってしまう。
+   */
+  it("失敗時の error JSON は code/message/retryable/stage の4キー（provider_raw_error を持たない）", async () => {
+    const { uid, xid, jobId } = await seed("premium");
+    try {
+      const drafts = [draft("t1", 100), draft("t2", 300), draft("t3", 200)];
+      await expect(executeSuggestion(deps(jobId, VALID("not-a-real-id"), drafts))).rejects.toThrow();
+      const { rows } = await pooledDb.query<{ error: Record<string, unknown> }>(
+        `select error from generation_jobs where id = $1`,
+        [jobId],
+      );
+      expect(Object.keys(rows[0].error).sort()).toEqual([
+        "code",
+        "message",
+        "retryable",
+        "stage",
+      ]);
+      expect(rows[0].error.message).toBe("改善提案の生成に失敗しました。");
+      expect(rows[0].error.stage).toBe("writing");
+      expect(rows[0].error.retryable).toBe(false);
+      expect(xid).toBeTruthy();
+    } finally {
+      await cleanup(uid);
+    }
+  });
 });
