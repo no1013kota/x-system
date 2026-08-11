@@ -313,7 +313,7 @@ R19（検査の空振り）→ R20〜R24（課金・通知・上限の食い違�
 
 ## 既知の不安定テスト（リファクタ起因ではない）
 
-- **`src/lib/x/oauth.test.ts`「encrypts access/refresh as envelopes recoverable by decrypt」は約1%の確率で落ちる**（2026-08-11・R21実施中にフルスイートで1度遭遇し、原因を特定）。
+- ~~**`src/lib/x/oauth.test.ts`「encrypts access/refresh as envelopes recoverable by decrypt」は約1%の確率で落ちる**~~ → **解決（2026-08-11）**。平文を `"AT"` から `ACCESS_TOKEN_PLAINTEXT_MARKER` へ変え、refresh 側にも同じ検査を足した。実測で **旧 188/20000（0.94%）→ 新 0/20000**。以下は経緯（旧記載）。（2026-08-11・R21実施中にフルスイートで1度遭遇し、原因を特定）。
   原因は `expect(sealed.accessTokenCiphertext).not.toContain("AT")`。平文が `"AT"` の2文字で、暗号文は
   base64（`envelope.ts` が nonce/ciphertext/tag を base64 化してJSONに詰める）なので、**乱数鍵しだいで
   base64文字列の中にたまたま `AT` という並びが現れる**。実測 **185/20000 = 0.92%**。
