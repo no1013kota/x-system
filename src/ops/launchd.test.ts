@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { NEWS_FETCH_JST_HOURS } from "../lib/jobs/news-research";
@@ -16,7 +17,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  */
 
 const execFileAsync = promisify(execFile);
-const OPS_DIR = join(process.cwd(), "ops", "launchd");
+// 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
+const OPS_DIR = join(fileURLToPath(new URL("../../", import.meta.url)), "ops", "launchd");
 const SCRIPT = join(OPS_DIR, "cron-call.sh");
 
 const PLISTS = [

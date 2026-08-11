@@ -2069,6 +2069,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - [ ] X_POSTING_MODEをliveへ切り替える最終判断と、本番Xアカウントでの実投稿スモークテスト（実クレジット消費を伴うため運営者の実施・承認が必要）
 - [ ] premium原価のβ実測に基づく上限値・単価前提・価格の見直し判断（リリース後運用。external_api_usage_eventsの月次SQL集計を翌月10日までに実施する運用担当の確定）
 
+
+**D-21: 未使用のServer Action 2本（docs にAPIとして記載）をどうするか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `getAnalyticsSummaryAction`（src/app/actions/analytics.ts:25）と `listSuggestionsAction`（src/app/actions/suggestions.ts:61）は repo 全体で呼び出し元・テストが0件で、画面はどちらもRSC側（app/page.tsx:111 の `getAnalyticsSummaryForUser`、analytics/page.tsx:50 の `loadSuggestionsForUser`）から読んでいる。ただし docs/requirements/05_api_server_actions.md:229,231（§9 の表）と 06_screens_onboarding_posting.md:332 が仕様として明記しているため、削除は**文書化されたAPI表の変更**にあたる（`"use server"` の export は外から叩けるPOST受け口として残る）。**なお docs は全Action名から `Action` 接尾辞を落とす規約**（同文書に `...Action` の記載は0件・`refreshSuggestions` も同じ形）なので、表の `getAnalyticsSummary` / `listSuggestions` がこの2本を指す。命名のドリフトではない（2026-08-11 `/doc-sync` で確認）。案A: 実装を削除し要件05 §9 と要件06 §8 の該当行を同じ作業単位で更新する（推奨。受け口が減り、analytics.ts の狭い `BaseResult` 重複＝R15の据え置き例外も同時に消える）。案B: docs を正として実装を残す（現状維持）。
+
+**D-22: globals.css の `.dark` パレットと未参照トークン約60行を消すか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `.dark` を付ける箇所は repo に存在せず（layout.tsx:56 の html className は `${notoSansJp.variable} ${inter.variable} ${geistMono.variable} h-full antialiased` のみ）、`prefers-color-scheme` も globals.css・shadcn の tailwind.css に1つも無い。`--color-sidebar-*` 8本・`--color-chart-*` 5本・`--chart-1..5`・`--sidebar*` 8本・`--font-heading`・`--motion-fast` も参照0件。約60行が永久に描画されない状態で、色を触る人が「ライトとダークの2組を直す必要がある」と誤解する。案A: ダークモードの予定が無いなら削除（`/ui-polish` と実ブラウザ確認が必要。button.tsx の `dark:*` ユーティリティも同じ理由で発火しない）。案B: 導入予定があるなら残し、その旨をコメントに書いて誤解を消す。
+
+**D-23: 下書きの警告バッジに欠けている2コードの日本語ラベルを足すか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — drafts-list.tsx:34-50 の表に `length_over_target` / `post_count_trimmed`（generation-validation.ts:19-29 の正本にある）が無く、その警告が付いた下書きではバッジに生の英語コードが出る。文言追加＝振る舞い変更なので R37 では触らず、`/add-task` で別タスクにするのが正しい扱い（暫定案: 「長め」「ポスト数を調整」相当の日本語ラベル＋DETAIL を足す）。
+
+**D-24: 送信失敗メールの数え方が doctor と日次サマリで非対称（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — diagnostics.ts:292 は FAILED_EMAIL_WINDOW_DAYS=7 の窓で区切る（T-M8-51「赤の常態化を避ける」）が、daily-summary.ts:232-236 のSQLは `email_status = 'failed'` を全期間で数えるため、7日より前の失敗しか無い状態でも日次サマリが毎日「気になる点」を出し続ける。閾値が片方にしか入っていないので、揃えると通知の件数が変わる（＝振る舞い変更）。dev-loop 側で扱う。暫定案: 日次サマリ側も7日窓に揃える。
+
+**D-25: APIキー設定の「Client IDとClient Secretを入力すると保存できます。」が現仕様と食い違う（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — は Client Secret 任意という現仕様（T-M8-63・保存可否の式は :160-163 で Secret 空を許している）と読み合わせると両方必須のように読める。文面変更＝振る舞い変更なので別タスク。暫定案: 「Client IDを入力すると保存できます（Client Secretは任意）。」
+
+**D-26: Server Action の zod メッセージを画面に出すか（流儀が2つ併存）（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `toUserFacingError`（observability/errors.ts:75-84）は `USER_MESSAGES[code]` を返し AppError の `message` を見ないため、`parsed.error.issues[0]?.message`（例「テーマを1件以上選択してください」）は計算されるだけで画面には常に「入力内容を確認してください。」が出る。api-keys.ts:36-40 は `{ ...base, message: first }` で正しく出しており流儀が2つ併存している。R26 では出力不変のまま `first` を削除する。**本来の意図どおり zod メッセージを見せるか**は振る舞い変更なので判断が必要（暫定案: api-keys と同じ形に揃えて具体的な理由を出す）。
+
 ## M0: リポジトリ・実行基盤
 
 ### T-M0-01: Next.jsスカフォールドと開発ツールチェーン整備 `done`
