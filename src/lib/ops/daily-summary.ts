@@ -4,6 +4,7 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 
 import type { Queryable } from "../x/token-refresh";
 
+import { approxYen } from "./check";
 import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 
 /**
@@ -157,7 +158,8 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
   }
 
-  lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${Math.round(data.monthUsd * 150)}円）`);
+  // 円換算は doctor と同じ関数を使う（別々に持つと同じ月の費用を違う円額で伝える・R30）。
+  lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${approxYen(data.monthUsd)}円）`);
 
   // 容量は「止まってから気付く」種類なので、毎日必ず数字を出す（2026-08-01に組織ごと停止した）。
   const dbCheck = judgeDatabaseSize({ bytes: data.dbBytes, limitBytes: data.dbLimitBytes });

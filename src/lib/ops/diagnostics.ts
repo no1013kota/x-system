@@ -5,7 +5,12 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
+import { approxYen, type Check, type Level, summarize, worstLevel } from "./check";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
+
+// 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
+export { approxYen, summarize, worstLevel };
+export type { Check, Level };
 
 /**
  * 運営者向けの状態診断（T-M7-34）。
@@ -17,39 +22,11 @@ import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal
  * ローカル（`npm run doctor`）とデプロイ先（`GET /api/cron/doctor`）で同じものを使う。
  */
 
-export type Level = "ok" | "warn" | "error";
-
-export interface Check {
-  /** 運営者が読む見出し。 */
-  name: string;
-  level: Level;
-  /** いまの状態。数字は必ず入れる（「問題なし」だけにしない）。 */
-  detail: string;
-  /** 異常時に次にやること。1行で、コマンドか画面操作を具体的に書く。 */
-  nextAction?: string;
-}
-
 export interface DiagnosticsReport {
   level: Level;
   checks: Check[];
   /** 運営者向けの1行まとめ。 */
   summary: string;
-}
-
-/** 最も重いレベルを返す（error > warn > ok）。 */
-export function worstLevel(levels: Level[]): Level {
-  if (levels.includes("error")) return "error";
-  if (levels.includes("warn")) return "warn";
-  return "ok";
-}
-
-/** 全体の1行まとめ。件数を必ず出す（「問題なし」だけで終わらせない）。 */
-export function summarize(checks: Check[]): string {
-  const errors = checks.filter((c) => c.level === "error").length;
-  const warns = checks.filter((c) => c.level === "warn").length;
-  if (errors > 0) return `対応が必要な問題が ${errors} 件あります（注意 ${warns} 件）`;
-  if (warns > 0) return `すぐ困る問題はありませんが、注意が ${warns} 件あります`;
-  return `${checks.length} 項目すべて正常です`;
 }
 
 // --- 個別の判定（純粋関数。単体テストで固定する） ---
@@ -432,7 +409,7 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
 /** 当月の従量課金（AI・X API）の実績。原則4の可視化。 */
 export function judgeCost(input: { monthUsd: number; byProvider: { provider: string; usd: number }[] }): Check {
   const name = "今月かかった費用";
-  const yen = Math.round(input.monthUsd * 150);
+  const yen = approxYen(input.monthUsd);
   const breakdown = input.byProvider
     .filter((p) => p.usd > 0)
     .map((p) => `${p.provider} $${p.usd.toFixed(2)}`)
@@ -444,7 +421,10 @@ export function judgeCost(input: { monthUsd: number; byProvider: { provider: str
 
 /**
  * 無料プランのDBサイズ上限（バイト）。**プロジェクトではなく組織単位で効く**（要件01 §8・T-M7-43）。
- * Proへ上げた場合は `SUPABASE_DB_SIZE_LIMIT_MB` で上書きする。
+ *
+ * NOTE: 以前ここに「Proへ上げた場合は `SUPABASE_DB_SIZE_LIMIT_MB` で上書きする」と書いてあったが、
+ * **その環境変数は repo に存在しない**（R30）。Pro移行時に env を設定して無反応になるだけの
+ * 案内だったため削除した。env で上書きできるようにするのは機能追加なので別タスクで扱う。
  */
 export const FREE_DB_SIZE_LIMIT_BYTES = 500 * 1024 * 1024;
 
@@ -493,8 +473,6 @@ export function judgeDatabaseSize(input: { bytes: number; limitBytes: number }):
 export interface DiagnosticsOptions {
   /** 定時実行が動く前提の環境か（本番のみ true）。ローカルで常に赤くしないための切り替え。 */
   schedulerExpected: boolean;
-  /** DBサイズの上限（バイト）。未指定なら無料プランの500MB。 */
-  dbSizeLimitBytes?: number;
   /** 人間確認の確認に使う接続情報（T-M7-53）。未指定なら「判定できません」になる。 */
   captcha?: CaptchaProbeDeps;
   /** プラン管理（Stripe Portal）の設定確認（T-M8-32）。未指定なら「判定できません」になる。 */
@@ -635,7 +613,7 @@ export async function collectDiagnostics(
   checks.push(
     judgeDatabaseSize({
       bytes: Number(size.rows[0]?.bytes ?? 0),
-      limitBytes: options.dbSizeLimitBytes ?? FREE_DB_SIZE_LIMIT_BYTES,
+      limitBytes: FREE_DB_SIZE_LIMIT_BYTES,
     }),
   );
 
