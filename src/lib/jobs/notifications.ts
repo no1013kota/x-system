@@ -16,6 +16,8 @@
  * `for key share of p` を持つ・T-M8-19）。揃えると振る舞いが変わるので巻き込まない。
  */
 
+import type { ProviderCall } from "../ai/normalize";
+import { recordProviderCalls } from "../db/api-usage-ledger";
 import type { Queryable } from "../db/queryable";
 
 import type { JobKind } from "./handlers";
@@ -140,4 +142,76 @@ export async function createDraftCreatedNotification(
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `draft:${params.draftId}:created`, params.draftId],
   );
+}
+
+/**
+ * job失敗を確定させる3手順（R23）。
+ *
+ * どの job も失敗時に同じ順序で同じことをする。
+ *
+ * 1. `generation_jobs` へ `error` / `usage` を書く
+ * 2. **失敗確定前に発生した provider call の原価を記録する**（成功・失敗を問わず記録・要件02 §3.17）
+ * 3. 利用者へ失敗を通知する
+ *
+ * 特に 2 は、新しい job種別を足す人が落としても**全テストが緑のまま通り、AI費用が
+ * 過少計上される**。費用が見えることは運営の前提（CLAUDE.md 原則4）なので、
+ * 3手順を1つにまとめて「書き忘れられない」形にする。
+ *
+ * `error` に渡した値だけが保存される。**`providerRawError` を渡さなければキー自体が出ない**
+ * （suggestion は `provider_raw_error` を持たない。`null` を足すと保存JSONが変わる）。
+ *
+ * 前段の後始末（image_generation の drafts.images 更新・learning_analysis の
+ * learning_sources 更新）と、通知の種類が draft_created である image_generation は
+ * 呼び出し側に残す。
+ */
+export async function persistJobFailure(
+  db: Queryable,
+  params: {
+    jobId: string;
+    userId: string;
+    xAccountId: string;
+    /** 原価台帳の冪等keyの接頭辞（`gen:` / `lrn:` / `sug:` / `img:`）。 */
+    keyPrefix: string;
+    error: {
+      code: string;
+      message: string;
+      stage: string | null;
+      /** 渡さなければ `provider_raw_error` キー自体を保存しない。 */
+      providerRawError?: string | null;
+    };
+    usage: { calls: ProviderCall[]; estimated_cost_usd_total: number };
+    /** 通知に使う kind。省略すると通知を出さない（呼び出し側が別の通知を出す場合）。 */
+    notifyKind?: JobKind;
+  },
+): Promise<void> {
+  const { code, message, stage } = params.error;
+  await db.query(
+    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
+    [
+      params.jobId,
+      JSON.stringify({
+        code,
+        message,
+        retryable: false,
+        stage,
+        ...("providerRawError" in params.error
+          ? { provider_raw_error: params.error.providerRawError ?? null }
+          : {}),
+      }),
+      JSON.stringify(params.usage),
+    ],
+  );
+  await recordProviderCalls(db, params.usage.calls, {
+    userId: params.userId,
+    xAccountId: params.xAccountId,
+    jobId: params.jobId,
+    keyPrefix: params.keyPrefix,
+  });
+  if (params.notifyKind) {
+    await createFailedNotification(db, {
+      userId: params.userId,
+      jobId: params.jobId,
+      ...resolveFailedNotice(params.notifyKind, { draft_id: null }),
+    });
+  }
 }

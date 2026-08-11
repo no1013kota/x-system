@@ -9,7 +9,7 @@ import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { createFailedNotification, resolveFailedNotice } from "./notifications";
+import { persistJobFailure } from "./notifications";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
 import { defaultRecordStage } from "./stale";
 
@@ -199,33 +199,19 @@ async function persistFailure(
     `update learning_sources set status = 'failed', updated_at = now() where id = $1`,
     [params.sourceId],
   );
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      params.jobId,
-      JSON.stringify({
-        code: params.code,
-        message: "学習ソースの分析に失敗しました。",
-        retryable: false,
-        stage: params.stage,
-        provider_raw_error: params.providerRawError,
-      }),
-      JSON.stringify(params.usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
-  await recordProviderCalls(db, params.usage.calls, {
+  await persistJobFailure(db, {
+    jobId: params.jobId,
     userId: params.userId,
     xAccountId: params.xAccountId,
-    jobId: params.jobId,
     keyPrefix: `lrn:${params.jobId}`,
-  });
-
-  // error通知（設定を尊重・両channel OFFなら作らない）。文言の正本は `notifications.ts`。
-  await createFailedNotification(db, {
-    userId: params.userId,
-    jobId: params.jobId,
-    ...resolveFailedNotice("learning_analysis", { draft_id: null }),
+    error: {
+      code: params.code,
+      message: "学習ソースの分析に失敗しました。",
+      stage: params.stage,
+      providerRawError: params.providerRawError,
+    },
+    usage: params.usage,
+    notifyKind: "learning_analysis",
   });
 }
 

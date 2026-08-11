@@ -30,8 +30,7 @@ import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import {
   createDraftCreatedNotification,
-  createFailedNotification,
-  resolveFailedNotice,
+  persistJobFailure,
 } from "./notifications";
 import { defaultRecordStage } from "./stale";
 
@@ -225,32 +224,19 @@ async function persistFailure(
   },
   usage: GenerationUsage,
 ): Promise<void> {
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      job.jobId,
-      JSON.stringify({
-        code: error.code,
-        message: error.message,
-        retryable: false,
-        stage: error.stage,
-        provider_raw_error: error.providerRawError ?? null,
-      }),
-      JSON.stringify(usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（成功・失敗を問わず記録・要件02 §3.17）。
-  await recordProviderCalls(db, usage.calls, {
+  await persistJobFailure(db, {
+    jobId: job.jobId,
     userId: job.userId,
     xAccountId: job.xAccountId,
-    jobId: job.jobId,
     keyPrefix: `gen:${job.jobId}`,
-  });
-  // error通知（設定を尊重・両channel OFFなら作らない）。文言の正本は `notifications.ts`。
-  await createFailedNotification(db, {
-    userId: job.userId,
-    jobId: job.jobId,
-    ...resolveFailedNotice("post_generation", { draft_id: null }),
+    error: {
+      code: error.code,
+      message: error.message,
+      stage: error.stage,
+      providerRawError: error.providerRawError ?? null,
+    },
+    usage,
+    notifyKind: "post_generation",
   });
 }
 
