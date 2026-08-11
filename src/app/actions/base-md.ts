@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import {
   getBaseMdForUser,
   isLearningRunningForUser,
@@ -11,7 +12,6 @@ import {
   updateBaseMdManualForUser,
 } from "@/lib/base-md-server";
 import type { BaseMdVersionView } from "@/lib/base-md";
-import { AppError } from "@/lib/observability/errors";
 
 /**
  * ベースmd手動編集・履歴・ロールバックの Server Actions（M-1, 要件05 §8/§9）。本人のみ。プラン制限
@@ -35,9 +35,9 @@ export async function getBaseMdAction(
 ): Promise<
   BaseResult & { content?: string; version?: number; history?: BaseMdVersionView[]; learningRunning?: boolean }
 > {
-  const parsed = xAccountSchema.safeParse(input);
+  const parsed = parseUserInput(xAccountSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -56,9 +56,9 @@ export async function getBaseMdAction(
 export async function updateBaseMdManualAction(
   input: unknown,
 ): Promise<BaseResult & { version?: number }> {
-  const parsed = updateSchema.safeParse(input);
+  const parsed = parseUserInput(updateSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -78,9 +78,9 @@ export async function updateBaseMdManualAction(
 export async function rollbackBaseMdAction(
   input: unknown,
 ): Promise<BaseResult & { version?: number }> {
-  const parsed = rollbackSchema.safeParse(input);
+  const parsed = parseUserInput(rollbackSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

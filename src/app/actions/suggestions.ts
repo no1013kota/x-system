@@ -8,7 +8,8 @@ import { refreshSuggestions, refreshSuggestionsSchema } from "@/lib/jobs/suggest
 import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 
 /**
  * 改善提案の Server Action（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
@@ -32,9 +33,9 @@ async function requireActive(): Promise<
 export async function refreshSuggestionsAction(
   input: unknown,
 ): Promise<BaseResult & { jobId?: string }> {
-  const parsed = refreshSuggestionsSchema.safeParse(input);
+  const parsed = parseUserInput(refreshSuggestionsSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireActive();
   if (!auth.ok) return auth.result;

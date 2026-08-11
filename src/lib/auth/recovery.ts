@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseUserInput } from "@/lib/validation/user-input";
 
 import {
   decryptWithKey,
@@ -46,14 +47,14 @@ export class RecoverySessionError extends Error {
 }
 
 export function passwordResetRequestInputFromFormData(formData: FormData) {
-  return passwordResetRequestSchema.safeParse({
+  return parseUserInput(passwordResetRequestSchema, {
     captcha_token: formData.get("captcha_token") ?? "",
     email: formData.get("email"),
   });
 }
 
 export function updatePasswordInputFromFormData(formData: FormData) {
-  return updatePasswordSchema.safeParse({
+  return parseUserInput(updatePasswordSchema, {
     password: formData.get("password"),
     password_confirmation: formData.get("password_confirmation"),
   });

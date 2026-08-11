@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { AppError } from "@/lib/observability/errors";
 import { PROMPT_TEMPLATE_KINDS } from "@/lib/prompts/gen-prompts";
 import {
@@ -62,9 +63,9 @@ export async function listPromptTemplatesAction(): Promise<
 export async function updatePromptTemplateAction(
   input: unknown,
 ): Promise<BaseResult & { template?: PromptTemplateView }> {
-  const parsed = updateSchema.safeParse(input);
+  const parsed = parseUserInput(updateSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -84,9 +85,9 @@ export async function updatePromptTemplateAction(
 export async function resetPromptTemplateAction(
   input: unknown,
 ): Promise<BaseResult & { template?: PromptTemplateView }> {
-  const parsed = resetSchema.safeParse(input);
+  const parsed = parseUserInput(resetSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

@@ -4,14 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { z } from "zod";
 
-import {
-  errorResult,
-  requireExecutionUserId,
-  requireUserId,
-  type BaseResult,
-} from "./_helpers";
+import { type BaseResult, errorResult, requireExecutionUserId, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
-import { AppError } from "@/lib/observability/errors";
 import {
   disableXAutomation,
   recordXAutomationConsent,
@@ -64,9 +59,9 @@ export async function listScheduleSlotsAction(): Promise<
 export async function createScheduleSlotAction(
   input: unknown,
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
-  const parsed = createScheduleSlotSchema.safeParse(input);
+  const parsed = parseUserInput(createScheduleSlotSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -82,9 +77,9 @@ export async function createScheduleSlotAction(
 export async function updateScheduleSlotAction(
   input: unknown,
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
-  const parsed = updateScheduleSlotSchema.safeParse(input);
+  const parsed = parseUserInput(updateScheduleSlotSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -100,9 +95,9 @@ export async function updateScheduleSlotAction(
 export async function disableScheduleSlotAction(
   input: unknown,
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
-  const parsed = slotLockSchema.safeParse(input);
+  const parsed = parseUserInput(slotLockSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -119,9 +114,9 @@ export async function disableScheduleSlotAction(
 export async function enableScheduleSlotAction(
   input: unknown,
 ): Promise<BaseResult & { slot?: ScheduleSlotView }> {
-  const parsed = slotLockSchema.safeParse(input);
+  const parsed = parseUserInput(slotLockSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -139,9 +134,9 @@ const disableAutomationSchema = z.object({ x_account_id: z.string().uuid() });
 export async function recordXAutomationConsentAction(
   input: unknown,
 ): Promise<BaseResult & { consent?: AutomationConsentState }> {
-  const parsed = recordXAutomationConsentSchema.safeParse(input);
+  const parsed = parseUserInput(recordXAutomationConsentSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -157,9 +152,9 @@ export async function recordXAutomationConsentAction(
 export async function disableXAutomationAction(
   input: unknown,
 ): Promise<BaseResult & { result?: DisableAutomationResult }> {
-  const parsed = disableAutomationSchema.safeParse(input);
+  const parsed = parseUserInput(disableAutomationSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -175,9 +170,9 @@ export async function disableXAutomationAction(
 }
 
 export async function deleteScheduleSlotAction(input: unknown): Promise<BaseResult> {
-  const parsed = slotLockSchema.safeParse(input);
+  const parsed = parseUserInput(slotLockSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

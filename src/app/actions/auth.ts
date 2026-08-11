@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
+import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
 import {
   passwordResetRequestInputFromFormData,
@@ -63,7 +64,7 @@ export async function signUp(
     return {
       status: "error",
       message: "入力内容を確認してください。",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: authoredFieldErrors(parsed.error),
     };
   }
 
@@ -120,7 +121,7 @@ export async function resendSignUpConfirmation(
   _previousState: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
-  const emailResult = emailSchema.safeParse(formData.get("email"));
+  const emailResult = parseUserInput(emailSchema, formData.get("email"));
   if (!emailResult.success) {
     return {
       status: "error",
@@ -128,7 +129,7 @@ export async function resendSignUpConfirmation(
     };
   }
 
-  const captchaResult = captchaTokenSchema.safeParse(formData.get("captcha_token"));
+  const captchaResult = parseUserInput(captchaTokenSchema, formData.get("captcha_token"));
   if (!captchaResult.success) {
     return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
   }
@@ -169,7 +170,7 @@ export async function requestPasswordReset(
     return {
       status: "error",
       message: "メールアドレスを確認してください。",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: authoredFieldErrors(parsed.error),
     };
   }
 
@@ -206,7 +207,7 @@ export async function updatePassword(
     return {
       status: "error",
       message: "入力内容を確認してください。",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: authoredFieldErrors(parsed.error),
     };
   }
 
@@ -252,7 +253,7 @@ export async function signIn(
     return {
       status: "error",
       message: "入力内容を確認してください。",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: authoredFieldErrors(parsed.error),
     };
   }
 

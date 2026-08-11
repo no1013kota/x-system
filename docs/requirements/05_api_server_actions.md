@@ -232,6 +232,8 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで発信設定・ベースmd編集（md/premium）で自ら反映する。
 
+入力検証の失敗（`validation_error`）は、**作者が自分で書いたzodメッセージがあればそれを `message` に載せる**（F8〜F10）。無ければ code ごとの定型文（「入力内容を確認してください。」）に落ちる。zodの既定メッセージは英語かつスキーマの説明（`Too big: expected string to have <=512 characters` 等）なので画面へ出さない——要件06 §8「内部用語を画面に使わない」に反するため。実装は `src/lib/validation/user-input.ts` の `parseUserInput`（per-parseのsentinel）＋ `firstAuthoredIssueMessage` / `authoredFieldErrors` が正本で、`code` は変えない。**Server Action と認証フォームで素の `safeParse` を使わないことは `user-input.test.ts` が検査する**（素のままだと既定文言と作者文言を区別できない）。
+
 更新系Actionは対象rowのstatus/version/`updated_at`をupdate条件に含め、0件更新なら`job_conflict`を返して最新値の再読込を促す。
 
 ベースmd更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。発信設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。

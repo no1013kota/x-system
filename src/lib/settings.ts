@@ -53,13 +53,17 @@ export const newsConfigSchema = z
   .object({
     categories: z
       .array(newsCategorySchema)
-      .min(1, "テーマを1件以上選択してください")
-      .refine(unique, "テーマが重複しています"),
+      .min(1, "テーマを1件以上選択してください。")
+      .refine(unique, "テーマが重複しています。"),
     impact_filter: z
       .array(impactLevelSchema)
-      .min(1, "インパクトを1件以上選択してください")
-      .refine(unique, "インパクトが重複しています"),
-    max_items: z.number().int().min(NEWS_MAX_ITEMS_MIN).max(NEWS_MAX_ITEMS_MAX),
+      .min(1, "インパクトを1件以上選択してください。")
+      .refine(unique, "インパクトが重複しています。"),
+    max_items: z
+      .number()
+      .int(`表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`)
+      .min(NEWS_MAX_ITEMS_MIN, `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`)
+      .max(NEWS_MAX_ITEMS_MAX, `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`),
   })
   .strict();
 
