@@ -8,6 +8,7 @@ import {
 import { refundUsage, type UsageReserveType } from "../usage/generation-reserve";
 import type { JobKind } from "./handlers";
 import {
+  createDraftCreatedNotification,
   createFailedNotification,
   DEFAULT_FAILED_NOTICE,
   FAILED_NOTICE,
@@ -71,33 +72,6 @@ async function loadJobTerminal(
     [jobId],
   );
   return rows[0] ?? null;
-}
-
-/** draft_created 通知（本文生成側と同一 dedupe_key で重複を防ぐ）。 */
-async function createDraftCreatedNotification(
-  c: PoolClient,
-  userId: string,
-  draftId: string,
-): Promise<void> {
-  await c.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'draft_created', $2, '下書きができました',
-            '生成した投稿の下書きを確認・編集できます。',
-            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [userId, `draft:${draftId}:created`, draftId],
-  );
 }
 
 /** post_publish stale: draft を posting→failed へ戻し last_post_error を保存（要件04 §4）。 */
@@ -173,7 +147,7 @@ async function finalizeImageStale(
   if (job.mode === "auto") {
     await ensurePostPublishChild(c, job, draftId);
   } else {
-    await createDraftCreatedNotification(c, job.user_id, draftId);
+    await createDraftCreatedNotification(c, { userId: job.user_id, draftId });
   }
 }
 

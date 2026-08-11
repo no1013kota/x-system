@@ -28,7 +28,11 @@ import { recordProviderCalls } from "../db/api-usage-ledger";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { createFailedNotification, resolveFailedNotice } from "./notifications";
+import {
+  createDraftCreatedNotification,
+  createFailedNotification,
+  resolveFailedNotice,
+} from "./notifications";
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
@@ -248,31 +252,6 @@ async function persistFailure(
     jobId: job.jobId,
     ...resolveFailedNotice("post_generation", { draft_id: null }),
   });
-}
-
-async function createDraftCreatedNotification(
-  db: Queryable,
-  params: { userId: string; draftId: string },
-): Promise<void> {
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'draft_created', $2, '下書きができました',
-            '生成した投稿の下書きを確認・編集できます。',
-            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `draft:${params.draftId}:created`, params.draftId],
-  );
 }
 
 export async function executePostGeneration(

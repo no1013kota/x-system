@@ -107,3 +107,37 @@ export async function createFailedNotification(
     [params.userId, `job:${params.jobId}:failed`, params.jobId, params.title, params.body, params.link],
   );
 }
+
+/**
+ * 下書きができたことの通知（R22）。
+ *
+ * 本文生成の成功経路・画像生成の確定経路・stale経路の3つが同じ下書きについて通知しうるため、
+ * `dedupe_key` を `draft:{draftId}:created` に揃えて重複を防ぐ。以前はこの関数が
+ * `post-generation.ts` / `image-generation.ts` / `terminal.ts` に**SQL差分ゼロで3重に**
+ * 書かれており、文言・リンク・通知設定の見方・重複防止条件のどれを直すときも3箇所を
+ * 直す必要があった（1つ忘れると成功経路とstale経路で通知が食い違う）。
+ */
+export async function createDraftCreatedNotification(
+  db: Queryable,
+  params: { userId: string; draftId: string },
+): Promise<void> {
+  await db.query(
+    `insert into notifications
+       (user_id, type, dedupe_key, title, body, link, payload,
+        in_app_enabled, email_status, email_available_at)
+     select $1, 'draft_created', $2, '下書きができました',
+            '生成した投稿の下書きを確認・編集できます。',
+            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
+            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
+            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
+                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
+            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
+                 then now() else null end
+       from profiles p
+      where p.id = $1
+        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
+             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+    [params.userId, `draft:${params.draftId}:created`, params.draftId],
+  );
+}
