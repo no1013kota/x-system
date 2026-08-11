@@ -3,7 +3,7 @@ import { z } from "zod";
 import { OTHER_POST_THEME, POST_THEME_IDS } from "@/lib/post/post-theme";
 
 import {
-  checkExecutionPrerequisites,
+  assertPrereqsFromInput,
   checkPostingPrerequisites,
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
@@ -91,27 +91,14 @@ async function assertPrereqs(
   userId: string,
   imageRequested: boolean,
 ): Promise<void> {
-  const input = await deps.gatherPrereqInputs(userId, { imageRequested });
-  const error = input
-    ? checkExecutionPrerequisites(input)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
-  if (error) {
-    throw new AppError(error.code, {
-      details: { missing: error.missing, settingsPath: error.settingsPath },
-    });
-  }
+  assertPrereqsFromInput(await deps.gatherPrereqInputs(userId, { imageRequested }));
 }
 
 async function assertPostingPrereqs(deps: GenerationJobDeps, userId: string): Promise<void> {
-  const input = await deps.gatherPrereqInputs(userId, { imageRequested: false });
-  const error = input
-    ? checkPostingPrerequisites(input)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
-  if (error) {
-    throw new AppError(error.code, {
-      details: { missing: error.missing, settingsPath: error.settingsPath },
-    });
-  }
+  assertPrereqsFromInput(
+    await deps.gatherPrereqInputs(userId, { imageRequested: false }),
+    checkPostingPrerequisites,
+  );
 }
 
 export async function createGenerationJob(

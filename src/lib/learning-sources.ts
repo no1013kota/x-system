@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import {
-  checkExecutionPrerequisites,
+  assertPrereqsFromInput,
   type ExecutionPrereqInput,
 } from "./execution-prereqs";
 import { toIso } from "./format";
@@ -113,13 +113,7 @@ export interface RemoveLearningSourceResult {
 }
 
 async function assertPrereqs(deps: LearningSourceDeps, userId: string): Promise<void> {
-  const input = await deps.gatherPrereqInputs(userId, { imageRequested: false });
-  const error = input
-    ? checkExecutionPrerequisites(input)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
-  if (error) {
-    throw new AppError(error.code, { details: { missing: error.missing, settingsPath: error.settingsPath } });
-  }
+  assertPrereqsFromInput(await deps.gatherPrereqInputs(userId, { imageRequested: false }));
 }
 
 /** 学習系の直列化: removing source があれば busy。remove時は queued/running の learning job も busy とする。 */
