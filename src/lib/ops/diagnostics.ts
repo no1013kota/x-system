@@ -1,15 +1,11 @@
 import "server-only";
 
+import { classifyNewsOutcome } from "@/lib/news-outcome";
+
 import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
-import {
-  formatDropReasons,
-  formatTooOldAges,
-  mostlyDropped,
-  onlyOutsideWindow,
-} from "@/lib/news-outcome";
 
 /**
  * 運営者向けの状態診断（T-M7-34）。
@@ -133,34 +129,30 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
     dropped: number;
     ages: string | null;
   }[] = [];
+  // 分類そのものは `lib/news-outcome.ts` の1つだけを使う（以前はここと通知側が
+  // 別々に書いていて、同じ状況を「該当なし」と「全件破棄」に分けて伝えていた・R25）。
   for (const o of outcomes) {
-    if (!o.ok) {
-      failed.push(o.category);
-      continue;
-    }
-    if (o.fetched > 0) {
-      if (mostlyDropped(o.fetched, o.dropped)) {
+    const verdict = classifyNewsOutcome(o);
+    switch (verdict.kind) {
+      case "failed":
+        failed.push(verdict.category);
+        break;
+      case "mostly_dropped":
         mostly.push({
-          category: o.category,
-          fetched: o.fetched,
-          dropped: o.dropped,
-          ages: formatTooOldAges(o.dropReasons),
+          category: verdict.category,
+          fetched: verdict.fetched,
+          dropped: verdict.dropped,
+          ages: verdict.ages,
         });
-      }
-      continue;
-    }
-    if (o.dropped > 0) {
-      // 「取得窓より古い」だけなら該当なしと同じ（その時間帯に新しい記事が無かっただけで、
-      // 運営者に直せるものは無い）。直せない理由で警告を出すと読まれなくなる（T-M7-44）。
-      // 判定は `lib/news-outcome.ts` に1つだけ置く（以前はここと通知側で食い違っていた）。
-      if (onlyOutsideWindow(o.dropReasons)) {
-        noMatch.push(o.category);
-        continue;
-      }
-      const reasons = formatDropReasons(o.dropReasons);
-      allDropped.push({ category: o.category, reasons: reasons || `${o.dropped}件` });
-    } else {
-      noMatch.push(o.category);
+        break;
+      case "all_dropped":
+        allDropped.push({ category: verdict.category, reasons: verdict.reasons });
+        break;
+      case "no_match":
+        noMatch.push(verdict.category);
+        break;
+      case "healthy":
+        break;
     }
   }
   return { failed, allDropped, noMatch, mostlyDropped: mostly };

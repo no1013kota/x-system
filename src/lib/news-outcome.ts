@@ -80,3 +80,68 @@ export function formatTooOldAges(reasons: Record<string, number>): string | null
 export function mostlyDropped(fetched: number, dropped: number): boolean {
   return fetched > 0 && dropped > fetched;
 }
+
+/** 1テーマ1回分の取得結果（診断・日次サマリの両方が渡せる最小の形）。 */
+export interface NewsOutcomeRow {
+  category: string;
+  /** 実行そのものが失敗したか。省略時は成功扱い（抽出SQLで既に絞っている場合）。 */
+  ok?: boolean;
+  fetched: number;
+  dropped: number;
+  dropReasons: Record<string, number>;
+}
+
+/**
+ * 取得結果の**分類の正本**（R25）。
+ *
+ * 同じ結果を診断（doctor）と日次サマリの2経路が見るが、以前は**分類そのものを
+ * それぞれが書いていた**（doctorはループ、サマリは2つのfilter）。T-M8-83 で
+ * 「良性の除外」の判定だけは1箇所へ寄せたが、その判定を**どう組み合わせて
+ * どのバケツへ入れるか**は二重のままだった。片方だけ条件を足すと、同じ状況を
+ * doctorとサマリが違う言葉で伝える状態へ逆戻りする。
+ *
+ * - `failed`: 実行が失敗した
+ * - `mostly_dropped`: 取れてはいるが除外が取得より多い（**警告にはしない**・数字だけ出す）
+ * - `all_dropped`: 1件も取れず、除外理由に契約違反が混ざる（プロンプトか検証条件の不具合）
+ * - `no_match`: 1件も取れないが、除外は「取得窓より古い」だけ、または除外自体が無い
+ * - `healthy`: 通常どおり取れている（報告することが無い）
+ */
+export type NewsOutcomeVerdict =
+  | { kind: "failed"; category: string }
+  | {
+      kind: "mostly_dropped";
+      category: string;
+      fetched: number;
+      dropped: number;
+      ages: string | null;
+    }
+  | { kind: "all_dropped"; category: string; reasons: string }
+  | { kind: "no_match"; category: string }
+  | { kind: "healthy"; category: string };
+
+export function classifyNewsOutcome(row: NewsOutcomeRow): NewsOutcomeVerdict {
+  const { category, fetched, dropped, dropReasons } = row;
+  if (row.ok === false) return { kind: "failed", category };
+  if (fetched > 0) {
+    return mostlyDropped(fetched, dropped)
+      ? {
+          kind: "mostly_dropped",
+          category,
+          fetched,
+          dropped,
+          ages: formatTooOldAges(dropReasons),
+        }
+      : { kind: "healthy", category };
+  }
+  if (dropped > 0) {
+    // 「取得窓より古い」だけなら該当なしと同じ（その時間帯に新しい記事が無かっただけで、
+    // 運営者に直せるものは無い）。直せない理由で警告を出すと通知が読まれなくなる（T-M7-44）。
+    if (onlyOutsideWindow(dropReasons)) return { kind: "no_match", category };
+    return {
+      kind: "all_dropped",
+      category,
+      reasons: formatDropReasons(dropReasons) || `${dropped}件`,
+    };
+  }
+  return { kind: "no_match", category };
+}
