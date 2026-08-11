@@ -8,28 +8,9 @@
 //
 // 判定は route 側（`src/lib/smoke/scenarios.ts`）にあり、ローカルもデプロイ先も同じものを使う。
 // ここはトリガーと表示だけを持つ。**実費が発生し、生成枠も消費する。**
-import { readFileSync } from "node:fs";
+import { argOf, baseUrl, envValue } from "./lib/cli.mjs";
 
-function argOf(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-/** 指定した名前の値を .env.local → .env → 環境変数 の順で探す（値は出力しない）。 */
-function envValue(name) {
-  if (process.env[name]) return process.env[name];
-  for (const file of [".env.local", ".env"]) {
-    try {
-      const m = new RegExp(`^${name}=(.*)$`, "m").exec(readFileSync(file, "utf8"));
-      if (m?.[1]) return m[1].trim();
-    } catch {
-      // ファイルが無いのは正常。次の候補へ。
-    }
-  }
-  return undefined;
-}
-
-const base = (argOf("base") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+const base = baseUrl();
 const account = argOf("account");
 const { cronSecretEnvName } = await import("../src/lib/ops/release-gate.ts");
 const secretName =
