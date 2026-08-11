@@ -95,7 +95,7 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
 
   const save = page.getByRole("button", { name: "Xキーを保存" });
   await expect(save).toBeDisabled();
-  await expect(page.getByText("Client IDとClient Secretを入力すると保存できます。")).toBeVisible();
+  await expect(page.getByText("Client IDを入力すると保存できます。")).toBeVisible();
 
   // 短いあいだは必要な文字数と現在の文字数が出る
   await page.getByLabel("Client ID").fill("abc");
@@ -106,12 +106,25 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
   await page.getByLabel("Client ID").fill("abcdef-123456");
   await expect(save).toBeEnabled();
 
+  /*
+    保存できても Secret が空なら**連携時に拒否される**ことを、押す前に伝える（F3・T-M8-63）。
+    手順ガイドが指示する App 種別は confidential client で、Secret 無しの token 交換は
+    401 になる。以前は Client ID を入れた時点で押せない理由ごと消え、Secret を空でよいのか
+    駄目なのかを言う文が画面のどこにも無かった。
+  */
+  const secretNote = page.getByText("空のまま保存すると、Xアカウントの連携時にXから拒否されます", {
+    exact: false,
+  });
+  await expect(secretNote).toBeVisible();
+
   // Secret を入れかけのあいだは、その理由が出る
   await page.getByLabel("Client Secret").fill("short");
   await expect(save).toBeDisabled();
   await expect(page.getByText("Client Secretは8文字以上です（いま5文字）。")).toBeVisible();
   await page.getByLabel("Client Secret").fill("secret-value-1234");
   await expect(save).toBeEnabled();
+  // 入れたら注記は消える（正常な操作を妨げない）
+  await expect(secretNote).toHaveCount(0);
 
   // 「Client種別」という利用者が答えられない質問を戻さない（T-M8-62）
   await expect(page.getByLabel("Client種別")).toHaveCount(0);
