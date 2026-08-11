@@ -7,6 +7,12 @@ import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
+import {
+  counterTypeFor,
+  finalTextResolver,
+  hasUrl,
+  postConsumeKey,
+} from "../post/posting-text";
 import { findOverLengthText } from "../post/text-metrics";
 import {
   XApiError,
@@ -34,10 +40,6 @@ import { recordUnexpectedError } from "../observability/sentry";
  * premium月次counter（usage_counters）加算とロールバック安全残量検証は M6。
  */
 
-const URL_RE = /https?:\/\/\S+/;
-function hasUrl(text: string): boolean {
-  return URL_RE.test(text);
-}
 
 /**
  * premium投稿開始前に必要な通常/URL付き枠を算出する（要件03 §7.4・要件06 §7, T-M6-07）。最終payload列を
@@ -335,7 +337,7 @@ async function rollbackThread(
       tweetId,
       counterType: withUrl ? "post_url" : "post_normal",
       operation: "post_delete",
-      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:delete`,
+      idempotencyKey: postConsumeKey(draftId, tweetId, "post_delete"),
       premiumLive,
     });
 
@@ -472,8 +474,7 @@ export async function executePostPublish(
   }
 
   // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
-  const finalTextAt = (i: number): string =>
-    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
+  const finalTextAt = finalTextResolver(thread, draft.quote_url);
 
   // --- 検証: 加重280超過は **mode を問わず** 止める（T-M8-39）---
   //
@@ -634,9 +635,9 @@ export async function executePostPublish(
       jobId,
       draftId,
       tweetId,
-      counterType: hasUrl(finalTextAt(i)) ? "post_url" : "post_normal",
+      counterType: counterTypeFor(finalTextAt(i)),
       operation: "post_create",
-      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:create`,
+      idempotencyKey: postConsumeKey(draftId, tweetId, "post_create"),
       premiumLive: job.plan === "premium" && deps.postingLive,
     });
   };
