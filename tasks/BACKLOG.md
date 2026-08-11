@@ -11,27 +11,35 @@ Exos AI MVPの作業キュー。エージェントループ（/dev-loop）はこ
 - ユーザーに判断・準備してほしいことは「要決定・外部準備」に追記する
 - 書式: `### <ID>: <タスク名> \`<status>\`` ＋ 参照/依存/サイズ行 ＋ 完了条件
 
-## 現在の状況と次の一手（2026-08-10 更新）
+## 現在の状況と次の一手（2026-08-11 更新）
 
-M0〜M8は実質完了。直近1週間は**法務3ページの本番運用版化・改称（Space AI → Exos AI）・LP（SC-01）の全面刷新**を行った。
+M0〜M8は実質完了。直近1週間は**法務3ページの本番運用版化・改称（Space AI → Exos AI）・LP（SC-01）の全面刷新**を行い、
+2026-08-11 に**全体リファクタ（R19〜R38 のうち R19〜R32・R37）と、そこから出た要決定6件（D-21〜D-26）の実装**を終えた。
 
-> **最優先: いま作業ブランチが1度も push されていない。**
-> `fix/audit-followups-a` は `origin/stg` から分岐して **39コミット先行・upstream未設定**。
-> 2026-08-04〜08-10 の作業（法務3ページ・再同意の配線・LP刷新・改称・屋号）が**ローカルにしか無く、CIも通っていない**。
-> `origin/stg` より遅れは0なので、push すれば fast-forward で載る。
-> （ローカル `main` も origin/main より17コミット先行。こちらは別件。）
+> **2026-08-11 のリファクタで見つかった一番重いもの**: このリポジトリが方針として持つ
+> 「人の注意力を機械検査へ移す」検査のうち、**2本が空振りしていた**（R19・R32）。ひとつは
+> AES鍵を扱うモジュールの `server-only` を守る検出器が実名と一致しておらず、`import "server-only";` を
+> 外しても**全テストが緑のまま**だった。この種の壊れ方の防ぎ方は
+> [開発とテストの進め方](../docs/operations/development-and-testing.md) §11「ソースを走査する検査」に規約化した。
+
+> **最優先: `stg` が push されていない（2026-08-11 時点で origin/stg より22コミット先行・遅れ0）。**
+> 2026-08-11 のリファクタ（R19〜R32）と要決定6件の実装が**ローカルにしか無く、CIも通っていない**。
+> 遅れが0なので push すれば fast-forward で載る。ローカルで `npm run release:check` は緑
+> （単体1,909＋E2E 60件。E2Eはサンドボックス内でブラウザを起動できないため sandbox 外で実行した）。
+> （ローカル `main` も origin/main より先行。こちらは別件。）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り） | 下記M8セクション |
+| 開発タスク（着手可） | **5件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り／**T-M8-84 Xキーの押せる条件／T-M8-85 警告一覧の齟齬／T-M8-86 ニュース検証失敗の記録**） | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
-| 要決定 | **5件**（D-16 / D-17 / D-18 / D-19 / D-20） | 「要決定・外部準備」 |
+| 要決定 | **5件**（D-16 / D-17 / D-18 / D-19 / D-20）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
+| リファクタ | **R33〜R38 の6件が未着手**（R19〜R32・R37 は done） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
 | 外部準備（人間側） | アカウント・実キー・法務・単価確認 | [リリース前チェックリスト §3](../docs/operations/release-checklist.md) が正本 |
 
 **次の一手（推奨順）**
 
-1. **push して CI を通す**（39コミット未push）。これが済むまで `npm run release:staging` は動かず、
-   1週間分の作業がこのマシンにしか無い状態が続く。`origin/stg` へ PR を出す
+1. **push して CI を通す**（22コミット未push）。これが済むまで `npm run release:staging` は動かず、
+   作業がこのマシンにしか無い状態が続く
 2. **D-20（退会手順）を決める**。利用規約第6条とプライバシー第9条が「窓口へ連絡すれば本人確認のうえ削除する」と
    **約束しているのに、その手順が用意されていない**。約束と実態の食い違いなので公開前に必要
 3. **D-17（法務文書の弁護士レビュー）**。T-M8-75で条項を19条へ増やし、T-M8-81で屋号を足したため
@@ -1955,6 +1963,47 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: libvips の CVE群（CVE-2026-33327/33328/35590/35591・GHSA-f88m-g3jw-g9cj）が `sharp<0.35.0` 対象。現在 `^0.34.5`。breaking upgrade なので API 差分を確認してから上げる。`postcss` は next が nested で pin しており upgrade では解消しないため、`overrides` が唯一の手段だが next のビルドを壊す恐れがある（壊れるなら allowlist に残す判断を理由付きで記録する）。`next` は T-M7-10 で 16.2.12 済み、`brace-expansion` はビルド時のみの到達経路で allowlist 継続。
 
 
+### T-M8-84: Xキー保存の押せる条件をサーバー検証と一致させる `todo`
+- 参照: 要件06 §2（設定・APIキー）、`src/app/app/settings/api-key-settings.tsx` / 依存: なし / サイズ: S
+- **発端**: 2026-08-11 の追加調査（F3 の周辺確認）で見つかった。
+- **問題**: 保存可否の判定 `xSavable`（api-key-settings.tsx:160-163）が Client ID の**文字種を見ていない**。
+  そのため `bad id` のように空白や記号を含む値でもボタンが押せ、サーバー側
+  （`src/lib/api-keys.ts` の `client_id` の正規表現 `^[A-Za-z0-9_-]+$`）で初めて弾かれる。
+  同ファイル :156 のコメントは「サーバー検証と同じ条件」と書いており、**ここだけ食い違っている**。
+- **なぜ直すか**: 押せてしまってサーバーに弾かれる形は、押す前に理由が分かる形（T-M8-46・T-M8-37）へ
+  そろえた設計から外れる。押せない理由の文言はすでに整っているので、条件を1つ足すだけで一貫する。
+- **やること**: `xSavable` に文字種の判定を足し、押せない理由に対応する分岐（「Client IDは英数字・
+  ハイフン・アンダースコアで入力してください。」）を出す。文言は `src/lib/api-keys.ts` の
+  zod メッセージが正本なので二重に書かない。E2E（`e2e/x-oauth.spec.ts` の T-M8-46 のテスト）へ
+  1ケース足す。
+- **注意**: 画面とサーバーで判定が二重になるのは避けられないため、**同じ条件であることを機械検査で
+  固定する**（正規表現そのものを共有するか、画面側の判定を lib へ出す）。
+
+### T-M8-85: 要件06 の警告一覧と実装の齟齬を解消する（「引用対象不明」） `todo`
+- 参照: 要件06 §4.3、`src/lib/post/warning-codes.ts` / 依存: なし / サイズ: S
+- **発端**: 2026-08-11 の追加調査（D-23 の周辺確認）で見つかった。
+- **問題**: 要件06 §4.3 は警告として「引用対象不明」を挙げているが、**対応する警告コードが実装に無い**
+  （実装は `warning-codes.ts` の7コードだけ）。正本と実装の齟齬で、`docs/` は実装の現状と一致して
+  いなければならない（CLAUDE.md 最重要ルール）。
+- **やること**: どちらが正しいかを決める。(a) P-5（引用投稿）で引用対象が解決できない場合の警告が
+  必要なら実装する（`quote_url` から `quote_tweet_id` を解決できなかったときの扱いを確認する）。
+  (b) 不要なら要件06 から記述を削る。**先に P-5 の現在の実装を読んで、引用対象が解決できないときに
+  何が起きるかを確認する**（黙って引用なしで投稿していると原則1に反する）。
+
+### T-M8-86: ニュース取得の検証失敗の中身を記録できるようにする `todo`
+- 参照: 要件02 §3.19（`news_fetch_outcomes`）・要件04 §6、`src/lib/jobs/news-research.ts` / 依存: なし / サイズ: M
+- **発端**: 2026-08-11 の F4（検証失敗で応答本文を残す）を4経路へ入れたが、**ニュース取得だけ入れられなかった**。
+- **問題**: `news_fetch` は `generation_jobs` を持たず、`news_fetch_outcomes` に理由テキストの列が無いため
+  **保存先が無い**。経路は route の `onError` → Sentry しかなく、Sentry へ provider の応答本文を送るのは
+  要件01 §8 に反するので載せられない。結果、ニュースの検証失敗は「何件落ちた」までしか分からない。
+- **なぜ直すか**: 原則1「正常な空と失敗による空を別の値で表す」は件数では満たせても、**原則2「原因が
+  開発知識なしで辿れる」を満たせない**。T-M8-83 で古さの範囲（`_too_old_min_age_h`）を足したのと同じ動機。
+- **やること**: `news_fetch_outcomes` へ `error_code` / `provider_raw_error` 相当の列を足す migration を書き、
+  `applyRecencyPolicy` の後段（検証で落ちた分）で `ai/raw-error.ts` の `RAW_ERROR_MAX` に合わせて保存する。
+  **DBスキーマ変更を伴うため `/verify-integration`（`service_role` のGRANT含む）が必須**。
+  画面へは出さない（運営者向け）。`drop_reasons` の `_` 接頭辞の規則（T-M8-83）と衝突しない形にする。
+
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
@@ -2070,17 +2119,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - [ ] premium原価のβ実測に基づく上限値・単価前提・価格の見直し判断（リリース後運用。external_api_usage_eventsの月次SQL集計を翌月10日までに実施する運用担当の確定）
 
 
-**D-21: 未使用のServer Action 2本（docs にAPIとして記載）をどうするか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `getAnalyticsSummaryAction`（src/app/actions/analytics.ts:25）と `listSuggestionsAction`（src/app/actions/suggestions.ts:61）は repo 全体で呼び出し元・テストが0件で、画面はどちらもRSC側（app/page.tsx:111 の `getAnalyticsSummaryForUser`、analytics/page.tsx:50 の `loadSuggestionsForUser`）から読んでいる。ただし docs/requirements/05_api_server_actions.md:229,231（§9 の表）と 06_screens_onboarding_posting.md:332 が仕様として明記しているため、削除は**文書化されたAPI表の変更**にあたる（`"use server"` の export は外から叩けるPOST受け口として残る）。**なお docs は全Action名から `Action` 接尾辞を落とす規約**（同文書に `...Action` の記載は0件・`refreshSuggestions` も同じ形）なので、表の `getAnalyticsSummary` / `listSuggestions` がこの2本を指す。命名のドリフトではない（2026-08-11 `/doc-sync` で確認）。案A: 実装を削除し要件05 §9 と要件06 §8 の該当行を同じ作業単位で更新する（推奨。受け口が減り、analytics.ts の狭い `BaseResult` 重複＝R15の据え置き例外も同時に消える）。案B: docs を正として実装を残す（現状維持）。
+**D-21: 未使用のServer Action 2本（docs にAPIとして記載）をどうするか（**解決済み 2026-08-11: 案A（削除＋docs更新）**。呼び出し元0件の2本を削除し、要件05 §9 の表から行を削って「読み取り専用なのでServer Componentから読む」を文で明記した。到達性検査（`server-action-reachability.test.ts`）を同時に入れ、削除前に赤・削除後に緑を確認した。作成時に検出器が静的importしか見ておらず動的importで使う3本を誤検出したため、両方を見る形へ直した）** — `getAnalyticsSummaryAction`（src/app/actions/analytics.ts:25）と `listSuggestionsAction`（src/app/actions/suggestions.ts:61）は repo 全体で呼び出し元・テストが0件で、画面はどちらもRSC側（app/page.tsx:111 の `getAnalyticsSummaryForUser`、analytics/page.tsx:50 の `loadSuggestionsForUser`）から読んでいる。ただし docs/requirements/05_api_server_actions.md:229,231（§9 の表）と 06_screens_onboarding_posting.md:332 が仕様として明記しているため、削除は**文書化されたAPI表の変更**にあたる（`"use server"` の export は外から叩けるPOST受け口として残る）。**なお docs は全Action名から `Action` 接尾辞を落とす規約**（同文書に `...Action` の記載は0件・`refreshSuggestions` も同じ形）なので、表の `getAnalyticsSummary` / `listSuggestions` がこの2本を指す。命名のドリフトではない（2026-08-11 `/doc-sync` で確認）。案A: 実装を削除し要件05 §9 と要件06 §8 の該当行を同じ作業単位で更新する（推奨。受け口が減り、analytics.ts の狭い `BaseResult` 重複＝R15の据え置き例外も同時に消える）。案B: docs を正として実装を残す（現状維持）。
 
-**D-22: globals.css の `.dark` パレットと未参照トークン約60行を消すか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `.dark` を付ける箇所は repo に存在せず（layout.tsx:56 の html className は `${notoSansJp.variable} ${inter.variable} ${geistMono.variable} h-full antialiased` のみ）、`prefers-color-scheme` も globals.css・shadcn の tailwind.css に1つも無い。`--color-sidebar-*` 8本・`--color-chart-*` 5本・`--chart-1..5`・`--sidebar*` 8本・`--font-heading`・`--motion-fast` も参照0件。約60行が永久に描画されない状態で、色を触る人が「ライトとダークの2組を直す必要がある」と誤解する。案A: ダークモードの予定が無いなら削除（`/ui-polish` と実ブラウザ確認が必要。button.tsx の `dark:*` ユーティリティも同じ理由で発火しない）。案B: 導入予定があるなら残し、その旨をコメントに書いて誤解を消す。
+**D-22: globals.css の `.dark` パレットと未参照トークン約60行を消すか（**解決済み 2026-08-11: ダークモードは持たない（PRD §3.2 v1.6）**。`.dark` パレットと参照0件のトークン計50行を削除。削除前後のビルド済みCSSを比較し `:root` の値が1つも変わらず新しい値も現れないことを確認。`@custom-variant dark` の1行は残す（消すとTailwind既定へ戻り、OSダークの閲覧者だけ `dark:*` が発火する）。再発は `design-tokens.test.ts` と `e2e/dark-color-scheme.spec.ts` が止める）** — `.dark` を付ける箇所は repo に存在せず（layout.tsx:56 の html className は `${notoSansJp.variable} ${inter.variable} ${geistMono.variable} h-full antialiased` のみ）、`prefers-color-scheme` も globals.css・shadcn の tailwind.css に1つも無い。`--color-sidebar-*` 8本・`--color-chart-*` 5本・`--chart-1..5`・`--sidebar*` 8本・`--font-heading`・`--motion-fast` も参照0件。約60行が永久に描画されない状態で、色を触る人が「ライトとダークの2組を直す必要がある」と誤解する。案A: ダークモードの予定が無いなら削除（`/ui-polish` と実ブラウザ確認が必要。button.tsx の `dark:*` ユーティリティも同じ理由で発火しない）。案B: 導入予定があるなら残し、その旨をコメントに書いて誤解を消す。
 
-**D-23: 下書きの警告バッジに欠けている2コードの日本語ラベルを足すか（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — drafts-list.tsx:34-50 の表に `length_over_target` / `post_count_trimmed`（generation-validation.ts:19-29 の正本にある）が無く、その警告が付いた下書きではバッジに生の英語コードが出る。文言追加＝振る舞い変更なので R37 では触らず、`/add-task` で別タスクにするのが正しい扱い（暫定案: 「長め」「ポスト数を調整」相当の日本語ラベル＋DETAIL を足す）。
+**D-23: 下書きの警告バッジに欠けている2コードの日本語ラベルを足すか（**解決済み 2026-08-11: ラベルを追加**（「長め」「ポスト数を調整」）。あわせて**下書きバッジが止まらない警告でも「自動投稿は停止します」と名乗っていた問題**も直した。ラベル表は `lib/post/warning-labels.ts` へ移し `satisfies` でコード追加時に typecheck が止まる形にした（R37 も同時に消化））** — drafts-list.tsx:34-50 の表に `length_over_target` / `post_count_trimmed`（generation-validation.ts:19-29 の正本にある）が無く、その警告が付いた下書きではバッジに生の英語コードが出る。文言追加＝振る舞い変更なので R37 では触らず、`/add-task` で別タスクにするのが正しい扱い（暫定案: 「長め」「ポスト数を調整」相当の日本語ラベル＋DETAIL を足す）。
 
-**D-24: 送信失敗メールの数え方が doctor と日次サマリで非対称（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — diagnostics.ts:292 は FAILED_EMAIL_WINDOW_DAYS=7 の窓で区切る（T-M8-51「赤の常態化を避ける」）が、daily-summary.ts:232-236 のSQLは `email_status = 'failed'` を全期間で数えるため、7日より前の失敗しか無い状態でも日次サマリが毎日「気になる点」を出し続ける。閾値が片方にしか入っていないので、揃えると通知の件数が変わる（＝振る舞い変更）。dev-loop 側で扱う。暫定案: 日次サマリ側も7日窓に揃える。
+**D-24: 送信失敗メールの数え方が doctor と日次サマリで非対称（**解決済み 2026-08-11: 日次サマリも7日窓へ揃えた**。窓の定数は `ops/check.ts` の1つだけを使う。窓より前の失敗は警告にせず数字だけ出す（黙って落とすと届かなかったメールの存在が見えなくなる・原則1））** — diagnostics.ts:292 は FAILED_EMAIL_WINDOW_DAYS=7 の窓で区切る（T-M8-51「赤の常態化を避ける」）が、daily-summary.ts:232-236 のSQLは `email_status = 'failed'` を全期間で数えるため、7日より前の失敗しか無い状態でも日次サマリが毎日「気になる点」を出し続ける。閾値が片方にしか入っていないので、揃えると通知の件数が変わる（＝振る舞い変更）。dev-loop 側で扱う。暫定案: 日次サマリ側も7日窓に揃える。
 
-**D-25: APIキー設定の「Client IDとClient Secretを入力すると保存できます。」が現仕様と食い違う（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — は Client Secret 任意という現仕様（T-M8-63・保存可否の式は :160-163 で Secret 空を許している）と読み合わせると両方必須のように読める。文面変更＝振る舞い変更なので別タスク。暫定案: 「Client IDを入力すると保存できます（Client Secretは任意）。」
+**D-25: APIキー設定の「Client IDとClient Secretを入力すると保存できます。」が現仕様と食い違う（**解決済み 2026-08-11: 「Client IDを入力すると保存できます。」へ変更**。暫定案の「Client Secretは任意」は採らなかった——手順ガイドが指示するApp種別は confidential client で Secret 無しの token 交換は401で拒否される（T-M8-63）。代わりに Secret 欄が空のあいだだけ「空のまま保存すると、Xアカウントの連携時にXから拒否されます」を出す）** — は Client Secret 任意という現仕様（T-M8-63・保存可否の式は :160-163 で Secret 空を許している）と読み合わせると両方必須のように読める。文面変更＝振る舞い変更なので別タスク。暫定案: 「Client IDを入力すると保存できます（Client Secretは任意）。」
 
-**D-26: Server Action の zod メッセージを画面に出すか（流儀が2つ併存）（未決・2026-08-11 起票／`/refactor` 監査 R19〜R38 由来）** — `toUserFacingError`（observability/errors.ts:75-84）は `USER_MESSAGES[code]` を返し AppError の `message` を見ないため、`parsed.error.issues[0]?.message`（例「テーマを1件以上選択してください」）は計算されるだけで画面には常に「入力内容を確認してください。」が出る。api-keys.ts:36-40 は `{ ...base, message: first }` で正しく出しており流儀が2つ併存している。R26 では出力不変のまま `first` を削除する。**本来の意図どおり zod メッセージを見せるか**は振る舞い変更なので判断が必要（暫定案: api-keys と同じ形に揃えて具体的な理由を出す）。
+**D-26: Server Action の zod メッセージを画面に出すか（流儀が2つ併存）（**解決済み 2026-08-11: 作者が書いたzodメッセージだけを出す（sentinel方式）**。先頭issueをそのまま出す案は却下——zod 4 の既定文言は英語かつ内部語で47箇所へ広げると要件06 §8違反になる。素の `safeParse` が残らないことを検査で守り、英語しか無かった5規則へ日本語も付けた）** — `toUserFacingError`（observability/errors.ts:75-84）は `USER_MESSAGES[code]` を返し AppError の `message` を見ないため、`parsed.error.issues[0]?.message`（例「テーマを1件以上選択してください」）は計算されるだけで画面には常に「入力内容を確認してください。」が出る。api-keys.ts:36-40 は `{ ...base, message: first }` で正しく出しており流儀が2つ併存している。R26 では出力不変のまま `first` を削除する。**本来の意図どおり zod メッセージを見せるか**は振る舞い変更なので判断が必要（暫定案: api-keys と同じ形に揃えて具体的な理由を出す）。
 
 ## M0: リポジトリ・実行基盤
 
