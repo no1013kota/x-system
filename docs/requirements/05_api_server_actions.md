@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.29 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.30 |
+| 更新日 | 2026-08-11 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -226,9 +226,9 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `getAnalyticsSummary` | period_days | summary | tweet_metricsから集計 |
 | `refreshSuggestions` | request_key | job_id | active jobがなければ`suggestion`を冪等作成。新metrics取得後かつ1日1回 |
-| `listSuggestions` | none | suggestions | active_x_account。最新のsuggestion job実行分を返す |
+
+実績集計（ホームSC-01の「直近の実績」）と改善提案の一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
 改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで発信設定・ベースmd編集（md/premium）で自ら反映する。
 
