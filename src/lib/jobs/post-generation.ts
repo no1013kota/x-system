@@ -28,6 +28,7 @@ import { recordProviderCalls } from "../db/api-usage-ledger";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { createFailedNotification, resolveFailedNotice } from "./notifications";
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
@@ -241,26 +242,12 @@ async function persistFailure(
     jobId: job.jobId,
     keyPrefix: `gen:${job.jobId}`,
   });
-  // error通知（設定を尊重・両channel OFFなら作らない）。ユーザーへは安全なmessageのみ。
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '投稿の生成に失敗しました',
-            '時間をおいて再度お試しください。設定や入力もご確認ください。',
-            '/app/posts', jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [job.userId, `job:${job.jobId}:failed`, job.jobId],
-  );
+  // error通知（設定を尊重・両channel OFFなら作らない）。文言の正本は `notifications.ts`。
+  await createFailedNotification(db, {
+    userId: job.userId,
+    jobId: job.jobId,
+    ...resolveFailedNotice("post_generation", { draft_id: null }),
+  });
 }
 
 async function createDraftCreatedNotification(

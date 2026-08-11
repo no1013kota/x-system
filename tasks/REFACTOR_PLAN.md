@@ -36,7 +36,7 @@ R19（検査の空振り）→ R20〜R24（課金・通知・上限の食い違�
 |---|---|---|---|---|---|
 | R19 | 死んだソース検査を生かす（server-boundary の getEncryptionKey 誤regex＋検出器ごとのガード）と、テストの実行環境依存を揃える。**検出器を `getAppEncryptionKey` へ是正し、合計件数 `>=10` のガードを「検出器ごとに1件以上」へ置換**（合計だと1本死んでも他2本で閾値を満たし素通りしていた）。cwd依存5本を `import.meta.url` 基準へ、resolve-account.db.test.ts の `SKIP_DB`/`return` 抜けを `beforeEach`+`ctx.skip()` へ。**3点を実地に実証**: ①`billing-return-server.ts` が新たに検査対象へ入り（16→17ファイル）、`server-only` を外すと落ちる（修正前は17 passedのまま）②検出器名を壊すと落ちる ③DB接続不可時に `4 passed` ではなく `4 skipped` になる。cwd=`src/` からの実行でも5本緑。test 1751（+3）| testability | S | low | done |
 | R20 | 3モジュールに同一実装で重複している所有権・同時実行ガード（assertActiveAccount / assertJobBudget / MAX_ACTIVE_JOBS）を共有モジュールへ集約する。`src/lib/jobs/job-guards.ts`（`Queryable` を引数で受ける純粋層・server-onlyは付けない）へ移し、3ファイルは import＋`MAX_ACTIVE_JOBS` の re-export に。**移設前後で関数本体がコメント・空白正規化後にバイト等価であることをスクリプトで確認**（3実装とも一致）。`xa.status` はどこも読んでいないが判断材料を減らさないため select に残す。`REQUIRE_DB=1` で generation-jobs / suggestion-jobs.db / learning-sources.db / tenant-isolation.db の63件緑 | duplication | M | low | done |
-| R21 | job失敗通知の文言を terminal.ts の FAILED_NOTICE に一本化し、通知INSERTも共有する | duplication | S | low | todo |
+| R21 | job失敗通知の文言を terminal.ts の FAILED_NOTICE に一本化し、通知INSERTも共有する。`src/lib/jobs/notifications.ts` を新設し `FAILED_NOTICE`／`DEFAULT_FAILED_NOTICE`／`resolveFailedNotice()`／`createFailedNotification()` を移設。worker側3ファイル（post-generation / learning-analysis / suggestion）のSQLリテラル直書きINSERTを共有関数呼び出しへ置換（リテラル→`$4/$5/$6` パラメータ化。生成される行は同一）。**移設前に3組の title/body/link が worker経路と stale経路で完全一致であることをスクリプトで確認**。`notifications.test.ts` を新規追加し、以後のドリフトを機械で止める。`FailedNotice.link` の引数は `{ draft_id }` の構造型にして `JobTerminalRow` への依存を切った | duplication | S | low | done |
 | R22 | draft_created 通知の16行SQLを3ファイルから1つの共有関数へまとめる | duplication | XS | low | todo |
 | R23 | 失敗確定の3手順（error/usage保存 → 原価台帳 → error通知）を persistJobFailure に共通化する | duplication | M | low | todo |
 | R24 | 投稿本文の最終形・URL判定・consume冪等keyを post-publish と reconcile-posting で共有する純関数へ抽出する | duplication | S | low | todo |
@@ -312,6 +312,14 @@ R19（検査の空振り）→ R20〜R24（課金・通知・上限の食い違�
 - **X設定パス定数 `/app/settings?tab=api-keys` の一元化**（R8c で当初予定）は見送り。値が安定（滅多に変わらない）で価値が低い一方、13+箇所に散在し token-refresh の SQL文字列リテラルや execution-prereqs の Record 値・app-banners/route/actions 等の別領域に跨るため、集約すると分散した import を各領域に張ることになり費用対効果が低い。振る舞い保存は可能だが低価値・高分散のため今回対象外（現状維持）。
 
 ## 既知の不安定テスト（リファクタ起因ではない）
+
+- **`src/lib/x/oauth.test.ts`「encrypts access/refresh as envelopes recoverable by decrypt」は約1%の確率で落ちる**（2026-08-11・R21実施中にフルスイートで1度遭遇し、原因を特定）。
+  原因は `expect(sealed.accessTokenCiphertext).not.toContain("AT")`。平文が `"AT"` の2文字で、暗号文は
+  base64（`envelope.ts` が nonce/ciphertext/tag を base64 化してJSONに詰める）なので、**乱数鍵しだいで
+  base64文字列の中にたまたま `AT` という並びが現れる**。実測 **185/20000 = 0.92%**。
+  暗号化されていることの検査としては平文が短すぎるのが問題で、`"AT"` を十分長い平文（例
+  `"ACCESS_TOKEN_PLAINTEXT_MARKER"`）に変えれば偶然一致は事実上消える。**振る舞い保存の対象外
+  （テスト側の欠陥）なので R19〜R32 では触っていない。** 直すなら1行。
 
 - `src/lib/jobs/news-digest.db.test.ts`「fans out digests...」は matchedUsers/notified の**グローバル集計下限**を検査するため、並行DBテストの news_config 一致ユーザー状態に依存し、フルスイート実行でごく稀に `matchedUsers=0` で落ちることがある（単体では安定して緑）。テスト自身のコメントも「並行テストを含みうるので下限のみ検査」と明記。リファクタ変更とは無関係。将来 dev-loop で per-window の分離（専用ユーザー限定集計）を検討。
 

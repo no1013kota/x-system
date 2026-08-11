@@ -7,6 +7,12 @@ import {
 } from "../observability/errors";
 import { refundUsage, type UsageReserveType } from "../usage/generation-reserve";
 import type { JobKind } from "./handlers";
+import {
+  createFailedNotification,
+  DEFAULT_FAILED_NOTICE,
+  FAILED_NOTICE,
+  resolveFailedNotice,
+} from "./notifications";
 
 /**
  * stale→failed 確定時の kind別終端処理（要件04 §4, 要件03 §7.3/§7.5, T-M4-08）。
@@ -65,30 +71,6 @@ async function loadJobTerminal(
     [jobId],
   );
   return rows[0] ?? null;
-}
-
-/** 全kind共通の失敗通知（type='error'・dedupe_key `job:{id}:failed`・設定尊重）。 */
-async function createFailedNotification(
-  c: PoolClient,
-  params: { userId: string; jobId: string; title: string; body: string; link: string },
-): Promise<void> {
-  await c.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, $4, $5, $6, jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `job:${params.jobId}:failed`, params.jobId, params.title, params.body, params.link],
-  );
 }
 
 /** draft_created 通知（本文生成側と同一 dedupe_key で重複を防ぐ）。 */
@@ -195,52 +177,6 @@ async function finalizeImageStale(
   }
 }
 
-/**
- * stale→failed 確定時にユーザーへ出す失敗通知の kind別文言。link が draft_id 等に依存する
- * kind は関数で解決する。`image_generation` は本文が使えるため error 通知を出さない（テーブル外・
- * `finalizeImageStale` が draft確定/子job作成を担う）。未知kindは `DEFAULT_FAILED_NOTICE`。
- */
-type FailedNotice = {
-  title: string;
-  body: string;
-  link: string | ((job: JobTerminalRow) => string);
-};
-
-const DEFAULT_FAILED_NOTICE: FailedNotice = {
-  title: "処理に失敗しました",
-  body: "時間をおいて再度お試しください。",
-  link: "/app",
-};
-
-const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
-  post_generation: {
-    title: "投稿の生成に失敗しました",
-    body: "時間をおいて再度お試しください。設定や入力もご確認ください。",
-    link: "/app/posts",
-  },
-  post_publish: {
-    title: "投稿に失敗しました",
-    body: "投稿の途中で失敗しました。下書きを確認して再度お試しください。",
-    link: (job) =>
-      job.draft_id ? `/app/posts?tab=drafts&draftId=${job.draft_id}` : "/app/posts",
-  },
-  learning_analysis: {
-    title: "学習ソースの分析に失敗しました",
-    body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
-    link: "/app/ai-settings?tab=learning",
-  },
-  md_merge: {
-    title: "学習ソースの削除が完了しませんでした",
-    body: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
-    link: "/app/ai-settings?tab=learning",
-  },
-  suggestion: {
-    title: "改善提案の生成に失敗しました",
-    body: "時間をおいて分析画面から再度お試しください。",
-    link: "/app/analytics",
-  },
-};
-
 /** 例外から原因を特定できなかったときに使う汎用コード（要件02 §4.10）。 */
 /**
  * kind → 返還する利用枠の種別（要件03 §7.3）。reserve していない kind（post_publish）は無し。
@@ -332,12 +268,9 @@ export async function finalizeFailedJob(
       break;
   }
 
-  const notice = FAILED_NOTICE[kind] ?? DEFAULT_FAILED_NOTICE;
   await createFailedNotification(c, {
     userId: job.user_id,
     jobId,
-    title: notice.title,
-    body: notice.body,
-    link: typeof notice.link === "function" ? notice.link(job) : notice.link,
+    ...resolveFailedNotice(kind, job),
   });
 }
