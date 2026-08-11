@@ -11,8 +11,8 @@ import {
   saveAiApiKeySchema,
   saveXApiKeySchema,
 } from "@/lib/api-keys";
-import { errorResult, requireUserId } from "./_helpers";
-import { AppError } from "@/lib/observability/errors";
+import { errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { z } from "zod";
 
 interface ApiKeyActionResult {
@@ -28,13 +28,12 @@ interface ApiKeyActionResult {
 export async function saveXApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
-  const parsed = saveXApiKeySchema.safeParse(input);
+  const parsed = parseUserInput(saveXApiKeySchema, input);
   if (!parsed.success) {
     // **zodの具体的な文言を捨てない**（T-M8-59）。入力はpassword型で空白・全角が目視できず、
-    // 「入力内容を確認してください」だけでは原因に辿り着けない（文言は作者管理の日本語のみ）。
-    const first = parsed.error.issues[0]?.message;
-    const base = errorResult(new AppError("validation_error"));
-    return first ? { ...base, message: first } : base;
+    // 「入力内容を確認してください」だけでは原因に辿り着けない。
+    // ただし**作者が書いた文言だけ**を出す（zod既定は英語かつ内部語・F9）。
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -54,13 +53,12 @@ export async function saveXApiKey(
 export async function saveAiApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
-  const parsed = saveAiApiKeySchema.safeParse(input);
+  const parsed = parseUserInput(saveAiApiKeySchema, input);
   if (!parsed.success) {
     // **zodの具体的な文言を捨てない**（T-M8-59）。入力はpassword型で空白・全角が目視できず、
-    // 「入力内容を確認してください」だけでは原因に辿り着けない（文言は作者管理の日本語のみ）。
-    const first = parsed.error.issues[0]?.message;
-    const base = errorResult(new AppError("validation_error"));
-    return first ? { ...base, message: first } : base;
+    // 「入力内容を確認してください」だけでは原因に辿り着けない。
+    // ただし**作者が書いた文言だけ**を出す（zod既定は英語かつ内部語・F9）。
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -88,8 +86,8 @@ const verifySchema = z.object({
 export async function verifyApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
-  const parsed = verifySchema.safeParse(input);
-  if (!parsed.success) return errorResult(new AppError("validation_error"));
+  const parsed = parseUserInput(verifySchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
   try {
@@ -126,8 +124,8 @@ export async function verifyApiKey(
 export async function deleteApiKey(
   input: unknown,
 ): Promise<ApiKeyActionResult> {
-  const parsed = verifySchema.safeParse(input);
-  if (!parsed.success) return errorResult(new AppError("validation_error"));
+  const parsed = parseUserInput(verifySchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
   try {

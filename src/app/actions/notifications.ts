@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
-import { AppError } from "@/lib/observability/errors";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import {
   countUnreadNotificationsForUser,
   listNotificationsForUser,
@@ -38,9 +38,9 @@ const idSchema = z.object({ notification_id: z.string().uuid() });
 export async function listNotificationsAction(
   input: unknown = {},
 ): Promise<ListNotificationsActionResult> {
-  const parsed = listSchema.safeParse(input ?? {});
+  const parsed = parseUserInput(listSchema, input ?? {});
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -67,9 +67,9 @@ export async function listNotificationsAction(
 export async function markNotificationReadAction(
   input: unknown,
 ): Promise<NotificationMutationResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -96,9 +96,9 @@ export async function markAllNotificationsReadAction(): Promise<NotificationMuta
 export async function retryNotificationEmailAction(
   input: unknown,
 ): Promise<BaseResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

@@ -2,10 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
-import {
-  AppError,
-} from "@/lib/observability/errors";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import {
   newsConfigSchema,
   notificationConfigSchema,
@@ -23,9 +21,9 @@ import {
 export async function updateNotificationConfigAction(
   input: unknown,
 ): Promise<BaseResult> {
-  const parsed = notificationConfigSchema.safeParse(input);
+  const parsed = parseUserInput(notificationConfigSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -39,12 +37,12 @@ export async function updateNotificationConfigAction(
 }
 
 export async function updateNewsConfigAction(input: unknown): Promise<BaseResult> {
-  const parsed = newsConfigSchema.safeParse(input);
+  const parsed = parseUserInput(newsConfigSchema, input);
   if (!parsed.success) {
     // NOTE: `toUserFacingError` は `USER_MESSAGES[code]` を返し AppError の message を見ないため、
     // zod の先頭メッセージを渡しても画面には出ない（＝計算するだけで捨てられていた・R26）。
     // 具体的な理由を出すかは振る舞い変更なので要決定 D-26 で扱う。
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

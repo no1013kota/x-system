@@ -31,8 +31,9 @@ export const createGenerationJobSchema = z.object({
   pattern: z.enum(["p1", "p2", "p3", "p4", "p5", "p6"]),
   source_url: z
     .string()
-    .url()
-    .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください")
+    // `.url()` は refine より先に issue を作るので、こちらにも同じ文言を持たせる（F10）。
+    .url("httpsのURLを指定してください。")
+    .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください。")
     .nullish(),
   quote_url: z.string().url().nullish(),
   user_opinion: z.string().max(2000).nullish(),

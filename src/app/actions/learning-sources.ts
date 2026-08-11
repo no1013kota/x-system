@@ -2,7 +2,8 @@
 
 import { after } from "next/server";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { dispatchJob } from "@/lib/jobs/dispatch";
@@ -17,7 +18,6 @@ import {
   type LearningSourceDeps,
   type LearningSourceView,
 } from "@/lib/learning-sources";
-import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 /**
@@ -51,9 +51,9 @@ export async function listLearningSourcesAction(): Promise<
 export async function addLearningSourceAction(
   input: unknown,
 ): Promise<BaseResult & { jobId?: string; sourceId?: string }> {
-  const parsed = addLearningSourceSchema.safeParse(input);
+  const parsed = parseUserInput(addLearningSourceSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -69,9 +69,9 @@ export async function addLearningSourceAction(
 export async function reimportOwnPostsAction(
   input: unknown,
 ): Promise<BaseResult & { jobId?: string; sourceId?: string }> {
-  const parsed = reimportOwnPostsSchema.safeParse(input);
+  const parsed = parseUserInput(reimportOwnPostsSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -87,9 +87,9 @@ export async function reimportOwnPostsAction(
 export async function removeLearningSourceAction(
   input: unknown,
 ): Promise<BaseResult & { jobId?: string | null }> {
-  const parsed = removeLearningSourceSchema.safeParse(input);
+  const parsed = parseUserInput(removeLearningSourceSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

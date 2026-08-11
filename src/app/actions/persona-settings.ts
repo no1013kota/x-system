@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { errorResult, requireUserId } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { personaSettingsSchema } from "@/lib/persona-settings";
 import { updatePersonaSettingsForUser } from "@/lib/persona-settings-store";
@@ -25,7 +26,7 @@ export interface UpdatePersonaSettingsActionResult {
 export async function updatePersonaSettings(
   input: unknown,
 ): Promise<UpdatePersonaSettingsActionResult> {
-  const parsed = inputSchema.safeParse(input);
+  const parsed = parseUserInput(inputSchema, input);
   if (!parsed.success) {
     const error = toUserFacingError(new AppError("validation_error"));
     return { ...error, status: "error" };

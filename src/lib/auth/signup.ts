@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseUserInput } from "@/lib/validation/user-input";
 
 import {
   CURRENT_PRIVACY_VERSION,
@@ -61,7 +62,7 @@ export const signUpSchema = z
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
 export function signUpInputFromFormData(formData: FormData) {
-  return signUpSchema.safeParse({
+  return parseUserInput(signUpSchema, {
     captcha_token: formData.get("captcha_token") ?? "",
     email: formData.get("email"),
     password: formData.get("password"),

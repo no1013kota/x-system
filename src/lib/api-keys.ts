@@ -19,7 +19,7 @@ const secretValue = z
   .string()
   .trim()
   .min(AI_SECRET_MIN_LENGTH, "APIキーを確認してください。")
-  .max(512)
+  .max(512, "APIキーが長すぎます（512文字以内）。")
   .regex(/^\S+$/, "空白を含まない値を入力してください。");
 
 export const saveAiApiKeySchema = z.object({
@@ -33,12 +33,17 @@ export const saveXApiKeySchema = z
       .string()
       .trim()
       .min(X_CLIENT_ID_MIN_LENGTH, "Client IDを確認してください。")
-      .max(200)
+      .max(200, "Client IDが長すぎます（200文字以内）。")
       .regex(
         /^[A-Za-z0-9_-]+$/,
         "Client IDは英数字・ハイフン・アンダースコアで入力してください。",
       ),
-    client_secret: z.string().trim().max(512).nullable().optional(),
+    client_secret: z
+      .string()
+      .trim()
+      .max(512, "Client Secretが長すぎます（512文字以内）。")
+      .nullable()
+      .optional(),
     client_type: z.enum(["public", "confidential"]),
   })
   .superRefine((value, context) => {

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
-import { AppError } from "@/lib/observability/errors";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import {
   disconnectXAccountForUser,
   enableXAccountForUser,
@@ -43,9 +43,9 @@ export async function listXAccountsAction(): Promise<ListXAccountsActionResult> 
 export async function refreshXAccountStatusAction(
   input: unknown,
 ): Promise<XAccountStatusActionResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -64,9 +64,9 @@ export async function refreshXAccountStatusAction(
 export async function enableXAccountAction(
   input: unknown,
 ): Promise<XAccountStatusActionResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -82,9 +82,9 @@ export async function enableXAccountAction(
 export async function setActiveXAccountAction(
   input: unknown,
 ): Promise<XAccountStatusActionResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -100,9 +100,9 @@ export async function setActiveXAccountAction(
 export async function disconnectXAccountAction(
   input: unknown,
 ): Promise<XAccountStatusActionResult> {
-  const parsed = idSchema.safeParse(input);
+  const parsed = parseUserInput(idSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
