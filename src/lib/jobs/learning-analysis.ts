@@ -4,9 +4,8 @@ import { runTextGeneration, usageFromError } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PLANS } from "../plans";
 import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
@@ -232,19 +231,14 @@ export async function executeLearningAnalysis(
   // 冪等: 既に分析済みなら作り直さない（worker再実行安全）。
   if (source.status === "analyzed") return { status: "already_done", sourceId };
 
-  const isPremium = job.plan === "premium";
   // premium は開始時に生成枠 +1 reserve（同一tx・月次上限確認・要件03 §7.1/§7.4）。BYOKは消費しない。
-  if (isPremium) {
-    await deps.runInTx((tx) =>
-      reserveUsage(tx, {
-        userId: job.user_id,
-        xAccountId: job.x_account_id,
-        jobId,
-        type: "generation",
-        limit: PLANS.premium.usageLimits?.generations,
-      }),
-    );
-  }
+  await reserveIfPremium(deps.runInTx, {
+    plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
+    jobId,
+    type: "generation",
+  });
 
   const failCtx = { userId: job.user_id, xAccountId: job.x_account_id, jobId, sourceId };
   // どの段で落ちたかを失敗記録へ残す（T-M7-39）。固定値だと原因の切り分けができない。

@@ -4,9 +4,8 @@ import { runTextGeneration, usageFromError } from "../ai/pipeline";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PLANS } from "../plans";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
@@ -148,18 +147,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     return { status: "no_suggestions", count: 0 };
   }
 
-  const isPremium = job.plan === "premium";
-  if (isPremium) {
-    await deps.runInTx((tx) =>
-      reserveUsage(tx, {
-        userId: job.user_id,
-        xAccountId: job.x_account_id,
-        jobId,
-        type: "generation",
-        limit: PLANS.premium.usageLimits?.generations,
-      }),
-    );
-  }
+  await reserveIfPremium(deps.runInTx, {
+    plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
+    jobId,
+    type: "generation",
+  });
 
   try {
     await recordStage("writing");
