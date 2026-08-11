@@ -164,15 +164,7 @@ for (const c of checks) {
   if (c.nextAction) console.log(`    → ${c.nextAction}`);
 }
 
-const errors = checks.filter((c) => c.level === "error").length;
-const warns = checks.filter((c) => c.level === "warn").length;
-console.log(
-  `\n${
-    errors > 0
-      ? `対応が必要な問題が ${errors} 件あります（注意 ${warns} 件）`
-      : warns > 0
-        ? `すぐ困る問題はありませんが、注意が ${warns} 件あります`
-        : `${checks.length} 項目すべて正常です`
-  }\n`,
-);
-process.exit(errors > 0 ? 1 : 0);
+// まとめ1行と終了コードは `src/lib/ops/check.ts` が正本（この script は表示だけ・R31）。
+const { summarize, exitCodeFor } = await import("../src/lib/ops/check.ts");
+console.log(`\n${summarize(checks)}\n`);
+process.exit(exitCodeFor(checks));
