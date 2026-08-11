@@ -19,7 +19,6 @@ import {
 } from "../ai/gen-context";
 import { AppError } from "@/lib/observability/errors";
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
-import { PLANS } from "@/lib/plans";
 
 import { genOutputSchema } from "../ai/gen-output";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
@@ -28,7 +27,7 @@ import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import {
@@ -38,7 +37,6 @@ import {
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
-const PREMIUM_GENERATION_LIMIT = PLANS.premium.usageLimits?.generations;
 
 /**
  * post_generation ジョブの中核（要件04 §8/§14, プロンプト設計書 §5.1/§7.1/§7.4, T-M3-05）。
@@ -282,18 +280,15 @@ export async function executePostGeneration(
 
   // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
   // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
-  const isPremium = job.plan === "premium";
-  if (isPremium) {
+  {
     try {
-      await deps.runInTx((tx) =>
-        reserveUsage(tx, {
-          userId: job.user_id,
-          xAccountId: job.x_account_id,
-          jobId,
-          type: "generation",
-          limit: PREMIUM_GENERATION_LIMIT,
-        }),
-      );
+      await reserveIfPremium(deps.runInTx, {
+        plan: job.plan,
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId,
+        type: "generation",
+      });
     } catch (error) {
       if (error instanceof AppError && error.code === "usage_limit_exceeded") {
         await persistFailure(
