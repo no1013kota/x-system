@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +21,8 @@ import {
  * 持ったらこのテストが落ちる。
  */
 
-const SRC = join(process.cwd(), "src");
+// 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
+const SRC = join(fileURLToPath(new URL("../../../", import.meta.url)), "src");
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

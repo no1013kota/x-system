@@ -11,9 +11,13 @@
  * （`outbound-channels.test.ts` と同じ考え方）。
  */
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-const SCRIPT_DIR = "scripts";
+// 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
+const SCRIPT_DIR = join(fileURLToPath(new URL("../../../", import.meta.url)), "scripts");
 
 /** `--base <URL>` でデプロイ先を指定できる script（＝ローカル以外を叩き得る）。 */
 function scriptsAcceptingBase(): { file: string; source: string }[] {

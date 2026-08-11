@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { resolveXAccountId } from "./resolve-account";
 
@@ -77,8 +77,13 @@ describe("resolveXAccountId（実DB）", () => {
     }
   });
 
-  it.runIf(!process.env.SKIP_DB)("ユーザー名から id を引ける（大文字でも）", async () => {
-    if (!available) return;
+  // DB未起動時は **skip** する。`return` で抜けると「何も検査せず passed」と数えられ、
+  // 検査が動いていないことが件数から分からなくなる（他65本のDBテストと同じ形・R19）。
+  beforeEach((ctx) => {
+    if (!available) ctx.skip();
+  });
+
+  it("ユーザー名から id を引ける（大文字でも）", async () => {
     expect(await resolveXAccountId(handle, { db })).toEqual({ ok: true, id: accountId, handle });
     expect(await resolveXAccountId(`@${handle.toUpperCase()}`, { db })).toEqual({
       ok: true,
@@ -87,8 +92,7 @@ describe("resolveXAccountId（実DB）", () => {
     });
   });
 
-  it.runIf(!process.env.SKIP_DB)("UUIDからも引ける", async () => {
-    if (!available) return;
+  it("UUIDからも引ける", async () => {
     expect(await resolveXAccountId(accountId, { db })).toEqual({
       ok: true,
       id: accountId,
@@ -96,8 +100,7 @@ describe("resolveXAccountId（実DB）", () => {
     });
   });
 
-  it.runIf(!process.env.SKIP_DB)("存在しないユーザー名では失敗し、候補を出す", async () => {
-    if (!available) return;
+  it("存在しないユーザー名では失敗し、候補を出す", async () => {
     const result = await resolveXAccountId(`missing_${randomUUID().slice(0, 6)}`, { db });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -105,8 +108,7 @@ describe("resolveXAccountId（実DB）", () => {
     expect(result.message).toContain(`@${handle}`);
   });
 
-  it.runIf(!process.env.SKIP_DB)("存在しないUUIDでも落ちずに失敗を返す", async () => {
-    if (!available) return;
+  it("存在しないUUIDでも落ちずに失敗を返す", async () => {
     const result = await resolveXAccountId(randomUUID(), { db });
     expect(result.ok).toBe(false);
   });
