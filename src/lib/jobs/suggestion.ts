@@ -9,7 +9,7 @@ import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
-import { createFailedNotification, resolveFailedNotice } from "./notifications";
+import { persistJobFailure } from "./notifications";
 import { defaultRecordStage } from "./stale";
 import {
   SUGGEST_MIN_GROUP,
@@ -117,27 +117,16 @@ async function persistFailure(
   db: Queryable,
   params: { userId: string; xAccountId: string; jobId: string; code: string; usage: GenerationUsage },
 ): Promise<void> {
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      params.jobId,
-      JSON.stringify({ code: params.code, message: "改善提案の生成に失敗しました。", retryable: false, stage: "writing" }),
-      JSON.stringify(params.usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
-  await recordProviderCalls(db, params.usage.calls, {
+  // `providerRawError` を渡さない＝ error JSON に `provider_raw_error` キーを作らない
+  // （他2つのjobとの意図的な差。suggestion.db.test.ts がキー集合を固定している）。
+  await persistJobFailure(db, {
+    jobId: params.jobId,
     userId: params.userId,
     xAccountId: params.xAccountId,
-    jobId: params.jobId,
     keyPrefix: `sug:${params.jobId}`,
-  });
-
-  // error通知（設定を尊重・両channel OFFなら作らない）。文言の正本は `notifications.ts`。
-  await createFailedNotification(db, {
-    userId: params.userId,
-    jobId: params.jobId,
-    ...resolveFailedNotice("suggestion", { draft_id: null }),
+    error: { code: params.code, message: "改善提案の生成に失敗しました。", stage: "writing" },
+    usage: params.usage,
+    notifyKind: "suggestion",
   });
 }
 

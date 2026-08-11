@@ -4,6 +4,7 @@ import {
   createFailedNotification,
   DEFAULT_FAILED_NOTICE,
   FAILED_NOTICE,
+  persistJobFailure,
   resolveFailedNotice,
 } from "./notifications";
 
@@ -76,5 +77,116 @@ describe("createFailedNotification", () => {
     // 通知設定が両方OFFなら行を作らない（select ... where で絞る形）。
     expect(calls[0].sql).toContain("notification_config->'error'->>'in_app'");
     expect(calls[0].sql).toContain("on conflict (user_id, dedupe_key)");
+  });
+});
+
+describe("persistJobFailure", () => {
+  function recorder() {
+    const calls: { sql: string; params: unknown[] }[] = [];
+    return {
+      calls,
+      db: {
+        async query(sql: string, params?: unknown[]) {
+          calls.push({ sql, params: params ?? [] });
+          return { rows: [], rowCount: 0 };
+        },
+      },
+    };
+  }
+
+  const usage = {
+    calls: [
+      {
+        provider: "anthropic" as const,
+        model: "m",
+        operation: "text_generation",
+        request_id: "req-1",
+        status: "failed" as const,
+        stop_reason: null,
+        latency_ms: 120,
+        input_tokens: 10,
+        output_tokens: 0,
+        web_search_count: 0,
+        cache_hit: false,
+        citations: [],
+        error_code: "overloaded",
+        estimated_cost_usd: 0.001,
+      },
+    ],
+    estimated_cost_usd_total: 0.001,
+  };
+
+  /**
+   * 失敗時の原価記録は**落としても全テストが緑のまま通り、AI費用が過少計上される**
+   * 種類の抜けだった（3handlerに同じ手順が反復していたため）。3手順を1つにまとめた以上、
+   * 「原価記録が必ず走ること」をここで固定する（CLAUDE.md 原則4）。
+   */
+  it("error/usage保存のあとに原価台帳へ記録する（失敗時の費用が消えない）", async () => {
+    const { calls, db } = recorder();
+    await persistJobFailure(db, {
+      jobId: "j1",
+      userId: "u1",
+      xAccountId: "x1",
+      keyPrefix: "gen:j1",
+      error: { code: "c", message: "m", stage: "writing", providerRawError: "raw" },
+      usage,
+      notifyKind: "post_generation",
+    });
+    const sqls = calls.map((c) => c.sql);
+    expect(sqls[0]).toContain("update generation_jobs set error");
+    expect(
+      sqls.some((s) => s.includes("external_api_usage_events")),
+      "provider callが原価台帳へ記録される",
+    ).toBe(true);
+    expect(sqls.at(-1)).toContain("insert into notifications");
+  });
+
+  it("providerRawError を渡すとキーが出る／渡さないとキー自体を作らない", async () => {
+    const withRaw = recorder();
+    await persistJobFailure(withRaw.db, {
+      jobId: "j1",
+      userId: "u1",
+      xAccountId: "x1",
+      keyPrefix: "gen:j1",
+      error: { code: "c", message: "m", stage: "writing", providerRawError: null },
+      usage: { calls: [], estimated_cost_usd_total: 0 },
+    });
+    expect(Object.keys(JSON.parse(String(withRaw.calls[0].params[1]))).sort()).toEqual([
+      "code",
+      "message",
+      "provider_raw_error",
+      "retryable",
+      "stage",
+    ]);
+
+    // suggestion はこちら。`provider_raw_error: null` を足すと保存JSONが変わる＝振る舞い変更。
+    const without = recorder();
+    await persistJobFailure(without.db, {
+      jobId: "j2",
+      userId: "u1",
+      xAccountId: "x1",
+      keyPrefix: "sug:j2",
+      error: { code: "c", message: "m", stage: "writing" },
+      usage: { calls: [], estimated_cost_usd_total: 0 },
+    });
+    expect(Object.keys(JSON.parse(String(without.calls[0].params[1]))).sort()).toEqual([
+      "code",
+      "message",
+      "retryable",
+      "stage",
+    ]);
+  });
+
+  it("notifyKind を渡さなければ通知を出さない（呼び出し側が別の通知を出す場合）", async () => {
+    const { calls, db } = recorder();
+    await persistJobFailure(db, {
+      jobId: "j1",
+      userId: "u1",
+      xAccountId: "x1",
+      keyPrefix: "img:j1",
+      error: { code: "c", message: "m", stage: null },
+      usage: { calls: [], estimated_cost_usd_total: 0 },
+    });
+    expect(calls.some((c) => c.sql.includes("insert into notifications"))).toBe(false);
   });
 });
