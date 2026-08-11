@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { emptyUsage, type TextGen } from "../ai/types";
 import type { Queryable } from "../x/token-refresh";
+import { RAW_ERROR_MAX } from "../ai/raw-error";
 import {
   executeLearningAnalysis,
   LearningAnalysisTerminalError,
@@ -216,7 +217,10 @@ describe("executeLearningAnalysis", () => {
       ),
     ).rejects.toBeInstanceOf(LearningAnalysisTerminalError);
     const error = JSON.parse(String(writes.find((w) => JOB_ERROR.test(w.sql))?.params[1])) as Record<string, unknown>;
-    expect(String(error.provider_raw_error).length).toBeLessThanOrEqual(2100);
+    // 上限は `ai/raw-error.ts` の RAW_ERROR_MAX が正本（F4で 2,000 → 4,000 へ引き上げた。
+    // 1つの値に例外の要約と2試行の応答本文を入れるため、2,000では2回目が丸ごと切れる）。
+    expect(String(error.provider_raw_error).length).toBeLessThanOrEqual(RAW_ERROR_MAX + 1);
+    expect(String(error.provider_raw_error).length).toBeGreaterThan(2100);
     expect(String(error.provider_raw_error).endsWith("…")).toBe(true);
   });
 });

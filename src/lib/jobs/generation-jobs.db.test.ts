@@ -172,4 +172,53 @@ describe("generation-jobs actions (local DB)", () => {
       await cleanup(uid);
     }
   });
+
+  /**
+   * `provider_raw_error` をブラウザへ返さない（F6）。
+   *
+   * F4/F5 で「AIが何を返して落ちたか」を保存するようにしたため、**画面へ渡す経路で
+   * 落とすことが必須**になった（要件06 §5・要件01 §8）。描画側の注意ではなくクエリで守る。
+   * 運営者はDBと `npm run smoke:live` で中身を見る。
+   */
+  it("getGenerationJob は provider_raw_error を返さない（DBには残る）", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c));
+    try {
+      const jobId = (
+        await db.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, error)
+           values ($1,'post_generation','manual','p1','failed',$2::jsonb) returning id`,
+          [
+            xid,
+            JSON.stringify({
+              code: "invalid_output",
+              message: "生成結果を検証できませんでした。もう一度お試しください。",
+              retryable: false,
+              stage: "writing",
+              provider_raw_error: "1回目の応答: {\"posts\":[]} ← 秘密が混じり得る生の本文",
+            }),
+          ],
+        )
+      ).rows[0].id;
+
+      const view = await getGenerationJob(db, uid, jobId);
+      const error = view.error as Record<string, unknown>;
+      expect(error.code, "利用者向けのcodeは返す").toBe("invalid_output");
+      expect(error.message).toBe("生成結果を検証できませんでした。もう一度お試しください。");
+      expect(
+        Object.keys(error),
+        "provider_raw_error がブラウザへ渡ると要件01 §8 に反する",
+      ).not.toContain("provider_raw_error");
+
+      // DB側には残っていること（運営者が原因を追える経路を壊していない）。
+      const stored = (
+        await db.query<{ raw: string | null }>(
+          `select error->>'provider_raw_error' as raw from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(stored.raw).toContain("1回目の応答");
+    } finally {
+      await cleanup(uid);
+    }
+  });
 });

@@ -522,8 +522,11 @@ export async function getGenerationJob(
 ): Promise<GenerationJobView> {
   const row = (
     await db.query<GenerationJobView>(
+      // `provider_raw_error` は**ブラウザへ返さない**（F6）。要件06 §5「画面に出さない」と
+      // 要件01 §8「ユーザー向けerrorへproviderの応答を出さない」を、描画側の注意ではなく
+      // クエリで守る。運営者はDBと `npm run smoke:live` で中身を見る。
       `select gj.id, gj.kind, gj.status, gj.pattern, gj.progress_stage, gj.draft_id,
-              gj.error, gj.created_at
+              (gj.error - 'provider_raw_error') as error, gj.created_at
          from generation_jobs gj
          join x_accounts xa on xa.id = gj.x_account_id
         where gj.id = $1 and xa.user_id = $2`,

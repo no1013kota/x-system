@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -114,16 +115,27 @@ function renderPrompt(input: SuggestionInput): string {
 
 async function persistFailure(
   db: Queryable,
-  params: { userId: string; xAccountId: string; jobId: string; code: string; usage: GenerationUsage },
+  params: {
+    userId: string;
+    xAccountId: string;
+    jobId: string;
+    code: string;
+    usage: GenerationUsage;
+    /** AIが何を返して落ちたか（F5で追加。生成・学習・画像と同じ形に揃えた）。 */
+    providerRawError: string | null;
+  },
 ): Promise<void> {
-  // `providerRawError` を渡さない＝ error JSON に `provider_raw_error` キーを作らない
-  // （他2つのjobとの意図的な差。suggestion.db.test.ts がキー集合を固定している）。
   await persistJobFailure(db, {
     jobId: params.jobId,
     userId: params.userId,
     xAccountId: params.xAccountId,
     keyPrefix: `sug:${params.jobId}`,
-    error: { code: params.code, message: "改善提案の生成に失敗しました。", stage: "writing" },
+    error: {
+      code: params.code,
+      message: "改善提案の生成に失敗しました。",
+      stage: "writing",
+      providerRawError: params.providerRawError,
+    },
     usage: params.usage,
     notifyKind: "suggestion",
   });
@@ -205,7 +217,15 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     const usage: GenerationUsage =
       usageFromError(error) ?? { calls: [], estimated_cost_usd_total: 0 };
     const code = error instanceof SuggestionTerminalError ? error.code : "suggestion_failed";
-    await persistFailure(db, { userId: job.user_id, xAccountId: job.x_account_id, jobId, code, usage });
+    await persistFailure(db, {
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      code,
+      usage,
+      // refine 失敗（`<posts>` に無いIDを返した等）の中身は運営者が最も知りたい情報（F5）。
+      providerRawError: formatFailureRawError(error, providerRawOutputOf(error)),
+    });
     // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。
     throw error instanceof SuggestionTerminalError
       ? error
