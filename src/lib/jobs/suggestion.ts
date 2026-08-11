@@ -9,6 +9,7 @@ import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { reserveUsage } from "../usage/generation-reserve";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { createFailedNotification, resolveFailedNotice } from "./notifications";
 import { defaultRecordStage } from "./stale";
 import {
   SUGGEST_MIN_GROUP,
@@ -131,25 +132,13 @@ async function persistFailure(
     jobId: params.jobId,
     keyPrefix: `sug:${params.jobId}`,
   });
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '改善提案の生成に失敗しました',
-            '時間をおいて分析画面から再度お試しください。',
-            '/app/analytics', jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `job:${params.jobId}:failed`, params.jobId],
-  );
+
+  // error通知（設定を尊重・両channel OFFなら作らない）。文言の正本は `notifications.ts`。
+  await createFailedNotification(db, {
+    userId: params.userId,
+    jobId: params.jobId,
+    ...resolveFailedNotice("suggestion", { draft_id: null }),
+  });
 }
 
 export async function executeSuggestion(deps: SuggestionDeps): Promise<SuggestionResult> {
