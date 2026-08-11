@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.22 |
+| 更新日 | 2026-08-11 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -62,7 +62,7 @@ workerはdispatchで指定されたjob 1件を対象に、短いDB transaction�
 5. 外部処理中は30秒ごと、またはstage変更時に`locked_at`をheartbeat更新する。
 6. `locked_at < now() - 10 minutes`のrunning jobはstaleとする。`attempt < 3`ならlockを解除してqueuedへ戻し、`attempt >= 3`ならfailedへ確定する。failed確定と同一transactionで、当該jobの未返還reserve（`job:{job_id}:generation:refund`／`image:refund`の冪等key）をrefundする（通常経路のrefundと二重返還しない。要件03 §7.3）。
 
-stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserveは文章系top-level job（生成・LRN・SUGGEST・MD-MERGE）と画像生成jobで実装済みのため、このrefundは実際に枠を戻す。workerの失敗経路では各handlerが自分の終端処理（draft確定・ソース差し戻し・error通知）をpoolで行うため、`finalizeFailedJob`は呼ばない（二重実行を避ける）。両経路の失敗通知は同じdedupe key `job:{id}:failed` を使うため重複しない。利用枠のrefundだけは worker 失敗経路でも中央（`failJob`）で行う（要件03 §7.1）。handlerが返還するとretryで差し戻される失敗でも返してしまい、次のattemptが再予約できなくなるため。
+stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserveは文章系top-level job（生成・LRN・SUGGEST・MD-MERGE）と画像生成jobで実装済みのため、このrefundは実際に枠を戻す。workerの失敗経路では各handlerが自分の終端処理（draft確定・ソース差し戻し・error通知）をpoolで行うため、`finalizeFailedJob`は呼ばない（二重実行を避ける）。両経路の失敗通知は同じdedupe key `job:{id}:failed` を使うため重複しない。利用枠のrefundだけは worker 失敗経路でも中央（`failJob`）で行う（要件03 §7.1）。handlerが返還するとretryで差し戻される失敗でも返してしまい、次のattemptが再予約できなくなるため。**通知の文言と発行SQLは `lib/jobs/notifications.ts` の1箇所だけに置く**（R21・R22）。以前はworker経路がSQLリテラル、stale経路が文言テーブルと別々に持っていたため、同じ失敗が経路によって違う文面で届きうる状態だった（`draft_created`通知も3ファイルに同一SQLで重複していた）。**失敗確定の3手順（`error`/`usage`保存 → 原価台帳への記録 → 失敗通知）は `persistJobFailure` に集約する**（R23）。原価の記録は落としても全テストが緑のまま通り、AI費用が静かに過少計上されるため（CLAUDE.md 原則4）。
 
 workerがhandlerの例外を受けてfailedへ確定する際は、失敗理由を必ず残す。handlerが既に`error`を保存していればそれを尊重して上書きせず、未保存のときだけ§4.10形式の汎用`error`（`code`／`message`／`retryable: false`／`stage`＝到達済みの`progress_stage`）を保存する。`code`は例外が持つエラーコード（`^[a-z][a-z0-9_]{0,62}$`に一致するもののみ）を使い、該当しなければ汎用の`job_failed`とする。`message`はコードから決まる定型文またはkind別の失敗通知本文であり、例外メッセージ・スタック・providerの応答をそのまま入れない。この確定は`status = running`の行のみを対象とするため、自己終端済み・stale回収でqueuedへ戻った行を書き換えず、再実行しても結果が変わらない。lease時（§4の手順4）は前attemptの`error`をクリアし、前回の失敗理由が現在の実行の結果として表示されないようにする。
 
