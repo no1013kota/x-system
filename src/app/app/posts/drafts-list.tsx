@@ -2,6 +2,7 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { WARNING_LABEL, warningSummary } from "@/lib/post/warning-labels";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
@@ -30,35 +31,6 @@ import { formatJst } from "@/lib/format";
 import { DraftEditor } from "./draft-editor";
 
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
-
-const WARNING_LABEL: Record<string, string> = {
-  length_exceeded: "文字数超過",
-  cashtag_multiple: "$タグ2件以上",
-  ng_word: "NGワード",
-  source_missing: "出典なし",
-  injection_suspected: "要確認",
-  image_failed: "画像なし（生成失敗）",
-};
-
-/** 投稿前の確認で「何が起きるか」を伝える説明文（バッジだけでは分からないため）。 */
-const WARNING_DETAIL: Record<string, string> = {
-  length_exceeded: "280字を超えています",
-  cashtag_multiple: "$タグが2件以上あります",
-  ng_word: "NG設定の語が含まれています",
-  source_missing: "出典URLがありません",
-  injection_suspected: "不審な指示が混じっている可能性があります",
-};
-
-/** 「2ポスト目にNGワード」のような要約を作る。 */
-function warningSummary(thread: { warnings: string[] }[]): string[] {
-  const lines: string[] = [];
-  thread.forEach((post, index) => {
-    for (const code of post.warnings) {
-      lines.push(`${index + 1}ポスト目: ${WARNING_DETAIL[code] ?? WARNING_LABEL[code] ?? code}`);
-    }
-  });
-  return lines;
-}
 
 function WarningBadge({ code }: { code: string }) {
   return (
@@ -125,6 +97,7 @@ function DraftCard({
     editable,
     hasCreationHistory,
     hasWarnings,
+    autoPostBlocked,
     imageFailed,
     lengthExceeded,
     posting,
@@ -237,8 +210,17 @@ function DraftCard({
           {draft.status === "failed" ? (
             <Badge tone="danger">失敗</Badge>
           ) : null}
+          {/*
+            止まる警告と止まらない警告を言い分ける（F2）。以前は警告が1つでもあれば
+            「自動投稿は停止します」と出していたため、`length_over_target` のように
+            止めない警告でも停止を名乗っていた（要件06 §4.3）。
+          */}
           {hasWarnings ? (
-            <Badge tone="warn">警告あり（自動投稿は停止します）</Badge>
+            autoPostBlocked ? (
+              <Badge tone="warn">警告あり（自動投稿は停止します）</Badge>
+            ) : (
+              <Badge tone="info">確認おすすめ（自動投稿は続きます）</Badge>
+            )
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
           <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
