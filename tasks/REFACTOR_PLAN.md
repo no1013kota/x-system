@@ -35,7 +35,7 @@ R19（検査の空振り）→ R20〜R24（課金・通知・上限の食い違�
 | ID | 単位 | 種別 | 規模 | リスク | 状態 |
 |---|---|---|---|---|---|
 | R19 | 死んだソース検査を生かす（server-boundary の getEncryptionKey 誤regex＋検出器ごとのガード）と、テストの実行環境依存を揃える。**検出器を `getAppEncryptionKey` へ是正し、合計件数 `>=10` のガードを「検出器ごとに1件以上」へ置換**（合計だと1本死んでも他2本で閾値を満たし素通りしていた）。cwd依存5本を `import.meta.url` 基準へ、resolve-account.db.test.ts の `SKIP_DB`/`return` 抜けを `beforeEach`+`ctx.skip()` へ。**3点を実地に実証**: ①`billing-return-server.ts` が新たに検査対象へ入り（16→17ファイル）、`server-only` を外すと落ちる（修正前は17 passedのまま）②検出器名を壊すと落ちる ③DB接続不可時に `4 passed` ではなく `4 skipped` になる。cwd=`src/` からの実行でも5本緑。test 1751（+3）| testability | S | low | done |
-| R20 | 3モジュールに同一実装で重複している所有権・同時実行ガード（assertActiveAccount / assertJobBudget / MAX_ACTIVE_JOBS）を共有モジュールへ集約する | duplication | M | low | todo |
+| R20 | 3モジュールに同一実装で重複している所有権・同時実行ガード（assertActiveAccount / assertJobBudget / MAX_ACTIVE_JOBS）を共有モジュールへ集約する。`src/lib/jobs/job-guards.ts`（`Queryable` を引数で受ける純粋層・server-onlyは付けない）へ移し、3ファイルは import＋`MAX_ACTIVE_JOBS` の re-export に。**移設前後で関数本体がコメント・空白正規化後にバイト等価であることをスクリプトで確認**（3実装とも一致）。`xa.status` はどこも読んでいないが判断材料を減らさないため select に残す。`REQUIRE_DB=1` で generation-jobs / suggestion-jobs.db / learning-sources.db / tenant-isolation.db の63件緑 | duplication | M | low | done |
 | R21 | job失敗通知の文言を terminal.ts の FAILED_NOTICE に一本化し、通知INSERTも共有する | duplication | S | low | todo |
 | R22 | draft_created 通知の16行SQLを3ファイルから1つの共有関数へまとめる | duplication | XS | low | todo |
 | R23 | 失敗確定の3手順（error/usage保存 → 原価台帳 → error通知）を persistJobFailure に共通化する | duplication | M | low | todo |

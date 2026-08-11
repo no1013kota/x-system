@@ -5,8 +5,13 @@ import {
   type ExecutionPrereqInput,
 } from "./execution-prereqs";
 import { toIso } from "./format";
+import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./jobs/job-guards";
 import { requestKey } from "./jobs/keys";
 import { AppError } from "./observability/errors";
+
+// 既存の import 名を保つための re-export（正本は `jobs/job-guards.ts`・R20）。
+// `ops/tenant-isolation.db.test.ts` がこのパスから import している。
+export { MAX_ACTIVE_JOBS };
 import type { Queryable } from "./x/token-refresh";
 
 /**
@@ -18,7 +23,6 @@ import type { Queryable } from "./x/token-refresh";
  *   同一アカウントに queued/running の learning_analysis/md_merge または removing source があれば job_conflict。
  */
 
-export const MAX_ACTIVE_JOBS = 5;
 export const LEARNING_LIMITS = { ref_account: 3, ref_post: 10 } as const;
 
 const X_HOSTS = new Set([
@@ -108,22 +112,6 @@ export interface RemoveLearningSourceResult {
   jobId: string | null;
 }
 
-/** 表示中アカウントが本人所有かつ active 選択中か（要件05 §1）。不一致は job_conflict。 */
-async function assertActiveAccount(tx: Queryable, userId: string, xAccountId: string): Promise<void> {
-  const row = (
-    await tx.query<{ status: string; active_x_account_id: string | null }>(
-      `select xa.status, p.active_x_account_id
-         from x_accounts xa join profiles p on p.id = xa.user_id
-        where xa.id = $1 and xa.user_id = $2`,
-      [xAccountId, userId],
-    )
-  ).rows[0];
-  if (!row) throw new AppError("not_found");
-  if (row.active_x_account_id !== xAccountId) {
-    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
-  }
-}
-
 async function assertPrereqs(deps: LearningSourceDeps, userId: string): Promise<void> {
   const input = await deps.gatherPrereqInputs(userId, { imageRequested: false });
   const error = input
@@ -131,20 +119,6 @@ async function assertPrereqs(deps: LearningSourceDeps, userId: string): Promise<
     : { code: "not_found" as const, missing: [], settingsPath: "/app" };
   if (error) {
     throw new AppError(error.code, { details: { missing: error.missing, settingsPath: error.settingsPath } });
-  }
-}
-
-async function assertJobBudget(tx: Queryable, userId: string): Promise<void> {
-  const active = (
-    await tx.query<{ n: number }>(
-      `select count(*)::int as n from generation_jobs gj
-         join x_accounts xa on xa.id = gj.x_account_id
-        where xa.user_id = $1 and gj.status in ('queued', 'running')`,
-      [userId],
-    )
-  ).rows[0].n;
-  if (active >= MAX_ACTIVE_JOBS) {
-    throw new AppError("job_conflict", { details: { reason: "too_many_active_jobs" } });
   }
 }
 
