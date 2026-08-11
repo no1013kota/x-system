@@ -138,6 +138,26 @@ describe("buildDailySummary", () => {
     expect(s.title).toContain("気になる点が 2 件");
   });
 
+  /**
+   * 窓より前の失敗は**警告にせず数字だけ**（F7）。
+   *
+   * 以前は全期間の `failed` を「気になる点」に数えていたため、**7日より前の失敗しか
+   * 無い状態でも毎日通知が出続けた**。同じ状況を doctor は「急ぎではない」と言っており、
+   * 2つの通知が食い違っていた。
+   */
+  it("窓より前の送信失敗は数字を出すが警告にはしない", () => {
+    const s = buildDailySummary({ ...base, failedEmails: 0, olderFailedEmails: 3 });
+    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
+    expect(s.needsAttention, "古い失敗で毎日赤くすると通知が読まれなくなる").toBe(false);
+  });
+
+  it("直近の失敗があれば警告にする（古い分は別行で添える）", () => {
+    const s = buildDailySummary({ ...base, failedEmails: 2, olderFailedEmails: 3 });
+    expect(s.body).toContain("送れなかったお知らせメール: 2 件");
+    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
+    expect(s.needsAttention).toBe(true);
+  });
+
   it("送れなかったお知らせメールを出す（送信待ちと別物として扱う・T-M8-40）", () => {
     // `failed` は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
     // サマリに載せないと、運営者は通知メールが届いていないことに気付けない。

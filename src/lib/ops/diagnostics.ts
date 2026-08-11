@@ -5,11 +5,18 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
-import { approxYen, type Check, type Level, summarize, worstLevel } from "./check";
+import {
+  approxYen,
+  type Check,
+  FAILED_EMAIL_WINDOW_DAYS,
+  type Level,
+  summarize,
+  worstLevel,
+} from "./check";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
-export { approxYen, summarize, worstLevel };
+export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
 export type { Check, Level };
 
 /**
@@ -257,8 +264,6 @@ export function judgeNews(input: {
  * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
  * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
  */
-/** `failed` を「いま対応すべき失敗」として数える期間（T-M8-51）。 */
-export const FAILED_EMAIL_WINDOW_DAYS = 7;
 
 export function judgeQueuedEmails(input: {
   queued: number;

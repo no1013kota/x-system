@@ -428,6 +428,18 @@ export function ApiKeySettings({
               type="password"
               value={clientSecret}
             />
+            {/*
+              保存は Client ID だけで通るが、**連携には実質必須**（T-M8-63・F3）。
+              手順ガイドが指示する「Web App, Automated App or Bot」は confidential client で、
+              Secret 無しの token 交換は401（unauthorized_client）で拒否される。
+              空のまま保存できてしまうと、失敗するのは連携を試みた後になる。
+              入れれば消えるので、正常な操作を警告色で妨げない（muted の小文字にする）。
+            */}
+            {secretTrimmed.length === 0 ? (
+              <p className="text-xs font-normal text-muted-foreground">
+                手順どおり「Web App, Automated App or Bot」で作ったAppでは必須です。空のまま保存すると、Xアカウントの連携時にXから拒否されます。
+              </p>
+            ) : null}
           </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -453,7 +465,7 @@ export function ApiKeySettings({
         {!xSavable ? (
           <p className="mt-2 text-xs text-muted-foreground">
             {clientId.trim().length === 0
-              ? "Client IDとClient Secretを入力すると保存できます。"
+              ? "Client IDを入力すると保存できます。"
               : clientId.trim().length < X_CLIENT_ID_MIN_LENGTH
                 ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
                 : `Client Secretは${X_CLIENT_SECRET_MIN_LENGTH}文字以上です（いま${secretTrimmed.length}文字）。`}

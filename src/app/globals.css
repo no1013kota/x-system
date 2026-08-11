@@ -2,6 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * ダークモードは持たない（PRD §3.2「MVPでやらないこと」・2026-08-11 決定）。
+ * `.dark` パレットと参照0件のトークンは削除したが、**この1行は消さないこと**。
+ *
+ * これは Tailwind v4 の `dark` バリアント既定（`@media (prefers-color-scheme: dark)`）を
+ * クラス方式へ上書きしている。`.dark` を付ける箇所は無いので、結果として
+ * `button.tsx` に残る shadcn 生成物の `dark:*` は**発火しない**。
+ * この行を消すと既定へ戻り、OSをダークにしている閲覧者だけ outline/ghost/destructive の
+ * ボタンの枠と背景が暗くなり、ライト配色の画面の中で浮く。
+ * 検査は `src/components/ui/design-tokens.test.ts` と `e2e/dark-color-scheme.spec.ts`。
+ */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -14,20 +25,6 @@
   */
   --font-sans: var(--font-inter), var(--font-noto-sans-jp), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -127,25 +124,12 @@
   --border: var(--hairline);
   --input: var(--hairline);
   --ring: var(--brand);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   /*
    * 角丸の基準を 8px へ（デザイン §形状）。既定の 10px のままだと、`rounded-lg` を使っている
    * **85箇所**が新デザインのカード（8px）と2px違いで並び、揃っていないことだけが分かる状態になる。
    * `rounded-md`（6.4px）もチップの 6px に近づく。呼び出し側を書き換えずに全体を寄せる。
    */
   --radius: 8px;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
 
   /* --- 新デザインのトークン（T-M8-02）。値はデザイン実物（HTML）を正とする --- */
   --brand: #7d1f75;
@@ -188,42 +172,8 @@
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
 
   /* トランジション（デザイン §形状・余白） */
-  --motion-fast: 150ms ease-out;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
 
 @layer base {
   * {

@@ -57,3 +57,12 @@ export const USD_TO_JPY = 150;
 export function approxYen(usd: number): number {
   return Math.round(usd * USD_TO_JPY);
 }
+
+/**
+ * 送れなかったメールを「いま対応すべき失敗」として数える期間（T-M8-51・F7）。
+ *
+ * 窓が無いと1件失敗しただけで doctor が恒久的に赤・日次サマリに毎日出続け、
+ * **赤が常態化して他の異常が埋もれる**（原則1の逆効果）。
+ * doctor と日次サマリが同じ窓を使うよう、依存ゼロのここに置く。
+ */
+export const FAILED_EMAIL_WINDOW_DAYS = 7;

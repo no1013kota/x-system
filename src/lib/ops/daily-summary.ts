@@ -4,7 +4,7 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 
 import type { Queryable } from "../x/token-refresh";
 
-import { approxYen } from "./check";
+import { approxYen, FAILED_EMAIL_WINDOW_DAYS } from "./check";
 import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 
 /**
@@ -83,6 +83,14 @@ export interface DailySummaryData {
   queuedEmails: number;
   /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
   failedEmails: number;
+  /**
+   * 窓より前の送信失敗（F7）。**警告にはしないが数字は出す**。
+   *
+   * 全期間を「気になる点」に数えていたため、7日より前の失敗しか無い状態でも
+   * 毎日通知が出続けていた。かといって黙って落とすと、届かなかったメールの存在が
+   * どこにも見えなくなる（原則1）。doctor 側と同じ扱いに揃える。
+   */
+  olderFailedEmails?: number;
   monthUsd: number;
   /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
   dbBytes: number;
@@ -148,11 +156,20 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
   }
   // 失敗は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
   // **黙って届かないまま**になるので「気になる点」に数える（T-M8-40）。
+  // ただし**直近の失敗だけ**（F7）。窓が無いと1件失敗しただけで毎日出続け、
+  // 赤が常態化して他の異常が埋もれる（doctor 側は T-M8-51 で同じ窓を入れている）。
   if (data.failedEmails > 0) {
     lines.push(
       `送れなかったお知らせメール: ${data.failedEmails} 件（メール設定を確認し、通知ベルから再送してください）`,
     );
     attention.push(`送れなかったお知らせメールが ${data.failedEmails} 件`);
+  }
+  // 窓より前の失敗は**警告にしないが数字は出す**（黙って消すと存在が見えなくなる・原則1）。
+  const olderFailed = data.olderFailedEmails ?? 0;
+  if (olderFailed > 0) {
+    lines.push(
+      `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったお知らせメール: ${olderFailed} 件（急ぎではありません）`,
+    );
   }
   if (data.queuedEmails > 0) {
     lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
@@ -238,11 +255,26 @@ export async function collectDailySummary(
     [userId],
   );
 
-  const emails = await db.query<{ queued: string; failed: string }>(
+  /**
+   * 送れなかったメールは**窓で区切る**（F7）。
+   *
+   * doctor 側は T-M8-51 で7日窓を入れたのに、ここは全期間を数えていた。そのため
+   * **7日より前の失敗しか無い状態でも毎日「気になる点」を出し続け**、同じ状況を
+   * doctor は「急ぎではない」、サマリは「対応が必要」と食い違って伝えていた。
+   * 窓は `ops/check.ts` の1つだけを使う。古い分は数字として残す（黙って消さない・原則1）。
+   */
+  const emails = await db.query<{ queued: string; failed: string; failed_older: string }>(
     `select count(*) filter (where email_status = 'queued')::text as queued,
-            count(*) filter (where email_status = 'failed')::text as failed
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) > now() - ($2 || ' days')::interval
+            )::text as failed,
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) <= now() - ($2 || ' days')::interval
+            )::text as failed_older
        from notifications where user_id = $1 and email_status in ('queued', 'failed')`,
-    [userId],
+    [userId, String(FAILED_EMAIL_WINDOW_DAYS)],
   );
 
   const cost = await db.query<{ usd: string | null }>(
@@ -297,6 +329,7 @@ export async function collectDailySummary(
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
     queuedEmails: Number(emails.rows[0]?.queued ?? 0),
     failedEmails: Number(emails.rows[0]?.failed ?? 0),
+    olderFailedEmails: Number(emails.rows[0]?.failed_older ?? 0),
     monthUsd: Number(cost.rows[0]?.usd ?? 0),
   };
 }
