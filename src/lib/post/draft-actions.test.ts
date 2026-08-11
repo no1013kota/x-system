@@ -183,6 +183,58 @@ describe("draftActionState", () => {
       expect(s.hasWarnings).toBe(true);
     });
 
+    /**
+     * 「警告がある」と「自動投稿が止まる」は別物（F2）。
+     *
+     * 以前は画面が警告の有無だけを見て「自動投稿は停止します」と出していたため、
+     * `length_over_target` のように**止めない警告でも停止を名乗っていた**。
+     */
+    it("止めない警告だけなら autoPostBlocked は false（止まっていないものを止まったと言わない）", () => {
+      const s = draftActionState(
+        draft({
+          thread: [
+            {
+              local_id: "p1",
+              text: "a",
+              weighted_length: 1,
+              sources: [],
+              warnings: ["length_over_target", "post_count_trimmed"],
+            },
+          ],
+        }),
+        enabled,
+      );
+      expect(s.hasWarnings).toBe(true);
+      expect(s.autoPostBlocked).toBe(false);
+    });
+
+    it("止める警告が混ざれば autoPostBlocked は true", () => {
+      const s = draftActionState(
+        draft({
+          thread: [
+            {
+              local_id: "p1",
+              text: "a",
+              weighted_length: 1,
+              sources: [],
+              warnings: ["length_over_target", "ng_word"],
+            },
+          ],
+        }),
+        enabled,
+      );
+      expect(s.autoPostBlocked).toBe(true);
+    });
+
+    it("画像失敗だけなら autoPostBlocked は false（本文は使えるので投稿は続く・要件06 §4.3）", () => {
+      const s = draftActionState(
+        draft({ images: [{ status: "failed" } as DraftView["images"][number]] }),
+        enabled,
+      );
+      expect(s.hasWarnings).toBe(true);
+      expect(s.autoPostBlocked).toBe(false);
+    });
+
     it("文字数超過は投稿を止める（Xが受け付けないため）", () => {
       const s = draftActionState(
         draft({

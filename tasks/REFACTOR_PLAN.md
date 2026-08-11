@@ -52,7 +52,7 @@ R19（検査の空振り）→ R20〜R24（課金・通知・上限の食い違�
 | R34 | 法務同意プロフィールの列リストを1つの正本にする | duplication | S | low | todo |
 | R35 | landing-page.test.ts の空振りを塞ぐ（検査対象のディレクトリ走査化＋グラデ検査をデータ配列のフラグまで見る＋古いコメントの是正） | testability | S | low | todo |
 | R36 | 曜日×時刻ドットの「状態→クラス」対応表と曜日ラベルを1箇所に集約する | duplication | S | low | todo |
-| R37 | 下書きの警告ラベル表と要約生成を lib へ移し、警告コードの対応漏れを機械検査できる形にする | testability | S | low | todo |
+| R37 | 下書きの警告ラベル表と要約生成を lib へ移し、警告コードの対応漏れを機械検査できる形にする。**F1（D-23）で消化済み**（2026-08-11）。`warning-labels.ts` へ移設し、欠けていた `length_over_target` / `post_count_trimmed` のラベルも同時に埋めたため計画していた allowlist は不要になった。網羅は `satisfies Record<WarningCode \| "image_failed", string>` が typecheck で止める（架空コードを足して実際に落ちることを確認） | testability | S | low | done |
 | R38 | スケジュールのセル説明文・パターン名フォールバック・曜日+時刻表記と、保存前の入力検証を lib/schedule の純関数へ切り出す | testability | S | low | todo |
 | R1 | `pool.ts` に `import "server-only"` を付与（Clientバンドル混入の静的防止） | boundary | S | low | done |
 | R2 | デッドコード削除（未使用export/型）: `planForStripePriceId` / `StripeWebhookEventType` / `pool.claimForUpdateSkipLocked` / `oauth-server.openState`・`openTokenCiphertext`。※`SubscriptionAccess.action`・`canBrowseApp`はR6で対応 | deadcode | S | low | done |
