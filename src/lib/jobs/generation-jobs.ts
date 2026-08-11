@@ -11,7 +11,11 @@ import { AppError } from "@/lib/observability/errors";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
 
 import type { Queryable } from "../x/token-refresh";
+import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./job-guards";
 import { requestKey } from "./keys";
+
+// 既存の import 名を保つための re-export（正本は `job-guards.ts`・R20）。
+export { MAX_ACTIVE_JOBS };
 
 /**
  * 生成jobの Server Action 中核（要件05 §5/§12/§2.2, 要件04 §3, T-M3-07）。
@@ -20,7 +24,6 @@ import { requestKey } from "./keys";
  * DB・前提収集・feature flag は注入する（`after()`でのdispatchはAction層）。
  */
 
-export const MAX_ACTIVE_JOBS = 5;
 
 export const createGenerationJobSchema = z.object({
   request_key: z.string().min(1).max(200),
@@ -83,26 +86,6 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
   };
 }
 
-async function assertActiveAccount(
-  tx: Queryable,
-  userId: string,
-  xAccountId: string,
-): Promise<void> {
-  const row = (
-    await tx.query<{ status: string; active_x_account_id: string | null }>(
-      `select xa.status, p.active_x_account_id
-         from x_accounts xa join profiles p on p.id = xa.user_id
-        where xa.id = $1 and xa.user_id = $2`,
-      [xAccountId, userId],
-    )
-  ).rows[0];
-  if (!row) throw new AppError("not_found");
-  // 表示中アカウントと実行対象の不一致（別タブ・別端末での切替競合）を拒否（要件05 §4.1）。
-  if (row.active_x_account_id !== xAccountId) {
-    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
-  }
-}
-
 async function assertPrereqs(
   deps: GenerationJobDeps,
   userId: string,
@@ -128,20 +111,6 @@ async function assertPostingPrereqs(deps: GenerationJobDeps, userId: string): Pr
     throw new AppError(error.code, {
       details: { missing: error.missing, settingsPath: error.settingsPath },
     });
-  }
-}
-
-async function assertJobBudget(tx: Queryable, userId: string): Promise<void> {
-  const active = (
-    await tx.query<{ n: number }>(
-      `select count(*)::int as n from generation_jobs gj
-         join x_accounts xa on xa.id = gj.x_account_id
-        where xa.user_id = $1 and gj.status in ('queued', 'running')`,
-      [userId],
-    )
-  ).rows[0].n;
-  if (active >= MAX_ACTIVE_JOBS) {
-    throw new AppError("job_conflict", { details: { reason: "too_many_active_jobs" } });
   }
 }
 
