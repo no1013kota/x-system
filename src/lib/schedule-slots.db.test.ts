@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { encryptWithKey } from "./crypto/envelope";
 import { closePool, getPool, withTransaction } from "./db/pool";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "./legal";
+import { POST_THEME_IDS } from "./post/post-theme";
 import {
   createScheduleSlot,
   disableScheduleSlot,
@@ -333,4 +334,29 @@ describe("enableScheduleSlot (local DB)", () => {
     }
   });
 
+  /**
+   * CHECK制約の値集合と `POST_THEME_IDS` が一致していること（R29）。
+   *
+   * migration のコメントは「値は `src/lib/themes.ts` の THEME_IDS」と宣言しているが、
+   * それを確かめる検査が無かった。**分野を1つ足すと画面には選択肢が出るのに、
+   * 保存の瞬間に CHECK 違反で落ちる**（利用者からは「保存できない」としか見えない）。
+   * 上の「未知の分野を拒否する」検査は逆方向（DBが緩すぎないこと）しか見ていないので、
+   * ここで「DBが厳しすぎないこと」も止める。
+   */
+  it("theme の CHECK 制約が POST_THEME_IDS と同じ値集合である", async () => {
+    const { rows } = await getPool().query<{ def: string }>(
+      `select pg_get_constraintdef(c.oid) as def
+         from pg_constraint c
+         join pg_class t on t.oid = c.conrelid
+         join pg_namespace n on n.oid = t.relnamespace
+        where n.nspname = 'public'
+          and t.relname = 'schedule_slots'
+          and c.conname = 'schedule_slots_theme_valid'`,
+    );
+    expect(rows[0]?.def, "schedule_slots_theme_valid が見つからない").toBeDefined();
+    // `CHECK ((theme = ANY (ARRAY['ai'::text, ...])))` から値だけを取り出す。
+    // 分野IDは数字を含む（`web3`）ので `[a-z_]` だけでは取りこぼす。
+    const allowed = [...rows[0].def.matchAll(/'([a-z0-9_]+)'::text/g)].map((m) => m[1]).sort();
+    expect(allowed).toEqual([...POST_THEME_IDS].sort());
+  });
 });
