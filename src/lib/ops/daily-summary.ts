@@ -1,13 +1,10 @@
 import "server-only";
 
-import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
+import { classifyNewsOutcome } from "@/lib/news-outcome";
+
 import type { Queryable } from "../x/token-refresh";
-import {
-  formatDropReasons,
-  formatTooOldAges,
-  mostlyDropped,
-  onlyOutsideWindow,
-} from "@/lib/news-outcome";
+
+import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 
 /**
  * 日次サマリ（T-M7-29）。`CLAUDE.md`「前提：運営者は個人」原則1に対応する。
@@ -220,6 +217,16 @@ export async function collectDailySummary(
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)
         and ok and dropped > 0`,
   );
+  // 分類は `lib/news-outcome.ts` の1つだけを使う（doctor と同じ判定・R25）。
+  // 抽出SQLで `ok` は絞り済みなので、ここへ渡す行はすべて成功した実行。
+  const latestVerdicts = latest.rows.map((r) =>
+    classifyNewsOutcome({
+      category: r.category,
+      fetched: Number(r.fetched),
+      dropped: Number(r.dropped),
+      dropReasons: r.drop_reasons ?? {},
+    }),
+  );
 
   const stuck = await db.query<{ n: string }>(
     `select count(*)::text as n from generation_jobs gj
@@ -274,19 +281,16 @@ export async function collectDailySummary(
      * 「直せない理由で赤くすると本物の異常が隠れる」という当の判断を通知側が壊していた。
      * 判定は `lib/news-outcome.ts` の1つだけを使う。
      */
-    allDropped: latest.rows
-      .filter((r) => Number(r.fetched) === 0 && !onlyOutsideWindow(r.drop_reasons ?? {}))
-      .map((r) => ({
-        category: r.category,
-        reasons: formatDropReasons(r.drop_reasons ?? {}) || `${r.dropped}件`,
-      })),
-    mostlyDropped: latest.rows
-      .filter((r) => mostlyDropped(Number(r.fetched), Number(r.dropped)))
-      .map((r) => ({
-        category: r.category,
-        fetched: Number(r.fetched),
-        dropped: Number(r.dropped),
-        ages: formatTooOldAges(r.drop_reasons ?? {}),
+    allDropped: latestVerdicts
+      .filter((v) => v.kind === "all_dropped")
+      .map((v) => ({ category: v.category, reasons: v.reasons })),
+    mostlyDropped: latestVerdicts
+      .filter((v) => v.kind === "mostly_dropped")
+      .map((v) => ({
+        category: v.category,
+        fetched: v.fetched,
+        dropped: v.dropped,
+        ages: v.ages,
       })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
     queuedEmails: Number(emails.rows[0]?.queued ?? 0),
