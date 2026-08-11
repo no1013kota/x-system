@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { errorResult, requireUserId, type BaseResult } from "./_helpers";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import {
+  AppError,
+} from "@/lib/observability/errors";
 import {
   newsConfigSchema,
   notificationConfigSchema,
@@ -39,13 +41,10 @@ export async function updateNotificationConfigAction(
 export async function updateNewsConfigAction(input: unknown): Promise<BaseResult> {
   const parsed = newsConfigSchema.safeParse(input);
   if (!parsed.success) {
-    const first = parsed.error.issues[0]?.message;
-    return {
-      ...toUserFacingError(
-        new AppError("validation_error", first ? { message: first } : undefined),
-      ),
-      status: "error",
-    };
+    // NOTE: `toUserFacingError` は `USER_MESSAGES[code]` を返し AppError の message を見ないため、
+    // zod の先頭メッセージを渡しても画面には出ない（＝計算するだけで捨てられていた・R26）。
+    // 具体的な理由を出すかは振る舞い変更なので要決定 D-26 で扱う。
+    return errorResult(new AppError("validation_error"));
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

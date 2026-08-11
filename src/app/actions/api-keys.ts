@@ -11,8 +11,7 @@ import {
   saveAiApiKeySchema,
   saveXApiKeySchema,
 } from "@/lib/api-keys";
-import { getCurrentUser } from "@/lib/auth/session";
-import { errorResult } from "./_helpers";
+import { errorResult, requireUserId } from "./_helpers";
 import { AppError } from "@/lib/observability/errors";
 import { z } from "zod";
 
@@ -37,10 +36,10 @@ export async function saveXApiKey(
     const base = errorResult(new AppError("validation_error"));
     return first ? { ...base, message: first } : base;
   }
-  const user = await getCurrentUser();
-  if (!user) return errorResult(new AppError("unauthorized"));
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
-    const saved = await saveXApiKeyForUser({ ...parsed.data, userId: user.id });
+    const saved = await saveXApiKeyForUser({ ...parsed.data, userId: auth.userId });
     return {
       displayHint: saved.displayHint,
       message: "X APIキーを暗号化して保存しました。",
@@ -63,13 +62,13 @@ export async function saveAiApiKey(
     const base = errorResult(new AppError("validation_error"));
     return first ? { ...base, message: first } : base;
   }
-  const user = await getCurrentUser();
-  if (!user) return errorResult(new AppError("unauthorized"));
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
     const saved = await saveAiApiKeyForUser({
       apiKey: parsed.data.api_key,
       provider: parsed.data.provider,
-      userId: user.id,
+      userId: auth.userId,
     });
     return {
       displayHint: saved.displayHint,
@@ -91,12 +90,12 @@ export async function verifyApiKey(
 ): Promise<ApiKeyActionResult> {
   const parsed = verifySchema.safeParse(input);
   if (!parsed.success) return errorResult(new AppError("validation_error"));
-  const user = await getCurrentUser();
-  if (!user) return errorResult(new AppError("unauthorized"));
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
     const result = await verifyApiKeyForUser({
       provider: parsed.data.provider,
-      userId: user.id,
+      userId: auth.userId,
     });
     if (result.status === "invalid") {
       // 検証失敗はprovider応答を伏せて invalid に畳むが（秘密漏洩防止）、利用者には
@@ -129,12 +128,12 @@ export async function deleteApiKey(
 ): Promise<ApiKeyActionResult> {
   const parsed = verifySchema.safeParse(input);
   if (!parsed.success) return errorResult(new AppError("validation_error"));
-  const user = await getCurrentUser();
-  if (!user) return errorResult(new AppError("unauthorized"));
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
     const result = await deleteApiKeyForUser({
       provider: parsed.data.provider,
-      userId: user.id,
+      userId: auth.userId,
     });
     return {
       deleted: result.deleted,

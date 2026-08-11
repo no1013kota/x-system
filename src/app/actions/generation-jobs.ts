@@ -11,7 +11,9 @@ import {
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import {
+  AppError,
+} from "@/lib/observability/errors";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
@@ -86,9 +88,10 @@ export async function createDraftFromNewsAction(input: unknown): Promise<JobIdRe
   const activeId = await resolveActiveXAccountForUser(auth.userId);
   if (!activeId) {
     return {
-      ...toUserFacingError(new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } })),
+      ...errorResult(
+        new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } }),
+      ),
       message: "先にXアカウントを連携してください。",
-      status: "error",
     };
   }
   try {

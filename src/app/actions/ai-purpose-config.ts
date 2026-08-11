@@ -6,7 +6,6 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { errorResult } from "./_helpers";
 import {
   AppError,
-  toUserFacingError,
   type UserFacingError,
 } from "@/lib/observability/errors";
 
@@ -25,14 +24,14 @@ export async function updateAiPurposeConfig(
   const parsed = updateAiPurposeConfigSchema.safeParse(input);
   if (!parsed.success) {
     return {
-      ...toUserFacingError(new AppError("validation_error")),
+      ...errorResult(new AppError("validation_error")),
       status: "error",
     };
   }
   const user = await getCurrentUser();
   if (!user) {
     return {
-      ...toUserFacingError(new AppError("unauthorized")),
+      ...errorResult(new AppError("unauthorized")),
       status: "error",
     };
   }

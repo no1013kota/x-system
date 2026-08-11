@@ -6,6 +6,7 @@ import { z } from "zod";
 import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
+import { env } from "@/lib/env";
 import {
   discardDraft,
   listDraftsForAccount,
@@ -26,7 +27,9 @@ import { recordUnexpectedError } from "@/lib/observability/sentry";
  * 編集は status=draft・楽観lock・pattern別最大数、破棄は draft/failed のみ（未解決failedは拒否）。
  */
 
-const IMAGE_BUCKET = "generated-images";
+// バケット名は env が正本（他5箇所は既に env 経由）。ここだけ直書きだったため、
+// バケットを変えても削除だけ旧バケットを掃除し続ける状態になっていた（R26）。
+const IMAGE_BUCKET = env.SUPABASE_STORAGE_BUCKET_IMAGES;
 
 const pooledDb = pooledQueryable();
 
