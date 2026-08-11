@@ -2,6 +2,7 @@ import { AppError } from "@/lib/observability/errors";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 
 import type { ThreadItem } from "./ai/gen-output";
+import { counterTypeFor, finalTextResolver, postConsumeKey } from "./post/posting-text";
 import type { Queryable } from "./x/token-refresh";
 
 /**
@@ -17,8 +18,6 @@ import type { Queryable } from "./x/token-refresh";
  * DB・X呼び出しは注入する。consume はいずれも冪等キーで二重計上しない。
  */
 
-const URL_RE = /https?:\/\/\S+/;
-const hasUrl = (text: string): boolean => URL_RE.test(text);
 
 interface LastPostError {
   code?: string;
@@ -90,8 +89,7 @@ export async function reconcileDraftPosting(
   const thread = Array.isArray(draft.thread) ? draft.thread : [];
   const tweetIds = Array.isArray(draft.tweet_ids) ? draft.tweet_ids : [];
   const lpe = draft.last_post_error;
-  const finalTextAt = (i: number): string =>
-    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
+  const finalTextAt = finalTextResolver(thread, draft.quote_url);
 
   const accessToken = await deps.getAccessToken(draft.x_account_id);
 
@@ -113,7 +111,7 @@ export async function reconcileDraftPosting(
         tweetId,
         counterType,
         op,
-        `draft:${draftId}:tweet:${tweetId}:post:${op === "post_create" ? "create" : "delete"}`,
+        postConsumeKey(draftId, tweetId, op),
       ],
     );
 
@@ -140,7 +138,7 @@ export async function reconcileDraftPosting(
       const original = new Set(tweetIds);
       for (let i = 0; i < resolved.length; i++) {
         if (!original.has(resolved[i])) {
-          await consumeEvent(resolved[i], hasUrl(finalTextAt(i)) ? "post_url" : "post_normal", "post_create");
+          await consumeEvent(resolved[i], counterTypeFor(finalTextAt(i)), "post_create");
         }
       }
       await db.query(
@@ -165,7 +163,7 @@ export async function reconcileDraftPosting(
       const exists = await deps.checkTweetExists(accessToken, tweetId);
       if (exists === false) {
         const idx = tweetIds.indexOf(tweetId);
-        const counterType = idx >= 0 && hasUrl(finalTextAt(idx)) ? "post_url" : "post_normal";
+        const counterType = idx >= 0 ? counterTypeFor(finalTextAt(idx)) : "post_normal";
         await consumeEvent(tweetId, counterType, "post_delete");
         newlyDeleted.push(tweetId);
       } else {
