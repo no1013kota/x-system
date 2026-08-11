@@ -2,7 +2,6 @@
 
 import { after } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/session";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
@@ -14,7 +13,7 @@ import {
 import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-import { errorResult, type BaseResult } from "./_helpers";
+import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 
 /**
  * 改善提案の Server Actions（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
@@ -27,15 +26,13 @@ const pooledDb = pooledQueryable();
 async function requireActive(): Promise<
   { ok: true; userId: string; xAccountId: string } | { ok: false; result: BaseResult }
 > {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { ok: false, result: errorResult(new AppError("unauthorized")) };
-  }
-  const xAccountId = await resolveActiveXAccountForUser(user.id);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth;
+  const xAccountId = await resolveActiveXAccountForUser(auth.userId);
   if (!xAccountId) {
     return { ok: false, result: errorResult(new AppError("not_found")) };
   }
-  return { ok: true, userId: user.id, xAccountId };
+  return { ok: true, userId: auth.userId, xAccountId };
 }
 
 export async function refreshSuggestionsAction(

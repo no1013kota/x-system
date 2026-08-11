@@ -4,8 +4,7 @@ import { z } from "zod";
 
 import type { AnalyticsSummary } from "@/lib/analytics";
 import { getAnalyticsSummaryForUser } from "@/lib/analytics-server";
-import { getCurrentUser } from "@/lib/auth/session";
-import { errorResult } from "./_helpers";
+import { errorResult, requireUserId } from "./_helpers";
 import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -29,16 +28,14 @@ export async function getAnalyticsSummaryAction(
   if (!parsed.success) {
     return errorResult(new AppError("validation_error"));
   }
-  const user = await getCurrentUser();
-  if (!user) {
-    return errorResult(new AppError("unauthorized"));
-  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
-    const xAccountId = await resolveActiveXAccountForUser(user.id);
+    const xAccountId = await resolveActiveXAccountForUser(auth.userId);
     if (!xAccountId) {
       return errorResult(new AppError("not_found"));
     }
-    const summary = await getAnalyticsSummaryForUser(user.id, xAccountId, parsed.data.period_days);
+    const summary = await getAnalyticsSummaryForUser(auth.userId, xAccountId, parsed.data.period_days);
     return { message: "", status: "success", summary };
   } catch (error) {
     return errorResult(error);
