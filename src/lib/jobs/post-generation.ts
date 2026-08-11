@@ -22,7 +22,13 @@ import { reduceWebSearchMaxUses } from "../ai/anthropic";
 
 import { genOutputSchema } from "../ai/gen-output";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
-import { InvalidProviderOutputError, runTextGeneration, usageFromError } from "../ai/pipeline";
+import {
+  InvalidProviderOutputError,
+  providerRawOutputOf,
+  runTextGeneration,
+  usageFromError,
+} from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
@@ -394,10 +400,18 @@ export async function executePostGeneration(
     });
   } catch (error) {
     if (error instanceof InvalidProviderOutputError) {
+      // **AIが何を返して落ちたか**を残す（F4）。これが無いと code だけが記録され、
+      // 検証失敗という最も多い失敗の原因を運営者が辿れない（CLAUDE.md 原則2）。
+      // 画面へは出さない（要件06 §5。ブラウザへ渡らないことは getGenerationJob 側で担保）。
       await persistFailure(
         db,
         failCtx,
-        { code: "invalid_output", message: "生成結果を検証できませんでした。もう一度お試しください。", stage: "writing" },
+        {
+          code: "invalid_output",
+          message: "生成結果を検証できませんでした。もう一度お試しください。",
+          stage: "writing",
+          providerRawError: formatFailureRawError(error, providerRawOutputOf(error)),
+        },
         error.usage,
       );
     } else {

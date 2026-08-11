@@ -1,6 +1,7 @@
 import { z, type ZodType } from "zod";
 
-import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -159,24 +160,16 @@ async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow): Pr
   return `<posts>\n${JSON.stringify(posts.slice(0, 100))}\n</posts>`;
 }
 
-/** `provider_raw_error` の保存上限。生の応答は長くなり得るため頭を残して切る。 */
-const RAW_ERROR_MAX = 2000;
-
 /**
- * 失敗の原因を残すための生の文面（T-M7-39）。
+ * 失敗の原因を残すための生の文面（T-M7-39・F4で応答本文も含めるようにした）。
  *
- * これが無いと `code` だけが残り、**何が起きたか誰にも分からない**（2026-07-26 の own_posts 失敗は
- * `analysis_failed` だけが記録され、原因を追えなかった）。生成・画像jobと同じ扱いにする
- * （`post-generation.ts`・`image-generation.ts`）。画面には出さない（要件06 §5）。
+ * これが無いと `code` だけが残り、**何が起きたか誰にも分からない**（2026-07-26 の own_posts
+ * 失敗は `analysis_failed` だけが記録され、原因を追えなかった）。**検証失敗のときは
+ * providerの応答本文もここへ入る**（`providerRawOutputOf`）。X API の失敗（`x api 403: forbidden`）は
+ * 例外の要約だけになる。画面には出さない（要件06 §5）。上限と切り詰めは `ai/raw-error.ts` が正本。
  */
 function rawErrorOf(error: unknown): string | null {
-  const text =
-    error instanceof Error
-      ? `${error.name}: ${error.message}${error.cause ? ` / cause: ${String(error.cause)}` : ""}`
-      : String(error);
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  return trimmed.length > RAW_ERROR_MAX ? `${trimmed.slice(0, RAW_ERROR_MAX)}…` : trimmed;
+  return formatFailureRawError(error, providerRawOutputOf(error));
 }
 
 /** 失敗確定: source=failed・error通知（dedupe job:{id}:failed）・usage/error保存（pool）。 */

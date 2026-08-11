@@ -9,7 +9,8 @@ import type { ThreadItem } from "../ai/gen-output";
 import type { AspectRatio, ImageGen } from "../ai/image";
 import { normalizeForX } from "../ai/image-normalize";
 import type { ProviderCall } from "../ai/normalize";
-import { runTextGeneration } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -367,7 +368,9 @@ export async function executeImageGeneration(
     // 画像枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。生成枠は親jobの勘定
     // なので触れない（要件03 §7.5・成功済み本文の枠は返還しない）。
     if (error instanceof ImageGenerationTerminalError) throw error;
-    const providerRawError = error instanceof Error ? error.message : String(error);
+    // 例外の要約に加え、**検証失敗なら providerの応答本文も残す**（F4・F5）。
+    // 上限と切り詰めは `ai/raw-error.ts` が正本（以前は message を無加工で入れており上限が無かった）。
+    const providerRawError = formatFailureRawError(error, providerRawOutputOf(error));
     if (isRegenerate) {
       // 再生成失敗時は既存画像を維持する（drafts.imagesへ触れない）。error/usageだけ記録する（要件04 §9）。
       await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);

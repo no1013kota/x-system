@@ -198,14 +198,15 @@ describe("suggestion worker (local DB)", () => {
   });
 
   /**
-   * 失敗時に保存される `error` JSON の**キー集合**を固定する（R23の特性テスト）。
+   * 失敗時に保存される `error` JSON の**キー集合**を固定する（R23の特性テスト・F5で更新）。
    *
-   * 他2つの job（post_generation・learning_analysis）は `provider_raw_error` を持つが、
-   * suggestion は**持たない**。失敗確定の3手順を共通化するときに、揃えるつもりで
-   * `provider_raw_error: null` を足すと保存JSONが変わる（＝振る舞い変更）。
-   * ここが無いと、その差が誰にも見えないまま通ってしまう。
+   * R23 の時点では suggestion だけ `provider_raw_error` を持たず、共通化のときに
+   * 揃えるつもりで `null` を足すと保存JSONが変わるため、4キーで固定していた。
+   * **2026-08-11 に方針を変え、3つのAI job（生成・学習・提案）と画像生成で揃えた**（F5）。
+   * refine 失敗（`<posts>` に無いIDを返した等）の中身は運営者が最も知りたい情報で、
+   * これが無いと `suggestion_failed` だけが残って原因を追えない（CLAUDE.md 原則2）。
    */
-  it("失敗時の error JSON は code/message/retryable/stage の4キー（provider_raw_error を持たない）", async () => {
+  it("失敗時の error JSON は5キーで、AIが何を返したかが残る", async () => {
     const { uid, xid, jobId } = await seed("premium");
     try {
       const drafts = [draft("t1", 100), draft("t2", 300), draft("t3", 200)];
@@ -217,12 +218,17 @@ describe("suggestion worker (local DB)", () => {
       expect(Object.keys(rows[0].error).sort()).toEqual([
         "code",
         "message",
+        "provider_raw_error",
         "retryable",
         "stage",
       ]);
       expect(rows[0].error.message).toBe("改善提案の生成に失敗しました。");
       expect(rows[0].error.stage).toBe("writing");
       expect(rows[0].error.retryable).toBe(false);
+      // 検証に落ちた本文が実際に入る（空やnullでは原因を追えない）。
+      const raw = String(rows[0].error.provider_raw_error ?? "");
+      expect(raw).toContain("InvalidProviderOutputError");
+      expect(raw, "providerの応答本文が残る").toContain("not-a-real-id");
       expect(xid).toBeTruthy();
     } finally {
       await cleanup(uid);
