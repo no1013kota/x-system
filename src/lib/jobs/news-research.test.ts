@@ -163,6 +163,36 @@ describe("researchNews", () => {
     expect(res.items).toHaveLength(1);
     expect(res.items[0].source_url).toBe("https://e.com/y");
     expect(requests).toHaveLength(1); // 器は妥当なので修復callは不要
+    /**
+     * **落ちた候補の中身も残す**（T-M8-86）。件数と理由だけでは「プロンプトを直すべきか」が
+     * 判断できない。これが無いと、ニュースだけ「AIが何を返したか」を辿れないままになる。
+     */
+    expect(res.providerRawError, "落とした候補の中身が残っていない").toContain("title:too_big");
+    expect(res.providerRawError).toContain("あ".repeat(10));
+  });
+
+  it("窓より古いだけの除外では中身を残さない（良性の空と混ぜない・T-M8-86）", async () => {
+    // 契約は満たしているので `pickValidItems` は落とさない。`applyRecencyPolicy` が窓で捨てるだけ。
+    const old = JSON.stringify({
+      items: [
+        {
+          title: "契約は満たす見出し",
+          summary: "要約",
+          source_url: "https://e.com/old",
+          impact: "mid",
+          published_at: "2020-01-01T00:00:00Z",
+        },
+      ],
+    });
+    const { gen } = mockTextGen([old]);
+    const { db } = mockDb([]);
+    const res = await researchNews("ai", makeDeps({ db, textGen: gen }));
+    expect(res.items).toHaveLength(0);
+    expect(res.dropped).toBe(1);
+    expect(
+      res.providerRawError,
+      "良性の除外に本文を積むと「正常な空」と混ざる",
+    ).toBeNull();
   });
 
   it("JSONとして壊れている場合は従来どおり修復call→例外", async () => {
@@ -232,7 +262,7 @@ describe("pickValidItems（item単位の選別）", () => {
   });
 
   it("空配列はそのまま0件（落とした件数も理由も0）", () => {
-    expect(pickValidItems([])).toEqual({ items: [], dropped: 0, reasons: {} });
+    expect(pickValidItems([])).toEqual({ items: [], dropped: 0, reasons: {}, rejected: [] });
   });
 
   // T-M8-47: 2026-08-04 の実物スモークで ai テーマの4件中2件が `title:too_big` で落ち、

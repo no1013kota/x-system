@@ -121,7 +121,7 @@ function readString(error: unknown, key: string): string | null {
  * 台帳へ残す error code。providerの応答本文は入れず、安全な短い識別子だけにする
  * （HTTP status → `http_<status>`、SDKのcode/name → そのまま、いずれも無ければ `unknown_error`）。
  */
-function failureCode(error: unknown): string {
+export function providerFailureCode(error: unknown): string {
   const status =
     typeof error === "object" && error !== null
       ? (error as Record<string, unknown>).status
@@ -166,7 +166,7 @@ export async function runTextGeneration<T>(
           operation: opts.operation,
           latencyMs: now() - start,
           requestId: readString(error, "requestId") ?? readString(error, "request_id"),
-          errorCode: failureCode(error),
+          errorCode: providerFailureCode(error),
         }),
       );
       // 例外はそのまま投げる（retry分類が status/kind を見るため型を変えない）。蓄積済みの

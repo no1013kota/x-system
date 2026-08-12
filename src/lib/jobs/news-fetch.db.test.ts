@@ -45,7 +45,7 @@ describe("runNewsFetch (db)", () => {
     return { items, dropped: 0,
   dropReasons: {},
   futureAdjusted: 0,
-  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
+  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3, providerRawError: null };
   }
 
   it("skips items whose canonical source_url already exists and saves new ones", async () => {
@@ -101,6 +101,7 @@ describe("runNewsFetch (db)", () => {
           futureAdjusted: 1,
           usage: { calls: [], estimated_cost_usd_total: 0 },
           hours: 3,
+          providerRawError: null,
         }),
       });
 

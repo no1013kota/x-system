@@ -3,6 +3,7 @@ import { stripProviderMarkup } from "../ai/gen-output";
 
 import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatRejectedItems } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -133,9 +134,15 @@ export function pickValidItems(raw: unknown[]): {
   dropped: number;
   /** 落とした理由の内訳（例 `title:too_big` → 3）。 */
   reasons: Record<string, number>;
+  /**
+   * 落とした候補の**中身**（T-M8-86）。件数と理由だけでは「プロンプトを直すべきか」が
+   * 判断できないため、実際に何が返ってきたかを呼び出し側が保存できるようにする。
+   */
+  rejected: { reasons: string[]; raw: unknown }[];
 } {
   const items: NewsItemOut[] = [];
   const reasons: Record<string, number> = {};
+  const rejected: { reasons: string[]; raw: unknown }[] = [];
   let dropped = 0;
   for (const candidate of raw) {
     const parsed = newsItemSchema.safeParse(candidate);
@@ -143,14 +150,17 @@ export function pickValidItems(raw: unknown[]): {
       items.push(parsed.data);
     } else {
       dropped++;
+      const itemReasons: string[] = [];
       for (const issue of parsed.error.issues) {
         const key = `${issue.path.join(".") || "(root)"}:${issue.code}`;
         reasons[key] = (reasons[key] ?? 0) + 1;
+        itemReasons.push(key);
       }
+      rejected.push({ raw: candidate, reasons: itemReasons });
     }
     if (items.length >= NEWS_MAX_ITEMS) break;
   }
-  return { items, dropped, reasons };
+  return { items, dropped, reasons, rejected };
 }
 
 /**
@@ -295,6 +305,13 @@ export interface NewsResearchResult {
   futureAdjusted: number;
   usage: GenerationUsage;
   hours: number;
+  /**
+   * 契約違反で落とした候補の中身（T-M8-86）。**`published_at:too_old` だけの除外では作らない**
+   * ——窓より古いだけの item は契約を満たしており良性なので、本文を積むと
+   * 「正常な空」と混ざる（`news-outcome.ts` の `onlyOutsideWindow` と同じ考え方）。
+   * **HTTP応答へは載せない**（要件01 §8）。保存先は `news_fetch_outcomes.provider_raw_error`。
+   */
+  providerRawError: string | null;
 }
 
 /** 直近48時間に取得済みの同分野 source_url（<known_urls> 用・重複除外）。 */
@@ -384,5 +401,7 @@ export async function researchNews(
     futureAdjusted: recency.futureAdjusted,
     usage: result.usage,
     hours,
+    // 契約違反で落ちた分だけ中身を残す（`published_at:too_old` は良性なので残さない・T-M8-86）。
+    providerRawError: formatRejectedItems(picked.rejected),
   };
 }

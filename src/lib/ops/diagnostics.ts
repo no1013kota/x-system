@@ -80,6 +80,8 @@ export interface NewsCategoryOutcome {
   category: string;
   /** 分野の処理が例外で終わらなかったか。 */
   ok: boolean;
+  /** 失敗の種別（`http_429` 等）。**応答本文は持たない**（T-M8-86）。 */
+  errorCode?: string | null;
   fetched: number;
   dropped: number;
   dropReasons: Record<string, number>;
@@ -92,7 +94,8 @@ export interface NewsCategoryOutcome {
  * 放置すると分野が永久に0件のまま気付けない（2026-07-28 の web3 がこれだった）。
  */
 export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
-  failed: string[];
+  /** 失敗した分野と、その種別（応答本文は持たない・T-M8-86）。 */
+  failed: { category: string; errorCode: string | null }[];
   allDropped: { category: string; reasons: string }[];
   noMatch: string[];
   /**
@@ -104,7 +107,7 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
 } {
-  const failed: string[] = [];
+  const failed: { category: string; errorCode: string | null }[] = [];
   const allDropped: { category: string; reasons: string }[] = [];
   const noMatch: string[] = [];
   const mostly: {
@@ -119,7 +122,7 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
     const verdict = classifyNewsOutcome(o);
     switch (verdict.kind) {
       case "failed":
-        failed.push(verdict.category);
+        failed.push({ category: verdict.category, errorCode: verdict.errorCode });
         break;
       case "mostly_dropped":
         mostly.push({
@@ -156,7 +159,11 @@ export function judgeNews(input: {
   const problem =
     empty.failed.length > 0 || empty.allDropped.length > 0
       ? [
-          empty.failed.length > 0 ? `取得に失敗したテーマ: ${empty.failed.join("・")}` : null,
+          empty.failed.length > 0
+            ? `取得に失敗したテーマ: ${empty.failed
+                .map((f) => (f.errorCode ? `${f.category}（${f.errorCode}）` : f.category))
+                .join("・")}`
+            : null,
           empty.allDropped.length > 0
             ? `全件破棄されたテーマ: ${empty.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・")}`
             : null,
@@ -200,7 +207,7 @@ export function judgeNews(input: {
         level: "warn",
         detail,
         nextAction:
-          "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+          "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
       };
     }
     return {
@@ -242,7 +249,7 @@ export function judgeNews(input: {
       level: input.itemsLast48h === 0 ? "error" : "warn",
       detail,
       nextAction:
-        "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+        "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
     };
   }
   if (input.itemsLast48h === 0) {
@@ -527,8 +534,12 @@ export async function collectDiagnostics(
     fetched: number;
     dropped: number;
     drop_reasons: Record<string, number> | null;
+    error_code: string | null;
   }>(
-    `select category::text as category, ok, fetched, dropped, drop_reasons
+    // **`provider_raw_error` は select しない**（T-M8-86）。doctor はHTTPでも返るため、
+    // 本文をクエリの段階で取らない（`getGenerationJob` が `error - 'provider_raw_error'` で
+    // やっているのと同じ考え方）。運営者は必要なときDBで見る。
+    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)`,
   );
@@ -543,6 +554,7 @@ export async function collectDiagnostics(
         fetched: Number(r.fetched),
         dropped: Number(r.dropped),
         dropReasons: r.drop_reasons ?? {},
+        errorCode: r.error_code,
       })),
     }),
   );

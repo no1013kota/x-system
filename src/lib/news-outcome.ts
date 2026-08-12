@@ -86,6 +86,8 @@ export interface NewsOutcomeRow {
   category: string;
   /** 実行そのものが失敗したか。省略時は成功扱い（抽出SQLで既に絞っている場合）。 */
   ok?: boolean;
+  /** 失敗の種別（`http_429` 等）。**応答本文は入れない**（T-M8-86）。 */
+  errorCode?: string | null;
   fetched: number;
   dropped: number;
   dropReasons: Record<string, number>;
@@ -107,7 +109,7 @@ export interface NewsOutcomeRow {
  * - `healthy`: 通常どおり取れている（報告することが無い）
  */
 export type NewsOutcomeVerdict =
-  | { kind: "failed"; category: string }
+  | { kind: "failed"; category: string; errorCode: string | null }
   | {
       kind: "mostly_dropped";
       category: string;
@@ -121,7 +123,7 @@ export type NewsOutcomeVerdict =
 
 export function classifyNewsOutcome(row: NewsOutcomeRow): NewsOutcomeVerdict {
   const { category, fetched, dropped, dropReasons } = row;
-  if (row.ok === false) return { kind: "failed", category };
+  if (row.ok === false) return { kind: "failed", category, errorCode: row.errorCode ?? null };
   if (fetched > 0) {
     return mostlyDropped(fetched, dropped)
       ? {

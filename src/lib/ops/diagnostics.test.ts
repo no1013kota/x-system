@@ -112,7 +112,7 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
     ]);
     expect(r.noMatch).toEqual(["web3"]);
     expect(r.allDropped).toEqual([{ category: "sns", reasons: "title:too_big×4" }]);
-    expect(r.failed).toEqual(["business"]);
+    expect(r.failed).toEqual([{ category: "business", errorCode: null }]);
   });
 
   it("全件破棄は取得件数があっても注意として上げる（テーマが永久に0件になるのを見逃さない）", () => {
@@ -125,7 +125,7 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
     expect(r.level).toBe("warn");
     expect(r.detail).toContain("全件破棄されたテーマ: web3");
     expect(r.detail).toContain("title:too_big×4");
-    expect(r.nextAction).toContain("除外理由");
+    expect(r.nextAction).toContain("失敗記録");
   });
 
   it("全件破棄で総取得も0件なら異常", () => {

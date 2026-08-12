@@ -62,3 +62,43 @@ export function formatFailureRawError(error: unknown, rawOutput: string | null):
   const body = rawOutput?.trim();
   return truncateRawError(body ? `${head}\n${body}` : head);
 }
+
+/**
+ * 検証で落とした候補の中身を1つの値へ畳む（T-M8-86）。
+ *
+ * ニュース取得は `generation_jobs` を持たず、器の検証は通っているのに **item ごとに
+ * 契約違反で落ちる**（title が長い・summary が長い等）。件数だけでは
+ * 「プロンプトを直すべきか」が判断できないので、落ちた候補の中身を残す。
+ *
+ * 件ごとに予算を割るのは `formatProviderAttempts` と同じ理由で、後ろの件が丸ごと
+ * 消えると比較ができないため。**先頭5件までを本文で残し、残りは件数だけ**にする
+ * （毎窓上書きで長大な値が残り続けるのを避ける）。
+ */
+const MAX_REJECTED_DETAILS = 5;
+
+export function formatRejectedItems(
+  rejected: readonly { reasons: string[]; raw: unknown }[],
+): string | null {
+  if (rejected.length === 0) return null;
+  const shown = rejected.slice(0, MAX_REJECTED_DETAILS);
+  const per = Math.floor(RAW_ERROR_MAX / Math.max(shown.length, 1));
+  const parts = shown.map((item, index) => {
+    const reasons = item.reasons.join("・") || "理由不明";
+    const body = truncateRawError(safeJson(item.raw), per) ?? "（空）";
+    return `${index + 1}件目（${reasons}）: ${body}`;
+  });
+  if (rejected.length > shown.length) {
+    parts.push(`ほか${rejected.length - shown.length}件（中身は省略）`);
+  }
+  return truncateRawError(parts.join("\n"));
+}
+
+/** JSON化できない値でも落ちないようにする（循環参照など）。 */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  // eslint-disable-next-line no-restricted-syntax -- 文字列化できないことが結果（文字列へ倒す）
+  } catch {
+    return String(value);
+  }
+}
