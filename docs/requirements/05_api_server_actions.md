@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.30 |
-| 更新日 | 2026-08-11 |
+| バージョン | v1.31 |
+| 更新日 | 2026-08-12 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -118,7 +118,7 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。**UIはSecretの有無から`client_type`を導出して送る**（空=public・入力あり=confidential。現ConsoleにPublic/Confidentialの選択が無く、種別を利用者に聞かない。T-M8-62/63）。Client ID変更時はBYOK Xアカウントの再連携が必要 |
+| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。**UIはSecretの有無から`client_type`を導出して送る**（空=public・入力あり=confidential。現ConsoleにPublic/Confidentialの選択が無く、種別を利用者に聞かない。T-M8-62/63）。Client ID変更時はBYOK Xアカウントの再連携が必要。**形式**: Client IDは5〜200文字の英数字・ハイフン・アンダースコア、Client Secretは8〜512文字（`src/lib/api-keys.ts` が正本。画面の保存ボタンの活性も同じスキーマを通して決める・T-M8-84） |
 | `saveAiApiKey` | provider, api key | masked key | providerはanthropic/openai/google |
 | `verifyApiKey` | provider | status | AIは軽量疎通し、成功で`valid`／`verified_at`、失敗で`invalid`。XはOAuth完了まで`unchecked` |
 | `deleteApiKey` | provider | deleted | AIは関連用途設定を解除。Xはtoken revoke後にBYOK Xアカウントをexpired化 |

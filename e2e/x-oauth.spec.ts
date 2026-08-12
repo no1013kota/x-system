@@ -102,6 +102,16 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
   await expect(save).toBeDisabled();
   await expect(page.getByText("Client IDは5文字以上です（いま3文字）。")).toBeVisible();
 
+  /*
+    使えない文字は押す前に止める（T-M8-84）。以前は画面が長さしか見ておらず、
+    `bad id` のような値でも押せてサーバーに弾かれていた。
+  */
+  await page.getByLabel("Client ID").fill("bad id");
+  await expect(save).toBeDisabled();
+  await expect(
+    page.getByText("Client IDは英数字・ハイフン・アンダースコアで入力してください。"),
+  ).toBeVisible();
+
   // Client ID だけでも保存できる（Native App 等の public client）
   await page.getByLabel("Client ID").fill("abcdef-123456");
   await expect(save).toBeEnabled();
