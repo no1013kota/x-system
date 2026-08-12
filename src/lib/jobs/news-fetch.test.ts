@@ -15,7 +15,7 @@ function research(urls: string[]): NewsResearchResult {
   return { items: urls.map(item), dropped: 0,
   dropReasons: {},
   futureAdjusted: 0,
-  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3 };
+  usage: { calls: [], estimated_cost_usd_total: 0 }, hours: 3, providerRawError: null };
 }
 
 /** mock db where a source_url in `existing` (canonical) returns rowCount 0 (on conflict). */
@@ -126,6 +126,7 @@ describe("0件の意味を区別できる（T-M7-40）", () => {
               futureAdjusted: 0,
               usage: { calls: [], estimated_cost_usd_total: 0 },
               hours: 3,
+              providerRawError: null,
             },
     });
     const web3 = res.categories.find((c) => c.category === "web3");
@@ -170,5 +171,43 @@ describe("0件の意味を区別できる（T-M7-40）", () => {
     });
     expect(res.totalSaved).toBe(1);
     expect(errors).toHaveLength(1);
+  });
+});
+
+/**
+ * 失敗の中身をDBへ残し、**HTTP応答へは出さない**（T-M8-86）。
+ *
+ * `/api/cron/news-fetch` の route は結果をそのまま応答へ展開するため、
+ * 型に載せた時点で provider の応答本文が外へ出る（要件01 §8）。
+ */
+describe("ニュース取得の失敗記録", () => {
+  it("結果の型に応答本文を持たない（HTTP応答へ漏れない）", async () => {
+    const { runNewsFetch } = await import("./news-fetch");
+    const writes: { sql: string; params: unknown[] }[] = [];
+    const db = {
+      async query(sql: string, params?: unknown[]) {
+        writes.push({ sql, params: params ?? [] });
+        return { rows: [], rowCount: 0 };
+      },
+    };
+    const result = await runNewsFetch({
+      db,
+      windowKey: "w1",
+      categories: ["ai"],
+      researchCategory: async () => {
+        throw new Error("boom");
+      },
+      onError: () => {},
+    } as never);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("providerRawError");
+    expect(serialized).not.toContain("provider_raw_error");
+    expect(serialized, "応答本文が漏れている").not.toContain("boom");
+
+    // DBへは残す（運営者が原因を辿れる経路は保つ）。
+    const insert = writes.find((w) => w.sql.includes("insert into news_fetch_outcomes"));
+    expect(insert, "結果を記録していない").toBeDefined();
+    expect(String(insert?.params.at(-1) ?? ""), "応答本文が保存されていない").toContain("boom");
+    expect(String(insert?.params.at(-2) ?? ""), "失敗の種別が保存されていない").toBe("Error");
   });
 });

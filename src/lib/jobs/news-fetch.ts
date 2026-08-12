@@ -2,6 +2,8 @@ import { NEWS_FETCH_CATEGORIES, type NewsCategory } from "../news";
 import { canonicalizeSourceUrl } from "../news-url";
 import type { Queryable } from "../x/token-refresh";
 import type { NewsItemOut, NewsResearchResult } from "./news-research";
+import { providerFailureCode, providerRawOutputOf } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 
 /**
  * news_fetch オーケストレーション（要件04 §2/§6, N-1, T-M4-11）。6分野を最大3並列でリサーチし、
@@ -94,19 +96,35 @@ async function saveItems(
  * 「0件」の意味を後から説明できるようにするための記録。同一窓の再実行では上書きする
  * （受付は `cron_runs` が高々一度に絞るが、手動起動の再実行で二重行を作らないため）。
  */
+/**
+ * 失敗の中身（T-M8-86）。**`NewsFetchCategoryResult` には載せない**——
+ * `/api/cron/news-fetch` の route が結果をそのままHTTP応答へ展開するため、
+ * 型に載せた時点で provider の応答本文が外へ出る（要件01 §8）。DBだけに残す。
+ */
+interface OutcomeFailureDetail {
+  /** 短く安全な識別子（doctor に出してよい）。 */
+  errorCode: string | null;
+  /** providerが返した内容。画面にもHTTP応答にも出さない。 */
+  providerRawError: string | null;
+}
+
 async function recordOutcome(
   db: Queryable,
   windowKey: string,
   r: NewsFetchCategoryResult,
+  detail: OutcomeFailureDetail,
 ): Promise<void> {
   await db.query(
     `insert into news_fetch_outcomes
-       (window_key, category, ok, fetched, saved, dropped, future_adjusted, drop_reasons)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+       (window_key, category, ok, fetched, saved, dropped, future_adjusted, drop_reasons,
+        error_code, provider_raw_error)
+     values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
      on conflict (window_key, category) do update
         set ok = excluded.ok, fetched = excluded.fetched, saved = excluded.saved,
             dropped = excluded.dropped, future_adjusted = excluded.future_adjusted,
-            drop_reasons = excluded.drop_reasons, ran_at = now()`,
+            drop_reasons = excluded.drop_reasons,
+            error_code = excluded.error_code,
+            provider_raw_error = excluded.provider_raw_error, ran_at = now()`,
     [
       windowKey,
       r.category,
@@ -116,6 +134,8 @@ async function recordOutcome(
       r.dropped,
       r.futureAdjusted,
       JSON.stringify(r.dropReasons),
+      detail.errorCode,
+      detail.providerRawError,
     ],
   );
 }
@@ -148,6 +168,8 @@ export async function runNewsFetch(deps: NewsFetchDeps): Promise<NewsFetchResult
 
   const results = await runPool(categories, concurrency, async (category) => {
     let outcome: NewsFetchCategoryResult;
+    // HTTP応答へ出さないため、結果の型ではなくローカル変数で持つ（T-M8-86）。
+    let detail: OutcomeFailureDetail = { errorCode: null, providerRawError: null };
     try {
       const res = await deps.researchCategory(category);
       const saved = await saveItems(deps.db, category, res.items);
@@ -160,14 +182,32 @@ export async function runNewsFetch(deps: NewsFetchDeps): Promise<NewsFetchResult
         dropReasons: res.dropReasons,
         futureAdjusted: res.futureAdjusted,
       };
+      /**
+       * **全件破棄か、取れた数より捨てた数が多いときだけ**中身を残す。
+       * 毎窓1〜2件落ちる分野で常に残すと、40日 × 分野 × 1日6回ぶんの長い値が積もる。
+       * 判定は運営者向けの分類（`news-outcome.ts`）と同じ考え方で揃える。
+       */
+      const worthRecording =
+        res.items.length === 0 ? res.dropped > 0 : res.dropped > res.items.length;
+      detail = {
+        errorCode: null,
+        providerRawError: worthRecording ? res.providerRawError : null,
+      };
     } catch (err) {
       // 分野失敗は他分野へ波及させない。既存ニュースは保持し次回起動で回復（要件04 §6）。
       onError(category, err);
       outcome = { category, ok: false, fetched: 0, saved: 0, dropped: 0, dropReasons: {}, futureAdjusted: 0 };
+      // 失敗そのものの原因を残す（以前は空の行だけが残り、何が起きたか辿れなかった）。
+      detail = {
+        errorCode: providerFailureCode(err),
+        providerRawError: formatFailureRawError(err, providerRawOutputOf(err)),
+      };
     }
     // 結果の保存自体が失敗しても取得結果は返す（記録のために本処理を落とさない）。
     if (deps.windowKey) {
-      await recordOutcome(deps.db, deps.windowKey, outcome).catch((err) => onError(category, err));
+      await recordOutcome(deps.db, deps.windowKey, outcome, detail).catch((err) =>
+        onError(category, err),
+      );
     }
     return outcome;
   });

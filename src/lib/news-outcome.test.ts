@@ -110,7 +110,16 @@ describe("classifyNewsOutcome", () => {
     classifyNewsOutcome({ category: "ai", fetched: 0, dropped: 0, dropReasons: {}, ...over });
 
   it("実行が失敗していれば failed（他の数字を見ない）", () => {
-    expect(row({ ok: false, fetched: 5, dropped: 0 })).toEqual({ kind: "failed", category: "ai" });
+    expect(row({ ok: false, fetched: 5, dropped: 0 })).toEqual({
+      kind: "failed",
+      category: "ai",
+      errorCode: null,
+    });
+    // 失敗の種別が分かればそれも返す（応答本文は持たない・T-M8-86）。
+    expect(row({ ok: false, errorCode: "http_429", fetched: 0, dropped: 0 })).toMatchObject({
+      kind: "failed",
+      errorCode: "http_429",
+    });
   });
 
   it("`ok` を省略した行は成功扱い（抽出SQLで絞っている呼び出し側のため）", () => {

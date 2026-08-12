@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.26 |
-| 更新日 | 2026-08-03 |
+| バージョン | v1.27 |
+| 更新日 | 2026-08-12 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -522,6 +522,8 @@ RLS: select/writeともservice roleのみ。行は受付ごとに増えるため
 | `dropped` | `integer` | not null default 0 | 規定を満たさず捨てた件数。**`fetched = 0 and dropped > 0`が「全件破棄」** |
 | `future_adjusted` | `integer` | not null default 0 | 未来日時のため`published_at`を落として取得時刻扱いへ寄せた件数 |
 | `drop_reasons` | `jsonb` | not null default `'{}'` | 除外理由の内訳（例`{"title:too_big": 3}`）。運営者向け表示の材料 |
+| `error_code` | `text` | nullable | 失敗の種別を表す短く安全な識別子（`http_429`／`InvalidProviderOutputError` 等）。**providerの応答本文は入れない**ので運営者向け状態確認（doctor）に出してよい |
+| `provider_raw_error` | `text` | nullable | providerが実際に返した内容（検証に落ちたitemの中身など）。**画面にもHTTP応答にも出さない**（要件01 §8）。上限と切り詰めは`src/lib/ai/raw-error.ts`が正本。記録が無ければNULL（「正常な空」と区別する） |
 | `ran_at` | `timestamptz` | not null default now() | 記録時刻 |
 
 Constraints: `unique (window_key, category)`（同一窓の再実行は行を増やさず上書きする）
