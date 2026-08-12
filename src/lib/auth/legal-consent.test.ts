@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,10 +9,7 @@ import {
 } from "@/lib/legal";
 
 import { requireExecutionAccess } from "./execution-guard";
-import {
-  acceptCurrentLegalConsents,
-  type LegalConsentProfile,
-} from "./legal-consent";
+import { LEGAL_CONSENT_COLUMNS, LEGAL_CONSENT_SELECT, LEGAL_CONSENT_SELECT_POOLED, acceptCurrentLegalConsents, requiredLegalConsents, type LegalConsentProfile } from "./legal-consent";
 
 const NOW = new Date("2026-07-22T12:34:56.000Z");
 
@@ -112,5 +112,51 @@ describe("legal re-consent", () => {
     );
     expect(result).toMatchObject({ status: "success", update: {} });
     expect(updateProfile).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 同意状態の列を3経路が同じものから引くこと（R34）。
+ *
+ * 同意画面・Server Action・実行ガードが同じ4列を別々に書いていた。同意対象が増えたとき
+ * 実行ガードだけ古いと「画面では同意済みなのに生成が止まる」または逆に
+ * 「同意していないのに生成できる」になり、**規約本文が約束している挙動から外れる**。
+ */
+describe("同意状態の列は1つの正本から引く", () => {
+  it("pooled 用の select は同じ列から導出される（`_at` だけ ::text）", () => {
+    expect(LEGAL_CONSENT_SELECT).toBe(
+      "terms_version, terms_accepted_at, privacy_version, privacy_acknowledged_at",
+    );
+    expect(LEGAL_CONSENT_SELECT_POOLED).toBe(
+      "terms_version, terms_accepted_at::text as terms_accepted_at, " +
+        "privacy_version, privacy_acknowledged_at::text as privacy_acknowledged_at",
+    );
+  });
+
+  it("列名は判定が読むキーと一致する（読めない列を select しない）", () => {
+    // `requiredLegalConsents` が見るキーと、SQLで取る列がずれると常に未同意扱いになる。
+    const profile: Record<string, null> = {};
+    for (const column of LEGAL_CONSENT_COLUMNS) profile[column] = null;
+    const required = requiredLegalConsents(profile as never);
+    expect(required.terms).toBe(true);
+    expect(required.privacy).toBe(true);
+  });
+
+  it("3経路が同じ正本を読んでいる（写経が復活したら落ちる）", () => {
+    const sources = [
+      "../../app/app/consent/page.tsx",
+      "../../app/actions/legal-consent.ts",
+      "./legal-consent-server.ts",
+    ].map((rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"));
+    for (const source of sources) {
+      expect(
+        source.includes("LEGAL_CONSENT_SELECT"),
+        "列を写経している。LEGAL_CONSENT_SELECT を使ってください",
+      ).toBe(true);
+      expect(
+        source,
+        "列リストの直書きが残っている",
+      ).not.toContain('"terms_version, terms_accepted_at');
+    }
   });
 });

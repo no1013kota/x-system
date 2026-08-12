@@ -7,7 +7,7 @@ import {
 } from "@/lib/legal";
 import { pooledQueryable } from "@/lib/db/pool";
 
-import { requiredLegalConsents } from "./legal-consent";
+import { LEGAL_CONSENT_SELECT_POOLED, requiredLegalConsents } from "./legal-consent";
 
 /** 再同意が必要なときの誘導先（同意画面）。 */
 export const LEGAL_CONSENT_PATH = "/app/consent";
@@ -34,9 +34,7 @@ export async function requireLegalConsent(userId: string): Promise<void> {
     terms_accepted_at: string | null;
     terms_version: string | null;
   }>(
-    `select terms_version, terms_accepted_at::text as terms_accepted_at,
-            privacy_version, privacy_acknowledged_at::text as privacy_acknowledged_at
-       from profiles where id = $1`,
+    `select ${LEGAL_CONSENT_SELECT_POOLED} from profiles where id = $1`,
     [userId],
   );
   const data = rows[0];
