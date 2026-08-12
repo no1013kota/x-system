@@ -24,7 +24,6 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const TERMS = read("src/app/terms/page.tsx");
 const PRIVACY = read("src/app/privacy/page.tsx");
 const TOKUSHOHO = read("src/app/legal/commercial-transactions/page.tsx");
-const ENTITY = read("src/lib/legal-entity.ts");
 const SEED = read("scripts/seed-review-account.mjs");
 
 describe("法務3ページに開発中の表示が残っていない", () => {
