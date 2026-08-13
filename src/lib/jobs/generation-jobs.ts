@@ -3,7 +3,7 @@ import { z } from "zod";
 import { OTHER_POST_THEME, POST_THEME_IDS } from "@/lib/post/post-theme";
 
 import {
-  checkExecutionPrerequisites,
+  assertPrereqsFromInput,
   checkPostingPrerequisites,
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
@@ -11,7 +11,11 @@ import { AppError } from "@/lib/observability/errors";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
 
 import type { Queryable } from "../x/token-refresh";
+import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./job-guards";
 import { requestKey } from "./keys";
+
+// 既存の import 名を保つための re-export（正本は `job-guards.ts`・R20）。
+export { MAX_ACTIVE_JOBS };
 
 /**
  * 生成jobの Server Action 中核（要件05 §5/§12/§2.2, 要件04 §3, T-M3-07）。
@@ -20,7 +24,6 @@ import { requestKey } from "./keys";
  * DB・前提収集・feature flag は注入する（`after()`でのdispatchはAction層）。
  */
 
-export const MAX_ACTIVE_JOBS = 5;
 
 export const createGenerationJobSchema = z.object({
   request_key: z.string().min(1).max(200),
@@ -28,8 +31,9 @@ export const createGenerationJobSchema = z.object({
   pattern: z.enum(["p1", "p2", "p3", "p4", "p5", "p6"]),
   source_url: z
     .string()
-    .url()
-    .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください")
+    // `.url()` は refine より先に issue を作るので、こちらにも同じ文言を持たせる（F10）。
+    .url("httpsのURLを指定してください。")
+    .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください。")
     .nullish(),
   quote_url: z.string().url().nullish(),
   user_opinion: z.string().max(2000).nullish(),
@@ -83,66 +87,19 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
   };
 }
 
-async function assertActiveAccount(
-  tx: Queryable,
-  userId: string,
-  xAccountId: string,
-): Promise<void> {
-  const row = (
-    await tx.query<{ status: string; active_x_account_id: string | null }>(
-      `select xa.status, p.active_x_account_id
-         from x_accounts xa join profiles p on p.id = xa.user_id
-        where xa.id = $1 and xa.user_id = $2`,
-      [xAccountId, userId],
-    )
-  ).rows[0];
-  if (!row) throw new AppError("not_found");
-  // 表示中アカウントと実行対象の不一致（別タブ・別端末での切替競合）を拒否（要件05 §4.1）。
-  if (row.active_x_account_id !== xAccountId) {
-    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
-  }
-}
-
 async function assertPrereqs(
   deps: GenerationJobDeps,
   userId: string,
   imageRequested: boolean,
 ): Promise<void> {
-  const input = await deps.gatherPrereqInputs(userId, { imageRequested });
-  const error = input
-    ? checkExecutionPrerequisites(input)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
-  if (error) {
-    throw new AppError(error.code, {
-      details: { missing: error.missing, settingsPath: error.settingsPath },
-    });
-  }
+  assertPrereqsFromInput(await deps.gatherPrereqInputs(userId, { imageRequested }));
 }
 
 async function assertPostingPrereqs(deps: GenerationJobDeps, userId: string): Promise<void> {
-  const input = await deps.gatherPrereqInputs(userId, { imageRequested: false });
-  const error = input
-    ? checkPostingPrerequisites(input)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
-  if (error) {
-    throw new AppError(error.code, {
-      details: { missing: error.missing, settingsPath: error.settingsPath },
-    });
-  }
-}
-
-async function assertJobBudget(tx: Queryable, userId: string): Promise<void> {
-  const active = (
-    await tx.query<{ n: number }>(
-      `select count(*)::int as n from generation_jobs gj
-         join x_accounts xa on xa.id = gj.x_account_id
-        where xa.user_id = $1 and gj.status in ('queued', 'running')`,
-      [userId],
-    )
-  ).rows[0].n;
-  if (active >= MAX_ACTIVE_JOBS) {
-    throw new AppError("job_conflict", { details: { reason: "too_many_active_jobs" } });
-  }
+  assertPrereqsFromInput(
+    await deps.gatherPrereqInputs(userId, { imageRequested: false }),
+    checkPostingPrerequisites,
+  );
 }
 
 export async function createGenerationJob(
@@ -566,8 +523,11 @@ export async function getGenerationJob(
 ): Promise<GenerationJobView> {
   const row = (
     await db.query<GenerationJobView>(
+      // `provider_raw_error` は**ブラウザへ返さない**（F6）。要件06 §5「画面に出さない」と
+      // 要件01 §8「ユーザー向けerrorへproviderの応答を出さない」を、描画側の注意ではなく
+      // クエリで守る。運営者はDBと `npm run smoke:live` で中身を見る。
       `select gj.id, gj.kind, gj.status, gj.pattern, gj.progress_stage, gj.draft_id,
-              gj.error, gj.created_at
+              (gj.error - 'provider_raw_error') as error, gj.created_at
          from generation_jobs gj
          join x_accounts xa on xa.id = gj.x_account_id
         where gj.id = $1 and xa.user_id = $2`,

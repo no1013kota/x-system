@@ -7,6 +7,12 @@ import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
 import type { ThreadItem } from "../ai/gen-output";
 import { threadBlocksAutoPost } from "../post/generation-validation";
+import {
+  counterTypeFor,
+  finalTextResolver,
+  hasUrl,
+  postConsumeKey,
+} from "../post/posting-text";
 import { findOverLengthText } from "../post/text-metrics";
 import {
   XApiError,
@@ -34,10 +40,6 @@ import { recordUnexpectedError } from "../observability/sentry";
  * premium月次counter（usage_counters）加算とロールバック安全残量検証は M6。
  */
 
-const URL_RE = /https?:\/\/\S+/;
-function hasUrl(text: string): boolean {
-  return URL_RE.test(text);
-}
 
 /**
  * premium投稿開始前に必要な通常/URL付き枠を算出する（要件03 §7.4・要件06 §7, T-M6-07）。最終payload列を
@@ -147,6 +149,8 @@ interface PublishJobRow {
 
 interface PublishDraftRow {
   status: string;
+  /** P-5（引用ポスト）の判定に使う。 */
+  pattern: string;
   thread: ThreadItem[];
   images: { status?: string; storage_path?: string; mime_type?: string }[];
   tweet_ids: string[];
@@ -207,7 +211,7 @@ async function loadJob(db: Queryable, jobId: string): Promise<PublishJobRow | nu
 
 async function loadDraft(db: Queryable, draftId: string): Promise<PublishDraftRow | null> {
   const { rows } = await db.query<PublishDraftRow>(
-    `select status, thread, images, tweet_ids, quote_url from drafts where id = $1`,
+    `select status, pattern, thread, images, tweet_ids, quote_url from drafts where id = $1`,
     [draftId],
   );
   return rows[0] ?? null;
@@ -335,7 +339,7 @@ async function rollbackThread(
       tweetId,
       counterType: withUrl ? "post_url" : "post_normal",
       operation: "post_delete",
-      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:delete`,
+      idempotencyKey: postConsumeKey(draftId, tweetId, "post_delete"),
       premiumLive,
     });
 
@@ -472,8 +476,7 @@ export async function executePostPublish(
   }
 
   // P-5等: 1ポスト目に quote_url を末尾合成（要件04 §10 step5）。counter_type/URL判定に使う最終text。
-  const finalTextAt = (i: number): string =>
-    i === 0 && draft.quote_url ? `${thread[i].text}\n${draft.quote_url}` : thread[i].text;
+  const finalTextAt = finalTextResolver(thread, draft.quote_url);
 
   // --- 検証: 加重280超過は **mode を問わず** 止める（T-M8-39）---
   //
@@ -483,6 +486,27 @@ export async function executePostPublish(
   // 以前は下の `mode === "auto"` の警告判定だけがゲートで、**画面からの手動投稿には
   // サーバ側の対応物が無かった**（`drafts-list.tsx` の表示分岐が唯一の砦だった）。
   // UIの分岐は単体テストの網に入らない（`.tsx` は対象外）ため、壊れても緑のまま通る。
+  /**
+   * --- 検証: P-5（引用ポスト）なのに引用先が無い（T-M8-85）---
+   *
+   * 引用ポストは全体が未実装で、いまは `FEATURE_QUOTE_POST_ENABLED=false` で止まっている。
+   * だが**フラグをONにした瞬間に、引用先の無い「引用ポスト」が黙ってXへ出る**（
+   * `buildInputJson` は `quote_tweet_id` を null 固定で入れ、生成は `quote_url` を保存しない）。
+   * 取り返しがつかないので、X APIを1回も呼ぶ前に止める。
+   *
+   * Xへ1件も出していないので `failed` ではなく `draft` へ戻す（要件04 §10 step2。
+   * `failed` にすると編集も複製もできない行き止まりになる）。
+   */
+  if (draft.pattern === "p5" && !draft.quote_url) {
+    await revertDraftWithReason(db, draftId, {
+      code: "quote_target_missing",
+      message:
+        "引用先のポストが設定されていません。引用ポストには引用先URLが必要です。" +
+        "Xへの投稿は1件も行っていません。",
+    });
+    throw new PostPublishError("quote_target_missing", "p5 draft has no quote target");
+  }
+
   const overLength = findOverLengthText(thread.map((_, index) => finalTextAt(index)));
   if (overLength) {
     // Xへは1件も出していないので `draft` へ戻す（編集して直せる状態にする）。
@@ -634,9 +658,9 @@ export async function executePostPublish(
       jobId,
       draftId,
       tweetId,
-      counterType: hasUrl(finalTextAt(i)) ? "post_url" : "post_normal",
+      counterType: counterTypeFor(finalTextAt(i)),
       operation: "post_create",
-      idempotencyKey: `draft:${draftId}:tweet:${tweetId}:post:create`,
+      idempotencyKey: postConsumeKey(draftId, tweetId, "post_create"),
       premiumLive: job.plan === "premium" && deps.postingLive,
     });
   };

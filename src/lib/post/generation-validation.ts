@@ -16,33 +16,16 @@ import { capPostCount } from "./thread-limits";
  * NG照合・URL検証はコードで行う（LLM不使用）。shorten・validateSource は注入する。
  */
 
-export const WARNING = {
-  lengthExceeded: "length_exceeded",
-  cashtagMultiple: "cashtag_multiple",
-  ngWord: "ng_word",
-  sourceMissing: "source_missing",
-  injectionSuspected: "injection_suspected",
-  /** 読みやすさの目標（加重240）を超えたまま（T-M7-41）。品質の目印で、投稿は止めない。 */
-  lengthOverTarget: "length_over_target",
-  /** ポスト数の上限を超えたため途中のポストを落とした（T-M7-41）。投稿は止めない。 */
-  postCountTrimmed: "post_count_trimmed",
-} as const;
+// 警告コードと分類の正本は `warning-codes.ts`（依存ゼロ。画面からも読めるようにするため）。
+// 既存の import 元を壊さないよう re-export する（ローカル参照のため import も持つ）。
+import { AUTO_POST_BLOCKING_WARNINGS, WARNING } from "./warning-codes";
 
-export type WarningCode = (typeof WARNING)[keyof typeof WARNING];
-
-/**
- * これらの警告があるポストを含む下書きは自動投稿しない（要件06 §4.3）。
- *
- * `lengthOverTarget` と `postCountTrimmed` は**含めない**。読みやすさの目標や長さの調整で
- * 予約投稿が黙って止まる方が害が大きい（運営者は下書き画面で気付ければよい）。
- */
-export const AUTO_POST_BLOCKING_WARNINGS: ReadonlySet<string> = new Set<string>([
-  WARNING.lengthExceeded,
-  WARNING.cashtagMultiple,
-  WARNING.ngWord,
-  WARNING.sourceMissing,
-  WARNING.injectionSuspected,
-]);
+export {
+  AUTO_POST_BLOCKING_WARNINGS,
+  blocksAutoPost,
+  WARNING,
+  type WarningCode,
+} from "./warning-codes";
 
 export const MAX_FIX_ATTEMPTS = 2;
 

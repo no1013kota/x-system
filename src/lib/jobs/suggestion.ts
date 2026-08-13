@@ -1,14 +1,15 @@
 import { z } from "zod";
 
-import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PLANS } from "../plans";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { persistJobFailure } from "./notifications";
 import { defaultRecordStage } from "./stale";
 import {
   SUGGEST_MIN_GROUP,
@@ -114,42 +115,30 @@ function renderPrompt(input: SuggestionInput): string {
 
 async function persistFailure(
   db: Queryable,
-  params: { userId: string; xAccountId: string; jobId: string; code: string; usage: GenerationUsage },
+  params: {
+    userId: string;
+    xAccountId: string;
+    jobId: string;
+    code: string;
+    usage: GenerationUsage;
+    /** AIが何を返して落ちたか（F5で追加。生成・学習・画像と同じ形に揃えた）。 */
+    providerRawError: string | null;
+  },
 ): Promise<void> {
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      params.jobId,
-      JSON.stringify({ code: params.code, message: "改善提案の生成に失敗しました。", retryable: false, stage: "writing" }),
-      JSON.stringify(params.usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
-  await recordProviderCalls(db, params.usage.calls, {
+  await persistJobFailure(db, {
+    jobId: params.jobId,
     userId: params.userId,
     xAccountId: params.xAccountId,
-    jobId: params.jobId,
     keyPrefix: `sug:${params.jobId}`,
+    error: {
+      code: params.code,
+      message: "改善提案の生成に失敗しました。",
+      stage: "writing",
+      providerRawError: params.providerRawError,
+    },
+    usage: params.usage,
+    notifyKind: "suggestion",
   });
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '改善提案の生成に失敗しました',
-            '時間をおいて分析画面から再度お試しください。',
-            '/app/analytics', jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `job:${params.jobId}:failed`, params.jobId],
-  );
 }
 
 export async function executeSuggestion(deps: SuggestionDeps): Promise<SuggestionResult> {
@@ -170,18 +159,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     return { status: "no_suggestions", count: 0 };
   }
 
-  const isPremium = job.plan === "premium";
-  if (isPremium) {
-    await deps.runInTx((tx) =>
-      reserveUsage(tx, {
-        userId: job.user_id,
-        xAccountId: job.x_account_id,
-        jobId,
-        type: "generation",
-        limit: PLANS.premium.usageLimits?.generations,
-      }),
-    );
-  }
+  await reserveIfPremium(deps.runInTx, {
+    plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
+    jobId,
+    type: "generation",
+  });
 
   try {
     await recordStage("writing");
@@ -233,7 +217,15 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     const usage: GenerationUsage =
       usageFromError(error) ?? { calls: [], estimated_cost_usd_total: 0 };
     const code = error instanceof SuggestionTerminalError ? error.code : "suggestion_failed";
-    await persistFailure(db, { userId: job.user_id, xAccountId: job.x_account_id, jobId, code, usage });
+    await persistFailure(db, {
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      code,
+      usage,
+      // refine 失敗（`<posts>` に無いIDを返した等）の中身は運営者が最も知りたい情報（F5）。
+      providerRawError: formatFailureRawError(error, providerRawOutputOf(error)),
+    });
     // 生成枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。
     throw error instanceof SuggestionTerminalError
       ? error

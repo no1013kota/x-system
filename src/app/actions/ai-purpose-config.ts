@@ -4,9 +4,9 @@ import { updateAiPurposeConfigForUser } from "@/lib/ai-purpose-config-server";
 import { updateAiPurposeConfigSchema } from "@/lib/ai-purpose-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { errorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import {
   AppError,
-  toUserFacingError,
   type UserFacingError,
 } from "@/lib/observability/errors";
 
@@ -22,17 +22,17 @@ type UpdateAiPurposeConfigResult =
 export async function updateAiPurposeConfig(
   input: unknown,
 ): Promise<UpdateAiPurposeConfigResult> {
-  const parsed = updateAiPurposeConfigSchema.safeParse(input);
+  const parsed = parseUserInput(updateAiPurposeConfigSchema, input);
   if (!parsed.success) {
     return {
-      ...toUserFacingError(new AppError("validation_error")),
+      ...errorResult(new AppError("validation_error")),
       status: "error",
     };
   }
   const user = await getCurrentUser();
   if (!user) {
     return {
-      ...toUserFacingError(new AppError("unauthorized")),
+      ...errorResult(new AppError("unauthorized")),
       status: "error",
     };
   }

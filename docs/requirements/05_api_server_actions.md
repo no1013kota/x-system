@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.29 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.31 |
+| 更新日 | 2026-08-12 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -118,7 +118,7 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。**UIはSecretの有無から`client_type`を導出して送る**（空=public・入力あり=confidential。現ConsoleにPublic/Confidentialの選択が無く、種別を利用者に聞かない。T-M8-62/63）。Client ID変更時はBYOK Xアカウントの再連携が必要 |
+| `saveXApiKey` | client_id, client_type(public/confidential), client_secret(nullable) | masked key | standard/mdのみ。confidential clientはsecret必須、public clientはsecretを保存しない。**UIはSecretの有無から`client_type`を導出して送る**（空=public・入力あり=confidential。現ConsoleにPublic/Confidentialの選択が無く、種別を利用者に聞かない。T-M8-62/63）。Client ID変更時はBYOK Xアカウントの再連携が必要。**形式**: Client IDは5〜200文字の英数字・ハイフン・アンダースコア、Client Secretは8〜512文字（`src/lib/api-keys.ts` が正本。画面の保存ボタンの活性も同じスキーマを通して決める・T-M8-84） |
 | `saveAiApiKey` | provider, api key | masked key | providerはanthropic/openai/google |
 | `verifyApiKey` | provider | status | AIは軽量疎通し、成功で`valid`／`verified_at`、失敗で`invalid`。XはOAuth完了まで`unchecked` |
 | `deleteApiKey` | provider | deleted | AIは関連用途設定を解除。Xはtoken revoke後にBYOK Xアカウントをexpired化 |
@@ -226,11 +226,13 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `getAnalyticsSummary` | period_days | summary | tweet_metricsから集計 |
 | `refreshSuggestions` | request_key | job_id | active jobがなければ`suggestion`を冪等作成。新metrics取得後かつ1日1回 |
-| `listSuggestions` | none | suggestions | active_x_account。最新のsuggestion job実行分を返す |
+
+実績集計（ホームSC-01の「直近の実績」）と改善提案の一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
 改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで発信設定・ベースmd編集（md/premium）で自ら反映する。
+
+入力検証の失敗（`validation_error`）は、**作者が自分で書いたzodメッセージがあればそれを `message` に載せる**（F8〜F10）。無ければ code ごとの定型文（「入力内容を確認してください。」）に落ちる。zodの既定メッセージは英語かつスキーマの説明（`Too big: expected string to have <=512 characters` 等）なので画面へ出さない——要件06 §8「内部用語を画面に使わない」に反するため。実装は `src/lib/validation/user-input.ts` の `parseUserInput`（per-parseのsentinel）＋ `firstAuthoredIssueMessage` / `authoredFieldErrors` が正本で、`code` は変えない。**Server Action と認証フォームで素の `safeParse` を使わないことは `user-input.test.ts` が検査する**（素のままだと既定文言と作者文言を区別できない）。
 
 更新系Actionは対象rowのstatus/version/`updated_at`をupdate条件に含め、0件更新なら`job_conflict`を返して最新値の再読込を促す。
 

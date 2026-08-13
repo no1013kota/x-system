@@ -25,14 +25,14 @@ function validTimeJst(v: string): boolean {
 
 const weekdaysSchema = z
   .array(z.number().int().min(0).max(6))
-  .min(1)
-  .refine((ws) => new Set(ws).size === ws.length, "曜日が重複しています");
+  .min(1, "曜日を1つ以上選択してください。")
+  .refine((ws) => new Set(ws).size === ws.length, "曜日が重複しています。");
 
 const baseSlotFields = {
   // P-5（引用ポスト）はスケジュール対象外（要件04 §12・要件02 §3.10 CHECK）。
   pattern: z.enum(["p1", "p2", "p3", "p4", "p6"]),
   weekdays: weekdaysSchema,
-  time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください"),
+  time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください。"),
   mode: z.enum(["draft", "auto"]),
   /**
    * 分野。**必須**（T-M8-29）。「その他」は追加指示へ分野を書く意思表示。

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { requireCurrentUser } from "@/lib/auth/session";
-import { requiredLegalConsents } from "@/lib/auth/legal-consent";
+import { LEGAL_CONSENT_SELECT, requiredLegalConsents } from "@/lib/auth/legal-consent";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { LegalConsentForm } from "./legal-consent-form";
@@ -19,7 +19,7 @@ export default async function LegalConsentPage() {
   const result = await admin
     .from("profiles")
     .select(
-      "terms_version, terms_accepted_at, privacy_version, privacy_acknowledged_at",
+      LEGAL_CONSENT_SELECT,
     )
     .eq("id", user.id)
     .single();

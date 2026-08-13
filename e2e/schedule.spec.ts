@@ -90,3 +90,36 @@ test("スケジュールにテーマを設定でき、行に出てDBへ入る（
     )
     .toBe("business_ops");
 });
+
+/**
+ * 週間表のセルで `aria-label` と `title` が一致すること（R38）。
+ *
+ * 以前は同一のテンプレートが2度書かれており、支援技術向けの名前と視覚的な補足が
+ * ズレても typecheck・lint・E2E のどれも落ちなかった。同じ関数を通す形にしたので、
+ * 実ブラウザで一致を見張る。
+ */
+test("週間表のセルは読み上げ名と補足が一致する（R38）", async ({ accounts, page }) => {
+  const account = await accounts.create("slot-label", { personaReady: true });
+  await query(
+    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled, theme)
+     values ($1, 'p1', '{1,3}', '09:00', 'draft', false, true, 'ai')`,
+    [account.xAccountId],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+
+  // 週間表のセルだけを見る（画面には他にも aria-label を持つ要素がある）。
+  const cells = page.locator("[data-slot-cell]");
+  const count = await cells.count();
+  expect(count, "検査対象のセルが見つからない").toBeGreaterThan(0);
+  for (let i = 0; i < count; i++) {
+    const cell = cells.nth(i);
+    const [label, title] = await Promise.all([
+      cell.getAttribute("aria-label"),
+      cell.getAttribute("title"),
+    ]);
+    expect(label, "読み上げ名が空").toBeTruthy();
+    expect(title, `読み上げ名と補足がズレている: ${label} / ${title}`).toBe(label);
+  }
+});

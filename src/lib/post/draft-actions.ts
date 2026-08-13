@@ -1,5 +1,7 @@
 import type { DraftView } from "@/lib/drafts";
 
+import { blocksAutoPost } from "./warning-codes";
+
 /**
  * 失敗した下書きで「何が押せるか」の判定（要件06 §7・T-M8-41）。
  *
@@ -20,6 +22,15 @@ import type { DraftView } from "@/lib/drafts";
 export interface DraftActionState {
   /** 警告バッジを出すか（本文の警告 or 画像生成の失敗）。 */
   hasWarnings: boolean;
+  /**
+   * その警告で**自動投稿が実際に止まるか**（F2）。
+   *
+   * `length_over_target` / `post_count_trimmed` と画像失敗は止めない設計
+   * （`AUTO_POST_BLOCKING_WARNINGS` に無い・要件06 §4.3）。以前は警告が1つでもあれば
+   * 画面が「自動投稿は停止します」と出していたため、**止まっていない投稿を止まったと
+   * 伝えていた**（CLAUDE.md 原則1の逆）。
+   */
+  autoPostBlocked: boolean;
   /** 画像生成が失敗している。 */
   imageFailed: boolean;
   /** 編集できる状態か（`draft` のみ）。 */
@@ -56,6 +67,7 @@ export function draftActionState(
   return {
     imageFailed,
     hasWarnings: draft.thread.some((p) => p.warnings.length > 0) || imageFailed,
+    autoPostBlocked: draft.thread.some((p) => blocksAutoPost(p.warnings)),
     editable: draft.status === "draft",
     hasCreationHistory,
     unresolvedPosting,

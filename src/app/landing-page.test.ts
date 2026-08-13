@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -20,13 +20,36 @@ function read(path: string): string {
 
 const PAGE = read("src/app/page.tsx");
 const PRICING = read("src/components/lp/pricing.tsx");
-const HERO_MOCK = read("src/components/lp/hero-mock.tsx");
-const FIGURES = read("src/components/lp/figures.tsx");
-const FAQ = read("src/components/lp/faq.tsx");
 const GLOBALS_CSS = read("src/app/globals.css");
 /** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
 const CSS_RULES = GLOBALS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
-const LP_SOURCES = [PAGE, PRICING, HERO_MOCK, FIGURES, FAQ].join("\n");
+
+/**
+ * LPを構成するファイル。**ディレクトリを走査する**（R35）。
+ *
+ * 以前はファイル名の手書き列挙だったため、`src/components/lp/` へコンポーネントを足すと
+ * 禁止表現・価格の直書き・`opacity-0`・`use client` の検査が**全部すり抜けた**
+ * （列挙への追記が人の記憶に依存する・CLAUDE.md 原則3）。
+ */
+const LP_DIR = fileURLToPath(new URL("src/components/lp/", ROOT));
+const LP_FILES = readdirSync(LP_DIR)
+  .filter((name) => name.endsWith(".tsx"))
+  .sort();
+const LP_SOURCE_BY_FILE = new Map(
+  LP_FILES.map((name) => [name, read(`src/components/lp/${name}`)] as const),
+);
+const LP_SOURCES = [PAGE, ...LP_SOURCE_BY_FILE.values()].join("\n");
+
+/** 個別に見たいファイル（無ければ即座に落として、名前の変更に気付けるようにする）。 */
+function lpFile(name: string): string {
+  const source = LP_SOURCE_BY_FILE.get(name);
+  if (!source) {
+    throw new Error(`${name} が src/components/lp/ に見つかりません（改名したら検査も直す）`);
+  }
+  return source;
+}
+
+const FAQ = lpFile("faq.tsx");
 
 describe("SC-01 LP: 導線", () => {
   it("会員登録・ログイン・ページ内アンカーへの導線がある", () => {
@@ -126,11 +149,30 @@ describe("SC-01 LP: 禁止表現（ハンドオフREADME §禁止表現）", () 
 });
 
 describe("SC-01 LP: デザイン制約", () => {
+  it("走査対象が見つかる（検査そのものが空振りしていない）", () => {
+    // ディレクトリ走査にしたので、ファイルが消えたり移動したら気付けるようにする。
+    expect(LP_FILES.length).toBeGreaterThan(2);
+    expect(LP_SOURCES.length).toBeGreaterThan(5000);
+  });
+
   it("ブランドグラデーションは規定の5箇所だけ（ロゴはLogoTile側なので数えない）", () => {
     // 生成中バー2本（ヒーローモック・しくみSTEP3）＋上端3pxバー3本（「投稿の生成」カード・
     // STEP3カード・プレミアムプランカード）。ハンドオフREADME §デザイントークン の規定どおり。
     const direct = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
     expect(direct.length).toBe(5);
+  });
+
+  /**
+   * **出現数だけでは足りない**（R35）。
+   *
+   * 上端3pxバーと生成中バーは、どちらも1行のJSXを**データ配列のフラグでループ描画**する。
+   * そのため2枚目以降のカードへフラグを足しても `var(--brand-gradient)` の出現数は5のままで、
+   * **画面上のグラデだけが黙って増える**。フラグの数そのものを数える。
+   */
+  it("グラデを出すカードの枚数が増えていない（フラグの数を数える）", () => {
+    const count = (source: string, pattern: RegExp) => (source.match(pattern) ?? []).length;
+    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(2);
+    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(1);
   });
 
   it("reduced-motion で生成ループの装飾が止まる", () => {
@@ -145,7 +187,16 @@ describe("SC-01 LP: デザイン制約", () => {
     // 結論として出現演出は廃止し、**LPは常に不透明**にした。二度と戻さないよう固定する。
     // 対象は**内容を持つソース**。ヒーローモック（全体が aria-hidden の装飾）だけは、
     // 「生成中…」⇄「完了」のクロスフェードで opacity を使うので除く。読ませる情報は入っていない。
-    const CONTENT_SOURCES = [PAGE, PRICING, FIGURES, FAQ].join("\n");
+    //
+    // **除外は名前で列挙し、それ以外は自動で対象にする**（R35）。以前は対象側を手書きで
+    // 列挙していたため、`src/components/lp/` へファイルを足すと検査から漏れた。
+    const DECORATION_ONLY = new Set(["hero-mock.tsx"]);
+    const CONTENT_SOURCES = [
+      PAGE,
+      ...[...LP_SOURCE_BY_FILE.entries()]
+        .filter(([name]) => !DECORATION_ONLY.has(name))
+        .map(([, source]) => source),
+    ].join("\n");
     expect(CONTENT_SOURCES, "LPの内容を透明にしない").not.toContain("opacity-0");
     expect(LP_SOURCES, "LPをクライアントコンポーネントにしない").not.toContain("use client");
     expect(CSS_RULES, "スクロール連動アニメーションを復活させない").not.toContain(

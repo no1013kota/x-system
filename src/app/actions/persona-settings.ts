@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
-import { errorResult } from "./_helpers";
+import { errorResult, requireUserId } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
 import { personaSettingsSchema } from "@/lib/persona-settings";
 import { updatePersonaSettingsForUser } from "@/lib/persona-settings-store";
@@ -26,21 +26,18 @@ export interface UpdatePersonaSettingsActionResult {
 export async function updatePersonaSettings(
   input: unknown,
 ): Promise<UpdatePersonaSettingsActionResult> {
-  const parsed = inputSchema.safeParse(input);
+  const parsed = parseUserInput(inputSchema, input);
   if (!parsed.success) {
     const error = toUserFacingError(new AppError("validation_error"));
     return { ...error, status: "error" };
   }
-  const user = await getCurrentUser();
-  if (!user) {
-    const error = toUserFacingError(new AppError("unauthorized"));
-    return { ...error, status: "error" };
-  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
   try {
     const result = await updatePersonaSettingsForUser({
       expectedBaseMdVersion: parsed.data.expected_base_md_version,
       settings: parsed.data.settings,
-      userId: user.id,
+      userId: auth.userId,
       xAccountId: parsed.data.x_account_id,
     });
     revalidatePath("/app");

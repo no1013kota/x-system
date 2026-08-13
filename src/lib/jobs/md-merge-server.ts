@@ -2,8 +2,8 @@ import "server-only";
 
 import { resolveTextProvider } from "../ai/resolve-provider-server";
 import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
-import { PLANS, type PlanId } from "../plans";
-import { reserveUsage } from "../usage/generation-reserve";
+import type { PlanId } from "../plans";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import { createDeadline, type Deadline } from "./deadline";
 import { executeMdMerge } from "./md-merge";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
@@ -44,19 +44,14 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   ).rows[0];
   if (!meta?.learning_source_id) return; // 対象ソース無し → no-op
 
-  const isPremium = meta.plan === "premium";
   // 削除mergeも生成枠を1消費（premium・要件04 §12）。冪等keyで再実行安全。
-  if (isPremium) {
-    await runInTx((tx) =>
-      reserveUsage(tx, {
-        userId: meta.user_id,
-        xAccountId: meta.x_account_id,
-        jobId: ctx.jobId,
-        type: "generation",
-        limit: PLANS.premium.usageLimits?.generations,
-      }),
-    );
-  }
+  await reserveIfPremium(runInTx, {
+    plan: meta.plan,
+    userId: meta.user_id,
+    xAccountId: meta.x_account_id,
+    jobId: ctx.jobId,
+    type: "generation",
+  });
 
   const deadline = createDeadline();
   try {

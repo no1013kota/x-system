@@ -10,14 +10,17 @@
  * （`ops/env-secret-usage.test.ts` と同じ考え方）。
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { AI_SETTINGS_TABS } from "./ai-settings/tabs";
 import { SETTINGS_TABS } from "./settings/tabs";
 
-const ROOTS = ["src", "e2e", "scripts"];
+// 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const ROOTS = ["src", "e2e", "scripts"].map((r) => join(REPO_ROOT, r));
 const EXTENSIONS = [".ts", ".tsx", ".mjs"];
 
 function sourceFiles(dir: string): string[] {
@@ -39,7 +42,9 @@ function tabLinks(screen: string): { file: string; slug: string }[] {
       // この検査自身の例示は対象外。
       if (file.endsWith("tabs.test.ts")) continue;
       const source = readFileSync(file, "utf8");
-      for (const m of source.matchAll(pattern)) found.push({ file, slug: m[1] });
+      // 失敗メッセージはリポジトリ相対で出す（絶対パスは環境ごとに変わって読みにくい）。
+      const rel = relative(REPO_ROOT, file);
+      for (const m of source.matchAll(pattern)) found.push({ file: rel, slug: m[1] });
     }
   }
   return found;

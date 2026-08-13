@@ -15,9 +15,10 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
-  AI_SECRET_MIN_LENGTH,
-  X_CLIENT_ID_MIN_LENGTH,
-  X_CLIENT_SECRET_MIN_LENGTH,
+  aiApiKeySaveBlocker,
+  aiApiKeySavePayload,
+  xApiKeySaveBlocker,
+  xApiKeySavePayload,
   type AiKeyProvider,
 } from "@/lib/api-keys";
 import {
@@ -153,14 +154,14 @@ export function ApiKeySettings({
   });
   const [copied, setCopied] = useState(false);
   /**
-   * Xキーを保存できるか。**サーバー検証と同じ条件**を名前付きで持つ（T-M8-46）。
-   * 以前は `clientId.length < 5` が直書きで、何文字必要かが画面から読めなかった。
-   * Client Secret は空（Native App等のpublic client）か、入れるなら最小長以上（T-M8-63）。
+   * 保存できるか／押せない理由は**サーバー検証と同じスキーマ**を通して決める（T-M8-84）。
+   *
+   * 以前はここで条件を写経しており（長さの下限だけ）、**文字種と上限を見ていなかった**。
+   * そのため `bad id` や上限超えでも押せて、押してからサーバーに弾かれた。
+   * 写経をやめたので、条件が増えても画面側の追従漏れが起きない。文言の正本もスキーマ側。
    */
   const secretTrimmed = clientSecret.trim();
-  const xSavable =
-    clientId.trim().length >= X_CLIENT_ID_MIN_LENGTH &&
-    (secretTrimmed.length === 0 || secretTrimmed.length >= X_CLIENT_SECRET_MIN_LENGTH);
+  const xSaveBlocker = xApiKeySaveBlocker({ clientId, clientSecret });
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
     toast.show({ tone: "error", title: "実行できませんでした", description: message });
@@ -180,12 +181,8 @@ export function ApiKeySettings({
        * （実測: Secretなしの交換は 401 unauthorized_client で拒否された・2026-08-06）。
        * 「Client種別」という利用者が答えられない質問を復活させず、入力の有無で決める。
        */
-      const secret = clientSecret.trim();
-      const result = await saveXApiKey({
-        client_id: clientId,
-        client_secret: secret.length > 0 ? secret : null,
-        client_type: secret.length > 0 ? "confidential" : "public",
-      });
+      // 押せる条件と送る値を同じ関数から出す（ずれると「押せたのに弾かれる」が復活する）。
+      const result = await saveXApiKey(xApiKeySavePayload({ clientId, clientSecret }));
       if (result.status === "error" || !result.displayHint) {
         showError(result.message);
         return;
@@ -216,10 +213,7 @@ export function ApiKeySettings({
 
   function saveAi(provider: AiKeyProvider) {
     startTransition(async () => {
-      const result = await saveAiApiKey({
-        api_key: aiSecrets[provider],
-        provider,
-      });
+      const result = await saveAiApiKey(aiApiKeySavePayload({ apiKey: aiSecrets[provider], provider }));
       if (result.status === "error" || !result.displayHint) {
         showError(result.message);
         return;
@@ -428,10 +422,22 @@ export function ApiKeySettings({
               type="password"
               value={clientSecret}
             />
+            {/*
+              保存は Client ID だけで通るが、**連携には実質必須**（T-M8-63・F3）。
+              手順ガイドが指示する「Web App, Automated App or Bot」は confidential client で、
+              Secret 無しの token 交換は401（unauthorized_client）で拒否される。
+              空のまま保存できてしまうと、失敗するのは連携を試みた後になる。
+              入れれば消えるので、正常な操作を警告色で妨げない（muted の小文字にする）。
+            */}
+            {secretTrimmed.length === 0 ? (
+              <p className="text-xs font-normal text-muted-foreground">
+                手順どおり「Web App, Automated App or Bot」で作ったAppでは必須です。空のまま保存すると、Xアカウントの連携時にXから拒否されます。
+              </p>
+            ) : null}
           </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button className="min-h-10" disabled={isPending || !xSavable} onClick={saveX} type="button">
+          <Button className="min-h-10" disabled={isPending || xSaveBlocker !== null} onClick={saveX} type="button">
             {keys.x ? "Xキーを差し替え" : "Xキーを保存"}
           </Button>
           {keys.x ? (
@@ -450,14 +456,8 @@ export function ApiKeySettings({
           **押せない理由を書く**（T-M8-46）。以前は薄いボタンだけが出ていて、何を入れれば
           押せるようになるのかが画面のどこにも無かった（T-M8-37 と同型）。
         */}
-        {!xSavable ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {clientId.trim().length === 0
-              ? "Client IDとClient Secretを入力すると保存できます。"
-              : clientId.trim().length < X_CLIENT_ID_MIN_LENGTH
-                ? `Client IDは${X_CLIENT_ID_MIN_LENGTH}文字以上です（いま${clientId.trim().length}文字）。`
-                : `Client Secretは${X_CLIENT_SECRET_MIN_LENGTH}文字以上です（いま${secretTrimmed.length}文字）。`}
-          </p>
+        {xSaveBlocker ? (
+          <p className="mt-2 text-xs text-muted-foreground">{xSaveBlocker}</p>
         ) : null}
       </section>
 
@@ -508,7 +508,7 @@ export function ApiKeySettings({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
                     className="min-h-10"
-                    disabled={isPending || aiSecrets[provider].length < AI_SECRET_MIN_LENGTH}
+                    disabled={isPending || aiApiKeySaveBlocker({ apiKey: aiSecrets[provider], provider }) !== null}
                     onClick={() => saveAi(provider)}
                     size="sm"
                     type="button"
@@ -526,10 +526,14 @@ export function ApiKeySettings({
                     </>
                   ) : null}
                 </div>
-                {/* 16文字という条件はどこにも書かれていなかった（T-M8-46）。 */}
-                {aiSecrets[provider].length > 0 && aiSecrets[provider].length < AI_SECRET_MIN_LENGTH ? (
+                {/*
+                  押せない理由もサーバー検証と同じスキーマから出す（T-M8-84）。
+                  以前は長さしか見ておらず、空白入りの値（`^\S+$` 違反）や上限超えでも押せた。
+                */}
+                {aiSecrets[provider].length > 0 &&
+                aiApiKeySaveBlocker({ apiKey: aiSecrets[provider], provider }) ? (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    APIキーは{AI_SECRET_MIN_LENGTH}文字以上です（いま{aiSecrets[provider].length}文字）。
+                    {aiApiKeySaveBlocker({ apiKey: aiSecrets[provider], provider })}
                   </p>
                 ) : null}
               </article>

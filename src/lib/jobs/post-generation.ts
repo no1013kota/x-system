@@ -1,4 +1,7 @@
-import { checkExecutionPrerequisites, type ExecutionPrereqInput } from "@/lib/execution-prereqs";
+import {
+  resolveExecutionPrereqError,
+  type ExecutionPrereqInput,
+} from "@/lib/execution-prereqs";
 import { PT_FIX, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
 import {
@@ -16,22 +19,30 @@ import {
 } from "../ai/gen-context";
 import { AppError } from "@/lib/observability/errors";
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
-import { PLANS } from "@/lib/plans";
 
 import { genOutputSchema } from "../ai/gen-output";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
-import { InvalidProviderOutputError, runTextGeneration, usageFromError } from "../ai/pipeline";
+import {
+  InvalidProviderOutputError,
+  providerRawOutputOf,
+  runTextGeneration,
+  usageFromError,
+} from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import {
+  createDraftCreatedNotification,
+  persistJobFailure,
+} from "./notifications";
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
-const PREMIUM_GENERATION_LIMIT = PLANS.premium.usageLimits?.generations;
 
 /**
  * post_generation ジョブの中核（要件04 §8/§14, プロンプト設計書 §5.1/§7.1/§7.4, T-M3-05）。
@@ -220,72 +231,20 @@ async function persistFailure(
   },
   usage: GenerationUsage,
 ): Promise<void> {
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      job.jobId,
-      JSON.stringify({
-        code: error.code,
-        message: error.message,
-        retryable: false,
-        stage: error.stage,
-        provider_raw_error: error.providerRawError ?? null,
-      }),
-      JSON.stringify(usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（成功・失敗を問わず記録・要件02 §3.17）。
-  await recordProviderCalls(db, usage.calls, {
+  await persistJobFailure(db, {
+    jobId: job.jobId,
     userId: job.userId,
     xAccountId: job.xAccountId,
-    jobId: job.jobId,
     keyPrefix: `gen:${job.jobId}`,
+    error: {
+      code: error.code,
+      message: error.message,
+      stage: error.stage,
+      providerRawError: error.providerRawError ?? null,
+    },
+    usage,
+    notifyKind: "post_generation",
   });
-  // error通知（設定を尊重・両channel OFFなら作らない）。ユーザーへは安全なmessageのみ。
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '投稿の生成に失敗しました',
-            '時間をおいて再度お試しください。設定や入力もご確認ください。',
-            '/app/posts', jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [job.userId, `job:${job.jobId}:failed`, job.jobId],
-  );
-}
-
-async function createDraftCreatedNotification(
-  db: Queryable,
-  params: { userId: string; draftId: string },
-): Promise<void> {
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'draft_created', $2, '下書きができました',
-            '生成した投稿の下書きを確認・編集できます。',
-            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `draft:${params.draftId}:created`, params.draftId],
-  );
 }
 
 export async function executePostGeneration(
@@ -327,18 +286,15 @@ export async function executePostGeneration(
 
   // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
   // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
-  const isPremium = job.plan === "premium";
-  if (isPremium) {
+  {
     try {
-      await deps.runInTx((tx) =>
-        reserveUsage(tx, {
-          userId: job.user_id,
-          xAccountId: job.x_account_id,
-          jobId,
-          type: "generation",
-          limit: PREMIUM_GENERATION_LIMIT,
-        }),
-      );
+      await reserveIfPremium(deps.runInTx, {
+        plan: job.plan,
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId,
+        type: "generation",
+      });
     } catch (error) {
       if (error instanceof AppError && error.code === "usage_limit_exceeded") {
         await persistFailure(
@@ -359,9 +315,8 @@ export async function executePostGeneration(
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
     imageRequested: Boolean(job.input.image_enabled),
   });
-  const prereqError = prereqInput
-    ? checkExecutionPrerequisites(prereqInput)
-    : { code: "not_found" as const, missing: [], settingsPath: "/app" };
+  // throw せず code だけを失敗確定へ回すので、判定だけを共有関数から借りる。
+  const prereqError = resolveExecutionPrereqError(prereqInput);
   if (prereqError) {
     await persistFailure(
       db,
@@ -445,10 +400,18 @@ export async function executePostGeneration(
     });
   } catch (error) {
     if (error instanceof InvalidProviderOutputError) {
+      // **AIが何を返して落ちたか**を残す（F4）。これが無いと code だけが記録され、
+      // 検証失敗という最も多い失敗の原因を運営者が辿れない（CLAUDE.md 原則2）。
+      // 画面へは出さない（要件06 §5。ブラウザへ渡らないことは getGenerationJob 側で担保）。
       await persistFailure(
         db,
         failCtx,
-        { code: "invalid_output", message: "生成結果を検証できませんでした。もう一度お試しください。", stage: "writing" },
+        {
+          code: "invalid_output",
+          message: "生成結果を検証できませんでした。もう一度お試しください。",
+          stage: "writing",
+          providerRawError: formatFailureRawError(error, providerRawOutputOf(error)),
+        },
         error.usage,
       );
     } else {

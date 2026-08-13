@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
+import { PROCESSORS } from "@/lib/legal-entity";
 
 /**
  * 法務3ページが**本番運用に必要な項目を落とさない**ことを機械で守る（T-M8-72）。
@@ -23,7 +24,6 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const TERMS = read("src/app/terms/page.tsx");
 const PRIVACY = read("src/app/privacy/page.tsx");
 const TOKUSHOHO = read("src/app/legal/commercial-transactions/page.tsx");
-const ENTITY = read("src/lib/legal-entity.ts");
 const SEED = read("scripts/seed-review-account.mjs");
 
 describe("法務3ページに開発中の表示が残っていない", () => {
@@ -168,8 +168,18 @@ describe("プライバシーポリシーに個人情報保護法上の記載事�
     }
   });
 
+  /**
+   * **値そのものを検査する**（R33）。
+   *
+   * 以前は `legal-entity.ts` の**ファイル本文**に対する `toContain` だった。そのため
+   * 委託先を1件足して `country` を書き忘れても、他8件の「米国」が本文に在るせいでテストは緑に
+   * なった。**委託先の追加はまさにこの検査が想定している場面**なのに、そのときの抜けを
+   * 検出できない。事業者名の検査も本文一致なので、`PROCESSORS` から外して別の定数へ移しても通った。
+   * 法28条の情報提供に関わるため、値を直接見る。
+   */
   it("委託先一覧に実装で使っている外部サービスが漏れていない", () => {
     // env/アダプタ/CSPから確認した送信先。増やしたらここへも足す（漏れると告知義務違反になる）。
+    const providers = PROCESSORS.map((p) => p.provider);
     for (const provider of [
       "Vercel",
       "Supabase",
@@ -181,11 +191,27 @@ describe("プライバシーポリシーに個人情報保護法上の記載事�
       "Cloudflare",
       "Sentry",
     ]) {
-      expect(ENTITY, `${provider} が委託先一覧に無い`).toContain(provider);
+      expect(
+        providers.some((name) => name.includes(provider)),
+        `${provider} が委託先一覧（PROCESSORS）に無い`,
+      ).toBe(true);
     }
   });
 
-  it("移転先の国名を示している（法28条の情報提供）", () => {
-    expect(ENTITY).toContain("米国");
+  it("すべての委託先が移転先の国名を持つ（法28条の情報提供）", () => {
+    // 1件でも空だと、その委託先だけ移転先が示されないまま公開される。
+    const missing = PROCESSORS.filter((p) => !p.country.trim()).map((p) => p.provider);
+    expect(missing, "移転先の国名が空の委託先").toEqual([]);
+  });
+
+  it("委託先の各項目が埋まっている（表に空欄を出さない）", () => {
+    for (const processor of PROCESSORS) {
+      for (const field of ["provider", "service", "use", "data"] as const) {
+        expect(
+          processor[field].trim().length,
+          `${processor.provider || "(名称なし)"} の ${field} が空`,
+        ).toBeGreaterThan(0);
+      }
+    }
   });
 });

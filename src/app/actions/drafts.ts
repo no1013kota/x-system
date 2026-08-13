@@ -3,16 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { errorResult, requireUserId, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable } from "@/lib/db/pool";
 import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
+import { env } from "@/lib/env";
 import {
   discardDraft,
   listDraftsForAccount,
   updateDraft,
   type DraftView,
 } from "@/lib/drafts";
-import { AppError } from "@/lib/observability/errors";
 import { reconcileDraftPosting } from "@/lib/reconcile-posting";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
@@ -26,7 +27,9 @@ import { recordUnexpectedError } from "@/lib/observability/sentry";
  * 編集は status=draft・楽観lock・pattern別最大数、破棄は draft/failed のみ（未解決failedは拒否）。
  */
 
-const IMAGE_BUCKET = "generated-images";
+// バケット名は env が正本（他5箇所は既に env 経由）。ここだけ直書きだったため、
+// バケットを変えても削除だけ旧バケットを掃除し続ける状態になっていた（R26）。
+const IMAGE_BUCKET = env.SUPABASE_STORAGE_BUCKET_IMAGES;
 
 const pooledDb = pooledQueryable();
 
@@ -52,9 +55,9 @@ const cloneSchema = z.object({
 export async function listDraftsAction(
   input: unknown = {},
 ): Promise<BaseResult & { drafts?: DraftView[] }> {
-  const parsed = listSchema.safeParse(input ?? {});
+  const parsed = parseUserInput(listSchema, input ?? {});
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -72,9 +75,9 @@ export async function listDraftsAction(
 export async function updateDraftAction(
   input: unknown,
 ): Promise<BaseResult & { updatedAt?: string }> {
-  const parsed = updateSchema.safeParse(input);
+  const parsed = parseUserInput(updateSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -96,9 +99,9 @@ export async function updateDraftAction(
 export async function reconcileDraftPostingAction(
   input: unknown,
 ): Promise<BaseResult & { reconcileStatus?: string }> {
-  const parsed = reconcileSchema.safeParse(input);
+  const parsed = parseUserInput(reconcileSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -142,9 +145,9 @@ export async function reconcileDraftPostingAction(
 export async function cloneFailedDraftForRetryAction(
   input: unknown,
 ): Promise<BaseResult & { draftId?: string }> {
-  const parsed = cloneSchema.safeParse(input);
+  const parsed = parseUserInput(cloneSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -169,9 +172,9 @@ export async function cloneFailedDraftForRetryAction(
 }
 
 export async function discardDraftAction(input: unknown): Promise<BaseResult> {
-  const parsed = discardSchema.safeParse(input);
+  const parsed = parseUserInput(discardSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

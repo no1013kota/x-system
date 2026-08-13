@@ -1,9 +1,23 @@
 import "server-only";
 
+import { classifyNewsOutcome } from "@/lib/news-outcome";
+
 import type { Queryable } from "../x/token-refresh";
 
 import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-status";
+import {
+  approxYen,
+  type Check,
+  FAILED_EMAIL_WINDOW_DAYS,
+  type Level,
+  summarize,
+  worstLevel,
+} from "./check";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
+
+// 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
+export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
+export type { Check, Level };
 
 /**
  * 運営者向けの状態診断（T-M7-34）。
@@ -15,39 +29,11 @@ import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal
  * ローカル（`npm run doctor`）とデプロイ先（`GET /api/cron/doctor`）で同じものを使う。
  */
 
-export type Level = "ok" | "warn" | "error";
-
-export interface Check {
-  /** 運営者が読む見出し。 */
-  name: string;
-  level: Level;
-  /** いまの状態。数字は必ず入れる（「問題なし」だけにしない）。 */
-  detail: string;
-  /** 異常時に次にやること。1行で、コマンドか画面操作を具体的に書く。 */
-  nextAction?: string;
-}
-
 export interface DiagnosticsReport {
   level: Level;
   checks: Check[];
   /** 運営者向けの1行まとめ。 */
   summary: string;
-}
-
-/** 最も重いレベルを返す（error > warn > ok）。 */
-export function worstLevel(levels: Level[]): Level {
-  if (levels.includes("error")) return "error";
-  if (levels.includes("warn")) return "warn";
-  return "ok";
-}
-
-/** 全体の1行まとめ。件数を必ず出す（「問題なし」だけで終わらせない）。 */
-export function summarize(checks: Check[]): string {
-  const errors = checks.filter((c) => c.level === "error").length;
-  const warns = checks.filter((c) => c.level === "warn").length;
-  if (errors > 0) return `対応が必要な問題が ${errors} 件あります（注意 ${warns} 件）`;
-  if (warns > 0) return `すぐ困る問題はありませんが、注意が ${warns} 件あります`;
-  return `${checks.length} 項目すべて正常です`;
 }
 
 // --- 個別の判定（純粋関数。単体テストで固定する） ---
@@ -94,6 +80,8 @@ export interface NewsCategoryOutcome {
   category: string;
   /** 分野の処理が例外で終わらなかったか。 */
   ok: boolean;
+  /** 失敗の種別（`http_429` 等）。**応答本文は持たない**（T-M8-86）。 */
+  errorCode?: string | null;
   fetched: number;
   dropped: number;
   dropReasons: Record<string, number>;
@@ -106,37 +94,55 @@ export interface NewsCategoryOutcome {
  * 放置すると分野が永久に0件のまま気付けない（2026-07-28 の web3 がこれだった）。
  */
 export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
-  failed: string[];
+  /** 失敗した分野と、その種別（応答本文は持たない・T-M8-86）。 */
+  failed: { category: string; errorCode: string | null }[];
   allDropped: { category: string; reasons: string }[];
   noMatch: string[];
+  /**
+   * 取得できてはいるが**大半が落ちている**分野（T-M8-83）。
+   *
+   * 以前は `fetched > 0` の分野を素通りしていたため、**日に30件から3件へ静かに減っても
+   * 運営者は気付けなかった**（CLAUDE.md 原則1）。0件ではないので「対応が必要」ではなく
+   * 注意として出す。古さの範囲を添えて、窓を広げれば入るのかを判断できるようにする。
+   */
+  mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
 } {
-  const failed: string[] = [];
+  const failed: { category: string; errorCode: string | null }[] = [];
   const allDropped: { category: string; reasons: string }[] = [];
   const noMatch: string[] = [];
+  const mostly: {
+    category: string;
+    fetched: number;
+    dropped: number;
+    ages: string | null;
+  }[] = [];
+  // 分類そのものは `lib/news-outcome.ts` の1つだけを使う（以前はここと通知側が
+  // 別々に書いていて、同じ状況を「該当なし」と「全件破棄」に分けて伝えていた・R25）。
   for (const o of outcomes) {
-    if (!o.ok) {
-      failed.push(o.category);
-      continue;
-    }
-    if (o.fetched > 0) continue;
-    if (o.dropped > 0) {
-      // 「取得窓より古い」だけなら該当なしと同じ（その時間帯に新しい記事が無かっただけで、
-      // 運営者に直せるものは無い）。直せない理由で警告を出すと読まれなくなる（T-M7-44）。
-      const keys = Object.keys(o.dropReasons);
-      if (keys.length > 0 && keys.every((k) => k === "published_at:too_old")) {
-        noMatch.push(o.category);
-        continue;
-      }
-      const reasons = Object.entries(o.dropReasons)
-        .sort((a, b) => b[1] - a[1])
-        .map(([k, n]) => `${k}×${n}`)
-        .join(", ");
-      allDropped.push({ category: o.category, reasons: reasons || `${o.dropped}件` });
-    } else {
-      noMatch.push(o.category);
+    const verdict = classifyNewsOutcome(o);
+    switch (verdict.kind) {
+      case "failed":
+        failed.push({ category: verdict.category, errorCode: verdict.errorCode });
+        break;
+      case "mostly_dropped":
+        mostly.push({
+          category: verdict.category,
+          fetched: verdict.fetched,
+          dropped: verdict.dropped,
+          ages: verdict.ages,
+        });
+        break;
+      case "all_dropped":
+        allDropped.push({ category: verdict.category, reasons: verdict.reasons });
+        break;
+      case "no_match":
+        noMatch.push(verdict.category);
+        break;
+      case "healthy":
+        break;
     }
   }
-  return { failed, allDropped, noMatch };
+  return { failed, allDropped, noMatch, mostlyDropped: mostly };
 }
 
 export function judgeNews(input: {
@@ -153,7 +159,11 @@ export function judgeNews(input: {
   const problem =
     empty.failed.length > 0 || empty.allDropped.length > 0
       ? [
-          empty.failed.length > 0 ? `取得に失敗したテーマ: ${empty.failed.join("・")}` : null,
+          empty.failed.length > 0
+            ? `取得に失敗したテーマ: ${empty.failed
+                .map((f) => (f.errorCode ? `${f.category}（${f.errorCode}）` : f.category))
+                .join("・")}`
+            : null,
           empty.allDropped.length > 0
             ? `全件破棄されたテーマ: ${empty.allDropped.map((a) => `${a.category}（${a.reasons}）`).join("・")}`
             : null,
@@ -163,6 +173,20 @@ export function judgeNews(input: {
       : null;
   const noMatchNote =
     empty.noMatch.length > 0 ? `該当ニュースが無かったテーマ: ${empty.noMatch.join("・")}` : null;
+  /**
+   * 取得できてはいるが大半が落ちている分野（T-M8-83）。**注意までに留める**。
+   * 「窓より古いだけ」は運営者に直せないので、赤くすると読まれなくなる（T-M7-44と同じ理由）。
+   * ただし黙って減っていくのは原則1に反するので、古さの範囲を添えて必ず1行出す。
+   */
+  const mostlyNote =
+    empty.mostlyDropped.length > 0
+      ? `取れた数より捨てた数が多いテーマ: ${empty.mostlyDropped
+          .map(
+            (m) =>
+              `${m.category}（${m.fetched}件取得 / ${m.dropped}件除外${m.ages ? `・${m.ages}の記事` : ""}）`,
+          )
+          .join("・")}`
+      : null;
   if (!input.schedulerExpected) {
     const last =
       input.hoursSinceLastRun === null
@@ -172,6 +196,7 @@ export function judgeNews(input: {
       `${last}（この環境では定時実行が自動で動きません。直近48時間の取得は ${input.itemsLast48h} 件）`,
       problem,
       noMatchNote,
+      mostlyNote,
     ]
       .filter(Boolean)
       .join(" / ");
@@ -182,7 +207,7 @@ export function judgeNews(input: {
         level: "warn",
         detail,
         nextAction:
-          "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+          "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
       };
     }
     return {
@@ -205,6 +230,7 @@ export function judgeNews(input: {
     `直近48時間で ${input.itemsLast48h} 件取得（最後の実行は ${Math.round(input.hoursSinceLastRun)} 時間前）`,
     problem,
     noMatchNote,
+    mostlyNote,
   ]
     .filter(Boolean)
     .join(" / ");
@@ -223,7 +249,7 @@ export function judgeNews(input: {
       level: input.itemsLast48h === 0 ? "error" : "warn",
       detail,
       nextAction:
-        "Claudeに「全件破棄されたテーマの除外理由を調べて」と伝えてください（プロンプトか検証条件の問題です）",
+        "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
     };
   }
   if (input.itemsLast48h === 0) {
@@ -245,8 +271,6 @@ export function judgeNews(input: {
  * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
  * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
  */
-/** `failed` を「いま対応すべき失敗」として数える期間（T-M8-51）。 */
-export const FAILED_EMAIL_WINDOW_DAYS = 7;
 
 export function judgeQueuedEmails(input: {
   queued: number;
@@ -397,7 +421,7 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
 /** 当月の従量課金（AI・X API）の実績。原則4の可視化。 */
 export function judgeCost(input: { monthUsd: number; byProvider: { provider: string; usd: number }[] }): Check {
   const name = "今月かかった費用";
-  const yen = Math.round(input.monthUsd * 150);
+  const yen = approxYen(input.monthUsd);
   const breakdown = input.byProvider
     .filter((p) => p.usd > 0)
     .map((p) => `${p.provider} $${p.usd.toFixed(2)}`)
@@ -409,7 +433,10 @@ export function judgeCost(input: { monthUsd: number; byProvider: { provider: str
 
 /**
  * 無料プランのDBサイズ上限（バイト）。**プロジェクトではなく組織単位で効く**（要件01 §8・T-M7-43）。
- * Proへ上げた場合は `SUPABASE_DB_SIZE_LIMIT_MB` で上書きする。
+ *
+ * NOTE: 以前ここに「Proへ上げた場合は `SUPABASE_DB_SIZE_LIMIT_MB` で上書きする」と書いてあったが、
+ * **その環境変数は repo に存在しない**（R30）。Pro移行時に env を設定して無反応になるだけの
+ * 案内だったため削除した。env で上書きできるようにするのは機能追加なので別タスクで扱う。
  */
 export const FREE_DB_SIZE_LIMIT_BYTES = 500 * 1024 * 1024;
 
@@ -458,8 +485,6 @@ export function judgeDatabaseSize(input: { bytes: number; limitBytes: number }):
 export interface DiagnosticsOptions {
   /** 定時実行が動く前提の環境か（本番のみ true）。ローカルで常に赤くしないための切り替え。 */
   schedulerExpected: boolean;
-  /** DBサイズの上限（バイト）。未指定なら無料プランの500MB。 */
-  dbSizeLimitBytes?: number;
   /** 人間確認の確認に使う接続情報（T-M7-53）。未指定なら「判定できません」になる。 */
   captcha?: CaptchaProbeDeps;
   /** プラン管理（Stripe Portal）の設定確認（T-M8-32）。未指定なら「判定できません」になる。 */
@@ -509,8 +534,12 @@ export async function collectDiagnostics(
     fetched: number;
     dropped: number;
     drop_reasons: Record<string, number> | null;
+    error_code: string | null;
   }>(
-    `select category::text as category, ok, fetched, dropped, drop_reasons
+    // **`provider_raw_error` は select しない**（T-M8-86）。doctor はHTTPでも返るため、
+    // 本文をクエリの段階で取らない（`getGenerationJob` が `error - 'provider_raw_error'` で
+    // やっているのと同じ考え方）。運営者は必要なときDBで見る。
+    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)`,
   );
@@ -525,6 +554,7 @@ export async function collectDiagnostics(
         fetched: Number(r.fetched),
         dropped: Number(r.dropped),
         dropReasons: r.drop_reasons ?? {},
+        errorCode: r.error_code,
       })),
     }),
   );
@@ -600,7 +630,7 @@ export async function collectDiagnostics(
   checks.push(
     judgeDatabaseSize({
       bytes: Number(size.rows[0]?.bytes ?? 0),
-      limitBytes: options.dbSizeLimitBytes ?? FREE_DB_SIZE_LIMIT_BYTES,
+      limitBytes: FREE_DB_SIZE_LIMIT_BYTES,
     }),
   );
 

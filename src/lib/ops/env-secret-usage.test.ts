@@ -11,16 +11,32 @@
  * （`outbound-channels.test.ts` と同じ考え方）。
  */
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-const SCRIPT_DIR = "scripts";
+// 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
+const SCRIPT_DIR = join(fileURLToPath(new URL("../../../", import.meta.url)), "scripts");
 
-/** `--base <URL>` でデプロイ先を指定できる script（＝ローカル以外を叩き得る）。 */
+/**
+ * `--base <URL>` でデプロイ先を指定できる script（＝ローカル以外を叩き得る）。
+ *
+ * `baseUrl()` も見る（R32）。共通ヘルパー `scripts/lib/cli.mjs` へ `argOf("base")` を
+ * 集約したとき、**この検出条件が当たらなくなって検査全体が空振りした**（下の
+ * 「1つ以上ある」ガードが実際に落ちて気付いた）。判定材料を増やすときは、
+ * その材料を共通化しても当たり続けるかを確かめること。
+ */
 function scriptsAcceptingBase(): { file: string; source: string }[] {
   return readdirSync(SCRIPT_DIR)
     .filter((f) => f.endsWith(".mjs"))
     .map((file) => ({ file, source: readFileSync(`${SCRIPT_DIR}/${file}`, "utf8") }))
-    .filter(({ source }) => source.includes('"--base"') || source.includes('argOf("base")'));
+    .filter(
+      ({ source }) =>
+        source.includes('"--base"') ||
+        source.includes('argOf("base")') ||
+        source.includes("baseUrl()"),
+    );
 }
 
 /** 鍵を読む script（読まないものは間違えようがないので対象外）。 */

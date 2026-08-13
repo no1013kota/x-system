@@ -9,18 +9,16 @@ import type { ThreadItem } from "../ai/gen-output";
 import type { AspectRatio, ImageGen } from "../ai/image";
 import { normalizeForX } from "../ai/image-normalize";
 import type { ProviderCall } from "../ai/normalize";
-import { runTextGeneration } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PLANS } from "../plans";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { createDraftCreatedNotification } from "./notifications";
 import { defaultRecordStage } from "./stale";
-
-/** premium画像生成の月次上限（BYOKは上限なし=undefined）。 */
-const PREMIUM_IMAGE_LIMIT = PLANS.premium.usageLimits?.images;
 
 /**
  * image_generation ジョブの中核（要件04 §8/§9, プロンプト設計書 §5.5/§6.8 GEN-IMG, T-M3-15）。
@@ -167,32 +165,6 @@ async function saveJobUsage(
   });
 }
 
-/** draft_created 通知（本文生成側と同一 dedupe_key で重複を防ぐ）。 */
-async function createDraftCreatedNotification(
-  db: Queryable,
-  params: { userId: string; draftId: string },
-): Promise<void> {
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'draft_created', $2, '下書きができました',
-            '生成した投稿の下書きを確認・編集できます。',
-            '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `draft:${params.draftId}:created`, params.draftId],
-  );
-}
-
 /** 画像失敗の確定：draftを画像なし＋failed印で残し、error/usageを保存して通知する。 */
 async function persistImageFailure(
   deps: ImageGenerationDeps,
@@ -283,21 +255,16 @@ export async function executeImageGeneration(
   const calls: ProviderCall[] = [];
   let provider: string | null = null;
   // premium は画像枠を +1 reserve（月次上限確認・冪等）。BYOK/standard/mdは消費しない。再生成も新規消費。
-  const isPremium = job.plan === "premium";
 
   try {
     // 開始時に画像枠を reserve（上限到達は catch で画像なし確定＋refund no-op）。生成枠(親job)は別勘定。
-    if (isPremium) {
-      await deps.runInTx((tx) =>
-        reserveUsage(tx, {
-          userId: job.user_id,
-          xAccountId: job.x_account_id,
-          jobId,
-          type: "image",
-          limit: PREMIUM_IMAGE_LIMIT,
-        }),
-      );
-    }
+    await reserveIfPremium(deps.runInTx, {
+      plan: job.plan,
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      type: "image",
+    });
     // --- PT-IMG: 英語画像プロンプトの生成（base_mdセクション3＋1ポスト目本文）---
     const template = await resolvePromptTemplate(db, {
       xAccountId: job.x_account_id,
@@ -401,7 +368,9 @@ export async function executeImageGeneration(
     // 画像枠の返還は runJob の failJob が失敗確定時に行う（要件03 §7.3）。生成枠は親jobの勘定
     // なので触れない（要件03 §7.5・成功済み本文の枠は返還しない）。
     if (error instanceof ImageGenerationTerminalError) throw error;
-    const providerRawError = error instanceof Error ? error.message : String(error);
+    // 例外の要約に加え、**検証失敗なら providerの応答本文も残す**（F4・F5）。
+    // 上限と切り詰めは `ai/raw-error.ts` が正本（以前は message を無加工で入れており上限が無かった）。
+    const providerRawError = formatFailureRawError(error, providerRawOutputOf(error));
     if (isRegenerate) {
       // 再生成失敗時は既存画像を維持する（drafts.imagesへ触れない）。error/usageだけ記録する（要件04 §9）。
       await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);

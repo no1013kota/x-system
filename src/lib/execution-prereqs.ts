@@ -137,14 +137,57 @@ export function checkPostingPrerequisites(
   return { code: ITEM_CODE[primary], missing, settingsPath: ITEM_PATH[primary] };
 }
 
+/**
+ * 前提の不足を判定する（**プロフィールが読めなかった場合も含めて**・R27）。
+ *
+ * `gatherPrereqInputs` は対象が見つからないと `null` を返す。以前はその場合の代替値
+ * `{ code: "not_found", missing: [], settingsPath: "/app" }` を**呼び出し側4箇所が
+ * それぞれ書いていた**（生成job・投稿job・学習ソース・本文生成worker）。
+ * 「読めなかった」の扱いを変えるときに1つ忘れると、経路によって別のエラーが出る。
+ *
+ * `input` が `null` なら不足そのものを判定できないので `not_found` を返す。
+ */
+export function resolveExecutionPrereqError(
+  input: ExecutionPrereqInput | null,
+  check: (input: ExecutionPrereqInput) => ExecutionPrereqError | null = checkExecutionPrerequisites,
+): ResolvedPrereqError | null {
+  if (!input) return { code: "not_found", missing: [], settingsPath: "/app" };
+  return check(input);
+}
+
+/**
+ * 「前提の不足」に「そもそも読めなかった（`not_found`）」を足した形。
+ * `not_found` は前提項目の不足ではないので `PrereqCode` には含めない。
+ */
+export interface ResolvedPrereqError {
+  code: PrereqCode | "not_found";
+  missing: PrereqItem[];
+  settingsPath: string;
+}
+
+/** 判定結果を Action/job が投げる形（code・missing・settingsPath 入り）へ詰め替える。 */
+export function prereqErrorToAppError(error: ResolvedPrereqError): AppError {
+  return new AppError(error.code, {
+    details: { missing: error.missing, settingsPath: error.settingsPath },
+  });
+}
+
 /** Actionから呼ぶ。不足があれば code/missing/settingsPath 入りの AppError を投げる。 */
 export function assertExecutionPrerequisites(input: ExecutionPrereqInput): void {
   const result = checkExecutionPrerequisites(input);
-  if (result) {
-    throw new AppError(result.code, {
-      details: { missing: result.missing, settingsPath: result.settingsPath },
-    });
-  }
+  if (result) throw prereqErrorToAppError(result);
+}
+
+/**
+ * `gatherPrereqInputs` の結果（`null` を含む）を受け、不足があれば投げる。
+ * 判定関数を差し替えられるので、実行前提（生成）と投稿前提の両方に使える。
+ */
+export function assertPrereqsFromInput(
+  input: ExecutionPrereqInput | null,
+  check?: (input: ExecutionPrereqInput) => ExecutionPrereqError | null,
+): void {
+  const error = resolveExecutionPrereqError(input, check);
+  if (error) throw prereqErrorToAppError(error);
 }
 
 // 初期設定ガイド（SC-05）のチェックリスト対象。契約はバナー、画像AIキーは任意のため含めない。

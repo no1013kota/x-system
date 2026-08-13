@@ -3,6 +3,7 @@ import { stripProviderMarkup } from "../ai/gen-output";
 
 import type { ProviderCall } from "../ai/normalize";
 import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatRejectedItems } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
@@ -11,6 +12,18 @@ import { SYS_NEWS } from "../prompts/gen-prompts";
 import { newsCategoryLabel } from "../themes";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import {
+  formatDropReasons,
+  META_TOO_OLD_MAX_AGE_H,
+  META_TOO_OLD_MIN_AGE_H,
+  REASON_TOO_OLD,
+} from "@/lib/news-outcome";
+
+/**
+ * 判定・整形の実体は `lib/news-outcome.ts`（診断・通知・スモークの単一の正本）。
+ * 呼び出し側の import を変えずに済ませるため、ここからも出しておく。
+ */
+export { formatDropReasons } from "@/lib/news-outcome";
 
 /**
  * NEWS実行モジュール（1分野・運営側, プロンプト設計書 §6.10/§4.2/§5.6/§7, 要件04 §2/§6, T-M4-10）。
@@ -121,9 +134,15 @@ export function pickValidItems(raw: unknown[]): {
   dropped: number;
   /** 落とした理由の内訳（例 `title:too_big` → 3）。 */
   reasons: Record<string, number>;
+  /**
+   * 落とした候補の**中身**（T-M8-86）。件数と理由だけでは「プロンプトを直すべきか」が
+   * 判断できないため、実際に何が返ってきたかを呼び出し側が保存できるようにする。
+   */
+  rejected: { reasons: string[]; raw: unknown }[];
 } {
   const items: NewsItemOut[] = [];
   const reasons: Record<string, number> = {};
+  const rejected: { reasons: string[]; raw: unknown }[] = [];
   let dropped = 0;
   for (const candidate of raw) {
     const parsed = newsItemSchema.safeParse(candidate);
@@ -131,14 +150,17 @@ export function pickValidItems(raw: unknown[]): {
       items.push(parsed.data);
     } else {
       dropped++;
+      const itemReasons: string[] = [];
       for (const issue of parsed.error.issues) {
         const key = `${issue.path.join(".") || "(root)"}:${issue.code}`;
         reasons[key] = (reasons[key] ?? 0) + 1;
+        itemReasons.push(key);
       }
+      rejected.push({ raw: candidate, reasons: itemReasons });
     }
     if (items.length >= NEWS_MAX_ITEMS) break;
   }
-  return { items, dropped, reasons };
+  return { items, dropped, reasons, rejected };
 }
 
 /**
@@ -188,6 +210,10 @@ export function applyRecencyPolicy(
   let dropped = 0;
   let futureAdjusted = 0;
 
+  // 捨てた記事が「何時間古かったか」を残す（T-M8-83）。件数だけでは、境界をわずかに越えたのか
+  // そもそも古い記事しか無かったのかが区別できず、窓を広げるべきかの判断ができなかった。
+  const tooOldAgesH: number[] = [];
+
   for (const item of items) {
     if (!item.published_at) {
       kept.push(item);
@@ -205,20 +231,18 @@ export function applyRecencyPolicy(
     }
     if (ts < oldestAllowed) {
       dropped += 1;
-      reasons["published_at:too_old"] = (reasons["published_at:too_old"] ?? 0) + 1;
+      reasons[REASON_TOO_OLD] = (reasons[REASON_TOO_OLD] ?? 0) + 1;
+      tooOldAgesH.push((nowMs - ts) / 3_600_000);
       continue;
     }
     kept.push(item);
   }
-  return { items: kept, dropped, reasons, futureAdjusted };
-}
 
-/** 除外理由を1行に畳む（ログ・スモークの表示用）。 */
-export function formatDropReasons(reasons: Record<string, number>): string {
-  return Object.entries(reasons)
-    .sort((a, b) => b[1] - a[1])
-    .map(([key, n]) => `${key}×${n}`)
-    .join(", ");
+  if (tooOldAgesH.length > 0) {
+    reasons[META_TOO_OLD_MIN_AGE_H] = Math.round(Math.min(...tooOldAgesH) * 10) / 10;
+    reasons[META_TOO_OLD_MAX_AGE_H] = Math.round(Math.max(...tooOldAgesH) * 10) / 10;
+  }
+  return { items: kept, dropped, reasons, futureAdjusted };
 }
 
 export type NewsItemOut = z.infer<typeof newsItemSchema>;
@@ -281,6 +305,13 @@ export interface NewsResearchResult {
   futureAdjusted: number;
   usage: GenerationUsage;
   hours: number;
+  /**
+   * 契約違反で落とした候補の中身（T-M8-86）。**`published_at:too_old` だけの除外では作らない**
+   * ——窓より古いだけの item は契約を満たしており良性なので、本文を積むと
+   * 「正常な空」と混ざる（`news-outcome.ts` の `onlyOutsideWindow` と同じ考え方）。
+   * **HTTP応答へは載せない**（要件01 §8）。保存先は `news_fetch_outcomes.provider_raw_error`。
+   */
+  providerRawError: string | null;
 }
 
 /** 直近48時間に取得済みの同分野 source_url（<known_urls> 用・重複除外）。 */
@@ -370,5 +401,7 @@ export async function researchNews(
     futureAdjusted: recency.futureAdjusted,
     usage: result.usage,
     hours,
+    // 契約違反で落ちた分だけ中身を残す（`published_at:too_old` は良性なので残さない・T-M8-86）。
+    providerRawError: formatRejectedItems(picked.rejected),
   };
 }

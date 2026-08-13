@@ -18,6 +18,7 @@ const base: DailySummaryData = {
   jobs: { succeeded: 3, failed: 0 },
   zeroStreaks: {},
   allDropped: [],
+  mostlyDropped: [],
   stuckJobs: 0,
   queuedEmails: 0,
   failedEmails: 0,
@@ -114,11 +115,47 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("ai（title:too_big×2）");
   });
 
+  /**
+   * 「取れてはいるが大半落ちた」を**警告にせず数字だけ出す**（T-M8-83）。
+   *
+   * 以前はこの状態を拾う経路が無く（doctorは `fetched > 0` を素通り、サマリの抽出は
+   * `fetched = 0`）、**日に30件から3件へ静かに減っても気付けなかった**。
+   * 一方これは運営者が直せる問題ではないので、警告にすると通知が読まれなくなる（T-M7-44）。
+   */
+  it("取れた数より捨てた数が多いテーマは、数字を出すが警告にはしない", () => {
+    const s = buildDailySummary({
+      ...base,
+      mostlyDropped: [{ category: "ai", fetched: 1, dropped: 3, ages: "28時間〜40時間前" }],
+    });
+    expect(s.body).toContain("ai（1件取得 / 3件除外・28時間〜40時間前の記事）");
+    expect(s.needsAttention, "運営者が直せないことで警告を出すと通知が読まれなくなる").toBe(false);
+  });
+
   it("失敗した生成・止まっている処理を出す", () => {
     const s = buildDailySummary({ ...base, jobs: { succeeded: 1, failed: 2 }, stuckJobs: 1 });
     expect(s.body).toContain("失敗 2 件");
     expect(s.body).toContain("止まっている処理: 1 件");
     expect(s.title).toContain("気になる点が 2 件");
+  });
+
+  /**
+   * 窓より前の失敗は**警告にせず数字だけ**（F7）。
+   *
+   * 以前は全期間の `failed` を「気になる点」に数えていたため、**7日より前の失敗しか
+   * 無い状態でも毎日通知が出続けた**。同じ状況を doctor は「急ぎではない」と言っており、
+   * 2つの通知が食い違っていた。
+   */
+  it("窓より前の送信失敗は数字を出すが警告にはしない", () => {
+    const s = buildDailySummary({ ...base, failedEmails: 0, olderFailedEmails: 3 });
+    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
+    expect(s.needsAttention, "古い失敗で毎日赤くすると通知が読まれなくなる").toBe(false);
+  });
+
+  it("直近の失敗があれば警告にする（古い分は別行で添える）", () => {
+    const s = buildDailySummary({ ...base, failedEmails: 2, olderFailedEmails: 3 });
+    expect(s.body).toContain("送れなかったお知らせメール: 2 件");
+    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
+    expect(s.needsAttention).toBe(true);
   });
 
   it("送れなかったお知らせメールを出す（送信待ちと別物として扱う・T-M8-40）", () => {

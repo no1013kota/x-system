@@ -1,14 +1,15 @@
 import { z, type ZodType } from "zod";
 
-import { runTextGeneration, usageFromError } from "../ai/pipeline";
+import { providerRawOutputOf, runTextGeneration, usageFromError } from "../ai/pipeline";
+import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PLANS } from "../plans";
 import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
-import { reserveUsage } from "../usage/generation-reserve";
+import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
+import { persistJobFailure } from "./notifications";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
 import { defaultRecordStage } from "./stale";
 
@@ -159,24 +160,16 @@ async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow): Pr
   return `<posts>\n${JSON.stringify(posts.slice(0, 100))}\n</posts>`;
 }
 
-/** `provider_raw_error` の保存上限。生の応答は長くなり得るため頭を残して切る。 */
-const RAW_ERROR_MAX = 2000;
-
 /**
- * 失敗の原因を残すための生の文面（T-M7-39）。
+ * 失敗の原因を残すための生の文面（T-M7-39・F4で応答本文も含めるようにした）。
  *
- * これが無いと `code` だけが残り、**何が起きたか誰にも分からない**（2026-07-26 の own_posts 失敗は
- * `analysis_failed` だけが記録され、原因を追えなかった）。生成・画像jobと同じ扱いにする
- * （`post-generation.ts`・`image-generation.ts`）。画面には出さない（要件06 §5）。
+ * これが無いと `code` だけが残り、**何が起きたか誰にも分からない**（2026-07-26 の own_posts
+ * 失敗は `analysis_failed` だけが記録され、原因を追えなかった）。**検証失敗のときは
+ * providerの応答本文もここへ入る**（`providerRawOutputOf`）。X API の失敗（`x api 403: forbidden`）は
+ * 例外の要約だけになる。画面には出さない（要件06 §5）。上限と切り詰めは `ai/raw-error.ts` が正本。
  */
 function rawErrorOf(error: unknown): string | null {
-  const text =
-    error instanceof Error
-      ? `${error.name}: ${error.message}${error.cause ? ` / cause: ${String(error.cause)}` : ""}`
-      : String(error);
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  return trimmed.length > RAW_ERROR_MAX ? `${trimmed.slice(0, RAW_ERROR_MAX)}…` : trimmed;
+  return formatFailureRawError(error, providerRawOutputOf(error));
 }
 
 /** 失敗確定: source=failed・error通知（dedupe job:{id}:failed）・usage/error保存（pool）。 */
@@ -198,46 +191,20 @@ async function persistFailure(
     `update learning_sources set status = 'failed', updated_at = now() where id = $1`,
     [params.sourceId],
   );
-  await db.query(
-    `update generation_jobs set error = $2::jsonb, usage = $3::jsonb where id = $1`,
-    [
-      params.jobId,
-      JSON.stringify({
-        code: params.code,
-        message: "学習ソースの分析に失敗しました。",
-        retryable: false,
-        stage: params.stage,
-        provider_raw_error: params.providerRawError,
-      }),
-      JSON.stringify(params.usage),
-    ],
-  );
-  // 失敗確定前に発生した provider call の原価も記録する（要件02 §3.17）。
-  await recordProviderCalls(db, params.usage.calls, {
+  await persistJobFailure(db, {
+    jobId: params.jobId,
     userId: params.userId,
     xAccountId: params.xAccountId,
-    jobId: params.jobId,
     keyPrefix: `lrn:${params.jobId}`,
+    error: {
+      code: params.code,
+      message: "学習ソースの分析に失敗しました。",
+      stage: params.stage,
+      providerRawError: params.providerRawError,
+    },
+    usage: params.usage,
+    notifyKind: "learning_analysis",
   });
-  await db.query(
-    `insert into notifications
-       (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
-     select $1, 'error', $2, '学習ソースの分析に失敗しました',
-            '時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。',
-            '/app/ai-settings?tab=learning', jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
-       from profiles p
-      where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [params.userId, `job:${params.jobId}:failed`, params.jobId],
-  );
 }
 
 export async function executeLearningAnalysis(
@@ -257,19 +224,14 @@ export async function executeLearningAnalysis(
   // 冪等: 既に分析済みなら作り直さない（worker再実行安全）。
   if (source.status === "analyzed") return { status: "already_done", sourceId };
 
-  const isPremium = job.plan === "premium";
   // premium は開始時に生成枠 +1 reserve（同一tx・月次上限確認・要件03 §7.1/§7.4）。BYOKは消費しない。
-  if (isPremium) {
-    await deps.runInTx((tx) =>
-      reserveUsage(tx, {
-        userId: job.user_id,
-        xAccountId: job.x_account_id,
-        jobId,
-        type: "generation",
-        limit: PLANS.premium.usageLimits?.generations,
-      }),
-    );
-  }
+  await reserveIfPremium(deps.runInTx, {
+    plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
+    jobId,
+    type: "generation",
+  });
 
   const failCtx = { userId: job.user_id, xAccountId: job.x_account_id, jobId, sourceId };
   // どの段で落ちたかを失敗記録へ残す（T-M7-39）。固定値だと原因の切り分けができない。

@@ -7,29 +7,12 @@
 //
 // 判定と文言は src/lib/ops/diagnostics.ts に集約されている（この script は表示だけ）。
 // ローカル基盤の状態（DB接続・未適用migration）だけはアプリを介さず直接見る。
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { argOf, baseUrl, envValue } from "./lib/cli.mjs";
 
 const MARK = { ok: "✅", warn: "⚠️ ", error: "❌" };
 
-function argOf(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-function envValue(name) {
-  if (process.env[name]) return process.env[name];
-  for (const file of [".env.local", ".env"]) {
-    try {
-      const m = new RegExp(`^${name}=(.*)$`, "m").exec(readFileSync(file, "utf8"));
-      if (m?.[1]) return m[1].trim();
-    } catch {
-      // ファイルが無いのは正常。
-    }
-  }
-  return undefined;
-}
-
-const base = (argOf("base") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+const base = baseUrl();
 const isLocal = base.includes("127.0.0.1") || base.includes("localhost");
 const { cronSecretEnvName } = await import("../src/lib/ops/release-gate.ts");
 const checks = [];
@@ -164,15 +147,7 @@ for (const c of checks) {
   if (c.nextAction) console.log(`    → ${c.nextAction}`);
 }
 
-const errors = checks.filter((c) => c.level === "error").length;
-const warns = checks.filter((c) => c.level === "warn").length;
-console.log(
-  `\n${
-    errors > 0
-      ? `対応が必要な問題が ${errors} 件あります（注意 ${warns} 件）`
-      : warns > 0
-        ? `すぐ困る問題はありませんが、注意が ${warns} 件あります`
-        : `${checks.length} 項目すべて正常です`
-  }\n`,
-);
-process.exit(errors > 0 ? 1 : 0);
+// まとめ1行と終了コードは `src/lib/ops/check.ts` が正本（この script は表示だけ・R31）。
+const { summarize, exitCodeFor } = await import("../src/lib/ops/check.ts");
+console.log(`\n${summarize(checks)}\n`);
+process.exit(exitCodeFor(checks));

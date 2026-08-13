@@ -12,13 +12,9 @@
 //
 // 判定の文言は src/lib/auth/turnstile-errors.ts（単体テストあり）。ここはブラウザ操作だけを担う。
 import { chromium } from "playwright";
+import { baseUrl } from "./lib/cli.mjs";
 
-function argOf(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-const base = (argOf("base") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+const base = baseUrl();
 const { classifyTurnstileError } = await import("../src/lib/auth/turnstile-errors.ts");
 
 /** ブラウザ内で `turnstile.render` を1回だけ試し、結果を返す。 */

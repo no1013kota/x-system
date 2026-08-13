@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import type { AuthFormState } from "@/app/actions/auth-state";
 import { requireCurrentUser } from "@/lib/auth/session";
-import { acceptCurrentLegalConsents } from "@/lib/auth/legal-consent";
+import { LEGAL_CONSENT_SELECT, acceptCurrentLegalConsents } from "@/lib/auth/legal-consent";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 
@@ -19,7 +19,7 @@ export async function acceptLegalUpdates(
     const profile = await admin
       .from("profiles")
       .select(
-        "terms_version, terms_accepted_at, privacy_version, privacy_acknowledged_at",
+        LEGAL_CONSENT_SELECT,
       )
       .eq("id", user.id)
       .single();

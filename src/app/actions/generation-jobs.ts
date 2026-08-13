@@ -2,16 +2,14 @@
 
 import { after } from "next/server";
 
-import {
-  errorResult,
-  requireExecutionUserId,
-  requireUserId,
-  type BaseResult,
-} from "./_helpers";
+import { type BaseResult, errorResult, requireExecutionUserId, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
-import { AppError, toUserFacingError } from "@/lib/observability/errors";
+import {
+  AppError,
+} from "@/lib/observability/errors";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
@@ -53,9 +51,9 @@ interface JobIdResult extends BaseResult {
 }
 
 export async function createGenerationJobAction(input: unknown): Promise<JobIdResult> {
-  const parsed = createGenerationJobSchema.safeParse(input);
+  const parsed = parseUserInput(createGenerationJobSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -77,18 +75,19 @@ const createDraftFromNewsActionSchema = z.object({
 });
 
 export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {
-  const parsed = createDraftFromNewsActionSchema.safeParse(input);
+  const parsed = parseUserInput(createDraftFromNewsActionSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
   const activeId = await resolveActiveXAccountForUser(auth.userId);
   if (!activeId) {
     return {
-      ...toUserFacingError(new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } })),
+      ...errorResult(
+        new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } }),
+      ),
       message: "先にXアカウントを連携してください。",
-      status: "error",
     };
   }
   try {
@@ -105,9 +104,9 @@ export async function createDraftFromNewsAction(input: unknown): Promise<JobIdRe
 }
 
 export async function retryGenerationJobAction(input: unknown): Promise<JobIdResult> {
-  const parsed = retryJobSchema.safeParse(input);
+  const parsed = parseUserInput(retryJobSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -121,9 +120,9 @@ export async function retryGenerationJobAction(input: unknown): Promise<JobIdRes
 }
 
 export async function regenerateDraftAction(input: unknown): Promise<JobIdResult> {
-  const parsed = regenerateDraftSchema.safeParse(input);
+  const parsed = parseUserInput(regenerateDraftSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -137,9 +136,9 @@ export async function regenerateDraftAction(input: unknown): Promise<JobIdResult
 }
 
 export async function regenerateImageAction(input: unknown): Promise<JobIdResult> {
-  const parsed = regenerateImageSchema.safeParse(input);
+  const parsed = parseUserInput(regenerateImageSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -153,9 +152,9 @@ export async function regenerateImageAction(input: unknown): Promise<JobIdResult
 }
 
 export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
-  const parsed = publishDraftSchema.safeParse(input);
+  const parsed = parseUserInput(publishDraftSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
@@ -171,9 +170,9 @@ export async function publishDraftAction(input: unknown): Promise<JobIdResult> {
 export async function getGenerationJobAction(
   input: unknown,
 ): Promise<BaseResult & { job?: GenerationJobView }> {
-  const parsed = jobIdSchema.safeParse(input);
+  const parsed = parseUserInput(jobIdSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -188,9 +187,9 @@ export async function getGenerationJobAction(
 export async function cancelGenerationJobAction(
   input: unknown,
 ): Promise<BaseResult & { jobStatus?: string }> {
-  const parsed = jobIdSchema.safeParse(input);
+  const parsed = parseUserInput(jobIdSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;

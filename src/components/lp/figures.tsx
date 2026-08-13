@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
 
 /**
  * LP「できること」「しくみ」のCSS図版（design_handoff_space_ai_lp）。
@@ -70,16 +71,11 @@ export function NewsFeedFigure() {
 
 /** 予約と自動運用: 曜日×時刻のドット表。●=そのまま投稿 ○=下書きまで。 */
 export function ScheduleFigure() {
-  // 参照HTMLのドット並びをそのまま写す（filled=そのまま投稿 / ring=下書きまで / off=なし）。
-  const rows: { time: string; dots: ("filled" | "ring" | "off")[] }[] = [
-    { time: "9:00", dots: ["filled", "ring", "filled", "off", "filled", "off", "off"] },
-    { time: "19:30", dots: ["ring", "filled", "off", "filled", "ring", "filled", "off"] },
+  // 参照HTMLのドット並びをそのまま写す（post=そのまま投稿 / draft=下書きまで / none=なし）。
+  const rows: { time: string; dots: SlotDotKind[] }[] = [
+    { time: "9:00", dots: ["post", "draft", "post", "none", "post", "none", "none"] },
+    { time: "19:30", dots: ["draft", "post", "none", "post", "draft", "post", "none"] },
   ];
-  const dotClass = {
-    filled: "bg-brand",
-    ring: "border-[1.5px] border-brand",
-    off: "border border-hairline",
-  } as const;
   return (
     <div
       aria-hidden="true"
@@ -87,7 +83,7 @@ export function ScheduleFigure() {
     >
       <div className="grid grid-cols-[44px_repeat(7,1fr)] items-center gap-1.5 text-center text-[11px] text-ink-3">
         <span />
-        {["月", "火", "水", "木", "金", "土", "日"].map((day) => (
+        {WEEKDAY_LABELS_LP.map((day) => (
           <span key={day}>{day}</span>
         ))}
       </div>
@@ -96,7 +92,7 @@ export function ScheduleFigure() {
           <span className="text-[11px] text-ink-3">{row.time}</span>
           {row.dots.map((dot, i) => (
             <span
-              className={cn("size-2.5 justify-self-center rounded-pill", dotClass[dot])}
+              className={cn("size-2.5 justify-self-center rounded-pill", SLOT_DOT_CLASS[dot])}
               key={i}
             />
           ))}

@@ -1,7 +1,11 @@
 import "server-only";
 
-import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
+import { classifyNewsOutcome } from "@/lib/news-outcome";
+
 import type { Queryable } from "../x/token-refresh";
+
+import { approxYen, FAILED_EMAIL_WINDOW_DAYS } from "./check";
+import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 
 /**
  * 日次サマリ（T-M7-29）。`CLAUDE.md`「前提：運営者は個人」原則1に対応する。
@@ -68,12 +72,25 @@ export interface DailySummaryData {
   jobs: { succeeded: number; failed: number };
   /** 分野ごとの連続0件日数。 */
   zeroStreaks: Record<string, number>;
-  /** 直近1回の実行で全件破棄だった分野と理由。 */
+  /** 直近1回の実行で全件破棄だった分野と理由（「窓より古いだけ」は除く）。 */
   allDropped: { category: string; reasons: string }[];
+  /**
+   * 直近1回で**取れた数より捨てた数が多かった**分野（T-M8-83）。
+   * 0件ではないので警告にはしないが、黙って減っていくのを見逃さないため数字だけ載せる。
+   */
+  mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
   stuckJobs: number;
   queuedEmails: number;
   /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
   failedEmails: number;
+  /**
+   * 窓より前の送信失敗（F7）。**警告にはしないが数字は出す**。
+   *
+   * 全期間を「気になる点」に数えていたため、7日より前の失敗しか無い状態でも
+   * 毎日通知が出続けていた。かといって黙って落とすと、届かなかったメールの存在が
+   * どこにも見えなくなる（原則1）。doctor 側と同じ扱いに揃える。
+   */
+  olderFailedEmails?: number;
   monthUsd: number;
   /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
   dbBytes: number;
@@ -121,23 +138,45 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     attention.push(`全件破棄されたテーマ: ${text}`);
   }
 
+  // **警告にはしない**（運営者が直せる問題ではない）。ただし数字を出さないと、
+  // 取得件数が静かに減っていくことに誰も気付けない（T-M8-83）。
+  if (data.mostlyDropped.length > 0) {
+    const text = data.mostlyDropped
+      .map(
+        (m) =>
+          `${m.category}（${m.fetched}件取得 / ${m.dropped}件除外${m.ages ? `・${m.ages}の記事` : ""}）`,
+      )
+      .join("・");
+    lines.push(`直近の取得で取れた数より捨てた数が多かったテーマ: ${text}`);
+  }
+
   if (data.stuckJobs > 0) {
     lines.push(`止まっている処理: ${data.stuckJobs} 件`);
     attention.push(`止まっている処理が ${data.stuckJobs} 件`);
   }
   // 失敗は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
   // **黙って届かないまま**になるので「気になる点」に数える（T-M8-40）。
+  // ただし**直近の失敗だけ**（F7）。窓が無いと1件失敗しただけで毎日出続け、
+  // 赤が常態化して他の異常が埋もれる（doctor 側は T-M8-51 で同じ窓を入れている）。
   if (data.failedEmails > 0) {
     lines.push(
       `送れなかったお知らせメール: ${data.failedEmails} 件（メール設定を確認し、通知ベルから再送してください）`,
     );
     attention.push(`送れなかったお知らせメールが ${data.failedEmails} 件`);
   }
+  // 窓より前の失敗は**警告にしないが数字は出す**（黙って消すと存在が見えなくなる・原則1）。
+  const olderFailed = data.olderFailedEmails ?? 0;
+  if (olderFailed > 0) {
+    lines.push(
+      `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったお知らせメール: ${olderFailed} 件（急ぎではありません）`,
+    );
+  }
   if (data.queuedEmails > 0) {
     lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
   }
 
-  lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${Math.round(data.monthUsd * 150)}円）`);
+  // 円換算は doctor と同じ関数を使う（別々に持つと同じ月の費用を違う円額で伝える・R30）。
+  lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${approxYen(data.monthUsd)}円）`);
 
   // 容量は「止まってから気付く」種類なので、毎日必ず数字を出す（2026-08-01に組織ごと停止した）。
   const dbCheck = judgeDatabaseSize({ bytes: data.dbBytes, limitBytes: data.dbLimitBytes });
@@ -181,11 +220,31 @@ export async function collectDailySummary(
       order by 1 desc`,
   );
 
-  const latest = await db.query<{ category: string; dropped: number; drop_reasons: Record<string, number> | null }>(
-    `select category::text as category, dropped, drop_reasons
+  /**
+   * 直近1回の窓の結果。**`fetched = 0` で絞らない**（T-M8-83）。
+   * 以前は0件の分野だけを見ていたため、「1件は取れたが大半落ちた」状態が誰にも見えなかった。
+   * 良性の除外を落とすのと、大半落ちの判定は、取得後に `lib/news-outcome.ts` で行う。
+   */
+  const latest = await db.query<{
+    category: string;
+    fetched: number;
+    dropped: number;
+    drop_reasons: Record<string, number> | null;
+  }>(
+    `select category::text as category, fetched, dropped, drop_reasons
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)
-        and ok and fetched = 0 and dropped > 0`,
+        and ok and dropped > 0`,
+  );
+  // 分類は `lib/news-outcome.ts` の1つだけを使う（doctor と同じ判定・R25）。
+  // 抽出SQLで `ok` は絞り済みなので、ここへ渡す行はすべて成功した実行。
+  const latestVerdicts = latest.rows.map((r) =>
+    classifyNewsOutcome({
+      category: r.category,
+      fetched: Number(r.fetched),
+      dropped: Number(r.dropped),
+      dropReasons: r.drop_reasons ?? {},
+    }),
   );
 
   const stuck = await db.query<{ n: string }>(
@@ -196,11 +255,26 @@ export async function collectDailySummary(
     [userId],
   );
 
-  const emails = await db.query<{ queued: string; failed: string }>(
+  /**
+   * 送れなかったメールは**窓で区切る**（F7）。
+   *
+   * doctor 側は T-M8-51 で7日窓を入れたのに、ここは全期間を数えていた。そのため
+   * **7日より前の失敗しか無い状態でも毎日「気になる点」を出し続け**、同じ状況を
+   * doctor は「急ぎではない」、サマリは「対応が必要」と食い違って伝えていた。
+   * 窓は `ops/check.ts` の1つだけを使う。古い分は数字として残す（黙って消さない・原則1）。
+   */
+  const emails = await db.query<{ queued: string; failed: string; failed_older: string }>(
     `select count(*) filter (where email_status = 'queued')::text as queued,
-            count(*) filter (where email_status = 'failed')::text as failed
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) > now() - ($2 || ' days')::interval
+            )::text as failed,
+            count(*) filter (
+              where email_status = 'failed'
+                and coalesce(email_last_attempt_at, created_at) <= now() - ($2 || ' days')::interval
+            )::text as failed_older
        from notifications where user_id = $1 and email_status in ('queued', 'failed')`,
-    [userId],
+    [userId, String(FAILED_EMAIL_WINDOW_DAYS)],
   );
 
   const cost = await db.query<{ usd: string | null }>(
@@ -230,17 +304,32 @@ export async function collectDailySummary(
         dropped: Number(r.dropped),
       })),
     ),
-    allDropped: latest.rows.map((r) => ({
-      category: r.category,
-      reasons:
-        Object.entries(r.drop_reasons ?? {})
-          .sort((a, b) => b[1] - a[1])
-          .map(([k, n]) => `${k}×${n}`)
-          .join(", ") || `${r.dropped}件`,
-    })),
+    /**
+     * **「取得窓より古いだけ」は除く**（T-M8-83）。
+     *
+     * 以前はSQLで拾った行をそのまま「全件破棄されたテーマ」として通知していたため、
+     * その時間帯に新しい記事が無かっただけの日にも警告メールが飛んでいた。
+     * doctor 側には T-M7-44 で良性判定が入っていたのに通知側には無く、**同じ状況を
+     * doctorは「該当なし」、通知は「全件破棄」と正反対に伝えていた**。
+     * 新しい記事が無い日は普通にあるので、この誤報は繰り返し届き、
+     * 「直せない理由で赤くすると本物の異常が隠れる」という当の判断を通知側が壊していた。
+     * 判定は `lib/news-outcome.ts` の1つだけを使う。
+     */
+    allDropped: latestVerdicts
+      .filter((v) => v.kind === "all_dropped")
+      .map((v) => ({ category: v.category, reasons: v.reasons })),
+    mostlyDropped: latestVerdicts
+      .filter((v) => v.kind === "mostly_dropped")
+      .map((v) => ({
+        category: v.category,
+        fetched: v.fetched,
+        dropped: v.dropped,
+        ages: v.ages,
+      })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
     queuedEmails: Number(emails.rows[0]?.queued ?? 0),
     failedEmails: Number(emails.rows[0]?.failed ?? 0),
+    olderFailedEmails: Number(emails.rows[0]?.failed_older ?? 0),
     monthUsd: Number(cost.rows[0]?.usd ?? 0),
   };
 }

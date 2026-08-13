@@ -4,8 +4,11 @@ import { AppError } from "@/lib/observability/errors";
 
 import {
   assertExecutionPrerequisites,
+  assertPrereqsFromInput,
   buildSetupChecklist,
   checkExecutionPrerequisites,
+  checkPostingPrerequisites,
+  resolveExecutionPrereqError,
   type ExecutionPrereqInput,
 } from "./execution-prereqs";
 
@@ -234,5 +237,56 @@ describe("assertExecutionPrerequisites", () => {
       expect(err.details?.settingsPath).toBe("/app/settings?tab=x-accounts");
       expect(err.details?.missing).toEqual(["x_account"]);
     }
+  });
+});
+
+/**
+ * 「そもそも読めなかった」場合の扱い（R27）。
+ *
+ * `gatherPrereqInputs` は対象が見つからないと `null` を返す。その代替値
+ * `{ code: "not_found", missing: [], settingsPath: "/app" }` は以前**呼び出し側4箇所が
+ * それぞれ書いていた**ため、扱いを変えるときに1つ忘れると経路によって別のエラーが出た。
+ * この経路のテストが無かったので、ここで固定する。
+ */
+describe("resolveExecutionPrereqError（input=null を含む）", () => {
+  it("input が null なら not_found（不足項目は空・導線はホーム）", () => {
+    expect(resolveExecutionPrereqError(null)).toEqual({
+      code: "not_found",
+      missing: [],
+      settingsPath: "/app",
+    });
+  });
+
+  it("input があれば通常の判定へ委ねる", () => {
+    expect(resolveExecutionPrereqError(byok())).toBeNull();
+    expect(resolveExecutionPrereqError(byok({ hasActiveXAccount: false }))).toEqual({
+      code: "x_account_required",
+      missing: ["x_account"],
+      settingsPath: "/app/settings?tab=x-accounts",
+    });
+  });
+
+  it("判定関数を差し替えれば投稿前提にも使える（文章AIキー不足では止めない）", () => {
+    const noTextKey = byok({ textAiKeyValid: false });
+    expect(resolveExecutionPrereqError(noTextKey)?.code).toBe("api_key_required");
+    expect(resolveExecutionPrereqError(noTextKey, checkPostingPrerequisites)).toBeNull();
+  });
+});
+
+describe("assertPrereqsFromInput", () => {
+  it("null のときも AppError を投げる（黙って通さない）", () => {
+    expect(() => assertPrereqsFromInput(null)).toThrow(AppError);
+    try {
+      assertPrereqsFromInput(null);
+    } catch (e) {
+      const err = e as AppError;
+      expect(err.code).toBe("not_found");
+      expect(err.details?.missing).toEqual([]);
+      expect(err.details?.settingsPath).toBe("/app");
+    }
+  });
+
+  it("充足していれば投げない", () => {
+    expect(() => assertPrereqsFromInput(byok())).not.toThrow();
   });
 });

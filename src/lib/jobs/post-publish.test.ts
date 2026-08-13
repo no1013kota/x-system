@@ -12,7 +12,7 @@ import {
 type Row = Record<string, unknown>;
 
 const LOAD_JOB = /select gj\.draft_id, gj\.input, gj\.trigger/;
-const LOAD_DRAFT = /select status, thread, images, tweet_ids/;
+const LOAD_DRAFT = /select status, pattern, thread, images, tweet_ids/;
 const LOCK = /update drafts set status = 'posting'/;
 const DAILY = /count\(\*\)::int as n from usage_events/;
 const APPEND_TWEET = /update drafts set tweet_ids/;
@@ -59,6 +59,8 @@ const JOB = {
 function draftRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     status: "draft",
+    // P-5以外は引用先を要求しない（既定は通常の投稿）。
+    pattern: "p1",
     thread: [post("p1", "本文1"), post("p2", "本文2")],
     images: [],
     tweet_ids: [],
@@ -253,6 +255,39 @@ describe("executePostPublish validation", () => {
     const deps = baseDeps(db);
     await expect(executePostPublish(deps)).rejects.toMatchObject({ code: "length_exceeded" });
     expect(deps.createPost).not.toHaveBeenCalled();
+  });
+
+  /**
+   * P-5 なのに引用先が無い下書きを、X APIを呼ぶ前に止める（T-M8-85）。
+   *
+   * 引用ポストは全体が未実装で、いまはフラグで止まっている。だが**フラグをONにした瞬間に
+   * 引用先の無い「引用ポスト」が黙ってXへ出る**（生成は `quote_url` を保存しない）。
+   * 取り返しがつかないので、到達不能なうちにガードを置いておく。
+   */
+  it("P-5で引用先が無ければXへ1件も出さずに下書きへ戻す（T-M8-85）", async () => {
+    const draft = draftRow({ pattern: "p5", quote_url: null });
+    const { db, writes } = makeDb(okHandler(draft));
+    const deps = baseDeps(db);
+    await expect(executePostPublish(deps)).rejects.toMatchObject({
+      code: "quote_target_missing",
+    });
+    expect(deps.createPost, "Xへ1件も投げない").not.toHaveBeenCalled();
+    // `failed` ではなく `draft` へ戻す（編集で直せる状態にする・要件04 §10 step2）。
+    const revert = writes.find((w) => /update drafts[\s\S]*status = 'draft'/.test(w.sql));
+    expect(revert, "下書きへ戻していない").toBeDefined();
+    expect(String(revert?.params?.[1] ?? "")).toContain("引用先のポスト");
+  });
+
+  it("P-5でも引用先があれば通常どおり投稿する", async () => {
+    const draft = draftRow({
+      pattern: "p5",
+      thread: [post("p1", "本文1")],
+      quote_url: "https://x.com/someone/status/1234567890",
+    });
+    const { db } = makeDb(okHandler(draft));
+    const deps = baseDeps(db);
+    await expect(executePostPublish(deps)).resolves.toMatchObject({ status: "posted" });
+    expect(deps.createPost).toHaveBeenCalled();
   });
 
   it("fails when the X token is unavailable", async () => {

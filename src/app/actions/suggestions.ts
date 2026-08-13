@@ -2,48 +2,40 @@
 
 import { after } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth/session";
-import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
+import { runInPooledTx } from "@/lib/db/pool";
 import { dispatchJob } from "@/lib/jobs/dispatch";
-import {
-  listSuggestions,
-  refreshSuggestions,
-  refreshSuggestionsSchema,
-  type SuggestionView,
-} from "@/lib/jobs/suggestion-jobs";
+import { refreshSuggestions, refreshSuggestionsSchema } from "@/lib/jobs/suggestion-jobs";
 import { AppError } from "@/lib/observability/errors";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
-import { errorResult, type BaseResult } from "./_helpers";
+import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
+import { parseUserInput } from "@/lib/validation/user-input";
 
 /**
- * 改善提案の Server Actions（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
+ * 改善提案の Server Action（SUGGEST, K-2, 要件05 §9, T-M5-18）。本人のactive Xアカウントのみ。
  * refreshSuggestions は request_key 冪等・各ガード（中核 suggestion-jobs.ts）を通し、作成時のみ after() で
- * worker へ dispatch する。listSuggestions は最新の成功 suggestion job の提案を返す。提案は表示専用。
+ * worker へ dispatch する。**提案の一覧は Server Component（analytics-server.ts の
+ * loadSuggestionsForUser）が読む**（読み取りだけに外から叩けるPOST受け口を作らない・F12）。提案は表示専用。
  */
-
-const pooledDb = pooledQueryable();
 
 async function requireActive(): Promise<
   { ok: true; userId: string; xAccountId: string } | { ok: false; result: BaseResult }
 > {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { ok: false, result: errorResult(new AppError("unauthorized")) };
-  }
-  const xAccountId = await resolveActiveXAccountForUser(user.id);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth;
+  const xAccountId = await resolveActiveXAccountForUser(auth.userId);
   if (!xAccountId) {
     return { ok: false, result: errorResult(new AppError("not_found")) };
   }
-  return { ok: true, userId: user.id, xAccountId };
+  return { ok: true, userId: auth.userId, xAccountId };
 }
 
 export async function refreshSuggestionsAction(
   input: unknown,
 ): Promise<BaseResult & { jobId?: string }> {
-  const parsed = refreshSuggestionsSchema.safeParse(input);
+  const parsed = parseUserInput(refreshSuggestionsSchema, input);
   if (!parsed.success) {
-    return errorResult(new AppError("validation_error"));
+    return validationErrorResult(parsed.error);
   }
   const auth = await requireActive();
   if (!auth.ok) return auth.result;
@@ -58,15 +50,3 @@ export async function refreshSuggestionsAction(
   }
 }
 
-export async function listSuggestionsAction(): Promise<
-  BaseResult & { suggestions?: SuggestionView[] }
-> {
-  const auth = await requireActive();
-  if (!auth.ok) return auth.result;
-  try {
-    const suggestions = await listSuggestions(pooledDb, auth.userId, auth.xAccountId);
-    return { message: "", status: "success", suggestions };
-  } catch (error) {
-    return errorResult(error);
-  }
-}

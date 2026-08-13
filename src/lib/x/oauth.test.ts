@@ -279,20 +279,34 @@ describe("sealTokenResponse (AES envelope storage)", () => {
   const key = randomBytes(32);
   const enc = (s: string) => encryptWithKey(s, key);
 
+  /**
+   * 平文は**十分に長い印**を使う（2026-08-11）。
+   *
+   * 以前は平文が `"AT"` の2文字で、`not.toContain("AT")` により暗号化されたことを見ていた。
+   * envelope は nonce/ciphertext/tag を base64 にしてJSONへ詰めるため、**乱数鍵しだいで
+   * base64文字列の中にたまたま `AT` という並びが現れて落ちる**。実測 185/20000 = 0.92% で、
+   * フルスイートが1%弱の確率でランダムに赤くなっていた（release ゲートも同じ確率で止まる）。
+   * 印を長くすれば偶然一致は事実上消え、検査の意図（平文が残っていないこと）は変わらない。
+   */
+  const ACCESS_MARKER = "ACCESS_TOKEN_PLAINTEXT_MARKER";
+  const REFRESH_MARKER = "REFRESH_TOKEN_PLAINTEXT_MARKER";
+
   it("encrypts access/refresh as envelopes recoverable by decrypt, with expiry + scopes", () => {
     const sealed = sealTokenResponse(
       {
-        access_token: "AT",
-        refresh_token: "RT",
+        access_token: ACCESS_MARKER,
+        refresh_token: REFRESH_MARKER,
         expires_in: 7200,
         scope: "tweet.read offline.access",
       },
       enc,
       1_000_000,
     );
-    expect(decryptWithKey(sealed.accessTokenCiphertext, key)).toBe("AT");
-    expect(decryptWithKey(sealed.refreshTokenCiphertext as string, key)).toBe("RT");
-    expect(sealed.accessTokenCiphertext).not.toContain("AT"); // stored ciphertext, not plaintext
+    expect(decryptWithKey(sealed.accessTokenCiphertext, key)).toBe(ACCESS_MARKER);
+    expect(decryptWithKey(sealed.refreshTokenCiphertext as string, key)).toBe(REFRESH_MARKER);
+    // stored ciphertext, not plaintext（どちらの平文も暗号文へ現れない）
+    expect(sealed.accessTokenCiphertext).not.toContain(ACCESS_MARKER);
+    expect(sealed.refreshTokenCiphertext).not.toContain(REFRESH_MARKER);
     expect(sealed.tokenExpiresAt).toBe(new Date(1_000_000 + 7200 * 1000).toISOString());
     expect(sealed.oauthScopes).toEqual(["tweet.read", "offline.access"]);
   });

@@ -5,6 +5,7 @@ import { failedProviderCall, toProviderCall, type ProviderCall } from "./normali
 import { estimateProviderCost } from "./pricing";
 import type { GenerationUsage } from "./usage-schema";
 import type { Provider, TextGen, TextGenRequest } from "./types";
+import { formatProviderAttempts } from "./raw-error";
 
 /**
  * JSON修復付き生成パイプライン骨格（プロンプト設計書 §5.1/§7, 要件04 §5）。
@@ -24,14 +25,41 @@ export function withRepairInstruction(req: TextGenRequest): TextGenRequest {
 /** parse失敗が修復callでも解消しなかった終端エラー（§5.6: JSON parse失敗はfailed・retry非対象）。 */
 export class InvalidProviderOutputError extends Error {
   readonly retryable = false;
+
+  /**
+   * What the provider actually returned, kept in a private field on purpose (F4).
+   *
+   * A public property would be serialized by `console.error(error)`
+   * (`observability/sentry.ts`, reached via failJob → recordUnexpectedError) and by
+   * `JSON.stringify`, leaking provider output into logs. That is what 要件01 §8 forbids.
+   * The job layer reads it explicitly and stores it in `error.provider_raw_error`,
+   * which is never sent to the browser (see F6).
+   */
+  readonly #rawOutput: string | null;
+
   constructor(
     /** 失敗時も蓄積済みのusageを保持し、呼び出し側がlogUsageできるようにする。 */
     readonly usage: GenerationUsage,
+    rawOutput: string | null = null,
     message = "provider output failed JSON validation after repair",
   ) {
+    // NOTE: the message never contains the provider output — it is logged as-is.
     super(message);
     this.name = "InvalidProviderOutputError";
+    this.#rawOutput = rawOutput;
   }
+
+  get rawOutput(): string | null {
+    return this.#rawOutput;
+  }
+}
+
+/**
+ * 例外に載っている provider の応答本文を取り出す（F4）。
+ * `InvalidProviderOutputError` 以外なら null（載せていないものを推測しない）。
+ */
+export function providerRawOutputOf(error: unknown): string | null {
+  return error instanceof InvalidProviderOutputError ? error.rawOutput : null;
 }
 
 /** 検証後フック（§7.2 文字数/§7.3 NG）。M0はIFのみ。本実装は生成機能マイルストーン。 */
@@ -93,7 +121,7 @@ function readString(error: unknown, key: string): string | null {
  * 台帳へ残す error code。providerの応答本文は入れず、安全な短い識別子だけにする
  * （HTTP status → `http_<status>`、SDKのcode/name → そのまま、いずれも無ければ `unknown_error`）。
  */
-function failureCode(error: unknown): string {
+export function providerFailureCode(error: unknown): string {
   const status =
     typeof error === "object" && error !== null
       ? (error as Record<string, unknown>).status
@@ -138,7 +166,7 @@ export async function runTextGeneration<T>(
           operation: opts.operation,
           latencyMs: now() - start,
           requestId: readString(error, "requestId") ?? readString(error, "request_id"),
-          errorCode: failureCode(error),
+          errorCode: providerFailureCode(error),
         }),
       );
       // 例外はそのまま投げる（retry分類が status/kind を見るため型を変えない）。蓄積済みの
@@ -157,18 +185,23 @@ export async function runTextGeneration<T>(
     return out;
   };
 
+  // 検証に落ちたときに「AIが何を返したか」を残すため、各試行の本文を保持する（F4）。
+  const attempts: string[] = [];
+
   // 初回応答の検証（parseAndValidate内でコードフェンス除去→再パースまで実施）
   let out = await callOnce(opts.request);
+  attempts.push(out.text);
   let result = parseAndValidate(out.text, opts.schema);
 
   // 失敗時のみ修復指示付きで1回だけ再生成（§7.1、job retryには含めない）
   if (!result.ok) {
     out = await callOnce(repair(opts.request));
+    attempts.push(out.text);
     result = parseAndValidate(out.text, opts.schema);
   }
 
   const usage = buildUsage(calls);
-  if (!result.ok) throw new InvalidProviderOutputError(usage);
+  if (!result.ok) throw new InvalidProviderOutputError(usage, formatProviderAttempts(attempts));
 
   // 検証後フック（M0はno-op。GEN-FIX短縮・NG照合・下書き化は後続で実装）
   await opts.hooks?.enforceCharLimit?.(result.value);

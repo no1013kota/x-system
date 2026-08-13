@@ -2,6 +2,7 @@ import { LogoTile } from "@/components/app-shell/brand-logo";
 import { APP_NAME } from "@/lib/app-config";
 import { cardClassName } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
 
 /**
  * ヒーロー右の運用イメージ（LP専用の装飾）。図版はすべてCSS/DOMで描く（画像アセット無し）。
@@ -26,12 +27,11 @@ function Chip({ label }: { label: string }) {
  */
 function WorkspaceStrip() {
   // 見出しは架空の一般文。02の型チップ（ニュース解説／週次まとめ）を流用すると「型の一覧」に見える。
-  const rows: { title: string; meta: string; state: "draft" | "scheduled" }[] = [
-    { title: "AI活用の始め方を3ステップで", meta: "下書き", state: "draft" },
-    { title: "今週読んだ記事のまとめ", meta: "予約 19:30", state: "scheduled" },
-  ];
   // ドットの意味は④のスケジュール表と同じ（○=下書きまで ●=そのまま投稿）。3種類目を増やさない。
-  const dotClass = { draft: "border-[1.5px] border-brand", scheduled: "bg-brand" } as const;
+  const rows: { title: string; meta: string; state: SlotDotKind }[] = [
+    { title: "AI活用の始め方を3ステップで", meta: "下書き", state: "draft" },
+    { title: "今週読んだ記事のまとめ", meta: "予約 19:30", state: "post" },
+  ];
   return (
     <div className={cn(cardClassName, "overflow-hidden")}>
       <div className="flex items-end gap-3 border-b border-hairline px-3.5 pt-2.5">
@@ -44,7 +44,7 @@ function WorkspaceStrip() {
       <div className="grid gap-2 px-3.5 py-2.5">
         {rows.map((row) => (
           <div className="flex items-center gap-2" key={row.title}>
-            <span className={cn("size-2 flex-none rounded-pill", dotClass[row.state])} />
+            <span className={cn("size-2 flex-none rounded-pill", SLOT_DOT_CLASS[row.state])} />
             <span className="min-w-0 flex-1 truncate text-[11px] text-ink">{row.title}</span>
             <span className="flex-none text-[11px] text-ink-3">{row.meta}</span>
           </div>
@@ -56,15 +56,10 @@ function WorkspaceStrip() {
 
 /** ④ スケジュール投稿。曜日×時刻の枠が組んであることを示す。 */
 function SchedulePreview() {
-  const rows: { time: string; dots: ("on" | "draft" | "off")[] }[] = [
-    { time: "9:00", dots: ["on", "draft", "on", "off", "on", "off", "off"] },
-    { time: "19:30", dots: ["draft", "on", "off", "on", "draft", "on", "off"] },
+  const rows: { time: string; dots: SlotDotKind[] }[] = [
+    { time: "9:00", dots: ["post", "draft", "post", "none", "post", "none", "none"] },
+    { time: "19:30", dots: ["draft", "post", "none", "post", "draft", "post", "none"] },
   ];
-  const dotClass = {
-    on: "bg-brand",
-    draft: "border-[1.5px] border-brand",
-    off: "border border-hairline",
-  } as const;
   return (
     <div className={cn(cardClassName, "px-3.5 py-3")}>
       <div className="flex items-center gap-1.5">
@@ -74,7 +69,7 @@ function SchedulePreview() {
       <div className="mt-2.5 grid gap-1.5">
         <div className="grid grid-cols-[34px_repeat(7,1fr)] gap-1 text-center text-[11px] text-ink-3">
           <span />
-          {["月", "火", "水", "木", "金", "土", "日"].map((day) => (
+          {WEEKDAY_LABELS_LP.map((day) => (
             <span key={day}>{day}</span>
           ))}
         </div>
@@ -82,7 +77,7 @@ function SchedulePreview() {
           <div className="grid grid-cols-[34px_repeat(7,1fr)] items-center gap-1" key={row.time}>
             <span className="text-[11px] text-ink-3">{row.time}</span>
             {row.dots.map((dot, i) => (
-              <span className={cn("size-2 justify-self-center rounded-pill", dotClass[dot])} key={i} />
+              <span className={cn("size-2 justify-self-center rounded-pill", SLOT_DOT_CLASS[dot])} key={i} />
             ))}
           </div>
         ))}

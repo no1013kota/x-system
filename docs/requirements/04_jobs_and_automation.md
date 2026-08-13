@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.25 |
+| 更新日 | 2026-08-12 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -62,7 +62,7 @@ workerはdispatchで指定されたjob 1件を対象に、短いDB transaction�
 5. 外部処理中は30秒ごと、またはstage変更時に`locked_at`をheartbeat更新する。
 6. `locked_at < now() - 10 minutes`のrunning jobはstaleとする。`attempt < 3`ならlockを解除してqueuedへ戻し、`attempt >= 3`ならfailedへ確定する。failed確定と同一transactionで、当該jobの未返還reserve（`job:{job_id}:generation:refund`／`image:refund`の冪等key）をrefundする（通常経路のrefundと二重返還しない。要件03 §7.3）。
 
-stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserveは文章系top-level job（生成・LRN・SUGGEST・MD-MERGE）と画像生成jobで実装済みのため、このrefundは実際に枠を戻す。workerの失敗経路では各handlerが自分の終端処理（draft確定・ソース差し戻し・error通知）をpoolで行うため、`finalizeFailedJob`は呼ばない（二重実行を避ける）。両経路の失敗通知は同じdedupe key `job:{id}:failed` を使うため重複しない。利用枠のrefundだけは worker 失敗経路でも中央（`failJob`）で行う（要件03 §7.1）。handlerが返還するとretryで差し戻される失敗でも返してしまい、次のattemptが再予約できなくなるため。
+stale起因のfailed確定は`scheduler_tick`が行うため、workerの失敗経路と同一の終端処理もtickが実行する: `image_generation`はdraftを画像なし＋警告(failed印)で確定して後続へ進める（draft modeは`draft_created`通知／auto modeは`post_publish`作成。本文は使えるため`error`通知は作らない。auto modeの判定は親`post_generation` jobの`input.mode`から解決する）。`post_publish`はdraftを`failed`へ戻し`last_post_error`を保存する（`posting`のまま放置しない）。`md_merge`はsourceを`analyzed`へ戻して削除未完了を通知する。`image_generation`を除く各kind（`post_generation`／`post_publish`／`md_merge`）で`error`通知（dedupe_key `job:{id}:failed`）を作成する。この終端処理は`finalizeFailedJob`（`lib/jobs/terminal.ts`）に集約し、reserveのrefund（元reserve行から`counter_type`/`month`を引き継ぎ、`ref_event_id`へ元reserveを記録して`usage_counters`を-1）とkind別のdraft/source後始末を同一transactionで冪等に行う。reserveは文章系top-level job（生成・LRN・SUGGEST・MD-MERGE）と画像生成jobで実装済みのため、このrefundは実際に枠を戻す。workerの失敗経路では各handlerが自分の終端処理（draft確定・ソース差し戻し・error通知）をpoolで行うため、`finalizeFailedJob`は呼ばない（二重実行を避ける）。両経路の失敗通知は同じdedupe key `job:{id}:failed` を使うため重複しない。利用枠のrefundだけは worker 失敗経路でも中央（`failJob`）で行う（要件03 §7.1）。handlerが返還するとretryで差し戻される失敗でも返してしまい、次のattemptが再予約できなくなるため。**通知の文言と発行SQLは `lib/jobs/notifications.ts` の1箇所だけに置く**（R21・R22）。以前はworker経路がSQLリテラル、stale経路が文言テーブルと別々に持っていたため、同じ失敗が経路によって違う文面で届きうる状態だった（`draft_created`通知も3ファイルに同一SQLで重複していた）。**失敗確定の3手順（`error`/`usage`保存 → 原価台帳への記録 → 失敗通知）は `persistJobFailure` に集約する**（R23）。原価の記録は落としても全テストが緑のまま通り、AI費用が静かに過少計上されるため（CLAUDE.md 原則4）。
 
 workerがhandlerの例外を受けてfailedへ確定する際は、失敗理由を必ず残す。handlerが既に`error`を保存していればそれを尊重して上書きせず、未保存のときだけ§4.10形式の汎用`error`（`code`／`message`／`retryable: false`／`stage`＝到達済みの`progress_stage`）を保存する。`code`は例外が持つエラーコード（`^[a-z][a-z0-9_]{0,62}$`に一致するもののみ）を使い、該当しなければ汎用の`job_failed`とする。`message`はコードから決まる定型文またはkind別の失敗通知本文であり、例外メッセージ・スタック・providerの応答をそのまま入れない。この確定は`status = running`の行のみを対象とするため、自己終端済み・stale回収でqueuedへ戻った行を書き換えず、再実行しても結果が変わらない。lease時（§4の手順4）は前attemptの`error`をクリアし、前回の失敗理由が現在の実行の結果として表示されないようにする。
 
@@ -107,7 +107,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
-`news_fetch`は分野ごとに**取得結果を`news_fetch_outcomes`へ残す**（要件02 §3.19）。「0件」が「該当ニュースが無かった（正常な空）」のか「取得したが規定を満たさず全件破棄した（失敗による空）」のかを、cron応答（`categories[].dropped`/`dropReasons`・`emptyCategories`）と運営者向け状態確認（`npm run doctor`／`GET /api/cron/doctor`）の両方で区別できるようにする。除外理由をログにだけ出す形にしない（CLAUDE.md 原則1）。
+`news_fetch`は分野ごとに**取得結果を`news_fetch_outcomes`へ残す**（要件02 §3.19）。「0件」が「該当ニュースが無かった（正常な空）」のか「取得したが規定を満たさず全件破棄した（失敗による空）」のかを、cron応答（`categories[].dropped`/`dropReasons`・`emptyCategories`）と運営者向け状態確認（`npm run doctor`／`GET /api/cron/doctor`）の両方で区別できるようにする。除外理由をログにだけ出す形にしない（CLAUDE.md 原則1）。**判定は `src/lib/news-outcome.ts` の1箇所だけに置く**（T-M8-83）。以前は「取得窓より古いだけ＝良性」の判定がスモークと `doctor` に二重にあり日次サマリには無かったため、同じ状況を doctor は「該当なし」、サマリは「全件破棄」と正反対に通知していた。また**「取れてはいるが大半落ちた」状態はどの経路にも出ていなかった**（doctorは `fetched > 0` を素通り、サマリの抽出は `fetched = 0`）ので、取得件数が静かに減っても気付けなかった。除外が取得を上回る分野は、doctor では注意、サマリでは数字のみで出す（運営者が直せないことで警告は出さない）。`drop_reasons` には**何時間古かったか**を `_too_old_min_age_h` / `_too_old_max_age_h` として併せて残す（`_` 始まりは理由として数えない。境界すぐ外か、そもそも古い記事しか無かったのかを区別して対策を判断するため）。
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
 
@@ -187,7 +187,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 
 1. draftをlockし、`draft`または再試行可能な`failed`を`posting`へ変更する。
 2. 契約、X token、日次上限、premiumの通常/URL付き投稿残量、thread、警告を検証する。auto起点の`post_publish`はこの時点でも現行versionの自動投稿同意と未撤回を再検証する。**加重文字数の上限（280）超過は`mode`を問わずここで失敗させ、X APIを1件も呼ばない**（要件06 §7と同じ判定をサーバー側でも行う。Xは超過を400で拒否するため、スレッド途中で拒否されると先行ポストがX上に残り取り返しがつかない）。判定は保存済みの`weighted_length`ではなく**そのとき投稿する本文**（P-5は`quote_url`合成後）から測り直す。**Xへ1件も投稿していない失敗はdraftを`failed`にせず`draft`へ戻し、`last_post_error`に理由だけ残す**（日次上限と同じ扱い）。`failed`にすると編集も複製もできず、案内した「編集して短くする」が実行できない行き止まりになる。残量は要件03 §7.4の通常/URL付き別ロールバック安全量を必須とし、同一userの他の投稿jobがrunningなら処理しない。
-3. P-5は`quote_tweet_id`で対象ポストを再取得し、取得成功後に正規化済み`quote_url`を1ポスト目の本文末尾へ合成する。対象取得不能、URL不正、合成後の加重文字数超過はX APIを呼ばず失敗にする。
+3. P-5は`quote_tweet_id`で対象ポストを再取得し、取得成功後に正規化済み`quote_url`を1ポスト目の本文末尾へ合成する。対象取得不能、URL不正、合成後の加重文字数超過はX APIを呼ばず失敗にする。**本ステップは未実装**（`post-publish.ts`は対象ポストを再取得しない。要件06 §5 参照）。ただし**P-5なのに`quote_url`が未設定の下書きは、X APIを呼ばずに`draft`へ戻す**（step2 と同じ扱い。フラグをONにした瞬間に引用先の無い引用ポストが出るのを防ぐ）。
 4. 画像があればX media uploadを完了し、media idを得る。失敗時は本文を投稿しない。
 5. 1ポスト目を通常投稿として送信する。P-5も`quote_tweet_id`は指定せず、対象URLを含む本文を使う。画像ありは`media_ids`を指定する。
 6. 後続は直前の自分のtweet_idへのreplyとして投稿する。
@@ -228,8 +228,10 @@ flowchart TD
 
 - LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件、自己投稿は直近100件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。mergeには対象セクションの現在値と、同セクションへ反映する全active sourceのanalysisを渡す。
 - own_posts再取り込みの30日制御は**成功した`learning_analysis` jobだけ**を数える。失敗を数えると、分析が壊れているときに直すための再実行まで塞がれ、行き止まりになる（2026-07-26に発生・T-M7-39）。二重送信は進行中jobの`job_conflict`で止める。
-- `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面・2,000字で切る）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
-- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
+- `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
+- **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
+- **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`だけを添える（応答本文はクエリの段階でselectしない）。
+- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTはユーザー操作だけで起動し、同一JST日かつ新しいmetrics更新がなければ拒否する。比較は同じcheckpoint同士に限定し、7日値を優先、比較グループが3件未満なら1日値を使い、異なる経過日数を混ぜない。
