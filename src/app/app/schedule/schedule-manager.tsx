@@ -24,6 +24,13 @@ import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
 import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
+import { validateSlotForm } from "@/lib/schedule/slot-form";
+import {
+  patternLabel,
+  slotDescription,
+  slotScheduleLabel,
+  WEEKDAY_LABELS,
+} from "@/lib/schedule/slot-labels";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -35,10 +42,6 @@ import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/ca
 // ラベルは選択肢の定義から引く（`post-patterns.ts` が唯一の定義・T-M8-29）。
 // 以前はこの画面に短縮版のラベルを別に持っていて、投稿作成側と表記が違っていた
 // （「自分の考え」/「自分の考え・意見」など）。
-const PATTERN_LABEL: Record<string, string> = Object.fromEntries(
-  SCHEDULE_PATTERN_OPTIONS.map((p) => [p.id, p.label]),
-);
-const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 /**
  * 週間プレビューのセルの見た目（T-M8-24）。
@@ -138,7 +141,7 @@ export function ScheduleManager({
             // 「確認なしで」等の説明は上のステータス行が担う。ここは事実だけ（T-M8-66）。
             <p className="text-muted-foreground">
               次回の実行: {upcoming.run.label} —「
-              {PATTERN_LABEL[upcoming.slot.pattern] ?? upcoming.slot.pattern}」
+              {patternLabel(upcoming.slot.pattern)}」
               {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
             </p>
           ) : (
@@ -320,11 +323,12 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                     {cell.map((s) => (
                       <span
                         className={`m-0.5 ${slotCellClassName(s)}`}
-                        aria-label={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
+                        aria-label={slotDescription(s)}
+                        data-slot-cell=""
                         key={s.id}
-                        title={`${PATTERN_LABEL[s.pattern] ?? s.pattern}${s.theme && s.theme !== "other" ? `・テーマ ${postThemeLabel(s.theme)}` : ""}・${s.mode === "auto" ? "自動投稿" : "下書きのみ"}${s.enabled ? "" : "・停止中"}`}
+                        title={slotDescription(s)}
                       >
-                        {PATTERN_LABEL[s.pattern] ?? s.pattern}
+                        {patternLabel(s.pattern)}
                       </span>
                     ))}
                   </td>
@@ -427,14 +431,14 @@ function SlotRow({
     <li className={`${cardClassName} p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{PATTERN_LABEL[slot.pattern] ?? slot.pattern}</span>
+          <span className="font-semibold">{patternLabel(slot.pattern)}</span>
           <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
           {/* テーマを行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
           {slot.theme && slot.theme !== "other" ? (
             <Badge tone="brand">{postThemeLabel(slot.theme)}</Badge>
           ) : null}
           <span className="text-xs text-muted-foreground">
-            {slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} {slot.time_jst.slice(0, 5)}
+            {slotScheduleLabel(slot.weekdays, slot.time_jst)}
           </span>
           {!slot.enabled ? (
             <Badge tone="warn">停止中（実行されません）</Badge>
@@ -488,7 +492,7 @@ function SlotRow({
             </Button>
           )}
           <DeleteSlotButton
-            description={`${slot.weekdays.map((d) => WEEKDAY_LABELS[d]).join("・")} ${slot.time_jst.slice(0, 5)} の「${PATTERN_LABEL[slot.pattern] ?? slot.pattern}」を削除します。一時的に止めたいだけなら「停止」を使ってください。`}
+            description={`${slotScheduleLabel(slot.weekdays, slot.time_jst)} の「${patternLabel(slot.pattern)}」を削除します。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}
             onConfirm={() =>
               run(
@@ -615,19 +619,11 @@ function SlotFields({
   }
 
   function submit() {
-    setValidationError(null);
-    if (v.weekdays.length === 0) {
-      setValidationError("曜日を1つ以上選択してください。");
-      return;
-    }
-    // テーマは必須（`schedule-slots.ts` の `z.enum(POST_THEME_IDS)`）。ここで止めないと
-    // 「入力内容を確認してください」という**どの項目が悪いか分からない**エラーになる（T-M8-37）。
-    if (!v.theme) {
-      setValidationError("テーマを選択してください。");
-      return;
-    }
-    // mode=auto かつ未同意なら、保存前に同意modalを表示する（要件06 §3.5）。
-    if (v.mode === "auto" && !consented) {
+    // 判定は純関数（`lib/schedule/slot-form.ts`）。画面の状態更新だけここに残す（R38）。
+    const verdict = validateSlotForm(v, { consented });
+    setValidationError(verdict.error);
+    if (verdict.error) return;
+    if (verdict.needsConsent) {
       setShowConsent(true);
       return;
     }
@@ -794,7 +790,7 @@ function SlotFields({
           .slice()
           .sort((a, b) => a - b)
           .map((d) => WEEKDAY_LABELS[d])
-          .join("・")} ${v.time_jst} に「${PATTERN_LABEL[v.pattern] ?? v.pattern}」を生成し、確認なしでXへ投稿します。`}
+          .join("・")} ${v.time_jst} に「${patternLabel(v.pattern)}」を生成し、確認なしでXへ投稿します。`}
       />
     </div>
   );
