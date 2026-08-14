@@ -79,6 +79,7 @@ export function isRedirectAllowed(uriAllowList: readonly string[], url: string):
 export function sameOrigin(a: string, b: string): boolean {
   try {
     return new URL(a).origin === new URL(b).origin;
+  // eslint-disable-next-line no-restricted-syntax -- URLとして読めない値は「同じオリジンではない」が答え。失敗自体が判定結果なので記録しない
   } catch {
     return false;
   }
