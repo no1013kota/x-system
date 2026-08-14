@@ -55,6 +55,8 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 |---|---|
 | `STAGING_BASE_URL` / `PRODUCTION_BASE_URL` | `release:*`・`doctor -- --base`・`smoke:live` の対象URL |
 | `STAGING_CRON_SECRET` / `PRODUCTION_CRON_SECRET` | デプロイ先の cron エンドポイントを叩く鍵（**環境ごとに違う**のが正しい） |
+| `SUPABASE_ACCESS_TOKEN` | `doctor` が **Supabase Auth のURL設定**（Site URL・Redirect URLs）を読むための Personal Access Token。Dashboard → Account → Access Tokens で発行。**プロジェクト設定を書き換えられる強い権限**なので `.env.local` にだけ置く。無くても `doctor` は動くが、この項目だけ「確認できません」になる（T-M8-90） |
+| `PRODUCTION_STRIPE_SECRET_KEY` ほか `PRODUCTION_STRIPE_*` | `stripe:portal:setup -- --target production` が読む。price と Portal 構成IDはStripeアカウント単位なので接頭辞付きで持つ（T-M8-35） |
 
 ### migration 適用時に出る警告
 

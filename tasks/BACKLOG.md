@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **3件**（**T-M8-90 Auth URL設定の検出**／T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜89 は done | 下記M8セクション |
+| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜90 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -38,8 +38,9 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 1. **本番の未整備を埋める（P-1）**。T-M8-87（`/signup` 復旧）と T-M8-88（定時実行）は 2026-08-14 に対応済み。
    CAPTCHA（運営者）とStripeポータル設定も 2026-08-14 に完了。残るのは
-   (a) **Supabase の Site URL / Redirect URLs**（確認メールのリンクがlocalhostへ飛ぶ。P-1 の5）
-   (b) `vercel.json` のデプロイ（T-M8-88 のコミットが本番へ入るまで定時実行は動かない）
+   (a) **`vercel.json` のデプロイ**（T-M8-88 のコミットが本番へ入るまで定時実行は動かない）。push待ち
+   (b) Supabase の Site URL / Redirect URLs は 2026-08-15 に運営者が設定（P-1 の5）。
+       `SUPABASE_ACCESS_TOKEN` を `.env.local` へ置けば `doctor` で照合できる（T-M8-90）
 2. **運営者が `exosai.net` で登録し、Xアカウントを連携する**。そのうえで **`npm run release:production`** の
    実物スモークを回す（本番DBには利用者もXアカウントも1件も無く、スモークは `--account` を要求する）
 3. **D-17（法務文書の弁護士レビュー）**。T-M8-75で条項を19条へ増やし、T-M8-81で屋号を足したため
@@ -2042,7 +2043,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
-### T-M8-90: Supabase Auth のURL設定の食い違いを検出できるようにする `todo`
+### T-M8-90: Supabase Auth のURL設定の食い違いを検出できるようにする `done`
 - 参照: `src/lib/ops/captcha-status.ts`（同じ動機の先例）・`scripts/doctor.mjs` / 依存: なし / サイズ: M
 - **発端**: 2026-08-14、本番で会員登録すると**確認メールのリンクが localhost を指していた**（運営者が発見）。
   アプリは正しく `https://exosai.net/auth/confirm` を渡していたが、Supabaseは許可リストに無いリダイレクト先を
@@ -2057,10 +2058,22 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `uri_allow_list` を読み、`APP_BASE_URL` と一致するかを `doctor` の1項目にする。
   **トークンが無い環境では「確認できません」で出す**（`PRODUCTION_CRON_SECRET` が無いときと同じ振る舞い。
   黙って✅にしない）。トークンは `SUPABASE_ACCESS_TOKEN`（`.env.local`）から読む。
-- **要判断**: Management APIのトークンを手元に置くかどうか（プロジェクト設定を書き換えられる強い権限）。
-  読み取りだけに使うが、鍵の保管が1つ増える。置かない選択なら、代わりに
-  「本番へ反映した直後に実際に登録を1周してメールのリンクを目で見る」を
-  `release-checklist.md` の手順へ入れる（手動だが忘れたら気付ける形にはなる）。
+- **判断（2026-08-15・運営者）**: **トークンを手元に置く形でよい**。したがって Management API 案を採った。
+- **実装結果**: `src/lib/ops/auth-url-status.ts`（純粋関数・importは型のみ）に判定を置き、`scripts/doctor.mjs` が
+  Management API（`GET /v1/projects/{ref}/config/auth`）から `site_url` と `uri_allow_list` を読んで渡す。
+  プロジェクトrefは**反映先のCSPヘッダ**から取る（`projectRefFromCsp`。`release:*` のゲートと同じ手なので、
+  別環境を見に行く取り違えが起きない）。判定は3段——確認URLが許可リストに無ければ **error**（メールが
+  Site URL へ差し替わる＝登録が完了できない）、許可はされているが Site URL のオリジンが違えば **warn**
+  （行き先を明示しない経路が別の場所へ向く）、両方合っていれば ok。
+  **`SUPABASE_ACCESS_TOKEN` が無い環境では「確認できません」の warn** にする（✅にしない・原則1）。
+  **ローカル宛では実行しない**——`supabase/config.toml` がリポジトリにあり設定はコードから読めるので、
+  この層の問題（コードに現れない設定）が起きない。
+- **テスト（25件）**: 2026-08-14 の本番の状態（Site URL=localhost・許可リストもlocalhostのみ）をfixtureにした。
+  ワイルドカードは緩く判定しないことを個別に固定する（`*` はパス区切りを越えない・ドットをワイルドカードに
+  しない・部分一致で許さない・スキームの違いを見分ける）。**緩い判定はこの検査を無意味にする**ため。
+  `uri_allow_list` はカンマ区切りの1本の文字列で返るので、空文字を要素として数えないことも固定した。
+- **後続への注意**: `confirmRedirectUrl()` は `app/actions/auth.ts` の `confirmationRedirectUrl()` と
+  **同じ組み立てにしておくこと**。片方だけ変えると、実際に渡す値ではないURLを検査することになる。
 
 ### T-M8-89: AI設定の「アップグレード」が押しても何も起きない導線だった `done`
 - 参照: 要件06 §ロック状態のCTA・`src/app/app/ai-settings/page.tsx` / 依存: なし / サイズ: S
