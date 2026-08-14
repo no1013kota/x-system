@@ -300,7 +300,7 @@ curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x
 
 ## 6. 定時実行（cron）
 
-初期は**常時稼働 Mac の launchd** で4本を叩く構成。Vercel Cron へ移す場合は `vercel.json` に `crons` を追加して production へデプロイする。**手順とロールバックは [launchd→Vercel Cron](./launchd-to-vercel-cron.md) を正とする**。
+**production は Vercel Cron で4本を回す**（2026-08-14 移行・T-M8-88。`vercel.json` の `crons`。schedule は要件04 §6 の表が正本で、一致は `src/lib/ops/vercel-crons.test.ts` が検査する）。`ops/launchd/` の4本は移行前の構成で、ローカル（`http://127.0.0.1`）向けのまま残してある。**手順とロールバックは [launchd→Vercel Cron](./launchd-to-vercel-cron.md) を正とする**。
 
 - staging（preview）では Vercel Cron は動かない。定時処理を検証したい場合は cron エンドポイントを手動で叩く。
 - launchd と Vercel Cron が一時的に重複しても、handler の時間窓受付（`cron_runs`）と冪等keyで外部処理は重複しない。

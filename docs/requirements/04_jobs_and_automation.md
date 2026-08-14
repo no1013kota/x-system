@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.25 |
-| 更新日 | 2026-08-12 |
+| バージョン | v1.26 |
+| 更新日 | 2026-08-14 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -98,12 +98,14 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 ## 6. 定時トリガー4本
 
-| job | 初期launchd（JST） | Vercel Cron移行後（UTC） | 内容 | 1起動上限 |
+| job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
 | `news_fetch` | **10:00〜20:00の2時間おき**（10/12/14/16/18/20時） | `0 1-11/2 * * *` | **3分野**（ai・investment・sns）を直近3時間ラップ取得（初回10時は夜間を埋める14h）、重複排除、時間単位ダイジェスト作成 | 3分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
+
+**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
