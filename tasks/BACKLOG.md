@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **3件**（**T-M8-88 本番の定時実行**／T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜87 は done | 下記M8セクション |
+| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜89 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -36,10 +36,11 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 **次の一手（推奨順）**
 
-1. **本番の未整備を埋める（P-1）**。T-M8-87 は 2026-08-14 に本番反映済み（`/signup` 復旧）。残るのは
-   (a) **定時実行の有効化**（T-M8-88。これが無いと予約投稿も通知メールも動かない）
-   (b) **Supabase の CAPTCHA 有効化**（無効だとTurnstileが素通りする）
-   (c) **Stripeポータル設定**（`npm run stripe:portal:setup -- --target production`）
+1. **本番の未整備を埋める（P-1）**。T-M8-87（`/signup` 復旧）と T-M8-88（定時実行）は 2026-08-14 に対応済み。
+   残るのは**人の操作だけ**——
+   (a) **Supabase の CAPTCHA 有効化**（無効だとTurnstileが素通りする）
+   (b) **Stripeポータル設定**（`npm run stripe:portal:setup -- --target production`。
+       これが済むまで T-M8-89 で直した「プランをアップグレード」も押しても失敗する）
 2. **運営者が `exosai.net` で登録し、Xアカウントを連携する**。そのうえで **`npm run release:production`** の
    実物スモークを回す（本番DBには利用者もXアカウントも1件も無く、スモークは `--account` を要求する）
 3. **D-17（法務文書の弁護士レビュー）**。T-M8-75で条項を19条へ増やし、T-M8-81で屋号を足したため
@@ -2042,7 +2043,37 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
-### T-M8-88: 本番の定時実行（Vercel Cron）を有効にする `todo`
+### T-M8-89: AI設定の「アップグレード」が押しても何も起きない導線だった `done`
+- 参照: 要件06 §ロック状態のCTA・`src/app/app/ai-settings/page.tsx` / 依存: なし / サイズ: S
+- **発端**: 運営者の指摘。「mdプランにアップグレード（¥1,000/月）」ではなく「プランをアップグレード」にし、
+  遷移先を適切なStripeのプラン選択ページにしてほしい。
+- **調べて分かったこと（指摘より重い）**: CTAは `/plans` へのリンクだったが、**`/plans` は契約が有効で
+  Stripe顧客が紐づいた利用者を `/app` へ送り返す**（T-M8-54 の判定）。つまり standard プランの契約者が
+  押すとホームへ戻るだけで**何も起きない**。文言だけの問題ではなく行き止まりだった。
+- **なぜE2Eで見えなかったか**: `ai-settings.spec.ts` はこの導線を検証しており `href="/plans"` まで
+  assertしていたが、**fixture（`e2e/fixtures/account.ts`）が `stripe_customer_id` をNULLのままにする**ため
+  `/plans` の送り返しが起きなかった。実際の契約者は必ず顧客が紐づいているので、**テストが再現できない
+  状態でだけ不具合が出る**形になっていた。「行き先をassertしている」ことが安心の根拠にならない例。
+- **やったこと**:
+  1. `UpgradePlanButton`（`src/components/billing/upgrade-plan-button.tsx`）を追加。契約者は
+     **Stripe Customer Portal のプラン選択画面**（`intent="update"`。設定＞課金の「プランを変更」と同じ経路）へ
+     直接入る。Portalセッションはサーバーで作るため `href` を先に決められず、リンクではなくボタンにした。
+     失敗時はトーストで理由を出す（黙って何も起きないボタンにしない）。
+  2. Stripe顧客が未紐づけのあいだ（webhook到着待ち等）だけ `/plans` へ送る。この状態では Portal を作れず、
+     `/plans` 側も送り返さない（T-M8-54 で例外にしてある）。`PortalButton` と同じ判定。
+  3. `LockedState` に `action?: ReactNode` を追加し、主操作の見た目を `stateActionClassName` として
+     リンクとボタンで共有した（別々に書くと片方だけ直したときに同じ位置の操作が違う見え方になる）。
+  4. **E2Eを実利用者の状態で検証する形に直した**——テスト内で `stripe_customer_id` を入れ、
+     ボタンであること／アップグレードのリンクが存在しないことをassertする。`/plans` へのリンクに
+     戻したら落ちる。
+- **後続への注意**: この導線が実際に機能するには **Stripe側のカスタマーポータル設定が必要**
+  （`npm run stripe:portal:setup -- --target production`）。2026-08-14 時点で本番は未設定で、
+  `npm run doctor -- --base https://exosai.net` が「プランを変更: 押すと失敗します」と出している（P-1）。
+  **コードを直しても相手側の設定が済むまで動かない**。
+  fixtureが `stripe_customer_id` をNULLにしているのは T-M8-54 のテスト（顧客未紐づけでも進める行き先がある）
+  が依存しているため。必要なテストの中で個別に入れる。
+
+### T-M8-88: 本番の定時実行（Vercel Cron）を有効にする `done`
 - 参照: 要件04 §6（定時トリガー4本）・[launchd→Vercel Cron](../docs/operations/launchd-to-vercel-cron.md) §3〜§5 / 依存: なし / サイズ: S
 - **発端**: 2026-08-14 の本番反映後、`npm run doctor -- --base https://exosai.net` が「定時実行: まだ一度も動いていません」を出した。
 - **事実**: `vercel.json` が無く Vercel Cron は未設定。`ops/launchd/` の4本は `http://127.0.0.1` 向けで `launchctl` にも未登録。
@@ -2065,13 +2096,23 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **注意**: `news-fetch` はAI費用が発生する（3分野×1日6回）。有効化した時点から課金が始まる。
   `/api/cron/canary` は cron へ登録しない（D-11・2026-07-28決定）。
 
+- **実装結果（2026-08-14）**: 運営者の回答でVercelは既に **Pro** と確認できたので `*/5` をそのまま採用し、
+  `vercel.json` に4本を登録した（要件04 §6 のUTC列どおり）。**schedule の一致を機械検査にした**
+  ——`src/lib/ops/vercel-crons.test.ts` が (a)4本あること (b)各scheduleが要件04 §6 の表と一致すること
+  (c)`news_fetch` のUTC→JST換算が10/12/14/16/18/20時になること (d)登録したpathのrouteが実在すること
+  (e)カナリアを登録していないこと を検査する。**4種の意図的な破壊**（間隔を`*/15`へ・JSTのまま書く・
+  1本消す・存在しないrouteを足す）で落ちることを確認した。定時実行は**止まってもアプリは200を返し
+  画面に何も出ない**ので、正本との突き合わせを人の目に任せない。
+- **後続への注意**: `ops/launchd/` の4本は移行前の構成として残してある（ロールバック先）。
+  **launchdとVercel Cronを長期間併用しない**。`news_fetch` は有効化した時点からAI費用が出る（3分野×1日6回）。
+
 ## 要決定・外部準備(ユーザー作業)
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
 
 **P-1（本番の未整備・2026-08-14 `npm run doctor -- --base https://exosai.net` で検出）** — 本番へ反映して初めて分かった、コードではなく**環境側の未整備**。doctorが挙げたものをそのまま残す（4件のうち3件が人の操作を要する）。
 
-1. **定時実行が一度も動いていない（最重要）** — `vercel.json` が存在せず Vercel Cron が未設定。`ops/launchd/` の4本のplistは**ローカル（`http://127.0.0.1`）向け**で、`launchctl list` にも登録されていない。つまり**本番では予約投稿・通知メール・ニュース取得・実績収集・日次サマリが1つも動かない**。[launchd→Vercel Cron](../docs/operations/launchd-to-vercel-cron.md) §3 の移行条件のうち「外部ユーザーへ安定提供を開始し、個人Macを単一障害点にできなくなった」が本番稼働で満たされた。→ **T-M8-88** で対応する。**要確認**: `*/5 * * * *`（5分間隔）は Vercel の Hobby プランでは使えない（cronは1日1回・2本まで）。Dashboard でプランを確認してから入れる。
+1. **定時実行が一度も動いていない（最重要）** — `vercel.json` が存在せず Vercel Cron が未設定。`ops/launchd/` の4本のplistは**ローカル（`http://127.0.0.1`）向け**で、`launchctl list` にも登録されていない。つまり**本番では予約投稿・通知メール・ニュース取得・実績収集・日次サマリが1つも動かない**。→ **2026-08-14 解決（T-M8-88）**。Vercelが Pro と確認できたため `vercel.json` に4本を登録した。[launchd→Vercel Cron](../docs/operations/launchd-to-vercel-cron.md) §3 の移行条件のうち「外部ユーザーへ安定提供を開始し、個人Macを単一障害点にできなくなった」が本番稼働で満たされた。→ **T-M8-88** で対応する。**要確認**: `*/5 * * * *`（5分間隔）は Vercel の Hobby プランでは使えない（cronは1日1回・2本まで）。Dashboard でプランを確認してから入れる。
 2. **人間確認（CAPTCHA）が本番Supabaseで無効**（人の操作） — 画面にはTurnstileの確認欄が出るが、**サーバー側が検証しないため素通りできる**。Supabase → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`） → Authentication → Attack Protection → CAPTCHA を有効化し、Cloudflare の Secret Key を設定する。stagingで同じ設定漏れが2026-08-01に起きている（T-M7-48）。
 3. **Stripe カスタマーポータルの設定が本番に合っていない**（コマンド1つ） — 「プランを変更」のボタンは出るが押すと失敗する。`npm run stripe:portal:setup -- --target production` を実行する（外部サービスの設定を書き換えるため実行前に運営者の了解が要る。IDは変わらない）。手順は `docs/operations/deployment.md` §1.4。
 4. Xアカウント未連携・定時実行の実績なしは、上記1と運営者の初回セットアップで解消する（doctorは⚠️で出す）。

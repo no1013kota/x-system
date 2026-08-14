@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { EmptyState, LockedState } from "@/components/app-shell/page-state";
-import { PLANS } from "@/lib/plans";
+import { UpgradePlanButton } from "@/components/billing/upgrade-plan-button";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { APP_NAME } from "@/lib/app-config";
 import type { AiKeyProvider } from "@/lib/api-keys";
@@ -61,6 +61,8 @@ interface ProfileRow {
   active_x_account_id: string | null;
   ai_purpose_config: unknown;
   plan: "md" | "premium" | "standard";
+  /** Stripeの顧客ID。無いあいだは Portal セッションを作れない（T-M8-89）。 */
+  stripe_customer_id: string | null;
 }
 
 export default async function AiSettingsPage({
@@ -74,7 +76,7 @@ export default async function AiSettingsPage({
   const supabase = await createSupabaseServerClient();
   const profile = await supabase
     .from("profiles")
-    .select("active_x_account_id, ai_purpose_config, plan")
+    .select("active_x_account_id, ai_purpose_config, plan, stripe_customer_id")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
   const planForKeys = profile.data?.plan ?? "standard";
@@ -114,6 +116,8 @@ export default async function AiSettingsPage({
   }
 
   const plan = profile.data?.plan ?? "standard";
+  // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
+  const hasStripeCustomer = Boolean(profile.data?.stripe_customer_id);
   let learningSources: LearningSourceView[] = [];
   let ownPostsNextEligibleAt: string | null = null;
   if (tab === "learning" && account) {
@@ -208,8 +212,7 @@ export default async function AiSettingsPage({
         ) : tab === "base-md" ? (
           plan === "standard" ? (
             <LockedState
-              actionHref="/plans"
-              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              action={<UpgradePlanButton enabled={hasStripeCustomer} />}
               description="学習・設定の結果はベースmdに反映され、投稿生成に使われています。mdプラン以上では内容を直接確認・編集でき、変更履歴からいつでも元に戻せます。"
               title="ベースmdの確認・編集は mdプラン以上でご利用いただけます"
             />
@@ -232,8 +235,7 @@ export default async function AiSettingsPage({
         ) : tab === "prompts" ? (
           plan === "standard" ? (
             <LockedState
-              actionHref="/plans"
-              actionLabel={`mdプランにアップグレード（¥${PLANS.md.monthlyPriceJpy.toLocaleString()}/月）`}
+              action={<UpgradePlanButton enabled={hasStripeCustomer} />}
               description="投稿パターンごとのプロンプトを直接編集できます。いつでもシステム既定に戻せます。"
               title="プロンプトのカスタマイズは mdプラン以上でご利用いただけます"
             />

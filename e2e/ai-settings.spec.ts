@@ -219,7 +219,13 @@ test("通常プランではベースmd・プロンプトが鍵付きで案内さ
   // 「まだ何も無い（＝自分で埋められる）」と「このプランでは開けない（＝契約を変えるしかない）」を
   // 同じ空状態で出していた。前者だと思った利用者は設定画面を探しに行って行き止まりになる。
   const account = await accounts.create("md-locked");
-  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+  // **`stripe_customer_id` を必ず入れる**（T-M8-89）。fixtureはこれをNULLのままにするが、
+  // 実際の契約者は必ず顧客が紐づいている。NULLのままだと `/plans` が送り返さないため、
+  // 「アップグレードを押してもホームへ戻るだけ」という実利用者だけが踏む状態を再現できない。
+  await query(`update profiles set plan = 'standard', stripe_customer_id = $2 where id = $1`, [
+    account.userId,
+    `cus_e2e_${account.userId.slice(0, 8)}`,
+  ]);
 
   await signIn(page, account);
   await page.goto("/app/ai-settings?tab=base-md");
@@ -227,10 +233,12 @@ test("通常プランではベースmd・プロンプトが鍵付きで案内さ
   await expect(
     page.getByRole("heading", { name: /ベースmdの確認・編集は mdプラン以上/ }),
   ).toBeVisible();
-  // 行き先は料金プランだけ。**設定を触れば直る**かのような導線を出さない。
-  const upgrade = page.getByRole("link", { name: /mdプランにアップグレード/ });
+  // 行き先はStripeのプラン選択（Portal `intent=update`）。Portalセッションはサーバーで作るため
+  // `href` を先に決められず、リンクではなくボタンで出す。**`/plans` へのリンクへ戻したら落ちる**
+  // ——契約者は `/plans` から `/app` へ送り返されるので、押しても何も起きない導線になる。
+  const upgrade = page.getByRole("button", { name: "プランをアップグレード" });
   await expect(upgrade).toBeVisible();
-  await expect(upgrade).toHaveAttribute("href", "/plans");
+  await expect(page.getByRole("link", { name: /アップグレード/ })).toHaveCount(0);
 
   // プロンプトタブも同じ扱い。
   await page.goto("/app/ai-settings?tab=prompts");
