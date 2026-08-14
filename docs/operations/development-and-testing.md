@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.12 |
-| 更新日 | 2026-08-14 |
+| バージョン | v4.13 |
+| 更新日 | 2026-08-15 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
 このリポジトリで開発を進めるときの手順書です。**開発とテストは Claude Code に任せる前提**で書いてあります。専門知識は要りません。
@@ -336,6 +336,10 @@ npm run doctor の結果を見て、直せるものは直してください。
 
 層8は 2026-08-01 に追加しました。staging で Turnstile の許可ドメインを登録しておらず**ログインも新規登録もできない**状態だったのに、層1〜7 のすべてが緑でした。**相手のサービス側の設定はコードに現れない**ため、どの層も原理的に見えません（T-M7-48）。
 
+この層で見つかった不具合は**3件になりました**。(1) stagingのTurnstile許可ドメイン未登録（2026-08-01・T-M7-48）。(2) 本番SupabaseのCAPTCHA無効——画面に確認欄は出るのにサーバーが検証せず素通りできた（2026-08-14）。(3) 本番SupabaseのSite URLが既定のlocalhostのまま——**確認メールのリンクがlocalhostを指し、登録の最後の一歩が踏めなかった**（2026-08-14・T-M8-90）。
+
+(3)は前2件と違い**無認証では探査できません**。Supabaseは許可リストに無いリダイレクト先を黙ってSite URLへ差し替えるだけでエラーを返さず、公開エンドポイント `GET /auth/v1/settings` は `site_url` を含みません（実測）。そのため Management API を使い、トークンが無い環境では「確認できません」で出します。**「確認できない」を「問題ない」と混同させない**のがこの層の要点です。
+
 | # | 層 | コマンド | 守るもの | **見えないもの** |
 |---|---|---|---|---|
 | 1 | 型・lint | `npm run typecheck` / `npm run lint` | 型の整合、例外の握りつぶし禁止 | 実行時の振る舞い |
@@ -345,7 +349,7 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 5 | provider契約 | `npm run check:providers` | **送っているリクエストが実APIに受理されるか** | 応答をアプリが扱えるか。**Googleは既定でskip**（`PROVIDER_CHECK_GOOGLE=1` で有効化・T-M7-17） |
 | 6 | 実物スモーク | `npm run smoke:live -- --account <id>` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
-| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>` | **相手側の設定（許可ドメイン等）がその環境で実際に通るか** | Turnstile以外（OAuth・SMTP・Stripeの設定は手動確認） |
+| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・SMTPの設定は手動確認。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
 内訳: `src` 配下のテストファイル227本 = 単体160 ＋ `*.db.test.ts` 66 ＋ provider契約 `*.live.test.ts` 1。`npm test` の結果は 1,787 passed / 6 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-11 時点）。
 

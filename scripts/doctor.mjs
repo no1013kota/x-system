@@ -15,6 +15,10 @@ const MARK = { ok: "✅", warn: "⚠️ ", error: "❌" };
 const base = baseUrl();
 const isLocal = base.includes("127.0.0.1") || base.includes("localhost");
 const { cronSecretEnvName } = await import("../src/lib/ops/release-gate.ts");
+const { projectRefFromCsp } = await import("../src/lib/ops/release-gate.ts");
+const { AUTH_TOKEN_ENV, judgeAuthUrls, parseAllowList, unknownAuthUrls } = await import(
+  "../src/lib/ops/auth-url-status.ts"
+);
 const checks = [];
 
 // --- ローカル基盤（デプロイ先には当てはまらないので飛ばす） ---
@@ -63,9 +67,12 @@ if (isLocal) {
 
 // --- アプリが応答するか ---
 let appUp = false;
+// 反映先がどのSupabaseプロジェクトを使っているかはCSPヘッダから読める（release-gate と同じ手）。
+let appCsp = null;
 try {
   const res = await fetch(base, { signal: AbortSignal.timeout(8000) });
   appUp = res.ok;
+  appCsp = res.headers.get("content-security-policy");
   checks.push(
     appUp
       ? { name: "アプリ", level: "ok", detail: `応答しています（${base}）` }
@@ -85,6 +92,41 @@ try {
       ? "ターミナルで `npm run dev` を実行してください"
       : "デプロイが完了しているか確認してください",
   });
+}
+
+/**
+ * 登録・再設定メールの行き先（T-M8-90）。
+ *
+ * **ローカルは対象外**。`supabase/config.toml` がリポジトリにあり設定はコードから読めるので、
+ * 「コードに現れない設定」の問題が起きない。デプロイ先だけ Management API で確かめる。
+ */
+async function authUrlCheck() {
+  const token = envValue(AUTH_TOKEN_ENV);
+  if (!token) return unknownAuthUrls(`${AUTH_TOKEN_ENV} が見つかりません`);
+  const ref = projectRefFromCsp(appCsp);
+  if (!ref) return unknownAuthUrls("反映先が使うSupabaseプロジェクトを特定できません");
+  try {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/config/auth`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 401 || res.status === 403) {
+      return unknownAuthUrls(`${AUTH_TOKEN_ENV} でこのプロジェクトを読めません（${res.status}）`);
+    }
+    if (!res.ok) return unknownAuthUrls(`Supabaseの応答が異常です（${res.status}）`);
+    const body = await res.json();
+    return judgeAuthUrls({
+      appBaseUrl: base,
+      siteUrl: body.site_url ?? null,
+      uriAllowList: parseAllowList(body.uri_allow_list),
+    });
+  } catch (error) {
+    return unknownAuthUrls(String(error.message).slice(0, 60));
+  }
+}
+
+if (appUp && !isLocal) {
+  checks.push(await authUrlCheck());
 }
 
 // --- データの状態（アプリ経由。判定はサーバー側と共通） ---
