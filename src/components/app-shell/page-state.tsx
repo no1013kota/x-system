@@ -18,6 +18,23 @@ interface EmptyStateProps extends StateProps {
   actionLabel?: string;
 }
 
+interface LockedStateProps extends EmptyStateProps {
+  /**
+   * リンクでは表せない操作を置く場所（T-M8-89）。
+   *
+   * プランのアップグレードは Stripe の Portal セッションをサーバーで作ってから遷移するため、
+   * `href` を先に決められない。`action` を渡した場合は `actionHref`/`actionLabel` より優先する。
+   */
+  action?: ReactNode;
+}
+
+/**
+ * 状態カードの主操作の見た目。**リンクとボタンで同じものを使う**（T-M8-89）。
+ * 別々に書くと、片方だけ寸法や色を直したときに同じ位置の操作が違う見え方になる。
+ */
+export const stateActionClassName =
+  "mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-body font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
 // 空状態はカード内 padding 44px・中央寄せ・灰円アイコン48px（デザイン §補助画面 E）。
 // 器の見た目は `Card` と同じものを使う（T-M8-51。同じ並びを手書きしない）。
 const stateCardClassName = `${cardClassName} px-6 py-11 text-center`;
@@ -95,11 +112,12 @@ export function EmptyState({
  * 「行き先はプラン変更しかない」ことを先に伝える。
  */
 export function LockedState({
+  action,
   actionHref,
   actionLabel,
   description,
   title,
-}: EmptyStateProps) {
+}: LockedStateProps) {
   return (
     <section className={stateCardClassName}>
       <span className="mx-auto grid size-13 place-items-center rounded-pill bg-brand-subtle text-brand">
@@ -109,14 +127,13 @@ export function LockedState({
       <p className="mx-auto mt-2 max-w-[460px] text-body leading-7 text-ink-2">
         {description}
       </p>
-      {actionHref && actionLabel ? (
-        <Link
-          className="mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-body font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          href={actionHref}
-        >
-          {actionLabel}
-        </Link>
-      ) : null}
+      {action ?? (
+        actionHref && actionLabel ? (
+          <Link className={stateActionClassName} href={actionHref}>
+            {actionLabel}
+          </Link>
+        ) : null
+      )}
     </section>
   );
 }
