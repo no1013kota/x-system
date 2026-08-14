@@ -71,7 +71,7 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 デプロイ前に、ローカルで次がすべて緑であること。
 
 ```bash
-npm run release:check    # typecheck → lint → 依存監査 → test:db → build → test:e2e
+npm run release:check    # typecheck → lint → 依存監査 → test:db → build → check:csp-nonce → test:e2e
 ```
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。

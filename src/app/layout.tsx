@@ -45,6 +45,31 @@ export const metadata: Metadata = {
   description: "AIによるX運用の自動化・半自動化",
 };
 
+/**
+ * **静的プリレンダを全面的に止める**（T-M8-87）。
+ *
+ * CSPの `script-src` は `'nonce-…' 'strict-dynamic'`（`security-headers.ts`）。
+ * `'strict-dynamic'` があるとホスト指定（`'self'`）は**無視され**、nonceが一致する
+ * scriptだけが実行される。nonceはリクエストごとに作るので、**ビルド時にHTMLへ
+ * 焼き付けることが原理的にできない**。
+ *
+ * その結果、静的プリレンダされたページは script が1本も実行されず、
+ * ハイドレートしない＝フォームもTurnstileも動かない。2026-08-14 に本番（exosai.net）で
+ * `/signup` と `/reset-password` が実際にこの状態だった（scriptタグ16本すべてブロック・
+ * 会員登録とパスワード再設定が不可能）。**HTTPは200を返し、本文も表示されるため
+ * 気付けない**。
+ *
+ * 個々のページへ書くと「動的入力を持たないページを新しく足したら静かに壊れる」ので、
+ * ここで一括して止める（CLAUDE.md 原則3＝手順を記憶に依存させない）。
+ * 失われる最適化は実質ゼロだった——32ルートのうち静的だったのは
+ * `/signup`・`/reset-password`・`/_not-found` の3つだけで、LPも法務ページも既に動的。
+ *
+ * 破られていないことは `npm run check:csp-nonce`（`release:check` に組込み）が
+ * ビルド成果物を走査して確認する。E2Eは `next dev` で動きプリレンダが起きないため、
+ * この不具合を**原理的に検出できない**。
+ */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{

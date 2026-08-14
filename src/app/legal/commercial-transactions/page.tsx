@@ -9,8 +9,7 @@ export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${APP_NAME}`,
 };
 
-// nonceベースCSP（T-M6-17）のため動的レンダリング（静的prerenderはnonce付与不可）。
-export const dynamic = "force-dynamic";
+// 動的レンダリングの指定は `app/layout.tsx` へ移した（T-M8-87）。
 
 /**
  * 特定商取引法11条（通信販売の広告表示）に基づく表記（本番運用版・T-M8-72）。

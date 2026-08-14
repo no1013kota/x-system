@@ -30,9 +30,8 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
 };
 
-// nonceベースCSP（T-M6-17）はper-requestのnonceを要するため動的レンダリングにする
-// （静的prerenderだとNext.jsのscriptにnonceが付かずCSPで実行が阻害される）。
-export const dynamic = "force-dynamic";
+// 動的レンダリングの指定は `app/layout.tsx` へ移した（T-M8-87）。
+// ページごとに書くと書き忘れたページが静かに壊れる（`/signup` が実際にそうなった）。
 
 const CONTAINER = "mx-auto w-full max-w-[1180px] px-[clamp(16px,3.5vw,32px)]";
 const SECTION_PAD = "py-[clamp(56px,8vw,96px)]";
