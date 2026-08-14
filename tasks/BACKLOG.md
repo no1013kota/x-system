@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜89 は done | 下記M8セクション |
+| 開発タスク（着手可） | **3件**（**T-M8-90 Auth URL設定の検出**／T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜89 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -37,10 +37,9 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 **次の一手（推奨順）**
 
 1. **本番の未整備を埋める（P-1）**。T-M8-87（`/signup` 復旧）と T-M8-88（定時実行）は 2026-08-14 に対応済み。
-   残るのは**人の操作だけ**——
-   (a) **Supabase の CAPTCHA 有効化**（無効だとTurnstileが素通りする）
-   (b) **Stripeポータル設定**（`npm run stripe:portal:setup -- --target production`。
-       これが済むまで T-M8-89 で直した「プランをアップグレード」も押しても失敗する）
+   CAPTCHA（運営者）とStripeポータル設定も 2026-08-14 に完了。残るのは
+   (a) **Supabase の Site URL / Redirect URLs**（確認メールのリンクがlocalhostへ飛ぶ。P-1 の5）
+   (b) `vercel.json` のデプロイ（T-M8-88 のコミットが本番へ入るまで定時実行は動かない）
 2. **運営者が `exosai.net` で登録し、Xアカウントを連携する**。そのうえで **`npm run release:production`** の
    実物スモークを回す（本番DBには利用者もXアカウントも1件も無く、スモークは `--account` を要求する）
 3. **D-17（法務文書の弁護士レビュー）**。T-M8-75で条項を19条へ増やし、T-M8-81で屋号を足したため
@@ -2043,6 +2042,26 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-90: Supabase Auth のURL設定の食い違いを検出できるようにする `todo`
+- 参照: `src/lib/ops/captcha-status.ts`（同じ動機の先例）・`scripts/doctor.mjs` / 依存: なし / サイズ: M
+- **発端**: 2026-08-14、本番で会員登録すると**確認メールのリンクが localhost を指していた**（運営者が発見）。
+  アプリは正しく `https://exosai.net/auth/confirm` を渡していたが、Supabaseは許可リストに無いリダイレクト先を
+  無視して Site URL（既定の localhost）へ差し替えるため。**登録の最後の一歩が踏めない**＝実質使えない。
+- **なぜ検出できなかったか**: 相手側（Supabase）の設定はコードに現れない。しかも
+  **Supabaseはこれをエラーにしない**（黙って差し替える）ので、`signUp` の応答は成功で返る。
+  公開エンドポイント `GET /auth/v1/settings` は `external`・`disable_signup`・`mailer_autoconfirm` 等を返すが
+  **`site_url` を含まない**（2026-08-14 実測）ため、`captcha-status.ts` のような無認証の探査は成立しない。
+- **これで3件目**: staging のTurnstile許可ドメイン未登録（2026-08-01・T-M7-48）→ `check:turnstile` を作った。
+  本番のCAPTCHA無効（2026-08-14）→ `captcha-status.ts` が検出した。今回のSite URL → **検出手段が無い**。
+- **やること（案）**: Supabase Management API（`GET /v1/projects/{ref}/config/auth`）で `site_url` と
+  `uri_allow_list` を読み、`APP_BASE_URL` と一致するかを `doctor` の1項目にする。
+  **トークンが無い環境では「確認できません」で出す**（`PRODUCTION_CRON_SECRET` が無いときと同じ振る舞い。
+  黙って✅にしない）。トークンは `SUPABASE_ACCESS_TOKEN`（`.env.local`）から読む。
+- **要判断**: Management APIのトークンを手元に置くかどうか（プロジェクト設定を書き換えられる強い権限）。
+  読み取りだけに使うが、鍵の保管が1つ増える。置かない選択なら、代わりに
+  「本番へ反映した直後に実際に登録を1周してメールのリンクを目で見る」を
+  `release-checklist.md` の手順へ入れる（手動だが忘れたら気付ける形にはなる）。
+
 ### T-M8-89: AI設定の「アップグレード」が押しても何も起きない導線だった `done`
 - 参照: 要件06 §ロック状態のCTA・`src/app/app/ai-settings/page.tsx` / 依存: なし / サイズ: S
 - **発端**: 運営者の指摘。「mdプランにアップグレード（¥1,000/月）」ではなく「プランをアップグレード」にし、
@@ -2113,9 +2132,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
 **P-1（本番の未整備・2026-08-14 `npm run doctor -- --base https://exosai.net` で検出）** — 本番へ反映して初めて分かった、コードではなく**環境側の未整備**。doctorが挙げたものをそのまま残す（4件のうち3件が人の操作を要する）。
 
 1. **定時実行が一度も動いていない（最重要）** — `vercel.json` が存在せず Vercel Cron が未設定。`ops/launchd/` の4本のplistは**ローカル（`http://127.0.0.1`）向け**で、`launchctl list` にも登録されていない。つまり**本番では予約投稿・通知メール・ニュース取得・実績収集・日次サマリが1つも動かない**。→ **2026-08-14 解決（T-M8-88）**。Vercelが Pro と確認できたため `vercel.json` に4本を登録した。[launchd→Vercel Cron](../docs/operations/launchd-to-vercel-cron.md) §3 の移行条件のうち「外部ユーザーへ安定提供を開始し、個人Macを単一障害点にできなくなった」が本番稼働で満たされた。→ **T-M8-88** で対応する。**要確認**: `*/5 * * * *`（5分間隔）は Vercel の Hobby プランでは使えない（cronは1日1回・2本まで）。Dashboard でプランを確認してから入れる。
-2. **人間確認（CAPTCHA）が本番Supabaseで無効**（人の操作） — 画面にはTurnstileの確認欄が出るが、**サーバー側が検証しないため素通りできる**。Supabase → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`） → Authentication → Attack Protection → CAPTCHA を有効化し、Cloudflare の Secret Key を設定する。stagingで同じ設定漏れが2026-08-01に起きている（T-M7-48）。
-3. **Stripe カスタマーポータルの設定が本番に合っていない**（コマンド1つ） — 「プランを変更」のボタンは出るが押すと失敗する。`npm run stripe:portal:setup -- --target production` を実行する（外部サービスの設定を書き換えるため実行前に運営者の了解が要る。IDは変わらない）。手順は `docs/operations/deployment.md` §1.4。
+2. ~~**人間確認（CAPTCHA）が本番Supabaseで無効**~~ → **2026-08-14 解決**（運営者が設定。`doctor` が「有効です」を返すことを確認）。以下は経緯 — 画面にはTurnstileの確認欄が出るが、**サーバー側が検証しないため素通りできる**。Supabase → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`） → Authentication → Attack Protection → CAPTCHA を有効化し、Cloudflare の Secret Key を設定する。stagingで同じ設定漏れが2026-08-01に起きている（T-M7-48）。
+3. ~~**Stripe カスタマーポータルの設定が本番に合っていない**~~ → **2026-08-14 解決**（運営者の了解を得て `npm run stripe:portal:setup -- --target production` を実行。`bpc_1TvFJXE811f4DP4qdNAIneA3` を `updated-in-place` で更新し、`doctor` が「プラン変更・解約のどちらも操作できます」を返すことを確認。`.env.local` へ `PRODUCTION_STRIPE_*` 5件を置いた）。以下は経緯 — 「プランを変更」のボタンは出るが押すと失敗する。`npm run stripe:portal:setup -- --target production` を実行する（外部サービスの設定を書き換えるため実行前に運営者の了解が要る。IDは変わらない）。手順は `docs/operations/deployment.md` §1.4。
 4. Xアカウント未連携・定時実行の実績なしは、上記1と運営者の初回セットアップで解消する（doctorは⚠️で出す）。
+
+5. **確認メールのリンクが localhost へ飛ぶ**（人の操作・2026-08-14 運営者が発見） — 本番で会員登録すると、確認メールのリンクが `exosai.net` ではなく `localhost` を指す。**アプリ側は正しい**——`src/app/actions/auth.ts` の `confirmationRedirectUrl()` は `new URL("/auth/confirm", env.APP_BASE_URL)` で、本番の `APP_BASE_URL` は `https://exosai.net`。原因はSupabase側で、**許可リストに無いリダイレクト先はSupabaseが無視して Site URL へ差し替える**ため。本番プロジェクトの Site URL が既定の localhost のままだった。パスワード再設定メール（`auth.ts:181` の `redirectTo`）も同じ経路なので同時に直る。
+   → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`）→ Authentication → **URL Configuration** で **Site URL** を `https://exosai.net` にし、**Redirect URLs** へ `https://exosai.net/**` を追加する。
+   **`supabase config push` を本番へ実行してはならない**——`supabase/config.toml` はローカル用で `site_url = "http://127.0.0.1:3000"`・`additional_redirect_urls` もlocalhostのみ。押すとこの不具合が再発する（CAPTCHAは `enabled = true` なので押し戻さないが、Site URLは戻る）。
+   **これで「相手側の設定がコードに現れない」不具合は3件目**（2026-08-01 stagingのTurnstile許可ドメイン・T-M7-48／2026-08-14 本番のCAPTCHA／今回のSite URL）。→ 検出手段は **T-M8-90**。
 
 **運営者向けの確認手段**: `npm run doctor -- --base https://exosai.net`（読み取りのみ・費用なし）。`.env.local` に `PRODUCTION_CRON_SECRET` を入れた（2026-08-14。無いと「確認用の鍵が見つからない」で本番の中身を見られない）。
 
