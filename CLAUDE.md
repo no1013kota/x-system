@@ -66,6 +66,7 @@ X自動投稿Webアプリ「Space AI」の開発リポジトリ。仕様の正�
 | **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
+| **レンダリングモード・CSP・proxy（middleware）** | `npm run build` ＋ **`npm run check:csp-nonce`**（`release:check` に含む）＋ **実ブラウザで公開ページのコンソールエラーと失敗リクエストまで見る**。nonceベースCSPと静的prerenderは両立しないため、prerenderされたページは**scriptが1本も実行されない**。**HTTPは200を返し本文も表示される**ので、URLを叩く検査では見えない。E2Eは `next dev` で動きprerenderしないため原理的に再現しない（2026-08-14、本番の `/signup`・`/reset-password` が18日間この状態だった・T-M8-87） |
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
 | **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する |

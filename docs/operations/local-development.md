@@ -106,9 +106,10 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
 | `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipで58本のDBテストが静かに消えるのを防ぐ（`release:check` が使う） |
 | `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
-| `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
+| `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **check:csp-nonce** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
+| `npm run check:csp-nonce` | **ビルド成果物**（`.next/server/app/**/*.html`）を走査し、CSPのnonceを持てないHTMLが残っていないか確認する。**要 `npm run build`**（成果物が無ければ緑にせず終了コード2で止まる）。静的prerenderされたページはnonceを付けられず、`'strict-dynamic'` の下でscriptが1本も実行されない＝画面が壊れる（2026-08-14に本番の `/signup`・`/reset-password` で発生・T-M8-87）。E2Eは `next dev` で動きprerenderしないため、この不具合は**原理的に検出できない** |
 | `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
 | `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |
