@@ -2,9 +2,19 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-07-24 |
+| バージョン | v1.4 |
+| 更新日 | 2026-08-14 |
 | 関連 | [システム構成](../requirements/01_system_architecture.md)／[ジョブ・自動実行](../requirements/04_jobs_and_automation.md) |
+
+## 0. 現在の状態（2026-08-14）
+
+**production は Vercel Cron へ移行済み**（T-M8-88）。`vercel.json` の `crons` に4本を登録している。
+
+移行のきっかけは §3 の条件そのものではなく、**移行しないまま本番を公開してしまったこと**だった。2026-08-14 に `exosai.net` を公開した直後 `npm run doctor -- --base https://exosai.net` を回したところ「定時実行: まだ一度も動いていません」が出た。`vercel.json` が存在せず、`ops/launchd/` の4本は `http://127.0.0.1` 向けで `launchctl` にも未登録——つまり**本番では予約投稿・通知メール・ニュース取得・実績収集・日次サマリが1つも動かない状態でアプリだけが応答していた**。アプリは200を返すので画面からは分からない。
+
+`ops/launchd/` の4本は移行前の構成としてリポジトリに残してある（§5 のロールバック先）。**launchdとVercel Cronを長期間併用しない。**
+
+schedule の正本は要件04 §6 の表で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在・カナリアを登録していないこと）。
 
 ## 1. 方針
 
