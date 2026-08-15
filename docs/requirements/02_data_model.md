@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.32 |
+| バージョン | v1.33 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -300,7 +300,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
-| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。値は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
+| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
 | `enabled` | `boolean` | not null default true |  |
@@ -577,13 +577,13 @@ RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはS
 
 ```json
 {
-  "categories": ["ai", "web3", "investment", "business", "business_ops", "sns"],
+  "categories": ["ai", "investment", "sns"],
   "impact_filter": ["high", "mid"],
   "max_items": 20
 }
 ```
 
-`categories`と`impact_filter`は重複なしで各1件以上、`max_items`は1〜100とする。表示一覧と時間単位ダイジェストの両方へ適用する。
+`categories`と`impact_filter`は重複なしで各1件以上、`max_items`は1〜100とする。既定は**取得3分野**（`NEWS_FETCH_CATEGORIES`・T-M7-55。migration `20260802000001`で既定値も3分野へ変更済み）。表示一覧と時間単位ダイジェストの両方へ適用する。
 
 ### 4.3 `profiles.notification_config`
 
@@ -629,7 +629,7 @@ RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはS
 }
 ```
 
-`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。
+`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。発信テーマ（L-5）の選択肢は**6テーマのまま**（PRD §8.3。生成の方向づけに使うため縮小しない——投稿作成・分析の選択肢を運用分野へ絞ったT-M8-100の対象外）。
 
 `tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、ベースmdへ展開しない。
 
@@ -817,7 +817,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | システム既定プロンプト | system defaultとして`p1`〜`p6`、`image`を1件ずつ作成 |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
-| テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4） |
+| テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
 | ニュースカテゴリ | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`をコード定数化 |
 | Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 

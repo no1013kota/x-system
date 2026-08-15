@@ -70,12 +70,13 @@ test("スケジュールにテーマを設定でき、行に出てDBへ入る（
 
   await page.getByRole("button", { name: "スケジュールを追加" }).click();
   await page.getByRole("radio", { name: "ノウハウ" }).check();
-  await page.getByLabel("テーマ", { exact: true }).selectOption("business_ops");
+  // 選択肢は運用テーマ＋その他のみ（T-M8-100）。運用外テーマは新規に選べない。
+  await page.getByLabel("テーマ", { exact: true }).selectOption("sns");
   await page.getByRole("checkbox", { name: "月", exact: true }).check();
   await page.getByRole("button", { name: "作成", exact: true }).click();
 
   // 行にテーマが出る（編集画面を開かないと分からない状態にしない）
-  await expect(page.getByText("業務改善", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("SNS運用", { exact: true }).first()).toBeVisible();
 
   await expect
     .poll(
@@ -88,7 +89,7 @@ test("スケジュールにテーマを設定でき、行に出てDBへ入る（
         )[0]?.theme,
       { message: "テーマがDBへ保存されること" },
     )
-    .toBe("business_ops");
+    .toBe("sns");
 });
 
 /**

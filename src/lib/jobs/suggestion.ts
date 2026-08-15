@@ -5,7 +5,7 @@ import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { THEME_IDS, THEME_OPTIONS } from "../themes";
+import { OPERATED_THEME_IDS, OPERATED_THEME_OPTIONS } from "../themes";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { PROMPT_TEMPLATE_MAX_CHARS } from "../prompts/prompt-templates";
 import type { Queryable } from "../x/token-refresh";
@@ -64,8 +64,10 @@ function makeSuggestionSchema(allowedIds: Set<string>) {
     advice: z
       .object({
         pattern: reasoned(z.enum(SUGGESTABLE_PATTERNS)),
-        // 「その他」は提案として実行可能でない（追加指示に書く意思表示）ため6テーマに限定する。
-        theme: reasoned(z.enum(THEME_IDS)),
+        // 「その他」は提案として実行可能でない（追加指示に書く意思表示）ため不可。
+        // 選択肢は運用中テーマ（最新ニュース画面と同じ・T-M8-100）に限定する——
+        // 運用していない分野を推奨しても投稿作成で選べない。
+        theme: reasoned(z.enum(OPERATED_THEME_IDS as [string, ...string[]])),
         image: reasoned(z.boolean()),
         prompt: z.object({
           kind: z.enum(SUGGESTABLE_PATTERNS),
@@ -125,9 +127,9 @@ async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   return rows[0] ?? null;
 }
 
-/** テーマの選択肢を「id=ラベル」で列挙する（LLMがidを選び、理由をラベルで書けるように）。 */
+/** テーマの選択肢を「id=ラベル」で列挙する（LLMがidを選び、理由をラベルで書けるように）。運用中テーマのみ（T-M8-100）。 */
 function themeChoices(): string {
-  return THEME_OPTIONS.map((t) => `${t.id}=${t.label}`).join(" / ");
+  return OPERATED_THEME_OPTIONS.map((t) => `${t.id}=${t.label}`).join(" / ");
 }
 
 /** 直前のレポート（format=2のみ。旧形式は前回参照に使えない）。 */
