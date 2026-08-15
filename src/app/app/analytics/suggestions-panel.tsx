@@ -40,10 +40,13 @@ export function SuggestionsPanel({
   suggestions,
   generating,
   plan,
+  needsAiKey = false,
 }: {
   suggestions: SuggestionDisplay[];
   generating: boolean;
   plan: "standard" | "md" | "premium";
+  /** BYOKでvalidなAIキーが無い＝毎朝の分析が始まらない状態（T-M8-95。登録導線を出す）。 */
+  needsAiKey?: boolean;
 }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -93,9 +96,21 @@ export function SuggestionsPanel({
 
       {suggestions.length === 0 ? (
         <div className="mt-4 rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          {generating
-            ? "投稿を分析しています。しばらくすると、ここに結果が表示されます。"
-            : "まだレポートがありません。Xアカウントを連携すると、毎朝8時ごろに自動で作られます（直近に投稿が無い場合は作られません）。"}
+          {generating ? (
+            "投稿を分析しています。しばらくすると、ここに結果が表示されます。"
+          ) : needsAiKey ? (
+            // BYOKはAIキーが無いと毎朝の分析jobがそもそも作られない（起票側のゲート）。
+            // 「待っていれば出る」ように見せず、始まらない理由と直し方を出す（原則1）。
+            <>
+              分析にはAIのAPIキーが必要です。
+              <Link className="mx-1 text-info-fg hover:underline" href="/app/settings?tab=api-keys">
+                設定のAPIキー
+              </Link>
+              から登録すると、毎朝8時ごろの自動分析が始まります。
+            </>
+          ) : (
+            "まだレポートがありません。毎朝8時ごろに自動で作られます（直近に投稿が無い場合は作られません）。"
+          )}
         </div>
       ) : (
         <ul className="mt-4 space-y-3">

@@ -93,3 +93,21 @@ test("standardにはプロンプト全文を出さず、mdプラン以上の案�
     page.getByRole("link", { name: /プロンプトのカスタマイズ（mdプラン以上）/ }),
   ).toHaveAttribute("href", "/app/ai-settings?tab=prompts");
 });
+
+test("BYOKでAIキーが未登録なら、始まらない理由と登録導線を出す（T-M8-95）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("sug-nokey");
+  // fixtureはpremium。BYOK（md）へ変え、AIキーは登録しない → 毎朝の分析jobが作られない状態。
+  await query(`update profiles set plan = 'md' where id = $1`, [account.userId]);
+
+  await signIn(page, account);
+  await page.goto("/app/analytics");
+
+  await expect(page.getByText("分析にはAIのAPIキーが必要です。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "設定のAPIキー" })).toHaveAttribute(
+    "href",
+    "/app/settings?tab=api-keys",
+  );
+});

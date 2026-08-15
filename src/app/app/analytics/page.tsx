@@ -52,8 +52,14 @@ export default async function AnalyticsPage() {
       xAccountId,
     ]),
     // 提案のプロンプト全文は貼り先（AI設定＞プロンプト）が mdプラン以上のため、プランで出し分ける（T-M8-91）。
-    pooledQueryable().query<{ plan: "standard" | "md" | "premium" }>(
-      `select plan from profiles where id = $1`,
+    // AIキーの有無は、BYOKで毎朝の分析が始まらない理由（未登録）を画面から説明するために読む（T-M8-95）。
+    pooledQueryable().query<{ plan: "standard" | "md" | "premium"; has_ai_key: boolean }>(
+      `select p.plan,
+              exists (
+                select 1 from user_api_keys k
+                 where k.user_id = p.id and k.status = 'valid' and k.provider <> 'x'
+              ) as has_ai_key
+         from profiles p where p.id = $1`,
       [user.id],
     ),
   ]);
@@ -74,6 +80,9 @@ export default async function AnalyticsPage() {
       <div className="mt-7 space-y-8">
         <SuggestionsPanel
           generating={suggestionsSection.generating}
+          needsAiKey={
+            (profile.rows[0]?.plan ?? "standard") !== "premium" && !profile.rows[0]?.has_ai_key
+          }
           plan={profile.rows[0]?.plan ?? "standard"}
           suggestions={suggestionsSection.suggestions}
         />

@@ -49,6 +49,8 @@ interface SettingsPageProps {
 interface BillingProfile {
   cancel_at_period_end: boolean;
   current_period_end: string | null;
+  /** ログイン中のメールアドレス（T-M8-95。どのアカウントで入っているかを確認できるように出す）。 */
+  email: string | null;
   plan: PlanId | null;
   stripe_customer_id: string | null;
   subscription_status: string;
@@ -86,7 +88,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     admin
       .from("profiles")
       .select(
-        "plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
+        "email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
       )
       .eq("id", user.id)
       .maybeSingle<BillingProfile>(),
@@ -177,6 +179,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <CardTitle id="billing-heading">
                 現在のご契約
               </CardTitle>
+              {/* どのアカウントでログインしているか（T-M8-95）。確認メール・領収書の宛先でもある。 */}
+              <p className="mt-2 text-body text-ink-2">
+                ログイン中のアカウント:{" "}
+                <span className="font-medium text-ink">{profile.email ?? user.email ?? "不明"}</span>
+              </p>
               {params.portal === "return" ? (
                 // 反映待ちの説明は「実際に待ちが起きるこの瞬間」だけに出す（T-M8-66）。
                 <Notice className="mt-4" tone="success"
