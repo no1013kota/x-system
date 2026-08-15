@@ -16,7 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import type { PostPatternOption } from "@/lib/post/post-patterns";
-import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
+import { selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
@@ -542,7 +542,8 @@ export function CreatePostForm({
             value={theme}
           >
             <option value="">選択してください</option>
-            {POST_THEME_OPTIONS.map((option) => (
+            {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存の旧値は保全される。 */}
+            {selectablePostThemeOptions(theme).map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>

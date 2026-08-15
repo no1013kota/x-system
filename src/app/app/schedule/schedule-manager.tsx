@@ -22,7 +22,7 @@ import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
-import { POST_THEME_OPTIONS, postThemeLabel } from "@/lib/post/post-theme";
+import { selectablePostThemeOptions, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { validateSlotForm } from "@/lib/schedule/slot-form";
 import {
@@ -676,7 +676,8 @@ function SlotFields({
           value={v.theme}
         >
           <option value="">選択してください</option>
-          {POST_THEME_OPTIONS.map((option) => (
+          {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存枠の旧値は保全される。 */}
+          {selectablePostThemeOptions(v.theme).map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
