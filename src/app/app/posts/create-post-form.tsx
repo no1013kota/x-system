@@ -192,7 +192,8 @@ export function CreatePostForm({
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const [promptApply, setPromptApply] = useState<"once" | "save">("once");
   /** アカウント.md・画像プロンプト（T-M8-93）。型と独立に編集できるため状態も分ける。 */
-  const [promptTab, setPromptTab] = useState<"pattern" | "base_md" | "image">("pattern");
+  // 既定はアカウント.md（T-M8-105・運営者の指示 2026-08-15。全パターン共通の土台を先に見せる）。
+  const [promptTab, setPromptTab] = useState<"pattern" | "base_md" | "image">("base_md");
   const [baseMdState, setBaseMdState] = useState(baseMd);
   const [baseMdDraft, setBaseMdDraft] = useState<string | null>(null);
   const [baseMdApply, setBaseMdApply] = useState<"once" | "save">("once");
@@ -470,12 +471,12 @@ export function CreatePostForm({
               <p className="text-xs text-muted-foreground">
                 この生成に使われる指示を確認・編集できます。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
               </p>
-              {/* 3ブロックの切替（投稿の型／アカウント.md／画像）。roleはtabだが実装は単純なボタン群。 */}
+              {/* 3ブロックの切替（アカウント.md／投稿の型／画像）。アカウント.mdを一番左に（T-M8-105）。roleはtabだが実装は単純なボタン群。 */}
               <div aria-label="プロンプトの種類" className="flex flex-wrap gap-1.5" role="tablist">
                 {(
                   [
-                    ["pattern", "投稿の型", promptEdited],
                     ["base_md", "アカウント.md", baseMdEdited],
+                    ["pattern", "投稿の型", promptEdited],
                     ["image", "画像生成", imageEdited],
                   ] as const
                 ).map(([id, label, edited]) => (

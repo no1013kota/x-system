@@ -185,10 +185,13 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await expect(section).toBeVisible();
   await section.locator("summary").click();
 
-  // 3ブロック（投稿の型／アカウント.md／画像生成）が切り替えられる（T-M8-93）。
-  await expect(page.getByRole("tab", { name: "投稿の型" })).toBeVisible();
+  // 3ブロック（アカウント.md／投稿の型／画像生成）。既定はアカウント.md（T-M8-105・一番左）。
+  const tabs = page.getByRole("tablist", { name: "プロンプトの種類" }).getByRole("tab");
+  await expect(tabs).toHaveText(["アカウント.md", "投稿の型", "画像生成"]);
+  await expect(page.getByLabel(/アカウント.md（全パターン共通/)).toBeVisible();
 
-  // 既定パターン（p1）の system default が入っている。
+  // 投稿の型タブ: 既定パターン（p1）の system default が入っている。
+  await page.getByRole("tab", { name: "投稿の型" }).click();
   const editor = page.getByLabel(/選択中の型（.+）の生成プロンプト/);
   await expect(editor).toHaveValue(/# タスク/);
   await expect(editor).toHaveValue(/ニュース/);
