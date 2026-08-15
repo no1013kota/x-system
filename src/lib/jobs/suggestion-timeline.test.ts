@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   SUGGEST_ANALYZE_MAX,
-  TIMELINE_BACKFILL_DAYS,
   TIMELINE_FETCH_MAX,
   TIMELINE_REFRESH_OVERLAP_H,
   timelineFetchStart,
@@ -11,7 +10,7 @@ import {
 } from "./suggestion-timeline";
 
 /**
- * 増分取得の窓の決定（T-M8-94）。
+ * 増分取得の窓の決定（T-M8-94、初回はT-M8-97で最新100件方式）。
  * ここを間違えると (a) 毎回全量を取り直して費用が跳ねる (b) 重なりが無く直近投稿の
  * メトリクスが「取得した朝の値」で凍結される、のどちらかに静かに倒れる。
  */
@@ -19,30 +18,26 @@ import {
 const NOW = Date.UTC(2026, 7, 15, 23, 0, 0); // JST 2026-08-16 08:00
 
 describe("timelineFetchStart", () => {
-  it("初回（保存なし）は30日前から", () => {
-    expect(timelineFetchStart(null, NOW)).toBe(
-      new Date(NOW - TIMELINE_BACKFILL_DAYS * 86_400_000).toISOString(),
-    );
+  it("初回（保存なし）は期間で区切らない（undefined＝最新100件を取る・T-M8-97）", () => {
+    expect(timelineFetchStart(null)).toBeUndefined();
   });
 
   it("保存があれば最新投稿の48時間前から（メトリクスを取り直す重なり）", () => {
     const newest = new Date(NOW - 5 * 86_400_000).toISOString(); // 5日前
-    expect(timelineFetchStart(newest, NOW)).toBe(
+    expect(timelineFetchStart(newest)).toBe(
       new Date(Date.parse(newest) - TIMELINE_REFRESH_OVERLAP_H * 3_600_000).toISOString(),
     );
   });
 
-  it("最新投稿が30日以上前でも、30日より昔へは遡らない（metricsの提供範囲外）", () => {
+  it("最新投稿が30日以上前でも、その48時間前から取る（期間で足切りしない）", () => {
     const old = new Date(NOW - 40 * 86_400_000).toISOString();
-    expect(timelineFetchStart(old, NOW)).toBe(
-      new Date(NOW - TIMELINE_BACKFILL_DAYS * 86_400_000).toISOString(),
+    expect(timelineFetchStart(old)).toBe(
+      new Date(Date.parse(old) - TIMELINE_REFRESH_OVERLAP_H * 3_600_000).toISOString(),
     );
   });
 
-  it("読めない値は初回扱い（窓を壊して全量課金へ倒さない）", () => {
-    expect(timelineFetchStart("not-a-date", NOW)).toBe(
-      new Date(NOW - TIMELINE_BACKFILL_DAYS * 86_400_000).toISOString(),
-    );
+  it("読めない値は初回扱い（undefined。窓を壊して取得を止めない）", () => {
+    expect(timelineFetchStart("not-a-date")).toBeUndefined();
   });
 });
 

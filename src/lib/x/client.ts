@@ -362,7 +362,7 @@ export async function getRecentPosts(
     userId: string;
     maxResults?: number;
     paginationToken?: string;
-    /** ISO 8601。指定するとこの時刻以降の投稿だけを返す（改善提案の30日窓・T-M8-91）。 */
+    /** ISO 8601。指定するとこの時刻以降の投稿だけを返す（投稿分析の増分取得。初回は未指定＝最新から）。 */
     startTime?: string;
     /** リポスト・返信を除く（本人のコンテンツ投稿だけを分析対象にする）。 */
     excludeRepliesAndReposts?: boolean;

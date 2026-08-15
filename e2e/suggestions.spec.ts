@@ -21,7 +21,6 @@ const EVIDENCE = {
     image: { recommended: true, reason: "画像付きの表示回数が上回った" },
     prompt: { kind: "p3", content: "# タスク\n読者が今日から実践できるノウハウを書く。書き出しは数字で始める。" },
   },
-  window_days: 30,
   post_count: 12,
 };
 

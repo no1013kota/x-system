@@ -19,7 +19,7 @@ import {
 
 /**
  * suggestion ハンドラの server-only 配線（K-2, T-M8-94）。毎朝8:00 JSTの自動実行で:
- * 1. **増分取得**: 保存済み最新投稿の48時間前から現在までを X API から取得（初回は30日・最大100件）。
+ * 1. **増分取得**: 保存済み最新投稿の48時間前から現在までを X API から取得（初回は最新100件・T-M8-97）。
  *    重なり分は upsert でメトリクス（表示回数等）を追い直す
  * 2. **保存**: `x_timeline_posts` へ upsert（本サービス経由の投稿には drafts 突合で型/テーマを付与）
  * 3. **分析**: 保存済みの全投稿（新しい順に最大 SUGGEST_ANALYZE_MAX 件）を中核へ渡す
@@ -54,9 +54,9 @@ async function fetchPosts(
     jobId,
   });
 
-  // 1. 増分の窓を決める（保存済み最新の48時間前〜。初回は30日）。
+  // 1. 増分の窓を決める（保存済み最新の48時間前〜。初回は窓なし＝最新100件・T-M8-97）。
   const newest = await newestStoredPostedAt(pooledDb, job.xAccountId);
-  const startTime = timelineFetchStart(newest, Date.now());
+  const startTime = timelineFetchStart(newest);
 
   const [{ posts }, draftTags] = await Promise.all([
     readUserTimeline(readDeps, {
