@@ -20,7 +20,7 @@ export const TIMELINE_FETCH_MAX = 100;
 export const TIMELINE_REFRESH_OVERLAP_H = 48;
 /** LLMへ渡す投稿数の上限（新しい順）。増やすと分析1回のAI費用が比例して増える。 */
 export const SUGGEST_ANALYZE_MAX = 300;
-/** 保存する本文の長さ。分析に渡すのは先頭200字（suggestion-input.ts）なので余裕を持って500。 */
+/** 保存する本文の長さ。分析に渡すのは先頭300字（suggestion-input.ts）なので余裕を持って500。 */
 export const TIMELINE_TEXT_MAX_CHARS = 500;
 
 const HOUR_MS = 3_600_000;

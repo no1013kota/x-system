@@ -30,6 +30,9 @@ describe("GEN prompt constants", () => {
   it("PT-SUGGEST keeps its placeholders and output contract (§6.15, T-M8-91)", () => {
     expect(PT_SUGGEST).toContain("{{posts}}");
     expect(PT_SUGGEST).toContain("{{themes}}");
+    // 前回レポートの参照（T-M8-98）。"none" は renderPreviousBlock の約束と対。
+    expect(PT_SUGGEST).toContain("{{previous}}");
+    expect(PT_SUGGEST).toContain('"none"なら今回が初回');
     // 出力契約: 総評＋実行可能な設定（型・テーマ・画像・そのまま貼れるプロンプト全文）。
     expect(PT_SUGGEST).toContain('"summary"');
     expect(PT_SUGGEST).toContain('"good_posts"');

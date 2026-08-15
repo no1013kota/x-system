@@ -12,11 +12,10 @@
  * - Exos AIで作った投稿には **型とテーマ** を付ける（drafts の tweet_ids と突合。分からなければ null）
  */
 
-export const SUGGEST_PERIOD_DAYS = 30;
 /** 後方互換の別名（取得上限の正本は suggestion-timeline.ts の TIMELINE_FETCH_MAX）。 */
 export const SUGGEST_TIMELINE_MAX = 100;
-/** 本文をLLMへ渡す長さ。特徴づけに十分で、100件でも入力が肥大しない値。 */
-export const SUGGEST_POST_TEXT_CHARS = 200;
+/** 本文をLLMへ渡す長さ。書き出し・構成の観察に足る長さ（200→300へ・T-M8-98。保存は500字）。 */
+export const SUGGEST_POST_TEXT_CHARS = 300;
 
 /** タイムラインから来る1投稿（read-client の XRecentPost のうち使う部分）。 */
 export interface TimelinePostLike {
