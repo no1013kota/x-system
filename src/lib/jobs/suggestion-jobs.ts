@@ -58,7 +58,11 @@ export async function enqueueDailySuggestions(
         and p.subscription_status in ('trialing', 'active')
         and (
           p.plan = 'premium'
-          or exists (select 1 from user_api_keys k where k.user_id = p.id and k.status = 'valid')
+          -- AIのキーに限る（provider='x' はX App資格情報で、LLMの解決には使えない）。
+          or exists (
+            select 1 from user_api_keys k
+             where k.user_id = p.id and k.status = 'valid' and k.provider <> 'x'
+          )
         )
      -- arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
      -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。
