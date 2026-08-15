@@ -420,4 +420,46 @@ describe("executePostGeneration (local DB)", () => {
       await cleanup(uid);
     }
   });
+
+  /**
+   * この生成にだけ使うプロンプト（T-M8-92）。
+   *
+   * `input.prompt_override` があれば通常の解決（アカウント上書き→system default→コード定数）を
+   * 飛ばして、その本文が `<pattern>` としてLLMへ渡ること。**保存はされない**（prompt_templates に
+   * 行が増えない）ことも固定する——「この生成にだけ」の約束が破られると、スケジュールの
+   * 自動生成まで意図しないプロンプトで動く。
+   */
+  it("input.prompt_override があれば、そのプロンプトで生成し保存はしない（T-M8-92）", async () => {
+    const { uid, xid, jobId } = await withTransaction((c) =>
+      seed(c, { input: { theme: "ai", prompt_override: "# タスク\nこの生成専用の指示。書き出しは数字。" } }),
+    );
+    try {
+      let capturedUser = "";
+      const provider: TextGen = {
+        generate: async (req) => {
+          capturedUser = req.user;
+          return {
+            provider: "anthropic",
+            requestId: "req_cap",
+            text: '{"posts":["投稿"],"sources":[],"error":null}',
+            citations: [],
+            usage: { ...emptyUsage(), inputTokens: 100, outputTokens: 50, providerCalls: 1 },
+            stopReason: "end_turn",
+          };
+        },
+      };
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      expect(res.status).toBe("created");
+      // override がそのまま <pattern> に入り、既定テンプレ（PT_P1 の書き出し）は使われない。
+      expect(capturedUser).toContain("この生成専用の指示");
+      expect(capturedUser).not.toContain("ニュースを解説するスレッド");
+      // 保存されない（prompt_templates にアカウント上書き行が増えない）。
+      const saved = await db.query(`select 1 from prompt_templates where x_account_id = $1`, [xid]);
+      expect(saved.rowCount ?? 0).toBe(0);
+    } finally {
+      await cleanup(uid);
+    }
+  });
 });

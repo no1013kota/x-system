@@ -45,6 +45,15 @@ export const createGenerationJobSchema = z.object({
   theme: z.enum(POST_THEME_IDS),
   image_enabled: z.boolean().optional().default(false),
   news_item_id: z.string().uuid().nullish(),
+  /**
+   * この生成にだけ使うプロンプト（T-M8-92・md/premium）。
+   * null/未指定なら通常の解決（アカウント上書き→system default→コード定数）。
+   * 上限はAI設定＞プロンプトの保存上限と同じ（片方だけ長い値を許すと「保存する」を選んだときに落ちる）。
+   */
+  prompt_override: z
+    .string()
+    .max(8000, "プロンプトは8,000字以内で入力してください。")
+    .nullish(),
 });
 
 export type CreateGenerationJobInput = z.infer<typeof createGenerationJobSchema>;
@@ -83,6 +92,8 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     theme: input.theme,
     image_enabled: input.image_enabled,
     news_item_id: input.news_item_id ?? null,
+    // この生成にだけ使うプロンプト（T-M8-92）。空文字は「指定なし」と同義なので null に落とす。
+    prompt_override: input.prompt_override?.trim() ? input.prompt_override : null,
     requested_mode: "draft",
   };
 }
