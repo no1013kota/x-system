@@ -171,7 +171,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 
 ## 9. 画像生成
 
-`image_generation`は画像ONの`post_generation`成功後に連鎖起動される子job（§1(3)）。親workerが決定的 request_key `parent:{parent_job_id}:image_generation:{draft_id}`＋on conflictで作成するため、worker再実行時も子jobは重複作成されない。
+`image_generation`は画像ONの`post_generation`成功後に連鎖起動される子job（§1(3)）。親workerが決定的 request_key `parent:{parent_job_id}:image_generation:{draft_id}`＋on conflictで作成するため、worker再実行時も子jobは重複作成されない。親jobのinputに`image_prompt_override`/`base_md_override`（T-M8-93・投稿作成画面の「この生成にだけ使う」）があれば子jobのinputへ引き継ぎ、子はPT-IMGの解決と保存版base_md（セクション3抽出）を飛ばしてそれを使う。手動の画像再生成（`regenerateImage`）へは引き継がない。
 
 1. premiumは画像枠をreserveする。
 2. PT-IMG（ベースmdセクション3＋1ポスト目本文）でprompt作成後、画像providerを呼ぶ。

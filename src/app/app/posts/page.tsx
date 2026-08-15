@@ -93,14 +93,23 @@ async function createTabData(userId: string, activeXAccountId: string) {
   // updatedAt は「保存して以後も使う」の楽観ロック（AI設定と同じ仕組み）に使う。
   let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =
     null;
+  let baseMd: { content: string; version: number } | null = null;
   if (plan === "md" || plan === "premium") {
-    const listed = await listPromptTemplatesForUser(userId);
-    const patternIds = new Set(patterns.map((p) => p.id));
+    const patternIds = new Set<string>([...patterns.map((p) => p.id), "image"]);
+    const [listed, baseMdRow] = await Promise.all([
+      listPromptTemplatesForUser(userId),
+      getPool().query<{ base_md: string; base_md_version: number }>(
+        `select base_md, base_md_version from x_accounts where id = $1`,
+        [activeXAccountId],
+      ),
+    ]);
     promptTemplates = Object.fromEntries(
       listed.templates
         .filter((tpl) => patternIds.has(tpl.kind))
         .map((tpl) => [tpl.kind, { content: tpl.content, updatedAt: tpl.updatedAt, isOverride: tpl.isOverride }]),
     );
+    const row = baseMdRow.rows[0];
+    baseMd = row ? { content: row.base_md ?? "", version: Number(row.base_md_version ?? 0) } : null;
   }
   const inflight = inflightResult.rows[0];
   const initialJob: ActiveJob | null = inflight
@@ -113,7 +122,7 @@ async function createTabData(userId: string, activeXAccountId: string) {
         error: null,
       }
     : null;
-  return { patterns, imageProviders, initialJob, promptTemplates };
+  return { patterns, imageProviders, initialJob, promptTemplates, baseMd };
 }
 
 export default async function PostsPage({ searchParams }: PostsPageProps) {
@@ -189,6 +198,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           imageProviders={createData.imageProviders}
           initialJob={createData.initialJob}
           patterns={createData.patterns}
+          baseMd={createData.baseMd}
           promptTemplates={createData.promptTemplates}
           xAccountId={activeXAccountId}
         />

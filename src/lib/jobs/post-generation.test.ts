@@ -106,6 +106,9 @@ describe("executePostGeneration image chain", () => {
       "job-x",
       "draft1",
       "parent:job-x:image_generation:draft1",
+      // override（T-M8-93）が無い通常の生成では '{}'。NOT NULL列なので null を渡してはならない
+      // （2026-08-15 に smoke:live で制約違反として検出）。
+      "{}",
     ]);
     // 画像ON: draft_created は子（image_generation）が送るのでここでは送らない
     expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(false);

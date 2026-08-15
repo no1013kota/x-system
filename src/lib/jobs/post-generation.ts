@@ -80,6 +80,10 @@ interface JobRow {
     news_item_id?: string | null;
     /** この生成にだけ使うプロンプト（T-M8-92）。 */
     prompt_override?: string | null;
+    /** この生成にだけ使うベースmd（T-M8-93）。 */
+    base_md_override?: string | null;
+    /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
+    image_prompt_override?: string | null;
     parent_draft_id?: string | null;
     previous_posts?: string[];
   };
@@ -206,18 +210,35 @@ async function existingDraftId(db: Queryable, jobId: string): Promise<string | n
  */
 async function ensureImageChildJob(
   db: Queryable,
-  params: { parentJobId: string; xAccountId: string; draftId: string },
+  params: {
+    parentJobId: string;
+    xAccountId: string;
+    draftId: string;
+    /** この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。親jobのinputから引き継ぐ。 */
+    imagePromptOverride?: string | null;
+    baseMdOverride?: string | null;
+  },
 ): Promise<void> {
+  // `generation_jobs.input` は NOT NULL（既定 '{}'）。override が無いときも '{}' を渡す
+  // （null を渡すと制約違反で子jobが作れない。2026-08-15 に smoke:live で検出・T-M8-93）。
+  const input =
+    params.imagePromptOverride || params.baseMdOverride
+      ? JSON.stringify({
+          image_prompt_override: params.imagePromptOverride ?? null,
+          base_md_override: params.baseMdOverride ?? null,
+        })
+      : "{}";
   await db.query(
     `insert into generation_jobs
-       (x_account_id, kind, trigger, parent_job_id, draft_id, request_key, status)
-     values ($1, 'image_generation', 'system', $2, $3, $4, 'queued')
+       (x_account_id, kind, trigger, parent_job_id, draft_id, request_key, input, status)
+     values ($1, 'image_generation', 'system', $2, $3, $4, $5::jsonb, 'queued')
      on conflict (request_key) do nothing`,
     [
       params.xAccountId,
       params.parentJobId,
       params.draftId,
       `parent:${params.parentJobId}:image_generation:${params.draftId}`,
+      input,
     ],
   );
 }
@@ -279,6 +300,8 @@ export async function executePostGeneration(
         parentJobId: jobId,
         xAccountId: job.x_account_id,
         draftId: already,
+        imagePromptOverride: job.input.image_prompt_override,
+        baseMdOverride: job.input.base_md_override,
       });
     }
     return { status: "already_done", draftId: already };
@@ -331,7 +354,13 @@ export async function executePostGeneration(
 
   // --- stage: research（コンテキスト組み立て）---
   await recordStage("research");
-  const system = buildGenSystem(job.base_md);
+  // この生成にだけ使うベースmd（T-M8-93）。指定があれば保存版の代わりに使う（保存はしない）。
+  // systemが保存版と別バイト列になるためプロンプトキャッシュはこの回だけ効かない（意図した挙動）。
+  const baseMdOverride =
+    typeof job.input?.base_md_override === "string" && job.input.base_md_override.trim() !== ""
+      ? job.input.base_md_override
+      : null;
+  const system = buildGenSystem(baseMdOverride ?? job.base_md);
   // この生成にだけ使うプロンプト（T-M8-92）。指定があれば通常の解決を飛ばす。
   // 保存はしない——恒久化は投稿作成画面の「保存して以後も使う」かAI設定＞プロンプトが担う。
   const promptOverride =
@@ -541,6 +570,8 @@ export async function executePostGeneration(
       parentJobId: jobId,
       xAccountId: job.x_account_id,
       draftId,
+      imagePromptOverride: job.input.image_prompt_override,
+      baseMdOverride: job.input.base_md_override,
     });
   } else {
     await createDraftCreatedNotification(db, { userId: job.user_id, draftId });

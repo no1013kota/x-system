@@ -173,7 +173,7 @@ test("テーマを選ばないと生成を始められず、理由が画面に�
  * - 編集すると「この生成にだけ使う／保存して以後の生成にも使う」を選べ、「元に戻す」で破棄できる
  * - 型を切り替えると編集は破棄される（別の型へ持ち越さない）
  */
-test("プロンプトを表示・編集でき、型の切替で編集が破棄される（T-M8-92）", async ({
+test("プロンプトを表示・編集でき、型の切替で編集が破棄される（T-M8-92/93）", async ({
   accounts,
   page,
 }) => {
@@ -185,26 +185,39 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await expect(section).toBeVisible();
   await section.locator("summary").click();
 
-  const editor = page.getByLabel("生成に使うプロンプト", { exact: true });
+  // 3ブロック（投稿の型／ベースmd／画像生成）が切り替えられる（T-M8-93）。
+  await expect(page.getByRole("tab", { name: "投稿の型" })).toBeVisible();
+
   // 既定パターン（p1）の system default が入っている。
+  const editor = page.getByLabel(/選択中の型（.+）の生成プロンプト/);
   await expect(editor).toHaveValue(/# タスク/);
   await expect(editor).toHaveValue(/ニュース/);
 
   // 編集 → 適用方法の選択と「元に戻す」が現れる。
   await editor.fill("# タスク\nE2E編集テスト");
-  await expect(page.getByText("編集中")).toBeVisible();
   await expect(page.getByLabel("この生成にだけ使う")).toBeChecked();
   await expect(page.getByLabel("保存して以後の生成にも使う")).toBeVisible();
 
   // 型を切り替えると編集は破棄され、切替先のプロンプトが入る。
   await page.getByRole("radio", { name: /考え・意見/ }).check();
-  await expect(page.getByText("編集中")).toHaveCount(0);
   await expect(editor).not.toHaveValue(/E2E編集テスト/);
 
   // 「元に戻す」でも破棄できる。
   await editor.fill("別の編集");
   await page.getByRole("button", { name: "元に戻す" }).click();
-  await expect(page.getByText("編集中")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "元に戻す" })).toHaveCount(0);
+
+  // ベースmdタブ: fixtureのベースmdが表示され、編集で同じ選択肢が出る（T-M8-93）。
+  await page.getByRole("tab", { name: "ベースmd" }).click();
+  const baseMdEditor = page.getByLabel(/ベースmd（全パターン共通/);
+  await expect(baseMdEditor).toHaveValue(/発信定義書/);
+  await baseMdEditor.fill((await baseMdEditor.inputValue()) + "\n- E2E追記");
+  await expect(page.getByLabel("この生成にだけ使う")).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す" }).click();
+
+  // 画像生成タブ: PT-IMG の system default が表示される（T-M8-93）。
+  await page.getByRole("tab", { name: "画像生成" }).click();
+  await expect(page.getByLabel(/画像生成プロンプト/)).toHaveValue(/# タスク/);
 });
 
 test("standardには生成プロンプトのセクションを出さない（T-M8-92）", async ({ accounts, page }) => {

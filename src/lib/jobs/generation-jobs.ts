@@ -8,6 +8,8 @@ import {
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
 import { AppError } from "@/lib/observability/errors";
+
+import { validateManualBaseMd } from "../base-md";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
 
 import type { Queryable } from "../x/token-refresh";
@@ -46,13 +48,23 @@ export const createGenerationJobSchema = z.object({
   image_enabled: z.boolean().optional().default(false),
   news_item_id: z.string().uuid().nullish(),
   /**
-   * この生成にだけ使うプロンプト（T-M8-92・md/premium）。
+   * この生成にだけ使うプロンプト（T-M8-92/93・md/premium）。
    * null/未指定なら通常の解決（アカウント上書き→system default→コード定数）。
    * 上限はAI設定＞プロンプトの保存上限と同じ（片方だけ長い値を許すと「保存する」を選んだときに落ちる）。
    */
   prompt_override: z
     .string()
     .max(8000, "プロンプトは8,000字以内で入力してください。")
+    .nullish(),
+  /** この生成にだけ使うベースmd（T-M8-93）。上限はAI設定＞ベースmdの保存上限と同じ。見出し構造は中核で検証する。 */
+  base_md_override: z
+    .string()
+    .max(5000, "ベースmdは5,000字以内で入力してください。")
+    .nullish(),
+  /** この生成にだけ使う画像プロンプト（T-M8-93）。画像OFFのときは無視される。 */
+  image_prompt_override: z
+    .string()
+    .max(8000, "画像プロンプトは8,000字以内で入力してください。")
     .nullish(),
 });
 
@@ -92,8 +104,11 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     theme: input.theme,
     image_enabled: input.image_enabled,
     news_item_id: input.news_item_id ?? null,
-    // この生成にだけ使うプロンプト（T-M8-92）。空文字は「指定なし」と同義なので null に落とす。
+    // この生成にだけ使うプロンプト・ベースmd・画像プロンプト（T-M8-92/93）。
+    // 空文字は「指定なし」と同義なので null に落とす。
     prompt_override: input.prompt_override?.trim() ? input.prompt_override : null,
+    base_md_override: input.base_md_override?.trim() ? input.base_md_override : null,
+    image_prompt_override: input.image_prompt_override?.trim() ? input.image_prompt_override : null,
     requested_mode: "draft",
   };
 }
@@ -121,6 +136,11 @@ export async function createGenerationJob(
   // P-5 は feature flag OFF の間、外部呼び出し・枠消費の前に拒否（要件05 §5）。
   if (input.pattern === "p5" && !deps.quotePostEnabled) {
     throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
+  }
+  // この生成にだけ使うベースmdも、保存版と同じ見出し検証を通す（T-M8-93）。
+  // 通さないと、画像生成のセクション3抽出が黙って空になる等、静かな劣化になる。
+  if (input.base_md_override?.trim()) {
+    validateManualBaseMd(input.base_md_override);
   }
   const key = requestKey(userId, input.request_key);
   return deps.runInTx(async (tx) => {
