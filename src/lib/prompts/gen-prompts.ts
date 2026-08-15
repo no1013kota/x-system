@@ -206,29 +206,41 @@ export const PT_MD_MERGE = `# タスク
 # 出力
 セクション本文のみ（見出し・前置きなし）。`;
 
-/** PT-SUGGEST（改善提案の生成, プロンプト設計書 §6.15）。コード集計済みの実績サマリ/対象投稿から最大2件。 */
-export const PT_SUGGEST = `あなたはX運用の分析担当です。実績データを分析し、根拠のある改善提案を最大2件作ります。
-実績サマリ（直近30日投稿・同一checkpointで集計）: <stats>{{stats}}</stats>
-対象投稿一覧（本文冒頭・型・投稿時刻・実績）: <posts>{{posts}}</posts>
+/**
+ * PT-SUGGEST（改善提案の生成, プロンプト設計書 §6.15, T-M8-91）。
+ * Xタイムラインの直近30日の全投稿（Exos製かに依らない）を自由分析し、
+ * 良かった投稿の特徴と、それに近づけるための具体的な設定（型・テーマ・画像・プロンプト全文）を返す。
+ * 固定の分析軸・「3投稿以上・差20%」の条件は持たない（2026-08-15 刷新）。
+ */
+export const PT_SUGGEST = `あなたはX運用の分析担当です。<posts>はこのアカウントが直近30日にXへ投稿したポストの一覧です
+（各行: id・本文冒頭・投稿日時(JST)・表示回数impressions・いいねlikes・リポストreposts・返信replies・
+ 画像有無has_image・URL有無has_url・このアプリで作った投稿にはpattern(型)とtheme(テーマ)が付く。外部の投稿はnull）。
 
-# 分析軸
-<stats>には次の軸の集計が入っている。どの軸で差が出ているかを見る。
-- pattern_time: 型×時間帯
-- length: 加重文字数の帯（短/中/長）
-- line_blocks: 改行の塊数（1/2/3+）
-- image: 画像の有無
-- url: 本文にURLがあるか
-テーマは<posts>の本文から判断する（テーマの事前集計・専用データはない）。
+# やること
+1. 反応が良かった投稿を選び、共通する特徴を具体的に言葉にする。表現・構成・題材・長さ・投稿時間・画像など、
+   データから読み取れた事実だけを書く（決まった観点はない。一般論を書かない）
+2. その特徴に近づけるための設定を提案する
 
-# 条件
-- 同じcheckpointの対象3投稿以上かつ差が20%以上ある軸だけを提案にする。異なるcheckpointを混ぜない。なければ空配列
-- 提案は「ユーザーが自分の運用で実行できる変更」を1文で書く
-- どの軸で差が出たかを evidence.axis に入れる
+# 型（pattern）の選択肢
+p1=ニュース解説スレッド / p2=考え・意見の単発 / p3=ノウハウのスレッド / p4=トレンド便乗 / p6=週次まとめ
 
 # 出力（JSONのみ）
-{"suggestions":[{"content":"提案を1文で",
-"evidence":{"axis":"length","tweet_ids":["..."],"metric":"impressions","checkpoint_days":7,"diff_pct":40,
-"summary":"根拠の1文（対象投稿と数値）"}}]}`;
+{"summary":"良かった投稿の特徴。3文以内・事実に基づき具体的に",
+ "good_posts":[{"id":"<posts>にあるid","why":"この投稿が良かった点を1文（数値を含める）"}],
+ "advice":{
+  "pattern":{"recommended":"p1|p2|p3|p4|p6","reason":"1文"},
+  "theme":{"recommended":"テーマIDのいずれか","reason":"1文"},
+  "image":{"recommended":true,"reason":"1文"},
+  "prompt":{"kind":"patternのrecommendedと同じ値","content":"推奨した型の生成プロンプト全文。# タスク で始め、良かった投稿の特徴（書き出し・構成・分量・語り口）を再現する検証可能な指示を含める。日本語・2000字以内"}
+ }}
+
+# 条件
+- good_postsは1〜3件。idは<posts>にあるものだけ
+- themeの選択肢: {{themes}}
+- prompt.contentに <input> 等のアプリ側タグ・プレースホルダを書かない（指示文だけを書く）
+- 反応の差が読み取れない（投稿が少ない・数値が拮抗）ときは、summaryにその旨を書いたうえで、
+  投稿内容から最も自然な設定を提案する
+<posts>{{posts}}</posts>`;
 
 /** prompt_templates で管理する種別（system default seed 対象・account上書き可能）。 */
 export const PROMPT_TEMPLATE_KINDS = [

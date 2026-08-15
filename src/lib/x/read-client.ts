@@ -7,6 +7,8 @@ import {
   type XTweetMetrics,
   type XUserMetrics,
 } from "./client";
+import type { XCostConfig } from "./pricing";
+import { xUnitCost } from "./pricing";
 import type { Queryable } from "./token-refresh";
 import { recordedXCall, type XUsageContext } from "./usage";
 
@@ -14,7 +16,8 @@ import { recordedXCall, type XUsageContext } from "./usage";
  * X API 読取クライアント（L-1〜3・K-1・K-3, 要件04 §12/§13, T-M5-01）。学習・metrics_collector・
  * follower_snapshot で共用する。既存の `client.ts`（retry/backoff・401/403即失敗）を土台に、
  * ページング蓄積（timeline）・100件chunk（tweet lookup）・原価台帳への冪等記録（`recordedXCall`：
- * x_post_read / x_user_read）を加える。読取単価は0（要件04 §10）。
+ * x_post_read / x_user_read）を加える。読取単価は `costs`（X_COST_*READ*_USD の snapshot）から取る
+ * （T-M8-91。pay-per-usage は応答の resource 1件ごとに課金するため、単価0のままだと実費より小さく見える）。
  *
  * 契約: 1つの `XReadDeps` は単一の `accessToken`（＝単一user context）に束ねる。異なる user token を
  * 同一呼び出しへ混ぜない（要件04 §6）。呼び出し側は対象アカウントのtokenごとに deps を作る。
@@ -33,6 +36,8 @@ export interface XReadDeps {
   accessToken: string;
   /** 原価台帳の userId / xAccountId / jobId。 */
   ctx: XUsageContext;
+  /** 実行時単価の snapshot（server配線は xCostConfig()）。 */
+  costs: XCostConfig;
 }
 
 export interface XTimelineResult {
@@ -42,7 +47,17 @@ export interface XTimelineResult {
 /** 指定ユーザーの直近ポストを limit 件まで取得する（ページング蓄積・各ページを x_post_read 記録）。 */
 export async function readUserTimeline(
   deps: XReadDeps,
-  input: { userId: string; limit: number; idempotencyKeyBase: string },
+  input: {
+    userId: string;
+    limit: number;
+    idempotencyKeyBase: string;
+    /** 取得窓の開始（ISO 8601）。改善提案は直近30日を渡す（T-M8-91）。 */
+    startTime?: string;
+    /** リポスト・返信を除く（本人のコンテンツ投稿だけを見る）。 */
+    excludeRepliesAndReposts?: boolean;
+    /** 実績メトリクス・画像/URLの有無を取る（読取単価は変わらない。1投稿$0.005/件のまま）。 */
+    withMetrics?: boolean;
+  },
 ): Promise<XTimelineResult> {
   const posts: XRecentPost[] = [];
   let token: string | undefined;
@@ -56,13 +71,20 @@ export async function readUserTimeline(
       {
         ctx: deps.ctx,
         operation: "x_post_read",
-        unitCostUsd: 0,
+        unitCostUsd: xUnitCost("x_post_read", deps.costs),
         idempotencyKey: `${input.idempotencyKeyBase}:page:${page}`,
       },
       () =>
         getRecentPosts(
           deps.accessToken,
-          { userId: input.userId, maxResults: perPage, paginationToken: pageToken },
+          {
+            userId: input.userId,
+            maxResults: perPage,
+            paginationToken: pageToken,
+            startTime: input.startTime,
+            excludeRepliesAndReposts: input.excludeRepliesAndReposts,
+            withMetrics: input.withMetrics,
+          },
           deps.x,
         ),
     );
@@ -91,7 +113,7 @@ export async function readTweetMetrics(
       {
         ctx: deps.ctx,
         operation: "x_post_read",
-        unitCostUsd: 0,
+        unitCostUsd: xUnitCost("x_post_read", deps.costs),
         idempotencyKey: `${input.idempotencyKeyBase}:chunk:${index}`,
       },
       () => getTweetMetrics(deps.accessToken, chunk, deps.x),
@@ -115,7 +137,7 @@ export async function readUserFollowers(
     {
       ctx: deps.ctx,
       operation: "x_user_read",
-      unitCostUsd: 0,
+      unitCostUsd: xUnitCost("x_user_read", deps.costs),
       idempotencyKey: input.idempotencyKey,
     },
     () => getUsersByIds(deps.accessToken, input.userIds.slice(0, X_TWEET_LOOKUP_MAX), deps.x),

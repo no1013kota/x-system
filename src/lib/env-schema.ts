@@ -119,6 +119,16 @@ const schema = z
       blankToUndefined,
       z.coerce.number().nonnegative().optional(),
     ),
+    // 読取単価（T-M8-91）。pay-per-usage は応答の resource 1件ごとに課金する（Posts $0.005 / User $0.010）。
+    // 未設定は0（dev等）。本番で未設定だと読取費用が台帳に載らず実費より小さく見える。
+    X_COST_POST_READ_USD: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().nonnegative().optional(),
+    ),
+    X_COST_USER_READ_USD: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().nonnegative().optional(),
+    ),
 
     // §3.2 Supabase
     NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),

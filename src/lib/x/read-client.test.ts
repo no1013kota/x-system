@@ -50,6 +50,18 @@ function xDeps(http: XHttp): XClientDeps {
 }
 
 const ctx = { userId: "u1", xAccountId: "xa1", jobId: null };
+
+/**
+ * 単価snapshot（T-M8-91）。読取は応答のresource数で乗算課金されるため、0でない値を渡して
+ * 「単価が台帳へそのまま渡ること」を検証する（0だと単価の配線漏れがテストに映らない）。
+ */
+const COSTS = {
+  contentCreateUsd: 0.015,
+  contentCreateWithUrlUsd: 0.2,
+  interactionDeleteUsd: 0.01,
+  postReadUsd: 0.005,
+  userReadUsd: 0.01,
+};
 const posts = (n: number, prefix: string) =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}-${i}`, text: "t" }));
 
@@ -66,7 +78,7 @@ describe("readUserTimeline", () => {
     });
     const { db, ledger } = mockDb();
     const res = await readUserTimeline(
-      { db, x: xDeps(http), accessToken: "tok", ctx },
+      { db, x: xDeps(http), accessToken: "tok", ctx, costs: COSTS },
       { userId: "acc1", limit: 40, idempotencyKeyBase: "learning:s1:posts" },
     );
     expect(res.posts).toHaveLength(40); // sliced to limit across 2 pages
@@ -80,7 +92,7 @@ describe("readUserTimeline", () => {
     const { http, calls } = mockHttp(() => ({ json: { data: posts(20, "a") } }));
     const { db, ledger } = mockDb();
     const res = await readUserTimeline(
-      { db, x: xDeps(http), accessToken: "tok", ctx },
+      { db, x: xDeps(http), accessToken: "tok", ctx, costs: COSTS },
       { userId: "acc1", limit: 20, idempotencyKeyBase: "k" },
     );
     expect(res.posts).toHaveLength(20);
@@ -93,7 +105,7 @@ describe("readUserTimeline", () => {
     const { db, ledger } = mockDb();
     await expect(
       readUserTimeline(
-        { db, x: xDeps(http), accessToken: "tok", ctx },
+        { db, x: xDeps(http), accessToken: "tok", ctx, costs: COSTS },
         { userId: "acc1", limit: 20, idempotencyKeyBase: "k" },
       ),
     ).rejects.toBeInstanceOf(XApiError);
@@ -111,7 +123,7 @@ describe("readTweetMetrics", () => {
     const { db, ledger } = mockDb();
     const ids = Array.from({ length: 150 }, (_, i) => `t${i}`);
     const res = await readTweetMetrics(
-      { db, x: xDeps(http), accessToken: "tok", ctx },
+      { db, x: xDeps(http), accessToken: "tok", ctx, costs: COSTS },
       { tweetIds: ids, idempotencyKeyBase: "metrics:xa1:w1" },
     );
     expect(res.tweets).toHaveLength(150); // 100 + 50 merged
@@ -133,7 +145,7 @@ describe("readUserFollowers", () => {
     });
     const { db, ledger } = mockDb();
     const res = await readUserFollowers(
-      { db, x: xDeps(http), accessToken: "tok", ctx },
+      { db, x: xDeps(http), accessToken: "tok", ctx, costs: COSTS },
       { userIds: ["9"], idempotencyKey: "follower:xa1:2026-07-24" },
     );
     expect(res.users[0].followersCount).toBe(42);

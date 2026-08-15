@@ -65,6 +65,8 @@ flowchart TB
 | `X_COST_CONTENT_CREATE_USD` | preview/prod | URLなし投稿作成の原価集計単価 | 公開値0.015。Developer Console確認後に設定 |
 | `X_COST_CONTENT_CREATE_WITH_URL_USD` | preview/prod | URL付き投稿作成の原価集計単価 | 公開値0.200。Developer Console確認後に設定 |
 | `X_COST_INTERACTION_DELETE_USD` | preview/prod | ロールバック削除の原価集計単価 | 公開値0.010。Developer Console確認後に設定 |
+| `X_COST_POST_READ_USD` | preview/prod | ポスト読取1件の原価集計単価（応答のresource数で乗算。実績収集・学習・改善提案） | 公開値0.005（2026-08-15確認）。未設定は0で記録＝費用が実費より小さく見えるため本番では必須 |
+| `X_COST_USER_READ_USD` | preview/prod | ユーザー読取1件の原価集計単価（フォロワー数取得等） | 公開値0.010（2026-08-15確認）。未設定は0で記録 |
 
 ### 3.2 Supabase
 

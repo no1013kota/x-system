@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { withTransaction, closePool, getPool } from "../db/pool";
+
+/**
+ * worker機構（lease→handler→succeeded）の検証にはhandlerの成功だけが要る。
+ * suggestion の実handlerは T-M8-91 でXタイムラインを読むようになった（tokenと実APIが要る）ため、
+ * ここではモックする。業務ロジック自体は suggestion.db.test.ts が実物で検証する。
+ */
+vi.mock("./suggestion-server", () => ({ suggestionHandler: async () => {} }));
 import { failJob, leaseJob, requeueJob, runJob } from "./worker";
 
 /**

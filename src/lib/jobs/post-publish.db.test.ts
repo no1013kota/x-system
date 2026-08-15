@@ -15,7 +15,13 @@ import { executePostPublish, type PostPublishDeps } from "./post-publish";
  * X client は mock、DBは実ローカル。全プランで post_create/post_delete consume event を作り、premium かつ
  * live のときだけ月次counter（normal/url_posts_count）を加算することを検証する。
  */
-const COST = { contentCreateUsd: 0.01, contentCreateWithUrlUsd: 0.02, interactionDeleteUsd: 0.005 };
+const COST = {
+  contentCreateUsd: 0.01,
+  contentCreateWithUrlUsd: 0.02,
+  interactionDeleteUsd: 0.005,
+  postReadUsd: 0.005,
+  userReadUsd: 0.01,
+};
 
 describe("post_publish 投稿枠 consume/counter (local DB)", () => {
   let available = false;

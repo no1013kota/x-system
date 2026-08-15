@@ -40,7 +40,13 @@ function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   return { db, writes };
 }
 
-const COST = { contentCreateUsd: 0.01, contentCreateWithUrlUsd: 0.02, interactionDeleteUsd: 0.005 };
+const COST = {
+  contentCreateUsd: 0.01,
+  contentCreateWithUrlUsd: 0.02,
+  interactionDeleteUsd: 0.005,
+  postReadUsd: 0.005,
+  userReadUsd: 0.01,
+};
 
 function post(local_id: string, text: string, warnings: string[] = []) {
   return { local_id, text, weighted_length: 10, sources: [], warnings };

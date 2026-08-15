@@ -116,10 +116,11 @@ describe("refreshSuggestions / listSuggestions (local DB)", () => {
     }
   });
 
-  it("rejects when there are no new metrics since the last suggestion job", async () => {
+  it("前日以前に実行済みでも当日は実行できる（no_new_metrics ゲートは廃止・T-M8-91）", async () => {
+    // データ源がXタイムラインの直取得になったため、「保存済みmetricsの更新」を実行条件にしない。
+    // 残すと、Exos経由の投稿が無いアカウント（外部投稿のみ）が永久に実行できない。
     const { uid, xid } = await seed();
     try {
-      // prior suggestion job yesterday (passes already_today)
       await withTransaction((c) =>
         c.query(
           `insert into generation_jobs (x_account_id, kind, trigger, status, created_at)
@@ -127,20 +128,9 @@ describe("refreshSuggestions / listSuggestions (local DB)", () => {
           [xid],
         ),
       );
-      // a draft whose metrics were collected BEFORE the prior job → no new metrics
-      await withTransaction((c) =>
-        c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, tweet_ids, tweet_metrics, posted_at)
-           values ($1,'p1','[]'::jsonb,'[]'::jsonb,'posted','["t1"]'::jsonb,
-                   jsonb_build_object('t1', jsonb_build_object('checkpoints',
-                     jsonb_build_object('1', jsonb_build_object('impressions',10,'collected_at','2020-01-01T00:00:00Z')))),
-                   now() - interval '2 days')`,
-          [xid],
-        ),
-      );
-      const e = await reject(refreshSuggestions(uid, xid, { request_key: "k1" }, runInTx));
-      expect(e.code).toBe("job_conflict");
-      expect(e.details?.reason).toBe("no_new_metrics");
+      const res = await refreshSuggestions(uid, xid, { request_key: "k1" }, runInTx);
+      expect(res.deduped).toBe(false);
+      expect(res.jobId).toBeTruthy();
     } finally {
       await cleanup(uid);
     }

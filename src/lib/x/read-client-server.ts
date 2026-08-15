@@ -1,7 +1,7 @@
 import "server-only";
 
 import { pooledQueryable } from "../db/pool";
-import { xClientDeps } from "./client-server";
+import { xClientDeps, xCostConfig } from "./client-server";
 import type { XReadDeps } from "./read-client";
 import type { XUsageContext } from "./usage";
 
@@ -13,5 +13,5 @@ import type { XUsageContext } from "./usage";
 const pooledDb = pooledQueryable();
 
 export function buildXReadDeps(accessToken: string, ctx: XUsageContext): XReadDeps {
-  return { db: pooledDb, x: xClientDeps(), accessToken, ctx };
+  return { db: pooledDb, x: xClientDeps(), accessToken, ctx, costs: xCostConfig() };
 }

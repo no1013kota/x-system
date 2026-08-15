@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.26 |
-| 更新日 | 2026-08-14 |
+| バージョン | v1.27 |
+| 更新日 | 2026-08-15 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -196,7 +196,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 7. 各成功直後にtweet_idを保存し、全プランで`post_create` consume eventを作る。premiumだけ月次counterを同一transactionで加算する。
 8. 全件成功でdraft rowを削除せず、`status=posted`、`root_tweet_id`、`posted_at`、`posted_mode`を更新する。rowは下書き一覧から外れ、投稿履歴とtweet_id別実績の正本になる。
 
-原価集計対象のX/AI外部呼び出しは成功・失敗を問わず、返却されたrequest ID、resource数、token/search usage、実行時単価、推定原価を`external_api_usage_events`へ冪等保存する。provider本文、投稿本文、prompt、tokenは保存しない。X media uploadは運用logだけへ記録し、原価台帳から除外する。X単価は環境変数`X_COST_*`のsnapshotを採用し、投稿作成は本文のURL有無で通常/URL付き単価を分ける。読取（`x_post_read`/`x_user_read`）は課金単価を持たないため単価0で記録する。`dry_run`は実外部呼び出し（実原価）が発生しないため原価台帳（`external_api_usage_events`）には記録しない。失敗時は resource 未作成のため推定原価0で記録する。
+原価集計対象のX/AI外部呼び出しは成功・失敗を問わず、返却されたrequest ID、resource数、token/search usage、実行時単価、推定原価を`external_api_usage_events`へ冪等保存する。provider本文、投稿本文、prompt、tokenは保存しない。X media uploadは運用logだけへ記録し、原価台帳から除外する。X単価は環境変数`X_COST_*`のsnapshotを採用し、投稿作成は本文のURL有無で通常/URL付き単価を分ける。読取（`x_post_read`/`x_user_read`）の単価は`X_COST_POST_READ_USD`/`X_COST_USER_READ_USD`のsnapshotを使い、**応答のresource数で乗算**して記録する（pay-per-usageは応答1件ごとに課金する。2026-08-15・T-M8-91で「読取は課金されない」という誤った前提を修正した。未設定の環境では0で記録する）。`dry_run`は実外部呼び出し（実原価）が発生しないため原価台帳（`external_api_usage_events`）には記録しない。失敗時は resource 未作成のため推定原価0で記録する。
 
 AI呼び出しが例外で終わった場合（レート制限・タイムアウト・接続断など、providerが応答を返さなかった場合）も、`status: failed` の provider call として記録する。SDKは例外時にusageを返さないため、残せるのは発生事実・provider・model・operation・latency・request ID・安全なerror code（HTTP statusは`http_<status>`、SDKのcode/nameはそのまま、いずれも無ければ`unknown_error`）に限られ、token数は0・推定原価は`null`とする。providerの応答本文はここにも保存しない。この記帳は失敗の確定とは独立で、retryで差し戻されるattemptの分も記録する（消費した実原価は発生しているため）。
 
@@ -236,11 +236,11 @@ flowchart TD
 - **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
-- SUGGESTはユーザー操作だけで起動し、同一JST日かつ新しいmetrics更新がなければ拒否する。比較は同じcheckpoint同士に限定し、7日値を優先、比較グループが3件未満なら1日値を使い、異なる経過日数を混ぜない。
-- **分析軸は「型×時間帯」だけでなく、加重文字数の帯・改行の塊数・画像の有無・本文のURL有無も集計する**（T-M7-38）。伸びを左右する主要な変数がこれらで、軸が無いと投稿の書き方を変えた効果を実績で確かめられない。集計はコード側（`buildSuggestionInput`）で行い、プロンプトへは集計済みの値を渡す。軸ごとに独立集計する（多次元セルにすると最大50件では大半が1件になり判断材料にならない）。文字数の帯の境界は生成時の目標（加重240）に合わせる。提案には差が出た軸を`evidence.axis`として保存し、画面にも表示する。
-- `refreshSuggestions`の拒否判定: active（queued/running）な`suggestion` jobがある（`active_suggestion_exists`）／同一JST日に成功済みの`suggestion` jobがある（`already_today`。失敗ジョブは再試行を許す）／前回`suggestion` job作成以降に新しいmetrics取得（`drafts.tweet_metrics`のcheckpoint `collected_at`が前回job `created_at`より新しい）が無い（`no_new_metrics`。初回は許可）。request_key冪等・active一致・queued/running 5件上限も適用する。
-- 生成枠は実際にLLMを実行する時（比較対象が3件以上）にのみ+1 reserveし、最終失敗で冪等refundする。比較グループ不足でLLMを呼ばない場合は提案0件で正常終了し、枠を消費しない（premium）。BYOKは枠を消費しない。SUGGESTはbase_mdを読まない。
-- 提案は最大2件で、表示専用とする。`evidence.tweet_ids`は`<posts>`に含まれるIDだけを許可し（zod検証、違反は修復1回→失敗）、`evidence.window_days=30`をコードで付与して保存する。ベースmd・プロンプトへの自動反映は行わず、ユーザーが発信設定やmd編集（md/プレミアム）で自ら反映する。テーマ軸の分析はSUGGESTプロンプトが対象投稿の本文から判断する（テーマの事前集計・専用カラムは持たない）。`listSuggestions`は最新の成功`suggestion` jobの提案分だけを返す。
+- SUGGESTはユーザー操作だけで起動する（2026-08-15・T-M8-91に刷新）。**分析対象はXタイムラインの直近30日の全投稿**（本サービス経由かに依らない）。ハンドラが`GET /2/users/:id/tweets`（`start_time`=30日前・リポストと返信を除く・メトリクス付き）で**最大100件**を取得する。この上限がX読取費用の上限（100×$0.005=$0.50/回）を兼ねる。本サービス経由の投稿には`drafts.tweet_ids`の突合で型とテーマを付与し、外部の投稿はnullのまま渡す（分からないものを推測しない）。
+- **固定の分析軸（型×時間帯・文字数帯・改行・画像・URL）と「3投稿以上・差20%以上」の条件は廃止した**。良かった投稿の特徴づけはPT-SUGGESTの自由分析に任せ、出力を実行可能な設定（推奨パターン・テーマ・画像有無・そのまま貼れるプロンプト全文）に固定する（検証はプロンプト設計書 §6.15）。
+- `refreshSuggestions`の拒否判定: active（queued/running）な`suggestion` jobがある（`active_suggestion_exists`）／同一JST日に成功済みの`suggestion` jobがある（`already_today`。失敗ジョブは再試行を許す）。**`no_new_metrics`は廃止**（データ源がXの直取得になり、保存済みmetricsの更新は実行可否と無関係。残すと本サービス経由の投稿が無いアカウントが永久に実行できない）。request_key冪等・active一致・queued/running 5件上限も適用する。
+- 生成枠は実際にLLMを実行する時（タイムラインに投稿が1件以上）にのみ+1 reserveし、最終失敗で冪等refundする。直近30日に投稿が無ければLLMを呼ばず提案0件で正常終了し、枠を消費しない（premium）。BYOKは枠を消費しない。SUGGESTはbase_mdを読まない。X取得の失敗は`x_fetch_failed`として理由を保存・通知する（静かに0件にしない・原則1）。
+- 提案は**1件**（総評＋advice）で、表示専用とする。`good_posts[].id`は`<posts>`に含まれるIDだけを許可し（zod検証、違反は修復1回→失敗）、`evidence.format=2`・`window_days=30`・`post_count`をコードで付与して保存する（要件02 §4.11）。ベースmd・プロンプトへの自動反映は行わず、ユーザーが投稿作成・スケジュール・AI設定のプロンプト編集（md/プレミアム）で自ら反映する。`listSuggestions`は最新の成功`suggestion` jobの提案分だけを返す。
 
 ## 13. メトリクス・フォロワー
 

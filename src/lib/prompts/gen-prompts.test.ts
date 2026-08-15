@@ -27,12 +27,17 @@ describe("GEN prompt constants", () => {
     expect(PT_MD_MERGE).toBe(PT_MD_MERGE.trim());
   });
 
-  it("PT-SUGGEST keeps its placeholders and max-2 JSON contract (§6.15)", () => {
-    expect(PT_SUGGEST).toContain("{{stats}}");
+  it("PT-SUGGEST keeps its placeholders and output contract (§6.15, T-M8-91)", () => {
     expect(PT_SUGGEST).toContain("{{posts}}");
-    expect(PT_SUGGEST).toContain("最大2件");
-    expect(PT_SUGGEST).toContain('"suggestions"');
-    expect(PT_SUGGEST).toBe(PT_SUGGEST.trim());
+    expect(PT_SUGGEST).toContain("{{themes}}");
+    // 出力契約: 総評＋実行可能な設定（型・テーマ・画像・そのまま貼れるプロンプト全文）。
+    expect(PT_SUGGEST).toContain('"summary"');
+    expect(PT_SUGGEST).toContain('"good_posts"');
+    expect(PT_SUGGEST).toContain('"advice"');
+    expect(PT_SUGGEST).toContain('"prompt"');
+    // p5（引用）はfeature flag停止中のため選択肢に載せない。
+    expect(PT_SUGGEST).toContain("p1|p2|p3|p4|p6");
+    expect(PT_SUGGEST).not.toContain("p5");
   });
 
   it("LRN prompts (PT-L1〜L3) declare their JSON output contracts (§6.11〜6.13)", () => {

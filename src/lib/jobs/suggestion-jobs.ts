@@ -10,10 +10,15 @@ import { requestKey } from "./keys";
 export { MAX_ACTIVE_JOBS };
 
 /**
- * refreshSuggestions / listSuggestions の中核（SUGGEST, K-2, 要件05 §9/§12, 要件04 §12, T-M5-18）。
+ * refreshSuggestions / listSuggestions の中核（SUGGEST, K-2, 要件05 §9/§12, 要件04 §12, T-M8-91）。
  * DBは注入し純粋に保つ。refreshSuggestions は request_key 冪等・active一致・active suggestion job なし・
- * 同一JST日の成功なし・前回job以降の新metrics・queued/running 5件上限を検証して `suggestion` job を作る。
+ * 同一JST日の成功なし・queued/running 5件上限を検証して `suggestion` job を作る。
  * listSuggestions は最新の成功 suggestion job の improvement_suggestions を返す。提案は表示専用。
+ *
+ * **`no_new_metrics` ゲートは 2026-08-15 に廃止した**（T-M8-91）。分析のデータ源が保存済み
+ * checkpoint から**Xタイムラインの直取得**へ変わったため、「保存済みmetricsが更新されたか」は
+ * 実行可否と無関係になった。残すと、Exos経由の投稿が無いアカウント（外部投稿のみ）が
+ * 永久に実行できない。1日1回（already_today）が費用の上限を守る。
  */
 
 
@@ -58,31 +63,6 @@ async function assertNotAlreadyToday(tx: Queryable, xAccountId: string): Promise
   }
 }
 
-async function assertNewMetricsSinceLastJob(tx: Queryable, xAccountId: string): Promise<void> {
-  // 前回の suggestion job（成否問わず）以降に新しい metrics 取得があるか。初回（前回job無し）は許可。
-  const lastJobAt = (
-    await tx.query<{ at: string | null }>(
-      `select max(created_at)::text as at from generation_jobs
-        where x_account_id = $1 and kind = 'suggestion'`,
-      [xAccountId],
-    )
-  ).rows[0]?.at;
-  if (!lastJobAt) return; // 初回
-
-  const latestMetricsAt = (
-    await tx.query<{ at: string | null }>(
-      `select max((cp.value->>'collected_at')::timestamptz)::text as at
-         from drafts d
-         cross join lateral jsonb_each(d.tweet_metrics) tm
-         cross join lateral jsonb_each(tm.value->'checkpoints') cp
-        where d.x_account_id = $1`,
-      [xAccountId],
-    )
-  ).rows[0]?.at;
-  if (!latestMetricsAt || new Date(latestMetricsAt).getTime() <= new Date(lastJobAt).getTime()) {
-    throw new AppError("job_conflict", { details: { reason: "no_new_metrics" } });
-  }
-}
 
 /** `suggestion` job を冪等作成する。違反ガードは job_conflict（details.reason）で拒否する。 */
 export async function refreshSuggestions(
@@ -101,7 +81,6 @@ export async function refreshSuggestions(
     await assertActiveAccount(tx, userId, xAccountId);
     await assertNoActiveSuggestion(tx, xAccountId);
     await assertNotAlreadyToday(tx, xAccountId);
-    await assertNewMetricsSinceLastJob(tx, xAccountId);
     await assertJobBudget(tx, userId);
 
     // arbiter を限定しない on conflict do nothing で request_key と suggestion active partial-unique の
