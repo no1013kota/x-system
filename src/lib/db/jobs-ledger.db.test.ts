@@ -373,10 +373,15 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
            values ('anthropic', 'bogus_op', 'succeeded', 1, 'e2')`,
         ),
       );
+      // quantity=0 は許可（X読取の0件応答を$0で正直に記録する・20260815000002）。負値は違反。
+      await c.query(
+        `insert into external_api_usage_events (provider, operation, status, quantity, idempotency_key)
+         values ('x', 'x_post_read', 'succeeded', 0, 'e3')`,
+      );
       await expectViolation(c, () =>
         c.query(
           `insert into external_api_usage_events (provider, operation, status, quantity, idempotency_key)
-           values ('anthropic', 'web_search', 'succeeded', 0, 'e3')`,
+           values ('anthropic', 'web_search', 'succeeded', -1, 'e4')`,
         ),
       );
     });

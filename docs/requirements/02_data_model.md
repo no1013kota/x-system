@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.29 |
+| バージョン | v1.30 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -473,14 +473,14 @@ RLS: select/writeともservice roleのみ。
 | `status` | `text` | not null | `succeeded` / `failed` |
 | `http_status` | `integer` | null | provider HTTP status |
 | `error_code` | `text` | null | 秘密値を含まない正規化error code |
-| `quantity` | `integer` | not null default 1 | request数または返却resource数 |
+| `quantity` | `integer` | not null default 1 | request数または返却resource数。読取の0件応答は`0`（費用$0を正直に記録） |
 | `usage` | `jsonb` | not null default `{}` | token、検索回数等の秘密値を含まない内訳 |
 | `unit_cost_usd` | `numeric(12,6)` | null | 実行時に採用した単価snapshot |
 | `estimated_cost_usd` | `numeric(12,6)` | null | 推定原価。算出不能はnull |
 | `idempotency_key` | `text` | not null unique | job callまたはX操作単位の重複防止 |
 | `occurred_at` | `timestamptz` | not null default now() | 外部呼び出し時刻 |
 
-Constraints: `operation`は上記列挙値、`status in ('succeeded','failed')`、`quantity > 0`、HTTP statusは100〜599、金額は0以上。X media uploadは件数を運用logへ残してよいが、本台帳の原価・サービス内利用枠には含めない。
+Constraints: `operation`は上記列挙値、`status in ('succeeded','failed')`、`quantity >= 0`（Xは応答resource数課金のため、0件応答の読取は`quantity=0`・$0で記録する。以前の`> 0`では最低1件分を過大計上していた）、HTTP statusは100〜599、金額は0以上。X media uploadは件数を運用logへ残してよいが、本台帳の原価・サービス内利用枠には含めない。
 
 Indexes: (`user_id`, `occurred_at desc`), (`provider`, `operation`, `occurred_at desc`), `job_id`
 

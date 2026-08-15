@@ -94,10 +94,24 @@ describe("recordedXCall", () => {
     const { db, writes } = makeDb();
     await recordedXCall(
       db,
-      { ctx, operation: "x_post_read", unitCostUsd: 0, idempotencyKey: "k4" },
+      { ctx, operation: "x_post_read", unitCostUsd: 0.005, idempotencyKey: "k4" },
       async () => ({ tweets: [], requestId: "rq", quantity: 3, dryRun: false }) as XApiMeta,
     );
     expect(writes[0].params[P.quantity]).toBe(3);
+    expect(writes[0].params[P.estimatedCost]).toBeCloseTo(0.015, 10);
+  });
+
+  it("records an empty read as quantity 0 with $0 (per-resource billing)", async () => {
+    // 直近30日に投稿が無いアカウントの毎朝の自動読取（T-M8-94）で毎日発生する形。
+    // 以前は Math.max(1, quantity) で最低1件分（$0.005/日）を過大計上していた。
+    const { db, writes } = makeDb();
+    await recordedXCall(
+      db,
+      { ctx, operation: "x_post_read", unitCostUsd: 0.005, idempotencyKey: "k5" },
+      async () => ({ posts: [], requestId: "rq", quantity: 0, dryRun: false }) as XApiMeta,
+    );
+    expect(writes).toHaveLength(1); // 呼び出しの痕跡は残す（記録しない、にはしない）
+    expect(writes[0].params[P.quantity]).toBe(0);
     expect(writes[0].params[P.estimatedCost]).toBe(0);
   });
 });
