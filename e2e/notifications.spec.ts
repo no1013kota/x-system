@@ -32,7 +32,8 @@ test("通知を押すと即座に閉じて遷移し、未読数がその場で�
   // リンクのある通知を押す → 閉じて遷移し、未読が減る
   await page.locator("li button", { hasText: `失敗しました ${marker}` }).click();
   await page.waitForURL(/tab=api-keys/);
-  await expect(page.locator("li button")).toHaveCount(0); // ポップアップが閉じている
+  // ポップアップが閉じている（遷移先=統合設定のgeneralタブにも li>button があるため、通知行で特定する・T-M8-104）
+  await expect(page.locator("li button", { hasText: `失敗しました ${marker}` })).toHaveCount(0);
   await expect(bell).toContainText("1");
 
   // DBでも既読になっている（見た目だけ変えて終わりにしない）
