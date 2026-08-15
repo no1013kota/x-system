@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.28 |
+| バージョン | v1.29 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -304,7 +304,6 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
 | `enabled` | `boolean` | not null default true |  |
-| `last_run_at` | `timestamptz` | null | 最後のenqueue |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
@@ -453,7 +452,6 @@ X再連携通知は、token refreshが`invalid_grant`・必要scope不足・refr
 | `type` | `text` | not null | event type |
 | `object_id` | `text` | null | subscription等の対象ID |
 | `event_created_at` | `timestamptz` | not null | Stripe event.created |
-| `processed_at` | `timestamptz` | not null default now() | 処理済み日時 |
 
 Indexes: (`object_id`, `event_created_at desc`)
 
@@ -531,6 +529,34 @@ Constraints: `unique (window_key, category)`（同一窓の再実行は行を増
 Indexes: `ran_at desc`（直近の結果を引く／保持cleanup用）
 
 RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する（要件01 §9）。
+
+### 3.20 `x_timeline_posts`
+
+投稿分析（SUGGEST・毎朝8:00 JST自動実行）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は30日・最大100件）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `x_account_id` | `uuid` | not null FK x_accounts on delete cascade | 対象アカウント |
+| `tweet_id` | `text` | not null | XのポストID。増分取得の基準と重複排除に使う |
+| `text` | `text` | not null | 本文（先頭500字まで。分析には先頭200字を渡す） |
+| `posted_at` | `timestamptz` | nullable | 投稿時刻 |
+| `impressions` | `bigint` | nullable | 表示回数（non_public_metrics。自分の投稿のみ・直近30日のみ提供のためnull許容＝0と区別） |
+| `likes` | `integer` | nullable | いいね |
+| `reposts` | `integer` | nullable | リポスト |
+| `replies` | `integer` | nullable | 返信 |
+| `has_image` | `boolean` | not null default false | 画像等の添付の有無 |
+| `has_url` | `boolean` | not null default false | 本文URLの有無 |
+| `pattern` | `text` | nullable | 本サービス経由の投稿の型（drafts.tweet_ids突合で取得時に付与。外部投稿はnull。一度付いたら保持） |
+| `theme` | `text` | nullable | 同・テーマID |
+| `fetched_at` | `timestamptz` | not null default now() | 初回取得時刻 |
+| `metrics_updated_at` | `timestamptz` | not null default now() | メトリクスを最後に更新した時刻（重なり再取得で更新） |
+
+Constraints: `unique (x_account_id, tweet_id)`
+
+Indexes: `(x_account_id, posted_at desc)`
+
+RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
 
 ## 4. JSONスキーマ
 
@@ -751,12 +777,12 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
     "image": { "recommended": true, "reason": "画像付きの表示回数が上回った" },
     "prompt": { "kind": "p3", "content": "# タスク\n…（そのまま貼れる生成プロンプト全文・最大8,000字）" }
   },
-  "window_days": 30,
-  "post_count": 12
+  "post_count": 12,
+  "analyze_limit": 300
 }
 ```
 
-`format`・`window_days`（=30）・`post_count`（分析対象のタイムライン投稿数）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
+`format`・`post_count`（分析対象の投稿数）・`analyze_limit`（分析上限のsnapshot）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
 
 ## 5. RLS方針
 

@@ -1,22 +1,19 @@
 /**
- * SUGGEST 入力の組み立て（K-2, プロンプト §6.15/§4.2, 要件04 §12, T-M8-91）。
+ * SUGGEST 入力の組み立て（K-2, プロンプト §6.15/§4.2, 要件04 §12, T-M8-91/94）。
  *
  * 2026-08-15 の刷新で、分析対象を「Exos AIで作った投稿の checkpoint 実績」から
- * **Xタイムラインの直近30日の全投稿**（Exos製かに依らない）へ変えた。固定の分析軸
- * （型×時間帯・長さ・改行・画像・URL）と「3投稿以上・差20%以上」の条件は廃止し、
- * 良かった投稿の特徴づけはLLMの自由分析に任せる（運営者の判断・2026-08-15）。
+ * **Xタイムラインの全投稿**（Exos製かに依らない）へ変えた。固定の分析軸と
+ * 「3投稿以上・差20%以上」の条件は廃止し、特徴づけはLLMの自由分析に任せる。
+ * T-M8-94 でさらに自動化し、取得は増分（`suggestion-timeline.ts`）・保存は
+ * `x_timeline_posts`・**分析は保存済みの全投稿（新しい順に最大 SUGGEST_ANALYZE_MAX 件）**になった。
  *
  * ここはLLMを使わない純粋な整形だけを持つ:
- * - タイムラインの各投稿を `<posts>` 用の1行（本文冒頭・JST日時・実績・画像/URL有無）へ変換する
- * - Exos AIで作った投稿には **型とテーマ** を付ける（drafts の tweet_ids と突合。分からなければ null。
- *   「どの型が伸びたか」をLLMが根拠にできるのはこのタグがある投稿だけ）
- *
- * 取得上限は `SUGGEST_TIMELINE_MAX`（100件）。X読取は応答1件ごとに課金される（$0.005/件）ため、
- * この定数が**1回の分析のX費用の上限**（100×$0.005=$0.50）を決める。変えるときは費用も変わる。
+ * - タイムライン/保存行の各投稿を `<posts>` 用の1行へ変換する
+ * - Exos AIで作った投稿には **型とテーマ** を付ける（drafts の tweet_ids と突合。分からなければ null）
  */
 
 export const SUGGEST_PERIOD_DAYS = 30;
-/** タイムライン取得の上限件数 = X読取費用の上限（件数×X_COST_POST_READ_USD）。 */
+/** 後方互換の別名（取得上限の正本は suggestion-timeline.ts の TIMELINE_FETCH_MAX）。 */
 export const SUGGEST_TIMELINE_MAX = 100;
 /** 本文をLLMへ渡す長さ。特徴づけに十分で、100件でも入力が肥大しない値。 */
 export const SUGGEST_POST_TEXT_CHARS = 200;
@@ -105,6 +102,40 @@ export function buildSuggestionInput(
     };
   });
   return { posts };
+}
+
+/** `x_timeline_posts` の保存行（読み出し形）。 */
+export interface StoredTimelinePost {
+  tweet_id: string;
+  text: string;
+  posted_at: string | null;
+  impressions: number | null;
+  likes: number | null;
+  reposts: number | null;
+  replies: number | null;
+  has_image: boolean;
+  has_url: boolean;
+  pattern: string | null;
+  theme: string | null;
+}
+
+/** 保存済みの投稿（新しい順で渡す）を `<posts>` の形へ整える（T-M8-94）。 */
+export function buildInputFromStored(rows: readonly StoredTimelinePost[]): SuggestionInput {
+  return {
+    posts: rows.map((r) => ({
+      id: r.tweet_id,
+      text: truncateChars(r.text.replace(/\s+/g, " ").trim(), SUGGEST_POST_TEXT_CHARS),
+      posted_at_jst: toJstLabel(r.posted_at),
+      impressions: r.impressions,
+      likes: r.likes,
+      reposts: r.reposts,
+      replies: r.replies,
+      has_image: r.has_image,
+      has_url: r.has_url,
+      pattern: r.pattern,
+      theme: r.theme,
+    })),
+  };
 }
 
 /**

@@ -4,7 +4,7 @@ import { query } from "./fixtures/account";
 import { expect, signIn, test } from "./fixtures/test";
 
 /**
- * SC-09 改善提案の表示（要件06 §8、T-M8-91）。
+ * SC-09 分析レポートの表示（要件06 §8、T-M8-94）。
  *
  * 提案の生成はX API・実AIを叩くためE2Eでは動かさず、`improvement_suggestions` を新形式
  * （evidence.format=2）で直接seedして表示だけを検証する:
@@ -25,7 +25,7 @@ const EVIDENCE = {
   post_count: 12,
 };
 
-test("改善提案は総評・良かった投稿・アドバイスが画面表記で出て、プロンプトをコピーできる", async ({
+test("分析レポートは総評・良かった投稿・アドバイスが画面表記で出て、プロンプトをコピーできる", async ({
   accounts,
   page,
 }) => {
@@ -54,7 +54,7 @@ test("改善提案は総評・良かった投稿・アドバイスが画面表�
   await expect(page.getByText("ノウハウ", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("AI", { exact: true })).toBeVisible();
   await expect(page.getByText("付ける", { exact: true })).toBeVisible();
-  const panel = page.locator("section", { hasText: "改善提案" });
+  const panel = page.locator("section", { hasText: "分析レポート" });
   await expect(panel.getByText(/\bp3\b/)).toHaveCount(0);
 
   // プロンプト全文（fixtureはpremium）とコピー・AI設定への導線。

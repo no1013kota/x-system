@@ -16,7 +16,7 @@ import { AnalyticsView } from "./analytics-view";
 import { FollowerChart } from "./follower-chart";
 import { SuggestionsPanel } from "./suggestions-panel";
 
-export const metadata: Metadata = { title: `分析 | ${APP_NAME}` };
+export const metadata: Metadata = { title: `投稿分析 | ${APP_NAME}` };
 
 /** 実績表示は直近90日の投稿を対象にする（30日checkpointの回収期間＋余裕）。 */
 const ANALYTICS_PERIOD_DAYS = 90;
@@ -30,7 +30,7 @@ export default async function AnalyticsPage() {
     return (
       <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
         <header>
-            <h1 className="text-[20px] font-bold tracking-tight text-ink">分析</h1>
+            <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿分析</h1>
         </header>
         <div className="mt-7">
           <EmptyState
@@ -64,19 +64,21 @@ export default async function AnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">分析</h1>
+        <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          投稿の反応は、投稿後1日・7日・30日の3回だけ記録します。ここでは直近90日の投稿を新しい順に表示します。
+          毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。下の実績表は、このアプリから投稿したポストを投稿後1日・7日・30日の3回記録したものです。
         </p>
       </header>
+      {/* 並びは 分析レポート → 投稿ごとの実績 → フォロワー推移（運営者の指示・2026-08-15。
+          レポートがこの画面の主目的で、フォロワー推移は補助情報のため最後）。 */}
       <div className="mt-7 space-y-8">
-        <FollowerChart points={followers} />
-        <AnalyticsView drafts={drafts} handle={handle} />
         <SuggestionsPanel
           generating={suggestionsSection.generating}
           plan={profile.rows[0]?.plan ?? "standard"}
           suggestions={suggestionsSection.suggestions}
         />
+        <AnalyticsView drafts={drafts} handle={handle} />
+        <FollowerChart points={followers} />
       </div>
     </main>
   );

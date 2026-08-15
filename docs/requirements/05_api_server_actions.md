@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.32 |
+| バージョン | v1.33 |
 | 更新日 | 2026-08-15 |
 | 関連 | 全画面、全ジョブ |
 
@@ -212,7 +212,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
 | `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
-| `reimportOwnPosts` | request_key | job_id | 直近100件。**成功した取り込み**から30日ごとに1回まで（失敗した試行は数えない。`refreshSuggestions`の`already_today`と同じ規則）。進行中（queued/running）の学習jobがあれば`job_conflict`（`learning_busy`） |
+| `reimportOwnPosts` | request_key | job_id | 直近100件。**成功した取り込み**から30日ごとに1回まで（失敗した試行は数えない。旧・改善提案の`already_today`と同じ規則（同機能は2026-08-15に自動化で廃止））。進行中（queued/running）の学習jobがあれば`job_conflict`（`learning_busy`） |
 | `getBaseMd` | x_account_id | content/version | 所有者のみ |
 | `updateBaseMdManual` | content, expected_version | version | md/premiumのみ。6見出し構造を検証し、現行version不一致は409 |
 | `rollbackBaseMd` | version, expected_version | new_version | md/premium。指定版を内容とする新versionを作成 |
@@ -222,15 +222,13 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 `removeLearningSource`は同じXアカウントにqueued/runningの`learning_analysis`/`md_merge`または`removing` sourceがある場合は`job_conflict`にする。`addLearningSource`と`reimportOwnPosts`も`removing`中は拒否し、削除mergeへ別のsource変更を混ぜない。
 
-## 9. 分析・改善
+## 9. 投稿分析
 
-| Action | 入力 | 出力 | 認可/制約 |
-|---|---|---|---|
-| `refreshSuggestions` | request_key | job_id | active jobがなければ`suggestion`を冪等作成。1日1回（同一JST日の成功で拒否）。新metrics条件は廃止（T-M8-91・データ源がXの直取得になったため） |
+**Server Actionは無い**（2026-08-15・T-M8-94で手動の`refreshSuggestions`を削除した）。分析レポートは毎朝8:00 JSTに`scheduler_tick`が自動起票する（要件04 §12）。
 
-実績集計（ホームSC-01の「直近の実績」）と改善提案の一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
+実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
-改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで投稿作成・スケジュール・AI設定のプロンプト編集（md/premium）で自ら反映する。提案のプロンプト全文は画面のコピー導線で持ち出す（専用の適用Actionは置かない）。
+レポートは表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーはレポートを読んで投稿作成・スケジュール・AI設定のプロンプト編集（md/premium）で自ら反映する。レポートのプロンプト全文は画面のコピー導線で持ち出す（専用の適用Actionは置かない）。
 
 入力検証の失敗（`validation_error`）は、**作者が自分で書いたzodメッセージがあればそれを `message` に載せる**（F8〜F10）。無ければ code ごとの定型文（「入力内容を確認してください。」）に落ちる。zodの既定メッセージは英語かつスキーマの説明（`Too big: expected string to have <=512 characters` 等）なので画面へ出さない——要件06 §8「内部用語を画面に使わない」に反するため。実装は `src/lib/validation/user-input.ts` の `parseUserInput`（per-parseのsentinel）＋ `firstAuthoredIssueMessage` / `authoredFieldErrors` が正本で、`code` は変えない。**Server Action と認証フォームで素の `safeParse` を使わないことは `user-input.test.ts` が検査する**（素のままだと既定文言と作者文言を区別できない）。
 

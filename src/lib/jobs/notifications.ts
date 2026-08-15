@@ -64,8 +64,8 @@ export const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
     link: "/app/ai-settings?tab=learning",
   },
   suggestion: {
-    title: "改善提案の生成に失敗しました",
-    body: "時間をおいて分析画面から再度お試しください。",
+    title: "投稿分析に失敗しました",
+    body: "明日の朝に自動で再実行されます。Xアカウントの連携状態もご確認ください。",
     link: "/app/analytics",
   },
 };

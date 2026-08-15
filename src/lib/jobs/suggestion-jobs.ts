@@ -1,109 +1,72 @@
-import { z } from "zod";
-
-import { AppError } from "@/lib/observability/errors";
-
 import type { Queryable } from "../x/token-refresh";
-import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./job-guards";
-import { requestKey } from "./keys";
-
-// 既存の import 名を保つための re-export（正本は `job-guards.ts`・R20）。
-export { MAX_ACTIVE_JOBS };
 
 /**
- * refreshSuggestions / listSuggestions の中核（SUGGEST, K-2, 要件05 §9/§12, 要件04 §12, T-M8-91）。
- * DBは注入し純粋に保つ。refreshSuggestions は request_key 冪等・active一致・active suggestion job なし・
- * 同一JST日の成功なし・queued/running 5件上限を検証して `suggestion` job を作る。
- * listSuggestions は最新の成功 suggestion job の improvement_suggestions を返す。提案は表示専用。
+ * 投稿分析（SUGGEST）の起票と読み出し（K-2, 要件04 §12, 要件05 §9, T-M8-94）。
  *
- * **`no_new_metrics` ゲートは 2026-08-15 に廃止した**（T-M8-91）。分析のデータ源が保存済み
- * checkpoint から**Xタイムラインの直取得**へ変わったため、「保存済みmetricsが更新されたか」は
- * 実行可否と無関係になった。残すと、Exos経由の投稿が無いアカウント（外部投稿のみ）が
- * 永久に実行できない。1日1回（already_today）が費用の上限を守る。
+ * 2026-08-15 の刷新で**手動の「提案を更新」を廃止し、毎朝8:00 JSTの自動実行**にした
+ * （運営者の指示）。起票は `scheduler_tick` が `enqueueDailySuggestions` で行う:
+ * - JST 8時前は何もしない（日次サマリ `deliverDailySummaries` と同じゲートの形）
+ * - 対象は status='active' の Xアカウントのうち、契約が有効（trialing/active）で、
+ *   BYOKならAIキーが1つ以上 valid のもの（キーが無いと provider解決で必ず失敗し、
+ *   毎朝失敗通知が届き続けるため入口で除く）
+ * - 冪等キーは request_key = `sug-daily:{x_account_id}:{JST日付}`（unique制約が1日1回を保証）
+ * - dispatch はしない。queued に置けば tick の dispatch フェーズ（最大50件/回）が拾う
+ *
+ * 旧・手動起票（refreshSuggestions と already_today / no_new_metrics 等のゲート）は削除した。
+ * 1日1回の費用上限は request_key の冪等がそのまま担う。
  */
 
-
-export const refreshSuggestionsSchema = z.object({
-  request_key: z.string().min(1).max(200),
-});
-export type RefreshSuggestionsInput = z.infer<typeof refreshSuggestionsSchema>;
-
-export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
-
-export interface SuggestionJobDeps {
-  runInTx: RunInTx;
+export interface DailyEnqueueResult {
+  /** 新しく作った job の数（既存＝実行済みの日はカウントしない）。 */
+  created: number;
 }
 
-export interface CreateJobResult {
-  jobId: string;
-  deduped: boolean;
+const JST_OFFSET_MS = 9 * 3_600_000;
+/** 自動実行の時刻（JST時）。日次サマリ（SUMMARY_HOUR_JST）と同じ朝8時。 */
+export const SUGGESTION_HOUR_JST = 8;
+
+/** `YYYY-MM-DD`（JST）。 */
+export function jstDateOf(nowIso: string): string {
+  return new Date(Date.parse(nowIso) + JST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-async function assertNoActiveSuggestion(tx: Queryable, xAccountId: string): Promise<void> {
-  const active = await tx.query(
-    `select 1 from generation_jobs
-      where x_account_id = $1 and kind = 'suggestion' and status in ('queued', 'running') limit 1`,
-    [xAccountId],
+/** 自動実行の冪等キー。unique(request_key) が「1アカウント1日1回」を保証する。 */
+export function dailySuggestionKey(xAccountId: string, jstDate: string): string {
+  return `sug-daily:${xAccountId}:${jstDate}`;
+}
+
+/**
+ * 毎朝の投稿分析jobを一括で冪等作成する（scheduler_tick から毎回呼ばれる）。
+ * JST 8時前は no-op。作成済みの日は on conflict do nothing で0件になる。
+ */
+export async function enqueueDailySuggestions(
+  db: Queryable,
+  nowIso: string,
+): Promise<DailyEnqueueResult> {
+  const jstHour = new Date(Date.parse(nowIso) + JST_OFFSET_MS).getUTCHours();
+  if (jstHour < SUGGESTION_HOUR_JST) return { created: 0 };
+  const date = jstDateOf(nowIso);
+
+  // 対象アカウントを1クエリで選び、そのまま冪等insertする（enqueueDueSlots と同じ「置くだけ」の形。
+  // dispatch は tick の dispatch フェーズに任せる）。
+  const { rows } = await db.query<{ id: string }>(
+    `insert into generation_jobs (x_account_id, kind, trigger, request_key, status)
+     select xa.id, 'suggestion', 'schedule', 'sug-daily:' || xa.id || ':' || $1, 'queued'
+       from x_accounts xa
+       join profiles p on p.id = xa.user_id
+      where xa.status = 'active'
+        and p.subscription_status in ('trialing', 'active')
+        and (
+          p.plan = 'premium'
+          or exists (select 1 from user_api_keys k where k.user_id = p.id and k.status = 'valid')
+        )
+     -- arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
+     -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。
+     on conflict do nothing
+     returning id`,
+    [date],
   );
-  if (active.rowCount) {
-    throw new AppError("job_conflict", { details: { reason: "active_suggestion_exists" } });
-  }
-}
-
-async function assertNotAlreadyToday(tx: Queryable, xAccountId: string): Promise<void> {
-  // 同一JST日に成功済みなら拒否（1日1回・失敗ジョブは再試行を許す）。
-  const today = await tx.query(
-    `select 1 from generation_jobs
-      where x_account_id = $1 and kind = 'suggestion' and status = 'succeeded'
-        and (created_at at time zone 'Asia/Tokyo')::date = (now() at time zone 'Asia/Tokyo')::date
-      limit 1`,
-    [xAccountId],
-  );
-  if (today.rowCount) {
-    throw new AppError("job_conflict", { details: { reason: "already_today" } });
-  }
-}
-
-
-/** `suggestion` job を冪等作成する。違反ガードは job_conflict（details.reason）で拒否する。 */
-export async function refreshSuggestions(
-  userId: string,
-  xAccountId: string,
-  input: RefreshSuggestionsInput,
-  deps: SuggestionJobDeps,
-): Promise<CreateJobResult> {
-  const key = requestKey(userId, input.request_key);
-  return deps.runInTx(async (tx) => {
-    const existing = (
-      await tx.query<{ id: string }>(`select id from generation_jobs where request_key = $1`, [key])
-    ).rows[0];
-    if (existing) return { jobId: existing.id, deduped: true };
-
-    await assertActiveAccount(tx, userId, xAccountId);
-    await assertNoActiveSuggestion(tx, xAccountId);
-    await assertNotAlreadyToday(tx, xAccountId);
-    await assertJobBudget(tx, userId);
-
-    // arbiter を限定しない on conflict do nothing で request_key と suggestion active partial-unique の
-    // 両方を吸収する（同一アカウントへ別トークンの並行呼び出しが来ても 23505 を送出させない）。
-    const inserted = (
-      await tx.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, request_key, status)
-         values ($1, 'suggestion', 'manual', $2, 'queued')
-         on conflict do nothing
-         returning id`,
-        [xAccountId, key],
-      )
-    ).rows[0];
-    if (inserted) return { jobId: inserted.id, deduped: false };
-
-    // 同一 request_key の競合なら既存jobへ冪等デデュープ。
-    const raced = (
-      await tx.query<{ id: string }>(`select id from generation_jobs where request_key = $1`, [key])
-    ).rows[0];
-    if (raced) return { jobId: raced.id, deduped: true };
-    // 別トークンの並行呼び出しが active suggestion を先に作った（partial-unique競合）→ friendly job_conflict。
-    throw new AppError("job_conflict", { details: { reason: "active_suggestion_exists" } });
-  });
+  return { created: rows.length };
 }
 
 export interface SuggestionView {

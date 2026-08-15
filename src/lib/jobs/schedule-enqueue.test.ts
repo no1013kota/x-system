@@ -10,7 +10,6 @@ const KEYS = /from user_api_keys where user_id/;
 const BUDGET = /from usage_counters where user_id/;
 const DAILY = /count\(\*\)::int as n from usage_events/;
 const INSERT = /insert into generation_jobs/;
-const LAST_RUN = /update schedule_slots set last_run_at/;
 const REMOVING = /from learning_sources[\s\S]*status = 'removing'/;
 
 function makeDb(handler: (sql: string) => { rows: Row[]; rowCount?: number }) {
@@ -65,23 +64,22 @@ function handlerFor(slot: Row, over: Partial<Record<string, () => { rows: Row[];
 }
 
 describe("enqueueDueSlots — eligible", () => {
-  it("enqueues an eligible standard draft slot and updates last_run_at", async () => {
+  it("enqueues an eligible standard draft slot", async () => {
     const { db, writes } = makeDb(handlerFor(dueSlot()));
     const res = await enqueueDueSlots(deps(db));
     expect(res).toEqual({ scanned: 1, enqueued: 1 });
     const insert = writes.find((w) => INSERT.test(w.sql));
     expect(insert?.sql).toContain("'schedule'");
     expect(insert?.params[6]).toBe("slot:s1:2026-07-24:09:00"); // schedule_run_key
-    expect(writes.some((w) => LAST_RUN.test(w.sql))).toBe(true);
   });
 
-  it("is idempotent: on schedule_run_key conflict no job is counted and last_run_at is not touched", async () => {
-    const { db, writes } = makeDb(
+  it("is idempotent: on schedule_run_key conflict no job is counted", async () => {
+    // 冪等化は schedule_run_key unique だけが担う（last_run_at 列は T-M8-94 で削除した）。
+    const { db } = makeDb(
       handlerFor(dueSlot(), { insert: () => ({ rows: [], rowCount: 0 }) }),
     );
     const res = await enqueueDueSlots(deps(db));
     expect(res.enqueued).toBe(0);
-    expect(writes.some((w) => LAST_RUN.test(w.sql))).toBe(false);
   });
 
   // 条件3: BYOK（standard/md）は月間投稿枠を持たないため残量判定をskipしてenqueueする（要件04 §7.1）。
