@@ -135,4 +135,32 @@ describe("external_api_usage_events ledger (local DB)", () => {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
+
+  it("accepts quantity 0 (X読取の0件応答は$0で正直に記録する)", async () => {
+    // 制約は quantity >= 0（20260815000002）。毎朝の自動読取で投稿0件の日は quantity=0 になる。
+    const uid = await withTransaction((c) => makeUser(c));
+    try {
+      const inserted = await recordExternalApiUsage(db, {
+        userId: uid,
+        provider: "x",
+        operation: "x_post_read",
+        status: "succeeded",
+        quantity: 0,
+        unitCostUsd: 0.005,
+        estimatedCostUsd: 0,
+        idempotencyKey: `empty-read-${randomUUID()}`,
+      });
+      expect(inserted).toBe(true);
+      const row = (
+        await db.query<{ quantity: number; estimated_cost_usd: string }>(
+          `select quantity, estimated_cost_usd from external_api_usage_events where user_id = $1`,
+          [uid],
+        )
+      ).rows[0];
+      expect(row.quantity).toBe(0);
+      expect(Number(row.estimated_cost_usd)).toBe(0);
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
 });

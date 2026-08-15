@@ -71,7 +71,9 @@ export async function recordedXCall<T extends XApiMeta>(
 
   // dry_run は実コストが無いため台帳に記録しない（要件04 §10）。
   if (!result.dryRun) {
-    const quantity = Math.max(1, result.quantity);
+    // Xは応答リソース数課金。0件応答（直近に投稿が無いアカウントの読取など）は quantity=0 / $0 で
+    // 正直に記録する（以前は最低1件分を過大計上していた）。呼び出し自体の痕跡は残す（原則2）。
+    const quantity = Math.max(0, result.quantity);
     await recordExternalApiUsage(db, {
       userId: ctx.userId,
       xAccountId: ctx.xAccountId ?? null,

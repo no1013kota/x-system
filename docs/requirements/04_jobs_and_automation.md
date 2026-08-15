@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.28 |
+| バージョン | v1.29 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -196,7 +196,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 7. 各成功直後にtweet_idを保存し、全プランで`post_create` consume eventを作る。premiumだけ月次counterを同一transactionで加算する。
 8. 全件成功でdraft rowを削除せず、`status=posted`、`root_tweet_id`、`posted_at`、`posted_mode`を更新する。rowは下書き一覧から外れ、投稿履歴とtweet_id別実績の正本になる。
 
-原価集計対象のX/AI外部呼び出しは成功・失敗を問わず、返却されたrequest ID、resource数、token/search usage、実行時単価、推定原価を`external_api_usage_events`へ冪等保存する。provider本文、投稿本文、prompt、tokenは保存しない。X media uploadは運用logだけへ記録し、原価台帳から除外する。X単価は環境変数`X_COST_*`のsnapshotを採用し、投稿作成は本文のURL有無で通常/URL付き単価を分ける。読取（`x_post_read`/`x_user_read`）の単価は`X_COST_POST_READ_USD`/`X_COST_USER_READ_USD`のsnapshotを使い、**応答のresource数で乗算**して記録する（pay-per-usageは応答1件ごとに課金する。2026-08-15・T-M8-91で「読取は課金されない」という誤った前提を修正した。未設定の環境では0で記録する）。`dry_run`は実外部呼び出し（実原価）が発生しないため原価台帳（`external_api_usage_events`）には記録しない。失敗時は resource 未作成のため推定原価0で記録する。
+原価集計対象のX/AI外部呼び出しは成功・失敗を問わず、返却されたrequest ID、resource数、token/search usage、実行時単価、推定原価を`external_api_usage_events`へ冪等保存する。provider本文、投稿本文、prompt、tokenは保存しない。X media uploadは運用logだけへ記録し、原価台帳から除外する。X単価は環境変数`X_COST_*`のsnapshotを採用し、投稿作成は本文のURL有無で通常/URL付き単価を分ける。読取（`x_post_read`/`x_user_read`）の単価は`X_COST_POST_READ_USD`/`X_COST_USER_READ_USD`のsnapshotを使い、**応答のresource数で乗算**して記録する（pay-per-usageは応答1件ごとに課金する。2026-08-15・T-M8-91で「読取は課金されない」という誤った前提を修正した。未設定の環境では0で記録する）。0件応答の読取は`quantity=0`・推定原価$0で記録する（呼び出しの痕跡は残す。直近30日に投稿が無いアカウントの毎朝の自動読取で毎日発生する形。2026-08-15・T-M8-94）。`dry_run`は実外部呼び出し（実原価）が発生しないため原価台帳（`external_api_usage_events`）には記録しない。失敗時は resource 未作成のため推定原価0で記録する。
 
 AI呼び出しが例外で終わった場合（レート制限・タイムアウト・接続断など、providerが応答を返さなかった場合）も、`status: failed` の provider call として記録する。SDKは例外時にusageを返さないため、残せるのは発生事実・provider・model・operation・latency・request ID・安全なerror code（HTTP statusは`http_<status>`、SDKのcode/nameはそのまま、いずれも無ければ`unknown_error`）に限られ、token数は0・推定原価は`null`とする。providerの応答本文はここにも保存しない。この記帳は失敗の確定とは独立で、retryで差し戻されるattemptの分も記録する（消費した実原価は発生しているため）。
 

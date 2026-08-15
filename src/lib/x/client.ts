@@ -423,7 +423,7 @@ export async function getRecentPosts(
     posts,
     nextToken: res.meta?.next_token ?? null,
     requestId,
-    quantity: Math.max(1, posts.length),
+    quantity: posts.length,
     dryRun: false,
   };
 }
@@ -457,7 +457,7 @@ export async function getUsersByIds(
     username: u.username,
     followersCount: u.public_metrics?.followers_count ?? null,
   }));
-  return { users, requestId, quantity: Math.max(1, users.length), dryRun: false };
+  return { users, requestId, quantity: users.length, dryRun: false };
 }
 
 /**
