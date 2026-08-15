@@ -418,6 +418,32 @@ export function CreatePostForm({
         aria-label="生成入力"
         className={`${cardClassName} space-y-5 p-5`}
       >
+        {/* テーマを先頭に置く（T-M8-101・運営者の指示 2026-08-15。何を書くかを先に決め、書き方の型をその後に選ぶ）。 */}
+        <div>
+          <label className="block text-body font-medium text-ink" htmlFor="theme">
+            テーマ
+          </label>
+          <select
+            aria-describedby="theme-help"
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
+            id="theme"
+            onChange={(e) => setTheme(e.target.value)}
+            required
+            value={theme}
+          >
+            <option value="">選択してください</option>
+            {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存の旧値は保全される。 */}
+            {selectablePostThemeOptions(theme).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
+            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
+          </p>
+        </div>
+
         {/*
           パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
           同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
@@ -528,31 +554,6 @@ export function CreatePostForm({
             </div>
           </details>
         ) : null}
-
-        <div>
-          <label className="block text-body font-medium text-ink" htmlFor="theme">
-            テーマ
-          </label>
-          <select
-            aria-describedby="theme-help"
-            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-            id="theme"
-            onChange={(e) => setTheme(e.target.value)}
-            required
-            value={theme}
-          >
-            <option value="">選択してください</option>
-            {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存の旧値は保全される。 */}
-            {selectablePostThemeOptions(theme).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
-            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
-          </p>
-        </div>
 
         <div>
           <label className="block text-body font-medium text-ink" htmlFor="source_url">
