@@ -29,7 +29,7 @@ describe("resolveFailedNotice", () => {
     expect(resolveFailedNotice("learning_analysis", { draft_id: null })).toEqual({
       title: "学習ソースの分析に失敗しました",
       body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
-      link: "/app/ai-settings?tab=persona",
+      link: "/app/settings?tab=account",
     });
     expect(resolveFailedNotice("suggestion", { draft_id: null })).toEqual({
       title: "投稿分析に失敗しました",

@@ -41,7 +41,7 @@ export async function updatePersonaSettings(
       xAccountId: parsed.data.x_account_id,
     });
     revalidatePath("/app");
-    revalidatePath("/app/ai-settings");
+    revalidatePath("/app/settings");
     return {
       message: "アカウント設定を保存しました。",
       status: "success",

@@ -9,7 +9,6 @@ import {
   saveXApiKey,
   verifyApiKey,
 } from "@/app/actions/api-keys";
-import { aiSettingsTabHref } from "@/app/app/ai-settings/tabs";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -205,7 +204,7 @@ export function ApiKeySettings({
         tone: "success",
         title: result.message,
         description: "次に「Xアカウント」タブから、投稿するアカウントを連携してください。",
-        action: { href: settingsTabHref("x-accounts"), label: "Xアカウント連携を開く" },
+        action: { href: settingsTabHref("general"), label: "Xアカウント連携を開く" },
       });
       router.refresh();
     });
@@ -252,7 +251,7 @@ export function ApiKeySettings({
           tone: "success",
           title: "APIキーを保存し、疎通を確認しました",
           description: "「AI用途」でこのAIを文章生成に割り当てると投稿を作成できます。",
-          action: { href: aiSettingsTabHref("purposes"), label: "AI用途を開く" },
+          action: { href: settingsTabHref("purposes"), label: "AI用途を開く" },
         });
         router.refresh();
       } else {

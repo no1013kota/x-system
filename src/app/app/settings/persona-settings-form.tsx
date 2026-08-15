@@ -154,7 +154,7 @@ export function PersonaSettingsForm({
         <Notice tone="warn"
           role="status">
           保存すると、アカウント.mdの1〜4章をこのフォームの内容で書き換えます（学習で作られた5〜6章は残ります）。以前の内容は
-          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/ai-settings?tab=base-md">
+          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=prompts&sec=account-md">
             アカウント.mdタブの変更履歴
           </Link>
           からいつでも戻せます。

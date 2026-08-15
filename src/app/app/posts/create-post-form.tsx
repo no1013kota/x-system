@@ -68,7 +68,7 @@ const PREREQ_FAILURE_PATH: Record<string, string> = {
   subscription_required: "/app/settings?tab=billing",
   api_key_required: "/app/settings?tab=api-keys",
   x_account_required: "/app/settings?tab=x-accounts",
-  persona_required: "/app/ai-settings?tab=persona",
+  persona_required: "/app/settings?tab=account",
 };
 const PREREQ_FAILURE_CODES = new Set(Object.keys(PREREQ_FAILURE_PATH));
 const QUEUED_SLOW_MS = 60_000;
@@ -530,7 +530,7 @@ export function CreatePostForm({
                 ) : (
                   <p className="rounded-card border border-hairline bg-surface px-3.5 py-3 text-body leading-5 text-ink-2">
                     アカウント.mdはアカウント設定を保存すると作られます。まず
-                    <Link className="text-info-fg hover:underline" href="/app/ai-settings?tab=persona">
+                    <Link className="text-info-fg hover:underline" href="/app/settings?tab=account">
                       アカウント設定
                     </Link>
                     を保存してください。

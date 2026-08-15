@@ -61,7 +61,7 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   await expect(page.getByRole("button", { name: "コピー" })).toBeVisible();
   await expect(page.getByRole("link", { name: "AI設定で保存する" })).toHaveAttribute(
     "href",
-    "/app/ai-settings?tab=prompts",
+    "/app/settings?tab=prompts&sec=post-prompt",
   );
 });
 
@@ -90,7 +90,7 @@ test("standardにはプロンプト全文を出さず、mdプラン以上の案�
   await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: /プロンプトのカスタマイズ（mdプラン以上）/ }),
-  ).toHaveAttribute("href", "/app/ai-settings?tab=prompts");
+  ).toHaveAttribute("href", "/app/settings?tab=prompts&sec=post-prompt");
 });
 
 test("BYOKでAIキーが未登録なら、始まらない理由と登録導線を出す（T-M8-95）", async ({

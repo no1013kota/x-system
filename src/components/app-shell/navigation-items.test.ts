@@ -14,7 +14,6 @@ describe("APP_NAVIGATION_ITEMS", () => {
       { href: "/app/posts", label: "投稿作成" },
       { href: "/app/schedule", label: "スケジュール" },
       { href: "/app/analytics", label: "投稿分析" },
-      { href: "/app/ai-settings", label: "AI設定" },
       { href: "/app/settings", label: "設定" },
     ]);
   });

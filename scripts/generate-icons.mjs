@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from "node:fs";
  */
 const ICON_NAMES = [
   "add", "star_shine", "bolt", "check", "check_circle", "chevron_right", "close",
-  "delete", "description", "drafts", "edit", "edit_square", "error", "history",
+  "delete", "drafts", "edit", "edit_square", "error", "history",
   "home", "image", "key", "lock", "monitoring", "newspaper", "notifications", "open_in_new",
   "output", "progress_activity", "radio_button_unchecked", "refresh", "schedule", "smart_toy", "tune",
   "verified_user", "warning", "account_circle", "unfold_more", "content_copy",
@@ -33,7 +33,7 @@ const ICON_NAMES = [
  * ここに挙げたものだけ `-fill` を生成する（全部作ると無駄に増える）。
  */
 const FILLED_NAMES = [
-  "home", "output", "newspaper", "edit_square", "schedule", "monitoring", "description",
+  "home", "output", "newspaper", "edit_square", "schedule", "monitoring",
   "tune", "check_circle",
 ];
 

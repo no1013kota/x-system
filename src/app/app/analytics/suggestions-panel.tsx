@@ -181,7 +181,7 @@ export function SuggestionsPanel({
                           // 貼り先（AI設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
                           <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
                             この特徴を毎回の生成に反映する専用プロンプトも用意しました。
-                            <Link className="text-info-fg hover:underline" href="/app/ai-settings?tab=prompts">
+                            <Link className="text-info-fg hover:underline" href="/app/settings?tab=prompts&sec=post-prompt">
                               プロンプトのカスタマイズ（mdプラン以上）
                             </Link>
                             で利用できます。
@@ -204,7 +204,7 @@ export function SuggestionsPanel({
                                 </button>
                                 <Link
                                   className="text-body text-info-fg hover:underline"
-                                  href="/app/ai-settings?tab=prompts"
+                                  href="/app/settings?tab=prompts&sec=post-prompt"
                                 >
                                   AI設定で保存する
                                 </Link>

@@ -15,8 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { AI_SETTINGS_TABS } from "./ai-settings/tabs";
-import { SETTINGS_TABS } from "./settings/tabs";
+import { ACCEPTED_SETTINGS_TAB_SLUGS, PROMPT_SECTIONS } from "./settings/tabs";
 
 // 実行時のカレントディレクトリに依存させない（T-M8-51・R19）。
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -50,21 +49,12 @@ function tabLinks(screen: string): { file: string; slug: string }[] {
   return found;
 }
 
-describe("AI設定のタブへのリンク", () => {
-  const known = AI_SETTINGS_TABS.map(([slug]) => slug) as readonly string[];
-
-  it("リンク元が1つ以上見つかる（検査そのものが空振りしていない）", () => {
-    expect(tabLinks("ai-settings").length).toBeGreaterThan(0);
-  });
-
-  it("すべて実在するタブを指している", () => {
-    const unknown = tabLinks("ai-settings").filter((l) => !known.includes(l.slug));
-    expect(unknown.map((l) => `${l.file}: ?tab=${l.slug}`)).toEqual([]);
-  });
-});
+// 旧「AI設定」はT-M8-104でリダイレクト専用になった。コード内のリンクは /app/settings へ
+// 移行済みのため、/app/ai-settings?tab= の検査は廃止（旧リンクはredirectのTAB_MAPが受ける）。
 
 describe("設定のタブへのリンク", () => {
-  const known = SETTINGS_TABS.map(([slug]) => slug) as readonly string[];
+  // 新タブ＋旧エイリアス（DB保存済みリンクと同じ扱いで、コード内の旧slugも開ける）を許容する。
+  const known = ACCEPTED_SETTINGS_TAB_SLUGS;
 
   it("リンク元が1つ以上見つかる（検査そのものが空振りしていない）", () => {
     expect(tabLinks("settings").length).toBeGreaterThan(0);
@@ -73,5 +63,20 @@ describe("設定のタブへのリンク", () => {
   it("すべて実在するタブを指している", () => {
     const unknown = tabLinks("settings").filter((l) => !known.includes(l.slug));
     expect(unknown.map((l) => `${l.file}: ?tab=${l.slug}`)).toEqual([]);
+  });
+
+  it("プロンプトタブの sec= もすべて実在する区分を指している（T-M8-104）", () => {
+    const knownSections = PROMPT_SECTIONS.map(([slug]) => slug) as readonly string[];
+    const pattern = /\/app\/settings\?tab=prompts&sec=([a-z0-9-]+)/g;
+    const unknown: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of sourceFiles(root)) {
+        if (file.endsWith("tabs.test.ts")) continue;
+        for (const m of readFileSync(file, "utf8").matchAll(pattern)) {
+          if (!knownSections.includes(m[1])) unknown.push(`${relative(REPO_ROOT, file)}: sec=${m[1]}`);
+        }
+      }
+    }
+    expect(unknown).toEqual([]);
   });
 });
