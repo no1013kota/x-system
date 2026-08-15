@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import {
   addLearningSourceAction,
   listLearningSourcesAction,
-  reimportOwnPostsAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -17,8 +15,10 @@ import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 /**
- * SC-10 学習ソースタブ（L-1〜3, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
- * 自己過去投稿の取り込み/再取り込み（30日制御）、削除、進行/失敗表示、removing中の生成停止案内。
+ * 参考ソース（L-1/L-2, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
+ * 削除、進行/失敗表示、removing中の生成停止案内。アカウント設定タブの一番下に置く（T-M8-103）。
+ * 「自分の過去投稿から学習」（own_posts・30日制御）は T-M8-103 で廃止——毎朝の投稿分析（K-2）が
+ * 自分の投稿の分析を担うため重複機能になった。
  */
 
 const REF_ACCOUNT_MAX = 3;
@@ -26,7 +26,6 @@ const REF_POST_MAX = 10;
 const TYPE_LABEL: Record<string, string> = {
   ref_account: "参考アカウント",
   ref_post: "参考投稿",
-  own_posts: "自分の過去投稿",
 };
 const STATUS_LABEL: Record<string, string> = {
   pending: "分析待ち",
@@ -52,25 +51,15 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
-function daysUntil(iso: string): number {
-  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
-}
-
 export function LearningSourcesManager({
   xAccountId,
   initialSources,
-  initialOwnPostsNextEligibleAt,
-  plan,
 }: {
   xAccountId: string;
   initialSources: LearningSourceView[];
-  initialOwnPostsNextEligibleAt: string | null;
-  plan: "standard" | "md" | "premium";
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [sources, setSources] = useState<LearningSourceView[]>(initialSources);
-  const [ownPostsNextEligibleAt, setNextEligible] = useState<string | null>(initialOwnPostsNextEligibleAt);
   const [type, setType] = useState<"ref_account" | "ref_post">("ref_account");
   const [url, setUrl] = useState("");
   const toast = useToast();
@@ -85,8 +74,6 @@ export function LearningSourcesManager({
 
   const refCount = (t: string) => sources.filter((s) => s.type === t).length;
   const removing = sources.some((s) => s.status === "removing");
-  const ownPosts = sources.find((s) => s.type === "own_posts") ?? null;
-  const ownPostsBlockedDays = ownPostsNextEligibleAt ? daysUntil(ownPostsNextEligibleAt) : 0;
 
   async function refresh() {
     const res = await listLearningSourcesAction();
@@ -131,26 +118,6 @@ export function LearningSourcesManager({
         toast.show({ tone: "success", title: "学習ソースを削除しました" });
         await refresh();
       } else {
-        showError(res);
-      }
-    });
-  }
-
-  function reimport() {
-    startTransition(async () => {
-      const res = await reimportOwnPostsAction({ request_key: uuid(), x_account_id: xAccountId });
-      if (res.status === "success") {
-        toast.show({
-          tone: "success",
-          title: "再取り込みを開始しました",
-          description: "完了すると学習の反映状況が更新されます。",
-        });
-        await refresh();
-        router.refresh(); // サーバの次回可能日時を更新
-      } else {
-        if (res.details?.next_available_at) {
-          setNextEligible(String(res.details.next_available_at));
-        }
         showError(res);
       }
     });
@@ -221,29 +188,6 @@ export function LearningSourcesManager({
         ) : null}
       </section>
 
-      {/* 自己過去投稿の取り込み/再取り込み */}
-      <section className="rounded-card border border-hairline bg-surface p-4">
-        <CardTitle>自分の過去投稿から学習</CardTitle>
-        {/* 30日ルールの例外（失敗時）は失敗表示側の導線が伝える。事前に読ませない（T-M8-66）。 */}
-        <p className="mt-1 text-xs text-muted-foreground">
-          直近100件の投稿から「自分らしさ」を学習し、アカウント.mdへ反映します。再取り込みは30日に1回までです。
-          {plan === "premium" ? "（生成枠を1消費）" : ""}
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            className="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
-            disabled={pending || removing || ownPostsBlockedDays > 0}
-            onClick={reimport}
-            type="button"
-          >
-            {ownPosts ? "再取り込み" : "取り込み"}
-          </button>
-          {ownPostsBlockedDays > 0 ? (
-            <span className="text-xs text-muted-foreground">次回の再取り込みまであと{ownPostsBlockedDays}日</span>
-          ) : null}
-        </div>
-      </section>
-
       {/* 一覧 */}
       <section>
         <CardTitle>登録済みの学習ソース</CardTitle>
@@ -275,9 +219,7 @@ export function LearningSourcesManager({
                 {s.status === "failed" ? (
                   <p className="mt-2 text-xs text-danger-fg">
                     分析に失敗しました。対象が非公開/削除されていないかご確認ください。
-                    {s.type === "own_posts"
-                      ? "上の「再取り込み」からやり直せます。"
-                      : "削除して再登録するとやり直せます。"}
+                    削除して再登録するとやり直せます。
                   </p>
                 ) : null}
                 {s.status !== "removing" ? (

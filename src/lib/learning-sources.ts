@@ -74,14 +74,6 @@ export const removeLearningSourceSchema = z.object({
 });
 export type RemoveLearningSourceInput = z.infer<typeof removeLearningSourceSchema>;
 
-export const reimportOwnPostsSchema = z.object({
-  request_key: z.string().min(1).max(200),
-  x_account_id: z.string().uuid(),
-});
-export type ReimportOwnPostsInput = z.infer<typeof reimportOwnPostsSchema>;
-
-export const REIMPORT_INTERVAL_DAYS = 30;
-
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
 export interface LearningSourceDeps {
@@ -214,31 +206,6 @@ export async function listLearningSources(
   }));
 }
 
-/**
- * own_posts 再取り込みの次回可能時刻（30日制御・UI表示用）。
- *
- * **数えるのは成功した取り込みだけ**（T-M7-39）。以前は status を問わず job の作成時刻を数えていたため、
- * 分析が失敗すると30日間ボタンが押せず、**壊れた機能を直せない行き止まり**になっていた
- * （2026-07-26 の失敗で実際に発生）。30日制御の目的は取り込みの頻度制限なので、成功しなかった試行を
- * 数える必要はない。失敗の繰り返しは生成枠（premium）とBYOKの自前キーで上限が掛かる。
- */
-export async function ownPostsReimportEligibility(
-  db: Queryable,
-  xAccountId: string,
-): Promise<{ nextEligibleAt: string | null }> {
-  const { rows } = await db.query<{ next_at: string | null }>(
-    `select case when max(gj.created_at) > now() - make_interval(days => $2)
-                 then to_char(max(gj.created_at) + make_interval(days => $2), 'YYYY-MM-DD"T"HH24:MI:SSOF')
-                 else null end as next_at
-       from learning_sources ls
-       join generation_jobs gj on gj.learning_source_id = ls.id and gj.kind = 'learning_analysis'
-                              and gj.status = 'succeeded'
-      where ls.x_account_id = $1 and ls.type = 'own_posts'`,
-    [xAccountId, REIMPORT_INTERVAL_DAYS],
-  );
-  return { nextEligibleAt: rows[0]?.next_at ?? null };
-}
-
 export async function addLearningSource(
   userId: string,
   input: AddLearningSourceInput,
@@ -368,90 +335,3 @@ export async function removeLearningSource(
   });
 }
 
-/**
- * L-3 自己過去投稿の再取り込み（要件05 §8, 要件04 §12, T-M5-06）。own_posts ソース（Xアカウントに1件・
- * DB unique）を find-or-create/reset して learning_analysis job を冪等作成する。前回取り込み（own_posts の
- * 最新 learning_analysis job created_at）から30日未満は validation_error（details.next_available_at）。
- * removing 中は拒否、request_key 再送は既存jobを返す。premiumは worker 開始時に生成枠+1消費（T-M5-03）。
- */
-export async function reimportOwnPosts(
-  userId: string,
-  input: ReimportOwnPostsInput,
-  deps: LearningSourceDeps,
-): Promise<AddLearningSourceResult> {
-  const key = requestKey(userId, input.request_key);
-  return deps.runInTx(async (tx) => {
-    const priorJob = (
-      await tx.query<{ id: string; learning_source_id: string | null }>(
-        `select id, learning_source_id from generation_jobs where request_key = $1`,
-        [key],
-      )
-    ).rows[0];
-    if (priorJob?.learning_source_id) {
-      return { sourceId: priorJob.learning_source_id, jobId: priorJob.id, deduped: true };
-    }
-
-    await assertActiveAccount(tx, userId, input.x_account_id);
-    // 進行中（queued/running）の学習jobがあれば拒否する。30日ゲートが成功だけを数えるようになった分
-    // （T-M7-39）、二重送信をここで止める必要がある。待てば解消するため行き止まりにはならない。
-    await assertNotBusy(tx, input.x_account_id, { includeQueuedJobs: true });
-    await assertPrereqs(deps, userId);
-
-    // own_posts は Xアカウントに1件（DB unique）。既存があれば reset、無ければ新規。
-    const existing = (
-      await tx.query<{ id: string }>(
-        `select id from learning_sources where x_account_id = $1 and type = 'own_posts' limit 1`,
-        [input.x_account_id],
-      )
-    ).rows[0];
-
-    if (existing) {
-      // 30日制御: **成功した** own_posts learning_analysis job 起点から30日未満は拒否（要件05 §8）。
-      // 失敗を数えると直せないまま30日待たされる（T-M7-39）。進行中の重複は上の
-      // assertNotBusy(includeQueuedJobs: true) が job_conflict で止める。
-      const gate = (
-        await tx.query<{ too_soon: boolean | null; next_at: string | null }>(
-          `select (max(created_at) > now() - make_interval(days => $2)) as too_soon,
-                  to_char(max(created_at) + make_interval(days => $2), 'YYYY-MM-DD"T"HH24:MI:SSOF') as next_at
-             from generation_jobs
-            where learning_source_id = $1 and kind = 'learning_analysis'
-              and status = 'succeeded'`,
-          [existing.id, REIMPORT_INTERVAL_DAYS],
-        )
-      ).rows[0];
-      if (gate?.too_soon) {
-        throw new AppError("validation_error", {
-          details: { reason: "reimport_too_soon", next_available_at: gate.next_at },
-        });
-      }
-      await tx.query(
-        `update learning_sources
-            set status = 'pending', analysis_summary = null, removed_at = null, updated_at = now()
-          where id = $1`,
-        [existing.id],
-      );
-    }
-
-    let sourceId: string;
-    if (existing) {
-      sourceId = existing.id;
-    } else {
-      sourceId = (
-        await tx.query<{ id: string }>(
-          `insert into learning_sources (x_account_id, type, url, status)
-           values ($1, 'own_posts', null, 'pending') returning id`,
-          [input.x_account_id],
-        )
-      ).rows[0].id;
-    }
-
-    await assertJobBudget(tx, userId);
-    const { jobId, deduped } = await createLearningJob(tx, {
-      key,
-      xAccountId: input.x_account_id,
-      kind: "learning_analysis",
-      sourceId,
-    });
-    return { sourceId, jobId, deduped };
-  });
-}

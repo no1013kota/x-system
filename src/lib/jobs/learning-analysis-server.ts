@@ -76,13 +76,5 @@ export async function learningAnalysisHandler(ctx: JobContext): Promise<void> {
       if (!t) return null;
       return { text: t.text ?? "", metrics: t.publicMetrics };
     },
-    fetchOwnPosts: async () => {
-      const { posts } = await readUserTimeline(readDeps, {
-        userId: meta.x_user_id,
-        limit: 100,
-        idempotencyKeyBase: `learning:${ctx.jobId}:own`,
-      });
-      return posts.map((p) => p.text);
-    },
   });
 }

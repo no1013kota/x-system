@@ -5,7 +5,7 @@ import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { PT_L1, PT_L2, PT_L3 } from "../prompts/gen-prompts";
+import { PT_L1, PT_L2 } from "../prompts/gen-prompts";
 import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
@@ -44,25 +44,17 @@ const l2Schema = z.object({
   pattern: z.string().min(1),
   caution: z.string().min(1),
 });
-const l3Schema = z.object({
-  vocabulary: z.string().min(1),
-  tone: z.string().min(1),
-  perspective: z.string().min(1),
-  signature: z.string().min(1),
-  examples: z.string().min(1),
-});
-
-type SourceType = "ref_account" | "ref_post" | "own_posts";
+// 「自分の過去投稿から学習」（own_posts・PT-L3）は T-M8-103 で廃止した——
+// 毎朝の投稿分析（SUGGEST・K-2）が自分の投稿の分析を担うため重複機能になった。
+type SourceType = "ref_account" | "ref_post";
 
 const PROMPT_BY_TYPE: Record<SourceType, string> = {
   ref_account: PT_L1,
   ref_post: PT_L2,
-  own_posts: PT_L3,
 };
 const SCHEMA_BY_TYPE: Record<SourceType, ZodType<Record<string, unknown>>> = {
   ref_account: l1Schema,
   ref_post: l2Schema,
-  own_posts: l3Schema,
 };
 
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
@@ -82,8 +74,6 @@ export interface LearningAnalysisDeps {
   fetchReferencePost: (input: {
     tweetId: string;
   }) => Promise<{ text: string; metrics: Record<string, number> | null } | null>;
-  /** own_posts: 自己直近ポスト本文（最大100件）。 */
-  fetchOwnPosts: () => Promise<string[]>;
   /**
    * 分析成功後の同一job内 MD-MERGE（T-M5-04）。注入時は merge が source を analyzed 確定する。
    * 未注入時は本関数が analyzed 化する（merge非依存の単体経路）。
@@ -106,9 +96,13 @@ interface JobRow {
   plan: string;
 }
 interface SourceRow {
-  type: SourceType;
+  type: string;
   url: string | null;
   status: string;
+}
+
+function isSupportedSourceType(t: string): t is SourceType {
+  return t === "ref_account" || t === "ref_post";
 }
 
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
@@ -142,22 +136,18 @@ function parseTweetId(url: string | null): string | null {
   return m ? m[1] : null;
 }
 
-async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow): Promise<string> {
+async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow & { type: SourceType }): Promise<string> {
   if (source.type === "ref_account") {
     const handle = parseHandle(source.url);
     if (!handle) throw new LearningAnalysisTerminalError("invalid_source", "bad ref_account url");
     const posts = await deps.fetchReferenceAccountPosts({ handle });
     return `<posts>\n${JSON.stringify(posts.slice(0, 20))}\n</posts>`;
   }
-  if (source.type === "ref_post") {
-    const tweetId = parseTweetId(source.url);
-    if (!tweetId) throw new LearningAnalysisTerminalError("invalid_source", "bad ref_post url");
-    const post = await deps.fetchReferencePost({ tweetId });
-    if (!post) throw new LearningAnalysisTerminalError("source_unavailable", "ref_post not found");
-    return `<post>\n${post.text}\n</post>\n<metrics>\n${JSON.stringify(post.metrics ?? {})}\n</metrics>`;
-  }
-  const posts = await deps.fetchOwnPosts();
-  return `<posts>\n${JSON.stringify(posts.slice(0, 100))}\n</posts>`;
+  const tweetId = parseTweetId(source.url);
+  if (!tweetId) throw new LearningAnalysisTerminalError("invalid_source", "bad ref_post url");
+  const post = await deps.fetchReferencePost({ tweetId });
+  if (!post) throw new LearningAnalysisTerminalError("source_unavailable", "ref_post not found");
+  return `<post>\n${post.text}\n</post>\n<metrics>\n${JSON.stringify(post.metrics ?? {})}\n</metrics>`;
 }
 
 /**
@@ -221,6 +211,11 @@ export async function executeLearningAnalysis(
 
   const source = await loadSource(db, sourceId);
   if (!source) throw new LearningAnalysisTerminalError("not_found", "source not found");
+  if (!isSupportedSourceType(source.type)) {
+    // own_posts は T-M8-103 で廃止（行はmigrationで削除済み）。万一残っていても黙って誤分析しない。
+    throw new LearningAnalysisTerminalError("invalid_source", `unsupported source type: ${source.type}`);
+  }
+  const typedSource = { ...source, type: source.type };
   // 冪等: 既に分析済みなら作り直さない（worker再実行安全）。
   if (source.status === "analyzed") return { status: "already_done", sourceId };
 
@@ -240,7 +235,7 @@ export async function executeLearningAnalysis(
   let analysisUsage: GenerationUsage = { calls: [], estimated_cost_usd_total: 0 };
   try {
     await recordStage("research");
-    const user = await buildUserInput(deps, source);
+    const user = await buildUserInput(deps, typedSource);
 
     stage = "writing";
     await recordStage("writing");
@@ -253,8 +248,8 @@ export async function executeLearningAnalysis(
     const result = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
-      request: { system: [PROMPT_BY_TYPE[source.type]], user, timeoutMs: deadline.callTimeoutMs() },
-      schema: SCHEMA_BY_TYPE[source.type],
+      request: { system: [PROMPT_BY_TYPE[typedSource.type]], user, timeoutMs: deadline.callTimeoutMs() },
+      schema: SCHEMA_BY_TYPE[typedSource.type],
       model,
       operation: "text_generation",
       now,

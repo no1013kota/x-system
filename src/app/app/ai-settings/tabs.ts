@@ -9,7 +9,6 @@
 export const AI_SETTINGS_TABS = [
   ["persona", "アカウント設定"],
   ["purposes", "AI用途"],
-  ["learning", "学習ソース"],
   ["base-md", "アカウント.md"],
   ["prompts", "プロンプト"],
 ] as const;
