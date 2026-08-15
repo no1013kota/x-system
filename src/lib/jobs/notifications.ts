@@ -56,12 +56,12 @@ export const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
   learning_analysis: {
     title: "学習ソースの分析に失敗しました",
     body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
-    link: "/app/ai-settings?tab=persona",
+    link: "/app/settings?tab=account",
   },
   md_merge: {
     title: "学習ソースの削除が完了しませんでした",
     body: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
-    link: "/app/ai-settings?tab=persona",
+    link: "/app/settings?tab=account",
   },
   suggestion: {
     title: "投稿分析に失敗しました",

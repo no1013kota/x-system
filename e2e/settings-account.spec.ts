@@ -7,7 +7,7 @@ import { expect, signIn, test } from "./fixtures/test";
 test("設定にログイン中のメールアドレスが表示される", async ({ accounts, page }) => {
   const account = await accounts.create("email-view");
   await signIn(page, account);
-  await page.goto("/app/settings");
+  await page.goto("/app/settings?tab=billing"); // メール表示は課金・プランタブ（既定タブはT-M8-104でgeneralへ）
 
   await expect(page.getByText("ログイン中のアカウント:")).toBeVisible();
   await expect(page.getByText(account.email, { exact: true })).toBeVisible();

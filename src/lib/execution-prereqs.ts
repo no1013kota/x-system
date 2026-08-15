@@ -38,7 +38,7 @@ const ITEM_PATH: Record<PrereqItem, string> = {
   x_account: "/app/settings?tab=x-accounts",
   text_ai_key: "/app/settings?tab=api-keys",
   image_ai_key: "/app/settings?tab=api-keys",
-  persona: "/app/ai-settings",
+  persona: "/app/settings?tab=account",
 };
 
 const ITEM_CODE: Record<PrereqItem, PrereqCode> = {
@@ -221,7 +221,7 @@ const ITEM_DESCRIPTION: Record<PrereqItem, string> = {
 /** 文章AIキーは valid でも「AI用途」で割り当てないと充足しないため、不足理由で表示を出し分ける。 */
 const TEXT_PROVIDER_UNASSIGNED = {
   label: "文章AIの割り当て",
-  path: "/app/ai-settings?tab=purposes",
+  path: "/app/settings?tab=purposes",
   description:
     "登録済みのAI APIキーのうち、どれで文章生成・リサーチを行うかを選びます。",
 } as const;

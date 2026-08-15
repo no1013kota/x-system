@@ -20,6 +20,8 @@ export function isProtectedRoute(pathname: string): boolean {
 }
 
 export function isLimitedSettingsRoute(url: URL): boolean {
+  // 契約切れでも開ける設定タブ。問い合わせタブは廃止（T-M8-104）——旧 support リンクは
+  // billing 同様に開ける扱いを保つ（DB保存済みリンクを行き止まりにしない）。
   return (
     url.pathname === "/app/settings" &&
     ["billing", "support"].includes(url.searchParams.get("tab") ?? "")

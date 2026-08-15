@@ -184,10 +184,11 @@ test("通常プランではアカウント.md・プロンプトが鍵付きで�
   ]);
 
   await signIn(page, account);
+  // 旧URLは統合後の設定プロンプトタブへリダイレクトされる（T-M8-104）。
   await page.goto("/app/ai-settings?tab=base-md");
 
   await expect(
-    page.getByRole("heading", { name: /アカウント.mdの確認・編集は mdプラン以上/ }),
+    page.getByRole("heading", { name: /アカウント.md・プロンプトの確認・編集は mdプラン以上/ }),
   ).toBeVisible();
   // 行き先はStripeのプラン選択（Portal `intent=update`）。Portalセッションはサーバーで作るため
   // `href` を先に決められず、リンクではなくボタンで出す。**`/plans` へのリンクへ戻したら落ちる**
@@ -196,10 +197,10 @@ test("通常プランではアカウント.md・プロンプトが鍵付きで�
   await expect(upgrade).toBeVisible();
   await expect(page.getByRole("link", { name: /アップグレード/ })).toHaveCount(0);
 
-  // プロンプトタブも同じ扱い。
+  // 旧プロンプトタブのリンクも同じLockedStateへ着地する（統合で1つの案内になった）。
   await page.goto("/app/ai-settings?tab=prompts");
   await expect(
-    page.getByRole("heading", { name: /プロンプトのカスタマイズは mdプラン以上/ }),
+    page.getByRole("heading", { name: /アカウント.md・プロンプトの確認・編集は mdプラン以上/ }),
   ).toBeVisible();
 });
 
