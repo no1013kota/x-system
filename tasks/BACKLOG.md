@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜92 は done | 下記M8セクション |
+| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜93 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -2055,6 +2055,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **コスト（運営者の質問への回答）**: 1回=X読取 最大$0.50（実際は件数比例）＋AI $0.01〜0.05。1日1回×毎日でも最大$15/月/アカウント、典型$1〜3。取得上限は**未回答のため推奨の100件で実装**（`SUGGEST_TIMELINE_MAX`1定数で変更可）。台帳とdoctorの「今月かかった費用」に実測が載る。
 - **検証**: 単体（suggestion-input 11件・gen-prompts 14件・pricing/read-client）・DB統合（suggestion 7件・suggestion-jobs・analytics）・E2E（suggestions 2件）・UI実描画390/1280px横あふれ0。
 - **後続への注意**: `SUGGEST_TIMELINE_MAX`を変えるとX費用上限が変わる（テストが100を固定）。p5をfeature flagで有効化したらPT-SUGGESTの選択肢とスキーマ（`SUGGESTABLE_PATTERNS`）へ追加が要る。旧形式の提案行は次の実行で置き換わるまで縮退表示。
+
+### T-M8-93: 投稿作成画面のプロンプトにベースmdと画像プロンプトを加える `done`
+- 参照: 要件05 §5（createGenerationJob）・要件06 §4.2・要件04 §9・プロンプト設計書 §4.1/§4.2 / 依存: T-M8-92 / サイズ: M
+- **発端**: 運営者の要望（2026-08-15）。「投稿作成画面にはプロンプトとしてベース.mdや画像生成のプロンプトも加えてください」。
+- **やったこと**: プロンプトセクションを3ブロックのタブ（投稿の型／ベースmd／画像生成）へ拡張。共通部品 `PromptBlock` に編集UI（この生成にだけ／保存・元に戻す・字数上限）を集約。
+  - **ベースmd**: AI設定＞ベースmdと同じもの（≦5,000字）。保存は `updateBaseMdManualAction`（新version・履歴に残る・楽観ロック）。「この生成にだけ」は `base_md_override` として渡し、**保存版と同じ見出し検証を中核で通す**（通さないと画像のセクション3抽出が黙って空になる）。GENの`<base_md>`と画像のトーン抽出の両方に効く。未作成（発信設定未保存）なら導線を出す。
+  - **画像生成**: PT-IMG（kind "image"・≦8,000字）。保存はAI設定と同じ上書き。「この生成にだけ」は `image_prompt_override` として渡し、**画像ONのとき `image_generation` 子jobのinputへ引き継ぐ**（子はPT-IMG解決と保存版base_mdを飛ばす）。手動の画像再生成へは引き継がない。
+  - base_md_override 使用時はその回だけsystemが別バイト列になりプロンプトキャッシュが効かない（意図した挙動・プロンプト設計書 §4.1に明記）。
+- **検証**: 単体（image-generation: overrideでprompt_templatesを読まない・トーンがoverride側から取れる）・DB統合（base_md_overrideがsystemへ入る・子jobのinputへ両overrideが引き継がれる）・E2E（3タブの切替・ベースmd表示・編集破棄）・UI実描画390/1280px横あふれ0。
 
 ### T-M8-92: 投稿作成画面でプロンプトを表示・編集できるようにする（standard非表示） `done`
 - 参照: 要件05 §5（v1.32）・要件06 §4.2（v1.70） / 依存: T-M8-91 / サイズ: M

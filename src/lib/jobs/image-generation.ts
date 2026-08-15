@@ -82,7 +82,12 @@ interface ImageJobRow {
   user_id: string;
   base_md: string;
   plan: string;
-  input: { regenerate?: boolean } | null;
+  input: {
+    regenerate?: boolean;
+    /** この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。親jobから引き継がれる。再生成では引き継がない。 */
+    image_prompt_override?: string | null;
+    base_md_override?: string | null;
+  } | null;
 }
 
 interface DraftRow {
@@ -266,11 +271,16 @@ export async function executeImageGeneration(
       type: "image",
     });
     // --- PT-IMG: 英語画像プロンプトの生成（base_mdセクション3＋1ポスト目本文）---
-    const template = await resolvePromptTemplate(db, {
-      xAccountId: job.x_account_id,
-      kind: "image",
-    });
-    const toneSection = extractBaseMdSection(job.base_md, 3);
+    // 「この生成にだけ」の指定（T-M8-93）があれば通常の解決・保存版base_mdを飛ばす。
+    const imageOverride = job.input?.image_prompt_override?.trim() ? job.input.image_prompt_override : null;
+    const baseMdOverride = job.input?.base_md_override?.trim() ? job.input.base_md_override : null;
+    const template =
+      imageOverride ??
+      (await resolvePromptTemplate(db, {
+        xAccountId: job.x_account_id,
+        kind: "image",
+      }));
+    const toneSection = extractBaseMdSection(baseMdOverride ?? job.base_md, 3);
     const promptUser = template
       .replaceAll("{{post_text}}", firstPost.text)
       .replaceAll("{{tone_section}}", toneSection);

@@ -429,6 +429,85 @@ describe("executePostGeneration (local DB)", () => {
    * 行が増えない）ことも固定する——「この生成にだけ」の約束が破られると、スケジュールの
    * 自動生成まで意図しないプロンプトで動く。
    */
+  /**
+   * 画像ON・override無しの既定経路で子jobが**実DBで**作れること（T-M8-93の回帰）。
+   * `generation_jobs.input` は NOT NULL のため、明示的に null を渡すと制約違反になる。
+   * この形はモックDBの単体テストでは映らず、smoke:live で初めて検出された。
+   */
+  it("画像ON・override無しでも image_generation 子jobが作られる（input制約）", async () => {
+    const { uid, jobId } = await withTransaction((c) =>
+      seed(c, { input: { theme: "ai", image_enabled: true } }),
+    );
+    try {
+      const provider = mockProvider('{"posts":["投稿"],"sources":[],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      expect(res.status).toBe("created");
+      const child = (
+        await db.query<{ input: Record<string, unknown> }>(
+          `select input from generation_jobs where parent_job_id = $1 and kind = 'image_generation'`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(child).toBeTruthy();
+      expect(child.input).toEqual({});
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /**
+   * ベースmdと画像プロンプトの「この生成にだけ」（T-M8-93）。
+   * base_md_override が system（<base_md>）に入り保存版が使われないこと、
+   * 画像ONのとき override が子jobの input へ引き継がれることを固定する。
+   */
+  it("base_md_override が system に入り、画像の override は子jobへ引き継がれる（T-M8-93）", async () => {
+    const { uid, jobId } = await withTransaction((c) =>
+      seed(c, {
+        input: {
+          theme: "ai",
+          image_enabled: true,
+          base_md_override: "# 発信定義書（ベースmd）\n## 1. ペルソナ\n- 上書きペルソナ\n",
+          image_prompt_override: "custom image prompt",
+        },
+      }),
+    );
+    try {
+      let capturedSystem: string[] = [];
+      const provider: TextGen = {
+        generate: async (req) => {
+          capturedSystem = req.system ?? [];
+          return {
+            provider: "anthropic",
+            requestId: "req_cap2",
+            text: '{"posts":["投稿"],"sources":[],"error":null}',
+            citations: [],
+            usage: { ...emptyUsage(), inputTokens: 100, outputTokens: 50, providerCalls: 1 },
+            stopReason: "end_turn",
+          };
+        },
+      };
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      expect(res.status).toBe("created");
+      const systemText = capturedSystem.join("\n");
+      expect(systemText).toContain("上書きペルソナ");
+      // 子job（image_generation）の input へ両方の override が引き継がれる。
+      const child = (
+        await db.query<{ input: { image_prompt_override?: string; base_md_override?: string } }>(
+          `select input from generation_jobs where parent_job_id = $1 and kind = 'image_generation'`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(child.input?.image_prompt_override).toBe("custom image prompt");
+      expect(child.input?.base_md_override).toContain("上書きペルソナ");
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("input.prompt_override があれば、そのプロンプトで生成し保存はしない（T-M8-92）", async () => {
     const { uid, xid, jobId } = await withTransaction((c) =>
       seed(c, { input: { theme: "ai", prompt_override: "# タスク\nこの生成専用の指示。書き出しは数字。" } }),

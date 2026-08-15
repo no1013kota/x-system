@@ -157,7 +157,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`prompt_override`（最大8,000字・null可・T-M8-92）は**この生成にだけ**使うプロンプトで、通常の解決（アカウント上書き→system default→コード定数）を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない** |
+| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override, base_md_override, image_prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`*_override`（T-M8-92/93）は**この生成にだけ**使う指示で、通常の解決を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない**。`prompt_override`=パターンプロンプト（≦8,000字）、`base_md_override`=ベースmd（≦5,000字・保存版と同じ見出し検証を通す。GENのsystemと画像のセクション3抽出の両方に効く）、`image_prompt_override`=PT-IMG（≦8,000字・画像ONのとき`image_generation`子jobのinputへ引き継がれる） |
 | `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |

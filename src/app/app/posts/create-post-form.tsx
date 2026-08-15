@@ -20,12 +20,15 @@ import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { updateBaseMdManualAction } from "@/app/actions/base-md";
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import type { PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
 const PROMPT_MAX_CHARS = 8000;
+/** ベースmdの上限（`BASE_MD_MAX_CHARS` と同値・T-M8-93）。 */
+const BASE_MD_MAX = 5000;
 
 export interface ActiveJob {
   id: string;
@@ -82,6 +85,68 @@ interface PrereqError {
   missing?: PrereqItem[];
 }
 
+/**
+ * プロンプト1ブロック分の編集UI（T-M8-92/93）。投稿の型・ベースmd・画像生成で共有する。
+ * 「この生成にだけ使う／保存して以後も使う」の選択と「元に戻す」を持つ。状態は親が持つ。
+ */
+function PromptBlock({
+  label,
+  value,
+  limit,
+  edited,
+  mode,
+  note,
+  onChange,
+  onMode,
+  onReset,
+}: {
+  label: string;
+  value: string;
+  limit: number;
+  edited: boolean;
+  mode: "once" | "save";
+  note?: string;
+  onChange: (next: string) => void;
+  onMode: (next: "once" | "save") => void;
+  onReset: () => void;
+}) {
+  const over = value.length > limit;
+  return (
+    <div className="space-y-2">
+      <textarea
+        aria-label={label}
+        className="min-h-40 w-full rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5 transition-colors duration-150 focus:border-brand focus:outline-none"
+        onChange={(e) => onChange(e.target.value)}
+        value={value}
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={`text-xs ${over ? "text-danger-fg" : "text-muted-foreground"}`}>
+          {value.length.toLocaleString()} / {limit.toLocaleString()}字
+        </span>
+        {edited ? (
+          <>
+            <label className="flex items-center gap-1.5 text-body">
+              <input checked={mode === "once"} onChange={() => onMode("once")} type="radio" />
+              この生成にだけ使う
+            </label>
+            <label className="flex items-center gap-1.5 text-body">
+              <input checked={mode === "save"} onChange={() => onMode("save")} type="radio" />
+              保存して以後の生成にも使う
+            </label>
+            <button className="text-body text-info-fg hover:underline" onClick={onReset} type="button">
+              元に戻す
+            </button>
+          </>
+        ) : null}
+      </div>
+      {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+      {over ? (
+        <Notice tone="danger">{limit.toLocaleString()}字以内で入力してください。</Notice>
+      ) : null}
+    </div>
+  );
+}
+
 /** 生成に使うプロンプト（型ごと）。updatedAt は「保存」の楽観ロックに使う（T-M8-92）。 */
 export interface PromptTemplateProp {
   content: string;
@@ -95,13 +160,16 @@ export function CreatePostForm({
   imageProviders,
   initialJob = null,
   promptTemplates = null,
+  baseMd = null,
 }: {
   xAccountId: string;
   patterns: PostPatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
-  /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。 */
+  /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。p1〜p6＋image。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
+  /** ベースmd（T-M8-93）。version は保存の楽観ロック。standard は null。 */
+  baseMd?: { content: string; version: number } | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
@@ -123,6 +191,13 @@ export function CreatePostForm({
   const [templates, setTemplates] = useState(promptTemplates);
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const [promptApply, setPromptApply] = useState<"once" | "save">("once");
+  /** ベースmd・画像プロンプト（T-M8-93）。型と独立に編集できるため状態も分ける。 */
+  const [promptTab, setPromptTab] = useState<"pattern" | "base_md" | "image">("pattern");
+  const [baseMdState, setBaseMdState] = useState(baseMd);
+  const [baseMdDraft, setBaseMdDraft] = useState<string | null>(null);
+  const [baseMdApply, setBaseMdApply] = useState<"once" | "save">("once");
+  const [imageDraft, setImageDraft] = useState<string | null>(null);
+  const [imageApply, setImageApply] = useState<"once" | "save">("once");
   const [prereq, setPrereq] = useState<PrereqError | null>(null);
   const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
@@ -163,43 +238,94 @@ export function CreatePostForm({
   const promptValue = promptDraft ?? currentTemplate?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
   const promptOverLimit = promptValue.length > PROMPT_MAX_CHARS;
+  const imageTemplate = templates?.["image"] ?? null;
+  const imageValue = imageDraft ?? imageTemplate?.content ?? "";
+  const imageEdited = imageDraft !== null && imageDraft !== (imageTemplate?.content ?? "");
+  const imageOverLimit = imageValue.length > PROMPT_MAX_CHARS;
+  const baseMdValue = baseMdDraft ?? baseMdState?.content ?? "";
+  const baseMdEdited = baseMdDraft !== null && baseMdDraft !== (baseMdState?.content ?? "");
+  const baseMdOverLimit = baseMdValue.length > BASE_MD_MAX;
+  /** ベースmdは発信設定の保存で初めて作られる。無いあいだは編集対象が無い。 */
+  const baseMdReady = (baseMdState?.version ?? 0) >= 1 && (baseMdState?.content ?? "") !== "";
+  const anyPromptOverLimit = promptOverLimit || imageOverLimit || baseMdOverLimit;
+  const anyPromptEdited = promptEdited || imageEdited || baseMdEdited;
 
   function submit() {
     setPrereq(null);
     startTransition(async () => {
-      // プロンプトを編集して「保存して以後も使う」を選んだ場合は、生成の前に保存を確定する
+      // 編集して「保存して以後も使う」を選んだブロックは、生成の前に保存を確定する
       // （保存に失敗したのに生成だけ走ると、どのプロンプトで生成されたか分からなくなる）。
+      // 保存が1つでも失敗したら生成を始めない。
+      async function saveTemplate(kind: PromptTemplateKind, content: string): Promise<boolean> {
+        const saved = await updatePromptTemplateAction({
+          kind,
+          content,
+          expected_updated_at: templates?.[kind]?.updatedAt ?? null,
+        });
+        if (saved.status === "error" || !saved.template) {
+          toast.show({
+            tone: "error",
+            title: "プロンプトを保存できませんでした",
+            description:
+              saved.code === "job_conflict"
+                ? "プロンプトが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
+                : saved.message,
+          });
+          return false;
+        }
+        setTemplates((prev) => ({
+          ...(prev ?? {}),
+          [kind]: {
+            content: saved.template!.content,
+            updatedAt: saved.template!.updatedAt,
+            isOverride: saved.template!.isOverride,
+          },
+        }));
+        return true;
+      }
+
       let promptOverride: string | undefined;
       if (templates && promptEdited && promptDraft !== null) {
         if (promptApply === "save") {
-          const saved = await updatePromptTemplateAction({
-            kind: pattern as PromptTemplateKind,
-            content: promptDraft,
-            expected_updated_at: currentTemplate?.updatedAt ?? null,
-          });
-          if (saved.status === "error" || !saved.template) {
-            toast.show({
-              tone: "error",
-              title: "プロンプトを保存できませんでした",
-              description:
-                saved.code === "job_conflict"
-                  ? "プロンプトが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
-                  : saved.message,
-            });
-            return;
-          }
-          setTemplates({
-            ...templates,
-            [pattern]: {
-              content: saved.template.content,
-              updatedAt: saved.template.updatedAt,
-              isOverride: saved.template.isOverride,
-            },
-          });
+          if (!(await saveTemplate(pattern as PromptTemplateKind, promptDraft))) return;
           setPromptDraft(null);
           // 保存済み＝通常の解決で同じ内容が使われるため、override は送らない。
         } else {
           promptOverride = promptDraft;
+        }
+      }
+      let imagePromptOverride: string | undefined;
+      if (templates && imageEdited && imageDraft !== null) {
+        if (imageApply === "save") {
+          if (!(await saveTemplate("image", imageDraft))) return;
+          setImageDraft(null);
+        } else {
+          imagePromptOverride = imageDraft;
+        }
+      }
+      let baseMdOverride: string | undefined;
+      if (baseMdState && baseMdEdited && baseMdDraft !== null) {
+        if (baseMdApply === "save") {
+          const saved = await updateBaseMdManualAction({
+            x_account_id: xAccountId,
+            content: baseMdDraft,
+            expected_version: baseMdState.version,
+          });
+          if (saved.status === "error" || typeof saved.version !== "number") {
+            toast.show({
+              tone: "error",
+              title: "ベースmdを保存できませんでした",
+              description:
+                saved.code === "job_conflict"
+                  ? "ベースmdが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
+                  : saved.message,
+            });
+            return;
+          }
+          setBaseMdState({ content: baseMdDraft, version: saved.version });
+          setBaseMdDraft(null);
+        } else {
+          baseMdOverride = baseMdDraft;
         }
       }
       const res = await createGenerationJobAction({
@@ -212,6 +338,8 @@ export function CreatePostForm({
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
         prompt_override: promptOverride,
+        base_md_override: baseMdOverride,
+        image_prompt_override: imagePromptOverride,
       });
       if (res.status === "error") {
         const settingsPath = res.details?.settingsPath as string | undefined;
@@ -310,61 +438,93 @@ export function CreatePostForm({
           <details className="rounded-card border border-hairline bg-page">
             <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
               生成に使うプロンプト
-              {currentTemplate?.isOverride && !promptEdited ? (
-                <span className="ml-2 text-caption text-ink-3">カスタム</span>
-              ) : null}
-              {promptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
+              {anyPromptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
             </summary>
             <div className="space-y-3 px-4 pb-4">
               <p className="text-xs text-muted-foreground">
-                選択中の型で生成に使われるプロンプトです。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
+                この生成に使われる指示を確認・編集できます。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
               </p>
-              <textarea
-                aria-label="生成に使うプロンプト"
-                className="min-h-40 w-full rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5 transition-colors duration-150 focus:border-brand focus:outline-none"
-                onChange={(e) => setPromptDraft(e.target.value)}
-                value={promptValue}
-              />
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`text-xs ${promptOverLimit ? "text-danger-fg" : "text-muted-foreground"}`}>
-                  {promptValue.length.toLocaleString()} / {PROMPT_MAX_CHARS.toLocaleString()}字
-                </span>
-                {promptEdited ? (
-                  <>
-                    <label className="flex items-center gap-1.5 text-body">
-                      <input
-                        checked={promptApply === "once"}
-                        name="prompt-apply"
-                        onChange={() => setPromptApply("once")}
-                        type="radio"
-                      />
-                      この生成にだけ使う
-                    </label>
-                    <label className="flex items-center gap-1.5 text-body">
-                      <input
-                        checked={promptApply === "save"}
-                        name="prompt-apply"
-                        onChange={() => setPromptApply("save")}
-                        type="radio"
-                      />
-                      保存して以後の生成にも使う
-                    </label>
-                    <button
-                      className="text-body text-info-fg hover:underline"
-                      onClick={() => {
-                        setPromptDraft(null);
-                        setPromptApply("once");
-                      }}
-                      type="button"
-                    >
-                      元に戻す
-                    </button>
-                  </>
-                ) : null}
+              {/* 3ブロックの切替（投稿の型／ベースmd／画像）。roleはtabだが実装は単純なボタン群。 */}
+              <div aria-label="プロンプトの種類" className="flex flex-wrap gap-1.5" role="tablist">
+                {(
+                  [
+                    ["pattern", "投稿の型", promptEdited],
+                    ["base_md", "ベースmd", baseMdEdited],
+                    ["image", "画像生成", imageEdited],
+                  ] as const
+                ).map(([id, label, edited]) => (
+                  <button
+                    aria-selected={promptTab === id}
+                    className={`inline-flex h-8 items-center rounded-pill border px-3 text-body transition-colors duration-150 ${
+                      promptTab === id
+                        ? "border-brand bg-brand-subtle font-medium text-brand"
+                        : "border-hairline text-ink-2 hover:bg-black/[0.03]"
+                    }`}
+                    key={id}
+                    onClick={() => setPromptTab(id)}
+                    role="tab"
+                    type="button"
+                  >
+                    {label}
+                    {edited ? <span aria-label="編集中" className="ml-1 text-brand">●</span> : null}
+                  </button>
+                ))}
               </div>
-              {promptOverLimit ? (
-                <Notice tone="danger">プロンプトは{PROMPT_MAX_CHARS.toLocaleString()}字以内で入力してください。</Notice>
-              ) : null}
+
+              {promptTab === "pattern" ? (
+                <PromptBlock
+                  edited={promptEdited}
+                  label={`選択中の型（${patterns.find((p) => p.id === pattern)?.label ?? pattern}）の生成プロンプト`}
+                  limit={PROMPT_MAX_CHARS}
+                  mode={promptApply}
+                  onChange={setPromptDraft}
+                  onMode={setPromptApply}
+                  onReset={() => {
+                    setPromptDraft(null);
+                    setPromptApply("once");
+                  }}
+                  value={promptValue}
+                />
+              ) : promptTab === "base_md" ? (
+                baseMdReady ? (
+                  <PromptBlock
+                    edited={baseMdEdited}
+                    label="ベースmd（全パターン共通の発信定義書。AI設定＞ベースmdと同じもの）"
+                    limit={BASE_MD_MAX}
+                    mode={baseMdApply}
+                    note="保存すると新しいversionとして履歴に残ります（AI設定から戻せます）。見出し構成を変えると保存できません。"
+                    onChange={setBaseMdDraft}
+                    onMode={setBaseMdApply}
+                    onReset={() => {
+                      setBaseMdDraft(null);
+                      setBaseMdApply("once");
+                    }}
+                    value={baseMdValue}
+                  />
+                ) : (
+                  <p className="rounded-card border border-hairline bg-surface px-3.5 py-3 text-body leading-5 text-ink-2">
+                    ベースmdは発信設定を保存すると作られます。まず
+                    <Link className="text-info-fg hover:underline" href="/app/ai-settings?tab=persona">
+                      発信設定
+                    </Link>
+                    を保存してください。
+                  </p>
+                )
+              ) : (
+                <PromptBlock
+                  edited={imageEdited}
+                  label="画像生成プロンプト（「画像を生成する」がONのとき使われます）"
+                  limit={PROMPT_MAX_CHARS}
+                  mode={imageApply}
+                  onChange={setImageDraft}
+                  onMode={setImageApply}
+                  onReset={() => {
+                    setImageDraft(null);
+                    setImageApply("once");
+                  }}
+                  value={imageValue}
+                />
+              )}
             </div>
           </details>
         ) : null}
@@ -460,7 +620,7 @@ export function CreatePostForm({
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
           className="h-10 w-full gap-1.5 text-body"
-          disabled={pending || inProgress || !theme || promptOverLimit}
+          disabled={pending || inProgress || !theme || anyPromptOverLimit}
           onClick={submit}
           type="button"
           variant="gradient"

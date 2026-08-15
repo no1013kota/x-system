@@ -175,6 +175,50 @@ describe("executeImageGeneration", () => {
     expect(ledger[1].params[12]).toBeNull();
   });
 
+  /**
+   * この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。
+   * 親（post_generation）から子jobのinputへ引き継がれた値があれば、通常の解決
+   * （prompt_templates）と保存版base_mdを使わない。
+   */
+  it("input のoverrideがあれば、それで画像プロンプトを作り prompt_templates を読まない（T-M8-93）", async () => {
+    let templateReads = 0;
+    const { db } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql))
+        return [
+          {
+            ...JOB_ROW,
+            input: {
+              image_prompt_override: "Custom image instruction {{post_text}} / {{tone_section}}",
+              base_md_override: "# 発信定義書（ベースmd）\n## 3. トーン&マナー\n- 上書きトーンで描く\n",
+            },
+          },
+        ];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (TEMPLATES.test(sql)) {
+        templateReads += 1;
+        return [];
+      }
+      return [];
+    });
+    const { textGen, captured } = fakeTextGen('{"prompt":"a dog","aspect":"16:9"}');
+
+    const res = await executeImageGeneration(
+      baseDeps(db, {
+        resolveTextProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
+      }),
+    );
+
+    expect(res).toEqual({ status: "created", draftId: "draft1" });
+    // override のテンプレートが使われ、プレースホルダも差し込まれる。
+    expect(captured.req?.user).toContain("Custom image instruction");
+    expect(captured.req?.user).toContain("1ポスト目の本文");
+    // トーンは override 側のベースmd セクション3 から取る（保存版の「断定調」は使わない）。
+    expect(captured.req?.user).toContain("上書きトーンで描く");
+    expect(captured.req?.user).not.toContain("断定調");
+    // 通常の解決（prompt_templates）は読まない。
+    expect(templateReads).toBe(0);
+  });
+
   it("is idempotent when the draft already has a ready image", async () => {
     const upload = vi.fn(async () => {});
     const { db } = makeDb((sql) => {
