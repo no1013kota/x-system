@@ -458,7 +458,7 @@ describe("executePostGeneration (local DB)", () => {
   });
 
   /**
-   * ベースmdと画像プロンプトの「この生成にだけ」（T-M8-93）。
+   * アカウント.mdと画像プロンプトの「この生成にだけ」（T-M8-93）。
    * base_md_override が system（<base_md>）に入り保存版が使われないこと、
    * 画像ONのとき override が子jobの input へ引き継がれることを固定する。
    */
@@ -468,7 +468,7 @@ describe("executePostGeneration (local DB)", () => {
         input: {
           theme: "ai",
           image_enabled: true,
-          base_md_override: "# 発信定義書（ベースmd）\n## 1. ペルソナ\n- 上書きペルソナ\n",
+          base_md_override: "# 発信定義書（アカウント.md）\n## 1. ペルソナ\n- 上書きペルソナ\n",
           image_prompt_override: "custom image prompt",
         },
       }),

@@ -51,7 +51,7 @@
 | `usage_limit_exceeded` | 403 | premium利用枠不足 |
 | `x_account_required` | 400 | Xアカウント未連携 |
 | `api_key_required` | 400 | BYOKキー不足 |
-| `persona_required` | 400 | 発信設定（L-4〜L-7）の必須項目が未保存 |
+| `persona_required` | 400 | アカウント設定（L-4〜L-7）の必須項目が未保存 |
 | `feature_disabled` | 403 | feature flagで無効化された機能 |
 | `provider_error` | 502 | 外部API失敗 |
 | `post_state_unknown` | 409 | X投稿の作成成否を一意に確認できない |
@@ -157,7 +157,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override, base_md_override, image_prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`*_override`（T-M8-92/93）は**この生成にだけ**使う指示で、通常の解決を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない**。`prompt_override`=パターンプロンプト（≦8,000字）、`base_md_override`=ベースmd（≦5,000字・保存版と同じ見出し検証を通す。GENのsystemと画像のセクション3抽出の両方に効く）、`image_prompt_override`=PT-IMG（≦8,000字・画像ONのとき`image_generation`子jobのinputへ引き継がれる） |
+| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override, base_md_override, image_prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`*_override`（T-M8-92/93）は**この生成にだけ**使う指示で、通常の解決を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない**。`prompt_override`=パターンプロンプト（≦8,000字）、`base_md_override`=アカウント.md（≦5,000字・保存版と同じ見出し検証を通す。GENのsystemと画像のセクション3抽出の両方に効く）、`image_prompt_override`=PT-IMG（≦8,000字・画像ONのとき`image_generation`子jobのinputへ引き継がれる） |
 | `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |
@@ -228,13 +228,13 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
-レポートは表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーはレポートを読んで投稿作成・スケジュール・AI設定のプロンプト編集（md/premium）で自ら反映する。レポートのプロンプト全文は画面のコピー導線で持ち出す（専用の適用Actionは置かない）。
+レポートは表示専用とする。承認・却下やアカウント.md・プロンプトへの自動反映のActionは持たず、ユーザーはレポートを読んで投稿作成・スケジュール・AI設定のプロンプト編集（md/premium）で自ら反映する。レポートのプロンプト全文は画面のコピー導線で持ち出す（専用の適用Actionは置かない）。
 
 入力検証の失敗（`validation_error`）は、**作者が自分で書いたzodメッセージがあればそれを `message` に載せる**（F8〜F10）。無ければ code ごとの定型文（「入力内容を確認してください。」）に落ちる。zodの既定メッセージは英語かつスキーマの説明（`Too big: expected string to have <=512 characters` 等）なので画面へ出さない——要件06 §8「内部用語を画面に使わない」に反するため。実装は `src/lib/validation/user-input.ts` の `parseUserInput`（per-parseのsentinel）＋ `firstAuthoredIssueMessage` / `authoredFieldErrors` が正本で、`code` は変えない。**Server Action と認証フォームで素の `safeParse` を使わないことは `user-input.test.ts` が検査する**（素のままだと既定文言と作者文言を区別できない）。
 
 更新系Actionは対象rowのstatus/version/`updated_at`をupdate条件に含め、0件更新なら`job_conflict`を返して最新値の再読込を促す。
 
-ベースmd更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。発信設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
+アカウント.md更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。アカウント設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
 対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
 
@@ -291,6 +291,6 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - 利用枠: `usage_events`
 - 課金webhook: `stripe_events`
 - 投稿結果・部分失敗: `drafts.tweet_ids`, `drafts.last_post_error`
-- ベースmd変更: `base_md_versions`
+- アカウント.md変更: `base_md_versions`
 - 通知/メール送信: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`

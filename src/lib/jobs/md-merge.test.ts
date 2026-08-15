@@ -14,7 +14,7 @@ const INSERT_VERSION = /insert into base_md_versions/;
 const CONFIRM = /update learning_sources set status = 'analyzed'/;
 const REMOVED_UPDATE = /update learning_sources set status = 'removed'/;
 
-const BASE_MD = `# 発信定義書（ベースmd）
+const BASE_MD = `# 発信定義書（アカウント.md）
 
 ## 1. ペルソナ
 - 発信者: A

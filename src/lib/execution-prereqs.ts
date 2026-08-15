@@ -29,7 +29,7 @@ export const PREREQ_ITEM_LABELS: Record<PrereqItem, string> = {
   x_account: "X連携",
   text_ai_key: "文章AIキー",
   image_ai_key: "画像AIキー",
-  persona: "発信設定",
+  persona: "アカウント設定",
 };
 
 const ITEM_PATH: Record<PrereqItem, string> = {
@@ -69,7 +69,7 @@ export interface ExecutionPrereqInput {
   imageRequested: boolean;
   /** BYOKの画像providerキーがvalidか。 */
   imageAiKeyValid: boolean;
-  /** 選択中Xアカウントの base_md_version（>=1で発信設定充足）。 */
+  /** 選択中Xアカウントの base_md_version（>=1でアカウント設定充足）。 */
   baseMdVersion: number;
 }
 
@@ -80,7 +80,7 @@ export interface ExecutionPrereqError {
 }
 
 /**
- * 不足している前提を優先順（契約→Xキー→X連携→文章AIキー→画像AIキー→発信設定）で判定する。
+ * 不足している前提を優先順（契約→Xキー→X連携→文章AIキー→画像AIキー→アカウント設定）で判定する。
  * 充足なら null。primaryは先頭の不足項目、`missing`は全不足項目、`settingsPath`はprimaryの導線。
  */
 export function checkExecutionPrerequisites(
@@ -116,7 +116,7 @@ export function checkExecutionPrerequisites(
 
 /**
  * 投稿実行（publishDraft / post_publish）の前提。契約→Xキー(BYOK)→X連携のみ検証する。
- * 文章/画像AIキー・発信設定は投稿には不要のため含めない（要件06 §7・要件05 §5）。
+ * 文章/画像AIキー・アカウント設定は投稿には不要のため含めない（要件06 §7・要件05 §5）。
  */
 export function checkPostingPrerequisites(
   input: ExecutionPrereqInput,

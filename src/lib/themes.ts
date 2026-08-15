@@ -36,7 +36,7 @@ export const THEME_OPTIONS = [
  * 最新ニュース画面の絞り込みと同じ導出元（T-M8-100・運営者の指示 2026-08-15）。
  * 投稿作成・スケジュールの選択肢と、投稿分析（SUGGEST）の推奨テーマはここに限定する。
  * 運用分野を変えれば選択肢も追随する。**語彙（保存・検証・表示）は6テーマのまま**——
- * 旧値を持つ既存データの表示と、発信設定（L-5・PRD §8.3で6のまま維持と決定）を壊さない。
+ * 旧値を持つ既存データの表示と、アカウント設定（L-5・PRD §8.3で6のまま維持と決定）を壊さない。
  */
 export const OPERATED_THEME_OPTIONS = THEME_OPTIONS.filter((theme) =>
   (NEWS_FETCH_CATEGORIES as readonly NewsCategory[]).includes(theme.newsCategory),

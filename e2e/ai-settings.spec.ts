@@ -4,15 +4,15 @@ import { query } from "./fixtures/account";
 import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
- * SC-10 AI設定のうち**ベースmd編集**と**学習ソース**（要件06 §9・§3.6、T-M7-26）。
+ * SC-10 AI設定のうち**アカウント.md編集**と**学習ソース**（要件06 §9・§3.6、T-M7-26）。
  *
  * どちらも未カバーだった。学習ソースの分析（LRN）は実APIを叩くのでE2Eでは走らせず、
  * **画面とDBの状態遷移**だけを検証する（分析結果の中身は `npm run smoke:live` の範囲外でもあり、
- * ここでは扱わない）。ベースmd編集はAIを使わない操作なので最後まで通す。
+ * ここでは扱わない）。アカウント.md編集はAIを使わない操作なので最後まで通す。
  */
 
 const VALID_BASE_MD = [
-  "# 発信定義書（ベースmd）",
+  "# 発信定義書（アカウント.md）",
   "",
   "## 1. ペルソナ",
   "- 発信者: E2Eテスト用の発信者",
@@ -34,12 +34,12 @@ const VALID_BASE_MD = [
   "",
 ].join("\n");
 
-test("ベースmdを編集して保存でき、versionが上がって履歴に残る", async ({ accounts, page }) => {
+test("アカウント.mdを編集して保存でき、versionが上がって履歴に残る", async ({ accounts, page }) => {
   const account = await accounts.create("base-md");
   await signIn(page, account);
   await page.goto("/app/ai-settings?tab=base-md");
 
-  const editor = page.getByLabel("ベースmd本文");
+  const editor = page.getByLabel("アカウント.md本文");
   await expect(editor).toBeVisible();
 
   const marker = `E2E-${randomUUID().slice(0, 8)}`;
@@ -72,7 +72,7 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
   await signIn(page, account);
   await page.goto("/app/ai-settings?tab=base-md");
 
-  const editor = page.getByLabel("ベースmd本文");
+  const editor = page.getByLabel("アカウント.md本文");
   await expect(editor).toBeVisible();
 
   // 「## 3.」を落とした状態（6見出しが揃っていない）
@@ -148,7 +148,7 @@ test("学習ソースを追加すると分析中として並び、削除でき�
   );
   await page.reload();
 
-  // 削除は確認ダイアログを挟む（誤操作でベースmdの知見を失わないため）
+  // 削除は確認ダイアログを挟む（誤操作でアカウント.mdの知見を失わないため）
   page.on("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "削除", exact: true }).first().click();
 
@@ -201,7 +201,7 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
 
   // 一覧の「失敗」が**色でも**分かる（T-M8-36）。以前は背景色の指定が無い生の span で、
   // 「分析待ち」「反映済み」「失敗」「削除処理中」が全部同じ見た目だった。
-  // 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+  // 学習の失敗はアカウント.mdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
   const statusChip = page.getByText("失敗", { exact: true });
   await expect(statusChip).toBeVisible();
   // poll してから比べる（1発勝負だと落ちた原因が切り分けられない・T-M8-51）。
@@ -212,7 +212,7 @@ test("学習の取り込みが失敗しても行き止まりにならず、そ�
     .not.toBe("rgba(0, 0, 0, 0)");
 });
 
-test("通常プランではベースmd・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
+test("通常プランではアカウント.md・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
   accounts,
   page,
 }) => {
@@ -231,7 +231,7 @@ test("通常プランではベースmd・プロンプトが鍵付きで案内さ
   await page.goto("/app/ai-settings?tab=base-md");
 
   await expect(
-    page.getByRole("heading", { name: /ベースmdの確認・編集は mdプラン以上/ }),
+    page.getByRole("heading", { name: /アカウント.mdの確認・編集は mdプラン以上/ }),
   ).toBeVisible();
   // 行き先はStripeのプラン選択（Portal `intent=update`）。Portalセッションはサーバーで作るため
   // `href` を先に決められず、リンクではなくボタンで出す。**`/plans` へのリンクへ戻したら落ちる**

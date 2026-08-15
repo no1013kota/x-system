@@ -80,7 +80,7 @@ interface JobRow {
     news_item_id?: string | null;
     /** この生成にだけ使うプロンプト（T-M8-92）。 */
     prompt_override?: string | null;
-    /** この生成にだけ使うベースmd（T-M8-93）。 */
+    /** この生成にだけ使うアカウント.md（T-M8-93）。 */
     base_md_override?: string | null;
     /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
     image_prompt_override?: string | null;
@@ -139,7 +139,7 @@ export interface PostGenerationResult {
 export function composeUserInput(input: JobRow["input"]): string {
   const parts: string[] = [];
   // 分野を先に置く（題材の選び方を最初に縛る・T-M8-28）。未指定なら行を出さず、
-  // 従来どおりベースmdの発信テーマからAIが選ぶ。
+  // 従来どおりアカウント.mdの発信テーマからAIが選ぶ。
   const theme = promptThemeLabel(input.theme);
   if (theme) parts.push(`分野: ${theme}`);
   if (input.source_url) parts.push(`参考URL: ${input.source_url}`);
@@ -214,7 +214,7 @@ async function ensureImageChildJob(
     parentJobId: string;
     xAccountId: string;
     draftId: string;
-    /** この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。親jobのinputから引き継ぐ。 */
+    /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobのinputから引き継ぐ。 */
     imagePromptOverride?: string | null;
     baseMdOverride?: string | null;
   },
@@ -354,7 +354,7 @@ export async function executePostGeneration(
 
   // --- stage: research（コンテキスト組み立て）---
   await recordStage("research");
-  // この生成にだけ使うベースmd（T-M8-93）。指定があれば保存版の代わりに使う（保存はしない）。
+  // この生成にだけ使うアカウント.md（T-M8-93）。指定があれば保存版の代わりに使う（保存はしない）。
   // systemが保存版と別バイト列になるためプロンプトキャッシュはこの回だけ効かない（意図した挙動）。
   const baseMdOverride =
     typeof job.input?.base_md_override === "string" && job.input.base_md_override.trim() !== ""

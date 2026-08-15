@@ -5,7 +5,7 @@ import { AppError } from "@/lib/observability/errors";
 import { validateBaseMdStructure } from "./persona-settings";
 
 /**
- * ベースmdの手動編集・履歴・ロールバック（M-1, 要件05 §8/§9/§12, 要件02 §3.4, プロンプト §3.1, T-M5-08）。
+ * アカウント.mdの手動編集・履歴・ロールバック（M-1, 要件05 §8/§9/§12, 要件02 §3.4, プロンプト §3.1, T-M5-08）。
  * md/premium のみ編集可（standard は forbidden）。6見出し構造＋5,000字を検証し、expected version 一致時のみ
  * `x_accounts.base_md`/`base_md_version` と `base_md_versions`（change_source=manual/rollback）を同一tx更新する。
  * learning_analysis/md_merge が running の間は編集/ロールバックを job_conflict で拒否する（要件04 §12）。
@@ -90,7 +90,7 @@ export async function applyUpdateBaseMdManual(
   const acct = await loadForWrite(client, input.userId, input.xAccountId);
   assertEditablePlan(acct.plan);
   if (acct.base_md_version === 0) {
-    // 初版未生成は発信設定の初回保存が前提（要件05 §8・SC-10誘導）。
+    // 初版未生成はアカウント設定の初回保存が前提（要件05 §8・SC-10誘導）。
     throw new AppError("persona_required");
   }
   validateManualBaseMd(input.content);

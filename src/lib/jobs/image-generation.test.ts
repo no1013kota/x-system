@@ -176,7 +176,7 @@ describe("executeImageGeneration", () => {
   });
 
   /**
-   * この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。
+   * この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。
    * 親（post_generation）から子jobのinputへ引き継がれた値があれば、通常の解決
    * （prompt_templates）と保存版base_mdを使わない。
    */
@@ -189,7 +189,7 @@ describe("executeImageGeneration", () => {
             ...JOB_ROW,
             input: {
               image_prompt_override: "Custom image instruction {{post_text}} / {{tone_section}}",
-              base_md_override: "# 発信定義書（ベースmd）\n## 3. トーン&マナー\n- 上書きトーンで描く\n",
+              base_md_override: "# 発信定義書（アカウント.md）\n## 3. トーン&マナー\n- 上書きトーンで描く\n",
             },
           },
         ];
@@ -212,7 +212,7 @@ describe("executeImageGeneration", () => {
     // override のテンプレートが使われ、プレースホルダも差し込まれる。
     expect(captured.req?.user).toContain("Custom image instruction");
     expect(captured.req?.user).toContain("1ポスト目の本文");
-    // トーンは override 側のベースmd セクション3 から取る（保存版の「断定調」は使わない）。
+    // トーンは override 側のアカウント.md セクション3 から取る（保存版の「断定調」は使わない）。
     expect(captured.req?.user).toContain("上書きトーンで描く");
     expect(captured.req?.user).not.toContain("断定調");
     // 通常の解決（prompt_templates）は読まない。

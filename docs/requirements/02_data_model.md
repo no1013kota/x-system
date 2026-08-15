@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.33 |
+| バージョン | v1.34 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -126,7 +126,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `token_refresh_lock_id` | `uuid` | null | refresh実行者識別子 |
 | `status` | `x_account_status` | not null default `active` | 連携状態 |
 | `settings` | `jsonb` | not null default `{}` | L-4〜L-7フォーム値 |
-| `base_md` | `text` | not null default `''` | 現行ベースmd |
+| `base_md` | `text` | not null default `''` | 現行アカウント.md |
 | `base_md_version` | `integer` | not null default 0 | 未生成は0 |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
@@ -152,8 +152,8 @@ RLS: 本人select可。writeはServer Actionのみ。
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
 | `version` | `integer` | not null | 1始まり |
-| `content` | `text` | not null | ベースmd全文 |
-| `change_source` | `text` | not null | `settings`（発信設定フォーム。初版作成を含む）/`learning`/`manual`/`rollback` |
+| `content` | `text` | not null | アカウント.md全文 |
+| `change_source` | `text` | not null | `settings`（アカウント設定フォーム。初版作成を含む）/`learning`/`manual`/`rollback` |
 | `summary` | `text` | null | 変更要約 |
 | `created_at` | `timestamptz` | not null default now() |  |
 
@@ -340,7 +340,7 @@ Indexes: (`x_account_id`, `created_at desc`), `source_job_id`
 
 RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成）。
 
-提案は表示専用。承認・却下の状態やベースmdへの自動反映情報は持たず、画面には最新のSUGGEST job実行分を表示する。ユーザーは提案を読んで発信設定・ベースmd編集（md/premium）で自ら反映する。
+提案は表示専用。承認・却下の状態やアカウント.mdへの自動反映情報は持たず、画面には最新のSUGGEST job実行分を表示する。ユーザーは提案を読んでアカウント設定・アカウント.md編集（md/premium）で自ら反映する。
 
 ### 3.13 `usage_events`
 
@@ -631,7 +631,7 @@ RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはS
 
 `themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。発信テーマ（L-5）の選択肢は**6テーマのまま**（PRD §8.3。生成の方向づけに使うため縮小しない——投稿作成・分析の選択肢を運用分野へ絞ったT-M8-100の対象外）。
 
-`tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、ベースmdへ展開しない。
+`tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、アカウント.mdへ展開しない。
 
 ### 4.5 `generation_jobs.input`
 

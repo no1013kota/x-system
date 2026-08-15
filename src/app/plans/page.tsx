@@ -49,7 +49,7 @@ function planFeatures(planId: PlanId): string[] {
   if (planId === "md") {
     return [
       "通常プランの全機能",
-      "ベースmd・プロンプトの直接編集",
+      "アカウント.md・プロンプトの直接編集",
       "編集履歴とロールバック",
       accounts,
     ];
@@ -82,13 +82,13 @@ const BYOK_SETUP = [
   "X APIキー登録（取得手順ガイド付き）",
   "X連携 — ご自身のDeveloper App経由でOAuth認可",
   "生成AI APIキー登録（Claude／OpenAI／Gemini から1つ以上）",
-  "ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）",
+  "ペルソナ・テーマ・トンマナ・NG設定（アカウント.md自動生成）",
   "学習（任意）— 参考アカウント・過去投稿の取り込み",
 ];
 
 const PREMIUM_SETUP = [
   "X連携 — 運営のDeveloper App経由でOAuth認可",
-  "ペルソナ・テーマ・トンマナ・NG設定（ベースmd自動生成）",
+  "ペルソナ・テーマ・トンマナ・NG設定（アカウント.md自動生成）",
   "学習（任意）— 参考アカウント・過去投稿の取り込み",
 ];
 

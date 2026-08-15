@@ -113,7 +113,7 @@ function buildSettingsSections(input: unknown): string {
     ...settings.ng.rules.map((rule) => `- ${rule}`),
   ];
 
-  return `# 発信定義書（ベースmd）
+  return `# 発信定義書（アカウント.md）
 <!-- このファイルはAIへの指示書。宣言文で書き、形容詞より
      「検証できるルール」と「実例」で指定する -->
 
@@ -145,7 +145,7 @@ export function validateBaseMdStructure(content: string): void {
   );
   if (numbers.join(",") !== "1,2,3,4,5,6") {
     throw new Error(
-      "ベースmdは## 1.〜## 6.の見出しを順番どおり各1回含める必要があります。",
+      "アカウント.mdは## 1.〜## 6.の見出しを順番どおり各1回含める必要があります。",
     );
   }
 }
@@ -184,7 +184,7 @@ export function rebuildSettingsSections(
   validateBaseMdStructure(existingContent);
   const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
   if (sectionFive?.index === undefined) {
-    throw new Error("ベースmdのセクション5を特定できません。");
+    throw new Error("アカウント.mdのセクション5を特定できません。");
   }
   const rebuilt = `${buildSettingsSections(input)}\n\n${existingContent.slice(
     sectionFive.index,
@@ -200,7 +200,7 @@ export function baseMdSettingsDiffer(
   return rebuildSettingsSections(existingContent, input) !== existingContent;
 }
 
-/** ベースmdの学習セクション見出し（MD-MERGE の再構築で使う）。 */
+/** アカウント.mdの学習セクション見出し（MD-MERGE の再構築で使う）。 */
 export const BASE_MD_SECTION5_TITLE = BASE_MD_SECTION_TITLES[4];
 export const BASE_MD_SECTION6_TITLE = BASE_MD_SECTION_TITLES[5];
 
@@ -216,7 +216,7 @@ export function replaceLearningSections(
   validateBaseMdStructure(existingContent);
   const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
   if (sectionFive?.index === undefined) {
-    throw new Error("ベースmdのセクション5を特定できません。");
+    throw new Error("アカウント.mdのセクション5を特定できません。");
   }
   const prefix = existingContent.slice(0, sectionFive.index); // セクション1〜4（＋前文）
   const rebuilt = `${prefix}## 5. ${BASE_MD_SECTION5_TITLE}\n${section5Body.trim()}\n\n## 6. ${BASE_MD_SECTION6_TITLE}\n${section6Body.trim()}\n`;

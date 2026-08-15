@@ -33,7 +33,7 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   usage_limit_exceeded: "今月の利用上限に達しています。",
   x_account_required: "Xアカウントの連携が必要です。",
   api_key_required: "APIキーの登録が必要です。",
-  persona_required: "発信設定の保存が必要です。",
+  persona_required: "アカウント設定の保存が必要です。",
   feature_disabled: "この機能は現在ご利用いただけません。",
   provider_error: "外部サービスとの通信に失敗しました。時間をおいて再度お試しください。",
   post_state_unknown: "投稿の結果を確認できませんでした。Xでご確認ください。",

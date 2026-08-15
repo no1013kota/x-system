@@ -84,7 +84,7 @@ interface ImageJobRow {
   plan: string;
   input: {
     regenerate?: boolean;
-    /** この生成にだけ使う画像プロンプト／ベースmd（T-M8-93）。親jobから引き継がれる。再生成では引き継がない。 */
+    /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobから引き継がれる。再生成では引き継がない。 */
     image_prompt_override?: string | null;
     base_md_override?: string | null;
   } | null;

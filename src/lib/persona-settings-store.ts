@@ -115,7 +115,7 @@ export async function applyPersonaSettingsUpdate(
       account.id,
       version,
       baseMd,
-      version === 1 ? "発信設定から初版を作成" : "発信設定からセクション1〜4を更新",
+      version === 1 ? "アカウント設定から初版を作成" : "アカウント設定からセクション1〜4を更新",
     ],
   );
   return { baseMd, version };

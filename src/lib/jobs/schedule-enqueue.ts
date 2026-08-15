@@ -33,7 +33,7 @@ interface DueSlotRow {
   time_jst: string;
   mode: string;
   instructions: string | null;
-  /** 分野（発信テーマ）。NULL は指定なし＝AIがベースmdの発信テーマから選ぶ（T-M8-28）。 */
+  /** 分野（発信テーマ）。NULL は指定なし＝AIがアカウント.mdの発信テーマから選ぶ（T-M8-28）。 */
   theme: string | null;
   image_enabled: boolean;
   user_id: string;

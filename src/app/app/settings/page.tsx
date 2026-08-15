@@ -33,7 +33,7 @@ import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 export const metadata: Metadata = {
-  title: `アカウント設定 | ${APP_NAME}`,
+  title: `設定 | ${APP_NAME}`,
 };
 
 interface SettingsPageProps {
