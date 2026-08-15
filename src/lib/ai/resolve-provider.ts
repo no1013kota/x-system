@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 
 import { resolvePremiumTextPurpose } from "../ai-purpose-config";
+import { isCatalogImageModel, isCatalogTextModel } from "./model-catalog";
 import type { PlanId } from "../plans";
 import { ProviderConfigError } from "./normalize";
 import type { Provider } from "./types";
@@ -97,6 +98,9 @@ interface AiPurposeConfig {
   /** 生の未検証値（JSONBはユーザー管理。providerの妥当性は解決時に検証する）。 */
   text: string | null;
   image: string | null;
+  /** 選択モデル（T-M8-107）。カタログ外・providerと不一致はenv既定へフォールバック。 */
+  text_model: string | null;
+  image_model: string | null;
 }
 
 async function getAiPurposeConfig(
@@ -113,7 +117,24 @@ async function getAiPurposeConfig(
   return {
     text: typeof cfg.text === "string" ? cfg.text : null,
     image: typeof cfg.image === "string" ? cfg.image : null,
+    text_model: typeof cfg.text_model === "string" ? cfg.text_model : null,
+    image_model: typeof cfg.image_model === "string" ? cfg.image_model : null,
   };
+}
+
+/** ユーザー選択モデル。カタログにある値だけを尊重し、それ以外はenv既定へ（黙って未知IDを実APIへ送らない）。 */
+function pickTextModel(provider: Provider, selected: string | null, fallback: string | undefined): string | undefined {
+  if (selected && isCatalogTextModel(provider, selected)) return selected;
+  return fallback;
+}
+
+function pickImageModel(
+  provider: ImageProvider,
+  selected: string | null,
+  fallback: string | undefined,
+): string | undefined {
+  if (selected && isCatalogImageModel(provider, selected)) return selected;
+  return fallback;
 }
 
 type UserKeyState =
@@ -159,11 +180,12 @@ export async function resolveTextKey(
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
   if (input.plan === "premium") {
-    // 運営固定。ユーザー設定に依存しない。
-    return operatorTextKey(
-      resolvePremiumTextPurpose(deps.config.premiumTextProvider),
-      deps.config,
-    );
+    // providerは運営固定。モデルはユーザー選択を尊重する（T-M8-107。運営キーの実費が
+    // モデルで変わるため、単価はMODEL_RATESが台帳へ反映する）。
+    const provider = resolvePremiumTextPurpose(deps.config.premiumTextProvider);
+    const base = operatorTextKey(provider, deps.config);
+    const cfg = await getAiPurposeConfig(deps.client, input.userId);
+    return { ...base, model: pickTextModel(provider, cfg.text_model, base.model) ?? base.model };
   }
   // BYOK（standard/md）
   const cfg = await getAiPurposeConfig(deps.client, input.userId);
@@ -183,7 +205,7 @@ export async function resolveTextKey(
     });
   }
   const provider = cfg.text;
-  const model = deps.config.textModels[provider];
+  const model = pickTextModel(provider, cfg.text_model, deps.config.textModels[provider]);
   if (!model) {
     throw new ProviderConfigError(`${provider} text model is not configured`);
   }
@@ -217,7 +239,7 @@ export async function resolveImageKey(
     const cfg = await getAiPurposeConfig(deps.client, input.userId);
     if (cfg.image && isImageProvider(cfg.image)) {
       const apiKey = deps.config.operatorApiKeys[cfg.image];
-      const model = deps.config.imageModels[cfg.image];
+      const model = pickImageModel(cfg.image, cfg.image_model, deps.config.imageModels[cfg.image]);
       if (apiKey && model) {
         return { provider: cfg.image, keySource: "operator", apiKey, model };
       }
@@ -257,7 +279,7 @@ export async function resolveImageKey(
     });
   }
   const provider = cfg.image;
-  const model = deps.config.imageModels[provider];
+  const model = pickImageModel(provider, cfg.image_model, deps.config.imageModels[provider]);
   if (!model) {
     throw new ProviderConfigError(`${provider} image model is not configured`);
   }

@@ -43,7 +43,7 @@ export async function updateAiPurposeConfig(
     });
     return {
       config: result.config,
-      message: "AI用途設定を更新しました。",
+      message: "AIモデル設定を更新しました。",
       plan: result.plan,
       status: "success",
     };

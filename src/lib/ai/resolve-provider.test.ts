@@ -80,10 +80,11 @@ describe("classifiers", () => {
 });
 
 describe("resolveTextKey — premium (operator, ignores user config)", () => {
-  it("fixes to Anthropic on the operator key without touching the DB", async () => {
+  it("fixes to Anthropic on the operator key (provider is not user-selectable)", async () => {
+    // T-M8-107以降、モデル選択を読むためDBは参照する。providerは引き続き運営固定。
     const key = await resolveTextKey(
       { plan: "premium", userId: "u1" },
-      { client: noDbClient, decrypt, config: config() },
+      { client: profileClient({ text: "openai" }), decrypt, config: config() },
     );
     expect(key).toEqual({
       provider: "anthropic",
@@ -93,11 +94,27 @@ describe("resolveTextKey — premium (operator, ignores user config)", () => {
     });
   });
 
+  it("premiumでもユーザー選択のモデル（カタログ内）を尊重する（T-M8-107）", async () => {
+    const key = await resolveTextKey(
+      { plan: "premium", userId: "u1" },
+      { client: profileClient({ text_model: "claude-fable-5" }), decrypt, config: config() },
+    );
+    expect(key.model).toBe("claude-fable-5");
+  });
+
+  it("カタログ外のモデル指定はenv既定へフォールバックする（未知IDを実APIへ送らない）", async () => {
+    const key = await resolveTextKey(
+      { plan: "premium", userId: "u1" },
+      { client: profileClient({ text_model: "claude-nonexistent-9" }), decrypt, config: config() },
+    );
+    expect(key.model).toBe("a-model");
+  });
+
   it("honors an explicit operator provider override", async () => {
     const key = await resolveTextKey(
       { plan: "premium", userId: "u1" },
       {
-        client: noDbClient,
+        client: profileClient({}),
         decrypt,
         config: config({ premiumTextProvider: "openai" }),
       },

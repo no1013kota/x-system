@@ -218,7 +218,7 @@ describe("Stripe plan transition side effects", () => {
     expect(afterByok.rows[0]).toEqual({
       access_token_ciphertext: "managed_access",
       active_x_account_id: null,
-      ai_purpose_config: { image: null, text: "anthropic" },
+      ai_purpose_config: { image: null, image_model: null, text: "anthropic", text_model: null },
       key_count: 2,
       status: "expired",
     });

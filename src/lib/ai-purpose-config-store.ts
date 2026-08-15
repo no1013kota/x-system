@@ -35,7 +35,9 @@ export async function updateAiPurposeConfigRecord(
   const next = configRecord(row.ai_purpose_config);
 
   if (row.plan === "premium") {
-    if (input.patch.text !== undefined) {
+    // providerは運営固定。UIはモデル選択のため text:"anthropic" を添えて送る（T-M8-107）。
+    // 固定値と一致しない変更だけを拒否する。
+    if (input.patch.text !== undefined && input.patch.text !== resolvePremiumTextPurpose()) {
       throw new AppError("validation_error", {
         details: { field: "text", reason: "premium_text_read_only" },
       });
@@ -49,6 +51,9 @@ export async function updateAiPurposeConfigRecord(
       });
     }
     next.image = input.patch.image ?? null;
+    // モデル選択（T-M8-107）。カタログ検証はschemaが済ませている。providerを外したらモデルも外す。
+    next.image_model = next.image ? (input.patch.image_model ?? null) : null;
+    if (input.patch.text_model !== undefined) next.text_model = input.patch.text_model;
     await client.query(
       "update profiles set ai_purpose_config = $2::jsonb where id = $1",
       [input.userId, JSON.stringify(next)],
@@ -82,6 +87,11 @@ export async function updateAiPurposeConfigRecord(
 
   if (input.patch.text !== undefined) next.text = input.patch.text;
   if (input.patch.image !== undefined) next.image = input.patch.image;
+  // モデル選択（T-M8-107）。providerが外れたら対応するモデルも外す（宙に浮いた値を残さない）。
+  if (input.patch.text_model !== undefined) next.text_model = input.patch.text_model;
+  if (input.patch.image_model !== undefined) next.image_model = input.patch.image_model;
+  if (!next.text) next.text_model = null;
+  if (!next.image) next.image_model = null;
   await client.query(
     "update profiles set ai_purpose_config = $2::jsonb where id = $1",
     [input.userId, JSON.stringify(next)],

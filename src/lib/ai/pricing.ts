@@ -47,6 +47,35 @@ export const PROVIDER_RATES: Record<Provider, ProviderRates> = {
   },
 };
 
+/**
+ * モデル別の単価上書き（T-M8-107・原則4）。モデル選択の導入でprovider一律だと
+ * 実費と大きくずれる（例: Claude Fable 5 $10/$50 と Haiku 4.5 $1/$5 で10倍）。
+ * カタログ（model-catalog.ts）のモデルはここへ対で登録する。無いモデルはprovider既定へフォールバック。
+ * 単価の出典: 各社公式pricing（2026-08-15確認）。cacheはAnthropic=書込1.25×入力/読出0.1×入力、
+ * OpenAI=読出のみ公式のcached input（書込は入力と同額扱い）、Geminiはprovider既定のまま。
+ */
+const MODEL_RATES: Record<string, Partial<ProviderRates>> = {
+  // Anthropic
+  "claude-fable-5": { inputPerMTok: 10, outputPerMTok: 50, cacheWritePerMTok: 12.5, cacheReadPerMTok: 1 },
+  "claude-opus-5": { inputPerMTok: 5, outputPerMTok: 25, cacheWritePerMTok: 6.25, cacheReadPerMTok: 0.5 },
+  "claude-sonnet-5": { inputPerMTok: 2, outputPerMTok: 10, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.2 },
+  "claude-sonnet-4-6": { inputPerMTok: 3, outputPerMTok: 15, cacheWritePerMTok: 3.75, cacheReadPerMTok: 0.3 },
+  "claude-sonnet-4-5": { inputPerMTok: 3, outputPerMTok: 15, cacheWritePerMTok: 3.75, cacheReadPerMTok: 0.3 },
+  "claude-haiku-4-5": { inputPerMTok: 1, outputPerMTok: 5, cacheWritePerMTok: 1.25, cacheReadPerMTok: 0.1 },
+  // OpenAI
+  "gpt-5.6-sol": { inputPerMTok: 5, outputPerMTok: 30, cacheWritePerMTok: 5, cacheReadPerMTok: 0.5 },
+  "gpt-5.6-terra": { inputPerMTok: 2, outputPerMTok: 12, cacheWritePerMTok: 2, cacheReadPerMTok: 0.2 },
+  "gpt-5.6-luna": { inputPerMTok: 0.2, outputPerMTok: 1.2, cacheWritePerMTok: 0.2, cacheReadPerMTok: 0.02 },
+  "gpt-5.4": { inputPerMTok: 2.5, outputPerMTok: 15, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.25 },
+  "gpt-5.4-nano": { inputPerMTok: 0.2, outputPerMTok: 1.25, cacheWritePerMTok: 0.2, cacheReadPerMTok: 0.02 },
+  // Google（text。cacheはprovider既定）
+  "gemini-3.7-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
+  "gemini-3.6-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
+  "gemini-3.5-flash": { inputPerMTok: 1.5, outputPerMTok: 9 },
+  "gemini-3.5-flash-lite": { inputPerMTok: 0.3, outputPerMTok: 2.5 },
+  "gemini-2.5-pro": { inputPerMTok: 1.25, outputPerMTok: 10 },
+};
+
 /** numeric(12,6) へ収めるため小数6桁へ丸める。 */
 function round6(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -59,9 +88,12 @@ function round6(value: number): number {
 export function estimateProviderCost(
   provider: Provider,
   usage: ProviderUsage,
+  /** 実行に使ったモデル。MODEL_RATESにあればモデル別単価を使う（無ければprovider既定）。 */
+  model?: string,
 ): number | null {
-  const rates = PROVIDER_RATES[provider];
-  if (!rates) return null;
+  const base = PROVIDER_RATES[provider];
+  if (!base) return null;
+  const rates: ProviderRates = { ...base, ...(model ? MODEL_RATES[model] : undefined) };
   const tokenCost =
     (usage.inputTokens * rates.inputPerMTok +
       usage.outputTokens * rates.outputPerMTok +

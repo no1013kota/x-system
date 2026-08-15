@@ -2043,7 +2043,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
-### T-M8-107: 「AI用途」を「AIモデル設定」にし、プロバイダに加えてモデルも選択できるようにする `todo`
+### T-M8-107: 「AI用途」を「AIモデル設定」にし、プロバイダに加えてモデルも選択できるようにする `done`
 - 参照: 要件02 §4.1（ai_purpose_config）・要件06（設定タブ）・プロンプト設計書 §5（provider解決）・`src/lib/ai/resolve-provider.ts` / 依存: T-M8-104 / サイズ: M
 - 完了条件:
   - タブ名・画面文言が「AIモデル設定」になる
@@ -2051,6 +2051,9 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 選択したモデルが実際の生成（GEN/LRN/SUGGEST/MD-MERGE・画像）で使われる。未選択・無効値は従来どおりenv既定へフォールバック
   - premiumは文章プロバイダ固定（運営Claude）のままモデルだけ選択できる。画像は従来どおりプロバイダ＋モデル
   - 原価台帳の推定単価が**モデル別**になる（provider一律だとOpus系とHaiku系で実費が10倍ずれる・原則4）
+- **やったこと**: モデルカタログ`src/lib/ai/model-catalog.ts`新設（text: Anthropic/OpenAI/Google各5・image: 各3。最上位=Claude Fable 5/GPT-5.6 Sol/Gemini 3.7 Flash/GPT Image 2/Nano Banana Proを含む・単価の目安付き）。`ai_purpose_config`へ`text_model`/`image_model`（保存時カタログ照合・provider外れでモデルも外す）。解決（resolve-provider）は選択優先→env既定フォールバック（カタログ外の未知IDを実APIへ送らない）。premiumは文章provider固定のままモデル選択可。**推定原価をモデル別単価（pricing.ts MODEL_RATES・公式価格）に**——provider一律だとFable 5とHaiku 4.5で10倍ずれる（原則4）。UIは各用途にモデルselect（「おまかせ（運営の既定モデル）」既定・provider変更でリセット）。
+- **検証**: 単体2019件・DB統合（store保存/剥がし・resolve選択/フォールバック）・**カタログ全21モデルIDを実APIのメタデータエンドポイントで実在確認（無料）**・check:providers緑・**実物1周**: @ai_newinfoにFable 5を設定→smoke:live（生成+画像+ニュース $0.49）→台帳に`claude-fable-5`と正しいモデル別原価（Web検索付き生成$0.33）を確認→設定を戻した。実ブラウザ（タブ名・5択+おまかせ・保存がDBへ）。docs4本更新（PRD v1.16・要件02 v1.36・要件06 v1.79・プロンプト設計書 v1.23）。
+- **注意**: premiumのモデル選択は**運営実費に直結**（Fable 5はSonnet 5の約5倍）。月間利用枠（生成100回）は回数制のため、全員がFable 5を選ぶと理論上限が上がる。実測は台帳・doctorで見える。
 - メモ: 運営者の指示（2026-08-15）。モデルID・単価は公式docs（platform.claude.com / developers.openai.com / ai.google.dev）で確認済み。
 
 ### T-M8-102: 「発信設定」を「アカウント設定」、「ベースmd/ベース.md」を「アカウント.md」へ改名する `done`
