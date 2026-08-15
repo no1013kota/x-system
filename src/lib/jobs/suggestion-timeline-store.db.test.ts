@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import type { Queryable } from "../x/token-refresh";
 import {
+  loadDraftTagRows,
   loadStoredTimeline,
   newestStoredPostedAt,
   upsertTimelinePosts,
@@ -80,6 +81,50 @@ describe("suggestion-timeline-store (local DB)", () => {
 
   const cleanup = (uid: string) =>
     withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+
+  it("loadDraftTagRows が実スキーマで動き、テーマを生成job（source_job_id）から引く", async () => {
+    // 2026-08-15、`d.input`（存在しない列）を参照していて実アカウントの初回実行まで発覚しなかった。
+    // SQLの列参照は実DBでしか守れないので、このテストが正本。
+    const { uid, xid } = await seed();
+    try {
+      await withTransaction(async (c) => {
+        const jobId = (
+          await c.query<{ id: string }>(
+            `insert into generation_jobs (x_account_id, kind, trigger, status, input, finished_at)
+             values ($1,'post_generation','manual','succeeded','{"theme":"ai"}','2026-08-01') returning id`,
+            [xid],
+          )
+        ).rows[0].id;
+        await c.query(
+          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, source_job_id, tweet_ids)
+           values ($1,'p3','[]','[]','posted',$2,'["9100000000000001","9100000000000002"]')`,
+          [xid, jobId],
+        );
+        // source_job_id の無い下書き（テーマnullでも行は返る）。
+        await c.query(
+          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, tweet_ids)
+           values ($1,'p1','[]','[]','posted','["9100000000000003"]')`,
+          [xid],
+        );
+        // tweet_ids が空の行は対象外。
+        await c.query(
+          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
+           values ($1,'p2','[]','[]','draft')`,
+          [xid],
+        );
+      });
+
+      const rows = await loadDraftTagRows(pooledDb, xid);
+      expect(rows).toHaveLength(2);
+      const tagged = rows.find((r) => r.pattern === "p3");
+      expect(tagged?.theme).toBe("ai");
+      expect(tagged?.tweet_ids).toEqual(["9100000000000001", "9100000000000002"]);
+      const untagged = rows.find((r) => r.pattern === "p1");
+      expect(untagged?.theme).toBeNull();
+    } finally {
+      await cleanup(uid);
+    }
+  });
 
   it("初回insert→重なり再取得のupsertでメトリクスが更新される（増分取得の要）", async () => {
     const { uid, xid } = await seed();

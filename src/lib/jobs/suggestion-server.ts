@@ -11,6 +11,7 @@ import { executeSuggestion } from "./suggestion";
 import { buildDraftTagIndex, buildInputFromStored, type SuggestionInput } from "./suggestion-input";
 import { TIMELINE_FETCH_MAX, timelineFetchStart } from "./suggestion-timeline";
 import {
+  loadDraftTagRows,
   loadStoredTimeline,
   newestStoredPostedAt,
   upsertTimelinePosts,
@@ -39,17 +40,7 @@ async function resolveProvider(input: { plan: string; userId: string; deadline: 
 
 /** Exos AIで作った投稿の tweet_id → 型/テーマ の索引（新規取得分へタグ付けする）。 */
 async function fetchDraftTags(xAccountId: string) {
-  const { rows } = await pooledDb.query<{
-    tweet_ids: string[] | null;
-    pattern: string | null;
-    theme: string | null;
-  }>(
-    `select d.tweet_ids, d.pattern, d.input->>'theme' as theme
-       from drafts d
-      where d.x_account_id = $1 and d.tweet_ids is not null`,
-    [xAccountId],
-  );
-  return buildDraftTagIndex(rows);
+  return buildDraftTagIndex(await loadDraftTagRows(pooledDb, xAccountId));
 }
 
 async function fetchPosts(
