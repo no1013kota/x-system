@@ -98,7 +98,7 @@ describe("usageLimitBanner (T-M6-13)", () => {
     expect(banner?.id).toBe("usage_limit");
     expect(banner?.tone).toBe("warning");
     expect(banner?.description).toContain("URL付き投稿枠");
-    expect(banner?.description).toContain("画像枠");
+    expect(banner?.description).toContain("画像クレジット");
     expect(banner?.actionHref).toBe("/app/settings?tab=billing");
   });
 });

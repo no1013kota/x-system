@@ -21,8 +21,8 @@ const LIMIT_BY_KEY: Record<UsageCounterKey, number | undefined> = {
 const LABEL: Record<UsageCounterKey, string> = {
   normal_posts: "通常投稿枠",
   url_posts: "URL付き投稿枠",
-  generations: "生成枠",
-  images: "画像枠",
+  generations: "生成クレジット",
+  images: "画像クレジット",
 };
 
 async function insertUsageNotification(

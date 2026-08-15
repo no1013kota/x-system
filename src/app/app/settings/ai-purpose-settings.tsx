@@ -122,6 +122,7 @@ export function AiPurposeSettings({
               label="文章生成に使うモデル"
               onChange={setTextModel}
               options={TEXT_MODEL_OPTIONS.anthropic}
+              showCredits
               value={textModel}
             />
           </div>
@@ -196,6 +197,7 @@ export function AiPurposeSettings({
             label="画像生成に使うモデル"
             onChange={setImageModel}
             options={IMAGE_MODEL_OPTIONS[imageProvider]}
+            showCredits={plan === "premium"}
             value={imageModel}
           />
         ) : null}
@@ -229,18 +231,23 @@ export function AiPurposeSettings({
   );
 }
 
-/** モデル選択（T-M8-107）。空=おまかせ（運営の既定モデル）。単価の目安を選択肢に含める。 */
+/**
+ * モデル選択（T-M8-107）。空=おまかせ（運営の既定モデル）。単価の目安を選択肢に含める。
+ * premiumはクレジット消費数も出す（T-M8-108。上位モデルは倍数消費＝選ぶ前に分かるようにする）。
+ */
 function ModelSelect({
   disabled,
   label,
   onChange,
   options,
+  showCredits,
   value,
 }: {
   disabled: boolean;
   label: string;
   onChange: (value: string) => void;
-  options: readonly { id: string; label: string; priceNote: string }[];
+  options: readonly { id: string; label: string; priceNote: string; creditMultiplier?: number }[];
+  showCredits?: boolean;
   value: string;
 }) {
   return (
@@ -252,10 +259,11 @@ function ModelSelect({
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
-        <option value="">おまかせ（運営の既定モデル）</option>
+        <option value="">{showCredits ? "おまかせ（運営の既定モデル・1クレジット/回）" : "おまかせ（運営の既定モデル）"}</option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {option.label} — {option.priceNote}
+            {showCredits ? `・${option.creditMultiplier ?? 1}クレジット/回` : ""}
           </option>
         ))}
       </select>

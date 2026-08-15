@@ -28,11 +28,15 @@ describe("RESERVE_LIMIT_BY_TYPE", () => {
 });
 
 describe("reserveIfPremium", () => {
-  function spy() {
+  function spy(aiPurposeConfig: Record<string, unknown> = {}) {
     const calls: { sql: string; params: unknown[] }[] = [];
     const tx = {
       async query(sql: string, params?: unknown[]) {
         calls.push({ sql, params: params ?? [] });
+        // モデル選択の読み出し（T-M8-108）。
+        if (/ai_purpose_config from profiles/.test(sql)) {
+          return { rows: [{ ai_purpose_config: aiPurposeConfig }] as never[], rowCount: 1 };
+        }
         // reserveUsage が読む行を返す（上限判定・冪等判定を通す最小の形）。
         return { rows: [] as never[], rowCount: 0 };
       },
@@ -60,6 +64,22 @@ describe("reserveIfPremium", () => {
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     expect(s.entered()).toBe(1);
     expect(s.calls.length).toBeGreaterThan(0);
+  });
+
+  it("上位モデル選択時はコスト比の倍数クレジットを消費する（T-M8-108）", async () => {
+    const s = spy({ text: "anthropic", text_model: "claude-fable-5" });
+    await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
+    const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
+    expect(insert, "usage_eventsへのreserveが走る").toBeTruthy();
+    // reserveUsage の $7 = amount。Fable 5（$10/$50）は基準Sonnet 5（$2/$10）の5倍。
+    expect(insert!.params[6]).toBe(5);
+  });
+
+  it("未選択（おまかせ）は1クレジット", async () => {
+    const s = spy({ text: "anthropic" });
+    await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
+    const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
+    expect(insert!.params[6]).toBe(1);
   });
 
   /**

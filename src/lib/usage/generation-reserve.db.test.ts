@@ -103,6 +103,54 @@ describe("reserveUsage / refundUsage (db)", () => {
     }
   });
 
+  it("倍数消費: amount=5でreserveし、refundは同量を返す（T-M8-108）", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const jobId = await makeJob(xid);
+    try {
+      await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId, type: "generation", amount: 5 }),
+      );
+      let s = await state(uid, jobId);
+      expect(s.gen).toBe(5);
+
+      await withTransaction((c) => refundUsage(c, jobId, "generation"));
+      s = await state(uid, jobId);
+      expect(s.gen).toBe(0); // 5消費→5返還で対称
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [jobId]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
+  it("倍数消費: 残量が足りなければ超過で失敗し、ちょうど埋まる量は通す（T-M8-108）", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const jobId = await makeJob(xid);
+    const jobId2 = await makeJob(xid);
+    try {
+      // limit 5 に amount 3 → OK（計3）。さらに amount 3 → 超過で拒否。amount 2 → ちょうど5で通る。
+      await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId, type: "generation", amount: 3, limit: 5 }),
+      );
+      await expect(
+        withTransaction((c) =>
+          reserveUsage(c, { userId: uid, xAccountId: xid, jobId: jobId2, type: "generation", amount: 3, limit: 5 }),
+        ),
+      ).rejects.toMatchObject({ code: "usage_limit_exceeded" });
+      await withTransaction((c) =>
+        reserveUsage(c, { userId: uid, xAccountId: xid, jobId: jobId2, type: "generation", amount: 2, limit: 5 }),
+      );
+      const s = await state(uid, jobId);
+      expect(s.gen).toBe(5);
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
   it("retryで差し戻された後も再予約でき、成功時に枠が計上される（T-M7-11）", async () => {
     // reserve keyはjob単位で冪等なため、失敗確定前に返還してしまうと次のattemptが再予約できず
     // 「retryで成功したのに枠が0のまま」になる。返還は失敗確定時だけに寄せてあることを確認する。

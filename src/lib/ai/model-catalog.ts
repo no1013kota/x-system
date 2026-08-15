@@ -18,28 +18,34 @@ export interface ModelOption {
   label: string;
   /** 単価の目安（利用者・運営者がコスト差を選択時に判断できるように出す）。 */
   priceNote: string;
+  /**
+   * premiumのクレジット消費倍数（T-M8-108）。基準モデル（文章=Sonnet 5相当・画像=各社最上位）=1。
+   * コスト比の**切り上げ**で決める——切り下げると上位モデル選択で運営原価上限が膨らむ。
+   * 省略時は1。BYOK（standard/md）はクレジットを消費しないため表示にのみ使う。
+   */
+  creditMultiplier?: number;
 }
 
 export const TEXT_MODEL_OPTIONS: Record<Provider, readonly ModelOption[]> = {
   anthropic: [
-    { id: "claude-fable-5", label: "Claude Fable 5（最高性能）", priceNote: "$10/$50 per MTok" },
-    { id: "claude-opus-5", label: "Claude Opus 5（高性能）", priceNote: "$5/$25 per MTok" },
+    { id: "claude-fable-5", label: "Claude Fable 5（最高性能）", priceNote: "$10/$50 per MTok", creditMultiplier: 5 },
+    { id: "claude-opus-5", label: "Claude Opus 5（高性能）", priceNote: "$5/$25 per MTok", creditMultiplier: 3 },
     { id: "claude-sonnet-5", label: "Claude Sonnet 5（バランス）", priceNote: "$2/$10 per MTok" },
-    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6（前世代バランス）", priceNote: "$3/$15 per MTok" },
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6（前世代バランス）", priceNote: "$3/$15 per MTok", creditMultiplier: 2 },
     { id: "claude-haiku-4-5", label: "Claude Haiku 4.5（低コスト）", priceNote: "$1/$5 per MTok" },
   ],
   openai: [
-    { id: "gpt-5.6-sol", label: "GPT-5.6 Sol（最高性能）", priceNote: "$5/$30 per MTok" },
+    { id: "gpt-5.6-sol", label: "GPT-5.6 Sol（最高性能）", priceNote: "$5/$30 per MTok", creditMultiplier: 3 },
     { id: "gpt-5.6-terra", label: "GPT-5.6 Terra（バランス）", priceNote: "$2/$12 per MTok" },
     { id: "gpt-5.6-luna", label: "GPT-5.6 Luna（低コスト）", priceNote: "$0.2/$1.2 per MTok" },
-    { id: "gpt-5.4", label: "GPT-5.4（前世代）", priceNote: "$2.5/$15 per MTok" },
+    { id: "gpt-5.4", label: "GPT-5.4（前世代）", priceNote: "$2.5/$15 per MTok", creditMultiplier: 2 },
     { id: "gpt-5.4-nano", label: "GPT-5.4 nano（前世代・低コスト）", priceNote: "$0.2/$1.25 per MTok" },
   ],
   google: [
     { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash（最新）", priceNote: "$0.75/$3.75 per MTok" },
     { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", priceNote: "$0.75/$3.75 per MTok" },
-    { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", priceNote: "$1.5/$9 per MTok" },
-    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro（前世代・高性能）", priceNote: "$1.25/$10 per MTok" },
+    { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", priceNote: "$1.5/$9 per MTok", creditMultiplier: 3 },
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro（前世代・高性能）", priceNote: "$1.25/$10 per MTok", creditMultiplier: 3 },
     { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite（低コスト）", priceNote: "$0.3/$2.5 per MTok" },
   ],
 };
@@ -56,6 +62,20 @@ export const IMAGE_MODEL_OPTIONS: Record<ImageProvider, readonly ModelOption[]> 
     { id: "gemini-3.1-flash-lite-image", label: "Nano Banana 2 Lite（低コスト）", priceNote: "低単価" },
   ],
 };
+
+/**
+ * premiumのクレジット消費数（T-M8-108）。基準（文章=Sonnet 5相当・画像=最上位）=1。
+ * 未選択（env既定）・カタログ外は1（運営の既定モデルは基準クラスに揃える前提）。
+ */
+export function textCreditCost(provider: Provider, model: string | null): number {
+  if (!model) return 1;
+  return TEXT_MODEL_OPTIONS[provider]?.find((m) => m.id === model)?.creditMultiplier ?? 1;
+}
+
+export function imageCreditCost(provider: ImageProvider, model: string | null): number {
+  if (!model) return 1;
+  return IMAGE_MODEL_OPTIONS[provider]?.find((m) => m.id === model)?.creditMultiplier ?? 1;
+}
 
 export function isCatalogTextModel(provider: Provider, model: string): boolean {
   return TEXT_MODEL_OPTIONS[provider]?.some((m) => m.id === model) ?? false;
