@@ -203,6 +203,31 @@ npm run dev                  # → http://127.0.0.1:3000
 
 ---
 
+## 5.4 定時トリガー（cron）はローカルでは自動で動かない
+
+本番（Vercel）は `vercel.json` の Cron が4本の定時トリガーを起動するが、**ローカルには定時実行が無い**。
+そのため次はローカルでは**手動で起動しない限り一度も動かない**（T-M8-99・2026-08-15判明）:
+
+- 毎朝8:00の投稿分析（scheduler-tick 経由）
+- 毎時のフォロワー数記録（follower-snapshot）→ 投稿分析画面の「フォロワー数の推移」が空のまま
+- メトリクス収集（metrics-collector）・ニュース取得（news-fetch）・スケジュール投稿の起票
+
+手動起動（`npm run dev` 起動中に。同一時間窓の重複起動は `cron_runs` の窓claimで無害）:
+
+```bash
+# フォロワー数を今日の分だけ記録（active・当日未記録のアカウントが対象）
+curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/follower-snapshot
+# 5分tick（スケジュール起票・毎朝8時以降なら投稿分析の起票・job dispatch）
+curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/scheduler-tick
+# メトリクス収集
+curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/metrics-collector
+```
+
+`$CRON_SECRET` は `.env.local` の値（`node --env-file=.env.local -e 'console.log(process.env.CRON_SECRET)'` で確認できる）。
+ローカルでも自走させるかは **要決定 D-29**（tasks/BACKLOG.md）。X APIは過去のフォロワー数を提供しないため、記録開始日より前の推移は遡れない。
+
+---
+
 ## 6. ローカルでテストユーザーを作ってログインする
 
 いずれかで作成:
