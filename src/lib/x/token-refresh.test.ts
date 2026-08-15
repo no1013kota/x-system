@@ -188,7 +188,23 @@ describe("getValidAccessToken", () => {
     expect(writes.some((w) => /status = 'expired'/.test(w.sql))).toBe(true);
   });
 
-  it("releases the lease and rethrows on a transient (non-invalid_grant) error", async () => {
+  /**
+   * Xは失効・ローテート済みのrefresh tokenに `invalid_grant` ではなく **400 `invalid_request`** を
+   * 返すことがある（2026-08-15 に実アカウント2件で確認・T-M8-96）。これを一時エラー扱いにすると
+   * 画面は「連携済み」のままrefreshが永遠に失敗し続ける。4xxは要再連携として扱う。
+   */
+  it("marks the account expired on 400 invalid_request too (T-M8-96)", async () => {
+    const { db, writes } = mockDb({ selectRows: [account()], leaseRows: [account()] });
+    const onExpired = vi.fn();
+    const fetchSpy = vi.fn<FetchLike>(async () => jsonResponse(400, { error: "invalid_request" }));
+    await expect(
+      getValidAccessToken("acc", { ...makeDeps(db, fetchSpy), onExpired }),
+    ).rejects.toMatchObject({ code: "x_token_expired", reason: "invalid_request" });
+    expect(writes.some((w) => /status = 'expired'/.test(w.sql))).toBe(true);
+    expect(onExpired).toHaveBeenCalledWith("acc", "invalid_request");
+  });
+
+  it("releases the lease and rethrows on a transient (5xx) error", async () => {
     const { db, writes } = mockDb({ selectRows: [account()], leaseRows: [account()] });
     const fetchSpy = vi.fn<FetchLike>(async () => jsonResponse(503, { error: "service_unavailable" }));
     await expect(getValidAccessToken("acc", makeDeps(db, fetchSpy))).rejects.toBeInstanceOf(

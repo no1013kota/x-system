@@ -48,7 +48,7 @@ export class XTokenExpiredError extends Error {
   readonly retryable = false;
   constructor(
     readonly xAccountId: string,
-    readonly reason: "invalid_grant" | "insufficient_scope" | "no_refresh_token",
+    readonly reason: "invalid_grant" | "invalid_request" | "insufficient_scope" | "no_refresh_token",
   ) {
     super(`x_account ${xAccountId} needs re-link: ${reason}`);
     this.name = "XTokenExpiredError";
@@ -156,11 +156,22 @@ export async function getValidAccessToken(
       { fetch: deps.fetch },
     );
   } catch (err) {
-    if (err instanceof XTokenError && err.errorCode === "invalid_grant") {
+    /**
+     * token endpoint の 4xx は「このrefresh tokenでは二度と成功しない」ため要再連携にする（T-M8-96）。
+     *
+     * Xは失効・ローテート済みのrefresh tokenに、OAuth仕様の `invalid_grant` ではなく
+     * **400 `invalid_request` を返すことがある**（2026-08-15 に実アカウントで確認。8/3失効の
+     * tokenが2アカウントとも `invalid_request` で拒否された）。`invalid_grant` だけを要再連携に
+     * していると、**画面は「連携済み」のままrefreshが永遠に失敗し続け**、毎朝の投稿分析も
+     * 失敗通知を出し続ける（原則1「黙って壊れない」に反する——画面が実態と食い違う）。
+     * network/5xx はこれまでどおり一時エラーとして retryable のまま伝播する。
+     */
+    if (err instanceof XTokenError && err.status >= 400 && err.status < 500) {
+      const reason = err.errorCode === "invalid_grant" ? "invalid_grant" : "invalid_request";
       if (await markExpired(deps.db, xAccountId, lockId)) {
-        await deps.onExpired?.(xAccountId, "invalid_grant");
+        await deps.onExpired?.(xAccountId, reason);
       }
-      throw new XTokenExpiredError(xAccountId, "invalid_grant");
+      throw new XTokenExpiredError(xAccountId, reason);
     }
     // network/5xx 等の一時エラー: lease を解除して retryable のまま伝播する。
     await releaseLease(deps.db, xAccountId, lockId);

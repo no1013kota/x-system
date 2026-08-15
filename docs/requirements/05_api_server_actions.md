@@ -150,7 +150,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 - callbackでauthorization codeをtokenへ交換し、`tweet.read tweet.write users.read media.write offline.access`が付与されていることと`/2/users/me`を確認してから暗号化保存する。**token交換の`XTokenError`は原因別の`provider_error`へ写像する**（T-M8-63）: 401/`invalid_client`/`unauthorized_client`→`reason=token_auth_failed`（戻り先はAPIキータブ。confidential AppのSecret不足が典型）、`invalid_grant`→`reason=token_grant_invalid`、その他→reasonなし。internal_error に丸めない（実際に401が「予期しないエラー」と表示され原因が辿れなかった）。
 - OAuth callbackは自動投稿への明示同意を記録しない。`recordXAutomationConsent`は、自動投稿の対象、実行条件、失敗時の自動rollback削除とその不可逆性、停止方法、利用者本人がX上の投稿責任を負うことを専用画面で表示した後にだけ呼べる。
 - access tokenが5分以内に失効する場合は、短いDB transactionで`token_refresh_lock_id`と`token_refresh_locked_at`を条件付き更新し、single-flight leaseを取ってからrefreshする。他の実行は最大10秒待って再読込し、1分超のleaseはstaleとして回収する。rotated refresh tokenと期限はlock ID一致を条件に同一transactionで更新する。
-- refresh完了・失敗のどちらでもleaseを解除する。`invalid_grant`または必要scope不足はlock ID一致を確認して`status = expired`とし、自動処理を止めて再連携通知を作る。tokenの平文と外部レスポンス本文はブラウザへ返さない（暗号化済みciphertextがRLS selectに含まれることは受容済みリスクとする。データモデル §5参照）。
+- refresh完了・失敗のどちらでもleaseを解除する。**token endpointの4xx**（`invalid_grant`・`invalid_request`）または必要scope不足はlock ID一致を確認して`status = expired`とし、自動処理を止めて再連携通知を作る。`invalid_grant`だけを対象にすると、Xが失効tokenへ`invalid_request`を返すケースで**画面が「連携済み」のままrefreshが永遠に失敗し続ける**（2026-08-15に実発生・T-M8-96）。network/5xxは一時エラーとしてretryable扱いのまま。tokenの平文と外部レスポンス本文はブラウザへ返さない（暗号化済みciphertextがRLS selectに含まれることは受容済みリスクとする。データモデル §5参照）。
 - `enableXAccount`は現在planの件数上限に空きがあり、planに対応する`auth_type`で、refreshと`/2/users/me`が成功する場合だけ許可する。失敗時は再連携へ誘導する。
 
 ## 5. 投稿・下書き

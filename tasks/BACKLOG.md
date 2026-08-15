@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜95 は done | 下記M8セクション |
+| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜96 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -2055,6 +2055,20 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **コスト（運営者の質問への回答）**: 1回=X読取 最大$0.50（実際は件数比例）＋AI $0.01〜0.05。1日1回×毎日でも最大$15/月/アカウント、典型$1〜3。取得上限は**未回答のため推奨の100件で実装**（`SUGGEST_TIMELINE_MAX`1定数で変更可）。台帳とdoctorの「今月かかった費用」に実測が載る。
 - **検証**: 単体（suggestion-input 11件・gen-prompts 14件・pricing/read-client）・DB統合（suggestion 7件・suggestion-jobs・analytics）・E2E（suggestions 2件）・UI実描画390/1280px横あふれ0。
 - **後続への注意**: `SUGGEST_TIMELINE_MAX`を変えるとX費用上限が変わる（テストが100を固定）。p5をfeature flagで有効化したらPT-SUGGESTの選択肢とスキーマ（`SUGGESTABLE_PATTERNS`）へ追加が要る。旧形式の提案行は次の実行で置き換わるまで縮退表示。
+
+### T-M8-96: 失効したX連携が「連携済み」のまま表示され続ける不具合を直す `done`
+- 参照: 要件02 §通知（v1.29）・要件05 §OAuth（v1.33）・`src/lib/x/token-refresh.ts` / 依存: なし / サイズ: S
+- **発端**: 実利用で発見（2026-08-15）。運営者のローカル環境で、8/3に失効したXトークンの
+  アカウント2件が**画面では「連携済み（active）」のまま**で、refreshは`400 invalid_request`で
+  失敗し続けていた。運営者は「現在すでに接続されています」と認識——画面が実態と食い違っていた（原則1）。
+- **原因**: 要再連携（`status='expired'`）への遷移条件が`invalid_grant`だけだった。**Xは失効・
+  ローテート済みrefresh tokenに`invalid_request`を返すことがある**（実アカウント2件で確認）。
+  このケースは一時エラー扱いのままleaseを解除して戻るため、statusが変わらず、
+  (a)画面が連携済みのまま (b)毎朝の投稿分析が失敗通知を出し続ける、の両方が起きる。
+- **修正**: token endpointの**4xx全般**を要再連携へ（`invalid_grant`→従来どおり、それ以外の4xxは
+  `reason='invalid_request'`）。network/5xxは従来どおり一時エラー。再連携通知の発火条件も同じ。
+- **検証**: 単体（400 invalid_request → expired遷移＋onExpired発火）。実アカウント2件で
+  refresh試行→両方`expired`へ遷移し、設定画面が「要再連携」を表示することを確認。
 
 ### T-M8-95: 分析の登録導線と設定画面のメールアドレス表示を追加する `done`
 - 参照: 要件06 v1.71（§1.2 SC-11・§10 空状態） / 依存: T-M8-94 / サイズ: S
