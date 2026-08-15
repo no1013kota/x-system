@@ -8,6 +8,7 @@ import { recordProviderCalls } from "../db/api-usage-ledger";
 import { OPERATED_THEME_IDS, OPERATED_THEME_OPTIONS } from "../themes";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { PROMPT_TEMPLATE_MAX_CHARS } from "../prompts/prompt-templates";
+import { BASE_MD_MAX_CHARS, validateManualBaseMd } from "../base-md";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
@@ -52,6 +53,30 @@ export const SUGGESTABLE_PATTERNS = ["p1", "p2", "p3", "p4", "p6"] as const;
 function makeSuggestionSchema(allowedIds: Set<string>) {
   const reasoned = <T extends z.ZodTypeAny>(recommended: T) =>
     z.object({ recommended, reason: z.string().min(1) });
+  // アカウント.mdの改訂案は**保存時と同じ検証**（6見出し構造＋5,000字）を通す——
+  // 「そのまま貼れる」が要件なので、貼った先で保存できない構造を許さない（T-M8-106）。
+  const accountMdProposal = z
+    .object({
+      content: z
+        .string()
+        .min(1)
+        .max(BASE_MD_MAX_CHARS)
+        .refine(
+          (content) => {
+            try {
+              validateManualBaseMd(content);
+              return true;
+              // eslint-disable-next-line no-restricted-syntax -- 構造検証の失敗がrefineの判定結果。修復はrunTextGenerationが担う
+            } catch {
+              return false;
+            }
+          },
+          { message: "account_md.content must keep the ## 1.-## 6. heading structure" },
+        ),
+      reason: z.string().min(1),
+    })
+    // null=提案なし。キー省略も同義に扱う（省略のたびに修復callを1回浪費しない）。
+    .nullish();
   return z.object({
     summary: z.string().min(1),
     good_posts: z
@@ -63,6 +88,8 @@ function makeSuggestionSchema(allowedIds: Set<string>) {
       }),
     advice: z
       .object({
+        // アカウント.mdの編集提案（T-M8-106）。<account_md>が"none"（未作成）のときはnull。
+        account_md: accountMdProposal,
         pattern: reasoned(z.enum(SUGGESTABLE_PATTERNS)),
         // 「その他」は提案として実行可能でない（追加指示に書く意思表示）ため不可。
         // 選択肢は運用中テーマ（最新ニュース画面と同じ・T-M8-100）に限定する——
@@ -112,12 +139,15 @@ interface JobRow {
   x_account_id: string;
   x_user_id: string;
   user_id: string;
+  /** 現行アカウント.md（編集提案の土台・T-M8-106）。未作成（version 0）は提案対象外。 */
+  base_md: string;
+  base_md_version: number;
   plan: string;
 }
 
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.x_account_id, xa.x_user_id, xa.user_id, p.plan
+    `select gj.x_account_id, xa.x_user_id, xa.user_id, xa.base_md, xa.base_md_version, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -187,9 +217,14 @@ function renderPreviousBlock(previous: PreviousSuggestion | null, input: Suggest
   });
 }
 
-function renderPrompt(input: SuggestionInput, previous: PreviousSuggestion | null): string {
+function renderPrompt(
+  input: SuggestionInput,
+  previous: PreviousSuggestion | null,
+  accountMd: string | null,
+): string {
   return PT_SUGGEST.replaceAll("{{themes}}", themeChoices())
     .replaceAll("{{previous}}", renderPreviousBlock(previous, input))
+    .replaceAll("{{account_md}}", accountMd ?? "none")
     .replaceAll("{{posts}}", JSON.stringify(input.posts));
 }
 
@@ -270,11 +305,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     const allowedIds = new Set(input.posts.map((p) => p.id));
     // 前回のレポートを参照する（T-M8-98）。読めなくても分析自体は止めない。
     const previous = await loadPreviousSuggestion(db, job.x_account_id);
+    // アカウント.mdが未作成（version 0）なら編集提案の対象外（貼り先が無い）。
+    const accountMd = job.base_md_version >= 1 ? job.base_md : null;
     const result = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
       request: {
-        system: [renderPrompt(input, previous)],
+        system: [renderPrompt(input, previous, accountMd)],
         user: "上記の投稿一覧を分析し、指定のJSONで出力してください。",
         timeoutMs: deadline.callTimeoutMs(),
       },
@@ -297,7 +334,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
           JSON.stringify({
             format: 2,
             good_posts: output.good_posts,
-            advice: output.advice,
+            advice: { ...output.advice, account_md: output.advice.account_md ?? null },
             // 分析対象＝保存済みの全投稿（新しい順に上限件数）。件数を根拠として残す（T-M8-94）。
             post_count: input.posts.length,
             analyze_limit: SUGGEST_ANALYZE_MAX,

@@ -49,25 +49,26 @@ export function SuggestionsPanel({
   needsAiKey?: boolean;
 }) {
   const toast = useToast();
-  const [copied, setCopied] = useState(false);
+  // 提案は2つ（アカウント.md・投稿作成プロンプト）あるため、どちらをコピーしたかを持つ（T-M8-106）。
+  const [copied, setCopied] = useState<"account_md" | "prompt" | null>(null);
 
   /**
-   * プロンプト全文のコピー（api-key-settings.tsx の callback URLコピーと同じ作法・T-M8-38）。
+   * 提案全文のコピー（api-key-settings.tsx の callback URLコピーと同じ作法・T-M8-38）。
    * **失敗を黙って捨てない**——非セキュアコンテキスト・権限拒否で失敗するため、手動コピーへ誘導する。
    */
-  async function copyPrompt(content: string) {
+  async function copyProposal(target: "account_md" | "prompt", content: string) {
     try {
       await navigator.clipboard.writeText(content);
     } catch {
       toast.show({
         tone: "error",
         title: "コピーできませんでした",
-        description: "プロンプト全文を選択して手動でコピーしてください。",
+        description: "全文を選択して手動でコピーしてください。",
       });
       return;
     }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    setCopied(target);
+    window.setTimeout(() => setCopied(null), 2000);
   }
 
   // listSuggestions は created_at 昇順のため、最終更新は最大値を採る。
@@ -176,45 +177,77 @@ export function SuggestionsPanel({
                         ) : null}
                       </dl>
 
-                      {s.advice.prompt ? (
-                        plan === "standard" ? (
-                          // 貼り先（AI設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
-                          <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
-                            この特徴を毎回の生成に反映する専用プロンプトも用意しました。
-                            <Link className="text-info-fg hover:underline" href="/app/settings?tab=prompts&sec=post-prompt">
-                              プロンプトのカスタマイズ（mdプラン以上）
-                            </Link>
-                            で利用できます。
-                          </p>
-                        ) : (
-                          <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-caption font-semibold text-ink-3">
-                                プロンプト（
-                                {POST_PATTERN_LABELS[s.advice.prompt.kind] ?? s.advice.prompt.kind}
-                                ）— そのまま貼って使えます
-                              </p>
-                              <div className="ml-auto flex items-center gap-2">
-                                <button
-                                  className="inline-flex h-8 items-center rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
-                                  onClick={() => copyPrompt(s.advice!.prompt!.content)}
-                                  type="button"
-                                >
-                                  {copied ? "コピーしました" : "コピー"}
-                                </button>
-                                <Link
-                                  className="text-body text-info-fg hover:underline"
-                                  href="/app/settings?tab=prompts&sec=post-prompt"
-                                >
-                                  AI設定で保存する
-                                </Link>
-                              </div>
+                      {(s.advice.prompt || s.advice.accountMd) && plan === "standard" ? (
+                        // 貼り先（設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
+                        <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
+                          この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
+                          <Link className="text-info-fg hover:underline" href="/app/settings?tab=prompts&sec=post-prompt">
+                            プロンプトのカスタマイズ（mdプラン以上）
+                          </Link>
+                          で利用できます。
+                        </p>
+                      ) : null}
+
+                      {/* アカウント.mdの編集提案（T-M8-106）。全パターン共通の土台なので先に出す。 */}
+                      {s.advice.accountMd && plan !== "standard" ? (
+                        <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-caption font-semibold text-ink-3">
+                              アカウント.mdへの編集提案 — そのまま貼って保存できます
+                            </p>
+                            <div className="ml-auto flex items-center gap-2">
+                              <button
+                                className="inline-flex h-8 items-center rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
+                                onClick={() => copyProposal("account_md", s.advice!.accountMd!.content)}
+                                type="button"
+                              >
+                                {copied === "account_md" ? "コピーしました" : "コピー"}
+                              </button>
+                              <Link
+                                className="text-body text-info-fg hover:underline"
+                                href="/app/settings?tab=prompts&sec=account-md"
+                              >
+                                設定で編集する
+                              </Link>
                             </div>
-                            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
-                              {s.advice.prompt.content}
-                            </pre>
                           </div>
-                        )
+                          {s.advice.accountMd.reason ? (
+                            <p className="mt-2 text-body leading-5 text-ink-2">{s.advice.accountMd.reason}</p>
+                          ) : null}
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
+                            {s.advice.accountMd.content}
+                          </pre>
+                        </div>
+                      ) : null}
+
+                      {s.advice.prompt && plan !== "standard" ? (
+                        <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-caption font-semibold text-ink-3">
+                              投稿作成プロンプト（
+                              {POST_PATTERN_LABELS[s.advice.prompt.kind] ?? s.advice.prompt.kind}
+                              ）— そのまま貼って使えます
+                            </p>
+                            <div className="ml-auto flex items-center gap-2">
+                              <button
+                                className="inline-flex h-8 items-center rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
+                                onClick={() => copyProposal("prompt", s.advice!.prompt!.content)}
+                                type="button"
+                              >
+                                {copied === "prompt" ? "コピーしました" : "コピー"}
+                              </button>
+                              <Link
+                                className="text-body text-info-fg hover:underline"
+                                href="/app/settings?tab=prompts&sec=post-prompt"
+                              >
+                                設定で保存する
+                              </Link>
+                            </div>
+                          </div>
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
+                            {s.advice.prompt.content}
+                          </pre>
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
