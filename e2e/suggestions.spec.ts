@@ -16,6 +16,10 @@ const EVIDENCE = {
   format: 2,
   good_posts: [{ id: "9000000000000001", why: "表示回数が3,200と最多だった" }],
   advice: {
+    account_md: {
+      content: "# 発信定義書\n## 1. ペルソナ\nE2E提案の中身\n## 2. 発信テーマ\n## 3. トンマナ\n## 4. NG\n## 5. 学習\n## 6. その他",
+      reason: "ペルソナへ実績の強みを反映",
+    },
     pattern: { recommended: "p3", reason: "手順を数字で示すノウハウ形式が伸びている" },
     theme: { recommended: "ai", reason: "AIツール紹介の題材が反応を得ている" },
     image: { recommended: true, reason: "画像付きの表示回数が上回った" },
@@ -56,10 +60,16 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   const panel = page.locator("section", { hasText: "分析レポート" });
   await expect(panel.getByText(/\bp3\b/)).toHaveCount(0);
 
-  // プロンプト全文（fixtureはpremium）とコピー・AI設定への導線。
+  // 2つの編集提案（fixtureはpremium）: アカウント.md提案と投稿作成プロンプト（T-M8-106）。
+  await expect(page.getByText("アカウント.mdへの編集提案", { exact: false })).toBeVisible();
+  await expect(page.getByText("E2E提案の中身", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "設定で編集する" })).toHaveAttribute(
+    "href",
+    "/app/settings?tab=prompts&sec=account-md",
+  );
   await expect(page.getByText("# タスク", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "コピー" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "AI設定で保存する" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "設定で保存する" })).toHaveAttribute(
     "href",
     "/app/settings?tab=prompts&sec=post-prompt",
   );
@@ -85,8 +95,9 @@ test("standardにはプロンプト全文を出さず、mdプラン以上の案�
   await page.goto("/app/analytics");
 
   await expect(page.getByText("総評テキスト")).toBeVisible();
-  // 貼り先（AI設定＞プロンプト）が使えないプランには全文もコピーも出さない。
+  // 貼り先（設定＞プロンプト）が使えないプランには2提案とも全文もコピーも出さない。
   await expect(page.getByText("# タスク", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("E2E提案の中身", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: /プロンプトのカスタマイズ（mdプラン以上）/ }),

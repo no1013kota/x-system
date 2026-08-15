@@ -78,6 +78,8 @@ export interface SuggestionDisplay {
     theme: SuggestionAdviceItem<string> | null;
     image: SuggestionAdviceItem<boolean> | null;
     prompt: { kind: string; content: string } | null;
+    /** アカウント.mdの編集提案（T-M8-106。未作成アカウントや旧レポートは null）。 */
+    accountMd: { content: string; reason: string } | null;
   } | null;
   /** legacy行の根拠1文（v2では空）。 */
   legacySummary: string;
@@ -141,6 +143,10 @@ export async function loadSuggestionsForUser(
         typeof adv.prompt === "object" && adv.prompt !== null
           ? (adv.prompt as Record<string, unknown>)
           : null;
+      const accountMdObj =
+        typeof adv.account_md === "object" && adv.account_md !== null
+          ? (adv.account_md as Record<string, unknown>)
+          : null;
       return {
         kind: "v2" as const,
         content: r.content,
@@ -152,6 +158,10 @@ export async function loadSuggestionsForUser(
           prompt:
             promptObj && str(promptObj.kind) && str(promptObj.content)
               ? { kind: str(promptObj.kind), content: str(promptObj.content) }
+              : null,
+          accountMd:
+            accountMdObj && str(accountMdObj.content)
+              ? { content: str(accountMdObj.content), reason: str(accountMdObj.reason) }
               : null,
         },
         legacySummary: "",

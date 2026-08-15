@@ -32,6 +32,9 @@ describe("GEN prompt constants", () => {
     // 前回レポートの参照（T-M8-98）。"none" は renderPreviousBlock の約束と対。
     expect(PT_SUGGEST).toContain("{{previous}}");
     expect(PT_SUGGEST).toContain('"none"なら今回が初回');
+    // アカウント.mdの編集提案（T-M8-106）。"none"は renderPrompt の約束と対。
+    expect(PT_SUGGEST).toContain("{{account_md}}");
+    expect(PT_SUGGEST).toContain('"account_md"');
     // 出力契約: 総評＋実行可能な設定（型・テーマ・画像・そのまま貼れるプロンプト全文）。
     expect(PT_SUGGEST).toContain('"summary"');
     expect(PT_SUGGEST).toContain('"good_posts"');

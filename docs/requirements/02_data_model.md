@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.34 |
+| バージョン | v1.35 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -772,6 +772,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
   "format": 2,
   "good_posts": [{ "id": "tweet_id_1", "why": "表示回数が3,200と最多だった" }],
   "advice": {
+    "account_md": { "content": "アカウント.md改訂案の全文（## 1.〜## 6.構造を維持・5,000字以内）", "reason": "何をなぜ変えたか" },
     "pattern": { "recommended": "p3", "reason": "手順を数字で示すノウハウ形式が伸びている" },
     "theme": { "recommended": "ai", "reason": "AIツール紹介の題材が反応を得ている" },
     "image": { "recommended": true, "reason": "画像付きの表示回数が上回った" },
@@ -783,7 +784,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 }
 ```
 
-`format`・`post_count`（分析対象の投稿数）・`analyze_limit`（分析上限のsnapshot）・`previous_id`（参照した直前のレポート。提案の連続性を後から辿れる・T-M8-98）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
+`format`・`post_count`（分析対象の投稿数）・`analyze_limit`（分析上限のsnapshot）・`previous_id`（参照した直前のレポート。提案の連続性を後から辿れる・T-M8-98）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`advice.account_md`はアカウント.md未作成のアカウント・旧レポートではnull（T-M8-106）。`content`カラムには良かった投稿の特徴（summary）が入る。
 
 ## 5. RLS方針
 

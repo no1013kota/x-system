@@ -187,6 +187,58 @@ describe("suggestion worker (local DB)", () => {
     }
   });
 
+  it("アカウント.mdがあれば<account_md>としてプロンプトへ渡り、編集提案がevidenceへ残る（T-M8-106）", async () => {
+    const { uid, xid, jobId } = await seed("md");
+    try {
+      const currentMd = [
+        "# 発信定義書（アカウント.md）",
+        "## 1. ペルソナ",
+        "現行の中身",
+        "## 2. 発信テーマ",
+        "## 3. トンマナ",
+        "## 4. NG",
+        "## 5. 学習",
+        "## 6. その他",
+      ].join("\n");
+      await withTransaction((c) =>
+        c.query(`update x_accounts set base_md = $2, base_md_version = 1 where id = $1`, [xid, currentMd]),
+      );
+      const proposedMd = currentMd.replace("現行の中身", "観察された強みを反映した中身");
+      const body = JSON.stringify({
+        summary: "総評",
+        good_posts: [{ id: "t1", why: "最多" }],
+        advice: {
+          account_md: { content: proposedMd, reason: "ペルソナへ実績の強みを反映" },
+          pattern: { recommended: "p3", reason: "r" },
+          theme: { recommended: "ai", reason: "r" },
+          image: { recommended: false, reason: "r" },
+          prompt: { kind: "p3", content: "# タスク\n提案" },
+        },
+      });
+      const captured = { system: [] as string[] };
+      const d = deps(jobId, body, [post("t1", 100)]);
+      d.resolveProvider = async () => ({
+        textGen: genCapture(body, captured),
+        provider: "anthropic" as const,
+        model: "m",
+      });
+      const res = await executeSuggestion(d);
+      expect(res).toMatchObject({ status: "saved", count: 1 });
+
+      // 現行mdがプロンプトへ渡っている（未作成なら "none"）。
+      const system = captured.system.join("\n");
+      expect(system).toContain("現行の中身");
+      expect(system).not.toContain("<account_md>none</account_md>");
+
+      const rows = await suggestions(xid);
+      const advice = rows[0].evidence.advice as Record<string, Record<string, unknown>>;
+      expect(advice.account_md.reason).toBe("ペルソナへ実績の強みを反映");
+      expect(String(advice.account_md.content)).toContain("観察された強みを反映した中身");
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("前回のレポート（format=2）がプロンプトへ渡り、evidence.previous_id に残る（T-M8-98）", async () => {
     const { uid, xid, jobId } = await seed("md");
     try {
