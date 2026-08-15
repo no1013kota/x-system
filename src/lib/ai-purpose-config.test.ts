@@ -20,7 +20,9 @@ describe("AI purpose lifecycle", () => {
     ).toEqual({
       future: { enabled: true },
       image: "google",
+      image_model: null,
       text: "anthropic",
+      text_model: null,
     });
   });
 
@@ -30,11 +32,38 @@ describe("AI purpose lifecycle", () => {
         { image: "anthropic", text: "openai" },
         new Set(["anthropic"]),
       ),
-    ).toEqual({ image: null, text: null });
+    ).toEqual({ image: null, image_model: null, text: null, text_model: null });
     expect(revalidateByokAiPurposeConfig(null, new Set())).toEqual({
       image: null,
+      image_model: null,
       text: null,
+      text_model: null,
     });
+  });
+
+  it("providerが有効ならモデル選択を保持し、無効になったらモデルも外す（T-M8-107）", () => {
+    expect(
+      revalidateByokAiPurposeConfig(
+        { text: "anthropic", text_model: "claude-fable-5", image: "openai", image_model: "gpt-image-2" },
+        new Set(["anthropic"]),
+      ),
+    ).toEqual({ text: "anthropic", text_model: "claude-fable-5", image: null, image_model: null });
+  });
+
+  it("スキーマはカタログ外のモデルを拒否し、カタログ内は受ける（T-M8-107）", () => {
+    expect(
+      updateAiPurposeConfigSchema.safeParse({ text: "anthropic", text_model: "claude-fable-5" }).success,
+    ).toBe(true);
+    expect(
+      updateAiPurposeConfigSchema.safeParse({ text: "anthropic", text_model: "not-a-model" }).success,
+    ).toBe(false);
+    expect(
+      updateAiPurposeConfigSchema.safeParse({ image: "openai", image_model: "gpt-image-2" }).success,
+    ).toBe(true);
+    // providerと不一致のモデルは拒否（openaiのモデルをgoogleへ等）
+    expect(
+      updateAiPurposeConfigSchema.safeParse({ image: "google", image_model: "gpt-image-2" }).success,
+    ).toBe(false);
   });
 
   it("accepts partial nullable updates and rejects Anthropic for image", () => {

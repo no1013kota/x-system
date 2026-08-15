@@ -199,7 +199,7 @@ export function ApiKeySettings({
       setClientId("");
       setClientSecret("");
       // **次にやること（X連携）まで出す**（T-M8-59）。保存だけでは投稿できず、
-      // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AI用途を開く」と同じ形。
+      // Xアカウントの連携（OAuth）が要る。AIキー保存側の「AIモデル設定を開く」と同じ形。
       toast.show({
         tone: "success",
         title: result.message,
@@ -245,13 +245,13 @@ export function ApiKeySettings({
         };
       });
       if (verified.keyStatus === "valid") {
-        // **次にやることまで出す。** 保存しただけでは投稿を作れず、AI用途への割り当てが要る
+        // **次にやることまで出す。** 保存しただけでは投稿を作れず、AIモデル設定での割り当てが要る
         // （要件06 §3.2）。5秒で消えるトーストに手順を書くと読み切れないので導線を添える。
         toast.show({
           tone: "success",
           title: "APIキーを保存し、疎通を確認しました",
-          description: "「AI用途」でこのAIを文章生成に割り当てると投稿を作成できます。",
-          action: { href: settingsTabHref("purposes"), label: "AI用途を開く" },
+          description: "「AIモデル設定」でこのAIを文章生成に割り当てると投稿を作成できます。",
+          action: { href: settingsTabHref("purposes"), label: "AIモデル設定を開く" },
         });
         router.refresh();
       } else {

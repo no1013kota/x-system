@@ -59,7 +59,7 @@ export interface ExecutionPrereqInput {
   /** BYOKの文章providerキーがvalidか。 */
   textAiKeyValid: boolean;
   /**
-   * AI設定「AI用途」で文章生成のproviderが割り当て済みか。キーがvalidでも未割り当てだと
+   * 設定「AIモデル設定」で文章生成のproviderが割り当て済みか。キーがvalidでも未割り当てだと
    * `textAiKeyValid` は false になるため、初期設定ガイドで不足理由を出し分けるのに使う。
    */
   textProviderAssigned?: boolean;
@@ -218,7 +218,7 @@ const ITEM_DESCRIPTION: Record<PrereqItem, string> = {
   persona: "誰に何を発信するかを保存すると、AIの土台が作られます。",
 };
 
-/** 文章AIキーは valid でも「AI用途」で割り当てないと充足しないため、不足理由で表示を出し分ける。 */
+/** 文章AIキーは valid でも「AIモデル設定」で割り当てないと充足しないため、不足理由で表示を出し分ける。 */
 const TEXT_PROVIDER_UNASSIGNED = {
   label: "文章AIの割り当て",
   path: "/app/settings?tab=purposes",

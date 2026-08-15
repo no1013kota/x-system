@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.35 |
+| バージョン | v1.36 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -141,7 +141,7 @@ RLS: 本人select可。writeはServer Actionのみ。
 
 プラン変更のSubscription同期では、profileと同じtransaction内でXアカウントの利用可否を更新する。BYOK（standard／md）→premiumは`auth_type=byok`、premium→BYOKは`auth_type=managed`を`expired`にする。新planがstandardの場合は、互換性のないauth typeを先に失効した後、現在の`active_x_account_id`がなおactiveならその1件、そうでなければ`created_at, id`順で最古のactive 1件を維持し、他のactiveを`disabled`にする。維持候補がなければ`active_x_account_id=null`とする。
 
-この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`base_md_versions`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す。`credentials_ciphertext`自体は保持する。
+この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`base_md_versions`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す（providerが外れたら`text_model`／`image_model`も外す・T-M8-107）。`credentials_ciphertext`自体は保持する。
 
 自動投稿への有効な同意は、`automation_consent_version`が現行説明versionと一致し、`automation_consented_at is not null`かつ`automation_disabled_at is null`の場合に限る。OAuth scopeの付与はこの同意の代わりにしない。opt-outでは同じtransactionで`automation_disabled_at`を設定し、対象Xアカウントの`mode=auto`スロットをすべて無効化する。
 
@@ -565,11 +565,15 @@ RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはS
 ```json
 {
   "text": "anthropic",
-  "image": null
+  "text_model": "claude-fable-5",
+  "image": null,
+  "image_model": null
 }
 ```
 
 `text`は文章生成とリサーチ（Web検索）の両方に使う単一provider。リサーチは同providerの内蔵Web検索機能で実行し、別providerを割り当てない。BYOKでは登録済みかつ`valid`のproviderのみ指定できる。premiumの`text`は運営文章provider（既定Claude／`anthropic`）で固定し、ユーザー設定はread-only表示とする。`image`は運営側で利用可能なOpenAI/Geminiから選択できる。
+
+`text_model`／`image_model`は選択モデル（T-M8-107・「AIモデル設定」タブ）。**選択肢の正本は`src/lib/ai/model-catalog.ts`**（各provider 代表5モデル程度・最上位を含む。IDと単価は公式docsで確認して更新する）。保存時にカタログ照合し、null・カタログ外・providerと不一致は**env既定モデルへフォールバック**（未知IDを実APIへ送らない）。providerを外すと対応するモデルも`null`へ戻す。premiumは`text`固定のままモデルだけ選べる（**運営キーの実費がモデルで変わる**。推定原価はモデル別単価`MODEL_RATES`が台帳へ反映する・原則4）。
 
 ライフサイクル: BYOKではAIキーの保存・疎通成功時に`text`が未設定なら当該providerを自動設定し（画像対応providerの`image`も同様）、`deleteApiKey`は該当用途の設定を解除する。premiumの`text`はDBへ保存せず、ユーザー指定に依存しない運営文章provider（未設定時`anthropic`）へ実行時に解決する（`updateAiPurposeConfig`はpremiumの`text`変更を拒否）。premium→BYOKのプラン変更同期時は`text`/`image`を登録済み`valid`キーで再検証し、無効なら未設定へ戻して初期設定ガイドへ誘導する。
 

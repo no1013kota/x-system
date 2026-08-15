@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ImageAiProvider } from "@/lib/ai-purpose-config";
+import { IMAGE_MODEL_OPTIONS, TEXT_MODEL_OPTIONS, isCatalogImageModel, isCatalogTextModel } from "@/lib/ai/model-catalog";
 import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
@@ -50,23 +51,45 @@ export function AiPurposeSettings({
   const [imageProvider, setImageProvider] = useState<ImageAiProvider | "">(() =>
     (configuredPurpose(initialConfig, "image", options.image) as ImageAiProvider | null) ?? "",
   );
+  // 選択モデル（T-M8-107）。空=おまかせ（運営の既定モデル）。保存値がカタログ外なら空扱い。
+  const cfg = (initialConfig ?? {}) as Record<string, unknown>;
+  const [textModel, setTextModel] = useState<string>(() => {
+    const saved = typeof cfg.text_model === "string" ? cfg.text_model : "";
+    const provider = plan === "premium" ? "anthropic" : (configuredPurpose(initialConfig, "text", options.text) as AiKeyProvider | null);
+    return provider && saved && isCatalogTextModel(provider, saved) ? saved : "";
+  });
+  const [imageModel, setImageModel] = useState<string>(() => {
+    const saved = typeof cfg.image_model === "string" ? cfg.image_model : "";
+    const provider = configuredPurpose(initialConfig, "image", options.image) as ImageAiProvider | null;
+    return provider && saved && isCatalogImageModel(provider, saved) ? saved : "";
+  });
   const toast = useToast();
+  // premiumの文章providerは運営固定（anthropic）。モデル選択の対象provider。
+  const effectiveTextProvider: AiKeyProvider | "" = plan === "premium" ? "anthropic" : textProvider;
 
   function save() {
     startTransition(async () => {
       const result = await updateAiPurposeConfig(
         plan === "premium"
-          ? { image: imageProvider || null }
+          ? {
+              image: imageProvider || null,
+              image_model: (imageProvider && imageModel) || null,
+              // premiumの文章はprovider固定だがモデルは選べる（T-M8-107）。
+              text: "anthropic",
+              text_model: textModel || null,
+            }
           : {
               image: imageProvider || null,
+              image_model: (imageProvider && imageModel) || null,
               text: textProvider || null,
+              text_model: (textProvider && textModel) || null,
             },
       );
       if (result.status === "error") {
         toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
         return;
       }
-      toast.show({ tone: "success", title: "AI用途設定を更新しました" });
+      toast.show({ tone: "success", title: "AIモデル設定を更新しました" });
       router.refresh();
     });
   }
@@ -92,8 +115,15 @@ export function AiPurposeSettings({
             <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
             <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              プレミアムプランではExos AIの運営環境で文章生成とリサーチを実行します。
+              プレミアムプランではExos AIの運営環境で文章生成とリサーチを実行します。モデルは選べます。
             </p>
+            <ModelSelect
+              disabled={isPending}
+              label="文章生成に使うモデル"
+              onChange={setTextModel}
+              options={TEXT_MODEL_OPTIONS.anthropic}
+              value={textModel}
+            />
           </div>
         ) : options.text.length > 0 ? (
           <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
@@ -101,7 +131,10 @@ export function AiPurposeSettings({
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
               disabled={isPending}
-              onChange={(event) => setTextProvider(event.target.value as AiKeyProvider | "")}
+              onChange={(event) => {
+                setTextProvider(event.target.value as AiKeyProvider | "");
+                setTextModel(""); // providerを変えたら旧providerのモデル選択を持ち越さない
+              }}
               value={textProvider}
             >
               {/* 動かない理由の説明は下のNoticeが担う。選択肢内で繰り返さない（T-M8-66）。 */}
@@ -114,6 +147,15 @@ export function AiPurposeSettings({
         ) : (
           <MissingProviderMessage purpose="文章生成・リサーチ" />
         )}
+        {plan !== "premium" && effectiveTextProvider ? (
+          <ModelSelect
+            disabled={isPending}
+            label="文章生成に使うモデル"
+            onChange={setTextModel}
+            options={TEXT_MODEL_OPTIONS[effectiveTextProvider]}
+            value={textModel}
+          />
+        ) : null}
       </section>
 
       <section className={`${cardClassName} p-5 sm:p-6`} aria-labelledby="image-purpose-heading">
@@ -135,7 +177,10 @@ export function AiPurposeSettings({
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
               disabled={isPending}
-              onChange={(event) => setImageProvider(event.target.value as ImageAiProvider | "")}
+              onChange={(event) => {
+                setImageProvider(event.target.value as ImageAiProvider | "");
+                setImageModel("");
+              }}
               value={imageProvider}
             >
               <option value="">画像生成を使用しない</option>
@@ -144,7 +189,17 @@ export function AiPurposeSettings({
               ))}
             </select>
           </label>
-        ) : (
+        ) : null}
+        {options.image.length > 0 && imageProvider ? (
+          <ModelSelect
+            disabled={isPending}
+            label="画像生成に使うモデル"
+            onChange={setImageModel}
+            options={IMAGE_MODEL_OPTIONS[imageProvider]}
+            value={imageModel}
+          />
+        ) : null}
+        {options.image.length === 0 ? (
           <Notice className="mt-5" tone="warn">
             <p className="font-medium">画像生成は現在利用できません</p>
             <p className="mt-1 leading-6">
@@ -154,7 +209,7 @@ export function AiPurposeSettings({
             </p>
             {plan !== "premium" ? <ApiKeySettingsLink /> : null}
           </Notice>
-        )}
+        ) : null}
       </section>
 
       {plan !== "premium" && !textProvider ? (
@@ -166,11 +221,45 @@ export function AiPurposeSettings({
 
       <div className="flex flex-wrap items-center gap-3">
         <Button className="min-h-11" disabled={isPending} onClick={save} type="button">
-          {isPending ? "保存中…" : "AI用途設定を保存"}
+          {isPending ? "保存中…" : "AIモデル設定を保存"}
         </Button>
         {/* 選べる条件の注記は各セクションの説明・MissingProviderMessageと重複していたため置かない（T-M8-66）。 */}
       </div>
     </div>
+  );
+}
+
+/** モデル選択（T-M8-107）。空=おまかせ（運営の既定モデル）。単価の目安を選択肢に含める。 */
+function ModelSelect({
+  disabled,
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  options: readonly { id: string; label: string; priceNote: string }[];
+  value: string;
+}) {
+  return (
+    <label className="mt-3 block max-w-xl space-y-2 text-sm font-medium">
+      {label}
+      <select
+        className="h-11 w-full rounded-lg border bg-background px-3"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">おまかせ（運営の既定モデル）</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label} — {option.priceNote}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

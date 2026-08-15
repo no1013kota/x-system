@@ -179,7 +179,7 @@ export async function runTextGeneration<T>(
         model: opts.model,
         operation: opts.operation,
         latencyMs: now() - start,
-        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage, opts.model),
       }),
     );
     return out;

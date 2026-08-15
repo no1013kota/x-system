@@ -8,7 +8,7 @@ export const SETTINGS_TABS = [
   ["general", "設定"],
   ["billing", "課金・プラン"],
   ["account", "アカウント設定"],
-  ["purposes", "AI用途"],
+  ["purposes", "AIモデル設定"],
   ["prompts", "プロンプト"],
 ] as const;
 
