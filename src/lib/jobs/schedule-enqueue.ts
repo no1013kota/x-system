@@ -10,7 +10,7 @@ import type { Queryable } from "../x/token-refresh";
 /**
  * scheduler_tick の enqueue フェーズ（要件04 §6/§7.1, S-2, T-M4-06）。直前10分以内の未処理 due slot を
  * 走査し、§7.1 の各条件（enabled・曜日/時刻・契約・Xアカウントactive・auto同意・BYOKキー・premium残量・
- * 日次上限）を満たす slot だけ post_generation を作る。`schedule_run_key` unique ＋ `last_run_at` を
+ * 日次上限）を満たす slot だけ post_generation を作る。`schedule_run_key` unique を
  * 同一 transaction で更新して冪等化する（同一slot・同一定刻窓で複数tickでもjobは1件）。1起動500件上限。
  */
 
@@ -188,7 +188,6 @@ async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise
       [slot.x_account_id, slot.id, slot.pattern, input, slot.jst_date, timeHhmm, runKey],
     );
     if (inserted.rowCount === 0) return false; // 既に同一定刻窓で作成済み（冪等）
-    await tx.query(`update schedule_slots set last_run_at = now() where id = $1`, [slot.id]);
     return true;
   });
 }

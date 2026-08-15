@@ -20,7 +20,7 @@ export const APP_NAVIGATION_ITEMS = [
   { href: "/app/news", icon: "newspaper", label: "最新ニュース" },
   { href: "/app/posts", icon: "edit_square", label: "投稿作成" },
   { href: "/app/schedule", icon: "schedule", label: "スケジュール" },
-  { href: "/app/analytics", icon: "monitoring", label: "分析・改善" },
+  { href: "/app/analytics", icon: "monitoring", label: "投稿分析" },
   { href: "/app/ai-settings", icon: "description", label: "AI設定" },
   { href: "/app/settings", icon: "tune", label: "設定" },
 ] as const satisfies readonly { href: string; icon: IconName; label: string }[];

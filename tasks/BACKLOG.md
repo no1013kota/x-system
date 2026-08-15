@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜93 は done | 下記M8セクション |
+| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜94 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **7件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28**）。D-21〜D-26 は 2026-08-11 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -2055,6 +2055,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **コスト（運営者の質問への回答）**: 1回=X読取 最大$0.50（実際は件数比例）＋AI $0.01〜0.05。1日1回×毎日でも最大$15/月/アカウント、典型$1〜3。取得上限は**未回答のため推奨の100件で実装**（`SUGGEST_TIMELINE_MAX`1定数で変更可）。台帳とdoctorの「今月かかった費用」に実測が載る。
 - **検証**: 単体（suggestion-input 11件・gen-prompts 14件・pricing/read-client）・DB統合（suggestion 7件・suggestion-jobs・analytics）・E2E（suggestions 2件）・UI実描画390/1280px横あふれ0。
 - **後続への注意**: `SUGGEST_TIMELINE_MAX`を変えるとX費用上限が変わる（テストが100を固定）。p5をfeature flagで有効化したらPT-SUGGESTの選択肢とスキーマ（`SUGGESTABLE_PATTERNS`）へ追加が要る。旧形式の提案行は次の実行で置き換わるまで縮退表示。
+
+### T-M8-94: 投稿分析を毎朝8:00の自動実行にし、増分取得・全投稿分析・DB整理・改名を行う `done`
+- 参照: PRD v1.8（K-2/O-4/フロー4）・要件02 v1.29（§3.20 `x_timeline_posts`）・要件04 v1.28（§12）・要件05 v1.33（§9）・要件06 v1.71（SC-09）・プロンプト設計書 v1.16 / 依存: T-M8-91 / サイズ: L
+- **発端**: 運営者の指示（2026-08-15）。①「分析・改善」「改善提案」の改名とUI整理（投稿分析を上・フォロワー推移を下）②100件超の扱いの明確化 ③2回目以降は追加分だけ取得 ④手動ではなく毎朝8:00に自動取得・分析（取得は増分・分析は過去の全投稿）⑤DB構成のブラッシュアップと未使用カラムの削除 ⑥機能テスト。
+- **やったこと**:
+  1. **自動化**: 手動の`refreshSuggestions`（action・パネルのボタン・ポーリング・拒否文言）を削除。`scheduler_tick`に`enqueueDailySuggestions`を追加——JST8時以降のtickで対象アカウント（active・契約有効・BYOKはvalidキーあり）ぶんを`trigger='schedule'`・request_key `sug-daily:{xid}:{JST日付}`で冪等作成（日次サマリと同じゲートの形）。dispatchは既存のtickフェーズが拾う。
+  2. **増分取得＋保存**: 新テーブル`x_timeline_posts`（unique(x_account_id,tweet_id)・RLS所有者select/write server only・GRANT service_role）。取得窓は保存済み最新投稿の**48時間前**から（`suggestion-timeline.ts`）——重なり分をupsertでメトリクス追い直し（無いと直近投稿の実績が取得した朝の値で凍結される）。初回30日・1回最大100件。型/テーマはdrafts突合で付与し**一度付いたら保持**（coalesce）。
+  3. **全投稿分析**: 分析対象を保存済み全投稿（新しい順に最大300件=`SUGGEST_ANALYZE_MAX`・AI入力上限）へ。evidenceは`post_count`/`analyze_limit`に変更。**premiumの生成枠消費を廃止**（自動実行で利用者の操作なしに枠が減るため。PRD O-4）。
+  4. **DB整理**: 全19テーブル×全カラムの使用状況を監査。**完全に死んでいた2列だけ削除**——`stripe_events.processed_at`（コード参照ゼロ）・`schedule_slots.last_run_at`（書き込み専用・冪等はschedule_run_keyが担う）。台帳系の書き込みのみ列は運営者がDBで直読する監査記録のため残す（監査結果はコミットに記録）。スキーマ↔要件02の一致は`schema-doc-sync.db.test.ts`が検査（新テーブルの節漏れ・削除列の文書残りを実際に検出→修正）。
+  5. **改名・UI**: ナビ/h1/title「分析・改善」→**「投稿分析」**、パネル「改善提案」→**「分析レポート」**。並びを**レポート→投稿ごとの実績→フォロワー数の推移**へ。ボタン撤去（「毎朝8時ごろ自動で取得・分析します。操作は不要です」を明示）。通知文言・LP文言（「提案を更新」→毎朝レポート）も更新。
+  6. **テスト**: 単体（timeline窓決定8件・gen-prompts14件）・DB統合（enqueue6件=JSTゲート/冪等/対象絞り込み・store4件=upsert/タグ保持/新しい順・suggestion11件）・E2E（表示2件）・**実AI 1周**（`npm run check:suggest`新設・現実的な12投稿→実Claude→zod検証→保存。実測$0.023/回・レポート品質良好）。
+- **コスト**: 毎朝1アカウントあたり X読取$0.01〜0.05（増分）＋AI約$0.02 ≒ **$1〜2/月**。初回のみ+最大$0.50。
+- **後続への注意**: `x_timeline_posts`は削除する仕組みが無く蓄積する（1投稿1行・text500字なので個人利用では年間でも数百KB。問題になったら40日cleanupと同じ枠組みへ）。`SUGGEST_ANALYZE_MAX`（300）を増やすとAI費用が比例して増える。旧形式evidenceの行は翌朝の自動実行で置き換わる。
 
 ### T-M8-93: 投稿作成画面のプロンプトにベースmdと画像プロンプトを加える `done`
 - 参照: 要件05 §5（createGenerationJob）・要件06 §4.2・要件04 §9・プロンプト設計書 §4.1/§4.2 / 依存: T-M8-92 / サイズ: M

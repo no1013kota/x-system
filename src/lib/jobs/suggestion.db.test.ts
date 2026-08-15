@@ -147,7 +147,7 @@ describe("suggestion worker (local DB)", () => {
       },
     });
 
-  it("1件の提案を format=2・advice・window_days=30 付きで保存する（md plan, no reserve）", async () => {
+  it("1件の提案を format=2・advice・post_count 付きで保存する", async () => {
     const { uid, xid, jobId } = await seed("md");
     try {
       const posts = [post("t1", 100, "p3"), post("t2", 300), post("t3", 200)];
@@ -157,8 +157,8 @@ describe("suggestion worker (local DB)", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].content).toContain("表示回数が突出");
       expect(rows[0].evidence.format).toBe(2);
-      expect(rows[0].evidence.window_days).toBe(30); // code-added
       expect(rows[0].evidence.post_count).toBe(3); // code-added
+      expect(rows[0].evidence.analyze_limit).toBe(300); // code-added（分析上限のsnapshot）
       const advice = rows[0].evidence.advice as Record<string, Record<string, unknown>>;
       expect(advice.pattern.recommended).toBe("p3");
       expect(advice.prompt.kind).toBe("p3");
@@ -192,30 +192,31 @@ describe("suggestion worker (local DB)", () => {
     }
   });
 
-  it("premium: reserves on LLM run and keeps it on success", async () => {
+  it("premiumでも生成枠を消費しない（毎朝の自動実行のため・T-M8-94）", async () => {
+    // 手動起点だったころは生成枠+1をreserveしていた。自動実行では利用者の操作なしに
+    // 枠が減る（毎日=月31消費）ことになるため消費しない。費用は原価台帳が記録する。
     const { uid, xid, jobId } = await seed("premium");
     try {
       const posts = [post("t1", 100), post("t2", 300), post("t3", 200)];
       await executeSuggestion(deps(jobId, VALID("t2"), posts));
       expect(await suggestions(xid)).toHaveLength(1);
-      expect(await hasEvent(jobId, "reserve")).toBe(true);
-      expect(await hasEvent(jobId, "refund")).toBe(false); // success keeps the reserve
+      expect(await hasEvent(jobId, "reserve")).toBe(false);
     } finally {
       await cleanup(uid);
     }
   });
 
-  it("good_posts.id が <posts> に無ければ拒否する。返還は失敗確定（failJob）で行う", async () => {
+  it("good_posts.id が <posts> に無ければ拒否する", async () => {
     const { uid, xid, jobId } = await seed("premium");
     try {
       const posts = [post("t1", 100), post("t2", 300), post("t3", 200)];
       // <posts> に無いidを返す → refine 失敗 → 修復1回（同じ応答）→ InvalidProviderOutputError
       await expect(executeSuggestion(deps(jobId, VALID("not-a-real-id"), posts))).rejects.toThrow();
       expect(await suggestions(xid)).toHaveLength(0);
-      expect(await hasEvent(jobId, "reserve")).toBe(true);
-      expect(await hasEvent(jobId, "refund")).toBe(false); // handlerは返還しない
+      // 枠を予約していないので、失敗確定（failJob）でも返還は発生しない（冪等に何も起きない）。
       await failJob(jobId, "suggestion", new Error("terminal"));
-      expect(await hasEvent(jobId, "refund")).toBe(true); // 失敗確定で返還
+      expect(await hasEvent(jobId, "reserve")).toBe(false);
+      expect(await hasEvent(jobId, "refund")).toBe(false);
     } finally {
       await cleanup(uid);
     }
@@ -266,7 +267,7 @@ describe("suggestion worker (local DB)", () => {
         "retryable",
         "stage",
       ]);
-      expect(rows[0].error.message).toBe("改善提案の生成に失敗しました。");
+      expect(rows[0].error.message).toBe("投稿分析に失敗しました。");
       expect(rows[0].error.stage).toBe("writing");
       expect(rows[0].error.retryable).toBe(false);
       // 検証に落ちた本文が実際に入る（空やnullでは原因を追えない）。

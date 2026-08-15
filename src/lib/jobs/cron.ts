@@ -98,6 +98,8 @@ export interface SchedulerTickResult {
   promptsSynced: number;
   /** 作成した日次サマリ通知の件数（1日1通なので通常は0か1）。 */
   dailySummaries: number;
+  /** 毎朝の投稿分析jobの新規作成数（T-M8-94）。 */
+  dailySuggestions: number;
 }
 
 /**
@@ -187,6 +189,18 @@ export async function runSchedulerTick(
     opts.onCleanupError?.("daily_summary", err);
   }
 
+  // (6.5) 毎朝の投稿分析（T-M8-94）。JST8時以降のtickで、対象アカウントぶんの suggestion job を
+  // 冪等に作る（request_key `sug-daily:{xid}:{JST日付}`）。dispatch は次tickの dispatch フェーズが拾う。
+  // 失敗しても tick 本体を止めない。
+  let dailySuggestions = 0;
+  try {
+    const { enqueueDailySuggestions } = await import("./suggestion-jobs");
+    dailySuggestions = (await enqueueDailySuggestions(pooledDb, new Date(Date.now()).toISOString()))
+      .created;
+  } catch (err) {
+    opts.onCleanupError?.("daily_suggestions", err);
+  }
+
   // (7) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
   // 解決順は「account上書き → system default行 → コード定数」で、DB行が古いままだと
   // プロンプトを直しても反映されない。内容が同じときは何も書かないので通常は0件。
@@ -207,5 +221,6 @@ export async function runSchedulerTick(
     cleaned,
     promptsSynced,
     dailySummaries,
+    dailySuggestions,
   };
 }

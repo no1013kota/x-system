@@ -32,8 +32,8 @@ describe("resolveFailedNotice", () => {
       link: "/app/ai-settings?tab=learning",
     });
     expect(resolveFailedNotice("suggestion", { draft_id: null })).toEqual({
-      title: "改善提案の生成に失敗しました",
-      body: "時間をおいて分析画面から再度お試しください。",
+      title: "投稿分析に失敗しました",
+      body: "明日の朝に自動で再実行されます。Xアカウントの連携状態もご確認ください。",
       link: "/app/analytics",
     });
   });

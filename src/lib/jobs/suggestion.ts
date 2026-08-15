@@ -8,12 +8,12 @@ import { recordProviderCalls } from "../db/api-usage-ledger";
 import { THEME_IDS, THEME_OPTIONS } from "../themes";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { PROMPT_TEMPLATE_MAX_CHARS } from "../prompts/prompt-templates";
-import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
 import { defaultRecordStage } from "./stale";
-import { SUGGEST_PERIOD_DAYS, type SuggestionInput } from "./suggestion-input";
+import type { SuggestionInput } from "./suggestion-input";
+import { SUGGEST_ANALYZE_MAX } from "./suggestion-timeline";
 
 /**
  * suggestion worker（SUGGEST, K-2, プロンプト §6.15/§4.2, 要件04 §12, 要件02 §3.12/§4.11, T-M8-91）。
@@ -23,9 +23,10 @@ import { SUGGEST_PERIOD_DAYS, type SuggestionInput } from "./suggestion-input";
  * を improvement_suggestions へ保存する。固定の分析軸と「3投稿以上・差20%」条件は廃止。
  * 保存形は evidence.format=2 で旧形式（axis等）と区別する。
  *
- * X取得はハンドラ側（suggestion-server）が行い、費用は取得件数×X_COST_POST_READ_USD（上限100件=$0.50）。
- * 1日1回の制限（already_today）が起票側で効く。premium はLLM実行時に生成枠 +1 reserve し
- * 最終失敗で refund（冪等）。BYOKは消費しない。base_md は読まない。
+ * T-M8-94 で**毎朝8:00 JSTの自動実行**になった（起票は scheduler_tick・request_key冪等で1日1回）。
+ * X取得はハンドラ側（suggestion-server）が増分＋48h重なりで行い、保存済み全投稿（新しい順に最大
+ * SUGGEST_ANALYZE_MAX 件）を分析する。**自動実行のため premium の生成枠は消費しない**
+ * （利用者の操作なしで枠が減るのを避ける。費用は原価台帳で見える）。base_md は読まない。
  */
 
 export class SuggestionTerminalError extends Error {
@@ -197,18 +198,10 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     throw new SuggestionTerminalError("x_fetch_failed", String(error));
   }
 
-  // 直近30日に投稿が1件も無ければ、LLMを呼ばず（reserveもせず）提案0件で正常終了。
+  // 分析対象の投稿が1件も無ければ（30日以内に投稿なし・保存も空）、LLMを呼ばずレポート0件で正常終了。
   if (input.posts.length === 0) {
     return { status: "no_suggestions", count: 0 };
   }
-
-  await reserveIfPremium(deps.runInTx, {
-    plan: job.plan,
-    userId: job.user_id,
-    xAccountId: job.x_account_id,
-    jobId,
-    type: "generation",
-  });
 
   try {
     await recordStage("writing");
@@ -247,8 +240,9 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
             format: 2,
             good_posts: output.good_posts,
             advice: output.advice,
-            window_days: SUGGEST_PERIOD_DAYS,
+            // 分析対象＝保存済みの全投稿（新しい順に上限件数）。件数を根拠として残す（T-M8-94）。
             post_count: input.posts.length,
+            analyze_limit: SUGGEST_ANALYZE_MAX,
           }),
         ],
       );
@@ -274,7 +268,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       xAccountId: job.x_account_id,
       jobId,
       code,
-      message: "改善提案の生成に失敗しました。",
+      message: "投稿分析に失敗しました。",
       stage: "writing",
       usage,
       // refine 失敗（`<posts>` に無いIDを返した等）の中身は運営者が最も知りたい情報（F5）。

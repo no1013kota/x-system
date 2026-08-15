@@ -112,7 +112,7 @@ export function ScheduleFigure() {
   );
 }
 
-/** 分析と改善提案: 棒グラフ6本＋記録タイミング＋「提案を更新」ボタン風チップ。 */
+/** 投稿分析: 棒グラフ6本＋記録タイミング＋「毎朝レポート」チップ（自動生成・T-M8-94）。 */
 export function AnalyticsFigure() {
   const bars: { height: string; brand: boolean }[] = [
     { height: "h-3.5", brand: false },
@@ -141,7 +141,7 @@ export function AnalyticsFigure() {
       </div>
       <div className="text-[11px] text-ink-3">記録タイミング：投稿後 1日・7日・30日</div>
       <span className="inline-flex h-7 items-center rounded-card border border-hairline bg-surface px-3 text-caption font-medium text-brand">
-        提案を更新
+        毎朝レポート
       </span>
     </div>
   );
