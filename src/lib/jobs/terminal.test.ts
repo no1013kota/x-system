@@ -64,13 +64,13 @@ describe("finalizeFailedJob", () => {
     const { db, writes } = makeDb((sql) => {
       if (LOAD_JOB.test(sql)) return { rows: [jobRow()] };
       if (REFUND.test(sql))
-        return { rows: [{ user_id: "u1", month: "2026-07", counter_type: "generation" }] };
+        return { rows: [{ user_id: "u1", month: "2026-07", counter_type: "generation", delta: -1 }] };
       return { rows: [] };
     });
     await finalizeFailedJob(db, "j1", "post_generation");
     const counter = writes.find((w) => COUNTER.test(w.sql));
     expect(counter?.sql).toContain("generations_count");
-    expect(counter?.params).toEqual(["u1", "2026-07"]);
+    expect(counter?.params).toEqual(["u1", "2026-07", 1]); // 第3引数=返還量（可変クレジット・T-M8-108）
   });
 
   it("post_publish: reverts posting→failed and notifies", async () => {

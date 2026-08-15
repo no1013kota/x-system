@@ -59,7 +59,7 @@ function planFeatures(planId: PlanId): string[] {
     "mdプランの全機能",
     "APIキー登録が一切不要（運営キーで動作）",
     limits
-      ? `月間上限：通常投稿${limits.normalPosts}／URL付き${limits.urlPosts}／文章生成${limits.generations}／画像${limits.images}`
+      ? `月間上限：通常投稿${limits.normalPosts}／URL付き${limits.urlPosts}／生成クレジット${limits.generations}／画像クレジット${limits.images}（上位モデルは倍数消費）`
       : "月間上限なし",
     `${accounts}（利用上限は合算）`,
   ];

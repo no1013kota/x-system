@@ -19,7 +19,7 @@ function planFeatureText(plan: PlanDefinition): string {
     return (
       "mdプランの全機能。" +
       `月間上限：通常投稿${limits.normalPosts}件／URL付き投稿${limits.urlPosts}件／` +
-      `文章生成${limits.generations}回／画像生成${limits.images}枚。`
+      `生成クレジット${limits.generations}／画像クレジット${limits.images}（標準モデル基準。上位モデルは2〜5クレジット/回）。`
     );
   }
   // 呼び名は「03 しくみ」と揃える（同じものを別の名前で呼ばない）。

@@ -11,8 +11,8 @@ import { Card, CardTitle } from "@/components/ui/card";
 const SLOT_LABELS: [keyof UsageSummary, string][] = [
   ["normal_posts", "通常投稿枠"],
   ["url_posts", "URL付き投稿枠"],
-  ["generations", "生成枠"],
-  ["images", "画像枠"],
+  ["generations", "生成クレジット"],
+  ["images", "画像クレジット"],
 ];
 
 function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; resetLabel: string }) {

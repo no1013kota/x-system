@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.36 |
+| バージョン | v1.37 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -355,13 +355,13 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `month` | `text` | not null | JST `YYYY-MM` |
 | `counter_type` | `usage_counter_type` | not null |  |
 | `operation` | `usage_event_operation` | not null | 消費・予約の操作種別 |
-| `delta` | `integer` | not null | `+1`/`-1` |
+| `delta` | `integer` | not null | 消費/返還クレジット数（±1〜±10・T-M8-108。上位モデルは倍数消費） |
 | `reason` | `usage_event_reason` | not null |  |
 | `idempotency_key` | `text` | not null unique | 二重処理防止 |
 | `ref_event_id` | `uuid` | self FK nullable | refund元reserve |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Constraints: month形式、deltaは±1、reserve/consumeは+1、refundは-1、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
+Constraints: month形式、deltaは±1〜±10かつ0でない（migration `20260815000004`。カタログ最大倍数5に余裕を持たせた値）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
 Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`
 
