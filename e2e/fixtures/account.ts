@@ -30,7 +30,7 @@ export interface TestAccount {
 }
 
 export interface AccountOptions {
-  /** 発信設定まで完了した状態（base_md_version=1）。false で初期設定ガイドを出す。 */
+  /** アカウント設定まで完了した状態（base_md_version=1）。false で初期設定ガイドを出す。 */
   personaReady?: boolean;
   /** 自動投稿への同意済みにする。 */
   automationConsent?: boolean;
@@ -103,7 +103,7 @@ export async function createTestAccount(
         handle,
         sealed,
         X_SCOPES,
-        options.personaReady === false ? "" : "# 発信定義書\n\nE2E用のベースmdです。",
+        options.personaReady === false ? "" : "# 発信定義書\n\nE2E用のアカウント.mdです。",
         options.personaReady === false ? 0 : 1,
         options.automationConsent ? CURRENT_AUTOMATION_CONSENT_VERSION : null,
         options.automationConsent ? new Date() : null,

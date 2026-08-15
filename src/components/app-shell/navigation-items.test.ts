@@ -7,7 +7,7 @@ import { APP_NAVIGATION_ITEMS } from "./navigation-items";
 describe("APP_NAVIGATION_ITEMS", () => {
   it("新デザインの7項目を表示順で定義する（T-M8-04）", () => {
     // ラベルはヘッダーのパンくずにもなるので、**その画面のh1と一致していること**が要る
-    // （T-M8-23。以前は `/app/ai-settings` のラベルが「ベースmd」で本文の「AI設定」と食い違っていた）。
+    // （T-M8-23。以前は `/app/ai-settings` のラベルが「アカウント.md」で本文の「AI設定」と食い違っていた）。
     expect(APP_NAVIGATION_ITEMS.map(({ href, label }) => ({ href, label }))).toEqual([
       { href: "/app", label: "ホーム" },
       { href: "/app/news", label: "最新ニュース" },

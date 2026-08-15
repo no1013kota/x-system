@@ -39,7 +39,7 @@ const STATUS_LABEL: Record<string, string> = {
  * 状態色の決め方をアプリ全体で1つに揃える（T-M8-36）。
  *
  * 以前は背景色・文字色の指定が無い生の span で、4状態が**すべて同じ見た目**だった。
- * 学習の失敗はベースmdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
+ * 学習の失敗はアカウント.mdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
  */
 const STATUS_TONE: Record<string, BadgeTone> = {
   pending: "info",
@@ -124,7 +124,7 @@ export function LearningSourcesManager({
   }
 
   function remove(sourceId: string) {
-    if (!confirm("この学習ソースを削除しますか？反映済みの場合はベースmdから知見を取り除く処理が実行されます。")) return;
+    if (!confirm("この学習ソースを削除しますか？反映済みの場合はアカウント.mdから知見を取り除く処理が実行されます。")) return;
     startTransition(async () => {
       const res = await removeLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, source_id: sourceId });
       if (res.status === "success") {
@@ -173,7 +173,7 @@ export function LearningSourcesManager({
         <CardTitle>参考ソースを追加</CardTitle>
         {/* 上限は種別セレクトの (n/3) 表示に一本化する（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してベースmdへ反映します。
+          参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してアカウント.mdへ反映します。
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="text-sm">
@@ -226,7 +226,7 @@ export function LearningSourcesManager({
         <CardTitle>自分の過去投稿から学習</CardTitle>
         {/* 30日ルールの例外（失敗時）は失敗表示側の導線が伝える。事前に読ませない（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
-          直近100件の投稿から「自分らしさ」を学習し、ベースmdへ反映します。再取り込みは30日に1回までです。
+          直近100件の投稿から「自分らしさ」を学習し、アカウント.mdへ反映します。再取り込みは30日に1回までです。
           {plan === "premium" ? "（生成枠を1消費）" : ""}
         </p>
         <div className="mt-3 flex items-center gap-3">

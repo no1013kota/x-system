@@ -10,7 +10,7 @@ const TEXT_CAPABLE_PROVIDERS = ["anthropic", "openai", "google"] as const;
 /**
  * 実行前提の判定入力をDBから収集する（要件06 §3.2, T-M2-23）。生成・投稿・スケジュール・学習の
  * Actionと初期設定ガイド（SC-05）が共用する。文章/画像AIキーの有効性は ai_purpose_config の割当
- * providerのキーstatusで判定する。発信設定は選択中Xアカウントの base_md_version で判定する。
+ * providerのキーstatusで判定する。アカウント設定は選択中Xアカウントの base_md_version で判定する。
  */
 export async function gatherExecutionPrereqInputs(
   userId: string,

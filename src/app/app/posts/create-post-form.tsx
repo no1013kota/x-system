@@ -27,7 +27,7 @@ import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/p
 
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
 const PROMPT_MAX_CHARS = 8000;
-/** ベースmdの上限（`BASE_MD_MAX_CHARS` と同値・T-M8-93）。 */
+/** アカウント.mdの上限（`BASE_MD_MAX_CHARS` と同値・T-M8-93）。 */
 const BASE_MD_MAX = 5000;
 
 export interface ActiveJob {
@@ -86,7 +86,7 @@ interface PrereqError {
 }
 
 /**
- * プロンプト1ブロック分の編集UI（T-M8-92/93）。投稿の型・ベースmd・画像生成で共有する。
+ * プロンプト1ブロック分の編集UI（T-M8-92/93）。投稿の型・アカウント.md・画像生成で共有する。
  * 「この生成にだけ使う／保存して以後も使う」の選択と「元に戻す」を持つ。状態は親が持つ。
  */
 function PromptBlock({
@@ -168,7 +168,7 @@ export function CreatePostForm({
   initialJob?: ActiveJob | null;
   /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。p1〜p6＋image。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
-  /** ベースmd（T-M8-93）。version は保存の楽観ロック。standard は null。 */
+  /** アカウント.md（T-M8-93）。version は保存の楽観ロック。standard は null。 */
   baseMd?: { content: string; version: number } | null;
 }) {
   const [pending, startTransition] = useTransition();
@@ -191,7 +191,7 @@ export function CreatePostForm({
   const [templates, setTemplates] = useState(promptTemplates);
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const [promptApply, setPromptApply] = useState<"once" | "save">("once");
-  /** ベースmd・画像プロンプト（T-M8-93）。型と独立に編集できるため状態も分ける。 */
+  /** アカウント.md・画像プロンプト（T-M8-93）。型と独立に編集できるため状態も分ける。 */
   const [promptTab, setPromptTab] = useState<"pattern" | "base_md" | "image">("pattern");
   const [baseMdState, setBaseMdState] = useState(baseMd);
   const [baseMdDraft, setBaseMdDraft] = useState<string | null>(null);
@@ -245,7 +245,7 @@ export function CreatePostForm({
   const baseMdValue = baseMdDraft ?? baseMdState?.content ?? "";
   const baseMdEdited = baseMdDraft !== null && baseMdDraft !== (baseMdState?.content ?? "");
   const baseMdOverLimit = baseMdValue.length > BASE_MD_MAX;
-  /** ベースmdは発信設定の保存で初めて作られる。無いあいだは編集対象が無い。 */
+  /** アカウント.mdはアカウント設定の保存で初めて作られる。無いあいだは編集対象が無い。 */
   const baseMdReady = (baseMdState?.version ?? 0) >= 1 && (baseMdState?.content ?? "") !== "";
   const anyPromptOverLimit = promptOverLimit || imageOverLimit || baseMdOverLimit;
   const anyPromptEdited = promptEdited || imageEdited || baseMdEdited;
@@ -314,10 +314,10 @@ export function CreatePostForm({
           if (saved.status === "error" || typeof saved.version !== "number") {
             toast.show({
               tone: "error",
-              title: "ベースmdを保存できませんでした",
+              title: "アカウント.mdを保存できませんでした",
               description:
                 saved.code === "job_conflict"
-                  ? "ベースmdが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
+                  ? "アカウント.mdが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
                   : saved.message,
             });
             return;
@@ -470,12 +470,12 @@ export function CreatePostForm({
               <p className="text-xs text-muted-foreground">
                 この生成に使われる指示を確認・編集できます。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
               </p>
-              {/* 3ブロックの切替（投稿の型／ベースmd／画像）。roleはtabだが実装は単純なボタン群。 */}
+              {/* 3ブロックの切替（投稿の型／アカウント.md／画像）。roleはtabだが実装は単純なボタン群。 */}
               <div aria-label="プロンプトの種類" className="flex flex-wrap gap-1.5" role="tablist">
                 {(
                   [
                     ["pattern", "投稿の型", promptEdited],
-                    ["base_md", "ベースmd", baseMdEdited],
+                    ["base_md", "アカウント.md", baseMdEdited],
                     ["image", "画像生成", imageEdited],
                   ] as const
                 ).map(([id, label, edited]) => (
@@ -515,7 +515,7 @@ export function CreatePostForm({
                 baseMdReady ? (
                   <PromptBlock
                     edited={baseMdEdited}
-                    label="ベースmd（全パターン共通の発信定義書。AI設定＞ベースmdと同じもの）"
+                    label="アカウント.md（全パターン共通の発信定義書。AI設定＞アカウント.mdと同じもの）"
                     limit={BASE_MD_MAX}
                     mode={baseMdApply}
                     note="保存すると新しいversionとして履歴に残ります（AI設定から戻せます）。見出し構成を変えると保存できません。"
@@ -529,9 +529,9 @@ export function CreatePostForm({
                   />
                 ) : (
                   <p className="rounded-card border border-hairline bg-surface px-3.5 py-3 text-body leading-5 text-ink-2">
-                    ベースmdは発信設定を保存すると作られます。まず
+                    アカウント.mdはアカウント設定を保存すると作られます。まず
                     <Link className="text-info-fg hover:underline" href="/app/ai-settings?tab=persona">
-                      発信設定
+                      アカウント設定
                     </Link>
                     を保存してください。
                   </p>

@@ -232,7 +232,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     expect(list.slots?.find((s) => s.id === slotId)?.enabled).toBe(true);
   });
 
-  it("AI設定: 発信設定の保存でベースmdの初版が作られる", async () => {
+  it("AI設定: アカウント設定の保存でアカウント.mdの初版が作られる", async () => {
     const { updatePersonaSettings } = await import("./persona-settings");
     const { DEFAULT_TONE_SETTINGS } = await import("@/lib/persona-settings");
     const res = await updatePersonaSettings({
@@ -303,7 +303,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
   });
 
   it("生成job: 前提が足りないときは内部エラーではなく理由を返す", async () => {
-    // 発信設定（ベースmd）が無い状態で生成を頼むと、前提不足として案内される必要がある。
+    // アカウント設定（アカウント.md）が無い状態で生成を頼むと、前提不足として案内される必要がある。
     // ここが internal_error になると、利用者は何をすればよいか分からない。
     const { createGenerationJobAction } = await import("./generation-jobs");
     const res = await createGenerationJobAction({

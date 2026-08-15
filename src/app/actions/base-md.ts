@@ -14,7 +14,7 @@ import {
 import type { BaseMdVersionView } from "@/lib/base-md";
 
 /**
- * ベースmd手動編集・履歴・ロールバックの Server Actions（M-1, 要件05 §8/§9）。本人のみ。プラン制限
+ * アカウント.md手動編集・履歴・ロールバックの Server Actions（M-1, 要件05 §8/§9）。本人のみ。プラン制限
  * （standard forbidden）・6見出し/5,000字検証・楽観lock・learning running 拒否は中核（base-md.ts）で行う。
  */
 
@@ -69,7 +69,7 @@ export async function updateBaseMdManualAction(
       content: parsed.data.content,
       expectedVersion: parsed.data.expected_version,
     });
-    return { message: "ベースmdを保存しました。", status: "success", version };
+    return { message: "アカウント.mdを保存しました。", status: "success", version };
   } catch (error) {
     return errorResult(error);
   }

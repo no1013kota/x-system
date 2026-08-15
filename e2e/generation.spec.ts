@@ -185,7 +185,7 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await expect(section).toBeVisible();
   await section.locator("summary").click();
 
-  // 3ブロック（投稿の型／ベースmd／画像生成）が切り替えられる（T-M8-93）。
+  // 3ブロック（投稿の型／アカウント.md／画像生成）が切り替えられる（T-M8-93）。
   await expect(page.getByRole("tab", { name: "投稿の型" })).toBeVisible();
 
   // 既定パターン（p1）の system default が入っている。
@@ -207,9 +207,9 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await page.getByRole("button", { name: "元に戻す" }).click();
   await expect(page.getByRole("button", { name: "元に戻す" })).toHaveCount(0);
 
-  // ベースmdタブ: fixtureのベースmdが表示され、編集で同じ選択肢が出る（T-M8-93）。
-  await page.getByRole("tab", { name: "ベースmd" }).click();
-  const baseMdEditor = page.getByLabel(/ベースmd（全パターン共通/);
+  // アカウント.mdタブ: fixtureのアカウント.mdが表示され、編集で同じ選択肢が出る（T-M8-93）。
+  await page.getByRole("tab", { name: "アカウント.md" }).click();
+  const baseMdEditor = page.getByLabel(/アカウント.md（全パターン共通/);
   await expect(baseMdEditor).toHaveValue(/発信定義書/);
   await baseMdEditor.fill((await baseMdEditor.inputValue()) + "\n- E2E追記");
   await expect(page.getByLabel("この生成にだけ使う")).toBeVisible();

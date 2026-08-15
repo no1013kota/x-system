@@ -24,7 +24,7 @@ function planFeatureText(plan: PlanDefinition): string {
   }
   // 呼び名は「03 しくみ」と揃える（同じものを別の名前で呼ばない）。
   return plan.canEditMdAndPrompts
-    ? "通常プランの全機能＋発信定義書（ベースmd）とプロンプトの直接編集。"
+    ? "通常プランの全機能＋発信定義書（アカウント.md）とプロンプトの直接編集。"
     : "基本機能すべて（情報収集・投稿と画像の生成・スケジュール設定・分析）。";
 }
 

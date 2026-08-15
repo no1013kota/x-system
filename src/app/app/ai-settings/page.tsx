@@ -156,7 +156,7 @@ export default async function AiSettingsPage({
       <header>
         <h1 className="text-[20px] font-bold tracking-tight text-ink">AI設定</h1>
         <p className="mt-1 text-body leading-5 text-ink-2">
-          AIがあなたの代わりに投稿を書くための設定です。まず「発信設定」→「AI用途」の順に設定してください。
+          AIがあなたの代わりに投稿を書くための設定です。まず「アカウント設定」→「AI用途」の順に設定してください。
         </p>
       </header>
 
@@ -182,7 +182,7 @@ export default async function AiSettingsPage({
           <EmptyState
             actionHref="/app/settings?tab=x-accounts"
             actionLabel="Xアカウント設定へ"
-            description="発信設定は連携済みのXアカウントごとに保存されます。"
+            description="アカウント設定は連携済みのXアカウントごとに保存されます。"
             title="Xアカウントを選択してください"
           />
         ) : tab === "persona" ? (
@@ -197,9 +197,9 @@ export default async function AiSettingsPage({
           account.base_md_version < 1 ? (
             <EmptyState
               actionHref="/app/ai-settings?tab=persona"
-              actionLabel="発信設定へ"
-              description="学習の反映先となるベースmdを、先に発信設定から保存してください。"
-              title="先に発信設定を保存してください"
+              actionLabel="アカウント設定へ"
+              description="学習の反映先となるアカウント.mdを、先にアカウント設定から保存してください。"
+              title="先にアカウント設定を保存してください"
             />
           ) : (
             <LearningSourcesManager
@@ -213,15 +213,15 @@ export default async function AiSettingsPage({
           plan === "standard" ? (
             <LockedState
               action={<UpgradePlanButton enabled={hasStripeCustomer} />}
-              description="学習・設定の結果はベースmdに反映され、投稿生成に使われています。mdプラン以上では内容を直接確認・編集でき、変更履歴からいつでも元に戻せます。"
-              title="ベースmdの確認・編集は mdプラン以上でご利用いただけます"
+              description="学習・設定の結果はアカウント.mdに反映され、投稿生成に使われています。mdプラン以上では内容を直接確認・編集でき、変更履歴からいつでも元に戻せます。"
+              title="アカウント.mdの確認・編集は mdプラン以上でご利用いただけます"
             />
           ) : account.base_md_version < 1 ? (
             <EmptyState
               actionHref="/app/ai-settings?tab=persona"
-              actionLabel="発信設定へ"
-              description="編集対象のベースmdを、先に発信設定から保存してください。"
-              title="先に発信設定を保存してください"
+              actionLabel="アカウント設定へ"
+              description="編集対象のアカウント.mdを、先にアカウント設定から保存してください。"
+              title="先にアカウント設定を保存してください"
             />
           ) : (
             <BaseMdEditor
@@ -247,7 +247,7 @@ export default async function AiSettingsPage({
           )
         ) : (
           <EmptyState
-            description="このタブの機能は後続タスクで追加します。発信設定タブは現在利用できます。"
+            description="このタブの機能は後続タスクで追加します。アカウント設定タブは現在利用できます。"
             title={`${AI_SETTINGS_TABS.find(([value]) => value === tab)?.[1]}は準備中です`}
           />
         )}

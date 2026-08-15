@@ -43,7 +43,7 @@ export async function updatePersonaSettings(
     revalidatePath("/app");
     revalidatePath("/app/ai-settings");
     return {
-      message: "発信設定を保存しました。",
+      message: "アカウント設定を保存しました。",
       status: "success",
       version: result.version,
     };

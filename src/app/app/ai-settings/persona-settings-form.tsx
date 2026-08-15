@@ -126,7 +126,7 @@ export function PersonaSettingsForm({
       toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
       return;
     }
-    toast.show({ tone: "success", title: "発信設定を保存しました" });
+    toast.show({ tone: "success", title: "アカウント設定を保存しました" });
     if (result.version !== undefined) {
       setVersion(result.version);
       setDirty(false);
@@ -141,9 +141,9 @@ export function PersonaSettingsForm({
         <span>
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
-        {/* 呼称は他タブと同じ「ベースmd」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
+        {/* 呼称は他タブと同じ「アカウント.md」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
         <span className="text-xs text-muted-foreground">
-          ベースmd version {version}
+          アカウント.md version {version}
           {version >= 1 ? "" : "（未作成）"}
         </span>
       </div>
@@ -153,9 +153,9 @@ export function PersonaSettingsForm({
         // 「戻せる」導線があれば安心して保存できるので、要点2文に絞る。
         <Notice tone="warn"
           role="status">
-          保存すると、ベースmdの1〜4章をこのフォームの内容で書き換えます（学習で作られた5〜6章は残ります）。以前の内容は
+          保存すると、アカウント.mdの1〜4章をこのフォームの内容で書き換えます（学習で作られた5〜6章は残ります）。以前の内容は
           <Link className="mx-1 font-medium underline underline-offset-4" href="/app/ai-settings?tab=base-md">
-            ベースmdタブの変更履歴
+            アカウント.mdタブの変更履歴
           </Link>
           からいつでも戻せます。
         </Notice>
@@ -449,7 +449,7 @@ export function PersonaSettingsForm({
           disabled={submitting}
           type="submit"
         >
-          {submitting ? "保存しています…" : "発信設定を保存"}
+          {submitting ? "保存しています…" : "アカウント設定を保存"}
         </button>
       </div>
     </form>

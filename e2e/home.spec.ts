@@ -37,7 +37,7 @@ test("有効スロットがあれば次回の予定が並び、初期設定が�
   );
   await signIn(page, account);
 
-  // 発信設定まで完了しているのでガイドは出ない
+  // アカウント設定まで完了しているのでガイドは出ない
   await expect(page.getByRole("heading", { name: "初期設定ガイド" })).toHaveCount(0);
 
   const upcoming = page.locator("section", { has: page.getByRole("heading", { name: "次回の予定" }) });

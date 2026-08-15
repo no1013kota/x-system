@@ -16,16 +16,16 @@ import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/notice";
 
 /**
- * SC-10 ベースmdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
+ * SC-10 アカウント.mdエディタ（M-1, 要件06 §9, T-M5-09）。md/premium のみ編集可。6見出し構造/5,000字を
  * サーバ検証し、保存成功／構造エラー／version競合（409→再読込）の3状態を表示。履歴からロールバック
- * （確認ダイアログ→新version）。学習ジョブrunning中は編集不可。セクション1〜4は発信設定保存で上書き
+ * （確認ダイアログ→新version）。学習ジョブrunning中は編集不可。セクション1〜4はアカウント設定保存で上書き
  * される旨を常時注意表示。モバイルは閲覧可・編集はPC推奨（要件06 §2）。
  */
 
 const MAX_CHARS = 5000;
 
 const CHANGE_SOURCE_LABEL: Record<string, string> = {
-  settings: "発信設定",
+  settings: "アカウント設定",
   learning: "学習反映",
   manual: "手動編集",
   rollback: "ロールバック",
@@ -83,7 +83,7 @@ export function BaseMdEditor({
     if (res.code === "job_conflict" && reason === "base_md_version_changed") {
       setNote({
         kind: "conflict",
-        text: "別の場所でベースmdが更新されました。最新の内容を再読み込みしてください（未保存の編集は失われます）。",
+        text: "別の場所でアカウント.mdが更新されました。最新の内容を再読み込みしてください（未保存の編集は失われます）。",
       });
       return;
     }
@@ -185,18 +185,18 @@ export function BaseMdEditor({
     <div className="space-y-6">
       {/* PC推奨（編集はモバイル非推奨） */}
       <p className="rounded-lg border bg-muted/40 px-4 py-2 text-xs text-muted-foreground lg:hidden">
-        ベースmdの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
+        アカウント.mdの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
       </p>
 
       {/* セクション1〜4の上書き注意（常時）。対処の助言は自明なので事実と復元手段だけ（T-M8-66）。 */}
       <Notice tone="warn">
-        1〜4章は「発信設定」を保存すると上書きされます。以前の版には下の変更履歴からいつでも戻せます。
+        1〜4章は「アカウント設定」を保存すると上書きされます。以前の版には下の変更履歴からいつでも戻せます。
       </Notice>
 
       {/* 学習running中の編集不可 */}
       {learningRunning ? (
         <Notice tone="warn">
-          学習の反映処理中のため、ベースmdは編集できません。完了までお待ちください。
+          学習の反映処理中のため、アカウント.mdは編集できません。完了までお待ちください。
         </Notice>
       ) : null}
 
@@ -222,7 +222,7 @@ export function BaseMdEditor({
       {/* エディタ */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>ベースmd（現在: version {version}）</CardTitle>
+          <CardTitle>アカウント.md（現在: version {version}）</CardTitle>
           <span
             className={`ml-auto text-xs ${overLimit ? "font-semibold text-danger-fg" : "text-muted-foreground"}`}
           >
@@ -230,7 +230,7 @@ export function BaseMdEditor({
           </span>
         </div>
         <textarea
-          aria-label="ベースmd本文"
+          aria-label="アカウント.md本文"
           className="mt-3 h-96 w-full resize-y rounded-md border p-3 font-mono text-sm disabled:bg-muted/40"
           disabled={editingDisabled}
           onChange={(e) => {

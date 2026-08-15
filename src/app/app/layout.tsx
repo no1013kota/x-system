@@ -161,12 +161,12 @@ export default async function AppLayout({
               initialUnread={unreadCount}
             />
             <Link
-              aria-label="アカウント設定"
+              aria-label="設定"
               className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               href="/app/settings?tab=billing"
             >
               <Icon name="tune" size={18} />
-              <span className="hidden md:inline">アカウント設定</span>
+              <span className="hidden md:inline">設定</span>
             </Link>
             <SignOutButton />
           </div>

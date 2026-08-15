@@ -12,7 +12,7 @@ import {
   type BaseMdWriteResult,
 } from "./base-md";
 
-/** ベースmd手動編集の server-only 配線（M-1, T-M5-08）。書き込みは withTransaction で束ねる。 */
+/** アカウント.md手動編集の server-only 配線（M-1, T-M5-08）。書き込みは withTransaction で束ねる。 */
 
 const pooledDb = pooledQueryable();
 
