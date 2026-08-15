@@ -12,7 +12,7 @@ import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
 import { defaultRecordStage } from "./stale";
-import type { SuggestionInput } from "./suggestion-input";
+import { toJstLabel, type SuggestionInput } from "./suggestion-input";
 import { SUGGEST_ANALYZE_MAX } from "./suggestion-timeline";
 
 /**
@@ -130,11 +130,65 @@ function themeChoices(): string {
   return THEME_OPTIONS.map((t) => `${t.id}=${t.label}`).join(" / ");
 }
 
-function renderPrompt(input: SuggestionInput): string {
-  return PT_SUGGEST.replaceAll("{{themes}}", themeChoices()).replaceAll(
-    "{{posts}}",
-    JSON.stringify(input.posts),
+/** 直前のレポート（format=2のみ。旧形式は前回参照に使えない）。 */
+export interface PreviousSuggestion {
+  id: string;
+  createdAt: string;
+  summary: string;
+  /** evidence.advice（保存時にzod検証済み。読み出しは形だけ信頼して渡す）。 */
+  advice: unknown;
+}
+
+/**
+ * 同アカウントの直前のレポートを読む（T-M8-98）。前回の推奨・プロンプトをLLMへ渡し、
+ * 効果検証と「何を残し何を変えたか」の分かる提案にする（惰性の繰り返しと全とっかえの両方を防ぐ）。
+ */
+export async function loadPreviousSuggestion(
+  db: Queryable,
+  xAccountId: string,
+): Promise<PreviousSuggestion | null> {
+  const { rows } = await db.query<{
+    id: string;
+    created_at: string;
+    content: string;
+    advice: unknown;
+  }>(
+    `select id, created_at::text as created_at, content, evidence->'advice' as advice
+       from improvement_suggestions
+      where x_account_id = $1 and evidence->>'format' = '2'
+      order by created_at desc
+      limit 1`,
+    [xAccountId],
   );
+  const row = rows[0];
+  if (!row) return null;
+  return { id: row.id, createdAt: row.created_at, summary: row.content, advice: row.advice };
+}
+
+/**
+ * `<previous>` に入れる形。無ければ "none"（プロンプト側の約束）。
+ * 「前回以降の新規投稿数」は**コードで数えて渡す**——LLMに日付比較をさせると、新規投稿が
+ * 無いのに「大量に追加された」と誤認する（2026-08-15、実アカウントで2回連続で観測）。
+ * posted_at_jst と created_at_jst は同じ `YYYY-MM-DD HH:mm` 形式なので辞書順比較でよい。
+ */
+function renderPreviousBlock(previous: PreviousSuggestion | null, input: SuggestionInput): string {
+  if (!previous) return "none";
+  const createdAtJst = toJstLabel(previous.createdAt);
+  const newPosts = createdAtJst
+    ? input.posts.filter((p) => p.posted_at_jst !== null && p.posted_at_jst > createdAtJst).length
+    : null;
+  return JSON.stringify({
+    created_at_jst: createdAtJst,
+    new_posts_since_previous: newPosts,
+    summary: previous.summary,
+    advice: previous.advice,
+  });
+}
+
+function renderPrompt(input: SuggestionInput, previous: PreviousSuggestion | null): string {
+  return PT_SUGGEST.replaceAll("{{themes}}", themeChoices())
+    .replaceAll("{{previous}}", renderPreviousBlock(previous, input))
+    .replaceAll("{{posts}}", JSON.stringify(input.posts));
 }
 
 async function persistFailure(
@@ -212,11 +266,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       deadline,
     });
     const allowedIds = new Set(input.posts.map((p) => p.id));
+    // 前回のレポートを参照する（T-M8-98）。読めなくても分析自体は止めない。
+    const previous = await loadPreviousSuggestion(db, job.x_account_id);
     const result = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
       request: {
-        system: [renderPrompt(input)],
+        system: [renderPrompt(input, previous)],
         user: "上記の投稿一覧を分析し、指定のJSONで出力してください。",
         timeoutMs: deadline.callTimeoutMs(),
       },
@@ -243,6 +299,8 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
             // 分析対象＝保存済みの全投稿（新しい順に上限件数）。件数を根拠として残す（T-M8-94）。
             post_count: input.posts.length,
             analyze_limit: SUGGEST_ANALYZE_MAX,
+            // 参照した前回レポート（無ければnull）。提案の連続性を後から辿れるように残す（T-M8-98）。
+            previous_id: previous?.id ?? null,
           }),
         ],
       );

@@ -33,6 +33,23 @@ function gen(body: string): TextGen {
   };
 }
 
+/** system に何が渡ったかを捕捉する TextGen（前回レポート参照の検証用・T-M8-98）。 */
+function genCapture(body: string, captured: { system: string[] }): TextGen {
+  return {
+    generate: async (request) => {
+      captured.system = [...((request as { system?: string[] }).system ?? [])];
+      return {
+        provider: "anthropic",
+        requestId: "r",
+        text: body,
+        citations: [],
+        usage: emptyUsage(),
+        stopReason: "end_turn",
+      };
+    },
+  };
+}
+
 /** タイムラインの1投稿（新形式の入力）。 */
 function post(id: string, impressions: number, pattern: string | null = null): SuggestionInput["posts"][number] {
   return {
@@ -159,11 +176,80 @@ describe("suggestion worker (local DB)", () => {
       expect(rows[0].evidence.format).toBe(2);
       expect(rows[0].evidence.post_count).toBe(3); // code-added
       expect(rows[0].evidence.analyze_limit).toBe(300); // code-added（分析上限のsnapshot）
+      expect(rows[0].evidence.previous_id).toBeNull(); // 初回＝前回レポートなし（T-M8-98）
       const advice = rows[0].evidence.advice as Record<string, Record<string, unknown>>;
       expect(advice.pattern.recommended).toBe("p3");
       expect(advice.prompt.kind).toBe("p3");
       expect(String(advice.prompt.content)).toContain("# タスク");
       expect(await hasEvent(jobId, "reserve")).toBe(false); // BYOK/md → no reserve
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("前回のレポート（format=2）がプロンプトへ渡り、evidence.previous_id に残る（T-M8-98）", async () => {
+    const { uid, xid, jobId } = await seed("md");
+    try {
+      // 前回のレポートを直接seedする（旧形式=format無しの行は対象外であることも同時に確認する）。
+      const prevId = await withTransaction(async (c) => {
+        await c.query(
+          `with job as (
+             insert into generation_jobs (x_account_id, kind, trigger, status, finished_at)
+             values ($1,'suggestion','manual','succeeded',now()) returning id
+           )
+           insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
+           select $1, job.id, '旧形式の提案', '{"axis":"legacy"}'::jsonb from job`,
+          [xid],
+        );
+        return (
+          await c.query<{ id: string }>(
+            `with job as (
+               insert into generation_jobs (x_account_id, kind, trigger, status, finished_at)
+               values ($1,'suggestion','manual','succeeded',now()) returning id
+             )
+             insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
+             select $1, job.id, '前回の総評テキスト', $2::jsonb from job returning id`,
+            [
+              xid,
+              JSON.stringify({
+                format: 2,
+                good_posts: [{ id: "t9", why: "前回の根拠" }],
+                advice: {
+                  pattern: { recommended: "p1", reason: "前回の理由" },
+                  theme: { recommended: "ai", reason: "前回の理由" },
+                  image: { recommended: false, reason: "前回の理由" },
+                  prompt: { kind: "p1", content: "# タスク\n前回のプロンプト全文" },
+                },
+                post_count: 5,
+              }),
+            ],
+          )
+        ).rows[0].id;
+      });
+
+      const captured = { system: [] as string[] };
+      const posts = [post("t1", 100), post("t2", 300)];
+      const d = deps(jobId, VALID("t2"), posts);
+      d.resolveProvider = async () => ({
+        textGen: genCapture(VALID("t2"), captured),
+        provider: "anthropic" as const,
+        model: "m",
+      });
+      const res = await executeSuggestion(d);
+      expect(res).toMatchObject({ status: "saved", count: 1 });
+
+      // <previous> に前回の総評・推奨・プロンプト全文が入っている（"none" ではない）。
+      const system = captured.system.join("\n");
+      expect(system).toContain("前回の総評テキスト");
+      expect(system).toContain("前回のプロンプト全文");
+      expect(system).not.toContain("<previous>none</previous>");
+      // 「前回以降の新規投稿数」はコードで数えて渡す（LLMの日付比較は誤認する・T-M8-98）。
+      // 前回=now()・投稿=2026-07-18 なので 0 件。
+      expect(system).toContain('"new_posts_since_previous":0');
+
+      const rows = await suggestions(xid);
+      const latest = rows[rows.length - 1];
+      expect(latest.evidence.previous_id).toBe(prevId);
     } finally {
       await cleanup(uid);
     }

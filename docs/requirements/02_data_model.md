@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.31 |
+| バージョン | v1.32 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -778,11 +778,12 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
     "prompt": { "kind": "p3", "content": "# タスク\n…（そのまま貼れる生成プロンプト全文・最大8,000字）" }
   },
   "post_count": 12,
-  "analyze_limit": 300
+  "analyze_limit": 300,
+  "previous_id": "参照した直前のレポートのid（初回はnull）"
 }
 ```
 
-`format`・`post_count`（分析対象の投稿数）・`analyze_limit`（分析上限のsnapshot）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
+`format`・`post_count`（分析対象の投稿数）・`analyze_limit`（分析上限のsnapshot）・`previous_id`（参照した直前のレポート。提案の連続性を後から辿れる・T-M8-98）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
 
 ## 5. RLS方針
 
