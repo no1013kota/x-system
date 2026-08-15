@@ -11,6 +11,32 @@ import { SUGGEST_ANALYZE_MAX, truncateForStore } from "./suggestion-timeline";
  * - 読み出し: 新しい順に最大 `SUGGEST_ANALYZE_MAX` 件（分析のAI入力上限）
  */
 
+/**
+ * Exos AIで作った投稿のタグ行（tweet_ids・型・テーマ）を読む。
+ *
+ * **テーマは drafts ではなく生成job（`generation_jobs.input->>'theme'`）にある。**
+ * 当初 `d.input` という存在しない列を参照しており、実アカウントでの初回実行で
+ * `column d.input does not exist` として発覚した（2026-08-15）。SQLは実DBテストで守る。
+ */
+export async function loadDraftTagRows(
+  db: Queryable,
+  xAccountId: string,
+): Promise<{ tweet_ids: string[] | null; pattern: string | null; theme: string | null }[]> {
+  const { rows } = await db.query<{
+    tweet_ids: string[] | null;
+    pattern: string | null;
+    theme: string | null;
+  }>(
+    `select d.tweet_ids, d.pattern::text as pattern, gj.input->>'theme' as theme
+       from drafts d
+       left join generation_jobs gj on gj.id = d.source_job_id
+      where d.x_account_id = $1
+        and jsonb_array_length(d.tweet_ids) > 0`,
+    [xAccountId],
+  );
+  return rows;
+}
+
 /** このアカウントで保存済みの最新投稿時刻（増分取得の基準）。無ければ null。 */
 export async function newestStoredPostedAt(
   db: Queryable,
