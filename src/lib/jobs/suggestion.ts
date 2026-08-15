@@ -18,7 +18,7 @@ import { SUGGEST_ANALYZE_MAX } from "./suggestion-timeline";
 /**
  * suggestion worker（SUGGEST, K-2, プロンプト §6.15/§4.2, 要件04 §12, 要件02 §3.12/§4.11, T-M8-91）。
  *
- * 2026-08-15 刷新: Xタイムラインの直近30日の全投稿（Exos製かに依らない）を PT-SUGGEST で自由分析し、
+ * 2026-08-15 刷新: Xタイムラインの投稿（Exos製かに依らない・最新100件から増分蓄積）を PT-SUGGEST で自由分析し、
  * **1件の提案**（良かった投稿の特徴 summary＋実行可能な advice: 型・テーマ・画像・そのまま貼れるプロンプト全文）
  * を improvement_suggestions へ保存する。固定の分析軸と「3投稿以上・差20%」条件は廃止。
  * 保存形は evidence.format=2 で旧形式（axis等）と区別する。
@@ -92,7 +92,7 @@ export interface SuggestionDeps {
     deadline: Deadline;
   }) => Promise<{ textGen: TextGen; provider: Provider; model: string }>;
   /**
-   * Xタイムライン直近30日（最大100件・メトリクス付き）＋Exos投稿の型/テーマタグを整形済みで返す。
+   * Xタイムライン（初回は最新100件・以後は増分・メトリクス付き）＋Exos投稿の型/テーマタグを整形済みで返す。
    * server側（suggestion-server）が token 復号・読取・drafts 突合を担う。
    */
   fetchPosts: (job: { xAccountId: string; xUserId: string; userId: string }) => Promise<SuggestionInput>;
@@ -198,7 +198,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
     throw new SuggestionTerminalError("x_fetch_failed", String(error));
   }
 
-  // 分析対象の投稿が1件も無ければ（30日以内に投稿なし・保存も空）、LLMを呼ばずレポート0件で正常終了。
+  // 分析対象の投稿が1件も無ければ（Xに投稿が無い・保存も空）、LLMを呼ばずレポート0件で正常終了。
   if (input.posts.length === 0) {
     return { status: "no_suggestions", count: 0 };
   }

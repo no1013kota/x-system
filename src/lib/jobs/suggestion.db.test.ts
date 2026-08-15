@@ -12,7 +12,7 @@ import { failJob } from "./worker";
 
 /**
  * DB integration for suggestion worker (SUGGEST, T-M8-91). fetchPosts/AI は注入し、improvement_suggestions
- * 保存（evidence.format=2・advice・window_days=30）・投稿0件時0件・X取得失敗時のerror保存・
+ * 保存（evidence.format=2・advice・post_count）・投稿0件時0件・X取得失敗時のerror保存・
  * premium reserve/refund（usage_events）を検証する。
  */
 const pooledDb: Queryable = {
@@ -169,7 +169,7 @@ describe("suggestion worker (local DB)", () => {
     }
   });
 
-  it("直近30日に投稿が0件ならLLMを呼ばず提案0件で正常終了する", async () => {
+  it("投稿が1件も無ければLLMを呼ばず提案0件で正常終了する", async () => {
     const { uid, xid, jobId } = await seed("md");
     try {
       const res = await executeSuggestion(deps(jobId, VALID("t1"), []));
