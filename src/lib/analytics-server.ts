@@ -51,20 +51,36 @@ export async function getAnalyticsSummaryForUser(
   return summarize(drafts, periodDays);
 }
 
-export interface SuggestionEvidencePost {
+export interface SuggestionGoodPost {
   tweetId: string;
-  body: string;
+  /** この投稿が良かった点（LLMの1文）。 */
+  why: string;
   url: string;
 }
+
+/** advice の1項目（推奨値＋理由）。 */
+export interface SuggestionAdviceItem<T> {
+  recommended: T;
+  reason: string;
+}
+
+/**
+ * 新形式（evidence.format=2・T-M8-91）の表示形。
+ * 旧形式（軸ベース・〜2026-08-15）の行は content と summary だけの縮退表示にする（legacy）。
+ */
 export interface SuggestionDisplay {
+  kind: "v2" | "legacy";
+  /** v2: 良かった投稿の特徴（summary）。legacy: 提案1文。 */
   content: string;
-  /** どの軸で差が出たか（T-M7-38）。古い提案には無いので null を許す。 */
-  axis: string | null;
-  metric: string;
-  checkpointDays: number | null;
-  diffPct: number | null;
-  summary: string;
-  posts: SuggestionEvidencePost[];
+  goodPosts: SuggestionGoodPost[];
+  advice: {
+    pattern: SuggestionAdviceItem<string> | null;
+    theme: SuggestionAdviceItem<string> | null;
+    image: SuggestionAdviceItem<boolean> | null;
+    prompt: { kind: string; content: string } | null;
+  } | null;
+  /** legacy行の根拠1文（v2では空）。 */
+  legacySummary: string;
   createdAt: string;
 }
 export interface SuggestionsSection {
@@ -76,16 +92,20 @@ export interface SuggestionsSection {
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
-function numOrNull(v: unknown): number | null {
-  return typeof v === "number" ? v : null;
+
+function adviceItem<T>(v: unknown, pick: (x: unknown) => T | null): SuggestionAdviceItem<T> | null {
+  if (typeof v !== "object" || v === null) return null;
+  const rec = pick((v as Record<string, unknown>).recommended);
+  const reason = str((v as Record<string, unknown>).reason);
+  return rec === null || !reason ? null : { recommended: rec, reason };
 }
 
-/** 最新の成功 suggestion job の提案を、evidence.tweet_id の本文冒頭・Xリンク付きで返す（所有者のみ）。 */
+/** 最新の成功 suggestion job の提案を表示形へ変換して返す（所有者のみ）。 */
 export async function loadSuggestionsForUser(
   userId: string,
   xAccountId: string,
 ): Promise<SuggestionsSection> {
-  const [rows, meta, drafts] = await Promise.all([
+  const [rows, meta] = await Promise.all([
     listSuggestions(pooledDb, userId, xAccountId),
     pooledDb.query<{ handle: string; generating: boolean }>(
       `select xa.handle,
@@ -97,37 +117,54 @@ export async function loadSuggestionsForUser(
          from x_accounts xa where xa.id = $1 and xa.user_id = $2`,
       [xAccountId, userId],
     ),
-    pooledDb.query<{ tweet_ids: string[]; thread: { text?: string }[] }>(
-      `select tweet_ids, thread from drafts where x_account_id = $1 and posted_at is not null`,
-      [xAccountId],
-    ),
   ]);
 
   const handle = meta.rows[0]?.handle ?? "i";
   const generating = meta.rows[0]?.generating ?? false;
-  // tweet_id → 本文冒頭（tweet_ids↔thread 同順対応）。
-  const bodyByTweet = new Map<string, string>();
-  for (const d of drafts.rows) {
-    (d.tweet_ids ?? []).forEach((id, i) => {
-      if (id && !bodyByTweet.has(id)) bodyByTweet.set(id, (d.thread?.[i]?.text ?? "").slice(0, 100));
-    });
-  }
 
   const suggestions: SuggestionDisplay[] = rows.map((r) => {
     const ev = r.evidence ?? {};
-    const tweetIds = Array.isArray(ev.tweet_ids) ? (ev.tweet_ids as unknown[]).filter((x): x is string => typeof x === "string") : [];
+    if (ev.format === 2) {
+      // 新形式（T-M8-91）。good_posts は外部の投稿も指せるため、本文はDBから引かずリンクと理由で示す。
+      const goodPosts = (Array.isArray(ev.good_posts) ? ev.good_posts : [])
+        .map((g) => {
+          const id = str((g as Record<string, unknown>)?.id);
+          const why = str((g as Record<string, unknown>)?.why);
+          return id ? { tweetId: id, why, url: `https://x.com/${handle}/status/${id}` } : null;
+        })
+        .filter((g): g is SuggestionGoodPost => g !== null);
+      const adv = (typeof ev.advice === "object" && ev.advice !== null ? ev.advice : {}) as Record<
+        string,
+        unknown
+      >;
+      const promptObj =
+        typeof adv.prompt === "object" && adv.prompt !== null
+          ? (adv.prompt as Record<string, unknown>)
+          : null;
+      return {
+        kind: "v2" as const,
+        content: r.content,
+        goodPosts,
+        advice: {
+          pattern: adviceItem(adv.pattern, (x) => (typeof x === "string" ? x : null)),
+          theme: adviceItem(adv.theme, (x) => (typeof x === "string" ? x : null)),
+          image: adviceItem(adv.image, (x) => (typeof x === "boolean" ? x : null)),
+          prompt:
+            promptObj && str(promptObj.kind) && str(promptObj.content)
+              ? { kind: str(promptObj.kind), content: str(promptObj.content) }
+              : null,
+        },
+        legacySummary: "",
+        createdAt: r.createdAt,
+      };
+    }
+    // 旧形式（軸ベース）。刷新後に新しい実行をすれば置き換わるため、縮退表示で十分。
     return {
+      kind: "legacy" as const,
       content: r.content,
-      axis: str(ev.axis) || null,
-      metric: str(ev.metric) || "impressions",
-      checkpointDays: numOrNull(ev.checkpoint_days),
-      diffPct: numOrNull(ev.diff_pct),
-      summary: str(ev.summary),
-      posts: tweetIds.map((id) => ({
-        tweetId: id,
-        body: bodyByTweet.get(id) ?? "",
-        url: `https://x.com/${handle}/status/${id}`,
-      })),
+      goodPosts: [],
+      advice: null,
+      legacySummary: str(ev.summary),
       createdAt: r.createdAt,
     };
   });

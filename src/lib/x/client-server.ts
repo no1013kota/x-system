@@ -41,5 +41,7 @@ export function xCostConfig(): XCostConfig {
     contentCreateUsd: env.X_COST_CONTENT_CREATE_USD ?? 0,
     contentCreateWithUrlUsd: env.X_COST_CONTENT_CREATE_WITH_URL_USD ?? 0,
     interactionDeleteUsd: env.X_COST_INTERACTION_DELETE_USD ?? 0,
+    postReadUsd: env.X_COST_POST_READ_USD ?? 0,
+    userReadUsd: env.X_COST_USER_READ_USD ?? 0,
   };
 }

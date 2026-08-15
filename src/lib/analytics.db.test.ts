@@ -134,7 +134,7 @@ describe("analytics loader (local DB)", () => {
           [
             xid,
             job,
-            JSON.stringify({ tweet_ids: ["t1"], metric: "impressions", checkpoint_days: 7, diff_pct: 40, summary: "根拠", window_days: 30 }),
+            JSON.stringify({ format: 2, good_posts: [{ id: "t1", why: "表示回数が最多" }], advice: { pattern: { recommended: "p3", reason: "ノウハウが伸びた" }, theme: { recommended: "ai", reason: "AIの題材が強い" }, image: { recommended: false, reason: "差なし" }, prompt: { kind: "p3", content: "# タスク\nノウハウを書く" } }, window_days: 30, post_count: 3 }),
           ],
         );
       });
@@ -143,9 +143,13 @@ describe("analytics loader (local DB)", () => {
       expect(section.generating).toBe(false);
       expect(section.suggestions).toHaveLength(1);
       const s = section.suggestions[0];
-      expect(s).toMatchObject({ content: "朝の投稿を増やす", metric: "impressions", checkpointDays: 7, diffPct: 40 });
-      expect(s.posts[0]).toMatchObject({ tweetId: "t1", body: "朝9時のノウハウ投稿" });
-      expect(s.posts[0].url).toContain("/status/t1");
+      expect(s.kind).toBe("v2");
+      expect(s.content).toBe("朝の投稿を増やす");
+      expect(s.goodPosts[0]).toMatchObject({ tweetId: "t1", why: "表示回数が最多" });
+      expect(s.goodPosts[0].url).toContain("/status/t1");
+      expect(s.advice?.pattern).toEqual({ recommended: "p3", reason: "ノウハウが伸びた" });
+      expect(s.advice?.image).toEqual({ recommended: false, reason: "差なし" });
+      expect(s.advice?.prompt?.kind).toBe("p3");
 
       // queued suggestion job → generating true
       await withTransaction((c) =>

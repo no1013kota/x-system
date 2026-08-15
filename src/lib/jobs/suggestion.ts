@@ -5,26 +5,27 @@ import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
+import { THEME_IDS, THEME_OPTIONS } from "../themes";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
+import { PROMPT_TEMPLATE_MAX_CHARS } from "../prompts/prompt-templates";
 import { reserveIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
 import { defaultRecordStage } from "./stale";
-import {
-  SUGGEST_MIN_GROUP,
-  buildSuggestionInput,
-  type SuggestionInput,
-  SUGGESTION_AXES,
-  type SuggestionInputDraft,
-} from "./suggestion-input";
+import { SUGGEST_PERIOD_DAYS, type SuggestionInput } from "./suggestion-input";
 
 /**
- * suggestion worker（SUGGEST, K-2, プロンプト §6.15/§4.2, 要件04 §12, 要件02 §3.12/§4.11, T-M5-18）。
- * コード集計（buildSuggestionInput）の <stats>/<posts> を PT-SUGGEST で分析し、最大2件・evidence.tweet_ids は
- * <posts>内IDのみ（zod refineで検証→修復1回は runTextGeneration が担う）を improvement_suggestions へ保存する
- * （evidence.window_days=30 をコードで付与）。比較グループ不足（対象<3件）はLLMを呼ばず提案0件で正常終了。
- * base_md は読まない。premium はLLM実行時に生成枠 +1 reserve し最終失敗で refund（冪等）。BYOKは消費しない。
+ * suggestion worker（SUGGEST, K-2, プロンプト §6.15/§4.2, 要件04 §12, 要件02 §3.12/§4.11, T-M8-91）。
+ *
+ * 2026-08-15 刷新: Xタイムラインの直近30日の全投稿（Exos製かに依らない）を PT-SUGGEST で自由分析し、
+ * **1件の提案**（良かった投稿の特徴 summary＋実行可能な advice: 型・テーマ・画像・そのまま貼れるプロンプト全文）
+ * を improvement_suggestions へ保存する。固定の分析軸と「3投稿以上・差20%」条件は廃止。
+ * 保存形は evidence.format=2 で旧形式（axis等）と区別する。
+ *
+ * X取得はハンドラ側（suggestion-server）が行い、費用は取得件数×X_COST_POST_READ_USD（上限100件=$0.50）。
+ * 1日1回の制限（already_today）が起票側で効く。premium はLLM実行時に生成枠 +1 reserve し
+ * 最終失敗で refund（冪等）。BYOKは消費しない。base_md は読まない。
  */
 
 export class SuggestionTerminalError extends Error {
@@ -38,32 +39,45 @@ export class SuggestionTerminalError extends Error {
   }
 }
 
-/** PT-SUGGEST 出力スキーマ（最大2件・evidence.tweet_ids は allowed=<posts>内IDのみ）。 */
+/** advice.pattern の選択肢。p5（引用）はfeature flag停止中のため提案させない。 */
+export const SUGGESTABLE_PATTERNS = ["p1", "p2", "p3", "p4", "p6"] as const;
+
+/**
+ * PT-SUGGEST 出力スキーマ（T-M8-91）。
+ * good_posts.id は `<posts>`内IDのみ（修復1回は runTextGeneration が担う）。
+ * prompt.content の上限は AI設定＞プロンプトの保存上限（8,000字）と同じにする——
+ * 「そのまま貼れる」が要件なので、貼った先で保存できない長さを許さない。
+ */
 function makeSuggestionSchema(allowedIds: Set<string>) {
+  const reasoned = <T extends z.ZodTypeAny>(recommended: T) =>
+    z.object({ recommended, reason: z.string().min(1) });
   return z.object({
-    suggestions: z
-      .array(
-        z.object({
-          content: z.string().min(1),
-          evidence: z.object({
-            tweet_ids: z
-              .array(z.string().min(1))
-              .min(1)
-              .refine((ids) => ids.every((id) => allowedIds.has(id)), {
-                message: "evidence.tweet_ids must be a subset of <posts> ids",
-              }),
-            /** どの軸で差が出たか（T-M7-38）。何を根拠にした提案かを後から辿れるようにする。 */
-            axis: z.enum(SUGGESTION_AXES),
-            metric: z.string().min(1),
-            checkpoint_days: z.union([z.literal(1), z.literal(7), z.literal(30)]),
-            diff_pct: z.number(),
-            summary: z.string().min(1),
-          }),
+    summary: z.string().min(1),
+    good_posts: z
+      .array(z.object({ id: z.string().min(1), why: z.string().min(1) }))
+      .min(1)
+      .max(3)
+      .refine((items) => items.every((i) => allowedIds.has(i.id)), {
+        message: "good_posts[].id must be a subset of <posts> ids",
+      }),
+    advice: z
+      .object({
+        pattern: reasoned(z.enum(SUGGESTABLE_PATTERNS)),
+        // 「その他」は提案として実行可能でない（追加指示に書く意思表示）ため6テーマに限定する。
+        theme: reasoned(z.enum(THEME_IDS)),
+        image: reasoned(z.boolean()),
+        prompt: z.object({
+          kind: z.enum(SUGGESTABLE_PATTERNS),
+          content: z.string().min(1).max(PROMPT_TEMPLATE_MAX_CHARS),
         }),
-      )
-      .max(2),
+      })
+      .refine((a) => a.prompt.kind === a.pattern.recommended, {
+        message: "advice.prompt.kind must equal advice.pattern.recommended",
+      }),
   });
 }
+
+export type SuggestionOutput = z.infer<ReturnType<typeof makeSuggestionSchema>>;
 
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
@@ -76,8 +90,11 @@ export interface SuggestionDeps {
     userId: string;
     deadline: Deadline;
   }) => Promise<{ textGen: TextGen; provider: Provider; model: string }>;
-  /** 集計対象の draft（posted＋remaining有りfailed・直近30日・thread/tweet_metrics付き）。 */
-  fetchDrafts: (xAccountId: string) => Promise<SuggestionInputDraft[]>;
+  /**
+   * Xタイムライン直近30日（最大100件・メトリクス付き）＋Exos投稿の型/テーマタグを整形済みで返す。
+   * server側（suggestion-server）が token 復号・読取・drafts 突合を担う。
+   */
+  fetchPosts: (job: { xAccountId: string; xUserId: string; userId: string }) => Promise<SuggestionInput>;
   now?: () => number;
   makeDeadline?: () => Deadline;
   recordStage?: (stage: string) => Promise<void>;
@@ -90,13 +107,14 @@ export interface SuggestionResult {
 
 interface JobRow {
   x_account_id: string;
+  x_user_id: string;
   user_id: string;
   plan: string;
 }
 
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.x_account_id, xa.user_id, p.plan
+    `select gj.x_account_id, xa.x_user_id, xa.user_id, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -106,8 +124,13 @@ async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   return rows[0] ?? null;
 }
 
+/** テーマの選択肢を「id=ラベル」で列挙する（LLMがidを選び、理由をラベルで書けるように）。 */
+function themeChoices(): string {
+  return THEME_OPTIONS.map((t) => `${t.id}=${t.label}`).join(" / ");
+}
+
 function renderPrompt(input: SuggestionInput): string {
-  return PT_SUGGEST.replaceAll("{{stats}}", JSON.stringify(input.stats)).replaceAll(
+  return PT_SUGGEST.replaceAll("{{themes}}", themeChoices()).replaceAll(
     "{{posts}}",
     JSON.stringify(input.posts),
   );
@@ -120,8 +143,10 @@ async function persistFailure(
     xAccountId: string;
     jobId: string;
     code: string;
+    message: string;
+    stage: "research" | "writing";
     usage: GenerationUsage;
-    /** AIが何を返して落ちたか（F5で追加。生成・学習・画像と同じ形に揃えた）。 */
+    /** AIが何を返して落ちたか（F5）。X取得失敗時は null。 */
     providerRawError: string | null;
   },
 ): Promise<void> {
@@ -132,8 +157,8 @@ async function persistFailure(
     keyPrefix: `sug:${params.jobId}`,
     error: {
       code: params.code,
-      message: "改善提案の生成に失敗しました。",
-      stage: "writing",
+      message: params.message,
+      stage: params.stage,
       providerRawError: params.providerRawError,
     },
     usage: params.usage,
@@ -150,12 +175,30 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
   if (!job) throw new SuggestionTerminalError("not_found", "job not found");
 
   await recordStage("research");
-  const drafts = await deps.fetchDrafts(job.x_account_id);
-  const input = buildSuggestionInput(drafts, now());
+  let input: SuggestionInput;
+  try {
+    input = await deps.fetchPosts({
+      xAccountId: job.x_account_id,
+      xUserId: job.x_user_id,
+      userId: job.user_id,
+    });
+  } catch (error) {
+    // X取得の失敗は「静かに0件」にしない（原則1）。理由を保存して通知する。
+    await persistFailure(db, {
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
+      jobId,
+      code: "x_fetch_failed",
+      message: "Xから投稿を取得できませんでした。時間をおいてもう一度お試しください。",
+      stage: "research",
+      usage: { calls: [], estimated_cost_usd_total: 0 },
+      providerRawError: null,
+    });
+    throw new SuggestionTerminalError("x_fetch_failed", String(error));
+  }
 
-  // 比較グループ不足（対象<3件では型×時間帯3件の比較が成立しない）はLLMを呼ばず提案0件で正常終了。
-  // reserve もしない（実行=LLM呼び出し時のみ生成枠を消費する）。
-  if (input.posts.length < SUGGEST_MIN_GROUP) {
+  // 直近30日に投稿が1件も無ければ、LLMを呼ばず（reserveもせず）提案0件で正常終了。
+  if (input.posts.length === 0) {
     return { status: "no_suggestions", count: 0 };
   }
 
@@ -175,13 +218,13 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       userId: job.user_id,
       deadline,
     });
-    const allowedIds = new Set(input.posts.map((p) => p.tweet_id));
+    const allowedIds = new Set(input.posts.map((p) => p.id));
     const result = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
       request: {
         system: [renderPrompt(input)],
-        user: "上記の実績データから改善提案をJSONで出力してください。",
+        user: "上記の投稿一覧を分析し、指定のJSONで出力してください。",
         timeoutMs: deadline.callTimeoutMs(),
       },
       schema: makeSuggestionSchema(allowedIds),
@@ -190,16 +233,25 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       now,
     });
 
-    const suggestions = result.parsed.suggestions;
-    // 保存とusage確定を同一tx（source_job_id=jobId、evidence.window_days=30 をコードで付与・§4.11）。
+    const output = result.parsed;
+    // 1件の提案として保存する（content=summary、evidence.format=2 で旧形式と区別・§4.11）。
     await deps.runInTx(async (tx) => {
-      for (const s of suggestions) {
-        await tx.query(
-          `insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
-           values ($1, $2, $3, $4::jsonb)`,
-          [job.x_account_id, jobId, s.content, JSON.stringify({ ...s.evidence, window_days: 30 })],
-        );
-      }
+      await tx.query(
+        `insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
+         values ($1, $2, $3, $4::jsonb)`,
+        [
+          job.x_account_id,
+          jobId,
+          output.summary,
+          JSON.stringify({
+            format: 2,
+            good_posts: output.good_posts,
+            advice: output.advice,
+            window_days: SUGGEST_PERIOD_DAYS,
+            post_count: input.posts.length,
+          }),
+        ],
+      );
       await tx.query(`update generation_jobs set usage = $2::jsonb where id = $1`, [
         jobId,
         JSON.stringify(result.usage),
@@ -212,7 +264,7 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       jobId,
       keyPrefix: `sug:${jobId}`,
     });
-    return { status: suggestions.length > 0 ? "saved" : "no_suggestions", count: suggestions.length };
+    return { status: "saved", count: 1 };
   } catch (error) {
     const usage: GenerationUsage =
       usageFromError(error) ?? { calls: [], estimated_cost_usd_total: 0 };
@@ -222,6 +274,8 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       xAccountId: job.x_account_id,
       jobId,
       code,
+      message: "改善提案の生成に失敗しました。",
+      stage: "writing",
       usage,
       // refine 失敗（`<posts>` に無いIDを返した等）の中身は運営者が最も知りたい情報（F5）。
       providerRawError: formatFailureRawError(error, providerRawOutputOf(error)),

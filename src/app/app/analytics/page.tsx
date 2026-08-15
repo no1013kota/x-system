@@ -44,26 +44,22 @@ export default async function AnalyticsPage() {
     );
   }
 
-  const [drafts, followers, suggestionsSection, account] = await Promise.all([
+  const [drafts, followers, suggestionsSection, account, profile] = await Promise.all([
     loadAnalyticsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
     loadFollowerSnapshotsForUser(user.id, xAccountId, ANALYTICS_PERIOD_DAYS),
     loadSuggestionsForUser(user.id, xAccountId),
     pooledQueryable().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
       xAccountId,
     ]),
+    // 提案のプロンプト全文は貼り先（AI設定＞プロンプト）が mdプラン以上のため、プランで出し分ける（T-M8-91）。
+    pooledQueryable().query<{ plan: "standard" | "md" | "premium" }>(
+      `select plan from profiles where id = $1`,
+      [user.id],
+    ),
   ]);
   // X上のポストへリンクするため handle を渡す（未取得でも i/status で開ける）。
   const handle = account.rows[0]?.handle ?? null;
 
-  // 比較対象（監査・取得不能でなく、いずれかのcheckpointを取得済み）の投稿数。実績不足表示に使う。
-  const comparablePostCount = drafts.reduce(
-    (n, d) =>
-      n +
-      d.tweets.filter(
-        (t) => !t.auditOnly && !t.unavailable && (t.checkpoints["1"] || t.checkpoints["7"] || t.checkpoints["30"]),
-      ).length,
-    0,
-  );
 
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
@@ -77,8 +73,8 @@ export default async function AnalyticsPage() {
         <FollowerChart points={followers} />
         <AnalyticsView drafts={drafts} handle={handle} />
         <SuggestionsPanel
-          comparablePostCount={comparablePostCount}
           generating={suggestionsSection.generating}
+          plan={profile.rows[0]?.plan ?? "standard"}
           suggestions={suggestionsSection.suggestions}
         />
       </div>

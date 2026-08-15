@@ -332,6 +332,17 @@ export interface XRecentPost {
   createdAt: string | null;
   /** replied_to の参照tweet id（reply連投の照合用）。無ければ null。 */
   inReplyToId: string | null;
+  /**
+   * 以下は `withMetrics: true` のときだけ入る（T-M8-91・改善提案の30日分析用）。
+   * impressions は non_public_metrics（自分の投稿のみ・user context 必須・直近30日のみ提供）。
+   * 30日境界ぎりぎりの投稿では欠けることがあるため null を許す。
+   */
+  impressions?: number | null;
+  likes?: number | null;
+  reposts?: number | null;
+  replies?: number | null;
+  hasMedia?: boolean;
+  hasUrl?: boolean;
 }
 export interface XRecentPostsResult extends XApiMeta {
   posts: XRecentPost[];
@@ -347,21 +358,41 @@ export interface XRecentPostsResult extends XApiMeta {
  */
 export async function getRecentPosts(
   accessToken: string,
-  input: { userId: string; maxResults?: number; paginationToken?: string },
+  input: {
+    userId: string;
+    maxResults?: number;
+    paginationToken?: string;
+    /** ISO 8601。指定するとこの時刻以降の投稿だけを返す（改善提案の30日窓・T-M8-91）。 */
+    startTime?: string;
+    /** リポスト・返信を除く（本人のコンテンツ投稿だけを分析対象にする）。 */
+    excludeRepliesAndReposts?: boolean;
+    /** 実績メトリクス（public_metrics / non_public_metrics）と画像・URLの有無を取る。 */
+    withMetrics?: boolean;
+  },
   deps: XClientDeps,
 ): Promise<XRecentPostsResult> {
   const max = input.maxResults ?? 20;
+  const fields = ["created_at", "referenced_tweets"];
+  // non_public_metrics（impressions）は user context の自分の投稿にだけ提供される。
+  // entities.urls＝本文URLの有無、attachments.media_keys＝画像等の添付の有無。
+  if (input.withMetrics) fields.push("public_metrics", "non_public_metrics", "entities", "attachments");
   const params = new URLSearchParams({
     max_results: String(max),
-    "tweet.fields": "created_at,referenced_tweets",
+    "tweet.fields": fields.join(","),
   });
   if (input.paginationToken) params.set("pagination_token", input.paginationToken);
+  if (input.startTime) params.set("start_time", input.startTime);
+  if (input.excludeRepliesAndReposts) params.set("exclude", "replies,retweets");
   const { body: res, requestId } = await callX<{
     data?: Array<{
       id: string;
       text: string;
       created_at?: string;
       referenced_tweets?: Array<{ type: string; id: string }>;
+      public_metrics?: Record<string, number>;
+      non_public_metrics?: Record<string, number>;
+      entities?: { urls?: Array<{ url: string }> };
+      attachments?: { media_keys?: string[] };
     }>;
     meta?: { next_token?: string };
   }>(
@@ -377,6 +408,16 @@ export async function getRecentPosts(
     text: t.text,
     createdAt: t.created_at ?? null,
     inReplyToId: t.referenced_tweets?.find((r) => r.type === "replied_to")?.id ?? null,
+    ...(input.withMetrics
+      ? {
+          impressions: t.non_public_metrics?.impression_count ?? null,
+          likes: t.public_metrics?.like_count ?? null,
+          reposts: t.public_metrics?.retweet_count ?? null,
+          replies: t.public_metrics?.reply_count ?? null,
+          hasMedia: (t.attachments?.media_keys?.length ?? 0) > 0,
+          hasUrl: (t.entities?.urls?.length ?? 0) > 0,
+        }
+      : {}),
   }));
   return {
     posts,

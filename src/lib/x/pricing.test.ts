@@ -6,6 +6,8 @@ const cfg: XCostConfig = {
   contentCreateUsd: 0.01,
   contentCreateWithUrlUsd: 0.02,
   interactionDeleteUsd: 0.005,
+  postReadUsd: 0.005,
+  userReadUsd: 0.01,
 };
 
 describe("xUnitCost", () => {
@@ -19,8 +21,9 @@ describe("xUnitCost", () => {
     expect(xUnitCost("x_post_delete", cfg)).toBe(0.005);
   });
 
-  it("prices reads at zero (no configured X cost)", () => {
-    expect(xUnitCost("x_post_read", cfg)).toBe(0);
-    expect(xUnitCost("x_user_read", cfg)).toBe(0);
+  it("読取の単価も設定から返す（T-M8-91。0固定だと台帳の費用が実費より小さく見える）", () => {
+    // pay-per-usage は応答の resource 1件ごとに課金する（Posts $0.005 / User $0.010）。
+    expect(xUnitCost("x_post_read", cfg)).toBe(cfg.postReadUsd);
+    expect(xUnitCost("x_user_read", cfg)).toBe(cfg.userReadUsd);
   });
 });

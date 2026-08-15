@@ -1,246 +1,124 @@
 /**
- * SUGGEST 入力集計（K-2, プロンプト §6.15/§4.2, 要件04 §12, T-M5-17）。LLMを使わない純粋なコード集計。
- * 直近30日の posted / 部分失敗(remaining)投稿から、比較checkpoint（7日取得済みが3件以上なら7日、
- * 未満なら1日）を選び、異なる経過日数を混ぜずに `<stats>`（型×時間帯セルの件数・平均impressions）と
- * `<posts>`（tweet_id単位・最大50件・本文冒頭100字/型/JST投稿時刻/impressions）を組み立てる。
- * rollback削除済み・unavailable の tweet_id は除外する。テーマの事前集計はしない（PT-SUGGESTが本文から判断）。
+ * SUGGEST 入力の組み立て（K-2, プロンプト §6.15/§4.2, 要件04 §12, T-M8-91）。
  *
- * 集計する軸（T-M7-38）: 型×時間帯に加えて、**加重文字数帯・改行の塊数・画像の有無・URLの有無**。
- * 伸びを左右する主要な変数がこれらだからで、軸が無いと「投稿を短くした」「改行を入れた」等の
- * 改善が効いたかを実績で確かめられない（2026-08-01のプロンプト改善T-M7-37/41の検証手段）。
- * 軸ごとに独立して集計する（多次元セルにすると50件では大半がcount=1になり判断材料にならない）。
+ * 2026-08-15 の刷新で、分析対象を「Exos AIで作った投稿の checkpoint 実績」から
+ * **Xタイムラインの直近30日の全投稿**（Exos製かに依らない）へ変えた。固定の分析軸
+ * （型×時間帯・長さ・改行・画像・URL）と「3投稿以上・差20%以上」の条件は廃止し、
+ * 良かった投稿の特徴づけはLLMの自由分析に任せる（運営者の判断・2026-08-15）。
+ *
+ * ここはLLMを使わない純粋な整形だけを持つ:
+ * - タイムラインの各投稿を `<posts>` 用の1行（本文冒頭・JST日時・実績・画像/URL有無）へ変換する
+ * - Exos AIで作った投稿には **型とテーマ** を付ける（drafts の tweet_ids と突合。分からなければ null。
+ *   「どの型が伸びたか」をLLMが根拠にできるのはこのタグがある投稿だけ）
+ *
+ * 取得上限は `SUGGEST_TIMELINE_MAX`（100件）。X読取は応答1件ごとに課金される（$0.005/件）ため、
+ * この定数が**1回の分析のX費用の上限**（100×$0.005=$0.50）を決める。変えるときは費用も変わる。
  */
-
-import { weightedLength } from "../post/text-metrics";
 
 export const SUGGEST_PERIOD_DAYS = 30;
-export const SUGGEST_MAX_POSTS = 50;
-export const SUGGEST_MIN_GROUP = 3;
-export const SUGGEST_METRIC = "impressions" as const;
-const DAY_MS = 86_400_000;
+/** タイムライン取得の上限件数 = X読取費用の上限（件数×X_COST_POST_READ_USD）。 */
+export const SUGGEST_TIMELINE_MAX = 100;
+/** 本文をLLMへ渡す長さ。特徴づけに十分で、100件でも入力が肥大しない値。 */
+export const SUGGEST_POST_TEXT_CHARS = 200;
 
-interface CheckpointValue {
-  impressions: number | null;
+/** タイムラインから来る1投稿（read-client の XRecentPost のうち使う部分）。 */
+export interface TimelinePostLike {
+  id: string;
+  text: string;
+  createdAt: string | null;
+  impressions?: number | null;
+  likes?: number | null;
+  reposts?: number | null;
+  replies?: number | null;
+  hasMedia?: boolean;
+  hasUrl?: boolean;
 }
 
-export interface SuggestionInputDraft {
-  pattern: string;
-  /** 添付画像の枚数（0なら画像なし）。画像の有無を軸にするために持つ（T-M7-38）。 */
-  imageCount?: number;
-  postedAt: string | null;
-  /** 投稿順の本文（tweet_ids と同順で対応）。 */
-  thread: { text?: string }[];
-  tweet_ids: string[];
-  status: string;
-  last_post_error: { remaining_tweet_ids?: string[]; deleted_tweet_ids?: string[] } | null;
-  tweet_metrics: Record<
-    string,
-    { checkpoints?: Partial<Record<string, CheckpointValue>>; unavailable_at?: string | null }
-  > | null;
+/** Exos AIで作った投稿のタグ（drafts から引く）。 */
+export interface DraftTag {
+  pattern: string | null;
+  theme: string | null;
 }
 
-export interface SuggestionStatCell {
-  pattern: string;
-  time_bucket: string;
-  count: number;
-  avg_impressions: number;
-}
-
-/** 軸1つ分の集計（値ごとの件数と平均）。 */
-export interface SuggestionAxisCell {
-  value: string;
-  count: number;
-  avg_impressions: number;
-}
-
-/** 分析軸の名前。`evidence.axis` と対応させる。 */
-export const SUGGESTION_AXES = ["pattern_time", "length", "line_blocks", "image", "url"] as const;
-export type SuggestionAxis = (typeof SUGGESTION_AXES)[number];
-
-/**
- * 加重文字数の帯。境界は投稿生成の目標（加重240＝約120字・T-M7-41）に合わせる。
- * これにより「目標内に収めた投稿は伸びたか」を実績で確認できる。
- */
-export function lengthBucket(weighted: number): string {
-  if (weighted <= 160) return "短(〜160)";
-  if (weighted <= 240) return "中(161〜240)";
-  return "長(241〜)";
-}
-
-/** 改行の塊数（空行区切り）。3以上はまとめる。 */
-export function lineBlockBucket(text: string): string {
-  const blocks = text.split(/\n{2,}/).filter((b) => b.trim() !== "").length;
-  if (blocks <= 1) return "1";
-  if (blocks === 2) return "2";
-  return "3+";
-}
-
-/** 本文にURLを含むか（Xは外部リンクの露出を抑える傾向があるため軸に入れる）。 */
-export function hasUrl(text: string): boolean {
-  return /https?:\/\//.test(text);
-}
-
+/** `<posts>` に載せる1行。LLMが読む形なのでキー名は意味が伝わる英語にする。 */
 export interface SuggestionPost {
-  tweet_id: string;
-  body: string;
-  pattern: string;
-  posted_at_jst: string;
-  impressions: number;
+  id: string;
+  text: string;
+  posted_at_jst: string | null;
+  impressions: number | null;
+  likes: number | null;
+  reposts: number | null;
+  replies: number | null;
+  has_image: boolean;
+  has_url: boolean;
+  /** このアプリで作った投稿の型（p1〜p6）。外部の投稿は null。 */
+  pattern: string | null;
+  /** このアプリで作った投稿のテーマID。外部の投稿は null。 */
+  theme: string | null;
 }
 
 export interface SuggestionInput {
-  checkpoint_days: 1 | 7;
-  metric: typeof SUGGEST_METRIC;
-  /** 型×時間帯のセル（従来の軸）。 */
-  stats: SuggestionStatCell[];
-  /** 追加の軸ごとの集計（T-M7-38）。軸名 → 値ごとの件数と平均。 */
-  axes: Record<Exclude<SuggestionAxis, "pattern_time">, SuggestionAxisCell[]>;
   posts: SuggestionPost[];
 }
 
-interface QualifyingTweet {
-  tweetId: string;
-  body: string;
-  pattern: string;
-  postedAtMs: number;
-  jstHour: number;
-  jstLabel: string;
-  impressions: number;
-  /** 加重文字数（本文全体。`body` は表示用に100字で切るため別に持つ）。 */
-  weighted: number;
-  /** 改行の塊数の帯。 */
-  lineBlocks: string;
-  hasImage: boolean;
-  hasUrl: boolean;
+/** codepoint単位で先頭n文字（絵文字のサロゲートペアを割らない）。 */
+function truncateChars(text: string, max: number): string {
+  const chars = [...text];
+  return chars.length <= max ? text : chars.slice(0, max).join("");
 }
 
-/** JST時刻（UTC+9）。argless Date は使わず ISO から純粋に算出する。 */
-function jstParts(iso: string): { hour: number; label: string } {
-  const jst = new Date(new Date(iso).getTime() + 9 * 3_600_000);
-  const h = jst.getUTCHours();
-  const m = jst.getUTCMinutes();
+/** ISO → `YYYY-MM-DD HH:mm`（JST）。読めない値は null（行ごと捨てない）。 */
+export function toJstLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  const jst = new Date(ms + 9 * 3600_000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return { hour: h, label: `${pad(h)}:${pad(m)}` };
+  return `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth() + 1)}-${pad(jst.getUTCDate())} ${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`;
 }
 
-/** JST時刻を3時間バケット（"0-3"〜"21-24"）へ。 */
-function timeBucket(jstHour: number): string {
-  const start = Math.floor(jstHour / 3) * 3;
-  return `${start}-${start + 3}`;
-}
-
-/** 集計対象の live tweet_id と本文（tweet_ids↔thread 同順対応）。rollback削除・unavailable は除外。 */
-function livePairs(d: SuggestionInputDraft): { id: string; body: string; full: string }[] {
-  const isFailed = d.status === "failed";
-  const deleted = new Set(d.last_post_error?.deleted_tweet_ids ?? []);
-  const liveSet = isFailed ? new Set(d.last_post_error?.remaining_tweet_ids ?? []) : null;
-  const pairs: { id: string; body: string; full: string }[] = [];
-  d.tweet_ids.forEach((id, i) => {
-    if (!id || deleted.has(id)) return;
-    if (liveSet && !liveSet.has(id)) return; // failed は remaining のみ
-    if (d.tweet_metrics?.[id]?.unavailable_at) return;
-    // 形の計測は全文で行う（`body` は表示用に100字で切る）。
-    const full = d.thread[i]?.text ?? "";
-    pairs.push({ id, body: full.slice(0, 100), full });
+/**
+ * タイムライン投稿を `<posts>` の形へ整える。
+ *
+ * - 並びは新しい順のまま（呼び出し側＝X APIの返却順を保つ）
+ * - `draftTags` は tweet_id → 型/テーマ。**threadの全tweet_idを同じdraftへ引ける**前提で作る
+ *   （先頭ポストしかタイムラインに出ない場合もあるため、どのIDでも引けるのが安全）
+ */
+export function buildSuggestionInput(
+  timeline: readonly TimelinePostLike[],
+  draftTags: ReadonlyMap<string, DraftTag>,
+): SuggestionInput {
+  const posts = timeline.slice(0, SUGGEST_TIMELINE_MAX).map((p) => {
+    const tag = draftTags.get(p.id);
+    return {
+      id: p.id,
+      text: truncateChars(p.text.replace(/\s+/g, " ").trim(), SUGGEST_POST_TEXT_CHARS),
+      posted_at_jst: toJstLabel(p.createdAt),
+      impressions: p.impressions ?? null,
+      likes: p.likes ?? null,
+      reposts: p.reposts ?? null,
+      replies: p.replies ?? null,
+      has_image: p.hasMedia ?? false,
+      has_url: p.hasUrl ?? false,
+      pattern: tag?.pattern ?? null,
+      theme: tag?.theme ?? null,
+    };
   });
-  return pairs;
+  return { posts };
 }
 
-/** 指定checkpointを取得済み（impressions 非null）の対象tweet群を、直近30日に限定して返す。 */
-function qualifying(drafts: SuggestionInputDraft[], checkpoint: 1 | 7, nowMs: number): QualifyingTweet[] {
-  const cutoff = nowMs - SUGGEST_PERIOD_DAYS * DAY_MS;
-  const out: QualifyingTweet[] = [];
-  for (const d of drafts) {
-    if (!d.postedAt) continue;
-    const postedAtMs = new Date(d.postedAt).getTime();
-    if (postedAtMs < cutoff) continue;
-    const { hour, label } = jstParts(d.postedAt);
-    for (const { id, body, full } of livePairs(d)) {
-      const imp = d.tweet_metrics?.[id]?.checkpoints?.[String(checkpoint)]?.impressions;
-      if (imp === null || imp === undefined) continue;
-      out.push({
-        tweetId: id,
-        body,
-        pattern: d.pattern,
-        postedAtMs,
-        jstHour: hour,
-        jstLabel: label,
-        impressions: imp,
-        weighted: weightedLength(full),
-        lineBlocks: lineBlockBucket(full),
-        // 画像は下書き単位で付くため、その下書きの全ポストを「画像あり」として数える。
-        hasImage: (d.imageCount ?? 0) > 0,
-        hasUrl: hasUrl(full),
-      });
+/**
+ * drafts の行から tweet_id → 型/テーマ の索引を作る。
+ * thread の**全ポストのID**を同じタグへ張る（引用や続きのポストがタイムラインに現れても引けるように）。
+ */
+export function buildDraftTagIndex(
+  rows: readonly { tweet_ids: string[] | null; pattern: string | null; theme: string | null }[],
+): Map<string, DraftTag> {
+  const index = new Map<string, DraftTag>();
+  for (const row of rows) {
+    for (const id of row.tweet_ids ?? []) {
+      index.set(id, { pattern: row.pattern, theme: row.theme });
     }
   }
-  return out;
-}
-
-/** 比較checkpoint = 7日取得済みが3件以上なら7、未満なら1（異なる経過日数を混ぜない・要件04 §12）。 */
-export function chooseCheckpoint(drafts: SuggestionInputDraft[], nowMs: number): 1 | 7 {
-  return qualifying(drafts, 7, nowMs).length >= SUGGEST_MIN_GROUP ? 7 : 1;
-}
-
-/** PT-SUGGEST の <stats>/<posts> を組み立てる（同一checkpointのみ・最大50件）。 */
-export function buildSuggestionInput(drafts: SuggestionInputDraft[], nowMs: number): SuggestionInput {
-  const checkpoint = chooseCheckpoint(drafts, nowMs);
-  const selected = qualifying(drafts, checkpoint, nowMs)
-    .sort((a, b) => b.postedAtMs - a.postedAtMs)
-    .slice(0, SUGGEST_MAX_POSTS);
-
-  const posts: SuggestionPost[] = selected.map((t) => ({
-    tweet_id: t.tweetId,
-    body: t.body,
-    pattern: t.pattern,
-    posted_at_jst: t.jstLabel,
-    impressions: t.impressions,
-  }));
-
-  const cells = new Map<string, { pattern: string; time_bucket: string; count: number; sum: number }>();
-  for (const t of selected) {
-    const bucket = timeBucket(t.jstHour);
-    const key = `${t.pattern}|${bucket}`;
-    const cell = cells.get(key) ?? { pattern: t.pattern, time_bucket: bucket, count: 0, sum: 0 };
-    cell.count += 1;
-    cell.sum += t.impressions;
-    cells.set(key, cell);
-  }
-  const stats: SuggestionStatCell[] = [...cells.values()]
-    .map((c) => ({
-      pattern: c.pattern,
-      time_bucket: c.time_bucket,
-      count: c.count,
-      avg_impressions: Math.round(c.sum / c.count),
-    }))
-    .sort((a, b) => (a.pattern === b.pattern ? a.time_bucket.localeCompare(b.time_bucket) : a.pattern.localeCompare(b.pattern)));
-
-  const axisOf = (key: Exclude<SuggestionAxis, "pattern_time">, t: QualifyingTweet): string => {
-    if (key === "length") return lengthBucket(t.weighted);
-    if (key === "line_blocks") return t.lineBlocks;
-    if (key === "image") return t.hasImage ? "あり" : "なし";
-    return t.hasUrl ? "あり" : "なし";
-  };
-  const axes = Object.fromEntries(
-    (["length", "line_blocks", "image", "url"] as const).map((key) => {
-      const buckets = new Map<string, { count: number; sum: number }>();
-      for (const t of selected) {
-        const value = axisOf(key, t);
-        const cell = buckets.get(value) ?? { count: 0, sum: 0 };
-        cell.count += 1;
-        cell.sum += t.impressions;
-        buckets.set(value, cell);
-      }
-      const cells: SuggestionAxisCell[] = [...buckets.entries()]
-        .map(([value, c]) => ({
-          value,
-          count: c.count,
-          avg_impressions: Math.round(c.sum / c.count),
-        }))
-        .sort((a, b) => a.value.localeCompare(b.value));
-      return [key, cells];
-    }),
-  ) as SuggestionInput["axes"];
-
-  return { checkpoint_days: checkpoint, metric: SUGGEST_METRIC, stats, axes, posts };
+  return index;
 }

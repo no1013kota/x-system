@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.27 |
-| 更新日 | 2026-08-12 |
+| バージョン | v1.28 |
+| 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -739,18 +739,24 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 
 ### 4.11 `improvement_suggestions.evidence`
 
+2026-08-15（T-M8-91）に刷新。`format: 2`で新旧を区別する（`format`が無い行は旧形式＝軸ベース。表示は縮退し、次回の実行で置き換わる）。
+
 ```json
 {
-  "tweet_ids": ["tweet_id_1", "tweet_id_2", "tweet_id_3"],
-  "metric": "impressions",
-  "checkpoint_days": 7,
-  "diff_pct": 40,
+  "format": 2,
+  "good_posts": [{ "id": "tweet_id_1", "why": "表示回数が3,200と最多だった" }],
+  "advice": {
+    "pattern": { "recommended": "p3", "reason": "手順を数字で示すノウハウ形式が伸びている" },
+    "theme": { "recommended": "ai", "reason": "AIツール紹介の題材が反応を得ている" },
+    "image": { "recommended": true, "reason": "画像付きの表示回数が上回った" },
+    "prompt": { "kind": "p3", "content": "# タスク\n…（そのまま貼れる生成プロンプト全文・最大8,000字）" }
+  },
   "window_days": 30,
-  "summary": "朝9時台のノウハウ投稿が平均40%高い"
+  "post_count": 12
 }
 ```
 
-`window_days`はコード側で30を付与する。他のfieldはPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。
+`format`・`window_days`（=30）・`post_count`（分析対象のタイムライン投稿数）はコード側で付与する。`good_posts`と`advice`はPT-SUGGEST出力（プロンプト設計書 §6.15）をzod検証して保存する。`content`カラムには良かった投稿の特徴（summary）が入る。
 
 ## 5. RLS方針
 
