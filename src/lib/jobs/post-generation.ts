@@ -78,6 +78,8 @@ interface JobRow {
     theme?: string | null;
     image_enabled?: boolean;
     news_item_id?: string | null;
+    /** この生成にだけ使うプロンプト（T-M8-92）。 */
+    prompt_override?: string | null;
     parent_draft_id?: string | null;
     previous_posts?: string[];
   };
@@ -330,10 +332,18 @@ export async function executePostGeneration(
   // --- stage: research（コンテキスト組み立て）---
   await recordStage("research");
   const system = buildGenSystem(job.base_md);
-  const patternPrompt = await resolvePromptTemplate(db, {
-    xAccountId: job.x_account_id,
-    kind: pattern,
-  });
+  // この生成にだけ使うプロンプト（T-M8-92）。指定があれば通常の解決を飛ばす。
+  // 保存はしない——恒久化は投稿作成画面の「保存して以後も使う」かAI設定＞プロンプトが担う。
+  const promptOverride =
+    typeof job.input?.prompt_override === "string" && job.input.prompt_override.trim() !== ""
+      ? job.input.prompt_override
+      : null;
+  const patternPrompt =
+    promptOverride ??
+    (await resolvePromptTemplate(db, {
+      xAccountId: job.x_account_id,
+      kind: pattern,
+    }));
   const recentPosts = await fetchRecentPostBodies(db, job.x_account_id);
   let newsDigest;
   if (pattern === "p6") {

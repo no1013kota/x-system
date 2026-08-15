@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.31 |
-| 更新日 | 2026-08-12 |
+| バージョン | v1.32 |
+| 更新日 | 2026-08-15 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -157,7 +157,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須 |
+| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`prompt_override`（最大8,000字・null可・T-M8-92）は**この生成にだけ**使うプロンプトで、通常の解決（アカウント上書き→system default→コード定数）を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない** |
 | `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |
@@ -226,11 +226,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `refreshSuggestions` | request_key | job_id | active jobがなければ`suggestion`を冪等作成。新metrics取得後かつ1日1回 |
+| `refreshSuggestions` | request_key | job_id | active jobがなければ`suggestion`を冪等作成。1日1回（同一JST日の成功で拒否）。新metrics条件は廃止（T-M8-91・データ源がXの直取得になったため） |
 
 実績集計（ホームSC-01の「直近の実績」）と改善提案の一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
-改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで発信設定・ベースmd編集（md/premium）で自ら反映する。
+改善提案は表示専用とする。承認・却下やベースmd・プロンプトへの自動反映のActionは持たず、ユーザーは提案を読んで投稿作成・スケジュール・AI設定のプロンプト編集（md/premium）で自ら反映する。提案のプロンプト全文は画面のコピー導線で持ち出す（専用の適用Actionは置かない）。
 
 入力検証の失敗（`validation_error`）は、**作者が自分で書いたzodメッセージがあればそれを `message` に載せる**（F8〜F10）。無ければ code ごとの定型文（「入力内容を確認してください。」）に落ちる。zodの既定メッセージは英語かつスキーマの説明（`Too big: expected string to have <=512 characters` 等）なので画面へ出さない——要件06 §8「内部用語を画面に使わない」に反するため。実装は `src/lib/validation/user-input.ts` の `parseUserInput`（per-parseのsentinel）＋ `firstAuthoredIssueMessage` / `authoredFieldErrors` が正本で、`code` は変えない。**Server Action と認証フォームで素の `safeParse` を使わないことは `user-input.test.ts` が検査する**（素のままだと既定文言と作者文言を区別できない）。
 

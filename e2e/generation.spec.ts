@@ -164,3 +164,56 @@ test("テーマを選ばないと生成を始められず、理由が画面に�
   await expect(generate).toBeEnabled();
   await expect(page.getByText("テーマを選ぶと生成できます。")).toHaveCount(0);
 });
+
+/**
+ * 投稿作成画面のプロンプト表示・編集（T-M8-92・md/premium）。
+ *
+ * 実際の生成はAI課金が出るため押さず、次を固定する:
+ * - 選択中の型の解決済みプロンプト（system default）が表示される
+ * - 編集すると「この生成にだけ使う／保存して以後の生成にも使う」を選べ、「元に戻す」で破棄できる
+ * - 型を切り替えると編集は破棄される（別の型へ持ち越さない）
+ */
+test("プロンプトを表示・編集でき、型の切替で編集が破棄される（T-M8-92）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("prompt-edit");
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  const section = page.locator("details", { hasText: "生成に使うプロンプト" });
+  await expect(section).toBeVisible();
+  await section.locator("summary").click();
+
+  const editor = page.getByLabel("生成に使うプロンプト", { exact: true });
+  // 既定パターン（p1）の system default が入っている。
+  await expect(editor).toHaveValue(/# タスク/);
+  await expect(editor).toHaveValue(/ニュース/);
+
+  // 編集 → 適用方法の選択と「元に戻す」が現れる。
+  await editor.fill("# タスク\nE2E編集テスト");
+  await expect(page.getByText("編集中")).toBeVisible();
+  await expect(page.getByLabel("この生成にだけ使う")).toBeChecked();
+  await expect(page.getByLabel("保存して以後の生成にも使う")).toBeVisible();
+
+  // 型を切り替えると編集は破棄され、切替先のプロンプトが入る。
+  await page.getByRole("radio", { name: /考え・意見/ }).check();
+  await expect(page.getByText("編集中")).toHaveCount(0);
+  await expect(editor).not.toHaveValue(/E2E編集テスト/);
+
+  // 「元に戻す」でも破棄できる。
+  await editor.fill("別の編集");
+  await page.getByRole("button", { name: "元に戻す" }).click();
+  await expect(page.getByText("編集中")).toHaveCount(0);
+});
+
+test("standardには生成プロンプトのセクションを出さない（T-M8-92）", async ({ accounts, page }) => {
+  const account = await accounts.create("prompt-std");
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  // 画面自体は使える（テーマ選択は出る）が、プロンプトのセクションは無い。
+  await expect(page.getByLabel("テーマ", { exact: true })).toBeVisible();
+  await expect(page.getByText("生成に使うプロンプト")).toHaveCount(0);
+});

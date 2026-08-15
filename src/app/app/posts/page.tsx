@@ -14,6 +14,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 const pooledDb = pooledQueryable();
 
 import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "@/lib/post/post-patterns";
+import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
@@ -85,7 +86,22 @@ async function createTabData(userId: string, activeXAccountId: string) {
   const patterns = env.FEATURE_QUOTE_POST_ENABLED
     ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
     : POST_PATTERN_OPTIONS;
-  const imageProviders = imageProvidersFor(profileResult.rows[0]?.plan ?? null, keyRows.rows);
+  const plan = profileResult.rows[0]?.plan ?? null;
+  const imageProviders = imageProvidersFor(plan, keyRows.rows);
+  // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは mdプラン以上
+  // （AI設定＞プロンプトと同じ境界）なので、standard には渡さない＝セクションごと出さない。
+  // updatedAt は「保存して以後も使う」の楽観ロック（AI設定と同じ仕組み）に使う。
+  let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =
+    null;
+  if (plan === "md" || plan === "premium") {
+    const listed = await listPromptTemplatesForUser(userId);
+    const patternIds = new Set(patterns.map((p) => p.id));
+    promptTemplates = Object.fromEntries(
+      listed.templates
+        .filter((tpl) => patternIds.has(tpl.kind))
+        .map((tpl) => [tpl.kind, { content: tpl.content, updatedAt: tpl.updatedAt, isOverride: tpl.isOverride }]),
+    );
+  }
   const inflight = inflightResult.rows[0];
   const initialJob: ActiveJob | null = inflight
     ? {
@@ -97,7 +113,7 @@ async function createTabData(userId: string, activeXAccountId: string) {
         error: null,
       }
     : null;
-  return { patterns, imageProviders, initialJob };
+  return { patterns, imageProviders, initialJob, promptTemplates };
 }
 
 export default async function PostsPage({ searchParams }: PostsPageProps) {
@@ -173,6 +189,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           imageProviders={createData.imageProviders}
           initialJob={createData.initialJob}
           patterns={createData.patterns}
+          promptTemplates={createData.promptTemplates}
           xAccountId={activeXAccountId}
         />
       ) : tab === "drafts" ? (

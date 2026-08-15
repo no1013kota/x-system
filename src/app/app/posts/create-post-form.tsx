@@ -20,7 +20,12 @@ import { POST_THEME_OPTIONS } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
+import type { PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
+
+/** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
+const PROMPT_MAX_CHARS = 8000;
 
 export interface ActiveJob {
   id: string;
@@ -77,16 +82,26 @@ interface PrereqError {
   missing?: PrereqItem[];
 }
 
+/** 生成に使うプロンプト（型ごと）。updatedAt は「保存」の楽観ロックに使う（T-M8-92）。 */
+export interface PromptTemplateProp {
+  content: string;
+  updatedAt: string | null;
+  isOverride: boolean;
+}
+
 export function CreatePostForm({
   xAccountId,
   patterns,
   imageProviders,
   initialJob = null,
+  promptTemplates = null,
 }: {
   xAccountId: string;
   patterns: PostPatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
+  /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。 */
+  promptTemplates?: Record<string, PromptTemplateProp> | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
@@ -99,6 +114,15 @@ export function CreatePostForm({
   const [instructions, setInstructions] = useState("");
   const [userOpinion, setUserOpinion] = useState("");
   const [imageEnabled, setImageEnabled] = useState(false);
+  /**
+   * 生成に使うプロンプト（T-M8-92・md/premium）。
+   * `templates` はサーバー解決値のローカルコピー（「保存」成功時に更新する）。
+   * `promptDraft` は編集中の本文（null = 未編集）。型を切り替えたら編集を破棄する
+   * （別の型のプロンプトに前の型の編集を残すと、意図しない指示で生成される）。
+   */
+  const [templates, setTemplates] = useState(promptTemplates);
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  const [promptApply, setPromptApply] = useState<"once" | "save">("once");
   const [prereq, setPrereq] = useState<PrereqError | null>(null);
   const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
@@ -135,9 +159,49 @@ export function CreatePostForm({
     return () => clearInterval(timer);
   }, [job?.id, job?.status, job?.createdAt, job, toast]);
 
+  const currentTemplate = templates?.[pattern] ?? null;
+  const promptValue = promptDraft ?? currentTemplate?.content ?? "";
+  const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
+  const promptOverLimit = promptValue.length > PROMPT_MAX_CHARS;
+
   function submit() {
     setPrereq(null);
     startTransition(async () => {
+      // プロンプトを編集して「保存して以後も使う」を選んだ場合は、生成の前に保存を確定する
+      // （保存に失敗したのに生成だけ走ると、どのプロンプトで生成されたか分からなくなる）。
+      let promptOverride: string | undefined;
+      if (templates && promptEdited && promptDraft !== null) {
+        if (promptApply === "save") {
+          const saved = await updatePromptTemplateAction({
+            kind: pattern as PromptTemplateKind,
+            content: promptDraft,
+            expected_updated_at: currentTemplate?.updatedAt ?? null,
+          });
+          if (saved.status === "error" || !saved.template) {
+            toast.show({
+              tone: "error",
+              title: "プロンプトを保存できませんでした",
+              description:
+                saved.code === "job_conflict"
+                  ? "プロンプトが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
+                  : saved.message,
+            });
+            return;
+          }
+          setTemplates({
+            ...templates,
+            [pattern]: {
+              content: saved.template.content,
+              updatedAt: saved.template.updatedAt,
+              isOverride: saved.template.isOverride,
+            },
+          });
+          setPromptDraft(null);
+          // 保存済み＝通常の解決で同じ内容が使われるため、override は送らない。
+        } else {
+          promptOverride = promptDraft;
+        }
+      }
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
@@ -147,6 +211,7 @@ export function CreatePostForm({
         user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
+        prompt_override: promptOverride,
       });
       if (res.status === "error") {
         const settingsPath = res.details?.settingsPath as string | undefined;
@@ -231,10 +296,78 @@ export function CreatePostForm({
         */}
         <PatternRadioGroup
           name="pattern"
-          onChange={setPattern}
+          onChange={(next) => {
+            setPattern(next);
+            // 型を切り替えたら編集中のプロンプトを破棄する（別の型に前の編集を持ち越さない）。
+            setPromptDraft(null);
+            setPromptApply("once");
+          }}
           options={patterns}
           value={pattern}
         />
+
+        {templates ? (
+          <details className="rounded-card border border-hairline bg-page">
+            <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
+              生成に使うプロンプト
+              {currentTemplate?.isOverride && !promptEdited ? (
+                <span className="ml-2 text-caption text-ink-3">カスタム</span>
+              ) : null}
+              {promptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
+            </summary>
+            <div className="space-y-3 px-4 pb-4">
+              <p className="text-xs text-muted-foreground">
+                選択中の型で生成に使われるプロンプトです。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
+              </p>
+              <textarea
+                aria-label="生成に使うプロンプト"
+                className="min-h-40 w-full rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5 transition-colors duration-150 focus:border-brand focus:outline-none"
+                onChange={(e) => setPromptDraft(e.target.value)}
+                value={promptValue}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`text-xs ${promptOverLimit ? "text-danger-fg" : "text-muted-foreground"}`}>
+                  {promptValue.length.toLocaleString()} / {PROMPT_MAX_CHARS.toLocaleString()}字
+                </span>
+                {promptEdited ? (
+                  <>
+                    <label className="flex items-center gap-1.5 text-body">
+                      <input
+                        checked={promptApply === "once"}
+                        name="prompt-apply"
+                        onChange={() => setPromptApply("once")}
+                        type="radio"
+                      />
+                      この生成にだけ使う
+                    </label>
+                    <label className="flex items-center gap-1.5 text-body">
+                      <input
+                        checked={promptApply === "save"}
+                        name="prompt-apply"
+                        onChange={() => setPromptApply("save")}
+                        type="radio"
+                      />
+                      保存して以後の生成にも使う
+                    </label>
+                    <button
+                      className="text-body text-info-fg hover:underline"
+                      onClick={() => {
+                        setPromptDraft(null);
+                        setPromptApply("once");
+                      }}
+                      type="button"
+                    >
+                      元に戻す
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              {promptOverLimit ? (
+                <Notice tone="danger">プロンプトは{PROMPT_MAX_CHARS.toLocaleString()}字以内で入力してください。</Notice>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
 
         <div>
           <label className="block text-body font-medium text-ink" htmlFor="theme">
@@ -327,7 +460,7 @@ export function CreatePostForm({
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
           className="h-10 w-full gap-1.5 text-body"
-          disabled={pending || inProgress || !theme}
+          disabled={pending || inProgress || !theme || promptOverLimit}
           onClick={submit}
           type="button"
           variant="gradient"
