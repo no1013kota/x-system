@@ -17,7 +17,6 @@ import {
 } from "@/lib/persona-settings";
 import {
   listLearningSourcesForUser,
-  ownPostsReimportEligibilityForAccount,
 } from "@/lib/learning-sources-server";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import {
@@ -118,13 +117,10 @@ export default async function AiSettingsPage({
   const plan = profile.data?.plan ?? "standard";
   // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
   const hasStripeCustomer = Boolean(profile.data?.stripe_customer_id);
+  // 参考ソースはアカウント設定タブの一番下に置く（T-M8-103。学習ソースタブは廃止）。
   let learningSources: LearningSourceView[] = [];
-  let ownPostsNextEligibleAt: string | null = null;
-  if (tab === "learning" && account) {
-    [learningSources, { nextEligibleAt: ownPostsNextEligibleAt }] = await Promise.all([
-      listLearningSourcesForUser(user.id, account.id),
-      ownPostsReimportEligibilityForAccount(account.id),
-    ]);
+  if (tab === "persona" && account && account.base_md_version >= 1) {
+    learningSources = await listLearningSourcesForUser(user.id, account.id);
   }
   let baseMdHistory: BaseMdVersionView[] = [];
   let baseMdLearningRunning = false;
@@ -186,29 +182,19 @@ export default async function AiSettingsPage({
             title="Xアカウントを選択してください"
           />
         ) : tab === "persona" ? (
-          <PersonaSettingsForm
-            accountHandle={account.handle}
-            baseMdVersion={account.base_md_version}
-            initialDifference={initialDifference}
-            initialSettings={initialSettings}
-            xAccountId={account.id}
-          />
-        ) : tab === "learning" ? (
-          account.base_md_version < 1 ? (
-            <EmptyState
-              actionHref="/app/ai-settings?tab=persona"
-              actionLabel="アカウント設定へ"
-              description="学習の反映先となるアカウント.mdを、先にアカウント設定から保存してください。"
-              title="先にアカウント設定を保存してください"
-            />
-          ) : (
-            <LearningSourcesManager
-              initialOwnPostsNextEligibleAt={ownPostsNextEligibleAt}
-              initialSources={learningSources}
-              plan={plan}
+          <div className="space-y-8">
+            <PersonaSettingsForm
+              accountHandle={account.handle}
+              baseMdVersion={account.base_md_version}
+              initialDifference={initialDifference}
+              initialSettings={initialSettings}
               xAccountId={account.id}
             />
-          )
+            {/* 参考ソースは学習の反映先（アカウント.md）ができてから出す（T-M8-103）。 */}
+            {account.base_md_version >= 1 ? (
+              <LearningSourcesManager initialSources={learningSources} xAccountId={account.id} />
+            ) : null}
+          </div>
         ) : tab === "base-md" ? (
           plan === "standard" ? (
             <LockedState

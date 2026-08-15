@@ -3,7 +3,6 @@ import "server-only";
 import { pooledQueryable } from "./db/pool";
 import {
   listLearningSources,
-  ownPostsReimportEligibility,
   type LearningSourceView,
 } from "./learning-sources";
 
@@ -18,8 +17,3 @@ export function listLearningSourcesForUser(
   return listLearningSources(pooledDb, userId, xAccountId);
 }
 
-export function ownPostsReimportEligibilityForAccount(
-  xAccountId: string,
-): Promise<{ nextEligibleAt: string | null }> {
-  return ownPostsReimportEligibility(pooledDb, xAccountId);
-}

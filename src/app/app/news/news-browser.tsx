@@ -141,7 +141,7 @@ export function NewsBrowser({
           });
         } else if (reason === "learning_removing") {
           notify("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
-            href: "/app/ai-settings?tab=learning",
+            href: "/app/ai-settings?tab=persona",
             label: "学習ソースを見る",
           });
         } else {

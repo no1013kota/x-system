@@ -96,7 +96,7 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
 test("学習ソースを追加すると分析中として並び、削除できる", async ({ accounts, page }) => {
   const account = await accounts.create("learning");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=learning");
+  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
 
   await expect(page.getByRole("heading", { name: "参考ソースを追加" })).toBeVisible();
 
@@ -168,50 +168,6 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     .not.toBe("analyzed");
 });
 
-test("学習の取り込みが失敗しても行き止まりにならず、その場でやり直せる（T-M7-39の回帰）", async ({
-  accounts,
-  page,
-}) => {
-  // 2026-07-26、own_posts の分析が失敗した状態で30日ゲートが効き、「次回の再取り込みまであと25日」と
-  // 出たままボタンが押せなくなっていた（壊れた機能を直せない行き止まり）。失敗はゲートに数えない。
-  const account = await accounts.create("learning-failed");
-  await query(
-    `insert into learning_sources (x_account_id, type, url, status)
-     values ($1, 'own_posts', null, 'failed')`,
-    [account.xAccountId],
-  );
-  await query(
-    `insert into generation_jobs (x_account_id, kind, trigger, learning_source_id, status, created_at)
-     select $1, 'learning_analysis', 'manual', id, 'failed', now() - interval '1 hour'
-       from learning_sources where x_account_id = $1 and type = 'own_posts'`,
-    [account.xAccountId],
-  );
-
-  await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=learning");
-
-  // 失敗が見え、次に何をすればよいかが書かれている
-  await expect(page.getByText("分析に失敗しました", { exact: false })).toBeVisible();
-  await expect(page.getByText("「再取り込み」からやり直せます", { exact: false })).toBeVisible();
-
-  // ボタンが押せる（30日待たされない）
-  const reimport = page.getByRole("button", { name: "再取り込み" });
-  await expect(reimport).toBeEnabled();
-  await expect(page.getByText("次回の再取り込みまであと", { exact: false })).toHaveCount(0);
-
-  // 一覧の「失敗」が**色でも**分かる（T-M8-36）。以前は背景色の指定が無い生の span で、
-  // 「分析待ち」「反映済み」「失敗」「削除処理中」が全部同じ見た目だった。
-  // 学習の失敗はアカウント.mdへ知見が反映されない状態なので、一覧をざっと見て気付けないと実害がある。
-  const statusChip = page.getByText("失敗", { exact: true });
-  await expect(statusChip).toBeVisible();
-  // poll してから比べる（1発勝負だと落ちた原因が切り分けられない・T-M8-51）。
-  await expect
-    .poll(() => statusChip.evaluate((el) => getComputedStyle(el).backgroundColor), {
-      message: "「失敗」のチップに tone の背景色が当たること",
-    })
-    .not.toBe("rgba(0, 0, 0, 0)");
-});
-
 test("通常プランではアカウント.md・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
   accounts,
   page,
@@ -261,7 +217,7 @@ test("URLが空のあいだ「追加」は押せず、理由が画面に出る�
 }) => {
   const account = await accounts.create("learning-empty-url", { personaReady: true });
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=learning");
+  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
 
   const add = page.getByRole("button", { name: "追加", exact: true });
   await expect(add).toBeDisabled();

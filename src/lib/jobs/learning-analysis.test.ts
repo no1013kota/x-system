@@ -51,13 +51,6 @@ function textGen(responses: string[]): TextGen {
 
 const L1 = JSON.stringify({ style: "s", structure: "st", topics: "t", takeaway: "tk" });
 const L2 = JSON.stringify({ why: "w", pattern: "p", caution: "c" });
-const L3 = JSON.stringify({
-  vocabulary: "v",
-  tone: "to",
-  perspective: "pe",
-  signature: "si",
-  examples: "ex",
-});
 
 function deps(
   over: Partial<LearningAnalysisDeps> & { db: Queryable },
@@ -68,7 +61,6 @@ function deps(
     resolveProvider: async () => ({ textGen: textGen([L1]), provider: "anthropic", model: "m" }),
     fetchReferenceAccountPosts: async () => ["a", "b"],
     fetchReferencePost: async () => ({ text: "post", metrics: { like_count: 9 } }),
-    fetchOwnPosts: async () => ["x", "y"],
     recordStage: async () => {},
     now: () => 0,
     makeDeadline: () => ({ remainingMs: () => 90_000, canStartCall: () => true, callTimeoutMs: () => 90_000 }),
@@ -115,19 +107,15 @@ describe("executeLearningAnalysis", () => {
     expect(JSON.parse(writes.find((w) => SAVE_ANALYSIS.test(w.sql))!.params[1] as string).why).toBe("w");
   });
 
-  it("analyzes own_posts (PT-L3)", async () => {
-    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null as unknown as string, status: "pending", plan: "md" }));
-    const res = await executeLearningAnalysis(
-      deps({ db, resolveProvider: async () => ({ textGen: textGen([L3]), provider: "anthropic", model: "m" }) }),
-    );
-    expect(res.status).toBe("analyzed");
-    expect(JSON.parse(writes.find((w) => SAVE_ANALYSIS.test(w.sql))!.params[1] as string).vocabulary).toBe("v");
+  it("廃止された own_posts source が残っていても黙って分析せず invalid_source で止める（T-M8-103）", async () => {
+    const { db } = mockDb(jobHandler({ type: "own_posts", url: null, status: "pending", plan: "md" }));
+    await expect(executeLearningAnalysis(deps({ db }))).rejects.toMatchObject({ code: "invalid_source" });
   });
 
   it("records the cost ledger only after MD-MERGE/analyzed (terminal success), keyed lrn:{jobId}:{seq}", async () => {
-    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null as unknown as string, status: "pending", plan: "premium" }));
+    const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
     await executeLearningAnalysis(
-      deps({ db, resolveProvider: async () => ({ textGen: textGen([L3]), provider: "anthropic", model: "m" }) }),
+      deps({ db, resolveProvider: async () => ({ textGen: textGen([L1]), provider: "anthropic", model: "m" }) }),
     );
     const ledger = writes.filter((w) => LEDGER.test(w.sql));
     expect(ledger).toHaveLength(1); // 1 analysis call → 1 ledger row
@@ -188,12 +176,12 @@ describe("executeLearningAnalysis", () => {
   });
 
   it("X読取で落ちた場合は research 段として残す", async () => {
-    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null, status: "pending", plan: "premium" }));
+    const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
     await expect(
       executeLearningAnalysis(
         deps({
           db,
-          fetchOwnPosts: async () => {
+          fetchReferenceAccountPosts: async () => {
             throw new Error("x api 403: forbidden");
           },
         }),
@@ -205,12 +193,12 @@ describe("executeLearningAnalysis", () => {
   });
 
   it("生の原因が長すぎる場合は切り詰めて保存する", async () => {
-    const { db, writes } = mockDb(jobHandler({ type: "own_posts", url: null, status: "pending", plan: "premium" }));
+    const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
     await expect(
       executeLearningAnalysis(
         deps({
           db,
-          fetchOwnPosts: async () => {
+          fetchReferenceAccountPosts: async () => {
             throw new Error("x".repeat(5000));
           },
         }),
