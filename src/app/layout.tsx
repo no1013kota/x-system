@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { env } from "@/lib/env";
 import { Geist_Mono, Inter, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
@@ -43,6 +44,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Exos AI",
   description: "AIによるX運用の自動化・半自動化",
+  /**
+   * OGP画像（`app/opengraph-image.png`）を絶対URLへ解決するための基準（T-M8-111）。
+   * 未設定だとNext.jsが localhost で組み立て、SNSのカードで画像が出ない。
+   * `APP_BASE_URL` はX OAuthのredirect_uriと同じ値を使う（環境ごとに正しい本番URLが入る）。
+   */
+  metadataBase: env.APP_BASE_URL ? new URL(env.APP_BASE_URL) : null,
 };
 
 /**

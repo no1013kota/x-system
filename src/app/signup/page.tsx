@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LogoTile } from "@/components/app-shell/brand-logo";
 import Link from "next/link";
 
 import { LegalFooter } from "@/components/legal-footer";
@@ -18,13 +19,7 @@ export default function SignUpPage() {
           <header className="space-y-2 text-center">
             {/* ヘッダはlogin/page.tsxと同じ構成（ロゴマーク＋アプリ名・T-M8-60）。 */}
             <span className="inline-flex items-center justify-center gap-2">
-              <span
-                aria-hidden="true"
-                className="grid size-7 place-items-center rounded-card text-[15px] font-bold text-white"
-                style={{ backgroundImage: "var(--brand-gradient-logo)" }}
-              >
-                S
-              </span>
+              <LogoTile size={28} />
               <Link className="text-[16px] font-bold tracking-tight text-ink" href="/">
                 {APP_NAME}
               </Link>
