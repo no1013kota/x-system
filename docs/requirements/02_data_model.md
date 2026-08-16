@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.37 |
+| バージョン | v1.38 |
 | 更新日 | 2026-08-15 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -40,7 +40,7 @@
 | `draft_status` | `draft`, `posting`, `posted`, `discarded`, `failed` |
 | `posted_mode` | `auto`, `manual` |
 | `schedule_mode` | `draft`, `auto` |
-| `usage_counter_type` | `post_normal`, `post_url`, `generation`, `image` |
+| `usage_counter_type` | `post_normal`, `post_url`, `generation`, `image`, `ai_credit`（T-M8-109。generation/imageは旧イベント行の互換で残置） |
 | `usage_event_reason` | `reserve`, `refund`, `consume` |
 | `usage_event_operation` | `generation`, `image_generation`, `post_create`, `post_delete` |
 | `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary` |
@@ -355,13 +355,13 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `month` | `text` | not null | JST `YYYY-MM` |
 | `counter_type` | `usage_counter_type` | not null |  |
 | `operation` | `usage_event_operation` | not null | 消費・予約の操作種別 |
-| `delta` | `integer` | not null | 消費/返還クレジット数（±1〜±10・T-M8-108。上位モデルは倍数消費） |
+| `delta` | `integer` | not null | 消費/返還クレジット数（±1〜±100000・T-M8-109。AIクレジットは円建て見積もり/実費） |
 | `reason` | `usage_event_reason` | not null |  |
 | `idempotency_key` | `text` | not null unique | 二重処理防止 |
 | `ref_event_id` | `uuid` | self FK nullable | refund元reserve |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Constraints: month形式、deltaは±1〜±10かつ0でない（migration `20260815000004`。カタログ最大倍数5に余裕を持たせた値）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
+Constraints: month形式、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
 Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`
 
@@ -375,13 +375,12 @@ RLS: 本人select可。writeはServer only。
 | `month` | `text` | not null | JST `YYYY-MM` |
 | `normal_posts_count` | `integer` | not null default 0 | URLなし通常投稿枠 |
 | `url_posts_count` | `integer` | not null default 0 | URL付き投稿枠 |
-| `generations_count` | `integer` | not null default 0 | 生成枠 |
-| `images_count` | `integer` | not null default 0 | 画像枠 |
+| `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109。1クレジット=1円相当・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
 PK: (`user_id`, `month`)
 
-Constraints: month形式、各countは0以上。上限はpremiumの`normal_posts_count <= 200`、`url_posts_count <= 20`、`generations_count <= 100`、`images_count <= 20`。
+Constraints: month形式、各countは0以上。X投稿の上限はpremiumの`normal_posts_count <= 200`、`url_posts_count <= 20`。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
 
 RLS: 本人select可。writeはServer only。
 

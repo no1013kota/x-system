@@ -69,7 +69,7 @@ describe("finalizeFailedJob", () => {
     });
     await finalizeFailedJob(db, "j1", "post_generation");
     const counter = writes.find((w) => COUNTER.test(w.sql));
-    expect(counter?.sql).toContain("generations_count");
+    expect(counter?.sql).toContain("ai_credits_used"); // AIクレジット一本化（T-M8-109）
     expect(counter?.params).toEqual(["u1", "2026-07", 1]); // 第3引数=返還量（可変クレジット・T-M8-108）
   });
 

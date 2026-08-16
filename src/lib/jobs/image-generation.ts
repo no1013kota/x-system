@@ -14,7 +14,8 @@ import { formatFailureRawError } from "../ai/raw-error";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { reserveIfPremium } from "../usage/reserve-if-premium";
+import { reserveIfPremium, settleIfPremium } from "../usage/reserve-if-premium";
+import { estimateImageCost } from "../ai/pricing";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { createDraftCreatedNotification } from "./notifications";
@@ -110,7 +111,7 @@ export interface ImageGenerationDeps {
   resolveImage: (input: {
     plan: string;
     userId: string;
-  }) => Promise<{ imageGen: ImageGen; provider: string }>;
+  }) => Promise<{ imageGen: ImageGen; model?: string; provider: string }>;
   /** private Storage へ保存（server配線は Supabase admin storage.upload）。 */
   uploadImage: (params: { path: string; bytes: Buffer; contentType: string }) => Promise<void>;
   /** 旧object削除（再生成の置換後 best-effort。server配線は Supabase admin storage.remove）。 */
@@ -312,7 +313,7 @@ export async function executeImageGeneration(
     calls.push(...prompted.usage.calls);
 
     // --- 画像生成 → 正規化（JPG/PNG/WEBP・5MB以下）→ Storage 保存 ---
-    const { imageGen, provider: imageProvider } = await deps.resolveImage({
+    const { imageGen, model: imageModel, provider: imageProvider } = await deps.resolveImage({
       plan: job.plan,
       userId: job.user_id,
     });
@@ -323,11 +324,12 @@ export async function executeImageGeneration(
       aspectRatio: toAspectRatio(prompted.parsed.aspect),
       timeoutMs: deadline.callTimeoutMs(),
     });
-    // 画像生成 call を原価台帳用に記録する（要件02 §3.17）。画像は単価表を持たないため estimated_cost_usd は null。
+    // 画像生成 call を原価台帳用に記録する（要件02 §3.17）。原価はモデル別の1枚あたり概算単価
+    //（pricing.ts IMAGE_FLAT_RATES_USD・T-M8-109。未知モデルはnull=算出不能）。
     calls.push({
       // resolveImage は openai/google のみ返す（api_provider enum に含まれる）。
       provider: imageProvider as Provider,
-      model: "",
+      model: imageModel ?? "",
       operation: "image_generation",
       request_id: generated.requestId,
       status: "succeeded",
@@ -339,7 +341,7 @@ export async function executeImageGeneration(
       cache_hit: false,
       citations: [],
       error_code: null,
-      estimated_cost_usd: null,
+      estimated_cost_usd: estimateImageCost(imageModel),
     });
     const normalized = await normalizeForX(generated.image.bytes);
 
@@ -364,6 +366,13 @@ export async function executeImageGeneration(
       ]),
     ]);
     await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);
+    // AIクレジットを実費で精算（premium・T-M8-109）。画像分はモデル別の概算単価が実費になる。
+    await settleIfPremium(deps.runInTx, {
+      plan: job.plan,
+      jobId,
+      type: "image",
+      estimatedCostUsdTotal: calls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),
+    });
     // 初回生成のみ draft_created を送る（再生成はdraft既存・UIがjob pollで検知する）。
     if (!isRegenerate) {
       await createDraftCreatedNotification(db, { userId: job.user_id, draftId });

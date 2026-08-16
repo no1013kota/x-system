@@ -12,8 +12,8 @@ export type PlanId = (typeof DB_ENUMS.plan_type)[number];
 export interface PremiumUsageLimits {
   normalPosts: number;
   urlPosts: number;
-  generations: number;
-  images: number;
+  /** AIクレジット（T-M8-109。1クレジット=1円相当・文章/画像のAI実行で実費消費）。 */
+  aiCredits: number;
 }
 
 export interface PlanDefinition {
@@ -57,8 +57,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     usageLimits: {
       normalPosts: 200,
       urlPosts: 20,
-      generations: 100,
-      images: 20,
+      aiCredits: 1000,
     },
     canEditMdAndPrompts: true,
   },

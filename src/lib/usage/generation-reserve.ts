@@ -14,9 +14,14 @@ import { notifyUsageThresholds } from "./usage-threshold";
 
 export type UsageReserveType = "generation" | "image";
 
+/** T-M8-109: 文章・画像とも1本のAIクレジット（金額制）へ計上する。typeは冪等キーとoperationの区別に残す。 */
 const COUNTER_COLUMN: Record<UsageReserveType, string> = {
-  generation: "generations_count",
-  image: "images_count",
+  generation: "ai_credits_used",
+  image: "ai_credits_used",
+};
+const COUNTER_TYPE: Record<UsageReserveType, string> = {
+  generation: "ai_credit",
+  image: "ai_credit",
 };
 const OPERATION: Record<UsageReserveType, string> = {
   generation: "generation",
@@ -75,7 +80,7 @@ export async function reserveUsage(
      values ($1, $2, $3, ${CURRENT_MONTH_JST_SQL},
              $4::usage_counter_type, $5::usage_event_operation, $7, 'reserve', $6)
      on conflict (idempotency_key) do nothing`,
-    [params.userId, params.xAccountId ?? null, params.jobId, params.type, OPERATION[params.type], key, amount],
+    [params.userId, params.xAccountId ?? null, params.jobId, COUNTER_TYPE[params.type], OPERATION[params.type], key, amount],
   );
   const updated = await tx.query<{ n: number }>(
     `update usage_counters set ${column} = ${column} + $2, updated_at = now()
@@ -86,9 +91,73 @@ export async function reserveUsage(
   // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
   await notifyUsageThresholds(tx, {
     userId: params.userId,
-    key: params.type === "generation" ? "generations" : "images",
+    key: "ai_credits",
     newCount: updated.rows[0]?.n ?? 0,
   });
+  return true;
+}
+
+/**
+ * 成功確定時の精算（T-M8-109）。reserveした見積もりと実費（クレジット）の差分を調整する:
+ * 実費>見積もり→追加consume（**上限チェックしない**——既に発生した実費は拒否できない）、
+ * 実費<見積もり→部分refund。reserveが無い（BYOK）・差分0はno-op。冪等（settle keyのon conflict）。
+ */
+export async function settleUsage(
+  tx: Queryable,
+  params: { jobId: string; type: UsageReserveType; actualCredits: number },
+): Promise<boolean> {
+  const reserveKey = `job:${params.jobId}:${params.type}:reserve`;
+  const settleKey = `job:${params.jobId}:${params.type}:settle`;
+  const actual = Math.max(1, Math.ceil(params.actualCredits));
+  const { rows } = await tx.query<{
+    id: string;
+    user_id: string;
+    x_account_id: string | null;
+    month: string;
+    delta: number;
+  }>(
+    `select id, user_id, x_account_id, month, delta from usage_events
+      where idempotency_key = $1 and reason = 'reserve'`,
+    [reserveKey],
+  );
+  const reserve = rows[0];
+  if (!reserve) return false; // BYOK（reserveなし）
+  const diff = actual - reserve.delta;
+  if (diff === 0) return false;
+  const inserted = await tx.query(
+    `insert into usage_events
+       (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key, ref_event_id)
+     values ($1, $2, $3, $4, 'ai_credit'::usage_counter_type,
+             $5::usage_event_operation, $6, $7, $8, $9)
+     on conflict (idempotency_key) do nothing
+     returning id`,
+    [
+      reserve.user_id,
+      reserve.x_account_id,
+      params.jobId,
+      reserve.month,
+      OPERATION[params.type],
+      diff,
+      diff > 0 ? "consume" : "refund",
+      settleKey,
+      reserve.id,
+    ],
+  );
+  if (!inserted.rowCount) return false; // 既に精算済み（冪等）
+  const updated = await tx.query<{ n: number }>(
+    `update usage_counters
+        set ai_credits_used = greatest(0, ai_credits_used + $3), updated_at = now()
+      where user_id = $1 and month = $2
+      returning ai_credits_used as n`,
+    [reserve.user_id, reserve.month, diff],
+  );
+  if (diff > 0) {
+    await notifyUsageThresholds(tx, {
+      userId: reserve.user_id,
+      key: "ai_credits",
+      newCount: updated.rows[0]?.n ?? 0,
+    });
+  }
   return true;
 }
 
@@ -117,11 +186,9 @@ export async function refundUsage(
   );
   const refunded = rows[0];
   if (!refunded) return false;
-  const column =
-    refunded.counter_type === "generation" ? "generations_count" : "images_count";
-  // refund行のdeltaは -reserve量。counterはその絶対値ぶん戻す（可変量・T-M8-108）。
+  // refund行のdeltaは -reserve量。counterはその絶対値ぶん戻す（可変量・T-M8-108/109）。
   await tx.query(
-    `update usage_counters set ${column} = greatest(0, ${column} - $3), updated_at = now()
+    `update usage_counters set ai_credits_used = greatest(0, ai_credits_used - $3), updated_at = now()
       where user_id = $1 and month = $2`,
     [refunded.user_id, refunded.month, Math.abs(refunded.delta)],
   );

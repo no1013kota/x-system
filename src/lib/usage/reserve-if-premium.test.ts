@@ -15,15 +15,10 @@ import { RESERVE_LIMIT_BY_TYPE, reserveIfPremium } from "./reserve-if-premium";
  */
 
 describe("RESERVE_LIMIT_BY_TYPE", () => {
-  it("種別ごとに正しい上限を引く（取り違えを機械で止める）", () => {
-    expect(RESERVE_LIMIT_BY_TYPE.generation).toBe(PLANS.premium.usageLimits?.generations);
-    expect(RESERVE_LIMIT_BY_TYPE.image).toBe(PLANS.premium.usageLimits?.images);
-  });
-
-  it("文章と画像の上限は別物（片方をもう片方に流用していない）", () => {
-    // 値が同じでも参照元が違うことは上のテストで担保している。ここは値の独立性を見る。
-    expect(PLANS.premium.usageLimits?.generations).toBeDefined();
-    expect(PLANS.premium.usageLimits?.images).toBeDefined();
+  it("文章・画像とも同じAIクレジット上限を共有する（T-M8-109）", () => {
+    expect(RESERVE_LIMIT_BY_TYPE.generation).toBe(PLANS.premium.usageLimits?.aiCredits);
+    expect(RESERVE_LIMIT_BY_TYPE.image).toBe(PLANS.premium.usageLimits?.aiCredits);
+    expect(PLANS.premium.usageLimits?.aiCredits).toBe(1000);
   });
 });
 
@@ -71,15 +66,15 @@ describe("reserveIfPremium", () => {
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
     expect(insert, "usage_eventsへのreserveが走る").toBeTruthy();
-    // reserveUsage の $7 = amount。Fable 5（$10/$50）は基準Sonnet 5（$2/$10）の5倍。
-    expect(insert!.params[6]).toBe(5);
+    // reserveUsage の $7 = amount（見積もりクレジット）。基準16 × Fable 5の5倍 = 80。
+    expect(insert!.params[6]).toBe(80);
   });
 
-  it("未選択（おまかせ）は1クレジット", async () => {
+  it("未選択（おまかせ）は基準見積もり16クレジット", async () => {
     const s = spy({ text: "anthropic" });
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
-    expect(insert!.params[6]).toBe(1);
+    expect(insert!.params[6]).toBe(16);
   });
 
   /**

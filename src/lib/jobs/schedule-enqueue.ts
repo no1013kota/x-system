@@ -1,3 +1,7 @@
+import {
+  IMAGE_BASE_ESTIMATE_CREDITS,
+  TEXT_BASE_ESTIMATE_CREDITS,
+} from "../usage/ai-credits";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
@@ -24,7 +28,7 @@ const ROLLBACK_SAFE_BUDGET: Record<string, { normal: number; url: number }> = {
 };
 
 /** premium月次上限（要件03 §7・plans.ts と一致）。 */
-const PREMIUM_LIMITS = { normalPosts: 200, urlPosts: 20, generations: 100, images: 20 };
+const PREMIUM_LIMITS = { normalPosts: 200, urlPosts: 20, aiCredits: 1000 };
 
 interface DueSlotRow {
   id: string;
@@ -109,21 +113,23 @@ async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean
   const { rows } = await db.query<{
     normal_posts_count: number;
     url_posts_count: number;
-    generations_count: number;
-    images_count: number;
+    ai_credits_used: number;
   }>(
-    `select normal_posts_count, url_posts_count, generations_count, images_count
+    `select normal_posts_count, url_posts_count, ai_credits_used
        from usage_counters where user_id = $1 and month = $2`,
     [slot.user_id, slot.jst_month],
   );
   const c = rows[0] ?? {
     normal_posts_count: 0,
     url_posts_count: 0,
-    generations_count: 0,
-    images_count: 0,
+    ai_credits_used: 0,
   };
-  if (c.generations_count + 1 > PREMIUM_LIMITS.generations) return false;
-  if (slot.image_enabled && c.images_count + 1 > PREMIUM_LIMITS.images) return false;
+  // AIクレジット（T-M8-109）: 見積もり基準額で「残高が1回分に満たない」場合は起票しない。
+  // モデル選択で見積もりは変わるが、事前チェックは基準額（最小消費）で判定する
+  //（厳密判定はreserveが行う。ここで厳しくしすぎると実行できるjobまで塞ぐ）。
+  const estimate =
+    TEXT_BASE_ESTIMATE_CREDITS + (slot.image_enabled ? IMAGE_BASE_ESTIMATE_CREDITS : 0);
+  if (c.ai_credits_used + estimate > PREMIUM_LIMITS.aiCredits) return false;
   if (slot.mode === "auto") {
     const need = ROLLBACK_SAFE_BUDGET[slot.pattern] ?? { normal: 0, url: 0 };
     if (c.normal_posts_count + need.normal > PREMIUM_LIMITS.normalPosts) return false;

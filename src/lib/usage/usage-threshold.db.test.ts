@@ -110,7 +110,7 @@ describe("notifyUsageThresholds (db)", () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: false, email: false }));
     try {
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "generations", newCount: 100 }),
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100 }),
       );
       expect(await usageNotifs(uid)).toHaveLength(0);
     } finally {
@@ -122,7 +122,7 @@ describe("notifyUsageThresholds (db)", () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: true, email: true }));
     try {
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "images", newCount: 16 }), // 80% of 20
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 800 }), // 80% of 1000
       );
       const rows = await usageNotifs(uid);
       expect(rows).toHaveLength(1);
@@ -136,22 +136,22 @@ describe("notifyUsageThresholds (db)", () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: true, email: false }));
     try {
       const jobId = await withTransaction((c) => seedJob(c, uid));
-      // 79→80（生成枠 80% = ceil(100×0.8)）。
+      // 784→800（AIクレジット 80% = ceil(1000×0.8)・T-M8-109）。
       await withTransaction((c) =>
         c.query(
-          `insert into usage_counters (user_id, month, generations_count)
-           values ($1, ${MONTH}, 79)`,
+          `insert into usage_counters (user_id, month, ai_credits_used)
+           values ($1, ${MONTH}, 784)`,
           [uid],
         ),
       );
       await withTransaction((c) =>
-        reserveUsage(c, { userId: uid, jobId, type: "generation", limit: 100 }),
+        reserveUsage(c, { userId: uid, jobId, type: "generation", limit: 1000, amount: 16 }),
       );
       const rows = await usageNotifs(uid);
       const month = (
         await withTransaction((c) => c.query<{ m: string }>(`select ${MONTH} as m`))
       ).rows[0].m;
-      expect(rows.map((r) => r.dedupe_key)).toEqual([`usage:${month}:generations:80`]);
+      expect(rows.map((r) => r.dedupe_key)).toEqual([`usage:${month}:ai_credits:80`]);
     } finally {
       await cleanup(uid);
     }

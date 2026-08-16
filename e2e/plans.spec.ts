@@ -84,7 +84,7 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
   await page.goto("/app/settings?tab=api-keys");
   await expect(page.getByRole("heading", { name: /キー登録不要/ })).toBeVisible();
-  await expect(page.getByText("生成クレジット")).toBeVisible(); // クレジット制（T-M8-108）
+  await expect(page.getByText("AIクレジット").first()).toBeVisible(); // 金額制AIクレジット（T-M8-109）
   await page.goto("/app/settings?tab=billing");
   // `goto` の直後に `count()` を取ると描画前を見てしまうので、先に見出しを待つ。
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();

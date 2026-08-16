@@ -12,19 +12,17 @@ export interface UsageSlot {
   remaining: number;
 }
 
-/** 要件03 §8 のJSON形状（4枠）。 */
+/** 要件03 §8 のJSON形状（3枠・T-M8-109）。表示順は AIクレジット→通常投稿→URL付き投稿。 */
 export interface UsageSummary {
+  ai_credits: UsageSlot;
   normal_posts: UsageSlot;
   url_posts: UsageSlot;
-  generations: UsageSlot;
-  images: UsageSlot;
 }
 
 export interface UsageCounters {
   normal_posts_count: number;
   url_posts_count: number;
-  generations_count: number;
-  images_count: number;
+  ai_credits_used: number;
 }
 
 function slot(used: number, limit: number): UsageSlot {
@@ -38,10 +36,9 @@ export function computeUsageSummary(
   limits: PremiumUsageLimits,
 ): UsageSummary {
   return {
+    ai_credits: slot(counters.ai_credits_used, limits.aiCredits),
     normal_posts: slot(counters.normal_posts_count, limits.normalPosts),
     url_posts: slot(counters.url_posts_count, limits.urlPosts),
-    generations: slot(counters.generations_count, limits.generations),
-    images: slot(counters.images_count, limits.images),
   };
 }
 

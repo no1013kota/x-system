@@ -118,23 +118,23 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
         [xid, draftId],
       )
     ).rows[0].id;
-    // 親の生成枠は消費済み（post_generation が +1 済み）を模す。
+    // 親（post_generation）の消費済みクレジット1を模す（T-M8-109: 文章・画像は同一counter）。
     await c.query(
-      `insert into usage_counters (user_id, month, generations_count, images_count)
-       values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 1, 0)`,
+      `insert into usage_counters (user_id, month, ai_credits_used)
+       values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 1)`,
       [uid],
     );
     return { uid, xid, jobId };
   }
 
-  async function counts(uid: string): Promise<{ gen: number; img: number }> {
+  async function credits(uid: string): Promise<number> {
     const r = (
-      await db.query<{ generations_count: number; images_count: number }>(
-        `select generations_count, images_count from usage_counters where user_id = $1`,
+      await db.query<{ ai_credits_used: number }>(
+        `select ai_credits_used from usage_counters where user_id = $1`,
         [uid],
       )
     ).rows[0];
-    return { gen: r?.generations_count ?? 0, img: r?.images_count ?? 0 };
+    return r?.ai_credits_used ?? 0;
   }
   const cleanup = async (uid: string) => {
     await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));
@@ -142,26 +142,28 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
-  it("失敗確定（failJob）で画像枠だけが返り、親の生成枠は触らない", async () => {
+  it("失敗確定（failJob）で画像分の見積もりだけが返り、親（生成）の消費分は触らない", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
       await expect(executeImageGeneration(deps(jobId, true))).rejects.toThrow();
-      // handler は返還しない（retry差し戻しで枠が消える事故を防ぐため）。
-      expect(await counts(uid)).toEqual({ gen: 1, img: 1 });
-      // 失敗確定で画像枠だけが返る。生成枠（親jobの勘定）は触らない。
+      // handler は返還しない（retry差し戻しでクレジットが消える事故を防ぐため）。
+      // 親の消費1 + 画像見積もり32（IMAGE_BASE_ESTIMATE_CREDITS・T-M8-109）。
+      expect(await credits(uid)).toBe(33);
+      // 失敗確定で画像reserve分（32）だけが返る。親の1は触らない。
       await failJob(jobId, "image_generation", new Error("terminal"));
-      expect(await counts(uid)).toEqual({ gen: 1, img: 0 });
+      expect(await credits(uid)).toBe(1);
     } finally {
       await cleanup(uid);
     }
   });
 
-  it("image success consumes exactly one image slot", async () => {
+  it("画像成功で見積もりreserve→実費（原価不明の空文字モデル=最低1）へ精算される", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
       const res = await executeImageGeneration(deps(jobId, false));
       expect(res.status).toBe("created");
-      expect(await counts(uid)).toEqual({ gen: 1, img: 1 });
+      // 親1 + settle後の画像実費1（テストのresolveImageはmodel未指定→原価0→最低1・T-M8-109）。
+      expect(await credits(uid)).toBe(2);
     } finally {
       await cleanup(uid);
     }

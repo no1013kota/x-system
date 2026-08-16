@@ -56,7 +56,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   const deadline = createDeadline();
   try {
     await executeMdMerge(
-      { db: pooledDb, jobId: ctx.jobId, runInTx, resolveProvider, makeDeadline: () => deadline },
+      { db: pooledDb, jobId: ctx.jobId, runInTx, runInTxForSettle: runInTx, resolveProvider, makeDeadline: () => deadline },
       { removedSourceId: meta.learning_source_id },
     );
   } catch (error) {

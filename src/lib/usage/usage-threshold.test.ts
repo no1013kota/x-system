@@ -21,14 +21,14 @@ function makeDb() {
 describe("notifyUsageThresholds", () => {
   it("inserts nothing below 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "generations", newCount: 79 }); // 80% of 100 = 80
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 799 }); // 80% of 1000 = 800
     expect(inserts).toHaveLength(0);
   });
 
   it("inserts only the 80% notification at exactly 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "generations", newCount: 80 });
-    expect(inserts).toEqual([{ key: "generations", threshold: 80 }]);
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 800 });
+    expect(inserts).toEqual([{ key: "ai_credits", threshold: 80 }]);
   });
 
   it("inserts both 80% and 100% notifications at the limit", async () => {

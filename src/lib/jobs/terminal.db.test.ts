@@ -85,7 +85,7 @@ describe("finalizeFailedJob (db)", () => {
           [uid, xid, jobId, month, `job:${jobId}:generation:reserve`],
         );
         await c.query(
-          `insert into usage_counters (user_id, month, generations_count) values ($1, $2, 1)`,
+          `insert into usage_counters (user_id, month, ai_credits_used) values ($1, $2, 1)`,
           [uid, month],
         );
       });
@@ -99,11 +99,11 @@ describe("finalizeFailedJob (db)", () => {
             where job_id = $1 and reason = 'refund'`,
           [jobId],
         );
-        const cc = await c.query<{ generations_count: number }>(
-          `select generations_count from usage_counters where user_id = $1 and month = $2`,
+        const cc = await c.query<{ ai_credits_used: number }>(
+          `select ai_credits_used from usage_counters where user_id = $1 and month = $2`,
           [uid, month],
         );
-        return { refunds: r.rows[0].n, count: cc.rows[0].generations_count };
+        return { refunds: r.rows[0].n, count: cc.rows[0].ai_credits_used };
       });
       expect(refunds).toBe(1); // 二重返還されない
       expect(count).toBe(0); // 1 → 0
@@ -133,19 +133,19 @@ describe("finalizeFailedJob (db)", () => {
            values ($1, $2, $3, $4, 'generation', 'generation', 1, 'reserve', $5)`,
           [uid, xid, jobId, month, `job:${jobId}:generation:reserve`],
         );
-        await c.query(`insert into usage_counters (user_id, month, generations_count) values ($1, $2, 1)`, [uid, month]);
+        await c.query(`insert into usage_counters (user_id, month, ai_credits_used) values ($1, $2, 1)`, [uid, month]);
       });
 
       await withTransaction((c) => finalizeFailedJob(c, jobId, "suggestion"));
 
       const count = (
         await withTransaction((c) =>
-          c.query<{ generations_count: number }>(
-            `select generations_count from usage_counters where user_id = $1 and month = $2`,
+          c.query<{ ai_credits_used: number }>(
+            `select ai_credits_used from usage_counters where user_id = $1 and month = $2`,
             [uid, month],
           ),
         )
-      ).rows[0].generations_count;
+      ).rows[0].ai_credits_used;
       expect(count).toBe(0); // reserve refunded (1 → 0), no leak
     } finally {
       await withTransaction((c) => c.query(`delete from usage_events where user_id = $1`, [uid]));

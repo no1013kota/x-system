@@ -52,17 +52,16 @@ describe("loadUsageSummaryForUser (db)", () => {
       await withTransaction((c) =>
         c.query(
           `insert into usage_counters
-             (user_id, month, normal_posts_count, url_posts_count, generations_count, images_count)
-           values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 38, 8, 22, 4)`,
+             (user_id, month, normal_posts_count, url_posts_count, ai_credits_used)
+           values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 38, 8, 220)`,
           [uid],
         ),
       );
       const s = await loadUsageSummaryForUser(uid, "premium");
       expect(s).toEqual({
+        ai_credits: { used: 220, limit: 1000, remaining: 780 },
         normal_posts: { used: 38, limit: 200, remaining: 162 },
         url_posts: { used: 8, limit: 20, remaining: 12 },
-        generations: { used: 22, limit: 100, remaining: 78 },
-        images: { used: 4, limit: 20, remaining: 16 },
       });
     } finally {
       await cleanup(uid);
@@ -84,7 +83,7 @@ describe("loadUsageSummaryForUser (db)", () => {
     try {
       const s = await loadUsageSummaryForUser(uid, "premium");
       expect(s?.normal_posts).toEqual({ used: 0, limit: 200, remaining: 200 });
-      expect(s?.images).toEqual({ used: 0, limit: 20, remaining: 20 });
+      expect(s?.ai_credits).toEqual({ used: 0, limit: 1000, remaining: 1000 });
     } finally {
       await cleanup(uid);
     }

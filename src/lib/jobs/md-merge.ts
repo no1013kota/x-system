@@ -7,6 +7,7 @@ import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
 import type { Provider, TextGen } from "../ai/types";
 import { recordProviderCalls } from "../db/api-usage-ledger";
+import { settleIfPremium, type RunInTx as SettleRunInTx } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { defaultRecordStage } from "./stale";
@@ -55,6 +56,8 @@ export interface MdMergeDeps {
   makeDeadline?: () => Deadline;
   recordStage?: (stage: string) => Promise<void>;
   maxRetries?: number;
+  /** 単独md_merge jobのクレジット精算用（T-M8-109。学習内mergeでは渡さない）。 */
+  runInTxForSettle?: SettleRunInTx;
 }
 
 export interface MdMergeResult {
@@ -66,6 +69,7 @@ interface JobMetaRow {
   x_account_id: string;
   user_id: string;
   plan: string;
+  kind: string;
 }
 interface SourceAnalysisRow {
   id: string;
@@ -85,7 +89,7 @@ function isSection5(type: string): boolean {
 
 async function loadJobMeta(db: Queryable, jobId: string): Promise<JobMetaRow | null> {
   const { rows } = await db.query<JobMetaRow>(
-    `select gj.x_account_id, xa.user_id, p.plan
+    `select gj.x_account_id, gj.kind::text as kind, xa.user_id, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -288,6 +292,18 @@ export async function executeMdMerge(
         jobId: deps.jobId,
         keyPrefix: `mdmerge:${deps.jobId}`,
       });
+      // AIクレジットを実費で精算（premium・T-M8-109）。**単独md_merge job（削除merge）のみ**——
+      // 学習job内のmergeは親（learning_analysis）が分析分と併せて精算する（同一jobIdのため
+      // settle keyが衝突し、両方から呼ぶと先勝ちで片方の実費しか反映されない）。
+      if (job.kind === "md_merge" && deps.runInTxForSettle) {
+        const total = allCalls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0);
+        await settleIfPremium(deps.runInTxForSettle, {
+          plan: job.plan,
+          jobId: deps.jobId,
+          type: "generation",
+          estimatedCostUsdTotal: total,
+        });
+      }
       return { version: written, section: target };
     }
     // 競合: 次ループで最新stateを再読して再merge（並行変更を取り込み、上書き消失させない）。

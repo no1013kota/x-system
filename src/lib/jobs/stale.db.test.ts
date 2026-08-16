@@ -176,7 +176,7 @@ describe("heartbeat & recoverStaleJobs", () => {
   async function genState(uid: string, jobId: string): Promise<{ gen: number; refunds: number }> {
     return withTransaction(async (c) => {
       const cnt = await c.query<{ n: number }>(
-        `select coalesce(generations_count,0) as n from usage_counters where user_id=$1`,
+        `select coalesce(ai_credits_used,0) as n from usage_counters where user_id=$1`,
         [uid],
       );
       const rf = await c.query<{ n: number }>(

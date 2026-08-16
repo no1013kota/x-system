@@ -9,20 +9,18 @@ import type { Queryable } from "../x/token-refresh";
  * 別途 App Shell が残量から表示するため、通知設定に関わらず表示される）。counter 更新と同一transactionで呼ぶ。
  */
 
-export type UsageCounterKey = "normal_posts" | "url_posts" | "generations" | "images";
+export type UsageCounterKey = "normal_posts" | "url_posts" | "ai_credits";
 
 const LIMIT_BY_KEY: Record<UsageCounterKey, number | undefined> = {
   normal_posts: PLANS.premium.usageLimits?.normalPosts,
   url_posts: PLANS.premium.usageLimits?.urlPosts,
-  generations: PLANS.premium.usageLimits?.generations,
-  images: PLANS.premium.usageLimits?.images,
+  ai_credits: PLANS.premium.usageLimits?.aiCredits,
 };
 
 const LABEL: Record<UsageCounterKey, string> = {
-  normal_posts: "通常投稿枠",
-  url_posts: "URL付き投稿枠",
-  generations: "生成クレジット",
-  images: "画像クレジット",
+  normal_posts: "通常投稿クレジット",
+  url_posts: "URL付き投稿クレジット",
+  ai_credits: "AIクレジット",
 };
 
 async function insertUsageNotification(

@@ -33,7 +33,7 @@ import { estimateProviderCost } from "../ai/pricing";
 import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
-import { reserveIfPremium } from "../usage/reserve-if-premium";
+import { reserveIfPremium, settleIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import {
@@ -561,6 +561,13 @@ export async function executePostGeneration(
     xAccountId: job.x_account_id,
     jobId,
     keyPrefix: `gen:${jobId}`,
+  });
+  // AIクレジットを実費で精算（premium・T-M8-109）。見積もりreserveとの差分を調整する。
+  await settleIfPremium(deps.runInTx, {
+    plan: job.plan,
+    jobId,
+    type: "generation",
+    estimatedCostUsdTotal: usage.estimated_cost_usd_total,
   });
 
   // 画像ON: draft_created は画像確定後に子（image_generation）が送るため、ここでは送らず子jobを作成する。

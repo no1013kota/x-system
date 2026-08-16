@@ -18,8 +18,7 @@ export async function loadUsageSummaryForUser(
   const { rows } = await getPool().query<UsageCounters>(
     `select coalesce(normal_posts_count, 0) as normal_posts_count,
             coalesce(url_posts_count, 0) as url_posts_count,
-            coalesce(generations_count, 0) as generations_count,
-            coalesce(images_count, 0) as images_count
+            coalesce(ai_credits_used, 0) as ai_credits_used
        from usage_counters
       where user_id = $1
         and month = ${CURRENT_MONTH_JST_SQL}`,
@@ -28,8 +27,7 @@ export async function loadUsageSummaryForUser(
   const counters = rows[0] ?? {
     normal_posts_count: 0,
     url_posts_count: 0,
-    generations_count: 0,
-    images_count: 0,
+    ai_credits_used: 0,
   };
   return computeUsageSummary(counters, limits);
 }

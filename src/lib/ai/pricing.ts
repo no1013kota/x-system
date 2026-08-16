@@ -76,6 +76,27 @@ const MODEL_RATES: Record<string, Partial<ProviderRates>> = {
   "gemini-2.5-pro": { inputPerMTok: 1.25, outputPerMTok: 10 },
 };
 
+/**
+ * 画像1枚あたりの概算単価（USD・T-M8-109）。各社は出力トークン/枚数課金で条件により変わるため、
+ * 既定サイズ・中品質の目安。原価台帳の estimated_cost_usd（従来null）とAIクレジット精算に使う。
+ * 出典: developers.openai.com/api/docs/pricing・ai.google.dev/gemini-api/docs/pricing（2026-08-15確認・要定期見直し）。
+ */
+export const IMAGE_FLAT_RATES_USD: Record<string, number> = {
+  "gpt-image-2": 0.19,
+  "gpt-image-1.5": 0.07,
+  "gpt-image-1-mini": 0.03,
+  "gpt-image-1": 0.17,
+  "gemini-3-pro-image": 0.15,
+  "gemini-3.1-flash-image": 0.067,
+  "gemini-3.1-flash-lite-image": 0.02,
+};
+
+/** 画像生成1枚の推定原価。未知モデルは null（算出不能として台帳へ・要件02 §3.17）。 */
+export function estimateImageCost(model: string | null | undefined): number | null {
+  if (!model) return null;
+  return IMAGE_FLAT_RATES_USD[model] ?? null;
+}
+
 /** numeric(12,6) へ収めるため小数6桁へ丸める。 */
 function round6(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;

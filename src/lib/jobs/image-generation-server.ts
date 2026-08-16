@@ -35,7 +35,7 @@ export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
     },
     resolveImage: async ({ plan, userId }) => {
       const key = await resolveImageProvider({ plan: plan as PlanId, userId });
-      return { imageGen: resolveImageGen(key), provider: key.provider };
+      return { imageGen: resolveImageGen(key), model: key.model, provider: key.provider };
     },
     uploadImage: async ({ path, bytes, contentType }) => {
       const admin = createSupabaseAdminClient();
