@@ -233,3 +233,47 @@ test("standardには生成プロンプトのセクションを出さない（T-M
   await expect(page.getByLabel("テーマ", { exact: true })).toBeVisible();
   await expect(page.getByText("生成に使うプロンプト")).toHaveCount(0);
 });
+
+/**
+ * 生成中に画面を開き直したとき Hydration mismatch が出ないこと（T-M8-113）。
+ *
+ * `release:check` のE2Eでまれに「server rendered text didn't match the client」が出ていた。
+ * 出所は投稿作成画面の **「経過 0:07」の秒カウンタ**。`useState(() => Date.now())` の初期値は
+ * **サーバー描画時と、ブラウザが後から追いつく（hydration）時の2回**評価されるので、その間に
+ * 秒が変わると表示が食い違う。生成中に再訪したときだけ出るため再現が難しく、放置すると
+ * 本当の不整合が起きても同じ警告に紛れて気付けなくなる。
+ *
+ * **JSの到着をわざと遅らせて秒を必ず跨がせる。** 遅らせないと、手元では両者が同じ秒に収まって
+ * しまい修正前のコードでも通ってしまう（実測で確認した）。回線の遅い利用者では普通に起きる。
+ */
+test("生成中に開き直しても画面のつなぎ目でズレが出ない（T-M8-113）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("hydration");
+  await seedRunningJob(account.xAccountId);
+  await signIn(page, account);
+
+  const mismatches: string[] = [];
+  page.on("console", (msg) => {
+    const text = msg.text();
+    if (/hydrat|didn't match|did not match/i.test(text)) mismatches.push(text);
+  });
+  page.on("pageerror", (err) => {
+    if (/hydrat|didn't match|did not match/i.test(err.message)) mismatches.push(err.message);
+  });
+
+  // サーバー描画のあと、ブラウザがJSで追いつくまでを2秒あける（＝秒が必ず変わる）。
+  await page.route(/\/_next\/static\/chunks\/.*\.js$/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await route.continue();
+  });
+
+  await page.goto("/app/posts?tab=create");
+  await expect(page.getByRole("button", { name: "生成中…" })).toBeVisible({ timeout: 30_000 });
+  // hydrationが終わって経過表示が動き出すまで見届ける。
+  await expect(page.getByText(/経過 \d+:\d\d/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/経過 0:0[2-9]|経過 0:[1-5]\d/)).toBeVisible({ timeout: 30_000 });
+
+  expect(mismatches, "サーバー描画とブラウザの表示が食い違わないこと").toEqual([]);
+});

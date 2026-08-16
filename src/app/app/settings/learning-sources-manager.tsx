@@ -73,9 +73,12 @@ function uuid(): string {
 
 export function LearningSourcesManager({
   xAccountId,
+  initialNowMs,
   initialSources,
 }: {
   xAccountId: string;
+  /** サーバーが描画した時刻（ミリ秒）。滞留判定の初期値。 */
+  initialNowMs: number;
   initialSources: LearningSourceView[];
 }) {
   const [pending, startTransition] = useTransition();
@@ -84,7 +87,12 @@ export function LearningSourcesManager({
   // 「どちらを登録しようとしているか」を毎回選ばせることになり、上限や入力例も1つしか出せない。
   const [urls, setUrls] = useState<Record<RefType, string>>({ ref_account: "", ref_post: "" });
   const toast = useToast();
-  const [now, setNow] = useState(() => Date.now());
+  /**
+   * 「分析が進んでいない」の判定に使う現在時刻（T-M8-113）。**初期値はサーバーが測った時刻**。
+   * `Date.now()` を初期値にすると、ちょうど60秒あたりのソースでサーバーの描画と
+   * ブラウザの描画で判定が割れ、表示が食い違って描き直しになる。
+   */
+  const [now, setNow] = useState(initialNowMs);
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
   useEffect(() => {
