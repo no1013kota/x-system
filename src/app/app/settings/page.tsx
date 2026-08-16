@@ -269,6 +269,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
         {tab === "general" ? (
           <div className="space-y-8">
+            {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で設定タブ先頭へ移動・運営者の指示）。
+                確認メール・領収書の宛先でもある。 */}
+            <p className="text-body text-ink-2">
+              ログイン中のアカウント:{" "}
+              <span className="font-medium text-ink">{profile.email ?? user.email ?? "不明"}</span>
+            </p>
             {/* 旧・Xアカウント／APIキー／通知タブを1タブへ（T-M8-104）。
                 各部品が自前の見出しを持つため、ここでは見出しを重ねない（重複headingはE2EのstrictモードとAT読み上げの両方を壊す）。 */}
             <XAccountsSettings
@@ -305,11 +311,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <CardTitle id="billing-heading">
                 現在のご契約
               </CardTitle>
-              {/* どのアカウントでログインしているか（T-M8-95）。確認メール・領収書の宛先でもある。 */}
-              <p className="mt-2 text-body text-ink-2">
-                ログイン中のアカウント:{" "}
-                <span className="font-medium text-ink">{profile.email ?? user.email ?? "不明"}</span>
-              </p>
               {params.portal === "return" ? (
                 // 反映待ちの説明は「実際に待ちが起きるこの瞬間」だけに出す（T-M8-66）。
                 <Notice className="mt-4" tone="success"

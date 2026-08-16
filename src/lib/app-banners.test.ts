@@ -8,10 +8,9 @@ const ids = (banners: { id: string }[]) => banners.map((b) => b.id);
 function summary(over: Partial<Record<keyof UsageSummary, number>> = {}): UsageSummary {
   const slot = (remaining: number) => ({ used: 0, limit: 0, remaining });
   return {
+    ai_credits: slot(over.ai_credits ?? 10),
     normal_posts: slot(over.normal_posts ?? 10),
     url_posts: slot(over.url_posts ?? 10),
-    generations: slot(over.generations ?? 10),
-    images: slot(over.images ?? 10),
   };
 }
 
@@ -94,11 +93,11 @@ describe("usageLimitBanner (T-M6-13)", () => {
   });
 
   it("shows a warning banner naming the exhausted slots when any remaining is 0", () => {
-    const banner = usageLimitBanner(summary({ url_posts: 0, images: 0 }));
+    const banner = usageLimitBanner(summary({ url_posts: 0, ai_credits: 0 }));
     expect(banner?.id).toBe("usage_limit");
     expect(banner?.tone).toBe("warning");
-    expect(banner?.description).toContain("URL付き投稿枠");
-    expect(banner?.description).toContain("画像クレジット");
+    expect(banner?.description).toContain("URL付き投稿クレジット");
+    expect(banner?.description).toContain("AIクレジット");
     expect(banner?.actionHref).toBe("/app/settings?tab=billing");
   });
 });

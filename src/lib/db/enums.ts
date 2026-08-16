@@ -53,7 +53,7 @@ export const DB_ENUMS = {
   draft_status: ["draft", "posting", "posted", "discarded", "failed"],
   posted_mode: ["auto", "manual"],
   schedule_mode: ["draft", "auto"],
-  usage_counter_type: ["post_normal", "post_url", "generation", "image"],
+  usage_counter_type: ["post_normal", "post_url", "generation", "image", "ai_credit"],
   usage_event_reason: ["reserve", "refund", "consume"],
   usage_event_operation: [
     "generation",

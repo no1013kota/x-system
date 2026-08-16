@@ -6,7 +6,7 @@ import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { PT_L1, PT_L2 } from "../prompts/gen-prompts";
-import { reserveIfPremium } from "../usage/reserve-if-premium";
+import { reserveIfPremium, settleIfPremium } from "../usage/reserve-if-premium";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { persistJobFailure } from "./notifications";
@@ -284,6 +284,13 @@ export async function executeLearningAnalysis(
       xAccountId: job.x_account_id,
       jobId,
       keyPrefix: `lrn:${jobId}`,
+    });
+    // AIクレジットを実費で精算（premium・T-M8-109）。
+    await settleIfPremium(deps.runInTx, {
+      plan: job.plan,
+      jobId,
+      type: "generation",
+      estimatedCostUsdTotal: result.usage.estimated_cost_usd_total,
     });
     return { status: "analyzed", sourceId };
   } catch (error) {

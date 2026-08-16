@@ -85,8 +85,8 @@ export default function TermsPage() {
         </p>
         <p>
           {PLANS.premium.displayName}の月間利用枠は、通常投稿{premium?.normalPosts}件、
-          URL付き投稿{premium?.urlPosts}件、文章生成{premium?.generations}回、画像生成
-          {premium?.images}枚です。利用枠は外部APIの原価や運用状況に応じて改定する場合があります。
+          URL付き投稿クレジット{premium?.urlPosts}、AIクレジット{premium?.aiCredits}
+          （文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。利用枠は外部APIの原価や運用状況に応じて改定する場合があります。
           利用者に不利益となる変更を行う場合は、第17条の手続きにより事前に周知します。
         </p>
         <p>

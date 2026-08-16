@@ -71,7 +71,7 @@ export default function CommercialTransactionsPage() {
       description:
         `連携できるXアカウント数は、${PLANS.standard.displayName}は${PLANS.standard.xAccountLimit}件、${PLANS.md.displayName}および${PLANS.premium.displayName}は${PLANS.premium.xAccountLimit}件です。` +
         (premium
-          ? `${PLANS.premium.displayName}には月間の利用枠（通常投稿${premium.normalPosts}件・URL付き投稿${premium.urlPosts}件・文章生成${premium.generations}回・画像生成${premium.images}枚）があります。`
+          ? `${PLANS.premium.displayName}には月間の利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。`
           : "") +
         "また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に上限を設けています。",
     },

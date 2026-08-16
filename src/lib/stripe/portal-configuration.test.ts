@@ -150,7 +150,7 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
     const limits = PLANS.premium.usageLimits;
     expect(limits).not.toBeNull();
     expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain(
-      `通常投稿${limits?.normalPosts}・URL付き${limits?.urlPosts}・文章生成${limits?.generations}・画像${limits?.images}`,
+      `AIクレジット${limits?.aiCredits}・通常投稿${limits?.normalPosts}・URL付き${limits?.urlPosts}`,
     );
   });
 

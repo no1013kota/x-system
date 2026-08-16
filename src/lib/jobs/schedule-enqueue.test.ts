@@ -132,28 +132,28 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
   it("skips premium when the generation budget is exhausted", async () => {
     await expectSkipped(dueSlot({ plan: "premium" }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 0, url_posts_count: 0, generations_count: 100, images_count: 0 }],
+        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 1000 }],
       }),
     });
   });
   it("skips premium auto when the normal post budget is exhausted", async () => {
     await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 195, url_posts_count: 0, generations_count: 0, images_count: 0 }],
+        rows: [{ normal_posts_count: 195, url_posts_count: 0, ai_credits_used: 0 }],
       }),
     });
   });
   it("skips premium auto when the URL post budget is exhausted (p1 needs url 1)", async () => {
     await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 0, url_posts_count: 20, generations_count: 0, images_count: 0 }],
+        rows: [{ normal_posts_count: 0, url_posts_count: 20, ai_credits_used: 0 }],
       }),
     });
   });
   it("skips premium when the image budget is exhausted and images are enabled", async () => {
     await expectSkipped(dueSlot({ plan: "premium", image_enabled: true }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 0, url_posts_count: 0, generations_count: 0, images_count: 20 }],
+        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 1000 }],
       }),
     });
   });

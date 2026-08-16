@@ -189,12 +189,12 @@ describe("executePostGeneration (local DB)", () => {
   async function genState(uid: string, jobId: string): Promise<{ gen: number; reserves: number; refunds: number }> {
     return withTransaction(async (c) => {
       const cnt = await c.query<{ n: number }>(
-        `select coalesce(generations_count, 0) as n from usage_counters where user_id = $1`,
+        `select coalesce(ai_credits_used, 0) as n from usage_counters where user_id = $1`,
         [uid],
       );
       const ev = await c.query<{ reason: string; n: number }>(
         `select reason, count(*)::int as n from usage_events
-          where job_id = $1 and counter_type = 'generation' group by reason`,
+          where job_id = $1 and counter_type = 'ai_credit' group by reason`,
         [jobId],
       );
       const by = new Map(ev.rows.map((r) => [r.reason, r.n]));
@@ -218,9 +218,11 @@ describe("executePostGeneration (local DB)", () => {
       );
       expect(res.status).toBe("created");
       const s = await genState(uid, jobId);
-      expect(s.gen).toBe(1); // +1 only despite the repair call
+      // AIクレジット（T-M8-109）: 見積もり16をreserve→実費（モックは原価0→最低1）で精算。
+      // 精算の部分返還は reason='refund'（settle key）で入るため refunds=1 になる。
+      expect(s.gen).toBe(1);
       expect(s.reserves).toBe(1);
-      expect(s.refunds).toBe(0); // success keeps the reserve
+      expect(s.refunds).toBe(1); // settleの差分調整（16→1）
     } finally {
       await cleanupUsage(uid);
     }
@@ -257,8 +259,8 @@ describe("executePostGeneration (local DB)", () => {
       const s = await genState(uid, jobId);
       expect(s.reserves).toBe(1);
       expect(s.refunds).toBe(0);
-      expect(s.gen).toBe(1);
-      // 失敗が確定すると返還される
+      expect(s.gen).toBe(16); // 見積もり16クレジットのreserveが残る（T-M8-109）
+      // 失敗が確定すると全額返還される
       await failJob(jobId, "post_generation", new Error("terminal"));
       const after = await genState(uid, jobId);
       expect(after.refunds).toBe(1);

@@ -8,11 +8,11 @@ import { Card, CardTitle } from "@/components/ui/card";
  * premium 以外は呼び出し側で summary=null にして本カードを描画しない。
  */
 
+// 並びは AIクレジット → 通常投稿 → URL付き投稿（T-M8-109・運営者の指示）。
 const SLOT_LABELS: [keyof UsageSummary, string][] = [
-  ["normal_posts", "通常投稿枠"],
-  ["url_posts", "URL付き投稿枠"],
-  ["generations", "生成クレジット"],
-  ["images", "画像クレジット"],
+  ["ai_credits", "AIクレジット"],
+  ["normal_posts", "通常投稿クレジット"],
+  ["url_posts", "URL付き投稿クレジット"],
 ];
 
 function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; resetLabel: string }) {

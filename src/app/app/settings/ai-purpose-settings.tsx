@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ImageAiProvider } from "@/lib/ai-purpose-config";
 import { IMAGE_MODEL_OPTIONS, TEXT_MODEL_OPTIONS, isCatalogImageModel, isCatalogTextModel } from "@/lib/ai/model-catalog";
+import { IMAGE_BASE_ESTIMATE_CREDITS, TEXT_BASE_ESTIMATE_CREDITS } from "@/lib/usage/ai-credits";
 import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
@@ -122,7 +123,7 @@ export function AiPurposeSettings({
               label="文章生成に使うモデル"
               onChange={setTextModel}
               options={TEXT_MODEL_OPTIONS.anthropic}
-              showCredits
+              showCreditsBase={TEXT_BASE_ESTIMATE_CREDITS}
               value={textModel}
             />
           </div>
@@ -197,7 +198,7 @@ export function AiPurposeSettings({
             label="画像生成に使うモデル"
             onChange={setImageModel}
             options={IMAGE_MODEL_OPTIONS[imageProvider]}
-            showCredits={plan === "premium"}
+            showCreditsBase={plan === "premium" ? IMAGE_BASE_ESTIMATE_CREDITS : undefined}
             value={imageModel}
           />
         ) : null}
@@ -233,21 +234,23 @@ export function AiPurposeSettings({
 
 /**
  * モデル選択（T-M8-107）。空=おまかせ（運営の既定モデル）。単価の目安を選択肢に含める。
- * premiumはクレジット消費数も出す（T-M8-108。上位モデルは倍数消費＝選ぶ前に分かるようにする）。
+ * premiumはクレジット消費の目安も出す（T-M8-109。実費消費のため確定値ではなく目安——
+ * 選ぶ前におおよその消費が分かるようにする）。
  */
 function ModelSelect({
   disabled,
   label,
   onChange,
   options,
-  showCredits,
+  showCreditsBase,
   value,
 }: {
   disabled: boolean;
   label: string;
   onChange: (value: string) => void;
   options: readonly { id: string; label: string; priceNote: string; creditMultiplier?: number }[];
-  showCredits?: boolean;
+  /** premiumのみ: クレジット消費の目安（1回あたり）。基準額×モデル倍数。 */
+  showCreditsBase?: number;
   value: string;
 }) {
   return (
@@ -259,11 +262,13 @@ function ModelSelect({
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
-        <option value="">{showCredits ? "おまかせ（運営の既定モデル・1クレジット/回）" : "おまかせ（運営の既定モデル）"}</option>
+        <option value="">
+          {showCreditsBase ? `おまかせ（運営の既定モデル・目安 約${showCreditsBase}クレジット/回）` : "おまかせ（運営の既定モデル）"}
+        </option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {option.label} — {option.priceNote}
-            {showCredits ? `・${option.creditMultiplier ?? 1}クレジット/回` : ""}
+            {showCreditsBase ? `・目安 約${showCreditsBase * (option.creditMultiplier ?? 1)}クレジット/回` : ""}
           </option>
         ))}
       </select>

@@ -4,7 +4,7 @@ import { emptyUsage, type TextGen } from "../ai/types";
 import type { Queryable } from "../x/token-refresh";
 import { executeMdMerge, MdMergeConflictError, MdMergeStructureError } from "./md-merge";
 
-const JOB_META = /select gj\.x_account_id, xa\.user_id, p\.plan/;
+const JOB_META = /select gj\.x_account_id, gj\.kind::text as kind, xa\.user_id, p\.plan/;
 const RESOLVE_TARGET = /select type::text as type from learning_sources where id = \$1/;
 const LOAD_REMOVED = /select analysis_summary from learning_sources where id = \$1/;
 const LOAD_ACCT = /select base_md, base_md_version from x_accounts/;
@@ -63,7 +63,7 @@ function mockDb(opts: DbOpts) {
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
-      if (JOB_META.test(sql)) return { rows: [{ x_account_id: "xa1", user_id: "u1", plan: "md" }] as T[], rowCount: 1 };
+      if (JOB_META.test(sql)) return { rows: [{ x_account_id: "xa1", kind: "learning_analysis", user_id: "u1", plan: "md" }] as T[], rowCount: 1 };
       if (RESOLVE_TARGET.test(sql)) return { rows: [{ type: opts.triggerType ?? "own_posts" }] as T[], rowCount: 1 };
       if (LOAD_REMOVED.test(sql))
         return { rows: (opts.removedAnalysis ? [{ analysis_summary: opts.removedAnalysis }] : []) as T[], rowCount: opts.removedAnalysis ? 1 : 0 };

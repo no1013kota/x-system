@@ -74,7 +74,7 @@ export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_MD_MONTHLY:
     "Xアカウント3つまで＋AIへの指示文（ベースmd・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
   STRIPE_PRICE_PREMIUM_MONTHLY:
-    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: 通常投稿200・URL付き20・文章生成100・画像20。",
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: AIクレジット1000・通常投稿200・URL付き20。",
 };
 
 const ACCOUNT_SCOPED = [

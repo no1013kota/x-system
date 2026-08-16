@@ -24,8 +24,7 @@ describe("plan definitions", () => {
     expect(PLANS.premium.usageLimits).toEqual({
       normalPosts: 200,
       urlPosts: 20,
-      generations: 100,
-      images: 20,
+      aiCredits: 1000,
     });
   });
 

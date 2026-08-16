@@ -52,8 +52,8 @@ describe("reserveUsage / refundUsage (db)", () => {
 
   async function state(uid: string, jobId: string): Promise<{ gen: number; reserves: number; refunds: number }> {
     return withTransaction(async (c) => {
-      const cnt = await c.query<{ generations_count: number }>(
-        `select generations_count from usage_counters where user_id = $1`,
+      const cnt = await c.query<{ ai_credits_used: number }>(
+        `select ai_credits_used from usage_counters where user_id = $1`,
         [uid],
       );
       const ev = await c.query<{ reason: string; n: number }>(
@@ -62,7 +62,7 @@ describe("reserveUsage / refundUsage (db)", () => {
       );
       const by = new Map(ev.rows.map((r) => [r.reason, r.n]));
       return {
-        gen: cnt.rows[0]?.generations_count ?? 0,
+        gen: cnt.rows[0]?.ai_credits_used ?? 0,
         reserves: by.get("reserve") ?? 0,
         refunds: by.get("refund") ?? 0,
       };
@@ -221,7 +221,7 @@ describe("reserveUsage / refundUsage (db)", () => {
            values ($1, $2, $3, '2026-07', 'generation', 'generation', 1, 'reserve', $4)`,
           [uid, xid, jobId, `job:${jobId}:generation:reserve`],
         );
-        await c.query(`insert into usage_counters (user_id, month, generations_count) values ($1, '2026-07', 1)`, [uid]);
+        await c.query(`insert into usage_counters (user_id, month, ai_credits_used) values ($1, '2026-07', 1)`, [uid]);
       });
 
       const refunded = await withTransaction((c) => refundUsage(c, jobId, "generation"));
@@ -229,12 +229,12 @@ describe("reserveUsage / refundUsage (db)", () => {
 
       const julyCount = (
         await withTransaction((c) =>
-          c.query<{ generations_count: number }>(
-            `select generations_count from usage_counters where user_id = $1 and month = '2026-07'`,
+          c.query<{ ai_credits_used: number }>(
+            `select ai_credits_used from usage_counters where user_id = $1 and month = '2026-07'`,
             [uid],
           ),
         )
-      ).rows[0].generations_count;
+      ).rows[0].ai_credits_used;
       expect(julyCount).toBe(0); // refund hit the original month, not the current one
     } finally {
       await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [jobId]));
