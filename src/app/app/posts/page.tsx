@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { TabNav } from "@/components/app-shell/tab-nav";
+import { Notice } from "@/components/ui/notice";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
+import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
@@ -128,6 +131,41 @@ async function createTabData(userId: string, activeXAccountId: string) {
   return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates, baseMd };
 }
 
+/**
+ * 通知から来たのに対象の下書きが無いときの案内（T-M8-115）。
+ *
+ * **黙って通常の一覧を出さない。** 通知を押した利用者は特定の下書きを見に来ているので、
+ * 「なぜ無いのか」と「どこへ行けばあるのか」を出す。案内不要なら何も描かない。
+ */
+function MissingDraftNotice({
+  location,
+  tab,
+}: {
+  location: DraftLocation | null;
+  tab: "drafts" | "history";
+}) {
+  if (!location) return null;
+  if (location.kind === "other-tab" && location.tab !== tab) {
+    const label = location.tab === "history" ? "履歴" : "下書き";
+    return (
+      <Notice tone="info">
+        お探しの投稿は<strong>{label}</strong>に移っています。
+        <Link className="ml-1 underline" href={`/app/posts?tab=${location.tab}`}>
+          {label}を開く
+        </Link>
+      </Notice>
+    );
+  }
+  if (location.kind === "gone") {
+    return (
+      <Notice tone="info">
+        お探しの投稿は見つかりませんでした。破棄されたか、別のXアカウントのものです。
+      </Notice>
+    );
+  }
+  return null;
+}
+
 export default async function PostsPage({ searchParams }: PostsPageProps) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   if (!user) {
@@ -147,6 +185,8 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
   let slots: ScheduleSlotView[] = [];
   let historyTruncated = false;
+  /** 通知から来たが対象が見つからなかったときの案内（null＝案内不要）。 */
+  let missingDraft: DraftLocation | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
     const [loaded, plan, keyRows, loadedSlots, handleRow] = await Promise.all([
@@ -170,6 +210,16 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     drafts = await attachSignedImageUrls(loaded);
     slots = loadedSlots;
     historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
+    /**
+     * 通知が指す下書きが、このタブに見当たらないとき（T-M8-115）。
+     *
+     * 通知を押すのは数時間〜数日あと。そのあいだに下書きは投稿されて履歴へ移るか、
+     * 破棄されて消えている。以前は**ただの一覧が出るだけで説明が無く**、
+     * 「押しても何も起きなかった」ように見えていた。どこへ行ったのかを画面で言う。
+     */
+    if (params.draftId && !drafts.some((d) => d.id === params.draftId)) {
+      missingDraft = await locateDraft(pooledDb, activeXAccountId, params.draftId);
+    }
     if (tab === "drafts") {
       // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
       imageRegenEnabled = imageProvidersFor(plan, keyRows?.rows ?? []).length > 0;
@@ -208,6 +258,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         />
       ) : tab === "drafts" ? (
         <>
+          <MissingDraftNotice location={missingDraft} tab="drafts" />
           <ScheduleSummary slots={slots} />
           <DraftsList
             drafts={drafts}
@@ -218,6 +269,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         </>
       ) : (
         <>
+          <MissingDraftNotice location={missingDraft} tab="history" />
           <HistoryList drafts={drafts} handle={xHandle} selectedDraftId={params.draftId} />
           {historyTruncated ? (
             <p className="text-caption text-ink-3">直近{HISTORY_LIMIT}件を表示しています。</p>

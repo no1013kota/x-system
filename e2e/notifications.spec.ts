@@ -128,3 +128,44 @@ test("メール送信に失敗した通知は再送できる（黙って届か�
     )
     .toBe("queued");
 });
+
+/**
+ * 通知が指す下書きが、押したときにはもう無いことがある（T-M8-115）。
+ *
+ * 「投稿に失敗しました」は `?tab=drafts&draftId=…` を指すが、通知を押すのは数時間〜数日あと。
+ * そのあいだに下書きは投稿されて履歴へ移るか、破棄されて消えている。以前は**ただの一覧が
+ * 出るだけで説明が無く**、利用者からは「押しても何も起きなかった」ように見えていた。
+ */
+test("通知が指す下書きが別のタブへ移っていたら、行き先を出す（T-M8-115）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("notif-moved");
+  const [draft] = await query<{ id: string }>(
+    `insert into drafts (x_account_id, pattern, status, thread, initial_thread, tweet_ids)
+     values ($1, 'p2', 'posted', $2::jsonb, $2::jsonb, '["9100000000000001"]'::jsonb)
+     returning id`,
+    [
+      account.xAccountId,
+      JSON.stringify([{ local_id: "1", text: "投稿済みの本文", weighted_length: 7, warnings: [] }]),
+    ],
+  );
+
+  await signIn(page, account);
+  // 通知のリンクと同じ形で開く（下書きタブを指しているが、実体は履歴にある）。
+  await page.goto(`/app/posts?tab=drafts&draftId=${draft.id}`);
+
+  await expect(page.getByText("お探しの投稿は履歴に移っています。")).toBeVisible();
+  await expect(page.getByRole("link", { name: "履歴を開く" })).toHaveAttribute(
+    "href",
+    "/app/posts?tab=history",
+  );
+});
+
+test("通知が指す下書きが消えていたら、そう分かる（T-M8-115）", async ({ accounts, page }) => {
+  const account = await accounts.create("notif-gone");
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=drafts&draftId=00000000-0000-0000-0000-000000000001");
+
+  await expect(page.getByText("お探しの投稿は見つかりませんでした。")).toBeVisible();
+});
