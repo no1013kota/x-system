@@ -21,8 +21,28 @@ import { Notice } from "@/components/ui/notice";
  * 自分の投稿の分析を担うため重複機能になった。
  */
 
-const REF_ACCOUNT_MAX = 3;
-const REF_POST_MAX = 10;
+type RefType = "ref_account" | "ref_post";
+
+/** 種別ごとの上限・入力例・説明（T-M8-112。欄を分けたので1か所にまとめる）。 */
+const REF_FIELDS: {
+  type: RefType;
+  max: number;
+  placeholder: string;
+  hint: string;
+}[] = [
+  {
+    type: "ref_account",
+    max: 3,
+    placeholder: "https://x.com/handle",
+    hint: "文体・構成・題材の傾向を学びます（直近20投稿）。",
+  },
+  {
+    type: "ref_post",
+    max: 10,
+    placeholder: "https://x.com/handle/status/123",
+    hint: "伸びた投稿1件から、再現できる型を学びます。",
+  },
+];
 const TYPE_LABEL: Record<string, string> = {
   ref_account: "参考アカウント",
   ref_post: "参考投稿",
@@ -60,8 +80,9 @@ export function LearningSourcesManager({
 }) {
   const [pending, startTransition] = useTransition();
   const [sources, setSources] = useState<LearningSourceView[]>(initialSources);
-  const [type, setType] = useState<"ref_account" | "ref_post">("ref_account");
-  const [url, setUrl] = useState("");
+  // 参考アカウント／参考投稿は別々の欄にする（T-M8-112）。種別selectを挟むと、
+  // 「どちらを登録しようとしているか」を毎回選ばせることになり、上限や入力例も1つしか出せない。
+  const [urls, setUrls] = useState<Record<RefType, string>>({ ref_account: "", ref_post: "" });
   const toast = useToast();
   const [now, setNow] = useState(() => Date.now());
 
@@ -91,18 +112,19 @@ export function LearningSourcesManager({
     });
   }
 
-  function add() {
+  function add(type: RefType) {
     // 押せない状態にしてあるので通常は到達しない（保険）。**黙って return しない**のが要点で、
     // 以前はここで無言で抜けており、ボタンは押せるのに何も起きなかった（T-M8-37）。
-    if (!url.trim()) {
+    const url = urls[type].trim();
+    if (!url) {
       toast.show({ tone: "error", title: "XのURLを入力してください" });
       return;
     }
     startTransition(async () => {
-      const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url: url.trim() });
+      const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url });
       if (res.status === "success") {
-        setUrl("");
-        toast.show({ tone: "success", title: "学習ソースを追加しました" });
+        setUrls((current) => ({ ...current, [type]: "" }));
+        toast.show({ tone: "success", title: `${TYPE_LABEL[type]}を追加しました` });
         await refresh();
       } else {
         showError(res);
@@ -135,57 +157,61 @@ export function LearningSourcesManager({
         </Notice>
       ) : null}
 
-      {/* 追加フォーム（参考アカウント/参考投稿） */}
+      {/* 追加フォーム: 参考アカウントと参考投稿で欄を分ける（T-M8-112）。 */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>参考ソースを追加</CardTitle>
-        {/* 上限は種別セレクトの (n/3) 表示に一本化する（T-M8-66）。 */}
         <p className="mt-1 text-xs text-muted-foreground">
           参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してアカウント.mdへ反映します。
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            <span className="block text-xs font-semibold text-muted-foreground">種別</span>
-            <select
-              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
-              onChange={(e) => setType(e.target.value as "ref_account" | "ref_post")}
-              value={type}
-            >
-              <option disabled={refCount("ref_account") >= REF_ACCOUNT_MAX} value="ref_account">
-                参考アカウント{refCount("ref_account") >= REF_ACCOUNT_MAX ? "（上限）" : `（${refCount("ref_account")}/${REF_ACCOUNT_MAX}）`}
-              </option>
-              <option disabled={refCount("ref_post") >= REF_POST_MAX} value="ref_post">
-                参考投稿{refCount("ref_post") >= REF_POST_MAX ? "（上限）" : `（${refCount("ref_post")}/${REF_POST_MAX}）`}
-              </option>
-            </select>
-          </label>
-          <label className="min-w-0 flex-1 text-sm">
-            <span className="block text-xs font-semibold text-muted-foreground">URL</span>
-            <input
-              className="mt-1 min-h-11 w-full rounded-lg border bg-background px-3"
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder={type === "ref_account" ? "https://x.com/handle" : "https://x.com/handle/status/123"}
-              type="url"
-              value={url}
-            />
-          </label>
-          <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
-            disabled={
-              pending ||
-              removing ||
-              !url.trim() ||
-              refCount(type) >= (type === "ref_account" ? REF_ACCOUNT_MAX : REF_POST_MAX)
-            }
-            onClick={add}
-            type="button"
-          >
-            追加
-          </button>
+        <div className="mt-4 space-y-4">
+          {REF_FIELDS.map(({ type, max, placeholder, hint }) => {
+            const count = refCount(type);
+            const full = count >= max;
+            const value = urls[type];
+            const inputId = `ref-url-${type}`;
+            return (
+              <div key={type}>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <label className="text-sm font-medium" htmlFor={inputId}>
+                    {TYPE_LABEL[type]}
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {count}/{max}
+                    {full ? "（上限）" : ""}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    className="min-h-11 min-w-0 flex-1 rounded-lg border bg-background px-3 disabled:opacity-50"
+                    disabled={full || removing}
+                    id={inputId}
+                    onChange={(e) => setUrls((current) => ({ ...current, [type]: e.target.value }))}
+                    placeholder={placeholder}
+                    type="url"
+                    value={value}
+                  />
+                  <button
+                    className="inline-flex h-11 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+                    disabled={pending || removing || !value.trim() || full}
+                    onClick={() => add(type)}
+                    type="button"
+                  >
+                    追加
+                  </button>
+                </div>
+                {/* **押せない理由を欄ごとに出す**（T-M8-37）。無効化だけだと壊れているのか区別できない。 */}
+                {full ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    上限の{max}件です。追加するには、下の一覧からどれかを削除してください。
+                  </p>
+                ) : !value.trim() && !removing ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">XのURLを入力すると追加できます。</p>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
-        {/* **押せない理由を出す**（T-M8-37）。無効化だけだと壊れているのか区別できない。 */}
-        {!url.trim() && !removing ? (
-          <p className="mt-2 text-xs text-muted-foreground">XのURLを入力すると追加できます。</p>
-        ) : null}
       </section>
 
       {/* 一覧 */}
