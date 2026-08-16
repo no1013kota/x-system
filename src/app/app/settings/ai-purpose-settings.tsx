@@ -9,8 +9,14 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ImageAiProvider } from "@/lib/ai-purpose-config";
-import { IMAGE_MODEL_OPTIONS, TEXT_MODEL_OPTIONS, isCatalogImageModel, isCatalogTextModel } from "@/lib/ai/model-catalog";
-import { IMAGE_BASE_ESTIMATE_CREDITS, TEXT_BASE_ESTIMATE_CREDITS } from "@/lib/usage/ai-credits";
+import {
+  IMAGE_DEFAULT_ESTIMATE_CREDITS,
+  IMAGE_MODEL_OPTIONS,
+  TEXT_DEFAULT_ESTIMATE_CREDITS,
+  TEXT_MODEL_OPTIONS,
+  isCatalogImageModel,
+  isCatalogTextModel,
+} from "@/lib/ai/model-catalog";
 import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
@@ -119,11 +125,12 @@ export function AiPurposeSettings({
               プレミアムプランではExos AIの運営環境で文章生成とリサーチを実行します。モデルは選べます。
             </p>
             <ModelSelect
+              defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
               disabled={isPending}
               label="文章生成に使うモデル"
               onChange={setTextModel}
               options={TEXT_MODEL_OPTIONS.anthropic}
-              showCreditsBase={TEXT_BASE_ESTIMATE_CREDITS}
+              plan={plan}
               value={textModel}
             />
           </div>
@@ -151,10 +158,12 @@ export function AiPurposeSettings({
         )}
         {plan !== "premium" && effectiveTextProvider ? (
           <ModelSelect
+            defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
             disabled={isPending}
             label="文章生成に使うモデル"
             onChange={setTextModel}
             options={TEXT_MODEL_OPTIONS[effectiveTextProvider]}
+            plan={plan}
             value={textModel}
           />
         ) : null}
@@ -194,11 +203,12 @@ export function AiPurposeSettings({
         ) : null}
         {options.image.length > 0 && imageProvider ? (
           <ModelSelect
+            defaultEstimate={IMAGE_DEFAULT_ESTIMATE_CREDITS}
             disabled={isPending}
             label="画像生成に使うモデル"
             onChange={setImageModel}
             options={IMAGE_MODEL_OPTIONS[imageProvider]}
-            showCreditsBase={plan === "premium" ? IMAGE_BASE_ESTIMATE_CREDITS : undefined}
+            plan={plan}
             value={imageModel}
           />
         ) : null}
@@ -233,26 +243,30 @@ export function AiPurposeSettings({
 }
 
 /**
- * モデル選択（T-M8-107）。空=おまかせ（運営の既定モデル）。単価の目安を選択肢に含める。
- * premiumはクレジット消費の目安も出す（T-M8-109。実費消費のため確定値ではなく目安——
- * 選ぶ前におおよその消費が分かるようにする）。
+ * モデル選択（T-M8-107/110）。空=おまかせ（運営の既定モデル）。
+ * 消費目安は「1回あたり」で出す（per MTok表記は分かりにくいため廃止・2026-08-16 運営者の指示）:
+ * premium=「約Nクレジット/回」、BYOK=「約N円/回」（自分のAPI課金の目安。1クレジット=1円相当で同値）。
+ * 実費消費のため確定値ではなく目安（成功時に実費で精算・T-M8-109）。
  */
 function ModelSelect({
   disabled,
   label,
   onChange,
   options,
-  showCreditsBase,
+  plan,
+  defaultEstimate,
   value,
 }: {
   disabled: boolean;
   label: string;
   onChange: (value: string) => void;
-  options: readonly { id: string; label: string; priceNote: string; creditMultiplier?: number }[];
-  /** premiumのみ: クレジット消費の目安（1回あたり）。基準額×モデル倍数。 */
-  showCreditsBase?: number;
+  options: readonly { id: string; label: string; estimateCredits: number }[];
+  plan: PlanId;
+  /** 「おまかせ」の消費目安（運営の既定モデル想定）。 */
+  defaultEstimate: number;
   value: string;
 }) {
+  const unit = plan === "premium" ? "クレジット/回" : "円/回";
   return (
     <label className="mt-3 block max-w-xl space-y-2 text-sm font-medium">
       {label}
@@ -262,13 +276,11 @@ function ModelSelect({
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
-        <option value="">
-          {showCreditsBase ? `おまかせ（運営の既定モデル・目安 約${showCreditsBase}クレジット/回）` : "おまかせ（運営の既定モデル）"}
-        </option>
+        <option value="">{`おまかせ（運営の既定モデル・約${defaultEstimate}${unit}）`}</option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
-            {option.label} — {option.priceNote}
-            {showCreditsBase ? `・目安 約${showCreditsBase * (option.creditMultiplier ?? 1)}クレジット/回` : ""}
+            {option.label} — 約{option.estimateCredits}
+            {unit}
           </option>
         ))}
       </select>

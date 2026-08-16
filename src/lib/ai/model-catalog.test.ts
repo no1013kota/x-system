@@ -1,44 +1,52 @@
 import { describe, expect, it } from "vitest";
 
+import { IMAGE_FLAT_RATES_USD } from "./pricing";
 import {
   IMAGE_MODEL_OPTIONS,
   TEXT_MODEL_OPTIONS,
-  imageCreditCost,
-  textCreditCost,
+  imageEstimateCredits,
+  textEstimateCredits,
 } from "./model-catalog";
 
 /**
- * クレジット倍数（T-M8-108）: 基準（Sonnet 5相当・画像は最上位）=1、上位はコスト比の切り上げ。
- * ここが崩れると「上位モデル選択で運営原価上限が動かない」という設計保証が壊れる。
+ * 消費目安（T-M8-110）: estimateCredits は「1回あたりの想定実費（円）」で、
+ * 画面表示とreserve見積もりの両方の正本。ここが崩れると表示と仮押さえがずれる。
  */
-describe("credit multipliers", () => {
-  it("Anthropicの倍数はコスト比（基準Sonnet 5 $2/$10）の切り上げ", () => {
-    expect(textCreditCost("anthropic", "claude-fable-5")).toBe(5); // $10/$50 = 5倍
-    expect(textCreditCost("anthropic", "claude-opus-5")).toBe(3); // $5/$25 = 2.5倍 → 切り上げ3
-    expect(textCreditCost("anthropic", "claude-sonnet-5")).toBe(1);
-    expect(textCreditCost("anthropic", "claude-sonnet-4-6")).toBe(2); // 1.5倍 → 2
-    expect(textCreditCost("anthropic", "claude-haiku-4-5")).toBe(1); // 基準未満は1（最低1）
+describe("estimateCredits", () => {
+  it("文章の目安は上位ほど高く、最上位（Fable 5）は実測ベースの55", () => {
+    expect(textEstimateCredits("anthropic", "claude-fable-5")).toBe(55); // 実測$0.33≒53円
+    expect(textEstimateCredits("anthropic", "claude-opus-5")).toBe(30);
+    expect(textEstimateCredits("anthropic", "claude-sonnet-5")).toBe(16);
+    expect(textEstimateCredits("anthropic", "claude-haiku-4-5")).toBe(10);
   });
 
-  it("未選択（env既定）・カタログ外は1", () => {
-    expect(textCreditCost("anthropic", null)).toBe(1);
-    expect(textCreditCost("anthropic", "unknown-model")).toBe(1);
-    expect(imageCreditCost("openai", null)).toBe(1);
+  it("Claude Sonnet 4.6 は選択肢に無い（Sonnet 5の下位互換のため掲載しない・T-M8-110）", () => {
+    expect(TEXT_MODEL_OPTIONS.anthropic.some((m) => m.id === "claude-sonnet-4-6")).toBe(false);
+    // カタログ外の保存済み値は既定見積もりへフォールバック（実行はenv既定モデル）。
+    expect(textEstimateCredits("anthropic", "claude-sonnet-4-6")).toBe(16);
   });
 
-  it("画像は最上位が基準=1（全モデル1）", () => {
+  it("未選択（おまかせ）は既定見積もり（文章16・画像12）", () => {
+    expect(textEstimateCredits("anthropic", null)).toBe(16);
+    expect(imageEstimateCredits("openai", null)).toBe(12);
+  });
+
+  it("画像の目安は1枚あたり概算単価表（×160円切り上げ）と一致する", () => {
     for (const provider of ["openai", "google"] as const) {
       for (const m of IMAGE_MODEL_OPTIONS[provider]) {
-        expect(imageCreditCost(provider, m.id)).toBe(1);
+        const usd = IMAGE_FLAT_RATES_USD[m.id];
+        expect(usd, `${m.id} は単価表にあるべき`).toBeDefined();
+        expect(m.estimateCredits, `${m.id} の目安が単価表とずれている`).toBe(
+          Math.ceil(usd * 160),
+        );
       }
     }
   });
 
-  it("倍数はDB制約（±10）の範囲内", () => {
-    for (const options of Object.values(TEXT_MODEL_OPTIONS)) {
+  it("ラベルに per MTok 表記を含めない（2026-08-16 運営者の指示）", () => {
+    for (const options of [...Object.values(TEXT_MODEL_OPTIONS), ...Object.values(IMAGE_MODEL_OPTIONS)]) {
       for (const m of options) {
-        expect(m.creditMultiplier ?? 1).toBeGreaterThanOrEqual(1);
-        expect(m.creditMultiplier ?? 1).toBeLessThanOrEqual(10);
+        expect(m.label).not.toMatch(/MTok/i);
       }
     }
   });

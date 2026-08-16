@@ -147,9 +147,9 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
     try {
       await expect(executeImageGeneration(deps(jobId, true))).rejects.toThrow();
       // handler は返還しない（retry差し戻しでクレジットが消える事故を防ぐため）。
-      // 親の消費1 + 画像見積もり32（IMAGE_BASE_ESTIMATE_CREDITS・T-M8-109）。
-      expect(await credits(uid)).toBe(33);
-      // 失敗確定で画像reserve分（32）だけが返る。親の1は触らない。
+      // 親の消費1 + 画像見積もり12（IMAGE_DEFAULT_ESTIMATE_CREDITS・モデル未選択・T-M8-110）。
+      expect(await credits(uid)).toBe(13);
+      // 失敗確定で画像reserve分（12）だけが返る。親の1は触らない。
       await failJob(jobId, "image_generation", new Error("terminal"));
       expect(await credits(uid)).toBe(1);
     } finally {
