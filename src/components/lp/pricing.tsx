@@ -7,7 +7,7 @@ import { PLAN_IDS, PLANS, type PlanDefinition } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /**
- * LP 06 料金（design_handoff_space_ai_lp）。価格・プラン名・アカウント数・プレミアムの月間上限は
+ * LP 06 料金（design_handoff_lp）。価格・プラン名・アカウント数・プレミアムの月間上限は
  * `plans.ts` を正とし、ここに数値を直書きしない（landing-page.test.ts が固定する）。
  * BYOK注記と申込前確認事項は特商法上の要件のため、折りたたまず常時表示する。
  */

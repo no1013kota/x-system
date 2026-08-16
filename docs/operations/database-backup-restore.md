@@ -27,7 +27,7 @@ DATABASE_URL="postgresql://…/postgres" \
 BACKUP_ENCRYPTION_KEY="<保管したパスフレーズ>" \
 BACKUP_OUT_DIR="/secure/location/backups" \
 bash scripts/db-backup.sh
-# → /secure/location/backups/spaceai-YYYYMMDDTHHMMSSZ.sql.enc（AES-256-CBC 暗号化）
+# → /secure/location/backups/exosai-YYYYMMDDTHHMMSSZ.sql.enc（AES-256-CBC 暗号化）
 ```
 
 - スクリプトは `pg_dump --no-owner --no-privileges`（別インスタンス／新規プロジェクトへの復元時の role 依存回避）→ `openssl enc -aes-256-cbc -pbkdf2 -salt` の順で暗号化する。
@@ -41,7 +41,7 @@ bash scripts/db-backup.sh
 ```bash
 TARGET_DATABASE_URL="postgresql://…/<空DB>" \
 BACKUP_ENCRYPTION_KEY="<バックアップ時と同じパスフレーズ>" \
-bash scripts/db-restore.sh /secure/location/backups/spaceai-YYYYMMDDTHHMMSSZ.sql.enc
+bash scripts/db-restore.sh /secure/location/backups/exosai-YYYYMMDDTHHMMSSZ.sql.enc
 ```
 
 3. 検証（元と一致することを確認する）:

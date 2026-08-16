@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     // デザインリファレンス（T-M8-01）。`support.js` はプレビュー用ランタイムで移植対象外。
     // 我々が保守するコードではないため検査しない（React 18以前の書き方を含む）。
-    "design_handoff_spaceai_ui/**",
+    "design_handoff_ui/**",
   ]),
   {
     // Playwright fixtures take a `use` callback that the React hooks rules

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Space AI launchd cron caller（要件04 §6・運用メモ §1/§2・ADR-0002/0003, T-M4-18）。
+# Exos AI launchd cron caller（要件04 §6・運用メモ §1/§2・ADR-0002/0003, T-M4-18）。
 # ローカル起動アプリの /api/cron/* を Bearer 付きで呼ぶ。秘密値は plist へ直書きせず
 # 所有者限定の秘密ファイル（CRON_SECRET_FILE）または macOS Keychain から取得する。
 # timeout/DNS/5xx は 30s→60s の最大2回再試行、3回失敗でローカルlogへ記録。redirect は非成功扱い。

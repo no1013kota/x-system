@@ -1,9 +1,9 @@
 # Claude Code への指示テンプレート
 
-> このフォルダをリポジトリ直下（例: `design_handoff_spaceai_ui/`）に置き、Claude Code には次の1行だけ貼ればOKです。書き換えは不要（環境依存の情報はフェーズ1で Claude Code 自身が調査・提案します）。
+> このフォルダをリポジトリ直下（例: `design_handoff_ui/`）に置き、Claude Code には次の1行だけ貼ればOKです。書き換えは不要（環境依存の情報はフェーズ1で Claude Code 自身が調査・提案します）。
 >
 > ```
-> design_handoff_spaceai_ui/CLAUDE_CODE_PROMPT.md を読んで、その「指示本文」に従って作業を開始して。
+> design_handoff_ui/CLAUDE_CODE_PROMPT.md を読んで、その「指示本文」に従って作業を開始して。
 > ```
 
 ---
@@ -11,8 +11,8 @@
 ## 指示本文（Claude Code はここから読むこと）
 
 ```
-design_handoff_spaceai_ui/ に Space AI の新UIデザイン一式がある。
-まず README.md を読み、Space AI App.dc.html（本体8画面）と Space AI States.dc.html
+design_handoff_ui/ に Exos AI の新UIデザイン一式がある。
+まず README.md を読み、Exos AI App.dc.html（本体8画面）と Exos AI States.dc.html
 （認証・モーダル・トースト・空状態・投稿履歴・通知のカタログ）をブラウザで開いて確認してから作業して。
 
 目的: 既存アプリの「見た目だけ」をこのデザインに置き換える。
@@ -74,4 +74,4 @@ design_handoff_spaceai_ui/ に Space AI の新UIデザイン一式がある。
 - **一括で「全部反映して」と頼まない**こと。フェーズ分け＋各フェーズで確認を挟むのが、不具合を出さずマージする最短ルートです。
 - Claude Code がスクリーンショットを撮れる環境（Playwright等）があるなら「各画面の before/after スクショを撮って比較して」と足すと精度が上がります。
 - マージは PR レビュー後に自分で行うのが安全です。上の「マージ前の最終確認」を満たした PR だけをマージしてください。
-- このフォルダ自体はリポジトリにコミットしなくても良い（.gitignore に `design_handoff_spaceai_ui/` を追加）。コミットする場合もデザイン資料として置いておけば実害はありません。不要になったら全画面完了後の掃除コミットで削除。
+- このフォルダ自体はリポジトリにコミットしなくても良い（.gitignore に `design_handoff_ui/` を追加）。コミットする場合もデザイン資料として置いておけば実害はありません。不要になったら全画面完了後の掃除コミットで削除。

@@ -4,7 +4,7 @@ import { normalizeLearningUrl } from "./learning-sources";
 
 describe("normalizeLearningUrl", () => {
   it("normalizes a ref_account URL to https://x.com/{handle} (lowercased)", () => {
-    expect(normalizeLearningUrl("ref_account", "https://twitter.com/SpaceAI")).toBe("https://x.com/spaceai");
+    expect(normalizeLearningUrl("ref_account", "https://twitter.com/ExosAI")).toBe("https://x.com/exosai");
     expect(normalizeLearningUrl("ref_account", "https://x.com/foo_bar")).toBe("https://x.com/foo_bar");
   });
 

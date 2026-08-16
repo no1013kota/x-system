@@ -2,7 +2,7 @@ import { APP_NAME } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
 /**
- * LP 07 よくある質問（design_handoff_space_ai_lp §文言）。ネイティブ `<details>` で開閉し、
+ * LP 07 よくある質問（design_handoff_lp §文言）。ネイティブ `<details>` で開閉し、
  * JS状態を持たない。「＋」は開くと45度回転して「×」に見える（色だけに頼らない開閉表現）。
  */
 

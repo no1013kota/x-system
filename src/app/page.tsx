@@ -20,8 +20,8 @@ import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /**
- * SC-01 LP（要件06 §1, T-M8-74）。design_handoff_space_ai_lp のデザインリファレンス
- * 「Space AI LP v2」を正とする再現実装。文言はハンドオフREADME §文言（一字一句変更禁止）に従い、
+ * SC-01 LP（要件06 §1, T-M8-74）。design_handoff_lp のデザインリファレンス
+ * 「Exos AI LP v2」を正とする再現実装。文言はハンドオフREADME §文言（一字一句変更禁止）に従い、
  * 価格・上限値は `plans.ts` から埋める。導線・注記・禁止表現は landing-page.test.ts が固定する。
  */
 

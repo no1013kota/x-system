@@ -50,7 +50,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 
   /*
-    ここから下は新デザイン（design_handoff_spaceai_ui）のトークン（T-M8-02）。
+    ここから下は新デザイン（design_handoff_ui）のトークン（T-M8-02）。
     **既存のトークンは1つも消していない**。未対象の画面が参照しているため、
     全画面の置換が終わるまで両方が並存する。
   */
@@ -221,7 +221,7 @@
 }
 
 /*
- * LP（SC-01, T-M8-74）の演出。design_handoff_space_ai_lp/README.md §インタラクション & モーション。
+ * LP（SC-01, T-M8-74）の演出。design_handoff_lp/README.md §インタラクション & モーション。
  * 生成ループ（7s: バーが伸び、ラベルが「生成中…」⇄「完了」でクロスフェード）とフロートカード。
  * どちらもヒーローモック内の装飾で、止まっても情報は失われない（prefers-reduced-motion で停止）。
  */

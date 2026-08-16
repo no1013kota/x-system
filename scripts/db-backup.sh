@@ -15,7 +15,7 @@ set -euo pipefail
 OUT_DIR="${BACKUP_OUT_DIR:-./backups}"
 PG_DUMP="${PG_DUMP:-pg_dump}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="${OUT_DIR}/spaceai-${TS}.sql.enc"
+OUT="${OUT_DIR}/exosai-${TS}.sql.enc"
 
 mkdir -p "$OUT_DIR"
 
