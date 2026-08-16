@@ -4,24 +4,108 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useToast } from "@/components/ui/toast";
-import type { SuggestionDisplay } from "@/lib/analytics-server";
+import type { SuggestionDisplay, SuggestionGoodPost } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
 
 /**
  * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94）。
  *
  * **毎朝8:00 JSTに自動で生成される**（手動の「提案を更新」は 2026-08-15 に廃止・運営者の指示）。
- * 内容: ①良かった投稿の特徴（総評＋投稿リンクと理由）②近づけるための設定
- * （推奨の型・テーマ・画像有無・そのまま貼れるプロンプト全文）。
+ *
+ * 画面は上から ①まとめ ②良かった投稿 ③近づけるための設定 の3段で、
+ * **段ごとに番号付きの見出しを置く**（T-M8-114）。以前は総評・投稿リンク・推奨が
+ * 同じ濃さの文字で続いていて、どこまでが何の話か読み取れなかった。
  *
  * 承認・却下・自動反映は存在しない（PRD §10「自動反映しない」）。
  * プロンプトの保存先（AI設定＞プロンプト）は mdプラン以上のため、standard には全文を出さず
  * 案内だけ出す（貼り先の無い文字列を渡さない）。
  */
+
+/** 段の見出し。番号で順序を示し、本文と見た目を分ける。 */
+function SectionHeading({ step, children }: { step: number; children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2 text-caption font-semibold text-ink-3">
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 flex-none items-center justify-center rounded-full bg-brand-subtle text-caption font-bold text-brand"
+      >
+        {step}
+      </span>
+      {children}
+    </h3>
+  );
+}
+
+/** 数値1つ。取得できていない値は「—」にして0と区別する（原則1）。 */
+function Metric({ label, value }: { label: string; value: number | null }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <span className="text-ink-3">{label}</span>
+      <span className="font-semibold tabular-nums text-ink">
+        {value === null ? "—" : value.toLocaleString()}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * 良かった投稿1件。
+ *
+ * **本文と数値をその場に出す**（T-M8-114）。以前は「この投稿を開く」というリンク1本だけで、
+ * どの投稿の話なのかXを開くまで分からなかった。開かなくても分かるようにし、
+ * 開く操作は右上のボタンへ独立させる。
+ */
+function GoodPostCard({ post }: { post: SuggestionGoodPost }) {
+  const p = post.post;
+  return (
+    <li className="rounded-card border border-hairline bg-page p-3.5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {p ? (
+            <p className="line-clamp-3 text-body leading-5 whitespace-pre-wrap text-ink">{p.text}</p>
+          ) : (
+            // 保存対象外・削除済みの投稿。理由だけは読めるので、行き止まりにしない。
+            <p className="text-body leading-5 text-ink-3">
+              この投稿の本文は保存されていません（Xで開くと確認できます）。
+            </p>
+          )}
+        </div>
+        <a
+          className="inline-flex h-8 flex-none items-center gap-1 rounded-card border border-hairline bg-surface px-2.5 text-body font-medium text-ink transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          href={post.url}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <Icon name="open_in_new" size={14} />
+          Xで開く
+          <span className="sr-only">（新しいタブで開きます）</span>
+        </a>
+      </div>
+
+      {p ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption">
+          <Metric label="表示" value={p.impressions} />
+          <Metric label="いいね" value={p.likes} />
+          <Metric label="リポスト" value={p.reposts} />
+          <Metric label="返信" value={p.replies} />
+          {p.postedAt ? <span className="text-ink-3">{formatJst(p.postedAt)}</span> : null}
+          {p.pattern ? <Badge tone="neutral">{POST_PATTERN_LABELS[p.pattern] ?? p.pattern}</Badge> : null}
+          {p.theme ? <Badge tone="neutral">{postThemeLabel(p.theme)}</Badge> : null}
+          {p.hasImage ? <Badge tone="neutral">画像あり</Badge> : null}
+        </div>
+      ) : null}
+
+      {post.why ? (
+        <p className="mt-2 border-t border-hairline pt-2 text-body leading-5 text-ink-2">{post.why}</p>
+      ) : null}
+    </li>
+  );
+}
 
 /** アドバイス1枚（推奨値＋理由）。 */
 function AdviceCard({ label, value, reason }: { label: string; value: string; reason: string }) {
@@ -32,6 +116,50 @@ function AdviceCard({ label, value, reason }: { label: string; value: string; re
         <span className="font-bold text-ink">{value}</span>
         <span className="mt-0.5 block text-body leading-5 text-ink-2">{reason}</span>
       </dd>
+    </div>
+  );
+}
+
+/** 貼って使う提案（アカウント.md・投稿作成プロンプト）の共通の器。 */
+function ProposalBlock({
+  title,
+  reason,
+  content,
+  copied,
+  onCopy,
+  href,
+  linkLabel,
+}: {
+  title: string;
+  reason?: string;
+  content: string;
+  copied: boolean;
+  onCopy: () => void;
+  href: string;
+  linkLabel: string;
+}) {
+  return (
+    <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-caption font-semibold text-ink-3">{title}</p>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="inline-flex h-8 items-center gap-1 rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
+            onClick={onCopy}
+            type="button"
+          >
+            <Icon name={copied ? "check_circle" : "content_copy"} size={14} />
+            {copied ? "コピーしました" : "コピー"}
+          </button>
+          <Link className="text-body text-info-fg hover:underline" href={href}>
+            {linkLabel}
+          </Link>
+        </div>
+      </div>
+      {reason ? <p className="mt-2 text-body leading-5 text-ink-2">{reason}</p> : null}
+      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
+        {content}
+      </pre>
     </div>
   );
 }
@@ -117,8 +245,9 @@ export function SuggestionsPanel({
         <ul className="mt-4 space-y-3">
           {suggestions.map((s, i) => (
             <li className="rounded-card border border-hairline bg-surface p-4" key={i}>
-              {/* 総評（良かった投稿の特徴）。 */}
-              <p className="text-sm font-medium leading-6">{s.content}</p>
+              {/* ① まとめ。 */}
+              <SectionHeading step={1}>まとめ</SectionHeading>
+              <p className="mt-1.5 text-sm font-medium leading-6 text-ink">{s.content}</p>
 
               {s.kind === "legacy" ? (
                 // 旧形式（〜2026-08-15の軸ベース提案）。翌朝の自動実行で新形式に置き換わる。
@@ -128,37 +257,31 @@ export function SuggestionsPanel({
               ) : (
                 <>
                   {s.goodPosts.length > 0 ? (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-muted-foreground">良かった投稿</p>
-                      <ul className="mt-1 space-y-1.5">
+                    <div className="mt-5">
+                      <SectionHeading step={2}>良かった投稿</SectionHeading>
+                      <ul className="mt-2 space-y-2">
                         {s.goodPosts.map((p) => (
-                          <li className="text-body leading-5" key={p.tweetId}>
-                            <a
-                              className="text-info-fg hover:underline"
-                              href={p.url}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              この投稿を開く
-                            </a>
-                            <span className="ml-1.5 text-ink-2">{p.why}</span>
-                          </li>
+                          <GoodPostCard key={p.tweetId} post={p} />
                         ))}
                       </ul>
                     </div>
                   ) : null}
 
                   {s.advice ? (
-                    <div className="mt-4">
-                      <p className="text-xs font-semibold text-muted-foreground">
-                        近づけるための設定（投稿作成・スケジュールで選べます）
+                    <div className="mt-5">
+                      <SectionHeading step={3}>近づけるための設定</SectionHeading>
+                      <p className="mt-1 text-caption text-ink-3">
+                        投稿作成・スケジュールの画面で、そのまま選べます。
                       </p>
                       <dl className="mt-2 grid gap-2 sm:grid-cols-3">
                         {s.advice.pattern ? (
                           <AdviceCard
                             label="投稿の型"
                             reason={s.advice.pattern.reason}
-                            value={POST_PATTERN_LABELS[s.advice.pattern.recommended] ?? s.advice.pattern.recommended}
+                            value={
+                              POST_PATTERN_LABELS[s.advice.pattern.recommended] ??
+                              s.advice.pattern.recommended
+                            }
                           />
                         ) : null}
                         {s.advice.theme ? (
@@ -181,7 +304,10 @@ export function SuggestionsPanel({
                         // 貼り先（設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
                         <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
                           この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
-                          <Link className="text-info-fg hover:underline" href="/app/settings?tab=prompts&sec=post-prompt">
+                          <Link
+                            className="text-info-fg hover:underline"
+                            href="/app/settings?tab=prompts&sec=post-prompt"
+                          >
                             プロンプトのカスタマイズ（mdプラン以上）
                           </Link>
                           で利用できます。
@@ -190,64 +316,28 @@ export function SuggestionsPanel({
 
                       {/* アカウント.mdの編集提案（T-M8-106）。全パターン共通の土台なので先に出す。 */}
                       {s.advice.accountMd && plan !== "standard" ? (
-                        <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-caption font-semibold text-ink-3">
-                              アカウント.mdへの編集提案 — そのまま貼って保存できます
-                            </p>
-                            <div className="ml-auto flex items-center gap-2">
-                              <button
-                                className="inline-flex h-8 items-center rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
-                                onClick={() => copyProposal("account_md", s.advice!.accountMd!.content)}
-                                type="button"
-                              >
-                                {copied === "account_md" ? "コピーしました" : "コピー"}
-                              </button>
-                              <Link
-                                className="text-body text-info-fg hover:underline"
-                                href="/app/settings?tab=prompts&sec=account-md"
-                              >
-                                設定で編集する
-                              </Link>
-                            </div>
-                          </div>
-                          {s.advice.accountMd.reason ? (
-                            <p className="mt-2 text-body leading-5 text-ink-2">{s.advice.accountMd.reason}</p>
-                          ) : null}
-                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
-                            {s.advice.accountMd.content}
-                          </pre>
-                        </div>
+                        <ProposalBlock
+                          content={s.advice.accountMd.content}
+                          copied={copied === "account_md"}
+                          href="/app/settings?tab=prompts&sec=account-md"
+                          linkLabel="設定で編集する"
+                          onCopy={() => copyProposal("account_md", s.advice!.accountMd!.content)}
+                          reason={s.advice.accountMd.reason}
+                          title="アカウント.mdへの編集提案 — そのまま貼って保存できます"
+                        />
                       ) : null}
 
                       {s.advice.prompt && plan !== "standard" ? (
-                        <div className="mt-3 rounded-card border border-hairline bg-page p-3.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-caption font-semibold text-ink-3">
-                              投稿作成プロンプト（
-                              {POST_PATTERN_LABELS[s.advice.prompt.kind] ?? s.advice.prompt.kind}
-                              ）— そのまま貼って使えます
-                            </p>
-                            <div className="ml-auto flex items-center gap-2">
-                              <button
-                                className="inline-flex h-8 items-center rounded-card border px-3 text-body font-medium transition-colors duration-150 hover:bg-accent"
-                                onClick={() => copyProposal("prompt", s.advice!.prompt!.content)}
-                                type="button"
-                              >
-                                {copied === "prompt" ? "コピーしました" : "コピー"}
-                              </button>
-                              <Link
-                                className="text-body text-info-fg hover:underline"
-                                href="/app/settings?tab=prompts&sec=post-prompt"
-                              >
-                                設定で保存する
-                              </Link>
-                            </div>
-                          </div>
-                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-card bg-surface p-3 text-xs leading-5 text-ink">
-                            {s.advice.prompt.content}
-                          </pre>
-                        </div>
+                        <ProposalBlock
+                          content={s.advice.prompt.content}
+                          copied={copied === "prompt"}
+                          href="/app/settings?tab=prompts&sec=post-prompt"
+                          linkLabel="設定で保存する"
+                          onCopy={() => copyProposal("prompt", s.advice!.prompt!.content)}
+                          title={`投稿作成プロンプト（${
+                            POST_PATTERN_LABELS[s.advice.prompt.kind] ?? s.advice.prompt.kind
+                          }）— そのまま貼って使えます`}
+                        />
                       ) : null}
                     </div>
                   ) : null}

@@ -58,9 +58,15 @@ describe("アイコンは1系統に保つ", () => {
 });
 
 describe("アイコンの定義と使用が一致している", () => {
-  /** `name="..."` のリテラル（動的に渡すものは対象外）。 */
+  /**
+   * `name="..."` のリテラル（動的に渡すものは対象外）。
+   *
+   * **`<Icon` タグの中だけを見る**（`[^>]*`）。以前は `[\s\S]*?` で、`name` を
+   * 動的に渡すIcon（`name={cond ? "a" : "b"}`）があると、そこから先を走査し続けて
+   * **無関係なファイルの `<input name="terms_version">` にマッチして落ちていた**。
+   */
   const usedLiterals = new Set(
-    [...ALL_SOURCE.matchAll(/<Icon[\s\S]*?\bname="([^"]+)"/g)].map((m) => m[1]),
+    [...ALL_SOURCE.matchAll(/<Icon\b[^>]*\bname="([^"]+)"/g)].map((m) => m[1]),
   );
 
   it("検査対象を実際に見つけている（空振りしていない）", () => {

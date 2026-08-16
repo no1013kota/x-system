@@ -14,7 +14,8 @@ import { expect, signIn, test } from "./fixtures/test";
 
 const EVIDENCE = {
   format: 2,
-  good_posts: [{ id: "9000000000000001", why: "表示回数が3,200と最多だった" }],
+  // **実際にレポートへ出ていた形**（英語の項目名と内部ID）を入れる。画面では日本語に直る（T-M8-114）。
+  good_posts: [{ id: "9000000000000001", why: "冒頭3200impressionsで最多。p3の型が効いた" }],
   advice: {
     account_md: {
       content: "# 発信定義書\n## 1. ペルソナ\nE2E提案の中身\n## 2. 発信テーマ\n## 3. トンマナ\n## 4. NG\n## 5. 学習\n## 6. その他",
@@ -43,22 +44,45 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
     [account.xAccountId, "朝8時台のノウハウ投稿の表示回数が突出していた", JSON.stringify(EVIDENCE)],
   );
 
+  // 良かった投稿の実体（本文・数値）。画面に出るので保存済みタイムラインから引ける必要がある。
+  await query(
+    `insert into x_timeline_posts
+       (x_account_id, tweet_id, text, posted_at, impressions, likes, reposts, replies, has_image, pattern, theme)
+     values ($1, '9000000000000001', $2, now() - interval '2 days', 3200, 45, 12, 7, true, 'p3', 'ai')`,
+    [account.xAccountId, "E2Eの良かった投稿の本文。手順を数字で示した。"],
+  );
+
   await signIn(page, account);
   await page.goto("/app/analytics");
 
-  // 総評と良かった投稿。
+  // ① まとめ。
   await expect(page.getByText("朝8時台のノウハウ投稿の表示回数が突出していた")).toBeVisible();
-  const goodPost = page.getByRole("link", { name: "この投稿を開く" });
+
+  // ② 良かった投稿: 開かなくても本文と数値が読める（T-M8-114）。
+  await expect(page.getByText("E2Eの良かった投稿の本文。手順を数字で示した。")).toBeVisible();
+  const goodPost = page.getByRole("link", { name: /Xで開く/ });
   await expect(goodPost).toBeVisible();
   await expect(goodPost).toHaveAttribute("href", /status\/9000000000000001/);
-  await expect(page.getByText("表示回数が3,200と最多だった")).toBeVisible();
+  await expect(goodPost).toHaveAttribute("target", "_blank");
+  await expect(page.getByText("3,200", { exact: false }).first()).toBeVisible();
 
-  // アドバイスは画面表記（POST_PATTERN_LABELS / postThemeLabel）で出す。内部キーは出さない。
-  await expect(page.getByText("ノウハウ", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("AI", { exact: true })).toBeVisible();
-  await expect(page.getByText("付ける", { exact: true })).toBeVisible();
-  const panel = page.locator("section", { hasText: "分析レポート" });
-  await expect(panel.getByText(/\bp3\b/)).toHaveCount(0);
+  // 英語の項目名と内部IDが画面に出ない（AIの本文をそのまま出さない・T-M8-114）。
+  const report = page.locator("section", { hasText: "分析レポート" });
+  await expect(report.getByText(/impressions/i)).toHaveCount(0);
+  await expect(page.getByText("表示3200回", { exact: false })).toBeVisible();
+
+  // 段の見出しが3つ並ぶ（順序が読み取れる）。
+  for (const heading of ["まとめ", "良かった投稿", "近づけるための設定"]) {
+    await expect(report.getByRole("heading", { name: heading })).toBeVisible();
+  }
+
+  // ③ アドバイスは画面表記（POST_PATTERN_LABELS / postThemeLabel）で出す。内部キーは出さない。
+  // 投稿カード側にも型・テーマのバッジが出るため、推奨の一覧（dl）に絞って見る。
+  const advice = report.locator("dl");
+  await expect(advice.getByText("ノウハウ", { exact: false }).first()).toBeVisible();
+  await expect(advice.getByText("AI", { exact: true })).toBeVisible();
+  await expect(advice.getByText("付ける", { exact: true })).toBeVisible();
+  await expect(report.getByText(/(^|[^0-9A-Za-z_])p3(?![0-9A-Za-z_])/)).toHaveCount(0);
 
   // 2つの編集提案（fixtureはpremium）: アカウント.md提案と投稿作成プロンプト（T-M8-106）。
   await expect(page.getByText("アカウント.mdへの編集提案", { exact: false })).toBeVisible();
