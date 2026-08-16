@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
+import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
@@ -122,7 +123,9 @@ async function createTabData(userId: string, activeXAccountId: string) {
         error: null,
       }
     : null;
-  return { patterns, imageProviders, initialJob, promptTemplates, baseMd };
+  // 経過表示の基準（T-M8-113）。サーバーとブラウザで同じ値を使わないと
+  // 「経過 0:06」と「経過 0:07」が食い違って描き直しになる。
+  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates, baseMd };
 }
 
 export default async function PostsPage({ searchParams }: PostsPageProps) {
@@ -197,6 +200,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <CreatePostForm
           imageProviders={createData.imageProviders}
           initialJob={createData.initialJob}
+          initialNowMs={createData.nowMs}
           patterns={createData.patterns}
           baseMd={createData.baseMd}
           promptTemplates={createData.promptTemplates}

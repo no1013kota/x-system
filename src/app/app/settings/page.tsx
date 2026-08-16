@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { serverNowMs } from "@/lib/time/server-now";
 import { EmptyState, LockedState } from "@/components/app-shell/page-state";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { UpgradePlanButton } from "@/components/billing/upgrade-plan-button";
@@ -193,6 +194,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       : Promise.resolve(null),
   ]);
   const account: AccountRow | null = accountResult?.data ?? null;
+  // 参考ソースの滞留判定に使う基準時刻（T-M8-113）。サーバーとブラウザで同じ値を使わないと
+  // ちょうど60秒あたりで判定が割れ、表示が食い違って描き直しになる。
+  const nowMs = await serverNowMs();
 
   // アカウント設定タブ: 保存済み設定と、アカウント.mdとの差分有無・参考ソース。
   const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
@@ -382,7 +386,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               />
               {/* 参考ソースは学習の反映先（アカウント.md）ができてから出す（T-M8-103）。 */}
               {account.base_md_version >= 1 ? (
-                <LearningSourcesManager initialSources={learningSources} xAccountId={account.id} />
+                <LearningSourcesManager
+                  initialNowMs={nowMs}
+                  initialSources={learningSources}
+                  xAccountId={account.id}
+                />
               ) : null}
             </div>
           )

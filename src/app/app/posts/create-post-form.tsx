@@ -159,6 +159,7 @@ export function CreatePostForm({
   patterns,
   imageProviders,
   initialJob = null,
+  initialNowMs,
   promptTemplates = null,
   baseMd = null,
 }: {
@@ -166,6 +167,8 @@ export function CreatePostForm({
   patterns: PostPatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
+  /** サーバーが描画した時刻（ミリ秒）。経過表示の初期値。 */
+  initialNowMs: number;
   /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。p1〜p6＋image。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
   /** アカウント.md（T-M8-93）。version は保存の楽観ロック。standard は null。 */
@@ -202,7 +205,16 @@ export function CreatePostForm({
   const [prereq, setPrereq] = useState<PrereqError | null>(null);
   const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  /**
+   * 経過表示の基準時刻（T-M8-113）。**初期値はサーバーが測った時刻を使う。**
+   * `Date.now()` を初期値にすると、サーバーが描いた時刻とブラウザがJSで追いつく時刻の
+   * あいだで秒が変わり、「経過 0:06」と「経過 0:07」が食い違って React が木を捨てて
+   * 描き直す（Hydration mismatch）。生成中に画面を開き直したときだけ出るため再現しにくく、
+   * 放置すると本当の不整合が起きても同じ警告に紛れて気付けなくなる。
+   * サーバーの測った時刻をそのまま初期値にすれば両者が必ず一致し、しかも初回描画から
+   * 正しい経過秒が出る。以後はポーリングのたびにブラウザの実時刻へ更新される。
+   */
+  const [nowMs, setNowMs] = useState(initialNowMs);
 
   // 進行中のあいだ getGenerationJob をポーリングして状態を更新する（再訪時も initialJob から再開）。
   //
@@ -361,7 +373,7 @@ export function CreatePostForm({
           status: "queued",
           progressStage: null,
           draftId: null,
-          createdAt: new Date(nowMs).toISOString(),
+          createdAt: new Date().toISOString(),
         });
       }
     });
