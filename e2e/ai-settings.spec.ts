@@ -102,14 +102,13 @@ test("学習ソースを追加すると分析中として並び、削除でき�
 
   // 追加（分析はAIを呼ぶため、ここでは受け付けられて pending になることだけを見る）
   const handle = `e2e_ref_${randomUUID().slice(0, 6)}`;
-  await page.locator('input[type="url"], input[placeholder^="https://x.com"]').first().fill(
-    `https://x.com/${handle}`,
-  );
-  await page.getByRole("button", { name: "追加", exact: true }).click();
+  // 入力欄・追加ボタンは種別ごとに分かれている（T-M8-112）。
+  await page.getByLabel("参考アカウント", { exact: true }).fill(`https://x.com/${handle}`);
+  await page.getByRole("button", { name: "参考アカウントを追加" }).click();
 
   // **成功したことが利用者に分かる**（T-M8-18）。以前は追加が通っても画面は無言で、
   // 一覧に行が増えたことに気づけるかどうかに委ねていた。
-  await expect(toastIn(page)).toContainText("学習ソースを追加しました");
+  await expect(toastIn(page)).toContainText("参考アカウントを追加しました");
 
   // DBに登録され、分析待ちになる
   await expect
@@ -220,11 +219,13 @@ test("URLが空のあいだ「追加」は押せず、理由が画面に出る�
   await signIn(page, account);
   await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
 
-  const add = page.getByRole("button", { name: "追加", exact: true });
+  const add = page.getByRole("button", { name: "参考アカウントを追加" });
   await expect(add).toBeDisabled();
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toBeVisible();
+  // 理由は欄ごとに出る（参考アカウント・参考投稿の2欄・T-M8-112）。
+  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(2);
 
-  await page.getByRole("textbox", { name: "URL" }).fill("https://x.com/example");
+  await page.getByLabel("参考アカウント", { exact: true }).fill("https://x.com/example");
   await expect(add).toBeEnabled();
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(0);
+  // 入力した側だけ理由が消える（もう片方は残る）。
+  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(1);
 });

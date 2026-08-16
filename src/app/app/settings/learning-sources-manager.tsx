@@ -192,6 +192,8 @@ export function LearningSourcesManager({
                     value={value}
                   />
                   <button
+                    // 「追加」ボタンが2つ並ぶため、読み上げでどちらか分かるようにする（WCAG 2.2 AA）。
+                    aria-label={`${TYPE_LABEL[type]}を追加`}
                     className="inline-flex h-11 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
                     disabled={pending || removing || !value.trim() || full}
                     onClick={() => add(type)}
