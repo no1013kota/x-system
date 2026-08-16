@@ -1,7 +1,7 @@
 import { expect, horizontalOverflow, test } from "./fixtures/test";
 
 /**
- * SC-01 LP（T-M8-74, design_handoff_space_ai_lp）。導線の実動作と出現演出をブラウザで確認する。
+ * SC-01 LP（T-M8-74, design_handoff_lp）。導線の実動作と出現演出をブラウザで確認する。
  * 固定文言・禁止表現・plans.ts参照はソース検査（landing-page.test.ts）が守るので、ここでは
  * 「クリックすると実際にそこへ行く／見える」ことだけを見る。
  */

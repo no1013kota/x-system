@@ -203,7 +203,7 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
       },
     },
     login_page: { enabled: false },
-    metadata: { managed_by: "space-ai" },
+    metadata: { managed_by: "exos-ai" },
   };
 }
 

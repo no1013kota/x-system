@@ -24,7 +24,7 @@ import Stripe from "stripe";
 
 const EMAIL = "review@example.com";
 const PASSWORD = "Review-Local-Pw1";
-const HANDLE = "space_ai_review";
+const HANDLE = "exos_ai_review";
 
 const DB_URL =
   process.env.SUPABASE_DB_URL ??

@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
 
 /**
- * LP「できること」「しくみ」のCSS図版（design_handoff_space_ai_lp）。
+ * LP「できること」「しくみ」のCSS図版（design_handoff_lp）。
  * すべて装飾（`aria-hidden`）で、画像アセットを使わずDOMで描く。
  * 図版内の極小テキストは11pxで統一する（参照デザインの10px相当。type-scale.test.ts の許可リスト対象）。
  */

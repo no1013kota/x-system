@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * SC-01 LP（T-M8-74, design_handoff_space_ai_lp）の構造検査。
+ * SC-01 LP（T-M8-74, design_handoff_lp）の構造検査。
  *
  * LPは静的な1ページだが、法令・仕様上の固定要件が多い（カード登録注記・BYOK注記・禁止表現・
  * グラデーションの使用箇所制限・価格の plans.ts 一元化）。これらは見た目のテストでは守れず、

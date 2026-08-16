@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Space AI scheduler_tick（要件04 §6・運用メモ §2）。5分間隔（毎時00・05・…・55分の12エントリ）。
+<!-- Exos AI scheduler_tick（要件04 §6・運用メモ §2）。5分間隔（毎時00・05・…・55分の12エントリ）。
      __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。 -->
 <plist version="1.0">
 <dict>

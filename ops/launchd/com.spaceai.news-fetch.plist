@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Space AI news_fetch（要件04 §6・運用メモ §2）。JST 09:00〜20:00 の毎時00分。
+<!-- Exos AI news_fetch（要件04 §6・運用メモ §2）。JST 09:00〜20:00 の毎時00分。
      __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。 -->
 <plist version="1.0">
 <dict>
