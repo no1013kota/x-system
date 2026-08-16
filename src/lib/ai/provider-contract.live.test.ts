@@ -1,4 +1,5 @@
 import { loadEnvConfig } from "@next/env";
+import { IMAGE_MODEL_OPTIONS, TEXT_MODEL_OPTIONS } from "./model-catalog";
 import { describe, expect, it } from "vitest";
 
 import { IMAGE_PROMPT_JSON_SCHEMA } from "../jobs/image-generation";
@@ -62,7 +63,82 @@ function hasKey(name: string): boolean {
   return Boolean(process.env[name]);
 }
 
+/**
+ * モデルIDの実在検査（T-M8-69）。生成呼び出しは「受理されるか」しか見ないため、
+ * **モデルの廃止（404）は実際に生成するまで分からない**。各社のモデル取得APIで、
+ * 選択肢として出しているID（`model-catalog.ts`）と運営既定（env）が実在することを確かめる。
+ * 課金は発生しない（メタデータの取得のみ）。
+ */
+const MODEL_ENDPOINT: Record<string, (model: string) => { url: string; headers: Record<string, string> } | null> = {
+  anthropic: (model) =>
+    process.env.ANTHROPIC_API_KEY
+      ? {
+          url: `https://api.anthropic.com/v1/models/${model}`,
+          headers: {
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+        }
+      : null,
+  openai: (model) =>
+    process.env.OPENAI_API_KEY
+      ? {
+          url: `https://api.openai.com/v1/models/${model}`,
+          headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        }
+      : null,
+  google: (model) =>
+    process.env.GEMINI_API_KEY
+      ? {
+          url: `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${process.env.GEMINI_API_KEY}`,
+          headers: {},
+        }
+      : null,
+};
+
+/** provider → 検査するモデルID（カタログの選択肢＋運営既定のenv）。 */
+function modelsToCheck(): { provider: string; model: string; source: string }[] {
+  const out: { provider: string; model: string; source: string }[] = [];
+  for (const [provider, options] of Object.entries(TEXT_MODEL_OPTIONS)) {
+    for (const m of options) out.push({ provider, model: m.id, source: "カタログ(文章)" });
+  }
+  for (const [provider, options] of Object.entries(IMAGE_MODEL_OPTIONS)) {
+    for (const m of options) out.push({ provider, model: m.id, source: "カタログ(画像)" });
+  }
+  const envModels: [string, string | undefined, string][] = [
+    ["anthropic", process.env.ANTHROPIC_TEXT_MODEL, "env既定"],
+    ["openai", process.env.OPENAI_TEXT_MODEL, "env既定"],
+    ["openai", process.env.OPENAI_IMAGE_MODEL, "env既定"],
+    ["google", process.env.GEMINI_TEXT_MODEL, "env既定"],
+    ["google", process.env.GEMINI_IMAGE_MODEL, "env既定"],
+  ];
+  for (const [provider, model, source] of envModels) {
+    if (model && !out.some((o) => o.provider === provider && o.model === model)) {
+      out.push({ provider, model, source });
+    }
+  }
+  // Googleは既定で検査対象外（上のコメント参照）。キーが無いproviderも飛ばす。
+  return out.filter(
+    ({ provider }) => (provider !== "google" || GOOGLE_ENABLED) && MODEL_ENDPOINT[provider]?.("x") !== null,
+  );
+}
+
 describe.runIf(ENABLED)("provider契約（実API）", () => {
+  describe("モデルIDの実在（T-M8-69）", () => {
+    // 1モデル1テストにする——まとめて1件にすると、どのIDが死んだのか失敗メッセージから分からない。
+    for (const { provider, model, source } of modelsToCheck()) {
+      it(`${provider} ${model}（${source}）が実在する`, async () => {
+        const endpoint = MODEL_ENDPOINT[provider]!(model)!;
+        const res = await fetch(endpoint.url, { headers: endpoint.headers });
+        expect(
+          res.ok,
+          `${provider} の ${model} が取得できない（HTTP ${res.status}）。` +
+            `モデルが廃止・改名された可能性がある。model-catalog.ts と .env の見直しが要る。`,
+        ).toBe(true);
+      }, 30_000);
+    }
+  });
+
   describe("Anthropic", () => {
     it.runIf(hasKey("ANTHROPIC_API_KEY"))(
       "Web検索付きリクエストが受理される（T-M7-15 の回帰）",
