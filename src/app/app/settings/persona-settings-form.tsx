@@ -420,8 +420,11 @@ export function PersonaSettingsForm({
                 {label}
               </label>
               <textarea
-                className={`${inputClassName} min-h-28`}
+                className={inputClassName}
                 id={`ng.${field}`}
+                // 3行ぶん（投稿作成の追加指示と同じ高さ）。以前は112px固定で、他の入力より
+                // 背が高く浮いていた。入りきらない分は利用者が縁を掴んで伸ばせる。
+                rows={3}
                 onChange={(event) => {
                   const raw = event.target.value;
                   setNgText((current) => ({ ...current, [field]: raw }));
