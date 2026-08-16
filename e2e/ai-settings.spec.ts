@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { query } from "./fixtures/account";
+import type { Page } from "@playwright/test";
+
 import { expect, signIn, test, toastIn } from "./fixtures/test";
 
 /**
@@ -228,4 +230,57 @@ test("URLが空のあいだ「追加」は押せず、理由が画面に出る�
   await expect(add).toBeEnabled();
   // 入力した側だけ理由が消える（もう片方は残る）。
   await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(1);
+});
+
+/**
+ * 保存後に画面が「保存中…」のまま固まらないこと（T-M8-68）。
+ *
+ * `startTransition` の中で `setTemplates` 等の更新と `router.refresh()` を並べていた。
+ * 保存自体は終わってトーストも出ているのに、**サーバー側の再取得が終わるまで
+ * transition が pending のまま**で、入力欄もボタンも触れない状態が続いていた。
+ * 利用者からは「保存が遅い／固まった」に見え、連打や再読み込みの原因になる。
+ *
+ * 同じ形の `router.refresh()` でも、transition 内で `setState` を呼んでいない画面
+ * （AIモデル設定）は待たされない。**書き方で決まるので画面ごとに実測する**。
+ *
+ * **再取得をわざと遅らせて検証する。** 手元のDBは速いので、遅延を入れないと
+ * 修正前のコードでもたまたま通ってしまい退行ガードにならない（実際に一度そうなった）。
+ * 遅いのは利用者の回線でも本番でも普通に起きる状況で、そこで固まらないことが要件。
+ * refresh 自体は残してあるので画面の鮮度は落ちていない。
+ */
+
+/** `router.refresh()` が出すRSC取得だけを遅らせる（保存のServer Actionには触らない）。 */
+async function delayRscRefresh(page: Page, ms: number) {
+  await page.route(
+    (url) => url.searchParams.has("_rsc"),
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      await route.continue();
+    },
+  );
+}
+test("プロンプトを保存すると、成功が出た時点でもう次の操作ができる（T-M8-68）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("prompt-pending");
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=prompts&sec=post-prompt");
+
+  const editor = page.getByLabel("プロンプト本文");
+  await expect(editor).toBeVisible();
+  await editor.fill(`${await editor.inputValue()}\n<!-- E2E-${randomUUID().slice(0, 8)} -->`);
+
+  await delayRscRefresh(page, 3_000);
+  const save = page.getByRole("button", { name: "保存", exact: true });
+  await save.click();
+
+  await expect(toastIn(page).getByText("保存しました")).toBeVisible({ timeout: 20_000 });
+  // 保存ボタン自身は「未編集だから押せない」が正しいので、`pending` だけで止まる
+  // 本文欄と再読み込みを見る（＝保存後もまだ触れないなら、それが固まっている状態）。
+  expect(await editor.isDisabled(), "成功が出た時点で本文を続けて編集できること").toBe(false);
+  expect(
+    await page.getByRole("button", { name: "再読み込み" }).isDisabled(),
+    "成功が出た時点で再読み込みが押せること",
+  ).toBe(false);
 });
