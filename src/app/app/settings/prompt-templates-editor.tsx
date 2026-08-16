@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 
 import {
   listPromptTemplatesAction,
@@ -49,7 +49,23 @@ export function PromptTemplatesEditor({
   quotePostEnabled: boolean;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+
+  /**
+   * 待ち状態は**サーバー処理そのものの間だけ**にする（T-M8-68）。
+   * transition の中で `router.refresh()` を呼んでいたため、保存が終わって
+   * トーストが出た後も再取得が終わるまでボタンが「保存中…」のまま固まっていた。
+   * 表示中の内容は action の戻り値（applyTemplate）で更新済みなので refresh は待たない。
+   * finally で必ず戻すので、例外時も押せない画面にならない。
+   */
+  async function run<T>(action: () => Promise<T>): Promise<T> {
+    setPending(true);
+    try {
+      return await action();
+    } finally {
+      setPending(false);
+    }
+  }
   const [templates, setTemplates] = useState<PromptTemplateView[]>(initialTemplates);
 
   // p5（引用ポスト）は FEATURE_QUOTE_POST_ENABLED=false の間は非表示。
@@ -99,7 +115,7 @@ export function PromptTemplatesEditor({
   }
 
   async function reload() {
-    const res = await listPromptTemplatesAction();
+    const res = await run(() => listPromptTemplatesAction());
     if (res.status === "success" && res.templates) {
       setTemplates(res.templates);
       setDraft(res.templates.find((t) => t.kind === selectedKind)?.content ?? "");
@@ -112,12 +128,14 @@ export function PromptTemplatesEditor({
 
   function save() {
     if (!current) return;
-    startTransition(async () => {
-      const res = await updatePromptTemplateAction({
-        kind: selectedKind,
-        content: draft,
-        expected_updated_at: current.updatedAt,
-      });
+    void (async () => {
+      const res = await run(() =>
+        updatePromptTemplateAction({
+          kind: selectedKind,
+          content: draft,
+          expected_updated_at: current.updatedAt,
+        }),
+      );
       if (res.status === "success" && res.template) {
         applyTemplate(res.template);
         setNote(null);
@@ -126,7 +144,7 @@ export function PromptTemplatesEditor({
       } else {
         applyError(res);
       }
-    });
+    })();
   }
 
   function reset() {
@@ -134,8 +152,8 @@ export function PromptTemplatesEditor({
     if (!confirm("このプロンプトをシステム既定に戻します。カスタム内容は削除されます。よろしいですか？")) {
       return;
     }
-    startTransition(async () => {
-      const res = await resetPromptTemplateAction({ kind: selectedKind });
+    void (async () => {
+      const res = await run(() => resetPromptTemplateAction({ kind: selectedKind }));
       if (res.status === "success" && res.template) {
         applyTemplate(res.template);
         setNote(null);
@@ -144,7 +162,7 @@ export function PromptTemplatesEditor({
       } else {
         applyError(res);
       }
-    });
+    })();
   }
 
   return (
@@ -163,7 +181,7 @@ export function PromptTemplatesEditor({
             <button
               className="ml-2 font-medium underline underline-offset-2 disabled:opacity-50"
               disabled={pending}
-              onClick={() => startTransition(reload)}
+              onClick={() => void reload()}
               type="button"
             >
               再読み込み
@@ -229,7 +247,7 @@ export function PromptTemplatesEditor({
           <button
             className="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
             disabled={pending}
-            onClick={() => startTransition(reload)}
+            onClick={() => void reload()}
             type="button"
           >
             再読み込み

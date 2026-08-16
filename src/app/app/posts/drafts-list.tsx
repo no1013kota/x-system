@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import dynamic from "next/dynamic";
 import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { WARNING_LABEL, warningSummary } from "@/lib/post/warning-labels";
 import { useRouter } from "next/navigation";
@@ -28,7 +29,18 @@ import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
 import { formatJst } from "@/lib/format";
 
-import { DraftEditor } from "./draft-editor";
+/**
+ * 下書きエディタは**編集を開いたときに初めて読み込む**（T-M8-68）。
+ * 文字数計算に使う `twitter-text` が約1.2MBあり、静的importだと下書き一覧を開くだけで
+ * 落ちてくる。編集は一覧を見るたびに行う操作ではないため、初期表示の重さに見合わない。
+ */
+const DraftEditor = dynamic(() => import("./draft-editor").then((m) => m.DraftEditor), {
+  loading: () => (
+    <p className="mt-3 rounded-lg border bg-background px-4 py-6 text-center text-sm text-muted-foreground">
+      編集画面を読み込んでいます…
+    </p>
+  ),
+});
 
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 

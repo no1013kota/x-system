@@ -28,7 +28,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 
 | 区分 | 残り | 場所 |
 |---|---|---|
-| 開発タスク（着手可） | **2件**（T-M8-69 providerのmodels.list疎通／T-M8-68 体感速度の残り）。T-M8-84〜96 は done | 下記M8セクション |
+| 開発タスク（着手可） | **1件**（T-M8-113 Hydration mismatchの出所特定）。T-M8-68/69/84〜96 は done | 下記M8セクション |
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **8件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-27** / **D-28** / **D-29**）。D-21〜D-26 は 2026-08-11、D-30 は 2026-08-16 に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
@@ -1285,20 +1285,30 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 後続への注意: 除外理由マップに情報を足すときは `_` 接頭辞を使う。付けないと良性判定が壊れ、
   「窓より古いだけ」の日に誤通知が復活する。
 
-### T-M8-69: check:providers に各社の models.list 疎通を足す `todo`
+### T-M8-69: check:providers に各社の models.list 疎通を足す `done`
 - 参照: 旧T-M8-60のメモから分離 / サイズ: S
 - check:providers は生成呼び出しの受理までを見るが、モデル名の廃止（404）は生成時まで分からない。
-  各providerの models.list（またはモデル取得API）で **設定中のモデルIDが実在すること** を検査に足す。
+  各providerの**単体取得API**（`GET /v1/models/<id>` 等・課金なし）で、モデルカタログの全モデルと
+  env既定モデルが実在することを検査する。`provider-contract.live.test.ts` に追加。
+- 検証: `npm run check:providers` で 17 passed / 4 skipped（GoogleはAPIキー未設定のため既定で対象外）。
 
-### T-M8-68: 残りの体感速度改善（分析ポーリング・不要refresh・bundle） `todo`
+### T-M8-68: 残りの体感速度改善（分析ポーリング・不要refresh・bundle） `done`
 - 参照: 監査findings 61-63/98-99/123 / 依存: T-M8-67 / サイズ: M
-- (1) 分析の提案生成ポーリングが5秒ごとに router.refresh()（ページ全クエリ再実行）×最大24回
-  → 軽量なServer Action（generation_jobsのexists 1クエリ）を叩き、完了時だけrefreshする。
-- (2) `loadSuggestionsForUser` が投稿済み全draftのthread JSONBを無制限取得
-  → evidenceのtweet_idsに絞る（`tweet_ids && $2::text[]`）。
-- (3) ai-settings系の保存後 router.refresh() 3箇所はクライアントstateが正で再取得が表示に寄与しない
-  → 削除（各コンポーネントのpropsがuseState初期値にしか使われないことを確認済み）。
-- (4) draft-editor の twitter-text（1.2MB）静的import → 編集モード突入時の動的importへ。
+- (1)(2) は T-M8-91（分析刷新）の実装時に解消済みだった（ポーリングは軽量Server Action、
+  `loadSuggestionsForUser` は tweet_ids 絞り込み）。今回は再確認のみ。
+- (3) **「不要なrefreshを削除」ではなく「refreshの完了を待たない」が正しい直し方だった。**
+  実際に固まっていたのは `prompt-templates-editor` の1箇所だけ。`startTransition` の中で
+  `setTemplates` 等の更新と `router.refresh()` を並べていたため、保存が終わって成功トーストが
+  出た後もRSC再取得が終わるまで transition が pending のままで、本文欄も再読み込みも
+  触れなかった。refresh は残したまま、待ち状態をサーバー処理そのものの間だけに縮めた。
+  **同じ形でも transition 内で `setState` を呼んでいない画面（`ai-purpose-settings`）は
+  待たされない。** 実測したら固まっていなかったので触っていない（書き方で決まるため画面ごとに測る）。
+- (4) `drafts-list` の `DraftEditor` を `next/dynamic` 化。文字数計算の `twitter-text`（1.2MB）が
+  下書き一覧を開くだけで落ちてきていた。編集を開いたときだけ読み込む。
+- 検証: E2E に「成功が出た時点でもう次の操作ができる」を追加（`ai-settings.spec.ts`）。
+  **RSC取得をわざと3秒遅らせる**（手元のDBが速く、遅延なしでは修正前のコードでも通ってしまい
+  退行ガードにならなかった）。修正前で落ち、修正後で通ることを実測で確認。
+  動的import後も編集→保存が通ることは `toast.spec.ts:58` で確認。
 
 ### T-M8-60: デザインの不揃いを統一する（カード器・アイコン・画面幅・フォーム部品） `done`
 - 参照: 要件06 §2、`components/ui/card.tsx`、全画面監査（design 23件） / サイズ: M

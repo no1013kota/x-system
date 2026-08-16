@@ -112,7 +112,7 @@ async function main() {
     .toFile(OUT.ogp);
 
   console.log(`元画像: ${info.width}×${info.height} → 絵柄の範囲 ${box.width}×${box.height}`);
-  for (const [name, path] of Object.entries(OUT)) {
+  for (const path of Object.values(OUT)) {
     const meta = await sharp(path).metadata();
     console.log(
       `  ${path.padEnd(28)} ${meta.width}×${meta.height}  ${(statSync(path).size / 1024).toFixed(1)}KB`,
