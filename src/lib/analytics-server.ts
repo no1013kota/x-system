@@ -8,6 +8,7 @@ import {
   type DraftAnalytics,
   type FollowerPoint,
 } from "./analytics";
+import { humanizeReportText } from "./analytics/humanize-report";
 import { pooledQueryable } from "./db/pool";
 import { listSuggestions } from "./jobs/suggestion-jobs";
 
@@ -56,6 +57,24 @@ export interface SuggestionGoodPost {
   /** この投稿が良かった点（LLMの1文）。 */
   why: string;
   url: string;
+  /**
+   * 保存済みタイムラインから引いた投稿の実体（T-M8-114）。
+   * **リンクだけでは「どの投稿の話か」が画面で分からない**（開かないと確認できない）ため、
+   * 本文の冒頭と数値をその場に出す。取得前・削除済み・保存上限より古い投稿では null。
+   */
+  post: {
+    text: string;
+    postedAt: string | null;
+    /** Xは投稿から30日を過ぎると表示回数を返さないため null がありうる（0ではない）。 */
+    impressions: number | null;
+    likes: number | null;
+    reposts: number | null;
+    replies: number | null;
+    hasImage: boolean;
+    /** このアプリで作った投稿だけ付く（外部投稿は null）。 */
+    pattern: string | null;
+    theme: string | null;
+  } | null;
 }
 
 /** advice の1項目（推奨値＋理由）。 */
@@ -99,7 +118,8 @@ function adviceItem<T>(v: unknown, pick: (x: unknown) => T | null): SuggestionAd
   if (typeof v !== "object" || v === null) return null;
   const rec = pick((v as Record<string, unknown>).recommended);
   const reason = str((v as Record<string, unknown>).reason);
-  return rec === null || !reason ? null : { recommended: rec, reason };
+  // 理由は読み物なので日本語へ直す（T-M8-114）。
+  return rec === null || !reason ? null : { recommended: rec, reason: humanizeReportText(reason) };
 }
 
 /** 最新の成功 suggestion job の提案を表示形へ変換して返す（所有者のみ）。 */
@@ -124,6 +144,56 @@ export async function loadSuggestionsForUser(
   const handle = meta.rows[0]?.handle ?? "i";
   const generating = meta.rows[0]?.generating ?? false;
 
+  /**
+   * 良かった投稿の実体をまとめて引く（T-M8-114）。全レポートぶんのIDを1クエリで取り、
+   * レポートごとに引かない（N+1にしない）。保存対象外・削除済みのIDは単に見つからず、
+   * その投稿はリンクと理由だけの表示へ落ちる（欠けても他を巻き添えにしない）。
+   */
+  const wantedIds = [
+    ...new Set(
+      rows.flatMap((r) =>
+        r.evidence?.format === 2 && Array.isArray(r.evidence.good_posts)
+          ? r.evidence.good_posts.map((g) => str((g as Record<string, unknown>)?.id)).filter(Boolean)
+          : [],
+      ),
+    ),
+  ];
+  const postById = new Map<string, NonNullable<SuggestionGoodPost["post"]>>();
+  if (wantedIds.length > 0) {
+    const { rows: postRows } = await pooledDb.query<{
+      tweet_id: string;
+      text: string;
+      posted_at: Date | string | null;
+      impressions: string | null;
+      likes: number | null;
+      reposts: number | null;
+      replies: number | null;
+      has_image: boolean;
+      pattern: string | null;
+      theme: string | null;
+    }>(
+      `select tweet_id, text, posted_at, impressions, likes, reposts, replies,
+              has_image, pattern, theme
+         from x_timeline_posts
+        where x_account_id = $1 and tweet_id = any($2::text[])`,
+      [xAccountId, wantedIds],
+    );
+    for (const p of postRows) {
+      postById.set(p.tweet_id, {
+        text: p.text,
+        postedAt: p.posted_at ? new Date(p.posted_at).toISOString() : null,
+        // impressions は bigint なので pg は文字列で返す。null（30日超で提供なし）は 0 にしない。
+        impressions: p.impressions === null ? null : Number(p.impressions),
+        likes: p.likes,
+        reposts: p.reposts,
+        replies: p.replies,
+        hasImage: p.has_image,
+        pattern: p.pattern,
+        theme: p.theme,
+      });
+    }
+  }
+
   const suggestions: SuggestionDisplay[] = rows.map((r) => {
     const ev = r.evidence ?? {};
     if (ev.format === 2) {
@@ -132,7 +202,14 @@ export async function loadSuggestionsForUser(
         .map((g) => {
           const id = str((g as Record<string, unknown>)?.id);
           const why = str((g as Record<string, unknown>)?.why);
-          return id ? { tweetId: id, why, url: `https://x.com/${handle}/status/${id}` } : null;
+          return id
+            ? {
+                tweetId: id,
+                why: humanizeReportText(why),
+                url: `https://x.com/${handle}/status/${id}`,
+                post: postById.get(id) ?? null,
+              }
+            : null;
         })
         .filter((g): g is SuggestionGoodPost => g !== null);
       const adv = (typeof ev.advice === "object" && ev.advice !== null ? ev.advice : {}) as Record<
@@ -149,7 +226,7 @@ export async function loadSuggestionsForUser(
           : null;
       return {
         kind: "v2" as const,
-        content: r.content,
+        content: humanizeReportText(r.content),
         goodPosts,
         advice: {
           pattern: adviceItem(adv.pattern, (x) => (typeof x === "string" ? x : null)),
@@ -161,7 +238,11 @@ export async function loadSuggestionsForUser(
               : null,
           accountMd:
             accountMdObj && str(accountMdObj.content)
-              ? { content: str(accountMdObj.content), reason: str(accountMdObj.reason) }
+              ? {
+                  // content は利用者が保存する成果物なので**そのまま渡す**。reason だけ読み物。
+                  content: str(accountMdObj.content),
+                  reason: humanizeReportText(str(accountMdObj.reason)),
+                }
               : null,
         },
         legacySummary: "",
@@ -171,10 +252,10 @@ export async function loadSuggestionsForUser(
     // 旧形式（軸ベース）。刷新後に新しい実行をすれば置き換わるため、縮退表示で十分。
     return {
       kind: "legacy" as const,
-      content: r.content,
+      content: humanizeReportText(r.content),
       goodPosts: [],
       advice: null,
-      legacySummary: str(ev.summary),
+      legacySummary: humanizeReportText(str(ev.summary)),
       createdAt: r.createdAt,
     };
   });
