@@ -153,7 +153,7 @@ export function PersonaSettingsForm({
         // 「戻せる」導線があれば安心して保存できるので、要点2文に絞る。
         <Notice tone="warn"
           role="status">
-          保存すると、アカウント.mdの1〜4章をこのフォームの内容で書き換えます（学習で作られた5〜6章は残ります）。以前の内容は
+          保存すると、プロンプトのアカウント.mdが書き換えられます。以前の内容は
           <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=prompts&sec=account-md">
             アカウント.mdタブの変更履歴
           </Link>

@@ -188,11 +188,6 @@ export function BaseMdEditor({
         アカウント.mdの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
       </p>
 
-      {/* セクション1〜4の上書き注意（常時）。対処の助言は自明なので事実と復元手段だけ（T-M8-66）。 */}
-      <Notice tone="warn">
-        1〜4章は「アカウント設定」を保存すると上書きされます。以前の版には下の変更履歴からいつでも戻せます。
-      </Notice>
-
       {/* 学習running中の編集不可 */}
       {learningRunning ? (
         <Notice tone="warn">
