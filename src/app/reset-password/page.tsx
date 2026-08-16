@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LogoTile } from "@/components/app-shell/brand-logo";
 import Link from "next/link";
 
 import { LegalFooter } from "@/components/legal-footer";
@@ -19,13 +20,7 @@ export default function ResetPasswordPage() {
         <div className="w-full max-w-[400px] space-y-6 rounded-card border border-hairline bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
           <header className="space-y-2 text-center">
             <span className="inline-flex items-center justify-center gap-2">
-              <span
-                aria-hidden="true"
-                className="grid size-7 place-items-center rounded-card text-[15px] font-bold text-white"
-                style={{ backgroundImage: "var(--brand-gradient-logo)" }}
-              >
-                S
-              </span>
+              <LogoTile size={28} />
               <Link className="text-[16px] font-bold tracking-tight text-ink" href="/">
                 {APP_NAME}
               </Link>

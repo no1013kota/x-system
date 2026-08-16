@@ -164,7 +164,6 @@
     多用すると「AIが動いている」という合図としての意味が失われる。
   */
   --brand-gradient: linear-gradient(90deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
-  --brand-gradient-logo: linear-gradient(135deg, #ff0000 0%, #7d1f75 50%, #00afff 100%);
 
   /* 影（デザイン実物より）。モーダルは 0 8px 32px rgba(0,0,0,.12) */
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);

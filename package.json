@@ -26,7 +26,8 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "seed:review": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-review-account.mjs",
     "check:csp-nonce": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-csp-nonce.mjs",
-    "check:suggest": "SUGGEST_LIVE=1 vitest run src/lib/jobs/suggestion.live.test.ts"
+    "check:suggest": "SUGGEST_LIVE=1 vitest run src/lib/jobs/suggestion.live.test.ts",
+    "logo": "node scripts/build-logo.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

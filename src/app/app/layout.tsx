@@ -135,7 +135,7 @@ export default async function AppLayout({
     <div className="min-h-screen bg-page lg:flex">
       <aside className="sticky top-0 hidden h-screen w-[234px] shrink-0 flex-col border-r border-hairline bg-surface lg:flex">
         <div className="px-4 py-4">
-          <BrandLogo />
+          <BrandLogo priority />
         </div>
         {/*
           サイドバーに「料金プラン」は置かない（2026-08-03 ユーザー判断）。
@@ -148,7 +148,7 @@ export default async function AppLayout({
       <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-20 lg:pb-0">
         {/* トップバー54px。左=現在の画面名、右=通知・Xアカウント（デザイン §レイアウト骨格）。 */}
         <header className="sticky top-0 z-20 flex h-[54px] items-center gap-3 border-b border-hairline bg-surface px-4 lg:px-6">
-          <BrandLogo className="lg:hidden" />
+          <BrandLogo className="lg:hidden" priority />
           <CurrentScreenTitle />
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <XAccountSwitcher

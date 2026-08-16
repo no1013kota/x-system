@@ -194,7 +194,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-page text-sm leading-[1.8] text-ink tabular-nums [text-wrap:pretty]">
       <header className="sticky top-0 z-50 border-b border-hairline bg-[rgba(255,255,255,0.82)] backdrop-blur-[10px] backdrop-saturate-[1.4]">
         <div className={`${CONTAINER} flex h-16 items-center justify-between gap-3.5`}>
-          <BrandLogo href="/" />
+          <BrandLogo href="/" priority />
           {/*
             aria-label はフッタの「法務情報」navと区別するために要る（navが2つあるため）。
             min-h-6 は WCAG 2.5.8（24x24px）。テキスト高さのままだと20pxしかなかった。
