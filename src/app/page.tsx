@@ -550,7 +550,7 @@ export default function Home() {
           <div className="flex items-center gap-2.5">
             <LogoTile size={24} />
             <span className="text-body font-bold">{APP_NAME}</span>
-            <span className="text-caption text-ink-3">© 2026</span>
+            <span className="text-caption text-ink-3">© 2026 Exos AI</span>
           </div>
           <LegalFooterLinks
             className="flex flex-wrap gap-x-5 gap-y-2"
