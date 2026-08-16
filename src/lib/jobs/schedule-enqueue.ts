@@ -1,7 +1,7 @@
 import {
-  IMAGE_BASE_ESTIMATE_CREDITS,
-  TEXT_BASE_ESTIMATE_CREDITS,
-} from "../usage/ai-credits";
+  IMAGE_DEFAULT_ESTIMATE_CREDITS,
+  TEXT_DEFAULT_ESTIMATE_CREDITS,
+} from "../ai/model-catalog";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
@@ -128,7 +128,7 @@ async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean
   // モデル選択で見積もりは変わるが、事前チェックは基準額（最小消費）で判定する
   //（厳密判定はreserveが行う。ここで厳しくしすぎると実行できるjobまで塞ぐ）。
   const estimate =
-    TEXT_BASE_ESTIMATE_CREDITS + (slot.image_enabled ? IMAGE_BASE_ESTIMATE_CREDITS : 0);
+    TEXT_DEFAULT_ESTIMATE_CREDITS + (slot.image_enabled ? IMAGE_DEFAULT_ESTIMATE_CREDITS : 0);
   if (c.ai_credits_used + estimate > PREMIUM_LIMITS.aiCredits) return false;
   if (slot.mode === "auto") {
     const need = ROLLBACK_SAFE_BUDGET[slot.pattern] ?? { normal: 0, url: 0 };

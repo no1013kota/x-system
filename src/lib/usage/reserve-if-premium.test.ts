@@ -61,13 +61,13 @@ describe("reserveIfPremium", () => {
     expect(s.calls.length).toBeGreaterThan(0);
   });
 
-  it("上位モデル選択時はコスト比の倍数クレジットを消費する（T-M8-108）", async () => {
+  it("上位モデル選択時は見積もりもモデル別に大きくなる（T-M8-108/109/110）", async () => {
     const s = spy({ text: "anthropic", text_model: "claude-fable-5" });
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
     expect(insert, "usage_eventsへのreserveが走る").toBeTruthy();
-    // reserveUsage の $7 = amount（見積もりクレジット）。基準16 × Fable 5の5倍 = 80。
-    expect(insert!.params[6]).toBe(80);
+    // reserveUsage の $7 = amount（見積もりクレジット）。カタログの estimateCredits（Fable 5=55・実測ベース）。
+    expect(insert!.params[6]).toBe(55);
   });
 
   it("未選択（おまかせ）は基準見積もり16クレジット", async () => {
