@@ -207,8 +207,8 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
   /** dispatch 対象になる queued ジョブ（available_at は既定 now()）。 */
   async function insertQueuedJob(xAccountId: string): Promise<string> {
     const rows = await sql<{ id: string }>(
-      `insert into generation_jobs (x_account_id, kind, trigger, status)
-       values ($1,'post_generation','manual','queued') returning id`,
+      `insert into generation_jobs (x_account_id, kind, trigger, pattern, status)
+       values ($1,'post_generation','manual','p1','queued') returning id`,
       [xAccountId],
     );
     return rows[0].id;
@@ -218,8 +218,8 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
   async function insertStaleJob(xAccountId: string): Promise<string> {
     const rows = await sql<{ id: string }>(
       `insert into generation_jobs
-         (x_account_id, kind, trigger, status, attempt, locked_at, locked_by, started_at)
-       values ($1,'post_generation','manual','running',1, now() - interval '15 min','w', now())
+         (x_account_id, kind, trigger, pattern, status, attempt, locked_at, locked_by, started_at)
+       values ($1,'post_generation','manual','p1','running',1, now() - interval '15 min','w', now())
        returning id`,
       [xAccountId],
     );

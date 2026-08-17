@@ -56,8 +56,8 @@ describe("notifyUsageThresholds (db)", () => {
     ).rows[0].id;
     const jobId = (
       await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, status)
-         values ($1, 'post_generation', 'manual', 'running') returning id`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern, status)
+         values ($1, 'post_generation', 'manual', 'p1', 'running') returning id`,
         [xid],
       )
     ).rows[0].id;

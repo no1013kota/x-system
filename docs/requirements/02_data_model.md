@@ -163,11 +163,13 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.5 `prompt_templates`
 
+**画像プロンプト（`kind='image'`）専用の表**（T-M8-129 U2）。投稿の型プロンプトは §3.21 `post_patterns.prompt` が正本になった——利用者が型を追加できるようになると固定の`kind`では表せないため。`kind`列は`p1`〜`p6`も受けられる形のまま残っているが（撤去は U5）、**行は作られない**。
+
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK nullable | nullはシステム既定 |
-| `kind` | `text` | not null | `p1`〜`p6`, `image` |
+| `kind` | `text` | not null | 実際に使うのは `image` のみ（`p1`〜`p6`は§3.21へ移行済み） |
 | `content` | `text` | not null | プロンプト本文 |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
@@ -178,7 +180,9 @@ Unique indexes: (`x_account_id`, `kind`) where `x_account_id is not null`; (`kin
 
 RLS: system defaultは認証ユーザーselect可。account別は所有者select可。writeはmd/premium向けServer Actionのみ。
 
-**system default行はコード定数（`SYSTEM_DEFAULT_TEMPLATES`）の写しで、`scheduler_tick`が毎回差分同期する**（T-M7-37）。解決順は「account上書き → system default行 → コード定数」なので、DB行が古いままだとコード側でプロンプトを直しても反映されない。人が思い出して実行する手順にしない（CLAUDE.md 原則3）。内容が同じときは更新しないため`updated_at`は動かない（編集画面の楽観lockに影響しない）。
+**system default行はコード定数（`SYSTEM_DEFAULT_TEMPLATES.image`）の写しで、`scheduler_tick`が毎回差分同期する**（T-M7-37）。解決順は「account上書き → system default行 → コード定数」なので、DB行が古いままだとコード側でプロンプトを直しても反映されない。人が思い出して実行する手順にしない（CLAUDE.md 原則3）。内容が同じときは更新しないため`updated_at`は動かない（編集画面の楽観lockに影響しない）。
+
+型プロンプトは同じ問題を**行を作らないこと**で避ける。`post_patterns.prompt` が `null`＝システム既定で、コード定数を直接使う（§3.21）。
 
 ### 3.6 `learning_sources`
 
@@ -234,7 +238,7 @@ RLS: 認証済みユーザーselect可。writeはservice roleのみ。
 | `request_key` | `text` | unique null | ユーザー操作・子job作成の冪等key |
 | `pattern` | `post_pattern` | null | 投稿生成時 |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使ったパターン。パターンが削除されるとnullになる（履歴は`pattern_spec`で残る） |
-| `pattern_spec` | `jsonb` | nullable | **enqueue時点のパターン設定のsnapshot**（名前・プロンプト・上限ポスト数・Web検索方針など）。実行中にパターンを編集・削除されても走り切れるようにするため凍結する。U2以降は`kind='post_generation'`で必須 |
+| `pattern_spec` | `jsonb` | nullable | **enqueue時点のパターン設定のsnapshot**（名前・プロンプト・上限ポスト数・Web検索方針など）。実行中にパターンを編集・削除されても走り切れるようにするため凍結する。**`kind='post_generation'`では必須**（CHECK・`not valid`で追加したため過去の行は対象外）。生成の振る舞い（プロンプト・ポスト数上限・Web検索回数・出典の必須・ニュースダイジェストの有無）はすべてこのsnapshotから決まる |
 | `input` | `jsonb` | not null default `{}` | kind別入力 |
 | `status` | `job_status` | not null default `queued` | 状態 |
 | `progress_stage` | `progress_stage` | null | UI進捗 |
@@ -867,7 +871,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 
 | データ | 内容 |
 |---|---|
-| システム既定プロンプト | system defaultとして`p1`〜`p6`、`image`を1件ずつ作成 |
+| システム既定プロンプト（画像） | `prompt_templates` に system default として `image` を1件作成（§3.5） |
+| 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
 | テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |

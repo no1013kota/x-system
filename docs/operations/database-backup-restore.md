@@ -58,7 +58,7 @@ psql "$TARGET_DATABASE_URL" -tAc "select count(*) from public.prompt_templates"
 
 ## 5. 検証済み（T-M6-19, 2026-07-25）
 
-ローカル Supabase（PostgreSQL 17.6）で、`pg_dump` → openssl 暗号化 → openssl 復号 → `psql` で空DBへ復元、を実施。`public` テーブル 18件・`prompt_templates` seed 7件が元と一致することを確認した（暗号化ファイルは `Salted__` 始まりの暗号文で平文 SQL ではない）。
+ローカル Supabase（PostgreSQL 17.6）で、`pg_dump` → openssl 暗号化 → openssl 復号 → `psql` で空DBへ復元、を実施。`public` テーブル 18件・`prompt_templates` seed が元と一致することを確認した（当時7件。T-M8-129 U2 以降は画像1件）（暗号化ファイルは `Salted__` 始まりの暗号文で平文 SQL ではない）。
 
 ## 6. 人手作業（要決定）
 

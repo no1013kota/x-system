@@ -2,12 +2,14 @@ import {
   resolveExecutionPrereqError,
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
-import { PT_FIX, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
-import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
+import { PT_FIX } from "@/lib/prompts/gen-prompts";
+import { finalizeThread } from "@/lib/post/generation-validation";
 import {
-  finalizeThread,
-  sourceRequired,
-} from "@/lib/post/generation-validation";
+  parsePatternSpec,
+  patternPrompt,
+  sourceRequiredForSpec,
+  webSearchForSpec,
+} from "@/lib/post/pattern-spec";
 import { promptThemeLabel } from "@/lib/post/post-theme";
 import { themesToNewsCategories } from "@/lib/themes";
 
@@ -70,6 +72,9 @@ export class PostGenerationTerminalError extends Error {
 
 interface JobRow {
   pattern: string | null;
+  pattern_id: string | null;
+  /** enqueue時点のパターン設定snapshot。実行中に編集・削除されても走り切るための凍結（U2）。 */
+  pattern_spec: unknown;
   trigger: string;
   input: {
     source_url?: string | null;
@@ -148,43 +153,9 @@ export function composeUserInput(input: JobRow["input"]): string {
   return parts.join("\n");
 }
 
-/**
- * パターン別のWeb検索設定（プロンプト設計書 §6の検索回数上限）。P-2はURL指定時のみ。
- * 再試行（attempt >= 2）では pause_turn の未完了を避けるため1段階ずつ縮小する（§5.2「4→2」）。
- */
-function webSearchForPattern(
-  pattern: string,
-  hasUrl: boolean,
-  attempt = 1,
-): { maxUses: number } | undefined {
-  const base = baseWebSearchForPattern(pattern, hasUrl);
-  if (!base) return undefined;
-  let maxUses = base.maxUses;
-  for (let i = 1; i < attempt; i++) maxUses = reduceWebSearchMaxUses(maxUses);
-  return { maxUses };
-}
-
-function baseWebSearchForPattern(
-  pattern: string,
-  hasUrl: boolean,
-): { maxUses: number } | undefined {
-  switch (pattern) {
-    case "p1":
-    case "p4":
-      return { maxUses: 4 };
-    case "p3":
-    case "p6":
-      return { maxUses: 3 };
-    case "p2":
-      return hasUrl ? { maxUses: 2 } : undefined;
-    default:
-      return undefined;
-  }
-}
-
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.pattern, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
+    `select gj.pattern, gj.pattern_id, gj.pattern_spec, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
             xa.user_id, xa.base_md, xa.settings, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
@@ -279,11 +250,22 @@ export async function executePostGeneration(
 
   const job = await loadJob(db, jobId);
   if (!job) throw new PostGenerationTerminalError("not_found", "job not found");
-  const pattern = (job.pattern ?? "p1") as PromptTemplateKind;
 
-  // P-5 が flag OFF の間に queued 化していた場合、外部API・利用枠を消費する前に canceled にする
+  // **パターン設定は凍結された snapshot を正にする**（T-M8-129 U2・ADR-0008）。
+  // 実行中にパターンを編集・削除されても、このjobは enqueue 時点の設定で完走する。
+  // **読めないときは既定で補わず失敗させる**。どの設定で生成したのか分からない下書きを
+  // 作る方が害が大きい（CLAUDE.md 原則1）。
+  const spec = parsePatternSpec(job.pattern_spec);
+  if (!spec) {
+    throw new PostGenerationTerminalError(
+      "pattern_spec_missing",
+      "generation_jobs.pattern_spec is missing or malformed",
+    );
+  }
+
+  // 引用ポストが flag OFF の間に queued 化していた場合、外部API・利用枠を消費する前に canceled にする
   //（要件05 §5・要件04 §1, T-M3-25）。runJob は status='running' の間だけ finalize するため上書きされない。
-  if (pattern === "p5" && deps.quotePostEnabled === false) {
+  if (spec.requiresQuoteUrl && deps.quotePostEnabled === false) {
     await db.query(
       `update generation_jobs set status = 'canceled', finished_at = now() where id = $1 and status = 'running'`,
       [jobId],
@@ -367,15 +349,17 @@ export async function executePostGeneration(
     typeof job.input?.prompt_override === "string" && job.input.prompt_override.trim() !== ""
       ? job.input.prompt_override
       : null;
-  const patternPrompt =
-    promptOverride ??
-    (await resolvePromptTemplate(db, {
-      xAccountId: job.x_account_id,
-      kind: pattern,
-    }));
+  // パターンのプロンプト。`prompt` が null ならシステム既定（コード定数）を使う。
+  const resolvedPatternPrompt = promptOverride ?? patternPrompt(spec);
+  if (resolvedPatternPrompt === null) {
+    throw new PostGenerationTerminalError(
+      "pattern_prompt_missing",
+      `pattern "${spec.name}" has no prompt`,
+    );
+  }
   const recentPosts = await fetchRecentPostBodies(db, job.x_account_id);
   let newsDigest;
-  if (pattern === "p6") {
+  if (spec.includeNewsDigest) {
     const themeIds = [
       ...(job.settings?.themes?.primary ?? []),
       ...(job.settings?.themes?.secondary ?? []),
@@ -383,7 +367,7 @@ export async function executePostGeneration(
     newsDigest = await fetchNewsDigest(db, themesToNewsCategories(themeIds));
   }
   const user = buildGenUser({
-    pattern: patternPrompt,
+    pattern: resolvedPatternPrompt,
     input: composeUserInput(job.input),
     recentPosts,
     newsDigest,
@@ -420,7 +404,12 @@ export async function executePostGeneration(
   const request = {
     system,
     user,
-    webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url), job.attempt),
+    webSearch: webSearchForSpec(
+      spec,
+      Boolean(job.input.source_url),
+      job.attempt,
+      reduceWebSearchMaxUses,
+    ),
     timeoutMs: deadline.callTimeoutMs(),
   };
 
@@ -489,9 +478,11 @@ export async function executePostGeneration(
   const ngWords = job.settings?.ng?.words ?? [];
   const hasReferenceUrl = Boolean(job.input.source_url);
   const usageCalls: ProviderCall[] = [...generated.usage.calls];
+  const needsSource = sourceRequiredForSpec(spec, hasReferenceUrl);
   let finalize = await finalizeThread(
     {
-      pattern,
+      maxPosts: spec.maxPosts,
+      sourceRequired: needsSource,
       posts: generated.parsed.posts,
       aiSources: generated.parsed.sources,
       ngWords,
@@ -500,7 +491,7 @@ export async function executePostGeneration(
     { shorten, validateSource: deps.validateSource },
   );
   // 出典必須で通過出典が空なら1回だけ再生成する（プロンプト設計書 §7.5）。
-  if (finalize.sourcesMissing && sourceRequired(pattern, hasReferenceUrl)) {
+  if (finalize.sourcesMissing && needsSource) {
     const retry = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
@@ -514,7 +505,8 @@ export async function executePostGeneration(
     if (!retry.parsed.error) {
       finalize = await finalizeThread(
         {
-          pattern,
+          maxPosts: spec.maxPosts,
+          sourceRequired: needsSource,
           posts: retry.parsed.posts,
           aiSources: retry.parsed.sources,
           ngWords,
@@ -533,15 +525,23 @@ export async function executePostGeneration(
   // --- draft作成（thread=initial_thread同値・weighted_length・警告・ニュース起点はsource_news_item_id）---
   const threadJson = JSON.stringify(finalize.thread);
   const inserted = await db.query<{ id: string }>(
+    // **パターンの写しを明示的に入れる**（U2）。名前・上限・引用必須をここで凍結するので、
+    // 後からパターンを編集・削除しても履歴の表示と本文の再検証が変わらない。
+    // 旧 `pattern` 列は U5 で撤去するまで並べて書く（旧経路の読み手がまだいる）。
     `insert into drafts
-       (x_account_id, pattern, thread, initial_thread, status, source_job_id,
+       (x_account_id, pattern, pattern_id, pattern_name, max_posts, requires_quote_url,
+        thread, initial_thread, status, source_job_id,
         source_news_item_id, parent_draft_id)
-     values ($1, $2, $3::jsonb, $3::jsonb, 'draft', $4, $5, $6)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10)
      on conflict (source_job_id) do nothing
      returning id`,
     [
       job.x_account_id,
-      pattern,
+      job.pattern ?? spec.seedKey,
+      job.pattern_id,
+      spec.name,
+      spec.maxPosts,
+      spec.requiresQuoteUrl,
       threadJson,
       jobId,
       job.input.news_item_id ?? null,

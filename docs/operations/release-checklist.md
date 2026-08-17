@@ -14,7 +14,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 |---|---|---|---|
 | 1 | リリース判定ゲート `npm run release:check`（typecheck→lint→依存監査→**test:db**→build→**check:csp-nonce**→**test:e2e**）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
 | 2 | dev/preview で `X_POSTING_MODE=live` を設定すると起動時 env 検証が失敗（prodのみ live 可） | ✅ 済 | `env-schema.ts` superRefine ＋ `env-schema.test.ts`「rejects live in development/preview」「allows in production」 |
-| 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 7件一致、暗号化 dump は `Salted__` 暗号文） |
+| 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 一致、暗号化 dump は `Salted__` 暗号文） |
 | 4 | セキュリティヘッダ（nonce CSP／HSTS／nosniff／Referrer-Policy）が production build で全応答に付与 | ✅ 済 | T-M6-17（`next start`＋curl 確認・ADR-0005） |
 | 5 | RLS（別ユーザーの select/write 拒否・全 public table）／SSRF（private/loopback/link-local＋redirect先再検証＋timeout）／認可（CRON_SECRET・Stripe署名・Origin） | ✅ 済 | `rls.db.test.ts`／`post/source-url.test.ts`／`api/cron/route-auth.test.ts`・`jobs/auth.test.ts`・`stripe/webhook.test.ts`（release:check 内） |
 | 6 | 秘密値参照モジュールの `server-only` 境界（Client import でビルド失敗） | ✅ 済 | T-M6-18（`security/server-boundary.test.ts` 動的走査） |

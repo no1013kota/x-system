@@ -55,7 +55,7 @@ npm install
 # 2) ローカルSupabase起動（初回はイメージpullで数分）
 colima start --cpu 4 --memory 8
 supabase start
-supabase db reset            # migrations適用 + seed.sql投入（prompt_templates 7件）を確実に当てる
+supabase db reset            # migrations適用 + seed.sql投入（prompt_templates は画像1件）を確実に当てる
 
 # 3) 環境変数
 cp .env.example .env.local   # 下記を埋める（§3）

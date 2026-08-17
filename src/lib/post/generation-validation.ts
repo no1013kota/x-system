@@ -70,12 +70,6 @@ export function threadBlocksAutoPost(thread: ThreadItem[]): boolean {
 }
 
 /** 出典必須パターン: P-1/P-4/P-6は常に、P-2/P-3は参考URL指定時のみ（プロンプト設計書 §7.5）。 */
-export function sourceRequired(pattern: string, hasReferenceUrl: boolean): boolean {
-  if (pattern === "p1" || pattern === "p4" || pattern === "p6") return true;
-  if ((pattern === "p2" || pattern === "p3") && hasReferenceUrl) return true;
-  return false;
-}
-
 // インジェクション疑い（§7.7）: 指示への言及マーカー。
 const INSTRUCTION_MARKERS: readonly RegExp[] = [
   /システムプロンプト/,
@@ -101,7 +95,10 @@ export function looksLikeInjection(text: string, allowedUrls: string[]): boolean
 }
 
 export interface FinalizeThreadInput {
-  pattern: string;
+  /** このパターンの生成時ポスト数上限（`post_patterns.max_posts`）。 */
+  maxPosts: number;
+  /** 出典URLを必須とするか。判定は `sourceRequiredForSpec` が行う（T-M8-129 U2）。 */
+  sourceRequired: boolean;
   posts: string[];
   aiSources: string[];
   ngWords: readonly string[];
@@ -135,11 +132,10 @@ export async function finalizeThread(
   for (const url of input.aiSources) {
     if (await deps.validateSource(url)) validatedSources.push(url);
   }
-  const required = sourceRequired(input.pattern, input.hasReferenceUrl);
-  const sourcesMissing = required && validatedSources.length === 0;
+  const sourcesMissing = input.sourceRequired && validatedSources.length === 0;
 
   // ポスト数の上限をコードで担保する（プロンプトの分量指示は守られない・T-M7-41）。
-  const capped = capPostCount(input.pattern, input.posts);
+  const capped = capPostCount(input.maxPosts, input.posts);
 
   const thread: ThreadItem[] = [];
   for (let index = 0; index < capped.posts.length; index++) {

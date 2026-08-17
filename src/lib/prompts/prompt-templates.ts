@@ -8,6 +8,14 @@ import {
 import type { Queryable } from "../db/queryable";
 import { toIso } from "../format";
 
+/** `prompt_templates` が持ち続ける種別。型プロンプトは `post_patterns` へ移した（U2）。 */
+const IMAGE_TEMPLATE_KINDS = ["image"] as const;
+
+/** 投稿の型プロンプトか（＝`post_patterns` 側で管理するか）。 */
+function isPatternKind(kind: PromptTemplateKind): boolean {
+  return kind !== "image";
+}
+
 /**
  * prompt_templates の system default seed と解決（要件02 §3.5, T-M3-02）。DBは注入し純粋に保つ。
  * system default（x_account_id=null）はコード定数を正としてseedで冪等に同期する。account上書き
@@ -17,7 +25,7 @@ import { toIso } from "../format";
  */
 
 /**
- * system default 7件（kind=p1〜p6/image）を冪等にseed/同期する。**変更があった件数**を返す。
+ * system default（`kind='image'`）を冪等にseed/同期する。**変更があった件数**を返す。
  *
  * コード定数が正本で、DB行はその写し。`scheduler_tick` から毎回呼ぶため、内容が同じときは
  * 更新しない（`updated_at` を無駄に動かさない。編集画面の楽観lockにも影響する）。
@@ -25,10 +33,13 @@ import { toIso } from "../format";
  * これを自動で呼ぶ理由（T-M7-37）: 解決順は「account上書き → system default行 → コード定数」で、
  * **DB行があるとコード定数の変更が反映されない**。以前はこの関数がテストからしか呼ばれておらず、
  * プロンプトを直しても古い行が使われ続ける状態だった（人が思い出して実行する手順にしない・原則3）。
+ *
+ * **型プロンプト（p1〜p6）はここでは扱わない**（T-M8-129 U2）。正本は `post_patterns.prompt` で、
+ * null ならコード定数 `SYSTEM_DEFAULT_TEMPLATES` を使う。行を作らないので同じ問題が起きない。
  */
 export async function seedSystemPromptTemplates(db: Queryable): Promise<number> {
   let applied = 0;
-  for (const kind of PROMPT_TEMPLATE_KINDS) {
+  for (const kind of IMAGE_TEMPLATE_KINDS) {
     const res = await db.query(
       `insert into prompt_templates (x_account_id, kind, content)
        values (null, $1, $2)
@@ -60,12 +71,16 @@ async function systemTemplateContent(
 }
 
 /**
- * テンプレート本文を解決する。account上書き→system default→コード定数の順にフォールバックする。
+ * **画像プロンプト**の本文を解決する。account上書き→system default→コード定数の順に落ちる。
  * xAccountId=null なら system default（無ければコード定数）を返す。ホットパス用に本文のみ読む。
+ *
+ * **型プロンプトはここでは解決できない**（T-M8-129 U2）。正本は `post_patterns.prompt` で、
+ * 生成はジョブに凍結された `pattern_spec` から `patternPrompt()` で取る。誤って
+ * ここへ型を渡すと「上書きしたのに効かない」状態になるため、kind を `"image"` へ絞る。
  */
 export async function resolvePromptTemplate(
   db: Queryable,
-  params: { xAccountId: string | null; kind: PromptTemplateKind },
+  params: { xAccountId: string | null; kind: "image" },
 ): Promise<string> {
   if (params.xAccountId) {
     const override = (
@@ -125,7 +140,13 @@ export async function listPromptTemplates(
   db: Queryable,
   xAccountId: string,
 ): Promise<PromptTemplateView[]> {
-  const [overrides, systems] = await Promise.all([
+  const [patterns, overrides, systems] = await Promise.all([
+    // 型プロンプトの正本は `post_patterns`（U2）。`prompt` が null ならシステム既定。
+    db.query<{ seed_key: string; prompt: string | null; updated_at: Date | string }>(
+      `select seed_key, prompt, updated_at from post_patterns
+        where x_account_id = $1 and seed_key is not null`,
+      [xAccountId],
+    ),
     db.query<{ kind: string; content: string; updated_at: Date | string }>(
       `select kind, content, updated_at from prompt_templates where x_account_id = $1`,
       [xAccountId],
@@ -134,17 +155,34 @@ export async function listPromptTemplates(
       `select kind, content from prompt_templates where x_account_id is null`,
     ),
   ]);
+  const pat = new Map(patterns.rows.map((r) => [r.seed_key, r]));
   const ov = new Map(overrides.rows.map((r) => [r.kind, r]));
   const sys = new Map(systems.rows.map((r) => [r.kind, r.content]));
-  return PROMPT_TEMPLATE_KINDS.map((kind) => {
+
+  return PROMPT_TEMPLATE_KINDS.flatMap((kind) => {
+    if (isPatternKind(kind)) {
+      const row = pat.get(kind);
+      // **削除された既定パターンは並べない**（U4 以降に起こりうる）。無い型を編集させない。
+      if (!row) return [];
+      return [
+        {
+          kind,
+          content: row.prompt ?? SYSTEM_DEFAULT_TEMPLATES[kind],
+          isOverride: row.prompt !== null,
+          updatedAt: row.prompt !== null ? toIso(row.updated_at) : null,
+        },
+      ];
+    }
     const o = ov.get(kind);
-    if (o) return { kind, content: o.content, isOverride: true, updatedAt: toIso(o.updated_at) };
-    return {
-      kind,
-      content: sys.get(kind) ?? SYSTEM_DEFAULT_TEMPLATES[kind],
-      isOverride: false,
-      updatedAt: null,
-    };
+    if (o) return [{ kind, content: o.content, isOverride: true, updatedAt: toIso(o.updated_at) }];
+    return [
+      {
+        kind,
+        content: sys.get(kind) ?? SYSTEM_DEFAULT_TEMPLATES[kind],
+        isOverride: false,
+        updatedAt: null,
+      },
+    ];
   });
 }
 
@@ -153,6 +191,21 @@ async function getPromptTemplateView(
   xAccountId: string,
   kind: PromptTemplateKind,
 ): Promise<PromptTemplateView> {
+  if (isPatternKind(kind)) {
+    const row = (
+      await db.query<{ prompt: string | null; updated_at: Date | string }>(
+        `select prompt, updated_at from post_patterns where x_account_id = $1 and seed_key = $2`,
+        [xAccountId, kind],
+      )
+    ).rows[0];
+    if (!row) throw new AppError("not_found", { details: { reason: "pattern_deleted" } });
+    return {
+      kind,
+      content: row.prompt ?? SYSTEM_DEFAULT_TEMPLATES[kind],
+      isOverride: row.prompt !== null,
+      updatedAt: row.prompt !== null ? toIso(row.updated_at) : null,
+    };
+  }
   const override = (
     await db.query<{ content: string; updated_at: Date | string }>(
       `select content, updated_at from prompt_templates where x_account_id = $1 and kind = $2`,
@@ -183,6 +236,26 @@ export async function applyUpdatePromptTemplate(
   assertPromptEditablePlan(input.plan);
   assertPromptKindAllowed(input.kind, input.quotePostEnabled);
   validatePromptContent(input.content);
+
+  // 型プロンプトは `post_patterns.prompt` を更新する（U2）。行は常に存在するので insert はしない。
+  // 楽観lockの意味を揃える: `expectedUpdatedAt === null` は「まだ上書きが無い」＝`prompt is null`。
+  if (isPatternKind(input.kind)) {
+    const upd = await db.query(
+      input.expectedUpdatedAt === null
+        ? `update post_patterns set prompt = $3, updated_at = now()
+            where x_account_id = $1 and seed_key = $2 and prompt is null`
+        : `update post_patterns set prompt = $3, updated_at = now()
+            where x_account_id = $1 and seed_key = $2 and prompt is not null
+              and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+      input.expectedUpdatedAt === null
+        ? [input.xAccountId, input.kind, input.content]
+        : [input.xAccountId, input.kind, input.content, input.expectedUpdatedAt],
+    );
+    if ((upd.rowCount ?? 0) !== 1) {
+      throw new AppError("job_conflict", { details: { reason: "prompt_template_changed" } });
+    }
+    return getPromptTemplateView(db, input.xAccountId, input.kind);
+  }
 
   if (input.expectedUpdatedAt === null) {
     const ins = await db.query(
@@ -215,6 +288,15 @@ export async function applyResetPromptTemplate(
 ): Promise<PromptTemplateView> {
   assertPromptEditablePlan(input.plan);
   assertPromptKindAllowed(input.kind, input.quotePostEnabled);
+  if (isPatternKind(input.kind)) {
+    // 「システム既定に戻す」＝ null に戻す（U2）。行は消さない。
+    await db.query(
+      `update post_patterns set prompt = null, updated_at = now()
+        where x_account_id = $1 and seed_key = $2 and prompt is not null`,
+      [input.xAccountId, input.kind],
+    );
+    return getPromptTemplateView(db, input.xAccountId, input.kind);
+  }
   await db.query(`delete from prompt_templates where x_account_id = $1 and kind = $2`, [
     input.xAccountId,
     input.kind,

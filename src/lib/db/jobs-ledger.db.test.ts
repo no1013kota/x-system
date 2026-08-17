@@ -150,21 +150,21 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     await inTx(async (c) => {
       const { xid } = await makeAccount(c);
       await c.query(
-        `insert into generation_jobs (x_account_id, kind, trigger, schedule_run_key, request_key)
-         values ($1, 'post_generation', 'schedule', 'srk-1', 'rk-1')`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern, schedule_run_key, request_key)
+         values ($1, 'post_generation', 'schedule', 'p1', 'srk-1', 'rk-1')`,
         [xid],
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into generation_jobs (x_account_id, kind, trigger, schedule_run_key)
-           values ($1, 'post_generation', 'schedule', 'srk-1')`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern, schedule_run_key)
+           values ($1, 'post_generation', 'schedule', 'p1', 'srk-1')`,
           [xid],
         ),
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into generation_jobs (x_account_id, kind, trigger, request_key)
-           values ($1, 'post_generation', 'manual', 'rk-1')`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern, request_key)
+           values ($1, 'post_generation', 'manual', 'p1', 'rk-1')`,
           [xid],
         ),
       );
@@ -341,8 +341,8 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     await inTx(async (c) => {
       const { xid } = await makeAccount(c);
       const { rows } = await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger)
-         values ($1, 'post_generation', 'manual') returning id`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern)
+         values ($1, 'post_generation', 'manual', 'p1') returning id`,
         [xid],
       );
       const jid = rows[0].id;

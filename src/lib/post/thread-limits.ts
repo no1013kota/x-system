@@ -39,9 +39,12 @@ export interface CapPostCountResult {
 /**
  * ポスト数を上限へ収める。**先頭 max-1 件＋最後の1件**を残す（締めを保つ）。
  * 上限が1なら先頭1件だけを残す。
+ *
+ * 上限は**パターンの設定から渡す**（T-M8-129 U2）。以前はパターンID（`p1`）で
+ * 引いていたが、利用者が作ったパターンはIDを持たないため値で受ける。
  */
-export function capPostCount(pattern: string, posts: readonly string[]): CapPostCountResult {
-  const max = maxPostsFor(pattern);
+export function capPostCount(maxPosts: number, posts: readonly string[]): CapPostCountResult {
+  const max = maxPosts >= 1 ? maxPosts : DEFAULT_MAX_POSTS;
   if (posts.length <= max) return { posts: [...posts], dropped: 0 };
   const kept = max === 1 ? [posts[0]] : [...posts.slice(0, max - 1), posts[posts.length - 1]];
   return { posts: kept, dropped: posts.length - kept.length };

@@ -15,7 +15,7 @@ import { executePostGeneration, type PostGenerationDeps } from "./post-generatio
 
 type Row = Record<string, unknown>;
 
-const LOAD_JOB = /select gj\.pattern, gj\.trigger/;
+const LOAD_JOB = /select gj\.pattern, gj\.pattern_id, gj\.pattern_spec/;
 const EXISTING = /select id from drafts where source_job_id/;
 const RECENT = /select thread from drafts/;
 const TEMPLATES = /from prompt_templates/;
@@ -71,9 +71,30 @@ function deps(db: Queryable): PostGenerationDeps {
   };
 }
 
+/** `pattern_spec_of()` が返す形（T-M8-129 U2）。生成の振る舞いはすべてここから決まる。 */
+function patternSpec(over: Record<string, unknown> = {}) {
+  return {
+    id: "pat-p2",
+    seed_key: "p2",
+    name: "自分の考え・意見",
+    description: null,
+    prompt: null,
+    max_posts: 1,
+    web_search_policy: "with_url",
+    web_search_max_uses: 2,
+    source_policy: "with_url",
+    include_news_digest: false,
+    asks_user_opinion: true,
+    requires_quote_url: false,
+    ...over,
+  };
+}
+
 function jobRow(imageEnabled: boolean) {
   return {
     pattern: "p2",
+    pattern_id: "pat-p2",
+    pattern_spec: patternSpec(),
     trigger: "manual",
     input: { image_enabled: imageEnabled },
     x_account_id: "xacc1",
@@ -150,7 +171,26 @@ describe("executePostGeneration image chain", () => {
 describe("executePostGeneration P-5 feature flag off", () => {
   it("cancels a queued P-5 job before external/quota when the flag is off", async () => {
     const { db, writes } = makeDb((sql) => {
-      if (LOAD_JOB.test(sql)) return [{ ...jobRow(false), pattern: "p5" }];
+      if (LOAD_JOB.test(sql)) {
+        return [
+          {
+            ...jobRow(false),
+            pattern: "p5",
+            pattern_id: "pat-p5",
+            // 引用ポスト（引用URLが必須）＝ flag OFF の間は実行前に canceled にする。
+            pattern_spec: patternSpec({
+              id: "pat-p5",
+              seed_key: "p5",
+              name: "引用ポスト",
+              max_posts: 3,
+              web_search_policy: "never",
+              web_search_max_uses: 0,
+              source_policy: "never",
+              requires_quote_url: true,
+            }),
+          },
+        ];
+      }
       return [];
     });
     await expect(

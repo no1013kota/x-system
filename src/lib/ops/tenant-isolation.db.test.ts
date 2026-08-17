@@ -115,8 +115,8 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
     status: "queued" | "running" | "failed" | "succeeded",
   ): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
-      `insert into generation_jobs (x_account_id, kind, trigger, status, input)
-       values ($1, 'post_generation', 'manual', $2::job_status, '{}'::jsonb) returning id`,
+      `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, input)
+       values ($1, 'post_generation', 'manual', 'p1', $2::job_status, '{}'::jsonb) returning id`,
       [xAccountId, status],
     );
     return rows[0].id;

@@ -90,8 +90,8 @@ describe("suggestion-timeline-store (local DB)", () => {
       await withTransaction(async (c) => {
         const jobId = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status, input, finished_at)
-             values ($1,'post_generation','manual','succeeded','{"theme":"ai"}','2026-08-01') returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, input, finished_at)
+             values ($1,'post_generation','manual','p1','succeeded','{"theme":"ai"}','2026-08-01') returning id`,
             [xid],
           )
         ).rows[0].id;

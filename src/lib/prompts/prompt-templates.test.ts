@@ -24,15 +24,16 @@ function makeDb(handler: (sql: string, params: unknown[]) => unknown[]): Queryab
 const isAccount = (sql: string) => /x_account_id = \$1 and kind/.test(sql);
 const isSystem = (sql: string) => /x_account_id is null and kind/.test(sql);
 
-describe("resolvePromptTemplate", () => {
+// 型プロンプトはここでは解決しない（正本は `post_patterns.prompt`・T-M8-129 U2）。
+describe("resolvePromptTemplate（画像プロンプト）", () => {
   it("prefers the account override", async () => {
     const db = makeDb((sql) => (isAccount(sql) ? [{ content: "CUSTOM" }] : []));
-    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "p1" })).toBe("CUSTOM");
+    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "image" })).toBe("CUSTOM");
   });
 
   it("falls back to the system default when no override", async () => {
     const db = makeDb((sql) => (isSystem(sql) ? [{ content: "SYS" }] : []));
-    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "p1" })).toBe("SYS");
+    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "image" })).toBe("SYS");
   });
 
   it("skips the override query entirely when xAccountId is null", async () => {
@@ -41,15 +42,16 @@ describe("resolvePromptTemplate", () => {
       if (isAccount(sql)) accountQueried = true;
       return isSystem(sql) ? [{ content: "SYS" }] : [];
     });
-    expect(await resolvePromptTemplate(db, { xAccountId: null, kind: "p2" })).toBe("SYS");
+    expect(await resolvePromptTemplate(db, { xAccountId: null, kind: "image" })).toBe("SYS");
     expect(accountQueried).toBe(false);
   });
 
   it("falls back to the code constant when the DB has no row", async () => {
     const db = makeDb(() => []);
-    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "p1" })).toBe(
-      SYSTEM_DEFAULT_TEMPLATES.p1,
+    expect(await resolvePromptTemplate(db, { xAccountId: "a1", kind: "image" })).toBe(
+      SYSTEM_DEFAULT_TEMPLATES.image,
     );
+    // 型プロンプトのコード定数も引き続き正本（生成は `post_patterns.prompt` が null のとき使う）。
     expect(SYSTEM_DEFAULT_TEMPLATES.p1).toBe(PT_P1);
   });
 });
@@ -85,24 +87,57 @@ describe("prompt template guards", () => {
 });
 
 describe("listPromptTemplates", () => {
-  it("composes overrides over system defaults for all 7 kinds", async () => {
+  /**
+   * 型プロンプト（p1〜p6）は `post_patterns` から、画像は `prompt_templates` から読む
+   * （T-M8-129 U2）。画面の形（kind別の一覧）は変えていない。
+   */
+  it("型は post_patterns、画像は prompt_templates から合成する", async () => {
     const db = makeDb((sql) => {
-      if (/x_account_id = \$1/.test(sql)) {
-        return [{ kind: "p1", content: "CUSTOM P1", updated_at: "2026-07-24T00:00:00.000Z" }];
-      }
-      if (/x_account_id is null/.test(sql)) {
-        return [{ kind: "p2", content: "SYS P2" }];
+      if (/from post_patterns/.test(sql)) {
+        return [
+          { seed_key: "p1", prompt: "CUSTOM P1", updated_at: "2026-07-24T00:00:00.000Z" },
+          { seed_key: "p2", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
+          { seed_key: "p3", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
+          { seed_key: "p4", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
+          { seed_key: "p5", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
+          { seed_key: "p6", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
+        ];
       }
       return [];
     });
     const views = await listPromptTemplates(db, "a1");
     expect(views).toHaveLength(7);
+
     const p1 = views.find((v) => v.kind === "p1")!;
-    expect(p1).toMatchObject({ content: "CUSTOM P1", isOverride: true, updatedAt: "2026-07-24T00:00:00.000Z" });
+    expect(p1).toMatchObject({
+      content: "CUSTOM P1",
+      isOverride: true,
+      updatedAt: "2026-07-24T00:00:00.000Z",
+    });
+    // prompt が null ＝ システム既定。コード定数をそのまま出し、更新時刻も出さない。
     const p2 = views.find((v) => v.kind === "p2")!;
-    expect(p2).toMatchObject({ content: "SYS P2", isOverride: false, updatedAt: null });
-    // no override, no system row → code constant
+    expect(p2).toMatchObject({
+      content: SYSTEM_DEFAULT_TEMPLATES.p2,
+      isOverride: false,
+      updatedAt: null,
+    });
+    // 画像は上書きもsystem行も無い → コード定数へ落ちる。
     const image = views.find((v) => v.kind === "image")!;
-    expect(image).toMatchObject({ content: SYSTEM_DEFAULT_TEMPLATES.image, isOverride: false, updatedAt: null });
+    expect(image).toMatchObject({
+      content: SYSTEM_DEFAULT_TEMPLATES.image,
+      isOverride: false,
+      updatedAt: null,
+    });
+  });
+
+  it("削除された既定パターンは一覧に出さない（無い型を編集させない）", async () => {
+    const db = makeDb((sql) => {
+      if (/from post_patterns/.test(sql)) {
+        return [{ seed_key: "p1", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" }];
+      }
+      return [];
+    });
+    const views = await listPromptTemplates(db, "a1");
+    expect(views.map((v) => v.kind)).toEqual(["p1", "image"]);
   });
 });

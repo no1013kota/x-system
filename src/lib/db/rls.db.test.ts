@@ -151,15 +151,16 @@ describe("RLS policies & ownership trigger", () => {
     await inTx(async (c) => {
       const a = await makeUser(c);
       const b = await makeUser(c);
-      // (null, 'p1') system default is seeded; add B's account override
+      // (null, 'image') system default is seeded; add B's account override.
+      // 型プロンプト（p1〜p6）は `post_patterns` へ移したので画像で確かめる（T-M8-129 U2）。
       await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'p1', 'b-override')`,
+        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'image', 'b-override')`,
         [b.xid],
       );
 
       await actAs(c, a.uid);
       const rows = await c.query<{ x_account_id: string | null }>(
-        `select x_account_id from prompt_templates where kind = 'p1'`,
+        `select x_account_id from prompt_templates where kind = 'image'`,
       );
       // A sees only the system default (x_account_id null), not B's override
       expect(rows.rows).toHaveLength(1);

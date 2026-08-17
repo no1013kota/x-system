@@ -185,22 +185,23 @@ describe("core tables schema & constraints", () => {
 
   it("enforces prompt_templates unique per (x_account_id, kind) and per system kind", async () => {
     await inTx(async (c) => {
-      // system default (null, 'p1') is seeded; a second system row must violate
+      // system default (null, 'image') is seeded; a second system row must violate。
+      // 型プロンプト（p1〜p6）は `post_patterns` へ移したので画像で確かめる（T-M8-129 U2）。
       await expectViolation(c, () =>
         c.query(
-          `insert into prompt_templates (x_account_id, kind, content) values (null, 'p1', 'b')`,
+          `insert into prompt_templates (x_account_id, kind, content) values (null, 'image', 'b')`,
         ),
       );
       // account override: one per (x_account_id, kind)
       const uid = await makeProfile(c);
       const xid = await makeXAccount(c, uid);
       await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'p1', 'a')`,
+        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'image', 'a')`,
         [xid],
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into prompt_templates (x_account_id, kind, content) values ($1, 'p1', 'b')`,
+          `insert into prompt_templates (x_account_id, kind, content) values ($1, 'image', 'b')`,
           [xid],
         ),
       );

@@ -2073,9 +2073,12 @@ UI側boolean を壊しても投稿は誤爆しない）。
     （fillトリガが旧enum経路から新列を埋める）。Xアカウント作成で既定6件が自動投入され、
     パターンを削除しても①下書きは名前が残る②予約は設定を残して停止する③実行中jobは完走する。
     既存のDBテストが1件も変わらず緑。
-  - **U2 `todo`**: 生成の型判定と型プロンプトを `post_patterns` から引く。`prompt_templates` を画像専用へ。
-    enqueue が常に `pattern_spec` を積み、`generation_jobs` に必須CHECKを追加する（U1では既存経路を壊すため送った）。
-    **UIは無変更。** 検証: `*.db.test.ts` ＋ `npm run check:providers` ＋ `npm run smoke:live`（実費 約$0.30・上限$0.50）
+  - **U2 `done`**: 生成の型判定と型プロンプトを `post_patterns` から引く。`prompt_templates` を画像専用へ。
+    `generation_jobs.pattern_spec` に必須CHECKを追加（`not valid`＝これから作る行を守る）。
+    **画面の形は無変更**（保存先だけ `post_patterns.prompt` へ移し、既存の上書きはmigrationで写した）。
+    検証: `npm run test:db` 2,125件緑 ／ `npm run check:providers` 17件緑 ／
+    **`npm run smoke:live` 全シナリオ成功（実費 $0.2077・上限$0.50内）**——生成5ポスト（P-6の上限5が効いた）・
+    画像2.0MB・ニュース1件取得。下書きに `pattern_name`／`max_posts` の写しが入ることもDBで確認した。
   - **U3 `todo`**: 画面と改善提案から内部ID（`p1`）を消す。`POST_PATTERN_LABELS` を削除して
     typecheck に残りを列挙させる。PT-SUGGEST を名前ベースにする。
   - **U4 `todo`**: パターンCRUD。(a) サーバー側（store・Server Action）→ (b) 管理画面。
