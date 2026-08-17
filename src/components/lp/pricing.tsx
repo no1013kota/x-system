@@ -21,20 +21,36 @@ export function PricingCards() {
         上位プランに何が積まれるのかが読み取れなかった。表なら差がその場で分かる。
       */}
       <PlanComparisonTable />
+      {/*
+        申込ボタン（T-M8-126）。**「無料で試せる」を主文にする**（運営者の指示・2026-08-18）。
+        以前は「通常プランで始める」で、押すと課金が始まると受け取られかねなかった。
+        プラン名も残す——3つ並ぶので、どれを選んだのかがボタン自身から分かる必要がある。
+        `whitespace-nowrap`（buttonVariantsの既定）だと狭い幅で文字が切れるので折り返しを許す。
+      */}
       <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
         {PLAN_IDS.map((planId) => (
           <Link
             className={cn(
               buttonVariants({ variant: planId === "premium" ? "brand" : "subtle" }),
-              "h-10 text-sm font-bold",
+              "h-auto min-h-11 flex-col gap-0.5 py-2 text-sm font-bold whitespace-normal",
             )}
             href="/signup"
             key={planId}
           >
-            {PLANS[planId].displayName}で始める
+            <span>7日間無料で試す</span>
+            {/*
+              **`opacity` で弱めない。** LPは「JSが動かなくても読める」ことを
+              `landing.spec.ts` が opacity まで見て固定している（旧実装で opacity:0 のまま
+              白紙になった事故の再発防止）。弱めるなら文字サイズだけにする。
+            */}
+            <span className="text-caption font-medium">{PLANS[planId].displayName}</span>
           </Link>
         ))}
       </div>
+      <p className="mt-2 text-caption text-ink-3">
+        {/* 「無料で試す」と言い切るなら、無料の条件をその場で言う（要件03 §54・景表法）。 */}
+        全プラン初回のみ7日間無料。開始にはカード登録が必要で、期間中に解約すれば料金はかかりません。
+      </p>
       <div className="mt-3.5">
         <div className="rounded-card border border-hairline bg-page px-5 py-4">
           <p className="text-body font-bold">APIキーの費用について</p>

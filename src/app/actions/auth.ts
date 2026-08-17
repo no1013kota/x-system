@@ -11,6 +11,7 @@ import {
   recordCodeFailure,
 } from "@/lib/auth/code-attempts";
 import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
+import { SIGNUP_GENERIC_ERROR, signUpErrorMessage } from "@/lib/auth/signup-errors";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
@@ -48,8 +49,11 @@ const CODE_INVALID_MESSAGE =
  */
 const CODE_BLOCKED_MESSAGE =
   "入力の失敗が続いたため、いまのコードでは確認できません。「コードを再送」してから、新しいコードを入力してください。";
-const SIGNUP_ERROR_MESSAGE =
-  "登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。";
+/**
+ * 原因を特定できないときの文言。**正本は `signup-errors.ts`**（画面へ出す文言を1か所にまとめる）。
+ * 原因が分かるものは `signUpErrorMessage` が言い分ける（T-M8-127）。
+ */
+const SIGNUP_ERROR_MESSAGE = SIGNUP_GENERIC_ERROR.message;
 const RESEND_ACCEPTED_MESSAGE =
   "確認メールを再送しました。登録可能なメールアドレスの場合にメールが届きます。";
 const SIGNIN_ERROR_MESSAGE =
@@ -106,7 +110,10 @@ export async function signUp(
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
     if (error || !data.user) {
-      return { status: "error", message: SIGNUP_ERROR_MESSAGE };
+      // **原因ごとに言い分ける**（T-M8-127）。登録済みは待っても直らないので
+      // 「時間をおいて再度」と言ってはいけない（同じ操作を繰り返させる）。
+      const { message, action } = signUpErrorMessage(error);
+      return { status: "error", message, ...(action ? { action } : {}) };
     }
 
     const acceptedAt = new Date().toISOString();

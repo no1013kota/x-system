@@ -131,3 +131,41 @@ test("アプリ内のどの画面からでもヘッダのログアウトで抜�
   await page.goto("/app/posts");
   await expect(page).toHaveURL(/\/login/);
 });
+
+/**
+ * 登録済みのメールで再登録したとき、原因が分かること（T-M8-127）。
+ *
+ * 以前は「登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。」
+ * だけが出ていた。**登録済みは待っても直らない**ので、この文言は嘘であり、利用者は同じ操作を
+ * 繰り返す。Supabaseは確認済みメールに対して 422 `user_already_exists` を返すので、
+ * それを言い分ける（2026-08-18にローカルで実応答を確認）。
+ */
+test("登録済みのメールで再登録すると、そう分かってログインへ行ける（T-M8-127）", async ({
+  accounts,
+  page,
+}) => {
+  // fixtureの利用者は確認済みで作られる（＝運営者が踏んだ状態と同じ）。
+  const account = await accounts.create("dup-signup");
+
+  await page.goto("/signup");
+  await page.locator('input[name="email"]:not([type="hidden"])').fill(account.email);
+  await page.locator('input[name="password"]').fill(`Dup-${randomUUID().slice(0, 8)}-Pw1`);
+  await page
+    .locator('input[name="password_confirmation"]')
+    .fill(await page.locator('input[name="password"]').inputValue());
+  await page.locator('input[name="terms_accepted"]').check();
+  await page.locator('input[name="privacy_acknowledged"]').check();
+  await expect
+    .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
+    .not.toBe("");
+  await page.getByRole("button", { name: "メールアドレスで登録" }).click();
+
+  const notice = alertIn(page);
+  await expect(notice.getByText("既に登録されています", { exact: false })).toBeVisible({
+    timeout: 20_000,
+  });
+  // 待っても直らないので「時間をおいて」と言わない。
+  await expect(notice.getByText("時間をおいて", { exact: false })).toHaveCount(0);
+  // 行き止まりにしない。
+  await expect(notice.getByRole("link", { name: "ログイン画面へ" })).toBeVisible();
+});

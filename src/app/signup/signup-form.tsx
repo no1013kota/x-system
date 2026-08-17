@@ -32,6 +32,15 @@ function ResultMessage({ state }: { state: AuthFormState }) {
       tone={state.status === "success" ? "success" : "danger"}
     >
       {state.message}
+      {/*
+        行き先が返ってきたら一緒に出す（T-M8-127）。「既に登録されています」だけでは
+        次にどこへ行けばよいか分からず、同じフォームで再試行させてしまう。
+      */}
+      {state.action ? (
+        <Link className="ml-1 font-medium underline underline-offset-4" href={state.action.href}>
+          {state.action.label}
+        </Link>
+      ) : null}
     </Notice>
   );
 }

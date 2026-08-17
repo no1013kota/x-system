@@ -27,8 +27,12 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   const pricing = page.locator("#pricing");
   await expect(pricing).toContainText("¥2,980");
   await expect(pricing).toContainText("AIクレジット1000");
-  // プランごとの申込導線が3本ある（文言はプラン名込みになった）。
-  await expect(pricing.getByRole("link", { name: /で始める$/ })).toHaveCount(3);
+  // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
+  const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
+  expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
+  // 無料の条件（初回のみ・カード登録・解約すれば無料）を同じ場所で言う（景表法・要件03 §54）。
+  await expect(pricing.getByText("初回のみ7日間無料", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
   await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
 

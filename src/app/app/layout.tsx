@@ -163,7 +163,9 @@ export default async function AppLayout({
             <Link
               aria-label="設定"
               className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              href="/app/settings?tab=billing"
+              // 先頭タブ（設定）へ入る。以前は課金・プランを指していたが、ヘッダの「設定」から
+              // 課金画面が開くのは行き先の予想と違う（2026-08-18 運営者の指示・T-M8-126）。
+              href="/app/settings"
             >
               <Icon name="tune" size={18} />
               <span className="hidden md:inline">設定</span>
