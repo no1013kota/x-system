@@ -5,7 +5,7 @@ import {
   DEFAULT_NOTIFICATION_CONFIG,
 } from "./config-defaults";
 import { NEWS_CATEGORIES, NEWS_FETCH_CATEGORIES } from "./news";
-import { PLANS } from "./plans";
+import { PLAN_IDS, PLANS, RETENTION_DISCOUNT, hasCampaignDiscount } from "./plans";
 import { THEME_OPTIONS, themesToNewsCategories } from "./themes";
 
 describe("plan definitions", () => {
@@ -16,6 +16,35 @@ describe("plan definitions", () => {
     expect(PLANS.standard.xAccountLimit).toBe(1);
     expect(PLANS.md.xAccountLimit).toBe(3);
     expect(PLANS.premium.xAccountLimit).toBe(3);
+  });
+
+  /**
+   * リリース記念キャンペーン（T-M8-118）。**請求額はStripe Priceと一致していなければならない**
+   * ので、`monthlyPriceJpy` を勝手に変えるとStripeとの食い違いが黙って起きる。
+   * `regularPriceJpy` は「キャンペーン終了後の予定額」で、請求には使わない。
+   */
+  it("キャンペーン価格は請求額の2倍が終了後の額（Stripe Priceは請求額と一致）", () => {
+    for (const id of PLAN_IDS) {
+      const plan = PLANS[id];
+      expect(plan.regularPriceJpy, `${id} の終了後価格は請求額の2倍`).toBe(
+        plan.monthlyPriceJpy * 2,
+      );
+      expect(hasCampaignDiscount(plan), `${id} は割引中`).toBe(true);
+    }
+    // 終了後の額（1,000 / 2,000 / 5,960）。運営者の指示（2026-08-17）。
+    expect(PLANS.standard.regularPriceJpy).toBe(1000);
+    expect(PLANS.md.regularPriceJpy).toBe(2000);
+    expect(PLANS.premium.regularPriceJpy).toBe(5960);
+  });
+
+  it("解約時の追加割引は50%・3ヶ月限定（プレミアムは原価を下回るため無期限にしない）", () => {
+    expect(RETENTION_DISCOUNT.percentOff).toBe(50);
+    expect(RETENTION_DISCOUNT.durationMonths).toBe(3);
+    for (const id of PLAN_IDS) {
+      expect(RETENTION_DISCOUNT.monthlyPriceJpy[id]).toBe(
+        Math.round(PLANS[id].monthlyPriceJpy / 2),
+      );
+    }
   });
 
   it("only premium has usage limits, with the documented values", () => {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { APP_NAME } from "@/lib/app-config";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
-import { PLANS } from "@/lib/plans";
+import { PLANS, RELEASE_CAMPAIGN } from "@/lib/plans";
 import { LegalDefinitions, LegalDocument } from "@/components/legal-document";
 
 export const metadata: Metadata = {
@@ -23,8 +23,13 @@ export const metadata: Metadata = {
  */
 export default function CommercialTransactionsPage() {
   const premium = PLANS.premium.usageLimits;
+  // 表示するのは**実際に支払う額**（法11条の販売価格）。キャンペーン中はその旨と
+  // 終了後の予定額も併記する（値上げを隠して申し込ませない・T-M8-118）。
   const priceLine = [PLANS.standard, PLANS.md, PLANS.premium]
     .map((plan) => `${plan.displayName} ${plan.monthlyPriceJpy.toLocaleString()}円`)
+    .join("／");
+  const afterCampaignLine = [PLANS.standard, PLANS.md, PLANS.premium]
+    .map((plan) => `${plan.displayName} ${plan.regularPriceJpy.toLocaleString()}円`)
     .join("／");
 
   const items = [
@@ -37,7 +42,9 @@ export default function CommercialTransactionsPage() {
     { term: "電話番号", description: LEGAL_ENTITY.phoneDisclosure },
     {
       term: "販売価格",
-      description: `${priceLine}（いずれも税込の月額料金です）`,
+      description: RELEASE_CAMPAIGN.active
+        ? `${priceLine}（いずれも税込の月額料金です。リリース記念キャンペーンの適用価格で、${RELEASE_CAMPAIGN.afterLabel}は ${afterCampaignLine} を予定しています）`
+        : `${priceLine}（いずれも税込の月額料金です）`,
     },
     {
       term: "商品代金以外に必要な費用",

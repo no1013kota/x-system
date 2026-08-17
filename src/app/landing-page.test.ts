@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { RELEASE_CAMPAIGN } from "@/lib/plans";
+
 /**
  * SC-01 LP（T-M8-74, design_handoff_lp）の構造検査。
  *
@@ -122,9 +124,33 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   });
 
   it("価格・プレミアム上限の数値がLPソースに直書きされていない", () => {
-    for (const literal of ["2,980", "2980", "1,000円", "500円", "通常投稿200件", "画像生成20枚"]) {
+    // 5,960 / 5960 はキャンペーン終了後の額（T-M8-118）。これも plans.ts から埋める。
+    for (const literal of [
+      "2,980",
+      "2980",
+      "5,960",
+      "5960",
+      "1,000円",
+      "500円",
+      "通常投稿200件",
+      "画像生成20枚",
+    ]) {
       expect(LP_SOURCES, `${literal} は plans.ts から埋める`).not.toContain(literal);
     }
+  });
+
+  /**
+   * キャンペーンの見せ方（T-M8-118）。**「通常価格」と書かない**——景品表示法の
+   * 二重価格表示は、通常価格として示すなら実際にその価格で相当期間販売した実績が必要で、
+   * この3プランにその実績が無い（`plans.ts` の `RELEASE_CAMPAIGN` 参照）。
+   */
+  it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
+    expect(PRICING).toContain("regularPriceJpy");
+    expect(PRICING).toContain("RELEASE_CAMPAIGN.afterLabel");
+    // 画面に出る文字だけを見る（コメントで理由を書くのは妨げない）。
+    const pricingWithoutComments = PRICING.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(pricingWithoutComments, "「通常価格」は景表法上使えない").not.toContain("通常価格");
+    expect(RELEASE_CAMPAIGN.afterLabel).not.toContain("通常価格");
   });
 });
 
