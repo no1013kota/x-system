@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.38 |
-| 更新日 | 2026-08-15 |
+| バージョン | v1.39 |
+| 更新日 | 2026-08-18 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -233,6 +233,8 @@ RLS: 認証済みユーザーselect可。writeはservice roleのみ。
 | `schedule_run_key` | `text` | unique null | slot定時実行の冪等key |
 | `request_key` | `text` | unique null | ユーザー操作・子job作成の冪等key |
 | `pattern` | `post_pattern` | null | 投稿生成時 |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使ったパターン。パターンが削除されるとnullになる（履歴は`pattern_spec`で残る） |
+| `pattern_spec` | `jsonb` | nullable | **enqueue時点のパターン設定のsnapshot**（名前・プロンプト・上限ポスト数・Web検索方針など）。実行中にパターンを編集・削除されても走り切れるようにするため凍結する。U2以降は`kind='post_generation'`で必須 |
 | `input` | `jsonb` | not null default `{}` | kind別入力 |
 | `status` | `job_status` | not null default `queued` | 状態 |
 | `progress_stage` | `progress_stage` | null | UI進捗 |
@@ -264,6 +266,10 @@ RLS: 本人select可。writeはServer only。
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
 | `pattern` | `post_pattern` | not null |  |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 生成に使ったパターン。**削除されるとnullになる** |
+| `pattern_name` | `text` | not null | **生成時のパターン名のsnapshot**。パターンを削除しても履歴の画面に内部ID（`p1`）ではなく名前が出るようにする |
+| `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。本文の検証はこの値で行う（後からパターンを編集しても過去の下書きの判定が変わらない） |
+| `requires_quote_url` | `boolean` | not null default false | 生成時に引用URLを必須としたか（P-5相当）。`quote_url`の必須判定に使う |
 | `thread` | `jsonb` | not null | 全体上限1〜7ポスト。書き込み時はpattern別最大数も検証 |
 | `initial_thread` | `jsonb` | not null | 生成確定時の本文snapshot。下書き承認率算出用で更新しない |
 | `images` | `jsonb` | not null default `[]` | Storage path・provider・状態 |
@@ -297,6 +303,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
 | `pattern` | `post_pattern` | not null | P-1〜P-4/P-6 |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使うパターン。**パターンを削除すると`null`になり、同時に`enabled=false`へ落ちる**（曜日・時刻・テーマ・追加指示はそのまま残るので、パターンを選び直すだけで再開できる） |
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
@@ -307,7 +314,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。
+Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。**`enabled`ならば`pattern_id`は必須**（型が無いのに動いている枠を作らない）。**引用URLを必須とするパターン（`requires_quote_url`）は予約に使えない**——毎回URLの指定が要るため自動実行できない（旧`p5`不可の意図をパターン属性へ移した）。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
@@ -547,6 +554,7 @@ RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期�
 | `has_image` | `boolean` | not null default false | 画像等の添付の有無 |
 | `has_url` | `boolean` | not null default false | 本文URLの有無 |
 | `pattern` | `text` | nullable | 本サービス経由の投稿の型（drafts.tweet_ids突合で取得時に付与。外部投稿はnull。一度付いたら保持） |
+| `pattern_name` | `text` | nullable | 同・**パターン名**。分析結果を画面と改善提案に出すとき内部ID（`p1`）ではなく名前を使う |
 | `theme` | `text` | nullable | 同・テーマID |
 | `fetched_at` | `timestamptz` | not null default now() | 初回取得時刻 |
 | `metrics_updated_at` | `timestamptz` | not null default now() | メトリクスを最後に更新した時刻（重なり再取得で更新） |
@@ -556,6 +564,47 @@ Constraints: `unique (x_account_id, tweet_id)`
 Indexes: `(x_account_id, posted_at desc)`
 
 RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
+
+### 3.21 `post_patterns`
+
+投稿の「パターン」を**Xアカウントごとのマスタ**として持つ（T-M8-129）。以前はDB enum `post_pattern`（`p1`〜`p6`）の固定6種で、名前もプロンプトもコードにあった。利用者が**自分で追加・編集・削除できる**ようにするため表へ移す（運営者の指示・2026-08-18）。**既定の6件も削除できる。**
+
+Xアカウントを作ると既定6件が**トリガで自動投入される**（`seed_default_post_patterns()`。手順を人の記憶に依存させない・CLAUDE.md 原則3）。削除後に復元することもでき、同名の自作パターンがあるときは`（復元）`を付けて共存させる（既存を黙って上書きしない）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `x_account_id` | `uuid` | not null FK x_accounts on delete cascade。`unique (x_account_id, id)` | 対象アカウント。複合uniqueは参照側の複合FK用（テナント越え参照をDBで塞ぐ） |
+| `name` | `text` | not null、1〜30字、`unique (x_account_id, lower(name))`、改行と`<` `>`を含まない | **画面に出る唯一の名前**。内部IDは画面に出さない（要件06 §1.0）。名前は改善提案プロンプト（PT-SUGGEST）へ差し込まれるため、プロンプトを壊す文字を受け付けない |
+| `description` | `text` | nullable | 補足説明。**ポスト数はここに書かせない**（`max_posts`から画面が自動で付ける） |
+| `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
+| `max_posts` | `smallint` | not null default 4、1〜10 | このパターンで作るポスト数の上限 |
+| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない |
+| `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
+| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | 出典URLを必須にする／入力にURLがあるときだけ必須にする／求めない |
+| `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
+| `asks_user_opinion` | `boolean` | not null default false | 利用者の意見・視点を入力として求めるか |
+| `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
+| `sort_order` | `integer` | not null default 100 | 画面の並び順 |
+| `seed_key` | `text` | nullable、`unique (x_account_id, seed_key)`、`p1`〜`p6`のいずれか | 既定として投入されたパターンの元ID。旧enumからの引き当てと「既定の復元」に使う。自作は`null` |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Constraints: `seed_key is not null or prompt is not null`（システム既定でないなら自分のプロンプトを持つ）、`name`は1〜30字で改行・`<`・`>`を含まない、`prompt`は1〜8000字、`max_posts`は1〜10、`web_search_max_uses`は0〜5、`(web_search_policy = 'never') = (web_search_max_uses = 0)`、`not (requires_quote_url and include_news_digest)`（引用ポストにニュースダイジェストは渡さない）。
+
+Indexes: `(x_account_id, sort_order, created_at)`、`unique (x_account_id, lower(name))`、`unique (x_account_id, seed_key)`、`unique (x_account_id, id)`（参照側の複合FK用）
+
+RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはServer Action（service role）のみ。
+
+**削除の意味論**（論理削除を持たない理由）。`before delete`トリガ`post_patterns_detach_references()`が参照を外す。
+
+| 参照元 | 削除時の扱い | 理由 |
+|---|---|---|
+| `drafts`（下書き・投稿履歴） | `pattern_id`を`null`にする。`pattern_name`は残す | 過去の投稿履歴の表示名が消えない |
+| `schedule_slots`（予約枠） | `pattern_id`を`null`にし、**同時に`enabled=false`** | 型が無いのに動く枠を作らない。曜日・時刻・テーマは残すので選び直せば再開できる |
+| `generation_jobs`（実行中のjob） | `pattern_id`を`null`にする。`pattern_spec`は残す | 実行中のjobは凍結したspecでそのまま完走する |
+
+この3つを満たすので`archived_at`のような論理削除は持たない。検査は`src/lib/post/post-patterns.db.test.ts`。
 
 ## 4. JSONスキーマ
 

@@ -1,0 +1,74 @@
+# ADR-0008: 投稿パターンを利用者定義にする（enum → アカウント別マスタ、5段階の移行）
+
+- Status: Accepted
+- Date: 2026-08-18
+
+## Context
+
+投稿の「パターン」は DB enum `post_pattern`（`p1`〜`p6`）の固定6種だった。名前・プロンプト・ポスト数上限・Web検索方針はすべてコード側の定数にあり、利用者は選ぶことしかできない。
+
+運営者から「パターンを自分で複数作成・削除でき（**既定のものも削除可能**）、それぞれに名前とプロンプトを設定したい」という要望を受けた（2026-08-18）。あわせて「設定 > プロンプト > 投稿作成プロンプト」のプルダウンをやめ、全パターンを一覧で並べて追加・編集・削除できる形にする。
+
+これは単なる画面変更ではない。`post_pattern` は `drafts`・`schedule_slots`・`generation_jobs` から参照される enum で、**47ファイルがパターンを参照している**。enum は行を消せないので、そのままでは「削除できる」を実現できない。
+
+固定6種を前提にした振る舞いが各所にある点も難しさになっている。
+
+- `p5`（引用ポスト）は毎回引用対象URLの指定が要るため**予約に使えない**（`schedule_slots` の CHECK で `p5` を禁止していた）。
+- パターンごとにポスト数上限・Web検索の回数（`p1`/`p4`は4回、`p3`/`p6`は3回、`p2`はURL指定時のみ2回）・出典URLの扱いが違う。
+- 改善提案（PT-SUGGEST）と投稿分析がパターン名を出力に含める。
+
+## Decision
+
+`post_patterns` テーブル（Xアカウント別マスタ）を正とし、**5つの単位に分けて移行する**。各単位はそれ自体で動く状態を保ち、1単位＝1コミットにする。
+
+| 単位 | 内容 |
+|---|---|
+| U1 | `post_patterns` の新設と参照列の追加（**データ追加のみ・アプリコード変更ゼロ**） |
+| U2 | 生成の型判定と型プロンプトを `post_patterns` から引く。`prompt_templates` を画像専用へ |
+| U3 | 画面と改善提案から内部ID（`p1`）を消す |
+| U4 | パターンCRUD（サーバー側 → 管理画面） |
+| U5 | enum `post_pattern` と旧 `pattern` 列の撤去 |
+
+### 削除できることを、論理削除なしで成立させる
+
+「既定も削除できる」という要望に対し、`archived_at` のような論理削除は**採らない**。論理削除は「消したのに残っている」状態を作り、画面と集計の両方に除外条件を書き足す必要がある（忘れると復活する）。代わりに **`before delete` トリガで参照を外し、履歴側は snapshot で自立させる**。
+
+| 参照元 | 削除時の扱い | それで壊れない理由 |
+|---|---|---|
+| `drafts` | `pattern_id` を null にする | `pattern_name`・`max_posts`・`requires_quote_url` を生成時に写してあるので、履歴の表示と本文検証はパターンを見に行かない |
+| `schedule_slots` | `pattern_id` を null にし、**同時に `enabled=false`** | 曜日・時刻・テーマ・追加指示は残るので、パターンを選び直すだけで再開できる。設定を黙って捨てない |
+| `generation_jobs` | `pattern_id` を null にする | enqueue 時点の `pattern_spec`（jsonb）を凍結してあるので、実行中のジョブは完走する |
+
+`schedule_slots` には `check (not enabled or pattern_id is not null)` を置き、**型が無いのに動いている枠**をDBレベルで作れないようにする（CLAUDE.md 原則1）。
+
+### 既定パターンは「プロンプトが null」で表す
+
+`post_patterns.prompt` が null なら、コード定数 `SYSTEM_DEFAULT_TEMPLATES[seed_key]`（`src/lib/prompts/gen-prompts.ts`）を使う。「システム既定に戻す」は null に戻すこと。こうするとコード側のプロンプト改善が、既定のままにしている既存アカウントへ届く（T-M7-37 の回帰防止）。自作パターンは prompt 非null必須（`check (seed_key is not null or prompt is not null)`）。
+
+Xアカウント作成時の既定6件の投入は **`x_accounts` の AFTER INSERT トリガ**で行う。アプリ側の手順にすると「新規アカウントだけパターンが空」という事故が起きうるため、忘れられない場所へ置く（原則3）。削除後の復元もでき、同名の自作パターンがあるときは `（復元）` を付けて共存させる。
+
+### `p5` の「予約不可」をパターン属性へ移す
+
+CHECK で enum 値を名指しする代わりに `post_patterns.requires_quote_url` を持ち、`schedule_slots` の `before insert or update` トリガで拒否する（errcode `23514`）。自作パターンで引用を必須にした場合も同じ扱いになる。
+
+### テナント越え参照はDBで塞ぐ
+
+`post_patterns` に `unique (x_account_id, id)` を置き、参照側は **複合外部キー `(x_account_id, pattern_id)`** で参照する。アプリ側の絞り込みを忘れても、他人のパターンを指す行は作れない。
+
+### 名前はプロンプトへ差し込まれるので語彙を制限する
+
+パターン名は改善提案（PT-SUGGEST）の入力に含まれる。改行・`<`・`>` を含む名前を受け付けない CHECK を置き、1〜30字に収める。表示名は `unique (x_account_id, lower(name))` で重複させない（画面で見分けられなくなる）。
+
+## Consequences
+
+- パターンの追加・編集・削除ができるようになる。既定6件も削除でき、必要なら復元できる。
+- パターンを削除しても、過去の下書き・投稿履歴には**名前が残る**。予約は停止するが設定は残る。実行中のジョブは完走する。
+- `post_pattern` enum を撤去するまで（U5まで）は、旧 `pattern` 列と新 `pattern_id` が並存する。U1 のトリガが**旧列から新列を埋める**ので、その間アプリコードは旧列だけ見ていればよい。
+- **`generation_jobs.pattern_spec` の必須化は U2 へ送った。** `pattern` を持たない `post_generation` の挿入が既存経路に実在するため（`scheduler-tick` の取り残し回収など）、U1 で必須化すると既存テスト34件が落ちる。U1 の契約は「アプリを1行も変えない」なので、常に spec を積む enqueue へ変える U2 で `check (kind <> 'post_generation' or pattern_spec is not null)` を追加する。
+- 移行中に見つかった実バグ: `schedule_slots` の fill トリガを `before insert or update` で無条件に動かすと、削除時の detach（`pattern_id = null`）を書き戻してしまい、**既定パターンを一切削除できなくなる**（外部キー違反）。UPDATE では「旧 `pattern` が変わり、かつ呼び出し側が `pattern_id` を触っていないとき」だけ引き直す。`src/lib/post/post-patterns.db.test.ts` がこれを検出した。
+
+## 参照
+
+- 要件02 §3.21（`post_patterns`）、§3.8/§3.9/§3.10/§3.20（参照列）
+- `supabase/migrations/20260818000001_post_patterns.sql`
+- `src/lib/post/post-patterns.db.test.ts`
