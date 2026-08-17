@@ -128,3 +128,30 @@ test("reduced-motion では全要素が即時表示され、3幅で横に伸び�
     expect(await horizontalOverflow(page), `${width}px で横に伸びない`).toBeLessThanOrEqual(0);
   }
 });
+
+/**
+ * リリース記念キャンペーンの見せ方（T-M8-118）。
+ *
+ * **取り消し線に「通常価格」と書かない。** 景品表示法の二重価格表示は、通常価格として示すなら
+ * 実際にその価格で相当期間販売した実績が必要で、この3プランにその実績は無い（500円・1,000円・
+ * 2,980円でのみ販売してきた）。将来価格として「キャンペーン終了後」と示す形を固定する。
+ */
+test("料金カードに半額バッジと終了後価格が出て、「通常価格」とは書かない（T-M8-118）", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const pricing = page.locator("#pricing");
+
+  // 3プランすべてにバッジが出る。
+  await expect(pricing.getByText("リリース記念 半額")).toHaveCount(3);
+
+  // 請求額（大きい方）と終了後価格（取り消し線）が両方読める。
+  await expect(pricing.getByText("2,980", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
+  const struck = pricing.locator(".line-through");
+  await expect(struck).toHaveCount(3);
+  await expect(struck.filter({ hasText: "5,960" })).toHaveCount(1);
+
+  // 景表法: 「通常価格」の語を使わない。
+  await expect(pricing.getByText("通常価格")).toHaveCount(0);
+});

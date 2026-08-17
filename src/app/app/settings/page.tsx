@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
 import { EmptyState, LockedState } from "@/components/app-shell/page-state";
 import { TabNav } from "@/components/app-shell/tab-nav";
@@ -26,7 +27,7 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
-import { PLANS, type PlanId } from "@/lib/plans";
+import { PLANS, RELEASE_CAMPAIGN, hasCampaignDiscount, type PlanId } from "@/lib/plans";
 import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 import { getSettingsForUser } from "@/lib/settings-server";
@@ -328,6 +329,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <dd className="mt-1 text-lg font-semibold">
                     {profile.plan ? PLANS[profile.plan].displayName : "未選択"}
                   </dd>
+                  {/* いま実際にいくら払っているかをこの場で出す（T-M8-118）。
+                      キャンペーン中は終了後の額も併記して、値上げが不意打ちにならないようにする。 */}
+                  {profile.plan ? (
+                    <dd className="mt-0.5 text-caption text-ink-3">
+                      月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
+                      {hasCampaignDiscount(PLANS[profile.plan])
+                        ? `／${RELEASE_CAMPAIGN.afterLabel} ¥${yen(PLANS[profile.plan].regularPriceJpy)}`
+                        : ""}
+                    </dd>
+                  ) : null}
                 </div>
                 <div>
                   <dt className="text-sm text-muted-foreground">契約状態</dt>

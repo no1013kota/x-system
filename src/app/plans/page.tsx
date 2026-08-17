@@ -7,7 +7,13 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
-import { PLAN_IDS, PLANS, type PlanId } from "@/lib/plans";
+import {
+  PLAN_IDS,
+  PLANS,
+  RELEASE_CAMPAIGN,
+  hasCampaignDiscount,
+  type PlanId,
+} from "@/lib/plans";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -92,8 +98,22 @@ const PREMIUM_SETUP = [
   "学習（任意）— 参考アカウント・過去投稿の取り込み",
 ];
 
+/**
+ * 申込前確認事項に出す料金の範囲（T-M8-118）。**実際に請求する額**で書く
+ * （特定商取引法の表示は支払う額が正）。キャンペーン中はその旨も添える。
+ */
+const PRICE_RANGE_TEXT = (() => {
+  const prices = PLAN_IDS.map((id) => PLANS[id].monthlyPriceJpy);
+  const range = `税込月額${yen(Math.min(...prices))}円〜${yen(Math.max(...prices))}円`;
+  return RELEASE_CAMPAIGN.active ? `${range}（${RELEASE_CAMPAIGN.badge}の適用価格）` : range;
+})();
+
 const CONFIRMATION_ITEMS: { term: string; description: string }[] = [
-  { term: "料金", description: "税込月額500円〜2,980円" },
+  {
+    term: "料金",
+    // 直書きすると価格改定で食い違う（T-M8-118）。定義から作る。
+    description: PRICE_RANGE_TEXT,
+  },
   { term: "無料期間", description: "初回のみ7日間。開始時にカード登録が必要です" },
   { term: "自動更新", description: "無料期間終了後、選択プランを月単位で自動更新します" },
   { term: "支払時期", description: "初回は無料期間終了時、以後は毎月の更新日に請求します" },
@@ -238,12 +258,24 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                     <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
                     <p className="text-caption text-ink-3">{plan.tagline}</p>
                   </div>
+                  {hasCampaignDiscount(plan) ? (
+                    <span className="inline-flex h-[22px] w-fit items-center rounded-pill bg-danger-subtle px-2.5 text-caption font-bold text-danger-fg">
+                      {RELEASE_CAMPAIGN.badge}
+                    </span>
+                  ) : null}
                   <p className="flex items-baseline gap-0.5">
                     <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
                       ¥{yen(plan.monthlyPriceJpy)}
                     </span>
                     <span className="whitespace-nowrap text-xs text-ink-3">／月（税込）</span>
                   </p>
+                  {hasCampaignDiscount(plan) ? (
+                    // 「通常価格」と書かない（過去の販売実績が無い・景表法。plans.ts参照）。
+                    <p className="text-caption text-ink-3">
+                      {RELEASE_CAMPAIGN.afterLabel}{" "}
+                      <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>／月
+                    </p>
+                  ) : null}
                   <ul className="flex flex-1 flex-col gap-[7px]">
                     {planFeatures(planId).map((feature) => (
                       <li className="flex items-start gap-[7px] text-xs leading-[1.55] text-ink-2" key={feature}>

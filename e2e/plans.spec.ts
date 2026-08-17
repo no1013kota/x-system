@@ -80,6 +80,10 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await expect(page.getByText("プラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("プレミアムプラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("契約状態", { exact: false }).first()).toBeVisible();
+  // いま実際にいくら払っているかと、キャンペーン終了後の額がこの場で読める（T-M8-118）。
+  // 値上げが不意打ちにならないようにするため、契約中の画面にも出す。
+  await expect(page.getByText("月額 ¥2,980（税込）", { exact: false })).toBeVisible();
+  await expect(page.getByText("キャンペーン終了後 ¥5,960", { exact: false })).toBeVisible();
 
   // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
   await page.goto("/app/settings?tab=api-keys");

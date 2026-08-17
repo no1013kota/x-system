@@ -4,7 +4,7 @@ import Link from "next/link";
 import { APP_NAME } from "@/lib/app-config";
 import { CURRENT_TERMS_VERSION, consentVersionLabel } from "@/lib/legal";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
-import { PLANS } from "@/lib/plans";
+import { PLANS, RELEASE_CAMPAIGN } from "@/lib/plans";
 import { LegalArticle, LegalDocument } from "@/components/legal-document";
 
 export const metadata: Metadata = { title: `利用規約 | ${APP_NAME}` };
@@ -106,6 +106,16 @@ export default function TermsPage() {
           {PLANS.premium.displayName} {PLANS.premium.monthlyPriceJpy.toLocaleString()}円です。
           お申し込みにはクレジットカードの登録が必要です。
         </p>
+        {RELEASE_CAMPAIGN.active ? (
+          <p>
+            上記はリリース記念キャンペーンの適用価格です。{RELEASE_CAMPAIGN.afterLabel}の月額は
+            {PLANS.standard.displayName} {PLANS.standard.regularPriceJpy.toLocaleString()}円、
+            {PLANS.md.displayName} {PLANS.md.regularPriceJpy.toLocaleString()}円、
+            {PLANS.premium.displayName} {PLANS.premium.regularPriceJpy.toLocaleString()}円を予定しています。
+            価格を改定する場合は、本規約の変更と同じ方法で事前にお知らせし、改定後の料金は
+            お知らせ後に到来する更新日から適用します。
+          </p>
+        ) : null}
         <p>
           <strong>無料トライアルは、はじめてお申し込みいただく場合に限り7日間</strong>
           ご利用いただけます。無料期間中に解約された場合、料金は発生しません。無料期間が終了すると、
