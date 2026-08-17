@@ -5,9 +5,21 @@ import { z } from "zod";
 import { AppError } from "@/lib/observability/errors";
 import {
   NoActiveAccountError,
+  createPatternForUser,
+  deletePatternForUser,
+  listPatternsForUser,
+  restoreDefaultPatternsForUser,
+  updatePatternForUser,
   updatePatternPromptForUser,
 } from "@/lib/post/post-patterns-server";
-import type { PatternPromptView } from "@/lib/post/post-patterns-store";
+import {
+  PATTERN_DESCRIPTION_MAX_CHARS,
+  PATTERN_NAME_MAX_CHARS,
+  PATTERN_MAX_POSTS_LIMIT,
+  PATTERN_PROMPT_MAX_CHARS,
+  type PatternOption,
+  type PatternPromptView,
+} from "@/lib/post/post-patterns-store";
 import { parseUserInput } from "@/lib/validation/user-input";
 
 import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
@@ -25,6 +37,42 @@ const updatePromptSchema = z.object({
   content: z.string(),
   expected_updated_at: z.string().nullable(),
 });
+const patternIdSchema = z.object({ pattern_id: z.string().uuid() });
+const policySchema = z.enum(["always", "with_url", "never"]);
+
+/**
+ * パターンの入力。**画面から来た値をここで型にする**（DBのCHECKと同じ範囲）。
+ * 理由付きの検証は `validatePatternInput` が行う（同じ判定を2度書かない）。
+ */
+const patternSchema = z.object({
+  name: z.string().min(1).max(PATTERN_NAME_MAX_CHARS),
+  description: z.string().max(PATTERN_DESCRIPTION_MAX_CHARS).nullable(),
+  prompt: z.string().max(PATTERN_PROMPT_MAX_CHARS).nullable(),
+  max_posts: z.number().int().min(1).max(PATTERN_MAX_POSTS_LIMIT),
+  web_search_policy: policySchema,
+  source_policy: policySchema,
+  include_news_digest: z.boolean(),
+  asks_user_opinion: z.boolean(),
+  requires_quote_url: z.boolean(),
+});
+const createSchema = patternSchema;
+const updateSchema = patternSchema.extend({ pattern_id: z.string().uuid() });
+
+type PatternPayload = z.infer<typeof patternSchema>;
+
+function toInput(data: PatternPayload) {
+  return {
+    name: data.name,
+    description: data.description,
+    prompt: data.prompt,
+    maxPosts: data.max_posts,
+    webSearchPolicy: data.web_search_policy,
+    sourcePolicy: data.source_policy,
+    includeNewsDigest: data.include_news_digest,
+    asksUserOpinion: data.asks_user_opinion,
+    requiresQuoteUrl: data.requires_quote_url,
+  };
+}
 
 function toError(error: unknown): BaseResult {
   if (error instanceof NoActiveAccountError) return errorResult(new AppError("not_found"));
@@ -46,6 +94,99 @@ export async function updatePatternPromptAction(
       expectedUpdatedAt: parsed.data.expected_updated_at,
     });
     return { message: "", prompt, status: "success" };
+  } catch (error) {
+    return toError(error);
+  }
+}
+
+export async function listPatternsAction(): Promise<
+  BaseResult & {
+    patterns?: PatternOption[];
+    prompts?: Record<string, PatternPromptView>;
+    plan?: string;
+  }
+> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const result = await listPatternsForUser(auth.userId);
+    return {
+      message: "",
+      patterns: result.patterns,
+      plan: result.plan,
+      prompts: result.prompts,
+      status: "success",
+    };
+  } catch (error) {
+    return toError(error);
+  }
+}
+
+export async function createPatternAction(
+  input: unknown,
+): Promise<BaseResult & { pattern?: PatternOption }> {
+  const parsed = parseUserInput(createSchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const pattern = await createPatternForUser({
+      userId: auth.userId,
+      pattern: toInput(parsed.data),
+    });
+    return { message: "", pattern, status: "success" };
+  } catch (error) {
+    return toError(error);
+  }
+}
+
+export async function updatePatternAction(
+  input: unknown,
+): Promise<BaseResult & { pattern?: PatternOption }> {
+  const parsed = parseUserInput(updateSchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const pattern = await updatePatternForUser({
+      userId: auth.userId,
+      patternId: parsed.data.pattern_id,
+      pattern: toInput(parsed.data),
+    });
+    return { message: "", pattern, status: "success" };
+  } catch (error) {
+    return toError(error);
+  }
+}
+
+/** 削除。**停止した予約の件数を返す**ので、画面が「何が起きたか」を言える。 */
+export async function deletePatternAction(
+  input: unknown,
+): Promise<BaseResult & { deletedName?: string; disabledSlots?: number }> {
+  const parsed = parseUserInput(patternIdSchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const result = await deletePatternForUser({
+      userId: auth.userId,
+      patternId: parsed.data.pattern_id,
+    });
+    return { message: "", status: "success", ...result };
+  } catch (error) {
+    return toError(error);
+  }
+}
+
+/** 既定パターンを復元する。**入れた件数**を返す（0件なら「すべて揃っています」と言える）。 */
+export async function restoreDefaultPatternsAction(): Promise<
+  BaseResult & { restored?: number }
+> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const restored = await restoreDefaultPatternsForUser(auth.userId);
+    return { message: "", restored, status: "success" };
   } catch (error) {
     return toError(error);
   }

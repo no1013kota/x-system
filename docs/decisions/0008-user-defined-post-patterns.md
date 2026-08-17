@@ -26,7 +26,7 @@
 | U1 | `post_patterns` の新設と参照列の追加（**データ追加のみ・アプリコード変更ゼロ**） |
 | U2 | 生成の型判定と型プロンプトを `post_patterns` から引く。`prompt_templates` を画像専用へ |
 | U3 | 画面と改善提案から内部ID（`p1`）を消す |
-| U4 | パターンCRUD（サーバー側 → 管理画面） |
+| U4 | パターンCRUD（サーバー側 → 管理画面）。**設定＞プロンプト＞投稿作成プロンプトを「パターン管理」へ**（プルダウンをやめ全件を並べる）|
 | U5 | enum `post_pattern` と旧 `pattern` 列の撤去 |
 
 ### 削除できることを、論理削除なしで成立させる
@@ -66,6 +66,22 @@ CHECK で enum 値を名指しする代わりに `post_patterns.requires_quote_u
 - `post_pattern` enum を撤去するまで（U5まで）は、旧 `pattern` 列と新 `pattern_id` が並存する。U1 のトリガが**旧列から新列を埋める**ので、その間アプリコードは旧列だけ見ていればよい。
 - **`generation_jobs.pattern_spec` の必須化は U2 へ送った。** `pattern` を持たない `post_generation` の挿入が既存経路に実在するため（`scheduler-tick` の取り残し回収など）、U1 で必須化すると既存テスト34件が落ちる。U1 の契約は「アプリを1行も変えない」なので、常に spec を積む enqueue へ変える U2 で `check (kind <> 'post_generation' or pattern_spec is not null)` を追加する。
 - 移行中に見つかった実バグ: `schedule_slots` の fill トリガを `before insert or update` で無条件に動かすと、削除時の detach（`pattern_id = null`）を書き戻してしまい、**既定パターンを一切削除できなくなる**（外部キー違反）。UPDATE では「旧 `pattern` が変わり、かつ呼び出し側が `pattern_id` を触っていないとき」だけ引き直す。`src/lib/post/post-patterns.db.test.ts` がこれを検出した。
+
+## 実装で決めたこと（U3b/U4 時点）
+
+- **編集で許すポスト数も属性にした**（`post_patterns.max_posts_edit`）。生成上限から式で導けず、
+  「生成+2」にすると P-4 が 5→4 と狭まって既存の5ポストの下書きが編集できなくなる。
+- **予約1回に必要な投稿枠**（旧 `ROLLBACK_SAFE_BUDGET`）は要件03 §7.4 の式から導く
+  （`scheduledPostSlots`）。既定6種で移行前の値と完全に一致する。URLが付くかは
+  「必ずWeb検索する or 出典を必ず求める」で保守的に判定する。
+- **旧 `pattern`（enum）列は nullable にした。** 自作パターンは旧enumで表せないので、
+  嘘の値（`'p1'`）ではなく null を書く。列の撤去は U5。
+- **最後の1件は削除させない。** 0件になると投稿を作る手段が画面から消え、
+  「既定を復元する」を知らないと戻れない。
+- **旧レポート（2026-08-18 より前）の内部IDだけ当時の名前へ直す**（`legacyPatternLabel`）。
+  現在の名前へ寄せない——当時どの型だったかの記録なので、書き換えると履歴が事実と食い違う。
+- **`prompt_templates` は画像専用**になった。型プロンプトの system default 行を作らないので、
+  「コードを直したのに反映されない」経路（T-M7-37）が構造的に消える。
 
 ## 参照
 

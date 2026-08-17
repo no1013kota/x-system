@@ -3,6 +3,7 @@ import { AppError } from "@/lib/observability/errors";
 import type { Queryable } from "../db/queryable";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "../prompts/gen-prompts";
 import { toIso } from "../format";
+import type { PatternPolicy } from "./pattern-spec";
 
 /**
  * 投稿パターンの読み出し（T-M8-129 U3・ADR-0008）。
@@ -30,6 +31,12 @@ export interface PatternOption {
   maxPostsEdit: number;
   /** 引用対象のX URLを毎回指定させるか。true は予約に使えない。 */
   requiresQuoteUrl: boolean;
+  /** Web検索の方針（管理画面が編集する）。 */
+  webSearchPolicy: PatternPolicy;
+  /** 出典URLの方針（管理画面が編集する）。 */
+  sourcePolicy: PatternPolicy;
+  /** 直近のニュースをまとめて渡すか。 */
+  includeNewsDigest: boolean;
   /** 利用者の意見・視点を入力として求めるか（画面の入力欄の出し分けに使う）。 */
   asksUserOpinion: boolean;
   /** システム既定として投入されたものか（`p1`〜`p6`）。既定を復元する導線の判定に使う。 */
@@ -48,10 +55,14 @@ interface PatternRow {
   max_posts_edit: number;
   requires_quote_url: boolean;
   asks_user_opinion: boolean;
+  web_search_policy: PatternPolicy;
+  source_policy: PatternPolicy;
+  include_news_digest: boolean;
 }
 
 const COLUMNS = `id, seed_key, name, description, prompt, max_posts, max_posts_edit,
-                 requires_quote_url, asks_user_opinion`;
+                 requires_quote_url, asks_user_opinion,
+                 web_search_policy, source_policy, include_news_digest`;
 
 function toOption(row: PatternRow): PatternOption {
   return {
@@ -63,6 +74,9 @@ function toOption(row: PatternRow): PatternOption {
     maxPostsEdit: row.max_posts_edit,
     requiresQuoteUrl: row.requires_quote_url,
     asksUserOpinion: row.asks_user_opinion,
+    webSearchPolicy: row.web_search_policy,
+    sourcePolicy: row.source_policy,
+    includeNewsDigest: row.include_news_digest,
     isSystemDefault: row.seed_key !== null,
     hasCustomPrompt: row.prompt !== null,
   };
@@ -242,26 +256,6 @@ export async function applyUpdatePatternPrompt(
   return requirePatternPrompt(db, input.xAccountId, input.patternId);
 }
 
-/**
- * システム既定へ戻す（`prompt = null`）。**行は消さない。**
- * 自作パターンは既定を持たないため戻せない（`validation_error`）。
- */
-export async function applyResetPatternPrompt(
-  db: Queryable,
-  input: { xAccountId: string; patternId: string },
-): Promise<PatternPromptView> {
-  const option = await requirePattern(db, input.xAccountId, input.patternId);
-  if (!option.isSystemDefault) {
-    throw new AppError("validation_error", { details: { reason: "no_system_default" } });
-  }
-  await db.query(
-    `update post_patterns set prompt = null, updated_at = now()
-      where x_account_id = $1 and id = $2 and prompt is not null`,
-    [input.xAccountId, input.patternId],
-  );
-  return requirePatternPrompt(db, input.xAccountId, input.patternId);
-}
-
 async function requirePatternPrompt(
   db: Queryable,
   xAccountId: string,
@@ -271,4 +265,215 @@ async function requirePatternPrompt(
   const view = prompts[patternId];
   if (!view) throw new AppError("not_found", { details: { reason: "pattern_not_found" } });
   return view;
+}
+
+/** 名前の上限（要件02 §3.21 の CHECK と一致）。 */
+export const PATTERN_NAME_MAX_CHARS = 30;
+/** 説明の上限（DBに CHECK は無いが、画面が破綻しない長さで止める）。 */
+export const PATTERN_DESCRIPTION_MAX_CHARS = 120;
+/** 生成ポスト数の上限（スレッド全体の上限・要件02 §3.9）。 */
+export const PATTERN_MAX_POSTS_LIMIT = 7;
+
+/** パターンの作成・更新で受け取る値。**内部IDは受けない**。 */
+export interface PatternInput {
+  name: string;
+  description: string | null;
+  /** 自作パターンでは必須。既定パターンは `null` で「システム既定に戻す」。 */
+  prompt: string | null;
+  maxPosts: number;
+  webSearchPolicy: PatternPolicy;
+  sourcePolicy: PatternPolicy;
+  includeNewsDigest: boolean;
+  asksUserOpinion: boolean;
+  requiresQuoteUrl: boolean;
+}
+
+/**
+ * 入力を検証する。**DBのCHECKと同じ判定を、理由の分かる形で先に行う**（CLAUDE.md 原則2）。
+ * トリガ任せにすると画面には「保存できませんでした」しか出せない。
+ */
+export function validatePatternInput(input: PatternInput, opts: { isSystemDefault: boolean }): void {
+  const name = input.name.trim();
+  if (name.length === 0 || name.length > PATTERN_NAME_MAX_CHARS) {
+    throw new AppError("validation_error", {
+      details: { reason: "name_length", max: PATTERN_NAME_MAX_CHARS },
+    });
+  }
+  // 名前は改善提案プロンプト（PT-SUGGEST）へ差し込まれる。プロンプトを壊す文字を通さない。
+  if (/[\n\r<>]/.test(name)) {
+    throw new AppError("validation_error", { details: { reason: "name_unsafe_chars" } });
+  }
+  if (input.description !== null && input.description.length > PATTERN_DESCRIPTION_MAX_CHARS) {
+    throw new AppError("validation_error", {
+      details: { reason: "description_length", max: PATTERN_DESCRIPTION_MAX_CHARS },
+    });
+  }
+  if (!Number.isInteger(input.maxPosts) || input.maxPosts < 1 || input.maxPosts > PATTERN_MAX_POSTS_LIMIT) {
+    throw new AppError("validation_error", {
+      details: { reason: "max_posts_range", min: 1, max: PATTERN_MAX_POSTS_LIMIT },
+    });
+  }
+  // 自作パターンはコード側の既定を持たないので、プロンプトが無いと生成できない。
+  if (!opts.isSystemDefault && (input.prompt === null || input.prompt.trim().length === 0)) {
+    throw new AppError("validation_error", { details: { reason: "prompt_required" } });
+  }
+  if (input.prompt !== null) validatePatternPrompt(input.prompt);
+  // 引用ポストにニュースダイジェストは渡さない（DBのCHECKと同じ）。
+  if (input.requiresQuoteUrl && input.includeNewsDigest) {
+    throw new AppError("validation_error", { details: { reason: "quote_with_digest" } });
+  }
+}
+
+/** 方針から検索回数を決める。`never` は0、それ以外は既定の3回（DBの整合CHECKを満たす）。 */
+function webSearchUsesFor(policy: PatternPolicy): number {
+  return policy === "never" ? 0 : 3;
+}
+
+/**
+ * パターンを作る。並び順は末尾（既存の最大 + 10）。
+ *
+ * **名前の重複は `validation_error`（`name_taken`）で返す**。DBの unique 違反をそのまま
+ * 投げると画面には汎用エラーしか出ず、利用者は何を直せばよいか分からない。
+ */
+export async function applyCreatePattern(
+  db: Queryable,
+  input: PatternInput & { xAccountId: string },
+): Promise<PatternOption> {
+  validatePatternInput(input, { isSystemDefault: false });
+  if (await nameTaken(db, input.xAccountId, input.name.trim(), null)) {
+    throw new AppError("validation_error", { details: { reason: "name_taken" } });
+  }
+  const { rows } = await db.query<PatternRow>(
+    `insert into post_patterns
+       (x_account_id, name, description, prompt, max_posts, max_posts_edit,
+        web_search_policy, web_search_max_uses, source_policy,
+        include_news_digest, asks_user_opinion, requires_quote_url, sort_order)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+             coalesce((select max(sort_order) + 10 from post_patterns where x_account_id = $1), 100))
+     returning ${COLUMNS}`,
+    [
+      input.xAccountId,
+      input.name.trim(),
+      emptyToNull(input.description),
+      input.prompt,
+      input.maxPosts,
+      Math.min(PATTERN_MAX_POSTS_LIMIT, input.maxPosts + 2),
+      input.webSearchPolicy,
+      webSearchUsesFor(input.webSearchPolicy),
+      input.sourcePolicy,
+      input.includeNewsDigest,
+      input.asksUserOpinion,
+      input.requiresQuoteUrl,
+    ],
+  );
+  return toOption(rows[0]);
+}
+
+/**
+ * パターンを更新する。既定パターン（`seed_key` あり）も編集できる。
+ *
+ * `max_posts_edit` は**狭めない**（`greatest`）。狭めると既存の下書きが編集できなくなる。
+ */
+export async function applyUpdatePattern(
+  db: Queryable,
+  input: PatternInput & { xAccountId: string; patternId: string },
+): Promise<PatternOption> {
+  const current = await requirePattern(db, input.xAccountId, input.patternId);
+  validatePatternInput(input, { isSystemDefault: current.isSystemDefault });
+  if (await nameTaken(db, input.xAccountId, input.name.trim(), input.patternId)) {
+    throw new AppError("validation_error", { details: { reason: "name_taken" } });
+  }
+  const { rows } = await db.query<PatternRow>(
+    `update post_patterns
+        set name = $3, description = $4, prompt = $5, max_posts = $6,
+            max_posts_edit = greatest(max_posts_edit, $6::smallint),
+            web_search_policy = $7, web_search_max_uses = $8, source_policy = $9,
+            include_news_digest = $10, asks_user_opinion = $11, requires_quote_url = $12,
+            updated_at = now()
+      where x_account_id = $1 and id = $2
+      returning ${COLUMNS}`,
+    [
+      input.xAccountId,
+      input.patternId,
+      input.name.trim(),
+      emptyToNull(input.description),
+      input.prompt,
+      input.maxPosts,
+      input.webSearchPolicy,
+      webSearchUsesFor(input.webSearchPolicy),
+      input.sourcePolicy,
+      input.includeNewsDigest,
+      input.asksUserOpinion,
+      input.requiresQuoteUrl,
+    ],
+  );
+  if (rows.length === 0) throw new AppError("not_found", { details: { reason: "pattern_not_found" } });
+  return toOption(rows[0]);
+}
+
+/**
+ * パターンを削除する。**既定パターンも削除できる**（運営者の指示・2026-08-18）。
+ *
+ * 参照の外し方はDBのトリガが決める（要件02 §3.21）: 下書きは名前が残り、
+ * 予約は設定を残して停止し、実行中のジョブは凍結したspecで完走する。
+ *
+ * **最後の1件は削除させない。** 0件になると投稿を作る手段が画面から消え、
+ * 利用者は「既定を復元する」を知らないと復帰できない（原則1・2）。
+ */
+export async function applyDeletePattern(
+  db: Queryable,
+  input: { xAccountId: string; patternId: string },
+): Promise<{ deletedName: string; disabledSlots: number }> {
+  const target = await requirePattern(db, input.xAccountId, input.patternId);
+  const { rows: countRows } = await db.query<{ n: string }>(
+    `select count(*)::text n from post_patterns where x_account_id = $1`,
+    [input.xAccountId],
+  );
+  if (Number(countRows[0].n) <= 1) {
+    throw new AppError("validation_error", { details: { reason: "last_pattern" } });
+  }
+  // 停止される予約の件数を先に数えて返す（何が起きたか画面で言えるようにする）。
+  const { rows: slotRows } = await db.query<{ n: string }>(
+    `select count(*)::text n from schedule_slots where pattern_id = $1 and enabled`,
+    [input.patternId],
+  );
+  await db.query(`delete from post_patterns where x_account_id = $1 and id = $2`, [
+    input.xAccountId,
+    input.patternId,
+  ]);
+  return { deletedName: target.name, disabledSlots: Number(slotRows[0].n) };
+}
+
+/**
+ * 削除した既定パターンを復元する（`seed_default_post_patterns`）。**入れた件数**を返す。
+ * 同名の自作パターンがあるときは「（復元）」を付けて共存させる（既存を上書きしない）。
+ */
+export async function applyRestoreDefaultPatterns(
+  db: Queryable,
+  xAccountId: string,
+): Promise<number> {
+  const { rows } = await db.query<{ seed_default_post_patterns: number }>(
+    `select seed_default_post_patterns($1)`,
+    [xAccountId],
+  );
+  return Number(rows[0]?.seed_default_post_patterns ?? 0);
+}
+
+async function nameTaken(
+  db: Queryable,
+  xAccountId: string,
+  name: string,
+  exceptId: string | null,
+): Promise<boolean> {
+  const { rows } = await db.query<{ n: string }>(
+    `select count(*)::text n from post_patterns
+      where x_account_id = $1 and lower(name) = lower($2) and ($3::uuid is null or id <> $3)`,
+    [xAccountId, name, exceptId],
+  );
+  return Number(rows[0].n) > 0;
+}
+
+function emptyToNull(value: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length === 0 ? null : trimmed;
 }

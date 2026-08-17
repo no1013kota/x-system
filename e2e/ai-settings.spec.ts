@@ -267,20 +267,21 @@ test("プロンプトを保存すると、成功が出た時点でもう次の�
   await signIn(page, account);
   await page.goto("/app/settings?tab=prompts&sec=post-prompt");
 
-  const editor = page.getByLabel("プロンプト本文");
+  // 投稿作成プロンプトはパターン管理（全件を並べる）になった（T-M8-129 U4b）。
+  // **保存の成功が出た時点で次の操作ができる**という判断は変わらない。
+  const card = page.locator("li", { hasText: "ニュース解説" }).first();
+  const editor = card.getByLabel(/生成プロンプト/);
   await expect(editor).toBeVisible();
   await editor.fill(`${await editor.inputValue()}\n<!-- E2E-${randomUUID().slice(0, 8)} -->`);
 
   await delayRscRefresh(page, 3_000);
-  const save = page.getByRole("button", { name: "保存", exact: true });
-  await save.click();
+  await card.getByRole("button", { name: "保存", exact: true }).click();
 
-  await expect(toastIn(page).getByText("保存しました")).toBeVisible({ timeout: 20_000 });
-  // 保存ボタン自身は「未編集だから押せない」が正しいので、`pending` だけで止まる
-  // 本文欄と再読み込みを見る（＝保存後もまだ触れないなら、それが固まっている状態）。
+  await expect(toastIn(page).getByText("を保存しました")).toBeVisible({ timeout: 20_000 });
+  // 成功が出た時点で、同じカードの操作がまだ触れること（＝再取得を待って固まっていない）。
   expect(await editor.isDisabled(), "成功が出た時点で本文を続けて編集できること").toBe(false);
   expect(
-    await page.getByRole("button", { name: "再読み込み" }).isDisabled(),
-    "成功が出た時点で再読み込みが押せること",
+    await card.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+    "成功が出た時点で保存が押せること",
   ).toBe(false);
 });

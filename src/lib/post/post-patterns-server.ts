@@ -5,10 +5,14 @@ import { assertPromptEditablePlan } from "../prompts/prompt-templates";
 import { resolveActiveXAccountForUser } from "../x/account-actions-server";
 
 import {
-  applyResetPatternPrompt,
+  applyCreatePattern,
+  applyDeletePattern,
+  applyRestoreDefaultPatterns,
+  applyUpdatePattern,
   applyUpdatePatternPrompt,
   listPatternPrompts,
   listPatterns,
+  type PatternInput,
   type PatternOption,
   type PatternPromptView,
 } from "./post-patterns-store";
@@ -87,13 +91,38 @@ export async function updatePatternPromptForUser(input: {
   );
 }
 
-export async function resetPatternPromptForUser(input: {
+export async function createPatternForUser(input: {
+  userId: string;
+  pattern: PatternInput;
+}): Promise<PatternOption> {
+  const { xAccountId, plan } = await requireAccount(input.userId);
+  assertPromptEditablePlan(plan);
+  return runInPooledTx((tx) => applyCreatePattern(tx, { ...input.pattern, xAccountId }));
+}
+
+export async function updatePatternForUser(input: {
   userId: string;
   patternId: string;
-}): Promise<PatternPromptView> {
+  pattern: PatternInput;
+}): Promise<PatternOption> {
   const { xAccountId, plan } = await requireAccount(input.userId);
   assertPromptEditablePlan(plan);
   return runInPooledTx((tx) =>
-    applyResetPatternPrompt(tx, { xAccountId, patternId: input.patternId }),
+    applyUpdatePattern(tx, { ...input.pattern, xAccountId, patternId: input.patternId }),
   );
+}
+
+export async function deletePatternForUser(input: {
+  userId: string;
+  patternId: string;
+}): Promise<{ deletedName: string; disabledSlots: number }> {
+  const { xAccountId, plan } = await requireAccount(input.userId);
+  assertPromptEditablePlan(plan);
+  return runInPooledTx((tx) => applyDeletePattern(tx, { xAccountId, patternId: input.patternId }));
+}
+
+export async function restoreDefaultPatternsForUser(userId: string): Promise<number> {
+  const { xAccountId, plan } = await requireAccount(userId);
+  assertPromptEditablePlan(plan);
+  return runInPooledTx((tx) => applyRestoreDefaultPatterns(tx, xAccountId));
 }

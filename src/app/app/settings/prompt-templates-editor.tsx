@@ -78,7 +78,8 @@ export function PromptTemplatesEditor({
     [templates, quotePostEnabled],
   );
 
-  const [selectedKind, setSelectedKind] = useState<string>(visible[0]?.kind ?? "p1");
+  /** この画面が扱うのは画像プロンプトだけ（投稿の型はパターン管理へ移った・T-M8-129 U4b）。 */
+  const selectedKind = visible[0]?.kind ?? "image";
   const current = templates.find((t) => t.kind === selectedKind) ?? null;
   const [draft, setDraft] = useState<string>(current?.content ?? "");
   const [note, setNote] = useState<Note>(null);
@@ -86,12 +87,6 @@ export function PromptTemplatesEditor({
 
   const overLimit = draft.length > MAX_CHARS;
   const dirty = current ? draft !== current.content : false;
-
-  function select(kind: string) {
-    setSelectedKind(kind);
-    setDraft(templates.find((t) => t.kind === kind)?.content ?? "");
-    setNote(null);
-  }
 
   function applyTemplate(t: PromptTemplateView) {
     setTemplates((prev) => prev.map((p) => (p.kind === t.kind ? t : p)));
@@ -196,20 +191,13 @@ export function PromptTemplatesEditor({
 
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm">
-            <span className="block text-xs font-semibold text-muted-foreground">プロンプト種別</span>
-            <select
-              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
-              onChange={(e) => select(e.target.value)}
-              value={selectedKind}
-            >
-              {visible.map((t) => (
-                <option key={t.kind} value={t.kind}>
-                  {kindLabel(t.kind)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/*
+            **プルダウンは置かない**（T-M8-129 U4b・運営者の指示 2026-08-18）。
+            この画面が扱うのは画像プロンプト1件だけで、選択肢が1つのselectは
+            「他に何かある」と思わせるだけの操作になる。投稿の型は「投稿作成プロンプト」の
+            パターン管理（全件を並べる）で編集する。
+          */}
+          <h3 className="text-body font-bold text-ink">{kindLabel(selectedKind)}</h3>
           {current ? (
             <Badge className="mt-4" tone={current.isOverride ? "brand" : "neutral"}>
               {current.isOverride ? "カスタム" : "既定"}
