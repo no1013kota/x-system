@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.32 |
-| 更新日 | 2026-08-15 |
+| バージョン | v1.33 |
+| 更新日 | 2026-08-18 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -16,7 +16,7 @@
 - `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを`scheduled_for`昇順→`created_at`昇順で1起動最大50件dispatchする。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) 通知メール・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
 - 同一Xアカウントのjobと、同一userの`post_publish`は同時実行しない。workerはlease取得時にこの制約を検証し、取得できなければ何もせず終了する（jobはqueuedに残り、後続のdispatch・回収が拾う）。
 - すべての外部API呼び出し前に契約、キー、X連携、利用枠を再検証する。
-- `FEATURE_QUOTE_POST_ENABLED=false`の間はP-5のjobを実行しない。既存のqueued P-5 jobも外部API・利用枠を消費する前に`feature_disabled`でcanceledにする。
+- `FEATURE_QUOTE_POST_ENABLED=false`の間は**引用URLが必須のパターン**（`post_patterns.requires_quote_url`。既定では引用ポスト）のjobを実行しない。既存のqueued jobも外部API・利用枠を消費する前に`feature_disabled`でcanceledにする。判定は**ジョブに凍結した`pattern_spec`**で行う（T-M8-129 U5。旧enum `p5` は撤去した。利用者が作った引用型も同じ扱いになる）。
 - `learning_analysis`と`md_merge`はXアカウント単位で直列実行し、base_md更新時に開始時versionが変わっていないことを確認する。競合時は最新versionからmergeをやり直すかretryableとしてqueuedへ戻す。
 
 ## 2. Jobの対応
@@ -142,7 +142,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - BYOKは必要なX/AI keyが`valid`
 - premiumは生成枠、画像ONなら画像枠、autoなら通常投稿枠とURL付き投稿枠の両方にパターン別最大数から算出したロールバック安全残量がある
 - 当日JSTの`usage_events`にある同一Xアカウントの`operation=post_create`件数が、パターン別最大数を足して50以下
-- P-5はスケジュール対象外
+- **引用URLが必須のパターンはスケジュール対象外**（毎回URLの指定が要るため自動実行できない）。DBのトリガと Server Action の両方で拒否する（要件02 §3.10・§3.21）
 
 スケジュールenqueue時は、出典を付けるP-1/P-3/P-4/P-6を「最終1件がURL付き、先行ポストは通常」と保守的に仮定する。最大数に対する必要残量はP-1=通常10＋URL1、P-2=通常1＋URL0、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1。生成後の投稿直前には実際にXへ送る各payloadで再分類し、通常/URL付き枠を別々に再判定する。
 
@@ -188,10 +188,10 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadは�
 ## 10. 投稿実行
 
 1. draftをlockし、`draft`または再試行可能な`failed`を`posting`へ変更する。
-2. 契約、X token、日次上限、premiumの通常/URL付き投稿残量、thread、警告を検証する。auto起点の`post_publish`はこの時点でも現行versionの自動投稿同意と未撤回を再検証する。**加重文字数の上限（280）超過は`mode`を問わずここで失敗させ、X APIを1件も呼ばない**（要件06 §7と同じ判定をサーバー側でも行う。Xは超過を400で拒否するため、スレッド途中で拒否されると先行ポストがX上に残り取り返しがつかない）。判定は保存済みの`weighted_length`ではなく**そのとき投稿する本文**（P-5は`quote_url`合成後）から測り直す。**Xへ1件も投稿していない失敗はdraftを`failed`にせず`draft`へ戻し、`last_post_error`に理由だけ残す**（日次上限と同じ扱い）。`failed`にすると編集も複製もできず、案内した「編集して短くする」が実行できない行き止まりになる。残量は要件03 §7.4の通常/URL付き別ロールバック安全量を必須とし、同一userの他の投稿jobがrunningなら処理しない。
-3. P-5は`quote_tweet_id`で対象ポストを再取得し、取得成功後に正規化済み`quote_url`を1ポスト目の本文末尾へ合成する。対象取得不能、URL不正、合成後の加重文字数超過はX APIを呼ばず失敗にする。**本ステップは未実装**（`post-publish.ts`は対象ポストを再取得しない。要件06 §5 参照）。ただし**P-5なのに`quote_url`が未設定の下書きは、X APIを呼ばずに`draft`へ戻す**（step2 と同じ扱い。フラグをONにした瞬間に引用先の無い引用ポストが出るのを防ぐ）。
+2. 契約、X token、日次上限、premiumの通常/URL付き投稿残量、thread、警告を検証する。auto起点の`post_publish`はこの時点でも現行versionの自動投稿同意と未撤回を再検証する。**加重文字数の上限（280）超過は`mode`を問わずここで失敗させ、X APIを1件も呼ばない**（要件06 §7と同じ判定をサーバー側でも行う。Xは超過を400で拒否するため、スレッド途中で拒否されると先行ポストがX上に残り取り返しがつかない）。判定は保存済みの`weighted_length`ではなく**そのとき投稿する本文**（引用URLが必須のパターンは`quote_url`合成後）から測り直す。**Xへ1件も投稿していない失敗はdraftを`failed`にせず`draft`へ戻し、`last_post_error`に理由だけ残す**（日次上限と同じ扱い）。`failed`にすると編集も複製もできず、案内した「編集して短くする」が実行できない行き止まりになる。残量は要件03 §7.4の通常/URL付き別ロールバック安全量を必須とし、同一userの他の投稿jobがrunningなら処理しない。
+3. 引用URLが必須のパターンは`quote_tweet_id`で対象ポストを再取得し、取得成功後に正規化済み`quote_url`を1ポスト目の本文末尾へ合成する。対象取得不能、URL不正、合成後の加重文字数超過はX APIを呼ばず失敗にする。**本ステップは未実装**（`post-publish.ts`は対象ポストを再取得しない。要件06 §5 参照）。ただし**引用URLが必須（`drafts.requires_quote_url`）なのに`quote_url`が未設定の下書きは、X APIを呼ばずに`draft`へ戻す**（step2 と同じ扱い。フラグをONにした瞬間に引用先の無い引用ポストが出るのを防ぐ）。
 4. 画像があればX media uploadを完了し、media idを得る。失敗時は本文を投稿しない。
-5. 1ポスト目を通常投稿として送信する。P-5も`quote_tweet_id`は指定せず、対象URLを含む本文を使う。画像ありは`media_ids`を指定する。
+5. 1ポスト目を通常投稿として送信する。引用型も`quote_tweet_id`は指定せず、対象URLを含む本文を使う。画像ありは`media_ids`を指定する。
 6. 後続は直前の自分のtweet_idへのreplyとして投稿する。
 7. 各成功直後にtweet_idを保存し、全プランで`post_create` consume eventを作る。premiumだけ月次counterを同一transactionで加算する。
 8. 全件成功でdraft rowを削除せず、`status=posted`、`root_tweet_id`、`posted_at`、`posted_mode`を更新する。rowは下書き一覧から外れ、投稿履歴とtweet_id別実績の正本になる。
