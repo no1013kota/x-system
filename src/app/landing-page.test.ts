@@ -24,6 +24,9 @@ const PAGE = read("src/app/page.tsx");
 const PRICING = read("src/components/lp/pricing.tsx");
 /** キャンペーン価格の表示はLPと /plans で共通（T-M8-122）。文言の決まりはここが守る。 */
 const CAMPAIGN_PRICE = read("src/components/billing/campaign-price.tsx");
+/** プラン比較表（T-M8-125）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
+const COMPARISON_TABLE = read("src/components/billing/plan-comparison-table.tsx");
+const COMPARISON = read("src/lib/plan-comparison.ts");
 const GLOBALS_CSS = read("src/app/globals.css");
 /** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
 const CSS_RULES = GLOBALS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -119,10 +122,15 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
 
 describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("プランの数値を参照で埋める（直書きしない）", () => {
-    expect(PRICING).toContain("PLANS");
-    expect(PRICING).toContain("monthlyPriceJpy");
-    expect(PRICING).toContain("xAccountLimit");
-    expect(PRICING).toContain("usageLimits");
+    // T-M8-125で比較表へ移した。**数値を持つ場所を見る**——LP側だけを見ていると、
+    // 表へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
+    expect(PRICING, "LPは共通の比較表を使う").toContain("PlanComparisonTable");
+    // 行の可否・件数・上限は定義側（`plan-comparison.ts`）が持つ。
+    for (const ref of ["PLANS", "xAccountLimit", "usageLimits"]) {
+      expect(COMPARISON, `${ref} を定義から引く`).toContain(ref);
+    }
+    // 価格は表示側が定義から引く（表のヘッダ）。
+    expect(COMPARISON_TABLE, "価格を定義から引く").toContain("monthlyPriceJpy");
   });
 
   it("価格・プレミアム上限の数値がLPソースに直書きされていない", () => {
@@ -149,15 +157,24 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
     // 表示はLPと /plans で共通の部品（T-M8-122）。**その部品を見る**——LP側だけを見ていると、
     // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
-    expect(CAMPAIGN_PRICE).toContain("regularPriceJpy");
-    expect(CAMPAIGN_PRICE).toContain("RELEASE_CAMPAIGN.afterLabel");
-    expect(PRICING, "LPは共通部品を使う").toContain("CampaignAfterPrice");
-    expect(PRICING, "LPは共通部品を使う").toContain("CampaignBadge");
+    // 表のヘッダがキャンペーン価格を出す（T-M8-125）。`campaign-price.tsx` は
+    // 他の画面（設定＞課金）が使い続けるので、どちらも決まりを守っていることを見る。
+    for (const source of [COMPARISON_TABLE, CAMPAIGN_PRICE]) {
+      expect(source).toContain("regularPriceJpy");
+      expect(source).toContain("RELEASE_CAMPAIGN.afterLabel");
+    }
     // 画面に出る文字だけを見る（コメントで理由を書くのは妨げない）。
     const withoutComments = (source: string) =>
       source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(withoutComments(CAMPAIGN_PRICE), "「通常価格」は景表法上使えない").not.toContain("通常価格");
-    expect(withoutComments(PRICING), "「通常価格」は景表法上使えない").not.toContain("通常価格");
+    for (const [name, source] of [
+      ["比較表", COMPARISON_TABLE],
+      ["キャンペーン価格", CAMPAIGN_PRICE],
+      ["LP料金", PRICING],
+    ] as const) {
+      expect(withoutComments(source), `${name}で「通常価格」は景表法上使えない`).not.toContain(
+        "通常価格",
+      );
+    }
     expect(RELEASE_CAMPAIGN.afterLabel).not.toContain("通常価格");
   });
 });
@@ -190,10 +207,12 @@ describe("SC-01 LP: デザイン制約", () => {
   });
 
   it("ブランドグラデーションは規定の5箇所だけ（ロゴはLogoTile側なので数えない）", () => {
-    // 生成中バー2本（ヒーローモック・しくみSTEP3）＋上端3pxバー3本（「投稿の生成」カード・
-    // STEP3カード・プレミアムプランカード）。ハンドオフREADME §デザイントークン の規定どおり。
+    // 生成中バー2本（ヒーローモック・しくみSTEP3）＋上端3pxバー2本（「投稿の生成」カード・
+    // STEP3カード）。ハンドオフREADME §デザイントークン の規定どおり。
+    // **T-M8-125で4本になった**——料金をプランカードから比較表へ変えたため、
+    // プレミアムカードの上端バーが無くなった（表のヘッダはグラデを使わない）。
     const direct = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
-    expect(direct.length).toBe(5);
+    expect(direct.length).toBe(4);
   });
 
   /**

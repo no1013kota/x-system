@@ -23,11 +23,12 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   await page.getByRole("link", { name: "料金を見る" }).click();
   await expect(page.locator("#pricing")).toBeInViewport();
 
-  // プランカードが plans.ts の価格・上限を実際に描画している
+  // 比較表が plans.ts の価格・上限を実際に描画している（T-M8-125で表へ変えた）。
   const pricing = page.locator("#pricing");
-  await expect(pricing).toContainText("2,980円");
-  await expect(pricing).toContainText("通常投稿200件");
-  await expect(pricing.getByRole("link", { name: "無料で始める" })).toHaveCount(3);
+  await expect(pricing).toContainText("¥2,980");
+  await expect(pricing).toContainText("AIクレジット1000");
+  // プランごとの申込導線が3本ある（文言はプラン名込みになった）。
+  await expect(pricing.getByRole("link", { name: /で始める$/ })).toHaveCount(3);
   // BYOK注記は折りたたみなしで最初から見えている
   await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
 

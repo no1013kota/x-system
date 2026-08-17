@@ -59,28 +59,39 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 未契約はアプリ本体へ入れず、プラン選択へ送られる（要件03 §2）
   await signIn(page, account, { waitFor: /\/plans/ });
 
-  // 3プランが比較できる（見出しはPRDと同じ日本語表記・T-M8-21）
+  // 3プランが比較表の列として並ぶ（T-M8-125で表へ変えた。名前はPRDと同じ日本語表記・T-M8-21）。
+  const table = page.getByRole("table", { name: /機能と月額の比較/ });
   for (const name of ["通常プラン", "mdプラン", "プレミアムプラン"]) {
-    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: new RegExp(name) })).toBeVisible();
   }
+  // 機能が行見出しになり、対応の有無が読み取れる（✓は読み上げ用の文字も持つ）。
+  await expect(
+    table.getByRole("rowheader", { name: /アカウント.md・プロンプトの直接編集/ }),
+  ).toBeVisible();
+  await expect(table.getByText("対応しません").first()).toBeAttached();
   // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
   await expect(
     page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),
   ).toBeVisible();
 
-  // 申込前の確認は折りたたまず常に見える（要件06 §1.1・要件03 §54）
-  const preApply = page.getByRole("region", { name: "お申し込み前の確認" });
-  await expect(page.getByRole("heading", { name: "お申し込み前の確認" })).toBeVisible();
-  await expect(page.getByText("7日間無料", { exact: false }).first()).toBeVisible();
-  // 同じリンクはフッターの法務情報にもあるため、確認欄の中にあることを見る。
+  /**
+   * 申込前の重要事項（要件06 §1.1・要件03 §54）。
+   *
+   * **T-M8-125で定義リストを畳んだ**（運営者の指示・比較表と重複していた）。ただし
+   * 申込ボタンの前に重要事項へ辿れる状態は残す必要があるので、無料期間・自動更新・解約と
+   * 特商法ページへのリンクが見えていることは引き続き固定する。
+   */
+  await expect(page.getByText("初回のみ7日間無料", { exact: false })).toBeVisible();
+  await expect(page.getByText("自動更新します", { exact: false })).toBeVisible();
+  await expect(page.getByText("期間末で終了します", { exact: false })).toBeVisible();
   await expect(
-    preApply.getByRole("link", { name: "特定商取引法に基づく表記" }),
+    page.getByRole("link", { name: "特定商取引法に基づく表記" }).first(),
   ).toBeVisible();
 
   // 申込ボタンは各プランにあるが、押さない（Stripeへ実際に作りに行くため）
   await expect(page.getByRole("button", { name: /7日間無料で利用/ }).first()).toBeVisible();
 
-  // スマホ幅でもカードが縦に積まれて読める
+  // スマホ幅でも読める（表はページを横に伸ばさず、自分の中でスクロールする）
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   expect(await horizontalOverflow(page), "ページ全体が横に伸びないこと").toBeLessThanOrEqual(0);
