@@ -24,7 +24,8 @@ interface TweetMetricEntry {
 
 export interface AnalyticsDraftRow {
   id: string;
-  pattern: string;
+  /** 生成時に写したパターン名（**内部IDは出さない**・T-M8-129 U3）。 */
+  pattern_name: string;
   status: string;
   tweet_ids: string[];
   last_post_error: { remaining_tweet_ids?: string[]; deleted_tweet_ids?: string[] } | null;
@@ -49,7 +50,7 @@ export interface TweetAnalytics {
 
 export interface DraftAnalytics {
   draftId: string;
-  pattern: string;
+  pattern_name: string;
   postedAt: string | null;
   /** 先頭ポストの本文（カード見出しの識別用）。 */
   excerpt: string;
@@ -93,7 +94,7 @@ export function buildDraftAnalytics(row: AnalyticsDraftRow): DraftAnalytics {
   }
   return {
     draftId: row.id,
-    pattern: row.pattern,
+    pattern_name: row.pattern_name,
     postedAt: row.posted_at,
     excerpt: row.thread?.[0]?.text ?? "",
     incomplete: isFailed,

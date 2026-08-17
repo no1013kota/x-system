@@ -42,6 +42,15 @@ describe("enableScheduleSlot (local DB)", () => {
   });
 
   /** active な X アカウントを持つ利用者を作る。consented=true で自動投稿の同意済みにする。 */
+  /** 既定パターンの `post_patterns.id` を seed_key から引く（画面と同じ入口）。 */
+  async function patternId(c: PoolClient, xAccountId: string, seedKey: string): Promise<string> {
+    const { rows } = await c.query<{ id: string }>(
+      `select id from post_patterns where x_account_id = $1 and seed_key = $2`,
+      [xAccountId, seedKey],
+    );
+    return rows[0].id;
+  }
+
   async function makeAccount(
     c: PoolClient,
     opts: { consented?: boolean } = {},
@@ -99,10 +108,12 @@ describe("enableScheduleSlot (local DB)", () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {
       const deps = depsFor(xAccountId);
+      const pid = (seedKey: string) =>
+        withTransaction((c) => patternId(c, xAccountId, seedKey));
       const created = await createScheduleSlot(
         userId,
         {
-          pattern: "p1",
+          pattern_id: await pid("p1"),
           weekdays: [1, 3],
           time_jst: "09:00",
           mode: "draft",
@@ -140,10 +151,12 @@ describe("enableScheduleSlot (local DB)", () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {
       const deps = depsFor(xAccountId);
+      const pid = (seedKey: string) =>
+        withTransaction((c) => patternId(c, xAccountId, seedKey));
       const created = await createScheduleSlot(
         userId,
         {
-          pattern: "p1",
+          pattern_id: await pid("p1"),
           weekdays: [2],
           time_jst: "10:00",
           mode: "draft",
@@ -175,10 +188,12 @@ describe("enableScheduleSlot (local DB)", () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c, { consented: true }));
     try {
       const deps = depsFor(xAccountId);
+      const pid = (seedKey: string) =>
+        withTransaction((c) => patternId(c, xAccountId, seedKey));
       const created = await createScheduleSlot(
         userId,
         {
-          pattern: "p1",
+          pattern_id: await pid("p1"),
           weekdays: [4],
           time_jst: "11:00",
           mode: "auto",
@@ -224,7 +239,7 @@ describe("enableScheduleSlot (local DB)", () => {
       const created = await createScheduleSlot(
         owner.userId,
         {
-          pattern: "p1",
+          pattern_id: await withTransaction((c) => patternId(c, owner.xAccountId, "p1")),
           weekdays: [5],
           time_jst: "12:00",
           mode: "draft",
@@ -267,10 +282,12 @@ describe("enableScheduleSlot (local DB)", () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {
       const deps = depsFor(xAccountId);
+      const pid = (seedKey: string) =>
+        withTransaction((c) => patternId(c, xAccountId, seedKey));
       const withTheme = await createScheduleSlot(
         userId,
         {
-          pattern: "p1",
+          pattern_id: await pid("p1"),
           weekdays: [1],
           time_jst: "09:00",
           mode: "draft",
@@ -285,7 +302,7 @@ describe("enableScheduleSlot (local DB)", () => {
       const other = await createScheduleSlot(
         userId,
         {
-          pattern: "p3",
+          pattern_id: await pid("p3"),
           weekdays: [2],
           time_jst: "10:00",
           mode: "draft",
@@ -302,7 +319,7 @@ describe("enableScheduleSlot (local DB)", () => {
         {
           slot_id: withTheme.id,
           expected_updated_at: withTheme.updated_at,
-          pattern: "p1",
+          pattern_id: await pid("p1"),
           weekdays: [1],
           time_jst: "09:00",
           mode: "draft",

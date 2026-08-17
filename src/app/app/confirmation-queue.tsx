@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,7 +62,7 @@ export function ConfirmationQueueCard({
                 >
                   <div className="flex items-center gap-2">
                     <Badge tone="brand">
-                      {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
+                      {draft.pattern_name}
                     </Badge>
                     {hasWarnings ? <Badge tone="warn">要確認</Badge> : null}
                     <span className="ml-auto text-caption text-ink-3 tabular-nums">

@@ -21,7 +21,7 @@ import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/l
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
-import { SCHEDULE_PATTERN_OPTIONS } from "@/lib/post/post-patterns";
+import type { PatternOption } from "@/lib/post/post-patterns-store";
 import { selectablePostThemeOptions, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { validateSlotForm } from "@/lib/schedule/slot-form";
@@ -38,10 +38,9 @@ import {
  * 対象外のためパターン選択肢に出さない。mode=autoの同意modalは別タスク（本タスクはサーバー拒否の表示まで）。
  */
 
-// P-5（引用ポスト）はスケジュール対象外（要件04 §12）。
-// ラベルは選択肢の定義から引く（`post-patterns.ts` が唯一の定義・T-M8-29）。
-// 以前はこの画面に短縮版のラベルを別に持っていて、投稿作成側と表記が違っていた
-// （「自分の考え」/「自分の考え・意見」など）。
+// 選択肢はサーバーが `post_patterns` から引いて渡す（T-M8-129 U3。引用URLが必須の
+// パターンは予約に使えないので、その時点で除いてある）。**この画面はラベルを持たない**——
+// 以前は短縮版を別に持っていて、投稿作成側と表記が違っていた（T-M8-29）。
 
 /**
  * 週間プレビューのセルの見た目（T-M8-24）。
@@ -52,9 +51,13 @@ import {
  *
  * セルに出すのは**パターン名**（T-M8-28）。当初は `P1` のようなIDを出していたが、
  * 利用者から「P1・P3・P6 とはどういう意味か」と聞かれた。**画面の中に答えが無い表記は使わない。**
+ * T-M8-129 以降は利用者が作ったパターンにIDが無いため、名前が唯一の表記になった。
  */
 function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
-  const base = "inline-block rounded-chip px-1.5 py-0.5 text-caption font-bold leading-4";
+  // 名前は最大30字取れるので幅を抑えて省略する。全文は `title` と `aria-label` で読める
+  // （7列の表が横に伸びて崩れないようにする・T-M8-129 U3b）。
+  const base =
+    "inline-block max-w-[6.5rem] truncate rounded-chip px-1.5 py-0.5 text-caption font-bold leading-4 align-middle";
   if (!slot.enabled) return `${base} bg-black/[0.04] text-ink-3 line-through`;
   return slot.mode === "auto"
     ? `${base} bg-brand text-white`
@@ -79,7 +82,8 @@ const TIME_OPTIONS: string[] = (() => {
 })();
 
 interface SlotFormValues {
-  pattern: string;
+  /** `post_patterns.id`（uuid）。**内部IDでは持たない**（T-M8-129 U3）。 */
+  pattern_id: string;
   weekdays: number[];
   time_jst: string;
   mode: "draft" | "auto";
@@ -91,7 +95,7 @@ interface SlotFormValues {
 
 function toFormValues(slot: ScheduleSlotView): SlotFormValues {
   return {
-    pattern: slot.pattern,
+    pattern_id: slot.pattern_id ?? "",
     weekdays: [...slot.weekdays].sort((a, b) => a - b),
     time_jst: slot.time_jst.slice(0, 5),
     mode: slot.mode === "auto" ? "auto" : "draft",
@@ -103,12 +107,15 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
 
 export function ScheduleManager({
   slots,
+  patterns,
   imageProviders,
   automationConsented,
   xAccountId,
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  /** 予約に使えるパターン（引用URLが必須のものは含まない・T-M8-129 U3）。 */
+  patterns: PatternOption[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -141,7 +148,7 @@ export function ScheduleManager({
             // 「確認なしで」等の説明は上のステータス行が担う。ここは事実だけ（T-M8-66）。
             <p className="text-muted-foreground">
               次回の実行: {upcoming.run.label} —「
-              {patternLabel(upcoming.slot.pattern)}」
+              {patternLabel(upcoming.slot.pattern_name)}」
               {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
             </p>
           ) : (
@@ -170,6 +177,7 @@ export function ScheduleManager({
             imageProviders={imageProviders}
             onCancel={() => setCreating(false)}
             onSubmitDone={() => setCreating(false)}
+            patterns={patterns}
             submitLabel="作成"
             target={{ kind: "create" }}
             xAccountId={xAccountId}
@@ -181,6 +189,7 @@ export function ScheduleManager({
         accountHandle={accountHandle}
         automationConsented={automationConsented}
         imageProviders={imageProviders}
+        patterns={patterns}
         slots={slots}
         xAccountId={xAccountId}
       />
@@ -328,7 +337,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
                         key={s.id}
                         title={slotDescription(s)}
                       >
-                        {patternLabel(s.pattern)}
+                        {patternLabel(s.pattern_name)}
                       </span>
                     ))}
                   </td>
@@ -357,12 +366,14 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
 
 function SlotList({
   slots,
+  patterns,
   imageProviders,
   automationConsented,
   xAccountId,
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  patterns: PatternOption[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -372,11 +383,12 @@ function SlotList({
   return (
     <ul className="space-y-3">
       {slots.map((slot) => (
-        <SlotRow
+      <SlotRow
           accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           key={slot.id}
+          patterns={patterns}
           slot={slot}
           xAccountId={xAccountId}
         />
@@ -387,12 +399,14 @@ function SlotList({
 
 function SlotRow({
   slot,
+  patterns,
   imageProviders,
   automationConsented,
   xAccountId,
   accountHandle,
 }: {
   slot: ScheduleSlotView;
+  patterns: PatternOption[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -431,7 +445,7 @@ function SlotRow({
     <li className={`${cardClassName} p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{patternLabel(slot.pattern)}</span>
+          <span className="font-semibold">{patternLabel(slot.pattern_name)}</span>
           <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
           {/* テーマを行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
           {slot.theme && slot.theme !== "other" ? (
@@ -492,7 +506,7 @@ function SlotRow({
             </Button>
           )}
           <DeleteSlotButton
-            description={`${slotScheduleLabel(slot.weekdays, slot.time_jst)} の「${patternLabel(slot.pattern)}」を削除します。一時的に止めたいだけなら「停止」を使ってください。`}
+            description={`${slotScheduleLabel(slot.weekdays, slot.time_jst)} の「${patternLabel(slot.pattern_name)}」を削除します。一時的に止めたいだけなら「停止」を使ってください。`}
             disabled={pending}
             onConfirm={() =>
               run(
@@ -512,6 +526,7 @@ function SlotRow({
             automationConsented={automationConsented}
             imageProviders={imageProviders}
             initial={toFormValues(slot)}
+              patterns={patterns}
             onCancel={() => setEditing(false)}
             onSubmitDone={() => setEditing(false)}
             submitLabel="保存"
@@ -533,12 +548,14 @@ function SlotFields({
   automationConsented,
   xAccountId,
   accountHandle,
+  patterns,
   submitLabel,
   onSubmitDone,
   onCancel,
 }: {
   target: SlotTarget;
   initial?: SlotFormValues;
+  patterns: PatternOption[];
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -550,8 +567,9 @@ function SlotFields({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [v, setV] = useState<SlotFormValues>(
-    initial ?? {
-      pattern: "p1",
+  initial ?? {
+      // 既定は一覧の先頭（並び順の1件目）。既定パターンはトリガで必ず投入されている。
+      pattern_id: patterns[0]?.id ?? "",
       weekdays: [],
       time_jst: "09:00",
       mode: "draft",
@@ -579,8 +597,8 @@ function SlotFields({
 
   function doSubmit() {
     startTransition(async () => {
-      const payload = {
-        pattern: v.pattern,
+    const payload = {
+        pattern_id: v.pattern_id,
         weekdays: v.weekdays,
         time_jst: v.time_jst,
         mode: v.mode,
@@ -653,9 +671,9 @@ function SlotFields({
       {/* 投稿作成と同じ部品（T-M8-29）。 */}
       <PatternRadioGroup
         name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
-        onChange={(id) => setV((cur) => ({ ...cur, pattern: id }))}
-        options={SCHEDULE_PATTERN_OPTIONS}
-        value={v.pattern}
+        onChange={(id) => setV((cur) => ({ ...cur, pattern_id: id }))}
+        options={patterns}
+        value={v.pattern_id}
       />
 
       {/*
@@ -791,7 +809,7 @@ function SlotFields({
           .slice()
           .sort((a, b) => a - b)
           .map((d) => WEEKDAY_LABELS[d])
-          .join("・")} ${v.time_jst} に「${patternLabel(v.pattern)}」を生成し、確認なしでXへ投稿します。`}
+          .join("・")} ${v.time_jst} に「${patternLabel(patterns.find((o) => o.id === v.pattern_id)?.name ?? null)}」を生成し、確認なしでXへ投稿します。`}
       />
     </div>
   );

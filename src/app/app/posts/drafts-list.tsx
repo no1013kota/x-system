@@ -2,7 +2,6 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import dynamic from "next/dynamic";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { WARNING_LABEL, warningSummary } from "@/lib/post/warning-labels";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -218,7 +217,7 @@ function DraftCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
+          <span className="font-semibold">{draft.pattern_name}</span>
           {draft.status === "failed" ? (
             <Badge tone="danger">失敗</Badge>
           ) : null}

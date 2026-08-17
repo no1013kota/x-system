@@ -2083,9 +2083,13 @@ UI側boolean を壊しても投稿は誤爆しない）。
     `post_patterns.max_posts_edit` へ、`ROLLBACK_SAFE_BUDGET`（予約の投稿枠）を要件03 §7.4 の式から導く
     `scheduledPostSlots()` へ。下書きは写した `max_posts_edit` で編集を検証する。
     予約のenqueueは `pattern_spec` を凍結し、**パターンが読めない枠は黙って飛ばさず記録する**。
-  - **U3b `todo`**: 画面と改善提案から内部ID（`p1`）を消す。`POST_PATTERN_LABELS` を削除して
-    typecheck に残りを列挙させる。画面の選択肢は `post-patterns-store.ts` からDB経由で得る
-    （＝**自作パターンが投稿作成・予約の画面に出る**）。PT-SUGGEST を名前ベースにする。
+  - **U3b `done`**: 画面と改善提案から内部ID（`p1`）を消した。`POST_PATTERN_LABELS`／
+    `POST_PATTERN_OPTIONS` を削除し、選択肢は `post-patterns-store.ts` からDB経由で得る
+    （＝**自作パターンが投稿作成・予約の画面に出る**）。表示は写した名前（`drafts.pattern_name`）と
+    予約の join 名。旧レポート（2026-08-18より前）の内部IDだけ `legacyPatternLabel` で当時の名前へ直す。
+    旧 `pattern` 列を nullable にし、自作パターンでは null を書く（嘘の値を入れない）。
+    検証: `npm run test:db` 2,133件緑 ／ `npm run build` ／ `npm run check:csp-nonce` ／
+    **E2E 73件緑（自作パターンが予約画面の選択肢に出て保存され、画面に内部IDが1つも出ないことを実ブラウザで固定した）**。
   - **U4 `todo`**: パターンCRUD。(a) サーバー側（store・Server Action）→ (b) 管理画面。
     **設定＞プロンプトを「パターン管理＋画像プロンプト」へ**（＝プルダウン廃止の本体。要望の後半2つ）
   - **U5 `todo`**: enum `post_pattern` と旧 `pattern` 列を撤去する。

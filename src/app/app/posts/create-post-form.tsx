@@ -15,14 +15,14 @@ import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
-import type { PostPatternOption } from "@/lib/post/post-patterns";
+import type { PatternOption } from "@/lib/post/post-patterns-store";
 import { selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { updateBaseMdManualAction } from "@/app/actions/base-md";
+import { updatePatternPromptAction } from "@/app/actions/post-patterns";
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
-import type { PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
@@ -164,7 +164,7 @@ export function CreatePostForm({
   baseMd = null,
 }: {
   xAccountId: string;
-  patterns: PostPatternOption[];
+  patterns: PatternOption[];
   imageProviders: string[];
   initialJob?: ActiveJob | null;
   /** サーバーが描画した時刻（ミリ秒）。経過表示の初期値。 */
@@ -175,7 +175,7 @@ export function CreatePostForm({
   baseMd?: { content: string; version: number } | null;
 }) {
   const [pending, startTransition] = useTransition();
-  const [pattern, setPattern] = useState(patterns[0]?.id ?? "p1");
+  const [pattern, setPattern] = useState(patterns[0]?.id ?? "");
   const [sourceUrl, setSourceUrl] = useState("");
   /**
    * テーマ。**選択は必須**（2026-08-03 ユーザー判断）。空文字は「まだ選んでいない」状態で、
@@ -247,6 +247,8 @@ export function CreatePostForm({
     return () => clearInterval(timer);
   }, [job?.id, job?.status, job?.createdAt, job, toast]);
 
+  /** 選択中のパターン。入力欄の出し分け（意見の入力）と表示名に使う。 */
+  const selectedPattern = patterns.find((option) => option.id === pattern) ?? null;
   const currentTemplate = templates?.[pattern] ?? null;
   const promptValue = promptDraft ?? currentTemplate?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
@@ -269,13 +271,30 @@ export function CreatePostForm({
       // 編集して「保存して以後も使う」を選んだブロックは、生成の前に保存を確定する
       // （保存に失敗したのに生成だけ走ると、どのプロンプトで生成されたか分からなくなる）。
       // 保存が1つでも失敗したら生成を始めない。
-      async function saveTemplate(kind: PromptTemplateKind, content: string): Promise<boolean> {
-        const saved = await updatePromptTemplateAction({
-          kind,
-          content,
-          expected_updated_at: templates?.[kind]?.updatedAt ?? null,
-        });
-        if (saved.status === "error" || !saved.template) {
+      /**
+       * `key` はパターンID（uuid）か `"image"`。**保存先が違う**（T-M8-129 U3）:
+       * パターンは `post_patterns.prompt`、画像は `prompt_templates`。
+       */
+      async function saveTemplate(key: string, content: string): Promise<boolean> {
+        const expected = templates?.[key]?.updatedAt ?? null;
+        const saved =
+          key === "image"
+            ? await updatePromptTemplateAction({
+                kind: "image",
+                content,
+                expected_updated_at: expected,
+              })
+            : await updatePatternPromptAction({
+                pattern_id: key,
+                content,
+                expected_updated_at: expected,
+              });
+        // 戻りの形が違う（画像は `template`、パターンは `prompt`）。どちらも同じ3項目を持つ。
+        const savedView =
+          "template" in saved
+            ? saved.template
+            : ("prompt" in saved ? saved.prompt : undefined);
+        if (saved.status === "error" || !savedView) {
           toast.show({
             tone: "error",
             title: "プロンプトを保存できませんでした",
@@ -288,10 +307,10 @@ export function CreatePostForm({
         }
         setTemplates((prev) => ({
           ...(prev ?? {}),
-          [kind]: {
-            content: saved.template!.content,
-            updatedAt: saved.template!.updatedAt,
-            isOverride: saved.template!.isOverride,
+          [key]: {
+            content: savedView.content,
+            updatedAt: savedView.updatedAt,
+            isOverride: savedView.isOverride,
           },
         }));
         return true;
@@ -300,7 +319,7 @@ export function CreatePostForm({
       let promptOverride: string | undefined;
       if (templates && promptEdited && promptDraft !== null) {
         if (promptApply === "save") {
-          if (!(await saveTemplate(pattern as PromptTemplateKind, promptDraft))) return;
+          if (!(await saveTemplate(pattern, promptDraft))) return;
           setPromptDraft(null);
           // 保存済み＝通常の解決で同じ内容が使われるため、override は送らない。
         } else {
@@ -347,7 +366,9 @@ export function CreatePostForm({
         pattern,
         source_url: sourceUrl.trim() || undefined,
         theme,
-        user_opinion: pattern === "p2" ? userOpinion.trim() || undefined : undefined,
+        user_opinion: selectedPattern?.asksUserOpinion
+          ? userOpinion.trim() || undefined
+          : undefined,
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
         prompt_override: promptOverride,
@@ -513,7 +534,7 @@ export function CreatePostForm({
               {promptTab === "pattern" ? (
                 <PromptBlock
                   edited={promptEdited}
-                  label={`選択中の型（${patterns.find((p) => p.id === pattern)?.label ?? pattern}）の生成プロンプト`}
+                  label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
                   limit={PROMPT_MAX_CHARS}
                   mode={promptApply}
                   onChange={setPromptDraft}
@@ -583,7 +604,7 @@ export function CreatePostForm({
           <p className="mt-1 text-xs text-muted-foreground">空欄ならAIが題材を選んでリサーチします。</p>
         </div>
 
-        {pattern === "p2" ? (
+        {selectedPattern?.asksUserOpinion ? (
           <div>
             <label className="block text-body font-medium text-ink" htmlFor="user_opinion">
               自分の考え（任意）

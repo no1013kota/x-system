@@ -7,7 +7,7 @@ import { scheduleOutlook, type OutlookSlot } from "./overview";
 function slot(over: Partial<OutlookSlot> = {}): OutlookSlot {
   return {
     id: "s1",
-    pattern: "p1",
+    pattern_name: "ニュース解説",
     weekdays: [1],
     time_jst: "09:00",
     mode: "draft",

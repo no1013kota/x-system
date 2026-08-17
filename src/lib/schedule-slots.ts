@@ -5,6 +5,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
 import { POST_THEME_IDS } from "@/lib/post/post-theme";
+import { assertSchedulable, requirePattern } from "@/lib/post/post-patterns-store";
 
 /**
  * schedule_slots CRUD の中核（要件05 §7・要件02 §3.10, S-1/S-2/S-4, T-M4-01）。本人のみ・active_x_account
@@ -29,8 +30,12 @@ const weekdaysSchema = z
   .refine((ws) => new Set(ws).size === ws.length, "曜日が重複しています。");
 
 const baseSlotFields = {
-  // P-5（引用ポスト）はスケジュール対象外（要件04 §12・要件02 §3.10 CHECK）。
-  pattern: z.enum(["p1", "p2", "p3", "p4", "p6"]),
+  /**
+   * 使うパターン（`post_patterns.id`）。**内部ID（`p1`）では受けない**（T-M8-129 U3）。
+   * 利用者が作ったパターンにも対応するため。所有者チェックは `requirePattern` が行う。
+   * 引用URLが必須のパターンは予約に使えない（DBのトリガが拒否・要件02 §3.10）。
+   */
+  pattern_id: z.string().uuid(),
   weekdays: weekdaysSchema,
   time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください。"),
   mode: z.enum(["draft", "auto"]),
@@ -60,6 +65,10 @@ export type SlotLockInput = z.infer<typeof slotLockSchema>;
 export interface ScheduleSlotView {
   id: string;
   pattern: string;
+  /** 使うパターン。削除されたら null（枠は停止して設定は残る・要件02 §3.21）。 */
+  pattern_id: string | null;
+  /** 画面に出す名前。パターンが削除済みなら null。**内部IDは出さない**（要件06 §1.0）。 */
+  pattern_name: string | null;
   weekdays: number[];
   time_jst: string;
   mode: string;
@@ -70,7 +79,13 @@ export interface ScheduleSlotView {
   updated_at: string;
 }
 
-const SLOT_COLUMNS = `id, pattern, weekdays, time_jst::text as time_jst, mode, theme, instructions,
+/**
+ * `select` と `returning` の両方で使うため**テーブル別名を付けない**。
+ * `pattern_name` はスカラーサブクエリで引く（`returning` でも新しい行の `pattern_id` を参照できる）。
+ */
+const SLOT_COLUMNS = `id, pattern, pattern_id,
+  (select p.name from post_patterns p where p.id = pattern_id) as pattern_name,
+  weekdays, time_jst::text as time_jst, mode, theme, instructions,
   image_enabled, enabled, updated_at::text as updated_at`;
 
 export interface ScheduleSlotDeps {
@@ -131,20 +146,26 @@ export async function createScheduleSlot(
   const xAccountId = await requireActiveAccount(deps, userId);
   return deps.runInTx(async (tx) => {
     if (input.mode === "auto") await assertAutomationConsent(tx, xAccountId);
+    // 所有者チェックを兼ねてパターンを取る（他人のパターンで予約させない）。
+    const pattern = await requirePattern(tx, xAccountId, input.pattern_id);
+    assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
+      // 旧 `pattern` 列は U5 で撤去するまで並べて書く。**自作パターンは旧enumで表せないので
+      // null**（嘘の値を入れない・migration `20260818000004`）。表示と生成は `pattern_id` を見る。
       `insert into schedule_slots
-         (x_account_id, pattern, weekdays, time_jst, mode, theme, instructions, image_enabled)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+         (x_account_id, pattern_id, pattern, weekdays, time_jst, mode, theme, instructions, image_enabled)
+       values ($1, $2, $9::post_pattern, $3, $4, $5, $6, $7, $8)
        returning ${SLOT_COLUMNS}`,
       [
         xAccountId,
-        input.pattern,
+        pattern.id,
         input.weekdays,
         input.time_jst,
         input.mode,
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
+        pattern.seedKey,
       ],
     );
     return rows[0];
@@ -175,22 +196,25 @@ export async function updateScheduleSlot(
     if (!slot) throw new AppError("not_found");
     // 現在draftでも今回autoにする場合は同意必須（auto化・再有効化ゲート, 要件05 §7）。
     if (input.mode === "auto") await assertAutomationConsent(tx, slot.x_account_id);
+    const pattern = await requirePattern(tx, slot.x_account_id, input.pattern_id);
+    assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
       `update schedule_slots
-          set pattern = $3, weekdays = $4, time_jst = $5, mode = $6, theme = $7,
-              instructions = $8, image_enabled = $9, updated_at = now()
+          set pattern_id = $3, pattern = $10::post_pattern, weekdays = $4, time_jst = $5,
+              mode = $6, theme = $7, instructions = $8, image_enabled = $9, updated_at = now()
         where id = $1 and updated_at::text = $2
       returning ${SLOT_COLUMNS}`,
       [
         input.slot_id,
         input.expected_updated_at,
-        input.pattern,
+        pattern.id,
         input.weekdays,
         input.time_jst,
         input.mode,
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
+        pattern.seedKey,
       ],
     );
     if (rows.length === 0) throw new AppError("job_conflict", { details: { reason: "stale_slot" } });

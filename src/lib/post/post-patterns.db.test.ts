@@ -6,7 +6,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { parsePatternSpec, scheduledPostSlots } from "./pattern-spec";
 import { GENERATION_MAX_POSTS } from "./thread-limits";
-import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "./post-patterns";
 
 /**
  * `post_patterns`（投稿パターンをアカウント別のマスタにする・T-M8-129 U1）。
@@ -96,13 +95,14 @@ describe("post_patterns（ローカルDB）", () => {
       }>(`select seed_key, name, max_posts from post_patterns where x_account_id = $1`, [xid]);
       const bySeed = new Map(rows.map((r) => [r.seed_key, r]));
 
-      for (const option of [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]) {
-        const seeded = bySeed.get(option.id);
-        expect(seeded, `${option.id} が seed されている`).toBeTruthy();
-        expect(seeded?.name, `${option.id} の名前`).toBe(option.label);
-        expect(seeded?.max_posts, `${option.id} のポスト数上限`).toBe(
-          GENERATION_MAX_POSTS[option.id],
-        );
+    // 画面の説明は `patternDescriptionWithCount()` が `max_posts` から組むので、
+      // 説明文とポスト数がずれることは構造的に起きない（T-M8-33 の再発防止）。
+      // ここで守るのは **seed の値がコード定数と一致していること**。
+      for (const [seedKey, expected] of Object.entries(GENERATION_MAX_POSTS)) {
+        const seeded = bySeed.get(seedKey);
+        expect(seeded, `${seedKey} が seed されている`).toBeTruthy();
+        expect(seeded?.max_posts, `${seedKey} の生成上限`).toBe(expected);
+        expect(seeded?.name, `${seedKey} の名前に内部IDを含めない`).not.toMatch(/^p[1-6]$/);
       }
     } finally {
       await cleanup(uid);

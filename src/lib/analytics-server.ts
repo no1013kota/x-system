@@ -26,7 +26,7 @@ export async function loadAnalyticsForUser(
   periodDays: number,
 ): Promise<DraftAnalytics[]> {
   const { rows } = await pooledDb.query<AnalyticsDraftRow>(
-    `select d.id, d.pattern, d.status, d.tweet_ids, d.last_post_error, d.thread,
+    `select d.id, d.pattern_name, d.status, d.tweet_ids, d.last_post_error, d.thread,
             d.posted_at::text as posted_at, d.metrics_completed_at::text as metrics_completed_at,
             d.tweet_metrics
        from drafts d
@@ -71,8 +71,8 @@ export interface SuggestionGoodPost {
     reposts: number | null;
     replies: number | null;
     hasImage: boolean;
-    /** このアプリで作った投稿だけ付く（外部投稿は null）。 */
-    pattern: string | null;
+    /** このアプリで作った投稿だけ付く（外部投稿は null）。**表示名**で持つ（T-M8-129 U3）。 */
+    patternName: string | null;
     theme: string | null;
   } | null;
 }
@@ -169,11 +169,11 @@ export async function loadSuggestionsForUser(
       reposts: number | null;
       replies: number | null;
       has_image: boolean;
-      pattern: string | null;
+      pattern_name: string | null;
       theme: string | null;
     }>(
       `select tweet_id, text, posted_at, impressions, likes, reposts, replies,
-              has_image, pattern, theme
+              has_image, pattern_name, theme
          from x_timeline_posts
         where x_account_id = $1 and tweet_id = any($2::text[])`,
       [xAccountId, wantedIds],
@@ -188,7 +188,7 @@ export async function loadSuggestionsForUser(
         reposts: p.reposts,
         replies: p.replies,
         hasImage: p.has_image,
-        pattern: p.pattern,
+        patternName: p.pattern_name,
         theme: p.theme,
       });
     }

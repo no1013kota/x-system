@@ -19,9 +19,11 @@ type Row = Record<string, unknown>;
 
 const XID = "22222222-2222-4222-8222-222222222222";
 const SID = "33333333-3333-4333-8333-333333333333";
+const PID = "44444444-4444-4444-8444-444444444444";
 
 const CONSENT = /select automation_consent_version/;
 const OWNED = /select ss\.mode, ss\.x_account_id/;
+const PATTERN = /from post_patterns where x_account_id/;
 const INSERT = /insert into schedule_slots/;
 const UPDATE = /update schedule_slots\s+set pattern/;
 const DISABLE = /update schedule_slots set enabled = false/;
@@ -33,7 +35,11 @@ function makeDb(handler: (sql: string) => { rows: Row[]; rowCount?: number }) {
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
+      // パターンの読み出しは全テストで通す（個別に上書きしたいテストは handler で先に返す）。
       const r = handler(sql);
+      if (r.rows.length === 0 && PATTERN.test(sql)) {
+        return { rows: [patternRow()] as T[], rowCount: 1 };
+      }
       return { rows: r.rows as T[], rowCount: r.rowCount ?? r.rows.length };
     },
   };
@@ -52,10 +58,32 @@ const consentOk = () => ({
   consented: true,
   disabled: false,
 });
-const slotRow = () => ({ id: SID, pattern: "p1", weekdays: [1], time_jst: "09:30", mode: "draft" });
+const slotRow = () => ({
+  id: SID,
+  pattern: "p1",
+  pattern_id: PID,
+  pattern_name: "ニュース解説",
+  weekdays: [1],
+  time_jst: "09:30",
+  mode: "draft",
+});
+
+/** `requirePattern` が読む行。予約に使えるパターン（引用URL不要）。 */
+const patternRow = (over: Record<string, unknown> = {}) => ({
+  id: PID,
+  seed_key: "p1",
+  name: "ニュース解説",
+  description: null,
+  prompt: null,
+  max_posts: 4,
+  max_posts_edit: 6,
+  requires_quote_url: false,
+  asks_user_opinion: false,
+  ...over,
+});
 
 const validCreate = {
-  pattern: "p1" as const,
+  pattern_id: PID,
   weekdays: [1, 3, 5],
   time_jst: "09:30",
   mode: "draft" as const,
@@ -71,8 +99,9 @@ describe("createScheduleSlotSchema validation", () => {
   it("accepts a valid draft slot", () => {
     expect(parse({}).success).toBe(true);
   });
-  it("rejects P-5", () => {
-    expect(parse({ pattern: "p5" }).success).toBe(false);
+  it("パターンはuuidで受ける（内部IDは受けない・T-M8-129 U3）", () => {
+    expect(parse({ pattern_id: "p5" }).success).toBe(false);
+    expect(parse({ pattern_id: "p1" }).success).toBe(false);
   });
   it("rejects empty or duplicate weekdays and out-of-range values", () => {
     expect(parse({ weekdays: [] }).success).toBe(false);
@@ -142,6 +171,29 @@ describe("createScheduleSlot — active account & consent", () => {
     });
     const slot = await createScheduleSlot("u1", { ...validCreate, mode: "auto" }, deps(db));
     expect(slot.mode).toBe("auto");
+  });
+});
+
+describe("引用URLが必須のパターンは予約に使えない", () => {
+  it("理由の分かるエラーを返す（DBのトリガに任せない）", async () => {
+    const { db } = makeDb((sql) =>
+      PATTERN.test(sql)
+        ? { rows: [patternRow({ requires_quote_url: true, name: "引用ポスト" })] }
+        : { rows: [] },
+    );
+    await expect(createScheduleSlot("u1", validCreate, deps(db))).rejects.toMatchObject({
+      code: "validation_error",
+      details: { reason: "pattern_requires_quote_url", pattern: "引用ポスト" },
+    });
+  });
+
+  it("他人のパターンは指定できない（not_found）", async () => {
+    // `requirePattern` は x_account_id で絞るので、他人のIDを渡すと0件になる。
+    const empty: Queryable = { query: async () => ({ rows: [], rowCount: 0 }) };
+    await expect(createScheduleSlot("u1", validCreate, deps(empty))).rejects.toMatchObject({
+      code: "not_found",
+      details: { reason: "pattern_not_found" },
+    });
   });
 });
 

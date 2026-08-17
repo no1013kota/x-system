@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { patternLabel } from "@/lib/schedule/slot-labels";
+
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 
@@ -53,7 +54,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
                 <span className="text-caption text-ink-2">
                   {slot.weekdays.map((d) => WEEKDAY[d]).join("・")}
                 </span>
-                <Badge>{POST_PATTERN_LABELS[slot.pattern] ?? slot.pattern}</Badge>
+                <Badge>{patternLabel(slot.pattern_name)}</Badge>
                 <Badge tone={slot.mode === "auto" ? "brand" : "neutral"}>
                   {slot.mode === "auto" ? "自動投稿" : "下書きまで"}
                 </Badge>

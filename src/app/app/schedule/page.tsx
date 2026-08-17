@@ -10,8 +10,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
+import {
+  listSchedulablePatterns,
+  type PatternOption,
+} from "@/lib/post/post-patterns-store";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
@@ -58,11 +61,13 @@ export default async function SchedulePage() {
   let accountHandle: string | null = null;
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。**URLは変えない**方針なので、
   // どちらのURLでも両方を出す。ここでは下書きも読み込む。
-  let drafts: DraftView[] = [];
+let drafts: DraftView[] = [];
+  /** 予約に使えるパターン（引用URLが必須のものは除く・T-M8-129 U3）。 */
+  let patterns: PatternOption[] = [];
   if (activeXAccountId) {
     // 4取得は相互に独立（T-M8-67。以前は slots+meta → providers → drafts の3段直列で、
     // 停止/再開/削除/保存のたびの router.refresh() でも毎回この直列分を待っていた）。
-    const [loaded, meta, keyRows, draftRows] = await Promise.all([
+  const [loaded, meta, keyRows, draftRows, schedulable] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
       getPool()
         .query<{ plan: string | null; consented: boolean; handle: string }>(
@@ -76,8 +81,10 @@ export default async function SchedulePage() {
         .then((r) => r.rows[0]),
       imageKeyRowsQuery(user.id),
       // この画面が描画するのは先頭5件だけ（下のカード）。全件は取得しない。
-      listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
+    listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
+      listSchedulablePatterns(pooledDb, activeXAccountId),
     ]);
+    patterns = schedulable;
     slots = loaded;
     imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
@@ -101,6 +108,7 @@ export default async function SchedulePage() {
           accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
+          patterns={patterns}
           slots={slots}
           xAccountId={activeXAccountId}
         />
@@ -134,7 +142,7 @@ export default async function SchedulePage() {
                   >
                     <div className="flex items-center gap-2">
                       <Badge tone="brand">
-                        {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
+                        {draft.pattern_name}
                       </Badge>
                       <span className="ml-auto text-caption text-ink-3 tabular-nums">
                         {formatJst(draft.updated_at)}

@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 
 import {
   CHECKPOINT_DAYS,
@@ -99,7 +98,7 @@ export function AnalyticsView({
           return (
             <li className="rounded-card border border-hairline bg-surface p-4" key={draft.draftId}>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge>{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</Badge>
+                <Badge>{draft.pattern_name}</Badge>
                 {draft.incomplete ? (
                   // 内部用語（thread）を画面に出さない（要件06 §8・T-M8-66）。
                   <Badge tone="warn">一部のみ投稿済み</Badge>

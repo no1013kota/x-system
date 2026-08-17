@@ -20,7 +20,7 @@ const cp = (impressions: number | null, profile_clicks: number | null = 1) => ({
 
 const postedRow = (over: Partial<AnalyticsDraftRow> = {}): AnalyticsDraftRow => ({
   id: "d1",
-  pattern: "p1",
+  pattern_name: "ニュース解説",
   status: "posted",
   tweet_ids: ["a", "b"],
   last_post_error: null,

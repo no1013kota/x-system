@@ -1,4 +1,7 @@
-import type { PostPatternOption } from "@/lib/post/post-patterns";
+import {
+  patternDescriptionWithCount,
+  type PatternOption,
+} from "@/lib/post/post-patterns-store";
 
 /**
  * パターン選択（T-M8-29）。**投稿作成とスケジュールで同じ見た目を使う。**
@@ -21,7 +24,7 @@ export function PatternRadioGroup({
   legend?: string;
   name: string;
   onChange: (id: string) => void;
-  options: PostPatternOption[];
+  options: PatternOption[];
   value: string;
 }) {
   return (
@@ -43,9 +46,9 @@ export function PatternRadioGroup({
               value={option.id}
             />
             <span className="min-w-0">
-              <span className="block text-body font-medium text-ink">{option.label}</span>
+              <span className="block text-body font-medium text-ink">{option.name}</span>
               <span className="mt-0.5 block text-caption leading-4 text-ink-3">
-                {option.description}
+                {patternDescriptionWithCount(option)}
               </span>
             </span>
           </label>

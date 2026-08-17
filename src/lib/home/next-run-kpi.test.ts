@@ -22,7 +22,7 @@ describe("nextRunKpi", () => {
       runs: [
         {
           slotId: "s1",
-          pattern: "p3",
+          patternName: "ノウハウ・ハウツー",
           mode: "draft",
           imageEnabled: false,
           label: "7月27日(月) 9:00",
@@ -38,7 +38,7 @@ describe("nextRunKpi", () => {
   it("自動投稿と下書きまでを区別する", () => {
     const base = {
       slotId: "s1",
-      pattern: "p1",
+      patternName: "ニュース解説",
       imageEnabled: false,
       label: "8月1日(土) 18:00",
       at: "2026-08-01T09:00:00Z",

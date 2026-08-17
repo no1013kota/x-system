@@ -269,7 +269,7 @@ RLS: 本人select可。writeはServer only。
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | not null |  |
+| `pattern` | `post_pattern` | **nullable**（U5で撤去） | 旧enum。表示は`pattern_name`、検証は`max_posts`/`max_posts_edit`。自作パターンでは`null` |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 生成に使ったパターン。**削除されるとnullになる** |
 | `pattern_name` | `text` | not null | **生成時のパターン名のsnapshot**。パターンを削除しても履歴の画面に内部ID（`p1`）ではなく名前が出るようにする |
 | `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。生成本文の件数はこの値で収める（後からパターンを編集しても過去の下書きの判定が変わらない） |
@@ -307,7 +307,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | not null | P-1〜P-4/P-6 |
+| `pattern` | `post_pattern` | **nullable**（U5で撤去） | 旧enum。使うパターンは`pattern_id`。自作パターンでは旧enumで表せないため`null` |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使うパターン。**パターンを削除すると`null`になり、同時に`enabled=false`へ落ちる**（曜日・時刻・テーマ・追加指示はそのまま残るので、パターンを選び直すだけで再開できる） |
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |

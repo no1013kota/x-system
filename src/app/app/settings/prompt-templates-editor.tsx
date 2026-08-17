@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { legacyPatternLabel } from "@/lib/analytics/humanize-report";
 import { useMemo, useState } from "react";
 
 import {
@@ -21,10 +21,14 @@ import { Badge } from "@/components/ui/badge";
 
 const MAX_CHARS = 8000;
 
-const KIND_LABEL: Record<string, string> = {
-  ...POST_PATTERN_LABELS,
-  image: "画像プロンプト",
-};
+/**
+ * kind → 見出し。**この画面は U4b でパターン管理画面へ置き換わる**（T-M8-129）。
+ * それまでの間、既定パターンの名前は当時の対応表から出す（利用者が名前を変えても
+ * この画面の見出しは変わらないが、正しい編集先は `post_patterns` なので実害はない）。
+ */
+function kindLabel(kind: string): string {
+  return kind === "image" ? "画像プロンプト" : legacyPatternLabel(kind);
+}
 
 /**
  * **画面に残す通知だけ**（T-M8-18）。判断は `base-md-editor.tsx` と同じ。
@@ -201,7 +205,7 @@ export function PromptTemplatesEditor({
             >
               {visible.map((t) => (
                 <option key={t.kind} value={t.kind}>
-                  {KIND_LABEL[t.kind] ?? t.kind}
+                  {kindLabel(t.kind)}
                 </option>
               ))}
             </select>

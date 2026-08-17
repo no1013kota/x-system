@@ -1,4 +1,3 @@
-import { POST_PATTERN_LABELS } from "../post/pattern-labels";
 import type { ScheduleOutlook } from "./overview";
 
 /**
@@ -24,7 +23,7 @@ export function nextRunKpi(outlook: ScheduleOutlook | null): {
   // ラベルは「7月27日(月) 9:00」形式。KPIには時刻だけを大きく出し、日付は下へ添える。
   const time = next.label.match(/(\d{1,2}:\d{2})\s*$/)?.[1] ?? next.label;
   const date = next.label.replace(/\s*\d{1,2}:\d{2}\s*$/, "").trim();
-  const pattern = POST_PATTERN_LABELS[next.pattern] ?? next.pattern;
+  const pattern = next.patternName ?? "パターン未設定";
   const mode = next.mode === "auto" ? "自動投稿" : "下書きまで";
   return { label: time, note: `${date}・${pattern}（${mode}）` };
 }

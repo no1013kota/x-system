@@ -201,8 +201,15 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     const { createScheduleSlotAction, disableScheduleSlotAction, enableScheduleSlotAction, listScheduleSlotsAction } =
       await import("./schedule");
 
+  // パターンは `post_patterns.id`（uuid）で指す（T-M8-129 U3）。
+    const patternId = (
+      await getPool().query<{ id: string }>(
+        `select id from post_patterns where x_account_id = $1 and seed_key = 'p2'`,
+        [xAccountId],
+      )
+    ).rows[0].id;
     const created = await createScheduleSlotAction({
-      pattern: "p2",
+      pattern_id: patternId,
       weekdays: [1, 3],
       time_jst: "09:00",
       mode: "draft",

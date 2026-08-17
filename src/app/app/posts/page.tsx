@@ -17,7 +17,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 const pooledDb = pooledQueryable();
 
-import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "@/lib/post/post-patterns";
+import { listPatterns, listPatternPrompts } from "@/lib/post/post-patterns-store";
 import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
@@ -69,7 +69,7 @@ function imageProvidersFor(
 
 async function createTabData(userId: string, activeXAccountId: string) {
   // 3クエリは相互に独立（T-M8-67。以前は plan → キー → 実行中job の3段直列だった）。
-  const [profileResult, keyRows, inflightResult] = await Promise.all([
+  const [profileResult, keyRows, inflightResult, allPatterns] = await Promise.all([
     getPool().query<{ plan: string | null }>(`select plan from profiles where id = $1`, [
       userId,
     ]),
@@ -85,11 +85,13 @@ async function createTabData(userId: string, activeXAccountId: string) {
         order by created_at desc limit 1`,
       [activeXAccountId],
     ),
+    // 選択肢は `post_patterns`（アカウント別マスタ）から引く。**自作パターンもここに出る**（U3）。
+    listPatterns(pooledDb, activeXAccountId),
   ]);
-  // 選択肢は `lib/post/post-patterns.ts` が唯一の定義（スケジュール画面と共有・T-M8-29）。
+  // 引用ポストは feature flag が OFF の間は選ばせない（要件05 §5）。
   const patterns = env.FEATURE_QUOTE_POST_ENABLED
-    ? [...POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION]
-    : POST_PATTERN_OPTIONS;
+    ? allPatterns
+    : allPatterns.filter((option) => !option.requiresQuoteUrl);
   const plan = profileResult.rows[0]?.plan ?? null;
   const imageProviders = imageProvidersFor(plan, keyRows.rows);
   // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは mdプラン以上
@@ -99,19 +101,33 @@ async function createTabData(userId: string, activeXAccountId: string) {
     null;
   let baseMd: { content: string; version: number } | null = null;
   if (plan === "md" || plan === "premium") {
-    const patternIds = new Set<string>([...patterns.map((p) => p.id), "image"]);
-    const [listed, baseMdRow] = await Promise.all([
+    const [patternPrompts, listed, baseMdRow] = await Promise.all([
+      // パターンのプロンプトは `post_patterns.prompt`（U2/U3）。画像だけ `prompt_templates`。
+      listPatternPrompts(pooledDb, activeXAccountId),
       listPromptTemplatesForUser(userId),
       getPool().query<{ base_md: string; base_md_version: number }>(
         `select base_md, base_md_version from x_accounts where id = $1`,
         [activeXAccountId],
       ),
     ]);
-    promptTemplates = Object.fromEntries(
-      listed.templates
-        .filter((tpl) => patternIds.has(tpl.kind))
-        .map((tpl) => [tpl.kind, { content: tpl.content, updatedAt: tpl.updatedAt, isOverride: tpl.isOverride }]),
-    );
+    // キーはパターンID（uuid）と `image`。**内部ID（`p1`）では引かない**（T-M8-129 U3）。
+    const image = listed.templates.find((tpl) => tpl.kind === "image");
+    promptTemplates = {
+      ...Object.fromEntries(
+        patterns
+          .filter((option) => patternPrompts[option.id])
+          .map((option) => [option.id, patternPrompts[option.id]]),
+      ),
+      ...(image
+        ? {
+            image: {
+              content: image.content,
+              updatedAt: image.updatedAt,
+              isOverride: image.isOverride,
+            },
+          }
+        : {}),
+    };
     const row = baseMdRow.rows[0];
     baseMd = row ? { content: row.base_md ?? "", version: Number(row.base_md_version ?? 0) } : null;
   }
