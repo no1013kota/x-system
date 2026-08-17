@@ -64,6 +64,13 @@ export async function enqueueDailySuggestions(
              where k.user_id = p.id and k.status = 'valid' and k.provider <> 'x'
           )
         )
+     -- 下の for key share が要る理由（T-M8-116。news-digest.ts・daily-summary.ts と同じ）:
+     -- 同じ文の中でも、SELECT が見る行と外部キー検査が見る行は別のスナップショットで決まる。
+     -- SELECT の直後にXアカウントの連携解除（や退会のcascade）がコミットされると、検査時点では
+     -- 親行が無く generation_jobs_x_account_id_fkey 違反になる。tick は cleanup の例外を
+     -- 捕まえて先へ進むため、1人の解除でその日の分析が全利用者ぶん黙って起票されなくなる。
+     -- 親行を先にロックしておけば、解除はこの文の完了まで待たされ、先に消えていれば0行になる。
+       for key share of xa
      -- arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
      -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。
      on conflict do nothing

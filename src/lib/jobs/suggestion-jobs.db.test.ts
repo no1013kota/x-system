@@ -103,6 +103,43 @@ describe("enqueueDailySuggestions / listSuggestions (local DB)", () => {
     }
   });
 
+  /**
+   * 起票の途中でXアカウントが消えても、他の利用者を巻き添えにしない（T-M8-116）。
+   *
+   * INSERT ... SELECT は、**SELECT が見る行と外部キー検査が見る行が別のスナップショット**で
+   * 決まる。SELECT の直後に連携解除（や退会のcascade）がコミットされると、検査時点では親行が
+   * 無く `generation_jobs_x_account_id_fkey` 違反になる。tick は cleanup の例外を捕まえて先へ
+   * 進むため、**1人の解除でその日の分析が全利用者ぶん黙って起票されなくなる**（原則1）。
+   *
+   * ここでは別トランザクションから対象アカウントを削除しようとしながら起票する。
+   * 行ロック（`for key share of xa`）が無いと外部キー違反で落ちる。
+   */
+  it("起票の最中にXアカウントが消されても、他の利用者の分は作られる（T-M8-116）", async () => {
+    const victim = await seed({ plan: "premium" });
+    const other = await seed({ plan: "premium" });
+    const deleter = await getPool().connect();
+    try {
+      // 別トランザクションで削除を「始めて」おく（commitはまだしない）。
+      await deleter.query("begin");
+      await deleter.query(`delete from x_accounts where id = $1`, [victim.xid]);
+
+      // 起票はこの削除の完了を待つ（ロックが効いていれば）。待っているあいだに commit する。
+      const enqueue = enqueueDailySuggestions(pooledDb, AT_0810_JST);
+      await new Promise((r) => setTimeout(r, 300));
+      await deleter.query("commit");
+
+      // 外部キー違反を投げず、生き残った利用者の分は作られていること。
+      await expect(enqueue).resolves.toBeDefined();
+      expect(await jobsFor(other.xid)).toHaveLength(1);
+      expect(await jobsFor(victim.xid)).toHaveLength(0);
+    } finally {
+      await deleter.query("rollback").catch(() => {});
+      deleter.release();
+      await cleanup(victim.uid);
+      await cleanup(other.uid);
+    }
+  }, 30_000);
+
   it("JST 8時前は何も作らない", async () => {
     const { uid, xid } = await seed({ plan: "premium" });
     try {
