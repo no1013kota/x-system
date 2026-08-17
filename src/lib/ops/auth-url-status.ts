@@ -111,11 +111,42 @@ export function judgeAuthUrls(input: {
   appBaseUrl: string;
   siteUrl: string | null;
   uriAllowList: readonly string[];
+  /**
+   * リモートの確認メール本文（`mailer_templates_confirmation_content`）。
+   * 未取得なら undefined（その場合はこの観点を判定しない）。
+   */
+  confirmationTemplate?: string | null;
+  /** リモートのSMTPホスト。未設定＝Supabase内蔵送信。 */
+  smtpHost?: string | null;
 }): Check {
   const target = confirmRedirectUrl(input.appBaseUrl);
   const allowed = isRedirectAllowed(input.uriAllowList, target);
   const siteMatches = input.siteUrl ? sameOrigin(input.siteUrl, input.appBaseUrl) : false;
   const site = input.siteUrl ?? "(未設定)";
+
+  /**
+   * **リンクに `token_hash` が付いているか**（T-M8-120）。
+   *
+   * `supabase/config.toml` のテンプレート指定はローカル専用で、リモートは既定
+   * （`{{ .ConfirmationURL }}`）のまま。アプリの `/auth/confirm` は `token_hash` を要求するため、
+   * URLの許可リストが正しくても**利用者は必ず「リンクを確認できませんでした」だけを見る**。
+   * 2026-08-02 と 2026-08-18 の2回これで新規登録が止まった。URLの検査だけでは見えない。
+   */
+  if (input.confirmationTemplate !== undefined && input.confirmationTemplate !== null) {
+    if (!input.confirmationTemplate.includes("TokenHash")) {
+      return {
+        name: AUTH_URL_CHECK_NAME,
+        level: "error",
+        detail:
+          "確認メールのリンクに token_hash が付いていません（Supabaseの既定テンプレートのままです）。" +
+          "**このままでは新規登録もパスワード再設定も完了できません**（リンクを開くとエラーになります）",
+        nextAction: input.smtpHost
+          ? "`npm run auth:templates -- --target production --apply` を実行してください"
+          : "`npm run auth:templates -- --target production --apply` を実行してください" +
+            "（カスタムSMTPが未設定だとテンプレートを変更できないため、同じコマンドが先にSMTPも設定します）",
+      };
+    }
+  }
 
   if (!allowed) {
     return {

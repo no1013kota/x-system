@@ -195,3 +195,55 @@ describe("unknownAuthUrls", () => {
     expect(check.nextAction).toContain("SUPABASE_ACCESS_TOKEN");
   });
 });
+
+/**
+ * 確認メールのリンクに `token_hash` が付いているか（T-M8-120）。
+ *
+ * URLの許可リストが正しくても、**リモートのテンプレートが既定のままだと利用者は登録を完了できない**。
+ * 2026-08-02 と 2026-08-18 の2回これで新規登録が止まった。URLの検査だけでは原理的に見えない
+ * （`supabase/config.toml` のテンプレート指定はローカル専用で、リモートには行かないため）。
+ */
+describe("確認メールのテンプレート", () => {
+  const ok = {
+    appBaseUrl: "https://exosai.net",
+    siteUrl: "https://exosai.net",
+    uriAllowList: ["https://exosai.net/**"],
+  };
+
+  it("token_hash が無ければ error にして、直すコマンドを出す", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      confirmationTemplate: '<a href="{{ .ConfirmationURL }}">Confirm</a>',
+      smtpHost: null,
+    });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("token_hash");
+    expect(check.nextAction).toContain("npm run auth:templates");
+    // SMTP未設定だと変更できないので、そのことにも触れる。
+    expect(check.nextAction).toContain("SMTP");
+  });
+
+  it("token_hash があれば、この観点では落とさない", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      confirmationTemplate: '<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup">確認</a>',
+      smtpHost: "smtp.gmail.com",
+    });
+    expect(check.level).toBe("ok");
+  });
+
+  it("テンプレートを取得できていないときは判定しない（誤検知しない）", () => {
+    expect(judgeAuthUrls({ ...ok }).level).toBe("ok");
+    expect(judgeAuthUrls({ ...ok, confirmationTemplate: null }).level).toBe("ok");
+  });
+
+  it("URLの許可漏れよりテンプレートの不備を先に出す（登録が必ず失敗する方が重い）", () => {
+    const check = judgeAuthUrls({
+      appBaseUrl: "https://exosai.net",
+      confirmationTemplate: '<a href="{{ .ConfirmationURL }}">Confirm</a>',
+      siteUrl: "https://other.example",
+      uriAllowList: [],
+    });
+    expect(check.detail).toContain("token_hash");
+  });
+});

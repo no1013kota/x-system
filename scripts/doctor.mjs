@@ -117,7 +117,11 @@ async function authUrlCheck() {
     const body = await res.json();
     return judgeAuthUrls({
       appBaseUrl: base,
+      // 確認メールのリンクに token_hash が付いているか（T-M8-120）。URLの許可リストが
+      // 正しくても、テンプレートが既定のままなら利用者は登録を完了できない。
+      confirmationTemplate: body.mailer_templates_confirmation_content ?? "",
       siteUrl: body.site_url ?? null,
+      smtpHost: body.smtp_host ?? null,
       uriAllowList: parseAllowList(body.uri_allow_list),
     });
   } catch (error) {

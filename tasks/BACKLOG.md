@@ -2059,6 +2059,32 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-120: 本番の新規登録が完了できない（確認メールのリンクが必ずエラー） `done`
+- 参照: 要件03 §1、`docs/operations/deployment.md` §2-5.5 / 依存: なし / サイズ: M
+- **利用者の報告（2026-08-18）**: 本番で新規登録してメール認証すると
+  「リンクを確認できませんでした／有効期限が切れているか、すでに使用されています」になる。
+- **原因は2段**:
+  1. **本番のメールテンプレートが既定（`{{ .ConfirmationURL }}`）のまま**で、アプリの
+     `/auth/confirm` が要求する `token_hash` がリンクに付いていなかった。`supabase/config.toml` の
+     `[auth.email.template.*]` は**ローカル専用**で、`db push` でも `link` でもリモートへ行かない。
+  2. テンプレートを変えようとすると Management API が拒否した——**Freeプラン＋内蔵送信では
+     テンプレートを変更できない**（`Email template modification is not available for free tier
+     projects using the default email provider`）。**本番にカスタムSMTPが未設定だった。**
+     内蔵送信は2通/時・組織メンバー宛のみなので、本番運用そのものに耐えない。
+- **同じ失敗の2回目**（2026-08-02・T-M7-45と同型）。`deployment.md` に手順を書いてあったが
+  **人の記憶に依存していたので忘れられた**。回避策をドキュメントに書いて済ませたのが誤りだった。
+- **直したもの**:
+  - `npm run auth:templates -- --target <env> [--apply]` を新設。SMTPが未設定なら `SMTP_*` から
+    先に設定し、`supabase/templates/*.html` を反映し、**反映後に読み直して確認する**。
+    project ref は URL の CSP から自動特定（`doctor` と同じ作法。envを増やさない）。
+  - `judgeAuthUrls` に **`token_hash` の有無**の判定を追加し、`doctor` から渡すようにした。
+    URLの許可リストが正しくても登録できない状態を、これまで誰も見ていなかった。
+    許可漏れより先に出す（登録が必ず失敗する方が重い）。
+- 反映: 本番はSMTP（Gmail・運営者が許可）＋テンプレート2件、stagingはテンプレート2件。
+  反映後にManagement APIで読み直し、リンクが `?token_hash={{ .TokenHash }}&type=...` になったことを確認。
+- 検証: 単体29件（`auth-url-status.test.ts`）。`doctor` が両環境で緑になることを確認。
+  **運営者による実際の新規登録での確認が残っている。**
+
 ### T-M8-119: Stripeの商品説明が古い仕様のままだったのを直す `done`
 - 参照: 要件03 §2、`scripts/setup-stripe-portal.mjs` / 依存: なし / サイズ: S
 - **運営者の指摘（2026-08-17）**: ホームページとStripeの画面に現仕様（AIクレジット1000等）を反映してほしい。
