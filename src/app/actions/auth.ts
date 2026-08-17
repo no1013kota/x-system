@@ -4,6 +4,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
+import {
+  ATTEMPTS_WARN_AT,
+  clearCodeAttempts,
+  codeAttemptState,
+  recordCodeFailure,
+} from "@/lib/auth/code-attempts";
 import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
@@ -36,6 +42,12 @@ const SIGNUP_ACCEPTED_MESSAGE =
  */
 const CODE_INVALID_MESSAGE =
   "コードが確認できませんでした。入力を確認するか、コードを再送してください（発行から1時間で期限切れになります）。";
+/**
+ * 連続失敗の上限に達したとき（T-M8-124）。**行き止まりにしない**——次にやること（再送）を示す。
+ * 再送すれば数えは戻る。
+ */
+const CODE_BLOCKED_MESSAGE =
+  "入力の失敗が続いたため、いまのコードでは確認できません。「コードを再送」してから、新しいコードを入力してください。";
 const SIGNUP_ERROR_MESSAGE =
   "登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。";
 const RESEND_ACCEPTED_MESSAGE =
@@ -153,6 +165,11 @@ export async function verifySignUpCode(
     };
   }
 
+  // 執念深い試行を止める（T-M8-124）。打ち間違いの数回では何も起きない。
+  if (codeAttemptState(email).blocked) {
+    return { status: "error", message: CODE_BLOCKED_MESSAGE, email };
+  }
+
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.verifyOtp({
@@ -161,8 +178,19 @@ export async function verifySignUpCode(
       type: "signup",
     });
     if (error || !data.user) {
-      return { status: "error", message: CODE_INVALID_MESSAGE, email };
+      const { blocked, remaining } = recordCodeFailure(email);
+      return {
+        status: "error",
+        message: blocked
+          ? CODE_BLOCKED_MESSAGE
+          : // 残りは少なくなってから初めて出す（最初から出すと急かすだけ）。
+            remaining <= ATTEMPTS_WARN_AT
+            ? `${CODE_INVALID_MESSAGE}（あと${remaining}回で再送が必要になります）`
+            : CODE_INVALID_MESSAGE,
+        email,
+      };
     }
+    clearCodeAttempts(email);
     // profile行が無いまま進むと、同意の記録が無くて再同意を求める経路へ落ちる（T-M8-73）。
     // 登録時のtriggerで作られているはずだが、無ければここで作る（既存値は触らない）。
     await ensureUserProfileWithClient(data.user, createSupabaseAdminClient());
@@ -205,6 +233,8 @@ export async function resendSignUpConfirmation(
     if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
+    // 新しいコードを送ったので失敗の数えを戻す（上限に達した利用者を行き止まりにしない）。
+    clearCodeAttempts(emailResult.data);
   } catch (error) {
     // 利用者へはアカウントの存在を漏らさないため常に同じ応答を返す（列挙防止）。
     // ただし原因を捨てるとメール送信不能が誰にも気付かれないため、記録だけは行う。

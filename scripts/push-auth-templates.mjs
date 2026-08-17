@@ -103,6 +103,37 @@ const api = `https://api.supabase.com/v1/projects/${projectRef}/config/auth`;
 const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
 
 /**
+ * テンプレート以外の認証設定（T-M8-123）。**リモートだけが既定のまま取り残される**ので、
+ * `supabase/config.toml`（ローカルの正本）と同じ値をリモートへ揃える。
+ *
+ * 2026-08-18、この2つが原因で本番の登録が完了できなかった:
+ * - `mailer_otp_length` が **8**（ローカルは6）。画面は6桁前提なので**桁数が合わない**
+ * - `rate_limit_email_sent` が **2通/時**。2回試すと以降メールが届かず、
+ *   利用者には「送信しました」と出るのに何も来ない（原則1違反）
+ *
+ * どちらも「コードに現れない設定」で、テストでは原理的に見えない。だからここで揃える。
+ */
+const AUTH_SETTINGS = {
+  /** 確認コードの桁数。`EMAIL_CODE_LENGTH`（画面側）と必ず一致させる。 */
+  mailer_otp_length: 6,
+  /** コードの有効期間（秒）。画面の案内文（1時間）と合わせる。 */
+  mailer_otp_exp: 3600,
+  /**
+   * 1時間に送れるメール数。既定の2は**動作確認すら通らない**（登録＋再送で使い切る）。
+   * カスタムSMTP前提で30へ。総当たりの入口を広げすぎない範囲で、利用者が詰まらない値。
+   */
+  rate_limit_email_sent: 30,
+  /**
+   * 5分あたりのコード検証回数（IPごと）。**総当たり対策の本体**。
+   * 6桁＝100万通りに対して5分30回なので、現実的な時間では当たらない。
+   * 打ち間違いを数回する利用者は困らない値（Supabaseの既定と同じ）。
+   */
+  rate_limit_verify: 30,
+  /** 5分あたりの登録・ログイン試行（IPごと）。 */
+  rate_limit_anonymous_users: 30,
+};
+
+/**
  * カスタムSMTPも一緒に設定する（T-M8-120）。
  *
  * **Freeプラン＋内蔵送信ではテンプレートを変更できない**（Management APIが
@@ -159,6 +190,19 @@ for (const t of TEMPLATES) {
   patch[t.subjectKey] = t.subject;
 }
 
+// テンプレート以外の設定のずれ（桁数・送信上限・検証上限）。
+console.log("");
+for (const [key, want] of Object.entries(AUTH_SETTINGS)) {
+  const have = current[key];
+  if (String(have) === String(want)) {
+    console.log(`✅ ${key}: ${have}`);
+    continue;
+  }
+  console.log(`❌ ${key}: ${have} → ${want} にします`);
+  patch[key] = want;
+  broken += 1;
+}
+
 if (Object.keys(patch).length === 0) {
   console.log("\n✅ 反映は不要です。");
   process.exit(0);
@@ -199,6 +243,11 @@ const after = await fetch(api, { headers }).then((r) => r.json());
 for (const t of TEMPLATES) {
   const ok = (after[t.contentKey] ?? "").includes(t.requires);
   console.log(`${ok ? "✅" : "❌"} ${t.label}: ${ok ? "反映を確認しました" : "反映されていません"}`);
+  if (!ok) process.exitCode = 1;
+}
+for (const [key, want] of Object.entries(AUTH_SETTINGS)) {
+  const ok = String(after[key]) === String(want);
+  console.log(`${ok ? "✅" : "❌"} ${key}: ${after[key]}`);
   if (!ok) process.exitCode = 1;
 }
 console.log("\n実際に新規登録して、確認メールのリンクが開けることを確かめてください。");
