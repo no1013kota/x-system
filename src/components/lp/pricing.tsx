@@ -3,13 +3,8 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { yen } from "@/lib/format";
-import {
-  PLAN_IDS,
-  PLANS,
-  RELEASE_CAMPAIGN,
-  hasCampaignDiscount,
-  type PlanDefinition,
-} from "@/lib/plans";
+import { CampaignAfterPrice, CampaignBadge } from "@/components/billing/campaign-price";
+import { PLAN_IDS, PLANS, hasCampaignDiscount, type PlanDefinition } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /**
@@ -61,24 +56,14 @@ function PlanCard({ plan }: { plan: PlanDefinition }) {
               </span>
             )}
           </div>
-          {hasCampaignDiscount(plan) ? (
-            <span className="mt-2.5 inline-flex h-[22px] w-fit items-center rounded-pill bg-danger-subtle px-2.5 text-caption font-bold text-danger-fg">
-              {RELEASE_CAMPAIGN.badge}
-            </span>
-          ) : null}
+          <CampaignBadge className="mt-2.5" plan={plan} />
           <p className={cn("text-body text-ink-2", hasCampaignDiscount(plan) ? "mt-1.5" : "mt-2.5")}>
             <span className="text-[28px] font-bold tracking-[-0.01em] text-ink">
               {yen(plan.monthlyPriceJpy)}円
             </span>{" "}
             ／月（税込）
           </p>
-          {hasCampaignDiscount(plan) ? (
-            // 「通常価格」とは書かない。過去にこの価格で売った実績が無いため（景表法・plans.ts参照）。
-            <p className="mt-0.5 text-caption text-ink-3">
-              {RELEASE_CAMPAIGN.afterLabel}{" "}
-              <span className="line-through">{yen(plan.regularPriceJpy)}円</span>／月
-            </p>
-          ) : null}
+          <CampaignAfterPrice className="mt-0.5" plan={plan} />
           <div className="mt-4 grid gap-2 border-t border-hairline pt-3.5 text-body">
             <div className="flex justify-between gap-2.5">
               <span className="text-ink-2">Xアカウント</span>

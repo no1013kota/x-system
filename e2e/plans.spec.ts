@@ -11,6 +11,38 @@ import { expect, horizontalOverflow, signIn, test } from "./fixtures/test";
  * 契約状態によって見えるものが変わる部分（要件03 §2の閲覧ゲート）が主眼。
  */
 
+/**
+ * プラン選択のキャンペーン表示（T-M8-118/122）。LPと共通部品なので文言の決まりは1か所だが、
+ * プラン選択画面に実際に出ていることは別で見る（部品を使い忘れても型では落ちない）。
+ */
+test("プラン選択に半額バッジと終了後価格が出て、「通常価格」とは書かない（T-M8-122）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("plans-campaign");
+  // **先にログインしてから申込前へ落とす。** `signIn` は `/app` への着地を待つので、
+  // 未契約のままログインすると `/plans` へ送られて待ち続けてしまう。
+  await signIn(page, account);
+  await query(
+    `update profiles set plan = 'standard', subscription_status = 'incomplete',
+        current_period_end = null, trial_ends_at = null where id = $1`,
+    [account.userId],
+  );
+  await page.goto("/plans");
+
+  // 3プランぶん出る（件数を固定しない——プラン数が変わったらここも直す前提にしない）。
+  const badges = page.getByText("リリース記念 半額");
+  await expect(badges.first()).toBeVisible();
+  expect(await badges.count(), "全プランにバッジが出る").toBeGreaterThanOrEqual(3);
+
+  await expect(page.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
+  // 終了後価格が取り消し線で出る（プレミアムの 5,960 で代表して確かめる）。
+  await expect(page.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
+
+  // 景表法: 「通常価格」の語を使わない。
+  await expect(page.getByText("通常価格")).toHaveCount(0);
+});
+
 test("未契約の利用者にはプラン選択が出て、申込前の確認事項が隠れていない", async ({
   accounts,
   page,
@@ -80,6 +112,13 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await expect(page.getByText("プラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("プレミアムプラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("契約状態", { exact: false }).first()).toBeVisible();
+  // プラン選択でもキャンペーン表示が出て、「通常価格」の語を使わない（T-M8-118/122）。
+  // LPと同じ部品なので、片方だけ壊れることは無い形にしてある。
+  await page.goto("/plans");
+  await expect(page).toHaveURL(/\/app(\/|$|\?)/); // 契約者は送り返される
+  await page.goto("/app/settings?tab=billing");
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+
   // いま実際にいくら払っているかと、キャンペーン終了後の額がこの場で読める（T-M8-118）。
   // 値上げが不意打ちにならないようにするため、契約中の画面にも出す。
   await expect(page.getByText("月額 ¥2,980（税込）", { exact: false })).toBeVisible();

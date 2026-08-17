@@ -7,13 +7,8 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
-import {
-  PLAN_IDS,
-  PLANS,
-  RELEASE_CAMPAIGN,
-  hasCampaignDiscount,
-  type PlanId,
-} from "@/lib/plans";
+import { CampaignAfterPrice, CampaignBadge } from "@/components/billing/campaign-price";
+import { PLAN_IDS, PLANS, RELEASE_CAMPAIGN, type PlanId } from "@/lib/plans";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -258,24 +253,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                     <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
                     <p className="text-caption text-ink-3">{plan.tagline}</p>
                   </div>
-                  {hasCampaignDiscount(plan) ? (
-                    <span className="inline-flex h-[22px] w-fit items-center rounded-pill bg-danger-subtle px-2.5 text-caption font-bold text-danger-fg">
-                      {RELEASE_CAMPAIGN.badge}
-                    </span>
-                  ) : null}
+                  <CampaignBadge plan={plan} />
                   <p className="flex items-baseline gap-0.5">
                     <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
                       ¥{yen(plan.monthlyPriceJpy)}
                     </span>
                     <span className="whitespace-nowrap text-xs text-ink-3">／月（税込）</span>
                   </p>
-                  {hasCampaignDiscount(plan) ? (
-                    // 「通常価格」と書かない（過去の販売実績が無い・景表法。plans.ts参照）。
-                    <p className="text-caption text-ink-3">
-                      {RELEASE_CAMPAIGN.afterLabel}{" "}
-                      <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>／月
-                    </p>
-                  ) : null}
+                  <CampaignAfterPrice currency="prefix" plan={plan} />
                   <ul className="flex flex-1 flex-col gap-[7px]">
                     {planFeatures(planId).map((feature) => (
                       <li className="flex items-start gap-[7px] text-xs leading-[1.55] text-ink-2" key={feature}>

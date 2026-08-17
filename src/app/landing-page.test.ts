@@ -22,6 +22,8 @@ function read(path: string): string {
 
 const PAGE = read("src/app/page.tsx");
 const PRICING = read("src/components/lp/pricing.tsx");
+/** キャンペーン価格の表示はLPと /plans で共通（T-M8-122）。文言の決まりはここが守る。 */
+const CAMPAIGN_PRICE = read("src/components/billing/campaign-price.tsx");
 const GLOBALS_CSS = read("src/app/globals.css");
 /** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
 const CSS_RULES = GLOBALS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -145,11 +147,17 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
    * この3プランにその実績が無い（`plans.ts` の `RELEASE_CAMPAIGN` 参照）。
    */
   it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
-    expect(PRICING).toContain("regularPriceJpy");
-    expect(PRICING).toContain("RELEASE_CAMPAIGN.afterLabel");
+    // 表示はLPと /plans で共通の部品（T-M8-122）。**その部品を見る**——LP側だけを見ていると、
+    // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
+    expect(CAMPAIGN_PRICE).toContain("regularPriceJpy");
+    expect(CAMPAIGN_PRICE).toContain("RELEASE_CAMPAIGN.afterLabel");
+    expect(PRICING, "LPは共通部品を使う").toContain("CampaignAfterPrice");
+    expect(PRICING, "LPは共通部品を使う").toContain("CampaignBadge");
     // 画面に出る文字だけを見る（コメントで理由を書くのは妨げない）。
-    const pricingWithoutComments = PRICING.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(pricingWithoutComments, "「通常価格」は景表法上使えない").not.toContain("通常価格");
+    const withoutComments = (source: string) =>
+      source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(withoutComments(CAMPAIGN_PRICE), "「通常価格」は景表法上使えない").not.toContain("通常価格");
+    expect(withoutComments(PRICING), "「通常価格」は景表法上使えない").not.toContain("通常価格");
     expect(RELEASE_CAMPAIGN.afterLabel).not.toContain("通常価格");
   });
 });
