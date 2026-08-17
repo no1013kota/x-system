@@ -294,3 +294,4 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - アカウント.md変更: `base_md_versions`
 - 通知/メール送信: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
+| v1.35 | 2026-08-18 | `verifySignUpCode` を追加（T-M8-121）。メール確認を6桁コード方式へ。`/auth/confirm` はrecovery主体に |
