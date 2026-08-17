@@ -73,3 +73,39 @@ describe("設定IDが見つからないとき", () => {
     expect(r.detail).toContain("未設定");
   });
 });
+
+/**
+ * 「確認できていない」で終わらせない（T-M8-128）。
+ *
+ * 2026-08-18、ローカルで「プランを変更」が開けず、doctorは
+ * 「プラン管理画面の設定を確認できませんでした」とだけ出していた。**状態は言うが次にやることが
+ * 無い**ので運営者はそこで止まった（CLAUDE.md 原則2）。判定ごとに次の一手を持たせる。
+ */
+describe("次にやること", () => {
+  it("Stripeへ問い合わせできないときは、鍵と再起動を案内する", () => {
+    const r = judgePortalFeatures({ features: null });
+    expect(r.nextAction).toBeDefined();
+    expect(r.nextAction).toContain("STRIPE_SECRET_KEY");
+    // envは起動時に読むので、あとから足した値は再起動しないと反映されない。
+    expect(r.nextAction).toContain("再起動");
+  });
+
+  it("設定IDが未設定・見つからないときも、状態だけで終わらせない", () => {
+    // 未設定はStripeの既定で動くので警告に留めるが、設定名は必ず出す（どこを直すか分かる）。
+    expect(
+      judgePortalFeatures({ features: null, configurationMissing: true }).detail,
+    ).toContain("STRIPE_PORTAL_CONFIGURATION_ID");
+    // 見つからない＝別環境の値。errorにして、doctor側が直すコマンドを出す。
+    expect(judgePortalFeatures({ features: null, configurationNotFound: true }).level).toBe(
+      "error",
+    );
+  });
+
+  it("正常なときは次の一手を出さない（読まなくてよいものを増やさない）", () => {
+    const r = judgePortalFeatures({
+      features: { subscription_update: { enabled: true }, subscription_cancel: { enabled: true } },
+    });
+    expect(r.level).toBe("ok");
+    expect(r.nextAction).toBeUndefined();
+  });
+});

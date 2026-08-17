@@ -41,6 +41,11 @@ export interface PortalFeatureJudgement {
   detail: string;
   /** 無効になっている機能の画面上の名前。 */
   disabled: string[];
+  /**
+   * 次にやること（T-M8-128）。**「確認できていない」で終わらせない**——
+   * 状態だけ告げられても運営者は動けない（原則2）。判定ごとに書けるようにする。
+   */
+  nextAction?: string;
 }
 
 /**
@@ -67,9 +72,18 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
   }
   if (!snapshot.features) {
     return {
+      // **「確認できていない」ことを言うだけでは足りない**（T-M8-128）。
+      // 2026-08-18、ローカルで「プランを変更」が開けず、doctorはこの文言を出していたが
+      // 次にやることが書かれておらず、運営者はここで止まった（原則2）。
+      // 問い合わせできない＝Stripeの鍵が読めていない、が実際にはほぼ唯一の原因。
       level: "warn",
-      detail: "プラン管理画面の設定を確認できませんでした（Stripeへ問い合わせできていません）",
+      detail:
+        "プラン管理画面の設定を確認できませんでした（Stripeへ問い合わせできていません）。" +
+        "STRIPE_SECRET_KEY が読めていない可能性があります",
       disabled: [],
+      nextAction:
+        "`.env.local` に STRIPE_SECRET_KEY があるか確認し、**あるのにこの表示が出るなら " +
+        "`npm run dev` を再起動**してください（envは起動時に読むため、あとから足した値は反映されません）",
     };
   }
   const disabled = REQUIRED_PORTAL_FEATURES.filter(

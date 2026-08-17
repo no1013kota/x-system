@@ -37,8 +37,14 @@ export function apiJson(body: unknown, status = 200): Response {
 export function apiError(error: unknown): Response {
   const safe = toUserFacingError(error);
   // Server Action と同様、throw せず Response で返すため `onRequestError` が発火しない。
-  if (safe.code === "internal_error") {
-    recordUnexpectedError(error, { at: "api-route" });
+  //
+  // **`provider_error` も記録する**（T-M8-128）。外部サービスの失敗は
+  // 「外部サービスとの通信に失敗しました。時間をおいて再度お試しください」という汎用文で
+  // 返るだけで、**理由がどこにも残らなかった**。2026-08-18、ローカルでプラン管理が開けない
+  // 原因を突き止めるのにこれが妨げになった（Stripeの応答を誰も見ていない・原則2違反）。
+  // 設定ミスのように待っても直らない失敗ほど、原因が残っていないと辿れない。
+  if (safe.code === "internal_error" || safe.code === "provider_error") {
+    recordUnexpectedError(error, { at: `api-route:${safe.code}` });
   }
   return apiJson({ ok: false, error: safe }, HTTP_STATUS_FOR_ERROR[safe.code]);
 }
