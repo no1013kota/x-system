@@ -272,7 +272,8 @@ RLS: 本人select可。writeはServer only。
 | `pattern` | `post_pattern` | not null |  |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 生成に使ったパターン。**削除されるとnullになる** |
 | `pattern_name` | `text` | not null | **生成時のパターン名のsnapshot**。パターンを削除しても履歴の画面に内部ID（`p1`）ではなく名前が出るようにする |
-| `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。本文の検証はこの値で行う（後からパターンを編集しても過去の下書きの判定が変わらない） |
+| `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。生成本文の件数はこの値で収める（後からパターンを編集しても過去の下書きの判定が変わらない） |
+| `max_posts_edit` | `smallint` | not null | **編集で許すポスト数上限**のsnapshot。生成上限より広い（生成された分に少し足して整えられるように）。既に上限を超えている過去の下書きは、その件数まで許す（編集できない下書きを作らない） |
 | `requires_quote_url` | `boolean` | not null default false | 生成時に引用URLを必須としたか（P-5相当）。`quote_url`の必須判定に使う |
 | `thread` | `jsonb` | not null | 全体上限1〜7ポスト。書き込み時はpattern別最大数も検証 |
 | `initial_thread` | `jsonb` | not null | 生成確定時の本文snapshot。下書き承認率算出用で更新しない |
@@ -582,7 +583,8 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `name` | `text` | not null、1〜30字、`unique (x_account_id, lower(name))`、改行と`<` `>`を含まない | **画面に出る唯一の名前**。内部IDは画面に出さない（要件06 §1.0）。名前は改善提案プロンプト（PT-SUGGEST）へ差し込まれるため、プロンプトを壊す文字を受け付けない |
 | `description` | `text` | nullable | 補足説明。**ポスト数はここに書かせない**（`max_posts`から画面が自動で付ける） |
 | `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
-| `max_posts` | `smallint` | not null default 4、1〜10 | このパターンで作るポスト数の上限 |
+| `max_posts` | `smallint` | not null default 4、1〜7 | **生成時**に作るポスト数の上限。スレッド全体の上限（7ポスト・§3.9）以内 |
+| `max_posts_edit` | `smallint` | not null default 7、`max_posts`以上7以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(7, max_posts + 2)` |
 | `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない |
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
 | `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | 出典URLを必須にする／入力にURLがあるときだけ必須にする／求めない |

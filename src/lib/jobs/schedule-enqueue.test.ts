@@ -28,11 +28,33 @@ function deps(db: Queryable, dailyLimit = 50): ScheduleEnqueueDeps {
   return { db, runInTx: (fn) => fn(db), dailyLimit };
 }
 
+/** `pattern_spec_of()` が返す形（T-M8-129 U3）。予約の枠計算はここから決まる。 */
+function slotPatternSpec(over: Record<string, unknown> = {}) {
+  return {
+    id: "pat-p1",
+    seed_key: "p1",
+    name: "ニュース解説",
+    description: "話題のニュースを解説するスレッド",
+    prompt: null,
+    max_posts: 4,
+    max_posts_edit: 6,
+    web_search_policy: "always",
+    web_search_max_uses: 4,
+    source_policy: "always",
+    include_news_digest: false,
+    asks_user_opinion: false,
+    requires_quote_url: false,
+    ...over,
+  };
+}
+
 function dueSlot(over: Partial<Row> = {}): Row {
   return {
     id: "s1",
     x_account_id: "xa1",
     pattern: "p1",
+    pattern_id: "pat-p1",
+    pattern_spec: slotPatternSpec(),
     time_jst: "09:00:00",
     mode: "draft",
     instructions: null,

@@ -5,6 +5,7 @@ import { SYSTEM_DEFAULT_TEMPLATES } from "../prompts/gen-prompts";
 import {
   parsePatternSpec,
   patternPrompt,
+  scheduledPostSlots,
   sourceRequiredForSpec,
   webSearchForSpec,
   type PatternSpec,
@@ -26,6 +27,7 @@ import {
 const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "prompt">> = {
   p1: {
     seedKey: "p1",
+    maxPostsEdit: 6,
     maxPosts: 4,
     webSearchPolicy: "always",
     webSearchMaxUses: 4,
@@ -36,6 +38,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
   },
   p2: {
     seedKey: "p2",
+    maxPostsEdit: 1,
     maxPosts: 1,
     webSearchPolicy: "with_url",
     webSearchMaxUses: 2,
@@ -46,6 +49,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
   },
   p3: {
     seedKey: "p3",
+    maxPostsEdit: 7,
     maxPosts: 6,
     webSearchPolicy: "always",
     webSearchMaxUses: 3,
@@ -56,6 +60,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
   },
   p4: {
     seedKey: "p4",
+    maxPostsEdit: 5,
     maxPosts: 2,
     webSearchPolicy: "always",
     webSearchMaxUses: 4,
@@ -66,6 +71,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
   },
   p5: {
     seedKey: "p5",
+    maxPostsEdit: 3,
     maxPosts: 3,
     webSearchPolicy: "never",
     webSearchMaxUses: 0,
@@ -76,6 +82,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
   },
   p6: {
     seedKey: "p6",
+    maxPostsEdit: 7,
     maxPosts: 5,
     webSearchPolicy: "always",
     webSearchMaxUses: 3,
@@ -149,6 +156,26 @@ describe("sourceRequiredForSpec（旧 sourceRequired と一致する）", () => 
   }
 });
 
+/**
+ * 予約実行の投稿枠（要件04 §7.1 に書かれている値）。**移行前の `ROLLBACK_SAFE_BUDGET` と
+ * 一致していなければならない**——ここがずれると premium の自動投稿が早く止まる／
+ * 枠を超えて動く、のどちらかになる。
+ */
+describe("scheduledPostSlots（要件04 §7.1 の値と一致する）", () => {
+  const cases: [string, number, number][] = [
+    ["p1", 10, 1],
+    ["p2", 1, 0],
+    ["p3", 12, 1],
+    ["p4", 8, 1],
+    ["p6", 12, 1],
+  ];
+  for (const [seedKey, normal, url] of cases) {
+    it(`${seedKey} → 通常${normal}＋URL${url}`, () => {
+      expect(scheduledPostSlots(spec(seedKey))).toEqual({ normal, url });
+    });
+  }
+});
+
 describe("patternPrompt", () => {
   it("prompt が null ならシステム既定（コード定数）を使う", () => {
     expect(patternPrompt(spec("p1"))).toBe(SYSTEM_DEFAULT_TEMPLATES.p1);
@@ -171,6 +198,7 @@ describe("parsePatternSpec", () => {
     description: "説明",
     prompt: null,
     max_posts: 4,
+    max_posts_edit: 6,
     web_search_policy: "always",
     web_search_max_uses: 4,
     source_policy: "always",

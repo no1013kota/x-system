@@ -2079,8 +2079,13 @@ UI側boolean を壊しても投稿は誤爆しない）。
     検証: `npm run test:db` 2,125件緑 ／ `npm run check:providers` 17件緑 ／
     **`npm run smoke:live` 全シナリオ成功（実費 $0.2077・上限$0.50内）**——生成5ポスト（P-6の上限5が効いた）・
     画像2.0MB・ニュース1件取得。下書きに `pattern_name`／`max_posts` の写しが入ることもDBで確認した。
-  - **U3 `todo`**: 画面と改善提案から内部ID（`p1`）を消す。`POST_PATTERN_LABELS` を削除して
-    typecheck に残りを列挙させる。PT-SUGGEST を名前ベースにする。
+  - **U3a `done`**: 上限・枠の見積りをパターンの属性にする。`PATTERN_MAX_POSTS`（編集上限＋日次枠）を
+    `post_patterns.max_posts_edit` へ、`ROLLBACK_SAFE_BUDGET`（予約の投稿枠）を要件03 §7.4 の式から導く
+    `scheduledPostSlots()` へ。下書きは写した `max_posts_edit` で編集を検証する。
+    予約のenqueueは `pattern_spec` を凍結し、**パターンが読めない枠は黙って飛ばさず記録する**。
+  - **U3b `todo`**: 画面と改善提案から内部ID（`p1`）を消す。`POST_PATTERN_LABELS` を削除して
+    typecheck に残りを列挙させる。画面の選択肢は `post-patterns-store.ts` からDB経由で得る
+    （＝**自作パターンが投稿作成・予約の画面に出る**）。PT-SUGGEST を名前ベースにする。
   - **U4 `todo`**: パターンCRUD。(a) サーバー側（store・Server Action）→ (b) 管理画面。
     **設定＞プロンプトを「パターン管理＋画像プロンプト」へ**（＝プルダウン廃止の本体。要望の後半2つ）
   - **U5 `todo`**: enum `post_pattern` と旧 `pattern` 列を撤去する。

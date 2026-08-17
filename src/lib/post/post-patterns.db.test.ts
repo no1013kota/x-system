@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
+import { parsePatternSpec, scheduledPostSlots } from "./pattern-spec";
 import { GENERATION_MAX_POSTS } from "./thread-limits";
 import { POST_PATTERN_OPTIONS, QUOTE_PATTERN_OPTION } from "./post-patterns";
 
@@ -103,6 +104,61 @@ describe("post_patterns（ローカルDB）", () => {
           GENERATION_MAX_POSTS[option.id],
         );
       }
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("`pattern_spec_of()` の出力を TS 側がそのまま読める（SQLとパーサの噛み合い）", async () => {
+    // **ここが U2/U3 の一番危ない結合点。** jsonb のキー名を1つ変えただけで
+    // `parsePatternSpec` が null を返し、生成が「pattern_spec_missing」で全部落ちる。
+    // モックしたテストでは絶対に出ないので、実DBの関数出力で確かめる。
+    const { uid, xid } = await seedAccount();
+    try {
+      const { rows } = await getPool().query<{ seed_key: string; spec: unknown }>(
+        `select seed_key, pattern_spec_of(id) as spec from post_patterns
+          where x_account_id = $1 order by sort_order`,
+        [xid],
+      );
+      expect(rows.length).toBe(6);
+      for (const row of rows) {
+        const spec = parsePatternSpec(row.spec);
+        expect(spec, `${row.seed_key} の spec が読める`).not.toBeNull();
+        expect(spec?.seedKey).toBe(row.seed_key);
+        expect(spec?.maxPostsEdit).toBeGreaterThanOrEqual(spec!.maxPosts);
+      }
+
+      // 予約枠の見積りが要件04 §7.1 の値になる（実DBのseed値から導く）。
+      const bySeed = new Map(rows.map((r) => [r.seed_key, parsePatternSpec(r.spec)!]));
+      expect(scheduledPostSlots(bySeed.get("p1")!)).toEqual({ normal: 10, url: 1 });
+      expect(scheduledPostSlots(bySeed.get("p2")!)).toEqual({ normal: 1, url: 0 });
+      expect(scheduledPostSlots(bySeed.get("p3")!)).toEqual({ normal: 12, url: 1 });
+      expect(scheduledPostSlots(bySeed.get("p4")!)).toEqual({ normal: 8, url: 1 });
+      expect(scheduledPostSlots(bySeed.get("p6")!)).toEqual({ normal: 12, url: 1 });
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("予約の生成jobは pattern_spec を必須にする（型の分からないjobを作らない）", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      // `pattern` も `pattern_id` も無ければ、fillトリガが spec を作れず CHECK が拒否する。
+      await expect(
+        getPool().query(
+          `insert into generation_jobs (x_account_id, kind, trigger, status, request_key)
+           values ($1,'post_generation','schedule','queued',$2)`,
+          [xid, `pp-${randomUUID()}`],
+        ),
+      ).rejects.toThrow(/pattern_spec/);
+
+      // 旧 `pattern` だけでも fillトリガが spec を作るので通る（移行中の経路）。
+      const { rows } = await getPool().query<{ spec: unknown }>(
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, request_key)
+         values ($1,'post_generation','schedule','p1','queued',$2) returning pattern_spec as spec`,
+        [xid, `pp-${randomUUID()}`],
+      );
+      expect(parsePatternSpec(rows[0].spec)?.seedKey).toBe("p1");
     } finally {
       await cleanup(uid);
     }

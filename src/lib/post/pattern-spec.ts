@@ -21,6 +21,8 @@ export interface PatternSpec {
   /** null = システム既定（`SYSTEM_DEFAULT_TEMPLATES[seedKey]`）を使う。 */
   prompt: string | null;
   maxPosts: number;
+  /** 下書き編集で許すポスト数の上限。日次枠・投稿枠の見積りにも使う（最悪ケース）。 */
+  maxPostsEdit: number;
   webSearchPolicy: PatternPolicy;
   webSearchMaxUses: number;
   sourcePolicy: PatternPolicy;
@@ -63,6 +65,7 @@ export function parsePatternSpec(value: unknown): PatternSpec | null {
   const id = raw.id;
   const name = raw.name;
   const maxPosts = raw.max_posts;
+  const maxPostsEdit = raw.max_posts_edit;
   const webSearchMaxUses = raw.web_search_max_uses;
   const webSearchPolicy = asPolicy(raw.web_search_policy);
   const sourcePolicy = asPolicy(raw.source_policy);
@@ -70,6 +73,13 @@ export function parsePatternSpec(value: unknown): PatternSpec | null {
   if (typeof id !== "string" || id === "") return null;
   if (typeof name !== "string" || name === "") return null;
   if (typeof maxPosts !== "number" || !Number.isInteger(maxPosts) || maxPosts < 1) return null;
+  if (
+    typeof maxPostsEdit !== "number" ||
+    !Number.isInteger(maxPostsEdit) ||
+    maxPostsEdit < maxPosts
+  ) {
+    return null;
+  }
   if (
     typeof webSearchMaxUses !== "number" ||
     !Number.isInteger(webSearchMaxUses) ||
@@ -86,6 +96,7 @@ export function parsePatternSpec(value: unknown): PatternSpec | null {
     description: typeof raw.description === "string" ? raw.description : null,
     prompt: typeof raw.prompt === "string" && raw.prompt !== "" ? raw.prompt : null,
     maxPosts,
+    maxPostsEdit,
     webSearchPolicy,
     webSearchMaxUses,
     sourcePolicy,
@@ -131,4 +142,34 @@ export function sourceRequiredForSpec(spec: PatternSpec, hasReferenceUrl: boolea
   if (spec.sourcePolicy === "always") return true;
   if (spec.sourcePolicy === "with_url") return hasReferenceUrl;
   return false;
+}
+
+/**
+ * 予約（スケジュール）で1回動いたときに必要な投稿枠（要件03 §7.4・要件04 §7.1）。
+ *
+ * **enum のIDで引く定数（旧 `ROLLBACK_SAFE_BUDGET`）をやめ、パターンの設定から導く**
+ * （T-M8-129 U3）。利用者が作ったパターンには `p1` のようなIDが無いため。
+ *
+ * 仮定は要件04 §7.1 のまま:「出典を付けるパターンは最終1件がURL付き、先行は通常」。
+ * 予約実行では利用者が参考URLを渡さないので、**`with_url` のパターンはURLを付けない**
+ * （`always` だけが出典URLを必ず付ける）。
+ * 必要量は `requiredPostSlots` と同じ式（全件成功と、最終失敗時のprefixロールバックの大きい方）。
+ *
+ * 既定6種で移行前の値と一致する: P-1=通常10+URL1、P-2=通常1+URL0、P-3=12+1、P-4=8+1、P-6=12+1。
+ */
+export function scheduledPostSlots(spec: PatternSpec): { normal: number; url: number } {
+  // 上限まで作られる最悪ケースで見積もる（編集で増やせる分も含む）。
+  const posts = Math.max(1, spec.maxPostsEdit);
+  // **出典URLが付きうるか**を保守的に見る。予約実行では利用者が参考URLを渡さないので、
+  // 「必ずWeb検索する」か「出典を必ず求める」パターンだけがURLを付ける。
+  // 既定では P-1/P-3/P-4/P-6 が該当し、単発の P-2 は該当しない（要件04 §7.1 の数値と一致）。
+  const lastIsUrl = spec.webSearchPolicy === "always" || spec.sourcePolicy === "always";
+  const url = lastIsUrl ? 1 : 0;
+  const normal = posts - url;
+  // 最終投稿が失敗するとprefix（末尾直前まで）は作成＋削除で2回消費する。
+  const prefixNormal = posts - 1;
+  return {
+    normal: Math.max(normal, 2 * prefixNormal),
+    url,
+  };
 }

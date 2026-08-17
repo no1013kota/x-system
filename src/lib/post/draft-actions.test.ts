@@ -16,6 +16,8 @@ function draft(over: Partial<DraftView> = {}): DraftView {
   return {
     id: "d1",
     pattern: "p1",
+    pattern_name: "ニュース解説",
+    max_posts_edit: 6,
     status: "draft",
     thread: [{ local_id: "p1", text: "本文", weighted_length: 6, sources: [], warnings: [] }],
     images: [],
