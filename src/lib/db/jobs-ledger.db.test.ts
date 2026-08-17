@@ -69,8 +69,8 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
 
   async function makeDraft(c: Client, xid: string): Promise<string> {
     const { rows } = await c.query<{ id: string }>(
-      `insert into drafts (x_account_id, pattern, thread, initial_thread)
-       values ($1, 'p1', '[]'::jsonb, '[]'::jsonb) returning id`,
+      `insert into drafts (x_account_id, pattern_id, thread, initial_thread)
+       values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb) returning id`,
       [xid],
     );
     return rows[0].id;
@@ -150,21 +150,21 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     await inTx(async (c) => {
       const { xid } = await makeAccount(c);
       await c.query(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern, schedule_run_key, request_key)
-         values ($1, 'post_generation', 'schedule', 'p1', 'srk-1', 'rk-1')`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, schedule_run_key, request_key)
+         values ($1, 'post_generation', 'schedule', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'srk-1', 'rk-1')`,
         [xid],
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into generation_jobs (x_account_id, kind, trigger, pattern, schedule_run_key)
-           values ($1, 'post_generation', 'schedule', 'p1', 'srk-1')`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, schedule_run_key)
+           values ($1, 'post_generation', 'schedule', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'srk-1')`,
           [xid],
         ),
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into generation_jobs (x_account_id, kind, trigger, pattern, request_key)
-           values ($1, 'post_generation', 'manual', 'p1', 'rk-1')`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, request_key)
+           values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'rk-1')`,
           [xid],
         ),
       );
@@ -176,61 +176,61 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
       const { xid } = await makeAccount(c);
       // valid baseline
       await c.query(
-        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-         values ($1, 'p1', '{1,3,5}', '09:30', 'draft', 'other')`,
+        `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1,3,5}', '09:30', 'draft', 'other')`,
         [xid],
       );
       // p5 forbidden
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-           values ($1, 'p5', '{1}', '09:00', 'draft', 'other')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p5'), '{1}', '09:00', 'draft', 'other')`,
           [xid],
         ),
       );
       // time out of range
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-           values ($1, 'p1', '{1}', '22:30', 'draft', 'other')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '22:30', 'draft', 'other')`,
           [xid],
         ),
       );
       // minute not 00/30
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-           values ($1, 'p1', '{1}', '09:15', 'draft', 'other')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '09:15', 'draft', 'other')`,
           [xid],
         ),
       );
       // weekday out of range
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-           values ($1, 'p1', '{7}', '09:00', 'draft', 'other')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{7}', '09:00', 'draft', 'other')`,
           [xid],
         ),
       );
       // 分野は必須で、値は選択肢マスタ＋other に限る（T-M8-29）
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme)
-           values ($1, 'p1', '{1}', '09:00', 'draft', 'bogus')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '09:00', 'draft', 'bogus')`,
           [xid],
         ),
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode)
-           values ($1, 'p1', '{1}', '09:00', 'draft')`,
+          `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '09:00', 'draft')`,
           [xid],
         ),
       );
       // 画像ONにproviderの指定は不要（D-6 案B: AI設定のAI用途を正とする）
       await c.query(
-        `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled)
-         values ($1, 'p1', '{1}', '09:00', 'draft', 'other', true)`,
+        `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, image_enabled)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '09:00', 'draft', 'other', true)`,
         [xid],
       );
     });
@@ -341,20 +341,20 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     await inTx(async (c) => {
       const { xid } = await makeAccount(c);
       const { rows } = await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern)
-         values ($1, 'post_generation', 'manual', 'p1') returning id`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id)
+         values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1')) returning id`,
         [xid],
       );
       const jid = rows[0].id;
       await c.query(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, source_job_id)
-         values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, $2)`,
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, source_job_id)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, $2)`,
         [xid, jid],
       );
       await expectViolation(c, () =>
         c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, source_job_id)
-           values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, $2)`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, source_job_id)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, $2)`,
           [xid, jid],
         ),
       );

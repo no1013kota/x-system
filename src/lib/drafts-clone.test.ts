@@ -5,7 +5,7 @@ import type { Queryable } from "./x/token-refresh";
 
 type Row = Record<string, unknown>;
 
-const LOAD = /select d\.status, d\.pattern, d\.thread/;
+const LOAD = /select d\.status, d\.pattern_id, d\.pattern_name/;
 const DEDUP = /parent_draft_id = \$1 and source_job_id is null/;
 const INSERT = /insert into drafts/;
 
@@ -24,7 +24,11 @@ function makeDb(handler: (sql: string) => Row[]) {
 function srcRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     status: "failed",
-    pattern: "p1",
+    pattern_id: "11111111-1111-4111-8111-111111111111",
+    pattern_name: "ニュース解説",
+    max_posts: 4,
+    max_posts_edit: 6,
+    requires_quote_url: false,
     thread: [{ local_id: "p1", text: "本文1", weighted_length: 5, sources: [], warnings: [] }],
     images: [
       {

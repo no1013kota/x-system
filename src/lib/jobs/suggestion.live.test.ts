@@ -54,8 +54,9 @@ const POSTS = [
   mk("9012", 28, "テストです。", 90, 1),
 ];
 const TAGS = new Map([
-  ["9004", { pattern: "p3", theme: "business_ops" }],
-  ["9008", { pattern: "p2", theme: "business_ops" }],
+// パターンは**名前**で渡す（T-M8-129 U5。LLMにも名前で見せる）。
+  ["9004", { pattern: "ノウハウ・ハウツー", theme: "business_ops" }],
+  ["9008", { pattern: "自分の考え・意見", theme: "business_ops" }],
 ]);
 
 describe.runIf(ENABLED)("投稿分析 実AI 1周（手動）", () => {

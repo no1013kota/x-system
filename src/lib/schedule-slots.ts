@@ -9,7 +9,7 @@ import { assertSchedulable, requirePattern } from "@/lib/post/post-patterns-stor
 
 /**
  * schedule_slots CRUD の中核（要件05 §7・要件02 §3.10, S-1/S-2/S-4, T-M4-01）。本人のみ・active_x_account
- * スコープ。zod検証（P-5不可・weekdays・時刻・画像provider・instructions）、楽観lock（expected_updated_at
+ * スコープ。zod検証（パターンID・weekdays・時刻・instructions）、楽観lock（expected_updated_at
  * 不一致は0件更新→job_conflict）、mode=auto の作成/auto化/再有効化は現行versionの自動投稿同意を必須にする。
  * DB は注入し、Action層（server）が pool と active_x_account 解決を束ねる。
  */
@@ -64,7 +64,6 @@ export type SlotLockInput = z.infer<typeof slotLockSchema>;
 
 export interface ScheduleSlotView {
   id: string;
-  pattern: string;
   /** 使うパターン。削除されたら null（枠は停止して設定は残る・要件02 §3.21）。 */
   pattern_id: string | null;
   /** 画面に出す名前。パターンが削除済みなら null。**内部IDは出さない**（要件06 §1.0）。 */
@@ -83,7 +82,7 @@ export interface ScheduleSlotView {
  * `select` と `returning` の両方で使うため**テーブル別名を付けない**。
  * `pattern_name` はスカラーサブクエリで引く（`returning` でも新しい行の `pattern_id` を参照できる）。
  */
-const SLOT_COLUMNS = `id, pattern, pattern_id,
+const SLOT_COLUMNS = `id, pattern_id,
   (select p.name from post_patterns p where p.id = pattern_id) as pattern_name,
   weekdays, time_jst::text as time_jst, mode, theme, instructions,
   image_enabled, enabled, updated_at::text as updated_at`;
@@ -150,11 +149,9 @@ export async function createScheduleSlot(
     const pattern = await requirePattern(tx, xAccountId, input.pattern_id);
     assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
-      // 旧 `pattern` 列は U5 で撤去するまで並べて書く。**自作パターンは旧enumで表せないので
-      // null**（嘘の値を入れない・migration `20260818000004`）。表示と生成は `pattern_id` を見る。
       `insert into schedule_slots
-         (x_account_id, pattern_id, pattern, weekdays, time_jst, mode, theme, instructions, image_enabled)
-       values ($1, $2, $9::post_pattern, $3, $4, $5, $6, $7, $8)
+         (x_account_id, pattern_id, weekdays, time_jst, mode, theme, instructions, image_enabled)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning ${SLOT_COLUMNS}`,
       [
         xAccountId,
@@ -165,7 +162,6 @@ export async function createScheduleSlot(
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
-        pattern.seedKey,
       ],
     );
     return rows[0];
@@ -200,7 +196,7 @@ export async function updateScheduleSlot(
     assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
       `update schedule_slots
-          set pattern_id = $3, pattern = $10::post_pattern, weekdays = $4, time_jst = $5,
+          set pattern_id = $3, weekdays = $4, time_jst = $5,
               mode = $6, theme = $7, instructions = $8, image_enabled = $9, updated_at = now()
         where id = $1 and updated_at::text = $2
       returning ${SLOT_COLUMNS}`,
@@ -214,7 +210,6 @@ export async function updateScheduleSlot(
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
-        pattern.seedKey,
       ],
     );
     if (rows.length === 0) throw new AppError("job_conflict", { details: { reason: "stale_slot" } });

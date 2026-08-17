@@ -29,7 +29,6 @@ const PREMIUM_LIMITS = { normalPosts: 200, urlPosts: 20, aiCredits: 1000 };
 interface DueSlotRow {
   id: string;
   x_account_id: string;
-  pattern: string;
   pattern_id: string | null;
   /** パターン設定。enqueue時に凍結してjobへ渡す（T-M8-129 U2/U3）。 */
   pattern_spec: unknown;
@@ -64,7 +63,9 @@ export interface EnqueueResult {
 
 async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
   const { rows } = await db.query<DueSlotRow>(
-    `select ss.id, ss.x_account_id, ss.pattern, ss.time_jst::text as time_jst, ss.mode,
+    `select ss.id, ss.x_account_id, ss.pattern_id,
+              pattern_spec_of(ss.pattern_id) as pattern_spec,
+              ss.time_jst::text as time_jst, ss.mode,
             ss.instructions, ss.theme, ss.image_enabled,
             xa.user_id, xa.status as x_status, xa.base_md_version,
             (xa.automation_consent_version = $1 and xa.automation_consented_at is not null
@@ -196,13 +197,25 @@ async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise
   });
   return deps.runInTx(async (tx) => {
     const inserted = await tx.query<{ id: string }>(
+      // **パターン設定をここで凍結する**（T-M8-129 U2/U3）。実行中に編集・削除されても
+      // このジョブは当時の設定で走り切る。
       `insert into generation_jobs
-         (x_account_id, kind, trigger, slot_id, pattern, input, status, scheduled_for, schedule_run_key, available_at)
-       values ($1, 'post_generation', 'schedule', $2, $3, $4::jsonb, 'queued',
+         (x_account_id, kind, trigger, slot_id, pattern_id, pattern_spec,
+          input, status, scheduled_for, schedule_run_key, available_at)
+       values ($1, 'post_generation', 'schedule', $2, $3, $8::jsonb, $4::jsonb, 'queued',
                (($5 || ' ' || $6)::timestamp at time zone 'Asia/Tokyo'), $7, now())
        on conflict (schedule_run_key) do nothing
        returning id`,
-      [slot.x_account_id, slot.id, slot.pattern, input, slot.jst_date, timeHhmm, runKey],
+      [
+        slot.x_account_id,
+        slot.id,
+        slot.pattern_id,
+        input,
+        slot.jst_date,
+        timeHhmm,
+        runKey,
+        JSON.stringify(slot.pattern_spec),
+      ],
     );
     if (inserted.rowCount === 0) return false; // 既に同一定刻窓で作成済み（冪等）
     return true;

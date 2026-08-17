@@ -32,8 +32,8 @@ async function addSecondAccount(userId: string): Promise<{ id: string; handle: s
 
 async function addDraft(xAccountId: string, text: string): Promise<void> {
   await query(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft')`,
     [
       xAccountId,
       JSON.stringify([
@@ -47,9 +47,8 @@ async function addPosted(xAccountId: string, text: string): Promise<void> {
   const tweetId = `sw-${randomUUID().slice(0, 8)}`;
   await query(
     `insert into drafts
-       (x_account_id, pattern, thread, initial_thread, status, posted_mode, posted_at,
-        root_tweet_id, tweet_ids)
-     values ($1,'p2',$2::jsonb,$2::jsonb,'posted','manual', now() - interval '1 day', $3, $4::jsonb)`,
+       (x_account_id, pattern_id, thread, initial_thread, status, posted_mode, posted_at, root_tweet_id, tweet_ids)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), $2::jsonb, $2::jsonb, 'posted', 'manual', now() - interval '1 day', $3, $4::jsonb)`,
     [
       xAccountId,
       JSON.stringify([
@@ -77,8 +76,8 @@ test("設定のXアカウント一覧から操作対象を切り替えられ、�
   await addPosted(account.xAccountId, firstPosted);
   await addPosted(second.id, secondPosted);
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
-     values ($1,'p3','{1}','09:00','draft','ai',true)`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1}', '09:00', 'draft', 'ai', true)`,
     [second.id],
   );
 

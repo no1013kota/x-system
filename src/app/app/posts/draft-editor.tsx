@@ -9,7 +9,6 @@ import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { weightedLength } from "@/lib/text/weighted-length";
 
-const PATTERN_MAX: Record<string, number> = { p1: 6, p2: 1, p3: 7, p4: 5, p5: 3, p6: 7 };
 const MAX_WEIGHTED = 280;
 
 interface EditablePost {
@@ -33,7 +32,9 @@ export function DraftEditor({
   );
   const toast = useToast();
 
-  const max = PATTERN_MAX[draft.pattern] ?? 1;
+// 編集で許すポスト数は**生成時に写した値**を使う（T-M8-129 U3a）。
+  // パターンを後から編集・削除しても、この下書きの編集可能範囲は変わらない。
+  const max = draft.max_posts_edit;
   const hasEmpty = posts.some((p) => p.text.trim().length === 0);
   const overCount = posts.length > max;
   const canSave = !pending && posts.length >= 1 && !hasEmpty && !overCount;

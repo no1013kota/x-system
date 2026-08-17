@@ -149,8 +149,8 @@ interface PublishJobRow {
 
 interface PublishDraftRow {
   status: string;
-  /** P-5（引用ポスト）の判定に使う。 */
-  pattern: string;
+  /** 生成時に写した「引用URLを毎回指定する」か（T-M8-129 U5。旧enumは撤去した）。 */
+  requires_quote_url: boolean;
   thread: ThreadItem[];
   images: { status?: string; storage_path?: string; mime_type?: string }[];
   tweet_ids: string[];
@@ -211,7 +211,7 @@ async function loadJob(db: Queryable, jobId: string): Promise<PublishJobRow | nu
 
 async function loadDraft(db: Queryable, draftId: string): Promise<PublishDraftRow | null> {
   const { rows } = await db.query<PublishDraftRow>(
-    `select status, pattern, thread, images, tweet_ids, quote_url from drafts where id = $1`,
+    `select status, requires_quote_url, thread, images, tweet_ids, quote_url from drafts where id = $1`,
     [draftId],
   );
   return rows[0] ?? null;
@@ -497,7 +497,8 @@ export async function executePostPublish(
    * Xへ1件も出していないので `failed` ではなく `draft` へ戻す（要件04 §10 step2。
    * `failed` にすると編集も複製もできない行き止まりになる）。
    */
-  if (draft.pattern === "p5" && !draft.quote_url) {
+  // 引用URLが必須なのに未設定なら X API を呼ばずに戻す（T-M8-129 U5。判定は写した値）。
+  if (draft.requires_quote_url && !draft.quote_url) {
     await revertDraftWithReason(db, draftId, {
       code: "quote_target_missing",
       message:

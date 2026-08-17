@@ -289,8 +289,8 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     const [draft] = await withTransaction((c) =>
       c
         .query<{ id: string; updated_at: string }>(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-           values ($1, 'p2', $2::jsonb, $2::jsonb, 'draft')
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), $2::jsonb, $2::jsonb, 'draft')
            returning id, updated_at::text as updated_at`,
           [xAccountId, JSON.stringify(thread)],
         )

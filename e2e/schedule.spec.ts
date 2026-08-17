@@ -9,8 +9,8 @@ import { expect, signIn, test } from "./fixtures/test";
 test("スロットを停止して再開でき、DBの enabled が追従する", async ({ accounts, page }) => {
   const account = await accounts.create("schedule");
   const [slot] = await query<{ id: string }>(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
-     values ($1, 'p3', '{1,3,5}', '19:00', 'draft', 'other', true) returning id`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1,3,5}', '19:00', 'draft', 'other', true) returning id`,
     [account.xAccountId],
   );
   await signIn(page, account);
@@ -102,8 +102,8 @@ test("スケジュールにテーマを設定でき、行に出てDBへ入る（
 test("週間表のセルは読み上げ名と補足が一致する（R38）", async ({ accounts, page }) => {
   const account = await accounts.create("slot-label", { personaReady: true });
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled, theme)
-     values ($1, 'p1', '{1,3}', '09:00', 'draft', false, true, 'ai')`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, image_enabled, enabled, theme)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1,3}', '09:00', 'draft', false, true, 'ai')`,
     [account.xAccountId],
   );
 
@@ -141,8 +141,8 @@ test("パターンは名前で表示・選択でき、自作パターンも選�
     [account.xAccountId],
   );
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
-     values ($1, 'p3', '{1,3,5}', '19:00', 'draft', 'other', true)`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1,3,5}', '19:00', 'draft', 'other', true)`,
     [account.xAccountId],
   );
   await signIn(page, account);

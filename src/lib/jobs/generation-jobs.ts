@@ -11,6 +11,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import { validateManualBaseMd } from "../base-md";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
+import { findPatternBySeedKey, requirePattern } from "@/lib/post/post-patterns-store";
 
 import type { Queryable } from "../x/token-refresh";
 import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./job-guards";
@@ -30,7 +31,8 @@ export { MAX_ACTIVE_JOBS };
 export const createGenerationJobSchema = z.object({
   request_key: z.string().min(1).max(200),
   x_account_id: z.string().uuid(),
-  pattern: z.enum(["p1", "p2", "p3", "p4", "p5", "p6"]),
+  /** 使うパターン（`post_patterns.id`）。**内部IDでは受けない**（T-M8-129 U5）。 */
+  pattern_id: z.string().uuid(),
   source_url: z
     .string()
     // `.url()` は refine より先に issue を作るので、こちらにも同じ文言を持たせる（F10）。
@@ -95,7 +97,6 @@ export interface CreateJobResult {
 
 function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown> {
   return {
-    pattern: input.pattern,
     source_url: input.source_url ?? null,
     quote_url: input.quote_url ?? null,
     quote_tweet_id: null,
@@ -133,10 +134,7 @@ export async function createGenerationJob(
   input: CreateGenerationJobInput,
   deps: GenerationJobDeps,
 ): Promise<CreateJobResult> {
-  // P-5 は feature flag OFF の間、外部呼び出し・枠消費の前に拒否（要件05 §5）。
-  if (input.pattern === "p5" && !deps.quotePostEnabled) {
-    throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
-  }
+
   // この生成にだけ使うアカウント.mdも、保存版と同じ見出し検証を通す（T-M8-93）。
   // 通さないと、画像生成のセクション3抽出が黙って空になる等、静かな劣化になる。
   if (input.base_md_override?.trim()) {
@@ -160,14 +158,26 @@ export async function createGenerationJob(
     await assertPrereqs(deps, userId, input.image_enabled);
     await assertJobBudget(tx, userId);
 
+    // 所有者チェックを兼ねてパターンを取り、引用ポストの feature flag をここで見る
+
+    // （外部呼び出し・枠消費の前に拒否する・要件05 §5）。
+
+    const pattern = await requirePattern(tx, input.x_account_id, input.pattern_id);
+
+    if (pattern.requiresQuoteUrl && !deps.quotePostEnabled) {
+
+      throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
+
+    }
+
     const inserted = (
       await tx.query<{ id: string }>(
         `insert into generation_jobs
-           (x_account_id, kind, trigger, pattern, input, request_key, status)
+           (x_account_id, kind, trigger, pattern_id, input, request_key, status)
          values ($1, 'post_generation', 'manual', $2, $3::jsonb, $4, 'queued')
          on conflict (request_key) do nothing
          returning id`,
-        [input.x_account_id, input.pattern, JSON.stringify(buildInputJson(input)), key],
+        [input.x_account_id, pattern.id, JSON.stringify(buildInputJson(input)), key],
       )
     ).rows[0];
     if (inserted) return { jobId: inserted.id, deduped: false };
@@ -212,12 +222,23 @@ export async function createDraftFromNews(
   );
   const sourceUrl = source.rows[0]?.source_url;
   if (!sourceUrl) throw new AppError("not_found");
+  /**
+   * ニュースから作るときのパターン。既定の「ニュース解説」を使う（T-M8-129 U5）。
+   * **消されていたら黙って別の型で作らない**——利用者は記事の解説を期待して押しているので、
+   * 週次まとめ等で作られると意図と違う投稿になる。理由を返して復元へ導く。
+   */
+  const newsPattern = await deps.runInTx((tx) =>
+    findPatternBySeedKey(tx, input.x_account_id, "p1"),
+  );
+  if (!newsPattern) {
+    throw new AppError("validation_error", { details: { reason: "news_pattern_missing" } });
+  }
   return createGenerationJob(
     userId,
     {
       request_key: input.request_key,
       x_account_id: input.x_account_id,
-      pattern: "p1",
+    pattern_id: newsPattern.id,
       // ニュースから作る場合は分野を選ばせない（記事そのものが題材なので、分野で絞る意味が無い）。
       theme: OTHER_POST_THEME,
       source_url: sourceUrl,
@@ -262,13 +283,14 @@ export async function regenerateDraft(
     const draft = (
       await tx.query<{
         status: string;
-        pattern: string;
+        pattern_id: string | null;
+          requires_quote_url: boolean;
         thread: { text: string; sources?: string[] }[];
         x_account_id: string;
         tweet_ids: string[];
         last_post_error: unknown;
       }>(
-        `select d.status, d.pattern, d.thread, d.x_account_id, d.tweet_ids, d.last_post_error
+        `select d.status, d.pattern_id, d.requires_quote_url, d.thread, d.x_account_id, d.tweet_ids, d.last_post_error
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
         [input.draft_id, userId],
@@ -285,7 +307,8 @@ export async function regenerateDraft(
     ) {
       throw new AppError("job_conflict", { details: { reason: "unresolved_posting" } });
     }
-    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+  // 判定は**生成時に写した値**（T-M8-129 U5。旧enumは撤去した）。
+    if (draft.requires_quote_url && !deps.quotePostEnabled) {
       throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
     }
     await assertPrereqs(deps, userId, input.image_enabled);
@@ -295,7 +318,8 @@ export async function regenerateDraft(
       ? draft.thread.map((p) => p.text).filter((t): t is string => typeof t === "string")
       : [];
     const jobInput = {
-      pattern: draft.pattern,
+      // 再生成は元の下書きと同じパターンで作る。
+      pattern_id: draft.pattern_id,
       source_url: null,
       quote_url: null,
       quote_tweet_id: null,
@@ -311,11 +335,11 @@ export async function regenerateDraft(
     const inserted = (
       await tx.query<{ id: string }>(
         `insert into generation_jobs
-           (x_account_id, kind, trigger, pattern, input, request_key, status)
+           (x_account_id, kind, trigger, pattern_id, input, request_key, status)
          values ($1, 'post_generation', 'manual', $2, $3::jsonb, $4, 'queued')
          on conflict (request_key) do nothing
          returning id`,
-        [draft.x_account_id, draft.pattern, JSON.stringify(jobInput), key],
+        [draft.x_account_id, draft.pattern_id, JSON.stringify(jobInput), key],
       )
     ).rows[0];
     if (inserted) return { jobId: inserted.id, deduped: false };
@@ -356,15 +380,16 @@ export async function regenerateImage(
     if (existing) return { jobId: existing.id, deduped: true };
 
     const draft = (
-      await tx.query<{ status: string; pattern: string; x_account_id: string }>(
-        `select d.status, d.pattern, d.x_account_id
+      await tx.query<{ status: string; pattern_id: string | null; requires_quote_url: boolean; x_account_id: string }>(
+        `select d.status, d.pattern_id, d.requires_quote_url, d.x_account_id
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
         [input.draft_id, userId],
       )
     ).rows[0];
     if (!draft) throw new AppError("not_found");
-    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+  // 判定は**生成時に写した値**（T-M8-129 U5。旧enumは撤去した）。
+    if (draft.requires_quote_url && !deps.quotePostEnabled) {
       throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
     }
     if (draft.status !== "draft" && draft.status !== "failed") {
@@ -420,7 +445,7 @@ export type PublishDraftInput = z.infer<typeof publishDraftSchema>;
 
 interface PublishDraftRow {
   status: string;
-  pattern: string;
+  requires_quote_url: boolean;
   x_account_id: string;
   x_account_status: string;
   tweet_ids: string[];
@@ -464,7 +489,7 @@ export async function publishDraft(
 
     const draft = (
       await tx.query<PublishDraftRow>(
-        `select d.status, d.pattern, d.x_account_id, xa.status::text as x_account_status,
+        `select d.status, d.pattern_id, d.requires_quote_url, d.x_account_id, xa.status::text as x_account_status,
                 d.tweet_ids, d.last_post_error
            from drafts d join x_accounts xa on xa.id = d.x_account_id
           where d.id = $1 and xa.user_id = $2`,
@@ -483,7 +508,8 @@ export async function publishDraft(
         },
       });
     }
-    if (draft.pattern === "p5" && !deps.quotePostEnabled) {
+  // 判定は**生成時に写した値**（T-M8-129 U5。旧enumは撤去した）。
+    if (draft.requires_quote_url && !deps.quotePostEnabled) {
       throw new AppError("feature_disabled", { details: { feature: "quote_post" } });
     }
     if (draft.status === "draft") {
@@ -557,7 +583,7 @@ export async function getGenerationJob(
       // `provider_raw_error` は**ブラウザへ返さない**（F6）。要件06 §5「画面に出さない」と
       // 要件01 §8「ユーザー向けerrorへproviderの応答を出さない」を、描画側の注意ではなく
       // クエリで守る。運営者はDBと `npm run smoke:live` で中身を見る。
-      `select gj.id, gj.kind, gj.status, gj.pattern, gj.progress_stage, gj.draft_id,
+      `select gj.id, gj.kind, gj.status, gj.pattern_id, gj.progress_stage, gj.draft_id,
               (gj.error - 'provider_raw_error') as error, gj.created_at
          from generation_jobs gj
          join x_accounts xa on xa.id = gj.x_account_id
@@ -588,11 +614,12 @@ export async function retryGenerationJob(
       await tx.query<{
         status: string;
         kind: string;
-        pattern: string | null;
+        pattern_id: string | null;
+          pattern_spec: unknown;
         input: unknown;
         x_account_id: string;
       }>(
-        `select gj.status, gj.kind, gj.pattern, gj.input, gj.x_account_id
+        `select gj.status, gj.kind, gj.pattern_id, gj.pattern_spec, gj.input, gj.x_account_id
            from generation_jobs gj join x_accounts xa on xa.id = gj.x_account_id
           where gj.id = $1 and xa.user_id = $2`,
         [input.job_id, userId],
@@ -607,14 +634,16 @@ export async function retryGenerationJob(
     const inserted = (
       await tx.query<{ id: string }>(
         `insert into generation_jobs
-           (x_account_id, kind, trigger, pattern, input, request_key, status, parent_job_id)
-         values ($1, $2, 'manual', $3, $4::jsonb, $5, 'queued', $6)
+           (x_account_id, kind, trigger, pattern_id, pattern_spec, input, request_key, status, parent_job_id)
+         values ($1, $2, 'manual', $3, $4::jsonb, $5::jsonb, $6, 'queued', $7)
          on conflict (request_key) do nothing
          returning id`,
         [
           job.x_account_id,
           job.kind,
-          job.pattern,
+          job.pattern_id,
+          // **再試行は当時の spec をそのまま引き継ぐ**（間にパターンを編集されても結果が変わらない）。
+          JSON.stringify(job.pattern_spec),
           JSON.stringify(job.input ?? {}),
           key,
           input.job_id,

@@ -188,8 +188,8 @@ describe("post_patterns CRUD（ローカルDB）", () => {
       const target = (await listPatterns(getPool(), xid)).find((p) => p.name === "ニュース解説")!;
       await getPool().query(
         `insert into schedule_slots
-           (x_account_id, pattern, pattern_id, weekdays, time_jst, theme, mode, enabled)
-         values ($1,'p1',$2,'{1}','09:00','ai','auto',true)`,
+           (x_account_id, pattern_id, weekdays, time_jst, theme, mode, enabled)
+         values ($1, $2, '{1}', '09:00', 'ai', 'auto', true)`,
         [xid, target.id],
       );
 

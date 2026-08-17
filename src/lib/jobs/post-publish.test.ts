@@ -12,7 +12,7 @@ import {
 type Row = Record<string, unknown>;
 
 const LOAD_JOB = /select gj\.draft_id, gj\.input, gj\.trigger/;
-const LOAD_DRAFT = /select status, pattern, thread, images, tweet_ids/;
+const LOAD_DRAFT = /select status, requires_quote_url, thread, images, tweet_ids/;
 const LOCK = /update drafts set status = 'posting'/;
 const DAILY = /count\(\*\)::int as n from usage_events/;
 const APPEND_TWEET = /update drafts set tweet_ids/;
@@ -66,7 +66,7 @@ function draftRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     status: "draft",
     // P-5以外は引用先を要求しない（既定は通常の投稿）。
-    pattern: "p1",
+    requires_quote_url: false,
     thread: [post("p1", "本文1"), post("p2", "本文2")],
     images: [],
     tweet_ids: [],
@@ -270,8 +270,8 @@ describe("executePostPublish validation", () => {
    * 引用先の無い「引用ポスト」が黙ってXへ出る**（生成は `quote_url` を保存しない）。
    * 取り返しがつかないので、到達不能なうちにガードを置いておく。
    */
-  it("P-5で引用先が無ければXへ1件も出さずに下書きへ戻す（T-M8-85）", async () => {
-    const draft = draftRow({ pattern: "p5", quote_url: null });
+  it("引用URLが必須なのに未設定ならXへ1件も出さずに下書きへ戻す（T-M8-85）", async () => {
+    const draft = draftRow({ requires_quote_url: true, quote_url: null });
     const { db, writes } = makeDb(okHandler(draft));
     const deps = baseDeps(db);
     await expect(executePostPublish(deps)).rejects.toMatchObject({
@@ -284,9 +284,9 @@ describe("executePostPublish validation", () => {
     expect(String(revert?.params?.[1] ?? "")).toContain("引用先のポスト");
   });
 
-  it("P-5でも引用先があれば通常どおり投稿する", async () => {
+  it("引用URLがあれば通常どおり投稿する", async () => {
     const draft = draftRow({
-      pattern: "p5",
+    requires_quote_url: true,
       thread: [post("p1", "本文1")],
       quote_url: "https://x.com/someone/status/1234567890",
     });

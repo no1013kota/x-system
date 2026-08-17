@@ -28,11 +28,12 @@ export interface DraftImage {
 
 export interface DraftView {
   id: string;
-  pattern: string;
   /** 生成時に写したパターン名。画面のバッジはこれを出す（T-M8-129 U3）。 */
   pattern_name: string;
   /** 生成時に写した編集上限。 */
   max_posts_edit: number;
+  /** 生成時に引用URLを必須としたか（引用ポスト相当）。flag OFF時の閲覧専用判定に使う。 */
+  requires_quote_url: boolean;
   status: string;
   thread: ThreadItem[];
   images: DraftImage[];
@@ -64,7 +65,7 @@ export interface DraftView {
 
 // updated_at は楽観lockのversionトークン。timestamptzはマイクロ秒精度でJS Date（ミリ秒）往復では
 // 末尾が欠落するため、::text で完全精度の文字列として返し、更新時も text 一致で照合する。
-const DRAFT_COLUMNS = `id, pattern, pattern_name, max_posts_edit, status, thread, images, parent_draft_id, root_tweet_id,
+const DRAFT_COLUMNS = `id, pattern_name, max_posts_edit, requires_quote_url, status, thread, images, parent_draft_id, root_tweet_id,
   tweet_ids, posted_mode, last_post_error,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
@@ -124,7 +125,6 @@ export async function listPendingDraftsForHome(
 
 interface OwnedDraftRow {
   status: string;
-  pattern: string;
   /** 生成時に写したパターン名。画面と通知に出す（内部IDは出さない）。 */
   pattern_name: string;
   /** 生成時に写した編集上限。 */
@@ -142,7 +142,7 @@ async function loadOwnedDraft(
 ): Promise<OwnedDraftRow> {
   const row = (
     await db.query<OwnedDraftRow>(
-      `select d.status, d.pattern, d.pattern_name, d.max_posts_edit, d.images, d.tweet_ids,
+      `select d.status, d.pattern_name, d.max_posts_edit, d.images, d.tweet_ids,
               d.last_post_error, xa.settings
          from drafts d join x_accounts xa on xa.id = d.x_account_id
         where d.id = $1 and xa.user_id = $2`,

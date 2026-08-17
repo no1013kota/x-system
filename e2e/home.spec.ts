@@ -31,8 +31,8 @@ test("有効スロットがあれば次回の予定が並び、初期設定が�
 }) => {
   const account = await accounts.create("home-schedule");
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
-     values ($1, 'p1', '{0,1,2,3,4,5,6}', '09:30', 'draft', 'other', true)`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{0,1,2,3,4,5,6}', '09:30', 'draft', 'other', true)`,
     [account.xAccountId],
   );
   await signIn(page, account);

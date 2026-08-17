@@ -80,9 +80,8 @@ describe("metrics_collector (local DB)", () => {
       const id = (
         await c.query<{ id: string }>(
           `insert into drafts
-             (x_account_id, pattern, thread, initial_thread, status, tweet_ids, posted_at, next_metrics_at)
-           values ($1,'p1','[]'::jsonb,'[]'::jsonb,'posted',$2::jsonb,
-                   now() - ($3 || ' days')::interval, now() - ($4 || ' minutes')::interval)
+             (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids, posted_at, next_metrics_at)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'posted', $2::jsonb, now() - ($3 || ' days')::interval, now() - ($4 || ' minutes')::interval)
            returning id`,
           [xid, JSON.stringify(tweetIds), String(opts.postedDaysAgo), String(opts.nextDueDaysAgo * 1440)],
         )
@@ -159,10 +158,8 @@ describe("metrics_collector (local DB)", () => {
       return (
         await c.query<{ id: string }>(
           `insert into drafts
-             (x_account_id, pattern, thread, initial_thread, status, tweet_ids, last_post_error,
-              posted_at, next_metrics_at)
-           values ($1,'p1','[]'::jsonb,'[]'::jsonb,'failed','[]'::jsonb,$2::jsonb,
-                   now() - interval '2 days', now() - interval '1 day')
+             (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids, last_post_error, posted_at, next_metrics_at)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'failed', '[]'::jsonb, $2::jsonb, now() - interval '2 days', now() - interval '1 day')
            returning id`,
           [xid, JSON.stringify({ remaining_tweet_ids: [live], deleted_tweet_ids: [deleted] })],
         )
@@ -194,10 +191,8 @@ describe("metrics_collector (local DB)", () => {
       return (
         await c.query<{ id: string }>(
           `insert into drafts
-             (x_account_id, pattern, thread, initial_thread, status, tweet_ids, tweet_metrics,
-              posted_at, next_metrics_at)
-           values ($1,'p1','[]'::jsonb,'[]'::jsonb,'posted',$2::jsonb,$3::jsonb,
-                   now() - ($4 || ' days')::interval, now() - ($5 || ' minutes')::interval)
+             (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids, tweet_metrics, posted_at, next_metrics_at)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'posted', $2::jsonb, $3::jsonb, now() - ($4 || ' days')::interval, now() - ($5 || ' minutes')::interval)
            returning id`,
           [xid, JSON.stringify(tweetIds), JSON.stringify(metrics), String(opts.postedDaysAgo), String(opts.nextDueDaysAgo * 1440)],
         )

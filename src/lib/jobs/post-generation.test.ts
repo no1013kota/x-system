@@ -15,7 +15,7 @@ import { executePostGeneration, type PostGenerationDeps } from "./post-generatio
 
 type Row = Record<string, unknown>;
 
-const LOAD_JOB = /select gj\.pattern, gj\.pattern_id, gj\.pattern_spec/;
+const LOAD_JOB = /select gj\.pattern_id, gj\.pattern_spec/;
 const EXISTING = /select id from drafts where source_job_id/;
 const RECENT = /select thread from drafts/;
 const TEMPLATES = /from prompt_templates/;
@@ -92,8 +92,7 @@ function patternSpec(over: Record<string, unknown> = {}) {
 }
 
 function jobRow(imageEnabled: boolean) {
-  return {
-    pattern: "p2",
+return {
     pattern_id: "pat-p2",
     pattern_spec: patternSpec(),
     trigger: "manual",
@@ -175,8 +174,7 @@ describe("executePostGeneration P-5 feature flag off", () => {
       if (LOAD_JOB.test(sql)) {
         return [
           {
-            ...jobRow(false),
-            pattern: "p5",
+          ...jobRow(false),
             pattern_id: "pat-p5",
             // 引用ポスト（引用URLが必須）＝ flag OFF の間は実行前に canceled にする。
             pattern_spec: patternSpec({

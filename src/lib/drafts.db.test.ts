@@ -77,8 +77,8 @@ describe("drafts (local DB)", () => {
     ]);
     const row = (
       await c.query<{ id: string; updated_at: string }>(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, status, tweet_ids)
-         values ($1,$2,$3::jsonb,$3::jsonb,$4,$5::jsonb)
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = $2), $3::jsonb, $3::jsonb, $4, $5::jsonb)
          returning id, updated_at::text as updated_at`,
         [xid, opts.pattern ?? "p1", thread, opts.status ?? "draft", JSON.stringify(opts.tweetIds ?? [])],
       )

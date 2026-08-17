@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.39 |
+| バージョン | v1.40 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -36,7 +36,6 @@
 | `job_trigger` | `manual`, `news`, `schedule`, `system` |
 | `job_status` | `queued`, `running`, `succeeded`, `failed`, `canceled` |
 | `progress_stage` | `validating`, `research`, `writing`, `image`, `posting`, `merging` |
-| `post_pattern` | `p1`, `p2`, `p3`, `p4`, `p5`, `p6` |
 | `draft_status` | `draft`, `posting`, `posted`, `discarded`, `failed` |
 | `posted_mode` | `auto`, `manual` |
 | `schedule_mode` | `draft`, `auto` |
@@ -163,7 +162,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.5 `prompt_templates`
 
-**画像プロンプト（`kind='image'`）専用の表**（T-M8-129 U2）。投稿の型プロンプトは §3.21 `post_patterns.prompt` が正本になった——利用者が型を追加できるようになると固定の`kind`では表せないため。`kind`列は`p1`〜`p6`も受けられる形のまま残っているが（撤去は U5）、**行は作られない**。
+**画像プロンプト（`kind='image'`）専用の表**（T-M8-129 U2）。投稿の型プロンプトは §3.21 `post_patterns.prompt` が正本になった——利用者が型を追加できるようになると固定の`kind`では表せないため。`kind` の CHECK は `p1`〜`p6` も受けられる形のまま残っているが、**行は作られない**（enum `post_pattern` は U5 で撤去した）。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -236,7 +235,6 @@ RLS: 認証済みユーザーselect可。writeはservice roleのみ。
 | `scheduled_for` | `timestamptz` | null | schedule slotの予定時刻 |
 | `schedule_run_key` | `text` | unique null | slot定時実行の冪等key |
 | `request_key` | `text` | unique null | ユーザー操作・子job作成の冪等key |
-| `pattern` | `post_pattern` | null | 投稿生成時 |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使ったパターン。パターンが削除されるとnullになる（履歴は`pattern_spec`で残る） |
 | `pattern_spec` | `jsonb` | nullable | **enqueue時点のパターン設定のsnapshot**（名前・プロンプト・上限ポスト数・Web検索方針など）。実行中にパターンを編集・削除されても走り切れるようにするため凍結する。**`kind='post_generation'`では必須**（CHECK・`not valid`で追加したため過去の行は対象外）。生成の振る舞い（プロンプト・ポスト数上限・Web検索回数・出典の必須・ニュースダイジェストの有無）はすべてこのsnapshotから決まる |
 | `input` | `jsonb` | not null default `{}` | kind別入力 |
@@ -269,7 +267,6 @@ RLS: 本人select可。writeはServer only。
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | **nullable**（U5で撤去） | 旧enum。表示は`pattern_name`、検証は`max_posts`/`max_posts_edit`。自作パターンでは`null` |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 生成に使ったパターン。**削除されるとnullになる** |
 | `pattern_name` | `text` | not null | **生成時のパターン名のsnapshot**。パターンを削除しても履歴の画面に内部ID（`p1`）ではなく名前が出るようにする |
 | `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。生成本文の件数はこの値で収める（後からパターンを編集しても過去の下書きの判定が変わらない） |
@@ -307,7 +304,6 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | **nullable**（U5で撤去） | 旧enum。使うパターンは`pattern_id`。自作パターンでは旧enumで表せないため`null` |
 | `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使うパターン。**パターンを削除すると`null`になり、同時に`enabled=false`へ落ちる**（曜日・時刻・テーマ・追加指示はそのまま残るので、パターンを選び直すだけで再開できる） |
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
@@ -558,7 +554,6 @@ RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期�
 | `replies` | `integer` | nullable | 返信 |
 | `has_image` | `boolean` | not null default false | 画像等の添付の有無 |
 | `has_url` | `boolean` | not null default false | 本文URLの有無 |
-| `pattern` | `text` | nullable | 本サービス経由の投稿の型（drafts.tweet_ids突合で取得時に付与。外部投稿はnull。一度付いたら保持） |
 | `pattern_name` | `text` | nullable | 同・**パターン名**。分析結果を画面と改善提案に出すとき内部ID（`p1`）ではなく名前を使う |
 | `theme` | `text` | nullable | 同・テーマID |
 | `fetched_at` | `timestamptz` | not null default now() | 初回取得時刻 |

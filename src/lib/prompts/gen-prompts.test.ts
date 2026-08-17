@@ -40,9 +40,10 @@ describe("GEN prompt constants", () => {
     expect(PT_SUGGEST).toContain('"good_posts"');
     expect(PT_SUGGEST).toContain('"advice"');
     expect(PT_SUGGEST).toContain('"prompt"');
-    // p5（引用）はfeature flag停止中のため選択肢に載せない。
-    expect(PT_SUGGEST).toContain("p1|p2|p3|p4|p6");
-    expect(PT_SUGGEST).not.toContain("p5");
+  // 型の選択肢は**そのアカウントのパターン名**を差し込む（T-M8-129 U5）。
+    // 固定の内部ID（`p1`〜`p6`）を書かないことで、利用者が作った型も推奨できる。
+    expect(PT_SUGGEST).toContain("{{patterns}}");
+    expect(PT_SUGGEST).not.toMatch(/(^|[^0-9A-Za-z_])p[1-6](?![0-9A-Za-z_])/);
   });
 
   it("LRN prompts (PT-L1〜L3) declare their JSON output contracts (§6.11〜6.13)", () => {

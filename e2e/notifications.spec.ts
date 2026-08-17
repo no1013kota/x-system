@@ -142,8 +142,8 @@ test("通知が指す下書きが別のタブへ移っていたら、行き先�
 }) => {
   const account = await accounts.create("notif-moved");
   const [draft] = await query<{ id: string }>(
-    `insert into drafts (x_account_id, pattern, status, thread, initial_thread, tweet_ids)
-     values ($1, 'p2', 'posted', $2::jsonb, $2::jsonb, '["9100000000000001"]'::jsonb)
+    `insert into drafts (x_account_id, pattern_id, status, thread, initial_thread, tweet_ids)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), 'posted', $2::jsonb, $2::jsonb, '["9100000000000001"]'::jsonb)
      returning id`,
     [
       account.xAccountId,

@@ -154,8 +154,8 @@ describe("post_patterns（ローカルDB）", () => {
 
       // 旧 `pattern` だけでも fillトリガが spec を作るので通る（移行中の経路）。
       const { rows } = await getPool().query<{ spec: unknown }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, request_key)
-         values ($1,'post_generation','schedule','p1','queued',$2) returning pattern_spec as spec`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, request_key)
+         values ($1, 'post_generation', 'schedule', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued', $2) returning pattern_spec as spec`,
         [xid, `pp-${randomUUID()}`],
       );
       expect(parsePatternSpec(rows[0].spec)?.seedKey).toBe("p1");
@@ -180,8 +180,8 @@ describe("post_patterns（ローカルDB）", () => {
       const [draft] = (
         await getPool().query<{ id: string }>(
           `insert into drafts
-             (x_account_id, pattern, pattern_id, pattern_name, max_posts, status, thread, initial_thread)
-           values ($1,'p1',$2,$3,4,'posted',$4::jsonb,$4::jsonb) returning id`,
+             (x_account_id, pattern_id, pattern_name, max_posts, status, thread, initial_thread)
+           values ($1, $2, $3, 4, 'posted', $4::jsonb, $4::jsonb) returning id`,
           [xid, pattern.id, pattern.name, thread],
         )
       ).rows;
@@ -189,8 +189,8 @@ describe("post_patterns（ローカルDB）", () => {
       const [slot] = (
         await getPool().query<{ id: string }>(
           `insert into schedule_slots
-             (x_account_id, pattern, pattern_id, weekdays, time_jst, theme, mode, enabled)
-           values ($1,'p1',$2,'{1}','09:00','ai','auto',true) returning id`,
+             (x_account_id, pattern_id, weekdays, time_jst, theme, mode, enabled)
+           values ($1, $2, '{1}', '09:00', 'ai', 'auto', true) returning id`,
           [xid, pattern.id],
         )
       ).rows;
@@ -199,8 +199,8 @@ describe("post_patterns（ローカルDB）", () => {
       const [job] = (
         await getPool().query<{ id: string }>(
           `insert into generation_jobs
-             (x_account_id, kind, trigger, pattern, pattern_id, pattern_spec, status, request_key)
-           values ($1,'post_generation','manual','p1',$2, pattern_spec_of($2), 'running', $3)
+             (x_account_id, kind, trigger, pattern_id, pattern_spec, status, request_key)
+           values ($1, 'post_generation', 'manual', $2, pattern_spec_of($2), 'running', $3)
            returning id`,
           [xid, pattern.id, `pp-${randomUUID()}`],
         )
@@ -286,8 +286,8 @@ describe("post_patterns（ローカルDB）", () => {
       await expect(
         getPool().query(
           `insert into schedule_slots
-             (x_account_id, pattern, pattern_id, weekdays, time_jst, theme, mode, enabled)
-           values ($1,'p1',$2,'{2}','10:00','ai','auto',true)`,
+             (x_account_id, pattern_id, weekdays, time_jst, theme, mode, enabled)
+           values ($1, $2, '{2}', '10:00', 'ai', 'auto', true)`,
           [a.xid, foreign.id],
         ),
         "テナントを越えた参照は外部キーで拒否される",
@@ -312,8 +312,8 @@ describe("post_patterns（ローカルDB）", () => {
       await expect(
         getPool().query(
           `insert into schedule_slots
-             (x_account_id, pattern, pattern_id, weekdays, time_jst, theme, mode, enabled)
-           values ($1,'p1',$2,'{3}','11:00','ai','auto',true)`,
+             (x_account_id, pattern_id, weekdays, time_jst, theme, mode, enabled)
+           values ($1, $2, '{3}', '11:00', 'ai', 'auto', true)`,
           [xid, quote.id],
         ),
         "引用対象URLを毎回指定する必要があるので予約できない",
@@ -331,8 +331,8 @@ describe("post_patterns（ローカルDB）", () => {
       const [slot] = (
         await getPool().query<{ id: string }>(
           `insert into schedule_slots
-             (x_account_id, pattern, weekdays, time_jst, theme, mode, enabled)
-           values ($1,'p1','{4}','12:00','ai','auto',true) returning id`,
+             (x_account_id, pattern_id, weekdays, time_jst, theme, mode, enabled)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{4}', '12:00', 'ai', 'auto', true) returning id`,
           [xid],
         )
       ).rows;

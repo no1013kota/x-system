@@ -19,8 +19,8 @@ import { alertIn, expect, signIn, test } from "./fixtures/test";
 async function seedRunningJob(xAccountId: string): Promise<string> {
   const [row] = await query<{ id: string }>(
     `insert into generation_jobs
-       (x_account_id, kind, trigger, pattern, status, progress_stage, attempt, started_at, request_key)
-     values ($1, 'post_generation', 'manual', 'p3', 'running', 'writing', 1, now(), $2)
+       (x_account_id, kind, trigger, pattern_id, status, progress_stage, attempt, started_at, request_key)
+     values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), 'running', 'writing', 1, now(), $2)
      returning id`,
     [xAccountId, `e2e-${randomUUID()}`],
   );

@@ -36,9 +36,9 @@ async function seedPostedDraft(
   const thread = [{ local_id: "p1", text: body, weighted_length: body.length, sources: [], warnings: [] }];
   const [row] = await query<{ id: string }>(
     `insert into drafts
-       (x_account_id, pattern, thread, initial_thread, status, tweet_ids,
+       (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids,
         posted_mode, posted_at, tweet_metrics)
-     values ($1, 'p3', $2::jsonb, $2::jsonb, 'posted', jsonb_build_array($3::text),
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), $2::jsonb, $2::jsonb, 'posted', jsonb_build_array($3::text),
              'manual', now() - make_interval(days => $4),
              jsonb_build_object($3::text, jsonb_build_object('checkpoints', $5::jsonb)))
      returning id`,

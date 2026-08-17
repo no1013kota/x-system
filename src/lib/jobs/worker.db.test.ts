@@ -75,8 +75,8 @@ describe("worker leaseJob / runJob", () => {
     // `post_generation` はパターンを必須にする（T-M8-129 U2）。実運用の enqueue も必ず持つ。
     const kind = opts.kind ?? "post_generation";
     const { rows } = await client.query<{ id: string }>(
-      `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, scheduled_for)
-       values ($1, $2, $3, $4, $5, $6) returning id`,
+      `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, scheduled_for)
+       values ($1, $2, $3, (select id from post_patterns where x_account_id = $1 and seed_key = $4), $5, $6) returning id`,
       [
         xid,
         kind,

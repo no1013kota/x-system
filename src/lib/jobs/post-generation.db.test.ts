@@ -126,8 +126,8 @@ describe("executePostGeneration (local DB)", () => {
     ).rows[0].id;
     const jobId = (
       await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern, input, status)
-         values ($1,'post_generation','manual',$2,$3::jsonb,'running')
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, input, status)
+         values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = $2), $3::jsonb, 'running')
          returning id`,
         [xid, opts.pattern ?? "p1", JSON.stringify(opts.input ?? {})],
       )
@@ -151,10 +151,11 @@ describe("executePostGeneration (local DB)", () => {
         await db.query<{
           thread: Array<{ text: string; weighted_length: number }>;
           initial_thread: unknown;
-          pattern: string;
-        }>(`select thread, initial_thread, pattern from drafts where id = $1`, [res.draftId])
+        pattern_name: string;
+        }>(`select thread, initial_thread, pattern_name from drafts where id = $1`, [res.draftId])
       ).rows[0];
-      expect(draft.pattern).toBe("p1");
+      // 履歴の表示名（内部IDは残さない・T-M8-129 U5）。
+      expect(draft.pattern_name).toBe("ニュース解説");
       expect(draft.thread).toHaveLength(2);
       expect(draft.thread[0].text).toBe("最初の投稿");
       expect(draft.thread[0].weighted_length).toBeGreaterThan(0);
@@ -297,8 +298,8 @@ describe("executePostGeneration (local DB)", () => {
     try {
       const sourceId = (
         await db.query<{ id: string }>(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-           values ($1,'p1','[{"text":"元"}]'::jsonb,'[{"text":"元"}]'::jsonb,'draft') returning id`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[{"text":"元"}]'::jsonb, '[{"text":"元"}]'::jsonb, 'draft') returning id`,
           [xid],
         )
       ).rows[0].id;

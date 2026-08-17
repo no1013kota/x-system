@@ -47,8 +47,8 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   // 良かった投稿の実体（本文・数値）。画面に出るので保存済みタイムラインから引ける必要がある。
   await query(
     `insert into x_timeline_posts
-       (x_account_id, tweet_id, text, posted_at, impressions, likes, reposts, replies, has_image, pattern, theme)
-     values ($1, '9000000000000001', $2, now() - interval '2 days', 3200, 45, 12, 7, true, 'p3', 'ai')`,
+       (x_account_id, tweet_id, text, posted_at, impressions, likes, reposts, replies, has_image, pattern_name, theme)
+     values ($1, '9000000000000001', $2, now() - interval '2 days', 3200, 45, 12, 7, true, 'ノウハウ・ハウツー', 'ai')`,
     [account.xAccountId, "E2Eの良かった投稿の本文。手順を数字で示した。"],
   );
 

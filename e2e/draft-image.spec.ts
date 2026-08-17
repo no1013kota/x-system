@@ -52,8 +52,8 @@ async function seedDraftWithImage(account: {
     },
   ];
   await query(
-    `insert into drafts (id, x_account_id, pattern, thread, initial_thread, status, images)
-     values ($1, $2, 'p2', $3::jsonb, $3::jsonb, 'draft', $4::jsonb)`,
+    `insert into drafts (id, x_account_id, pattern_id, thread, initial_thread, status, images)
+     values ($1, $2, (select id from post_patterns where x_account_id = $2 and seed_key = 'p2'), $3::jsonb, $3::jsonb, 'draft', $4::jsonb)`,
     [draftId, account.xAccountId, JSON.stringify(thread), JSON.stringify(images)],
   );
   return { draftId, storagePath };
@@ -136,8 +136,8 @@ test("画像生成に失敗した下書きは「画像なし」と分かる形�
     { local_id: randomUUID(), post_local_id: "p1", status: "failed", storage_path: "" },
   ];
   const [draft] = await query<{ id: string }>(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status, images)
-     values ($1, 'p2', $2::jsonb, $2::jsonb, 'draft', $3::jsonb) returning id`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, images)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), $2::jsonb, $2::jsonb, 'draft', $3::jsonb) returning id`,
     [account.xAccountId, JSON.stringify(thread), JSON.stringify(images)],
   );
 

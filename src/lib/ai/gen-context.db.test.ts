@@ -73,9 +73,8 @@ describe("gen-context DB sources (local DB)", () => {
   ): Promise<void> {
     const thread = JSON.stringify([{ text: opts.text }]);
     await c.query(
-      `insert into drafts (x_account_id, pattern, thread, initial_thread, status, posted_at)
-       values ($1,'p1',$2::jsonb,$2::jsonb,$3,
-               case when $4::int is null then null else now() - ($4 || ' minutes')::interval end)`,
+      `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, posted_at)
+       values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, $3, case when $4::int is null then null else now() - ($4 || ' minutes')::interval end)`,
       [xid, thread, opts.status, opts.postedAgoMin ?? null],
     );
   }

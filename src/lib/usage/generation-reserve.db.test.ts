@@ -72,8 +72,8 @@ describe("reserveUsage / refundUsage (db)", () => {
   async function makeJob(xid: string): Promise<string> {
     return withTransaction(async (c) => {
       const { rows } = await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern, status)
-         values ($1, 'post_generation', 'manual', 'p1', 'queued') returning id`,
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status)
+         values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued') returning id`,
         [xid],
       );
       return rows[0].id;

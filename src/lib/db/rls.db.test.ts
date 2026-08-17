@@ -88,8 +88,8 @@ describe("RLS policies & ownership trigger", () => {
       const a = await makeUser(c);
       const b = await makeUser(c);
       await c.query(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread)
-         values ($1, 'p1', '[]'::jsonb, '[]'::jsonb)`,
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb)`,
         [b.xid],
       );
 
@@ -175,8 +175,8 @@ describe("RLS policies & ownership trigger", () => {
       // authenticated has no INSERT grant/policy → denied
       await expectViolation(c, () =>
         c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread)
-           values ($1, 'p1', '[]'::jsonb, '[]'::jsonb)`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb)`,
           [a.xid],
         ),
       );

@@ -15,8 +15,8 @@ import { draftActionState } from "./draft-actions";
 function draft(over: Partial<DraftView> = {}): DraftView {
   return {
     id: "d1",
-    pattern: "p1",
-    pattern_name: "ニュース解説",
+  pattern_name: "ニュース解説",
+    requires_quote_url: false,
     max_posts_edit: 6,
     status: "draft",
     thread: [{ local_id: "p1", text: "本文", weighted_length: 6, sources: [], warnings: [] }],
@@ -254,17 +254,17 @@ describe("draftActionState", () => {
   describe("P-5（引用ポスト）の機能フラグ", () => {
     it("OFFのあいだ P-5 は閲覧のみ", () => {
       expect(
-        draftActionState(draft({ pattern: "p5" }), { quotePostEnabled: false }).quoteDisabled,
+        draftActionState(draft({ requires_quote_url: true }), { quotePostEnabled: false }).quoteDisabled,
       ).toBe(true);
     });
 
     it("ONなら通常どおり操作できる", () => {
-      expect(draftActionState(draft({ pattern: "p5" }), enabled).quoteDisabled).toBe(false);
+      expect(draftActionState(draft({ requires_quote_url: true }), enabled).quoteDisabled).toBe(false);
     });
 
     it("他パターンはフラグの影響を受けない", () => {
       expect(
-        draftActionState(draft({ pattern: "p1" }), { quotePostEnabled: false }).quoteDisabled,
+        draftActionState(draft({ requires_quote_url: false }), { quotePostEnabled: false }).quoteDisabled,
       ).toBe(false);
     });
   });

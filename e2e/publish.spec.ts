@@ -19,8 +19,8 @@ const THREAD = [
 test("下書きを確認ダイアログ経由で投稿すると履歴に移る", async ({ accounts, page }) => {
   const account = await accounts.create("publish");
   const [draft] = await query<{ id: string }>(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-     values ($1, 'p3', $2::jsonb, $2::jsonb, 'draft') returning id`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), $2::jsonb, $2::jsonb, 'draft') returning id`,
     [account.xAccountId, JSON.stringify(THREAD)],
   );
 
@@ -82,8 +82,8 @@ test("Xへ出さずに止めた下書きは理由が見えて、そのまま編�
   const marker = `長すぎる下書き ${Date.now().toString(36)}`;
   const overLength = "あ".repeat(150);
   await query(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status, last_post_error)
-     values ($1,'p1',$2::jsonb,$2::jsonb,'draft',$3::jsonb)`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, last_post_error)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft', $3::jsonb)`,
     [
       account.xAccountId,
       JSON.stringify([
@@ -138,8 +138,8 @@ test("止まらない警告は「自動投稿は続きます」と出て、英�
   const account = await accounts.create("warn-nonblocking", { personaReady: true });
   const marker = `長めの下書き ${Date.now().toString(36)}`;
   await query(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft')`,
     [
       account.xAccountId,
       JSON.stringify([

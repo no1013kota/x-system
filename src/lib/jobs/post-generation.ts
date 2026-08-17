@@ -155,7 +155,7 @@ export function composeUserInput(input: JobRow["input"]): string {
 
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.pattern, gj.pattern_id, gj.pattern_spec, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
+    `select gj.pattern_id, gj.pattern_spec, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
             xa.user_id, xa.base_md, xa.settings, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
@@ -525,11 +525,10 @@ export async function executePostGeneration(
   // --- draft作成（thread=initial_thread同値・weighted_length・警告・ニュース起点はsource_news_item_id）---
   const threadJson = JSON.stringify(finalize.thread);
   const inserted = await db.query<{ id: string }>(
-    // **パターンの写しを明示的に入れる**（U2）。名前・上限・引用必須をここで凍結するので、
+    // **パターンの写しを明示的に入れる**（U2/U3）。名前・上限・引用必須をここで凍結するので、
     // 後からパターンを編集・削除しても履歴の表示と本文の再検証が変わらない。
-    // 旧 `pattern` 列は U5 で撤去するまで並べて書く（旧経路の読み手がまだいる）。
     `insert into drafts
-       (x_account_id, pattern, pattern_id, pattern_name, max_posts, requires_quote_url,
+       (x_account_id, pattern_id, pattern_name, max_posts, max_posts_edit, requires_quote_url,
         thread, initial_thread, status, source_job_id,
         source_news_item_id, parent_draft_id)
      values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10)
@@ -537,10 +536,11 @@ export async function executePostGeneration(
      returning id`,
     [
       job.x_account_id,
-      job.pattern ?? spec.seedKey,
       job.pattern_id,
       spec.name,
       spec.maxPosts,
+      // 編集上限は実際に作ったポスト数を下回らせない（作った直後に編集できない下書きを作らない）。
+      Math.max(spec.maxPostsEdit, finalize.thread.length),
       spec.requiresQuoteUrl,
       threadJson,
       jobId,

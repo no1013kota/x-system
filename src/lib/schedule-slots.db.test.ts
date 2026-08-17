@@ -340,8 +340,8 @@ describe("enableScheduleSlot (local DB)", () => {
       await expect(
         withTransaction((c) =>
           c.query(
-            `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled, theme)
-             values ($1, 'p1', '{1}', '09:00', 'draft', false, true, 'bogus')`,
+            `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, image_enabled, enabled, theme)
+             values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1}', '09:00', 'draft', false, true, 'bogus')`,
             [xAccountId],
           ),
         ),
