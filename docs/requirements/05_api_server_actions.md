@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.34 |
-| 更新日 | 2026-08-15 |
+| バージョン | v1.35 |
+| 更新日 | 2026-08-18 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -69,7 +69,7 @@
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
 | GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
-| GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
+| GET | `/auth/confirm` | Supabase `token_hash`, `type=recovery`（signupは6桁コード方式へ移行・T-M8-121。`type=signup` も後方互換で受ける）, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
 | GET | `/api/x/oauth/start` | user | X OAuth開始。`?account=<x_account_id>`（任意）は**再連携の対象**を束縛する（本人所有のみ。未知IDは`not_found`） |
 | GET | `/api/x/oauth/callback` | OAuth state | X OAuth callback |
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
@@ -95,13 +95,14 @@
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
+| `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——到達できるのは直前に登録した本人だけで、登録時にTurnstileを通しており、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
 | `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app` |
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 | `acceptLegalUpdates` | 現行version、文書別の明示checkbox | redirect | 本人profileを再読込し、古い文書のversion／同意時刻だけ更新。現行文書は上書きしない |
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通。**確認自体はコード方式**なのでリンクは使わない）。成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
 
 ### 4.1 アカウント・設定
 

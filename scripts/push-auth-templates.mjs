@@ -18,6 +18,9 @@
 // 書いてあったが**人の記憶に依存していたので忘れられた**。手順を1コマンドへ畳む。
 //
 // テンプレートの正本は `supabase/templates/*.html`（ローカルとリモートで同じものを使う）。
+//
+// 確認メールは**6桁コード**（`{{ .Token }}`）、再設定はリンク（`{{ .TokenHash }}`）。
+// どちらの目印が要るかは `TEMPLATES[].requires` が持つ。
 import { readFileSync } from "node:fs";
 
 /**
@@ -29,7 +32,13 @@ const TARGETS = {
   production: "https://exosai.net",
 };
 
-/** 反映する2種類。`subject` は config.toml と同じ文言にそろえる。 */
+/**
+ * 反映する2種類。`subject` は config.toml と同じ文言にそろえる。
+ *
+ * `requires` は「これが本文に無ければ、開いても／入力しても必ず失敗する」目印。
+ * 確認は**6桁コード**方式（`{{ .Token }}`）にしたので `TokenHash` は不要（T-M8-121）。
+ * 再設定はリンク方式のまま（`token_hash` で `/auth/confirm` へ入る）。
+ */
 const TEMPLATES = [
   {
     label: "Confirm signup",
@@ -37,6 +46,9 @@ const TEMPLATES = [
     subjectKey: "mailer_subjects_confirmation",
     contentKey: "mailer_templates_confirmation_content",
     subject: "Exos AIのメールアドレス確認",
+    requires: "Token",
+    brokenHint:
+      "確認コード（{{ .Token }}）が本文にありません。このままでは登録画面に入力するコードが届きません",
   },
   {
     label: "Reset password",
@@ -44,6 +56,9 @@ const TEMPLATES = [
     subjectKey: "mailer_subjects_recovery",
     contentKey: "mailer_templates_recovery_content",
     subject: "Exos AIのパスワード再設定",
+    requires: "TokenHash",
+    brokenHint:
+      "token_hash がリンクに付いていません（このままでは必ず「リンクを確認できませんでした」になります）",
   },
 ];
 
@@ -127,8 +142,8 @@ let broken = 0;
 for (const t of TEMPLATES) {
   const want = readFileSync(t.file, "utf8").trim();
   const have = (current[t.contentKey] ?? "").trim();
-  // **これが本質的な検査**: token_hash が無いリンクは、開いても必ずエラーになる。
-  const usable = have.includes("TokenHash");
+  // **これが本質的な検査**: 目印が無い本文は、利用者が何をしても登録・再設定を完了できない。
+  const usable = have.includes(t.requires);
   if (!usable) broken += 1;
 
   if (have === want && current[t.subjectKey] === t.subject) {
@@ -137,7 +152,7 @@ for (const t of TEMPLATES) {
   }
   console.log(
     `${usable ? "⚠️ " : "❌"} ${t.label}\n    ${
-      have === "" ? "未設定（Supabaseの既定テンプレート）" : usable ? "内容が正本と違います" : "token_hash がリンクに付いていません（このままでは必ず「リンクを確認できませんでした」になります）"
+      have === "" ? "未設定（Supabaseの既定テンプレート）" : usable ? "内容が正本と違います" : t.brokenHint
     }`,
   );
   patch[t.contentKey] = want;
@@ -182,7 +197,7 @@ await fetch(api, { method: "PATCH", headers, body: JSON.stringify(patch) }).then
 // 反映後に読み直して確認する（PATCHが通っても内容が入っていないことがある）。
 const after = await fetch(api, { headers }).then((r) => r.json());
 for (const t of TEMPLATES) {
-  const ok = (after[t.contentKey] ?? "").includes("TokenHash");
+  const ok = (after[t.contentKey] ?? "").includes(t.requires);
   console.log(`${ok ? "✅" : "❌"} ${t.label}: ${ok ? "反映を確認しました" : "反映されていません"}`);
   if (!ok) process.exitCode = 1;
 }

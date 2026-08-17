@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
+import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
@@ -27,7 +28,14 @@ import type { AuthFormState } from "./auth-state";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 const SIGNUP_ACCEPTED_MESSAGE =
-  "確認メールを送信しました。メール内のリンクから登録を完了してください。";
+  "確認コードをメールで送信しました。届いた6桁の数字を入力してください。";
+/**
+ * コードが違う・期限切れのときの文言（T-M8-121）。
+ * **どちらか一方に絞らない**——Supabaseはどちらも同じ `invalid` 系で返すため、
+ * 断定すると片方の利用者に嘘を言うことになる。次にやることだけを明確にする。
+ */
+const CODE_INVALID_MESSAGE =
+  "コードが確認できませんでした。入力を確認するか、コードを再送してください（発行から1時間で期限切れになります）。";
 const SIGNUP_ERROR_MESSAGE =
   "登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。";
 const RESEND_ACCEPTED_MESSAGE =
@@ -117,6 +125,56 @@ export async function signUp(
 }
 
 /** Resends signup confirmation without revealing whether the email exists. */
+/**
+ * メールで届いた6桁コードを検証して、登録を完了する（T-M8-121）。
+ *
+ * 成功すると Supabase がセッションを張るので、そのまま `/plans` へ進める（**確認のためだけに
+ * もう一度ログインさせない**）。`verifyOtp` はコードの期限・使い切りをSupabase側で管理する。
+ *
+ * captchaはここでは要求しない。**このフォームに到達できるのは直前に登録した本人だけ**で、
+ * すでに登録時にTurnstileを通している。ここで再度求めると、コードを打つだけの画面で
+ * 人間確認が失敗して詰む経路を増やす（T-M8-87の教訓）。
+ */
+export async function verifySignUpCode(
+  _previousState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const emailResult = parseUserInput(emailSchema, formData.get("email"));
+  if (!emailResult.success) {
+    return { status: "error", message: "メールアドレスを確認してください。" };
+  }
+  const email = emailResult.data;
+  const code = normalizeEmailCode(String(formData.get("code") ?? ""));
+  if (code.length !== EMAIL_CODE_LENGTH) {
+    return {
+      status: "error",
+      message: `${EMAIL_CODE_LENGTH}桁の数字を入力してください。`,
+      email,
+    };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: "signup",
+    });
+    if (error || !data.user) {
+      return { status: "error", message: CODE_INVALID_MESSAGE, email };
+    }
+    // profile行が無いまま進むと、同意の記録が無くて再同意を求める経路へ落ちる（T-M8-73）。
+    // 登録時のtriggerで作られているはずだが、無ければここで作る（既存値は触らない）。
+    await ensureUserProfileWithClient(data.user, createSupabaseAdminClient());
+  } catch (error) {
+    recordUnexpectedError(error, { at: "verify-signup-code" });
+    return { status: "error", message: CODE_INVALID_MESSAGE, email };
+  }
+
+  // 確認できたことを着地側で言う（T-M8-58。無言で料金表に変わると成功したか分からない）。
+  redirect("/plans?confirmed=1");
+}
+
 export async function resendSignUpConfirmation(
   _previousState: AuthFormState,
   formData: FormData,

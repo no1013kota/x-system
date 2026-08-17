@@ -125,25 +125,27 @@ export function judgeAuthUrls(input: {
   const site = input.siteUrl ?? "(未設定)";
 
   /**
-   * **リンクに `token_hash` が付いているか**（T-M8-120）。
+   * **確認メールに6桁コードが入っているか**（T-M8-120・T-M8-121）。
    *
    * `supabase/config.toml` のテンプレート指定はローカル専用で、リモートは既定
-   * （`{{ .ConfirmationURL }}`）のまま。アプリの `/auth/confirm` は `token_hash` を要求するため、
-   * URLの許可リストが正しくても**利用者は必ず「リンクを確認できませんでした」だけを見る**。
-   * 2026-08-02 と 2026-08-18 の2回これで新規登録が止まった。URLの検査だけでは見えない。
+   * （`{{ .ConfirmationURL }}`）のまま。確認は**コード方式**（`{{ .Token }}`）にしたので、
+   * 既定テンプレートには入力すべきコードがどこにも書かれていない。URLの許可リストが
+   * 正しくても**利用者は登録を完了できない**。2026-08-02 と 2026-08-18 の2回これで止まった。
+   * URLの検査だけでは原理的に見えないので、ここで本文まで見る。
    */
-  if (input.confirmationTemplate !== undefined && input.confirmationTemplate !== null) {
-    if (!input.confirmationTemplate.includes("TokenHash")) {
+  if (input.confirmationTemplate) {
+    if (!input.confirmationTemplate.includes("{{ .Token }}")) {
       return {
         name: AUTH_URL_CHECK_NAME,
         level: "error",
         detail:
-          "確認メールのリンクに token_hash が付いていません（Supabaseの既定テンプレートのままです）。" +
-          "**このままでは新規登録もパスワード再設定も完了できません**（リンクを開くとエラーになります）",
-        nextAction: input.smtpHost
-          ? "`npm run auth:templates -- --target production --apply` を実行してください"
-          : "`npm run auth:templates -- --target production --apply` を実行してください" +
-            "（カスタムSMTPが未設定だとテンプレートを変更できないため、同じコマンドが先にSMTPも設定します）",
+          "確認メールに6桁コード（{{ .Token }}）が入っていません（Supabaseの既定テンプレートのままです）。" +
+          "**このままでは新規登録を完了できません**（入力するコードが届きません）",
+        nextAction:
+          "`npm run auth:templates -- --target production --apply` を実行してください" +
+          (input.smtpHost
+            ? ""
+            : "（カスタムSMTPが未設定だとテンプレートを変更できないため、同じコマンドが先にSMTPも設定します）"),
       };
     }
   }

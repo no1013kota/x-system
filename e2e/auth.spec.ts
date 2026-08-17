@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { destroyUserByEmail, query } from "./fixtures/account";
-import { alertIn, confirmUrlFromMail, expect, signIn, test, waitForMail } from "./fixtures/test";
+import { alertIn, expect, signIn, signUpCodeFromMail, test, waitForMail } from "./fixtures/test";
 
 /**
  * A-1/A-2 サインアップ→メール確認→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
@@ -35,7 +35,7 @@ test("サインアップ→確認メール→ログインまで通り、未契�
       .not.toBe("");
     await page.getByRole("button", { name: "メールアドレスで登録" }).click();
 
-    await expect(page.getByRole("heading", { name: "メールをご確認ください" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
 
     // 確認前は未確認ユーザーとして存在し、同意バージョンが記録されている
     const [created] = await query<{ id: string; confirmed_at: string | null }>(
@@ -45,10 +45,16 @@ test("サインアップ→確認メール→ログインまで通り、未契�
     expect(created, "サインアップで利用者が作られること").toBeTruthy();
     expect(created.confirmed_at, "確認メールを開く前は未確認であること").toBeNull();
 
-    // 確認メールのリンクを踏むと確認済みになり、プラン選択へ進む
+    // 届いた6桁コードを入力すると確認済みになり、プラン選択へ進む（T-M8-121）。
     const mail = await waitForMail(email);
     expect(mail.Subject).toContain("確認");
-    await page.goto(await confirmUrlFromMail(mail.ID));
+    const code = await signUpCodeFromMail(mail.ID);
+    // 入力しきるまで送信できない（押しても何も起きないボタンを作らない）。
+    const submit = page.getByRole("button", { name: "登録を完了する" });
+    await expect(submit).toBeDisabled();
+    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
+    await expect(submit).toBeEnabled();
+    await submit.click();
     await expect(page).toHaveURL(/\/plans/);
 
     // **確認が済んだことを画面が言う**（T-M8-58）。以前は無言で料金表に変わるだけで、

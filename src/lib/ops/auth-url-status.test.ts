@@ -210,23 +210,23 @@ describe("確認メールのテンプレート", () => {
     uriAllowList: ["https://exosai.net/**"],
   };
 
-  it("token_hash が無ければ error にして、直すコマンドを出す", () => {
+  it("6桁コードが無ければ error にして、直すコマンドを出す", () => {
     const check = judgeAuthUrls({
       ...ok,
       confirmationTemplate: '<a href="{{ .ConfirmationURL }}">Confirm</a>',
       smtpHost: null,
     });
     expect(check.level).toBe("error");
-    expect(check.detail).toContain("token_hash");
+    expect(check.detail).toContain("6桁コード");
     expect(check.nextAction).toContain("npm run auth:templates");
     // SMTP未設定だと変更できないので、そのことにも触れる。
     expect(check.nextAction).toContain("SMTP");
   });
 
-  it("token_hash があれば、この観点では落とさない", () => {
+  it("6桁コードがあれば、この観点では落とさない", () => {
     const check = judgeAuthUrls({
       ...ok,
-      confirmationTemplate: '<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup">確認</a>',
+      confirmationTemplate: "<p>{{ .Token }}</p>",
       smtpHost: "smtp.gmail.com",
     });
     expect(check.level).toBe("ok");
@@ -244,6 +244,6 @@ describe("確認メールのテンプレート", () => {
       siteUrl: "https://other.example",
       uriAllowList: [],
     });
-    expect(check.detail).toContain("token_hash");
+    expect(check.detail).toContain("6桁コード");
   });
 });
