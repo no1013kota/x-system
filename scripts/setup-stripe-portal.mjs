@@ -72,7 +72,7 @@ export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_STANDARD_MONTHLY:
     "まずは1つのXアカウントを着実に運用。X APIキー・生成AIキーはご自身で用意（利用料は実費）。月間の利用上限なし。",
   STRIPE_PRICE_MD_MONTHLY:
-    "Xアカウント3つまで＋AIへの指示文（ベースmd・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+    "Xアカウント3つまで＋AIへの指示文（アカウント.md・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
   STRIPE_PRICE_PREMIUM_MONTHLY:
     "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: AIクレジット1000・通常投稿200・URL付き20。",
 };

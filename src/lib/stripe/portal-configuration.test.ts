@@ -154,6 +154,22 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
     );
   });
 
+  /**
+   * 改称・仕様変更に取り残されないようにする（T-M8-119）。
+   *
+   * 数字は上の検査が守るが、**呼び名は誰も見ていなかった**。2026-08-17時点で本番Stripeの
+   * mdプランの説明は「ベースmd」（T-M8-105で「アカウント.md」へ改称済み）、プレミアムの説明は
+   * 回数制の「文章生成100・画像20」（T-M8-109で金額制のAIクレジットへ移行済み）のままだった。
+   * Stripeの説明は**Checkoutとカスタマーポータルで利用者が読む**ので、古いと契約内容の誤認になる。
+   */
+  it("廃止した呼び名・旧仕様が説明に残っていない", () => {
+    for (const [key, text] of Object.entries(PRODUCT_DESCRIPTIONS)) {
+      for (const stale of ["ベースmd", "ベース.md", "発信設定", "文章生成", "画像生成枠", "生成枠"]) {
+        expect(text, `${key} に廃止した表現「${stale}」が残っている`).not.toContain(stale);
+      }
+    }
+  });
+
   // Markdown記法はStripeの画面では描画されず、そのまま文字として出る（T-M8-55と同型）。
   it("説明に * を含めない", () => {
     for (const text of Object.values(PRODUCT_DESCRIPTIONS)) {
