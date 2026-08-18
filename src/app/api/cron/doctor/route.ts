@@ -39,6 +39,15 @@ export async function GET(request: Request): Promise<Response> {
       configurationId: env.STRIPE_PORTAL_CONFIGURATION_ID,
       stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,
     },
+    // 画面の金額とStripeの請求額を突き合わせる（T-M8-141）。読み取りのみで費用は無い。
+    prices: {
+      priceIds: {
+        standard: env.STRIPE_PRICE_STANDARD_MONTHLY,
+        md: env.STRIPE_PRICE_MD_MONTHLY,
+        premium: env.STRIPE_PRICE_PREMIUM_MONTHLY,
+      },
+      stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,
+    },
   });
   // 対応が必要な問題があれば5xxで返し、監視や `doctor` が判定しやすいようにする。
   return Response.json(report, { status: report.level === "error" ? 500 : 200 });
