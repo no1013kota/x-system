@@ -580,9 +580,9 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
 | `max_posts` | `smallint` | not null default 4、1〜8 | **生成時**に作る総ポスト数の上限。**画面は「スレッド数」= この値 - 1 で見せる**（0＝メインポストのみ・T-M8-130）。スレッド全体の上限（8ポスト・§3.9）以内 |
 | `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(7, max_posts + 2)` |
-| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない |
+| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131） |
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
-| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | 出典URLを必須にする／入力にURLがあるときだけ必須にする／求めない |
+| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
 | `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
 | `asks_user_opinion` | `boolean` | not null default false | 利用者の意見・視点を入力として求めるか |
 | `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |

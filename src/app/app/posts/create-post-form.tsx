@@ -17,6 +17,7 @@ import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
+  threadCountLabel,
   type PatternOption,
 } from "@/lib/post/post-patterns-store";
 import {
@@ -35,6 +36,12 @@ import { updateBaseMdManualAction } from "@/app/actions/base-md";
 import { createPatternAction, updatePatternPromptAction } from "@/app/actions/post-patterns";
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
+
+/** 選択中パターンの設定を1行で言うための語（設定画面の選択肢と同じ言い方にする）。 */
+const POLICY_TEXT = {
+  web: { always: "毎回使う", with_url: "入力があるときだけ", never: "使わない" },
+  source: { always: "必ず付ける", with_url: "入力があるときだけ付ける", never: "付けない" },
+} as const;
 
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
 const PROMPT_MAX_CHARS = 8000;
@@ -538,6 +545,20 @@ function addPattern() {
           value={pattern}
         />
 
+      {/*
+          **選ぶと何が変わるかをその場に出す**（T-M8-131・運営者の指摘 2026-08-18）。
+          設定（スレッド数・Web検索・参考URL）は生成のたびにAIへの指示として渡るが、
+          画面に出ていないと「設定したのに効いていないのでは」と分からない。
+        */}
+        {selectedPattern ? (
+          <p className="mt-2 text-caption text-ink-3">
+            この型の設定: {threadCountLabel(selectedPattern.maxPosts)}／Web検索{" "}
+            {POLICY_TEXT.web[selectedPattern.webSearchPolicy]}／参考URLを{" "}
+            {POLICY_TEXT.source[selectedPattern.sourcePolicy]}
+            {selectedPattern.includeNewsDigest ? "／直近のニュースを渡す" : ""}
+          </p>
+        ) : null}
+
         {/* パターンの追加（T-M8-130）。設定画面と同じ入力欄を使う。 */}
         {templates ? (
           newPattern ? (
@@ -688,7 +709,13 @@ function addPattern() {
             placeholder="https://…"
             value={sourceUrl}
           />
-          <p className="mt-1 text-xs text-muted-foreground">空欄ならAIが題材を選んでリサーチします。</p>
+        {/*
+              **設定の「投稿に参考URLを付ける」とは別物**。ここは題材として渡すURLで、
+              あちらは生成した投稿に参考URLを添えるかどうか（T-M8-131）。
+            */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              AIがこのURLを読んで題材にします。空欄ならAIが自分で題材を探します。
+            </p>
         </div>
 
         {selectedPattern?.asksUserOpinion ? (

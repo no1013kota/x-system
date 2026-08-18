@@ -26,8 +26,8 @@ export type PatternPolicyValue = "always" | "with_url" | "never";
 
 const POLICY_OPTIONS: { value: PatternPolicyValue; webLabel: string; sourceLabel: string }[] = [
   { value: "always", webLabel: "毎回使う", sourceLabel: "必ず付ける" },
-  { value: "with_url", webLabel: "参考URLがあるときだけ", sourceLabel: "参考URLがあるときだけ" },
-  { value: "never", webLabel: "使わない", sourceLabel: "求めない" },
+  { value: "with_url", webLabel: "入力があるときだけ", sourceLabel: "入力があるときだけ" },
+  { value: "never", webLabel: "使わない", sourceLabel: "付けない" },
 ];
 
 /** 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。 */
@@ -190,7 +190,7 @@ export function PatternFields({
           </select>
         </label>
         <label className="block text-body">
-          <span className="block font-medium">Web検索</span>
+        <span className="block font-medium">Web検索を使う</span>
           <select
             className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2"
             id={`${idPrefix}-web-search`}
@@ -204,8 +204,9 @@ export function PatternFields({
             ))}
           </select>
         </label>
-        <label className="block text-body">
-          <span className="block font-medium">出典URL</span>
+      <label className="block text-body">
+          {/* 投稿作成画面の「参考にするURL（入力）」とは別物なので、**出力側だと分かる書き方**にする。 */}
+          <span className="block font-medium">投稿に参考URLを付ける</span>
           <select
             className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2"
             id={`${idPrefix}-source`}
@@ -220,6 +221,11 @@ export function PatternFields({
           </select>
         </label>
       </div>
+
+    <p className="text-caption text-ink-3">
+        スレッド数・Web検索・参考URLは、生成のたびにAIへの指示（<code>pattern_rules</code>）として
+        渡されます。スレッド数は生成後にも上限として適用されます。
+      </p>
 
       <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
         <legend className="mb-1 text-body font-medium">この型の入力</legend>

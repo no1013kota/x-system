@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
 import { SYSTEM_DEFAULT_TEMPLATES } from "../prompts/gen-prompts";
 import {
+  buildPatternRules,
   parsePatternSpec,
   patternPrompt,
   scheduledPostSlots,
@@ -243,5 +244,48 @@ describe("parsePatternSpec", () => {
     expect(parsePatternSpec({ ...valid, seed_key: "p9" })?.seedKey).toBeNull();
     // `image` は画像プロンプトの kind で、投稿の型ではない（DBのCHECKと同じ集合にする）。
     expect(parsePatternSpec({ ...valid, seed_key: "image" })?.seedKey).toBeNull();
+  });
+});
+
+/**
+ * T-M8-131。**設定がAIへ渡る文になっているか。**
+ *
+ * 以前は分量も参考URLの方針もAIに一言も伝えず、生成後に切り詰め・検証していた。
+ * 「設定したのに効いていない」に見える状態だったので、文の形を固定する。
+ */
+describe("buildPatternRules（設定をAIへ渡す文）", () => {
+  const rules = (seedKey: string, over: Partial<PatternSpec> = {}, ctx = {}) =>
+    buildPatternRules(spec(seedKey, over), {
+      hasInputUrl: false,
+      webSearchMaxUses: 4,
+      ...ctx,
+    });
+
+  it("スレッド数を明示する（0は単発と分かる書き方）", () => {
+    expect(rules("p2")).toContain("分量: メインポストのみ");
+    expect(rules("p2")).toContain("posts は1要素");
+    expect(rules("p1")).toContain("分量: メインポスト＋スレッド最大3");
+    expect(rules("p1")).toContain("合計4要素以内");
+  });
+
+  it("Web検索の実際の回数を書く（再試行で縮んだ値をそのまま渡す）", () => {
+    expect(rules("p1", {}, { webSearchMaxUses: 2 })).toContain("Web検索: 使う（最大2回）");
+    expect(rules("p1", {}, { webSearchMaxUses: null })).toContain("Web検索: 使わない");
+  });
+
+  it("URLが無くて検索しない場合は、その理由まで書く", () => {
+    const text = rules("p2", {}, { webSearchMaxUses: null, hasInputUrl: false });
+    expect(text).toContain("<input>に参考URLが無いため");
+  });
+
+  it("参考URLの方針を書く。**本文にURLを書かせない**ことも毎回伝える", () => {
+    expect(rules("p1")).toContain("参考URL: 内容の根拠になるURLを1つ以上 sources へ入れる");
+    expect(rules("p1")).toContain("本文にURLは書かない");
+    expect(rules("p5")).toContain("参考URL: 付けない");
+  });
+
+  it("「入力があるときだけ」はURLの有無で言うことが変わる", () => {
+    expect(rules("p3", {}, { hasInputUrl: true })).toContain("<input>のURLを含め");
+    expect(rules("p3", {}, { hasInputUrl: false })).toContain("無理に付けない");
   });
 });

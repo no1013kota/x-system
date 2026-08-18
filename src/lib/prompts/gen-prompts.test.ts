@@ -1,3 +1,4 @@
+import { GENERATION_MAX_POSTS } from "@/lib/post/thread-limits";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -115,14 +116,24 @@ describe("日本のXで不利にならない規約（T-M7-37）", () => {
     expect(SYS_GEN, "出典は sources へ入れる契約を明記する").toContain("sources 配列へ入れる");
   });
 
-  it("スレッドの長さが日本のXに合わせて短い", () => {
-    expect(SYSTEM_DEFAULT_TEMPLATES.p1).toContain("全体2〜4ポスト");
-    expect(SYSTEM_DEFAULT_TEMPLATES.p4).toContain("全体1〜2ポスト");
-    expect(SYSTEM_DEFAULT_TEMPLATES.p6).toContain("全体3〜5ポスト");
+it("スレッドの長さが日本のXに合わせて短い（分量は既定パターンの設定が持つ）", () => {
+    // T-M8-131 で分量の数字はプロンプト本文から外し、パターンの設定（`max_posts`）へ移した。
+    // 2か所に書くと、利用者がスレッド数を変えたとき本文だけ古い数字が残って食い違う。
+    // ここで守るのは「既定が短いこと」なので、設定側の値を見る。
+    expect(GENERATION_MAX_POSTS.p1).toBeLessThanOrEqual(4);
+    expect(GENERATION_MAX_POSTS.p4).toBeLessThanOrEqual(2);
+    expect(GENERATION_MAX_POSTS.p6).toBeLessThanOrEqual(5);
   });
 
-  it("P2は立場を明示し、P3は手順を3〜5個で完結させる", () => {
+  it("プロンプト本文に分量・検索回数の数字を書かない（設定と食い違わせない）", () => {
+    for (const kind of ["p1", "p2", "p3", "p4", "p5", "p6"] as const) {
+      const body = SYSTEM_DEFAULT_TEMPLATES[kind];
+      expect(body, `${kind} に「全体N〜Mポスト」が残っている`).not.toMatch(/全体\s*[0-9]/);
+      expect(body, `${kind} に「最大N回」が残っている`).not.toMatch(/最大\s*[0-9]+\s*回/);
+    }
+  });
+
+  it("P2は立場を明示する", () => {
     expect(SYSTEM_DEFAULT_TEMPLATES.p2).toContain("賛否が分かれ得る立場");
-    expect(SYSTEM_DEFAULT_TEMPLATES.p3).toContain("手順は3〜5個で完結");
   });
 });

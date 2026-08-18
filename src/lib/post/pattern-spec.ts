@@ -173,3 +173,53 @@ export function scheduledPostSlots(spec: PatternSpec): { normal: number; url: nu
     url,
   };
 }
+
+/**
+ * パターンの設定をプロンプトへ渡す文（T-M8-131・運営者の指摘 2026-08-18）。
+ *
+ * **設定が生成に効いていることを、AIに渡す文の形で見えるようにする。**
+ * それまでスレッド数は生成後の切り詰めだけ、参考URLの方針は生成後の検証だけで、
+ * **AIには一言も伝えていなかった**。指示しないまま切り詰めるので、
+ * 「締めが落ちた」「参考URLが無いと言われる」が起きやすい。
+ *
+ * 数字はここだけに書く。既定プロンプト本文からは分量・検索回数の数字を外した——
+ * 2か所に書くと、設定を変えたときに本文だけ古い数字が残って食い違う（T-M8-33 と同じ型）。
+ */
+export function buildPatternRules(
+  spec: PatternSpec,
+  ctx: { hasInputUrl: boolean; webSearchMaxUses: number | null },
+): string {
+  const lines: string[] = [];
+
+  lines.push(
+    spec.maxPosts <= 1
+      ? "分量: メインポストのみ（スレッドにしない。posts は1要素）"
+      : `分量: メインポスト＋スレッド最大${spec.maxPosts - 1}（posts は合計${spec.maxPosts}要素以内）`,
+  );
+
+  if (ctx.webSearchMaxUses === null) {
+    lines.push(
+      spec.webSearchPolicy === "with_url"
+        ? "Web検索: 使わない（<input>に参考URLが無いため）"
+        : "Web検索: 使わない",
+    );
+  } else {
+    lines.push(`Web検索: 使う（最大${ctx.webSearchMaxUses}回）`);
+  }
+
+  if (spec.sourcePolicy === "always") {
+    lines.push(
+      "参考URL: 内容の根拠になるURLを1つ以上 sources へ入れる（本文にURLは書かない）",
+    );
+  } else if (spec.sourcePolicy === "with_url") {
+    lines.push(
+      ctx.hasInputUrl
+        ? "参考URL: <input>のURLを含め、根拠になるURLを sources へ入れる（本文にURLは書かない）"
+        : "参考URL: 無理に付けない（sources は空でよい）",
+    );
+  } else {
+    lines.push("参考URL: 付けない（sources は空でよい）");
+  }
+
+  return lines.join("\n");
+}

@@ -5,6 +5,7 @@ import {
 import { PT_FIX } from "@/lib/prompts/gen-prompts";
 import { finalizeThread } from "@/lib/post/generation-validation";
 import {
+  buildPatternRules,
   parsePatternSpec,
   patternPrompt,
   sourceRequiredForSpec,
@@ -366,8 +367,16 @@ export async function executePostGeneration(
     ];
     newsDigest = await fetchNewsDigest(db, themesToNewsCategories(themeIds));
   }
+const hasInputUrl = Boolean(job.input.source_url);
+  const webSearch = webSearchForSpec(spec, hasInputUrl, job.attempt, reduceWebSearchMaxUses);
   const user = buildGenUser({
     pattern: resolvedPatternPrompt,
+    // 設定（分量・Web検索・参考URL）をAIへ明示する（T-M8-131）。
+    // Web検索の回数は再試行での縮退を反映した実際の値を渡す。
+    patternRules: buildPatternRules(spec, {
+      hasInputUrl,
+      webSearchMaxUses: webSearch?.maxUses ?? null,
+    }),
     input: composeUserInput(job.input),
     recentPosts,
     newsDigest,
@@ -404,12 +413,7 @@ export async function executePostGeneration(
   const request = {
     system,
     user,
-    webSearch: webSearchForSpec(
-      spec,
-      Boolean(job.input.source_url),
-      job.attempt,
-      reduceWebSearchMaxUses,
-    ),
+    webSearch,
     timeoutMs: deadline.callTimeoutMs(),
   };
 
