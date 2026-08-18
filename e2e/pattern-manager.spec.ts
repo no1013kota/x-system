@@ -24,8 +24,12 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
     await expect(page.getByRole("heading", { level: 3, name })).toBeVisible();
   }
 
-  // 追加
+// 追加。**プロンプト欄には雛形が入っている**（空欄から書き始めさせない・T-M8-130）。
   await page.getByRole("button", { name: "パターンを追加" }).click();
+  await expect(page.locator("#new-prompt")).toHaveValue(/# タスク[\s\S]*# 構成と分量/);
+  // 分量は**スレッド数**で聞く（0＝メインポストのみ）。
+  await expect(page.locator("#new-thread-count")).toHaveValue("2");
+  await page.locator("#new-thread-count").selectOption("0");
   await page.locator("#new-name").fill("実験パターン");
   await page.locator("#new-prompt").fill("# タスク\n実験用のプロンプト");
   await page.getByRole("button", { name: "追加", exact: true }).click();
@@ -35,8 +39,14 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
     `select id, name, prompt from post_patterns where x_account_id = $1 and seed_key is null`,
     [account.xAccountId],
   );
+const [createdRow] = await query<{ max_posts: number }>(
+    `select max_posts from post_patterns where x_account_id = $1 and seed_key is null`,
+    [account.xAccountId],
+  );
   expect(created.name).toBe("実験パターン");
   expect(created.prompt).toContain("実験用のプロンプト");
+  // スレッド数0 → 総1ポスト（DBは総ポスト数で持つ）。
+  expect(createdRow.max_posts).toBe(1);
 
   // 編集（名前を変える）
   await page.locator(`#pattern-${created.id}-name`).fill("実験パターン改");

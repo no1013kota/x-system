@@ -83,7 +83,7 @@ describe("post_patterns CRUD（ローカルDB）", () => {
       expect(created.name).toBe("自作パターン");
       expect(created.isSystemDefault, "自作は既定ではない").toBe(false);
       expect(created.hasCustomPrompt).toBe(true);
-      // 生成3 → 編集は min(7, 3+2) = 5。生成された分に少し足して整えられる幅を持たせる。
+    // 生成3 → 編集は min(8, 3+2) = 5。生成された分に少し足して整えられる幅を持たせる。
       expect(created.maxPostsEdit).toBe(5);
 
       const all = await listPatterns(getPool(), xid);
@@ -119,8 +119,9 @@ describe("post_patterns CRUD（ローカルDB）", () => {
         [{ name: "あ".repeat(31) }, "name_length"],
         [{ name: "改行\n入り" }, "name_unsafe_chars"],
         [{ name: "<tag>" }, "name_unsafe_chars"],
-        [{ maxPosts: 0 }, "max_posts_range"],
-        [{ maxPosts: 8 }, "max_posts_range"],
+      [{ maxPosts: 0 }, "max_posts_range"],
+        // 総ポスト数の上限は8（画面のスレッド数 0〜7 に対応・T-M8-130）。
+        [{ maxPosts: 9 }, "max_posts_range"],
         [{ prompt: null }, "prompt_required"],
         [{ prompt: "   " }, "prompt_required"],
         [{ prompt: "あ".repeat(8001) }, "too_long"],

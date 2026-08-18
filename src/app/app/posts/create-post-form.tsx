@@ -15,13 +15,24 @@ import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
-import type { PatternOption } from "@/lib/post/post-patterns-store";
+import {
+  NEW_PATTERN_PROMPT_TEMPLATE,
+  type PatternOption,
+} from "@/lib/post/post-patterns-store";
+import {
+  PatternFields,
+  actionReason,
+  emptyPatternDraft,
+  patternReasonMessage,
+  toPatternPayload,
+  type PatternDraft,
+} from "@/components/post/pattern-fields";
 import { selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { updateBaseMdManualAction } from "@/app/actions/base-md";
-import { updatePatternPromptAction } from "@/app/actions/post-patterns";
+import { createPatternAction, updatePatternPromptAction } from "@/app/actions/post-patterns";
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
@@ -247,8 +258,18 @@ export function CreatePostForm({
     return () => clearInterval(timer);
   }, [job?.id, job?.status, job?.createdAt, job, toast]);
 
+/**
+   * パターンの追加（T-M8-130・運営者の指示 2026-08-18）。
+   * **設定画面へ行かずにここで作れる。** 投稿を作ろうとして「この型が無い」と気付くのは
+   * この画面なので、そこで作れないと目的（投稿を作る）が中断する。
+   * 追加したらそのまま選択された状態にする。
+   */
+  const [options, setOptions] = useState(patterns);
+  const [newPattern, setNewPattern] = useState<PatternDraft | null>(null);
+  const [newPatternError, setNewPatternError] = useState<string | null>(null);
+
   /** 選択中のパターン。入力欄の出し分け（意見の入力）と表示名に使う。 */
-  const selectedPattern = patterns.find((option) => option.id === pattern) ?? null;
+  const selectedPattern = options.find((option) => option.id === pattern) ?? null;
   const currentTemplate = templates?.[pattern] ?? null;
   const promptValue = promptDraft ?? currentTemplate?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
@@ -264,6 +285,29 @@ export function CreatePostForm({
   const baseMdReady = (baseMdState?.version ?? 0) >= 1 && (baseMdState?.content ?? "") !== "";
   const anyPromptOverLimit = promptOverLimit || imageOverLimit || baseMdOverLimit;
   const anyPromptEdited = promptEdited || imageEdited || baseMdEdited;
+
+function addPattern() {
+    if (!newPattern) return;
+    void (async () => {
+      const res = await createPatternAction(toPatternPayload(newPattern, null));
+      if (res.status === "success" && res.pattern) {
+        const added = res.pattern;
+        setOptions((prev) => [...prev, added]);
+        // 作った型をそのまま選ぶ（作った直後に選び直させない）。
+        setPattern(added.id);
+        setPromptDraft(null);
+        setTemplates((prev) => ({
+          ...(prev ?? {}),
+          [added.id]: { content: newPattern.prompt, updatedAt: null, isOverride: true },
+        }));
+        setNewPattern(null);
+        setNewPatternError(null);
+        toast.show({ tone: "success", title: `「${added.name}」を追加しました` });
+      } else {
+        setNewPatternError(patternReasonMessage(actionReason(res), res.message));
+      }
+    })();
+  }
 
   function submit() {
     setPrereq(null);
@@ -482,7 +526,7 @@ export function CreatePostForm({
           パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
           同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
         */}
-        <PatternRadioGroup
+      <PatternRadioGroup
           name="pattern"
           onChange={(next) => {
             setPattern(next);
@@ -490,9 +534,52 @@ export function CreatePostForm({
             setPromptDraft(null);
             setPromptApply("once");
           }}
-          options={patterns}
+          options={options}
           value={pattern}
         />
+
+        {/* パターンの追加（T-M8-130）。設定画面と同じ入力欄を使う。 */}
+        {templates ? (
+          newPattern ? (
+            <div className={`${cardClassName} mt-2 p-4`}>
+              <CardTitle>新しいパターン</CardTitle>
+              {newPatternError ? <Notice tone="danger">{newPatternError}</Notice> : null}
+              <PatternFields
+                draft={newPattern}
+                idPrefix="new-pattern"
+                onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
+                promptRequired
+              />
+              <div className="mt-3 flex gap-2">
+                <Button disabled={pending} onClick={addPattern} type="button" variant="brand">
+                  追加
+                </Button>
+                <Button
+                  disabled={pending}
+                  onClick={() => {
+                    setNewPattern(null);
+                    setNewPatternError(null);
+                  }}
+                  type="button"
+                  variant="subtle"
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2">
+              <Button
+                disabled={pending}
+                onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
+                type="button"
+                variant="subtle"
+              >
+                パターンを追加
+              </Button>
+            </div>
+          )
+        ) : null}
 
         {templates ? (
           <details className="rounded-card border border-hairline bg-page">

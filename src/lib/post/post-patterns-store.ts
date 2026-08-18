@@ -146,7 +146,7 @@ export async function findPatternBySeedKey(
  * 説明とポスト数が別々に書かれていると、片方だけ直して食い違う。
  */
 export function patternDescriptionWithCount(option: PatternOption): string {
-  const count = option.maxPosts === 1 ? "1ポスト" : `最大${option.maxPosts}ポスト`;
+  const count = threadCountLabel(option.maxPosts);
   return option.description ? `${option.description}（${count}）` : count;
 }
 
@@ -271,8 +271,35 @@ async function requirePatternPrompt(
 export const PATTERN_NAME_MAX_CHARS = 30;
 /** 説明の上限（DBに CHECK は無いが、画面が破綻しない長さで止める）。 */
 export const PATTERN_DESCRIPTION_MAX_CHARS = 120;
-/** 生成ポスト数の上限（スレッド全体の上限・要件02 §3.9）。 */
-export const PATTERN_MAX_POSTS_LIMIT = 7;
+/**
+ * 生成する総ポスト数の上限（スレッド全体の上限・要件02 §3.9）。
+ * 画面は**スレッド数**（メインポストに続く本数）で見せるので `0〜7` に対応する。
+ */
+export const PATTERN_MAX_POSTS_LIMIT = 8;
+
+/** 画面に出すスレッド数の上限（メインポストに続く本数）。 */
+export const PATTERN_MAX_THREAD_COUNT = PATTERN_MAX_POSTS_LIMIT - 1;
+
+/**
+ * 総ポスト数 ⇄ スレッド数の変換（T-M8-130・運営者の指示 2026-08-18）。
+ *
+ * **DBは総ポスト数で持ち、画面はスレッド数で見せる。** `max_posts` はスレッド配列の
+ * 上限としてコード全体で使われており、意味を変えると解釈が全箇所でずれる。
+ * スレッド数 0 = メインポストのみ（総1ポスト）。
+ */
+export function threadCountOf(maxPosts: number): number {
+  return Math.max(0, maxPosts - 1);
+}
+
+export function maxPostsFromThreadCount(threadCount: number): number {
+  return Math.min(PATTERN_MAX_POSTS_LIMIT, Math.max(0, threadCount) + 1);
+}
+
+/** 画面に出す言い方。0 は「単発」と書く（「最大1ポスト」では単発だと伝わらない）。 */
+export function threadCountLabel(maxPosts: number): string {
+  const n = threadCountOf(maxPosts);
+  return n === 0 ? "メインポストのみ（単発）" : `メイン＋スレッド最大${n}`;
+}
 
 /** パターンの作成・更新で受け取る値。**内部IDは受けない**。 */
 export interface PatternInput {
@@ -308,9 +335,10 @@ export function validatePatternInput(input: PatternInput, opts: { isSystemDefaul
       details: { reason: "description_length", max: PATTERN_DESCRIPTION_MAX_CHARS },
     });
   }
-  if (!Number.isInteger(input.maxPosts) || input.maxPosts < 1 || input.maxPosts > PATTERN_MAX_POSTS_LIMIT) {
+if (!Number.isInteger(input.maxPosts) || input.maxPosts < 1 || input.maxPosts > PATTERN_MAX_POSTS_LIMIT) {
+    // 画面は**スレッド数**（0〜7）で見せるので、範囲もその言葉で返す（T-M8-130）。
     throw new AppError("validation_error", {
-      details: { reason: "max_posts_range", min: 1, max: PATTERN_MAX_POSTS_LIMIT },
+      details: { reason: "max_posts_range", min: 0, max: PATTERN_MAX_THREAD_COUNT },
     });
   }
   // 自作パターンはコード側の既定を持たないので、プロンプトが無いと生成できない。
@@ -477,3 +505,27 @@ function emptyToNull(value: string | null): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? null : trimmed;
 }
+
+/**
+ * 新しいパターンのプロンプト雛形（T-M8-130・運営者の指示 2026-08-18）。
+ *
+ * **空欄から書き始めさせない。** 既定パターンのプロンプトは「# タスク／# 手順／# 構成と分量」
+ * という決まった形をしていて、生成の質はこの形に依存する。何を書けばよいかが分からないまま
+ * 自由記述させると、指示の抜けた薄いプロンプトになりやすい。
+ *
+ * 分量の指示はここに数字を書かない——**実際に作られる本数は「スレッド数」の設定が決める**ので、
+ * プロンプトに別の数字を書くと食い違う（T-M8-33 と同じ型の事故）。
+ */
+export const NEW_PATTERN_PROMPT_TEMPLATE = `# タスク
+（この型でどんな投稿を作るかを1〜2文で書く。<input> が未指定のときに何を題材にするかも書く）
+
+# 手順
+（作る前に確認・準備することを書く。例: 正確性が要る点だけWeb検索で確認する）
+
+# 構成と分量
+（1ポスト目に何を書くか＝フックの型、中間で何を1ポストずつ扱うか、最終ポストで何を残すかを書く。
+ポスト数は「スレッド数」の設定が決めるので、ここには本数を書かない）
+
+# 語り口
+（一人称・敬体/常体・避ける言い回しなど、この型に固有の指定があれば書く）
+`;

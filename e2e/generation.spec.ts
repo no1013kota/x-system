@@ -277,3 +277,44 @@ test("生成中に開き直しても画面のつなぎ目でズレが出ない�
 
   expect(mismatches, "サーバー描画とブラウザの表示が食い違わないこと").toEqual([]);
 });
+
+/**
+ * T-M8-130。**投稿作成画面からパターンを追加できる**（運営者の指示・2026-08-18）。
+ *
+ * 投稿を作ろうとして「この型が無い」と気付くのはこの画面なので、ここで作れないと
+ * 設定画面へ往復することになり、目的（投稿を作る）が中断する。
+ * 追加したらそのまま選択された状態になることまで確かめる。
+ */
+test("投稿作成画面からパターンを追加でき、そのまま選択された状態になる", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("pattern-inline");
+  // プロンプトの編集はmdプラン以上（設定＞プロンプトと同じ境界）。
+  await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+  await page.getByRole("button", { name: "パターンを追加" }).click();
+  // プロンプト欄には雛形が入っている（空欄から書き始めさせない）。
+  await expect(page.locator("#new-pattern-prompt")).toHaveValue(/# タスク[\s\S]*# 構成と分量/);
+  // 分量はスレッド数で聞く。0 は「メインポストのみ」。
+  await page.locator("#new-pattern-thread-count").selectOption("0");
+  await page.locator("#new-pattern-name").fill("画面から作った型");
+  await page.locator("#new-pattern-prompt").fill("# タスク\n画面から作った型のプロンプト");
+  await page.getByRole("button", { name: "追加", exact: true }).click();
+
+  // 追加した型が選択肢に出て、選ばれている。
+  const radio = page.getByRole("radio", { name: /画面から作った型/ });
+  await expect(radio).toBeVisible();
+  await expect(radio).toBeChecked();
+
+  const [saved] = await query<{ name: string; max_posts: number; prompt: string }>(
+    `select name, max_posts, prompt from post_patterns
+      where x_account_id = $1 and seed_key is null`,
+    [account.xAccountId],
+  );
+  expect(saved.name).toBe("画面から作った型");
+  expect(saved.max_posts, "スレッド数0 → 総1ポスト").toBe(1);
+  expect(saved.prompt).toContain("画面から作った型のプロンプト");
+});
