@@ -21,6 +21,10 @@ import type { XAccountListItem } from "@/lib/x/account-actions-server";
 import { Card, CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import {
+  alertDialogBackdropClassName,
+  alertDialogPopupClassName,
+} from "@/components/ui/alert-dialog-classes";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "有効",
@@ -357,8 +361,8 @@ function DisconnectButton({
         連携を解除
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName()}>
           <AlertDialog.Title className={cardTitleClassName}>
             @{handle} の連携を解除しますか？
           </AlertDialog.Title>

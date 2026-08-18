@@ -2,7 +2,11 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 
-import { cardClassName } from "@/components/ui/card";
+import {
+  alertDialogBackdropClassName,
+  alertDialogPopupClassName,
+} from "@/components/ui/alert-dialog-classes";
+import { Icon } from "@/components/ui/icon";
 
 import {
   PATTERN_DESCRIPTION_MAX_CHARS,
@@ -248,24 +252,34 @@ export function DeletePatternButton({
   disabled,
   name,
   onConfirm,
+  variant = "button",
 }: {
   disabled: boolean;
   name: string;
   onConfirm: () => void;
+  /**
+   * `icon` はパターンのカード内に置く小さな削除（T-M8-134・運営者の指示 2026-08-18）。
+   * **アイコンだけなので読み上げ名にパターン名を入れる**——カードが並ぶので
+   * 「削除」だけだとどれを消すのか音声では区別できない。
+   */
+  variant?: "button" | "icon";
 }) {
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger
-        className="ml-auto inline-flex h-9 items-center rounded-card border border-hairline px-3 text-body text-danger-fg transition-colors duration-150 hover:bg-danger-bg disabled:opacity-50"
+        aria-label={variant === "icon" ? `「${name}」を削除` : undefined}
+        className={
+          variant === "icon"
+            ? "inline-flex size-7 items-center justify-center rounded-card text-ink-3 transition-colors duration-150 hover:bg-danger-bg hover:text-danger-fg disabled:pointer-events-none disabled:opacity-40"
+            : "ml-auto inline-flex h-9 items-center rounded-card border border-hairline px-3 text-body text-danger-fg transition-colors duration-150 hover:bg-danger-bg disabled:opacity-50"
+        }
         disabled={disabled}
       >
-        削除
+        {variant === "icon" ? <Icon name="delete" size={16} /> : "削除"}
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 bg-black/30" />
-        <AlertDialog.Popup
-          className={`${cardClassName} fixed top-1/2 left-1/2 z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 p-5`}
-        >
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName()}>
           <AlertDialog.Title className="text-body font-bold text-ink">
             「{name}」を削除しますか？
           </AlertDialog.Title>

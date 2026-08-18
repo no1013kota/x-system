@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { AuthFormState } from "@/app/actions/auth-state";
@@ -39,6 +40,15 @@ export async function acceptLegalUpdates(
       status: "error",
     };
   }
-  if (state.status === "success") redirect("/app");
+  if (state.status === "success") {
+    /*
+      **App Shell を作り直させる**（T-M8-134）。再同意バナーはレイアウトで描くので、
+      revalidate しないと同意直後の `/app` がキャッシュから返り、
+      **同意したのに「同意いただくまで実行できません」が出たまま**になる。
+      実際にそうなっていた（E2Eで redirect直後=1件・再読込後=0件 を確認）。
+    */
+    revalidatePath("/app", "layout");
+    redirect("/app");
+  }
   return state;
 }

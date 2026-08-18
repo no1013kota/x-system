@@ -27,7 +27,11 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   unauthorized: "ログインが必要です。",
   forbidden: "この操作を実行する権限がありません。",
   validation_error: "入力内容を確認してください。",
-  legal_consent_required: "利用規約等の更新内容をご確認ください。",
+  // **どこへ行けば直るかを書く**（T-M8-134）。以前は「ご確認ください」だけで、
+  // 同意画面への導線も無かったため、生成も投稿もスケジュール保存も止まったまま
+  // 利用者には打つ手が無かった。画面上部には再同意バナーが常設で出ている。
+  legal_consent_required:
+    "利用規約・プライバシーポリシーが更新されています。画面上部の案内から同意してください。",
   automation_consent_required: "自動投稿を有効にするには、現在の説明への同意が必要です。",
   subscription_required: "現在のご契約状態ではこの操作を実行できません。",
   usage_limit_exceeded: "今月の利用上限に達しています。",

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { computeXAccountBanners, dailyPostLimitBanner, usageLimitBanner } from "./app-banners";
+import {
+  computeXAccountBanners,
+  dailyPostLimitBanner,
+  legalConsentBanner,
+  usageLimitBanner,
+} from "./app-banners";
 import type { UsageSummary } from "./usage/usage-summary";
 
 const ids = (banners: { id: string }[]) => banners.map((b) => b.id);
@@ -126,5 +131,41 @@ describe("dailyPostLimitBanner (T-M8-26・要決定D-15 案A)", () => {
     const banner = dailyPostLimitBanner({ todaysPosts: 20, dailyLimit: 20 });
     expect(banner?.description).toContain("20件");
     expect(banner?.description).not.toContain("50件");
+  });
+});
+
+/**
+ * 再同意バナー（T-M8-134）。
+ *
+ * **これが出ないと、生成も投稿もスケジュール保存も止まったまま理由が画面に出ない。**
+ * 2026-08-18、運営者がスケジュール保存で実際に踏んだ（同意画面はあったが導線が無かった）。
+ */
+describe("再同意バナー", () => {
+  it("どちらも同意済みなら出さない", () => {
+    expect(legalConsentBanner({ terms: false, privacy: false })).toBeNull();
+  });
+
+  it("必要なものだけ名指しする", () => {
+    expect(legalConsentBanner({ terms: true, privacy: false })?.title).toBe(
+      "利用規約が更新されました",
+    );
+    expect(legalConsentBanner({ terms: false, privacy: true })?.title).toBe(
+      "プライバシーポリシーが更新されました",
+    );
+    expect(legalConsentBanner({ terms: true, privacy: true })?.title).toBe(
+      "利用規約とプライバシーポリシーが更新されました",
+    );
+  });
+
+  it("同意画面へ行ける（導線が無かったのが不具合の本体）", () => {
+    const banner = legalConsentBanner({ terms: true, privacy: true });
+    expect(banner?.actionHref).toBe("/app/consent");
+    expect(banner?.tone).toBe("warning");
+  });
+
+  it("止まっていることを本文で言う（「確認してください」だけにしない）", () => {
+    const banner = legalConsentBanner({ terms: true, privacy: false });
+    expect(banner?.description).toContain("実行できません");
+    expect(banner?.description).toContain("スケジュール");
   });
 });

@@ -21,7 +21,6 @@ import {
   type PatternOption,
 } from "@/lib/post/post-patterns-store";
 import {
-  DeletePatternButton,
   PatternFields,
   actionReason,
   emptyPatternDraft,
@@ -571,6 +570,7 @@ function removePattern(target: PatternOption) {
           同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
         */}
       <PatternRadioGroup
+          deleteDisabled={pending}
           name="pattern"
           onChange={(next) => {
             setPattern(next);
@@ -578,6 +578,8 @@ function removePattern(target: PatternOption) {
             setPromptDraft(null);
             setPromptApply("once");
           }}
+          // 削除は各カードの中に置く（T-M8-134）。設定画面まで行かなくても消せる。
+          onDelete={templates ? removePattern : undefined}
           options={options}
           value={pattern}
         />
@@ -592,17 +594,6 @@ function removePattern(target: PatternOption) {
         この型の分量: {threadCountLabel(selectedPattern.maxPosts)}
             {/* Web検索や参考URLの扱いはプロンプトに書く方式にしたので、ここには出さない（T-M8-132）。 */}
           </p>
-        ) : null}
-
-        {/* 選んでいる型を消せるようにする（T-M8-133）。最後の1件は消せない（サーバーが拒否する）。 */}
-        {templates && selectedPattern ? (
-          <div className="mt-1 flex">
-            <DeletePatternButton
-              disabled={pending || options.length <= 1}
-              name={selectedPattern.name}
-              onConfirm={() => removePattern(selectedPattern)}
-            />
-          </div>
         ) : null}
 
         {/* パターンの追加（T-M8-130）。設定画面と同じ入力欄を使う。 */}

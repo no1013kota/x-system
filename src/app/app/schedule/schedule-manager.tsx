@@ -31,6 +31,10 @@ import {
   slotScheduleLabel,
   WEEKDAY_LABELS,
 } from "@/lib/schedule/slot-labels";
+import {
+  alertDialogBackdropClassName,
+  alertDialogPopupClassName,
+} from "@/components/ui/alert-dialog-classes";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -230,8 +234,8 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
           自動投稿をすべて停止
         </AlertDialog.Trigger>
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-          <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+          <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+          <AlertDialog.Popup className={alertDialogPopupClassName()}>
             <AlertDialog.Title className={cardTitleClassName}>
               自動投稿をすべて停止しますか？
             </AlertDialog.Title>
@@ -272,8 +276,8 @@ function DeleteSlotButton({
         削除
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName()}>
           <AlertDialog.Title className={cardTitleClassName}>
             このスケジュールを削除しますか？
           </AlertDialog.Title>
@@ -840,8 +844,8 @@ function AutomationConsentModal({
   return (
     <AlertDialog.Root onOpenChange={onOpenChange} open={open}>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName("lg")}>
           <AlertDialog.Title className={cardTitleClassName}>
             {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
           </AlertDialog.Title>
