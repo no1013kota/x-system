@@ -302,4 +302,12 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - アカウント.md変更: `base_md_versions`
 - 通知/メール送信: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
 | v1.35 | 2026-08-18 | `verifySignUpCode` を追加（T-M8-121）。メール確認を6桁コード方式へ。`/auth/confirm` はrecovery主体に |
+| v1.36〜v1.37 | 2026-08-18 | 投稿パターンのActions（T-M8-129〜132・ADR-0008）。`listPatterns`／`createPattern`／`updatePattern`／`deletePattern`／`updatePatternPrompt` |
+| v1.38 | 2026-08-18 | `createScheduleSlot`／`updateScheduleSlot` に `source_url`・`placeholder_values`・`prompt_override` を追加（T-M8-135） |
+| v1.39 | 2026-08-18 | `prompt_templates` 系は `kind=image` のみを受けることをコードで強制（T-M8-140。型プロンプトは `post_patterns` 側） |
+| v1.40 | 2026-08-18 | `validation_error` の理由一覧を実装へ揃えた（T-M8-144） |

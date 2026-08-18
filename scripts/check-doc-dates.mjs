@@ -75,4 +75,78 @@ if (stale.length > 0) {
   process.exit(1);
 }
 
-console.log(`✅ 更新日は ${checked} 件すべて最新でした`);
+/*
+  **冒頭ヘッダの version と末尾の変更履歴が食い違っていないか**（T-M8-144）。
+
+  実際に要件06 が「冒頭 v1.92 / 履歴の最新 v1.84」で8版分ずれ、しかも
+  **変更履歴の表ヘッダを失って孤立1行になっていた**（表として読めない状態）。
+  version は上げても履歴を書き足すのを忘れる——ここも人の記憶に預かっていた手順。
+*/
+const VERSION_ROW = /\|\s*バージョン\s*\|\s*v([0-9.]+)\s*\|/;
+const CHANGELOG_ROW = /^\|\s*v([0-9.]+)(?:〜v[0-9.]+)?\s*\|/gm;
+const CHANGELOG_ROW_FIRST = /^\|\s*v[0-9.]+(?:〜v[0-9.]+)?\s*\|/m;
+
+/*
+  **変更履歴を求めるのは仕様の正本だけ**。`docs/README.md` の運用ルール
+  （「仕様変更時は冒頭の更新日と末尾の変更履歴を更新する」）は3領域の正本に対するもので、
+  運営手順の文書はversionと更新日だけを持つ。全docsへ広げると、
+  手順書に意味の薄い履歴表を強制することになる。
+*/
+const SPEC_DOC = /^docs\/(requirements\/|PRD\.md|要件定義書\.md|プロンプト設計書\.md)/;
+
+const versionDrift = [];
+let versioned = 0;
+for (const file of files) {
+  if (!SPEC_DOC.test(file)) continue;
+  const text = readFileSync(file, "utf8");
+  const head = VERSION_ROW.exec(text);
+  if (!head) continue;
+  versioned += 1;
+  const rows = [...text.matchAll(CHANGELOG_ROW)].map((m) => m[1]);
+  if (rows.length === 0) {
+    versionDrift.push({ file, reason: "変更履歴の行が見つかりません" });
+    continue;
+  }
+  /*
+    **表ヘッダも見る。** 行だけ残ってヘッダが消えると Markdown の表として描画されず、
+    履歴が読めない孤立した行になる（要件06 が実際にこの状態だった）。
+    行があることだけを見ていると気付けない。
+  */
+  const firstRow = text.search(CHANGELOG_ROW_FIRST);
+  const before = text.slice(Math.max(0, firstRow - 200), firstRow);
+  // 表記は `version` と `バージョン` の両方が使われている（どちらでもよい）。
+  if (!/\|\s*(version|バージョン)\s*\|/i.test(before) || !/\|\s*-{3,}\s*\|/.test(before)) {
+    versionDrift.push({
+      file,
+      reason: "変更履歴の表ヘッダ（`| バージョン | 日付 | 内容 |` などと区切り行）がありません",
+    });
+    continue;
+  }
+  // 末尾の行が最新。範囲表記（v1.86〜v1.90）は開始側で拾うので、含む場合は最後の行の右端も見る。
+  const lastLine = text.slice(text.lastIndexOf("\n| v")).split("\n")[1] ?? "";
+  const latest = /v([0-9.]+)\s*\|/g;
+  const all = [...text.matchAll(/^\|\s*v[0-9.]+(?:〜v([0-9.]+))?\s*\|/gm)];
+  const newest = all.length ? (all[all.length - 1][1] ?? rows[rows.length - 1]) : rows[rows.length - 1];
+  if (newest !== head[1]) {
+    versionDrift.push({
+      file,
+      reason: `冒頭 v${head[1]} に対し変更履歴の最新は v${newest}`,
+    });
+  }
+  void lastLine;
+  void latest;
+}
+
+if (versioned === 0) {
+  console.error("❌ 変更履歴を持つべき正本が1件も見つかりませんでした（検出器が空振りしています）");
+  process.exit(1);
+}
+
+if (versionDrift.length > 0) {
+  console.error(`❌ versionと変更履歴が合わない文書が ${versionDrift.length} 件あります\n`);
+  for (const d of versionDrift) console.error(`   ${d.file}\n     ${d.reason}`);
+  console.error("\n   → 末尾の変更履歴へ行を足すか、冒頭のversionを直してください");
+  process.exit(1);
+}
+
+console.log(`✅ 更新日は ${checked} 件すべて最新でした（version と変更履歴の一致も ${versioned} 件確認）`);

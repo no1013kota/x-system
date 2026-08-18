@@ -886,3 +886,11 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 - 契約解約はStripe Customer Portal、X連携解除は`disconnectXAccount`で扱い、どちらもExos AIのアカウントや投稿履歴を自動削除しない。
 - 法令上必要な開示、訂正、利用停止、消去等の請求は問い合わせ窓口で受け付け、本人確認と法務確認のうえ運営が個別対応する。この手続きはMVPのproduct機能・通常jobとして定義しない。
 - 自動cleanup対象と保持期間は[システム構成 §9](./01_system_architecture.md#9-バックアップ保持)を正とする。Stripeが保持する決済記録はStripe側の方針に従う。
+
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.42 | 2026-08-18 | 投稿パターンを利用者定義マスタへ（T-M8-129〜132・ADR-0008）。`post_patterns` 新設、旧 `post_pattern` enum と関連列の撤去、`placeholders` 追加 |
+| v1.43 | 2026-08-18 | 予約枠に生成入力を追加（T-M8-135）: `source_url`・`placeholder_values`・`prompt_override` |
+| v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |

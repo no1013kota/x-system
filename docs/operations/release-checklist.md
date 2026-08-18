@@ -55,3 +55,9 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 | 10 | 常時稼働 Mac（Asia/Tokyo・スリープ無効・launchd）の実配置、バックアップ実行環境・暗号化ファイル保管先・`BACKUP_ENCRYPTION_KEY` の保管 | 運営者 | リリース前 |
 | 11 | X live E2E（少数ポスト投稿→自動 rollback 削除）の本番相当での1回実施 | 運営者 | 切替直前 |
 | 12 | 自動投稿同意文（consent_version）・通知メール文面の最終確認（X Automation Rules 準拠の専門家確認含む） | 運営者 | リリース前 |
+
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.3 | 2026-08-18 | `release:check` の構成の写しをやめ、[開発とテストの進め方](./development-and-testing.md)へのリンクへ寄せた（T-M8-144） |
