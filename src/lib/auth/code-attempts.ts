@@ -26,7 +26,13 @@ export const MAX_CODE_ATTEMPTS = 10;
 /** 残りをこの数以下になってから知らせる（それまでは黙っている）。 */
 export const ATTEMPTS_WARN_AT = 3;
 /** 数えを保持する時間。コードの有効期間（1時間）に合わせる。 */
-const WINDOW_MS = 60 * 60 * 1000;
+/**
+ * 失敗回数を数える窓。**Supabase側のコード有効期間（`mailer_otp_exp`）と揃える**（T-M8-144）。
+ * ずれると「コードは生きているのに数えは切れている」（逆も）という説明できない状態になる。
+ * 一致は `auth-settings-sync.test.ts` が機械的に見る。
+ */
+export const CODE_ATTEMPT_WINDOW_MS = 60 * 60 * 1000;
+const WINDOW_MS = CODE_ATTEMPT_WINDOW_MS;
 
 interface Entry {
   failures: number;
