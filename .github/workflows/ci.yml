@@ -50,6 +50,12 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # **全履歴を取る。** `check:doc-dates` は「その文書を最後に変えたコミットの日付」を
+          # git履歴から読むため、既定の浅いclone（depth 1）だと**全文書が「今日変わった」ように
+          # 見えて誤検知する**（2026-08-18、手元は緑なのにCIだけが落ちた）。
+          # 検査側も浅いcloneを検出して止めるので、ここを消せば赤くなって気付ける。
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "26"

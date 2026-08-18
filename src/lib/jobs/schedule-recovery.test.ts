@@ -8,7 +8,7 @@ type Row = Record<string, unknown>;
 const CANCEL_EXPIRED = /with expired as/;
 const UNENQUEUED = /from schedule_slots ss/;
 const MISSED = /insert into notifications/;
-const P5_CANCEL = /pattern = 'p5' and status = 'queued'/;
+const P5_CANCEL = /requires_quote_url/;
 
 function makeDb(handler: (sql: string) => { rows?: Row[]; rowCount?: number }) {
   const writes: { sql: string; params: unknown[] }[] = [];
@@ -71,7 +71,7 @@ describe("recoverSchedule — un-enqueued missed slots", () => {
 });
 
 describe("recoverSchedule — P-5 feature disabled", () => {
-  it("cancels queued P-5 jobs when the flag is off", async () => {
+  it("引用URLが必須のパターンのqueued jobを flag OFF の間 canceled にする", async () => {
     const { db, writes } = makeDb((sql) => {
       if (CANCEL_EXPIRED.test(sql)) return { rows: [] };
       if (P5_CANCEL.test(sql)) return { rows: [], rowCount: 3 };
@@ -82,7 +82,7 @@ describe("recoverSchedule — P-5 feature disabled", () => {
     expect(writes.some((w) => P5_CANCEL.test(w.sql))).toBe(true);
   });
 
-  it("does not touch P-5 jobs when the flag is on", async () => {
+  it("flag ON の間は触らない", async () => {
     const { db, writes } = makeDb((sql) => (CANCEL_EXPIRED.test(sql) ? { rows: [] } : { rows: [] }));
     const res = await recoverSchedule({ db, quotePostEnabled: true });
     expect(res.canceledFeatureDisabled).toBe(0);

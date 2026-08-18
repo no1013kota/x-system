@@ -11,7 +11,13 @@ import {
   dailyPostLimitBanner,
   usageLimitBanner,
   type AppBanner,
+  legalConsentBanner,
 } from "@/lib/app-banners";
+import {
+  LEGAL_CONSENT_SELECT,
+  requiredLegalConsents,
+  type LegalConsentProfile,
+} from "@/lib/auth/legal-consent";
 import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
 import { loadTodaysPostCount } from "@/lib/usage/daily-post-limit-server";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
@@ -40,7 +46,7 @@ import {
   resolveActiveXAccountForUser,
 } from "@/lib/x/account-actions-server";
 
-interface AppShellProfileRow {
+interface AppShellProfileRow extends LegalConsentProfile {
   plan: PlanId | null;
   stripe_customer_id: string | null;
   subscription_status: string;
@@ -60,6 +66,7 @@ export default async function AppLayout({
   let xBanners: AppBanner[] = [];
   let usageBanner: AppBanner | null = null;
   let dailyPostBanner: AppBanner | null = null;
+  let consentBanner: AppBanner | null = null;
   if (user) {
     /**
      * user.id にしか依存しない取得は1波にまとめる（T-M8-67）。以前は5段の直列awaitで、
@@ -78,7 +85,9 @@ export default async function AppLayout({
         getXApiKeyStatusForUser(user.id),
         supabase
           .from("profiles")
-          .select("plan, subscription_status, trial_ends_at, stripe_customer_id")
+          .select(
+            `plan, subscription_status, trial_ends_at, stripe_customer_id, ${LEGAL_CONSENT_SELECT}`,
+          )
           .eq("id", user.id)
           .maybeSingle<AppShellProfileRow>(),
       ]);
@@ -95,6 +104,9 @@ export default async function AppLayout({
         profileImageUrl: account.profileImageUrl,
       }));
     if (result.data) {
+      // 規約・プライバシーの再同意（T-M8-134）。**プランに依存しないので `plan` 判定の外に置く**——
+      // 中に入れると、プラン未設定の利用者だけ止まっている理由が画面に出なくなる。
+      consentBanner = legalConsentBanner(requiredLegalConsents(result.data));
       profile = {
         stripeCustomerId: result.data.stripe_customer_id,
         subscriptionStatus: result.data.subscription_status,
@@ -163,7 +175,9 @@ export default async function AppLayout({
             <Link
               aria-label="設定"
               className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              href="/app/settings?tab=billing"
+              // 先頭タブ（設定）へ入る。以前は課金・プランを指していたが、ヘッダの「設定」から
+              // 課金画面が開くのは行き先の予想と違う（2026-08-18 運営者の指示・T-M8-126）。
+              href="/app/settings"
             >
               <Icon name="tune" size={18} />
               <span className="hidden md:inline">設定</span>
@@ -201,7 +215,13 @@ export default async function AppLayout({
           </aside>
         ) : null}
 
-        {[...xBanners, ...(usageBanner ? [usageBanner] : []), ...(dailyPostBanner ? [dailyPostBanner] : [])].map((xBanner) => (
+        {[
+          // 再同意は**実行が全部止まっている**状態なので先頭に出す。
+          ...(consentBanner ? [consentBanner] : []),
+          ...xBanners,
+          ...(usageBanner ? [usageBanner] : []),
+          ...(dailyPostBanner ? [dailyPostBanner] : []),
+        ].map((xBanner) => (
           <aside
             aria-label={xBanner.title}
             className="border-b border-warn-fg/25 bg-warn-bg px-4 py-4 text-warn-fg"

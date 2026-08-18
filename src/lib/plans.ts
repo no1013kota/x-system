@@ -22,9 +22,17 @@ export interface PlanDefinition {
   /** 1行の売り文句。ランディングと/plansで共有する（別々に持つと文言が食い違う・T-M8-66）。 */
   tagline: string;
   /**
-   * **実際に請求する月額**（税込）。Stripe Price の金額と必ず一致させる
-   * （`constants.test.ts` が突き合わせる）。いまはリリース記念キャンペーンの半額。
-   */
+     * **実際に請求する月額**（税込）。Stripe Price の金額と必ず一致させる。
+     *
+     * 突き合わせは**2段**（T-M8-141）:
+     * - `constants.test.ts` … この定数が勝手に変わっていないか（リテラルとの比較）
+     * - `npm run doctor` … **Stripeの実際のPrice金額との一致**（`ops/price-status.ts`）
+     *
+     * 以前はここに「`constants.test.ts` が突き合わせる」とだけ書いてあったが、
+     * そのテストはStripeを見ていない。**請求額と表示額のズレを誰も検出していなかった。**
+     *
+     * いまはリリース記念キャンペーンの半額。
+     */
   monthlyPriceJpy: number;
   /**
    * キャンペーン終了後の月額（税込）。`monthlyPriceJpy` の2倍。

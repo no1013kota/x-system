@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { primaryLinkClassName } from "@/components/ui/link-button";
+import { patternLabel } from "@/lib/schedule/slot-labels";
+
 import type { ScheduleOutlook } from "@/lib/home/overview";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { Notice } from "@/components/ui/notice";
 
 /**
@@ -84,7 +85,7 @@ export function UpcomingScheduleCard({
             key={run.slotId}
           >
             <span className="font-medium tabular-nums">{run.label}</span>
-            <Badge>{POST_PATTERN_LABELS[run.pattern] ?? run.pattern}</Badge>
+            <Badge>{patternLabel(run.patternName)}</Badge>
             <span className="text-xs text-muted-foreground">
               {MODE_LABEL[run.mode] ?? run.mode}
               {run.imageEnabled ? "・画像あり" : ""}

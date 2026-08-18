@@ -2,7 +2,6 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import dynamic from "next/dynamic";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { WARNING_LABEL, warningSummary } from "@/lib/post/warning-labels";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -28,6 +27,10 @@ import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
 import { formatJst } from "@/lib/format";
+import {
+  alertDialogBackdropClassName,
+  alertDialogPopupClassName,
+} from "@/components/ui/alert-dialog-classes";
 
 /**
  * 下書きエディタは**編集を開いたときに初めて読み込む**（T-M8-68）。
@@ -218,7 +221,7 @@ function DraftCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</span>
+          <span className="font-semibold">{draft.pattern_name}</span>
           {draft.status === "failed" ? (
             <Badge tone="danger">失敗</Badge>
           ) : null}
@@ -595,8 +598,8 @@ function PublishButton({
         投稿
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName()}>
           <AlertDialog.Title className={cardTitleClassName}>この内容で投稿しますか？</AlertDialog.Title>
           {warnings.length > 0 ? (
             <Notice className="mt-3" tone="warn">
@@ -641,8 +644,8 @@ function DiscardButton({
         破棄
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/55" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-modal border border-hairline bg-surface p-6 shadow-[var(--shadow-modal)] outline-none">
+        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+        <AlertDialog.Popup className={alertDialogPopupClassName()}>
           <AlertDialog.Title className={cardTitleClassName}>
             下書きを破棄しますか？
           </AlertDialog.Title>

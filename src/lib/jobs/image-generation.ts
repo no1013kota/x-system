@@ -19,6 +19,7 @@ import { estimateImageCost } from "../ai/pricing";
 import type { Queryable } from "../x/token-refresh";
 import { createDeadline, type Deadline } from "./deadline";
 import { createDraftCreatedNotification } from "./notifications";
+import { ensureAutoPostPublishJob, isAutoMode } from "./publish-chain";
 import { defaultRecordStage } from "./stale";
 
 /**
@@ -88,6 +89,11 @@ interface ImageJobRow {
     /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobから引き継がれる。再生成では引き継がない。 */
     image_prompt_override?: string | null;
     base_md_override?: string | null;
+    /**
+     * 親（`post_generation`）の実行モード（T-M8-143）。`auto` なら画像確定後に投稿jobを作る。
+     * 子は親のinputを直接見られないため、親が引き継いで渡す。
+     */
+    mode?: "draft" | "auto";
   } | null;
 }
 
@@ -373,9 +379,18 @@ export async function executeImageGeneration(
       type: "image",
       estimatedCostUsdTotal: calls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),
     });
-    // 初回生成のみ draft_created を送る（再生成はdraft既存・UIがjob pollで検知する）。
+    /*
+      初回生成のみ後続へ進む（再生成はdraft既存・UIがjob pollで検知する）。
+      **auto は投稿へ進む**（要件04 §10 手順7・T-M8-143）。ここが無かったため、
+      画像ONの自動投稿は画像まで作って下書きで止まっていた。
+      `draft_created` は送らない——投稿されるので「下書きができました」は誤った案内になる。
+    */
     if (!isRegenerate) {
-      await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+      if (isAutoMode(job.input)) {
+        await ensureAutoPostPublishJob(db, { xAccountId: job.x_account_id, draftId });
+      } else {
+        await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
+      }
     }
     // 置換成功後に旧objectを best-effort 削除（再生成時のみ対象があり得る。要件04 §9）。
     if (oldReadyPaths.length > 0 && deps.deleteImages) {

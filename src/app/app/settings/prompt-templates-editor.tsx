@@ -2,8 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   listPromptTemplatesAction,
@@ -21,10 +20,17 @@ import { Badge } from "@/components/ui/badge";
 
 const MAX_CHARS = 8000;
 
-const KIND_LABEL: Record<string, string> = {
-  ...POST_PATTERN_LABELS,
-  image: "画像プロンプト",
-};
+/**
+ * kind → 見出し。**この画面は U4b でパターン管理画面へ置き換わる**（T-M8-129）。
+ * それまでの間、既定パターンの名前は当時の対応表から出す（利用者が名前を変えても
+ * この画面の見出しは変わらないが、正しい編集先は `post_patterns` なので実害はない）。
+ */
+/**
+ * この画面が扱うのは画像プロンプトだけ（T-M8-140）。
+ * 以前は投稿の型（p1〜p6）のラベルへも落ちる分岐があり、**再読み込みで対象がすり替わったとき
+ * 見出しが「ニュース解説」に変わって、間違ったものを編集している自覚を奪っていた**。
+ */
+const PROMPT_HEADING = "画像プロンプト";
 
 /**
  * **画面に残す通知だけ**（T-M8-18）。判断は `base-md-editor.tsx` と同じ。
@@ -43,10 +49,8 @@ interface ActionError {
 
 export function PromptTemplatesEditor({
   initialTemplates,
-  quotePostEnabled,
 }: {
   initialTemplates: PromptTemplateView[];
-  quotePostEnabled: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -68,13 +72,15 @@ export function PromptTemplatesEditor({
   }
   const [templates, setTemplates] = useState<PromptTemplateView[]>(initialTemplates);
 
-  // p5（引用ポスト）は FEATURE_QUOTE_POST_ENABLED=false の間は非表示。
-  const visible = useMemo(
-    () => templates.filter((t) => t.kind !== "p5" || quotePostEnabled),
-    [templates, quotePostEnabled],
-  );
-
-  const [selectedKind, setSelectedKind] = useState<string>(visible[0]?.kind ?? "p1");
+  /**
+   * この画面が扱うのは画像プロンプトだけ（投稿の型はパターン管理へ移った・T-M8-129 U4b）。
+   *
+   * **入力データで対象を決めない**（T-M8-139）。以前は `visible[0].kind` だったため、
+   * 「再読み込み」が p1〜p6 も含む一覧を取り込んだ瞬間に編集対象が p1 へすり替わり、
+   * 保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きした。
+   * 一覧側も画像だけを返すようにしたが、ここも固定して二重に防ぐ。
+   */
+  const selectedKind = "image" as const;
   const current = templates.find((t) => t.kind === selectedKind) ?? null;
   const [draft, setDraft] = useState<string>(current?.content ?? "");
   const [note, setNote] = useState<Note>(null);
@@ -82,12 +88,6 @@ export function PromptTemplatesEditor({
 
   const overLimit = draft.length > MAX_CHARS;
   const dirty = current ? draft !== current.content : false;
-
-  function select(kind: string) {
-    setSelectedKind(kind);
-    setDraft(templates.find((t) => t.kind === kind)?.content ?? "");
-    setNote(null);
-  }
 
   function applyTemplate(t: PromptTemplateView) {
     setTemplates((prev) => prev.map((p) => (p.kind === t.kind ? t : p)));
@@ -192,20 +192,13 @@ export function PromptTemplatesEditor({
 
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm">
-            <span className="block text-xs font-semibold text-muted-foreground">プロンプト種別</span>
-            <select
-              className="mt-1 min-h-11 rounded-lg border bg-background px-3"
-              onChange={(e) => select(e.target.value)}
-              value={selectedKind}
-            >
-              {visible.map((t) => (
-                <option key={t.kind} value={t.kind}>
-                  {KIND_LABEL[t.kind] ?? t.kind}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/*
+            **プルダウンは置かない**（T-M8-129 U4b・運営者の指示 2026-08-18）。
+            この画面が扱うのは画像プロンプト1件だけで、選択肢が1つのselectは
+            「他に何かある」と思わせるだけの操作になる。投稿の型は「投稿作成プロンプト」の
+            パターン管理（全件を並べる）で編集する。
+          */}
+          <h3 className="text-body font-bold text-ink">{PROMPT_HEADING}</h3>
           {current ? (
             <Badge className="mt-4" tone={current.isOverride ? "brand" : "neutral"}>
               {current.isOverride ? "カスタム" : "既定"}

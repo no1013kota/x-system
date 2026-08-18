@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { X_SCOPES } from "../x/oauth";
-import { PT_P1, PT_P2, SYSTEM_DEFAULT_TEMPLATES } from "./gen-prompts";
+import { SYSTEM_DEFAULT_TEMPLATES } from "./gen-prompts";
 import {
   applyResetPromptTemplate,
   applyUpdatePromptTemplate,
@@ -49,26 +49,29 @@ describe("prompt-templates (local DB)", () => {
     if (!available) ctx.skip();
   });
 
-  it("seeds 7 system defaults idempotently (kinds p1-p6, image)", async () => {
+  /**
+   * 型プロンプト（p1〜p6）は `post_patterns` へ移したので、ここで seed するのは画像だけ
+   * （T-M8-129 U2）。**型の行を作らない**ことがこのテストの主眼——行を残すと
+   * 「コードを直したのに反映されない」経路が復活する（T-M7-37）。
+   */
+  it("system default は画像だけを冪等にseedする（型は post_patterns 側）", async () => {
     await seedSystemPromptTemplates(db);
     await seedSystemPromptTemplates(db); // idempotent re-run
     const { rows } = await db.query<{ kind: string; content: string }>(
       `select kind, content from prompt_templates where x_account_id is null order by kind`,
     );
-    const byKind = Object.fromEntries(rows.map((r) => [r.kind, r.content]));
-    for (const kind of ["p1", "p2", "p3", "p4", "p5", "p6", "image"]) {
-      expect(byKind[kind]).toBe(SYSTEM_DEFAULT_TEMPLATES[kind as keyof typeof SYSTEM_DEFAULT_TEMPLATES]);
-    }
+    expect(rows.map((r) => r.kind), "型の行は作らない").toEqual(["image"]);
+    expect(rows[0].content).toBe(SYSTEM_DEFAULT_TEMPLATES.image);
   });
 
   it("コード定数と同じなら更新せず0件を返す（updated_at を無駄に動かさない・T-M7-37）", async () => {
     await seedSystemPromptTemplates(db);
     const before = await db.query<{ updated_at: string }>(
-      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'p1'`,
+      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'image'`,
     );
     const applied = await seedSystemPromptTemplates(db);
     const after = await db.query<{ updated_at: string }>(
-      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'p1'`,
+      `select updated_at::text from prompt_templates where x_account_id is null and kind = 'image'`,
     );
     expect(applied, "内容が同じなら0件").toBe(0);
     expect(after.rows[0].updated_at).toBe(before.rows[0].updated_at);
@@ -80,14 +83,14 @@ describe("prompt-templates (local DB)", () => {
     // 古い行が使われ続ける状態だった（現在は scheduler_tick が毎回呼ぶ）。
     await seedSystemPromptTemplates(db);
     await db.query(
-      `update prompt_templates set content = '古い内容' where x_account_id is null and kind = 'p1'`,
+      `update prompt_templates set content = '古い内容' where x_account_id is null and kind = 'image'`,
     );
     const applied = await seedSystemPromptTemplates(db);
     expect(applied, "差分がある1件だけ更新").toBe(1);
     const { rows } = await db.query<{ content: string }>(
-      `select content from prompt_templates where x_account_id is null and kind = 'p1'`,
+      `select content from prompt_templates where x_account_id is null and kind = 'image'`,
     );
-    expect(rows[0].content).toBe(SYSTEM_DEFAULT_TEMPLATES.p1);
+    expect(rows[0].content).toBe(SYSTEM_DEFAULT_TEMPLATES.image);
   });
 
   it("resolves account override first, else the system default", async () => {
@@ -114,18 +117,32 @@ describe("prompt-templates (local DB)", () => {
         )
       ).rows[0].id;
       await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values ($1,'p1','CUSTOM P1')`,
+        `insert into prompt_templates (x_account_id, kind, content) values ($1,'image','CUSTOM IMG')`,
+        [xid],
+      );
+      // 型プロンプトの上書きは `post_patterns.prompt`（T-M8-129 U2）。
+      await c.query(
+        `update post_patterns set prompt = 'CUSTOM P1' where x_account_id = $1 and seed_key = 'p1'`,
         [xid],
       );
       return { uid, xid };
     });
     try {
-      // p1 has an override → custom
-      expect(await resolvePromptTemplate(db, { xAccountId: xid, kind: "p1" })).toBe("CUSTOM P1");
-      // p2 has no override → system default
-      expect(await resolvePromptTemplate(db, { xAccountId: xid, kind: "p2" })).toBe(PT_P2);
-      // null account → system default
-      expect(await resolvePromptTemplate(db, { xAccountId: null, kind: "p1" })).toBe(PT_P1);
+      // 画像: 上書きがあれば custom、アカウント指定なしなら system default。
+      expect(await resolvePromptTemplate(db, { xAccountId: xid, kind: "image" })).toBe("CUSTOM IMG");
+      expect(await resolvePromptTemplate(db, { xAccountId: null, kind: "image" })).toBe(
+        SYSTEM_DEFAULT_TEMPLATES.image,
+      );
+
+      /*
+        **一覧は画像だけ**（T-M8-139）。型プロンプトの正本は `post_patterns` で、
+        読み出しは `listPatternPrompts` が担う（ADR-0008・要件05 §8）。
+        以前ここが p1〜p6 も返していたため、画像プロンプトの編集画面が
+        「再読み込み」で p1 の編集画面に変わり、保存で投稿パターンを上書きしていた。
+      */
+      const views = await listPromptTemplates(db, xid);
+      expect(views.map((v) => v.kind)).toEqual(["image"]);
+      expect(views[0]).toMatchObject({ content: "CUSTOM IMG", isOverride: true });
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
@@ -172,20 +189,20 @@ describe("prompt-templates (local DB)", () => {
     try {
       const created = await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p1",
+        kind: "image",
         content: "OVR 1",
         expectedUpdatedAt: null,
         plan: "md",
         quotePostEnabled: true,
       });
-      expect(created).toMatchObject({ kind: "p1", content: "OVR 1", isOverride: true });
+      expect(created).toMatchObject({ kind: "image", content: "OVR 1", isOverride: true });
       expect(created.updatedAt).not.toBeNull();
 
       // creating again with null must conflict (already exists)
       const dup = await reject(
         applyUpdatePromptTemplate(db, {
           xAccountId: xid,
-          kind: "p1",
+          kind: "image",
           content: "OVR X",
           expectedUpdatedAt: null,
           plan: "md",
@@ -198,7 +215,7 @@ describe("prompt-templates (local DB)", () => {
       const stale = await reject(
         applyUpdatePromptTemplate(db, {
           xAccountId: xid,
-          kind: "p1",
+          kind: "image",
           content: "OVR 2",
           expectedUpdatedAt: "2000-01-01T00:00:00.000Z",
           plan: "md",
@@ -211,14 +228,19 @@ describe("prompt-templates (local DB)", () => {
       // correct timestamp succeeds
       const updated = await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p1",
+        kind: "image",
         content: "OVR 2",
         expectedUpdatedAt: created.updatedAt,
         plan: "premium",
         quotePostEnabled: true,
       });
       expect(updated.content).toBe("OVR 2");
-      expect(await resolvePromptTemplate(db, { xAccountId: xid, kind: "p1" })).toBe("OVR 2");
+      // 画像プロンプトの保存先は `prompt_templates`（型プロンプトは post_patterns 側・T-M8-139）。
+      const saved = await db.query<{ content: string }>(
+        `select content from prompt_templates where x_account_id = $1 and kind = 'image'`,
+        [xid],
+      );
+      expect(saved.rows[0].content, "保存先が prompt_templates になっている").toBe("OVR 2");
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
@@ -230,21 +252,26 @@ describe("prompt-templates (local DB)", () => {
     try {
       await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p2",
-        content: "OVR P2",
+        kind: "image",
+        content: "OVR IMG",
         expectedUpdatedAt: null,
         plan: "md",
         quotePostEnabled: true,
       });
       const reset = await applyResetPromptTemplate(db, {
         xAccountId: xid,
-        kind: "p2",
+        kind: "image",
         plan: "md",
         quotePostEnabled: true,
       });
-      expect(reset).toMatchObject({ kind: "p2", isOverride: false, content: PT_P2, updatedAt: null });
+      expect(reset).toMatchObject({
+        kind: "image",
+        isOverride: false,
+        content: SYSTEM_DEFAULT_TEMPLATES.image,
+        updatedAt: null,
+      });
       const views = await listPromptTemplates(db, xid);
-      expect(views.find((v) => v.kind === "p2")?.isOverride).toBe(false);
+      expect(views.find((v) => v.kind === "image")?.isOverride).toBe(false);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

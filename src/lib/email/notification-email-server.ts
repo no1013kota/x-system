@@ -7,10 +7,12 @@ import { env } from "../env";
 import {
   canSendViaSmtp,
   sendQueuedNotificationEmail,
+  withSenderName,
   type EmailTransport,
   type NotificationEmailResult,
 } from "./notification-email";
 import { classifySmtpError } from "./smtp-error";
+import { EXPECTED_SENDER_NAME } from "../ops/auth-url-status";
 
 /**
  * 通知メール送信の server-only 配線（要件04 §14, 要件01 §3.6/§8, T-M4-16）。SMTP（Gmail・587 STARTTLS）
@@ -61,6 +63,7 @@ async function buildTransport(): Promise<EmailTransport | null> {
           subject: msg.subject,
           text: msg.text,
           messageId: msg.messageId,
+          headers: msg.headers,
         });
         return { providerId: info.messageId ?? null };
       } catch (error) {
@@ -85,7 +88,8 @@ export async function sendNotificationEmailForId(
     {
       db: pooledDb,
       transport,
-      from: env.EMAIL_FROM,
+      // 受信箱に「Exos AI」と出す（T-M8-136）。envが素のアドレスでも表示名を付ける。
+      from: withSenderName(env.EMAIL_FROM, EXPECTED_SENDER_NAME),
       replyTo: env.EMAIL_REPLY_TO,
       appBaseUrl: env.APP_BASE_URL,
       domain: fromDomain(env.EMAIL_FROM),

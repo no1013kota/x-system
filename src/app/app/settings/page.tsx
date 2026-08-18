@@ -30,6 +30,9 @@ import {
 import { PLANS, RELEASE_CAMPAIGN, hasCampaignDiscount, type PlanId } from "@/lib/plans";
 import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
+import { listPatternsForUser } from "@/lib/post/post-patterns-server";
+import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
+import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
@@ -46,6 +49,7 @@ import { ApiKeySettings } from "./api-key-settings";
 import { BaseMdEditor } from "./base-md-editor";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
+import { PatternManager } from "./pattern-manager";
 import { PromptTemplatesEditor } from "./prompt-templates-editor";
 import { SettingsPreferences } from "./settings-preferences";
 import {
@@ -55,7 +59,7 @@ import {
   normalizeSettingsTab,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { Card, CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { xRedirectUri } from "@/lib/x/oauth-server";
@@ -231,12 +235,29 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       isLearningRunningForUser(user.id, account.id),
     ]);
   }
-  let promptTemplates: PromptTemplateView[] = [];
-  let promptQuoteEnabled = false;
+let promptTemplates: PromptTemplateView[] = [];
+  /** 投稿作成プロンプト＝パターン管理（T-M8-129 U4b）。プルダウンをやめ全件並べる。 */
+  let patterns: PatternOption[] = [];
+  let patternPrompts: Record<string, PatternPromptView> = {};
+  let systemDefaultPrompts: Record<string, string> = {};
   if (tab === "prompts" && promptSection !== "account-md" && account && plan !== "standard") {
-    const res = await listPromptTemplatesForUser(user.id);
-    promptTemplates = res.templates;
-    promptQuoteEnabled = res.quotePostEnabled;
+    if (promptSection === "image-prompt") {
+      const res = await listPromptTemplatesForUser(user.id);
+      promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
+    } else {
+      const res = await listPatternsForUser(user.id);
+      patterns = res.patterns;
+      patternPrompts = res.prompts;
+      // 「プロンプトを既定に戻す」の比較元。既定パターンだけが持つ。
+      systemDefaultPrompts = Object.fromEntries(
+        res.patterns
+          .filter((option) => option.isSystemDefault && option.seedKey !== null)
+          .map((option) => [
+            option.id,
+            SYSTEM_DEFAULT_TEMPLATES[option.seedKey as PromptTemplateKind] ?? "",
+          ]),
+      );
+    }
   }
   let validUserProviders: AiKeyProvider[] = [];
   if (purposeKeys) {
@@ -252,7 +273,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     <main className="px-4 py-[26px] lg:px-8">
       <div className="mx-auto max-w-[1180px] space-y-3.5">
         <header>
-          <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
+          <h1 className={pageTitleClassName}>設定</h1>
         </header>
 
         <TabNav
@@ -450,13 +471,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 learningRunning={baseMdLearningRunning}
                 xAccountId={account.id}
               />
-            ) : (
+            ) : promptSection === "image-prompt" ? (
               <PromptTemplatesEditor
-                initialTemplates={promptTemplates.filter((t) =>
-                  promptSection === "image-prompt" ? t.kind === "image" : t.kind !== "image",
-                )}
+                initialTemplates={promptTemplates}
                 key={promptSection}
-                quotePostEnabled={promptQuoteEnabled}
+              />
+            ) : (
+              <PatternManager
+                initialPatterns={patterns}
+                initialPrompts={patternPrompts}
+                key={promptSection}
+                systemDefaultPrompts={systemDefaultPrompts}
               />
             )}
           </div>

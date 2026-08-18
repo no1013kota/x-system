@@ -156,13 +156,22 @@ async function waitForJob(jobId: string, timeoutMs = 180_000): Promise<JobRow | 
   }
 }
 
-async function createJob(xAccountId: string, pattern: string, input: object): Promise<string> {
+/**
+ * jobを作る。**パターンは名前で指す**（T-M8-129 U5。旧enumは撤去した）。
+ * 既定パターンを削除しているアカウントでは見つからないので、その旨で失敗させる
+ * （黙って別のパターンで生成すると、何を検証したのか分からなくなる）。
+ */
+async function createJob(xAccountId: string, patternName: string, input: object): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
-    `insert into generation_jobs (x_account_id, kind, trigger, pattern, input, request_key)
-     values ($1, 'post_generation', 'manual', $2::post_pattern, $3::jsonb, $4)
+    `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, input, request_key)
+     select $1, 'post_generation', 'manual', p.id, $3::jsonb, $4
+       from post_patterns p where p.x_account_id = $1 and p.name = $2
      returning id`,
-    [xAccountId, pattern, JSON.stringify(input), `smoke:${randomUUID()}`],
+    [xAccountId, patternName, JSON.stringify(input), `smoke:${randomUUID()}`],
   );
+  if (!rows[0]) {
+    throw new Error(`パターン「${patternName}」がこのアカウントにありません（削除された可能性）`);
+  }
   return rows[0].id;
 }
 
@@ -183,12 +192,11 @@ async function cleanup(jobIds: string[], draftIds: string[]): Promise<void> {
 
 /** Web検索を使う生成が下書きまで到達し、本文にproviderマークアップが残らないこと。 */
 async function generationWithSearch(xAccountId: string): Promise<SmokeResult> {
-  const name = "生成（Web検索あり・P-6）";
+  const name = "生成（Web検索あり・週次まとめ）";
   const jobIds: string[] = [];
   const draftIds: string[] = [];
   try {
-    const jobId = await createJob(xAccountId, "p6", {
-      pattern: "p6",
+    const jobId = await createJob(xAccountId, "週次まとめ", {
       requested_mode: "draft",
     });
     jobIds.push(jobId);
@@ -239,13 +247,12 @@ async function generationWithSearch(xAccountId: string): Promise<SmokeResult> {
 
 /** 画像付き生成が、子jobまで通って実バイト列の画像に到達すること。 */
 async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
-  const name = "生成＋画像（P-2）";
+  const name = "生成＋画像（自分の考え・意見）";
   const jobIds: string[] = [];
   const draftIds: string[] = [];
   let costUsd = 0;
   try {
-    const jobId = await createJob(xAccountId, "p2", {
-      pattern: "p2",
+    const jobId = await createJob(xAccountId, "自分の考え・意見", {
       requested_mode: "draft",
       image_enabled: true,
       user_opinion: "AIツールの選び方について、要点を短くまとめてください。",

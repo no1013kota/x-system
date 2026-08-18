@@ -19,8 +19,8 @@ import { alertIn, expect, signIn, test } from "./fixtures/test";
 async function seedRunningJob(xAccountId: string): Promise<string> {
   const [row] = await query<{ id: string }>(
     `insert into generation_jobs
-       (x_account_id, kind, trigger, pattern, status, progress_stage, attempt, started_at, request_key)
-     values ($1, 'post_generation', 'manual', 'p3', 'running', 'writing', 1, now(), $2)
+       (x_account_id, kind, trigger, pattern_id, status, progress_stage, attempt, started_at, request_key)
+     values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), 'running', 'writing', 1, now(), $2)
      returning id`,
     [xAccountId, `e2e-${randomUUID()}`],
   );
@@ -276,4 +276,80 @@ test("生成中に開き直しても画面のつなぎ目でズレが出ない�
   await expect(page.getByText(/経過 0:0[2-9]|経過 0:[1-5]\d/)).toBeVisible({ timeout: 30_000 });
 
   expect(mismatches, "サーバー描画とブラウザの表示が食い違わないこと").toEqual([]);
+});
+
+/**
+ * T-M8-130。**投稿作成画面からパターンを追加できる**（運営者の指示・2026-08-18）。
+ *
+ * 投稿を作ろうとして「この型が無い」と気付くのはこの画面なので、ここで作れないと
+ * 設定画面へ往復することになり、目的（投稿を作る）が中断する。
+ * 追加したらそのまま選択された状態になることまで確かめる。
+ */
+test("投稿作成画面からパターンを追加でき、そのまま選択された状態になる", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("pattern-inline");
+  // プロンプトの編集はmdプラン以上（設定＞プロンプトと同じ境界）。
+  await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/posts?tab=create");
+
+await page.getByRole("button", { name: "パターンを追加" }).click();
+  // プロンプト欄には雛形が入っている（空欄から書き始めさせない）。
+  await expect(page.locator("#new-pattern-prompt")).toHaveValue(
+    /# 投稿内容[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
+  );
+  // プレースホルダーを作り、プロンプトへ {対象読者} を書く。
+  await page.getByRole("button", { name: "プレースホルダーを追加" }).click();
+  await page.locator("#new-pattern-placeholder-0").fill("対象読者");
+  await page.locator("#new-pattern-name").fill("画面から作った型");
+  await page
+    .locator("#new-pattern-prompt")
+    .fill(
+      "# 投稿内容\n画面から作った型のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{対象読者} に向けて書く",
+    );
+  await page.getByRole("button", { name: "追加", exact: true }).click();
+
+  // 追加した型が選択肢に出て、選ばれている。
+  const radio = page.getByRole("radio", { name: /画面から作った型/ });
+  await expect(radio).toBeVisible();
+  await expect(radio).toBeChecked();
+
+const [saved] = await query<{
+    name: string;
+    max_posts: number;
+    prompt: string;
+    placeholders: { name: string }[];
+  }>(
+    `select name, max_posts, prompt, placeholders from post_patterns
+      where x_account_id = $1 and seed_key is null`,
+    [account.xAccountId],
+  );
+  expect(saved.name).toBe("画面から作った型");
+  // 「メインポスト：」だけ＝スレッド0 → 総1ポスト（プロンプトから読む）。
+  expect(saved.max_posts).toBe(1);
+  expect(saved.prompt).toContain("画面から作った型のプロンプト");
+  expect(saved.placeholders).toEqual([{ name: "対象読者" }]);
+
+// **プレースホルダーの入力欄が投稿作成画面に出る**（{対象読者} に入る旨も書いてある）。
+  await expect(page.getByLabel("対象読者（任意）")).toBeVisible();
+  await expect(page.getByText("{対象読者} に入ります", { exact: false })).toBeVisible();
+
+  /*
+    **この画面から削除もできる**（T-M8-133）。何が起きるかを確認ダイアログで先に示す。
+    削除は各パターンのカードの中にあり、読み上げ名にパターン名が入る（T-M8-134）。
+  */
+  await page.getByRole("button", { name: "「画面から作った型」を削除" }).click();
+  await expect(page.getByText("過去の下書き・履歴の表示は名前のまま残ります")).toBeVisible();
+  await page.getByRole("button", { name: "削除する" }).click();
+  await expect(page.getByRole("radio", { name: /画面から作った型/ })).toHaveCount(0);
+  expect(
+    (
+      await query<{ n: string }>(
+        `select count(*)::text n from post_patterns where x_account_id = $1 and seed_key is null`,
+        [account.xAccountId],
+      )
+    )[0].n,
+  ).toBe("0");
 });

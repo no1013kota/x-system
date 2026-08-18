@@ -4,6 +4,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
+import {
+  ATTEMPTS_WARN_AT,
+  clearCodeAttempts,
+  codeAttemptState,
+  recordCodeFailure,
+} from "@/lib/auth/code-attempts";
+import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
+import { SIGNUP_GENERIC_ERROR, signUpErrorMessage } from "@/lib/auth/signup-errors";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
@@ -25,11 +33,28 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { AuthFormState } from "./auth-state";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
+import { confirmRedirectUrl } from "@/lib/ops/auth-url-status";
 
 const SIGNUP_ACCEPTED_MESSAGE =
-  "確認メールを送信しました。メール内のリンクから登録を完了してください。";
-const SIGNUP_ERROR_MESSAGE =
-  "登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。";
+  "確認コードをメールで送信しました。届いた6桁の数字を入力してください。";
+/**
+ * コードが違う・期限切れのときの文言（T-M8-121）。
+ * **どちらか一方に絞らない**——Supabaseはどちらも同じ `invalid` 系で返すため、
+ * 断定すると片方の利用者に嘘を言うことになる。次にやることだけを明確にする。
+ */
+const CODE_INVALID_MESSAGE =
+  "コードが確認できませんでした。入力を確認するか、コードを再送してください（発行から1時間で期限切れになります）。";
+/**
+ * 連続失敗の上限に達したとき（T-M8-124）。**行き止まりにしない**——次にやること（再送）を示す。
+ * 再送すれば数えは戻る。
+ */
+const CODE_BLOCKED_MESSAGE =
+  "入力の失敗が続いたため、いまのコードでは確認できません。「コードを再送」してから、新しいコードを入力してください。";
+/**
+ * 原因を特定できないときの文言。**正本は `signup-errors.ts`**（画面へ出す文言を1か所にまとめる）。
+ * 原因が分かるものは `signUpErrorMessage` が言い分ける（T-M8-127）。
+ */
+const SIGNUP_ERROR_MESSAGE = SIGNUP_GENERIC_ERROR.message;
 const RESEND_ACCEPTED_MESSAGE =
   "確認メールを再送しました。登録可能なメールアドレスの場合にメールが届きます。";
 const SIGNIN_ERROR_MESSAGE =
@@ -41,8 +66,15 @@ const UPDATE_PASSWORD_ERROR_MESSAGE =
 const CAPTCHA_ERROR_MESSAGE =
   "人間であることの確認に失敗しました。もう一度お試しください。";
 
+/**
+ * 確認メールのリンクの行き先。
+ *
+ * **`doctor` が許可リストを検査するのと同じ関数を使う**（T-M8-144）。
+ * 以前はここに同じ組み立ての写しがあり、コメントで「同じにすること」と人の記憶に
+ * 頼っていた——片方だけ変えると「doctorは緑なのにメールのリンクが通らない」になる。
+ */
 function confirmationRedirectUrl(): string {
-  return new URL("/auth/confirm", env.APP_BASE_URL).toString();
+  return confirmRedirectUrl(env.APP_BASE_URL as string);
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -86,7 +118,10 @@ export async function signUp(
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
     if (error || !data.user) {
-      return { status: "error", message: SIGNUP_ERROR_MESSAGE };
+      // **原因ごとに言い分ける**（T-M8-127）。登録済みは待っても直らないので
+      // 「時間をおいて再度」と言ってはいけない（同じ操作を繰り返させる）。
+      const { message, action } = signUpErrorMessage(error);
+      return { status: "error", message, ...(action ? { action } : {}) };
     }
 
     const acceptedAt = new Date().toISOString();
@@ -117,6 +152,72 @@ export async function signUp(
 }
 
 /** Resends signup confirmation without revealing whether the email exists. */
+/**
+ * メールで届いた6桁コードを検証して、登録を完了する（T-M8-121）。
+ *
+ * 成功すると Supabase がセッションを張るので、そのまま `/plans` へ進める（**確認のためだけに
+ * もう一度ログインさせない**）。`verifyOtp` はコードの期限・使い切りをSupabase側で管理する。
+ *
+ * captchaはここでは要求しない。**このフォームに到達できるのは直前に登録した本人だけ**で、
+ * すでに登録時にTurnstileを通している。ここで再度求めると、コードを打つだけの画面で
+ * 人間確認が失敗して詰む経路を増やす（T-M8-87の教訓）。
+ */
+export async function verifySignUpCode(
+  _previousState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const emailResult = parseUserInput(emailSchema, formData.get("email"));
+  if (!emailResult.success) {
+    return { status: "error", message: "メールアドレスを確認してください。" };
+  }
+  const email = emailResult.data;
+  const code = normalizeEmailCode(String(formData.get("code") ?? ""));
+  if (code.length !== EMAIL_CODE_LENGTH) {
+    return {
+      status: "error",
+      message: `${EMAIL_CODE_LENGTH}桁の数字を入力してください。`,
+      email,
+    };
+  }
+
+  // 執念深い試行を止める（T-M8-124）。打ち間違いの数回では何も起きない。
+  if (codeAttemptState(email).blocked) {
+    return { status: "error", message: CODE_BLOCKED_MESSAGE, email };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: "signup",
+    });
+    if (error || !data.user) {
+      const { blocked, remaining } = recordCodeFailure(email);
+      return {
+        status: "error",
+        message: blocked
+          ? CODE_BLOCKED_MESSAGE
+          : // 残りは少なくなってから初めて出す（最初から出すと急かすだけ）。
+            remaining <= ATTEMPTS_WARN_AT
+            ? `${CODE_INVALID_MESSAGE}（あと${remaining}回で再送が必要になります）`
+            : CODE_INVALID_MESSAGE,
+        email,
+      };
+    }
+    clearCodeAttempts(email);
+    // profile行が無いまま進むと、同意の記録が無くて再同意を求める経路へ落ちる（T-M8-73）。
+    // 登録時のtriggerで作られているはずだが、無ければここで作る（既存値は触らない）。
+    await ensureUserProfileWithClient(data.user, createSupabaseAdminClient());
+  } catch (error) {
+    recordUnexpectedError(error, { at: "verify-signup-code" });
+    return { status: "error", message: CODE_INVALID_MESSAGE, email };
+  }
+
+  // 確認できたことを着地側で言う（T-M8-58。無言で料金表に変わると成功したか分からない）。
+  redirect("/plans?confirmed=1");
+}
+
 export async function resendSignUpConfirmation(
   _previousState: AuthFormState,
   formData: FormData,
@@ -147,6 +248,8 @@ export async function resendSignUpConfirmation(
     if (hasErrorCode(error, "captcha_failed")) {
       return { status: "error", message: CAPTCHA_ERROR_MESSAGE };
     }
+    // 新しいコードを送ったので失敗の数えを戻す（上限に達した利用者を行き止まりにしない）。
+    clearCodeAttempts(emailResult.data);
   } catch (error) {
     // 利用者へはアカウントの存在を漏らさないため常に同じ応答を返す（列挙防止）。
     // ただし原因を捨てるとメール送信不能が誰にも気付かれないため、記録だけは行う。

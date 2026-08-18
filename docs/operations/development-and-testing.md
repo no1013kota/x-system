@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v4.14 |
-| 更新日 | 2026-08-16 |
+| 更新日 | 2026-08-18 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
 このリポジトリで開発を進めるときの手順書です。**開発とテストは Claude Code に任せる前提**で書いてあります。専門知識は要りません。
@@ -349,9 +349,9 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 5 | provider契約 | `npm run check:providers` | **送っているリクエストが実APIに受理されるか** | 応答をアプリが扱えるか。**Googleは既定でskip**（`PROVIDER_CHECK_GOOGLE=1` で有効化・T-M7-17） |
 | 6 | 実物スモーク | `npm run smoke:live -- --account <id>` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
-| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・SMTPの設定は手動確認。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
+| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**SupabaseのカスタムSMTPと差出人名**（`price-status`と同じ注入で読み取り・T-M8-136）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・X Developer App のcallback URL（APIで読めない）。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
-内訳: `src` 配下のテストファイル227本 = 単体160 ＋ `*.db.test.ts` 66 ＋ provider契約 `*.live.test.ts` 1。`npm test` の結果は 1,787 passed / 6 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-11 時点）。
+内訳: `src` 配下のテストファイル254本 = 単体183 ＋ `*.db.test.ts` 69 ＋ provider契約 `*.live.test.ts` 2。`npm test` の結果は 2,209 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-18 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
 
 ### 層5と層6は別物（第1部§4で2種類あると書いた理由）
 
@@ -410,6 +410,29 @@ npm run doctor の結果を見て、直せるものは直してください。
 - **検査を追加・変更したら、意図的に壊して落ちることを1度確認する。** 落ちない検査は価値がゼロで、「守られている」という誤った安心だけを残す。
 - **走査対象はディレクトリ走査にし、ファイル名の手書き列挙を避ける。** 列挙は新しいファイルが増えたときの追記を人の記憶に依存させる（CLAUDE.md 原則3）。
 - 走査の基点は `fileURLToPath(new URL(..., import.meta.url))` にする。`process.cwd()` 基準だと実行ディレクトリで結果が変わる。
+
+### docs 自身を走査する検査
+
+`npm run check:doc-dates`（`release:check` に含む）は、各文書の冒頭「更新日」がその文書を最後に変えた
+コミットの日付より古くないかを見る。**更新日の行だけを変えたコミットは内容の変更として数えない**ので、
+日付を直すコミット自身が落ちて収束しなくなることはない。
+
+なぜ要るのか。「docs/ は常に実装の現状と一致する」はこのリポジトリの最重要ルールだが、
+**更新日を直す手順だけは人の記憶に預けられていた**。2026-08-18 に調べたところ **9本の文書で置き去り**に
+なっていた（T-M8-129・T-M8-133・T-M8-88 と doc-sync の各コミット）。日付がずれていると、
+読む側は「この記述はいつの実装のものか」を判断できず、正本としての価値が落ちる。
+
+`checked === 0` でも落とす作りにしてある（更新日の書式が変わって検出器が空振りした場合を見逃さないため）。
+上の「検出器ごとに1件以上当たること」と同じ考え方。
+
+`npm run check:doc-refs`（同じく `release:check` に含む）は、docs が
+バッククォートで指しているファイルパスが実在するかを見る。**実際に post-patterns.ts（現 `src/lib/post/post-patterns-store.ts`）が
+T-M8-129 で消えたあとも、要件06 と ADR-0006 が旧名を「単一の正とする」と案内し続けていた**。
+存在しないファイルを指す正本は、読んだ人を行き止まりへ送る（原則2）。
+
+ADR のように「判断した時点のファイル名」を書き残したい場合は、**生きた参照は現在のファイルへ向け、
+旧名は地の文で書く**（バッククォートで囲まない）。除外リストを置かないのは、
+リストそのものが腐って検査を空振りさせるため。
 
 ### ビルド成果物を走査する検査
 

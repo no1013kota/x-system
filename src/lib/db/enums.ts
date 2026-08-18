@@ -49,7 +49,6 @@ export const DB_ENUMS = {
     "posting",
     "merging",
   ],
-  post_pattern: ["p1", "p2", "p3", "p4", "p5", "p6"],
   draft_status: ["draft", "posting", "posted", "discarded", "failed"],
   posted_mode: ["auto", "manual"],
   schedule_mode: ["draft", "auto"],

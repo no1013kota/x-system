@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
-| 更新日 | 2026-08-04 |
+| バージョン | v1.15 |
+| 更新日 | 2026-08-18 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -85,9 +85,9 @@ flowchart TB
 | `STRIPE_SECRET_KEY` | dev/preview/prod | Checkout/Portal/Webhook API | Server only |
 | `STRIPE_WEBHOOK_SECRET` | dev/preview/prod | Webhook署名検証 | 環境ごとに別値 |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | **環境ごとに別のID**。Stripe Dashboardで1つ作り、内容は `npm run stripe:portal:setup -- --target <env>` で合わせる（既存を上書き更新する。新規作成はしない）。3価格は**同一Product配下でなくてよい**（要件03 §2.2）。devは任意。手順は[デプロイ手順 §1.4](../operations/deployment.md) |
-| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月 |
-| `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月 |
-| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月 |
+| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
+| `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月（同上） |
+| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月（同上） |
 
 ### 3.4 X API
 
@@ -119,7 +119,7 @@ flowchart TB
 | `SMTP_HOST` | preview/prod | Gmail SMTP host | `smtp.gmail.com` |
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
-| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password |
+| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——通知メール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
 | `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>` |
 | `EMAIL_REPLY_TO` | preview/prod | Reply-Toアドレス | `matsubuz.10@gmail.com` |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |
@@ -217,3 +217,9 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - 運営側の確認・集計はSupabase Studio/SQLで直接行う（admin UIはMVP対象外）。ユーザー別月次原価の確認・実測分析は、明細の40日保持内（翌月10日まで）にSQLで実施する。
 - 参照のないStorage画像は24時間後から1起動100件までbest effortで削除する。参照中の画像、draft、投稿履歴、base_md履歴、利用枠・課金台帳はサービス提供中保持する。法令上必要な個別対応は§9の自動保持処理と分けて運営が手作業で行う。
 - Sentryとメールproviderのlog保持期間は各サービス設定で30日以下とし、秘密値・投稿前入力を送信しない。
+
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.15 | 2026-08-18 | `SMTP_*` が Supabase Auth のカスタムSMTPにも使われることを明記（T-M8-144） |

@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.11 |
-| 更新日 | 2026-08-04 |
+| 更新日 | 2026-08-18 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -80,14 +80,23 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 
 **リリースの流れ（要決定D-8 案A・2026-07-30）**
 
-1. `stg` へ push → CI が緑になるのを確認
-2. staging の Supabase へ `supabase db push` → §5 の検証
-3. `stg` → `main` の **プルリクエストを作る**（`main` への直pushは branch protection で禁止）
-4. PR上でCIが緑になったらマージ → production ビルドが始まる
+**`main` への直pushは branch protection で拒否される**（実測 2026-08-18: `GH006 Protected branch update failed`・
+「Changes must be made through a pull request」「2 of 2 required status checks are expected」）。
+必ずPR経由で入れる。
 
-`main` は branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にする想定。**ただし private × GitHub Free では保護機能が使えない**ことが2026-07-30に判明しており、実現方法は要決定D-14で選ぶ（`tasks/BACKLOG.md`）。
+1. `main` から**作業ブランチ**を切る（例 `release/YYYY-MM-DD-<内容>`）
+2. そのブランチを push → CI が緑になるのを確認
+3. ブランチ → `main` の **プルリクエストを作る**（`gh pr create`）
+4. 必須チェック2本が緑になったらマージ → production ビルドが始まる
+5. `npm run release:production -- --apply` で migration 適用とデプロイ後検証を行う
 
-**保護が有効になるまでは、CIが赤でも `main` への push でproductionビルドが進む。** それまでは push の前に必ずCIの結果を確認する（緑でなければ push しない）。
+> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**ツリーは同一だがSHAが分岐**しており、
+> PRにすると同じ内容の55件が差分として並ぶ。staging を検証したいときは `stg` へ別途 push する
+> （`supabase link` の向き先を張り替えてから・§5）。**本番へ入れるのは `main` から切った作業ブランチ**にする。
+
+保護の必須チェックは `型・lint` と `release:check（DB・build・E2E）` の2本。
+**2026-07-30 時点では「private × GitHub Free では保護が使えない」と記録していたが、現在は有効になっている**
+（要決定D-14 の結果）。CIが赤いとマージできないので、pushの前に手元で `npm run release:check` を通しておく。
 
 ---
 
@@ -118,7 +127,7 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 | `X_MANAGED_CLIENT_ID` | 運営 X App（premium 用）の Client ID |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | Customer Portal 構成ID（Stripe Dashboard で1つ作り、内容は下の §1.4 で合わせる） |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` / `X_COST_POST_READ_USD` / `X_COST_USER_READ_USD` | X Developer Console の pay-per-use 実単価（読取2つはT-M8-91で追加。読取は応答のresource数で乗算課金される） |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等。**`npm run auth:templates -- --apply` が Supabase Auth のカスタムSMTP設定にも同じ値を流用する**（アプリの通知メールと認証メールで同じ資格情報・T-M8-136） |
 | `EMAIL_FROM` / `EMAIL_REPLY_TO` | 送信元・返信先 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |
@@ -186,9 +195,9 @@ stagingのStripeアカウントには **Stripeが自動生成した既定の構�
 5. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
    - **stagingの動作確認だけなら**: 自分（Supabaseの組織メンバー）のアドレスで登録すれば内蔵送信で足りる。
    - **本番、または他人のアドレスで試すなら**: Supabase の Authentication → Emails → SMTP Settings へ**カスタムSMTPを設定する**（アプリ用と同じGmail App Passwordを流用できる）。設定後の上限は 30通/時から。
-5.5. **認証メールのテンプレートを差し替える。** `supabase/config.toml` の `[auth.email.template.*]` は**ローカル専用**で、リモートには効かない。既定テンプレートは `{{ .ConfirmationURL }}` を使うため、アプリの `/auth/confirm` が要求する `token_hash` がリンクに付かず、**確認リンクが「リンクを確認できませんでした」になる**（2026-08-02に実際に発生。T-M7-45 のStorage bucketと同じ「config.tomlにしか無い」型）。
-   - Authentication → Emails → Templates の **Confirm signup** と **Reset password** を、`supabase/templates/confirmation.html` / `recovery.html` と同じ内容へ貼り替える（`{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup` / `&type=recovery`）。
-   - Authentication → URL Configuration → **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する。無いと `{{ .RedirectTo }}` が Site URL へ戻され、リンクが `/auth/confirm` を通らない。
+5.5. **認証メールのテンプレートを反映する（`npm run auth:templates -- --target production --apply`）。** **2026-08-18、この手順を忘れて本番の新規登録が止まった**（画面には「リンクを確認できませんでした」だけが出る）。**手順を1コマンドへ畳んだので、以後は手作業で貼り替えない**（原則3）。コマンドは (1) カスタムSMTPが未設定なら `SMTP_*` から先に設定し（Freeプラン＋内蔵送信では**テンプレートを変更できない**）(2) `supabase/templates/*.html` を反映し (3) 反映後に読み直して確認する。`npm run doctor` も**確認メールに6桁コード（`{{ .Token }}`）が入っているか**を見るようになったので、忘れたら気付ける。以下は手作業の場合の説明。 ** `supabase/config.toml` の `[auth.email.template.*]` は**ローカル専用**で、リモートには効かない。既定テンプレートは `{{ .ConfirmationURL }}` を使うため、**確認メールに入力すべき6桁コード（`{{ .Token }}`）が載らず、登録を完了できない**（T-M8-121でコード方式へ移行。それ以前はリンク方式で `token_hash` が付かず「リンクを確認できませんでした」になった。2026-08-02と08-18に発生。T-M7-45 のStorage bucketと同じ「config.tomlにしか無い」型）。パスワード再設定は引き続きリンク方式（`{{ .TokenHash }}`）。
+   - Authentication → Emails → Templates の **Confirm signup** と **Reset password** を、`supabase/templates/confirmation.html` / `recovery.html` と**同じ内容へ貼り替える**。**2つは方式が違う**（T-M8-121）: **Confirm signup は6桁コード方式**（`{{ .Token }}` を本文に出す。リンクは使わない）、**Reset password はリンク方式**（`{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery`）。確認メールにリンクを貼っても**入力すべきコードが載らず登録を完了できない**（2026-08-02 と 08-18 に発生）。貼る内容は実ファイルを正とし、ここには写さない。
+   - Authentication → URL Configuration → **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する。無いと `{{ .RedirectTo }}` が Site URL へ戻され、リンクが `/auth/confirm` を通らない（**パスワード再設定に効く**。確認メールは6桁コード方式なのでリンクを使わない）。
 6. `profiles` 自動作成トリガーが入っていることを確認（マイグレーション同梱）。
 
 適用結果の確認:

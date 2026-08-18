@@ -32,6 +32,7 @@ export interface TimelinePostLike {
 
 /** Exos AIで作った投稿のタグ（drafts から引く）。 */
 export interface DraftTag {
+  /** パターンの**名前**（T-M8-129 U5。内部IDは持たない）。 */
   pattern: string | null;
   theme: string | null;
 }
@@ -47,7 +48,7 @@ export interface SuggestionPost {
   replies: number | null;
   has_image: boolean;
   has_url: boolean;
-  /** このアプリで作った投稿の型（p1〜p6）。外部の投稿は null。 */
+  /** このアプリで作った投稿の**パターン名**。外部の投稿は null（T-M8-129 U3/U5）。 */
   pattern: string | null;
   /** このアプリで作った投稿のテーマID。外部の投稿は null。 */
   theme: string | null;
@@ -114,7 +115,8 @@ export interface StoredTimelinePost {
   replies: number | null;
   has_image: boolean;
   has_url: boolean;
-  pattern: string | null;
+  /** パターンの名前（T-M8-129 U5）。外部の投稿は null。 */
+  pattern_name: string | null;
   theme: string | null;
 }
 
@@ -131,7 +133,7 @@ export function buildInputFromStored(rows: readonly StoredTimelinePost[]): Sugge
       replies: r.replies,
       has_image: r.has_image,
       has_url: r.has_url,
-      pattern: r.pattern,
+      pattern: r.pattern_name,
       theme: r.theme,
     })),
   };
@@ -142,12 +144,12 @@ export function buildInputFromStored(rows: readonly StoredTimelinePost[]): Sugge
  * thread の**全ポストのID**を同じタグへ張る（引用や続きのポストがタイムラインに現れても引けるように）。
  */
 export function buildDraftTagIndex(
-  rows: readonly { tweet_ids: string[] | null; pattern: string | null; theme: string | null }[],
+  rows: readonly { tweet_ids: string[] | null; pattern_name: string | null; theme: string | null }[],
 ): Map<string, DraftTag> {
   const index = new Map<string, DraftTag>();
   for (const row of rows) {
     for (const id of row.tweet_ids ?? []) {
-      index.set(id, { pattern: row.pattern, theme: row.theme });
+      index.set(id, { pattern: row.pattern_name, theme: row.theme });
     }
   }
   return index;

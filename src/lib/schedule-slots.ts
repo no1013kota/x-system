@@ -5,10 +5,11 @@ import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
 import { POST_THEME_IDS } from "@/lib/post/post-theme";
+import { assertSchedulable, requirePattern } from "@/lib/post/post-patterns-store";
 
 /**
  * schedule_slots CRUD の中核（要件05 §7・要件02 §3.10, S-1/S-2/S-4, T-M4-01）。本人のみ・active_x_account
- * スコープ。zod検証（P-5不可・weekdays・時刻・画像provider・instructions）、楽観lock（expected_updated_at
+ * スコープ。zod検証（パターンID・weekdays・時刻・instructions）、楽観lock（expected_updated_at
  * 不一致は0件更新→job_conflict）、mode=auto の作成/auto化/再有効化は現行versionの自動投稿同意を必須にする。
  * DB は注入し、Action層（server）が pool と active_x_account 解決を束ねる。
  */
@@ -29,8 +30,12 @@ const weekdaysSchema = z
   .refine((ws) => new Set(ws).size === ws.length, "曜日が重複しています。");
 
 const baseSlotFields = {
-  // P-5（引用ポスト）はスケジュール対象外（要件04 §12・要件02 §3.10 CHECK）。
-  pattern: z.enum(["p1", "p2", "p3", "p4", "p6"]),
+  /**
+   * 使うパターン（`post_patterns.id`）。**内部ID（`p1`）では受けない**（T-M8-129 U3）。
+   * 利用者が作ったパターンにも対応するため。所有者チェックは `requirePattern` が行う。
+   * 引用URLが必須のパターンは予約に使えない（DBのトリガが拒否・要件02 §3.10）。
+   */
+  pattern_id: z.string().uuid(),
   weekdays: weekdaysSchema,
   time_jst: z.string().refine(validTimeJst, "9:00〜22:00の00分/30分で指定してください。"),
   mode: z.enum(["draft", "auto"]),
@@ -42,6 +47,27 @@ const baseSlotFields = {
   theme: z.enum(POST_THEME_IDS),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional().default(false),
+  /**
+   * この枠の生成でAIに読ませる参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じもの。
+   * **DBのCHECKと同じ条件で弾く**（http/https のみ）。片方だけ緩いと、
+   * 画面は保存したつもりなのにDBが拒否して原因の分からない失敗になる。
+   */
+  source_url: z
+    .string()
+    .trim()
+    // **投稿作成（`generation-jobs.ts`）と同じ条件にする。** 同じ「参考URL」欄なのに
+    // 画面によって通る値が違うと、予約だけ出典検証で落ちて自動投稿が止まる。
+    .url("httpsのURLを指定してください。")
+    .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください。")
+    .max(2000)
+    .nullish()
+    .or(z.literal("").transform(() => null)),
+  /** パターンの `{名前}` へ差し込む値（T-M8-135）。キーはプレースホルダー名。 */
+  // `.default({})` を付けない——推論される型で必須になり、呼び出し側が全部書き換えになる。
+  // 未指定は `keptPlaceholderValues` が空として扱う。
+  placeholder_values: z.record(z.string(), z.string().max(2000)).optional(),
+  /** この枠だけに使う生成プロンプト。null／空ならパターンのものを使う（T-M8-135）。 */
+  prompt_override: z.string().max(8000).nullish(),
 };
 
 export const createScheduleSlotSchema = z.object(baseSlotFields);
@@ -59,19 +85,35 @@ export type SlotLockInput = z.infer<typeof slotLockSchema>;
 
 export interface ScheduleSlotView {
   id: string;
-  pattern: string;
+  /** 使うパターン。削除されたら null（枠は停止して設定は残る・要件02 §3.21）。 */
+  pattern_id: string | null;
+  /** 画面に出す名前。パターンが削除済みなら null。**内部IDは出さない**（要件06 §1.0）。 */
+  pattern_name: string | null;
   weekdays: number[];
   time_jst: string;
   mode: string;
   theme: string;
   instructions: string | null;
   image_enabled: boolean;
+  /** この枠の参考URL（T-M8-135）。 */
+  source_url: string | null;
+  /** プレースホルダー名 → 値（T-M8-135）。 */
+  placeholder_values: Record<string, string>;
+  /** この枠だけのプロンプト。null ならパターンのものを使う（T-M8-135）。 */
+  prompt_override: string | null;
   enabled: boolean;
   updated_at: string;
 }
 
-const SLOT_COLUMNS = `id, pattern, weekdays, time_jst::text as time_jst, mode, theme, instructions,
-  image_enabled, enabled, updated_at::text as updated_at`;
+/**
+ * `select` と `returning` の両方で使うため**テーブル別名を付けない**。
+ * `pattern_name` はスカラーサブクエリで引く（`returning` でも新しい行の `pattern_id` を参照できる）。
+ */
+const SLOT_COLUMNS = `id, pattern_id,
+  (select p.name from post_patterns p where p.id = pattern_id) as pattern_name,
+  weekdays, time_jst::text as time_jst, mode, theme, instructions,
+  image_enabled, source_url, placeholder_values, prompt_override,
+  enabled, updated_at::text as updated_at`;
 
 export interface ScheduleSlotDeps {
   runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
@@ -123,6 +165,31 @@ export async function listScheduleSlots(
   return rows;
 }
 
+/**
+ * **そのパターンに無いプレースホルダーの値は捨てる**（T-M8-135）。
+ *
+ * パターンを切り替えると前のパターンの入力欄が消えるが、値だけ残すと
+ * どこにも出ていない文字列が保存され続け、**画面で説明できない差分**になる。
+ * プロンプトへ差し込まれることもないので、持っていても害しかない。
+ */
+function keptPlaceholderValues(
+  pattern: { placeholders: { name: string }[] },
+  values: Record<string, string> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { name } of pattern.placeholders) {
+    const v = values?.[name];
+    if (typeof v === "string" && v.trim() !== "") out[name] = v.trim();
+  }
+  return out;
+}
+
+/** 空文字は「上書きなし」として扱う（null と空文字で挙動が変わらないようにする）。 */
+function normalizePromptOverride(value: string | null | undefined): string | null {
+  const v = value?.trim();
+  return v ? v : null;
+}
+
 export async function createScheduleSlot(
   userId: string,
   input: CreateScheduleSlotInput,
@@ -131,20 +198,27 @@ export async function createScheduleSlot(
   const xAccountId = await requireActiveAccount(deps, userId);
   return deps.runInTx(async (tx) => {
     if (input.mode === "auto") await assertAutomationConsent(tx, xAccountId);
+    // 所有者チェックを兼ねてパターンを取る（他人のパターンで予約させない）。
+    const pattern = await requirePattern(tx, xAccountId, input.pattern_id);
+    assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
       `insert into schedule_slots
-         (x_account_id, pattern, weekdays, time_jst, mode, theme, instructions, image_enabled)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+         (x_account_id, pattern_id, weekdays, time_jst, mode, theme, instructions,
+          image_enabled, source_url, placeholder_values, prompt_override)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        returning ${SLOT_COLUMNS}`,
       [
         xAccountId,
-        input.pattern,
+        pattern.id,
         input.weekdays,
         input.time_jst,
         input.mode,
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
+        input.source_url ?? null,
+        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        normalizePromptOverride(input.prompt_override),
       ],
     );
     return rows[0];
@@ -175,22 +249,29 @@ export async function updateScheduleSlot(
     if (!slot) throw new AppError("not_found");
     // 現在draftでも今回autoにする場合は同意必須（auto化・再有効化ゲート, 要件05 §7）。
     if (input.mode === "auto") await assertAutomationConsent(tx, slot.x_account_id);
+    const pattern = await requirePattern(tx, slot.x_account_id, input.pattern_id);
+    assertSchedulable(pattern);
     const { rows } = await tx.query<ScheduleSlotView>(
       `update schedule_slots
-          set pattern = $3, weekdays = $4, time_jst = $5, mode = $6, theme = $7,
-              instructions = $8, image_enabled = $9, updated_at = now()
+          set pattern_id = $3, weekdays = $4, time_jst = $5,
+              mode = $6, theme = $7, instructions = $8, image_enabled = $9,
+              source_url = $10, placeholder_values = $11, prompt_override = $12,
+              updated_at = now()
         where id = $1 and updated_at::text = $2
       returning ${SLOT_COLUMNS}`,
       [
         input.slot_id,
         input.expected_updated_at,
-        input.pattern,
+        pattern.id,
         input.weekdays,
         input.time_jst,
         input.mode,
         input.theme,
         input.instructions ?? null,
         input.image_enabled,
+        input.source_url ?? null,
+        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        normalizePromptOverride(input.prompt_override),
       ],
     );
     if (rows.length === 0) throw new AppError("job_conflict", { details: { reason: "stale_slot" } });

@@ -12,7 +12,8 @@ const pooledDb = pooledQueryable();
 
 export interface RecentPostView {
   draftId: string;
-  pattern: string;
+  /** 生成時に写したパターン名（**内部IDは出さない**・T-M8-129 U3）。 */
+  patternName: string;
   postedAt: string;
   /** `auto`／`manual`。未記録は null。 */
   postedMode: string | null;
@@ -29,13 +30,13 @@ export async function loadRecentPosts(
 ): Promise<RecentPostView[]> {
   const { rows } = await pooledDb.query<{
     id: string;
-    pattern: string;
+    pattern_name: string;
     posted_at: string;
     posted_mode: string | null;
     first_tweet_id: string | null;
     excerpt: string | null;
   }>(
-    `select d.id, d.pattern, d.posted_at::text as posted_at, d.posted_mode::text as posted_mode,
+    `select d.id, d.pattern_name, d.posted_at::text as posted_at, d.posted_mode::text as posted_mode,
             d.tweet_ids->>0 as first_tweet_id,
             d.thread->0->>'text' as excerpt
        from drafts d
@@ -48,7 +49,7 @@ export async function loadRecentPosts(
   );
   return rows.map((r) => ({
     draftId: r.id,
-    pattern: r.pattern,
+    patternName: r.pattern_name,
     postedAt: r.posted_at,
     postedMode: r.posted_mode,
     firstTweetId: r.first_tweet_id,

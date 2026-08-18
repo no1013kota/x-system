@@ -1,9 +1,6 @@
 import { AppError } from "@/lib/observability/errors";
 import type { ThreadItem } from "@/lib/ai/gen-output";
-import {
-  PATTERN_MAX_POSTS,
-  revalidateEditedThread,
-} from "@/lib/post/generation-validation";
+import { revalidateEditedThread } from "@/lib/post/generation-validation";
 
 import type { Queryable } from "./x/token-refresh";
 import { recordUnexpectedError } from "./observability/sentry";
@@ -31,7 +28,12 @@ export interface DraftImage {
 
 export interface DraftView {
   id: string;
-  pattern: string;
+  /** 生成時に写したパターン名。画面のバッジはこれを出す（T-M8-129 U3）。 */
+  pattern_name: string;
+  /** 生成時に写した編集上限。 */
+  max_posts_edit: number;
+  /** 生成時に引用URLを必須としたか（引用ポスト相当）。flag OFF時の閲覧専用判定に使う。 */
+  requires_quote_url: boolean;
   status: string;
   thread: ThreadItem[];
   images: DraftImage[];
@@ -63,7 +65,7 @@ export interface DraftView {
 
 // updated_at は楽観lockのversionトークン。timestamptzはマイクロ秒精度でJS Date（ミリ秒）往復では
 // 末尾が欠落するため、::text で完全精度の文字列として返し、更新時も text 一致で照合する。
-const DRAFT_COLUMNS = `id, pattern, status, thread, images, parent_draft_id, root_tweet_id,
+const DRAFT_COLUMNS = `id, pattern_name, max_posts_edit, requires_quote_url, status, thread, images, parent_draft_id, root_tweet_id,
   tweet_ids, posted_mode, last_post_error,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
@@ -123,7 +125,10 @@ export async function listPendingDraftsForHome(
 
 interface OwnedDraftRow {
   status: string;
-  pattern: string;
+  /** 生成時に写したパターン名。画面と通知に出す（内部IDは出さない）。 */
+  pattern_name: string;
+  /** 生成時に写した編集上限。 */
+  max_posts_edit: number;
   images: DraftImage[];
   settings: { ng?: { words?: string[] } } | null;
   tweet_ids: string[];
@@ -137,7 +142,8 @@ async function loadOwnedDraft(
 ): Promise<OwnedDraftRow> {
   const row = (
     await db.query<OwnedDraftRow>(
-      `select d.status, d.pattern, d.images, d.tweet_ids, d.last_post_error, xa.settings
+      `select d.status, d.pattern_name, d.max_posts_edit, d.images, d.tweet_ids,
+              d.last_post_error, xa.settings
          from drafts d join x_accounts xa on xa.id = d.x_account_id
         where d.id = $1 and xa.user_id = $2`,
       [draftId, userId],
@@ -164,7 +170,9 @@ export async function updateDraft(
   if (draft.status !== "draft") {
     throw new AppError("job_conflict", { details: { reason: `not_editable:${draft.status}` } });
   }
-  const max = PATTERN_MAX_POSTS[draft.pattern] ?? 1;
+  // 編集で許すポスト数は**生成時に写した値**を使う（T-M8-129 U3）。
+  // パターンを後から編集・削除しても、過去の下書きの編集可能範囲が変わらない。
+  const max = draft.max_posts_edit;
   if (params.posts.length < 1 || params.posts.length > max) {
     throw new AppError("validation_error", {
       details: { reason: "post_count", min: 1, max },

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.34 |
-| 更新日 | 2026-08-15 |
+| バージョン | v1.40 |
+| 更新日 | 2026-08-18 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -69,7 +69,7 @@
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
 | GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
-| GET | `/auth/confirm` | Supabase `token_hash`, `type=signup|recovery`, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
+| GET | `/auth/confirm` | Supabase `token_hash`, `type=recovery`（signupは6桁コード方式へ移行・T-M8-121。`type=signup` も後方互換で受ける）, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
 | GET | `/api/x/oauth/start` | user | X OAuth開始。`?account=<x_account_id>`（任意）は**再連携の対象**を束縛する（本人所有のみ。未知IDは`not_found`） |
 | GET | `/api/x/oauth/callback` | OAuth state | X OAuth callback |
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
@@ -95,13 +95,14 @@
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
+| `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——到達できるのは直前に登録した本人だけで、登録時にTurnstileを通しており、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
 | `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app` |
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 | `acceptLegalUpdates` | 現行version、文書別の明示checkbox | redirect | 本人profileを再読込し、古い文書のversion／同意時刻だけ更新。現行文書は上書きしない |
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定し、成功画面から`resend(type=signup)`を実行できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通。**確認自体はコード方式**なのでリンクは使わない）。成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
 
 ### 4.1 アカウント・設定
 
@@ -196,7 +197,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listScheduleSlots` | none | slots | active_x_account |
-| `createScheduleSlot` | pattern, weekdays, time_jst, mode, theme, instructions, image_enabled | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
+| `createScheduleSlot` | pattern_id, weekdays, time_jst, mode, theme, instructions, image_enabled, **source_url, placeholder_values, prompt_override** | slot | 引用URL必須のパターンは不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須。`source_url`は**httpsのみ**（投稿作成の`createGenerationJob`とDBのCHECKと同条件）。`placeholder_values`は**選んだパターンが持つ項目だけ保存し、それ以外は捨てる**。`prompt_override`は空白だけなら`null`（T-M8-135） |
 | `updateScheduleSlot` | slot_id, expected_updated_at, fields | slot | 所有者のみ。楽観lock。autoへの変更・再有効化は現行versionの明示同意必須 |
 | `disableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ |
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |
@@ -215,9 +216,15 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `getBaseMd` | x_account_id | content/version | 所有者のみ |
 | `updateBaseMdManual` | content, expected_version | version | md/premiumのみ。6見出し構造を検証し、現行version不一致は409 |
 | `rollbackBaseMd` | version, expected_version | new_version | md/premium。指定版を内容とする新versionを作成 |
-| `listPromptTemplates` | none | templates | system + account override |
+| `listPromptTemplates` | none | templates | system + account override（**`kind=image` のみ**） |
 | `updatePromptTemplate` | kind, content, expected_updated_at | template | md/premiumのみ。楽観lock |
 | `resetPromptTemplate` | kind | template | md/premiumのみ。account override削除 |
+| `listPatterns` | none | patterns, prompts, plan | 投稿パターン一覧＋プロンプト本文（T-M8-129） |
+| `createPattern` | name, description, prompt, placeholders | pattern | md/premiumのみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132） |
+| `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す。**名前・説明・プロンプト・プレースホルダー・分量だけを更新**し、他の列は触らない |
+| `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
+| `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
+| `updatePatternPrompt` | pattern_id, content, expected_updated_at | prompt | md/premiumのみ。楽観lock（投稿作成画面の「保存して以後も使う」） |
 
 `removeLearningSource`は同じXアカウントにqueued/runningの`learning_analysis`/`md_merge`または`removing` sourceがある場合は`job_conflict`にする。`addLearningSource`も`removing`中は拒否し、削除mergeへ別のsource変更を混ぜない。（`reimportOwnPosts`は2026-08-15に廃止・T-M8-103）
 
@@ -237,7 +244,9 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
 
-`listPromptTemplates`はactive Xアカウントの`kind=p1〜p6/image`について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。生成パイプライン（GEN-P1〜P6・GEN-IMG）は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
+`listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。**この制限はコードで強制する**（T-M8-139）: Actionの`kind`は`image`のみを受け、store側も型プロンプトが渡されたら`validation_error`で落とす。以前は記述だけがこうで実装は`p1`〜`p6`も扱っており、**画像プロンプトの編集画面で「再読み込み」を押すと編集対象がp1へすり替わり、保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きしていた**（利用者のデータが壊れる）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
+
+投稿パターンのActions（T-M8-129・ADR-0008）は所有者チェックを`requirePattern`（`x_account_id`で絞る）で兼ね、他人のパターンは`not_found`にする。検証はDBのCHECKと同じ判定を**先に**行い、`validation_error`の`details.reason`（`name_length`／`name_unsafe_chars`／`name_taken`／`description_length`／`placeholder_name_length`／`placeholder_name_unsafe`／`placeholder_duplicated`／`placeholder_not_used`／`placeholder_too_many`／`prompt_required`／`too_long`／`empty`／`last_pattern`）で理由を返す——トリガ任せにすると画面に「保存できませんでした」しか出せない。`deletePattern`は参照の外し方をDBのトリガに任せ（要件02 §3.21）、**停止した予約の件数**を返して画面が何が起きたかを言えるようにする。`updatePattern`は`max_posts_edit`を狭めない（`greatest`）——狭めると既存の下書きが編集できなくなる。プレースホルダーは**プロンプトに`{名前}`が無いものを拒否する**（`placeholder_not_used`）——入力欄だけ出て何も起きない状態を作らない。生成パイプライン（GEN-P1〜P6）はジョブに凍結した`pattern_spec`を正とし、実行中にパターンを編集・削除されても当時の設定で完走する。
 
 ## 10. 通知
 
@@ -293,3 +302,12 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - アカウント.md変更: `base_md_versions`
 - 通知/メール送信: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.35 | 2026-08-18 | `verifySignUpCode` を追加（T-M8-121）。メール確認を6桁コード方式へ。`/auth/confirm` はrecovery主体に |
+| v1.36〜v1.37 | 2026-08-18 | 投稿パターンのActions（T-M8-129〜132・ADR-0008）。`listPatterns`／`createPattern`／`updatePattern`／`deletePattern`／`updatePatternPrompt` |
+| v1.38 | 2026-08-18 | `createScheduleSlot`／`updateScheduleSlot` に `source_url`・`placeholder_values`・`prompt_override` を追加（T-M8-135） |
+| v1.39 | 2026-08-18 | `prompt_templates` 系は `kind=image` のみを受けることをコードで強制（T-M8-140。型プロンプトは `post_patterns` 側） |
+| v1.40 | 2026-08-18 | `validation_error` の理由一覧を実装へ揃えた（T-M8-144） |

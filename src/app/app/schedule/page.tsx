@@ -10,12 +10,18 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
+import {
+  listPatternPrompts,
+  listSchedulablePatterns,
+  type PatternOption,
+  type PatternPromptView,
+} from "@/lib/post/post-patterns-store";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
-import { CardTitle, cardClassName } from "@/components/ui/card";
+import { CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 export const metadata: Metadata = { title: "スケジュール | Exos AI" };
 
@@ -58,11 +64,18 @@ export default async function SchedulePage() {
   let accountHandle: string | null = null;
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。**URLは変えない**方針なので、
   // どちらのURLでも両方を出す。ここでは下書きも読み込む。
-  let drafts: DraftView[] = [];
+let drafts: DraftView[] = [];
+  /** 予約に使えるパターン（引用URLが必須のものは除く・T-M8-129 U3）。 */
+  let patterns: PatternOption[] = [];
+  /**
+   * 生成に使うプロンプト（T-M8-135）。**md/premium だけ**——投稿作成・AI設定と同じ境界。
+   * null なら画面はセクションごと出さない（standardに「編集できない欄」を見せない）。
+   */
+  let patternPrompts: Record<string, PatternPromptView> | null = null;
   if (activeXAccountId) {
     // 4取得は相互に独立（T-M8-67。以前は slots+meta → providers → drafts の3段直列で、
     // 停止/再開/削除/保存のたびの router.refresh() でも毎回この直列分を待っていた）。
-    const [loaded, meta, keyRows, draftRows] = await Promise.all([
+  const [loaded, meta, keyRows, draftRows, schedulable] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
       getPool()
         .query<{ plan: string | null; consented: boolean; handle: string }>(
@@ -76,8 +89,18 @@ export default async function SchedulePage() {
         .then((r) => r.rows[0]),
       imageKeyRowsQuery(user.id),
       // この画面が描画するのは先頭5件だけ（下のカード）。全件は取得しない。
-      listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
+    listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
+      listSchedulablePatterns(pooledDb, activeXAccountId),
     ]);
+    patterns = schedulable;
+    // 判定は `promptEditablePlan` に集約（T-M8-144）。
+  if (promptEditablePlan(meta?.plan ?? "")) {
+      const prompts = await listPatternPrompts(pooledDb, activeXAccountId);
+      // 予約に使えるパターンの分だけ渡す（選べないものを編集させない）。
+      patternPrompts = Object.fromEntries(
+        patterns.filter((o) => prompts[o.id]).map((o) => [o.id, prompts[o.id]]),
+      );
+    }
     slots = loaded;
     imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
@@ -88,7 +111,7 @@ export default async function SchedulePage() {
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">スケジュール</h1>
+        <h1 className={pageTitleClassName}>スケジュール</h1>
         <p className="mt-1 text-body text-ink-2">
           曜日と時刻を決めて、下書き作成や自動投稿を定期実行します。
         </p>
@@ -101,6 +124,8 @@ export default async function SchedulePage() {
           accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
+          patternPrompts={patternPrompts}
+          patterns={patterns}
           slots={slots}
           xAccountId={activeXAccountId}
         />
@@ -134,7 +159,7 @@ export default async function SchedulePage() {
                   >
                     <div className="flex items-center gap-2">
                       <Badge tone="brand">
-                        {POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}
+                        {draft.pattern_name}
                       </Badge>
                       <span className="ml-auto text-caption text-ink-3 tabular-nums">
                         {formatJst(draft.updated_at)}

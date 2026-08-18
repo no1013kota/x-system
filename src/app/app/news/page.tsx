@@ -12,6 +12,7 @@ import { getSettingsForUser } from "@/lib/settings-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { NewsBrowser } from "./news-browser";
+import { pageTitleClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "ニュース | Exos AI" };
 
@@ -69,7 +70,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
-      <h1 className="text-[20px] font-bold tracking-tight text-ink">ニュース</h1>
+      <h1 className={pageTitleClassName}>最新ニュース</h1>
       <NewsBrowser
         initialCreatedIds={createdIds}
         initialCursor={initial.nextCursor}

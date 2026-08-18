@@ -126,8 +126,8 @@ describe("executePostGeneration (local DB)", () => {
     ).rows[0].id;
     const jobId = (
       await c.query<{ id: string }>(
-        `insert into generation_jobs (x_account_id, kind, trigger, pattern, input, status)
-         values ($1,'post_generation','manual',$2,$3::jsonb,'running')
+        `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, input, status)
+         values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = $2), $3::jsonb, 'running')
          returning id`,
         [xid, opts.pattern ?? "p1", JSON.stringify(opts.input ?? {})],
       )
@@ -151,10 +151,11 @@ describe("executePostGeneration (local DB)", () => {
         await db.query<{
           thread: Array<{ text: string; weighted_length: number }>;
           initial_thread: unknown;
-          pattern: string;
-        }>(`select thread, initial_thread, pattern from drafts where id = $1`, [res.draftId])
+        pattern_name: string;
+        }>(`select thread, initial_thread, pattern_name from drafts where id = $1`, [res.draftId])
       ).rows[0];
-      expect(draft.pattern).toBe("p1");
+      // 履歴の表示名（内部IDは残さない・T-M8-129 U5）。
+      expect(draft.pattern_name).toBe("ニュース解説");
       expect(draft.thread).toHaveLength(2);
       expect(draft.thread[0].text).toBe("最初の投稿");
       expect(draft.thread[0].weighted_length).toBeGreaterThan(0);
@@ -207,7 +208,49 @@ describe("executePostGeneration (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
-  it("premium: reserves exactly +1 generation on success (JSON repair does not double-count)", async () => {
+/**
+   * T-M8-143。**auto は生成成功後に投稿jobまで作る**（実DBで確認する）。
+   *
+   * これが無いあいだ `mode=auto` の予約は下書きを作るだけで投稿されていなかった。
+   * 実投稿は起きない（`X_POSTING_MODE` は production 以外で `live` を env検証が拒否する）。
+   */
+  it("auto: 生成成功で post_publish が1件だけ作られ、draft_created は作らない", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c, { input: { mode: "auto" } }));
+    try {
+      const provider = mockProvider('{"posts":["自動投稿の本文"],"sources":["https://src"],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "claude-test" }) }),
+      );
+      expect(res.status).toBe("created");
+
+      const pub = (
+        await db.query<{ n: number; trigger: string; request_key: string; input: string }>(
+          // jsonb に min() は無いので ::text で取る。
+          `select count(*) over ()::int as n, trigger, request_key, input::text as input
+             from generation_jobs where draft_id = $1 and kind = 'post_publish' limit 1`,
+          [res.draftId],
+        )
+      ).rows[0];
+      expect(pub.n, "post_publish が1件だけ").toBe(1);
+      expect(pub.trigger, "利用者の操作ではないので system").toBe("system");
+      expect(pub.request_key).toBe(`job:${res.draftId}:post_publish:auto`);
+      expect(JSON.parse(pub.input).mode).toBe("auto");
+
+      // 投稿されるので「下書きができました」は作らない（誤った案内になる）。
+      const notif = (
+        await db.query<{ n: number }>(
+          `select count(*)::int as n from notifications
+            where user_id = $1 and type = 'draft_created'`,
+          [uid],
+        )
+      ).rows[0];
+      expect(notif.n, "auto で draft_created を作っている").toBe(0);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+    it("premium: reserves exactly +1 generation on success (JSON repair does not double-count)", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -297,8 +340,8 @@ describe("executePostGeneration (local DB)", () => {
     try {
       const sourceId = (
         await db.query<{ id: string }>(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-           values ($1,'p1','[{"text":"元"}]'::jsonb,'[{"text":"元"}]'::jsonb,'draft') returning id`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[{"text":"元"}]'::jsonb, '[{"text":"元"}]'::jsonb, 'draft') returning id`,
           [xid],
         )
       ).rows[0].id;

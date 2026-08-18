@@ -36,6 +36,9 @@ function ownedDraft(over: Row = {}): Row {
   return {
     status: "draft",
     pattern: "p1",
+    // 編集上限は**生成時に写した値**を使う（T-M8-129 U3）。既定の「ニュース解説」は6。
+    pattern_name: "ニュース解説",
+    max_posts_edit: 6,
     images: [],
     tweet_ids: [],
     last_post_error: null,
@@ -70,8 +73,8 @@ describe("updateDraft", () => {
     expect(err.code).toBe("job_conflict");
   });
 
-  it("rejects exceeding the pattern max posts (P-1=6)", async () => {
-    const { db } = makeDb((sql) => (LOAD.test(sql) ? [ownedDraft({ pattern: "p1" })] : []));
+  it("下書きに写した編集上限を超えるポスト数は拒否する（ニュース解説=6）", async () => {
+    const { db } = makeDb((sql) => (LOAD.test(sql) ? [ownedDraft({ max_posts_edit: 6 })] : []));
     const err = await rejection(
       updateDraft(db, {
         userId: "u1",

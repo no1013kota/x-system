@@ -14,6 +14,7 @@ import {
   worstLevel,
 } from "./check";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
+import { judgePrices, probePrices, type PriceProbeDeps } from "./price-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
 export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
@@ -489,6 +490,8 @@ export interface DiagnosticsOptions {
   captcha?: CaptchaProbeDeps;
   /** プラン管理（Stripe Portal）の設定確認（T-M8-32）。未指定なら「判定できません」になる。 */
   portal?: PortalProbeDeps;
+  /** 請求額と表示額の突き合わせ（T-M8-141）。鍵やPrice IDが無い環境では「判定できません」。 */
+  prices?: PriceProbeDeps;
 }
 
 export async function collectDiagnostics(
@@ -641,6 +644,14 @@ export async function collectDiagnostics(
   // プラン管理の操作がStripe側で有効か（T-M8-32）。**相手側の設定はコードに現れない**ため、
   // ボタンを押して初めて分かる状態にしない。読み取りのみで費用は無い。
   checks.push(judgePortal(await probePortalFeatures(options.portal ?? {})));
+
+  /*
+    **請求額と表示額が一致しているか**（T-M8-141）。`plans.ts` は「Stripe Price と必ず一致させる
+    （constants.test.ts が突き合わせる）」と書いていたが、そのテストは定数とリテラルを比べるだけで
+    Stripeを見ていなかった。ズレると「画面は1,000円と言うのに2,000円請求される」という、
+    利用者の申告でしか気付けない事故になる（原則4）。読み取りのみで費用は無い。
+  */
+  checks.push(judgePrices(await probePrices(options.prices ?? {})));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

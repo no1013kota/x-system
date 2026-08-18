@@ -6,6 +6,7 @@ import type { Provider, TextGen } from "../ai/types";
 import type { GenerationUsage } from "../ai/usage-schema";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { OPERATED_THEME_IDS, OPERATED_THEME_OPTIONS } from "../themes";
+import { listPatterns } from "../post/post-patterns-store";
 import { PT_SUGGEST } from "../prompts/gen-prompts";
 import { PROMPT_TEMPLATE_MAX_CHARS } from "../prompts/prompt-templates";
 import { BASE_MD_MAX_CHARS, validateManualBaseMd } from "../base-md";
@@ -42,7 +43,16 @@ export class SuggestionTerminalError extends Error {
 }
 
 /** advice.pattern の選択肢。p5（引用）はfeature flag停止中のため提案させない。 */
-export const SUGGESTABLE_PATTERNS = ["p1", "p2", "p3", "p4", "p6"] as const;
+/**
+ * 推奨できるパターンは**そのアカウントのパターン名**（T-M8-129 U5）。
+ * 以前は `p1`〜`p6` の固定enumだったが、利用者が作ったパターンを推奨できなかった。
+ * 引用URLが必須のパターンは毎回URLの指定が要るので推奨しない（実行できない提案を出さない）。
+ */
+export function suggestablePatternNames(
+  patterns: readonly { name: string; requiresQuoteUrl: boolean }[],
+): string[] {
+  return patterns.filter((p) => !p.requiresQuoteUrl).map((p) => p.name);
+}
 
 /**
  * PT-SUGGEST 出力スキーマ（T-M8-91）。
@@ -50,7 +60,7 @@ export const SUGGESTABLE_PATTERNS = ["p1", "p2", "p3", "p4", "p6"] as const;
  * prompt.content の上限は AI設定＞プロンプトの保存上限（8,000字）と同じにする——
  * 「そのまま貼れる」が要件なので、貼った先で保存できない長さを許さない。
  */
-function makeSuggestionSchema(allowedIds: Set<string>) {
+function makeSuggestionSchema(allowedIds: Set<string>, patternNames: readonly string[]) {
   const reasoned = <T extends z.ZodTypeAny>(recommended: T) =>
     z.object({ recommended, reason: z.string().min(1) });
   // アカウント.mdの改訂案は**保存時と同じ検証**（6見出し構造＋5,000字）を通す——
@@ -90,14 +100,24 @@ function makeSuggestionSchema(allowedIds: Set<string>) {
       .object({
         // アカウント.mdの編集提案（T-M8-106）。<account_md>が"none"（未作成）のときはnull。
         account_md: accountMdProposal,
-        pattern: reasoned(z.enum(SUGGESTABLE_PATTERNS)),
+      // **そのアカウントに実在する名前だけを通す**。存在しない型を推奨されると
+        // 「近づけるための設定」を画面で選べない（実行できない提案になる）。
+        pattern: reasoned(
+          patternNames.length > 0
+            ? z.enum(patternNames as [string, ...string[]])
+            : z.string().min(1),
+        ),
         // 「その他」は提案として実行可能でない（追加指示に書く意思表示）ため不可。
         // 選択肢は運用中テーマ（最新ニュース画面と同じ・T-M8-100）に限定する——
         // 運用していない分野を推奨しても投稿作成で選べない。
         theme: reasoned(z.enum(OPERATED_THEME_IDS as [string, ...string[]])),
         image: reasoned(z.boolean()),
         prompt: z.object({
-          kind: z.enum(SUGGESTABLE_PATTERNS),
+            // 推奨した型と同じ名前（下の refine で一致を必須にする）。
+            kind:
+              patternNames.length > 0
+                ? z.enum(patternNames as [string, ...string[]])
+                : z.string().min(1),
           content: z.string().min(1).max(PROMPT_TEMPLATE_MAX_CHARS),
         }),
       })
@@ -158,6 +178,11 @@ async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
 }
 
 /** テーマの選択肢を「id=ラベル」で列挙する（LLMがidを選び、理由をラベルで書けるように）。運用中テーマのみ（T-M8-100）。 */
+/** 型の選択肢を1行にする。名前だけを出す（内部IDは持たない）。 */
+function patternChoices(names: readonly string[]): string {
+  return names.length > 0 ? names.join(" / ") : "（利用できる型がありません）";
+}
+
 function themeChoices(): string {
   return OPERATED_THEME_OPTIONS.map((t) => `${t.id}=${t.label}`).join(" / ");
 }
@@ -221,8 +246,10 @@ function renderPrompt(
   input: SuggestionInput,
   previous: PreviousSuggestion | null,
   accountMd: string | null,
+  patternNames: readonly string[],
 ): string {
   return PT_SUGGEST.replaceAll("{{themes}}", themeChoices())
+    .replaceAll("{{patterns}}", patternChoices(patternNames))
     .replaceAll("{{previous}}", renderPreviousBlock(previous, input))
     .replaceAll("{{account_md}}", accountMd ?? "none")
     .replaceAll("{{posts}}", JSON.stringify(input.posts));
@@ -303,6 +330,8 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       deadline,
     });
     const allowedIds = new Set(input.posts.map((p) => p.id));
+      // 推奨できる型はこのアカウントのパターン（引用URL必須は除く・T-M8-129 U5）。
+      const patternNames = suggestablePatternNames(await listPatterns(db, job.x_account_id));
     // 前回のレポートを参照する（T-M8-98）。読めなくても分析自体は止めない。
     const previous = await loadPreviousSuggestion(db, job.x_account_id);
     // アカウント.mdが未作成（version 0）なら編集提案の対象外（貼り先が無い）。
@@ -311,11 +340,11 @@ export async function executeSuggestion(deps: SuggestionDeps): Promise<Suggestio
       provider: textGen,
       providerId: textProviderId,
       request: {
-        system: [renderPrompt(input, previous, accountMd)],
+        system: [renderPrompt(input, previous, accountMd, patternNames)],
         user: "上記の投稿一覧を分析し、指定のJSONで出力してください。",
         timeoutMs: deadline.callTimeoutMs(),
       },
-      schema: makeSuggestionSchema(allowedIds),
+      schema: makeSuggestionSchema(allowedIds, patternNames),
       model,
       operation: "text_generation",
       now,

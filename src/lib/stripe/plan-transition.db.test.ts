@@ -81,11 +81,8 @@ describe("Stripe plan transition side effects", () => {
     const draftId = randomUUID();
     await db.query(
       `insert into drafts
-        (id, x_account_id, pattern, thread, initial_thread, tweet_ids,
-         tweet_metrics)
-       values ($1, $2, 'p2', '[{"text":"preserved"}]'::jsonb,
-               '[{"text":"preserved"}]'::jsonb,
-               '["tweet_1"]'::jsonb, '{"tweet_1":{"likes":7}}'::jsonb)`,
+        (id, x_account_id, pattern_id, thread, initial_thread, tweet_ids, tweet_metrics)
+       values ($1, $2, (select id from post_patterns where x_account_id = $2 and seed_key = 'p2'), '[{"text":"preserved"}]'::jsonb, '[{"text":"preserved"}]'::jsonb, '["tweet_1"]'::jsonb, '{"tweet_1":{"likes":7}}'::jsonb)`,
       [draftId, newestId],
     );
 

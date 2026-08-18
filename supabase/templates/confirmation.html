@@ -1,7 +1,9 @@
 <h2>Exos AIのメールアドレス確認</h2>
-<p>以下のリンクからメールアドレスを確認し、登録を完了してください。</p>
-<p>
-  <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup">
-    メールアドレスを確認する
-  </a>
+<p>登録画面に以下の確認コードを入力してください。</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:0.3em;font-family:monospace">
+  {{ .Token }}
+</p>
+<p>このコードは1時間で期限切れになります。</p>
+<p style="color:#666;font-size:12px">
+  このメールに心当たりがない場合は、破棄してください。
 </p>

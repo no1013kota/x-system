@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { AnalyticsSummary } from "@/lib/analytics";
 import { formatJst } from "@/lib/format";
 import type { RecentPostView } from "@/lib/home/overview-server";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -86,7 +85,7 @@ export function RecentResultsCard({
         {posts.map((post) => (
           <li className="rounded-card border border-hairline p-3" key={post.draftId}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge>{POST_PATTERN_LABELS[post.pattern] ?? post.pattern}</Badge>
+              <Badge>{post.patternName}</Badge>
               {post.postedMode ? (
                 <span className="text-xs text-muted-foreground">
                   {MODE_LABEL[post.postedMode] ?? post.postedMode}

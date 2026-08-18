@@ -9,8 +9,8 @@ import { expect, signIn, test } from "./fixtures/test";
 test("スロットを停止して再開でき、DBの enabled が追従する", async ({ accounts, page }) => {
   const account = await accounts.create("schedule");
   const [slot] = await query<{ id: string }>(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, enabled)
-     values ($1, 'p3', '{1,3,5}', '19:00', 'draft', 'other', true) returning id`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1,3,5}', '19:00', 'draft', 'other', true) returning id`,
     [account.xAccountId],
   );
   await signIn(page, account);
@@ -102,8 +102,8 @@ test("スケジュールにテーマを設定でき、行に出てDBへ入る（
 test("週間表のセルは読み上げ名と補足が一致する（R38）", async ({ accounts, page }) => {
   const account = await accounts.create("slot-label", { personaReady: true });
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, image_enabled, enabled, theme)
-     values ($1, 'p1', '{1,3}', '09:00', 'draft', false, true, 'ai')`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, image_enabled, enabled, theme)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '{1,3}', '09:00', 'draft', false, true, 'ai')`,
     [account.xAccountId],
   );
 
@@ -123,4 +123,51 @@ test("週間表のセルは読み上げ名と補足が一致する（R38）", as
     expect(label, "読み上げ名が空").toBeTruthy();
     expect(title, `読み上げ名と補足がズレている: ${label} / ${title}`).toBe(label);
   }
+});
+
+/**
+ * T-M8-129 U3b。**画面に内部ID（`p1`）を出さない**（要件06 §1.0）。
+ *
+ * パターンはアカウント別マスタ（`post_patterns`）になり、画面は名前だけを出す。
+ * 自作パターンが選択肢に現れることも同時に確かめる——ここが崩れると
+ * 「作れるのにどこにも出てこない」状態になり、利用者は何も気付けない。
+ */
+test("パターンは名前で表示・選択でき、自作パターンも選択肢に出る", async ({ accounts, page }) => {
+  const account = await accounts.create("pattern-ui");
+  // 自作パターンを1件作る（画面はDBから選択肢を引く）。
+  await query(
+    `insert into post_patterns (x_account_id, name, description, prompt, max_posts, max_posts_edit, sort_order)
+     values ($1, 'E2E自作パターン', '検証用', '# タスク\n検証用のプロンプト', 2, 4, 5)`,
+    [account.xAccountId],
+  );
+  await query(
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1,3,5}', '19:00', 'draft', 'other', true)`,
+    [account.xAccountId],
+  );
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+
+  // 既存の枠は**名前**で出る（旧enumのIDは出さない）。
+  await expect(page.getByText("ノウハウ・ハウツー").first()).toBeVisible();
+  const body = await page.locator("body").innerText();
+  expect(body, "内部IDが画面に出ていない").not.toMatch(/(^|[^0-9A-Za-z_])p[1-6](?![0-9A-Za-z_])/);
+
+  // 追加フォームの選択肢に自作パターンが並ぶ。
+  await page.getByRole("button", { name: "スケジュールを追加" }).click();
+  await expect(page.getByRole("radio", { name: /E2E自作パターン/ })).toBeVisible();
+  await page.getByRole("radio", { name: /E2E自作パターン/ }).check();
+await page.getByRole("checkbox", { name: "月", exact: true }).check();
+  await page.getByLabel("テーマ").selectOption("other");
+await page.getByRole("button", { name: "作成", exact: true }).click();
+
+  // 保存された枠が自作パターンを指している（表示も名前）。
+  // **一覧の行**（`li`）で確かめる——選択肢のラベルにも同じ文字列があるため。
+  await expect(page.locator("li", { hasText: "E2E自作パターン" }).first()).toBeVisible();
+  const [saved] = await query<{ name: string }>(
+    `select p.name from schedule_slots s join post_patterns p on p.id = s.pattern_id
+      where s.x_account_id = $1 and p.seed_key is null`,
+    [account.xAccountId],
+  );
+  expect(saved?.name).toBe("E2E自作パターン");
 });

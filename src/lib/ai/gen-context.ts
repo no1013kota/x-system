@@ -41,8 +41,14 @@ export function formatRecentPosts(bodies: string[]): string {
 }
 
 export interface GenUserParams {
-  /** 解決済み PT-P◯（パターン別プロンプト）。 */
+/** 解決済みのパターン別プロンプト（利用者が編集可能）。 */
   pattern: string;
+  /**
+   * パターンの設定（分量・Web検索・参考URL）を文にしたもの（T-M8-131）。
+   * `buildPatternRules` が作る。設定の数字を書くのは**ここだけ**——
+   * プロンプト本文にも書くと、設定を変えたとき片方だけ古い数字が残る。
+   */
+  patternRules?: string | null;
   /** 参考URL／自分の考え／追加指示。未入力は「（未指定）」。 */
   input?: string | null;
   /** 直近posted draftの各先頭（呼び出し側が fetchRecentPostBodies で取得）。 */
@@ -58,7 +64,12 @@ export interface GenUserParams {
 /** 可変部を組み立てる。未入力は「（未指定）」。可変値は system へ入れない。 */
 export function buildGenUser(params: GenUserParams): string {
   const parts: string[] = [];
-  parts.push(`<pattern>\n${params.pattern}\n</pattern>`);
+parts.push(`<pattern>\n${params.pattern}\n</pattern>`);
+  // パターンの設定（分量・Web検索・参考URL）を明示する（T-M8-131）。
+  // 指示しないまま生成後に切り詰めると「締めが落ちた」形になるため、先に伝える。
+  if (params.patternRules) {
+    parts.push(`<pattern_rules>\n${params.patternRules}\n</pattern_rules>`);
+  }
   parts.push(`<input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</input>`);
   const recent = params.recentPosts.length > 0 ? formatRecentPosts(params.recentPosts) : UNSPECIFIED;
   parts.push(`<recent_posts>\n${recent}\n</recent_posts>`);

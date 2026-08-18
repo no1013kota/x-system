@@ -87,8 +87,8 @@ describe("cleanupOldData (db)", () => {
       const oldNotif = await insertNewsNotif(c, uid, 41, itemA);
       const recentNotif = await insertNewsNotif(c, uid, 0, itemC);
       await c.query(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, status, source_news_item_id)
-         values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, 'draft', $2)`,
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, source_news_item_id)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'draft', $2)`,
         [xid, itemB],
       );
       const usageOld = (

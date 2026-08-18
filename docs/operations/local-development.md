@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.12 |
-| 更新日 | 2026-08-06 |
+| 更新日 | 2026-08-18 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -55,7 +55,7 @@ npm install
 # 2) ローカルSupabase起動（初回はイメージpullで数分）
 colima start --cpu 4 --memory 8
 supabase start
-supabase db reset            # migrations適用 + seed.sql投入（prompt_templates 7件）を確実に当てる
+supabase db reset            # migrations適用 + seed.sql投入（prompt_templates は画像1件）を確実に当てる
 
 # 3) 環境変数
 cp .env.example .env.local   # 下記を埋める（§3）
@@ -104,21 +104,21 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `eslint .` |
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
-| `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipで58本のDBテストが静かに消えるのを防ぐ（`release:check` が使う） |
+| `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipでDBテスト（実測69本）が静かに消えるのを防ぐ（`release:check` が使う） |
 | `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
-| `npm run release:check` | typecheck → lint → 依存監査 → **test:db** → build → **check:csp-nonce** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
+| `npm run release:check` | typecheck → lint → **check:doc-dates** → **check:doc-refs** → 依存監査 → **test:db** → build → **check:csp-nonce** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
 | `npm run check:csp-nonce` | **ビルド成果物**（`.next/server/app/**/*.html`）を走査し、CSPのnonceを持てないHTMLが残っていないか確認する。**要 `npm run build`**（成果物が無ければ緑にせず終了コード2で止まる）。静的prerenderされたページはnonceを付けられず、`'strict-dynamic'` の下でscriptが1本も実行されない＝画面が壊れる（2026-08-14に本番の `/signup`・`/reset-password` で発生・T-M8-87）。E2Eは `next dev` で動きprerenderしないため、この不具合は**原理的に検出できない** |
 | `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
-| `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
+| `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・**定時実行の最終実行**・**確認メールの行き先（ローカルはMailpit）**・**溜まったテストデータ**・**請求額と表示額の一致（Stripe）**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |
 | `npm run check:suggest` | **投稿分析の実AI 1周**（現実的な12投稿を実DBへ保存→実Claudeで分析→zod検証→レポート保存。実測 約$0.02/回）。PT-SUGGESTのプロンプト・出力schemaを変えたら回す（T-M8-94） |
 | `npm run check:providers` | **実APIへの provider 契約テスト**（Web検索・構造化出力・画像生成が受理されるか）。実キーと少額の費用が必要なためCI・`release:check` には入れない。外部APIの仕様変更・リクエスト形状の誤りを検出する唯一の層。Googleは既定で対象外（T-M7-17。`PROVIDER_CHECK_GOOGLE=1` で有効化） |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
-| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる |
+| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---
@@ -232,7 +232,7 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/
 
 いずれかで作成:
 1. **最も簡単**: Supabase Studio http://127.0.0.1:54323 → Authentication → Add user（メール確認/captcha不要で確認済みユーザーを即作成）。
-2. **UIサインアップ**: http://127.0.0.1:3000/signup で登録 → 確認メールを **Mailpit http://127.0.0.1:54324** で開いてリンクを踏む。
+2. **UIサインアップ**: http://127.0.0.1:3000/signup で登録 → **Mailpit http://127.0.0.1:54324** で届いたメールを開き、**6桁の確認コードを登録画面に入力する**（T-M8-121 でリンク方式から変更）。
 3. service role の管理API（`supabase.auth.admin.createUser`）でスクリプト作成。
 
 ---

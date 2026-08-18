@@ -60,6 +60,8 @@ export function judgePortal(snapshot: PortalFeatureSnapshot): Check {
     name: "プラン管理（Stripe）",
     level: judged.level,
     detail: judged.detail,
+    // 判定側が次の一手を持っていればそれを使う（T-M8-128）。
+    ...(judged.nextAction ? { nextAction: judged.nextAction } : {}),
     ...(judged.level === "error"
       ? {
           // **どの環境を直すかまで書く**（T-M8-49）。`--target` を必須にした（T-M8-35）のに

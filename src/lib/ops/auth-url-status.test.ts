@@ -4,6 +4,7 @@ import {
   allowsUrl,
   AUTH_URL_CHECK_NAME,
   confirmRedirectUrl,
+  EXPECTED_SENDER_NAME,
   isRedirectAllowed,
   judgeAuthUrls,
   parseAllowList,
@@ -193,5 +194,117 @@ describe("unknownAuthUrls", () => {
     expect(check.level).toBe("warn");
     expect(check.detail).toContain("確認できません");
     expect(check.nextAction).toContain("SUPABASE_ACCESS_TOKEN");
+  });
+});
+
+/**
+ * 確認メールのリンクに `token_hash` が付いているか（T-M8-120）。
+ *
+ * URLの許可リストが正しくても、**リモートのテンプレートが既定のままだと利用者は登録を完了できない**。
+ * 2026-08-02 と 2026-08-18 の2回これで新規登録が止まった。URLの検査だけでは原理的に見えない
+ * （`supabase/config.toml` のテンプレート指定はローカル専用で、リモートには行かないため）。
+ */
+describe("確認メールのテンプレート", () => {
+  const ok = {
+    appBaseUrl: "https://exosai.net",
+    siteUrl: "https://exosai.net",
+    uriAllowList: ["https://exosai.net/**"],
+  };
+
+  it("6桁コードが無ければ error にして、直すコマンドを出す", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      confirmationTemplate: '<a href="{{ .ConfirmationURL }}">Confirm</a>',
+      smtpHost: null,
+    });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("6桁コード");
+    expect(check.nextAction).toContain("npm run auth:templates");
+    // SMTP未設定だと変更できないので、そのことにも触れる。
+    expect(check.nextAction).toContain("SMTP");
+  });
+
+  it("6桁コードがあれば、この観点では落とさない", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      confirmationTemplate: "<p>{{ .Token }}</p>",
+      smtpHost: "smtp.gmail.com",
+    });
+    expect(check.level).toBe("ok");
+  });
+
+  it("テンプレートを取得できていないときは判定しない（誤検知しない）", () => {
+    expect(judgeAuthUrls({ ...ok }).level).toBe("ok");
+    expect(judgeAuthUrls({ ...ok, confirmationTemplate: null }).level).toBe("ok");
+  });
+
+  it("URLの許可漏れよりテンプレートの不備を先に出す（登録が必ず失敗する方が重い）", () => {
+    const check = judgeAuthUrls({
+      appBaseUrl: "https://exosai.net",
+      confirmationTemplate: '<a href="{{ .ConfirmationURL }}">Confirm</a>',
+      siteUrl: "https://other.example",
+      uriAllowList: [],
+    });
+    expect(check.detail).toContain("6桁コード");
+  });
+});
+
+/**
+ * T-M8-136（運営者の質問・2026-08-18）「メールは『Exos AI』から届くようになっていますか？」
+ *
+ * **届くか／誰から届くかは、URLもテンプレートも正しくても壊れうる。**
+ * 内蔵送信のままだと利用者には永久に届かないのに画面は「送信しました」と出るため、
+ * 運営者が自分のアドレスで試すと成功して見逃す（原則1・原則2）。
+ */
+describe("確認メールの届き方と差出人（T-M8-136）", () => {
+  const ok = {
+    appBaseUrl: "https://exosai.net",
+    siteUrl: "https://exosai.net",
+    uriAllowList: ["https://exosai.net/**"],
+    confirmationTemplate: "<p>{{ .Token }}</p>",
+  };
+
+  it("カスタムSMTPが未設定なら error にする（利用者に届かない）", () => {
+    const check = judgeAuthUrls({ ...ok, smtpHost: null });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("利用者には確認メールが届きません");
+    // **画面が成功と出ることに触れる**（自分のアドレスで試して見逃す型なので）。
+    expect(check.detail).toContain("送信しました");
+    expect(check.nextAction).toContain("npm run auth:templates");
+  });
+
+  it("差出人名が既定のままなら error にする", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      smtpHost: "smtp.gmail.com",
+      smtpSenderName: "Admin",
+    });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("Admin");
+    expect(check.detail).toContain(EXPECTED_SENDER_NAME);
+  });
+
+  it("差出人名が未設定でも error にする（空欄を見逃さない）", () => {
+    const check = judgeAuthUrls({ ...ok, smtpHost: "smtp.gmail.com", smtpSenderName: "" });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("(未設定)");
+  });
+
+  it("SMTPあり・差出人名がExos AIなら ok", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      smtpHost: "smtp.gmail.com",
+      smtpSenderName: EXPECTED_SENDER_NAME,
+    });
+    expect(check.level).toBe("ok");
+  });
+
+  it("取得できていない項目は判定しない（誤検知しない）", () => {
+    // smtpHost / smtpSenderName が undefined＝未取得。
+    expect(judgeAuthUrls({ ...ok }).level).toBe("ok");
+  });
+
+  it("差出人名の正本は1つ（doctorと反映コマンドで同じ値を使う）", () => {
+    expect(EXPECTED_SENDER_NAME).toBe("Exos AI");
   });
 });

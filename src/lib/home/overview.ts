@@ -7,7 +7,8 @@ import { nextScheduleRun } from "../schedule/next-run";
 
 export interface UpcomingRunView {
   slotId: string;
-  pattern: string;
+  /** パターンの表示名。削除済みなら null（**内部IDは出さない**・T-M8-129 U3）。 */
+  patternName: string | null;
   /** `auto`（自動投稿）／`draft`（下書き作成）。 */
   mode: string;
   imageEnabled: boolean;
@@ -25,7 +26,7 @@ export type ScheduleOutlook =
 
 export interface OutlookSlot {
   id: string;
-  pattern: string;
+  pattern_name: string | null;
   weekdays: number[];
   time_jst: string;
   mode: string;
@@ -46,7 +47,7 @@ export function scheduleOutlook(
     if (!next) continue;
     runs.push({
       slotId: slot.id,
-      pattern: slot.pattern,
+      patternName: slot.pattern_name,
       mode: slot.mode,
       imageEnabled: slot.image_enabled,
       label: next.label,

@@ -63,6 +63,77 @@ if (isLocal) {
           },
     );
   }
+
+  /*
+    **ローカルの確認メールの行き先**（T-M8-136・運営者の報告 2026-08-18）。
+
+    ローカルのSupabaseは確認メールを実際のメールボックスへ送らず、Mailpit（メール受信箱の
+    ふりをするツール）が全部受け取る。**これを知らないと「メールが届かない＝壊れている」
+    と見える**（実際に運営者がそう報告した）。届いているのかどうかと、どこで読めるのかを
+    ここで必ず出す。ログを読ませない（原則2）。
+  */
+  /*
+    **溜まったテストデータ**（T-M8-137）。E2Eは終了時に自分の作成分を消すが、
+    途中で落ちた回の分は残る。active なXアカウントが走査上限（100）を超えると
+    `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**
+    （実際に、原因の分からない単発失敗として4回observedした）。掃除する導線を出す。
+  */
+  if (dbOk) {
+    try {
+      const { Client } = await import("pg");
+      const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 5000 });
+      await client.connect();
+      const { rows } = await client.query(
+        `select count(*)::int as active from x_accounts where status = 'active'`,
+      );
+      await client.end();
+      const active = rows[0]?.active ?? 0;
+      // 走査上限は `FOLLOWER_ACCOUNT_LIMIT`（100）。超えるとDBテストが落ち始める。
+      const LIMIT = 100;
+      checks.push(
+        active < LIMIT
+          ? {
+              name: "溜まったテストデータ",
+              level: "ok",
+              detail: `activeなXアカウントは ${active} 件（上限 ${LIMIT}）`,
+            }
+          : {
+              name: "溜まったテストデータ",
+              level: "error",
+              detail:
+                `activeなXアカウントが ${active} 件で走査上限 ${LIMIT} を超えています。` +
+                "**この状態ではDBテストが落ち始め、コードの不具合と見分けがつきません**",
+              nextAction: "`npm run db:clean-test-data -- --apply` を実行してください（実アカウントには触れません）",
+            },
+      );
+    } catch {
+      // 数えられないだけなら他の検査を止めない。
+    }
+  }
+
+  const MAILPIT = "http://127.0.0.1:54324";
+  try {
+    const res = await fetch(`${MAILPIT}/api/v1/messages?limit=1`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json();
+    const total = Number(body.total ?? 0);
+    checks.push({
+      name: "確認メールの行き先（ローカル）",
+      level: "ok",
+      detail:
+        `Mailpit が受け取っています（現在 ${total} 通）。` +
+        "**ローカルでは実際のメールボックスへ送られません**",
+      nextAction: `6桁コードは ${MAILPIT} を開いて確認してください`,
+    });
+  } catch {
+    checks.push({
+      name: "確認メールの行き先（ローカル）",
+      level: "error",
+      detail: `Mailpit（${MAILPIT}）に接続できません。**新規登録の6桁コードを読む手段がありません**`,
+      nextAction: "ターミナルで `supabase start` を実行してください",
+    });
+  }
 }
 
 // --- アプリが応答するか ---
@@ -117,7 +188,13 @@ async function authUrlCheck() {
     const body = await res.json();
     return judgeAuthUrls({
       appBaseUrl: base,
+      // 確認メールのリンクに token_hash が付いているか（T-M8-120）。URLの許可リストが
+      // 正しくても、テンプレートが既定のままなら利用者は登録を完了できない。
+      confirmationTemplate: body.mailer_templates_confirmation_content ?? "",
       siteUrl: body.site_url ?? null,
+      smtpHost: body.smtp_host ?? null,
+      // 差出人名（T-M8-136）。既定のままだと見知らぬ差出人から6桁コードが届く。
+      smtpSenderName: body.smtp_sender_name ?? null,
       uriAllowList: parseAllowList(body.uri_allow_list),
     });
   } catch (error) {

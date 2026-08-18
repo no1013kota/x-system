@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import type { SuggestionDisplay, SuggestionGoodPost } from "@/lib/analytics-server";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
+import { legacyPatternLabel } from "@/lib/analytics/humanize-report";
 import { postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,7 +94,7 @@ function GoodPostCard({ post }: { post: SuggestionGoodPost }) {
           <Metric label="リポスト" value={p.reposts} />
           <Metric label="返信" value={p.replies} />
           {p.postedAt ? <span className="text-ink-3">{formatJst(p.postedAt)}</span> : null}
-          {p.pattern ? <Badge tone="neutral">{POST_PATTERN_LABELS[p.pattern] ?? p.pattern}</Badge> : null}
+          {p.patternName ? <Badge tone="neutral">{p.patternName}</Badge> : null}
           {p.theme ? <Badge tone="neutral">{postThemeLabel(p.theme)}</Badge> : null}
           {p.hasImage ? <Badge tone="neutral">画像あり</Badge> : null}
         </div>
@@ -278,10 +278,8 @@ export function SuggestionsPanel({
                           <AdviceCard
                             label="投稿の型"
                             reason={s.advice.pattern.reason}
-                            value={
-                              POST_PATTERN_LABELS[s.advice.pattern.recommended] ??
-                              s.advice.pattern.recommended
-                            }
+                            // 2026-08-18 以降は名前が入る。それ以前のレポートは内部IDなので直す。
+                            value={legacyPatternLabel(s.advice.pattern.recommended)}
                           />
                         ) : null}
                         {s.advice.theme ? (
@@ -334,9 +332,9 @@ export function SuggestionsPanel({
                           href="/app/settings?tab=prompts&sec=post-prompt"
                           linkLabel="設定で保存する"
                           onCopy={() => copyProposal("prompt", s.advice!.prompt!.content)}
-                          title={`投稿作成プロンプト（${
-                            POST_PATTERN_LABELS[s.advice.prompt.kind] ?? s.advice.prompt.kind
-                          }）— そのまま貼って使えます`}
+                          title={`投稿作成プロンプト（${legacyPatternLabel(
+                            s.advice.prompt.kind,
+                          )}）— そのまま貼って使えます`}
                         />
                       ) : null}
                     </div>

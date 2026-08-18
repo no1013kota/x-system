@@ -19,12 +19,50 @@ import type { Queryable } from "../x/token-refresh";
 
 type Row = Record<string, unknown>;
 
+/** パターン（`post_patterns.id`）と凍結spec（T-M8-129 U5。旧enumは撤去した）。 */
+const PID = "44444444-4444-4444-8444-444444444444";
+const SPEC = {
+  id: PID,
+  seed_key: "p1",
+  name: "ニュース解説",
+  description: null,
+  prompt: null,
+  max_posts: 4,
+  max_posts_edit: 6,
+  web_search_policy: "always",
+  web_search_max_uses: 4,
+  source_policy: "always",
+  include_news_digest: false,
+  requires_quote_url: false,
+};
+
+const PATTERN_READ = /from post_patterns where x_account_id/;
+
+/** `requirePattern` が読む行（T-M8-129 U5）。 */
+const PATTERN_ROW = {
+  id: PID,
+  seed_key: "p1",
+  name: "ニュース解説",
+  description: null,
+  prompt: null,
+  max_posts: 4,
+  max_posts_edit: 6,
+  requires_quote_url: false,
+  web_search_policy: "always",
+  source_policy: "always",
+  include_news_digest: false,
+};
+
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
       const rows = handler(sql, params) as T[];
+      // パターンの読み出しは既定で通す（引用ポストを試すテストは handler で先に返す）。
+      if (rows.length === 0 && PATTERN_READ.test(sql)) {
+        return { rows: [PATTERN_ROW] as T[], rowCount: 1 };
+      }
       return { rows, rowCount: rows.length };
     },
   };
@@ -35,7 +73,7 @@ const EXISTING = /select id from generation_jobs where request_key/;
 const ACCOUNT = /from x_accounts xa join profiles/;
 const BUDGET = /count\(\*\)::int as n from generation_jobs/;
 const INSERT = /insert into generation_jobs/;
-const RETRY_LOAD = /select gj\.status, gj\.kind, gj\.pattern/;
+const RETRY_LOAD = /select gj\.status, gj\.kind, gj\.pattern_id/;
 const CANCEL_LOAD = /select gj\.status from generation_jobs/;
 
 async function rejection(p: Promise<unknown>): Promise<AppError> {
@@ -71,7 +109,7 @@ const XID = "11111111-1111-1111-1111-111111111111";
 const input = (over: Partial<CreateGenerationJobInput> = {}): CreateGenerationJobInput => ({
   request_key: "tok-1",
   x_account_id: XID,
-  pattern: "p1",
+  pattern_id: PID,
   image_enabled: false,
   ...over,
 } as CreateGenerationJobInput);
@@ -97,11 +135,18 @@ describe("createGenerationJob", () => {
     expect(writes.some((w) => INSERT.test(w.sql))).toBe(false);
   });
 
-  it("rejects P-5 while the feature flag is off", async () => {
-    const { db } = makeDb(() => []);
-    await expect(
-      createGenerationJob("u1", input({ pattern: "p5" }), deps(db)),
-    ).rejects.toMatchObject({ code: "feature_disabled" });
+  it("引用URLが必須のパターンは flag OFF の間は拒否する（外部呼び出し・枠消費の前に）", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (EXISTING.test(sql)) return [];
+      if (ACCOUNT.test(sql)) return [{ status: "active", active_x_account_id: XID }];
+      if (BUDGET.test(sql)) return [{ n: 0 }];
+      if (PATTERN_READ.test(sql)) return [{ ...PATTERN_ROW, requires_quote_url: true }];
+      return [];
+    });
+    await expect(createGenerationJob("u1", input(), deps(db))).rejects.toMatchObject({
+      code: "feature_disabled",
+    });
+    expect(writes.some((w) => INSERT.test(w.sql)), "jobを作らない").toBe(false);
   });
 
   it("rejects when the x_account is not the active one (job_conflict)", async () => {
@@ -151,7 +196,7 @@ describe("retryGenerationJob", () => {
   it("creates a parent-linked job for a failed job", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (RETRY_LOAD.test(sql)) return [{ status: "failed", kind: "post_generation", pattern: "p1", input: {}, x_account_id: XID }];
+      if (RETRY_LOAD.test(sql)) return [{ status: "failed", kind: "post_generation", pattern_id: PID, pattern_spec: SPEC, input: {}, x_account_id: XID }];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "retry-job" }];
       return [];
@@ -165,7 +210,7 @@ describe("retryGenerationJob", () => {
   it("rejects retrying a non-failed job", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (RETRY_LOAD.test(sql)) return [{ status: "succeeded", kind: "post_generation", pattern: "p1", input: {}, x_account_id: XID }];
+      if (RETRY_LOAD.test(sql)) return [{ status: "succeeded", kind: "post_generation", pattern_id: PID, pattern_spec: SPEC, input: {}, x_account_id: XID }];
       return [];
     });
     await expect(
@@ -175,7 +220,7 @@ describe("retryGenerationJob", () => {
 });
 
 describe("regenerateDraft", () => {
-  const REGEN_LOAD = /select d\.status, d\.pattern, d\.thread/;
+  const REGEN_LOAD = /select d\.status, d\.pattern_id, d\.requires_quote_url, d\.thread/;
 
   it("snapshots the source draft into a parent-linked job", async () => {
     const { db, writes } = makeDb((sql) => {
@@ -184,7 +229,8 @@ describe("regenerateDraft", () => {
         return [
           {
             status: "draft",
-            pattern: "p3",
+            pattern_id: PID,
+              requires_quote_url: false,
             thread: [{ text: "元1" }, { text: "元2" }],
             x_account_id: XID,
             tweet_ids: [],
@@ -206,14 +252,15 @@ describe("regenerateDraft", () => {
     expect(jobInput.parent_draft_id).toBe("src");
     expect(jobInput.previous_posts).toEqual(["元1", "元2"]);
     expect(jobInput.instructions).toBe("改善して");
-    expect(jobInput.pattern).toBe("p3");
+  // 再生成は元の下書きと同じパターン（`pattern_id`）で作る（T-M8-129 U5）。
+    expect(insert?.params[1]).toBe(PID);
   });
 
   it("rejects regenerating a non-regenerable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (REGEN_LOAD.test(sql))
-        return [{ status: "posted", pattern: "p1", thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+        return [{ status: "posted", pattern_id: PID, requires_quote_url: false, thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       return [];
     });
     await expect(
@@ -225,7 +272,7 @@ describe("regenerateDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (REGEN_LOAD.test(sql))
-        return [{ status: "failed", pattern: "p1", thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
+        return [{ status: "failed", pattern_id: PID, requires_quote_url: false, thread: [], x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     const err = await rejection(
@@ -246,13 +293,13 @@ describe("regenerateDraft", () => {
 });
 
 describe("regenerateImage", () => {
-  const DRAFT_LOAD = /select d\.status, d\.pattern, d\.x_account_id/;
+  const DRAFT_LOAD = /select d\.status, d\.pattern_id, d\.requires_quote_url, d\.x_account_id/;
   const ACTIVE_IMG = /kind = 'image_generation' and status in/;
 
   it("creates a queued image_generation job for a regenerable draft", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID }];
       if (ACTIVE_IMG.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "img-job" }];
@@ -268,7 +315,7 @@ describe("regenerateImage", () => {
   it("dedups to the active image job when one is already queued/running", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID }];
       if (ACTIVE_IMG.test(sql)) return [{ id: "active-1" }];
       return [];
     });
@@ -286,7 +333,7 @@ describe("regenerateImage", () => {
   it("rejects a non-regenerable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "posted", pattern_id: PID, requires_quote_url: false, x_account_id: XID }];
       return [];
     });
     await expect(
@@ -297,7 +344,7 @@ describe("regenerateImage", () => {
   it("rejects regenerating an image on a P-5 draft while the flag is off", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern: "p5", x_account_id: XID }];
+      if (DRAFT_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: true, x_account_id: XID }];
       return [];
     });
     await expect(
@@ -307,7 +354,7 @@ describe("regenerateImage", () => {
 });
 
 describe("publishDraft", () => {
-  const PUB_LOAD = /select d\.status, d\.pattern, d\.x_account_id, xa\.status/;
+  const PUB_LOAD = /select d\.status, d\.pattern_id, d\.requires_quote_url, d\.x_account_id, xa\.status/;
   const ACTIVE_PUB = /kind = 'post_publish' and status in/;
 
   const pubInput = { request_key: "pk", draft_id: "d1", mode: "manual" as const };
@@ -315,7 +362,7 @@ describe("publishDraft", () => {
   it("creates a post_publish job for a draft status", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -334,7 +381,7 @@ describe("publishDraft", () => {
       const { db, writes } = makeDb((sql) => {
         if (EXISTING.test(sql)) return [];
         if (PUB_LOAD.test(sql))
-          return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: accountStatus, tweet_ids: [], last_post_error: null }];
+          return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: accountStatus, tweet_ids: [], last_post_error: null }];
         return [];
       });
       const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -347,7 +394,7 @@ describe("publishDraft", () => {
   it("dedups to an active post_publish job", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [{ id: "active-pub" }];
       return [];
     });
@@ -364,7 +411,7 @@ describe("publishDraft", () => {
   it("allows a clean retryable failed draft", async () => {
     const { db, writes } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       if (BUDGET.test(sql)) return [{ n: 0 }];
       if (INSERT.test(sql)) return [{ id: "pub-job" }];
@@ -377,7 +424,7 @@ describe("publishDraft", () => {
   it("rejects a failed draft with created tweets (unresolved posting)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "failed", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -389,7 +436,7 @@ describe("publishDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (PUB_LOAD.test(sql))
-        return [{ status: "failed", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
+        return [{ status: "failed", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: { ambiguous_create_indices: [0] } }];
       return [];
     });
     const err = await rejection(publishDraft("u1", pubInput, deps(db)));
@@ -399,7 +446,7 @@ describe("publishDraft", () => {
   it("rejects a non-publishable (posted) draft", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "posted", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "posted", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: ["9"], last_post_error: null }];
       return [];
     });
     await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({ code: "job_conflict" });
@@ -408,7 +455,7 @@ describe("publishDraft", () => {
   it("surfaces posting prerequisite errors (no active X account)", async () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
-      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern: "p1", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+      if (PUB_LOAD.test(sql)) return [{ status: "draft", pattern_id: PID, requires_quote_url: false, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       if (ACTIVE_PUB.test(sql)) return [];
       return [];
     });
@@ -424,7 +471,7 @@ describe("publishDraft", () => {
     const { db } = makeDb((sql) => {
       if (EXISTING.test(sql)) return [];
       if (PUB_LOAD.test(sql))
-        return [{ status: "draft", pattern: "p5", x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
+        return [{ status: "draft", pattern_id: PID, requires_quote_url: true, x_account_id: XID, x_account_status: "active", tweet_ids: [], last_post_error: null }];
       return [];
     });
     await expect(publishDraft("u1", pubInput, deps(db))).rejects.toMatchObject({
@@ -461,7 +508,7 @@ describe("cancelGenerationJob", () => {
 
 describe("getGenerationJob", () => {
   it("returns the job for the owner", async () => {
-    const { db } = makeDb(() => [{ id: "j1", kind: "post_generation", status: "queued", pattern: "p1", progress_stage: null, draft_id: null, error: null, created_at: "2026-01-01" }]);
+    const { db } = makeDb(() => [{ id: "j1", kind: "post_generation", status: "queued", pattern_id: PID, progress_stage: null, draft_id: null, error: null, created_at: "2026-01-01" }]);
     expect((await getGenerationJob(db, "u1", "j1")).id).toBe("j1");
   });
   it("throws not_found when not owned", async () => {
@@ -498,7 +545,8 @@ describe("createDraftFromNews", () => {
     );
     expect(res).toEqual({ jobId: "job-news", deduped: false });
     const ins = writes.find((w) => INSERT.test(w.sql))!;
-    expect(ins.params[1]).toBe("p1"); // pattern
+  // ニュースから作るときは既定の「ニュース解説」パターンを使う（T-M8-129 U5）。
+    expect(ins.params[1]).toBe(PID);
     const inputJson = JSON.parse(ins.params[2] as string);
     expect(inputJson.source_url).toBe("https://n.example/a");
     expect(inputJson.news_item_id).toBe(NID);

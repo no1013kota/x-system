@@ -33,8 +33,16 @@ const REQUIRED_FLAGS: Record<string, string> = {
   "stripe:portal:setup": "--target",
 };
 
-/** 運営者向けの文言を持つ範囲。 */
-const SEARCH_DIRS = [join(ROOT, "src", "lib", "ops"), join(ROOT, "scripts")];
+/**
+ * 運営者向けの文言を持つ範囲。**`src` 全体と `scripts`** を走査する（T-M8-144）。
+ *
+ * 以前は `src/lib/ops` と `scripts` の2つだけを列挙していたため、**同じく `nextAction` を出す
+ * `src/lib/stripe/portal-features.ts` などが検査外**だった——存在しないコマンドを案内していても
+ * 気付けない。ディレクトリの手書き列挙は、新しい場所が増えたときの追記を人の記憶に預ける
+ * （docs/operations/development-and-testing.md §11）。
+ * コメント中の言及も対象に入るが、**コメントで存在しないコマンドを案内するのも誤り**なので都合がよい。
+ */
+const SEARCH_DIRS = [join(ROOT, "src"), join(ROOT, "scripts")];
 
 function collectFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -62,7 +70,14 @@ describe("運営者へ示すコマンドはそのまま動く", () => {
   );
 
   it("検査対象のコマンドを実際に見つけている（空振りしていない）", () => {
-    expect(found.length).toBeGreaterThan(3);
+    /*
+      **走査範囲が縮んだら落ちる**ようにする（T-M8-144）。`> 3` のままだと、
+      対象ディレクトリを間違えて件数が激減しても素通りしていた。
+      実測より少し下に置く（コマンドが増えるのは自然なので上限は縛らない）。
+    */
+    expect(found.length, "運営者向けコマンドの検出数が減っている（走査範囲を確認）").toBeGreaterThanOrEqual(
+      20,
+    );
   });
 
   it("案内している npm script はすべて package.json に存在する", () => {

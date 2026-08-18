@@ -88,8 +88,8 @@ describe("RLS policies & ownership trigger", () => {
       const a = await makeUser(c);
       const b = await makeUser(c);
       await c.query(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread)
-         values ($1, 'p1', '[]'::jsonb, '[]'::jsonb)`,
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb)`,
         [b.xid],
       );
 
@@ -151,15 +151,16 @@ describe("RLS policies & ownership trigger", () => {
     await inTx(async (c) => {
       const a = await makeUser(c);
       const b = await makeUser(c);
-      // (null, 'p1') system default is seeded; add B's account override
+      // (null, 'image') system default is seeded; add B's account override.
+      // 型プロンプト（p1〜p6）は `post_patterns` へ移したので画像で確かめる（T-M8-129 U2）。
       await c.query(
-        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'p1', 'b-override')`,
+        `insert into prompt_templates (x_account_id, kind, content) values ($1, 'image', 'b-override')`,
         [b.xid],
       );
 
       await actAs(c, a.uid);
       const rows = await c.query<{ x_account_id: string | null }>(
-        `select x_account_id from prompt_templates where kind = 'p1'`,
+        `select x_account_id from prompt_templates where kind = 'image'`,
       );
       // A sees only the system default (x_account_id null), not B's override
       expect(rows.rows).toHaveLength(1);
@@ -174,8 +175,8 @@ describe("RLS policies & ownership trigger", () => {
       // authenticated has no INSERT grant/policy → denied
       await expectViolation(c, () =>
         c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread)
-           values ($1, 'p1', '[]'::jsonb, '[]'::jsonb)`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb)`,
           [a.xid],
         ),
       );

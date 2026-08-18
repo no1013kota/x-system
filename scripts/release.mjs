@@ -26,9 +26,23 @@ function sh(cmd, { allowFail = false } = {}) {
   }
 }
 
+/*
+  判定は `src/lib/ops/release-gate.ts`（純粋関数・単体テストあり）。
+  **`expectedBranchFor` もここから取る**（T-M8-144）——以前はこの下で
+  `target === "staging" ? "stg" : "main"` を再実装しており、正本側の関数には
+  本番の呼び出し元が1つも無かった（テストが実経路を守っていなかった）。
+*/
+const { evaluateReleaseGate, expectedBranchFor, firstStop, onlyMigrationsPending,
+        parseAppliedRemote, projectRefFromCsp, summarizeGate } =
+  await import("../src/lib/ops/release-gate.ts").catch(async () => {
+  // TypeScript を直接 import できない実行環境向けのフォールバック（tsx等が無い場合）。
+  console.error("release: 判定モジュールを読み込めませんでした。`npx tsx scripts/release.mjs` で実行してください。");
+  process.exit(2);
+});
+
 // --- 判定の材料を集める ---
 
-const expectedBranch = target === "staging" ? "stg" : "main";
+const expectedBranch = expectedBranchFor(target);
 const currentBranch = sh("git rev-parse --abbrev-ref HEAD");
 const dirty = sh("git status --porcelain") !== "";
 const unpushed = Number(
@@ -97,13 +111,6 @@ const smokeAccount = (() => {
 })();
 
 // 判定ロジックは純粋関数側（単体テストあり）。migrationの解釈にも使うので先に読み込む。
-const { evaluateReleaseGate, firstStop, onlyMigrationsPending, parseAppliedRemote,
-        projectRefFromCsp, summarizeGate } =
-  await import("../src/lib/ops/release-gate.ts").catch(async () => {
-  // TypeScript を直接 import できない実行環境向けのフォールバック（tsx等が無い場合）。
-  console.error("release: 判定モジュールを読み込めませんでした。`npx tsx scripts/release.mjs` で実行してください。");
-  process.exit(2);
-});
 
 const { list: unapplied, linked } = unappliedMigrations();
 

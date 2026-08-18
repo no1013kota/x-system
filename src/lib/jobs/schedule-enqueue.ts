@@ -7,8 +7,14 @@ import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "@/lib/usage/daily-post-limit-server";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
-import { PATTERN_MAX_POSTS } from "@/lib/post/generation-validation";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
+import {
+  parsePatternSpec,
+  scheduledPostSlots,
+  type PatternSpec,
+} from "@/lib/post/pattern-spec";
 
+import { recordUnexpectedError } from "../observability/sentry";
 import type { Queryable } from "../x/token-refresh";
 
 /**
@@ -18,28 +24,25 @@ import type { Queryable } from "../x/token-refresh";
  * 同一 transaction で更新して冪等化する（同一slot・同一定刻窓で複数tickでもjobは1件）。1起動500件上限。
  */
 
-/** premium auto の「ロールバック安全残量」保守的仮定（要件04 §7.1）。P-5はスケジュール対象外。 */
-const ROLLBACK_SAFE_BUDGET: Record<string, { normal: number; url: number }> = {
-  p1: { normal: 10, url: 1 },
-  p2: { normal: 1, url: 0 },
-  p3: { normal: 12, url: 1 },
-  p4: { normal: 8, url: 1 },
-  p6: { normal: 12, url: 1 },
-};
-
 /** premium月次上限（要件03 §7・plans.ts と一致）。 */
 const PREMIUM_LIMITS = { normalPosts: 200, urlPosts: 20, aiCredits: 1000 };
 
 interface DueSlotRow {
   id: string;
   x_account_id: string;
-  pattern: string;
+  pattern_id: string | null;
+  /** パターン設定。enqueue時に凍結してjobへ渡す（T-M8-129 U2/U3）。 */
+  pattern_spec: unknown;
   time_jst: string;
   mode: string;
   instructions: string | null;
   /** 分野（発信テーマ）。NULL は指定なし＝AIがアカウント.mdの発信テーマから選ぶ（T-M8-28）。 */
   theme: string | null;
   image_enabled: boolean;
+  /** この枠の生成入力（T-M8-135）。投稿作成画面で毎回指定していたものを枠に保存したもの。 */
+  source_url: string | null;
+  placeholder_values: Record<string, string> | null;
+  prompt_override: string | null;
   user_id: string;
   x_status: string;
   base_md_version: number;
@@ -65,8 +68,11 @@ export interface EnqueueResult {
 
 async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
   const { rows } = await db.query<DueSlotRow>(
-    `select ss.id, ss.x_account_id, ss.pattern, ss.time_jst::text as time_jst, ss.mode,
+    `select ss.id, ss.x_account_id, ss.pattern_id,
+              pattern_spec_of(ss.pattern_id) as pattern_spec,
+              ss.time_jst::text as time_jst, ss.mode,
             ss.instructions, ss.theme, ss.image_enabled,
+            ss.source_url, ss.placeholder_values, ss.prompt_override,
             xa.user_id, xa.status as x_status, xa.base_md_version,
             (xa.automation_consent_version = $1 and xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as auto_consent_ok,
@@ -109,7 +115,11 @@ async function keysValid(db: Queryable, slot: DueSlotRow): Promise<boolean> {
   });
 }
 
-async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean> {
+async function premiumBudgetOk(
+  db: Queryable,
+  slot: DueSlotRow,
+  spec: PatternSpec,
+): Promise<boolean> {
   const { rows } = await db.query<{
     normal_posts_count: number;
     url_posts_count: number;
@@ -131,7 +141,8 @@ async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean
     TEXT_DEFAULT_ESTIMATE_CREDITS + (slot.image_enabled ? IMAGE_DEFAULT_ESTIMATE_CREDITS : 0);
   if (c.ai_credits_used + estimate > PREMIUM_LIMITS.aiCredits) return false;
   if (slot.mode === "auto") {
-    const need = ROLLBACK_SAFE_BUDGET[slot.pattern] ?? { normal: 0, url: 0 };
+    // パターンの設定から導く（T-M8-129 U3）。
+    const need = scheduledPostSlots(spec);
     if (c.normal_posts_count + need.normal > PREMIUM_LIMITS.normalPosts) return false;
     if (c.url_posts_count + need.url > PREMIUM_LIMITS.urlPosts) return false;
   }
@@ -148,50 +159,83 @@ async function premiumBudgetOk(db: Queryable, slot: DueSlotRow): Promise<boolean
 async function dailyLimitOk(
   db: Queryable,
   slot: DueSlotRow,
+  spec: PatternSpec,
   dailyLimit: number,
 ): Promise<boolean> {
   const today = await countTodaysPostsForXAccount(db, slot.x_account_id);
-  const planned = PATTERN_MAX_POSTS[slot.pattern] ?? 0;
-  return canPostThreadToday(today, dailyLimit, planned);
+  return canPostThreadToday(today, dailyLimit, spec.maxPostsEdit);
 }
 
 /** §7.1 の各条件を評価し、enqueue すべきか返す。 */
-async function isEligible(db: Queryable, slot: DueSlotRow, dailyLimit: number): Promise<boolean> {
+async function isEligible(
+  db: Queryable,
+  slot: DueSlotRow,
+  spec: PatternSpec,
+  dailyLimit: number,
+): Promise<boolean> {
   if (slot.subscription_status !== "trialing" && slot.subscription_status !== "active") return false;
   if (slot.x_status !== "active") return false;
   if (slot.base_md_version < 1) return false;
-  if (slot.pattern === "p5") return false; // スケジュール対象外（保険）
+  // 引用URLが必須のパターンは予約に使えない（DBのトリガも拒否する）。保険としてここでも見る。
+  if (spec.requiresQuoteUrl) return false;
   if (slot.mode === "auto" && !slot.auto_consent_ok) return false;
   // 学習ソース削除merge中は新規生成を止める（要件04 §12, T-M5-05）。
   if (await hasRemovingLearningSource(db, slot.x_account_id)) return false;
   if (slot.plan === "premium") {
-    if (!(await premiumBudgetOk(db, slot))) return false;
+    if (!(await premiumBudgetOk(db, slot, spec))) return false;
   } else {
     if (!(await keysValid(db, slot))) return false;
   }
-  if (!(await dailyLimitOk(db, slot, dailyLimit))) return false;
+  if (!(await dailyLimitOk(db, slot, spec, dailyLimit))) return false;
   return true;
 }
 
+/** `slot.pattern_spec` は呼び出し側で `parsePatternSpec` を通してある（読めない枠は来ない）。 */
 async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise<boolean> {
   const timeHhmm = slot.time_jst.slice(0, 5);
   const runKey = `slot:${slot.id}:${slot.jst_date}:${timeHhmm}`;
+  /*
+    **投稿作成画面と同じキーで渡す**（T-M8-135）。生成側（`post-generation.ts`）は
+    `job.input` の形しか見ないので、ここでキー名がずれると
+    「予約では効かない」という、画面からは説明できない差になる。
+  */
   const input = JSON.stringify({
     instructions: slot.instructions ?? null,
     theme: slot.theme ?? null,
     image_enabled: slot.image_enabled,
     mode: slot.mode,
     requested_mode: slot.mode,
+    source_url: slot.source_url ?? null,
+    placeholder_values: slot.placeholder_values ?? null,
+    /*
+      **プラン境界を実行時にも守る**（T-M8-135）。プロンプトの編集は md/premium だけなので、
+      standard へ下がった枠の `prompt_override` は使わない。
+      画面はこのときセクションごと隠すため、使い続けると
+      **画面に出ていない指示で生成される**（原則1・原則2に反する）。
+    */
+    prompt_override: promptEditablePlan(slot.plan) ? (slot.prompt_override ?? null) : null,
   });
   return deps.runInTx(async (tx) => {
     const inserted = await tx.query<{ id: string }>(
+      // **パターン設定をここで凍結する**（T-M8-129 U2/U3）。実行中に編集・削除されても
+      // このジョブは当時の設定で走り切る。
       `insert into generation_jobs
-         (x_account_id, kind, trigger, slot_id, pattern, input, status, scheduled_for, schedule_run_key, available_at)
-       values ($1, 'post_generation', 'schedule', $2, $3, $4::jsonb, 'queued',
+         (x_account_id, kind, trigger, slot_id, pattern_id, pattern_spec,
+          input, status, scheduled_for, schedule_run_key, available_at)
+       values ($1, 'post_generation', 'schedule', $2, $3, $8::jsonb, $4::jsonb, 'queued',
                (($5 || ' ' || $6)::timestamp at time zone 'Asia/Tokyo'), $7, now())
        on conflict (schedule_run_key) do nothing
        returning id`,
-      [slot.x_account_id, slot.id, slot.pattern, input, slot.jst_date, timeHhmm, runKey],
+      [
+        slot.x_account_id,
+        slot.id,
+        slot.pattern_id,
+        input,
+        slot.jst_date,
+        timeHhmm,
+        runKey,
+        JSON.stringify(slot.pattern_spec),
+      ],
     );
     if (inserted.rowCount === 0) return false; // 既に同一定刻窓で作成済み（冪等）
     return true;
@@ -202,7 +246,17 @@ export async function enqueueDueSlots(deps: ScheduleEnqueueDeps): Promise<Enqueu
   const slots = await loadDueSlots(deps.db);
   let enqueued = 0;
   for (const slot of slots) {
-    if (!(await isEligible(deps.db, slot, deps.dailyLimit))) continue;
+    // **パターンが読めない枠は黙って飛ばさない。** 削除済みのパターンを指す枠は
+    // DBのトリガが `enabled=false` へ落とすので、ここへ来るのは想定外の状態。
+    const spec = parsePatternSpec(slot.pattern_spec);
+    if (!spec) {
+      recordUnexpectedError(new Error(`schedule slot ${slot.id} has no usable pattern`), {
+        at: "schedule-enqueue",
+        slotId: slot.id,
+      });
+      continue;
+    }
+    if (!(await isEligible(deps.db, slot, spec, deps.dailyLimit))) continue;
     if (await enqueueSlot(deps, slot)) enqueued += 1;
   }
   return { scanned: slots.length, enqueued };

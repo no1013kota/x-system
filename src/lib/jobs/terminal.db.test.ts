@@ -56,12 +56,21 @@ describe("finalizeFailedJob (db)", () => {
     kind: string,
     over: { draftId?: string; sourceId?: string; parentId?: string; input?: object } = {},
   ): Promise<string> {
+    // `post_generation` はパターンを必須にする（T-M8-129 U2）。
     const { rows } = await c.query<{ id: string }>(
       `insert into generation_jobs
-         (x_account_id, kind, trigger, status, draft_id, learning_source_id, parent_job_id, input)
-       values ($1, $2::job_kind, 'manual', 'failed', $3, $4, $5, $6::jsonb)
+         (x_account_id, kind, trigger, pattern_id, status, draft_id, learning_source_id, parent_job_id, input)
+       values ($1, $2::job_kind, 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = $7), 'failed', $3, $4, $5, $6::jsonb)
        returning id`,
-      [xid, kind, over.draftId ?? null, over.sourceId ?? null, over.parentId ?? null, JSON.stringify(over.input ?? {})],
+      [
+        xid,
+        kind,
+        over.draftId ?? null,
+        over.sourceId ?? null,
+        over.parentId ?? null,
+        JSON.stringify(over.input ?? {}),
+        kind === "post_generation" ? "p1" : null,
+      ],
     );
     return rows[0].id;
   }
@@ -160,8 +169,8 @@ describe("finalizeFailedJob (db)", () => {
     try {
       const { jobId } = await withTransaction(async (c) => {
         const { rows } = await c.query<{ id: string }>(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-           values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, 'posting') returning id`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'posting') returning id`,
           [xid],
         );
         const draftId = rows[0].id;
@@ -192,8 +201,8 @@ describe("finalizeFailedJob (db)", () => {
     try {
       const { draftId, imageJobId } = await withTransaction(async (c) => {
         const { rows } = await c.query<{ id: string }>(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, images)
-           values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, 'draft', '[]'::jsonb) returning id`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, images)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'draft', '[]'::jsonb) returning id`,
           [xid],
         );
         const draftId = rows[0].id;

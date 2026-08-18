@@ -1,4 +1,3 @@
-import { POST_PATTERN_LABELS } from "../post/pattern-labels";
 
 /**
  * 分析レポートの本文を、運営者が読める日本語へ直す（T-M8-114）。
@@ -41,14 +40,36 @@ const TERMS: [RegExp, string][] = [
 ];
 
 /**
- * 型の内部ID（p1〜p6）を日本語名にする。
+ * **2026-08-18 より前に作られたレポートのための対応表**（T-M8-129 U3）。
+ *
+ * それ以降の改善提案（PT-SUGGEST）はパターンの**名前**を出すので変換は不要。
+ * 過去のレポートには内部ID（`p1`）が本文に残っているため、当時の名前へ直して読めるようにする。
+ * **利用者が名前を変えても過去のレポートの表記は変わらない**——当時どの型だったかを示す記録なので、
+ * 現在の名前に合わせて書き換えると履歴が事実と食い違う。
+ */
+const LEGACY_PATTERN_LABELS: Readonly<Record<string, string>> = {
+  p1: "ニュース解説",
+  p2: "自分の考え・意見",
+  p3: "ノウハウ・ハウツー",
+  p4: "トレンド便乗",
+  p5: "引用ポスト",
+  p6: "週次まとめ",
+};
+
+/** 旧レポートに残る内部ID（`p1`）を当時の名前にする。未知の値はそのまま返す。 */
+export function legacyPatternLabel(value: string): string {
+  return LEGACY_PATTERN_LABELS[value] ?? value;
+}
+
+/**
+ * 型の内部ID（p1〜p6）を日本語名にする。**旧レポートのみが対象**。
  *
  * 日本語には単語の区切りが無いので `\b` が効かない。**英数字が続いていないこと**だけを条件にし、
  * 「p1」「（p1）」「p1型」に当て、「p10」「gpt-p1x」のような別語には当てない。
  */
 function patternIds(text: string): string {
   return text.replace(/(^|[^0-9A-Za-z_])p([1-6])(?![0-9A-Za-z_])/g, (all, head: string, n: string) => {
-    const label = POST_PATTERN_LABELS[`p${n}`];
+    const label = LEGACY_PATTERN_LABELS[`p${n}`];
     return label ? `${head}${label}` : all;
   });
 }

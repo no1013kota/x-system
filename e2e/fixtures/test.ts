@@ -143,6 +143,23 @@ export async function waitForMail(to: string): Promise<MailpitMessage> {
   return last as MailpitMessage;
 }
 
+/**
+ * メール本文から6桁の確認コードを取り出す（T-M8-121）。
+ *
+ * 確認メールは**コード方式**（`{{ .Token }}`）。リンクは含まれないので、数字だけを拾う。
+ * 他の数字（年号・桁区切り）を拾わないよう、**6桁ちょうどで前後が数字でない**ものに限る。
+ */
+export async function signUpCodeFromMail(messageId: string): Promise<string> {
+  const res = await fetch(`${MAILPIT}/api/v1/message/${messageId}`);
+  expect(res.ok, "Mailpitからメール本文を取得できること").toBe(true);
+  const body = (await res.json()) as { HTML?: string; Text?: string };
+  // タグを落としてから探す（HTMLの属性値に数字が入ることがある）。
+  const source = `${(body.HTML ?? "").replace(/<[^>]*>/g, " ")}\n${body.Text ?? ""}`;
+  const match = /(?<![0-9])[0-9]{6}(?![0-9])/.exec(source);
+  expect(match, "確認メールに6桁のコードが含まれること").not.toBeNull();
+  return (match as RegExpExecArray)[0];
+}
+
 /** メール本文から `/auth/confirm` のURLを取り出す。 */
 export async function confirmUrlFromMail(messageId: string): Promise<string> {
   const res = await fetch(`${MAILPIT}/api/v1/message/${messageId}`);

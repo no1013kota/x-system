@@ -1,4 +1,3 @@
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { OTHER_POST_THEME, postThemeLabel } from "@/lib/post/post-theme";
 
 /**
@@ -19,9 +18,13 @@ import { OTHER_POST_THEME, postThemeLabel } from "@/lib/post/post-theme";
  */
 export const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
-/** 投稿の型のラベル。未知の値はそのまま出す（表示が消えるより生の値を見せる）。 */
-export function patternLabel(pattern: string): string {
-  return POST_PATTERN_LABELS[pattern] ?? pattern;
+/**
+ * パターンの表示名。**内部ID（`p1`）は出さない**（要件06 §1.0・T-M8-129 U3）。
+ * パターンが削除されると `pattern_name` は null になる（枠は停止して設定は残る）。
+ * そのときは「パターン未設定」と書く——空欄にすると設定漏れなのか削除なのか分からない。
+ */
+export function patternLabel(patternName: string | null): string {
+  return patternName ?? "パターン未設定";
 }
 
 /** `09:00:00` → `09:00`（秒は画面に出さない）。 */
@@ -39,15 +42,28 @@ export function slotScheduleLabel(weekdays: readonly number[], timeJst: string):
  *
  * 「その他」のテーマは追加指示に書く意思表示なので、分野としては出さない。
  */
+/**
+ * 予約の実行モードの表示名（T-M8-146）。
+ *
+ * **言い方を1か所に決める。** 以前は5ファイルで別々に書かれ、`draft` が
+ * 「下書きのみ」「下書き」「下書きまで」の3通り（文中の「下書きを作成します」を数えると4通り）に
+ * 分かれていた。同じ設定が画面ごとに違う名前で出ると、利用者は同じものだと分からない
+ * （要件06 §1.0 と同じ考え方）。**「下書きのみ」**が正——要件06 §3.5 の週間プレビューの
+ * 凡例がこの語を使っており、「投稿はしない」ことが一語で伝わる。
+ */
+export function slotModeLabel(mode: string): string {
+  return mode === "auto" ? "自動投稿" : "下書きのみ";
+}
+
 export function slotDescription(slot: {
-  pattern: string;
+  pattern_name: string | null;
   theme?: string | null;
   mode: string;
   enabled: boolean;
 }): string {
   const theme =
     slot.theme && slot.theme !== OTHER_POST_THEME ? `・テーマ ${postThemeLabel(slot.theme)}` : "";
-  const mode = slot.mode === "auto" ? "自動投稿" : "下書きのみ";
+  const mode = slotModeLabel(slot.mode);
   const stopped = slot.enabled ? "" : "・停止中";
-  return `${patternLabel(slot.pattern)}${theme}・${mode}${stopped}`;
+  return `${patternLabel(slot.pattern_name)}${theme}・${mode}${stopped}`;
 }

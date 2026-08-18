@@ -64,17 +64,17 @@ describe("buildSuggestionInput", () => {
   });
 
   it("Exos AIで作った投稿には型とテーマが付く（drafts突合）", () => {
-    const tags = buildDraftTagIndex([{ tweet_ids: ["t1", "t1b"], pattern: "p3", theme: "ai" }]);
+    const tags = buildDraftTagIndex([{ tweet_ids: ["t1", "t1b"], pattern_name: "ノウハウ・ハウツー", theme: "ai" }]);
     const input = buildSuggestionInput([timelinePost("t1"), timelinePost("t9")], tags);
-    expect(input.posts[0]).toMatchObject({ pattern: "p3", theme: "ai" });
+    expect(input.posts[0]).toMatchObject({ pattern: "ノウハウ・ハウツー", theme: "ai" });
     // 外部の投稿は null（分からないものを推測しない）。
     expect(input.posts[1]).toMatchObject({ pattern: null, theme: null });
   });
 
   it("threadの2番目以降のtweet_idでも同じタグへ引ける", () => {
-    const tags = buildDraftTagIndex([{ tweet_ids: ["head", "second"], pattern: "p1", theme: "sns" }]);
+    const tags = buildDraftTagIndex([{ tweet_ids: ["head", "second"], pattern_name: "ニュース解説", theme: "sns" }]);
     const input = buildSuggestionInput([timelinePost("second")], tags);
-    expect(input.posts[0]).toMatchObject({ pattern: "p1", theme: "sns" });
+    expect(input.posts[0]).toMatchObject({ pattern: "ニュース解説", theme: "sns" });
   });
 
   it("メトリクスが無い投稿（30日境界等）は null のまま渡す（0と区別する）", () => {
@@ -107,7 +107,7 @@ describe("buildSuggestionInput", () => {
 
 describe("buildDraftTagIndex", () => {
   it("tweet_ids が null の行を無視する", () => {
-    const tags = buildDraftTagIndex([{ tweet_ids: null, pattern: "p1", theme: "ai" }]);
+    const tags = buildDraftTagIndex([{ tweet_ids: null, pattern_name: "ニュース解説", theme: "ai" }]);
     expect(tags.size).toBe(0);
   });
 });

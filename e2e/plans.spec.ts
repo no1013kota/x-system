@@ -11,6 +11,38 @@ import { expect, horizontalOverflow, signIn, test } from "./fixtures/test";
  * 契約状態によって見えるものが変わる部分（要件03 §2の閲覧ゲート）が主眼。
  */
 
+/**
+ * プラン選択のキャンペーン表示（T-M8-118/122）。LPと共通部品なので文言の決まりは1か所だが、
+ * プラン選択画面に実際に出ていることは別で見る（部品を使い忘れても型では落ちない）。
+ */
+test("プラン選択に半額バッジと終了後価格が出て、「通常価格」とは書かない（T-M8-122）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("plans-campaign");
+  // **先にログインしてから申込前へ落とす。** `signIn` は `/app` への着地を待つので、
+  // 未契約のままログインすると `/plans` へ送られて待ち続けてしまう。
+  await signIn(page, account);
+  await query(
+    `update profiles set plan = 'standard', subscription_status = 'incomplete',
+        current_period_end = null, trial_ends_at = null where id = $1`,
+    [account.userId],
+  );
+  await page.goto("/plans");
+
+  // 3プランぶん出る（件数を固定しない——プラン数が変わったらここも直す前提にしない）。
+  const badges = page.getByText("リリース記念 半額");
+  await expect(badges.first()).toBeVisible();
+  expect(await badges.count(), "全プランにバッジが出る").toBeGreaterThanOrEqual(3);
+
+  await expect(page.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
+  // 終了後価格が取り消し線で出る（プレミアムの 5,960 で代表して確かめる）。
+  await expect(page.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
+
+  // 景表法: 「通常価格」の語を使わない。
+  await expect(page.getByText("通常価格")).toHaveCount(0);
+});
+
 test("未契約の利用者にはプラン選択が出て、申込前の確認事項が隠れていない", async ({
   accounts,
   page,
@@ -27,28 +59,39 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 未契約はアプリ本体へ入れず、プラン選択へ送られる（要件03 §2）
   await signIn(page, account, { waitFor: /\/plans/ });
 
-  // 3プランが比較できる（見出しはPRDと同じ日本語表記・T-M8-21）
+  // 3プランが比較表の列として並ぶ（T-M8-125で表へ変えた。名前はPRDと同じ日本語表記・T-M8-21）。
+  const table = page.getByRole("table", { name: /機能と月額の比較/ });
   for (const name of ["通常プラン", "mdプラン", "プレミアムプラン"]) {
-    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: new RegExp(name) })).toBeVisible();
   }
+  // 機能が行見出しになり、対応の有無が読み取れる（✓は読み上げ用の文字も持つ）。
+  await expect(
+    table.getByRole("rowheader", { name: /アカウント.md・プロンプトの直接編集/ }),
+  ).toBeVisible();
+  await expect(table.getByText("対応しません").first()).toBeAttached();
   // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
   await expect(
     page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),
   ).toBeVisible();
 
-  // 申込前の確認は折りたたまず常に見える（要件06 §1.1・要件03 §54）
-  const preApply = page.getByRole("region", { name: "お申し込み前の確認" });
-  await expect(page.getByRole("heading", { name: "お申し込み前の確認" })).toBeVisible();
-  await expect(page.getByText("7日間無料", { exact: false }).first()).toBeVisible();
-  // 同じリンクはフッターの法務情報にもあるため、確認欄の中にあることを見る。
+  /**
+   * 申込前の重要事項（要件06 §1.1・要件03 §54）。
+   *
+   * **T-M8-125で定義リストを畳んだ**（運営者の指示・比較表と重複していた）。ただし
+   * 申込ボタンの前に重要事項へ辿れる状態は残す必要があるので、無料期間・自動更新・解約と
+   * 特商法ページへのリンクが見えていることは引き続き固定する。
+   */
+  await expect(page.getByText("初回のみ7日間無料", { exact: false })).toBeVisible();
+  await expect(page.getByText("自動更新します", { exact: false })).toBeVisible();
+  await expect(page.getByText("期間末で終了します", { exact: false })).toBeVisible();
   await expect(
-    preApply.getByRole("link", { name: "特定商取引法に基づく表記" }),
+    page.getByRole("link", { name: "特定商取引法に基づく表記" }).first(),
   ).toBeVisible();
 
   // 申込ボタンは各プランにあるが、押さない（Stripeへ実際に作りに行くため）
   await expect(page.getByRole("button", { name: /7日間無料で利用/ }).first()).toBeVisible();
 
-  // スマホ幅でもカードが縦に積まれて読める
+  // スマホ幅でも読める（表はページを横に伸ばさず、自分の中でスクロールする）
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   expect(await horizontalOverflow(page), "ページ全体が横に伸びないこと").toBeLessThanOrEqual(0);
@@ -80,6 +123,13 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await expect(page.getByText("プラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("プレミアムプラン", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("契約状態", { exact: false }).first()).toBeVisible();
+  // プラン選択でもキャンペーン表示が出て、「通常価格」の語を使わない（T-M8-118/122）。
+  // LPと同じ部品なので、片方だけ壊れることは無い形にしてある。
+  await page.goto("/plans");
+  await expect(page).toHaveURL(/\/app(\/|$|\?)/); // 契約者は送り返される
+  await page.goto("/app/settings?tab=billing");
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+
   // いま実際にいくら払っているかと、キャンペーン終了後の額がこの場で読める（T-M8-118）。
   // 値上げが不意打ちにならないようにするため、契約中の画面にも出す。
   await expect(page.getByText("月額 ¥2,980（税込）", { exact: false })).toBeVisible();

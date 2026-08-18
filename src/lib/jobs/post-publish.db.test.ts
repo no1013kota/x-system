@@ -76,8 +76,8 @@ describe("post_publish 投稿枠 consume/counter (local DB)", () => {
     ).rows[0].id;
     const draftId = (
       await c.query<{ id: string }>(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-         values ($1,'p1',$2::jsonb,$2::jsonb,'draft') returning id`,
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft') returning id`,
         [xid, JSON.stringify(opts.thread)],
       )
     ).rows[0].id;

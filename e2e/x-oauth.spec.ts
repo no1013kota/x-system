@@ -250,7 +250,10 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   // 押すと /plans に**留まる**（以前はホームへ弾き返されて何も起きなかった）
   await choose.click();
   await expect(page).toHaveURL(/\/plans/);
-  await expect(page.getByRole("heading", { name: "通常プラン", exact: true })).toBeVisible();
+  // プラン名は比較表の列見出しへ移った（T-M8-125 でカード見出しから表になった）。
+  // **文言そのものではなく「プラン選択の中身が出ている」ことを見る**——文言はキャンペーンで変わる。
+  await expect(page.getByRole("heading", { name: /プラン/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /通常プラン/ }).first()).toBeVisible();
 
   // 顧客が紐づいたら通常どおり /app へ送り返す（決済直後に行き止まらないための既存の挙動）
   await query(`update profiles set stripe_customer_id = 'cus_review_check' where id = $1`, [

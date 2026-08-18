@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  patternLabel,
   slotDescription,
   slotScheduleLabel,
   slotTimeLabel,
@@ -29,10 +28,10 @@ describe("WEEKDAY_LABELS", () => {
 });
 
 describe("slotDescription", () => {
-  const base = { pattern: "p1", theme: null as string | null, mode: "draft", enabled: true };
+  const base = { pattern_name: "ニュース解説", theme: null as string | null, mode: "draft", enabled: true };
 
   it("型・モードを出す（下書きのみ）", () => {
-    expect(slotDescription(base)).toBe(`${patternLabel("p1")}・下書きのみ`);
+    expect(slotDescription(base)).toBe("ニュース解説・下書きのみ");
   });
 
   it("自動投稿と停止中を出す", () => {
@@ -49,7 +48,7 @@ describe("slotDescription", () => {
   });
 
   it("未知の型はそのまま出す（表示が消えるより生の値を見せる）", () => {
-    expect(slotDescription({ ...base, pattern: "p999" })).toContain("p999");
+    expect(slotDescription({ ...base, pattern_name: "p999" })).toContain("p999");
   });
 });
 

@@ -128,3 +128,34 @@ export function dailyPostLimitBanner(input: {
     actionHref: "/app/posts?tab=drafts",
   };
 }
+
+/**
+ * 利用規約・プライバシーポリシーの再同意が必要なときの常設バナー（T-M8-134）。
+ *
+ * **これが無いと、規約の版が上がった瞬間に生成・投稿・スケジュール保存が全部止まり、
+ * 操作して初めて「利用規約等の更新内容をご確認ください」とだけ言われる**——
+ * どこで何をすれば直るのか画面から辿れない（CLAUDE.md 原則2）。
+ * 2026-08-18、運営者がスケジュール保存で実際に踏んだ。
+ */
+export function legalConsentBanner(required: {
+  terms: boolean;
+  privacy: boolean;
+}): AppBanner | null {
+  if (!required.terms && !required.privacy) return null;
+  const what =
+    required.terms && required.privacy
+      ? "利用規約とプライバシーポリシー"
+      : required.terms
+        ? "利用規約"
+        : "プライバシーポリシー";
+  return {
+    id: "legal-consent",
+    tone: "warning",
+    title: `${what}が更新されました`,
+    // **止まっていることを先に言う。** 「確認してください」だけだと、
+    // 読まなくても使えると受け取られ、操作して初めて止まっていると気付く。
+    description: `同意いただくまで、投稿の生成・投稿・スケジュールの保存は実行できません。内容をご確認のうえ同意してください。`,
+    actionLabel: "内容を確認する",
+    actionHref: "/app/consent",
+  };
+}

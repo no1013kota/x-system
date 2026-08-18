@@ -90,36 +90,36 @@ describe("suggestion-timeline-store (local DB)", () => {
       await withTransaction(async (c) => {
         const jobId = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status, input, finished_at)
-             values ($1,'post_generation','manual','succeeded','{"theme":"ai"}','2026-08-01') returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, input, finished_at)
+             values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'succeeded', '{"theme":"ai"}', '2026-08-01') returning id`,
             [xid],
           )
         ).rows[0].id;
         await c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, source_job_id, tweet_ids)
-           values ($1,'p3','[]','[]','posted',$2,'["9100000000000001","9100000000000002"]')`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, source_job_id, tweet_ids)
+           values ($1,(select id from post_patterns where x_account_id = $1 and seed_key = 'p3'),'[]','[]','posted',$2,'["9100000000000001","9100000000000002"]')`,
           [xid, jobId],
         );
         // source_job_id の無い下書き（テーマnullでも行は返る）。
         await c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status, tweet_ids)
-           values ($1,'p1','[]','[]','posted','["9100000000000003"]')`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]', '[]', 'posted', '["9100000000000003"]')`,
           [xid],
         );
         // tweet_ids が空の行は対象外。
         await c.query(
-          `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-           values ($1,'p2','[]','[]','draft')`,
+          `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+           values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), '[]', '[]', 'draft')`,
           [xid],
         );
       });
 
       const rows = await loadDraftTagRows(pooledDb, xid);
       expect(rows).toHaveLength(2);
-      const tagged = rows.find((r) => r.pattern === "p3");
+      const tagged = rows.find((r) => r.pattern_name === "ノウハウ・ハウツー");
       expect(tagged?.theme).toBe("ai");
       expect(tagged?.tweet_ids).toEqual(["9100000000000001", "9100000000000002"]);
-      const untagged = rows.find((r) => r.pattern === "p1");
+      const untagged = rows.find((r) => r.pattern_name === "ニュース解説");
       expect(untagged?.theme).toBeNull();
     } finally {
       await cleanup(uid);
@@ -147,12 +147,12 @@ describe("suggestion-timeline-store (local DB)", () => {
         pooledDb,
         xid,
         [xPost("t1")],
-        new Map([["t1", { pattern: "p3", theme: "ai" }]]),
+        new Map([["t1", { pattern: "ノウハウ・ハウツー", theme: "ai" }]]),
       );
       // 再取得時にdraftsの行が消えていてタグが引けなくても、保存済みのタグを失わない。
       await upsertTimelinePosts(pooledDb, xid, [xPost("t1", { impressions: 500 })], new Map());
       const rows = await loadStoredTimeline(pooledDb, xid);
-      expect(rows[0]).toMatchObject({ pattern: "p3", theme: "ai", impressions: 500 });
+      expect(rows[0]).toMatchObject({ pattern_name: "ノウハウ・ハウツー", theme: "ai", impressions: 500 });
     } finally {
       await cleanup(uid);
     }

@@ -96,14 +96,33 @@ describe("generation-jobs actions (local DB)", () => {
   const cleanup = (uid: string) =>
     withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
 
-  const input = (xid: string, over: Partial<CreateGenerationJobInput> = {}): CreateGenerationJobInput =>
-    ({ request_key: "tok", x_account_id: xid, pattern: "p1", image_enabled: false, ...over }) as CreateGenerationJobInput;
+/** 既定パターンの `post_patterns.id` を引く（画面と同じ入口・T-M8-129 U5）。 */
+  const patternId = (xid: string, seedKey = "p1") =>
+    withTransaction(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `select id from post_patterns where x_account_id = $1 and seed_key = $2`,
+        [xid, seedKey],
+      );
+      return rows[0].id;
+    });
+
+  const input = async (
+    xid: string,
+    over: Partial<CreateGenerationJobInput> = {},
+  ): Promise<CreateGenerationJobInput> =>
+    ({
+      request_key: "tok",
+      x_account_id: xid,
+      pattern_id: await patternId(xid),
+      image_enabled: false,
+      ...over,
+    }) as CreateGenerationJobInput;
 
   it("is idempotent on request_key (same key → same job, no duplicate row)", async () => {
     const { uid, xid } = await withTransaction((c) => seed(c));
     try {
-      const first = await createGenerationJob(uid, input(xid, { request_key: "k1" }), deps());
-      const second = await createGenerationJob(uid, input(xid, { request_key: "k1" }), deps());
+      const first = await createGenerationJob(uid, await input(xid, { request_key: "k1" }), deps());
+      const second = await createGenerationJob(uid, await input(xid, { request_key: "k1" }), deps());
       expect(first.deduped).toBe(false);
       expect(second.deduped).toBe(true);
       expect(second.jobId).toBe(first.jobId);
@@ -121,7 +140,7 @@ describe("generation-jobs actions (local DB)", () => {
       const s = await seed(c);
       for (let i = 0; i < 5; i++) {
         await c.query(
-          `insert into generation_jobs (x_account_id, kind, trigger, pattern, status) values ($1,'post_generation','manual','p1','queued')`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status) values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued')`,
           [s.xid],
         );
       }
@@ -129,7 +148,7 @@ describe("generation-jobs actions (local DB)", () => {
     });
     try {
       await expect(
-        createGenerationJob(uid, input(xid, { request_key: "k2" }), deps()),
+        createGenerationJob(uid, await input(xid, { request_key: "k2" }), deps()),
       ).rejects.toMatchObject({ code: "job_conflict" });
     } finally {
       await cleanup(uid);
@@ -141,7 +160,7 @@ describe("generation-jobs actions (local DB)", () => {
     try {
       await withTransaction((c) => c.query(`update profiles set active_x_account_id = null where id = $1`, [uid]));
       await expect(
-        createGenerationJob(uid, input(xid, { request_key: "k3" }), deps()),
+        createGenerationJob(uid, await input(xid, { request_key: "k3" }), deps()),
       ).rejects.toMatchObject({ code: "job_conflict" });
     } finally {
       await cleanup(uid);
@@ -153,7 +172,7 @@ describe("generation-jobs actions (local DB)", () => {
     try {
       const failedId = (
         await db.query<{ id: string }>(
-          `insert into generation_jobs (x_account_id, kind, trigger, pattern, status) values ($1,'post_generation','manual','p1','failed') returning id`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status) values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'failed') returning id`,
           [xid],
         )
       ).rows[0].id;
@@ -185,8 +204,8 @@ describe("generation-jobs actions (local DB)", () => {
     try {
       const jobId = (
         await db.query<{ id: string }>(
-          `insert into generation_jobs (x_account_id, kind, trigger, pattern, status, error)
-           values ($1,'post_generation','manual','p1','failed',$2::jsonb) returning id`,
+          `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, error)
+           values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'failed', $2::jsonb) returning id`,
           [
             xid,
             JSON.stringify({

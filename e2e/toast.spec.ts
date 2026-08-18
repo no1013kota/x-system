@@ -13,8 +13,8 @@ test("下書きを破棄すると結果がトーストで出る", async ({ accou
   const account = await accounts.create("toast-discard", { personaReady: true });
   const text = `トースト確認用の下書き ${randomUUID().slice(0, 6)}`;
   await query(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft')`,
     [
       account.xAccountId,
       JSON.stringify([
@@ -41,8 +41,8 @@ test("下書きを破棄すると結果がトーストで出る", async ({ accou
 test("スケジュールを停止すると結果がトーストで出る", async ({ accounts, page }) => {
   const account = await accounts.create("toast-slot", { personaReady: true });
   await query(
-    `insert into schedule_slots (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled, enabled)
-     values ($1,'p1','{1,3}','09:30','draft','other',false,true)`,
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, image_enabled, enabled)
+     values ($1,(select id from post_patterns where x_account_id = $1 and seed_key = 'p1'),'{1,3}','09:30','draft','other',false,true)`,
     [account.xAccountId],
   );
 
@@ -60,8 +60,8 @@ test("下書きを編集して保存すると結果がトーストで出る（T-
   const account = await accounts.create("toast-draft-save", { personaReady: true });
   const text = `保存トースト確認用 ${randomUUID().slice(0, 6)}`;
   await query(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-     values ($1,'p1',$2::jsonb,$2::jsonb,'draft')`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), $2::jsonb, $2::jsonb, 'draft')`,
     [
       account.xAccountId,
       JSON.stringify([

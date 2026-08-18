@@ -14,6 +14,7 @@ import {
   FAILED_NOTICE,
   resolveFailedNotice,
 } from "./notifications";
+import { ensureAutoPostPublishJob } from "./publish-chain";
 
 /**
  * stale→failed 確定時の kind別終端処理（要件04 §4, 要件03 §7.3/§7.5, T-M4-08）。
@@ -101,31 +102,19 @@ async function finalizeMdMergeStale(
   );
 }
 
-/** auto image失敗後も投稿へ進むための post_publish 子job作成（決定的keyで冪等・二重投稿ガード）。 */
+/**
+ * auto image失敗後も投稿へ進むための post_publish 子job作成。
+ *
+ * **成功経路と同じ関数・同じ冪等keyを使う**（T-M8-143）。以前はここに写しがあり、
+ * 成功経路にはそもそも作成が無かった。keyがdraft単位なので、どちらの経路が先に来ても
+ * 同じ下書きが2回投稿されることはない。
+ */
 async function ensurePostPublishChild(
   c: PoolClient,
   job: JobTerminalRow,
   draftId: string,
 ): Promise<void> {
-  const active = await c.query(
-    `select 1 from generation_jobs
-      where draft_id = $1 and kind = 'post_publish' and status in ('queued', 'running')
-      limit 1`,
-    [draftId],
-  );
-  if ((active.rowCount ?? 0) > 0) return;
-  await c.query(
-    `insert into generation_jobs
-       (x_account_id, kind, trigger, draft_id, input, request_key, status)
-     values ($1, 'post_publish', 'system', $2, $3::jsonb, $4, 'queued')
-     on conflict (request_key) do nothing`,
-    [
-      job.x_account_id,
-      draftId,
-      JSON.stringify({ mode: "auto" }),
-      `job:${draftId}:post_publish:auto`,
-    ],
-  );
+  await ensureAutoPostPublishJob(c, { xAccountId: job.x_account_id, draftId });
 }
 
 /** image_generation stale: draft を画像なし＋警告で確定→draft mode通知 / auto mode post_publish（要件04 §4/§9）。 */

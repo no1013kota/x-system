@@ -157,17 +157,20 @@ describe("suggestion worker (local DB)", () => {
       summary: "朝に投稿したノウハウ系の表示回数が突出していた",
       good_posts: [{ id, why: `表示回数が最多（${id}）` }],
       advice: {
-        pattern: { recommended: "p3", reason: "ノウハウ形式が伸びている" },
+        pattern: { recommended: "ノウハウ・ハウツー", reason: "ノウハウ形式が伸びている" },
         theme: { recommended: "ai", reason: "AI関連の題材が反応を得ている" },
         image: { recommended: true, reason: "画像付きが上回った" },
-        prompt: { kind: "p3", content: "# タスク\n読者が今日から実践できるノウハウを書く。書き出しは数字で始める。" },
+      prompt: {
+            kind: "ノウハウ・ハウツー",
+            content: "# タスク\n読者が今日から実践できるノウハウを書く。書き出しは数字で始める。",
+          },
       },
     });
 
   it("1件の提案を format=2・advice・post_count 付きで保存する", async () => {
     const { uid, xid, jobId } = await seed("md");
     try {
-      const posts = [post("t1", 100, "p3"), post("t2", 300), post("t3", 200)];
+      const posts = [post("t1", 100, "ノウハウ・ハウツー"), post("t2", 300), post("t3", 200)];
       const res = await executeSuggestion(deps(jobId, VALID("t2"), posts));
       expect(res).toMatchObject({ status: "saved", count: 1 });
       const rows = await suggestions(xid);
@@ -178,8 +181,8 @@ describe("suggestion worker (local DB)", () => {
       expect(rows[0].evidence.analyze_limit).toBe(300); // code-added（分析上限のsnapshot）
       expect(rows[0].evidence.previous_id).toBeNull(); // 初回＝前回レポートなし（T-M8-98）
       const advice = rows[0].evidence.advice as Record<string, Record<string, unknown>>;
-      expect(advice.pattern.recommended).toBe("p3");
-      expect(advice.prompt.kind).toBe("p3");
+      expect(advice.pattern.recommended).toBe("ノウハウ・ハウツー");
+      expect(advice.prompt.kind).toBe("ノウハウ・ハウツー");
       expect(String(advice.prompt.content)).toContain("# タスク");
       expect(await hasEvent(jobId, "reserve")).toBe(false); // BYOK/md → no reserve
     } finally {
@@ -209,10 +212,10 @@ describe("suggestion worker (local DB)", () => {
         good_posts: [{ id: "t1", why: "最多" }],
         advice: {
           account_md: { content: proposedMd, reason: "ペルソナへ実績の強みを反映" },
-          pattern: { recommended: "p3", reason: "r" },
+          pattern: { recommended: "ノウハウ・ハウツー", reason: "r" },
           theme: { recommended: "ai", reason: "r" },
           image: { recommended: false, reason: "r" },
-          prompt: { kind: "p3", content: "# タスク\n提案" },
+        prompt: { kind: "ノウハウ・ハウツー", content: "# タスク\n提案" },
         },
       });
       const captured = { system: [] as string[] };
@@ -267,7 +270,7 @@ describe("suggestion worker (local DB)", () => {
                 format: 2,
                 good_posts: [{ id: "t9", why: "前回の根拠" }],
                 advice: {
-                  pattern: { recommended: "p1", reason: "前回の理由" },
+                  pattern: { recommended: "ニュース解説", reason: "前回の理由" },
                   theme: { recommended: "ai", reason: "前回の理由" },
                   image: { recommended: false, reason: "前回の理由" },
                   prompt: { kind: "p1", content: "# タスク\n前回のプロンプト全文" },

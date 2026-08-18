@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.26 |
-| 更新日 | 2026-08-17 |
+| バージョン | v1.29 |
+| 更新日 | 2026-08-18 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -22,15 +22,15 @@
 
 ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。Supabaseの安定した`email_not_confirmed`コードだけは確認メール再送状態として扱い、providerのmessage文字列では分岐しない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する。
 
-確認メールとpassword resetメールはカスタムテンプレートから`/auth/confirm?token_hash=...&type=signup|recovery`へ直接送り、Server側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。recovery成功時だけ`APP_ENCRYPTION_KEY`で封緘したuser_id・発行時刻をHttpOnly／SameSite=Lax／15分TTL cookieへ保存し、password更新時に現在sessionのuser_idとの一致とTTLを検証する。期限切れ・使用済み・不正tokenまたはmarkerはprovider理由を出さない汎用エラーへまとめ、signup確認メールは再送フォーム、recoveryは再申請導線を表示する。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
+**確認メールは6桁コード方式**（T-M8-121）。テンプレートに `{{ .Token }}` を入れ、登録画面から離れずに入力させる（`verifySignUpCode` が `verifyOtp({email, token, type:'signup'})` で検証しcookie sessionを確立する）。**リンク方式をやめた理由**: メールクライアントのURL先読みで1回きりのトークンが使い切られる／スマホで開くと別ブラウザになる／リモートのテンプレートが既定のままだとリンクが必ず失敗する（2026-08-02・08-18に2回発生）。password resetは引き続きリンク方式で、カスタムテンプレートから`/auth/confirm?token_hash=...&type=recovery`へ送りServer側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。recovery成功時だけ`APP_ENCRYPTION_KEY`で封緘したuser_id・発行時刻をHttpOnly／SameSite=Lax／15分TTL cookieへ保存し、password更新時に現在sessionのuser_idとの一致とTTLを検証する。期限切れ・使用済み・不正token/コードまたはmarkerはprovider理由を出さない汎用エラーへまとめ（**コードは「違う」と「期限切れ」を断定せず、次にやることだけを示す**——Supabaseがどちらも同じ系統で返すため断定すると嘘になる）、signup確認は同じ画面の再送フォーム、recoveryは再申請導線を表示する。**入力コードは全角数字・空白・ハイフンを吸収してから検証する**（メールからのコピーで混ざるため。正しく写しているのに弾かれる形を作らない）。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
 
 会員登録時は現行の利用規約versionへの明示同意とプライバシーポリシー確認を必須にし、versionと時刻をprofileへ保存する。重大改定で再同意が必要な場合は、既存データ閲覧を許可したまま生成・投稿前に`legal_consent_required`（`details.missing=terms_consent|privacy_acknowledgement`、`settingsPath=/app/consent`）を返して同意画面を表示する。
 
 `/app/consent`はprofileと現行versionを比較し、不一致の利用規約／プライバシーポリシーだけに独立した明示checkboxと新規タブの文書リンクを表示する。Server ActionはDBを再読込し、必要なcheckboxとクライアントversionの現行一致を確認してから、対象文書のversion／同意時刻だけを更新する。既に現行の文書は上書きせず、両方現行ならno-opで`/app`へ戻す。未同意・古いclient version・DB失敗時は更新しない。
 
-共通実行ガードは契約状態を先に判定し、契約実行不可なら`subscription_required`を優先する。契約が`trialing|active`の場合だけ規約versionを確認する。route guardには規約versionを使わないため、古いversionでも既存データ閲覧と設定操作は継続できる。
+共通実行ガード（`requireExecutionUserId`）は**法務同意を先に確認する**。契約状態は実行前提（`checkExecutionPrerequisites`）が別に判定するため、**解約済みで規約versionも古い利用者には`legal_consent_required`が先に出る**（T-M8-134 で導線を追加。同意画面へ進めば契約の案内へ到達できる）。route guardには規約versionを使わないため、古いversionでも既存データ閲覧と設定操作は継続できる。
 
-現行versionはコード定数を正とし、法務確認前の開発版は利用規約・プライバシーポリシーとも`2026-07-22-draft`とする。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
+現行versionは`src/lib/legal.ts`の定数（`CURRENT_TERMS_VERSION`／`CURRENT_PRIVACY_VERSION`）を正とする。**利用者に露出するため`-draft`のような内部向け接尾辞は付けない**（T-M8-72）。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
 
 ## 2. プラン
 
@@ -43,7 +43,7 @@
 |---|---:|---:|---|---|
 | `standard` | 500円（終了後 1,000円） | 1 | BYOK必須 | アプリ側上限なし |
 | `md` | 1,000円（終了後 2,000円） | 3 | BYOK必須 | アプリ側上限なし |
-| `premium` | 2,980円（終了後 5,960円） | 3 | 不要 | 通常投稿200件、URL付き投稿20件、文章生成100回、画像生成20枚 |
+| `premium` | 2,980円（終了後 5,960円） | 3 | 不要 | AIクレジット1000、通常投稿200件、URL付き投稿20件 |
 
 standard/mdは利用者自身のX/AI契約へ原価が発生するため、アプリ側の月間投稿枠・生成枠を設けない。Xの自動化ルールと誤操作対策を目的とする1 Xアカウントあたり日次50ポストの安全上限は、課金主体にかかわらず全プランへ適用する。premiumは運営App・運営AIキーの原価管理のため月間利用枠も適用する。
 
@@ -61,7 +61,7 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 ### 2.2 Customer Portal作成
 
 - `POST /api/stripe/portal`はSupabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
-- **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。`intent`が無い場合と本人の`stripe_subscription_id`が不明な場合は`flow_data`を付けずPortalのトップを開く（Stripeが400を返して「押しても開かない」状態になるのを避ける）。完了後は`after_completion`で同じreturn URLへ戻す。
+- **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。**`intent`が無い場合だけ**`flow_data`を付けずPortalのトップを開く。**`intent`があるのに対象の契約が見つからない場合は§6のとおり`subscription_required`で止める**（T-M8-56。黙ってトップを開くと「プランを変更」を押した先で何もできない）。完了後は`after_completion`で同じreturn URLへ戻す。
 - 契約前（`stripe_customer_id`なし）はPortalを作れないため、**画面に押せないボタンを出さず**`/plans`へのリンクにする（要件06 §10）。**`/plans`側は「Stripeの顧客が紐づいている契約者」だけを`/app`へ送り返す**——顧客が未紐づけのまま送り返すと、「プランを選ぶ」を押してもホームへ戻るだけで何もできない（webhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まる）。同期の遅れは既存の一文（「変更内容はStripeからの通知を受けてこの画面へ反映されます」）が伝えるので、待ち状態の説明を別に足さない。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
@@ -260,14 +260,13 @@ premiumでN件のthreadを開始するには、最終payload列を通常/URL付�
 
 ## 8. 残量表示と通知
 
-premiumだけ`usage_counters`から当月残量をホームと設定へ表示する。80%到達は各枠・各月で1回、100%到達は常設バナーと通知を出す。
+premiumだけ`usage_counters`から当月残量をホームと設定へ表示する。**枠は3つ**（AIクレジット・通常投稿・URL付き投稿）で、回数制（`generations`／`images`）は T-M8-108/109 でAIクレジット制へ置き換えた。上限値の正本は`PLANS.premium.usageLimits`（`src/lib/plans.ts`）、形は`UsageSummary`（`src/lib/usage/usage-summary.ts`）。80%到達は各枠・各月で1回、100%到達は常設バナーと通知を出す。
 
 ```json
 {
+  "ai_credits": { "used": 220, "limit": 1000, "remaining": 780 },
   "normal_posts": { "used": 38, "limit": 200, "remaining": 162 },
-  "url_posts": { "used": 8, "limit": 20, "remaining": 12 },
-  "generations": { "used": 22, "limit": 100, "remaining": 78 },
-  "images": { "used": 4, "limit": 20, "remaining": 16 }
+  "url_posts": { "used": 8, "limit": 20, "remaining": 12 }
 }
 ```
 
@@ -292,3 +291,11 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 - [Configure the customer portal](https://docs.stripe.com/customer-management/configure-portal)：同一Product間の期間末ダウングレードとSubscription Schedule（2026-07-22確認）
 
 Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configurationの実IDはStripeアカウント準備後に環境変数へ設定する。外部仕様は各実装タスク開始時に再確認する。
+
+## 変更履歴
+
+| バージョン | 日付 | 内容 |
+|---|---|---|
+| v1.27 | 2026-08-18 | リリース記念キャンペーン（T-M8-118）と6桁コードのメール確認（T-M8-121）を反映。プラン表の月間枠を金額制のAIクレジットへ揃えた（回数制の記述が残っていた） |
+| v1.28 | 2026-08-18 | 残量JSONを実装の3枠（AIクレジット・通常投稿・URL付き投稿）へ。同意versionの具体値を `src/lib/legal.ts` 参照へ寄せた（T-M8-144） |
+| v1.29 | 2026-08-18 | 共通実行ガードの判定順序を実装に合わせた（法務同意が先）。Portalの「契約が見つからないとき」を §6 と揃えた（T-M8-144） |

@@ -184,30 +184,30 @@ describe("cron window claim & scheduler tick", () => {
         // two schedule jobs with different scheduled_for + one manual (no schedule)
         const lateSched = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status, scheduled_for)
-             values ($1,'post_generation','schedule','queued', now() + interval '2 min') returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, scheduled_for)
+             values ($1, 'post_generation', 'schedule', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued', now() + interval '2 min') returning id`,
             [xid],
           )
         ).rows[0].id;
         const earlySched = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status, scheduled_for)
-             values ($1,'post_generation','schedule','queued', now() + interval '1 min') returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, scheduled_for)
+             values ($1, 'post_generation', 'schedule', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued', now() + interval '1 min') returning id`,
             [xid],
           )
         ).rows[0].id;
         const noSched = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status)
-             values ($1,'post_generation','manual','queued') returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status)
+             values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'queued') returning id`,
             [xid],
           )
         ).rows[0].id;
         // a stale running job (attempt<3) to be recovered
         const staleId = (
           await c.query<{ id: string }>(
-            `insert into generation_jobs (x_account_id, kind, trigger, status, attempt, locked_at, locked_by, started_at)
-             values ($1,'post_generation','manual','running',1, now() - interval '15 min','w', now()) returning id`,
+            `insert into generation_jobs (x_account_id, kind, trigger, pattern_id, status, attempt, locked_at, locked_by, started_at)
+             values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'running', 1, now() - interval '15 min', 'w', now()) returning id`,
             [xid],
           )
         ).rows[0].id;

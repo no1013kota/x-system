@@ -23,11 +23,16 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   await page.getByRole("link", { name: "料金を見る" }).click();
   await expect(page.locator("#pricing")).toBeInViewport();
 
-  // プランカードが plans.ts の価格・上限を実際に描画している
+  // 比較表が plans.ts の価格・上限を実際に描画している（T-M8-125で表へ変えた）。
   const pricing = page.locator("#pricing");
-  await expect(pricing).toContainText("2,980円");
-  await expect(pricing).toContainText("通常投稿200件");
-  await expect(pricing.getByRole("link", { name: "無料で始める" })).toHaveCount(3);
+  await expect(pricing).toContainText("¥2,980");
+  await expect(pricing).toContainText("AIクレジット1000");
+  // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
+  const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
+  expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
+  // 無料の条件（初回のみ・カード登録・解約すれば無料）を同じ場所で言う（景表法・要件03 §54）。
+  await expect(pricing.getByText("初回のみ7日間無料", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
   await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
 
@@ -146,15 +151,15 @@ test("料金カードに半額バッジと終了後価格が出て、「通常�
   await page.goto("/");
   const pricing = page.locator("#pricing");
 
-  // 3プランすべてにバッジが出る。
-  await expect(pricing.getByText("リリース記念 半額")).toHaveCount(3);
+  // 全プランにバッジが出る（件数は固定しない。プランが増減しても意図は変わらない）。
+  const badges = pricing.getByText("リリース記念 半額");
+  await expect(badges.first()).toBeVisible();
+  expect(await badges.count()).toBeGreaterThanOrEqual(3);
 
   // 請求額（大きい方）と終了後価格（取り消し線）が両方読める。
   await expect(pricing.getByText("2,980", { exact: false }).first()).toBeVisible();
   await expect(pricing.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
-  const struck = pricing.locator(".line-through");
-  await expect(struck).toHaveCount(3);
-  await expect(struck.filter({ hasText: "5,960" })).toHaveCount(1);
+  await expect(pricing.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
 
   // 景表法: 「通常価格」の語を使わない。
   await expect(pricing.getByText("通常価格")).toHaveCount(0);

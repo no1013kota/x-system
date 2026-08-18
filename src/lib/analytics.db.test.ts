@@ -57,9 +57,8 @@ describe("analytics loader (local DB)", () => {
   ): Promise<string> {
     return (
       await c.query<{ id: string }>(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, status, tweet_ids, last_post_error, posted_at)
-         values ($1,'p1','[]'::jsonb,'[]'::jsonb,$2,$3::jsonb,$4::jsonb,
-                 case when $5::int is null then null else now() - ($5 || ' days')::interval end)
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, tweet_ids, last_post_error, posted_at)
+         values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, $2, $3::jsonb, $4::jsonb, case when $5::int is null then null else now() - ($5 || ' days')::interval end)
          returning id`,
         [xid, opts.status, JSON.stringify(opts.tweetIds), opts.lastPostError ? JSON.stringify(opts.lastPostError) : null, opts.postedDaysAgo],
       )

@@ -72,8 +72,9 @@ export function draftActionState(
     hasCreationHistory,
     unresolvedPosting,
     cloneEligible: hasCreationHistory && !unresolvedPosting,
-    // P-5 は flag OFF の間、閲覧のみ（編集・再生成・画像再生成・投稿を無効化, 要件06 §4.1）。
-    quoteDisabled: draft.pattern === "p5" && !options.quotePostEnabled,
+  // 引用ポストは flag OFF の間、閲覧のみ（編集・再生成・画像再生成・投稿を無効化, 要件06 §4.1）。
+    // 判定は**生成時に写した値**（T-M8-129 U3a）。旧enumを見ない。
+    quoteDisabled: draft.requires_quote_url && !options.quotePostEnabled,
     // 文字数超過はXが受け付けないため、編集するまで投稿させない（投稿前の再検証と同じ判定）。
     lengthExceeded: draft.thread.some((p) => p.warnings.includes("length_exceeded")),
     posting: draft.status === "posting",

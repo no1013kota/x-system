@@ -127,11 +127,18 @@ async function notifyUnenqueuedMissed(db: Queryable): Promise<number> {
   return notified;
 }
 
-/** (c) FEATURE_QUOTE_POST_ENABLED=false の間、queued の P-5 job を canceled にする（外部/枠消費前）。 */
+/**
+ * (c) FEATURE_QUOTE_POST_ENABLED=false の間、queued の引用ポスト job を canceled にする
+ * （外部API・利用枠を消費する前）。
+ *
+ * 判定は**凍結した spec**（`pattern_spec.requires_quote_url`）で行う（T-M8-129 U5）。
+ * 旧 enum の `'p5'` は撤去した。利用者が作った「引用URL必須」のパターンも同じ扱いになる。
+ */
 async function cancelFeatureDisabledJobs(db: Queryable): Promise<number> {
   const { rowCount } = await db.query(
     `update generation_jobs set status = 'canceled', finished_at = now()
-      where pattern = 'p5' and status = 'queued'`,
+      where status = 'queued'
+        and (pattern_spec->>'requires_quote_url')::boolean is true`,
   );
   return rowCount ?? 0;
 }

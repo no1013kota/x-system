@@ -1,15 +1,9 @@
 import Link from "next/link";
 
 import { buttonVariants } from "@/components/ui/button";
-import { cardClassName, CardTitle } from "@/components/ui/card";
-import { yen } from "@/lib/format";
-import {
-  PLAN_IDS,
-  PLANS,
-  RELEASE_CAMPAIGN,
-  hasCampaignDiscount,
-  type PlanDefinition,
-} from "@/lib/plans";
+import { cardClassName } from "@/components/ui/card";
+import { PlanComparisonTable } from "@/components/billing/plan-comparison-table";
+import { PLAN_IDS, PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,101 +12,45 @@ import { cn } from "@/lib/utils";
  * BYOK注記と申込前確認事項は特商法上の要件のため、折りたたまず常時表示する。
  */
 
-/** プランの説明文。数値はプラン定義から埋める（文言はハンドオフREADME §文言と一致させる）。 */
-function planFeatureText(plan: PlanDefinition): string {
-  if (plan.usageLimits) {
-    const limits = plan.usageLimits;
-    return (
-      "mdプランの全機能。" +
-      `月間上限：通常投稿${limits.normalPosts}件／URL付き投稿${limits.urlPosts}件／` +
-      `AIクレジット${limits.aiCredits}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費）。`
-    );
-  }
-  // 呼び名は「03 しくみ」と揃える（同じものを別の名前で呼ばない）。
-  return plan.canEditMdAndPrompts
-    ? "通常プランの全機能＋発信定義書（アカウント.md）とプロンプトの直接編集。"
-    : "基本機能すべて（情報収集・投稿と画像の生成・スケジュール設定・分析）。";
-}
-
-function PlanCard({ plan }: { plan: PlanDefinition }) {
-  // BYOKかどうかはアプリ側上限の有無と一致する（plans.ts の定義参照）。
-  const byok = plan.usageLimits === null;
-  return (
-    <div className="min-w-0">
-      <div
-        className={cn(
-          cardClassName,
-          "flex h-full flex-col overflow-hidden",
-          byok
-            ? "transition-shadow duration-[250ms] hover:shadow-[var(--shadow-pop)]"
-            : "shadow-[var(--shadow-pop)]",
-        )}
-      >
-        <div
-          aria-hidden="true"
-          className={cn("h-[3px] flex-none", byok || "[background-image:var(--brand-gradient)]")}
-        />
-        <div className="flex flex-1 flex-col p-5">
-          <div className="flex items-center justify-between gap-2.5">
-            <CardTitle as="h3">{plan.displayName}</CardTitle>
-            {byok || (
-              <span className="inline-flex h-[22px] items-center rounded-pill bg-brand-subtle px-2.5 text-caption font-medium text-brand">
-                APIキー不要
-              </span>
-            )}
-          </div>
-          {hasCampaignDiscount(plan) ? (
-            <span className="mt-2.5 inline-flex h-[22px] w-fit items-center rounded-pill bg-danger-subtle px-2.5 text-caption font-bold text-danger-fg">
-              {RELEASE_CAMPAIGN.badge}
-            </span>
-          ) : null}
-          <p className={cn("text-body text-ink-2", hasCampaignDiscount(plan) ? "mt-1.5" : "mt-2.5")}>
-            <span className="text-[28px] font-bold tracking-[-0.01em] text-ink">
-              {yen(plan.monthlyPriceJpy)}円
-            </span>{" "}
-            ／月（税込）
-          </p>
-          {hasCampaignDiscount(plan) ? (
-            // 「通常価格」とは書かない。過去にこの価格で売った実績が無いため（景表法・plans.ts参照）。
-            <p className="mt-0.5 text-caption text-ink-3">
-              {RELEASE_CAMPAIGN.afterLabel}{" "}
-              <span className="line-through">{yen(plan.regularPriceJpy)}円</span>／月
-            </p>
-          ) : null}
-          <div className="mt-4 grid gap-2 border-t border-hairline pt-3.5 text-body">
-            <div className="flex justify-between gap-2.5">
-              <span className="text-ink-2">Xアカウント</span>
-              <span className="font-medium">{plan.xAccountLimit}件</span>
-            </div>
-            <div className="flex justify-between gap-2.5">
-              <span className="text-ink-2">APIキー</span>
-              <span className="font-medium">{byok ? "自分で用意" : "不要"}</span>
-            </div>
-          </div>
-          <p className="mt-3.5 flex-1 text-body text-ink-2">{planFeatureText(plan)}</p>
-          <Link
-            className={cn(
-              buttonVariants({ variant: byok ? "subtle" : "brand" }),
-              "mt-4 h-10 text-sm font-bold",
-            )}
-            href="/signup"
-          >
-            無料で始める
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function PricingCards() {
   return (
     <>
-      <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] items-stretch gap-3.5">
+      {/*
+        プラン比較表（T-M8-125）。**`/plans` と同じ部品**を使う（運営者の指示・2026-08-18）。
+        以前はプランごとの箇条書きカードで、「mdプランの全機能」という入れ子の言い方だったため
+        上位プランに何が積まれるのかが読み取れなかった。表なら差がその場で分かる。
+      */}
+      <PlanComparisonTable />
+      {/*
+        申込ボタン（T-M8-126）。**「無料で試せる」を主文にする**（運営者の指示・2026-08-18）。
+        以前は「通常プランで始める」で、押すと課金が始まると受け取られかねなかった。
+        プラン名も残す——3つ並ぶので、どれを選んだのかがボタン自身から分かる必要がある。
+        `whitespace-nowrap`（buttonVariantsの既定）だと狭い幅で文字が切れるので折り返しを許す。
+      */}
+      <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
         {PLAN_IDS.map((planId) => (
-          <PlanCard key={planId} plan={PLANS[planId]} />
+          <Link
+            className={cn(
+              buttonVariants({ variant: planId === "premium" ? "brand" : "subtle" }),
+              "h-auto min-h-11 flex-col gap-0.5 py-2 text-sm font-bold whitespace-normal",
+            )}
+            href="/signup"
+            key={planId}
+          >
+            <span>7日間無料で試す</span>
+            {/*
+              **`opacity` で弱めない。** LPは「JSが動かなくても読める」ことを
+              `landing.spec.ts` が opacity まで見て固定している（旧実装で opacity:0 のまま
+              白紙になった事故の再発防止）。弱めるなら文字サイズだけにする。
+            */}
+            <span className="text-caption font-medium">{PLANS[planId].displayName}</span>
+          </Link>
         ))}
       </div>
+      <p className="mt-2 text-caption text-ink-3">
+        {/* 「無料で試す」と言い切るなら、無料の条件をその場で言う（要件03 §54・景表法）。 */}
+        全プラン初回のみ7日間無料。開始にはカード登録が必要で、期間中に解約すれば料金はかかりません。
+      </p>
       <div className="mt-3.5">
         <div className="rounded-card border border-hairline bg-page px-5 py-4">
           <p className="text-body font-bold">APIキーの費用について</p>

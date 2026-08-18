@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.3 |
-| 更新日 | 2026-08-01 |
+| 更新日 | 2026-08-18 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
 MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キー・法務確認が要る項目は §3 に担当・期日欄付きで残す。
@@ -12,9 +12,9 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 
 | # | 項目 | 結果 | 根拠 |
 |---|---|---|---|
-| 1 | リリース判定ゲート `npm run release:check`（typecheck→lint→依存監査→**test:db**→build→**check:csp-nonce**→**test:e2e**）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
+| 1 | リリース判定ゲート `npm run release:check`（構成は[開発とテストの進め方](./development-and-testing.md)を正とする。docs検査・依存監査・DBテスト・build・CSP・E2Eを含む）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
 | 2 | dev/preview で `X_POSTING_MODE=live` を設定すると起動時 env 検証が失敗（prodのみ live 可） | ✅ 済 | `env-schema.ts` superRefine ＋ `env-schema.test.ts`「rejects live in development/preview」「allows in production」 |
-| 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 7件一致、暗号化 dump は `Salted__` 暗号文） |
+| 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 一致、暗号化 dump は `Salted__` 暗号文） |
 | 4 | セキュリティヘッダ（nonce CSP／HSTS／nosniff／Referrer-Policy）が production build で全応答に付与 | ✅ 済 | T-M6-17（`next start`＋curl 確認・ADR-0005） |
 | 5 | RLS（別ユーザーの select/write 拒否・全 public table）／SSRF（private/loopback/link-local＋redirect先再検証＋timeout）／認可（CRON_SECRET・Stripe署名・Origin） | ✅ 済 | `rls.db.test.ts`／`post/source-url.test.ts`／`api/cron/route-auth.test.ts`・`jobs/auth.test.ts`・`stripe/webhook.test.ts`（release:check 内） |
 | 6 | 秘密値参照モジュールの `server-only` 境界（Client import でビルド失敗） | ✅ 済 | T-M6-18（`security/server-boundary.test.ts` 動的走査） |
@@ -55,3 +55,9 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 | 10 | 常時稼働 Mac（Asia/Tokyo・スリープ無効・launchd）の実配置、バックアップ実行環境・暗号化ファイル保管先・`BACKUP_ENCRYPTION_KEY` の保管 | 運営者 | リリース前 |
 | 11 | X live E2E（少数ポスト投稿→自動 rollback 削除）の本番相当での1回実施 | 運営者 | 切替直前 |
 | 12 | 自動投稿同意文（consent_version）・通知メール文面の最終確認（X Automation Rules 準拠の専門家確認含む） | 運営者 | リリース前 |
+
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.3 | 2026-08-18 | `release:check` の構成の写しをやめ、[開発とテストの進め方](./development-and-testing.md)へのリンクへ寄せた（T-M8-144） |

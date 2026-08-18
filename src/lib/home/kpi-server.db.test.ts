@@ -45,8 +45,8 @@ async function makeAccount(): Promise<{ userId: string; xAccountId: string }> {
 /** 投稿済みの下書きを1件作る。`postedAt` はISO文字列。 */
 async function seedPosted(xAccountId: string, postedAt: string, mode: "auto" | "manual") {
   await sql(
-    `insert into drafts (x_account_id, pattern, thread, initial_thread, status, posted_at, posted_mode)
-     values ($1, 'p1', '[]'::jsonb, '[]'::jsonb, 'posted', $2::timestamptz, $3::posted_mode)`,
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, posted_at, posted_mode)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'posted', $2::timestamptz, $3::posted_mode)`,
     [xAccountId, postedAt, mode],
   );
 }

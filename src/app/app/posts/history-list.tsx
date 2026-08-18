@@ -2,7 +2,6 @@ import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import type { DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
-import { POST_PATTERN_LABELS } from "@/lib/post/pattern-labels";
 import { cardClassName } from "@/components/ui/card";
 
 /**
@@ -96,7 +95,7 @@ function HistoryRow({
         {timeLabel(draft.posted_at)}
       </td>
       <td className="px-2 py-3">
-        <Badge>{POST_PATTERN_LABELS[draft.pattern] ?? draft.pattern}</Badge>
+        <Badge>{draft.pattern_name}</Badge>
       </td>
       <td className="px-2 py-3 whitespace-nowrap text-ink-2">
         {draft.posted_mode ? (MODE_LABEL[draft.posted_mode] ?? draft.posted_mode) : "—"}

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { LogoTile } from "@/components/app-shell/brand-logo";
-import Link from "next/link";
 
-import { LegalFooter } from "@/components/legal-footer";
+import { AuthPageShell } from "@/components/auth/auth-page-shell";
+
 import { APP_NAME } from "@/lib/app-config";
 
 import { ResetPasswordForm } from "./reset-password-form";
@@ -15,27 +14,11 @@ export const metadata: Metadata = {
 // login→signup→reset と遷移したとき、この画面だけ旧デザインでトーンが変わっていた）。
 export default function ResetPasswordPage() {
   return (
-    <div className="bg-page flex min-h-screen flex-col">
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[400px] space-y-6 rounded-card border border-hairline bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
-          <header className="space-y-2 text-center">
-            <span className="inline-flex items-center justify-center gap-2">
-              <LogoTile size={28} />
-              <Link className="text-[16px] font-bold tracking-tight text-ink" href="/">
-                {APP_NAME}
-              </Link>
-            </span>
-            <h1 className="text-[22px] font-bold tracking-tight text-ink">
-              新しいパスワードを設定
-            </h1>
-            <p className="text-body leading-5 text-ink-2">
-              今後のログインに使用するパスワードを入力してください。
-            </p>
-          </header>
-          <ResetPasswordForm />
-        </div>
-      </main>
-      <LegalFooter />
-    </div>
+    <AuthPageShell
+      description="今後のログインに使用するパスワードを入力してください。"
+      title="新しいパスワードを設定"
+    >
+      <ResetPasswordForm />
+    </AuthPageShell>
   );
 }

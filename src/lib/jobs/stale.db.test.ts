@@ -58,9 +58,8 @@ describe("heartbeat & recoverStaleJobs", () => {
   ): Promise<string> {
     const { rows } = await c.query<{ id: string }>(
       `insert into generation_jobs
-         (x_account_id, kind, trigger, status, attempt, locked_at, locked_by, started_at)
-       values ($1, 'post_generation', 'manual', 'running', $2,
-               now() - ($3 || ' minutes')::interval, 'w-old', now())
+         (x_account_id, kind, trigger, pattern_id, status, attempt, locked_at, locked_by, started_at)
+       values ($1, 'post_generation', 'manual', (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), 'running', $2, now() - ($3 || ' minutes')::interval, 'w-old', now())
        returning id`,
       [xid, attempt, lockedMinutesAgo],
     );

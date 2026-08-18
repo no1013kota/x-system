@@ -61,6 +61,16 @@ export function CardHeader({ className, ...props }: ComponentProps<"div">) {
  */
 export const cardTitleClassName = "text-[15px] font-bold text-ink";
 
+/**
+ * App画面の見出し（`h1`）のクラス（T-M8-146）。
+ *
+ * **7箇所へ逐語で直書きされていた。** `cardTitleClassName` と同型の集約が h1 だけ
+ * 抜けていた状態で、字送りや色を変えると画面ごとに取り残しが出る。
+ * ナビ・パンくずと同じ名前を出す見出しなので、見た目も1か所で決める
+ * （文言の一致は `navigation-items.test.ts` が別に検査する）。
+ */
+export const pageTitleClassName = "text-[20px] font-bold tracking-tight text-ink";
+
 export function CardTitle({
   as: Tag = "h2",
   className,

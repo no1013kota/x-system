@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { yen } from "@/lib/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -7,23 +6,17 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
-import {
-  PLAN_IDS,
-  PLANS,
-  RELEASE_CAMPAIGN,
-  hasCampaignDiscount,
-  type PlanId,
-} from "@/lib/plans";
+import { PlanComparisonTable } from "@/components/billing/plan-comparison-table";
+import { PLAN_IDS, PLANS } from "@/lib/plans";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
-import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 
 import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
-import { CardTitle, cardClassName } from "@/components/ui/card";
+import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 export const metadata: Metadata = {
@@ -33,93 +26,6 @@ export const metadata: Metadata = {
 interface PlansPageProps {
   searchParams: Promise<{ checkout?: string; confirmed?: string }>;
 }
-
-
-/**
- * カードに並べる特長（デザイン §料金プラン）。
- *
- * **件数・上限は `PLANS` から引く**。ここへ数字を書き写すと、プラン定義を変えたときに
- * この画面だけ古い数字を出し続ける（利用者から見れば「書いてある内容と違う」）。
- */
-function planFeatures(planId: PlanId): string[] {
-  const plan = PLANS[planId];
-  const accounts = `連携Xアカウント ${plan.xAccountLimit}`;
-  if (planId === "standard") {
-    return [
-      "基本機能すべて（生成・自動運用・分析）",
-      "X APIキー・生成AIキーはご自身で用意（BYOK）",
-      accounts,
-      "月間利用上限なし（ご自身のAPI課金の範囲）",
-    ];
-  }
-  if (planId === "md") {
-    return [
-      "通常プランの全機能",
-      "アカウント.md・プロンプトの直接編集",
-      "編集履歴とロールバック",
-      accounts,
-    ];
-  }
-  const limits = plan.usageLimits;
-  return [
-    "mdプランの全機能",
-    "APIキー登録が一切不要（運営キーで動作）",
-    limits
-      ? `月間上限：AIクレジット${limits.aiCredits}／通常投稿${limits.normalPosts}／URL付き投稿${limits.urlPosts}（AIクレジットはモデルと内容に応じた量を消費）`
-      : "月間上限なし",
-    `${accounts}（利用上限は合算）`,
-  ];
-}
-
-/** カード左上のタグ。プレミアムだけキーのグラデーション（デザイン §料金プラン）。 */
-const PLAN_TAG: Partial<Record<PlanId, { label: string; className: string }>> = {
-  md: { label: "人気", className: "bg-brand" },
-  premium: { label: "キー登録不要", className: "[background-image:var(--brand-gradient)]" },
-};
-
-const SIGNUP_FLOW: { step: string; title: string; description: string }[] = [
-  { step: "1", title: "アカウント作成", description: "メールアドレス＋パスワードで登録し、確認メールで本人認証" },
-  { step: "2", title: "カード登録", description: "Stripe Checkoutで安全に登録。7日間無料トライアルが開始" },
-  { step: "3", title: "初期設定", description: "設定画面から任意の順で。不足はホームのガイドでご案内" },
-  { step: "4", title: "運用開始", description: "1日数分の確認だけで、自分らしい発信が継続できます" },
-];
-
-const BYOK_SETUP = [
-  "X APIキー登録（取得手順ガイド付き）",
-  "X連携 — ご自身のDeveloper App経由でOAuth認可",
-  "生成AI APIキー登録（Claude／OpenAI／Gemini から1つ以上）",
-  "ペルソナ・テーマ・トンマナ・NG設定（アカウント.md自動生成）",
-  "学習（任意）— 参考アカウント・過去投稿の取り込み",
-];
-
-const PREMIUM_SETUP = [
-  "X連携 — 運営のDeveloper App経由でOAuth認可",
-  "ペルソナ・テーマ・トンマナ・NG設定（アカウント.md自動生成）",
-  "学習（任意）— 参考アカウント・過去投稿の取り込み",
-];
-
-/**
- * 申込前確認事項に出す料金の範囲（T-M8-118）。**実際に請求する額**で書く
- * （特定商取引法の表示は支払う額が正）。キャンペーン中はその旨も添える。
- */
-const PRICE_RANGE_TEXT = (() => {
-  const prices = PLAN_IDS.map((id) => PLANS[id].monthlyPriceJpy);
-  const range = `税込月額${yen(Math.min(...prices))}円〜${yen(Math.max(...prices))}円`;
-  return RELEASE_CAMPAIGN.active ? `${range}（${RELEASE_CAMPAIGN.badge}の適用価格）` : range;
-})();
-
-const CONFIRMATION_ITEMS: { term: string; description: string }[] = [
-  {
-    term: "料金",
-    // 直書きすると価格改定で食い違う（T-M8-118）。定義から作る。
-    description: PRICE_RANGE_TEXT,
-  },
-  { term: "無料期間", description: "初回のみ7日間。開始時にカード登録が必要です" },
-  { term: "自動更新", description: "無料期間終了後、選択プランを月単位で自動更新します" },
-  { term: "支払時期", description: "初回は無料期間終了時、以後は毎月の更新日に請求します" },
-  { term: "解約方法", description: "設定のCustomer Portalからいつでも期間末解約できます" },
-  { term: "提供開始", description: "Checkout完了後、契約反映が確認でき次第すぐに開始します" },
-];
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
@@ -197,97 +103,38 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <CheckoutPending supportEmail={env.SUPPORT_EMAIL ?? null} />
           ) : (
             <>
-          {/* お申し込み前の確認：要件06 §1.1・要件03 §54 により、申込ボタン（比較表内のCTA）
-              より前に税込月額・初回のみ7日trial・カード登録・自動更新・支払時期・解約方法・
-              提供開始を再掲する。折りたたみで隠さない。 */}
-          <section
-            aria-labelledby="pre-application-heading"
-            className={`${cardClassName} mx-auto max-w-3xl p-5 text-xs leading-5 text-muted-foreground`}
-          >
-            <h2 id="pre-application-heading" className="text-sm font-medium text-foreground">
-              お申し込み前の確認
-            </h2>
-            {/* リード文は直下のdl（無料期間・解約方法）の言い直しだった（T-M8-66）。 */}
-            <dl className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
-              {CONFIRMATION_ITEMS.map((item) => (
-                <div className="sm:flex sm:gap-2" key={item.term}>
-                  <dt className="shrink-0 font-medium text-foreground/80">{item.term}</dt>
-                  <dd>{item.description}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-3">
-              詳細は
-              <Link
-                className="mx-1 font-medium text-foreground underline underline-offset-4"
-                href="/legal/commercial-transactions"
-                target="_blank"
-              >
-                特定商取引法に基づく表記
-              </Link>
-              をご確認ください。
-            </p>
-          </section>
+          {/*
+            申込前の重要事項（T-M8-125で縮めた）。特商法の法定事項の全文は
+            `/legal/commercial-transactions` が担う。**リンクは残す**——申込ボタンの前に
+            重要事項へ辿れる状態を無くさないため（要件06 §1.1・要件03 §54の趣旨）。
+            定義リストは比較表と重複していたので落とした（運営者の指示・2026-08-18）。
+          */}
+          <p className="mx-auto max-w-3xl text-center text-caption text-ink-3">
+            全プラン初回のみ7日間無料（開始時にカード登録が必要です）。無料期間の終了後、選択したプランを
+            月単位で自動更新します。解約はいつでも設定画面から行え、期間末で終了します。
+            <Link
+              className="mx-1 font-medium text-ink underline underline-offset-4"
+              href="/legal/commercial-transactions"
+              target="_blank"
+            >
+              特定商取引法に基づく表記
+            </Link>
+          </p>
 
           {/*
-           * プランカード（SC-04: 3プラン比較・デザイン §料金プラン）。
-           *
-           * 以前は横スクロールする比較表だった。表のセルは `sr-only` ラベル（`position:absolute`）を
-           * 持つため、位置指定された祖先が無いとスクロール容器にクリップされず**ページ自体を
-           * 横に伸ばす**という罠があった（T-M7-26）。カードは縦に積むだけなのでその制約が消える。
-           */}
-          <section aria-label="料金プラン" className="grid items-stretch gap-3.5 sm:grid-cols-3">
-            {PLAN_IDS.map((planId) => {
-              const plan = PLANS[planId];
-              const tag = PLAN_TAG[planId];
-              return (
-                <div
-                  className={`relative flex flex-col gap-3 rounded-card bg-surface p-[22px] shadow-[var(--shadow-card)] ${
-                    planId === "premium" ? "border-[1.5px] border-brand" : "border border-hairline"
-                  }`}
-                  key={planId}
-                >
-                  {tag ? (
-                    <span
-                      className={`absolute -top-2.5 left-[18px] rounded-chip px-2.5 py-0.5 text-caption font-bold text-white ${tag.className}`}
-                    >
-                      {tag.label}
-                    </span>
-                  ) : null}
-                  <div>
-                    <h2 className="text-sm font-bold text-ink">{plan.displayName}</h2>
-                    <p className="text-caption text-ink-3">{plan.tagline}</p>
-                  </div>
-                  {hasCampaignDiscount(plan) ? (
-                    <span className="inline-flex h-[22px] w-fit items-center rounded-pill bg-danger-subtle px-2.5 text-caption font-bold text-danger-fg">
-                      {RELEASE_CAMPAIGN.badge}
-                    </span>
-                  ) : null}
-                  <p className="flex items-baseline gap-0.5">
-                    <span className="font-sans text-[30px] font-extrabold leading-none tabular-nums text-ink">
-                      ¥{yen(plan.monthlyPriceJpy)}
-                    </span>
-                    <span className="whitespace-nowrap text-xs text-ink-3">／月（税込）</span>
-                  </p>
-                  {hasCampaignDiscount(plan) ? (
-                    // 「通常価格」と書かない（過去の販売実績が無い・景表法。plans.ts参照）。
-                    <p className="text-caption text-ink-3">
-                      {RELEASE_CAMPAIGN.afterLabel}{" "}
-                      <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>／月
-                    </p>
-                  ) : null}
-                  <ul className="flex flex-1 flex-col gap-[7px]">
-                    {planFeatures(planId).map((feature) => (
-                      <li className="flex items-start gap-[7px] text-xs leading-[1.55] text-ink-2" key={feature}>
-                        <Icon name="check" className="mt-0.5 shrink-0 text-brand" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <CheckoutButton plan={planId} planName={plan.displayName} />
-                </div>
-              );
-            })}
+            プラン比較表（T-M8-125）。**機能を行見出しにして各プランに ✓ / − を付ける**
+            （運営者の指示・2026-08-18）。以前はプランごとの箇条書きカードで、
+            「mdプランの全機能」という入れ子の言い方だったため、上位プランに何が積まれるのかが
+            読み取れなかった。行と可否は `lib/plan-comparison.ts` が持つ（画面に書き写さない）。
+            表示はLPと共通の部品を使う。
+          */}
+          <section aria-label="料金プラン">
+            <PlanComparisonTable />
+            <div className="mt-5 grid gap-2.5 sm:grid-cols-3">
+              {PLAN_IDS.map((planId) => (
+                <CheckoutButton key={planId} plan={planId} planName={PLANS[planId].displayName} />
+              ))}
+            </div>
           </section>
 
           {/* BYOKの追加費用は申込前に必ず読ませる（要件03 §54）。折りたたまない。 */}
@@ -301,59 +148,6 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               <strong className="font-bold">通常・mdプランのご注意：</strong>
               X APIと生成AI APIの利用料が別途発生します（プレミアムプランは追加負担なし）。
             </p>
-          </section>
-
-          <section
-            aria-labelledby="signup-flow-heading"
-            className={`${cardClassName} p-[22px]`}
-          >
-            <CardTitle id="signup-flow-heading">
-              ご登録の流れ
-            </CardTitle>
-            <ol className="mt-4 grid gap-3 sm:grid-cols-4">
-              {SIGNUP_FLOW.map((item) => (
-                <li className="flex flex-col gap-[7px]" key={item.step}>
-                  <div className="flex items-center gap-2">
-                    <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-brand font-sans text-xs font-bold text-white">
-                      {item.step}
-                    </span>
-                    <span className="text-body font-bold text-ink">{item.title}</span>
-                  </div>
-                  <p className="pl-8 text-caption leading-[1.6] text-ink-3">{item.description}</p>
-                </li>
-              ))}
-            </ol>
-            <div className="mt-[18px] grid gap-3 sm:grid-cols-2">
-              <div className="rounded-card border border-hairline px-4 py-3.5">
-                <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-body font-bold text-ink">初期設定（BYOK：通常・mdプラン）</h3>
-                  <Badge tone="info">キーはご自身で用意</Badge>
-                </div>
-                <ul className="flex flex-col gap-1.5">
-                  {BYOK_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
-                      <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-info-fg" />
-                      {step}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="rounded-card border border-hairline px-4 py-3.5">
-                <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-body font-bold text-ink">初期設定（プレミアムプラン）</h3>
-                  <Badge tone="brand">キー登録は一切不要</Badge>
-                </div>
-                <ul className="flex flex-col gap-1.5">
-                  {PREMIUM_SETUP.map((step) => (
-                    <li className="flex items-center gap-[7px] text-caption text-ink-2" key={step}>
-                      <span aria-hidden="true" className="size-[5px] shrink-0 rounded-pill bg-brand" />
-                      {step}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            {/* Stripeの安全性はSIGNUP_FLOW step2、解約方法は確認dl、不足時の案内はstep3に記載済み（T-M8-66）。 */}
           </section>
 
             </>

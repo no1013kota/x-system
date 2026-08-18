@@ -21,6 +21,9 @@ describe("plan definitions", () => {
   /**
    * リリース記念キャンペーン（T-M8-118）。**請求額はStripe Priceと一致していなければならない**
    * ので、`monthlyPriceJpy` を勝手に変えるとStripeとの食い違いが黙って起きる。
+   *
+   * **このテストが見ているのは定数どうしの関係だけで、Stripeは見ていない**（T-M8-141）。
+   * 実際のPrice金額との突き合わせは `npm run doctor`（`ops/price-status.ts`）が行う。
    * `regularPriceJpy` は「キャンペーン終了後の予定額」で、請求には使わない。
    */
   it("キャンペーン価格は請求額の2倍が終了後の額（Stripe Priceは請求額と一致）", () => {

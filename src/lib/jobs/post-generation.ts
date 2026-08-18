@@ -2,12 +2,16 @@ import {
   resolveExecutionPrereqError,
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
-import { PT_FIX, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
-import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
+import { PT_FIX } from "@/lib/prompts/gen-prompts";
+import { finalizeThread } from "@/lib/post/generation-validation";
 import {
-  finalizeThread,
-  sourceRequired,
-} from "@/lib/post/generation-validation";
+  buildPatternRules,
+  fillPlaceholders,
+  parsePatternSpec,
+  patternPrompt,
+  sourceRequiredForSpec,
+  webSearchForSpec,
+} from "@/lib/post/pattern-spec";
 import { promptThemeLabel } from "@/lib/post/post-theme";
 import { themesToNewsCategories } from "@/lib/themes";
 
@@ -40,6 +44,7 @@ import {
   createDraftCreatedNotification,
   persistJobFailure,
 } from "./notifications";
+import { ensureAutoPostPublishJob, isAutoMode } from "./publish-chain";
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
@@ -70,10 +75,12 @@ export class PostGenerationTerminalError extends Error {
 
 interface JobRow {
   pattern: string | null;
+  pattern_id: string | null;
+  /** enqueue時点のパターン設定snapshot。実行中に編集・削除されても走り切るための凍結（U2）。 */
+  pattern_spec: unknown;
   trigger: string;
   input: {
     source_url?: string | null;
-    user_opinion?: string | null;
     instructions?: string | null;
     theme?: string | null;
     image_enabled?: boolean;
@@ -82,10 +89,17 @@ interface JobRow {
     prompt_override?: string | null;
     /** この生成にだけ使うアカウント.md（T-M8-93）。 */
     base_md_override?: string | null;
-    /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
+  /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
     image_prompt_override?: string | null;
+    /** パターンの入力項目（`{名前}` へ差し込む値）。キーは項目名（T-M8-132）。 */
+    placeholder_values?: Record<string, string> | null;
     parent_draft_id?: string | null;
     previous_posts?: string[];
+    /**
+     * 予約の実行モード（`schedule-enqueue` が書く）。`auto` は生成成功後に投稿まで進む
+     * （要件04 §10 手順6/7・T-M8-143）。手動起点は未設定＝下書きで止まる。
+     */
+    mode?: "draft" | "auto";
   };
   x_account_id: string;
   /** 今回のattempt番号（leaseで加算済み）。再試行時のWeb検索縮退に使う。 */
@@ -143,48 +157,13 @@ export function composeUserInput(input: JobRow["input"]): string {
   const theme = promptThemeLabel(input.theme);
   if (theme) parts.push(`分野: ${theme}`);
   if (input.source_url) parts.push(`参考URL: ${input.source_url}`);
-  if (input.user_opinion) parts.push(`自分の考え: ${input.user_opinion}`);
   if (input.instructions) parts.push(`追加指示: ${input.instructions}`);
   return parts.join("\n");
 }
 
-/**
- * パターン別のWeb検索設定（プロンプト設計書 §6の検索回数上限）。P-2はURL指定時のみ。
- * 再試行（attempt >= 2）では pause_turn の未完了を避けるため1段階ずつ縮小する（§5.2「4→2」）。
- */
-function webSearchForPattern(
-  pattern: string,
-  hasUrl: boolean,
-  attempt = 1,
-): { maxUses: number } | undefined {
-  const base = baseWebSearchForPattern(pattern, hasUrl);
-  if (!base) return undefined;
-  let maxUses = base.maxUses;
-  for (let i = 1; i < attempt; i++) maxUses = reduceWebSearchMaxUses(maxUses);
-  return { maxUses };
-}
-
-function baseWebSearchForPattern(
-  pattern: string,
-  hasUrl: boolean,
-): { maxUses: number } | undefined {
-  switch (pattern) {
-    case "p1":
-    case "p4":
-      return { maxUses: 4 };
-    case "p3":
-    case "p6":
-      return { maxUses: 3 };
-    case "p2":
-      return hasUrl ? { maxUses: 2 } : undefined;
-    default:
-      return undefined;
-  }
-}
-
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
-    `select gj.pattern, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
+    `select gj.pattern_id, gj.pattern_spec, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
             xa.user_id, xa.base_md, xa.settings, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
@@ -217,17 +196,23 @@ async function ensureImageChildJob(
     /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobのinputから引き継ぐ。 */
     imagePromptOverride?: string | null;
     baseMdOverride?: string | null;
+    /** 親の実行モード。`auto` なら子が画像確定後に投稿jobを作る（T-M8-143）。 */
+    mode?: "draft" | "auto";
   },
 ): Promise<void> {
   // `generation_jobs.input` は NOT NULL（既定 '{}'）。override が無いときも '{}' を渡す
   // （null を渡すと制約違反で子jobが作れない。2026-08-15 に smoke:live で検出・T-M8-93）。
   const input =
-    params.imagePromptOverride || params.baseMdOverride
-      ? JSON.stringify({
-          image_prompt_override: params.imagePromptOverride ?? null,
-          base_md_override: params.baseMdOverride ?? null,
-        })
-      : "{}";
+    (() => {
+      const carried: Record<string, unknown> = {};
+      if (params.imagePromptOverride || params.baseMdOverride) {
+        carried.image_prompt_override = params.imagePromptOverride ?? null;
+        carried.base_md_override = params.baseMdOverride ?? null;
+      }
+      // **modeは必ず引き継ぐ**（T-M8-143）。子が画像確定後に投稿へ進むかの判断に使う。
+      if (params.mode) carried.mode = params.mode;
+      return Object.keys(carried).length > 0 ? JSON.stringify(carried) : "{}";
+    })();
   await db.query(
     `insert into generation_jobs
        (x_account_id, kind, trigger, parent_job_id, draft_id, request_key, input, status)
@@ -279,11 +264,22 @@ export async function executePostGeneration(
 
   const job = await loadJob(db, jobId);
   if (!job) throw new PostGenerationTerminalError("not_found", "job not found");
-  const pattern = (job.pattern ?? "p1") as PromptTemplateKind;
 
-  // P-5 が flag OFF の間に queued 化していた場合、外部API・利用枠を消費する前に canceled にする
+  // **パターン設定は凍結された snapshot を正にする**（T-M8-129 U2・ADR-0008）。
+  // 実行中にパターンを編集・削除されても、このjobは enqueue 時点の設定で完走する。
+  // **読めないときは既定で補わず失敗させる**。どの設定で生成したのか分からない下書きを
+  // 作る方が害が大きい（CLAUDE.md 原則1）。
+  const spec = parsePatternSpec(job.pattern_spec);
+  if (!spec) {
+    throw new PostGenerationTerminalError(
+      "pattern_spec_missing",
+      "generation_jobs.pattern_spec is missing or malformed",
+    );
+  }
+
+  // 引用ポストが flag OFF の間に queued 化していた場合、外部API・利用枠を消費する前に canceled にする
   //（要件05 §5・要件04 §1, T-M3-25）。runJob は status='running' の間だけ finalize するため上書きされない。
-  if (pattern === "p5" && deps.quotePostEnabled === false) {
+  if (spec.requiresQuoteUrl && deps.quotePostEnabled === false) {
     await db.query(
       `update generation_jobs set status = 'canceled', finished_at = now() where id = $1 and status = 'running'`,
       [jobId],
@@ -367,23 +363,38 @@ export async function executePostGeneration(
     typeof job.input?.prompt_override === "string" && job.input.prompt_override.trim() !== ""
       ? job.input.prompt_override
       : null;
-  const patternPrompt =
-    promptOverride ??
-    (await resolvePromptTemplate(db, {
-      xAccountId: job.x_account_id,
-      kind: pattern,
-    }));
+// パターンのプロンプト。`prompt` が null ならシステム既定（コード定数）を使う。
+  const basePatternPrompt = promptOverride ?? patternPrompt(spec);
+  // 利用者が決めた入力項目を `{名前}` へ差し込む（T-M8-132）。
+  const resolvedPatternPrompt =
+    basePatternPrompt === null
+      ? null
+      : fillPlaceholders(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {});
+  if (resolvedPatternPrompt === null) {
+    throw new PostGenerationTerminalError(
+      "pattern_prompt_missing",
+      `pattern "${spec.name}" has no prompt`,
+    );
+  }
   const recentPosts = await fetchRecentPostBodies(db, job.x_account_id);
   let newsDigest;
-  if (pattern === "p6") {
+  if (spec.includeNewsDigest) {
     const themeIds = [
       ...(job.settings?.themes?.primary ?? []),
       ...(job.settings?.themes?.secondary ?? []),
     ];
     newsDigest = await fetchNewsDigest(db, themesToNewsCategories(themeIds));
   }
+const hasInputUrl = Boolean(job.input.source_url);
+  const webSearch = webSearchForSpec(spec, hasInputUrl, job.attempt, reduceWebSearchMaxUses);
   const user = buildGenUser({
-    pattern: patternPrompt,
+    pattern: resolvedPatternPrompt,
+    // 設定（分量・Web検索・参考URL）をAIへ明示する（T-M8-131）。
+    // Web検索の回数は再試行での縮退を反映した実際の値を渡す。
+    patternRules: buildPatternRules(spec, {
+      hasInputUrl,
+      webSearchMaxUses: webSearch?.maxUses ?? null,
+    }),
     input: composeUserInput(job.input),
     recentPosts,
     newsDigest,
@@ -420,7 +431,7 @@ export async function executePostGeneration(
   const request = {
     system,
     user,
-    webSearch: webSearchForPattern(pattern, Boolean(job.input.source_url), job.attempt),
+    webSearch,
     timeoutMs: deadline.callTimeoutMs(),
   };
 
@@ -489,9 +500,11 @@ export async function executePostGeneration(
   const ngWords = job.settings?.ng?.words ?? [];
   const hasReferenceUrl = Boolean(job.input.source_url);
   const usageCalls: ProviderCall[] = [...generated.usage.calls];
+  const needsSource = sourceRequiredForSpec(spec, hasReferenceUrl);
   let finalize = await finalizeThread(
     {
-      pattern,
+      maxPosts: spec.maxPosts,
+      sourceRequired: needsSource,
       posts: generated.parsed.posts,
       aiSources: generated.parsed.sources,
       ngWords,
@@ -500,7 +513,7 @@ export async function executePostGeneration(
     { shorten, validateSource: deps.validateSource },
   );
   // 出典必須で通過出典が空なら1回だけ再生成する（プロンプト設計書 §7.5）。
-  if (finalize.sourcesMissing && sourceRequired(pattern, hasReferenceUrl)) {
+  if (finalize.sourcesMissing && needsSource) {
     const retry = await runTextGeneration({
       provider: textGen,
       providerId: textProviderId,
@@ -514,7 +527,8 @@ export async function executePostGeneration(
     if (!retry.parsed.error) {
       finalize = await finalizeThread(
         {
-          pattern,
+          maxPosts: spec.maxPosts,
+          sourceRequired: needsSource,
           posts: retry.parsed.posts,
           aiSources: retry.parsed.sources,
           ngWords,
@@ -533,15 +547,23 @@ export async function executePostGeneration(
   // --- draft作成（thread=initial_thread同値・weighted_length・警告・ニュース起点はsource_news_item_id）---
   const threadJson = JSON.stringify(finalize.thread);
   const inserted = await db.query<{ id: string }>(
+    // **パターンの写しを明示的に入れる**（U2/U3）。名前・上限・引用必須をここで凍結するので、
+    // 後からパターンを編集・削除しても履歴の表示と本文の再検証が変わらない。
     `insert into drafts
-       (x_account_id, pattern, thread, initial_thread, status, source_job_id,
+       (x_account_id, pattern_id, pattern_name, max_posts, max_posts_edit, requires_quote_url,
+        thread, initial_thread, status, source_job_id,
         source_news_item_id, parent_draft_id)
-     values ($1, $2, $3::jsonb, $3::jsonb, 'draft', $4, $5, $6)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10)
      on conflict (source_job_id) do nothing
      returning id`,
     [
       job.x_account_id,
-      pattern,
+      job.pattern_id,
+      spec.name,
+      spec.maxPosts,
+      // 編集上限は実際に作ったポスト数を下回らせない（作った直後に編集できない下書きを作らない）。
+      Math.max(spec.maxPostsEdit, finalize.thread.length),
+      spec.requiresQuoteUrl,
       threadJson,
       jobId,
       job.input.news_item_id ?? null,
@@ -579,7 +601,17 @@ export async function executePostGeneration(
       draftId,
       imagePromptOverride: job.input.image_prompt_override,
       baseMdOverride: job.input.base_md_override,
+      // 画像確定後に投稿へ進むかを子へ伝える（子は親のinputを見られない・T-M8-143）。
+      mode: job.input.mode,
     });
+  } else if (isAutoMode(job.input)) {
+    /*
+      **auto は投稿へ進む**（要件04 §10 手順6・T-M8-143）。ここが無かったため、
+      予約の自動投稿は下書きを作るだけで投稿されていなかった。
+      `draft_created` は送らない——投稿されるので「下書きができました」は誤った案内になる。
+      阻害警告と自動投稿同意の確認は `post-publish` が投稿直前に行い、止めた理由をdraftへ残す。
+    */
+    await ensureAutoPostPublishJob(db, { xAccountId: job.x_account_id, draftId });
   } else {
     await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
   }

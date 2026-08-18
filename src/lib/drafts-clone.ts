@@ -17,7 +17,12 @@ import type { Queryable } from "./x/token-refresh";
 
 interface CloneSourceRow {
   status: string;
-  pattern: string;
+  /** 元の下書きのパターン。削除済みなら null（名前だけが残る）。 */
+  pattern_id: string | null;
+  pattern_name: string;
+  max_posts: number;
+  max_posts_edit: number;
+  requires_quote_url: boolean;
   thread: ThreadItem[];
   images: DraftImage[];
   quote_url: string | null;
@@ -62,7 +67,8 @@ export async function cloneFailedDraftForRetry(
 
   const src = (
     await db.query<CloneSourceRow>(
-      `select d.status, d.pattern, d.thread, d.images, d.quote_url, d.quote_tweet_id,
+      `select d.status, d.pattern_id, d.pattern_name, d.max_posts, d.max_posts_edit,
+                d.requires_quote_url, d.thread, d.images, d.quote_url, d.quote_tweet_id,
               d.source_news_item_id, d.tweet_ids, d.last_post_error, d.x_account_id, xa.user_id
          from drafts d join x_accounts xa on xa.id = d.x_account_id
         where d.id = $1 and xa.user_id = $2`,
@@ -128,24 +134,32 @@ export async function cloneFailedDraftForRetry(
   }
 
   const threadJson = JSON.stringify(src.thread);
-  await db.query(
-    `insert into drafts
-       (id, x_account_id, pattern, thread, initial_thread, images, status,
-        source_job_id, parent_draft_id, source_news_item_id, quote_url, quote_tweet_id)
-     values ($1, $2, $3, $4::jsonb, $4::jsonb, $5::jsonb, 'draft',
-             null, $6, $7, $8, $9)`,
-    [
-      newDraftId,
-      src.x_account_id,
-      src.pattern,
-      threadJson,
-      JSON.stringify(newImages),
-      input.draft_id,
-      src.source_news_item_id,
-      src.quote_url,
-      src.quote_tweet_id,
-    ],
-  );
+    await db.query(
+      // **パターンの写しもそのまま複製する**（T-M8-129 U5）。元の下書きが作られた時点の
+      // 名前・上限で扱われるべきなので、いまのパターン設定を引き直さない。
+      // 元のパターンが削除されていれば `pattern_id` は null で、名前だけが残る。
+      `insert into drafts
+         (id, x_account_id, pattern_id, pattern_name, max_posts, max_posts_edit, requires_quote_url,
+          thread, initial_thread, images, status,
+          source_job_id, parent_draft_id, source_news_item_id, quote_url, quote_tweet_id)
+       values ($1, $2, $3, $10, $11, $12, $13, $4::jsonb, $4::jsonb, $5::jsonb, 'draft',
+               null, $6, $7, $8, $9)`,
+      [
+        newDraftId,
+        src.x_account_id,
+        src.pattern_id,
+        threadJson,
+        JSON.stringify(newImages),
+        input.draft_id,
+        src.source_news_item_id,
+        src.quote_url,
+        src.quote_tweet_id,
+        src.pattern_name,
+        src.max_posts,
+        src.max_posts_edit,
+        src.requires_quote_url,
+      ],
+    );
 
   return { draftId: newDraftId, deduped: false };
 }

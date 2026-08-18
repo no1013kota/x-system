@@ -60,10 +60,32 @@ describe("未知エラーの記録（共通出口）", () => {
 
       expect(res.status).toBe(500);
       expect(recordUnexpectedError).toHaveBeenCalledTimes(1);
-      expect(recordUnexpectedError.mock.calls[0][1]).toMatchObject({ at: "api-route" });
+      // どの種類で記録したかを `at` に残す（T-M8-128でprovider_errorも記録対象にしたため）。
+      expect(recordUnexpectedError.mock.calls[0][1]).toMatchObject({
+        at: "api-route:internal_error",
+      });
     });
 
-    it("AppError は記録せず、対応する HTTP status を返す", () => {
+    /**
+     * 外部サービスの失敗も記録する（T-M8-128）。
+     *
+     * `provider_error` は「外部サービスとの通信に失敗しました」という汎用文で返るだけで、
+     * **理由がどこにも残らなかった**。2026-08-18、ローカルでプラン管理が開けない原因を
+     * 突き止めるのにこれが妨げになった（Stripeの応答を誰も見ていない・原則2違反）。
+     * 設定ミスのように待っても直らない失敗ほど、原因が残っていないと辿れない。
+     */
+    it("provider_error も記録する（外部サービスの理由を捨てない）", () => {
+      const cause = new Error("No such configuration: bpc_xxx");
+      const res = apiError(new AppError("provider_error", { cause }));
+
+      expect(res.status).toBe(502);
+      expect(recordUnexpectedError).toHaveBeenCalledTimes(1);
+      expect(recordUnexpectedError.mock.calls[0][1]).toMatchObject({
+        at: "api-route:provider_error",
+      });
+    });
+
+    it("それ以外の AppError は記録せず、対応する HTTP status を返す", () => {
       expect(apiError(new AppError("unauthorized")).status).toBe(401);
       expect(apiError(new AppError("validation_error")).status).toBe(400);
       expect(recordUnexpectedError).not.toHaveBeenCalled();

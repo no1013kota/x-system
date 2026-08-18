@@ -21,13 +21,14 @@ import { SUGGEST_ANALYZE_MAX, truncateForStore } from "./suggestion-timeline";
 export async function loadDraftTagRows(
   db: Queryable,
   xAccountId: string,
-): Promise<{ tweet_ids: string[] | null; pattern: string | null; theme: string | null }[]> {
+): Promise<{ tweet_ids: string[] | null; pattern_name: string | null; theme: string | null }[]> {
   const { rows } = await db.query<{
     tweet_ids: string[] | null;
-    pattern: string | null;
+    pattern_name: string | null;
     theme: string | null;
   }>(
-    `select d.tweet_ids, d.pattern::text as pattern, gj.input->>'theme' as theme
+    // パターンは**名前**で持つ（T-M8-129 U5。旧enumは撤去した）。
+    `select d.tweet_ids, d.pattern_name, gj.input->>'theme' as theme
        from drafts d
        left join generation_jobs gj on gj.id = d.source_job_id
       where d.x_account_id = $1
@@ -61,7 +62,7 @@ export async function upsertTimelinePosts(
     await db.query(
       `insert into x_timeline_posts
          (x_account_id, tweet_id, text, posted_at, impressions, likes, reposts, replies,
-          has_image, has_url, pattern, theme, metrics_updated_at)
+          has_image, has_url, pattern_name, theme, metrics_updated_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
        on conflict (x_account_id, tweet_id) do update set
          text = excluded.text,
@@ -71,7 +72,7 @@ export async function upsertTimelinePosts(
          replies = excluded.replies,
          has_image = excluded.has_image,
          has_url = excluded.has_url,
-         pattern = coalesce(x_timeline_posts.pattern, excluded.pattern),
+         pattern_name = coalesce(x_timeline_posts.pattern_name, excluded.pattern_name),
          theme = coalesce(x_timeline_posts.theme, excluded.theme),
          metrics_updated_at = now()`,
       [
@@ -100,7 +101,7 @@ export async function loadStoredTimeline(
 ): Promise<StoredTimelinePost[]> {
   const { rows } = await db.query<StoredTimelinePost>(
     `select tweet_id, text, posted_at::text as posted_at, impressions::int as impressions,
-            likes, reposts, replies, has_image, has_url, pattern, theme
+            likes, reposts, replies, has_image, has_url, pattern_name, theme
        from x_timeline_posts
       where x_account_id = $1
       order by posted_at desc nulls last

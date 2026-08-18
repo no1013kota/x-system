@@ -22,7 +22,7 @@ describe("nextRunKpi", () => {
       runs: [
         {
           slotId: "s1",
-          pattern: "p3",
+          patternName: "ノウハウ・ハウツー",
           mode: "draft",
           imageEnabled: false,
           label: "7月27日(月) 9:00",
@@ -32,13 +32,17 @@ describe("nextRunKpi", () => {
     });
     expect(kpi.label).toBe("9:00");
     expect(kpi.note).toContain("7月27日(月)");
-    expect(kpi.note).toContain("下書きまで");
+    expect(kpi.note).toContain("下書きのみ");
   });
 
-  it("自動投稿と下書きまでを区別する", () => {
+  /**
+   * 言い方の正本は `slotModeLabel`（T-M8-146）。以前はここだけ「下書きまで」で、
+   * 予約画面は「下書きのみ」、投稿作成の要約は「下書きまで」…と4通りに分かれていた。
+   */
+  it("自動投稿と下書きのみを区別する", () => {
     const base = {
       slotId: "s1",
-      pattern: "p1",
+      patternName: "ニュース解説",
       imageEnabled: false,
       label: "8月1日(土) 18:00",
       at: "2026-08-01T09:00:00Z",
@@ -47,7 +51,7 @@ describe("nextRunKpi", () => {
       "自動投稿",
     );
     expect(nextRunKpi({ kind: "runs", runs: [{ ...base, mode: "draft" }] }).note).toContain(
-      "下書きまで",
+      "下書きのみ",
     );
   });
 

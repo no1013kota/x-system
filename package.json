@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:e2e": "node --env-file-if-exists=.env --env-file-if-exists=.env.local node_modules/@playwright/test/cli.js test",
     "audit:check": "node scripts/audit-check.mjs",
-    "release:check": "npm run typecheck && npm run lint && npm run audit:check && npm run test:db && npm run build && npm run check:csp-nonce && npm run test:e2e",
+    "release:check": "npm run typecheck && npm run lint && npm run check:doc-dates && npm run check:doc-refs && npm run audit:check && npm run test:db && npm run build && npm run check:csp-nonce && npm run test:e2e",
     "test:db": "REQUIRE_DB=1 vitest run",
     "check:providers": "PROVIDER_CHECK=1 vitest run src/lib/ai/provider-contract.live.test.ts",
     "check:turnstile": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-turnstile.mjs",
@@ -25,9 +25,12 @@
     "release:production": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production",
     "icons:generate": "node scripts/generate-icons.mjs",
     "seed:review": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-review-account.mjs",
+    "check:doc-dates": "node scripts/check-doc-dates.mjs",
+    "check:doc-refs": "node scripts/check-doc-refs.mjs",
     "check:csp-nonce": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-csp-nonce.mjs",
     "check:suggest": "SUGGEST_LIVE=1 vitest run src/lib/jobs/suggestion.live.test.ts",
-    "logo": "node scripts/build-logo.mjs"
+    "logo": "node scripts/build-logo.mjs",
+    "auth:templates": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/push-auth-templates.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

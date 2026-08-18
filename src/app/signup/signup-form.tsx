@@ -3,16 +3,14 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
-import {
-  resendSignUpConfirmation,
-  signUp,
-} from "@/app/actions/auth";
+import { signUp } from "@/app/actions/auth";
 import {
   INITIAL_AUTH_FORM_STATE,
   type AuthFormState,
 } from "@/app/actions/auth-state";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { PasswordMatchHint, PasswordRulesHint } from "@/components/auth/password-hints";
+import { EmailCodeForm } from "@/components/auth/email-code-form";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -34,6 +32,15 @@ function ResultMessage({ state }: { state: AuthFormState }) {
       tone={state.status === "success" ? "success" : "danger"}
     >
       {state.message}
+      {/*
+        行き先が返ってきたら一緒に出す（T-M8-127）。「既に登録されています」だけでは
+        次にどこへ行けばよいか分からず、同じフォームで再試行させてしまう。
+      */}
+      {state.action ? (
+        <Link className="ml-1 font-medium underline underline-offset-4" href={state.action.href}>
+          {state.action.label}
+        </Link>
+      ) : null}
     </Notice>
   );
 }
@@ -43,41 +50,12 @@ export function SignUpForm() {
     signUp,
     INITIAL_AUTH_FORM_STATE,
   );
-  const [resendState, resendAction, isResending] = useActionState(
-    resendSignUpConfirmation,
-    INITIAL_AUTH_FORM_STATE,
-  );
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
 
-  if (state.status === "success") {
-    return (
-      <section className="space-y-5" aria-labelledby="confirmation-heading">
-        <div className="space-y-2">
-          <h2 id="confirmation-heading" className="text-xl font-semibold">
-            メールをご確認ください
-          </h2>
-          <ResultMessage state={state} />
-        </div>
-        <form action={resendAction} className="space-y-3">
-          <input name="email" type="hidden" value={state.email ?? ""} />
-          <TurnstileWidget
-            action="signup-resend"
-            resetSignal={resendState}
-          />
-          <Button type="submit" variant="outline" disabled={isResending}>
-            {isResending ? "再送しています…" : "確認メールを再送"}
-          </Button>
-          <ResultMessage state={resendState} />
-        </form>
-        <p className="text-sm text-muted-foreground">
-          メールが見つからない場合は迷惑メールフォルダをご確認ください。
-        </p>
-        <Link className="text-sm font-medium underline" href="/login">
-          ログイン画面へ
-        </Link>
-      </section>
-    );
+  // 登録できたら、同じ画面でコード入力へ切り替える（T-M8-121。メールのリンクを追わせない）。
+  if (state.status === "success" && state.email) {
+    return <EmailCodeForm email={state.email} />;
   }
 
   return (

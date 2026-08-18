@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.38 |
-| 更新日 | 2026-08-15 |
+| バージョン | v1.43 |
+| 更新日 | 2026-08-18 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -36,7 +36,6 @@
 | `job_trigger` | `manual`, `news`, `schedule`, `system` |
 | `job_status` | `queued`, `running`, `succeeded`, `failed`, `canceled` |
 | `progress_stage` | `validating`, `research`, `writing`, `image`, `posting`, `merging` |
-| `post_pattern` | `p1`, `p2`, `p3`, `p4`, `p5`, `p6` |
 | `draft_status` | `draft`, `posting`, `posted`, `discarded`, `failed` |
 | `posted_mode` | `auto`, `manual` |
 | `schedule_mode` | `draft`, `auto` |
@@ -163,11 +162,13 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.5 `prompt_templates`
 
+**画像プロンプト（`kind='image'`）専用の表**（T-M8-129 U2）。投稿の型プロンプトは §3.21 `post_patterns.prompt` が正本になった——利用者が型を追加できるようになると固定の`kind`では表せないため。`kind` の CHECK は `p1`〜`p6` も受けられる形のまま残っているが、**行は作られない**（enum `post_pattern` は U5 で撤去した）。
+
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK nullable | nullはシステム既定 |
-| `kind` | `text` | not null | `p1`〜`p6`, `image` |
+| `kind` | `text` | not null | 実際に使うのは `image` のみ（`p1`〜`p6`は§3.21へ移行済み） |
 | `content` | `text` | not null | プロンプト本文 |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
@@ -178,7 +179,9 @@ Unique indexes: (`x_account_id`, `kind`) where `x_account_id is not null`; (`kin
 
 RLS: system defaultは認証ユーザーselect可。account別は所有者select可。writeはmd/premium向けServer Actionのみ。
 
-**system default行はコード定数（`SYSTEM_DEFAULT_TEMPLATES`）の写しで、`scheduler_tick`が毎回差分同期する**（T-M7-37）。解決順は「account上書き → system default行 → コード定数」なので、DB行が古いままだとコード側でプロンプトを直しても反映されない。人が思い出して実行する手順にしない（CLAUDE.md 原則3）。内容が同じときは更新しないため`updated_at`は動かない（編集画面の楽観lockに影響しない）。
+**system default行はコード定数（`SYSTEM_DEFAULT_TEMPLATES.image`）の写しで、`scheduler_tick`が毎回差分同期する**（T-M7-37）。解決順は「account上書き → system default行 → コード定数」なので、DB行が古いままだとコード側でプロンプトを直しても反映されない。人が思い出して実行する手順にしない（CLAUDE.md 原則3）。内容が同じときは更新しないため`updated_at`は動かない（編集画面の楽観lockに影響しない）。
+
+型プロンプトは同じ問題を**行を作らないこと**で避ける。`post_patterns.prompt` が `null`＝システム既定で、コード定数を直接使う（§3.21）。
 
 ### 3.6 `learning_sources`
 
@@ -232,7 +235,8 @@ RLS: 認証済みユーザーselect可。writeはservice roleのみ。
 | `scheduled_for` | `timestamptz` | null | schedule slotの予定時刻 |
 | `schedule_run_key` | `text` | unique null | slot定時実行の冪等key |
 | `request_key` | `text` | unique null | ユーザー操作・子job作成の冪等key |
-| `pattern` | `post_pattern` | null | 投稿生成時 |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使ったパターン。パターンが削除されるとnullになる（履歴は`pattern_spec`で残る） |
+| `pattern_spec` | `jsonb` | nullable | **enqueue時点のパターン設定のsnapshot**（名前・プロンプト・上限ポスト数・Web検索方針など）。実行中にパターンを編集・削除されても走り切れるようにするため凍結する。**`kind='post_generation'`では必須**（CHECK・`not valid`で追加したため過去の行は対象外）。生成の振る舞い（プロンプト・ポスト数上限・Web検索回数・出典の必須・ニュースダイジェストの有無）はすべてこのsnapshotから決まる |
 | `input` | `jsonb` | not null default `{}` | kind別入力 |
 | `status` | `job_status` | not null default `queued` | 状態 |
 | `progress_stage` | `progress_stage` | null | UI進捗 |
@@ -263,8 +267,12 @@ RLS: 本人select可。writeはServer only。
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | not null |  |
-| `thread` | `jsonb` | not null | 全体上限1〜7ポスト。書き込み時はpattern別最大数も検証 |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 生成に使ったパターン。**削除されるとnullになる** |
+| `pattern_name` | `text` | not null | **生成時のパターン名のsnapshot**。パターンを削除しても履歴の画面に内部ID（`p1`）ではなく名前が出るようにする |
+| `max_posts` | `smallint` | not null | 生成時のポスト数上限のsnapshot。生成本文の件数はこの値で収める（後からパターンを編集しても過去の下書きの判定が変わらない） |
+| `max_posts_edit` | `smallint` | not null | **編集で許すポスト数上限**のsnapshot。生成上限より広い（生成された分に少し足して整えられるように）。既に上限を超えている過去の下書きは、その件数まで許す（編集できない下書きを作らない） |
+| `requires_quote_url` | `boolean` | not null default false | 生成時に引用URLを必須としたか（P-5相当）。`quote_url`の必須判定に使う |
+| `thread` | `jsonb` | not null | 全体上限1〜8ポスト（画面のスレッド数0〜7に対応・T-M8-130）。書き込み時はpattern別最大数も検証 |
 | `initial_thread` | `jsonb` | not null | 生成確定時の本文snapshot。下書き承認率算出用で更新しない |
 | `images` | `jsonb` | not null default `[]` | Storage path・provider・状態 |
 | `status` | `draft_status` | not null default `draft` |  |
@@ -296,18 +304,21 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `x_account_id` | `uuid` | FK, not null | 対象 |
-| `pattern` | `post_pattern` | not null | P-1〜P-4/P-6 |
+| `pattern_id` | `uuid` | FK (`x_account_id`,`pattern_id`)→`post_patterns` nullable | 使うパターン。**パターンを削除すると`null`になり、同時に`enabled=false`へ落ちる**（曜日・時刻・テーマ・追加指示はそのまま残るので、パターンを選び直すだけで再開できる） |
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
 | `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
+| `source_url` | `text` | null, CHECK（`^https://`。投稿作成のzodと同条件） | **参考URL**（T-M8-135）。毎回このURLをAIが読んで題材にする。投稿作成画面の「参考にするURL」と同じもの |
+| `placeholder_values` | `jsonb` | not null default `'{}'`, CHECK（`schedule_slots_placeholder_values_ok()`。名前→文字列のオブジェクト・各2,000字以内） | **パターンの`{名前}`へ差し込む値**（T-M8-135）。予約は繰り返すので、ここで入れた値が毎回同じように入る。**そのパターンに無い項目の値は保存時に捨てる**（画面に出ない値が残ると説明できなくなる） |
+| `prompt_override` | `text` | null, CHECK（8,000字以内） | **この枠だけに使う生成プロンプト**（T-M8-135）。`null`ならパターンの本文を使う。同じパターンを少しだけ変えて別の枠に使うためのもの |
 | `enabled` | `boolean` | not null default true |  |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。
+Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。**`enabled`ならば`pattern_id`は必須**（型が無いのに動いている枠を作らない）。**引用URLを必須とするパターン（`requires_quote_url`）は予約に使えない**——毎回URLの指定が要るため自動実行できない（旧`p5`不可の意図をパターン属性へ移した）。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。**`source_url`・`placeholder_values`・`prompt_override`・`instructions`は実行時に生成jobの`input`へ投稿作成画面と同じキー名で渡す**（`schedule-enqueue.ts`。キー名がずれると「予約では効かない」という画面から説明できない差になる）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
@@ -546,7 +557,7 @@ RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期�
 | `replies` | `integer` | nullable | 返信 |
 | `has_image` | `boolean` | not null default false | 画像等の添付の有無 |
 | `has_url` | `boolean` | not null default false | 本文URLの有無 |
-| `pattern` | `text` | nullable | 本サービス経由の投稿の型（drafts.tweet_ids突合で取得時に付与。外部投稿はnull。一度付いたら保持） |
+| `pattern_name` | `text` | nullable | 同・**パターン名**。分析結果を画面と改善提案に出すとき内部ID（`p1`）ではなく名前を使う |
 | `theme` | `text` | nullable | 同・テーマID |
 | `fetched_at` | `timestamptz` | not null default now() | 初回取得時刻 |
 | `metrics_updated_at` | `timestamptz` | not null default now() | メトリクスを最後に更新した時刻（重なり再取得で更新） |
@@ -556,6 +567,48 @@ Constraints: `unique (x_account_id, tweet_id)`
 Indexes: `(x_account_id, posted_at desc)`
 
 RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
+
+### 3.21 `post_patterns`
+
+投稿の「パターン」を**Xアカウントごとのマスタ**として持つ（T-M8-129）。以前はDB enum `post_pattern`（`p1`〜`p6`）の固定6種で、名前もプロンプトもコードにあった。利用者が**自分で追加・編集・削除できる**ようにするため表へ移す（運営者の指示・2026-08-18）。**既定の6件も削除できる。**
+
+Xアカウントを作ると既定6件が**トリガで自動投入される**（`seed_default_post_patterns()`。手順を人の記憶に依存させない・CLAUDE.md 原則3）。削除後に復元することもでき、同名の自作パターンがあるときは`（復元）`を付けて共存させる（既存を黙って上書きしない）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `x_account_id` | `uuid` | not null FK x_accounts on delete cascade。`unique (x_account_id, id)` | 対象アカウント。複合uniqueは参照側の複合FK用（テナント越え参照をDBで塞ぐ） |
+| `name` | `text` | not null、1〜30字、`unique (x_account_id, lower(name))`、改行と`<` `>`を含まない | **画面に出る唯一の名前**。内部IDは画面に出さない（要件06 §1.0）。名前は改善提案プロンプト（PT-SUGGEST）へ差し込まれるため、プロンプトを壊す文字を受け付けない |
+| `description` | `text` | nullable | 補足説明。**ポスト数はここに書かせない**（`max_posts`から画面が自動で付ける） |
+| `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
+| `max_posts` | `smallint` | not null default 4、1〜8 | **生成時**に作る総ポスト数の上限。**プロンプトの「# 構成と分量とスレッド数」に書かれた `Nスレッド目` から保存時に読む**（T-M8-132）。**読み取れないときの扱いは3段**（T-M8-139）: ①既定パターンでプロンプトを既定へ戻したならその型の既定値（`GENERATION_MAX_POSTS`。P-1=4 等）②それ以外は**今の値を保つ**③新規作成だけ全体の上限（8）。**保存しただけで分量が変わってはいけない**——既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため、以前は既定パターンを保存するたびに8へ跳ね上がり、既定表が1クリックで失われていた。黙って短い値を当てて切り詰めることもしない |
+| `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(7, max_posts + 2)` |
+| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131） |
+| `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
+| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
+| `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
+| `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
+| `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。投稿作成画面がこの名前で入力欄を出す。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
+| `sort_order` | `integer` | not null default 100 | 画面の並び順 |
+| `seed_key` | `text` | nullable、`unique (x_account_id, seed_key)`、`p1`〜`p6`のいずれか | 既定として投入されたパターンの元ID。旧enumからの引き当てと「既定の復元」に使う。自作は`null` |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Constraints: `seed_key is not null or prompt is not null`（システム既定でないなら自分のプロンプトを持つ）、`name`は1〜30字で改行・`<`・`>`を含まない、`prompt`は1〜8000字、`max_posts`は1〜8、`max_posts_edit`は`max_posts`以上8以下、`web_search_max_uses`は0〜5、`(web_search_policy = 'never') = (web_search_max_uses = 0)`、`not (requires_quote_url and include_news_digest)`（引用ポストにニュースダイジェストは渡さない）。
+
+Indexes: `(x_account_id, sort_order, created_at)`、`unique (x_account_id, lower(name))`、`unique (x_account_id, seed_key)`、`unique (x_account_id, id)`（参照側の複合FK用）
+
+RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはServer Action（service role）のみ。
+
+**削除の意味論**（論理削除を持たない理由）。`before delete`トリガ`post_patterns_detach_references()`が参照を外す。
+
+| 参照元 | 削除時の扱い | 理由 |
+|---|---|---|
+| `drafts`（下書き・投稿履歴） | `pattern_id`を`null`にする。`pattern_name`は残す | 過去の投稿履歴の表示名が消えない |
+| `schedule_slots`（予約枠） | `pattern_id`を`null`にし、**同時に`enabled=false`** | 型が無いのに動く枠を作らない。曜日・時刻・テーマは残すので選び直せば再開できる |
+| `generation_jobs`（実行中のjob） | `pattern_id`を`null`にする。`pattern_spec`は残す | 実行中のjobは凍結したspecでそのまま完走する |
+
+この3つを満たすので`archived_at`のような論理削除は持たない。検査は`src/lib/post/post-patterns.db.test.ts`。
 
 ## 4. JSONスキーマ
 
@@ -818,7 +871,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 
 | データ | 内容 |
 |---|---|
-| システム既定プロンプト | system defaultとして`p1`〜`p6`、`image`を1件ずつ作成 |
+| システム既定プロンプト（画像） | `prompt_templates` に system default として `image` を1件作成（§3.5） |
+| 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
 | テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
@@ -831,3 +885,12 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 - 契約解約はStripe Customer Portal、X連携解除は`disconnectXAccount`で扱い、どちらもExos AIのアカウントや投稿履歴を自動削除しない。
 - 法令上必要な開示、訂正、利用停止、消去等の請求は問い合わせ窓口で受け付け、本人確認と法務確認のうえ運営が個別対応する。この手続きはMVPのproduct機能・通常jobとして定義しない。
 - 自動cleanup対象と保持期間は[システム構成 §9](./01_system_architecture.md#9-バックアップ保持)を正とする。Stripeが保持する決済記録はStripe側の方針に従う。
+
+## 変更履歴
+
+| version | 日付 | 変更内容 |
+|---|---|---|
+| v1.42 | 2026-08-18 | 投稿パターンを利用者定義マスタへ（T-M8-129〜132・ADR-0008）。`post_patterns` 新設、旧 `post_pattern` enum と関連列の撤去、`placeholders` 追加 |
+| v1.43 | 2026-08-18 | 予約枠に生成入力を追加（T-M8-135）: `source_url`・`placeholder_values`・`prompt_override` |
+| v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
+| v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |

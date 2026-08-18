@@ -13,15 +13,19 @@ describe("composeUserInput", () => {
     expect(composeUserInput({ theme: "business_ops" })).toBe("分野: 業務改善");
   });
 
-  it("分野・参考URL・自分の考え・追加指示の順に並べる", () => {
+it("分野・参考URL・追加指示の順に並べる", () => {
+    // 「自分の考え」は固定の行ではなくプレースホルダー（`{自分の考え}`）へ移した（T-M8-133）。
     expect(
       composeUserInput({
         theme: "ai",
         source_url: "https://example.com/a",
-        user_opinion: "私はこう思う",
         instructions: "短めに",
       }),
-    ).toBe("分野: AI\n参考URL: https://example.com/a\n自分の考え: 私はこう思う\n追加指示: 短めに");
+    ).toBe("分野: AI\n参考URL: https://example.com/a\n追加指示: 短めに");
+  });
+
+  it("追加指示は必ず `追加指示:` の行としてプロンプトへ載る（T-M8-133 の確認）", () => {
+    expect(composeUserInput({ instructions: "箇条書きにする" })).toBe("追加指示: 箇条書きにする");
   });
 
   it("**分野が未指定なら行を出さない**（従来どおりAIが発信テーマから選ぶ）", () => {
