@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.0 |
-| 更新日 | 2026-07-25 |
+| 更新日 | 2026-08-18 |
 | 関連 | [システム構成 §9](../requirements/01_system_architecture.md)／`scripts/db-backup.sh`・`scripts/db-restore.sh` |
 
 ## 1. 方針

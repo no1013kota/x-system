@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.4 |
-| 更新日 | 2026-08-14 |
+| 更新日 | 2026-08-15 |
 | 関連 | [システム構成](../requirements/01_system_architecture.md)／[ジョブ・自動実行](../requirements/04_jobs_and_automation.md) |
 
 ## 0. 現在の状態（2026-08-14）
