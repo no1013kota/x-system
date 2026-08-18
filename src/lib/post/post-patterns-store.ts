@@ -4,6 +4,7 @@ import type { Queryable } from "../db/queryable";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "../prompts/gen-prompts";
 import { toIso } from "../format";
 import type { PatternPolicy } from "./pattern-spec";
+import { GENERATION_MAX_POSTS } from "./thread-limits";
 
 /**
  * 投稿パターンの読み出し（T-M8-129 U3・ADR-0008）。
@@ -447,6 +448,31 @@ export async function applyCreatePattern(
 }
 
 /**
+ * 保存時に書き込む分量（`max_posts`）を決める（T-M8-139）。
+ *
+ * 優先順位:
+ * 1. プロンプトから `Nスレッド目` / `メインポスト` を読めたらそれ
+ * 2. **既定パターンでプロンプトを既定へ戻したなら、その型の既定値**（`GENERATION_MAX_POSTS`）
+ *    ——既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため
+ *    1では読めない。ここで拾わないと既定表（P-1=4 等）が保存1回で失われる。
+ * 3. それ以外は**今の値を保つ**。「読めなければ全体上限（8）」を書き込むと、
+ *    保存しただけで分量が勝手に広がる（要件06 §4.3 の既定表と食い違う）。
+ */
+function resolveMaxPosts(input: {
+  prompt: string | null;
+  seedKey: string | null;
+  currentMaxPosts: number;
+}): number {
+  const threads = threadCountFromPrompt(input.prompt ?? "");
+  if (threads !== null) return maxPostsFromThreadCount(threads);
+  if (input.prompt === null && input.seedKey) {
+    const seeded = GENERATION_MAX_POSTS[input.seedKey];
+    if (seeded !== undefined) return seeded;
+  }
+  return input.currentMaxPosts;
+}
+
+/**
  * パターンを更新する。既定パターン（`seed_key` あり）も編集できる。
  *
  * `max_posts_edit` は**狭めない**（`greatest`）。狭めると既存の下書きが編集できなくなる。
@@ -460,11 +486,21 @@ export async function applyUpdatePattern(
   if (await nameTaken(db, input.xAccountId, input.name.trim(), input.patternId)) {
     throw new AppError("validation_error", { details: { reason: "name_taken" } });
   }
-// 分量はプロンプトから読み直す。**それ以外の方針（Web検索・参考URL・ニュース・引用）は触らない**
-  // ——画面から聞かなくなった項目を、保存のたびに既定値へ戻してしまわないため（T-M8-132）。
-  const maxPosts = maxPostsFromPrompt(
-    input.prompt ?? (current.isSystemDefault ? "" : ""),
-  );
+  /*
+    分量はプロンプトから読み直す。**それ以外の方針（Web検索・参考URL・ニュース・引用）は触らない**
+    ——画面から聞かなくなった項目を、保存のたびに既定値へ戻してしまわないため（T-M8-132）。
+
+    **読み取れないときは今の値を保つ**（T-M8-139）。以前は「読めなければ全体上限」を
+    そのまま書き込んでいたため、既定パターンを保存しただけで分量が seed 値（P-1=4 等）から
+    8 へ跳ね上がり、既定表が失われていた。既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という
+    語彙で `Nスレッド目` を含まないので、**既定パターンでは必ず読み取り不能**になる経路だった。
+    新規作成（`applyCreatePattern`）は保つべき現在値が無いので、あちらは上限のままでよい。
+  */
+  const maxPosts = resolveMaxPosts({
+    prompt: input.prompt ?? null,
+    seedKey: current.seedKey,
+    currentMaxPosts: current.maxPosts,
+  });
   const { rows } = await db.query<PatternRow>(
     `update post_patterns
         set name = $3, description = $4, prompt = $5, placeholders = $6::jsonb,

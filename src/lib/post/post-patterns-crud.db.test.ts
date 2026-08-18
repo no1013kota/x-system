@@ -176,12 +176,68 @@ describe("post_patterns CRUD（ローカルDB）", () => {
         patternId: before.id,
       });
       expect(reset.hasCustomPrompt, "既定パターンはプロンプトを null に戻せる").toBe(false);
+      /*
+        **保存しただけで分量が変わらない**（T-M8-139）。既定プロンプト（PT_P1〜P6）は
+        「1ポスト目=…」という語彙で `Nスレッド目` を含まないため `threadCountFromPrompt` が
+        読み取れず、全体上限（8）へ跳ね上がっていた。既定表（P-1=4）が保存1回で失われる。
+      */
+      expect(reset.maxPosts, "既定に戻したら seed の分量へ戻る").toBe(before.maxPosts);
+      expect(reset.maxPostsEdit, "編集上限も勝手に広がらない").toBe(before.maxPostsEdit);
     } finally {
       await cleanup(uid);
     }
   });
 
-it("スレッド数の指定が読み取れないプロンプトは、全体の上限まで許す（勝手に短くしない）", async () => {
+/**
+   * T-M8-139。**何も変えずに「保存」を押しただけで分量が変わらない。**
+   *
+   * 既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため、
+   * 以前は保存のたびに読み取り不能→全体上限（8）へ跳ね上がり、
+   * 既定表（要件06 §4.3 の P-1=4 等）が1クリックで失われていた。
+   */
+  it("既定パターンを無変更で保存しても分量が変わらない", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      for (const name of ["ニュース解説", "自分の考え・意見", "週次まとめ"]) {
+        const before = (await listPatterns(getPool(), xid)).find((p) => p.name === name)!;
+        const saved = await applyUpdatePattern(getPool(), {
+          ...input({ name: before.name, description: before.description, prompt: null }),
+          xAccountId: xid,
+          patternId: before.id,
+        });
+        expect(saved.maxPosts, `${name}: 保存で分量が変わらない`).toBe(before.maxPosts);
+        expect(saved.maxPostsEdit, `${name}: 編集上限も変わらない`).toBe(before.maxPostsEdit);
+      }
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /**
+   * T-M8-139 の3段目。**自作パターンで読み取れない本文に変えても、分量は今の値を保つ。**
+   * 「読めなければ上限8」を書き込むと、保存しただけで分量が勝手に広がる。
+   */
+  it("自作パターンは読み取れない本文へ変えても分量を保つ", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      const created = await applyCreatePattern(getPool(), {
+        ...input({ name: "3段目の検証", prompt: "# 構成と分量とスレッド数\nメインポスト：\n1スレッド目：" }),
+        xAccountId: xid,
+      });
+      expect(created.maxPosts, "作成時は読み取れて 2（メイン＋1）").toBe(2);
+
+      const vague = await applyUpdatePattern(getPool(), {
+        ...input({ name: "3段目の検証", prompt: "# 投稿内容\nスレッド数を書かない本文" }),
+        xAccountId: xid,
+        patternId: created.id,
+      });
+      expect(vague.maxPosts, "読めないときは今の値（2）を保つ").toBe(2);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("スレッド数の指定が読み取れないプロンプトは、全体の上限まで許す（勝手に短くしない）", async () => {
     const { uid, xid } = await seedAccount();
     try {
       const created = await applyCreatePattern(getPool(), {
