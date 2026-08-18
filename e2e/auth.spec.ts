@@ -37,6 +37,29 @@ test("サインアップ→確認メール→ログインまで通り、未契�
 
     await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
 
+    /*
+      **コード入力の画面にCloudflareのUIを出さない**（T-M8-138・運営者の指示 2026-08-18）。
+      コード検証自体は人間確認を求めていないので、見えていると「打つのに確認が要る」と読める。
+      ただし再送はSupabaseがトークンを要求するので、**不可視で残っている**ことも同時に見る
+      （見た目だけ消してトークンまで消すと、再送が黙って壊れる）。
+    */
+    /*
+      判定は**確保された表示枠**で見る。ローカルのTurnstileはテストキーなので
+      Cloudflareのiframeを描かず、iframeの有無では可視/不可視を見分けられない
+      （実測: どちらも0件）。可視モードは `min-h-16`（64px）の空きを必ず作るので、
+      それが無いことを見る＝画面にCloudflareの箱が出ていないこと。
+    */
+    await expect(
+      page.locator("form .min-h-16"),
+      "コード入力画面にCloudflareの表示枠が確保されている",
+    ).toHaveCount(0);
+    await expect
+      .poll(() => page.locator('input[name="captcha_token"]').inputValue(), {
+        timeout: 30_000,
+        message: "再送用のトークンが（不可視でも）入らない",
+      })
+      .not.toBe("");
+
     // 確認前は未確認ユーザーとして存在し、同意バージョンが記録されている
     const [created] = await query<{ id: string; confirmed_at: string | null }>(
       `select id, email_confirmed_at as confirmed_at from auth.users where email = $1`,

@@ -909,10 +909,11 @@ function SlotFields({
           </div>
         ) : (
           <Button
+            disabled={pending}
             onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
-            size="sm"
             type="button"
-            variant="ghost"
+            /* 投稿作成の同じボタンと同じ見た目にする（T-M8-138）。同じ操作が画面で違って見えないように。 */
+            variant="subtle"
           >
             パターンを追加
           </Button>

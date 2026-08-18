@@ -89,7 +89,14 @@ export function EmailCodeForm({ email }: { email: string }) {
         <p className="text-sm text-muted-foreground">
           コードが届かない場合は、迷惑メールフォルダをご確認のうえ再送してください。
         </p>
-        <TurnstileWidget action="signup-resend" resetSignal={resendState} />
+        {/*
+          **コードを打つ画面にCloudflareのUIを出さない**（T-M8-138・運営者の指示）。
+          コード検証自体は人間確認を求めていないので、同じ画面にウィジェットが見えていると
+          「コードを打つのに確認が要る」と読めてしまう。
+          ただし Supabase の `resend` はcaptcha有効時にトークン無しを拒否するため、
+          確認そのものは不可視で残す（外すと再送が壊れる）。
+        */}
+        <TurnstileWidget action="signup-resend" invisible resetSignal={resendState} />
         <Button disabled={isResending} type="submit" variant="outline">
           {isResending ? "再送しています…" : "コードを再送"}
         </Button>

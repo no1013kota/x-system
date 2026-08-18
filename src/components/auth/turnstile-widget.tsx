@@ -15,6 +15,8 @@ interface TurnstileApi {
       "error-callback": (code?: string) => void;
       "expired-callback": () => void;
       sitekey: string;
+      /** `invisible` は利用者に何も見せない（疑わしいときだけCloudflareが割り込む）。 */
+      size?: "invisible";
       theme: "auto";
     },
   ): string;
@@ -38,12 +40,25 @@ interface TurnstileWidgetProps {
   action: "login" | "password-reset" | "signup" | "signup-resend";
   fieldError?: string;
   resetSignal: unknown;
+  /**
+   * 目に見えない形で確認する（T-M8-138・運営者の指示 2026-08-18）。
+   *
+   * **6桁コードを打つ画面にCloudflareのUIを出さない**ため。コード入力そのものには
+   * 人間確認を求めていないのに、同じ画面の「コードを再送」にウィジェットが出ていると
+   * 「コードを打つのに確認が要る」と読めてしまう。
+   *
+   * **確認そのものは残す。** Supabaseの `resend` はプロジェクトでcaptchaを有効にしていると
+   * トークン無しでは拒否するため、外すと再送が壊れる。`size: "invisible"` は
+   * 疑わしいときだけCloudflareが割り込み、通常は利用者に何も見せない。
+   */
+  invisible?: boolean;
 }
 
 export function TurnstileWidget({
   action,
   fieldError,
   resetSignal,
+  invisible = false,
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -110,6 +125,7 @@ export function TurnstileWidget({
         );
       },
       sitekey: siteKey,
+      ...(invisible ? { size: "invisible" as const } : {}),
       theme: "auto",
     });
 
@@ -117,7 +133,7 @@ export function TurnstileWidget({
       if (widgetIdRef.current) turnstile.remove(widgetIdRef.current);
       widgetIdRef.current = null;
     };
-  }, [action, scriptReady, siteKey]);
+  }, [action, invisible, scriptReady, siteKey]);
 
   useEffect(() => {
     const widgetId = widgetIdRef.current;
@@ -145,7 +161,7 @@ export function TurnstileWidget({
         strategy="afterInteractive"
       />
       <input name="captcha_token" type="hidden" value={token} />
-      <div ref={containerRef} className="min-h-16" />
+      <div ref={containerRef} className={invisible ? undefined : "min-h-16"} />
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}
