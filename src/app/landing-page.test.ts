@@ -22,8 +22,15 @@ function read(path: string): string {
 
 const PAGE = read("src/app/page.tsx");
 const PRICING = read("src/components/lp/pricing.tsx");
-/** キャンペーン価格の表示はLPと /plans で共通（T-M8-122）。文言の決まりはここが守る。 */
-const CAMPAIGN_PRICE = read("src/components/billing/campaign-price.tsx");
+/**
+ * **キャンペーン価格を実際に描いている画面を見る**（T-M8-137）。
+ *
+ * 以前は共通部品 `campaign-price.tsx` を読んでいたが、T-M8-125 で比較表へ寄せた結果
+ * **その部品はどこからも import されなくなり、この検査は誰も描かないファイルを見ていた**
+ * （設定＞課金は自前で描いているのに、規則が当たっていなかった）。部品は削除し、
+ * 検査は「実際に `regularPriceJpy` を描く画面」へ向ける。
+ */
+const SETTINGS_BILLING = read("src/app/app/settings/page.tsx");
 /** プラン比較表（T-M8-125）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
 const COMPARISON_TABLE = read("src/components/billing/plan-comparison-table.tsx");
 const COMPARISON = read("src/lib/plan-comparison.ts");
@@ -157,9 +164,9 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
     // 表示はLPと /plans で共通の部品（T-M8-122）。**その部品を見る**——LP側だけを見ていると、
     // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
-    // 表のヘッダがキャンペーン価格を出す（T-M8-125）。`campaign-price.tsx` は
-    // 他の画面（設定＞課金）が使い続けるので、どちらも決まりを守っていることを見る。
-    for (const source of [COMPARISON_TABLE, CAMPAIGN_PRICE]) {
+    // 表のヘッダがキャンペーン価格を出す（T-M8-125）。設定＞課金は自前で描くので、
+    // **両方が決まりを守っていること**を見る（片方だけ見ると他方が黙って外れる）。
+    for (const source of [COMPARISON_TABLE, SETTINGS_BILLING]) {
       expect(source).toContain("regularPriceJpy");
       expect(source).toContain("RELEASE_CAMPAIGN.afterLabel");
     }
@@ -168,7 +175,7 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
       source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const [name, source] of [
       ["比較表", COMPARISON_TABLE],
-      ["キャンペーン価格", CAMPAIGN_PRICE],
+      ["設定＞課金", SETTINGS_BILLING],
       ["LP料金", PRICING],
     ] as const) {
       expect(withoutComments(source), `${name}で「通常価格」は景表法上使えない`).not.toContain(
