@@ -23,6 +23,20 @@ const DATE_LINE = /最終更新[:：]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/;
 const git = (args) =>
   execFileSync("git", ["-c", "core.quotepath=false", ...args], { encoding: "utf8" }).trim();
 
+/*
+  **浅いcloneでは判定できないので止める**（2026-08-18）。
+  この検査は「その文書を最後に変えたコミットの日付」を git履歴から読む。
+  CIの既定（`actions/checkout` の depth 1）だと履歴が1件しか無く、
+  **全文書が「今日変わった」ように見えて誤検知する**（実際にCIだけが落ちた）。
+  黙って通すのではなく、原因と直し方を出して止める。
+*/
+if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
+  console.error("❌ 履歴が浅いclone（shallow）のため更新日を判定できません");
+  console.error("   → CIなら actions/checkout に `fetch-depth: 0` を付けてください");
+  console.error("   → 手元なら `git fetch --unshallow` を実行してください");
+  process.exit(1);
+}
+
 /** 追跡下の docs/**.md すべて。 */
 const files = git(["ls-files", "docs/*.md", "docs/**/*.md"]).split("\n").filter(Boolean);
 
