@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
@@ -142,21 +142,46 @@ describe("同意状態の列は1つの正本から引く", () => {
     expect(required.privacy).toBe(true);
   });
 
-  it("3経路が同じ正本を読んでいる（写経が復活したら落ちる）", () => {
-    const sources = [
-      "../../app/app/consent/page.tsx",
-      "../../app/actions/legal-consent.ts",
-      "./legal-consent-server.ts",
-    ].map((rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"));
-    for (const source of sources) {
-      expect(
-        source.includes("LEGAL_CONSENT_SELECT"),
-        "列を写経している。LEGAL_CONSENT_SELECT を使ってください",
-      ).toBe(true);
-      expect(
-        source,
-        "列リストの直書きが残っている",
-      ).not.toContain('"terms_version, terms_accepted_at');
+  /**
+   * **正本を読んでいる経路を走査で見つける**（T-M8-144）。
+   *
+   * 以前は3本のパスを手書きで列挙していたため、あとから増えた再同意バナーの経路
+   * （`src/app/app/layout.tsx`）が検査外だった——**そこで列リストを写経しても落ちない**。
+   * ファイル名の手書き列挙は、新しい経路が増えたときの追記を人の記憶に預ける（§11）。
+   */
+  it("正本を読む全経路で列の写経が無い（経路が増えても自動で対象になる）", () => {
+    const root = fileURLToPath(new URL("../../", import.meta.url));
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(e.name) && !e.name.includes(".test.")) files.push(full);
+      }
+    };
+    walk(root);
+
+    const users = files.filter((f) => {
+      const s = readFileSync(f, "utf8");
+      return (
+        /legal-consent"/.test(s) && /LEGAL_CONSENT_SELECT|requiredLegalConsents/.test(s)
+      );
+    });
+
+    // **0件・件数減少で気付ける**ようにする（走査が壊れたら落ちる）。
+    expect(users.length, "正本を読む経路が見つからない（走査条件を確認）").toBeGreaterThanOrEqual(4);
+
+    /*
+      **引用符の種類に依らず列の並びそのものを見る**。以前は `'"terms_version, ...'` と
+      ダブルクォート込みで探していたため、**テンプレートリテラル（バッククォート）の中に
+      写経しても素通り**した（`app/layout.tsx` は select をテンプレートリテラルで組む）。
+    */
+    const COPIED = /terms_version,\s*terms_accepted_at/;
+    for (const f of users) {
+      const source = readFileSync(f, "utf8");
+      // 正本の定義ファイル自身は列を書いてよい（そこが正本なので）。
+      if (f.endsWith("legal-consent.ts")) continue;
+      expect(COPIED.test(source), `${f}: 列リストの直書きが残っている`).toBe(false);
     }
   });
 });

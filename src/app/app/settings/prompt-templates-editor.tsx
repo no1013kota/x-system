@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
-import { legacyPatternLabel } from "@/lib/analytics/humanize-report";
 import { useState } from "react";
 
 import {
@@ -26,9 +25,12 @@ const MAX_CHARS = 8000;
  * それまでの間、既定パターンの名前は当時の対応表から出す（利用者が名前を変えても
  * この画面の見出しは変わらないが、正しい編集先は `post_patterns` なので実害はない）。
  */
-function kindLabel(kind: string): string {
-  return kind === "image" ? "画像プロンプト" : legacyPatternLabel(kind);
-}
+/**
+ * この画面が扱うのは画像プロンプトだけ（T-M8-140）。
+ * 以前は投稿の型（p1〜p6）のラベルへも落ちる分岐があり、**再読み込みで対象がすり替わったとき
+ * 見出しが「ニュース解説」に変わって、間違ったものを編集している自覚を奪っていた**。
+ */
+const PROMPT_HEADING = "画像プロンプト";
 
 /**
  * **画面に残す通知だけ**（T-M8-18）。判断は `base-md-editor.tsx` と同じ。
@@ -196,7 +198,7 @@ export function PromptTemplatesEditor({
             「他に何かある」と思わせるだけの操作になる。投稿の型は「投稿作成プロンプト」の
             パターン管理（全件を並べる）で編集する。
           */}
-          <h3 className="text-body font-bold text-ink">{kindLabel(selectedKind)}</h3>
+          <h3 className="text-body font-bold text-ink">{PROMPT_HEADING}</h3>
           {current ? (
             <Badge className="mt-4" tone={current.isOverride ? "brand" : "neutral"}>
               {current.isOverride ? "カスタム" : "既定"}
