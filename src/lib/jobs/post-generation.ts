@@ -44,6 +44,7 @@ import {
   createDraftCreatedNotification,
   persistJobFailure,
 } from "./notifications";
+import { ensureAutoPostPublishJob, isAutoMode } from "./publish-chain";
 import { defaultRecordStage } from "./stale";
 
 /** premium文章生成の月次上限（BYOKは上限なし=undefined）。 */
@@ -94,6 +95,11 @@ interface JobRow {
     placeholder_values?: Record<string, string> | null;
     parent_draft_id?: string | null;
     previous_posts?: string[];
+    /**
+     * 予約の実行モード（`schedule-enqueue` が書く）。`auto` は生成成功後に投稿まで進む
+     * （要件04 §10 手順6/7・T-M8-143）。手動起点は未設定＝下書きで止まる。
+     */
+    mode?: "draft" | "auto";
   };
   x_account_id: string;
   /** 今回のattempt番号（leaseで加算済み）。再試行時のWeb検索縮退に使う。 */
@@ -190,17 +196,23 @@ async function ensureImageChildJob(
     /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobのinputから引き継ぐ。 */
     imagePromptOverride?: string | null;
     baseMdOverride?: string | null;
+    /** 親の実行モード。`auto` なら子が画像確定後に投稿jobを作る（T-M8-143）。 */
+    mode?: "draft" | "auto";
   },
 ): Promise<void> {
   // `generation_jobs.input` は NOT NULL（既定 '{}'）。override が無いときも '{}' を渡す
   // （null を渡すと制約違反で子jobが作れない。2026-08-15 に smoke:live で検出・T-M8-93）。
   const input =
-    params.imagePromptOverride || params.baseMdOverride
-      ? JSON.stringify({
-          image_prompt_override: params.imagePromptOverride ?? null,
-          base_md_override: params.baseMdOverride ?? null,
-        })
-      : "{}";
+    (() => {
+      const carried: Record<string, unknown> = {};
+      if (params.imagePromptOverride || params.baseMdOverride) {
+        carried.image_prompt_override = params.imagePromptOverride ?? null;
+        carried.base_md_override = params.baseMdOverride ?? null;
+      }
+      // **modeは必ず引き継ぐ**（T-M8-143）。子が画像確定後に投稿へ進むかの判断に使う。
+      if (params.mode) carried.mode = params.mode;
+      return Object.keys(carried).length > 0 ? JSON.stringify(carried) : "{}";
+    })();
   await db.query(
     `insert into generation_jobs
        (x_account_id, kind, trigger, parent_job_id, draft_id, request_key, input, status)
@@ -589,7 +601,17 @@ const hasInputUrl = Boolean(job.input.source_url);
       draftId,
       imagePromptOverride: job.input.image_prompt_override,
       baseMdOverride: job.input.base_md_override,
+      // 画像確定後に投稿へ進むかを子へ伝える（子は親のinputを見られない・T-M8-143）。
+      mode: job.input.mode,
     });
+  } else if (isAutoMode(job.input)) {
+    /*
+      **auto は投稿へ進む**（要件04 §10 手順6・T-M8-143）。ここが無かったため、
+      予約の自動投稿は下書きを作るだけで投稿されていなかった。
+      `draft_created` は送らない——投稿されるので「下書きができました」は誤った案内になる。
+      阻害警告と自動投稿同意の確認は `post-publish` が投稿直前に行い、止めた理由をdraftへ残す。
+    */
+    await ensureAutoPostPublishJob(db, { xAccountId: job.x_account_id, draftId });
   } else {
     await createDraftCreatedNotification(db, { userId: job.user_id, draftId });
   }

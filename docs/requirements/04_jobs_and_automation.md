@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.35 |
+| バージョン | v1.36 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -163,18 +163,18 @@ enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成
 3. `validating`→`research`→`writing`とstage更新する。
 4. AI出力をJSON、ポスト数、加重文字数、NG、出典で検証する。
 5. draftを作成する。ニュース起点は`source_news_item_id`を保存する。
-6. 画像OFFならdraftを確定する。draft modeは通知、auto modeは阻害警告がなければ`post_publish`子jobを作る。**auto modeの`post_publish`作成は未実装**（下の注記）。
-7. 画像ONなら`image_generation`子jobを作り、本文生成jobは`succeeded`にする。画像子jobが成功または最終失敗した時点でdraftを確定し、draft modeの通知またはauto modeの`post_publish`作成へ進む。**auto modeの`post_publish`作成は未実装**（下の注記）。
+6. 画像OFFならdraftを確定する。draft modeは通知、auto modeは阻害警告がなければ`post_publish`子jobを作る。
+7. 画像ONなら`image_generation`子jobを作り、本文生成jobは`succeeded`にする。画像子jobが成功または最終失敗した時点でdraftを確定し、draft modeの通知またはauto modeの`post_publish`作成へ進む。
 
-> **未実装（2026-08-18 に発見・T-M8-143）**: **成功経路に auto mode の `post_publish` 作成が無い。**
-> `post_publish` を作っているのは (1) 画面からの手動投稿（`generation-jobs.ts`・trigger=`manual`）と
-> (2) **画像jobがstale/最終失敗したときの回収**（`terminal.ts`・trigger=`system`）の2箇所だけで、
-> `post-generation.ts` も `image-generation.ts` も成功時は `draft_created` 通知で終わっている
-> （`post-generation.ts` の冒頭コメントに「auto時の post_publish 子job作成はM4で追加する」と
-> 書かれたまま残っている）。したがって **`mode=auto` の予約枠は下書きを作るが投稿しない。**
-> 予約の作成・同意ゲート・enqueue・日次上限・`post_publish` handler 自体は実装済みなので、
-> 足りないのは「生成成功 → 投稿job作成」の連鎖1本。
-8. 親workerは子jobを作成し、**自身のjobを終端状態（succeeded/failed）へcommitしてから**子jobをdispatchする（同一Xアカウント直列制約により、親がrunningのままでは子がleaseできないため。画像workerが`post_publish`を作る場合も同じ順序）。同一Function内で子jobの本処理は行わない。dispatch失敗時はqueuedのまま残り、次の`scheduler_tick`（最大5分後）が回収する。
+> **2026-08-18 に実装（T-M8-143）**: それまで**成功経路に auto mode の `post_publish` 作成が無く、
+> `mode=auto` の予約枠は下書きを作るが投稿しなかった**（`post_publish` を作っていたのは
+> 画面からの手動投稿と、画像jobがstale/最終失敗したときの回収の2箇所だけ）。
+> 連鎖は `src/lib/jobs/publish-chain.ts` の `ensureAutoPostPublishJob` に集約し、
+> **冪等keyは `job:{draft_id}:post_publish:auto`（draft単位）**にしてある——
+> 本文生成の成功・画像生成の成功・画像失敗の回収の3経路が同じ下書きで投稿へ進もうとするため、
+> 経路ごとのkey（`parent:...`）にすると**同じ下書きが2回投稿されうる**。
+> auto では `draft_created` 通知を出さない（投稿されるので「下書きができました」は誤った案内）。
+> 阻害警告と自動投稿同意の確認は投稿直前に `post_publish` 側で行う（判定を2箇所に置かない）。
 
 この連鎖により「生成→画像→投稿」の各段は独立したFunctionで実行され、段間の遅延はdispatch往復の数秒のみとなる。画像ONのautoスロットでも投稿は定刻から概ね5分以内、dispatch失敗が挟まっても10分程度で完了する。
 

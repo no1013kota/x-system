@@ -115,14 +115,66 @@ const JOB_ROW = {
   user_id: "user1",
   base_md: BASE_MD,
   plan: "premium",
-  input: null as { regenerate?: boolean } | null,
+  input: null as { regenerate?: boolean; mode?: "draft" | "auto" } | null,
 };
 
 const REGEN_JOB_ROW = { ...JOB_ROW, input: { regenerate: true } };
+/** 予約のauto枠（親から mode を引き継いだ子job・T-M8-143）。 */
+const AUTO_JOB_ROW = { ...JOB_ROW, input: { mode: "auto" as const } };
 
 const draftRow = (images: unknown[] = []) => ({
   thread: [{ local_id: "p1", text: "1ポスト目の本文", weighted_length: 8 }],
   images,
+});
+
+describe("画像確定後の自動投稿への連鎖（T-M8-143）", () => {
+  /**
+   * **画像ONのautoは画像確定後に投稿へ進む**（要件04 §10 手順7）。
+   * これが無かったため、画像ONの予約は画像まで作って下書きで止まっていた。
+   */
+  it("autoなら post_publish を作り、draft_created は送らない", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [AUTO_JOB_ROW];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (TEMPLATES.test(sql)) return [];
+      return [];
+    });
+    const { textGen } = fakeTextGen('{"prompt":"a cat","aspect":"16:9"}');
+    await executeImageGeneration(
+      baseDeps(db, {
+        uploadImage: vi.fn(async () => {}),
+        resolveTextProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
+      }),
+    );
+    const PUB_INSERT = /insert into generation_jobs[\s\S]*'post_publish'/;
+    const pub = writes.find((w) => PUB_INSERT.test(w.sql));
+    expect(pub, "post_publish が作られていない").toBeDefined();
+    // draft単位の冪等key（失敗回収の経路と衝突させ、二重投稿を防ぐ）。
+    expect(pub!.params).toContain("job:draft1:post_publish:auto");
+    // 投稿されるので「下書きができました」は送らない。
+    expect(writes.some((w) => NOTIFY.test(w.sql)), "draft_created を送っている").toBe(false);
+  });
+
+  it("draft（mode未設定）なら従来どおり通知だけ（勝手に投稿しない）", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [JOB_ROW];
+      if (LOAD_DRAFT.test(sql)) return [draftRow()];
+      if (TEMPLATES.test(sql)) return [];
+      return [];
+    });
+    const { textGen } = fakeTextGen('{"prompt":"a cat","aspect":"16:9"}');
+    await executeImageGeneration(
+      baseDeps(db, {
+        uploadImage: vi.fn(async () => {}),
+        resolveTextProvider: async () => ({ textGen, provider: "anthropic", model: "claude-x" }),
+      }),
+    );
+    expect(
+      writes.some((w) => /insert into generation_jobs[\s\S]*'post_publish'/.test(w.sql)),
+      "投稿jobを作っている",
+    ).toBe(false);
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+  });
 });
 
 describe("executeImageGeneration", () => {

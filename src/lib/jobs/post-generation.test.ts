@@ -91,12 +91,12 @@ function patternSpec(over: Record<string, unknown> = {}) {
   };
 }
 
-function jobRow(imageEnabled: boolean) {
+function jobRow(imageEnabled: boolean, mode?: "draft" | "auto") {
 return {
     pattern_id: "pat-p2",
     pattern_spec: patternSpec(),
     trigger: "manual",
-    input: { image_enabled: imageEnabled },
+    input: { image_enabled: imageEnabled, ...(mode ? { mode } : {}) },
     x_account_id: "xacc1",
     user_id: "user1",
     base_md: "## 1. a\n## 2. b\n## 3. c\n## 4. d\n## 5. e\n## 6. f",
@@ -154,7 +154,68 @@ describe("executePostGeneration image chain", () => {
     expect(ledger[0].params[13]).toBe("gen:job-x:0");
   });
 
-  it("ensures the child job even on the idempotent already-done path when image is ON", async () => {
+/**
+   * T-M8-143。**auto は生成成功後に投稿へ進む。**
+   *
+   * ここが無かったため `mode=auto` の予約は下書きを作るだけで投稿されていなかった
+   * （`post_publish` を作っていたのは手動投稿と画像失敗の回収の2箇所だけ）。
+   */
+  it("画像OFFのautoは post_publish を作り、draft_created は送らない", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [jobRow(false, "auto")];
+      if (EXISTING.test(sql)) return [];
+      if (RECENT.test(sql)) return [];
+      if (TEMPLATES.test(sql)) return [];
+      if (INSERT_DRAFT.test(sql)) return [{ id: "draft1" }];
+      return [];
+    });
+
+    await executePostGeneration(deps(db));
+    const PUB_INSERT = /insert into generation_jobs[\s\S]*'post_publish'/;
+    const pub = writes.find((w) => PUB_INSERT.test(w.sql));
+    expect(pub, "post_publish が作られていない").toBeDefined();
+    // **draft単位の冪等key**（経路をまたいで衝突させ、二重投稿を防ぐ）。
+    expect(pub!.params).toContain("job:draft1:post_publish:auto");
+    // 投稿されるので「下書きができました」は送らない（誤った案内になる）。
+    expect(writes.some((w) => NOTIFY.test(w.sql)), "draft_created を送っている").toBe(false);
+  });
+
+  it("画像OFFの draft は従来どおり通知だけ（勝手に投稿しない）", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [jobRow(false, "draft")];
+      if (EXISTING.test(sql)) return [];
+      if (RECENT.test(sql)) return [];
+      if (TEMPLATES.test(sql)) return [];
+      if (INSERT_DRAFT.test(sql)) return [{ id: "draft1" }];
+      return [];
+    });
+
+    await executePostGeneration(deps(db));
+    expect(
+      writes.some((w) => /insert into generation_jobs[\s\S]*'post_publish'/.test(w.sql)),
+      "投稿jobを作っている",
+    ).toBe(false);
+    expect(writes.some((w) => NOTIFY.test(w.sql))).toBe(true);
+  });
+
+  it("画像ONのautoは子jobへ mode を引き継ぐ（子が投稿へ進めるように）", async () => {
+    const { db, writes } = makeDb((sql) => {
+      if (LOAD_JOB.test(sql)) return [jobRow(true, "auto")];
+      if (EXISTING.test(sql)) return [];
+      if (RECENT.test(sql)) return [];
+      if (TEMPLATES.test(sql)) return [];
+      if (INSERT_DRAFT.test(sql)) return [{ id: "draft1" }];
+      return [];
+    });
+
+    await executePostGeneration(deps(db));
+    const child = writes.find((w) => INSERT_JOB.test(w.sql));
+    expect(child?.params[3]).toBe("parent:job-x:image_generation:draft1");
+    // 子は親のinputを見られないので、mode を input へ入れて渡す。
+    expect(String(child?.params[4])).toContain('"mode":"auto"');
+  });
+
+    it("ensures the child job even on the idempotent already-done path when image is ON", async () => {
     const { db, writes } = makeDb((sql) => {
       if (LOAD_JOB.test(sql)) return [jobRow(true)];
       if (EXISTING.test(sql)) return [{ id: "draft1" }]; // draft already exists
