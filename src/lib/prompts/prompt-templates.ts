@@ -106,8 +106,19 @@ export interface PromptTemplateView {
 }
 
 /** md/premium 以外は編集不可（standard は forbidden・要件06 §9）。 */
+/**
+ * プロンプトを編集できるプランか（T-M8-135）。
+ *
+ * **判定はここだけに置く。** 保存時の拒否（`assertPromptEditablePlan`）と、
+ * 実行時に枠の `prompt_override` を使うかの判定（`schedule-enqueue`）が別々の条件を持つと、
+ * 「画面には出ないのに生成では効く」状態が生まれる。
+ */
+export function promptEditablePlan(plan: string): boolean {
+  return plan === "md" || plan === "premium";
+}
+
 export function assertPromptEditablePlan(plan: string): void {
-  if (plan !== "md" && plan !== "premium") {
+  if (!promptEditablePlan(plan)) {
     throw new AppError("forbidden", { details: { reason: "plan_not_allowed" } });
   }
 }

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.37 |
+| バージョン | v1.38 |
 | 更新日 | 2026-08-18 |
 | 関連 | 全画面、全ジョブ |
 
@@ -197,7 +197,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listScheduleSlots` | none | slots | active_x_account |
-| `createScheduleSlot` | pattern, weekdays, time_jst, mode, theme, instructions, image_enabled | slot | P-5不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須 |
+| `createScheduleSlot` | pattern_id, weekdays, time_jst, mode, theme, instructions, image_enabled, **source_url, placeholder_values, prompt_override** | slot | 引用URL必須のパターンは不可、9:00〜22:00、00/30分。autoは現行versionの明示同意必須。`source_url`は**httpsのみ**（投稿作成の`createGenerationJob`とDBのCHECKと同条件）。`placeholder_values`は**選んだパターンが持つ項目だけ保存し、それ以外は捨てる**。`prompt_override`は空白だけなら`null`（T-M8-135） |
 | `updateScheduleSlot` | slot_id, expected_updated_at, fields | slot | 所有者のみ。楽観lock。autoへの変更・再有効化は現行versionの明示同意必須 |
 | `disableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ |
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |

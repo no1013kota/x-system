@@ -16,12 +16,33 @@ import {
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
 import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
-import type { PatternOption } from "@/lib/post/post-patterns-store";
+import {
+  NEW_PATTERN_PROMPT_TEMPLATE,
+  type PatternOption,
+  type PatternPromptView,
+} from "@/lib/post/post-patterns-store";
+import {
+  PatternFields,
+  actionReason,
+  emptyPatternDraft,
+  patternReasonMessage,
+  toPatternPayload,
+  type PatternDraft,
+} from "@/components/post/pattern-fields";
+import { PromptBlock } from "@/components/post/prompt-block";
+import {
+  createPatternAction,
+  updatePatternPromptAction,
+} from "@/app/actions/post-patterns";
+
+/** プロンプトの上限（投稿作成・AI設定と同値・T-M8-92）。 */
+const PROMPT_MAX_CHARS = 8000;
 import { selectablePostThemeOptions, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { validateSlotForm } from "@/lib/schedule/slot-form";
@@ -95,6 +116,12 @@ interface SlotFormValues {
   theme: string;
   instructions: string;
   image_enabled: boolean;
+  /** この枠の参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じもの。 */
+  source_url: string;
+  /** プレースホルダー名 → 値（T-M8-135）。 */
+  placeholder_values: Record<string, string>;
+  /** この枠だけのプロンプト。null = パターンのものをそのまま使う（T-M8-135）。 */
+  prompt_override: string | null;
 }
 
 function toFormValues(slot: ScheduleSlotView): SlotFormValues {
@@ -106,12 +133,16 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
     theme: slot.theme ?? "",
     instructions: slot.instructions ?? "",
     image_enabled: slot.image_enabled,
+    source_url: slot.source_url ?? "",
+    placeholder_values: { ...slot.placeholder_values },
+    prompt_override: slot.prompt_override,
   };
 }
 
 export function ScheduleManager({
   slots,
   patterns,
+  patternPrompts,
   imageProviders,
   automationConsented,
   xAccountId,
@@ -120,6 +151,11 @@ export function ScheduleManager({
   slots: ScheduleSlotView[];
   /** 予約に使えるパターン（引用URLが必須のものは含まない・T-M8-129 U3）。 */
   patterns: PatternOption[];
+  /**
+   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
+   */
+  patternPrompts: Record<string, PatternPromptView> | null;
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -181,6 +217,7 @@ export function ScheduleManager({
             imageProviders={imageProviders}
             onCancel={() => setCreating(false)}
             onSubmitDone={() => setCreating(false)}
+            patternPrompts={patternPrompts}
             patterns={patterns}
             submitLabel="作成"
             target={{ kind: "create" }}
@@ -193,6 +230,7 @@ export function ScheduleManager({
         accountHandle={accountHandle}
         automationConsented={automationConsented}
         imageProviders={imageProviders}
+        patternPrompts={patternPrompts}
         patterns={patterns}
         slots={slots}
         xAccountId={xAccountId}
@@ -371,6 +409,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
 function SlotList({
   slots,
   patterns,
+  patternPrompts,
   imageProviders,
   automationConsented,
   xAccountId,
@@ -378,6 +417,11 @@ function SlotList({
 }: {
   slots: ScheduleSlotView[];
   patterns: PatternOption[];
+  /**
+   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
+   */
+  patternPrompts: Record<string, PatternPromptView> | null;
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -392,6 +436,7 @@ function SlotList({
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           key={slot.id}
+          patternPrompts={patternPrompts}
           patterns={patterns}
           slot={slot}
           xAccountId={xAccountId}
@@ -404,6 +449,7 @@ function SlotList({
 function SlotRow({
   slot,
   patterns,
+  patternPrompts,
   imageProviders,
   automationConsented,
   xAccountId,
@@ -411,6 +457,11 @@ function SlotRow({
 }: {
   slot: ScheduleSlotView;
   patterns: PatternOption[];
+  /**
+   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
+   */
+  patternPrompts: Record<string, PatternPromptView> | null;
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -530,7 +581,8 @@ function SlotRow({
             automationConsented={automationConsented}
             imageProviders={imageProviders}
             initial={toFormValues(slot)}
-              patterns={patterns}
+            patternPrompts={patternPrompts}
+            patterns={patterns}
             onCancel={() => setEditing(false)}
             onSubmitDone={() => setEditing(false)}
             submitLabel="保存"
@@ -548,6 +600,7 @@ type SlotTarget = { kind: "create" } | { kind: "edit"; slotId: string; expectedU
 function SlotFields({
   target,
   initial,
+  patternPrompts,
   imageProviders,
   automationConsented,
   xAccountId,
@@ -560,6 +613,11 @@ function SlotFields({
   target: SlotTarget;
   initial?: SlotFormValues;
   patterns: PatternOption[];
+  /**
+   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
+   */
+  patternPrompts: Record<string, PatternPromptView> | null;
   imageProviders: string[];
   automationConsented: boolean;
   xAccountId: string;
@@ -580,16 +638,88 @@ function SlotFields({
       theme: "",
       instructions: "",
       image_enabled: false,
+      source_url: "",
+      placeholder_values: {},
+      prompt_override: null,
     },
   );
   // 入力検証はその場に残し、操作の結果だけをトーストへ出す（T-M8-17）。
   // 同じstateに混ぜると、検証エラーまで5秒で消えて何を直せばよいか分からなくなる。
   const [validationError, setValidationError] = useState<string | null>(null);
   const toast = useToast();
-  const themeFieldId = `slot-theme-${target.kind === "edit" ? target.slotId : "new"}`;
+  const slotFieldPrefix = `slot-${target.kind === "edit" ? target.slotId : "new"}`;
+  const themeFieldId = `${slotFieldPrefix}-theme`;
   // 同意済み（サーバー判定）＋本フォームで同意した分。auto保存の前提。
   const [consented, setConsented] = useState(automationConsented);
   const [showConsent, setShowConsent] = useState(false);
+
+  /*
+    パターンの追加と生成プロンプトの編集（T-M8-135・運営者の指示 2026-08-18）。
+    投稿作成画面と同じ操作をここでもできるようにする——予約を組むときに
+    「この型が無い」「この指示を直したい」と気付くのはこの画面なので、
+    設定画面へ往復させると目的（予約を作る）が中断する。
+  */
+  const [options, setOptions] = useState(patterns);
+  const [prompts, setPrompts] = useState(patternPrompts);
+  const [newPattern, setNewPattern] = useState<PatternDraft | null>(null);
+  const [newPatternError, setNewPatternError] = useState<string | null>(null);
+  /** 編集中のプロンプト本文（null = 未編集）。パターンを切り替えたら破棄する。 */
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  /** once = この予約にだけ保存 ／ save = パターン自体を書き換える。 */
+  const [promptApply, setPromptApply] = useState<"once" | "save">("once");
+
+  const selectedPattern = options.find((o) => o.id === v.pattern_id) ?? null;
+  const patternPrompt = prompts?.[v.pattern_id] ?? null;
+  /**
+   * 表示する本文の優先順位: 編集中 → この枠の保存済み上書き → パターンの本文。
+   * **枠の上書きを先に見せる**。ここでパターン本体を見せると、
+   * 保存済みの上書きに気付かないまま上書きを消してしまう。
+   */
+  const promptValue = promptDraft ?? v.prompt_override ?? patternPrompt?.content ?? "";
+  const promptBase = v.prompt_override ?? patternPrompt?.content ?? "";
+  const promptEdited = promptDraft !== null && promptDraft !== promptBase;
+
+  /** パターンを切り替えたら、前のパターン向けの編集と入力値を持ち越さない。 */
+  function selectPattern(id: string) {
+    setV((cur) => ({ ...cur, pattern_id: id, placeholder_values: {}, prompt_override: null }));
+    setPromptDraft(null);
+    setPromptApply("once");
+  }
+
+  function addPattern() {
+    if (!newPattern) return;
+    setNewPatternError(null);
+    startTransition(async () => {
+      const res = await createPatternAction({
+        x_account_id: xAccountId,
+        ...toPatternPayload(newPattern, null),
+      });
+      if (res.status !== "success" || !res.pattern) {
+        setNewPatternError(patternReasonMessage(actionReason(res), res.message));
+        return;
+      }
+      const created = res.pattern;
+      setOptions((cur) => [...cur, created]);
+      // 追加直後から編集できるよう、本文も手元へ入れる（一覧を取り直さない・T-M8-68）。
+      setPrompts((cur) =>
+        cur === null
+          ? cur
+          : {
+              ...cur,
+              // **`updatedAt` は作成時の実値を使う**（T-M8-135）。null にすると
+              // 直後の「パターンに保存」が `prompt is null` 条件に当たって必ず衝突する。
+              [created.id]: {
+                content: newPattern.prompt,
+                isOverride: true,
+                updatedAt: created.promptUpdatedAt,
+              },
+            },
+      );
+      setNewPattern(null);
+      selectPattern(created.id);
+      toast.show({ tone: "success", title: "パターンを追加しました" });
+    });
+  }
 
   const toggleWeekday = (d: number) =>
     setV((cur) => ({
@@ -601,6 +731,39 @@ function SlotFields({
 
   function doSubmit() {
     startTransition(async () => {
+      /*
+        プロンプトを編集していたら、先に行き先を決める（T-M8-135）。
+        「パターンに保存」はここで書き戻し、枠の上書きは外す——両方に残すと
+        次に開いたとき**どちらが効いているのか画面から分からなくなる**。
+      */
+      let promptOverride = v.prompt_override;
+      if (promptEdited && promptDraft !== null) {
+        if (promptApply === "save") {
+          // キー名は `content`（`updatePromptSchema`）。Actionの引数は `unknown` なので
+          // 名前を間違えても型検査では気付けない——検証エラーで必ず失敗する。
+          const res = await updatePatternPromptAction({
+            pattern_id: v.pattern_id,
+            content: promptDraft,
+            expected_updated_at: patternPrompt?.updatedAt ?? null,
+          });
+          if (res.status !== "success") {
+            toast.show({
+              tone: "error",
+              title: "プロンプトを保存できませんでした",
+              description: patternReasonMessage(actionReason(res), res.message),
+            });
+            return;
+          }
+          setPrompts((cur) =>
+            cur === null
+              ? cur
+              : { ...cur, [v.pattern_id]: res.prompt ?? { content: promptDraft, isOverride: true, updatedAt: null } },
+          );
+          promptOverride = null;
+        } else {
+          promptOverride = promptDraft;
+        }
+      }
     const payload = {
         pattern_id: v.pattern_id,
         weekdays: v.weekdays,
@@ -609,6 +772,9 @@ function SlotFields({
         theme: v.theme,
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
+        source_url: v.source_url.trim() || null,
+        placeholder_values: v.placeholder_values,
+        prompt_override: promptOverride,
       };
       const res =
         target.kind === "create"
@@ -672,18 +838,10 @@ function SlotFields({
 
   return (
     <div className="space-y-4 text-sm">
-      {/* 投稿作成と同じ部品（T-M8-29）。 */}
-      <PatternRadioGroup
-        name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
-        onChange={(id) => setV((cur) => ({ ...cur, pattern_id: id }))}
-        options={patterns}
-        value={v.pattern_id}
-      />
-
       {/*
-        `<label>` で包まず `htmlFor` で結ぶ（T-M8-29）。包むと補足文まで読み上げ名に入り、
-        「テーマ 曜日ごとにテーマを変えられます…」という名前になってしまう。
-        idはスロットごとに複数のフォームが並ぶので一意にする。
+        並び順は運営者の指示（2026-08-18）: テーマ → パターン → パターンを追加 →
+        生成に使うプロンプト → 参考URL → プレースホルダー → 追加指示 → 曜日 → 時刻 → モード。
+        **「何を作るか」を上から順に決めてから、「いつ出すか」を決める**流れにする。
       */}
       <div className="max-w-xs">
         <label className="block font-medium" htmlFor={themeFieldId}>
@@ -709,6 +867,173 @@ function SlotFields({
           テーマを決めずにAIに任せるときは「その他」を選んでください。
         </p>
       </div>
+
+
+      {/* 投稿作成と同じ部品（T-M8-29）。削除は出さない（編集中の枠の足元が崩れる・T-M8-134）。 */}
+      <PatternRadioGroup
+        name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
+        onChange={selectPattern}
+        options={options}
+        value={v.pattern_id}
+      />
+
+      {/* パターンの追加（T-M8-135）。投稿作成と同じ入力欄を使う。 */}
+      {prompts ? (
+        newPattern ? (
+          <div className={`${cardClassName} p-4`}>
+            <CardTitle>新しいパターン</CardTitle>
+            {newPatternError ? <Notice tone="danger">{newPatternError}</Notice> : null}
+            <PatternFields
+              draft={newPattern}
+              idPrefix={`slot-new-pattern-${target.kind === "edit" ? target.slotId : "new"}`}
+              onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
+              promptRequired
+            />
+            <div className="mt-3 flex gap-2">
+              <Button disabled={pending} onClick={addPattern} size="sm" type="button">
+                {pending ? "追加中…" : "追加"}
+              </Button>
+              <Button
+                disabled={pending}
+                onClick={() => {
+                  setNewPattern(null);
+                  setNewPatternError(null);
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                キャンセル
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            パターンを追加
+          </Button>
+        )
+      ) : null}
+
+      {/*
+        生成に使うプロンプト（T-M8-135）。**mdプラン以上**（投稿作成・AI設定と同じ境界）。
+        予約は繰り返し実行されるので「この生成にだけ」ではなく**この予約にだけ**が既定。
+      */}
+      {prompts ? (
+        <details className="rounded-card border border-hairline bg-page">
+          <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
+            生成に使うプロンプト
+            {promptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
+            {v.prompt_override ? (
+              <span className="ml-2 text-caption text-ink-3">（この予約用に変更済み）</span>
+            ) : null}
+          </summary>
+          <div className="space-y-3 px-4 pb-4">
+            <p className="text-xs text-muted-foreground">
+              この予約の生成に使われる指示です。直して、この予約にだけ使うか、パターン自体に
+              保存して他でも使うかを選べます。
+            </p>
+            <PromptBlock
+              edited={promptEdited}
+              // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
+              groupName={`${slotFieldPrefix}-prompt-apply`}
+              label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
+              limit={PROMPT_MAX_CHARS}
+              mode={promptApply}
+              onceLabel="この予約にだけ使う"
+              onChange={setPromptDraft}
+              onMode={setPromptApply}
+              onReset={() => {
+                setPromptDraft(null);
+                setPromptApply("once");
+              }}
+              saveLabel="パターンに保存して他でも使う"
+              value={promptValue}
+            />
+            {v.prompt_override ? (
+              <button
+                className="text-body text-info-fg hover:underline"
+                onClick={() => {
+                  setV((cur) => ({ ...cur, prompt_override: null }));
+                  setPromptDraft(null);
+                  setPromptApply("once");
+                }}
+                type="button"
+              >
+                この予約用の変更をやめてパターンの内容に戻す
+              </button>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+
+      {/* 参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じ扱い。 */}
+      <div>
+        <label className="block font-medium" htmlFor={`${slotFieldPrefix}-source-url`}>
+          参考URL（任意）
+        </label>
+        <input
+          className="mt-1 h-9 w-full max-w-xl rounded-card border border-hairline bg-surface px-2 text-body"
+          id={`${slotFieldPrefix}-source-url`}
+          inputMode="url"
+          onChange={(e) => setV((cur) => ({ ...cur, source_url: e.target.value }))}
+          placeholder="https://..."
+          value={v.source_url}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          毎回このURLをAIが読んで題材にします。空欄ならAIが自分で題材を探します。
+        </p>
+      </div>
+
+      {/*
+        プレースホルダー（T-M8-132／T-M8-135）。選んだパターンが持つ `{名前}` の分だけ出す。
+        予約は繰り返すので、ここで入れた値が毎回同じように差し込まれる。
+      */}
+      {selectedPattern && selectedPattern.placeholders.length > 0 ? (
+        <div className="space-y-2">
+          {selectedPattern.placeholders.map((ph) => (
+            <div key={ph.name}>
+              <label
+                className="block font-medium"
+                htmlFor={`${slotFieldPrefix}-ph-${ph.name}`}
+              >
+                {ph.name}（任意）
+              </label>
+              <textarea
+                className="mt-1 w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
+                id={`${slotFieldPrefix}-ph-${ph.name}`}
+                maxLength={2000}
+                onChange={(e) =>
+                  setV((cur) => ({
+                    ...cur,
+                    placeholder_values: { ...cur.placeholder_values, [ph.name]: e.target.value },
+                  }))
+                }
+                rows={2}
+                value={v.placeholder_values[ph.name] ?? ""}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                プロンプトの <code>{`{${ph.name}}`}</code> に入ります。
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">追加指示（任意）</span>
+        <textarea
+          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
+          maxLength={2000}
+          onChange={(e) => setV((cur) => ({ ...cur, instructions: e.target.value }))}
+          rows={2}
+          value={v.instructions}
+        />
+      </label>
 
       <fieldset>
         <legend className="mb-1 font-medium">曜日</legend>
@@ -776,17 +1101,6 @@ function SlotFields({
           画像を生成するAIが未設定です。設定の「AIモデル設定」で画像AIを選ぶまでは画像なしで作成されます。
         </p>
       ) : null}
-
-      <label className="flex flex-col gap-1">
-        <span className="font-medium">追加指示（任意）</span>
-        <textarea
-          className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-          maxLength={2000}
-          onChange={(e) => setV((cur) => ({ ...cur, instructions: e.target.value }))}
-          rows={2}
-          value={v.instructions}
-        />
-      </label>
 
       <div className="flex gap-2">
         <Button disabled={pending} onClick={submit} size="sm" type="button">

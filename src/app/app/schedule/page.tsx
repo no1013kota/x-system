@@ -12,8 +12,10 @@ import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { formatJst } from "@/lib/format";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import {
+  listPatternPrompts,
   listSchedulablePatterns,
   type PatternOption,
+  type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -64,6 +66,11 @@ export default async function SchedulePage() {
 let drafts: DraftView[] = [];
   /** 予約に使えるパターン（引用URLが必須のものは除く・T-M8-129 U3）。 */
   let patterns: PatternOption[] = [];
+  /**
+   * 生成に使うプロンプト（T-M8-135）。**md/premium だけ**——投稿作成・AI設定と同じ境界。
+   * null なら画面はセクションごと出さない（standardに「編集できない欄」を見せない）。
+   */
+  let patternPrompts: Record<string, PatternPromptView> | null = null;
   if (activeXAccountId) {
     // 4取得は相互に独立（T-M8-67。以前は slots+meta → providers → drafts の3段直列で、
     // 停止/再開/削除/保存のたびの router.refresh() でも毎回この直列分を待っていた）。
@@ -85,6 +92,13 @@ let drafts: DraftView[] = [];
       listSchedulablePatterns(pooledDb, activeXAccountId),
     ]);
     patterns = schedulable;
+    if (meta?.plan === "md" || meta?.plan === "premium") {
+      const prompts = await listPatternPrompts(pooledDb, activeXAccountId);
+      // 予約に使えるパターンの分だけ渡す（選べないものを編集させない）。
+      patternPrompts = Object.fromEntries(
+        patterns.filter((o) => prompts[o.id]).map((o) => [o.id, prompts[o.id]]),
+      );
+    }
     slots = loaded;
     imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
@@ -108,6 +122,7 @@ let drafts: DraftView[] = [];
           accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
+          patternPrompts={patternPrompts}
           patterns={patterns}
           slots={slots}
           xAccountId={activeXAccountId}

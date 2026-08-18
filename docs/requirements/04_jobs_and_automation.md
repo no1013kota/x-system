@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.33 |
+| バージョン | v1.34 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -143,6 +143,8 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - premiumは生成枠、画像ONなら画像枠、autoなら通常投稿枠とURL付き投稿枠の両方にパターン別最大数から算出したロールバック安全残量がある
 - 当日JSTの`usage_events`にある同一Xアカウントの`operation=post_create`件数が、パターン別最大数を足して50以下
 - **引用URLが必須のパターンはスケジュール対象外**（毎回URLの指定が要るため自動実行できない）。DBのトリガと Server Action の両方で拒否する（要件02 §3.10・§3.21）
+
+enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成入力を生成jobの`input`へ渡す**。渡すのは`instructions`・`theme`・`image_enabled`・`mode`と、`source_url`・`placeholder_values`・`prompt_override`（T-M8-135・要件02 §3.10）。**キー名は投稿作成画面が送るものと同一にする**——ずれると「予約では設定が効かない」という、画面からは説明できない差になる（生成側は`job.input`のキー名しか見ない）。未設定は`null`で渡す（空文字や欠落を混ぜない）。**`prompt_override`は`md`/`premium`のときだけ渡す**——プロンプトの編集はそのプランの機能で、standardでは画面がセクションごと消えるため、そのまま使うと**画面に出ていない指示で生成される**（原則1・原則2に反する）。判定は保存時の拒否と同じ `promptEditablePlan()` を使う。
 
 スケジュールenqueue時は、出典を付けるP-1/P-3/P-4/P-6を「最終1件がURL付き、先行ポストは通常」と保守的に仮定する。最大数に対する必要残量はP-1=通常10＋URL1、P-2=通常1＋URL0、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1。生成後の投稿直前には実際にXへ送る各payloadで再分類し、通常/URL付き枠を別々に再判定する。
 

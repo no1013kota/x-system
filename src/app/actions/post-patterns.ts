@@ -18,6 +18,7 @@ import {
   PATTERN_PLACEHOLDER_MAX,
   PATTERN_PLACEHOLDER_NAME_MAX_CHARS,
   PATTERN_PROMPT_MAX_CHARS,
+  type CreatedPattern,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -116,7 +117,7 @@ export async function listPatternsAction(): Promise<
 
 export async function createPatternAction(
   input: unknown,
-): Promise<BaseResult & { pattern?: PatternOption }> {
+): Promise<BaseResult & { pattern?: CreatedPattern }> {
   const parsed = parseUserInput(createSchema, input);
   if (!parsed.success) return validationErrorResult(parsed.error);
   const auth = await requireUserId();

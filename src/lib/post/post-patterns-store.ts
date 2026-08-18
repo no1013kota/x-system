@@ -61,6 +61,8 @@ interface PatternRow {
   source_policy: PatternPolicy;
   include_news_digest: boolean;
   placeholders: unknown;
+  /** 作成直後だけ使う（`applyCreatePattern` の returning）。一覧では引かない。 */
+  updated_at?: string;
 }
 
 const COLUMNS = `id, seed_key, name, description, prompt, max_posts, max_posts_edit,
@@ -390,10 +392,15 @@ export function validatePlaceholders(
  * **名前の重複は `validation_error`（`name_taken`）で返す**。DBの unique 違反をそのまま
  * 投げると画面には汎用エラーしか出ず、利用者は何を直せばよいか分からない。
  */
+/** 作成結果。`promptUpdatedAt` は直後の「プロンプトを保存」の楽観ロックに使う（T-M8-135）。 */
+export interface CreatedPattern extends PatternOption {
+  promptUpdatedAt: string | null;
+}
+
 export async function applyCreatePattern(
   db: Queryable,
   input: PatternInput & { xAccountId: string },
-): Promise<PatternOption> {
+): Promise<CreatedPattern> {
   validatePatternInput(input, { isSystemDefault: false });
   if (await nameTaken(db, input.xAccountId, input.name.trim(), null)) {
     throw new AppError("validation_error", { details: { reason: "name_taken" } });
@@ -410,7 +417,7 @@ export async function applyCreatePattern(
         include_news_digest, asks_user_opinion, requires_quote_url, sort_order)
      values ($1,$2,$3,$4,$5::jsonb,$6,$7,'always',3,'with_url',false,false,false,
              coalesce((select max(sort_order) + 10 from post_patterns where x_account_id = $1), 100))
-     returning ${COLUMNS}`,
+     returning ${COLUMNS}, updated_at::text as updated_at`,
     [
       input.xAccountId,
       input.name.trim(),
@@ -421,7 +428,22 @@ export async function applyCreatePattern(
       Math.min(PATTERN_MAX_POSTS_LIMIT, maxPosts + 2),
     ],
   );
-  return toOption(rows[0]);
+  /*
+    **作成直後の `updated_at` を返す**（T-M8-135）。
+    自分で作ったパターンは `prompt` が必ず非nullなので、画面が
+    「上書きはまだ無い（`expectedUpdatedAt = null`）」として保存しにいくと
+    `applyUpdatePatternPrompt` の `prompt is null` 条件に当たり**必ず衝突する**。
+    画面が本当の値を持てるようにここで渡す。
+  */
+  /*
+    **`toIso` を通す。** 楽観ロックは `date_trunc('milliseconds', updated_at)` と比べるので、
+    Postgres の `::text`（マイクロ秒まで）をそのまま渡すと必ず一致せず衝突する。
+    `listPatternPrompts` と同じ変換にそろえる。
+  */
+  return {
+    ...toOption(rows[0]),
+    promptUpdatedAt: rows[0].updated_at ? toIso(rows[0].updated_at) : null,
+  };
 }
 
 /**

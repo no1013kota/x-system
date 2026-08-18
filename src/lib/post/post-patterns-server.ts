@@ -6,6 +6,7 @@ import { resolveActiveXAccountForUser } from "../x/account-actions-server";
 
 import {
   applyCreatePattern,
+  type CreatedPattern,
   applyDeletePattern,
   applyRestoreDefaultPatterns,
   applyUpdatePattern,
@@ -94,7 +95,7 @@ export async function updatePatternPromptForUser(input: {
 export async function createPatternForUser(input: {
   userId: string;
   pattern: PatternInput;
-}): Promise<PatternOption> {
+}): Promise<CreatedPattern> {
   const { xAccountId, plan } = await requireAccount(input.userId);
   assertPromptEditablePlan(plan);
   return runInPooledTx((tx) => applyCreatePattern(tx, { ...input.pattern, xAccountId }));

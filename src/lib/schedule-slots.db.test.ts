@@ -104,6 +104,89 @@ describe("enableScheduleSlot (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [userId]));
   }
 
+  /**
+   * T-M8-135。**予約にも投稿作成と同じ生成入力を持たせる**（運営者の指示・2026-08-18）。
+   *
+   * 参考URL・プレースホルダーの値・この枠だけのプロンプトが実DBへ往復し、
+   * **そのパターンに無いプレースホルダーの値は捨てられる**こと。
+   * 残すと、どこにも表示されない値が保存され続けて画面で説明できなくなる。
+   */
+  it("保存した生成入力が往復し、パターンに無いプレースホルダーは捨てられる", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
+    try {
+      const deps = depsFor(xAccountId);
+      // p2（自分の考え・意見）は `自分の考え` プレースホルダーを持つ。
+      const p2 = await withTransaction((c) => patternId(c, xAccountId, "p2"));
+      const created = await createScheduleSlot(
+        userId,
+        {
+          pattern_id: p2,
+          weekdays: [2],
+          time_jst: "10:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+          source_url: "https://example.com/a",
+          placeholder_values: { 自分の考え: "  値に前後の空白  ", 存在しない項目: "捨てられる" },
+          prompt_override: "# タスク\nこの枠だけのプロンプト",
+        },
+        deps,
+      );
+      expect(created.source_url).toBe("https://example.com/a");
+      expect(created.placeholder_values, "前後の空白は落とす／未定義の項目は捨てる").toEqual({
+        自分の考え: "値に前後の空白",
+      });
+      expect(created.prompt_override).toBe("# タスク\nこの枠だけのプロンプト");
+
+      // 空文字の prompt_override は「上書きなし」として null になる。
+      const updated = await updateScheduleSlot(
+        userId,
+        {
+          slot_id: created.id,
+          expected_updated_at: created.updated_at,
+          pattern_id: p2,
+          weekdays: [2],
+          time_jst: "10:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+          prompt_override: "   ",
+        },
+        deps,
+      );
+      expect(updated.prompt_override, "空白だけの上書きは持たない").toBeNull();
+      expect(updated.source_url, "未指定なら消える").toBeNull();
+      expect(updated.placeholder_values).toEqual({});
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it("参考URLは http/https 以外を受け付けない（DBのCHECKと同じ条件）", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
+    try {
+      const deps = depsFor(xAccountId);
+      const p1 = await withTransaction((c) => patternId(c, xAccountId, "p1"));
+      await expect(
+        createScheduleSlot(
+          userId,
+          {
+            pattern_id: p1,
+            weekdays: [2],
+            time_jst: "10:00",
+            mode: "draft",
+            theme: "other",
+            image_enabled: false,
+            source_url: "javascript:alert(1)",
+          },
+          deps,
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
   it("stops and resumes a draft slot, and the row really flips in the DB", async () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {

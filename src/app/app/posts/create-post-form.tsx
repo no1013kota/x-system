@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
+import { PromptBlock } from "@/components/post/prompt-block";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
   threadCountLabel,
@@ -99,68 +100,6 @@ interface PrereqError {
   message: string;
   settingsPath: string;
   missing?: PrereqItem[];
-}
-
-/**
- * プロンプト1ブロック分の編集UI（T-M8-92/93）。投稿の型・アカウント.md・画像生成で共有する。
- * 「この生成にだけ使う／保存して以後も使う」の選択と「元に戻す」を持つ。状態は親が持つ。
- */
-function PromptBlock({
-  label,
-  value,
-  limit,
-  edited,
-  mode,
-  note,
-  onChange,
-  onMode,
-  onReset,
-}: {
-  label: string;
-  value: string;
-  limit: number;
-  edited: boolean;
-  mode: "once" | "save";
-  note?: string;
-  onChange: (next: string) => void;
-  onMode: (next: "once" | "save") => void;
-  onReset: () => void;
-}) {
-  const over = value.length > limit;
-  return (
-    <div className="space-y-2">
-      <textarea
-        aria-label={label}
-        className="min-h-40 w-full rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5 transition-colors duration-150 focus:border-brand focus:outline-none"
-        onChange={(e) => onChange(e.target.value)}
-        value={value}
-      />
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={`text-xs ${over ? "text-danger-fg" : "text-muted-foreground"}`}>
-          {value.length.toLocaleString()} / {limit.toLocaleString()}字
-        </span>
-        {edited ? (
-          <>
-            <label className="flex items-center gap-1.5 text-body">
-              <input checked={mode === "once"} onChange={() => onMode("once")} type="radio" />
-              この生成にだけ使う
-            </label>
-            <label className="flex items-center gap-1.5 text-body">
-              <input checked={mode === "save"} onChange={() => onMode("save")} type="radio" />
-              保存して以後の生成にも使う
-            </label>
-            <button className="text-body text-info-fg hover:underline" onClick={onReset} type="button">
-              元に戻す
-            </button>
-          </>
-        ) : null}
-      </div>
-      {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
-      {over ? (
-        <Notice tone="danger">{limit.toLocaleString()}字以内で入力してください。</Notice>
-      ) : null}
-    </div>
-  );
 }
 
 /** 生成に使うプロンプト（型ごと）。updatedAt は「保存」の楽観ロックに使う（T-M8-92）。 */
@@ -304,7 +243,13 @@ function addPattern() {
         setPromptDraft(null);
         setTemplates((prev) => ({
           ...(prev ?? {}),
-          [added.id]: { content: newPattern.prompt, updatedAt: null, isOverride: true },
+          // `updatedAt` は作成時の実値（T-M8-135）。null だと直後の「保存して以後も使う」が
+          // `prompt is null` 条件に当たって必ず衝突する。
+          [added.id]: {
+            content: newPattern.prompt,
+            updatedAt: added.promptUpdatedAt,
+            isOverride: true,
+          },
         }));
         setNewPattern(null);
         setNewPatternError(null);
@@ -679,6 +624,7 @@ function removePattern(target: PatternOption) {
               {promptTab === "pattern" ? (
                 <PromptBlock
                   edited={promptEdited}
+                  groupName="create-prompt-apply-pattern"
                   label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
                   limit={PROMPT_MAX_CHARS}
                   mode={promptApply}
@@ -694,6 +640,7 @@ function removePattern(target: PatternOption) {
                 baseMdReady ? (
                   <PromptBlock
                     edited={baseMdEdited}
+                    groupName="create-prompt-apply-basemd"
                     label="アカウント.md（全パターン共通の発信定義書。AI設定＞アカウント.mdと同じもの）"
                     limit={BASE_MD_MAX}
                     mode={baseMdApply}
@@ -718,6 +665,7 @@ function removePattern(target: PatternOption) {
               ) : (
                 <PromptBlock
                   edited={imageEdited}
+                  groupName="create-prompt-apply-image"
                   label="画像生成プロンプト（「画像を生成する」がONのとき使われます）"
                   limit={PROMPT_MAX_CHARS}
                   mode={imageApply}

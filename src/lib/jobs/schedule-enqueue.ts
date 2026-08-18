@@ -7,6 +7,7 @@ import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "@/lib/usage/daily-post-limit-server";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import {
   parsePatternSpec,
   scheduledPostSlots,
@@ -38,6 +39,10 @@ interface DueSlotRow {
   /** 分野（発信テーマ）。NULL は指定なし＝AIがアカウント.mdの発信テーマから選ぶ（T-M8-28）。 */
   theme: string | null;
   image_enabled: boolean;
+  /** この枠の生成入力（T-M8-135）。投稿作成画面で毎回指定していたものを枠に保存したもの。 */
+  source_url: string | null;
+  placeholder_values: Record<string, string> | null;
+  prompt_override: string | null;
   user_id: string;
   x_status: string;
   base_md_version: number;
@@ -67,6 +72,7 @@ async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
               pattern_spec_of(ss.pattern_id) as pattern_spec,
               ss.time_jst::text as time_jst, ss.mode,
             ss.instructions, ss.theme, ss.image_enabled,
+            ss.source_url, ss.placeholder_values, ss.prompt_override,
             xa.user_id, xa.status as x_status, xa.base_md_version,
             (xa.automation_consent_version = $1 and xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as auto_consent_ok,
@@ -188,12 +194,26 @@ async function isEligible(
 async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise<boolean> {
   const timeHhmm = slot.time_jst.slice(0, 5);
   const runKey = `slot:${slot.id}:${slot.jst_date}:${timeHhmm}`;
+  /*
+    **投稿作成画面と同じキーで渡す**（T-M8-135）。生成側（`post-generation.ts`）は
+    `job.input` の形しか見ないので、ここでキー名がずれると
+    「予約では効かない」という、画面からは説明できない差になる。
+  */
   const input = JSON.stringify({
     instructions: slot.instructions ?? null,
     theme: slot.theme ?? null,
     image_enabled: slot.image_enabled,
     mode: slot.mode,
     requested_mode: slot.mode,
+    source_url: slot.source_url ?? null,
+    placeholder_values: slot.placeholder_values ?? null,
+    /*
+      **プラン境界を実行時にも守る**（T-M8-135）。プロンプトの編集は md/premium だけなので、
+      standard へ下がった枠の `prompt_override` は使わない。
+      画面はこのときセクションごと隠すため、使い続けると
+      **画面に出ていない指示で生成される**（原則1・原則2に反する）。
+    */
+    prompt_override: promptEditablePlan(slot.plan) ? (slot.prompt_override ?? null) : null,
   });
   return deps.runInTx(async (tx) => {
     const inserted = await tx.query<{ id: string }>(

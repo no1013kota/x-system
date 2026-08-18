@@ -183,3 +183,76 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
     await expectSkipped(dueSlot(), { daily: () => ({ rows: [{ n: 45 }] }) }); // 45 + p1(6) > 50
   });
 });
+
+/**
+ * T-M8-135。**枠に保存した生成入力が job の `input` へ載ること。**
+ *
+ * ここがずれると「予約では設定が効かない」という、画面からは説明できない差になる。
+ * 生成側（`post-generation.ts`）は `job.input` のキー名しか見ないので、
+ * **投稿作成画面と同じキー名**であることを固定する。
+ */
+describe("enqueueDueSlots — 枠の生成入力（T-M8-135）", () => {
+  it("参考URL・プレースホルダー・この枠のプロンプトを input へ渡す", async () => {
+    const slot = dueSlot({
+      // プロンプトの上書きは md/premium だけ有効（下の standard のテストが境界を固定する）。
+      plan: "md",
+      source_url: "https://example.com/a",
+      placeholder_values: { 自分の考え: "私はこう考える" },
+      prompt_override: "# タスク\nこの枠だけのプロンプト",
+      instructions: "冒頭に「検証:」を付ける",
+    });
+    const { db, writes } = makeDb(handlerFor(slot));
+    const res = await enqueueDueSlots(deps(db));
+    expect(res.enqueued).toBe(1);
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    expect(insert, "generation_jobs への insert が無い").toBeDefined();
+    // `input` は insert の params にJSON文字列で入る。
+    const input = JSON.parse(
+      insert!.params.find((x) => typeof x === "string" && x.startsWith("{")) as string,
+    );
+    expect(input.source_url).toBe("https://example.com/a");
+    expect(input.placeholder_values).toEqual({ 自分の考え: "私はこう考える" });
+    expect(input.prompt_override).toBe("# タスク\nこの枠だけのプロンプト");
+    expect(input.instructions).toBe("冒頭に「検証:」を付ける");
+  });
+
+  it("standardプランでは prompt_override を渡さない（画面に出ない指示で生成しない）", async () => {
+    // プロンプトの編集は md/premium だけ。standard へ下がった枠の上書きは画面から消えるので、
+    // 実行でも使わない（使うと「画面に無い指示で生成される」状態になる）。
+    const slot = dueSlot({ plan: "standard", prompt_override: "# 画面から見えない指示" });
+    const { db, writes } = makeDb(handlerFor(slot));
+    await enqueueDueSlots(deps(db));
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    const input = JSON.parse(
+      insert!.params.find((x) => typeof x === "string" && x.startsWith("{")) as string,
+    );
+    expect(input.prompt_override).toBeNull();
+    // 参考URL・プレースホルダーはプラン境界の外（プロンプト編集ではない）。
+    expect(input.source_url).toBeDefined();
+  });
+
+  it("md/premium では prompt_override を渡す", async () => {
+    for (const plan of ["md", "premium"]) {
+      const slot = dueSlot({ plan, prompt_override: "# この枠の指示" });
+      const { db, writes } = makeDb(handlerFor(slot));
+      await enqueueDueSlots(deps(db));
+      const insert = writes.find((w) => INSERT.test(w.sql));
+      const input = JSON.parse(
+        insert!.params.find((x) => typeof x === "string" && x.startsWith("{")) as string,
+      );
+      expect(input.prompt_override, plan).toBe("# この枠の指示");
+    }
+  });
+
+  it("未設定なら null で渡す（空文字や undefined を混ぜない）", async () => {
+    const { db, writes } = makeDb(handlerFor(dueSlot()));
+    await enqueueDueSlots(deps(db));
+    const insert = writes.find((w) => INSERT.test(w.sql));
+    const input = JSON.parse(
+      insert!.params.find((x) => typeof x === "string" && x.startsWith("{")) as string,
+    );
+    expect(input.source_url).toBeNull();
+    expect(input.placeholder_values).toBeNull();
+    expect(input.prompt_override).toBeNull();
+  });
+});

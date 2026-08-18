@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.41 |
+| バージョン | v1.42 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -311,11 +311,14 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
+| `source_url` | `text` | null, CHECK（`^https://`。投稿作成のzodと同条件） | **参考URL**（T-M8-135）。毎回このURLをAIが読んで題材にする。投稿作成画面の「参考にするURL」と同じもの |
+| `placeholder_values` | `jsonb` | not null default `'{}'`, CHECK（`schedule_slots_placeholder_values_ok()`。名前→文字列のオブジェクト・各2,000字以内） | **パターンの`{名前}`へ差し込む値**（T-M8-135）。予約は繰り返すので、ここで入れた値が毎回同じように入る。**そのパターンに無い項目の値は保存時に捨てる**（画面に出ない値が残ると説明できなくなる） |
+| `prompt_override` | `text` | null, CHECK（8,000字以内） | **この枠だけに使う生成プロンプト**（T-M8-135）。`null`ならパターンの本文を使う。同じパターンを少しだけ変えて別の枠に使うためのもの |
 | `enabled` | `boolean` | not null default true |  |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。**`enabled`ならば`pattern_id`は必須**（型が無いのに動いている枠を作らない）。**引用URLを必須とするパターン（`requires_quote_url`）は予約に使えない**——毎回URLの指定が要るため自動実行できない（旧`p5`不可の意図をパターン属性へ移した）。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。
+Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00〜22:00かつ00/30分。**`enabled`ならば`pattern_id`は必須**（型が無いのに動いている枠を作らない）。**引用URLを必須とするパターン（`requires_quote_url`）は予約に使えない**——毎回URLの指定が要るため自動実行できない（旧`p5`不可の意図をパターン属性へ移した）。画像providerはスロットに持たず、実行時に`profiles.ai_purpose_config.image`から解決する（要件05 §5）。**`source_url`・`placeholder_values`・`prompt_override`・`instructions`は実行時に生成jobの`input`へ投稿作成画面と同じキー名で渡す**（`schedule-enqueue.ts`。キー名がずれると「予約では効かない」という画面から説明できない差になる）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
