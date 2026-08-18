@@ -349,9 +349,9 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 5 | provider契約 | `npm run check:providers` | **送っているリクエストが実APIに受理されるか** | 応答をアプリが扱えるか。**Googleは既定でskip**（`PROVIDER_CHECK_GOOGLE=1` で有効化・T-M7-17） |
 | 6 | 実物スモーク | `npm run smoke:live -- --account <id>` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
-| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・SMTPの設定は手動確認。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
+| 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**SupabaseのカスタムSMTPと差出人名**（`price-status`と同じ注入で読み取り・T-M8-136）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・X Developer App のcallback URL（APIで読めない）。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
-内訳: `src` 配下のテストファイル227本 = 単体160 ＋ `*.db.test.ts` 66 ＋ provider契約 `*.live.test.ts` 1。`npm test` の結果は 1,787 passed / 6 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-11 時点）。
+内訳: `src` 配下のテストファイル254本 = 単体183 ＋ `*.db.test.ts` 69 ＋ provider契約 `*.live.test.ts` 2。`npm test` の結果は 2,209 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-18 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
 
 ### 層5と層6は別物（第1部§4で2種類あると書いた理由）
 

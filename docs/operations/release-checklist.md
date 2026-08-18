@@ -12,7 +12,7 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 
 | # | 項目 | 結果 | 根拠 |
 |---|---|---|---|
-| 1 | リリース判定ゲート `npm run release:check`（typecheck→lint→依存監査→**test:db**→build→**check:csp-nonce**→**test:e2e**）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
+| 1 | リリース判定ゲート `npm run release:check`（構成は[開発とテストの進め方](./development-and-testing.md)を正とする。docs検査・依存監査・DBテスト・build・CSP・E2Eを含む）がローカルで全成功。`test:db` は `REQUIRE_DB=1` でDBテスト58本のskipを禁止し、`test:e2e` でE2Eの実行も必須にした（2026-07-26追加。従来はDB未起動でも緑になり、E2Eは手動起動だった） | ✅ 済 | T-M6-20（exit 0 確認・2026-07-25）。2026-07-27に GitHub Actions（[CI](./ci.md)）へ組み込み、push/PRで自動実行 |
 | 2 | dev/preview で `X_POSTING_MODE=live` を設定すると起動時 env 検証が失敗（prodのみ live 可） | ✅ 済 | `env-schema.ts` superRefine ＋ `env-schema.test.ts`「rejects live in development/preview」「allows in production」 |
 | 3 | DB論理バックアップの初回取得＋空DBへの復元 round-trip（schema・seed 一致） | ✅ 済 | T-M6-19（public 18テーブル・`prompt_templates` seed 一致、暗号化 dump は `Salted__` 暗号文） |
 | 4 | セキュリティヘッダ（nonce CSP／HSTS／nosniff／Referrer-Policy）が production build で全応答に付与 | ✅ 済 | T-M6-17（`next start`＋curl 確認・ADR-0005） |

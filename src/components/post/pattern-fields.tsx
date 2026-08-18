@@ -104,12 +104,8 @@ export function patternReasonMessage(
       return `プロンプトは${PATTERN_PROMPT_MAX_CHARS.toLocaleString()}字以内で入力してください。`;
     case "empty":
       return "プロンプトを入力してください。";
-    case "quote_with_digest":
-      return "「引用URLを毎回指定する」と「ニュースをまとめて渡す」は同時に使えません。";
     case "last_pattern":
       return "最後のパターンは削除できません（投稿を作れなくなります）。先に別のパターンを追加してください。";
-    case "no_system_default":
-      return "自分で作ったパターンには戻す既定がありません。";
     default:
       return message ?? "保存できませんでした。";
   }

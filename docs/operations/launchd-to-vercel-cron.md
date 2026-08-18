@@ -28,7 +28,7 @@ schedule の正本は要件04 §6 の表で、`vercel.json` との一致は `src
 
 | job | launchd実行時刻（JST） | 呼び出すendpoint |
 |---|---|---|
-| `news_fetch` | 09:00〜20:00の毎時00分 | `/api/cron/news-fetch` |
+| `news_fetch` | 10:00〜20:00の2時間おき（10/12/14/16/18/20時）<br>値の正本は `NEWS_FETCH_JST_HOURS`（`src/lib/jobs/news-research.ts`。`launchd.test.ts` が突き合わせる） | `/api/cron/news-fetch` |
 | `scheduler_tick` | 5分間隔（毎時00・05・…・55分の12エントリ） | `/api/cron/scheduler-tick` |
 | `metrics_collector` | 毎時00分 | `/api/cron/metrics-collector` |
 | `follower_snapshot` | 毎時10分 | `/api/cron/follower-snapshot` |

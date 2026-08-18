@@ -118,7 +118,7 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 | `X_MANAGED_CLIENT_ID` | 運営 X App（premium 用）の Client ID |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | Customer Portal 構成ID（Stripe Dashboard で1つ作り、内容は下の §1.4 で合わせる） |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` / `X_COST_POST_READ_USD` / `X_COST_USER_READ_USD` | X Developer Console の pay-per-use 実単価（読取2つはT-M8-91で追加。読取は応答のresource数で乗算課金される） |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等。**`npm run auth:templates -- --apply` が Supabase Auth のカスタムSMTP設定にも同じ値を流用する**（アプリの通知メールと認証メールで同じ資格情報・T-M8-136） |
 | `EMAIL_FROM` / `EMAIL_REPLY_TO` | 送信元・返信先 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |

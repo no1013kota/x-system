@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.36 |
+| バージョン | v1.38 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -128,7 +128,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - 副作用は冪等キーまたはDB制約（unique）で重複に耐える。
 - 本システムのどの経路も**exactly-onceは保証しない**。
 
-`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。そこで**各回が直近3時間分を重ねて取得**し（プロンプト設計書 §6.10の`{{hours}}`＝12:00〜20:00は3、当日9:00/10:00/11:00は前日18:00以降を補うため15/16/17。20:00始点だと稼働終了直前の19時台発行分が1回しか取得機会を得ず欠落し得るため18:00始点とする）、一部の起動が失敗しても**3回に1回成功すれば**当該時間帯を取得できる設計とする（D-3の解決。ADR-0003）。窓の重なりによる重複は`source_url`のcanonical unique制約と`<known_urls>`で排除するため、`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ（NEWSを`generation_jobs`化する案は不採用）。
+`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。そこで**各回が起動間隔より広い窓で重ねて取得**する（`{{hours}}`＝**初回10:00は14時間**（前日の最終回20:00からの空白を埋める）、**12:00〜20:00は3時間**（間隔2時間＋重なり1時間）。想定外の時刻に起動された場合も欠落させない方へ倒し初回と同じ14時間を使う。**値の正本はコード側**の`NEWS_FETCH_JST_HOURS`と`newsLookbackHours`（`src/lib/jobs/news-research.ts`）で、プロンプト設計書 §6.10 はそれを説明する）、隣の回と窓が必ず重なるため、**1回失敗しても次の回が拾える**設計とする（D-3の解決。ADR-0003）。窓の重なりによる重複は`source_url`のcanonical unique制約と`<known_urls>`で排除するため、`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ（NEWSを`generation_jobs`化する案は不採用）。
 
 ## 7. スロットenqueue
 
@@ -140,7 +140,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - X accountが`active`
 - `mode=auto`はXアカウントに現行versionの自動投稿同意があり、`automation_disabled_at is null`
 - BYOKは必要なX/AI keyが`valid`
-- premiumは生成枠、画像ONなら画像枠、autoなら通常投稿枠とURL付き投稿枠の両方にパターン別最大数から算出したロールバック安全残量がある
+- premiumは**AIクレジット**に1回分の見積もり残量があり（画像ONなら画像の見積もりも足す）、autoなら通常投稿枠とURL付き投稿枠の両方にパターン別最大数から算出したロールバック安全残量がある（枠の定義は要件03 §7）
 - 当日JSTの`usage_events`にある同一Xアカウントの`operation=post_create`件数が、パターン別最大数を足して50以下
 - **引用URLが必須のパターンはスケジュール対象外**（毎回URLの指定が要るため自動実行できない）。DBのトリガと Server Action の両方で拒否する（要件02 §3.10・§3.21）
 
@@ -159,7 +159,7 @@ enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成
 ## 8. 投稿生成
 
 1. job lease取得、契約・key・利用枠を検証する。
-2. premiumは生成枠をreserveする。
+2. premiumは**AIクレジット**を見積もり分reserveする（成功時に実費でsettle、失敗時は全額refund・要件03 §7）。
 3. `validating`→`research`→`writing`とstage更新する。
 4. AI出力をJSON、ポスト数、加重文字数、NG、出典で検証する。
 5. draftを作成する。ニュース起点は`source_news_item_id`を保存する。
@@ -184,15 +184,15 @@ enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成
 
 `image_generation`は画像ONの`post_generation`成功後に連鎖起動される子job（§1(3)）。親workerが決定的 request_key `parent:{parent_job_id}:image_generation:{draft_id}`＋on conflictで作成するため、worker再実行時も子jobは重複作成されない。親jobのinputに`image_prompt_override`/`base_md_override`（T-M8-93・投稿作成画面の「この生成にだけ使う」）があれば子jobのinputへ引き継ぎ、子はPT-IMGの解決と保存版base_md（セクション3抽出）を飛ばしてそれを使う。手動の画像再生成（`regenerateImage`）へは引き継がない。
 
-1. premiumは画像枠をreserveする。
+1. premiumは**AIクレジット**を画像の見積もり分reserveする（文章と同じ1本の枠・要件03 §7）。
 2. PT-IMG（アカウント.mdセクション3＋1ポスト目本文）でprompt作成後、画像providerを呼ぶ。
 3. JPG/PNG/WEBP・5MB以下へ正規化する。
 4. private Storageへ保存し、`drafts.images`（`storage_path`・`status`等）を更新する。
-5. 最終失敗は画像枠をrefundし、警告と再生成操作を残す。
+5. 最終失敗はreserve分を全額refundし、警告と再生成操作を残す。
 
-Storage upload失敗も画像job失敗としてrefundする。X media uploadは画像生成枠と無関係で、投稿job内で行う。
+Storage upload失敗も画像job失敗としてrefundする。X media uploadはAIクレジットと無関係で、投稿job内で行う。
 
-`draft_created`通知の送信主体: 画像ON時は本文確定後に画像job（成功・失敗いずれも）が送る（画像OFFは`post_generation`が送る）。画像/Storage/PT-IMGの最終失敗時は本文を画像なしで確定し、`drafts.images`へ`status=failed`の印を残して`draft_created`を送り、子jobは`failed`にする（本文生成jobは失敗させない）。画像枠のreserve/refund（1・5）はM6で実装する。
+`draft_created`通知の送信主体: 画像ON時は本文確定後に画像job（成功・失敗いずれも）が送る（画像OFFは`post_generation`が送る）。画像/Storage/PT-IMGの最終失敗時は本文を画像なしで確定し、`drafts.images`へ`status=failed`の印を残して`draft_created`を送り、子jobは`failed`にする（本文生成jobは失敗させない）。画像のreserve/refund（1・5）は実装済み（`reserveIfPremium`／`settleIfPremium`・`src/lib/usage/reserve-if-premium.ts`）。
 
 画像再生成は既存画像を残したまま新規生成し、新画像のStorage保存とdraft参照の切替が成功してから旧objectをbest effortで削除する。再生成失敗時は既存画像を維持する。
 
@@ -235,7 +235,7 @@ flowchart TD
 - 削除成功後も`tweet_ids`は監査用に保持する。`last_post_error.deleted_tweet_ids`へ削除確認済みID、`remaining_tweet_ids`へX上に残るIDを保存する。
 - premiumの通常/URL付き投稿枠は投稿成功分を返還せず、削除成功分も元投稿と同じ枠へ追加消費する。作成後にロールバック削除できたtweet_idは同じ枠を合計2消費、削除失敗は追加消費なしとする。投稿前の安全残量確認により、削除が各投稿枠上限で妨げられないようにする。
 - 自動投稿でも手動投稿でも同じ規則を適用する。
-- 1件でもtweet_idを作成したfailed draftは直接再投稿しない。曖昧状態と残存IDが解消済みなら本文・画像・引用情報を新しいdraftへ複製し、`parent_draft_id`で元draftへ結び付け、空の投稿状態から再開する。複製にはAIを使わず生成枠も消費しない。
+- 1件でもtweet_idを作成したfailed draftは直接再投稿しない。曖昧状態と残存IDが解消済みなら本文・画像・引用情報を新しいdraftへ複製し、`parent_draft_id`で元draftへ結び付け、空の投稿状態から再開する。複製にはAIを使わずAIクレジットも消費しない。
 
 ## 12. 学習・改善
 
@@ -245,12 +245,12 @@ flowchart TD
 - **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
 - **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`だけを添える（応答本文はクエリの段階でselectしない）。
 - **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
-- 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premium生成枠を1消費する。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
+- 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTは**毎朝8:00 JSTに自動実行する**（2026-08-15・T-M8-94。手動の`refreshSuggestions`は廃止した）。起票は`scheduler_tick`の`enqueueDailySuggestions`——JST8時以降のtickで、対象アカウント（`status='active'`かつ契約が`trialing/active`かつ〔premium または validなAIキーあり〕）ぶんの`suggestion` jobを`trigger='schedule'`・request_key `sug-daily:{x_account_id}:{JST日付}`で冪等作成する（uniqueが1日1回を保証。BYOKのAIキー条件は、キーが無いと毎朝失敗通知が届き続けるのを防ぐ入口ゲート）。dispatchはtickのdispatchフェーズが拾う。
 - **取得は増分**: ハンドラが`GET /2/users/:id/tweets`（リポスト・返信を除く・メトリクス付き）を、保存済み最新投稿の**48時間前**から取得する（初回は`start_time`なし＝期間で区切らず最新100件。1回最大100件=X読取費用の上限$0.50。T-M8-97）。48時間の重なり分はupsertでメトリクス（表示回数等）を追い直す——重なりが無いと直近投稿の実績が「取得した朝の値」で凍結される。表示回数（`non_public_metrics`）はX公称では投稿から30日以内しか提供されないためnull許容で扱う（実挙動では30日超の投稿にも返る場合があることを2026-08-15に実アカウントで確認。nullは「表示回数が不明」であり0と区別する）。取得結果は`x_timeline_posts`（要件02 §3.20）へ保存し、本サービス経由の投稿には`drafts.tweet_ids`の突合で型とテーマを付与する（一度付いたら保持。外部の投稿はnull）。分析時は**直前のレポート**（format=2）を読み込みプロンプトへ渡す（前回の推奨の効果検証と提案の連続性のため。前回以降の新規投稿数はコードで数えて渡す。参照したレポートidはevidence.previous_idに残る・T-M8-98）。
 - **分析は保存済みの全投稿**（新しい順に最大300件=AI入力の上限）を対象にする。固定の分析軸と「3投稿以上・差20%以上」の条件は持たない。良かった投稿の特徴づけはPT-SUGGESTの自由分析に任せ、出力を実行可能な設定（推奨パターン・テーマ・画像有無・そのまま貼れるプロンプト全文）に固定する（検証はプロンプト設計書 §6.15）。
-- **生成枠は消費しない**（premium含む・2026-08-15変更）。自動実行では利用者の操作なしに枠が減るため。費用は原価台帳（X読取・AI）が記録する。保存済み投稿が0件ならLLMを呼ばずレポート0件で正常終了する。SUGGESTはbase_mdを読まない。X取得の失敗は`x_fetch_failed`として理由を保存・通知する（静かに0件にしない・原則1）。
+- **AIクレジットは消費しない**（premium含む・2026-08-15変更）。自動実行では利用者の操作なしに枠が減るため。費用は原価台帳（X読取・AI）が記録する。保存済み投稿が0件ならLLMを呼ばずレポート0件で正常終了する。SUGGESTはbase_mdを読まない。X取得の失敗は`x_fetch_failed`として理由を保存・通知する（静かに0件にしない・原則1）。
 - レポートは**1件**（総評＋advice）で、表示専用とする。`good_posts[].id`は`<posts>`に含まれるIDだけを許可し（zod検証、違反は修復1回→失敗）、`evidence.format=2`・`post_count`・`analyze_limit`をコードで付与して保存する（要件02 §4.11）。アカウント.md・プロンプトへの自動反映は行わず、ユーザーが投稿作成・スケジュール・AI設定のプロンプト編集（md/プレミアム）で自ら反映する。`listSuggestions`は最新の成功`suggestion` jobの分だけを返す。プロンプト・出力schemaを変えたときは`npm run check:suggest`（実AI 1周・約$0.02）を回す。
 
 ## 13. メトリクス・フォロワー

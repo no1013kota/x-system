@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.28 |
+| バージョン | v1.29 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -28,9 +28,9 @@
 
 `/app/consent`はprofileと現行versionを比較し、不一致の利用規約／プライバシーポリシーだけに独立した明示checkboxと新規タブの文書リンクを表示する。Server ActionはDBを再読込し、必要なcheckboxとクライアントversionの現行一致を確認してから、対象文書のversion／同意時刻だけを更新する。既に現行の文書は上書きせず、両方現行ならno-opで`/app`へ戻す。未同意・古いclient version・DB失敗時は更新しない。
 
-共通実行ガードは契約状態を先に判定し、契約実行不可なら`subscription_required`を優先する。契約が`trialing|active`の場合だけ規約versionを確認する。route guardには規約versionを使わないため、古いversionでも既存データ閲覧と設定操作は継続できる。
+共通実行ガード（`requireExecutionUserId`）は**法務同意を先に確認する**。契約状態は実行前提（`checkExecutionPrerequisites`）が別に判定するため、**解約済みで規約versionも古い利用者には`legal_consent_required`が先に出る**（T-M8-134 で導線を追加。同意画面へ進めば契約の案内へ到達できる）。route guardには規約versionを使わないため、古いversionでも既存データ閲覧と設定操作は継続できる。
 
-現行versionはコード定数を正とし、法務確認前の開発版は利用規約・プライバシーポリシーとも（現行versionは `src/lib/legal.ts` の定数）とする。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
+現行versionは`src/lib/legal.ts`の定数（`CURRENT_TERMS_VERSION`／`CURRENT_PRIVACY_VERSION`）を正とする。**利用者に露出するため`-draft`のような内部向け接尾辞は付けない**（T-M8-72）。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
 
 ## 2. プラン
 
@@ -61,7 +61,7 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 ### 2.2 Customer Portal作成
 
 - `POST /api/stripe/portal`はSupabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。本人profileの`stripe_customer_id`だけを使い、Customer ID、Configuration ID、return URLをクライアントから受け取らない。
-- **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。`intent`が無い場合と本人の`stripe_subscription_id`が不明な場合は`flow_data`を付けずPortalのトップを開く（Stripeが400を返して「押しても開かない」状態になるのを避ける）。完了後は`after_completion`で同じreturn URLへ戻す。
+- **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。**`intent`が無い場合だけ**`flow_data`を付けずPortalのトップを開く。**`intent`があるのに対象の契約が見つからない場合は§6のとおり`subscription_required`で止める**（T-M8-56。黙ってトップを開くと「プランを変更」を押した先で何もできない）。完了後は`after_completion`で同じreturn URLへ戻す。
 - 契約前（`stripe_customer_id`なし）はPortalを作れないため、**画面に押せないボタンを出さず**`/plans`へのリンクにする（要件06 §10）。**`/plans`側は「Stripeの顧客が紐づいている契約者」だけを`/app`へ送り返す**——顧客が未紐づけのまま送り返すと、「プランを選ぶ」を押してもホームへ戻るだけで何もできない（webhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まる）。同期の遅れは既存の一文（「変更内容はStripeからの通知を受けてこの画面へ反映されます」）が伝えるので、待ち状態の説明を別に足さない。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。

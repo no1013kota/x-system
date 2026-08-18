@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
+| バージョン | v1.15 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -119,7 +119,7 @@ flowchart TB
 | `SMTP_HOST` | preview/prod | Gmail SMTP host | `smtp.gmail.com` |
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
-| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password |
+| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——通知メール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
 | `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>` |
 | `EMAIL_REPLY_TO` | preview/prod | Reply-Toアドレス | `matsubuz.10@gmail.com` |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |

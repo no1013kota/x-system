@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.39 |
+| バージョン | v1.40 |
 | 更新日 | 2026-08-18 |
 | 関連 | 全画面、全ジョブ |
 
@@ -246,7 +246,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 `listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。**この制限はコードで強制する**（T-M8-139）: Actionの`kind`は`image`のみを受け、store側も型プロンプトが渡されたら`validation_error`で落とす。以前は記述だけがこうで実装は`p1`〜`p6`も扱っており、**画像プロンプトの編集画面で「再読み込み」を押すと編集対象がp1へすり替わり、保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きしていた**（利用者のデータが壊れる）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
-投稿パターンのActions（T-M8-129・ADR-0008）は所有者チェックを`requirePattern`（`x_account_id`で絞る）で兼ね、他人のパターンは`not_found`にする。検証はDBのCHECKと同じ判定を**先に**行い、`validation_error`の`details.reason`（`name_length`／`name_unsafe_chars`／`name_taken`／`max_posts_range`／`prompt_required`／`too_long`／`quote_with_digest`／`last_pattern`）で理由を返す——トリガ任せにすると画面に「保存できませんでした」しか出せない。`deletePattern`は参照の外し方をDBのトリガに任せ（要件02 §3.21）、**停止した予約の件数**を返して画面が何が起きたかを言えるようにする。`updatePattern`は`max_posts_edit`を狭めない（`greatest`）——狭めると既存の下書きが編集できなくなる。プレースホルダーは**プロンプトに`{名前}`が無いものを拒否する**（`placeholder_not_used`）——入力欄だけ出て何も起きない状態を作らない。生成パイプライン（GEN-P1〜P6）はジョブに凍結した`pattern_spec`を正とし、実行中にパターンを編集・削除されても当時の設定で完走する。
+投稿パターンのActions（T-M8-129・ADR-0008）は所有者チェックを`requirePattern`（`x_account_id`で絞る）で兼ね、他人のパターンは`not_found`にする。検証はDBのCHECKと同じ判定を**先に**行い、`validation_error`の`details.reason`（`name_length`／`name_unsafe_chars`／`name_taken`／`description_length`／`placeholder_name_length`／`placeholder_name_unsafe`／`placeholder_duplicated`／`placeholder_not_used`／`placeholder_too_many`／`prompt_required`／`too_long`／`empty`／`last_pattern`）で理由を返す——トリガ任せにすると画面に「保存できませんでした」しか出せない。`deletePattern`は参照の外し方をDBのトリガに任せ（要件02 §3.21）、**停止した予約の件数**を返して画面が何が起きたかを言えるようにする。`updatePattern`は`max_posts_edit`を狭めない（`greatest`）——狭めると既存の下書きが編集できなくなる。プレースホルダーは**プロンプトに`{名前}`が無いものを拒否する**（`placeholder_not_used`）——入力欄だけ出て何も起きない状態を作らない。生成パイプライン（GEN-P1〜P6）はジョブに凍結した`pattern_spec`を正とし、実行中にパターンを編集・削除されても当時の設定で完走する。
 
 ## 10. 通知
 
