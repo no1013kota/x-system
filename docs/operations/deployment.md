@@ -80,14 +80,23 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 
 **リリースの流れ（要決定D-8 案A・2026-07-30）**
 
-1. `stg` へ push → CI が緑になるのを確認
-2. staging の Supabase へ `supabase db push` → §5 の検証
-3. `stg` → `main` の **プルリクエストを作る**（`main` への直pushは branch protection で禁止）
-4. PR上でCIが緑になったらマージ → production ビルドが始まる
+**`main` への直pushは branch protection で拒否される**（実測 2026-08-18: `GH006 Protected branch update failed`・
+「Changes must be made through a pull request」「2 of 2 required status checks are expected」）。
+必ずPR経由で入れる。
 
-`main` は branch protection で保護し、`型・lint` と `release:check（DB・build・E2E）` を required status check にする想定。**ただし private × GitHub Free では保護機能が使えない**ことが2026-07-30に判明しており、実現方法は要決定D-14で選ぶ（`tasks/BACKLOG.md`）。
+1. `main` から**作業ブランチ**を切る（例 `release/YYYY-MM-DD-<内容>`）
+2. そのブランチを push → CI が緑になるのを確認
+3. ブランチ → `main` の **プルリクエストを作る**（`gh pr create`）
+4. 必須チェック2本が緑になったらマージ → production ビルドが始まる
+5. `npm run release:production -- --apply` で migration 適用とデプロイ後検証を行う
 
-**保護が有効になるまでは、CIが赤でも `main` への push でproductionビルドが進む。** それまでは push の前に必ずCIの結果を確認する（緑でなければ push しない）。
+> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**ツリーは同一だがSHAが分岐**しており、
+> PRにすると同じ内容の55件が差分として並ぶ。staging を検証したいときは `stg` へ別途 push する
+> （`supabase link` の向き先を張り替えてから・§5）。**本番へ入れるのは `main` から切った作業ブランチ**にする。
+
+保護の必須チェックは `型・lint` と `release:check（DB・build・E2E）` の2本。
+**2026-07-30 時点では「private × GitHub Free では保護が使えない」と記録していたが、現在は有効になっている**
+（要決定D-14 の結果）。CIが赤いとマージできないので、pushの前に手元で `npm run release:check` を通しておく。
 
 ---
 
