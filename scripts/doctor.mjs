@@ -63,6 +63,38 @@ if (isLocal) {
           },
     );
   }
+
+  /*
+    **ローカルの確認メールの行き先**（T-M8-136・運営者の報告 2026-08-18）。
+
+    ローカルのSupabaseは確認メールを実際のメールボックスへ送らず、Mailpit（メール受信箱の
+    ふりをするツール）が全部受け取る。**これを知らないと「メールが届かない＝壊れている」
+    と見える**（実際に運営者がそう報告した）。届いているのかどうかと、どこで読めるのかを
+    ここで必ず出す。ログを読ませない（原則2）。
+  */
+  const MAILPIT = "http://127.0.0.1:54324";
+  try {
+    const res = await fetch(`${MAILPIT}/api/v1/messages?limit=1`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json();
+    const total = Number(body.total ?? 0);
+    checks.push({
+      name: "確認メールの行き先（ローカル）",
+      level: "ok",
+      detail:
+        `Mailpit が受け取っています（現在 ${total} 通）。` +
+        "**ローカルでは実際のメールボックスへ送られません**",
+      nextAction: `6桁コードは ${MAILPIT} を開いて確認してください`,
+    });
+  } catch {
+    checks.push({
+      name: "確認メールの行き先（ローカル）",
+      level: "error",
+      detail: `Mailpit（${MAILPIT}）に接続できません。**新規登録の6桁コードを読む手段がありません**`,
+      nextAction: "ターミナルで `supabase start` を実行してください",
+    });
+  }
 }
 
 // --- アプリが応答するか ---
@@ -122,6 +154,8 @@ async function authUrlCheck() {
       confirmationTemplate: body.mailer_templates_confirmation_content ?? "",
       siteUrl: body.site_url ?? null,
       smtpHost: body.smtp_host ?? null,
+      // 差出人名（T-M8-136）。既定のままだと見知らぬ差出人から6桁コードが届く。
+      smtpSenderName: body.smtp_sender_name ?? null,
       uriAllowList: parseAllowList(body.uri_allow_list),
     });
   } catch (error) {

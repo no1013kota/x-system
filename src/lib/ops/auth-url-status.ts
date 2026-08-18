@@ -23,6 +23,12 @@ import type { Check } from "./check";
 /** 運営者向けの見出し。doctor の一覧に出る。 */
 export const AUTH_URL_CHECK_NAME = "登録・再設定メールの行き先（Supabase）";
 
+/**
+ * 認証メールの差出人名（T-M8-136）。**利用者に見える名前はここだけを正本にする。**
+ * `scripts/push-auth-templates.mjs` が設定する値と、`doctor` が検査する値を同じにするため。
+ */
+export const EXPECTED_SENDER_NAME = "Exos AI";
+
 /** Management APIのトークンを置く環境変数名。 */
 export const AUTH_TOKEN_ENV = "SUPABASE_ACCESS_TOKEN";
 
@@ -118,6 +124,8 @@ export function judgeAuthUrls(input: {
   confirmationTemplate?: string | null;
   /** リモートのSMTPホスト。未設定＝Supabase内蔵送信。 */
   smtpHost?: string | null;
+  /** リモートの送信者名（`smtp_sender_name`）。未取得なら undefined。 */
+  smtpSenderName?: string | null;
 }): Check {
   const target = confirmRedirectUrl(input.appBaseUrl);
   const allowed = isRedirectAllowed(input.uriAllowList, target);
@@ -148,6 +156,48 @@ export function judgeAuthUrls(input: {
             : "（カスタムSMTPが未設定だとテンプレートを変更できないため、同じコマンドが先にSMTPも設定します）"),
       };
     }
+  }
+
+  /**
+   * **そもそも他人に届くのか**（T-M8-136・運営者の質問 2026-08-18）。
+   *
+   * Supabase内蔵の送信は **2通/時**、かつ **その組織のメンバーのアドレス宛にしか届かない**
+   * （それ以外は `Email address not authorized`）。**画面は「送信しました」と出る**ので、
+   * 運営者が自分のアドレスで試すと成功し、利用者には永久に届かない状態を見逃す。
+   * URLもテンプレートも正しくてもここで全員が詰まるため、最初に見る。
+   */
+  if (input.smtpHost !== undefined && !input.smtpHost) {
+    return {
+      name: AUTH_URL_CHECK_NAME,
+      level: "error",
+      detail:
+        "カスタムSMTPが未設定です（Supabase内蔵送信のまま）。" +
+        "**内蔵送信は2通/時・組織メンバー宛のみなので、利用者には確認メールが届きません**" +
+        "（画面には「送信しました」と出るため気付けません）",
+      nextAction:
+        "`npm run auth:templates -- --target <環境> --apply` を実行してください" +
+        "（`SMTP_*` からカスタムSMTPを設定し、テンプレートも反映します）",
+    };
+  }
+
+  /**
+   * **差出人が「Exos AI」になっているか**（T-M8-136・運営者の質問 2026-08-18）。
+   *
+   * 既定では `Admin` 等のままで、利用者には見知らぬ差出人から6桁コードが届く。
+   * 迷惑メール判定にも差出人名は効くため、届く／届かないの問題でもある。
+   */
+  if (input.smtpSenderName !== undefined && input.smtpSenderName !== EXPECTED_SENDER_NAME) {
+    return {
+      name: AUTH_URL_CHECK_NAME,
+      level: "error",
+      detail:
+        `確認メールの差出人名が「${input.smtpSenderName || "(未設定)"}」です` +
+        `（「${EXPECTED_SENDER_NAME}」であるべき）。見知らぬ差出人から6桁コードが届く状態で、` +
+        "迷惑メール判定にも不利になります",
+      nextAction:
+        "`npm run auth:templates -- --target <環境> --apply` を実行してください" +
+        "（差出人名もあわせて設定します）",
+    };
   }
 
   if (!allowed) {

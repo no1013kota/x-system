@@ -84,6 +84,8 @@ if (!token) {
 }
 
 const { projectRefFromCsp } = await import("../src/lib/ops/release-gate.ts");
+// 差出人名は doctor の検査と同じ定数を使う（別々に書くと片方だけ直して食い違う）。
+const { EXPECTED_SENDER_NAME } = await import("../src/lib/ops/auth-url-status.ts");
 
 const baseUrl = process.argv.includes("--base")
   ? process.argv[process.argv.indexOf("--base") + 1]
@@ -156,7 +158,7 @@ function smtpPatch() {
     smtp_user: user,
     smtp_pass: pass,
     smtp_admin_email: user,
-    smtp_sender_name: "Exos AI",
+    smtp_sender_name: EXPECTED_SENDER_NAME,
   };
 }
 
@@ -190,6 +192,30 @@ for (const t of TEMPLATES) {
   patch[t.subjectKey] = t.subject;
 }
 
+/*
+  **届くのか／誰から届くのか**を先に出す（T-M8-136）。テンプレートが正しくても、
+  内蔵送信のままなら利用者には届かず、差出人名が既定なら見知らぬ相手から届く。
+*/
+console.log("");
+if (!current.smtp_host) {
+  console.log(
+    "❌ カスタムSMTP: 未設定（内蔵送信）\n" +
+      "    **利用者に確認メールが届きません**（内蔵送信は2通/時・組織メンバー宛のみ。画面には「送信しました」と出ます）",
+  );
+  broken += 1;
+} else {
+  console.log(`✅ カスタムSMTP: ${current.smtp_host}`);
+}
+if (current.smtp_sender_name === EXPECTED_SENDER_NAME) {
+  console.log(`✅ 差出人名: ${current.smtp_sender_name}`);
+} else {
+  console.log(
+    `❌ 差出人名: ${current.smtp_sender_name || "(未設定)"} → ${EXPECTED_SENDER_NAME} にします\n` +
+      "    見知らぬ差出人から6桁コードが届く状態で、迷惑メール判定にも不利です",
+  );
+  broken += 1;
+}
+
 // テンプレート以外の設定のずれ（桁数・送信上限・検証上限）。
 console.log("");
 for (const [key, want] of Object.entries(AUTH_SETTINGS)) {
@@ -214,6 +240,27 @@ if (!apply) {
   );
   // 使えない状態（token_hash無し）は失敗として返す。CIやdoctorから呼んだときに気付けるように。
   process.exit(broken > 0 ? 1 : 0);
+}
+
+/*
+  **差出人名は毎回そろえる**（T-M8-136・運営者の質問 2026-08-18）。
+  以前は「SMTPが未設定のときだけ」設定していたため、**一度別の名前で設定された環境は
+  永久に直らなかった**（利用者には `Admin` 等の見知らぬ差出人から6桁コードが届く）。
+  SMTPの有無に依らず、名前が違えば直す。
+*/
+if (current.smtp_host && current.smtp_sender_name !== EXPECTED_SENDER_NAME) {
+  console.log(
+    `\n→ 差出人名が「${current.smtp_sender_name || "(未設定)"}」なので「${EXPECTED_SENDER_NAME}」へ直します`,
+  );
+  await fetch(api, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ smtp_sender_name: EXPECTED_SENDER_NAME }),
+  }).then(async (r) => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) fail(`差出人名の設定に失敗しました: ${body.message ?? r.status}`);
+  });
+  console.log("✅ 差出人名を設定しました");
 }
 
 // SMTPが未設定ならテンプレート変更は拒否されるので、先に入れる。

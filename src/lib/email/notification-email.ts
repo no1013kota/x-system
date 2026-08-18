@@ -19,6 +19,41 @@ export interface EmailMessage {
   text: string;
   /** provider冪等用の Message-ID（`<notification:{id}@domain>`）。 */
   messageId: string;
+  /** 追加ヘッダ（自動送信の明示・購読解除。T-M8-136）。 */
+  headers?: Record<string, string>;
+}
+
+/**
+ * 差出人を「Exos AI <アドレス>」の形にする（T-M8-136・運営者の質問 2026-08-18）。
+ *
+ * **表示名をenvの書式に委ねない。** `EMAIL_FROM` に素のアドレスだけが入っていると、
+ * 利用者の受信箱には `matsubuz.10@gmail.com` のような個人アドレスがそのまま並び、
+ * 何のメールか分からないうえ迷惑メール判定にも不利になる。
+ * すでに表示名が付いている（`名前 <...>`）ならそのまま尊重する。
+ */
+export function withSenderName(from: string, senderName: string): string {
+  const trimmed = from.trim();
+  if (trimmed.includes("<")) return trimmed;
+  return `${senderName} <${trimmed}>`;
+}
+
+/**
+ * 迷惑メールに入りにくくするためのヘッダ（T-M8-136）。
+ *
+ * - `Auto-Submitted`: 自動送信であることを明示する（RFC 3834）。受信側の自動応答を止める
+ * - `List-Unsubscribe` / `List-Unsubscribe-Post`: 1クリック購読解除（RFC 8058）。
+ *   **2024年以降 Gmail / Yahoo が送信者に要求しており**、無いと迷惑メール判定が厳しくなる。
+ *   行き先は通知設定の画面（そこでメール通知を切れる）
+ */
+export function notificationEmailHeaders(appBaseUrl?: string): Record<string, string> {
+  const headers: Record<string, string> = { "Auto-Submitted": "auto-generated" };
+  // **URLが分からないときは購読解除ヘッダを付けない。** 壊れたリンクを付けるより無い方がよい。
+  if (appBaseUrl) {
+    const settings = `${appBaseUrl.replace(/\/$/, "")}/app/settings?tab=notifications`;
+    headers["List-Unsubscribe"] = `<${settings}>`;
+    headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+  }
+  return headers;
 }
 
 export interface EmailSendResult {
@@ -102,6 +137,7 @@ export async function sendQueuedNotificationEmail(
     subject: row.title,
     text: buildText(row.body, row.link, deps.appBaseUrl),
     messageId: `<notification:${row.id}@${deps.domain}>`,
+    headers: notificationEmailHeaders(deps.appBaseUrl),
   };
 
   try {

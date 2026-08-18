@@ -4,7 +4,9 @@ import type { Queryable } from "../x/token-refresh";
 import {
   canSendViaSmtp,
   EmailSendError,
+  notificationEmailHeaders,
   sendQueuedNotificationEmail,
+  withSenderName,
   type EmailTransport,
   type NotificationEmailDeps,
 } from "./notification-email";
@@ -163,5 +165,45 @@ describe("canSendViaSmtp（環境による実送信の抑止）", () => {
     for (const host of ["localhost", "127.0.0.1", "::1", "[::1]", "  LOCALHOST  "]) {
       expect(canSendViaSmtp({ appEnv: "development", host })).toBe(true);
     }
+  });
+});
+
+/**
+ * T-M8-136（運営者の質問・2026-08-18）
+ * 「メールは『Exos AI』から届きますか／迷惑メールに入りにくい形ですか」
+ */
+describe("差出人と迷惑メール対策（T-M8-136）", () => {
+  it("素のアドレスには「Exos AI」の表示名を付ける", () => {
+    expect(withSenderName("noreply@exosai.net", "Exos AI")).toBe("Exos AI <noreply@exosai.net>");
+    // **envの書式に委ねない**のが要点（個人アドレスがそのまま受信箱に並ぶのを防ぐ）。
+    expect(withSenderName("  matsubuz.10@gmail.com  ", "Exos AI")).toBe(
+      "Exos AI <matsubuz.10@gmail.com>",
+    );
+  });
+
+  it("すでに表示名が付いていれば尊重する（二重に付けない）", () => {
+    expect(withSenderName("Exos AI <a@b.com>", "Exos AI")).toBe("Exos AI <a@b.com>");
+    expect(withSenderName("別名 <a@b.com>", "Exos AI")).toBe("別名 <a@b.com>");
+  });
+
+  it("自動送信と1クリック購読解除のヘッダを付ける", () => {
+    const h = notificationEmailHeaders("https://exosai.net");
+    // RFC 3834: 自動応答を止める。
+    expect(h["Auto-Submitted"]).toBe("auto-generated");
+    // RFC 8058: Gmail/Yahooが要求。無いと迷惑メール判定が厳しくなる。
+    expect(h["List-Unsubscribe"]).toBe("<https://exosai.net/app/settings?tab=notifications>");
+    expect(h["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+  });
+
+  it("末尾スラッシュを二重にしない", () => {
+    expect(notificationEmailHeaders("https://exosai.net/")["List-Unsubscribe"]).toBe(
+      "<https://exosai.net/app/settings?tab=notifications>",
+    );
+  });
+
+  it("URLが分からないときは購読解除ヘッダを付けない（壊れたリンクを送らない）", () => {
+    const h = notificationEmailHeaders(undefined);
+    expect(h["Auto-Submitted"]).toBe("auto-generated");
+    expect(h["List-Unsubscribe"]).toBeUndefined();
   });
 });
