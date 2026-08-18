@@ -48,6 +48,33 @@ export async function GET(request: Request): Promise<Response> {
       },
       stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,
     },
+    /*
+      **この環境が実際に使っている設定**（T-M8-147）。値そのものではなく種別・有無だけを渡す
+      （この応答はHTTPで返るため、鍵が混ざる経路を作らない）。`actualOrigin` はリクエストの
+      URLから取る——`APP_BASE_URL` と突き合わせて、メールのリンクとX連携の戻り先が
+      別ドメインを指していないことを、動いているアプリ自身に答えさせる。
+    */
+    /*
+      **決済を受け付けられる状態か**（T-M8-148）。Priceの金額が一致していても、
+      アカウントが有効化されていなければ申し込みは必ず失敗する。production では異常として出す。
+    */
+    stripeAccount: {
+      stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,
+      requireLiveCharges: env.APP_ENV === "production",
+    },
+    // 確認メールの送信元（T-M8-147）。Supabase側の `smtp_user` と同じ値を設定している。
+    mailSenderEmail: env.SMTP_USER ?? null,
+    config: {
+      appEnv: env.APP_ENV,
+      postingMode: env.X_POSTING_MODE,
+      appBaseUrl: env.APP_BASE_URL ?? null,
+      actualOrigin: new URL(request.url).origin,
+      stripeKeyKind: env.STRIPE_SECRET_KEY
+        ? env.STRIPE_SECRET_KEY.startsWith("sk_live_")
+          ? "live"
+          : "test"
+        : null,
+    },
   });
   // 対応が必要な問題があれば5xxで返し、監視や `doctor` が判定しやすいようにする。
   return Response.json(report, { status: report.level === "error" ? 500 : 200 });

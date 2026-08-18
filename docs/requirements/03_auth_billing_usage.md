@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.29 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.30 |
+| 更新日 | 2026-08-19 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -64,6 +64,7 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - **クライアントから受け取るのは `intent`（`update`／`cancel`）だけ**（2026-08-03 決定）。`update`はプラン変更、`cancel`は期間末解約のPortal画面へ`flow_data`で直接入る。「プランを管理」という1つのボタンだと押した先で何ができるのか分からないため、**やりたいことを画面で選ばせてから**該当画面へ送る。**`intent`が無い場合だけ**`flow_data`を付けずPortalのトップを開く。**`intent`があるのに対象の契約が見つからない場合は§6のとおり`subscription_required`で止める**（T-M8-56。黙ってトップを開くと「プランを変更」を押した先で何もできない）。完了後は`after_completion`で同じreturn URLへ戻す。
 - 契約前（`stripe_customer_id`なし）はPortalを作れないため、**画面に押せないボタンを出さず**`/plans`へのリンクにする（要件06 §10）。**`/plans`側は「Stripeの顧客が紐づいている契約者」だけを`/app`へ送り返す**——顧客が未紐づけのまま送り返すと、「プランを選ぶ」を押してもホームへ戻るだけで何もできない（webhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まる）。同期の遅れは既存の一文（「変更内容はStripeからの通知を受けてこの画面へ反映されます」）が伝えるので、待ち状態の説明を別に足さない。
 - Customer未作成は`subscription_required`、未認証は`unauthorized`、Origin不一致は`forbidden`、Stripe障害はprovider本文を隠した`provider_error`で拒否する。成功時は短寿命のHTTPS Portal Session URLだけを返す。
+- **待っても直らないStripeの失敗は`provider_error`にしない**（T-M8-148）。アカウントが本番決済を受け付けられない状態（`cannot currently make live charges`）は`feature_disabled`へ分ける。`provider_error`の文言は「時間をおいて再度お試しください」で、この状態では嘘になり同じ操作を繰り返させる。画面は固定文ではなくサーバが返した文言を出す。運営者向けの原因表示は状態確認の「決済の受付（Stripeアカウント）」が担う（Priceの金額が一致していてもアカウントが未有効化なら申し込みは必ず失敗するため、既存の検査は全部緑のまま押した人だけが行き止まりになっていた）。
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
 - `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実行時は**既存のconfigurationを上書き更新する**（新規作成はしない。IDが変わらないのでenvを触らずコードと設定を一致させられる）。**どの環境を設定するかは呼び出し側が明示し、構成IDは環境ごとに別の変数から読む**（既定へ落とさない。2026-08-04、既定でローカルの値を読んで**別環境を更新して「成功」と表示した**・T-M8-35）。適用後に読み戻して`subscription_update`／`subscription_cancel`が有効になったかを確認し、無効なままなら終了コード1で失敗する。秘密鍵は出力しない。手順とコマンドの正本は[デプロイ手順 §1.4](../operations/deployment.md)。
 - **Portalの設定はコードに現れない**ため、状態確認（`npm run doctor` / `/api/cron/doctor`）で毎回読み取り、画面のボタンが依存する機能が有効かを判定する（無効なら error）。**設定IDがそのStripeアカウントに存在しない場合（`resource_missing`）は「別の環境の値が入っている可能性」として error にする**——`.env` に別環境の値が入る事故が実際に起きており（2026-08-05、同じ変数が2回定義され後の定義が勝っていた）、「確認できませんでした」では原因に辿り着けない。Stripeへ届かなかっただけの場合とは区別する。2026-08-03、この確認が無かったため「プランを変更」を押して初めて無効だと分かった。
@@ -299,3 +300,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.27 | 2026-08-18 | リリース記念キャンペーン（T-M8-118）と6桁コードのメール確認（T-M8-121）を反映。プラン表の月間枠を金額制のAIクレジットへ揃えた（回数制の記述が残っていた） |
 | v1.28 | 2026-08-18 | 残量JSONを実装の3枠（AIクレジット・通常投稿・URL付き投稿）へ。同意versionの具体値を `src/lib/legal.ts` 参照へ寄せた（T-M8-144） |
 | v1.29 | 2026-08-18 | 共通実行ガードの判定順序を実装に合わせた（法務同意が先）。Portalの「契約が見つからないとき」を §6 と揃えた（T-M8-144） |
+| v1.30 | 2026-08-19 | Stripeアカウントが本番決済を受け付けられない状態を `feature_disabled` へ分けた（T-M8-148）。状態確認へ「決済の受付」を追加 |

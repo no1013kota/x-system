@@ -13,8 +13,14 @@ import {
   summarize,
   worstLevel,
 } from "./check";
+import { type ConfigFacts, judgeConfig, judgePendingConfirmations } from "./config-status";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
 import { judgePrices, probePrices, type PriceProbeDeps } from "./price-status";
+import {
+  judgeStripeAccount,
+  probeStripeAccount,
+  type StripeAccountProbeDeps,
+} from "./stripe-account-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
 export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
@@ -492,6 +498,15 @@ export interface DiagnosticsOptions {
   portal?: PortalProbeDeps;
   /** 請求額と表示額の突き合わせ（T-M8-141）。鍵やPrice IDが無い環境では「判定できません」。 */
   prices?: PriceProbeDeps;
+  /**
+   * デプロイ先が実際に使っている設定（T-M8-147）。**秘密値は渡さない**（種別・有無だけ）。
+   * 未指定なら設定の判定を行わない（ローカルの `doctor` から呼ぶ経路を壊さないため）。
+   */
+  config?: ConfigFacts;
+  /** 確認メールの送信元アドレス（T-M8-147）。未確認の登録が送信元自身かを見分けるのに使う。 */
+  mailSenderEmail?: string | null;
+  /** Stripeアカウントが決済を受け付けられるか（T-M8-148）。鍵が無ければ判定しない。 */
+  stripeAccount?: StripeAccountProbeDeps;
 }
 
 export async function collectDiagnostics(
@@ -499,6 +514,14 @@ export async function collectDiagnostics(
   options: DiagnosticsOptions,
 ): Promise<DiagnosticsReport> {
   const checks: Check[] = [];
+
+  /*
+    **設定が本番へ反映されているか**（T-M8-147）を最初に出す。必須の環境変数は起動時検証が
+    落とすが、**既定値を持つものは欠けても起動する**ため、画面が全部正常に見えたまま
+    機能だけが止まる。2026-08-18、本番が `dry_run` のままでXへ1件も投稿していなかった
+    （テスト・release:check・doctor はいずれも env を見ていなかった）。
+  */
+  if (options.config) checks.push(...judgeConfig(options.config));
 
   const jobs = await db.query<{ succeeded: string; failed: string }>(
     `select count(*) filter (where status = 'succeeded')::text as succeeded,
@@ -606,6 +629,26 @@ export async function collectDiagnostics(
     ),
   );
 
+  /*
+    **メール確認が終わっていない登録**（T-M8-147）。件数だけなら異常ではないが、
+    「送信元と同じアドレスで登録した」ケースだけは**どこにも記録が出ない**まま
+    「メールが届かない」に見えるため、ここで名指しする（`config-status.ts` のコメント参照）。
+    直近7日に絞る（古い放置分で常に黄色くしない）。
+  */
+  const pending = await db.query<{ email: string }>(
+    `select email from auth.users
+      where email_confirmed_at is null
+        and email is not null
+        and created_at > now() - interval '7 days'
+      order by created_at desc limit 50`,
+  );
+  checks.push(
+    judgePendingConfirmations({
+      senderEmail: options.mailSenderEmail ?? null,
+      unconfirmedEmails: pending.rows.map((r) => r.email),
+    }),
+  );
+
   const stuck = await db.query<{ n: string }>(
     `select count(*)::text as n from generation_jobs
       where status = 'running' and coalesce(locked_at, started_at) < now() - interval '30 minutes'`,
@@ -652,6 +695,15 @@ export async function collectDiagnostics(
     利用者の申告でしか気付けない事故になる（原則4）。読み取りのみで費用は無い。
   */
   checks.push(judgePrices(await probePrices(options.prices ?? {})));
+
+  /*
+    **Stripeアカウントが実際に決済を受け付けられるか**（T-M8-148）。2026-08-18、本番で
+    「7日間無料で利用」が必ず失敗した。原因はアカウントの本番有効化が未完了だったこと
+    （`Your account cannot currently make live charges.`）。鍵は本番・Priceの金額も一致・
+    ポータルも有効だったので、**既存の検査はすべて緑のまま押した人だけが行き止まりになった**。
+    読み取りのみで費用は無い。
+  */
+  checks.push(judgeStripeAccount(await probeStripeAccount(options.stripeAccount ?? {})));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

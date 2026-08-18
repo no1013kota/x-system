@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.11 |
-| 更新日 | 2026-08-18 |
+| 更新日 | 2026-08-19 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -268,7 +268,11 @@ curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x
 | **ログインも新規登録もできない**。人間確認の欄が空で「もう一度お試しください」だけ出る | Cloudflare の Turnstile で**そのドメインを許可していない**（エラーコード110200）。何度再試行しても直らない | Cloudflare → Turnstile → 該当ウィジェット → **Hostname Management** へそのドメイン（例 `x-system-stg.vercel.app`）を追加。`npm run check:turnstile -- --base <URL>` で確認できる |
 | 人間確認の欄が出ず「読み込めませんでした」 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` が未設定、または**設定後に再デプロイしていない**（この値はビルド時にバンドルへ埋まる） | Vercelへ設定し、**新しいデプロイを作る**（Redeployでも可） |
 | サインアップしても**確認メールが届かない** | 確認メールは**Supabase Authが送る**（アプリの `SMTP_*` とは別）。内蔵送信は**2通/時・組織メンバー宛のみ** | 自分のアドレスで試す、または Supabase → Authentication → Emails → **SMTP Settings** にカスタムSMTPを設定する（§2-5） |
+| **カスタムSMTP設定済みなのに確認メールが届かない**（コード入力画面までは進む） | 登録したアドレスが**カスタムSMTPの送信元（`SMTP_USER`）と同じ**だった。Gmailは自分のSMTPで自分宛に送ったメールを Message-ID で重複排除するため、**受信トレイに入らず「送信済み」にだけ残る**。Supabase側は送信成功でSMTPエラーも出ず、`auth_logs` にも何も残らないので**どのログを見ても分からない**（2026-08-18 本番で発生・T-M8-147） | Gmailの**「送信済み」または「すべてのメール」**でコードを探す。動作確認は**送信元とは別のアドレス**で行う。`npm run doctor -- --base <URL>` の「メール確認が終わっていない登録」がこの状態を名指しする |
+| **未確認のまま同じアドレスで再登録した**とき、既登録の案内が出ずコード入力画面へ進む | Supabase の仕様。**確認済み**のアドレスは `user_already_exists` を返すが、**未確認**のアドレスは成功扱いで確認メールを再送する（ローカルで実測・毎回1通送られる）。総当たりでアドレスの存在を調べられないようにするための挙動 | 異常ではない。届いたコードを入力すればそのまま確認が完了する |
 | 確認メールのリンクを開くと**「リンクを確認できませんでした」** | メールテンプレートは `supabase/config.toml` で指定しているが**これはローカル専用**。リモートは既定テンプレートで、アプリが要求する `token_hash` がリンクに付かない（T-M7-45 のStorage bucketと同じ型） | Supabase → Authentication → Emails → Templates の **Confirm signup / Reset password** を `supabase/templates/*.html` と同じ内容へ差し替える。あわせて URL Configuration の **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する（§2-5.5）。※既定テンプレートでもSupabase側の確認自体は完了するので、**そのままログインできる**ことがある |
+| **「7日間無料で利用」を押すと必ず「決済画面を開けませんでした」** | Stripeアカウントが**本番決済を受け付けられない状態**（`Your account cannot currently make live charges.`・`card_payments = inactive`）。**鍵は本番・Priceの金額も一致・ポータルも有効なので、既存の検査は全部緑**だった（2026-08-18・T-M8-148） | Stripeダッシュボードのホームで有効化の残作業と審査状況を確認する。アプリ側では直せない。`npm run doctor -- --base <URL>` の「決済の受付（Stripeアカウント）」で状態が読める |
+| **登録済みのアドレスで登録してもエラーが出ずコード入力画面へ進む** | ホスト版のSupabaseは列挙対策で、登録済みでも成功と同じ形（`identities` が空配列）を返し**メールを送らない**。ローカルのSupabaseは `user_already_exists` を返すため、**エラーコードだけを見ていると本番でだけ通り抜けた**（T-M8-149） | 修正済み（`classifySignUpUser` が成功応答からも判定してログイン導線付きのエラーを出す） |
 | stagingの動作確認で**本当に課金されないか不安** | 判定はキーの種別だけで決まる | 非productionに `sk_live_` を置くと**起動時に落ちる**ので、起動していれば `sk_test_` である（T-M7-51）。Checkout画面に **TEST MODE** の帯が出ること、テストカード `4242 4242 4242 4242` が通ることでも確認できる |
 
 **デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。`check:turnstile -- --base <URL>` はログイン画面を見るだけなので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。

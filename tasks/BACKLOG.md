@@ -32,7 +32,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **6件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-29**）。D-21〜D-26 は 2026-08-11、D-30 は 2026-08-16、**D-27・D-28 は 2026-08-17** に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
-| 外部準備（人間側） | **本番運用開始に残り2件**＝`X_POSTING_MODE=live`・Xアカウント連携。ほか法務レビュー・単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
+| 外部準備（人間側） | **本番運用開始に残り2件**＝Xアカウント連携・**Stripeアカウントの本番有効化**（T-M8-148。未完了のため契約の申し込みが誰も完了できない）。ほか法務レビュー・単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
 
 **2026-08-18: 2回目の本番反映を完了した（PR #13・47コミット）。** migration 10件を適用。
 **自動投稿の連鎖（T-M8-143）が初めて本番へ入った**——それまで `mode=auto` の予約は
@@ -41,6 +41,23 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 認証メールの設定（カスタムSMTP・差出人名「Exos AI」・コード桁数6）は既に正しく、変更不要だった。
 **破壊的な3本のmigrationは事前検算をすべて通過**（本番データが想定どおりだった）。
 実物スモークはニュース取得のみ成功（$0.18）。生成・画像は**Xアカウント未連携のため未検証**。
+
+**2026-08-19: 本番設定の点検結果（設定側の不一致は0件）。** 「コードは反映したが外部サービスの設定が
+古い」型の見落としが無いかを、**相手側に問い合わせて**横断確認した（反映先URLへ curl するだけでは分からない）。
+
+| 見たもの | 確認方法 | 結果 |
+|---|---|---|
+| Vercel 環境変数（47件） | Vercel API で production/preview を実測 | 全件登録済み。`X_POSTING_MODE`=production `live`／preview `dry_run`、`APP_BASE_URL`=`https://exosai.net`／stg、`X_DAILY_POST_LIMIT`=50／10。**環境の取り違えなし** |
+| Supabase Auth 設定 | Management API と `scripts/auth-settings.mjs` の照合 | コード桁数6・有効期間1時間・レート制限3種すべて一致 |
+| 認証メールのテンプレート2種 | 本文をリポジトリの `supabase/templates/*.html` と全文比較 | 件名・本文とも一致。`{{ .Token }}`／`{{ .TokenHash }}` あり |
+| Site URL / Redirect URLs | 同上 | `https://exosai.net`・`https://exosai.net/**`。**localhost の混入なし** |
+| Stripe Webhook | Stripe API（`webhook_endpoints`） | `https://exosai.net/api/stripe/webhook` 1件・`enabled`・必要な6イベントを含む9件を購読 |
+| Stripe ポータル設定 | Stripe API | `active=true`・既定設定 |
+| 定時実行4本 | Vercel Cron の実行痕跡（`cron_runs` と手動起動の応答） | 4本すべて当該時間窓を実行済み。**launchd には何も登録されていない**＝Vercel Cronが駆動している |
+| 本番の状態確認 | `GET /api/cron/doctor` | 未連携のXアカウント以外すべて正常（費用 $6.10・DB 13MB/500MB） |
+
+**教訓**: `X_POSTING_MODE` は正しかったが、**正しいことを誰も検査していなかった**（既定値があるため
+欠けても起動し、画面は全部正常に見える）。T-M8-147 で `doctor` の項目に入れた。
 
 - **`main` への直pushは branch protection で拒否される**（PR必須・必須チェック2本）。
   `stg` → `main` のPRは使えない（D-28: ツリー同一でSHA分岐）ので、
@@ -53,9 +70,13 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 **次の一手（推奨順）**
 
 1. **本番運用の開始に必要な3件（運営者）**
-   (a) **`X_POSTING_MODE=live` をVercelの本番環境変数へ設定して再デプロイ**。既定は `dry_run` で、
-       **このままではXへ実際に投稿されない**。切り替え前に検証用アカウントで「少数投稿→自動rollback削除」を
-       1回試す（リリース前チェックリスト §2 の手順）
+   (a) ~~**`X_POSTING_MODE=live` をVercelの本番環境変数へ設定して再デプロイ**~~
+       → **2026-08-19 確認済み**。本番は `live`（Vercel APIで値を実測。2026-07-20 設定・最新の本番デプロイは
+       それより後なので反映済み）。preview は `dry_run`、`APP_BASE_URL` も本番/preview で正しく分かれている。
+       **残るのは検証用アカウントでの「少数投稿→自動rollback削除」1回**（リリース前チェックリスト §2）で、
+       これは (c) のXアカウント連携が前提。
+       **この値は誰も検査していなかった**（既定値があるため欠けても起動し、画面は全部正常に見える）。
+       T-M8-147 で `doctor` が「Xへの投稿」として出すようにした
    (b) ~~**Stripe WebhookのURLを `https://exosai.net/api/stripe/webhook` へ変更**~~
        → **2026-08-18 完了**（運営者が実施）。Stripe APIで確認済み:
        `https://exosai.net/api/stripe/webhook` が `status=enabled`・登録は1件のみ・
@@ -65,6 +86,12 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
        「未修正」と報告した）
    (c) **Xアカウントの連携**（本番は0件）。連携後に `npm run release:production -- --account <handle>` で
        生成・画像まで含む実物スモークを回す
+   (d) **Stripeアカウントの本番有効化**（2026-08-19 判明・T-M8-148）。`charges_enabled = false` /
+       `card_payments = inactive` のため、**いま契約の申し込みは誰も完了できない**
+       （「7日間無料で利用」が必ず「決済画面を開けませんでした」になる）。
+       必要な情報は提出済み（`details_submitted = true`）なので、Stripeダッシュボードのホームで
+       残作業と審査状況を確認する。**アプリ側では直せない。** 状態は
+       `npm run doctor -- --base https://exosai.net` の「決済の受付（Stripeアカウント）」で読める
 2. **D-17（法務文書の弁護士レビュー）**。T-M8-75で条項を19条へ増やし、T-M8-81で屋号を足したため
    レビュー対象が広がっている。専属管轄・免責上限・賠償条項の有効性が論点。
    **T-M8-118のキャンペーン価格表示（二重価格表示）も対象に含める**
@@ -2073,6 +2100,64 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `/signup`・`/reset-password`・`/login`・`/` の全scriptにnonceが載りヘッダと一致することを確認。`release:check` 緑。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
+
+### T-M8-150: 会員登録直後の `/plans?confirmed=1` が500になる `todo`
+- 参照: 要件05 §`/auth/confirm`・`verifySignUpCode`／要件06 SC-03 / 依存: なし / サイズ: S
+- 完了条件:
+  - 会員登録→6桁コード入力の直後に `/plans?confirmed=1` が正常に描画され、確認完了の案内が出る
+  - 同じ経路をE2Eで再現し、落ちたら失敗するテストがある
+- メモ: **2026-08-19 未解決。原因未特定のまま起票しない方針だが、再現条件が絞れていないので調査結果を残す。**
+  運営者の報告（2026-08-19）: 登録直後に `https://exosai.net/plans?confirmed=1` へ遷移し
+  「This page couldn't load」＝**Next.js既定の500画面**（`_global-error`。`prerender-nonce.ts` の例外一覧に記録あり）。
+  調べた範囲: Vercelのランタイムログに当該時刻の500は残っていなかった（`/plans` は info で成功、
+  同時刻に `/`・`/terms`・`/privacy`・`/legal/commercial-transactions` のprefetchが出ているので**一度は描画されている**）。
+  未認証で `/plans?confirmed=1` を叩くと307（ログインへ）で再現しない。
+  ローカルのE2E（`e2e/auth.spec.ts` の6桁コード経路）は同じ遷移を通っていて緑。
+  経路上の分岐は精査済みで、`Notice tone="success"`・`subscriptionAccessFor`・`ensureUserProfile`（read-first）に
+  落ちる要素は見つからなかった。**次の一手**: 再現するかを確認し、するなら Sentry の該当イベントか
+  `vercel logs` を発生直後に取る（ログの保持が短く、後追いでは消えている）。
+
+### T-M8-149: 登録済みアドレスでも登録できたように見える経路を塞ぐ `done`
+- 参照: 要件05 §4（`signUp`）／運用メモ §症状表 / 依存: なし / サイズ: S
+- 完了条件:
+  - 登録済みのアドレスで登録すると「既に登録されています」とログイン導線が出る（コード入力画面へ進まない）
+  - 未確認アドレスの再登録は従来どおりコード入力へ進む（Supabaseが毎回再送する）
+- メモ: **ホスト版のSupabaseは列挙対策で、登録済みでも成功と同じ形の応答を返しメールを送らない**
+  （`identities` が空配列）。**ローカルのSupabaseは `user_already_exists` を返す**ため、
+  T-M8-127 でエラーコードを見るようにしても**本番でだけ通り抜けていた**（来ないコードを待つ画面へ送り込む）。
+  判定は `classifySignUpUser`（`identities` が空／`email_confirmed_at` が入っている）。
+  文言は `SIGNUP_ALREADY_REGISTERED` に集約し、エラー経路と成功経路で同じものを使う。
+  **列挙について**: 明示は運営者の指示（2026-08-18・T-M8-127）どおり。Turnstileと
+  `rate_limit_anonymous_users`（5分30回）が自動列挙を抑える。
+
+### T-M8-148: 決済を受け付けられない状態を、押す前に運営者へ見せる `done`
+- 参照: 要件03 §6（Checkout/Portalのエラー契約）／運用メモ §症状表 / 依存: なし / サイズ: S
+- 完了条件:
+  - `npm run doctor`／`GET /api/cron/doctor` が「決済の受付（Stripeアカウント）」を出す
+  - production で `charges_enabled=false` なら ❌ ＋ 次の一手（Stripeダッシュボード）が出る
+  - 「待っても直らない失敗」に「時間をおいて再度お試しください」と言わない
+- メモ: 2026-08-19、本番で「7日間無料で利用」が必ず失敗した。原因は**Stripeアカウントの本番有効化が
+  未完了**（`Your account cannot currently make live charges.`／`card_payments = inactive`／
+  `details_submitted = true` なので提出済みで有効化待ち）。**コードの不具合ではない。**
+  問題は「気付ける経路が無かった」こと——鍵は本番・Priceの金額も一致・ポータルも有効なので、
+  `doctor` も `release:check` も全部緑で、押した利用者だけが行き止まりになっていた。
+  判定は `src/lib/ops/stripe-account-status.ts`（純粋関数・単体9件）、
+  失敗の振り分けは `src/lib/stripe/stripe-errors.ts`（`isLiveChargesDisabled`・単体4件）。
+  画面は固定文をやめ、サーバが返した文言（`USER_MESSAGES`）を出す。
+
+### T-M8-147: 「設定が本番へ反映されていない」を状態確認で検出する `done`
+- 参照: 要件04 §6（定時トリガー）／運用メモ §症状表／CLAUDE.md 原則1・2 / 依存: なし / サイズ: S
+- 完了条件:
+  - `npm run doctor`／`GET /api/cron/doctor` が「Xへの投稿」「アプリのURL設定」「決済（Stripe）の接続先」を出す
+  - 本番が `dry_run` のままなら ❌ と次の一手（環境変数名）が出る
+  - `APP_BASE_URL` が実際の配信元と違えば ❌ が出る（`localhost` と `127.0.0.1` は同一視）
+  - 「メール確認が終わっていない登録」に**送信元と同じアドレス**が含まれるとき、届かない理由を名指しする
+- メモ: **必須の環境変数は起動時検証（`env-schema.ts`）が落とすので気付けるが、既定値を持つ設定は
+  欠けても起動する。** そのため画面は全部正常に見えたまま機能だけが止まる。`release:check`・全テスト・
+  既存の `doctor` はいずれも env を見ていなかった。
+  判定は `src/lib/ops/config-status.ts`（純粋関数・単体20件）。**秘密値は入力に取らない**——診断はHTTPで
+  返るため、鍵そのものが応答へ混ざる経路を作らない（種別・有無だけを渡す）。
+  あわせて2026-08-19に本番を横断点検し、**設定側の不一致は0件**だった（下の「本番設定の点検結果」）。
 
 ### T-M8-143: 自動投稿が下書きを作るだけで投稿されない（連鎖1本が未実装） `done`
 - 参照: 要件04 §10 手順6/7（未実装注記あり）、要件02 §3.10 / 依存: なし / サイズ: M

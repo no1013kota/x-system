@@ -34,8 +34,28 @@ export function httpsUrlFromResponse(body: unknown): string | null {
 }
 
 /**
+ * サーバが返した利用者向け文言を取り出す（T-M8-148）。
+ *
+ * 失敗の理由によって言うべきことは違うのに、ここは**常に同じ固定文**を出していた。
+ * 2026-08-18、Stripeアカウントが本番決済を受け付けられない状態で「決済画面を開けませんでした。
+ * **時間をおいて**もう一度お試しください」と出続けた——待っても直らないので嘘になり、
+ * 利用者は同じ操作を繰り返す（CLAUDE.md 原則1）。
+ *
+ * 文言の正本はサーバ側の `USER_MESSAGES`（`observability/errors.ts`）で、コードが増えても
+ * ここを直す必要が無い。取り出せないときだけ呼び出し側の既定文へ落ちる。
+ */
+export function userMessageFromResponse(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const value = body as { ok?: unknown; error?: { message?: unknown } };
+  if (value.ok !== false) return null;
+  const message = value.error?.message;
+  return typeof message === "string" && message !== "" ? message : null;
+}
+
+/**
  * POSTs to `endpoint`, reads the `{ ok, data: { url } }` envelope, and navigates
- * to the returned https URL. Throws `Error(errorMessage)` on any failure.
+ * to the returned https URL. Throws `Error` on any failure, preferring the
+ * server's user-facing message over `errorMessage`.
  */
 export async function startBillingRedirect(
   endpoint: string,
@@ -52,6 +72,6 @@ export async function startBillingRedirect(
   }
   const body: unknown = await response.json().catch(() => null);
   const url = response.ok ? httpsUrlFromResponse(body) : null;
-  if (!url) throw new Error(errorMessage);
+  if (!url) throw new Error(userMessageFromResponse(body) ?? errorMessage);
   dependencies.navigate(url);
 }

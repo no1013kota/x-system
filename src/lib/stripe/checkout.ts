@@ -4,6 +4,8 @@ import { z } from "zod";
 import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
 import { AppError } from "@/lib/observability/errors";
+
+import { isLiveChargesDisabled } from "./stripe-errors";
 import { PLAN_IDS, type PlanId } from "@/lib/plans";
 
 export const checkoutInputSchema = z
@@ -48,6 +50,23 @@ export interface CheckoutRouteDependencies {
   stripe: CheckoutStripeGateway;
 }
 
+/**
+ * Stripeの失敗を利用者向けコードへ振り分ける（T-M8-148）。
+ *
+ * **アカウントが本番決済を受け付けられない状態は `provider_error` にしない。**
+ * その文言は「時間をおいて再度お試しください」で、待っても直らないので嘘になる
+ * （T-M8-127と同じ型の問題）。原因は `doctor` の「決済の受付（Stripeアカウント）」が示す。
+ */
+function billingError(cause: unknown): AppError {
+  if (isLiveChargesDisabled(cause)) {
+    return new AppError("feature_disabled", {
+      cause,
+      details: { feature: "billing", reason: "live_charges_disabled" },
+    });
+  }
+  return new AppError("provider_error", { cause });
+}
+
 async function createCustomer(
   deps: CheckoutRouteDependencies,
   user: CheckoutUser & { email: string },
@@ -62,7 +81,7 @@ async function createCustomer(
       { idempotencyKey: `exos-ai:customer:${user.id}` },
     );
   } catch (cause) {
-    throw new AppError("provider_error", { cause });
+    throw billingError(cause);
   }
 
   try {
@@ -164,6 +183,6 @@ export async function handleCheckoutRequest(
     });
   } catch (error) {
     if (error instanceof AppError) return apiError(error);
-    return apiError(new AppError("provider_error", { cause: error }));
+    return apiError(billingError(error));
   }
 }
