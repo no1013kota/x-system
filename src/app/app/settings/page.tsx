@@ -236,7 +236,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     ]);
   }
 let promptTemplates: PromptTemplateView[] = [];
-  let promptQuoteEnabled = false;
   /** 投稿作成プロンプト＝パターン管理（T-M8-129 U4b）。プルダウンをやめ全件並べる。 */
   let patterns: PatternOption[] = [];
   let patternPrompts: Record<string, PatternPromptView> = {};
@@ -245,7 +244,6 @@ let promptTemplates: PromptTemplateView[] = [];
     if (promptSection === "image-prompt") {
       const res = await listPromptTemplatesForUser(user.id);
       promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
-      promptQuoteEnabled = res.quotePostEnabled;
     } else {
       const res = await listPatternsForUser(user.id);
       patterns = res.patterns;
@@ -477,7 +475,6 @@ let promptTemplates: PromptTemplateView[] = [];
               <PromptTemplatesEditor
                 initialTemplates={promptTemplates}
                 key={promptSection}
-                quotePostEnabled={promptQuoteEnabled}
               />
             ) : (
               <PatternManager

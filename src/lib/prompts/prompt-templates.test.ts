@@ -88,56 +88,49 @@ describe("prompt template guards", () => {
 
 describe("listPromptTemplates", () => {
   /**
-   * 型プロンプト（p1〜p6）は `post_patterns` から、画像は `prompt_templates` から読む
-   * （T-M8-129 U2）。画面の形（kind別の一覧）は変えていない。
+   * **画像プロンプトだけを返す**（T-M8-139・ADR-0008・要件05 §8）。
+   *
+   * 以前は `p1`〜`p6` も返していた。そのため画像プロンプトの編集画面で「再読み込み」を押すと
+   * 一覧の先頭が p1 になって**編集対象がすり替わり、保存すると投稿パターンのプロンプトを
+   * 画像プロンプトの本文で上書きした**。型プロンプトの読み出しは `listPatternPrompts` が担う。
    */
-  it("型は post_patterns、画像は prompt_templates から合成する", async () => {
-    const db = makeDb((sql) => {
-      if (/from post_patterns/.test(sql)) {
-        return [
-          { seed_key: "p1", prompt: "CUSTOM P1", updated_at: "2026-07-24T00:00:00.000Z" },
-          { seed_key: "p2", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
-          { seed_key: "p3", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
-          { seed_key: "p4", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
-          { seed_key: "p5", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
-          { seed_key: "p6", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" },
-        ];
-      }
-      return [];
-    });
+  it("画像だけを返す（型プロンプトは post_patterns 側の経路）", async () => {
+    const db = makeDb(() => []);
     const views = await listPromptTemplates(db, "a1");
-    expect(views).toHaveLength(7);
-
-    const p1 = views.find((v) => v.kind === "p1")!;
-    expect(p1).toMatchObject({
-      content: "CUSTOM P1",
-      isOverride: true,
-      updatedAt: "2026-07-24T00:00:00.000Z",
-    });
-    // prompt が null ＝ システム既定。コード定数をそのまま出し、更新時刻も出さない。
-    const p2 = views.find((v) => v.kind === "p2")!;
-    expect(p2).toMatchObject({
-      content: SYSTEM_DEFAULT_TEMPLATES.p2,
-      isOverride: false,
-      updatedAt: null,
-    });
-    // 画像は上書きもsystem行も無い → コード定数へ落ちる。
-    const image = views.find((v) => v.kind === "image")!;
-    expect(image).toMatchObject({
+    expect(views.map((v) => v.kind)).toEqual(["image"]);
+    // 上書きもsystem行も無い → コード定数へ落ちる。
+    expect(views[0]).toMatchObject({
       content: SYSTEM_DEFAULT_TEMPLATES.image,
       isOverride: false,
       updatedAt: null,
     });
   });
 
-  it("削除された既定パターンは一覧に出さない（無い型を編集させない）", async () => {
+  it("アカウント上書きがあれば custom を返す", async () => {
     const db = makeDb((sql) => {
-      if (/from post_patterns/.test(sql)) {
-        return [{ seed_key: "p1", prompt: null, updated_at: "2026-07-24T00:00:00.000Z" }];
+      if (/from prompt_templates where x_account_id = \$1/.test(sql)) {
+        return [{ kind: "image", content: "CUSTOM IMG", updated_at: "2026-07-24T00:00:00.000Z" }];
       }
       return [];
     });
     const views = await listPromptTemplates(db, "a1");
-    expect(views.map((v) => v.kind)).toEqual(["p1", "image"]);
+    expect(views).toEqual([
+      {
+        kind: "image",
+        content: "CUSTOM IMG",
+        isOverride: true,
+        updatedAt: "2026-07-24T00:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("post_patterns を読まない（型プロンプトはこの経路の関心事ではない）", async () => {
+    const seen: string[] = [];
+    const db = makeDb((sql) => {
+      seen.push(sql);
+      return [];
+    });
+    await listPromptTemplates(db, "a1");
+    expect(seen.some((s) => /post_patterns/.test(s)), "post_patterns を引いている").toBe(false);
   });
 });

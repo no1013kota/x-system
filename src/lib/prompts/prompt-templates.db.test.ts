@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { X_SCOPES } from "../x/oauth";
-import { PT_P2, SYSTEM_DEFAULT_TEMPLATES } from "./gen-prompts";
+import { SYSTEM_DEFAULT_TEMPLATES } from "./gen-prompts";
 import {
   applyResetPromptTemplate,
   applyUpdatePromptTemplate,
@@ -134,16 +134,15 @@ describe("prompt-templates (local DB)", () => {
         SYSTEM_DEFAULT_TEMPLATES.image,
       );
 
-      // 型: post_patterns から解決する。上書きの無い型はコード定数のまま。
+      /*
+        **一覧は画像だけ**（T-M8-139）。型プロンプトの正本は `post_patterns` で、
+        読み出しは `listPatternPrompts` が担う（ADR-0008・要件05 §8）。
+        以前ここが p1〜p6 も返していたため、画像プロンプトの編集画面が
+        「再読み込み」で p1 の編集画面に変わり、保存で投稿パターンを上書きしていた。
+      */
       const views = await listPromptTemplates(db, xid);
-      expect(views.find((v) => v.kind === "p1")).toMatchObject({
-        content: "CUSTOM P1",
-        isOverride: true,
-      });
-      expect(views.find((v) => v.kind === "p2")).toMatchObject({
-        content: PT_P2,
-        isOverride: false,
-      });
+      expect(views.map((v) => v.kind)).toEqual(["image"]);
+      expect(views[0]).toMatchObject({ content: "CUSTOM IMG", isOverride: true });
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
@@ -190,20 +189,20 @@ describe("prompt-templates (local DB)", () => {
     try {
       const created = await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p1",
+        kind: "image",
         content: "OVR 1",
         expectedUpdatedAt: null,
         plan: "md",
         quotePostEnabled: true,
       });
-      expect(created).toMatchObject({ kind: "p1", content: "OVR 1", isOverride: true });
+      expect(created).toMatchObject({ kind: "image", content: "OVR 1", isOverride: true });
       expect(created.updatedAt).not.toBeNull();
 
       // creating again with null must conflict (already exists)
       const dup = await reject(
         applyUpdatePromptTemplate(db, {
           xAccountId: xid,
-          kind: "p1",
+          kind: "image",
           content: "OVR X",
           expectedUpdatedAt: null,
           plan: "md",
@@ -216,7 +215,7 @@ describe("prompt-templates (local DB)", () => {
       const stale = await reject(
         applyUpdatePromptTemplate(db, {
           xAccountId: xid,
-          kind: "p1",
+          kind: "image",
           content: "OVR 2",
           expectedUpdatedAt: "2000-01-01T00:00:00.000Z",
           plan: "md",
@@ -229,19 +228,19 @@ describe("prompt-templates (local DB)", () => {
       // correct timestamp succeeds
       const updated = await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p1",
+        kind: "image",
         content: "OVR 2",
         expectedUpdatedAt: created.updatedAt,
         plan: "premium",
         quotePostEnabled: true,
       });
       expect(updated.content).toBe("OVR 2");
-      // 型プロンプトの保存先は `post_patterns.prompt`（U2）。生成はここから spec を作る。
-      const saved = await db.query<{ prompt: string | null }>(
-        `select prompt from post_patterns where x_account_id = $1 and seed_key = 'p1'`,
+      // 画像プロンプトの保存先は `prompt_templates`（型プロンプトは post_patterns 側・T-M8-139）。
+      const saved = await db.query<{ content: string }>(
+        `select content from prompt_templates where x_account_id = $1 and kind = 'image'`,
         [xid],
       );
-      expect(saved.rows[0].prompt, "保存先が post_patterns になっている").toBe("OVR 2");
+      expect(saved.rows[0].content, "保存先が prompt_templates になっている").toBe("OVR 2");
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
@@ -253,21 +252,26 @@ describe("prompt-templates (local DB)", () => {
     try {
       await applyUpdatePromptTemplate(db, {
         xAccountId: xid,
-        kind: "p2",
-        content: "OVR P2",
+        kind: "image",
+        content: "OVR IMG",
         expectedUpdatedAt: null,
         plan: "md",
         quotePostEnabled: true,
       });
       const reset = await applyResetPromptTemplate(db, {
         xAccountId: xid,
-        kind: "p2",
+        kind: "image",
         plan: "md",
         quotePostEnabled: true,
       });
-      expect(reset).toMatchObject({ kind: "p2", isOverride: false, content: PT_P2, updatedAt: null });
+      expect(reset).toMatchObject({
+        kind: "image",
+        isOverride: false,
+        content: SYSTEM_DEFAULT_TEMPLATES.image,
+        updatedAt: null,
+      });
       const views = await listPromptTemplates(db, xid);
-      expect(views.find((v) => v.kind === "p2")?.isOverride).toBe(false);
+      expect(views.find((v) => v.kind === "image")?.isOverride).toBe(false);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

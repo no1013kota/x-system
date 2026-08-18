@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 import { legacyPatternLabel } from "@/lib/analytics/humanize-report";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   listPromptTemplatesAction,
@@ -47,10 +47,8 @@ interface ActionError {
 
 export function PromptTemplatesEditor({
   initialTemplates,
-  quotePostEnabled,
 }: {
   initialTemplates: PromptTemplateView[];
-  quotePostEnabled: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -72,14 +70,15 @@ export function PromptTemplatesEditor({
   }
   const [templates, setTemplates] = useState<PromptTemplateView[]>(initialTemplates);
 
-  // p5（引用ポスト）は FEATURE_QUOTE_POST_ENABLED=false の間は非表示。
-  const visible = useMemo(
-    () => templates.filter((t) => t.kind !== "p5" || quotePostEnabled),
-    [templates, quotePostEnabled],
-  );
-
-  /** この画面が扱うのは画像プロンプトだけ（投稿の型はパターン管理へ移った・T-M8-129 U4b）。 */
-  const selectedKind = visible[0]?.kind ?? "image";
+  /**
+   * この画面が扱うのは画像プロンプトだけ（投稿の型はパターン管理へ移った・T-M8-129 U4b）。
+   *
+   * **入力データで対象を決めない**（T-M8-139）。以前は `visible[0].kind` だったため、
+   * 「再読み込み」が p1〜p6 も含む一覧を取り込んだ瞬間に編集対象が p1 へすり替わり、
+   * 保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きした。
+   * 一覧側も画像だけを返すようにしたが、ここも固定して二重に防ぐ。
+   */
+  const selectedKind = "image" as const;
   const current = templates.find((t) => t.kind === selectedKind) ?? null;
   const [draft, setDraft] = useState<string>(current?.content ?? "");
   const [note, setNote] = useState<Note>(null);

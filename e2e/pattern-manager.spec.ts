@@ -102,3 +102,38 @@ test("画像プロンプトの画面にプルダウンを置かない", async ({
   await expect(page.getByRole("heading", { level: 3, name: "画像プロンプト" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "プロンプト本文" })).toBeVisible();
 });
+
+/**
+ * T-M8-139。**「再読み込み」で編集対象がすり替わらない。**
+ *
+ * `listPromptTemplates` が p1〜p6 も返していたため、再読み込み後の一覧の先頭が p1 になり、
+ * 画面が「ニュース解説」の編集画面へ変わっていた。そのまま保存すると
+ * **投稿パターンのプロンプトを画像プロンプトの本文で上書きした**（利用者のデータが壊れる）。
+ */
+test("画像プロンプトの画面は再読み込みしても対象が変わらず、投稿パターンを壊さない", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("image-prompt-reload");
+  await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=prompts&sec=image-prompt");
+
+  const body = page.getByRole("textbox", { name: "プロンプト本文" });
+  await expect(body).toBeVisible();
+  const before = await body.inputValue();
+
+  await page.getByRole("button", { name: /再読み込み/ }).first().click();
+
+  // 見出しも本文も変わらない（p1「ニュース解説」へ移らない）。
+  await expect(page.getByRole("heading", { level: 3, name: "画像プロンプト" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ニュース解説" })).toHaveCount(0);
+  await expect(body).toHaveValue(before);
+
+  // 投稿パターンのプロンプトは触られていない。
+  const [p1] = await query<{ prompt: string | null }>(
+    `select prompt from post_patterns where x_account_id = $1 and seed_key = 'p1'`,
+    [account.xAccountId],
+  );
+  expect(p1.prompt, "p1 が画像プロンプトで上書きされていない").toBeNull();
+});

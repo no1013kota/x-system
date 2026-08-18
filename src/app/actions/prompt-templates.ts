@@ -5,7 +5,6 @@ import { z } from "zod";
 import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
 import { parseUserInput } from "@/lib/validation/user-input";
 import { AppError } from "@/lib/observability/errors";
-import { PROMPT_TEMPLATE_KINDS } from "@/lib/prompts/gen-prompts";
 import {
   NoActiveAccountError,
   listPromptTemplatesForUser,
@@ -20,7 +19,11 @@ import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
  * active Xアカウント未選択は not_found（設定導線）へ変換する。
  */
 
-const kindSchema = z.enum(PROMPT_TEMPLATE_KINDS);
+/**
+ * **画像だけ受け付ける**（T-M8-139）。型プロンプトは `updatePatternPromptAction`（`pattern_id` 経路）。
+ * 以前は `p1`〜`p6` も通り、画像プロンプトの本文が投稿パターンへ書き込まれる事故が起きた。
+ */
+const kindSchema = z.literal("image");
 const updateSchema = z.object({
   kind: kindSchema,
   content: z.string(),
