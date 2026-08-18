@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 import { AppError } from "@/lib/observability/errors";
 
@@ -61,7 +62,8 @@ async function loadForWrite(
 
 function assertEditablePlan(plan: string): void {
   // 手動md編集は md/premium のみ（standard は forbidden・要件05 §8）。
-  if (plan !== "md" && plan !== "premium") {
+  // 判定は `promptEditablePlan` に集約（T-M8-144）。plan名の直比較を各所に置かない。
+  if (!promptEditablePlan(plan)) {
     throw new AppError("forbidden", { details: { reason: "plan_not_allowed" } });
   }
 }

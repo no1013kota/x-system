@@ -23,6 +23,7 @@ import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-serve
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 export const metadata: Metadata = { title: "投稿 | Exos AI" };
 
@@ -100,7 +101,8 @@ async function createTabData(userId: string, activeXAccountId: string) {
   let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =
     null;
   let baseMd: { content: string; version: number } | null = null;
-  if (plan === "md" || plan === "premium") {
+  // 判定は `promptEditablePlan` に集約（T-M8-144）。
+  if (promptEditablePlan(plan ?? "")) {
     const [patternPrompts, listed, baseMdRow] = await Promise.all([
       // パターンのプロンプトは `post_patterns.prompt`（U2/U3）。画像だけ `prompt_templates`。
       listPatternPrompts(pooledDb, activeXAccountId),

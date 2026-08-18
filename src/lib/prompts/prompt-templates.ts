@@ -1,4 +1,5 @@
 import { AppError } from "@/lib/observability/errors";
+import { PLANS, type PlanId } from "@/lib/plans";
 
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "./gen-prompts";
 import type { Queryable } from "../db/queryable";
@@ -124,7 +125,10 @@ export interface PromptTemplateView {
  * 「画面には出ないのに生成では効く」状態が生まれる。
  */
 export function promptEditablePlan(plan: string): boolean {
-  return plan === "md" || plan === "premium";
+  // **出典は `PLANS` の表**（T-M8-144）。以前はここで plan 名を直に比べていたため、
+  // 料金表の表示（`canEditMdAndPrompts`）と保存時の拒否が別系統で、
+  // プランの権限を変えても片方だけ追随しうる状態だった。未知planは false。
+  return PLANS[plan as PlanId]?.canEditMdAndPrompts === true;
 }
 
 export function assertPromptEditablePlan(plan: string): void {

@@ -21,6 +21,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
 import { CardTitle, cardClassName } from "@/components/ui/card";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 export const metadata: Metadata = { title: "スケジュール | Exos AI" };
 
@@ -92,7 +93,8 @@ let drafts: DraftView[] = [];
       listSchedulablePatterns(pooledDb, activeXAccountId),
     ]);
     patterns = schedulable;
-    if (meta?.plan === "md" || meta?.plan === "premium") {
+    // 判定は `promptEditablePlan` に集約（T-M8-144）。
+  if (promptEditablePlan(meta?.plan ?? "")) {
       const prompts = await listPatternPrompts(pooledDb, activeXAccountId);
       // 予約に使えるパターンの分だけ渡す（選べないものを編集させない）。
       patternPrompts = Object.fromEntries(

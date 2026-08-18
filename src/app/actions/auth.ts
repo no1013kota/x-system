@@ -33,6 +33,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { AuthFormState } from "./auth-state";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
+import { confirmRedirectUrl } from "@/lib/ops/auth-url-status";
 
 const SIGNUP_ACCEPTED_MESSAGE =
   "確認コードをメールで送信しました。届いた6桁の数字を入力してください。";
@@ -65,8 +66,15 @@ const UPDATE_PASSWORD_ERROR_MESSAGE =
 const CAPTCHA_ERROR_MESSAGE =
   "人間であることの確認に失敗しました。もう一度お試しください。";
 
+/**
+ * 確認メールのリンクの行き先。
+ *
+ * **`doctor` が許可リストを検査するのと同じ関数を使う**（T-M8-144）。
+ * 以前はここに同じ組み立ての写しがあり、コメントで「同じにすること」と人の記憶に
+ * 頼っていた——片方だけ変えると「doctorは緑なのにメールのリンクが通らない」になる。
+ */
 function confirmationRedirectUrl(): string {
-  return new URL("/auth/confirm", env.APP_BASE_URL).toString();
+  return confirmRedirectUrl(env.APP_BASE_URL as string);
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {

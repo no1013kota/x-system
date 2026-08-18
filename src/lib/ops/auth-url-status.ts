@@ -36,6 +36,10 @@ export const AUTH_TOKEN_ENV = "SUPABASE_ACCESS_TOKEN";
  * アプリが渡す確認メールの行き先。**`app/actions/auth.ts` と同じ組み立てにすること。**
  * ここがずれると、実際に渡す値ではないURLを検査してしまう。
  */
+/**
+ * 確認メールのリンクの行き先。**アプリ（`actions/auth.ts`）もこの関数を使う**（T-M8-144）。
+ * 検査する値と実際に送る値が構造的に一致していないと、doctorが緑でもリンクが通らない。
+ */
 export function confirmRedirectUrl(appBaseUrl: string): string {
   return new URL("/auth/confirm", appBaseUrl).toString();
 }
