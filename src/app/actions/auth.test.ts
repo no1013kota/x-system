@@ -161,6 +161,54 @@ describe("auth actions", () => {
       expect(mocks.profileEq).toHaveBeenCalledWith("id", "user-1");
     });
 
+    /**
+     * T-M8-149。**エラーが無くても登録済みのことがある。**
+     * ホスト版のSupabaseは列挙対策で、登録済みでも成功と同じ形（`identities` が空）を返し
+     * メールを送らない。素通りさせると来ないコードを待つ画面へ送り込むことになる
+     * （2026-08-18に本番で発生。ローカルはエラーを返すため気付けなかった）。
+     */
+    it("成功応答でも identities が空なら登録済みとして案内する", async () => {
+      const signUpAuth = vi.fn().mockResolvedValue({
+        data: { user: { id: "user-1", identities: [] } },
+        error: null,
+      });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { signUp: signUpAuth },
+      });
+
+      const result = await signUp(INITIAL_AUTH_FORM_STATE, validSignUpForm());
+
+      expect(result).toMatchObject({
+        status: "error",
+        message: expect.stringContaining("既に登録されています"),
+        action: { href: "/login" },
+      });
+      // 同意の記録もしない（他人のアカウントの同意状態を書き換えないため）。
+      expect(mocks.profileUpdate).not.toHaveBeenCalled();
+    });
+
+    it("成功応答で確認済みの日時が入っていても登録済みとして案内する", async () => {
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signUp: vi.fn().mockResolvedValue({
+            data: {
+              user: {
+                id: "user-1",
+                identities: [{ provider: "email" }],
+                email_confirmed_at: "2026-08-01T00:00:00Z",
+              },
+            },
+            error: null,
+          }),
+        },
+      });
+
+      const result = await signUp(INITIAL_AUTH_FORM_STATE, validSignUpForm());
+
+      expect(result).toMatchObject({ status: "error" });
+      expect(result.message).toContain("既に登録されています");
+    });
+
     it("passes a supplied captcha token to Supabase Auth", async () => {
       const signUpAuth = vi.fn().mockResolvedValue({
         data: { user: { id: "user-1" } },

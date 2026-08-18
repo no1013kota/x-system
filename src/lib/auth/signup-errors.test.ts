@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  SIGNUP_GENERIC_ERROR,
-  authErrorCode,
-  signUpErrorMessage,
-} from "./signup-errors";
+import { SIGNUP_GENERIC_ERROR, authErrorCode, classifySignUpUser, signUpErrorMessage } from "./signup-errors";
 
 /**
  * T-M8-127。**ローカルSupabaseで実際に観測した応答**を入力にする（2026-08-18）。
@@ -64,5 +60,50 @@ describe("signUpErrorMessage", () => {
   it("未知のエラーは従来の汎用文へ落とす（勝手に断定しない）", () => {
     expect(signUpErrorMessage({ code: "something_new" })).toEqual(SIGNUP_GENERIC_ERROR);
     expect(signUpErrorMessage(new Error("boom"))).toEqual(SIGNUP_GENERIC_ERROR);
+  });
+});
+
+/**
+ * T-M8-149。**エラーが無くても登録済みのことがある。**
+ *
+ * 2026-08-18、本番で登録済みのアドレスを入力すると、エラーにならずコード入力画面へ進み、
+ * メールは永久に来なかった。ホスト版のSupabaseはアカウント列挙を防ぐため、登録済みでも
+ * 成功と同じ形の応答を返して**メールを送らない**（`identities` が空配列になる）。
+ * ローカルのSupabaseは同じ状況で `user_already_exists` を返すため、
+ * **エラーコードだけを見ていると本番でだけ通り抜ける**。
+ */
+describe("classifySignUpUser", () => {
+  it("新規登録（identitiesが1件・未確認）は作成として扱う", () => {
+    expect(
+      classifySignUpUser({ identities: [{ provider: "email" }], email_confirmed_at: null }),
+    ).toBe("created");
+  });
+
+  it("identities が空配列なら登録済み（列挙対策の応答・本番の実例）", () => {
+    expect(classifySignUpUser({ identities: [] })).toBe("already_registered");
+  });
+
+  it("email_confirmed_at が入っていれば登録済み（新規では必ず空）", () => {
+    expect(
+      classifySignUpUser({
+        identities: [{ provider: "email" }],
+        email_confirmed_at: "2026-08-01T00:00:00Z",
+      }),
+    ).toBe("already_registered");
+  });
+
+  it("未確認アドレスの再登録は作成として扱う（Supabaseが毎回コードを再送する）", () => {
+    expect(
+      classifySignUpUser({ identities: [{ provider: "email" }], email_confirmed_at: null }),
+    ).toBe("created");
+  });
+
+  it("identities が無い応答は作成として扱う（判定材料が無いだけで止めない）", () => {
+    expect(classifySignUpUser({})).toBe("created");
+  });
+
+  it("user が無ければ登録済み側へ倒す（コード入力画面へ進めない）", () => {
+    expect(classifySignUpUser(null)).toBe("already_registered");
+    expect(classifySignUpUser(undefined)).toBe("already_registered");
   });
 });

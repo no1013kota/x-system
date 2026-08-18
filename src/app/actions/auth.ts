@@ -11,7 +11,12 @@ import {
   recordCodeFailure,
 } from "@/lib/auth/code-attempts";
 import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
-import { SIGNUP_GENERIC_ERROR, signUpErrorMessage } from "@/lib/auth/signup-errors";
+import {
+  classifySignUpUser,
+  SIGNUP_ALREADY_REGISTERED,
+  SIGNUP_GENERIC_ERROR,
+  signUpErrorMessage,
+} from "@/lib/auth/signup-errors";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
@@ -122,6 +127,20 @@ export async function signUp(
       // 「時間をおいて再度」と言ってはいけない（同じ操作を繰り返させる）。
       const { message, action } = signUpErrorMessage(error);
       return { status: "error", message, ...(action ? { action } : {}) };
+    }
+
+    /*
+      **エラーが無くても登録済みのことがある**（T-M8-149）。ホスト版のSupabaseはアカウント
+      列挙を防ぐため、登録済みのアドレスでも成功と同じ形の応答を返し、**メールを送らない**。
+      ここを素通りさせると、来ないコードを待つ画面へ利用者を送り込むことになる
+      （2026-08-18に本番で発生。ローカルのSupabaseは同じ状況でエラーを返すため気付けなかった）。
+    */
+    if (classifySignUpUser(data.user) === "already_registered") {
+      return {
+        status: "error",
+        message: SIGNUP_ALREADY_REGISTERED.message,
+        ...(SIGNUP_ALREADY_REGISTERED.action ? { action: SIGNUP_ALREADY_REGISTERED.action } : {}),
+      };
     }
 
     const acceptedAt = new Date().toISOString();

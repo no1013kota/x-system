@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.40 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.41 |
+| 更新日 | 2026-08-19 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -94,13 +94,15 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
+| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化。**エラーが無い応答でも登録済みを判定する**（T-M8-149。`identities` が空、または `email_confirmed_at` が入っていれば既存アカウント。ホスト版Supabaseは列挙対策で登録済みでも成功と同じ形を返しメールを送らないため、素通りさせると来ないコードを待つ画面へ送り込む） |
 | `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——到達できるのは直前に登録した本人だけで、登録時にTurnstileを通しており、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
 | `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app` |
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 | `acceptLegalUpdates` | 現行version、文書別の明示checkbox | redirect | 本人profileを再読込し、古い文書のversion／同意時刻だけ更新。現行文書は上書きしない |
+
+**登録済みアドレスの扱い**（T-M8-149）: Supabaseの応答は環境で違う。ローカルは`user_already_exists`を返すが、**ホスト版は列挙対策で成功と同じ形（`identities`が空配列）を返しメールを送らない**。エラーコードだけを見ていると本番でだけ通り抜けるため、成功応答も`classifySignUpUser`で判定し、登録済みならログイン導線付きのエラーへ振り分ける（文言の正本は`signup-errors.ts`）。**未確認アドレスの再登録は「作成」として扱う**——Supabaseが毎回コードを再送するため、そのまま進めてよい。
 
 `signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通。**確認自体はコード方式**なのでリンクは使わない）。成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
 
@@ -311,3 +313,4 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.38 | 2026-08-18 | `createScheduleSlot`／`updateScheduleSlot` に `source_url`・`placeholder_values`・`prompt_override` を追加（T-M8-135） |
 | v1.39 | 2026-08-18 | `prompt_templates` 系は `kind=image` のみを受けることをコードで強制（T-M8-140。型プロンプトは `post_patterns` 側） |
 | v1.40 | 2026-08-18 | `validation_error` の理由一覧を実装へ揃えた（T-M8-144） |
+| v1.41 | 2026-08-19 | `signUp` がエラー無しの応答からも登録済みを判定するようにした（T-M8-149）。決済の失敗のうち「Stripeアカウントが本番決済を受け付けられない」を `feature_disabled` へ分け、画面はサーバの文言を出す（T-M8-148。従来は必ず「時間をおいて再度」で嘘になっていた） |
