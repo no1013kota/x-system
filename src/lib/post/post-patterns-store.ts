@@ -38,8 +38,6 @@ export interface PatternOption {
   sourcePolicy: PatternPolicy;
   /** 直近のニュースをまとめて渡すか。 */
   includeNewsDigest: boolean;
-  /** 利用者の意見・視点を入力として求めるか（画面の入力欄の出し分けに使う）。 */
-  asksUserOpinion: boolean;
   /** システム既定として投入されたものか（`p1`〜`p6`）。既定を復元する導線の判定に使う。 */
   isSystemDefault: boolean;
   /** プロンプトを自分で書き換えているか（false = システム既定のまま）。 */
@@ -57,7 +55,6 @@ interface PatternRow {
   max_posts: number;
   max_posts_edit: number;
   requires_quote_url: boolean;
-  asks_user_opinion: boolean;
   web_search_policy: PatternPolicy;
   source_policy: PatternPolicy;
   include_news_digest: boolean;
@@ -67,7 +64,7 @@ interface PatternRow {
 }
 
 const COLUMNS = `id, seed_key, name, description, prompt, max_posts, max_posts_edit,
-                 requires_quote_url, asks_user_opinion,
+                 requires_quote_url,
                  web_search_policy, source_policy, include_news_digest, placeholders`;
 
 function toOption(row: PatternRow): PatternOption {
@@ -79,7 +76,6 @@ function toOption(row: PatternRow): PatternOption {
     maxPosts: row.max_posts,
     maxPostsEdit: row.max_posts_edit,
     requiresQuoteUrl: row.requires_quote_url,
-    asksUserOpinion: row.asks_user_opinion,
     webSearchPolicy: row.web_search_policy,
     sourcePolicy: row.source_policy,
     includeNewsDigest: row.include_news_digest,
@@ -415,8 +411,8 @@ export async function applyCreatePattern(
     `insert into post_patterns
        (x_account_id, name, description, prompt, placeholders, max_posts, max_posts_edit,
         web_search_policy, web_search_max_uses, source_policy,
-        include_news_digest, asks_user_opinion, requires_quote_url, sort_order)
-     values ($1,$2,$3,$4,$5::jsonb,$6,$7,'always',3,'with_url',false,false,false,
+        include_news_digest, requires_quote_url, sort_order)
+     values ($1,$2,$3,$4,$5::jsonb,$6,$7,'always',3,'with_url',false,false,
              coalesce((select max(sort_order) + 10 from post_patterns where x_account_id = $1), 100))
      returning ${COLUMNS}, updated_at::text as updated_at`,
     [

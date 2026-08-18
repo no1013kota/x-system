@@ -78,7 +78,6 @@ const patternRow = (over: Record<string, unknown> = {}) => ({
   max_posts: 4,
   max_posts_edit: 6,
   requires_quote_url: false,
-  asks_user_opinion: false,
   ...over,
 });
 

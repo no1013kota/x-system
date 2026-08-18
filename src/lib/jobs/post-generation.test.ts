@@ -85,7 +85,6 @@ function patternSpec(over: Record<string, unknown> = {}) {
     web_search_max_uses: 2,
     source_policy: "with_url",
     include_news_digest: false,
-    asks_user_opinion: true,
     requires_quote_url: false,
     ...over,
   };

@@ -33,7 +33,6 @@ const SPEC = {
   web_search_max_uses: 4,
   source_policy: "always",
   include_news_digest: false,
-  asks_user_opinion: false,
   requires_quote_url: false,
 };
 
@@ -49,7 +48,6 @@ const PATTERN_ROW = {
   max_posts: 4,
   max_posts_edit: 6,
   requires_quote_url: false,
-  asks_user_opinion: false,
   web_search_policy: "always",
   source_policy: "always",
   include_news_digest: false,

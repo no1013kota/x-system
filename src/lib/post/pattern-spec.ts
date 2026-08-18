@@ -26,8 +26,8 @@ export interface PatternSpec {
   webSearchPolicy: PatternPolicy;
   webSearchMaxUses: number;
   sourcePolicy: PatternPolicy;
+  /** 直近のニュースをまとめて渡すか。 */
   includeNewsDigest: boolean;
-  asksUserOpinion: boolean;
   requiresQuoteUrl: boolean;
   /** プロンプト内の `{名前}` に差し込む入力の定義（T-M8-132）。 */
   placeholders: { name: string }[];
@@ -103,7 +103,6 @@ export function parsePatternSpec(value: unknown): PatternSpec | null {
     webSearchMaxUses,
     sourcePolicy,
     includeNewsDigest: raw.include_news_digest === true,
-    asksUserOpinion: raw.asks_user_opinion === true,
     requiresQuoteUrl: raw.requires_quote_url === true,
     placeholders: Array.isArray(raw.placeholders)
       ? raw.placeholders

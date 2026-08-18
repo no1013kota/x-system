@@ -2089,6 +2089,25 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 検証: 単体2,209件緑（新規10件）／**実DBで連鎖を確認**（post_publishが1件だけ・trigger=system・
   request_keyがdraft単位・draft_createdは0件）／`auto` 分岐を無効化すると落ちることを確認済み。
 
+### T-M8-145: 使われていない `asks_user_opinion` を全レイヤから撤去する `done`
+- 参照: 要件02 §3.21、要件06 §4.2 / 依存: T-M8-132 / サイズ: S
+- **経緯**: T-M8-132 で「自分の考え」の固定入力欄をやめ、**毎回入れる項目はパターンの
+  `placeholders` が決める**形へ一般化した。その時点でこの列は**どこからも読まれなくなった**が、
+  列・`pattern_spec_of()` の出力・seed関数・TSの型（`PatternOption`／`PatternSpec`）に残り続けていた。
+  死んだ属性は「まだ意味がある」と読ませる——監査で実際に「これは何に使われているのか」を追う手間が出た。
+- 完了条件:
+  - 列が `post_patterns` から消え、`pattern_spec_of()` の出力にも含まれない。
+  - `seed_default_post_patterns()` が列を指定しない（既定6件の投入と復元が動く）。
+  - TSの型・SELECT列・toOption・parsePatternSpec から消える。
+  - 要件02 §3.21 の行を削除する（`schema-doc-sync.db.test.ts` が突き合わせる）。
+  - 異常系: 想定外の関数が参照していたら migration が例外で止まる（検算を先に置く）。
+- メモ: migration `20260818000010`。**`pattern_spec` は生成時のsnapshot**なので、
+  過去のjobのJSONに残っていても誰も読まない（`parsePatternSpec` から外した）。
+  作業中に自分の正規表現が `includeNewsDigest` の行を誤って消したのを typecheck が捕まえた
+  （型のある場所を機械的に削るときは1件ずつ確認する）。
+  検証: 単体2,216件緑 ／ **`supabase db reset` でクリーン適用**（migration 10本）→ `test:db` 緑 ／
+  関数の定義本文に参照が残らないことをDBで確認。
+
 ### T-M8-144: 2026-08-18監査のドキュメント乖離35件を解消する `todo`
 - **high の3件は解消済み（2026-08-18）**: 要件03 §8 の残量JSONをAIクレジット制へ／
   法務同意versionの具体値を docs から外し `src/lib/legal.ts` 参照へ（`-draft` 接尾辞も撤去）／

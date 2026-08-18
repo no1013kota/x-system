@@ -42,7 +42,6 @@ function slotPatternSpec(over: Record<string, unknown> = {}) {
     web_search_max_uses: 4,
     source_policy: "always",
     include_news_digest: false,
-    asks_user_opinion: false,
     requires_quote_url: false,
     ...over,
   };
