@@ -72,6 +72,45 @@ if (isLocal) {
     と見える**（実際に運営者がそう報告した）。届いているのかどうかと、どこで読めるのかを
     ここで必ず出す。ログを読ませない（原則2）。
   */
+  /*
+    **溜まったテストデータ**（T-M8-137）。E2Eは終了時に自分の作成分を消すが、
+    途中で落ちた回の分は残る。active なXアカウントが走査上限（100）を超えると
+    `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**
+    （実際に、原因の分からない単発失敗として4回observedした）。掃除する導線を出す。
+  */
+  if (dbOk) {
+    try {
+      const { Client } = await import("pg");
+      const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 5000 });
+      await client.connect();
+      const { rows } = await client.query(
+        `select count(*)::int as active from x_accounts where status = 'active'`,
+      );
+      await client.end();
+      const active = rows[0]?.active ?? 0;
+      // 走査上限は `FOLLOWER_ACCOUNT_LIMIT`（100）。超えるとDBテストが落ち始める。
+      const LIMIT = 100;
+      checks.push(
+        active < LIMIT
+          ? {
+              name: "溜まったテストデータ",
+              level: "ok",
+              detail: `activeなXアカウントは ${active} 件（上限 ${LIMIT}）`,
+            }
+          : {
+              name: "溜まったテストデータ",
+              level: "error",
+              detail:
+                `activeなXアカウントが ${active} 件で走査上限 ${LIMIT} を超えています。` +
+                "**この状態ではDBテストが落ち始め、コードの不具合と見分けがつきません**",
+              nextAction: "`npm run db:clean-test-data -- --apply` を実行してください（実アカウントには触れません）",
+            },
+      );
+    } catch {
+      // 数えられないだけなら他の検査を止めない。
+    }
+  }
+
   const MAILPIT = "http://127.0.0.1:54324";
   try {
     const res = await fetch(`${MAILPIT}/api/v1/messages?limit=1`, {

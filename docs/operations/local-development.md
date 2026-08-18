@@ -118,7 +118,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
-| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる |
+| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---
