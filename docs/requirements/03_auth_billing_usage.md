@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.27 |
+| バージョン | v1.28 |
 | 更新日 | 2026-08-18 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -30,7 +30,7 @@
 
 共通実行ガードは契約状態を先に判定し、契約実行不可なら`subscription_required`を優先する。契約が`trialing|active`の場合だけ規約versionを確認する。route guardには規約versionを使わないため、古いversionでも既存データ閲覧と設定操作は継続できる。
 
-現行versionはコード定数を正とし、法務確認前の開発版は利用規約・プライバシーポリシーとも`2026-07-22-draft`とする。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
+現行versionはコード定数を正とし、法務確認前の開発版は利用規約・プライバシーポリシーとも（現行versionは `src/lib/legal.ts` の定数）とする。`signUp`はクライアント値がこのversionと一致する場合だけSupabase Authを呼び、profile作成後にservice roleで両versionと同一の受付時刻を保存する。providerの詳細エラーやメール存在有無は画面へ返さず、確認メール再送も存在有無にかかわらず同じ受理応答とする。
 
 ## 2. プラン
 
@@ -260,14 +260,13 @@ premiumでN件のthreadを開始するには、最終payload列を通常/URL付�
 
 ## 8. 残量表示と通知
 
-premiumだけ`usage_counters`から当月残量をホームと設定へ表示する。80%到達は各枠・各月で1回、100%到達は常設バナーと通知を出す。
+premiumだけ`usage_counters`から当月残量をホームと設定へ表示する。**枠は3つ**（AIクレジット・通常投稿・URL付き投稿）で、回数制（`generations`／`images`）は T-M8-108/109 でAIクレジット制へ置き換えた。上限値の正本は`PLANS.premium.usageLimits`（`src/lib/plans.ts`）、形は`UsageSummary`（`src/lib/usage/usage-summary.ts`）。80%到達は各枠・各月で1回、100%到達は常設バナーと通知を出す。
 
 ```json
 {
+  "ai_credits": { "used": 220, "limit": 1000, "remaining": 780 },
   "normal_posts": { "used": 38, "limit": 200, "remaining": 162 },
-  "url_posts": { "used": 8, "limit": 20, "remaining": 12 },
-  "generations": { "used": 22, "limit": 100, "remaining": 78 },
-  "images": { "used": 4, "limit": 20, "remaining": 16 }
+  "url_posts": { "used": 8, "limit": 20, "remaining": 12 }
 }
 ```
 
