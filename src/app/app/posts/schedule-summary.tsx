@@ -6,6 +6,7 @@ import { patternLabel } from "@/lib/schedule/slot-labels";
 
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { CardTitle, cardClassName } from "@/components/ui/card";
+import { slotModeLabel } from "@/lib/schedule/slot-labels";
 
 const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -56,7 +57,7 @@ export function ScheduleSummary({ slots }: { slots: ScheduleSlotView[] }) {
                 </span>
                 <Badge>{patternLabel(slot.pattern_name)}</Badge>
                 <Badge tone={slot.mode === "auto" ? "brand" : "neutral"}>
-                  {slot.mode === "auto" ? "自動投稿" : "下書きまで"}
+                  {slotModeLabel(slot.mode)}
                 </Badge>
                 {slot.enabled ? null : (
                   <span className="text-caption text-ink-3">停止中</span>

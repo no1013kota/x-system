@@ -42,6 +42,19 @@ export function slotScheduleLabel(weekdays: readonly number[], timeJst: string):
  *
  * 「その他」のテーマは追加指示に書く意思表示なので、分野としては出さない。
  */
+/**
+ * 予約の実行モードの表示名（T-M8-146）。
+ *
+ * **言い方を1か所に決める。** 以前は5ファイルで別々に書かれ、`draft` が
+ * 「下書きのみ」「下書き」「下書きまで」の3通り（文中の「下書きを作成します」を数えると4通り）に
+ * 分かれていた。同じ設定が画面ごとに違う名前で出ると、利用者は同じものだと分からない
+ * （要件06 §1.0 と同じ考え方）。**「下書きのみ」**が正——要件06 §3.5 の週間プレビューの
+ * 凡例がこの語を使っており、「投稿はしない」ことが一語で伝わる。
+ */
+export function slotModeLabel(mode: string): string {
+  return mode === "auto" ? "自動投稿" : "下書きのみ";
+}
+
 export function slotDescription(slot: {
   pattern_name: string | null;
   theme?: string | null;
@@ -50,7 +63,7 @@ export function slotDescription(slot: {
 }): string {
   const theme =
     slot.theme && slot.theme !== OTHER_POST_THEME ? `・テーマ ${postThemeLabel(slot.theme)}` : "";
-  const mode = slot.mode === "auto" ? "自動投稿" : "下書きのみ";
+  const mode = slotModeLabel(slot.mode);
   const stopped = slot.enabled ? "" : "・停止中";
   return `${patternLabel(slot.pattern_name)}${theme}・${mode}${stopped}`;
 }

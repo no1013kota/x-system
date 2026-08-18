@@ -46,6 +46,7 @@ const PROMPT_MAX_CHARS = 8000;
 import { selectablePostThemeOptions, postThemeLabel } from "@/lib/post/post-theme";
 import { CardTitle, cardClassName, cardTitleClassName } from "@/components/ui/card";
 import { validateSlotForm } from "@/lib/schedule/slot-form";
+import { slotModeLabel } from "@/lib/schedule/slot-labels";
 import {
   patternLabel,
   slotDescription,
@@ -92,8 +93,8 @@ function slotCellClassName(slot: { enabled: boolean; mode: string }): string {
 // 括弧の説明は付けない。「確認なしでXへ」はステータス行・同意モーダルでも言っており、
 // 同じ説明の3〜4回目の繰り返しになっていた（T-M8-66）。
 const SLOT_CELL_LEGEND = [
-  { enabled: true, mode: "auto", label: "自動投稿" },
-  { enabled: true, mode: "draft", label: "下書きのみ" },
+  { enabled: true, mode: "auto", label: slotModeLabel("auto") },
+  { enabled: true, mode: "draft", label: slotModeLabel("draft") },
   { enabled: false, mode: "draft", label: "停止中" },
 ];
 
@@ -501,7 +502,7 @@ function SlotRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{patternLabel(slot.pattern_name)}</span>
-          <Badge tone="neutral">{slot.mode === "auto" ? "自動投稿" : "下書き"}</Badge>
+          <Badge tone="neutral">{slotModeLabel(slot.mode)}</Badge>
           {/* テーマを行に出す（T-M8-28）。編集画面を開かないと分からない状態にしない。 */}
           {slot.theme && slot.theme !== "other" ? (
             <Badge tone="brand">{postThemeLabel(slot.theme)}</Badge>
@@ -1075,7 +1076,7 @@ function SlotFields({
                   onChange={() => setV((cur) => ({ ...cur, mode: m }))}
                   type="radio"
                 />
-                {m === "auto" ? "自動投稿" : "下書きのみ"}
+                {slotModeLabel(m)}
               </label>
             ))}
           </div>

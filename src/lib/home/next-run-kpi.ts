@@ -1,4 +1,5 @@
 import type { ScheduleOutlook } from "./overview";
+import { slotModeLabel } from "@/lib/schedule/slot-labels";
 
 /**
  * 「次回の自動実行」KPI（T-M8-05）。
@@ -24,6 +25,6 @@ export function nextRunKpi(outlook: ScheduleOutlook | null): {
   const time = next.label.match(/(\d{1,2}:\d{2})\s*$/)?.[1] ?? next.label;
   const date = next.label.replace(/\s*\d{1,2}:\d{2}\s*$/, "").trim();
   const pattern = next.patternName ?? "パターン未設定";
-  const mode = next.mode === "auto" ? "自動投稿" : "下書きまで";
+  const mode = slotModeLabel(next.mode);
   return { label: time, note: `${date}・${pattern}（${mode}）` };
 }

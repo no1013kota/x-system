@@ -24,6 +24,7 @@ import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
 import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
+import { pageTitleClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "投稿 | Exos AI" };
 
@@ -252,7 +253,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       {/* 見出し下の流れ説明は置かない。タブとフォームから読み取れる（T-M8-66）。 */}
       <header>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿作成</h1>
+        <h1 className={pageTitleClassName}>投稿作成</h1>
       </header>
 
       <TabNav

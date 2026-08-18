@@ -41,6 +41,7 @@ import { ConfirmationQueueCard } from "./confirmation-queue";
 import { ImportantNewsCard } from "./important-news";
 import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
+import { pageTitleClassName } from "@/components/ui/card";
 
 /** 直近の実績カードの集計期間（日）。SC-09の期間切替とは独立の固定値。 */
 const RECENT_PERIOD_DAYS = 7;
@@ -148,7 +149,7 @@ export default async function AppHomePage() {
     // コンテナは新デザイン（max-width 1180px・padding 26px 32px・T-M8-05）。
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <div>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">ホーム</h1>
+        <h1 className={pageTitleClassName}>ホーム</h1>
         <p className="mt-1 text-body text-ink-2">{greeting}</p>
       </div>
 

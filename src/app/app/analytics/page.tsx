@@ -15,6 +15,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { AnalyticsView } from "./analytics-view";
 import { FollowerChart } from "./follower-chart";
 import { SuggestionsPanel } from "./suggestions-panel";
+import { pageTitleClassName } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: `投稿分析 | ${APP_NAME}` };
 
@@ -30,7 +31,7 @@ export default async function AnalyticsPage() {
     return (
       <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
         <header>
-            <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿分析</h1>
+            <h1 className={pageTitleClassName}>投稿分析</h1>
         </header>
         <div className="mt-7">
           <EmptyState
@@ -70,7 +71,7 @@ export default async function AnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
       <header>
-        <h1 className="text-[20px] font-bold tracking-tight text-ink">投稿分析</h1>
+        <h1 className={pageTitleClassName}>投稿分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。下の実績表は、このアプリから投稿したポストを投稿後1日・7日・30日の3回記録したものです。
         </p>

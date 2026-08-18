@@ -59,7 +59,7 @@ import {
   normalizeSettingsTab,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { Card, CardTitle } from "@/components/ui/card";
+import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { xRedirectUri } from "@/lib/x/oauth-server";
@@ -273,7 +273,7 @@ let promptTemplates: PromptTemplateView[] = [];
     <main className="px-4 py-[26px] lg:px-8">
       <div className="mx-auto max-w-[1180px] space-y-3.5">
         <header>
-          <h1 className="text-[20px] font-bold tracking-tight text-ink">設定</h1>
+          <h1 className={pageTitleClassName}>設定</h1>
         </header>
 
         <TabNav
