@@ -1,6 +1,5 @@
 "use client";
 
-import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -23,6 +22,7 @@ import {
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
 import {
+  DeletePatternButton,
   PatternFields,
   actionReason,
   emptyPatternDraft,
@@ -316,56 +316,5 @@ const [patterns, setPatterns] = useState(initialPatterns);
         })}
       </ul>
     </div>
-  );
-}
-
-/**
- * 削除の確認。**何が起きるかを先に書く**（CLAUDE.md 原則1）。
- * 「過去は残る」「予約は停止する」を言わないと、履歴が消えると思って押せない。
- */
-function DeletePatternButton({
-  disabled,
-  name,
-  onConfirm,
-}: {
-  disabled: boolean;
-  name: string;
-  onConfirm: () => void;
-}) {
-  return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger
-        className="ml-auto inline-flex h-9 items-center rounded-card border border-hairline px-3 text-body text-danger-fg transition-colors duration-150 hover:bg-danger-bg disabled:opacity-50"
-        disabled={disabled}
-      >
-        削除
-      </AlertDialog.Trigger>
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 bg-black/30" />
-        <AlertDialog.Popup
-          className={`${cardClassName} fixed top-1/2 left-1/2 z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 p-5`}
-        >
-          <AlertDialog.Title className="text-body font-bold text-ink">
-            「{name}」を削除しますか？
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 text-body text-ink-2">
-            過去の下書き・履歴の表示は名前のまま残ります。このパターンを使っている予約は
-            停止し、曜日・時刻・テーマは残るので別のパターンを選べば再開できます。
-            はじめから用意されているパターンは、あとから「既定のパターンを戻す」で復元できます。
-          </AlertDialog.Description>
-          <div className="mt-4 flex justify-end gap-2">
-            <AlertDialog.Close className="inline-flex h-9 items-center rounded-card border border-hairline px-4 text-body">
-              キャンセル
-            </AlertDialog.Close>
-            <AlertDialog.Close
-              className="inline-flex h-9 items-center rounded-card bg-danger-fg px-4 text-body font-medium text-white"
-              onClick={onConfirm}
-            >
-              削除する
-            </AlertDialog.Close>
-          </div>
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
   );
 }

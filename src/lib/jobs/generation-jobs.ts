@@ -40,7 +40,6 @@ export const createGenerationJobSchema = z.object({
     .refine((u) => u.startsWith("https://"), "httpsのURLを指定してください。")
     .nullish(),
   quote_url: z.string().url().nullish(),
-  user_opinion: z.string().max(2000).nullish(),
   /** パターンの入力項目（`{名前}` へ差し込む値）。キーは項目名（T-M8-132）。 */
   placeholder_values: z.record(z.string(), z.string().max(2000)).nullish(),
   instructions: z.string().max(2000).nullish(),
@@ -102,7 +101,6 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     source_url: input.source_url ?? null,
     quote_url: input.quote_url ?? null,
     quote_tweet_id: null,
-  user_opinion: input.user_opinion ?? null,
     placeholder_values: input.placeholder_values ?? null,
     instructions: input.instructions ?? null,
     theme: input.theme,
@@ -246,7 +244,6 @@ export async function createDraftFromNews(
       theme: OTHER_POST_THEME,
       source_url: sourceUrl,
       quote_url: null,
-      user_opinion: null,
       instructions: input.instructions ?? null,
       image_enabled: input.image_enabled ?? false,
       news_item_id: input.news_item_id,
@@ -326,7 +323,6 @@ export async function regenerateDraft(
       source_url: null,
       quote_url: null,
       quote_tweet_id: null,
-      user_opinion: null,
       instructions: input.additional_instructions ?? null,
       image_enabled: input.image_enabled,
       news_item_id: null,

@@ -80,7 +80,6 @@ interface JobRow {
   trigger: string;
   input: {
     source_url?: string | null;
-    user_opinion?: string | null;
     instructions?: string | null;
     theme?: string | null;
     image_enabled?: boolean;
@@ -152,7 +151,6 @@ export function composeUserInput(input: JobRow["input"]): string {
   const theme = promptThemeLabel(input.theme);
   if (theme) parts.push(`分野: ${theme}`);
   if (input.source_url) parts.push(`参考URL: ${input.source_url}`);
-  if (input.user_opinion) parts.push(`自分の考え: ${input.user_opinion}`);
   if (input.instructions) parts.push(`追加指示: ${input.instructions}`);
   return parts.join("\n");
 }

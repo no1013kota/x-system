@@ -300,8 +300,8 @@ await page.getByRole("button", { name: "パターンを追加" }).click();
   await expect(page.locator("#new-pattern-prompt")).toHaveValue(
     /# 投稿内容[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
   );
-  // 入力項目（プレースホルダー）を作り、プロンプトへ {対象読者} を書く。
-  await page.getByRole("button", { name: "入力項目を追加" }).click();
+  // プレースホルダーを作り、プロンプトへ {対象読者} を書く。
+  await page.getByRole("button", { name: "プレースホルダーを追加" }).click();
   await page.locator("#new-pattern-placeholder-0").fill("対象読者");
   await page.locator("#new-pattern-name").fill("画面から作った型");
   await page
@@ -332,7 +332,21 @@ const [saved] = await query<{
   expect(saved.prompt).toContain("画面から作った型のプロンプト");
   expect(saved.placeholders).toEqual([{ name: "対象読者" }]);
 
-  // **入力項目が投稿作成画面に出る**（プロンプトの {対象読者} に入る旨も書いてある）。
+// **プレースホルダーの入力欄が投稿作成画面に出る**（{対象読者} に入る旨も書いてある）。
   await expect(page.getByLabel("対象読者（任意）")).toBeVisible();
   await expect(page.getByText("{対象読者} に入ります", { exact: false })).toBeVisible();
+
+  // **この画面から削除もできる**（T-M8-133）。何が起きるかを確認ダイアログで先に示す。
+  await page.getByRole("button", { name: "削除", exact: true }).click();
+  await expect(page.getByText("過去の下書き・履歴の表示は名前のまま残ります")).toBeVisible();
+  await page.getByRole("button", { name: "削除する" }).click();
+  await expect(page.getByRole("radio", { name: /画面から作った型/ })).toHaveCount(0);
+  expect(
+    (
+      await query<{ n: string }>(
+        `select count(*)::text n from post_patterns where x_account_id = $1 and seed_key is null`,
+        [account.xAccountId],
+      )
+    )[0].n,
+  ).toBe("0");
 });

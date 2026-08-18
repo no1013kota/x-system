@@ -584,7 +584,7 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
 | `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
 | `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
-| `asks_user_opinion` | `boolean` | not null default false | 利用者の意見・視点を入力として求めるか |
+| `asks_user_opinion` | `boolean` | not null default false | **使っていない**（T-M8-133でプレースホルダーへ一般化した。列の撤去は別途）。既定の「自分の考え・意見」は`placeholders`に`自分の考え`を持つ |
 | `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
 | `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。投稿作成画面がこの名前で入力欄を出す。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
 | `sort_order` | `integer` | not null default 100 | 画面の並び順 |

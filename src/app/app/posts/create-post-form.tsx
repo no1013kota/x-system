@@ -21,6 +21,7 @@ import {
   type PatternOption,
 } from "@/lib/post/post-patterns-store";
 import {
+  DeletePatternButton,
   PatternFields,
   actionReason,
   emptyPatternDraft,
@@ -33,7 +34,11 @@ import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { updateBaseMdManualAction } from "@/app/actions/base-md";
-import { createPatternAction, updatePatternPromptAction } from "@/app/actions/post-patterns";
+import {
+  createPatternAction,
+  deletePatternAction,
+  updatePatternPromptAction,
+} from "@/app/actions/post-patterns";
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
@@ -311,6 +316,40 @@ function addPattern() {
     })();
   }
 
+/**
+   * パターンの削除（T-M8-133・運営者の指示 2026-08-18）。
+   * **選んでいる型が要らないと気付くのもこの画面**なので、ここで消せるようにする。
+   * 消したら選択を先頭へ戻す（消した型が選ばれたままにしない）。
+   */
+function removePattern(target: PatternOption) {
+    startTransition(async () => {
+    const res = await deletePatternAction({ pattern_id: target.id });
+      if (res.status === "success") {
+        const rest = options.filter((o) => o.id !== target.id);
+        setOptions(rest);
+        if (pattern === target.id) {
+          setPattern(rest[0]?.id ?? "");
+          setPromptDraft(null);
+        }
+        const stopped = res.disabledSlots ?? 0;
+        toast.show({
+          tone: "success",
+          title: `「${res.deletedName ?? target.name}」を削除しました`,
+          description:
+            stopped > 0
+              ? `このパターンを使っていた予約${stopped}件を停止しました（曜日・時刻は残っています）。`
+              : "過去の下書き・履歴の表示はそのまま残ります。",
+        });
+      } else {
+      toast.show({
+          tone: "error",
+          title: "削除できませんでした",
+          description: patternReasonMessage(actionReason(res), res.message),
+        });
+      }
+    });
+  }
+
   function submit() {
     setPrereq(null);
     startTransition(async () => {
@@ -550,9 +589,20 @@ function addPattern() {
         */}
         {selectedPattern ? (
           <p className="mt-2 text-caption text-ink-3">
-          この型の分量: {threadCountLabel(selectedPattern.maxPosts)}
+        この型の分量: {threadCountLabel(selectedPattern.maxPosts)}
             {/* Web検索や参考URLの扱いはプロンプトに書く方式にしたので、ここには出さない（T-M8-132）。 */}
           </p>
+        ) : null}
+
+        {/* 選んでいる型を消せるようにする（T-M8-133）。最後の1件は消せない（サーバーが拒否する）。 */}
+        {templates && selectedPattern ? (
+          <div className="mt-1 flex">
+            <DeletePatternButton
+              disabled={pending || options.length <= 1}
+              name={selectedPattern.name}
+              onConfirm={() => removePattern(selectedPattern)}
+            />
+          </div>
         ) : null}
 
         {/* パターンの追加（T-M8-130）。設定画面と同じ入力欄を使う。 */}

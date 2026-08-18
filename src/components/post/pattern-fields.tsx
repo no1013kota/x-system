@@ -1,5 +1,9 @@
 "use client";
 
+import { AlertDialog } from "@base-ui/react/alert-dialog";
+
+import { cardClassName } from "@/components/ui/card";
+
 import {
   PATTERN_DESCRIPTION_MAX_CHARS,
   PATTERN_NAME_MAX_CHARS,
@@ -81,15 +85,15 @@ export function patternReasonMessage(
     case "description_length":
       return `説明は${PATTERN_DESCRIPTION_MAX_CHARS}字以内で入力してください。`;
   case "placeholder_name_length":
-      return `入力項目の名前は1〜${PATTERN_PLACEHOLDER_NAME_MAX_CHARS}字で入力してください。`;
+    return `プレースホルダー名は1〜${PATTERN_PLACEHOLDER_NAME_MAX_CHARS}字で入力してください。`;
     case "placeholder_name_unsafe":
-      return "入力項目の名前に「{」「}」「<」「>」改行は使えません。";
+    return "プレースホルダー名に「{」「}」「<」「>」改行は使えません。";
     case "placeholder_duplicated":
-      return "同じ名前の入力項目が2つあります。名前を分けてください。";
+    return "同じ名前のプレースホルダーが2つあります。名前を分けてください。";
     case "placeholder_not_used":
-      return "入力項目を作ったら、プロンプトの中に {名前} と書いてください（書かないと入力しても使われません）。";
+    return "プレースホルダーを作ったら、プロンプトの中に {プレースホルダー名} と書いてください（書かないと入力しても使われません）。";
     case "placeholder_too_many":
-      return `入力項目は${PATTERN_PLACEHOLDER_MAX}個までです。`;
+    return `プレースホルダーは${PATTERN_PLACEHOLDER_MAX}個までです。`;
     case "prompt_required":
       return "プロンプトを入力してください（自分で作ったパターンには既定がありません）。";
     case "too_long":
@@ -158,17 +162,17 @@ export function PatternFields({
         「自分の考え」のような固定の入力欄をやめ、型ごとに何を毎回入れたいかを決められるようにした。
       */}
       <fieldset>
-        <legend className="mb-1 text-body font-medium">毎回入力する項目（任意）</legend>
+        <legend className="mb-1 text-body font-medium">プレースホルダー（任意）</legend>
         <p className="mb-2 text-caption text-ink-3">
-          ここで名前を決めて、下のプロンプトの中に <code>{"{名前}"}</code>{" "}
+        ここでプレースホルダー名を決めて、下のプロンプトの中に <code>{"{プレースホルダー名}"}</code>{" "}
           と書いてください。投稿作成のときにその名前の入力欄が出て、入力した内容が{" "}
-          <code>{"{名前}"}</code> の位置に入ります。
+          <code>{"{プレースホルダー名}"}</code> の位置に入ります。
         </p>
         <div className="space-y-2">
           {draft.placeholders.map((ph, index) => (
             <div className="flex items-center gap-2" key={index}>
               <input
-                aria-label={`入力項目${index + 1}の名前`}
+                aria-label={`プレースホルダー名${index + 1}`}
                 className="h-9 w-full max-w-xs rounded-card border border-hairline bg-surface px-2 text-body"
                 id={`${idPrefix}-placeholder-${index}`}
                 maxLength={PATTERN_PLACEHOLDER_NAME_MAX_CHARS}
@@ -187,7 +191,7 @@ export function PatternFields({
               </span>
             <button
                 // パターン自体の「削除」と紛れないよう、読み上げ名を分ける。
-                aria-label={`入力項目${ph.name ? `「${ph.name}」` : index + 1}を削除`}
+                aria-label={`プレースホルダー${ph.name ? `「${ph.name}」` : index + 1}を削除`}
                 className="ml-auto shrink-0 text-body text-danger-fg hover:underline"
                 onClick={() =>
                   onChange({ placeholders: draft.placeholders.filter((_, i) => i !== index) })
@@ -205,7 +209,7 @@ export function PatternFields({
             onClick={() => onChange({ placeholders: [...draft.placeholders, { name: "" }] })}
             type="button"
           >
-            入力項目を追加
+          プレースホルダーを追加
           </button>
         ) : null}
       </fieldset>
@@ -233,5 +237,56 @@ export function PatternFields({
         <p className="mt-1 text-caption text-ink-3">{threadCountFromPromptLabel(draft.prompt)}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * 削除の確認。**何が起きるかを先に書く**（CLAUDE.md 原則1）。
+ * 「過去は残る」「予約は停止する」を言わないと、履歴が消えると思って押せない。
+ */
+export function DeletePatternButton({
+  disabled,
+  name,
+  onConfirm,
+}: {
+  disabled: boolean;
+  name: string;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger
+        className="ml-auto inline-flex h-9 items-center rounded-card border border-hairline px-3 text-body text-danger-fg transition-colors duration-150 hover:bg-danger-bg disabled:opacity-50"
+        disabled={disabled}
+      >
+        削除
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 bg-black/30" />
+        <AlertDialog.Popup
+          className={`${cardClassName} fixed top-1/2 left-1/2 z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 p-5`}
+        >
+          <AlertDialog.Title className="text-body font-bold text-ink">
+            「{name}」を削除しますか？
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-2 text-body text-ink-2">
+            過去の下書き・履歴の表示は名前のまま残ります。このパターンを使っている予約は
+            停止し、曜日・時刻・テーマは残るので別のパターンを選べば再開できます。
+            はじめから用意されているパターンは、あとから「既定のパターンを戻す」で復元できます。
+          </AlertDialog.Description>
+          <div className="mt-4 flex justify-end gap-2">
+            <AlertDialog.Close className="inline-flex h-9 items-center rounded-card border border-hairline px-4 text-body">
+              キャンセル
+            </AlertDialog.Close>
+            <AlertDialog.Close
+              className="inline-flex h-9 items-center rounded-card bg-danger-fg px-4 text-body font-medium text-white"
+              onClick={onConfirm}
+            >
+              削除する
+            </AlertDialog.Close>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }

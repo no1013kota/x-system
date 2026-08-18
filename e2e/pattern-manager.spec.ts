@@ -35,7 +35,7 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
   // 入力項目（プレースホルダー）を1つ足し、プロンプトへ {自分の考え} を書く。
 // 新規作成カード内のボタンを指す（各パターンのカードにも同じボタンがある）。
   const newCard = page.locator("section", { hasText: "新しいパターン" });
-  await newCard.getByRole("button", { name: "入力項目を追加" }).click();
+  await newCard.getByRole("button", { name: "プレースホルダーを追加" }).click();
   await page.locator("#new-placeholder-0").fill("自分の考え");
   await page.locator("#new-name").fill("実験パターン");
   await page
