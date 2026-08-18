@@ -36,6 +36,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: false,
     asksUserOpinion: false,
     requiresQuoteUrl: false,
+    placeholders: [],
   },
   p2: {
     seedKey: "p2",
@@ -47,6 +48,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: false,
     asksUserOpinion: true,
     requiresQuoteUrl: false,
+    placeholders: [],
   },
   p3: {
     seedKey: "p3",
@@ -58,6 +60,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: false,
     asksUserOpinion: false,
     requiresQuoteUrl: false,
+    placeholders: [],
   },
   p4: {
     seedKey: "p4",
@@ -69,6 +72,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: false,
     asksUserOpinion: false,
     requiresQuoteUrl: false,
+    placeholders: [],
   },
   p5: {
     seedKey: "p5",
@@ -80,6 +84,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: false,
     asksUserOpinion: false,
     requiresQuoteUrl: true,
+    placeholders: [],
   },
   p6: {
     seedKey: "p6",
@@ -91,6 +96,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     includeNewsDigest: true,
     asksUserOpinion: false,
     requiresQuoteUrl: false,
+    placeholders: [],
   },
 };
 

@@ -29,6 +29,8 @@ export interface PatternSpec {
   includeNewsDigest: boolean;
   asksUserOpinion: boolean;
   requiresQuoteUrl: boolean;
+  /** プロンプト内の `{名前}` に差し込む入力の定義（T-M8-132）。 */
+  placeholders: { name: string }[];
 }
 
 /** `always`=常に / `with_url`=入力にURLがあるときだけ / `never`=しない。 */
@@ -103,6 +105,12 @@ export function parsePatternSpec(value: unknown): PatternSpec | null {
     includeNewsDigest: raw.include_news_digest === true,
     asksUserOpinion: raw.asks_user_opinion === true,
     requiresQuoteUrl: raw.requires_quote_url === true,
+    placeholders: Array.isArray(raw.placeholders)
+      ? raw.placeholders
+          .map((v) => (v as { name?: unknown } | null)?.name)
+          .filter((n): n is string => typeof n === "string" && n.length > 0)
+          .map((name) => ({ name }))
+      : [],
   };
 }
 
@@ -222,4 +230,30 @@ export function buildPatternRules(
   }
 
   return lines.join("\n");
+}
+
+/** 未入力のプレースホルダーに入れる語（`<input>` の書き方と揃える）。 */
+const PLACEHOLDER_UNSPECIFIED = "（未指定）";
+
+/**
+ * プロンプト内の `{名前}` を利用者の入力で置き換える（T-M8-132）。
+ *
+ * **正規表現を使わない。** 名前は利用者が決めるので、`.` や `(` のような
+ * 正規表現の特殊文字が入りうる。分割・結合なら文字列としてそのまま扱える。
+ *
+ * 未入力の項目は「（未指定）」にする。**空文字で消さない**——`{対象読者}` が
+ * 消えると文が壊れ、AIが何を指示されているのか読めなくなる。
+ */
+export function fillPlaceholders(
+  prompt: string,
+  placeholders: readonly { name: string }[],
+  values: Readonly<Record<string, string>>,
+): string {
+  let out = prompt;
+  for (const { name } of placeholders) {
+    const raw = values[name];
+    const value = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : PLACEHOLDER_UNSPECIFIED;
+    out = out.split(`{${name}}`).join(value);
+  }
+  return out;
 }

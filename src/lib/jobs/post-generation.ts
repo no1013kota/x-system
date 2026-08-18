@@ -6,6 +6,7 @@ import { PT_FIX } from "@/lib/prompts/gen-prompts";
 import { finalizeThread } from "@/lib/post/generation-validation";
 import {
   buildPatternRules,
+  fillPlaceholders,
   parsePatternSpec,
   patternPrompt,
   sourceRequiredForSpec,
@@ -88,8 +89,10 @@ interface JobRow {
     prompt_override?: string | null;
     /** この生成にだけ使うアカウント.md（T-M8-93）。 */
     base_md_override?: string | null;
-    /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
+  /** この生成にだけ使う画像プロンプト（T-M8-93）。子jobへ引き継ぐ。 */
     image_prompt_override?: string | null;
+    /** パターンの入力項目（`{名前}` へ差し込む値）。キーは項目名（T-M8-132）。 */
+    placeholder_values?: Record<string, string> | null;
     parent_draft_id?: string | null;
     previous_posts?: string[];
   };
@@ -350,8 +353,13 @@ export async function executePostGeneration(
     typeof job.input?.prompt_override === "string" && job.input.prompt_override.trim() !== ""
       ? job.input.prompt_override
       : null;
-  // パターンのプロンプト。`prompt` が null ならシステム既定（コード定数）を使う。
-  const resolvedPatternPrompt = promptOverride ?? patternPrompt(spec);
+// パターンのプロンプト。`prompt` が null ならシステム既定（コード定数）を使う。
+  const basePatternPrompt = promptOverride ?? patternPrompt(spec);
+  // 利用者が決めた入力項目を `{名前}` へ差し込む（T-M8-132）。
+  const resolvedPatternPrompt =
+    basePatternPrompt === null
+      ? null
+      : fillPlaceholders(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {});
   if (resolvedPatternPrompt === null) {
     throw new PostGenerationTerminalError(
       "pattern_prompt_missing",

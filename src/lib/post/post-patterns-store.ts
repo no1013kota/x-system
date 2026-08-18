@@ -43,6 +43,8 @@ export interface PatternOption {
   isSystemDefault: boolean;
   /** プロンプトを自分で書き換えているか（false = システム既定のまま）。 */
   hasCustomPrompt: boolean;
+  /** プロンプト内の `{名前}` に差し込む入力の定義（T-M8-132）。 */
+  placeholders: PatternPlaceholder[];
 }
 
 interface PatternRow {
@@ -58,11 +60,12 @@ interface PatternRow {
   web_search_policy: PatternPolicy;
   source_policy: PatternPolicy;
   include_news_digest: boolean;
+  placeholders: unknown;
 }
 
 const COLUMNS = `id, seed_key, name, description, prompt, max_posts, max_posts_edit,
                  requires_quote_url, asks_user_opinion,
-                 web_search_policy, source_policy, include_news_digest`;
+                 web_search_policy, source_policy, include_news_digest, placeholders`;
 
 function toOption(row: PatternRow): PatternOption {
   return {
@@ -79,6 +82,7 @@ function toOption(row: PatternRow): PatternOption {
     includeNewsDigest: row.include_news_digest,
     isSystemDefault: row.seed_key !== null,
     hasCustomPrompt: row.prompt !== null,
+    placeholders: parsePlaceholders(row.placeholders),
   };
 }
 
@@ -307,12 +311,8 @@ export interface PatternInput {
   description: string | null;
   /** 自作パターンでは必須。既定パターンは `null` で「システム既定に戻す」。 */
   prompt: string | null;
-  maxPosts: number;
-  webSearchPolicy: PatternPolicy;
-  sourcePolicy: PatternPolicy;
-  includeNewsDigest: boolean;
-  asksUserOpinion: boolean;
-  requiresQuoteUrl: boolean;
+  /** プロンプト内の `{名前}` に差し込む入力の定義。 */
+  placeholders: PatternPlaceholder[];
 }
 
 /**
@@ -335,27 +335,54 @@ export function validatePatternInput(input: PatternInput, opts: { isSystemDefaul
       details: { reason: "description_length", max: PATTERN_DESCRIPTION_MAX_CHARS },
     });
   }
-if (!Number.isInteger(input.maxPosts) || input.maxPosts < 1 || input.maxPosts > PATTERN_MAX_POSTS_LIMIT) {
-    // 画面は**スレッド数**（0〜7）で見せるので、範囲もその言葉で返す（T-M8-130）。
-    throw new AppError("validation_error", {
-      details: { reason: "max_posts_range", min: 0, max: PATTERN_MAX_THREAD_COUNT },
-    });
-  }
   // 自作パターンはコード側の既定を持たないので、プロンプトが無いと生成できない。
   if (!opts.isSystemDefault && (input.prompt === null || input.prompt.trim().length === 0)) {
     throw new AppError("validation_error", { details: { reason: "prompt_required" } });
   }
   if (input.prompt !== null) validatePatternPrompt(input.prompt);
-  // 引用ポストにニュースダイジェストは渡さない（DBのCHECKと同じ）。
-  if (input.requiresQuoteUrl && input.includeNewsDigest) {
-    throw new AppError("validation_error", { details: { reason: "quote_with_digest" } });
+  validatePlaceholders(input.placeholders, input.prompt);
+}
+
+/**
+ * プレースホルダーの検査。
+ *
+ * **プロンプトに `{名前}` が無いものは拒否する。** 入力欄だけ出て何も起きない状態
+ * （＝押しても効かない項目）を作らない（CLAUDE.md 原則1）。
+ */
+export function validatePlaceholders(
+  placeholders: PatternPlaceholder[],
+  prompt: string | null,
+): void {
+  if (placeholders.length > PATTERN_PLACEHOLDER_MAX) {
+    throw new AppError("validation_error", {
+      details: { reason: "placeholder_too_many", max: PATTERN_PLACEHOLDER_MAX },
+    });
+  }
+  const seen = new Set<string>();
+  for (const item of placeholders) {
+    const name = item.name.trim();
+    if (name.length === 0 || name.length > PATTERN_PLACEHOLDER_NAME_MAX_CHARS) {
+      throw new AppError("validation_error", {
+        details: { reason: "placeholder_name_length", max: PATTERN_PLACEHOLDER_NAME_MAX_CHARS },
+      });
+    }
+    if (/[{}\n\r<>]/.test(name)) {
+      throw new AppError("validation_error", {
+        details: { reason: "placeholder_name_unsafe", name },
+      });
+    }
+    if (seen.has(name)) {
+      throw new AppError("validation_error", { details: { reason: "placeholder_duplicated", name } });
+    }
+    seen.add(name);
+    if (prompt !== null && !prompt.includes(`{${name}}`)) {
+      throw new AppError("validation_error", {
+        details: { reason: "placeholder_not_used", name },
+      });
+    }
   }
 }
 
-/** 方針から検索回数を決める。`never` は0、それ以外は既定の3回（DBの整合CHECKを満たす）。 */
-function webSearchUsesFor(policy: PatternPolicy): number {
-  return policy === "never" ? 0 : 3;
-}
 
 /**
  * パターンを作る。並び順は末尾（既存の最大 + 10）。
@@ -371,12 +398,17 @@ export async function applyCreatePattern(
   if (await nameTaken(db, input.xAccountId, input.name.trim(), null)) {
     throw new AppError("validation_error", { details: { reason: "name_taken" } });
   }
+// 分量はプロンプトの「Nスレッド目」から読む（T-M8-132）。読み取れなければ全体の上限まで許す。
+  const maxPosts = maxPostsFromPrompt(input.prompt ?? "");
   const { rows } = await db.query<PatternRow>(
+    // Web検索・参考URLの方針は画面から聞かない（プロンプトに書いてもらう）。
+    // **ツールは渡しておく**（`always`）——プロンプトが「検索する」と書いていても
+    // ツールが無ければ実行できず、指示だけ空振りする。
     `insert into post_patterns
-       (x_account_id, name, description, prompt, max_posts, max_posts_edit,
+       (x_account_id, name, description, prompt, placeholders, max_posts, max_posts_edit,
         web_search_policy, web_search_max_uses, source_policy,
         include_news_digest, asks_user_opinion, requires_quote_url, sort_order)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+     values ($1,$2,$3,$4,$5::jsonb,$6,$7,'always',3,'with_url',false,false,false,
              coalesce((select max(sort_order) + 10 from post_patterns where x_account_id = $1), 100))
      returning ${COLUMNS}`,
     [
@@ -384,14 +416,9 @@ export async function applyCreatePattern(
       input.name.trim(),
       emptyToNull(input.description),
       input.prompt,
-      input.maxPosts,
-      Math.min(PATTERN_MAX_POSTS_LIMIT, input.maxPosts + 2),
-      input.webSearchPolicy,
-      webSearchUsesFor(input.webSearchPolicy),
-      input.sourcePolicy,
-      input.includeNewsDigest,
-      input.asksUserOpinion,
-      input.requiresQuoteUrl,
+      JSON.stringify(normalizePlaceholders(input.placeholders)),
+      maxPosts,
+      Math.min(PATTERN_MAX_POSTS_LIMIT, maxPosts + 2),
     ],
   );
   return toOption(rows[0]);
@@ -411,12 +438,16 @@ export async function applyUpdatePattern(
   if (await nameTaken(db, input.xAccountId, input.name.trim(), input.patternId)) {
     throw new AppError("validation_error", { details: { reason: "name_taken" } });
   }
+// 分量はプロンプトから読み直す。**それ以外の方針（Web検索・参考URL・ニュース・引用）は触らない**
+  // ——画面から聞かなくなった項目を、保存のたびに既定値へ戻してしまわないため（T-M8-132）。
+  const maxPosts = maxPostsFromPrompt(
+    input.prompt ?? (current.isSystemDefault ? "" : ""),
+  );
   const { rows } = await db.query<PatternRow>(
     `update post_patterns
-        set name = $3, description = $4, prompt = $5, max_posts = $6,
-            max_posts_edit = greatest(max_posts_edit, $6::smallint),
-            web_search_policy = $7, web_search_max_uses = $8, source_policy = $9,
-            include_news_digest = $10, asks_user_opinion = $11, requires_quote_url = $12,
+        set name = $3, description = $4, prompt = $5, placeholders = $6::jsonb,
+            max_posts = $7,
+            max_posts_edit = greatest(max_posts_edit, $7::smallint),
             updated_at = now()
       where x_account_id = $1 and id = $2
       returning ${COLUMNS}`,
@@ -426,13 +457,8 @@ export async function applyUpdatePattern(
       input.name.trim(),
       emptyToNull(input.description),
       input.prompt,
-      input.maxPosts,
-      input.webSearchPolicy,
-      webSearchUsesFor(input.webSearchPolicy),
-      input.sourcePolicy,
-      input.includeNewsDigest,
-      input.asksUserOpinion,
-      input.requiresQuoteUrl,
+      JSON.stringify(normalizePlaceholders(input.placeholders)),
+      maxPosts,
     ],
   );
   if (rows.length === 0) throw new AppError("not_found", { details: { reason: "pattern_not_found" } });
@@ -501,6 +527,11 @@ async function nameTaken(
   return Number(rows[0].n) > 0;
 }
 
+/** 前後の空白を落として保存形へ。 */
+function normalizePlaceholders(items: PatternPlaceholder[]): PatternPlaceholder[] {
+  return items.map((p) => ({ name: p.name.trim() }));
+}
+
 function emptyToNull(value: string | null): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? null : trimmed;
@@ -516,16 +547,77 @@ function emptyToNull(value: string | null): string | null {
  * 分量の指示はここに数字を書かない——**実際に作られる本数は「スレッド数」の設定が決める**ので、
  * プロンプトに別の数字を書くと食い違う（T-M8-33 と同じ型の事故）。
  */
-export const NEW_PATTERN_PROMPT_TEMPLATE = `# タスク
-（この型でどんな投稿を作るかを1〜2文で書く。<input> が未指定のときに何を題材にするかも書く）
+export const NEW_PATTERN_PROMPT_TEMPLATE = `# 投稿内容
+（この型でどんな投稿を作るかを1〜2文で書く。<input> （追加指示）が未指定のときに何を題材にするかも書く）
 
-# 手順
-（作る前に確認・準備することを書く。例: 正確性が要る点だけWeb検索で確認する）
+# 手順・Web検索有無
+（投稿作成までの手順を記載する。Web検索が必要であれば手順に入れる）
 
-# 構成と分量
-（1ポスト目に何を書くか＝フックの型、中間で何を1ポストずつ扱うか、最終ポストで何を残すかを書く。
-ポスト数は「スレッド数」の設定が決めるので、ここには本数を書かない）
+# 構成と分量とスレッド数
+メインポスト：
+1スレッド目：
+2スレッド目：
 
 # 語り口
-（一人称・敬体/常体・避ける言い回しなど、この型に固有の指定があれば書く）
 `;
+
+/** プロンプトへ差し込む入力の定義（`{名前}` に対応）。 */
+export interface PatternPlaceholder {
+  name: string;
+}
+
+export const PATTERN_PLACEHOLDER_MAX = 10;
+export const PATTERN_PLACEHOLDER_NAME_MAX_CHARS = 20;
+
+/** jsonb から読む。形が違う要素は落とす（壊れた定義で画面を壊さない）。 */
+export function parsePlaceholders(value: unknown): PatternPlaceholder[] {
+  if (!Array.isArray(value)) return [];
+  const out: PatternPlaceholder[] = [];
+  for (const raw of value) {
+    const name = (raw as { name?: unknown } | null)?.name;
+    if (typeof name === "string" && name.length > 0) out.push({ name });
+  }
+  return out;
+}
+
+/**
+ * プロンプトの「# 構成と分量とスレッド数」に書かれた `Nスレッド目` からスレッド数を読む
+ * （T-M8-132・運営者の指示 2026-08-18）。
+ *
+ * **スレッド数は別の入力欄ではなくプロンプトに書く**方式にしたので、コード側の上限も
+ * そこから読む。2か所に持つと食い違う（T-M8-33 と同じ型）。
+ * 読み取れなければ `null` を返し、呼び出し側は全体の上限（8ポスト）まで許す——
+ * **勝手に短い値を当てて黙って切り詰めない**（CLAUDE.md 原則1）。
+ */
+export function threadCountFromPrompt(prompt: string): number | null {
+  // 全角数字も受ける（日本語入力のまま書かれることがある）。
+  const normalized = prompt.replace(/[０-９]/g, (d) =>
+    String.fromCharCode(d.charCodeAt(0) - 0xfee0),
+  );
+let max: number | null = null;
+  for (const m of normalized.matchAll(/^[\s　]*(\d+)[\s　]*スレッド目/gm)) {
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && n >= 1 && (max === null || n > max)) max = n;
+  }
+  if (max !== null) return max;
+  // **「メインポスト：」だけ書いてあるなら単発**（0本）。書いていないのとは意味が違う——
+  // 何も書いていない場合に0を当てると、意図せず単発に切り詰めてしまう。
+  return /^[\s　]*メインポスト/m.test(normalized) ? 0 : null;
+}
+
+/** プロンプトから決まる総ポスト数の上限（読み取れなければ全体の上限）。 */
+export function maxPostsFromPrompt(prompt: string): number {
+  const threads = threadCountFromPrompt(prompt);
+  return threads === null ? PATTERN_MAX_POSTS_LIMIT : Math.min(PATTERN_MAX_POSTS_LIMIT, threads + 1);
+}
+
+/** 画面へ出す説明（読み取れたか／読み取れなかったかを言い分ける）。 */
+export function threadCountFromPromptLabel(prompt: string): string {
+  const threads = threadCountFromPrompt(prompt);
+  if (threads === null) {
+    return `スレッド数の指定が読み取れません（最大${PATTERN_MAX_POSTS_LIMIT}ポストまで作られます）`;
+  }
+  return threads === 0
+    ? "このプロンプトはメインポストのみ（単発）"
+    : `このプロンプトはメイン＋スレッド${threads}（最大${threads + 1}ポスト）`;
+}

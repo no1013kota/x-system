@@ -37,12 +37,6 @@ import { createPatternAction, updatePatternPromptAction } from "@/app/actions/po
 import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
-/** 選択中パターンの設定を1行で言うための語（設定画面の選択肢と同じ言い方にする）。 */
-const POLICY_TEXT = {
-  web: { always: "毎回使う", with_url: "入力があるときだけ", never: "使わない" },
-  source: { always: "必ず付ける", with_url: "入力があるときだけ付ける", never: "付けない" },
-} as const;
-
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
 const PROMPT_MAX_CHARS = 8000;
 /** アカウント.mdの上限（`BASE_MD_MAX_CHARS` と同値・T-M8-93）。 */
@@ -201,7 +195,8 @@ export function CreatePostForm({
    */
   const [theme, setTheme] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [userOpinion, setUserOpinion] = useState("");
+/** パターンの入力項目の値（`{名前}` へ差し込む・T-M8-132）。 */
+  const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
   const [imageEnabled, setImageEnabled] = useState(false);
   /**
    * 生成に使うプロンプト（T-M8-92・md/premium）。
@@ -417,9 +412,12 @@ function addPattern() {
         pattern,
         source_url: sourceUrl.trim() || undefined,
         theme,
-        user_opinion: selectedPattern?.asksUserOpinion
-          ? userOpinion.trim() || undefined
-          : undefined,
+      // このパターンが持つ項目だけを送る（型を切り替えても前の型の値を持ち越さない）。
+        placeholder_values: Object.fromEntries(
+          (selectedPattern?.placeholders ?? [])
+            .map((ph) => [ph.name, (placeholderValues[ph.name] ?? "").trim()])
+            .filter(([, v]) => v !== ""),
+        ),
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
         prompt_override: promptOverride,
@@ -552,10 +550,8 @@ function addPattern() {
         */}
         {selectedPattern ? (
           <p className="mt-2 text-caption text-ink-3">
-            この型の設定: {threadCountLabel(selectedPattern.maxPosts)}／Web検索{" "}
-            {POLICY_TEXT.web[selectedPattern.webSearchPolicy]}／参考URLを{" "}
-            {POLICY_TEXT.source[selectedPattern.sourcePolicy]}
-            {selectedPattern.includeNewsDigest ? "／直近のニュースを渡す" : ""}
+          この型の分量: {threadCountLabel(selectedPattern.maxPosts)}
+            {/* Web検索や参考URLの扱いはプロンプトに書く方式にしたので、ここには出さない（T-M8-132）。 */}
           </p>
         ) : null}
 
@@ -718,21 +714,34 @@ function addPattern() {
             </p>
         </div>
 
-        {selectedPattern?.asksUserOpinion ? (
-          <div>
-            <label className="block text-body font-medium text-ink" htmlFor="user_opinion">
-              自分の考え（任意）
+      {/*
+          **入力項目（プレースホルダー）**（T-M8-132）。パターンが `{名前}` を持つとき、
+          その名前の入力欄をここに出し、入力内容をプロンプトの `{名前}` へ差し込む。
+          以前は「自分の考え」だけが固定の欄だった（`<input>` に `自分の考え: …` として
+          載せるだけで、プロンプトのどこへ効くかは型の書き方任せだった）。
+        */}
+        {(selectedPattern?.placeholders ?? []).map((ph) => (
+          <div key={ph.name}>
+            <label
+              className="block text-body font-medium text-ink"
+              htmlFor={`placeholder-${ph.name}`}
+            >
+              {ph.name}（任意）
             </label>
             <textarea
               className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-              id="user_opinion"
-              maxLength={2000}
-              onChange={(e) => setUserOpinion(e.target.value)}
-              rows={3}
-              value={userOpinion}
+              id={`placeholder-${ph.name}`}
+              onChange={(e) =>
+                setPlaceholderValues((prev) => ({ ...prev, [ph.name]: e.target.value }))
+              }
+              rows={2}
+              value={placeholderValues[ph.name] ?? ""}
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              プロンプトの <code>{`{${ph.name}}`}</code> に入ります。空欄なら「（未指定）」になります。
+            </p>
           </div>
-        ) : null}
+        ))}
 
         <div>
           <label className="block text-body font-medium text-ink" htmlFor="instructions">

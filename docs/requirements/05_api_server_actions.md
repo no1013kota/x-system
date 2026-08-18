@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.36 |
+| バージョン | v1.37 |
 | 更新日 | 2026-08-18 |
 | 関連 | 全画面、全ジョブ |
 
@@ -220,8 +220,8 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePromptTemplate` | kind, content, expected_updated_at | template | md/premiumのみ。楽観lock |
 | `resetPromptTemplate` | kind | template | md/premiumのみ。account override削除 |
 | `listPatterns` | none | patterns, prompts, plan | 投稿パターン一覧＋プロンプト本文（T-M8-129） |
-| `createPattern` | name, description, prompt, max_posts, web_search_policy, source_policy, include_news_digest, asks_user_opinion, requires_quote_url | pattern | md/premiumのみ。**プロンプト必須**（自作は既定を持たない） |
-| `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す |
+| `createPattern` | name, description, prompt, placeholders | pattern | md/premiumのみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132） |
+| `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す。**名前・説明・プロンプト・プレースホルダー・分量だけを更新**し、他の列は触らない |
 | `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
 | `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
 | `updatePatternPrompt` | pattern_id, content, expected_updated_at | prompt | md/premiumのみ。楽観lock（投稿作成画面の「保存して以後も使う」） |
@@ -246,7 +246,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 `listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
-投稿パターンのActions（T-M8-129・ADR-0008）は所有者チェックを`requirePattern`（`x_account_id`で絞る）で兼ね、他人のパターンは`not_found`にする。検証はDBのCHECKと同じ判定を**先に**行い、`validation_error`の`details.reason`（`name_length`／`name_unsafe_chars`／`name_taken`／`max_posts_range`／`prompt_required`／`too_long`／`quote_with_digest`／`last_pattern`）で理由を返す——トリガ任せにすると画面に「保存できませんでした」しか出せない。`deletePattern`は参照の外し方をDBのトリガに任せ（要件02 §3.21）、**停止した予約の件数**を返して画面が何が起きたかを言えるようにする。`updatePattern`は`max_posts_edit`を狭めない（`greatest`）——狭めると既存の下書きが編集できなくなる。生成パイプライン（GEN-P1〜P6）はジョブに凍結した`pattern_spec`を正とし、実行中にパターンを編集・削除されても当時の設定で完走する。
+投稿パターンのActions（T-M8-129・ADR-0008）は所有者チェックを`requirePattern`（`x_account_id`で絞る）で兼ね、他人のパターンは`not_found`にする。検証はDBのCHECKと同じ判定を**先に**行い、`validation_error`の`details.reason`（`name_length`／`name_unsafe_chars`／`name_taken`／`max_posts_range`／`prompt_required`／`too_long`／`quote_with_digest`／`last_pattern`）で理由を返す——トリガ任せにすると画面に「保存できませんでした」しか出せない。`deletePattern`は参照の外し方をDBのトリガに任せ（要件02 §3.21）、**停止した予約の件数**を返して画面が何が起きたかを言えるようにする。`updatePattern`は`max_posts_edit`を狭めない（`greatest`）——狭めると既存の下書きが編集できなくなる。プレースホルダーは**プロンプトに`{名前}`が無いものを拒否する**（`placeholder_not_used`）——入力欄だけ出て何も起きない状態を作らない。生成パイプライン（GEN-P1〜P6）はジョブに凍結した`pattern_spec`を正とし、実行中にパターンを編集・削除されても当時の設定で完走する。
 
 ## 10. 通知
 

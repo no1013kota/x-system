@@ -63,16 +63,22 @@ describe("post_patterns CRUD（ローカルDB）", () => {
   const cleanup = (uid: string) =>
     withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
 
+/** 分量は**プロンプトから読む**（T-M8-132）。既定はメイン＋スレッド2＝3ポスト。 */
+  const PROMPT = [
+    "# 投稿内容",
+    "検証用の投稿を作る。",
+    "",
+    "# 構成と分量とスレッド数",
+    "メインポスト：フック",
+    "1スレッド目：本論",
+    "2スレッド目：締め",
+  ].join("\n");
+
   const input = (over: Partial<PatternInput> = {}): PatternInput => ({
     name: "自作パターン",
     description: "検証用",
-    prompt: "# タスク\n検証用のプロンプト",
-    maxPosts: 3,
-    webSearchPolicy: "always",
-    sourcePolicy: "with_url",
-    includeNewsDigest: false,
-    asksUserOpinion: false,
-    requiresQuoteUrl: false,
+    prompt: PROMPT,
+    placeholders: [],
     ...over,
   });
 
@@ -83,7 +89,9 @@ describe("post_patterns CRUD（ローカルDB）", () => {
       expect(created.name).toBe("自作パターン");
       expect(created.isSystemDefault, "自作は既定ではない").toBe(false);
       expect(created.hasCustomPrompt).toBe(true);
-    // 生成3 → 編集は min(8, 3+2) = 5。生成された分に少し足して整えられる幅を持たせる。
+  // プロンプトの「2スレッド目」からスレッド2＝総3ポストと読む。
+      expect(created.maxPosts).toBe(3);
+      // 編集は min(8, 3+2) = 5。生成された分に少し足して整えられる幅を持たせる。
       expect(created.maxPostsEdit).toBe(5);
 
       const all = await listPatterns(getPool(), xid);
@@ -119,13 +127,22 @@ describe("post_patterns CRUD（ローカルDB）", () => {
         [{ name: "あ".repeat(31) }, "name_length"],
         [{ name: "改行\n入り" }, "name_unsafe_chars"],
         [{ name: "<tag>" }, "name_unsafe_chars"],
-      [{ maxPosts: 0 }, "max_posts_range"],
-        // 総ポスト数の上限は8（画面のスレッド数 0〜7 に対応・T-M8-130）。
-        [{ maxPosts: 9 }, "max_posts_range"],
         [{ prompt: null }, "prompt_required"],
         [{ prompt: "   " }, "prompt_required"],
         [{ prompt: "あ".repeat(8001) }, "too_long"],
-        [{ requiresQuoteUrl: true, includeNewsDigest: true }, "quote_with_digest"],
+        // 入力項目（プレースホルダー・T-M8-132）
+        [{ placeholders: [{ name: "" }] }, "placeholder_name_length"],
+        [{ placeholders: [{ name: "{壊れ}" }] }, "placeholder_name_unsafe"],
+      [
+          // プロンプトには {自分の考え} を書いてある（未使用チェックより先に重複で落ちることを見る）。
+          {
+            prompt: `${PROMPT}\n\n# 語り口\n{自分の考え}`,
+            placeholders: [{ name: "自分の考え" }, { name: "自分の考え" }],
+          },
+          "placeholder_duplicated",
+        ],
+        // **プロンプトに `{名前}` が無いものは拒否する**（入力欄だけ出て何も起きない状態を作らない）。
+        [{ placeholders: [{ name: "対象読者" }] }, "placeholder_not_used"],
       ];
       for (const [over, reason] of cases) {
         await expect(
@@ -142,8 +159,8 @@ describe("post_patterns CRUD（ローカルDB）", () => {
     const { uid, xid } = await seedAccount();
     try {
       const before = (await listPatterns(getPool(), xid)).find((p) => p.name === "ニュース解説")!;
-      const renamed = await applyUpdatePattern(getPool(), {
-        ...input({ name: "ニュース速報", prompt: "# タスク\n自分の指示", maxPosts: 5 }),
+    const renamed = await applyUpdatePattern(getPool(), {
+        ...input({ name: "ニュース速報", prompt: `# 投稿内容\n自分の指示\n\n# 構成と分量とスレッド数\nメインポスト：\n1スレッド目：\n2スレッド目：\n3スレッド目：\n4スレッド目：` }),
         xAccountId: xid,
         patternId: before.id,
       });
@@ -153,8 +170,8 @@ describe("post_patterns CRUD（ローカルDB）", () => {
       // **編集上限は狭めない**（既存の下書きが編集できなくなるため）。既定は6で、生成5に上げても6のまま。
       expect(renamed.maxPostsEdit).toBe(6);
 
-      const reset = await applyUpdatePattern(getPool(), {
-        ...input({ name: "ニュース速報", prompt: null, maxPosts: 5 }),
+    const reset = await applyUpdatePattern(getPool(), {
+        ...input({ name: "ニュース速報", prompt: null }),
         xAccountId: xid,
         patternId: before.id,
       });
@@ -164,20 +181,32 @@ describe("post_patterns CRUD（ローカルDB）", () => {
     }
   });
 
-  it("生成上限を編集上限より大きくしても保存できる（編集上限が追いつく）", async () => {
+it("スレッド数の指定が読み取れないプロンプトは、全体の上限まで許す（勝手に短くしない）", async () => {
     const { uid, xid } = await seedAccount();
     try {
-      const single = (await listPatterns(getPool(), xid)).find(
-        (p) => p.name === "自分の考え・意見",
-      )!;
-      expect(single.maxPostsEdit, "単発の型は編集も1").toBe(1);
-      const updated = await applyUpdatePattern(getPool(), {
-        ...input({ name: "自分の考え・意見", prompt: null, maxPosts: 4 }),
+      const created = await applyCreatePattern(getPool(), {
+        ...input({ name: "分量なし", prompt: "# 投稿内容\n分量を書かないプロンプト" }),
         xAccountId: xid,
-        patternId: single.id,
       });
-      expect(updated.maxPosts).toBe(4);
-      expect(updated.maxPostsEdit, "生成上限まで広がる").toBe(4);
+      // **黙って短い値を当てない。** 書いていないなら全体の上限（8ポスト）まで許す。
+      expect(created.maxPosts).toBe(8);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("プレースホルダーはプロンプトに {名前} があれば保存できる", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      const created = await applyCreatePattern(getPool(), {
+        ...input({
+          name: "意見つき",
+          prompt: `${PROMPT}\n\n# 語り口\n{自分の考え} を踏まえて書く。`,
+          placeholders: [{ name: "自分の考え" }],
+        }),
+        xAccountId: xid,
+      });
+      expect(created.placeholders).toEqual([{ name: "自分の考え" }]);
     } finally {
       await cleanup(uid);
     }

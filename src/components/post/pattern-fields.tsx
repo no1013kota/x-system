@@ -2,11 +2,11 @@
 
 import {
   PATTERN_DESCRIPTION_MAX_CHARS,
-  PATTERN_MAX_THREAD_COUNT,
   PATTERN_NAME_MAX_CHARS,
+  PATTERN_PLACEHOLDER_MAX,
+  PATTERN_PLACEHOLDER_NAME_MAX_CHARS,
   PATTERN_PROMPT_MAX_CHARS,
-  maxPostsFromThreadCount,
-  threadCountOf,
+  threadCountFromPromptLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -22,41 +22,19 @@ import {
  * 上限としてコード全体で使われており、意味を変えると解釈が全箇所でずれる。
  */
 
-export type PatternPolicyValue = "always" | "with_url" | "never";
-
-const POLICY_OPTIONS: { value: PatternPolicyValue; webLabel: string; sourceLabel: string }[] = [
-  { value: "always", webLabel: "毎回使う", sourceLabel: "必ず付ける" },
-  { value: "with_url", webLabel: "入力があるときだけ", sourceLabel: "入力があるときだけ" },
-  { value: "never", webLabel: "使わない", sourceLabel: "付けない" },
-];
 
 /** 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。 */
 export interface PatternDraft {
   name: string;
   description: string;
   prompt: string;
-  maxPosts: number;
-  webSearchPolicy: PatternPolicyValue;
-  sourcePolicy: PatternPolicyValue;
-  includeNewsDigest: boolean;
-  asksUserOpinion: boolean;
-  requiresQuoteUrl: boolean;
+  /** プロンプト内の `{名前}` に差し込む入力の定義。 */
+  placeholders: { name: string }[];
 }
 
 /** 新規作成の初期値。プロンプトは雛形を入れて渡す（呼び出し側で `NEW_PATTERN_PROMPT_TEMPLATE`）。 */
 export function emptyPatternDraft(prompt: string): PatternDraft {
-  return {
-    name: "",
-    description: "",
-    prompt,
-    // 既定はスレッド2本（メイン＋2＝3ポスト）。単発にしたい人は 0 を選べる。
-    maxPosts: 3,
-    webSearchPolicy: "always",
-    sourcePolicy: "with_url",
-    includeNewsDigest: false,
-    asksUserOpinion: false,
-    requiresQuoteUrl: false,
-  };
+  return { name: "", description: "", prompt, placeholders: [] };
 }
 
 export function toPatternDraft(
@@ -67,12 +45,7 @@ export function toPatternDraft(
     name: item.name,
     description: item.description ?? "",
     prompt: prompt?.content ?? "",
-    maxPosts: item.maxPosts,
-    webSearchPolicy: item.webSearchPolicy,
-    sourcePolicy: item.sourcePolicy,
-    includeNewsDigest: item.includeNewsDigest,
-    asksUserOpinion: item.asksUserOpinion,
-    requiresQuoteUrl: item.requiresQuoteUrl,
+    placeholders: item.placeholders.map((ph) => ({ name: ph.name })),
   };
 }
 
@@ -87,12 +60,9 @@ export function toPatternPayload(draft: PatternDraft, systemDefaultPrompt: strin
     name: draft.name,
     description: draft.description.trim() === "" ? null : draft.description.trim(),
     prompt: isDefaultBody ? null : prompt,
-    max_posts: draft.maxPosts,
-    web_search_policy: draft.webSearchPolicy,
-    source_policy: draft.sourcePolicy,
-    include_news_digest: draft.includeNewsDigest,
-    asks_user_opinion: draft.asksUserOpinion,
-    requires_quote_url: draft.requiresQuoteUrl,
+    placeholders: draft.placeholders
+      .map((ph) => ({ name: ph.name.trim() }))
+      .filter((ph) => ph.name.length > 0),
   };
 }
 
@@ -110,8 +80,16 @@ export function patternReasonMessage(
       return "同じ名前のパターンがすでにあります。別の名前にしてください。";
     case "description_length":
       return `説明は${PATTERN_DESCRIPTION_MAX_CHARS}字以内で入力してください。`;
-    case "max_posts_range":
-      return `スレッド数は0〜${PATTERN_MAX_THREAD_COUNT}で指定してください。`;
+  case "placeholder_name_length":
+      return `入力項目の名前は1〜${PATTERN_PLACEHOLDER_NAME_MAX_CHARS}字で入力してください。`;
+    case "placeholder_name_unsafe":
+      return "入力項目の名前に「{」「}」「<」「>」改行は使えません。";
+    case "placeholder_duplicated":
+      return "同じ名前の入力項目が2つあります。名前を分けてください。";
+    case "placeholder_not_used":
+      return "入力項目を作ったら、プロンプトの中に {名前} と書いてください（書かないと入力しても使われません）。";
+    case "placeholder_too_many":
+      return `入力項目は${PATTERN_PLACEHOLDER_MAX}個までです。`;
     case "prompt_required":
       return "プロンプトを入力してください（自分で作ったパターンには既定がありません）。";
     case "too_long":
@@ -173,98 +151,64 @@ export function PatternFields({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="block text-body">
-          <span className="block font-medium">スレッド数</span>
-          <select
-            className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2"
-            id={`${idPrefix}-thread-count`}
-            onChange={(e) => onChange({ maxPosts: maxPostsFromThreadCount(Number(e.target.value)) })}
-            value={threadCountOf(draft.maxPosts)}
-          >
-            {Array.from({ length: PATTERN_MAX_THREAD_COUNT + 1 }, (_, n) => n).map((n) => (
-              <option key={n} value={n}>
-                {n === 0 ? "0（メインポストのみ）" : `${n}（メイン＋最大${n}）`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-body">
-        <span className="block font-medium">Web検索を使う</span>
-          <select
-            className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2"
-            id={`${idPrefix}-web-search`}
-            onChange={(e) => onChange({ webSearchPolicy: e.target.value as PatternPolicyValue })}
-            value={draft.webSearchPolicy}
-          >
-            {POLICY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.webLabel}
-              </option>
-            ))}
-          </select>
-        </label>
-      <label className="block text-body">
-          {/* 投稿作成画面の「参考にするURL（入力）」とは別物なので、**出力側だと分かる書き方**にする。 */}
-          <span className="block font-medium">投稿に参考URLを付ける</span>
-          <select
-            className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2"
-            id={`${idPrefix}-source`}
-            onChange={(e) => onChange({ sourcePolicy: e.target.value as PatternPolicyValue })}
-            value={draft.sourcePolicy}
-          >
-            {POLICY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.sourceLabel}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-    <p className="text-caption text-ink-3">
-        スレッド数・Web検索・参考URLは、生成のたびにAIへの指示（<code>pattern_rules</code>）として
-        渡されます。スレッド数は生成後にも上限として適用されます。
-      </p>
-
-      <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-        <legend className="mb-1 text-body font-medium">この型の入力</legend>
-        <label className="flex items-center gap-1.5 text-body">
-          <input
-            checked={draft.asksUserOpinion}
-            onChange={(e) => onChange({ asksUserOpinion: e.target.checked })}
-            type="checkbox"
-          />
-          自分の意見を毎回入力する
-        </label>
-        <label className="flex items-center gap-1.5 text-body">
-          <input
-            checked={draft.includeNewsDigest}
-            disabled={draft.requiresQuoteUrl}
-            onChange={(e) => onChange({ includeNewsDigest: e.target.checked })}
-            type="checkbox"
-          />
-          直近のニュースをまとめて渡す
-        </label>
-        <label className="flex items-center gap-1.5 text-body">
-          <input
-            checked={draft.requiresQuoteUrl}
-            onChange={(e) =>
-              onChange({
-                requiresQuoteUrl: e.target.checked,
-                ...(e.target.checked ? { includeNewsDigest: false } : {}),
-              })
-            }
-            type="checkbox"
-          />
-          引用するX投稿のURLを毎回指定する
-        </label>
-      </fieldset>
-      {draft.requiresQuoteUrl ? (
-        <p className="text-caption text-ink-3">
-          URLを毎回指定する必要があるため、このパターンはスケジュール（定期実行）には使えません。
+      {/*
+        **入力項目（プレースホルダー）**（T-M8-132・運営者の指示 2026-08-18）。
+        プロンプトの中に `{名前}` と書いておくと、投稿作成画面にその名前の入力欄が出て、
+        入力した内容が `{名前}` の位置へ差し込まれる。
+        「自分の考え」のような固定の入力欄をやめ、型ごとに何を毎回入れたいかを決められるようにした。
+      */}
+      <fieldset>
+        <legend className="mb-1 text-body font-medium">毎回入力する項目（任意）</legend>
+        <p className="mb-2 text-caption text-ink-3">
+          ここで名前を決めて、下のプロンプトの中に <code>{"{名前}"}</code>{" "}
+          と書いてください。投稿作成のときにその名前の入力欄が出て、入力した内容が{" "}
+          <code>{"{名前}"}</code> の位置に入ります。
         </p>
-      ) : null}
+        <div className="space-y-2">
+          {draft.placeholders.map((ph, index) => (
+            <div className="flex items-center gap-2" key={index}>
+              <input
+                aria-label={`入力項目${index + 1}の名前`}
+                className="h-9 w-full max-w-xs rounded-card border border-hairline bg-surface px-2 text-body"
+                id={`${idPrefix}-placeholder-${index}`}
+                maxLength={PATTERN_PLACEHOLDER_NAME_MAX_CHARS}
+                onChange={(e) =>
+                  onChange({
+                    placeholders: draft.placeholders.map((cur, i) =>
+                      i === index ? { name: e.target.value } : cur,
+                    ),
+                  })
+                }
+                placeholder="例: 自分の考え"
+                value={ph.name}
+              />
+              <span className="text-caption text-ink-3">
+                プロンプトには <code>{`{${ph.name || "名前"}}`}</code>
+              </span>
+            <button
+                // パターン自体の「削除」と紛れないよう、読み上げ名を分ける。
+                aria-label={`入力項目${ph.name ? `「${ph.name}」` : index + 1}を削除`}
+                className="ml-auto shrink-0 text-body text-danger-fg hover:underline"
+                onClick={() =>
+                  onChange({ placeholders: draft.placeholders.filter((_, i) => i !== index) })
+                }
+                type="button"
+              >
+                削除
+              </button>
+            </div>
+          ))}
+        </div>
+        {draft.placeholders.length < PATTERN_PLACEHOLDER_MAX ? (
+          <button
+            className="mt-2 text-body text-info-fg hover:underline"
+            onClick={() => onChange({ placeholders: [...draft.placeholders, { name: "" }] })}
+            type="button"
+          >
+            入力項目を追加
+          </button>
+        ) : null}
+      </fieldset>
 
       <div>
         <div className="flex items-center justify-between">
@@ -275,13 +219,18 @@ export function PatternFields({
             {draft.prompt.length.toLocaleString()} / {PATTERN_PROMPT_MAX_CHARS.toLocaleString()} 字
           </span>
         </div>
-        <textarea
+      <textarea
           className="mt-1 h-64 w-full resize-y rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5"
           id={`${idPrefix}-prompt`}
           onChange={(e) => onChange({ prompt: e.target.value })}
           spellCheck={false}
           value={draft.prompt}
         />
+        {/*
+          **分量はプロンプトから読む**（T-M8-132）。読み取った結果をその場に出す——
+          書いたつもりの本数と実際に作られる本数が違うことに、生成してから気付かないようにする。
+        */}
+        <p className="mt-1 text-caption text-ink-3">{threadCountFromPromptLabel(draft.prompt)}</p>
       </div>
     </div>
   );

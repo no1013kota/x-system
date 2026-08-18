@@ -295,13 +295,20 @@ test("投稿作成画面からパターンを追加でき、そのまま選択�
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");
 
-  await page.getByRole("button", { name: "パターンを追加" }).click();
+await page.getByRole("button", { name: "パターンを追加" }).click();
   // プロンプト欄には雛形が入っている（空欄から書き始めさせない）。
-  await expect(page.locator("#new-pattern-prompt")).toHaveValue(/# タスク[\s\S]*# 構成と分量/);
-  // 分量はスレッド数で聞く。0 は「メインポストのみ」。
-  await page.locator("#new-pattern-thread-count").selectOption("0");
+  await expect(page.locator("#new-pattern-prompt")).toHaveValue(
+    /# 投稿内容[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
+  );
+  // 入力項目（プレースホルダー）を作り、プロンプトへ {対象読者} を書く。
+  await page.getByRole("button", { name: "入力項目を追加" }).click();
+  await page.locator("#new-pattern-placeholder-0").fill("対象読者");
   await page.locator("#new-pattern-name").fill("画面から作った型");
-  await page.locator("#new-pattern-prompt").fill("# タスク\n画面から作った型のプロンプト");
+  await page
+    .locator("#new-pattern-prompt")
+    .fill(
+      "# 投稿内容\n画面から作った型のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{対象読者} に向けて書く",
+    );
   await page.getByRole("button", { name: "追加", exact: true }).click();
 
   // 追加した型が選択肢に出て、選ばれている。
@@ -309,12 +316,23 @@ test("投稿作成画面からパターンを追加でき、そのまま選択�
   await expect(radio).toBeVisible();
   await expect(radio).toBeChecked();
 
-  const [saved] = await query<{ name: string; max_posts: number; prompt: string }>(
-    `select name, max_posts, prompt from post_patterns
+const [saved] = await query<{
+    name: string;
+    max_posts: number;
+    prompt: string;
+    placeholders: { name: string }[];
+  }>(
+    `select name, max_posts, prompt, placeholders from post_patterns
       where x_account_id = $1 and seed_key is null`,
     [account.xAccountId],
   );
   expect(saved.name).toBe("画面から作った型");
-  expect(saved.max_posts, "スレッド数0 → 総1ポスト").toBe(1);
+  // 「メインポスト：」だけ＝スレッド0 → 総1ポスト（プロンプトから読む）。
+  expect(saved.max_posts).toBe(1);
   expect(saved.prompt).toContain("画面から作った型のプロンプト");
+  expect(saved.placeholders).toEqual([{ name: "対象読者" }]);
+
+  // **入力項目が投稿作成画面に出る**（プロンプトの {対象読者} に入る旨も書いてある）。
+  await expect(page.getByLabel("対象読者（任意）")).toBeVisible();
+  await expect(page.getByText("{対象読者} に入ります", { exact: false })).toBeVisible();
 });

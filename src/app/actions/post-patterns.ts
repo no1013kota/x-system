@@ -15,7 +15,8 @@ import {
 import {
   PATTERN_DESCRIPTION_MAX_CHARS,
   PATTERN_NAME_MAX_CHARS,
-  PATTERN_MAX_POSTS_LIMIT,
+  PATTERN_PLACEHOLDER_MAX,
+  PATTERN_PLACEHOLDER_NAME_MAX_CHARS,
   PATTERN_PROMPT_MAX_CHARS,
   type PatternOption,
   type PatternPromptView,
@@ -38,8 +39,6 @@ const updatePromptSchema = z.object({
   expected_updated_at: z.string().nullable(),
 });
 const patternIdSchema = z.object({ pattern_id: z.string().uuid() });
-const policySchema = z.enum(["always", "with_url", "never"]);
-
 /**
  * パターンの入力。**画面から来た値をここで型にする**（DBのCHECKと同じ範囲）。
  * 理由付きの検証は `validatePatternInput` が行う（同じ判定を2度書かない）。
@@ -48,12 +47,10 @@ const patternSchema = z.object({
   name: z.string().min(1).max(PATTERN_NAME_MAX_CHARS),
   description: z.string().max(PATTERN_DESCRIPTION_MAX_CHARS).nullable(),
   prompt: z.string().max(PATTERN_PROMPT_MAX_CHARS).nullable(),
-  max_posts: z.number().int().min(1).max(PATTERN_MAX_POSTS_LIMIT),
-  web_search_policy: policySchema,
-  source_policy: policySchema,
-  include_news_digest: z.boolean(),
-  asks_user_opinion: z.boolean(),
-  requires_quote_url: z.boolean(),
+  /** プロンプト内の `{名前}` に差し込む入力の定義（T-M8-132）。 */
+  placeholders: z
+    .array(z.object({ name: z.string().min(1).max(PATTERN_PLACEHOLDER_NAME_MAX_CHARS) }))
+    .max(PATTERN_PLACEHOLDER_MAX),
 });
 const createSchema = patternSchema;
 const updateSchema = patternSchema.extend({ pattern_id: z.string().uuid() });
@@ -65,12 +62,7 @@ function toInput(data: PatternPayload) {
     name: data.name,
     description: data.description,
     prompt: data.prompt,
-    maxPosts: data.max_posts,
-    webSearchPolicy: data.web_search_policy,
-    sourcePolicy: data.source_policy,
-    includeNewsDigest: data.include_news_digest,
-    asksUserOpinion: data.asks_user_opinion,
-    requiresQuoteUrl: data.requires_quote_url,
+    placeholders: data.placeholders,
   };
 }
 
