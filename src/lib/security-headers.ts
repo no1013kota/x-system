@@ -1,3 +1,5 @@
+import { STRIPE_HOSTED_ORIGINS } from "@/lib/stripe/hosted-origins";
+
 /**
  * セキュリティヘッダ／CSP の構築（要件01 §8, T-M6-17）。proxy（updateSupabaseSession）から使う。
  * next/server に依存しない純粋関数として書き、ユニットテスト可能にする（Headers はグローバル）。
@@ -10,6 +12,7 @@
  */
 
 const TURNSTILE = "https://challenges.cloudflare.com";
+const STRIPE_HOSTED = STRIPE_HOSTED_ORIGINS.join(" ");
 const HSTS_VALUE = "max-age=63072000; includeSubDomains; preload";
 
 export function isProdRuntime(): boolean {
@@ -67,7 +70,8 @@ export function buildContentSecurityPolicy(nonce: string, isProd: boolean): stri
     // Supabase のオリジンは明示する（ローカルは http のため https: に含まれない）。
     `img-src 'self' data: blob: https:${supabaseOrigin()}`,
     `font-src 'self' data:`,
-    `connect-src 'self' ${TURNSTILE}${sentryConnectSrc()}${devConnect}`,
+    // Checkout／Portalへ押下時にpreconnectし、Session作成中にDNS/TCP/TLSを準備する。
+    `connect-src 'self' ${TURNSTILE} ${STRIPE_HOSTED}${sentryConnectSrc()}${devConnect}`,
     `frame-src 'self' ${TURNSTILE}`,
     `frame-ancestors 'none'`,
     `object-src 'none'`,

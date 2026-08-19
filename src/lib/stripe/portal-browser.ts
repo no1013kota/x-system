@@ -2,6 +2,7 @@ import {
   startBillingRedirect,
   type BillingRedirectDependencies,
 } from "./billing-redirect";
+import { STRIPE_PORTAL_ORIGIN } from "./hosted-origins";
 import type { PortalIntent } from "./portal";
 
 const DEFAULT_ERROR_MESSAGE =
@@ -20,6 +21,7 @@ export async function startCustomerPortal(
   await startBillingRedirect(
     "/api/stripe/portal",
     DEFAULT_ERROR_MESSAGE,
+    STRIPE_PORTAL_ORIGIN,
     dependencies,
     intent
       ? {

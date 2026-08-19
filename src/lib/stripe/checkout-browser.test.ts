@@ -11,8 +11,11 @@ describe("startCheckout", () => {
       }),
     );
     const navigate = vi.fn();
+    const prepareHostedOrigin = vi.fn();
 
-    await startCheckout("premium", { fetcher, navigate });
+    await startCheckout("premium", { fetcher, navigate, prepareHostedOrigin });
+
+    expect(prepareHostedOrigin).toHaveBeenCalledWith("https://checkout.stripe.com");
 
     expect(fetcher).toHaveBeenCalledWith("/api/stripe/checkout", {
       method: "POST",

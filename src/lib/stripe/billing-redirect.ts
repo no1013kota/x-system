@@ -1,3 +1,5 @@
+import { preconnect } from "react-dom";
+
 /**
  * Shared client helper for server-owned billing redirects (Checkout / Customer
  * Portal). POSTs to a server route, validates the `{ ok, data: { url } }`
@@ -7,6 +9,8 @@
 export interface BillingRedirectDependencies {
   fetcher: typeof fetch;
   navigate(url: string): void;
+  /** Starts DNS/TCP/TLS setup while the application creates the Stripe session. */
+  prepareHostedOrigin?(origin: string): void;
 }
 
 /**
@@ -17,6 +21,7 @@ export interface BillingRedirectDependencies {
 export const defaultBillingRedirectDeps: BillingRedirectDependencies = {
   fetcher: (input, init) => fetch(input, init),
   navigate: (url) => window.location.assign(url),
+  prepareHostedOrigin: (origin) => preconnect(origin),
 };
 
 /** Extracts an https URL from a `{ ok: true, data: { url } }` body, else null. */
@@ -60,9 +65,17 @@ export function userMessageFromResponse(body: unknown): string | null {
 export async function startBillingRedirect(
   endpoint: string,
   errorMessage: string,
+  hostedOrigin: string,
   dependencies: BillingRedirectDependencies = defaultBillingRedirectDeps,
   init?: RequestInit,
 ): Promise<void> {
+  /*
+   * Stripeのセッションは短寿命なので、利用者が押す前に作らない。一方、遷移先originは固定で
+   * 分かっている。ここでpreconnectを始め、同一origin APIの認証・DB読込・Stripe Session作成と
+   * DNS/TCP/TLSを並行させる。URLを受け取ってから接続を始めるより、そのぶん遷移待ちを短くできる。
+   */
+  dependencies.prepareHostedOrigin?.(hostedOrigin);
+
   let response: Response;
   try {
     response = await dependencies.fetcher(endpoint, { method: "POST", ...init });

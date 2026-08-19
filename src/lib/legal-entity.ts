@@ -149,6 +149,11 @@ export const PROCESSORS: readonly Processor[] = [
  */
 export const BROWSER_TRANSMISSIONS: readonly { to: string; when: string; data: string }[] = [
   {
+    to: "Stripe, Inc.（決済・契約管理）",
+    when: "決済画面または契約管理画面を開くボタンを押したとき",
+    data: "IPアドレス、ブラウザの種類などの接続情報",
+  },
+  {
     to: "Cloudflare, Inc.（人間確認）",
     when: "ログイン・会員登録・パスワード再設定の画面を表示したとき",
     data: "IPアドレス、ブラウザの種類などの接続情報",

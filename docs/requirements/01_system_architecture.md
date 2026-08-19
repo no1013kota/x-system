@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.16 |
+| 更新日 | 2026-08-19 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -195,7 +195,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 
 
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
-- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、**アプリ全体の動的レンダリング化**）はADR-0005を正とする。nonceはリクエストごとに作るためビルド時のHTMLへ焼き付けられず、静的prerenderされたページはscriptが1本も実行されない（＝画面が壊れる）。そのため `src/app/layout.tsx` で全ルートを `force-dynamic` にし、破られていないことを `npm run check:csp-nonce` がビルド成果物の走査で確認する（`release:check` に組込み）。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
+- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、**アプリ全体の動的レンダリング化**）はADR-0005を正とする。`connect-src`はTurnstile・Sentryに加え、押下時の接続準備に限ってStripe Checkout／Customer Portalのhostを許可する。nonceはリクエストごとに作るためビルド時のHTMLへ焼き付けられず、静的prerenderされたページはscriptが1本も実行されない（＝画面が壊れる）。そのため `src/app/layout.tsx` で全ルートを `force-dynamic` にし、破られていないことを `npm run check:csp-nonce` がビルド成果物の走査で確認する（`release:check` に組込み）。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
 - 未知の例外（`AppError` 以外＝`internal_error` に丸められるもの）は、利用者向けの結果へ変換される境界で必ず1度記録する（`recordUnexpectedError`）。`onRequestError`（`src/instrumentation.ts`）はthrowされた例外だけをSentryへ送るため、catchして値を返す共通出口——Server Actionの`errorResult`／API Routeの`apiError`／jobの`failJob`——では発火せず、記録が無いと原因が画面にもログにもDBにも残らない。`AppError`は仕様どおりの分岐なので記録しない（本物の異常がノイズに埋もれるため）。引数なし`catch {}`は`src/app/actions`・`src/app/api`・`src/lib`のlintが禁止し、記録しない場合は理由を`eslint-disable`のコメントで宣言する（URL/JSONのparseなど「失敗が答え」の検証処理が該当）。
 - 原因不明（`internal_error`）を特定の原因として断定する画面文言を出さない。X連携では`provider_error`（X通信失敗と判明）と`internal_error`（原因不明）を別文言にする。
@@ -223,3 +223,4 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 | version | 日付 | 変更内容 |
 |---|---|---|
 | v1.15 | 2026-08-18 | `SMTP_*` が Supabase Auth のカスタムSMTPにも使われることを明記（T-M8-144） |
+| v1.16 | 2026-08-19 | Stripe画面への押下時preconnectに必要なCSP許可先を反映（T-M8-152） |

@@ -2101,6 +2101,24 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-152: Stripe画面への全遷移で接続待ちを短縮する `done`
+- 参照: 要件01 §8／要件03 §2／要件06 SC-04・SC-11 / 依存: なし / サイズ: S
+- 完了条件:
+  - CheckoutとCustomer Portalの全入口で、Session作成中にStripe画面originへの接続準備を並行する
+  - 短寿命のStripe Sessionを押下前に作成・再利用せず、未使用Sessionを増やさない
+  - CSPとブラウザ外部送信の開示を実通信に同期し、単体・統合・E2Eが通る
+- メモ: `startBillingRedirect` がCheckout／Portalの固定originへ押下直後にReactの`preconnect`を出し、
+  同一origin APIの認証・DB読込・Stripe Session作成とDNS／TCP／TLSを並行する。CSPの`connect-src`と
+  プライバシーポリシーの外部送信一覧も同期した。Stripe公式どおりPortal Sessionはオンデマンド作成のまま。
+  単体87件、Stripe route実DB統合14件、料金・課金E2E 5件、typecheck、lint、docs検査が成功。
+
+### T-M8-153: 未確認ログインを6桁コード入力へ切り替えてコードを自動再送する `todo`
+- 参照: 要件05 §4.0／要件06 SC-03 / 依存: T-M8-151 / サイズ: S
+- 完了条件:
+  - 未確認アカウントでログインすると、黄色枠で「メール確認が終わっていません」と表示して6桁コード画面へ切り替わる
+  - ログインで消費したTurnstile tokenを再利用せず、新しいtoken取得後に確認コードを自動再送する
+  - Mailpitを使うローカルE2Eで、自動再送されたコードによる確認完了まで通る
+
 ### T-M8-151: 認証の待ち時間と6桁コード再送のTurnstile設定を直す `done`
 - 参照: 要件05 §4.0／要件06 SC-02・SC-03 / 依存: T-M8-149 / サイズ: S
 - 完了条件:

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.95 |
+| バージョン | v1.96 |
 | 更新日 | 2026-08-19 |
 | 関連 | PRD A/L/N/P/S/K/M/O、SC-01〜11 |
 
@@ -48,7 +48,7 @@
 - プレミアムプランはAPIキー不要であることと、AIクレジット1000・通常投稿200件・URL付き投稿20件の月間枠を表で示す（数値は `plans.ts` から描画し、画面へ書き写さない）。
 - **`/plans` の申込前確認は1段落へ畳んだ**（T-M8-125）。無料期間・カード登録・自動更新・解約の要点と特定商取引法に基づく表記へのリンクを、申込ボタンより前に置く。定義リスト（料金・支払時期・提供開始の再掲）と初期設定の手順一覧は比較表と重複していたため削除した。法定事項の全文は `/legal/commercial-transactions` が担う。
 - プランボタンより前に、税込月額、初回だけの7日trial、開始時のカード登録、trial後の月次自動更新、初回／毎月の支払時期、Customer Portalからの期間末解約、Checkout後の提供開始時期を再掲する。
-- プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
+- プラン選択は`plan`だけを`POST /api/stripe/checkout`へ送り、成功時のHTTPS URLへ遷移する。押下直後からSession作成と並行してStripe Checkoutの接続準備を始める（要件03 §2.3）。送信中はボタンを無効化し、API・通信・不正URL時は画面内エラーを表示して同画面で再試行できる。
 - `checkout=canceled`は未完了として再選択を案内する。Checkout successは復帰handlerで未反映時だけ同期した後、`checkout=success&sync=...`として契約情報確認中を表示する。契約の確定表示はprofileを正とし、通常表示ではStripe APIを呼ばない。契約が有効（`trialing`／`active`＝`canExecute`）なユーザーが`/plans`を開いた場合は`/app`へredirectし、決済成功後にこの画面で行き止まりにならないようにする。`incomplete`／`incomplete_expired`はプラン選択、`canceled`等（`canExecute=false`）は再申込導線のため`/plans`に留める。
 - 反映待ち（`checkout=success`かつ未反映）の間は**プランカードとCTAを描画せず**、待機カードだけを表示する。カードには所要目安（通常1分ほど）・自動で確認している旨・手動の「状況を再確認」・重複申込を避ける注意とサポート連絡先を含める。数秒間隔で自動再取得し、反映されたら上記redirectでホームへ送る（約1分で自動確認は停止し、手動確認と問い合わせに切り替える）。
 - CTAは3プランすべて「7日間無料で利用」（初回`trial_used_at=null`のみ7日trial）でキー色。特商法関連の事前開示（税込月額・7日trial・自動更新・支払時期・解約方法・提供開始）は要件03 §54に従い折りたたまず常時表示し、**CTAより前**に置く。
@@ -57,7 +57,7 @@
 
 ### 1.2 SC-11 課金・問い合わせ（M1最小実装）
 
-- `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば**「プランを変更」「解約する」の2つ**を出し（やりたいことを先に選ばせる）、`POST /api/stripe/portal`へ`intent`を渡してStripeの該当画面へ直接入る。Customer未作成時はボタンを出さず`/plans`へのリンクにする。
+- `/app/settings?tab=billing`はprofileの現在プラン、`subscription_status`、JSTの`current_period_end`、`cancel_at_period_end`を表示する。Customerがあれば**「プランを変更」「解約する」の2つ**を出し（やりたいことを先に選ばせる）、`POST /api/stripe/portal`へ`intent`を渡してStripeの該当画面へ直接入る。設定画面だけでなく機能制限カード・契約バナーからのPortal導線も同じ共通処理を使い、押下直後からSession作成と並行してPortalの接続準備を始める（要件03 §2.3）。Customer未作成時はボタンを出さず`/plans`へのリンクにする。
 - **押す前に「いつから・支払いがどう変わるか」を画面に出す**（`lib/billing/plan-change-effects.ts`）。上位プラン＝すぐ切り替わり差額を日割り／下位プラン＝期間終了日に切り替わり返金なし／解約＝期間終了日まで使えて返金なし／トライアル中＝終了日は変わらず終了後に新料金。**日付は実際の`current_period_end`をJSTで出す**（無い・壊れている場合は日付を作らず「現在の期間の終了日」と書く）。文言はStripeのPortal configuration（要件03 §2.2）と1対1で対応させる——片方だけ変えると、画面の説明と実際の請求が食い違う。**解約が予約済み（`cancel_at_period_end`）のときは「解約する」を出さず「解約予定を取り消す」に替える**（Portalのトップを開く。取り消しはStripeが「プランを続ける」として提供し、`flow_data`に専用の型は無い）。予約済みなのに「解約する」を出し続けると、同じ操作をもう一度促すことになる（T-M8-57）。
 - Portalは`/api/stripe/return?source=portal`へ戻り、復帰handlerで未反映時だけ同期してから`portal=return&sync=...`を付ける。画面は「契約情報を確認しています」と表示し、表示値はprofileを正とする。通常表示ではStripeへ問い合わせない（要件03 §3）。
 - `/app/settings?tab=billing`の「現在のご契約」カードの先頭に**ログイン中のメールアドレス**を表示する（T-M8-95。どのアカウントで入っているかを画面から確認できるように。確認メール・領収書の宛先でもある）。
@@ -457,3 +457,4 @@ X APIキー登録画面（SC-11の`api-keys`タブ）には、XとAnthropic／Op
 | v1.93 | 2026-08-18 | 監査の乖離を解消（T-M8-144）: プレースホルダーへの一般化を §4.2 へ反映、編集上限を `drafts.max_posts_edit` 基準へ、`/plans` の記述を比較表ベースへ、変更履歴の表ヘッダを復元 |
 | v1.94 | 2026-08-18 | 認証3画面の外枠・App画面のh1・予約の実行モード名を共通部品／正本へ集約（T-M8-146）。会員登録の案内文を6桁コード方式へ |
 | v1.95 | 2026-08-19 | 6桁コード再送のTurnstileを、追加操作が必要な場合だけ表示する`interaction-only`へ修正（T-M8-151） |
+| v1.96 | 2026-08-19 | Checkout／Portalの全導線で押下直後からStripe画面の接続準備を始める仕様を反映（T-M8-152） |

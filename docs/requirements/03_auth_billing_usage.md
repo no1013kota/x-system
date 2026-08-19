@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.30 |
+| バージョン | v1.31 |
 | 更新日 | 2026-08-19 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -68,6 +68,10 @@ standard/mdは利用者自身のX/AI契約へ原価が発生するため、ア�
 - Sessionの`configuration`は`STRIPE_PORTAL_CONFIGURATION_ID`（developmentだけ省略可）、return URLは`{APP_BASE_URL}/api/stripe/return?source=portal`でサーバー固定とする。復帰同期後は`/app/settings?tab=billing&portal=return&sync=...`へredirectする。
 - `npm run stripe:portal:setup -- --dry-run`でConfiguration内容を通信なしで確認できる。実行時は**既存のconfigurationを上書き更新する**（新規作成はしない。IDが変わらないのでenvを触らずコードと設定を一致させられる）。**どの環境を設定するかは呼び出し側が明示し、構成IDは環境ごとに別の変数から読む**（既定へ落とさない。2026-08-04、既定でローカルの値を読んで**別環境を更新して「成功」と表示した**・T-M8-35）。適用後に読み戻して`subscription_update`／`subscription_cancel`が有効になったかを確認し、無効なままなら終了コード1で失敗する。秘密鍵は出力しない。手順とコマンドの正本は[デプロイ手順 §1.4](../operations/deployment.md)。
 - **Portalの設定はコードに現れない**ため、状態確認（`npm run doctor` / `/api/cron/doctor`）で毎回読み取り、画面のボタンが依存する機能が有効かを判定する（無効なら error）。**設定IDがそのStripeアカウントに存在しない場合（`resource_missing`）は「別の環境の値が入っている可能性」として error にする**——`.env` に別環境の値が入る事故が実際に起きており（2026-08-05、同じ変数が2回定義され後の定義が勝っていた）、「確認できませんでした」では原因に辿り着けない。Stripeへ届かなかっただけの場合とは区別する。2026-08-03、この確認が無かったため「プランを変更」を押して初めて無効だと分かった。
+
+### 2.3 Stripe画面への接続準備
+
+Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先origin（`https://checkout.stripe.com`／`https://billing.stripe.com`）へ`preconnect`し、アプリ側APIの認証・profile読込・Stripe Session作成とDNS／TCP／TLSの準備を並行する（T-M8-152）。Session URLを受け取ってから接続を始める待ちを減らすためで、同一origin APIやStripe APIの処理自体を省略するものではない。Stripe公式がPortal Sessionを短寿命・オンデマンド作成としているため、押下前のSession作成・Session URLのキャッシュ／再利用はしない（2026-08-19 [Customer Portal Session](https://docs.stripe.com/api/customer_portal/sessions)と[Create a Checkout Session](https://docs.stripe.com/api/checkout/sessions/create)を確認）。
 
 ## 3. Stripeを正とする項目
 
@@ -301,3 +305,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.28 | 2026-08-18 | 残量JSONを実装の3枠（AIクレジット・通常投稿・URL付き投稿）へ。同意versionの具体値を `src/lib/legal.ts` 参照へ寄せた（T-M8-144） |
 | v1.29 | 2026-08-18 | 共通実行ガードの判定順序を実装に合わせた（法務同意が先）。Portalの「契約が見つからないとき」を §6 と揃えた（T-M8-144） |
 | v1.30 | 2026-08-19 | Stripeアカウントが本番決済を受け付けられない状態を `feature_disabled` へ分けた（T-M8-148）。状態確認へ「決済の受付」を追加 |
+| v1.31 | 2026-08-19 | Checkout／Portal Session作成中にStripe画面originへの接続準備を並行する仕様を追加（T-M8-152） |
