@@ -2101,6 +2101,21 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-154: 全体の画面遷移で重複通信を削り、意図時先読みを追加する `done`
+- 参照: 要件01 §5・§8／要件03 §1／要件06 §2 / 依存: T-M8-67 / サイズ: M
+- 完了条件:
+  - proxyが検証した利用者を同一リクエストのServer Componentで安全に再利用し、通常表示時の重複Auth・profile通信を削る
+  - 主要ナビとURLタブは移動意図が出た行き先だけfull prefetchし、押下後の待機状態を即時表示する
+  - 認証・主要ナビのローカル統合／E2E、production build、CSP検査、ドキュメント同期が通る
+- メモ: proxyで`auth.getUser()`により検証した最小userをHMAC署名付き内部request headerへ載せ、後段の
+  `getCurrentUser()`は署名検証後に再利用する。header欠落・改ざん時だけSupabase Authへfallbackし、正常な
+  Server Component描画からAuthとprofileの直列2往復を削除した。profile欠損修復はsignup／login／plansへ限定。
+  主要ナビ・URLタブはNext.js既定の部分prefetchを保ち、hover／focus／touch時だけfull prefetchへ昇格し、
+  現在地は除外。ナビは`useLinkStatus`で行き先アイコンをスピナーへ切り替える。root `loading.tsx`はdev時の
+  nonce付きchunkでconsole errorを確認したため採用せず、既存`/app`・`/plans`境界を維持。認証／ナビE2E 8件、
+  単体2273件（環境条件skip 19件）、認証実DB統合2件、typecheck、lint、production build、CSP検査が成功。
+  ローカル確認中に旧`post_pattern`列へ依存していたレビュー用seedも現行`post_patterns.id` FKへ追従し、実行成功を確認。
+
 ### T-M8-152: Stripe画面への全遷移で接続待ちを短縮する `done`
 - 参照: 要件01 §8／要件03 §2／要件06 SC-04・SC-11 / 依存: なし / サイズ: S
 - 完了条件:

@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
+import {
+  CURRENT_AUTOMATION_CONSENT_VERSION,
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from "@/lib/legal";
 import { PROCESSORS } from "@/lib/legal-entity";
 
 /**
@@ -49,6 +53,15 @@ describe("法務3ページに開発中の表示が残っていない", () => {
 
   it("レビュー用アカウントのseedが現行versionを書き込む（古いと再同意ガードで弾かれる）", () => {
     expect(SEED).toContain(`export const LEGAL_VERSION = "${CURRENT_TERMS_VERSION}"`);
+    expect(SEED).toContain(
+      `export const AUTOMATION_CONSENT_VERSION = "${CURRENT_AUTOMATION_CONSENT_VERSION}"`,
+    );
+  });
+
+  it("レビュー用アカウントのseedが現行の投稿パターンFKを使う", () => {
+    expect(SEED).toContain("pattern_id");
+    expect(SEED).not.toContain("::post_pattern");
+    expect(SEED).not.toContain("(x_account_id, pattern,");
   });
 });
 

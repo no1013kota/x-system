@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
@@ -28,7 +29,7 @@ interface PlansPageProps {
 }
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
-  const params = await searchParams;
+  const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   // Checkout直後の反映待ち。反映が済むと下の判定で /app へリダイレクトされる。
   const awaitingCheckout = params.checkout === "success";
 
@@ -40,14 +41,22 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 送り返すと、設定＞課金の「プランを選ぶ」を押してもホームへ戻るだけで**何もできない**。
   // この状態はwebhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まるので、
   // 申し込みをやり直せる場所（この画面）へ入れる。
-  const user = await getCurrentUser();
   if (user) {
     const admin = createSupabaseAdminClient();
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("plan, subscription_status, stripe_customer_id")
-      .eq("id", user.id)
-      .maybeSingle();
+    const readProfile = () =>
+      admin
+        .from("profiles")
+        .select("plan, subscription_status, stripe_customer_id")
+        .eq("id", user.id)
+        .maybeSingle();
+    let profileResult = await readProfile();
+    // Signup/sign-in normally creates this row. Repair only legacy/missing rows here instead
+    // of adding a profile lookup to every getCurrentUser call (T-M8-154).
+    if (!profileResult.error && !profileResult.data) {
+      await ensureUserProfile(user);
+      profileResult = await readProfile();
+    }
+    const profile = profileResult.data;
     if (
       profile?.plan &&
       profile.stripe_customer_id &&

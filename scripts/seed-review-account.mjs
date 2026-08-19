@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";/**
  * （古い値のままだと、配線済みの再同意ガードでレビュー用アカウントが弾かれる）。
  */
 export const LEGAL_VERSION = "2026-08-08";
+export const AUTOMATION_CONSENT_VERSION = "2026-08-08";
 
 
 
@@ -230,15 +231,33 @@ async function main() {
        values ($1, $2, $3, '動作確認用アカウント', 'managed', 'active',
                'review-fake-token', 'review-fake-token',
                array['tweet.read','tweet.write','users.read','offline.access'],
-               now() + interval '30 days', $4, 3, '2026-07-20', now())
+               now() + interval '30 days', $4, 3, $5, now())
        returning id`,
-      [userId, `x-review-${randomUUID().slice(0, 8)}`, HANDLE, BASE_MD],
+      [
+        userId,
+        `x-review-${randomUUID().slice(0, 8)}`,
+        HANDLE,
+        BASE_MD,
+        AUTOMATION_CONSENT_VERSION,
+      ],
     );
     const xAccountId = accountRows[0].id;
     await client.query(`update profiles set active_x_account_id = $2 where id = $1`, [
       userId,
       xAccountId,
     ]);
+
+    const { rows: patternRows } = await client.query(
+      `select id, seed_key from post_patterns
+        where x_account_id = $1 and seed_key = any($2::text[])`,
+      [xAccountId, ["p1", "p2", "p3", "p6"]],
+    );
+    const patternIds = new Map(patternRows.map((row) => [row.seed_key, row.id]));
+    for (const seedKey of ["p1", "p2", "p3", "p6"]) {
+      if (!patternIds.has(seedKey)) {
+        throw new Error(`既定の投稿パターン ${seedKey} を作成できませんでした`);
+      }
+    }
 
     // --- ベースmdの変更履歴（ロールバックを試せるように）---
     for (const version of [1, 2]) {
@@ -264,9 +283,17 @@ async function main() {
     for (const slot of slots) {
       await client.query(
         `insert into schedule_slots
-           (x_account_id, pattern, weekdays, time_jst, mode, theme, image_enabled, enabled)
-         values ($1, $2::post_pattern, $3, $4, $5::schedule_mode, $6, false, $7)`,
-        [xAccountId, slot.pattern, slot.weekdays, slot.time, slot.mode, slot.theme, slot.enabled],
+           (x_account_id, pattern_id, weekdays, time_jst, mode, theme, image_enabled, enabled)
+         values ($1, $2, $3, $4, $5::schedule_mode, $6, false, $7)`,
+        [
+          xAccountId,
+          patternIds.get(slot.pattern),
+          slot.weekdays,
+          slot.time,
+          slot.mode,
+          slot.theme,
+          slot.enabled,
+        ],
       );
     }
 
@@ -290,18 +317,18 @@ async function main() {
     ];
     for (const draft of drafts) {
       await client.query(
-        `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-         values ($1, $2::post_pattern, $3::jsonb, $3::jsonb, 'draft')`,
-        [xAccountId, draft.pattern, JSON.stringify(draft.thread)],
+        `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+         values ($1, $2, $3::jsonb, $3::jsonb, 'draft')`,
+        [xAccountId, patternIds.get(draft.pattern), JSON.stringify(draft.thread)],
       );
     }
     // 警告つき（自動投稿が止まる状態を画面で見るため）
     const warned = [post("この下書きにはNGワードが含まれています。自動投稿は停止します。")];
     warned[0].warnings = ["ng_word"];
     await client.query(
-      `insert into drafts (x_account_id, pattern, thread, initial_thread, status)
-       values ($1, 'p2', $2::jsonb, $2::jsonb, 'draft')`,
-      [xAccountId, JSON.stringify(warned)],
+      `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status)
+       values ($1, $2, $3::jsonb, $3::jsonb, 'draft')`,
+      [xAccountId, patternIds.get("p2"), JSON.stringify(warned)],
     );
 
     // --- 投稿履歴と実績（分析画面を空にしない）---
@@ -314,13 +341,14 @@ async function main() {
       const tweetId = `review-${Date.now()}-${index}`;
       await client.query(
         `insert into drafts
-           (x_account_id, pattern, thread, initial_thread, status, posted_mode, posted_at,
+           (x_account_id, pattern_id, thread, initial_thread, status, posted_mode, posted_at,
             root_tweet_id, tweet_ids, tweet_metrics, metrics_completed_at)
-         values ($1, 'p2', $2::jsonb, $2::jsonb, 'posted', 'manual',
-                 now() - ($3::text || ' days')::interval, $4, $5::jsonb, $6::jsonb,
-                 now() - ($3::text || ' days')::interval + interval '30 days')`,
+         values ($1, $2, $3::jsonb, $3::jsonb, 'posted', 'manual',
+                 now() - ($4::text || ' days')::interval, $5, $6::jsonb, $7::jsonb,
+                 now() - ($4::text || ' days')::interval + interval '30 days')`,
         [
           xAccountId,
+          patternIds.get("p2"),
           JSON.stringify([post(item.text)]),
           String(item.days),
           tweetId,

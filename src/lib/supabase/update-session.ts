@@ -1,10 +1,12 @@
 import "server-only";
 
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
 import { routeGuardDestination } from "@/lib/auth/route-guard";
+import { writeVerifiedUserHeaders } from "@/lib/auth/request-user";
+import { getAppEncryptionKey } from "@/lib/crypto";
 import {
   applySecurityResponseHeaders,
   buildContentSecurityPolicy,
@@ -68,8 +70,13 @@ export async function updateSupabaseSession(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("content-security-policy", csp);
 
-  let response = NextResponse.next({ request: { headers: requestHeaders } });
   const cookiePolicy = authCookieOptions(env.APP_ENV);
+  const cookiesToForward: Array<{
+    name: string;
+    options: CookieOptions;
+    value: string;
+  }> = [];
+  const sessionHeaders = new Headers();
 
   const supabase = createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -84,17 +91,11 @@ export async function updateSupabaseSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
-
-          response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(
-              name,
-              value,
-              withAuthCookiePolicy(options, env.APP_ENV),
-            );
+            cookiesToForward.push({ name, value, options });
           });
           Object.entries(headersToSet).forEach(([name, value]) => {
-            response.headers.set(name, value);
+            sessionHeaders.set(name, value);
           });
         },
       },
@@ -104,6 +105,27 @@ export async function updateSupabaseSession(request: NextRequest) {
   // getUser validates the token with Supabase Auth; getSession only trusts the
   // cookie payload and must not be used for authorization decisions.
   const { data } = await supabase.auth.getUser();
+  writeVerifiedUserHeaders(
+    requestHeaders,
+    data.user
+      ? { id: data.user.id, email: data.user.email ?? null }
+      : null,
+    getAppEncryptionKey(),
+  );
+  // Forward the cookie value mutated during refresh to downstream Server Components.
+  const refreshedCookie = request.cookies.toString();
+  if (refreshedCookie) requestHeaders.set("cookie", refreshedCookie);
+  else requestHeaders.delete("cookie");
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  cookiesToForward.forEach(({ name, value, options }) => {
+    response.cookies.set(
+      name,
+      value,
+      withAuthCookiePolicy(options, env.APP_ENV),
+    );
+  });
+  sessionHeaders.forEach((value, name) => response.headers.set(name, value));
   const profile = await loadRouteGuardProfile(
     supabase,
     request,

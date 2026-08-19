@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.32 |
+| バージョン | v1.33 |
 | 更新日 | 2026-08-19 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -14,8 +14,8 @@
 | ログイン | `signInWithPassword`成功後に欠損profileを補完し、`subscription_status=incomplete|incomplete_expired`は`/plans`、それ以外は安全な`next`または`/app`へ遷移する。`email_not_confirmed`は黄色の案内付き6桁コード画面へ切り替え、新しいTurnstile token取得後にコードを自動再送する |
 | パスワード再設定 | `resetPasswordForEmail`は登録有無にかかわらず同じ受理応答を返す。recoveryリンクで確立したsessionと、user_idを束縛した15分TTLの改ざん検知HttpOnly cookieが一致するときだけ`updateUser`を許可し、成功後は両方を破棄する |
 | パスワード | 8文字以上64文字以内かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
-| セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、Server Components／Server Actions／API Routeの共通helperから`getUser()`を呼んでsessionを検証する。refreshはproxyでcookieとcache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
-| profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はログイン後の初回アクセスでservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない |
+| セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、proxyが`getUser()`でsessionを検証する。Server Components／Server Actions／API Routeの共通helperは同一リクエストへ引き継いだ検証済みuserを再利用し、proxyを通らない呼び出しだけ`getUser()`へフォールバックする。refreshはproxyで後段request cookieとブラウザ向けcookie／cache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
+| profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はsignup確認完了、ログイン成功、または認証済みで`/plans`へ入った時だけservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない。全画面共通認証helperでは毎回の存在確認をしない |
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |
 
 認証エラーで秘密値、メールの存在有無、外部providerレスポンス本文をそのまま表示しない。
@@ -307,3 +307,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.30 | 2026-08-19 | Stripeアカウントが本番決済を受け付けられない状態を `feature_disabled` へ分けた（T-M8-148）。状態確認へ「決済の受付」を追加 |
 | v1.31 | 2026-08-19 | Checkout／Portal Session作成中にStripe画面originへの接続準備を並行する仕様を追加（T-M8-152） |
 | v1.32 | 2026-08-19 | 未確認ログインを6桁コード画面へ切り替え、新しいTurnstile tokenでコードを自動再送する仕様を追加（T-M8-153） |
+| v1.33 | 2026-08-19 | proxyの検証済みuserを後段で再利用し、Auth／profileの正常系重複往復を画面表示から削除（T-M8-154） |

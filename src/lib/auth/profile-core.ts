@@ -1,4 +1,4 @@
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   DEFAULT_AI_PURPOSE_CONFIG,
@@ -17,8 +17,14 @@ export interface InitialProfile {
   notification_config: typeof DEFAULT_NOTIFICATION_CONFIG;
 }
 
+/** Minimal Auth user projection required to initialize a profile. */
+export interface ProfileUser {
+  email?: string | null;
+  id: string;
+}
+
 /** Builds the immutable defaults shared by the trigger and repair path. */
-export function initialProfileForUser(user: User): InitialProfile {
+export function initialProfileForUser(user: ProfileUser): InitialProfile {
   if (!user.email) {
     throw new AppError("internal_error", {
       message: "An email address is required to create a profile.",
@@ -38,7 +44,7 @@ export function initialProfileForUser(user: User): InitialProfile {
 
 /** Inserts a missing profile and leaves every existing value untouched. */
 export async function ensureUserProfileWithClient(
-  user: User,
+  user: ProfileUser,
   admin: Pick<SupabaseClient, "from">,
 ): Promise<void> {
   const { error } = await admin.from("profiles").upsert(initialProfileForUser(user), {

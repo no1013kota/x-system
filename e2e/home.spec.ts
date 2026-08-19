@@ -54,3 +54,30 @@ test("有効スロットがあれば次回の予定が並び、初期設定が�
   await expect(page.getByText("スケジュールはすべて停止中です。")).toBeVisible();
   await expect(page.getByRole("link", { name: "スケジュールを確認" })).toBeVisible();
 });
+
+test("メインナビは遷移中を即時表示し、行き先の画面へ到達する", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("navigation-feedback");
+  await signIn(page, account);
+
+  // Delay only the RSC response so the normally brief pending indicator is observable.
+  await page.route("**/app/news*", async (route) => {
+    if (route.request().headers().rsc === "1") {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    await route.continue();
+  });
+
+  const desktopNav = page.getByRole("navigation", {
+    name: "メインナビゲーション",
+    exact: true,
+  });
+  const newsLink = desktopNav.getByRole("link", { name: "最新ニュース" });
+  await newsLink.click();
+
+  await expect(newsLink.locator(".animate-spin")).toBeVisible();
+  await page.waitForURL("/app/news");
+  await expect(page.getByRole("heading", { name: "最新ニュース" })).toBeVisible();
+});

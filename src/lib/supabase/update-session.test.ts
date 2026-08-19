@@ -8,12 +8,16 @@ const mocks = vi.hoisted(() => ({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
     NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
   },
+  secret: Buffer.alloc(32, 5),
 }));
 
 vi.mock("@supabase/ssr", () => ({
   createServerClient: mocks.createServerClient,
 }));
 vi.mock("@/lib/env", () => ({ env: mocks.env }));
+vi.mock("@/lib/crypto", () => ({
+  getAppEncryptionKey: () => mocks.secret,
+}));
 
 import { updateSupabaseSession } from "./update-session";
 
@@ -64,6 +68,32 @@ describe("updateSupabaseSession", () => {
     );
   });
 
+  it("forwards a refreshed cookie and verified anonymous state upstream", async () => {
+    mocks.createServerClient.mockImplementation((_url, _key, options) => ({
+      auth: {
+        getUser: vi.fn().mockImplementation(async () => {
+          options.cookies.setAll(
+            [{ name: "sb-auth", value: "refreshed", options: {} }],
+            { "Cache-Control": "private, no-store" },
+          );
+          return { data: { user: null }, error: null };
+        }),
+      },
+    }));
+
+    const response = await updateSupabaseSession(
+      new NextRequest("https://exos-ai.example/login"),
+    );
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "sb-auth=refreshed",
+    );
+    expect(
+      response.headers.get("x-middleware-request-x-exos-verified-auth"),
+    ).toBe("anonymous-v1");
+  });
+
   it.each(["active", "trialing", "past_due", "unpaid", "paused", "canceled"])(
     "allows an authenticated %s profile to browse app routes",
     async (subscriptionStatus) => {
@@ -76,7 +106,7 @@ describe("updateSupabaseSession", () => {
       mocks.createServerClient.mockReturnValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: "user-1" } },
+            data: { user: { id: "user-1", email: "user@example.com" } },
             error: null,
           }),
         },
@@ -88,6 +118,15 @@ describe("updateSupabaseSession", () => {
       );
 
       expect(response.headers.get("location")).toBeNull();
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-auth"),
+      ).toBe("authenticated-v1");
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-user-id"),
+      ).toBe("user-1");
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-user-email"),
+      ).toBe("user%40example.com");
       expect(select).toHaveBeenCalledWith("plan, subscription_status");
       expect(eq).toHaveBeenCalledWith("id", "user-1");
     },
