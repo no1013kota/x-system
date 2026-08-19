@@ -177,9 +177,10 @@ export async function signUp(
  * 成功すると Supabase がセッションを張るので、そのまま `/plans` へ進める（**確認のためだけに
  * もう一度ログインさせない**）。`verifyOtp` はコードの期限・使い切りをSupabase側で管理する。
  *
- * captchaはここでは要求しない。**このフォームに到達できるのは直前に登録した本人だけ**で、
- * すでに登録時にTurnstileを通している。ここで再度求めると、コードを打つだけの画面で
- * 人間確認が失敗して詰む経路を増やす（T-M8-87の教訓）。
+ * captchaはここでは要求しない。このフォームへは、直前の登録でTurnstileを通った場合か、
+ * passwordとログイン用TurnstileをSupabaseへ検証させて`email_not_confirmed`になった場合だけ進む。
+ * ここでさらに要求すると、コードを打つだけの画面で人間確認が失敗して詰む経路を増やす
+ * （T-M8-87の教訓）。
  */
 export async function verifySignUpCode(
   _previousState: AuthFormState,
@@ -401,8 +402,7 @@ export async function signIn(
       if (hasErrorCode(error, "email_not_confirmed")) {
         return {
           status: "email_unconfirmed",
-          message:
-            "メールアドレスの確認が完了していません。確認メールを再送してください。",
+          message: "メール確認が終わっていません",
           email: input.email,
         };
       }

@@ -40,6 +40,8 @@ const TURNSTILE_SCRIPT_URL =
 interface TurnstileWidgetProps {
   action: "login" | "password-reset" | "signup" | "signup-resend";
   fieldError?: string;
+  /** Reports a fresh token (or an empty value after reset/error/expiry) to the owning form. */
+  onTokenChange?: (token: string) => void;
   resetSignal: unknown;
   /**
    * 目に見えない形で確認する（T-M8-138・運営者の指示 2026-08-18）。
@@ -61,15 +63,21 @@ interface TurnstileWidgetProps {
 export function TurnstileWidget({
   action,
   fieldError,
+  onTokenChange,
   resetSignal,
   interactionOnly = false,
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const onTokenChangeRef = useRef(onTokenChange);
   const [scriptReady, setScriptReady] = useState(false);
   const [token, setToken] = useState("");
   const [widgetError, setWidgetError] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  useEffect(() => {
+    onTokenChangeRef.current = onTokenChange;
+  }, [onTokenChange]);
 
   /**
    * `onReady` だけに依存しない（2026-07-31）。
@@ -114,16 +122,19 @@ export function TurnstileWidget({
       action,
       callback: (nextToken) => {
         setToken(nextToken);
+        onTokenChangeRef.current?.(nextToken);
         setWidgetError("");
       },
       "error-callback": (code) => {
         setToken("");
+        onTokenChangeRef.current?.("");
         // 設定の問題（ドメイン未許可など）で「もう一度お試しください」と出すと、直らない再試行を
         // 延々と繰り返させることになる。コードで種類を分ける（T-M7-48）。
         setWidgetError(classifyTurnstileError(code).message);
       },
       "expired-callback": () => {
         setToken("");
+        onTokenChangeRef.current?.("");
         setWidgetError(
           "人間であることの確認の有効期限が切れました。もう一度お試しください。",
         );
@@ -144,6 +155,7 @@ export function TurnstileWidget({
     if (!widgetId || !window.turnstile) return;
     window.turnstile.reset(widgetId);
     setToken("");
+    onTokenChangeRef.current?.("");
   }, [resetSignal]);
 
   if (!siteKey) {

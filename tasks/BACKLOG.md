@@ -2112,12 +2112,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
   プライバシーポリシーの外部送信一覧も同期した。Stripe公式どおりPortal Sessionはオンデマンド作成のまま。
   単体87件、Stripe route実DB統合14件、料金・課金E2E 5件、typecheck、lint、docs検査が成功。
 
-### T-M8-153: 未確認ログインを6桁コード入力へ切り替えてコードを自動再送する `todo`
+### T-M8-153: 未確認ログインを6桁コード入力へ切り替えてコードを自動再送する `done`
 - 参照: 要件05 §4.0／要件06 SC-03 / 依存: T-M8-151 / サイズ: S
 - 完了条件:
   - 未確認アカウントでログインすると、黄色枠で「メール確認が終わっていません」と表示して6桁コード画面へ切り替わる
   - ログインで消費したTurnstile tokenを再利用せず、新しいtoken取得後に確認コードを自動再送する
   - Mailpitを使うローカルE2Eで、自動再送されたコードによる確認完了まで通る
+- メモ: `email_not_confirmed`時はログインフォームを`EmailCodeForm`へ切り替え、黄色のNoticeで指定文言を表示する。
+  再送用`interaction-only` widgetのtoken通知を受けて`requestSubmit()`を1回だけ行い、Action完了後は
+  widgetをresetするため手動再送も常に新しいtokenを使う。E2Eは画面signupで未確認利用者を作り、
+  ログイン→黄色案内→Mailpitの別メール受信→6桁確認→`/plans`まで実証。単体30件、認証実Supabase統合2件、
+  認証E2E 5件、typecheck、lint、docs検査が成功。
 
 ### T-M8-151: 認証の待ち時間と6桁コード再送のTurnstile設定を直す `done`
 - 参照: 要件05 §4.0／要件06 SC-02・SC-03 / 依存: T-M8-149 / サイズ: S

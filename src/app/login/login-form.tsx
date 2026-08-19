@@ -3,11 +3,9 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
-import {
-  resendSignUpConfirmation,
-  signIn,
-} from "@/app/actions/auth";
+import { signIn } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { EmailCodeForm } from "@/components/auth/email-code-form";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
@@ -18,10 +16,16 @@ export function LoginForm({ next }: { next: string }) {
     signIn,
     INITIAL_AUTH_FORM_STATE,
   );
-  const [resendState, resendAction, resending] = useActionState(
-    resendSignUpConfirmation,
-    INITIAL_AUTH_FORM_STATE,
-  );
+
+  if (state.status === "email_unconfirmed" && state.email) {
+    return (
+      <EmailCodeForm
+        autoResend
+        email={state.email}
+        entryNotice={state.message}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -88,35 +92,6 @@ export function LoginForm({ next }: { next: string }) {
           {pending ? "ログインしています…" : "ログイン"}
         </Button>
       </form>
-
-      {state.status === "email_unconfirmed" ? (
-        <Notice
-          as="section"
-          aria-labelledby="email-unconfirmed-heading"
-          className="space-y-3"
-          tone="warn"
-        >
-          <h2 className="font-semibold" id="email-unconfirmed-heading">
-            メール確認が必要です
-          </h2>
-          <p className="text-sm">{state.message}</p>
-          <form action={resendAction} className="space-y-2">
-            <input name="email" type="hidden" value={state.email ?? ""} />
-            <TurnstileWidget
-              action="signup-resend"
-              resetSignal={resendState}
-            />
-            <Button disabled={resending} type="submit" variant="outline">
-              {resending ? "再送しています…" : "確認メールを再送"}
-            </Button>
-          </form>
-          {resendState.status !== "idle" ? (
-            <p className="text-sm" role="status">
-              {resendState.message}
-            </p>
-          ) : null}
-        </Notice>
-      ) : null}
 
       <p className="text-center text-sm text-muted-foreground">
         アカウントをお持ちでない方は{" "}

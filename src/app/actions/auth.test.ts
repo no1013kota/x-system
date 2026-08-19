@@ -475,6 +475,7 @@ describe("auth actions", () => {
 
       expect(result).toMatchObject({
         email: "user@example.com",
+        message: "メール確認が終わっていません",
         status: "email_unconfirmed",
       });
       expect(result.message).not.toContain("provider detail");

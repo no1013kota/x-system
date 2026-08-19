@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { destroyUserByEmail, query } from "./fixtures/account";
-import { alertIn, expect, signIn, signUpCodeFromMail, test, waitForMail } from "./fixtures/test";
+import {
+  alertIn,
+  expect,
+  signIn,
+  signUpCodeFromMail,
+  test,
+  waitForMail,
+  waitForNewMail,
+} from "./fixtures/test";
 
 /**
  * A-1/A-2 サインアップ→メール確認→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
@@ -144,6 +152,63 @@ test("未登録のメールではログインできず、原因を推測させ�
   await expect(alert).toBeVisible();
   // 「このメールは登録されていません」等、アカウントの存在を教えない（列挙対策）
   await expect(alert).not.toContainText("登録されていません");
+});
+
+test("未確認アカウントのログインは黄色の案内付き6桁画面へ移り、コードを自動再送する", async ({
+  page,
+}) => {
+  const suffix = `unconfirmed-login-${randomUUID().slice(0, 8)}`;
+  const email = `e2e-${suffix}@example.com`;
+  const password = `E2e-${suffix}-Pw1`;
+  const turnstileErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("Turnstile")) turnstileErrors.push(error.message);
+  });
+
+  try {
+    // 画面から未確認アカウントを作る。確認コードは使わず、そのままログインを試す。
+    await page.goto("/signup");
+    await page.locator('input[name="email"]:not([type="hidden"])').fill(email);
+    await page.locator('input[name="password"]').fill(password);
+    await page.locator('input[name="password_confirmation"]').fill(password);
+    await page.locator('input[name="terms_accepted"]').check();
+    await page.locator('input[name="privacy_acknowledged"]').check();
+    await expect
+      .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
+      .not.toBe("");
+    await page.getByRole("button", { name: "メールアドレスで登録" }).click();
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
+    const firstMail = await waitForMail(email);
+
+    await page.goto("/login");
+    const loginForm = page.getByTestId("login-form");
+    await loginForm.locator('input[type="email"]').fill(email);
+    await loginForm.locator('input[type="password"]').fill(password);
+    await expect
+      .poll(() => loginForm.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
+      .not.toBe("");
+    await page.getByTestId("login-submit").click();
+
+    // ログインフォームを残さず、要求どおり6桁コードの画面へ切り替える。
+    await expect(page.getByTestId("login-form")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
+    const warning = page.getByText("メール確認が終わっていません", { exact: true });
+    await expect(warning).toBeVisible();
+    await expect(warning).toHaveClass(/border-warn-fg/);
+
+    // ログイン用tokenの再利用ではなく、切替後のwidgetが新しいtokenを得て自動再送する。
+    const resentMail = await waitForNewMail(email, firstMail.ID);
+    await expect(page.getByText("確認メールを再送しました", { exact: false })).toBeVisible();
+    expect(resentMail.ID).not.toBe(firstMail.ID);
+
+    const code = await signUpCodeFromMail(resentMail.ID);
+    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
+    await page.getByRole("button", { name: "登録を完了する" }).click();
+    await expect(page).toHaveURL(/\/plans/);
+    expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
+  } finally {
+    await destroyUserByEmail(email);
+  }
 });
 
 test("アプリ内のどの画面からでもヘッダのログアウトで抜けられる", async ({ accounts, page }) => {
