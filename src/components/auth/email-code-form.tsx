@@ -94,9 +94,13 @@ export function EmailCodeForm({ email }: { email: string }) {
           コード検証自体は人間確認を求めていないので、同じ画面にウィジェットが見えていると
           「コードを打つのに確認が要る」と読めてしまう。
           ただし Supabase の `resend` はcaptcha有効時にトークン無しを拒否するため、
-          確認そのものは不可視で残す（外すと再送が壊れる）。
+          確認そのものはinteraction-onlyで残す（外すと再送が壊れる）。
         */}
-        <TurnstileWidget action="signup-resend" invisible resetSignal={resendState} />
+        <TurnstileWidget
+          action="signup-resend"
+          interactionOnly
+          resetSignal={resendState}
+        />
         <Button disabled={isResending} type="submit" variant="outline">
           {isResending ? "再送しています…" : "コードを再送"}
         </Button>

@@ -17,6 +17,10 @@ test("サインアップ→確認メール→ログインまで通り、未契�
   const suffix = `signup-${randomUUID().slice(0, 8)}`;
   const email = `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
+  const turnstileErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("Turnstile")) turnstileErrors.push(error.message);
+  });
 
   try {
     await page.goto("/signup");
@@ -40,14 +44,14 @@ test("サインアップ→確認メール→ログインまで通り、未契�
     /*
       **コード入力の画面にCloudflareのUIを出さない**（T-M8-138・運営者の指示 2026-08-18）。
       コード検証自体は人間確認を求めていないので、見えていると「打つのに確認が要る」と読める。
-      ただし再送はSupabaseがトークンを要求するので、**不可視で残っている**ことも同時に見る
-      （見た目だけ消してトークンまで消すと、再送が黙って壊れる）。
+      ただし再送はSupabaseがトークンを要求するので、**通常は場所を取らず検証は動く**ことも
+      同時に見る（見た目だけ消してトークンまで消すと、再送が黙って壊れる）。
     */
     /*
       判定は**確保された表示枠**で見る。ローカルのTurnstileはテストキーなので
-      Cloudflareのiframeを描かず、iframeの有無では可視/不可視を見分けられない
-      （実測: どちらも0件）。可視モードは `min-h-16`（64px）の空きを必ず作るので、
-      それが無いことを見る＝画面にCloudflareの箱が出ていないこと。
+      Cloudflareのiframeを描かず、iframeの有無では通常表示／interaction-onlyを見分けられない
+      （実測: どちらも0件）。通常表示は `min-h-16`（64px）の空きを必ず作るので、
+      それが無いことを見る＝追加操作が不要な状態ではCloudflareの箱が出ていないこと。
     */
     await expect(
       page.locator("form .min-h-16"),
@@ -56,9 +60,10 @@ test("サインアップ→確認メール→ログインまで通り、未契�
     await expect
       .poll(() => page.locator('input[name="captcha_token"]').inputValue(), {
         timeout: 30_000,
-        message: "再送用のトークンが（不可視でも）入らない",
+        message: "再送用のトークンが（通常は非表示でも）入らない",
       })
       .not.toBe("");
+    expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
 
     // 確認前は未確認ユーザーとして存在し、同意バージョンが記録されている
     const [created] = await query<{ id: string; confirmed_at: string | null }>(

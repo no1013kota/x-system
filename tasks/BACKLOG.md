@@ -2101,6 +2101,18 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-151: 認証の待ち時間と6桁コード再送のTurnstile設定を直す `done`
+- 参照: 要件05 §4.0／要件06 SC-02・SC-03 / 依存: T-M8-149 / サイズ: S
+- 完了条件:
+  - 通常ログインでprofileの存在確認upsertを毎回行わず、欠損時だけ修復する
+  - 6桁コード画面の再送用Turnstileが公式対応optionを使い、画面の場所を取らずtokenを取得できる
+  - 登録済みメールのエラー、新規登録→6桁確認、ログイン／ログアウトをローカルE2Eで確認する
+- メモ: ログイン成功後のprofile処理を`upsert → select`から`maybeSingle → 欠損時だけupsert・再読込`へ変更し、
+  正常系のDB往復を1回削減した。ウォーム状態の同一E2EトレースでログインPOSTは約0.86秒→約0.63秒
+  （ローカル比較値）。profile読込／修復失敗時は作成済みsessionを破棄する。6桁コード再送はCloudflareで
+  無効な`size=invisible`を廃止し、公式の`appearance=interaction-only`へ変更。単体2262件、認証DB統合2件、
+  認証E2E 4件、typecheck、lintが成功（単体19件は環境条件によるskip、必須DB/E2Eのskipは0）。
+
 ### T-M8-150: 会員登録直後の `/plans?confirmed=1` が500になる `todo`
 - 参照: 要件05 §`/auth/confirm`・`verifySignUpCode`／要件06 SC-03 / 依存: なし / サイズ: S
 - 完了条件:

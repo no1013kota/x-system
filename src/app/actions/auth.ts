@@ -381,6 +381,9 @@ export async function signIn(
 
   const input = parsed.data;
   let destination: string;
+  let authenticatedClient: Awaited<
+    ReturnType<typeof createSupabaseServerClient>
+  > | null = null;
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -406,23 +409,31 @@ export async function signIn(
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
     if (!data.user) return { status: "error", message: SIGNIN_ERROR_MESSAGE };
+    authenticatedClient = supabase;
 
     const admin = createSupabaseAdminClient();
-    await ensureUserProfileWithClient(data.user, admin);
-    const profile = await admin
-      .from("profiles")
-      .select("subscription_status")
-      .eq("id", data.user.id)
-      .single();
+    const readProfile = () =>
+      admin
+        .from("profiles")
+        .select("subscription_status")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+    /*
+      正常な利用者には auth.users 作成triggerで profile が必ずある。以前はログインのたびに
+      `upsert → select` を直列実行していたため、存在する行へ毎回1往復余計に通信していた。
+      まず読むだけにし、欠損時だけ修復する。修復後は競合やtrigger遅延を考慮して再読込する。
+    */
+    let profile = await readProfile();
+    if (!profile.error && !profile.data) {
+      await ensureUserProfileWithClient(data.user, admin);
+      profile = await readProfile();
+    }
     if (profile.error || !profile.data) {
-      // ここは service_role で profiles を読む経路。権限・接続の失敗が「入力内容を確認して」
-      // という誤案内になり原因も残らないため必ず記録する（2026-07-26 のGRANT漏れと同型）。
-      recordUnexpectedError(profile.error ?? new Error("profile not found after sign-in"), {
-        at: "sign-in:profile",
-        userId: data.user.id,
+      throw new AppError("internal_error", {
+        cause: profile.error ?? new Error("profile not found after sign-in repair"),
+        message: "Failed to load the profile after sign-in.",
       });
-      await supabase.auth.signOut();
-      return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
 
     destination = !canBrowseApp(profile.data.subscription_status)
@@ -431,6 +442,14 @@ export async function signIn(
   } catch (error) {
     // 認証情報の誤りは上の error 分岐で処理済み。ここへ来るのは想定外の失敗だけなので記録する。
     recordUnexpectedError(error, { at: "sign-in" });
+    // signInWithPassword 成功後のprofile読込／修復で失敗しても、半端なログイン状態を残さない。
+    if (authenticatedClient) {
+      try {
+        await authenticatedClient.auth.signOut();
+      } catch (signOutError) {
+        recordUnexpectedError(signOutError, { at: "sign-in:rollback" });
+      }
+    }
     return { status: "error", message: SIGNIN_ERROR_MESSAGE };
   }
 

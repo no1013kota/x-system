@@ -4,6 +4,7 @@ import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
 import { classifyTurnstileError } from "@/lib/auth/turnstile-errors";
+import { turnstileWidgetVisibilityOptions } from "@/lib/auth/turnstile-widget-options";
 
 interface TurnstileApi {
   render(
@@ -14,9 +15,9 @@ interface TurnstileApi {
       /** Turnstile はエラーコード（例 "110200"）を渡してくる。捨てずに文言へ反映する。 */
       "error-callback": (code?: string) => void;
       "expired-callback": () => void;
+      /** 通常は隠し、追加操作が必要な利用者にだけ表示する。 */
+      appearance?: "interaction-only";
       sitekey: string;
-      /** `invisible` は利用者に何も見せない（疑わしいときだけCloudflareが割り込む）。 */
-      size?: "invisible";
       theme: "auto";
     },
   ): string;
@@ -48,17 +49,20 @@ interface TurnstileWidgetProps {
    * 「コードを打つのに確認が要る」と読めてしまう。
    *
    * **確認そのものは残す。** Supabaseの `resend` はプロジェクトでcaptchaを有効にしていると
-   * トークン無しでは拒否するため、外すと再送が壊れる。`size: "invisible"` は
-   * 疑わしいときだけCloudflareが割り込み、通常は利用者に何も見せない。
+   * トークン無しでは拒否するため、外すと再送が壊れる。`appearance: "interaction-only"` は
+   * 追加操作が必要な場合だけCloudflareを表示し、通常は画面の場所を取らない。
+   *
+   * Cloudflareの`size`に`invisible`という値は無い（normal/flexible/compactのみ）。以前の
+   * 指定はブラウザでTurnstileErrorになり得たため、表示タイミングを制御する正式なoptionを使う。
    */
-  invisible?: boolean;
+  interactionOnly?: boolean;
 }
 
 export function TurnstileWidget({
   action,
   fieldError,
   resetSignal,
-  invisible = false,
+  interactionOnly = false,
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -125,7 +129,7 @@ export function TurnstileWidget({
         );
       },
       sitekey: siteKey,
-      ...(invisible ? { size: "invisible" as const } : {}),
+      ...turnstileWidgetVisibilityOptions(interactionOnly),
       theme: "auto",
     });
 
@@ -133,7 +137,7 @@ export function TurnstileWidget({
       if (widgetIdRef.current) turnstile.remove(widgetIdRef.current);
       widgetIdRef.current = null;
     };
-  }, [action, invisible, scriptReady, siteKey]);
+  }, [action, interactionOnly, scriptReady, siteKey]);
 
   useEffect(() => {
     const widgetId = widgetIdRef.current;
@@ -161,7 +165,7 @@ export function TurnstileWidget({
         strategy="afterInteractive"
       />
       <input name="captcha_token" type="hidden" value={token} />
-      <div ref={containerRef} className={invisible ? undefined : "min-h-16"} />
+      <div ref={containerRef} className={interactionOnly ? undefined : "min-h-16"} />
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}

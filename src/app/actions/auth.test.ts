@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   profileFrom: vi.fn(),
   profileSelect: vi.fn(),
   profileSelectEq: vi.fn(),
-  profileSingle: vi.fn(),
+  profileMaybeSingle: vi.fn(),
   profileUpdate: vi.fn(),
   profileUpsert: vi.fn(),
   redirect: vi.fn(),
@@ -107,11 +107,11 @@ describe("auth actions", () => {
     mocks.profileEq.mockResolvedValue({ error: null });
     mocks.profileUpsert.mockResolvedValue({ error: null });
     mocks.profileUpdate.mockReturnValue({ eq: mocks.profileEq });
-    mocks.profileSingle.mockResolvedValue({
+    mocks.profileMaybeSingle.mockResolvedValue({
       data: { subscription_status: "active" },
       error: null,
     });
-    mocks.profileSelectEq.mockReturnValue({ single: mocks.profileSingle });
+    mocks.profileSelectEq.mockReturnValue({ maybeSingle: mocks.profileMaybeSingle });
     mocks.profileSelect.mockReturnValue({ eq: mocks.profileSelectEq });
     mocks.profileFrom.mockReturnValue({
       select: mocks.profileSelect,
@@ -379,7 +379,7 @@ describe("auth actions", () => {
       mocks.createSupabaseServerClient.mockResolvedValue({
         auth: { signInWithPassword, signOut: signOutSession },
       });
-      mocks.profileSingle.mockResolvedValue({
+      mocks.profileMaybeSingle.mockResolvedValue({
         data: { subscription_status: subscriptionStatus },
         error: null,
       });
@@ -405,9 +405,28 @@ describe("auth actions", () => {
         password: "safe-password-123",
       });
       expect(mocks.profileSelect).toHaveBeenCalledWith("subscription_status");
-      expect(mocks.profileUpsert).toHaveBeenCalledOnce();
+      expect(mocks.profileUpsert).not.toHaveBeenCalled();
+      expect(mocks.profileMaybeSingle).toHaveBeenCalledOnce();
       expect(mocks.profileSelectEq).toHaveBeenCalledWith("id", "user-1");
       expect(mocks.redirect).toHaveBeenCalledWith("/app/posts?tab=drafts");
+    });
+
+    it("repairs a missing profile and reads the subscription again", async () => {
+      mockSignInSuccess();
+      mocks.profileMaybeSingle
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({
+          data: { subscription_status: "incomplete" },
+          error: null,
+        });
+
+      await expect(
+        signIn(INITIAL_AUTH_FORM_STATE, validSignInForm()),
+      ).rejects.toThrow("NEXT_REDIRECT");
+
+      expect(mocks.profileUpsert).toHaveBeenCalledOnce();
+      expect(mocks.profileMaybeSingle).toHaveBeenCalledTimes(2);
+      expect(mocks.redirect).toHaveBeenCalledWith("/plans");
     });
 
     it.each(["incomplete", "incomplete_expired"])(
@@ -515,7 +534,7 @@ describe("auth actions", () => {
 
     it("invalidates the new session when profile lookup fails", async () => {
       const { signOutSession } = mockSignInSuccess();
-      mocks.profileSingle.mockResolvedValue({
+      mocks.profileMaybeSingle.mockResolvedValue({
         data: null,
         error: new Error("profile unavailable"),
       });
