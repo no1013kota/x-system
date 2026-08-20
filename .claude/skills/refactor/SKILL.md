@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: システム全体のリファクタリング候補を監査し、外部の振る舞いを変えずに優先度順で小さく安全に改善する。1回の実行で1単位（WIP=1）。引数で対象領域を指定可（例 /refactor src/lib/stripe）。--audit で監査のみ実施し計画を tasks/REFACTOR_PLAN.md に出力。連続実行は /loop /refactor。
+description: 外部の振る舞いを変えずに内部品質を優先度順で小さく改善する。1回の実行で1単位（WIP=1）。引数で対象領域を指定可（例 /refactor src/lib/stripe）。--audit は監査のみ。連続実行は /loop /refactor。
 model: inherit
 ---
 
@@ -26,11 +26,11 @@ model: inherit
 
 3. **1単位を実行（WIP=1）**: 承認済み計画の最上位の未着手項目を1件選ぶ。テストが薄ければ特性テストを先に追加（別コミット）。その後、振る舞いを変えずに改善する。項目に書かれていない範囲へ広げない。
 
-4. **検証**: `npm run typecheck` → `npm run lint` → `npm test` →（構造変更や設定変更を伴うなら）`npm run build`。すべて緑にする。差分が外部挙動・契約・スナップショットを変えていないことを確認し、ローカルで実際に動く経路があれば動作確認する（`/verify-integration`・`/verify-e2e` を使う）。
+4. **検証**: **手段は `CLAUDE.md`「変更影響 → 必須の検証」で決める**（§1の該当行すべて／§2でどこまで回すか／§3の落とし穴）。加えてリファクタ固有に、**差分が外部挙動・契約・スナップショットを変えていないこと**を確認する。ローカルで動く経路があれば実際に動かす（`/verify-integration`・`/verify-e2e`）。
 
 5. **ドキュメント同期**: /doc-sync を実行する。純粋な内部改善で外部仕様に影響が無い場合も「影響なし」を理由付きで記録する（黙って省略しない）。docs が参照する構造を変えた場合は更新、横断的な技術判断は ADR を追加する。
 
-6. **完了処理**: `tasks/REFACTOR_PLAN.md` の該当項目を done にし、要点と後続への注意を1〜2行メモする。`refactor(<scope>): 概要` 形式でコミットする（例 `refactor(stripe): checkout/portalの共通処理を統合`）。関連ファイルのみ明示的に `git add` し、メッセージ末尾に `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` を付ける。
+6. **完了処理**: `tasks/REFACTOR_PLAN.md` の該当項目を done にし、要点と後続への注意を1〜2行メモする。`refactor(<scope>): 概要` 形式でコミットする（例 `refactor(stripe): checkout/portalの共通処理を統合`）。関連ファイルのみ明示的に `git add` し、メッセージ末尾に `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` を付ける。
 
 7. **報告**: 実施内容・主要な判断・検証結果・次候補・新たな要決定を簡潔に報告する。連続実行は `/loop /refactor`。全項目が done、または安全に進められる候補が尽きたら停止し理由を述べる。
 

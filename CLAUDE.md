@@ -31,9 +31,26 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト8層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
-| `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / maintenance / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
+| `.claude/skills/` | 開発用スキル。一覧と使い分けは下の「スキルの地図」 |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
+
+## スキルの地図
+
+| スキル | いつ使う | 出力 |
+|---|---|---|
+| `/add-task` | 要望・不具合を受け取ったとき。**実装の前段** | BACKLOGへタスク起票（コードは変えない） |
+| `/dev-loop` | タスクを1件完了させる（WIP=1） | 実装＋テスト＋docs同期＋コミット |
+| `/doc-sync` | コミット前。毎回 | docsの更新と影響表 |
+| `/verify-integration` | DB・migration・RLS・Action・API・job・課金を触った | 統合検証の結果 |
+| `/verify-e2e` | ユーザー向けフローを触った | 実ブラウザでの通し確認 |
+| `/ui-polish` | 画面・コンポーネントを作る／直す | 実装＋画面幅・状態・a11y・実ブラウザ確認 |
+| `/refactor` | 振る舞いを変えず内部品質を上げる（WIP=1） | 1単位のリファクタ＋計画更新 |
+| `/maintenance` | 週次・月次の定期点検 | 時間経過で壊れた箇所の報告 |
+| `/playwright-cli` | ブラウザ操作の道具箱（他スキルから参照） | — |
+
+**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット。
+連続自動開発は `/loop /dev-loop`。
 
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
 
