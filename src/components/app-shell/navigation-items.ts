@@ -18,6 +18,8 @@ export const APP_NAVIGATION_ITEMS = [
   { href: "/app/analytics", icon: "monitoring", label: "投稿分析" },
   // 旧「AI設定」はT-M8-104で「設定」へ統合（/app/ai-settings はリダイレクトのみ）。
   { href: "/app/settings", icon: "tune", label: "設定" },
+  // 公開ページへの導線（T-M8-173・運営者の指示）。App Shellの外だがナビから辿れるようにする。
+  { href: "/prompt-templates", icon: "drafts", label: "プロンプト集" },
 ] as const satisfies readonly { href: string; icon: IconName; label: string }[];
 
 export type AppNavigationIcon = (typeof APP_NAVIGATION_ITEMS)[number]["icon"];

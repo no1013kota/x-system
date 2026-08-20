@@ -70,6 +70,8 @@ const NAV_LINKS: [string, string][] = [
   ["#features", "できること"],
   ["#how", "しくみ"],
   ["#pricing", "料金"],
+  // ページ遷移のリンク（T-M8-173）。アンカーと同じ場所に置く（タブが2系統あると迷う）。
+  ["/prompt-templates", "プロンプト集"],
 ];
 
 const HOW_TO_STEPS: [string, string][] = [
