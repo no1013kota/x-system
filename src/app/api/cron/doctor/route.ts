@@ -1,4 +1,5 @@
 import { isValidCronAuth } from "@/lib/jobs/auth";
+import { classifySentryDsn } from "@/lib/ops/config-status";
 
 /**
  * 運営者向けの状態診断の入口（T-M7-34）。
@@ -74,6 +75,16 @@ export async function GET(request: Request): Promise<Response> {
           ? "live"
           : "test"
         : null,
+      // DSNは**種別とホストだけ**を渡す（値は応答へ載せない・T-M8-162）。
+      ...(() => {
+        const server = classifySentryDsn(process.env.SENTRY_DSN);
+        const browser = classifySentryDsn(process.env.NEXT_PUBLIC_SENTRY_DSN);
+        return {
+          sentryDsnKind: server.kind,
+          sentryPublicDsnKind: browser.kind,
+          sentryHost: server.host ?? browser.host,
+        };
+      })(),
     },
   });
   // 対応が必要な問題があれば5xxで返し、監視や `doctor` が判定しやすいようにする。

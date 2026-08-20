@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
+| バージョン | v1.22 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -47,7 +47,7 @@ flowchart TB
 | 文字数検証 | 公式`twitter-text` | 加重文字数（URLはt.co固定長・CJK/絵文字重み）とcashtag抽出。投稿本文の280検証とPT-FIX判定に共用（要件05 §12・プロンプト設計書§7） |
 | 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | 明示render widgetのtokenをsignup、login、password reset Server ActionからSupabase Authへ渡し、Auth側のTurnstile検証を必須化 |
 | 暗号化 | AES-256-GCM | APIキー/OAuthトークンをアプリ層で暗号化 |
-| 監視 | Sentry | Server Actions、API、cronの例外を収集 |
+| 監視 | Sentry | Server Actions、API、cronの例外を収集。**DSNが未設定・不正なら`Sentry.init`はno-opで黙って無効化される**ため、`doctor`（`config-status.ts`）が**DSNの種別**（未設定/仮の値/有効）と受け先ホストを検査する。値そのものは応答へ載せない（T-M8-162） |
 
 共通App Shellのデータ取得は、表示用model、DB／frameworkに依存しない組み立てcore、Supabase・pool・env等を接続するserver adapterの3層に分ける。`layout.tsx`は認証済みuser idをadapterへ渡して表示用modelを受け取るだけとし、通知・Xアカウント・profile・利用量の個別adapterを直接参照しない。App ShellのClient ComponentはApp RouterのServer Actionを直接importせず、layout境界から必要なAction契約をpropsで受け取る。これにより、表示部品・組み立て規則・外部接続の変更を別々に検証できるようにする（T-M8-155）。
 
@@ -235,3 +235,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.19 | 2026-08-20 | server adapterが取得失敗を正常な空へ潰さない方針と、ルート直下のerror boundaryを追加（T-M8-158） |
 | v1.20 | 2026-08-20 | proxyのprofile取得失敗を記録する方針を追加（向きはfail closedのまま・T-M8-159） |
 | v1.21 | 2026-08-20 | §4の認証メール方式を種類別（登録=6桁コード／再設定=リンク）へ修正（T-M8-144 #27） |
+| v1.22 | 2026-08-20 | Sentry DSNの設定状態をdoctorで検査する方針を追加（T-M8-162） |

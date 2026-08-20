@@ -27,6 +27,96 @@ export interface ConfigFacts {
   actualOrigin: string | null;
   /** 決済鍵の種別。`live` は実課金、`test` は課金されない。 */
   stripeKeyKind: "live" | "test" | null;
+  /**
+   * エラー記録（Sentry）のDSNの種別（T-M8-162）。**値そのものは受け取らない**。
+   *
+   * - `usable`: http(s) のURLとして妥当＝`Sentry.init` が有効になる
+   * - `placeholder`: `__TODO_…` のような未設定の目印が入っている
+   * - `invalid`: 何か入っているがURLとして読めない
+   * - `missing`: 未設定
+   */
+  sentryDsnKind: SentryDsnKind;
+  /** ブラウザ側（`NEXT_PUBLIC_SENTRY_DSN`）の同じ判定。 */
+  sentryPublicDsnKind: SentryDsnKind;
+  /** DSNのホスト名（データの受け先＝リージョンの手がかり）。秘密ではない。 */
+  sentryHost: string | null;
+}
+
+export type SentryDsnKind = "usable" | "placeholder" | "invalid" | "missing";
+
+/**
+ * DSNの文字列を**種別へ落とす**（T-M8-162）。判定は `initServerSentry` と同じ条件にする
+ * （`src/lib/observability/sentry.ts` の `isUsableDsn`）——ここが緩いと
+ * 「doctorは緑なのにSentryは無効」という食い違いができる。
+ *
+ * **戻り値に値そのものを含めない。** 診断はHTTPでも返るため、鍵が応答へ混ざる経路を作らない。
+ */
+export function classifySentryDsn(
+  dsn: string | null | undefined,
+): { kind: SentryDsnKind; host: string | null } {
+  if (!dsn) return { kind: "missing", host: null };
+  if (dsn.includes("__TODO") || dsn.includes("TODO_")) {
+    return { kind: "placeholder", host: null };
+  }
+  try {
+    const { protocol, host } = new URL(dsn);
+    if (protocol !== "http:" && protocol !== "https:") {
+      return { kind: "invalid", host: null };
+    }
+    return { kind: "usable", host };
+  // eslint-disable-next-line no-restricted-syntax -- DSNがURLとして読めないこと自体が判定結果（invalid）。呼び出し側がdoctorへ出す
+  } catch {
+    return { kind: "invalid", host: null };
+  }
+}
+
+/**
+ * エラー記録が実際に有効か（T-M8-162）。
+ *
+ * **記録先が沈黙していても、それまでは誰も気付けなかった。** `initServerSentry` は不正・未設定のDSNを
+ * no-op＋`console.warn` だけで黙って無効化するため、**本番のDSNがプレースホルダのままでも
+ * 全画面が正常に見え、全テストが緑になる**（`X_POSTING_MODE` が既定のままだったT-M8-147と同じ型）。
+ * proxyのprofile取得失敗（T-M8-159）・Stripe webhook・cronの例外はここへ送っているので、
+ * 無効なら**それらの「記録する」という約束が成立しない**（原則1）。
+ */
+function sentryCheck(facts: ConfigFacts): Check {
+  const isProd = facts.appEnv === "production";
+  const name = "エラーの記録（Sentry）";
+  const REASON: Record<SentryDsnKind, string> = {
+    usable: "",
+    placeholder: "設定欄に仮の値（__TODO…）が入ったままです",
+    invalid: "設定された値がURLとして読めません",
+    missing: "設定されていません",
+  };
+
+  const worst: SentryDsnKind =
+    facts.sentryDsnKind !== "usable" ? facts.sentryDsnKind : facts.sentryPublicDsnKind;
+
+  if (worst !== "usable") {
+    const which =
+      facts.sentryDsnKind !== "usable" ? "SENTRY_DSN" : "NEXT_PUBLIC_SENTRY_DSN";
+    if (!isProd) {
+      return {
+        name,
+        level: "ok",
+        detail: `記録しません（${facts.appEnv}。${REASON[worst]}）`,
+      };
+    }
+    return {
+      name,
+      level: "error",
+      detail: `本番なのにエラーが1件も記録されません。${REASON[worst]}`,
+      nextAction: `Sentryのプロジェクト設定からDSNを取得し、Vercel の環境変数 ${which} へ入れて本番を再デプロイしてください`,
+    };
+  }
+
+  return {
+    name,
+    level: "ok",
+    detail: facts.sentryHost
+      ? `記録します（受け先: ${facts.sentryHost}）`
+      : "記録します",
+  };
 }
 
 /** production で live 以外＝実運用として成立しない組み合わせ。 */
@@ -146,7 +236,7 @@ function stripeKeyCheck(facts: ConfigFacts): Check {
 
 /** 設定の反映状況をまとめて判定する。 */
 export function judgeConfig(facts: ConfigFacts): Check[] {
-  return [postingModeCheck(facts), baseUrlCheck(facts), stripeKeyCheck(facts)];
+  return [postingModeCheck(facts), baseUrlCheck(facts), stripeKeyCheck(facts), sentryCheck(facts)];
 }
 
 /**
