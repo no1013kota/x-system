@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.45 |
+| バージョン | v1.46 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -847,26 +847,9 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 
 ## 5. RLS方針
 
-| 対象 | select | insert/update/delete |
-|---|---|---|
-| `profiles` | `id = auth.uid()` | Server only |
-| `user_api_keys` | 本人。ciphertextはAPIで返さない | Server Actionのみ |
-| `x_accounts` | `user_id = auth.uid()` | Server only |
-| `base_md_versions` | x_account所有者 | Server only |
-| `prompt_templates` | system defaultまたはx_account所有者 | md/premiumのServer Actionのみ |
-| `learning_sources` | x_account所有者 | Server only |
-| `news_items` | 認証済み全員 | service roleのみ |
-| `generation_jobs` | x_account所有者 | Server only |
-| `drafts` | x_account所有者 | Server only |
-| `schedule_slots` | x_account所有者 | Server Actionのみ |
-| `follower_snapshots` | x_account所有者 | service roleのみ |
-| `improvement_suggestions` | x_account所有者 | Server only |
-| `usage_events` | `user_id = auth.uid()` | service roleのみ。post_create/post_delete consumeは全プランで通常/URL付き種別も記録し、他eventはpremium |
-| `usage_counters` | `user_id = auth.uid()` | service roleのみ |
-| `notifications` | `user_id = auth.uid()` | Server only |
-| `stripe_events` | 不可 | service roleのみ |
-| `external_api_usage_events` | 不可 | service roleのみ |
-| `cron_runs` | 不可 | service roleのみ |
+**各テーブルのRLSは §3.1〜3.21 の各節末に書く**（そこが正本。構造の実物は `rls.db.test.ts` が検査する）。
+ここへ一覧を写さない——以前あった表は後から足した3表（`news_fetch_outcomes`・`x_timeline_posts`・`post_patterns`）が
+抜けたままで、「増えるだけで誰も見ない一覧」になっていた。
 
 暗号化envelope（`x_accounts`のtoken類、`user_api_keys.credentials_ciphertext`）は行単位RLSにより本人のselect結果へ含まれ得る。復号鍵（`APP_ENCRYPTION_KEY`）はServer onlyであり平文はブラウザへ返さないため、ciphertextの露出は受容済みリスクとする（カラム分離・カラム単位GRANTはMVPでは行わない）。
 
@@ -877,9 +860,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | システム既定プロンプト（画像） | `prompt_templates` に system default として `image` を1件作成（§3.5） |
 | 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
-| 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
+| 通知設定・ニュースカテゴリ | 既定値の正本は §4.3 / §4.4（ここへ写さない——以前写した通知設定は `summary` が抜けていた） |
 | テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
-| ニュースカテゴリ | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`をコード定数化 |
 | Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 
 ## 7. 保持と個別対応
@@ -899,3 +881,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
 | v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
 | v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
+| v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |

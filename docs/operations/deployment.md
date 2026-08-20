@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
+| バージョン | v1.13 |
 | 更新日 | 2026-08-20 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -168,11 +168,6 @@ npm run doctor -- --base "$STAGING_BASE_URL"     # 「プラン管理（Stripe�
 - **構成IDだけが足りないときは、コマンドが候補を一覧して教える**（T-M8-50）。鍵が揃っていればアカウントの中は見えるので、Vercelを開かずに済むことが多い。1件だけなら doctor が機能名まで出せている事実と合わせて、それが対象だと確定できる。**IDの採用は人が決める**（自動採用すると「取り違えたまま成功と表示する」に戻る）。
 
 ### 実測: staging を設定したときの記録（2026-08-04）
-
-初回は3往復した（1件ずつしか足りない値を教えていなかったため）。改善後は次の2手で済む。
-
-1. `npm run stripe:portal:setup -- --target staging` → 足りない5件が並ぶ
-2. Vercel の Preview から5つコピーして `.env.local` へ貼り、もう一度実行
 
 stagingのStripeアカウントには **Stripeが自動生成した既定の構成が1件だけ**あり、`subscription_update` が無効・`default_return_url` が未設定だった（＝このスクリプトが一度も適用されていない状態）。適用後は `features` が両方 `true` になり、`npm run doctor -- --base <stg>` の「プラン管理（Stripe）」が ✅ になる。
 - スクリプトは既存の構成を**上書き更新**する（新規作成しない）。IDが変わらないので Vercel 側の書き換えは不要。
