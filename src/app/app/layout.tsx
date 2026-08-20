@@ -1,145 +1,50 @@
 import Link from "next/link";
 
+import { signOut } from "@/app/actions/auth";
+import {
+  listNotificationsAction,
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+  retryNotificationEmailAction,
+} from "@/app/actions/notifications";
+import { setActiveXAccountAction } from "@/app/actions/x-accounts";
 import { AppNavigation } from "@/components/app-shell/app-navigation";
-import { BrandLogo } from "@/components/app-shell/brand-logo";
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { CurrentScreenTitle } from "@/components/app-shell/current-screen-title";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
-import { Icon } from "@/components/ui/icon";
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
-import {
-  computeXAccountBanners,
-  dailyPostLimitBanner,
-  usageLimitBanner,
-  type AppBanner,
-  legalConsentBanner,
-} from "@/lib/app-banners";
-import {
-  LEGAL_CONSENT_SELECT,
-  requiredLegalConsents,
-  type LegalConsentProfile,
-} from "@/lib/auth/legal-consent";
-import { getXApiKeyStatusForUser } from "@/lib/app-banners-server";
-import { loadTodaysPostCount } from "@/lib/usage/daily-post-limit-server";
-import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
-import type { PlanId } from "@/lib/plans";
+import { XAccountSwitcher } from "@/components/app-shell/x-account-switcher";
 import { PortalButton } from "@/components/billing/portal-button";
 import { LegalFooter } from "@/components/legal-footer";
-import { getCurrentUser } from "@/lib/auth/session";
-import { env } from "@/lib/env";
-import {
-  subscriptionBannerFor,
-  type SubscriptionBannerProfile,
-} from "@/lib/auth/subscription-access";
-import {
-  XAccountSwitcher,
-  type SwitcherAccount,
-} from "@/components/app-shell/x-account-switcher";
-import type { NotificationView } from "@/lib/notifications";
-import {
-  countUnreadNotificationsForUser,
-  listNotificationsForUser,
-} from "@/lib/notifications-server";
+import { Icon } from "@/components/ui/icon";
 import { primaryLinkClassName } from "@/components/ui/link-button";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
-  listXAccounts,
-  resolveActiveXAccountForUser,
-} from "@/lib/x/account-actions-server";
-
-interface AppShellProfileRow extends LegalConsentProfile {
-  plan: PlanId | null;
-  stripe_customer_id: string | null;
-  subscription_status: string;
-  trial_ends_at: string | null;
-}
+  emptyAppShellData,
+  type AppShellData,
+} from "@/lib/app-shell/types";
+import { loadAppShellData } from "@/lib/app-shell/data-server";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser();
-  let profile: SubscriptionBannerProfile | null = null;
-  let activeAccountId: string | null = null;
-  let switcherAccounts: SwitcherAccount[] = [];
-  let unreadCount = 0;
-  let notifications: NotificationView[] = [];
-  let notificationCursor: string | null = null;
-  let xBanners: AppBanner[] = [];
-  let usageBanner: AppBanner | null = null;
-  let dailyPostBanner: AppBanner | null = null;
-  let consentBanner: AppBanner | null = null;
-  if (user) {
-    /**
-     * user.id にしか依存しない取得は1波にまとめる（T-M8-67）。以前は5段の直列awaitで、
-     * このレイアウトは全画面の初回表示と操作後の router.refresh() のたびに再実行されるため、
-     * 直列往復がそのまま全操作の体感遅延に乗っていた。
-     */
-    const supabase = await createSupabaseServerClient();
-    const [resolvedAccountId, unread, page, allAccounts, xApiKeyStatus, result] =
-      await Promise.all([
-        // フォールバック規則で選択中Xアカウントを解決・永続化する（要件01 §5・T-M2-17）。
-        resolveActiveXAccountForUser(user.id),
-        // ヘッダ通知ベル用の初期データ（未読数＋先頭ページ, T-M2-20）。
-        countUnreadNotificationsForUser(user.id),
-        listNotificationsForUser(user.id),
-        listXAccounts(user.id),
-        getXApiKeyStatusForUser(user.id),
-        supabase
-          .from("profiles")
-          .select(
-            `plan, subscription_status, trial_ends_at, stripe_customer_id, ${LEGAL_CONSENT_SELECT}`,
-          )
-          .eq("id", user.id)
-          .maybeSingle<AppShellProfileRow>(),
-      ]);
-    activeAccountId = resolvedAccountId;
-    unreadCount = unread;
-    notifications = page.items;
-    notificationCursor = page.nextCursor;
-    // 切替メニューには active なアカウントだけを出す（要件06 §2・T-M2-18）。
-    switcherAccounts = allAccounts
-      .filter((account) => account.status === "active")
-      .map((account) => ({
-        id: account.id,
-        handle: account.handle,
-        profileImageUrl: account.profileImageUrl,
-      }));
-    if (result.data) {
-      // 規約・プライバシーの再同意（T-M8-134）。**プランに依存しないので `plan` 判定の外に置く**——
-      // 中に入れると、プラン未設定の利用者だけ止まっている理由が画面に出なくなる。
-      consentBanner = legalConsentBanner(requiredLegalConsents(result.data));
-      profile = {
-        stripeCustomerId: result.data.stripe_customer_id,
-        subscriptionStatus: result.data.subscription_status,
-        trialEndsAt: result.data.trial_ends_at,
-      };
-      // X連携の常設バナー（失効/error・キー無効・プラン変更後の再連携要求, 要件06 §2・T-M2-21）。
-      if (result.data.plan) {
-        xBanners = computeXAccountBanners({
-          plan: result.data.plan,
-          xAccounts: allAccounts.map((a) => ({
-            status: a.status,
-            authType: a.authType,
-          })),
-          xApiKeyStatus,
-        });
-        // 利用枠100%到達（premium・要件03 §8）と日次投稿上限（要決定D-15・T-M8-26。
-        // **上限は選択中のアカウント単位**なので切り替えると別アカウントの状況が出る）の
-        // 常設バナー。互いに独立なので並列に取得する。
-        const [usageSummary, todaysPosts] = await Promise.all([
-          loadUsageSummaryForUser(user.id, result.data.plan),
-          activeAccountId ? loadTodaysPostCount(activeAccountId) : Promise.resolve(null),
-        ]);
-        usageBanner = usageLimitBanner(usageSummary);
-        if (todaysPosts !== null) {
-          dailyPostBanner = dailyPostLimitBanner({
-            todaysPosts,
-            dailyLimit: env.X_DAILY_POST_LIMIT,
-          });
-        }
-      }
-    }
-  }
-  const banner = profile ? subscriptionBannerFor(profile) : null;
+  const shell: AppShellData = user
+    ? await loadAppShellData(user.id)
+    : emptyAppShellData();
+  const {
+    activeAccountId,
+    consentBanner,
+    dailyPostBanner,
+    notificationCursor,
+    notifications,
+    stripeCustomerId,
+    subscriptionBanner: banner,
+    switcherAccounts,
+    unreadCount,
+    usageBanner,
+    xBanners,
+  } = shell;
 
   return (
     // 新デザインの骨格（T-M8-04）: サイドバー234px固定・ページ背景 #f6f6f7。
@@ -166,11 +71,16 @@ export default async function AppLayout({
             <XAccountSwitcher
               accounts={switcherAccounts}
               activeId={activeAccountId}
+              switchAccountAction={setActiveXAccountAction}
             />
             <NotificationBell
               initialCursor={notificationCursor}
               initialItems={notifications}
               initialUnread={unreadCount}
+              listNotificationsAction={listNotificationsAction}
+              markAllNotificationsReadAction={markAllNotificationsReadAction}
+              markNotificationReadAction={markNotificationReadAction}
+              retryNotificationEmailAction={retryNotificationEmailAction}
             />
             <Link
               aria-label="設定"
@@ -182,7 +92,7 @@ export default async function AppLayout({
               <Icon name="tune" size={18} />
               <span className="hidden md:inline">設定</span>
             </Link>
-            <SignOutButton />
+            <SignOutButton signOutAction={signOut} />
           </div>
         </header>
 
@@ -201,7 +111,7 @@ export default async function AppLayout({
                 <p className="mt-1 text-sm leading-5">{banner.description}</p>
               </div>
               {banner.action === "portal" ? (
-                <PortalButton enabled={Boolean(profile?.stripeCustomerId)} />
+                <PortalButton enabled={Boolean(stripeCustomerId)} />
               ) : null}
               {banner.action === "checkout" ? (
                 <Link

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.17 |
-| 更新日 | 2026-08-19 |
+| バージョン | v1.18 |
+| 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -37,7 +37,7 @@ flowchart TB
 | レイヤ | 技術 | 実装方針 |
 |---|---|---|
 | アプリ | Next.js App Router + TypeScript | UI、API、Server Actions、cronを同一リポジトリで管理 |
-| UI | Tailwind CSS + shadcn/ui | 画面共通部品はApp Shell配下に集約 |
+| UI | Tailwind CSS + shadcn/ui | 画面横断部品は共通UI層、アプリ内だけの部品はApp Shell配下に集約 |
 | 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。Auth側もメール確認必須・password最小8文字とし、許可済みの`APP_BASE_URL/auth/confirm`だけをメールredirect先に使う。漏洩パスワード保護はPro移行後に有効化 |
 | DB | Supabase PostgreSQL + RLS（初期Free） | すべてのユーザー系テーブルでRLSを必須化。Free中は定期的な論理backupで補完 |
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
@@ -48,6 +48,8 @@ flowchart TB
 | 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | 明示render widgetのtokenをsignup、login、password reset Server ActionからSupabase Authへ渡し、Auth側のTurnstile検証を必須化 |
 | 暗号化 | AES-256-GCM | APIキー/OAuthトークンをアプリ層で暗号化 |
 | 監視 | Sentry | Server Actions、API、cronの例外を収集 |
+
+共通App Shellのデータ取得は、表示用model、DB／frameworkに依存しない組み立てcore、Supabase・pool・env等を接続するserver adapterの3層に分ける。`layout.tsx`は認証済みuser idをadapterへ渡して表示用modelを受け取るだけとし、通知・Xアカウント・profile・利用量の個別adapterを直接参照しない。App ShellのClient ComponentはApp RouterのServer Actionを直接importせず、layout境界から必要なAction契約をpropsで受け取る。これにより、表示部品・組み立て規則・外部接続の変更を別々に検証できるようにする（T-M8-155）。
 
 ## 3. 環境変数
 
@@ -227,3 +229,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.15 | 2026-08-18 | `SMTP_*` が Supabase Auth のカスタムSMTPにも使われることを明記（T-M8-144） |
 | v1.16 | 2026-08-19 | Stripe画面への押下時preconnectに必要なCSP許可先を反映（T-M8-152） |
 | v1.17 | 2026-08-19 | proxyの検証済み認証結果とrefresh済みcookieを同一リクエストの後段へ引き継ぎ、重複Auth往復を削減（T-M8-154） |
+| v1.18 | 2026-08-20 | 共通App Shellを表示model・純粋core・server adapterへ分離し、Client ComponentへAction契約を注入する依存方針を追加（T-M8-155） |

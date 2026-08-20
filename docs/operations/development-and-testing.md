@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.14 |
-| 更新日 | 2026-08-19 |
+| バージョン | v4.15 |
+| 更新日 | 2026-08-20 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
 このリポジトリで開発を進めるときの手順書です。**開発とテストは Claude Code に任せる前提**で書いてあります。専門知識は要りません。
@@ -351,7 +351,7 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
 | 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**SupabaseのカスタムSMTPと差出人名**（`price-status`と同じ注入で読み取り・T-M8-136）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`） | X Developer App のcallback URL・X Developer App のcallback URL（APIで読めない）。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
-内訳: `src` 配下のテストファイル254本 = 単体183 ＋ `*.db.test.ts` 69 ＋ provider契約 `*.live.test.ts` 2。`npm test` の結果は 2,209 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-18 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
+内訳: `src` 配下のテストファイル262本 = 単体191 ＋ `*.db.test.ts` 69 ＋ provider契約 `*.live.test.ts` 2。`npm test` の結果は 2,291 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-20 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
 
 ### 層5と層6は別物（第1部§4で2種類あると書いた理由）
 

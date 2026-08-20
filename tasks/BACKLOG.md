@@ -2101,6 +2101,39 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-155: 共通App Shellの密結合と画面間の逆依存を解消する `done`
+- 参照: 要件01 §2／要件06 §2・§2.2／ADR-0006 / 依存: T-M8-154 / サイズ: M
+- 完了条件:
+  - App Shellの表示が通知・Xアカウント・profile・利用量の個別server adapterを直接参照しない
+  - App ShellのClient ComponentがServer Actionを直接importせず、明示的なAction契約を受け取る
+  - 画面横断のブランド部品と状態操作スタイルをApp Shellではなく共通層が所有する
+  - 依存方向を固定するテスト、単体、型、lint、build、主要E2E、ドキュメント同期が通る
+- メモ: `lib/app-shell/`を表示model・依存注入可能な組み立てcore・production server adapterへ分割し、
+  `app/app/layout.tsx`から6つの個別データ取得依存とバナー組み立てを除いた。通知ベル・Xアカウント切替・
+  ログアウトはServer Actionをpropsで受ける契約へ変更。LP／認証／Appで共用するロゴは
+  `components/brand/`へ移し、課金UIがApp Shellの状態カードから借りていた操作classは既存の
+  `components/ui/link-button.ts`へ集約した。依存境界テスト9件と組み立てcoreテスト4件を追加。
+- 検証メモ（2026-08-20）: 型検査・lint・doc日付／参照検査・audit・build・CSP nonce検査は成功。
+  実DBの全テストは262 files／2291件成功（skip 19件はいずれも実APIキー必須のlive検査で、
+  `PROVIDER_CHECK` / `SUGGEST_LIVE` の env gate による意図的な未実行）。E2Eは最終形で
+  **92件成功・1件skip（実AI）・0件失敗を連続2回**（7.5分／8.3分）。propsで注入したActionのうち
+  通知既読・一括既読・メール再送・アカウント切替・ログアウトは既存E2Eが実ブラウザ＋DB確認で通る。
+  唯一未カバーだった`listNotificationsAction`（通知ベルの「もっと見る」）は一時specで実ブラウザ検証し、
+  25件投入して2ページ目が実際に追加されることを確認した（確認後に一時specは削除）。
+- 検証の落とし穴（2026-08-20）: (1) `check:doc-refs`は`git ls-files`で実在を判定するため、
+  **新規ファイルをstageするまで移動先のロゴを「実在しない」と報告する**（stage後は209件すべて成功）。
+  (2) `src/**`を編集した直後の初回E2Eは、`page.goto("/app/ai-settings?tab=base-md")`が
+  **devサーバのroute初回コンパイルで60s timeout**になり得る（`ai-settings.spec.ts:39`が3回連続で
+  これに当たった）。同じ木で編集を挟まず再実行すると全件緑になる。**失敗を「flaky」と呼ぶ前に
+  編集直後かどうかを見る**。(3) `npm run release:check ... | tail`はパイプで終了コードを捨てるため、
+  **失敗したゲートが成功に見える**。出力はファイルへ落として終了コードを別に確認する。
+- 追加修正（2026-08-20）: 依存境界テストに**検出器の生存確認**が無く、
+  開発とテストの進め方 §「検出器が死んでいても緑になる」に反していた。`"use client"`判定が
+  単一引用符・先頭コメント・先頭空行で外れ、import検出も`from"..."`（空白なし）・相対パス・動的import・
+  サブディレクトリ移動を取りこぼす状態で、**Server Actionの直接importを戻しても5件緑のまま**だった
+  （実ファイルを変形して再現確認）。検出器ごとの肯定側アンカー、走査対象ファイルの明示、再帰走査、
+  先頭コメント許容の判定へ直し、coreの禁止依存に`@/lib/db/pool`・`next/headers`・`process.env`を追加した。
+
 ### T-M8-154: 全体の画面遷移で重複通信を削り、意図時先読みを追加する `done`
 - 参照: 要件01 §5・§8／要件03 §1／要件06 §2 / 依存: T-M8-67 / サイズ: M
 - 完了条件:
@@ -2916,7 +2949,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 運営者の指示（2026-08-16）。現状はNG欄が`min-h-28`（112px）で他より背が高く、参考ソースは種別select＋URL1本の共用フォーム。
 
 ### T-M8-111: ロゴを運営者提供の画像（public/logo.png）へ差し替える `done`
-- 参照: `src/components/app-shell/brand-logo.tsx`・要件06 §2（画面共通）・`src/app/globals.css`（--brand-gradient-logo） / 依存: なし / サイズ: M
+- 参照: `src/components/brand/brand-logo.tsx`・要件06 §2（画面共通）・`src/app/globals.css`（--brand-gradient-logo） / 依存: なし / サイズ: M
 - 完了条件:
   - アプリのヘッダー／サイドバー・LPヘッダー・ヒーローモック・フッター・最終CTAの5箇所すべてが新ロゴになる
   - favicon（`src/app/icon.png`）とAppleアイコン・OGP画像が新ロゴになる（従来はNext.jsのひな形のまま）

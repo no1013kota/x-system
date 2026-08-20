@@ -5,15 +5,19 @@ import { Icon } from "@/components/ui/icon";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import {
-  listNotificationsAction,
-  markAllNotificationsReadAction,
-  markNotificationReadAction,
-  retryNotificationEmailAction,
-} from "@/app/actions/notifications";
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { NotificationView } from "@/lib/notifications";
+
+interface NotificationActionResult {
+  message?: string;
+  status: "error" | "success";
+}
+
+interface ListNotificationsResult extends NotificationActionResult {
+  items?: NotificationView[];
+  nextCursor?: string | null;
+}
 
 /**
  * ヘッダの通知ベル＋一覧（要件05 §10・要件06 §2, O-2, T-M2-20）。未読件数バッジを出し、Popoverで
@@ -41,10 +45,24 @@ export function NotificationBell({
   initialUnread,
   initialItems,
   initialCursor,
+  listNotificationsAction,
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+  retryNotificationEmailAction,
 }: {
   initialUnread: number;
   initialItems: NotificationView[];
   initialCursor: string | null;
+  listNotificationsAction: (input: {
+    cursor: string;
+  }) => Promise<ListNotificationsResult>;
+  markAllNotificationsReadAction: () => Promise<unknown>;
+  markNotificationReadAction: (input: {
+    notification_id: string;
+  }) => Promise<unknown>;
+  retryNotificationEmailAction: (input: {
+    notification_id: string;
+  }) => Promise<NotificationActionResult>;
 }) {
   const router = useRouter();
   const pathname = usePathname();

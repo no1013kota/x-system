@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { stateActionClassName } from "@/components/app-shell/page-state";
+import { stateActionClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
 

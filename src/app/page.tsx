@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
-import { BrandLogo, LogoTile } from "@/components/app-shell/brand-logo";
+import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
   AnalyticsFigure,

@@ -1,4 +1,4 @@
-import { LogoTile } from "@/components/app-shell/brand-logo";
+import { LogoTile } from "@/components/brand/brand-logo";
 import { APP_NAME } from "@/lib/app-config";
 import { cardClassName } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

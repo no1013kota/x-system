@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { signOut } from "@/app/actions/auth";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
@@ -77,7 +78,9 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               </Link>
               {/* 未契約の利用者はこの画面に留められ App Shell のヘッダへ到達できないため、
                   ログアウトの導線をここにも置く（PRD A-2・要件03 §1）。 */}
-              {user ? <SignOutButton label={false} /> : null}
+              {user ? (
+                <SignOutButton label={false} signOutAction={signOut} />
+              ) : null}
             </div>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-muted-foreground">

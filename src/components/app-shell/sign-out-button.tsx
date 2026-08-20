@@ -2,7 +2,6 @@
 
 import { useTransition } from "react";
 
-import { signOut } from "@/app/actions/auth";
 import { Icon } from "@/components/ui/icon";
 
 /**
@@ -13,7 +12,13 @@ import { Icon } from "@/components/ui/icon";
  *
  * ラベルは狭い幅で隠れるが、`aria-label` で常に読み上げられる（ヘッダの他の操作と同じ方式）。
  */
-export function SignOutButton({ label = true }: { label?: boolean }) {
+export function SignOutButton({
+  label = true,
+  signOutAction,
+}: {
+  label?: boolean;
+  signOutAction: () => Promise<never>;
+}) {
   const [pending, startTransition] = useTransition();
 
   return (
@@ -21,7 +26,7 @@ export function SignOutButton({ label = true }: { label?: boolean }) {
       aria-label="ログアウト"
       className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60"
       disabled={pending}
-      onClick={() => startTransition(async () => void (await signOut()))}
+      onClick={() => startTransition(async () => void (await signOutAction()))}
       type="button"
     >
       <Icon name="output" size={20} />
