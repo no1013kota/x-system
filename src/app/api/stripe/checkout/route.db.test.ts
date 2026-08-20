@@ -219,12 +219,12 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
       [id, `cus_test_${randomUUID().replaceAll("-", "")}`],
     );
 
-    const res = await POST(request({ plan: "md" }));
+    const res = await POST(request({ plan: "expert" }));
     const body = await json(res);
 
     expect(res.status, `internal_error になっている: ${JSON.stringify(body)}`).toBe(200);
     expect(stripeCalls.sessionCreate[0]).toMatchObject({
-      subscription_data: { metadata: { plan: "md", user_id: id } },
+      subscription_data: { metadata: { plan: "expert", user_id: id } },
     });
     expect(
       (stripeCalls.sessionCreate[0].subscription_data as Record<string, unknown>),

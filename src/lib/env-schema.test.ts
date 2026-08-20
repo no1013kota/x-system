@@ -17,7 +17,7 @@ function devBase(): Record<string, string | undefined> {
     STRIPE_SECRET_KEY: "sk_test",
     STRIPE_WEBHOOK_SECRET: "whsec_test",
     STRIPE_PRICE_STANDARD_MONTHLY: "price_std",
-    STRIPE_PRICE_MD_MONTHLY: "price_md",
+    STRIPE_PRICE_EXPERT_MONTHLY: "price_inf",
     STRIPE_PRICE_PREMIUM_MONTHLY: "price_prem",
     ANTHROPIC_TEXT_MODEL: "claude-x",
     OPENAI_TEXT_MODEL: "gpt-x",

@@ -25,7 +25,7 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
 
   // 比較表が plans.ts の価格・上限を実際に描画している（T-M8-125で表へ変えた）。
   const pricing = page.locator("#pricing");
-  await expect(pricing).toContainText("¥2,980");
+  await expect(pricing).toContainText("¥3,980");
   await expect(pricing).toContainText("AIクレジット1000");
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
@@ -139,8 +139,8 @@ test("reduced-motion では全要素が即時表示され、3幅で横に伸び�
  * リリース記念キャンペーンの見せ方（T-M8-118）。
  *
  * **取り消し線に「通常価格」と書かない。** 景品表示法の二重価格表示は、通常価格として示すなら
- * 実際にその価格で相当期間販売した実績が必要で、この3プランにその実績は無い（500円・1,000円・
- * 2,980円でのみ販売してきた）。将来価格として「キャンペーン終了後」と示す形を固定する。
+ * 実際にその価格で相当期間販売した実績が必要で、この3プランにその実績は無い（キャンペーン価格での
+ * 販売のみ・T-M8-168）。将来価格として「キャンペーン終了後」と示す形を固定する。
  */
 test("料金カードに半額バッジと終了後価格が出て、「通常価格」とは書かない（T-M8-118）", async ({
   page,
@@ -154,9 +154,9 @@ test("料金カードに半額バッジと終了後価格が出て、「通常�
   expect(await badges.count()).toBeGreaterThanOrEqual(3);
 
   // 請求額（大きい方）と終了後価格（取り消し線）が両方読める。
-  await expect(pricing.getByText("2,980", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText("3,980", { exact: false }).first()).toBeVisible();
   await expect(pricing.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
-  await expect(pricing.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
+  await expect(pricing.locator(".line-through").filter({ hasText: "7,960" }).first()).toBeVisible();
 
   // 景表法: 「通常価格」の語を使わない。
   await expect(pricing.getByText("通常価格")).toHaveCount(0);

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
@@ -52,9 +54,9 @@ export default async function AnalyticsPage() {
     pooledQueryable().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
       xAccountId,
     ]),
-    // 提案のプロンプト全文は貼り先（AI設定＞プロンプト）が mdプラン以上のため、プランで出し分ける（T-M8-91）。
+    // 提案のプロンプト全文は、編集権限（canEditMdAndPrompts）の有無で出し分ける（T-M8-91/T-M8-168）。
     // AIキーの有無は、BYOKで毎朝の分析が始まらない理由（未登録）を画面から説明するために読む（T-M8-95）。
-    pooledQueryable().query<{ plan: "standard" | "md" | "premium"; has_ai_key: boolean }>(
+    pooledQueryable().query<{ plan: PlanId | null; has_ai_key: boolean }>(
       `select p.plan,
               exists (
                 select 1 from user_api_keys k
@@ -82,9 +84,9 @@ export default async function AnalyticsPage() {
         <SuggestionsPanel
           generating={suggestionsSection.generating}
           needsAiKey={
-            (profile.rows[0]?.plan ?? "standard") !== "premium" && !profile.rows[0]?.has_ai_key
+            !isOperatorManagedPlan(profile.rows[0]?.plan ?? null) && !profile.rows[0]?.has_ai_key
           }
-          plan={profile.rows[0]?.plan ?? "standard"}
+          canEditPrompts={promptEditablePlan(profile.rows[0]?.plan ?? "")}
           suggestions={suggestionsSection.suggestions}
         />
         <AnalyticsView drafts={drafts} handle={handle} />

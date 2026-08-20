@@ -20,7 +20,7 @@ const pooledDb: Queryable = {
 };
 
 const okPrereq: ExecutionPrereqInput = {
-  plan: "md",
+  plan: "standard",
   subscriptionStatus: "active",
   xApiKeyStatus: "valid",
   hasActiveXAccount: true,

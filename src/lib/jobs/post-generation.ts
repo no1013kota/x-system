@@ -317,6 +317,16 @@ export async function executePostGeneration(
         type: "generation",
       });
     } catch (error) {
+      if (error instanceof AppError && error.code === "usage_paused") {
+        // エキスパートの内部ガード（T-M8-168）。保存する理由にも数値・「上限」の語を出さない。
+        await persistFailure(
+          db,
+          failCtx,
+          { code: "usage_paused", message: "連続的な使用が検知されたため一時的に停止しております。お待ちください。", stage: "validating" },
+          EMPTY_USAGE,
+        );
+        throw new PostGenerationTerminalError("usage_paused", "usage paused (concealed limit reached)");
+      }
       if (error instanceof AppError && error.code === "usage_limit_exceeded") {
         await persistFailure(
           db,

@@ -1,4 +1,4 @@
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 import { remainingDailyPosts } from "@/lib/usage/daily-post-limit";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { expectedAuthTypeForPlan } from "@/lib/x/oauth-start";
@@ -64,7 +64,8 @@ export function computeXAccountBanners(input: XBannerInputs): AppBanner[] {
   }
 
   // (要件06 §2) BYOK必須プラン（standard／md）でX APIキーが無効。
-  const byokPlan = input.plan === "standard" || input.plan === "md";
+  // BYOK（利用者自身のAPIキーが必要）かは plans.ts の定義から引く（T-M8-168）。
+  const byokPlan = !isOperatorManagedPlan(input.plan);
   if (byokPlan && input.xApiKeyStatus === "invalid") {
     banners.push({
       id: "x_key",
@@ -79,7 +80,7 @@ export function computeXAccountBanners(input: XBannerInputs): AppBanner[] {
   return banners;
 }
 
-const USAGE_SLOT_LABELS: [keyof UsageSummary, string][] = [
+const USAGE_SLOT_LABELS: ["ai_credits" | "normal_posts" | "url_posts", string][] = [
   ["ai_credits", "AIクレジット"],
   ["normal_posts", "通常投稿クレジット"],
   ["url_posts", "URL付き投稿クレジット"],
@@ -88,10 +89,28 @@ const USAGE_SLOT_LABELS: [keyof UsageSummary, string][] = [
 /**
  * 利用枠100%到達の常設バナー（要件03 §8, T-M6-13）。remaining=0 の枠が1つでもあれば表示する。
  * `notification_config` にかかわらず表示する（呼び出し側の App Shell は残量サマリから直接算出し、通知設定を
- * 参照しない）。premium 以外は summary=null で呼ばれ、バナーは出ない。
+ * 参照しない）。BYOK（standard）は summary=null で呼ばれ、バナーは出ない。
+ *
+ * `summary.concealed`（エキスパート・T-M8-168）のときは**枠名・数値・「上限」の語を出さない**。
+ * 表向き無制限のプランなので、文言は「連続的な使用が検知されたため一時的に停止しております。
+ * お待ちください。」（運営者指定・`usage_paused` と同文）だけにする。
  */
 export function usageLimitBanner(summary: UsageSummary | null): AppBanner | null {
   if (!summary) return null;
+  if (summary.concealed) {
+    // concealed の summary は枠の数値がゼロ埋めされている。停止判定は paused だけを見る
+    // （実行が止まる条件と同じ関数で算出済み・usage-summary.ts）。
+    if (!summary.paused) return null;
+    return {
+      id: "usage_paused",
+      tone: "warning",
+      title: "一時的に停止しています",
+      description:
+        "連続的な使用が検知されたため一時的に停止しております。お待ちください。既存の下書きの閲覧・編集は引き続きできます。",
+      actionLabel: "利用状況を見る",
+      actionHref: "/app/settings?tab=billing",
+    };
+  }
   const atLimit = USAGE_SLOT_LABELS.filter(([key]) => summary[key].remaining <= 0).map(([, label]) => label);
   if (atLimit.length === 0) return null;
   return {

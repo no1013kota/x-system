@@ -25,10 +25,10 @@ export default function CommercialTransactionsPage() {
   const premium = PLANS.premium.usageLimits;
   // 表示するのは**実際に支払う額**（法11条の販売価格）。キャンペーン中はその旨と
   // 終了後の予定額も併記する（値上げを隠して申し込ませない・T-M8-118）。
-  const priceLine = [PLANS.standard, PLANS.md, PLANS.premium]
+  const priceLine = [PLANS.standard, PLANS.premium, PLANS.expert]
     .map((plan) => `${plan.displayName} ${plan.monthlyPriceJpy.toLocaleString()}円`)
     .join("／");
-  const afterCampaignLine = [PLANS.standard, PLANS.md, PLANS.premium]
+  const afterCampaignLine = [PLANS.standard, PLANS.premium, PLANS.expert]
     .map((plan) => `${plan.displayName} ${plan.regularPriceJpy.toLocaleString()}円`)
     .join("／");
 
@@ -49,9 +49,9 @@ export default function CommercialTransactionsPage() {
     {
       term: "商品代金以外に必要な費用",
       description:
-        `${PLANS.standard.displayName}および${PLANS.md.displayName}をご利用の場合、X APIおよび生成AIのAPIキーはお客様ご自身でご用意いただくため、` +
+        `${PLANS.standard.displayName}をご利用の場合、X APIおよび生成AIのAPIキーはお客様ご自身でご用意いただくため、` +
         `月額料金とは別に、X社および各AI事業者からお客様へ直接、従量課金による利用料が請求されます（金額はご利用量により変動し、当方は関与しません）。` +
-        `${PLANS.premium.displayName}では、これらのAPI利用料の追加負担はありません。インターネット接続に必要な通信料はお客様のご負担となります。`,
+        `${PLANS.premium.displayName}および${PLANS.expert.displayName}では、これらのAPI利用料の追加負担はありません。インターネット接続に必要な通信料はお客様のご負担となります。`,
     },
     {
       term: "支払方法",
@@ -76,10 +76,11 @@ export default function CommercialTransactionsPage() {
     {
       term: "販売条件（ご利用の制限）",
       description:
-        `連携できるXアカウント数は、${PLANS.standard.displayName}は${PLANS.standard.xAccountLimit}件、${PLANS.md.displayName}および${PLANS.premium.displayName}は${PLANS.premium.xAccountLimit}件です。` +
+        `連携できるXアカウント数は、${PLANS.standard.displayName}・${PLANS.premium.displayName}が${PLANS.standard.xAccountLimit}件、${PLANS.expert.displayName}が${PLANS.expert.xAccountLimit}件です。` +
         (premium
           ? `${PLANS.premium.displayName}には月間の利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。`
           : "") +
+        `${PLANS.expert.displayName}に月間の利用枠はありません（通常の利用を大きく超える連続的な利用を検知した場合、実行を一時的に停止することがあります）。` +
         "また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に上限を設けています。",
     },
     {

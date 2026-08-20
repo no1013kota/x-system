@@ -49,7 +49,7 @@ function reconnectPath(startPath: string, accountId: string): string {
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
-  managed: "運営App（プレミアムプラン）",
+  managed: "運営App（キー登録不要のプラン）",
 };
 
 export function XAccountsSettings({
@@ -60,7 +60,7 @@ export function XAccountsSettings({
   xApiKeyRegistered,
 }: {
   accounts: XAccountListItem[];
-  plan: PlanId;
+  plan: PlanId | null;
   oauthStartPath: string;
   connected: boolean;
   /** BYOKプランでX APIキー（Client ID）が登録済みか。premiumは常にtrue（運営キーを使う）。 */
@@ -232,7 +232,8 @@ export function XAccountsSettings({
 
   const toast = useToast();
 
-  const limit = PLANS[plan].xAccountLimit;
+  // 未契約(null)はこの画面へ来ない（route-guard）。型上のフォールバックだけ置く。
+  const limit = plan ? PLANS[plan].xAccountLimit : PLANS.standard.xAccountLimit;
   const activeCount = accounts.filter((a) => a.status === "active").length;
   const atLimit = activeCount >= limit;
 

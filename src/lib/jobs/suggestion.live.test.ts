@@ -68,7 +68,7 @@ describe.runIf(ENABLED)("投稿分析 実AI 1周（手動）", () => {
          values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
         [uid, `${uid}@example.com`],
       );
-      await c.query(`insert into profiles (id, email, plan) values ($1,$2,'md') on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
+      await c.query(`insert into profiles (id, email, plan) values ($1,$2,'standard') on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
       const xid = (
         await c.query<{ id: string }>(
           `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, status)

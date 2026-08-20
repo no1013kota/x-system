@@ -156,7 +156,8 @@ describe("Supabase SSR auth session (local)", () => {
     expect(initial.data).toEqual({
       id: user!.id,
       email,
-      plan: "standard",
+      // 未契約の既定は null（T-M8-168で default 'standard' を撤廃）。
+      plan: null,
       subscription_status: "incomplete",
       ai_purpose_config: DEFAULT_AI_PURPOSE_CONFIG,
       news_config: DEFAULT_NEWS_CONFIG,

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 
 import { AppError } from "@/lib/observability/errors";
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 
 import {
   resolvePremiumTextPurpose,
@@ -34,7 +34,7 @@ export async function updateAiPurposeConfigRecord(
   if (!row) throw new AppError("not_found");
   const next = configRecord(row.ai_purpose_config);
 
-  if (row.plan === "premium") {
+  if (isOperatorManagedPlan(row.plan)) {
     // providerは運営固定。UIはモデル選択のため text:"anthropic" を添えて送る（T-M8-107）。
     // 固定値と一致しない変更だけを拒否する。
     if (input.patch.text !== undefined && input.patch.text !== resolvePremiumTextPurpose()) {

@@ -22,7 +22,7 @@ import {
  * 投稿パターンの server-only 配線（T-M8-129 U3/U4・ADR-0008）。
  *
  * active Xアカウントを解決し、`profiles.plan` を見て編集の可否を決める。
- * **プロンプトの編集境界は `prompt_templates` と同じ**（mdプラン以上）——
+ * **プロンプトの編集境界は `prompt_templates` と同じ**（全プラン可・未契約のみ拒否。T-M8-168）——
  * 同じ「プロンプトを直す」操作で画面によって可否が違うと利用者は理由を説明できない。
  */
 
@@ -36,14 +36,16 @@ export class NoActiveAccountError extends Error {
   }
 }
 
-async function planForUser(userId: string): Promise<string> {
+async function planForUser(userId: string): Promise<string | null> {
   const row = (
-    await pooledDb.query<{ plan: string }>(`select plan from profiles where id = $1`, [userId])
+    await pooledDb.query<{ plan: string | null }>(`select plan from profiles where id = $1`, [userId])
   ).rows[0];
-  return row?.plan ?? "standard";
+  // 未契約・行なしは null（権限判定側が false を返す）。旧コードは "standard" へ倒していたが、
+  // 新standardは編集権限を持つ（T-M8-168）ため「無権限」の意味で使えなくなった。
+  return row?.plan ?? null;
 }
 
-async function requireAccount(userId: string): Promise<{ xAccountId: string; plan: string }> {
+async function requireAccount(userId: string): Promise<{ xAccountId: string; plan: string | null }> {
   const [xAccountId, plan] = await Promise.all([
     resolveActiveXAccountForUser(userId),
     planForUser(userId),
@@ -54,7 +56,8 @@ async function requireAccount(userId: string): Promise<{ xAccountId: string; pla
 
 export interface PatternsForUser {
   xAccountId: string | null;
-  plan: string;
+  /** 未契約は null（billing タブ以外は route-guard で来ない）。 */
+  plan: string | null;
   patterns: PatternOption[];
   /** パターンID → プロンプト本文。standard には渡さない（編集できないため）。 */
   prompts: Record<string, PatternPromptView>;
@@ -81,7 +84,7 @@ export async function updatePatternPromptForUser(input: {
   expectedUpdatedAt: string | null;
 }): Promise<PatternPromptView> {
   const { xAccountId, plan } = await requireAccount(input.userId);
-  assertPromptEditablePlan(plan);
+  assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) =>
     applyUpdatePatternPrompt(tx, {
       xAccountId,
@@ -97,7 +100,7 @@ export async function createPatternForUser(input: {
   pattern: PatternInput;
 }): Promise<CreatedPattern> {
   const { xAccountId, plan } = await requireAccount(input.userId);
-  assertPromptEditablePlan(plan);
+  assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) => applyCreatePattern(tx, { ...input.pattern, xAccountId }));
 }
 
@@ -107,7 +110,7 @@ export async function updatePatternForUser(input: {
   pattern: PatternInput;
 }): Promise<PatternOption> {
   const { xAccountId, plan } = await requireAccount(input.userId);
-  assertPromptEditablePlan(plan);
+  assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) =>
     applyUpdatePattern(tx, { ...input.pattern, xAccountId, patternId: input.patternId }),
   );
@@ -118,12 +121,12 @@ export async function deletePatternForUser(input: {
   patternId: string;
 }): Promise<{ deletedName: string; disabledSlots: number }> {
   const { xAccountId, plan } = await requireAccount(input.userId);
-  assertPromptEditablePlan(plan);
+  assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) => applyDeletePattern(tx, { xAccountId, patternId: input.patternId }));
 }
 
 export async function restoreDefaultPatternsForUser(userId: string): Promise<number> {
   const { xAccountId, plan } = await requireAccount(userId);
-  assertPromptEditablePlan(plan);
+  assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) => applyRestoreDefaultPatterns(tx, xAccountId));
 }

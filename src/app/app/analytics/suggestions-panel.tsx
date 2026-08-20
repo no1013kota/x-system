@@ -22,7 +22,7 @@ import { Icon } from "@/components/ui/icon";
  * 同じ濃さの文字で続いていて、どこまでが何の話か読み取れなかった。
  *
  * 承認・却下・自動反映は存在しない（PRD §10「自動反映しない」）。
- * プロンプトの保存先（AI設定＞プロンプト）は mdプラン以上のため、standard には全文を出さず
+ * プロンプトの保存先（AI設定＞プロンプト）は編集権限のあるプランのみのため、権限が無ければ全文を出さず
  * 案内だけ出す（貼り先の無い文字列を渡さない）。
  */
 
@@ -167,12 +167,18 @@ function ProposalBlock({
 export function SuggestionsPanel({
   suggestions,
   generating,
-  plan,
+  canEditPrompts,
   needsAiKey = false,
 }: {
   suggestions: SuggestionDisplay[];
   generating: boolean;
-  plan: "standard" | "md" | "premium";
+  /**
+   * アカウント.md・プロンプトを編集できるプランか（`promptEditablePlan`・T-M8-168）。
+   * 以前はプランIDを受けて `plan === "standard"` で分けていたが、プラン名ではなく
+   * 権限で分ける（プランが増減しても表示が正本の PLANS 定義へ追随する）。
+   * 現在は全プランが true（旧standardの撤廃により、false は未契約のみ）。
+   */
+  canEditPrompts: boolean;
   /** BYOKでvalidなAIキーが無い＝毎朝の分析が始まらない状態（T-M8-95。登録導線を出す）。 */
   needsAiKey?: boolean;
 }) {
@@ -298,22 +304,22 @@ export function SuggestionsPanel({
                         ) : null}
                       </dl>
 
-                      {(s.advice.prompt || s.advice.accountMd) && plan === "standard" ? (
-                        // 貼り先（設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
+                      {(s.advice.prompt || s.advice.accountMd) && !canEditPrompts ? (
+                        // 貼り先（設定＞プロンプト）は編集権限が必要なため、権限が無ければ全文を出さない。
                         <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
                           この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
                           <Link
                             className="text-info-fg hover:underline"
                             href="/app/settings?tab=prompts&sec=post-prompt"
                           >
-                            プロンプトのカスタマイズ（mdプラン以上）
+                            プロンプトのカスタマイズ
                           </Link>
                           で利用できます。
                         </p>
                       ) : null}
 
                       {/* アカウント.mdの編集提案（T-M8-106）。全パターン共通の土台なので先に出す。 */}
-                      {s.advice.accountMd && plan !== "standard" ? (
+                      {s.advice.accountMd && canEditPrompts ? (
                         <ProposalBlock
                           content={s.advice.accountMd.content}
                           copied={copied === "account_md"}
@@ -325,7 +331,7 @@ export function SuggestionsPanel({
                         />
                       ) : null}
 
-                      {s.advice.prompt && plan !== "standard" ? (
+                      {s.advice.prompt && canEditPrompts ? (
                         <ProposalBlock
                           content={s.advice.prompt.content}
                           copied={copied === "prompt"}

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
+| バージョン | v1.14 |
 | 更新日 | 2026-08-20 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -116,7 +116,7 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase プロジェクト設定 → API |
 | `DATABASE_URL` | Supabase → Connect → **Transaction pooler**（Supavisor）。直結ではなくpooler側 |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe。**非productionでは `sk_test_` のみ**（`sk_live_` を置くと起動時検証で落ちる。実課金を防ぐため・T-M7-51） |
-| `STRIPE_PRICE_STANDARD_MONTHLY` / `_MD_` / `_PREMIUM_` | Stripe の Price ID 3種 |
+| `STRIPE_PRICE_STANDARD_MONTHLY` / `_PREMIUM_` / `_EXPERT_` | Stripe の Price ID 3種 |
 | `ANTHROPIC_TEXT_MODEL` / `OPENAI_TEXT_MODEL` / `OPENAI_IMAGE_MODEL` / `GEMINI_TEXT_MODEL` / `GEMINI_IMAGE_MODEL` | 採用モデル名 |
 
 ### 1.2 preview / production で追加必須（16）

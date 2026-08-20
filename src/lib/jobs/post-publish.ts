@@ -1,7 +1,11 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import {
+  concealsUsageLimits,
+  isOperatorManagedPlan,
+  usageLimitsForPlan,
+} from "../plans";
 import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
 
-import { PLANS } from "../plans";
 import { canPostThreadToday } from "../usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
@@ -324,7 +328,7 @@ async function rollbackThread(
 ): Promise<void> {
   const { db } = deps;
   const { usageCtx, draftId, tweetIds } = params;
-  const premiumLive = params.plan === "premium" && deps.postingLive;
+  const premiumLive = isOperatorManagedPlan(params.plan) && deps.postingLive;
   const deleted: string[] = [];
   const remaining: string[] = [];
   const ambiguousDelete: string[] = [];
@@ -568,8 +572,8 @@ export async function executePostPublish(
   // --- 検証: premium月次投稿枠のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
   // ロールバック（最終投稿失敗→prefixを作成+削除で各2消費）まで賄える残量を投稿前に確認する。
   // 不足時は X API を一切呼ばず・枠を消費せず失敗させ、通知する（premium かつ live のみ・§10）。
-  if (job.plan === "premium" && deps.postingLive) {
-    const limits = PLANS.premium.usageLimits;
+  if (isOperatorManagedPlan(job.plan) && deps.postingLive) {
+    const limits = usageLimitsForPlan(job.plan);
     if (limits) {
       const required = requiredPostSlots(thread.map((_, i) => finalTextAt(i)));
       const used = await db.query<{ normal_posts_count: number; url_posts_count: number }>(
@@ -588,15 +592,19 @@ export async function executePostPublish(
         await db.query(`update drafts set status = 'draft', updated_at = now() where id = $1`, [
           draftId,
         ]);
+        // エキスパート（表向き無制限・T-M8-168）は枠の存在を文言に出さない。
+        const concealed = concealsUsageLimits(job.plan);
         await createPostErrorNotification(db, {
           userId,
           draftId,
-          title: "今月の投稿枠が不足しています",
-          body: "今月のプレミアム投稿枠が不足しているため投稿できませんでした。翌月まで待つか、内容を調整してください。",
+          title: concealed ? "一時的に停止しています" : "今月の投稿枠が不足しています",
+          body: concealed
+            ? "連続的な使用が検知されたため一時的に停止しております。お待ちください。"
+            : "今月の投稿枠が不足しているため投稿できませんでした。翌月まで待つか、内容を調整してください。",
           dedupeSuffix: "usage_limit",
         });
         throw new PostPublishError(
-          "usage_limit_exceeded",
+          concealed ? "usage_paused" : "usage_limit_exceeded",
           "monthly post quota insufficient for safe posting",
         );
       }
@@ -662,7 +670,7 @@ export async function executePostPublish(
       counterType: counterTypeFor(finalTextAt(i)),
       operation: "post_create",
       idempotencyKey: postConsumeKey(draftId, tweetId, "post_create"),
-      premiumLive: job.plan === "premium" && deps.postingLive,
+      premiumLive: isOperatorManagedPlan(job.plan) && deps.postingLive,
     });
   };
 

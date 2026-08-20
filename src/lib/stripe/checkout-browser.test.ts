@@ -80,7 +80,7 @@ describe("startCheckout", () => {
 
   it("normalizes network failures", async () => {
     await expect(
-      startCheckout("md", {
+      startCheckout("expert", {
         fetcher: vi.fn(async () => {
           throw new Error("network detail");
         }),

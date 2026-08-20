@@ -196,10 +196,13 @@ describe("X account management actions (local DB)", () => {
     }
   });
 
-  it("enableXAccount blocks re-activating past the plan limit (standard=1)", async () => {
+  it("enableXAccount blocks re-activating past the plan limit (standard=3)", async () => {
     const { uid, disabledId } = await withTransaction(async (c) => {
       const uid = await makeUser(c, "standard");
-      await makeAccount(c, uid, { status: "active" }); // occupies the single slot
+      // 上限3を埋める（T-M8-168で旧standard(上限1)は撤廃・新standardは3）。
+      await makeAccount(c, uid, { status: "active" });
+      await makeAccount(c, uid, { status: "active" });
+      await makeAccount(c, uid, { status: "active" });
       const disabledId = await makeAccount(c, uid, { status: "disabled" });
       return { uid, disabledId };
     });

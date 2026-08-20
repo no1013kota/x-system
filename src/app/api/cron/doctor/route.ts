@@ -44,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
     prices: {
       priceIds: {
         standard: env.STRIPE_PRICE_STANDARD_MONTHLY,
-        md: env.STRIPE_PRICE_MD_MONTHLY,
+        expert: env.STRIPE_PRICE_EXPERT_MONTHLY,
         premium: env.STRIPE_PRICE_PREMIUM_MONTHLY,
       },
       stripe: env.STRIPE_SECRET_KEY ? (await import("@/lib/stripe/client")).stripe : null,

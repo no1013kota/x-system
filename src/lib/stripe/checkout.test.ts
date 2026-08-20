@@ -29,8 +29,8 @@ function dependencies(
     })),
     priceIds: {
       standard: "price_standard_server",
-      md: "price_md_server",
       premium: "price_premium_server",
+      expert: "price_expert_server",
     },
     saveStripeCustomerId: vi.fn(async () => undefined),
     stripe: {
@@ -101,7 +101,7 @@ describe("POST /api/stripe/checkout core", () => {
 
   it.each([
     ["standard", "price_standard_server"],
-    ["md", "price_md_server"],
+    ["expert", "price_expert_server"],
     ["premium", "price_premium_server"],
   ] as const)("maps %s to its server-owned Price ID", async (plan, priceId) => {
     const response = await handleCheckoutRequest(request({ plan }), deps);
@@ -161,7 +161,7 @@ describe("POST /api/stripe/checkout core", () => {
       stripe_customer_id: null,
       trial_used_at: null,
     }));
-    const response = await handleCheckoutRequest(request({ plan: "md" }), deps);
+    const response = await handleCheckoutRequest(request({ plan: "premium" }), deps);
     expect(response.status).toBe(200);
     expect(deps.stripe.customers.create).toHaveBeenCalledWith(
       {

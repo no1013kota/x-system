@@ -106,7 +106,7 @@ describe("resolveTextKey / resolveImageKey — BYOK (local DB)", () => {
     await withTransaction(async (c) => {
       const uid = await makeUser(c, { text: "anthropic", image: null });
       await addKey(c, uid, "anthropic", "sk-user-anthropic", "valid");
-      const key = await resolveTextKey({ plan: "md", userId: uid }, deps(c));
+      const key = await resolveTextKey({ plan: "standard", userId: uid }, deps(c));
       expect(key.keySource).toBe("byok");
       expect(key.provider).toBe("anthropic");
       expect(key.apiKey).toBe("sk-user-anthropic");

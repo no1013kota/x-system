@@ -12,7 +12,7 @@ import { PRICE_CHECK_NAME, judgePrices, probePrices, type PriceGateway } from ".
  * ズレると「画面は1,000円と言うのに2,000円請求される」という、
  * 利用者の申告でしか気付けない事故になる（CLAUDE.md 原則4）。
  */
-const IDS = { standard: "price_s", md: "price_m", premium: "price_p" } as const;
+const IDS = { standard: "price_s", premium: "price_p", expert: "price_i" } as const;
 
 function gateway(
   amounts: Partial<Record<string, { unit_amount: number | null; currency?: string; active?: boolean }>>,
@@ -34,7 +34,7 @@ describe("請求額と表示額の一致（T-M8-141）", () => {
       priceIds: IDS,
       stripe: gateway({
         price_s: { unit_amount: PLANS.standard.monthlyPriceJpy },
-        price_m: { unit_amount: PLANS.md.monthlyPriceJpy },
+        price_i: { unit_amount: PLANS.expert.monthlyPriceJpy },
         price_p: { unit_amount: PLANS.premium.monthlyPriceJpy },
       }),
     });
@@ -42,7 +42,7 @@ describe("請求額と表示額の一致（T-M8-141）", () => {
     expect(check.name).toBe(PRICE_CHECK_NAME);
     expect(check.level).toBe("ok");
     // 「問題なし」だけにしない（実際の金額を出す）。
-    expect(check.detail).toContain(`¥${PLANS.md.monthlyPriceJpy}`);
+    expect(check.detail).toContain(`¥${PLANS.expert.monthlyPriceJpy}`);
   });
 
   it("1つでも違えば error にして、どちらがいくらかを言う", async () => {
@@ -50,22 +50,22 @@ describe("請求額と表示額の一致（T-M8-141）", () => {
       priceIds: IDS,
       stripe: gateway({
         price_s: { unit_amount: PLANS.standard.monthlyPriceJpy },
-        price_m: { unit_amount: PLANS.md.monthlyPriceJpy * 2 }, // キャンペーン解除の取り違え
+        price_i: { unit_amount: PLANS.expert.monthlyPriceJpy * 2 }, // キャンペーン解除の取り違え
         price_p: { unit_amount: PLANS.premium.monthlyPriceJpy },
       }),
     });
     const check = judgePrices(snap);
     expect(check.level).toBe("error");
-    expect(check.detail).toContain(PLANS.md.displayName);
-    expect(check.detail).toContain(`¥${PLANS.md.monthlyPriceJpy * 2}`);
-    expect(check.detail).toContain(`¥${PLANS.md.monthlyPriceJpy}`);
+    expect(check.detail).toContain(PLANS.expert.displayName);
+    expect(check.detail).toContain(`¥${PLANS.expert.monthlyPriceJpy * 2}`);
+    expect(check.detail).toContain(`¥${PLANS.expert.monthlyPriceJpy}`);
     expect(check.nextAction).toContain("monthlyPriceJpy");
   });
 
   it("通貨が違えば error（桁の意味が変わる）", async () => {
     const snap = await probePrices({
-      priceIds: { md: "price_m" },
-      stripe: gateway({ price_m: { unit_amount: PLANS.md.monthlyPriceJpy, currency: "usd" } }),
+      priceIds: { expert: "price_i" },
+      stripe: gateway({ price_i: { unit_amount: PLANS.expert.monthlyPriceJpy, currency: "usd" } }),
     });
     expect(judgePrices(snap).level).toBe("error");
     expect(judgePrices(snap).detail).toContain("usd");
@@ -73,8 +73,8 @@ describe("請求額と表示額の一致（T-M8-141）", () => {
 
   it("金額が合っていても無効な価格なら error（新規登録が失敗する）", async () => {
     const snap = await probePrices({
-      priceIds: { md: "price_m" },
-      stripe: gateway({ price_m: { unit_amount: PLANS.md.monthlyPriceJpy, active: false } }),
+      priceIds: { expert: "price_i" },
+      stripe: gateway({ price_i: { unit_amount: PLANS.expert.monthlyPriceJpy, active: false } }),
     });
     const check = judgePrices(snap);
     expect(check.level).toBe("error");

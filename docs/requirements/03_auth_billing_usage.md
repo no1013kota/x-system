@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.33 |
-| 更新日 | 2026-08-19 |
+| バージョン | v1.34 |
+| 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -34,24 +34,31 @@
 
 ## 2. プラン
 
-**リリース記念キャンペーン（T-M8-118・2026-08-17 運営者の指示）**: 表の金額は**実際に請求する額**で、Stripe Price と一致する。あわせて `PLANS[].regularPriceJpy`（請求額の2倍＝1,000／2,000／5,960円）を「キャンペーン終了後の価格」として画面に併記する。**「通常価格」とは表示しない**——景品表示法の二重価格表示は通常価格として示すなら実際にその価格で相当期間販売した実績が必要で、この3プランにその実績が無い。表示の分岐は `RELEASE_CAMPAIGN`（`src/lib/plans.ts`）が持ち、`active: false` にすると全画面から消える。終了手順（新Price作成→env差し替え→`monthlyPriceJpy` 更新）は同ファイルのコメントにある。
+**リリース記念キャンペーン（T-M8-118・2026-08-17 運営者の指示）**: 表の金額は**実際に請求する額**で、Stripe Price と一致する。あわせて `PLANS[].regularPriceJpy`（請求額の2倍＝2,960／7,960／29,600円）を「キャンペーン終了後の価格」として画面に併記する。**「通常価格」とは表示しない**——景品表示法の二重価格表示は通常価格として示すなら実際にその価格で相当期間販売した実績が必要で、この3プランにその実績が無い。表示の分岐は `RELEASE_CAMPAIGN`（`src/lib/plans.ts`）が持ち、`active: false` にすると全画面から消える。終了手順（新Price作成→env差し替え→`monthlyPriceJpy` 更新）は同ファイルのコメントにある。
 
-**解約時の追加割引**: カスタマーポータルの「顧客維持クーポン」で**50%オフ・3ヶ月**を提示する（適用後 250／500／1,490円）。**Stripeダッシュボードでのみ設定できる**（`billing_portal.Configuration` APIに該当フィールドが無い。当アプリのポータル設定は `is_default: true` なのでダッシュボードの設定が効く）。金額と根拠は `RETENTION_DISCOUNT` に記録する。**プレミアムはフル利用だと原価（約2,120円）を下回る**ため無期限にしない。
+**解約時の追加割引**: カスタマーポータルの「顧客維持クーポン」で**50%オフ・3ヶ月**を提示する（適用後 740／1,990／7,400円）。**Stripeダッシュボードでのみ設定できる**（`billing_portal.Configuration` APIに該当フィールドが無い。当アプリのポータル設定は `is_default: true` なのでダッシュボードの設定が効く）。金額と根拠は `RETENTION_DISCOUNT` に記録する。**プレミアムはフル利用だと50%オフ後の額が原価を下回る**ため無期限にしない（原価はPRD §6.1）。
 
 
 | プラン | 月額税込 | Xアカウント上限 | APIキー | 月間利用枠 |
 |---|---:|---:|---|---|
-| `standard` | 500円（終了後 1,000円） | 1 | BYOK必須 | アプリ側上限なし |
-| `md` | 1,000円（終了後 2,000円） | 3 | BYOK必須 | アプリ側上限なし |
-| `premium` | 2,980円（終了後 5,960円） | 3 | 不要 | AIクレジット1000、通常投稿200件、URL付き投稿20件 |
+| `standard`（スタンダード） | 1,480円（終了後 2,960円） | 1 | BYOK必須 | アプリ側上限なし |
+| `premium`（プレミアム） | 3,980円（終了後 7,960円） | 1 | 不要 | AIクレジット1000、通常投稿200件、URL付き投稿20件 |
+| `expert`（エキスパート） | 14,800円（終了後 29,600円） | 3（利用枠は合算） | 不要 | **画面表示は「無制限」**。内部ガードとしてAIクレジット5000、通常投稿1,000件、URL付き投稿100件（T-M8-168） |
 
-standard/mdは利用者自身のX/AI契約へ原価が発生するため、アプリ側の月間投稿枠・生成枠を設けない。Xの自動化ルールと誤操作対策を目的とする1 Xアカウントあたり日次50ポストの安全上限は、課金主体にかかわらず全プランへ適用する。premiumは運営App・運営AIキーの原価管理のため月間利用枠も適用する。
+**プラン再編（2026-08-20・T-M8-168・運営者の指示）**: 旧standard（500円・上限1・md編集不可）を撤廃し、旧mdを`standard`（スタンダード）へ改定、`expert`を新設した。DB enumも入れ替え済み（migration `20260820000003`。旧md行→standard、旧standard行→NULL＝未契約。本番は該当5件すべて未契約を実測確認済み）。**md/プロンプト編集は全プラン可**になった。
+
+standardは利用者自身のX/AI契約へ原価が発生するため、アプリ側の月間投稿枠・生成枠を設けない。Xの自動化ルールと誤操作対策を目的とする1 Xアカウントあたり日次50ポストの安全上限は、課金主体にかかわらず全プランへ適用する。premium/expertは運営App・運営AIキーの原価管理のため月間利用枠も適用する。
+
+**expertの利用枠は画面に出さない**（運営者の決定 2026-08-20。注記なしで「無制限」と表示する。景表法の優良誤認リスクは提示のうえの判断で、利用規約第3条に一時停止があり得る旨を記載する）。上限・残量の数値を**残量カード・バナー・通知・エラーdetailsのどこにも出さない**。到達時はエラーコード`usage_paused`（「連続的な使用が検知されたため一時的に停止しております。お待ちください。」）で、80%/100%の閾値通知も作らない（数値が漏れるため）。判定はコードの`concealsUsageLimits`（`src/lib/plans.ts`）が正本。
+
+- **残量サマリはサーバー側で数値をゼロ埋めして返す**（`computeUsageSummary`）。設定画面はサマリをclient componentへ渡すため、UIで隠すだけではRSC（Flight）ペイロードのview-sourceに内部ガード値が載る。
+- **停止表示（`paused`）は「残りが0」ではなく「AIクレジット残が1回分の見積もり（`TEXT_DEFAULT_ESTIMATE_CREDITS`）に満たない」時点で立てる。** 実行側（予約起票の`operatorBudgetOk`・`reserveUsage`）は残高が見積もりに満たない段階で止まるため、0まで表示を待つと「止まっているのに画面は何も言わない」期間ができる（expertは数値も閾値通知も無く、この表示が唯一の気付く経路）。バナー・残量カードは`summary.paused`だけを見る。
 
 全プラン7日間無料トライアル。Checkoutでカード登録を必須とし、trialはuser_idごとに初回1回だけ付与する。
 
 ### 2.1 Checkout作成
 
-- `POST /api/stripe/checkout`は`{"plan":"standard|md|premium"}`だけを受け付け、未知フィールドも入力不正として拒否する。planをサーバー側の環境変数Price ID対応表で解決し、クライアントからPrice IDを受け取らない。
+- `POST /api/stripe/checkout`は`{"plan":"standard|premium|expert"}`だけを受け付け、未知フィールドも入力不正として拒否する。planをサーバー側の環境変数Price ID対応表で解決し、クライアントからPrice IDを受け取らない。
 - Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。既存の`stripe_customer_id`を再利用し、未作成時はemailと`user_id` metadataを付け、`exos-ai:customer:{user_id}`を冪等keyとしてCustomerを作成してprofileへ保存する。
 - Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadataおよび`client_reference_id`へ本人user_idとplanを関連付ける。
 - `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
@@ -156,7 +163,7 @@ App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paus
 
 3つの月額Priceは**同一Productでなくてよい**（2026-08-03 修正）。Portalの`subscription_update.products`はProductごとの配列を受け取るため、`npm run stripe:portal:setup`がPriceをProductごとにまとめて列挙する。以前は「同一Product配下」を要求して例外で止まっており、そのため**`subscription_update`が無効なconfigurationが残ったまま**になっていた（画面の「プランを変更」がStripeに拒否される）。Customer Portalはプラン変更を有効にし、値下げを`decreasing_item_amount`条件で期間末予約、解約を期間末、trial中の変更を`continue_trial`に設定する。値上げは即時反映し、日割り請求を有効にする。
 
-Checkout・Portalのセッションは**`locale: "ja"` を固定で指定**する（ブラウザ言語の推定に任せない・T-M8-58）。Stripe側の**商品名はアプリの表示名（通常プラン／mdプラン／プレミアムプラン）と同じにする**——Checkout・Portal・請求書にそのまま出るため、英語のままだと日本語のサービスの中でStripeの画面だけ英語になる。`stripe:portal:setup` が名前と**説明文**（プラン差の一言要約。Portalの「プランを変更」画面で商品名の下に表示され、説明が無いと名前と金額しか出ず選べない・T-M8-65）も揃え、対応表と`plans.ts`の一致は`portal-configuration.test.ts`が検査する。環境ごとに別のStripeアカウントなので、staging/productionには `--target` 付きの再実行で反映する。
+Checkout・Portalのセッションは**`locale: "ja"` を固定で指定**する（ブラウザ言語の推定に任せない・T-M8-58）。Stripe側の**商品名はアプリの表示名（スタンダードプラン／プレミアムプラン／エキスパートプラン）と同じにする**——Checkout・Portal・請求書にそのまま出るため、英語のままだと日本語のサービスの中でStripeの画面だけ英語になる。`stripe:portal:setup` が名前と**説明文**（プラン差の一言要約。Portalの「プランを変更」画面で商品名の下に表示され、説明が無いと名前と金額しか出ず選べない・T-M8-65）も揃え、対応表と`plans.ts`の一致は`portal-configuration.test.ts`が検査する。環境ごとに別のStripeアカウントなので、staging/productionには `--target` 付きの再実行で反映する。
 
 「プランを変更」「解約する」は`flow_data`（`subscription_update`／`subscription_cancel`）でStripeの該当画面へ**直接**入る。対象のsubscriptionは`profiles.stripe_subscription_id`を正とし、**nullのときはStripeからその顧客の変更できる契約（active／trialing／past_due・新しい順）を引いて補う**（webhook同期前でも正しい画面に着くため・T-M8-56）。それでも見つからなければ**黙ってPortalのトップを開かず**`subscription_required`で止める——トップに着いても変更・解約はできず、押した人には何が起きたのか分からない（2026-08-05に利用者が実際に踏んだ）。
 
@@ -164,19 +171,19 @@ Portal Configurationは`subscription_update.proration_behavior=create_prorations
 
 | 変更 | 仕様 |
 |---|---|
-| standard → md | Stripe反映後すぐmd機能とXアカウント3件を有効化 |
-| standard/md → premium | Stripe反映後、AIは運営キーへ切替。BYOKキーは削除しない。BYOK Appで認可済みのXアカウントは`expired`にして運営Appでの再連携を要求 |
-| premium → standard/md | Stripe Customer Portalで期間末変更。反映後、AI/XのBYOK資格情報を要求し、managed Appで認可済みのXアカウントは`expired`にしてユーザーAppでの再連携を要求 |
-| md/premium → standard | `profiles.active_x_account_id`の1件だけ維持し、残りは`disabled`。active未設定なら`created_at`が最古のactive 1件を維持。データ・tokenは削除しない |
+| standard → premium/expert | Stripe反映後、AIは運営キーへ切替。BYOKキーは削除しない。BYOK Appで認可済みのXアカウントは`expired`にして運営Appでの再連携を要求 |
+| premium/expert → standard | Stripe Customer Portalで期間末変更。反映後、AI/XのBYOK資格情報を要求し、managed Appで認可済みのXアカウントは`expired`にしてユーザーAppでの再連携を要求 |
+| premium ⇄ expert | どちらも運営キー（managed）なので連携は不変。利用枠の上限だけが変わる |
+| 遷移先の上限超過 | 遷移先プランの`xAccountLimit`（standard/premium=1・expert=3）を超えるactiveは、選択中→作成が古い順に残して超過分を`disabled`。データ・tokenは削除しない（T-M8-168で旧standard専用の「1件だけ残す」から汎用化） |
 | 解約予定 | `cancel_at_period_end = true`でも期間終了までは現在プランを利用可 |
 
 複数Xアカウントの無効化はwebhook同期後の同一処理で行う。再アップグレード時にユーザーが再有効化する。
 
 planが変わったSubscription同期は、profileの課金projection更新と次の処理を同じtransactionでcommit／rollbackする。
 
-1. standard／md→premiumはBYOK Xアカウントを`expired`、premium→standard／mdはmanaged Xアカウントを`expired`にする。token・BYOKキーは保持する。
-2. standardへ変わる場合、失効後も選択中Xアカウントがactiveならその1件を維持する。そうでなければ最古のactive 1件を選び、残りのactiveを`disabled`にする。互換性のあるactive候補がなければ選択を解除する。
-3. premium→standard／mdは`ai_purpose_config`を登録済み`valid`キーと照合する。textはanthropic／openai／google、imageはopenai／googleだけを維持し、欠損・invalid・未対応providerを`null`へ戻す。外部疎通と再有効化はM2の設定操作で行う。
+1. BYOK→運営キー系はBYOK Xアカウントを`expired`、運営キー系→BYOKはmanaged Xアカウントを`expired`にする。token・BYOKキーは保持する（判定は`isOperatorManagedPlan`）。
+2. 遷移先の`xAccountLimit`を超えるactiveがある場合、選択中→作成が古い順に上限まで残し、超過分を`disabled`にする。選択中が残らなければ残存の先頭へ付け替え、無ければ選択を解除する。
+3. 運営キー系→BYOKは`ai_purpose_config`を登録済み`valid`キーと照合する。textはanthropic／openai／google、imageはopenai／googleだけを維持し、欠損・invalid・未対応providerを`null`へ戻す。外部疎通と再有効化はM2の設定操作で行う。
 
 planが同一のstatus／期間更新では上記副作用を再実行しない。stale eventは課金projectionと同様にプラン変更副作用もskipする。下書き、投稿履歴、実績、アカウント.mdと履歴、学習source、token／key ciphertext、利用台帳は削除しない。
 
@@ -308,3 +315,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.31 | 2026-08-19 | Checkout／Portal Session作成中にStripe画面originへの接続準備を並行する仕様を追加（T-M8-152） |
 | v1.32 | 2026-08-19 | 未確認ログインを6桁コード画面へ切り替え、新しいTurnstile tokenでコードを自動再送する仕様を追加（T-M8-153） |
 | v1.33 | 2026-08-19 | proxyの検証済みuserを後段で再利用し、Auth／profileの正常系重複往復を画面表示から削除（T-M8-154） |
+| v1.34 | 2026-08-20 | プラン再編（T-M8-168）: 3プランの価格・上限・遷移表を全面改定。expertの利用枠秘匿（無制限表示・usage_paused）とXアカウント上限1/1/3を追加 |

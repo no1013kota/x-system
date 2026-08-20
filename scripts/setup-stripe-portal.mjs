@@ -52,14 +52,14 @@ let TARGET = "local";
  */
 /**
  * Stripe側の商品名（T-M8-58）。**Checkout・Portal・請求書にそのまま出る**。
- * 英語のまま（Standard/md/Premium）だと、日本語で作っている画面の中でStripeの画面だけ
+ * 英語のまま（Standard/Premium/Expert）だと、日本語で作っている画面の中でStripeの画面だけ
  * 英語の商品名になる。アプリの表示名（`src/lib/plans.ts` の displayName）と同じにする——
  * 対応が崩れていないことは `portal-configuration.test.ts` が検査する。
  */
 export const PRODUCT_NAMES = {
-  STRIPE_PRICE_STANDARD_MONTHLY: "通常プラン",
-  STRIPE_PRICE_MD_MONTHLY: "mdプラン",
+  STRIPE_PRICE_STANDARD_MONTHLY: "スタンダードプラン",
   STRIPE_PRICE_PREMIUM_MONTHLY: "プレミアムプラン",
+  STRIPE_PRICE_EXPERT_MONTHLY: "エキスパートプラン",
 };
 
 /**
@@ -70,18 +70,19 @@ export const PRODUCT_NAMES = {
  */
 export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_STANDARD_MONTHLY:
-    "まずは1つのXアカウントを着実に運用。X APIキー・生成AIキーはご自身で用意（利用料は実費）。月間の利用上限なし。",
-  STRIPE_PRICE_MD_MONTHLY:
-    "Xアカウント3つまで＋AIへの指示文（アカウント.md・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+    "Xアカウント1つ＋AIへの指示文（アカウント.md・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
   STRIPE_PRICE_PREMIUM_MONTHLY:
-    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: AIクレジット1000・通常投稿200・URL付き20。",
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント1つ。月間上限: AIクレジット1000・通常投稿200・URL付き20。",
+  // エキスパートは表示上「無制限」（T-M8-168・運営者の決定）。内部ガード値をStripe画面にも出さない。
+  STRIPE_PRICE_EXPERT_MONTHLY:
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間の利用上限なし。",
 };
 
 const ACCOUNT_SCOPED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_STANDARD_MONTHLY",
-  "STRIPE_PRICE_MD_MONTHLY",
   "STRIPE_PRICE_PREMIUM_MONTHLY",
+  "STRIPE_PRICE_EXPERT_MONTHLY",
   "STRIPE_PORTAL_CONFIGURATION_ID",
 ];
 
@@ -244,7 +245,7 @@ async function main() {
   const account = await requireAccountScoped();
   const priceIds = [
     account.STRIPE_PRICE_STANDARD_MONTHLY,
-    account.STRIPE_PRICE_MD_MONTHLY,
+    account.STRIPE_PRICE_EXPERT_MONTHLY,
     account.STRIPE_PRICE_PREMIUM_MONTHLY,
   ];
 

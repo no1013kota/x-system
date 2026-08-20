@@ -62,6 +62,8 @@ describe("loadUsageSummaryForUser (db)", () => {
         ai_credits: { used: 220, limit: 1000, remaining: 780 },
         normal_posts: { used: 38, limit: 200, remaining: 162 },
         url_posts: { used: 8, limit: 20, remaining: 12 },
+        concealed: false,
+        paused: false,
       });
     } finally {
       await cleanup(uid);

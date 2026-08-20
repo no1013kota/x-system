@@ -97,10 +97,11 @@ export default async function AppHomePage() {
       // 失敗による空をUIで区別する（原則1）。ImportantNewsCard が理由を表示する。
       () => ({ failed: true, items: [] as NewsItemView[] }),
     );
-    // premium 月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12）。premium以外は null（非表示）。
+    // 運営キー系プランの月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
+    // BYOK（standard）と未契約は null（非表示）。
     const usagePromise = loadUsageSummaryForUser(
       user.id,
-      planRows.rows[0]?.plan ?? "standard",
+      planRows.rows[0]?.plan ?? "",
     );
     if (activeXAccountId) {
       // 確認待ちキュー（status=draftを新しい順・要件06 §1）・次回の予定・直近の実績・KPI。

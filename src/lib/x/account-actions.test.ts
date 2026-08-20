@@ -155,7 +155,7 @@ describe("enableXAccount", () => {
   }
 
   it("activates when auth_type matches the plan, /me succeeds, and there is room", async () => {
-    const { db: d } = db("premium", "managed", 0); // premium limit 3
+    const { db: d } = db("premium", "managed", 0); // premium limit 1・active 0 なので枠あり
     const res = await enableXAccount("a1", "u1", {
       db: d,
       runInTx: runInTxPassthrough(d),
@@ -194,7 +194,7 @@ describe("enableXAccount", () => {
   });
 
   it("rejects when the plan limit is already full", async () => {
-    const { db: d } = db("standard", "byok", 1); // standard limit 1, already 1 other active
+    const { db: d } = db("standard", "byok", 1); // standard limit 1（2026-08-20）, already 1 other active
     const err = await rejection(
       enableXAccount("a1", "u1", {
         db: d,

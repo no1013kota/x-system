@@ -54,7 +54,7 @@ describe("base_md manual edit / rollback (db)", () => {
 
   async function seed(
     c: PoolClient,
-    plan: string,
+    plan: string | null,
   ): Promise<{ uid: string; xid: string }> {
     const uid = randomUUID();
     await c.query(
@@ -100,7 +100,7 @@ describe("base_md manual edit / rollback (db)", () => {
   };
 
   it("md plan: updates base_md + version + base_md_versions(manual) atomically", async () => {
-    const { uid, xid } = await withTransaction((c) => seed(c, "md"));
+    const { uid, xid } = await withTransaction((c) => seed(c, "standard"));
     try {
       const V3 = V2.replace("v2-5", "v3-5");
       const res = await withTransaction((c) =>
@@ -125,8 +125,9 @@ describe("base_md manual edit / rollback (db)", () => {
     }
   });
 
-  it("standard plan: forbidden", async () => {
-    const { uid, xid } = await withTransaction((c) => seed(c, "standard"));
+  // 旧standard（編集不可プラン）はT-M8-168で撤廃。編集を拒否されるのは未契約（plan null）だけになった。
+  it("未契約（plan null）: forbidden", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c, null));
     try {
       const e = await reject(
         withTransaction((c) => applyUpdateBaseMdManual(c, { userId: uid, xAccountId: xid, content: V2, expectedVersion: 2 })),
@@ -151,7 +152,7 @@ describe("base_md manual edit / rollback (db)", () => {
   });
 
   it("learning_analysis running: job_conflict", async () => {
-    const { uid, xid } = await withTransaction((c) => seed(c, "md"));
+    const { uid, xid } = await withTransaction((c) => seed(c, "standard"));
     try {
       await withTransaction((c) =>
         c.query(

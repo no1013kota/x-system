@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.46 |
+| バージョン | v1.47 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -22,7 +22,7 @@
 
 | enum | 値 |
 |---|---|
-| `plan_type` | `standard`, `md`, `premium` |
+| `plan_type` | `standard`, `premium`, `expert`（T-M8-168で入れ替え。旧md→standard・旧standard→NULL） |
 | `subscription_status` | `incomplete`, `incomplete_expired`, `trialing`, `active`, `past_due`, `paused`, `canceled`, `unpaid` |
 | `api_provider` | `x`, `anthropic`, `openai`, `google` |
 | `api_key_status` | `valid`, `invalid`, `unchecked` |
@@ -53,7 +53,7 @@
 |---|---|---|---|
 | `id` | `uuid` | PK, FK `auth.users.id` | ユーザーID |
 | `email` | `text` | not null | メールアドレス |
-| `plan` | `plan_type` | not null default `standard` | 現在プラン |
+| `plan` | `plan_type` | **nullable・defaultなし**（T-M8-168） | 現在プラン。**未契約は NULL**（checkout完了時にsubscription-syncが設定） |
 | `stripe_customer_id` | `text` | unique null | Stripe customer |
 | `stripe_subscription_id` | `text` | unique null | Stripe subscription |
 | `subscription_status` | `subscription_status` | not null default `incomplete` | 課金状態 |
@@ -882,3 +882,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
 | v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
 | v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
+| v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |

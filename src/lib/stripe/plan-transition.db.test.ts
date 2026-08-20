@@ -34,9 +34,10 @@ describe("Stripe plan transition side effects", () => {
                'authenticated', 'authenticated', $2)`,
       [userId, `${userId}@example.com`],
     );
+    // 初期planは premium にする（最初の sync("standard") が「同一plan」で早期returnしないため）。
     await db.query(
       `update profiles
-          set plan = 'md', subscription_status = 'active',
+          set plan = 'premium', subscription_status = 'active',
               stripe_customer_id = $2, stripe_subscription_id = $3
         where id = $1`,
       [userId, `cus_${userId}`, `sub_${userId}`],
@@ -104,6 +105,7 @@ describe("Stripe plan transition side effects", () => {
         },
       });
 
+    // standard の上限は1（2026-08-20運営者の指示）。選択中を最優先で残し、他は disabled。
     await expect(sync("standard")).resolves.toBe("updated");
     const limited = await db.query<{
       access_token_ciphertext: string;
@@ -122,6 +124,7 @@ describe("Stripe plan transition side effects", () => {
       { id: selectedId, status: "active" },
       { id: newestId, status: "disabled" },
     ]);
+    // disabled はデータ・tokenを消さない（再有効化で戻せる）。
     expect(limited.rows.every((row) => row.access_token_ciphertext)).toBe(true);
     expect(limited.rows.every((row) => row.refresh_token_ciphertext)).toBe(true);
     expect(limited.rows.map((row) => row.base_md)).toEqual([
@@ -143,12 +146,23 @@ describe("Stripe plan transition side effects", () => {
       tweet_metrics: { tweet_1: { likes: 7 } },
     });
 
+    // 選択なし・4件activeから上限1へ: 最古だけ残り、選択は最古へフォールバック。
+    const fourthId = randomUUID();
+    await db.query(
+      `insert into x_accounts
+         (id, user_id, x_user_id, handle, name, auth_type,
+          access_token_ciphertext, refresh_token_ciphertext, status,
+          base_md, base_md_version, created_at)
+       values ($1, $2, $3, $4, $4, 'byok', 'ct', 'rt', 'active', 'base fourth', 1,
+               '2026-07-04T00:00:00Z')`,
+      [fourthId, userId, `x_${fourthId}`, "fourth"],
+    );
     await db.query(
       "update x_accounts set status = 'active' where user_id = $1",
       [userId],
     );
     await db.query(
-      "update profiles set plan = 'md', active_x_account_id = null where id = $1",
+      "update profiles set plan = 'premium', active_x_account_id = null where id = $1",
       [userId],
     );
     await expect(sync("standard")).resolves.toBe("updated");
@@ -165,6 +179,7 @@ describe("Stripe plan transition side effects", () => {
       active_x_account_id: oldestId,
     });
 
+    // BYOK→運営キー系: 全byokが disabled も含めて expired になる（tokenは消さない）。
     await expect(sync("premium")).resolves.toBe("updated");
     const byokAfterPremium = await db.query(
       `select count(*)::int as total,
@@ -174,20 +189,46 @@ describe("Stripe plan transition side effects", () => {
       [userId],
     );
     expect(byokAfterPremium.rows[0]).toEqual({
-      expired: 3,
-      tokens: 3,
-      total: 3,
+      expired: 4,
+      tokens: 4,
+      total: 4,
     });
 
-    const managedId = randomUUID();
+    // 運営キー系どうし（premium→expert）はauth_typeを失効させず、expertの上限3で
+    // 「選択中→最古」の順に残す（汎用の絞り込み・T-M8-168）。
+    const managedIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    for (const [i, id] of managedIds.entries()) {
+      await db.query(
+        `insert into x_accounts
+          (id, user_id, x_user_id, handle, name, auth_type,
+           access_token_ciphertext, refresh_token_ciphertext, status, created_at)
+         values ($1, $2, $3, $4, $4, 'managed', 'm_access', 'm_refresh', 'active', $5)`,
+        [id, userId, `managed_x_${i}`, `managed${i}`, `2026-07-1${i}T00:00:00Z`],
+      );
+    }
     await db.query(
-      `insert into x_accounts
-        (id, user_id, x_user_id, handle, name, auth_type,
-         access_token_ciphertext, refresh_token_ciphertext, status)
-       values ($1, $2, 'managed_x', 'managed', 'managed', 'managed',
-               'managed_access', 'managed_refresh', 'active')`,
-      [managedId, userId],
+      "update profiles set active_x_account_id = $2 where id = $1",
+      [userId, managedIds[1]],
     );
+    await expect(sync("expert")).resolves.toBe("updated");
+    const managedTrim = await db.query<{ id: string; status: string }>(
+      `select id, status from x_accounts
+        where user_id = $1 and auth_type = 'managed' order by created_at`,
+      [userId],
+    );
+    expect(managedTrim.rows).toEqual([
+      { id: managedIds[0], status: "active" },
+      { id: managedIds[1], status: "active" },
+      { id: managedIds[2], status: "active" },
+      { id: managedIds[3], status: "disabled" },
+    ]);
+    const selectionAfterExpert = await db.query(
+      "select active_x_account_id from profiles where id = $1",
+      [userId],
+    );
+    expect(selectionAfterExpert.rows[0].active_x_account_id).toBe(managedIds[1]);
+
+    // 運営キー系→BYOKへの降格（managed失効＋BYOK purposes再検証）。BYOKプランは standard。
     await db.query(
       `insert into user_api_keys
         (user_id, provider, credentials_ciphertext, status)
@@ -197,12 +238,11 @@ describe("Stripe plan transition side effects", () => {
     );
     await db.query(
       `update profiles
-          set active_x_account_id = $2,
-              ai_purpose_config = '{"text":"anthropic","image":"openai"}'::jsonb
+          set ai_purpose_config = '{"text":"anthropic","image":"openai"}'::jsonb
         where id = $1`,
-      [userId, managedId],
+      [userId],
     );
-    await expect(sync("md")).resolves.toBe("updated");
+    await expect(sync("standard")).resolves.toBe("updated");
     const afterByok = await db.query(
       `select p.active_x_account_id, p.ai_purpose_config,
               x.status, x.access_token_ciphertext,
@@ -210,10 +250,10 @@ describe("Stripe plan transition side effects", () => {
                 where k.user_id = p.id) as key_count
          from profiles p join x_accounts x on x.id = $2
         where p.id = $1`,
-      [userId, managedId],
+      [userId, managedIds[1]],
     );
     expect(afterByok.rows[0]).toEqual({
-      access_token_ciphertext: "managed_access",
+      access_token_ciphertext: "m_access",
       active_x_account_id: null,
       ai_purpose_config: { image: null, image_model: null, text: "anthropic", text_model: null },
       key_count: 2,

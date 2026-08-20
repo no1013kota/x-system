@@ -64,7 +64,7 @@ describe("Stripe subscription synchronization transaction", () => {
     };
     const priceIds = {
       standard: "price_standard",
-      md: "price_md",
+      expert: "price_expert",
       premium: "price_premium",
     } as const;
 
@@ -187,7 +187,7 @@ describe("Stripe subscription synchronization transaction", () => {
         currentPeriodEnd: 1_787_000_000,
         customerId: "cus_sync",
         eventCreated: trialCreated + 1,
-        plan: "md",
+        plan: "expert",
         status: "active",
         subscriptionId: "sub_sync",
         trialEnd: null,
@@ -204,7 +204,7 @@ describe("Stripe subscription synchronization transaction", () => {
       [userId],
     );
     expect(afterActive.rows[0]).toMatchObject({
-      plan: "md",
+      plan: "expert",
       subscription_status: "active",
     });
     expect(afterActive.rows[0].trial_used_at.toISOString()).toBe(firstTrialUsedAt);
@@ -214,7 +214,7 @@ describe("Stripe subscription synchronization transaction", () => {
       currentPeriodEnd: 1_787_100_000,
       customerId: "cus_sync",
       eventCreated: trialCreated + 2,
-      plan: "md",
+      plan: "expert",
       status: "past_due",
       subscriptionId: "sub_sync",
       trialEnd: null,

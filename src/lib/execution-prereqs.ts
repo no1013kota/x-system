@@ -1,10 +1,10 @@
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { AppError } from "@/lib/observability/errors";
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 
 /**
  * 生成・投稿・スケジュール・学習の各操作が共用する実行前提の検証（要件06 §3.1/§3.2・要件05 §2.2, PRD §4）。
- * 純粋関数。プラン（BYOK/premium）別に前提を判定し、不足時はコード・不足項目一覧・設定画面パスを返す。
+ * 純粋関数。プラン（BYOK/運営キー系）別に前提を判定し、不足時はコード・不足項目一覧・設定画面パスを返す。
  * 画面遷移は制限しない（実行時検証のみ）。法務同意は `requireExecutionAccess` が別途担う。
  */
 
@@ -86,23 +86,23 @@ export interface ExecutionPrereqError {
 export function checkExecutionPrerequisites(
   input: ExecutionPrereqInput,
 ): ExecutionPrereqError | null {
-  const premium = input.plan === "premium";
+  const operatorManaged = isOperatorManagedPlan(input.plan);
   const missing: PrereqItem[] = [];
 
   if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) {
     missing.push("subscription");
   }
   // BYOKのみ: X App資格情報が登録・形式検証済み（valid/unchecked）であること。
-  if (!premium && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {
+  if (!operatorManaged && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {
     missing.push("x_api_key");
   }
   if (!input.hasActiveXAccount) {
     missing.push("x_account");
   }
-  if (!premium && !input.textAiKeyValid) {
+  if (!operatorManaged && !input.textAiKeyValid) {
     missing.push("text_ai_key");
   }
-  if (!premium && input.imageRequested && !input.imageAiKeyValid) {
+  if (!operatorManaged && input.imageRequested && !input.imageAiKeyValid) {
     missing.push("image_ai_key");
   }
   if (input.baseMdVersion < 1) {
@@ -121,12 +121,12 @@ export function checkExecutionPrerequisites(
 export function checkPostingPrerequisites(
   input: ExecutionPrereqInput,
 ): ExecutionPrereqError | null {
-  const premium = input.plan === "premium";
+  const operatorManaged = isOperatorManagedPlan(input.plan);
   const missing: PrereqItem[] = [];
   if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) {
     missing.push("subscription");
   }
-  if (!premium && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {
+  if (!operatorManaged && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {
     missing.push("x_api_key");
   }
   if (!input.hasActiveXAccount) {
@@ -228,7 +228,7 @@ const TEXT_PROVIDER_UNASSIGNED = {
 
 /**
  * ホーム初期設定ガイド（SC-05, 要件06 §3.1）のチェックリストを組み立てる。充足判定は
- * `checkExecutionPrerequisites` を再利用し二重実装しない。premiumはキー項目（X APIキー・文章AIキー）を除外。
+ * `checkExecutionPrerequisites` を再利用し二重実装しない。運営キー系（premium/expert）はキー項目（X APIキー・文章AIキー）を除外。
  */
 export function buildSetupChecklist(
   input: ExecutionPrereqInput,
@@ -236,7 +236,7 @@ export function buildSetupChecklist(
   const missing = new Set(
     checkExecutionPrerequisites({ ...input, imageRequested: false })?.missing ?? [],
   );
-  const items = input.plan === "premium" ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
+  const items = isOperatorManagedPlan(input.plan) ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
   return items.map((item) => {
     const satisfied = !missing.has(item);
     // キーはvalidなのに未充足＝AI用途で文章providerが未割り当て。APIキー画面へ戻しても

@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { isOperatorManagedPlan, PLANS } from "../plans";
 
 import { revalidateByokAiPurposeConfig } from "@/lib/ai-purpose-config";
 import { DB_ENUMS } from "@/lib/db/enums";
@@ -82,31 +83,45 @@ async function clearInactiveSelection(
   );
 }
 
-async function applyStandardAccountLimit(
+/**
+ * 遷移先プランのXアカウント上限を超える分を disabled にする（T-M8-168で汎用化）。
+ *
+ * 旧実装は `applyStandardAccountLimit` ＝「1つだけ残して他を全部無効化」の**ハードコード**
+ * だった。上限はプランごとに違い今後も変わる（standard/premium=1・expert=3、2026-08-20時点）ため、
+ * ハードコードのままだと上限の変更のたびに正当なアカウントを黙って無効化し得る。plans.ts から引く。
+ * 残す優先順位は 選択中 → 作成が古い順（旧実装と同じ）。データは消さない（status変更のみ）。
+ */
+async function applyXAccountLimit(
   database: StripeEventDatabase,
   target: PlanTransitionTarget,
+  limit: number,
 ): Promise<void> {
-  const keeper = await database.query<{ id: string }>(
+  const keepers = await database.query<{ id: string }>(
     `select id from x_accounts
       where user_id = $1 and status = 'active'
       order by (id = $2::uuid) desc, created_at asc, id asc
-      limit 1`,
-    [target.id, target.active_x_account_id],
+      limit $3`,
+    [target.id, target.active_x_account_id, limit],
   );
-  const keeperId = keeper.rows[0]?.id ?? null;
+  const keeperIds = keepers.rows.map((row) => row.id);
   await database.query(
     `update x_accounts
         set status = 'disabled', updated_at = now()
       where user_id = $1
         and status = 'active'
-        and ($2::uuid is null or id <> $2::uuid)`,
-    [target.id, keeperId],
+        and not (id = any($2::uuid[]))`,
+    [target.id, keeperIds],
   );
+  // 選択中が残っていればそのまま。消えたら先頭（選択中優先→最古）の残存へ付け替える。
+  const nextActive =
+    target.active_x_account_id && keeperIds.includes(target.active_x_account_id)
+      ? target.active_x_account_id
+      : (keeperIds[0] ?? null);
   await database.query(
     `update profiles
         set active_x_account_id = $2::uuid, updated_at = now()
       where id = $1`,
-    [target.id, keeperId],
+    [target.id, nextActive],
   );
 }
 
@@ -140,13 +155,16 @@ async function applyPlanTransition(
 ): Promise<void> {
   if (target.plan === nextPlan) return;
 
-  if (nextPlan === "premium") {
+  // 遷移先プランで使えない auth_type の連携は expired にする（premium⇄expert間は同じmanagedなので不変）。
+  const nextManaged = isOperatorManagedPlan(nextPlan);
+  const prevManaged = isOperatorManagedPlan(target.plan);
+  if (nextManaged && !prevManaged) {
     await database.query(
       `update x_accounts set status = 'expired', updated_at = now()
         where user_id = $1 and auth_type = 'byok' and status <> 'expired'`,
       [target.id],
     );
-  } else if (target.plan === "premium") {
+  } else if (!nextManaged && prevManaged) {
     await database.query(
       `update x_accounts set status = 'expired', updated_at = now()
         where user_id = $1 and auth_type = 'managed' and status <> 'expired'`,
@@ -155,11 +173,8 @@ async function applyPlanTransition(
     await revalidateByokPurposeConfig(database, target);
   }
 
-  if (nextPlan === "standard") {
-    await applyStandardAccountLimit(database, target);
-  } else {
-    await clearInactiveSelection(database, target.id);
-  }
+  await applyXAccountLimit(database, target, PLANS[nextPlan].xAccountLimit);
+  await clearInactiveSelection(database, target.id);
 }
 
 export function expandedId(value: { id: string } | string | null): string | null {

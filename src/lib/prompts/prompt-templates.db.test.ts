@@ -192,7 +192,7 @@ describe("prompt-templates (local DB)", () => {
         kind: "image",
         content: "OVR 1",
         expectedUpdatedAt: null,
-        plan: "md",
+        plan: "standard",
         quotePostEnabled: true,
       });
       expect(created).toMatchObject({ kind: "image", content: "OVR 1", isOverride: true });
@@ -205,7 +205,7 @@ describe("prompt-templates (local DB)", () => {
           kind: "image",
           content: "OVR X",
           expectedUpdatedAt: null,
-          plan: "md",
+          plan: "standard",
           quotePostEnabled: true,
         }),
       );
@@ -218,7 +218,7 @@ describe("prompt-templates (local DB)", () => {
           kind: "image",
           content: "OVR 2",
           expectedUpdatedAt: "2000-01-01T00:00:00.000Z",
-          plan: "md",
+          plan: "standard",
           quotePostEnabled: true,
         }),
       );
@@ -255,13 +255,13 @@ describe("prompt-templates (local DB)", () => {
         kind: "image",
         content: "OVR IMG",
         expectedUpdatedAt: null,
-        plan: "md",
+        plan: "standard",
         quotePostEnabled: true,
       });
       const reset = await applyResetPromptTemplate(db, {
         xAccountId: xid,
         kind: "image",
-        plan: "md",
+        plan: "standard",
         quotePostEnabled: true,
       });
       expect(reset).toMatchObject({
@@ -277,31 +277,22 @@ describe("prompt-templates (local DB)", () => {
     }
   });
 
-  it("standard plan is forbidden; p5 with quote-post off is feature_disabled", async () => {
+  // 旧standard（編集不可プラン）はT-M8-168で撤廃。forbiddenになるのは未知・未契約のplanだけ。
+  it("未知・未契約のplanは forbidden（編集権限ガードは残る）", async () => {
     await seedSystemPromptTemplates(db);
     const { uid, xid } = await seedAccount();
     try {
       const forbidden = await reject(
         applyUpdatePromptTemplate(db, {
           xAccountId: xid,
-          kind: "p1",
+          kind: "image",
           content: "X",
           expectedUpdatedAt: null,
-          plan: "standard",
+          plan: "",
           quotePostEnabled: true,
         }),
       );
       expect(forbidden.code).toBe("forbidden");
-
-      const disabled = await reject(
-        applyResetPromptTemplate(db, {
-          xAccountId: xid,
-          kind: "p5",
-          plan: "md",
-          quotePostEnabled: false,
-        }),
-      );
-      expect(disabled.code).toBe("feature_disabled");
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

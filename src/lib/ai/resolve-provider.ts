@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { isOperatorManagedPlan } from "../plans";
 
 import { resolvePremiumTextPurpose } from "../ai-purpose-config";
 import { isCatalogImageModel, isCatalogTextModel } from "./model-catalog";
@@ -179,7 +180,7 @@ export async function resolveTextKey(
   input: { plan: PlanId; userId: string },
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
-  if (input.plan === "premium") {
+  if (isOperatorManagedPlan(input.plan)) {
     // providerは運営固定。モデルはユーザー選択を尊重する（T-M8-107。運営キーの実費が
     // モデルで変わるため、単価はMODEL_RATESが台帳へ反映する）。
     const provider = resolvePremiumTextPurpose(deps.config.premiumTextProvider);
@@ -233,7 +234,7 @@ export async function resolveImageKey(
   input: { plan: PlanId; userId: string },
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
-  if (input.plan === "premium") {
+  if (isOperatorManagedPlan(input.plan)) {
     // premiumのimageは運営キーを使うが、providerはユーザーがopenai/googleから選べる
     //（要件02 §4.1・要件06。textの固定と異なりimageは選択を尊重する）。
     const cfg = await getAiPurposeConfig(deps.client, input.userId);

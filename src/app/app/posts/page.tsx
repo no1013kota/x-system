@@ -12,6 +12,7 @@ import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
+import { isOperatorManagedPlan } from "@/lib/plans";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -55,12 +56,12 @@ function imageKeyRowsQuery(userId: string) {
   );
 }
 
-/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。 */
+/** BYOKは valid な openai/google キー、運営キー系（premium/expert）は運営キー＋画像モデルが設定済みのproviderを返す。 */
 function imageProvidersFor(
   plan: string | null,
   keyRows: { provider: string }[],
 ): string[] {
-  if (plan === "premium") {
+  if (isOperatorManagedPlan(plan)) {
     const providers: string[] = [];
     if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
     if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
@@ -96,7 +97,7 @@ async function createTabData(userId: string, activeXAccountId: string) {
     : allPatterns.filter((option) => !option.requiresQuoteUrl);
   const plan = profileResult.rows[0]?.plan ?? null;
   const imageProviders = imageProvidersFor(plan, keyRows.rows);
-  // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは mdプラン以上
+  // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは編集権限のあるプラン（T-M8-168で全プラン）
   // （AI設定＞プロンプトと同じ境界）なので、standard には渡さない＝セクションごと出さない。
   // updatedAt は「保存して以後も使う」の楽観ロック（AI設定と同じ仕組み）に使う。
   let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =

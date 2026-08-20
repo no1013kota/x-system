@@ -72,27 +72,30 @@ export default function TermsPage() {
 
       <LegalArticle n={3} title="利用者ご自身でご用意いただくもの・費用のご負担">
         <p>
-          {PLANS.standard.displayName}および{PLANS.md.displayName}
+          {PLANS.standard.displayName}
           をご利用の場合、X APIおよび生成AIのAPIキーは利用者ご自身でご用意いただきます。
           この場合、<strong>本サービスの月額料金とは別に、X社および各AI事業者から利用者へ
           直接、従量課金による利用料が請求されます</strong>。その金額と支払条件は各事業者の
           定めによるものであり、当方は関与しません。
         </p>
         <p>
-          {PLANS.premium.displayName}
+          {PLANS.premium.displayName}および{PLANS.expert.displayName}
           をご利用の場合、これらのAPIキーは当方が用意し、API利用料の追加負担はありません。
-          ただし本条第3項の月間利用枠が適用されます。
+          ただし本条第3項の利用条件が適用されます。
         </p>
         <p>
           {PLANS.premium.displayName}の月間利用枠は、通常投稿{premium?.normalPosts}件、
           URL付き投稿クレジット{premium?.urlPosts}、AIクレジット{premium?.aiCredits}
-          （文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。利用枠は外部APIの原価や運用状況に応じて改定する場合があります。
+          （文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
+          {PLANS.expert.displayName}に月間の利用枠はありません。ただし、システムの安全と
+          サービス品質の維持のため、<strong>通常の利用を大きく超える連続的な利用を検知した場合、
+          実行を一時的に停止することがあります</strong>。利用枠および本項の条件は外部APIの原価や
+          運用状況に応じて改定する場合があります。
           利用者に不利益となる変更を行う場合は、第17条の手続きにより事前に周知します。
         </p>
         <p>
-          プランに応じて連携できるXアカウント数の上限（{PLANS.standard.displayName}は
-          {PLANS.standard.xAccountLimit}件、{PLANS.md.displayName}および
-          {PLANS.premium.displayName}は{PLANS.premium.xAccountLimit}件）が適用されます。
+          連携できるXアカウント数の上限は、{PLANS.standard.displayName}・{PLANS.premium.displayName}が
+          {PLANS.standard.xAccountLimit}件、{PLANS.expert.displayName}が{PLANS.expert.xAccountLimit}件です。
           また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に
           上限を設けています。
         </p>
@@ -102,16 +105,16 @@ export default function TermsPage() {
         <p>
           各プランの月額料金は税込表示で、
           {PLANS.standard.displayName} {PLANS.standard.monthlyPriceJpy.toLocaleString()}円、
-          {PLANS.md.displayName} {PLANS.md.monthlyPriceJpy.toLocaleString()}円、
-          {PLANS.premium.displayName} {PLANS.premium.monthlyPriceJpy.toLocaleString()}円です。
+          {PLANS.premium.displayName} {PLANS.premium.monthlyPriceJpy.toLocaleString()}円、
+          {PLANS.expert.displayName} {PLANS.expert.monthlyPriceJpy.toLocaleString()}円です。
           お申し込みにはクレジットカードの登録が必要です。
         </p>
         {RELEASE_CAMPAIGN.active ? (
           <p>
             上記はリリース記念キャンペーンの適用価格です。{RELEASE_CAMPAIGN.afterLabel}の月額は
             {PLANS.standard.displayName} {PLANS.standard.regularPriceJpy.toLocaleString()}円、
-            {PLANS.md.displayName} {PLANS.md.regularPriceJpy.toLocaleString()}円、
-            {PLANS.premium.displayName} {PLANS.premium.regularPriceJpy.toLocaleString()}円を予定しています。
+            {PLANS.premium.displayName} {PLANS.premium.regularPriceJpy.toLocaleString()}円、
+            {PLANS.expert.displayName} {PLANS.expert.regularPriceJpy.toLocaleString()}円を予定しています。
             価格を改定する場合は、本規約の変更と同じ方法で事前にお知らせし、改定後の料金は
             お知らせ後に到来する更新日から適用します。
           </p>

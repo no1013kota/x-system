@@ -69,10 +69,13 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
   },
   {
     label: "月間の利用上限",
-    cell: (plan) =>
-      plan.usageLimits
+    cell: (plan) => {
+      // エキスパートは「無制限」と表示する（T-M8-168・運営者の決定）。内部ガード値は出さない。
+      if (plan.concealsLimits) return "無制限";
+      return plan.usageLimits
         ? `AIクレジット${plan.usageLimits.aiCredits}／通常投稿${plan.usageLimits.normalPosts}／URL付き${plan.usageLimits.urlPosts}`
-        : "なし（ご自身のAPI課金の範囲）",
+        : "なし（ご自身のAPI課金の範囲）";
+    },
   },
 ];
 

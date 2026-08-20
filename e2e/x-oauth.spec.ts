@@ -16,6 +16,8 @@ test("設定画面の「Xアカウントを追加」からX認可URLへリダイ
   page,
 }) => {
   const account = await accounts.create("xoauth");
+  // fixtureが1件連携済みで、premiumの上限は1（2026-08-20）。追加ボタンを出すため上限3のexpertにする。
+  await query(`update profiles set plan = 'expert' where id = $1`, [account.userId]);
   await signIn(page, account);
   await page.goto("/app/settings?tab=x-accounts");
 
@@ -253,7 +255,7 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   // プラン名は比較表の列見出しへ移った（T-M8-125 でカード見出しから表になった）。
   // **文言そのものではなく「プラン選択の中身が出ている」ことを見る**——文言はキャンペーンで変わる。
   await expect(page.getByRole("heading", { name: /プラン/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /通常プラン/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /スタンダードプラン/ }).first()).toBeVisible();
 
   // 顧客が紐づいたら通常どおり /app へ送り返す（決済直後に行き止まらないための既存の挙動）
   await query(`update profiles set stripe_customer_id = 'cus_review_check' where id = $1`, [

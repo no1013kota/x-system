@@ -199,8 +199,9 @@ export default function PrivacyPage() {
           ])}
         />
         <p>
-          {PLANS.premium.displayName}では、生成AIへの送信は当方が用意したAPIキーにより行われます。
-          {PLANS.standard.displayName}および{PLANS.md.displayName}
+          {PLANS.premium.displayName}および{PLANS.expert.displayName}
+          では、生成AIへの送信は当方が用意したAPIキーにより行われます。
+          {PLANS.standard.displayName}
           では、<strong>利用者ご自身が登録したAPIキーにより、利用者と各AI事業者との契約に基づいて
           送信されます</strong>。この場合、送信された情報の取扱いは各AI事業者と利用者の間の
           規約によります。

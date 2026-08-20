@@ -14,7 +14,7 @@ import { expect, signIn, test } from "./fixtures/test";
  */
 test("予約フォームの並び順が指定どおりで、生成入力が保存される", async ({ accounts, page }) => {
   const account = await accounts.create("sched-inputs");
-  // プロンプトの確認・編集はmdプラン以上（投稿作成・AI設定と同じ境界）。
+  // 契約中のプランを設定する（未契約はプロンプト編集がロックされる・T-M8-168）。
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
   await page.goto("/app/schedule");
@@ -116,20 +116,7 @@ test("予約画面からパターンを追加でき、そのまま選ばれる",
   expect(saved.name).toBe("予約から作った型");
 });
 
-/** standard プランには生成プロンプトのセクションを出さない（投稿作成と同じ境界・T-M8-135）。 */
-test("standardには予約でも生成プロンプトを出さない", async ({ accounts, page }) => {
-  const account = await accounts.create("sched-standard");
-  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
-  await signIn(page, account);
-  await page.goto("/app/schedule");
-  await page.getByRole("button", { name: "スケジュールを追加" }).click();
-
-  await expect(page.getByRole("radio", { name: /ニュース解説/ }).first()).toBeVisible();
-  await expect(page.getByText("生成に使うプロンプト")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "パターンを追加" })).toHaveCount(0);
-  // 参考URLと追加指示はプランに依らず使える（プロンプト編集ではないため）。
-  await expect(page.getByLabel("参考URL（任意）")).toBeVisible();
-});
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
 /**
  * 「パターンに保存して他でも使う」を選んだときは**パターン本体**が書き換わる（T-M8-135）。

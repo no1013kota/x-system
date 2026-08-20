@@ -1,9 +1,14 @@
-import { PLANS } from "../plans";
+import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
 import { CURRENT_MONTH_JST_SQL } from "./current-month";
 import type { Queryable } from "../x/token-refresh";
 
 /**
- * premium 利用枠の 80%/100% 到達通知（要件03 §8, T-M6-13）。counter 更新直後に新カウントを渡して呼ぶ。
+ * 運営キー系プランの利用枠 80%/100% 到達通知（要件03 §8, T-M6-13 / T-M8-168）。
+ * counter 更新直後に新カウントを渡して呼ぶ。プランと上限は同一transaction内で profiles から読む
+ * （呼び出し3箇所が plan を持っていないため。PKの1行読みで済む）。
+ *
+ * **利用枠を画面に出さないプラン（エキスパート）には作らない**——「上限の80%」という通知自体が
+ * 内部ガード値を漏らす。到達時の見せ方は常設バナーとusage_paused（一時停止の文言）が担う。
  * 枠・月・閾値ごとに dedupe_key `usage:{month}:{key}:{80|100}` で1件だけ作る（再更新・再実行は on conflict
  * で no-op）。notification_config の `usage` 設定を尊重し、両channel OFFなら通知を作らない（100%常設バナーは
  * 別途 App Shell が残量から表示するため、通知設定に関わらず表示される）。counter 更新と同一transactionで呼ぶ。
@@ -11,11 +16,11 @@ import type { Queryable } from "../x/token-refresh";
 
 export type UsageCounterKey = "normal_posts" | "url_posts" | "ai_credits";
 
-const LIMIT_BY_KEY: Record<UsageCounterKey, number | undefined> = {
-  normal_posts: PLANS.premium.usageLimits?.normalPosts,
-  url_posts: PLANS.premium.usageLimits?.urlPosts,
-  ai_credits: PLANS.premium.usageLimits?.aiCredits,
-};
+function limitFor(plan: string | null, key: UsageCounterKey): number | undefined {
+  const limits = usageLimitsForPlan(plan);
+  if (!limits) return undefined;
+  return { normal_posts: limits.normalPosts, url_posts: limits.urlPosts, ai_credits: limits.aiCredits }[key];
+}
 
 const LABEL: Record<UsageCounterKey, string> = {
   normal_posts: "通常投稿クレジット",
@@ -64,7 +69,13 @@ export async function notifyUsageThresholds(
   db: Queryable,
   params: { userId: string; key: UsageCounterKey; newCount: number },
 ): Promise<void> {
-  const limit = LIMIT_BY_KEY[params.key];
+  const { rows } = await db.query<{ plan: string | null }>(
+    `select plan from profiles where id = $1`,
+    [params.userId],
+  );
+  const plan = rows[0]?.plan ?? null;
+  if (concealsUsageLimits(plan)) return; // エキスパート: 数値を通知で漏らさない（T-M8-168）
+  const limit = limitFor(plan, params.key);
   if (!limit) return;
   const thresholds: { pct: 80 | 100; at: number }[] = [
     { pct: 80, at: Math.ceil(limit * 0.8) },

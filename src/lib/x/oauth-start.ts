@@ -1,7 +1,7 @@
 import type { XAppCredentials } from "@/lib/api-keys";
 import { requireExecutableSubscription } from "@/lib/auth/subscription-access";
 import { AppError } from "@/lib/observability/errors";
-import { PLANS, type PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 
 import {
   buildAuthorizeUrl,
@@ -23,9 +23,9 @@ import {
 const X_KEY_SETTINGS_PATH = "/app/settings?tab=api-keys";
 const DEFAULT_RETURN_PATH = "/app/settings?tab=api-keys";
 
-/** premiumは運営App(managed)、standard/mdはユーザーApp(byok)。 */
+/** 運営キー系（premium/expert）は運営App(managed)、BYOK（standard）はユーザーApp(byok)。 */
 export function expectedAuthTypeForPlan(plan: PlanId): XAuthType {
-  return plan === "premium" ? "managed" : "byok";
+  return isOperatorManagedPlan(plan) ? "managed" : "byok";
 }
 
 export interface XOAuthStartProfile {

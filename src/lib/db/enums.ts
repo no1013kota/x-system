@@ -6,7 +6,7 @@
  * the SQL `CREATE TYPE ... AS ENUM (...)` value order.
  */
 export const DB_ENUMS = {
-  plan_type: ["standard", "md", "premium"],
+  plan_type: ["standard", "premium", "expert"],
   subscription_status: [
     "incomplete",
     "incomplete_expired",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
@@ -27,7 +28,7 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
-import { PLANS, RELEASE_CAMPAIGN, hasCampaignDiscount, type PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, PLANS, RELEASE_CAMPAIGN, hasCampaignDiscount, type PlanId } from "@/lib/plans";
 import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
@@ -170,7 +171,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
-  const plan: PlanId = profile.plan ?? "standard";
+  /*
+    未契約(null)は route-guard により billing タブ以外へ来ない。以前は `?? "standard"` で
+    最も権限の狭いプランへ倒していたが、新standardは編集権限を持つ（T-M8-168）ため
+    null のまま扱い、各判定関数（promptEditablePlan / isOperatorManagedPlan）が false を返す。
+  */
+  const plan: PlanId | null = profile.plan;
   // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
   const hasStripeCustomer = Boolean(profile.stripe_customer_id);
 
@@ -180,11 +186,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // - 利用枠: premium 月間利用枠の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
   // - アカウント行: アカウント設定／プロンプトタブの対象Xアカウント。
   const [apiKeys, usage, accountResult, purposeKeys] = await Promise.all([
-    tab === "general" && plan !== "premium"
+    tab === "general" && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
     tab === "billing" || tab === "general"
-      ? loadUsageSummaryForUser(user.id, plan)
+      ? loadUsageSummaryForUser(user.id, plan ?? "")
       : Promise.resolve(null as UsageSummary | null),
     (tab === "account" || tab === "prompts") && profile.active_x_account_id
       ? admin
@@ -195,7 +201,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           .eq("status", "active")
           .maybeSingle<AccountRow>()
       : Promise.resolve(null),
-    tab === "purposes" && plan !== "premium"
+    tab === "purposes" && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve(null),
   ]);
@@ -232,7 +238,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     tab === "prompts" &&
     promptSection === "account-md" &&
     account &&
-    plan !== "standard" &&
+    promptEditablePlan(plan ?? "") &&
     account.base_md_version >= 1
   ) {
     [baseMdHistory, baseMdLearningRunning] = await Promise.all([
@@ -245,7 +251,7 @@ let promptTemplates: PromptTemplateView[] = [];
   let patterns: PatternOption[] = [];
   let patternPrompts: Record<string, PatternPromptView> = {};
   let systemDefaultPrompts: Record<string, string> = {};
-  if (tab === "prompts" && promptSection !== "account-md" && account && plan !== "standard") {
+  if (tab === "prompts" && promptSection !== "account-md" && account && promptEditablePlan(plan ?? "")) {
     if (promptSection === "image-prompt") {
       const res = await listPromptTemplatesForUser(user.id);
       promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
@@ -316,7 +322,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 )}`}
                 plan={plan}
                 xApiKeyRegistered={
-                  plan === "premium" || apiKeys.some((key) => key.provider === "x")
+                  isOperatorManagedPlan(plan) || apiKeys.some((key) => key.provider === "x")
                 }
               />
             <ApiKeySettings
@@ -443,12 +449,12 @@ let promptTemplates: PromptTemplateView[] = [];
             plan={plan}
             validUserProviders={validUserProviders}
           />
-        ) : plan === "standard" ? (
-          // プロンプトタブ（アカウント.md・投稿作成・画像生成）は md プラン以上（要件06 §9）。
+        ) : !promptEditablePlan(plan ?? "") ? (
+          // プロンプトタブは全プランで編集可（T-M8-168）。未契約（plan NULL）だけロックする。
           <LockedState
             action={<UpgradePlanButton enabled={hasStripeCustomer} />}
-            description="学習・設定の結果はアカウント.mdに反映され、投稿生成に使われています。mdプラン以上では内容とプロンプトを直接確認・編集できます。"
-            title="アカウント.md・プロンプトの確認・編集は mdプラン以上でご利用いただけます"
+            description="学習・設定の結果はアカウント.mdに反映され、投稿生成に使われています。ご契約中のプランでは内容とプロンプトを直接確認・編集できます。"
+            title="アカウント.md・プロンプトの確認・編集にはご契約が必要です"
           />
         ) : !account ? (
           <NoAccountState />

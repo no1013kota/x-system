@@ -55,7 +55,7 @@ export function PricingCards() {
         <div className="rounded-card border border-hairline bg-page px-5 py-4">
           <p className="text-body font-bold">APIキーの費用について</p>
           <p className="mt-1.5 text-body text-ink-2">
-            通常プラン・mdプランは「APIキーをご自身でご用意いただく方式」です。プレミアムプランは運営がAPIキーを用意いたします。
+            スタンダードプランは「APIキーをご自身でご用意いただく方式」です。プレミアムプラン・エキスパートプランは運営がAPIキーを用意いたします。
           </p>
         </div>
       </div>

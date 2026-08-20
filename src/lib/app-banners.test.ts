@@ -10,12 +10,23 @@ import type { UsageSummary } from "./usage/usage-summary";
 
 const ids = (banners: { id: string }[]) => banners.map((b) => b.id);
 
-function summary(over: Partial<Record<keyof UsageSummary, number>> = {}): UsageSummary {
+function summary(
+  over: Partial<Record<"ai_credits" | "normal_posts" | "url_posts", number>> = {},
+  options: { concealed?: boolean; paused?: boolean } = {},
+): UsageSummary {
   const slot = (remaining: number) => ({ used: 0, limit: 0, remaining });
-  return {
+  const slots = {
     ai_credits: slot(over.ai_credits ?? 10),
     normal_posts: slot(over.normal_posts ?? 10),
     url_posts: slot(over.url_posts ?? 10),
+  };
+  return {
+    ...slots,
+    concealed: options.concealed === true,
+    // 実物（computeUsageSummary）と同じ既定: どれかの枠が尽きたら paused。
+    paused:
+      options.paused ??
+      Object.values(slots).some((s) => s.remaining <= 0),
   };
 }
 
@@ -50,7 +61,7 @@ describe("computeXAccountBanners", () => {
 
   it("shows the invalid-key banner for BYOK plans when the X key is invalid", () => {
     const banners = computeXAccountBanners({
-      plan: "md",
+      plan: "standard",
       xAccounts: [{ status: "active", authType: "byok" }],
       xApiKeyStatus: "invalid",
     });

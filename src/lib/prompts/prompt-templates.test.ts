@@ -69,10 +69,13 @@ function codeOf(fn: () => void): { code: string; reason?: unknown } {
 }
 
 describe("prompt template guards", () => {
-  it("assertPromptEditablePlan allows md/premium, forbids standard", () => {
-    expect(() => assertPromptEditablePlan("md")).not.toThrow();
+  it("assertPromptEditablePlan は全プラン許可・未知/未契約は forbidden（T-M8-168）", () => {
+    expect(() => assertPromptEditablePlan("standard")).not.toThrow();
     expect(() => assertPromptEditablePlan("premium")).not.toThrow();
-    expect(codeOf(() => assertPromptEditablePlan("standard")).code).toBe("forbidden");
+    expect(() => assertPromptEditablePlan("expert")).not.toThrow();
+    // 旧standard（編集不可）は撤廃。falseになるのは未知・未契約(null→""を渡す)だけ。
+    expect(codeOf(() => assertPromptEditablePlan("")).code).toBe("forbidden");
+    expect(codeOf(() => assertPromptEditablePlan("md")).code).toBe("forbidden");
   });
 
   it("assertPromptKindAllowed blocks p5 only when quote-post disabled", () => {

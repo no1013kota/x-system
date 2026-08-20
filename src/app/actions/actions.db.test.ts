@@ -337,7 +337,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
 
   it("APIキー: BYOKプラン（md）は保存でき、暗号化して保存される", async () => {
     await withTransaction((c) =>
-      c.query(`update profiles set plan = 'md' where id = $1`, [userId]),
+      c.query(`update profiles set plan = 'standard' where id = $1`, [userId]),
     );
     const { saveXApiKey } = await import("./api-keys");
     const res = await saveXApiKey({
@@ -362,7 +362,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     // saveAiApiKey / verifyApiKey / deleteApiKey はどのテストからも呼ばれていなかった
     // （store層のdbテストはあるが、Action層の配線は未検証だった）。外部APIは呼ばない。
     await withTransaction((c) =>
-      c.query(`update profiles set plan = 'md' where id = $1`, [userId]),
+      c.query(`update profiles set plan = 'standard' where id = $1`, [userId]),
     );
     const { deleteApiKey, saveAiApiKey, verifyApiKey } = await import("./api-keys");
 

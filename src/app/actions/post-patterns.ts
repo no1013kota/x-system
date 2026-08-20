@@ -29,7 +29,7 @@ import { type BaseResult, errorResult, requireUserId, validationErrorResult } fr
 /**
  * 投稿パターンの Server Actions（T-M8-129 U3/U4・ADR-0008）。本人のみ。
  *
- * plan制限（standard は編集不可）・8,000字・楽観lock・所有者チェックは
+ * plan制限（編集権限は canEditMdAndPrompts・未契約は不可）・8,000字・楽観lock・所有者チェックは
  * `post-patterns-store.ts` / `post-patterns-server.ts` が担う。
  * active Xアカウント未選択は `not_found`（設定導線）へ変換する。
  */
@@ -96,7 +96,7 @@ export async function listPatternsAction(): Promise<
   BaseResult & {
     patterns?: PatternOption[];
     prompts?: Record<string, PatternPromptView>;
-    plan?: string;
+    plan?: string | null;
   }
 > {
   const auth = await requireUserId();

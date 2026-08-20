@@ -41,7 +41,7 @@ function dependencies(): BillingReturnDependencies {
     now: () => STARTED_AT + 60,
     priceIds: {
       standard: "price_standard",
-      md: "price_md",
+      expert: "price_expert",
       premium: "price_premium",
     },
     stripe: {

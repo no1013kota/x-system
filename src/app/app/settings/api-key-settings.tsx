@@ -25,7 +25,7 @@ import {
   type ApiKeyViewProvider,
   type ApiKeyViewState,
 } from "@/lib/api-key-view";
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
@@ -77,7 +77,7 @@ const STATUS_LABELS = {
 interface ApiKeySettingsProps {
   callbackUrl: string;
   initialKeys: ApiKeyViewState[];
-  plan: PlanId;
+  plan: PlanId | null;
   /**
    * プレミアムの月間利用枠（デザイン §設定・T-M8-25）。premium以外・未取得は null。
    *
@@ -338,7 +338,7 @@ export function ApiKeySettings({
     window.setTimeout(() => setCopied(false), 2000);
   }
 
-  if (plan === "premium") {
+  if (isOperatorManagedPlan(plan)) {
     return (
       <Card as="section" className="px-5 py-4" aria-labelledby="premium-key-heading">
         <div className="flex items-start gap-4">
@@ -347,7 +347,7 @@ export function ApiKeySettings({
           </div>
           <div>
             <CardTitle id="premium-key-heading">
-              プレミアムプランはキー登録不要です
+              ご契約中のプランはキー登録不要です
             </CardTitle>
             {/* 「登録不要」の言い直しは見出しと重複するため書かない（T-M8-66）。 */}
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

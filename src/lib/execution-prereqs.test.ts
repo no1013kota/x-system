@@ -126,6 +126,19 @@ describe("checkExecutionPrerequisites — premium", () => {
     expect(checkExecutionPrerequisites(premium())).toBeNull();
   });
 
+  /**
+   * expert も運営キー系（T-M8-168）。判定が `plan === "premium"` のままだと expert がBYOK扱いに
+   * なり、¥14,800のプランで生成・投稿が全滅する（レビューで検出。isOperatorManagedPlanで判定する）。
+   */
+  it("expert もX/AIキーなしで通る（運営キー系はplans.tsのusageLimitsで判定）", () => {
+    expect(checkExecutionPrerequisites(premium({ plan: "expert" }))).toBeNull();
+    expect(checkPostingPrerequisites(premium({ plan: "expert" }))).toBeNull();
+    // 初期設定ガイドも運営キー系の2項目（X連携・アカウント設定）になる。
+    expect(buildSetupChecklist(premium({ plan: "expert" })).map((i) => i)).toEqual(
+      buildSetupChecklist(premium()),
+    );
+  });
+
   it("does not require X/AI keys even when unset or image is requested", () => {
     expect(
       checkExecutionPrerequisites(

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 
 import { AppError } from "@/lib/observability/errors";
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 
 import {
   lastFour,
@@ -32,7 +32,7 @@ async function lockByokProfile(
     [userId],
   );
   if (!profile.rows[0]) throw new AppError("not_found");
-  if (profile.rows[0].plan === "premium") {
+  if (isOperatorManagedPlan(profile.rows[0].plan)) {
     throw new AppError("forbidden");
   }
   return profile.rows[0].plan;

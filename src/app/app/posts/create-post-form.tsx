@@ -124,7 +124,7 @@ export function CreatePostForm({
   initialJob?: ActiveJob | null;
   /** サーバーが描画した時刻（ミリ秒）。経過表示の初期値。 */
   initialNowMs: number;
-  /** null = standard（プロンプトのカスタマイズは mdプラン以上）。セクションごと出さない。p1〜p6＋image。 */
+  /** null = 編集権限なし（未契約）。セクションごと出さない。p1〜p6＋image。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
   /** アカウント.md（T-M8-93）。version は保存の楽観ロック。standard は null。 */
   baseMd?: { content: string; version: number } | null;
@@ -870,7 +870,7 @@ function removePattern(target: PatternOption) {
               {job.error?.message ?? "生成に失敗しました。時間をおいて再試行してください。"}
             </Notice>
             {/* 押しても直らない再試行は出さない。上限到達・前提不足はそれぞれの解決先へ送る。 */}
-            {job.error?.code === "usage_limit_exceeded" ? (
+            {job.error?.code === "usage_limit_exceeded" || job.error?.code === "usage_paused" ? (
               <Link
                 className="inline-flex h-9 items-center justify-center rounded-lg border px-4 text-sm font-medium"
                 href="/app/settings?tab=billing"

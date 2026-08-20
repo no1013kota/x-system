@@ -37,7 +37,7 @@ describe("expectedAuthTypeForPlan", () => {
   it("maps premium→managed and standard/md→byok", () => {
     expect(expectedAuthTypeForPlan("premium")).toBe("managed");
     expect(expectedAuthTypeForPlan("standard")).toBe("byok");
-    expect(expectedAuthTypeForPlan("md")).toBe("byok");
+    expect(expectedAuthTypeForPlan("standard")).toBe("byok");
   });
 });
 
@@ -99,7 +99,7 @@ describe("buildXOAuthStart", () => {
   it("blocks a new connection when the plan X-account limit is reached", async () => {
     const err = await buildXOAuthStart(
       { userId: "u" },
-      deps({ getActiveXAccountCount: async () => 1 }), // standard limit = 1
+      deps({ getActiveXAccountCount: async () => 3 }), // standard limit 3（T-M8-168）に到達済it = 1
     ).catch((e) => e);
     expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).code).toBe("forbidden");

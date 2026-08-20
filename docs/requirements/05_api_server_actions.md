@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.46 |
+| バージョン | v1.47 |
 | 更新日 | 2026-08-20 |
 | 関連 | 全画面、全ジョブ |
 
@@ -48,7 +48,8 @@
 | `legal_consent_required` | 403 | 重大改定後の利用規約同意／privacy確認が未完了 |
 | `automation_consent_required` | 403 | 自動投稿（mode=auto）の現行version同意が未完了 |
 | `subscription_required` | 402 | 課金状態により実行不可 |
-| `usage_limit_exceeded` | 403 | premium利用枠不足 |
+| `usage_limit_exceeded` | 403 | 運営キー系プランの利用枠不足 |
+| `usage_paused` | 429 | エキスパートの内部ガード到達（T-M8-168）。**文言・detailsに数値を出さない**。「連続的な使用が検知されたため一時的に停止しております。お待ちください。」 |
 | `x_account_required` | 400 | Xアカウント未連携 |
 | `api_key_required` | 400 | BYOKキー不足 |
 | `persona_required` | 400 | アカウント設定（L-4〜L-7）の必須項目が未保存 |
@@ -319,6 +320,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.44 | 2026-08-20 | 履歴上限により6版以上前の`rollbackBaseMd`が`not_found`になることを明記（T-M8-156） |
 | v1.45 | 2026-08-20 | 下書きの投稿予約・解除のServer Actionを追加（T-M8-157） |
 | v1.46 | 2026-08-20 | §2.2の失敗例messageを実装の文言へ修正（T-M8-144 #47） |
+| v1.47 | 2026-08-20 | プラン再編（T-M8-168）: エラーコード usage_paused（429・エキスパートの内部ガード到達）を追加 |
 
 ### 下書きの投稿予約（T-M8-157）
 

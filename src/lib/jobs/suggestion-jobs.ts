@@ -57,7 +57,8 @@ export async function enqueueDailySuggestions(
       where xa.status = 'active'
         and p.subscription_status in ('trialing', 'active')
         and (
-          p.plan = 'premium'
+          -- 運営キー系プラン（premium/expert）はキー登録なしで対象（T-M8-168）。
+          p.plan in ('premium', 'expert')
           -- AIのキーに限る（provider='x' はX App資格情報で、LLMの解決には使えない）。
           or exists (
             select 1 from user_api_keys k

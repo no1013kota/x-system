@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { query } from "./fixtures/account";
 import { expect, signIn, test } from "./fixtures/test";
 
@@ -99,34 +97,7 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   );
 });
 
-test("standardにはプロンプト全文を出さず、mdプラン以上の案内を出す", async ({ accounts, page }) => {
-  const account = await accounts.create("sug-std");
-  await query(`update profiles set plan = 'standard', stripe_customer_id = $2 where id = $1`, [
-    account.userId,
-    `cus_e2e_${randomUUID().slice(0, 8)}`,
-  ]);
-  await query(
-    `with job as (
-       insert into generation_jobs (x_account_id, kind, trigger, status, finished_at)
-       values ($1, 'suggestion', 'manual', 'succeeded', now()) returning id
-     )
-     insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
-     select $1, job.id, $2, $3::jsonb from job`,
-    [account.xAccountId, "総評テキスト", JSON.stringify(EVIDENCE)],
-  );
-
-  await signIn(page, account);
-  await page.goto("/app/analytics");
-
-  await expect(page.getByText("総評テキスト")).toBeVisible();
-  // 貼り先（設定＞プロンプト）が使えないプランには2提案とも全文もコピーも出さない。
-  await expect(page.getByText("# タスク", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("E2E提案の中身", { exact: false })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: /プロンプトのカスタマイズ（mdプラン以上）/ }),
-  ).toHaveAttribute("href", "/app/settings?tab=prompts&sec=post-prompt");
-});
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
 test("BYOKでAIキーが未登録なら、始まらない理由と登録導線を出す（T-M8-95）", async ({
   accounts,
@@ -134,7 +105,7 @@ test("BYOKでAIキーが未登録なら、始まらない理由と登録導線�
 }) => {
   const account = await accounts.create("sug-nokey");
   // fixtureはpremium。BYOK（md）へ変え、AIキーは登録しない → 毎朝の分析jobが作られない状態。
-  await query(`update profiles set plan = 'md' where id = $1`, [account.userId]);
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
 
   await signIn(page, account);
   await page.goto("/app/analytics");

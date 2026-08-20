@@ -82,7 +82,7 @@ const ALWAYS_REQUIRED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_PRICE_STANDARD_MONTHLY",
-  "STRIPE_PRICE_MD_MONTHLY",
+  "STRIPE_PRICE_EXPERT_MONTHLY",
   "STRIPE_PRICE_PREMIUM_MONTHLY",
   "ANTHROPIC_TEXT_MODEL",
   "OPENAI_TEXT_MODEL",
@@ -142,7 +142,7 @@ const schema = z
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_PORTAL_CONFIGURATION_ID: z.string().min(1).optional(),
     STRIPE_PRICE_STANDARD_MONTHLY: z.string().min(1).optional(),
-    STRIPE_PRICE_MD_MONTHLY: z.string().min(1).optional(),
+    STRIPE_PRICE_EXPERT_MONTHLY: z.string().min(1).optional(),
     STRIPE_PRICE_PREMIUM_MONTHLY: z.string().min(1).optional(),
 
     // §3.4 X API

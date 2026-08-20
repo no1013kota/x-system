@@ -19,9 +19,13 @@ const pooledDb = pooledQueryable();
 
 async function planForUser(userId: string): Promise<string> {
   const row = (
-    await pooledDb.query<{ plan: string }>(`select plan from profiles where id = $1`, [userId])
+    await pooledDb.query<{ plan: string | null }>(`select plan from profiles where id = $1`, [
+      userId,
+    ])
   ).rows[0];
-  return row?.plan ?? "standard";
+  // 未契約（NULL）を 'standard' へ潰さない（T-M8-168で standard は編集可になったため、
+  // 潰すと未契約ロックがこの経路だけすり抜ける）。空文字は PLANS に無く編集不可と判定される。
+  return row?.plan ?? "";
 }
 
 export interface PromptTemplatesForUser {

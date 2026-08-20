@@ -8,7 +8,7 @@ import {
 
 const priceIds = {
   standard: "price_standard",
-  md: "price_md",
+  expert: "price_expert",
   premium: "price_premium",
 } as const;
 
@@ -25,7 +25,7 @@ function subscription(
       data: [
         {
           current_period_end: 1_785_279_600,
-          price: { id: "price_md" },
+          price: { id: "price_expert" },
         } as Stripe.SubscriptionItem,
       ],
       has_more: false,
@@ -69,7 +69,7 @@ describe("Stripe subscription synchronization", () => {
     expect(prepared).toMatchObject({
       kind: "subscription_sync",
       projection: {
-        plan: "md",
+        plan: "expert",
         status: "trialing",
         currentPeriodEnd: 1_785_279_600,
         trialStartedAt: 1_784_674_800,
@@ -146,7 +146,7 @@ describe("Stripe subscription synchronization", () => {
       priceIds,
     );
     expect(projection).toMatchObject({
-      plan: "md",
+      plan: "expert",
       status: "active",
       currentPeriodEnd: 1_785_279_600,
       trialEnd: null,
@@ -214,8 +214,8 @@ describe("Stripe subscription synchronization", () => {
           items: {
             object: "list",
             data: [
-              { current_period_end: 1_785_279_600, price: { id: "price_md" } },
-              { current_period_end: 1_785_279_600, price: { id: "price_md" } },
+              { current_period_end: 1_785_279_600, price: { id: "price_expert" } },
+              { current_period_end: 1_785_279_600, price: { id: "price_expert" } },
             ] as Stripe.SubscriptionItem[],
             has_more: false,
             url: "/v1/subscription_items",

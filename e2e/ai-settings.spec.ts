@@ -169,41 +169,7 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     .not.toBe("analyzed");
 });
 
-test("通常プランではアカウント.md・プロンプトが鍵付きで案内され、行き先が1つに絞られる（T-M8-20）", async ({
-  accounts,
-  page,
-}) => {
-  // 「まだ何も無い（＝自分で埋められる）」と「このプランでは開けない（＝契約を変えるしかない）」を
-  // 同じ空状態で出していた。前者だと思った利用者は設定画面を探しに行って行き止まりになる。
-  const account = await accounts.create("md-locked");
-  // **`stripe_customer_id` を必ず入れる**（T-M8-89）。fixtureはこれをNULLのままにするが、
-  // 実際の契約者は必ず顧客が紐づいている。NULLのままだと `/plans` が送り返さないため、
-  // 「アップグレードを押してもホームへ戻るだけ」という実利用者だけが踏む状態を再現できない。
-  await query(`update profiles set plan = 'standard', stripe_customer_id = $2 where id = $1`, [
-    account.userId,
-    `cus_e2e_${account.userId.slice(0, 8)}`,
-  ]);
-
-  await signIn(page, account);
-  // 旧URLは統合後の設定プロンプトタブへリダイレクトされる（T-M8-104）。
-  await page.goto("/app/ai-settings?tab=base-md");
-
-  await expect(
-    page.getByRole("heading", { name: /アカウント.md・プロンプトの確認・編集は mdプラン以上/ }),
-  ).toBeVisible();
-  // 行き先はStripeのプラン選択（Portal `intent=update`）。Portalセッションはサーバーで作るため
-  // `href` を先に決められず、リンクではなくボタンで出す。**`/plans` へのリンクへ戻したら落ちる**
-  // ——契約者は `/plans` から `/app` へ送り返されるので、押しても何も起きない導線になる。
-  const upgrade = page.getByRole("button", { name: "プランをアップグレード" });
-  await expect(upgrade).toBeVisible();
-  await expect(page.getByRole("link", { name: /アップグレード/ })).toHaveCount(0);
-
-  // 旧プロンプトタブのリンクも同じLockedStateへ着地する（統合で1つの案内になった）。
-  await page.goto("/app/ai-settings?tab=prompts");
-  await expect(
-    page.getByRole("heading", { name: /アカウント.md・プロンプトの確認・編集は mdプラン以上/ }),
-  ).toBeVisible();
-});
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
 /**
  * URL未入力の「追加」が**完全に無反応**だった問題（T-M8-37）。

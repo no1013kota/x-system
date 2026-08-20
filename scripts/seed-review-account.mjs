@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";/**
  * `legal-pages.test.ts` が `CURRENT_TERMS_VERSION` との一致を検査する
  * （古い値のままだと、配線済みの再同意ガードでレビュー用アカウントが弾かれる）。
  */
-export const LEGAL_VERSION = "2026-08-08";
+export const LEGAL_VERSION = "2026-08-20";
 export const AUTOMATION_CONSENT_VERSION = "2026-08-08";
 
 

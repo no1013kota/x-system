@@ -153,7 +153,7 @@ export function ScheduleManager({
   /** 予約に使えるパターン（引用URLが必須のものは含まない・T-M8-129 U3）。 */
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -419,7 +419,7 @@ function SlotList({
   slots: ScheduleSlotView[];
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -459,7 +459,7 @@ function SlotRow({
   slot: ScheduleSlotView;
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -615,7 +615,7 @@ function SlotFields({
   initial?: SlotFormValues;
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -922,7 +922,7 @@ function SlotFields({
       ) : null}
 
       {/*
-        生成に使うプロンプト（T-M8-135）。**mdプラン以上**（投稿作成・AI設定と同じ境界）。
+        生成に使うプロンプト（T-M8-135）。編集権限のあるプランのみ（投稿作成・AI設定と同じ境界・T-M8-168で全プランへ）。
         予約は繰り返し実行されるので「この生成にだけ」ではなく**この予約にだけ**が既定。
       */}
       {prompts ? (

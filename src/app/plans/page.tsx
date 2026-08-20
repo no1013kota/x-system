@@ -160,8 +160,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <Icon className="mt-0.5 shrink-0 text-warn-fg" name="error" size={18} />
             {/* 申込前のBYOK追加費用の明示（要件03）は1文で満たす。トライアル解約時の扱いは確認dlにある（T-M8-66）。 */}
             <p className="text-xs leading-[1.65] text-ink-2">
-              <strong className="font-bold">通常・mdプランのご注意：</strong>
-              X APIと生成AI APIの利用料が別途発生します（プレミアムプランは追加負担なし）。
+              <strong className="font-bold">スタンダードプランのご注意：</strong>
+              X APIと生成AI APIの利用料が別途発生します（プレミアムプラン・エキスパートプランは追加負担なし）。
             </p>
           </section>
 

@@ -13,6 +13,7 @@ export type ErrorCode =
   | "automation_consent_required"
   | "subscription_required"
   | "usage_limit_exceeded"
+  | "usage_paused"
   | "x_account_required"
   | "api_key_required"
   | "persona_required"
@@ -35,6 +36,12 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   automation_consent_required: "自動投稿を有効にするには、現在の説明への同意が必要です。",
   subscription_required: "現在のご契約状態ではこの操作を実行できません。",
   usage_limit_exceeded: "今月の利用上限に達しています。",
+  /**
+   * 利用枠を画面に出さないプラン（エキスパート）の上限到達（T-M8-168）。
+   * **上限・残量の数値をこの文言にも details にも載せない**（内部ガード値を悟らせない）。
+   * 文言は運営者の指定どおり（2026-08-20）。
+   */
+  usage_paused: "連続的な使用が検知されたため一時的に停止しております。お待ちください。",
   x_account_required: "Xアカウントの連携が必要です。",
   api_key_required: "APIキーの登録が必要です。",
   persona_required: "アカウント設定の保存が必要です。",

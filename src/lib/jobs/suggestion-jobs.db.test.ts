@@ -161,9 +161,23 @@ describe("enqueueDailySuggestions / listSuggestions (local DB)", () => {
     }
   });
 
+  /**
+   * expert は運営キー運用で user_api_keys を持たない。起票SQLが `plan = 'premium'` 固定だと
+   * expert だけ毎朝の分析が黙って一切作られない（レビューで検出・T-M8-168）。
+   */
+  it("expert はAIキーなしでも対象になる（運営キー系）", async () => {
+    const { uid, xid } = await seed({ plan: "expert", withAiKey: false });
+    try {
+      await enqueueDailySuggestions(pooledDb, AT_0810_JST);
+      expect(await jobsFor(xid)).toHaveLength(1);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("BYOKはvalidなAIキーが無ければ対象外（毎朝失敗通知が届き続けるのを防ぐ）", async () => {
-    const withKey = await seed({ plan: "md", withAiKey: true });
-    const withoutKey = await seed({ plan: "md", withAiKey: false });
+    const withKey = await seed({ plan: "standard", withAiKey: true });
+    const withoutKey = await seed({ plan: "standard", withAiKey: false });
     try {
       await enqueueDailySuggestions(pooledDb, AT_0810_JST);
       expect(await jobsFor(withKey.xid)).toHaveLength(1);

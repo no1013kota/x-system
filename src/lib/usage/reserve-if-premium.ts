@@ -1,5 +1,6 @@
 /**
- * premium の利用枠 reserve の**単一の正本**（R28）。
+ * 運営キー系プラン（premium / expert）の利用枠 reserve の**単一の正本**（R28 / T-M8-168）。
+ * ファイル名は歴史的経緯のまま（docs・importの参照を壊さないため）。
  *
  * 「premium なら開始時に枠を1つ押さえる」処理が5箇所（本文生成・画像生成・学習分析・
  * 改善提案・削除merge）に同じ形で書かれ、**枠の種別（generation / image）と月次上限の
@@ -15,21 +16,26 @@
 
 import { isImageProvider } from "../ai/resolve-provider";
 import type { Queryable } from "../db/queryable";
-import { PLANS } from "../plans";
+import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
+
+import { AppError } from "../observability/errors";
 
 import { imageReserveEstimate, textReserveEstimate } from "./ai-credits";
 import { reserveUsage, settleUsage, type UsageReserveType } from "./generation-reserve";
 
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
-/** 上限はAIクレジット1本（T-M8-109。文章・画像とも同じ月次クレジットを共有する）。 */
-export const RESERVE_LIMIT_BY_TYPE: Record<UsageReserveType, number | undefined> = {
-  generation: PLANS.premium.usageLimits?.aiCredits,
-  image: PLANS.premium.usageLimits?.aiCredits,
-};
+/**
+ * 上限はAIクレジット1本（T-M8-109。文章・画像とも同じ月次クレジットを共有する）。
+ * プランごとに枠が違う（premium=1,000 / expert=5,000・T-M8-168）ため、上限は plan から引く。
+ */
+export function reserveLimitFor(plan: string): number | undefined {
+  return usageLimitsForPlan(plan)?.aiCredits;
+}
 
 /**
- * premium のときだけクレジットを押さえる。BYOK（standard / md）は消費しないので何もしない。
+ * 利用枠を持つプラン（premium / expert）のときだけクレジットを押さえる。
+ * BYOK（standard）は消費しないので何もしない。
  *
  * **消費量はモデル選択で変わる**（T-M8-108）: 基準モデル=1クレジット、上位モデルは
  * コスト比の倍数（model-catalog.ts）。倍数消費により、どのモデルを選んでも
@@ -51,7 +57,7 @@ export async function settleIfPremium(
     estimatedCostUsdTotal: number;
   },
 ): Promise<void> {
-  if (params.plan !== "premium") return;
+  if (!usageLimitsForPlan(params.plan)) return;
   const { creditsFromUsd } = await import("./ai-credits");
   await runInTx((tx) =>
     settleUsage(tx, {
@@ -72,7 +78,8 @@ export async function reserveIfPremium(
     type: UsageReserveType;
   },
 ): Promise<void> {
-  if (params.plan !== "premium") return;
+  const limits = usageLimitsForPlan(params.plan);
+  if (!limits) return;
   await runInTx(async (tx) => {
     // 選択モデル（AIモデル設定）からクレジット消費量を決める。text providerは運営固定（anthropic）。
     const { rows } = await tx.query<{ ai_purpose_config: unknown }>(
@@ -92,13 +99,29 @@ export async function reserveIfPremium(
       params.type === "generation"
         ? textReserveEstimate("anthropic", textModel)
         : imageReserveEstimate(imageProvider, imageModel);
-    await reserveUsage(tx, {
-      userId: params.userId,
-      xAccountId: params.xAccountId,
-      jobId: params.jobId,
-      type: params.type,
-      limit: RESERVE_LIMIT_BY_TYPE[params.type],
-      amount,
-    });
+    try {
+      await reserveUsage(tx, {
+        userId: params.userId,
+        xAccountId: params.xAccountId,
+        jobId: params.jobId,
+        type: params.type,
+        limit: limits.aiCredits,
+        amount,
+      });
+    } catch (error) {
+      /*
+        利用枠を画面に出さないプラン（エキスパート・T-M8-168）は、上限到達を
+        「一時停止」として伝える。**details の数値（残量・上限）も落とす**——
+        details はServer Actionの応答へそのまま載るため、残すと内部ガード値が漏れる。
+      */
+      if (
+        error instanceof AppError &&
+        error.code === "usage_limit_exceeded" &&
+        concealsUsageLimits(params.plan)
+      ) {
+        throw new AppError("usage_paused", { cause: error });
+      }
+      throw error;
+    }
   });
 }

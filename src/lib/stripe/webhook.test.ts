@@ -12,7 +12,7 @@ const WEBHOOK_SECRET = "whsec_test_exos_ai";
 const stripe = new Stripe("sk_test_not_used");
 const priceIds = {
   standard: "price_standard",
-  md: "price_md",
+  expert: "price_expert",
   premium: "price_premium",
 } as const;
 

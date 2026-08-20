@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.23 |
+| バージョン | v1.24 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -89,9 +89,9 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `STRIPE_SECRET_KEY` | dev/preview/prod | Checkout/Portal/Webhook API | Server only |
 | `STRIPE_WEBHOOK_SECRET` | dev/preview/prod | Webhook署名検証 | 環境ごとに別値 |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | **環境ごとに別のID**。Stripe Dashboardで1つ作り、内容は `npm run stripe:portal:setup -- --target <env>` で合わせる（既存を上書き更新する。新規作成はしない）。3価格は**同一Product配下でなくてよい**（要件03 §2.2）。devは任意。手順は[デプロイ手順 §1.4](../operations/deployment.md) |
-| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
-| `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月（同上） |
-| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月（同上） |
+| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | スタンダードプラン価格ID | 1,480円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
+| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアムプラン価格ID | 3,980円/月（同上） |
+| `STRIPE_PRICE_EXPERT_MONTHLY` | dev/preview/prod | エキスパートプラン価格ID | 14,800円/月（同上。T-M8-168で STRIPE_PRICE_MD_MONTHLY を置き換え） |
 
 ### 3.4 X API
 
@@ -237,3 +237,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.21 | 2026-08-20 | §4の認証メール方式を種類別（登録=6桁コード／再設定=リンク）へ修正（T-M8-144 #27） |
 | v1.22 | 2026-08-20 | Sentry DSNの設定状態をdoctorで検査する方針を追加（T-M8-162） |
 | v1.23 | 2026-08-20 | エラーlogの保持期間を実態（Sentry 90日固定）へ修正（要決定D-19解決） |
+| v1.24 | 2026-08-20 | プラン再編（T-M8-168）: STRIPE_PRICE_MD_MONTHLY を STRIPE_PRICE_EXPERT_MONTHLY へ置き換え、Price金額を1,480/3,980/14,800円へ |

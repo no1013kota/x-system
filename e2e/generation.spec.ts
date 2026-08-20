@@ -223,16 +223,7 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await expect(page.getByLabel(/画像生成プロンプト/)).toHaveValue(/# タスク/);
 });
 
-test("standardには生成プロンプトのセクションを出さない（T-M8-92）", async ({ accounts, page }) => {
-  const account = await accounts.create("prompt-std");
-  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
-  await signIn(page, account);
-  await page.goto("/app/posts?tab=create");
-
-  // 画面自体は使える（テーマ選択は出る）が、プロンプトのセクションは無い。
-  await expect(page.getByLabel("テーマ", { exact: true })).toBeVisible();
-  await expect(page.getByText("生成に使うプロンプト")).toHaveCount(0);
-});
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
 /**
  * 生成中に画面を開き直したとき Hydration mismatch が出ないこと（T-M8-113）。
@@ -290,7 +281,7 @@ test("投稿作成画面からパターンを追加でき、そのまま選択�
   page,
 }) => {
   const account = await accounts.create("pattern-inline");
-  // プロンプトの編集はmdプラン以上（設定＞プロンプトと同じ境界）。
+  // 契約中のプランを設定する（未契約はプロンプト編集がロックされる・T-M8-168）。
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");

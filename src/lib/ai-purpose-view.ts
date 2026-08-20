@@ -1,6 +1,6 @@
 import type { AiKeyProvider } from "./api-keys";
 import type { ImageAiProvider } from "./ai-purpose-config";
-import type { PlanId } from "./plans";
+import { isOperatorManagedPlan, type PlanId } from "./plans";
 
 const TEXT_PROVIDER_ORDER: readonly AiKeyProvider[] = [
   "anthropic",
@@ -16,18 +16,18 @@ export interface AiPurposeProviderOptions {
 
 export function buildAiPurposeProviderOptions(input: {
   operatorImageProviders: readonly ImageAiProvider[];
-  plan: PlanId;
+  plan: PlanId | null;
   validUserProviders: readonly AiKeyProvider[];
 }): AiPurposeProviderOptions {
   const available = new Set(
-    input.plan === "premium"
+    isOperatorManagedPlan(input.plan)
       ? input.operatorImageProviders
       : input.validUserProviders,
   );
   return {
     image: IMAGE_PROVIDER_ORDER.filter((provider) => available.has(provider)),
     text:
-      input.plan === "premium"
+      isOperatorManagedPlan(input.plan)
         ? []
         : TEXT_PROVIDER_ORDER.filter((provider) => available.has(provider)),
   };

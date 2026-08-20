@@ -24,7 +24,7 @@ test("プラン選択に半額バッジと終了後価格が出て、「通常�
   // 未契約のままログインすると `/plans` へ送られて待ち続けてしまう。
   await signIn(page, account);
   await query(
-    `update profiles set plan = 'standard', subscription_status = 'incomplete',
+    `update profiles set plan = null, subscription_status = 'incomplete',
         current_period_end = null, trial_ends_at = null where id = $1`,
     [account.userId],
   );
@@ -36,8 +36,8 @@ test("プラン選択に半額バッジと終了後価格が出て、「通常�
   expect(await badges.count(), "全プランにバッジが出る").toBeGreaterThanOrEqual(3);
 
   await expect(page.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
-  // 終了後価格が取り消し線で出る（プレミアムの 5,960 で代表して確かめる）。
-  await expect(page.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
+  // 終了後価格が取り消し線で出る（プレミアムの 7,960 で代表して確かめる）。
+  await expect(page.locator(".line-through").filter({ hasText: "7,960" }).first()).toBeVisible();
 
   // 景表法: 「通常価格」の語を使わない。
   await expect(page.getByText("通常価格")).toHaveCount(0);
@@ -48,10 +48,9 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   page,
 }) => {
   const account = await accounts.create("plans-none");
-  // 申込前の状態にする。`plan` は NOT NULL なので既定値（standard）のまま、
-  // 契約状態を profiles の既定と同じ `incomplete` に戻す（fixtureの既定は premium/trialing）。
+  // 申込前の状態にする。未契約は plan = NULL（T-M8-168）。
   await query(
-    `update profiles set plan = 'standard', subscription_status = 'incomplete',
+    `update profiles set plan = null, subscription_status = 'incomplete',
         current_period_end = null, trial_ends_at = null where id = $1`,
     [account.userId],
   );
@@ -61,14 +60,16 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
 
   // 3プランが比較表の列として並ぶ（T-M8-125で表へ変えた。名前はPRDと同じ日本語表記・T-M8-21）。
   const table = page.getByRole("table", { name: /機能と月額の比較/ });
-  for (const name of ["通常プラン", "mdプラン", "プレミアムプラン"]) {
+  for (const name of ["スタンダードプラン", "プレミアムプラン", "エキスパートプラン"]) {
     await expect(table.getByRole("columnheader", { name: new RegExp(name) })).toBeVisible();
   }
   // 機能が行見出しになり、対応の有無が読み取れる（✓は読み上げ用の文字も持つ）。
+  // T-M8-168で全プランが編集可になったため「—（対応しません）」のセルは無い。
   await expect(
     table.getByRole("rowheader", { name: /アカウント.md・プロンプトの直接編集/ }),
   ).toBeVisible();
-  await expect(table.getByText("対応しません").first()).toBeAttached();
+  await expect(table.getByText("対応", { exact: true }).first()).toBeAttached();
+  await expect(table.getByText("対応しません")).toHaveCount(0);
   // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
   await expect(
     page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),
@@ -132,8 +133,8 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
 
   // いま実際にいくら払っているかと、キャンペーン終了後の額がこの場で読める（T-M8-118）。
   // 値上げが不意打ちにならないようにするため、契約中の画面にも出す。
-  await expect(page.getByText("月額 ¥2,980（税込）", { exact: false })).toBeVisible();
-  await expect(page.getByText("キャンペーン終了後 ¥5,960", { exact: false })).toBeVisible();
+  await expect(page.getByText("月額 ¥3,980（税込）", { exact: false })).toBeVisible();
+  await expect(page.getByText("キャンペーン終了後 ¥7,960", { exact: false })).toBeVisible();
 
   // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
   await page.goto("/app/settings?tab=api-keys");

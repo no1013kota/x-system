@@ -119,7 +119,7 @@ describe("missingEnvNames（足りない値をまとめて返す）", () => {
 describe("PRODUCT_NAMES はアプリの表示名と1対1", () => {
   it("standard / md / premium の表示名と一致する", () => {
     expect(PRODUCT_NAMES.STRIPE_PRICE_STANDARD_MONTHLY).toBe(PLANS.standard.displayName);
-    expect(PRODUCT_NAMES.STRIPE_PRICE_MD_MONTHLY).toBe(PLANS.md.displayName);
+    expect(PRODUCT_NAMES.STRIPE_PRICE_EXPERT_MONTHLY).toBe(PLANS.expert.displayName);
     expect(PRODUCT_NAMES.STRIPE_PRICE_PREMIUM_MONTHLY).toBe(PLANS.premium.displayName);
   });
 });
@@ -135,14 +135,13 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
   });
 
   it("Xアカウント数が plans.ts と一致する", () => {
-    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_STANDARD_MONTHLY).toContain(
-      `${PLANS.standard.xAccountLimit}つのXアカウント`,
-    );
-    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_MD_MONTHLY).toContain(
-      `Xアカウント${PLANS.md.xAccountLimit}つまで`,
-    );
-    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain(
-      `Xアカウント${PLANS.premium.xAccountLimit}つまで`,
+    // standard/premium は1つ（「まで」を付けない）。expert だけ複数（2026-08-20）。
+    expect(PLANS.standard.xAccountLimit).toBe(1);
+    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_STANDARD_MONTHLY).toContain("Xアカウント1つ＋");
+    expect(PLANS.premium.xAccountLimit).toBe(1);
+    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain("Xアカウント1つ。");
+    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_EXPERT_MONTHLY).toContain(
+      `Xアカウント${PLANS.expert.xAccountLimit}つまで`,
     );
   });
 

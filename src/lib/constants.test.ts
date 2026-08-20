@@ -9,13 +9,15 @@ import { PLAN_IDS, PLANS, RETENTION_DISCOUNT, hasCampaignDiscount } from "./plan
 import { THEME_OPTIONS, themesToNewsCategories } from "./themes";
 
 describe("plan definitions", () => {
+  // 価格は運営者の指示（2026-08-20・T-M8-168）。旧standard(¥500)は撤廃し、旧mdを「スタンダード」へ改定。
   it("matches 要件03 §2 prices and X-account limits", () => {
-    expect(PLANS.standard.monthlyPriceJpy).toBe(500);
-    expect(PLANS.md.monthlyPriceJpy).toBe(1000);
-    expect(PLANS.premium.monthlyPriceJpy).toBe(2980);
+    expect(PLANS.standard.monthlyPriceJpy).toBe(1480);
+    expect(PLANS.premium.monthlyPriceJpy).toBe(3980);
+    expect(PLANS.expert.monthlyPriceJpy).toBe(14800);
+    // Xアカウント上限は standard/premium=1・expertだけ3（2026-08-20運営者の指示）
     expect(PLANS.standard.xAccountLimit).toBe(1);
-    expect(PLANS.md.xAccountLimit).toBe(3);
-    expect(PLANS.premium.xAccountLimit).toBe(3);
+    expect(PLANS.premium.xAccountLimit).toBe(1);
+    expect(PLANS.expert.xAccountLimit).toBe(3);
   });
 
   /**
@@ -34,10 +36,10 @@ describe("plan definitions", () => {
       );
       expect(hasCampaignDiscount(plan), `${id} は割引中`).toBe(true);
     }
-    // 終了後の額（1,000 / 2,000 / 5,960）。運営者の指示（2026-08-17）。
-    expect(PLANS.standard.regularPriceJpy).toBe(1000);
-    expect(PLANS.md.regularPriceJpy).toBe(2000);
-    expect(PLANS.premium.regularPriceJpy).toBe(5960);
+    // 終了後の額（2,960 / 7,960 / 29,600）。運営者の指示（2026-08-20）。
+    expect(PLANS.standard.regularPriceJpy).toBe(2960);
+    expect(PLANS.premium.regularPriceJpy).toBe(7960);
+    expect(PLANS.expert.regularPriceJpy).toBe(29600);
   });
 
   it("解約時の追加割引は50%・3ヶ月限定（プレミアムは原価を下回るため無期限にしない）", () => {
@@ -50,20 +52,31 @@ describe("plan definitions", () => {
     }
   });
 
-  it("only premium has usage limits, with the documented values", () => {
+  it("運営キー系プランだけが利用枠を持ち、値が文書どおり", () => {
     expect(PLANS.standard.usageLimits).toBeNull();
-    expect(PLANS.md.usageLimits).toBeNull();
     expect(PLANS.premium.usageLimits).toEqual({
       normalPosts: 200,
       urlPosts: 20,
       aiCredits: 1000,
     });
+    // エキスパートの内部ガード（運営者の指示 2026-08-20）。**画面には出さない値**。
+    expect(PLANS.expert.usageLimits).toEqual({
+      normalPosts: 1000,
+      urlPosts: 100,
+      aiCredits: 5000,
+    });
   });
 
-  it("gates md/prompt editing to md and premium", () => {
-    expect(PLANS.standard.canEditMdAndPrompts).toBe(false);
-    expect(PLANS.md.canEditMdAndPrompts).toBe(true);
-    expect(PLANS.premium.canEditMdAndPrompts).toBe(true);
+  it("利用枠を隠すのはエキスパートだけ（無制限表示・T-M8-168）", () => {
+    expect(PLANS.standard.concealsLimits).toBe(false);
+    expect(PLANS.premium.concealsLimits).toBe(false);
+    expect(PLANS.expert.concealsLimits).toBe(true);
+  });
+
+  it("md/プロンプト編集は全プラン可（旧standardの撤廃・T-M8-168）", () => {
+    for (const id of PLAN_IDS) {
+      expect(PLANS[id].canEditMdAndPrompts, id).toBe(true);
+    }
   });
 });
 

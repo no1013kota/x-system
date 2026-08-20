@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.41 |
+| バージョン | v1.42 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -144,7 +144,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - 当日JSTの`usage_events`にある同一Xアカウントの`operation=post_create`件数が、パターン別最大数を足して50以下
 - **引用URLが必須のパターンはスケジュール対象外**（毎回URLの指定が要るため自動実行できない）。DBのトリガと Server Action の両方で拒否する（要件02 §3.10・§3.21）
 
-enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成入力を生成jobの`input`へ渡す**。渡すのは`instructions`・`theme`・`image_enabled`・`mode`と、`source_url`・`placeholder_values`・`prompt_override`（T-M8-135・要件02 §3.10）。**キー名は投稿作成画面が送るものと同一にする**——ずれると「予約では設定が効かない」という、画面からは説明できない差になる（生成側は`job.input`のキー名しか見ない）。未設定は`null`で渡す（空文字や欠落を混ぜない）。**`prompt_override`は`md`/`premium`のときだけ渡す**——プロンプトの編集はそのプランの機能で、standardでは画面がセクションごと消えるため、そのまま使うと**画面に出ていない指示で生成される**（原則1・原則2に反する）。判定は保存時の拒否と同じ `promptEditablePlan()` を使う。
+enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成入力を生成jobの`input`へ渡す**。渡すのは`instructions`・`theme`・`image_enabled`・`mode`と、`source_url`・`placeholder_values`・`prompt_override`（T-M8-135・要件02 §3.10）。**キー名は投稿作成画面が送るものと同一にする**——ずれると「予約では設定が効かない」という、画面からは説明できない差になる（生成側は`job.input`のキー名しか見ない）。未設定は`null`で渡す（空文字や欠落を混ぜない）。**`prompt_override`は`promptEditablePlan()`が真のときだけ渡す**（T-M8-168以降は全プランで真。未契約・不明プランのみ弾く）——画面でプロンプト編集が出ない状態のまま使うと**画面に出ていない指示で生成される**（原則1・原則2に反する）。判定は保存時の拒否と同じ関数を使う。
 
 スケジュールenqueue時は、出典を付けるP-1/P-3/P-4/P-6を「最終1件がURL付き、先行ポストは通常」と保守的に仮定する。最大数に対する必要残量はP-1=通常10＋URL1、P-2=通常1＋URL0、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1。生成後の投稿直前には実際にXへ送る各payloadで再分類し、通常/URL付き枠を別々に再判定する。
 
@@ -301,6 +301,7 @@ flowchart TD
 | v1.39 | 2026-08-20 | 期限到来した日時予約の下書きを投稿へ流す手順を追加（T-M8-157） |
 | v1.40 | 2026-08-20 | providerの失敗をdoctorで「運営者が直せる型」として出す方針を追加（T-M8-163） |
 | v1.41 | 2026-08-20 | doctorの判定を運営者へ1日1回メールで届ける仕様を追加（T-M8-164） |
+| v1.42 | 2026-08-20 | プラン再編（T-M8-168）: prompt_override の受け渡し条件を promptEditablePlan（全プラン可・未契約のみ拒否）へ改めた |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

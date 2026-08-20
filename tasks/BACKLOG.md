@@ -2179,6 +2179,58 @@ UI側boolean を壊しても投稿は誤爆しない）。
   ジョブテストにも同種の閾値問題を作りうる。
 - 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。
 
+### T-M8-168: プラン全面再編（旧standard撤廃・エキスパート新設・価格改定） `done`
+- 参照: PRD §プラン/§6.1 / 要件01 §3.3 / 要件02 §2 / 要件03 §2・§7 / 要件06 / 依存: なし / サイズ: L
+- 運営者の指示（2026-08-20）:
+  - 旧standard（500円・上限1・md編集不可）を**完全撤廃**（コード・DB・Stripeとも）。
+  - 新構成: **スタンダード 2,960円（半額1,480円）**＝旧mdと同内容／**プレミアム 7,960円（半額3,980円）**＝旧premiumと同内容／
+    **エキスパート 29,600円（半額14,800円）**＝「利用枠無制限」。全プラン7日間無料トライアル。
+  - Xアカウント上限は**スタンダード・プレミアム1、エキスパート3**（利用枠は合算）。
+  - エキスパートは表向き無制限だが**内部ガード**（AIクレジット5000・通常投稿1,000件・URL付き投稿100件）を持ち、
+    到達したら「連続的な使用が検知されたため一時的に停止しております。お待ちください。」とだけ表示する
+    （エラーコード`usage_paused`・429）。**枠名・数値・「上限」の語をカード・バナー・通知・エラーdetailsのどこにも出さない**
+    （80%/100%の閾値通知も作らない）。
+  - **「無制限」は注記なしで表示**（景表法の優良誤認リスクは提示のうえの運営者判断。利用規約第3条に一時停止があり得る旨を記載）。
+- 実装の要点:
+  - DB: `plan_type` enumを `standard/premium/expert` へ入れ替え（migration `20260820000003`。旧md→standard、
+    旧standard→**NULL＝未契約**。`profiles.plan` はnullable・defaultなしへ。新規登録trigger は plan を設定しない）。
+  - プラン判定は `isOperatorManagedPlan()`（=利用枠を持つ）・`concealsUsageLimits()`・`usageLimitsForPlan()` に集約。
+    `plan === "premium"` 比較は全廃（プランが増えると漏れる）。
+  - md/プロンプト編集は**全プラン可**。旧standard向けの出し分け（画面のロック・分析提案の非表示・
+    `prompt_override`の実行時無視）を撤去し、未契約(NULL)だけを弾く形へ。
+  - Stripe: `STRIPE_PRICE_MD_MONTHLY`→`STRIPE_PRICE_EXPERT_MONTHLY`。Product名・説明も3プランへ更新
+    （`stripe:portal:setup`が同期）。
+  - 法務3ページ・LP・/plans・比較表・FAQ・特商法・利用規約を更新し、規約・privacyのversionを2026-08-20へ
+    （全利用者へ再同意バナーが出る）。
+- 過程で見つけて直した既存バグ:
+  - `applyStandardAccountLimit` が「1件だけ残す」を**ハードコード**しており、上限3のプランへ下げても
+    2件を黙って無効化する状態だった → `applyXAccountLimit(遷移先プランの上限)` へ汎用化。
+  - 新規登録triggerを書き直す際、`news_config` を初期6分野で写してしまい **T-M7-55（3分野）を巻き戻す退行**を
+    `auth.local.test` が検出 → migrationを修正。
+  - `analytics` の「AIキー未登録」表示が `plan !== 'premium'` 判定で、エキスパートにも出る状態だった →
+    `isOperatorManagedPlan` へ。
+- 原価メモ: エキスパートは内部ガード満額で原価約14,900〜15,300円 vs キャンペーン価格14,800円＝**満額使用時は約±0**
+  （PRD §6.1）。通常価格29,600円なら黒字。単価は実測で監視する。
+- コミット前の敵対的レビュー（多面workflow・2026-08-21）で検出し修正したもの:
+  - **critical**: `execution-prereqs.ts` が `plan === "premium"` 判定のまま3箇所残り、**expertがBYOK扱いに
+    なって生成・投稿・学習が全滅する**状態だった → `isOperatorManagedPlan` へ（回帰テスト追加）。
+    同型の直比較を全廃: `ai-purpose-config-store`（expertがAI設定を保存できない）、
+    `posts/schedule page の imageProvidersFor`（expertで画像生成がUIから消える）、
+    `suggestion-jobs` のSQL（expertに毎朝の分析が起票されない）、`api-key-store`／
+    `api-key-verification-store`（expertがBYOKキーを登録できてしまう）。
+  - **major**: expertの内部ガード数値が**設定画面のRSC（Flight）ペイロードでブラウザへ届いていた**
+    → `computeUsageSummary` がconcealedでは数値をゼロ埋めして返す形へ（漏れ口を関数の外に作らない）。
+  - **major**: 実行は「AIクレジット残が1回分の見積もり未満」で止まるのに、停止表示は「残り0」まで
+    出ず、**止まっているのに画面が何も言わない期間**があった → `summary.paused` を実行側と同じ
+    条件で立て、バナー・カードはこのフラグだけを見る形へ。
+  - minor: expert画面の「プレミアムプラン」固定文言、モデル選択の「約Nクレジット/回」表示
+    （内部計量を悟らせる）、`planForUser` がNULLを'standard'へ潰し未契約ロックをすり抜ける経路、
+    migrationに「契約中の旧standardが居たら止まる」ガードが無い点、事実と逆のコメント2箇所を修正。
+- 検証メモ（2026-08-21）: typecheck・lint・単体/DB 2,357件緑（268ファイル）。migrationはローカル適用済み
+  （enum入れ替え・trigger・NOTICE件数・ガードの発火/通過を確認）。build＋check:csp-nonce緑。
+  E2E 89件緑。本番ビルドの実ブラウザでLP・法務3ページのコンソールエラーなし・新価格表示を確認。
+  Stripe実操作は運営者作業リストを参照。
+
 ### T-M8-167: 原価試算を実測へ合わせ、枠外費用を明示する `done`
 - 参照: PRD §6.1 / 依存: なし / サイズ: S
 - 背景: 運営者への原価説明のため本番の原価台帳（`external_api_usage_events`）を実測したところ、

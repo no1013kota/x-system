@@ -126,7 +126,7 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
   let available = false;
   let POST: (request: Request) => Promise<Response>;
   // env を流し込んだ後に読む必要があるため動的import（静的importはhoistされ先に走る）。
-  let priceIds: Record<"md" | "premium" | "standard", string>;
+  let priceIds: Record<"standard" | "premium" | "expert", string>;
   let closePool: () => Promise<void>;
   const userIds: string[] = [];
   const eventIds: string[] = [];
@@ -299,7 +299,7 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
       cancelAtPeriodEnd: false,
       currentPeriodEnd: created + 2_592_000,
       customerId,
-      priceId: priceIds.md,
+      priceId: priceIds.expert,
       status: "active",
       subscriptionId: `sub_dup_${userId.slice(0, 8)}`,
       trialEnd: null,
@@ -379,7 +379,8 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
       `select plan, subscription_status from profiles where id = $1`,
       [userId],
     );
-    expect(profiles[0]).toEqual({ plan: "standard", subscription_status: "incomplete" });
+    // 未契約の既定は null（T-M8-168）。不正署名でDBが変わらないこと。
+    expect(profiles[0]).toEqual({ plan: null, subscription_status: "incomplete" });
   });
 
   it("stripe-signature ヘッダが無ければ本文を読む前に400で返す", async () => {
@@ -444,11 +445,12 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
       [id],
     );
     expect(events[0].count).toBe(0);
-    const profiles = await sql<{ plan: string }>(
+    const profiles = await sql<{ plan: string | null }>(
       `select plan from profiles where id = $1`,
       [userId],
     );
-    expect(profiles[0].plan).toBe("standard");
+    // 未契約の既定は null（T-M8-168で default 'standard' を撤廃）。失敗イベントでplanが変わらないこと。
+    expect(profiles[0].plan).toBeNull();
   });
 
   it("profileに紐付かないcustomerは500にし、実トランザクションが claim をロールバックする", async () => {
