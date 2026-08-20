@@ -114,6 +114,8 @@ describe("classifyNewsOutcome", () => {
       kind: "failed",
       category: "ai",
       errorCode: null,
+      // 分類済みの型（T-M8-163）。渡されなければ null のまま。
+      failureKind: null,
     });
     // 失敗の種別が分かればそれも返す（応答本文は持たない・T-M8-86）。
     expect(row({ ok: false, errorCode: "http_429", fetched: 0, dropped: 0 })).toMatchObject({

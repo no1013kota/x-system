@@ -1,3 +1,5 @@
+import type { ProviderFailureKind } from "./ai/provider-failure";
+
 /**
  * ニュース取得結果の**判定の単一の正本**（T-M8-83）。
  *
@@ -88,6 +90,12 @@ export interface NewsOutcomeRow {
   ok?: boolean;
   /** 失敗の種別（`http_429` 等）。**応答本文は入れない**（T-M8-86）。 */
   errorCode?: string | null;
+  /**
+   * 運営者が直せる型（T-M8-163）。`errorCode` だけでは
+   * 「クレジット切れ」か「キー無効」かが分からず自力で辿れないため、分類済みの型を受ける。
+   * 分類は `classifyProviderFailure` が行い、**応答本文はここへ来ない**。
+   */
+  failureKind?: ProviderFailureKind | null;
   fetched: number;
   dropped: number;
   dropReasons: Record<string, number>;
@@ -109,7 +117,12 @@ export interface NewsOutcomeRow {
  * - `healthy`: 通常どおり取れている（報告することが無い）
  */
 export type NewsOutcomeVerdict =
-  | { kind: "failed"; category: string; errorCode: string | null }
+  | {
+      kind: "failed";
+      category: string;
+      errorCode: string | null;
+      failureKind: ProviderFailureKind | null;
+    }
   | {
       kind: "mostly_dropped";
       category: string;
@@ -123,7 +136,14 @@ export type NewsOutcomeVerdict =
 
 export function classifyNewsOutcome(row: NewsOutcomeRow): NewsOutcomeVerdict {
   const { category, fetched, dropped, dropReasons } = row;
-  if (row.ok === false) return { kind: "failed", category, errorCode: row.errorCode ?? null };
+  if (row.ok === false) {
+    return {
+      kind: "failed",
+      category,
+      errorCode: row.errorCode ?? null,
+      failureKind: row.failureKind ?? null,
+    };
+  }
   if (fetched > 0) {
     return mostlyDropped(fetched, dropped)
       ? {

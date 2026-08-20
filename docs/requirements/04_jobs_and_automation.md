@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.39 |
+| バージョン | v1.40 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -243,7 +243,7 @@ flowchart TD
 - ~~own_posts再取り込みの30日制御~~ **own_posts（自分の過去投稿から学習）は2026-08-15に廃止**（T-M8-103。毎朝の投稿分析K-2と重複）。learning_analysisの対象は参考アカウント（PT-L1）と参考投稿（PT-L2）のみ。二重送信は進行中jobの`job_conflict`で止める。
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
 - **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
-- **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`だけを添える（応答本文はクエリの段階でselectしない）。
+- **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`と、**そこから求めた「運営者が直せる型」**を添える（T-M8-163）。型は`classifyProviderFailure`（`src/lib/ai/provider-failure.ts`）がクレジット残高不足／レート制限／キー無効／モデル名不正／入力長超過／提供元障害／不明の7種へ落とし、画面へ出るのは**その型に対応する定型文だけ**——応答本文は分類にだけ使い、選択したスコープから外へ出さない（`diagnostics.test.ts`が応答へ漏れないことを固定する）。以前は`error_code`だけを添え本文をselectしない方針だったが、**`http_400`からは原因が分からず運営者が自力で辿れなかった**（2026-08-20、実際はAnthropicのクレジット切れで運営者が直せるものだった）。
 - **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
@@ -299,6 +299,7 @@ flowchart TD
 | v1.37 | 2026-08-18 | news_fetch の取得窓を現行（初回14時間・以降3時間）へ。値の正本がコード側であることを明記（T-M8-144） |
 | v1.38 | 2026-08-18 | 利用枠の記述をAIクレジット制へ揃えた（T-M8-144。生成枠・画像枠の2枠制の記述が残っていた） |
 | v1.39 | 2026-08-20 | 期限到来した日時予約の下書きを投稿へ流す手順を追加（T-M8-157） |
+| v1.40 | 2026-08-20 | providerの失敗をdoctorで「運営者が直せる型」として出す方針を追加（T-M8-163） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

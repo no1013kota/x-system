@@ -112,7 +112,9 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
     ]);
     expect(r.noMatch).toEqual(["web3"]);
     expect(r.allDropped).toEqual([{ category: "sns", reasons: "title:too_big×4" }]);
-    expect(r.failed).toEqual([{ category: "business", errorCode: null }]);
+    expect(r.failed).toEqual([
+      { category: "business", errorCode: null, failureKind: null },
+    ]);
   });
 
   it("全件破棄は取得件数があっても注意として上げる（テーマが永久に0件になるのを見逃さない）", () => {
@@ -356,5 +358,96 @@ describe("judgeDatabaseSize", () => {
 
   it("上限0でも壊れない（設定ミス時に例外を出さない）", () => {
     expect(() => judgeDatabaseSize({ bytes: 100, limitBytes: 0 })).not.toThrow();
+  });
+});
+
+/**
+ * providerの失敗を運営者が直せる言葉で出す（T-M8-163）。
+ *
+ * 2026-08-20、本番は「取得に失敗したテーマ: ai（http_400）」＋「Claudeに聞いてください」だけを出し、
+ * 実際の原因（Anthropicのクレジット切れ＝運営者が5分で直せる）へ辿れなかった。
+ */
+describe("providerの失敗理由を直せる言葉で出す（T-M8-163）", () => {
+  const failedOutcome = (category: string, failureKind: string | null) => ({
+    category,
+    ok: false,
+    fetched: 0,
+    dropped: 0,
+    dropReasons: {},
+    errorCode: "http_400",
+    failureKind: failureKind as never,
+  });
+
+  it("クレジット切れは「残高が不足」と出し、購入の操作を出す（http_400 で終わらせない）", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [
+        failedOutcome("ai", "credit_exhausted"),
+        failedOutcome("investment", "credit_exhausted"),
+      ],
+    });
+
+    expect(r.detail).toContain("残高が不足");
+    expect(r.detail).not.toContain("http_400");
+    expect(r.nextAction).toContain("クレジット");
+  });
+
+  /** 待てば直るものと、お金を払わないと直らないものを混同しない。 */
+  it("レート制限は待つ案内になる", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "rate_limited")],
+    });
+
+    expect(r.nextAction).toContain("待つ");
+  });
+
+  /** 原因が混ざっているときに片方の操作を勧めると、案内そのものが信用されなくなる。 */
+  it("原因が混ざっているときは決めつけず記録を見る案内へ戻す", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [
+        failedOutcome("ai", "credit_exhausted"),
+        failedOutcome("sns", "invalid_key"),
+      ],
+    });
+
+    expect(r.nextAction).toContain("失敗記録");
+  });
+
+  it("分類できなければ従来どおりコードを出す（勝手に決めつけない）", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "unknown")],
+    });
+
+    expect(r.detail).toContain("http_400");
+    expect(r.nextAction).toContain("失敗記録");
+  });
+
+  /**
+   * **providerの応答本文を運営者向けの出力へ載せない**（要件01 §8）。
+   * 分類のために本文を読むようになったので、漏れないことをここで固定する。
+   */
+  it("providerの応答本文は detail にも nextAction にも出ない", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "credit_exhausted")],
+    });
+
+    const rendered = `${r.detail} ${r.nextAction ?? ""}`;
+    for (const leak of ["request_id", "invalid_request_error", "Your credit balance"]) {
+      expect(rendered, leak).not.toContain(leak);
+    }
   });
 });

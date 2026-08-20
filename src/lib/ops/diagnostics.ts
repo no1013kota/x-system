@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  classifyProviderFailure,
+  providerFailureGuide,
+  type ProviderFailureKind,
+} from "@/lib/ai/provider-failure";
 
 import { classifyNewsOutcome } from "@/lib/news-outcome";
 
@@ -102,7 +107,11 @@ export interface NewsCategoryOutcome {
  */
 export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
   /** 失敗した分野と、その種別（応答本文は持たない・T-M8-86）。 */
-  failed: { category: string; errorCode: string | null }[];
+  failed: {
+    category: string;
+    errorCode: string | null;
+    failureKind: ProviderFailureKind | null;
+  }[];
   allDropped: { category: string; reasons: string }[];
   noMatch: string[];
   /**
@@ -114,7 +123,11 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
 } {
-  const failed: { category: string; errorCode: string | null }[] = [];
+  const failed: {
+    category: string;
+    errorCode: string | null;
+    failureKind: ProviderFailureKind | null;
+  }[] = [];
   const allDropped: { category: string; reasons: string }[] = [];
   const noMatch: string[] = [];
   const mostly: {
@@ -129,7 +142,11 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
     const verdict = classifyNewsOutcome(o);
     switch (verdict.kind) {
       case "failed":
-        failed.push({ category: verdict.category, errorCode: verdict.errorCode });
+        failed.push({
+          category: verdict.category,
+          errorCode: verdict.errorCode,
+          failureKind: verdict.failureKind,
+        });
         break;
       case "mostly_dropped":
         mostly.push({
@@ -152,6 +169,26 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
   return { failed, allDropped, noMatch, mostlyDropped: mostly };
 }
 
+/**
+ * 失敗した分野の型から次の一手を決める（T-M8-163）。
+ *
+ * **全分野が同じ型なら、その操作を断定して出す。** 混ざっているときは決めつけず記録を見る案内へ戻す
+ * ——違う原因に同じ操作を勧めると、運営者はその案内を信じなくなる。
+ */
+function newsFailureNextAction(
+  failed: { failureKind: ProviderFailureKind | null }[],
+): string {
+  const kinds = new Set(
+    failed.map((f) => f.failureKind).filter((k): k is ProviderFailureKind => k != null),
+  );
+  kinds.delete("unknown");
+  if (kinds.size === 1) {
+    const [only] = [...kinds];
+    return providerFailureGuide(only).nextAction;
+  }
+  return providerFailureGuide("unknown").nextAction;
+}
+
 export function judgeNews(input: {
   itemsLast48h: number;
   hoursSinceLastRun: number | null;
@@ -168,7 +205,13 @@ export function judgeNews(input: {
       ? [
           empty.failed.length > 0
             ? `取得に失敗したテーマ: ${empty.failed
-                .map((f) => (f.errorCode ? `${f.category}（${f.errorCode}）` : f.category))
+                .map((f) => {
+                  // **`http_400` だけを見せない**（T-M8-163）。運営者が直せる言い方にする。
+                  const kind = f.failureKind && f.failureKind !== "unknown"
+                    ? providerFailureGuide(f.failureKind).label
+                    : f.errorCode;
+                  return kind ? `${f.category}（${kind}）` : f.category;
+                })
                 .join("・")}`
             : null,
           empty.allDropped.length > 0
@@ -213,8 +256,7 @@ export function judgeNews(input: {
         name,
         level: "warn",
         detail,
-        nextAction:
-          "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
+        nextAction: newsFailureNextAction(empty.failed),
       };
     }
     return {
@@ -255,8 +297,7 @@ export function judgeNews(input: {
       name,
       level: input.itemsLast48h === 0 ? "error" : "warn",
       detail,
-      nextAction:
-        "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
+      nextAction: newsFailureNextAction(empty.failed),
     };
   }
   if (input.itemsLast48h === 0) {
@@ -561,11 +602,21 @@ export async function collectDiagnostics(
     dropped: number;
     drop_reasons: Record<string, number> | null;
     error_code: string | null;
+    provider_raw_error: string | null;
   }>(
-    // **`provider_raw_error` は select しない**（T-M8-86）。doctor はHTTPでも返るため、
-    // 本文をクエリの段階で取らない（`getGenerationJob` が `error - 'provider_raw_error'` で
-    // やっているのと同じ考え方）。運営者は必要なときDBで見る。
-    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code
+    /*
+      **`provider_raw_error` は分類にだけ使い、応答へ載せない**（T-M8-86 / T-M8-163）。
+
+      以前はここで select しない方針だった（doctorはHTTPでも返るため、本文をクエリの段階で
+      取らないという防ぎ方）。しかしそのために `http_400` しか出せず、**運営者が原因へ辿れなかった**
+      ——2026-08-20 の本番はAnthropicのクレジット切れで、運営者が5分で直せるものだったのに
+      「Claudeに聞いてください」と案内していた（原則2違反）。
+
+      そこで**取ってすぐ型へ落とし、生文字列はこのスコープから外へ出さない**形に変えた。
+      「外へ出ない」ことは `diagnostics.news.test.ts` が応答オブジェクトを走査して固定する。
+    */
+    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code,
+            provider_raw_error
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)`,
   );
@@ -581,6 +632,10 @@ export async function collectDiagnostics(
         dropped: Number(r.dropped),
         dropReasons: r.drop_reasons ?? {},
         errorCode: r.error_code,
+        // ここで型へ落とし、生文字列は捨てる（この先へ渡さない）。
+        failureKind: r.ok
+          ? null
+          : classifyProviderFailure(r.error_code, r.provider_raw_error),
       })),
     }),
   );
