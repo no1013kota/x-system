@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readSingleRow } from "@/lib/supabase/single-row";
 
 import {
   ensureUserProfileWithClient,
@@ -15,11 +16,17 @@ import {
  */
 export async function ensureUserProfile(user: ProfileUser): Promise<void> {
   const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (data) return;
+  /*
+    **読み取りの失敗を「行が無い」と混同しない**（T-M8-158/150）。以前は `const { data }` で
+    error を捨てており、読めなかった場合も upsert 経路へ落ちていた。upsert自体は冪等なので
+    データは壊れないが、`initialProfileForUser` は email が無いと throw するため、
+    **読み取り障害が「プロフィール作成失敗」という別の例外に化けて**原因を追いにくかった。
+    `/plans?confirmed=1` の500（T-M8-150）はこの経路上にある。
+  */
+  const existing = readSingleRow(
+    await admin.from("profiles").select("id").eq("id", user.id).maybeSingle(),
+    "profile repair lookup",
+  );
+  if (existing) return;
   await ensureUserProfileWithClient(user, admin);
 }

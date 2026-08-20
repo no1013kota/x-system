@@ -2292,6 +2292,23 @@ UI側boolean を壊しても投稿は誤爆しない）。
   経路上の分岐は精査済みで、`Notice tone="success"`・`subscriptionAccessFor`・`ensureUserProfile`（read-first）に
   落ちる要素は見つからなかった。**次の一手**: 再現するかを確認し、するなら Sentry の該当イベントか
   `vercel logs` を発生直後に取る（ログの保持が短く、後追いでは消えている）。
+- 進捗（2026-08-20・T-M8-158/159 の作業中に判明した分）:
+  1. **症状の正体が確定した。** 「This page couldn't load」は `_global-error`＝**error boundaryが無い**ときの
+     Next.js既定画面。当時 `src/app/error.tsx` は**存在しなかった**ため、`/plans`・`/login`・`/signup` など
+     **root直下のrouteで起きた例外はすべてこの画面**になっていた（`/app` 配下だけ `app/app/error.tsx` があった）。
+     T-M8-158 で `src/app/error.tsx` を追加したので、**同じ例外は共通エラー画面＋再試行として出る**。
+     これは症状の改善であって原因の修正ではない。
+  2. この経路上に残っていた握り潰しを解消した。`ensureUserProfile` の存在確認が `const { data }` で
+     `error` を捨てており、**読み取り障害が upsert 経路へ落ちて `initialProfileForUser` の
+     「email が必要」例外に化ける**形だった（原因追跡を妨げる）。`readSingleRow` を通すようにした。
+     `/plans` 最終読み取りと proxy の profile 取得も同様に修正済み（T-M8-158/159）。
+  3. **E2Eは既に当該経路を通している。** `e2e/auth.spec.ts` が 会員登録→6桁コード→`/plans` 遷移→
+     「メールアドレスの確認が完了しました」の可視まで確認しており、完了条件2つ目は既に満たされている。
+- **未解決のまま `todo` を維持する理由**: ローカル・E2E・型検査ではいずれも再現せず、
+  **本番で実際に落ちた原因が特定できていない**。再現していない不具合を `done` にはしない。
+  次に発生したら `src/app/error.tsx` が出る＋例外が Sentry へ AppError として届くので、
+  そのイベントで原因を確定できる。**運営者への依頼**: 再発したら画面の文言（既定500画面か
+  共通エラー画面か）を教えてほしい。共通エラー画面なら Sentry に原因が残っている。
 
 ### T-M8-149: 登録済みアドレスでも登録できたように見える経路を塞ぐ `done`
 - 参照: 要件05 §4（`signUp`）／運用メモ §症状表 / 依存: なし / サイズ: S
