@@ -215,13 +215,13 @@ describe("SC-01 LP: デザイン制約", () => {
     expect(LP_SOURCES.length).toBeGreaterThan(5000);
   });
 
-  it("ブランドグラデーションは規定の4箇所だけ（ロゴはLogoTile側なので数えない）", () => {
-    // 生成中バー2本（ヒーローモック・しくみSTEP3）＋上端3pxバー2本（「投稿の生成」カード・
-    // STEP3カード）。ハンドオフREADME §デザイントークン の規定どおり。
-    // **T-M8-125で4本になった**——料金をプランカードから比較表へ変えたため、
-    // プレミアムカードの上端バーが無くなった（表のヘッダはグラデを使わない）。
+  it("ブランドグラデーションは規定の2箇所だけ（ロゴはLogoTile側なので数えない）", () => {
+    // 生成中バー1本（ヒーローモックの「投稿作成」）＋上端3pxバー1本（02の「投稿作成」カード）。
+    // **T-M8-172で2本になった**——03しくみを4ステップのカード列から成長グラフへ変えたため、
+    // STEP3の生成中バーと上端バーが無くなった（グラフは「AIが動く瞬間」ではないので
+    // ブランドグラデを使わない・デザイン §カラー）。
     const direct = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
-    expect(direct.length).toBe(4);
+    expect(direct.length).toBe(2);
   });
 
   /**
@@ -233,8 +233,9 @@ describe("SC-01 LP: デザイン制約", () => {
    */
   it("グラデを出すカードの枚数が増えていない（フラグの数を数える）", () => {
     const count = (source: string, pattern: RegExp) => (source.match(pattern) ?? []).length;
-    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(2);
-    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(1);
+    // 02できることの「投稿作成」1枚だけ（T-M8-172で03しくみのカード列が無くなった）。
+    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(1);
+    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(0);
   });
 
   it("reduced-motion で生成ループの装飾が止まる", () => {

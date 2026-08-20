@@ -103,7 +103,7 @@ test.describe("JSが動かない環境", () => {
      * 「JSが動かなくてもLPが白紙にならない」ことで、コピーの一致ではない。ラベルは節の識別子で、
      * コピー修正では変わらない。
      */
-    for (const label of ["課題", "できること", "しくみ", "使い方", "料金", "よくある質問"]) {
+    for (const label of ["コンセプト", "できること", "しくみ", "初めかた", "料金", "よくある質問"]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
 

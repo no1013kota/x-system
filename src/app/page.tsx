@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
+  GrowthChartFigure,
+  PromptEditorFigure,
+  PostComposeFigure,
   AnalyticsFigure,
   NewsFeedFigure,
   ScheduleFigure,
@@ -68,22 +72,6 @@ const NAV_LINKS: [string, string][] = [
   ["#pricing", "料金"],
 ];
 
-/** 課題は `docs/marketing/lp-design-brief.md` §1 の3つ（作業量／費用／自分らしさ）を正とする。 */
-const PROBLEMS: [string, string][] = [
-  [
-    "毎日続けるには、やることが多すぎる",
-    "ネタ探し、文章と画像の作成、投稿、反応の確認。本業の合間に毎日回すには多すぎます。",
-  ],
-  [
-    "代行に頼むには、費用が大きすぎる",
-    "運用代行は月の負担が大きく、個人や小規模の事業では手が出しにくい。",
-  ],
-  [
-    "適切なプロンプトを作成できない",
-    "何をどう書かせれば伸びるのかが分からない。書けたつもりでも結果につながらない。",
-  ],
-];
-
 const HOW_TO_STEPS: [string, string][] = [
   ["アカウント作成", "メールアドレスで登録し、確認メールで本人認証。"],
   ["カード登録", "ここから7日間の無料トライアルが始まります。"],
@@ -91,9 +79,11 @@ const HOW_TO_STEPS: [string, string][] = [
   ["運用開始", "下書きの確認から、あなたのペースで。"],
 ];
 
-const POST_TYPE_CHIPS = ["ニュース解説", "考え・意見", "ノウハウ", "トレンド便乗", "週次まとめ"];
-
-/** 「02 できること」の4枚。上端グラデ3pxは「投稿の生成」＝AIが動く瞬間だけ（デザイン §カラー）。 */
+/**
+ * 「02 できること」の5枚（T-M8-172・運営者の指示 2026-08-21）。
+ * 並び順は運用の流れと同じ: ニュース解説→プロンプト作成→投稿作成→スケジュール→結果分析・プロンプト改善
+ * （ヒーローのモックとも揃える）。上端グラデ3pxは「投稿作成」＝AIが動く瞬間だけ（デザイン §カラー）。
+ */
 const FEATURES: {
   eyebrow: string;
   title: string;
@@ -109,22 +99,17 @@ const FEATURES: {
     figure: <NewsFeedFigure />,
   },
   {
+    eyebrow: "プロンプトの設計・編集",
+    title: "AIへの指示を、自分の言葉で磨ける",
+    body: "投稿の土台になるアカウント.md、投稿の型、画像生成のプロンプトを、そのまま確認・編集できます。テンプレートから始めて、反応を見ながらあなた用に育てられます。",
+    figure: <PromptEditorFigure />,
+  },
+  {
     eyebrow: "投稿・画像の自動作成",
     title: "5種類の型で、文章も画像も",
     body: "スレッド形式の文章と、添える画像をまとめて生成します。編集や、追加指示つきの再生成もできます。",
     gradientTop: true,
-    figure: (
-      <div className="flex flex-wrap gap-1.5">
-        {POST_TYPE_CHIPS.map((chip) => (
-          <span
-            className="inline-flex h-[22px] items-center rounded-chip bg-brand-subtle px-2 text-caption text-brand"
-            key={chip}
-          >
-            {chip}
-          </span>
-        ))}
-      </div>
-    ),
+    figure: <PostComposeFigure />,
   },
   {
     eyebrow: "融通の効くスケジュール設定",
@@ -133,60 +118,22 @@ const FEATURES: {
     figure: <ScheduleFigure />,
   },
   {
-    eyebrow: "使うほど投稿の質が上がる",
-    title: "何が伸びたかを、分析してプロンプトを自動で改善",
+    eyebrow: "結果分析・プロンプト改善",
+    title: "何が伸びたかを分析して、改善案まで届く",
     // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
-    body: "表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。毎朝、どの投稿が伸びたかを根拠つきのレポートで示します（1日1回・表示のみ。設定への反映はあなたが選べます）。",
+    body: "表示回数・いいね・リポスト・フォロワー数を自動で記録。毎朝、どの投稿が伸びたかを根拠つきのレポートで示し、アカウント.mdとプロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
     figure: <AnalyticsFigure />,
   },
 ];
 
 /**
- * 「03 しくみ」の4ステップ＝**サービスの4つの特徴を1周の流れ**として並べる（T-M8-80）。
- *
- * 以前は「学習させる素材 → アカウント.md → 生成 → 分析」で、(1)特徴1（ニュースの自動取得）が
- * どこにも無く (2)最後の「分析」が次へ戻らない一方通行だった。
- * **仕様値（3分野・5種類・9:00〜22:00・記録タイミング）は書かない**——それは「02 できること」の
- * 担当で、ここは「何を受け取って何を次へ渡すか」だけを言う（02の言い直しにしない）。
+ * 「03 しくみ」（T-M8-172・運営者の指示 2026-08-21）: 4ステップのカード列から
+ * **成長グラフ**へ変えた。伝えたいのは工程の説明ではなく「使うほどプロンプトも
+ * アカウント.mdも成長する」こと（コンセプト画像と同じ主張の中身側）。
+ * 工程は小さなサイクル表記（集める→作る→出す→測る→反映）で添える。
+ * 「反映するかはあなたが選ぶ」の開示は落とさない（禁止表現「AIが自動で学習し続けて最適化」を避ける）。
  */
-const HOW_STEPS: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  /** 次のステップへ渡すもの。4枚とも同じ器に入れて高さのばらつきを消す。 */
-  slot: string;
-  /** 生成中バー。AIが動く瞬間を示すブランドグラデーションはこの1枚だけ。 */
-  bar?: boolean;
-  gradientTop?: boolean;
-}[] = [
-  {
-    eyebrow: "01 集める",
-    title: "ニュースが自動で届く",
-    body: "決めた分野のニュースが自動で集まり、その日の素材になります。",
-    slot: "次へ渡す：その日のニュース",
-  },
-  {
-    eyebrow: "02 作る",
-    title: "文章と画像ができる",
-    body: "素材とアカウント.mdから、文章と画像のそろった下書きができます。毎回の指示は要りません。",
-    slot: "次へ渡す：下書き（通常60〜90秒）",
-    bar: true,
-    gradientTop: true,
-  },
-  {
-    eyebrow: "03 出す",
-    title: "スケジュール通りに投稿",
-    body: "できた下書きは、事前に設定したスケジュール通りに投稿されます。",
-    slot: "次へ渡す：予約ずみの投稿",
-  },
-  {
-    eyebrow: "04 測る",
-    // 「1日1回・表示のみ」は落とさない（落とすと禁止表現「AIが自動で学習し続けて最適化」に触れる）。
-    title: "伸びた条件がわかる",
-    body: "出した投稿の反応が自動で記録され、何が伸びたかを根拠つきで示します（1日1回・表示のみ）。",
-    slot: "次へ渡す：伸びた条件",
-  },
-];
+const CYCLE_STEPS = ["集める", "作る", "出す", "測る", "反映する"];
 
 export default function Home() {
   const startingPrice = `${yen(PLANS.standard.monthlyPriceJpy)}円`;
@@ -298,38 +245,35 @@ export default function Home() {
           前3つは「02 できること」、月額はヒーローのチェックと料金セクションの見出し。
         */}
 
-        {/* 01 課題 */}
+        {/* 01 コンセプト（T-M8-172・運営者の指示 2026-08-21。旧「01 課題」を置き換えた） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           <div className={TWO_COL}>
             <div>
-              <SectionMark label="課題" no="01" />
-                              <h2 className={H2}>
-                  毎日のX運用に
-                  <br />
-                  時間を取られていませんか？
-                </h2>
-              {/* リード文は見出しと3項目で足りるため削除（T-M8-76）。 */}
+              <SectionMark label="コンセプト" no="01" />
+              <h2 className={H2}>
+                使うほど、
+                <br />
+                プロンプトが磨かれる。
+              </h2>
+              <p className="mt-4 max-w-[38em] text-sm text-ink-2">
+                {APP_NAME}はプロンプト駆動のSNS運用プラットフォームです。プロンプトを設計し、投稿を生成・運用し、結果を分析して、プロンプトを改善する——この1周を回すたびに、あなたのアカウント.mdとプロンプトが育ちます。
+              </p>
+              <p className="mt-3 max-w-[38em] text-sm text-ink-2">
+                だから、始めたその日より、1ヶ月後のほうがあなたらしい投稿になります。
+              </p>
             </div>
-            <div>
-              {PROBLEMS.map(([title, body], index) => (
-                <div
-                  className={cn(
-                    "border-t border-hairline",
-                    index === PROBLEMS.length - 1 && "border-b",
-                  )}
-                  key={title}
-                >
-                  <div className="flex gap-[18px] py-[18px]">
-                    <span className="flex-none pt-0.5 text-body font-bold text-brand">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <p className="text-[15px] leading-[1.6] font-bold">{title}</p>
-                      <p className="mt-1.5 text-sm text-ink-2">{body}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="min-w-0">
+              {/*
+                運営者提供の完成画像（docs/lp/コンセプト.png → public/lp/concept.jpg・T-M8-172）。
+                LPの図版は原則CSS/DOMだが、この1枚だけは完成ビジュアルを使う（運営者の指示）。
+              */}
+              <Image
+                alt={`${APP_NAME}のコンセプト図。プロンプトを設計→投稿を生成・運用→投稿結果を分析→プロンプトを改善、の4ステップが循環し、「使うほど、プロンプトが磨かれる。」と書かれている`}
+                className="h-auto w-full rounded-card border border-hairline shadow-[var(--shadow-card)]"
+                height={1066}
+                src="/lp/concept.jpg"
+                width={1600}
+              />
             </div>
           </div>
         </section>
@@ -341,7 +285,7 @@ export default function Home() {
         >
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="できること" no="02" />
-                          <h2 className={H2}>情報収集から分析まで、4つの仕事を引き受けます</h2>
+                          <h2 className={H2}>情報収集からプロンプト改善まで、5つの仕事を引き受けます</h2>
             {/*
               ベントーグリッド（12col・7/5→5/7）から**4枚の縦積み**へ変更（T-M8-77）。
               各カードは全幅になるので、本文を左・図版を右の2カラムに置く
@@ -381,78 +325,24 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 03 しくみ */}
+        {/* 03 しくみ（T-M8-172: 4ステップのカード列 → 成長グラフ） */}
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
-          {/*
-            見出しは**4ステップ全体（＝サービスの4つの特徴）**を指す。「アカウント.mdが土台」という
-            見出しでは、最後の「測る」を説明できなかった。アカウント.mdは強調せずリード文で役割を述べる。
-          */}
-                      <h2 className={H2}>ネタ探し→投稿作成→スケジュール化→効果測定とプロンプト改善のサイクルを自動化</h2>
-                      <p className="mt-3.5 max-w-[42em] text-sm text-ink-2">
-              最初の設定でできる1枚（アカウント.md）を土台に、4つの工程が順にまわります。あなたが手を動かすのは、上がってきた下書きを確認するところだけです。
-            </p>
-          {/*
-            4ステップは**同じ器・同じ構造**で並べる（T-M8-78）。特定のステップを強調しない。
-            上端3pxグラデと生成バーは「作る」＝AIが動く瞬間の1枚だけ（デザイン §カラーの規定）。
-          */}
-          <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
-            {HOW_STEPS.map((step, index) => (
-              <Fragment key={step.title}>
-                {index > 0 && (
-                  <div
-                    aria-hidden="true"
-                    className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
-                  >
-                    →
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <div
-                    className={cn(
-                      cardClassName,
-                      "relative flex h-full flex-col overflow-hidden p-[18px]",
-                    )}
-                  >
-                    {step.gradientTop && (
-                      <div
-                        aria-hidden="true"
-                        className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
-                      />
-                    )}
-                    <p className="text-caption font-bold tracking-[0.06em] text-ink-3">
-                      {step.eyebrow}
-                    </p>
-                    <CardTitle as="h3" className="mt-1.5">
-                      {step.title}
-                    </CardTitle>
-                    <p className="mt-2 flex-1 text-body text-ink-2">{step.body}</p>
-                    {/* 4枚とも同じ器の「次へ渡すもの」。STEP4だけ図版が無い不揃いを解消する。 */}
-                    <div
-                      aria-hidden="true"
-                      className="mt-2.5 flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-caption text-ink-3"
-                    >
-                      {step.bar && (
-                        <span className="h-1 w-10 flex-none overflow-hidden rounded-pill bg-surface">
-                          <span className="lp-anim-bar block h-full w-[70%] rounded-pill [background-image:var(--brand-gradient)]" />
-                        </span>
-                      )}
-                      {step.slot}
-                    </div>
-                  </div>
-                </div>
-              </Fragment>
-            ))}
+          <h2 className={H2}>使うほど、プロンプトもアカウントも成長する</h2>
+          <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
+            最初の設定でできる1枚（アカウント.md）を土台に、
+            {CYCLE_STEPS.join("→")}のサイクルが自動でまわります。学習ソースの分析や毎朝の改善提案を反映するたびに版が積み重なり、生成される投稿があなたの言葉に近づいていきます。
+          </p>
+          <div className="mt-7">
+            <GrowthChartFigure />
           </div>
           {/*
-            「測る」から次の1周へ戻る線。これが無いと最後のステップが一方通行に見える。
-            同時に「取り入れると決めたことだけ」＝提案は自動反映しないことの開示になる
-            （禁止表現「AIが自動で学習し続けて最適化」を避ける）。
+            提案は自動反映しないことの開示。これが無いと禁止表現
+            「AIが自動で学習し続けて最適化」と同じ主張になる。
           */}
           <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-caption text-ink-3">
-            <span aria-hidden="true">←</span>
             <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
-            <span>取り入れると決めたことだけが、次の1周に効きます</span>
+            <span>反映するかはあなたが選べます。取り入れると決めたことだけが、次の1周に効きます</span>
             <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
           </div>
         </section>
@@ -463,19 +353,33 @@ export default function Home() {
           **APIキーの暗号化・末尾4桁だけはここが唯一の置き場所だったので、FAQの回答へ戻した。**
         */}
 
-        {/* 04 使い方 */}
+        {/* 04 初めかた（T-M8-172: 名称変更＋フロー図） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="使い方" no="04" />
-                      <h2 className={H2}>始め方は4ステップ</h2>
-          <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-x-3.5 gap-y-6">
+          <SectionMark label="初めかた" no="04" />
+          <h2 className={H2}>初めかたは4ステップ</h2>
+          {/* フロー図: 各ステップを矢印でつなぐ（960px未満は縦の流れ）。 */}
+          <div className="mt-[30px] grid gap-3 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
             {HOW_TO_STEPS.map(([title, body], index) => (
-              <div className="border-t-2 border-brand pt-4" key={title}>
-                <p aria-hidden="true" className="text-[20px] font-bold text-brand">
-                  {index + 1}
-                </p>
-                <h3 className="mt-1.5 text-[15px] font-bold">{title}</h3>
-                <p className="mt-1.5 text-body text-ink-2">{body}</p>
-              </div>
+              <Fragment key={title}>
+                {index > 0 && (
+                  <div
+                    aria-hidden="true"
+                    className="flex min-h-4 rotate-90 items-center justify-center self-center text-[15px] text-ink-3 min-[960px]:rotate-0"
+                  >
+                    →
+                  </div>
+                )}
+                <div className={cn(cardClassName, "flex h-full flex-col p-[18px]")}>
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex size-8 items-center justify-center rounded-pill bg-brand-subtle text-[15px] font-bold text-brand"
+                  >
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-2.5 text-[15px] font-bold">{title}</h3>
+                  <p className="mt-1.5 text-body text-ink-2">{body}</p>
+                </div>
+              </Fragment>
             ))}
           </div>
         </section>

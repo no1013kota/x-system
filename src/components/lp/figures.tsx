@@ -147,6 +147,132 @@ export function AnalyticsFigure() {
   );
 }
 
+
+/**
+ * プロンプトの設計・編集（T-M8-172）: アカウント.md・投稿の型・画像生成の3区分を
+ * タブで持つ編集画面の見え方。実画面（設定＞プロンプト）の区分と揃える。
+ */
+export function PromptEditorFigure() {
+  const lines = [
+    "# 発信の軸",
+    "AI活用を、個人事業主の目線でやさしく解説する。",
+    "## 文体",
+    "断定しすぎず、実体験ベースで語る。絵文字は1投稿に1つまで。",
+  ];
+  return (
+    <div aria-hidden="true" className="overflow-hidden rounded-card border border-hairline bg-page">
+      <div className="flex items-end gap-3 border-b border-hairline bg-surface px-3 pt-2">
+        <span className="border-b-2 border-brand pb-1.5 text-[11px] font-medium text-brand">
+          アカウント.md
+        </span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">投稿の型</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">画像生成</span>
+        <span className="ml-auto pb-1.5 text-[11px] text-ink-3">v3</span>
+      </div>
+      <div className="grid gap-1 px-3 py-2.5">
+        {lines.map((line) => (
+          <p
+            className={cn(
+              "truncate text-[11px] leading-[1.7]",
+              line.startsWith("#") ? "font-bold text-ink" : "text-ink-2",
+            )}
+            key={line}
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 border-t border-hairline bg-surface px-3 py-2">
+        <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+          保存して履歴に残す
+        </span>
+        <span className="text-[11px] text-ink-3">いつでも前の版に戻せます</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 投稿・画像の自動作成（T-M8-172）: 生成された下書き（スレッド＋画像）の見え方。
+ * 型チップの一覧だけでは「何ができあがるのか」が想像できなかったため、成果物を見せる。
+ */
+export function PostComposeFigure() {
+  return (
+    <div aria-hidden="true" className="grid gap-2 rounded-card border border-hairline bg-page p-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+          型：ニュース解説
+        </span>
+        <span className="inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
+          スレッド 3投稿
+        </span>
+        <span className="ml-auto text-[11px] text-ink-3">画像つき</span>
+      </div>
+      <div className="rounded-card border border-hairline bg-surface px-2.5 py-2">
+        <p className="text-[11px] leading-[1.7] text-ink">
+          生成AIの業務利用がまた一歩前へ。個人でも今日から試せる活用ポイントを3つに絞って解説します🧵
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="flex h-9 w-14 flex-none items-center justify-center rounded-card border border-hairline bg-brand-subtle text-[11px] font-medium text-brand">
+          画像
+        </span>
+        <span className="text-[11px] text-ink-3">本文に合わせた画像も同時に生成</span>
+        <span className="ml-auto inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
+          編集・再生成OK
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * しくみの成長グラフ（T-M8-172・運営者の指示）: 使うほどプロンプトとアカウント.mdが
+ * 成長する様子を1枚で示す。**y軸は「プロンプトの完成度」＝事実として起きること**
+ * （初版→学習ソース→改善提案の反映で版が積み上がる）に限定し、フォロワー増の保証と
+ * 読める表現にはしない（禁止表現「AIが自動で学習し続けて最適化」も避け、反映は
+ * 利用者が選ぶことを本文側が開示する）。
+ */
+export function GrowthChartFigure() {
+  // 4点の座標はviewBox基準の固定値（データではなく概念図）。
+  const points = [
+    { x: 70, y: 190, label: "v1 初版", sub: "設定から自動生成" },
+    { x: 210, y: 150, label: "学習ソースを反映", sub: "参考アカウント・投稿" },
+    { x: 350, y: 105, label: "改善提案を反映", sub: "毎朝の分析から" },
+    { x: 490, y: 55, label: "あなた専用の1枚に", sub: "手直しも自由" },
+  ];
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  return (
+    <div aria-hidden="true" className="rounded-card border border-hairline bg-page p-3.5">
+      <svg className="h-auto w-full" role="presentation" viewBox="0 0 560 240">
+        {/* 軸 */}
+        <line stroke="var(--hairline)" strokeWidth="1" x1="40" x2="40" y1="16" y2="208" />
+        <line stroke="var(--hairline)" strokeWidth="1" x1="40" x2="544" y1="208" y2="208" />
+        <text fill="var(--ink-3)" fontSize="11" x="46" y="28">
+          プロンプトの完成度（アカウント.mdの厚み）
+        </text>
+        <text fill="var(--ink-3)" fontSize="11" textAnchor="end" x="544" y="226">
+          運用の周回 →
+        </text>
+        {/* 面と線 */}
+        <path d={`${path} L${points[points.length - 1].x},208 L${points[0].x},208 Z`} fill="var(--brand-subtle)" opacity="0.7" />
+        <path d={path} fill="none" stroke="var(--brand)" strokeLinecap="round" strokeWidth="2.5" />
+        {points.map((p) => (
+          <g key={p.label}>
+            <circle cx={p.x} cy={p.y} fill="var(--surface)" r="5" stroke="var(--brand)" strokeWidth="2.5" />
+            <text fill="var(--ink)" fontSize="11" fontWeight="700" textAnchor="middle" x={p.x} y={p.y - 14}>
+              {p.label}
+            </text>
+            <text fill="var(--ink-3)" fontSize="10.5" textAnchor="middle" x={p.x} y={p.y + 24}>
+              {p.sub}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 /*
  * しくみの図版（BaseMdFigure / GenerationProgressFigure）は削除した（T-M8-80）。
  * 03を「集める→作る→出す→測る」の4ステップへ組み替えた際、4枚とも同じ「次へ渡すもの」の
