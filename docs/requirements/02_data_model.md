@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.44 |
+| バージョン | v1.45 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -585,7 +585,7 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `description` | `text` | nullable | 補足説明。**ポスト数はここに書かせない**（`max_posts`から画面が自動で付ける） |
 | `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
 | `max_posts` | `smallint` | not null default 4、1〜8 | **生成時**に作る総ポスト数の上限。**プロンプトの「# 構成と分量とスレッド数」に書かれた `Nスレッド目` から保存時に読む**（T-M8-132）。**読み取れないときの扱いは3段**（T-M8-139）: ①既定パターンでプロンプトを既定へ戻したならその型の既定値（`GENERATION_MAX_POSTS`。P-1=4 等）②それ以外は**今の値を保つ**③新規作成だけ全体の上限（8）。**保存しただけで分量が変わってはいけない**——既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため、以前は既定パターンを保存するたびに8へ跳ね上がり、既定表が1クリックで失われていた。黙って短い値を当てて切り詰めることもしない |
-| `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(7, max_posts + 2)` |
+| `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(8, max_posts + 2)`（`PATTERN_MAX_POSTS_LIMIT`＝8・T-M8-130で7から引き上げ） |
 | `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131） |
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
 | `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
@@ -696,19 +696,19 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 
 ```json
 {
-  "pattern": "p1",
+  "pattern_id": "uuid",
+  "theme": "ai",
   "source_url": "https://example.com",
   "quote_url": null,
-  "quote_tweet_id": null,
-  "user_opinion": null,
+  "placeholder_values": { "名前": "値" },
   "instructions": null,
   "image_enabled": true,
   "news_item_id": "uuid",
-  "requested_mode": "draft"
+  "prompt_override": null
 }
 ```
 
-対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
+キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
 
 ### 4.6 `generation_jobs.usage`
 
@@ -898,3 +898,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
 | v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
 | v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
+| v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |

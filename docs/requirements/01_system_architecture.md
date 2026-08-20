@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.20 |
+| バージョン | v1.21 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -152,7 +152,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 
 画面IDを持たない公開補助routeとして`/terms`、`/privacy`、`/legal/commercial-transactions`を用意する。LP、会員登録、プラン選択、アプリ設定のfooterから到達可能にする。
 
-認証補助Route Handlerとして`GET /auth/confirm`を用意する。Supabaseのconfirmation／recoveryメールテンプレートは`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し、`token_hash`と`type=signup|recovery`をServer側で`verifyOtp`する。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
+認証補助Route Handlerとして`GET /auth/confirm`を用意する。**方式はメールの種類で違う**（T-M8-121）。会員登録の確認メールは`{{ .Token }}`の**6桁コード**で、利用者が画面へ入力した値をServer側で`verifyOtp`する（`type=signup`のリンクは使わない）。パスワード再設定メールは引き続きリンク方式で、`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し`token_hash`と`type=recovery`をServer側で`verifyOtp`する。テンプレートの正本は`supabase/templates/`で、反映は`npm run auth:templates -- --apply`（`doctor`が確認メールに6桁コードが載っているかを見る）。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
 
 ## 5. 認証ガード
 
@@ -234,3 +234,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.18 | 2026-08-20 | 共通App Shellを表示model・純粋core・server adapterへ分離し、Client ComponentへAction契約を注入する依存方針を追加（T-M8-155） |
 | v1.19 | 2026-08-20 | server adapterが取得失敗を正常な空へ潰さない方針と、ルート直下のerror boundaryを追加（T-M8-158） |
 | v1.20 | 2026-08-20 | proxyのprofile取得失敗を記録する方針を追加（向きはfail closedのまま・T-M8-159） |
+| v1.21 | 2026-08-20 | §4の認証メール方式を種類別（登録=6桁コード／再設定=リンク）へ修正（T-M8-144 #27） |
