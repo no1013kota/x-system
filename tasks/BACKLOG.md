@@ -2155,6 +2155,30 @@ UI側boolean を壊しても投稿は誤爆しない）。
   「throwせず・`/plans`へ送り・1回記録する」を同時に固定するテストを追加（10件成功）。
 - 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。docs 要件01 §5 を更新。
 
+### T-M8-161: 実DB全テストの「flaky」1件は決定的な失敗だった（follower_snapshot） `done`
+- 参照: `src/lib/jobs/follower-snapshot.ts`／`src/lib/jobs/follower-snapshot.db.test.ts` / 依存: なし / サイズ: S
+- 背景（2026-08-20）: 実DB全テストが**5〜6回に1回**だけ1件落ちる状態を観測した。
+  10回連続実行で捕まえたところ、常に同じ1件だった:
+  `follower-snapshot.db.test.ts > writes today's snapshot for an active account`
+  （`expected 0 to be greater than or equal to 1`）。
+- **原因（flakyではない）**: `executeFollowerSnapshot` は「今日の分が無い active アカウント」を
+  **全アカウントから** `created_at asc, id asc` 順に `FOLLOWER_ACCOUNT_LIMIT`（=100）件だけ選ぶ。
+  テストが作るアカウントは**必ず最も新しい**ので、ローカルDBに他テスト・E2Eの active アカウントが
+  100件以上残っていると**このテストのアカウントが上限で切り落とされ**、`snapshotsWritten` が 0 になる。
+  観測時のローカルDBは **active 101件**で、閾値をまたいだ瞬間から落ち始めていた。
+  つまり**溜まった件数で決まる決定的な失敗**で、実行のたびに変わる「flaky」ではない。
+  E2Eを何度も回して active アカウントが増えた結果、途中から再現し始めたのが「間欠的」に見えた理由。
+- **なぜ既存の対策で防げなかったか**: テストは `getAccessToken` が自分以外へ `null` を返す形で
+  「他テストのアカウントの巻き込み」を既に意識していた。しかしそれは**選ばれた後**の話で、
+  **選定そのもの（LIMIT で切られる）は防げない**。
+- 対応: `mockDeps` に `limits: { accounts: 100_000 }` を渡し、選定上限に依存しないようにした。
+  他アカウントは従来どおり token=null で即skipされるので外部呼び出しは増えない。
+  **DBに101件残った状態で、修正前は落ち・修正後は通ることを実際に確認した**（決定的であることの裏取り）。
+- 副次の気付き: ローカルDBに**テスト・E2E由来の active アカウントが100件以上滞留**していた。
+  `npm run db:clean-test-data` があるので定期的に流す。滞留自体が他の「全アカウント対象」の
+  ジョブテストにも同種の閾値問題を作りうる。
+- 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。
+
 ### T-M8-156: アカウント.mdの履歴を1アカウント最大5件までに制限する `done`
 - 参照: 要件02 §3.4（`base_md_versions`）／要件05 §「アカウント.md更新」・§304／要件06 §「アカウント.md」 / 依存: なし / サイズ: M
 - 背景（2026-08-20 運営者の指示）: `base_md_versions` は**追記のみで削除経路が1つも無い**

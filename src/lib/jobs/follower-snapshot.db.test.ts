@@ -75,6 +75,20 @@ describe("follower_snapshot (local DB)", () => {
     return {
       db,
       isPastDeadline: () => false,
+      /*
+        **選定は全アカウントを対象にするので、上限も広げる**（T-M8-161）。
+
+        `executeFollowerSnapshot` は「今日の分が無い active アカウント」を
+        `created_at asc, id asc` の順に `FOLLOWER_ACCOUNT_LIMIT`（=100）件だけ選ぶ。
+        テストが作るアカウントは**必ず最も新しい**ので、ローカルDBに他テスト・E2Eの
+        active アカウントが100件以上残っていると**このテストのアカウントが上限で切り落とされ**、
+        `snapshotsWritten` が 0 になって落ちる。実際に101件溜まった時点で再現した
+        （5〜6回に1回落ちる「flaky」に見えていたが、**溜まった件数で決まる決定的な失敗**だった）。
+
+        token=null の skip は元からあったが、それは「選ばれた後」の話で選定自体は防げない。
+        上限を広げても他アカウントは token=null で即skipされ、外部呼び出しは起きない。
+      */
+      limits: { accounts: 100_000, parallel: 4 },
       // 他テストのアカウントは token=null で skip（グローバル選定の巻き込み回避）。
       getAccessToken: async (xid) => (xid in counts ? "tok" : null),
       readFollowersCount: async ({ xAccountId }) => counts[xAccountId] ?? null,
