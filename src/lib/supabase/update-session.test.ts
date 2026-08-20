@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
     NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
   },
+  captureServerException: vi.fn(),
   secret: Buffer.alloc(32, 5),
 }));
 
@@ -17,6 +18,9 @@ vi.mock("@supabase/ssr", () => ({
 vi.mock("@/lib/env", () => ({ env: mocks.env }));
 vi.mock("@/lib/crypto", () => ({
   getAppEncryptionKey: () => mocks.secret,
+}));
+vi.mock("@/lib/observability/sentry", () => ({
+  captureServerException: mocks.captureServerException,
 }));
 
 import { updateSupabaseSession } from "./update-session";
@@ -164,5 +168,49 @@ describe("updateSupabaseSession", () => {
     );
     expect(billing.headers.get("location")).toBeNull();
     expect(support.headers.get("location")).toBeNull();
+  });
+
+  /**
+   * profile読み取りが失敗したときの扱い（T-M8-159）。
+   *
+   * **向きは変えない**（fail closed のまま `/plans` へ送る。要件01 §5の意図）。
+   * 変えるのは「黙って起きる」ことだけ——記録が無いと、DB障害を運営者は
+   * 「解約が急増した」としか読めなかった（原則1）。
+   *
+   * **proxyは全リクエストを通るのでthrowしてはいけない。** 投げると `/app` 配下だけでなく
+   * ログイン画面まで落ちる。ここはその2点を同時に固定する。
+   */
+  it("profile読み取りの失敗はthrowせず、fail closedのまま記録する", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "57014", message: "canceling statement due to timeout" },
+    });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    const select = vi.fn().mockReturnValue({ eq });
+    mocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      from: vi.fn().mockReturnValue({ select }),
+    });
+
+    const response = await updateSupabaseSession(
+      new NextRequest("https://exos-ai.example/app/posts"),
+    );
+
+    // 落ちずに応答を返し、向きは従来どおり /plans。
+    expect(response.headers.get("location")).toBe(
+      "https://exos-ai.example/plans",
+    );
+    // 黙って起きない。
+    expect(mocks.captureServerException).toHaveBeenCalledTimes(1);
+    const [error, context] = mocks.captureServerException.mock.calls[0];
+    expect((error as Error).message).toContain("route-guard profile");
+    expect(context).toMatchObject({
+      reason: "route_guard_profile_read_failed",
+    });
   });
 });

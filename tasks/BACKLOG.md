@@ -2136,7 +2136,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   落ちるため、リダイレクトの向き（fail closed）を変えずに記録だけ足す設計が必要**で、
   影響範囲が認証経路全体に及ぶため分けた → T-M8-159。
 
-### T-M8-159: 認証proxyのprofile取得失敗を記録して「未契約」と区別する `todo`
+### T-M8-159: 認証proxyのprofile取得失敗を記録して「未契約」と区別する `done`
 - 参照: 要件01 §5・§8（proxyのsession検証）／要件03 §1 / 依存: T-M8-158 / サイズ: S
 - 背景: `src/lib/supabase/update-session.ts` の `select("plan, subscription_status")` は
   `result.data`だけを返し`error`を捨てる。`src/lib/auth/route-guard.ts` は `!profile?.plan` で
@@ -2148,6 +2148,12 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 取得失敗が記録され、運営者が気付ける経路（通知・サマリ・Sentry）に載る
   - 失敗の連続時に記録が溢れない（App Shellと違いproxyは全リクエストで走るため多重記録の抑制が必要）
   - middlewareで例外を投げないこと（全リクエストが落ちるため）を固定するテスト
+- メモ: `loadRouteGuardProfile` で `result.error` を判定し、`captureServerException` へ
+  `AppError('internal_error')` として記録するようにした。**向き（fail closed→`/plans`）は変えていない。**
+  proxyは`/app`配下の全リクエストを通るため、記録はモジュールスコープの時刻で**60秒に1回へ間引く**
+  （DB障害中に記録先が溢れて他の異常が埋まるのを防ぐ）。`update-session.test.ts` に
+  「throwせず・`/plans`へ送り・1回記録する」を同時に固定するテストを追加（10件成功）。
+- 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。docs 要件01 §5 を更新。
 
 ### T-M8-156: アカウント.mdの履歴を1アカウント最大5件までに制限する `todo`
 - 参照: 要件02 §3.4（`base_md_versions`）／要件05 §「アカウント.md更新」・§304／要件06 §「アカウント.md」 / 依存: なし / サイズ: M

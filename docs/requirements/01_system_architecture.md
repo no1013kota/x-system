@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
+| バージョン | v1.20 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -168,7 +168,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 
 proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人のRLS経由で`profiles.plan, subscription_status`を取得する。検証結果（user id／emailまたは未認証）は、外部から来た同名値を削除・上書きし、`APP_ENCRYPTION_KEY`によるHMAC-SHA256署名を付けたうえで`NextResponse.next({ request: { headers } })`のupstream request headerとして同一リクエストのServer Components／Server Actions／Route Handlersへ渡す。後段の共通認証helperは署名一致時だけこれを再利用し、不在・改ざん・proxyを通らない内部呼び出しは`getUser()`へフォールバックする。upstream headerはブラウザ応答へ出さず、cookie内の未検証userを認可に使わない。これにより画面表示ごとの重複したAuth HTTP往復を作らない。
 
-session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。profile取得不能時は未契約としてfail closedし`/plans`へ送る。`past_due`／`unpaid`／`paused`／`canceled`はrouteで遮断せず、後続のmutation認可と常設バナーで制御する。
+session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。profile取得不能時は未契約としてfail closedし`/plans`へ送る。**このときproxyは例外を投げず、取得失敗を記録する**（T-M8-159）。向きを変えないのは要件どおりだが、記録が無いとDB障害が「解約の急増」としか読めない。proxyは`/app`配下の全リクエストを通るため、記録は60秒に1回へ間引く（失敗が続いていることは分かる）。**ここでthrowするとログイン画面まで落ちる。**`past_due`／`unpaid`／`paused`／`canceled`はrouteで遮断せず、後続のmutation認可と常設バナーで制御する。
 
 ## 6. 実行環境の前提
 
@@ -233,3 +233,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.17 | 2026-08-19 | proxyの検証済み認証結果とrefresh済みcookieを同一リクエストの後段へ引き継ぎ、重複Auth往復を削減（T-M8-154） |
 | v1.18 | 2026-08-20 | 共通App Shellを表示model・純粋core・server adapterへ分離し、Client ComponentへAction契約を注入する依存方針を追加（T-M8-155） |
 | v1.19 | 2026-08-20 | server adapterが取得失敗を正常な空へ潰さない方針と、ルート直下のerror boundaryを追加（T-M8-158） |
+| v1.20 | 2026-08-20 | proxyのprofile取得失敗を記録する方針を追加（向きはfail closedのまま・T-M8-159） |
