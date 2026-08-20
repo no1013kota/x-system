@@ -10,12 +10,14 @@
 | [要件定義書](./要件定義書.md) | どう作るかの全体像と詳細文書への索引 | 要件詳細の構成・全体像が変わるとき |
 | [要件詳細](./requirements/README.md) | システム、DB、課金、job、API、画面仕様 | 画面・処理・DB・API・infraが変わるとき |
 | [AI実行・プロンプト設計書](./プロンプト設計書.md) | AI実行ID、ベースmd、prompt、provider adapter、出力検証 | AI実行・prompt・検証・上限計数が変わるとき |
-| [運用メモ](./operations/) | **開発とテストの進め方**、ローカル開発起動、CI（GitHub Actions）、デプロイ（staging/production）、launchd/Vercel Cron、DBバックアップ・復元、リリース前チェックリスト等の手順 | 実行基盤・開発手順・運用手順が変わるとき |
+| [運用メモ](./operations/) | **開発とテストの進め方**、**動いているかの見張り方（doctor・Sentry・毎朝の運営者メール）**、ローカル開発起動、CI（GitHub Actions）、デプロイ（staging/production）、launchd/Vercel Cron、DBバックアップ・復元、リリース前チェックリスト等の手順 | 実行基盤・開発手順・運用手順が変わるとき |
 | [ADR](./decisions/README.md) | 上記で表現しきれない重要な技術判断 | 技術選定や不可逆な判断を行うとき |
 
 **正本ではない補助資料**: [制作依頼（marketing/）](./marketing/) — LP等の外部制作へ渡す依頼文。数値・文言の正はPRDと`src/lib/plans.ts`で、こちらは作成時点のスナップショット。
 
 **このリポジトリで実装を始める人は、まず [開発とテストの進め方](./operations/development-and-testing.md) を読む**（テストの層ごとの役割と限界、書き方の規約、このリポジトリ固有の落とし穴）。
+
+**運用中に「いま何が壊れているか」を知る経路は [動いているかの見張り方](./operations/monitoring.md) にまとめる**（doctorの検査項目一覧・Sentryに入るもの／入らないもの・毎朝の運営者メール。**検査項目の表はコードと機械的に突き合わせている**ので手で写した一覧が古くなることはない）。
 
 ## 仕様の所有ルール
 

@@ -135,7 +135,15 @@ export const PROCESSORS: readonly Processor[] = [
   },
   {
     provider: "Functional Software, Inc. (Sentry)",
-    country: "米国",
+    /*
+      **事業者の所在国とデータの保存先が違う**（2026-08-20 確認・T-M8-165）。
+
+      法28条の情報提供は「移転先の国」を示すためのものなので、法人の登記国だけでは足りない。
+      本番・stagingのDSNはいずれも `…ingest.de.sentry.io`＝**EU（ドイツ）リージョン**で、
+      エラーの技術情報はドイツに保存される。同じ理由で他の委託先も、データ所在地が
+      法人所在国と違うと分かった時点でここへ書く。
+    */
+    country: "米国（データ保存先: EU・ドイツ）",
     service: "Sentry",
     purpose: "security",
     use: "不具合の検知と原因調査",
