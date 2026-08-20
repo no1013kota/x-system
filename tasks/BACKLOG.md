@@ -2101,6 +2101,93 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **後続への注意**: 静的キャッシュ対象はゼロになった。失うものは無かった（静的だったのは上記3ページのみでLPも法務も既に動的）。
   将来どこかを静的に戻したくなったら、nonceを諦める＝CSPを弱めることと同義なのでADR-0005の改訂が必要。
 
+### T-M8-158: 取得失敗を「正常な空」に見せている箇所を直す `done`
+- 参照: 要件01 §2／要件06 §2・§10 / 依存: T-M8-155 / サイズ: M
+- 背景: T-M8-155のレビューで、App Shellのprofile取得が失敗を「profile未作成」と同じ`null`へ潰していることが
+  確定所見として残った（CLAUDE.md 原則1違反）。調査したところ同型が他にもあり、**App Shellの8依存のうち
+  ここだけが非対称**だった（他はすべて`getPool()`直結でrejectする）。
+- 完了条件:
+  - 単一行の読み出しで「行が無い」と「読めなかった」が別の結果になる
+  - App Shellのprofile取得失敗が全バナー消滅ではなく共通エラー画面になる
+  - 設定画面で連携済みのまま「Xアカウントを選択してください」が出ない
+  - 上記を固定するテストがある
+- メモ:
+  1. `src/lib/supabase/single-row.ts` に `readSingleRow` を新設。失敗は`AppError('internal_error')`で包む
+     （**素の`throw result.error`にしない**——PostgrestErrorはErrorインスタンスではなくstackが残らない）。
+  2. `src/lib/app-shell/data-server.ts` のprofile取得を Supabase client から**pooled query へ寄せた**。
+     `createSupabaseServerClient`はこのリポジトリでは**Auth専用**で、データ読み出しは全て`getPool()`経由
+     （`createSupabaseServerClient`の全参照を確認）。ここだけが例外だった。`_at`列は`::text`を付ける。
+  3. **`src/app/error.tsx` を新設。** `src/app/app/error.tsx`は**同一セグメントの`app/app/layout.tsx`の
+     例外を受けない**ため、これが無いとApp Shellの取得失敗が`/app`配下の全画面でNext.js既定の
+     エラーページになる（原則2違反）。器と文言は`app/app/error.tsx`と共通。
+  4. `src/app/app/settings/page.tsx`・`src/app/plans/page.tsx` の握り潰しを`readSingleRow`へ。
+     前者は「連携済みなのに未選択の空状態」、後者は「契約中なのに`/plans`に留まる」を作っていた。
+  5. 通知Actionのpayload型を`src/lib/notifications.ts`の`NotificationListPayload`／
+     `NotificationMutationPayload`へ**単一正本化**した。ベル側へ手書きで複製していたため、
+     payloadが全部optionalで**action側の`nextCursor`を改名しても型検査が通り実行時にundefinedを読む**
+     状態だった。正本を1つにしたので、改名するとaction側とベル側の両方がコンパイルエラーになる
+     （実際に改名して`error TS2561`／`TS2551`が出ることを確認）。依存方向は変えていない
+     （ベルは`@/app/actions`をimportしない）。
+- 検証メモ（2026-08-20）: 型検査・lint・doc日付／参照検査は成功。実DB全テスト262 files／2296件成功
+  （skip 19件は実APIキー必須のlive検査）。`npm run build`＋`npm run check:csp-nonce`成功
+  （root直下にclient boundaryを追加したため必須。静的prerenderは増えていない）。
+- 未対応（別タスク）: `src/lib/supabase/update-session.ts`のprofile取得も失敗を`null`へ潰し、
+  `route-guard`が全員を「未契約」として`/plans`へ送る。**middlewareでthrowすると全リクエストが
+  落ちるため、リダイレクトの向き（fail closed）を変えずに記録だけ足す設計が必要**で、
+  影響範囲が認証経路全体に及ぶため分けた → T-M8-159。
+
+### T-M8-159: 認証proxyのprofile取得失敗を記録して「未契約」と区別する `todo`
+- 参照: 要件01 §5・§8（proxyのsession検証）／要件03 §1 / 依存: T-M8-158 / サイズ: S
+- 背景: `src/lib/supabase/update-session.ts` の `select("plan, subscription_status")` は
+  `result.data`だけを返し`error`を捨てる。`src/lib/auth/route-guard.ts` は `!profile?.plan` で
+  `/plans` へ送るため、**DBが読めない間は契約中の利用者も全員「未契約」扱いで`/plans`へ飛ぶ**。
+  fail closed 自体は仕様（要件01）だが、記録が無いので運営者には「解約が急増した」ようにしか見えない
+  （原則1「失敗は必ず記録する」）。
+- 完了条件:
+  - リダイレクトの向き（fail closed）は変えない
+  - 取得失敗が記録され、運営者が気付ける経路（通知・サマリ・Sentry）に載る
+  - 失敗の連続時に記録が溢れない（App Shellと違いproxyは全リクエストで走るため多重記録の抑制が必要）
+  - middlewareで例外を投げないこと（全リクエストが落ちるため）を固定するテスト
+
+### T-M8-156: アカウント.mdの履歴を1アカウント最大5件までに制限する `todo`
+- 参照: 要件02 §3.4（`base_md_versions`）／要件05 §「アカウント.md更新」・§304／要件06 §「アカウント.md」 / 依存: なし / サイズ: M
+- 背景（2026-08-20 運営者の指示）: `base_md_versions` は**追記のみで削除経路が1つも無い**
+  （`grep` で確認。`src/lib/base-md.ts:116,156`・`src/lib/persona-settings-store.ts:111`・
+  `src/lib/jobs/md-merge.ts:270` が insert し、prune するコードは存在しない）。
+  `content` はアカウント.md**全文**を毎版まるごと持つため、1アカウントあたり無制限に増える。
+  しかも `md_merge` ジョブが**自動で**版を積むので、利用者が何もしなくても増え続ける。
+  Supabase Free/Proのストレージ費用が読めなくなるため上限を掛ける（運営者原則4「費用が見える」）。
+- 完了条件:
+  - 1つの `x_account_id` につき `base_md_versions` は**最新5件だけ**を保持する
+  - 版を積む3経路（`settings`／`learning`／`manual`／`rollback`）すべてで、**同一transaction内で**古い版を削除する
+    （別ジョブに任せない。忘れたら効かない形にしない・運営者原則3）
+  - 履歴画面に出る件数と、`rollback` で選べる版が保持分と一致する（消えた版を選べる導線を残さない）
+  - **正常な空と失敗による空を混同しない**: 削除で履歴が減ったことと、初版未生成（`base_md_version = 0`）を
+    画面で区別できる
+  - 既存データの刈り込み migration を含む（適用前の件数と適用後の件数を出力する）
+  - `/verify-integration`（migration・RLS・GRANT）と `*.db.test.ts` が通る
+- 要確認: `rollback` は「指定版の内容を新versionとして積むだけで履歴は書き換えない」仕様（要件05 §247）。
+  **5件保持にすると6版以上前へは戻せなくなる**ため、この制約を要件へ明記する必要がある。
+  上限値5は運営者の指示（2026-08-20）。
+
+### T-M8-157: 下書きに日時を指定して投稿予約できるようにする `todo`
+- 参照: 要件02 §3.x（`drafts`）／要件04（定時トリガー・`scheduler-tick`）／要件05（下書きのServer Actions）／要件06 §投稿作成・スケジュール / 依存: なし / サイズ: L
+- 背景（2026-08-20 運営者の指示）: 現在の予約は `schedule_slots`（曜日＋時刻の**繰り返し枠**）だけで、
+  枠は「投稿を生成する」トリガーとして働く。**既にある下書きを、特定の日時に投稿する経路が無い**
+  （`drafts` に `scheduled_at` 相当のカラムが無いことをDBで確認。`draft_status` enum も
+  `draft | posting | posted | discarded | failed` で予約状態を持たない）。
+- 完了条件:
+  - 下書きに投稿日時（JST）を設定・変更・解除できる
+  - 指定日時になったら投稿される（`scheduler-tick` が期限到来分を拾って publish へ流す。**新しい定時トリガーを増やさない**）
+  - 予約済みの下書きが一覧で予約済みと分かり、予約日時が表示される
+  - **過去日時・上限超過・未連携アカウントは押す前に理由が分かる**（押すまで分からない失敗にしない）
+  - 予約が失敗したら理由が保存され、画面と通知に出る（黙って投稿されないままにしない・運営者原則1）
+  - 日次投稿上限（要決定D-15）と予約分の関係を決めて実装する
+  - migration＋RLS／GRANT、`*.db.test.ts`、E2E（予約→到来→投稿）が通る
+- 要確認: 予約状態の表し方は `draft_status` に `scheduled` を足すか、`scheduled_at` の有無で表すかの
+  2案がある。前者は既存の状態遷移テストと画面の分岐に波及し、後者は「予約済みだが status=draft」という
+  二重の真実を作る。**着手時に決めて要件02へ書く。**
+
 ### T-M8-155: 共通App Shellの密結合と画面間の逆依存を解消する `done`
 - 参照: 要件01 §2／要件06 §2・§2.2／ADR-0006 / 依存: T-M8-154 / サイズ: M
 - 完了条件:

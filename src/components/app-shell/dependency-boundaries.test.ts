@@ -32,9 +32,10 @@ const SERVER_ADAPTER = /(?:from|import)\s*\(?\s*["'][^"']*-server["']/;
 const CORE_FORBIDDEN = [
   ['import "server-only"', /import\s+["']server-only["']/, "lib/app-shell/data-server.ts"],
   ["@/lib/env", /@\/lib\/env/, "lib/app-shell/data-server.ts"],
-  ["@/lib/supabase", /@\/lib\/supabase/, "lib/app-shell/data-server.ts"],
   ["*-server module", SERVER_ADAPTER, "lib/app-shell/data-server.ts"],
-  ["@/lib/db/pool", /@\/lib\/db\/pool/, "lib/ai-purpose-config-server.ts"],
+  ["@/lib/db/pool", /@\/lib\/db\/pool/, "lib/app-shell/data-server.ts"],
+  // Supabase clientはAuth専用で、データ読み出しはpool経由という分担（T-M8-158）。
+  ["@/lib/supabase", /@\/lib\/supabase/, "lib/auth/session.ts"],
   ["next/headers", /next\/headers/, "lib/supabase/server.ts"],
   ["process.env", /process\.env/, "lib/env.ts"],
 ] as const;

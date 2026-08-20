@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.18 |
+| バージョン | v1.19 |
 | 更新日 | 2026-08-20 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -50,6 +50,8 @@ flowchart TB
 | 監視 | Sentry | Server Actions、API、cronの例外を収集 |
 
 共通App Shellのデータ取得は、表示用model、DB／frameworkに依存しない組み立てcore、Supabase・pool・env等を接続するserver adapterの3層に分ける。`layout.tsx`は認証済みuser idをadapterへ渡して表示用modelを受け取るだけとし、通知・Xアカウント・profile・利用量の個別adapterを直接参照しない。App ShellのClient ComponentはApp RouterのServer Actionを直接importせず、layout境界から必要なAction契約をpropsで受け取る。これにより、表示部品・組み立て規則・外部接続の変更を別々に検証できるようにする（T-M8-155）。
+
+server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-158）。PostgRESTの`maybeSingle()`は`.throwOnError()`が無いと失敗も`{data:null,error}`で解決するため、`result.data`をそのまま返すと「行が無い」と「読めなかった」が同じ`null`になる。単一行の読み出しは`src/lib/supabase/single-row.ts`の`readSingleRow`を通し、失敗は`AppError('internal_error')`で包んで投げる。App Shellのprofile取得はpooled query（`getPool()`）へ寄せ、同じ波で読む他の依存と同じく失敗時にrejectする。失敗はルート直下のerror boundary（`src/app/error.tsx`）が受ける——`src/app/app/error.tsx`は**同一セグメントの`app/app/layout.tsx`の例外を受けない**ため、これが無いとApp Shellの取得失敗がNext.js既定のエラーページになる。
 
 ## 3. 環境変数
 
@@ -230,3 +232,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.16 | 2026-08-19 | Stripe画面への押下時preconnectに必要なCSP許可先を反映（T-M8-152） |
 | v1.17 | 2026-08-19 | proxyの検証済み認証結果とrefresh済みcookieを同一リクエストの後段へ引き継ぎ、重複Auth往復を削減（T-M8-154） |
 | v1.18 | 2026-08-20 | 共通App Shellを表示model・純粋core・server adapterへ分離し、Client ComponentへAction契約を注入する依存方針を追加（T-M8-155） |
+| v1.19 | 2026-08-20 | server adapterが取得失敗を正常な空へ潰さない方針と、ルート直下のerror boundaryを追加（T-M8-158） |

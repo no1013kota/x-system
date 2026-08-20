@@ -7,17 +7,25 @@ import { useState, useTransition } from "react";
 
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
-import type { NotificationView } from "@/lib/notifications";
+import type {
+  NotificationListPayload,
+  NotificationView,
+} from "@/lib/notifications";
 
+/**
+ * propsで受け取るActionの契約。**payloadの形は手書きせず `@/lib/notifications` の正本を使う**
+ * （T-M8-158）。ここへ `items` / `nextCursor` を書き写すと、action側でフィールド名を変えても
+ * propsの代入検査が通り、実行時に undefined を読む——「もっと見る」が黙って消える形の不具合になる。
+ * Actionを直importしないまま（依存方向は保ったまま）、名前の同期だけを型で取り戻す。
+ */
 interface NotificationActionResult {
   message?: string;
   status: "error" | "success";
 }
 
-interface ListNotificationsResult extends NotificationActionResult {
-  items?: NotificationView[];
-  nextCursor?: string | null;
-}
+interface ListNotificationsResult
+  extends NotificationActionResult,
+    NotificationListPayload {}
 
 /**
  * ヘッダの通知ベル＋一覧（要件05 §10・要件06 §2, O-2, T-M2-20）。未読件数バッジを出し、Popoverで

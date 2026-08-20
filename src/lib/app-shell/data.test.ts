@@ -147,4 +147,23 @@ describe("loadAppShellDataWithDependencies", () => {
       "x_key",
     ]);
   });
+
+  /**
+   * **portの失敗を通常のshellへ変換しない**（T-M8-158・原則1）。
+   * ここで `.catch(() => null)` のような握り潰しを足すと、profileが読めないときに
+   * 再同意・契約・利用枠・X連携のバナーが全部消えた「正常に見える画面」が出る。
+   * 失敗はそのまま伝播させ、error boundary（`src/app/error.tsx`）に見せる。
+   */
+  it("profile取得が失敗したら伝播させ、plan依存の第2波も走らせない", async () => {
+    const failure = new Error("read failed");
+    const deps = dependencies({
+      loadProfile: vi.fn().mockRejectedValue(failure),
+    });
+
+    await expect(
+      loadAppShellDataWithDependencies("user-1", deps),
+    ).rejects.toThrow(failure);
+    expect(deps.loadUsageSummary).not.toHaveBeenCalled();
+    expect(deps.loadTodaysPostCount).not.toHaveBeenCalled();
+  });
 });

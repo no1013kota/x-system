@@ -39,6 +39,27 @@ export interface NotificationPage {
   nextCursor: string | null;
 }
 
+/**
+ * 通知のServer Actionが返す payload の**単一の正本**（T-M8-158）。
+ *
+ * action側の結果型（`ListNotificationsActionResult`）と、propsでAction契約を受け取る
+ * ヘッダ通知ベルの期待は、**両方ここから作る**。以前は同じ形をベル側へ手書きで複製しており、
+ * payloadが全部optionalなため **action側で `nextCursor` を改名しても props代入の型検査が通り、
+ * 実行時に undefined を読む**状態だった（T-M8-155 のレビューで最小再現により確認）。
+ * 定義が1つなら、改名した瞬間に読み出し側（`res.nextCursor`）がコンパイルエラーになる。
+ */
+export interface NotificationListPayload {
+  items?: NotificationView[];
+  nextCursor?: string | null;
+  unreadCount?: number;
+}
+
+/** 既読化・再送など、通知を変更するActionが返す payload。上と同じ理由で正本を1つにする。 */
+export interface NotificationMutationPayload {
+  count?: number;
+  unreadCount?: number;
+}
+
 export function encodeNotificationCursor(cursor: NotificationCursor): string {
   return Buffer.from(`${cursor.createdAt}|${cursor.id}`, "utf8").toString("base64url");
 }

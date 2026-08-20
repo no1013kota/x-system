@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { signOut } from "@/app/actions/auth";
 import { getCurrentUser } from "@/lib/auth/session";
+import { readSingleRow } from "@/lib/supabase/single-row";
 import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
@@ -57,7 +58,9 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
       await ensureUserProfile(user);
       profileResult = await readProfile();
     }
-    const profile = profileResult.data;
+    // 最終読み取りの失敗を「未契約」に見せない（T-M8-158）。潰すと契約中の利用者が
+    // 理由の分からないまま `/plans` に留まる。
+    const profile = readSingleRow(profileResult, "plans profile");
     if (
       profile?.plan &&
       profile.stripe_customer_id &&

@@ -38,6 +38,7 @@ import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
+import { readSingleRow } from "@/lib/supabase/single-row";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   listXAccounts,
@@ -198,7 +199,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve(null),
   ]);
-  const account: AccountRow | null = accountResult?.data ?? null;
+  // 取得失敗を「未選択」にしない（T-M8-158）。null へ潰すと、連携済み・選択済みの利用者へ
+  // 「Xアカウントを選択してください」の空状態が出て行き止まりになる。
+  const account: AccountRow | null = accountResult
+    ? readSingleRow(accountResult, "settings x_account")
+    : null;
   // 参考ソースの滞留判定に使う基準時刻（T-M8-113）。サーバーとブラウザで同じ値を使わないと
   // ちょうど60秒あたりで判定が割れ、表示が食い違って描き直しになる。
   const nowMs = await serverNowMs();
