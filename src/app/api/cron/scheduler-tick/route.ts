@@ -24,6 +24,21 @@ export async function GET(request: Request): Promise<Response> {
           await createSupabaseAdminClient().storage.from(bucket).remove(paths);
         },
         sendEmail: (id) => sendNotificationEmailForId(id),
+        // doctorの判定を運営者へ1日1回届ける（T-M8-164）。宛先は SUPPORT_EMAIL のみ。
+        runOperatorAlert: async ({ claimDay }) => {
+          const [{ deliverOperatorAlert }, { sendOperatorMail }, { pooledQueryable }] =
+            await Promise.all([
+              import("@/lib/ops/operator-alert-server"),
+              import("@/lib/email/operator-mail-server"),
+              import("@/lib/db/pool"),
+            ]);
+          return deliverOperatorAlert({
+            claimDay,
+            db: pooledQueryable(),
+            nowIso: new Date().toISOString(),
+            sendMail: sendOperatorMail,
+          });
+        },
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>
           console.error(`[scheduler_tick cleanup] ${scope}`, err),

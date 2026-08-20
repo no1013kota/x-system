@@ -7,6 +7,10 @@ import {
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
 import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./scheduled-drafts";
+// **型だけ**を取る（`import type` は消えるので env 検証が module 読込で走らない）。
+// 実体は route から注入する——`cron.ts` が env 依存モジュールをimportすると
+// テストの module 読込で env 検証が走って落ちる（このファイル冒頭の dailyLimit と同じ理由）。
+import type { OperatorAlertResult } from "../ops/operator-alert-server";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
@@ -103,6 +107,8 @@ export interface SchedulerTickResult {
   dailySuggestions: number;
   /** 期限到来した日時予約の下書きを投稿へ流した結果（T-M8-157）。 */
   scheduledDrafts: EnqueueScheduledDraftsResult;
+  /** doctorの判定を運営者へ届けた結果（T-M8-164）。1日1回。 */
+  operatorAlert: OperatorAlertResult;
 }
 
 /**
@@ -121,6 +127,13 @@ export async function runSchedulerTick(
     imageBucket?: string;
     onCleanupError?: (scope: string, err: unknown) => void;
     sendEmail?: RecoverQueuedEmailsDeps["send"];
+    /**
+     * doctorの判定を運営者へ届ける処理（T-M8-164）。**未注入なら送らない**（テスト・ローカル）。
+     * 実体は route が渡す（`cron.ts` を env 非依存に保つため）。
+     */
+    runOperatorAlert?: (deps: {
+      claimDay: (windowKey: string) => Promise<boolean>;
+    }) => Promise<OperatorAlertResult>;
     onEmailStaleWarning?: (oldestAgeMs: number) => void;
   } = {},
 ): Promise<SchedulerTickResult> {
@@ -157,6 +170,30 @@ export async function runSchedulerTick(
     const res = await dispatch(row.id);
     if (res.ok) dispatched += 1;
   }
+
+  /*
+    (3') doctorの判定を運営者へ1日1回届ける（T-M8-164）。**定時トリガーは増やさない**（原則3）。
+    判定は揃っているのに届いておらず、ニュースが1.5日全滅しても運営者へ何も出なかった。
+    dispatchの後に置くのは、その回の状態まで含めて見るため。
+  */
+  const operatorAlert = opts.runOperatorAlert
+    ? await opts.runOperatorAlert({
+        claimDay: (windowKey) =>
+          withTransaction(async (client) => {
+            const res = await client.query(
+              `insert into cron_runs (job_name, window_key)
+               values ('operator_alert', $1)
+               on conflict (job_name, window_key) do nothing`,
+              [windowKey],
+            );
+            return (res.rowCount ?? 0) > 0;
+          }),
+      }).catch((err) => {
+        // 運営者への連絡が失敗しても tick は止めない（本体の処理を人への連絡で妨げない）。
+        opts.onCleanupError?.("operator_alert", err);
+        return { sent: false } as OperatorAlertResult;
+      })
+    : { sent: false, skipped: "no_recipient" as const };
 
   // (4) stale回収
   const recovered = await recoverStaleJobs();
@@ -220,6 +257,7 @@ export async function runSchedulerTick(
   }
 
   return {
+    operatorAlert,
     scheduledDrafts,
     scheduleRecovered,
     enqueued,
