@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.15 |
+| バージョン | v4.16 |
 | 更新日 | 2026-08-20 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
@@ -597,5 +597,28 @@ X投稿は `X_POSTING_MODE`、通知メールは `canSendViaSmtp`（production�
 | **`smoke:live` 1周（生成＋画像＋ニュース）** | **$0.27〜0.34（約45円）/ 40〜90秒** |
 
 `/dev-loop` が自動で実APIを叩く条件は要決定D-10で決まっています（差分が `src/lib/ai/**`・`src/lib/jobs/**`・`src/lib/prompts/**` に触れたときのみ・1周上限 $0.50）。上限はprovider側でかけられないため**事後測定**で、超えたら停止して報告します。
+
+## 検証をいつ回すか（2026-08-20 追加）
+
+**遅いのはE2Eとbuildだけ。** 実測（T-M8-155/158）: 実DB全テスト2,296件=**18秒**、typecheck+lint=40秒、
+build=約1.5分、E2E全件=**約8分**。1タスクでE2Eを5回回すと40分が消えるが、単体+DBは全部で2分。
+`.github/workflows/ci.yml` が push時に `release:check` を回すので、**毎コミットのローカルE2Eは二重実行**。
+
+- 変更ごと: `npm run typecheck && npm run lint && REQUIRE_DB=1 npx vitest run`
+- コミット前: ＋ `check:doc-dates` / `check:doc-refs`
+- push前に1回: ＋ `build` / `check:csp-nonce` / `test:e2e`
+
+段分けは「毎回E2Eを回すか」の話で、CLAUDE.mdの表の必須行を省く許可ではない。
+
+### 実際に踏んだ落とし穴
+
+- **パイプは終了コードを捨てる。** `release:check | tail` は `tail` の終了コードを返し、
+  **失敗したゲートが成功に見える**（`check:doc-refs` の失敗を exit 0 と誤読した）。
+- **`check:doc-refs` は `git ls-files` で判定する。** 新規ファイルはstageするまで「実在しない」。
+- **E2Eの1件目のtimeout**は `src/**` 編集直後のroute初回コンパイル待ちのことがある。
+  編集を挟まず再実行して緑かを見る（3回連続で `ai-settings.spec.ts:39` がこれだった）。
+- **Next.js 16 は同一ディレクトリで2つ目の `next dev` を拒否する。** 障害注入して画面を見るときは
+  `npm run build` ＋ `PORT=<別> npx next start`。
+- **`git add -A` は使わない**（利用者の並行編集を巻き込む）。
 
 > **触った層と必須の検証の対応表は `CLAUDE.md` を正本とします。** この文書は実行の仕方と理由を書く側です。両方を編集するときは `CLAUDE.md` を先に直してください。
