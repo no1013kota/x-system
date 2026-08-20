@@ -198,6 +198,64 @@ describe("worker leaseJob / runJob", () => {
     });
   });
 
+  /**
+   * **見送った予約は必ず利用者へ届く**（T-M8-160・監査#22・原則1）。
+   *
+   * 以前この経路は cancel だけ行い「通知は scheduler_tick が担う」としていたが、tick の
+   * `cancelExpiredJobs` は `status='queued'` しか拾わず、`notifyUnenqueuedMissed` は
+   * 当該 `schedule_run_key` の job が在る窓を除外するため、**worker が canceled にした予約は
+   * どちらからも永久に外れて何も届かなかった**（黙って投稿されない）。
+   */
+  it("見送った予約は schedule_missed 通知を作る（黙って投稿されないままにしない）", async () => {
+    await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      // 通知設定（error）をONにする。両channel OFFなら通知は作らない仕様のため。
+      await c.query(
+        `update profiles
+            set notification_config = jsonb_set(
+                  coalesce(notification_config, '{}'::jsonb), '{error}',
+                  '{"in_app": true, "email": false}'::jsonb, true)
+          where id = $1`,
+        [uid],
+      );
+      const { rows: slotRows } = await c.query<{ id: string }>(
+        `insert into schedule_slots (x_account_id, weekdays, time_jst, mode, theme,
+                                     pattern_id)
+         values ($1, '{0,1,2,3,4,5,6}', '09:00', 'draft', 'ai',
+                 (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'))
+         returning id`,
+        [xid],
+      );
+      const slotId = slotRows[0].id;
+      const scheduledFor = new Date(Date.now() - 20 * 60_000).toISOString();
+      const { rows: jobRows } = await c.query<{ id: string }>(
+        `insert into generation_jobs
+           (x_account_id, kind, trigger, pattern_id, status, scheduled_for, slot_id)
+         values ($1, 'post_generation', 'schedule',
+                 (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'),
+                 'queued', $2, $3)
+         returning id`,
+        [xid, scheduledFor, slotId],
+      );
+
+      const result = await leaseJob(c, jobRows[0].id, "w");
+      expect(result.outcome).toBe("canceled_missed");
+
+      const { rows: notes } = await c.query<{ type: string; dedupe_key: string }>(
+        `select type, dedupe_key from notifications where user_id = $1`,
+        [uid],
+      );
+      expect(notes).toHaveLength(1);
+      expect(notes[0].type).toBe("error");
+      expect(notes[0].dedupe_key).toContain(`slot:${slotId}:`);
+      expect(notes[0].dedupe_key).toContain(":missed");
+
+      throw new Error("rollback");
+    }).catch((e) => {
+      if (!(e instanceof Error) || e.message !== "rollback") throw e;
+    });
+  });
+
   it("runJob drives a queued job to succeeded via a clean no-op handler", async () => {
     const { xid, jobId } = await withTransaction(async (c) => {
       const { xid } = await makeAccount(c);

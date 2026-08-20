@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { insertMissedNotification } from "./schedule-recovery";
 
 import type { PoolClient } from "pg";
 
@@ -75,11 +76,17 @@ export async function leaseJob(
     attempt: number;
     available_now: boolean;
     schedule_expired: boolean;
+    slot_id: string | null;
+    occ_date: string | null;
+    occ_time: string | null;
   }>(
     `select status, trigger, attempt,
             (available_at <= now()) as available_now,
             (scheduled_for is not null
-               and now() > scheduled_for + interval '10 minutes') as schedule_expired
+               and now() > scheduled_for + interval '10 minutes') as schedule_expired,
+            slot_id,
+            to_char(scheduled_for at time zone 'Asia/Tokyo', 'YYYY-MM-DD') as occ_date,
+            to_char(scheduled_for at time zone 'Asia/Tokyo', 'HH24:MI') as occ_time
        from generation_jobs
       where id = $1
       for update skip locked`,
@@ -88,8 +95,15 @@ export async function leaseJob(
   if (locked.rowCount === 0) return { outcome: "skipped_locked" };
   const row = locked.rows[0];
 
-  // schedule-origin post_generation past its window → cancel (要件04 §7.2)。
-  // schedule_missed 通知の作成は scheduler_tick（M4）が担う。
+  /*
+    schedule-origin post_generation past its window → cancel (要件04 §7.2)。
+
+    **cancel した側が通知も作る**（T-M8-160・監査#22）。以前は「通知は scheduler_tick が担う」と
+    コメントして cancel だけ行っていたが、tick の `cancelExpiredJobs` は `status='queued'` しか拾わず、
+    `notifyUnenqueuedMissed` は当該 `schedule_run_key` の job が在る窓を除外するため、
+    **この経路で見送られた予約は利用者へ何も届かなかった**（黙って投稿されない・原則1）。
+    通知は `dedupe_key` で slot定刻ごと1件に集約されるので、tick 側と重なっても二重にならない。
+  */
   if (
     kind === "post_generation" &&
     row.trigger === "schedule" &&
@@ -100,6 +114,14 @@ export async function leaseJob(
       `update generation_jobs set status = 'canceled', finished_at = now() where id = $1`,
       [jobId],
     );
+    if (row.slot_id && row.occ_date && row.occ_time) {
+      await insertMissedNotification(client, {
+        occDate: row.occ_date,
+        occTime: row.occ_time,
+        slotId: row.slot_id,
+        userId: user_id,
+      });
+    }
     return { outcome: "canceled_missed" };
   }
 

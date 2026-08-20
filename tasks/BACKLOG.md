@@ -2498,7 +2498,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 検証メモ（2026-08-20）: `check:doc-dates` / `check:doc-refs` 緑（参照219件すべて実在）。
   実DB全テスト・型検査・lint成功。**振る舞いは変えていない**（変更はdocsと`landing-page.test.ts`のテスト名のみ）。
 
-### T-M8-160: 監査#21/#22/#51/#53 を実装側で解消する `todo`
+### T-M8-160: 監査#21/#22/#51/#53 を実装側で解消する `done`
 - 参照: [監査記録 2026-08-18](AUDIT_2026-08-18.md) #21・#22・#51・#53 / 依存: T-M8-144 / サイズ: M
 - 背景: T-M8-144（docs乖離35件）の棚卸しで、**docsを直すだけでは閉じない4件**が残った。
   いずれも「正本の記述と実装が違い、実装側を直すべき」もの。
@@ -2507,7 +2507,29 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - #22 workerがlease時にcanceledにした期限切れ予約でも`schedule_missed`が作られる（黙って投稿されない状態を作らない・原則1）
   - #51 doctorの検査項目一覧を実装と機械的に突き合わせる（手書き列挙をやめる）
   - #53 要件05 §8の`validation_error`理由一覧を実装と一致させ、画面側の到達しない分岐を消す
-- メモ: #22 は**利用者に見える不具合**（予約が消えたのに通知が出ない）なので先に着手する。
+- メモ: #22 は**利用者に見える不具合**（予約が消えたのに通知が出ない）なので先に着手した。
+- 結果（2026-08-20）:
+  - **#22 直した（実装）**: `worker.ts` の lease 経路が期限切れ予約を canceled にするとき、
+    **自分で `schedule_missed` 通知も作る**ようにした（`insertMissedNotification` を export）。
+    以前は「通知は scheduler_tick が担う」とコメントして cancel だけ行っていたが、tick の
+    `cancelExpiredJobs` は `status='queued'` しか拾わず、`notifyUnenqueuedMissed` は当該
+    `schedule_run_key` の job が在る窓を除外するため、**この経路で見送られた予約はどちらからも
+    永久に外れて利用者へ何も届かなかった**。通知は `dedupe_key`（`slot:{id}:{date}:{hh:mm}:missed`）で
+    slot定刻ごと1件に集約されるので tick と重なっても二重にならない。
+    `worker.db.test.ts` にテストを追加し、**通知作成を無効化すると落ちることを実際に確認した**
+    （検出器が空振りしていないことの確認）。
+  - **#21 対応不要（既に集約済み）**: `src/lib/news-outcome.ts` は `news-fetch.ts`・`news-research.ts`・
+    `ops/daily-summary.ts`・`ops/diagnostics.ts`・`smoke/scenarios.ts` から使われており、
+    `classifyNewsOutcome` は daily-summary と diagnostics の両方が呼んでいる。監査時点の
+    「1箇所に集約されていない」は解消済み。
+  - **#51 直した（docs）**: 層8の説明に `stripe-account-status.ts`（本番決済を受け付けられるか・T-M8-148）と
+    `config-status.ts`（デプロイ先が実際に使っている設定値・T-M8-147）が抜けていたので追記した。
+  - **#53 対応不要（一致していた）**: 要件05 §8 の `validation_error` 理由13件を実装と1件ずつ照合し、
+    すべて実際に投げられていることを確認した（`empty`／`too_long`／`last_pattern` も
+    `post-patterns-store.ts` が投げる）。`prompt_template_changed` は `job_conflict` なので
+    この一覧に無いのが正しい。**画面側の死んだ分岐も見つからなかった**（`pattern-fields.tsx` の
+    各 case は対応する reason が実在する）。
+- 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。docs検査緑。
 
 ### T-M8-142: ナビラベルと画面h1の一致を実際に検査する `done`
 - 参照: 要件06 §1.2/§2 / 依存: なし / サイズ: S

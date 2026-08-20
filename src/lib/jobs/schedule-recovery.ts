@@ -20,8 +20,16 @@ export interface ScheduleRecoveryResult {
   canceledFeatureDisabled: number;
 }
 
-/** schedule_missed の error 通知（設定を尊重・両channel OFFなら作らない）。冪等key単位で1件。 */
-async function insertMissedNotification(
+/**
+ * schedule_missed の error 通知（設定を尊重・両channel OFFなら作らない）。冪等key単位で1件。
+ *
+ * **canceled にした側が呼ぶ**（T-M8-160・監査#22）。以前は worker の lease 経路が
+ * cancel だけ行い通知を tick へ委ねていたが、tick の `cancelExpiredJobs` は `status='queued'` しか
+ * 拾わず、`notifyUnenqueuedMissed` は当該 `schedule_run_key` の job が在る窓を除外するため、
+ * **worker が canceled にした予約はどちらからも永久に外れて利用者へ何も届かなかった**（原則1違反）。
+ * `dedupe_key` の unique で slot定刻ごと1件に集約されるので、両方から呼ばれても二重にならない。
+ */
+export async function insertMissedNotification(
   db: Queryable,
   params: { userId: string; slotId: string; occDate: string; occTime: string },
 ): Promise<boolean> {
