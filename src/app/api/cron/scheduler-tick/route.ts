@@ -39,6 +39,18 @@ export async function GET(request: Request): Promise<Response> {
             sendMail: sendOperatorMail,
           });
         },
+        // 招待報酬の確定と月次Payout（T-M8-174）。cron_runsで冪等。
+        runAffiliateBatch: async ({ claim }) => {
+          const [{ runAffiliateBatch }, { pooledQueryable }] = await Promise.all([
+            import("@/lib/affiliate/cron-server"),
+            import("@/lib/db/pool"),
+          ]);
+          return runAffiliateBatch({
+            claim,
+            db: pooledQueryable(),
+            nowIso: new Date().toISOString(),
+          });
+        },
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>
           console.error(`[scheduler_tick cleanup] ${scope}`, err),

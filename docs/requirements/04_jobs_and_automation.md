@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.42 |
+| バージョン | v1.43 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -302,12 +302,21 @@ flowchart TD
 | v1.40 | 2026-08-20 | providerの失敗をdoctorで「運営者が直せる型」として出す方針を追加（T-M8-163） |
 | v1.41 | 2026-08-20 | doctorの判定を運営者へ1日1回メールで届ける仕様を追加（T-M8-164） |
 | v1.42 | 2026-08-20 | プラン再編（T-M8-168）: prompt_override の受け渡し条件を promptEditablePlan（全プラン可・未契約のみ拒否）へ改めた |
+| v1.43 | 2026-08-21 | 招待報酬の確定（毎日）と月次Payout作成をscheduler_tickへ追加（T-M8-174） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 
 `scheduler_tick` は due slotのenqueueの直後に、**期限が来た日時予約の下書き**を投稿へ流す（`enqueueDueScheduledDrafts`）。`schedule_slots` が「投稿を生成する」トリガーである一方、こちらは**既にある下書きを投稿する**。対象は `status = 'draft'` かつ `scheduled_at <= now()` で、1tickあたり100件まで。投稿そのものは既存の `post_publish` job に委ね、**自動投稿同意・日次上限・阻害警告の判定と `last_post_error` への記録はhandlerが持つ**（判定を2箇所に置くと片方だけ直して食い違う）。冪等keyも `autoPostPublishKey`（draft単位）を共用するため、手動投稿・スロット由来の連鎖と同時に進んでも二重投稿にならない。
 
 **期限到来時に `scheduled_at` は消さない。** 投稿が終われば `status` が `posted` になり対象条件から外れる。ここでnullへ戻すと失敗時に「予約した記録」が消えて原因を辿れなくなる。対象Xアカウントが active でない予約は流さず `skippedInactive` として**0件とは別の値で数える**（原則1）。
+
+### 招待報酬の確定と月次Payout（T-M8-174）
+
+`scheduler_tick` に相乗りし、**定時トリガーは増やさない**（原則3）。冪等キーは `cron_runs` の `(job_name='affiliate_batch', window_key)`。
+
+- **毎日1回**（`settle:{JST日付}`）: 確認期間（30日）を過ぎた報酬を `pending`→`payable` へ。
+- **毎月1回**（`payout:{前月YYYY-MM}`）: 前月締めのPayoutを作成（月末締め・翌月末支払・手数料¥980・最低¥5,000。詳細は要件03「招待プログラム」と正本 docs/cp/invite_cp.md）。二重作成は `unique (affiliate_account_id, period_start)` でも塞ぐ。
+- 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
 
 ### 運営者への状態メール（T-M8-164）
 

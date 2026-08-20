@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.47 |
+| バージョン | v1.48 |
 | 更新日 | 2026-08-21 |
 | 関連 | 全画面、全ジョブ |
 
@@ -305,6 +305,12 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - アカウント.md変更: `base_md_versions`
 - 通知/メール送信: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
+## 招待プログラム（T-M8-174）
+
+- **Server Action `saveAffiliatePayoutAccount`**: 振込先口座の登録・変更（本人のみ）。口座番号は4〜8桁の数字を検証し、AES-256-GCMで暗号化して保存（応答・画面には末尾4桁のみ）。結果は共通の `BaseResult`。
+- **公開route `GET /r/{code}`**: 30日Cookie（`exos_ref`・httpOnly・Last Click）を付けて `/` へ302。コードの実在はここでは確かめない（登録時に照合）。
+- **webhook**: `charge.refunded` を購読イベントへ追加（該当invoiceの報酬取消）。`invoice.paid`・`customer.subscription.deleted` の副作用は要件03「招待プログラム」。
+
 ## 変更履歴
 
 | version | 日付 | 変更内容 |
@@ -321,6 +327,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.45 | 2026-08-20 | 下書きの投稿予約・解除のServer Actionを追加（T-M8-157） |
 | v1.46 | 2026-08-20 | §2.2の失敗例messageを実装の文言へ修正（T-M8-144 #47） |
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: エラーコード usage_paused（429・エキスパートの内部ガード到達）を追加 |
+| v1.48 | 2026-08-21 | 招待プログラムのAction・公開route・webhook購読イベント追加を記載（T-M8-174） |
 
 ### 下書きの投稿予約（T-M8-157）
 

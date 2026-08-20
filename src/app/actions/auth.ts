@@ -1,6 +1,8 @@
 "use server";
 
 import { cookies } from "next/headers";
+
+import { ATTRIBUTION_COOKIE_NAME } from "@/lib/affiliate/config";
 import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
@@ -141,6 +143,27 @@ export async function signUp(
         message: SIGNUP_ALREADY_REGISTERED.message,
         ...(SIGNUP_ALREADY_REGISTERED.action ? { action: SIGNUP_ALREADY_REGISTERED.action } : {}),
       };
+    }
+
+    /*
+      招待リンク経由の登録を招待者へ紐づける（T-M8-174・invite_cp.md §4）。
+      **失敗しても登録は止めない**（報酬の紐づけ漏れより登録の失敗のほうが重い）。
+      Cookieは使い切り（Last Clickの証跡はDB側のunique行が持つ）。
+    */
+    try {
+      const store = await cookies();
+      const referralCode = store.get(ATTRIBUTION_COOKIE_NAME)?.value;
+      if (referralCode) {
+        const { attributeSignup } = await import("@/lib/affiliate/store");
+        const { pooledQueryable } = await import("@/lib/db/pool");
+        await attributeSignup(pooledQueryable(), {
+          code: referralCode,
+          newUserId: data.user.id,
+        });
+        store.delete(ATTRIBUTION_COOKIE_NAME);
+      }
+    } catch (error) {
+      recordUnexpectedError(error, { at: "signup-attribution" });
     }
 
     const acceptedAt = new Date().toISOString();

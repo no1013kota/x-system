@@ -12,6 +12,8 @@ export const STRIPE_WEBHOOK_EVENT_TYPES = [
   "customer.subscription.deleted",
   "invoice.payment_failed",
   "invoice.paid",
+  // 招待報酬のRefund取消（T-M8-174）。Stripeダッシュボードのwebhook設定にも追加が要る。
+  "charge.refunded",
 ] as const;
 
 const SUPPORTED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);

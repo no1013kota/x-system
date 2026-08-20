@@ -59,7 +59,9 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
       aria-label={mobile ? "メインナビゲーション（モバイル）" : "メインナビゲーション"}
       className={mobile ? "grid grid-cols-7" : "space-y-0.5 px-3"}
     >
-      {APP_NAVIGATION_ITEMS.map((item) => {
+      {APP_NAVIGATION_ITEMS.filter(
+        (item) => !mobile || !("mobileHidden" in item && item.mobileHidden),
+      ).map((item) => {
         const current = isCurrentPath(pathname, item.href);
         const stateClass = current
           ? "bg-brand-subtle text-brand"

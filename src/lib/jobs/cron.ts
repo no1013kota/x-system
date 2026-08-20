@@ -109,6 +109,8 @@ export interface SchedulerTickResult {
   scheduledDrafts: EnqueueScheduledDraftsResult;
   /** doctorの判定を運営者へ届けた結果（T-M8-164）。1日1回。 */
   operatorAlert: OperatorAlertResult;
+  /** 招待報酬の確定（1日1回）と月次Payout（月1回）の結果（T-M8-174）。 */
+  affiliate: { settled: number; payoutsCreated: number };
 }
 
 /**
@@ -135,6 +137,13 @@ export async function runSchedulerTick(
       claimDay: (windowKey: string) => Promise<boolean>;
     }) => Promise<OperatorAlertResult>;
     onEmailStaleWarning?: (oldestAgeMs: number) => void;
+    /**
+     * 招待報酬の確定と月次Payout（T-M8-174）。**未注入なら動かない**（テスト・ローカル）。
+     * 実体は route が渡す（cron.ts を env 非依存に保つ）。
+     */
+    runAffiliateBatch?: (deps: {
+      claim: (windowKey: string) => Promise<boolean>;
+    }) => Promise<{ settled: number; payoutsCreated: number }>;
   } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
@@ -194,6 +203,30 @@ export async function runSchedulerTick(
         return { sent: false } as OperatorAlertResult;
       })
     : { sent: false, skipped: "no_recipient" as const };
+
+  /*
+    (3'') 招待報酬（T-M8-174・invite_cp.md §8/§9）。確認期間を過ぎた報酬の確定（1日1回）と、
+    月末締めのPayout作成（月1回）。**定時トリガーは増やさない**（原則3）。冪等キーは cron_runs。
+  */
+  const affiliate = opts.runAffiliateBatch
+    ? await opts
+        .runAffiliateBatch({
+          claim: (windowKey) =>
+            withTransaction(async (client) => {
+              const res = await client.query(
+                `insert into cron_runs (job_name, window_key)
+                 values ('affiliate_batch', $1)
+                 on conflict (job_name, window_key) do nothing`,
+                [windowKey],
+              );
+              return (res.rowCount ?? 0) > 0;
+            }),
+        })
+        .catch((err) => {
+          opts.onCleanupError?.("affiliate_batch", err);
+          return { settled: 0, payoutsCreated: 0 };
+        })
+    : { settled: 0, payoutsCreated: 0 };
 
   // (4) stale回収
   const recovered = await recoverStaleJobs();
@@ -258,6 +291,7 @@ export async function runSchedulerTick(
 
   return {
     operatorAlert,
+    affiliate,
     scheduledDrafts,
     scheduleRecovered,
     enqueued,

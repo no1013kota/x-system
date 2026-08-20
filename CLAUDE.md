@@ -54,8 +54,8 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
 
-- **何を作るか** → `docs/PRD.md`（機能ID: A/L/N/P/S/K/M/O）
-- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（SC-01〜11、DB21テーブル、定時トリガー4本）
+- **何を作るか** → `docs/PRD.md`（機能ID: A/L/N/P/S/K/M/O/R）
+- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（SC-01〜12、DB26テーブル、定時トリガー4本）
 - **AIの動かし方** → `docs/プロンプト設計書.md`（実行ID: GEN/NEWS/LRN/MD-MERGE/SUGGEST、プロンプト全文、検証）
 - versionはファイル名ではなく文書内ヘッダを正とする（運用ルールは`docs/README.md`）
 

@@ -1,4 +1,10 @@
 import type Stripe from "stripe";
+
+import {
+  recordCommissionForInvoice,
+  reverseCommissionForInvoice,
+  terminateAttributionForReferredUser,
+} from "@/lib/affiliate/store";
 import { isOperatorManagedPlan, PLANS } from "../plans";
 
 import { revalidateByokAiPurposeConfig } from "@/lib/ai-purpose-config";
@@ -43,9 +49,15 @@ export type PreparedStripeEvent =
         attemptCount: number;
         id: string;
         paymentState: "failed" | "paid";
+        /** 実際に支払われた金額（JPY）。招待報酬の計算に使う（T-M8-174）。 */
+        amountPaid: number;
+        /** 支払時刻（unix秒）。 */
+        paidAtSec: number;
       };
       projection: SubscriptionProjection;
     }
+  /** Refund（charge.refunded）。該当invoiceの招待報酬を取り消す（T-M8-174）。 */
+  | { kind: "charge_refund"; stripeInvoiceId: string | null }
   | { kind: "none" };
 
 export type SubscriptionApplyResult = "updated" | "stale" | "not_applicable";
@@ -262,6 +274,15 @@ export async function prepareStripeEvent(
   stripe: StripeSubscriptionGateway,
   priceIds: Record<PlanId, string>,
 ): Promise<PreparedStripeEvent> {
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    const invoiceRef = (charge as unknown as { invoice?: unknown }).invoice ?? null;
+    return {
+      kind: "charge_refund",
+      stripeInvoiceId: expandedId(invoiceRef as { id: string } | string | null),
+    };
+  }
+
   if (
     event.type !== "checkout.session.completed" &&
     event.type !== "customer.subscription.created" &&
@@ -298,6 +319,8 @@ export async function prepareStripeEvent(
         id: invoice.id,
         paymentState:
           event.type === "invoice.payment_failed" ? "failed" : "paid",
+        amountPaid: invoice.amount_paid ?? 0,
+        paidAtSec: invoice.status_transitions?.paid_at ?? event.created,
       },
       projection: subscriptionProjection(event, current, priceIds),
     };
@@ -378,6 +401,13 @@ export async function applyPreparedStripeEvent(
 ): Promise<SubscriptionApplyResult> {
   const value = prepared as PreparedStripeEvent;
   if (!value || value.kind === "none") return "not_applicable";
+  if (value.kind === "charge_refund") {
+    // Refund: 該当invoiceの招待報酬を取り消す（profileの照合は不要・T-M8-174）。
+    if (value.stripeInvoiceId) {
+      await reverseCommissionForInvoice(database, value.stripeInvoiceId);
+    }
+    return "updated";
+  }
   const projection = value.projection;
 
   const targets = await database.query<{
@@ -453,6 +483,23 @@ export async function applyPreparedStripeEvent(
 
   if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
     await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
+  }
+  // 招待プログラム（T-M8-174）: 支払成功が報酬のSource of Truth（invite_cp.md §6）。
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "paid") {
+    await recordCommissionForInvoice(database, {
+      referredUserId: target.id,
+      stripeInvoiceId: value.invoice.id,
+      amountPaid: value.invoice.amountPaid,
+      paidAtSec: value.invoice.paidAtSec,
+    });
+  }
+  // 紹介ユーザーの解約で報酬期間を終了する（再契約でも再開しない・invite_cp.md §7）。
+  if (projection.status === "canceled") {
+    await terminateAttributionForReferredUser(
+      database,
+      target.id,
+      new Date(projection.eventCreated * 1000).toISOString(),
+    );
   }
   return "updated";
 }

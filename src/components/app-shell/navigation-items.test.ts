@@ -17,6 +17,7 @@ describe("APP_NAVIGATION_ITEMS", () => {
       { href: "/app/posts", label: "投稿作成" },
       { href: "/app/schedule", label: "スケジュール" },
       { href: "/app/analytics", label: "投稿分析" },
+      { href: "/app/invite", label: "友達招待" },
       { href: "/app/settings", label: "設定" },
       { href: "/prompt-templates", label: "プロンプト集" },
     ]);

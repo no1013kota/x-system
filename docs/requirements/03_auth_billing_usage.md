@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.34 |
+| バージョン | v1.35 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -304,6 +304,16 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 
 Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した（2026-07-22）。Portal Configurationの実IDはStripeアカウント準備後に環境変数へ設定する。外部仕様は各実装タスク開始時に再確認する。
 
+## 招待プログラム（T-M8-174）
+
+**詳細仕様の正本は [招待プログラム 実装仕様書](../cp/invite_cp.md)**（運営者の指示 2026-08-21）。ここには課金との接点だけを書く。
+
+- **帰属**: `/r/{code}` が30日Cookie（`exos_ref`・Last Click）→ 登録成功時に `affiliate_attributions` へ（1ユーザー1招待者・登録後変更不可・自己招待禁止。失敗しても登録は止めない）。
+- **報酬はStripeの支払成功が正**: `invoice.paid` のwebhook（event claim transactionの中）で `recordCommissionForInvoice` が作る。実際に支払われた金額×作成時点のランク率（累計有料招待数で20〜40%・snapshot）。Trial中（0円）なし・初回課金から最大6ヶ月・`customer.subscription.deleted`（canceled）で期間終了（**再契約でも再開しない**）・`charge.refunded` で取消（**webhookの購読イベントに charge.refunded を追加する必要がある**）。
+- **確定と振込**: 支払＋30日で `pending`→`payable`（scheduler_tick相乗り・1日1回）。月初のtickが前月締めのPayoutを作成（¥5,000以上＋口座登録済みのみ。手数料¥980は報酬と会計分離）。運営者は `npm run affiliate:payouts` で一覧→ `-- --show <id>` で口座全桁（復号）→ 振込後 `-- --paid <id>`。
+- **口座**: 口座番号はAES-256-GCM暗号文のみ保存（要決定D-33）。画面は末尾4桁。
+- 画面はSC-12（要件06）。DBは要件02 §3.22〜3.26。
+
 ## 変更履歴
 
 | バージョン | 日付 | 内容 |
@@ -316,3 +326,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.32 | 2026-08-19 | 未確認ログインを6桁コード画面へ切り替え、新しいTurnstile tokenでコードを自動再送する仕様を追加（T-M8-153） |
 | v1.33 | 2026-08-19 | proxyの検証済みuserを後段で再利用し、Auth／profileの正常系重複往復を画面表示から削除（T-M8-154） |
 | v1.34 | 2026-08-20 | プラン再編（T-M8-168）: 3プランの価格・上限・遷移表を全面改定。expertの利用枠秘匿（無制限表示・usage_paused）とXアカウント上限1/1/3を追加 |
+| v1.35 | 2026-08-21 | 招待プログラム（帰属・報酬・振込とStripe webhookの接点）を追加（T-M8-174） |

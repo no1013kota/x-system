@@ -82,7 +82,7 @@
 
 | 種別 | ID |
 |---|---|
-| 機能 | A / L / N / P / S / K / M / O |
+| 機能 | A / L / N / P / S / K / M / O / R |
 | 画面 | SC-01〜SC-11 |
 | AI実行 | GEN / NEWS / LRN / MD-MERGE / SUGGEST |
 | 開発タスク | `T-M<マイルストーン>-<連番>`（`tasks/BACKLOG.md`） |

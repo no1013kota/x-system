@@ -2228,7 +2228,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   prompt-template-gallery.ts が正本から引き、同名testが同一性を固定。導線はLPヘッダーnavと
   appナビ第7項目（navigation-items.testのh1突き合わせを公開ページ対応へ拡張）。E2E 2件追加。
 
-### T-M8-174: 招待プログラム（docs/cp/invite_cp.md の実装） `todo`
+### T-M8-174: 招待プログラム（docs/cp/invite_cp.md の実装） `done`
 - 参照: docs/cp/invite_cp.md（正本）・要件03（Stripe）・要件02（DB） / 依存: なし / サイズ: L
 - 完了条件:
   - /r/[code] で30日Cookieが付き、新規登録時に招待者へ紐づく（Last Click・自己招待禁止・登録後変更不可）
@@ -2241,6 +2241,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   未契約のため、**口座番号はAES-256-GCMで暗号化して保存し画面は末尾4桁のみ表示**（provider='internal'。
   振込は運営者が手動で行うため全桁が必要。将来Provider移行時に置き換え）＝要決定D-33として記録。
   Payout作成は月初のscheduler_tick相乗り（定時トリガーは増やさない・原則3）。
+- 実装メモ（2026-08-21）:
+  - DB 5表（要件02 §3.22〜3.26・migration 20260821000001・RLSはselfのselectのみ）
+  - 帰属: /r/[code]→30日Cookie→signUp成功時にbest-effortで紐づけ（登録は止めない）
+  - 報酬: invoice.paid のevent claim transaction内で作成（率snapshot・冪等・6ヶ月窓・
+    subscription.deletedで終了・charge.refundedで取消←**Stripe webhookの購読イベント追加が必要**）
+  - 確定/締め: scheduler_tick相乗り（settle:日次・payout:月次・cron_runsで冪等）
+  - UI: /app/invite（SC-12）＋ナビ「友達招待」（モバイル7枠に収めるためプロンプト集はmobileHidden）
+  - 運営者: `npm run affiliate:payouts`（一覧／--show=口座全桁を復号／--paid=支払記録）
+  - テスト: config 6件・store.db 6件・webhook配線 統合1件・E2E 2件（画面登録での帰属含む）緑
 
 ### T-M8-170: /plansでNextのchunkがnonce無しで注入されCSPに弾かれる（コンソールエラー） `todo`
 - 参照: 要件01 §CSP・ADR-0005（nonce付きCSP） / 依存: なし / サイズ: S

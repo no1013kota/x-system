@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.47 |
+| バージョン | v1.48 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -613,6 +613,96 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 
 この3つを満たすので`archived_at`のような論理削除は持たない。検査は`src/lib/post/post-patterns.db.test.ts`。
 
+
+### 3.22 `affiliate_accounts`
+
+招待プログラム（T-M8-174。正本: docs/cp/invite_cp.md）の招待者アカウント。`/app/invite` を開くと自動作成される。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `user_id` | `uuid` | not null unique FK profiles on delete cascade | 招待者（1利用者1アカウント） |
+| `code` | `text` | not null unique | 招待コード（URL `/r/{code}`。紛らわしい文字を避けた8桁） |
+| `status` | `text` | not null default `active`、`active`\|`suspended` | 停止すると新規帰属・新規報酬が止まる |
+| `created_at` | `timestamptz` | not null default now() | |
+
+RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4表も同じ）。
+
+### 3.23 `affiliate_attributions`
+
+招待リンク経由の登録の帰属。**1ユーザーにつき招待者は1人・登録後変更不可**（`referred_user_id` unique＋`on conflict do nothing`）。Last Click（Cookieが最後のコードを持つ）・自己招待禁止はアプリ側で守る。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade | 招待者 |
+| `referred_user_id` | `uuid` | not null unique FK profiles on delete cascade | 招待された利用者 |
+| `attributed_at` | `timestamptz` | not null default now() | 帰属した時刻 |
+| `commission_started_at` | `timestamptz` | nullable | 初回有料課金の時刻（ここから報酬期間） |
+| `commission_ends_at` | `timestamptz` | nullable | 報酬期間の終了（開始＋6ヶ月。解約で前倒し） |
+| `commission_terminated_reason` | `text` | nullable、`subscription_cancelled` | 入っていたら以後Commissionを作らない（**再契約でも再開しない**） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+### 3.24 `affiliate_commissions`
+
+紹介報酬。**Stripeの支払成功（invoice.paid）がSource of Truth**。実際に支払われた金額×作成時点のランク率（snapshot）。Trial中（0円）は作らない。Refund（charge.refunded）で`reversed`。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade | |
+| `referred_user_id` | `uuid` | not null | |
+| `stripe_invoice_id` | `text` | not null unique | リトライwebhookの冪等キー |
+| `eligible_amount` | `integer` | not null、>=0 | 実際に支払われた金額（JPY） |
+| `commission_rate_bps` | `integer` | not null、0〜10000 | 作成時点の率のsnapshot |
+| `commission_amount` | `integer` | not null、>=0 | 報酬額（切り捨て） |
+| `status` | `text` | not null default `pending`、`pending`\|`payable`\|`paid`\|`reversed`\|`held` | 確認期間（30日）経過で`payable`（tickが昇格）。振込完了で`paid` |
+| `available_at` | `timestamptz` | not null | `payable`になれる時刻（支払＋30日） |
+| `payout_id` | `uuid` | nullable FK affiliate_payouts on delete set null | 月次バッチが束ねたPayout |
+| `created_at` | `timestamptz` | not null default now() | |
+
+### 3.25 `affiliate_payout_accounts`
+
+報酬の振込先口座。**口座番号はAES-256-GCM暗号文のみ**（要決定D-33。Payout Provider未契約のため。画面は末尾4桁だけ・全桁は運営者の `npm run affiliate:payouts -- --show` が復号）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null unique FK affiliate_accounts on delete cascade | 1招待者1口座 |
+| `provider` | `text` | not null default `internal` | 将来Payout Providerへ移行するときの区分 |
+| `external_account_id` | `text` | nullable | Provider側のID（internalでは未使用） |
+| `bank_name` | `text` | not null | |
+| `branch_name` | `text` | not null | |
+| `account_type` | `text` | not null default `ordinary`、`ordinary`\|`checking` | 普通/当座 |
+| `account_number_ciphertext` | `text` | not null | 口座番号（暗号文。平文カラムは作らない） |
+| `bank_account_last4` | `text` | not null、4文字 | 画面表示用 |
+| `account_holder_name` | `text` | not null | 口座名義 |
+| `status` | `text` | not null default `active`、`active`\|`disabled` | |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+### 3.26 `affiliate_payouts`
+
+月次の振込（月末締め・翌月末支払・invite_cp.md §9〜§14）。**Commissionと手数料は会計分離**（gross/fee/netを別に保存し、Commission自体は減額しない）。¥5,000未満・口座未登録は作らず翌月へ繰越。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade。`unique (affiliate_account_id, period_start)` | 複合uniqueで月次バッチの再実行を冪等に |
+| `period_start` | `date` | not null | 締め期間（前月・JST）の開始 |
+| `period_end` | `date` | not null | 同・終了 |
+| `gross_amount` | `integer` | not null、>=0 | 束ねた報酬の合計 |
+| `fee_amount` | `integer` | not null、>=0 | 振込手数料（980円・利用者負担） |
+| `net_amount` | `integer` | not null、>=0 | 実際の振込額 |
+| `status` | `text` | not null default `created`、`created`\|`paid`\|`canceled` | 運営者が振込後に `npm run affiliate:payouts -- --paid` で`paid`へ |
+| `payment_due_at` | `timestamptz` | not null | 支払期限（翌月末・JST） |
+| `paid_at` | `timestamptz` | nullable | |
+| `external_reference` | `text` | nullable | 振込の控え番号など |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -883,3 +973,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
 | v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
+| v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |

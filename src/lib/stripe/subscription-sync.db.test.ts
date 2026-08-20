@@ -110,7 +110,13 @@ describe("Stripe subscription synchronization transaction", () => {
         projection,
         {
           kind: "invoice_sync",
-          invoice: { attemptCount: 2, id: invoiceId, paymentState },
+          invoice: {
+            attemptCount: 2,
+            id: invoiceId,
+            paymentState,
+            amountPaid: 3980,
+            paidAtSec: 1_784_675_200,
+          },
           projection,
         },
       );
@@ -337,5 +343,116 @@ describe("Stripe subscription synchronization transaction", () => {
       [failedEventId],
     );
     expect(failedClaim.rowCount).toBe(0);
+  });
+
+  /**
+   * 招待報酬のwebhook配線（T-M8-174・invite_cp.md §6/§7）。ロジック単体は
+   * `affiliate/store.db.test.ts` が担い、ここは **applyPreparedStripeEvent から
+   * 実際に呼ばれること**（配線の存在）を見る。
+   */
+  it("invoice.paidで招待報酬が作られ、解約で期間終了、refundで取り消される", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const inviterId = randomUUID();
+    const referredId = randomUUID();
+    for (const [id, customer] of [
+      [inviterId, "cus_aff_inviter"],
+      [referredId, "cus_aff_referred"],
+    ] as const) {
+      await db.query(
+        `insert into auth.users (id, instance_id, aud, role, email)
+         values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+        [id, `${id}@example.com`],
+      );
+      await db.query("update profiles set stripe_customer_id = $2 where id = $1", [id, customer]);
+    }
+    const account = await db.query<{ id: string }>(
+      `insert into affiliate_accounts (user_id, code) values ($1, 'wiretest1') returning id`,
+      [inviterId],
+    );
+    await db.query(
+      `insert into affiliate_attributions (affiliate_account_id, referred_user_id)
+       values ($1, $2)`,
+      [account.rows[0].id, referredId],
+    );
+
+    const transaction = async <T>(
+      callback: (txDb: StripeEventDatabase) => Promise<T>,
+    ): Promise<T> => callback(db);
+    const priceIds = {
+      standard: "price_standard",
+      expert: "price_expert",
+      premium: "price_premium",
+    } as const;
+    const eventCreated = 1_784_675_200;
+    const projection: SubscriptionProjection = {
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: eventCreated + 2_592_000,
+      customerId: "cus_aff_referred",
+      eventCreated,
+      plan: "premium",
+      status: "active",
+      subscriptionId: "sub_aff_referred",
+      trialEnd: null,
+      trialStartedAt: null,
+      userId: referredId,
+    };
+    const invoiceId = `in_aff_${randomUUID()}`;
+    const process = (eventId: string, type: string, prepared: PreparedStripeEvent) =>
+      processStripeEvent(
+        {
+          id: eventId,
+          type,
+          created: eventCreated,
+          data: { object: { id: "obj" } },
+        } as unknown as Stripe.Event,
+        {
+          applyEvent: (txDb, _event, value) =>
+            applyPreparedStripeEvent(txDb, value).then(() => undefined),
+          prepareEvent: async () => prepared,
+          priceIds,
+          transaction,
+        },
+      );
+
+    // (1) invoice.paid → 報酬が作られる（¥3,980×20%＝¥796）。
+    await process(`evt_aff_paid_${randomUUID()}`, "invoice.paid", {
+      kind: "invoice_sync",
+      invoice: {
+        attemptCount: 1,
+        id: invoiceId,
+        paymentState: "paid",
+        amountPaid: 3980,
+        paidAtSec: eventCreated,
+      },
+      projection,
+    });
+    const commission = await db.query<{ commission_amount: number; status: string }>(
+      `select commission_amount, status from affiliate_commissions where stripe_invoice_id = $1`,
+      [invoiceId],
+    );
+    expect(commission.rows[0]).toMatchObject({ commission_amount: 796, status: "pending" });
+
+    // (2) 解約（status canceled）→ 報酬期間が終了として記録される。
+    await process(`evt_aff_del_${randomUUID()}`, "customer.subscription.deleted", {
+      kind: "subscription_sync",
+      projection: { ...projection, status: "canceled", eventCreated: eventCreated + 10 },
+    });
+    const terminated = await db.query<{ commission_terminated_reason: string | null }>(
+      `select commission_terminated_reason from affiliate_attributions where referred_user_id = $1`,
+      [referredId],
+    );
+    expect(terminated.rows[0].commission_terminated_reason).toBe("subscription_cancelled");
+
+    // (3) charge.refunded → 該当invoiceの報酬が取り消される。
+    await process(`evt_aff_ref_${randomUUID()}`, "charge.refunded", {
+      kind: "charge_refund",
+      stripeInvoiceId: invoiceId,
+    });
+    const reversed = await db.query<{ status: string }>(
+      `select status from affiliate_commissions where stripe_invoice_id = $1`,
+      [invoiceId],
+    );
+    expect(reversed.rows[0].status).toBe("reversed");
   });
 });
