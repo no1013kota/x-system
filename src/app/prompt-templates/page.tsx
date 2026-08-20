@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { LegalFooter } from "@/components/legal-footer";
 import { buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { APP_NAME } from "@/lib/app-config";
 import { galleryTemplates, type GalleryTemplate } from "@/lib/prompt-template-gallery";
@@ -45,9 +45,9 @@ function TemplateCard({ template }: { template: GalleryTemplate }) {
     <Card aria-labelledby={headingId} as="article" className="overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
         <div className="min-w-0">
-          <h3 className="text-[15px] font-bold text-ink" id={headingId}>
+          <CardTitle as="h3" id={headingId}>
             {template.name}
-          </h3>
+          </CardTitle>
           <p className="mt-1 text-caption text-ink-2">{template.description}</p>
         </div>
         <Link
