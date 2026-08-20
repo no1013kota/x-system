@@ -10,9 +10,12 @@ import { startCheckout } from "@/lib/stripe/checkout-browser";
 export function CheckoutButton({
   plan,
   planName,
+  variant = "brand",
 }: {
   plan: PlanId;
   planName: string;
+  /** 推奨プランだけ brand で強調し、他は subtle にする（T-M8-169）。 */
+  variant?: "brand" | "subtle";
 }) {
   const [pending, setPending] = useState(false);
   const toast = useToast();
@@ -40,7 +43,7 @@ export function CheckoutButton({
         disabled={pending}
         onClick={handleCheckout}
         type="button"
-        variant="brand"
+        variant={variant}
       >
         {pending ? "決済画面を開いています…" : "7日間無料で利用"}
       </Button>

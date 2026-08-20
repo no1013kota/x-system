@@ -58,18 +58,23 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 未契約はアプリ本体へ入れず、プラン選択へ送られる（要件03 §2）
   await signIn(page, account, { waitFor: /\/plans/ });
 
-  // 3プランが比較表の列として並ぶ（T-M8-125で表へ変えた。名前はPRDと同じ日本語表記・T-M8-21）。
-  const table = page.getByRole("table", { name: /機能と月額の比較/ });
+  // 3プランがカードとして並ぶ（T-M8-169でカード型へ。名前はPRDと同じ日本語表記・T-M8-21）。
   for (const name of ["スタンダードプラン", "プレミアムプラン", "エキスパートプラン"]) {
-    await expect(table.getByRole("columnheader", { name: new RegExp(name) })).toBeVisible();
+    await expect(page.getByRole("article", { name: new RegExp(name) })).toBeVisible();
   }
-  // 機能が行見出しになり、対応の有無が読み取れる（✓は読み上げ用の文字も持つ）。
-  // T-M8-168で全プランが編集可になったため「—（対応しません）」のセルは無い。
+  // 推奨（プレミアム）にだけ「おすすめ」バッジが付く。
+  const premiumCard = page.getByRole("article", { name: /プレミアムプラン/ });
+  await expect(premiumCard.getByText("おすすめ")).toBeVisible();
+  // 機能リストは表と同じデータ源（plan-comparison.ts）から出る。
   await expect(
-    table.getByRole("rowheader", { name: /アカウント.md・プロンプトの直接編集/ }),
+    page.getByText("アカウント.md・プロンプトの直接編集").first(),
   ).toBeVisible();
-  await expect(table.getByText("対応", { exact: true }).first()).toBeAttached();
-  await expect(table.getByText("対応しません")).toHaveCount(0);
+  // 各カードにXアカウント数のバンドが出る。
+  await expect(page.getByText(/Xアカウント 3件までを連携/)).toBeVisible();
+  // エキスパートは「無制限」とだけ出て、内部ガードの数値（5000等）は出ない（T-M8-168）。
+  const expertCard = page.getByRole("article", { name: /エキスパートプラン/ });
+  await expect(expertCard.getByText("無制限")).toBeVisible();
+  await expect(page.getByText(/5,?000/)).toHaveCount(0);
   // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
   await expect(
     page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),

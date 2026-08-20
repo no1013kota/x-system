@@ -4,7 +4,8 @@ import { PLAN_COMPARISON_ROWS, comparisonColumns, type PlanCell } from "@/lib/pl
 import { RELEASE_CAMPAIGN, hasCampaignDiscount } from "@/lib/plans";
 
 /**
- * プラン比較表（T-M8-125）。LPと `/plans` で同じものを使う。
+ * プラン比較表（T-M8-125）。LPの料金セクションで使う（`/plans` はT-M8-169でカード型
+ * `PlanPricingCards` へ置き換えた。**行・可否のデータ源 `lib/plan-comparison.ts` は両者で共通**）。
  *
  * **機能を行見出しにして、各プランに ✓ / − を付ける**（運営者の指示）。以前はプランごとの
  * 箇条書きカードで「mdプランの全機能」という入れ子の言い方をしていたため、

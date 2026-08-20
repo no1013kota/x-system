@@ -9,8 +9,7 @@ import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
-import { PlanComparisonTable } from "@/components/billing/plan-comparison-table";
-import { PLAN_IDS, PLANS } from "@/lib/plans";
+import { PlanPricingCards, RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -85,11 +84,13 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 <SignOutButton label={false} signOutAction={signOut} />
               ) : null}
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-muted-foreground">
+            <div className="space-y-3">
+              {/* 参考ページの「Special offer」ピルに相当（T-M8-169）。 */}
+              <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+                <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
                 すべてのプランを7日間無料でお試し
               </p>
-              <h1 className="text-[26px] font-bold tracking-tight text-ink sm:text-[30px]">
+              <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
                 あなたの運用に合うプランを選択
               </h1>
               {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチと「お申し込み前の確認」にある（T-M8-66）。 */}
@@ -137,19 +138,21 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           </p>
 
           {/*
-            プラン比較表（T-M8-125）。**機能を行見出しにして各プランに ✓ / − を付ける**
-            （運営者の指示・2026-08-18）。以前はプランごとの箇条書きカードで、
-            「mdプランの全機能」という入れ子の言い方だったため、上位プランに何が積まれるのかが
-            読み取れなかった。行と可否は `lib/plan-comparison.ts` が持つ（画面に書き写さない）。
-            表示はLPと共通の部品を使う。
+            プランのカード型表示（T-M8-169・運営者の指示 2026-08-21。参考: tweethunter.io/pricing）。
+            T-M8-125の表を `/plans` では置き換えた（LPの料金セクションは表のまま）。
+            行・価格・可否は `lib/plan-comparison.ts`／`PLANS` から導き、画面に書き写さない。
+            CTAは各カードの中に置き、推奨（プレミアム）だけ brand で強調する。
           */}
           <section aria-label="料金プラン">
-            <PlanComparisonTable />
-            <div className="mt-5 grid gap-2.5 sm:grid-cols-3">
-              {PLAN_IDS.map((planId) => (
-                <CheckoutButton key={planId} plan={planId} planName={PLANS[planId].displayName} />
-              ))}
-            </div>
+            <PlanPricingCards
+              cta={(planId, planName) => (
+                <CheckoutButton
+                  plan={planId}
+                  planName={planName}
+                  variant={planId === RECOMMENDED_PLAN ? "brand" : "subtle"}
+                />
+              )}
+            />
           </section>
 
           {/* BYOKの追加費用は申込前に必ず読ませる（要件03 §54）。折りたたまない。 */}
