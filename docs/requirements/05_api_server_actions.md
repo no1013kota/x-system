@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.43 |
-| 更新日 | 2026-08-19 |
+| バージョン | v1.44 |
+| 更新日 | 2026-08-20 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -244,7 +244,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 アカウント.md更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。アカウント設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
-対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
+対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。**ただし履歴は最新5版までしか保持しないため（要件02 §3.4・T-M8-156）、6版以上前を指定した`rollbackBaseMd`は`not_found`（`version_not_found`）を返す。**画面の履歴一覧も保持分だけを出すので、選べない版への導線は出ない。
 
 `listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。**この制限はコードで強制する**（T-M8-139）: Actionの`kind`は`image`のみを受け、store側も型プロンプトが渡されたら`validation_error`で落とす。以前は記述だけがこうで実装は`p1`〜`p6`も扱っており、**画像プロンプトの編集画面で「再読み込み」を押すと編集対象がp1へすり替わり、保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きしていた**（利用者のデータが壊れる）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
@@ -316,3 +316,4 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.41 | 2026-08-19 | `signUp` がエラー無しの応答からも登録済みを判定するようにした（T-M8-149）。決済の失敗のうち「Stripeアカウントが本番決済を受け付けられない」を `feature_disabled` へ分け、画面はサーバの文言を出す（T-M8-148。従来は必ず「時間をおいて再度」で嘘になっていた） |
 | v1.42 | 2026-08-19 | 通常ログインのprofile確認をread-firstにしてDB往復を1回削減し、欠損時だけ修復するよう変更。6桁コード再送のTurnstileを正式な`interaction-only`表示へ修正（T-M8-151） |
 | v1.43 | 2026-08-19 | 未確認ログインを6桁コード入力状態へ返し、新しい再送用Turnstile tokenでコードを自動再送する契約を追加（T-M8-153） |
+| v1.44 | 2026-08-20 | 履歴上限により6版以上前の`rollbackBaseMd`が`not_found`になることを明記（T-M8-156） |

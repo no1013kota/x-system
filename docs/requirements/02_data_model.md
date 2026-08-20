@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.43 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.44 |
+| 更新日 | 2026-08-20 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -157,6 +157,8 @@ RLS: 本人select可。writeはServer Actionのみ。
 | `created_at` | `timestamptz` | not null default now() |  |
 
 Constraints: unique(`x_account_id`, `version`), `version > 0`
+
+**保持は1 x_accountあたり最新5版まで**（T-M8-156・運営者の指示 2026-08-20）。版はアカウント.md**全文**を持ち、`md_merge`が学習のたびに自動で積むため、上限が無いと利用者の操作なしにストレージが増え続ける（原則4「費用が見える」）。刈り込みは`pruneBaseMdVersions`（`src/lib/base-md-history.ts`）で、**版を積んだのと同じtransaction内**で行う（別ジョブに寄せると忘れたら効かない手順になる・原則3）。適用対象は`settings`／`learning`／`manual`／`rollback`の全経路。**この上限はロールバック可能な範囲でもある**——6版以上前へは戻せない（要件05）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
@@ -894,3 +896,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.43 | 2026-08-18 | 予約枠に生成入力を追加（T-M8-135）: `source_url`・`placeholder_values`・`prompt_override` |
 | v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
 | v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
+| v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |

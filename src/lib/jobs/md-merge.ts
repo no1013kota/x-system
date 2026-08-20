@@ -2,6 +2,7 @@ import {
   extractBaseMdSection,
   replaceLearningSections,
 } from "../persona-settings";
+import { pruneBaseMdVersions } from "../base-md-history";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
@@ -271,6 +272,8 @@ export async function executeMdMerge(
          values ($1, $2, $3, 'learning', $4)`,
         [job.x_account_id, nextVersion, newBaseMd, opts.removedSourceId ? "学習ソース削除に伴うmerge" : "学習分析の反映"],
       );
+      // 学習は利用者の操作なしに版を積むので、ここでの刈り込みが無いと無制限に増える（T-M8-156）。
+      await pruneBaseMdVersions(tx, job.x_account_id);
       if (opts.confirmSourceId) {
         await tx.query(`update learning_sources set status = 'analyzed', updated_at = now() where id = $1`, [
           opts.confirmSourceId,

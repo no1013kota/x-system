@@ -2155,7 +2155,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   「throwせず・`/plans`へ送り・1回記録する」を同時に固定するテストを追加（10件成功）。
 - 検証メモ（2026-08-20）: 型検査・lint・実DB全テスト成功。docs 要件01 §5 を更新。
 
-### T-M8-156: アカウント.mdの履歴を1アカウント最大5件までに制限する `todo`
+### T-M8-156: アカウント.mdの履歴を1アカウント最大5件までに制限する `done`
 - 参照: 要件02 §3.4（`base_md_versions`）／要件05 §「アカウント.md更新」・§304／要件06 §「アカウント.md」 / 依存: なし / サイズ: M
 - 背景（2026-08-20 運営者の指示）: `base_md_versions` は**追記のみで削除経路が1つも無い**
   （`grep` で確認。`src/lib/base-md.ts:116,156`・`src/lib/persona-settings-store.ts:111`・
@@ -2172,9 +2172,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
     画面で区別できる
   - 既存データの刈り込み migration を含む（適用前の件数と適用後の件数を出力する）
   - `/verify-integration`（migration・RLS・GRANT）と `*.db.test.ts` が通る
-- 要確認: `rollback` は「指定版の内容を新versionとして積むだけで履歴は書き換えない」仕様（要件05 §247）。
-  **5件保持にすると6版以上前へは戻せなくなる**ため、この制約を要件へ明記する必要がある。
-  上限値5は運営者の指示（2026-08-20）。
+- メモ: `src/lib/base-md-history.ts` に `BASE_MD_HISTORY_LIMIT = 5` と `pruneBaseMdVersions` を置き、
+  **版を積む4経路すべての同一transaction内**で呼ぶようにした（`settings`＝persona-settings-store、
+  `learning`＝jobs/md-merge、`manual`／`rollback`＝base-md）。別ジョブに寄せると「忘れたら効かない手順」
+  になるため（原則3）。既存データは migration `20260820000001_base_md_history_limit.sql` で刈り込み、
+  **適用前後の件数を NOTICE で出す**（黙って行が消えないように・原則1）。ローカル適用は
+  before=4 deleted=0 after=4。
+  `listBaseMdVersions` は元々全件を version 降順で返すので、履歴画面と `rollback` の選択肢は
+  保持分と自動的に一致する（選べない版への導線は出ない）。
+- 決定: **6版以上前へは戻せなくなる**（上限値5は運営者の指示 2026-08-20）。要件02 §3.4 と
+  要件05 に明記した。`rollbackBaseMd` に保持外の版を渡すと従来どおり `not_found`（`version_not_found`）。
+- 検証メモ（2026-08-20）: 型検査・lint成功。実DB全テスト263 files／2298件成功。
+  履歴上限のDBテストを追加（手動編集で8版まで積み、残るのが 8/7/6/5/4 の5件であること、
+  `x_accounts.base_md_version` は刈り込みの影響を受けないこと）。migrationはローカルへ適用済み。
 
 ### T-M8-157: 下書きに日時を指定して投稿予約できるようにする `todo`
 - 参照: 要件02 §3.x（`drafts`）／要件04（定時トリガー・`scheduler-tick`）／要件05（下書きのServer Actions）／要件06 §投稿作成・スケジュール / 依存: なし / サイズ: L

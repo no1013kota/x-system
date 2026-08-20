@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { applyRollbackBaseMd, applyUpdateBaseMdManual } from "./base-md";
+import { BASE_MD_HISTORY_LIMIT } from "./base-md-history";
 import { closePool, getPool, withTransaction } from "./db/pool";
 import { AppError } from "./observability/errors";
 
@@ -189,6 +190,56 @@ describe("base_md manual edit / rollback (db)", () => {
         )
       ).rows;
       expect(rows.map((r) => `${r.version}:${r.change_source}`)).toEqual(["1:settings", "2:manual", "3:rollback"]);
+    } finally {
+      await cleanup(uid, xid);
+    }
+  });
+
+  /**
+   * 履歴は1アカウント最大 `BASE_MD_HISTORY_LIMIT` 版（T-M8-156）。
+   *
+   * `base_md_versions` は版ごとにアカウント.md全文を持つのに削除経路が無く、`md_merge` が
+   * 自動で積むため無制限に増えていた。**版を積んだのと同じtxで刈り込む**ので、
+   * ここが緑でなくなったら費用の上限が外れたということ。
+   */
+  it(`履歴は最新${BASE_MD_HISTORY_LIMIT}版だけを残す（古い版は同じtxで消える）`, async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c, "premium"));
+    try {
+      // seed は v1/v2 を作る。上限を超えるまで手動編集で積む。
+      for (let expected = 2; expected < 8; expected += 1) {
+        await withTransaction((c) =>
+          applyUpdateBaseMdManual(c, {
+            userId: uid,
+            xAccountId: xid,
+            content: V1.replace("v1-5", `v1-5 rev${expected}`),
+            expectedVersion: expected,
+          }),
+        );
+      }
+
+      const rows = (
+        await withTransaction((c) =>
+          c.query<{ version: number }>(
+            `select version from base_md_versions where x_account_id=$1 order by version desc`,
+            [xid],
+          ),
+        )
+      ).rows;
+
+      expect(rows).toHaveLength(BASE_MD_HISTORY_LIMIT);
+      // 残るのは最新側。現行versionは8で、8..4 の5件。
+      expect(rows.map((r) => r.version)).toEqual([8, 7, 6, 5, 4]);
+
+      // 現行の base_md_version は刈り込みに影響されない。
+      const acct = (
+        await withTransaction((c) =>
+          c.query<{ base_md_version: number }>(
+            `select base_md_version from x_accounts where id=$1`,
+            [xid],
+          ),
+        )
+      ).rows[0];
+      expect(acct.base_md_version).toBe(8);
     } finally {
       await cleanup(uid, xid);
     }
