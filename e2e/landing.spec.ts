@@ -36,16 +36,13 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // BYOK注記は折りたたみなしで最初から見えている
   await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
 
-  // FAQはネイティブdetailsで開閉できる。
-  // 回答の全文ではなく<details>の開閉状態を見る（文言を1文字直すたびにE2Eが落ちるのを避ける。
+  // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
+  // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。
   // 文言そのものは landing-page.test.ts が担当する）。
-  // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため）。
-  const faq = page.locator("details").filter({ hasText: /投稿されませんか/ });
-  await expect(faq).toHaveCount(1);
-  await expect(faq).not.toHaveAttribute("open", /.*/);
-  await faq.locator("summary").click();
-  await expect(faq).toHaveAttribute("open", /.*/);
-  await expect(faq.getByText("されません。", { exact: false })).toBeVisible();
+  await expect(page.getByText(/投稿されませんか/)).toBeVisible();
+  await expect(page.getByText("されません。", { exact: false })).toBeVisible();
+  // クリックしないと読めない状態へ戻っていないこと（LPで最も読まれるべき内容を隠さない）。
+  await expect(page.locator("details")).toHaveCount(0);
 
   // 法務3リンク（LegalFooterLinks）
   const footer = page.getByRole("contentinfo");

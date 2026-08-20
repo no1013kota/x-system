@@ -110,6 +110,8 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
     );
     expect(PRICING, "プレミアムとの違いが消えている").toMatch(/プレミアムプランは運営がAPIキー/);
     expect(PRICING, "折りたたみ（details）にしない").not.toContain("<details");
+    // FAQも折りたたまない（2026-08-20 運営者の指示。LPで最も読まれるべき内容を隠していた）。
+    expect(FAQ, "FAQを折りたたみ（details）へ戻さない").not.toContain("<details");
   });
 
   it("申込前確認事項カードが料金セクションにある", () => {

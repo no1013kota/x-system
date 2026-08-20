@@ -2,8 +2,11 @@ import { APP_NAME } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
 /**
- * LP 07 よくある質問（design_handoff_lp §文言）。ネイティブ `<details>` で開閉し、
- * JS状態を持たない。「＋」は開くと45度回転して「×」に見える（色だけに頼らない開閉表現）。
+ * LP 06 よくある質問。
+ *
+ * **折りたたまない**（2026-08-20 運営者の指示）。以前はネイティブのdetails要素で開閉していたが、
+ * LPで最も読まれるべき内容を1クリック分隠していた。質問・回答ともそのまま大きく出す。
+ * `PricingCards` が「折りたたみにしない」のと同じ方針（`landing-page.test.ts` が検査している）。
  */
 
 /**
@@ -20,15 +23,15 @@ import { cn } from "@/lib/utils";
 const FAQ_ITEMS: [question: string, answer: string][] = [
   [
     "「APIキー」とは何ですか？むずかしくありませんか？",
-    `XやAIのサービスを、${APP_NAME}があなたの代わりに動かすための「鍵」にあたる文字列です。通常プラン・mdプランでは、Xと生成AIのそれぞれで鍵を発行して登録していただきます（画面の手順どおりに進められます）。この場合、月額とは別に各提供元の利用料がかかります。プレミアムプランでは運営が用意するので、この作業も追加の費用もありません。お預かりした鍵は暗号化して保存し、画面には末尾4桁だけを表示します。いつでも削除できます。`,
+    `XやAIのサービスを${APP_NAME}が代わりに動かすための「鍵」です。通常プラン・mdプランでは、XとAIのそれぞれで鍵を発行して登録します（画面の手順どおりに進められます）。この場合、月額とは別に各提供元の利用料がかかります。プレミアムプランでは運営が用意するので、この作業も追加費用もありません。お預かりした鍵は暗号化して保存し、画面には末尾4桁だけを表示します。いつでも削除できます。`,
   ],
   [
     "自分の知らないうちに投稿されませんか？",
-    "されません。はじめは「下書きまで作る」設定になっています。自動で投稿するには、何を・いつ投稿するか、どう止められるかを説明した画面で、あなたが同意する必要があります。Xとつないだだけでは始まりません。設定から止めれば、実行を待っている投稿もキャンセルされます。",
+    "されません。はじめは「下書きまで作る」設定です。自動投稿には、何を・いつ投稿するか、どう止めるかを説明した画面での同意が必要です。Xとつないだだけでは始まりません。設定から止めれば、実行を待っている投稿もキャンセルされます。",
   ],
   [
     "解約はいつでもできますか？",
-    "はい。設定内のお支払い管理画面からいつでも手続きでき、お支払い済みの期間の終わりで解約になります（日割りの返金はありません）。",
+    "はい。設定のお支払い管理からいつでも手続きでき、お支払い済みの期間の終わりで解約になります（日割りの返金はありません）。",
   ],
   [
     "スマホだけで使えますか？",
@@ -43,27 +46,22 @@ const FAQ_ITEMS: [question: string, answer: string][] = [
 
 export function FaqList() {
   return (
-    <div>
-      {FAQ_ITEMS.map(([question, answer], index) => (
-        <details
-          className={cn(
-            "group border-t border-hairline",
-            index === FAQ_ITEMS.length - 1 && "border-b",
-          )}
-          key={question}
-        >
-          <summary className="flex cursor-pointer list-none items-baseline gap-3 px-1 py-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
-            <span className="flex-1">{question}</span>
-            <span
-              aria-hidden="true"
-              className="inline-block flex-none font-medium text-brand transition-transform duration-[250ms] group-open:rotate-45 motion-reduce:transition-none"
-            >
-              ＋
-            </span>
-          </summary>
-          <p className="px-1 pb-4 text-body text-ink-2">{answer}</p>
-        </details>
+    <dl className="grid gap-[clamp(28px,4vw,44px)]">
+      {FAQ_ITEMS.map(([question, answer]) => (
+        <div className="border-t border-hairline pt-[clamp(20px,2.6vw,28px)]" key={question}>
+          <dt
+            className={cn(
+              "text-[length:clamp(17px,calc(13px_+_0.7vw),21px)] leading-[1.5]",
+              "font-bold tracking-[-0.01em] text-ink [font-feature-settings:'palt']",
+            )}
+          >
+            {question}
+          </dt>
+          <dd className="mt-[clamp(10px,1.2vw,14px)] text-[length:clamp(15px,calc(13px_+_0.3vw),17px)] leading-[1.85] text-ink-2">
+            {answer}
+          </dd>
+        </div>
       ))}
-    </div>
+    </dl>
   );
 }
