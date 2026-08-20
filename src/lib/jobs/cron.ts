@@ -6,6 +6,7 @@ import {
 } from "../email/recover-queued";
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
+import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./scheduled-drafts";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
@@ -100,6 +101,8 @@ export interface SchedulerTickResult {
   dailySummaries: number;
   /** 毎朝の投稿分析jobの新規作成数（T-M8-94）。 */
   dailySuggestions: number;
+  /** 期限到来した日時予約の下書きを投稿へ流した結果（T-M8-157）。 */
+  scheduledDrafts: EnqueueScheduledDraftsResult;
 }
 
 /**
@@ -135,6 +138,10 @@ export async function runSchedulerTick(
     runInTx: runInPooledTx,
     dailyLimit: opts.dailyLimit ?? 50,
   });
+
+  // (2') 期限到来した「日時予約された下書き」を投稿へ流す（T-M8-157）。
+  // スロットのenqueueの直後に置くのは、この後の (3) dispatch で同じtick内に投稿まで進むため。
+  const scheduledDrafts = await enqueueDueScheduledDrafts(pooledDb);
 
   // (3) 未dispatchのqueuedジョブを再dispatch
   const rows = await withTransaction((c) =>
@@ -213,6 +220,7 @@ export async function runSchedulerTick(
   }
 
   return {
+    scheduledDrafts,
     scheduleRecovered,
     enqueued,
     dispatched,

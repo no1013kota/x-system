@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.38 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.39 |
+| 更新日 | 2026-08-20 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -298,3 +298,10 @@ flowchart TD
 | v1.36 | 2026-08-18 | auto modeの `post_publish` 連鎖を実装（T-M8-143）。冪等keyはdraft単位 |
 | v1.37 | 2026-08-18 | news_fetch の取得窓を現行（初回14時間・以降3時間）へ。値の正本がコード側であることを明記（T-M8-144） |
 | v1.38 | 2026-08-18 | 利用枠の記述をAIクレジット制へ揃えた（T-M8-144。生成枠・画像枠の2枠制の記述が残っていた） |
+| v1.39 | 2026-08-20 | 期限到来した日時予約の下書きを投稿へ流す手順を追加（T-M8-157） |
+
+### 日時予約された下書きの投稿（T-M8-157）
+
+`scheduler_tick` は due slotのenqueueの直後に、**期限が来た日時予約の下書き**を投稿へ流す（`enqueueDueScheduledDrafts`）。`schedule_slots` が「投稿を生成する」トリガーである一方、こちらは**既にある下書きを投稿する**。対象は `status = 'draft'` かつ `scheduled_at <= now()` で、1tickあたり100件まで。投稿そのものは既存の `post_publish` job に委ね、**自動投稿同意・日次上限・阻害警告の判定と `last_post_error` への記録はhandlerが持つ**（判定を2箇所に置くと片方だけ直して食い違う）。冪等keyも `autoPostPublishKey`（draft単位）を共用するため、手動投稿・スロット由来の連鎖と同時に進んでも二重投稿にならない。
+
+**期限到来時に `scheduled_at` は消さない。** 投稿が終われば `status` が `posted` になり対象条件から外れる。ここでnullへ戻すと失敗時に「予約した記録」が消えて原因を辿れなくなる。対象Xアカウントが active でない予約は流さず `skippedInactive` として**0件とは別の値で数える**（原則1）。

@@ -43,6 +43,12 @@ export interface DraftView {
   tweet_ids: string[];
   /** 投稿方法（auto/manual）。履歴の自動/手動表示に使う。 */
   posted_mode: string | null;
+  /**
+   * 投稿予約日時（UTCのISO文字列。未予約は null・T-M8-157）。
+   * **`status === "draft"` のときだけ意味を持つ**——予約済みかどうかはこの値の有無で表す
+   * （`draft_status` に `scheduled` を足すと status で絞る全画面へ波及するため）。
+   */
+  scheduled_at: string | null;
   /** 投稿失敗の詳細（§4.10）。復旧UIが未解決状態（残存/曖昧）の判定に使う。 */
   last_post_error: {
     code?: string;
@@ -67,6 +73,7 @@ export interface DraftView {
 // 末尾が欠落するため、::text で完全精度の文字列として返し、更新時も text 一致で照合する。
 const DRAFT_COLUMNS = `id, pattern_name, max_posts_edit, requires_quote_url, status, thread, images, parent_draft_id, root_tweet_id,
   tweet_ids, posted_mode, last_post_error,
+  scheduled_at::text as scheduled_at,
   posted_at::text as posted_at, created_at::text as created_at, updated_at::text as updated_at`;
 
 /**
@@ -256,4 +263,65 @@ export async function discardDraft(
     }
   }
   return { status: "discarded" };
+}
+
+
+export interface ScheduleDraftParams {
+  draftId: string;
+  expectedUpdatedAt: string;
+  /** UTCのISO文字列。判定は `checkDraftSchedule` を通したものを渡す。 */
+  scheduledAt: string;
+  userId: string;
+}
+
+/**
+ * 下書きに投稿予約日時を設定する（T-M8-157）。
+ *
+ * 判定（過去日時・状態・アカウントの有効性）は `@/lib/draft-schedule` の純粋層が持つ。
+ * ここは**所有と楽観lockだけ**を見る——他の下書き操作（`updateDraft`／`discardDraft`）と
+ * 同じ `expected_updated_at` 方式に揃える。ずれていれば `job_conflict`。
+ */
+export async function scheduleDraft(
+  db: Queryable,
+  params: ScheduleDraftParams,
+): Promise<{ scheduledAt: string }> {
+  const draft = await loadOwnedDraft(db, params.userId, params.draftId);
+  if (draft.status !== "draft") {
+    throw new AppError("job_conflict", {
+      details: { reason: `not_schedulable:${draft.status}` },
+    });
+  }
+  // 所有は loadOwnedDraft が既に検証済み。ここは状態と楽観lockだけを条件にする。
+  const { rows } = await db.query<{ scheduled_at: string }>(
+    `update drafts set scheduled_at = $3::timestamptz, updated_at = now()
+      where id = $1 and status = 'draft' and updated_at::text = $2
+      returning scheduled_at::text as scheduled_at`,
+    [params.draftId, params.expectedUpdatedAt, params.scheduledAt],
+  );
+  if (!rows[0]) {
+    throw new AppError("job_conflict", { details: { reason: "stale_or_changed" } });
+  }
+  return { scheduledAt: rows[0].scheduled_at };
+}
+
+/** 予約を解除する。予約していない下書きに対しても成功扱い（冪等）。 */
+export async function cancelDraftSchedule(
+  db: Queryable,
+  params: { draftId: string; expectedUpdatedAt: string; userId: string },
+): Promise<void> {
+  const draft = await loadOwnedDraft(db, params.userId, params.draftId);
+  if (draft.status !== "draft") {
+    throw new AppError("job_conflict", {
+      details: { reason: `not_schedulable:${draft.status}` },
+    });
+  }
+  const { rows } = await db.query<{ id: string }>(
+    `update drafts set scheduled_at = null, updated_at = now()
+      where id = $1 and status = 'draft' and updated_at::text = $2
+      returning id`,
+    [params.draftId, params.expectedUpdatedAt],
+  );
+  if (!rows[0]) {
+    throw new AppError("job_conflict", { details: { reason: "stale_or_changed" } });
+  }
 }

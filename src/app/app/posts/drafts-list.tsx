@@ -12,6 +12,10 @@ import {
   reconcileDraftPostingAction,
 } from "@/app/actions/drafts";
 import {
+  ScheduleDraftControl,
+  scheduledLabel,
+} from "./schedule-draft-control";
+import {
   getGenerationJobAction,
   publishDraftAction,
   regenerateDraftAction,
@@ -54,6 +58,7 @@ function WarningBadge({ code }: { code: string }) {
 }
 
 export function DraftsList({
+  xAccountActive = true,
   drafts,
   selectedDraftId,
   imageRegenEnabled,
@@ -63,6 +68,12 @@ export function DraftsList({
   selectedDraftId?: string;
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
+  /**
+   * 対象Xアカウントが active か（T-M8-157）。この一覧は解決済みの選択中アカウントに
+   * スコープされ、`resolveActiveXAccountForUser` が active のみ返すため既定は true。
+   * 明示的に受けるのは、予約可否の理由を画面で出す判定に使うため。
+   */
+  xAccountActive?: boolean;
 }) {
   if (drafts.length === 0) {
     return (
@@ -80,6 +91,7 @@ export function DraftsList({
           imageRegenEnabled={imageRegenEnabled}
           key={draft.id}
           quotePostEnabled={quotePostEnabled}
+          xAccountActive={xAccountActive}
         />
       ))}
     </ul>
@@ -87,6 +99,7 @@ export function DraftsList({
 }
 
 function DraftCard({
+  xAccountActive,
   draft,
   highlighted,
   imageRegenEnabled,
@@ -96,6 +109,7 @@ function DraftCard({
   highlighted: boolean;
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
+  xAccountActive: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -238,6 +252,10 @@ function DraftCard({
             )
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
+          {/* 予約済みは日時ごと出す（T-M8-157）。いつ投稿されるかを開かずに分かるようにする。 */}
+          {draft.status === "draft" && draft.scheduled_at ? (
+            <Badge tone="info">{scheduledLabel(draft.scheduled_at)}</Badge>
+          ) : null}
           <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
         </div>
         {/* 状態テキストとボタンが同居する行。折り返せないと狭い幅で横にはみ出す（T-M8-70）。 */}
@@ -251,6 +269,15 @@ function DraftCard({
             <span className="text-xs text-muted-foreground">
               引用ポスト機能は現在利用できません
             </span>
+          ) : null}
+          {editable && !editing && !publishing && !p5Disabled ? (
+            <ScheduleDraftControl
+              disabled={locked}
+              draftId={draft.id}
+              scheduledAt={draft.scheduled_at}
+              updatedAt={draft.updated_at}
+              xAccountActive={xAccountActive}
+            />
           ) : null}
           {editable && !editing && !publishing && !p5Disabled ? (
             <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
