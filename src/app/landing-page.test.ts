@@ -31,8 +31,10 @@ const PRICING = read("src/components/lp/pricing.tsx");
  * 検査は「実際に `regularPriceJpy` を描く画面」へ向ける。
  */
 const SETTINGS_BILLING = read("src/app/app/settings/page.tsx");
-/** プラン比較表（T-M8-125）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
-const COMPARISON_TABLE = read("src/components/billing/plan-comparison-table.tsx");
+/** プランカード（T-M8-171）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
+const PRICING_CARDS = read("src/components/billing/plan-pricing-cards.tsx");
+/** プロモ帯（T-M8-171）。「初回のみ」「カード登録が必要」の開示はここが唯一の常時表示。 */
+const CAMPAIGN_CALLOUT = read("src/components/billing/campaign-callout.tsx");
 const COMPARISON = read("src/lib/plan-comparison.ts");
 const GLOBALS_CSS = read("src/app/globals.css");
 /** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
@@ -103,43 +105,40 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
    * ここでは**カードそのものが消えないこと**だけを守る。詳細な法定事項は
    * `/legal/commercial-transactions` と利用規約が担い、`legal-pages.test.ts` が検査する。
    */
-  it("BYOK注記がプランカード直下に折りたたみなしで表示される", () => {
-    expect(PRICING).toContain("APIキーの費用について");
-    expect(PRICING, "BYOK方式であることの説明が消えている").toMatch(
-      /APIキーをご自身でご用意いただく方式/,
-    );
-    expect(PRICING, "プレミアムとの違いが消えている").toMatch(/プレミアムプラン・エキスパートプランは運営がAPIキー/);
-    expect(PRICING, "折りたたみ（details）にしない").not.toContain("<details");
+  /**
+   * BYOK（スタンダード）のAPI実費の開示（T-M8-171で注意書きカードを畳んだ・運営者の決定
+   * 2026-08-21）。**常時表示の置き場所はカードの「APIキーの用意」行だけ**になったので、
+   * 行定義から消えると LP・/plans の両方から開示が消える。
+   */
+  it("BYOKのAPI実費の開示がプラン行定義に残る", () => {
+    expect(COMPARISON, "BYOKのAPI実費の開示が消えている").toMatch(/ご自身のAPI課金/);
     // FAQも折りたたまない（2026-08-20 運営者の指示。LPで最も読まれるべき内容を隠していた）。
     expect(FAQ, "FAQを折りたたみ（details）へ戻さない").not.toContain("<details");
   });
 
-  it("申込前確認事項カードが料金セクションにある", () => {
-    expect(PRICING).toContain("お申し込み前にご確認ください");
-    for (const item of ["料金：", "無料期間：", "解約方法：", "提供開始："]) {
-      expect(PRICING, `「${item}」が消えている`).toContain(item);
-    }
-  });
-
-  it("無料トライアルが初回限定であることが料金セクションに残る", () => {
+  it("無料トライアルの条件（初回のみ・カード登録）がプロモ帯に残る", () => {
     // 「初回のみ」が消えると「無条件で7日間無料」の表示になり、2回目以降の申込みで事実と異なる
-    // （景表法の有利誤認・特商法11条）。言い回しは変わりうるので、事実の有無だけを見る。
-    expect(PRICING, "初回限定の開示が申込前確認事項から消えている").toMatch(/初回のみ/);
-    expect(PRICING, "無料期間の長さが消えている").toMatch(/7日間/);
+    // （景表法の有利誤認・特商法11条）。「カード登録が必要」は無料の条件の開示。
+    // T-M8-171で申込前確認カードを畳んだため、**プロモ帯が唯一の常時表示**。
+    expect(CAMPAIGN_CALLOUT, "初回限定の開示が消えている").toMatch(/初回のみ/);
+    expect(CAMPAIGN_CALLOUT, "無料期間の長さが消えている").toMatch(/7日間/);
+    expect(CAMPAIGN_CALLOUT, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
+    expect(PRICING, "LPの料金セクションがプロモ帯を使っていない").toContain("CampaignCallout");
   });
 });
 
 describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("プランの数値を参照で埋める（直書きしない）", () => {
-    // T-M8-125で比較表へ移した。**数値を持つ場所を見る**——LP側だけを見ていると、
-    // 表へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
-    expect(PRICING, "LPは共通の比較表を使う").toContain("PlanComparisonTable");
+    // T-M8-171でLPも/plansと同じプランカードにした。**数値を持つ場所を見る**——LP側だけを
+    // 見ていると、部品へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
+    expect(PRICING, "LPは共通のプランカードを使う").toContain("PlanPricingCards");
     // 行の可否・件数・上限は定義側（`plan-comparison.ts`）が持つ。
     for (const ref of ["PLANS", "xAccountLimit", "usageLimits"]) {
       expect(COMPARISON, `${ref} を定義から引く`).toContain(ref);
     }
-    // 価格は表示側が定義から引く（表のヘッダ）。
-    expect(COMPARISON_TABLE, "価格を定義から引く").toContain("monthlyPriceJpy");
+    // 価格・1日あたり概算は表示側が定義から引く。
+    expect(PRICING_CARDS, "価格を定義から引く").toContain("monthlyPriceJpy");
+    expect(PRICING_CARDS, "1日あたりの概算が消えている").toMatch(/1日あたり/);
   });
 
   it("価格・プレミアム上限の数値がLPソースに直書きされていない", () => {
@@ -168,7 +167,7 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
     // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
     // 表のヘッダがキャンペーン価格を出す（T-M8-125）。設定＞課金は自前で描くので、
     // **両方が決まりを守っていること**を見る（片方だけ見ると他方が黙って外れる）。
-    for (const source of [COMPARISON_TABLE, SETTINGS_BILLING]) {
+    for (const source of [PRICING_CARDS, SETTINGS_BILLING]) {
       expect(source).toContain("regularPriceJpy");
       expect(source).toContain("RELEASE_CAMPAIGN.afterLabel");
     }
@@ -176,9 +175,10 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
     const withoutComments = (source: string) =>
       source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const [name, source] of [
-      ["比較表", COMPARISON_TABLE],
+      ["プランカード", PRICING_CARDS],
       ["設定＞課金", SETTINGS_BILLING],
       ["LP料金", PRICING],
+      ["プロモ帯", CAMPAIGN_CALLOUT],
     ] as const) {
       expect(withoutComments(source), `${name}で「通常価格」は景表法上使えない`).not.toContain(
         "通常価格",

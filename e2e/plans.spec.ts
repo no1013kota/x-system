@@ -75,21 +75,18 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   const expertCard = page.getByRole("article", { name: /エキスパートプラン/ });
   await expect(expertCard.getByText("無制限")).toBeVisible();
   await expect(page.getByText(/5,?000/)).toHaveCount(0);
-  // BYOKの追加費用は申込前に必ず読める（折りたたまない・要件03 §54）
-  await expect(
-    page.getByText("X APIと生成AI APIの利用料が別途発生します", { exact: false }),
-  ).toBeVisible();
+  // BYOKの追加費用はスタンダードカードの「APIキーの用意」行が常時表示する（T-M8-171）
+  await expect(page.getByText(/ご自身のAPI課金/).first()).toBeVisible();
 
   /**
-   * 申込前の重要事項（要件06 §1.1・要件03 §54）。
+   * 申込前の開示（T-M8-171・運営者の決定 2026-08-21）。
    *
-   * **T-M8-125で定義リストを畳んだ**（運営者の指示・比較表と重複していた）。ただし
-   * 申込ボタンの前に重要事項へ辿れる状態は残す必要があるので、無料期間・自動更新・解約と
-   * 特商法ページへのリンクが見えていることは引き続き固定する。
+   * 定型文はプロモ帯（CampaignCallout）へ畳んだ。**「初回のみ」「カード登録が必要」は
+   * 帯の中に残る**（景表法の有利誤認回避・無料の条件）。自動更新・解約の法定事項の全文は
+   * フッタから辿れる特定商取引法ページが担う。
    */
-  await expect(page.getByText("初回のみ7日間無料", { exact: false })).toBeVisible();
-  await expect(page.getByText("自動更新します", { exact: false })).toBeVisible();
-  await expect(page.getByText("期間末で終了します", { exact: false })).toBeVisible();
+  await expect(page.getByText("初回のみ7日間", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "特定商取引法に基づく表記" }).first(),
   ).toBeVisible();

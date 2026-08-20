@@ -23,18 +23,20 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   await page.getByRole("link", { name: "料金を見る" }).click();
   await expect(page.locator("#pricing")).toBeInViewport();
 
-  // 比較表が plans.ts の価格・上限を実際に描画している（T-M8-125で表へ変えた）。
+  // プランカードが plans.ts の価格・上限を実際に描画している（T-M8-171でカードへ変えた）。
   const pricing = page.locator("#pricing");
   await expect(pricing).toContainText("¥3,980");
   await expect(pricing).toContainText("AIクレジット1000");
+  await expect(pricing.getByText(/1日あたり 約\d/).first()).toBeVisible();
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
   expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
   // 無料の条件（初回のみ・カード登録・解約すれば無料）を同じ場所で言う（景表法・要件03 §54）。
-  await expect(pricing.getByText("初回のみ7日間無料", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText(/初回のみ7日間/).first()).toBeVisible();
   await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
-  await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
+  // BYOKのAPI実費はスタンダードカードの「APIキーの用意」行が唯一の常時表示（T-M8-171）。
+  await expect(pricing.getByText(/ご自身のAPI課金/).first()).toBeVisible();
 
   // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
   // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。

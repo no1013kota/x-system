@@ -9,6 +9,7 @@ import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
+import { CampaignCallout } from "@/components/billing/campaign-callout";
 import { PlanPricingCards, RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
 import { env } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -120,22 +121,11 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           ) : (
             <>
           {/*
-            申込前の重要事項（T-M8-125で縮めた）。特商法の法定事項の全文は
-            `/legal/commercial-transactions` が担う。**リンクは残す**——申込ボタンの前に
-            重要事項へ辿れる状態を無くさないため（要件06 §1.1・要件03 §54の趣旨）。
-            定義リストは比較表と重複していたので落とした（運営者の指示・2026-08-18）。
+            申込前の定型文はプロモ帯（CampaignCallout）へ畳んだ（T-M8-171・運営者の決定 2026-08-21）。
+            「初回のみ」「カード登録が必要」の開示は帯の中に残る。自動更新・解約の法定事項は
+            フッタの特定商取引法ページ・利用規約が担う。
           */}
-          <p className="mx-auto max-w-3xl text-center text-caption text-ink-3">
-            全プラン初回のみ7日間無料（開始時にカード登録が必要です）。無料期間の終了後、選択したプランを
-            月単位で自動更新します。解約はいつでも設定画面から行え、期間末で終了します。
-            <Link
-              className="mx-1 font-medium text-ink underline underline-offset-4"
-              href="/legal/commercial-transactions"
-              target="_blank"
-            >
-              特定商取引法に基づく表記
-            </Link>
-          </p>
+          <CampaignCallout className="mx-auto max-w-3xl" />
 
           {/*
             プランのカード型表示（T-M8-169・運営者の指示 2026-08-21。参考: tweethunter.io/pricing）。
@@ -153,19 +143,6 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 />
               )}
             />
-          </section>
-
-          {/* BYOKの追加費用は申込前に必ず読ませる（要件03 §54）。折りたたまない。 */}
-          <section
-            aria-label="BYOKプランのご注意"
-            className="flex items-start gap-2.5 rounded-card bg-warn-bg px-4 py-3"
-          >
-            <Icon className="mt-0.5 shrink-0 text-warn-fg" name="error" size={18} />
-            {/* 申込前のBYOK追加費用の明示（要件03）は1文で満たす。トライアル解約時の扱いは確認dlにある（T-M8-66）。 */}
-            <p className="text-xs leading-[1.65] text-ink-2">
-              <strong className="font-bold">スタンダードプランのご注意：</strong>
-              X APIと生成AI APIの利用料が別途発生します（プレミアムプラン・エキスパートプランは追加負担なし）。
-            </p>
           </section>
 
             </>

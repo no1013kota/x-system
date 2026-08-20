@@ -40,11 +40,15 @@ interface FeatureItem {
   /** 文字列セル（件数・上限など）。true のセルは値なし＝チェックのみ。 */
   value?: string;
   note?: string;
+  /** 下位プランから変更・追加された行。色＋太字＋読み上げ文で強調する（T-M8-171）。 */
+  changed: boolean;
 }
 
 /**
- * カードに並べる行。先頭プランは対応する全行、2枚目以降は**下位プランと差がある行だけ**
- * （同じものは「◯◯プランの全機能」が受け持つ）。
+ * カードに並べる行（**全プランで全行を出す**・T-M8-171）。以前は2枚目以降を差分行だけに
+ * していたが、スタンダードだけが多機能に見えた（運営者の指摘 2026-08-21）。
+ * 差分は隠さず、**下位プランと違う行に印を付ける**形で示す。差分判定は書き写しではなく
+ * cell の比較で機械的に出す。
  */
 function featureItemsFor(index: number): FeatureItem[] {
   const columns = comparisonColumns();
@@ -55,11 +59,11 @@ function featureItemsFor(index: number): FeatureItem[] {
     if (row.label === ACCOUNT_ROW_LABEL) continue;
     const cell = row.cell(plan);
     if (cell === false) continue;
-    if (prev && String(row.cell(prev)) === String(cell)) continue;
     items.push({
       label: row.label,
       note: row.note,
       value: typeof cell === "string" ? cell : undefined,
+      changed: prev != null && String(row.cell(prev)) !== String(cell),
     });
   }
   return items;
@@ -127,6 +131,10 @@ function PlanCard({
           <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>
         </p>
       ) : null}
+      {/* 1日あたりの概算（T-M8-171）。切り上げで安く見せすぎない（景表法）。 */}
+      <p className="mt-1 text-caption font-medium text-ink-2">
+        1日あたり 約{yen(Math.ceil(plan.monthlyPriceJpy / 30))}円
+      </p>
 
       <div className="mt-4">{cta}</div>
 
@@ -137,19 +145,49 @@ function PlanCard({
         ) : null}
       </p>
 
-      <p className="mt-5 text-caption font-bold tracking-wide text-ink-3">
-        {index === 0 ? "含まれる機能" : `${columns[index - 1].plan.displayName}の全機能に加えて`}
-      </p>
-      <ul className="mt-2.5 space-y-2.5">
+      <div className="mt-5">
+        <p className="text-caption font-bold tracking-wide text-ink-3">含まれる機能</p>
+        {index > 0 ? (
+          // 強調は色だけに頼らない（太字＋sr-onlyの読み上げ文を併用・WCAG）。
+          <p className="mt-0.5 text-caption text-ink-3">
+            <span aria-hidden="true" className="mr-1 inline-block size-2 rounded-pill bg-brand align-baseline" />
+            {columns[index - 1].plan.displayName}からの変更・追加
+          </p>
+        ) : null}
+      </div>
+      <ul className="mt-2.5 space-y-1.5">
         {items.map((item) => (
-          <li className="flex items-start gap-2" key={item.label}>
-            <Icon aria-hidden="true" className="mt-0.5 shrink-0 text-brand" name="check" size={16} />
-            <span className="text-body leading-[1.55] text-ink">
+          <li
+            className={cn(
+              "flex items-start gap-2 rounded-lg px-2 py-1",
+              item.changed && "-mx-0.5 bg-brand-subtle",
+            )}
+            key={item.label}
+          >
+            <Icon
+              aria-hidden="true"
+              className={cn("mt-0.5 shrink-0", item.changed ? "text-brand" : "text-ink-3")}
+              name="check"
+              size={16}
+            />
+            <span
+              className={cn(
+                "text-body leading-[1.55] text-ink",
+                item.changed && "font-bold",
+              )}
+            >
               {item.label}
               {/* 値は「ラベル：値」で1文として読める形にする（別行だと主述が切れる）。 */}
-              {item.value ? <span className="text-ink-2">：{item.value}</span> : null}
-              {item.note ? (
-                <span className="mt-0.5 block text-caption text-ink-3">{item.note}</span>
+              {item.value ? (
+                <span className={cn(item.changed ? "text-brand" : "text-ink-2", "font-medium")}>
+                  ：{item.value}
+                </span>
+              ) : null}
+              {item.changed ? (
+                <span className="sr-only">（このプランでの変更・追加）</span>
+              ) : null}
+              {item.note && !item.changed ? (
+                <span className="mt-0.5 block text-caption font-normal text-ink-3">{item.note}</span>
               ) : null}
             </span>
           </li>
