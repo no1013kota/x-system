@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.4 |
+| 更新日 | 2026-08-20 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
 MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キー・法務確認が要る項目は §3 に担当・期日欄付きで残す。
@@ -44,7 +44,8 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 | # | 項目 | 担当 | 期日 |
 |---|---|---|---|
 | 1 | X Developer App（本番/運営・BYOK検証用）作成、callback URL 登録、credit/予算設定、pay-per-use 実単価確認（`X_COST_*`） | 運営者 | リリース前 |
-| 2 | Stripe 本番 Price 3種・`STRIPE_WEBHOOK_SECRET`・Customer Portal Configuration・API バージョン確認（結果は実装メモ/ADR へ） | 運営者 | リリース前 |
+| 2 | Stripe 本番 Price 3種・`STRIPE_WEBHOOK_SECRET`・Customer Portal Configuration・API バージョン確認（結果は実装メモ/ADR へ） | 運営者 | ✅ 済 |
+| 2.5 | **Stripeアカウントの本番決済有効化**（`card_payments = active`）。**アプリからは見えない**——鍵もPriceも正しく画面も正常なのに申し込みだけ必ず失敗する（T-M8-148）。確認は `npm run doctor -- --base <URL>`（`stripe-account-status.ts`） | 運営者 | ✅ 済（2026-08-20） |
 | 3 | AI 各社（Anthropic/OpenAI/Gemini）本番キー発行と採用モデル名確定（`*_TEXT_MODEL`／`*_IMAGE_MODEL`） | 運営者 | リリース前 |
 | 4 | Supabase preview/prod プロジェクト、Auth rate limit／Turnstile、Gmail App Password（SMTP）設定 | 運営者 | リリース前 |
 | 5 | `SENTRY_DSN`／`NEXT_PUBLIC_SENTRY_DSN` 発行 | 運営者 | リリース前 |

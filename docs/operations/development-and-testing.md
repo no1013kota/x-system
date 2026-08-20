@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.17 |
+| バージョン | v4.18 |
 | 更新日 | 2026-08-20 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
@@ -604,21 +604,16 @@ X投稿は `X_POSTING_MODE`、通知メールは `canSendViaSmtp`（production�
 build=約1.5分、E2E全件=**約8分**。1タスクでE2Eを5回回すと40分が消えるが、単体+DBは全部で2分。
 `.github/workflows/ci.yml` が push時に `release:check` を回すので、**毎コミットのローカルE2Eは二重実行**。
 
-- 変更ごと: `npm run typecheck && npm run lint && REQUIRE_DB=1 npx vitest run`
-- コミット前: ＋ `check:doc-dates` / `check:doc-refs`
-- push前に1回: ＋ `build` / `check:csp-nonce` / `test:e2e`
-
+**どこまで回すかの規則は `CLAUDE.md`「変更影響 → 必須の検証」§2・§3 が正本**（この文書はその実行の仕方と、そう決めた理由＝実測値を書く側）。
 段分けは「毎回E2Eを回すか」の話で、CLAUDE.mdの表の必須行を省く許可ではない。
 
-### 実際に踏んだ落とし穴
+### なぜ「flaky」と即断してはいけないか
 
-- **パイプは終了コードを捨てる。** `release:check | tail` は `tail` の終了コードを返し、
-  **失敗したゲートが成功に見える**（`check:doc-refs` の失敗を exit 0 と誤読した）。
-- **`check:doc-refs` は `git ls-files` で判定する。** 新規ファイルはstageするまで「実在しない」。
-- **E2Eの1件目のtimeout**は `src/**` 編集直後のroute初回コンパイル待ちのことがある。
-  編集を挟まず再実行して緑かを見る（3回連続で `ai-settings.spec.ts:39` がこれだった）。
-- **Next.js 16 は同一ディレクトリで2つ目の `next dev` を拒否する。** 障害注入して画面を見るときは
-  `npm run build` ＋ `PORT=<別> npx next start`。
-- **`git add -A` は使わない**（利用者の並行編集を巻き込む）。
+実DB全テストが5〜6回に1回落ちる状態を10回連続実行で捕まえたら、**毎回同じ1件**で、原因は
+**溜まったデータ件数で決まる決定的な失敗**だった（T-M8-161。`follower_snapshot` の選定が
+全アカウントから `created_at` 昇順100件で、テストの新しいアカウントが上限で切り落とされていた。
+ローカルDBに active 101件が滞留していた）。**落ちた回数ではなく、落ちる条件を先に探す。**
+`npm run db:clean-test-data` でテスト由来のデータを定期的に落とす——滞留は
+「全アカウント対象」の他のジョブテストにも同じ閾値問題を作る。
 
 > **触った層と必須の検証の対応表は `CLAUDE.md` を正本とします。** この文書は実行の仕方と理由を書く側です。両方を編集するときは `CLAUDE.md` を先に直してください。

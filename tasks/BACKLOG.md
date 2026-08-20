@@ -32,7 +32,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **6件**（D-16 / D-17 / D-18 / D-19 / D-20 / **D-29**）。D-21〜D-26 は 2026-08-11、D-30 は 2026-08-16、**D-27・D-28 は 2026-08-17** に解決済み | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
-| 外部準備（人間側） | **本番運用開始に残り2件**＝Xアカウント連携・**Stripeアカウントの本番有効化**（T-M8-148。未完了のため契約の申し込みが誰も完了できない）。ほか法務レビュー・単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
+| 外部準備（人間側） | **本番運用開始に残り1件**＝Xアカウント連携。**Stripeアカウントの本番有効化は2026-08-20に完了**（運営者。T-M8-148。これで契約の申し込みが通る）。ほか法務レビュー・単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
 
 **2026-08-18: 2回目の本番反映を完了した（PR #13・47コミット）。** migration 10件を適用。
 **自動投稿の連鎖（T-M8-143）が初めて本番へ入った**——それまで `mode=auto` の予約は
@@ -2332,7 +2332,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   無効な`size=invisible`を廃止し、公式の`appearance=interaction-only`へ変更。単体2262件、認証DB統合2件、
   認証E2E 4件、typecheck、lintが成功（単体19件は環境条件によるskip、必須DB/E2Eのskipは0）。
 
-### T-M8-150: 会員登録直後の `/plans?confirmed=1` が500になる `todo`
+### T-M8-150: 会員登録直後の `/plans?confirmed=1` が500になる `done`
 - 参照: 要件05 §`/auth/confirm`・`verifySignUpCode`／要件06 SC-03 / 依存: なし / サイズ: S
 - 完了条件:
   - 会員登録→6桁コード入力の直後に `/plans?confirmed=1` が正常に描画され、確認完了の案内が出る
@@ -2359,7 +2359,8 @@ UI側boolean を壊しても投稿は誤爆しない）。
      `/plans` 最終読み取りと proxy の profile 取得も同様に修正済み（T-M8-158/159）。
   3. **E2Eは既に当該経路を通している。** `e2e/auth.spec.ts` が 会員登録→6桁コード→`/plans` 遷移→
      「メールアドレスの確認が完了しました」の可視まで確認しており、完了条件2つ目は既に満たされている。
-- **未解決のまま `todo` を維持する理由**: ローカル・E2E・型検査ではいずれも再現せず、
+- **2026-08-20 close（運営者確認）**: その後**再発していない**ため運営者判断でcloseした。症状の受け皿（`src/app/error.tsx`）と経路上の握り潰しは修正済みなので、**再発しても既定500画面ではなく共通エラー画面が出て、原因がSentryへ `AppError` として残る**。
+- 当時 `todo` を維持した理由（記録として残す）: ローカル・E2E・型検査ではいずれも再現せず、
   **本番で実際に落ちた原因が特定できていない**。再現していない不具合を `done` にはしない。
   次に発生したら `src/app/error.tsx` が出る＋例外が Sentry へ AppError として届くので、
   そのイベントで原因を確定できる。**運営者への依頼**: 再発したら画面の文言（既定500画面か
@@ -3503,6 +3504,8 @@ UI側boolean を壊しても投稿は誤爆しない）。
 2. ~~**人間確認（CAPTCHA）が本番Supabaseで無効**~~ → **2026-08-14 解決**（運営者が設定。`doctor` が「有効です」を返すことを確認）。以下は経緯 — 画面にはTurnstileの確認欄が出るが、**サーバー側が検証しないため素通りできる**。Supabase → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`） → Authentication → Attack Protection → CAPTCHA を有効化し、Cloudflare の Secret Key を設定する。stagingで同じ設定漏れが2026-08-01に起きている（T-M7-48）。
 3. ~~**Stripe カスタマーポータルの設定が本番に合っていない**~~ → **2026-08-14 解決**（運営者の了解を得て `npm run stripe:portal:setup -- --target production` を実行。`bpc_1TvFJXE811f4DP4qdNAIneA3` を `updated-in-place` で更新し、`doctor` が「プラン変更・解約のどちらも操作できます」を返すことを確認。`.env.local` へ `PRODUCTION_STRIPE_*` 5件を置いた）。以下は経緯 — 「プランを変更」のボタンは出るが押すと失敗する。`npm run stripe:portal:setup -- --target production` を実行する（外部サービスの設定を書き換えるため実行前に運営者の了解が要る。IDは変わらない）。手順は `docs/operations/deployment.md` §1.4。
 4. Xアカウント未連携・定時実行の実績なしは、上記1と運営者の初回セットアップで解消する（doctorは⚠️で出す）。
+
+4.5. ~~**Stripeアカウントが本番決済を有効化されていない**~~ → **2026-08-20 解決**（運営者）。T-M8-148 で検出した状態（`Your account cannot currently make live charges.`・`card_payments = inactive`）。**この状態はアプリからは何も見えない**——鍵は本番キー、Priceも金額も一致し、画面も正常に見えるのに「7日間無料で利用」を押すと必ず失敗した。検出手段は `src/lib/ops/stripe-account-status.ts`（`doctor` が見る）。
 
 5. **確認メールのリンクが localhost へ飛ぶ**（人の操作・2026-08-14 運営者が発見） — 本番で会員登録すると、確認メールのリンクが `exosai.net` ではなく `localhost` を指す。**アプリ側は正しい**——`src/app/actions/auth.ts` の `confirmationRedirectUrl()` は `new URL("/auth/confirm", env.APP_BASE_URL)` で、本番の `APP_BASE_URL` は `https://exosai.net`。原因はSupabase側で、**許可リストに無いリダイレクト先はSupabaseが無視して Site URL へ差し替える**ため。本番プロジェクトの Site URL が既定の localhost のままだった。パスワード再設定メール（`auth.ts:181` の `redirectTo`）も同じ経路なので同時に直る。
    → 本番プロジェクト（`hvjizoahdqfvasiqzzkv`）→ Authentication → **URL Configuration** で **Site URL** を `https://exosai.net` にし、**Redirect URLs** へ `https://exosai.net/**` を追加する。
