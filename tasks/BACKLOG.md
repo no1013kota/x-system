@@ -2219,6 +2219,35 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 「このプロンプトを利用する」ボタンがカードの右上に揃う
 - メモ: 運営者の指示（2026-08-21）。
 
+### T-M8-183: LPフッタに運営者Xアカウントへのリンク（Xアイコン） `todo`
+- 参照: 要件06 §1（LP・フッタ） / 依存: なし / サイズ: S
+- 完了条件:
+  - LPフッタにXのロゴアイコンが表示され、タップ／クリックで `https://x.com/ai_newinfo` が新しいタブで開く（`rel="noopener noreferrer"`）
+  - アイコンだけのリンクに読み上げ用ラベル（例「運営者のXアカウント」）があり、タップ領域は24px以上
+  - URLは `app-config.ts` の定数1か所で持ち、landing-page.test がリンクの存在とURLを固定する
+- メモ: 運営者の指示（2026-08-21。リンク先は運営者回答）。XロゴはMaterial Symbolsに無いため、
+  公式ロゴ形状のSVGを `icon-paths` とは別の部品として持つ（`npm run icons:generate` の対象外）。
+
+### T-M8-184: 公開ブログ（/blog・/blog/[slug]）— blog/ 配下Markdownの描画と導線 `todo`
+- 参照: 要件06 §1（公開ページ。/prompt-templates と同じ立ち位置） / 依存: なし / サイズ: M
+- 完了条件:
+  - リポジトリ直下 `blog/*.md`（front matter: title・description・date・draft）を `/blog`（一覧・新しい順）と `/blog/<slug>`（本文）で表示する。slugはファイル名
+  - 見出し（#/##/###）・太字・斜体・箇条書き・番号付き・リンク・引用・コード・表・画像など代表的なMarkdown（GFM）が描画される。生HTMLは描画しない（XSS・CSPの観点）
+  - `draft: true` の記事は公開側に出ない。front matter が不正な記事は公開側に出さず、`npm run blog:check`（1コマンド）が理由つきで検出する
+  - 記事0件は「準備中」を明示し、存在しないslugは404
+  - 導線: LPヘッダーnav・プロンプト集と同じ公開ヘッダー／フッタ・appナビに「ブログ」（ページ遷移マーク付き）
+  - Vercel本番ビルドでもMarkdownが読める（`outputFileTracingIncludes`）。`build`＋`check:csp-nonce`＋E2E緑
+- メモ: 運営者の指示（2026-08-21）。記事はDBではなくリポジトリで管理し、投稿＝コミット＋通常の反映（`release:*`）。
+  描画はreact-markdown＋remark-gfm（HTMLを注入しない・`dangerouslySetInnerHTML` 不使用）。
+
+### T-M8-185: ブログの執筆スキル（/blog-write）と投稿スキル（/blog-publish）・運用手順 `todo`
+- 参照: CLAUDE.md「スキルの地図」・T-M8-184 の front matter 仕様 / 依存: T-M8-184 / サイズ: S
+- 完了条件:
+  - `/blog-write <テーマ or 参考URL>` が、構造化され・テーマを深く掘り下げ・新しくユニークで有効な学びがあり・簡潔だが具体的な記事を front matter付きMarkdownとして `blog/` に下書き（`draft: true`）で作る。品質基準と手順がスキルに簡潔・構造化して書かれている
+  - `/blog-publish <file>` が `blog:check` → `draft` 解除 → 記事ファイルだけをコミット、までを行い、反映コマンドを案内する。検証に失敗したら理由を出して止まる
+  - CLAUDE.md「スキルの地図」・docs/README.md（`blog/` の位置づけ）・運用メモ（投稿手順）に載る
+- メモ: 運営者の指示（2026-08-21）。スキルは簡潔かつ構造化。参考URLは WebFetch で読み、引用は出典を残す。
+
 ### T-M8-177: LP微調整（コンセプトの埋め込み図・成長グラフの軸/密度・半額の強調） `done`
 - 参照: 要件06 §1（LP） / 依存: T-M8-172 / サイズ: M
 - 完了条件:
