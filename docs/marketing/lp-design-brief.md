@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.0 |
-| 更新日 | 2026-08-18 |
+| 更新日 | 2026-08-22 |
 | 位置づけ | **仕様の正本ではない**。制作依頼用の資料で、数値・文言の正は `docs/PRD.md` と `src/lib/plans.ts`。ここは作成時点のスナップショット |
 | 関連 | [PRD](../PRD.md)／[画面仕様 SC-01](../requirements/06_screens_onboarding_posting.md)／[ADR-0006](../decisions/0006-ui-design-foundation.md)／[ADR-0007](../decisions/0007-type-scale-and-target-sizes.md) |
 
