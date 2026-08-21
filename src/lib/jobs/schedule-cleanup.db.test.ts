@@ -78,6 +78,52 @@ describe("cleanupOldData (db)", () => {
     return rows[0].id;
   }
 
+  it("新着500件を超えた news_items を削除し、参照付きの行は残す（T-M8-188）", async () => {
+    const tag = randomUUID().slice(0, 8);
+    // 500件上限を確実に超えるよう、まとめて520件seedする（既存行数に依存しない）。
+    const { referencedId, notifUid } = await withTransaction(async (c: PoolClient) => {
+      await c.query(
+        `insert into news_items (category, title, summary, source_url, impact, fetched_at)
+         select 'ai', 'bulk-' || $1, 's', 'https://example.com/' || $1 || '-' || g, 'low',
+                now() - make_interval(mins => 30 + g)
+           from generate_series(1, 520) g`,
+        [tag],
+      );
+      // 上限の外（最古扱い）だが通知payloadから参照される行 → 消えないこと。
+      const referencedId = await insertNewsItem(c, 30);
+      const { uid } = await makeAccount(c);
+      await insertNewsNotif(c, uid, 1, referencedId);
+      return { referencedId, notifUid: uid };
+    });
+
+    try {
+      // 1回のBATCH(500)で削りきれない量でも、数回で上限まで収束する。
+      for (let i = 0; i < 5; i++) await cleanupOldData({ db: pooledDb });
+
+      const { rows } = await pooledDb.query<{ n: string; ref: string }>(
+        `select
+           (select count(*) from news_items ni
+             where not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
+               and not exists (
+                 select 1 from notifications n
+                  where jsonb_exists(n.payload->'news_item_ids', ni.id::text)))::text as n,
+           (select count(*) from news_items where id = $1)::text as ref`,
+        [referencedId],
+      );
+      expect(Number(rows[0].n), "参照なし行は500件以下へ切り詰められる").toBeLessThanOrEqual(500);
+      expect(rows[0].ref, "参照付きの行は上限の外でも残る").toBe("1");
+    } finally {
+      await withTransaction(async (c) => {
+        await c.query(`delete from news_items where title = $1`, [`bulk-${tag}`]);
+        await c.query(`delete from notifications where user_id = $1`, [notifUid]);
+        await c.query(`delete from news_items where id = $1`, [referencedId]);
+        await c.query(`delete from x_accounts where user_id = $1`, [notifUid]);
+        await c.query(`delete from profiles where id = $1`, [notifUid]);
+        await c.query(`delete from auth.users where id = $1`, [notifUid]);
+      });
+    }
+  });
+
   it("deletes 40日超 retention rows and keeps recent/referenced ones (news notif deleted before news_items)", async () => {
     const seed = await withTransaction(async (c) => {
       const { uid, xid } = await makeAccount(c);

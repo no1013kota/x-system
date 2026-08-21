@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.44 |
-| 更新日 | 2026-08-21 |
+| バージョン | v1.45 |
+| 更新日 | 2026-08-22 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -287,7 +287,7 @@ flowchart TD
 - notification commit後に`after()`でメール送信を起動し、残ったqueuedメールは`scheduler_tick`（5分間隔）が最大100件、最大10並列で回収する。最古のqueuedメールが10分を超えた場合はSentryへ警告する。
 - provider送信は`notification:{id}`を冪等keyにし、429/5xx/networkは最大3 attempt、指数backoffで再送する。401/403または3回失敗は`failed`にする。
 - アプリ内一覧は`in_app_enabled = true`だけを返す。メールだけ有効なrowも送信台帳として保持する。
-- `scheduler_tick`のcleanupは40日を過ぎた`news`通知を先に削除し、その後に参照されない40日超の`news_items`を各500件まで削除する。`external_api_usage_events`の40日超の明細も1起動500件まで削除する。期限切れ削除の失敗は投稿系jobを失敗させず、Sentryへ記録して次回へ繰り越す。
+- `scheduler_tick`のcleanupは40日を過ぎた`news`通知を先に削除し、その後に参照されない40日超の`news_items`と、**新着順で500件（`NEWS_MAX_STORED_ITEMS`）を超えた`news_items`**（T-M8-188・DB肥大防止。draft・通知payloadから参照される行は残す）を各500件まで削除する。`external_api_usage_events`の40日超の明細も1起動500件まで削除する。期限切れ削除の失敗は投稿系jobを失敗させず、Sentryへ記録して次回へ繰り越す。
 - `scheduler_tick`は、作成から24時間を過ぎてもdraftから参照されないStorage画像も1起動100件までbest effortで削除する。参照確認と削除の間に参照された場合に備え、削除直前にも未参照であることを再確認する。
 
 ## 変更履歴
@@ -304,6 +304,7 @@ flowchart TD
 | v1.42 | 2026-08-20 | プラン再編（T-M8-168）: prompt_override の受け渡し条件を promptEditablePlan（全プラン可・未契約のみ拒否）へ改めた |
 | v1.43 | 2026-08-21 | 招待報酬の確定（毎日）と月次Payout作成をscheduler_tickへ追加（T-M8-174） |
 | v1.44 | 2026-08-21 | ダイジェストpayloadの件数上限を固定20へ（news_config.max_items廃止・T-M8-187） |
+| v1.45 | 2026-08-22 | cleanupへ新着500件超のnews_items削除を追加（T-M8-188・DB肥大防止） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

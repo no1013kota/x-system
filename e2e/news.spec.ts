@@ -37,10 +37,13 @@ async function seedNews(items: SeedItem[]): Promise<void> {
             ) + interval '1 minute')::text as base`,
   );
   for (const item of items) {
+    // fetched_at も published_at と同じ計算時刻にする——一覧の新着順は fetched_at 基準
+    // （T-M8-188）なので、投入順の now() では minutesAgo の並びが崩れる。
     await query(
       `insert into news_items (id, category, title, summary, source_url, impact, published_at, fetched_at)
        values ($1, $2::news_category, $3, $4, $5, $6::impact_level,
-               $8::timestamptz + make_interval(mins => 60 - $7), now())`,
+               $8::timestamptz + make_interval(mins => 60 - $7),
+               $8::timestamptz + make_interval(mins => 60 - $7))`,
       [
         item.id,
         item.category,
@@ -61,7 +64,7 @@ async function removeNews(ids: string[]): Promise<void> {
   await query(`delete from news_items where id = any($1::uuid[])`, [ids]);
 }
 
-test("ニュース一覧は全件を表示し、インパクト順に並び替えられる（T-M8-187）", async ({
+test("ニュース一覧は低インパクトも表示し、テーマ・インパクトの選択で先頭へ寄せられる（T-M8-188）", async ({
   accounts,
   page,
 }) => {
@@ -93,8 +96,9 @@ test("ニュース一覧は全件を表示し、インパクト順に並び替�
     await expect(page.getByText("表示件数")).toHaveCount(0);
 
     /*
-      インパクト順: 高→中→低。**時間窓の深リンクで見る**——窓なしだとローカルDBに溜まった
-      実データのhighが50件を超えたとき、midのseedが2ページ目へ落ちて並び比較が環境依存になる。
+      選択式ソート（T-M8-188）: 選んだテーマ・インパクトの記事が先頭へ寄る。
+      **時間窓の深リンクの中で見る**——窓なしだとローカルDBの実データが混ざり、
+      seedの並び比較が環境依存になる。selectの変更は窓を保ったままURLを進める。
     */
     const [{ from, to }] = await query<{ from: string; to: string }>(
       `select (min(fetched_at) - interval '1 minute')::text as from,
@@ -103,23 +107,39 @@ test("ニュース一覧は全件を表示し、インパクト順に並び替�
       [items.map((i) => i.id)],
     );
     await page.goto(
-      `/app/news?sort=impact&from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`,
+      `/app/news?from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`,
     );
-    const titles = await page
-      .locator("li")
-      .filter({ hasText: `E2E-${run}` })
-      .allInnerTexts();
-    const idx = (needle: string) => titles.findIndex((t) => t.includes(needle));
+    // 新着順のボタンは無い（新着順が基本）。
+    await expect(page.getByRole("link", { name: "新着順" })).toHaveCount(0);
+
+    const orderOf = async (): Promise<(needle: string) => number> => {
+      const titles = await page
+        .locator("li")
+        .filter({ hasText: `E2E-${run}` })
+        .allInnerTexts();
+      return (needle: string) => titles.findIndex((t) => t.includes(needle));
+    };
+
+    // インパクト「高」を選ぶと高が先頭へ（低は残るが後ろ。記事は消えない）。
+    await page.getByLabel("インパクトで先頭へ").selectOption("high");
+    await expect(page).toHaveURL(/impact=high/);
+    await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
+    let idx = await orderOf();
     expect(idx("AI重要")).toBeLessThan(idx("投資中"));
-    expect(idx("投資中")).toBeLessThan(idx("AI軽微"));
-    // 並び替えのリンク自体も出ている。
-    await expect(page.getByRole("link", { name: "新着順" })).toBeVisible();
+    expect(idx("AI重要")).toBeLessThan(idx("AI軽微"));
+
+    // テーマ「投資」を足すと投資が最優先（テーマ→インパクト→新着の順で寄る）。
+    await page.getByLabel("テーマで先頭へ").selectOption("investment");
+    await expect(page).toHaveURL(/theme=investment/);
+    await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
+    idx = await orderOf();
+    expect(idx("投資中")).toBeLessThan(idx("AI重要"));
   } finally {
     await removeNews(items.map((i) => i.id));
   }
 });
 
-/** 50件ずつのページ送り（T-M8-187）。seedは既存全行より新しいので1ページ目の先頭に並ぶ。 */
+/** 50件ずつのページ送り（T-M8-188）。seedは既存全行より新しいので1ページ目の先頭に並ぶ。 */
 test("ニュース一覧は50件ずつページ送りできる", async ({ accounts, page }) => {
   const run = randomUUID().slice(0, 8);
   const items: SeedItem[] = Array.from({ length: 55 }, (_, i) => ({

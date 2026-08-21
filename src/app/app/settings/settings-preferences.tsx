@@ -119,14 +119,14 @@ function NewsForm({ config }: { config: NewsConfig }) {
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
-  // 表示件数の欄はT-M8-187で廃止（一覧は常に全件・50件ずつのページ表示）。
+  // 表示件数の欄はT-M8-187で廃止（一覧は最新500件・50件ずつのページ表示。T-M8-188）。
   const invalid = categories.length === 0 || impacts.length === 0;
   return (
     <Card as="section" className="px-5 py-4">
       <CardTitle>ニュース通知</CardTitle>
       {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定は通知の対象を決めます（一覧はすべてのニュースを表示します）。
+        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定は通知の対象を決めます（一覧は最新500件を表示します）。
       </p>
 
       <fieldset className="mt-4">

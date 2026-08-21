@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.50 |
-| 更新日 | 2026-08-21 |
+| バージョン | v1.51 |
+| 更新日 | 2026-08-22 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -193,7 +193,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
 | `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled | job_id | N-4。バックグラウンド生成 |
 
-`listNewsItems`は**保存されている全件**を対象に、`sort`（`date`｜`category`｜`impact`）と`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-187。範囲外のpageは最終ページへ丸める。旧keyset cursor・categories/impacts・limit入力とServer Action `listNewsItems` は廃止し、SC-06はサーバー描画＋URLの`?sort=&page=`で遷移する）。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
+`listNewsItems`は**新着順（`fetched_at`）で数えた最新500件**（`NEWS_MAX_STORED_ITEMS`）を対象に、`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-188。範囲外のpageは最終ページへ丸める）。`theme`（news_category）・`impact`（high|mid|low）は**選択式ソート**で、一致する記事を先頭へ寄せる（whereでは絞らない——記事は消えない）。SC-06はサーバー描画＋URLの`?theme=&impact=&page=`で遷移する。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
 
 ## 7. スケジュール
 
@@ -330,6 +330,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.48 | 2026-08-21 | 招待プログラムのAction・公開route・webhook購読イベント追加を記載（T-M8-174） |
 | v1.49 | 2026-08-21 | webhook対象イベント一覧へ charge.refunded を追記（T-M8-174のdoc同期漏れ・T-M8-180で検出） |
 | v1.50 | 2026-08-21 | ニュース一覧APIを全件・sort/pageの50件ページングへ改定（T-M8-187。cursor・絞り込み入力・専用Action廃止） |
+| v1.51 | 2026-08-22 | listNewsItemsを最新500件対象・theme/impactの選択式ソートへ（T-M8-188） |
 
 ### 下書きの投稿予約（T-M8-157）
 

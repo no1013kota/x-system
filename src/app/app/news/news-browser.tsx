@@ -1,26 +1,34 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
 import { formatJst, yen } from "@/lib/format";
-import type { NewsItemsPage, NewsSort } from "@/lib/news-items";
+import type { NewsItemsPage } from "@/lib/news-items";
+import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
+import { newsCategoryLabel } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
-import { cn } from "@/lib/utils";
 
 /**
- * SC-06 最新ニュース（T-M8-187・運営者の指示 2026-08-21）。
+ * SC-06 最新ニュース（T-M8-188・運営者の指示 2026-08-22）。
  *
- * **保存されている全件**を50件ずつのページで表示し、新着・テーマ・インパクトで並び替える。
- * 旧仕様の「分野・インパクトの絞り込み＋表示件数の保存」は廃止した（通知の条件は設定が持つ。
- * 取得は従来どおりなので費用は変わらない）。並び替え・ページはURL（?sort=&page=）で
+ * **最新500件までを新着順（取得時刻の新しい順）が基本**で50件ずつのページ表示する。
+ * 新着順のボタンは置かず、テーマ・インパクトの**選択式ソート**を置く：選ぶと一致する記事が
+ * 先頭へ集まる（絞り込みではないので記事は消えない）。状態はURL（?page=&theme=&impact=）で
  * サーバー描画し、この部品は表示と「すぐに投稿作成」だけを持つ。
  */
+
+const IMPACT_SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "high", label: "高" },
+  { value: "mid", label: "中" },
+  { value: "low", label: "低" },
+];
 
 const IMPACT_LABEL = new Map<string, string>([
   ["high", "高"],
@@ -34,12 +42,6 @@ const IMPACT_TONE: Record<string, BadgeTone> = {
   mid: "info",
   low: "neutral",
 };
-
-const SORT_TABS: { value: NewsSort; label: string }[] = [
-  { value: "date", label: "新着順" },
-  { value: "category", label: "テーマ順" },
-  { value: "impact", label: "インパクト順" },
-];
 
 /** 出典のドメインだけを出す（デザインはカードのフッタにドメインを置く）。 */
 function domainOf(url: string): string {
@@ -60,12 +62,16 @@ export function NewsBrowser({
   initialError,
   initialCreatedIds,
   window,
+  selected,
 }: {
   page: NewsItemsPage;
   initialError: boolean;
   initialCreatedIds: string[];
   window: { from: string; to: string } | null;
+  /** 選択式ソートの現在値（URL由来）。 */
+  selected: { theme: string; impact: string };
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [created, setCreated] = useState<Set<string>>(new Set(initialCreatedIds));
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -75,19 +81,26 @@ export function NewsBrowser({
   );
   const toast = useToast();
 
-  /** ?sort=&page= を保ってURLを組む（時間窓が付いていれば維持する）。 */
-  function hrefFor(next: { sort?: NewsSort; page?: number }): string {
+  /** ?page=&theme=&impact= を組む（時間窓が付いていれば維持する）。 */
+  function hrefFor(next: { page?: number; theme?: string; impact?: string }): string {
     const params = new URLSearchParams();
-    const sort = next.sort ?? page.sort;
-    if (sort !== "date") params.set("sort", sort);
     const target = next.page ?? 1;
     if (target > 1) params.set("page", String(target));
+    const theme = next.theme ?? selected.theme;
+    const impact = next.impact ?? selected.impact;
+    if (theme) params.set("theme", theme);
+    if (impact) params.set("impact", impact);
     if (window) {
       params.set("from", window.from);
       params.set("to", window.to);
     }
     const qs = params.toString();
     return qs ? `/app/news?${qs}` : "/app/news";
+  }
+
+  /** ソート選択はページ1へ戻して反映する（選んだ結果が先頭に見えるように）。 */
+  function applySort(next: { theme?: string; impact?: string }): void {
+    router.push(hrefFor({ ...next, page: 1 }));
   }
 
   function notify(
@@ -184,31 +197,43 @@ export function NewsBrowser({
       ) : (
         // 集約仕様・通知の配信条件は一覧を見る操作に不要なため書かない（T-M8-66）。
         <p className="text-sm text-muted-foreground">
-          保存されているニュースをすべて表示します（10時〜20時の間、2時間おきに自動取得）。
+          最新のニュース500件までを新しい順に表示します（10時〜20時の間、2時間おきに自動取得。古い記事は自動的に削除されます）。
         </p>
       )}
 
-      {/* 並び替え（T-M8-187）。URLで持つのでリロード・共有でも保たれる。 */}
-      <nav aria-label="並び替え" className="flex flex-wrap gap-2">
-        {SORT_TABS.map((tab) => {
-          const active = page.sort === tab.value;
-          return (
-            <Link
-              aria-current={active ? "true" : undefined}
-              className={cn(
-                "inline-flex min-h-9 items-center rounded-pill border px-3.5 text-body font-medium transition-colors duration-150",
-                active
-                  ? "border-brand bg-brand text-white"
-                  : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]",
-              )}
-              href={hrefFor({ sort: tab.value, page: 1 })}
-              key={tab.value}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* 選択式ソート（T-M8-188）。選ぶと一致する記事が先頭へ。URLで持つのでリロード・共有でも保たれる。 */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block text-caption font-medium text-ink-2">
+          テーマで先頭へ
+          <select
+            className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
+            onChange={(event) => applySort({ theme: event.target.value })}
+            value={selected.theme}
+          >
+            <option value="">指定なし（新着順）</option>
+            {NEWS_FETCH_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {newsCategoryLabel(category)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-caption font-medium text-ink-2">
+          インパクトで先頭へ
+          <select
+            className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
+            onChange={(event) => applySort({ impact: event.target.value })}
+            value={selected.impact}
+          >
+            <option value="">指定なし（新着順）</option>
+            {IMPACT_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {/* ここに残すのは**画面の状態**だけ。操作の結果はトーストへ（T-M8-18）。 */}
       {note ? (

@@ -3,11 +3,11 @@ import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import {
-  NEWS_SORTS,
+  NEWS_IMPACTS,
   NEWS_WINDOW_MAX_HOURS,
   type NewsItemsPage,
-  type NewsSort,
 } from "@/lib/news-items";
+import { NEWS_CATEGORIES } from "@/lib/news";
 import {
   listCreatedNewsItemIdsForAccount,
   listNewsItemsForUser,
@@ -20,7 +20,13 @@ import { pageTitleClassName } from "@/components/ui/card";
 export const metadata: Metadata = { title: "ニュース | Exos AI" };
 
 interface NewsPageProps {
-  searchParams: Promise<{ from?: string; to?: string; page?: string; sort?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    page?: string;
+    theme?: string;
+    impact?: string;
+  }>;
 }
 
 /** from/to が揃い最大24時間以内の妥当な窓なら返す。不正・不揃いは null（全件表示へ）。 */
@@ -35,9 +41,10 @@ function parseWindow(from?: string, to?: string): { from: string; to: string } |
 }
 
 /**
- * SC-06 最新ニュース（T-M8-187・運営者の指示 2026-08-21）。
- * 保存されている全件を50件ずつのページで表示し、新着・テーマ・インパクトで並び替える。
- * 絞り込み・表示件数の設定は廃止した（通知の条件は設定＞通知が持つ。取得は従来どおりで費用不変）。
+ * SC-06 最新ニュース（T-M8-188・運営者の指示 2026-08-22）。
+ * 最新500件までを新着順基本・50件ずつのページで表示する。テーマ・インパクトは選択式ソート
+ * （選んだ値が先頭へ。絞り込み・表示件数は廃止。通知の条件は設定＞通知が持つ。
+ * 取得は従来どおりで費用不変）。
  */
 export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
@@ -48,17 +55,22 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     searchParams,
   ]);
   const window = parseWindow(params.from, params.to);
-  const sort: NewsSort = (NEWS_SORTS as readonly string[]).includes(params.sort ?? "")
-    ? (params.sort as NewsSort)
-    : "date";
   const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  // 未知の値は黙って「指定なし」へ落とす（URL手打ちでエラー画面にしない）。
+  const theme = (NEWS_CATEGORIES as readonly string[]).includes(params.theme ?? "")
+    ? (params.theme as (typeof NEWS_CATEGORIES)[number])
+    : undefined;
+  const impact = (NEWS_IMPACTS as readonly string[]).includes(params.impact ?? "")
+    ? (params.impact as (typeof NEWS_IMPACTS)[number])
+    : undefined;
 
-  let initial: NewsItemsPage = { items: [], page: 1, pageCount: 1, total: 0, sort };
+  let initial: NewsItemsPage = { items: [], page: 1, pageCount: 1, total: 0 };
   let initialError = false;
   try {
     initial = await listNewsItemsForUser({
       page: requestedPage,
-      sort,
+      ...(theme ? { theme } : {}),
+      ...(impact ? { impact } : {}),
       ...(window ?? {}),
     });
   } catch {
@@ -78,6 +90,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         initialCreatedIds={createdIds}
         initialError={initialError}
         page={initial}
+        selected={{ theme: theme ?? "", impact: impact ?? "" }}
         window={window}
       />
     </main>

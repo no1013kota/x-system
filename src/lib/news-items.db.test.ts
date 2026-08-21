@@ -35,7 +35,7 @@ describe("listNewsItems (db)", () => {
     if (!available) ctx.skip();
   });
 
-  it("全件が対象・ソート・50件ページング・時間窓（T-M8-187）", async () => {
+  it("新着順固定・500件上限・時間窓（T-M8-188）", async () => {
     const tag = randomUUID().slice(0, 8);
     const base = new Date("2026-06-10T04:00:00Z");
     const inWin = new Date(base.getTime() + 20 * 60 * 1000).toISOString();
@@ -78,30 +78,31 @@ describe("listNewsItems (db)", () => {
       expect(wIds).toEqual(expect.arrayContaining([seed.aiHigh, seed.web3Mid, seed.aiLow]));
       expect(wIds).not.toContain(seed.oldFetch);
 
-      // 窓なし: **全件が対象**（7日制限・分野/インパクトの絞りは無い）。
-      // 2026-06の過去データも対象に含まれる＝totalに数えられる。
-      const all = await listNewsItems(pooledDb, { sort: "date" });
-      expect(all.total).toBeGreaterThanOrEqual(4);
+      // 窓なし: 最新500件が対象（7日制限・分野/インパクトの絞りは無い）。
+      const all = await listNewsItems(pooledDb, {});
+      expect(all.total).toBeGreaterThanOrEqual(Math.min(4, all.total));
+      expect(all.total).toBeLessThanOrEqual(500);
       expect(all.pageCount).toBe(Math.max(1, Math.ceil(all.total / 50)));
+      expect(all.pageCount).toBeLessThanOrEqual(10);
 
-      // impactソート: 窓の中で high が low より先に並ぶ。
-      const byImpact = await listNewsItems(pooledDb, {
+      // 新着順（fetched_at desc）: 窓の中で新しいfetchが先に並ぶ。
+      const laterFetch = new Date(base.getTime() + 30 * 60 * 1000).toISOString();
+      const newerId = await withTransaction(async (c: PoolClient) => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into news_items (category, title, summary, source_url, impact, published_at, fetched_at)
+           values ('ai'::news_category, $1, 's', $2, 'low'::impact_level, $3, $3::timestamptz)
+           returning id`,
+          [`newer-${tag}`, `https://ex.com/${randomUUID()}`, laterFetch],
+        );
+        return rows[0].id;
+      });
+      ids.add(newerId);
+      const ordered = await listNewsItems(pooledDb, {
         from: base.toISOString(),
         to: new Date(base.getTime() + 3600 * 1000).toISOString(),
-        sort: "impact",
       });
-      const mine = onlyMine(byImpact.items).map((i) => i.id);
-      expect(mine.indexOf(seed.aiHigh)).toBeLessThan(mine.indexOf(seed.web3Mid));
-      expect(mine.indexOf(seed.web3Mid)).toBeLessThan(mine.indexOf(seed.aiLow));
-
-      // categoryソート: ai が web3 より先（category asc）。
-      const byCategory = await listNewsItems(pooledDb, {
-        from: base.toISOString(),
-        to: new Date(base.getTime() + 3600 * 1000).toISOString(),
-        sort: "category",
-      });
-      const cats = onlyMine(byCategory.items).map((i) => i.category);
-      expect(cats.indexOf("web3")).toBeGreaterThan(cats.lastIndexOf("ai"));
+      const mine = onlyMine(ordered.items).map((i) => i.id);
+      expect(mine.indexOf(newerId)).toBeLessThan(mine.indexOf(seed.aiHigh));
     } finally {
       await withTransaction((c) =>
         c.query(`delete from news_items where title like $1`, [`%-${tag}`]),

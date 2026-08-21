@@ -1,9 +1,11 @@
+import { NEWS_MAX_STORED_ITEMS, NEWS_ORDER_BY } from "../news-items";
 import type { Queryable } from "../x/token-refresh";
 
 /**
  * scheduler_tick の保持cleanup（要件04 §14, 要件01 §9, 要件02 §3.18, ADR-0003, T-M4-09）。
  * 40日を過ぎた保持データと、24時間を過ぎて未参照のStorage画像を各上限まで削除する。
- * 順序は §14 準拠: (1)news通知 → (2)未参照 news_items → (3)external_api_usage_events 明細 →
+ * 順序は §14 準拠: (1)news通知 → (2)未参照 news_items（40日超＋新着500件超・T-M8-188） →
+ * (3)external_api_usage_events 明細 →
  * (4)cron_runs → (4b)news_fetch_outcomes → (5)未参照 Storage画像。news通知を先に消すことで、それが参照していた news_items が
  * 未参照になり削除対象へ移る。各段は独立の try/catch で、失敗しても他段・tick本体を止めず onError
  * （Sentry想定）へ記録して次回起動へ繰り越す（cleanup失敗は投稿系処理を失敗させない）。
@@ -61,6 +63,30 @@ async function deleteUnreferencedNewsItems(db: Queryable): Promise<number> {
          order by ni.fetched_at
          limit $2)`,
     [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * (2b) 新着順で `NEWS_MAX_STORED_ITEMS`（500件）を超えた news_items を削除する
+ * （運営者の指示 2026-08-22・T-M8-188。DBの肥大防止）。一覧の表示上限と同じ並び
+ * （`NEWS_ORDER_BY`）で数え、draft・通知payloadから参照される行は40日cleanupと同じ
+ * ガードで残す（参照付きの古い行は表示上限の外なので画面には出ない）。
+ */
+async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from news_items
+      where id in (
+        select ranked.id from (
+          select id, row_number() over (order by ${NEWS_ORDER_BY}) as rn
+            from news_items) ranked
+         where ranked.rn > $1
+         limit $2)
+        and not exists (select 1 from drafts d where d.source_news_item_id = news_items.id)
+        and not exists (
+          select 1 from notifications n
+           where jsonb_exists(n.payload->'news_item_ids', news_items.id::text))`,
+    [NEWS_MAX_STORED_ITEMS, BATCH],
   );
   return rowCount ?? 0;
 }
@@ -181,6 +207,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("news_items", async () => {
     result.newsItems = await deleteUnreferencedNewsItems(db);
+    result.newsItems += await trimNewsItemsOverCap(db);
   });
   await step("usage_events", async () => {
     result.usageEvents = await deleteOldUsageEvents(db);

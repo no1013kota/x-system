@@ -6,7 +6,9 @@ import type { Queryable } from "../x/token-refresh";
 type Row = Record<string, unknown>;
 
 const NEWS_NOTIF = /delete from notifications[\s\S]*type = 'news'/;
-const NEWS_ITEMS = /delete from news_items/;
+const NEWS_ITEMS = /delete from news_items[\s\S]*make_interval/;
+// 新着500件超の切り詰め（T-M8-188）。row_number で数える方のdelete。
+const NEWS_TRIM = /delete from news_items[\s\S]*row_number/;
 const USAGE = /delete from external_api_usage_events/;
 const CRON = /delete from cron_runs/;
 const IMG_LIST = /from storage\.objects o/;
@@ -25,21 +27,23 @@ function makeDb(handler: (sql: string, params: unknown[]) => { rows?: Row[]; row
 }
 
 describe("cleanupOldData", () => {
-  it("deletes retention data in order (news notif → news_items → usage → cron_runs)", async () => {
+  it("deletes retention data in order (news notif → news_items(40日+500件超) → usage → cron_runs)", async () => {
     const { db, writes } = makeDb((sql) => {
       if (NEWS_NOTIF.test(sql)) return { rowCount: 3 };
       if (NEWS_ITEMS.test(sql)) return { rowCount: 2 };
+      if (NEWS_TRIM.test(sql)) return { rowCount: 1 };
       if (USAGE.test(sql)) return { rowCount: 5 };
       if (CRON.test(sql)) return { rowCount: 1 };
       return { rows: [] };
     });
     const res = await cleanupOldData({ db });
-    expect(res).toMatchObject({ newsNotifications: 3, newsItems: 2, usageEvents: 5, cronRuns: 1, images: 0 });
+    // newsItems は 40日超(2) + 500件超の切り詰め(1) の合算。
+    expect(res).toMatchObject({ newsNotifications: 3, newsItems: 3, usageEvents: 5, cronRuns: 1, images: 0 });
     const order = writes
-      .map((w, i) => ({ i, kind: NEWS_NOTIF.test(w.sql) ? "n" : NEWS_ITEMS.test(w.sql) ? "i" : USAGE.test(w.sql) ? "u" : CRON.test(w.sql) ? "c" : "" }))
+      .map((w, i) => ({ i, kind: NEWS_NOTIF.test(w.sql) ? "n" : NEWS_ITEMS.test(w.sql) ? "i" : NEWS_TRIM.test(w.sql) ? "t" : USAGE.test(w.sql) ? "u" : CRON.test(w.sql) ? "c" : "" }))
       .filter((x) => x.kind)
       .map((x) => x.kind);
-    expect(order).toEqual(["n", "i", "u", "c"]);
+    expect(order).toEqual(["n", "i", "t", "u", "c"]);
   });
 
   it("skips image cleanup when no storage remover is provided", async () => {

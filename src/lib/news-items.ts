@@ -1,16 +1,18 @@
 import { z } from "zod";
 
 import { toIsoOrNull } from "./format";
+import { NEWS_CATEGORIES } from "./news";
 import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
 
 /**
- * SC-06 ニュース一覧の中核（要件05 §6, 要件06 §10, N-2, T-M4-14／T-M8-187）。
+ * SC-06 ニュース一覧の中核（要件05 §6, 要件06 §10, N-2, T-M4-14／T-M8-188）。
  *
- * **保存されている全件を対象**に、50件ずつのページで返す（運営者の指示 2026-08-21。
- * 以前の「分野・インパクトで絞る／表示件数を設定する／直近7日」は廃止した——取得は
- * 従来どおり全ユーザー共通・3分野・保持40日なので、**表示をどう変えても費用は変わらない**）。
- * 並び替えは新着順（既定）・テーマ順・インパクト順。通知の条件（news_config）とは独立。
+ * **新着順（取得時刻の新しい順）が基本**で、最新 `NEWS_MAX_STORED_ITEMS` 件までを
+ * 50件ずつのページで返す（運営者の指示 2026-08-22）。テーマ・インパクトは**選択式のソート**：
+ * 選んだ値に一致する記事が先頭へ集まり、その中と残りはそれぞれ新着順（絞り込みではない——
+ * 選んでも記事は消えない）。取得は従来どおり全ユーザー共通なので、表示をどう変えても費用は
+ * 変わらない。通知の条件（news_config）とは独立。
  *
  * 時間窓（from/to・最大24時間）は通知のダイジェストからの深リンク用に残す。
  * ニュースは全ユーザー共通のため本人スコープを持たない（RLSで認証済みselectを許可）。
@@ -19,13 +21,21 @@ import type { Queryable } from "./x/token-refresh";
 export const NEWS_PAGE_SIZE = 50;
 export const NEWS_WINDOW_MAX_HOURS = 24;
 
-export const NEWS_SORTS = ["date", "category", "impact"] as const;
-export type NewsSort = (typeof NEWS_SORTS)[number];
+/**
+ * 保持・表示の上限件数（運営者の指示 2026-08-22）。一覧はこの件数までしか出さず、
+ * これを超えた古い行は定時cleanup（schedule-cleanup.ts）がDBから削除する。
+ */
+export const NEWS_MAX_STORED_ITEMS = 500;
+
+export const NEWS_IMPACTS = ["high", "mid", "low"] as const;
 
 export const listNewsItemsSchema = z
   .object({
-    sort: z.enum(NEWS_SORTS).optional(),
     page: z.number().int().min(1).max(10_000).optional(),
+    /** 選択式ソート: このテーマの記事を先頭へ（値は news_category。未知値は弾く）。 */
+    theme: z.enum(NEWS_CATEGORIES).optional(),
+    /** 選択式ソート: このインパクトの記事を先頭へ。 */
+    impact: z.enum(NEWS_IMPACTS).optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
   })
@@ -64,8 +74,8 @@ export interface NewsItemsPage {
   /** 1始まり。範囲外を要求されたら最終ページへ丸める。 */
   page: number;
   pageCount: number;
+  /** 表示対象の件数（`NEWS_MAX_STORED_ITEMS` を超えない）。 */
   total: number;
-  sort: NewsSort;
 }
 
 interface NewsItemRow {
@@ -78,19 +88,17 @@ interface NewsItemRow {
   published_at: Date | string | null;
 }
 
-/** 並び替えのSQL。インパクトは高→中→低（enumの並びに依存しない）。 */
-const ORDER_BY: Record<NewsSort, string> = {
-  date: "coalesce(published_at, fetched_at) desc, id desc",
-  category: "category asc, coalesce(published_at, fetched_at) desc, id desc",
-  impact:
-    "case impact::text when 'high' then 0 when 'mid' then 1 else 2 end asc, " +
-    "coalesce(published_at, fetched_at) desc, id desc",
-};
+/**
+ * 新着順の並び。取得時刻（同一バッチ内は記事の日時）の新しい順。
+ * cleanupの「最新500件」判定（schedule-cleanup.ts）と同じキーを使う。
+ */
+export const NEWS_ORDER_BY = "fetched_at desc, coalesce(published_at, fetched_at) desc, id desc";
 
 /**
- * ニュースを50件ずつ返す（offsetページング・T-M8-187）。保持40日ぶんが対象なので
- * 行数は高々数千でoffsetのコストは問題にならない。from/to が揃っていれば
- * `fetched_at` の時間窓（≤24h）で絞る（ダイジェスト深リンク用）。
+ * ニュースを50件ずつで返す（offsetページング・T-M8-188）。表示対象は**新着順で数えた最新
+ * `NEWS_MAX_STORED_ITEMS` 件**（DB側も定時cleanupで同じ件数へ切り詰める）。theme／impact の
+ * 選択があれば、その500件の中で一致する記事を先頭へ並べ替える（件数は変わらない）。
+ * from/to が揃っていれば `fetched_at` の時間窓（≤24h）で絞る（ダイジェスト深リンク用）。
  */
 export async function listNewsItems(
   db: Queryable,
@@ -99,7 +107,6 @@ export async function listNewsItems(
   const parsed = listNewsItemsSchema.safeParse(input ?? {});
   if (!parsed.success) throw new AppError("validation_error");
   const value = parsed.data;
-  const sort = value.sort ?? "date";
 
   const params: unknown[] = [];
   const conds: string[] = ["true"];
@@ -114,18 +121,36 @@ export async function listNewsItems(
     `select count(*)::text as n from news_items where ${conds.join(" and ")}`,
     params,
   );
-  const total = Number(counted.rows[0]?.n ?? "0");
+  // 表示は最新500件まで（cleanupの削除が追いつく前でも画面の総数は一致させる）。
+  const total = Math.min(Number(counted.rows[0]?.n ?? "0"), NEWS_MAX_STORED_ITEMS);
   const pageCount = Math.max(1, Math.ceil(total / NEWS_PAGE_SIZE));
   // 範囲外のページ要求は最終ページへ丸める（空ページで「消えた」と誤解させない・原則1）。
   const page = Math.min(value.page ?? 1, pageCount);
 
-  params.push(NEWS_PAGE_SIZE, (page - 1) * NEWS_PAGE_SIZE);
+  // 選択式ソート: 一致行を先頭へ（一致・不一致の中はどちらも新着順）。
+  const rank: string[] = [];
+  if (value.theme) {
+    params.push(value.theme);
+    rank.push(`(category::text = $${params.length}) desc`);
+  }
+  if (value.impact) {
+    params.push(value.impact);
+    rank.push(`(impact::text = $${params.length}) desc`);
+  }
+
+  const offset = (page - 1) * NEWS_PAGE_SIZE;
+  params.push(NEWS_MAX_STORED_ITEMS, Math.min(NEWS_PAGE_SIZE, total - offset), offset);
   const { rows } = await db.query<NewsItemRow>(
-    `select id, category::text as category, title, summary, source_url, impact::text as impact,
-            published_at
-       from news_items
-      where ${conds.join(" and ")}
-      order by ${ORDER_BY[sort]}
+    `select id, category, title, summary, source_url, impact, published_at
+       from (
+         select id, category::text as category, title, summary, source_url,
+                impact::text as impact, published_at, fetched_at
+           from news_items
+          where ${conds.join(" and ")}
+          order by ${NEWS_ORDER_BY}
+          limit $${params.length - 2}
+       ) newest
+      order by ${[...rank, NEWS_ORDER_BY].join(", ")}
       limit $${params.length - 1} offset $${params.length}`,
     params,
   );
@@ -143,7 +168,6 @@ export async function listNewsItems(
     page,
     pageCount,
     total,
-    sort,
   };
 }
 
