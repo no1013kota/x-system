@@ -124,10 +124,11 @@ describe("画面から到達する検証の文言カバレッジ", () => {
   const XID = "11111111-1111-1111-1111-111111111111";
   const cases: [string, () => Promise<{ schema: z.ZodType; value: unknown }>][] = [
     [
-      "ニュース表示件数が範囲外",
+      // 表示件数はT-M8-187で廃止。ニュース設定の文言はテーマ0件のケースで担保する。
+      "ニュースのテーマが未選択",
       async () => ({
         schema: (await import("@/lib/settings")).newsConfigSchema,
-        value: { max_items: 999, categories: ["ai"] },
+        value: { categories: [], impact_filter: ["high"] },
       }),
     ],
     [

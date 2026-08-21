@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { DEFAULT_NEWS_CONFIG } from "@/lib/config-defaults";
-import { NEWS_WINDOW_MAX_HOURS, type NewsItemsPage } from "@/lib/news-items";
+import {
+  NEWS_SORTS,
+  NEWS_WINDOW_MAX_HOURS,
+  type NewsItemsPage,
+  type NewsSort,
+} from "@/lib/news-items";
 import {
   listCreatedNewsItemIdsForAccount,
   listNewsItemsForUser,
 } from "@/lib/news-items-server";
-import { getSettingsForUser } from "@/lib/settings-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { NewsBrowser } from "./news-browser";
@@ -17,10 +20,10 @@ import { pageTitleClassName } from "@/components/ui/card";
 export const metadata: Metadata = { title: "ニュース | Exos AI" };
 
 interface NewsPageProps {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; page?: string; sort?: string }>;
 }
 
-/** from/to が揃い最大24時間以内の妥当な窓なら返す。不正・不揃いは null（既定7日表示へ）。 */
+/** from/to が揃い最大24時間以内の妥当な窓なら返す。不正・不揃いは null（全件表示へ）。 */
 function parseWindow(from?: string, to?: string): { from: string; to: string } | null {
   if (!from || !to) return null;
   const f = Date.parse(from);
@@ -31,31 +34,31 @@ function parseWindow(from?: string, to?: string): { from: string; to: string } |
   return { from: new Date(f).toISOString(), to: new Date(t).toISOString() };
 }
 
+/**
+ * SC-06 最新ニュース（T-M8-187・運営者の指示 2026-08-21）。
+ * 保存されている全件を50件ずつのページで表示し、新着・テーマ・インパクトで並び替える。
+ * 絞り込み・表示件数の設定は廃止した（通知の条件は設定＞通知が持つ。取得は従来どおりで費用不変）。
+ */
 export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // user.id にしか依存しない3つは並列に取得する（T-M8-67。以前は4段直列）。
-  const [settings, activeId, { from, to }] = await Promise.all([
-    getSettingsForUser(user.id),
+  const [activeId, params] = await Promise.all([
     resolveActiveXAccountForUser(user.id),
     searchParams,
   ]);
-  const config = settings?.newsConfig ?? {
-    categories: [...DEFAULT_NEWS_CONFIG.categories],
-    impact_filter: [...DEFAULT_NEWS_CONFIG.impact_filter],
-    max_items: DEFAULT_NEWS_CONFIG.max_items,
-  };
+  const window = parseWindow(params.from, params.to);
+  const sort: NewsSort = (NEWS_SORTS as readonly string[]).includes(params.sort ?? "")
+    ? (params.sort as NewsSort)
+    : "date";
+  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
-  const window = parseWindow(from, to);
-
-  let initial: NewsItemsPage = { items: [], nextCursor: null };
+  let initial: NewsItemsPage = { items: [], page: 1, pageCount: 1, total: 0, sort };
   let initialError = false;
   try {
     initial = await listNewsItemsForUser({
-      categories: config.categories,
-      impacts: config.impact_filter,
-      limit: config.max_items,
+      page: requestedPage,
+      sort,
       ...(window ?? {}),
     });
   } catch {
@@ -73,14 +76,8 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       <h1 className={pageTitleClassName}>最新ニュース</h1>
       <NewsBrowser
         initialCreatedIds={createdIds}
-        initialCursor={initial.nextCursor}
         initialError={initialError}
-        initialItems={initial.items}
-        newsConfig={{
-          categories: config.categories,
-          impacts: config.impact_filter,
-          maxItems: config.max_items,
-        }}
+        page={initial}
         window={window}
       />
     </main>

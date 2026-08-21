@@ -9,7 +9,7 @@ import type { Queryable } from "../x/token-refresh";
  * - 該当0件・両channel OFF・非契約ユーザーには作らない（一致集合が空なら行が出ない）。
  * - `user_id + dedupe_key`（`news-digest:{window_started_at}`）で同一窓の再実行を冪等化する。
  * - タイトル/本文は高impact優先・同impactは新しい順で最大5件＋全件数＋一覧リンク。payloadの
- *   `news_item_ids` は `max_items`（既定20）まで、`total_count` は全件数を保持する。
+ *   `news_item_ids` は固定20件まで（旧`news_config.max_items`はT-M8-187で廃止）、`total_count` は全件数を保持する。
  * - 一部分野の失敗は「新規行が無い」だけで自然に除外され、失敗自体はニュース通知しない（要件04 §6）。
  */
 
@@ -70,7 +70,7 @@ async function loadDigestRows(
        select p.id as user_id,
               coalesce(p.news_config->'categories', '[]'::jsonb) as categories,
               coalesce(p.news_config->'impact_filter', '[]'::jsonb) as impact_filter,
-              coalesce((p.news_config->>'max_items')::int, 20) as max_items,
+              20 as max_items, -- 旧news_config.max_itemsはT-M8-187で廃止（payload上限は固定20）
               coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app,
               coalesce((p.notification_config->'news'->>'email')::boolean, false) as email
          from profiles p

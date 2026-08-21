@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.49 |
+| バージョン | v1.50 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -429,7 +429,7 @@ Constraints: `email_attempts >= 0`。`email_status = queued`のとき`email_avai
 
 RLS: 本人select可。writeはServer Action/API only。
 
-ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で`max_items`（1〜100、既定20）まで保存し、本文・メールには先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
+ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で**固定20件**まで保存し（旧`max_items`はT-M8-187で廃止）、本文・メールには先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
 
 ```json
 {
@@ -727,12 +727,11 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 ```json
 {
   "categories": ["ai", "investment", "sns"],
-  "impact_filter": ["high", "mid"],
-  "max_items": 20
+  "impact_filter": ["high", "mid"]
 }
 ```
 
-`categories`と`impact_filter`は重複なしで各1件以上、`max_items`は1〜100とする。既定は**取得3分野**（`NEWS_FETCH_CATEGORIES`・T-M7-55。migration `20260802000001`で既定値も3分野へ変更済み）。表示一覧と時間単位ダイジェストの両方へ適用する。
+`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得3分野**（`NEWS_FETCH_CATEGORIES`・T-M7-55。migration `20260802000001`で既定値も3分野へ変更済み）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）はT-M8-187から常に全件表示。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
 
 ### 4.3 `profiles.notification_config`
 
@@ -975,3 +974,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
 | v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
 | v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
+| v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |

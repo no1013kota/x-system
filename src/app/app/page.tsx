@@ -28,7 +28,7 @@ import { loadPostsThisWeek } from "@/lib/home/kpi-server";
 import { nextRunKpi } from "@/lib/home/next-run-kpi";
 import { KpiCard, NextRunCard } from "@/components/app-shell/kpi-card";
 import type { NewsItemView } from "@/lib/news-items";
-import { listNewsItemsForUser } from "@/lib/news-items-server";
+import { listTopHighImpactNewsForUser } from "@/lib/news-items-server";
 import { getSettingsForUser } from "@/lib/settings-server";
 import { loadRecentPosts, type RecentPostView } from "@/lib/home/overview-server";
 import { listScheduleSlots } from "@/lib/schedule-slots";
@@ -88,12 +88,11 @@ export default async function AppHomePage() {
     if (input) checklist = buildSetupChecklist(input);
     // 重要ニュース: 利用者のニュース設定の分野で impact=high のみ（要件06 §1.4）。
     const categories = settings?.newsConfig?.categories ?? [...DEFAULT_NEWS_CONFIG.categories];
-    const newsPromise = listNewsItemsForUser({
+    const newsPromise = listTopHighImpactNewsForUser({
       categories,
-      impacts: ["high"],
       limit: IMPORTANT_NEWS_LIMIT,
     }).then(
-      (page) => ({ failed: false, items: page.items }),
+      (items) => ({ failed: false, items }),
       // 失敗による空をUIで区別する（原則1）。ImportantNewsCard が理由を表示する。
       () => ({ failed: true, items: [] as NewsItemView[] }),
     );

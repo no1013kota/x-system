@@ -2,12 +2,7 @@ import { z } from "zod";
 
 import { DB_ENUMS } from "@/lib/db/enums";
 
-import {
-  DEFAULT_NEWS_CONFIG,
-  DEFAULT_NOTIFICATION_CONFIG,
-  NEWS_MAX_ITEMS_MAX,
-  NEWS_MAX_ITEMS_MIN,
-} from "./config-defaults";
+import { DEFAULT_NEWS_CONFIG, DEFAULT_NOTIFICATION_CONFIG } from "./config-defaults";
 import type { Queryable } from "./x/token-refresh";
 
 /**
@@ -59,13 +54,10 @@ export const newsConfigSchema = z
       .array(impactLevelSchema)
       .min(1, "インパクトを1件以上選択してください。")
       .refine(unique, "インパクトが重複しています。"),
-    max_items: z
-      .number()
-      .int(`表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`)
-      .min(NEWS_MAX_ITEMS_MIN, `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`)
-      .max(NEWS_MAX_ITEMS_MAX, `表示件数は${NEWS_MAX_ITEMS_MIN}〜${NEWS_MAX_ITEMS_MAX}で指定してください。`),
   })
-  .strict();
+  // 過去に保存された max_items 等の旧キーは黙って落とす（T-M8-187で表示件数を廃止。
+  // strictにすると旧データのparseが失敗し、テーマ・インパクトまで既定へ戻ってしまう）。
+  .strip();
 
 
 export type NotificationConfig = z.infer<typeof notificationConfigSchema>;
@@ -92,7 +84,6 @@ export function resolveNewsConfig(raw: unknown): NewsConfig {
   return {
     categories: [...DEFAULT_NEWS_CONFIG.categories],
     impact_filter: [...DEFAULT_NEWS_CONFIG.impact_filter],
-    max_items: DEFAULT_NEWS_CONFIG.max_items,
   };
 }
 

@@ -4,30 +4,29 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
-import { listNewsItemsAction } from "@/app/actions/news";
-import { updateNewsConfigAction } from "@/app/actions/settings";
-import {
-  clampNewsMaxItems,
-  NEWS_MAX_ITEMS_MAX,
-  NEWS_MAX_ITEMS_MIN,
-} from "@/lib/config-defaults";
-import { formatJst } from "@/lib/format";
-import type { NewsItemView } from "@/lib/news-items";
-import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
-import { THEME_OPTIONS } from "@/lib/themes";
+import { formatJst, yen } from "@/lib/format";
+import type { NewsItemsPage, NewsSort } from "@/lib/news-items";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { cn } from "@/lib/utils";
 
-const IMPACTS: { id: string; label: string }[] = [
-  { id: "high", label: "高" },
-  { id: "mid", label: "中" },
-  { id: "low", label: "低" },
-];
+/**
+ * SC-06 最新ニュース（T-M8-187・運営者の指示 2026-08-21）。
+ *
+ * **保存されている全件**を50件ずつのページで表示し、新着・テーマ・インパクトで並び替える。
+ * 旧仕様の「分野・インパクトの絞り込み＋表示件数の保存」は廃止した（通知の条件は設定が持つ。
+ * 取得は従来どおりなので費用は変わらない）。並び替え・ページはURL（?sort=&page=）で
+ * サーバー描画し、この部品は表示と「すぐに投稿作成」だけを持つ。
+ */
 
-const IMPACT_LABEL = new Map<string, string>(IMPACTS.map((i) => [i.id, i.label]));
+const IMPACT_LABEL = new Map<string, string>([
+  ["high", "高"],
+  ["mid", "中"],
+  ["low", "低"],
+]);
 
 /** インパクトの色。意味で選ぶ（高=注意を引く／中=情報／低=補助）。 */
 const IMPACT_TONE: Record<string, BadgeTone> = {
@@ -35,6 +34,12 @@ const IMPACT_TONE: Record<string, BadgeTone> = {
   mid: "info",
   low: "neutral",
 };
+
+const SORT_TABS: { value: NewsSort; label: string }[] = [
+  { value: "date", label: "新着順" },
+  { value: "category", label: "テーマ順" },
+  { value: "impact", label: "インパクト順" },
+];
 
 /** 出典のドメインだけを出す（デザインはカードのフッタにドメインを置く）。 */
 function domainOf(url: string): string {
@@ -50,50 +55,41 @@ function formatDate(iso: string | null): string {
   return formatJst(iso);
 }
 
-function toggle<T>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
 export function NewsBrowser({
-  initialItems,
-  initialCursor,
+  page,
   initialError,
   initialCreatedIds,
-  newsConfig,
   window,
 }: {
-  initialItems: NewsItemView[];
-  initialCursor: string | null;
+  page: NewsItemsPage;
   initialError: boolean;
   initialCreatedIds: string[];
-  newsConfig: { categories: string[]; impacts: string[]; maxItems: number };
   window: { from: string; to: string } | null;
 }) {
   const [pending, startTransition] = useTransition();
-  const [items, setItems] = useState<NewsItemView[]>(initialItems);
-  const [cursor, setCursor] = useState<string | null>(initialCursor);
-  const [categories, setCategories] = useState<string[]>(newsConfig.categories);
-  const [impacts, setImpacts] = useState<string[]>(newsConfig.impacts);
-  const [maxItems, setMaxItems] = useState<number>(newsConfig.maxItems);
   const [created, setCreated] = useState<Set<string>>(new Set(initialCreatedIds));
   const [generatingId, setGeneratingId] = useState<string | null>(null);
-  // 最新取得に失敗した場合は前回成功分を残したまま注記する（要件06 §10）。
-  const [note, setNote] = useState<string | null>(
+  // 最新取得に失敗した場合は空扱いにせず注記する（要件06 §10）。
+  const [note] = useState<string | null>(
     initialError ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。" : null,
   );
   const toast = useToast();
-  // 既定は**取得している分野**すべて・インパクト高中。既定より絞っているときだけ「条件を戻す」を出す。
-  // 発信テーマ（THEME_OPTIONS・6テーマ）とは別で、記事が来ない分野は絞り込みにも出さない（T-M7-55）。
-  const allCategories: string[] = [...NEWS_FETCH_CATEGORIES];
-  const filterThemes = THEME_OPTIONS.filter((t) => allCategories.includes(t.newsCategory));
-  const narrowedFilter =
-    categories.length < allCategories.length || impacts.length < 2 || !impacts.includes("high");
 
-  /**
-   * 操作の結果はトーストへ（T-M8-18）。**以前は `role="status"` 固定で、失敗も成功として
-   * 読み上げられていた。** 画面に残すのは「いま何が表示されているか」（取得失敗の注記・
-   * 入力検証）だけにする。
-   */
+  /** ?sort=&page= を保ってURLを組む（時間窓が付いていれば維持する）。 */
+  function hrefFor(next: { sort?: NewsSort; page?: number }): string {
+    const params = new URLSearchParams();
+    const sort = next.sort ?? page.sort;
+    if (sort !== "date") params.set("sort", sort);
+    const target = next.page ?? 1;
+    if (target > 1) params.set("page", String(target));
+    if (window) {
+      params.set("from", window.from);
+      params.set("to", window.to);
+    }
+    const qs = params.toString();
+    return qs ? `/app/news?${qs}` : "/app/news";
+  }
+
   function notify(
     message: string,
     options: { href?: string | null; label?: string; tone?: "error" | "success" } = {},
@@ -105,11 +101,6 @@ export function NewsBrowser({
       description: tone === "success" ? undefined : message,
       ...(options.href ? { action: { href: options.href, label: options.label ?? "設定を開く" } } : {}),
     });
-  }
-
-  function resetFilter() {
-    setCategories(allCategories);
-    setImpacts(["high", "mid"]);
   }
 
   function generate(newsItemId: string) {
@@ -153,62 +144,31 @@ export function NewsBrowser({
     });
   }
 
-  const baseQuery = () => ({
-    categories,
-    impacts,
-    limit: maxItems,
-    ...(window ?? {}),
-  });
-
-  function applyConfig() {
-    if (categories.length === 0 || impacts.length === 0) {
-      setNote("テーマとインパクトを各1件以上選択してください。");
-      return;
-    }
-    startTransition(async () => {
-      // 表示条件を news_config として保存し（要件02 §4.2）、その条件で一覧を取り直す。
-      const saved = await updateNewsConfigAction({
-        categories,
-        impact_filter: impacts,
-        max_items: maxItems,
-      });
-      if (saved.status === "error") {
-        notify(saved.message || "設定を保存できませんでした。");
-        return;
-      }
-      const res = await listNewsItemsAction(baseQuery());
-      if (res.status === "success" && res.items) {
-        setItems(res.items);
-        setCursor(res.nextCursor ?? null);
-        notify("表示条件を保存しました。ニュース通知もこの条件で届きます。", { tone: "success" });
-      } else {
-        // 取得失敗は**画面の状態**なので注記として残す（トーストは消えてしまう）。
-        setNote("最新のニュースを取得できませんでした。表示は前回の内容です。");
-      }
-    });
-  }
-
-  function loadMore() {
-    if (!cursor || pending) return;
-    startTransition(async () => {
-      const res = await listNewsItemsAction({ ...baseQuery(), cursor });
-      if (res.status === "success" && res.items) {
-        const newItems = res.items;
-        setItems((prev) => [...prev, ...newItems]);
-        setCursor(res.nextCursor ?? null);
-        const createdIds = res.createdNewsItemIds;
-        if (createdIds?.length) {
-          setCreated((prev) => {
-            const next = new Set(prev);
-            for (const id of createdIds) next.add(id);
-            return next;
-          });
-        }
-      } else {
-        setNote("続きを取得できませんでした。時間をおいて再度お試しください。");
-      }
-    });
-  }
+  const pager = page.pageCount > 1 && (
+    <nav aria-label="ページ" className="flex flex-wrap items-center justify-center gap-3">
+      {page.page > 1 ? (
+        <Link
+          className="inline-flex min-h-10 items-center gap-1 rounded-card border border-hairline bg-surface px-4 text-sm font-medium text-ink hover:bg-black/[0.03]"
+          href={hrefFor({ page: page.page - 1 })}
+        >
+          <Icon aria-hidden="true" name="chevron_right" size={15} className="rotate-180" />
+          前の50件
+        </Link>
+      ) : null}
+      <span className="text-caption text-ink-2 tabular-nums">
+        {page.page} / {page.pageCount}ページ（全{yen(page.total)}件）
+      </span>
+      {page.page < page.pageCount ? (
+        <Link
+          className="inline-flex min-h-10 items-center gap-1 rounded-card border border-hairline bg-surface px-4 text-sm font-medium text-ink hover:bg-black/[0.03]"
+          href={hrefFor({ page: page.page + 1 })}
+        >
+          次の50件
+          <Icon aria-hidden="true" name="chevron_right" size={15} />
+        </Link>
+      ) : null}
+    </nav>
+  );
 
   return (
     <div className="mt-4 space-y-4">
@@ -224,104 +184,43 @@ export function NewsBrowser({
       ) : (
         // 集約仕様・通知の配信条件は一覧を見る操作に不要なため書かない（T-M8-66）。
         <p className="text-sm text-muted-foreground">
-          過去7日分のニュースを表示します（10時〜20時の間、2時間おきに自動取得）。
+          保存されているニュースをすべて表示します（10時〜20時の間、2時間おきに自動取得）。
         </p>
       )}
 
-      <section aria-label="絞り込み" className={`${cardClassName} space-y-3 p-4`}>
-        {/*
-          「保存され通知にも使われる」の前置きは置かない（T-M8-66）。保存されることは
-          ボタンラベル「この条件で表示して保存」が、通知への影響は保存直後のトーストが伝える。
-        */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground">テーマ</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {filterThemes.map((t) => {
-              const active = categories.includes(t.newsCategory);
-              return (
-                <button
-                  aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
-                  key={t.newsCategory}
-                  onClick={() => setCategories((prev) => toggle(prev, t.newsCategory))}
-                  type="button"
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground">インパクト</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {IMPACTS.map((i) => {
-              const active = impacts.includes(i.id);
-              return (
-                <button
-                  aria-pressed={active}
-                  className={`rounded-pill border px-3 py-1.5 text-body font-medium transition-colors duration-150 ${active ? "border-brand bg-brand text-white" : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]"}`}
-                  key={i.id}
-                  onClick={() => setImpacts((prev) => toggle(prev, i.id))}
-                  type="button"
-                >
-                  {i.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="block text-xs font-semibold text-muted-foreground">表示件数</span>
-            <input
-              className="mt-1 w-24 rounded-md border px-2 py-1"
-              max={NEWS_MAX_ITEMS_MAX}
-              min={NEWS_MAX_ITEMS_MIN}
-              onChange={(e) => setMaxItems(clampNewsMaxItems(Number(e.target.value)))}
-              type="number"
-              value={maxItems}
-            />
-          </label>
-          <button
-            className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
-            disabled={pending}
-            onClick={applyConfig}
-            type="button"
-          >
-            この条件で表示して保存
-          </button>
-        </div>
-      </section>
+      {/* 並び替え（T-M8-187）。URLで持つのでリロード・共有でも保たれる。 */}
+      <nav aria-label="並び替え" className="flex flex-wrap gap-2">
+        {SORT_TABS.map((tab) => {
+          const active = page.sort === tab.value;
+          return (
+            <Link
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "inline-flex min-h-9 items-center rounded-pill border px-3.5 text-body font-medium transition-colors duration-150",
+                active
+                  ? "border-brand bg-brand text-white"
+                  : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.03]",
+              )}
+              href={hrefFor({ sort: tab.value, page: 1 })}
+              key={tab.value}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
 
-      {/*
-        ここに残すのは**画面の状態**だけ（取得失敗の注記・入力検証）。操作の結果はトーストへ。
-        以前は両方をここへ出しており、`role="status"` 固定だったため失敗も成功として
-        読み上げられていた（T-M8-18）。
-      */}
+      {/* ここに残すのは**画面の状態**だけ。操作の結果はトーストへ（T-M8-18）。 */}
       {note ? (
-        <Notice tone="warn"
-          role="alert">
+        <Notice role="alert" tone="warn">
           {note}
         </Notice>
       ) : null}
 
-      {items.length === 0 ? (
+      {page.items.length === 0 ? (
         <div className={`${cardClassName} px-4 py-11 text-center text-body text-ink-2`}>
           {window ? (
             <p>この時間帯に該当するニュースはありません。</p>
-          ) : narrowedFilter ? (
-            <>
-              <p>この条件に一致するニュースはありません。テーマやインパクトを増やしてみてください。</p>
-              <button
-                className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent"
-                disabled={pending}
-                onClick={resetFilter}
-                type="button"
-              >
-                絞り込みを既定に戻す
-              </button>
-            </>
           ) : (
             <p>まだ表示できるニュースがありません。次の自動取得までお待ちください。</p>
           )}
@@ -329,11 +228,8 @@ export function NewsBrowser({
       ) : (
         // 2カラム。`minmax(0,1fr)` で長いタイトルによる潰れを防ぐ（デザイン §形状・余白）。
         <ul className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(0,1fr))] xl:grid-cols-2">
-          {items.map((item) => (
-            <li
-              className={`${cardClassName} flex flex-col p-4`}
-              key={item.id}
-            >
+          {page.items.map((item) => (
+            <li className={`${cardClassName} flex flex-col p-4`} key={item.id}>
               <div className="flex items-center gap-2">
                 <CategoryChip category={item.category} />
                 <Badge tone={IMPACT_TONE[item.impact] ?? "neutral"}>
@@ -377,16 +273,7 @@ export function NewsBrowser({
         </ul>
       )}
 
-      {cursor ? (
-        <button
-          className="w-full rounded-lg border py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-          disabled={pending}
-          onClick={loadMore}
-          type="button"
-        >
-          {pending ? "読み込み中…" : "もっと見る"}
-        </button>
-      ) : null}
+      {pager}
     </div>
   );
 }

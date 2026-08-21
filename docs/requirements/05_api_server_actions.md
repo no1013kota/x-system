@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.49 |
+| バージョン | v1.50 |
 | 更新日 | 2026-08-21 |
 | 関連 | 全画面、全ジョブ |
 
@@ -193,7 +193,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
 | `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled | job_id | N-4。バックグラウンド生成 |
 
-`listNewsItems`は`from`/`to`が揃う場合は`fetched_at`の時間窓（ダイジェストの`window_started_at`/`window_ended_at`と一致・掲載外も含む）で、無い場合は`published_at`基準の既定7日で絞る。並び・keyset cursorは`coalesce(published_at, fetched_at) desc, id desc`。categories/impactsは列挙値のみ・未指定は全件。SC-06の絞り込みUIは選択条件を`news_config`（分野・インパクト・表示件数）として`updateNewsConfig`で保存し、その条件で一覧を取り直す。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。専用の更新Actionは持たない。
+`listNewsItems`は**保存されている全件**を対象に、`sort`（`date`｜`category`｜`impact`）と`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-187。範囲外のpageは最終ページへ丸める。旧keyset cursor・categories/impacts・limit入力とServer Action `listNewsItems` は廃止し、SC-06はサーバー描画＋URLの`?sort=&page=`で遷移する）。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
 
 ## 7. スケジュール
 
@@ -289,7 +289,7 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | `instructions` / `user_opinion` | 各2,000文字以下 |
 | prompt / base_md | prompt 8,000文字、base_md 5,000文字以下 |
 | image | JPG/PNG/WEBP、5MB以下、1枚 |
-| `news_config` | categories/impact_filterは重複なしで各1件以上、`max_items`は1〜100 |
+| `news_config` | categories/impact_filterは重複なしで各1件以上（通知条件。旧`max_items`は受け取っても黙って落とす・T-M8-187） |
 | `captcha_token` | signup／確認メール再送／login／password reset申請ごとに発行された1〜2,048文字のTurnstile token。Server側でSupabase Authへ渡す。5分TTL・1回限りで、Action完了後にwidgetをresetして再利用を許可しない |
 
 同一ユーザーが`queued/running`のjobを5件持つ場合、新規生成・学習・提案を`job_conflict`で拒否する。投稿はさらに`X_DAILY_POST_LIMIT`とpremium残量を確認する。
@@ -329,6 +329,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: エラーコード usage_paused（429・エキスパートの内部ガード到達）を追加 |
 | v1.48 | 2026-08-21 | 招待プログラムのAction・公開route・webhook購読イベント追加を記載（T-M8-174） |
 | v1.49 | 2026-08-21 | webhook対象イベント一覧へ charge.refunded を追記（T-M8-174のdoc同期漏れ・T-M8-180で検出） |
+| v1.50 | 2026-08-21 | ニュース一覧APIを全件・sort/pageの50件ページングへ改定（T-M8-187。cursor・絞り込み入力・専用Action廃止） |
 
 ### 下書きの投稿予約（T-M8-157）
 

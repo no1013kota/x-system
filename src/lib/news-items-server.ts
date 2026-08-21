@@ -4,6 +4,8 @@ import { pooledQueryable } from "./db/pool";
 import {
   listCreatedNewsItemIds,
   listNewsItems,
+  listTopHighImpactNews,
+  type NewsItemView,
   type NewsItemsPage,
 } from "./news-items";
 
@@ -20,4 +22,11 @@ export function listCreatedNewsItemIdsForAccount(
   newsItemIds: string[],
 ): Promise<string[]> {
   return listCreatedNewsItemIds(pooledDb, xAccountId, newsItemIds);
+}
+
+export function listTopHighImpactNewsForUser(input: {
+  categories: string[];
+  limit: number;
+}): Promise<NewsItemView[]> {
+  return listTopHighImpactNews(pooledDb, input);
 }

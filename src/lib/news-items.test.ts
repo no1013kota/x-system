@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { listNewsItems } from "./news-items";
+import { NEWS_PAGE_SIZE, listNewsItems } from "./news-items";
 import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
 
 type Row = Record<string, unknown>;
 
-function mockDb(rows: Row[] = []) {
+/** 1回目（count）と2回目（rows）で別の結果を返すモック。 */
+function mockDb(total: number, rows: Row[] = []) {
   const calls: { sql: string; params: unknown[] }[] = [];
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
+      if (sql.includes("count(*)")) {
+        return { rows: [{ n: String(total) }] as T[], rowCount: 1 };
+      }
       return { rows: rows as T[], rowCount: rows.length };
     },
   };
@@ -20,70 +24,60 @@ function mockDb(rows: Row[] = []) {
 const now = "2026-07-24T05:00:00Z";
 const win = (h: number) => new Date(Date.parse(now) + h * 3600 * 1000).toISOString();
 
-describe("listNewsItems validation", () => {
-  it("rejects a limit outside 1..100", async () => {
-    const { db } = mockDb();
-    await expect(listNewsItems(db, { limit: 0 })).rejects.toBeInstanceOf(AppError);
-    await expect(listNewsItems(db, { limit: 101 })).rejects.toBeInstanceOf(AppError);
+describe("listNewsItems validation（T-M8-187）", () => {
+  it("未知のsort・0以下のpage・旧入力（limit等）は弾く", async () => {
+    const { db } = mockDb(0);
+    await expect(listNewsItems(db, { sort: "likes" })).rejects.toBeInstanceOf(AppError);
+    await expect(listNewsItems(db, { page: 0 })).rejects.toBeInstanceOf(AppError);
+    // 旧スキーマの入力は受け付けない（呼び出し側の直し忘れをここで止める）。
+    await expect(listNewsItems(db, { limit: 20 })).rejects.toBeInstanceOf(AppError);
+    await expect(listNewsItems(db, { categories: ["ai"] })).rejects.toBeInstanceOf(AppError);
   });
 
-  it("rejects an unknown category or impact", async () => {
-    const { db } = mockDb();
-    await expect(listNewsItems(db, { categories: ["nope"] })).rejects.toBeInstanceOf(AppError);
-    await expect(listNewsItems(db, { impacts: ["huge"] })).rejects.toBeInstanceOf(AppError);
-  });
-
-  it("requires from and to together", async () => {
-    const { db } = mockDb();
+  it("from/toは両方そろえる・窓は最大24時間", async () => {
+    const { db } = mockDb(0);
     await expect(listNewsItems(db, { from: now })).rejects.toBeInstanceOf(AppError);
-    await expect(listNewsItems(db, { to: now })).rejects.toBeInstanceOf(AppError);
-  });
-
-  it("rejects a window wider than 24h or non-positive", async () => {
-    const { db } = mockDb();
     await expect(listNewsItems(db, { from: now, to: win(25) })).rejects.toBeInstanceOf(AppError);
     await expect(listNewsItems(db, { from: win(1), to: now })).rejects.toBeInstanceOf(AppError);
-  });
-
-  it("accepts a valid 24h window", async () => {
-    const { db } = mockDb();
     await expect(listNewsItems(db, { from: now, to: win(24) })).resolves.toBeDefined();
   });
 });
 
-describe("listNewsItems query", () => {
-  it("filters by fetched_at window when from/to are given (not the 7-day default)", async () => {
-    const { db, calls } = mockDb();
+describe("listNewsItems query（T-M8-187）", () => {
+  it("既定は絞り込みなし・新着順・50件offset", async () => {
+    const { db, calls } = mockDb(0);
+    const page = await listNewsItems(db, {});
+    const sql = calls[1].sql;
+    // 期間・分野・インパクトで絞らない（保存されている全件が対象）。
+    expect(sql).not.toMatch(/make_interval|category::text = any|impact::text = any/);
+    expect(sql).toMatch(/order by coalesce\(published_at, fetched_at\) desc, id desc/);
+    expect(calls[1].params).toEqual([NEWS_PAGE_SIZE, 0]);
+    expect(page).toMatchObject({ page: 1, pageCount: 1, total: 0, sort: "date" });
+  });
+
+  it("sort=categoryはテーマ順→新着、sort=impactは高→中→低→新着", async () => {
+    const { db, calls } = mockDb(0);
+    await listNewsItems(db, { sort: "category" });
+    expect(calls[1].sql).toMatch(/order by category asc, coalesce\(published_at, fetched_at\) desc/);
+    await listNewsItems(db, { sort: "impact" });
+    expect(calls[3].sql).toMatch(
+      /case impact::text when 'high' then 0 when 'mid' then 1 else 2 end asc/,
+    );
+  });
+
+  it("ページはoffsetで進み、範囲外は最終ページへ丸める", async () => {
+    const { db, calls } = mockDb(120);
+    const page = await listNewsItems(db, { page: 3 });
+    expect(page).toMatchObject({ page: 3, pageCount: 3, total: 120 });
+    expect(calls[1].params).toEqual([NEWS_PAGE_SIZE, 100]);
+
+    const clamped = await listNewsItems(db, { page: 99 });
+    expect(clamped.page).toBe(3); // 空ページで「消えた」と誤解させない
+  });
+
+  it("from/toはfetched_atの時間窓で絞る（ダイジェスト深リンク用）", async () => {
+    const { db, calls } = mockDb(0);
     await listNewsItems(db, { from: now, to: win(6) });
-    const sql = calls[0].sql;
-    expect(sql).toMatch(/fetched_at >= \$3::timestamptz and fetched_at < \$4::timestamptz/);
-    expect(sql).not.toMatch(/make_interval\(days =>/);
-    expect(calls[0].params[2]).toBe(now);
-    expect(calls[0].params[3]).toBe(win(6));
-  });
-
-  it("uses the 7-day default window when no from/to is given", async () => {
-    const { db, calls } = mockDb();
-    await listNewsItems(db, { categories: ["ai"], impacts: ["high"] });
-    expect(calls[0].sql).toMatch(/coalesce\(published_at, fetched_at\) >= now\(\) - make_interval\(days => 7\)/);
-    expect(calls[0].params[0]).toEqual(["ai"]);
-    expect(calls[0].params[1]).toEqual(["high"]);
-  });
-
-  it("returns nextCursor only when more than `limit` rows exist", async () => {
-    const rows = Array.from({ length: 3 }, (_, i) => ({
-      id: `00000000-0000-4000-8000-00000000000${i}`,
-      category: "ai",
-      title: `t${i}`,
-      summary: "s",
-      source_url: "https://e.com/x",
-      impact: "high",
-      published_at: "2026-07-24T00:00:00.000Z",
-      order_ts: "2026-07-24T00:00:00.000Z",
-    }));
-    const { db } = mockDb(rows);
-    const page = await listNewsItems(db, { limit: 2 });
-    expect(page.items).toHaveLength(2); // limit applied (limit+1 fetched, sliced)
-    expect(page.nextCursor).not.toBeNull();
+    expect(calls[0].sql).toMatch(/fetched_at >= \$1::timestamptz and fetched_at < \$2::timestamptz/);
   });
 });

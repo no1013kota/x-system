@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.43 |
+| バージョン | v1.44 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -282,7 +282,7 @@ flowchart TD
 
 - ニュースは個別通知しない。JSTの取得時刻を起点とする1時間窓ごとに、`news_config.categories`と`impact_filter`へ一致する新着をユーザー単位で集約する。複数分野を1件へまとめ、該当0件なら通知rowを作らない。
 - ダイジェストは`subscription_status in (trialing, active)`かつニュース通知のいずれかのchannelがONのユーザーだけへ、一括`insert ... select`相当でfan-outする。`user_id + dedupe_key`で再実行を冪等化し、両channelがOFFならrowを作らない。
-- タイトル・本文には高impact、同一impactなら新しい順で最大5件を掲載し、全件数と一覧リンクを付ける。対象IDは`news_config.max_items`（1〜100、既定20）まで、時間窓とともに`payload`へ保存する。
+- タイトル・本文には高impact、同一impactなら新しい順で最大5件を掲載し、全件数と一覧リンクを付ける。対象IDは**固定20件**まで（旧`news_config.max_items`はT-M8-187で廃止）、時間窓とともに`payload`へ保存する。
 - 一部分野が失敗した時間帯は成功分野だけでダイジェストを作り、失敗そのものを利用者へニュース通知として送らない。運営監視へ記録し、次回取得を継続する。
 - notification commit後に`after()`でメール送信を起動し、残ったqueuedメールは`scheduler_tick`（5分間隔）が最大100件、最大10並列で回収する。最古のqueuedメールが10分を超えた場合はSentryへ警告する。
 - provider送信は`notification:{id}`を冪等keyにし、429/5xx/networkは最大3 attempt、指数backoffで再送する。401/403または3回失敗は`failed`にする。
@@ -303,6 +303,7 @@ flowchart TD
 | v1.41 | 2026-08-20 | doctorの判定を運営者へ1日1回メールで届ける仕様を追加（T-M8-164） |
 | v1.42 | 2026-08-20 | プラン再編（T-M8-168）: prompt_override の受け渡し条件を promptEditablePlan（全プラン可・未契約のみ拒否）へ改めた |
 | v1.43 | 2026-08-21 | 招待報酬の確定（毎日）と月次Payout作成をscheduler_tickへ追加（T-M8-174） |
+| v1.44 | 2026-08-21 | ダイジェストpayloadの件数上限を固定20へ（news_config.max_items廃止・T-M8-187） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

@@ -61,19 +61,19 @@ async function removeNews(ids: string[]): Promise<void> {
   await query(`delete from news_items where id = any($1::uuid[])`, [ids]);
 }
 
-test("ニュース一覧は既定の分野・インパクトで絞られ、絞り込みを変えると追従する", async ({
+test("ニュース一覧は全件を表示し、インパクト順に並び替えられる（T-M8-187）", async ({
   accounts,
   page,
 }) => {
   const run = randomUUID().slice(0, 8);
   const items: SeedItem[] = [
-    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} AI重要`, minutesAgo: 5 },
-    { id: randomUUID(), category: "ai", impact: "low", title: `E2E-${run} AI軽微`, minutesAgo: 10 },
+    { id: randomUUID(), category: "ai", impact: "low", title: `E2E-${run} AI軽微`, minutesAgo: 5 },
+    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} AI重要`, minutesAgo: 10 },
     {
       id: randomUUID(),
       category: "investment",
-      impact: "high",
-      title: `E2E-${run} 投資重要`,
+      impact: "mid",
+      title: `E2E-${run} 投資中`,
       minutesAgo: 15,
     },
   ];
@@ -84,25 +84,70 @@ test("ニュース一覧は既定の分野・インパクトで絞られ、絞�
     await signIn(page, account);
     await page.goto("/app/news");
 
-    // 既定は全分野・high+mid（要件02 §3.4）。low は出ない。
+    // **絞り込みは無く、low も含めて全部出る**（旧: 既定でhigh+midに絞っていた）。
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
-    await expect(page.getByText(`E2E-${run} 投資重要`)).toBeVisible();
-    await expect(page.getByText(`E2E-${run} AI軽微`)).toHaveCount(0);
+    await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} AI軽微`)).toBeVisible();
+    // 旧UI（絞り込み・表示件数・保存）が出ていない。
+    await expect(page.getByRole("region", { name: "絞り込み" })).toHaveCount(0);
+    await expect(page.getByText("表示件数")).toHaveCount(0);
 
-    // 分野トグルを外して「この条件で表示して保存」を押すと、対象外が消える。
-    // トグルだけでは取り直さない（保存と一覧再取得が同じ操作にまとまっている・要件06 §3.4）。
-    const filter = page.getByRole("region", { name: "絞り込み" });
-    await filter.getByRole("button", { name: "投資", exact: true }).click();
-    await filter.getByRole("button", { name: "この条件で表示して保存" }).click();
-    await expect(page.getByText(`E2E-${run} 投資重要`)).toHaveCount(0);
-    await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
-
-    // 条件は news_config として保存され、通知にも使われる（副作用の明示）。
-    const [saved] = await query<{ categories: string[] }>(
-      `select news_config->'categories' as categories from profiles where id = $1`,
-      [account.userId],
+    /*
+      インパクト順: 高→中→低。**時間窓の深リンクで見る**——窓なしだとローカルDBに溜まった
+      実データのhighが50件を超えたとき、midのseedが2ページ目へ落ちて並び比較が環境依存になる。
+    */
+    const [{ from, to }] = await query<{ from: string; to: string }>(
+      `select (min(fetched_at) - interval '1 minute')::text as from,
+              (max(fetched_at) + interval '1 minute')::text as to
+         from news_items where id = any($1::uuid[])`,
+      [items.map((i) => i.id)],
     );
-    expect(saved.categories, "外した分野が保存されていないこと").not.toContain("investment");
+    await page.goto(
+      `/app/news?sort=impact&from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`,
+    );
+    const titles = await page
+      .locator("li")
+      .filter({ hasText: `E2E-${run}` })
+      .allInnerTexts();
+    const idx = (needle: string) => titles.findIndex((t) => t.includes(needle));
+    expect(idx("AI重要")).toBeLessThan(idx("投資中"));
+    expect(idx("投資中")).toBeLessThan(idx("AI軽微"));
+    // 並び替えのリンク自体も出ている。
+    await expect(page.getByRole("link", { name: "新着順" })).toBeVisible();
+  } finally {
+    await removeNews(items.map((i) => i.id));
+  }
+});
+
+/** 50件ずつのページ送り（T-M8-187）。seedは既存全行より新しいので1ページ目の先頭に並ぶ。 */
+test("ニュース一覧は50件ずつページ送りできる", async ({ accounts, page }) => {
+  const run = randomUUID().slice(0, 8);
+  const items: SeedItem[] = Array.from({ length: 55 }, (_, i) => ({
+    id: randomUUID(),
+    category: "ai" as const,
+    impact: "mid" as const,
+    title: `E2E-${run} P${String(i + 1).padStart(2, "0")}`,
+    minutesAgo: i + 1, // P01が最新
+  }));
+
+  try {
+    await seedNews(items);
+    const account = await accounts.create("news-pager");
+    await signIn(page, account);
+    await page.goto("/app/news");
+
+    // 1ページ目: 最新50件（P01〜P50）。P55（最古）は出ない。
+    await expect(page.getByText(`E2E-${run} P01`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} P55`)).toHaveCount(0);
+    await expect(page.getByText(/1 \/ \d+ページ/)).toBeVisible();
+
+    await page.getByRole("link", { name: "次の50件" }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.getByText(`E2E-${run} P55`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} P01`)).toHaveCount(0);
+
+    await page.getByRole("link", { name: "前の50件" }).click();
+    await expect(page.getByText(`E2E-${run} P01`)).toBeVisible();
   } finally {
     await removeNews(items.map((i) => i.id));
   }

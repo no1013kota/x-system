@@ -170,6 +170,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     });
     expect(notifications.status, JSON.stringify(notifications)).toBe("success");
 
+    // 旧max_itemsが混ざっていても保存できる（黙って落とす・T-M8-187）。
     const news = await updateNewsConfigAction({
       categories: ["ai", "web3"],
       impact_filter: ["high"],

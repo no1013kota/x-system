@@ -15,11 +15,6 @@ import {
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { Card, CardTitle } from "@/components/ui/card";
-import {
-  clampNewsMaxItems,
-  NEWS_MAX_ITEMS_MAX,
-  NEWS_MAX_ITEMS_MIN,
-} from "@/lib/config-defaults";
 
 const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   news: "ニュース",
@@ -120,35 +115,18 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
 function NewsForm({ config }: { config: NewsConfig }) {
   const [categories, setCategories] = useState<string[]>(config.categories);
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
-  /**
-   * 表示件数は**入力中は文字列で保持する**（T-M8-51）。
-   *
-   * 打鍵ごとに `clampNewsMaxItems` を掛けると、欄を空にできず（0が即1へ丸められる）
-   * 「100」を消して打ち直すことすらできない。丸めるのは blur と保存のときだけにする。
-   * 一方で「押す前に止める」（T-M8-37）は維持し、範囲外のあいだは保存させない。
-   */
-  const [maxItemsText, setMaxItemsText] = useState(String(config.max_items));
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
-  const maxItemsNumber = Number(maxItemsText);
-  // **押す前に止める**（T-M8-37）。以前は件数が対象外で、欄を空にする（`Number("")` → 0）か
-  // 101以上を入れた状態でも保存でき、サーバー検証で「入力内容を確認してください」という
-  // どの項目が悪いか分からないエラーになっていた。
-  const maxItemsInvalid =
-    maxItemsText.trim() === "" ||
-    !Number.isFinite(maxItemsNumber) ||
-    maxItemsNumber < NEWS_MAX_ITEMS_MIN ||
-    maxItemsNumber > NEWS_MAX_ITEMS_MAX;
-  const selectionInvalid = categories.length === 0 || impacts.length === 0;
-  const invalid = selectionInvalid || maxItemsInvalid;
+  // 表示件数の欄はT-M8-187で廃止（一覧は常に全件・50件ずつのページ表示）。
+  const invalid = categories.length === 0 || impacts.length === 0;
   return (
     <Card as="section" className="px-5 py-4">
       <CardTitle>ニュース通知</CardTitle>
       {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定はニュース一覧の表示にも使われます。
+        ニュースは10:00〜20:00（日本時間）に2時間おきに届きます。ここでの設定は通知の対象を決めます（一覧はすべてのニュースを表示します）。
       </p>
 
       <fieldset className="mt-4">
@@ -185,30 +163,6 @@ function NewsForm({ config }: { config: NewsConfig }) {
         </div>
       </fieldset>
 
-      <label className="mt-4 block text-sm font-medium" htmlFor="max_items">
-        表示件数（1〜100）
-      </label>
-      <input
-        // **この欄のメッセージだけを指す**（T-M8-51）。以前は選択項目（テーマ・インパクト）の
-        // 文言と id を共有していたため、読み上げが別項目の理由を読んでいた。
-        aria-describedby={maxItemsInvalid ? "max_items-error" : undefined}
-        aria-invalid={maxItemsInvalid}
-        className="mt-1 h-10 w-28 rounded-lg border px-3 text-sm"
-        id="max_items"
-        max={NEWS_MAX_ITEMS_MAX}
-        min={NEWS_MAX_ITEMS_MIN}
-        // 入力中は丸めない（打ち直せなくなる）。確定時にニュース一覧と同じ丸め方をする。
-        onBlur={() => setMaxItemsText(String(clampNewsMaxItems(Number(maxItemsText))))}
-        onChange={(e) => setMaxItemsText(e.target.value)}
-        type="number"
-        value={maxItemsText}
-      />
-      {maxItemsInvalid ? (
-        <p className="mt-1 text-sm text-destructive" id="max_items-error" role="alert">
-          表示件数は{NEWS_MAX_ITEMS_MIN}〜{NEWS_MAX_ITEMS_MAX}で指定してください。
-        </p>
-      ) : null}
-
       <div className="mt-4">
         <Button
           disabled={pending || invalid}
@@ -217,8 +171,6 @@ function NewsForm({ config }: { config: NewsConfig }) {
               const res = await updateNewsConfigAction({
                 categories,
                 impact_filter: impacts,
-                // 保存時にも丸める（blur を経ずにEnterで送るときの保険）。
-                max_items: clampNewsMaxItems(maxItemsNumber),
               });
               toast.show({
                 tone: res.status === "success" ? "success" : "error",
@@ -234,7 +186,7 @@ function NewsForm({ config }: { config: NewsConfig }) {
           {pending ? "保存中…" : "保存"}
         </Button>
       </div>
-      {selectionInvalid ? (
+      {invalid ? (
         <p className="mt-3 text-sm text-destructive" role="alert">
           テーマとインパクトはそれぞれ1件以上選択してください。
         </p>

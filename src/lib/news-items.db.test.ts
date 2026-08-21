@@ -35,9 +35,9 @@ describe("listNewsItems (db)", () => {
     if (!available) ctx.skip();
   });
 
-  it("filters by category/impact and honours the fetched_at window and 7-day default", async () => {
+  it("全件が対象・ソート・50件ページング・時間窓（T-M8-187）", async () => {
     const tag = randomUUID().slice(0, 8);
-    const base = new Date("2026-06-10T04:00:00Z"); // window start
+    const base = new Date("2026-06-10T04:00:00Z");
     const inWin = new Date(base.getTime() + 20 * 60 * 1000).toISOString();
     const eightDaysAgo = new Date(base.getTime() - 8 * 24 * 3600 * 1000).toISOString();
 
@@ -59,44 +59,52 @@ describe("listNewsItems (db)", () => {
       const aiHigh = await mk("ai", "high", inWin, inWin);
       const web3Mid = await mk("web3", "mid", inWin, inWin);
       const aiLow = await mk("ai", "low", inWin, inWin);
-      // fetched a week+ before the window, but published recently → in 7-day default, out of window
-      const oldFetch = await mk("ai", "high", eightDaysAgo, inWin);
+      // 窓の外（8日前にfetch）。旧仕様の「直近7日」も廃止したので、窓なしでは出る。
+      const oldFetch = await mk("ai", "high", eightDaysAgo, eightDaysAgo);
       return { aiHigh, web3Mid, aiLow, oldFetch };
     });
 
     try {
       const ids = new Set(Object.values(seed));
-      const onlyMine = (arr: { id: string }[]) => arr.filter((i) => ids.has(i.id));
+      const onlyMine = (arr: { id: string; category: string }[]) =>
+        arr.filter((i) => ids.has(i.id));
 
-      // window: only items fetched in [base, base+1h) → excludes oldFetch
+      // 窓あり: fetched_atが[base, base+1h)のものだけ → oldFetchは出ない。
       const windowed = await listNewsItems(pooledDb, {
         from: base.toISOString(),
         to: new Date(base.getTime() + 3600 * 1000).toISOString(),
-        limit: 100,
       });
       const wIds = onlyMine(windowed.items).map((i) => i.id);
       expect(wIds).toEqual(expect.arrayContaining([seed.aiHigh, seed.web3Mid, seed.aiLow]));
       expect(wIds).not.toContain(seed.oldFetch);
 
-      // category + impact filter within the window
-      const filtered = await listNewsItems(pooledDb, {
+      // 窓なし: **全件が対象**（7日制限・分野/インパクトの絞りは無い）。
+      // 2026-06の過去データも対象に含まれる＝totalに数えられる。
+      const all = await listNewsItems(pooledDb, { sort: "date" });
+      expect(all.total).toBeGreaterThanOrEqual(4);
+      expect(all.pageCount).toBe(Math.max(1, Math.ceil(all.total / 50)));
+
+      // impactソート: 窓の中で high が low より先に並ぶ。
+      const byImpact = await listNewsItems(pooledDb, {
         from: base.toISOString(),
         to: new Date(base.getTime() + 3600 * 1000).toISOString(),
-        categories: ["ai"],
-        impacts: ["high"],
-        limit: 100,
+        sort: "impact",
       });
-      const fIds = onlyMine(filtered.items).map((i) => i.id);
-      expect(fIds).toEqual([seed.aiHigh]);
+      const mine = onlyMine(byImpact.items).map((i) => i.id);
+      expect(mine.indexOf(seed.aiHigh)).toBeLessThan(mine.indexOf(seed.web3Mid));
+      expect(mine.indexOf(seed.web3Mid)).toBeLessThan(mine.indexOf(seed.aiLow));
 
-      // default 7-day window (no from/to) is by published_at → oldFetch (published recently) is included,
-      // but relative to now() these 2026-06 rows are far in the past, so scope the assertion to shape only.
-      const def = await listNewsItems(pooledDb, { categories: ["ai"], limit: 100 });
-      expect(Array.isArray(def.items)).toBe(true);
+      // categoryソート: ai が web3 より先（category asc）。
+      const byCategory = await listNewsItems(pooledDb, {
+        from: base.toISOString(),
+        to: new Date(base.getTime() + 3600 * 1000).toISOString(),
+        sort: "category",
+      });
+      const cats = onlyMine(byCategory.items).map((i) => i.category);
+      expect(cats.indexOf("web3")).toBeGreaterThan(cats.lastIndexOf("ai"));
     } finally {
       await withTransaction((c) =>
         c.query(`delete from news_items where title like $1`, [`%-${tag}`]),
       );
     }
-  });
-});
+  });});

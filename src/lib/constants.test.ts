@@ -135,6 +135,5 @@ describe("config defaults", () => {
   it("既定のニュース分野は**取得している3分野**だけ（記事の来ない分野を既定にしない）", () => {
     expect(DEFAULT_NEWS_CONFIG.categories).toEqual([...NEWS_FETCH_CATEGORIES]);
     expect(DEFAULT_NEWS_CONFIG.impact_filter).toEqual(["high", "mid"]);
-    expect(DEFAULT_NEWS_CONFIG.max_items).toBe(20);
   });
 });

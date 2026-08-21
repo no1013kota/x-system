@@ -59,7 +59,6 @@ describe("settings (local DB)", () => {
     const uid = await withTransaction((c) => makeUser(c));
     try {
       const settings = await readSettings(db, uid);
-      expect(settings?.newsConfig.max_items).toBe(20);
       expect(settings?.newsConfig.categories).toContain("ai");
       expect(settings?.notificationConfig.posted).toEqual({ in_app: true, email: false });
     } finally {
@@ -82,7 +81,6 @@ describe("settings (local DB)", () => {
       await saveNewsConfig(db, uid, {
         categories: ["ai", "sns"],
         impact_filter: ["high"],
-        max_items: 5,
       });
 
       const settings = await readSettings(db, uid);
@@ -90,7 +88,6 @@ describe("settings (local DB)", () => {
       expect(settings?.newsConfig).toEqual({
         categories: ["ai", "sns"],
         impact_filter: ["high"],
-        max_items: 5,
       });
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
