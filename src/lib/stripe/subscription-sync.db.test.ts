@@ -448,11 +448,130 @@ describe("Stripe subscription synchronization transaction", () => {
     await process(`evt_aff_ref_${randomUUID()}`, "charge.refunded", {
       kind: "charge_refund",
       stripeInvoiceId: invoiceId,
+      amountRefunded: 3980,
+      fullyRefunded: true,
     });
     const reversed = await db.query<{ status: string }>(
       `select status from affiliate_commissions where stripe_invoice_id = $1`,
       [invoiceId],
     );
     expect(reversed.rows[0].status).toBe("reversed");
+
+    /*
+      **staleでも報酬は作られる**（レビュー修正）。Stripeは配送順を保証しないので、
+      createdが新しいsubscriptionイベントの後に古いinvoice.paidが届いても、
+      profilesの投影だけをスキップし、報酬（冪等）は記録する。
+    */
+    const staleInvoice = `in_aff_stale_${randomUUID()}`;
+    const staleResult = await process(`evt_aff_stale_${randomUUID()}`, "invoice.paid", {
+      kind: "invoice_sync",
+      invoice: {
+        attemptCount: 1,
+        id: staleInvoice,
+        paymentState: "paid",
+        amountPaid: 3980,
+        paidAtSec: eventCreated - 100,
+      },
+      // eventCreated を過去へ（上の subscription.deleted 処理より古い）→ stale 判定になる。
+      projection: { ...projection, eventCreated: eventCreated - 100 },
+    });
+    expect(staleResult).toBe("processed");
+    const staleCommission = await db.query<{ status: string }>(
+      `select status from affiliate_commissions where stripe_invoice_id = $1`,
+      [staleInvoice],
+    );
+    // 解約でattributionが終了済みのため報酬は作られない——ここで見るのは
+    // 「staleで例外にならず、イベントが処理済みになる」こと。報酬そのものの
+    // stale独立は次のケース（解約前のinvoice）で見る。
+    expect(staleCommission.rowCount).toBe(0);
+  });
+
+  it("staleなinvoice.paidでも（解約前なら）報酬が作られ、profilesの投影は動かない", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const inviterId = randomUUID();
+    const referredId = randomUUID();
+    for (const [id, customer] of [
+      [inviterId, "cus_stale_inviter"],
+      [referredId, "cus_stale_referred"],
+    ] as const) {
+      await db.query(
+        `insert into auth.users (id, instance_id, aud, role, email)
+         values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+        [id, `${id}@example.com`],
+      );
+      await db.query("update profiles set stripe_customer_id = $2 where id = $1", [id, customer]);
+    }
+    const account = await db.query<{ id: string }>(
+      `insert into affiliate_accounts (user_id, code) values ($1, 'staletest') returning id`,
+      [inviterId],
+    );
+    await db.query(
+      `insert into affiliate_attributions (affiliate_account_id, referred_user_id)
+       values ($1, $2)`,
+      [account.rows[0].id, referredId],
+    );
+    const transaction = async <T>(
+      callback: (txDb: StripeEventDatabase) => Promise<T>,
+    ): Promise<T> => callback(db);
+    const priceIds = {
+      standard: "price_standard",
+      expert: "price_expert",
+      premium: "price_premium",
+    } as const;
+    const eventCreated = 1_784_675_200;
+    const projection: SubscriptionProjection = {
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: eventCreated + 2_592_000,
+      customerId: "cus_stale_referred",
+      eventCreated,
+      plan: "premium",
+      status: "active",
+      subscriptionId: "sub_stale_referred",
+      trialEnd: null,
+      trialStartedAt: null,
+      userId: referredId,
+    };
+    const process = (eventId: string, type: string, prepared: PreparedStripeEvent) =>
+      processStripeEvent(
+        { id: eventId, type, created: eventCreated, data: { object: { id: "obj" } } } as unknown as Stripe.Event,
+        {
+          applyEvent: (txDb, _event, value) =>
+            applyPreparedStripeEvent(txDb, value).then(() => undefined),
+          prepareEvent: async () => prepared,
+          priceIds,
+          transaction,
+        },
+      );
+    // 先に「新しい」subscriptionイベントを処理して投影の時計を進める。
+    await process(`evt_stale_new_${randomUUID()}`, "customer.subscription.updated", {
+      kind: "subscription_sync",
+      projection: { ...projection, eventCreated: eventCreated + 100 },
+    });
+    // その後に「古い」invoice.paidが届く（配送順の逆転）→ staleだが報酬は作られる。
+    const invoiceId = `in_stale_${randomUUID()}`;
+    await process(`evt_stale_old_${randomUUID()}`, "invoice.paid", {
+      kind: "invoice_sync",
+      invoice: {
+        attemptCount: 1,
+        id: invoiceId,
+        paymentState: "paid",
+        amountPaid: 3980,
+        paidAtSec: eventCreated,
+      },
+      projection,
+    });
+    const commission = await db.query<{ commission_amount: number }>(
+      `select commission_amount from affiliate_commissions where stripe_invoice_id = $1`,
+      [invoiceId],
+    );
+    expect(commission.rows[0]).toMatchObject({ commission_amount: 796 });
+    // profilesの投影は新しいイベントのまま（staleが守られている）。
+    const prof = await db.query<{ created: string }>(
+      `select extract(epoch from subscription_event_created_at)::bigint::text as created
+         from profiles where id = $1`,
+      [referredId],
+    );
+    expect(Number(prof.rows[0].created)).toBe(eventCreated + 100);
   });
 });

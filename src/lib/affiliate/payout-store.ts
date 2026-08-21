@@ -1,5 +1,5 @@
 import { MIN_PAYOUT_JPY, PAYOUT_FEE_JPY } from "./config";
-import { settleMatureCommissions } from "./store";
+import { recalcCreatedPayout, settleMatureCommissions } from "./store";
 
 import type { AffiliateDb } from "./db";
 
@@ -110,6 +110,9 @@ export async function createMonthlyPayouts(
         where affiliate_account_id = $1 and status = 'payable' and payout_id is null`,
       [row.affiliate_account_id, payoutId],
     );
+    // 集計SELECTと束ねUPDATEの間にRefundが入る競合を塞ぐ: 実際に束ねた行から金額を引き直す
+    // （レビュー修正。ずれていなければ同値更新で終わる）。
+    await recalcCreatedPayout(db, payoutId);
     result.created += 1;
   }
   return result;
@@ -121,6 +124,9 @@ export async function markPayoutPaid(
   payoutId: string,
   externalReference?: string,
 ): Promise<boolean> {
+  // 支払記録の直前に金額を実態と突き合わせる（Refundで束ねが減っていたら引き直し、
+  // 手取り0以下ならPayoutごと取消してfalseを返す・レビュー修正）。
+  await recalcCreatedPayout(db, payoutId);
   const updated = await db.query(
     `update affiliate_payouts
         set status = 'paid', paid_at = now(),

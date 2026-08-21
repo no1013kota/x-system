@@ -10,10 +10,13 @@ import { startCheckout } from "@/lib/stripe/checkout-browser";
 export function CheckoutButton({
   plan,
   planName,
+  trialAvailable = true,
   variant = "brand",
 }: {
   plan: PlanId;
   planName: string;
+  /** 無料トライアルは初回のみ。消化済みの利用者へ「7日間無料」と書かない（有利誤認の回避）。 */
+  trialAvailable?: boolean;
   /** 推奨プランだけ brand で強調し、他は subtle にする（T-M8-169）。 */
   variant?: "brand" | "subtle";
 }) {
@@ -38,14 +41,20 @@ export function CheckoutButton({
     <div className="space-y-3">
       <Button
         aria-busy={pending}
-        aria-label={`${planName}を7日間無料で利用`}
+        aria-label={
+          trialAvailable ? `${planName}を7日間無料で利用` : `${planName}で始める`
+        }
         className="h-11 w-full"
         disabled={pending}
         onClick={handleCheckout}
         type="button"
         variant={variant}
       >
-        {pending ? "決済画面を開いています…" : "7日間無料で利用"}
+        {pending
+          ? "決済画面を開いています…"
+          : trialAvailable
+            ? "7日間無料で利用"
+            : "このプランで始める"}
       </Button>
     </div>
   );

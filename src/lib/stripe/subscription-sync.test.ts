@@ -52,7 +52,70 @@ function event(
   } as unknown as Stripe.Event;
 }
 
+/** テスト用gateway。invoicePaymentsは呼ばれないテストでは空の実装でよい。 */
+function gateway(
+  retrieve: (id: string) => Promise<Stripe.Subscription>,
+  invoicePaymentsList?: (params: unknown) => Promise<{ data: { invoice: string | { id: string } | null }[] }>,
+) {
+  return {
+    subscriptions: { retrieve },
+    invoicePayments: {
+      list:
+        invoicePaymentsList ??
+        (async () => {
+          throw new Error("invoicePayments.list should not be called in this test");
+        }),
+    },
+  };
+}
+
 describe("Stripe subscription synchronization", () => {
+  /**
+   * charge.refunded のinvoice解決（T-M8-174レビュー修正）。
+   * **現行API（2026-06-24.dahlia）のChargeにはinvoiceフィールドが無い**（basilで削除）ため、
+   * payment_intent → InvoicePayments で解決する。preparedを直接注入するdbテストでは
+   * この層を素通りするので、ここで prepareStripeEvent を実際に通す。
+   */
+  it("charge.refunded: payment_intentからInvoicePayments経由でinvoiceを解決する", async () => {
+    const list = vi.fn(async () => ({ data: [{ invoice: "in_resolved" }] }));
+    const prepared = await prepareStripeEvent(
+      event("charge.refunded", {
+        id: "ch_1",
+        payment_intent: "pi_1",
+        amount_refunded: 500,
+        refunded: false,
+      }),
+      gateway(vi.fn(), list),
+      priceIds,
+    );
+    expect(list).toHaveBeenCalledWith({
+      payment: { type: "payment_intent", payment_intent: "pi_1" },
+      limit: 1,
+    });
+    expect(prepared).toEqual({
+      kind: "charge_refund",
+      stripeInvoiceId: "in_resolved",
+      amountRefunded: 500,
+      fullyRefunded: false,
+    });
+  });
+
+  it("charge.refunded: 旧API形状（charge.invoiceあり）はそのまま使い、解決不能はnull", async () => {
+    const legacy = await prepareStripeEvent(
+      event("charge.refunded", { id: "ch_2", invoice: "in_legacy", refunded: true, amount_refunded: 3980 }),
+      gateway(vi.fn()),
+      priceIds,
+    );
+    expect(legacy).toMatchObject({ kind: "charge_refund", stripeInvoiceId: "in_legacy", fullyRefunded: true });
+
+    const none = await prepareStripeEvent(
+      event("charge.refunded", { id: "ch_3", payment_intent: null, refunded: true, amount_refunded: 100 }),
+      gateway(vi.fn(), async () => ({ data: [] })),
+      priceIds,
+    );
+    expect(none).toMatchObject({ kind: "charge_refund", stripeInvoiceId: null });
+  });
+
   it.each([
     ["checkout.session.completed", { id: "cs_001", subscription: "sub_checkout" }, "sub_checkout"],
     ["customer.subscription.created", { id: "sub_created" }, "sub_created"],
@@ -61,7 +124,7 @@ describe("Stripe subscription synchronization", () => {
     const retrieve = vi.fn(async () => subscription());
     const prepared = await prepareStripeEvent(
       event(type, object),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
@@ -82,7 +145,7 @@ describe("Stripe subscription synchronization", () => {
     const deleted = subscription({ id: "sub_deleted", status: "active" });
     const prepared = await prepareStripeEvent(
       event("customer.subscription.deleted", deleted as unknown as Record<string, unknown>),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
@@ -112,7 +175,7 @@ describe("Stripe subscription synchronization", () => {
     } as Stripe.Invoice;
     const prepared = await prepareStripeEvent(
       event(type, invoice as unknown as Record<string, unknown>),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
@@ -132,7 +195,7 @@ describe("Stripe subscription synchronization", () => {
         attempt_count: 1,
         parent: null,
       }),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
     expect(prepared).toEqual({ kind: "none" });

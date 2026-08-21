@@ -32,6 +32,9 @@ function decrypt(serialized, key) {
   ]).toString("utf8");
 }
 
+// 表示前に制御文字を落とす（DBに紛れても端末を偽装させない・多層防御）。
+const clean = (value) => String(value ?? "").replace(/[\u0000-\u001f\u007f\u2066-\u2069\u202a-\u202e]/g, "");
+
 const args = process.argv.slice(2);
 const flag = (name) => {
   const i = args.indexOf(`--${name}`);
@@ -77,11 +80,11 @@ try {
       const number = r.account_number_ciphertext
         ? decrypt(r.account_number_ciphertext, key)
         : "（口座未登録）";
-      console.log(`利用者: ${r.email}`);
+      console.log(`利用者: ${clean(r.email)}`);
       console.log(`振込額: ¥${r.net_amount}（報酬¥${r.gross_amount} − 手数料¥${r.fee_amount}）`);
       console.log(`期限: ${new Date(r.payment_due_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}`);
-      console.log(`振込先: ${r.bank_name} ${r.branch_name} ${r.account_type === "ordinary" ? "普通" : "当座"} ${number}`);
-      console.log(`名義: ${r.account_holder_name}`);
+      console.log(`振込先: ${clean(r.bank_name)} ${clean(r.branch_name)} ${r.account_type === "ordinary" ? "普通" : "当座"} ${clean(number)}`);
+      console.log(`名義: ${clean(r.account_holder_name)}`);
       console.log(`\n振込が済んだら: npm run affiliate:payouts -- --paid ${showId}`);
     }
   } else {
@@ -99,7 +102,7 @@ try {
       console.log(`未払いの振込 ${rows.length}件:\n`);
       for (const r of rows) {
         const due = new Date(r.payment_due_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
-        console.log(`  ${r.id}  ¥${r.net_amount}  期限 ${due}  ${r.email}`);
+        console.log(`  ${r.id}  ¥${r.net_amount}  期限 ${due}  ${clean(r.email)}`);
       }
       console.log(`\n詳細と口座番号: npm run affiliate:payouts -- --show <id>`);
     }

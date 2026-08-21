@@ -239,10 +239,11 @@ export default async function InvitePage() {
                 </tr>
               </thead>
               <tbody>
-                {summary.invitedUsers.map((invited) => {
+                {summary.invitedUsers.map((invited, index) => {
                   const status = STATUS_LABEL[invited.status];
                   return (
-                    <tr className="border-b border-hairline last:border-0" key={invited.maskedEmail + invited.firstPaidAt}>
+                    // マスク済みメールは重複し得るのでindexを併用（並びはattributed_at descで安定）。
+                    <tr className="border-b border-hairline last:border-0" key={`${invited.maskedEmail}-${index}`}>
                       <td className="py-2.5 pr-3">{invited.maskedEmail}</td>
                       <td className="px-3 py-2.5">
                         <Badge tone={status.tone}>{status.label}</Badge>

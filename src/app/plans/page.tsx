@@ -34,6 +34,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   // Checkout直後の反映待ち。反映が済むと下の判定で /app へリダイレクトされる。
   const awaitingCheckout = params.checkout === "success";
+  // 無料トライアルは初回のみ。消化済みの利用者へ「7日間無料」を出すと有利誤認になる（レビュー修正）。
+  let trialAvailable = true;
 
   // 契約が有効（trialing/active）で本編を使えるユーザーが /plans に来たら /app へ送り、
   // 決済成功後にこの画面で行き止まりになるのを防ぐ。incomplete・canceled 等はプラン選択／
@@ -48,7 +50,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
     const readProfile = () =>
       admin
         .from("profiles")
-        .select("plan, subscription_status, stripe_customer_id")
+        .select("plan, subscription_status, stripe_customer_id, trial_used_at")
         .eq("id", user.id)
         .maybeSingle();
     let profileResult = await readProfile();
@@ -61,6 +63,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
     // 最終読み取りの失敗を「未契約」に見せない（T-M8-158）。潰すと契約中の利用者が
     // 理由の分からないまま `/plans` に留まる。
     const profile = readSingleRow(profileResult, "plans profile");
+    if (profile?.trial_used_at) trialAvailable = false;
     if (
       profile?.plan &&
       profile.stripe_customer_id &&
@@ -87,10 +90,12 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             </div>
             <div className="space-y-3">
               {/* 参考ページの「Special offer」ピルに相当（T-M8-169）。 */}
-              <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
-                <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
-                すべてのプランを7日間無料でお試し
-              </p>
+              {trialAvailable ? (
+                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+                  <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
+                  すべてのプランを7日間無料でお試し
+                </p>
+              ) : null}
               <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
                 あなたの運用に合うプランを選択
               </h1>
@@ -125,7 +130,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             「初回のみ」「カード登録が必要」の開示は帯の中に残る。自動更新・解約の法定事項は
             フッタの特定商取引法ページ・利用規約が担う。
           */}
-          <CampaignCallout className="mx-auto max-w-3xl" />
+          <CampaignCallout className="mx-auto max-w-3xl" trialAvailable={trialAvailable} />
 
           {/*
             プランのカード型表示（T-M8-169・運営者の指示 2026-08-21。参考: tweethunter.io/pricing）。
@@ -139,6 +144,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 <CheckoutButton
                   plan={planId}
                   planName={planName}
+                  trialAvailable={trialAvailable}
                   variant={planId === RECOMMENDED_PLAN ? "brand" : "subtle"}
                 />
               )}

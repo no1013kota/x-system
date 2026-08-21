@@ -2250,6 +2250,25 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - UI: /app/invite（SC-12）＋ナビ「友達招待」（モバイル7枠に収めるためプロンプト集はmobileHidden）
   - 運営者: `npm run affiliate:payouts`（一覧／--show=口座全桁を復号／--paid=支払記録）
   - テスト: config 6件・store.db 6件・webhook配線 統合1件・E2E 2件（画面登録での帰属含む）緑
+- コミット後の敵対的レビュー（多面workflow・2026-08-21）で検出し修正したもの:
+  - **critical**: `charge.refunded` のinvoice参照が現行Stripe API（2026-06-24.dahlia）に存在せず
+    （basilで削除）、**Refund取消が一度も動かない**状態だった → `payment_intent`→InvoicePayments
+    APIで解決（prepare層を実際に通す単体テストを追加。旧テストはprepared注入でこの層を素通りしていた）
+  - **major**: stale判定の早期returnで、配送順の逆転時に**invoice.paidの報酬が恒久に作られない**
+    → 報酬作成・請求失敗通知（ともに冪等）をstaleと独立に実行（staleが守るのはprofilesの投影だけ）
+  - **critical/major**: Refundで未払いPayoutの束ねが減っても金額が引き直されず**運営者が過払い**
+    → `recalcCreatedPayout`（取消時・束ね直後・支払記録直前の3点で突き合わせ。手取り0以下はPayout取消）
+  - **major**: claim先行コミットで月次Payoutが1回の失敗で翌月まで飛ぶ＋束ねが非トランザクション
+    → claimと本処理を同一トランザクションへ（失敗はclaimごとロールバック→次tickが再試行）
+  - **major**: 部分返金でも全額取消していた → 残額×snapshot率で減額（仕様の「減額」を実装）
+  - **major**: 利用規約に招待プログラム条項が無かった → 第19条を追加（条件の骨子・不正無効化・
+    変更終了権・譲渡不可・税務は受領者責任。版は未デプロイの2026-08-20のまま）
+  - **major**: 口座フィールドの制御文字で運営者ターミナルの表示を偽装できた → zodで拒否＋script側でも除去
+  - minor: Trial中（未課金）解約での恒久終了をやめ初回課金後に限定／ensureAffiliateAccountの
+    user_id競合／招待表のReact key重複／トライアル消化済みへの「7日間無料」表示（/plans）／
+    キャンペーン終了後のプロモ帯文頭／docsの取り残し（README・要件06の旧再掲記述）を修正
+  - 受容（コード変更なし・記録のみ）: 別メールでの実質自己招待は機械検知しない（振込前に運営者が
+    確認・要件03へ明記）／締めは「実行時点のpayable全件」で仕様§9より前倒し方向に広い（同）
 
 ### T-M8-170: /plansでNextのchunkがnonce無しで注入されCSPに弾かれる（コンソールエラー） `todo`
 - 参照: 要件01 §CSP・ADR-0005（nonce付きCSP） / 依存: なし / サイズ: S

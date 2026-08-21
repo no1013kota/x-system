@@ -6,10 +6,10 @@ import { connectLocalDb } from "@/lib/db/test-utils";
 
 import { createMonthlyPayouts, markPayoutPaid, payoutPeriodFor } from "./payout-store";
 import {
+  adjustCommissionForInvoiceRefund,
   attributeSignup,
   ensureAffiliateAccount,
   recordCommissionForInvoice,
-  reverseCommissionForInvoice,
   settleMatureCommissions,
   terminateAttributionForReferredUser,
 } from "./store";
@@ -213,12 +213,74 @@ describe("affiliate store (db)", () => {
     );
     expect(settled.rows[0].status).toBe("payable");
 
-    expect(await reverseCommissionForInvoice(db, invoice)).toBe(1);
+    const full = await adjustCommissionForInvoiceRefund(db, invoice, {
+      amountRefunded: 3980,
+      fullyRefunded: true,
+    });
+    expect(full.reversed).toBe(1);
     const reversed = await db.query<{ status: string }>(
       `select status from affiliate_commissions where stripe_invoice_id = $1`,
       [invoice],
     );
     expect(reversed.rows[0].status).toBe("reversed");
+  });
+
+  it("部分返金は残額×snapshot率で減額する（全額取消しない・invite_cp.md §6「減額」）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const db = database;
+    const inviter = await makeUser(db);
+    const invited = await makeUser(db);
+    const account = await ensureAffiliateAccount(db, inviter);
+    await attributeSignup(db, { code: account.code, newUserId: invited });
+    const invoice = `in_${randomUUID()}`;
+    await recordCommissionForInvoice(db, {
+      referredUserId: invited,
+      stripeInvoiceId: invoice,
+      amountPaid: 3980,
+      paidAtSec: Math.floor(Date.now() / 1000),
+    });
+    // ¥500の部分返金 → 残額3,480×20%＝696へ減額（statusは変えない）。
+    const partial = await adjustCommissionForInvoiceRefund(db, invoice, {
+      amountRefunded: 500,
+      fullyRefunded: false,
+    });
+    expect(partial).toMatchObject({ reversed: 0, reduced: 1, paidUntouched: 0 });
+    const row = await db.query<{ eligible_amount: number; commission_amount: number; status: string }>(
+      `select eligible_amount, commission_amount, status
+         from affiliate_commissions where stripe_invoice_id = $1`,
+      [invoice],
+    );
+    expect(row.rows[0]).toMatchObject({
+      eligible_amount: 3480,
+      commission_amount: 696,
+      status: "pending",
+    });
+  });
+
+  it("解約の期間終了は初回課金前には適用しない（Trial中解約→後日課金で報酬が始まる）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const db = database;
+    const inviter = await makeUser(db);
+    const invited = await makeUser(db);
+    const account = await ensureAffiliateAccount(db, inviter);
+    await attributeSignup(db, { code: account.code, newUserId: invited });
+    // 一度も課金していない段階の解約 → 終了しない。
+    await terminateAttributionForReferredUser(db, invited, new Date().toISOString());
+    const before = await db.query<{ reason: string | null }>(
+      `select commission_terminated_reason as reason
+         from affiliate_attributions where referred_user_id = $1`,
+      [invited],
+    );
+    expect(before.rows[0].reason).toBeNull();
+    // 後日の有料化で報酬が普通に始まる。
+    expect(
+      await recordCommissionForInvoice(db, {
+        referredUserId: invited,
+        stripeInvoiceId: `in_${randomUUID()}`,
+        amountPaid: 1480,
+        paidAtSec: Math.floor(Date.now() / 1000),
+      }),
+    ).toBe("created");
   });
 
   it("月次Payout: ¥5,000以上＋口座ありだけ作成・手数料980を会計分離・支払完了でpaidへ", async (ctx) => {
@@ -303,13 +365,42 @@ describe("affiliate store (db)", () => {
     expect(payoutCount.rowCount).toBe(1);
     expect(again.created + again.skippedBelowMinimum + again.skippedNoBankAccount).toBeGreaterThan(0);
 
+    // Payout作成後のRefund → 束ねから外れ、Payout金額が引き直される（過払い防止・レビュー修正）。
+    const bundled = await db.query<{ stripe_invoice_id: string }>(
+      `select stripe_invoice_id from affiliate_commissions
+        where payout_id = $1 order by created_at limit 1`,
+      [payout.rows[0].id],
+    );
+    await adjustCommissionForInvoiceRefund(db, bundled.rows[0].stripe_invoice_id, {
+      amountRefunded: 6200,
+      fullyRefunded: true,
+    });
+    const recalced = await db.query<{ gross_amount: number; net_amount: number }>(
+      `select gross_amount, net_amount from affiliate_payouts where id = $1`,
+      [payout.rows[0].id],
+    );
+    expect(recalced.rows[0]).toMatchObject({ gross_amount: 6200, net_amount: 5220 });
+
     // 支払完了 → payout=paid・束ねたCommissionもpaid。
     expect(await markPayoutPaid(db, payout.rows[0].id, "bank-2026-09")).toBe(true);
     const statuses = await db.query<{ status: string }>(
-      `select status from affiliate_commissions where affiliate_account_id = $1`,
+      `select status from affiliate_commissions where affiliate_account_id = $1 order by status`,
       [accountA.id],
     );
-    expect(statuses.rows.map((r) => r.status)).toEqual(["paid", "paid"]);
+    expect(statuses.rows.map((r) => r.status)).toEqual(["paid", "reversed"]);
+
+    // 支払済みへの返金は触らず、件数だけ返す（呼び出し側がSentryへ記録・原則1）。
+    const paidInvoice = await db.query<{ stripe_invoice_id: string }>(
+      `select stripe_invoice_id from affiliate_commissions
+        where affiliate_account_id = $1 and status = 'paid'`,
+      [accountA.id],
+    );
+    const paidAdjust = await adjustCommissionForInvoiceRefund(
+      db,
+      paidInvoice.rows[0].stripe_invoice_id,
+      { amountRefunded: 6200, fullyRefunded: true },
+    );
+    expect(paidAdjust).toMatchObject({ reversed: 0, reduced: 0, paidUntouched: 1 });
   });
 
   it("payoutPeriodForは前月JSTの期間と翌月末の支払期限を返す", () => {

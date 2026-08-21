@@ -21,7 +21,7 @@
 | 文書 | 担当範囲 |
 |---|---|
 | [01 システム構成](./requirements/01_system_architecture.md) | 技術スタック、環境変数、認証・proxy、監視、ログ保持 |
-| [02 データモデル](./requirements/02_data_model.md) | 全21テーブルの列・制約・保持期間、jsonbの形 |
+| [02 データモデル](./requirements/02_data_model.md) | 全26テーブルの列・制約・保持期間、jsonbの形 |
 | [03 認証・課金・利用量](./requirements/03_auth_billing_usage.md) | 登録・ログイン、Stripe、プラン、利用枠、実行ガード |
 | [04 ジョブと自動化](./requirements/04_jobs_and_automation.md) | 定時トリガー、ジョブキュー、通知メール、cleanup |
 | [05 API・Server Actions](./requirements/05_api_server_actions.md) | 入出力の形、エラーコード、認可、楽観lock |
@@ -83,7 +83,7 @@
 | 種別 | ID |
 |---|---|
 | 機能 | A / L / N / P / S / K / M / O / R |
-| 画面 | SC-01〜SC-11 |
+| 画面 | SC-01〜SC-12 |
 | AI実行 | GEN / NEWS / LRN / MD-MERGE / SUGGEST |
 | 開発タスク | `T-M<マイルストーン>-<連番>`（`tasks/BACKLOG.md`） |
 | 要決定 | `D-<連番>`（同ファイル「要決定・外部準備」） |

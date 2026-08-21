@@ -39,17 +39,10 @@ export async function GET(request: Request): Promise<Response> {
             sendMail: sendOperatorMail,
           });
         },
-        // 招待報酬の確定と月次Payout（T-M8-174）。cron_runsで冪等。
-        runAffiliateBatch: async ({ claim }) => {
-          const [{ runAffiliateBatch }, { pooledQueryable }] = await Promise.all([
-            import("@/lib/affiliate/cron-server"),
-            import("@/lib/db/pool"),
-          ]);
-          return runAffiliateBatch({
-            claim,
-            db: pooledQueryable(),
-            nowIso: new Date().toISOString(),
-          });
+        // 招待報酬の確定と月次Payout（T-M8-174）。claimと本処理は同一トランザクション。
+        runAffiliateBatch: async ({ claimTx }) => {
+          const { runAffiliateBatch } = await import("@/lib/affiliate/cron-server");
+          return runAffiliateBatch({ claimTx, nowIso: new Date().toISOString() });
         },
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>

@@ -11,6 +11,7 @@ import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./
 // 実体は route から注入する——`cron.ts` が env 依存モジュールをimportすると
 // テストの module 読込で env 検証が走って落ちる（このファイル冒頭の dailyLimit と同じ理由）。
 import type { OperatorAlertResult } from "../ops/operator-alert-server";
+import type { AffiliateDb as AffiliateBatchDb } from "../affiliate/db";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
@@ -142,7 +143,16 @@ export async function runSchedulerTick(
      * 実体は route が渡す（cron.ts を env 非依存に保つ）。
      */
     runAffiliateBatch?: (deps: {
-      claim: (windowKey: string) => Promise<boolean>;
+      /**
+       * claimと本処理を**同一トランザクション**で実行する（レビュー修正）。
+       * claimを先にコミットすると、本処理の一度の失敗でその窓が消費済みになり
+       * 月次Payoutが翌月まで作られない。失敗時はclaimごとロールバックされ、次のtickが再試行する。
+       * 未claim（他のtickが実行済み）なら null を返す。
+       */
+      claimTx: <T>(
+        windowKey: string,
+        work: (db: AffiliateBatchDb) => Promise<T>,
+      ) => Promise<T | null>;
     }) => Promise<{ settled: number; payoutsCreated: number }>;
   } = {},
 ): Promise<SchedulerTickResult> {
@@ -211,7 +221,7 @@ export async function runSchedulerTick(
   const affiliate = opts.runAffiliateBatch
     ? await opts
         .runAffiliateBatch({
-          claim: (windowKey) =>
+          claimTx: (windowKey, work) =>
             withTransaction(async (client) => {
               const res = await client.query(
                 `insert into cron_runs (job_name, window_key)
@@ -219,7 +229,9 @@ export async function runSchedulerTick(
                  on conflict (job_name, window_key) do nothing`,
                 [windowKey],
               );
-              return (res.rowCount ?? 0) > 0;
+              if ((res.rowCount ?? 0) === 0) return null;
+              // 本処理が失敗したらclaimごとロールバック→次のtickが再試行する。
+              return work(client);
             }),
         })
         .catch((err) => {

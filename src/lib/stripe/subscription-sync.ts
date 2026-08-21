@@ -1,10 +1,11 @@
 import type Stripe from "stripe";
 
 import {
+  adjustCommissionForInvoiceRefund,
   recordCommissionForInvoice,
-  reverseCommissionForInvoice,
   terminateAttributionForReferredUser,
 } from "@/lib/affiliate/store";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { isOperatorManagedPlan, PLANS } from "../plans";
 
 import { revalidateByokAiPurposeConfig } from "@/lib/ai-purpose-config";
@@ -25,6 +26,17 @@ const UUID_PATTERN =
 export interface StripeSubscriptionGateway {
   subscriptions: {
     retrieve(id: string): Promise<Stripe.Subscription>;
+  };
+  /**
+   * charge.refunded から invoice を引くために使う（T-M8-174レビュー修正）。
+   * **現行API（2026-06-24.dahlia）の Charge には invoice フィールドが無い**
+   * （2025-03-31.basil で削除）ため、payment_intent → InvoicePayments で解決する。
+   */
+  invoicePayments: {
+    list(params: {
+      payment: { type: "payment_intent"; payment_intent: string };
+      limit?: number;
+    }): Promise<{ data: { invoice: string | { id: string } | null }[] }>;
   };
 }
 
@@ -56,8 +68,15 @@ export type PreparedStripeEvent =
       };
       projection: SubscriptionProjection;
     }
-  /** Refund（charge.refunded）。該当invoiceの招待報酬を取り消す（T-M8-174）。 */
-  | { kind: "charge_refund"; stripeInvoiceId: string | null }
+  /** Refund（charge.refunded）。該当invoiceの招待報酬を取消・減額する（T-M8-174）。 */
+  | {
+      kind: "charge_refund";
+      stripeInvoiceId: string | null;
+      /** チャージ上の累計返金額（JPY）。部分返金の減額に使う。 */
+      amountRefunded: number;
+      /** 全額返金か（Stripeの `charge.refunded` フラグ）。 */
+      fullyRefunded: boolean;
+    }
   | { kind: "none" };
 
 export type SubscriptionApplyResult = "updated" | "stale" | "not_applicable";
@@ -276,10 +295,27 @@ export async function prepareStripeEvent(
 ): Promise<PreparedStripeEvent> {
   if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
-    const invoiceRef = (charge as unknown as { invoice?: unknown }).invoice ?? null;
+    // 旧APIバージョンのpayload互換（basil以前はChargeにinvoiceがあった）。
+    let invoiceId = expandedId(
+      ((charge as unknown as { invoice?: unknown }).invoice ?? null) as
+        | { id: string }
+        | string
+        | null,
+    );
+    // 現行API（dahlia）: payment_intent → InvoicePayments でinvoiceを解決する。
+    const paymentIntentId = expandedId(charge.payment_intent);
+    if (!invoiceId && paymentIntentId) {
+      const payments = await stripe.invoicePayments.list({
+        payment: { type: "payment_intent", payment_intent: paymentIntentId },
+        limit: 1,
+      });
+      invoiceId = expandedId(payments.data[0]?.invoice ?? null);
+    }
     return {
       kind: "charge_refund",
-      stripeInvoiceId: expandedId(invoiceRef as { id: string } | string | null),
+      stripeInvoiceId: invoiceId,
+      amountRefunded: charge.amount_refunded ?? 0,
+      fullyRefunded: charge.refunded === true,
     };
   }
 
@@ -402,9 +438,26 @@ export async function applyPreparedStripeEvent(
   const value = prepared as PreparedStripeEvent;
   if (!value || value.kind === "none") return "not_applicable";
   if (value.kind === "charge_refund") {
-    // Refund: 該当invoiceの招待報酬を取り消す（profileの照合は不要・T-M8-174）。
-    if (value.stripeInvoiceId) {
-      await reverseCommissionForInvoice(database, value.stripeInvoiceId);
+    // Refund: 該当invoiceの招待報酬を取消・減額する（profileの照合は不要・T-M8-174）。
+    if (!value.stripeInvoiceId) {
+      // invoiceを解決できない返金（サブスク外の決済等）は報酬対象外のことが多いが、
+      // **黙って捨てない**（原則1）。Sentryへ記録して運営者が追える形にする。
+      recordUnexpectedError(new Error("charge.refunded: invoice unresolved"), {
+        at: "affiliate-refund",
+      });
+      return "updated";
+    }
+    const adjusted = await adjustCommissionForInvoiceRefund(database, value.stripeInvoiceId, {
+      amountRefunded: value.amountRefunded,
+      fullyRefunded: value.fullyRefunded,
+    });
+    if (adjusted.paidUntouched > 0) {
+      // 支払済み報酬への返金は自動では触らない（invite_cp.md「運営者が個別調整」）。
+      // ただし調整が必要になった事実は残す——無検知の損失にしない（原則1）。
+      recordUnexpectedError(
+        new Error(`charge.refunded on paid commission: ${value.stripeInvoiceId}`),
+        { at: "affiliate-refund-paid" },
+      );
     }
     return "updated";
   }
@@ -442,9 +495,37 @@ export async function applyPreparedStripeEvent(
   const lastCreated = target.subscription_event_created_at
     ? new Date(target.subscription_event_created_at).getTime() / 1000
     : null;
-  if (lastCreated !== null && projection.eventCreated < lastCreated) {
-    return "stale";
+  const stale = lastCreated !== null && projection.eventCreated < lastCreated;
+
+  /*
+    **招待報酬と請求失敗通知は stale でも実行する**（T-M8-174レビュー修正）。
+    Stripeはイベントの配送順を保証せず、初回checkoutでは subscription.updated と
+    invoice.paid がほぼ同時に発行される。staleで早期returnすると、イベントは
+    stripe_events にclaim済みのためリトライは duplicate になり、**報酬が恒久に作られない**。
+    どちらも冪等（invoice unique・dedupe key）なので、順序に依らず実行してよい。
+    staleが守るのは profiles の投影だけにする。
+  */
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
+    await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
   }
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "paid") {
+    await recordCommissionForInvoice(database, {
+      referredUserId: target.id,
+      stripeInvoiceId: value.invoice.id,
+      amountPaid: value.invoice.amountPaid,
+      paidAtSec: value.invoice.paidAtSec,
+    });
+  }
+  // 紹介ユーザーの解約で報酬期間を終了する（再契約でも再開しない・invite_cp.md §7）。
+  if (projection.status === "canceled") {
+    await terminateAttributionForReferredUser(
+      database,
+      target.id,
+      new Date(projection.eventCreated * 1000).toISOString(),
+    );
+  }
+
+  if (stale) return "stale";
 
   await database.query(
     `update profiles
@@ -480,26 +561,5 @@ export async function applyPreparedStripeEvent(
   );
 
   await applyPlanTransition(database, target, projection.plan);
-
-  if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
-    await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
-  }
-  // 招待プログラム（T-M8-174）: 支払成功が報酬のSource of Truth（invite_cp.md §6）。
-  if (value.kind === "invoice_sync" && value.invoice.paymentState === "paid") {
-    await recordCommissionForInvoice(database, {
-      referredUserId: target.id,
-      stripeInvoiceId: value.invoice.id,
-      amountPaid: value.invoice.amountPaid,
-      paidAtSec: value.invoice.paidAtSec,
-    });
-  }
-  // 紹介ユーザーの解約で報酬期間を終了する（再契約でも再開しない・invite_cp.md §7）。
-  if (projection.status === "canceled") {
-    await terminateAttributionForReferredUser(
-      database,
-      target.id,
-      new Date(projection.eventCreated * 1000).toISOString(),
-    );
-  }
   return "updated";
 }

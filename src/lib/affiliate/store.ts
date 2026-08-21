@@ -46,7 +46,7 @@ export async function ensureAffiliateAccount(
     const inserted = await db.query<AffiliateAccount>(
       `insert into affiliate_accounts (user_id, code)
        values ($1, $2)
-       on conflict (code) do nothing
+       on conflict do nothing
        returning id, user_id, code, status`,
       [userId, generateCode()],
     );
@@ -95,13 +95,17 @@ export async function terminateAttributionForReferredUser(
   referredUserId: string,
   endedAtIso: string,
 ): Promise<void> {
+  // **報酬期間が始まっていない（一度も課金していない）解約では終了しない**（レビュー修正）。
+  // Trial中の解約で恒久終了すると、後日戻ってきて課金しても報酬が永久にゼロになる。
+  // 仕様（invite_cp.md §5/§7）の「解約で終了・再開しない」は初回課金後の話。
   await db.query(
     `update affiliate_attributions
         set commission_ends_at = least(coalesce(commission_ends_at, $2::timestamptz), $2::timestamptz),
             commission_terminated_reason = 'subscription_cancelled',
             updated_at = now()
       where referred_user_id = $1
-        and commission_terminated_reason is null`,
+        and commission_terminated_reason is null
+        and commission_started_at is not null`,
     [referredUserId, endedAtIso],
   );
 }
@@ -202,19 +206,113 @@ export async function recordCommissionForInvoice(
   return (inserted.rowCount ?? 0) > 0 ? "created" : "skipped";
 }
 
-/** Refund: 該当invoiceの報酬を取り消す（支払済みは触らず運営者が個別調整・invite_cp.md §6）。 */
-export async function reverseCommissionForInvoice(
+/**
+ * 未払い（created）のPayoutの金額を、束ねたCommissionの現在値から引き直す（レビュー修正）。
+ * Refundの取消・減額でPayoutの表示額と実態が乖離すると**運営者が過払いする**ため、
+ * 取消時と支払記録時（markPayoutPaid）の両方で呼ぶ。手取りが0以下になったらPayoutを取り消す。
+ */
+export async function recalcCreatedPayout(db: AffiliateDb, payoutId: string): Promise<void> {
+  const payout = await db.query<{ id: string; fee_amount: number }>(
+    `select id, fee_amount from affiliate_payouts
+      where id = $1 and status = 'created'
+      for update`,
+    [payoutId],
+  );
+  if (!payout.rows[0]) return;
+  const total = await db.query<{ n: string }>(
+    `select coalesce(sum(commission_amount), 0)::text as n
+       from affiliate_commissions
+      where payout_id = $1 and status = 'payable'`,
+    [payoutId],
+  );
+  const gross = Number(total.rows[0]?.n ?? "0");
+  if (gross <= payout.rows[0].fee_amount) {
+    // 手数料を下回った振込は成立しない。Payoutを取消し、残りは翌月の締めへ戻す。
+    await db.query(
+      `update affiliate_payouts set status = 'canceled', updated_at = now() where id = $1`,
+      [payoutId],
+    );
+    await db.query(
+      `update affiliate_commissions set payout_id = null
+        where payout_id = $1 and status = 'payable'`,
+      [payoutId],
+    );
+    return;
+  }
+  await db.query(
+    `update affiliate_payouts
+        set gross_amount = $2, net_amount = $2 - fee_amount, updated_at = now()
+      where id = $1`,
+    [payoutId, gross],
+  );
+}
+
+export interface RefundAdjustResult {
+  /** 全額取消した件数。 */
+  reversed: number;
+  /** 部分返金で減額した件数。 */
+  reduced: number;
+  /** 支払済みのため触らなかった件数（運営者の個別調整が必要・呼び出し側が記録する）。 */
+  paidUntouched: number;
+}
+
+/**
+ * Refund: 該当invoiceの報酬を取消・減額する（invite_cp.md §6）。
+ * - 全額返金（または返金額が支払額以上）→ `reversed`
+ * - 部分返金 → 実支払残額×snapshot率で減額（率は変えない）
+ * - 支払済み（paid）は触らず件数だけ返す（呼び出し側がSentryへ記録する・原則1）
+ * - 未払いPayoutに束ねられていた場合はPayout金額を引き直す（過払い防止）
+ */
+export async function adjustCommissionForInvoiceRefund(
   db: AffiliateDb,
   stripeInvoiceId: string,
-): Promise<number> {
-  const updated = await db.query(
-    `update affiliate_commissions
-        set status = 'reversed', payout_id = null
+  refund: { amountRefunded: number; fullyRefunded: boolean },
+): Promise<RefundAdjustResult> {
+  const rows = await db.query<{
+    id: string;
+    status: string;
+    eligible_amount: number;
+    commission_rate_bps: number;
+    payout_id: string | null;
+  }>(
+    `select id, status, eligible_amount, commission_rate_bps, payout_id
+       from affiliate_commissions
       where stripe_invoice_id = $1
-        and status in ('pending', 'payable', 'held')`,
+      for update`,
     [stripeInvoiceId],
   );
-  return updated.rowCount ?? 0;
+  const result: RefundAdjustResult = { reversed: 0, reduced: 0, paidUntouched: 0 };
+  const payoutIds = new Set<string>();
+  for (const row of rows.rows) {
+    if (row.status === "paid") {
+      result.paidUntouched += 1;
+      continue;
+    }
+    if (row.status === "reversed") continue;
+    if (row.payout_id) payoutIds.add(row.payout_id);
+    const fullyRefunded =
+      refund.fullyRefunded || refund.amountRefunded >= row.eligible_amount;
+    if (fullyRefunded) {
+      await db.query(
+        `update affiliate_commissions set status = 'reversed', payout_id = null where id = $1`,
+        [row.id],
+      );
+      result.reversed += 1;
+    } else {
+      const remaining = row.eligible_amount - refund.amountRefunded;
+      await db.query(
+        `update affiliate_commissions
+            set eligible_amount = $2, commission_amount = $3
+          where id = $1`,
+        [row.id, remaining, commissionAmount(remaining, row.commission_rate_bps)],
+      );
+      result.reduced += 1;
+    }
+  }
+  for (const payoutId of payoutIds) {
+    await recalcCreatedPayout(db, payoutId);
+  }
+  return result;
 }
 
 /** 確認期間を過ぎた pending を payable へ（tickが1日1回呼ぶ）。 */

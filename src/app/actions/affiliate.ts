@@ -14,19 +14,29 @@ import { parseUserInput } from "@/lib/validation/user-input";
  * 口座番号は AES-256-GCM で暗号化して保存し、画面へは末尾4桁だけ返す（要決定D-33）。
  */
 
-const bankAccountSchema = z.object({
-  account_holder_name: z
+/**
+ * 制御文字（ANSIエスケープ等）を拒否する。運営者は振込時にこの値をターミナルへ表示する
+ * （scripts/affiliate-payouts.mjs）ため、制御文字を許すと表示金額の偽装に使われ得る（レビュー修正）。
+ */
+const printable = (label: string) =>
+  z
     .string()
     .trim()
-    .min(1, "口座名義を入力してください。")
-    .max(100, "口座名義は100文字以内で入力してください。"),
+    .min(1, `${label}を入力してください。`)
+    .max(100, `${label}は100文字以内で入力してください。`)
+    .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), {
+      message: `${label}に使えない文字が含まれています。`,
+    });
+
+const bankAccountSchema = z.object({
+  account_holder_name: printable("口座名義"),
   account_number: z
     .string()
     .trim()
     .regex(/^\d{4,8}$/, "口座番号は4〜8桁の数字で入力してください。"),
   account_type: z.enum(["ordinary", "checking"]),
-  bank_name: z.string().trim().min(1, "銀行名を入力してください。").max(100),
-  branch_name: z.string().trim().min(1, "支店名を入力してください。").max(100),
+  bank_name: printable("銀行名"),
+  branch_name: printable("支店名"),
 });
 
 export async function saveAffiliatePayoutAccount(input: unknown): Promise<BaseResult> {
