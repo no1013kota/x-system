@@ -2,7 +2,10 @@ import "server-only";
 
 import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { env } from "../env";
-import { resolveActiveXAccountForUser } from "../x/account-actions-server";import type { PromptTemplateKind } from "./gen-prompts";
+import { AppError } from "../observability/errors";
+import { resolveActiveXAccountForUser } from "../x/account-actions-server";
+
+import type { PromptTemplateKind } from "./gen-prompts";
 import {
   applyResetPromptTemplate,
   applyUpdatePromptTemplate,
@@ -48,6 +51,8 @@ export async function listPromptTemplatesForUser(userId: string): Promise<Prompt
 export async function updatePromptTemplateForUser(input: {
   userId: string;
   kind: PromptTemplateKind;
+  /** 画面が表示していたアカウント。activeと不一致なら拒否（別アカウントへの誤保存防止・T-M8-196）。 */
+  expectedXAccountId: string;
   content: string;
   expectedUpdatedAt: string | null;
 }): Promise<PromptTemplateView> {
@@ -56,6 +61,9 @@ export async function updatePromptTemplateForUser(input: {
     planForUser(input.userId),
   ]);
   if (!xAccountId) throw new NoActiveAccountError();
+  if (xAccountId !== input.expectedXAccountId) {
+    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
+  }
   return runInPooledTx((tx) =>
     applyUpdatePromptTemplate(tx, {
       xAccountId,
@@ -71,12 +79,17 @@ export async function updatePromptTemplateForUser(input: {
 export async function resetPromptTemplateForUser(input: {
   userId: string;
   kind: PromptTemplateKind;
+  /** 画面が表示していたアカウント。activeと不一致なら拒否（別アカウントの削除防止・T-M8-196）。 */
+  expectedXAccountId: string;
 }): Promise<PromptTemplateView> {
   const [xAccountId, plan] = await Promise.all([
     resolveActiveXAccountForUser(input.userId),
     planForUser(input.userId),
   ]);
   if (!xAccountId) throw new NoActiveAccountError();
+  if (xAccountId !== input.expectedXAccountId) {
+    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
+  }
   return runInPooledTx((tx) =>
     applyResetPromptTemplate(tx, {
       xAccountId,

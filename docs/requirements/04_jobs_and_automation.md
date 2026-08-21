@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.48 |
+| バージョン | v1.49 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -13,7 +13,7 @@
 - すべてのjobは「1 job = 1 worker Function呼び出し」でdispatchする。worker（`POST /api/jobs/run`、`CRON_SECRET`認証）はjob IDを受け取り、認証・受領後すぐ202を返して本処理を`after()`で実行する。dispatch呼び出しは202受領までの軽量HTTPで、workerの処理完了を待たない。
 - dispatch経路は3つ。(1) 手動操作: Server Action/API Routeがjob作成後、`after()`からworkerを呼ぶ。(2) 定時: `scheduler_tick`が到来スロットをenqueueした直後に各jobをdispatchする。(3) 子job: 親jobのworkerが子job（`parent_job_id`で紐付く画像生成・投稿実行）を本処理中に`queued`で作成し、**親jobがsucceededへ確定した直後に**、queuedの子jobをdispatchする。子は同一Xアカウント直列化（下記）により親running中はleaseできないため、作成直後ではなく親の成功確定後にdispatchする（dispatch失敗はqueuedのまま`scheduler_tick`が回収）。
 - `scheduler_tick`は5分間隔（毎時00・05・…・55分）で起動する。**すべての起動が最初にenqueueクエリ（直前10分以内の未処理slotが対象）を実行する**。enqueueは`schedule_run_key`と`last_run_at`で冪等のため毎起動実行しても安全であり、定刻起動がlaunchd再試行込みで全滅しても、5分後・10分後のtickが§7.2の期限（+10分）内にenqueue・dispatchできる。初期はlaunchd、移行後はVercel Cron（`*/5`）から同じrouteを呼ぶ。
-- `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを`scheduled_for`昇順→`created_at`昇順で1起動最大50件dispatchする。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) 通知メール・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
+- `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを1起動最大50件dispatchする。**選抜はユーザー間で公平**（T-M8-196）: ユーザーごとに`scheduled_for`昇順→`created_at`昇順で順位を振り、「各ユーザーの1件目→2件目→…」の順で取る——素の時刻順だと1ユーザーの滞留が50枠を独占し、他ユーザーの予約投稿・毎朝の分析が数時間選ばれない。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) 通知メール・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
 - 同一Xアカウントのjobと、同一userの`post_publish`は同時実行しない。workerはlease取得時にこの制約を検証し、取得できなければ何もせず終了する（jobはqueuedに残り、後続のdispatch・回収が拾う）。
 - すべての外部API呼び出し前に契約、キー、X連携、利用枠を再検証する。
 - `FEATURE_QUOTE_POST_ENABLED=false`の間は**引用URLが必須のパターン**（`post_patterns.requires_quote_url`。既定では引用ポスト）のjobを実行しない。既存のqueued jobも外部API・利用枠を消費する前に`feature_disabled`でcanceledにする。判定は**ジョブに凍結した`pattern_spec`**で行う（T-M8-129 U5。旧enum `p5` は撤去した。利用者が作った引用型も同じ扱いになる）。
@@ -308,12 +308,15 @@ flowchart TD
 | v1.46 | 2026-08-22 | news_fetchを6分野（ai/web3/sns/investment/love/beauty）へ拡大（T-M8-189・月$260〜540） |
 | v1.47 | 2026-08-22 | news_fetchを6並列1巡・maxDuration300秒へ。cleanupの500件超削除の飢餓を修正（T-M8-192・レビュー指摘） |
 | v1.48 | 2026-08-22 | news_fetchを9〜21時の3時間おき（1日5回）へ変更（T-M8-195・運営者指示） |
+| v1.49 | 2026-08-22 | 複数アカウント総点検の修正（T-M8-196）: dispatchのユーザー間公平化・日時予約の永久沈黙と遅延投稿の解消・実行前提をジョブ対象アカウント基準へ・job予算のTOCTOU直列化 |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 
 `scheduler_tick` は due slotのenqueueの直後に、**期限が来た日時予約の下書き**を投稿へ流す（`enqueueDueScheduledDrafts`）。`schedule_slots` が「投稿を生成する」トリガーである一方、こちらは**既にある下書きを投稿する**。対象は `status = 'draft'` かつ `scheduled_at <= now()` で、1tickあたり100件まで。投稿そのものは既存の `post_publish` job に委ね、**自動投稿同意・日次上限・阻害警告の判定と `last_post_error` への記録はhandlerが持つ**（判定を2箇所に置くと片方だけ直して食い違う）。冪等keyも `autoPostPublishKey`（draft単位）を共用するため、手動投稿・スロット由来の連鎖と同時に進んでも二重投稿にならない。
 
-**期限到来時に `scheduled_at` は消さない。** 投稿が終われば `status` が `posted` になり対象条件から外れる。ここでnullへ戻すと失敗時に「予約した記録」が消えて原因を辿れなくなる。対象Xアカウントが active でない予約は流さず `skippedInactive` として**0件とは別の値で数える**（原則1）。
+**期限到来時に `scheduled_at` は原則消さない。** 投稿が終われば `status` が `posted` になり対象条件から外れる。対象Xアカウントが active でない予約は流さず `skippedInactive` として**0件とは別の値で数える**（原則1）。ただし次の2つは**予約を解除し、`last_post_error`（`scheduled_publish_expired`）へ理由を残して利用者へ通知する**（T-M8-196。放置すると毎tick選ばれ続けるのに何も起きない・黙って壊れる）:
+- **60分超の遅れ**（`SCHEDULED_DRAFT_MAX_LATE_MINUTES`）: 失効中に溜まった予約が再連携の瞬間に何日遅れでもまとめて投稿されるのを防ぐ。遅れた投稿は利用者が意図した「その時刻の投稿」ではない。
+- **autoジョブのkeyが終端jobに占有されている**（`ensureAutoPostPublishJob` が `spent` を返す）: `request_key` は全statusにまたがる恒久uniqueのため、過去のautoジョブが同意撤回・日次上限で終端すると**その下書きの自動投稿は二度と作れない**（永久沈黙）。
 
 ### 招待報酬の確定と月次Payout（T-M8-174）
 

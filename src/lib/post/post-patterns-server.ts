@@ -1,5 +1,7 @@
 import "server-only";
 
+import { AppError } from "../observability/errors";
+
 import { pooledQueryable, runInPooledTx } from "../db/pool";
 import { assertPromptEditablePlan } from "../prompts/prompt-templates";
 import { resolveActiveXAccountForUser } from "../x/account-actions-server";
@@ -97,9 +99,12 @@ export async function updatePatternPromptForUser(input: {
 
 export async function createPatternForUser(input: {
   userId: string;
+  /** 画面が表示していたアカウント。activeと不一致なら拒否（別アカウントへの誤作成防止・T-M8-196）。 */
+  expectedXAccountId: string;
   pattern: PatternInput;
 }): Promise<CreatedPattern> {
   const { xAccountId, plan } = await requireAccount(input.userId);
+  assertAccountMatch(xAccountId, input.expectedXAccountId);
   assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) => applyCreatePattern(tx, { ...input.pattern, xAccountId }));
 }
@@ -125,8 +130,20 @@ export async function deletePatternForUser(input: {
   return runInPooledTx((tx) => applyDeletePattern(tx, { xAccountId, patternId: input.patternId }));
 }
 
-export async function restoreDefaultPatternsForUser(userId: string): Promise<number> {
+export async function restoreDefaultPatternsForUser(
+  userId: string,
+  /** 画面が表示していたアカウント（T-M8-196）。 */
+  expectedXAccountId: string,
+): Promise<number> {
   const { xAccountId, plan } = await requireAccount(userId);
+  assertAccountMatch(xAccountId, expectedXAccountId);
   assertPromptEditablePlan(plan ?? "");
   return runInPooledTx((tx) => applyRestoreDefaultPatterns(tx, xAccountId));
+}
+
+/** 別タブでの切替後の誤書き込み防止（生成jobの assertActiveAccount と同じ理由・reason）。 */
+function assertAccountMatch(activeId: string, expectedId: string): void {
+  if (activeId !== expectedId) {
+    throw new AppError("job_conflict", { details: { reason: "x_account_mismatch" } });
+  }
 }

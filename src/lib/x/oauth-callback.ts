@@ -152,7 +152,8 @@ export async function handleXOAuthCallback(
 /**
  * 連携可否の認可（要件05 §4.3・要件03 §6, T-M2-14）。callbackでも契約状態とplan上限を再確認し、
  * start〜callback間のplan変更や並行連携による上限超過を防ぐ。同一 (user_id, x_user_id) の再連携は
- * 既存rowの置換なので上限対象外。profiles を FOR UPDATE で読み、同一transaction内のinsertと直列化する
+ * activeな既存rowの置換だけが上限対象外（disabled/expiredの再activeは枠を使うので数える・T-M8-196）。
+ * profiles を FOR UPDATE で読み、同一transaction内のinsertと直列化する
  * （並行callbackが同時に上限を通過するのを防ぐ）。期待auth_typeはsealed stateで既に束縛済み。
  */
 export async function assertCanLinkXAccount(
@@ -168,14 +169,20 @@ export async function assertCanLinkXAccount(
   if (!prof) throw new AppError("not_found");
   requireExecutableSubscription(prof.subscription_status);
 
-  const isRelink =
-    (
-      await client.query(
-        "select 1 from x_accounts where user_id = $1 and x_user_id = $2",
-        [params.userId, params.xUserId],
-      )
-    ).rows.length > 0;
-  if (isRelink) return; // 別のX userでない再連携はtokenを置換するだけ→上限対象外
+  /*
+    再連携の判定は**activeな行への再連携だけ**を上限対象外にする（T-M8-196・レビュー修正）。
+    disabled（切断済み）・expired の行も「既存rowあり」で素通りさせると、
+    連携→切断→別アカウント連携→切断済みを再連携、の通常操作でプラン上限
+    （standard/premium=1）を恒久的に突破できた（実DBで再現済み）。
+    disabled/expired → active は実質「枠を1つ新たに使う」ので、新規と同じく数える。
+  */
+  const existing = (
+    await client.query<{ status: string }>(
+      "select status from x_accounts where user_id = $1 and x_user_id = $2",
+      [params.userId, params.xUserId],
+    )
+  ).rows[0];
+  if (existing?.status === "active") return; // activeな行のtoken置換だけが上限対象外
 
   const active = (
     await client.query<{ n: number }>(

@@ -254,6 +254,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <XAccountRequiredNotice description="投稿を生成するには、まずXアカウントを連携してください。" />
       ) : tab === "create" && createData ? (
         <CreatePostForm
+          key={activeXAccountId}
           imageProviders={createData.imageProviders}
           initialJob={createData.initialJob}
           initialNowMs={createData.nowMs}

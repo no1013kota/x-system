@@ -14,7 +14,15 @@ const TEXT_CAPABLE_PROVIDERS = ["anthropic", "openai", "google"] as const;
  */
 export async function gatherExecutionPrereqInputs(
   userId: string,
-  opts: { imageRequested?: boolean } = {},
+  opts: {
+    imageRequested?: boolean;
+    /**
+     * 判定対象のXアカウント（T-M8-196）。**ジョブ実行時は必ずジョブのx_account_idを渡す**——
+     * 省略時のactive基準だと、別アカウントを表示中（設定中・失効中）なだけで
+     * 健全なアカウントのスケジュール生成が terminally fail していた（実DBで再現）。
+     */
+    xAccountId?: string;
+  } = {},
 ): Promise<ExecutionPrereqInput | null> {
   const pool = getPool();
   const prof = (
@@ -43,12 +51,13 @@ export async function gatherExecutionPrereqInputs(
 
   let hasActiveXAccount = false;
   let baseMdVersion = 0;
-  if (prof.active_x_account_id) {
+  const targetAccountId = opts.xAccountId ?? prof.active_x_account_id;
+  if (targetAccountId) {
     const acct = (
       await pool.query<{ base_md_version: number }>(
         `select base_md_version from x_accounts
           where id = $1 and user_id = $2 and status = 'active'`,
-        [prof.active_x_account_id, userId],
+        [targetAccountId, userId],
       )
     ).rows[0];
     if (acct) {

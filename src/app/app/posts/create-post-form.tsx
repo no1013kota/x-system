@@ -242,7 +242,7 @@ export function CreatePostForm({
 function addPattern() {
     if (!newPattern) return;
     void (async () => {
-      const res = await createPatternAction(toPatternPayload(newPattern, null));
+      const res = await createPatternAction({ x_account_id: xAccountId, ...toPatternPayload(newPattern, null) });
       if (res.status === "success" && res.pattern) {
         const added = res.pattern;
         setOptions((prev) => [...prev, added]);
@@ -318,6 +318,7 @@ function removePattern(target: PatternOption) {
           key === "image"
             ? await updatePromptTemplateAction({
                 kind: "image",
+                x_account_id: xAccountId,
                 content,
                 expected_updated_at: expected,
               })

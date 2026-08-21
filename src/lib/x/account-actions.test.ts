@@ -88,9 +88,12 @@ describe("listXAccountsForUser", () => {
 
 describe("refreshXAccountStatus", () => {
   it("sets active and applies /me fields when /me succeeds", async () => {
-    const { db, writes } = makeDb((sql) =>
-      OWNED.test(sql) ? [{ status: "active", auth_type: "managed", plan: "premium" }] : [],
-    );
+    const { db, writes } = makeDb((sql) => {
+      if (OWNED.test(sql)) return [{ status: "active", auth_type: "managed", plan: "premium" }];
+      // applyMe の UPDATE は「更新できた」1行を返す（disabledガード・T-M8-196——0行だと切断済み扱いになる）。
+      if (/update x_accounts\s+set handle/.test(sql)) return [{}];
+      return [];
+    });
     const res = await refreshXAccountStatus("a1", "u1", {
       db,
       getAccessToken: async () => "tok",

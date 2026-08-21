@@ -47,11 +47,14 @@ export function PatternManager({
   initialPatterns,
   initialPrompts,
   systemDefaultPrompts,
+  xAccountId,
 }: {
   initialPatterns: PatternOption[];
   initialPrompts: Record<string, PatternPromptView>;
   /** 既定パターンのシステム既定本文（パターンID → 本文）。「既定に戻す」の判定に使う。 */
   systemDefaultPrompts: Record<string, string>;
+  /** 表示中のXアカウント。作成・復元の宛先ズレ防止に送る（T-M8-196）。 */
+  xAccountId: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -129,7 +132,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
   function create() {
     if (!creating) return;
     void (async () => {
-      const res = await run(() => createPatternAction(toPatternPayload(creating, null)));
+      const res = await run(() => createPatternAction({ x_account_id: xAccountId, ...toPatternPayload(creating, null) }));
     if (res.status === "success" && res.pattern) {
         const added = res.pattern;
         setPatterns((prev) => [...prev, added]);
@@ -172,7 +175,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
 
   function restoreDefaults() {
     void (async () => {
-      const res = await run(() => restoreDefaultPatternsAction());
+      const res = await run(() => restoreDefaultPatternsAction({ x_account_id: xAccountId }));
       if (res.status === "success") {
         const n = res.restored ?? 0;
         toast.show({

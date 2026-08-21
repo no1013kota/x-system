@@ -425,6 +425,8 @@ let promptTemplates: PromptTemplateView[] = [];
                 baseMdVersion={account.base_md_version}
                 initialDifference={initialDifference}
                 initialSettings={initialSettings}
+                // アカウント切替でstateを捨てる（前アカウントの内容を新アカウントへ保存させない・T-M8-196）。
+                key={account.id}
                 xAccountId={account.id}
               />
               {/* 参考ソースは学習の反映先（アカウント.md）ができてから出す（T-M8-103）。 */}
@@ -479,20 +481,26 @@ let promptTemplates: PromptTemplateView[] = [];
                 initialContent={account.base_md}
                 initialHistory={baseMdHistory}
                 initialVersion={account.base_md_version}
+                // アカウント切替でstateを捨てる（実ブラウザ再現: 切替後もtextareaが前アカウントの本文のまま
+                // 保存でき、別アカウントのアカウント.mdを上書きできた・T-M8-196）。
+                key={account.id}
                 learningRunning={baseMdLearningRunning}
                 xAccountId={account.id}
               />
             ) : promptSection === "image-prompt" ? (
               <PromptTemplatesEditor
                 initialTemplates={promptTemplates}
-                key={promptSection}
+                // アカウント切替でstateを確実に捨てる（前アカウントの本文を持ち越さない・T-M8-196）。
+                key={`${promptSection}:${account.id}`}
+                xAccountId={account.id}
               />
             ) : (
               <PatternManager
                 initialPatterns={patterns}
                 initialPrompts={patternPrompts}
-                key={promptSection}
+                key={`${promptSection}:${account.id}`}
                 systemDefaultPrompts={systemDefaultPrompts}
+                xAccountId={account.id}
               />
             )}
           </div>

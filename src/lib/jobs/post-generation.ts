@@ -128,7 +128,7 @@ export interface PostGenerationDeps {
   /** 実行前提の入力収集（server配線は gatherExecutionPrereqInputs）。 */
   gatherPrereqInputs: (
     userId: string,
-    opts: { imageRequested: boolean },
+    opts: { imageRequested: boolean; xAccountId?: string },
   ) => Promise<ExecutionPrereqInput | null>;
   /** 出典URLのSSRF検証（server配線は validateSourceUrlServer）。 */
   validateSource: (url: string) => Promise<boolean>;
@@ -344,8 +344,11 @@ export async function executePostGeneration(
   try {
   // --- stage: validating（前提再検証）---
   await recordStage("validating");
+  // 判定は**ジョブの対象アカウント**基準（T-M8-196）。activeアカウント基準だと、
+  // 別アカウントを設定中・失効中なだけで健全なアカウントの生成が失敗する。
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
     imageRequested: Boolean(job.input.image_enabled),
+    xAccountId: job.x_account_id,
   });
   // throw せず code だけを失敗確定へ回すので、判定だけを共有関数から借りる。
   const prereqError = resolveExecutionPrereqError(prereqInput);

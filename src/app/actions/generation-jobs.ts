@@ -7,9 +7,6 @@ import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
-import {
-  AppError,
-} from "@/lib/observability/errors";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
@@ -29,7 +26,6 @@ import {
   type GenerationJobDeps,
   type GenerationJobView,
 } from "@/lib/jobs/generation-jobs";
-import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { z } from "zod";
 
 /**
@@ -66,10 +62,15 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
   }
 }
 
-/** SC-06 の入力（x_account_id は表示中アカウントをサーバで解決するため受け取らない）。 */
+/**
+ * SC-06 の入力。x_account_id は**表示中アカウントをクライアントが送る**（T-M8-196・レビュー修正）。
+ * サーバ解決だけに頼ると、別タブで切り替えた後に「画面はAなのにBへ生成」が起きる
+ * （通常経路の createGenerationJobAction と同じ assertActiveAccount で不一致を拒否する）。
+ */
 const createDraftFromNewsActionSchema = z.object({
   request_key: z.string().min(1).max(200),
   news_item_id: z.string().uuid(),
+  x_account_id: z.string().uuid(),
   instructions: z.string().max(2000).nullish(),
   image_enabled: z.boolean().optional(),
 });
@@ -81,21 +82,8 @@ export async function createDraftFromNewsAction(input: unknown): Promise<JobIdRe
   }
   const auth = await requireExecutionUserId();
   if (!auth.ok) return auth.result;
-  const activeId = await resolveActiveXAccountForUser(auth.userId);
-  if (!activeId) {
-    return {
-      ...errorResult(
-        new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } }),
-      ),
-      message: "先にXアカウントを連携してください。",
-    };
-  }
   try {
-    const { jobId, deduped } = await createDraftFromNews(
-      auth.userId,
-      { ...parsed.data, x_account_id: activeId },
-      jobDeps,
-    );
+    const { jobId, deduped } = await createDraftFromNews(auth.userId, parsed.data, jobDeps);
     if (!deduped) after(() => dispatchJob(jobId));
     return { jobId, message: "生成を開始しました。", status: "success" };
   } catch (error) {

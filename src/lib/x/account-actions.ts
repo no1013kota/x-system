@@ -120,14 +120,21 @@ async function applyMe(
   db: Queryable,
   xAccountId: string,
   me: Awaited<ReturnType<XMeFetcher>>,
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  /*
+    **disabled（切断済み）は active へ戻さない**（T-M8-196・レビュー修正）。
+    「状態を確認」は外部HTTPを挟んで数秒かかるため、その間に別タブで切断が完了すると、
+    無条件UPDATEではトークンを消したはずのアカウントが active に復活していた。
+    復活は再連携（OAuth）だけが行う。更新0行=切断済みとして扱う。
+  */
+  const { rowCount } = await db.query(
     `update x_accounts
         set handle = $2, name = $3, profile_image_url = $4,
             status = 'active', updated_at = now()
-      where id = $1`,
+      where id = $1 and status <> 'disabled'`,
     [xAccountId, me.username, me.name, me.profileImageUrl],
   );
+  return (rowCount ?? 0) > 0;
 }
 
 export interface RefreshDeps {
@@ -160,15 +167,20 @@ export async function refreshXAccountStatus(
 
   try {
     const me = await deps.fetchMe(token);
-    await applyMe(deps.db, xAccountId, me);
+    const applied = await applyMe(deps.db, xAccountId, me);
+    // 確認中に切断されていたら現在値（disabled）を返す（activeと言って復活させない）。
+    if (!applied) return { status: await readStatus(deps.db, xAccountId) };
     return { status: "active" };
   } catch (error) {
     // 画面の「エラー」バッジの理由を残す列が無いため、記録しないと原因が完全に消える。
     recordUnexpectedError(error, { at: "x-account:refresh-status:me", xAccountId });
-    await deps.db.query(
-      `update x_accounts set status = 'error', updated_at = now() where id = $1`,
+    // disabledはここでも上書きしない（applyMeと同じ競合対策）。
+    const { rowCount } = await deps.db.query(
+      `update x_accounts set status = 'error', updated_at = now()
+        where id = $1 and status <> 'disabled'`,
       [xAccountId],
     );
+    if ((rowCount ?? 0) === 0) return { status: await readStatus(deps.db, xAccountId) };
     return { status: "error" };
   }
 }
@@ -371,10 +383,17 @@ export async function resolveActiveXAccount(
       )
     ).rows[0]?.id ?? null;
   if (candidate !== (current.active_x_account_id ?? null)) {
-    await db.query(`update profiles set active_x_account_id = $2 where id = $1`, [
-      userId,
-      candidate,
-    ]);
+    /*
+      **読んだ時点の値から変わっていない行だけ**更新する（T-M8-196・レビュー修正）。
+      無条件UPDATEだと、読み取り→書き込みの間に利用者が明示的に切り替えた選択を
+      フォールバックが上書きし得る（実DBで再現済み）。競合したら相手の選択が正で、
+      このリクエストは自分が読んだ候補を返すだけにする（次の読込で収束する）。
+    */
+    await db.query(
+      `update profiles set active_x_account_id = $2
+        where id = $1 and active_x_account_id is not distinct from $3`,
+      [userId, candidate, current.active_x_account_id],
+    );
   }
   return candidate;
 }

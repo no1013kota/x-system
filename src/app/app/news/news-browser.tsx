@@ -63,6 +63,7 @@ export function NewsBrowser({
   initialCreatedIds,
   window,
   selected,
+  xAccountId,
 }: {
   page: NewsItemsPage;
   initialError: boolean;
@@ -70,6 +71,8 @@ export function NewsBrowser({
   window: { from: string; to: string } | null;
   /** 選択式ソートの現在値（URL由来）。 */
   selected: { theme: string; impact: string };
+  /** 表示中のXアカウント（未連携ならnull。生成の宛先ズレ防止に送る・T-M8-196）。 */
+  xAccountId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -118,12 +121,25 @@ export function NewsBrowser({
 
   function generate(newsItemId: string) {
     if (created.has(newsItemId) || pending) return;
+    if (!xAccountId) {
+      notify("先にXアカウントを連携してください。", {
+        href: "/app/settings?tab=api-keys",
+        label: "設定を開く",
+      });
+      return;
+    }
     setGeneratingId(newsItemId);
     startTransition(async () => {
-      // 冪等: news_item ごとに固定 request_key（再送で同じjobを返す）。画像は既定OFF。
+      /*
+        冪等キーは**アカウント込み**（T-M8-196）。newsItemIdだけだと、アカウントAで作成後に
+        Bへ切り替えて同じ記事を押したとき既存job（A用）にdedupされ、成功トーストだけ出て
+        Bには何も作られなかった。x_account_id は表示中の値を送り、別タブで切り替え済みなら
+        サーバ側の assertActiveAccount が拒否する。画像は既定OFF。
+      */
       const res = await createDraftFromNewsAction({
-        request_key: `news-draft:${newsItemId}`,
+        request_key: `news-draft:${xAccountId}:${newsItemId}`,
         news_item_id: newsItemId,
+        x_account_id: xAccountId,
       });
       setGeneratingId(null);
       if (res.status === "success") {

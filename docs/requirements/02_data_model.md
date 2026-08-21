@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.52 |
+| バージョン | v1.53 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -394,7 +394,7 @@ RLS: 本人select可。writeはServer only。
 
 PK: (`user_id`, `month`)
 
-Constraints: month形式、各countは0以上。X投稿の上限はpremiumの`normal_posts_count <= 200`、`url_posts_count <= 20`。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
+Constraints: month形式、各countは0以上。X投稿のDB上限は**最大プラン（expert）の月次枠**（`normal_posts_count <= 1000`、`url_posts_count <= 100`。migration `20260822000003`・T-M8-196。プラン別の上限実施はアプリ側ゲートが正で、制約は破損防止の下限——200/20のままだとexpertの投稿がX公開後にcheck違反で壊れた）。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
 
 RLS: 本人select可。writeはServer only。
 
@@ -977,3 +977,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
 | v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
 | v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
+| v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |

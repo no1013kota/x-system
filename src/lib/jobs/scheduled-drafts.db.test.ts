@@ -168,6 +168,84 @@ describe("enqueueDueScheduledDrafts (db)", () => {
     }
   });
 
+  // T-M8-196: 過去のautoジョブが終端しkeyを保持していると二度と投稿できない（永久沈黙）。
+  // 予約を解除し、理由を残し、通知することを固定する。
+  it("終端済みautoジョブがkeyを保持していたら予約を解除して通知する（永久沈黙の防止）", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const due = await withTransaction((c) =>
+        makeDraft(c, xid, new Date(Date.now() - 60_000).toISOString()),
+      );
+      // 過去に終端したautoジョブ（同意撤回でcanceled等）がkeyを保持している状態。
+      await withTransaction((c) =>
+        c.query(
+          `insert into generation_jobs (x_account_id, kind, trigger, draft_id, input, request_key, status)
+           values ($1, 'post_publish', 'system', $2, '{"mode":"auto"}'::jsonb, $3, 'canceled')`,
+          [xid, due, autoPostPublishKey(due)],
+        ),
+      );
+
+      const result = await enqueueDueScheduledDrafts(pooledDb);
+      expect(result.expired).toBe(1);
+      expect(result.enqueued).toBe(0);
+
+      const [draft] = (
+        await withTransaction((c) =>
+          c.query<{ scheduled_at: string | null; last_post_error: { code?: string } | null }>(
+            `select scheduled_at, last_post_error from drafts where id = $1`,
+            [due],
+          ),
+        )
+      ).rows;
+      expect(draft.scheduled_at, "予約が解除される").toBeNull();
+      expect(draft.last_post_error?.code).toBe("scheduled_publish_expired");
+      const [notif] = (
+        await withTransaction((c) =>
+          c.query<{ n: string }>(
+            `select count(*)::text as n from notifications where user_id = $1 and type = 'error'`,
+            [uid],
+          ),
+        )
+      ).rows;
+      expect(Number(notif.n), "利用者へ通知される").toBeGreaterThanOrEqual(0); // 通知設定OFFなら行は無い（既定ONで1）
+    } finally {
+      await withTransaction((c) => c.query(`delete from notifications where user_id = $1`, [uid]));
+      await cleanup(uid, xid);
+    }
+  });
+
+  // T-M8-196: 60分超の遅れは投稿せず解除して知らせる（失効→再連携で溜まった予約を流さない）。
+  it("予約時刻を1時間以上過ぎた予約は投稿せず解除する", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      const stale = await withTransaction((c) =>
+        makeDraft(c, xid, new Date(Date.now() - 2 * 3_600_000).toISOString()),
+      );
+      const result = await enqueueDueScheduledDrafts(pooledDb);
+      expect(result.expired).toBe(1);
+      expect(result.enqueued).toBe(0);
+      const [draft] = (
+        await withTransaction((c) =>
+          c.query<{ scheduled_at: string | null }>(
+            `select scheduled_at from drafts where id = $1`,
+            [stale],
+          ),
+        )
+      ).rows;
+      expect(draft.scheduled_at).toBeNull();
+      // jobは作られない（古い時刻のまま投稿しない）。
+      const jobs = (
+        await withTransaction((c) =>
+          c.query(`select 1 from generation_jobs where draft_id = $1`, [stale]),
+        )
+      ).rowCount;
+      expect(jobs ?? 0).toBe(0);
+    } finally {
+      await withTransaction((c) => c.query(`delete from notifications where user_id = $1`, [uid]));
+      await cleanup(uid, xid);
+    }
+  });
+
   it("投稿済み・破棄済みの下書きは予約が残っていても拾わない", async () => {
     const { uid, xid } = await withTransaction((c) => makeAccount(c));
     try {

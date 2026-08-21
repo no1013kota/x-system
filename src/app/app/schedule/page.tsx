@@ -111,6 +111,7 @@ let drafts: DraftView[] = [];
         <XAccountRequiredNotice description="スケジュールを作成するには、まずXアカウントを連携してください。" />
       ) : (
         <ScheduleManager
+          key={activeXAccountId}
           accountHandle={accountHandle}
           automationConsented={automationConsented}
           imageProviders={imageProviders}

@@ -53,7 +53,9 @@ const patternSchema = z.object({
     .array(z.object({ name: z.string().min(1).max(PATTERN_PLACEHOLDER_NAME_MAX_CHARS) }))
     .max(PATTERN_PLACEHOLDER_MAX),
 });
-const createSchema = patternSchema;
+/** x_account_id は表示中アカウント（別タブ切替後の誤作成防止・T-M8-196）。 */
+const createSchema = patternSchema.extend({ x_account_id: z.string().uuid() });
+const restoreSchema = z.object({ x_account_id: z.string().uuid() });
 const updateSchema = patternSchema.extend({ pattern_id: z.string().uuid() });
 
 type PatternPayload = z.infer<typeof patternSchema>;
@@ -125,6 +127,7 @@ export async function createPatternAction(
   try {
     const pattern = await createPatternForUser({
       userId: auth.userId,
+      expectedXAccountId: parsed.data.x_account_id,
       pattern: toInput(parsed.data),
     });
     return { message: "", pattern, status: "success" };
@@ -172,13 +175,15 @@ export async function deletePatternAction(
 }
 
 /** 既定パターンを復元する。**入れた件数**を返す（0件なら「すべて揃っています」と言える）。 */
-export async function restoreDefaultPatternsAction(): Promise<
-  BaseResult & { restored?: number }
-> {
+export async function restoreDefaultPatternsAction(
+  input: unknown,
+): Promise<BaseResult & { restored?: number }> {
+  const parsed = parseUserInput(restoreSchema, input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
   try {
-    const restored = await restoreDefaultPatternsForUser(auth.userId);
+    const restored = await restoreDefaultPatternsForUser(auth.userId, parsed.data.x_account_id);
     return { message: "", restored, status: "success" };
   } catch (error) {
     return toError(error);

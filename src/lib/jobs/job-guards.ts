@@ -47,6 +47,13 @@ export async function assertActiveAccount(
 
 /** 同時実行中の job が上限に達していないか。 */
 export async function assertJobBudget(tx: Queryable, userId: string): Promise<void> {
+  /*
+    count→insert のTOCTOUを塞ぐ（T-M8-196・実DBで突破を再現）。READ COMMITTEDでは
+    同時リクエストが両方 count=4 を読んで両方insertでき、上限5を超えられた。
+    ユーザー単位のadvisory xact lockで「数える→作る」を直列化する（worker側のlease
+    ロックと同じ流儀。tx終了で自動解放）。
+  */
+  await tx.query(`select pg_advisory_xact_lock(hashtext('job-budget:' || $1::text))`, [userId]);
   const active = (
     await tx.query<{ n: number }>(
       `select count(*)::int as n from generation_jobs gj

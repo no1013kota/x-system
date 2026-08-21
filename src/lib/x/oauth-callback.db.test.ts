@@ -365,6 +365,26 @@ describe("X OAuth callback link (local DB)", () => {
     }
   });
 
+  // T-M8-196: disabled（切断済み）行の再連携は「枠を1つ新たに使う」ので上限を数える。
+  // 連携→切断→別アカウント連携→切断済みを再連携、で上限を突破できた穴の再発防止。
+  it("counts re-activating a disabled account against the plan limit", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
+    try {
+      const first = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a1", "r1"), mkUser("one")));
+      // 切断（disabled化）してから別のアカウントを連携する（active 1件のまま）。
+      await withTransaction((c) =>
+        c.query(`update x_accounts set status = 'disabled' where id = $1`, [first.xAccountId]),
+      );
+      await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a2", "r2"), mkUser("two")));
+      // 切断済みの1件目を再連携すると active 2件になるため、上限1を理由に拒否される。
+      await expect(
+        handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a3", "r3"), mkUser("one"))),
+      ).rejects.toMatchObject({ code: "forbidden" });
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
+
   // T-M2-14 / 要件05 §4.3: callbackでも契約状態を再確認する（start〜callback間の失効を拒否）。
   it("rejects the callback when the subscription cannot execute and saves nothing", async () => {
     const uid = await withTransaction((c) =>

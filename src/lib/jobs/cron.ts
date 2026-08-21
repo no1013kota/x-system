@@ -175,12 +175,28 @@ export async function runSchedulerTick(
   // スロットのenqueueの直後に置くのは、この後の (3) dispatch で同じtick内に投稿まで進むため。
   const scheduledDrafts = await enqueueDueScheduledDrafts(pooledDb);
 
-  // (3) 未dispatchのqueuedジョブを再dispatch
+  /*
+    (3) 未dispatchのqueuedジョブを再dispatch。
+    **選抜はユーザー間で公平にする**（T-M8-196・レビュー修正）: 素の
+    `order by scheduled_for, created_at limit 50` だと、1ユーザーの滞留（例: 失効中に溜まった
+    日時予約）が50枠を独占し、他ユーザーの予約投稿・毎朝の分析が何時間も選ばれない
+    （実DBで再現: 60件滞留で他ユーザーのjobがbatchに一切入らなかった）。
+    ユーザーごとに古い順で番号を振り、「各ユーザーの1件目→2件目→…」の順で50件取る。
+  */
   const rows = await withTransaction((c) =>
     c.query<{ id: string }>(
-      `select id from generation_jobs
-        where status = 'queued' and available_at <= now()
-        order by scheduled_for asc nulls last, created_at asc
+      `select id from (
+         select j.id,
+                row_number() over (
+                  partition by xa.user_id
+                  order by j.scheduled_for asc nulls last, j.created_at asc
+                ) as user_rank,
+                j.scheduled_for, j.created_at
+           from generation_jobs j
+           join x_accounts xa on xa.id = j.x_account_id
+          where j.status = 'queued' and j.available_at <= now()
+       ) ranked
+        order by user_rank asc, scheduled_for asc nulls last, created_at asc
         limit 50`,
     ),
   );

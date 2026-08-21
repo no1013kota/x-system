@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.37 |
-| 更新日 | 2026-08-21 |
+| バージョン | v1.38 |
+| 更新日 | 2026-08-22 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -187,7 +187,7 @@ planが変わったSubscription同期は、profileの課金projection更新と�
 
 planが同一のstatus／期間更新では上記副作用を再実行しない。stale eventは課金projectionと同様にプラン変更副作用もskipする。下書き、投稿履歴、実績、アカウント.mdと履歴、学習source、token／key ciphertext、利用台帳は削除しない。
 
-OAuth再連携で同じ`x_user_id`が返った場合は既存`x_accounts` rowのtoken、`auth_type`、scope、statusを置き換え、アカウント.md・下書き・実績は維持する。別のX userが返った場合は新規アカウントとして扱い、プラン上限を検証する。
+OAuth再連携で同じ`x_user_id`が返った場合は既存`x_accounts` rowのtoken、`auth_type`、scope、statusを置き換え、アカウント.md・下書き・実績は維持する。**上限を数えないのはactiveな行への再連携だけ**（T-M8-196）——disabled（切断済み）・expiredの行を再activeにするのは枠を1つ新たに使うため、新規と同じくプラン上限を検証する（連携→切断→別を連携→切断済みを再連携、で上限を突破できた穴の修正）。別のX userが返った場合は新規アカウントとして扱い、プラン上限を検証する。
 
 ## 7. プレミアム利用枠
 
@@ -329,3 +329,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.35 | 2026-08-21 | 招待プログラム（帰属・報酬・振込とStripe webhookの接点）を追加（T-M8-174） |
 | v1.36 | 2026-08-21 | 招待プログラムのレビュー修正を反映（refundのinvoice解決・stale独立・Payout再計算・claim同一Tx・部分返金の減額・未課金解約の扱い） |
 | v1.37 | 2026-08-21 | 「受取可能」の定義（振込完了で0・締めでは減らさない）と振込オペレーション文書への参照を追加（T-M8-176） |
+| v1.38 | 2026-08-22 | 再連携の上限判定をactive行のみ対象外へ（T-M8-196・disabled再activeは数える） |

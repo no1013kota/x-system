@@ -49,8 +49,11 @@ interface ActionError {
 
 export function PromptTemplatesEditor({
   initialTemplates,
+  xAccountId,
 }: {
   initialTemplates: PromptTemplateView[];
+  /** 表示中のXアカウント。保存・リセットの宛先ズレ防止に送る（T-M8-196）。 */
+  xAccountId: string;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -132,6 +135,7 @@ export function PromptTemplatesEditor({
       const res = await run(() =>
         updatePromptTemplateAction({
           kind: selectedKind,
+          x_account_id: xAccountId,
           content: draft,
           expected_updated_at: current.updatedAt,
         }),
@@ -153,7 +157,9 @@ export function PromptTemplatesEditor({
       return;
     }
     void (async () => {
-      const res = await run(() => resetPromptTemplateAction({ kind: selectedKind }));
+      const res = await run(() =>
+        resetPromptTemplateAction({ kind: selectedKind, x_account_id: xAccountId }),
+      );
       if (res.status === "success" && res.template) {
         applyTemplate(res.template);
         setNote(null);
