@@ -27,8 +27,9 @@ function domProps<T extends object>(props: T & ExtraProps): T {
   return rest as T;
 }
 
+/** 外部リンクか。`//host/...`（プロトコル相対）も外部として扱う。 */
 function isExternalHref(href: string | undefined): boolean {
-  return Boolean(href && /^https?:\/\//i.test(href));
+  return Boolean(href && (/^https?:\/\//i.test(href) || href.startsWith("//")));
 }
 
 const components: Components = {
@@ -63,6 +64,9 @@ const components: Components = {
   },
   a: (raw) => {
     const { className, href, ...props } = domProps(raw);
+    // react-markdown は javascript: などの危険なURLを空文字にする。空のリンクは自己リンクに
+    // なって紛らわしいので、文字だけを出す。
+    if (!href) return <span {...props} />;
     const external = isExternalHref(href);
     return (
       <a
@@ -114,12 +118,16 @@ const components: Components = {
   // インラインコードとコードブロック。`pre > code` は親の pre が枠を持つので塗らない。
   pre: (raw) => {
     const { className, ...props } = domProps(raw);
+    // 横スクロールする枠はキーボードでも送れるようにフォーカス可能にする（WCAG 2.1.1）。
     return (
       <pre
+        aria-label="コード（横にスクロールできます）"
         className={cn(
-          "my-5 overflow-x-auto rounded-card border border-hairline bg-page px-4 py-3.5 text-caption leading-[1.8] [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit",
+          "my-5 overflow-x-auto rounded-card border border-hairline bg-page px-4 py-3.5 text-caption leading-[1.8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit",
           className,
         )}
+        role="region"
+        tabIndex={0}
         {...props}
       />
     );
@@ -137,7 +145,12 @@ const components: Components = {
   table: (raw) => {
     const { className, ...props } = domProps(raw);
     return (
-      <div className="my-5 overflow-x-auto">
+      <div
+        aria-label="表（横にスクロールできます）"
+        className="my-5 overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        role="region"
+        tabIndex={0}
+      >
         <table className={cn("w-full border-collapse text-body", className)} {...props} />
       </div>
     );
@@ -169,10 +182,25 @@ const components: Components = {
       />
     );
   },
-  // GFM のタスクリスト。編集できない表示専用。
-  input: (raw: ComponentProps<"input"> & ExtraProps) => (
-    <input {...domProps(raw)} className="mr-1.5 align-middle" disabled readOnly />
-  ),
+  // GFM のタスクリスト。表示専用なのでチェックボックスは装飾にし、状態は読み上げ用の文字で伝える
+  // （無効化した input には名前が無く、支援技術に何も伝わらない・WCAG 4.1.2）。
+  input: (raw: ComponentProps<"input"> & ExtraProps) => {
+    const { checked, ...props } = domProps(raw);
+    return (
+      <>
+        <span className="sr-only">{checked ? "完了: " : "未完了: "}</span>
+        <input
+          {...props}
+          aria-hidden="true"
+          checked={checked}
+          className="mr-1.5 align-middle"
+          disabled
+          readOnly
+          tabIndex={-1}
+        />
+      </>
+    );
+  },
 };
 
 export function BlogMarkdown({ source }: { source: string }) {

@@ -41,9 +41,18 @@ test("ブログ: 一覧→記事本文（Markdownの描画）→一覧へ戻る"
   await card.getByRole("link", { name: first.title }).click();
   await expect(page).toHaveURL(new RegExp(`/blog/${first.slug}$`));
   await expect(page.getByRole("heading", { level: 1, name: first.title })).toBeVisible();
-  const sectionHeadings = [...first.body.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1].trim());
+  // 本文の `## 見出し` がすべて h2 になる。コードブロック内の `##` は除き、見出し内の
+  // 強調・コード・リンク記法は描画後の文字に合わせて外す。
+  const sectionHeadings = [
+    ...first.body.replace(/```[\s\S]*?```/g, "").matchAll(/^##\s+(.+?)\s*#*\s*$/gm),
+  ].map((m) =>
+    m[1]
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/[*_`~]/g, "")
+      .trim(),
+  );
   for (const heading of sectionHeadings) {
-    await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: heading, exact: true })).toBeVisible();
   }
   expect(await horizontalOverflow(page), "記事本文がページを横に伸ばしている").toBe(0);
   // 記事末尾のCTAと戻り導線。

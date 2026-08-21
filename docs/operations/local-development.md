@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.12 |
-| 更新日 | 2026-08-19 |
+| バージョン | v1.13 |
+| 更新日 | 2026-08-21 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -106,10 +106,12 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm test` | `vitest run`（`*.db.test.ts` はSupabase稼働時のみ実行、未起動なら自動スキップ） |
 | `npm run test:db` | `REQUIRE_DB=1 vitest run`。**Supabase未起動ならテスト前に失敗する**。skipでDBテスト（実測69本）が静かに消えるのを防ぐ（`release:check` が使う） |
 | `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
-| `npm run release:check` | typecheck → lint → **check:doc-dates** → **check:doc-refs** → 依存監査 → **test:db** → build → **check:csp-nonce** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
+| `npm run release:check` | typecheck → lint → **check:doc-dates** → **check:doc-refs** → 依存監査 → **test:db** → build → **check:csp-nonce** → **check:blog-trace** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
 | `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
 | `npm run check:csp-nonce` | **ビルド成果物**（`.next/server/app/**/*.html`）を走査し、CSPのnonceを持てないHTMLが残っていないか確認する。**要 `npm run build`**（成果物が無ければ緑にせず終了コード2で止まる）。静的prerenderされたページはnonceを付けられず、`'strict-dynamic'` の下でscriptが1本も実行されない＝画面が壊れる（2026-08-14に本番の `/signup`・`/reset-password` で発生・T-M8-87）。E2Eは `next dev` で動きprerenderしないため、この不具合は**原理的に検出できない** |
+| `npm run check:blog-trace` | **ビルド成果物**（`.next/server/app/**/*.nft.json`）を走査し、ブログ記事 `blog/*.md` が `/blog`・`/blog/[slug]`・`/api/cron/doctor` の各関数へ同梱されるか確認する。**要 `npm run build`**。記事はリクエスト時にファイルから読むため、`next.config.ts` の `outputFileTracingIncludes` が欠けると**本番だけ「準備中」**になる（ローカルとdevはcwdから読めるので他の層では見えない・T-M8-184） |
+| `npm run blog:check` | ブログ記事の front matter と参照画像の実在を、画面（`/blog`）と同じ判定で検証する。不備は理由つきで一覧し終了コード1。`/blog-publish` が公開前に実行する |
 | `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
 | `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・**定時実行の最終実行**・**確認メールの行き先（ローカルはMailpit）**・**溜まったテストデータ**・**請求額と表示額の一致（Stripe）**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）・**設定がその環境へ反映されているか**（Xへの投稿が `live`／`dry_run` のどちらか・`APP_BASE_URL` と実際の配信元の一致・決済キーの種別。**既定値を持つ設定は欠けても起動するため、画面は全部正常に見えたまま機能だけ止まる**・T-M8-147）・**メール確認が終わっていない登録**（送信元と同じアドレスで登録した場合は受信トレイに届かないことを名指しする・T-M8-147）・**決済の受付（Stripeアカウント）**（`charges_enabled`。**Priceの金額が一致していてもアカウントが未有効化なら申し込みは必ず失敗する**・T-M8-148）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |

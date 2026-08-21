@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import { BlogPostMeta } from "../blog-post-meta";
 
@@ -16,9 +17,12 @@ interface BlogPostPageProps {
   params: Promise<{ slug: string }>;
 }
 
+/** generateMetadata と本文で同じ記事を読むので、1リクエスト内では1回だけ読む。 */
+const getPost = cache((slug: string) => findPublishedPost(slug));
+
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = findPublishedPost(slug);
+  const post = getPost(slug);
   if (!post) return { title: `記事が見つかりません | ${APP_NAME}` };
   return {
     title: `${post.title} | ${APP_NAME}`,
@@ -40,7 +44,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
  */
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params;
-  const post = findPublishedPost(slug);
+  const post = getPost(slug);
   if (!post) notFound();
 
   return (

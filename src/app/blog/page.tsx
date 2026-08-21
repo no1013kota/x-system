@@ -28,7 +28,9 @@ export const metadata: Metadata = {
 export default function BlogIndexPage() {
   const collection = readBlogCollection();
   const posts = publishedPosts(collection.posts);
-  const showDiagnostics = env.APP_ENV !== "production";
+  // 不備の理由を画面に出すのは**開発環境だけ**。staging（preview）は未ログインでも開けるため、
+  // ファイル名や front matter の生の行を訪問者に見せない。staging/本番は doctor と blog:check が担う。
+  const showDiagnostics = env.APP_ENV === "development";
 
   return (
     <PublicPageShell current="/blog">
@@ -49,23 +51,23 @@ export default function BlogIndexPage() {
 
         {showDiagnostics && !collection.directoryExists ? (
           <p
-            className="rounded-card border border-warn-fg/30 bg-warn-bg px-4 py-3 text-body text-warn-fg"
+            className="rounded-card border border-warn-fg/40 bg-warn-bg px-4 py-3 text-body text-ink"
             role="status"
           >
-            記事ディレクトリ <code>blog/</code> が見つかりません（開発・staging のみ表示）。
+            記事ディレクトリ <code>blog/</code> が見つかりません（開発環境のみ表示）。
             デプロイに同梱されていない可能性があります。
           </p>
         ) : null}
         {showDiagnostics && collection.invalid.length > 0 ? (
           <div
-            className="rounded-card border border-warn-fg/30 bg-warn-bg px-4 py-3 text-body text-warn-fg"
+            className="rounded-card border border-warn-fg/40 bg-warn-bg px-4 py-3 text-body text-ink"
             role="status"
           >
             <p className="font-bold">
-              front matter に不備があり公開されていない記事が {collection.invalid.length} 件あります
-              （開発・staging のみ表示。<code>npm run blog:check</code> で同じ内容を確認できます）
+              不備があり公開されていない記事が {collection.invalid.length} 件あります
+              （開発環境のみ表示。<code>npm run blog:check</code> で同じ内容を確認できます）
             </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
+            <ul className="mt-2 list-disc space-y-1 pl-5" role="list">
               {collection.invalid.map(({ file, errors }) => (
                 <li key={file}>
                   <code>{file}</code>: {errors.join(" / ")}
@@ -87,7 +89,7 @@ export default function BlogIndexPage() {
             </p>
           </Card>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-4" role="list">
             {posts.map((post) => {
               const headingId = `post-${post.slug}`;
               return (

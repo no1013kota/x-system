@@ -2251,6 +2251,12 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `node` prop が DOM 属性へ漏れる問題を発見し修正（テストで固定）。初回記事
   `blog/hello-exos-ai-blog.md` を同梱（運営者が編集・削除してよい。E2Eは記事の有無どちらでも緑）。
   実ブラウザ 1440/768/390（一覧・記事・プロンプト集）で横スクロール無し・コンソールエラー無し。
+- レビュー反映（2026-08-21・5観点×反証2名の敵対的レビュー、確定20件・意見割れ6件）: 公開ヘッダーの320px折り返し、
+  タスクリスト／横スクロール枠／現在地表示／フッタのDOM順のa11y、front matter の区切り・引用符・文字数の境界、
+  **本文が参照する画像の実在と代替テキストを不備として検出**、E2Eの見出し照合をコードブロック・記法に耐える形へ、
+  `outputFileTracingIncludes` のキーを `"/blog"`（picomatch の contains 一致で `[slug]` も対象）へ整理し
+  **`npm run check:blog-trace`（release:check）でビルド成果物のトレースに記事が載ることを出荷前に保証**、
+  diagnostics表示は development のみ。要件01 §4・デプロイ手順・CLAUDE.md検証表・blog/README を追記。
 
 ### T-M8-185: ブログの執筆スキル（/blog-write）と投稿スキル（/blog-publish）・運用手順 `done`
 - 参照: CLAUDE.md「スキルの地図」・T-M8-184 の front matter 仕様 / 依存: T-M8-184 / サイズ: S

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.24 |
+| バージョン | v1.25 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -152,6 +152,8 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 
 画面IDを持たない公開補助routeとして`/terms`、`/privacy`、`/legal/commercial-transactions`を用意する。LP、会員登録、プラン選択、アプリ設定のfooterから到達可能にする。
 
+公開コンテンツroute（認証不要・`PublicPageShell` の共通ヘッダ／フッタ）として `/prompt-templates`（プロンプト集・T-M8-173）と `/blog`・`/blog/[slug]`（ブログ・T-M8-184。記事はリポジトリ直下 `blog/*.md` をリクエスト時に読むため、`next.config.ts` の `outputFileTracingIncludes` で同梱する）を用意する。画面仕様は要件06 §1。
+
 認証補助Route Handlerとして`GET /auth/confirm`を用意する。**方式はメールの種類で違う**（T-M8-121）。会員登録の確認メールは`{{ .Token }}`の**6桁コード**で、利用者が画面へ入力した値をServer側で`verifyOtp`する（`type=signup`のリンクは使わない）。パスワード再設定メールは引き続きリンク方式で、`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し`token_hash`と`type=recovery`をServer側で`verifyOtp`する。テンプレートの正本は`supabase/templates/`で、反映は`npm run auth:templates -- --apply`（`doctor`が確認メールに6桁コードが載っているかを見る）。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
 
 ## 5. 認証ガード
@@ -238,3 +240,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.22 | 2026-08-20 | Sentry DSNの設定状態をdoctorで検査する方針を追加（T-M8-162） |
 | v1.23 | 2026-08-20 | エラーlogの保持期間を実態（Sentry 90日固定）へ修正（要決定D-19解決） |
 | v1.24 | 2026-08-20 | プラン再編（T-M8-168）: STRIPE_PRICE_MD_MONTHLY を STRIPE_PRICE_EXPERT_MONTHLY へ置き換え、Price金額を1,480/3,980/14,800円へ |
+| v1.25 | 2026-08-21 | §4 に公開コンテンツroute（/prompt-templates・/blog・/blog/[slug]）を追記（T-M8-184） |

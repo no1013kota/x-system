@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import {
   formatBlogDate,
   isBlogArticleFile,
+  localImagePaths,
+  markdownImages,
   parseBlogPost,
   publishedPosts,
   slugFromFileName,
@@ -73,6 +78,12 @@ describe("parseBlogPost", () => {
     expect(errors).toHaveLength(3);
   });
 
+  it("空の front matter は閉じ不足ではなく必須項目の欠落として報告する", () => {
+    const errors = errorsOf("---\n---\n本文\n");
+    expect(errors).toHaveLength(3);
+    expect(errors.join()).not.toContain("閉じ");
+  });
+
   it("front matter が無い／閉じていない／本文が無い", () => {
     expect(errorsOf("# 見出しだけ\n")).toEqual([
       expect.stringContaining("front matter"),
@@ -126,6 +137,36 @@ describe("parseBlogPost", () => {
     ).toEqual([expect.stringContaining("description が長すぎます")]);
   });
 
+  it("閉じは行全体が --- の行だけ（---- や --- x は閉じにしない）", () => {
+    expect(errorsOf("---\ntitle: a\ndescription: b\ndate: 2026-08-21\n----\n本文\n")).toEqual([
+      expect.stringContaining("閉じ"),
+    ]);
+    const result = parseBlogPost(
+      "--- \ntitle: a\ndescription: b\ndate: 2026-08-21\n  ---  \n本文\n",
+      "spaced",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.post.body).toBe("本文\n");
+  });
+
+  it("tags 全体を引用符で囲んでも引用符がタグに残らない。文字数は絵文字を1文字と数える", () => {
+    const result = parseBlogPost(VALID.replace("tags: [プロンプト, X運用]", 'tags: "[a, b]"'), "q");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.post.tags).toEqual(["a", "b"]);
+    // 絵文字40個＝UTF-16では80単位だが40文字。上限80字に収まる。
+    expect(errorsOf(VALID.replace("Xの投稿プロンプトの作り方", "😀".repeat(40) + "あ".repeat(40)))).toEqual([]);
+    expect(errorsOf(VALID.replace("Xの投稿プロンプトの作り方", "😀".repeat(81)))).toEqual([
+      expect.stringContaining("81文字"),
+    ]);
+  });
+
+  it("画像には代替テキストが要る（コードブロック内は見ない）", () => {
+    expect(errorsOf(VALID + "\n![](/blog-images/a.png)\n")).toEqual([
+      expect.stringContaining("代替テキスト"),
+    ]);
+    expect(errorsOf(VALID + "\n![図](/blog-images/a.png)\n\n```md\n![](/x.png)\n```\n")).toEqual([]);
+  });
+
   it("front matter の直後に --- を含む本文（区切り線）を壊さない", () => {
     const result = parseBlogPost(
       "---\ntitle: a\ndescription: b\ndate: 2026-08-21\n---\n段落1\n\n---\n\n段落2\n",
@@ -172,5 +213,27 @@ describe("publishedPosts", () => {
 describe("formatBlogDate", () => {
   it("YYYY-MM-DD を日本語表記にする", () => {
     expect(formatBlogDate("2026-08-05")).toBe("2026年8月5日");
+  });
+});
+
+describe("画像の参照", () => {
+  it("Markdown 画像を拾い、サイト内パスだけを localImagePaths が返す", () => {
+    const body =
+      '![a](/blog-images/a.png) ![b](https://example.com/b.png "title") ![c](//cdn.example/c.png)\n\n`![x](/inline.png)`\n\n![a](/blog-images/a.png)';
+    expect(markdownImages(body).map((i) => i.src)).toEqual([
+      "/blog-images/a.png",
+      "https://example.com/b.png",
+      "//cdn.example/c.png",
+      "/blog-images/a.png",
+    ]);
+    expect(localImagePaths(body)).toEqual(["/blog-images/a.png"]);
+  });
+});
+
+describe("判定モジュールの前提", () => {
+  it("blog-content.ts は import を持たない（scripts/blog-check.mjs が Node から直接読むため）", () => {
+    const source = readFileSync(fileURLToPath(new URL("./blog-content.ts", import.meta.url)), "utf8");
+    expect(source).not.toMatch(/^import\s/m);
+    expect(source).not.toMatch(/\brequire\(/);
   });
 });

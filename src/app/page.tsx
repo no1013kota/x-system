@@ -441,9 +441,9 @@ export default function Home() {
 
       <footer className="border-t border-hairline bg-page">
         {/*
-          1行目にロゴと©、右端に法務3リンクとXアイコン。幅が狭いと法務リンクが2行目へ折り返し、
-          Xアイコンは1行目のロゴの右端に残す（`order`で見た目だけ入れ替える。アイコンが1つだけ
-          3行目へ落ちて孤立しないように・T-M8-183）。
+          1行目にロゴと©、右側にXアイコンと法務3リンク。幅が狭いと法務リンクだけ2行目へ折り返し、
+          Xアイコンは1行目のロゴの右端に残る（アイコンが1つだけ3行目へ落ちて孤立しない・T-M8-183）。
+          DOM順＝見た目の順（`order` を使わない。フォーカス順と視覚順をずらさない・WCAG 2.4.3）。
         */}
         <div className={`${CONTAINER} flex flex-wrap items-center gap-x-6 gap-y-4 py-8`}>
           <div className="flex items-center gap-2.5">
@@ -459,7 +459,7 @@ export default function Home() {
             aria-label={`運営者のXアカウント @${OPERATOR_X_HANDLE}（新しいタブで開く）`}
             className={cn(
               buttonVariants({ variant: "ghost", size: "icon" }),
-              "ml-auto rounded-full text-ink-2 hover:bg-brand-subtle hover:text-brand sm:order-last sm:ml-0",
+              "ml-auto rounded-full text-ink-2 hover:bg-brand-subtle hover:text-brand",
             )}
             href={OPERATOR_X_URL}
             rel="noopener noreferrer"
@@ -468,7 +468,7 @@ export default function Home() {
             <XLogo className="size-4.5" size={18} />
           </a>
           <LegalFooterLinks
-            className="flex basis-full flex-wrap gap-x-5 gap-y-2 sm:ml-auto sm:basis-auto"
+            className="flex basis-full flex-wrap gap-x-5 gap-y-2 sm:basis-auto"
             linkClassName="inline-flex min-h-6 items-center text-caption text-ink-2 transition-colors hover:text-brand"
           />
         </div>

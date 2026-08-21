@@ -43,10 +43,12 @@ describe("BlogMarkdown", () => {
     expect(html).toContain("<table");
     expect(html).toContain(">列A</th>");
     expect(html).toContain(">2</td>");
-    // 表は横スクロールの枠で包む。
-    expect(html).toMatch(/<div class="[^"]*overflow-x-auto[^"]*"><table/);
+    // 表は横スクロールの枠で包み、キーボードで送れる（tabindex）。
+    expect(html).toMatch(/<div[^>]*class="[^"]*overflow-x-auto[^"]*"[^>]*tabindex="0"[^>]*><table/);
     expect(html).toContain("<del>消す</del>");
-    expect(html).toMatch(/<input[^>]*disabled[^>]*checked/);
+    // タスクリスト: チェックボックスは装飾（aria-hidden）、状態は読み上げ用の文字で伝える。
+    expect(html).toMatch(/<span class="sr-only">完了: <\/span><input[^>]*aria-hidden="true"[^>]*checked/);
+    expect(html).toContain('<span class="sr-only">未完了: </span>');
     expect(html).toMatch(/<a[^>]*href="https:\/\/example\.com\/auto"/);
   });
 
@@ -59,10 +61,18 @@ describe("BlogMarkdown", () => {
     expect(internal).not.toContain("target=");
   });
 
-  it("コードブロックとインラインコード", () => {
+  it("コードブロックとインラインコード（ブロックはキーボードで横スクロールできる）", () => {
     const html = render("文中の `code` と\n\n```ts\nconst a = 1;\n```\n");
     expect(html).toMatch(/<p[^>]*>文中の <code[^>]*>code<\/code>/);
-    expect(html).toMatch(/<pre[^>]*><code[^>]*>const a = 1;\n<\/code><\/pre>/);
+    expect(html).toMatch(/<pre[^>]*tabindex="0"[^>]*><code[^>]*>const a = 1;\n<\/code><\/pre>/);
+  });
+
+  it("危険なURLのリンクは文字だけ、プロトコル相対リンクは外部扱い", () => {
+    const html = render("[悪](javascript:alert(1)) と [相対](//cdn.example/x)");
+    expect(html).not.toMatch(/<a[^>]*href=""/);
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("<span>悪</span>");
+    expect(html).toMatch(/<a[^>]*href="\/\/cdn\.example\/x"[^>]*rel="noopener noreferrer"[^>]*target="_blank"/);
   });
 
   it("画像は遅延読み込み・alt を保持する", () => {

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
+| バージョン | v1.16 |
 | 更新日 | 2026-08-21 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -40,6 +40,8 @@ npm run release:production   # main → production
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
+**ブログ記事（`blog/*.md`）の公開も同じ手順。** 記事のコミット（`/blog-publish`）→ `release:staging` → `release:production`。記事がデプロイへ同梱されることは `release:check` の `check:blog-trace` が出荷前に、デプロイ先では `doctor` の「ブログ記事の同梱」が確認する（T-M8-184）。
+
 すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`-- --account <Xのユーザー名>`（UUIDも可。または `SMOKE_X_ACCOUNT_ID`）を渡すと生成・画像も含め、無ければニュース取得だけを検証する。
 
 ```bash
@@ -73,7 +75,7 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 デプロイ前に、ローカルで次がすべて緑であること。
 
 ```bash
-npm run release:check    # typecheck → lint → check:doc-dates → check:doc-refs → 依存監査 → test:db → build → check:csp-nonce → test:e2e
+npm run release:check    # typecheck → lint → check:doc-dates → check:doc-refs → 依存監査 → test:db → build → check:csp-nonce → check:blog-trace → test:e2e
 ```
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。

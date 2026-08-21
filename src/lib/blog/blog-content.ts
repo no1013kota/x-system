@@ -66,6 +66,11 @@ function isRealDate(value: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+/** 文字数（絵文字などサロゲートペアを1文字と数える。`length` は UTF-16 単位で2になる）。 */
+function charCount(value: string): number {
+  return [...value].length;
+}
+
 /** `"..."` / `'...'` で囲まれていれば外す（YAML風の引用に寛容にする）。 */
 function unquote(value: string): string {
   const trimmed = value.trim();
@@ -81,7 +86,7 @@ function unquote(value: string): string {
 
 /** `[a, b]` または `a, b` をタグ配列にする。空要素は落とし、重複は最初の1つだけ残す。 */
 function parseTags(value: string): string[] {
-  let inner = value.trim();
+  let inner = unquote(value);
   if (inner.startsWith("[") && inner.endsWith("]")) inner = inner.slice(1, -1);
   const tags = inner
     .split(",")
@@ -98,13 +103,14 @@ function splitFrontMatter(
   source: string,
 ): { kind: "none" } | { kind: "unclosed" } | { kind: "ok"; header: string; body: string } {
   const normalized = source.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
-  if (!normalized.startsWith("---\n")) return { kind: "none" };
-  const end = normalized.indexOf("\n---", 4);
-  if (end < 0) return { kind: "unclosed" };
-  const header = normalized.slice(4, end);
-  // 閉じの `---` の行末まで飛ばす。
-  const afterClose = normalized.indexOf("\n", end + 1);
-  const body = afterClose < 0 ? "" : normalized.slice(afterClose + 1);
+  const lines = normalized.split("\n");
+  // 開きも閉じも**行全体が `---`**（前後の空白は許す）。`----` や `--- x` は区切りとみなさない
+  // （黙って読み飛ばさない）。
+  if (lines[0].trim() !== "---") return { kind: "none" };
+  const closeIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  if (closeIndex < 0) return { kind: "unclosed" };
+  const header = lines.slice(1, closeIndex).join("\n");
+  const body = lines.slice(closeIndex + 1).join("\n");
   return { kind: "ok", header, body };
 }
 
@@ -159,15 +165,15 @@ export function parseBlogPost(source: string, slug: string): BlogParseResult {
 
   const title = unquote(fields.get("title") ?? "");
   if (!title) errors.push("title がありません");
-  else if (title.length > MAX_TITLE_LENGTH) {
-    errors.push(`title が長すぎます（${title.length}文字。上限${MAX_TITLE_LENGTH}）`);
+  else if (charCount(title) > MAX_TITLE_LENGTH) {
+    errors.push(`title が長すぎます（${charCount(title)}文字。上限${MAX_TITLE_LENGTH}）`);
   }
 
   const description = unquote(fields.get("description") ?? "");
   if (!description) errors.push("description（一覧に出す要約）がありません");
-  else if (description.length > MAX_DESCRIPTION_LENGTH) {
+  else if (charCount(description) > MAX_DESCRIPTION_LENGTH) {
     errors.push(
-      `description が長すぎます（${description.length}文字。上限${MAX_DESCRIPTION_LENGTH}）`,
+      `description が長すぎます（${charCount(description)}文字。上限${MAX_DESCRIPTION_LENGTH}）`,
     );
   }
 
@@ -197,12 +203,42 @@ export function parseBlogPost(source: string, slug: string): BlogParseResult {
 
   const body = split.body.trim();
   if (!body) errors.push("本文がありません");
+  for (const image of markdownImages(split.body)) {
+    if (!image.alt.trim()) {
+      errors.push(
+        `画像 ${image.src} に代替テキストがありません（![説明](${image.src}) の形で書いてください）`,
+      );
+    }
+  }
 
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
     post: { slug, title, description, date, updated, draft, tags, body: split.body },
   };
+}
+
+/** 本文中の Markdown 画像 `![alt](src)`。コードブロック内は除く。 */
+export function markdownImages(body: string): { alt: string; src: string }[] {
+  const withoutCode = body.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+  return [...withoutCode.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map((m) => ({
+    alt: m[1],
+    src: m[2],
+  }));
+}
+
+/**
+ * 本文が参照する**サイト内の画像パス**（`/blog-images/x.png` のように `/` で始まるもの）。
+ * 置き忘れ・コミット漏れは本番で初めて壊れるので、読み出し側が `public/` の実在を確かめる。
+ */
+export function localImagePaths(body: string): string[] {
+  return [
+    ...new Set(
+      markdownImages(body)
+        .map((image) => image.src)
+        .filter((src) => src.startsWith("/") && !src.startsWith("//")),
+    ),
+  ];
 }
 
 /** 公開する記事だけを新しい順（date 降順・同日はslug昇順で安定）に並べる。 */

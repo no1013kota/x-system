@@ -33,7 +33,8 @@ export function PublicPageShell({
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       <header className="border-b border-hairline bg-surface">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4">
+        {/* 320px では1行に収まらないので折り返しを許す（CTAがリンクを覆わない）。通常は h-16 相当。 */}
+        <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2">
           <div className="flex min-w-0 items-center gap-5">
             <Link className="text-sm font-semibold tracking-wide whitespace-nowrap" href="/">
               {APP_NAME}
@@ -46,7 +47,10 @@ export function PublicPageShell({
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "inline-flex min-h-6 items-center text-body font-medium whitespace-nowrap transition-colors",
-                      active ? "text-brand" : "text-ink-2 hover:text-brand",
+                      // 現在地は色だけに頼らず、太字＋下線でも示す（WCAG 1.4.1）。
+                      active
+                        ? "font-bold text-brand underline decoration-2 underline-offset-[6px]"
+                        : "text-ink-2 hover:text-brand",
                     )}
                     href={href}
                     key={href}

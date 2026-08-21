@@ -545,6 +545,10 @@ export interface BlogFacts {
  * ファイルしか同梱しないので、`next.config.ts` の `outputFileTracingIncludes` が欠けると
  * **本番だけ「準備中」になる**（ローカルと dev は cwd から読めるので全部緑のまま）。
  * HTTPは200を返し画面も整っているため、URLを叩く検査では分からない。
+ *
+ * 見ているのは **doctor 自身の関数に同梱されたファイル**。`/blog` の関数と同じ設定
+ * （`outputFileTracingIncludes`）で同梱されることは、出荷前に `npm run check:blog-trace`
+ * （`release:check`）が3つの route のトレースを突き合わせて保証する。
  */
 export function judgeBlog(input: BlogFacts): Check {
   const name = "ブログ記事の同梱";
@@ -552,9 +556,10 @@ export function judgeBlog(input: BlogFacts): Check {
     return {
       name,
       level: "error",
-      detail: "記事ディレクトリ blog/ がこのデプロイに含まれていません（/blog は「準備中」になります）",
+      detail:
+        "記事ディレクトリ blog/ がこのデプロイに含まれていません（/blog は「準備中」になります。blog/ に .md が1つも無い場合も同じ表示）",
       nextAction:
-        "next.config.ts の outputFileTracingIncludes に blog/**/*.md があるか確認して再デプロイしてください",
+        "npm run build && npm run check:blog-trace で同梱を確認し、next.config.ts の outputFileTracingIncludes を直して再デプロイしてください（記事を置いていないだけなら blog/README.md があれば消えます）",
     };
   }
   const detail = `公開 ${input.published} 件・下書き ${input.drafts} 件`;

@@ -7,14 +7,21 @@
 //
 // 判定は src/lib/blog/blog-content.ts（画面 /blog と同じもの・import を持たないので直接読める）。
 // 不備があれば**理由をすべて**出して exit 1。下書き（draft: true）は不備ではなく「未公開」として数える。
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-const { isBlogArticleFile, parseBlogPost, slugFromFileName } = await import(
+// 判定モジュールは import を持たない前提（blog-content.test.ts が固定）。読めなければ理由を出して止まる。
+const { isBlogArticleFile, localImagePaths, parseBlogPost, slugFromFileName } = await import(
   "../src/lib/blog/blog-content.ts"
-);
+).catch((error) => {
+  console.error(
+    `❌ 判定モジュール src/lib/blog/blog-content.ts を読めませんでした（import を持たない .ts であることが前提です）: ${error.message}`,
+  );
+  process.exit(2);
+});
 
 const BLOG_DIR = resolve("blog");
+const PUBLIC_DIR = resolve("public");
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 function targetFiles() {
@@ -53,10 +60,17 @@ let invalid = 0;
 for (const path of targetFiles()) {
   const name = basename(path);
   const result = parseBlogPost(readFileSync(path, "utf8"), slugFromFileName(name));
-  if (!result.ok) {
+  // 本文が参照するサイト内画像の実在（blog-files.ts の missingLocalImages と同じ規則）。
+  const missingImages = result.ok
+    ? localImagePaths(result.post.body).filter((src) => !existsSync(join(PUBLIC_DIR, decodeURI(src))))
+    : [];
+  if (!result.ok || missingImages.length > 0) {
     invalid += 1;
     console.log(`❌ ${name}`);
-    for (const error of result.errors) console.log(`   - ${error}`);
+    const errors = result.ok
+      ? missingImages.map((src) => `画像 ${src} が public${src} にありません（置き忘れかコミット漏れ）`)
+      : result.errors;
+    for (const error of errors) console.log(`   - ${error}`);
     continue;
   }
   if (result.post.draft) {

@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { findPublishedPost, listPublishedPosts, readBlogCollection } from "./blog-files";
+import {
+  findPublishedPost,
+  listPublishedPosts,
+  missingLocalImages,
+  readBlogCollection,
+} from "./blog-files";
 
 const article = (title: string, date: string, extra = "") =>
   `---\ntitle: ${title}\ndescription: 要約\ndate: ${date}\n${extra}---\n\n## 本文\n\n${title}\n`;
@@ -43,6 +48,23 @@ describe("readBlogCollection", () => {
     expect(findPublishedPost("wip", dir)).toBeNull();
     expect(findPublishedPost("broken", dir)).toBeNull();
     expect(findPublishedPost("nope", dir)).toBeNull();
+  });
+
+  it("本文が参照するサイト内画像が public に無ければ不備として公開しない", () => {
+    const publicDir = join(dir, "public");
+    mkdirSync(join(publicDir, "blog-images"), { recursive: true });
+    writeFileSync(join(publicDir, "blog-images", "ok.png"), "");
+    writeFileSync(
+      join(dir, "with-images.md"),
+      article("画像あり", "2026-08-01") + "\n![ある](/blog-images/ok.png)\n![ない](/blog-images/missing.png)\n![外部](https://example.com/x.png)\n",
+    );
+    const collection = readBlogCollection(dir, publicDir);
+    expect(collection.posts).toEqual([]);
+    expect(collection.invalid).toEqual([
+      { file: "with-images.md", errors: [expect.stringContaining("/blog-images/missing.png")] },
+    ]);
+    expect(missingLocalImages("![a](/blog-images/ok.png)", publicDir)).toEqual([]);
+    expect(findPublishedPost("with-images", dir, publicDir)).toBeNull();
   });
 
   it("ディレクトリが無いときは「記事0件」と区別できる", () => {

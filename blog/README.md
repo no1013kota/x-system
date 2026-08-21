@@ -29,9 +29,10 @@ draft: true
 | `draft` | | `true` のあいだは公開されない（既定は `false`） |
 | `tags` | | `[a, b]` または `a, b` |
 
-- ファイル名は**小文字英数字とハイフン**だけ（URLになる）。
-- 画像は `public/blog-images/` に置き、本文から `/blog-images/ファイル名.png` で参照する。外部の `https://` 画像も表示できる。
+- ファイル名は**小文字英数字とハイフン**だけ（URLになる。先頭はハイフン不可・80文字まで）。`README.md` と `_` 始まりは記事にならない。
+- 画像は `public/blog-images/` に置き、本文から `/blog-images/ファイル名.png` で参照する（**置き忘れは不備として公開されない**）。外部の `https://` 画像も表示できる。画像には必ず説明文（`![説明](…)`）を付ける。
 - 生のHTMLタグは表示されない（安全のため）。
+- `date` は未来の日付でも**すぐ公開される**（予約公開の仕組みは無い。先の日付で出したくなければ `draft: true` のまま置く）。
 
 ## 運用の流れ
 
@@ -40,5 +41,6 @@ draft: true
 3. `/blog-publish <ファイル名>` — 検証（`npm run blog:check`）→ `draft` を外す → コミット
 4. いつもの反映（`npm run release:staging` → `npm run release:production`）
 
-`npm run blog:check` は front matter の不備を**理由つきで**一覧します。不備のある記事は公開側に出ず、
-ローカル／staging の `/blog` では画面上にも理由が表示されます（本番では表示されません）。
+`npm run blog:check` は front matter と画像の不備を**理由つきで**一覧します。不備のある記事は公開側に出ず、
+ローカル（`npm run dev` → `http://127.0.0.1:3000/blog`）では画面上にも理由が表示されます（staging・本番では表示されず、
+代わりに `doctor` の「ブログ記事の同梱」が警告します）。**不備を残したままだとCI（`npm test` の `blog-articles.test.ts`）が止まります。**
