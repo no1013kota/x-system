@@ -54,7 +54,8 @@ export default async function InvitePage() {
     : 1;
 
   return (
-    <div className="space-y-6">
+    // 器は他のapp画面と同一（要件06 §2・T-M8-179。素のdivだと幅と余白が揃わない）。
+    <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
         <h1 className={pageTitleClassName}>友達招待</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -306,6 +307,6 @@ export default async function InvitePage() {
           </div>
         )}
       </Card>
-    </div>
+    </main>
   );
 }
