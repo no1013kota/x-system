@@ -2252,13 +2252,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
   `blog/hello-exos-ai-blog.md` を同梱（運営者が編集・削除してよい。E2Eは記事の有無どちらでも緑）。
   実ブラウザ 1440/768/390（一覧・記事・プロンプト集）で横スクロール無し・コンソールエラー無し。
 
-### T-M8-185: ブログの執筆スキル（/blog-write）と投稿スキル（/blog-publish）・運用手順 `todo`
+### T-M8-185: ブログの執筆スキル（/blog-write）と投稿スキル（/blog-publish）・運用手順 `done`
 - 参照: CLAUDE.md「スキルの地図」・T-M8-184 の front matter 仕様 / 依存: T-M8-184 / サイズ: S
 - 完了条件:
   - `/blog-write <テーマ or 参考URL>` が、構造化され・テーマを深く掘り下げ・新しくユニークで有効な学びがあり・簡潔だが具体的な記事を front matter付きMarkdownとして `blog/` に下書き（`draft: true`）で作る。品質基準と手順がスキルに簡潔・構造化して書かれている
   - `/blog-publish <file>` が `blog:check` → `draft` 解除 → 記事ファイルだけをコミット、までを行い、反映コマンドを案内する。検証に失敗したら理由を出して止まる
   - CLAUDE.md「スキルの地図」・docs/README.md（`blog/` の位置づけ）・運用メモ（投稿手順）に載る
 - メモ: 運営者の指示（2026-08-21）。スキルは簡潔かつ構造化。参考URLは WebFetch で読み、引用は出典を残す。
+- 実装メモ（2026-08-21）: `/blog-write`（80行。5つの問い→固有の学び1文→結論先行の構成→曖昧語・効果保証の
+  grep 推敲→`blog:check`→自己チェック。3案を独立起草し3名で審査・統合）と `/blog-publish`（draft解除・date を
+  公開日へ・記事ファイルだけコミット・push/releaseはしない）。運用の流れは `blog/README.md`、スキル地図は
+  CLAUDE.md。参照先（`docs/marketing/lp-design-brief.md` §5・`deployment.md` §0.0・`blog:check` の出力形式）は実在を確認。
 
 ### T-M8-177: LP微調整（コンセプトの埋め込み図・成長グラフの軸/密度・半額の強調） `done`
 - 参照: 要件06 §1（LP） / 依存: T-M8-172 / サイズ: M
