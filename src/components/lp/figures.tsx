@@ -14,15 +14,15 @@ import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
  * 以前は見出しを灰色のバーで表していたが、それでは「ニュースが並んでいる」ようには見えなかった。
  * 見出しは文字で書く（ヒーローのモックが既に架空の例文を使っているのと同じ扱い）。
  * **実在の記事・企業名は書かない。** 分野・時刻・重要度は実際の仕様と揃える
- * （運用6分野の一部を例示・10:00〜20:00に2時間おき・重要度 高中低。T-M8-189）。
+ * （運用6分野の一部を例示・9:00〜21:00に3時間おき・重要度 高中低。T-M8-189）。
  */
 export function NewsFeedFigure() {
   // 新着が上に積まれるフィードに見えるよう時刻は降順。収集の間隔はヘッダーが担うので行を6本にしない。
   const items: { field: string; time: string; headline: string; level: "high" | "mid" | "low" }[] = [
-    { field: "SNS運用", time: "16:00", headline: "投稿の時間帯で表示回数に差", level: "high" },
-    { field: "AI", time: "14:00", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
+    { field: "SNS運用", time: "18:00", headline: "投稿の時間帯で表示回数に差", level: "high" },
+    { field: "AI", time: "15:00", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
     { field: "美容", time: "12:00", headline: "スキンケアの新常識が話題に", level: "low" },
-    { field: "AI", time: "10:00", headline: "画像生成の新しいモデルが公開", level: "high" },
+    { field: "AI", time: "9:00", headline: "画像生成の新しいモデルが公開", level: "high" },
   ];
   // 重要度は仕様どおり3段。既存トークンだけで濃淡を作る（新しい面の色を増やさない）。
   const levelClass = {
@@ -35,7 +35,7 @@ export function NewsFeedFigure() {
     <div aria-hidden="true" className="overflow-hidden rounded-card border border-hairline bg-page">
       <div className="flex items-center gap-2 border-b border-hairline bg-surface px-3 py-2">
         <span className="text-[11px] font-bold text-ink">今日のニュース</span>
-        <span className="ml-auto text-[11px] text-ink-3">10:00〜20:00 ／ 2時間おき</span>
+        <span className="ml-auto text-[11px] text-ink-3">9:00〜21:00 ／ 3時間おき</span>
       </div>
       {items.map((item, index) => (
         <div

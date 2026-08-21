@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.47 |
+| バージョン | v1.48 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -100,7 +100,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **10:00〜20:00の2時間おき**（10/12/14/16/18/20時） | `0 1-11/2 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近3時間ラップ取得（初回10時は夜間を埋める14h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
+| `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成、**毎朝の投稿分析jobの起票（JST8時以降・T-M8-94）** | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
@@ -128,7 +128,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - 副作用は冪等キーまたはDB制約（unique）で重複に耐える。
 - 本システムのどの経路も**exactly-onceは保証しない**。
 
-`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。そこで**各回が起動間隔より広い窓で重ねて取得**する（`{{hours}}`＝**初回10:00は14時間**（前日の最終回20:00からの空白を埋める）、**12:00〜20:00は3時間**（間隔2時間＋重なり1時間）。想定外の時刻に起動された場合も欠落させない方へ倒し初回と同じ14時間を使う。**値の正本はコード側**の`NEWS_FETCH_JST_HOURS`と`newsLookbackHours`（`src/lib/jobs/news-research.ts`）で、プロンプト設計書 §6.10 はそれを説明する）、隣の回と窓が必ず重なるため、**1回失敗しても次の回が拾える**設計とする（D-3の解決。ADR-0003）。窓の重なりによる重複は`source_url`のcanonical unique制約と`<known_urls>`で排除するため、`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ（NEWSを`generation_jobs`化する案は不採用）。
+`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。そこで**各回が起動間隔より広い窓で重ねて取得**する（`{{hours}}`＝**初回9:00は12時間**（前日の最終回21:00からの空白を埋める）、**12:00〜21:00は4時間**（間隔3時間＋重なり1時間）。想定外の時刻に起動された場合も欠落させない方へ倒し初回と同じ12時間を使う。**値の正本はコード側**の`NEWS_FETCH_JST_HOURS`と`newsLookbackHours`（`src/lib/jobs/news-research.ts`）で、プロンプト設計書 §6.10 はそれを説明する）、隣の回と窓が必ず重なるため、**1回失敗しても次の回が拾える**設計とする（D-3の解決。ADR-0003）。窓の重なりによる重複は`source_url`のcanonical unique制約と`<known_urls>`で排除するため、`cron_runs`の受付は並行・重複起動の抑止のみを担い、欠落回復はラップ取得側が持つ（NEWSを`generation_jobs`化する案は不採用）。
 
 ## 7. スロットenqueue
 
@@ -307,6 +307,7 @@ flowchart TD
 | v1.45 | 2026-08-22 | cleanupへ新着500件超のnews_items削除を追加（T-M8-188・DB肥大防止） |
 | v1.46 | 2026-08-22 | news_fetchを6分野（ai/web3/sns/investment/love/beauty）へ拡大（T-M8-189・月$260〜540） |
 | v1.47 | 2026-08-22 | news_fetchを6並列1巡・maxDuration300秒へ。cleanupの500件超削除の飢餓を修正（T-M8-192・レビュー指摘） |
+| v1.48 | 2026-08-22 | news_fetchを9〜21時の3時間おき（1日5回）へ変更（T-M8-195・運営者指示） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 
