@@ -32,17 +32,17 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
   // **分量はプロンプトから読む**（T-M8-132）。雛形は「2スレッド目」まで＝最大3ポスト。
   await expect(page.getByText("このプロンプトはメイン＋スレッド2（最大3ポスト）")).toBeVisible();
 
-  // 入力項目（プレースホルダー）を1つ足し、プロンプトへ {自分の考え} を書く。
-// 新規作成カード内のボタンを指す（各パターンのカードにも同じボタンがある）。
-  const newCard = page.locator("section", { hasText: "新しいパターン" });
-  await newCard.getByRole("button", { name: "プレースホルダーを追加" }).click();
-  await page.locator("#new-placeholder-0").fill("自分の考え");
+  // プレースホルダーは手入力欄ではなく、**プロンプトの {名前} から自動で導出される**（T-M8-194）。
   await page.locator("#new-name").fill("実験パターン");
   await page
     .locator("#new-prompt")
     .fill(
       "# 投稿内容\n実験用のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{自分の考え} を踏まえる",
     );
+  // 書いた時点で下の小さな一覧に {自分の考え} が出る（設定＞プロンプトでの表示・T-M8-194）。
+  await expect(
+    page.getByText("プレースホルダー:").filter({ hasText: "{自分の考え}" }).first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "追加", exact: true }).click();
   await expect(page.getByRole("heading", { level: 3, name: "実験パターン" })).toBeVisible();
 

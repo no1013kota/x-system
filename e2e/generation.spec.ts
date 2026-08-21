@@ -291,15 +291,17 @@ await page.getByRole("button", { name: "パターンを追加" }).click();
   await expect(page.locator("#new-pattern-prompt")).toHaveValue(
     /# 投稿内容[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
   );
-  // プレースホルダーを作り、プロンプトへ {対象読者} を書く。
-  await page.getByRole("button", { name: "プレースホルダーを追加" }).click();
-  await page.locator("#new-pattern-placeholder-0").fill("対象読者");
+  // プレースホルダーは手入力欄ではなく、プロンプトの {対象読者} から自動で導出される（T-M8-194）。
   await page.locator("#new-pattern-name").fill("画面から作った型");
   await page
     .locator("#new-pattern-prompt")
     .fill(
       "# 投稿内容\n画面から作った型のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{対象読者} に向けて書く",
     );
+  // 書いた時点で {対象読者} が自動でプレースホルダーとして表示される（T-M8-194）。
+  await expect(
+    page.getByText("プレースホルダー:").filter({ hasText: "{対象読者}" }).first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "追加", exact: true }).click();
 
   // 追加した型が選択肢に出て、選ばれている。

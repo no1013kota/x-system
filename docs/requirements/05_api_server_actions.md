@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.52 |
+| バージョン | v1.53 |
 | 更新日 | 2026-08-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -223,7 +223,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePromptTemplate` | kind, content, expected_updated_at | template | md/premiumのみ。楽観lock |
 | `resetPromptTemplate` | kind | template | md/premiumのみ。account override削除 |
 | `listPatterns` | none | patterns, prompts, plan | 投稿パターン一覧＋プロンプト本文（T-M8-129） |
-| `createPattern` | name, description, prompt, placeholders | pattern | md/premiumのみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132） |
+| `createPattern` | name, description, prompt, placeholders | pattern | 契約中のみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132）。placeholdersは画面が本文の`{名前}`から導出して送る（T-M8-194） |
 | `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す。**名前・説明・プロンプト・プレースホルダー・分量だけを更新**し、他の列は触らない |
 | `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
 | `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
@@ -333,6 +333,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.50 | 2026-08-21 | ニュース一覧APIを全件・sort/pageの50件ページングへ改定（T-M8-187。cursor・絞り込み入力・専用Action廃止） |
 | v1.51 | 2026-08-22 | listNewsItemsを最新500件対象・theme/impactの選択式ソートへ（T-M8-188） |
 | v1.52 | 2026-08-22 | 招待の紐づけをverifySignUpCode成功時にもフォールバック実行（T-M8-191） |
+| v1.53 | 2026-08-22 | createPattern/updatePatternのplaceholdersを画面側で本文から導出する運用へ（T-M8-194） |
 
 ### 下書きの投稿予約（T-M8-157）
 

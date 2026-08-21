@@ -19,11 +19,13 @@ import { PromptBlock } from "@/components/post/prompt-block";
 import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
+  threadCountFromPromptLabel,
   threadCountLabel,
   type PatternOption,
 } from "@/lib/post/post-patterns-store";
 import {
   PatternFields,
+  PlaceholderSummary,
   actionReason,
   emptyPatternDraft,
   patternReasonMessage,
@@ -630,6 +632,15 @@ function removePattern(target: PatternOption) {
               {promptTab === "pattern" ? (
                 <PromptBlock
                   edited={promptEdited}
+                  // 分量とプレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
+                  footer={
+                    <>
+                      <p className="mt-1 text-caption text-ink-3">
+                        {threadCountFromPromptLabel(promptValue)}
+                      </p>
+                      <PlaceholderSummary prompt={promptValue} />
+                    </>
+                  }
                   groupName="create-prompt-apply-pattern"
                   label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
                   limit={PROMPT_MAX_CHARS}

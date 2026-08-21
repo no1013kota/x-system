@@ -18,6 +18,7 @@ import {
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
+import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 
 /**
  * 投稿パターンの入力欄（T-M8-130）。
@@ -31,18 +32,20 @@ import {
  */
 
 
-/** 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。 */
+/**
+ * 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。
+ * プレースホルダーの定義は持たない——**本文の `{名前}` から自動で導出する**
+ * （T-M8-194・運営者の指示 2026-08-22。手で名前を並べる欄は廃止した）。
+ */
 export interface PatternDraft {
   name: string;
   description: string;
   prompt: string;
-  /** プロンプト内の `{名前}` に差し込む入力の定義。 */
-  placeholders: { name: string }[];
 }
 
 /** 新規作成の初期値。プロンプトは雛形を入れて渡す（呼び出し側で `NEW_PATTERN_PROMPT_TEMPLATE`）。 */
 export function emptyPatternDraft(prompt: string): PatternDraft {
-  return { name: "", description: "", prompt, placeholders: [] };
+  return { name: "", description: "", prompt };
 }
 
 export function toPatternDraft(
@@ -53,13 +56,14 @@ export function toPatternDraft(
     name: item.name,
     description: item.description ?? "",
     prompt: prompt?.content ?? "",
-    placeholders: item.placeholders.map((ph) => ({ name: ph.name })),
   };
 }
 
 /**
  * サーバーへ送る形（`snake_case`）。
  * 既定パターンで本文がシステム既定と同じなら `null`（＝既定のまま）にする。
+ * placeholders は本文の `{名前}` から導出する（保存時の導出
+ * `applyUpdatePatternPrompt`（T-M8-186）と同じ規則。宣言と本文がズレない）。
  */
 export function toPatternPayload(draft: PatternDraft, systemDefaultPrompt: string | null) {
   const prompt = draft.prompt.trim();
@@ -68,9 +72,7 @@ export function toPatternPayload(draft: PatternDraft, systemDefaultPrompt: strin
     name: draft.name,
     description: draft.description.trim() === "" ? null : draft.description.trim(),
     prompt: isDefaultBody ? null : prompt,
-    placeholders: draft.placeholders
-      .map((ph) => ({ name: ph.name.trim() }))
-      .filter((ph) => ph.name.length > 0),
+    placeholders: extractPlaceholderNames(prompt).map((name) => ({ name })),
   };
 }
 
@@ -155,65 +157,6 @@ export function PatternFields({
         </label>
       </div>
 
-      {/*
-        **入力項目（プレースホルダー）**（T-M8-132・運営者の指示 2026-08-18）。
-        プロンプトの中に `{名前}` と書いておくと、投稿作成画面にその名前の入力欄が出て、
-        入力した内容が `{名前}` の位置へ差し込まれる。
-        「自分の考え」のような固定の入力欄をやめ、型ごとに何を毎回入れたいかを決められるようにした。
-      */}
-      <fieldset>
-        <legend className="mb-1 text-body font-medium">プレースホルダー（任意）</legend>
-        <p className="mb-2 text-caption text-ink-3">
-        ここでプレースホルダー名を決めて、下のプロンプトの中に <code>{"{プレースホルダー名}"}</code>{" "}
-          と書いてください。投稿作成のときにその名前の入力欄が出て、入力した内容が{" "}
-          <code>{"{プレースホルダー名}"}</code> の位置に入ります。
-        </p>
-        <div className="space-y-2">
-          {draft.placeholders.map((ph, index) => (
-            <div className="flex items-center gap-2" key={index}>
-              <input
-                aria-label={`プレースホルダー名${index + 1}`}
-                className="h-9 w-full max-w-xs rounded-card border border-hairline bg-surface px-2 text-body"
-                id={`${idPrefix}-placeholder-${index}`}
-                maxLength={PATTERN_PLACEHOLDER_NAME_MAX_CHARS}
-                onChange={(e) =>
-                  onChange({
-                    placeholders: draft.placeholders.map((cur, i) =>
-                      i === index ? { name: e.target.value } : cur,
-                    ),
-                  })
-                }
-                placeholder="例: 自分の考え"
-                value={ph.name}
-              />
-              <span className="text-caption text-ink-3">
-                プロンプトには <code>{`{${ph.name || "名前"}}`}</code>
-              </span>
-            <button
-                // パターン自体の「削除」と紛れないよう、読み上げ名を分ける。
-                aria-label={`プレースホルダー${ph.name ? `「${ph.name}」` : index + 1}を削除`}
-                className="ml-auto shrink-0 text-body text-danger-fg hover:underline"
-                onClick={() =>
-                  onChange({ placeholders: draft.placeholders.filter((_, i) => i !== index) })
-                }
-                type="button"
-              >
-                削除
-              </button>
-            </div>
-          ))}
-        </div>
-        {draft.placeholders.length < PATTERN_PLACEHOLDER_MAX ? (
-          <button
-            className="mt-2 text-body text-info-fg hover:underline"
-            onClick={() => onChange({ placeholders: [...draft.placeholders, { name: "" }] })}
-            type="button"
-          >
-          プレースホルダーを追加
-          </button>
-        ) : null}
-      </fieldset>
-
       <div>
         <div className="flex items-center justify-between">
           <label className="text-body font-medium" htmlFor={`${idPrefix}-prompt`}>
@@ -235,8 +178,38 @@ export function PatternFields({
           書いたつもりの本数と実際に作られる本数が違うことに、生成してから気付かないようにする。
         */}
         <p className="mt-1 text-caption text-ink-3">{threadCountFromPromptLabel(draft.prompt)}</p>
+        {/*
+          **プレースホルダーは本文の {名前} から自動で作られる**（T-M8-194・運営者の指示 2026-08-22）。
+          手で名前を並べる欄は置かない——本文と宣言がズレる余地を無くし、書けばその場で増える。
+        */}
+        <PlaceholderSummary prompt={draft.prompt} />
       </div>
     </div>
+  );
+}
+
+/**
+ * 本文から導出したプレースホルダーの一覧（小さく表示）。
+ * 投稿作成・スケジュール・設定＞プロンプトで同じ見え方にする（T-M8-194）。
+ */
+export function PlaceholderSummary({ prompt }: { prompt: string }) {
+  const names = extractPlaceholderNames(prompt);
+  return (
+    <p className="mt-1 text-caption text-ink-3">
+      プレースホルダー:{" "}
+      {names.length === 0 ? (
+        <>
+          なし（プロンプトの中に <code>{"{名前}"}</code> と書くと、その名前の入力欄が投稿作成・スケジュールに出ます）
+        </>
+      ) : (
+        names.map((name, i) => (
+          <span key={name}>
+            {i > 0 ? "・" : null}
+            <code>{`{${name}}`}</code>
+          </span>
+        ))
+      )}
+    </p>
   );
 }
 

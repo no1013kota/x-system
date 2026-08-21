@@ -24,11 +24,13 @@ import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
+  threadCountFromPromptLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
 import {
   PatternFields,
+  PlaceholderSummary,
   actionReason,
   emptyPatternDraft,
   patternReasonMessage,
@@ -948,6 +950,15 @@ function SlotFields({
             </p>
             <PromptBlock
               edited={promptEdited}
+              // 分量とプレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
+              footer={
+                <>
+                  <p className="mt-1 text-caption text-ink-3">
+                    {threadCountFromPromptLabel(promptValue)}
+                  </p>
+                  <PlaceholderSummary prompt={promptValue} />
+                </>
+              }
               // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
               groupName={`${slotFieldPrefix}-prompt-apply`}
               label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
