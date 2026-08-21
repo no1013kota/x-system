@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.46 |
+| バージョン | v1.47 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -94,7 +94,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | 投稿生成・学習・提案 | 200秒 | 90秒（修復込み最大180秒） |
 | 画像生成 | 200秒 | 90秒 |
 | 投稿実行 | 200秒 | 60秒 |
-| NEWS 1分野 | 200秒 | 90秒 |
+| NEWS 1分野 | 300秒（news_fetch route。6分野同時1巡＋後処理の余裕・T-M8-192） | 90秒 |
 
 ## 6. 定時トリガー4本
 
@@ -113,7 +113,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
 
-`news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を最大3並列で実行し、分野ごとに成功結果をcommitする。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
+`news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を**同時（最大6並列）**に実行し、分野ごとに成功結果をcommitする（3並列だと6分野が2巡になり、1巡目が遅い窓でmaxDurationを超えて後半分野とダイジェスト通知が消える・T-M8-192）。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
 
 metricsはXアカウントごとにtweet_idを最大100件へまとめ、異なるuser tokenを同じrequestへ混ぜない。metrics/followerの外部requestは最大10並列とし、Function deadlineで未開始分を次回へ残す。
 
@@ -306,6 +306,7 @@ flowchart TD
 | v1.44 | 2026-08-21 | ダイジェストpayloadの件数上限を固定20へ（news_config.max_items廃止・T-M8-187） |
 | v1.45 | 2026-08-22 | cleanupへ新着500件超のnews_items削除を追加（T-M8-188・DB肥大防止） |
 | v1.46 | 2026-08-22 | news_fetchを6分野（ai/web3/sns/investment/love/beauty）へ拡大（T-M8-189・月$260〜540） |
+| v1.47 | 2026-08-22 | news_fetchを6並列1巡・maxDuration300秒へ。cleanupの500件超削除の飢餓を修正（T-M8-192・レビュー指摘） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

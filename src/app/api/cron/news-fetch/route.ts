@@ -6,10 +6,12 @@ import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest"
 import { runNewsFetch } from "@/lib/jobs/news-fetch";
 import { researchNews } from "@/lib/jobs/news-research";
 
-/** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。毎時起動・6分野最大3並列・分野別commit。 */
+/** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。定時起動・6分野同時（最大6並列）・分野別commit。 */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 200;
+// 6分野を1巡で回しても、1分野の実行予算（deadline 180秒）＋後処理に余裕を持たせる
+// （200秒だと1分野が遅いだけで打ち切られ、ダイジェスト通知まで消える・T-M8-192）。
+export const maxDuration = 300;
 
 const pooledDb = pooledQueryable();
 

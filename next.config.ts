@@ -18,9 +18,11 @@ const nextConfig: NextConfig = {
   // Do NOT write "/blog/[slug]" as a key: picomatch reads `[slug]` as a character class.
   // `npm run check:blog-trace` (in release:check) verifies the build output.
   outputFileTracingIncludes: {
-    "/blog": ["./blog/**/*.md"],
+    // Only published articles are read at runtime (blog/published/ — T-M8-193).
+    // Bundling all of blog/** would ship drafts to production functions.
+    "/blog": ["./blog/published/**/*.md"],
     // doctor reports whether the articles made it into the deployment.
-    "/api/cron/doctor": ["./blog/**/*.md"],
+    "/api/cron/doctor": ["./blog/published/**/*.md"],
   },
 };
 

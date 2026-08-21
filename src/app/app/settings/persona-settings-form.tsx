@@ -229,15 +229,17 @@ export function PersonaSettingsForm({
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {/*
-                  選択肢は運用中の6テーマ（T-M8-189）。旧テーマ（ビジネス等）は、保存済みで
-                  選択中のときだけ出す——開いただけで値が黙って消えるのを防ぐ（原則1）。
+                  選択肢は運用中の6テーマ（T-M8-189）。旧テーマ（ビジネス等）は**開いた時点で
+                  選択されていたものだけ**出す——編集中stateで判定すると、チェックを外した瞬間に
+                  選択肢ごと消えて戻せなくなる（レビュー指摘・T-M8-192）。初期値基準なら
+                  外しても選択肢は残り、保存前なら再チェックできる。
                 */}
                 {[
                   ...OPERATED_THEME_OPTIONS,
                   ...THEME_OPTIONS.filter(
                     (theme) =>
                       !OPERATED_THEME_OPTIONS.some((o) => o.id === theme.id) &&
-                      settings.themes[group].includes(theme.id),
+                      initialSettings.themes[group].includes(theme.id),
                   ),
                 ].map((theme) => (
                   <label

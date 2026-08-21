@@ -55,7 +55,11 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     searchParams,
   ]);
   const window = parseWindow(params.from, params.to);
-  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  // 上限もクランプする（10001以上はschemaが弾き、一時障害風の誤メッセージになる・T-M8-192）。
+  const requestedPage = Math.min(
+    10_000,
+    Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1),
+  );
   // 未知の値は黙って「指定なし」へ落とす（URL手打ちでエラー画面にしない）。
   const theme = (NEWS_CATEGORIES as readonly string[]).includes(params.theme ?? "")
     ? (params.theme as (typeof NEWS_CATEGORIES)[number])

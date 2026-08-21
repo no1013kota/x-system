@@ -98,6 +98,7 @@ describe("cleanupOldData (db)", () => {
 
     try {
       // 1回のBATCH(500)で削りきれない量でも、数回で上限まで収束する。
+      // 参照付き行がバッチ枠を塞いで未参照行が残る飢餓（レビュー指摘・T-M8-192）もここで見る。
       for (let i = 0; i < 5; i++) await cleanupOldData({ db: pooledDb });
 
       const { rows } = await pooledDb.query<{ n: string; ref: string }>(

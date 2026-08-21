@@ -57,7 +57,10 @@ export function PromptBlock({
     <div className="space-y-2">
       <div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-body font-medium">{label}</span>
+          {/* PatternFieldsと同じくlabel要素で関連付ける（クリックでフォーカス・SRの二重読み上げ回避）。 */}
+          <label className="text-body font-medium" htmlFor={`${groupName}-textarea`}>
+            {label}
+          </label>
           <span
             className={`shrink-0 text-caption ${over ? "font-semibold text-danger-fg" : "text-ink-3"}`}
           >
@@ -65,8 +68,8 @@ export function PromptBlock({
           </span>
         </div>
         <textarea
-          aria-label={label}
           className="mt-1 h-64 w-full resize-y rounded-card border border-hairline bg-surface p-3 font-mono text-xs leading-5 transition-colors duration-150 focus:border-brand focus:outline-none"
+          id={`${groupName}-textarea`}
           onChange={(e) => onChange(e.target.value)}
           spellCheck={false}
           value={value}

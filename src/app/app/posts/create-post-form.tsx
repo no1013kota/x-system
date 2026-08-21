@@ -19,7 +19,6 @@ import { PromptBlock } from "@/components/post/prompt-block";
 import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
-  threadCountFromPromptLabel,
   threadCountLabel,
   type PatternOption,
 } from "@/lib/post/post-patterns-store";
@@ -632,15 +631,11 @@ function removePattern(target: PatternOption) {
               {promptTab === "pattern" ? (
                 <PromptBlock
                   edited={promptEdited}
-                  // 分量とプレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
-                  footer={
-                    <>
-                      <p className="mt-1 text-caption text-ink-3">
-                        {threadCountFromPromptLabel(promptValue)}
-                      </p>
-                      <PlaceholderSummary prompt={promptValue} />
-                    </>
-                  }
+                  // プレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
+                  // 分量の行はここには出さない——実際の上限は保存済みのmax_postsで決まり、
+                  // プロンプトの読み取りと食い違う（既定パターンは本文にスレッド語彙を持たない）。
+                  // 分量は上の「この型の分量」が正しい値を出している（レビュー指摘・T-M8-192）。
+                  footer={<PlaceholderSummary prompt={promptValue} />}
                   groupName="create-prompt-apply-pattern"
                   label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
                   limit={PROMPT_MAX_CHARS}

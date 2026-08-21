@@ -2264,13 +2264,28 @@ UI側boolean を壊しても投稿は誤爆しない）。
   プレースホルダー）へ。新パターン作成後のアクティブ化は投稿作成・スケジュールとも既存実装で
   充足を確認。E2E（pattern-manager 3件・generation/schedule系 16件）緑・単体2,421件緑。
 
-### T-M8-192: T-M8-186〜194範囲のリファクタリングとdocs総同期 `todo`
+### T-M8-192: T-M8-186〜194範囲のリファクタリングとdocs総同期 `done`
 - 参照: CLAUDE.md（doc同期）・/refactor / 依存: T-M8-188〜194 / サイズ: M
 - 完了条件:
   - 振る舞いを変えない整理（廃止コードの残骸・重複の集約）
   - 今回範囲のdocsと実装の突き合わせで漏れゼロ
   - 全ゲート（typecheck/lint/単体/build/csp/E2E）緑
 - メモ: 運営者の指示（2026-08-22）。
+- 実装メモ（2026-08-22）: 敵対的レビュー（24エージェント・5観点→検証）で18件確定し修正:
+  【major】trimNewsItemsOverCapの飢餓（参照ガードをLIMIT前へ・実DB再現→修正確認）／
+  news-fetchが6分野2巡でmaxDuration200s超過し後半分野とダイジェストが黙って消える
+  （並列6の1巡＋maxDuration300へ）／既存ユーザーのnews_config未backfill（20260822000002:
+  旧既定値そのままの行だけ新6分野へ。意図的に絞った設定は保全・ローカル1,363行更新/絞り済み1行保全）／
+  生成2画面のフッター分量表示がmax_postsと矛盾（分量行を撤去。「この型の分量」が正）／
+  LP禁止表現リスト（design_handoff_lp/README・lp-design-brief・landing-page.test）が
+  「6分野」を禁止したまま＝LPテストが赤→6分野解禁・3分野を禁止へ。
+  【minor】page>10000の誤エラー表示（上限クランプ）／personaフォームで旧テーマのチェックを
+  外すと選択肢ごと消える（初期値基準へ）／プレースホルダー11個以上の黙った切り捨て（警告表示）／
+  PromptBlockラベルのlabel関連付け／blog:checkの同名記事（両フォルダ検証）／
+  tracingがdraftsまで同梱（publishedのみへ）／招待フォールバックのコメント前提修正／
+  コメント・docs陳腐化6箇所（config-defaults・post-theme・news-research・要件02×2・要件04）。
+  棄却1件（/auth/confirm経路——確認メールは6桁コードのみでリンクを含まない）。
+  全ゲート緑: lint・単体/DB 2,421件・build・CSP・blog-trace・E2E 97件。
 
 ### T-M8-187: 最新ニュースを全件表示にし、テーマ・インパクトのソートと50件ページングへ `done`
 - 参照: 要件06（SC-03 最新ニュース）・要件02 §4.2 news_config / 依存: なし / サイズ: M

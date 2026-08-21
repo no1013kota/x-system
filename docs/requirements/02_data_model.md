@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.51 |
+| バージョン | v1.52 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -311,7 +311,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
-| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
+| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの8値〔運用6＋旧2・T-M8-189〕＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の8値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
 | `source_url` | `text` | null, CHECK（`^https://`。投稿作成のzodと同条件） | **参考URL**（T-M8-135）。毎回このURLをAIが読んで題材にする。投稿作成画面の「参考にするURL」と同じもの |
@@ -731,7 +731,7 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 }
 ```
 
-`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得している分野**（`NEWS_FETCH_CATEGORIES`＝運用6分野・T-M7-55の原則／T-M8-189で6分野へ。migration `20260822000001`で新規登録の既定も6分野へ変更済み。既存利用者の保存値は変更しない）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）は最新500件表示（T-M8-188）。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
+`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得している分野**（`NEWS_FETCH_CATEGORIES`＝運用6分野・T-M7-55の原則／T-M8-189で6分野へ。migration `20260822000001`で新規登録の既定も6分野へ変更済み。既存利用者の保存値は`20260822000002`が**旧既定値そのままの行だけ**新既定へ更新する——意図的に絞った設定は保全。放置すると新分野の通知が既存ユーザーに永久に届かない・T-M8-192）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）は最新500件表示（T-M8-188）。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
 
 ### 4.3 `profiles.notification_config`
 
@@ -950,7 +950,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定・ニュースカテゴリ | 既定値の正本は §4.3 / §4.4（ここへ写さない——以前写した通知設定は `summary` が抜けていた） |
-| テーマ選択肢マスタ | L-5の選択肢をコード定数で定義（運用6＋旧2）。各選択肢は`news_category`と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
+| テーマ選択肢マスタ | L-5の選択肢をコード定数で定義（運用6＋旧2）。各選択肢は`news_category`と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100/188。最新ニュース画面のソート選択肢と同じ導出元で、運用分野を変えれば全画面が追随する） |
 | Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 
 ## 7. 保持と個別対応
@@ -976,3 +976,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
 | v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
 | v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
+| v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |

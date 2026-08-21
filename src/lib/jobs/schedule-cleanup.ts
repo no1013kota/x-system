@@ -74,6 +74,9 @@ async function deleteUnreferencedNewsItems(db: Queryable): Promise<number> {
  * ガードで残す（参照付きの古い行は表示上限の外なので画面には出ない）。
  */
 async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
+  // 参照ガードは**LIMITより前**（サブクエリ内）に置く。DELETE側に置くと、参照付きの行が
+  // バッチ500枠を食い潰して選択窓が先へ進まず、未参照の古い行が永久に残る
+  // （敵対的レビューで実DB再現・T-M8-192。rn自体は全行で数え、削除候補の選抜だけを参照除外後に絞る）。
   const { rowCount } = await db.query(
     `delete from news_items
       where id in (
@@ -81,11 +84,11 @@ async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
           select id, row_number() over (order by ${NEWS_ORDER_BY}) as rn
             from news_items) ranked
          where ranked.rn > $1
-         limit $2)
-        and not exists (select 1 from drafts d where d.source_news_item_id = news_items.id)
-        and not exists (
-          select 1 from notifications n
-           where jsonb_exists(n.payload->'news_item_ids', news_items.id::text))`,
+           and not exists (select 1 from drafts d where d.source_news_item_id = ranked.id)
+           and not exists (
+             select 1 from notifications n
+              where jsonb_exists(n.payload->'news_item_ids', ranked.id::text))
+         limit $2)`,
     [NEWS_MAX_STORED_ITEMS, BATCH],
   );
   return rowCount ?? 0;

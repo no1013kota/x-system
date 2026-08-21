@@ -44,8 +44,9 @@ function listArticles(dir) {
 
 function targetFiles() {
   if (args.length > 0) {
-    return args.map((arg) => {
-      // ファイル名だけなら published → drafts の順で探す（/blog-publish はファイル名で渡す）。
+    return args.flatMap((arg) => {
+      // ファイル名だけなら published と drafts の**両方**を対象にする（片方だけ検証して
+      // 同名の壊れた下書きを見逃さない・T-M8-192のレビュー指摘）。
       const candidates = arg.includes("/")
         ? [resolve(arg)]
         : [join(PUBLISHED_DIR, arg), join(DRAFTS_DIR, arg)];
@@ -54,7 +55,7 @@ function targetFiles() {
         console.error(`❌ ${arg} は記事ファイルではありません（.md で、README.md と _ 始まりを除く）`);
         process.exit(2);
       }
-      const path = candidates.find((c) => {
+      const found = candidates.filter((c) => {
         try {
           statSync(c);
           return true;
@@ -62,11 +63,14 @@ function targetFiles() {
           return false;
         }
       });
-      if (!path) {
+      if (found.length === 0) {
         console.error(`❌ ${arg} が見つかりません（blog/published/ か blog/drafts/ のファイル名か、パスを指定してください）`);
         process.exit(2);
       }
-      return path;
+      if (found.length > 1) {
+        console.log(`ℹ️ ${name} は published と drafts の両方にあります（両方を検証。公開時は同名の下書きを整理してください）`);
+      }
+      return found;
     });
   }
   try {

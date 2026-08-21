@@ -194,22 +194,32 @@ export function PatternFields({
  */
 export function PlaceholderSummary({ prompt }: { prompt: string }) {
   const names = extractPlaceholderNames(prompt);
+  // 上限＋1で数え直して超過を検出する（黙って11個目以降を捨てない・原則1）。
+  const overflowing = extractPlaceholderNames(prompt, PATTERN_PLACEHOLDER_MAX + 1).length > names.length;
   return (
-    <p className="mt-1 text-caption text-ink-3">
-      プレースホルダー:{" "}
-      {names.length === 0 ? (
-        <>
-          なし（プロンプトの中に <code>{"{名前}"}</code> と書くと、その名前の入力欄が投稿作成・スケジュールに出ます）
-        </>
-      ) : (
-        names.map((name, i) => (
-          <span key={name}>
-            {i > 0 ? "・" : null}
-            <code>{`{${name}}`}</code>
-          </span>
-        ))
-      )}
-    </p>
+    <>
+      <p className="mt-1 text-caption text-ink-3">
+        プレースホルダー:{" "}
+        {names.length === 0 ? (
+          <>
+            なし（プロンプトの中に <code>{"{名前}"}</code> と書くと、その名前の入力欄が投稿作成・スケジュールに出ます）
+          </>
+        ) : (
+          names.map((name, i) => (
+            <span key={name}>
+              {i > 0 ? "・" : null}
+              <code>{`{${name}}`}</code>
+            </span>
+          ))
+        )}
+      </p>
+      {overflowing ? (
+        <p className="mt-1 text-caption font-medium text-danger-fg">
+          プレースホルダーは{PATTERN_PLACEHOLDER_MAX}個までです。{PATTERN_PLACEHOLDER_MAX + 1}
+          個目以降の {"{名前}"} には入力欄が出ず、そのままの文字でAIへ渡ります。
+        </p>
+      ) : null}
+    </>
   );
 }
 

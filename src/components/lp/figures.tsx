@@ -14,14 +14,14 @@ import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
  * 以前は見出しを灰色のバーで表していたが、それでは「ニュースが並んでいる」ようには見えなかった。
  * 見出しは文字で書く（ヒーローのモックが既に架空の例文を使っているのと同じ扱い）。
  * **実在の記事・企業名は書かない。** 分野・時刻・重要度は実際の仕様と揃える
- * （AI／投資／SNS運用の3分野・10:00〜20:00に2時間おき・重要度 高中低）。
+ * （運用6分野の一部を例示・10:00〜20:00に2時間おき・重要度 高中低。T-M8-189）。
  */
 export function NewsFeedFigure() {
   // 新着が上に積まれるフィードに見えるよう時刻は降順。収集の間隔はヘッダーが担うので行を6本にしない。
   const items: { field: string; time: string; headline: string; level: "high" | "mid" | "low" }[] = [
     { field: "SNS運用", time: "16:00", headline: "投稿の時間帯で表示回数に差", level: "high" },
     { field: "AI", time: "14:00", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
-    { field: "投資", time: "12:00", headline: "少額から始める資産形成に関心", level: "low" },
+    { field: "美容", time: "12:00", headline: "スキンケアの新常識が話題に", level: "low" },
     { field: "AI", time: "10:00", headline: "画像生成の新しいモデルが公開", level: "high" },
   ];
   // 重要度は仕様どおり3段。既存トークンだけで濃淡を作る（新しい面の色を増やさない）。
