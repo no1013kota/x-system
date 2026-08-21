@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
 
@@ -227,49 +228,144 @@ export function PostComposeFigure() {
 }
 
 /**
- * しくみの成長グラフ（T-M8-172・運営者の指示）: 使うほどプロンプトとアカウント.mdが
- * 成長する様子を1枚で示す。**y軸は「プロンプトの完成度」＝事実として起きること**
- * （初版→学習ソース→改善提案の反映で版が積み上がる）に限定し、フォロワー増の保証と
- * 読める表現にはしない（禁止表現「AIが自動で学習し続けて最適化」も避け、反映は
- * 利用者が選ぶことを本文側が開示する）。
+ * しくみの成長グラフ（T-M8-172/177・運営者の指示）: 縦軸=アカウントの成長、横軸=運用時間。
+ * 点を細かく刻み（10点・段差のある右肩上がり）、節目3つだけに太字の注釈を置く
+ * （薄いグレーの補足文は置かない・2026-08-21の指示）。
+ * y軸は「初版→学習・提案の反映で版が積み上がる」という事実の範囲に留め、
+ * フォロワー増の保証と読める表現にはしない（反映は利用者が選ぶことを本文側が開示する）。
  */
 export function GrowthChartFigure() {
-  // 4点の座標はviewBox基準の固定値（データではなく概念図）。
-  const points = [
-    { x: 70, y: 190, label: "v1 初版", sub: "設定から自動生成" },
-    { x: 210, y: 150, label: "学習ソースを反映", sub: "参考アカウント・投稿" },
-    { x: 350, y: 105, label: "改善提案を反映", sub: "毎朝の分析から" },
-    { x: 490, y: 55, label: "あなた専用の1枚に", sub: "手直しも自由" },
+  // 座標はviewBox基準の固定値（データではなく概念図）。段差＝反映のタイミング。
+  const points: { x: number; y: number; label?: string }[] = [
+    { x: 60, y: 196, label: "v1 初版" },
+    { x: 108, y: 190 },
+    { x: 156, y: 172 },
+    { x: 204, y: 166 },
+    { x: 252, y: 142, label: "学習・提案を反映" },
+    { x: 300, y: 136 },
+    { x: 348, y: 112 },
+    { x: 396, y: 104 },
+    { x: 444, y: 78 },
+    { x: 492, y: 56, label: "あなた専用の1枚に" },
   ];
   const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  const last = points[points.length - 1];
   return (
     <div aria-hidden="true" className="rounded-card border border-hairline bg-page p-3.5">
-      <svg className="h-auto w-full" role="presentation" viewBox="0 0 560 240">
+      <svg className="h-auto w-full" role="presentation" viewBox="0 0 560 244">
+        {/* 目盛り（横罫）。細かさを出すが主張はさせない。 */}
+        {[76, 116, 156, 196].map((y) => (
+          <line key={y} stroke="var(--hairline)" strokeWidth="1" x1="40" x2="544" y1={y} y2={y} />
+        ))}
         {/* 軸 */}
-        <line stroke="var(--hairline)" strokeWidth="1" x1="40" x2="40" y1="16" y2="208" />
-        <line stroke="var(--hairline)" strokeWidth="1" x1="40" x2="544" y1="208" y2="208" />
-        <text fill="var(--ink-3)" fontSize="11" x="46" y="28">
-          プロンプトの完成度（アカウント.mdの厚み）
+        <line stroke="var(--ink-3)" strokeWidth="1.25" x1="40" x2="40" y1="16" y2="216" />
+        <line stroke="var(--ink-3)" strokeWidth="1.25" x1="40" x2="544" y1="216" y2="216" />
+        <text fill="var(--ink-2)" fontSize="12" fontWeight="600" x="48" y="30">
+          ↑ アカウントの成長
         </text>
-        <text fill="var(--ink-3)" fontSize="11" textAnchor="end" x="544" y="226">
-          運用の周回 →
+        <text fill="var(--ink-2)" fontSize="12" fontWeight="600" textAnchor="end" x="544" y="236">
+          運用時間 →
         </text>
         {/* 面と線 */}
-        <path d={`${path} L${points[points.length - 1].x},208 L${points[0].x},208 Z`} fill="var(--brand-subtle)" opacity="0.7" />
+        <path
+          d={`${path} L${last.x},216 L${points[0].x},216 Z`}
+          fill="var(--brand-subtle)"
+          opacity="0.7"
+        />
         <path d={path} fill="none" stroke="var(--brand)" strokeLinecap="round" strokeWidth="2.5" />
         {points.map((p) => (
-          <g key={p.label}>
-            <circle cx={p.x} cy={p.y} fill="var(--surface)" r="5" stroke="var(--brand)" strokeWidth="2.5" />
-            <text fill="var(--ink)" fontSize="11" fontWeight="700" textAnchor="middle" x={p.x} y={p.y - 14}>
-              {p.label}
-            </text>
-            <text fill="var(--ink-3)" fontSize="10.5" textAnchor="middle" x={p.x} y={p.y + 24}>
-              {p.sub}
-            </text>
+          <g key={`${p.x}-${p.y}`}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              fill={p.label ? "var(--surface)" : "var(--brand)"}
+              r={p.label ? 5 : 3}
+              stroke="var(--brand)"
+              strokeWidth={p.label ? 2.5 : 0}
+            />
+            {p.label ? (
+              <text
+                fill="var(--ink)"
+                fontSize="12"
+                fontWeight="700"
+                textAnchor={p.x > 460 ? "end" : "middle"}
+                x={p.x > 460 ? p.x + 12 : p.x}
+                y={p.y - 14}
+              >
+                {p.label}
+              </text>
+            ) : null}
           </g>
         ))}
       </svg>
     </div>
+  );
+}
+
+/**
+ * 01コンセプトの循環図（T-M8-177・運営者の指示 2026-08-21）。
+ * 画像（JPEG）の埋め込みをやめ、ページのトークンで描く（LP図版はCSS/DOM/SVGの原則へ戻る）。
+ * 内容は docs/lp/コンセプト.png と同じ4ステップの循環＋中央のサービス名。
+ */
+const CONCEPT_STEPS: { no: string; label: string; icon: IconName; pos: string }[] = [
+  { no: "01", label: "プロンプトを設計", icon: "edit_square", pos: "top-0 left-1/2 -translate-x-1/2" },
+  { no: "02", label: "投稿を生成・運用", icon: "drafts", pos: "top-1/2 right-0 -translate-y-1/2" },
+  { no: "03", label: "投稿結果を分析", icon: "monitoring", pos: "bottom-0 left-1/2 -translate-x-1/2" },
+  { no: "04", label: "プロンプトを改善", icon: "refresh", pos: "top-1/2 left-0 -translate-y-1/2" },
+];
+
+export function ConceptCycleFigure() {
+  return (
+    <figure aria-label="プロンプトを設計→投稿を生成・運用→投稿結果を分析→プロンプトを改善、の4ステップが循環する図。使うほど、プロンプトが磨かれる。">
+      <div aria-hidden="true" className="relative mx-auto aspect-[4/3] w-full max-w-[520px]">
+        {/* 循環の矢印（4本の弧）。 */}
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 300">
+          <defs>
+            <marker id="concept-arrow" markerHeight="7" markerWidth="7" orient="auto-start-reverse" refX="6" refY="3.5" viewBox="0 0 8 7">
+              <path d="M0,0 L8,3.5 L0,7 Z" fill="var(--brand)" />
+            </marker>
+          </defs>
+          {[
+            "M260.2,55.0 A148,104 0 0 1 335.2,107.7",
+            "M335.2,192.3 A148,104 0 0 1 260.2,245.0",
+            "M139.8,245.0 A148,104 0 0 1 64.8,192.3",
+            "M64.8,107.7 A148,104 0 0 1 139.8,55.0",
+          ].map((d) => (
+            <path d={d} fill="none" key={d} markerEnd="url(#concept-arrow)" stroke="var(--brand)" strokeLinecap="round" strokeWidth="2" />
+          ))}
+        </svg>
+        {/* 中央: サービス名。 */}
+        <div className="absolute top-1/2 left-1/2 flex size-[44%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-pill border border-hairline bg-surface text-center shadow-[var(--shadow-card)]">
+          <p className="text-[17px] leading-tight font-bold tracking-tight sm:text-[20px]">Exos AI</p>
+          <p className="mt-1 px-3 text-[11px] leading-[1.5] text-ink-2 sm:text-caption">
+            プロンプト駆動の
+            <br />
+            SNS運用
+            <br className="sm:hidden" />
+            プラットフォーム
+          </p>
+        </div>
+        {/* 4ステップのノード。 */}
+        {CONCEPT_STEPS.map((step) => (
+          <div
+            className={cn(
+              "absolute flex w-[100px] flex-col items-center gap-1 rounded-card border border-hairline bg-surface px-1.5 py-2 text-center shadow-[var(--shadow-card)] sm:w-[128px] sm:px-2 sm:py-2.5",
+              step.pos,
+            )}
+            key={step.no}
+          >
+            <span className="text-caption font-bold text-brand">{step.no}</span>
+            <Icon className="text-brand" name={step.icon} size={20} />
+            <span className="text-caption leading-tight font-bold text-ink">{step.label}</span>
+          </div>
+        ))}
+      </div>
+      <figcaption className="mt-4 flex items-center justify-center gap-3 text-sm font-bold text-ink">
+        <span aria-hidden="true" className="h-px w-8 bg-brand" />
+        使うほど、プロンプトが磨かれる。
+        <span aria-hidden="true" className="h-px w-8 bg-brand" />
+      </figcaption>
+    </figure>
   );
 }
 

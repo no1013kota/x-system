@@ -25,8 +25,9 @@ export function CampaignCallout({
       )}
     >
       {RELEASE_CAMPAIGN.active ? (
-        <p className="text-[15px] font-bold text-brand">
-          <Icon aria-hidden="true" className="mr-1.5 inline-block align-[-3px]" name="bolt" size={16} />
+        // 帯の主役なので大きく出す（T-M8-177・運営者の指示）。
+        <p className="text-[22px] font-bold tracking-tight text-brand sm:text-[26px]">
+          <Icon aria-hidden="true" className="mr-1.5 inline-block align-[-4px]" name="bolt" size={24} />
           いまだけ、リリース記念で全プラン半額
         </p>
       ) : null}

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
+  ConceptCycleFigure,
   GrowthChartFigure,
   PromptEditorFigure,
   PostComposeFigure,
@@ -271,16 +271,10 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               {/*
-                運営者提供の完成画像（docs/lp/コンセプト.png → public/lp/concept.jpg・T-M8-172）。
-                LPの図版は原則CSS/DOMだが、この1枚だけは完成ビジュアルを使う（運営者の指示）。
+                コンセプトの循環図（T-M8-177）。JPEG埋め込みをやめ、ページのトークンで描く
+                （内容は docs/lp/コンセプト.png と同じ。LP図版はCSS/DOM/SVGの原則へ戻った）。
               */}
-              <Image
-                alt={`${APP_NAME}のコンセプト図。プロンプトを設計→投稿を生成・運用→投稿結果を分析→プロンプトを改善、の4ステップが循環し、「使うほど、プロンプトが磨かれる。」と書かれている`}
-                className="h-auto w-full rounded-card border border-hairline shadow-[var(--shadow-card)]"
-                height={1066}
-                src="/lp/concept.jpg"
-                width={1600}
-              />
+              <ConceptCycleFigure />
             </div>
           </div>
         </section>
