@@ -67,6 +67,62 @@ test("招待リンクで30日Cookieが付き、そのまま登録すると招待
   }
 });
 
+test("登録時に紐づけできなくても、確認コード検証時にCookieがあれば紐づく（T-M8-191）", async ({
+  accounts,
+  context,
+  page,
+}) => {
+  const inviter = await accounts.create("invite-fallback");
+  const code = `e2e${randomUUID().slice(0, 6).replace(/-/g, "")}`;
+  await query(`insert into affiliate_accounts (user_id, code) values ($1, $2)`, [
+    inviter.userId,
+    code,
+  ]);
+
+  const suffix = `invf-${randomUUID().slice(0, 8)}`;
+  const email = `e2e-${suffix}@example.com`;
+  const password = `E2e-${suffix}-Pw1`;
+  try {
+    // Cookieなしで登録（登録時の紐づけが起きない＝失敗時と同じ状態を作る）。
+    await page.goto("/signup");
+    await page.locator('input[name="email"]:not([type="hidden"])').fill(email);
+    await page.locator('input[name="password"]').fill(password);
+    await page.locator('input[name="password_confirmation"]').fill(password);
+    await page.locator('input[name="terms_accepted"]').check();
+    await page.locator('input[name="privacy_acknowledged"]').check();
+    await expect
+      .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
+      .not.toBe("");
+    await page.getByRole("button", { name: "メールアドレスで登録" }).click();
+    await expect(
+      page.getByRole("heading", { name: "確認コードを入力してください" }),
+    ).toBeVisible();
+
+    // 別タブで招待リンクを踏む（Cookieはコンテキスト共有。確認コード画面は
+    // クライアント状態なので、同じタブで遷移すると消える）。
+    const linkTab = await context.newPage();
+    await linkTab.goto(`/r/${code}`);
+    await linkTab.close();
+
+    const mail = await waitForMail(email);
+    const confirmationCode = await signUpCodeFromMail(mail.ID);
+    await page.getByRole("textbox", { name: "確認コード" }).fill(confirmationCode);
+    await page.getByRole("button", { name: "登録を完了する" }).click();
+    await expect(page).toHaveURL(/\/plans/);
+
+    const [attribution] = await query<{ affiliate_account_id: string }>(
+      `select att.affiliate_account_id
+         from affiliate_attributions att
+         join auth.users u on u.id = att.referred_user_id
+        where u.email = $1`,
+      [email],
+    );
+    expect(attribution, "確認コード検証時のフォールバックで紐づくこと").toBeTruthy();
+  } finally {
+    await destroyUserByEmail(email);
+  }
+});
+
 test("友達招待ページ: リンク・報酬率・ランクが出て、銀行口座を登録できる", async ({
   accounts,
   page,

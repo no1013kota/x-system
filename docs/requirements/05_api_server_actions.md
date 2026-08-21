@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.51 |
+| バージョン | v1.52 |
 | 更新日 | 2026-08-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -309,6 +309,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 
 - **Server Action `saveAffiliatePayoutAccount`**: 振込先口座の登録・変更（本人のみ）。口座番号は4〜8桁の数字を検証し、AES-256-GCMで暗号化して保存（応答・画面には末尾4桁のみ）。結果は共通の `BaseResult`。
 - **公開route `GET /r/{code}`**: 30日Cookie（`exos_ref`・httpOnly・Last Click）を付けて `/` へ302。コードの実在はここでは確かめない（登録時に照合）。
+- **紐づけの実行点は2つ**（T-M8-191）: (1) `signUp` 成功時（主経路。成功したらCookieを消す）、(2) `verifySignUpCode` 成功時（フォールバック。登録時の紐づけがDB一時障害等で失敗しCookieが残っている場合だけ動く）。どちらも冪等（1ユーザー1招待者のunique）で、失敗しても登録・確認は止めない。
 - **webhook**: `charge.refunded` を購読イベントへ追加（該当invoiceの報酬取消）。`invoice.paid`・`customer.subscription.deleted` の副作用は要件03「招待プログラム」。
 
 ## 変更履歴
@@ -331,6 +332,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.49 | 2026-08-21 | webhook対象イベント一覧へ charge.refunded を追記（T-M8-174のdoc同期漏れ・T-M8-180で検出） |
 | v1.50 | 2026-08-21 | ニュース一覧APIを全件・sort/pageの50件ページングへ改定（T-M8-187。cursor・絞り込み入力・専用Action廃止） |
 | v1.51 | 2026-08-22 | listNewsItemsを最新500件対象・theme/impactの選択式ソートへ（T-M8-188） |
+| v1.52 | 2026-08-22 | 招待の紐づけをverifySignUpCode成功時にもフォールバック実行（T-M8-191） |
 
 ### 下書きの投稿予約（T-M8-157）
 

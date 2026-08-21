@@ -252,6 +252,29 @@ export async function verifySignUpCode(
     // profile行が無いまま進むと、同意の記録が無くて再同意を求める経路へ落ちる（T-M8-73）。
     // 登録時のtriggerで作られているはずだが、無ければここで作る（既存値は触らない）。
     await ensureUserProfileWithClient(data.user, createSupabaseAdminClient());
+
+    /*
+      招待の紐づけのフォールバック（T-M8-191）。通常は登録時（signUp）に紐づけて
+      Cookieを消しているので、ここにCookieが残っているのは**登録時の紐づけが失敗した**
+      （DB一時障害など）場合だけ。同じブラウザで確認コードを打つ流れなら
+      ここでもう一度試せる（冪等: 1ユーザー1招待者のuniqueで二重紐づけにはならない）。
+      失敗しても検証は止めない（登録完了のほうが重い）。
+    */
+    try {
+      const store = await cookies();
+      const referralCode = store.get(ATTRIBUTION_COOKIE_NAME)?.value;
+      if (referralCode) {
+        const { attributeSignup } = await import("@/lib/affiliate/store");
+        const { pooledQueryable } = await import("@/lib/db/pool");
+        await attributeSignup(pooledQueryable(), {
+          code: referralCode,
+          newUserId: data.user.id,
+        });
+        store.delete(ATTRIBUTION_COOKIE_NAME);
+      }
+    } catch (error) {
+      recordUnexpectedError(error, { at: "verify-signup-attribution" });
+    }
   } catch (error) {
     recordUnexpectedError(error, { at: "verify-signup-code" });
     return { status: "error", message: CODE_INVALID_MESSAGE, email };
