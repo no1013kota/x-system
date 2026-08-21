@@ -84,11 +84,16 @@ function PlanCard({
   const headingId = `plan-card-${planId}`;
 
   return (
+    /*
+      md以上はCSS subgrid（親の18行を3枚で共有）で、**枠の大きさと各行の高さを3枚の間で
+      完全に揃える**（T-M8-181・運営者の指示）。行数は「9セグメント＋機能9行」で全プラン同数
+      （featureItemsForが全行を返すため）。行を増減するときは span の18も揃えること。
+    */
     <Card
       aria-labelledby={headingId}
       as="article"
       className={cn(
-        "relative flex flex-col p-5 sm:p-6",
+        "relative flex flex-col p-5 sm:p-6 md:grid md:grid-rows-subgrid md:[grid-row:span_18]",
         recommended && "border-brand ring-1 ring-brand",
       )}
     >
@@ -124,13 +129,16 @@ function PlanCard({
         </span>
         <span className="ml-1 text-caption text-ink-3">／月（税込）</span>
       </p>
-      {hasCampaignDiscount(plan) ? (
-        // 「通常価格」とは書かない（販売実績が無い・plans.ts の RELEASE_CAMPAIGN 参照）。
-        <p className="mt-0.5 text-caption text-ink-3">
-          {RELEASE_CAMPAIGN.afterLabel}{" "}
-          <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>
-        </p>
-      ) : null}
+      {/* 行数を全カードで一定に保つため、キャンペーン無しでも空行として描画する（subgrid前提）。 */}
+      <p className="mt-0.5 text-caption text-ink-3">
+        {hasCampaignDiscount(plan) ? (
+          // 「通常価格」とは書かない（販売実績が無い・plans.ts の RELEASE_CAMPAIGN 参照）。
+          <>
+            {RELEASE_CAMPAIGN.afterLabel}{" "}
+            <span className="line-through">¥{yen(plan.regularPriceJpy)}</span>
+          </>
+        ) : null}
+      </p>
       {/* 1日あたりの概算（T-M8-171）。切り上げで安く見せすぎない（景表法）。 */}
       <p className="mt-1 text-caption font-medium text-ink-2">
         1日あたり 約{yen(Math.ceil(plan.monthlyPriceJpy / 30))}円
@@ -140,9 +148,6 @@ function PlanCard({
 
       <p className="mt-4 rounded-lg border border-hairline bg-brand-subtle px-3 py-2 text-center text-caption font-bold text-ink">
         Xアカウント {plan.xAccountLimit}件{plan.xAccountLimit > 1 ? "まで" : ""}を連携
-        {plan.xAccountLimit > 1 ? (
-          <span className="font-medium text-ink-2">（利用枠は合算）</span>
-        ) : null}
       </p>
 
       <div className="mt-5">
@@ -155,11 +160,12 @@ function PlanCard({
           </p>
         ) : null}
       </div>
-      <ul className="mt-2.5 space-y-1.5">
+      {/* display:contents でliをカード（subgrid）の行として参加させる。role=listで意味を保つ。 */}
+      <ul className="contents" role="list">
         {items.map((item) => (
           <li
             className={cn(
-              "flex items-start gap-2 rounded-lg px-2 py-1",
+              "mt-1.5 flex items-start gap-2 rounded-lg px-2 py-1",
               item.changed && "-mx-0.5 bg-brand-subtle",
             )}
             key={item.label}
@@ -207,7 +213,7 @@ export function PlanPricingCards({
   cta: (planId: PlanId, planName: string) => ReactNode;
 }) {
   return (
-    <div className="grid items-start gap-4 pt-3 md:grid-cols-3">
+    <div className="grid items-start gap-4 pt-3 md:grid-cols-3 md:gap-y-0">
       {comparisonColumns().map(({ id, plan }) => (
         <PlanCard cta={cta(id, plan.displayName)} key={id} planId={id} />
       ))}

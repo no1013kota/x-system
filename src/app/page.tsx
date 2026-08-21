@@ -338,14 +338,10 @@ export default function Home() {
             <GrowthChartFigure />
           </div>
           {/*
-            提案は自動反映しないことの開示。これが無いと禁止表現
-            「AIが自動で学習し続けて最適化」と同じ主張になる。
+            グラフ下の開示行はT-M8-181で削除（運営者の指示）。「反映するかはあなたが選べます」の
+            開示は02できることの「結果分析・プロンプト改善」カード本文が引き続き担う
+            （禁止表現「AIが自動で学習し続けて最適化」の回避はそちらで維持）。
           */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-caption text-ink-3">
-            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
-            <span>反映するかはあなたが選べます。取り入れると決めたことだけが、次の1周に効きます</span>
-            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
-          </div>
         </section>
 
         {/*
