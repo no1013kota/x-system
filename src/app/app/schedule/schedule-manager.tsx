@@ -36,6 +36,7 @@ import {
   type PatternDraft,
 } from "@/components/post/pattern-fields";
 import { PromptBlock } from "@/components/post/prompt-block";
+import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   createPatternAction,
   updatePatternPromptAction,
@@ -677,6 +678,9 @@ function SlotFields({
    * 保存済みの上書きに気付かないまま上書きを消してしまう。
    */
   const promptValue = promptDraft ?? v.prompt_override ?? patternPrompt?.content ?? "";
+  // 入力欄は**いま見えているプロンプト本文**から導出（T-M8-186。編集で {名前} を増減すると
+  // その場で入力欄も増減する。生成側も本文基準で差し込む）。
+  const activePlaceholderNames = extractPlaceholderNames(promptValue);
   const promptBase = v.prompt_override ?? patternPrompt?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== promptBase;
 
@@ -774,7 +778,10 @@ function SlotFields({
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
         source_url: v.source_url.trim() || null,
-        placeholder_values: v.placeholder_values,
+        // 本文に実在する名前だけ送る（消した {名前} の値を持ち越さない・T-M8-186）。
+        placeholder_values: Object.fromEntries(
+          activePlaceholderNames.map((name) => [name, v.placeholder_values[name] ?? ""]),
+        ),
         prompt_override: promptOverride,
       };
       const res =
@@ -995,31 +1002,31 @@ function SlotFields({
         プレースホルダー（T-M8-132／T-M8-135）。選んだパターンが持つ `{名前}` の分だけ出す。
         予約は繰り返すので、ここで入れた値が毎回同じように差し込まれる。
       */}
-      {selectedPattern && selectedPattern.placeholders.length > 0 ? (
+      {activePlaceholderNames.length > 0 ? (
         <div className="space-y-2">
-          {selectedPattern.placeholders.map((ph) => (
-            <div key={ph.name}>
+          {activePlaceholderNames.map((name) => (
+            <div key={name}>
               <label
                 className="block font-medium"
-                htmlFor={`${slotFieldPrefix}-ph-${ph.name}`}
+                htmlFor={`${slotFieldPrefix}-ph-${name}`}
               >
-                {ph.name}（任意）
+                {name}（任意）
               </label>
               <textarea
                 className="mt-1 w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-                id={`${slotFieldPrefix}-ph-${ph.name}`}
+                id={`${slotFieldPrefix}-ph-${name}`}
                 maxLength={2000}
                 onChange={(e) =>
                   setV((cur) => ({
                     ...cur,
-                    placeholder_values: { ...cur.placeholder_values, [ph.name]: e.target.value },
+                    placeholder_values: { ...cur.placeholder_values, [name]: e.target.value },
                   }))
                 }
                 rows={2}
-                value={v.placeholder_values[ph.name] ?? ""}
+                value={v.placeholder_values[name] ?? ""}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                プロンプトの <code>{`{${ph.name}}`}</code> に入ります。
+                プロンプトの <code>{`{${name}}`}</code> に入ります。
               </p>
             </div>
           ))}

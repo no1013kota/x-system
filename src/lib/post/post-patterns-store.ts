@@ -3,7 +3,7 @@ import { AppError } from "@/lib/observability/errors";
 import type { Queryable } from "../db/queryable";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "../prompts/gen-prompts";
 import { toIso } from "../format";
-import type { PatternPolicy } from "./pattern-spec";
+import { extractPlaceholderNames, type PatternPolicy } from "./pattern-spec";
 import { GENERATION_MAX_POSTS } from "./thread-limits";
 
 /**
@@ -241,17 +241,29 @@ export async function applyUpdatePatternPrompt(
   },
 ): Promise<PatternPromptView> {
   validatePatternPrompt(input.content);
+  /*
+    placeholders は**本文から導出して同時に保存する**（T-M8-186）。プロンプトだけ更新して
+    宣言が残ると、(1) 本文に無い宣言が後のパターン編集で placeholder_not_used に当たる
+    (2) 本文に増やした {名前} の入力欄が定義に現れない、の両方が起きる。
+  */
+  const derived = extractPlaceholderNames(input.content).map((name) => ({ name }));
   const first = input.expectedUpdatedAt === null;
   const res = await db.query(
     first
-      ? `update post_patterns set prompt = $3, updated_at = now()
+      ? `update post_patterns set prompt = $3, placeholders = $4::jsonb, updated_at = now()
           where x_account_id = $1 and id = $2 and prompt is null`
-      : `update post_patterns set prompt = $3, updated_at = now()
+      : `update post_patterns set prompt = $3, placeholders = $4::jsonb, updated_at = now()
           where x_account_id = $1 and id = $2 and prompt is not null
-            and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+            and date_trunc('milliseconds', updated_at) = $5::timestamptz`,
     first
-      ? [input.xAccountId, input.patternId, input.content]
-      : [input.xAccountId, input.patternId, input.content, input.expectedUpdatedAt],
+      ? [input.xAccountId, input.patternId, input.content, JSON.stringify(derived)]
+      : [
+          input.xAccountId,
+          input.patternId,
+          input.content,
+          JSON.stringify(derived),
+          input.expectedUpdatedAt,
+        ],
   );
   if ((res.rowCount ?? 0) !== 1) {
     throw new AppError("job_conflict", { details: { reason: "prompt_template_changed" } });

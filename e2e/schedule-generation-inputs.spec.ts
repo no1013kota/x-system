@@ -59,6 +59,19 @@ test("予約フォームの並び順が指定どおりで、生成入力が保�
   await promptBox.fill("# タスク\nこの予約だけの指示。本人の考え: {自分の考え}");
   await page.getByRole("radio", { name: "この予約にだけ使う" }).check();
 
+  /*
+    プレースホルダーの増減が入力欄へリアルタイムに反映される（T-M8-186）。
+    {切り口} を足すと欄が現れ、消すと欄も消える（値は本文にある名前だけ保存される）。
+  */
+  await promptBox.fill(
+    "# タスク\nこの予約だけの指示。本人の考え: {自分の考え} 切り口: {切り口}",
+  );
+  const angle = page.getByLabel("切り口（任意）");
+  await expect(angle).toBeVisible();
+  await angle.fill("初心者向け");
+  await promptBox.fill("# タスク\nこの予約だけの指示。本人の考え: {自分の考え}");
+  await expect(page.getByLabel("切り口（任意）")).toHaveCount(0);
+
   await opinion.fill("私はこう考える");
   await page.getByLabel("参考URL（任意）").fill("https://example.com/a");
   await page.getByLabel("追加指示（任意）").fill("冒頭に「検証:」を付ける");

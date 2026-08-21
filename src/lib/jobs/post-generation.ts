@@ -7,6 +7,7 @@ import { finalizeThread } from "@/lib/post/generation-validation";
 import {
   buildPatternRules,
   fillPlaceholders,
+  placeholdersForFill,
   parsePatternSpec,
   patternPrompt,
   sourceRequiredForSpec,
@@ -379,7 +380,12 @@ export async function executePostGeneration(
   const resolvedPatternPrompt =
     basePatternPrompt === null
       ? null
-      : fillPlaceholders(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {});
+      : fillPlaceholders(
+          basePatternPrompt,
+          // 上書きプロンプトで増やした {名前} も差し込む（T-M8-186）。
+          placeholdersForFill(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {}),
+          job.input.placeholder_values ?? {},
+        );
   if (resolvedPatternPrompt === null) {
     throw new PostGenerationTerminalError(
       "pattern_prompt_missing",

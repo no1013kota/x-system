@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.48 |
+| バージョン | v1.49 |
 | 更新日 | 2026-08-21 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -591,7 +591,7 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
 | `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
 | `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
-| `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。投稿作成画面がこの名前で入力欄を出す。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
+| `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。**プロンプト保存時に本文から自動導出して更新する**（`extractPlaceholderNames`・T-M8-186。宣言と本文を食い違わせない）。画面の入力欄は保存値ではなく表示中の本文から導出する。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
 | `sort_order` | `integer` | not null default 100 | 画面の並び順 |
 | `seed_key` | `text` | nullable、`unique (x_account_id, seed_key)`、`p1`〜`p6`のいずれか | 既定として投入されたパターンの元ID。旧enumからの引き当てと「既定の復元」に使う。自作は`null` |
 | `created_at` | `timestamptz` | not null default now() | |
@@ -974,3 +974,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
 | v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
+| v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |

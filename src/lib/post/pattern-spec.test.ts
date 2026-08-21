@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
 import { SYSTEM_DEFAULT_TEMPLATES } from "../prompts/gen-prompts";
-import {
+import { extractPlaceholderNames, placeholdersForFill, fillPlaceholders,
   buildPatternRules,
   parsePatternSpec,
   patternPrompt,
@@ -11,6 +11,7 @@ import {
   webSearchForSpec,
   type PatternSpec,
 } from "./pattern-spec";
+import { validatePlaceholders } from "./post-patterns-store";
 
 /**
  * T-M8-129 U2。**旧 `switch (pattern)` と同じ結果になることを固定する。**
@@ -286,5 +287,55 @@ describe("buildPatternRules（設定をAIへ渡す文）", () => {
   it("「入力があるときだけ」はURLの有無で言うことが変わる", () => {
     expect(rules("p3", {}, { hasInputUrl: true })).toContain("<input>のURLを含め");
     expect(rules("p3", {}, { hasInputUrl: false })).toContain("無理に付けない");
+  });
+});
+
+describe("extractPlaceholderNames（T-M8-186）", () => {
+  it("本文の {名前} を出現順・重複なしで取り出す", () => {
+    expect(extractPlaceholderNames("A{題材}B{対象読者}C{題材}")).toEqual(["題材", "対象読者"]);
+  });
+
+  it("{{...}}（システム変数の記法）と使えない文字入りは拾わない", () => {
+    expect(extractPlaceholderNames("x{{limit}}y")).toEqual([]);
+    expect(extractPlaceholderNames("a{改行\nあり}b{ok}")).toEqual(["ok"]);
+    expect(extractPlaceholderNames("{<tag>}{ok}")).toEqual(["ok"]);
+  });
+
+  it("21字以上の名前は拾わず、上限は10件", () => {
+    expect(extractPlaceholderNames(`{${"あ".repeat(21)}}`)).toEqual([]);
+    const many = Array.from({ length: 12 }, (_, i) => `{p${i}}`).join(" ");
+    expect(extractPlaceholderNames(many)).toHaveLength(10);
+  });
+
+  it("保存時の検証（validatePlaceholders）と同じ名前規則である", () => {
+    // 導出した名前をそのまま宣言として保存できること（規則がズレると保存で落ちる）。
+    const names = extractPlaceholderNames("{題材}{対象読者}");
+    expect(() =>
+      validatePlaceholders(
+        names.map((name) => ({ name })),
+        "{題材}{対象読者}",
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("placeholdersForFill（T-M8-186）", () => {
+  it("宣言に加えて、値があり本文に実在する名前を差し込み対象にする", () => {
+    const set = placeholdersForFill(
+      "本文 {宣言済み} と {追加分} と {値なし}",
+      [{ name: "宣言済み" }],
+      { 追加分: "x", 本文に無い: "y" },
+    );
+    expect(set.map((p) => p.name).sort()).toEqual(["宣言済み", "追加分"].sort());
+  });
+
+  it("fillPlaceholdersと組で、上書きで増やした項目が差し込まれる", () => {
+    const prompt = "お題: {お題}";
+    const filled = fillPlaceholders(
+      prompt,
+      placeholdersForFill(prompt, [], { お題: "週次ふりかえり" }),
+      { お題: "週次ふりかえり" },
+    );
+    expect(filled).toBe("お題: 週次ふりかえり");
   });
 });

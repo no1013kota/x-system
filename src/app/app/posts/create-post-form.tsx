@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import type { PrereqItem } from "@/lib/execution-prereqs";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import { PromptBlock } from "@/components/post/prompt-block";
+import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
   threadCountLabel,
@@ -217,6 +218,12 @@ export function CreatePostForm({
   const selectedPattern = options.find((option) => option.id === pattern) ?? null;
   const currentTemplate = templates?.[pattern] ?? null;
   const promptValue = promptDraft ?? currentTemplate?.content ?? "";
+  /*
+    入力項目（プレースホルダー）は**いま画面に見えているプロンプト本文**から導出する（T-M8-186）。
+    編集で {名前} を増減すると、入力欄もその場で増減する。定義（pattern.placeholders）を
+    見ないのは、上書き編集中は定義とズレるため——生成側も同じく本文基準で差し込む。
+  */
+  const activePlaceholderNames = extractPlaceholderNames(promptValue);
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
   const promptOverLimit = promptValue.length > PROMPT_MAX_CHARS;
   const imageTemplate = templates?.["image"] ?? null;
@@ -396,10 +403,9 @@ function removePattern(target: PatternOption) {
         source_url: sourceUrl.trim() || undefined,
         theme,
       // このパターンが持つ項目だけを送る（型を切り替えても前の型の値を持ち越さない）。
+        // 空でも名前ごと送る（上書きで増やした項目を生成側が「（未指定）」で埋めるため・T-M8-186）。
         placeholder_values: Object.fromEntries(
-          (selectedPattern?.placeholders ?? [])
-            .map((ph) => [ph.name, (placeholderValues[ph.name] ?? "").trim()])
-            .filter(([, v]) => v !== ""),
+          activePlaceholderNames.map((name) => [name, (placeholderValues[name] ?? "").trim()]),
         ),
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
@@ -709,25 +715,25 @@ function removePattern(target: PatternOption) {
           以前は「自分の考え」だけが固定の欄だった（`<input>` に `自分の考え: …` として
           載せるだけで、プロンプトのどこへ効くかは型の書き方任せだった）。
         */}
-        {(selectedPattern?.placeholders ?? []).map((ph) => (
-          <div key={ph.name}>
+        {activePlaceholderNames.map((name) => (
+          <div key={name}>
             <label
               className="block text-body font-medium text-ink"
-              htmlFor={`placeholder-${ph.name}`}
+              htmlFor={`placeholder-${name}`}
             >
-              {ph.name}（任意）
+              {name}（任意）
             </label>
             <textarea
               className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-              id={`placeholder-${ph.name}`}
+              id={`placeholder-${name}`}
               onChange={(e) =>
-                setPlaceholderValues((prev) => ({ ...prev, [ph.name]: e.target.value }))
+                setPlaceholderValues((prev) => ({ ...prev, [name]: e.target.value }))
               }
               rows={2}
-              value={placeholderValues[ph.name] ?? ""}
+              value={placeholderValues[name] ?? ""}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              プロンプトの <code>{`{${ph.name}}`}</code> に入ります。空欄なら「（未指定）」になります。
+              プロンプトの <code>{`{${name}}`}</code> に入ります。空欄なら「（未指定）」になります。
             </p>
           </div>
         ))}

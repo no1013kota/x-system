@@ -1,3 +1,4 @@
+import { applyUpdatePatternPrompt } from "./post-patterns-store";
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
@@ -77,6 +78,58 @@ describe("post_patterns（ローカルDB）", () => {
         [xid],
       );
       expect(nulls[0].n).toBe("6");
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /**
+   * プロンプト保存で placeholders が本文から導出される（T-M8-186）。
+   * 宣言と本文が食い違うと、後のパターン編集が placeholder_not_used で落ちるか、
+   * 増やした {名前} の入力欄が出ない。
+   */
+  it("プロンプト保存で placeholders が本文から導出される", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      const { rows } = await withTransaction((c) =>
+        c.query<{ id: string }>(
+          `select id from post_patterns where x_account_id = $1 and seed_key = 'p2'`,
+          [xid],
+        ),
+      );
+      const patternId = rows[0].id;
+      // 初回保存（prompt is null → 上書き作成）: {お題} と {切り口} を含む本文。
+      const saved = await withTransaction((c) =>
+        applyUpdatePatternPrompt(c, {
+          xAccountId: xid,
+          patternId,
+          content: "# タスク\nお題: {お題} 切り口: {切り口}\n# 構成と分量とスレッド数\n1スレッド目のみ",
+          expectedUpdatedAt: null,
+        }),
+      );
+      const after = await withTransaction((c) =>
+        c.query<{ placeholders: { name: string }[] }>(
+          `select placeholders from post_patterns where id = $1`,
+          [patternId],
+        ),
+      );
+      expect(after.rows[0].placeholders).toEqual([{ name: "お題" }, { name: "切り口" }]);
+      // 2回目: {お題} だけへ減らすと宣言も減る。
+      await withTransaction((c) =>
+        applyUpdatePatternPrompt(c, {
+          xAccountId: xid,
+          patternId,
+          content: "# タスク\nお題: {お題}\n# 構成と分量とスレッド数\n1スレッド目のみ",
+          expectedUpdatedAt: saved.updatedAt,
+        }),
+      );
+      const reduced = await withTransaction((c) =>
+        c.query<{ placeholders: { name: string }[] }>(
+          `select placeholders from post_patterns where id = $1`,
+          [patternId],
+        ),
+      );
+      expect(reduced.rows[0].placeholders).toEqual([{ name: "お題" }]);
     } finally {
       await cleanup(uid);
     }
