@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { GalleryExplorer, type GalleryListItem } from "./gallery-explorer";
 
 import { TabNav } from "@/components/app-shell/tab-nav";
-import { LegalFooter } from "@/components/legal-footer";
-import { buttonVariants } from "@/components/ui/button";
+import { PublicPageShell } from "@/components/public-page-shell";
 import { Icon } from "@/components/ui/icon";
 import { APP_NAME } from "@/lib/app-config";
 import { loadGalleryItems, type GalleryItem } from "@/lib/prompt-gallery-server";
-import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: `プロンプト集 | ${APP_NAME}`,
@@ -66,59 +63,35 @@ export default async function PromptTemplatesPage({ searchParams }: PromptTempla
   const active = TABS.find((tab) => tab.value === activeTab)!;
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30">
-      <header className="border-b border-hairline bg-surface">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4">
-          <Link className="text-sm font-semibold tracking-wide" href="/">
+    <PublicPageShell current="/prompt-templates">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <header className="mx-auto max-w-3xl space-y-3 text-center">
+          <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+            <Icon aria-hidden="true" className="text-brand" name="edit_square" size={14} />
+            実際に使われているプロンプトを全文公開
+          </p>
+          <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
+            プロンプト集
+          </h1>
+          <p className="text-sm text-ink-2">
             {APP_NAME}
-          </Link>
-          <div className="flex items-center gap-2.5">
-            <Link
-              className={cn(buttonVariants({ variant: "ghost" }), "h-9 px-3.5 text-body font-medium")}
-              href="/login"
-            >
-              ログイン
-            </Link>
-            <Link
-              className={cn(buttonVariants({ variant: "brand" }), "h-9 px-4 text-body font-bold")}
-              href="/signup"
-            >
-              無料で始める
-            </Link>
-          </div>
-        </div>
-      </header>
-      <main className="flex-1 px-4 py-10 sm:py-14">
-        <div className="mx-auto max-w-5xl space-y-8">
-          <header className="mx-auto max-w-3xl space-y-3 text-center">
-            <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
-              <Icon aria-hidden="true" className="text-brand" name="edit_square" size={14} />
-              実際に使われているプロンプトを全文公開
-            </p>
-            <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
-              プロンプト集
-            </h1>
-            <p className="text-sm text-ink-2">
-              {APP_NAME}
-              の公式テンプレートと、利用者のみなさんが作成したプロンプトです（利用者作成分は匿名で掲載）。登録するとこのまま使え、すべて自分の言葉に書き換えられます。
-            </p>
-          </header>
+            の公式テンプレートと、利用者のみなさんが作成したプロンプトです（利用者作成分は匿名で掲載）。登録するとこのまま使え、すべて自分の言葉に書き換えられます。
+          </p>
+        </header>
 
-          <div>
-            <TabNav
-              active={activeTab}
-              hrefFor={(slug) => `/prompt-templates?tab=${slug}`}
-              items={TABS.map(({ value, label }) => ({ value, label }))}
-              label="プロンプトの区分"
-            />
-            <p className="mt-3 text-sm text-ink-2">{active.lead}</p>
-            <div className="mt-4">
-              <GalleryExplorer items={activeItems} />
-            </div>
+        <div>
+          <TabNav
+            active={activeTab}
+            hrefFor={(slug) => `/prompt-templates?tab=${slug}`}
+            items={TABS.map(({ value, label }) => ({ value, label }))}
+            label="プロンプトの区分"
+          />
+          <p className="mt-3 text-sm text-ink-2">{active.lead}</p>
+          <div className="mt-4">
+            <GalleryExplorer items={activeItems} />
           </div>
         </div>
-      </main>
-      <LegalFooter />
-    </div>
+      </div>
+    </PublicPageShell>
   );
 }

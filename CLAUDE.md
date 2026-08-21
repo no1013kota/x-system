@@ -31,6 +31,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト8層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
+| `blog/` | 公開ブログの記事（Markdown・1ファイル＝1記事）。書き方と投稿の流れは`blog/README.md` |
 | `.claude/skills/` | 開発用スキル。一覧と使い分けは下の「スキルの地図」 |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |

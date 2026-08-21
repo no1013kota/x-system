@@ -9,6 +9,14 @@ const nextConfig: NextConfig = {
   // blocks the HMR WebSocket (/_next/webpack-hmr), which stalls client hydration
   // so forms and the Turnstile widget never become interactive. Dev-only setting.
   allowedDevOrigins: ["127.0.0.1"],
+  // Blog articles live in `blog/*.md` and are read from the filesystem at request
+  // time (T-M8-184). Vercel's output tracing only bundles files it can see from
+  // static imports, so list them explicitly for the routes that read them.
+  // Without this, production silently serves an empty blog while dev works.
+  outputFileTracingIncludes: {
+    "/blog": ["./blog/**/*.md"],
+    "/blog/[slug]": ["./blog/**/*.md"],
+  },
 };
 
 export default nextConfig;

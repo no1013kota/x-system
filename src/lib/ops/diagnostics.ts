@@ -528,6 +528,47 @@ export function judgeDatabaseSize(input: { bytes: number; limitBytes: number }):
   return { name, level: "ok", detail };
 }
 
+/** デプロイ先が持っているブログ記事の事実（T-M8-184）。`readBlogCollection()` の要約。 */
+export interface BlogFacts {
+  /** `blog/` ディレクトリがデプロイに含まれているか。 */
+  directoryExists: boolean;
+  published: number;
+  drafts: number;
+  /** front matter の不備で公開できていないファイル名。 */
+  invalidFiles: string[];
+}
+
+/**
+ * **ブログ記事がデプロイに同梱されているか**（T-M8-184）。
+ *
+ * 記事はリポジトリの `blog/*.md` をリクエスト時に読む。Vercel は静的 import から辿れる
+ * ファイルしか同梱しないので、`next.config.ts` の `outputFileTracingIncludes` が欠けると
+ * **本番だけ「準備中」になる**（ローカルと dev は cwd から読めるので全部緑のまま）。
+ * HTTPは200を返し画面も整っているため、URLを叩く検査では分からない。
+ */
+export function judgeBlog(input: BlogFacts): Check {
+  const name = "ブログ記事の同梱";
+  if (!input.directoryExists) {
+    return {
+      name,
+      level: "error",
+      detail: "記事ディレクトリ blog/ がこのデプロイに含まれていません（/blog は「準備中」になります）",
+      nextAction:
+        "next.config.ts の outputFileTracingIncludes に blog/**/*.md があるか確認して再デプロイしてください",
+    };
+  }
+  const detail = `公開 ${input.published} 件・下書き ${input.drafts} 件`;
+  if (input.invalidFiles.length > 0) {
+    return {
+      name,
+      level: "warn",
+      detail: `${detail}・不備 ${input.invalidFiles.length} 件（${input.invalidFiles.join(", ")}）は公開されていません`,
+      nextAction: "npm run blog:check で理由を確認して直してください",
+    };
+  }
+  return { name, level: "ok", detail };
+}
+
 // --- 収集（実DBを叩く。routeとscriptの両方から使う） ---
 
 export interface DiagnosticsOptions {
@@ -548,6 +589,8 @@ export interface DiagnosticsOptions {
   mailSenderEmail?: string | null;
   /** Stripeアカウントが決済を受け付けられるか（T-M8-148）。鍵が無ければ判定しない。 */
   stripeAccount?: StripeAccountProbeDeps;
+  /** ブログ記事の同梱状況（T-M8-184）。未指定なら判定しない（DBだけの経路を壊さない）。 */
+  blog?: BlogFacts;
 }
 
 export async function collectDiagnostics(
@@ -759,6 +802,9 @@ export async function collectDiagnostics(
     読み取りのみで費用は無い。
   */
   checks.push(judgeStripeAccount(await probeStripeAccount(options.stripeAccount ?? {})));
+
+  // ブログ記事がこのデプロイに同梱されているか（T-M8-184）。同梱漏れは本番だけ「準備中」になる。
+  if (options.blog) checks.push(judgeBlog(options.blog));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

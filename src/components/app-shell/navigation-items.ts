@@ -23,6 +23,7 @@ export const APP_NAVIGATION_ITEMS = [
   // 公開ページへの導線（T-M8-173・運営者の指示）。App Shellの外だがナビから辿れる。
   // モバイル下部ナビは7枠が上限なので出さない（mobileHidden）。
   { href: "/prompt-templates", icon: "drafts", label: "プロンプト集", mobileHidden: true },
+  { href: "/blog", icon: "article", label: "ブログ", mobileHidden: true },
 ] as const satisfies readonly {
   href: string;
   icon: IconName;

@@ -25,6 +25,8 @@ const ICON_NAMES = [
   "home", "image", "key", "lock", "monitoring", "newspaper", "notifications", "open_in_new",
   "output", "progress_activity", "radio_button_unchecked", "refresh", "schedule", "smart_toy", "tune",
   "verified_user", "warning", "account_circle", "unfold_more", "content_copy",
+  // ブログ（T-M8-184）。appナビと /blog の見出しバッジ。
+  "article",
   // T-M8-51: 未使用11個を棚卸しした（`icon-source.test.ts` が再発を検査する）。
 ];
 

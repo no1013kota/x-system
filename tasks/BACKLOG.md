@@ -2232,7 +2232,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   landing-page.test（URL直書き禁止・target/rel/aria-label）と e2e/landing.spec（表示・href）で固定。
   実ブラウザ 1440/768/390 で横スクロール無し・コンソールエラー無しを確認。
 
-### T-M8-184: 公開ブログ（/blog・/blog/[slug]）— blog/ 配下Markdownの描画と導線 `todo`
+### T-M8-184: 公開ブログ（/blog・/blog/[slug]）— blog/ 配下Markdownの描画と導線 `done`
 - 参照: 要件06 §1（公開ページ。/prompt-templates と同じ立ち位置） / 依存: なし / サイズ: M
 - 完了条件:
   - リポジトリ直下 `blog/*.md`（front matter: title・description・date・draft）を `/blog`（一覧・新しい順）と `/blog/<slug>`（本文）で表示する。slugはファイル名
@@ -2243,6 +2243,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - Vercel本番ビルドでもMarkdownが読める（`outputFileTracingIncludes`）。`build`＋`check:csp-nonce`＋E2E緑
 - メモ: 運営者の指示（2026-08-21）。記事はDBではなくリポジトリで管理し、投稿＝コミット＋通常の反映（`release:*`）。
   描画はreact-markdown＋remark-gfm（HTMLを注入しない・`dangerouslySetInnerHTML` 不使用）。
+- 実装メモ（2026-08-21）: 判定 `src/lib/blog/blog-content.ts`（import無し・`npm run blog:check` が
+  Nodeから直接読む）＋ 読み出し `blog-files.ts`（E2Eも同じ関数で公開記事を数える）。
+  `PublicPageShell` を切り出してプロンプト集も同じ器へ。`doctor` に「ブログ記事の同梱」を追加
+  （Vercelの `outputFileTracingIncludes` 漏れ＝本番だけ「準備中」を検出。**本番反映後に doctor で
+  この項目が緑になることを確認する**——ローカルでは原理的に再現しない）。react-markdown の
+  `node` prop が DOM 属性へ漏れる問題を発見し修正（テストで固定）。初回記事
+  `blog/hello-exos-ai-blog.md` を同梱（運営者が編集・削除してよい。E2Eは記事の有無どちらでも緑）。
+  実ブラウザ 1440/768/390（一覧・記事・プロンプト集）で横スクロール無し・コンソールエラー無し。
 
 ### T-M8-185: ブログの執筆スキル（/blog-write）と投稿スキル（/blog-publish）・運用手順 `todo`
 - 参照: CLAUDE.md「スキルの地図」・T-M8-184 の front matter 仕様 / 依存: T-M8-184 / サイズ: S

@@ -47,6 +47,7 @@
 |---|---|
 | [ADR](./decisions/README.md) | 上記で表現しきれない技術判断。不可逆な選択をしたとき |
 | [marketing/](./marketing/) | **正本ではない。** LP等の外部制作へ渡す依頼文（作成時点のスナップショット） |
+| [`blog/`](../blog/README.md)（リポジトリ直下） | 公開ブログの記事（Markdown）。書き方・front matter・投稿の流れは同ディレクトリの README が正本。画面仕様は要件06 |
 
 ## 2. 仕様の所有ルール（どこに書くか）
 
@@ -76,6 +77,7 @@
 | `route-auth.test.ts` | 開発とテストの進め方の記述 ↔ cron routeの認可 | `npm test` |
 | `legal-pages.test.ts` | 法務3ページ ↔ 委託先・Cookie・事業者情報の定数 | `npm test` |
 | `npm run check:csp-nonce` | ビルド成果物のHTML ↔ nonce付きCSPの前提 | `release:check` |
+| `blog-articles.test.ts`／`npm run blog:check` | `blog/*.md` の front matter ↔ 画面と同じ判定（`blog-content.ts`）。不備は公開側に出ないだけなので、ここで止める | `npm test`／運営者が投稿前に実行 |
 
 **新しく一覧や数値をdocsへ書くときは、突き合わせる検査も同時に作る。** 作れないなら「実測が正」と明記して日付を添える（例: テスト本数）。
 

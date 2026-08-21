@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   FREE_DB_SIZE_LIMIT_BYTES,
   describeEmptyCategories,
+  judgeBlog,
   judgeCost,
   judgeDatabaseSize,
   judgeJobs,
@@ -449,5 +450,31 @@ describe("providerの失敗理由を直せる言葉で出す（T-M8-163）", () 
     for (const leak of ["request_id", "invalid_request_error", "Your credit balance"]) {
       expect(rendered, leak).not.toContain(leak);
     }
+  });
+});
+
+describe("judgeBlog（ブログ記事の同梱・T-M8-184）", () => {
+  it("blog/ が同梱されていなければ error（本番だけ「準備中」になる事故）", () => {
+    const check = judgeBlog({ directoryExists: false, published: 0, drafts: 0, invalidFiles: [] });
+    expect(check.level).toBe("error");
+    expect(check.nextAction).toContain("outputFileTracingIncludes");
+  });
+
+  it("不備のある記事があれば warn で blog:check を案内する", () => {
+    const check = judgeBlog({
+      directoryExists: true,
+      published: 2,
+      drafts: 1,
+      invalidFiles: ["broken.md"],
+    });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("broken.md");
+    expect(check.nextAction).toContain("npm run blog:check");
+  });
+
+  it("公開0件でもディレクトリがあれば ok（記事が無いのは正常な空）", () => {
+    const check = judgeBlog({ directoryExists: true, published: 0, drafts: 0, invalidFiles: [] });
+    expect(check.level).toBe("ok");
+    expect(check.detail).toBe("公開 0 件・下書き 0 件");
   });
 });

@@ -38,6 +38,7 @@ async function deployedCheckNames(): Promise<string[]> {
       sentryPublicDsnKind: "usable",
       sentryHost: "o1.ingest.de.sentry.io",
     },
+    blog: { directoryExists: true, published: 1, drafts: 0, invalidFiles: [] },
   });
   return report.checks.map((c) => c.name);
 }

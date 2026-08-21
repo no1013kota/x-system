@@ -65,6 +65,17 @@ export async function GET(request: Request): Promise<Response> {
     },
     // 確認メールの送信元（T-M8-147）。Supabase側の `smtp_user` と同じ値を設定している。
     mailSenderEmail: env.SMTP_USER ?? null,
+    // ブログ記事（blog/*.md）がこのデプロイに同梱されているか（T-M8-184）。
+    blog: await (async () => {
+      const { readBlogCollection } = await import("@/lib/blog/blog-files");
+      const collection = readBlogCollection();
+      return {
+        directoryExists: collection.directoryExists,
+        published: collection.posts.filter((post) => !post.draft).length,
+        drafts: collection.posts.filter((post) => post.draft).length,
+        invalidFiles: collection.invalid.map((entry) => entry.file),
+      };
+    })(),
     config: {
       appEnv: env.APP_ENV,
       postingMode: env.X_POSTING_MODE,
