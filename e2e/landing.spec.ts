@@ -55,6 +55,11 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   ] as const) {
     await expect(footer.getByRole("link", { name })).toHaveAttribute("href", href);
   }
+  // 運営者のXアカウント（T-M8-183）。アイコンだけのリンクなので名前は aria-label で読む。
+  const xLink = footer.getByRole("link", { name: /運営者のXアカウント/ });
+  await expect(xLink).toBeVisible();
+  await expect(xLink).toHaveAttribute("href", "https://x.com/ai_newinfo");
+  await expect(xLink).toHaveAttribute("target", "_blank");
 });
 
 /**

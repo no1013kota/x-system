@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { OPERATOR_X_URL } from "@/lib/app-config";
 import { RELEASE_CAMPAIGN } from "@/lib/plans";
 
 /**
@@ -84,6 +85,23 @@ describe("SC-01 LP: 導線", () => {
     expect(PAGE).toContain("LegalFooterLinks");
     expect(PAGE).not.toContain("/terms");
     expect(PAGE).not.toContain("/privacy");
+  });
+
+  /**
+   * フッタの運営者Xアカウント（T-M8-183）。URLは `app-config.ts` だけが持ち、
+   * 画面は定数を参照する（直書きすると変えたとき片方だけ古くなる）。
+   * 新しいタブで開く外部リンクなので rel="noopener noreferrer" と読み上げラベルを必須にする。
+   */
+  it("フッタに運営者のXアカウントへのリンクがある（URLは app-config の定数経由・新しいタブ・ラベル付き）", () => {
+    expect(OPERATOR_X_URL).toBe("https://x.com/ai_newinfo");
+    expect(PAGE).toContain("href={OPERATOR_X_URL}");
+    expect(PAGE, "x.com のURLを画面へ直書きしない").not.toMatch(/https:\/\/x\.com\//);
+    const anchor = PAGE.match(/<a\s[^>]*href=\{OPERATOR_X_URL\}[^>]*>/)?.[0];
+    expect(anchor, "OPERATOR_X_URL を href に持つ <a> がある").toBeTruthy();
+    expect(anchor).toContain('target="_blank"');
+    expect(anchor).toContain('rel="noopener noreferrer"');
+    expect(anchor).toMatch(/aria-label=/);
+    expect(PAGE).toContain("<XLogo");
   });
 });
 

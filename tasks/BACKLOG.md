@@ -2219,7 +2219,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 「このプロンプトを利用する」ボタンがカードの右上に揃う
 - メモ: 運営者の指示（2026-08-21）。
 
-### T-M8-183: LPフッタに運営者Xアカウントへのリンク（Xアイコン） `todo`
+### T-M8-183: LPフッタに運営者Xアカウントへのリンク（Xアイコン） `done`
 - 参照: 要件06 §1（LP・フッタ） / 依存: なし / サイズ: S
 - 完了条件:
   - LPフッタにXのロゴアイコンが表示され、タップ／クリックで `https://x.com/ai_newinfo` が新しいタブで開く（`rel="noopener noreferrer"`）
@@ -2227,6 +2227,10 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - URLは `app-config.ts` の定数1か所で持ち、landing-page.test がリンクの存在とURLを固定する
 - メモ: 運営者の指示（2026-08-21。リンク先は運営者回答）。XロゴはMaterial Symbolsに無いため、
   公式ロゴ形状のSVGを `icon-paths` とは別の部品として持つ（`npm run icons:generate` の対象外）。
+- 実装メモ（2026-08-21）: `OPERATOR_X_HANDLE`/`OPERATOR_X_URL`（app-config）＋ `components/brand/x-logo.tsx`。
+  フッタは `order` で見た目だけ入れ替え、狭い幅ではロゴ行の右端に残す（3行目に孤立させない）。
+  landing-page.test（URL直書き禁止・target/rel/aria-label）と e2e/landing.spec（表示・href）で固定。
+  実ブラウザ 1440/768/390 で横スクロール無し・コンソールエラー無しを確認。
 
 ### T-M8-184: 公開ブログ（/blog・/blog/[slug]）— blog/ 配下Markdownの描画と導線 `todo`
 - 参照: 要件06 §1（公開ページ。/prompt-templates と同じ立ち位置） / 依存: なし / サイズ: M

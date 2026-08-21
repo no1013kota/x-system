@@ -3,6 +3,7 @@ import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
+import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
   ConceptCycleFigure,
@@ -19,7 +20,7 @@ import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
-import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-config";
+import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -438,16 +439,35 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-hairline bg-page">
-        <div
-          className={`${CONTAINER} flex flex-wrap items-center justify-between gap-x-6 gap-y-4 py-8`}
-        >
+        {/*
+          1行目にロゴと©、右端に法務3リンクとXアイコン。幅が狭いと法務リンクが2行目へ折り返し、
+          Xアイコンは1行目のロゴの右端に残す（`order`で見た目だけ入れ替える。アイコンが1つだけ
+          3行目へ落ちて孤立しないように・T-M8-183）。
+        */}
+        <div className={`${CONTAINER} flex flex-wrap items-center gap-x-6 gap-y-4 py-8`}>
           <div className="flex items-center gap-2.5">
             <LogoTile size={24} />
             <span className="text-body font-bold">{APP_NAME}</span>
             <span className="text-caption text-ink-3">© 2026 Exos AI</span>
           </div>
+          {/*
+            運営者のXアカウント（T-M8-183）。アイコンだけのリンクなので aria-label で
+            行き先と「新しいタブ」を読み上げる。タップ領域は size-9（36px・WCAG 2.5.8）。
+          */}
+          <a
+            aria-label={`運営者のXアカウント @${OPERATOR_X_HANDLE}（新しいタブで開く）`}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon" }),
+              "ml-auto rounded-full text-ink-2 hover:bg-brand-subtle hover:text-brand sm:order-last sm:ml-0",
+            )}
+            href={OPERATOR_X_URL}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <XLogo className="size-4.5" size={18} />
+          </a>
           <LegalFooterLinks
-            className="flex flex-wrap gap-x-5 gap-y-2"
+            className="flex basis-full flex-wrap gap-x-5 gap-y-2 sm:ml-auto sm:basis-auto"
             linkClassName="inline-flex min-h-6 items-center text-caption text-ink-2 transition-colors hover:text-brand"
           />
         </div>
