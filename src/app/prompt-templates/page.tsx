@@ -1,73 +1,69 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { GalleryExplorer, type GalleryListItem } from "./gallery-explorer";
+
+import { TabNav } from "@/components/app-shell/tab-nav";
 import { LegalFooter } from "@/components/legal-footer";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { APP_NAME } from "@/lib/app-config";
-import { galleryTemplates, type GalleryTemplate } from "@/lib/prompt-template-gallery";
+import { loadGalleryItems, type GalleryItem } from "@/lib/prompt-gallery-server";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: `プロンプト集 | ${APP_NAME}`,
   description:
-    "Exos AIが実際に使うプロンプトテンプレートの一覧。アカウント.md（発信定義書）、投稿の型6種、画像生成のプロンプト全文を確認できます。",
+    "Exos AIのプロンプトテンプレート集。公式テンプレートと利用者が作成したアカウント.md・投稿プロンプト・画像生成プロンプトを全文確認できます。",
 };
 
 /**
- * 公開プロンプトテンプレート集（T-M8-173・運営者の指示 2026-08-21）。
+ * 公開プロンプト集（T-M8-173／T-M8-175・運営者の指示 2026-08-21）。
  *
- * アプリが実際に使うテンプレート（アカウント.md・投稿の型6種・画像生成）を全文公開する。
- * 「中でどんな指示が動くか」を申込前に確認でき、各テンプレートの「このプロンプトを利用する」は
- * 新規登録へつなぐ。**本文は正本（`prompt-template-gallery.ts` 経由）から描画し、
- * このページへ書き写さない。** 実ユーザーの作成物は載せない（公開許諾の仕組みが無い・要決定D-32）。
+ * 公式テンプレート（正本から描画）に加えて**利用者作成のプロンプトを匿名で掲載**する。
+ * 量が増える前提で「アカウント.md／投稿プロンプト／画像プロンプト」の3タブ＋ワード検索。
+ * 「このプロンプトを利用する」は新規登録へつなぐ。掲載の開示は利用規約第7条・
+ * プライバシーポリシー（掲載停止はお問い合わせ窓口）。
  */
 
-const GROUP_LABELS: Record<GalleryTemplate["group"], { title: string; lead: string }> = {
-  "account-md": {
-    title: "アカウント.md（発信定義書）",
+const TABS: { value: GalleryItem["group"]; label: string; lead: string }[] = [
+  {
+    value: "account-md",
+    label: "アカウント.md",
     lead: "全投稿の土台になる1枚。登録後は自分の言葉で自由に編集でき、学習と改善提案で育ちます。",
   },
-  post: {
-    title: "投稿プロンプト（6種類の型）",
-    lead: "投稿の型ごとの生成指示。登録後はそのまま使うことも、1行ずつ書き換えることもできます。",
+  {
+    value: "post",
+    label: "投稿プロンプト",
+    lead: "投稿の型ごとの生成指示。公式の6種に加えて、利用者が作成した型も並びます。",
   },
-  image: {
-    title: "画像生成プロンプト",
+  {
+    value: "image",
+    label: "画像プロンプト",
     lead: "投稿に添える画像の生成指示。文章と同じく、直接確認・編集できます。",
   },
-};
+];
 
-function TemplateCard({ template }: { template: GalleryTemplate }) {
-  const headingId = `template-${template.id}`;
-  return (
-    <Card aria-labelledby={headingId} as="article" className="overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
-        <div className="min-w-0">
-          <CardTitle as="h3" id={headingId}>
-            {template.name}
-          </CardTitle>
-          <p className="mt-1 text-caption text-ink-2">{template.description}</p>
-        </div>
-        <Link
-          className={cn(buttonVariants({ variant: "brand" }), "h-9 px-4 text-body font-bold")}
-          href="/signup"
-        >
-          このプロンプトを利用する
-        </Link>
-      </div>
-      {/* 全文。折りたたまず、長いものはこの枠の中でスクロールさせる（ページを縦に伸ばしすぎない）。 */}
-      <pre className="mx-5 mt-3.5 mb-5 max-h-[420px] overflow-auto rounded-card border border-hairline bg-page px-4 py-3.5 text-caption leading-[1.8] whitespace-pre-wrap text-ink-2">
-        {template.content}
-      </pre>
-    </Card>
-  );
+interface PromptTemplatesPageProps {
+  searchParams: Promise<{ tab?: string }>;
 }
 
-export default function PromptTemplatesPage() {
-  const templates = galleryTemplates();
-  const groups: GalleryTemplate["group"][] = ["account-md", "post", "image"];
+export default async function PromptTemplatesPage({ searchParams }: PromptTemplatesPageProps) {
+  const params = await searchParams;
+  const activeTab =
+    TABS.find((tab) => tab.value === params.tab)?.value ?? "account-md";
+  const items = await loadGalleryItems();
+  const activeItems: GalleryListItem[] = items
+    .filter((item) => item.group === activeTab)
+    .map(({ id, name, description, content, source }) => ({
+      id,
+      name,
+      description,
+      content,
+      source,
+    }));
+  const active = TABS.find((tab) => tab.value === activeTab)!;
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       <header className="border-b border-hairline bg-surface">
@@ -92,7 +88,7 @@ export default function PromptTemplatesPage() {
         </div>
       </header>
       <main className="flex-1 px-4 py-10 sm:py-14">
-        <div className="mx-auto max-w-5xl space-y-10">
+        <div className="mx-auto max-w-5xl space-y-8">
           <header className="mx-auto max-w-3xl space-y-3 text-center">
             <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
               <Icon aria-hidden="true" className="text-brand" name="edit_square" size={14} />
@@ -103,24 +99,22 @@ export default function PromptTemplatesPage() {
             </h1>
             <p className="text-sm text-ink-2">
               {APP_NAME}
-              が投稿を作るときに実際に使うテンプレートです。登録するとこのまま使え、すべて自分の言葉に書き換えられます。
+              の公式テンプレートと、利用者のみなさんが作成したプロンプトです（利用者作成分は匿名で掲載）。登録するとこのまま使え、すべて自分の言葉に書き換えられます。
             </p>
           </header>
-          {groups.map((group) => (
-            <section aria-label={GROUP_LABELS[group].title} key={group}>
-              <h2 className="text-[20px] font-bold tracking-tight text-ink">
-                {GROUP_LABELS[group].title}
-              </h2>
-              <p className="mt-1.5 text-sm text-ink-2">{GROUP_LABELS[group].lead}</p>
-              <div className="mt-4 grid gap-4">
-                {templates
-                  .filter((template) => template.group === group)
-                  .map((template) => (
-                    <TemplateCard key={template.id} template={template} />
-                  ))}
-              </div>
-            </section>
-          ))}
+
+          <div>
+            <TabNav
+              active={activeTab}
+              hrefFor={(slug) => `/prompt-templates?tab=${slug}`}
+              items={TABS.map(({ value, label }) => ({ value, label }))}
+              label="プロンプトの区分"
+            />
+            <p className="mt-3 text-sm text-ink-2">{active.lead}</p>
+            <div className="mt-4">
+              <GalleryExplorer items={activeItems} />
+            </div>
+          </div>
         </div>
       </main>
       <LegalFooter />

@@ -18,6 +18,7 @@ import { HeroMock } from "@/components/lp/hero-mock";
 import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
@@ -151,11 +152,15 @@ export default function Home() {
           <nav aria-label="セクション" className="hidden items-center gap-6 min-[880px]:flex">
             {NAV_LINKS.map(([href, label]) => (
               <a
-                className="inline-flex min-h-6 items-center text-body font-medium text-ink-2 transition-colors hover:text-brand"
+                className="inline-flex min-h-6 items-center gap-1 text-body font-medium text-ink-2 transition-colors hover:text-brand"
                 href={href}
                 key={href}
               >
                 {label}
+                {/* ページ遷移するリンクにはマークを付ける（アンカーと区別・T-M8-175）。 */}
+                {!href.startsWith("#") ? (
+                  <Icon aria-hidden="true" name="open_in_new" size={13} />
+                ) : null}
               </a>
             ))}
           </nav>

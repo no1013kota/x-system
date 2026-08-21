@@ -37,6 +37,7 @@
 | [CI](./operations/ci.md) | GitHub Actionsが何を回すか |
 | [デプロイ手順](./operations/deployment.md) | staging / production へ出す |
 | [リリース前チェックリスト](./operations/release-checklist.md) | 公開前の確認と、人がやる準備 |
+| [招待報酬の銀行振込](./operations/affiliate-payouts.md) | 月1回の振込と支払記録（T-M8-174/176） |
 | [DBバックアップ・復元](./operations/database-backup-restore.md) | バックアップを取る・戻す |
 | [launchd→Vercel Cron](./operations/launchd-to-vercel-cron.md) | 定時実行の移行経緯と現在の設定 |
 

@@ -84,6 +84,10 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
               label={item.label}
               mobile={mobile}
             />
+            {/* App Shellの外へ遷移する項目にはマークを付ける（T-M8-175）。 */}
+            {!item.href.startsWith("/app") && !mobile ? (
+              <Icon aria-hidden="true" className="ml-auto text-ink-3" name="open_in_new" size={14} />
+            ) : null}
           </IntentPrefetchLink>
         );
       })}
