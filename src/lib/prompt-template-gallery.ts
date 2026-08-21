@@ -24,15 +24,23 @@ export interface GalleryTemplate {
   /** プロンプト全文（正本から）。 */
   content: string;
   group: "account-md" | "post" | "image";
+  /** 投稿プロンプトの差し込み欄（プレースホルダー名・T-M8-178）。無い型は空配列。 */
+  placeholders: string[];
 }
 
-const POST_PATTERN_INFO: { kind: PromptTemplateKind; name: string; description: string }[] = [
-  { kind: "p1", name: "ニュース解説", description: "話題のニュースを解説するスレッド" },
-  { kind: "p2", name: "自分の考え・意見", description: "本人の視点で述べる単発ポスト" },
-  { kind: "p3", name: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド" },
-  { kind: "p4", name: "トレンド便乗", description: "いま話題のトピックに便乗する短いスレッド" },
-  { kind: "p5", name: "引用ポスト", description: "対象ポストへの引用（URL付き投稿）" },
-  { kind: "p6", name: "週次まとめ", description: "直近7日の関連ニュースまとめ" },
+const POST_PATTERN_INFO: {
+  kind: PromptTemplateKind;
+  name: string;
+  description: string;
+  /** 既定パターンのplaceholders（seedと同値・T-M8-178）。変えるときは両方揃える。 */
+  placeholders: string[];
+}[] = [
+  { kind: "p1", name: "ニュース解説", description: "話題のニュースを解説するスレッド", placeholders: [] },
+  { kind: "p2", name: "自分の考え・意見", description: "本人の視点で述べる単発ポスト", placeholders: ["自分の考え"] },
+  { kind: "p3", name: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド", placeholders: [] },
+  { kind: "p4", name: "トレンド便乗", description: "いま話題のトピックに便乗する短いスレッド", placeholders: [] },
+  { kind: "p5", name: "引用ポスト", description: "対象ポストへの引用（URL付き投稿）", placeholders: [] },
+  { kind: "p6", name: "週次まとめ", description: "直近7日の関連ニュースまとめ", placeholders: [] },
 ];
 
 /** サンプルのアカウント.md初版を、実際の生成関数で作る（構造・見出しが常に実物と一致する）。 */
@@ -69,13 +77,15 @@ export function galleryTemplates(): GalleryTemplate[] {
         "全投稿の土台になる1枚。誰として・誰に・どんな口調で発信するかをAIへ指示します。初期設定から自動生成され、学習と改善提案で育ちます（下はサンプル値での初版）。",
       content: sampleBaseMd(),
       group: "account-md",
+      placeholders: [],
     },
-    ...POST_PATTERN_INFO.map(({ kind, name, description }) => ({
+    ...POST_PATTERN_INFO.map(({ kind, name, description, placeholders }) => ({
       id: kind,
       name,
       description,
       content: SYSTEM_DEFAULT_TEMPLATES[kind],
       group: "post" as const,
+      placeholders,
     })),
     {
       id: "image",
@@ -83,6 +93,7 @@ export function galleryTemplates(): GalleryTemplate[] {
       description: "投稿本文に合わせて、添える画像の生成指示を組み立てるプロンプトです。",
       content: SYSTEM_DEFAULT_TEMPLATES.image,
       group: "image",
+      placeholders: [],
     },
   ];
 }

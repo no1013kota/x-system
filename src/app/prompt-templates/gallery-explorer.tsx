@@ -21,6 +21,8 @@ export interface GalleryListItem {
   description: string;
   content: string;
   source: "official" | "community";
+  /** 投稿プロンプトの差し込み欄（{名前} で本文へ差し込まれる・T-M8-178）。 */
+  placeholders: string[];
 }
 
 function TemplateCard({ item }: { item: GalleryListItem }) {
@@ -40,6 +42,14 @@ function TemplateCard({ item }: { item: GalleryListItem }) {
             )}
           </div>
           <p className="mt-1 text-caption text-ink-2">{item.description}</p>
+          {item.placeholders.length > 0 ? (
+            <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption text-ink-3">
+              差し込み欄:
+              {item.placeholders.map((name) => (
+                <Badge key={name} tone="neutral">{`{${name}}`}</Badge>
+              ))}
+            </p>
+          ) : null}
         </div>
         <Link
           className={cn(buttonVariants({ variant: "brand" }), "h-9 px-4 text-body font-bold")}

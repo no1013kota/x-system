@@ -16,8 +16,9 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   const patternName = `E2E独自型${randomUUID().slice(0, 6)}`;
   await query(
     `insert into post_patterns
-       (x_account_id, name, description, prompt, max_posts, max_posts_edit)
-     values ($1, $2, 'E2E用の説明文', '# タスク\nE2E用の独自プロンプト本文。', 2, 4)`,
+       (x_account_id, name, description, prompt, max_posts, max_posts_edit, placeholders)
+     values ($1, $2, 'E2E用の説明文', '# タスク\nE2E用の独自プロンプト本文。{お題}', 2, 4,
+             '[{"name": "お題"}]'::jsonb)`,
     [account.xAccountId, patternName],
   );
 
@@ -32,6 +33,9 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   await expect(page.getByRole("article", { name: /ニュース解説/ })).toBeVisible();
   await expect(page.getByRole("article", { name: new RegExp(patternName) })).toBeVisible();
   await expect(page.getByText("E2E用の説明文")).toBeVisible();
+  // 差し込み欄（プレースホルダー）が分かる（T-M8-178）。公式p2と利用者作成の両方。
+  await expect(page.getByText("{自分の考え}")).toBeVisible();
+  await expect(page.getByText("{お題}")).toBeVisible();
   await expect(page.getByText("利用者作成").first()).toBeVisible();
   // 識別子（ハンドル・メール）は出さない。
   await expect(page.getByText(account.handle)).toHaveCount(0);

@@ -49,8 +49,14 @@ export async function loadGalleryItems(): Promise<GalleryItem[]> {
 
   const [patterns, images, baseMds] = await Promise.all([
     // 自作の投稿パターン（seed_key null＝利用者が題名・説明ごと作ったもの）。
-    db.query<{ id: string; name: string; description: string | null; prompt: string }>(
-      `select id, name, description, prompt
+    db.query<{
+      id: string;
+      name: string;
+      description: string | null;
+      prompt: string;
+      placeholders: { name: string }[];
+    }>(
+      `select id, name, description, prompt, placeholders
          from post_patterns
         where seed_key is null and prompt is not null
         order by updated_at desc
@@ -84,6 +90,7 @@ export async function loadGalleryItems(): Promise<GalleryItem[]> {
         content: row.base_md,
         group: "account-md" as const,
         source: "community" as const,
+        placeholders: [],
       };
     }),
     ...patterns.rows.map((row) => ({
@@ -93,6 +100,7 @@ export async function loadGalleryItems(): Promise<GalleryItem[]> {
       content: row.prompt,
       group: "post" as const,
       source: "community" as const,
+      placeholders: (row.placeholders ?? []).map((entry) => entry.name),
     })),
     ...images.rows.map((row) => ({
       id: `community-image-${row.id}`,
@@ -101,6 +109,7 @@ export async function loadGalleryItems(): Promise<GalleryItem[]> {
       content: row.content,
       group: "image" as const,
       source: "community" as const,
+      placeholders: [],
     })),
   ];
 

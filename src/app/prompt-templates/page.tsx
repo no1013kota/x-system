@@ -55,12 +55,13 @@ export default async function PromptTemplatesPage({ searchParams }: PromptTempla
   const items = await loadGalleryItems();
   const activeItems: GalleryListItem[] = items
     .filter((item) => item.group === activeTab)
-    .map(({ id, name, description, content, source }) => ({
+    .map(({ id, name, description, content, source, placeholders }) => ({
       id,
       name,
       description,
       content,
       source,
+      placeholders,
     }));
   const active = TABS.find((tab) => tab.value === activeTab)!;
 

@@ -37,6 +37,12 @@ describe("galleryTemplates", () => {
     expect(md).toContain("# 発信定義書");
   });
 
+  it("差し込み欄（placeholders）はseedと同じ定義を持つ（p2だけが{自分の考え}）", () => {
+    for (const t of templates) {
+      expect(t.placeholders).toEqual(t.id === "p2" ? ["自分の考え"] : []);
+    }
+  });
+
   it("全件に名前・説明・本文がある", () => {
     for (const t of templates) {
       expect(t.name.length).toBeGreaterThan(0);
