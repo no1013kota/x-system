@@ -2199,13 +2199,20 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 完了条件: /app/invite が他のapp画面と同じ器（`max-w-[1180px] px-4 py-[26px]` のmain）で描画され、幅・余白のズレが無い
 - メモ: 運営者の指摘（2026-08-21）。素のdivで返していたためmax-widthとpaddingが効いていなかった。
 
-### T-M8-180: T-M8-168〜179範囲のリファクタリングとdocs総同期 `todo`
+### T-M8-180: T-M8-168〜179範囲のリファクタリングとdocs総同期 `done`
 - 参照: CLAUDE.md（doc同期）・/refactor / 依存: T-M8-177〜179 / サイズ: M
 - 完了条件:
   - 重複コードの集約（posts/scheduleページのimageProvidersFor重複 等）と、振る舞いを変えない整理
   - 今回範囲のdocs（PRD・要件01〜06・プロンプト設計書・運用メモ）と実装の突き合わせで漏れゼロ
   - 全ゲート（typecheck/lint/単体/build/csp/E2E）緑
-- メモ: 運営者の指示（2026-08-21）。
+- 実装メモ（2026-08-21）:
+  - リファクタ: posts/scheduleページに重複していた `imageProvidersFor` を
+    `lib/ai/image-providers-server.ts` へ集約（実行側と同じ判定基準である旨をコメントで固定）。
+    未使用importの掃除。JSTオフセットの局所定数は既存モジュールも同じ流儀のため据え置き。
+  - docsの突き合わせで見つけた同期漏れを修正: 要件05のwebhook対象イベント一覧に
+    charge.refunded が無かった／deployment.mdのwebhook登録行から購読イベント一覧への参照が
+    無かった／プロンプト設計書にPT全文が公開ページへ表示される旨が無かった。
+  - 全ゲート緑: typecheck・lint・単体/DB 2,383件・build・csp・E2E 94件。
 
 ### T-M8-175: プロンプト集に利用者作成プロンプトを掲載（タブ・検索・導線マーク） `done`
 - 参照: 要件06（/prompt-templates）・プロンプト設計書 / 依存: T-M8-173 / サイズ: M

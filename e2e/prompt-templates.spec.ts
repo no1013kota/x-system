@@ -34,8 +34,8 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   await expect(page.getByRole("article", { name: new RegExp(patternName) })).toBeVisible();
   await expect(page.getByText("E2E用の説明文")).toBeVisible();
   // 差し込み欄（プレースホルダー）が分かる（T-M8-178）。公式p2と利用者作成の両方。
-  await expect(page.getByText("{自分の考え}")).toBeVisible();
-  await expect(page.getByText("{お題}")).toBeVisible();
+  await expect(page.getByText("{自分の考え}", { exact: true })).toBeVisible();
+  await expect(page.getByText("{お題}", { exact: true })).toBeVisible();
   await expect(page.getByText("利用者作成").first()).toBeVisible();
   // 識別子（ハンドル・メール）は出さない。
   await expect(page.getByText(account.handle)).toHaveCount(0);

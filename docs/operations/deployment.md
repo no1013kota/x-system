@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.14 |
+| バージョン | v1.15 |
 | 更新日 | 2026-08-21 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -245,7 +245,7 @@ curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x
 | サービス | 登録内容 |
 |---|---|
 | X Developer App | callback URL に `APP_BASE_URL + X_OAUTH_REDIRECT_PATH` を登録。scope 5種。staging と production で**別App**にする |
-| Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ |
+| Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ。購読イベントは要件05のwebhook節の一覧（`charge.refunded` を含む・T-M8-174）と揃える |
 | Turnstile | **Hostname Management にそのドメインを登録**（staging/production 別キー）。登録漏れだと `error-callback` 110200 になり**ログインも新規登録もできない**。`npm run check:turnstile -- --base <URL>` で確認する |
 | Supabase Auth | Site URL / Redirect URLs に `APP_BASE_URL` を登録 |
 

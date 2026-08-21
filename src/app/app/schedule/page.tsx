@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
-import { env } from "@/lib/env";
-import { isOperatorManagedPlan } from "@/lib/plans";
+import { imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import Link from "next/link";
 
@@ -36,16 +35,6 @@ function imageKeyRowsQuery(userId: string) {
       where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
     [userId],
   );
-}
-
-function imageProvidersFor(plan: string | null, keyRows: { provider: string }[]): string[] {
-  if (isOperatorManagedPlan(plan)) {
-    const providers: string[] = [];
-    if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
-    if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
-    return providers;
-  }
-  return keyRows.map((r) => r.provider);
 }
 
 export default async function SchedulePage() {

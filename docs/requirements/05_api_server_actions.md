@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.48 |
+| バージョン | v1.49 |
 | 更新日 | 2026-08-21 |
 | 関連 | 全画面、全ジョブ |
 
@@ -85,7 +85,7 @@
 
 `GET /api/stripe/return`は`source=checkout|portal`、認証済みsession、開始APIが発行した`HttpOnly`／`SameSite=Lax`の復帰markerを検証する。開始後のStripe event時刻がprofileへ反映済みなら外部APIなしで画面へredirectする。未反映時だけCheckout Sessionの本人性（checkoutのみ）を確認してSubscriptionを1回取得し、webhook共通projectionをtransaction適用する。markerは結果にかかわらず削除し、成功／反映済み／skip／失敗を秘密情報を含まない`sync` queryへ正規化する。markerのない通常画面はこのrouteを通らず、Stripe APIを呼ばない（要件03 §3）。
 
-`POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
+`POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`、`charge.refunded`（招待報酬の取消・減額・T-M8-174）だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
 
 初期はlaunchd、移行後はVercel Cronが同じGET routeを起動する。定時routeは`force-dynamic`とし、redirect・cacheを発生させない。呼び出し元に依存する処理分岐は持たない。
 
@@ -328,6 +328,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.46 | 2026-08-20 | §2.2の失敗例messageを実装の文言へ修正（T-M8-144 #47） |
 | v1.47 | 2026-08-20 | プラン再編（T-M8-168）: エラーコード usage_paused（429・エキスパートの内部ガード到達）を追加 |
 | v1.48 | 2026-08-21 | 招待プログラムのAction・公開route・webhook購読イベント追加を記載（T-M8-174） |
+| v1.49 | 2026-08-21 | webhook対象イベント一覧へ charge.refunded を追記（T-M8-174のdoc同期漏れ・T-M8-180で検出） |
 
 ### 下書きの投稿予約（T-M8-157）
 

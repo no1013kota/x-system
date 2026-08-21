@@ -12,7 +12,7 @@ import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
-import { isOperatorManagedPlan } from "@/lib/plans";
+import { imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -54,20 +54,6 @@ function imageKeyRowsQuery(userId: string) {
       where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
     [userId],
   );
-}
-
-/** BYOKは valid な openai/google キー、運営キー系（premium/expert）は運営キー＋画像モデルが設定済みのproviderを返す。 */
-function imageProvidersFor(
-  plan: string | null,
-  keyRows: { provider: string }[],
-): string[] {
-  if (isOperatorManagedPlan(plan)) {
-    const providers: string[] = [];
-    if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
-    if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
-    return providers;
-  }
-  return keyRows.map((r) => r.provider);
 }
 
 async function createTabData(userId: string, activeXAccountId: string) {
