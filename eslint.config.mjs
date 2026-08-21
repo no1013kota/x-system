@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Playwright artifacts (E2E, T-M7-05)
     "test-results/**",
+    // Claude Codeのworktree（リポジトリの複製）。中身は各worktree側でlintする（T-M8-182で
+    // .claude/worktrees/ が現れて本体のlintが二重走査で落ちたため恒久的に除外）。
+    ".claude/worktrees/**",
     "playwright-report/**",
     // デザインリファレンス（T-M8-01）。`support.js` はプレビュー用ランタイムで移植対象外。
     // 我々が保守するコードではないため検査しない（React 18以前の書き方を含む）。

@@ -72,7 +72,9 @@ export function galleryTemplates(): GalleryTemplate[] {
   return [
     {
       id: "account-md",
-      name: "アカウント.md（発信定義書）",
+      // 表示名は「アカウント.md」に統一（T-M8-182・運営者の指示。「発信定義書」は
+      // 実ファイルの1行目の見出し（persona-settings.ts）だが、一覧の題名には使わない）。
+      name: "アカウント.md",
       description:
         "全投稿の土台になる1枚。誰として・誰に・どんな口調で発信するかをAIへ指示します。初期設定から自動生成され、学習と改善提案で育ちます（下はサンプル値での初版）。",
       content: sampleBaseMd(),

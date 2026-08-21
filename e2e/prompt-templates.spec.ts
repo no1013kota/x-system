@@ -25,7 +25,8 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   // 既定タブ＝アカウント.md。公式テンプレートと、利用者のアカウント.md（匿名）が出る。
   await page.goto("/prompt-templates");
   await expect(page.getByRole("heading", { level: 1, name: "プロンプト集" })).toBeVisible();
-  await expect(page.getByRole("article", { name: /発信定義書/ }).first()).toBeVisible();
+  // 項目名はすべて「アカウント.md」（T-M8-182）。
+  await expect(page.getByRole("article", { name: /アカウント\.md/ }).first()).toBeVisible();
   await expect(page.getByText("公式").first()).toBeVisible();
 
   // 投稿プロンプトタブ: 公式6種＋利用者作成の自作型（題名・説明・匿名バッジ）。
@@ -34,8 +35,16 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   await expect(page.getByRole("article", { name: new RegExp(patternName) })).toBeVisible();
   await expect(page.getByText("E2E用の説明文")).toBeVisible();
   // 差し込み欄（プレースホルダー）が分かる（T-M8-178）。公式p2と利用者作成の両方。
-  await expect(page.getByText("{自分の考え}", { exact: true })).toBeVisible();
-  await expect(page.getByText("{お題}", { exact: true })).toBeVisible();
+  // プレースホルダーの入力体験（T-M8-182）: 入力すると本文の {名前} がその場で置き換わる。
+  const p2Card = page.getByRole("article", { name: "自分の考え・意見" });
+  const p2Input = p2Card.getByLabel("{自分の考え}");
+  await expect(p2Input).toBeVisible();
+  await p2Input.fill("AIで作業時間を半分にした話");
+  await expect(p2Card.locator("mark", { hasText: "AIで作業時間を半分にした話" })).toBeVisible();
+  // 利用者作成の型にも入力欄が付く。
+  const customCard = page.getByRole("article", { name: new RegExp(patternName) });
+  await customCard.getByLabel("{お題}").fill("週次ふりかえり");
+  await expect(customCard.locator("mark", { hasText: "週次ふりかえり" })).toBeVisible();
   await expect(page.getByText("利用者作成").first()).toBeVisible();
   // 識別子（ハンドル・メール）は出さない。
   await expect(page.getByText(account.handle)).toHaveCount(0);

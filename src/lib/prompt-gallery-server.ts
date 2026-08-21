@@ -20,16 +20,6 @@ export interface GalleryItem extends GalleryTemplate {
 /** 1タブあたりの利用者作成の上限。ページ全体を重くしない（超過は新しい順に切る）。 */
 const COMMUNITY_LIMIT = 50;
 
-/** アカウント.mdの題名・説明を本文から導出する（識別子を使わない）。 */
-function accountMdTitle(baseMd: string): { title: string; description: string } {
-  const theme = /^- 主テーマ:\s*(.+)$/m.exec(baseMd)?.[1]?.trim();
-  const value = /^- 読者が得るもの:\s*(.+)$/m.exec(baseMd)?.[1]?.trim();
-  return {
-    title: theme ? `${theme}の発信定義書` : "発信定義書（アカウント.md）",
-    description: value ?? "利用者が育てているアカウント.mdです。",
-  };
-}
-
 /** 画像プロンプトの説明＝本文冒頭の抜粋（見出しを除いた最初の内容行）。 */
 function excerpt(content: string): string {
   const line = content
@@ -81,18 +71,16 @@ export async function loadGalleryItems(): Promise<GalleryItem[]> {
   ]);
 
   const community: GalleryItem[] = [
-    ...baseMds.rows.map((row) => {
-      const meta = accountMdTitle(row.base_md);
-      return {
-        id: `community-md-${row.id}`,
-        name: meta.title,
-        description: meta.description,
-        content: row.base_md,
-        group: "account-md" as const,
-        source: "community" as const,
-        placeholders: [],
-      };
-    }),
+    // 題名は全件「アカウント.md」（T-M8-182・運営者の指示。本文から題名を導出しない）。
+    ...baseMds.rows.map((row) => ({
+      id: `community-md-${row.id}`,
+      name: "アカウント.md",
+      description: "利用者が育てているアカウント.mdです。",
+      content: row.base_md,
+      group: "account-md" as const,
+      source: "community" as const,
+      placeholders: [],
+    })),
     ...patterns.rows.map((row) => ({
       id: `community-post-${row.id}`,
       name: row.name,
