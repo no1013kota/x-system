@@ -25,6 +25,11 @@ test("プロンプト集: タブごとに公式＋利用者作成が並び、ワ
   // 既定タブ＝アカウント.md。公式テンプレートと、利用者のアカウント.md（匿名）が出る。
   await page.goto("/prompt-templates");
   await expect(page.getByRole("heading", { level: 1, name: "プロンプト集" })).toBeVisible();
+  // ヘッダーは「ホーム＋ブログ」への遷移ボタンだけ（T-M8-190。現在地のタブ表示は無い）。
+  const contentNav = page.getByRole("navigation", { name: "公開コンテンツ" });
+  await expect(contentNav.getByRole("link", { name: "ホーム" })).toHaveAttribute("href", "/");
+  await expect(contentNav.getByRole("link", { name: "ブログ" })).toHaveAttribute("href", "/blog");
+  await expect(contentNav.getByRole("link", { name: "プロンプト集" })).toHaveCount(0);
   // 項目名はすべて「アカウント.md」（T-M8-182）。
   await expect(page.getByRole("article", { name: /アカウント\.md/ }).first()).toBeVisible();
   await expect(page.getByText("公式").first()).toBeVisible();
