@@ -56,7 +56,7 @@ stagingは別プロジェクトとして本番デプロイになっていれば�
 | プラン管理（Stripe） | Customer Portalでプラン変更・解約ができる設定か |
 | 請求額と表示額の一致（Stripe） | 画面の金額とStripeのPriceが一致しているか |
 | 決済の受付（Stripeアカウント） | アカウントが本番決済を受け付けられるか。**アプリからは見えない**（T-M8-148） |
-| ブログ記事の同梱 | `blog/*.md` がデプロイに含まれているか（`outputFileTracingIncludes` 漏れは**本番だけ「準備中」になる**）と、front matter の不備で公開されていない記事（T-M8-184） |
+| ブログ記事の同梱 | `blog/published/*.md` がデプロイに含まれているか（`outputFileTracingIncludes` 漏れは**本番だけ「準備中」になる**）と、front matter の不備で公開されていない記事（T-M8-184） |
 
 ### ローカル実行時だけの追加項目（`scripts/doctor.mjs` が足す）
 

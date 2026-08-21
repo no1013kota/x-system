@@ -1,12 +1,12 @@
 ---
 name: blog-publish
-description: blog/ の下書き記事を公開状態にしてコミットする。front matter を検証（npm run blog:check）→ draft を外す → 記事ファイルだけをコミット。引数はファイル名（例 /blog-publish x-prompt-basics.md）。書くのは /blog-write。
+description: blog/drafts/ の下書き記事を公開してコミットする。front matter を検証（npm run blog:check）→ blog/published/ へ移動して draft を外す → 記事ファイルだけをコミット。引数はファイル名（例 /blog-publish x-prompt-basics.md）。書くのは /blog-write。
 model: inherit
 ---
 
 # blog-publish：下書きを公開してコミットする
 
-`blog/<slug>.md` の **`draft: true` を外し、記事ファイルだけをコミットする**。公開の正本は [blog/README.md](../../../blog/README.md)（front matter・制約・運用の流れ）。
+`blog/drafts/<slug>.md` を **`blog/published/` へ移動して `draft: true` を外し、記事ファイルだけをコミットする**（T-M8-193。画面が読むのは published だけ——移動を忘れると公開されない）。公開の正本は [blog/README.md](../../../blog/README.md)（front matter・制約・運用の流れ）。
 
 **このスキルは本文を書き換えない。** 直すべき点があれば止めて報告する（直すのは `/blog-write` か運営者）。
 
@@ -16,8 +16,8 @@ model: inherit
 
 | 引数 | すること |
 |---|---|
-| ファイル名あり（`x-prompt-basics.md`／`.md` 省略可） | `blog/` 直下のそのファイル。無ければ止める |
-| 引数なし | `grep -l "^draft: true" blog/*.md` で下書きを列挙。1件ならそれ、複数なら**どれを公開するか聞く** |
+| ファイル名あり（`x-prompt-basics.md`／`.md` 省略可） | `blog/drafts/` のそのファイル。無ければ止める |
+| 引数なし | `ls blog/drafts/*.md` で下書きを列挙。1件ならそれ、複数なら**どれを公開するか聞く** |
 
 ### 1. 読んで最終確認する
 
@@ -38,6 +38,7 @@ npm run blog:check -- <file>
 
 ### 3. 公開状態にする
 
+- `git mv blog/drafts/<file> blog/published/<file>` で**公開フォルダへ移動する**（移動しないと画面に出ない）
 - `draft: true` の行を削除する
 - `date` を**今日**（公開日）にする。下書き時の日付のままだと過去日付で公開され、一覧の順が狂う。運営者が日付を指定したときだけそれに従う
 - `updated` は触らない（再公開・改稿時に `/blog-write` か運営者が入れる）
@@ -48,7 +49,7 @@ npm run blog:check -- <file>
 
 ```bash
 git status --short            # 無関係な変更を巻き込まない（並行編集中のファイルがあり得る）
-git add blog/<file>           # 画像を足したなら public/blog-images/<画像> も明示して add
+git add blog/published/<file>  # git mv 済みなら移動元も stage されている。画像を足したなら public/blog-images/<画像> も明示して add
 git commit -m "blog: <記事タイトル>"
 ```
 

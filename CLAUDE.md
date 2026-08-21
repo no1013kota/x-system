@@ -89,7 +89,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | **レンダリングモード・CSP・proxy（middleware）** | `npm run build` ＋ **`npm run check:csp-nonce`**（`release:check` に含む）＋ **実ブラウザで公開ページのコンソールエラーと失敗リクエストまで見る**。nonceベースCSPと静的prerenderは両立しないため、prerenderされたページは**scriptが1本も実行されない**。**HTTPは200を返し本文も表示される**ので、URLを叩く検査では見えない。E2Eは `next dev` で動きprerenderしないため原理的に再現しない（2026-08-14、本番の `/signup`・`/reset-password` が18日間この状態だった・T-M8-87） |
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
-| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**ブログ記事 `blog/*.md` は例外**で `npm run blog:check`（front matter・画像の実在）を通す |
+| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**ブログ記事 `blog/published/*.md`・`blog/drafts/*.md` は例外**で `npm run blog:check`（front matter・画像の実在）を通す |
 | 上記以外 | `npm run release:check` |
 
 **「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。手段は **`npm run smoke:live -- --account <xAccountId>`**（要 `npm run dev`）。判定は `src/lib/smoke/scenarios.ts` にあり、デプロイ先では同じものを `/api/cron/canary` で叩ける。

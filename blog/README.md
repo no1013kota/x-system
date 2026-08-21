@@ -2,6 +2,14 @@
 
 公開ブログ（`/blog`）の記事はこのディレクトリの Markdown ファイルです。**1ファイル＝1記事、ファイル名＝URL**（`x-prompt-basics.md` → `/blog/x-prompt-basics`）。
 
+**フォルダで状態を分けます**（T-M8-193）:
+
+| フォルダ | 状態 | 画面に出るか |
+|---|---|---|
+| `blog/published/` | 公開済み | 出る（/blog が読むのはここだけ） |
+| `blog/drafts/` | 下書き（front matter に `draft: true` 必須） | 出ない |
+
+`blog/` 直下に記事を置くと**どこにも出ません**（`npm run blog:check` が置き忘れとして知らせます）。
 このファイル（`README.md`）と `_` で始まるファイルは記事として扱われません。
 
 ## 書き方
@@ -36,9 +44,9 @@ draft: true
 
 ## 運用の流れ
 
-1. `/blog-write <テーマ or 参考URL>` — Claude が下書き（`draft: true`）を作る
+1. `/blog-write` — テーマと参照リンクを聞かれるので答える（引数で渡してもよい）。Claude が `blog/drafts/` に下書き（`draft: true`）を作る
 2. 内容を読んで直す
-3. `/blog-publish <ファイル名>` — 検証（`npm run blog:check`）→ `draft` を外す → コミット
+3. `/blog-publish <ファイル名>` — 検証（`npm run blog:check`）→ `blog/published/` へ移動して `draft` を外す → コミット
 4. いつもの反映（`npm run release:staging` → `npm run release:production`）
 
 `npm run blog:check` は front matter と画像の不備を**理由つきで**一覧します。不備のある記事は公開側に出ず、

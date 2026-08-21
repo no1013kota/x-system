@@ -11,7 +11,13 @@ import {
 } from "./blog-content";
 
 /**
- * `blog/` ディレクトリの読み出し（T-M8-184）。判定は `blog-content.ts`、ここはファイルI/Oだけ。
+ * `blog/` ディレクトリの読み出し（T-M8-184/193）。判定は `blog-content.ts`、ここはファイルI/Oだけ。
+ *
+ * 記事は**フォルダで状態を分ける**（運営者の指示 2026-08-22・T-M8-193）:
+ * `blog/published/`＝公開済み、`blog/drafts/`＝下書き。画面（/blog）が読むのは published だけ。
+ * front matter の `draft: true` は下書きフォルダ内での印で、published に紛れ込んだ場合の
+ * 安全弁でもある（draft付きは publishedPosts が除外する）。状態の食い違い
+ * （published に draft:true・drafts に draft 無し）は `npm run blog:check` が不備として出す。
  *
  * `scripts/blog-check.mjs`（`npm run blog:check`）は判定（`blog-content.ts`・import無し）だけを
  * Node から直接読み、ディレクトリ走査はこのファイルと同じ規則で自前に行う（`.ts` 同士の拡張子付き
@@ -22,8 +28,10 @@ import {
  * これが無いと**本番だけ記事0件**になる（ローカルと dev は cwd から直接読めるので気付けない）。
  */
 
-/** 記事ディレクトリ。テストは一時ディレクトリを渡す。 */
-export const BLOG_DIR = join(process.cwd(), "blog");
+/** 公開記事のディレクトリ（画面が読むのはここだけ）。テストは一時ディレクトリを渡す。 */
+export const BLOG_DIR = join(process.cwd(), "blog", "published");
+/** 下書きのディレクトリ（画面は読まない。blog:check と /blog-write・/blog-publish が使う）。 */
+export const BLOG_DRAFTS_DIR = join(process.cwd(), "blog", "drafts");
 /** 本文が `/blog-images/x.png` で参照する画像の置き場（Next.js の静的ファイル）。 */
 export const PUBLIC_DIR = join(process.cwd(), "public");
 

@@ -1,17 +1,24 @@
 ---
 name: blog-write
-description: テーマや参考URLから、固有の学びが1つ以上ある公開ブログ記事の下書き（blog/<slug>.md・draft: true）を書く。公開は /blog-publish が担う。例 /blog-write 投稿の時間帯は本当に効くのか ／ /blog-write https://example.com/article
+description: 固有の学びが1つ以上ある公開ブログ記事の下書き（blog/drafts/<slug>.md・draft: true）を書く。引数が無ければテーマと参照リンクを先にヒアリングする。公開は /blog-publish が担う。例 /blog-write 投稿の時間帯は本当に効くのか ／ /blog-write https://example.com/article
 model: inherit
 ---
 
 # blog-write：テーマを掘って下書きを書く
 
-テーマや参考URL（両方でもよい）を受け取り、**調べて → 固有の学びを1つ決めて → 書く**。成果物は `blog/<slug>.md` の下書き1本。形式の正本は `blog/README.md`（先に読む）、実例は `blog/hello-exos-ai-blog.md`。
+テーマや参考URL（両方でもよい）を受け取り、**調べて → 固有の学びを1つ決めて → 書く**。成果物は `blog/drafts/<slug>.md` の下書き1本。形式の正本は `blog/README.md`（先に読む）、実例は `blog/published/hello-exos-ai-blog.md`。
 **このスキルは公開しない。** `draft: true` のまま保存して終わる。`draft` を外してコミットするのは `/blog-publish`。
 
 ## 手順
 
-### 0. 入力を受け取る
+### 0. 入力を受け取る（無ければ先にヒアリング）
+
+**引数が無い（または曖昧な）ときは、書き始める前に次の2点を1回のメッセージでまとめて聞く**（小出しにしない・T-M8-193）:
+
+1. **テーマ** — 何について書くか（1行でよい）
+2. **参照リンク** — 参考にしてほしいURL（任意・複数可・「なし」も可）
+
+回答が来たら下の表に従って進める。引数でテーマやURLが渡されていればヒアリングは飛ばす。
 
 | 入力 | 扱い |
 |---|---|
@@ -19,7 +26,7 @@ model: inherit
 | 参考URL（1つ以上） | WebFetch で読み、**事実・数字・主張だけ**を箇条書きにメモする。文章は写さず、見出し構成もなぞらない |
 | 読めない・薄い | 読めない（403・JS描画・空）か主張を1つも取れないURLは引用元にしない。**確認は挟まず**報告欄に残してテーマで進める |
 
-`grep -h "^title:" blog/*.md` で既存記事の title を一覧し、同じ主張の記事があれば書かずにそのファイルを案内して終わる。
+`grep -rh "^title:" blog/published blog/drafts` で既存記事の title を一覧し、同じ主張の記事があれば書かずにそのファイルを案内して終わる。
 
 ### 1. 掘る（書く前に5つの問いへ箇条書きで答える。応答に出してよい）
 
@@ -57,7 +64,7 @@ model: inherit
 ### 4. 保存して検証する
 
 - slug: 主張を表す英小文字3〜5語をハイフンで（例 `posting-time-is-not-the-lever`）。小文字英数字とハイフンのみ・80字以内。日付・連番は入れない
-- `blog/<slug>.md` に保存。front matter に書けるキーは `title`（80字以内）／`description`（200字以内・1〜2文）／`date`（今日 `date +%F`）／`updated`／`draft: true`／`tags`（既存記事と表記を揃える）の6つだけ（他は検証で弾かれる）
+- `blog/drafts/<slug>.md` に保存（**下書きフォルダ**。`blog/` 直下や `published/` に置かない・T-M8-193）。front matter に書けるキーは `title`（80字以内）／`description`（200字以内・1〜2文）／`date`（今日 `date +%F`）／`updated`／`draft: true`／`tags`（既存記事と表記を揃える）の6つだけ（他は検証で弾かれる）
 - 本文は `##` から始める（`#` は書かない）。生HTMLは書かない。画像が要るなら `public/blog-images/`（無ければ作る）に置き `/blog-images/<name>.png` で参照する
 - `npm run blog:check -- <slug>.md` を実行し、`📝 <slug>.md  下書き（draft: true）` と末尾の `✅ 不備なし` を確認する。`❌` なら表示された理由を直して再実行
 

@@ -2235,13 +2235,18 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 招待機能の信頼性質問（2026-08-22）への回答から。登録時のDB一時障害で紐づけが失われるケースを塞ぐ。
 - 実装メモ（2026-08-22）: verifySignUpCode成功時、Cookieが残っていればattributeSignupを再試行して消す（冪等・失敗しても検証は止めない）。E2E追加（Cookieなし登録→別タブでリンク→コード検証→紐づく）。invite E2E 3件緑。
 
-### T-M8-193: ブログの下書き/投稿済みフォルダ分割と /blog-write のヒアリング化 `todo`
+### T-M8-193: ブログの下書き/投稿済みフォルダ分割と /blog-write のヒアリング化 `done`
 - 参照: blog/README.md・T-M8-184/185 / 依存: なし / サイズ: M
 - 完了条件:
   - `blog/` が `blog/drafts/`（下書き）と `blog/published/`（公開済み）に分かれ、公開ページ・blog:check・同梱検査・スキルがすべて追随する
   - `/blog-write` は引数が無ければテーマと参照リンクを**1回のヒアリング**で聞いてから書き始める（引数があれば従来どおり）
   - `/blog-publish` は drafts → published への移動を含めて公開する
 - メモ: 運営者の指示（2026-08-22）。「/blogを打つと」は /blog-write 起動時のヒアリングを指すと解釈（/blogというスキルは無い）。
+- 実装メモ（2026-08-22）: blog/published/（画面が読む唯一の場所）とblog/drafts/へ分割。
+  blog:checkは両フォルダを走査し、blog/直下の置き忘れ・publishedのdraft:true・draftsの
+  draft無しを不備として出す。check:blog-traceはpublishedのみ対象。blog-writeは引数なしなら
+  テーマ＋参照リンクを1回でヒアリングしdrafts/へ保存、blog-publishはgit mvで移動して公開。
+  blog-articles.test.tsへdrafts検証を追加。blog E2E 3件緑・blog:check緑。
 
 ### T-M8-194: パターン編集UIの統一（投稿作成・スケジュール・設定>プロンプト）と新規作成の挙動 `todo`
 - 参照: 要件06 SC-07/SC-08・AI設定>プロンプト・T-M8-186 / 依存: T-M8-186 / サイズ: M

@@ -436,7 +436,7 @@ ADR のように「判断した時点のファイル名」を書き残したい�
 
 ### ビルド成果物を走査する検査
 
-ソースでもブラウザでもなく、**`next build` が吐いたものを読む**検査。`npm run check:csp-nonce`（HTMLのnonce）と `npm run check:blog-trace`（ブログ記事の同梱・T-M8-184。ビルドが出すトレース一覧に `blog/*.md` が載っているか）の2つで、`release:check` の `build` 直後に走る。
+ソースでもブラウザでもなく、**`next build` が吐いたものを読む**検査。`npm run check:csp-nonce`（HTMLのnonce）と `npm run check:blog-trace`（ブログ記事の同梱・T-M8-184。ビルドが出すトレース一覧に `blog/published/*.md` が載っているか）の2つで、`release:check` の `build` 直後に走る。
 
 なぜこの層が要るのか。2026-08-14、本番の `/signup` と `/reset-password` が動いていなかった。CSPの `script-src` は `'nonce-…' 'strict-dynamic'` で、`'strict-dynamic'` はホスト指定（`'self'`）を無視させる。nonceはリクエストごとに作るので**ビルド時のHTMLへ焼き付けられず**、静的prerenderされたページはscriptが1本も実行されない。会員登録もパスワード再設定もできない状態が18日間続いた。
 

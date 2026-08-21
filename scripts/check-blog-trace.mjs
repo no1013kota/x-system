@@ -15,7 +15,8 @@ import { join, resolve } from "node:path";
 const { isBlogArticleFile } = await import("../src/lib/blog/blog-content.ts");
 
 const ROOT = resolve(".");
-const BLOG_DIR = join(ROOT, "blog");
+// 同梱が要るのは**公開記事**だけ（画面は blog/published/ しか読まない・T-M8-193）。
+const BLOG_DIR = join(ROOT, "blog", "published");
 const ROUTES = ["app/blog/page.js", "app/blog/[slug]/page.js", "app/api/cron/doctor/route.js"];
 
 const articles = existsSync(BLOG_DIR) ? readdirSync(BLOG_DIR).filter(isBlogArticleFile).sort() : [];
@@ -33,7 +34,7 @@ for (const route of ROUTES) {
     continue;
   }
   const files = JSON.parse(readFileSync(traceFile, "utf8")).files ?? [];
-  const traced = new Set(files.map((f) => f.replace(/\\/g, "/").split("/blog/").pop()));
+  const traced = new Set(files.map((f) => f.replace(/\\/g, "/").split("/blog/published/").pop()));
   const missing = articles.filter((name) => !traced.has(name));
   if (missing.length > 0) {
     console.log(`❌ ${route}: 同梱されていない記事 ${missing.length} 件（${missing.join(", ")}）`);

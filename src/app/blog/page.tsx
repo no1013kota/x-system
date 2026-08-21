@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * 公開ブログの一覧（T-M8-184）。記事はリポジトリの `blog/*.md`（front matter 付き）で、
+ * 公開ブログの一覧（T-M8-184）。記事はリポジトリの `blog/published/*.md`（front matter 付き・T-M8-193）で、
  * `/prompt-templates` と同じ器（`PublicPageShell`）に新しい順で並べる。
  *
  * 「記事が無い」を2種類に分ける（CLAUDE.md 原則1）: 公開記事0件は「準備中」、
