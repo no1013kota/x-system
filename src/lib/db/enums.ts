@@ -29,7 +29,7 @@ export const DB_ENUMS = {
     "removing",
     "removed",
   ],
-  news_category: ["ai", "web3", "investment", "business", "business_ops", "sns"],
+  news_category: ["ai", "web3", "investment", "business", "business_ops", "sns", "love", "beauty"],
   impact_level: ["high", "mid", "low"],
   job_kind: [
     "post_generation",

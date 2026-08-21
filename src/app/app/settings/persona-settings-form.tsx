@@ -11,7 +11,7 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
-import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
+import { OPERATED_THEME_OPTIONS, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -228,7 +228,18 @@ export function PersonaSettingsForm({
                 {group === "primary" ? "主テーマ *" : "副テーマ（任意）"}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {THEME_OPTIONS.map((theme) => (
+                {/*
+                  選択肢は運用中の6テーマ（T-M8-189）。旧テーマ（ビジネス等）は、保存済みで
+                  選択中のときだけ出す——開いただけで値が黙って消えるのを防ぐ（原則1）。
+                */}
+                {[
+                  ...OPERATED_THEME_OPTIONS,
+                  ...THEME_OPTIONS.filter(
+                    (theme) =>
+                      !OPERATED_THEME_OPTIONS.some((o) => o.id === theme.id) &&
+                      settings.themes[group].includes(theme.id),
+                  ),
+                ].map((theme) => (
                   <label
                     className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
                     key={theme.id}

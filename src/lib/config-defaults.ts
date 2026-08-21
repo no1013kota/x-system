@@ -19,7 +19,7 @@ export const DEFAULT_NEWS_CONFIG = {
   // **取得している分野だけ**を既定にする（T-M7-55）。取得しない分野を既定に入れると、
   // 新規利用者は最初から「設定はあるのに記事が来ない」状態になる。
   // ここは**通知の対象条件**（一覧はT-M8-187から常に全件・50件ずつのページ表示）。
-  categories: ["ai", "investment", "sns"],
+  categories: ["ai", "web3", "sns", "investment", "love", "beauty"],
   impact_filter: ["high", "mid"],
 } as const;
 

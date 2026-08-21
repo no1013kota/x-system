@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.50 |
-| 更新日 | 2026-08-21 |
+| バージョン | v1.51 |
+| 更新日 | 2026-08-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -30,7 +30,7 @@
 | `x_account_status` | `active`, `expired`, `disabled`, `error` |
 | `learning_source_type` | `ref_account`, `ref_post`, `own_posts` |
 | `learning_source_status` | `pending`, `analyzed`, `failed`, `removing`, `removed` |
-| `news_category` | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns` |
+| `news_category` | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`, `love`, `beauty`（運用は6分野＝ai/web3/sns/investment/love/beauty。business系はT-M8-189で運用終了・既存データ用に残置） |
 | `impact_level` | `high`, `mid`, `low` |
 | `job_kind` | `post_generation`, `image_generation`, `post_publish`, `learning_analysis`, `md_merge`, `suggestion` |
 | `job_trigger` | `manual`, `news`, `schedule`, `system` |
@@ -208,7 +208,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `category` | `news_category` | not null | 6分野（AI/Web3/投資/ビジネス/業務改善/SNS運用） |
+| `category` | `news_category` | not null | 分野（運用6: AI/Web3/SNS運用/投資/恋愛/美容。T-M8-189） |
 | `title` | `text` | not null |  |
 | `summary` | `text` | not null |  |
 | `source_url` | `text` | not null unique | canonical化して重複排除 |
@@ -726,12 +726,12 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 
 ```json
 {
-  "categories": ["ai", "investment", "sns"],
+  "categories": ["ai", "web3", "sns", "investment", "love", "beauty"],
   "impact_filter": ["high", "mid"]
 }
 ```
 
-`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得3分野**（`NEWS_FETCH_CATEGORIES`・T-M7-55。migration `20260802000001`で既定値も3分野へ変更済み）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）はT-M8-187から常に全件表示。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
+`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得している分野**（`NEWS_FETCH_CATEGORIES`＝運用6分野・T-M7-55の原則／T-M8-189で6分野へ。migration `20260822000001`で新規登録の既定も6分野へ変更済み。既存利用者の保存値は変更しない）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）は最新500件表示（T-M8-188）。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
 
 ### 4.3 `profiles.notification_config`
 
@@ -777,7 +777,7 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 }
 ```
 
-`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。発信テーマ（L-5）の選択肢は**6テーマのまま**（PRD §8.3。生成の方向づけに使うため縮小しない——投稿作成・分析の選択肢を運用分野へ絞ったT-M8-100の対象外）。
+`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタのIDから選ぶ。語彙は運用6テーマ（`ai=AI`、`web3=Web3`、`sns=SNS運用`、`investment=投資`、`love=恋愛`、`beauty=美容`）＋旧2テーマ（`business=ビジネス`、`business_ops=業務改善`。T-M8-189で運用終了、保存済みデータの表示・検証用に残置）で、`news_category`と1対1対応しP-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。**画面の選択肢は運用6テーマ**（旧テーマは選択中のときだけ表示し、開いただけで値が消えないようにする）。`free_text`は自由入力で、該当判定の対象外とする。
 
 `tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、アカウント.mdへ展開しない。
 
@@ -950,7 +950,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
 | 通知設定・ニュースカテゴリ | 既定値の正本は §4.3 / §4.4（ここへ写さない——以前写した通知設定は `summary` が抜けていた） |
-| テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
+| テーマ選択肢マスタ | L-5の選択肢をコード定数で定義（運用6＋旧2）。各選択肢は`news_category`と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
 | Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 
 ## 7. 保持と個別対応
@@ -975,3 +975,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
 | v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
 | v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
+| v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |

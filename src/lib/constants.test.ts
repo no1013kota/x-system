@@ -81,7 +81,7 @@ describe("plan definitions", () => {
 });
 
 describe("news categories", () => {
-  it("is the fixed 6 categories", () => {
+  it("is the fixed vocabulary (運用6分野＋旧2分野・T-M8-189)", () => {
     expect([...NEWS_CATEGORIES]).toEqual([
       "ai",
       "web3",
@@ -89,6 +89,8 @@ describe("news categories", () => {
       "business",
       "business_ops",
       "sns",
+      "love",
+      "beauty",
     ]);
   });
 });
@@ -100,14 +102,16 @@ describe("theme master", () => {
     }
   });
 
-  it("offers the confirmed 6 themes each mapped 1:1 to a news category", () => {
+  it("offers the operated 6 themes first, legacy last, each mapped 1:1 to a news category", () => {
     expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
       "ai",
       "web3",
+      "sns",
       "investment",
+      "love",
+      "beauty",
       "business",
       "business_ops",
-      "sns",
     ]);
     // every news category is covered exactly once
     expect(THEME_OPTIONS.map((t) => t.newsCategory).sort()).toEqual(
@@ -132,7 +136,7 @@ describe("config defaults", () => {
     expect(DEFAULT_NOTIFICATION_CONFIG.error.email).toBe(true);
   });
 
-  it("既定のニュース分野は**取得している3分野**だけ（記事の来ない分野を既定にしない）", () => {
+  it("既定のニュース分野は**取得している分野**だけ（記事の来ない分野を既定にしない）", () => {
     expect(DEFAULT_NEWS_CONFIG.categories).toEqual([...NEWS_FETCH_CATEGORIES]);
     expect(DEFAULT_NEWS_CONFIG.impact_filter).toEqual(["high", "mid"]);
   });

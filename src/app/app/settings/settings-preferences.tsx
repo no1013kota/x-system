@@ -28,10 +28,13 @@ const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
 const CATEGORY_LABEL: Record<string, string> = {
   ai: "AI",
   web3: "Web3",
+  sns: "SNS",
   investment: "投資",
+  love: "恋愛",
+  beauty: "美容",
+  // 旧分野（運用終了・T-M8-189）。古い保存値の表示用に残す。
   business: "ビジネス",
   business_ops: "業務効率化",
-  sns: "SNS",
 };
 const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "低" };
 // **選べるのは実際に取得している分野だけ**にする（T-M7-55）。取得していない分野を選べると、

@@ -59,6 +59,8 @@ const NEWS_CATEGORY_CHIP: Record<string, string> = {
   business: "bg-[#eef1f9] text-[#4c71ba]",
   business_ops: "bg-warn-bg text-warn-fg",
   sns: "bg-[#fdeee6] text-[#c94a06]",
+  love: "bg-[#fdeaf2] text-[#c2266b]",
+  beauty: "bg-[#f4eefc] text-[#7a4fc9]",
 };
 
 /**
