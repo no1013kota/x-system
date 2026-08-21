@@ -50,7 +50,8 @@ export interface TierProgress {
 
 export function tierProgress(paidCount: number): TierProgress {
   const currentRateBps = rateBpsForPaidCount(paidCount);
-  const next = INVITE_TIERS.find((tier) => tier.minPaidUsers > paidCount) ?? null;
+  // 「次のランク」は率が今より上がる段（0人のとき第1段=同率20%を次と言わない）。
+  const next = INVITE_TIERS.find((tier) => tier.rateBps > currentRateBps) ?? null;
   return {
     currentRateBps,
     next,

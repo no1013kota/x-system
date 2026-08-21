@@ -58,8 +58,8 @@ export default async function InvitePage() {
       <header>
         <h1 className={pageTitleClassName}>友達招待</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          招待した方が有料プランを利用すると、お支払い額の{formatRateBps(tier.currentRateBps)}
-          が報酬になります（初回課金から最大6ヶ月・招待人数で報酬率アップ）。
+          招待した方が有料プランを利用すると、招待した方のお支払い額の{formatRateBps(tier.currentRateBps)}
+          が報酬になります（初回課金から最大6ヶ月が対象となります）。
         </p>
       </header>
 
@@ -102,6 +102,37 @@ export default async function InvitePage() {
             有料招待 {summary.paidReferralCount}人
             {tier.next ? ` ／ 次のランクまで ${summary.paidReferralCount} / ${tier.next.minPaidUsers}人` : ""}
           </p>
+          {/* 招待ランクの段（運営者の指示 2026-08-21: 報酬率の直下に小さく）。 */}
+          <div aria-label="招待ランク" className="mt-3 grid grid-cols-5 gap-1.5" role="list">
+            {INVITE_TIERS.map((tierRow, index) => {
+              const nextTier = INVITE_TIERS[index + 1];
+              const range = nextTier
+                ? `${tierRow.minPaidUsers}〜${nextTier.minPaidUsers - 1}人`
+                : `${tierRow.minPaidUsers}人〜`;
+              const current = tier.currentRateBps === tierRow.rateBps;
+              return (
+                <div
+                  className={cn(
+                    "rounded-lg border px-1 py-1.5 text-center",
+                    current ? "border-brand bg-surface" : "border-hairline bg-surface/60",
+                  )}
+                  key={tierRow.minPaidUsers}
+                  role="listitem"
+                >
+                  <p
+                    className={cn(
+                      "text-body font-bold tabular-nums",
+                      current ? "text-brand" : "text-ink-2",
+                    )}
+                  >
+                    {formatRateBps(tierRow.rateBps)}
+                    {current ? <span className="sr-only">（現在）</span> : null}
+                  </p>
+                  <p className="text-caption leading-tight text-ink-3">{range}</p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </Card>
 
@@ -184,39 +215,6 @@ export default async function InvitePage() {
               />
             </div>
           </details>
-        </div>
-      </Card>
-
-      {/* ④ 招待ランク（invite_cp.md §2④） */}
-      <Card as="section" className="p-5 sm:p-6">
-        <CardTitle as="h2">招待ランク</CardTitle>
-        <div className="mt-4 grid gap-2 sm:grid-cols-5">
-          {INVITE_TIERS.map((tierRow, index) => {
-            const nextTier = INVITE_TIERS[index + 1];
-            const range = nextTier
-              ? `${tierRow.minPaidUsers}〜${nextTier.minPaidUsers - 1}人`
-              : `${tierRow.minPaidUsers}人〜`;
-            const current = tier.currentRateBps === tierRow.rateBps;
-            return (
-              <div
-                className={cn(
-                  "rounded-card border px-3 py-2.5 text-center",
-                  current ? "border-brand bg-brand-subtle" : "border-hairline bg-page",
-                )}
-                key={tierRow.minPaidUsers}
-              >
-                <p className={cn("text-[18px] font-extrabold tabular-nums", current ? "text-brand" : "text-ink")}>
-                  {formatRateBps(tierRow.rateBps)}
-                </p>
-                <p className="text-caption text-ink-3">{range}</p>
-                {current ? (
-                  <Badge className="mt-1" tone="brand">
-                    現在
-                  </Badge>
-                ) : null}
-              </div>
-            );
-          })}
         </div>
       </Card>
 

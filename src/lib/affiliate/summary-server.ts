@@ -17,7 +17,10 @@ export interface InviteSummary {
   tier: TierProgress;
   /** 確定前（pending）の報酬合計。 */
   pendingAmount: number;
-  /** 受取可能（payable・未束ね）の報酬合計。 */
+  /**
+   * 受取可能の報酬合計。**振込予定に束ねられた分も含む**（運営者の指示 2026-08-21:
+   * 翌月末の振込が完了した時点で0になり、報酬履歴に「支払済み」で並ぶ。月初の締めでは減らさない）。
+   */
   payableAmount: number;
   /** 次回振込（作成済みで未払いのPayout）。 */
   nextPayout: {
@@ -58,7 +61,7 @@ export async function loadInviteSummary(userId: string): Promise<InviteSummary> 
                 filter (where status <> 'reversed')::text as paid_users,
               coalesce(sum(commission_amount) filter (where status = 'pending'), 0)::text as pending,
               coalesce(sum(commission_amount)
-                filter (where status = 'payable' and payout_id is null), 0)::text as payable
+                filter (where status = 'payable'), 0)::text as payable
          from affiliate_commissions
         where affiliate_account_id = $1`,
       [account.id],

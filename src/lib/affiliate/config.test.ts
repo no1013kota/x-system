@@ -31,6 +31,13 @@ describe("招待ランク（invite_cp.md §3）", () => {
     }
   });
 
+  it("0人のとき「次のランク」は同率の第1段ではなく25%（あと5人）", () => {
+    const p = tierProgress(0);
+    expect(p.currentRateBps).toBe(2000);
+    expect(p.next?.rateBps).toBe(2500);
+    expect(p.remainingToNext).toBe(5);
+  });
+
   it("次ランクまでの残数（8人なら あと2人で30%）", () => {
     const p = tierProgress(8);
     expect(p.currentRateBps).toBe(2500);
