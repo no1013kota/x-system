@@ -48,12 +48,26 @@ test("下書きに日時を指定して予約でき、一覧に予約日時が�
 
   // **過去日時は押す前に理由が出て、送信できない**（押すまで分からない失敗を作らない）。
   const input = page.getByLabel("投稿日時");
-  await input.fill(localInputValue(-60));
+  /*
+   * datetime-localへ`fill`で文字を打つと、**ブラウザUI言語が12時間制（CIのen-US）のとき
+   * セグメント入力が化けて値が入らない**（2026-08-22・stg初CIで検出。macOSでは再現しない）。
+   * ネイティブsetter＋inputイベントで値を直接設定し、ロケールに依存させない。
+   */
+  const fillDateTime = async (value: string) =>
+    input.evaluate((el: HTMLInputElement, v) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(el),
+        "value",
+      )!.set!;
+      setter.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, value);
+  await fillDateTime(localInputValue(-60));
   await expect(page.getByText("1分以上先の日時を指定してください", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "予約する" })).toBeDisabled();
 
   // 十分先の日時なら予約できる。
-  await input.fill(localInputValue(120));
+  await fillDateTime(localInputValue(120));
   await expect(page.getByRole("button", { name: "予約する" })).toBeEnabled();
   await page.getByRole("button", { name: "予約する" }).click();
   await expect(toastIn(page)).toContainText("投稿を予約しました");
