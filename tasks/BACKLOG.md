@@ -32,7 +32,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 | 開発タスク（blocked） | 1件（T-M7-17 Gemini画像。運営者判断で一旦不要） | 同 |
 | 要決定 | **なし**（2026-08-20 に D-19 を含む6件すべて解決）。**2026-08-20 に D-16（stgはPR必須なしの保護）・D-17（法務レビュー不要）・D-18（案A 本人の同意）・D-20（退会手順は対応しない）・D-29（案B 現状維持）を解決**。D-21〜D-26 は 2026-08-11、D-30 は 2026-08-16、D-27・D-28 は 2026-08-17 に解決済み。**D-19 は 2026-08-20 に解決（Sentry 90日固定を採用・プライバシーポリシーへ記載）** | 「要決定・外部準備」 |
 | リファクタ | **なし**（R1〜R38 すべて done・2026-08-13） | [REFACTOR_PLAN](./REFACTOR_PLAN.md) |
-| 外部準備（人間側） | **本番運用開始に残り1件**＝Xアカウント連携。**Stripeアカウントの本番有効化は2026-08-20に完了**（運営者。T-M8-148。これで契約の申し込みが通る）。ほか法務レビュー・単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
+| 外部準備（人間側） | **本番運用開始に残り1件**＝Xアカウント連携。**Stripeアカウントの本番有効化は2026-08-20に完了**（運営者。T-M8-148。これで契約の申し込みが通る）。ほか単価確認。**Stripe WebhookのURLは2026-08-18に修正完了**（Stripe APIで確認: `https://exosai.net/api/stripe/webhook` が `enabled`・1件のみ登録） | 「要決定・外部準備」P-1／[リリース前チェックリスト §3](../docs/operations/release-checklist.md) |
 
 **2026-08-18: 2回目の本番反映を完了した（PR #13・47コミット）。** migration 10件を適用。
 **自動投稿の連鎖（T-M8-143）が初めて本番へ入った**——それまで `mode=auto` の予約は
@@ -2234,6 +2234,26 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 既存E2E（招待リンク→登録→紐づく）が緑のまま
 - メモ: 招待機能の信頼性質問（2026-08-22）への回答から。登録時のDB一時障害で紐づけが失われるケースを塞ぐ。
 - 実装メモ（2026-08-22）: verifySignUpCode成功時、Cookieが残っていればattributeSignupを再試行して消す（冪等・失敗しても検証は止めない）。E2E追加（Cookieなし登録→別タブでリンク→コード検証→紐づく）。invite E2E 3件緑。
+
+### T-M8-232: 法令まわりの「上乗せルール」を撤廃し、法定の最低限へ寄せる `done`
+- 参照: docs/marketing/lp-design-brief.md・design_handoff_lp/README.md・.claude/skills/blog-*/SKILL.md / 依存: なし / サイズ: S
+- 完了条件: 法律上の義務ではない自主規制・陳腐化した手続きが消え、法定義務の記述と機械検査は残る
+- メモ: 運営者の指示（2026-08-23「個人開発なので法令に厳しい文言やルールがあれば削除」）。
+  **日本法の義務そのもの（特商法11条の表示・定期購入の条件開示・景表法の優良/有利誤認の禁止・
+  個人情報保護法・消費者契約法8条の全部免責禁止）は個人事業でも同じく適用されるため残した**。
+  削除したのは「法の要求を超えた自主規制」と「決定済みなのに残っていた手続き」。
+- 実装メモ（2026-08-23）:
+  - 専門家（弁護士）確認の残骸を5箇所から削除（release-checklist §3の項目8・12、PRD §公開法務ページ、
+    BACKLOG の M6準備2項目）。**D-17で2026-08-20に「不要」と決定済み**なのに残り、現況表とも矛盾していた。
+  - ブログの禁止語・曖昧語リスト（「適切に」「しっかり」等）と grep 自己チェックを撤廃。
+    残したのは「自社サービスの効果を約束しない」1点のみ（景表法）。機械検査は元から無い。
+  - LP依頼書の「利用者の声を一律禁止」を「架空のものは禁止・実在＋本人確認済みは可」へ
+    （他ドキュメントはT-M8-214で改定済みで、ここだけ旧ルールだった）。
+  - 依頼書・ハンドオフに残っていた**旧プラン価格表（500/1,000/2,980円）を削除**し `plans.ts` 参照へ。
+    古い数字が外部に渡ると有利誤認の元になるため（陳腐化の是正）。
+  - ハンドオフの「文言（一字一句変更禁止）」を法定開示だけに限定（訴求文は変更可）。
+  - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
+    すべて維持**。80件緑。
 
 ### T-M8-231: LPのCTA注記を訴求文へ／利用者の声を一時非表示 `done`
 - 参照: SC-01・design_handoff_lp/README / 依存: T-M8-223 / サイズ: S
@@ -4634,7 +4654,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - [ ] Stripe Customer Portalの設定確定: setupスクリプト実行によるPortal Configuration作成（プラン変更・期間末解約・値下げ予約・continue_trial）と、STRIPE_PORTAL_CONFIGURATION_IDのenv設定、Stripe APIバージョンの確認（実行結果はADRまたは実装メモへ記録する運用。要件03 §9）
 - [ ] Cloudflare Turnstileの本番site key/secret keyの発行（開発中はCloudflare公開テストキーで進行可能）
 - [ ] Supabaseのpreview/productionプロジェクト作成と、Auth rate limit設定・Auth CAPTCHA（Turnstile）有効化・Gmail 2段階認証によるApp Password発行とcustom SMTP設定（ローカル開発はsupabase CLI＋Inbucketで代替。漏洩パスワード保護はPro移行後のため今回不要）
-- [ ] 利用規約・プライバシーポリシー・特定商取引法に基づく表記の文面確定と法務確認（signup同意で保存する現行terms/privacy versionの確定に必要。開発中は暫定version・プレースホルダ文面で進める）
+- [ ] 利用規約・プライバシーポリシー・特定商取引法に基づく表記の文面確定（signup同意で保存する現行terms/privacy versionの確定に必要。**弁護士レビューは行わない**＝D-17の決定・2026-08-20。記載事項の網羅は `legal-pages.test.ts` が機械検査する）
 - [ ] 本番APP_BASE_URL（独自ドメイン）とVercel Proの契約・環境変数設定（Checkoutのsuccess/cancel URL・メールリンクの基準URLに必要。開発はlocalhostで進行可能）
 
 **M2関連**
@@ -4660,7 +4680,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - [ ] 運営Claude APIキー（ANTHROPIC_API_KEY）の発行・課金/レート設定。news_fetchの実運用とWeb Search tool実測に必須（開発検証はproviderモックで完結）。あわせてWeb search toolの対応モデル・単価を公式ドキュメントで実装時に再確認
 - [ ] Sentryプロジェクト作成とSENTRY_DSN発行（cleanup失敗記録・queuedメール滞留警告の実配信確認用）
 - [ ] 自動投稿のlive E2E（実X投稿・自動rollback削除）確認にはX Developer App・実Xアカウント・クレジット設定が必要。M4のacceptanceはX_POSTING_MODE=dry_run＋モックで完結させ、live確認はリリース前作業とする
-- [ ] 自動投稿同意説明文（consent_version付き文面）と通知メール文面の最終確認。特に同意文はX Automation Rules準拠の観点でリリース前に専門家確認（PRD §7）
+- [ ] 自動投稿同意説明文（consent_version付き文面）の最終確認。X Automation Rules は運営者自身で読み合わせる（専門家確認はD-17の決定により行わない。通知メールはT-M8-222で廃止）
 > 注記（準備作業ではない）: Vercel Cronへの切り替えは移行条件（運用メモ §3）到達後の運用判断であり、M4ではvercel.json追加・切替作業を行わない（実施タイミングはユーザー判断）
 
 **M5関連**
