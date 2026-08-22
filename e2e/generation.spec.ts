@@ -292,11 +292,7 @@ await page.getByRole("button", { name: "パターンを追加" }).click();
     .fill(
       "# 投稿内容\n画面から作った型のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{対象読者} に向けて書く",
     );
-  // 書いた時点で {対象読者} が自動でプレースホルダーとして表示される（T-M8-194）。
-  await expect(
-    page.getByText("プレースホルダー:").filter({ hasText: "{対象読者}" }).first(),
-  ).toBeVisible();
-  // **下部の実際の入力欄も追加中フォームの本文と同期する**（T-M8-203）。
+  // 書いた時点で {対象読者} の入力欄が自動で出る（T-M8-194/203。グレー小の列挙は出さない・2026-08-22）。
   await expect(page.getByLabel("対象読者（任意）")).toBeVisible();
   await page.getByRole("button", { name: "追加", exact: true }).click();
 

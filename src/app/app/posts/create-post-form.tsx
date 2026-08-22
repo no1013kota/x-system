@@ -25,7 +25,7 @@ import {
 import {
   PatternFields,
   PlaceholderCallout,
-  PlaceholderSummary,
+  PlaceholderOverflowWarning,
   actionReason,
   emptyPatternDraft,
   patternReasonMessage,
@@ -521,7 +521,6 @@ function removePattern(target: PatternOption) {
                 draft={newPattern}
                 idPrefix="new-pattern"
                 onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
-                placeholderHint="prominent"
                 promptRequired
               />
               <div className="mt-3 flex gap-2">
@@ -554,7 +553,7 @@ function removePattern(target: PatternOption) {
               edited={promptEdited}
               footer={
                 <>
-                  <PlaceholderSummary prompt={promptValue} />
+                  <PlaceholderOverflowWarning prompt={promptValue} />
                   <PlaceholderCallout />
                 </>
               }

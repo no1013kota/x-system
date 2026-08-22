@@ -44,6 +44,7 @@ const me: Awaited<ReturnType<XMeFetcher>> = {
   username: "acme",
   name: "Acme",
   profileImageUrl: "https://img",
+  premium: false,
 };
 
 /** Resolves to the rejection reason (as AppError); throws if the promise resolves. */
@@ -101,7 +102,8 @@ describe("refreshXAccountStatus", () => {
     });
     expect(res.status).toBe("active");
     const update = writes.find((w) => /update x_accounts\s+set handle/.test(w.sql));
-    expect(update?.params).toEqual(["a1", "acme", "Acme", "https://img"]);
+    // x_premium も /me の verified_type 由来の値で毎回更新する（T-M8-219）。
+    expect(update?.params).toEqual(["a1", "acme", "Acme", "https://img", false]);
   });
 
   it("returns the stored status (e.g. expired) when token refresh throws", async () => {

@@ -113,6 +113,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `handle` | `text` | not null | `@`なし |
 | `name` | `text` | not null | X表示名 |
 | `profile_image_url` | `text` | null | Xプロフィール画像 |
+| `x_premium` | `boolean` | not null default `false` | X Premium加入（`/users/me` の `verified_type` = blue/business。users/meを呼ぶたびに更新・T-M8-219） |
 | `auth_type` | `x_auth_type` | not null | BYOK/managed |
 | `access_token_ciphertext` | `text` | null | 切断時はnull |
 | `refresh_token_ciphertext` | `text` | null | 暗号化済み |

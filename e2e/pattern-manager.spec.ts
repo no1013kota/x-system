@@ -29,9 +29,6 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
   await expect(page.locator("#new-prompt")).toHaveValue(
     /# 投稿内容[\s\S]*# 手順・Web検索有無[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
   );
-  // **分量はプロンプトから読む**（T-M8-132）。雛形は「2スレッド目」まで＝最大3ポスト。
-  await expect(page.getByText("このプロンプトはメイン＋スレッド2（最大3ポスト）")).toBeVisible();
-
   // プレースホルダーは手入力欄ではなく、**プロンプトの {名前} から自動で導出される**（T-M8-194）。
   await page.locator("#new-name").fill("実験パターン");
   await page
@@ -39,15 +36,21 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
     .fill(
       "# 投稿内容\n実験用のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{自分の考え} を踏まえる",
     );
-  // 書いた時点で下の小さな一覧に {自分の考え} が出る（設定＞プロンプトでの表示・T-M8-194）。
+  // グレー小の列挙は出さない（運営者の指示 2026-08-22）。目立つ説明カラウトだけが出る。
+  await expect(page.getByText("プレースホルダー:")).toHaveCount(0);
   await expect(
-    page.getByText("プレースホルダー:").filter({ hasText: "{自分の考え}" }).first(),
+    page.getByText("その名前の入力欄がこの下に自動で出ます").first(),
   ).toBeVisible();
   await page.getByRole("button", { name: "追加", exact: true }).click();
   await expect(page.getByRole("heading", { level: 3, name: "実験パターン" })).toBeVisible();
 
-  const [created] = await query<{ id: string; name: string; prompt: string }>(
-    `select id, name, prompt from post_patterns where x_account_id = $1 and seed_key is null`,
+  const [created] = await query<{
+    id: string;
+    name: string;
+    prompt: string;
+    placeholders: { name: string }[];
+  }>(
+    `select id, name, prompt, placeholders from post_patterns where x_account_id = $1 and seed_key is null`,
     [account.xAccountId],
   );
 const [createdRow] = await query<{ max_posts: number }>(
@@ -56,6 +59,8 @@ const [createdRow] = await query<{ max_posts: number }>(
   );
   expect(created.name).toBe("実験パターン");
   expect(created.prompt).toContain("実験用のプロンプト");
+  // プレースホルダーは本文の {名前} から自動導出されて保存される（T-M8-194。画面の列挙は廃止）。
+  expect(created.placeholders).toEqual([{ name: "自分の考え" }]);
   // スレッド数0 → 総1ポスト（DBは総ポスト数で持つ）。
   expect(createdRow.max_posts).toBe(1);
 

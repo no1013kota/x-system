@@ -676,14 +676,3 @@ export function maxPostsFromPrompt(prompt: string): number {
   const threads = threadCountFromPrompt(prompt);
   return threads === null ? PATTERN_MAX_POSTS_LIMIT : Math.min(PATTERN_MAX_POSTS_LIMIT, threads + 1);
 }
-
-/** 画面へ出す説明（読み取れたか／読み取れなかったかを言い分ける）。 */
-export function threadCountFromPromptLabel(prompt: string): string {
-  const threads = threadCountFromPrompt(prompt);
-  if (threads === null) {
-    return `スレッド数の指定が読み取れません（最大${PATTERN_MAX_POSTS_LIMIT}ポストまで作られます）`;
-  }
-  return threads === 0
-    ? "このプロンプトはメインポストのみ（単発）"
-    : `このプロンプトはメイン＋スレッド${threads}（最大${threads + 1}ポスト）`;
-}

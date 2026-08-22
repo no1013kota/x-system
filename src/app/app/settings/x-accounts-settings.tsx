@@ -111,6 +111,8 @@ export function XAccountsSettings({
                   {account.isActive ? (
                     <Badge tone="info">操作中</Badge>
                   ) : null}
+                  {/* X Premium加入はバッジで示す（T-M8-219）。連携時と「接続を確認」で更新される。 */}
+                  {account.xPremium ? <Badge tone="neutral">X Premium</Badge> : null}
                 </p>
                 <p className="text-sm text-muted-foreground">{account.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">

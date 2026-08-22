@@ -28,6 +28,8 @@ export interface XAccountListItem {
   status: XAccountStatus;
   isActive: boolean;
   automationActive: boolean;
+  /** X Premium加入（verified_type由来・T-M8-219）。SC-11のバッジ表示用。 */
+  xPremium: boolean;
 }
 
 /** GET /2/users/me の正規化結果。 */
@@ -36,6 +38,7 @@ export type XMeFetcher = (accessToken: string) => Promise<{
   username: string;
   name: string;
   profileImageUrl: string | null;
+  premium: boolean;
 }>;
 
 /** transaction 実行の注入（server層は withTransaction を渡す）。 */
@@ -82,8 +85,10 @@ export async function listXAccountsForUser(
     status: XAccountStatus;
     is_active: boolean;
     automation_active: boolean;
+    x_premium: boolean;
   }>(
     `select xa.id, xa.handle, xa.name, xa.profile_image_url, xa.auth_type, xa.status,
+            xa.x_premium,
             (p.active_x_account_id = xa.id) as is_active,
             (xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as automation_active
@@ -102,6 +107,7 @@ export async function listXAccountsForUser(
     status: r.status,
     isActive: r.is_active,
     automationActive: r.automation_active,
+    xPremium: r.x_premium,
   }));
 }
 
@@ -129,10 +135,10 @@ async function applyMe(
   */
   const { rowCount } = await db.query(
     `update x_accounts
-        set handle = $2, name = $3, profile_image_url = $4,
+        set handle = $2, name = $3, profile_image_url = $4, x_premium = $5,
             status = 'active', updated_at = now()
       where id = $1 and status <> 'disabled'`,
-    [xAccountId, me.username, me.name, me.profileImageUrl],
+    [xAccountId, me.username, me.name, me.profileImageUrl, me.premium],
   );
   return (rowCount ?? 0) > 0;
 }
@@ -248,9 +254,9 @@ export async function enableXAccount(
     await tx.query(
       `update x_accounts
           set status = 'active', handle = $3, name = $4, profile_image_url = $5,
-              updated_at = now()
+              x_premium = $6, updated_at = now()
         where id = $1 and user_id = $2`,
-      [xAccountId, userId, me.username, me.name, me.profileImageUrl],
+      [xAccountId, userId, me.username, me.name, me.profileImageUrl, me.premium],
     );
     return true;
   });

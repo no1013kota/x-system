@@ -142,7 +142,7 @@ Xキー削除では、2026-07-23時点の[X OAuth 2.0 user access token公式手
 | `listXAccounts` | none | accounts | 本人のみ |
 | `enableXAccount` | `x_account_id` | status | plan上限、auth_type、tokenを検証してactive化 |
 | `disconnectXAccount` | `x_account_id` | status | Xのtoken revokeをbest effortで実行後、保存tokenを削除しstatus disabled。自動投稿同意も停止し全auto slotを無効化。選択中（`active_x_account_id`）だった場合は選択を解除する（フォールバック再選択は`setActiveXAccount`が扱う）。下書き・履歴・base_mdは削除しない |
-| `refreshXAccountStatus` | `x_account_id` | status | X `/users/me`で確認 |
+| `refreshXAccountStatus` | `x_account_id` | status | X `/users/me`で確認。handle・表示名・画像に加え **`x_premium`（`verified_type`= blue/business）も更新**する（T-M8-219。OAuth連携・再有効化でも同様に更新） |
 | `recordXAutomationConsent` | `x_account_id`, `consent_version`, `confirmed` | consent state | 現行説明versionの明示checkbox必須。`automation_consented_at`を保存しdisabledを解除 |
 | `disableXAutomation` | `x_account_id` | consent state, disabled slot count | `automation_disabled_at`を保存し、同じtransactionで全auto slotを無効化 |
 

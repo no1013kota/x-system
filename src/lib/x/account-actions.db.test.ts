@@ -213,7 +213,7 @@ describe("X account management actions (local DB)", () => {
           db,
           runInTx,
           getAccessToken: async () => "tok",
-          fetchMe: async () => ({ id: "x", username: "u", name: "n", profileImageUrl: null }),
+          fetchMe: async () => ({ id: "x", username: "u", name: "n", profileImageUrl: null, premium: false }),
         });
       } catch (e) {
         err = e as { code?: string; details?: Record<string, unknown> };

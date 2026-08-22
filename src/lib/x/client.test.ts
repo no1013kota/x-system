@@ -128,8 +128,30 @@ describe("X client — request construction & normalization (live)", () => {
       ok({ data: { id: "u1", username: "acme", name: "Acme", profile_image_url: "https://img" } }),
     ]);
     const res = await getMe("tok", liveDeps(m.http));
-    expect(res.user).toEqual({ id: "u1", username: "acme", name: "Acme", profileImageUrl: "https://img" });
-    expect(m.requests[0].url).toContain("/users/me?user.fields=profile_image_url");
+    expect(res.user).toEqual({
+      id: "u1",
+      username: "acme",
+      name: "Acme",
+      profileImageUrl: "https://img",
+      premium: false,
+    });
+    // Premium判定に verified_type を同時取得する（T-M8-219）。
+    expect(m.requests[0].url).toContain("/users/me?user.fields=profile_image_url,verified_type");
+  });
+
+  it("getMe maps verified_type blue/business to premium=true, others to false (T-M8-219)", async () => {
+    for (const [verifiedType, premium] of [
+      ["blue", true],
+      ["business", true],
+      ["government", false],
+      ["none", false],
+    ] as const) {
+      const m = mockHttp([
+        ok({ data: { id: "u1", username: "acme", name: "Acme", verified_type: verifiedType } }),
+      ]);
+      const res = await getMe("tok", liveDeps(m.http));
+      expect(res.user.premium).toBe(premium);
+    }
   });
 
   it("getTweetMetrics requests ids + metric fields and returns public/non-public metrics", async () => {

@@ -79,6 +79,11 @@ export interface XUser {
   username: string;
   name: string;
   profileImageUrl: string | null;
+  /**
+   * X Premium加入（T-M8-219）。verified_type が blue（Premium個人）/ business（認証済み組織）
+   * のとき true。government・none・未取得は false。
+   */
+  premium: boolean;
 }
 export interface XUserResult extends XApiMeta {
   user: XUser;
@@ -237,17 +242,28 @@ export async function deletePost(
   return { deleted: res.data.deleted === true, requestId, quantity: 1, dryRun: false };
 }
 
-/** GET /2/users/me（連携確認・handle/表示名取得, 要件05 §4.3）。読取はmodeに依らず実行。 */
+/** verified_type → X Premium加入の判定（T-M8-219）。 */
+function isPremiumVerifiedType(verifiedType: string | undefined): boolean {
+  return verifiedType === "blue" || verifiedType === "business";
+}
+
+/** GET /2/users/me（連携確認・handle/表示名/Premium取得, 要件05 §4.3・T-M8-219）。読取はmodeに依らず実行。 */
 export async function getMe(
   accessToken: string,
   deps: XClientDeps,
 ): Promise<XUserResult> {
   const { body: res, requestId } = await callX<{
-    data: { id: string; username: string; name: string; profile_image_url?: string };
+    data: {
+      id: string;
+      username: string;
+      name: string;
+      profile_image_url?: string;
+      verified_type?: string;
+    };
   }>(
     {
       method: "GET",
-      url: `${baseUrl(deps)}/users/me?user.fields=profile_image_url`,
+      url: `${baseUrl(deps)}/users/me?user.fields=profile_image_url,verified_type`,
       headers: authHeaders(accessToken, false),
     },
     deps,
@@ -258,6 +274,7 @@ export async function getMe(
       username: res.data.username,
       name: res.data.name,
       profileImageUrl: res.data.profile_image_url ?? null,
+      premium: isPremiumVerifiedType(res.data.verified_type),
     },
     requestId,
     quantity: 1,
@@ -287,6 +304,8 @@ export async function getUserByUsername(
       username: res.data.username,
       name: res.data.name,
       profileImageUrl: res.data.profile_image_url ?? null,
+      // 参考アカウント解決ではPremium状態を使わないため取得しない（T-M8-219）。
+      premium: false,
     },
     requestId,
     quantity: 1,

@@ -118,10 +118,14 @@ export function AiPurposeSettings({
         </div>
 
         {isOperatorManagedPlan(plan) ? (
-          <div className="mt-5 rounded-card border border-hairline bg-page p-4">
-            {/* 見出し=caption、値=body太字に統一（T-M8-207）。重複する説明文は削除。 */}
-            <p className="text-caption text-ink-3">利用するAI</p>
-            <p className="mt-1 text-body font-bold">運営Claude（APIキー不要・モデルは下で選べます）</p>
+          <>
+            {/* 灰色枠には入れず、画像生成セクションと同じ並び（ラベル＋欄）にする（運営者の指示 2026-08-22）。 */}
+            <div className="mt-5 block max-w-xl space-y-2 text-body font-medium">
+              <p>利用するAI</p>
+              <p className="flex h-11 w-full items-center rounded-lg border bg-page px-3 font-normal text-ink">
+                運営Claude（APIキー不要）
+              </p>
+            </div>
             <ModelSelect
               defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
               disabled={isPending}
@@ -131,7 +135,7 @@ export function AiPurposeSettings({
               plan={plan}
               value={textModel}
             />
-          </div>
+          </>
         ) : options.text.length > 0 ? (
           <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
             文章生成・リサーチに使うAI

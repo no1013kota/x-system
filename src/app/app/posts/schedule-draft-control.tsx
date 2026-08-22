@@ -153,12 +153,13 @@ export function ScheduleDraftControl({
       </Button>
       {open ? (
         <div className="order-last w-full rounded-card border border-hairline bg-page p-3">
+          {/* 入力欄をflex-1で右端まで伸ばし、パネル右側に不釣り合いな空白を残さない（運営者の指示 2026-08-22）。 */}
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>投稿日時</span>
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
+              <span className="shrink-0">投稿日時</span>
               <input
                 aria-label="投稿日時"
-                className="min-h-9 rounded-card border border-hairline bg-surface px-2 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="min-h-9 w-full min-w-40 flex-1 rounded-card border border-hairline bg-surface px-2 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 disabled={busy}
                 onChange={(event) => updateValue(event.target.value)}
                 type="datetime-local"

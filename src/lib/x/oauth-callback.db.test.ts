@@ -94,6 +94,7 @@ describe("X OAuth callback link (local DB)", () => {
     id: `x-${randomUUID()}`,
     username,
     name: username,
+    premium: false,
     profileImageUrl: null,
   });
   const countXAccounts = async (uid: string): Promise<number> =>
@@ -163,6 +164,7 @@ describe("X OAuth callback link (local DB)", () => {
         username: "acme",
         name: "Acme",
         profileImageUrl: "https://img",
+        premium: true,
       };
       const res = await handleXOAuthCallback(
         { code: "c", returnedState: "st", sealedStateCookie: "s", sessionUserId: uid },
@@ -179,9 +181,10 @@ describe("X OAuth callback link (local DB)", () => {
             oauth_scopes: string[];
             access_token_ciphertext: string;
             refresh_token_ciphertext: string;
+            x_premium: boolean;
           }>(
             `select x_user_id, handle, auth_type, status, oauth_scopes,
-                    access_token_ciphertext, refresh_token_ciphertext
+                    access_token_ciphertext, refresh_token_ciphertext, x_premium
                from x_accounts where id = $1`,
             [res.xAccountId],
           ),
@@ -192,6 +195,8 @@ describe("X OAuth callback link (local DB)", () => {
       expect(row.auth_type).toBe("byok");
       expect(row.status).toBe("active");
       expect(row.oauth_scopes).toEqual([...X_SCOPES]);
+      // X Premium状態は連携時の users/me から保存される（T-M8-219）。
+      expect(row.x_premium).toBe(true);
       expect(decrypt(row.access_token_ciphertext)).toBe("access-1");
       expect(decrypt(row.refresh_token_ciphertext)).toBe("refresh-1");
 
@@ -261,6 +266,7 @@ describe("X OAuth callback link (local DB)", () => {
       username: "acme",
       name: "Acme",
       profileImageUrl: null,
+      premium: false,
     };
     try {
       const first = await handleXOAuthCallback(

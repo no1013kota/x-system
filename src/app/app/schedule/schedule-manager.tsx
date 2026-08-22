@@ -30,7 +30,7 @@ import {
 import {
   PatternFields,
   PlaceholderCallout,
-  PlaceholderSummary,
+  PlaceholderOverflowWarning,
   actionReason,
   emptyPatternDraft,
   patternReasonMessage,
@@ -954,7 +954,6 @@ function SlotFields({
               draft={newPattern}
               idPrefix={`slot-new-pattern-${target.kind === "edit" ? target.slotId : "new"}`}
               onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
-              placeholderHint="prominent"
               promptRequired
             />
             <div className="mt-3 flex gap-2">
@@ -990,7 +989,7 @@ function SlotFields({
             edited={promptEdited}
             footer={
               <>
-                <PlaceholderSummary prompt={promptValue} />
+                <PlaceholderOverflowWarning prompt={promptValue} />
                 <PlaceholderCallout />
               </>
             }

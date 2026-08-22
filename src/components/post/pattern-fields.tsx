@@ -14,7 +14,6 @@ import {
   PATTERN_PLACEHOLDER_MAX,
   PATTERN_PLACEHOLDER_NAME_MAX_CHARS,
   PATTERN_PROMPT_MAX_CHARS,
-  threadCountFromPromptLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -121,8 +120,8 @@ export function actionReason(res: unknown): string | undefined {
 
 /**
  * 「{名前} と書くと入力欄が出る」の目立つ説明（T-M8-203・運営者の指示 2026-08-22）。
- * 小さな注記では気付かれなかったため、投稿作成・スケジュールではカラウトで出す
- * （設定＞プロンプトは小さい表示のまま＝PlaceholderSummaryだけ）。
+ * 小さな注記では気付かれなかったため、投稿作成・スケジュール・設定＞プロンプトの
+ * すべてでこのカラウトだけを出す（グレー小の列挙は廃止・運営者の指示 2026-08-22）。
  */
 export function PlaceholderCallout() {
   return (
@@ -139,14 +138,11 @@ export function PatternFields({
   idPrefix,
   onChange,
   promptRequired,
-  placeholderHint = "compact",
 }: {
   draft: PatternDraft;
   idPrefix: string;
   onChange: (next: Partial<PatternDraft>) => void;
   promptRequired: boolean;
-  /** prominent = カラウトで説明（投稿作成・スケジュール）。compact = 小さな一覧のみ（設定）。 */
-  placeholderHint?: "prominent" | "compact";
 }) {
   const over = draft.prompt.length > PATTERN_PROMPT_MAX_CHARS;
   return (
@@ -192,46 +188,27 @@ export function PatternFields({
           value={draft.prompt}
         />
         {/*
-          **分量はプロンプトから読む**（T-M8-132）。読み取った結果をその場に出す——
-          書いたつもりの本数と実際に作られる本数が違うことに、生成してから気付かないようにする。
+          プレースホルダーは本文の {名前} から自動で作られる（T-M8-194）。スレッド数・
+          プレースホルダーのグレー小の列挙は出さない（運営者の指示 2026-08-22）。上限超過
+          だけは黙って捨てず警告する（原則1）。
         */}
-        <p className="mt-1 text-caption text-ink-3">{threadCountFromPromptLabel(draft.prompt)}</p>
-        {/*
-          **プレースホルダーは本文の {名前} から自動で作られる**（T-M8-194・運営者の指示 2026-08-22）。
-          手で名前を並べる欄は置かない——本文と宣言がズレる余地を無くし、書けばその場で増える。
-        */}
-        <PlaceholderSummary prompt={draft.prompt} />
-        {placeholderHint === "prominent" ? <PlaceholderCallout /> : null}
+        <PlaceholderOverflowWarning prompt={draft.prompt} />
+        <PlaceholderCallout />
       </div>
     </div>
   );
 }
 
 /**
- * 本文から導出したプレースホルダーの一覧（小さく表示）。
- * 投稿作成・スケジュール・設定＞プロンプトで同じ見え方にする（T-M8-194）。
+ * プレースホルダーの上限超過だけを警告する（一覧の常時表示はしない・運営者の指示 2026-08-22）。
+ * 11個目以降が黙って文字のまま送られる状態を作らない（原則1）。
  */
-export function PlaceholderSummary({ prompt }: { prompt: string }) {
+export function PlaceholderOverflowWarning({ prompt }: { prompt: string }) {
   const names = extractPlaceholderNames(prompt);
   // 上限＋1で数え直して超過を検出する（黙って11個目以降を捨てない・原則1）。
   const overflowing = extractPlaceholderNames(prompt, PATTERN_PLACEHOLDER_MAX + 1).length > names.length;
   return (
     <>
-      <p className="mt-1 text-caption text-ink-3">
-        プレースホルダー:{" "}
-        {names.length === 0 ? (
-          <>
-            なし（プロンプトの中に <code>{"{名前}"}</code> と書くと、その名前の入力欄が投稿作成・スケジュールに出ます）
-          </>
-        ) : (
-          names.map((name, i) => (
-            <span key={name}>
-              {i > 0 ? "・" : null}
-              <code>{`{${name}}`}</code>
-            </span>
-          ))
-        )}
-      </p>
       {overflowing ? (
         <p className="mt-1 text-caption font-medium text-danger-fg">
           プレースホルダーは{PATTERN_PLACEHOLDER_MAX}個までです。{PATTERN_PLACEHOLDER_MAX + 1}

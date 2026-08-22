@@ -28,6 +28,8 @@ export interface XCallbackUser {
   username: string;
   name: string;
   profileImageUrl: string | null;
+  /** X Premium加入（verified_type由来・T-M8-219）。連携時に保存し、以後は「接続を確認」で更新。 */
+  premium: boolean;
 }
 
 export interface XCallbackPersistParams {
@@ -216,14 +218,15 @@ export async function linkXAccountRecord(
   await assertCanLinkXAccount(client, { userId, xUserId: xUser.id });
   const inserted = await client.query<{ id: string }>(
     `insert into x_accounts
-       (user_id, x_user_id, handle, name, profile_image_url, auth_type,
+       (user_id, x_user_id, handle, name, profile_image_url, x_premium, auth_type,
         access_token_ciphertext, refresh_token_ciphertext, oauth_scopes,
         token_expires_at, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active')
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active')
      on conflict (user_id, x_user_id) do update
        set handle = excluded.handle,
            name = excluded.name,
            profile_image_url = excluded.profile_image_url,
+           x_premium = excluded.x_premium,
            auth_type = excluded.auth_type,
            access_token_ciphertext = excluded.access_token_ciphertext,
            refresh_token_ciphertext = excluded.refresh_token_ciphertext,
@@ -239,6 +242,7 @@ export async function linkXAccountRecord(
       xUser.username,
       xUser.name,
       xUser.profileImageUrl,
+      xUser.premium,
       authType,
       sealed.accessTokenCiphertext,
       sealed.refreshTokenCiphertext,
