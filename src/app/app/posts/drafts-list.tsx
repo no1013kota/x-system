@@ -12,7 +12,8 @@ import {
   reconcileDraftPostingAction,
 } from "@/app/actions/drafts";
 import {
-  ScheduleDraftControl,
+  ScheduleDraftPanel,
+  ScheduleDraftToggle,
   scheduledLabel,
 } from "./schedule-draft-control";
 import {
@@ -30,7 +31,6 @@ import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/p
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
-import { formatJst } from "@/lib/format";
 import {
   alertDialogBackdropClassName,
   alertDialogPopupClassName,
@@ -143,6 +143,8 @@ function DraftCard({
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  // 予約パネルの開閉はカードが持つ（T-M8-226。ボタン群の内側で開くとヘッダー行が折り返して崩れる）。
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
 
@@ -284,7 +286,7 @@ function DraftCard({
           {draft.status === "draft" && draft.scheduled_at ? (
             <Badge tone="info">{scheduledLabel(draft.scheduled_at)}</Badge>
           ) : null}
-          <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
+          {/* 更新日時の常時表示は置かない（運営者の指示 2026-08-22。タイトル横の現在日時に見えて紛らわしい）。 */}
         </div>
         {/* 状態テキストとボタンが同居する行。折り返せないと狭い幅で横にはみ出す（T-M8-70）。 */}
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -299,12 +301,11 @@ function DraftCard({
             </span>
           ) : null}
           {editable && !editing && !publishing && !p5Disabled ? (
-            <ScheduleDraftControl
+            <ScheduleDraftToggle
               disabled={locked}
-              draftId={draft.id}
+              onToggle={() => setScheduleOpen((v) => !v)}
+              open={scheduleOpen}
               scheduledAt={draft.scheduled_at}
-              updatedAt={draft.updated_at}
-              xAccountActive={xAccountActive}
             />
           ) : null}
           {editable && !editing && !publishing && !p5Disabled ? (
@@ -348,6 +349,20 @@ function DraftCard({
           />
         </div>
       </div>
+
+      {/* 予約パネルはヘッダー行の下の独立した行（T-M8-226。ボタン群の中で開くと折り返して崩れる）。 */}
+      {scheduleOpen && editable && !editing && !publishing && !p5Disabled ? (
+        <div className="mt-2">
+          <ScheduleDraftPanel
+            disabled={locked}
+            draftId={draft.id}
+            onClose={() => setScheduleOpen(false)}
+            scheduledAt={draft.scheduled_at}
+            updatedAt={draft.updated_at}
+            xAccountActive={xAccountActive}
+          />
+        </div>
+      ) : null}
 
       {/*
         **保存された失敗理由をそのまま出す**（T-M8-51）。

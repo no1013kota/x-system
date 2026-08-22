@@ -21,6 +21,13 @@ import { formatJst } from "@/lib/format";
  * **押す前に理由が分かる形にする**（原則2）。過去日時・直近すぎる日時・遠すぎる日時は
  * 送信前に同じ判定（`checkDraftSchedule`）で弾き、理由を画面へ出す。Server Action側も
  * 受理直前に同じ判定を通すので、画面をすり抜けても投稿されない。
+ *
+ * ## トグルとパネルを分ける（T-M8-226）
+ *
+ * 以前はボタンとパネルを1コンポーネントで返し、パネル（w-full）がカード右側の
+ * ボタン群コンテナの内側で開いていた。そのためコンテナごと全幅へ膨らみ、
+ * **「予約を変更」を押すとタイトル行とボタン行が折り返して崩れた**。開閉状態は
+ * カード側が持ち、ボタンはボタン群の中・パネルはヘッダー行の下に**別の行**として置く。
  */
 
 /** `datetime-local` の値（ローカル時刻・秒なし）へ変換する。 */
@@ -41,24 +48,51 @@ function defaultScheduleValue(): string {
   return toLocalInputValue(new Date(Date.now() + 5 * 60_000).toISOString());
 }
 
-export function ScheduleDraftControl({
+/** 予約パネルの開閉ボタン。ラベルは「日時を指定して予約」→「予約を変更」→「閉じる」。 */
+export function ScheduleDraftToggle({
+  disabled,
+  open,
+  scheduledAt,
+  onToggle,
+}: {
+  disabled: boolean;
+  open: boolean;
+  scheduledAt: string | null;
+  onToggle: () => void;
+}) {
+  return (
+    <Button disabled={disabled} onClick={onToggle} size="sm" type="button" variant="outline">
+      {open ? "閉じる" : scheduledAt ? "予約を変更" : "日時を指定して予約"}
+    </Button>
+  );
+}
+
+/**
+ * 予約日時の入力パネル。カードのヘッダー行の**下**に独立した行として置く。
+ * 枠は内容に合わせた幅（w-fit）にする——全幅にすると右側に不釣り合いな空白が残り、
+ * 入力欄を引き伸ばすと「投稿日時」に対して長すぎる（運営者の指示 2026-08-22）。
+ */
+export function ScheduleDraftPanel({
   disabled,
   draftId,
   scheduledAt,
   updatedAt,
   xAccountActive,
+  onClose,
 }: {
   disabled: boolean;
   draftId: string;
   scheduledAt: string | null;
   updatedAt: string;
   xAccountActive: boolean;
+  onClose: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(() => toLocalInputValue(scheduledAt));
+  const [value, setValue] = useState(() =>
+    scheduledAt ? toLocalInputValue(scheduledAt) : defaultScheduleValue(),
+  );
   const [reason, setReason] = useState<string | null>(null);
   const busy = pending || disabled;
 
@@ -90,7 +124,7 @@ export function ScheduleDraftControl({
       });
       if (res.status === "success") {
         toast.show({ title: "投稿を予約しました", tone: "success" });
-        setOpen(false);
+        onClose();
         router.refresh();
       } else {
         toast.show({
@@ -110,9 +144,7 @@ export function ScheduleDraftControl({
       });
       if (res.status === "success") {
         toast.show({ title: "予約を解除しました", tone: "success" });
-        setOpen(false);
-        setValue("");
-        setReason(null);
+        onClose();
         router.refresh();
       } else {
         toast.show({
@@ -124,71 +156,42 @@ export function ScheduleDraftControl({
     });
   }
 
-  /*
-   * 入力枠は**ボタンの下の独立した行**に出す（運営者の指示 2026-08-22・T-M8-218）。
-   * 以前はボタンを置き換えてアクション行の中に展開しており、エラーメッセージの出入りや
-   * カレンダー操作のたびにflex-wrapの折り返しが変わって**入力欄の位置が飛ぶ**不具合が
-   * 起きていた。w-fullの下段パネルなら他ボタンの並びが崩れず、位置も固定される。
-   */
   return (
-    <>
-      <Button
-        disabled={busy}
-        onClick={() => {
-          if (open) {
-            setOpen(false);
-            setValue(toLocalInputValue(scheduledAt));
-            setReason(null);
-          } else {
-            setOpen(true);
-            // 既存の予約が無ければ現在時刻（＋5分）を初期値にする。
-            if (!scheduledAt) updateValue(defaultScheduleValue());
-          }
-        }}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        {open ? "閉じる" : scheduledAt ? "予約を変更" : "日時を指定して予約"}
-      </Button>
-      {open ? (
-        <div className="order-last w-full rounded-card border border-hairline bg-page p-3">
-          {/* 入力欄をflex-1で右端まで伸ばし、パネル右側に不釣り合いな空白を残さない（運営者の指示 2026-08-22）。 */}
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
-              <span className="shrink-0">投稿日時</span>
-              <input
-                aria-label="投稿日時"
-                className="min-h-9 w-full min-w-40 flex-1 rounded-card border border-hairline bg-surface px-2 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                disabled={busy}
-                onChange={(event) => updateValue(event.target.value)}
-                type="datetime-local"
-                value={value}
-              />
-            </label>
-            <Button
-              disabled={busy || !value || Boolean(reason)}
-              onClick={save}
-              size="sm"
-              type="button"
-            >
-              {pending ? "保存中…" : "予約する"}
-            </Button>
-            {scheduledAt ? (
-              <Button disabled={busy} onClick={cancel} size="sm" type="button" variant="outline">
-                予約を解除
-              </Button>
-            ) : null}
-          </div>
-          {/* 理由は入力の下の固定行に出す（出入りで他要素の位置を動かさない）。 */}
-          {reason ? (
-            <p className="mt-1.5 text-xs text-danger-fg" role="alert">
-              {reason}
-            </p>
-          ) : null}
-        </div>
+    <div className="w-fit max-w-full rounded-card border border-hairline bg-page p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">投稿日時</span>
+          {/* 幅は入力内容（日時）なり。引き伸ばさない（運営者の指示 2026-08-22）。 */}
+          <input
+            aria-label="投稿日時"
+            className="min-h-9 rounded-card border border-hairline bg-surface px-2 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            disabled={busy}
+            onChange={(event) => updateValue(event.target.value)}
+            type="datetime-local"
+            value={value}
+          />
+        </label>
+        <Button
+          disabled={busy || !value || Boolean(reason)}
+          onClick={save}
+          size="sm"
+          type="button"
+        >
+          {pending ? "保存中…" : "予約する"}
+        </Button>
+        {scheduledAt ? (
+          <Button disabled={busy} onClick={cancel} size="sm" type="button" variant="outline">
+            予約を解除
+          </Button>
+        ) : null}
+      </div>
+      {/* 理由は入力の下の固定行に出す（出入りで他要素の位置を動かさない）。 */}
+      {reason ? (
+        <p className="mt-1.5 text-xs text-danger-fg" role="alert">
+          {reason}
+        </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
