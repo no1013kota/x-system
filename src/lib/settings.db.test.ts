@@ -60,7 +60,7 @@ describe("settings (local DB)", () => {
     try {
       const settings = await readSettings(db, uid);
       expect(settings?.newsConfig.categories).toContain("ai");
-      expect(settings?.notificationConfig.posted).toEqual({ in_app: true, email: false });
+      expect(settings?.notificationConfig.posted).toEqual({ in_app: true, email: true });
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

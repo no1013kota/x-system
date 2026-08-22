@@ -127,25 +127,21 @@ export function AnalyticsFigure() {
   ];
   return (
     <div aria-hidden="true" className="grid gap-2.5 rounded-card border border-hairline bg-page p-3.5">
-      <div className="flex flex-wrap items-end justify-between gap-3.5">
-        <div>
-          <p className="mb-1.5 text-[11px] font-medium text-ink-2">フォロワー数の推移</p>
-          <div className="flex h-14 items-end gap-2">
-            {bars.map((bar, i) => (
-              <span
-                className={cn(
-                  "w-4 rounded-t-[3px]",
-                  bar.height,
-                  bar.brand ? "bg-brand" : "bg-brand-subtle",
-                )}
-                key={i}
-              />
-            ))}
-          </div>
+      {/* 「毎朝レポート」チップは削除し、棒はflex-1で横幅いっぱいに使う（運営者の指示 2026-08-22・T-M8-204）。 */}
+      <div>
+        <p className="mb-1.5 text-[11px] font-medium text-ink-2">フォロワー数の推移</p>
+        <div className="flex h-14 items-end gap-2">
+          {bars.map((bar, i) => (
+            <span
+              className={cn(
+                "flex-1 rounded-t-[3px]",
+                bar.height,
+                bar.brand ? "bg-brand" : "bg-brand-subtle",
+              )}
+              key={i}
+            />
+          ))}
         </div>
-        <span className="inline-flex h-7 items-center rounded-card border border-hairline bg-surface px-3 text-caption font-medium text-brand">
-          毎朝レポート
-        </span>
       </div>
       {/* プロンプト改善案の提案カード（表示専用・反映は利用者が選ぶ、の実画面イメージ）。 */}
       <div className="rounded-card border border-hairline bg-surface px-2.5 py-2">

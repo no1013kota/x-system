@@ -130,10 +130,16 @@ describe("theme master", () => {
 });
 
 describe("config defaults", () => {
-  it("turns posted email off but others on (要件06 §3.4)", () => {
-    expect(DEFAULT_NOTIFICATION_CONFIG.posted.email).toBe(false);
-    expect(DEFAULT_NOTIFICATION_CONFIG.news.email).toBe(true);
-    expect(DEFAULT_NOTIFICATION_CONFIG.error.email).toBe(true);
+  it("メール既定はニュース・投稿完了・毎日のまとめの3種だけON（T-M8-206）", () => {
+    const emailOn = Object.entries(DEFAULT_NOTIFICATION_CONFIG)
+      .filter(([, v]) => v.email)
+      .map(([k]) => k)
+      .sort();
+    expect(emailOn).toEqual(["news", "posted", "summary"]);
+    // アプリ内は全てON。
+    for (const [key, v] of Object.entries(DEFAULT_NOTIFICATION_CONFIG)) {
+      expect(v.in_app, `${key} のアプリ内通知は既定ON`).toBe(true);
+    }
   });
 
   it("既定のニュース分野は**取得している分野**だけ（記事の来ない分野を既定にしない）", () => {

@@ -41,6 +41,7 @@ import { PromptBlock } from "@/components/post/prompt-block";
 import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   createPatternAction,
+  deletePatternAction,
   updatePatternPromptAction,
 } from "@/app/actions/post-patterns";
 
@@ -749,6 +750,38 @@ function SlotFields({
     });
   }
 
+  /**
+   * パターンの削除（T-M8-205・運営者の指示 2026-08-22）。投稿作成と同じ操作を予約画面でも。
+   * 消したら選択を先頭へ戻す（消した型が選ばれたままにしない）。
+   */
+  function removePattern(target2: PatternOption) {
+    startTransition(async () => {
+      const res = await deletePatternAction({ pattern_id: target2.id });
+      if (res.status === "success") {
+        const rest = options.filter((o) => o.id !== target2.id);
+        setOptions(rest);
+        if (v.pattern_id === target2.id) {
+          selectPattern(rest[0]?.id ?? "");
+        }
+        const stopped = res.disabledSlots ?? 0;
+        toast.show({
+          tone: "success",
+          title: `「${res.deletedName ?? target2.name}」を削除しました`,
+          description:
+            stopped > 0
+              ? `このパターンを使っていた予約${stopped}件を停止しました（曜日・時刻は残っています）。`
+              : "過去の下書き・履歴の表示はそのまま残ります。",
+        });
+      } else {
+        toast.show({
+          tone: "error",
+          title: "削除できませんでした",
+          description: patternReasonMessage(actionReason(res), res.message),
+        });
+      }
+    });
+  }
+
   const toggleWeekday = (d: number) =>
     setV((cur) => ({
       ...cur,
@@ -902,8 +935,11 @@ function SlotFields({
 
       {/* 投稿作成と同じ部品（T-M8-29）。削除は出さない（編集中の枠の足元が崩れる・T-M8-134）。 */}
       <PatternRadioGroup
+        deleteDisabled={pending}
         name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
         onChange={selectPattern}
+        // 投稿作成と同じく各カードから削除できる（T-M8-205。編集権限のあるときだけ）。
+        onDelete={prompts ? removePattern : undefined}
         options={options}
         value={v.pattern_id}
       />

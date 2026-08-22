@@ -45,6 +45,14 @@ describe("Stripe subscription synchronization transaction", () => {
       "update profiles set stripe_customer_id = 'cus_sync' where id = $1",
       [userId],
     );
+    // このテストは「billingメールが有効な利用者への通知の作られ方」を見る。
+    // 既定はT-M8-206でOFFになったため、明示的にONへ（既定値の検証はconstants.testが担う）。
+    await activeDatabase.query(
+      `update profiles set notification_config = jsonb_set(
+         notification_config, '{billing}', '{"in_app":true,"email":true}'::jsonb)
+       where id = $1`,
+      [userId],
+    );
 
     const transaction = async <T>(
       callback: (db: StripeEventDatabase) => Promise<T>,

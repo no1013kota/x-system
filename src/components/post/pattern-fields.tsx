@@ -281,10 +281,13 @@ export function DeletePatternButton({
           <AlertDialog.Title className="text-body font-bold text-ink">
             「{name}」を削除しますか？
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 text-body text-ink-2">
-            過去の下書き・履歴の表示は名前のまま残ります。このパターンを使っている予約は
-            停止し、曜日・時刻・テーマは残るので別のパターンを選べば再開できます。
-            はじめから用意されているパターンは、あとから「既定のパターンを戻す」で復元できます。
+          {/* 説明は簡潔な箇条書きで（運営者の指示 2026-08-22・T-M8-205）。 */}
+          <AlertDialog.Description className="mt-2 text-body text-ink-2" render={<div />}>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>過去の下書き・履歴は残ります</li>
+              <li>このパターンを使う予約は停止します（別のパターンを選べば再開できます）</li>
+              <li>既定のパターンは「既定のパターンを戻す」で復元できます</li>
+            </ul>
           </AlertDialog.Description>
           <div className="mt-4 flex justify-end gap-2">
             <AlertDialog.Close className="inline-flex h-9 items-center rounded-card border border-hairline px-4 text-body">

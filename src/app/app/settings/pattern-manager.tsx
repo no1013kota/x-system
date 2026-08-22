@@ -234,6 +234,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
             draft={creating}
             idPrefix="new"
             onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
+            placeholderHint="prominent"
             promptRequired
           />
           <div className="mt-3 flex gap-2">
@@ -286,6 +287,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
               ) : null}
 
               <PatternFields
+                placeholderHint="prominent"
                 draft={draft}
                 // **数字で始まるidにしない。** uuidをそのまま使うとCSSセレクタとして無効になり、
                 // 検証（E2E）からもラベルの `htmlFor` からも引けなくなる。

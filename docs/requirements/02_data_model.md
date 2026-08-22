@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.53 |
+| バージョン | v1.54 |
 | 更新日 | 2026-08-22 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -738,18 +738,18 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 ```json
 {
   "news": { "in_app": true, "email": true },
-  "draft_created": { "in_app": true, "email": true },
-  "posted": { "in_app": true, "email": false },
-  "error": { "in_app": true, "email": true },
-  "billing": { "in_app": true, "email": true },
-  "usage": { "in_app": true, "email": true },
+  "draft_created": { "in_app": true, "email": false },
+  "posted": { "in_app": true, "email": true },
+  "error": { "in_app": true, "email": false },
+  "billing": { "in_app": true, "email": false },
+  "usage": { "in_app": true, "email": false },
   "summary": { "in_app": true, "email": true }
 }
 ```
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
 
-`summary`は日次サマリ（T-M7-29）。**1日1通なのでメールも既定ON**とする（画面を見に行かなくても静かな劣化に気付ける形にするのが目的で、既定OFFでは目的を果たさない）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成triggerの両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。
+メールの既定は**ニュース・投稿完了・毎日のまとめ（`summary`）の3種のみON**（T-M8-206・運営者の指示 2026-08-22。通数を抑え、下書き・エラー・課金・利用枠はアプリ内＋毎日のまとめが拾う）。`summary`は日次サマリ（T-M7-29）で1日1通のためメールも既定ON。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260822000004`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は変更しない。
 
 ### 4.4 `x_accounts.settings`
 
@@ -978,3 +978,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
 | v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
 | v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
+| v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |

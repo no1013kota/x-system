@@ -4,14 +4,20 @@
  * saved (要件02 §4.1).
  */
 
+/**
+ * 通知の既定（運営者の指示 2026-08-22・T-M8-206）: アプリ内は全てON、
+ * メールは**ニュース・投稿完了・毎日のまとめの3種だけON**。
+ * 下書き・エラー・課金・利用枠はアプリ内通知＋毎日のまとめで拾える一方、
+ * メールにすると通数が利用者数×イベント数で膨らむ（Gmail SMTPは約500通/日・D-35）。
+ * 既存利用者の保存値は変更しない（新規登録とtrigger既定のみ）。
+ */
 export const DEFAULT_NOTIFICATION_CONFIG = {
   news: { in_app: true, email: true },
-  draft_created: { in_app: true, email: true },
-  posted: { in_app: true, email: false },
-  error: { in_app: true, email: true },
-  billing: { in_app: true, email: true },
-  usage: { in_app: true, email: true },
-  /** 日次サマリ（T-M7-29）。1日1通なのでメールも既定ON（見に行かなくても気付ける形）。 */
+  draft_created: { in_app: true, email: false },
+  posted: { in_app: true, email: true },
+  error: { in_app: true, email: false },
+  billing: { in_app: true, email: false },
+  usage: { in_app: true, email: false },
   summary: { in_app: true, email: true },
 } as const;
 
