@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, useRef } from "react";
 
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
+import { formatJst } from "@/lib/format";
 import { nextScheduleRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
@@ -144,8 +146,17 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
   };
 }
 
+/** 予約済み下書き（1回きり）。今後の予定としてスケジュール枠と同じ一覧に混ぜる（T-M8-228）。 */
+export interface ScheduledDraftEntry {
+  id: string;
+  pattern_name: string;
+  scheduled_at: string;
+  excerpt: string;
+}
+
 export function ScheduleManager({
   slots,
+  scheduledDrafts,
   patterns,
   patternPrompts,
   imageProviders,
@@ -154,6 +165,7 @@ export function ScheduleManager({
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  scheduledDrafts: ScheduledDraftEntry[];
   /** 予約に使えるパターン（引用URLが必須のものは含まない・T-M8-129 U3）。 */
   patterns: PatternOption[];
   /**
@@ -222,6 +234,7 @@ export function ScheduleManager({
         imageProviders={imageProviders}
         patternPrompts={patternPrompts}
         patterns={patterns}
+        scheduledDrafts={scheduledDrafts}
         slots={slots}
         xAccountId={xAccountId}
       />
@@ -398,6 +411,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
 
 function SlotList({
   slots,
+  scheduledDrafts,
   patterns,
   patternPrompts,
   imageProviders,
@@ -406,6 +420,7 @@ function SlotList({
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  scheduledDrafts: ScheduledDraftEntry[];
   patterns: PatternOption[];
   /**
    * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
@@ -417,22 +432,68 @@ function SlotList({
   xAccountId: string;
   accountHandle: string | null;
 }) {
-  if (slots.length === 0) return null;
+  if (slots.length === 0 && scheduledDrafts.length === 0) return null;
+  /*
+   * スケジュール枠（繰り返し）と予約済み下書き（1回きり）を**同じ一覧に時間順で混ぜる**
+   * （T-M8-228・運営者の指示 2026-08-22。枠を2つに分けると認知負荷が大きい）。
+   * 並びのキーは「次に起きる時刻」——枠は次回実行、下書きは予約時刻。
+   * 停止中・次回を計算できない枠は末尾（時刻が無いので時間順に混ぜられない）。
+   */
+  const entries: (
+    | { kind: "slot"; at: number; slot: ScheduleSlotView }
+    | { kind: "draft"; at: number; draft: ScheduledDraftEntry }
+  )[] = [
+    ...slots.map((slot) => {
+      const next = slot.enabled ? nextScheduleRun(slot) : null;
+      return { kind: "slot" as const, at: next ? next.at.getTime() : Number.MAX_SAFE_INTEGER, slot };
+    }),
+    ...scheduledDrafts.map((draft) => ({
+      kind: "draft" as const,
+      at: new Date(draft.scheduled_at).getTime(),
+      draft,
+    })),
+  ].sort((a, b) => a.at - b.at);
   return (
     <ul className="space-y-3">
-      {slots.map((slot) => (
-      <SlotRow
-          accountHandle={accountHandle}
-          automationConsented={automationConsented}
-          imageProviders={imageProviders}
-          key={slot.id}
-          patternPrompts={patternPrompts}
-          patterns={patterns}
-          slot={slot}
-          xAccountId={xAccountId}
-        />
-      ))}
+      {entries.map((entry) =>
+        entry.kind === "slot" ? (
+          <SlotRow
+            accountHandle={accountHandle}
+            automationConsented={automationConsented}
+            imageProviders={imageProviders}
+            key={entry.slot.id}
+            patternPrompts={patternPrompts}
+            patterns={patterns}
+            slot={entry.slot}
+            xAccountId={xAccountId}
+          />
+        ) : (
+          <ScheduledDraftRow draft={entry.draft} key={`draft-${entry.draft.id}`} />
+        ),
+      )}
     </ul>
+  );
+}
+
+/**
+ * 予約済み下書きの行（T-M8-228）。スケジュール枠の行と同じ器で、
+ * パターン名＋「予約 <日時>」バッジ（SC-07の一覧と同じ形）＋本文冒頭を出し、行全体を下書きへのリンクにする。
+ */
+function ScheduledDraftRow({ draft }: { draft: ScheduledDraftEntry }) {
+  return (
+    <li className={cardClassName}>
+      <Link
+        className="flex flex-wrap items-center gap-2 p-4 text-sm transition-colors duration-150 hover:bg-black/[0.02]"
+        href={`/app/posts?tab=drafts&draftId=${draft.id}`}
+      >
+        <span className="font-semibold">{draft.pattern_name}</span>
+        <Badge tone="info">予約 {formatJst(draft.scheduled_at)}</Badge>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {draft.excerpt}
+        </span>
+        <span className="text-caption font-medium text-brand">下書きを開く</span>
+      </Link>
+    </li>
   );
 }
 

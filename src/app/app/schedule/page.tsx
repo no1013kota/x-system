@@ -5,11 +5,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import { formatJst } from "@/lib/format";
-import { nextScheduleRun } from "@/lib/schedule/next-run";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import {
   listPatternPrompts,
@@ -20,7 +16,7 @@ import {
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
-import { CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
+import { pageTitleClassName } from "@/components/ui/card";
 import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 export const metadata: Metadata = { title: "スケジュール | Exos AI" };
@@ -117,38 +113,6 @@ export default async function SchedulePage() {
     scheduledDrafts = draftRows.rows;
   }
 
-  /**
-   * 予約済み下書き（1回きり）と、有効スロットの次回実行（繰り返し）を**時間順に1本へ**並べる
-   * （T-M8-226・運営者の指示 2026-08-22）。スロットは各枠の「次の1回」だけを載せる——
-   * 先々まで展開すると同じ枠が列を埋め、1回きりの予約が埋もれる。
-   */
-  const upcoming: (
-    | { kind: "draft"; at: string; draftId: string; patternName: string; excerpt: string }
-    | { kind: "slot"; at: string; slotId: string; patternName: string | null; mode: string; imageEnabled: boolean }
-  )[] = [
-    ...scheduledDrafts.map((d) => ({
-      kind: "draft" as const,
-      at: new Date(d.scheduled_at).toISOString(),
-      draftId: d.id,
-      patternName: d.pattern_name,
-      excerpt: d.excerpt,
-    })),
-    ...slots.flatMap((slot) => {
-      if (!slot.enabled) return [];
-      const next = nextScheduleRun(slot);
-      if (!next) return [];
-      return [
-        {
-          kind: "slot" as const,
-          at: next.at.toISOString(),
-          slotId: slot.id,
-          patternName: slot.pattern_name,
-          mode: slot.mode,
-          imageEnabled: slot.image_enabled,
-        },
-      ];
-    }),
-  ].sort((a, b) => a.at.localeCompare(b.at));
 
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
@@ -162,6 +126,7 @@ export default async function SchedulePage() {
         <ScheduleManager
           key={activeXAccountId}
           accountHandle={accountHandle}
+          scheduledDrafts={scheduledDrafts}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           patternPrompts={patternPrompts}
@@ -171,71 +136,6 @@ export default async function SchedulePage() {
         />
       )}
 
-      {activeXAccountId ? (
-        /*
-          今後の予定（T-M8-226・運営者の指示 2026-08-22）。**予約済みの下書き（1回きり）と
-          定期実行の次回（繰り返し）を時間順に1本のリスト**で見せる——「次に何がいつ起きるか」を
-          この画面だけで追えるようにする。未予約の下書きは出さない（編集・投稿は投稿作成画面）。
-          種別は色つきバッジで区別し（時刻の並びだけでは1回きりか繰り返しか読めない）、
-          予約済み下書きの行だけ下書きへのリンクにする（定期実行の編集は上のスケジュール一覧）。
-        */
-        <section aria-label="今後の予定" className={`${cardClassName} px-5 py-4`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>今後の予定</CardTitle>
-            <Link
-              className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
-              href="/app/posts?tab=drafts"
-            >
-              下書きを編集・投稿する
-            </Link>
-          </div>
-          <ul className="mt-3 space-y-2">
-            {upcoming.length === 0 ? (
-              <li className="rounded-card border border-hairline px-4 py-8 text-center text-body text-ink-2">
-                予約された投稿・定期実行の予定はありません。
-              </li>
-            ) : (
-              upcoming.map((entry) =>
-                entry.kind === "draft" ? (
-                  <li key={`draft-${entry.draftId}`}>
-                    <Link
-                      className="block rounded-card border border-hairline p-3 transition-colors duration-150 hover:bg-black/[0.02]"
-                      href={`/app/posts?tab=drafts&draftId=${entry.draftId}`}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone="brand">{entry.patternName}</Badge>
-                        {/* 予約時刻はタイトルの右（下書き画面の「予約 <日時>」と同じ形・運営者の指示 2026-08-22）。 */}
-                        <Badge tone="info">予約 {formatJst(entry.at)}</Badge>
-                      </div>
-                      <p className="mt-1.5 line-clamp-2 text-body leading-5 text-ink-2">
-                        {entry.excerpt}
-                      </p>
-                    </Link>
-                  </li>
-                ) : (
-                  <li
-                    className="rounded-card border border-hairline p-3"
-                    key={`slot-${entry.slotId}`}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">
-                        スケジュール・{entry.mode === "auto" ? "自動投稿" : "下書き作成"}
-                      </Badge>
-                      <span className="text-caption text-ink-3 tabular-nums">
-                        次回 {formatJst(entry.at)}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-body leading-5 text-ink-2">
-                      {entry.patternName ?? "（パターン削除済み）"}
-                      {entry.imageEnabled ? "・画像つき" : ""}
-                    </p>
-                  </li>
-                ),
-              )
-            )}
-          </ul>
-        </section>
-      ) : null}
     </main>
   );
 }
