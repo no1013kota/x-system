@@ -12,7 +12,7 @@ test("ブログ: 一覧→記事本文（Markdownの描画）→一覧へ戻る"
 
   await page.goto("/blog");
   await expect(page.getByRole("heading", { level: 1, name: "ブログ" })).toBeVisible();
-  // ヘッダーは「ホーム＋もう片方」への遷移ボタンだけ（T-M8-190。現在地のタブ表示は無い）。
+  // ヘッダーは「ホーム＋もう片方」への遷移ボタンだけ（T-M8-190/199。ブランド表記・現在地タブは無い）。
   const contentNav = page.getByRole("navigation", { name: "公開コンテンツ" });
   await expect(contentNav.getByRole("link", { name: "ホーム" })).toHaveAttribute("href", "/");
   await expect(contentNav.getByRole("link", { name: "プロンプト集" })).toHaveAttribute(
@@ -20,6 +20,7 @@ test("ブログ: 一覧→記事本文（Markdownの描画）→一覧へ戻る"
     "/prompt-templates",
   );
   await expect(contentNav.getByRole("link", { name: "ブログ" })).toHaveCount(0);
+  await expect(page.locator("header").getByText("Exos AI", { exact: true })).toHaveCount(0);
 
   if (posts.length === 0) {
     await expect(page.getByText("準備中です")).toBeVisible();

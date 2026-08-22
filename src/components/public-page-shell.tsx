@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { LegalFooter } from "@/components/legal-footer";
+import { Icon } from "@/components/ui/icon";
 import { buttonVariants } from "@/components/ui/button";
-import { APP_NAME } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,29 +36,27 @@ export function PublicPageShell({
       <header className="border-b border-hairline bg-surface">
         {/* 320px では1行に収まらないので折り返しを許す（CTAがリンクを覆わない）。通常は h-16 相当。 */}
         <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2">
-          <div className="flex min-w-0 items-center gap-4">
-            <Link className="text-sm font-semibold tracking-wide whitespace-nowrap" href="/">
-              {APP_NAME}
-            </Link>
-            <nav aria-label="公開コンテンツ" className="flex items-center gap-2">
-              {/* いま居るページは出さない: ホームと「もう片方」への遷移ボタンだけ（T-M8-190）。 */}
-              {[
-                { href: "/", label: "ホーム" },
-                ...PUBLIC_CONTENT_PAGES.filter(({ href }) => href !== current),
-              ].map(({ href, label }) => (
-                <Link
-                  className={cn(
-                    buttonVariants({ variant: "ghost" }),
-                    "h-9 whitespace-nowrap px-3.5 text-body font-medium text-ink-2 hover:text-brand",
-                  )}
-                  href={href}
-                  key={href}
-                >
-                  {label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          {/* ブランド表記は置かない（運営者の指示 2026-08-22・T-M8-199）。遷移ボタンを左端へ詰める。 */}
+          <nav aria-label="公開コンテンツ" className="flex min-w-0 items-center gap-2">
+            {/* いま居るページは出さない: ホームと「もう片方」への遷移ボタンだけ（T-M8-190）。 */}
+            {[
+              { href: "/", label: "ホーム" },
+              ...PUBLIC_CONTENT_PAGES.filter(({ href }) => href !== current),
+            ].map(({ href, label }) => (
+              <Link
+                className={cn(
+                  buttonVariants({ variant: "ghost" }),
+                  "h-9 gap-1 whitespace-nowrap px-3.5 text-body font-medium text-ink-2 hover:text-brand",
+                )}
+                href={href}
+                key={href}
+              >
+                {label}
+                {/* 遷移が分かるマーク（LPナビの公開ページリンクと同じ・T-M8-173/199）。 */}
+                <Icon aria-hidden="true" name="open_in_new" size={14} />
+              </Link>
+            ))}
+          </nav>
           <div className="flex shrink-0 items-center gap-2.5">
             {/* 狭い幅（〜639px）ではログインを畳み、主CTAだけ残す（ブランド・相互導線・CTAが1行に収まる幅が無い）。 */}
             <Link
