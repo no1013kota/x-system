@@ -263,3 +263,41 @@ describe("既に契約がある利用者に2本目を作らない（T-M8-237）"
     expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
   });
 });
+
+describe("2回目の無料トライアルを渡さない（T-M8-244）", () => {
+  /**
+   * `profiles.trial_used_at` だけに頼ると、webhookが届かなかった利用者は永久に null のままになり、
+   * 解約→再契約でもう一度7日間の無料が取れる。Stripe側の `trial_start` を根拠にする。
+   */
+  it("過去にトライアルを使った契約がStripeにあれば trial を付けない（DBがnullでも）", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing", trial_used_at: null })),
+      stripe: {
+        customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+        checkout: {
+          sessions: { create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test/c" })) },
+        },
+        subscriptions: {
+          list: vi.fn(async () => ({
+            data: [{ id: "sub_old", status: "canceled", trial_start: 1_700_000_000 }],
+          })),
+        },
+      },
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    const params = (deps.stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { subscription_data?: { trial_period_days?: number } };
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("トライアル歴が無ければ従来どおり7日間を付ける", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing", trial_used_at: null })),
+    });
+    await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    const params = (deps.stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { subscription_data?: { trial_period_days?: number } };
+    expect(params.subscription_data?.trial_period_days).toBe(7);
+  });
+});

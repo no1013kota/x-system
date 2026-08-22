@@ -418,7 +418,12 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     expect(events[0].count).toBe(0);
   });
 
-  it("未知のPrice IDは500にし、claim も残さない（設定修復後にStripeが再送できる）", async () => {
+  /**
+   * **恒久エラーは200で返す**（T-M8-245）。再送しても直らない失敗に500を返し続けると、
+   * Stripeが最大3日リトライしたのち **endpoint 自体を無効化**し、他の全利用者の契約同期まで止まる。
+   * claim を残さない点は従来どおり（設定を直したあと手動で再送すれば処理できる）。
+   */
+  it("未知のPrice IDは200で返し（endpointを止めない）、claim も残さない", async () => {
     const { customerId, userId } = await makeProfile();
     const created = 1_784_710_000;
     const stub: SubscriptionStub = {
@@ -438,8 +443,8 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     const res = await post(subscriptionEvent(id, created, stub));
     const body = (await res.json()) as WebhookBody;
 
-    expect(res.status).toBe(500);
-    expect(body.error?.code).toBe("internal_error");
+    expect(res.status, "恒久エラーで endpoint を止めない").toBe(200);
+    expect(body.error?.code).toBeUndefined();
     const events = await sql<{ count: number }>(
       `select count(*)::int as count from stripe_events where event_id = $1`,
       [id],
@@ -453,7 +458,7 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     expect(profiles[0].plan).toBeNull();
   });
 
-  it("profileに紐付かないcustomerは500にし、実トランザクションが claim をロールバックする", async () => {
+  it("profileに紐付かないcustomerは200で返し（恒久エラー）、実トランザクションが claim をロールバックする", async () => {
     const created = 1_784_720_000;
     const stub: SubscriptionStub = {
       cancelAtPeriodEnd: false,
@@ -472,8 +477,8 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     const res = await post(subscriptionEvent(id, created, stub));
     const body = (await res.json()) as WebhookBody;
 
-    expect(res.status).toBe(500);
-    expect(body.error?.code).toBe("internal_error");
+    expect(res.status, "恒久エラーで endpoint を止めない").toBe(200);
+    expect(body.error?.code).toBeUndefined();
     // insert 済みの claim が commit されていないこと＝実 withTransaction の rollback が効いている。
     const events = await sql<{ count: number }>(
       `select count(*)::int as count from stripe_events where event_id = $1`,

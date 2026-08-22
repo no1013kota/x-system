@@ -54,7 +54,12 @@ export interface SubscriptionProjection {
 }
 
 export type PreparedStripeEvent =
-  | { kind: "subscription_sync"; projection: SubscriptionProjection }
+  | {
+      kind: "subscription_sync";
+      projection: SubscriptionProjection;
+      /** 元のイベント種別（`customer.subscription.trial_will_end` の見分けに使う・T-M8-243）。 */
+      eventType?: string;
+    }
   | {
       kind: "invoice_sync";
       invoice: {
@@ -369,6 +374,7 @@ export async function prepareStripeEvent(
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   return {
     kind: "subscription_sync",
+    eventType: event.type,
     projection: subscriptionProjection(event, subscription, priceIds),
   };
 }
@@ -383,6 +389,50 @@ type InvoiceSyncDetail = Extract<
  * in_app が有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
  * 二重通知を防ぐ（メール通知はT-M8-222で廃止）。event claim transaction 内で呼ぶ。
  */
+/**
+ * 無料トライアル終了の予告（T-M8-243）。終了日と初回請求額を本文に入れる
+ * （「そのうち終わります」では利用者は準備できない）。`billing` の通知設定に従う。
+ */
+async function notifyTrialWillEnd(
+  database: StripeEventDatabase,
+  target: { id: string; notification_config: unknown },
+  projection: SubscriptionProjection,
+): Promise<void> {
+  const config = target.notification_config as { billing?: { in_app?: unknown } } | null;
+  if (config?.billing?.in_app !== true) return;
+  if (projection.trialEnd === null) return;
+  const endsAt = new Date(projection.trialEnd * 1000);
+  const endLabel = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "Asia/Tokyo",
+  }).format(endsAt);
+  const amount = PLANS[projection.plan].monthlyPriceJpy;
+  await database.query(
+    `insert into notifications
+      (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+     values (
+       $1, 'billing', $2,
+       '無料トライアルがまもなく終了します',
+       $3,
+       '/app/settings?tab=billing', $4::jsonb, true
+     )
+     on conflict (user_id, dedupe_key) where dedupe_key is not null
+     do nothing`,
+    [
+      target.id,
+      `billing:trial_will_end:${projection.subscriptionId}`,
+      `${endLabel}に無料期間が終了し、${PLANS[projection.plan].displayName}の料金 ${amount.toLocaleString("ja-JP")}円（税込）の初回お支払いが発生します。続けない場合は終了日までに解約してください。`,
+      {
+        plan: projection.plan,
+        subscription_id: projection.subscriptionId,
+        trial_end: endsAt.toISOString(),
+      },
+    ],
+  );
+}
+
 async function notifyInvoicePaymentFailed(
   database: StripeEventDatabase,
   target: { id: string; notification_config: unknown },
@@ -498,6 +548,14 @@ export async function applyPreparedStripeEvent(
   */
   if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
     await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
+  }
+  /*
+    **無料トライアル終了の予告**（T-M8-243）。Stripeが終了3日前に送るイベントで、
+    「いつ・いくら請求されるか」を先に知らせる。知らせないまま満額を引き落とすのは、
+    LPの「7日間は無料」と合わせて不意打ちになる。請求失敗通知と同じく冪等（dedupe key）。
+  */
+  if (value.kind === "subscription_sync" && value.eventType === "customer.subscription.trial_will_end") {
+    await notifyTrialWillEnd(database, target, projection);
   }
   if (value.kind === "invoice_sync" && value.invoice.paymentState === "paid") {
     await recordCommissionForInvoice(database, {

@@ -14,6 +14,13 @@ export const STRIPE_WEBHOOK_EVENT_TYPES = [
   "invoice.paid",
   // 招待報酬のRefund取消（T-M8-174）。Stripeダッシュボードのwebhook設定にも追加が要る。
   "charge.refunded",
+  /*
+    無料トライアル終了の3日前にStripeが送る（T-M8-243）。**初回課金の予告**に使う——
+    「いつ・いくら請求されるか」を知らせないまま満額を引き落とすのは、
+    LPの「7日間は無料」と合わせて不意打ちになる。
+    購読設定の不足は doctor の「契約イベントの受け取り（Stripe webhook）」が検出する。
+  */
+  "customer.subscription.trial_will_end",
 ] as const;
 
 const SUPPORTED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
@@ -39,6 +46,17 @@ export interface StripeEventProcessorDependencies {
 }
 
 export type StripeEventProcessResult = "processed" | "duplicate" | "ignored";
+
+/**
+ * **再送しても直らない失敗か**（T-M8-245）。人が設定やデータを直すまで永久に失敗する種類。
+ * これらに500を返し続けると Stripe が endpoint を無効化し、他の利用者の同期まで止まる。
+ */
+export function isPermanentEventError(error: unknown): boolean {
+  if (error instanceof UnknownStripePriceError) return true;
+  // profile の対応が付かない／曖昧（別環境のCustomer・手作業の取り違えなど）。
+  const message = error instanceof Error ? error.message : "";
+  return /Subscription profile mapping/.test(message);
+}
 
 export class UnknownStripePriceError extends Error {
   readonly eventId: string;
@@ -180,6 +198,22 @@ export async function handleStripeWebhookRequest(
           }
         : { event_id: event.id, event_type: event.type };
     dependencies.captureException(error, context);
+    /*
+      **再送しても直らない失敗に500を返し続けない**（T-M8-245）。
+
+      Stripeは500を返したイベントを最大3日リトライし、失敗が続くと**endpoint 自体を無効化する**。
+      未知のPrice IDや profile の対応不能は、待っても再送しても直らない（人が設定を直すまで
+      永久に失敗する）。その1件のために endpoint が止まると、**他の全利用者の契約同期まで
+      巻き添えで停止する**。恒久エラーは記録して200を返し、再送で直りうるもの（DB障害など）
+      だけ500にする。記録は Sentry（上の captureException）と doctor の
+      「契約の同期（Stripe → アプリ）」が担う。
+    */
+    if (isPermanentEventError(error)) {
+      return webhookResponse(
+        { ok: true, data: { received: true, result: "permanent_error" } },
+        200,
+      );
+    }
     return webhookResponse(
       { ok: false, error: toUserFacingError(new AppError("internal_error")) },
       500,

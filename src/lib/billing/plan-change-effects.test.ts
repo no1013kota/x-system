@@ -42,10 +42,19 @@ describe("planChangeEffects", () => {
     expect(e.cancel.detail).not.toContain("返金はありません");
   });
 
-  it("トライアル中は終了日が変わらないことを添える（trial_update_behavior=continue_trial）", () => {
+  /**
+   * **トライアル中は日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` で、
+   * トライアル中に変更しても無料期間は変わらず、終了後に新しい料金で請求が始まる。
+   * 以前は「差額は日割りで次回請求に加算」と「終了日まで請求は発生しない」が同時に出ていた。
+   */
+  it("トライアル中は日割りを言わず、終了日まで無料であることを両方向で説明する", () => {
     const e = planChangeEffects({ ...base, subscriptionStatus: "trialing" });
-    expect(e.trialNote?.headline).toContain("トライアルの終了日");
-    expect(e.trialNote?.headline).toContain("変わりません");
+    for (const item of [e.upgrade, e.downgrade]) {
+      expect(item.detail).toContain("料金が発生しません");
+      expect(item.detail, "トライアル中に日割りの説明を出さない").not.toContain("日割り");
+    }
+    // 同じことを2か所に書かない（注記は本文へ畳んだ）。
+    expect(e.trialNote).toBeNull();
   });
 
   it("トライアル中でなければ注記を出さない", () => {
@@ -72,8 +81,9 @@ describe("planChangeEffects", () => {
   it("文言にMarkdownの強調記号を混ぜない", () => {
     const e = planChangeEffects({ ...base, subscriptionStatus: "trialing" });
     for (const item of [e.upgrade, e.downgrade, e.cancel, e.trialNote]) {
-      expect(item?.headline).not.toContain("*");
-      expect(item?.detail).not.toContain("*");
+      if (!item) continue; // trialNote は本文へ畳んだので null になり得る（T-M8-243）
+      expect(item.headline).not.toContain("*");
+      expect(item.detail).not.toContain("*");
     }
   });
 });

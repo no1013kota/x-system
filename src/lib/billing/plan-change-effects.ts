@@ -65,6 +65,31 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
   const end = periodEndLabel(input.currentPeriodEnd);
   const trialing = input.subscriptionStatus === "trialing";
 
+  /*
+    **トライアル中は日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` なので、
+    トライアル中に変更しても**無料期間は変わらず、終了後に新しい料金で請求が始まる**。
+    にもかかわらず「差額は日割りで次回請求に加算されます」と「終了日まで請求は発生しません」が
+    同時に出ており、読み手はどちらが本当か分からなかった（Portal設定と1対1に保つ規約に反する）。
+  */
+  if (trialing) {
+    const trialDetail = `トライアルの終了日（${end}）までは料金が発生しません。終了後に、変更後のプランの料金で請求が始まります。`;
+    return {
+      upgrade: { headline: "すぐに切り替わります", detail: trialDetail },
+      downgrade: { headline: "すぐに切り替わります", detail: trialDetail },
+      cancel: input.cancelAtPeriodEnd
+        ? {
+            headline: `${end}に解約されます`,
+            detail: "すでに解約が予約されています。料金はかかりません。",
+          }
+        : {
+            headline: `${end}まで使えて、その後停止します`,
+            detail: "トライアル中に解約すれば料金はかかりません。",
+          },
+      // 上の説明に含めたので、同じことを2か所に書かない。
+      trialNote: null,
+    };
+  }
+
   return {
     upgrade: {
       headline: "すぐに切り替わります",
@@ -83,11 +108,6 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
           headline: `${end}まで使えて、その後停止します`,
           detail: "日割りの返金はありません。",
         },
-    trialNote: trialing
-      ? {
-          headline: `トライアルの終了日（${end}）は変わりません`,
-          detail: "終了後に、変更後のプランの料金で請求が始まります。",
-        }
-      : null,
+    trialNote: null,
   };
 }

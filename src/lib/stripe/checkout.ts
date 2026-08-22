@@ -45,7 +45,7 @@ export interface CheckoutStripeGateway {
       customer: string;
       status: "all";
       limit: number;
-    }): Promise<{ data: { id: string; status: string }[] }>;
+    }): Promise<{ data: { id: string; status: string; trial_start?: number | null }[] }>;
   };
 }
 
@@ -195,12 +195,20 @@ export async function handleCheckoutRequest(
       その状態で押すと `trial_used_at` は既にあるのでトライアルも付かず、満額の2本目が走る。
       プラン変更・支払い方法の更新は Portal が担うので、ここでは作らずそちらへ誘導する。
     */
+    let trialAlreadyUsed = false;
     if (profile.stripe_customer_id) {
       const existing = await deps.stripe.subscriptions.list({
         customer: customerId,
         limit: 10,
         status: "all",
       });
+      /*
+        **2回目の無料トライアルを渡さない**（T-M8-244）。判定を `profiles.trial_used_at` だけに
+        頼ると、webhookが届かなかった利用者は永久に null のままになり、解約→再契約で
+        もう一度7日間の無料が取れてしまう。Stripe側に `trial_start` を持つ契約が1本でもあれば、
+        DBの状態に関わらずトライアルは付けない。
+      */
+      trialAlreadyUsed = existing.data.some((sub) => sub.trial_start != null);
       const live = existing.data.find((sub) => LIVE_SUBSCRIPTION_STATUSES.has(sub.status));
       if (live) {
         return apiError(
@@ -221,7 +229,8 @@ export async function handleCheckoutRequest(
         customerId,
         plan: parsed.data.plan,
         priceId: deps.priceIds[parsed.data.plan],
-        trialUsedAt: profile.trial_used_at,
+        // DBとStripeのどちらかが「使用済み」と言えば付けない（T-M8-244）。
+        trialUsedAt: trialAlreadyUsed ? new Date().toISOString() : profile.trial_used_at,
         userId: user.id,
       }),
     );

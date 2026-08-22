@@ -2,11 +2,7 @@ import type { QueryResult } from "pg";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  handleStripeWebhookRequest,
-  processStripeEvent,
-  type StripeEventDatabase,
-} from "./webhook";
+import { UnknownStripePriceError, handleStripeWebhookRequest, isPermanentEventError, processStripeEvent, type StripeEventDatabase } from "./webhook";
 
 const WEBHOOK_SECRET = "whsec_test_exos_ai";
 const stripe = new Stripe("sk_test_not_used");
@@ -169,6 +165,11 @@ describe("Stripe webhook foundation", () => {
     expect(deps.applyEvent).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * **未知のPriceは200で返す**（T-M8-245）。再送しても直らない失敗に500を返し続けると、
+   * Stripeが endpoint 自体を無効化し、**他の全利用者の契約同期まで巻き添えで止まる**。
+   * 記録（captureException）は残すので、doctorとSentryから追える。
+   */
   it("rejects an unknown Price before recording or applying the event and captures it", async () => {
     const store = memoryDatabase();
     const deps = routeDependencies(store.database);
@@ -177,7 +178,7 @@ describe("Stripe webhook foundation", () => {
       deps.dependencies,
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status, "恒久エラーは200で返す（endpointを止めない）").toBe(200);
     expect(store.rows.size).toBe(0);
     expect(deps.applyEvent).not.toHaveBeenCalled();
     expect(deps.captureException).toHaveBeenCalledWith(
@@ -204,5 +205,26 @@ describe("Stripe webhook foundation", () => {
       data: { result: "ignored" },
     });
     expect(store.rows.size).toBe(0);
+  });
+});
+
+describe("isPermanentEventError（T-M8-245）", () => {
+  it("未知Price・profile対応不能は恒久エラー（再送しても直らない）", () => {
+    expect(
+      isPermanentEventError(
+        new UnknownStripePriceError(
+          { id: "evt_1", type: "customer.subscription.updated" } as never,
+          "price_x",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isPermanentEventError(new Error("Subscription profile mapping does not match.")),
+    ).toBe(true);
+  });
+
+  it("DB障害など再送で直りうるものは恒久エラーではない（500で再送させる）", () => {
+    expect(isPermanentEventError(new Error("connection terminated"))).toBe(false);
+    expect(isPermanentEventError(null)).toBe(false);
   });
 });

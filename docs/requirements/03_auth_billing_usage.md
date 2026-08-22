@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.38 |
-| 更新日 | 2026-08-22 |
+| バージョン | v1.39 |
+| 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -61,9 +61,9 @@ standardは利用者自身のX/AI契約へ原価が発生するため、アプ�
 - `POST /api/stripe/checkout`は`{"plan":"standard|premium|expert"}`だけを受け付け、未知フィールドも入力不正として拒否する。planをサーバー側の環境変数Price ID対応表で解決し、クライアントからPrice IDを受け取らない。
 - Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。既存の`stripe_customer_id`を再利用し、未作成時はemailと`user_id` metadataを付け、`exos-ai:customer:{user_id}`を冪等keyとしてCustomerを作成してprofileへ保存する。
 - Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadataおよび`client_reference_id`へ本人user_idとplanを関連付ける。
-- `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
+- `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。**あわせてCheckout作成時にStripeの契約一覧も見る**（T-M8-244）——`trial_start`を持つ契約が1本でもあればtrialを付けない。`profiles`だけを根拠にすると、webhookが届かなかった利用者は`trial_used_at`が永久にnullのままになり、解約→再契約で2回目の無料期間が取れる。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
 - success URLは`{APP_BASE_URL}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。復帰同期後は`/plans?checkout=success&sync=...`へredirectする。任意の外部return URLは受け取らない。
-- プラン選択からCheckoutまでに、税込月額、7日trial、trial後の自動更新、支払時期、解約方法、提供開始時期を表示する。
+- プラン選択からCheckoutまでの**常時表示**は、カードの税込月額と**プロモ帯の3点**（初回のみ・カード登録が必要・期間中に解約すれば無料）とする（T-M8-171の運営者決定・要件06 §1.1が正本）。自動更新・支払時期・解約方法・提供開始時期の法定事項は、フッタから常時到達できる**特定商取引法に基づく表記**と利用規約が担う。**同じことを2か所へ常時表示しない**（片方だけ古くなる）。
 
 ### 2.2 Customer Portal作成
 
@@ -105,7 +105,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 
 ## 4. Webhook処理
 
-`POST /api/stripe/webhook`はbodyをJSON化する前のraw textと`Stripe-Signature`、環境別の`STRIPE_WEBHOOK_SECRET`をStripe SDK `constructEvent`へ渡す。header欠落、署名不正、既定5分のtimestamp許容範囲外は、詳細を返さず400で拒否する。署名検証後の処理失敗はSentryへevent ID／type（未知Price時はPrice IDも）だけを記録して500を返し、Stripeの再送へ委ねる。
+`POST /api/stripe/webhook`はbodyをJSON化する前のraw textと`Stripe-Signature`、環境別の`STRIPE_WEBHOOK_SECRET`をStripe SDK `constructEvent`へ渡す。header欠落、署名不正、既定5分のtimestamp許容範囲外は、詳細を返さず400で拒否する。署名検証後の処理失敗はSentryへevent ID／type（未知Price時はPrice IDも）だけを記録する。**再送で直りうる失敗（DB障害など）だけ500を返し、再送しても直らない恒久エラー（未知Price・profile対応不能）は200で返す**（T-M8-245）——Stripeは500のイベントを最大3日リトライしたのち**endpoint自体を無効化**するため、1件の不整合で全利用者の同期が止まる。恒久エラーは`stripe_events`へclaimを残さないので、設定を直したあとダッシュボードから再送すれば処理できる。未処理のまま残っていることは doctor の「契約の同期（Stripe → アプリ）」とSentryで分かる。
 
 対象外の署名済みeventは副作用・`stripe_events`記録なしで200応答する。対象eventはPrice検証後、`insert ... on conflict (event_id) do nothing returning event_id`でtransaction内claimし、競合時は処理済みとして副作用なしの200を返す。claim後の業務更新も同じtransaction callback内で行い、例外時はevent記録ごとrollbackする。`checkout.session.completed`／subscription created・updatedはtransaction開始前にSubscriptionを再取得して現在状態と単一Priceを検証し、deletedだけはevent内の最終Subscriptionを`canceled`として使用する。invoice eventの再取得・同期は§4.1のinvoice処理で行う。
 
@@ -309,7 +309,7 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 **詳細仕様の正本は [招待プログラム 実装仕様書](../cp/invite_cp.md)**（運営者の指示 2026-08-21）。ここには課金との接点だけを書く。
 
 - **帰属**: `/r/{code}` が30日Cookie（`exos_ref`・Last Click）→ 登録成功時に `affiliate_attributions` へ（1ユーザー1招待者・登録後変更不可・自己招待禁止。失敗しても登録は止めない）。**別メールでの実質自己招待は機械検知しない**——運営者が振込前に `affiliate:payouts -- --show` で相手のメールを確認して判断する（invite_cp.mdの範囲外・T-M8-174レビューで記録）。
-- **報酬はStripeの支払成功が正**: `invoice.paid` のwebhook（event claim transactionの中）で `recordCommissionForInvoice` が作る。実際に支払われた金額×作成時点のランク率（累計有料招待数で30〜50%・snapshot。2026-08-22に全ランク+10pt）。Trial中（0円）なし・初回課金から最大6ヶ月・`customer.subscription.deleted`（canceled）で期間終了（**再契約でも再開しない**。ただし**一度も課金していない解約では終了しない**——Trial中の離脱で報酬機会が永久に消えるのを避ける）・`charge.refunded` で取消・減額（**webhookの購読イベントに charge.refunded を追加する必要がある**。現行API=dahliaのChargeにはinvoiceフィールドが無いため、`payment_intent`→InvoicePayments APIでinvoiceを解決する）。**報酬作成と請求失敗通知はstale判定と独立に実行する**——Stripeは配送順を保証せず、staleで捨てると報酬が恒久に作られない（どちらも冪等）。
+- **報酬はStripeの支払成功が正**: `invoice.paid` のwebhook（event claim transactionの中）で `recordCommissionForInvoice` が作る。実際に支払われた金額×作成時点のランク率（累計有料招待数で30〜50%・snapshot。2026-08-22に全ランク+10pt）。Trial中（0円）なし・初回課金から最大6ヶ月・`customer.subscription.deleted`（canceled）で期間終了（**再契約でも再開しない**。ただし**一度も課金していない解約では終了しない**——Trial中の離脱で報酬機会が永久に消えるのを避ける）・`charge.refunded` で取消・減額（購読イベントへの追加は2026-08-23に本番・stagingとも完了。**不足は doctor の「契約イベントの受け取り（Stripe webhook）」が検出する**（T-M8-238）。現行API=dahliaのChargeにはinvoiceフィールドが無いため、`payment_intent`→InvoicePayments APIでinvoiceを解決する）。**報酬作成と請求失敗通知はstale判定と独立に実行する**——Stripeは配送順を保証せず、staleで捨てると報酬が恒久に作られない（どちらも冪等）。
 - **確定と振込**: 支払＋30日で `pending`→`payable`（scheduler_tick相乗り・1日1回）。月初のtickが前月締めのPayoutを作成（¥5,000以上＋口座登録済みのみ。手数料¥980は報酬と会計分離）。**締めの実装は「バッチ実行時点のpayable全件」**——繰越分を含むため正本§9の「その月にpayableになった分」より広いが、ずれは前倒し方向のみ（早く支払われる側）で金額は変わらない。**claimと本処理は同一トランザクション**（失敗したらclaimごと戻り、次のtickが再試行）。**Refundで未払いPayoutの束ねが減ったらPayout金額を引き直し**、支払記録（`--paid`）の直前にも突き合わせる（過払い防止）。部分返金は残額×snapshot率で減額。支払済み報酬への返金は自動では触らずSentryへ記録する（運営者の個別調整）。運営者の振込手順は [招待報酬の銀行振込](../operations/affiliate-payouts.md)。**画面の「受取可能」は振込予定に束ねられた分も含み、振込の支払記録（`--paid`）で0になって報酬履歴の「支払済み」へ移る**（月初の締めでは減らさない・運営者の指示 2026-08-21・T-M8-176）。
 - **口座**: 口座番号はAES-256-GCM暗号文のみ保存（要決定D-33）。画面は末尾4桁。
 - 画面はSC-12（要件06）。DBは要件02 §3.22〜3.26。
@@ -330,3 +330,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.36 | 2026-08-21 | 招待プログラムのレビュー修正を反映（refundのinvoice解決・stale独立・Payout再計算・claim同一Tx・部分返金の減額・未課金解約の扱い） |
 | v1.37 | 2026-08-21 | 「受取可能」の定義（振込完了で0・締めでは減らさない）と振込オペレーション文書への参照を追加（T-M8-176） |
 | v1.38 | 2026-08-22 | 再連携の上限判定をactive行のみ対象外へ（T-M8-196・disabled再activeは数える） |
+| v1.39 | 2026-08-23 | webhookの恒久エラーを200で返す方針へ（T-M8-245）。charge.refunded購読の完了とdoctor検査を反映（T-M8-238）。トライアル終了予告の通知（T-M8-243） |
