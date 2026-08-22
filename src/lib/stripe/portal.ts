@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 
 import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { AppError } from "@/lib/observability/errors";
 
 export interface PortalProfile {
@@ -165,6 +166,32 @@ export async function handlePortalRequest(
     });
     return apiJson({ ok: true, data: { url: session.url } });
   } catch (cause) {
+    /*
+      旧価格のまま残っている契約は、Portal設定に変更先が無くflowを開けない（T-M8-215で実発生。
+      価格改定で旧Priceをアーカイブすると、その価格の契約はStripe側で
+      "no price in the portal configuration available to change to" になる）。
+      「通信に失敗」と言うと再試行させてしまうので、原因どおりに伝える。
+      恒久対応は契約の新Priceへの移行（deployment.md）。
+    */
+    if (
+      cause instanceof Error &&
+      cause.message.includes("no price in the portal configuration")
+    ) {
+      // toUserFacingErrorはcode既定文へ丸めるため、この分岐だけ具体文で直接返す。
+      recordUnexpectedError(cause, { at: "api-route:provider_error" });
+      return apiJson(
+        {
+          ok: false,
+          error: {
+            code: "provider_error",
+            message:
+              "このご契約は旧価格のままのため、プラン変更画面を開けません。お手数ですがお問い合わせください（運営側で新価格へ切り替えます）。",
+            details: { reason: "portal_price_unavailable" },
+          },
+        },
+        502,
+      );
+    }
     return apiError(new AppError("provider_error", { cause }));
   }
 }

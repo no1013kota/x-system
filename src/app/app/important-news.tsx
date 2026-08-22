@@ -41,7 +41,8 @@ export function ImportantNewsCard({
         </p>
           {loadFailed ? null : (
             <Link
-              className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card border border-hairline px-4 text-body font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03]"
+              // ホームの他の操作ボタンとトーンを揃える（brand-subtle・運営者の指摘 2026-08-22）。
+              className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card bg-brand-subtle px-4 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover"
               href="/app/settings?tab=notifications"
             >
               ニュース設定を変更

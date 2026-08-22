@@ -85,22 +85,26 @@ const NAV_LINKS: [string, string][] = [
  * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
  * 運営者が差し替えること（他人名義の創作コメントを公開しない）。
  */
-const TESTIMONIALS: { handle: string; comment: string }[] = [
+const TESTIMONIALS: { handle: string; name: string; comment: string }[] = [
   {
     handle: "ai_newinfo",
+    name: "AI最新情報",
     comment:
       "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
   },
   {
     handle: "picaso_youtube",
+    name: "ピカソ",
     comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
   },
   {
     handle: "lin_youtube3",
+    name: "りん",
     comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
   },
   {
     handle: "kimi_marriage",
+    name: "きみ",
     comment: "毎朝のレポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
   },
 ];
@@ -423,31 +427,46 @@ export default function Home() {
         {/* 06 利用者の声（T-M8-214） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           <SectionMark label="利用者の声" no="06" />
+          {/*
+            Xの投稿カードに寄せる（運営者の指示 2026-08-22）: 上段=アバター（実画像・
+            public/lp-avatars/）＋名前＋@ハンドル＋右上にXロゴ、下に本文。
+            アバターはリリース時にリポジトリへ同梱した静的画像（外部ホットリンクはCSP・
+            変更耐性の点で使わない。更新するときは unavatar.io/x/<handle> から取り直す）。
+          */}
           <div className="mt-[clamp(24px,3vw,38px)] grid gap-4 sm:grid-cols-2">
-            {TESTIMONIALS.map(({ handle, comment }) => (
+            {TESTIMONIALS.map(({ handle, name, comment }) => (
               <figure
                 className={cn(cardClassName, "flex flex-col gap-3 p-5")}
                 key={handle}
               >
-                <blockquote className="text-sm leading-[1.9] text-ink">{comment}</blockquote>
-                <figcaption className="mt-auto">
+                <figcaption className="flex items-start gap-3">
                   <a
-                    className="group inline-flex items-center gap-2.5"
+                    className="group flex min-w-0 flex-1 items-start gap-3"
                     href={xProfileUrl(handle)}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <span
-                      aria-hidden="true"
-                      className="flex size-9 flex-none items-center justify-center rounded-pill bg-brand-subtle text-sm font-bold text-brand"
-                    >
-                      {handle[0].toUpperCase()}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-body font-bold text-ink group-hover:text-brand">
-                      <XLogo className="text-ink-2" size={14} />@{handle}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- 静的同梱の小画像（最適化不要） */}
+                    <img
+                      alt={`${name}のXアイコン`}
+                      className="size-11 flex-none rounded-pill border border-hairline object-cover"
+                      height={44}
+                      loading="lazy"
+                      src={`/lp-avatars/${handle}.jpg`}
+                      width={44}
+                    />
+                    <span className="min-w-0 leading-tight">
+                      <span className="block truncate text-body font-bold text-ink group-hover:underline">
+                        {name}
+                      </span>
+                      <span className="block truncate text-caption text-ink-3">@{handle}</span>
                     </span>
                   </a>
+                  <XLogo aria-hidden="true" className="mt-0.5 flex-none text-ink-2" size={17} />
                 </figcaption>
+                <blockquote className="text-sm leading-[1.9] whitespace-pre-line text-ink">
+                  {comment}
+                </blockquote>
               </figure>
             ))}
           </div>

@@ -136,13 +136,21 @@ export function DraftEditor({
                 rows={4}
                 value={post.text}
               />
-              <div className="mt-1 flex items-center gap-2 text-xs">
-                <span className={over ? "font-medium text-destructive" : "text-muted-foreground"}>
-                  {len} / {MAX_WEIGHTED}
-                </span>
-                {over ? <span className="text-destructive">文字数超過</span> : null}
-                {post.text.trim().length === 0 ? (
-                  <span className="text-destructive">本文が空です</span>
+              <div className="mt-1 space-y-0.5 text-xs">
+                <div className="flex items-center gap-2">
+                  {/* Xと同じ加重カウント（全角=2・半角=1で280まで＝全角なら140字・T-M8-219）。 */}
+                  <span className={over ? "font-medium text-destructive" : "text-muted-foreground"}>
+                    {len} / {MAX_WEIGHTED}（全角{Math.floor(len / 2)} / 140字換算）
+                  </span>
+                  {post.text.trim().length === 0 ? (
+                    <span className="text-destructive">本文が空です</span>
+                  ) : null}
+                </div>
+                {over ? (
+                  <p className="text-destructive" role="alert">
+                    Xの上限（全角140字・半角280字）を超えています。X
+                    Premiumに加入していない場合は投稿できません。
+                  </p>
                 ) : null}
               </div>
             </li>

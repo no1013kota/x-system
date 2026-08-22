@@ -40,7 +40,7 @@ npm run release:production   # main → production
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
-**Customer Portalの「プラン変更」に出る選択肢は「activeな全Price」**（T-M8-213）。価格改定で新Priceへ切り替えたら、**旧Priceをアーカイブ（active=false）しないと旧価格が並び続ける**（既存契約は旧Priceのまま課金が続くので安全に無効化できる。テストモードは2026-08-22に旧3本を無効化済み。本番は運営者作業: Stripeダッシュボード→商品→各旧価格→「価格をアーカイブ」）。Portal上部の見出し文はPortal設定の`business_profile.headline`（旧称Space AIになっていたのを修正済み・本番も確認）。
+**Customer Portalの「プラン変更」に出る選択肢は「activeな全Price」**（T-M8-213）。価格改定で新Priceへ切り替えたら、**旧Priceをアーカイブ（active=false）しないと旧価格が並び続ける**。**ただしアーカイブだけだと、旧Priceのまま残っている契約はプラン変更フローを開けなくなる**（T-M8-215で実発生。Stripeは契約中のPriceがPortal対象に含まれることを要求し、`no price in the portal configuration` の400になる——画面には専用文言を出すよう対応済み）。**正しい手順は「①既存契約を新Priceへ移行（subscription itemsのprice差し替え・proration none）→②旧Priceをアーカイブ」**。テストモードは2026-08-22に両方実施済み。本番は運営者作業: Stripeダッシュボードで各契約のPriceを新Priceへ更新→各旧価格を「価格をアーカイブ」。Portal上部の見出し文はPortal設定の`business_profile.headline`（旧称Space AIになっていたのを修正済み・本番も確認）。
 
 **Stripe決済画面の商品名・説明文はコードではなくStripeのProductが持つ**（T-M8-211）。プラン名・説明を変えたら、Stripeダッシュボード（商品カタログ）で該当Productのnameとdescriptionを**テスト・本番の両モードで**更新する（テストモードは2026-08-22に現行文言へ更新済み。本番は運営者作業）。価格はPrice、表示文言はProductと覚える——envのPrice IDを差し替えても説明文は変わらない。
 
