@@ -156,6 +156,12 @@ const schema = z
     GEMINI_API_KEY: z.string().min(1).optional(),
     PREMIUM_TEXT_PROVIDER: z.enum(AI_PROVIDERS).default("anthropic"),
     NEWS_TEXT_PROVIDER: z.enum(AI_PROVIDERS).default("anthropic"),
+    /**
+     * ニュース収集専用のモデル上書き（任意・T-M8-200）。未設定なら NEWS_TEXT_PROVIDER の
+     * `*_TEXT_MODEL` を使う。ニュースは要約・抽出タスクで軽量モデルでも品質が保てるため、
+     * プレミアム生成のモデルを落とさずにニュースだけ安いモデルへ替えられるようにする。
+     */
+    NEWS_TEXT_MODEL: z.string().min(1).optional(),
     ANTHROPIC_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_IMAGE_MODEL: z.string().min(1).optional(),

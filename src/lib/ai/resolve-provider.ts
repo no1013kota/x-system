@@ -76,6 +76,8 @@ export class ApiKeyRequiredError extends Error {
 export interface ResolveConfig {
   premiumTextProvider: Provider;
   newsTextProvider: Provider;
+  /** ニュース収集専用のモデル上書き（任意・T-M8-200）。未設定は provider の textModels を使う。 */
+  newsTextModel?: string;
   /** 運営キー（未設定はundefined）。 */
   operatorApiKeys: Partial<Record<Provider, string>>;
   textModels: Partial<Record<Provider, string>>;
@@ -223,7 +225,9 @@ export async function resolveTextKey(
 
 /** news（全プラン共通・運営固定）。無効・未設定は失敗し別providerへ自動切替しない（要件01 §7）。 */
 export function resolveNewsKey(config: ResolveConfig): ResolvedKey {
-  return operatorTextKey(config.newsTextProvider, config);
+  const base = operatorTextKey(config.newsTextProvider, config);
+  // ニュースだけモデルを差し替えられる（プレミアム生成と独立にコストを調整する・T-M8-200）。
+  return config.newsTextModel ? { ...base, model: config.newsTextModel } : base;
 }
 
 /**

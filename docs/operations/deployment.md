@@ -120,6 +120,7 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe。**非productionでは `sk_test_` のみ**（`sk_live_` を置くと起動時検証で落ちる。実課金を防ぐため・T-M7-51） |
 | `STRIPE_PRICE_STANDARD_MONTHLY` / `_PREMIUM_` / `_EXPERT_` | Stripe の Price ID 3種 |
 | `ANTHROPIC_TEXT_MODEL` / `OPENAI_TEXT_MODEL` / `OPENAI_IMAGE_MODEL` / `GEMINI_TEXT_MODEL` / `GEMINI_IMAGE_MODEL` | 採用モデル名 |
+| `NEWS_TEXT_MODEL` | ニュース取得専用モデル（任意・T-M8-200）。未設定は `NEWS_TEXT_PROVIDER` の `*_TEXT_MODEL`。`claude-haiku-4-5` にすると本番のプレミアム生成（Sonnet）を保ったままニュースだけ約45%安くなる（実測$0.152→$0.093/回） |
 
 ### 1.2 preview / production で追加必須（16）
 

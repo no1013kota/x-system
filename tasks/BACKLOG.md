@@ -2243,13 +2243,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 運営者の指示（2026-08-22）。
 - 実装メモ（2026-08-22）: PublicPageShellからAPP_NAMEリンクを削除しnavを左端へ。各ボタンへopen_in_new(14px)。E2E 5件緑。
 
-### T-M8-200: ニュース収集の専用モデル指定（NEWS_TEXT_MODEL）とコスト実測の更新 `todo`
+### T-M8-200: ニュース収集の専用モデル指定（NEWS_TEXT_MODEL）とコスト実測の更新 `done`
 - 参照: PRD §6.1・プロンプト設計書 §6.10・要件01 / 依存: なし / サイズ: S
 - 完了条件:
   - `NEWS_TEXT_MODEL`（任意）でニュース収集だけのモデルを指定できる（未設定は従来どおり `*_TEXT_MODEL`）。プレミアム生成のモデルとは独立
   - check:providers・smoke:live（ニュース）緑
   - docsの費用記述を本番実測基準へ更新（旧staging見積もり$216〜450の置き換え）
 - メモ: 運営者の質問（2026-08-22）。本番はSonnet。ニュースだけHaikuへ落とす選択肢を運営者が環境変数で選べるようにする。
+- 実装メモ（2026-08-22）: env `NEWS_TEXT_MODEL`（任意）→ resolveNewsKeyでmodel上書き。
+  実測（同一分野・同一窓の直接比較）: Sonnet $0.1524/回・Haiku $0.0932/回（39%減）。
+  月900回換算: Sonnet $137〜156／Haiku 約$84。check:providers 17件緑。
+  docs（PRD §6.1・news.ts・deployment env表）を実測へ更新。
 
 ### T-M8-197: App Shellの8クエリを1往復へ統合（同時接続対策） `todo`
 - 参照: 要件01 §6/§9・src/lib/app-shell/data-server.ts / 依存: なし / サイズ: M

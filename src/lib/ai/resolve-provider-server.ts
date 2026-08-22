@@ -28,6 +28,7 @@ function buildConfig(): ResolveConfig {
   return {
     premiumTextProvider: env.PREMIUM_TEXT_PROVIDER,
     newsTextProvider: env.NEWS_TEXT_PROVIDER,
+    newsTextModel: env.NEWS_TEXT_MODEL,
     operatorApiKeys: {
       anthropic: env.ANTHROPIC_API_KEY,
       openai: env.OPENAI_API_KEY,
