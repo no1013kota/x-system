@@ -83,7 +83,21 @@ describe("classifySignUpUser", () => {
     expect(classifySignUpUser({ identities: [] })).toBe("already_registered");
   });
 
-  it("email_confirmed_at が入っていれば登録済み（新規では必ず空）", () => {
+  it("セッション付きなら新規（メール確認省略中はconfirmed_atが即入るため・T-M8-202）", () => {
+    expect(
+      classifySignUpUser({
+        identities: [{ provider: "email" }],
+        email_confirmed_at: "2026-08-22T00:00:00Z",
+        hasSession: true,
+      }),
+    ).toBe("created");
+    // 列挙対策の偽装応答はセッションを持たないので、判定は従来どおり登録済みに倒れる。
+    expect(
+      classifySignUpUser({ identities: [], hasSession: false }),
+    ).toBe("already_registered");
+  });
+
+  it("セッション無しで email_confirmed_at が入っていれば登録済み", () => {
     expect(
       classifySignUpUser({
         identities: [{ provider: "email" }],

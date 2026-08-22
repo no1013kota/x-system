@@ -95,20 +95,26 @@ export function signUpErrorMessage(error: unknown): SignUpErrorMessage {
  *
  * ## 判定の順序
  *
+ * 0. **セッションが返っている → 新規登録**（メール確認省略中（T-M8-202・mailer_autoconfirm）は
+ *    新規でも `email_confirmed_at` が即座に入るため、confirmed_atより先に見る。
+ *    列挙対策の偽装応答は決してセッションを持たない）
  * 1. `identities` が空 → 登録済み（列挙対策の応答）
  * 2. `email_confirmed_at` が入っている → 登録済みで確認も完了している
- *    （新規登録では確認前なので必ず空。入っていれば既存アカウント）
+ *    （確認必須モードの新規登録では確認前なので必ず空。入っていれば既存アカウント）
  * 3. それ以外 → 送られたものとして進む（未確認アドレスの再登録はSupabaseが毎回再送する）
  */
 export interface SignUpUserFacts {
   identities?: unknown[] | null;
   email_confirmed_at?: string | null;
+  /** signUp応答にセッションが付いていたか（autoconfirm時の新規はtrue・T-M8-202）。 */
+  hasSession?: boolean;
 }
 
 export type SignUpVerdict = "created" | "already_registered";
 
 export function classifySignUpUser(user: SignUpUserFacts | null | undefined): SignUpVerdict {
   if (!user) return "already_registered";
+  if (user.hasSession) return "created";
   if (Array.isArray(user.identities) && user.identities.length === 0) {
     return "already_registered";
   }

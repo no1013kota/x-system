@@ -66,6 +66,28 @@ async function createAuthUser(email: string, password: string): Promise<string> 
   return body.id;
 }
 
+/**
+ * **未確認**のauthユーザーを作る（T-M8-202以降、画面からの登録は即confirmedになるため、
+ * 「メール未確認のままログインを試す」系のテストはここで状態を作る）。
+ */
+export async function createUnconfirmedAuthUser(email: string, password: string): Promise<string> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const res = await fetch(`${base}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRole as string,
+      authorization: `Bearer ${serviceRole}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ email, password, email_confirm: false }),
+  });
+  if (!res.ok) {
+    throw new Error(`未確認テストユーザーを作成できませんでした（status=${res.status}）`);
+  }
+  return ((await res.json()) as { id: string }).id;
+}
+
 export async function createTestAccount(
   label: string,
   options: AccountOptions = {},

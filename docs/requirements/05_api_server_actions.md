@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.53 |
+| バージョン | v1.54 |
 | 更新日 | 2026-08-22 |
 | 関連 | 全画面、全ジョブ |
 
@@ -105,7 +105,7 @@
 
 **登録済みアドレスの扱い**（T-M8-149）: Supabaseの応答は環境で違う。ローカルは`user_already_exists`を返すが、**ホスト版は列挙対策で成功と同じ形（`identities`が空配列）を返しメールを送らない**。エラーコードだけを見ていると本番でだけ通り抜けるため、成功応答も`classifySignUpUser`で判定し、登録済みならログイン導線付きのエラーへ振り分ける（文言の正本は`signup-errors.ts`）。**未確認アドレスの再登録は「作成」として扱う**——Supabaseが毎回コードを再送するため、そのまま進めてよい。
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通。**確認自体はコード方式**なのでリンクは使わない）。成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認は省略中**（T-M8-202・`mailer_autoconfirm`）: signUp応答に**sessionが付いていれば登録完了として`/plans?signup=1`へredirect**し、無ければ従来どおりコード入力へ切り替わる（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
 
 ### 4.1 アカウント・設定
 
@@ -309,7 +309,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 
 - **Server Action `saveAffiliatePayoutAccount`**: 振込先口座の登録・変更（本人のみ）。口座番号は4〜8桁の数字を検証し、AES-256-GCMで暗号化して保存（応答・画面には末尾4桁のみ）。結果は共通の `BaseResult`。
 - **公開route `GET /r/{code}`**: 30日Cookie（`exos_ref`・httpOnly・Last Click）を付けて `/` へ302。コードの実在はここでは確かめない（登録時に照合）。
-- **紐づけの実行点は2つ**（T-M8-191）: (1) `signUp` 成功時（主経路。成功したらCookieを消す）、(2) `verifySignUpCode` 成功時（フォールバック。登録時の紐づけがDB一時障害等で失敗しCookieが残っている場合だけ動く）。どちらも冪等（1ユーザー1招待者のunique）で、失敗しても登録・確認は止めない。
+- **紐づけの実行点は2つ**（T-M8-191）: (1) `signUp` 成功時（主経路。成功したらCookieを消す）、(2) `verifySignUpCode` 成功時（フォールバック。登録時の紐づけがDB一時障害等で失敗しCookieが残っている場合だけ動く。**メール確認の省略中（T-M8-202）はこの経路は休眠**——確認を戻したらE2E「登録時に紐づけできなくても…」をgit履歴から復元する）。どちらも冪等（1ユーザー1招待者のunique）で、失敗しても登録・確認は止めない。
 - **webhook**: `charge.refunded` を購読イベントへ追加（該当invoiceの報酬取消）。`invoice.paid`・`customer.subscription.deleted` の副作用は要件03「招待プログラム」。
 
 ## 変更履歴
@@ -334,6 +334,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.51 | 2026-08-22 | listNewsItemsを最新500件対象・theme/impactの選択式ソートへ（T-M8-188） |
 | v1.52 | 2026-08-22 | 招待の紐づけをverifySignUpCode成功時にもフォールバック実行（T-M8-191） |
 | v1.53 | 2026-08-22 | createPattern/updatePatternのplaceholdersを画面側で本文から導出する運用へ（T-M8-194） |
+| v1.54 | 2026-08-22 | メール確認を省略（T-M8-202）。signUpはsession有無で分岐し即/plansへ。verifySignUpCodeは未確認ログイン経路用に残置 |
 
 ### 下書きの投稿予約（T-M8-157）
 

@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 interface PlansPageProps {
-  searchParams: Promise<{ checkout?: string; confirmed?: string }>;
+  searchParams: Promise<{ checkout?: string; confirmed?: string; signup?: string }>;
 }
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
@@ -117,6 +117,11 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           {params.confirmed === "1" ? (
             <Notice className="mx-auto max-w-3xl" role="status" tone="success">
               メールアドレスの確認が完了しました。プランを選ぶと7日間の無料トライアルを開始できます。
+            </Notice>
+          ) : params.signup === "1" ? (
+            // メール確認を省略した登録の着地（T-M8-202）。成功を必ず言う（原則1）。
+            <Notice className="mx-auto max-w-3xl" role="status" tone="success">
+              登録が完了しました。プランを選ぶと7日間の無料トライアルを開始できます。
             </Notice>
           ) : null}
 

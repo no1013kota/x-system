@@ -2254,7 +2254,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   ページのデータ取得を削減。実ブラウザで両状態を確認（コンソールエラー0）。
   全ゲート緑: 単体2,425件・build・CSP・E2E 97件。
 
-### T-M8-202: メールの6桁確認を一時的に廃止（登録→即ログイン） `todo`
+### T-M8-202: メールの6桁確認を一時的に廃止（登録→即ログイン） `done`
 - 参照: 要件06 §3（サインアップ）・要件05 §1・T-M8-121/191 / 依存: D-36（運営者の最終確認） / サイズ: M
 - 完了条件:
   - 新規登録が確認コードなしで完了し、そのまま /plans へ進める（Supabase「Confirm email」OFF＋画面フローの短絡）
@@ -2262,6 +2262,16 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - パスワード再設定・既存の確認済みユーザーが壊れない
   - 戻す手順（Confirm email ON＋フロー復帰）をdocsに残す
 - メモ: 運営者の意向（2026-08-22・ユーザー数が増えたら戻す）。デメリットの説明はD-36参照。
+- 実装メモ（2026-08-22）: Supabase設定で実現（config.toml enable_confirmations=false・
+  auth-settings.mjs mailer_autoconfirm=true。両者の整合はauth-settings-sync.testが固定）。
+  アプリはsignUp応答の**sessionの有無**で分岐（設定とアプリが食い違っても自動追従）:
+  session有→/plans?signup=1へredirect＋「登録が完了しました」。classifySignUpUserへ
+  hasSession判定を追加（autoconfirmでは新規でもconfirmed_atが即入り、旧判定だと新規を
+  「登録済み」と誤判定してE2Eで実検出→修正）。コード入力・再送・verifySignUpCodeは
+  未確認ユーザーのログイン経路用に全残置（戻す手順はdeployment.md §2-5とdocsに明記）。
+  T-M8-191フォールバックE2Eは休眠につき削除（復元手順を明記）。未確認ログインの検証は
+  Admin API作成の未確認ユーザー経由へ変更。全ゲート緑: 単体2,427件・build・CSP・E2E 96件。
+  **運営者作業: STG/PRDへ `npm run auth:templates -- --target <env> --apply` の実行が必要。**
 
 ### T-M8-201: LP調整（ヒーロー文言・チェック行の文字サイズ・料金の補足削除・図版の改善） `done`
 - 参照: 要件06 §1（LP）・design_handoff_lp / 依存: なし / サイズ: M

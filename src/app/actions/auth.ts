@@ -108,6 +108,7 @@ export async function signUp(
   }
 
   const input = parsed.data;
+  let confirmedImmediately = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signUp({
@@ -137,7 +138,7 @@ export async function signUp(
       ここを素通りさせると、来ないコードを待つ画面へ利用者を送り込むことになる
       （2026-08-18に本番で発生。ローカルのSupabaseは同じ状況でエラーを返すため気付けなかった）。
     */
-    if (classifySignUpUser(data.user) === "already_registered") {
+    if (classifySignUpUser({ ...data.user, hasSession: Boolean(data.session) }) === "already_registered") {
       return {
         status: "error",
         message: SIGNUP_ALREADY_REGISTERED.message,
@@ -182,15 +183,29 @@ export async function signUp(
       return { status: "error", message: SIGNUP_ERROR_MESSAGE };
     }
 
-    return {
-      status: "success",
-      message: SIGNUP_ACCEPTED_MESSAGE,
-      email: input.email,
-    };
+    /*
+      メール確認を省略している間（T-M8-202・運営者の決定 2026-08-22）は、Supabaseが
+      登録と同時にセッションを返す。**判定は設定値ではなく session の有無で行う**——
+      Supabase側の設定（mailer_autoconfirm / enable_confirmations）とアプリの分岐が
+      食い違っても、確認が必要ならコード画面へ、不要なら即プランへと自動で追従する。
+      確認を戻すときは設定だけ変えればよい（scripts/auth-settings.mjs のコメント参照）。
+    */
+    if (data.session) {
+      confirmedImmediately = true;
+    } else {
+      return {
+        status: "success",
+        message: SIGNUP_ACCEPTED_MESSAGE,
+        email: input.email,
+      };
+    }
   } catch (error) {
     recordUnexpectedError(error, { at: "sign-up" });
     return { status: "error", message: SIGNUP_ERROR_MESSAGE };
   }
+  // redirect は NEXT_REDIRECT を投げるため try/catch の外で行う（握り潰すと無言で止まる）。
+  if (confirmedImmediately) redirect("/plans?signup=1");
+  return { status: "error", message: SIGNUP_ERROR_MESSAGE };
 }
 
 /** Resends signup confirmation without revealing whether the email exists. */

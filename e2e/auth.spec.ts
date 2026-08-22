@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { destroyUserByEmail, query } from "./fixtures/account";
+import { createUnconfirmedAuthUser, destroyUserByEmail, query } from "./fixtures/account";
 import {
   alertIn,
   expect,
@@ -8,20 +8,19 @@ import {
   signUpCodeFromMail,
   test,
   waitForMail,
-  waitForNewMail,
 } from "./fixtures/test";
 
 /**
- * A-1/A-2 サインアップ→メール確認→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
+ * A-1/A-2 サインアップ→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
  *
- * 既存のE2Eは `createTestAccount`（Supabase Admin APIで確認済みユーザーを直接作る）を使うため、
- * **画面のサインアップとメール確認は一度も通っていなかった**。ここは全利用者が最初に踏む経路で、
- * Turnstile・同意チェック・確認メールのtoken_hash・確認後の遷移先が絡む。
+ * メール確認（6桁コード）はT-M8-202で省略中（登録即ログイン）。コード画面・自動再送の経路は
+ * 「未確認アカウントのログイン」テストが未確認ユーザー（Admin APIで作成）経由で守り続ける。
+ * Turnstile・同意チェック・確認後の遷移先が絡む全利用者の最初の経路。
  *
  * メールはローカルのMailpit（`supabase start` が起動）が受け取り、外部へは送信されない。
  */
 
-test("サインアップ→確認メール→ログインまで通り、未契約はプラン選択で止まる", async ({ page }) => {
+test("サインアップは確認コードなしで完了し、未契約はプラン選択で止まる（T-M8-202）", async ({ page }) => {
   const suffix = `signup-${randomUUID().slice(0, 8)}`;
   const email = `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
@@ -47,63 +46,23 @@ test("サインアップ→確認メール→ログインまで通り、未契�
       .not.toBe("");
     await page.getByRole("button", { name: "メールアドレスで登録" }).click();
 
-    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
-
     /*
-      **コード入力の画面にCloudflareのUIを出さない**（T-M8-138・運営者の指示 2026-08-18）。
-      コード検証自体は人間確認を求めていないので、見えていると「打つのに確認が要る」と読める。
-      ただし再送はSupabaseがトークンを要求するので、**通常は場所を取らず検証は動く**ことも
-      同時に見る（見た目だけ消してトークンまで消すと、再送が黙って壊れる）。
+      メール確認は省略（T-M8-202・運営者の決定 2026-08-22）。登録と同時にセッションが張られ、
+      **そのままプラン選択へ着地し、成功の文言が出る**。確認コード画面には入らない。
+      （戻す場合の挙動は supabase/config.toml と scripts/auth-settings.mjs のコメント参照。
+      コード検証・再送のUIは次のテストが未確認ユーザー経由で引き続き検証している。）
     */
-    /*
-      判定は**確保された表示枠**で見る。ローカルのTurnstileはテストキーなので
-      Cloudflareのiframeを描かず、iframeの有無では通常表示／interaction-onlyを見分けられない
-      （実測: どちらも0件）。通常表示は `min-h-16`（64px）の空きを必ず作るので、
-      それが無いことを見る＝追加操作が不要な状態ではCloudflareの箱が出ていないこと。
-    */
-    await expect(
-      page.locator("form .min-h-16"),
-      "コード入力画面にCloudflareの表示枠が確保されている",
-    ).toHaveCount(0);
-    await expect
-      .poll(() => page.locator('input[name="captcha_token"]').inputValue(), {
-        timeout: 30_000,
-        message: "再送用のトークンが（通常は非表示でも）入らない",
-      })
-      .not.toBe("");
+    await expect(page).toHaveURL(/\/plans/, { timeout: 30_000 });
+    await expect(page.getByText("登録が完了しました", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toHaveCount(0);
     expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
 
-    // 確認前は未確認ユーザーとして存在し、同意バージョンが記録されている
-    const [created] = await query<{ id: string; confirmed_at: string | null }>(
-      `select id, email_confirmed_at as confirmed_at from auth.users where email = $1`,
-      [email],
-    );
-    expect(created, "サインアップで利用者が作られること").toBeTruthy();
-    expect(created.confirmed_at, "確認メールを開く前は未確認であること").toBeNull();
-
-    // 届いた6桁コードを入力すると確認済みになり、プラン選択へ進む（T-M8-121）。
-    const mail = await waitForMail(email);
-    expect(mail.Subject).toContain("確認");
-    const code = await signUpCodeFromMail(mail.ID);
-    // 入力しきるまで送信できない（押しても何も起きないボタンを作らない）。
-    const submit = page.getByRole("button", { name: "登録を完了する" });
-    await expect(submit).toBeDisabled();
-    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
-    await expect(submit).toBeEnabled();
-    await submit.click();
-    await expect(page).toHaveURL(/\/plans/);
-
-    // **確認が済んだことを画面が言う**（T-M8-58）。以前は無言で料金表に変わるだけで、
-    // リンクを押した結果（確認できたのか）が分からなかった（失敗時だけ文言があった）。
-    await expect(
-      page.getByText("メールアドレスの確認が完了しました", { exact: false }),
-    ).toBeVisible();
-
-    const [confirmed] = await query<{ confirmed_at: string | null }>(
+    // 登録と同時にconfirmedになっている。
+    const [created] = await query<{ confirmed_at: string | null }>(
       `select email_confirmed_at as confirmed_at from auth.users where email = $1`,
       [email],
     );
-    expect(confirmed.confirmed_at, "確認後は email_confirmed_at が入ること").not.toBeNull();
+    expect(created.confirmed_at, "登録と同時にemail_confirmed_atが入ること").not.toBeNull();
 
     // 同意は profiles に記録されている（要件03 §1）
     const [profile] = await query<{ terms_version: string | null }>(
@@ -166,19 +125,12 @@ test("未確認アカウントのログインは黄色の案内付き6桁画面�
   });
 
   try {
-    // 画面から未確認アカウントを作る。確認コードは使わず、そのままログインを試す。
-    await page.goto("/signup");
-    await page.locator('input[name="email"]:not([type="hidden"])').fill(email);
-    await page.locator('input[name="password"]').fill(password);
-    await page.locator('input[name="password_confirmation"]').fill(password);
-    await page.locator('input[name="terms_accepted"]').check();
-    await page.locator('input[name="privacy_acknowledged"]').check();
-    await expect
-      .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
-      .not.toBe("");
-    await page.getByRole("button", { name: "メールアドレスで登録" }).click();
-    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
-    const firstMail = await waitForMail(email);
+    /*
+      未確認アカウントをAdmin APIで作る（T-M8-202以降、画面からの登録は即confirmedになるため）。
+      過去に登録したまま確認していない利用者・確認を再有効化した後の利用者が該当する経路で、
+      6桁コードの画面と自動再送はこのテストが引き続き守る。
+    */
+    await createUnconfirmedAuthUser(email, password);
 
     await page.goto("/login");
     const loginForm = page.getByTestId("login-form");
@@ -197,9 +149,8 @@ test("未確認アカウントのログインは黄色の案内付き6桁画面�
     await expect(warning).toHaveClass(/border-warn-fg/);
 
     // ログイン用tokenの再利用ではなく、切替後のwidgetが新しいtokenを得て自動再送する。
-    const resentMail = await waitForNewMail(email, firstMail.ID);
+    const resentMail = await waitForMail(email);
     await expect(page.getByText("確認メールを再送しました", { exact: false })).toBeVisible();
-    expect(resentMail.ID).not.toBe(firstMail.ID);
 
     const code = await signUpCodeFromMail(resentMail.ID);
     await page.getByRole("textbox", { name: "確認コード" }).fill(code);
