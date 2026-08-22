@@ -14,6 +14,8 @@ export interface SlotFormValues {
   weekdays: number[];
   theme: string | null;
   mode: string;
+  /** 空文字は「パターンを追加」中＝未確定（T-M8-203）。 */
+  pattern_id: string;
 }
 
 export interface SlotFormVerdict {
@@ -35,6 +37,13 @@ export function validateSlotForm(
 ): SlotFormVerdict {
   if (values.weekdays.length === 0) {
     return { error: "曜日を1つ以上選択してください。", needsConsent: false };
+  }
+  // パターン未選択＝「パターンを追加」中（T-M8-203。追加を確定するかキャンセルするまで保存できない）。
+  if (!values.pattern_id) {
+    return {
+      error: "パターンを選択してください（追加中なら「追加」か「キャンセル」で確定してください）。",
+      needsConsent: false,
+    };
   }
   // テーマは必須（`schedule-slots.ts` の `z.enum(POST_THEME_IDS)`）。ここで止めないと
   // 「入力内容を確認してください」という**どの項目が悪いか分からない**エラーになる（T-M8-37）。

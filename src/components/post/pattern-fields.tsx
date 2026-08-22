@@ -119,16 +119,34 @@ export function actionReason(res: unknown): string | undefined {
   return typeof details?.reason === "string" ? details.reason : undefined;
 }
 
+/**
+ * 「{名前} と書くと入力欄が出る」の目立つ説明（T-M8-203・運営者の指示 2026-08-22）。
+ * 小さな注記では気付かれなかったため、投稿作成・スケジュールではカラウトで出す
+ * （設定＞プロンプトは小さい表示のまま＝PlaceholderSummaryだけ）。
+ */
+export function PlaceholderCallout() {
+  return (
+    <div className="mt-2 rounded-card border border-brand/40 bg-brand-subtle px-3 py-2.5 text-body leading-[1.7] text-ink">
+      <span className="font-bold text-brand">プロンプトの中に {"{名前}"} と書くと、</span>
+      その名前の入力欄がこの下に自動で出ます。生成のたびに入力した内容が {"{名前}"} の位置へ
+      差し込まれます（例: <code>{"{自分の考え}"}</code>）。
+    </div>
+  );
+}
+
 export function PatternFields({
   draft,
   idPrefix,
   onChange,
   promptRequired,
+  placeholderHint = "compact",
 }: {
   draft: PatternDraft;
   idPrefix: string;
   onChange: (next: Partial<PatternDraft>) => void;
   promptRequired: boolean;
+  /** prominent = カラウトで説明（投稿作成・スケジュール）。compact = 小さな一覧のみ（設定）。 */
+  placeholderHint?: "prominent" | "compact";
 }) {
   const over = draft.prompt.length > PATTERN_PROMPT_MAX_CHARS;
   return (
@@ -183,6 +201,7 @@ export function PatternFields({
           手で名前を並べる欄は置かない——本文と宣言がズレる余地を無くし、書けばその場で増える。
         */}
         <PlaceholderSummary prompt={draft.prompt} />
+        {placeholderHint === "prominent" ? <PlaceholderCallout /> : null}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import {
   cancelGenerationJobAction,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/post/post-patterns-store";
 import {
   PatternFields,
+  PlaceholderCallout,
   PlaceholderSummary,
   actionReason,
   emptyPatternDraft,
@@ -35,19 +36,15 @@ import { selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
-import { updateBaseMdManualAction } from "@/app/actions/base-md";
 import {
   createPatternAction,
   deletePatternAction,
   updatePatternPromptAction,
 } from "@/app/actions/post-patterns";
-import { updatePromptTemplateAction } from "@/app/actions/prompt-templates";
 import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/poll-guard";
 
 /** プロンプトの上限（AI設定＞プロンプトの保存上限 `PROMPT_TEMPLATE_MAX_CHARS` と同値・T-M8-92）。 */
 const PROMPT_MAX_CHARS = 8000;
-/** アカウント.mdの上限（`BASE_MD_MAX_CHARS` と同値・T-M8-93）。 */
-const BASE_MD_MAX = 5000;
 
 export interface ActiveJob {
   id: string;
@@ -118,7 +115,6 @@ export function CreatePostForm({
   initialJob = null,
   initialNowMs,
   promptTemplates = null,
-  baseMd = null,
 }: {
   xAccountId: string;
   patterns: PatternOption[];
@@ -126,10 +122,8 @@ export function CreatePostForm({
   initialJob?: ActiveJob | null;
   /** サーバーが描画した時刻（ミリ秒）。経過表示の初期値。 */
   initialNowMs: number;
-  /** null = 編集権限なし（未契約）。セクションごと出さない。p1〜p6＋image。 */
+  /** null = 編集権限なし（未契約）。編集セクションごと出さない。パターンID→本文。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
-  /** アカウント.md（T-M8-93）。version は保存の楽観ロック。standard は null。 */
-  baseMd?: { content: string; version: number } | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(patterns[0]?.id ?? "");
@@ -152,14 +146,8 @@ export function CreatePostForm({
   const [templates, setTemplates] = useState(promptTemplates);
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const [promptApply, setPromptApply] = useState<"once" | "save">("once");
-  /** アカウント.md・画像プロンプト（T-M8-93）。型と独立に編集できるため状態も分ける。 */
-  // 既定はアカウント.md（T-M8-105・運営者の指示 2026-08-15。全パターン共通の土台を先に見せる）。
-  const [promptTab, setPromptTab] = useState<"pattern" | "base_md" | "image">("base_md");
-  const [baseMdState, setBaseMdState] = useState(baseMd);
-  const [baseMdDraft, setBaseMdDraft] = useState<string | null>(null);
-  const [baseMdApply, setBaseMdApply] = useState<"once" | "save">("once");
-  const [imageDraft, setImageDraft] = useState<string | null>(null);
-  const [imageApply, setImageApply] = useState<"once" | "save">("once");
+  // アカウント.md・画像プロンプトの編集は設定＞プロンプトが担う（T-M8-203で本画面から撤去。
+  // 折りたたみ「生成に使うプロンプト」の3タブは、パターンの編集欄と二重で分かりにくかった）。
   const [prereq, setPrereq] = useState<PrereqError | null>(null);
   const toast = useToast();
   const [job, setJob] = useState<ActiveJob | null>(initialJob);
@@ -214,30 +202,37 @@ export function CreatePostForm({
   const [options, setOptions] = useState(patterns);
   const [newPattern, setNewPattern] = useState<PatternDraft | null>(null);
   const [newPatternError, setNewPatternError] = useState<string | null>(null);
+  /** 追加を開く前に選んでいたパターン（キャンセルで戻すため・T-M8-203）。 */
+  const prevPatternRef = useRef<string>("");
+
+  /** 追加フォームを開く。既存パターンのアクティブを外す（運営者の指示 2026-08-22）。 */
+  function openAddPattern() {
+    prevPatternRef.current = pattern;
+    setPattern("");
+    setPromptDraft(null);
+    setPromptApply("once");
+    setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE));
+  }
+
+  /** 追加をやめて元の選択へ戻す。 */
+  function cancelAddPattern() {
+    setNewPattern(null);
+    setNewPatternError(null);
+    setPattern(prevPatternRef.current || (options[0]?.id ?? ""));
+  }
 
   /** 選択中のパターン。入力欄の出し分け（意見の入力）と表示名に使う。 */
   const selectedPattern = options.find((option) => option.id === pattern) ?? null;
   const currentTemplate = templates?.[pattern] ?? null;
   const promptValue = promptDraft ?? currentTemplate?.content ?? "";
   /*
-    入力項目（プレースホルダー）は**いま画面に見えているプロンプト本文**から導出する（T-M8-186）。
-    編集で {名前} を増減すると、入力欄もその場で増減する。定義（pattern.placeholders）を
-    見ないのは、上書き編集中は定義とズレるため——生成側も同じく本文基準で差し込む。
+    入力項目（プレースホルダー）は**いま画面に見えているプロンプト本文**から導出する
+    （T-M8-186/203）。パターンを追加中は**追加中フォームの本文**を見る——編集で {名前} を
+    増減すると、下の入力欄もその場で増減する。生成側も同じく本文基準で差し込む。
   */
-  const activePlaceholderNames = extractPlaceholderNames(promptValue);
+  const activePlaceholderNames = extractPlaceholderNames(newPattern ? newPattern.prompt : promptValue);
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
   const promptOverLimit = promptValue.length > PROMPT_MAX_CHARS;
-  const imageTemplate = templates?.["image"] ?? null;
-  const imageValue = imageDraft ?? imageTemplate?.content ?? "";
-  const imageEdited = imageDraft !== null && imageDraft !== (imageTemplate?.content ?? "");
-  const imageOverLimit = imageValue.length > PROMPT_MAX_CHARS;
-  const baseMdValue = baseMdDraft ?? baseMdState?.content ?? "";
-  const baseMdEdited = baseMdDraft !== null && baseMdDraft !== (baseMdState?.content ?? "");
-  const baseMdOverLimit = baseMdValue.length > BASE_MD_MAX;
-  /** アカウント.mdはアカウント設定の保存で初めて作られる。無いあいだは編集対象が無い。 */
-  const baseMdReady = (baseMdState?.version ?? 0) >= 1 && (baseMdState?.content ?? "") !== "";
-  const anyPromptOverLimit = promptOverLimit || imageOverLimit || baseMdOverLimit;
-  const anyPromptEdited = promptEdited || imageEdited || baseMdEdited;
 
 function addPattern() {
     if (!newPattern) return;
@@ -308,30 +303,15 @@ function removePattern(target: PatternOption) {
       // 編集して「保存して以後も使う」を選んだブロックは、生成の前に保存を確定する
       // （保存に失敗したのに生成だけ走ると、どのプロンプトで生成されたか分からなくなる）。
       // 保存が1つでも失敗したら生成を始めない。
-      /**
-       * `key` はパターンID（uuid）か `"image"`。**保存先が違う**（T-M8-129 U3）:
-       * パターンは `post_patterns.prompt`、画像は `prompt_templates`。
-       */
+      /** パターンのプロンプト保存（`post_patterns.prompt`・T-M8-129 U3）。 */
       async function saveTemplate(key: string, content: string): Promise<boolean> {
         const expected = templates?.[key]?.updatedAt ?? null;
-        const saved =
-          key === "image"
-            ? await updatePromptTemplateAction({
-                kind: "image",
-                x_account_id: xAccountId,
-                content,
-                expected_updated_at: expected,
-              })
-            : await updatePatternPromptAction({
-                pattern_id: key,
-                content,
-                expected_updated_at: expected,
-              });
-        // 戻りの形が違う（画像は `template`、パターンは `prompt`）。どちらも同じ3項目を持つ。
-        const savedView =
-          "template" in saved
-            ? saved.template
-            : ("prompt" in saved ? saved.prompt : undefined);
+        const saved = await updatePatternPromptAction({
+          pattern_id: key,
+          content,
+          expected_updated_at: expected,
+        });
+        const savedView = saved.prompt;
         if (saved.status === "error" || !savedView) {
           toast.show({
             tone: "error",
@@ -364,40 +344,6 @@ function removePattern(target: PatternOption) {
           promptOverride = promptDraft;
         }
       }
-      let imagePromptOverride: string | undefined;
-      if (templates && imageEdited && imageDraft !== null) {
-        if (imageApply === "save") {
-          if (!(await saveTemplate("image", imageDraft))) return;
-          setImageDraft(null);
-        } else {
-          imagePromptOverride = imageDraft;
-        }
-      }
-      let baseMdOverride: string | undefined;
-      if (baseMdState && baseMdEdited && baseMdDraft !== null) {
-        if (baseMdApply === "save") {
-          const saved = await updateBaseMdManualAction({
-            x_account_id: xAccountId,
-            content: baseMdDraft,
-            expected_version: baseMdState.version,
-          });
-          if (saved.status === "error" || typeof saved.version !== "number") {
-            toast.show({
-              tone: "error",
-              title: "アカウント.mdを保存できませんでした",
-              description:
-                saved.code === "job_conflict"
-                  ? "アカウント.mdが別の場所で更新されています。ページを再読み込みしてから、もう一度お試しください。"
-                  : saved.message,
-            });
-            return;
-          }
-          setBaseMdState({ content: baseMdDraft, version: saved.version });
-          setBaseMdDraft(null);
-        } else {
-          baseMdOverride = baseMdDraft;
-        }
-      }
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
@@ -412,8 +358,6 @@ function removePattern(target: PatternOption) {
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
         prompt_override: promptOverride,
-        base_md_override: baseMdOverride,
-        image_prompt_override: imagePromptOverride,
       });
       if (res.status === "error") {
         const settingsPath = res.details?.settingsPath as string | undefined;
@@ -526,6 +470,11 @@ function removePattern(target: PatternOption) {
           deleteDisabled={pending}
           name="pattern"
           onChange={(next) => {
+            // 追加中に既存パターンを選んだら追加をやめてそちらへ（フォームを2つ同時に出さない）。
+            if (newPattern) {
+              setNewPattern(null);
+              setNewPatternError(null);
+            }
             setPattern(next);
             // 型を切り替えたら編集中のプロンプトを破棄する（別の型に前の編集を持ち越さない）。
             setPromptDraft(null);
@@ -559,140 +508,56 @@ function removePattern(target: PatternOption) {
                 draft={newPattern}
                 idPrefix="new-pattern"
                 onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
+                placeholderHint="prominent"
                 promptRequired
               />
               <div className="mt-3 flex gap-2">
                 <Button disabled={pending} onClick={addPattern} type="button" variant="brand">
                   追加
                 </Button>
-                <Button
-                  disabled={pending}
-                  onClick={() => {
-                    setNewPattern(null);
-                    setNewPatternError(null);
-                  }}
-                  type="button"
-                  variant="subtle"
-                >
+                <Button disabled={pending} onClick={cancelAddPattern} type="button" variant="subtle">
                   キャンセル
                 </Button>
               </div>
             </div>
           ) : (
             <div className="mt-2">
-              <Button
-                disabled={pending}
-                onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
-                type="button"
-                variant="subtle"
-              >
+              <Button disabled={pending} onClick={openAddPattern} type="button" variant="subtle">
                 パターンを追加
               </Button>
             </div>
           )
         ) : null}
 
-        {templates ? (
-          <details className="rounded-card border border-hairline bg-page">
-            <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
-              生成に使うプロンプト
-              {anyPromptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
-            </summary>
-            <div className="space-y-3 px-4 pb-4">
-              <p className="text-xs text-muted-foreground">
-                この生成に使われる指示を確認・編集できます。編集して、この生成にだけ使うか、保存して以後の生成にも使うかを選べます。
-              </p>
-              {/* 3ブロックの切替（アカウント.md／投稿の型／画像）。アカウント.mdを一番左に（T-M8-105）。roleはtabだが実装は単純なボタン群。 */}
-              <div aria-label="プロンプトの種類" className="flex flex-wrap gap-1.5" role="tablist">
-                {(
-                  [
-                    ["base_md", "アカウント.md", baseMdEdited],
-                    ["pattern", "投稿の型", promptEdited],
-                    ["image", "画像生成", imageEdited],
-                  ] as const
-                ).map(([id, label, edited]) => (
-                  <button
-                    aria-selected={promptTab === id}
-                    className={`inline-flex h-8 items-center rounded-pill border px-3 text-body transition-colors duration-150 ${
-                      promptTab === id
-                        ? "border-brand bg-brand-subtle font-medium text-brand"
-                        : "border-hairline text-ink-2 hover:bg-black/[0.03]"
-                    }`}
-                    key={id}
-                    onClick={() => setPromptTab(id)}
-                    role="tab"
-                    type="button"
-                  >
-                    {label}
-                    {edited ? <span aria-label="編集中" className="ml-1 text-brand">●</span> : null}
-                  </button>
-                ))}
-              </div>
-
-              {promptTab === "pattern" ? (
-                <PromptBlock
-                  edited={promptEdited}
-                  // プレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
-                  // 分量の行はここには出さない——実際の上限は保存済みのmax_postsで決まり、
-                  // プロンプトの読み取りと食い違う（既定パターンは本文にスレッド語彙を持たない）。
-                  // 分量は上の「この型の分量」が正しい値を出している（レビュー指摘・T-M8-192）。
-                  footer={<PlaceholderSummary prompt={promptValue} />}
-                  groupName="create-prompt-apply-pattern"
-                  label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
-                  limit={PROMPT_MAX_CHARS}
-                  mode={promptApply}
-                  onChange={setPromptDraft}
-                  onMode={setPromptApply}
-                  onReset={() => {
-                    setPromptDraft(null);
-                    setPromptApply("once");
-                  }}
-                  value={promptValue}
-                />
-              ) : promptTab === "base_md" ? (
-                baseMdReady ? (
-                  <PromptBlock
-                    edited={baseMdEdited}
-                    groupName="create-prompt-apply-basemd"
-                    label="アカウント.md（全パターン共通の発信定義書。AI設定＞アカウント.mdと同じもの）"
-                    limit={BASE_MD_MAX}
-                    mode={baseMdApply}
-                    note="保存すると新しいversionとして履歴に残ります（AI設定から戻せます）。見出し構成を変えると保存できません。"
-                    onChange={setBaseMdDraft}
-                    onMode={setBaseMdApply}
-                    onReset={() => {
-                      setBaseMdDraft(null);
-                      setBaseMdApply("once");
-                    }}
-                    value={baseMdValue}
-                  />
-                ) : (
-                  <p className="rounded-card border border-hairline bg-surface px-3.5 py-3 text-body leading-5 text-ink-2">
-                    アカウント.mdはアカウント設定を保存すると作られます。まず
-                    <Link className="text-info-fg hover:underline" href="/app/settings?tab=account">
-                      アカウント設定
-                    </Link>
-                    を保存してください。
-                  </p>
-                )
-              ) : (
-                <PromptBlock
-                  edited={imageEdited}
-                  groupName="create-prompt-apply-image"
-                  label="画像生成プロンプト（「画像を生成する」がONのとき使われます）"
-                  limit={PROMPT_MAX_CHARS}
-                  mode={imageApply}
-                  onChange={setImageDraft}
-                  onMode={setImageApply}
-                  onReset={() => {
-                    setImageDraft(null);
-                    setImageApply("once");
-                  }}
-                  value={imageValue}
-                />
-              )}
-            </div>
-          </details>
+        {/*
+          選択中パターンのプロンプト編集（T-M8-203・運営者の指示 2026-08-22）。
+          折りたたみ「生成に使うプロンプト」（アカウント.md/投稿の型/画像の3タブ）は廃止し、
+          「パターンを追加」の記入欄と同じUIをインラインで出す。アカウント.md・画像プロンプトの
+          編集は設定＞プロンプトが担う。追加フォームを開いている間は出さない（編集欄を2つ並べない）。
+        */}
+        {templates && !newPattern && selectedPattern ? (
+          <div className={`${cardClassName} p-4`}>
+            <PromptBlock
+              edited={promptEdited}
+              footer={
+                <>
+                  <PlaceholderSummary prompt={promptValue} />
+                  <PlaceholderCallout />
+                </>
+              }
+              groupName="create-prompt-apply-pattern"
+              label={`生成プロンプト（${selectedPattern.name}）`}
+              limit={PROMPT_MAX_CHARS}
+              mode={promptApply}
+              onChange={setPromptDraft}
+              onMode={setPromptApply}
+              onReset={() => {
+                setPromptDraft(null);
+                setPromptApply("once");
+              }}
+              value={promptValue}
+            />
+          </div>
         ) : null}
 
         <div>
@@ -781,7 +646,7 @@ function removePattern(target: PatternOption) {
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
           className="h-10 w-full gap-1.5 text-body"
-          disabled={pending || inProgress || !theme || anyPromptOverLimit}
+          disabled={pending || inProgress || !theme || !pattern || promptOverLimit}
           onClick={submit}
           type="button"
           variant="gradient"
@@ -796,6 +661,11 @@ function removePattern(target: PatternOption) {
         */}
         {!theme && !inProgress ? (
           <p className="text-caption text-ink-2">テーマを選ぶと生成できます。</p>
+        ) : null}
+        {newPattern && !inProgress ? (
+          <p className="text-caption text-ink-2">
+            パターンを追加中です。「追加」または「キャンセル」で確定すると生成できます。
+          </p>
         ) : null}
       </section>
 

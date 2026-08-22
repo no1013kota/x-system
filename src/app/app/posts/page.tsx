@@ -19,7 +19,6 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 const pooledDb = pooledQueryable();
 
 import { listPatterns, listPatternPrompts } from "@/lib/post/post-patterns-store";
-import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
@@ -88,38 +87,16 @@ async function createTabData(userId: string, activeXAccountId: string) {
   // updatedAt は「保存して以後も使う」の楽観ロック（AI設定と同じ仕組み）に使う。
   let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =
     null;
-  let baseMd: { content: string; version: number } | null = null;
   // 判定は `promptEditablePlan` に集約（T-M8-144）。
+  // アカウント.md・画像プロンプトの編集は設定＞プロンプトへ集約（T-M8-203）。ここは
+  // パターンの本文（`post_patterns.prompt`・解決済み）だけを渡す。キーはパターンID（uuid）。
   if (promptEditablePlan(plan ?? "")) {
-    const [patternPrompts, listed, baseMdRow] = await Promise.all([
-      // パターンのプロンプトは `post_patterns.prompt`（U2/U3）。画像だけ `prompt_templates`。
-      listPatternPrompts(pooledDb, activeXAccountId),
-      listPromptTemplatesForUser(userId),
-      getPool().query<{ base_md: string; base_md_version: number }>(
-        `select base_md, base_md_version from x_accounts where id = $1`,
-        [activeXAccountId],
-      ),
-    ]);
-    // キーはパターンID（uuid）と `image`。**内部ID（`p1`）では引かない**（T-M8-129 U3）。
-    const image = listed.templates.find((tpl) => tpl.kind === "image");
-    promptTemplates = {
-      ...Object.fromEntries(
-        patterns
-          .filter((option) => patternPrompts[option.id])
-          .map((option) => [option.id, patternPrompts[option.id]]),
-      ),
-      ...(image
-        ? {
-            image: {
-              content: image.content,
-              updatedAt: image.updatedAt,
-              isOverride: image.isOverride,
-            },
-          }
-        : {}),
-    };
-    const row = baseMdRow.rows[0];
-    baseMd = row ? { content: row.base_md ?? "", version: Number(row.base_md_version ?? 0) } : null;
+    const patternPrompts = await listPatternPrompts(pooledDb, activeXAccountId);
+    promptTemplates = Object.fromEntries(
+      patterns
+        .filter((option) => patternPrompts[option.id])
+        .map((option) => [option.id, patternPrompts[option.id]]),
+    );
   }
   const inflight = inflightResult.rows[0];
   const initialJob: ActiveJob | null = inflight
@@ -134,7 +111,7 @@ async function createTabData(userId: string, activeXAccountId: string) {
     : null;
   // 経過表示の基準（T-M8-113）。サーバーとブラウザで同じ値を使わないと
   // 「経過 0:06」と「経過 0:07」が食い違って描き直しになる。
-  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates, baseMd };
+  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates };
 }
 
 /**
@@ -259,7 +236,6 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           initialJob={createData.initialJob}
           initialNowMs={createData.nowMs}
           patterns={createData.patterns}
-          baseMd={createData.baseMd}
           promptTemplates={createData.promptTemplates}
           xAccountId={activeXAccountId}
         />

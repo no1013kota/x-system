@@ -6,7 +6,7 @@ import { expect, signIn, test } from "./fixtures/test";
  *
  * **予約でも投稿作成と同じことができる**: パターンを追加でき、生成プロンプトを確認・編集でき、
  * 参考URL・プレースホルダー・追加指示を枠に保存できる。
- * 並び順も指定どおり（テーマ→パターン→パターンを追加→生成に使うプロンプト→参考URL→
+ * 並び順も指定どおり（テーマ→パターン→パターンを追加→生成プロンプト→参考URL→
  * プレースホルダー→追加指示→曜日→時刻→モード）。
  *
  * 保存が実DBへ入るところまで見る——画面が受け取っても列へ入らなければ、
@@ -25,7 +25,7 @@ test("予約フォームの並び順が指定どおりで、生成入力が保�
     const form = [...document.querySelectorAll("h2,h3")]
       .find((h) => h.textContent?.includes("新しいスケジュール"))?.parentElement;
     const wanted = [
-      "テーマ", "パターン", "パターンを追加", "生成に使うプロンプト",
+      "テーマ", "パターン", "パターンを追加", "生成プロンプト",
       "参考URL", "追加指示", "曜日", "時刻", "モード",
     ];
     const out: string[] = [];
@@ -40,7 +40,7 @@ test("予約フォームの並び順が指定どおりで、生成入力が保�
     return out;
   });
   expect(order).toEqual([
-    "テーマ", "パターン", "パターンを追加", "生成に使うプロンプト",
+    "テーマ", "パターン", "パターンを追加", "生成プロンプト",
     "参考URL", "追加指示", "曜日", "時刻", "モード",
   ]);
 
@@ -49,9 +49,8 @@ test("予約フォームの並び順が指定どおりで、生成入力が保�
   const opinion = page.getByLabel("自分の考え（任意）");
   await expect(opinion).toBeVisible();
 
-  // 生成に使うプロンプトを開くと、そのパターンの本文が見える（既定なら {自分の考え} を含む）。
-  await page.getByText("生成に使うプロンプト").click();
-  const promptBox = page.getByLabel(/選択中の型（自分の考え・意見）の生成プロンプト/);
+  // プロンプト編集欄はインラインで見えている（折りたたみは廃止・T-M8-203）。
+  const promptBox = page.getByLabel(/生成プロンプト（自分の考え・意見）/);
   await expect(promptBox).toBeVisible();
   await expect(promptBox).toHaveValue(/\{自分の考え\}/);
 
@@ -148,9 +147,8 @@ test("「パターンに保存」を選ぶとパターン本体が書き換わ�
   await page.goto("/app/schedule");
   await page.getByRole("button", { name: "スケジュールを追加" }).click();
   await page.getByRole("radio", { name: /自分の考え・意見/ }).check();
-  await page.getByText("生成に使うプロンプト").click();
 
-  const promptBox = page.getByLabel(/選択中の型（自分の考え・意見）の生成プロンプト/);
+  const promptBox = page.getByLabel(/生成プロンプト（自分の考え・意見）/);
   await promptBox.fill("# タスク\nパターンごと書き換えた指示。本人の考え: {自分の考え}");
   await page.getByRole("radio", { name: "パターンに保存して他でも使う" }).check();
   await page.getByLabel("テーマ").selectOption("other");
@@ -195,9 +193,8 @@ test("追加した直後のパターンにもプロンプトを保存できる",
   await page.getByRole("button", { name: "追加", exact: true }).click();
   await expect(page.getByRole("radio", { name: /追加直後の型/ })).toBeChecked();
 
-  // そのまま生成プロンプトを直して「パターンに保存」する。
-  await page.getByText("生成に使うプロンプト").click();
-  const promptBox = page.getByLabel(/選択中の型（追加直後の型）の生成プロンプト/);
+  // そのまま生成プロンプトを直して「パターンに保存」する（編集欄はインラインで見えている）。
+  const promptBox = page.getByLabel(/生成プロンプト（追加直後の型）/);
   await promptBox.fill("# 投稿内容\n保存し直した内容\n\n# 構成と分量とスレッド数\nメインポスト：");
   await page.getByRole("radio", { name: "パターンに保存して他でも使う" }).check();
   await page.getByLabel("テーマ").selectOption("other");

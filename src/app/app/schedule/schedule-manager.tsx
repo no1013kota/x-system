@@ -2,7 +2,7 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 
 import {
   createScheduleSlotAction,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/post/post-patterns-store";
 import {
   PatternFields,
+  PlaceholderCallout,
   PlaceholderSummary,
   actionReason,
   emptyPatternDraft,
@@ -194,9 +195,7 @@ export function ScheduleManager({
               {patternLabel(upcoming.slot.pattern_name)}」
               {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
             </p>
-          ) : (
-            <p className="text-muted-foreground">有効なスケジュールはありません。</p>
-          )}
+          ) : null /* 「有効なスケジュールはありません」は枠一覧が伝えるため出さない（運営者の指示 2026-08-22） */}
         </div>
         {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
       </div>
@@ -666,6 +665,8 @@ function SlotFields({
   const [prompts, setPrompts] = useState(patternPrompts);
   const [newPattern, setNewPattern] = useState<PatternDraft | null>(null);
   const [newPatternError, setNewPatternError] = useState<string | null>(null);
+  /** 追加を開く前に選んでいたパターン（キャンセルで戻すため・T-M8-203）。 */
+  const prevPatternRef = useRef<string>("");
   /** 編集中のプロンプト本文（null = 未編集）。パターンを切り替えたら破棄する。 */
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   /** once = この予約にだけ保存 ／ save = パターン自体を書き換える。 */
@@ -679,17 +680,38 @@ function SlotFields({
    * 保存済みの上書きに気付かないまま上書きを消してしまう。
    */
   const promptValue = promptDraft ?? v.prompt_override ?? patternPrompt?.content ?? "";
-  // 入力欄は**いま見えているプロンプト本文**から導出（T-M8-186。編集で {名前} を増減すると
-  // その場で入力欄も増減する。生成側も本文基準で差し込む）。
-  const activePlaceholderNames = extractPlaceholderNames(promptValue);
+  // 入力欄は**いま見えているプロンプト本文**から導出（T-M8-186/203。追加中は追加フォームの
+  // 本文を見る。編集で {名前} を増減するとその場で入力欄も増減する。生成側も本文基準で差し込む）。
+  const activePlaceholderNames = extractPlaceholderNames(newPattern ? newPattern.prompt : promptValue);
   const promptBase = v.prompt_override ?? patternPrompt?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== promptBase;
 
   /** パターンを切り替えたら、前のパターン向けの編集と入力値を持ち越さない。 */
   function selectPattern(id: string) {
+    // 追加中に既存パターンを選んだら追加をやめてそちらへ（フォームを2つ同時に出さない・T-M8-203）。
+    if (newPattern) {
+      setNewPattern(null);
+      setNewPatternError(null);
+    }
     setV((cur) => ({ ...cur, pattern_id: id, placeholder_values: {}, prompt_override: null }));
     setPromptDraft(null);
     setPromptApply("once");
+  }
+
+  /** 追加フォームを開く。既存パターンのアクティブを外す（運営者の指示 2026-08-22・T-M8-203）。 */
+  function openAddPattern() {
+    prevPatternRef.current = v.pattern_id;
+    setV((cur) => ({ ...cur, pattern_id: "", placeholder_values: {}, prompt_override: null }));
+    setPromptDraft(null);
+    setPromptApply("once");
+    setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE));
+  }
+
+  /** 追加をやめて元の選択へ戻す。 */
+  function cancelAddPattern() {
+    setNewPattern(null);
+    setNewPatternError(null);
+    setV((cur) => ({ ...cur, pattern_id: prevPatternRef.current || (options[0]?.id ?? "") }));
   }
 
   function addPattern() {
@@ -896,22 +918,14 @@ function SlotFields({
               draft={newPattern}
               idPrefix={`slot-new-pattern-${target.kind === "edit" ? target.slotId : "new"}`}
               onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
+              placeholderHint="prominent"
               promptRequired
             />
             <div className="mt-3 flex gap-2">
               <Button disabled={pending} onClick={addPattern} size="sm" type="button">
                 {pending ? "追加中…" : "追加"}
               </Button>
-              <Button
-                disabled={pending}
-                onClick={() => {
-                  setNewPattern(null);
-                  setNewPatternError(null);
-                }}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
+              <Button disabled={pending} onClick={cancelAddPattern} size="sm" type="button" variant="ghost">
                 キャンセル
               </Button>
             </div>
@@ -919,7 +933,7 @@ function SlotFields({
         ) : (
           <Button
             disabled={pending}
-            onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
+            onClick={openAddPattern}
             type="button"
             /* 投稿作成の同じボタンと同じ見た目にする（T-M8-138）。同じ操作が画面で違って見えないように。 */
             variant="subtle"
@@ -930,59 +944,49 @@ function SlotFields({
       ) : null}
 
       {/*
-        生成に使うプロンプト（T-M8-135）。編集権限のあるプランのみ（投稿作成・AI設定と同じ境界・T-M8-168で全プランへ）。
-        予約は繰り返し実行されるので「この生成にだけ」ではなく**この予約にだけ**が既定。
+        選択中パターンのプロンプト編集（T-M8-135/203）。折りたたみをやめ「パターンを追加」の
+        記入欄と同じUIをインラインで出す。予約は繰り返し実行されるので
+        「この生成にだけ」ではなく**この予約にだけ**が既定。追加フォームを開いている間は出さない。
       */}
-      {prompts ? (
-        <details className="rounded-card border border-hairline bg-page">
-          <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
-            生成に使うプロンプト
-            {promptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
-            {v.prompt_override ? (
-              <span className="ml-2 text-caption text-ink-3">（この予約用に変更済み）</span>
-            ) : null}
-          </summary>
-          <div className="space-y-3 px-4 pb-4">
-            <p className="text-xs text-muted-foreground">
-              この予約の生成に使われる指示です。直して、この予約にだけ使うか、パターン自体に
-              保存して他でも使うかを選べます。
-            </p>
-            <PromptBlock
-              edited={promptEdited}
-              // プレースホルダーは「パターンを追加」の記入欄と同じ形で出す（T-M8-194）。
-              // 分量の行は出さない——実際の上限は保存済みのmax_postsで決まり、プロンプトの
-              // 読み取りと食い違う（レビュー指摘・T-M8-192）。
-              footer={<PlaceholderSummary prompt={promptValue} />}
-              // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
-              groupName={`${slotFieldPrefix}-prompt-apply`}
-              label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
-              limit={PROMPT_MAX_CHARS}
-              mode={promptApply}
-              onceLabel="この予約にだけ使う"
-              onChange={setPromptDraft}
-              onMode={setPromptApply}
-              onReset={() => {
+      {prompts && !newPattern && selectedPattern ? (
+        <div className={`${cardClassName} p-4`}>
+          <PromptBlock
+            edited={promptEdited}
+            footer={
+              <>
+                <PlaceholderSummary prompt={promptValue} />
+                <PlaceholderCallout />
+              </>
+            }
+            // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
+            groupName={`${slotFieldPrefix}-prompt-apply`}
+            label={`生成プロンプト（${selectedPattern.name}）${v.prompt_override ? "（この予約用に変更済み）" : ""}`}
+            limit={PROMPT_MAX_CHARS}
+            mode={promptApply}
+            onceLabel="この予約にだけ使う"
+            onChange={setPromptDraft}
+            onMode={setPromptApply}
+            onReset={() => {
+              setPromptDraft(null);
+              setPromptApply("once");
+            }}
+            saveLabel="パターンに保存して他でも使う"
+            value={promptValue}
+          />
+          {v.prompt_override ? (
+            <button
+              className="mt-2 text-body text-info-fg hover:underline"
+              onClick={() => {
+                setV((cur) => ({ ...cur, prompt_override: null }));
                 setPromptDraft(null);
                 setPromptApply("once");
               }}
-              saveLabel="パターンに保存して他でも使う"
-              value={promptValue}
-            />
-            {v.prompt_override ? (
-              <button
-                className="text-body text-info-fg hover:underline"
-                onClick={() => {
-                  setV((cur) => ({ ...cur, prompt_override: null }));
-                  setPromptDraft(null);
-                  setPromptApply("once");
-                }}
-                type="button"
-              >
-                この予約用の変更をやめてパターンの内容に戻す
-              </button>
-            ) : null}
-          </div>
-        </details>
+              type="button"
+            >
+              この予約用の変更をやめてパターンの内容に戻す
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {/* 参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じ扱い。 */}
