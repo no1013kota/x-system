@@ -31,6 +31,10 @@ export default defineConfig({
     video: "off",
     locale: "ja-JP",
     timezoneId: "Asia/Tokyo",
+    // datetime-local等のネイティブwidgetの表記はcontextのlocaleではなく**ブラウザ本体のUI言語**に
+    // 従う。CI（Linux・en-US既定）では12時間制になり、`fill`のセグメント入力が化けて
+    // draft-schedule.spec が落ちた（2026-08-22・stg初CIで検出）。起動引数で揃える。
+    launchOptions: { args: ["--lang=ja-JP"] },
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
