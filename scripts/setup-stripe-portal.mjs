@@ -321,9 +321,19 @@ async function main() {
   const existingId = account.STRIPE_PORTAL_CONFIGURATION_ID;
   const configuration = await stripe.billingPortal.configurations.update(existingId, desired);
 
-  // 画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
-  // （「更新した」だけでは、送った内容が反映された保証にならない）。
-  const applied = await stripe.billingPortal.configurations.retrieve(configuration.id);
+  /*
+    画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
+    （「更新した」だけでは、送った内容が反映された保証にならない）。
+
+    **`enabled` だけでは足りない**（T-M8-238）。2026-08-23の監査で、本番・stagingとも
+    `enabled=true` のまま**変更先のPriceが旧価格のまま**になっていた（＝契約者は
+    「プランを変更」を開けない）。金額と時期を決めるのは `products` と
+    `trial_update_behavior` なので、そこまで読み戻して一致を確かめる。
+    **`products` は expand しないと返らない**（素のGETでは undefined）。
+  */
+  const applied = await stripe.billingPortal.configurations.retrieve(configuration.id, {
+    expand: ["features.subscription_update.products"],
+  });
   const features = {
     subscription_update: applied.features?.subscription_update?.enabled === true,
     subscription_cancel: applied.features?.subscription_cancel?.enabled === true,
@@ -331,6 +341,15 @@ async function main() {
   const missing = Object.entries(features)
     .filter(([, enabled]) => !enabled)
     .map(([key]) => key);
+
+  // 送った Price がすべて変更先に載ったか（載っていなければ「成功」と言ってはいけない）。
+  const appliedPriceIds = new Set(
+    (applied.features?.subscription_update?.products ?? []).flatMap((entry) => entry.prices),
+  );
+  const missingPrices = priceIds.filter((id) => !appliedPriceIds.has(id));
+  const appliedTrialBehavior = applied.features?.subscription_update?.trial_update_behavior ?? null;
+  const desiredTrialBehavior = desired.features.subscription_update.trial_update_behavior;
+  const trialBehaviorOk = appliedTrialBehavior === desiredTrialBehavior;
   console.log(
     JSON.stringify(
       {
@@ -345,6 +364,12 @@ async function main() {
         productNames: renamed.length > 0 ? renamed : "既に揃っています",
         productDescriptions: described.length > 0 ? `更新: ${described.join("・")}` : "既に揃っています",
         features,
+        // 変更先に載った Price と、トライアル中の変更挙動（doctorが見るのと同じ2点）。
+        planChangePrices:
+          missingPrices.length === 0
+            ? `現行 ${priceIds.length} プランすべてが変更先に入っています`
+            : `不足 ${missingPrices.length}/${priceIds.length} 件: ${missingPrices.join(", ")}`,
+        trialUpdateBehavior: appliedTrialBehavior,
       },
       null,
       2,
@@ -352,6 +377,20 @@ async function main() {
   );
   if (missing.length > 0) {
     console.error(`Portal features still disabled after apply: ${missing.join(", ")}`);
+    process.exitCode = 1;
+  }
+  if (missingPrices.length > 0) {
+    console.error(
+      `変更先に載らなかった Price があります: ${missingPrices.join(", ")}。` +
+        `契約者は「プランを変更」を開けません（Stripeダッシュボードで確認してください）`,
+    );
+    process.exitCode = 1;
+  }
+  if (!trialBehaviorOk) {
+    console.error(
+      `トライアル中の変更挙動が ${appliedTrialBehavior} のままです（期待: ${desiredTrialBehavior}）。` +
+        `このままだとトライアル中にプラン変更すると即時課金されます`,
+    );
     process.exitCode = 1;
   }
 }

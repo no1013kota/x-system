@@ -2282,8 +2282,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   返らない**（素のGETでは undefined）。deployment.md の「現行APIのGETに現れない」という記述が
   自動検査を書かない理由になっていたので、expandで取得できることを確認して実装した。
   `webhook-events-status.ts` を新設（`price-status.ts`・`portal-status.ts` と同じ形）。
-- **運営者の作業が残っている**: 本番・stagingで `npm run stripe:portal:setup -- --target <env>` を実行し、
-  Stripeダッシュボードの webhook へ `charge.refunded` を追加する（要決定D-34）。
+- **解決済み（2026-08-23・運営者の承認を得てClaudeが実行。D-34は案Aで決着）**:
+  - `npm run stripe:portal:setup -- --target staging` / `--target production` を実行。
+    どちらも `planChangePrices: 現行 3 プランすべてが変更先に入っています`・
+    `trialUpdateBehavior: continue_trial` を読み戻しで確認（Product説明も現行プランへ更新された）
+  - 本番・stagingの webhook へ `charge.refunded` を追加（`webhookEndpoints.update`。計10イベント・enabled）
+  - **追加した検査で再確認**: 本番・stagingとも「プラン管理[ok]」「webhook[ok] 必要な7種類のイベントが届く設定です」
+  - あわせて `setup-stripe-portal.mjs` の読み戻し検証を強化した。**従来は `enabled` しか見ておらず、
+    商品リストが置き換わらなくても「成功」と出た**（今回の事故が見逃された理由）。いまは
+    変更先Priceの不足と `trial_update_behavior` の不一致で終了コード1になる。
 
 ### T-M8-234: 日次サマリが運営者の内情（全体費用・DB使用量）を全利用者へ配信していた `done`
 - 参照: 要件04 §日次サマリ・CLAUDE.md 原則4 / 依存: なし / サイズ: S
@@ -4609,7 +4616,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 
 ## 要決定・外部準備(ユーザー作業)
 
-**D-34: 本番StripeのPortal設定とwebhook購読の修正（起票 2026-08-23・T-M8-238）** — 監査で、**本番・stagingとも**(a) Portalの変更先Priceが旧価格のまま（現行3プランが1件も入っていない＝契約者は「プランを変更」を開けない）、(b) webhookの購読に `charge.refunded` が無い（返金しても招待報酬が取り消されない）ことが実測で判明した。どちらも**Stripe側の設定**なのでコードからは直せない。要決定: 開発者（Claude）が `npm run stripe:portal:setup -- --target production` を実行し、Stripe APIで `charge.refunded` を追加してよいか（**本番の課金設定への書き込み**になる）。実行するとPortalの商品リストが現行Priceへ入れ替わり、あわせて**Product名・説明・戻り先URLも `PRODUCTION_BASE_URL` から作り直される**（Checkout・請求書の表示文言が変わる）。(案A) Claudeが実行する（**推奨**。手順が1コマンドに畳まれており、実行後は doctor の該当2項目が緑になることで確認できる） / (案B) 運営者がStripeダッシュボードで手作業で直す。**本番のlive契約は現在0件**なので、最初の契約者が出る前に直せば実害は生じない。
+**D-34: 本番StripeのPortal設定とwebhook購読の修正（起票 2026-08-23・**解決 2026-08-23: 案A。運営者の承認を得てClaudeが実行し、doctorの該当2項目が本番・stagingとも緑になったことを確認**・T-M8-238）** — 監査で、**本番・stagingとも**(a) Portalの変更先Priceが旧価格のまま（現行3プランが1件も入っていない＝契約者は「プランを変更」を開けない）、(b) webhookの購読に `charge.refunded` が無い（返金しても招待報酬が取り消されない）ことが実測で判明した。どちらも**Stripe側の設定**なのでコードからは直せない。要決定: 開発者（Claude）が `npm run stripe:portal:setup -- --target production` を実行し、Stripe APIで `charge.refunded` を追加してよいか（**本番の課金設定への書き込み**になる）。実行するとPortalの商品リストが現行Priceへ入れ替わり、あわせて**Product名・説明・戻り先URLも `PRODUCTION_BASE_URL` から作り直される**（Checkout・請求書の表示文言が変わる）。(案A) Claudeが実行する（**推奨**。手順が1コマンドに畳まれており、実行後は doctor の該当2項目が緑になることで確認できる） / (案B) 運営者がStripeダッシュボードで手作業で直す。**本番のlive契約は現在0件**なので、最初の契約者が出る前に直せば実害は生じない。
 
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
