@@ -23,6 +23,18 @@ const nextConfig: NextConfig = {
     "/blog": ["./blog/published/**/*.md"],
     // doctor reports whether the articles made it into the deployment.
     "/api/cron/doctor": ["./blog/published/**/*.md"],
+    // sharp（画像の正規化）のLinuxネイティブバイナリ（T-M8-230）。Turbopackはsharpを
+    // 実行時externalにするが、出力トレースが@imgのoptional依存を拾わず、Vercel上で
+    // 「libvips-cpp.so が無い」と画像生成が全滅した（2026-08-23・staging初スモークで検出。
+    // ローカル/CIはmac・通常Linuxのnode_modulesで動くため原理的に見えない）。
+    "/api/jobs/run": [
+      "./node_modules/@img/sharp-linux-x64/**",
+      "./node_modules/@img/sharp-libvips-linux-x64/**",
+    ],
+    "/api/cron/canary": [
+      "./node_modules/@img/sharp-linux-x64/**",
+      "./node_modules/@img/sharp-libvips-linux-x64/**",
+    ],
   },
 };
 
