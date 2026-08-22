@@ -96,9 +96,20 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 4. 必須チェック2本が緑になったらマージ → production ビルドが始まる
 5. `npm run release:production -- --apply` で migration 適用とデプロイ後検証を行う
 
-> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**ツリーは同一だがSHAが分岐**しており、
+> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**SHAが分岐**しており、
 > PRにすると同じ内容の55件が差分として並ぶ。staging を検証したいときは `stg` へ別途 push する
 > （`supabase link` の向き先を張り替えてから・§5）。**本番へ入れるのは `main` から切った作業ブランチ**にする。
+>
+> **`stg` はforce-push禁止の保護つき**（D-16）。SHA分岐のままだと通常pushも拒否されるので、
+> **内容を変えずに旧履歴だけ祖先へ取り込む**（2026-08-22 に確立した手順）:
+> ```bash
+> git branch -f stg <反映したいコミット>
+> git checkout stg
+> git merge -s ours origin/stg -m "chore: stgの旧履歴を取り込む（D-28）"  # ツリーはこちら側のまま
+> git push origin stg   # fast-forwardになる
+> ```
+> `-s ours` が安全なのは、origin/stg の内容（2026-08-17時点）がPR #13でmainへ全て入っているため。
+> 逆方向（stgの内容を残す）には決して使わないこと。
 
 保護の必須チェックは `型・lint` と `release:check（DB・build・E2E）` の2本。
 **2026-07-30 時点では「private × GitHub Free では保護が使えない」と記録していたが、現在は有効になっている**
