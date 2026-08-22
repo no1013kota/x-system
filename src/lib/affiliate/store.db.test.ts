@@ -55,15 +55,25 @@ describe("affiliate store (db)", () => {
     // 2回呼んでも同じ行（コードは変わらない）。
     expect((await ensureAffiliateAccount(db, inviter)).code).toBe(account.code);
 
-    // 自己招待は拒否。
-    expect(await attributeSignup(db, { code: account.code, newUserId: inviter })).toBe(false);
-    // 未知のコードは何もしない。
-    expect(await attributeSignup(db, { code: "zzzzzzzz", newUserId: invited })).toBe(false);
-    // 正常な帰属。
-    expect(await attributeSignup(db, { code: account.code, newUserId: invited })).toBe(true);
+    // 自己招待は拒否。**「付かなかった」理由を区別して返す**（T-M8-242）。
+    expect(await attributeSignup(db, { code: account.code, newUserId: inviter })).toBe("self");
+    // 未知のコードは何もしない（取りこぼしの疑いとして呼び出し側が記録する）。
+    expect(await attributeSignup(db, { code: "zzzzzzzz", newUserId: invited })).toBe(
+      "unknown_code",
+    );
+    // 大文字混じりで届いても取りこぼさない（共有URLが大文字化されることがある）。
+    expect(
+      await attributeSignup(db, { code: account.code.toUpperCase(), newUserId: invited }),
+    ).toBe("attributed");
+    // 同じ人をもう一度紐づけようとしても増えない（冪等）。
+    expect(await attributeSignup(db, { code: account.code, newUserId: invited })).toBe(
+      "already_attributed",
+    );
     // 別の招待者コードで再登録されても変わらない（登録後変更不可）。
     const account2 = await ensureAffiliateAccount(db, inviter2);
-    expect(await attributeSignup(db, { code: account2.code, newUserId: invited })).toBe(false);
+    expect(await attributeSignup(db, { code: account2.code, newUserId: invited })).toBe(
+      "already_attributed",
+    );
     const owner = await db.query<{ affiliate_account_id: string }>(
       `select affiliate_account_id from affiliate_attributions where referred_user_id = $1`,
       [invited],

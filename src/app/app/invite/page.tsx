@@ -6,7 +6,7 @@ import { InviteLinkActions } from "./invite-link-card";
 
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
-import { INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
+import { INVITE_TIERS, MIN_PAYOUT_JPY, PAYOUT_FEE_JPY, formatRateBps } from "@/lib/affiliate/config";
 import { loadInviteSummary } from "@/lib/affiliate/summary-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -155,29 +155,49 @@ export default async function InvitePage() {
       {/* ③ 次回振込／銀行口座（invite_cp.md §2③・§12） */}
       <Card as="section" className="p-5 sm:p-6">
         <CardTitle as="h2">次回のお振込み</CardTitle>
-        {summary.nextPayout ? (
-          <div className="mt-3.5 max-w-md space-y-1.5 text-sm">
-            <div className="flex justify-between">
-              <span className="text-ink-2">振込対象額</span>
-              <span className="font-bold tabular-nums">¥{yen(summary.nextPayout.grossAmount)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-2">振込手数料</span>
-              <span className="tabular-nums">-¥{yen(summary.nextPayout.feeAmount)}</span>
-            </div>
-            <div className="flex justify-between border-t border-hairline pt-1.5">
-              <span className="font-bold">振込予定額</span>
-              <span className="text-[18px] font-extrabold tabular-nums text-brand">
-                ¥{yen(summary.nextPayout.netAmount)}
-              </span>
-            </div>
-            <p className="pt-1 text-caption text-ink-3">
-              {jstDate(summary.nextPayout.paymentDueAt)}までにお振込みします。
-            </p>
+        {/*
+          未払いは**期限の近い順に全部出す**（T-M8-240）。以前は最新に作られた1件だけを出しており、
+          2件以上たまると期限が古い方が画面から消えていた（口座未登録などで積み上がる）。
+        */}
+        {summary.pendingPayouts.length > 0 ? (
+          <div className="mt-3.5 max-w-md space-y-4">
+            {summary.pendingPayouts.map((payout, index) => (
+              <div className="space-y-1.5 text-sm" key={payout.id}>
+                {summary.pendingPayouts.length > 1 ? (
+                  <p className="text-caption font-bold text-ink-2">
+                    {index === 0 ? "次回" : `${index + 1}回目`}（{jstDate(payout.paymentDueAt)}まで）
+                  </p>
+                ) : null}
+                <div className="flex justify-between">
+                  <span className="text-ink-2">振込対象額</span>
+                  <span className="font-bold tabular-nums">¥{yen(payout.grossAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-2">振込手数料</span>
+                  <span className="tabular-nums">-¥{yen(payout.feeAmount)}</span>
+                </div>
+                <div className="flex justify-between border-t border-hairline pt-1.5">
+                  <span className="font-bold">振込予定額</span>
+                  <span className="text-[18px] font-extrabold tabular-nums text-brand">
+                    ¥{yen(payout.netAmount)}
+                  </span>
+                </div>
+                <p className="pt-1 text-caption text-ink-3">
+                  {jstDate(payout.paymentDueAt)}までにお振込みします。
+                </p>
+              </div>
+            ))}
+            {summary.pendingPayouts.length > 1 ? (
+              <p className="border-t border-hairline pt-2 text-caption text-ink-2">
+                未払いの振込が{summary.pendingPayouts.length}件あります（合計 ¥
+                {yen(summary.pendingPayouts.reduce((sum, p) => sum + p.netAmount, 0))}）。
+              </p>
+            ) : null}
           </div>
         ) : (
           <p className="mt-3 text-sm text-ink-2">
-            現在、振込予定はありません。受取可能報酬が¥{yen(5000)}以上になった月の末で締め、翌月末までにお振込みします（振込手数料¥{yen(980)}）。
+            現在、振込予定はありません。受取可能報酬が¥{yen(MIN_PAYOUT_JPY)}
+            以上になった月の末で締め、翌月末までにお振込みします（振込手数料¥{yen(PAYOUT_FEE_JPY)}）。
           </p>
         )}
         <div className="mt-5 border-t border-hairline pt-4">

@@ -157,10 +157,20 @@ export async function signUp(
       if (referralCode) {
         const { attributeSignup } = await import("@/lib/affiliate/store");
         const { pooledQueryable } = await import("@/lib/db/pool");
-        await attributeSignup(pooledQueryable(), {
+        const outcome = await attributeSignup(pooledQueryable(), {
           code: referralCode,
           newUserId: data.user.id,
         });
+        /*
+          **「招待コードが見つからない」は取りこぼしの疑いとして記録する**（T-M8-242）。
+          自己招待・紐づけ済みは正常なので記録しない。以前は結果を捨てていたため、
+          「そもそも招待なし」と「コードが届いたのに付かなかった」を区別できなかった（原則1）。
+        */
+        if (outcome === "unknown_code") {
+          recordUnexpectedError(new Error(`unknown affiliate code: ${referralCode}`), {
+            at: "signup-attribution-unknown-code",
+          });
+        }
         store.delete(ATTRIBUTION_COOKIE_NAME);
       }
     } catch (error) {
@@ -282,10 +292,20 @@ export async function verifySignUpCode(
       if (referralCode) {
         const { attributeSignup } = await import("@/lib/affiliate/store");
         const { pooledQueryable } = await import("@/lib/db/pool");
-        await attributeSignup(pooledQueryable(), {
+        const outcome = await attributeSignup(pooledQueryable(), {
           code: referralCode,
           newUserId: data.user.id,
         });
+        /*
+          **「招待コードが見つからない」は取りこぼしの疑いとして記録する**（T-M8-242）。
+          自己招待・紐づけ済みは正常なので記録しない。以前は結果を捨てていたため、
+          「そもそも招待なし」と「コードが届いたのに付かなかった」を区別できなかった（原則1）。
+        */
+        if (outcome === "unknown_code") {
+          recordUnexpectedError(new Error(`unknown affiliate code: ${referralCode}`), {
+            at: "signup-attribution-unknown-code",
+          });
+        }
         store.delete(ATTRIBUTION_COOKIE_NAME);
       }
     } catch (error) {

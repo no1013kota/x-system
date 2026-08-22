@@ -62,6 +62,18 @@ export async function ensureAffiliateAccount(
 }
 
 /**
+ * 紐づけの結果（T-M8-242）。**「付かなかった」を1つの false にまとめない**——
+ * 自己招待や紐づけ済みは正常だが、`unknown_code` は取りこぼしの疑いで、
+ * 呼び出し側が記録できるようにする（CLAUDE.md 原則1）。
+ */
+export type AttributionOutcome =
+  | "attributed"
+  | "self"
+  | "already_attributed"
+  /** そのコードの招待アカウントが無い（無効化済み・打ち間違い・保存時の取り違え）。 */
+  | "unknown_code";
+
+/**
  * 新規登録を招待者へ紐づける（invite_cp.md §4）。
  * Last Click（Cookieが最後のコードを持つ）・1ユーザー1招待者（unique）・登録後変更不可
  * （on conflict do nothing）・自己招待禁止。失敗しても登録は止めない（呼び出し側でbest-effort）。
@@ -69,21 +81,22 @@ export async function ensureAffiliateAccount(
 export async function attributeSignup(
   db: AffiliateDb,
   input: { code: string; newUserId: string },
-): Promise<boolean> {
+): Promise<AttributionOutcome> {
   const affiliate = await db.query<{ id: string; user_id: string }>(
-    `select id, user_id from affiliate_accounts where code = $1 and status = 'active'`,
+    // コードは小文字で発行する。大文字混じりで届いても取りこぼさない（T-M8-242）。
+    `select id, user_id from affiliate_accounts where code = lower($1) and status = 'active'`,
     [input.code],
   );
   const row = affiliate.rows[0];
-  if (!row) return false;
-  if (row.user_id === input.newUserId) return false; // 自己招待禁止
+  if (!row) return "unknown_code";
+  if (row.user_id === input.newUserId) return "self"; // 自己招待禁止
   const inserted = await db.query(
     `insert into affiliate_attributions (affiliate_account_id, referred_user_id)
      values ($1, $2)
      on conflict (referred_user_id) do nothing`,
     [row.id, input.newUserId],
   );
-  return (inserted.rowCount ?? 0) > 0;
+  return (inserted.rowCount ?? 0) > 0 ? "attributed" : "already_attributed";
 }
 
 /**

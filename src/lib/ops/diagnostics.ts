@@ -25,6 +25,7 @@ import {
   probeStripeAccount,
   type StripeAccountProbeDeps,
 } from "./stripe-account-status";
+import { judgeAffiliatePayouts } from "./affiliate-payout-status";
 import {
   judgeWebhookEvents,
   probeWebhookEvents,
@@ -806,6 +807,24 @@ export async function collectDiagnostics(
       }),
     );
   }
+
+  /*
+    **招待報酬の振込期限**（T-M8-241）。振込は運営者の手作業なので、締めが自動でも
+    「払うこと」自体が記憶頼みだった（原則3）。期限が近い/過ぎたら名指しする。
+  */
+  const payouts = await db.query<{ pending: string; net: string | null; due: string | null }>(
+    `select count(*)::text as pending,
+            coalesce(sum(net_amount), 0)::text as net,
+            min(payment_due_at)::text as due
+       from affiliate_payouts where status = 'created'`,
+  );
+  checks.push(
+    judgeAffiliatePayouts({
+      dueAt: payouts.rows[0]?.due ?? null,
+      netTotal: Number(payouts.rows[0]?.net ?? 0),
+      pending: Number(payouts.rows[0]?.pending ?? 0),
+    }),
+  );
 
   // ブログ記事がこのデプロイに同梱されているか（T-M8-184）。同梱漏れは本番だけ「準備中」になる。
   if (options.blog) checks.push(judgeBlog(options.blog));
