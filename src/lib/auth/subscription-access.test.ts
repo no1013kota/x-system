@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AppError } from "@/lib/observability/errors";
 
-import {
-  SUBSCRIPTION_ACCESS,
-  canBrowseApp,
-  requireExecutableSubscription,
-  subscriptionBannerFor,
-} from "./subscription-access";
+import { SUBSCRIPTION_ACCESS, canBrowseApp, isSubscriptionPeriodStale, requireExecutableSubscription, subscriptionBannerFor } from "./subscription-access";
 
 describe("subscription access matrix", () => {
   it.each([
@@ -114,5 +109,33 @@ describe("subscription banner", () => {
         trialEndsAt: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe("isSubscriptionPeriodStale（契約の反映が届いていない疑い・T-M8-235）", () => {
+  const now = new Date("2026-08-23T00:00:00Z");
+  const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000).toISOString();
+
+  it("trialing はトライアル期限＋猶予24時間を過ぎたら stale", () => {
+    expect(isSubscriptionPeriodStale("trialing", { trialEndsAt: hoursAgo(25) }, now)).toBe(true);
+    expect(isSubscriptionPeriodStale("trialing", { trialEndsAt: hoursAgo(23) }, now)).toBe(false);
+  });
+
+  it("active は current_period_end を見る（更新直後に締め出さないための猶予つき）", () => {
+    expect(isSubscriptionPeriodStale("active", { currentPeriodEnd: hoursAgo(25) }, now)).toBe(true);
+    expect(isSubscriptionPeriodStale("active", { currentPeriodEnd: hoursAgo(1) }, now)).toBe(false);
+  });
+
+  /** 分からないことを理由に締め出さない（止めるのは「期限切れだと分かっている」ときだけ）。 */
+  it("期限が無い・壊れている・別statusのときは止めない", () => {
+    expect(isSubscriptionPeriodStale("trialing", {}, now)).toBe(false);
+    expect(isSubscriptionPeriodStale("trialing", { trialEndsAt: null }, now)).toBe(false);
+    expect(isSubscriptionPeriodStale("active", { currentPeriodEnd: "not-a-date" }, now)).toBe(false);
+    // trialing は trial_ends_at だけを見る（期間末が過去でもトライアル中なら止めない）。
+    expect(
+      isSubscriptionPeriodStale("trialing", { currentPeriodEnd: hoursAgo(99) }, now),
+    ).toBe(false);
+    // 実行できない status（past_due 等）は別の経路で止まる。ここでは false。
+    expect(isSubscriptionPeriodStale("past_due", { currentPeriodEnd: hoursAgo(99) }, now)).toBe(false);
   });
 });

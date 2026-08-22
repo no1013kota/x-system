@@ -31,8 +31,13 @@ export async function gatherExecutionPrereqInputs(
       subscription_status: string;
       ai_purpose_config: { text?: string | null; image?: string | null } | null;
       active_x_account_id: string | null;
+      trial_ends_at: string | null;
+      current_period_end: string | null;
     }>(
-      `select plan, subscription_status, ai_purpose_config, active_x_account_id
+      // 期限（trial_ends_at / current_period_end）も読む。status が `trialing`/`active` のまま
+      // 期限切れなら「契約の反映が届いていない」として実行を止める（T-M8-235）。
+      `select plan, subscription_status, ai_purpose_config, active_x_account_id,
+              trial_ends_at::text as trial_ends_at, current_period_end::text as current_period_end
          from profiles where id = $1`,
       [userId],
     )
@@ -81,5 +86,8 @@ export async function gatherExecutionPrereqInputs(
     imageRequested: opts.imageRequested ?? false,
     imageAiKeyValid: !!ai.image && keyStatus[ai.image] === "valid",
     baseMdVersion,
+    // 契約期間の期限（T-M8-235）。status だけでは webhook 未達を見抜けない。
+    trialEndsAt: prof.trial_ends_at,
+    currentPeriodEnd: prof.current_period_end,
   };
 }

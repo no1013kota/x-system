@@ -152,8 +152,18 @@ export async function recordCommissionForInvoice(
   const att = attribution.rows[0];
   if (!att) return "skipped";
   if (att.affiliate_status !== "active") return "skipped";
-  if (att.commission_terminated_reason !== null) return "skipped"; // 解約後は再開しない
   const paidAtMs = input.paidAtSec * 1000;
+  /*
+    **解約の判定は「日付」で行う**（T-M8-236）。以前は `commission_terminated_reason` があるだけで
+    支払日を見ずに切っていたため、**解約より前の支払いが遅れて届くと報酬が恒久に落ちた**
+    （Stripeはイベントの順序を保証せず、失敗した配信を最大3日リトライする）。
+    解約時には `commission_ends_at` が解約時刻へ前倒しされているので、
+    「ends_at より後の支払いは対象外」という下の判定だけで「解約後は再開しない」も満たせる。
+    ただし**一度も報酬期間が始まっていない**まま解約された場合は、ここで始めない。
+  */
+  if (att.commission_terminated_reason !== null && att.commission_started_at === null) {
+    return "skipped";
+  }
 
   if (att.commission_started_at === null) {
     // 初回有料課金: 報酬期間を開始（6ヶ月）。
@@ -185,11 +195,12 @@ export async function recordCommissionForInvoice(
   const rateBps = rateBpsForPaidCount(paidCount);
 
   const inserted = await db.query(
+    // `original_amount` は返金前の対象売上。返金は毎回ここから計算し直す（T-M8-236）。
     `insert into affiliate_commissions
        (affiliate_account_id, referred_user_id, stripe_invoice_id,
-        eligible_amount, commission_rate_bps, commission_amount,
+        eligible_amount, original_amount, commission_rate_bps, commission_amount,
         status, available_at)
-     values ($1, $2, $3, $4, $5, $6, 'pending',
+     values ($1, $2, $3, $4, $4, $5, $6, 'pending',
              to_timestamp($7) + make_interval(days => $8))
      on conflict (stripe_invoice_id) do nothing`,
     [
@@ -272,10 +283,11 @@ export async function adjustCommissionForInvoiceRefund(
     id: string;
     status: string;
     eligible_amount: number;
+    original_amount: number;
     commission_rate_bps: number;
     payout_id: string | null;
   }>(
-    `select id, status, eligible_amount, commission_rate_bps, payout_id
+    `select id, status, eligible_amount, original_amount, commission_rate_bps, payout_id
        from affiliate_commissions
       where stripe_invoice_id = $1
       for update`,
@@ -290,16 +302,19 @@ export async function adjustCommissionForInvoiceRefund(
     }
     if (row.status === "reversed") continue;
     if (row.payout_id) payoutIds.add(row.payout_id);
-    const fullyRefunded =
-      refund.fullyRefunded || refund.amountRefunded >= row.eligible_amount;
-    if (fullyRefunded) {
+    /*
+      `refund.amountRefunded` は**その請求に対する累計返金額**（部分返金のたびに増える）。
+      減額済みの `eligible_amount` から引くと二重に差し引かれるので、**返金前の額から毎回引き直す**
+      （T-M8-236。同じイベントが再送されても結果が変わらない＝冪等）。
+    */
+    const remaining = Math.max(0, row.original_amount - refund.amountRefunded);
+    if (refund.fullyRefunded || remaining === 0) {
       await db.query(
         `update affiliate_commissions set status = 'reversed', payout_id = null where id = $1`,
         [row.id],
       );
       result.reversed += 1;
     } else {
-      const remaining = row.eligible_amount - refund.amountRefunded;
       await db.query(
         `update affiliate_commissions
             set eligible_amount = $2, commission_amount = $3

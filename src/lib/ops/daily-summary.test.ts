@@ -21,8 +21,6 @@ const base: DailySummaryData = {
   mostlyDropped: [],
   stuckJobs: 0,
   monthUsd: 18.35,
-  dbBytes: 26 * 1024 * 1024,
-  dbLimitBytes: 500 * 1024 * 1024,
 };
 
 describe("jstDateOf", () => {
@@ -87,13 +85,8 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("成功 3 件");
     expect(s.body).toContain("$18.35");
     expect(s.body).toContain("約2753円");
-    expect(s.body, "容量も毎日出す（止まってから気付かないため）").toContain("26 MB / 500 MB");
-  });
-
-  it("容量が上限に近づいたら気になる点として上げる", () => {
-    const s = buildDailySummary({ ...base, dbBytes: 450 * 1024 * 1024 });
-    expect(s.needsAttention).toBe(true);
-    expect(s.body).toContain("データベースの使用量が 450 MB / 500 MB（90%）");
+    // 容量と運営者側の支出は利用者向けサマリに出さない（T-M8-234）。
+    expect(s.body, "DBの使用量は運営者の情報").not.toContain("データベースの使用量");
   });
 
   it("3日連続で取れていないテーマを強調する（T-M7-24の再発検知）", () => {

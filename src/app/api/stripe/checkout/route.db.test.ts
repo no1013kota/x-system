@@ -35,9 +35,13 @@ vi.mock("@/lib/auth/session", () => ({
 const stripeCalls = {
   customerCreate: [] as { params: Record<string, unknown>; options?: Record<string, unknown> }[],
   sessionCreate: [] as Record<string, unknown>[],
+  subscriptionList: [] as Record<string, unknown>[],
 };
 const nextCustomerId = { value: "" };
 const CHECKOUT_URL = "https://checkout.stripe.test/c/pay/cs_test_local";
+/** 既存契約の差し替え（T-M8-237）。`vi.mock` は巻き上げられるので参照可能な箱に入れる。 */
+const existingSubscriptions = { value: [] as { id: string; status: string }[] };
+
 vi.mock("@/lib/stripe/client", () => ({
   STRIPE_API_VERSION: "test-mocked",
   stripe: {
@@ -53,6 +57,13 @@ vi.mock("@/lib/stripe/client", () => ({
           stripeCalls.sessionCreate.push(params);
           return { id: "cs_test_local", url: CHECKOUT_URL };
         },
+      },
+    },
+    // 二重契約ガード（T-M8-237）。既定は「契約なし」で、必要なテストが差し替える。
+    subscriptions: {
+      list: async (params: Record<string, unknown>) => {
+        stripeCalls.subscriptionList.push(params);
+        return { data: existingSubscriptions.value };
       },
     },
   },
@@ -114,6 +125,8 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
     if (!available) ctx.skip();
     stripeCalls.customerCreate = [];
     stripeCalls.sessionCreate = [];
+    stripeCalls.subscriptionList = [];
+    existingSubscriptions.value = [];
     nextCustomerId.value = `cus_test_${randomUUID().replaceAll("-", "")}`;
     currentUser.value = null;
   });
@@ -302,5 +315,26 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
     expect(await json(res)).toMatchObject({ ok: false, error: { code: "internal_error" } });
     expect(stripeCalls.customerCreate).toHaveLength(0);
     expect(stripeCalls.sessionCreate).toHaveLength(0);
+  });
+
+  /**
+   * 二重契約＝二重請求を作らない（T-M8-237）。`/plans` は `past_due` の利用者を送り返さないので、
+   * サーバー側で止まることを実DB＋route実装で確かめる。
+   */
+  it("既に契約がある利用者には Checkout を作らない（past_due でも）", async () => {
+    const id = await makeUser();
+    await sql(`update profiles set stripe_customer_id = $2 where id = $1`, [
+      id,
+      `cus_test_${randomUUID().replaceAll("-", "")}`,
+    ]);
+    existingSubscriptions.value = [{ id: "sub_live", status: "past_due" }];
+
+    const res = await POST(request({ plan: "premium" }));
+    expect(res.status).toBe(402);
+    expect(await json(res)).toMatchObject({
+      ok: false,
+      error: { code: "subscription_required" },
+    });
+    expect(stripeCalls.sessionCreate, "2本目のCheckoutを作ってはいけない").toHaveLength(0);
   });
 });

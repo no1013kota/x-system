@@ -5,7 +5,7 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 import type { Queryable } from "../x/token-refresh";
 
 import { approxYen } from "./check";
-import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
+
 
 /**
  * 日次サマリ（T-M7-29）。`CLAUDE.md`「前提：運営者は個人」原則1に対応する。
@@ -80,10 +80,8 @@ export interface DailySummaryData {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
   stuckJobs: number;
+  /** **この利用者の**当月の外部API費用（T-M8-234。運営者側の支出は含めない）。 */
   monthUsd: number;
-  /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
-  dbBytes: number;
-  dbLimitBytes: number;
 }
 
 export interface DailySummary {
@@ -148,10 +146,10 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
   // 円換算は doctor と同じ関数を使う（別々に持つと同じ月の費用を違う円額で伝える・R30）。
   lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${approxYen(data.monthUsd)}円）`);
 
-  // 容量は「止まってから気付く」種類なので、毎日必ず数字を出す（2026-08-01に組織ごと停止した）。
-  const dbCheck = judgeDatabaseSize({ bytes: data.dbBytes, limitBytes: data.dbLimitBytes });
-  lines.push(`データベースの使用量: ${dbCheck.detail}`);
-  if (dbCheck.level !== "ok") attention.push(`データベースの使用量が ${dbCheck.detail}`);
+  /*
+    **DB使用量の行はここに置かない**（T-M8-234）。このサマリは利用者へ配る通知で、
+    容量は運営者の情報。運営者は `npm run doctor` と毎朝の運営者アラート（operator-alert）で見る。
+  */
 
   const needsAttention = attention.length > 0;
   const title = needsAttention
@@ -225,21 +223,21 @@ export async function collectDailySummary(
     [userId],
   );
 
+  /*
+    **この利用者の分だけ**を集計する（T-M8-234）。以前は `or user_id is null` を含めていたため、
+    運営者側の支出（ニュース取得など、利用者に紐づかない実行）まで足して**全利用者へ同じ額を配っていた**。
+    実測では当月の `user_id is null` が5,245件・$7.19に対し利用者分は20件・$0.39で、
+    「今月かかった費用」はほぼ運営者の支出だった。DB使用量も同様に運営者の情報なので、
+    利用者向けサマリからは外す（運営者は `npm run doctor` と毎朝の運営者アラートで見る）。
+  */
   const cost = await db.query<{ usd: string | null }>(
     `select sum(estimated_cost_usd)::text as usd from external_api_usage_events
-      where occurred_at >= date_trunc('month', now())
-        and (user_id = $1 or user_id is null)`,
+      where occurred_at >= date_trunc('month', now()) and user_id = $1`,
     [userId],
-  );
-
-  const dbSize = await db.query<{ bytes: string }>(
-    `select pg_database_size(current_database())::text as bytes`,
   );
 
   return {
     date,
-    dbBytes: Number(dbSize.rows[0]?.bytes ?? 0),
-    dbLimitBytes: FREE_DB_SIZE_LIMIT_BYTES,
     jobs: {
       succeeded: Number(jobs.rows[0]?.succeeded ?? 0),
       failed: Number(jobs.rows[0]?.failed ?? 0),

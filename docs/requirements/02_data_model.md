@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.55 |
+| バージョン | v1.56 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -647,7 +647,8 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 | `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade | |
 | `referred_user_id` | `uuid` | not null | |
 | `stripe_invoice_id` | `text` | not null unique | リトライwebhookの冪等キー |
-| `eligible_amount` | `integer` | not null、>=0 | 実際に支払われた金額（JPY） |
+| `eligible_amount` | `integer` | not null、>=0 | 報酬の対象額（JPY）。返金があれば `original_amount - 累計返金額` へ下がる |
+| `original_amount` | `integer` | not null、>=0 | **返金前の対象売上**（`invoice.amount_paid`）。Stripeの`charge.refunded`が持つ`amount_refunded`は**その請求の累計**なので、返金は毎回この額から引き直す（減額済みの額から引くと二重に差し引かれる・T-M8-236） |
 | `commission_rate_bps` | `integer` | not null、0〜10000 | 作成時点の率のsnapshot |
 | `commission_amount` | `integer` | not null、>=0 | 報酬額（切り捨て） |
 | `status` | `text` | not null default `pending`、`pending`\|`payable`\|`paid`\|`reversed`\|`held` | 確認期間（30日）経過で`payable`（tickが昇格）。振込完了で`paid` |
@@ -973,3 +974,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
 | v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
 | v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
+| v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |

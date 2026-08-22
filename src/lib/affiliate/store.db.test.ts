@@ -257,6 +257,102 @@ describe("affiliate store (db)", () => {
     });
   });
 
+  /**
+   * **累計返金額で2回引かない**（T-M8-236）。Stripe の `charge.refunded` が持つ `amount_refunded` は
+   * その請求に対する**累計**なので、減額済みの額から引くと二重に差し引かれる。
+   * 修正前はここが 8,800→3,800 ではなく 8,800→3,800→(3,800-6,000<0)→reversed になっていた。
+   */
+  it("部分返金が2回でも累計で正しく減る（同じイベントの再送でも変わらない）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const db = database;
+    const inviter = await makeUser(db);
+    const invited = await makeUser(db);
+    const account = await ensureAffiliateAccount(db, inviter);
+    await attributeSignup(db, { code: account.code, newUserId: invited });
+    const invoice = `in_${randomUUID()}`;
+    await recordCommissionForInvoice(db, {
+      referredUserId: invited,
+      stripeInvoiceId: invoice,
+      amountPaid: 14800,
+      paidAtSec: Math.floor(Date.now() / 1000),
+    });
+    const read = async () =>
+      (
+        await db.query<{ eligible_amount: number; commission_amount: number; status: string }>(
+          `select eligible_amount, commission_amount, status
+             from affiliate_commissions where stripe_invoice_id = $1`,
+          [invoice],
+        )
+      ).rows[0];
+
+    // 1回目 ¥5,000（累計5,000）→ 残9,800 × 30% = 2,940
+    await adjustCommissionForInvoiceRefund(db, invoice, { amountRefunded: 5000, fullyRefunded: false });
+    expect(await read()).toMatchObject({ eligible_amount: 9800, commission_amount: 2940 });
+
+    // 2回目 ¥1,000（累計6,000）→ 残8,800 × 30% = 2,640。8,800-6,000 ではない。
+    await adjustCommissionForInvoiceRefund(db, invoice, { amountRefunded: 6000, fullyRefunded: false });
+    expect(await read()).toMatchObject({
+      eligible_amount: 8800,
+      commission_amount: 2640,
+      status: "pending",
+    });
+
+    // 同じイベントの再送で値が動かない（冪等）。
+    await adjustCommissionForInvoiceRefund(db, invoice, { amountRefunded: 6000, fullyRefunded: false });
+    expect(await read()).toMatchObject({ eligible_amount: 8800, commission_amount: 2640 });
+
+    // 累計が元の額に達したら取消。
+    await adjustCommissionForInvoiceRefund(db, invoice, { amountRefunded: 14800, fullyRefunded: false });
+    expect((await read()).status).toBe("reversed");
+  });
+
+  /**
+   * **解約イベントが先に届いても、解約日より前の支払いは報酬になる**（T-M8-236）。
+   * Stripeはイベントの配送順を保証せず、失敗した配信を最大3日リトライする。修正前は
+   * `commission_terminated_reason` があるだけで支払日を見ずに捨てていた（正本 invite_cp.md §5 に反する）。
+   */
+  it("解約の後に届いた「解約前の支払い」は報酬になり、解約後の支払いは対象外のまま", async (ctx) => {
+    if (!database) return ctx.skip();
+    const db = database;
+    const inviter = await makeUser(db);
+    const invited = await makeUser(db);
+    const account = await ensureAffiliateAccount(db, inviter);
+    await attributeSignup(db, { code: account.code, newUserId: invited });
+    const nowSec = Math.floor(Date.now() / 1000);
+    const day = 86_400;
+
+    // 初回課金（30日前）で報酬期間が始まる。
+    await recordCommissionForInvoice(db, {
+      referredUserId: invited,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      amountPaid: 3980,
+      paidAtSec: nowSec - 30 * day,
+    });
+    // 解約（commission_ends_at が「いま」へ前倒しされる）。
+    await terminateAttributionForReferredUser(db, invited, new Date().toISOString());
+
+    // 遅れて届いた「解約より前（10日前）」の支払い → 報酬になる。
+    const late = `in_${randomUUID()}`;
+    expect(
+      await recordCommissionForInvoice(db, {
+        referredUserId: invited,
+        stripeInvoiceId: late,
+        amountPaid: 3980,
+        paidAtSec: nowSec - 10 * day,
+      }),
+    ).toBe("created");
+
+    // 解約より後の支払いは従来どおり対象外（再契約で勝手に再開しない）。
+    expect(
+      await recordCommissionForInvoice(db, {
+        referredUserId: invited,
+        stripeInvoiceId: `in_${randomUUID()}`,
+        amountPaid: 3980,
+        paidAtSec: nowSec + day,
+      }),
+    ).toBe("skipped");
+  });
+
   it("解約の期間終了は初回課金前には適用しない（Trial中解約→後日課金で報酬が始まる）", async (ctx) => {
     if (!database) return ctx.skip();
     const db = database;
@@ -309,8 +405,9 @@ describe("affiliate store (db)", () => {
       await db.query(
         `insert into affiliate_commissions
            (affiliate_account_id, referred_user_id, stripe_invoice_id,
-            eligible_amount, commission_rate_bps, commission_amount, status, available_at)
-         values ($1, $2, $3, $4, 2000, $4, 'payable', now() - interval '1 day')`,
+            eligible_amount, original_amount, commission_rate_bps, commission_amount,
+            status, available_at)
+         values ($1, $2, $3, $4, $4, 2000, $4, 'payable', now() - interval '1 day')`,
         [accountId, invited, `in_${randomUUID()}`, amount],
       );
     }

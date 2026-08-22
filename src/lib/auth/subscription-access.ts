@@ -62,6 +62,51 @@ export function subscriptionAccessFor(
   return SUBSCRIPTION_ACCESS[status as SubscriptionStatus] ?? null;
 }
 
+/**
+ * 「反映が届いていない疑い」を見る猶予（T-M8-235）。
+ *
+ * 契約の期限が切れても、更新の webhook が届くまでにはわずかな時間差がある。ここを0にすると
+ * **支払っている利用者が更新の瞬間に締め出される**——それは反対向きの、もっと重い不具合になる。
+ * 逆に守りたいのは「webhookが数日届かないあいだ、解約済みの人が使い続けられる」ケースなので、
+ * 1日あれば足りる（更新の失敗は `past_due` になり、この判定を待たずに止まる）。
+ */
+export const SUBSCRIPTION_STALE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export interface SubscriptionPeriod {
+  /** `profiles.trial_ends_at`（trialing のときの期限）。 */
+  trialEndsAt?: string | null;
+  /** `profiles.current_period_end`（active のときの期限）。 */
+  currentPeriodEnd?: string | null;
+}
+
+/**
+ * **DBの状態が生きているのに、支払い済み期間が終わっている**状態か（T-M8-235）。
+ *
+ * `profiles` を更新する経路は Stripe の webhook だけなので、届かなくなると解約・期間満了が
+ * 反映されず `trialing`/`active` のまま残る。実データでも、Stripe側は `canceled` なのに
+ * DBは `trialing` のままで使い続けられるアカウントがあった。**日付は既に持っているのに
+ * 判定に使っていなかった**ので、期限＋猶予を過ぎていたら実行を止める。
+ *
+ * 期限が入っていない（null・空・解釈できない）ときは **false**（＝止めない）。
+ * 分からないことを理由に締め出さない——止めるのは「期限切れだと分かっている」ときだけ。
+ */
+export function isSubscriptionPeriodStale(
+  status: string,
+  period: SubscriptionPeriod,
+  now: Date = new Date(),
+): boolean {
+  const raw =
+    status === "trialing"
+      ? period.trialEndsAt
+      : status === "active"
+        ? period.currentPeriodEnd
+        : null;
+  if (!raw) return false;
+  const endsAt = Date.parse(raw);
+  if (Number.isNaN(endsAt)) return false;
+  return now.getTime() > endsAt + SUBSCRIPTION_STALE_GRACE_MS;
+}
+
 /** True when the status grants access to the app body (viewScope === "app"). */
 export function canBrowseApp(status: string): boolean {
   return subscriptionAccessFor(status)?.viewScope === "app";

@@ -1,4 +1,4 @@
-import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
+import { isSubscriptionPeriodStale, subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { AppError } from "@/lib/observability/errors";
 import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 
@@ -71,6 +71,24 @@ export interface ExecutionPrereqInput {
   imageAiKeyValid: boolean;
   /** 選択中Xアカウントの base_md_version（>=1でアカウント設定充足）。 */
   baseMdVersion: number;
+  /**
+   * 契約期間の期限（T-M8-235）。`trialing`/`active` のまま期限＋猶予を過ぎていたら
+   * **契約の反映が届いていない**とみなして実行を止める。渡さなければ従来どおり status だけで判定する。
+   */
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+}
+
+/**
+ * 契約が実行を許すか（T-M8-235）。status に加えて**期限切れでないこと**まで見る。
+ * webhook が届かないあいだ status が `trialing`/`active` のまま残る事故を、日付側で止める。
+ */
+function subscriptionAllowsExecution(input: ExecutionPrereqInput): boolean {
+  if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) return false;
+  return !isSubscriptionPeriodStale(input.subscriptionStatus, {
+    currentPeriodEnd: input.currentPeriodEnd,
+    trialEndsAt: input.trialEndsAt,
+  });
 }
 
 export interface ExecutionPrereqError {
@@ -89,7 +107,7 @@ export function checkExecutionPrerequisites(
   const operatorManaged = isOperatorManagedPlan(input.plan);
   const missing: PrereqItem[] = [];
 
-  if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) {
+  if (!subscriptionAllowsExecution(input)) {
     missing.push("subscription");
   }
   // BYOKのみ: X App資格情報が登録・形式検証済み（valid/unchecked）であること。
@@ -123,7 +141,7 @@ export function checkPostingPrerequisites(
 ): ExecutionPrereqError | null {
   const operatorManaged = isOperatorManagedPlan(input.plan);
   const missing: PrereqItem[] = [];
-  if (!subscriptionAccessFor(input.subscriptionStatus)?.canExecute) {
+  if (!subscriptionAllowsExecution(input)) {
     missing.push("subscription");
   }
   if (!operatorManaged && input.xApiKeyStatus !== "valid" && input.xApiKeyStatus !== "unchecked") {

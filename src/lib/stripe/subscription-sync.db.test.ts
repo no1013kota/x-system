@@ -483,10 +483,13 @@ describe("Stripe subscription synchronization transaction", () => {
       `select status from affiliate_commissions where stripe_invoice_id = $1`,
       [staleInvoice],
     );
-    // 解約でattributionが終了済みのため報酬は作られない——ここで見るのは
-    // 「staleで例外にならず、イベントが処理済みになる」こと。報酬そのものの
-    // stale独立は次のケース（解約前のinvoice）で見る。
-    expect(staleCommission.rowCount).toBe(0);
+    /*
+      **解約より前の支払いなので報酬は作られる**（T-M8-236で修正）。
+      以前は `commission_terminated_reason` があるだけで支払日を見ずに捨てていたため、
+      配送順の入れ替わり（解約が先に届く）で解約前の支払いが恒久に落ちていた。
+      ここで見たいのは「staleで例外にならず、イベントが処理済みになる」こと。
+    */
+    expect(staleCommission.rowCount).toBe(1);
   });
 
   it("staleなinvoice.paidでも（解約前なら）報酬が作られ、profilesの投影は動かない", async (context) => {

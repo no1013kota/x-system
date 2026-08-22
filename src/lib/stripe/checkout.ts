@@ -39,6 +39,14 @@ export interface CheckoutStripeGateway {
       }>;
     };
   };
+  /** 既存契約の確認（T-M8-237）。二重契約＝二重請求を作らないため Checkout の前に見る。 */
+  subscriptions: {
+    list(params: {
+      customer: string;
+      status: "all";
+      limit: number;
+    }): Promise<{ data: { id: string; status: string }[] }>;
+  };
 }
 
 export interface CheckoutRouteDependencies {
@@ -126,6 +134,19 @@ function sessionParams(input: {
   };
 }
 
+/**
+ * 「もう契約がある」とみなす status（T-M8-237）。`canceled`・`incomplete_expired` は
+ * 契約し直せる状態なので含めない。`incomplete` は支払い未完了のまま残っている Checkout の
+ * 途中なので、作り直せるよう含めない。
+ */
+const LIVE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+  "paused",
+]);
+
 /** Implements the authenticated, same-origin Checkout API with injectable I/O. */
 export async function handleCheckoutRequest(
   request: Request,
@@ -165,6 +186,35 @@ export async function handleCheckoutRequest(
     const customerId =
       profile.stripe_customer_id ??
       (await createCustomer(deps, user as CheckoutUser & { email: string }));
+
+    /*
+      **既に契約があるなら Checkout を作らない**（T-M8-237）。Stripeは同じCustomerに複数の
+      subscription を許すので、押した回数だけ契約＝請求ができてしまう。画面側は
+      `/plans` からの送り返しで防いでいたが、その条件は `trialing`/`active` だけで、
+      **`past_due`・`unpaid`・`paused` の利用者は `/plans` に留まりCTAが押せる**。
+      その状態で押すと `trial_used_at` は既にあるのでトライアルも付かず、満額の2本目が走る。
+      プラン変更・支払い方法の更新は Portal が担うので、ここでは作らずそちらへ誘導する。
+    */
+    if (profile.stripe_customer_id) {
+      const existing = await deps.stripe.subscriptions.list({
+        customer: customerId,
+        limit: 10,
+        status: "all",
+      });
+      const live = existing.data.find((sub) => LIVE_SUBSCRIPTION_STATUSES.has(sub.status));
+      if (live) {
+        return apiError(
+          new AppError("subscription_required", {
+            details: {
+              missing: ["subscription"],
+              reason: "already_subscribed",
+              settingsPath: "/app/settings?tab=billing",
+            },
+          }),
+        );
+      }
+    }
+
     const session = await deps.stripe.checkout.sessions.create(
       sessionParams({
         appBaseUrl: deps.appBaseUrl,

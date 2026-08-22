@@ -45,6 +45,10 @@ function dependencies(
           })),
         },
       },
+      // 既定は「契約なし」。二重契約ガード（T-M8-237）の検査だけ overrides で差し替える。
+      subscriptions: {
+        list: vi.fn(async () => ({ data: [] as { id: string; status: string }[] })),
+      },
     },
     ...overrides,
   };
@@ -198,5 +202,64 @@ describe("POST /api/stripe/checkout core", () => {
     const response = await handleCheckoutRequest(request({ plan: "standard" }), deps);
     expect(response.status).toBe(500);
     expect(deps.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("既に契約がある利用者に2本目を作らない（T-M8-237）", () => {
+  /** `/plans` に留まる past_due などから押されても、Checkout を作らず設定＞課金へ誘導する。 */
+  it.each(["active", "trialing", "past_due", "unpaid", "paused"])(
+    "%s の契約があれば Checkout を作らず subscription_required を返す",
+    async (status) => {
+      const deps = dependencies({
+        stripe: {
+          customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+          checkout: {
+            sessions: { create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test" })) },
+          },
+          subscriptions: {
+            list: vi.fn(async () => ({ data: [{ id: "sub_1", status }] })),
+          },
+        },
+      });
+      const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+      expect(res.status).toBe(402);
+      expect(await res.json()).toMatchObject({
+        error: { code: "subscription_required" },
+      });
+      expect(deps.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("canceled / incomplete_expired だけなら契約し直せる", async () => {
+    const deps = dependencies({
+      stripe: {
+        customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+        checkout: {
+          sessions: {
+            create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test/c" })),
+          },
+        },
+        subscriptions: {
+          list: vi.fn(async () => ({
+            data: [
+              { id: "sub_old", status: "canceled" },
+              { id: "sub_dead", status: "incomplete_expired" },
+            ],
+          })),
+        },
+      },
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    expect(deps.stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
+  it("Customer未作成（初回）なら既存契約を問い合わせない", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: null, trial_used_at: null })),
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
   });
 });
