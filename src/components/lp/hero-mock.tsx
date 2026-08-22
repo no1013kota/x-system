@@ -26,16 +26,15 @@ function PromptStrip() {
     <div className={cn(cardClassName, "px-3.5 py-3")}>
       <div className="flex items-center gap-1.5">
         <Chip label="プロンプト作成" />
-        <span className="ml-auto text-[11px] text-ink-3">アカウント.md v3</span>
+        <span className="ml-auto text-[11px] text-ink-3">アカウント.md</span>
       </div>
       <p className="mt-2 truncate text-[11px] leading-[1.7] text-ink-2">
         ## 文体：断定しすぎず、実体験ベースで語る…
       </p>
       <div className="mt-2 flex items-center gap-2">
         <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
-          保存して履歴に残す
+          保存
         </span>
-        <span className="text-[11px] text-ink-3">投稿の型・画像プロンプトも編集可</span>
       </div>
     </div>
   );
@@ -53,9 +52,9 @@ function WorkspaceStrip() {
   ];
   return (
     <div className={cn(cardClassName, "overflow-hidden")}>
+      {/* タブは「フォロワー推移／分析・改善」（運営者の指示 2026-08-22・旧「下書き・予約」を置換）。 */}
       <div className="flex items-end gap-3 border-b border-hairline px-3.5 pt-2.5">
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">下書き</span>
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">予約</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">フォロワー推移</span>
         <span className="border-b-2 border-brand pb-1.5 text-[11px] font-medium text-brand">
           分析・改善
         </span>
@@ -119,9 +118,7 @@ export function HeroMock() {
           <div className={cn(cardClassName, "px-3.5 py-3")}>
             <div className="flex flex-wrap items-center gap-1.5">
               <Chip label="ニュース解説" />
-              <span className="inline-flex h-5 items-center rounded-chip border border-hairline px-2 text-[11px] text-ink-2">
-                重要度：高
-              </span>
+              {/* 重要度チップは削除（運営者の指示 2026-08-22・T-M8-201）。 */}
               <span className="ml-auto text-[11px] text-ink-3">予約 9:30</span>
             </div>
             <p className="mt-2 text-caption leading-[1.7] text-ink">

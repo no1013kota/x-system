@@ -39,9 +39,7 @@ export function CampaignCallout({
           （開始にはカード登録が必要です。期間中に解約すれば料金はかかりません）。
         </p>
       ) : null}
-      {RELEASE_CAMPAIGN.active ? (
-        <p className="mt-1 text-caption text-ink-3">{RELEASE_CAMPAIGN.note}</p>
-      ) : null}
+      {/* 「リリース記念として期間限定で…お知らせします」の補足行は削除（運営者の指示 2026-08-22）。 */}
     </div>
   );
 }

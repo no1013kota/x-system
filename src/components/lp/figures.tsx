@@ -35,7 +35,6 @@ export function NewsFeedFigure() {
     <div aria-hidden="true" className="overflow-hidden rounded-card border border-hairline bg-page">
       <div className="flex items-center gap-2 border-b border-hairline bg-surface px-3 py-2">
         <span className="text-[11px] font-bold text-ink">今日のニュース</span>
-        <span className="ml-auto text-[11px] text-ink-3">9:00〜21:00 ／ 3時間おき</span>
       </div>
       {items.map((item, index) => (
         <div
@@ -113,7 +112,10 @@ export function ScheduleFigure() {
   );
 }
 
-/** 投稿分析: 棒グラフ6本＋記録タイミング＋「毎朝レポート」チップ（自動生成・T-M8-94）。 */
+/**
+ * 投稿分析: フォロワー数グラフ＋プロンプト改善案のイメージ（T-M8-94/201・運営者の指示 2026-08-22）。
+ * 「何が伸びたかを測る」と「改善案が届く」の両方を1枚で見せる。
+ */
 export function AnalyticsFigure() {
   const bars: { height: string; brand: boolean }[] = [
     { height: "h-3.5", brand: false },
@@ -124,26 +126,39 @@ export function AnalyticsFigure() {
     { height: "h-[30px]", brand: false },
   ];
   return (
-    <div
-      aria-hidden="true"
-      className="flex flex-wrap items-end justify-between gap-3.5 rounded-card border border-hairline bg-page p-3.5"
-    >
-      <div className="flex h-14 items-end gap-2">
-        {bars.map((bar, i) => (
-          <span
-            className={cn(
-              "w-4 rounded-t-[3px]",
-              bar.height,
-              bar.brand ? "bg-brand" : "bg-brand-subtle",
-            )}
-            key={i}
-          />
-        ))}
+    <div aria-hidden="true" className="grid gap-2.5 rounded-card border border-hairline bg-page p-3.5">
+      <div className="flex flex-wrap items-end justify-between gap-3.5">
+        <div>
+          <p className="mb-1.5 text-[11px] font-medium text-ink-2">フォロワー数の推移</p>
+          <div className="flex h-14 items-end gap-2">
+            {bars.map((bar, i) => (
+              <span
+                className={cn(
+                  "w-4 rounded-t-[3px]",
+                  bar.height,
+                  bar.brand ? "bg-brand" : "bg-brand-subtle",
+                )}
+                key={i}
+              />
+            ))}
+          </div>
+        </div>
+        <span className="inline-flex h-7 items-center rounded-card border border-hairline bg-surface px-3 text-caption font-medium text-brand">
+          毎朝レポート
+        </span>
       </div>
-      <div className="text-[11px] text-ink-3">記録タイミング：投稿後 1日・7日・30日</div>
-      <span className="inline-flex h-7 items-center rounded-card border border-hairline bg-surface px-3 text-caption font-medium text-brand">
-        毎朝レポート
-      </span>
+      {/* プロンプト改善案の提案カード（表示専用・反映は利用者が選ぶ、の実画面イメージ）。 */}
+      <div className="rounded-card border border-hairline bg-surface px-2.5 py-2">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+            プロンプト改善案
+          </span>
+          <span className="text-[11px] text-ink-3">反映は自分で選択</span>
+        </div>
+        <p className="mt-1.5 text-[11px] leading-[1.7] text-ink">
+          冒頭に数字を置いた投稿の表示回数が1.8倍。「結論→数字→手順」の順で書く指示を追加しては？
+        </p>
+      </div>
     </div>
   );
 }
@@ -166,9 +181,8 @@ export function PromptEditorFigure() {
         <span className="border-b-2 border-brand pb-1.5 text-[11px] font-medium text-brand">
           アカウント.md
         </span>
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">投稿の型</span>
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">画像生成</span>
-        <span className="ml-auto pb-1.5 text-[11px] text-ink-3">v3</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">投稿プロンプト</span>
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">画像生成プロンプト</span>
       </div>
       <div className="grid gap-1 px-3 py-2.5">
         {lines.map((line) => (
@@ -185,9 +199,8 @@ export function PromptEditorFigure() {
       </div>
       <div className="flex items-center gap-2 border-t border-hairline bg-surface px-3 py-2">
         <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
-          保存して履歴に残す
+          保存
         </span>
-        <span className="text-[11px] text-ink-3">いつでも前の版に戻せます</span>
       </div>
     </div>
   );
@@ -204,24 +217,32 @@ export function PostComposeFigure() {
         <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
           型：ニュース解説
         </span>
-        <span className="inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
-          スレッド 3投稿
-        </span>
-        <span className="ml-auto text-[11px] text-ink-3">画像つき</span>
+        {/* 「スレッド 3投稿」チップは削除し、スレッドのつながり自体を見せる（運営者の指示 2026-08-22）。 */}
       </div>
-      <div className="rounded-card border border-hairline bg-surface px-2.5 py-2">
-        <p className="text-[11px] leading-[1.7] text-ink">
-          生成AIの業務利用がまた一歩前へ。個人でも今日から試せる活用ポイントを3つに絞って解説します🧵
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="flex h-9 w-14 flex-none items-center justify-center rounded-card border border-hairline bg-brand-subtle text-[11px] font-medium text-brand">
-          画像
-        </span>
-        <span className="text-[11px] text-ink-3">本文に合わせた画像も同時に生成</span>
-        <span className="ml-auto inline-flex h-[18px] items-center rounded-chip border border-hairline bg-surface px-[7px] text-[11px] text-ink-2">
-          編集・再生成OK
-        </span>
+      {/* メイン＋スレッド2つ目を縦の接続線でつなぐ（Xのスレッド表示の雰囲気）。 */}
+      <div className="relative grid gap-2">
+        <span className="absolute top-2 bottom-2 left-[13px] w-px bg-hairline" />
+        <div className="relative ml-7 rounded-card border border-hairline bg-surface px-2.5 py-2">
+          <span className="absolute top-2.5 -left-[19px] size-2.5 rounded-pill border-2 border-brand bg-surface" />
+          <p className="text-[11px] leading-[1.7] text-ink">
+            生成AIの業務利用がまた一歩前へ。個人でも今日から試せる活用ポイントを3つに絞って解説します🧵
+          </p>
+        </div>
+        <div className="relative ml-7 rounded-card border border-hairline bg-surface px-2.5 py-2">
+          <span className="absolute top-2.5 -left-[19px] size-2.5 rounded-pill border-2 border-brand bg-surface" />
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 text-[11px] leading-[1.7] text-ink">
+              ① まずは議事録の要約から。会議のメモを貼るだけで、決定事項と宿題が整理されます。
+            </p>
+            {/* 画像は簡易表現で実物風に（ボタンではなく画像そのもの・運営者の指示 2026-08-22）。
+                グラデ空＋太陽＋山の風景で「生成画像のサムネイル」と分かる形にする。 */}
+            <span className="relative mt-0.5 h-12 w-16 flex-none overflow-hidden rounded-[6px] border border-hairline [background-image:var(--brand-gradient)] opacity-90">
+              <span className="absolute top-1.5 right-2 size-2.5 rounded-pill bg-white/90" />
+              <span className="absolute -bottom-1 -left-2 size-9 rotate-45 rounded-[4px] bg-white/70" />
+              <span className="absolute -right-3 -bottom-2 size-9 rotate-45 rounded-[4px] bg-white/50" />
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

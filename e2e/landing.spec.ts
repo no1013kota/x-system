@@ -9,7 +9,7 @@ import { expect, horizontalOverflow, test } from "./fixtures/test";
 test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("X運用の毎日を");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SNS自動化プラットフォーム");
 
   // 会員登録・ログインへの導線（ヘッダー）
   const header = page.getByRole("banner");

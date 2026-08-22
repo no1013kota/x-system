@@ -201,9 +201,11 @@ export default function Home() {
               <h1
                 className={`text-[length:clamp(31px,calc(17px_+_3.4vw),44px)] leading-[1.34] ${HEADING}`}
               >
-                ネタ探しから投稿、分析まで。
+                プロンプトドリブンの
                 <br />
-                X運用の毎日を<span className="text-brand">自動化</span>。
+                使用するほど性能が上がる
+                <br />
+                <span className="text-brand">SNS自動化プラットフォーム</span>
               </h1>
               <p className="mt-5 max-w-[42em] text-sm text-ink-2">
                 AIが情報収集から投稿作成・投稿予約・分析・プロンプト改善までを自動で実施。運用は1日数分の確認をするだけ。
@@ -228,7 +230,8 @@ export default function Home() {
                   </a>
                 </div>
                 <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
-                <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-caption text-ink-2">
+                {/* CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。 */}
+                <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-sm font-medium text-ink-2">
                   {["高品質な投稿を自動作成", "高品質なプロンプトの確認及び改善", `月額${startingPrice}から`].map(
                     (item) => (
                       <span className="inline-flex items-center gap-1.5" key={item}>
@@ -265,10 +268,7 @@ export default function Home() {
                 プロンプトが磨かれる。
               </h2>
               <p className="mt-4 max-w-[38em] text-sm text-ink-2">
-                {APP_NAME}はプロンプト駆動のSNS運用プラットフォームです。プロンプトを設計し、投稿を生成・運用し、結果を分析して、プロンプトを改善する——この1周を回すたびに、あなたのアカウント.mdとプロンプトが育ちます。
-              </p>
-              <p className="mt-3 max-w-[38em] text-sm text-ink-2">
-                だから、始めたその日より、1ヶ月後のほうがあなたらしい投稿になります。
+                {APP_NAME}はプロンプト駆動のSNS運用プラットフォームです。プロンプトを設計し、投稿を生成・運用し、結果を分析して、プロンプトを改善する——この1周を回すたびに、あなたのアカウントとプロンプトが育ちます。
               </p>
             </div>
             <div className="min-w-0">
@@ -332,9 +332,9 @@ export default function Home() {
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
           <h2 className={H2}>使うほど、プロンプトもアカウントも成長する</h2>
+          {/* 説明は1文に簡潔化（運営者の指示 2026-08-22・T-M8-201）。 */}
           <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
-            最初の設定でできる1枚（アカウント.md）を土台に、
-            {CYCLE_STEPS.join("→")}のサイクルが自動でまわります。学習ソースの分析や毎朝の改善提案を反映するたびに版が積み重なり、生成される投稿があなたの言葉に近づいていきます。
+            {CYCLE_STEPS.join("→")}のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。
           </p>
           <div className="mt-7">
             <GrowthChartFigure />

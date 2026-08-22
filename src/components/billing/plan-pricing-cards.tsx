@@ -39,7 +39,6 @@ interface FeatureItem {
   label: string;
   /** 文字列セル（件数・上限など）。true のセルは値なし＝チェックのみ。 */
   value?: string;
-  note?: string;
   /** 下位プランから変更・追加された行。色＋太字＋読み上げ文で強調する（T-M8-171）。 */
   changed: boolean;
 }
@@ -61,7 +60,6 @@ function featureItemsFor(index: number): FeatureItem[] {
     if (cell === false) continue;
     items.push({
       label: row.label,
-      note: row.note,
       value: typeof cell === "string" ? cell : undefined,
       changed: prev != null && String(row.cell(prev)) !== String(cell),
     });
@@ -192,9 +190,8 @@ function PlanCard({
               {item.changed ? (
                 <span className="sr-only">（このプランでの変更・追加）</span>
               ) : null}
-              {item.note && !item.changed ? (
-                <span className="mt-0.5 block text-caption font-normal text-ink-3">{item.note}</span>
-              ) : null}
+              {/* グレーの補足文は冗長のため出さない（運営者の指示 2026-08-22・T-M8-201。
+                  比較表データのnoteは /plans 以外の用途向けに残る）。 */}
             </span>
           </li>
         ))}
