@@ -9,3 +9,8 @@ export const APP_DESCRIPTION =
  */
 export const OPERATOR_X_HANDLE = "ai_newinfo";
 export const OPERATOR_X_URL = `https://x.com/${OPERATOR_X_HANDLE}`;
+
+/** Xプロフィールへのリンク（T-M8-214）。x.comのURLは画面へ直書きせずここを経由する。 */
+export function xProfileUrl(handle: string): string {
+  return `https://x.com/${handle}`;
+}

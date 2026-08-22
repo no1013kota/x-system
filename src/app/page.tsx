@@ -20,7 +20,7 @@ import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
-import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
+import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL, xProfileUrl } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,34 @@ const NAV_LINKS: [string, string][] = [
   // ページ遷移のリンク（T-M8-173）。アンカーと同じ場所に置く（タブが2系統あると迷う）。
   ["/prompt-templates", "プロンプト集"],
   ["/blog", "ブログ"],
+];
+
+/**
+ * 06 利用者の声（T-M8-214・運営者の指示 2026-08-22）。**実在の提携アカウントのみ**掲載する
+ * （禁止表現リストの「利用者の声」は架空の声を禁じる趣旨で、提携者の実名掲載は
+ * design_handoff_lp/README §禁止表現の改定どおり可）。
+ *
+ * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
+ * 運営者が差し替えること（他人名義の創作コメントを公開しない）。
+ */
+const TESTIMONIALS: { handle: string; comment: string }[] = [
+  {
+    handle: "ai_newinfo",
+    comment:
+      "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
+  },
+  {
+    handle: "picaso_youtube",
+    comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
+  },
+  {
+    handle: "lin_youtube3",
+    comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
+  },
+  {
+    handle: "kimi_marriage",
+    comment: "毎朝のレポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
+  },
 ];
 
 const HOW_TO_STEPS: [string, string][] = [
@@ -392,9 +420,42 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 06 よくある質問 */}
+        {/* 06 利用者の声（T-M8-214） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="よくある質問" no="06" />
+          <SectionMark label="利用者の声" no="06" />
+          <div className="mt-[clamp(24px,3vw,38px)] grid gap-4 sm:grid-cols-2">
+            {TESTIMONIALS.map(({ handle, comment }) => (
+              <figure
+                className={cn(cardClassName, "flex flex-col gap-3 p-5")}
+                key={handle}
+              >
+                <blockquote className="text-sm leading-[1.9] text-ink">{comment}</blockquote>
+                <figcaption className="mt-auto">
+                  <a
+                    className="group inline-flex items-center gap-2.5"
+                    href={xProfileUrl(handle)}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 flex-none items-center justify-center rounded-pill bg-brand-subtle text-sm font-bold text-brand"
+                    >
+                      {handle[0].toUpperCase()}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-body font-bold text-ink group-hover:text-brand">
+                      <XLogo className="text-ink-2" size={14} />@{handle}
+                    </span>
+                  </a>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+
+        {/* 07 よくある質問 */}
+        <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          <SectionMark label="よくある質問" no="07" />
           {/* 見出しの言い換え（「気になることは、先に答えておきます」）を置かず、
               質問と回答そのものを大きく出す（2026-08-20 運営者の指示）。 */}
           <div className="mt-[clamp(24px,3vw,38px)] max-w-[840px]">
