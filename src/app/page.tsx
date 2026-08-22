@@ -20,7 +20,7 @@ import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
-import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL, xProfileUrl } from "@/lib/app-config";
+import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,7 @@ const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-
  * （同じことを別の言い方で2箇所に書くと、読み手はどちらが正か迷う）。
  */
 const CARD_REGISTRATION_NOTE =
-  "開始にはカード登録が必要です（7日間は無料。期間中に解約すれば料金はかかりません）。";
+  "運用するほどプロンプトとアカウントが成長。7日間は無料でお試しいただけます。";
 
 /** 主CTA（無料で始める）と副CTA（料金を見る）は同じ寸法にする（T-M8-79）。 */
 const CTA_SIZE = "h-11 px-7 text-sm font-bold";
@@ -77,38 +77,46 @@ const NAV_LINKS: [string, string][] = [
   ["/blog", "ブログ"],
 ];
 
-/**
- * 06 利用者の声（T-M8-214・運営者の指示 2026-08-22）。**実在の提携アカウントのみ**掲載する
- * （禁止表現リストの「利用者の声」は架空の声を禁じる趣旨で、提携者の実名掲載は
- * design_handoff_lp/README §禁止表現の改定どおり可）。
- *
- * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
- * 名前はX APIの実表示名（2026-08-22取得）。コメント文は運営者が本人確認のうえ差し替えること
- * （他人名義の創作コメントを公開しない）。
- */
-const TESTIMONIALS: { handle: string; name: string; comment: string }[] = [
-  {
-    handle: "ai_newinfo",
-    name: "MATSUMOTO | 非エンジニア向けClaude活用術",
-    comment:
-      "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
-  },
-  {
-    handle: "picaso_youtube",
-    name: "ピカソ AI×YouTube運用",
-    comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
-  },
-  {
-    handle: "lin_youtube3",
-    name: "ハヤシ｜海外ネタ輸入_非属人YouTuber",
-    comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
-  },
-  {
-    handle: "kimi_marriage",
-    name: "キミマリ@婚活アドバイザー",
-    comment: "毎朝のレポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
-  },
-];
+// ── 06 利用者の声 は一時的に非表示（運営者の指示 2026-08-23・T-M8-231）─────────────
+//
+// **復活は行頭の `// ` を外すだけ**（この定数と、下の <section> の2か所）。あわせて
+// `xProfileUrl` を `@/lib/app-config` の import へ戻す（いま未使用のため外してある）。
+// 掲載条件は据え置き: **実在の提携アカウントのみ**・本人確認済みのコメントだけ
+// （他人名義の創作コメントは公開しない。design_handoff_lp/README §禁止表現）。
+// アバター画像 public/lp-avatars/*.jpg も消さずに残してある。
+//
+// /**
+//  * 06 利用者の声（T-M8-214・運営者の指示 2026-08-22）。**実在の提携アカウントのみ**掲載する
+//  * （禁止表現リストの「利用者の声」は架空の声を禁じる趣旨で、提携者の実名掲載は
+//  * design_handoff_lp/README §禁止表現の改定どおり可）。
+//  *
+//  * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
+//  * 名前はX APIの実表示名（2026-08-22取得）。コメント文は運営者が本人確認のうえ差し替えること
+//  * （他人名義の創作コメントを公開しない）。
+//  */
+// const TESTIMONIALS: { handle: string; name: string; comment: string }[] = [
+//   {
+//     handle: "ai_newinfo",
+//     name: "MATSUMOTO | 非エンジニア向けClaude活用術",
+//     comment:
+//       "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
+//   },
+//   {
+//     handle: "picaso_youtube",
+//     name: "ピカソ AI×YouTube運用",
+//     comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
+//   },
+//   {
+//     handle: "lin_youtube3",
+//     name: "ハヤシ｜海外ネタ輸入_非属人YouTuber",
+//     comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
+//   },
+//   {
+//     handle: "kimi_marriage",
+//     name: "キミマリ@婚活アドバイザー",
+//     comment: "毎朝のレポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
+//   },
+// ];
 
 const HOW_TO_STEPS: [string, string][] = [
   ["アカウント作成", "メールアドレスで登録し、確認メールで本人認証。"],
@@ -425,7 +433,12 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 06 利用者の声（T-M8-214） */}
+        {/*
+          ── 06 利用者の声 は一時的に非表示（運営者の指示 2026-08-23・T-M8-231）──
+          復活はこの {/* … *⁄} を外し、定数 TESTIMONIALS の `// ` も外す。
+          中の `*⁄`（U+2044）は元はアスタリスク＋スラッシュ。そのままだとJSXコメントが閉じてしまうため置換した。戻すときに直す。
+
+        {/* 06 利用者の声（T-M8-214） *⁄}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           <SectionMark label="利用者の声" no="06" />
           {/*
@@ -433,7 +446,7 @@ export default function Home() {
             public/lp-avatars/）＋名前＋@ハンドル＋右上にXロゴ、下に本文。
             アバターはリリース時にリポジトリへ同梱した静的画像（外部ホットリンクはCSP・
             変更耐性の点で使わない。更新するときは unavatar.io/x/<handle> から取り直す）。
-          */}
+          *⁄}
           <div className="mt-[clamp(24px,3vw,38px)] grid gap-4 sm:grid-cols-2">
             {TESTIMONIALS.map(({ handle, name, comment }) => (
               <figure
@@ -449,7 +462,7 @@ export default function Home() {
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- 静的同梱の小画像（最適化不要） */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- 静的同梱の小画像（最適化不要） *⁄}
                     <img
                       alt={`${name}のXアイコン`}
                       className="size-11 flex-none rounded-pill border border-hairline object-cover"
@@ -474,6 +487,8 @@ export default function Home() {
             ))}
           </div>
         </section>
+        */}
+
 
         {/* 07 よくある質問 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
