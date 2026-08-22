@@ -80,7 +80,7 @@ const [createdRow] = await query<{ max_posts: number }>(
     .locator("li", { hasText: "実験パターン改" })
   .getByRole("button", { name: "削除", exact: true })
     .click();
-  await expect(page.getByText("過去の下書き・履歴の表示は名前のまま残ります")).toBeVisible();
+  await expect(page.getByText("過去の下書き・履歴は残ります")).toBeVisible();
   await page.getByRole("button", { name: "削除する" }).click();
   await expect(page.getByRole("heading", { level: 3, name: "実験パターン改" })).toHaveCount(0);
   expect(

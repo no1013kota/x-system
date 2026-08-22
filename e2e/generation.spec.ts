@@ -330,7 +330,7 @@ const [saved] = await query<{
     削除は各パターンのカードの中にあり、読み上げ名にパターン名が入る（T-M8-134）。
   */
   await page.getByRole("button", { name: "「画面から作った型」を削除" }).click();
-  await expect(page.getByText("過去の下書き・履歴の表示は名前のまま残ります")).toBeVisible();
+  await expect(page.getByText("過去の下書き・履歴は残ります")).toBeVisible();
   await page.getByRole("button", { name: "削除する" }).click();
   await expect(page.getByRole("radio", { name: /画面から作った型/ })).toHaveCount(0);
   expect(

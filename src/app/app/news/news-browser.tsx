@@ -2,16 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
-import { createDraftFromNewsAction } from "@/app/actions/generation-jobs";
 import { formatJst, yen } from "@/lib/format";
 import type { NewsItemsPage } from "@/lib/news-items";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { newsCategoryLabel } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
-import { useToast } from "@/components/ui/toast";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -63,7 +60,6 @@ export function NewsBrowser({
   initialCreatedIds,
   window,
   selected,
-  xAccountId,
 }: {
   page: NewsItemsPage;
   initialError: boolean;
@@ -71,18 +67,14 @@ export function NewsBrowser({
   window: { from: string; to: string } | null;
   /** 選択式ソートの現在値（URL由来）。 */
   selected: { theme: string; impact: string };
-  /** 表示中のXアカウント（未連携ならnull。生成の宛先ズレ防止に送る・T-M8-196）。 */
-  xAccountId: string | null;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [created, setCreated] = useState<Set<string>>(new Set(initialCreatedIds));
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  // 「作成済み」バッジ（下書き化済みのnews_item）。作成は投稿作成画面が担う（T-M8-210）。
+  const created = new Set(initialCreatedIds);
   // 最新取得に失敗した場合は空扱いにせず注記する（要件06 §10）。
-  const [note] = useState<string | null>(
-    initialError ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。" : null,
-  );
-  const toast = useToast();
+  const note = initialError
+    ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。"
+    : null;
 
   /** ?page=&theme=&impact= を組む（時間窓が付いていれば維持する）。 */
   function hrefFor(next: { page?: number; theme?: string; impact?: string }): string {
@@ -104,73 +96,6 @@ export function NewsBrowser({
   /** ソート選択はページ1へ戻して反映する（選んだ結果が先頭に見えるように）。 */
   function applySort(next: { theme?: string; impact?: string }): void {
     router.push(hrefFor({ ...next, page: 1 }));
-  }
-
-  function notify(
-    message: string,
-    options: { href?: string | null; label?: string; tone?: "error" | "success" } = {},
-  ) {
-    const tone = options.tone ?? "error";
-    toast.show({
-      tone,
-      title: tone === "success" ? message : "実行できませんでした",
-      description: tone === "success" ? undefined : message,
-      ...(options.href ? { action: { href: options.href, label: options.label ?? "設定を開く" } } : {}),
-    });
-  }
-
-  function generate(newsItemId: string) {
-    if (created.has(newsItemId) || pending) return;
-    if (!xAccountId) {
-      notify("先にXアカウントを連携してください。", {
-        href: "/app/settings?tab=api-keys",
-        label: "設定を開く",
-      });
-      return;
-    }
-    setGeneratingId(newsItemId);
-    startTransition(async () => {
-      /*
-        冪等キーは**アカウント込み**（T-M8-196）。newsItemIdだけだと、アカウントAで作成後に
-        Bへ切り替えて同じ記事を押したとき既存job（A用）にdedupされ、成功トーストだけ出て
-        Bには何も作られなかった。x_account_id は表示中の値を送り、別タブで切り替え済みなら
-        サーバ側の assertActiveAccount が拒否する。画像は既定OFF。
-      */
-      const res = await createDraftFromNewsAction({
-        request_key: `news-draft:${xAccountId}:${newsItemId}`,
-        news_item_id: newsItemId,
-        x_account_id: xAccountId,
-      });
-      setGeneratingId(null);
-      if (res.status === "success") {
-        setCreated((prev) => new Set(prev).add(newsItemId));
-        // 生成は1分ほどかかる。どこで結果を見られるかまで示す（要件06 §10）。
-        notify("生成を開始しました。1分ほどで下書きに追加されます。", {
-          href: "/app/posts?tab=create",
-          label: "進行状況を見る",
-          tone: "success",
-        });
-      } else {
-        // 競合系は「再読み込み」では直らないため、原因別に次の操作を示す。
-        const reason = res.details?.reason;
-        const path = res.details?.settingsPath;
-        if (reason === "too_many_active_jobs") {
-          notify("同時に生成できるのは5件までです。作成中の下書きが仕上がってから、もう一度お試しください。", {
-            href: "/app/posts?tab=create",
-            label: "進行状況を見る",
-          });
-        } else if (reason === "learning_removing") {
-          notify("学習ソースの更新中は生成を開始できません。完了後にもう一度お試しください。", {
-            href: "/app/settings?tab=account",
-            label: "学習ソースを見る",
-          });
-        } else {
-          notify(res.message || "生成を開始できませんでした。", {
-            href: typeof path === "string" ? path : null,
-          });
-        }
-      }
-    });
   }
 
   const pager = page.pageCount > 1 && (
@@ -297,15 +222,18 @@ export function NewsBrowser({
                   {created.has(item.id) ? (
                     <Badge tone="success">作成済み</Badge>
                   ) : (
-                    <button
-                      className="inline-flex h-9 items-center gap-1 rounded-card bg-brand-subtle px-3 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover disabled:opacity-50"
-                      disabled={pending}
-                      onClick={() => generate(item.id)}
-                      type="button"
+                    /*
+                      投稿作成画面へ遷移し、ニュース解説パターン＋{ニュース}への自動入力で
+                      引き継ぐ（T-M8-210・運営者の指示 2026-08-22。以前はこの場でjobを作って
+                      いたが、内容を確認・調整してから生成できる形へ）。
+                    */
+                    <Link
+                      className="inline-flex h-9 items-center gap-1 rounded-card bg-brand-subtle px-3 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover"
+                      href={`/app/posts?tab=create&news=${item.id}`}
                     >
                       <Icon name="bolt" size={15} />
-                      {generatingId === item.id ? "生成を開始中…" : "すぐに投稿作成"}
-                    </button>
+                      すぐに投稿作成
+                    </Link>
                   )}
                 </span>
               </div>

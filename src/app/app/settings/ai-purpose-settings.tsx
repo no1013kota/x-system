@@ -111,19 +111,17 @@ export function AiPurposeSettings({
           </span>
           <div>
             <CardTitle id="text-purpose-heading">文章生成・リサーチ</CardTitle>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-caption leading-6 text-ink-3">
               投稿文の生成とWebリサーチには同じAIを使います。
             </p>
           </div>
         </div>
 
         {isOperatorManagedPlan(plan) ? (
-          <div className="mt-5 rounded-card border bg-muted/35 p-4">
-            <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
-            <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              ご契約中のプランではExos AIの運営環境で文章生成とリサーチを実行します。モデルは選べます。
-            </p>
+          <div className="mt-5 rounded-card border border-hairline bg-page p-4">
+            {/* 見出し=caption、値=body太字に統一（T-M8-207）。重複する説明文は削除。 */}
+            <p className="text-caption text-ink-3">利用するAI</p>
+            <p className="mt-1 text-body font-bold">運営Claude（APIキー不要・モデルは下で選べます）</p>
             <ModelSelect
               defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
               disabled={isPending}
@@ -135,7 +133,7 @@ export function AiPurposeSettings({
             />
           </div>
         ) : options.text.length > 0 ? (
-          <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
+          <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
             文章生成・リサーチに使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
@@ -176,14 +174,14 @@ export function AiPurposeSettings({
           </span>
           <div>
             <CardTitle id="image-purpose-heading">画像生成</CardTitle>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-caption leading-6 text-ink-3">
               OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
             </p>
           </div>
         </div>
 
         {options.image.length > 0 ? (
-          <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
+          <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
             画像生成に使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
@@ -271,7 +269,7 @@ function ModelSelect({
   const unit = isOperatorManagedPlan(plan) ? "クレジット/回" : "円/回";
   const showEstimate = !concealsUsageLimits(plan);
   return (
-    <label className="mt-3 block max-w-xl space-y-2 text-sm font-medium">
+    <label className="mt-3 block max-w-xl space-y-2 text-body font-medium">
       {label}
       <select
         className="h-11 w-full rounded-lg border bg-background px-3"

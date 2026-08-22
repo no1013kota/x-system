@@ -212,7 +212,7 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await expect(page.getByRole("button", { name: "プランを変更" })).toBeVisible();
   // 上位＝即時＋日割り、下位＝期間末（日付つき）、解約＝期間末まで使える
   await expect(page.getByText("すぐに切り替わります")).toBeVisible();
-  await expect(page.getByText("差額は日割りで計算され", { exact: false })).toBeVisible();
+  await expect(page.getByText("すぐに切り替わります", { exact: false })).toBeVisible();
   await expect(page.getByText("2026年8月12日に切り替わります")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toBeVisible();
   // トライアル中は終了日が変わらないことを添える

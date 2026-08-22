@@ -10,7 +10,6 @@ import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
-  createDraftFromNews,
   createGenerationJob,
   createGenerationJobSchema,
   getGenerationJob,
@@ -26,7 +25,6 @@ import {
   type GenerationJobDeps,
   type GenerationJobView,
 } from "@/lib/jobs/generation-jobs";
-import { z } from "zod";
 
 /**
  * 生成jobの Server Actions（要件05 §5, T-M3-07）。本人のみ。zod検証・前提/所有権/冪等/5件制限は
@@ -62,35 +60,11 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
   }
 }
 
-/**
- * SC-06 の入力。x_account_id は**表示中アカウントをクライアントが送る**（T-M8-196・レビュー修正）。
- * サーバ解決だけに頼ると、別タブで切り替えた後に「画面はAなのにBへ生成」が起きる
- * （通常経路の createGenerationJobAction と同じ assertActiveAccount で不一致を拒否する）。
- */
-const createDraftFromNewsActionSchema = z.object({
-  request_key: z.string().min(1).max(200),
-  news_item_id: z.string().uuid(),
-  x_account_id: z.string().uuid(),
-  instructions: z.string().max(2000).nullish(),
-  image_enabled: z.boolean().optional(),
-});
-
-export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {
-  const parsed = parseUserInput(createDraftFromNewsActionSchema, input);
-  if (!parsed.success) {
-    return validationErrorResult(parsed.error);
-  }
-  const auth = await requireExecutionUserId();
-  if (!auth.ok) return auth.result;
-  try {
-    const { jobId, deduped } = await createDraftFromNews(auth.userId, parsed.data, jobDeps);
-    if (!deduped) after(() => dispatchJob(jobId));
-    return { jobId, message: "生成を開始しました。", status: "success" };
-  } catch (error) {
-    return errorResult(error);
-  }
-}
-
+/*
+  旧 createDraftFromNewsAction（SC-06からの直接job作成）はT-M8-210で削除。
+  「すぐに投稿作成」は投稿作成画面への遷移＋{ニュース}自動入力になった（news_item_idは
+  通常の createGenerationJobAction が受けて作成済みバッジへつながる）。
+*/
 export async function retryGenerationJobAction(input: unknown): Promise<JobIdResult> {
   const parsed = parseUserInput(retryJobSchema, input);
   if (!parsed.success) {

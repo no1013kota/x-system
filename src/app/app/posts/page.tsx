@@ -43,7 +43,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 interface PostsPageProps {
-  searchParams: Promise<{ tab?: string; draftId?: string }>;
+  searchParams: Promise<{ tab?: string; draftId?: string; news?: string }>;
 }
 
 /** valid な openai/google キーの行（plan判定前に並列で引けるよう、クエリと判定を分離・T-M8-67）。 */
@@ -168,11 +168,13 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
   let slots: ScheduleSlotView[] = [];
   let historyTruncated = false;
+  /** 進行中の生成job（T-M8-209）。下書きタブの先頭に作成中カードを出す。 */
+  let generatingJobs: { id: string; createdAt: string }[] = [];
   /** 通知から来たが対象が見つからなかったときの案内（null＝案内不要）。 */
   let missingDraft: DraftLocation | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
-    const [loaded, plan, keyRows, loadedSlots, handleRow] = await Promise.all([
+    const [loaded, plan, keyRows, loadedSlots, handleRow, inflightRows] = await Promise.all([
       listDraftsForAccount(
         pooledDb,
         activeXAccountId,
@@ -188,6 +190,17 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         ? getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
             activeXAccountId,
           ])
+        : Promise.resolve(null),
+      // 進行中の生成（T-M8-209）。下書きタブの先頭に「作成中」の枠を出す。
+      tab === "drafts"
+        ? getPool().query<{ id: string; created_at: string }>(
+            `select id, created_at from generation_jobs
+              where x_account_id = $1 and kind = 'post_generation'
+                and status in ('queued', 'running')
+              order by created_at desc
+              limit 3`,
+            [activeXAccountId],
+          )
         : Promise.resolve(null),
     ]);
     drafts = await attachSignedImageUrls(loaded);
@@ -206,12 +219,45 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     if (tab === "drafts") {
       // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
       imageRegenEnabled = imageProvidersFor(plan, keyRows?.rows ?? []).length > 0;
+      generatingJobs = (inflightRows?.rows ?? []).map((r) => ({
+        id: r.id,
+        createdAt: new Date(r.created_at).toISOString(),
+      }));
     } else {
       xHandle = handleRow?.rows[0]?.handle ?? null;
     }
   }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
+
+  /*
+    ニュースからの引き継ぎ（T-M8-210・運営者の指示 2026-08-22）。SC-06の「すぐに投稿作成」は
+    ここへ遷移し、ニュース解説パターンを選択した状態で {ニュース} に記事内容を自動入力する。
+    記事が消えていて（保持期限切れ等）も画面は開く（prefillが無いだけ）。
+  */
+  let newsPrefill: {
+    patternId: string;
+    newsItemId: string;
+    newsText: string;
+    sourceUrl: string;
+  } | null = null;
+  if (tab === "create" && params.news && /^[0-9a-f-]{36}$/i.test(params.news) && createData) {
+    const { rows } = await getPool().query<{
+      title: string;
+      summary: string;
+      source_url: string;
+    }>(`select title, summary, source_url from news_items where id = $1`, [params.news]);
+    const item = rows[0];
+    const p1 = createData.patterns.find((option) => option.seedKey === "p1");
+    if (item && p1) {
+      newsPrefill = {
+        patternId: p1.id,
+        newsItemId: params.news,
+        newsText: `${item.title}\n${item.summary}`,
+        sourceUrl: item.source_url,
+      };
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
@@ -231,8 +277,10 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <XAccountRequiredNotice description="投稿を生成するには、まずXアカウントを連携してください。" />
       ) : tab === "create" && createData ? (
         <CreatePostForm
-          key={activeXAccountId}
+          // ニュース引き継ぎ時はkeyへ含め、別記事への遷移でstateを作り直す（T-M8-210）。
+          key={`${activeXAccountId}:${newsPrefill?.newsItemId ?? ""}`}
           imageProviders={createData.imageProviders}
+          newsPrefill={newsPrefill}
           initialJob={createData.initialJob}
           initialNowMs={createData.nowMs}
           patterns={createData.patterns}
@@ -244,6 +292,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           <MissingDraftNotice location={missingDraft} tab="drafts" />
           <ScheduleSummary slots={slots} />
           <DraftsList
+          generatingJobs={generatingJobs}
             drafts={drafts}
             imageRegenEnabled={imageRegenEnabled}
             quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}

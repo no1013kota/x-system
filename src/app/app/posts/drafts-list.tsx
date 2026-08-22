@@ -60,11 +60,14 @@ function WarningBadge({ code }: { code: string }) {
 export function DraftsList({
   xAccountActive = true,
   drafts,
+  generatingJobs = [],
   selectedDraftId,
   imageRegenEnabled,
   quotePostEnabled,
 }: {
   drafts: DraftView[];
+  /** 進行中の生成job（T-M8-209）。あるだけ先頭に「作成中」の枠を出す。 */
+  generatingJobs?: { id: string; createdAt: string }[];
   selectedDraftId?: string;
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
@@ -75,7 +78,7 @@ export function DraftsList({
    */
   xAccountActive?: boolean;
 }) {
-  if (drafts.length === 0) {
+  if (drafts.length === 0 && generatingJobs.length === 0) {
     return (
       <EmptyNotice>
         未投稿の下書きはありません。「作成」タブから生成できます。
@@ -84,6 +87,25 @@ export function DraftsList({
   }
   return (
     <ul className="space-y-4">
+      {/* 作成中の枠（T-M8-209・運営者の指示 2026-08-22）。完了すると次の読込で実物に置き換わる。 */}
+      {generatingJobs.map((job) => (
+        <li
+          className={`${cardClassName} border-dashed p-4`}
+          key={job.id}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex size-2.5 flex-none">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-pill bg-brand opacity-60" />
+              <span className="relative inline-flex size-2.5 rounded-pill bg-brand" />
+            </span>
+            <p className="text-body font-medium text-ink">下書きを作成しています…</p>
+            <span className="ml-auto text-caption text-ink-3">通常60〜90秒</span>
+          </div>
+          <div className="mt-3 h-1 overflow-hidden rounded-pill bg-page">
+            <div className="h-full w-[60%] animate-pulse rounded-pill [background-image:var(--brand-gradient)]" />
+          </div>
+        </li>
+      ))}
       {drafts.map((draft) => (
         <DraftCard
           draft={draft}

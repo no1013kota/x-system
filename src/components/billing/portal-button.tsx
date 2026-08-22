@@ -116,25 +116,23 @@ export function PortalButton({
         切り替わらないことも画面から読めなかった。金額と時期が変わる操作なので、
         Stripeへ移動する前に結果を示す（文言はStripe側の設定と1対1で対応する）。
       */}
+      {/* 各項目1行に簡潔化（運営者の指示 2026-08-22・T-M8-207。「いつから・いくら」の要点だけ残す）。 */}
       {effects ? (
-        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-body leading-5 sm:grid-cols-2">
+        <ul className="grid gap-1.5 rounded-card border border-hairline bg-page px-4 py-3 text-body leading-6" role="list">
           {(
             [
               ["上位プランへ変更", effects.upgrade],
               ["下位プランへ変更", effects.downgrade],
               ["解約", effects.cancel],
-              ...(effects.trialNote ? [["無料トライアル中の変更", effects.trialNote] as const] : []),
+              ...(effects.trialNote ? [["トライアル中の変更", effects.trialNote] as const] : []),
             ] as const
           ).map(([label, effect]) => (
-            <div key={label}>
-              <dt className="text-caption text-ink-3">{label}</dt>
-              <dd className="mt-0.5">
-                <span className="font-bold text-ink">{effect.headline}</span>
-                <span className="mt-0.5 block text-ink-2">{effect.detail}</span>
-              </dd>
-            </div>
+            <li key={label}>
+              <span className="font-medium text-ink-2">{label}: </span>
+              <span className="text-ink">{effect.headline}</span>
+            </li>
           ))}
-        </dl>
+        </ul>
       ) : null}
     </div>
   );

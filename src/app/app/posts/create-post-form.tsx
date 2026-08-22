@@ -115,6 +115,7 @@ export function CreatePostForm({
   initialJob = null,
   initialNowMs,
   promptTemplates = null,
+  newsPrefill = null,
 }: {
   xAccountId: string;
   patterns: PatternOption[];
@@ -124,18 +125,28 @@ export function CreatePostForm({
   initialNowMs: number;
   /** null = 編集権限なし（未契約）。編集セクションごと出さない。パターンID→本文。 */
   promptTemplates?: Record<string, PromptTemplateProp> | null;
+  /** ニュースからの引き継ぎ（T-M8-210）。ニュース解説を選択し {ニュース} へ記事を自動入力する。 */
+  newsPrefill?: {
+    patternId: string;
+    newsItemId: string;
+    newsText: string;
+    sourceUrl: string;
+  } | null;
 }) {
   const [pending, startTransition] = useTransition();
-  const [pattern, setPattern] = useState(patterns[0]?.id ?? "");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [pattern, setPattern] = useState(newsPrefill?.patternId ?? patterns[0]?.id ?? "");
+  const [sourceUrl, setSourceUrl] = useState(newsPrefill?.sourceUrl ?? "");
   /**
    * テーマ。**選択は必須**（2026-08-03 ユーザー判断）。空文字は「まだ選んでいない」状態で、
    * 生成ボタンを押せない状態にする（`lib/post/post-theme.ts` の判断）。
    */
-  const [theme, setTheme] = useState("");
+  // ニュース引き継ぎ時は記事そのものが題材なので「その他」を初期選択にする（1押しで生成できる形）。
+  const [theme, setTheme] = useState(newsPrefill ? "other" : "");
   const [instructions, setInstructions] = useState("");
 /** パターンの入力項目の値（`{名前}` へ差し込む・T-M8-132）。 */
-  const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
+  const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>(
+    newsPrefill ? { ニュース: newsPrefill.newsText } : {},
+  );
   const [imageEnabled, setImageEnabled] = useState(false);
   /**
    * 生成に使うプロンプト（T-M8-92・md/premium）。
@@ -348,6 +359,8 @@ function removePattern(target: PatternOption) {
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
         pattern,
+        // ニュース引き継ぎ時は下書きへ紐づけ、一覧の「作成済み」バッジの導出元にする（T-M8-210）。
+        news_item_id: newsPrefill?.newsItemId,
         source_url: sourceUrl.trim() || undefined,
         theme,
       // このパターンが持つ項目だけを送る（型を切り替えても前の型の値を持ち越さない）。
@@ -652,7 +665,7 @@ function removePattern(target: PatternOption) {
           variant="gradient"
         >
           <Icon name="star_shine" size={17} />
-          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "スレッドを生成する"}
+          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "ポストを生成する"}
         </Button>
         {/*
           **押せない理由を画面に出す**（T-M8-37）。無効化だけだと「なぜ押せないのか」が分からない。
@@ -777,7 +790,7 @@ function removePattern(target: PatternOption) {
 
         {!prereq && job === null ? (
           <p className="text-sm text-muted-foreground">
-            「スレッドを生成する」を押すと、ここに結果が表示されます。
+            「ポストを生成する」を押すと、ここに結果が表示されます。
           </p>
         ) : null}
       </section>

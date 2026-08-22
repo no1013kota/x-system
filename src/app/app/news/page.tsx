@@ -96,7 +96,6 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         page={initial}
         selected={{ theme: theme ?? "", impact: impact ?? "" }}
         window={window}
-        xAccountId={activeId}
       />
     </main>
   );

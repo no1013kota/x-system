@@ -173,6 +173,42 @@ test("ニュース一覧は50件ずつページ送りできる", async ({ accoun
   }
 });
 
+/** すぐに投稿作成 → 投稿作成画面へ遷移し、ニュース解説＋{ニュース}が自動入力される（T-M8-210）。 */
+test("すぐに投稿作成は投稿作成画面へ引き継ぎ、{ニュース}に記事が自動入力される", async ({
+  accounts,
+  page,
+}) => {
+  const run = randomUUID().slice(0, 8);
+  const items: SeedItem[] = [
+    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} 引き継ぎ記事`, minutesAgo: 1 },
+  ];
+  try {
+    await seedNews(items);
+    const account = await accounts.create("news-handoff");
+    await signIn(page, account);
+    await page.goto("/app/news");
+
+    await page
+      .locator("li")
+      .filter({ hasText: `E2E-${run} 引き継ぎ記事` })
+      .getByRole("link", { name: "すぐに投稿作成" })
+      .click();
+
+    // 投稿作成画面へ遷移し、ニュース解説が選択されている。
+    await expect(page).toHaveURL(/\/app\/posts\?tab=create&news=/);
+    await expect(page.getByRole("radio", { name: /ニュース解説/ })).toBeChecked();
+    // {ニュース} の入力欄に記事の見出し・要約が自動で入っている。
+    const newsField = page.getByLabel("ニュース（任意）");
+    await expect(newsField).toHaveValue(new RegExp(`E2E-${run} 引き継ぎ記事`));
+    // 参考URLにも記事URLが入る。
+    await expect(page.getByLabel("参考URL（任意）")).toHaveValue(/example\.com\/e2e-news/);
+    // テーマは「その他」が選ばれ、そのまま生成できる状態。
+    await expect(page.getByLabel("テーマ")).toHaveValue("other");
+  } finally {
+    await removeNews(items.map((i) => i.id));
+  }
+});
+
 test("ホームの重要ニュースは high だけを新しい順に最大3件出す", async ({ accounts, page }) => {
   const run = randomUUID().slice(0, 8);
   // high 4件（3件表示の上限を超える）＋ mid 1件。midはホームでは出ない（常にhigh固定）。

@@ -357,8 +357,8 @@ let promptTemplates: PromptTemplateView[] = [];
               ) : null}
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div>
-                  <dt className="text-sm text-muted-foreground">プラン</dt>
-                  <dd className="mt-1 text-lg font-semibold">
+                  <dt className="text-caption text-ink-3">プラン</dt>
+                  <dd className="mt-1 text-body font-bold">
                     {profile.plan ? PLANS[profile.plan].displayName : "未選択"}
                   </dd>
                   {/* いま実際にいくら払っているかをこの場で出す（T-M8-118）。
@@ -373,21 +373,21 @@ let promptTemplates: PromptTemplateView[] = [];
                   ) : null}
                 </div>
                 <div>
-                  <dt className="text-sm text-muted-foreground">契約状態</dt>
-                  <dd className="mt-1 text-lg font-semibold">
+                  <dt className="text-caption text-ink-3">契約状態</dt>
+                  <dd className="mt-1 text-body font-bold">
                     {STATUS_LABELS[profile.subscription_status] ??
                       profile.subscription_status}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm text-muted-foreground">現在の期間終了日</dt>
-                  <dd className="mt-1 font-medium">
+                  <dt className="text-caption text-ink-3">現在の期間終了日</dt>
+                  <dd className="mt-1 text-body font-bold">
                     {formatPeriodEnd(profile.current_period_end)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm text-muted-foreground">解約予定</dt>
-                  <dd className="mt-1 font-medium">
+                  <dt className="text-caption text-ink-3">解約予定</dt>
+                  <dd className="mt-1 text-body font-bold">
                     {profile.cancel_at_period_end
                       ? "期間終了日に解約予定"
                       : "解約予定なし"}
