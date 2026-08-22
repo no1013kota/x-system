@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import type { PlanChangeEffects } from "@/lib/billing/plan-change-effects";
 import type { PortalIntent } from "@/lib/stripe/portal";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
+import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
 
 /**
  * プラン管理の導線（T-M8-31）。
@@ -36,6 +37,8 @@ export function PortalButton({
   enabled: boolean;
 }) {
   const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
+  // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
+  usePageshowReset(() => setPending(null));
   const toast = useToast();
 
   function open(intent: PortalIntent | "manage") {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { PlanId } from "@/lib/plans";
 import { startCheckout } from "@/lib/stripe/checkout-browser";
+import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
 
 export function CheckoutButton({
   plan,
@@ -21,6 +22,8 @@ export function CheckoutButton({
   variant?: "brand" | "subtle";
 }) {
   const [pending, setPending] = useState(false);
+  // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
+  usePageshowReset(() => setPending(false));
   const toast = useToast();
 
   async function handleCheckout() {

@@ -2235,17 +2235,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 招待機能の信頼性質問（2026-08-22）への回答から。登録時のDB一時障害で紐づけが失われるケースを塞ぐ。
 - 実装メモ（2026-08-22）: verifySignUpCode成功時、Cookieが残っていればattributeSignupを再試行して消す（冪等・失敗しても検証は止めない）。E2E追加（Cookieなし登録→別タブでリンク→コード検証→紐づく）。invite E2E 3件緑。
 
-### T-M8-212: 決済・Portalボタンが「開いています…」のまま戻ってくる問題 `todo`
+### T-M8-212: 決済・Portalボタンが「開いています…」のまま戻ってくる問題 `done`
 - 参照: SC-04（/plans）・設定＞課金 / 依存: なし / サイズ: S
 - 完了条件: Stripeへ遷移後にブラウザの戻るで復帰しても、ボタンが押せる状態に戻る（bfcache復元の検知）
 - メモ: 運営者の報告（2026-08-22）。
+- 実装メモ（2026-08-22）: usePageshowResetフック新設（pageshow persisted=trueでpending解除）。checkout/portal/upgradeの3ボタンへ適用。実ブラウザで合成bfcache復元イベントにより復帰を確認。
 
-### T-M8-213: Customer Portalのプラン変更画面が旧商品を出す問題 `todo`
+### T-M8-213: Customer Portalのプラン変更画面が旧商品を出す問題 `done`
 - 参照: docs/operations/deployment.md（Stripe設定） / 依存: なし / サイズ: S
 - 完了条件:
   - テストモードのPortal設定が現行3商品×現行Priceだけを提示する
   - 原因（products未指定＝全active商品が出る）と本番での手順をdocsへ明記
 - メモ: 運営者の報告（2026-08-22）。
+- 実装メモ（2026-08-22）: 原因=旧Price3本（¥500/¥1,000/¥2,980）がactiveのままでPortalが全active価格を提示。テストモードで旧3本をアーカイブ＋Portal見出しの旧称Space AI→Exos AIを修正。本番の同作業はdeployment.mdへ手順明記（運営者）。
 
 ### T-M8-214: LPへ「06 利用者の声」セクション（提携4名・Xリンク付き） `todo`
 - 参照: 要件06 §1・design_handoff_lp（禁止表現の改定含む） / 依存: なし / サイズ: M
