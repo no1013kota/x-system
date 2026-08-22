@@ -13,7 +13,7 @@
 - すべてのjobは「1 job = 1 worker Function呼び出し」でdispatchする。worker（`POST /api/jobs/run`、`CRON_SECRET`認証）はjob IDを受け取り、認証・受領後すぐ202を返して本処理を`after()`で実行する。dispatch呼び出しは202受領までの軽量HTTPで、workerの処理完了を待たない。
 - dispatch経路は3つ。(1) 手動操作: Server Action/API Routeがjob作成後、`after()`からworkerを呼ぶ。(2) 定時: `scheduler_tick`が到来スロットをenqueueした直後に各jobをdispatchする。(3) 子job: 親jobのworkerが子job（`parent_job_id`で紐付く画像生成・投稿実行）を本処理中に`queued`で作成し、**親jobがsucceededへ確定した直後に**、queuedの子jobをdispatchする。子は同一Xアカウント直列化（下記）により親running中はleaseできないため、作成直後ではなく親の成功確定後にdispatchする（dispatch失敗はqueuedのまま`scheduler_tick`が回収）。
 - `scheduler_tick`は5分間隔（毎時00・05・…・55分）で起動する。**すべての起動が最初にenqueueクエリ（直前10分以内の未処理slotが対象）を実行する**。enqueueは`schedule_run_key`と`last_run_at`で冪等のため毎起動実行しても安全であり、定刻起動がlaunchd再試行込みで全滅しても、5分後・10分後のtickが§7.2の期限（+10分）内にenqueue・dispatchできる。初期はlaunchd、移行後はVercel Cron（`*/5`）から同じrouteを呼ぶ。
-- `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを1起動最大50件dispatchする。**選抜はユーザー間で公平**（T-M8-196）: ユーザーごとに`scheduled_for`昇順→`created_at`昇順で順位を振り、「各ユーザーの1件目→2件目→…」の順で取る——素の時刻順だと1ユーザーの滞留が50枠を独占し、他ユーザーの予約投稿・毎朝の分析が数時間選ばれない。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) 通知メール・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
+- `scheduler_tick`の回収は「tick内処理」ではなく「再dispatch」とする。dispatch失敗・stale解除で残ったqueued jobを1起動最大50件dispatchする。**選抜はユーザー間で公平**（T-M8-196）: ユーザーごとに`scheduled_for`昇順→`created_at`昇順で順位を振り、「各ユーザーの1件目→2件目→…」の順で取る——素の時刻順だと1ユーザーの滞留が50枠を独占し、他ユーザーの予約投稿・毎朝の分析が数時間選ばれない。tick内の処理順は「(1) 期限切れschedule起点jobのcancelと未enqueue slotの`schedule_missed`通知（§7.1/§7.2）→ (2) enqueue → (3) dispatch → (4) staleジョブ・期限切れデータ回収」とし、+10分を過ぎたjobがdispatchされないようにする。
 - 同一Xアカウントのjobと、同一userの`post_publish`は同時実行しない。workerはlease取得時にこの制約を検証し、取得できなければ何もせず終了する（jobはqueuedに残り、後続のdispatch・回収が拾う）。
 - すべての外部API呼び出し前に契約、キー、X連携、利用枠を再検証する。
 - `FEATURE_QUOTE_POST_ENABLED=false`の間は**引用URLが必須のパターン**（`post_patterns.requires_quote_url`。既定では引用ポスト）のjobを実行しない。既存のqueued jobも外部API・利用枠を消費する前に`feature_disabled`でcanceledにする。判定は**ジョブに凍結した`pattern_spec`**で行う（T-M8-129 U5。旧enum `p5` は撤去した。利用者が作った引用型も同じ扱いになる）。
@@ -101,7 +101,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
 | `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
-| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、通知メール・期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成、**毎朝の投稿分析jobの起票（JST8時以降・T-M8-94）** | enqueue 500、dispatch 50、cancel 500、email 100、DB cleanup各500、Storage cleanup 100 |
+| `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成、**毎朝の投稿分析jobの起票（JST8時以降・T-M8-94）** | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウントを日次保存 | 100 accountまで |
 
@@ -244,7 +244,7 @@ flowchart TD
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
 - **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
 - **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`と、**そこから求めた「運営者が直せる型」**を添える（T-M8-163）。型は`classifyProviderFailure`（`src/lib/ai/provider-failure.ts`）がクレジット残高不足／レート制限／キー無効／モデル名不正／入力長超過／提供元障害／不明の7種へ落とし、画面へ出るのは**その型に対応する定型文だけ**——応答本文は分類にだけ使い、選択したスコープから外へ出さない（`diagnostics.test.ts`が応答へ漏れないことを固定する）。以前は`error_code`だけを添え本文をselectしない方針だったが、**`http_400`からは原因が分からず運営者が自力で辿れなかった**（2026-08-20、実際はAnthropicのクレジット切れで運営者が直せるものだった）。
-- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary`のどちらかがONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、**送信待ち（`queued`）と送れなかった（`failed`）お知らせメール**（`failed` は終端状態で `recoverQueuedEmails` が拾わないため自動では回収されない。サマリと `doctor` に出し、再送は通知ベルの該当行から行う・要件06 §2／要件05 §10）、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
+- **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary.in_app`がONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTは**毎朝8:00 JSTに自動実行する**（2026-08-15・T-M8-94。手動の`refreshSuggestions`は廃止した）。起票は`scheduler_tick`の`enqueueDailySuggestions`——JST8時以降のtickで、対象アカウント（`status='active'`かつ契約が`trialing/active`かつ〔premium または validなAIキーあり〕）ぶんの`suggestion` jobを`trigger='schedule'`・request_key `sug-daily:{x_account_id}:{JST日付}`で冪等作成する（uniqueが1日1回を保証。BYOKのAIキー条件は、キーが無いと毎朝失敗通知が届き続けるのを防ぐ入口ゲート）。dispatchはtickのdispatchフェーズが拾う。
@@ -268,7 +268,11 @@ flowchart TD
 
 ## 14. 通知
 
-- **production 以外は外部SMTPへ送信しない**。`APP_ENV != production` かつ `SMTP_HOST` がループバック以外なら transport を構築せず skip する（開発機の `.env.local` に実SMTP資格情報が入っていると `scheduler_tick` が溜まった queued 通知を一括実送信するため。2026-07-27）。
+**通知はアプリ内のみ**（T-M8-222・運営者の指示 2026-08-22。利用者向けメール通知は廃止し、
+`notifications`のメール配送台帳列・送信/回収/再送コードを削除した。メール送信が残るのは
+認証メール＝Supabase Authと、運営者向けopsアラート＝§15の2系統だけで、どちらも
+`canSendViaSmtp`（`src/lib/email/smtp-guard.ts`）の「production 以外は外部SMTPへ送信しない」
+ガードの対象。開発機の`.env.local`に実SMTP資格情報が入っていた2026-07-27の98通誤送信が起点）。
 
 | event | type | dedupe key例 | link |
 |---|---|---|---|
@@ -278,15 +282,13 @@ flowchart TD
 | 時間単位ニュースダイジェスト | `news` | `news-digest:{window_started_at}` | `/app/news?from=...&to=...` |
 | X/key失効 | `error` | 対象ID＋失効時刻 | `/app/settings` |
 
-通知row作成時に設定をsnapshotし、メールONなら`queued`にする。送信成功は`sent`、最終失敗は`failed`とし、秘密値を含まない要約だけ保存する。
+通知row作成時に`notification_config.{type}.in_app`をsnapshotする（OFFならrowを作らない）。
 
 - ニュースは個別通知しない。JSTの取得時刻を起点とする1時間窓ごとに、`news_config.categories`と`impact_filter`へ一致する新着をユーザー単位で集約する。複数分野を1件へまとめ、該当0件なら通知rowを作らない。
-- ダイジェストは`subscription_status in (trialing, active)`かつニュース通知のいずれかのchannelがONのユーザーだけへ、一括`insert ... select`相当でfan-outする。`user_id + dedupe_key`で再実行を冪等化し、両channelがOFFならrowを作らない。
+- ダイジェストは`subscription_status in (trialing, active)`かつニュース通知（in_app）がONのユーザーだけへ、一括`insert ... select`相当でfan-outする。`user_id + dedupe_key`で再実行を冪等化し、OFFならrowを作らない。
 - タイトル・本文には高impact、同一impactなら新しい順で最大5件を掲載し、全件数と一覧リンクを付ける。対象IDは**固定20件**まで（旧`news_config.max_items`はT-M8-187で廃止）、時間窓とともに`payload`へ保存する。
 - 一部分野が失敗した時間帯は成功分野だけでダイジェストを作り、失敗そのものを利用者へニュース通知として送らない。運営監視へ記録し、次回取得を継続する。
-- notification commit後に`after()`でメール送信を起動し、残ったqueuedメールは`scheduler_tick`（5分間隔）が最大100件、最大10並列で回収する。最古のqueuedメールが10分を超えた場合はSentryへ警告する。
-- provider送信は`notification:{id}`を冪等keyにし、429/5xx/networkは最大3 attempt、指数backoffで再送する。401/403または3回失敗は`failed`にする。
-- アプリ内一覧は`in_app_enabled = true`だけを返す。メールだけ有効なrowも送信台帳として保持する。
+- アプリ内一覧は`in_app_enabled = true`だけを返す。
 - `scheduler_tick`のcleanupは40日を過ぎた`news`通知を先に削除し、その後に参照されない40日超の`news_items`と、**新着順で500件（`NEWS_MAX_STORED_ITEMS`）を超えた`news_items`**（T-M8-188・DB肥大防止。draft・通知payloadから参照される行は残す）を各500件まで削除する。`external_api_usage_events`の40日超の明細も1起動500件まで削除する。期限切れ削除の失敗は投稿系jobを失敗させず、Sentryへ記録して次回へ繰り越す。
 - `scheduler_tick`は、作成から24時間を過ぎてもdraftから参照されないStorage画像も1起動100件までbest effortで削除する。参照確認と削除の間に参照された場合に備え、削除直前にも未参照であることを再確認する。
 
@@ -334,5 +336,5 @@ flowchart TD
 - 重複送信は `cron_runs` の `(job_name='operator_alert', window_key='operator-alert:{環境}:{JST日付}')` で止める。**異常が無くて送らなかった日も窓を確保したままにする**（同じ日に何度も判定を走らせない）。
 - **異常が無い日は送らない。** 正常を毎日送ると本当の異常が埋もれて読まれなくなる（T-M7-44）。
 - 本文には T-M8-163 の「直せる言葉」と次の一手を載せ、**providerの応答本文は載せない**（要件01 §8）。
-- 送信は `lib/email/operator-mail-server.ts`。通知メールとは別入口だが**同じ `canSendViaSmtp` のガードを共有**し、非productionから外部SMTPへは送らない（`outbound-channels.ts` の `smtp` へ登録済み）。
+- 送信は `lib/email/operator-mail-server.ts`。ガードは `canSendViaSmtp`（`lib/email/smtp-guard.ts`）で、非productionから外部SMTPへは送らない（`outbound-channels.ts` の `smtp` へ登録済み。利用者向け通知メールはT-M8-222で廃止し、SMTP送信はこの運営者向けメールだけになった）。
 - **これが無かった間**、2026-08-19 10:00 JST から1.5日間ニュースが全滅していたのに運営者へ何も届かず、運営者が自分で `doctor` を叩いて初めて分かった。

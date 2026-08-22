@@ -48,7 +48,6 @@ export function newsDigestDedupeKey(windowStart: Date): string {
 interface DigestRow {
   user_id: string;
   in_app: boolean;
-  email: boolean;
   total_count: number;
   item_ids: string[];
   top_titles: string[];
@@ -71,15 +70,14 @@ async function loadDigestRows(
               coalesce(p.news_config->'categories', '[]'::jsonb) as categories,
               coalesce(p.news_config->'impact_filter', '[]'::jsonb) as impact_filter,
               20 as max_items, -- 旧news_config.max_itemsはT-M8-187で廃止（payload上限は固定20）
-              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app,
-              coalesce((p.notification_config->'news'->>'email')::boolean, false) as email
+              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app
          from profiles p
         where p.subscription_status in ('trialing', 'active')
-          and (coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
-               or coalesce((p.notification_config->'news'->>'email')::boolean, false))
+          -- 通知はアプリ内のみ（メールはT-M8-222で廃止）。in_app OFF の利用者には行を作らない。
+          and coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
      ),
      matched as (
-       select e.user_id, e.max_items, e.in_app, e.email, ni.id, ni.title, ni.impact,
+       select e.user_id, e.max_items, e.in_app, ni.id, ni.title, ni.impact,
               row_number() over (
                 partition by e.user_id
                 order by case ni.impact when 'high' then 0 when 'mid' then 1 else 2 end,
@@ -89,7 +87,7 @@ async function loadDigestRows(
          join new_items ni
            on (e.categories ? ni.category) and (e.impact_filter ? ni.impact)
      )
-     select user_id, in_app, email,
+     select user_id, in_app,
             count(*)::int as total_count,
             coalesce(
               jsonb_agg(id order by rn) filter (where rn <= max_items),
@@ -100,7 +98,7 @@ async function loadDigestRows(
               '{}'
             ) as top_titles
        from matched
-      group by user_id, in_app, email`,
+      group by user_id, in_app`,
     [windowStart.toISOString(), windowEnd.toISOString()],
   );
   return rows;
@@ -146,17 +144,14 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
     // 親行を先にロックしておけば、退会はこの文の完了まで待たされ、先に消えていれば0行になる。
     const { rows } = await deps.db.query<{ id: string }>(
       `insert into notifications
-         (user_id, type, dedupe_key, title, body, link, payload,
-          in_app_enabled, email_status, email_available_at)
-       select p.id, 'news', $2, $3, $4, $5, $6::jsonb, $7,
-              case when $8 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-              case when $8 then now() else null end
+         (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+       select p.id, 'news', $2, $3, $4, $5, $6::jsonb, $7
          from profiles p
         where p.id = $1
           for key share of p
        on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
        returning id`,
-      [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app, row.email],
+      [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app],
     );
     if (rows[0]) createdIds.push(rows[0].id);
   }

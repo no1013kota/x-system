@@ -17,7 +17,6 @@ import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
-  threadCountLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -231,6 +230,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
           <CardTitle>新しいパターン</CardTitle>
           {errors.new ? <Notice tone="danger">{errors.new}</Notice> : null}
           <PatternFields
+            listPlaceholders
             draft={creating}
             idPrefix="new"
             onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
@@ -274,9 +274,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
                 </Badge>
                 {item.isSystemDefault ? <Badge tone="neutral">はじめから用意</Badge> : null}
                 {item.requiresQuoteUrl ? <Badge tone="neutral">予約に使えません</Badge> : null}
-                <span className="ml-auto text-caption text-ink-3">
-                {threadCountLabel(item.maxPosts)}・編集は{item.maxPostsEdit}ポストまで
-                </span>
+                {/* 「メイン＋スレッド最大N・編集はNポストまで」の右上表記は出さない（運営者の指示 2026-08-22）。 */}
               </div>
 
               {errors[item.id] ? (
@@ -286,6 +284,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
               ) : null}
 
               <PatternFields
+                listPlaceholders
                 draft={draft}
                 // **数字で始まるidにしない。** uuidをそのまま使うとCSSセレクタとして無効になり、
                 // 検証（E2E）からもラベルの `htmlFor` からも引けなくなる。

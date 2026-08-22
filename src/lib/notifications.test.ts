@@ -7,9 +7,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  retryNotificationEmail,
 } from "./notifications";
-import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
 
 function makeDb(
@@ -124,51 +122,5 @@ describe("markAllNotificationsRead / countUnreadNotifications", () => {
   it("returns the unread count", async () => {
     const { db } = makeDb(() => ({ rows: [{ n: 3 }] }));
     expect(await countUnreadNotifications(db, "u1")).toBe(3);
-  });
-});
-
-const RETRY_LOAD = /select email_status from notifications where id/;
-const RETRY_UPDATE = /set email_status = 'queued', email_attempts = 0/;
-
-describe("retryNotificationEmail", () => {
-  it("requeues a failed email (resets attempts) when not attempted within 1 minute", async () => {
-    const { db, calls } = makeDb((sql) => {
-      if (RETRY_LOAD.test(sql)) return { rows: [{ email_status: "failed" }] };
-      if (RETRY_UPDATE.test(sql)) return { rowCount: 1 };
-      return { rows: [] };
-    });
-    await retryNotificationEmail(db, "u1", "n1");
-    expect(calls.some((c) => RETRY_UPDATE.test(c.sql))).toBe(true);
-  });
-
-  it("throws not_found when the notification is missing/not owned", async () => {
-    const { db } = makeDb(() => ({ rows: [] }));
-    await expect(retryNotificationEmail(db, "u1", "n1")).rejects.toMatchObject({ code: "not_found" });
-  });
-
-  it("rejects retrying a non-failed email (job_conflict:not_failed)", async () => {
-    const { db } = makeDb((sql) =>
-      RETRY_LOAD.test(sql) ? { rows: [{ email_status: "sent" }] } : { rows: [] },
-    );
-    const err = await retryNotificationEmail(db, "u1", "n1").then(
-      () => { throw new Error("expected rejection"); },
-      (e) => e as AppError,
-    );
-    expect(err.code).toBe("job_conflict");
-    expect(err.details?.reason).toBe("not_failed");
-  });
-
-  it("rejects a retry within 1 minute of the last attempt (job_conflict:retry_too_soon)", async () => {
-    const { db } = makeDb((sql) => {
-      if (RETRY_LOAD.test(sql)) return { rows: [{ email_status: "failed" }] };
-      if (RETRY_UPDATE.test(sql)) return { rowCount: 0 }; // time guard blocked the update
-      return { rows: [] };
-    });
-    const err = await retryNotificationEmail(db, "u1", "n1").then(
-      () => { throw new Error("expected rejection"); },
-      (e) => e as AppError,
-    );
-    expect(err.code).toBe("job_conflict");
-    expect(err.details?.reason).toBe("retry_too_soon");
   });
 });

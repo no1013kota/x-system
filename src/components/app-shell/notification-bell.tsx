@@ -5,7 +5,6 @@ import { Icon } from "@/components/ui/icon";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type {
   NotificationListPayload,
@@ -41,13 +40,7 @@ interface ListNotificationsResult
  *
  * リンクの無い通知は押せる形にしない。押しても何も起きないものをボタンにすると、
  * 反応しないアプリだと受け取られる（既読は「すべて既読」で行える）。
- *
- * ## メール送信の失敗をここに出す（T-M8-40）
- *
- * `email_status = 'failed'` は終端状態で、`recoverQueuedEmails`（queued のみ対象）も拾わない。
- * **通知の中身はアプリ内に残るが、メールは黙って届かないまま**になる。再送する関数は
- * 実装済みだったのに呼び出し元が無く、コード上どこからも到達できない状態だった。
- * 通知は一覧の入口がここだけなので、ここに再送を置く。
+ * （メール再送の導線はT-M8-222で廃止——通知はアプリ内のみ。）
  */
 export function NotificationBell({
   initialUnread,
@@ -56,7 +49,6 @@ export function NotificationBell({
   listNotificationsAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
-  retryNotificationEmailAction,
 }: {
   initialUnread: number;
   initialItems: NotificationView[];
@@ -68,14 +60,10 @@ export function NotificationBell({
   markNotificationReadAction: (input: {
     notification_id: string;
   }) => Promise<unknown>;
-  retryNotificationEmailAction: (input: {
-    notification_id: string;
-  }) => Promise<NotificationActionResult>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams().toString();
-  const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
@@ -107,27 +95,6 @@ export function NotificationBell({
     setUnread(0);
     setItems((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? "read" })));
     void markAllNotificationsReadAction();
-  }
-
-  /**
-   * メールの再送。行そのものは（リンクがあれば）ボタンなので、**入れ子にせず兄弟として置く**。
-   * `<button>` の中に `<button>` は不正なHTMLで、クリックの伝播も壊れる。
-   */
-  function retryEmail(id: string) {
-    startTransition(async () => {
-      const res = await retryNotificationEmailAction({ notification_id: id });
-      if (res.status === "success") {
-        toast.show({ tone: "success", title: "メールの再送を予約しました" });
-        // 押した結果を見せる。もう一度押せる状態のままにしない。
-        setItems((prev) => prev.map((n) => (n.id === id ? { ...n, emailStatus: "queued" } : n)));
-      } else {
-        toast.show({
-          tone: "error",
-          title: "再送できませんでした",
-          description: res.message ?? "少し時間をおいてからもう一度お試しください。",
-        });
-      }
-    });
   }
 
   function loadMore() {
@@ -211,19 +178,6 @@ export function NotificationBell({
                         </span>
                       </span>
                     </Row>
-                    {item.emailStatus === "failed" ? (
-                      <p className="flex flex-wrap items-center gap-2 px-4 pb-2.5 text-caption text-danger-fg">
-                        メールが送れませんでした
-                        <button
-                          className="inline-flex min-h-8 items-center rounded-card border border-hairline px-2.5 text-caption font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
-                          disabled={pending}
-                          onClick={() => retryEmail(item.id)}
-                          type="button"
-                        >
-                          メールを再送
-                        </button>
-                      </p>
-                    ) : null}
                   </li>
                   );
                 })}

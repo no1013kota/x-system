@@ -36,8 +36,8 @@ test("下書き・通知が他の利用者へ漏れず、片方の操作でも�
     [b, "Bへの通知"],
   ] as const) {
     await query(
-      `insert into notifications (user_id, type, title, body, in_app_enabled, email_status)
-       values ($1, 'summary', $2, $3, true, 'not_requested')`,
+      `insert into notifications (user_id, type, title, body, in_app_enabled)
+       values ($1, 'summary', $2, $3, true)`,
       [account.userId, `${label} ${marker}`, "本文"],
     );
   }

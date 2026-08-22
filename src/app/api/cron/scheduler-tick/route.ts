@@ -14,7 +14,6 @@ export async function GET(request: Request): Promise<Response> {
       // env は認証・受付通過後に遅延ロード（module読込で env 検証を走らせないため）。
       const { env } = await import("@/lib/env");
       const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
-      const { sendNotificationEmailForId } = await import("@/lib/email/notification-email-server");
       const bucket = env.SUPABASE_STORAGE_BUCKET_IMAGES;
       return runSchedulerTick(undefined, {
         dailyLimit: env.X_DAILY_POST_LIMIT,
@@ -23,7 +22,6 @@ export async function GET(request: Request): Promise<Response> {
         removeStorageObjects: async (paths) => {
           await createSupabaseAdminClient().storage.from(bucket).remove(paths);
         },
-        sendEmail: (id) => sendNotificationEmailForId(id),
         // doctorの判定を運営者へ1日1回届ける（T-M8-164）。宛先は SUPPORT_EMAIL のみ。
         runOperatorAlert: async ({ claimDay }) => {
           const [{ deliverOperatorAlert }, { sendOperatorMail }, { pooledQueryable }] =
@@ -47,8 +45,6 @@ export async function GET(request: Request): Promise<Response> {
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>
           console.error(`[scheduler_tick cleanup] ${scope}`, err),
-        onEmailStaleWarning: (ageMs) =>
-          console.warn(`[scheduler_tick email] oldest queued ${Math.round(ageMs / 60000)}min`),
       });
     },
     response: ({ ran, windowKey, result }) => ({

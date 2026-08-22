@@ -42,20 +42,15 @@ async function insertUsageNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'usage',
             'usage:' || ${CURRENT_MONTH_JST_SQL} || ':' || $2 || ':' || $3::text,
             $4, $5, '/app/settings?tab=billing',
             jsonb_build_object('counter_type', $2::text, 'threshold', $3::int),
-            coalesce((p.notification_config->'usage'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'usage'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'usage'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'usage'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'usage'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'usage'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'usage'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, params.key, params.threshold, title, body],
   );

@@ -13,7 +13,6 @@ import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-sta
 import {
   approxYen,
   type Check,
-  FAILED_EMAIL_WINDOW_DAYS,
   type Level,
   summarize,
   worstLevel,
@@ -28,7 +27,7 @@ import {
 } from "./stripe-account-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
-export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
+export { approxYen, summarize, worstLevel };
 export type { Check, Level };
 
 /**
@@ -312,67 +311,9 @@ export function judgeNews(input: {
 }
 
 /**
- * お知らせメールの状態。
- *
- * **`failed` を数える**（T-M8-40）。以前は `queued` だけを見て `queued === 0` を「ok」としていた。
- * `failed` は終端状態（401/403 または3回失敗で確定）なので、**SMTP認証が間違っていて通知メールが
- * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
- * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
- */
-
-export function judgeQueuedEmails(input: {
-  queued: number;
-  oldestHours: number | null;
-  /** 直近 `FAILED_EMAIL_WINDOW_DAYS` 日の失敗。 */
-  failed: number;
-  /** それより古い失敗（記録として出すだけで、赤くしない）。 */
-  failedOlder?: number;
-}): Check {
-  const name = "お知らせメール";
-  // 失敗は自動では回収されない（`recoverQueuedEmails` は queued だけを拾う）。
-  // 放置すると届かないままなので、送信待ちより先に扱う。
-  //
-  // **ただし期間で区切る**（T-M8-51）。窓が無いと、1件失敗しただけで doctor が恒久的に赤・
-  // 日次サマリに毎日出続け、**赤が常態化して他の異常が埋もれる**（原則1の逆効果）。
-  // 古い失敗は「もう送る意味が薄い」ものでもあるので、記録として添えるだけにする。
-  const older = input.failedOlder ?? 0;
-  const olderNote = older > 0 ? `。${FAILED_EMAIL_WINDOW_DAYS}日より前の失敗が別に ${older} 件` : "";
-  if (input.failed > 0) {
-    return {
-      name,
-      level: "error",
-      detail:
-        `直近${FAILED_EMAIL_WINDOW_DAYS}日で送れなかったメールが ${input.failed} 件あります` +
-        `（送信待ちは ${input.queued} 件）${olderNote}`,
-      nextAction:
-        "メール設定（SMTP）が正しいか確認してください。直したら通知ベルの「メールを再送」で送り直せます",
-    };
-  }
-  if (older > 0 && input.queued === 0) {
-    return {
-      name,
-      level: "warn",
-      detail: `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったメールが ${older} 件あります（直近の失敗はありません）`,
-      nextAction: "古い失敗なので急ぎではありません。送り直すなら通知ベルの「メールを再送」から行えます",
-    };
-  }
-  if (input.queued === 0) return { name, level: "ok", detail: "送信待ち・送信失敗はありません" };
-  const detail = `送信待ちが ${input.queued} 件（最も古いものは ${Math.round(input.oldestHours ?? 0)} 時間前）`;
-  if ((input.oldestHours ?? 0) > 24) {
-    return {
-      name,
-      level: "warn",
-      detail,
-      nextAction: "本番で初めて動いたときに一斉送信されます。Claudeに「古いお知らせメールを掃除して」と伝えてください",
-    };
-  }
-  return { name, level: "ok", detail };
-}
-
-/**
  * 定時実行（`scheduler_tick`）が生きているか（T-M8-51）。
  *
- * `judgeQueuedEmails` と**同じ型の見落とし**が残っていた——止まっていても doctor はどこも赤く
+ * 旧・お知らせメール検査と**同じ型の見落とし**が残っていた——止まっていても doctor はどこも赤く
  * ならない。tick が死ぬと予約投稿・通知メール送信・日次サマリ・期限切れ回収の**すべてが静かに
  * 止まる**（「実行はありません」は正常時と同じ表示になる）。5分間隔なので、15分以上音沙汰が
  * 無ければ異常。
@@ -688,34 +629,7 @@ export async function collectDiagnostics(
     }),
   );
 
-  const emails = await db.query<{
-    queued: string;
-    oldest: string | null;
-    failed: string;
-    failed_older: string;
-  }>(
-    `select count(*) filter (where email_status = 'queued')::text as queued,
-            (extract(epoch from (now() - min(created_at)
-                                 filter (where email_status = 'queued'))) / 3600)::text as oldest,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) > now() - ($1 || ' days')::interval
-            )::text as failed,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) <= now() - ($1 || ' days')::interval
-            )::text as failed_older
-       from notifications where email_status in ('queued', 'failed')`,
-    [String(FAILED_EMAIL_WINDOW_DAYS)],
-  );
-  checks.push(
-    judgeQueuedEmails({
-      queued: Number(emails.rows[0]?.queued ?? 0),
-      oldestHours: emails.rows[0]?.oldest == null ? null : Number(emails.rows[0].oldest),
-      failed: Number(emails.rows[0]?.failed ?? 0),
-      failedOlder: Number(emails.rows[0]?.failed_older ?? 0),
-    }),
-  );
+  // （旧「お知らせメール」検査はT-M8-222で廃止——通知はアプリ内のみで、メール配送台帳が無い）
 
   const accounts = await db.query<{ handle: string; status: string; hours: string | null }>(
     `select handle, status::text as status,

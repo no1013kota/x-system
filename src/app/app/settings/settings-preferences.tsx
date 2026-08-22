@@ -15,6 +15,12 @@ import {
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { Card, CardTitle } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
+
+/**
+ * 通知はアプリ内のみ（メール通知はT-M8-222で廃止・運営者の指示 2026-08-22）。
+ * 旧「種別×アプリ内/メール」の表を、種別ごとの説明つきトグル行へ刷新した。
+ */
 
 const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   news: "ニュース",
@@ -25,6 +31,18 @@ const TYPE_LABEL: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   usage: "利用枠",
   summary: "毎日のまとめ",
 };
+
+/** 種別が何を届けるか。名前だけでは「課金」「利用枠」が何の通知か読めない。 */
+const TYPE_DESCRIPTION: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
+  news: "設定した条件に合う新着ニュースのダイジェスト",
+  draft_created: "投稿の下書きができたとき",
+  posted: "予約・自動投稿が完了したとき",
+  error: "生成・投稿・X連携が失敗したとき",
+  billing: "お支払いを確認できなかったとき",
+  usage: "月間利用枠の残りが少なくなったとき",
+  summary: "運用状況の毎日のまとめレポート",
+};
+
 const CATEGORY_LABEL: Record<string, string> = {
   ai: "AI",
   web3: "Web3",
@@ -42,55 +60,95 @@ const IMPACT_LABEL: Record<string, string> = { high: "高", mid: "中", low: "�
 const ALL_CATEGORIES: readonly string[] = NEWS_FETCH_CATEGORIES;
 const ALL_IMPACTS = ["high", "mid", "low"];
 
+/**
+ * トグルスイッチ。素のcheckboxは13px四方でタップしづらく、ON/OFFの現在値も読み取りにくい
+ * （T-M8-70と同じ理由）。checkboxを`sr-only`にしてスイッチの見た目を重ね、状態は色＋ノブ位置で示す。
+ */
+function ToggleSwitch({
+  checked,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <label className="relative inline-flex shrink-0 cursor-pointer items-center p-1">
+      <input
+        aria-label={label}
+        checked={checked}
+        className="peer sr-only"
+        disabled={disabled}
+        onChange={onChange}
+        type="checkbox"
+      />
+      <span className="h-6 w-10 rounded-pill bg-black/15 transition-colors duration-150 peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50" />
+      <span className="pointer-events-none absolute left-1.5 top-1/2 size-5 -translate-y-1/2 rounded-pill bg-surface shadow-sm transition-transform duration-150 motion-reduce:transition-none peer-checked:translate-x-4" />
+    </label>
+  );
+}
+
+/** チップ型の複数選択。選択中は色だけでなくチェックアイコンでも示す（色覚に依存しない）。 */
+function ChipCheckbox({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={`inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-pill border px-3 text-body transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring ${
+        checked
+          ? "border-brand/50 bg-brand-subtle font-medium text-brand"
+          : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.02]"
+      }`}
+    >
+      <input checked={checked} className="sr-only" onChange={onChange} type="checkbox" />
+      {checked ? <Icon name="check" size={14} /> : null}
+      {label}
+    </label>
+  );
+}
 
 function NotificationForm({ config }: { config: NotificationConfig }) {
   const [state, setState] = useState<NotificationConfig>(config);
   const [pending, startTransition] = useTransition();
   const toast = useToast();
-  const toggle = (
-    type: (typeof NOTIFICATION_TYPES)[number],
-    channel: "in_app" | "email",
-  ) =>
+  const toggle = (type: (typeof NOTIFICATION_TYPES)[number]) =>
     setState((prev) => ({
       ...prev,
-      [type]: { ...prev[type], [channel]: !prev[type][channel] },
+      [type]: { in_app: !prev[type].in_app },
     }));
   return (
     <Card as="section" className="px-5 py-4">
-      <CardTitle>通知</CardTitle>
-      <p className="mt-1 text-sm text-muted-foreground">
-        種別ごとにアプリ内通知とメールの受け取りを設定できます。
+      <CardTitle>アプリ内通知</CardTitle>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        受け取る通知を選べます。通知は画面右上のベルに届きます。
       </p>
-      <table className="mt-4 w-full max-w-md text-sm">
-        <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-2 font-medium">種別</th>
-            <th className="py-2 text-center font-medium">アプリ内</th>
-            <th className="py-2 text-center font-medium">メール</th>
-          </tr>
-        </thead>
-        <tbody>
-          {NOTIFICATION_TYPES.map((type) => (
-            <tr className="border-b last:border-0" key={type}>
-              <td className="py-2">{TYPE_LABEL[type]}</td>
-              {(["in_app", "email"] as const).map((channel) => (
-                <td className="text-center" key={channel}>
-                  {/* タップ対象はラベル全体（約40px四方）。素のcheckboxは13px四方しかない（T-M8-70）。 */}
-                  <label className="inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
-                    <input
-                      aria-label={`${TYPE_LABEL[type]}の${channel === "in_app" ? "アプリ内" : "メール"}通知`}
-                      checked={state[type][channel]}
-                      className="size-4"
-                      onChange={() => toggle(type, channel)}
-                      type="checkbox"
-                    />
-                  </label>
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ul className="mt-3 divide-y divide-hairline">
+        {NOTIFICATION_TYPES.map((type) => (
+          <li className="flex items-center justify-between gap-3 py-2.5" key={type}>
+            <span className="min-w-0">
+              <span className="block text-body font-medium text-ink">{TYPE_LABEL[type]}</span>
+              <span className="mt-0.5 block text-caption leading-4 text-ink-3">
+                {TYPE_DESCRIPTION[type]}
+              </span>
+            </span>
+            <ToggleSwitch
+              checked={state[type].in_app}
+              disabled={pending}
+              label={`${TYPE_LABEL[type]}の通知`}
+              onChange={() => toggle(type)}
+            />
+          </li>
+        ))}
+      </ul>
       <div className="mt-4">
         <Button
           disabled={pending}
@@ -129,39 +187,33 @@ function NewsForm({ config }: { config: NewsConfig }) {
       <CardTitle>ニュース通知</CardTitle>
       {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースは9:00〜21:00（日本時間）に3時間おきに届きます。ここでの設定は通知の対象を決めます（一覧は最新500件を表示します）。
+        ニュースは9:00〜21:00（日本時間）に3時間おきに届きます。ここでは通知するニュースの条件を選びます。
       </p>
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">テーマ（1件以上）</legend>
-        <div className="mt-2 flex flex-wrap gap-3">
+        <legend className="text-body font-medium">テーマ（1件以上）</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
           {ALL_CATEGORIES.map((c) => (
-            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={c}>
-              <input
-                checked={categories.includes(c)}
-                className="size-4"
-                onChange={() => toggle(categories, setCategories, c)}
-                type="checkbox"
-              />
-              {CATEGORY_LABEL[c]}
-            </label>
+            <ChipCheckbox
+              checked={categories.includes(c)}
+              key={c}
+              label={CATEGORY_LABEL[c]}
+              onChange={() => toggle(categories, setCategories, c)}
+            />
           ))}
         </div>
       </fieldset>
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">インパクト（1件以上）</legend>
-        <div className="mt-2 flex flex-wrap gap-3">
+        <legend className="text-body font-medium">インパクト（1件以上）</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
           {ALL_IMPACTS.map((i) => (
-            <label className="flex min-h-9 cursor-pointer items-center gap-1.5 pr-1 text-sm" key={i}>
-              <input
-                checked={impacts.includes(i)}
-                className="size-4"
-                onChange={() => toggle(impacts, setImpacts, i)}
-                type="checkbox"
-              />
-              {IMPACT_LABEL[i]}
-            </label>
+            <ChipCheckbox
+              checked={impacts.includes(i)}
+              key={i}
+              label={IMPACT_LABEL[i]}
+              onChange={() => toggle(impacts, setImpacts, i)}
+            />
           ))}
         </div>
       </fieldset>

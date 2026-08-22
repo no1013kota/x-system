@@ -11,6 +11,17 @@ const { extractCashtags, parseTweet } = twitterText;
  */
 
 export const MAX_WEIGHTED_LENGTH = 280;
+
+/**
+ * X Premium（verified_type=blue/business）の上限（T-M8-221）。Xの実仕様は「25,000文字」で
+ * 加重換算ではないが、加重値で判定すれば常に実上限より短くなる（CJKは半分）ため安全側。
+ */
+export const PREMIUM_MAX_WEIGHTED_LENGTH = 25_000;
+
+/** アカウントのX Premium加入有無から、そのポストの加重上限を返す。 */
+export function maxWeightedLengthFor(premium: boolean): number {
+  return premium ? PREMIUM_MAX_WEIGHTED_LENGTH : MAX_WEIGHTED_LENGTH;
+}
 export const MAX_CASHTAGS = 1;
 
 /**
@@ -51,12 +62,15 @@ export function countCashtags(text: string): number {
  * 投稿本文を計測する。`withinLimit`は加重280以下、`cashtagOk`はcashtag1件以下（2件以上は自動投稿
  * ブロック対象, プロンプト設計書 §7）、`empty`は空白のみ（投稿本文は空不可, 要件05 §12）。
  */
-export function measurePostText(text: string): PostTextMetrics {
+export function measurePostText(
+  text: string,
+  limit: number = MAX_WEIGHTED_LENGTH,
+): PostTextMetrics {
   const weighted = parseTweet(text).weightedLength;
   const cashtagCount = extractCashtags(text).length;
   return {
     weightedLength: weighted,
-    withinLimit: weighted <= MAX_WEIGHTED_LENGTH,
+    withinLimit: weighted <= limit,
     cashtagCount,
     cashtagOk: cashtagCount <= MAX_CASHTAGS,
     empty: text.trim().length === 0,
@@ -76,10 +90,11 @@ export function measurePostText(text: string): PostTextMetrics {
  */
 export function findOverLengthText(
   texts: readonly string[],
+  limit: number = MAX_WEIGHTED_LENGTH,
 ): { index: number; weightedLength: number } | null {
   for (const [index, text] of texts.entries()) {
     const weighted = weightedLength(text);
-    if (weighted > MAX_WEIGHTED_LENGTH) return { index, weightedLength: weighted };
+    if (weighted > limit) return { index, weightedLength: weighted };
   }
   return null;
 }

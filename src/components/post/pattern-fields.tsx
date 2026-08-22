@@ -122,13 +122,31 @@ export function actionReason(res: unknown): string | undefined {
  * 「{名前} と書くと入力欄が出る」の目立つ説明（T-M8-203・運営者の指示 2026-08-22）。
  * 小さな注記では気付かれなかったため、投稿作成・スケジュール・設定＞プロンプトの
  * すべてでこのカラウトだけを出す（グレー小の列挙は廃止・運営者の指示 2026-08-22）。
+ *
+ * `prompt` を渡すと、本文から導出したプレースホルダーを説明文の下に一覧する
+ * （設定＞プロンプト用・運営者の指示 2026-08-22。投稿作成・スケジュールは実際の
+ * 入力欄がすぐ下に並ぶため渡さない＝二重に見せない）。
  */
-export function PlaceholderCallout() {
+export function PlaceholderCallout({ prompt }: { prompt?: string }) {
+  const names = prompt == null ? [] : extractPlaceholderNames(prompt);
   return (
     <div className="mt-2 rounded-card border border-brand/40 bg-brand-subtle px-3 py-2.5 text-body leading-[1.7] text-ink">
       <span className="font-bold text-brand">プロンプトの中に {"{名前}"} と書くと、</span>
       その名前の入力欄がこの下に自動で出ます。生成のたびに入力した内容が {"{名前}"} の位置へ
       差し込まれます（例: <code>{"{自分の考え}"}</code>）。
+      {names.length > 0 ? (
+        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="font-bold text-brand">このプロンプトのプレースホルダー:</span>
+          {names.map((name) => (
+            <code
+              className="rounded-card border border-brand/30 bg-surface px-1.5 py-0.5 text-caption"
+              key={name}
+            >
+              {`{${name}}`}
+            </code>
+          ))}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -138,11 +156,14 @@ export function PatternFields({
   idPrefix,
   onChange,
   promptRequired,
+  listPlaceholders = false,
 }: {
   draft: PatternDraft;
   idPrefix: string;
   onChange: (next: Partial<PatternDraft>) => void;
   promptRequired: boolean;
+  /** true = カラウト内にプレースホルダー一覧も出す（設定＞プロンプト・運営者の指示 2026-08-22）。 */
+  listPlaceholders?: boolean;
 }) {
   const over = draft.prompt.length > PATTERN_PROMPT_MAX_CHARS;
   return (
@@ -193,7 +214,7 @@ export function PatternFields({
           だけは黙って捨てず警告する（原則1）。
         */}
         <PlaceholderOverflowWarning prompt={draft.prompt} />
-        <PlaceholderCallout />
+        <PlaceholderCallout prompt={listPlaceholders ? draft.prompt : undefined} />
       </div>
     </div>
   );

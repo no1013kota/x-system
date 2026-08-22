@@ -183,12 +183,10 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
     // 表示はLPと /plans で共通の部品（T-M8-122）。**その部品を見る**——LP側だけを見ていると、
     // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
-    // 表のヘッダがキャンペーン価格を出す（T-M8-125）。設定＞課金は自前で描くので、
-    // **両方が決まりを守っていること**を見る（片方だけ見ると他方が黙って外れる）。
-    for (const source of [PRICING_CARDS, SETTINGS_BILLING]) {
-      expect(source).toContain("regularPriceJpy");
-      expect(source).toContain("RELEASE_CAMPAIGN.afterLabel");
-    }
+    // 設定＞課金は「キャンペーン終了後」の併記を出さない（運営者の指示 2026-08-22。
+    // 月額をプラン名の真横に出すだけ）。終了後価格の表示ルールはプランカード側だけに残る。
+    expect(PRICING_CARDS).toContain("regularPriceJpy");
+    expect(PRICING_CARDS).toContain("RELEASE_CAMPAIGN.afterLabel");
     // 画面に出る文字だけを見る（コメントで理由を書くのは妨げない）。
     const withoutComments = (source: string) =>
       source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");

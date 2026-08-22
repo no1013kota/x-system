@@ -11,18 +11,26 @@ import {
 } from "./settings";
 
 const fullNotification = {
-  news: { in_app: true, email: true },
-  draft_created: { in_app: true, email: false },
-  posted: { in_app: false, email: false },
-  error: { in_app: true, email: true },
-  billing: { in_app: true, email: true },
-  usage: { in_app: false, email: true },
-        summary: { in_app: true, email: true },
+  news: { in_app: true },
+  draft_created: { in_app: true },
+  posted: { in_app: false },
+  error: { in_app: true },
+  billing: { in_app: true },
+  usage: { in_app: false },
+  summary: { in_app: true },
 };
 
 describe("notificationConfigSchema", () => {
-  it("accepts all 6 types with both channels", () => {
+  it("accepts all types (in_app only)", () => {
     expect(notificationConfigSchema.safeParse(fullNotification).success).toBe(true);
+  });
+  it("旧保存値の email キーは黙って落とす（strictにすると全既存レコードが既定へ戻る・T-M8-222）", () => {
+    const legacy = Object.fromEntries(
+      Object.entries(fullNotification).map(([k, v]) => [k, { ...v, email: true }]),
+    );
+    const parsed = notificationConfigSchema.safeParse(legacy);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.news).toEqual({ in_app: true });
   });
   it("rejects a missing type", () => {
     const { posted, ...rest } = fullNotification;
@@ -33,7 +41,7 @@ describe("notificationConfigSchema", () => {
     expect(
       notificationConfigSchema.safeParse({
         ...fullNotification,
-        marketing: { in_app: true, email: true },
+        marketing: { in_app: true },
       }).success,
     ).toBe(false);
   });
@@ -41,7 +49,7 @@ describe("notificationConfigSchema", () => {
     expect(
       notificationConfigSchema.safeParse({
         ...fullNotification,
-        news: { in_app: "yes", email: true },
+        news: { in_app: "yes" },
       }).success,
     ).toBe(false);
   });
@@ -93,10 +101,10 @@ describe("resolveNotificationConfig (fallback)", () => {
   });
   it("keeps valid per-type overrides and defaults the rest", () => {
     const resolved = resolveNotificationConfig({
-      news: { in_app: false, email: false },
+      news: { in_app: false, email: false }, // 旧email キーは落とす
       bogus: 1,
     });
-    expect(resolved.news).toEqual({ in_app: false, email: false });
+    expect(resolved.news).toEqual({ in_app: false });
     expect(resolved.posted).toEqual(DEFAULT_NOTIFICATION_CONFIG.posted);
   });
 });

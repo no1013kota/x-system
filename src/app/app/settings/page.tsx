@@ -28,7 +28,7 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
-import { isOperatorManagedPlan, PLANS, RELEASE_CAMPAIGN, hasCampaignDiscount, type PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
 import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
@@ -358,19 +358,16 @@ let promptTemplates: PromptTemplateView[] = [];
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div>
                   <dt className="text-caption text-ink-3">プラン</dt>
-                  <dd className="mt-1 text-body font-bold">
+                  {/* 月額はプラン名の真横（右側）に出し、キャンペーン終了後の併記は置かない
+                      （運営者の指示 2026-08-22）。 */}
+                  <dd className="mt-1 flex flex-wrap items-baseline gap-x-2 text-body font-bold">
                     {profile.plan ? PLANS[profile.plan].displayName : "未選択"}
+                    {profile.plan ? (
+                      <span className="text-caption font-normal text-ink-3">
+                        月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
+                      </span>
+                    ) : null}
                   </dd>
-                  {/* いま実際にいくら払っているかをこの場で出す（T-M8-118）。
-                      キャンペーン中は終了後の額も併記して、値上げが不意打ちにならないようにする。 */}
-                  {profile.plan ? (
-                    <dd className="mt-0.5 text-caption text-ink-3">
-                      月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
-                      {hasCampaignDiscount(PLANS[profile.plan])
-                        ? `／${RELEASE_CAMPAIGN.afterLabel} ¥${yen(PLANS[profile.plan].regularPriceJpy)}`
-                        : ""}
-                    </dd>
-                  ) : null}
                 </div>
                 <div>
                   <dt className="text-caption text-ink-3">契約状態</dt>

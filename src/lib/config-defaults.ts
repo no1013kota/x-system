@@ -5,20 +5,18 @@
  */
 
 /**
- * 通知の既定（運営者の指示 2026-08-22・T-M8-206）: アプリ内は全てON、
- * メールは**ニュース・投稿完了・毎日のまとめの3種だけON**。
- * 下書き・エラー・課金・利用枠はアプリ内通知＋毎日のまとめで拾える一方、
- * メールにすると通数が利用者数×イベント数で膨らむ（Gmail SMTPは約500通/日・D-35）。
- * 既存利用者の保存値は変更しない（新規登録とtrigger既定のみ）。
+ * 通知の既定: **チャネルはアプリ内のみ・全種別ON**（運営者の指示 2026-08-22・T-M8-222。
+ * メール通知は廃止した。認証メールと運営者向けopsアラートは通知とは別系統で残る）。
+ * 既存利用者の保存値はmigration 20260823000002が email キーを剥がすだけで、in_app は変えない。
  */
 export const DEFAULT_NOTIFICATION_CONFIG = {
-  news: { in_app: true, email: true },
-  draft_created: { in_app: true, email: false },
-  posted: { in_app: true, email: true },
-  error: { in_app: true, email: false },
-  billing: { in_app: true, email: false },
-  usage: { in_app: true, email: false },
-  summary: { in_app: true, email: true },
+  news: { in_app: true },
+  draft_created: { in_app: true },
+  posted: { in_app: true },
+  error: { in_app: true },
+  billing: { in_app: true },
+  usage: { in_app: true },
+  summary: { in_app: true },
 } as const;
 
 export const DEFAULT_NEWS_CONFIG = {

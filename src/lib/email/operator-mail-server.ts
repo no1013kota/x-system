@@ -1,16 +1,13 @@
 import "server-only";
 
-import { canSendViaSmtp } from "./notification-email";
+import { canSendViaSmtp } from "./smtp-guard";
 import { env } from "@/lib/env";
 
 /**
  * 運営者への状態メールを送る（T-M8-164）。
  *
- * 通知メール（`notification-email-server.ts`）とは**別の入口**にする。あちらは
- * `notifications` の行を前提に配信状態（`email_status`）を更新する仕組みで、
- * 運営者向けの状態メールは通知テーブルに載らない（利用者の通知一覧へ出すものではない）。
- *
- * 送信条件は通知メールと同じガードを共有する（`canSendViaSmtp`）——
+ * 利用者向け通知メールはT-M8-222で廃止した。メール送信はこの運営者向け状態メールと
+ * 認証メール（Supabase Auth）だけが残る。送信条件は `canSendViaSmtp` ——
  * **非productionから外部SMTPへ送らない**。ローカルで確認したいときは
  * `SMTP_HOST` を Mailpit 等のループバックへ向ける（local-development.md §5）。
  */

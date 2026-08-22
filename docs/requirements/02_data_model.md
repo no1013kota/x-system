@@ -43,7 +43,6 @@
 | `usage_event_reason` | `reserve`, `refund`, `consume` |
 | `usage_event_operation` | `generation`, `image_generation`, `post_create`, `post_delete` |
 | `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary` |
-| `email_delivery_status` | `not_requested`, `queued`, `sent`, `failed` |
 
 ## 3. テーブル定義
 
@@ -412,25 +411,18 @@ RLS: 本人select可。writeはServer only。
 | `link` | `text` | null | アプリ内相対パス |
 | `payload` | `jsonb` | not null default `{}` | 種別固有データ。ニュースダイジェストは時間窓、件数、対象news item IDを保存 |
 | `in_app_enabled` | `boolean` | not null | 作成時設定のsnapshot |
-| `email_status` | `email_delivery_status` | not null default `not_requested` | メール送信状態 |
-| `email_attempts` | `integer` | not null default 0 | 送信試行回数 |
-| `email_available_at` | `timestamptz` | null | 次回retry可能時刻 |
-| `email_last_attempt_at` | `timestamptz` | null | 最終送信試行 |
-| `email_provider_id` | `text` | null | 送信サービスのmessage ID |
-| `email_sent_at` | `timestamptz` | null | 送信成功日時 |
-| `email_error` | `text` | null | 秘密値を含めない失敗要約 |
 | `read_at` | `timestamptz` | null | 既読 |
 | `created_at` | `timestamptz` | not null default now() |  |
 
+**メール配送台帳の列（`email_status`ほか7列）と `email_delivery_status` enum はT-M8-222で削除**（メール通知の廃止・migration `20260823000002`）。
+
 Unique index: (`user_id`, `dedupe_key`) where `dedupe_key is not null`
 
-Indexes: (`user_id`, `read_at`, `created_at desc`), (`email_status`, `email_available_at`)
-
-Constraints: `email_attempts >= 0`。`email_status = queued`のとき`email_available_at`必須。
+Indexes: (`user_id`, `read_at`, `created_at desc`)
 
 RLS: 本人select可。writeはServer Action/API only。
 
-ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で**固定20件**まで保存し（旧`max_items`はT-M8-187で廃止）、本文・メールには先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
+ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で**固定20件**まで保存し（旧`max_items`はT-M8-187で廃止）、本文には先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
 
 ```json
 {
@@ -441,7 +433,7 @@ RLS: 本人select可。writeはServer Action/API only。
 }
 ```
 
-決済失敗通知は`dedupe_key=billing:invoice:{invoice_id}:payment_failed`でinvoiceごとに1件とし、`link=/app/settings?tab=billing`を保存する。`notification_config.billing`の両channelがOFFならrowを作らない。作成時の`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映し、監査可能なsnapshotもpayloadへ保存する。
+決済失敗通知は`dedupe_key=billing:invoice:{invoice_id}:payment_failed`でinvoiceごとに1件とし、`link=/app/settings?tab=billing`を保存する。`notification_config.billing.in_app`がOFFならrowを作らない（メール通知はT-M8-222で廃止）。作成時の`in_app`は`in_app_enabled`へ反映し、監査可能なsnapshotもpayloadへ保存する。
 
 ```json
 {
@@ -450,13 +442,12 @@ RLS: 本人select可。writeはServer Action/API only。
   "subscription_id": "sub_...",
   "subscription_status": "past_due",
   "notification_config_snapshot": {
-    "in_app": true,
-    "email": true
+    "in_app": true
   }
 }
 ```
 
-X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`・`invalid_request`。Xは失効・ローテート済みrefresh tokenに`invalid_request`を返すことがある——2026-08-15に実アカウントで確認・T-M8-96）・必要scope不足・refresh token不在で`x_accounts.status`を`active`→`expired`へ遷移させたときに`type=error`で1件作成し、`link=/app/settings?tab=api-keys`と`payload={x_account_id, reason}`を保存する。`notification_config.error`の両channelがOFFならrowを作らない（`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映）。`dedupe_key`は付けない（遷移は1エピソードにつき1度だけ通知作成が走るため重複せず、再連携後の再失効でも新規に作成できる）。
+X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`・`invalid_request`。Xは失効・ローテート済みrefresh tokenに`invalid_request`を返すことがある——2026-08-15に実アカウントで確認・T-M8-96）・必要scope不足・refresh token不在で`x_accounts.status`を`active`→`expired`へ遷移させたときに`type=error`で1件作成し、`link=/app/settings?tab=api-keys`と`payload={x_account_id, reason}`を保存する。`notification_config.error.in_app`がOFFならrowを作らない（`in_app`は`in_app_enabled`へ反映。メール通知はT-M8-222で廃止）。`dedupe_key`は付けない（遷移は1エピソードにつき1度だけ通知作成が走るため重複せず、再連携後の再失効でも新規に作成できる）。
 
 ### 3.16 `stripe_events`
 
@@ -738,19 +729,19 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 
 ```json
 {
-  "news": { "in_app": true, "email": true },
-  "draft_created": { "in_app": true, "email": false },
-  "posted": { "in_app": true, "email": true },
-  "error": { "in_app": true, "email": false },
-  "billing": { "in_app": true, "email": false },
-  "usage": { "in_app": true, "email": false },
-  "summary": { "in_app": true, "email": true }
+  "news": { "in_app": true },
+  "draft_created": { "in_app": true },
+  "posted": { "in_app": true },
+  "error": { "in_app": true },
+  "billing": { "in_app": true },
+  "usage": { "in_app": true },
+  "summary": { "in_app": true }
 }
 ```
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
 
-メールの既定は**ニュース・投稿完了・毎日のまとめ（`summary`）の3種のみON**（T-M8-206・運営者の指示 2026-08-22。通数を抑え、下書き・エラー・課金・利用枠はアプリ内＋毎日のまとめが拾う）。`summary`は日次サマリ（T-M7-29）で1日1通のためメールも既定ON。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260822000004`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は変更しない。
+**チャネルはアプリ内のみ・既定は全種別ON**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止。認証メールと運営者向けopsアラートは別系統で残る）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
 
 ### 4.4 `x_accounts.settings`
 

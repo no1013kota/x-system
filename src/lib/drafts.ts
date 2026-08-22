@@ -140,6 +140,8 @@ interface OwnedDraftRow {
   settings: { ng?: { words?: string[] } } | null;
   tweet_ids: string[];
   last_post_error: unknown;
+  /** アカウントのX Premium加入。文字数上限の緩和判定（T-M8-221）。 */
+  x_premium: boolean;
 }
 
 async function loadOwnedDraft(
@@ -150,7 +152,7 @@ async function loadOwnedDraft(
   const row = (
     await db.query<OwnedDraftRow>(
       `select d.status, d.pattern_name, d.max_posts_edit, d.images, d.tweet_ids,
-              d.last_post_error, xa.settings
+              d.last_post_error, xa.settings, xa.x_premium
          from drafts d join x_accounts xa on xa.id = d.x_account_id
         where d.id = $1 and xa.user_id = $2`,
       [draftId, userId],
@@ -202,7 +204,8 @@ export async function updateDraft(
   }
 
   const ngWords = draft.settings?.ng?.words ?? [];
-  const thread = revalidateEditedThread(params.posts, ngWords);
+  // X Premiumのアカウントは280超も投稿できるため、警告の上限も緩和する（T-M8-221）。
+  const thread = revalidateEditedThread(params.posts, ngWords, { premium: draft.x_premium });
 
   const { rows } = await db.query<{ id: string; updated_at: string }>(
     `update drafts

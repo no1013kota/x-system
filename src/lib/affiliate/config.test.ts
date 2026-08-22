@@ -11,17 +11,17 @@ import {
 
 describe("招待ランク（invite_cp.md §3）", () => {
   it("累計有料招待人数で率が決まる", () => {
-    expect(rateBpsForPaidCount(0)).toBe(2000); // 0人でも「これから適用される率」は20%
-    expect(rateBpsForPaidCount(1)).toBe(2000);
-    expect(rateBpsForPaidCount(4)).toBe(2000);
-    expect(rateBpsForPaidCount(5)).toBe(2500);
-    expect(rateBpsForPaidCount(9)).toBe(2500);
-    expect(rateBpsForPaidCount(10)).toBe(3000);
-    expect(rateBpsForPaidCount(24)).toBe(3000);
-    expect(rateBpsForPaidCount(25)).toBe(3500);
-    expect(rateBpsForPaidCount(49)).toBe(3500);
-    expect(rateBpsForPaidCount(50)).toBe(4000);
-    expect(rateBpsForPaidCount(500)).toBe(4000);
+    expect(rateBpsForPaidCount(0)).toBe(3000); // 0人でも「これから適用される率」は30%
+    expect(rateBpsForPaidCount(1)).toBe(3000);
+    expect(rateBpsForPaidCount(4)).toBe(3000);
+    expect(rateBpsForPaidCount(5)).toBe(3500);
+    expect(rateBpsForPaidCount(9)).toBe(3500);
+    expect(rateBpsForPaidCount(10)).toBe(4000);
+    expect(rateBpsForPaidCount(24)).toBe(4000);
+    expect(rateBpsForPaidCount(25)).toBe(4500);
+    expect(rateBpsForPaidCount(49)).toBe(4500);
+    expect(rateBpsForPaidCount(50)).toBe(5000);
+    expect(rateBpsForPaidCount(500)).toBe(5000);
   });
 
   it("ランク表は昇順（率の計算がこの前提に依存する）", () => {
@@ -31,17 +31,17 @@ describe("招待ランク（invite_cp.md §3）", () => {
     }
   });
 
-  it("0人のとき「次のランク」は同率の第1段ではなく25%（あと5人）", () => {
+  it("0人のとき「次のランク」は同率の第1段ではなく35%（あと5人）", () => {
     const p = tierProgress(0);
-    expect(p.currentRateBps).toBe(2000);
-    expect(p.next?.rateBps).toBe(2500);
+    expect(p.currentRateBps).toBe(3000);
+    expect(p.next?.rateBps).toBe(3500);
     expect(p.remainingToNext).toBe(5);
   });
 
-  it("次ランクまでの残数（8人なら あと2人で30%）", () => {
+  it("次ランクまでの残数（8人なら あと2人で40%）", () => {
     const p = tierProgress(8);
-    expect(p.currentRateBps).toBe(2500);
-    expect(p.next?.rateBps).toBe(3000);
+    expect(p.currentRateBps).toBe(3500);
+    expect(p.next?.rateBps).toBe(4000);
     expect(p.remainingToNext).toBe(2);
     // 最上位は次が無い
     expect(tierProgress(50).next).toBeNull();

@@ -73,12 +73,12 @@ test("友達招待ページ: リンク・報酬率・ランクが出て、銀行
   await page.goto("/app/invite");
 
   await expect(page.getByRole("heading", { level: 1, name: "友達招待" })).toBeVisible();
-  // 招待リンク（自動発行されたコード）と現在の報酬率（初期ランク20%）。
+  // 招待リンク（自動発行されたコード）と現在の報酬率（初期ランク30%・2026-08-22改定）。
   await expect(page.getByText(/\/r\/[a-z2-9]{8}/)).toBeVisible();
   await expect(page.getByText("現在の報酬率").first()).toBeVisible();
-  await expect(page.getByText("20%").first()).toBeVisible();
+  await expect(page.getByText("30%").first()).toBeVisible();
   // ランク表に5段が出る。
-  for (const rate of ["25%", "30%", "35%", "40%"]) {
+  for (const rate of ["35%", "40%", "45%", "50%"]) {
     await expect(page.getByText(rate, { exact: true }).first()).toBeVisible();
   }
   // 口座未登録の案内が出る。

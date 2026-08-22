@@ -83,28 +83,29 @@ const NAV_LINKS: [string, string][] = [
  * design_handoff_lp/README §禁止表現の改定どおり可）。
  *
  * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
- * 運営者が差し替えること（他人名義の創作コメントを公開しない）。
+ * 名前はX APIの実表示名（2026-08-22取得）。コメント文は運営者が本人確認のうえ差し替えること
+ * （他人名義の創作コメントを公開しない）。
  */
 const TESTIMONIALS: { handle: string; name: string; comment: string }[] = [
   {
     handle: "ai_newinfo",
-    name: "AI最新情報",
+    name: "MATSUMOTO | 非エンジニア向けClaude活用術",
     comment:
       "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
   },
   {
     handle: "picaso_youtube",
-    name: "ピカソ",
+    name: "ピカソ AI×YouTube運用",
     comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
   },
   {
     handle: "lin_youtube3",
-    name: "りん",
+    name: "ハヤシ｜海外ネタ輸入_非属人YouTuber",
     comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
   },
   {
     handle: "kimi_marriage",
-    name: "きみ",
+    name: "キミマリ@婚活アドバイザー",
     comment: "毎朝のレポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
   },
 ];
@@ -436,7 +437,9 @@ export default function Home() {
           <div className="mt-[clamp(24px,3vw,38px)] grid gap-4 sm:grid-cols-2">
             {TESTIMONIALS.map(({ handle, name, comment }) => (
               <figure
-                className={cn(cardClassName, "flex flex-col gap-3 p-5")}
+                // 長い表示名（truncate=nowrap）のmin-contentがgrid列を390px超へ押し広げないよう
+                // min-w-0 を明示する（2026-08-22、実名反映で横スクロールが出た）。
+                className={cn(cardClassName, "flex min-w-0 flex-col gap-3 p-5")}
                 key={handle}
               >
                 <figcaption className="flex items-start gap-3">

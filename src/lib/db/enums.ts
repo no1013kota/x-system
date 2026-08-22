@@ -69,7 +69,6 @@ export const DB_ENUMS = {
     "usage",
     "summary",
   ],
-  email_delivery_status: ["not_requested", "queued", "sent", "failed"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type DbEnumName = keyof typeof DB_ENUMS;

@@ -45,7 +45,6 @@ function prodBase(): Record<string, string | undefined> {
     SMTP_USER: "ops@example.com",
     SMTP_APP_PASSWORD: "app-password",
     EMAIL_FROM: "Exos AI <ops@example.com>",
-    EMAIL_REPLY_TO: "ops@example.com",
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: "site",
     TURNSTILE_SECRET_KEY: "secret",
     SENTRY_DSN: "https://sentry.example/1",

@@ -4,7 +4,7 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 
 import type { Queryable } from "../x/token-refresh";
 
-import { approxYen, FAILED_EMAIL_WINDOW_DAYS } from "./check";
+import { approxYen } from "./check";
 import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
 
 /**
@@ -80,17 +80,6 @@ export interface DailySummaryData {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
   stuckJobs: number;
-  queuedEmails: number;
-  /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
-  failedEmails: number;
-  /**
-   * 窓より前の送信失敗（F7）。**警告にはしないが数字は出す**。
-   *
-   * 全期間を「気になる点」に数えていたため、7日より前の失敗しか無い状態でも
-   * 毎日通知が出続けていた。かといって黙って落とすと、届かなかったメールの存在が
-   * どこにも見えなくなる（原則1）。doctor 側と同じ扱いに揃える。
-   */
-  olderFailedEmails?: number;
   monthUsd: number;
   /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
   dbBytes: number;
@@ -154,26 +143,7 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     lines.push(`止まっている処理: ${data.stuckJobs} 件`);
     attention.push(`止まっている処理が ${data.stuckJobs} 件`);
   }
-  // 失敗は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
-  // **黙って届かないまま**になるので「気になる点」に数える（T-M8-40）。
-  // ただし**直近の失敗だけ**（F7）。窓が無いと1件失敗しただけで毎日出続け、
-  // 赤が常態化して他の異常が埋もれる（doctor 側は T-M8-51 で同じ窓を入れている）。
-  if (data.failedEmails > 0) {
-    lines.push(
-      `送れなかったお知らせメール: ${data.failedEmails} 件（メール設定を確認し、通知ベルから再送してください）`,
-    );
-    attention.push(`送れなかったお知らせメールが ${data.failedEmails} 件`);
-  }
-  // 窓より前の失敗は**警告にしないが数字は出す**（黙って消すと存在が見えなくなる・原則1）。
-  const olderFailed = data.olderFailedEmails ?? 0;
-  if (olderFailed > 0) {
-    lines.push(
-      `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったお知らせメール: ${olderFailed} 件（急ぎではありません）`,
-    );
-  }
-  if (data.queuedEmails > 0) {
-    lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
-  }
+  // （送れなかった／送信待ちのお知らせメールの行はT-M8-222で廃止——通知はアプリ内のみ）
 
   // 円換算は doctor と同じ関数を使う（別々に持つと同じ月の費用を違う円額で伝える・R30）。
   lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${approxYen(data.monthUsd)}円）`);
@@ -255,28 +225,6 @@ export async function collectDailySummary(
     [userId],
   );
 
-  /**
-   * 送れなかったメールは**窓で区切る**（F7）。
-   *
-   * doctor 側は T-M8-51 で7日窓を入れたのに、ここは全期間を数えていた。そのため
-   * **7日より前の失敗しか無い状態でも毎日「気になる点」を出し続け**、同じ状況を
-   * doctor は「急ぎではない」、サマリは「対応が必要」と食い違って伝えていた。
-   * 窓は `ops/check.ts` の1つだけを使う。古い分は数字として残す（黙って消さない・原則1）。
-   */
-  const emails = await db.query<{ queued: string; failed: string; failed_older: string }>(
-    `select count(*) filter (where email_status = 'queued')::text as queued,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) > now() - ($2 || ' days')::interval
-            )::text as failed,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) <= now() - ($2 || ' days')::interval
-            )::text as failed_older
-       from notifications where user_id = $1 and email_status in ('queued', 'failed')`,
-    [userId, String(FAILED_EMAIL_WINDOW_DAYS)],
-  );
-
   const cost = await db.query<{ usd: string | null }>(
     `select sum(estimated_cost_usd)::text as usd from external_api_usage_events
       where occurred_at >= date_trunc('month', now())
@@ -327,9 +275,6 @@ export async function collectDailySummary(
         ages: v.ages,
       })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
-    queuedEmails: Number(emails.rows[0]?.queued ?? 0),
-    failedEmails: Number(emails.rows[0]?.failed ?? 0),
-    olderFailedEmails: Number(emails.rows[0]?.failed_older ?? 0),
     monthUsd: Number(cost.rows[0]?.usd ?? 0),
   };
 }
@@ -349,7 +294,7 @@ export interface DeliverDailySummaryResult {
  *
  * 冪等性は `notifications.dedupe_key = 'summary:{JSTの日付}'` の unique 制約で担保する
  * （5分ごとのtickから何度呼ばれても1日1通）。JST {@link SUMMARY_HOUR_JST} 時より前は作らない。
- * 通知設定（`summary`）で in_app/email をどちらもOFFにしている利用者には作らない。
+ * 通知設定（`summary`）で in_app をOFFにしている利用者には作らない。
  */
 export async function deliverDailySummaries(
   db: Queryable,
@@ -366,17 +311,15 @@ export async function deliverDailySummaries(
   const date = jstDateOf(nowIso);
   const dedupeKey = `summary:${date}`;
 
-  // 対象: **Xアカウントを連携済みで**、サマリをどちらかのチャネルで受け取る設定の利用者。
-  // 連携前の利用者はまだ運用が始まっていないので届けない（初日から不要な通知を出さない）。
-  const { rows: users } = await db.query<{ id: string; in_app: boolean; email: boolean }>(
+  // 対象: **Xアカウントを連携済みで**、サマリのアプリ内通知を受け取る設定の利用者
+  // （メール通知はT-M8-222で廃止）。連携前の利用者はまだ運用が始まっていないので届けない。
+  const { rows: users } = await db.query<{ id: string; in_app: boolean }>(
     `select p.id,
-            coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app,
-            coalesce((p.notification_config->'summary'->>'email')::boolean, true) as email
+            coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app
        from profiles p
       where exists (select 1 from x_accounts xa where xa.user_id = p.id)
         and ($1::uuid[] is null or p.id = any($1::uuid[]))
-        and (coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)
-             or coalesce((p.notification_config->'summary'->>'email')::boolean, true))`,
+        and coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)`,
     [options.userIds ?? null],
   );
 
@@ -399,16 +342,12 @@ export async function deliverDailySummaries(
       // 仕組みの回帰テストは `jobs/news-digest.db.test.ts`（同じSQL形なのでここでは重複させない）。
       const { rows } = await db.query<{ id: string }>(
         `insert into notifications
-           (user_id, type, dedupe_key, title, body, link, payload,
-            in_app_enabled, email_status, email_available_at)
-         select p.id, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text),
-                $6, case when $7 then 'queued'::email_delivery_status
-                         else 'not_requested'::email_delivery_status end,
-                case when $7 then now() else null end
+           (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+         select p.id, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text), $6
            from profiles p where p.id = $1 for key share of p
          on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
          returning id`,
-        [user.id, dedupeKey, summary.title, summary.body, date, user.in_app, user.email],
+        [user.id, dedupeKey, summary.title, summary.body, date, user.in_app],
       );
       if (rows[0]) createdIds.push(rows[0].id);
     } catch (err) {

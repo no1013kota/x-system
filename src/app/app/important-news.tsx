@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { primaryLinkClassName } from "@/components/ui/link-button";
+
 import { formatJst } from "@/lib/format";
 import type { NewsItemView } from "@/lib/news-items";
 
@@ -41,8 +43,8 @@ export function ImportantNewsCard({
         </p>
           {loadFailed ? null : (
             <Link
-              // ホームの他の操作ボタンとトーンを揃える（brand-subtle・運営者の指摘 2026-08-22）。
-              className="mt-3.5 inline-flex h-9 items-center justify-center rounded-card bg-brand-subtle px-4 text-body font-medium text-brand transition-colors duration-150 hover:bg-brand-subtle-hover"
+              // 「スケジュールを設定」「今すぐ作成」と同じ主操作の見た目に揃える（運営者の指示 2026-08-22）。
+              className={`mt-3.5 ${primaryLinkClassName}`}
               href="/app/settings?tab=notifications"
             >
               ニュース設定を変更

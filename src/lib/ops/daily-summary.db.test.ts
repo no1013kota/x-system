@@ -83,8 +83,8 @@ describe("deliverDailySummaries (local DB)", () => {
   const TARGET_DEDUPE_KEY = "summary:2026-08-01";
 
   async function summariesOf(uid: string) {
-    const { rows } = await db.query<{ title: string; body: string; email_status: string; in_app_enabled: boolean }>(
-      `select title, body, email_status::text as email_status, in_app_enabled
+    const { rows } = await db.query<{ title: string; body: string; in_app_enabled: boolean }>(
+      `select title, body, in_app_enabled
          from notifications
         where user_id = $1 and type = 'summary' and dedupe_key = $2
         order by created_at`,
@@ -124,15 +124,14 @@ describe("deliverDailySummaries (local DB)", () => {
     }
   });
 
-  it("メールをOFFにしていれば送信対象にしない（画面通知だけ作る）", async () => {
+  it("アプリ内通知をONにしていれば作る（メールチャネルはT-M8-222で廃止）", async () => {
     const uid = await withTransaction((c) =>
-      makeUser(c, { summary: { in_app: true, email: false } }),
+      makeUser(c, { summary: { in_app: true } }),
     );
     try {
       await deliverDailySummaries(db, jstAt(SUMMARY_HOUR_JST), { userIds: [uid] });
       const rows = await summariesOf(uid);
       expect(rows).toHaveLength(1);
-      expect(rows[0].email_status).toBe("not_requested");
       expect(rows[0].in_app_enabled).toBe(true);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
@@ -149,9 +148,9 @@ describe("deliverDailySummaries (local DB)", () => {
     }
   });
 
-  it("両方OFFの利用者には作らない", async () => {
+  it("アプリ内通知OFFの利用者には作らない", async () => {
     const uid = await withTransaction((c) =>
-      makeUser(c, { summary: { in_app: false, email: false } }),
+      makeUser(c, { summary: { in_app: false } }),
     );
     try {
       await deliverDailySummaries(db, jstAt(SUMMARY_HOUR_JST), { userIds: [uid] });

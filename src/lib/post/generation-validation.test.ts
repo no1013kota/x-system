@@ -132,6 +132,21 @@ describe("revalidateEditedThread", () => {
     expect(withUrl[0].warnings).not.toContain(WARNING.injectionSuspected);
   });
 
+  it("X Premiumのアカウントは280超でも警告しない（上限25,000・T-M8-221）", () => {
+    const long = [{ text: "あ".repeat(300) }]; // 600 weighted
+    // 非Premiumは280超で警告（投稿もブロックされる）。
+    expect(revalidateEditedThread(long, [])[0].warnings).toContain(WARNING.lengthExceeded);
+    // Premiumは25,000まで許す。
+    expect(revalidateEditedThread(long, [], { premium: true })[0].warnings).not.toContain(
+      WARNING.lengthExceeded,
+    );
+    // Premiumでも25,000超は警告する（Xが受け付けない）。
+    const tooLong = [{ text: "あ".repeat(13_000) }]; // 26,000 weighted
+    expect(revalidateEditedThread(tooLong, [], { premium: true })[0].warnings).toContain(
+      WARNING.lengthExceeded,
+    );
+  });
+
   it("PATTERN_MAX_POSTS matches 要件06 §4.3", () => {
     expect(PATTERN_MAX_POSTS).toMatchObject({ p1: 6, p2: 1, p3: 7, p4: 5, p5: 3, p6: 7 });
   });

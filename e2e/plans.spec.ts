@@ -133,10 +133,10 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
-  // いま実際にいくら払っているかと、キャンペーン終了後の額がこの場で読める（T-M8-118）。
-  // 値上げが不意打ちにならないようにするため、契約中の画面にも出す。
+  // いま実際にいくら払っているかがプラン名の真横で読める（T-M8-118→運営者の指示 2026-08-22で
+  // 「キャンペーン終了後」の併記は廃止。終了後価格の表示はプランカード側だけが担う）。
   await expect(page.getByText("月額 ¥3,980（税込）", { exact: false })).toBeVisible();
-  await expect(page.getByText("キャンペーン終了後 ¥7,960", { exact: false })).toBeVisible();
+  await expect(page.getByText("キャンペーン終了後", { exact: false })).toHaveCount(0);
 
   // キー登録不要のプランでも、APIキータブが行き止まりにならない（何が付くかが読める・T-M8-25）
   await page.goto("/app/settings?tab=api-keys");

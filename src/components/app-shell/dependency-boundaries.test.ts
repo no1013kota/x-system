@@ -125,7 +125,6 @@ describe("App Shell dependency boundaries", () => {
       "listNotificationsAction",
       "markAllNotificationsReadAction",
       "markNotificationReadAction",
-      "retryNotificationEmailAction",
       "setActiveXAccountAction",
       "signOutAction={signOut}",
     ]) {

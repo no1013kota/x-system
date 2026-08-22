@@ -130,15 +130,10 @@ describe("theme master", () => {
 });
 
 describe("config defaults", () => {
-  it("メール既定はニュース・投稿完了・毎日のまとめの3種だけON（T-M8-206）", () => {
-    const emailOn = Object.entries(DEFAULT_NOTIFICATION_CONFIG)
-      .filter(([, v]) => v.email)
-      .map(([k]) => k)
-      .sort();
-    expect(emailOn).toEqual(["news", "posted", "summary"]);
-    // アプリ内は全てON。
+  it("通知既定はアプリ内のみ・全種別ON（メールチャネルは持たない・T-M8-222）", () => {
     for (const [key, v] of Object.entries(DEFAULT_NOTIFICATION_CONFIG)) {
       expect(v.in_app, `${key} のアプリ内通知は既定ON`).toBe(true);
+      expect("email" in v, `${key} にemailチャネルを復活させない`).toBe(false);
     }
   });
 

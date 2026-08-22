@@ -1,9 +1,4 @@
 import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
-import {
-  recoverQueuedEmails,
-  type RecoverQueuedEmailsDeps,
-  type RecoverQueuedEmailsResult,
-} from "../email/recover-queued";
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
 import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./scheduled-drafts";
@@ -98,7 +93,6 @@ export interface SchedulerTickResult {
   enqueued: EnqueueResult;
   dispatched: number;
   recovered: StaleRecoveryResult;
-  emailsRecovered: RecoverQueuedEmailsResult;
   cleaned: CleanupResult;
   /** コード定数へ追随させた system default プロンプトの件数（通常は0）。 */
   promptsSynced: number;
@@ -129,7 +123,6 @@ export async function runSchedulerTick(
     removeStorageObjects?: (paths: string[]) => Promise<void>;
     imageBucket?: string;
     onCleanupError?: (scope: string, err: unknown) => void;
-    sendEmail?: RecoverQueuedEmailsDeps["send"];
     /**
      * doctorの判定を運営者へ届ける処理（T-M8-164）。**未注入なら送らない**（テスト・ローカル）。
      * 実体は route が渡す（`cron.ts` を env 非依存に保つため）。
@@ -137,7 +130,6 @@ export async function runSchedulerTick(
     runOperatorAlert?: (deps: {
       claimDay: (windowKey: string) => Promise<boolean>;
     }) => Promise<OperatorAlertResult>;
-    onEmailStaleWarning?: (oldestAgeMs: number) => void;
     /**
      * 招待報酬の確定と月次Payout（T-M8-174）。**未注入なら動かない**（テスト・ローカル）。
      * 実体は route が渡す（cron.ts を env 非依存に保つ）。
@@ -259,14 +251,7 @@ export async function runSchedulerTick(
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
-  // (4') queuedメール回収（100件/10並列。要件04 §6/§14, T-M4-17）。sendEmail 未注入なら skip。
-  const emailsRecovered = opts.sendEmail
-    ? await recoverQueuedEmails({
-        db: pooledDb,
-        send: opts.sendEmail,
-        onStaleWarning: opts.onEmailStaleWarning,
-      })
-    : { processed: 0, sent: 0, requeued: 0, failed: 0 };
+  // （旧(4') queuedメール回収はT-M8-222で廃止——通知はアプリ内のみ）
 
   // (5) 保持cleanup（40日超データ・24時間超の未参照Storage画像。要件04 §14）。
   // 失敗しても他段・tick本体を止めない（cleanupOldData 内で段ごとに握り潰し onError へ記録）。
@@ -286,10 +271,6 @@ export async function runSchedulerTick(
       onError: (userId, err) => opts.onCleanupError?.(`daily_summary:${userId}`, err),
     });
     dailySummaries = delivered.created;
-    // commit後の best-effort 即時メール（残りは下の通知メール回収が拾う）。
-    if (opts.sendEmail) {
-      for (const id of delivered.createdIds) await opts.sendEmail(id).catch(() => {});
-    }
   } catch (err) {
     opts.onCleanupError?.("daily_summary", err);
   }
@@ -325,7 +306,6 @@ export async function runSchedulerTick(
     enqueued,
     dispatched,
     recovered,
-    emailsRecovered,
     cleaned,
     promptsSynced,
     dailySummaries,

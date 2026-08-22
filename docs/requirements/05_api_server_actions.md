@@ -255,10 +255,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `listNotifications` | cursor, unread_only | notifications（`email_status`を含む） | 本人のみ |
+| `listNotifications` | cursor, unread_only | notifications | 本人のみ |
 | `markNotificationRead` | notification_id | notification | 本人のみ |
 | `markAllNotificationsRead` | none | count | 本人のみ |
-| `retryNotificationEmail` | notification_id | notification | `email_status=failed`のみ。attemptを0へ戻しqueued化。通知ごとに1分1回まで。**導線は通知ベルの該当行**（要件06 §2） |
+
+`retryNotificationEmail` はT-M8-222（メール通知の廃止）で削除した。
 
 ## 11. Webhook/cronの認可
 
@@ -303,7 +304,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - 課金webhook: `stripe_events`
 - 投稿結果・部分失敗: `drafts.tweet_ids`, `drafts.last_post_error`
 - アカウント.md変更: `base_md_versions`
-- 通知/メール送信: `notifications`
+- 通知: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
 ## 招待プログラム（T-M8-174）
 

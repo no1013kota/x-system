@@ -37,8 +37,7 @@ else Reflect.set(process.env, "NODE_ENV", testNodeEnv);
 const CRON_SECRET = `test-cron-${randomUUID()}`;
 Reflect.set(process.env, "CRON_SECRET", CRON_SECRET);
 
-// SMTPは未設定にする。`notification-email-server` の transport が null になり、tick のメール回収段は
-// 「実SQLで対象を数えるが送信はskip」になる。実送信を封じ、他利用者の queued 通知行にも触らない。
+// SMTPは未設定にする（通知メールはT-M8-222で廃止。運営者向けopsメールの実送信も封じる）。
 for (const key of ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_APP_PASSWORD"]) {
   Reflect.deleteProperty(process.env, key);
 }
@@ -71,7 +70,6 @@ interface TickBody {
   enqueued?: unknown;
   cleaned?: unknown;
   recovered?: { requeued: number; failed: number };
-  emailsRecovered?: { processed: number };
   error?: unknown;
 }
 
@@ -226,18 +224,6 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
     return rows[0].id;
   }
 
-  /** メール回収段の対象になる queued 通知（20分前作成＝滞留警告の閾値超）。 */
-  async function insertQueuedEmail(userId: string): Promise<string> {
-    const rows = await sql<{ id: string }>(
-      `insert into notifications
-         (user_id, type, title, body, in_app_enabled, email_status, email_available_at, created_at)
-       values ($1,'error','t','b', true, 'queued', now(), now() - interval '20 min')
-       returning id`,
-      [userId],
-    );
-    return rows[0].id;
-  }
-
   async function jobStatus(id: string): Promise<string> {
     const rows = await sql<{ status: string }>(
       `select status from generation_jobs where id = $1`,
@@ -274,7 +260,6 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
     xAccountId = account.xAccountId;
     const queuedJobId = await insertQueuedJob(xAccountId);
     const staleJobId = await insertStaleJob(xAccountId);
-    const notificationId = await insertQueuedEmail(account.userId);
 
     // ここで例外が出れば route の本番配線（実SQL・env・注入）が壊れている＝500相当。
     const res = await GET(authedRequest());
@@ -304,18 +289,7 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
     expect(await jobStatus(staleJobId)).toBe("queued");
     expect(body.recovered?.requeued ?? 0).toBeGreaterThanOrEqual(1);
 
-    // (4') メール回収段: processed>0 は route が sendEmail を注入していないと起こらない。
-    expect(body.emailsRecovered?.processed ?? 0).toBeGreaterThanOrEqual(1);
-    // 滞留警告（onEmailStaleWarning → console.warn）まで配線されている。
-    expect(warns.filter((w) => w.includes("[scheduler_tick email]")).length).toBeGreaterThanOrEqual(
-      1,
-    );
-    // SMTP未設定なので送信は skip。queued の通知行は書き換わらない。
-    const notification = await sql<{ email_status: string }>(
-      `select email_status from notifications where id = $1`,
-      [notificationId],
-    );
-    expect(notification[0].email_status).toBe("queued");
+    // （旧(4') メール回収段はT-M8-222で廃止）
 
     // (5) cleanup 段: 各段は失敗を握り潰すため、応答形と onCleanupError 未発火で成功を確かめる。
     expect(body.cleaned).toEqual({

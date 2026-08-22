@@ -59,6 +59,7 @@ function WarningBadge({ code }: { code: string }) {
 
 export function DraftsList({
   xAccountActive = true,
+  xPremium = false,
   drafts,
   generatingJobs = [],
   selectedDraftId,
@@ -66,6 +67,8 @@ export function DraftsList({
   quotePostEnabled,
 }: {
   drafts: DraftView[];
+  /** 操作中XアカウントのX Premium加入。文字数上限の緩和（T-M8-221）。 */
+  xPremium?: boolean;
   /** 進行中の生成job（T-M8-209）。あるだけ先頭に「作成中」の枠を出す。 */
   generatingJobs?: { id: string; createdAt: string }[];
   selectedDraftId?: string;
@@ -114,6 +117,7 @@ export function DraftsList({
           key={draft.id}
           quotePostEnabled={quotePostEnabled}
           xAccountActive={xAccountActive}
+          xPremium={xPremium}
         />
       ))}
     </ul>
@@ -122,6 +126,7 @@ export function DraftsList({
 
 function DraftCard({
   xAccountActive,
+  xPremium,
   draft,
   highlighted,
   imageRegenEnabled,
@@ -132,6 +137,7 @@ function DraftCard({
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
   xAccountActive: boolean;
+  xPremium: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -154,7 +160,7 @@ function DraftCard({
     posting,
     quoteDisabled: p5Disabled,
     unresolvedPosting,
-  } = draftActionState(draft, { quotePostEnabled });
+  } = draftActionState(draft, { quotePostEnabled, xPremium });
   // 画面の一時状態と合成する（ここだけは純関数に渡せない）。
   // 投稿中は編集・破棄・再生成・再投稿を無効化する。リロードしても復元できるよう status も見る（要件06 §7）。
   const publishing = pending || publishJobId !== null || posting;
@@ -389,7 +395,7 @@ function DraftCard({
       ) : null}
 
       {editing ? (
-        <DraftEditor draft={draft} onDone={() => setEditing(false)} />
+        <DraftEditor draft={draft} onDone={() => setEditing(false)} xPremium={xPremium} />
       ) : (
         <ol className="mt-3 space-y-2">
           {draft.thread.map((post) => (

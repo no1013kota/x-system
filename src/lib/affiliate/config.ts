@@ -12,11 +12,12 @@ export interface InviteTier {
 
 /** ランク表（invite_cp.md §3）。minPaidUsers の昇順を保つこと。 */
 export const INVITE_TIERS: readonly InviteTier[] = [
-  { minPaidUsers: 1, rateBps: 2000 },
-  { minPaidUsers: 5, rateBps: 2500 },
-  { minPaidUsers: 10, rateBps: 3000 },
-  { minPaidUsers: 25, rateBps: 3500 },
-  { minPaidUsers: 50, rateBps: 4000 },
+  // 2026-08-22 運営者の指示で全ランク+10pt（20〜40% → 30〜50%）。過去分はsnapshot済みのため不変。
+  { minPaidUsers: 1, rateBps: 3000 },
+  { minPaidUsers: 5, rateBps: 3500 },
+  { minPaidUsers: 10, rateBps: 4000 },
+  { minPaidUsers: 25, rateBps: 4500 },
+  { minPaidUsers: 50, rateBps: 5000 },
 ];
 
 /** 振込1回あたりの手数料（利用者負担・Commissionからは引かず会計分離）。 */
@@ -31,7 +32,7 @@ export const COMMISSION_CONFIRMATION_DAYS = 30;
 export const ATTRIBUTION_COOKIE_NAME = "exos_ref";
 export const ATTRIBUTION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
-/** 現在の報酬率（bps）。有料招待0人はランク1（20%）を「これから適用される率」として返す。 */
+/** 現在の報酬率（bps）。有料招待0人はランク1（30%）を「これから適用される率」として返す。 */
 export function rateBpsForPaidCount(paidCount: number): number {
   let rate = INVITE_TIERS[0].rateBps;
   for (const tier of INVITE_TIERS) {

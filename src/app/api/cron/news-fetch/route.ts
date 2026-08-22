@@ -41,10 +41,8 @@ export async function GET(request: Request): Promise<Response> {
         onError: (category, err) => console.error(`[news_fetch] ${category}`, err),
       });
       // 6分野settle後、成功分野の新規ニュースを対象に時間単位ダイジェストを fan-out する（要件04 §14）。
+      // 通知はアプリ内のみ（メール送信はT-M8-222で廃止）。
       const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
-      // commit後の best-effort 即時メール送信（残りは scheduler_tick が回収, T-M4-16/17）。
-      const { dispatchNotificationEmail } = await import("@/lib/email/notification-email-server");
-      for (const id of digest.createdIds) dispatchNotificationEmail(id);
       return { ...fetched, digest: { matchedUsers: digest.matchedUsers, notified: digest.notified } };
     },
     response: ({ ran, windowKey, result }) => ({

@@ -160,13 +160,13 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     const { updateNotificationConfigAction, updateNewsConfigAction } = await import("./settings");
 
     const notifications = await updateNotificationConfigAction({
-      news: { in_app: true, email: false },
-      draft_created: { in_app: true, email: true },
-      posted: { in_app: false, email: false },
-      error: { in_app: true, email: true },
-      billing: { in_app: true, email: true },
-      usage: { in_app: true, email: true },
-      summary: { in_app: true, email: true },
+      news: { in_app: true },
+      draft_created: { in_app: true },
+      posted: { in_app: false },
+      error: { in_app: true },
+      billing: { in_app: true },
+      usage: { in_app: true },
+      summary: { in_app: true },
     });
     expect(notifications.status, JSON.stringify(notifications)).toBe("success");
 
@@ -184,7 +184,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
         [userId],
       ),
     );
-    expect(saved.rows[0].notification_config.news).toEqual({ in_app: true, email: false });
+    expect(saved.rows[0].notification_config.news).toEqual({ in_app: true });
   });
 
   it("Xアカウント: 一覧・active切替が本番実装で通る", async () => {
@@ -271,8 +271,8 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     const { listNotificationsAction, markAllNotificationsReadAction } = await import("./notifications");
     await withTransaction((c) =>
       c.query(
-        `insert into notifications (user_id, type, title, body, in_app_enabled, email_status)
-         values ($1,'summary','テスト','本文', true, 'not_requested')`,
+        `insert into notifications (user_id, type, title, body, in_app_enabled)
+         values ($1,'summary','テスト','本文', true)`,
         [userId],
       ),
     );

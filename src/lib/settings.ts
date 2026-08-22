@@ -20,9 +20,14 @@ export const NOTIFICATION_TYPES = [
   "summary",
 ] as const;
 
+/**
+ * メール通知はT-M8-222で廃止（運営者の指示 2026-08-22）。チャネルはアプリ内のみ。
+ * 過去に保存された `email` キーは黙って落とす（strictにすると全既存レコードのparseが
+ * 失敗し、in_app の保存値まで既定へ戻ってしまう。DB側もmigrationで剥がす）。
+ */
 const channelSchema = z
-  .object({ in_app: z.boolean(), email: z.boolean() })
-  .strict();
+  .object({ in_app: z.boolean() })
+  .strip();
 
 export const notificationConfigSchema = z
   .object({
@@ -72,7 +77,7 @@ export function resolveNotificationConfig(raw: unknown): NotificationConfig {
   for (const type of NOTIFICATION_TYPES) {
     const value = source[type];
     const channel = channelSchema.safeParse(value);
-    out[type] = channel.success ? channel.data : { ...DEFAULT_NOTIFICATION_CONFIG[type] };
+    out[type] = channel.success ? channel.data : { in_app: DEFAULT_NOTIFICATION_CONFIG[type].in_app };
   }
   return out;
 }

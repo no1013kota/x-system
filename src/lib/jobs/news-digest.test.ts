@@ -37,7 +37,6 @@ function mockDb(
 const aggRow = (over: Partial<Row> = {}): Row => ({
   user_id: "u1",
   in_app: true,
-  email: true,
   total_count: 7,
   item_ids: ["id1", "id2", "id3"],
   top_titles: ["t1", "t2", "t3", "t4", "t5"],
@@ -67,7 +66,6 @@ describe("fanOutNewsDigest", () => {
     expect(ins.params[2]).toBe("ニュースダイジェスト 7件"); // title
     expect(ins.params[3]).toBe("・t1\n・t2\n・t3\n・t4\n・t5\nほか2件"); // body: top5 + remainder
     expect(ins.params[6]).toBe(true); // in_app_enabled
-    expect(ins.params[7]).toBe(true); // email → queued
     const payload = JSON.parse(ins.params[5] as string);
     expect(payload).toEqual({
       window_started_at: "2026-07-19T00:00:00Z",

@@ -70,8 +70,8 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   await expect(page.getByText("表示3200回", { exact: false })).toBeVisible();
 
   // 段の見出しが3つ並ぶ（順序が読み取れる）。
-  for (const heading of ["まとめ", "良かった投稿", "近づけるための設定"]) {
-    await expect(report.getByRole("heading", { name: heading })).toBeVisible();
+  for (const heading of ["まとめ", "良かった投稿", "良かった投稿に近づくプロンプト設定"]) {
+    await expect(report.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
 
   // ③ アドバイスは画面表記（POST_PATTERN_LABELS / postThemeLabel）で出す。内部キーは出さない。

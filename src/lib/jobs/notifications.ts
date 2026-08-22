@@ -85,7 +85,7 @@ export function resolveFailedNotice(
 
 /**
  * 全kind共通の失敗通知（type='error'・dedupe_key `job:{id}:failed`・通知設定を尊重）。
- * 両channel OFF なら行を作らない。`on conflict` で同じjobの二重通知を防ぐ。
+ * in_app OFF なら行を作らない（メール通知はT-M8-222で廃止）。`on conflict` で同じjobの二重通知を防ぐ。
  */
 export async function createFailedNotification(
   db: Queryable,
@@ -94,17 +94,12 @@ export async function createFailedNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'error', $2, $4, $5, $6, jsonb_build_object('job_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `job:${params.jobId}:failed`, params.jobId, params.title, params.body, params.link],
   );
@@ -126,19 +121,14 @@ export async function createDraftCreatedNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'draft_created', $2, '下書きができました',
             '生成した投稿の下書きを確認・編集できます。',
             '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'draft_created'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'draft_created'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'draft_created'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `draft:${params.draftId}:created`, params.draftId],
   );

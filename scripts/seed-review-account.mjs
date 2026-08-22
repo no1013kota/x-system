@@ -392,9 +392,9 @@ async function main() {
 
     // --- 通知（未読2件。ベルの中身を見るため）---
     await client.query(
-      `insert into notifications (user_id, type, title, body, link, in_app_enabled, email_status)
-       values ($1, 'draft_created', '下書きを作成しました', '「ニュース解説」の下書きが1件できました。確認してから投稿できます。', '/app/posts?tab=drafts', true, 'not_requested'),
-              ($1, 'error', '画像の生成に失敗しました', '文章は作成できています。画像だけ後から作り直せます。', '/app/posts?tab=drafts', true, 'not_requested')`,
+      `insert into notifications (user_id, type, title, body, link, in_app_enabled)
+       values ($1, 'draft_created', '下書きを作成しました', '「ニュース解説」の下書きが1件できました。確認してから投稿できます。', '/app/posts?tab=drafts', true),
+              ($1, 'error', '画像の生成に失敗しました', '文章は作成できています。画像だけ後から作り直せます。', '/app/posts?tab=drafts', true)`,
       [userId],
     );
 

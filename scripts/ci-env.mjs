@@ -70,7 +70,6 @@ const PLACEHOLDERS = {
   SMTP_USER: "ci@example.com",
   SMTP_APP_PASSWORD: "ci-placeholder",
   EMAIL_FROM: "ci@example.com",
-  EMAIL_REPLY_TO: "ci@example.com",
   SUPPORT_EMAIL: "ci@example.com",
 };
 

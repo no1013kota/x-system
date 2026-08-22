@@ -113,14 +113,14 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run check:blog-trace` | **ビルド成果物**（`.next/server/app/**/*.nft.json`）を走査し、公開記事 `blog/published/*.md` が `/blog`・`/blog/[slug]`・`/api/cron/doctor` の各関数へ同梱されるか確認する。**要 `npm run build`**。記事はリクエスト時にファイルから読むため、`next.config.ts` の `outputFileTracingIncludes` が欠けると**本番だけ「準備中」**になる（ローカルとdevはcwdから読めるので他の層では見えない・T-M8-184） |
 | `npm run blog:check` | ブログ記事の front matter と参照画像の実在を、画面（`/blog`）と同じ判定で検証する。不備は理由つきで一覧し終了コード1。`/blog-publish` が公開前に実行する |
 | `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
-| `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・**お知らせメールの滞留と送信失敗**（`failed`は❌。滞留0件でも失敗があれば異常）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・**定時実行の最終実行**・**確認メールの行き先（ローカルはMailpit）**・**溜まったテストデータ**・**請求額と表示額の一致（Stripe）**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）・**設定がその環境へ反映されているか**（Xへの投稿が `live`／`dry_run` のどちらか・`APP_BASE_URL` と実際の配信元の一致・決済キーの種別。**既定値を持つ設定は欠けても起動するため、画面は全部正常に見えたまま機能だけ止まる**・T-M8-147）・**メール確認が終わっていない登録**（送信元と同じアドレスで登録した場合は受信トレイに届かないことを名指しする・T-M8-147）・**決済の受付（Stripeアカウント）**（`charges_enabled`。**Priceの金額が一致していてもアカウントが未有効化なら申し込みは必ず失敗する**・T-M8-148）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
+| `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・**定時実行の最終実行**・**確認メールの行き先（ローカルはMailpit）**・**溜まったテストデータ**・**請求額と表示額の一致（Stripe）**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）・**設定がその環境へ反映されているか**（Xへの投稿が `live`／`dry_run` のどちらか・`APP_BASE_URL` と実際の配信元の一致・決済キーの種別。**既定値を持つ設定は欠けても起動するため、画面は全部正常に見えたまま機能だけ止まる**・T-M8-147）・**メール確認が終わっていない登録**（送信元と同じアドレスで登録した場合は受信トレイに届かないことを名指しする・T-M8-147）・**決済の受付（Stripeアカウント）**（`charges_enabled`。**Priceの金額が一致していてもアカウントが未有効化なら申し込みは必ず失敗する**・T-M8-148）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |
 | `npm run check:suggest` | **投稿分析の実AI 1周**（現実的な12投稿を実DBへ保存→実Claudeで分析→zod検証→レポート保存。実測 約$0.02/回）。PT-SUGGESTのプロンプト・出力schemaを変えたら回す（T-M8-94） |
 | `npm run check:providers` | **実APIへの provider 契約テスト**（Web検索・構造化出力・画像生成が受理されるか）。実キーと少額の費用が必要なためCI・`release:check` には入れない。外部APIの仕様変更・リクエスト形状の誤りを検出する唯一の層。Googleは既定で対象外（T-M7-17。`PROVIDER_CHECK_GOOGLE=1` で有効化） |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
-| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。(1)テストユーザーと関連データを削除（実メールのアカウントには触れない）。(2)**送信待ちのお知らせメール**（`email_status='queued'`）を `not_requested` へ落として送信対象から外す。**本番へ持ち込むと初回の定時実行でまとめて送信される**ため（T-M7-31・D-9 案A）。行は消さないので画面の通知履歴は残る。既定は送信待ちすべてで、`-- --older-than <日数>` で絞れる。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
+| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。テストユーザーと関連データを削除する（実メールのアカウントには触れない。旧「送信待ちお知らせメール」の掃除はT-M8-222のメール通知廃止で不要になった）。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---
@@ -148,14 +148,14 @@ npm run dev                  # → http://127.0.0.1:3000
 | BYOK X連携（standard/md） | ユーザーが自分のX AppのID/SecretをUI入力 | 入力すればローカルでも実OAuth可 |
 | X 実投稿（live） | X App＋実アカウント＋credit。`X_POSTING_MODE=live` は**本番のみ** | 本番のみ（devはdry_run） |
 | 課金（Checkout/Portal/Webhook） | Stripe **test** キー＋3 Price＋Webhook secret＋Portal Configuration | ローカルE2Eするなら必要（testモード可） |
-| 通知メール（SMTP送信） | Gmail 2段階認証＋App Password | 本番のみ（ローカルは下記の注意参照） |
+| 運営者向け状態メール（SMTP送信） | Gmail 2段階認証＋App Password | 本番のみ（ローカルは下記の注意参照。利用者向け通知メールはT-M8-222で廃止） |
 | 監視（Sentry） | `SENTRY_DSN` | 本番のみ（dev未設定でOK） |
 
-> ⚠️ **通知メールは production 以外では送られない**（2026-07-27 追加）。`APP_ENV` が `production` でなく `SMTP_HOST` がループバック（`localhost`／`127.0.0.1`／`::1`）以外なら、transport を作らず送信をskipして警告を出す。`.env.local` に実Gmailの認証情報が入っていると、`scheduler_tick` が溜まっていた queued 通知を**まとめて実送信してしまう**ため（同日に98通を送信して判明）。設定を空にする運用は忘れられるので環境で機械的に止めている。
+> ⚠️ **アプリからのメールは production 以外では送られない**（2026-07-27 追加・現在は運営者向け状態メールのみ）。`APP_ENV` が `production` でなく `SMTP_HOST` がループバック（`localhost`／`127.0.0.1`／`::1`）以外なら、transport を作らず送信をskipして警告を出す（`canSendViaSmtp`・`lib/email/smtp-guard.ts`。2026-07-27に旧通知メールが98通実送信された事故が起点）。
 >
-> ローカルで通知メールの中身を確認したい場合は、`supabase/config.toml` の `[local_smtp]` で `smtp_port` を有効化して Supabase を再起動し、`SMTP_HOST=127.0.0.1` / `SMTP_PORT=<その番号>` を向ける（Mailpit http://127.0.0.1:54324 で読める）。
+> ローカルで運営者向け状態メールの中身を確認したい場合は、`supabase/config.toml` の `[local_smtp]` で `smtp_port` を有効化して Supabase を再起動し、`SMTP_HOST=127.0.0.1` / `SMTP_PORT=<その番号>` を向ける（Mailpit http://127.0.0.1:54324 で読める）。
 >
-> ⚠️ **SMTPの落とし穴**: `SMTP_USER`/`SMTP_APP_PASSWORD` が「非空ダミー」だと、通知メール処理が transport を構築して送信を試み**認証失敗（email_status=failed）**になる（GoTrue のサインアップ確認メールは別系統でMailpitに届く）。ローカルで通知メールを触るなら、この2つを**空にする**と送信skip挙動に戻る。
+> ⚠️ **SMTPの落とし穴**: `SMTP_USER`/`SMTP_APP_PASSWORD` が「非空ダミー」だと、メール送信処理が transport を構築して送信を試み認証失敗になる（GoTrue のサインアップ確認メールは別系統でMailpitに届く）。ローカルで触るなら、この2つを**空にする**と送信skip挙動に戻る。
 
 ### 5.1 X OAuth コールバックURLの設定（X連携を試すとき）
 

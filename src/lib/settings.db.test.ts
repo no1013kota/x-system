@@ -60,7 +60,7 @@ describe("settings (local DB)", () => {
     try {
       const settings = await readSettings(db, uid);
       expect(settings?.newsConfig.categories).toContain("ai");
-      expect(settings?.notificationConfig.posted).toEqual({ in_app: true, email: true });
+      expect(settings?.notificationConfig.posted).toEqual({ in_app: true });
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
@@ -70,13 +70,13 @@ describe("settings (local DB)", () => {
     const uid = await withTransaction((c) => makeUser(c));
     try {
       await saveNotificationConfig(db, uid, {
-        news: { in_app: true, email: false },
-        draft_created: { in_app: true, email: true },
-        posted: { in_app: false, email: false },
-        error: { in_app: true, email: true },
-        billing: { in_app: true, email: true },
-        usage: { in_app: true, email: true },
-        summary: { in_app: true, email: true },
+        news: { in_app: true },
+        draft_created: { in_app: true },
+        posted: { in_app: false },
+        error: { in_app: true },
+        billing: { in_app: true },
+        usage: { in_app: true },
+        summary: { in_app: true },
       });
       await saveNewsConfig(db, uid, {
         categories: ["ai", "sns"],
@@ -84,7 +84,7 @@ describe("settings (local DB)", () => {
       });
 
       const settings = await readSettings(db, uid);
-      expect(settings?.notificationConfig.news).toEqual({ in_app: true, email: false });
+      expect(settings?.notificationConfig.news).toEqual({ in_app: true });
       expect(settings?.newsConfig).toEqual({
         categories: ["ai", "sns"],
         impact_filter: ["high"],

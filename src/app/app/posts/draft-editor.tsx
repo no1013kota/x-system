@@ -10,6 +10,8 @@ import type { DraftView } from "@/lib/drafts";
 import { weightedLength } from "@/lib/text/weighted-length";
 
 const MAX_WEIGHTED = 280;
+/** X Premiumの上限（加重・安全側の判定。T-M8-221）。 */
+const PREMIUM_MAX_WEIGHTED = 25_000;
 
 interface EditablePost {
   localId: string;
@@ -21,9 +23,12 @@ let localSeq = 0;
 export function DraftEditor({
   draft,
   onDone,
+  xPremium = false,
 }: {
   draft: DraftView;
   onDone: () => void;
+  /** アカウントのX Premium加入。280超の投稿可否と警告文言が変わる（T-M8-221）。 */
+  xPremium?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -90,6 +95,8 @@ export function DraftEditor({
         {posts.map((post, index) => {
           const len = weightedLength(post.text);
           const over = len > MAX_WEIGHTED;
+          // Premiumは280超でも投稿できる。エラー表示は実際に投稿できない超過だけにする。
+          const blocked = len > (xPremium ? PREMIUM_MAX_WEIGHTED : MAX_WEIGHTED);
           return (
             <li className="rounded-lg border bg-background p-3" key={post.localId}>
               <div className="mb-1 flex items-center justify-between gap-2">
@@ -139,17 +146,23 @@ export function DraftEditor({
               <div className="mt-1 space-y-0.5 text-xs">
                 <div className="flex items-center gap-2">
                   {/* Xと同じ加重カウント（全角=2・半角=1で280まで＝全角なら140字・T-M8-219）。 */}
-                  <span className={over ? "font-medium text-destructive" : "text-muted-foreground"}>
+                  <span className={blocked ? "font-medium text-destructive" : "text-muted-foreground"}>
                     {len} / {MAX_WEIGHTED}（全角{Math.floor(len / 2)} / 140字換算）
                   </span>
                   {post.text.trim().length === 0 ? (
                     <span className="text-destructive">本文が空です</span>
                   ) : null}
                 </div>
-                {over ? (
+                {blocked ? (
                   <p className="text-destructive" role="alert">
-                    Xの上限（全角140字・半角280字）を超えています。X
-                    Premiumに加入していない場合は投稿できません。
+                    {xPremium
+                      ? "X Premiumの上限（25,000字）を超えています。編集して短くしてください。"
+                      : "Xの上限（全角140字・半角280字）を超えています。X Premiumに加入していない場合は投稿できません。"}
+                  </p>
+                ) : over && xPremium ? (
+                  // Premiumは280超でも投稿できることをその場で伝える（黙って通すと不安が残る）。
+                  <p className="text-muted-foreground">
+                    280字を超えていますが、このアカウントはX Premiumのため投稿できます（上限25,000字）。
                   </p>
                 ) : null}
               </div>

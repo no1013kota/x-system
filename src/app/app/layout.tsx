@@ -5,7 +5,6 @@ import {
   listNotificationsAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
-  retryNotificationEmailAction,
 } from "@/app/actions/notifications";
 import { setActiveXAccountAction } from "@/app/actions/x-accounts";
 import { AppNavigation } from "@/components/app-shell/app-navigation";
@@ -80,7 +79,6 @@ export default async function AppLayout({
               listNotificationsAction={listNotificationsAction}
               markAllNotificationsReadAction={markAllNotificationsReadAction}
               markNotificationReadAction={markNotificationReadAction}
-              retryNotificationEmailAction={retryNotificationEmailAction}
             />
             <Link
               aria-label="設定"

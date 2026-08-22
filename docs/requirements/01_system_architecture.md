@@ -123,16 +123,15 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `SMTP_HOST` | preview/prod | Gmail SMTP host | `smtp.gmail.com` |
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
-| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——通知メール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
-| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>` |
-| `EMAIL_REPLY_TO` | preview/prod | Reply-Toアドレス | `matsubuz.10@gmail.com` |
+| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——運営者向けopsメール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
+| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>`。`EMAIL_REPLY_TO`はT-M8-222（通知メール廃止）で削除 |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | preview/prod | Supabase Auth CAPTCHAのsite key | signup/login/password reset |
 | `TURNSTILE_SECRET_KEY` | preview/prod | Supabase Auth CAPTCHAのsecret | Server only |
 | `SENTRY_DSN` | preview/prod | サーバー例外収集 | Server only |
 | `NEXT_PUBLIC_SENTRY_DSN` | preview/prod | ブラウザ例外収集 | Public |
 
-通知メール送信は `nodemailer`（Gmail SMTP・587 STARTTLS）で行う（`lib/email/notification-email-server.ts`）。中核（`notification-email.ts`）はDB・トランスポート注入で純粋に保ち、`email_status='queued'` の通知を送って `sent`／`failed` を確定する。provider冪等は `Message-ID = <notification:{id}@{from-domain}>`＋`id AND email_status='queued'` guard、再送分類は 429/5xx/network=retryable（最大3 attempt・指数backoff）／401/403=終端（要件04 §14）。`email_error` には秘密値・宛先を含まない要約（`smtp:{code}[:{responseCode}]`）だけを保存する。SMTP env 未設定時は送信を skip する。通知row commit後は best-effort に `after()` で即時送信し、残りは `scheduler_tick` が回収する（回収は T-M4-17）。実Gmail送信の確認は App Password 発行後に行う（open_questions）。
+**利用者向け通知メールはT-M8-222で廃止した**（通知はアプリ内のみ・運営者の指示 2026-08-22）。アプリからのメール送信は運営者向けopsアラート（`lib/email/operator-mail-server.ts`・要件04 §15）だけで、`nodemailer`（Gmail SMTP・587 STARTTLS）を使い、`canSendViaSmtp`（`lib/email/smtp-guard.ts`）が非productionからの外部SMTP送信を拒否する。認証メール（サインアップ確認・パスワードリセット）はSupabase Authが同じSMTP資格情報で送る。
 
 ## 4. ルーティング
 

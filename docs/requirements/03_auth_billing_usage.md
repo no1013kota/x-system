@@ -122,7 +122,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 
 Price IDからplanへの変換に未知の値が来た場合はprofileを更新せず、Sentryへ記録して非2xxを返す。`stripe_events`も記録せず、Stripeの再送で復旧できる状態にする。
 
-invoice eventは現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決する。subscription由来でない一回払いinvoiceはeventだけを処理済み記録し、profile・通知を変更しない。`invoice.payment_failed`／`invoice.paid`はいずれもSubscriptionを再取得して§4.2の全契約項目を同期する。payment failedはprofile更新後、eventと同じtransaction内で`billing:invoice:{invoice_id}:payment_failed`をdedupe keyとする課金通知を作る。同一invoiceの再試行で通知を増やさず、設定snapshot・attempt count・invoice／subscription ID・同期statusをpayloadへ保存する。課金通知のin-app／emailが両方OFFなら通知rowを作らないが、profileの停止statusを使う常設バナーは設定にかかわらず表示する。`invoice.paid`は通知を作らず、再取得したactive等の現在statusへ復旧する。
+invoice eventは現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決する。subscription由来でない一回払いinvoiceはeventだけを処理済み記録し、profile・通知を変更しない。`invoice.payment_failed`／`invoice.paid`はいずれもSubscriptionを再取得して§4.2の全契約項目を同期する。payment failedはprofile更新後、eventと同じtransaction内で`billing:invoice:{invoice_id}:payment_failed`をdedupe keyとする課金通知を作る。同一invoiceの再試行で通知を増やさず、設定snapshot・attempt count・invoice／subscription ID・同期statusをpayloadへ保存する。課金通知のin-app（メール通知はT-M8-222で廃止）がOFFなら通知rowを作らないが、profileの停止statusを使う常設バナーは設定にかかわらず表示する。`invoice.paid`は通知を作らず、再取得したactive等の現在statusへ復旧する。
 
 ### 4.2 冪等性と順序
 
@@ -282,7 +282,7 @@ premiumだけ`usage_counters`から当月残量をホームと設定へ表示す
 }
 ```
 
-決済失敗、契約停止、利用枠100%は`notification_config`にかかわらず常設バナーを表示する。メール・通知一覧への作成は設定を尊重する。
+決済失敗、契約停止、利用枠100%は`notification_config`にかかわらず常設バナーを表示する。通知一覧への作成は設定を尊重する（メール通知はT-M8-222で廃止）。
 
 ## 9. 実装時の公式参照
 
@@ -309,7 +309,7 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 **詳細仕様の正本は [招待プログラム 実装仕様書](../cp/invite_cp.md)**（運営者の指示 2026-08-21）。ここには課金との接点だけを書く。
 
 - **帰属**: `/r/{code}` が30日Cookie（`exos_ref`・Last Click）→ 登録成功時に `affiliate_attributions` へ（1ユーザー1招待者・登録後変更不可・自己招待禁止。失敗しても登録は止めない）。**別メールでの実質自己招待は機械検知しない**——運営者が振込前に `affiliate:payouts -- --show` で相手のメールを確認して判断する（invite_cp.mdの範囲外・T-M8-174レビューで記録）。
-- **報酬はStripeの支払成功が正**: `invoice.paid` のwebhook（event claim transactionの中）で `recordCommissionForInvoice` が作る。実際に支払われた金額×作成時点のランク率（累計有料招待数で20〜40%・snapshot）。Trial中（0円）なし・初回課金から最大6ヶ月・`customer.subscription.deleted`（canceled）で期間終了（**再契約でも再開しない**。ただし**一度も課金していない解約では終了しない**——Trial中の離脱で報酬機会が永久に消えるのを避ける）・`charge.refunded` で取消・減額（**webhookの購読イベントに charge.refunded を追加する必要がある**。現行API=dahliaのChargeにはinvoiceフィールドが無いため、`payment_intent`→InvoicePayments APIでinvoiceを解決する）。**報酬作成と請求失敗通知はstale判定と独立に実行する**——Stripeは配送順を保証せず、staleで捨てると報酬が恒久に作られない（どちらも冪等）。
+- **報酬はStripeの支払成功が正**: `invoice.paid` のwebhook（event claim transactionの中）で `recordCommissionForInvoice` が作る。実際に支払われた金額×作成時点のランク率（累計有料招待数で30〜50%・snapshot。2026-08-22に全ランク+10pt）。Trial中（0円）なし・初回課金から最大6ヶ月・`customer.subscription.deleted`（canceled）で期間終了（**再契約でも再開しない**。ただし**一度も課金していない解約では終了しない**——Trial中の離脱で報酬機会が永久に消えるのを避ける）・`charge.refunded` で取消・減額（**webhookの購読イベントに charge.refunded を追加する必要がある**。現行API=dahliaのChargeにはinvoiceフィールドが無いため、`payment_intent`→InvoicePayments APIでinvoiceを解決する）。**報酬作成と請求失敗通知はstale判定と独立に実行する**——Stripeは配送順を保証せず、staleで捨てると報酬が恒久に作られない（どちらも冪等）。
 - **確定と振込**: 支払＋30日で `pending`→`payable`（scheduler_tick相乗り・1日1回）。月初のtickが前月締めのPayoutを作成（¥5,000以上＋口座登録済みのみ。手数料¥980は報酬と会計分離）。**締めの実装は「バッチ実行時点のpayable全件」**——繰越分を含むため正本§9の「その月にpayableになった分」より広いが、ずれは前倒し方向のみ（早く支払われる側）で金額は変わらない。**claimと本処理は同一トランザクション**（失敗したらclaimごと戻り、次のtickが再試行）。**Refundで未払いPayoutの束ねが減ったらPayout金額を引き直し**、支払記録（`--paid`）の直前にも突き合わせる（過払い防止）。部分返金は残額×snapshot率で減額。支払済み報酬への返金は自動では触らずSentryへ記録する（運営者の個別調整）。運営者の振込手順は [招待報酬の銀行振込](../operations/affiliate-payouts.md)。**画面の「受取可能」は振込予定に束ねられた分も含み、振込の支払記録（`--paid`）で0になって報酬履歴の「支払済み」へ移る**（月初の締めでは減らさない・運営者の指示 2026-08-21・T-M8-176）。
 - **口座**: 口座番号はAES-256-GCM暗号文のみ保存（要決定D-33）。画面は末尾4桁。
 - 画面はSC-12（要件06）。DBは要件02 §3.22〜3.26。

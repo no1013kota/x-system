@@ -8,7 +8,6 @@ import {
   judgeDatabaseSize,
   judgeJobs,
   judgeNews,
-  judgeQueuedEmails,
   judgeScheduler,
   judgeStuckJobs,
   judgeXAccounts,
@@ -186,40 +185,11 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
   });
 });
 
-describe("judgeQueuedEmails", () => {
-  it("溜まっていなければ正常", () => {
-    expect(judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0 }).level).toBe("ok");
-  });
-
-  it("24時間より古い滞留は注意（本番で一斉送信される・D-9）", () => {
-    const r = judgeQueuedEmails({ queued: 53, oldestHours: 128, failed: 0 });
-    expect(r.level).toBe("warn");
-    expect(r.detail).toContain("53");
-    expect(r.nextAction).toBeTruthy();
-  });
-
-  it("直近の滞留は送信待ちとして正常", () => {
-    expect(judgeQueuedEmails({ queued: 2, oldestHours: 1, failed: 0 }).level).toBe("ok");
-  });
-
-  // T-M8-40: `queued = 0` を無条件に「ok」としていたため、**SMTP認証が間違っていて
-  // 通知メールが全滅している状態**（全件 failed・queued は0）で doctor が ✅ を出していた。
-  it("送信待ちが0でも失敗が残っていればエラー（正常な空と失敗による空を区別する）", () => {
-    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 7 });
-    expect(r.level).toBe("error");
-    expect(r.detail).toContain("7");
-    expect(r.nextAction).toContain("SMTP");
-  });
-
-  it("失敗は送信待ちより先に扱う（自動では回収されないため）", () => {
-    const r = judgeQueuedEmails({ queued: 3, oldestHours: 1, failed: 1 });
-    expect(r.level).toBe("error");
-  });
-});
+// （judgeQueuedEmails のテストはT-M8-222で削除——メール通知機能ごと廃止）
 
 /**
- * 定時実行の生存（T-M8-51）。`judgeQueuedEmails` と同型の見落としで、止まっていても
- * doctor はどこも赤くならなかった。tick が死ぬと予約投稿・通知メール・日次サマリが静かに全部止まる。
+ * 定時実行の生存（T-M8-51）。旧・お知らせメール検査と同型の見落としで、止まっていても
+ * doctor はどこも赤くならなかった。tick が死ぬと予約投稿・アプリ内通知・日次サマリが静かに全部止まる。
  */
 describe("judgeScheduler", () => {
   it("本番で15分以内に動いていれば正常", () => {
@@ -243,28 +213,6 @@ describe("judgeScheduler", () => {
   it("定時実行が前提でない環境では赤くしない", () => {
     expect(judgeScheduler({ minutesSinceLastRun: null, schedulerExpected: false }).level).toBe("ok");
     expect(judgeScheduler({ minutesSinceLastRun: 999, schedulerExpected: false }).level).toBe("ok");
-  });
-});
-
-describe("judgeQueuedEmails の期間の窓（T-M8-51）", () => {
-  // 窓が無いと1件失敗しただけで恒久的に赤くなり、赤が常態化して他の異常が埋もれる。
-  it("古い失敗だけなら注意に落とす（恒久的に赤くしない）", () => {
-    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 3 });
-    expect(r.level).toBe("warn");
-    expect(r.detail).toContain("3");
-  });
-
-  it("直近の失敗があればエラーで、古い分は件数として添える", () => {
-    const r = judgeQueuedEmails({ queued: 1, oldestHours: 2, failed: 2, failedOlder: 5 });
-    expect(r.level).toBe("error");
-    expect(r.detail).toContain("2");
-    expect(r.detail).toContain("5");
-  });
-
-  it("どちらも無ければ正常", () => {
-    expect(
-      judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 0 }).level,
-    ).toBe("ok");
   });
 });
 

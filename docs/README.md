@@ -23,7 +23,7 @@
 | [01 システム構成](./requirements/01_system_architecture.md) | 技術スタック、環境変数、認証・proxy、監視、ログ保持 |
 | [02 データモデル](./requirements/02_data_model.md) | 全26テーブルの列・制約・保持期間、jsonbの形 |
 | [03 認証・課金・利用量](./requirements/03_auth_billing_usage.md) | 登録・ログイン、Stripe、プラン、利用枠、実行ガード |
-| [04 ジョブと自動化](./requirements/04_jobs_and_automation.md) | 定時トリガー、ジョブキュー、通知メール、cleanup |
+| [04 ジョブと自動化](./requirements/04_jobs_and_automation.md) | 定時トリガー、ジョブキュー、アプリ内通知、cleanup |
 | [05 API・Server Actions](./requirements/05_api_server_actions.md) | 入出力の形、エラーコード、認可、楽観lock |
 | [06 画面](./requirements/06_screens_onboarding_posting.md) | SC-01〜11の画面仕様、App Shell、文言の方針 |
 

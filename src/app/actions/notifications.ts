@@ -9,7 +9,6 @@ import {
   listNotificationsForUser,
   markAllNotificationsReadForUser,
   markNotificationReadForUser,
-  retryNotificationEmailForUser,
 } from "@/lib/notifications-server";
 import type {
   NotificationListPayload,
@@ -97,19 +96,3 @@ export async function markAllNotificationsReadAction(): Promise<NotificationMuta
   }
 }
 
-export async function retryNotificationEmailAction(
-  input: unknown,
-): Promise<BaseResult> {
-  const parsed = parseUserInput(idSchema, input);
-  if (!parsed.success) {
-    return validationErrorResult(parsed.error);
-  }
-  const auth = await requireUserId();
-  if (!auth.ok) return auth.result;
-  try {
-    await retryNotificationEmailForUser(auth.userId, parsed.data.notification_id);
-    return { message: "メールの再送を予約しました。", status: "success" };
-  } catch (error) {
-    return errorResult(error);
-  }
-}

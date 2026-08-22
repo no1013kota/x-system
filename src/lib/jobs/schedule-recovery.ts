@@ -37,19 +37,14 @@ export async function insertMissedNotification(
   const { rowCount } = await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'error', $2, '自動投稿の予定時刻を過ぎました',
             '予定時刻から10分を超えたため投稿を見送りました。次回の予定をお待ちください。',
             '/app/schedule', jsonb_build_object('slot_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, dedupe, params.slotId],
   );

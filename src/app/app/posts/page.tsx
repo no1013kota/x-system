@@ -168,13 +168,15 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
   let slots: ScheduleSlotView[] = [];
   let historyTruncated = false;
+  /** 操作中アカウントのX Premium加入（文字数上限の緩和・T-M8-221）。 */
+  let xPremium = false;
   /** 進行中の生成job（T-M8-209）。下書きタブの先頭に作成中カードを出す。 */
   let generatingJobs: { id: string; createdAt: string }[] = [];
   /** 通知から来たが対象が見つからなかったときの案内（null＝案内不要）。 */
   let missingDraft: DraftLocation | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
-    const [loaded, plan, keyRows, loadedSlots, handleRow, inflightRows] = await Promise.all([
+    const [loaded, plan, keyRows, loadedSlots, handleRow, inflightRows, premiumRow] = await Promise.all([
       listDraftsForAccount(
         pooledDb,
         activeXAccountId,
@@ -202,9 +204,14 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
             [activeXAccountId],
           )
         : Promise.resolve(null),
+      getPool().query<{ x_premium: boolean }>(
+        `select x_premium from x_accounts where id = $1`,
+        [activeXAccountId],
+      ),
     ]);
     drafts = await attachSignedImageUrls(loaded);
     slots = loadedSlots;
+    xPremium = premiumRow?.rows[0]?.x_premium ?? false;
     historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
     /**
      * 通知が指す下書きが、このタブに見当たらないとき（T-M8-115）。
@@ -292,11 +299,12 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           <MissingDraftNotice location={missingDraft} tab="drafts" />
           <ScheduleSummary slots={slots} />
           <DraftsList
-          generatingJobs={generatingJobs}
             drafts={drafts}
+            generatingJobs={generatingJobs}
             imageRegenEnabled={imageRegenEnabled}
             quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
             selectedDraftId={params.draftId}
+            xPremium={xPremium}
           />
         </>
       ) : (

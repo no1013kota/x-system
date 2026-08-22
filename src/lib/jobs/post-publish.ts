@@ -17,7 +17,7 @@ import {
   hasUrl,
   postConsumeKey,
 } from "../post/posting-text";
-import { findOverLengthText } from "../post/text-metrics";
+import { findOverLengthText, maxWeightedLengthFor } from "../post/text-metrics";
 import {
   XApiError,
   type XCreatePostResult,
@@ -149,6 +149,8 @@ interface PublishJobRow {
   x_user_id: string;
   user_id: string;
   plan: string;
+  /** X Premium加入。文字数上限の緩和判定（T-M8-221）。 */
+  x_premium: boolean;
 }
 
 interface PublishDraftRow {
@@ -203,7 +205,7 @@ export interface PostPublishResult {
 
 async function loadJob(db: Queryable, jobId: string): Promise<PublishJobRow | null> {
   const { rows } = await db.query<PublishJobRow>(
-    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, xa.x_user_id, p.plan
+    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, xa.x_user_id, xa.x_premium, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -263,19 +265,14 @@ async function createPostedNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'posted', $2, '投稿が完了しました',
             'スレッドをXへ投稿しました。実績は追って集計されます。',
             '/app/posts?tab=history&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'posted'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'posted'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'posted'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'posted'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `draft:${params.draftId}:posted`, params.draftId],
   );
@@ -291,18 +288,13 @@ async function createPostErrorNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'error', $2, $4, $5,
             '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, dedupeKey, params.draftId, title, body],
   );
@@ -512,13 +504,18 @@ export async function executePostPublish(
     throw new PostPublishError("quote_target_missing", "p5 draft has no quote target");
   }
 
-  const overLength = findOverLengthText(thread.map((_, index) => finalTextAt(index)));
+  // X Premiumのアカウントは280超も投稿できる（上限25,000・T-M8-221）。
+  const lengthLimit = maxWeightedLengthFor(job.x_premium);
+  const overLength = findOverLengthText(
+    thread.map((_, index) => finalTextAt(index)),
+    lengthLimit,
+  );
   if (overLength) {
     // Xへは1件も出していないので `draft` へ戻す（編集して直せる状態にする）。
     await revertDraftWithReason(db, draftId, {
       code: "length_exceeded",
       message:
-        `${overLength.index + 1}本目の本文が長すぎます（上限280・いま${overLength.weightedLength}）。` +
+        `${overLength.index + 1}本目の本文が長すぎます（上限${lengthLimit.toLocaleString()}・いま${overLength.weightedLength.toLocaleString()}）。` +
         `編集して短くしてから投稿してください。Xへの投稿は1件も行っていません。`,
     });
     throw new PostPublishError("length_exceeded", "post exceeds the weighted length limit");

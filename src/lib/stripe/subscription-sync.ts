@@ -380,8 +380,8 @@ type InvoiceSyncDetail = Extract<
 
 /**
  * 請求失敗（invoice payment_failed）時のユーザー通知を冪等に記録する。billing通知の
- * in_app/email いずれかが有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
- * 二重通知を防ぐ。event claim transaction 内で呼ぶ。
+ * in_app が有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
+ * 二重通知を防ぐ（メール通知はT-M8-222で廃止）。event claim transaction 内で呼ぶ。
  */
 async function notifyInvoicePaymentFailed(
   database: StripeEventDatabase,
@@ -390,24 +390,19 @@ async function notifyInvoicePaymentFailed(
   projection: SubscriptionProjection,
 ): Promise<void> {
   const config = target.notification_config as {
-    billing?: { email?: unknown; in_app?: unknown };
+    billing?: { in_app?: unknown };
   } | null;
   const inAppEnabled = config?.billing?.in_app === true;
-  const emailEnabled = config?.billing?.email === true;
-  if (!inAppEnabled && !emailEnabled) return;
+  if (!inAppEnabled) return;
   const dedupeKey = `billing:invoice:${invoice.id}:payment_failed`;
   await database.query(
     `insert into notifications
-      (user_id, type, dedupe_key, title, body, link, payload,
-       in_app_enabled, email_status, email_available_at)
+      (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
      values (
        $1, 'billing', $2,
        'お支払いを確認できませんでした',
        'お支払い方法をご確認ください。更新後は契約状態へ自動的に反映されます。',
-       '/app/settings?tab=billing', $3::jsonb, $4,
-       case when $5 then 'queued'::email_delivery_status
-            else 'not_requested'::email_delivery_status end,
-       case when $5 then now() else null end
+       '/app/settings?tab=billing', $3::jsonb, $4
      )
      on conflict (user_id, dedupe_key) where dedupe_key is not null
      do nothing`,
@@ -417,15 +412,11 @@ async function notifyInvoicePaymentFailed(
       {
         attempt_count: invoice.attemptCount,
         invoice_id: invoice.id,
-        notification_config_snapshot: {
-          email: emailEnabled,
-          in_app: inAppEnabled,
-        },
+        notification_config_snapshot: { in_app: inAppEnabled },
         subscription_id: projection.subscriptionId,
         subscription_status: projection.status,
       },
       inAppEnabled,
-      emailEnabled,
     ],
   );
 }

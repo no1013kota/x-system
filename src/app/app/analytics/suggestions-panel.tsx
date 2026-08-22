@@ -17,7 +17,7 @@ import { Icon } from "@/components/ui/icon";
  *
  * **毎朝8:00 JSTに自動で生成される**（手動の「提案を更新」は 2026-08-15 に廃止・運営者の指示）。
  *
- * 画面は上から ①まとめ ②良かった投稿 ③近づけるための設定 の3段で、
+ * 画面は上から ①まとめ ②良かった投稿 ③良かった投稿に近づくプロンプト設定 の3段で、
  * **段ごとに番号付きの見出しを置く**（T-M8-114）。以前は総評・投稿リンク・推奨が
  * 同じ濃さの文字で続いていて、どこまでが何の話か読み取れなかった。
  *
@@ -275,7 +275,7 @@ export function SuggestionsPanel({
 
                   {s.advice ? (
                     <div className="mt-5">
-                      <SectionHeading step={3}>近づけるための設定</SectionHeading>
+                      <SectionHeading step={3}>良かった投稿に近づくプロンプト設定</SectionHeading>
                       <p className="mt-1 text-caption text-ink-3">
                         投稿作成・スケジュールの画面で、そのまま選べます。
                       </p>

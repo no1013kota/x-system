@@ -90,7 +90,7 @@ describe("affiliate store (db)", () => {
       }),
     ).toBe("skipped");
 
-    // 初回課金 ¥3,980 → 累計1人 → 20% → ¥796。
+    // 初回課金 ¥3,980 → 累計1人 → 30% → ¥1,194。
     const firstInvoice = `in_${randomUUID()}`;
     expect(
       await recordCommissionForInvoice(db, {
@@ -119,8 +119,8 @@ describe("affiliate store (db)", () => {
       [firstInvoice],
     );
     expect(commission.rows[0]).toMatchObject({
-      commission_rate_bps: 2000,
-      commission_amount: 796,
+      commission_rate_bps: 3000,
+      commission_amount: 1194,
       status: "pending",
     });
     const window = await db.query<{ started: string; ends: string }>(
@@ -187,7 +187,7 @@ describe("affiliate store (db)", () => {
       );
       rates.push(row.rows[0].commission_rate_bps);
     }
-    expect(rates).toEqual([2000, 2000, 2000, 2000, 2500]);
+    expect(rates).toEqual([3000, 3000, 3000, 3000, 3500]);
   });
 
   it("Refundで取消（reversed）・確認期間経過でpayableへ", async (ctx) => {
@@ -239,7 +239,7 @@ describe("affiliate store (db)", () => {
       amountPaid: 3980,
       paidAtSec: Math.floor(Date.now() / 1000),
     });
-    // ¥500の部分返金 → 残額3,480×20%＝696へ減額（statusは変えない）。
+    // ¥500の部分返金 → 残額3,480×30%＝1,044へ減額（statusは変えない）。
     const partial = await adjustCommissionForInvoiceRefund(db, invoice, {
       amountRefunded: 500,
       fullyRefunded: false,
@@ -252,7 +252,7 @@ describe("affiliate store (db)", () => {
     );
     expect(row.rows[0]).toMatchObject({
       eligible_amount: 3480,
-      commission_amount: 696,
+      commission_amount: 1044,
       status: "pending",
     });
   });

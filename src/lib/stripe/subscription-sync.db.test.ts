@@ -49,7 +49,7 @@ describe("Stripe subscription synchronization transaction", () => {
     // 既定はT-M8-206でOFFになったため、明示的にONへ（既定値の検証はconstants.testが担う）。
     await activeDatabase.query(
       `update profiles set notification_config = jsonb_set(
-         notification_config, '{billing}', '{"in_app":true,"email":true}'::jsonb)
+         notification_config, '{billing}', '{"in_app":true}'::jsonb)
        where id = $1`,
       [userId],
     );
@@ -254,34 +254,29 @@ describe("Stripe subscription synchronization transaction", () => {
 
     const billingNotifications = await activeDatabase.query<{
       dedupe_key: string;
-      email_available_at: Date | null;
-      email_status: string;
       in_app_enabled: boolean;
       link: string;
       payload: {
         invoice_id: string;
-        notification_config_snapshot: { email: boolean; in_app: boolean };
+        notification_config_snapshot: { in_app: boolean };
         subscription_status: string;
       };
     }>(
-      `select dedupe_key, email_available_at, email_status, in_app_enabled,
-              link, payload
+      `select dedupe_key, in_app_enabled, link, payload
          from notifications where user_id = $1 and type = 'billing'`,
       [userId],
     );
     expect(billingNotifications.rowCount).toBe(1);
     expect(billingNotifications.rows[0]).toMatchObject({
       dedupe_key: "billing:invoice:in_failed_001:payment_failed",
-      email_status: "queued",
       in_app_enabled: true,
       link: "/app/settings?tab=billing",
       payload: {
         invoice_id: "in_failed_001",
-        notification_config_snapshot: { email: true, in_app: true },
+        notification_config_snapshot: { in_app: true },
         subscription_status: "past_due",
       },
     });
-    expect(billingNotifications.rows[0].email_available_at).toBeInstanceOf(Date);
 
     await expect(
       runInvoice(
@@ -423,7 +418,7 @@ describe("Stripe subscription synchronization transaction", () => {
         },
       );
 
-    // (1) invoice.paid → 報酬が作られる（¥3,980×20%＝¥796）。
+    // (1) invoice.paid → 報酬が作られる（¥3,980×30%＝¥1,194）。
     await process(`evt_aff_paid_${randomUUID()}`, "invoice.paid", {
       kind: "invoice_sync",
       invoice: {
@@ -439,7 +434,7 @@ describe("Stripe subscription synchronization transaction", () => {
       `select commission_amount, status from affiliate_commissions where stripe_invoice_id = $1`,
       [invoiceId],
     );
-    expect(commission.rows[0]).toMatchObject({ commission_amount: 796, status: "pending" });
+    expect(commission.rows[0]).toMatchObject({ commission_amount: 1194, status: "pending" });
 
     // (2) 解約（status canceled）→ 報酬期間が終了として記録される。
     await process(`evt_aff_del_${randomUUID()}`, "customer.subscription.deleted", {
@@ -573,7 +568,7 @@ describe("Stripe subscription synchronization transaction", () => {
       `select commission_amount from affiliate_commissions where stripe_invoice_id = $1`,
       [invoiceId],
     );
-    expect(commission.rows[0]).toMatchObject({ commission_amount: 796 });
+    expect(commission.rows[0]).toMatchObject({ commission_amount: 1194 });
     // profilesの投影は新しいイベントのまま（staleが守られている）。
     const prof = await db.query<{ created: string }>(
       `select extract(epoch from subscription_event_created_at)::bigint::text as created
