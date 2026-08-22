@@ -30,13 +30,18 @@ import { formatJst } from "@/lib/format";
  * カード側が持ち、ボタンはボタン群の中・パネルはヘッダー行の下に**別の行**として置く。
  */
 
-/** `datetime-local` の値（ローカル時刻・秒なし）へ変換する。 */
-function toLocalInputValue(iso: string | null): string {
+/**
+ * `datetime-local` の値（秒なし）へ**日本時間で**変換する（T-M8-229）。
+ * 入力の解釈も保存もJST基準（`checkDraftSchedule`）なので、表示だけを閲覧環境のTZに
+ * するとブラウザのTZ次第で「入れた時刻と違う時刻」が見える。
+ */
+function toJstInputValue(iso: string | null): string {
   if (!iso) return "";
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const at = new Date(t + 9 * 3_600_000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  return `${at.getUTCFullYear()}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())}T${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())}`;
 }
 
 /**
@@ -45,7 +50,7 @@ function toLocalInputValue(iso: string | null): string {
  * エラーになるため、少し先へ丸める。
  */
 function defaultScheduleValue(): string {
-  return toLocalInputValue(new Date(Date.now() + 5 * 60_000).toISOString());
+  return toJstInputValue(new Date(Date.now() + 5 * 60_000).toISOString());
 }
 
 /** 予約パネルの開閉ボタン。ラベルは「日時を指定して予約」→「予約を変更」→「閉じる」。 */
@@ -91,7 +96,7 @@ export function ScheduleDraftPanel({
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState(() =>
-    scheduledAt ? toLocalInputValue(scheduledAt) : defaultScheduleValue(),
+    scheduledAt ? toJstInputValue(scheduledAt) : defaultScheduleValue(),
   );
   const [reason, setReason] = useState<string | null>(null);
   const busy = pending || disabled;
@@ -160,7 +165,7 @@ export function ScheduleDraftPanel({
     <div className="w-fit max-w-full rounded-card border border-hairline bg-page p-3">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="shrink-0">投稿日時</span>
+          <span className="shrink-0">投稿日時（日本時間）</span>
           {/* 幅は入力内容（日時）なり。引き伸ばさない（運営者の指示 2026-08-22）。 */}
           <input
             aria-label="投稿日時"

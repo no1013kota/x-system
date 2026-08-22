@@ -19,6 +19,17 @@ describe("checkDraftSchedule", () => {
     expect(result.scheduledAt).toBe("2026-08-21T00:00:00.000Z");
   });
 
+  it("TZ無しの値（datetime-local）は実行環境に依らず日本時間として解釈する（T-M8-229）", () => {
+    // 本番サーバはUTC。素の文字列を環境TZ任せにすると、JST利用者の予約が9時間ずれる。
+    const result = checkDraftSchedule(OK_TARGET, "2026-08-21T09:00", NOW);
+    expect(result.ok).toBe(true);
+    expect(result.scheduledAt).toBe("2026-08-21T00:00:00.000Z");
+    // 秒つきの素の値も同じ扱い。
+    expect(checkDraftSchedule(OK_TARGET, "2026-08-21T09:00:30", NOW).scheduledAt).toBe(
+      "2026-08-21T00:00:30.000Z",
+    );
+  });
+
   it("投稿済み・破棄済みの下書きには予約できない", () => {
     for (const status of ["posted", "discarded", "posting", "failed"]) {
       const result = checkDraftSchedule({ ...OK_TARGET, status }, inMinutes(60), NOW);

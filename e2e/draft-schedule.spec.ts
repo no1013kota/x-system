@@ -9,10 +9,21 @@ import { expect, signIn, test, toastIn } from "./fixtures/test";
  */
 
 /** `datetime-local` へ入れる値（ブラウザのローカル時刻＝テストはAsia/Tokyo）。 */
-function localInputValue(offsetMinutes: number): string {
-  const at = new Date(Date.now() + offsetMinutes * 60_000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+/*
+ * 相対日時は**ブラウザ側の時計で**計算する（2026-08-22・stg初CIで検出）。
+ * PlaywrightはブラウザのタイムゾーンをAsia/Tokyoへエミュレートするが、テスト（Node）は
+ * CIランナーのUTCのまま。Node側で「+120分」の文字列を作ると、ブラウザにとっては
+ * 9時間過去＝「1分以上先」の検証に恒久的に落ちる（ローカルは両方JSTで気付けない）。
+ */
+async function localInputValueInPage(
+  page: import("@playwright/test").Page,
+  offsetMinutes: number,
+): Promise<string> {
+  return page.evaluate((offset: number) => {
+    const at = new Date(Date.now() + offset * 60_000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  }, offsetMinutes);
 }
 
 async function seedDraft(xAccountId: string, text: string): Promise<string> {
@@ -62,12 +73,12 @@ test("下書きに日時を指定して予約でき、一覧に予約日時が�
       setter.call(el, v);
       el.dispatchEvent(new Event("input", { bubbles: true }));
     }, value);
-  await fillDateTime(localInputValue(-60));
+  await fillDateTime(await localInputValueInPage(page, -60));
   await expect(page.getByText("1分以上先の日時を指定してください", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "予約する" })).toBeDisabled();
 
   // 十分先の日時なら予約できる。
-  await fillDateTime(localInputValue(120));
+  await fillDateTime(await localInputValueInPage(page, 120));
   await expect(page.getByRole("button", { name: "予約する" })).toBeEnabled();
   await page.getByRole("button", { name: "予約する" }).click();
   await expect(toastIn(page)).toContainText("投稿を予約しました");
