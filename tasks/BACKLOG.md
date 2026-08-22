@@ -2255,6 +2255,28 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
     すべて維持**。80件緑。
 
+### T-M8-238: Stripe側の設定ドリフトを doctor が見抜けるようにする（黙って壊れない） `done`
+- 参照: CLAUDE.md 原則1/2・要件05 §Stripe・docs/operations/monitoring.md §2 / 依存: なし / サイズ: M
+- 完了条件:
+  - 「プラン管理（Stripe）」が `enabled` だけでなく**変更先の Price**と**トライアル中の変更挙動**まで見る
+  - 「契約イベントの受け取り（Stripe webhook）」が購読イベントの不足・受け口の無効を error で名指しする
+  - 「契約の同期（Stripe → アプリ）」が本番でイベント受信の途絶を知らせる
+  - 実際のStripe設定に対して走らせ、既知の不具合をすべて名指しできる
+- メモ: 監査（2026-08-23）で検出。**相手側の設定はコードに現れない**（Turnstile・T-M8-87と同じ型）。
+  実測での検出結果:
+  - 本番・staging: 変更先の Price が**旧価格のまま**（不足3/3）→ 契約者は「プランを変更」を開けない。
+    Stripeは400（`no price in the portal configuration available to change to`）を返し、
+    画面には「このご契約は旧価格のままのため…」と**原因と食い違う**文言が出る
+  - 本番・staging: webhookの購読に **`charge.refunded` が無い** → 返金しても招待報酬が取り消されない
+  - ローカル: `trial_update_behavior=end_trial` → トライアル中のプラン変更で即時課金（実際に¥14,800課金された）
+  - ローカル: webhookの受け口が未登録（`stripe listen` を起動していないため。開発時の既定）
+- 実装メモ（2026-08-23）: `products` は **`expand: ["features.subscription_update.products"]` を付けないと
+  返らない**（素のGETでは undefined）。deployment.md の「現行APIのGETに現れない」という記述が
+  自動検査を書かない理由になっていたので、expandで取得できることを確認して実装した。
+  `webhook-events-status.ts` を新設（`price-status.ts`・`portal-status.ts` と同じ形）。
+- **運営者の作業が残っている**: 本番・stagingで `npm run stripe:portal:setup -- --target <env>` を実行し、
+  Stripeダッシュボードの webhook へ `charge.refunded` を追加する（要決定D-34）。
+
 ### T-M8-234: 日次サマリが運営者の内情（全体費用・DB使用量）を全利用者へ配信していた `done`
 - 参照: 要件04 §日次サマリ・CLAUDE.md 原則4 / 依存: なし / サイズ: S
 - 完了条件: 「今月かかった費用」がその利用者の分だけになり、DB使用量の行がサマリから消える
@@ -4578,6 +4600,9 @@ UI側boolean を壊しても投稿は誤爆しない）。
   **launchdとVercel Cronを長期間併用しない**。`news_fetch` は有効化した時点からAI費用が出る（3分野×1日6回）。
 
 ## 要決定・外部準備(ユーザー作業)
+
+**D-34: 本番StripeのPortal設定とwebhook購読の修正（起票 2026-08-23・T-M8-238）** — 監査で、**本番・stagingとも**(a) Portalの変更先Priceが旧価格のまま（現行3プランが1件も入っていない＝契約者は「プランを変更」を開けない）、(b) webhookの購読に `charge.refunded` が無い（返金しても招待報酬が取り消されない）ことが実測で判明した。どちらも**Stripe側の設定**なのでコードからは直せない。要決定: 開発者（Claude）が `npm run stripe:portal:setup -- --target production` を実行し、Stripe APIで `charge.refunded` を追加してよいか（**本番の課金設定への書き込み**になる）。実行するとPortalの商品リストが現行Priceへ入れ替わり、あわせて**Product名・説明・戻り先URLも `PRODUCTION_BASE_URL` から作り直される**（Checkout・請求書の表示文言が変わる）。(案A) Claudeが実行する（**推奨**。手順が1コマンドに畳まれており、実行後は doctor の該当2項目が緑になることで確認できる） / (案B) 運営者がStripeダッシュボードで手作業で直す。**本番のlive契約は現在0件**なので、最初の契約者が出る前に直せば実害は生じない。
+
 
 開発はモック・dry_run・ローカルSupabaseで先行できるが、以下が済むまで該当タスクは実環境検証ができず `blocked` になり得る。
 

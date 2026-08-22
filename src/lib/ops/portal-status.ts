@@ -15,9 +15,17 @@ import type { Check } from "./diagnostics";
 export interface PortalConfigurationGateway {
   billingPortal: {
     configurations: {
-      retrieve(id: string): Promise<{
+      retrieve(
+        id: string,
+        params?: { expand: string[] },
+      ): Promise<{
         features?: {
-          subscription_update?: { enabled?: boolean };
+          subscription_update?: {
+            enabled?: boolean;
+            trial_update_behavior?: string | null;
+            /** `expand` したときだけ返る（未指定の設定では undefined）。 */
+            products?: { product: string; prices: string[] }[] | null;
+          };
           subscription_cancel?: { enabled?: boolean };
         } | null;
       }>;
@@ -28,6 +36,8 @@ export interface PortalConfigurationGateway {
 export interface PortalProbeDeps {
   configurationId?: string | null;
   stripe?: PortalConfigurationGateway | null;
+  /** いまアプリが契約に使っている Price。変更先に入っているかを見る（T-M8-238）。 */
+  expectedPriceIds?: string[];
 }
 
 export async function probePortalFeatures(
@@ -36,10 +46,25 @@ export async function probePortalFeatures(
   if (!deps.configurationId) return { features: null, configurationMissing: true };
   if (!deps.stripe) return { features: null };
   try {
+    /*
+      **`products` は expand しないと返らない**（T-M8-238）。素の retrieve では undefined になるため、
+      「変更先の Price が旧価格のまま」という事故が検査から見えなかった。
+    */
     const configuration = await deps.stripe.billingPortal.configurations.retrieve(
       deps.configurationId,
+      { expand: ["features.subscription_update.products"] },
     );
-    return { features: configuration.features ?? {} };
+    const update = configuration.features?.subscription_update;
+    return {
+      expectedPriceIds: deps.expectedPriceIds,
+      features: configuration.features ?? {},
+      subscriptionUpdate: {
+        priceIds: update?.products
+          ? update.products.flatMap((entry) => entry.prices)
+          : undefined,
+        trialUpdateBehavior: update?.trial_update_behavior ?? null,
+      },
+    };
   } catch (error) {
     // **「設定IDが無い」と「Stripeへ届かない」を区別する**（T-M8-55）。
     // 前者は別環境の値が入っている典型的な事故で、待っても直らない。

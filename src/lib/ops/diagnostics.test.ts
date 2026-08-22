@@ -10,6 +10,7 @@ import {
   judgeNews,
   judgeScheduler,
   judgeStuckJobs,
+  judgeSubscriptionSync,
   judgeXAccounts,
   summarize,
   type Check,
@@ -424,5 +425,25 @@ describe("judgeBlog（ブログ記事の同梱・T-M8-184）", () => {
     const check = judgeBlog({ directoryExists: true, published: 0, drafts: 0, invalidFiles: [] });
     expect(check.level).toBe("ok");
     expect(check.detail).toBe("公開 0 件・下書き 0 件");
+  });
+});
+
+describe("judgeSubscriptionSync（契約の同期・T-M8-238）", () => {
+  it("イベント0件は warn（契約者がまだいなければ正常）", () => {
+    const check = judgeSubscriptionSync({ hoursSinceLastEvent: null, totalEvents: 0 });
+    expect(check.level).toBe("warn");
+    expect(check.nextAction).toContain("webhook");
+  });
+
+  it("最後の受信から時間が経ちすぎていたら warn", () => {
+    const check = judgeSubscriptionSync({ hoursSinceLastEvent: 100, totalEvents: 12 });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("100 時間");
+  });
+
+  it("直近に受信していれば ok", () => {
+    expect(judgeSubscriptionSync({ hoursSinceLastEvent: 2, totalEvents: 12 })).toMatchObject({
+      level: "ok",
+    });
   });
 });

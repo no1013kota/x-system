@@ -39,6 +39,9 @@ async function deployedCheckNames(): Promise<string[]> {
       sentryHost: "o1.ingest.de.sentry.io",
     },
     blog: { directoryExists: true, published: 1, drafts: 0, invalidFiles: [] },
+    // webhookの購読イベントと契約同期（T-M8-238）。デプロイ先では必ず出る項目。
+    webhookEvents: { webhookUrl: "https://example.com/api/stripe/webhook", stripe: null },
+    subscriptionSyncExpected: true,
   });
   return report.checks.map((c) => c.name);
 }

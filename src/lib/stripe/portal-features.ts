@@ -20,6 +20,14 @@ export const REQUIRED_PORTAL_FEATURES = [
 
 export type PortalFeatureKey = (typeof REQUIRED_PORTAL_FEATURES)[number]["key"];
 
+/**
+ * トライアル中にプラン変更したときの挙動（T-M8-238）。正本は `scripts/setup-stripe-portal.mjs`
+ * が設定する `continue_trial`＝**無料期間は変わらず、終了後に新しい料金で請求が始まる**。
+ * `end_trial` になっていると**その場で無料期間が終わり即時課金される**——LPの
+ * 「7日間は無料」と食い違い、金額の事故になる（2026-08-23、ローカルで実際に ¥14,800 が課金された）。
+ */
+export const EXPECTED_TRIAL_UPDATE_BEHAVIOR = "continue_trial";
+
 export interface PortalFeatureSnapshot {
   /** 取得できた configuration の features（`enabled` だけを見る）。取得できなければ null。 */
   features: Partial<Record<PortalFeatureKey, { enabled?: boolean } | undefined>> | null;
@@ -34,6 +42,21 @@ export interface PortalFeatureSnapshot {
    * では原因に辿り着けないので、これだけは名指しする（CLAUDE.md 原則2）。
    */
   configurationNotFound?: boolean;
+  /**
+   * `subscription_update` の中身（T-M8-238）。**`enabled` だけでは金額と時期は守れない。**
+   * 取得できないときは undefined（判定しない）。
+   */
+  subscriptionUpdate?: {
+    /** `continue_trial` / `end_trial` など。 */
+    trialUpdateBehavior?: string | null;
+    /**
+     * 変更先として提示できる Price の一覧（`expand` しないと返らない）。
+     * **明示していない設定では undefined**（Stripeの既定に任せる形）なので、その場合は判定しない。
+     */
+    priceIds?: string[];
+  };
+  /** いまアプリが契約に使っている Price（`STRIPE_PRICE_IDS`）。 */
+  expectedPriceIds?: string[];
 }
 
 export interface PortalFeatureJudgement {
@@ -90,6 +113,38 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
     (feature) => snapshot.features?.[feature.key]?.enabled !== true,
   ).map((feature) => feature.label);
   if (disabled.length === 0) {
+    /*
+      **`enabled` が立っていても、中身がずれていれば押した人が損をする**（T-M8-238）。
+      2026-08-23 の監査で、本番の設定は「変更先の Price が旧価格3件のまま」（＝現行プランへ
+      変更できない）、ローカルは `end_trial`（＝トライアル中の変更で即時課金）になっていた。
+      どちらも `enabled` だけを見る検査では緑のままだった。
+    */
+    const drift: string[] = [];
+    const behavior = snapshot.subscriptionUpdate?.trialUpdateBehavior;
+    if (behavior != null && behavior !== EXPECTED_TRIAL_UPDATE_BEHAVIOR) {
+      drift.push(
+        `トライアル中にプラン変更すると無料期間が終了して即時課金されます（trial_update_behavior=${behavior}）`,
+      );
+    }
+    const offered = snapshot.subscriptionUpdate?.priceIds;
+    const expected = snapshot.expectedPriceIds ?? [];
+    if (offered !== undefined && expected.length > 0) {
+      const missing = expected.filter((id) => !offered.includes(id));
+      if (missing.length > 0) {
+        drift.push(
+          `いまの料金プランが変更先に入っていません（不足 ${missing.length}/${expected.length} 件）。契約者が「プランを変更」を開けません`,
+        );
+      }
+    }
+    if (drift.length > 0) {
+      return {
+        level: "error",
+        detail: `Stripe側の設定が今の料金プランと合っていません: ${drift.join("／")}`,
+        disabled: [],
+        nextAction:
+          "`npm run stripe:portal:setup -- --target <staging|production>` を実行して設定を作り直してください（ローカルは --target なしで実行）",
+      };
+    }
     return {
       level: "ok",
       detail: "プラン変更・解約のどちらも操作できます",

@@ -25,6 +25,11 @@ import {
   probeStripeAccount,
   type StripeAccountProbeDeps,
 } from "./stripe-account-status";
+import {
+  judgeWebhookEvents,
+  probeWebhookEvents,
+  type WebhookEventsProbeDeps,
+} from "./webhook-events-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
 export { approxYen, summarize, worstLevel };
@@ -515,6 +520,48 @@ export function judgeBlog(input: BlogFacts): Check {
   return { name, level: "ok", detail };
 }
 
+/**
+ * **契約が1件でもある環境で、Stripeからのイベントを受け取れているか**（T-M8-238）。
+ *
+ * webhook が届かなくなっても「配送されない」だけなので例外は起きない。解約・プラン変更・
+ * 返金がDBへ反映されないまま、画面は正常に見え続ける（CLAUDE.md 原則1）。
+ * 直近の受信からの経過時間で「止まっているかもしれない」ことだけを言う——
+ * イベントは契約者がいなければ来ないので、**0件は警告どまり**にする。
+ */
+export const STRIPE_EVENT_STALE_HOURS = 72;
+
+export function judgeSubscriptionSync(input: {
+  hoursSinceLastEvent: number | null;
+  totalEvents: number;
+}): Check {
+  const name = "契約の同期（Stripe → アプリ）";
+  if (input.totalEvents === 0) {
+    return {
+      name,
+      level: "warn",
+      detail:
+        "Stripeからのイベントを1件も受け取っていません（契約者がまだいないなら正常です）",
+      nextAction:
+        "契約があるのにこの表示なら、doctorの「契約イベントの受け取り（Stripe webhook）」を確認してください",
+    };
+  }
+  const hours = input.hoursSinceLastEvent ?? Number.POSITIVE_INFINITY;
+  if (hours > STRIPE_EVENT_STALE_HOURS) {
+    return {
+      name,
+      level: "warn",
+      detail: `最後にStripeのイベントを受け取ってから ${Math.floor(hours)} 時間が経っています（合計 ${input.totalEvents} 件）`,
+      nextAction:
+        "解約やプラン変更がアプリへ反映されていない可能性があります。Stripeダッシュボード → Webhooks で配信の失敗を確認してください",
+    };
+  }
+  return {
+    name,
+    level: "ok",
+    detail: `直近の受信は ${Math.floor(hours)} 時間前（合計 ${input.totalEvents} 件）`,
+  };
+}
+
 // --- 収集（実DBを叩く。routeとscriptの両方から使う） ---
 
 export interface DiagnosticsOptions {
@@ -537,6 +584,13 @@ export interface DiagnosticsOptions {
   stripeAccount?: StripeAccountProbeDeps;
   /** ブログ記事の同梱状況（T-M8-184）。未指定なら判定しない（DBだけの経路を壊さない）。 */
   blog?: BlogFacts;
+  /** webhookの購読イベント（T-M8-238）。鍵かURLが無ければ「確認できません」。 */
+  webhookEvents?: WebhookEventsProbeDeps;
+  /**
+   * 契約同期の鮮度（T-M8-238）。**本番でのみ判定する**——ローカル・previewは
+   * `stripe listen` を動かしていないのが普通なので、赤くすると読まれなくなる。
+   */
+  subscriptionSyncExpected?: boolean;
 }
 
 export async function collectDiagnostics(
@@ -721,6 +775,37 @@ export async function collectDiagnostics(
     読み取りのみで費用は無い。
   */
   checks.push(judgeStripeAccount(await probeStripeAccount(options.stripeAccount ?? {})));
+
+  /*
+    **Stripeのイベントが届く設定になっているか**（T-M8-238）。購読するイベントの選択は
+    ダッシュボード側の設定でコードに現れない。実際に本番・stagingとも `charge.refunded` が
+    抜けており、**返金しても招待報酬が取り消されない**状態だった。届かないイベントは
+    例外にならないので、Sentryにも画面にも出ない。
+  */
+  if (options.webhookEvents) {
+    checks.push(judgeWebhookEvents(await probeWebhookEvents(options.webhookEvents)));
+  }
+
+  /*
+    **契約の同期が生きているか**（T-M8-238）。`profiles` を更新する経路は webhook だけなので、
+    届かなくなっても例外は起きず、画面は正常に見えたまま解約・プラン変更が反映されなくなる。
+    実際にローカルで「DBはトライアル中のスタンダード／Stripeはエキスパートで課金済み」に
+    なっていた。直近の受信が途絶えていないかを、受け取ったイベントの記録で見る。
+  */
+  if (options.subscriptionSyncExpected) {
+    const events = await db.query<{ hours: string | null; total: string }>(
+      `select (extract(epoch from (now() - max(event_created_at))) / 3600)::text as hours,
+              count(*)::text as total
+         from stripe_events`,
+    );
+    checks.push(
+      judgeSubscriptionSync({
+        hoursSinceLastEvent:
+          events.rows[0]?.hours == null ? null : Number(events.rows[0].hours),
+        totalEvents: Number(events.rows[0]?.total ?? 0),
+      }),
+    );
+  }
 
   // ブログ記事がこのデプロイに同梱されているか（T-M8-184）。同梱漏れは本番だけ「準備中」になる。
   if (options.blog) checks.push(judgeBlog(options.blog));
