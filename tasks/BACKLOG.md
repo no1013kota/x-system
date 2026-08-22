@@ -2235,6 +2235,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 招待機能の信頼性質問（2026-08-22）への回答から。登録時のDB一時障害で紐づけが失われるケースを塞ぐ。
 - 実装メモ（2026-08-22）: verifySignUpCode成功時、Cookieが残っていればattributeSignupを再試行して消す（冪等・失敗しても検証は止めない）。E2E追加（Cookieなし登録→別タブでリンク→コード検証→紐づく）。invite E2E 3件緑。
 
+### T-M8-230: Vercel上でsharp（画像処理）が読み込めず画像生成が全滅する問題 `done`
+- 参照: 要件01 §2・next.config.ts / 依存: なし / サイズ: S
+- 完了条件: stagingの実物スモークで「生成＋画像」が成功する（libvips不在エラーが出ない）
+- メモ: 2026-08-23・staging初の実物スモークで検出。Turbopackはsharpを実行時externalへ
+  外すが、出力トレースが@imgのoptionalネイティブ依存（linux-x64/libvips）を拾わず、
+  Vercel関数に.soが同梱されない。ローカル/CIはnode_modules直参照で動くため原理的に
+  見えない（blog記事のトレース漏れ・T-M8-184と同型）。**本番も同構成のため、次の本番
+  反映で同時に直る**（本番の画像生成は未検証のまま公開されていた）。
+- 実装メモ（2026-08-23）: outputFileTracingIncludesへ /api/jobs/run と /api/cron/canary の
+  2ルートに @img/sharp-linux-x64 と @img/sharp-libvips-linux-x64 を明示追加。
+
 ### T-M8-229: 日時指定予約のタイムゾーン固定（入力=日本時間）とCIのTZ差の解消 `done`
 - 参照: 要件06 §4.3・T-M8-157 / 依存: なし / サイズ: S
 - 完了条件:
