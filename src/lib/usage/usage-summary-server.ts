@@ -2,6 +2,7 @@ import "server-only";
 import { CURRENT_MONTH_JST_SQL } from "./current-month";
 
 import { getPool } from "../db/pool";
+import type { Queryable } from "../db/queryable";
 import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
 import { computeUsageSummary, type UsageCounters, type UsageSummary } from "./usage-summary";
 
@@ -15,9 +16,18 @@ export async function loadUsageSummaryForUser(
   userId: string,
   plan: string,
 ): Promise<UsageSummary | null> {
+  return loadUsageSummary(getPool(), userId, plan);
+}
+
+/** db注入版（App Shellの単一接続ロード用・T-M8-197）。判定は同じ。 */
+export async function loadUsageSummary(
+  db: Queryable,
+  userId: string,
+  plan: string,
+): Promise<UsageSummary | null> {
   const limits = usageLimitsForPlan(plan);
   if (!limits) return null;
-  const { rows } = await getPool().query<UsageCounters>(
+  const { rows } = await db.query<UsageCounters>(
     `select coalesce(normal_posts_count, 0) as normal_posts_count,
             coalesce(url_posts_count, 0) as url_posts_count,
             coalesce(ai_credits_used, 0) as ai_credits_used

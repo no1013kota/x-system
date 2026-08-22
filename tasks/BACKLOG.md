@@ -2255,13 +2255,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
   月900回換算: Sonnet $137〜156／Haiku 約$84。check:providers 17件緑。
   docs（PRD §6.1・news.ts・deployment env表）を実測へ更新。
 
-### T-M8-197: App Shellの8クエリを1往復へ統合（同時接続対策） `todo`
+### T-M8-197: App Shellの8クエリを1接続へ統合（同時接続対策） `done`
 - 参照: 要件01 §6/§9・src/lib/app-shell/data-server.ts / 依存: なし / サイズ: M
 - 完了条件:
   - /app系レイアウトの共通データ取得（profile・通知・未読数・アカウント一覧・active解決・キーstatus・利用量・当日投稿数）が1本のSQL（CTE）または1 RPCで済む
   - ページ描画あたりのDB接続checkout数が最大6→1へ減る
   - 挙動は不変（App Shell E2E・単体が緑のまま）
 - メモ: 同時接続の容量分析（2026-08-22）の優先2。接続需要が約1/8になり、同時100人の主対策になる。
+- 実装メモ（2026-08-22）: 「1本のSQLへ統合」ではなく**1接続を借りて全クエリをそこで実行**する
+  形にした（node-postgresは同一client上のクエリを内部直列化するのでPromise.allのまま動く。
+  SQL・判定・失敗時throwの挙動が一切変わらず、リスクが最小）。接続checkoutは1描画あたり
+  最大6→1。getXApiKeyStatus・loadUsageSummaryへdb注入版を追加し、data-server.tsが
+  pool.connect()〜release()で束ねる。遅延影響は1クエリ数msの直列化のみ（誤差）。
+  全ゲート緑: 単体2,424件・build・CSP・E2E 97件。
 
 ### T-M8-198: pool枯渇の観測をdoctorへ載せる（Supabase Pro移行条件の可視化） `todo`
 - 参照: 要件01 §9・src/lib/db/pool.ts（poolStats実装済み・未活用） / 依存: なし / サイズ: S
