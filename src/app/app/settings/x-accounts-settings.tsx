@@ -11,7 +11,7 @@ import {
   refreshXAccountStatusAction,
   setActiveXAccountAction,
 } from "@/app/actions/x-accounts";
-import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
+import { ResumeAllAutomationButton, StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -210,7 +210,14 @@ export function XAccountsSettings({
                   接続を確認
                 </Button>
 
-                {account.automationActive ? (
+                {/* 停止中なら再開、そうでなければ停止（SC-08と同じ出し分け・T-M8-233）。 */}
+                {account.pausedSlots > 0 ? (
+                  <ResumeAllAutomationButton
+                    pausedIncludesAuto={account.pausedIncludesAuto}
+                    pausedSlots={account.pausedSlots}
+                    xAccountId={account.id}
+                  />
+                ) : account.automationActive ? (
                   <StopAllAutomationButton xAccountId={account.id} />
                 ) : null}
 

@@ -11,8 +11,11 @@ import {
   disableXAutomation,
   recordXAutomationConsent,
   recordXAutomationConsentSchema,
+  resumeXAutomation,
+  resumeXAutomationSchema,
   type AutomationConsentState,
   type DisableAutomationResult,
+  type ResumeXAutomationOutcome,
 } from "@/lib/x/automation-consent";
 import {
   createScheduleSlot,
@@ -163,7 +166,29 @@ export async function disableXAutomationAction(
       runInTx: runInPooledTx,
     });
     revalidatePath("/app/schedule");
-    return { message: "自動投稿を停止しました。", result, status: "success" };
+    return { message: "スケジュールを停止しました。", result, status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * 「すべて再開」（T-M8-233）。停止操作で止めた枠だけを戻す。auto枠を含むときは現行版の同意が要る
+ * （未同意なら `automation_consent_required` を返し、画面が同意チェックを出して再送する）。
+ */
+export async function resumeXAutomationAction(
+  input: unknown,
+): Promise<BaseResult & { result?: ResumeXAutomationOutcome }> {
+  const parsed = parseUserInput(resumeXAutomationSchema, input);
+  if (!parsed.success) {
+    return validationErrorResult(parsed.error);
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const result = await resumeXAutomation(auth.userId, parsed.data, { runInTx: runInPooledTx });
+    revalidatePath("/app/schedule");
+    return { message: "スケジュールを再開しました。", result, status: "success" };
   } catch (error) {
     return errorResult(error);
   }

@@ -34,6 +34,61 @@ test("スロットを停止して再開でき、DBの enabled が追従する", 
   ).toBe(true);
 });
 
+/**
+ * 「スケジュールをすべて停止」→「すべて再開」（T-M8-233・運営者の指示 2026-08-23）。
+ *
+ * ここでしか見えないのは**画面の出し分け**（停止中は停止ボタンではなく再開ボタンが出る）と
+ * **同意チェックが無いと再開できない**こと。DB側の往復は schedule-slots.db.test.ts が見る。
+ */
+test("すべて停止で下書き枠も止まり、すべて再開で戻る（個別に止めた枠は戻らない）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("stop-all", { automationConsent: true });
+  const slotIds = await query<{ id: string; mode: string }>(
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1}', '19:00', 'auto', 'other', true),
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{2}', '20:00', 'draft', 'other', true),
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{3}', '21:00', 'draft', 'other', false)
+     returning id, mode`,
+    [account.xAccountId],
+  );
+  const enabledOf = async () =>
+    Object.fromEntries(
+      (
+        await query<{ id: string; enabled: boolean }>(
+          `select id, enabled from schedule_slots where x_account_id = $1`,
+          [account.xAccountId],
+        )
+      ).map((r) => [r.id, r.enabled]),
+    );
+
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+
+  await page.getByRole("button", { name: "スケジュールをすべて停止" }).click();
+  await page.getByRole("button", { name: "すべて停止", exact: true }).click();
+  await expect(page.getByRole("button", { name: "スケジュールをすべて再開" })).toBeVisible();
+
+  const stopped = await enabledOf();
+  expect(Object.values(stopped).every((v) => v === false), "下書き枠が止まっていない").toBe(true);
+
+  // 再開: 自動投稿を含むので同意チェックが要る（外したままでは押せない）。
+  await page.getByRole("button", { name: "スケジュールをすべて再開" }).click();
+  const confirm = page.getByRole("button", { name: "すべて再開", exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("checkbox").check();
+  await confirm.click();
+  await expect(page.getByRole("button", { name: "スケジュールをすべて停止" })).toBeVisible();
+
+  const resumed = await enabledOf();
+  const manuallyStopped = slotIds[2].id;
+  expect(resumed[slotIds[0].id], "自動投稿の枠が戻っていない").toBe(true);
+  expect(resumed[slotIds[1].id], "下書きの枠が戻っていない").toBe(true);
+  expect(resumed[manuallyStopped], "個別に止めた枠が勝手に復活した").toBe(false);
+});
+
 test("本日の投稿上限に達したら、投稿を試す前にバナーで分かる（要決定D-15 案A）", async ({
   accounts,
   page,

@@ -14,6 +14,7 @@ import {
   updateScheduleSlot,
   type ScheduleSlotDeps,
 } from "./schedule-slots";
+import { disableXAutomation, resumeXAutomation } from "./x/automation-consent";
 import { X_SCOPES } from "./x/oauth";
 
 /**
@@ -443,6 +444,98 @@ describe("enableScheduleSlot (local DB)", () => {
    * 上の「未知の分野を拒否する」検査は逆方向（DBが緩すぎないこと）しか見ていないので、
    * ここで「DBが厳しすぎないこと」も止める。
    */
+  /**
+   * 「すべて停止」→「すべて再開」の往復（T-M8-233・運営者の指示 2026-08-23）。
+   *
+   * 守りたいのは2つ。**下書き作成の枠も止まること**（以前は auto だけ止めていた）と、
+   * **利用者が個別に止めていた枠は再開で復活しないこと**（勝手に動き出すと投稿事故になる）。
+   * SQLの文字列検査（automation-consent.test.ts）では列の実在も往復も確かめられないので実DBで見る。
+   */
+  it("すべて停止→再開: 下書き枠も止まり、個別に止めた枠は復活しない", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c, { consented: true }));
+    try {
+      const deps = depsFor(xAccountId);
+      const p1 = await withTransaction((c) => patternId(c, xAccountId, "p1"));
+      const base = { pattern_id: p1, theme: "ai" as const, image_enabled: false };
+      const auto = await createScheduleSlot(
+        userId,
+        { ...base, weekdays: [1], time_jst: "09:00", mode: "auto" },
+        deps,
+      );
+      const draft = await createScheduleSlot(
+        userId,
+        { ...base, weekdays: [2], time_jst: "10:00", mode: "draft" },
+        deps,
+      );
+      // 利用者が自分で止めた枠。停止/再開のどちらでも触られてはいけない。
+      const manuallyStopped = await createScheduleSlot(
+        userId,
+        { ...base, weekdays: [3], time_jst: "11:00", mode: "draft" },
+        deps,
+      );
+      await disableScheduleSlot(
+        userId,
+        { slot_id: manuallyStopped.id, expected_updated_at: manuallyStopped.updated_at },
+        deps,
+      );
+
+      const stopped = await disableXAutomation(userId, xAccountId, { runInTx: withTransaction });
+      // 動いていた2枠（auto と draft）が止まる。既に止まっていた1枠は数えない。
+      expect(stopped.disabledSlots).toBe(2);
+
+      const readSlots = async () =>
+        (
+          await withTransaction((c) =>
+            c.query<{ id: string; enabled: boolean; paused: string | null }>(
+              `select id, enabled, paused_by_stop_all_at::text as paused
+                 from schedule_slots where x_account_id = $1`,
+              [xAccountId],
+            ),
+          )
+        ).rows;
+
+      const afterStop = await readSlots();
+      expect(afterStop.every((r) => r.enabled === false), "下書き枠も止まっていない").toBe(true);
+      expect(afterStop.find((r) => r.id === manuallyStopped.id)?.paused, "個別停止に印を付けない").toBeNull();
+      expect(afterStop.find((r) => r.id === draft.id)?.paused).not.toBeNull();
+
+      // 再開には現行版の同意が要る（停止で撤回されているため）。チェック無しでは戻さない。
+      await expect(
+        resumeXAutomation(userId, { x_account_id: xAccountId }, { runInTx: withTransaction }),
+      ).rejects.toMatchObject({ code: "automation_consent_required" });
+      expect((await readSlots()).every((r) => r.enabled === false)).toBe(true);
+
+      const resumed = await resumeXAutomation(
+        userId,
+        {
+          x_account_id: xAccountId,
+          confirmed: true,
+          consent_version: CURRENT_AUTOMATION_CONSENT_VERSION,
+        },
+        { runInTx: withTransaction },
+      );
+      expect(resumed).toMatchObject({ resumedSlots: 2, includesAuto: true, consentRecorded: true });
+
+      const afterResume = await readSlots();
+      const byId = new Map(afterResume.map((r) => [r.id, r]));
+      expect(byId.get(auto.id)?.enabled, "自動投稿の枠が戻っていない").toBe(true);
+      expect(byId.get(draft.id)?.enabled, "下書きの枠が戻っていない").toBe(true);
+      expect(byId.get(manuallyStopped.id)?.enabled, "個別に止めた枠が勝手に復活した").toBe(false);
+      expect(afterResume.every((r) => r.paused === null), "再開後に印が残っている").toBe(true);
+
+      // 同意も戻っている（次の停止操作が効く状態）。
+      const consent = await withTransaction((c) =>
+        c.query<{ disabled: string | null }>(
+          `select automation_disabled_at::text as disabled from x_accounts where id = $1`,
+          [xAccountId],
+        ),
+      );
+      expect(consent.rows[0].disabled).toBeNull();
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
   it("theme の CHECK 制約が POST_THEME_IDS と同じ値集合である", async () => {
     const { rows } = await getPool().query<{ def: string }>(
       `select pg_get_constraintdef(c.oid) as def

@@ -69,6 +69,9 @@ describe("listXAccountsForUser", () => {
         status: "active",
         is_active: true,
         automation_active: false,
+        paused_slots: "0",
+        paused_includes_auto: false,
+        x_premium: false,
       },
     ]);
     const list = await listXAccountsForUser(db, "u1");
@@ -82,6 +85,10 @@ describe("listXAccountsForUser", () => {
         status: "active",
         isActive: true,
         automationActive: false,
+        // 「すべて停止」で止まっている枠（T-M8-233）。0なら停止ボタン、1以上なら再開ボタンを出す。
+        pausedSlots: 0,
+        pausedIncludesAuto: false,
+        xPremium: false,
       },
     ]);
   });
@@ -228,7 +235,7 @@ describe("disconnectXAccount", () => {
     expect(revoke).toHaveBeenCalledWith("a1");
     expect(writes.some((w) => /status = 'disabled'/.test(w.sql))).toBe(true);
     expect(
-      writes.some((w) => /update schedule_slots set enabled = false/.test(w.sql) && /mode = 'auto'/.test(w.sql)),
+      writes.some((w) => /update schedule_slots\s+set enabled = false/.test(w.sql) && /mode = 'auto'/.test(w.sql)),
     ).toBe(true);
     expect(writes.some((w) => /update profiles set active_x_account_id = null/.test(w.sql))).toBe(true);
   });

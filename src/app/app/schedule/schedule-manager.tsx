@@ -10,6 +10,7 @@ import {
   deleteScheduleSlotAction,
   disableScheduleSlotAction,
   disableXAutomationAction,
+  resumeXAutomationAction,
   enableScheduleSlotAction,
   recordXAutomationConsentAction,
   updateScheduleSlotAction,
@@ -161,6 +162,8 @@ export function ScheduleManager({
   patternPrompts,
   imageProviders,
   automationConsented,
+  pausedSlots,
+  pausedIncludesAuto,
   xAccountId,
   accountHandle,
 }: {
@@ -175,6 +178,10 @@ export function ScheduleManager({
   patternPrompts: Record<string, PatternPromptView> | null;
   imageProviders: string[];
   automationConsented: boolean;
+  /** 「すべて停止」で止まっている枠の数（0なら停止ボタンを出す・T-M8-233）。 */
+  pausedSlots: number;
+  /** 止まっている枠に自動投稿が含まれるか（再開時に同意チェックを出すか）。 */
+  pausedIncludesAuto: boolean;
   xAccountId: string;
   /** 同意modalで対象を明示するためのアカウント名（@なし）。 */
   accountHandle: string | null;
@@ -188,16 +195,31 @@ export function ScheduleManager({
         <div className="space-y-1 text-sm">
           {/* 同意状態を基準に「いま自動投稿が有効か」を常時示す（要件06 §3.5）。 */}
           <p className="font-medium">
-            自動投稿:{" "}
-            {automationConsented
-              ? hasAutoSlots
-                ? "有効 — 指定時刻に確認なしでXへ投稿されます"
-                : "同意済み（自動投稿のスケジュールはありません）"
-              : "未設定（下書き作成のみ）"}
+            {pausedSlots > 0
+              ? `停止中 — 「すべて停止」で${pausedSlots}件のスケジュールが止まっています`
+              : `自動投稿: ${
+                  automationConsented
+                    ? hasAutoSlots
+                      ? "有効 — 指定時刻に確認なしでXへ投稿されます"
+                      : "同意済み（自動投稿のスケジュールはありません）"
+                    : "未設定（下書き作成のみ）"
+                }`}
           </p>
           {/* 「次回の実行」の行は出さない（運営者の指示 2026-08-22。次回はページ末尾の「今後の予定」が時間順で示す・T-M8-226） */}
         </div>
-        {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
+        {/*
+          停止中（「すべて停止」で止めた枠がある）なら再開ボタン、そうでなければ停止ボタン。
+          2つ並べると「いまどちらの状態か」が読み取れないので、常に片方だけ出す（T-M8-233）。
+        */}
+        {pausedSlots > 0 ? (
+          <ResumeAllAutomationButton
+            pausedIncludesAuto={pausedIncludesAuto}
+            pausedSlots={pausedSlots}
+            xAccountId={xAccountId}
+          />
+        ) : automationConsented || slots.some((s) => s.enabled) ? (
+          <StopAllAutomationButton xAccountId={xAccountId} />
+        ) : null}
       </div>
 
       <WeekPreview slots={slots} />
@@ -242,7 +264,121 @@ export function ScheduleManager({
   );
 }
 
-/** SC-08/SC-11 共通の「自動投稿をすべて停止」（要件06 §3.5・§7）。opt-out即時反映＋無効化件数表示。 */
+/**
+ * SC-08/SC-11 共通の「スケジュールをすべて再開」（T-M8-233・運営者の指示 2026-08-23）。
+ *
+ * 戻すのは**「すべて停止」で止めた枠だけ**（`paused_by_stop_all_at` が付いた枠）。利用者が個別に
+ * 止めていた枠は止まったままにする。自動投稿の枠を戻すときは**現行版の同意を取り直す**
+ * （停止＝同意の撤回なので、黙って自動投稿を再開しない）。同意が要るかどうかは
+ * サーバーが決め、必要なら `automation_consent_required` を返すのでチェック付きで送り直す。
+ */
+export function ResumeAllAutomationButton({
+  xAccountId,
+  pausedSlots,
+  pausedIncludesAuto,
+}: {
+  xAccountId: string;
+  /** 「すべて停止」で止まっている枠の数。0なら呼び出し側がこのボタンを出さない。 */
+  pausedSlots: number;
+  /** 止まっている枠に自動投稿が含まれるか。含むなら同意チェックを出す。 */
+  pausedIncludesAuto: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [agreed, setAgreed] = useState(false);
+  const toast = useToast();
+
+  function resumeAll() {
+    startTransition(async () => {
+      const res = await resumeXAutomationAction({
+        confirmed: pausedIncludesAuto ? agreed : undefined,
+        consent_version: pausedIncludesAuto && agreed ? CURRENT_AUTOMATION_CONSENT_VERSION : undefined,
+        x_account_id: xAccountId,
+      });
+      if (res.status === "success") {
+        toast.show({
+          description: `${res.result?.resumedSlots ?? 0}件のスケジュールを再開しました。`,
+          title: "スケジュールを再開しました",
+          tone: "success",
+        });
+        setAgreed(false);
+        router.refresh();
+      } else {
+        toast.show({
+          description: res.message,
+          title: "スケジュールを再開できませんでした",
+          tone: "error",
+        });
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <AlertDialog.Root onOpenChange={(open) => !open && setAgreed(false)}>
+        <AlertDialog.Trigger
+          render={<Button disabled={pending} size="sm" type="button" variant="brand" />}
+        >
+          スケジュールをすべて再開
+        </AlertDialog.Trigger>
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+          <AlertDialog.Popup className={alertDialogPopupClassName()}>
+            <AlertDialog.Title className={cardTitleClassName}>
+              スケジュールをすべて再開しますか？
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+              「すべて停止」で止めた{pausedSlots}件を元に戻します。個別に停止したスケジュールは止まったままです。
+            </AlertDialog.Description>
+            {pausedIncludesAuto ? (
+              <>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
+                  <li>
+                    自動投稿の設定が含まれます。再開すると、生成された内容が
+                    <span className="font-medium text-foreground">指定時刻に確認なしでXへ投稿</span>
+                    されます。
+                  </li>
+                  <li>投稿内容の責任は利用者本人が負います。</li>
+                </ul>
+                <label className="mt-4 flex items-start gap-2 text-sm">
+                  <input
+                    checked={agreed}
+                    className="mt-0.5"
+                    onChange={(e) => setAgreed(e.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    上記の説明（{consentVersionLabel(CURRENT_AUTOMATION_CONSENT_VERSION)}
+                    ）を理解し、自動投稿に同意します。
+                  </span>
+                </label>
+              </>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-2">
+              <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+                キャンセル
+              </AlertDialog.Close>
+              <AlertDialog.Close
+                disabled={pending || (pausedIncludesAuto && !agreed)}
+                onClick={resumeAll}
+                render={<Button size="lg" type="button" variant="brand" />}
+              >
+                すべて再開
+              </AlertDialog.Close>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </div>
+  );
+}
+
+/**
+ * SC-08/SC-11 共通の「スケジュールをすべて停止」（要件06 §3.5・§7）。opt-out即時反映＋無効化件数表示。
+ *
+ * **自動投稿だけでなく下書き作成の枠も止める**（運営者の指示 2026-08-23・T-M8-233）。
+ * 戻すのは `ResumeAllAutomationButton`（停止操作で止めた枠だけを復元する）。
+ */
 export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -254,14 +390,14 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
       if (res.status === "success") {
         toast.show({
           tone: "success",
-          title: "自動投稿を停止しました",
-          description: `${res.result?.disabledSlots ?? 0}件のスケジュールを無効にしました。`,
+          title: "スケジュールを停止しました",
+          description: `${res.result?.disabledSlots ?? 0}件のスケジュール（自動投稿・下書き作成）を停止しました。`,
         });
         router.refresh();
       } else {
         // **失敗も緑色の `role="status"` で出ていた**（T-M8-17）。同じstateに成功と失敗を
         // 入れていたため色と読み上げが成功のままだった。トーストは種別を分けて持つ。
-        toast.show({ tone: "error", title: "自動投稿を停止できませんでした", description: res.message });
+        toast.show({ tone: "error", title: "スケジュールを停止できませんでした", description: res.message });
       }
     });
   }
@@ -272,17 +408,18 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
         <AlertDialog.Trigger
           render={<Button disabled={pending} size="sm" type="button" variant="outline" />}
         >
-          自動投稿をすべて停止
+          スケジュールをすべて停止
         </AlertDialog.Trigger>
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
           <AlertDialog.Popup className={alertDialogPopupClassName()}>
             <AlertDialog.Title className={cardTitleClassName}>
-              自動投稿をすべて停止しますか？
+              スケジュールをすべて停止しますか？
             </AlertDialog.Title>
             {/* 「スロット」「ジョブ」は内部用語。画面には出さない（T-M8-66・要件06 §8と同方針）。 */}
             <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-              このアカウントの自動投稿をすべて停止します。下書きの作成と手動での投稿はそのまま使えます。
+              このアカウントのスケジュールをすべて停止します（自動投稿も、下書きの作成も止まります）。
+              手動での作成・投稿はそのまま使えます。あとから「スケジュールをすべて再開」で戻せます。
             </AlertDialog.Description>
             <div className="mt-6 flex justify-end gap-2">
               <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>

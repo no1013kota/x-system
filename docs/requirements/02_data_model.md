@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.54 |
-| 更新日 | 2026-08-22 |
+| バージョン | v1.55 |
+| 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -318,6 +318,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `placeholder_values` | `jsonb` | not null default `'{}'`, CHECK（`schedule_slots_placeholder_values_ok()`。名前→文字列のオブジェクト・各2,000字以内） | **パターンの`{名前}`へ差し込む値**（T-M8-135）。予約は繰り返すので、ここで入れた値が毎回同じように入る。**そのパターンに無い項目の値は保存時に捨てる**（画面に出ない値が残ると説明できなくなる） |
 | `prompt_override` | `text` | null, CHECK（8,000字以内） | **この枠だけに使う生成プロンプト**（T-M8-135）。`null`ならパターンの本文を使う。同じパターンを少しだけ変えて別の枠に使うためのもの |
 | `enabled` | `boolean` | not null default true |  |
+| `paused_by_stop_all_at` | `timestamptz` | null | **「スケジュールをすべて停止」で無効化した日時**（T-M8-233）。null＝それ以外（利用者が個別に止めた枠・動いている枠）。「すべて再開」はこの列が非nullの枠**だけ**を`enabled=true`へ戻して列をnullに戻す——**個別に停止していた枠を勝手に復活させないため**。停止時に既に`enabled=false`だった枠には刻まない |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
@@ -971,3 +972,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
 | v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
 | v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
+| v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
