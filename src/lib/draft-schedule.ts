@@ -63,7 +63,18 @@ export function checkDraftSchedule(
     return { ok: false, reason: "x_account_inactive" };
   }
 
-  const at = new Date(scheduledAtInput);
+  /*
+   * `datetime-local` の素の値（YYYY-MM-DDTHH:mm）は**日本時間として**解釈する（T-M8-229）。
+   * TZ無しの文字列を `new Date` に渡すと実行環境のTZで解釈され、本番サーバ（UTC）では
+   * JST利用者の予約が9時間遅れて保存される（stg初デプロイ前のCI調査で発見）。
+   * オフセットつきISOはそのまま通す（内部呼び出し・既存データの互換）。
+   */
+  const naive = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(scheduledAtInput);
+  const at = new Date(
+    naive
+      ? `${scheduledAtInput}${scheduledAtInput.length === 16 ? ":00" : ""}+09:00`
+      : scheduledAtInput,
+  );
   const atMs = at.getTime();
   if (Number.isNaN(atMs)) {
     return { ok: false, reason: "scheduled_at_invalid" };
