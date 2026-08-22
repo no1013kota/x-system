@@ -96,7 +96,7 @@ function TemplateCard({ item }: { item: GalleryListItem }) {
         */
         <div className="mx-5 mt-3.5 rounded-card border border-hairline bg-brand-subtle/50 px-4 py-3">
           <p className="text-caption font-bold text-ink-2">
-            差し込み欄に入力すると、下のプロンプトがその場で変わります
+            プレースホルダー
           </p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {item.placeholders.map((name) => (

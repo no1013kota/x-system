@@ -351,7 +351,7 @@ export function ApiKeySettings({
             </CardTitle>
             {/* 「登録不要」の言い直しは見出しと重複するため書かない（T-M8-66）。 */}
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              X連携と文章生成にはExos AIの運営キーを使います。API費用の追加負担もありません。
+              APIキーはExos AIの運営キーを使います。
             </p>
           </div>
         </div>

@@ -75,7 +75,7 @@ export default async function AnalyticsPage() {
       <header>
         <h1 className={pageTitleClassName}>投稿分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。下の実績表は、このアプリから投稿したポストを投稿後1日・7日・30日の3回記録したものです。
+          毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。
         </p>
       </header>
       {/* 並びは 分析レポート → 投稿ごとの実績 → フォロワー推移（運営者の指示・2026-08-15。

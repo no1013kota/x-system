@@ -102,9 +102,6 @@ let drafts: DraftView[] = [];
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
         <h1 className={pageTitleClassName}>スケジュール</h1>
-        <p className="mt-1 text-body text-ink-2">
-          曜日と時刻を決めて、下書き作成や自動投稿を定期実行します。
-        </p>
       </header>
 
       {!activeXAccountId ? (

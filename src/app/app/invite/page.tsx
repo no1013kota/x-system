@@ -177,7 +177,7 @@ export default async function InvitePage() {
           </div>
         ) : (
           <p className="mt-3 text-sm text-ink-2">
-            現在、振込予定はありません。受取可能報酬が¥{yen(5000)}以上になった月の末で締め、翌月末までにお振込みします（振込手数料¥{yen(980)}はご負担ください。¥{yen(5000)}未満は翌月へ繰り越します）。
+            現在、振込予定はありません。受取可能報酬が¥{yen(5000)}以上になった月の末で締め、翌月末までにお振込みします（振込手数料¥{yen(980)}）。
           </p>
         )}
         <div className="mt-5 border-t border-hairline pt-4">

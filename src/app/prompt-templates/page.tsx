@@ -75,7 +75,7 @@ export default async function PromptTemplatesPage({ searchParams }: PromptTempla
           </h1>
           <p className="text-sm text-ink-2">
             {APP_NAME}
-            の公式テンプレートと、利用者のみなさんが作成したプロンプトです（利用者作成分は匿名で掲載）。登録するとこのまま使え、すべて自分の言葉に書き換えられます。
+            の公式テンプレートと、利用者のみなさんが作成したプロンプトをご紹介いたします。
           </p>
         </header>
 

@@ -142,10 +142,6 @@ export function PersonaSettingsForm({
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
         {/* 呼称は他タブと同じ「アカウント.md」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
-        <span className="text-xs text-muted-foreground">
-          アカウント.md version {version}
-          {version >= 1 ? "" : "（未作成）"}
-        </span>
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
