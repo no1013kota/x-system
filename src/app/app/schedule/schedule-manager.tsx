@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
-import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
+import { nextScheduleRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import {
@@ -169,12 +169,6 @@ export function ScheduleManager({
 }) {
   const [creating, setCreating] = useState(false);
   const hasAutoSlots = slots.some((s) => s.mode === "auto" && s.enabled);
-  const activeSlots = slots.filter((s) => s.enabled);
-  // 有効スロットのうち最も近い次回実行（「次にいつ何が投稿されるか」を先頭に出す）。
-  const upcoming = activeSlots
-    .map((slot) => ({ slot, run: nextScheduleRun(slot) }))
-    .filter((entry): entry is { slot: ScheduleSlotView; run: NextRun } => entry.run !== null)
-    .sort((a, b) => a.run.at.getTime() - b.run.at.getTime())[0];
 
   return (
     <div className="space-y-6">
@@ -189,14 +183,7 @@ export function ScheduleManager({
                 : "同意済み（自動投稿のスケジュールはありません）"
               : "未設定（下書き作成のみ）"}
           </p>
-          {upcoming ? (
-            // 「確認なしで」等の説明は上のステータス行が担う。ここは事実だけ（T-M8-66）。
-            <p className="text-muted-foreground">
-              次回の実行: {upcoming.run.label} —「
-              {patternLabel(upcoming.slot.pattern_name)}」
-              {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
-            </p>
-          ) : null /* 「有効なスケジュールはありません」は枠一覧が伝えるため出さない（運営者の指示 2026-08-22） */}
+          {/* 「次回の実行」の行は出さない（運営者の指示 2026-08-22。次回はページ末尾の「今後の予定」が時間順で示す・T-M8-226） */}
         </div>
         {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
       </div>

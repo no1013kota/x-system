@@ -9,7 +9,6 @@ import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
-import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
 import { imageProvidersFor } from "@/lib/ai/image-providers-server";
@@ -166,7 +165,6 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   let xHandle: string | null = null;
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
-  let slots: ScheduleSlotView[] = [];
   let historyTruncated = false;
   /** 操作中アカウントのX Premium加入（文字数上限の緩和・T-M8-221）。 */
   let xPremium = false;
@@ -176,7 +174,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   let missingDraft: DraftLocation | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
-    const [loaded, plan, keyRows, loadedSlots, handleRow, inflightRows, premiumRow] = await Promise.all([
+    const [loaded, plan, keyRows, handleRow, inflightRows, premiumRow] = await Promise.all([
       listDraftsForAccount(
         pooledDb,
         activeXAccountId,
@@ -187,7 +185,6 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         .query<{ plan: string | null }>(`select plan from profiles where id = $1`, [user.id])
         .then((r) => r.rows[0]?.plan ?? null),
       tab === "drafts" ? imageKeyRowsQuery(user.id) : Promise.resolve(null),
-      tab === "drafts" ? listScheduleSlots(pooledDb, activeXAccountId) : Promise.resolve([]),
       tab === "history"
         ? getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
             activeXAccountId,
@@ -210,7 +207,6 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       ),
     ]);
     drafts = await attachSignedImageUrls(loaded);
-    slots = loadedSlots;
     xPremium = premiumRow?.rows[0]?.x_premium ?? false;
     historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
     /**
@@ -297,7 +293,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       ) : tab === "drafts" ? (
         <>
           <MissingDraftNotice location={missingDraft} tab="drafts" />
-          <ScheduleSummary slots={slots} />
+          <ScheduleSummary />
           <DraftsList
             drafts={drafts}
             generatingJobs={generatingJobs}

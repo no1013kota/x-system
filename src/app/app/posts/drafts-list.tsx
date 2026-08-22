@@ -88,39 +88,67 @@ export function DraftsList({
       </EmptyNotice>
     );
   }
+  /*
+   * 投稿に失敗した下書きは**専用の枠で先頭に集める**（T-M8-227・運営者の指示 2026-08-22）。
+   * 対象は status=failed（X上に記録が残る失敗）と、Xへ出す前に差し戻された
+   * status=draft＋last_post_error（理由つき）。予約・自動投稿の失敗はここに載り、
+   * 各カードの保存済み理由（Notice）と既存の操作（編集・投稿・日時指定予約・再試行）で
+   * やり直せる。別タブに分けないのは、失敗は見に行かないと気付けない場所に置かず、
+   * 下書きの操作（編集・予約）と同じ場所で完結させるため（原則1）。
+   */
+  const failedDrafts = drafts.filter(
+    (d) => d.status === "failed" || d.last_post_error != null,
+  );
+  const normalDrafts = drafts.filter((d) => !failedDrafts.includes(d));
+  const cards = (list: DraftView[]) =>
+    list.map((draft) => (
+      <DraftCard
+        draft={draft}
+        highlighted={draft.id === selectedDraftId}
+        imageRegenEnabled={imageRegenEnabled}
+        key={draft.id}
+        quotePostEnabled={quotePostEnabled}
+        xAccountActive={xAccountActive}
+        xPremium={xPremium}
+      />
+    ));
   return (
-    <ul className="space-y-4">
-      {/* 作成中の枠（T-M8-209・運営者の指示 2026-08-22）。完了すると次の読込で実物に置き換わる。 */}
-      {generatingJobs.map((job) => (
-        <li
-          className={`${cardClassName} border-dashed p-4`}
-          key={job.id}
+    <div className="space-y-4">
+      {failedDrafts.length > 0 ? (
+        <section
+          aria-label="投稿に失敗した下書き"
+          className="rounded-card border border-danger-fg/30 bg-danger-bg/30 p-3"
         >
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex size-2.5 flex-none">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-pill bg-brand opacity-60" />
-              <span className="relative inline-flex size-2.5 rounded-pill bg-brand" />
-            </span>
-            <p className="text-body font-medium text-ink">下書きを作成しています…</p>
-            <span className="ml-auto text-caption text-ink-3">通常60〜90秒</span>
-          </div>
-          <div className="mt-3 h-1 overflow-hidden rounded-pill bg-page">
-            <div className="h-full w-[60%] animate-pulse rounded-pill [background-image:var(--brand-gradient)]" />
-          </div>
-        </li>
-      ))}
-      {drafts.map((draft) => (
-        <DraftCard
-          draft={draft}
-          highlighted={draft.id === selectedDraftId}
-          imageRegenEnabled={imageRegenEnabled}
-          key={draft.id}
-          quotePostEnabled={quotePostEnabled}
-          xAccountActive={xAccountActive}
-          xPremium={xPremium}
-        />
-      ))}
-    </ul>
+          <h3 className="text-body font-bold text-danger-fg">投稿に失敗した下書き</h3>
+          <p className="mt-0.5 text-caption leading-4 text-ink-2">
+            各カードに失敗の理由が出ています。内容を確認して、編集・投稿・日時指定の予約をやり直せます。
+          </p>
+          <ul className="mt-3 space-y-4">{cards(failedDrafts)}</ul>
+        </section>
+      ) : null}
+      <ul className="space-y-4">
+        {/* 作成中の枠（T-M8-209・運営者の指示 2026-08-22）。完了すると次の読込で実物に置き換わる。 */}
+        {generatingJobs.map((job) => (
+          <li
+            className={`${cardClassName} border-dashed p-4`}
+            key={job.id}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex size-2.5 flex-none">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-pill bg-brand opacity-60" />
+                <span className="relative inline-flex size-2.5 rounded-pill bg-brand" />
+              </span>
+              <p className="text-body font-medium text-ink">下書きを作成しています…</p>
+              <span className="ml-auto text-caption text-ink-3">通常60〜90秒</span>
+            </div>
+            <div className="mt-3 h-1 overflow-hidden rounded-pill bg-page">
+              <div className="h-full w-[60%] animate-pulse rounded-pill [background-image:var(--brand-gradient)]" />
+            </div>
+          </li>
+        ))}
+        {cards(normalDrafts)}
+      </ul>
+    </div>
   );
 }
 
@@ -350,9 +378,10 @@ function DraftCard({
         </div>
       </div>
 
-      {/* 予約パネルはヘッダー行の下の独立した行（T-M8-226。ボタン群の中で開くと折り返して崩れる）。 */}
+      {/* 予約パネルはヘッダー行の下の独立した行（T-M8-226。ボタン群の中で開くと折り返して崩れる）。
+          開閉ボタンが右端にあるため右揃えで置く（運営者の指示 2026-08-22）。 */}
       {scheduleOpen && editable && !editing && !publishing && !p5Disabled ? (
-        <div className="mt-2">
+        <div className="mt-2 flex justify-end">
           <ScheduleDraftPanel
             disabled={locked}
             draftId={draft.id}

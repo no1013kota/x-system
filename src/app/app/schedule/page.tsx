@@ -219,7 +219,7 @@ export default async function SchedulePage() {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone="neutral">
-                        定期・{entry.mode === "auto" ? "自動で投稿" : "下書きを作成"}
+                        スケジュール・{entry.mode === "auto" ? "自動投稿" : "下書き作成"}
                       </Badge>
                       <span className="text-caption text-ink-3 tabular-nums">
                         次回 {formatJst(entry.at)}
