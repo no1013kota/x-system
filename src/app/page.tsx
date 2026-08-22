@@ -492,7 +492,8 @@ export default function Home() {
 
         {/* 07 よくある質問 */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="よくある質問" no="07" />
+          {/* 06 利用者の声を隠しているあいだは番号を詰める（復活時は "07" へ戻す・T-M8-231）。 */}
+          <SectionMark label="よくある質問" no="06" />
           {/* 見出しの言い換え（「気になることは、先に答えておきます」）を置かず、
               質問と回答そのものを大きく出す（2026-08-20 運営者の指示）。 */}
           <div className="mt-[clamp(24px,3vw,38px)] max-w-[840px]">

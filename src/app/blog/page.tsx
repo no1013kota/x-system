@@ -94,16 +94,23 @@ export default function BlogIndexPage() {
               const headingId = `post-${post.slug}`;
               return (
                 <li key={post.slug}>
+                  {/*
+                    カードのどこを押しても記事へ行く（運営者の指示 2026-08-23・T-M8-232）。
+                    リンクは**題名の1本だけ**に保ち、その中の透明な span（`absolute inset-0`）で
+                    当たり判定だけをカード全体へ広げる（リンクをもう1本重ねると、読み上げと
+                    タブ移動で同じ記事が2回出る）。カード側の `relative` が広がる基準。
+                  */}
                   <Card
                     aria-labelledby={headingId}
                     as="article"
-                    className="px-6 py-5 transition-colors hover:border-brand/40"
+                    className="group relative px-6 py-5 transition-colors hover:border-brand/40 focus-within:border-brand/40"
                   >
                     <CardTitle as="h2" className="text-[17px] leading-snug" id={headingId}>
                       <Link
-                        className="text-ink hover:text-brand focus-visible:underline"
+                        className="text-ink group-hover:text-brand focus-visible:underline focus-visible:outline-none"
                         href={`/blog/${post.slug}`}
                       >
+                        <span aria-hidden="true" className="absolute inset-0" />
                         {post.title}
                       </Link>
                     </CardTitle>
