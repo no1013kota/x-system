@@ -27,29 +27,20 @@ export function ImportantNewsCard({
       <Card>
         <CardHeader>
           <CardTitle>重要ニュース</CardTitle>
-          <Link
-            className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
-            href="/app/news"
-          >
-            ニュースを見る
-          </Link>
         </CardHeader>
         <CardBody className="pt-0">
           <p className="text-body leading-5 text-ink-2">
-          {loadFailed
-            ? "ニュースを取得できませんでした。時間をおいて開き直すか、ニュース画面で確認してください。"
-            : // 条件の変え方は直下の「ニュース設定を変更」ボタンが示す。文で繰り返さない（T-M8-66）。
-              "インパクトが高い新着はまだありません。"}
-        </p>
-          {loadFailed ? null : (
-            <Link
-              // 「スケジュールを設定」「今すぐ作成」と同じ主操作の見た目に揃える（運営者の指示 2026-08-22）。
-              className={`mt-3.5 ${primaryLinkClassName}`}
-              href="/app/settings?tab=notifications"
-            >
-              ニュース設定を変更
-            </Link>
-          )}
+            {loadFailed
+              ? "ニュースを取得できませんでした。時間をおいて開き直すか、ニュース画面で確認してください。"
+              : "インパクトが高い新着はまだありません。"}
+          </p>
+          {/*
+            導線は「ニュースを見る」1本（運営者の指示 2026-08-22。「ニュース設定を変更」は廃止）。
+            主操作ボタン（bg-brand）で置き、右上の小リンクは同文言の重複になるため空状態では出さない。
+          */}
+          <Link className={`mt-3.5 ${primaryLinkClassName}`} href="/app/news">
+            ニュースを見る
+          </Link>
         </CardBody>
       </Card>
     );
