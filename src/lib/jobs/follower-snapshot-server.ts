@@ -23,7 +23,9 @@ export async function runFollowerSnapshot(windowKey: string): Promise<FollowerSn
   return executeFollowerSnapshot({
     db: pooledDb,
     isPastDeadline: () => !deadline.canStartCall(),
-    onError: (scope, err) => console.error(`[follower_snapshot] ${scope.xAccountId}`, err),
+    // 中核が用意した記録口。console だけだと運営者に届かない（T-M8-239・原則2）。
+    onError: (scope, err) =>
+      recordUnexpectedError(err, { at: "follower-snapshot", xAccountId: scope.xAccountId }),
     getAccessToken: async (xAccountId) => {
       try {
         return await getValidXAccessToken(xAccountId);

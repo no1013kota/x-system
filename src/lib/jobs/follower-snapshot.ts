@@ -39,6 +39,8 @@ export interface FollowerSnapshotResult {
   accountsProcessed: number;
   snapshotsWritten: number;
   deferred: boolean;
+  /** 読み取り／保存に失敗した件数（T-M8-239）。0件と「全部失敗」を区別するため数で持つ。 */
+  failed: number;
 }
 
 /**
@@ -71,6 +73,8 @@ export async function executeFollowerSnapshot(
   let accountsProcessed = 0;
   let snapshotsWritten = 0;
   let deferred = deferredBySelection;
+  // 失敗件数（T-M8-239）。握って握りつぶすと「0件」と「全部失敗」が同じ見え方になる。
+  let failed = 0;
 
   const runAccount = async (acct: DueAccount): Promise<void> => {
     if (deps.isPastDeadline()) {
@@ -81,6 +85,7 @@ export async function executeFollowerSnapshot(
     try {
       token = await deps.getAccessToken(acct.xAccountId);
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId: acct.xAccountId }, err);
       return;
     }
@@ -106,6 +111,7 @@ export async function executeFollowerSnapshot(
       );
       snapshotsWritten += res.rowCount ?? 0;
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId: acct.xAccountId }, err);
       deferred = true; // 読取/書込失敗は次窓へ
     }
@@ -121,6 +127,5 @@ export async function executeFollowerSnapshot(
     }
   });
   await Promise.all(workers);
-
-  return { accountsProcessed, snapshotsWritten, deferred };
+  return { accountsProcessed, snapshotsWritten, deferred, failed };
 }

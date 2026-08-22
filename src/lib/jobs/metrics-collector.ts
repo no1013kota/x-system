@@ -184,6 +184,12 @@ export interface MetricsCollectorResult {
   tweetIdsRead: number;
   /** 上限またはdeadlineで未処理を次回へ残したか。 */
   deferred: boolean;
+  /**
+   * 読み取り／保存に失敗した件数（T-M8-239）。**0件と「全部失敗して0件」を区別する**ため、
+   * 結果に数として載せる（CLAUDE.md 原則1）。以前は握って `console.error` に流すだけで、
+   * cronの応答にも doctor にも現れなかった。
+   */
+  failed: number;
 }
 
 /**
@@ -209,6 +215,8 @@ export async function executeMetricsCollection(
   let draftsProcessed = 0;
   let tweetIdsRead = 0;
   let deferred = selectionDeferred;
+  // 失敗件数（T-M8-239）。握って握りつぶすと「0件」と「全部失敗」が同じ見え方になる。
+  let failed = 0;
 
   // 収集対象IDが無い due draft（例: 全ID取得済み、ambiguous_delete のみ）は token/読取不要で
   // next_metrics_at だけ前進させ due 窓から外す（永久ループ防止）。
@@ -221,6 +229,7 @@ export async function executeMetricsCollection(
       await saveDraftCheckpoints(deps, draft, []);
       draftsProcessed += 1;
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId: draft.xAccountId, draftId: draft.draftId }, err);
     }
   }
@@ -235,6 +244,7 @@ export async function executeMetricsCollection(
     try {
       token = await deps.getAccessToken(xAccountId);
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId }, err);
       return;
     }
@@ -252,6 +262,7 @@ export async function executeMetricsCollection(
         draftsProcessed += 1;
       } catch (err) {
         // 読取/保存失敗は run 全体を落とさず隔離。next_metrics_at は据え置きで次窓が再走査する。
+        failed += 1;
         deps.onError?.({ xAccountId, draftId: draft.draftId }, err);
         if (isXAuthError(err)) return; // 失効はアカウント単位でスキップ（getAccessToken null 相当）
         deferred = true; // 一時失敗（429/5xx枯渇等）は次窓へ
@@ -270,7 +281,7 @@ export async function executeMetricsCollection(
   });
   await Promise.all(workers);
 
-  return { accountsProcessed, draftsProcessed, tweetIdsRead, deferred };
+  return { accountsProcessed, draftsProcessed, tweetIdsRead, deferred, failed };
 }
 
 async function selectDue(

@@ -26,8 +26,17 @@ export async function runMetricsCollector(now: Date): Promise<MetricsCollectorRe
     runInTx: runInPooledTx,
     now,
     isPastDeadline: () => !deadline.canStartCall(),
+    /*
+      **握って console に流すだけにしない**（T-M8-239）。ここは中核が用意した記録口で、
+      同じファイルの `getAccessToken` の catch だけが `recordUnexpectedError` へ直してあり、
+      本来の経路が console のまま残っていた。運営者はログを読まない（原則2）。
+    */
     onError: (scope, err) =>
-      console.error(`[metrics_collector] ${scope.xAccountId}${scope.draftId ? `/${scope.draftId}` : ""}`, err),
+      recordUnexpectedError(err, {
+        at: "metrics-collector",
+        draftId: scope.draftId ?? null,
+        xAccountId: scope.xAccountId,
+      }),
     getAccessToken: async (xAccountId) => {
       try {
         return await getValidXAccessToken(xAccountId);

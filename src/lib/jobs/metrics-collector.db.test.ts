@@ -298,6 +298,33 @@ describe("metrics_collector (local DB)", () => {
     }
   });
 
+  /**
+   * **「0件」と「全部失敗して0件」を結果で区別する**（T-M8-239・CLAUDE.md 原則1）。
+   * 以前は読取失敗を握って `console.error` へ流すだけで、cronの応答にも運営者にも現れず、
+   * 実績が更新されなくなっても「静かに0件」に見えていた。
+   */
+  it("読取が落ちた分を failed として数え、onError へ渡す", async () => {
+    const { uid, xid } = await seedAccount();
+    const t1 = `t-${randomUUID()}`;
+    await seedPostedDraft(xid, [t1], { postedDaysAgo: 2, nextDueDaysAgo: 1 });
+    try {
+      const errors: unknown[] = [];
+      const res = await executeMetricsCollection(
+        mockDeps(xid, {}, {
+          onError: (_scope, err) => errors.push(err),
+          readTweetMetrics: async () => {
+            throw new Error("X API down");
+          },
+        }),
+      );
+      expect(res.failed, "失敗が結果に出ていない").toBeGreaterThanOrEqual(1);
+      expect(res.draftsProcessed).toBe(0);
+      expect(errors.length, "記録口へ渡っていない").toBe(res.failed);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("defers remaining drafts once the Function deadline is hit", async () => {
     const { uid, xid } = await seedAccount();
     const ta = `t-${randomUUID()}`;
