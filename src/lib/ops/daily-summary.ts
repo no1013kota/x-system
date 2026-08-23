@@ -180,7 +180,9 @@ export async function collectDailySummary(
 
   // 分野ごとの日別保存件数（直近14日）。実行のあった日だけが行になる。
   const news = await db.query<{ date: string; category: string; saved: number; dropped: number }>(
-    `select to_char((ran_at + interval '9 hours')::date, 'YYYY-MM-DD') as date,
+    // 日付は `at time zone 'Asia/Tokyo'` で切る（T-M8-254）。`+ interval '9 hours'` は
+    // **DBセッションのTZがUTCであること**に暗黙に依存していて、設定が変わると黙ってずれる。
+    `select to_char((ran_at at time zone 'Asia/Tokyo')::date, 'YYYY-MM-DD') as date,
             category::text as category, sum(saved)::int as saved, sum(dropped)::int as dropped
        from news_fetch_outcomes
       where ran_at > now() - interval '14 days'
@@ -232,7 +234,11 @@ export async function collectDailySummary(
   */
   const cost = await db.query<{ usd: string | null }>(
     `select sum(estimated_cost_usd)::text as usd from external_api_usage_events
-      where occurred_at >= date_trunc('month', now()) and user_id = $1`,
+      -- **月の区切りは日本時間**（T-M8-254・運営者の指示 2026-08-23）。UTC月初で切ると
+      -- UTCの月初になるため、**毎月1日のJST 0時〜9時は前月分の合計が「今月」として出る**。
+      -- 利用枠のリセットも月初なので、費用の月境界だけUTCだと説明が食い違う。
+      where occurred_at >= (date_trunc('month', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo')
+        and user_id = $1`,
     [userId],
   );
 

@@ -60,7 +60,7 @@ standardは利用者自身のX/AI契約へ原価が発生するため、アプ�
 
 - `POST /api/stripe/checkout`は`{"plan":"standard|premium|expert"}`だけを受け付け、未知フィールドも入力不正として拒否する。planをサーバー側の環境変数Price ID対応表で解決し、クライアントからPrice IDを受け取らない。
 - Supabase sessionと`Origin === new URL(APP_BASE_URL).origin`を検証する。既存の`stripe_customer_id`を再利用し、未作成時はemailと`user_id` metadataを付け、`exos-ai:customer:{user_id}`を冪等keyとしてCustomerを作成してprofileへ保存する。
-- Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadataおよび`client_reference_id`へ本人user_idとplanを関連付ける。
+- Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadata（**user_id のみ。plan は持たない**——正はPriceで、metadataは変更後も古い値が残り運営者を誤解させる・T-M8-253）および`client_reference_id`へ本人user_idとplanを関連付ける。
 - `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。**あわせてCheckout作成時にStripeの契約一覧も見る**（T-M8-244）——`trial_start`を持つ契約が1本でもあればtrialを付けない。`profiles`だけを根拠にすると、webhookが届かなかった利用者は`trial_used_at`が永久にnullのままになり、解約→再契約で2回目の無料期間が取れる。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
 - success URLは`{APP_BASE_URL}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。復帰同期後は`/plans?checkout=success&sync=...`へredirectする。任意の外部return URLは受け取らない。
 - プラン選択からCheckoutまでの**常時表示**は、カードの税込月額と**プロモ帯の3点**（初回のみ・カード登録が必要・期間中に解約すれば無料）とする（T-M8-171の運営者決定・要件06 §1.1が正本）。自動更新・支払時期・解約方法・提供開始時期の法定事項は、フッタから常時到達できる**特定商取引法に基づく表記**と利用規約が担う。**同じことを2か所へ常時表示しない**（片方だけ古くなる）。

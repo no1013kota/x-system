@@ -132,9 +132,9 @@ describe("POST /api/stripe/checkout core", () => {
       success_url:
         "https://app.example.com/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://app.example.com/plans?checkout=canceled",
-      metadata: { plan: "premium", user_id: "user_123" },
+      metadata: { user_id: "user_123" },
       subscription_data: {
-        metadata: { plan: "premium", user_id: "user_123" },
+        metadata: { user_id: "user_123" },
         trial_period_days: 7,
       },
     });
@@ -154,7 +154,7 @@ describe("POST /api/stripe/checkout core", () => {
     expect(deps.stripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         subscription_data: {
-          metadata: { plan: "standard", user_id: "user_123" },
+          metadata: { user_id: "user_123" },
         },
       }),
     );

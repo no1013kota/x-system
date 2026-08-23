@@ -25,6 +25,7 @@ import {
   type ApiKeyViewProvider,
   type ApiKeyViewState,
 } from "@/lib/api-key-view";
+import { formatJst } from "@/lib/format";
 import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 import type { UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle, cardClassName } from "@/components/ui/card";
@@ -89,12 +90,19 @@ interface ApiKeySettingsProps {
   usageResetLabel?: string;
 }
 
+/**
+ * 最終確認の日時（T-M8-254）。**表示は日本時間で固定する**（`formatJst`）。
+ *
+ * 以前はここだけ `timeZone` を指定しておらず、実行環境のTZで描かれていた——
+ * サーバー（Vercel＝UTC）で焼いたHTMLとブラウザ（JST）で9時間ずれ、
+ * hydration不一致で描き直しが起きていた。**アプリの他の日時は全てJST固定**なので、
+ * 端末のTZに左右される表示がここだけ混ざるのも揃わない。
+ * `formatJst` は非nullのISO文字列前提なので、null は呼ぶ前に外す（`?? ""` にしない——
+ * 空文字は `RangeError` になり、画面が落ちる）。
+ */
 function verificationDate(value: string | null): string | null {
   if (!value) return null;
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return formatJst(value);
 }
 
 function StatusBadge({ status }: { status: ApiKeyViewState["status"] }) {

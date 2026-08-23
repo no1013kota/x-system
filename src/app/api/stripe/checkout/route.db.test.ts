@@ -195,9 +195,9 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
       client_reference_id: id,
       mode: "subscription",
       line_items: [{ price: priceIds.premium, quantity: 1 }],
-      metadata: { plan: "premium", user_id: id },
+      metadata: { user_id: id },
       // trial_used_at が null（実DBの値）なので初回7日trialが付く。
-      subscription_data: { metadata: { plan: "premium", user_id: id }, trial_period_days: 7 },
+      subscription_data: { metadata: { user_id: id }, trial_period_days: 7 },
       success_url: `${appBaseUrl}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appBaseUrl}/plans?checkout=canceled`,
     });
@@ -237,7 +237,7 @@ describe("POST /api/stripe/checkout（route 実装・実DB）", () => {
 
     expect(res.status, `internal_error になっている: ${JSON.stringify(body)}`).toBe(200);
     expect(stripeCalls.sessionCreate[0]).toMatchObject({
-      subscription_data: { metadata: { plan: "expert", user_id: id } },
+      subscription_data: { metadata: { user_id: id } },
     });
     expect(
       (stripeCalls.sessionCreate[0].subscription_data as Record<string, unknown>),

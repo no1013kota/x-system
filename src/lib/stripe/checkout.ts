@@ -120,13 +120,17 @@ function sessionParams(input: {
     payment_method_collection: "always",
     success_url: `${appBaseUrl}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appBaseUrl}/plans?checkout=canceled`,
+    /*
+      **`plan` は metadata へ持たない**（T-M8-253）。プランの正は Price（`subscription.items`）で、
+      同期もそこから決めている。metadata に書くと**プラン変更後も作成時の値が残り**、
+      Stripeダッシュボードを見た運営者が古いプランを信じることになる（誰も読まないのに誤解だけ生む）。
+      `user_id` は Customer 未保存時の突き合わせに使うので残す。
+    */
     metadata: {
-      plan: input.plan,
       user_id: input.userId,
     },
     subscription_data: {
       metadata: {
-        plan: input.plan,
         user_id: input.userId,
       },
       ...(input.trialUsedAt === null ? { trial_period_days: 7 } : {}),

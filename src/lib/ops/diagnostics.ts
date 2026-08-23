@@ -730,7 +730,10 @@ export async function collectDiagnostics(
   const cost = await db.query<{ provider: string; usd: string }>(
     `select provider::text as provider, coalesce(sum(estimated_cost_usd), 0)::text as usd
        from external_api_usage_events
-      where occurred_at >= date_trunc('month', now())
+      -- **月の区切りは日本時間**（T-M8-254・運営者の指示 2026-08-23）。UTC月初で切ると
+      -- UTCの月初になるため、**毎月1日のJST 0時〜9時は前月分の合計が「今月」として出る**。
+      -- 利用枠のリセットも月初なので、費用の月境界だけUTCだと説明が食い違う。
+      where occurred_at >= (date_trunc('month', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo')
       group by provider order by 2 desc`,
   );
   const byProvider = cost.rows.map((r) => ({ provider: r.provider, usd: Number(r.usd) }));
