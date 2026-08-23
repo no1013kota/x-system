@@ -285,9 +285,26 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
     expect(dispatched).toContain(queuedJobId);
     expect(Number(body.dispatched)).toBeGreaterThanOrEqual(1);
 
-    // (4) stale 回収段: running が queued へ戻る。
+    /*
+      (4) stale 回収段: running が queued へ戻り、ロックが外れる。
+
+      **件数（`recovered.requeued`）では判定しない。** `recoverStaleJobs` は
+      「stale な running を全部」拾う全体クエリで、テストは共有DBに対して並行に走るため、
+      **別ファイルのtickがこの枠を先に回収して自分の回収数が0になる**ことがある
+      （実際に断続的に落ちた。落ちた回数ではなく落ちる条件を見る・CLAUDE.md §3）。
+      見たいのは「この枠が回収されたか」なので、枠の状態そのもので確かめる。
+    */
     expect(await jobStatus(staleJobId)).toBe("queued");
-    expect(body.recovered?.requeued ?? 0).toBeGreaterThanOrEqual(1);
+    const staleRow = await sql<{ locked_at: string | null; locked_by: string | null }>(
+      `select locked_at::text as locked_at, locked_by from generation_jobs where id = $1`,
+      [staleJobId],
+    );
+    expect(staleRow[0], "回収されていればロックが外れている").toMatchObject({
+      locked_at: null,
+      locked_by: null,
+    });
+    // 段そのものが走ったことは応答の形で見る（0件でも「走った」は言える）。
+    expect(body.recovered).toMatchObject({ requeued: expect.any(Number) });
 
     // （旧(4') メール回収段はT-M8-222で廃止）
 
