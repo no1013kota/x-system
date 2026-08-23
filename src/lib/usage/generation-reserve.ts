@@ -1,5 +1,5 @@
 import { AppError } from "../observability/errors";
-import { CURRENT_MONTH_JST_SQL } from "./current-month";
+import { currentUsagePeriodKey } from "./usage-period";
 import type { Queryable } from "../x/token-refresh";
 import { notifyUsageThresholds } from "./usage-threshold";
 
@@ -29,7 +29,8 @@ const OPERATION: Record<UsageReserveType, string> = {
 };
 
 /**
- * 枠を +1 reserve する（同一transactionで counter FOR UPDATE→上限確認→event insert→counter +1）。JST月へ記録。
+ * 枠を +1 reserve する（同一transactionで counter FOR UPDATE→上限確認→event insert→counter +1）。
+ * 契約期間の期間キー（`usage-period.ts`・T-M8-258）へ記録。
  * 既に同一reserve keyがあれば no-op（冪等・上限判定もしない）。counter行が無ければ作る。
  * `limit` 指定時、現在値が上限以上なら `usage_limit_exceeded` を投げ、event/counterを変更しない。
  */
@@ -52,17 +53,18 @@ export async function reserveUsage(
   const key = `job:${params.jobId}:${params.type}:reserve`;
   const column = COUNTER_COLUMN[params.type];
   const amount = Math.max(1, Math.floor(params.amount ?? 1));
+  const period = await currentUsagePeriodKey(tx, params.userId);
   await tx.query(
     `insert into usage_counters (user_id, month)
-     values ($1, ${CURRENT_MONTH_JST_SQL})
+     values ($1, $2)
      on conflict (user_id, month) do nothing`,
-    [params.userId],
+    [params.userId, period],
   );
-  // 当月counterをロックして現在値を読む（並行reserveの上限すり抜けを防ぐ・要件03 §7.4）。
+  // 今期のcounterをロックして現在値を読む（並行reserveの上限すり抜けを防ぐ・要件03 §7.4）。
   const current = (
     await tx.query<{ n: number }>(
-      `select ${column} as n from usage_counters where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL} for update`,
-      [params.userId],
+      `select ${column} as n from usage_counters where user_id = $1 and month = $2 for update`,
+      [params.userId, period],
     )
   ).rows[0];
   // 冪等: 既に予約済みなら no-op（上限判定しない＝再実行が既存予約を失敗させない）。
@@ -77,22 +79,23 @@ export async function reserveUsage(
   await tx.query(
     `insert into usage_events
        (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key)
-     values ($1, $2, $3, ${CURRENT_MONTH_JST_SQL},
+     values ($1, $2, $3, $8,
              $4::usage_counter_type, $5::usage_event_operation, $7, 'reserve', $6)
      on conflict (idempotency_key) do nothing`,
-    [params.userId, params.xAccountId ?? null, params.jobId, COUNTER_TYPE[params.type], OPERATION[params.type], key, amount],
+    [params.userId, params.xAccountId ?? null, params.jobId, COUNTER_TYPE[params.type], OPERATION[params.type], key, amount, period],
   );
   const updated = await tx.query<{ n: number }>(
     `update usage_counters set ${column} = ${column} + $2, updated_at = now()
-      where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}
+      where user_id = $1 and month = $3
       returning ${column} as n`,
-    [params.userId, amount],
+    [params.userId, amount, period],
   );
-  // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
+  // 80%/100% 到達通知（premium・枠/期間/閾値ごとに1件・要件03 §8, T-M6-13）。
   await notifyUsageThresholds(tx, {
     userId: params.userId,
     key: "ai_credits",
     newCount: updated.rows[0]?.n ?? 0,
+    periodKey: period,
   });
   return true;
 }
@@ -152,10 +155,12 @@ export async function settleUsage(
     [reserve.user_id, reserve.month, diff],
   );
   if (diff > 0) {
+    // 通知の重複判定も**元reserveの期間**で行う（期間をまたいだ精算で今期の通知を作らない）。
     await notifyUsageThresholds(tx, {
       userId: reserve.user_id,
       key: "ai_credits",
       newCount: updated.rows[0]?.n ?? 0,
+      periodKey: reserve.month,
     });
   }
   return true;

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.53 |
+| バージョン | v1.54 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -204,7 +204,7 @@ Storage upload失敗も画像job失敗としてrefundする。X media uploadはA
 4. 画像があればX media uploadを完了し、media idを得る。失敗時は本文を投稿しない。
 5. 1ポスト目を通常投稿として送信する。引用型も`quote_tweet_id`は指定せず、対象URLを含む本文を使う。画像ありは`media_ids`を指定する。
 6. 後続は直前の自分のtweet_idへのreplyとして投稿する。
-7. 各成功直後にtweet_idを保存し、全プランで`post_create` consume eventを作る。premiumだけ月次counterを同一transactionで加算する。
+7. 各成功直後にtweet_idを保存し、全プランで`post_create` consume eventを作る。premiumだけ契約期間ごとのcounter（`usage_counters`・期間キーは要件03 §7.2）を同一transactionで加算する。
 8. 全件成功でdraft rowを削除せず、`status=posted`、`root_tweet_id`、`posted_at`、`posted_mode`を更新する。rowは下書き一覧から外れ、投稿履歴とtweet_id別実績の正本になる。
 
 原価集計対象のX/AI外部呼び出しは成功・失敗を問わず、返却されたrequest ID、resource数、token/search usage、実行時単価、推定原価を`external_api_usage_events`へ冪等保存する。provider本文、投稿本文、prompt、tokenは保存しない。X media uploadは運用logだけへ記録し、原価台帳から除外する。X単価は環境変数`X_COST_*`のsnapshotを採用し、投稿作成は本文のURL有無で通常/URL付き単価を分ける。読取（`x_post_read`/`x_user_read`）の単価は`X_COST_POST_READ_USD`/`X_COST_USER_READ_USD`のsnapshotを使い、**応答のresource数で乗算**して記録する（pay-per-usageは応答1件ごとに課金する。2026-08-15・T-M8-91で「読取は課金されない」という誤った前提を修正した。未設定の環境では0で記録する）。0件応答の読取は`quantity=0`・推定原価$0で記録する（呼び出しの痕跡は残す。直近30日に投稿が無いアカウントの毎朝の自動読取で毎日発生する形。2026-08-15・T-M8-94）。`dry_run`は実外部呼び出し（実原価）が発生しないため原価台帳（`external_api_usage_events`）には記録しない。失敗時は resource 未作成のため推定原価0で記録する。
@@ -213,7 +213,7 @@ AI呼び出しが例外で終わった場合（レート制限・タイムアウ
 
 post作成でtimeout、接続切断、5xx等により作成成否が不明な場合は同じ本文を再送しない。対象アカウントの直近投稿を取得し、本文、作成時刻、reply先、quote先が一致する候補が1件だけならそのtweet_idを保存して継続する。候補なし・複数は`post_state_unknown`でfailedにし、X上の確認を促す。
 
-`X_POSTING_MODE = dry_run`では投稿・削除・media uploadのX API書き込みを行わず、擬似tweet_idをUIへ返す。ただし投稿workerの記帳（`tweet_ids`保存・全プランの`post_create` consume event・`status=posted`/`root_tweet_id`/`posted_at`/`next_metrics_at`更新・posted通知）は、dev/preview（dry_run必須, 要件01 §3.1）でも投稿フローと日次上限を検証できるよう実行する。原価台帳（`external_api_usage_events`）への記録とpremium月次counter（`usage_counters`, M6）の加算は行わない。実績取得（`/2/users/me`・tweet読取）はmodeに依らず実行する。
+`X_POSTING_MODE = dry_run`では投稿・削除・media uploadのX API書き込みを行わず、擬似tweet_idをUIへ返す。ただし投稿workerの記帳（`tweet_ids`保存・全プランの`post_create` consume event・`status=posted`/`root_tweet_id`/`posted_at`/`next_metrics_at`更新・posted通知）は、dev/preview（dry_run必須, 要件01 §3.1）でも投稿フローと日次上限を検証できるよう実行する。原価台帳（`external_api_usage_events`）への記録とpremiumの期間counter（`usage_counters`, M6）の加算は行わない。実績取得（`/2/users/me`・tweet読取）はmodeに依らず実行する。
 
 ## 11. スレッド途中失敗
 
@@ -231,7 +231,7 @@ flowchart TD
   G --> H["failed・残存ID保存・通知"]
 ```
 
-- rollback削除にもX APIのretry方針を適用する。削除成功ごとに全プランで`post_delete` consume eventを作り、premiumは月次投稿counterをさらに1加算する。
+- rollback削除にもX APIのretry方針を適用する。削除成功ごとに全プランで`post_delete` consume eventを作り、premiumは投稿counter（契約期間ごと）をさらに1加算する。
 - 削除成功後も`tweet_ids`は監査用に保持する。`last_post_error.deleted_tweet_ids`へ削除確認済みID、`remaining_tweet_ids`へX上に残るIDを保存する。
 - premiumの通常/URL付き投稿枠は投稿成功分を返還せず、削除成功分も元投稿と同じ枠へ追加消費する。作成後にロールバック削除できたtweet_idは同じ枠を合計2消費、削除失敗は追加消費なしとする。投稿前の安全残量確認により、削除が各投稿枠上限で妨げられないようにする。
 - 自動投稿でも手動投稿でも同じ規則を適用する。
@@ -332,6 +332,7 @@ flowchart TD
 | v1.51 | 2026-08-23 | フォロワー記録の毎時cron（follower_snapshot）を復活（T-M8-257。定時トリガー3本→4本）。推移グラフは毎日の点が要るため。復活時に「契約が有効な利用者のみ」ゲートを追加。投稿分析はボタンの手動実行のまま |
 | v1.52 | 2026-08-23 | follower_snapshotを毎時10分→毎時00分へ（T-M8-262・運営者の指示。tokenのrefreshは行leaseで直列化されるためmetrics_collectorと同時刻でも競合しない） |
 | v1.53 | 2026-08-23 | 契約ガードを実行直前（leaseJob）にも置く（§4.1・T-M8-267）。解約後にAI生成・画像生成・X投稿が実行される6経路を監査で検出し、日時予約起票・metrics_collector・retry・学習ソース削除のゲートも追加 |
+| v1.54 | 2026-08-23 | 利用枠counterの「月次」を契約期間ごとへ（T-M8-258） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

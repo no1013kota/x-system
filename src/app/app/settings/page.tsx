@@ -39,7 +39,7 @@ import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts
 import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
-import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
+import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { readSingleRow } from "@/lib/supabase/single-row";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -192,7 +192,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // planに依存する第2波。
   // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
   //   （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
-  // - 利用枠: premium 月間利用枠の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
+  // - 利用枠: premium の利用枠（契約期間ごと）の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
   // - アカウント行: アカウント設定／プロンプトタブの対象Xアカウント。
   const [apiKeys, usage, accountResult, purposeKeys] = await Promise.all([
     tab === "general" && !isOperatorManagedPlan(plan)
@@ -354,7 +354,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 initialKeys={apiKeys}
                 plan={plan}
                 usage={usage}
-                usageResetLabel={formatNextMonthStartJst(new Date())}
+                usageResetLabel={usage ? usageResetLabel(usage) : "次回の更新日"}
               />
             {userSettings ? (
               <SettingsPreferences
@@ -443,7 +443,7 @@ let promptTemplates: PromptTemplateView[] = [];
               </div>
             </Card>
             {usage ? (
-              <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
+              <UsageSummaryCard nextResetLabel={usageResetLabel(usage)} summary={usage} />
             ) : null}
           </section>
         ) : tab === "account" ? (

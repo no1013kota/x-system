@@ -2,9 +2,9 @@ import type { UsageSlot, UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle } from "@/components/ui/card";
 
 /**
- * 運営キー系プランの月間利用枠の残量カード（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
+ * 運営キー系プランの利用枠（契約期間ごと・T-M8-258）の残量カード（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
  * SC-05ホーム・SC-11設定に置く。used/limit/remaining を表示し、上限到達（remaining=0）の枠は
- * 「翌月{nextResetLabel}にリセット」の到達エラー表示を出す。表示専用のため server component（JS不要）。
+ * 「{nextResetLabel}にリセット」の到達エラー表示を出す。表示専用のため server component（JS不要）。
  * BYOK（standard）は呼び出し側で summary=null にして本カードを描画しない。
  *
  * `summary.concealed`（エキスパート）は**数値を一切出さず**「無制限」とだけ表示する。
@@ -40,7 +40,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       </div>
       {atLimit ? (
         <p className="text-xs font-medium text-destructive" role="status">
-          今月の上限に達しました。{resetLabel}にリセットされます。
+          上限に達しました。{resetLabel}にリセットされます。
         </p>
       ) : null}
     </li>
@@ -52,7 +52,7 @@ export function UsageSummaryCard({
   nextResetLabel,
 }: {
   summary: UsageSummary;
-  /** 翌月開始日時（JST）表記。例「2026年8月1日」。 */
+  /** 枠がリセットされる日＝契約の次回更新日（JST）表記。例「2026年9月15日」。未同期なら「次回の更新日」。 */
   nextResetLabel: string;
 }) {
   if (summary.concealed) {
@@ -62,7 +62,7 @@ export function UsageSummaryCard({
     return (
       <Card as="section" aria-labelledby="usage-summary-heading" className="px-5 py-4">
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle id="usage-summary-heading">今月の利用枠</CardTitle>
+          <CardTitle id="usage-summary-heading">利用枠</CardTitle>
           <span className="text-sm font-bold text-brand">無制限</span>
         </div>
         {paused ? (
@@ -77,7 +77,7 @@ export function UsageSummaryCard({
     <Card as="section" aria-labelledby="usage-summary-heading" className="px-5 py-4">
       <div className="flex items-baseline justify-between gap-2">
         <CardTitle id="usage-summary-heading">
-          今月の利用枠
+          利用枠
         </CardTitle>
         <span className="text-xs text-muted-foreground">{nextResetLabel}にリセット</span>
       </div>

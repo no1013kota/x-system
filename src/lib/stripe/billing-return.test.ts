@@ -23,6 +23,7 @@ function subscription(): Stripe.Subscription {
       data: [
         {
           current_period_end: STARTED_AT + 86_400,
+          current_period_start: STARTED_AT - 86_400,
           price: { id: "price_standard" },
         } as Stripe.SubscriptionItem,
       ],

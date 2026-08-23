@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.46 |
+| バージョン | v1.50 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -39,7 +39,7 @@
 **解約時の追加割引**: カスタマーポータルの「顧客維持クーポン」で**50%オフ・3ヶ月**を提示する（適用後 740／1,990／7,400円）。**Stripeダッシュボードでのみ設定できる**（`billing_portal.Configuration` APIに該当フィールドが無い。当アプリのポータル設定は `is_default: true` なのでダッシュボードの設定が効く）。金額と根拠は `RETENTION_DISCOUNT` に記録する。**プレミアムはフル利用だと50%オフ後の額が原価を下回る**ため無期限にしない（原価はPRD §6.1）。
 
 
-| プラン | 月額税込 | Xアカウント上限 | APIキー | 月間利用枠 |
+| プラン | 月額税込 | Xアカウント上限 | APIキー | 利用枠（契約期間ごと） |
 |---|---:|---:|---|---|
 | `standard`（スタンダード） | 1,480円（終了後 2,960円） | 1 | BYOK必須 | アプリ側上限なし |
 | `premium`（プレミアム） | 3,980円（終了後 7,960円） | 1 | 不要 | AIクレジット1000、通常投稿200件、URL付き投稿20件 |
@@ -47,7 +47,7 @@
 
 **プラン再編（2026-08-20・T-M8-168・運営者の指示）**: 旧standard（500円・上限1・md編集不可）を撤廃し、旧mdを`standard`（スタンダード）へ改定、`expert`を新設した。DB enumも入れ替え済み（migration `20260820000003`。旧md行→standard、旧standard行→NULL＝未契約。本番は該当5件すべて未契約を実測確認済み）。**md/プロンプト編集は全プラン可**になった。
 
-standardは利用者自身のX/AI契約へ原価が発生するため、アプリ側の月間投稿枠・生成枠を設けない。Xの自動化ルールと誤操作対策を目的とする1 Xアカウントあたり日次50ポストの安全上限は、課金主体にかかわらず全プランへ適用する。premium/expertは運営App・運営AIキーの原価管理のため月間利用枠も適用する。
+standardは利用者自身のX/AI契約へ原価が発生するため、アプリ側の月間投稿枠・生成枠を設けない。Xの自動化ルールと誤操作対策を目的とする1 Xアカウントあたり日次50ポストの安全上限は、課金主体にかかわらず全プランへ適用する。premium/expertは運営App・運営AIキーの原価管理のため**契約期間（更新日〜次の更新日）ごとの利用枠**も適用する（T-M8-258）。
 
 **expertの利用枠は画面に出さない**（運営者の決定 2026-08-20。注記なしで「無制限」と表示する。景表法の優良誤認リスクは提示のうえの判断で、利用規約第3条に一時停止があり得る旨を記載する）。上限・残量の数値を**残量カード・バナー・通知・エラーdetailsのどこにも出さない**。到達時はエラーコード`usage_paused`（「連続的な使用が検知されたため一時的に停止しております。お待ちください。」）で、80%/100%の閾値通知も作らない（数値が漏れるため）。判定はコードの`concealsUsageLimits`（`src/lib/plans.ts`）が正本。
 
@@ -90,6 +90,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 - `stripe_subscription_id`
 - `plan`
 - `subscription_status`
+- `current_period_start`（利用枠の期間キーの元・T-M8-258）
 - `current_period_end`
 - `cancel_at_period_end`
 - `trial_ends_at`
@@ -136,7 +137,7 @@ invoice eventは現行Invoiceの`parent.subscription_details.subscription`から
 
 イベントの到着順が前後しても古い契約状態で上書きしない。
 
-同期値はSubscriptionの`customer`、`id`、`status`、`cancel_at_period_end`、`trial_end`、`trial_start`、metadata `user_id`と、単一Subscription ItemのPrice／`current_period_end`から作る。現行Stripe APIでは契約期間がitem単位のため、複数itemは未知Priceと同様に同期を拒否する。profileは既存`stripe_customer_id`、またはCustomer未保存時だけUUID形式のmetadata `user_id`で特定し、両者の不一致・複数／欠損profileはrollbackする。`plan`、`subscription_status`、`current_period_end`、`cancel_at_period_end`、`scheduled_plan`／`scheduled_plan_at`（§2.2・T-M8-260）、`trial_ends_at`、Customer／Subscription ID、event時刻を更新する。statusを初めて`trialing`として同期するときだけ`trial_used_at`へ`trial_start`（欠落時event.created）を保存し、以後のactive・解約・再契約では上書き／null化しない。
+同期値はSubscriptionの`customer`、`id`、`status`、`cancel_at_period_end`、`trial_end`、`trial_start`、metadata `user_id`と、単一Subscription ItemのPrice／`current_period_end`から作る。現行Stripe APIでは契約期間がitem単位のため、複数itemは未知Priceと同様に同期を拒否する。profileは既存`stripe_customer_id`、またはCustomer未保存時だけUUID形式のmetadata `user_id`で特定し、両者の不一致・複数／欠損profileはrollbackする。`plan`、`subscription_status`、`current_period_start`／`current_period_end`、`cancel_at_period_end`、`scheduled_plan`／`scheduled_plan_at`（§2.2・T-M8-260）、`trial_ends_at`、Customer／Subscription ID、event時刻を更新する。statusを初めて`trialing`として同期するときだけ`trial_used_at`へ`trial_start`（欠落時event.created）を保存し、以後のactive・解約・再契約では上書き／null化しない。
 
 profile rowをtransaction内でlockし、保存済み`subscription_event_created_at`よりevent.createdが古い場合はprofile更新だけをskipしてeventを処理済み記録する。同時到着でもlock取得後に再判定する。新しいeventは再取得済みの現在状態を反映するため、event payloadの古いsnapshotへ戻さない。
 
@@ -233,7 +234,7 @@ Stripeへの画面遷移なしに再開できる。Portalの`flow_data`は`activ
 
 ### 7.1 上限と対象
 
-| 枠 | 月間上限 | カウント単位 |
+| 枠 | 上限（契約期間ごと） | カウント単位 |
 |---|---:|---|
 | 通常投稿枠 | 200 | Xへ送る最終本文にHTTP(S) URLがない投稿の作成成功または対応するロールバック削除成功1件につき1 |
 | URL付き投稿枠 | 20 | Xへ送る最終本文にHTTP(S) URLが1つ以上ある投稿の作成成功または対応するロールバック削除成功1件につき1 |
@@ -252,12 +253,16 @@ reserveはjob開始時に1回だけ行い、**返還は失敗が確定したと�
 
 投稿種別はX APIへ送る直前の最終payloadで判定する。HTTPSへ正規化済みのURLが1つ以上あれば、URL数にかかわらず`post_url`を1消費する。P-5で別管理する`quote_url`も1ポスト目のpayloadへ合成してから判定する。ロールバック削除は対応する`post_create` eventのcounter typeを引き継ぐため、同じtweet_idの作成と削除成功は同じ枠を合計2消費する。
 
-### 7.2 月境界
+### 7.2 期間境界（契約期間ごと・T-M8-258）
 
-- monthはJST基準`YYYY-MM`。
-- 生成・画像はreserve時点、投稿はtweet_id成功時点の月へ記録する。
-- 月またぎのrefundは元reserveと同じmonthへ戻す。
-- 3 Xアカウント分をuser_idで合算し、繰り越さない。月初reset jobは不要。
+- 利用枠は**契約期間＝請求期間（更新日〜次の更新日）**で数える。運営者の決定（2026-08-23）。更新日が月の途中でも「払った期間の枠」になり、期間末の下位変更の直後に既に使った分が新上限を超えて月末まで止まる、という食い違いが起きない。
+- 期間キーは`profiles.current_period_start`（Stripe subscription item の`current_period_start`を同期）の**JST日付`YYYY-MM-DD`**。列名は歴史的に`usage_events.month`／`usage_counters.month`のまま。SQL式の正本は`src/lib/usage/usage-period.ts`（`usagePeriodKeySql`／`currentUsagePeriodKey`）。
+- **未同期（`current_period_start`がnull）のあいだは従来のJST暦月`YYYY-MM`**で数える（後方互換。既存行の移行は行わず、切替後は各利用者の新しい期間キーの行が0から始まる＝利用者に不利にならない向き）。
+- 生成・画像はreserve時点、投稿はtweet_id成功時点の期間へ記録する。期間をまたいだrefund・settleは元reserveと同じ期間キーへ戻す（今期の残量は増えない）。80%/100%通知の重複判定（dedupe_key）も同じ期間キーを使う。
+- 上位への即時変更は期間を変えない（Stripeの請求サイクルも変わらない）ので、残り期間に新プランの上限が効く。期間末の下位変更・更新は新しい期間＝新上限で0から。
+- 3 Xアカウント分をuser_idで合算し、繰り越さない。期間開始のreset jobは不要（キーが変わるだけ）。
+- **webhook未達で期間が更新されないとき**は前の期間キーのまま数え続ける（勝手にリセットされない）。実行そのものは期限切れ判定（§2「期限切れの実行停止」・`isSubscriptionPeriodStale`・T-M8-235）が止める。
+- 運営者向けの費用集計（doctor・運営者アラート・日次サマリの「今月かかった費用」）は**会計に合わせてJST暦月のまま**（`external_api_usage_events.occurred_at`ベース。利用枠とは別物）。
 
 ### 7.3 冪等key
 
@@ -293,7 +298,7 @@ sequenceDiagram
 
 workerが失われてjobがstale確定（failed化）する場合は、`scheduler_tick`が同じ冪等keyでrefundを実施する（要件04 §4。二重返還は冪等keyで防止）。
 
-投稿作成・ロールバック削除はreserveしない。X API成功後、同じDB transactionで全プランの`usage_events`へ、`counter_type=post_normal|post_url`と`operation=post_create|post_delete`のconsumeを作る。premiumだけ対応する`usage_counters.normal_posts_count`または`url_posts_count`も加算する。日次50件の安全上限は両種別の`post_create`だけを合算し、`post_delete`は月間投稿枠と監査にだけ使う。DB保存だけ失敗した場合はtweet_idとX上の状態をreconcileし、同じAPI操作を再送しない。
+投稿作成・ロールバック削除はreserveしない。X API成功後、同じDB transactionで全プランの`usage_events`へ、`counter_type=post_normal|post_url`と`operation=post_create|post_delete`のconsumeを作る。premiumだけ対応する`usage_counters.normal_posts_count`または`url_posts_count`も加算する。日次50件の安全上限は両種別の`post_create`だけを合算し、`post_delete`は契約期間ごとの投稿枠と監査にだけ使う。DB保存だけ失敗した場合はtweet_idとX上の状態をreconcileし、同じAPI操作を再送しない。
 
 原価集計対象の外部API呼び出しごとのprovider、operation、数量、実行時単価、推定原価は`external_api_usage_events`へ冪等記録する。`usage_events`は利用枠、`external_api_usage_events`は原価・API利用量の正本とし、両者を混同しない。X media uploadはユーザー指定により費用を考慮しないため、原価台帳とサービス内利用枠から除外する。
 
@@ -312,7 +317,7 @@ premiumでN件のthreadを開始するには、最終payload列を通常/URL付�
 
 ## 8. 残量表示と通知
 
-premiumだけ`usage_counters`から当月残量をホームと設定へ表示する。**枠は3つ**（AIクレジット・通常投稿・URL付き投稿）で、回数制（`generations`／`images`）は T-M8-108/109 でAIクレジット制へ置き換えた。上限値の正本は`PLANS.premium.usageLimits`（`src/lib/plans.ts`）、形は`UsageSummary`（`src/lib/usage/usage-summary.ts`）。80%到達は各枠・各月で1回、100%到達は常設バナーと通知を出す。
+premiumだけ`usage_counters`から**今の契約期間**の残量をホームと設定へ表示し、リセット日は契約の次回更新日（`current_period_end`・JST。未同期なら日付を作らず「次回の更新日」と書く）。**枠は3つ**（AIクレジット・通常投稿・URL付き投稿）で、回数制（`generations`／`images`）は T-M8-108/109 でAIクレジット制へ置き換えた。上限値の正本は`PLANS.premium.usageLimits`（`src/lib/plans.ts`）、形は`UsageSummary`（`src/lib/usage/usage-summary.ts`）。80%到達は各枠・各契約期間で1回、100%到達は常設バナーと通知を出す。
 
 ```json
 {
@@ -378,3 +383,7 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.44 | 2026-08-23 | 閲覧はどのstatusでも止めない方針へ（T-M8-268）。route guardは認証のみ・着地は/app統一・友達招待は契約不要であることを明記 |
 | v1.45 | 2026-08-23 | プラン未登録・解約中は機能画面をロックする方針へ（T-M8-269・運営者の指示。触れるのは友達招待と課金・プランのみ。past_due等の支払い滞りは対象外） |
 | v1.46 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.47 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.48 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.49 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.50 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |

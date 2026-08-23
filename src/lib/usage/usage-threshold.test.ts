@@ -25,19 +25,19 @@ function makeDb(plan: string | null = "premium") {
 describe("notifyUsageThresholds", () => {
   it("inserts nothing below 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 799 }); // 80% of 1000 = 800
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 799, periodKey: "2026-08-15" }); // 80% of 1000 = 800
     expect(inserts).toHaveLength(0);
   });
 
   it("inserts only the 80% notification at exactly 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 800 });
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 800, periodKey: "2026-08-15" });
     expect(inserts).toEqual([{ key: "ai_credits", threshold: 80 }]);
   });
 
   it("inserts both 80% and 100% notifications at the limit", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "normal_posts", newCount: 200 });
+    await notifyUsageThresholds(db, { userId: "u1", key: "normal_posts", newCount: 200, periodKey: "2026-08-15" });
     expect(inserts).toEqual([
       { key: "normal_posts", threshold: 80 },
       { key: "normal_posts", threshold: 100 },
@@ -46,10 +46,10 @@ describe("notifyUsageThresholds", () => {
 
   it("uses ceil(limit×0.8) as the 80% boundary for url_posts (20→16)", async () => {
     const below = makeDb();
-    await notifyUsageThresholds(below.db, { userId: "u1", key: "url_posts", newCount: 15 });
+    await notifyUsageThresholds(below.db, { userId: "u1", key: "url_posts", newCount: 15, periodKey: "2026-08-15" });
     expect(below.inserts).toHaveLength(0);
     const at = makeDb();
-    await notifyUsageThresholds(at.db, { userId: "u1", key: "url_posts", newCount: 16 });
+    await notifyUsageThresholds(at.db, { userId: "u1", key: "url_posts", newCount: 16, periodKey: "2026-08-15" });
     expect(at.inserts).toEqual([{ key: "url_posts", threshold: 80 }]);
   });
 
@@ -61,14 +61,14 @@ describe("notifyUsageThresholds", () => {
   it("エキスパートには閾値通知を作らない（数値を漏らさない）", async () => {
     const { db, inserts } = makeDb("expert");
     // expertの内部上限（ai_credits 5000）に達していても通知しない。
-    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 5000 });
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 5000, periodKey: "2026-08-15" });
     expect(inserts).toHaveLength(0);
   });
 
   it("BYOK（standard）と未契約には通知を作らない（枠が無い）", async () => {
     for (const plan of ["standard", null]) {
       const { db, inserts } = makeDb(plan);
-      await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 999999 });
+      await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 999999, periodKey: "2026-08-15" });
       expect(inserts, String(plan)).toHaveLength(0);
     }
   });

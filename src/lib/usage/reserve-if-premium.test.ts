@@ -36,6 +36,10 @@ describe("reserveIfPremium", () => {
         if (/ai_purpose_config from profiles/.test(sql)) {
           return { rows: [{ ai_purpose_config: aiPurposeConfig }] as never[], rowCount: 1 };
         }
+        // 利用枠の期間キー（T-M8-258）。実DBでは必ず1行返る。
+        if (/current_period_start[\s\S]*as key$/.test(sql)) {
+          return { rows: [{ key: "2026-08-15" }] as never[], rowCount: 1 };
+        }
         // reserveUsage が読む行を返す（上限判定・冪等判定を通す最小の形）。
         return { rows: [] as never[], rowCount: 0 };
       },

@@ -67,7 +67,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
       plan.usageLimits ? "不要（運営が用意）" : "自分で用意（利用料はご自身のAPI課金）",
   },
   {
-    label: "月間の利用上限",
+    label: "利用上限（契約期間ごと）",
     cell: (plan) => {
       // エキスパートは「無制限」と表示する（T-M8-168・運営者の決定）。内部ガード値は出さない。
       if (plan.concealsLimits) return "無制限";

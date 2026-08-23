@@ -7,7 +7,7 @@ import {
   TEXT_DEFAULT_ESTIMATE_CREDITS,
 } from "../ai/model-catalog";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import { usagePeriodKeyExpr } from "@/lib/usage/usage-period";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "@/lib/usage/daily-post-limit-server";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
@@ -55,7 +55,8 @@ interface DueSlotRow {
   subscription_status: string;
   ai_purpose_config: { text?: string; image?: string } | null;
   jst_date: string;
-  jst_month: string;
+  /** 利用枠の期間キー（契約期間の開始日・T-M8-258）。`usage_counters.month` の値。 */
+  usage_period: string;
 }
 
 export interface ScheduleEnqueueDeps {
@@ -82,7 +83,7 @@ async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
              and xa.automation_disabled_at is null) as auto_consent_ok,
             p.plan, p.subscription_status, p.ai_purpose_config,
             to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM-DD') as jst_date,
-            ${CURRENT_MONTH_JST_SQL} as jst_month
+            ${usagePeriodKeyExpr("p.current_period_start")} as usage_period
        from schedule_slots ss
        join x_accounts xa on xa.id = ss.x_account_id
        join profiles p on p.id = xa.user_id
@@ -134,7 +135,7 @@ async function operatorBudgetOk(
   }>(
     `select normal_posts_count, url_posts_count, ai_credits_used
        from usage_counters where user_id = $1 and month = $2`,
-    [slot.user_id, slot.jst_month],
+    [slot.user_id, slot.usage_period],
   );
   const c = rows[0] ?? {
     normal_posts_count: 0,

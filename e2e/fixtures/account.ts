@@ -103,6 +103,7 @@ export async function createTestAccount(
     await c.query(
       `update profiles
           set plan = 'premium', subscription_status = 'trialing',
+              current_period_start = now(),
               current_period_end = now() + interval '7 days',
               trial_ends_at = now() + interval '7 days',
               terms_version = $2, terms_accepted_at = now(),

@@ -167,6 +167,7 @@ describe("GET /api/stripe/return（route 実装・実DB）", () => {
         data: [
           {
             current_period_end: NOW() + 86_400,
+            current_period_start: NOW() - 86_400,
             price: { id: priceIds.standard },
           },
         ],

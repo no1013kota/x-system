@@ -25,6 +25,7 @@ function subscription(
       data: [
         {
           current_period_end: 1_785_279_600,
+          current_period_start: 1_784_674_800,
           price: { id: "price_expert" },
         } as Stripe.SubscriptionItem,
       ],

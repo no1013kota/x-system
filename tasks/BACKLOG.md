@@ -2419,7 +2419,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `follower_snapshots`テーブル・グラフ・KPIは維持（DBスキーマ変更なし・migration不要）
   - E2E 2件追加（起票・実行中はボタン無効）。文言更新: LP・分析画面・KPI・プラン比較表
 
-### T-M8-258: 利用枠のリセットを暦月から「契約の更新日ごと」へ `todo`
+### T-M8-258: 利用枠のリセットを暦月から「契約の更新日ごと」へ `done`
 - 参照: PRD §4 月間利用上限・要件03 §7 計数規則・要件02 §usage_counters / 依存: なし / サイズ: L（期間の保存と計数の切替は途中状態で動かなくなるため一体）
 - 完了条件:
   - `profiles` が契約期間の開始（`current_period_start`）を持ち、Stripeから同期される
@@ -2430,6 +2430,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 運営者向けの費用集計（doctor・運営者アラート・日次サマリ）は**暦月のまま**（会計は月単位）
 - メモ: 運営者の決定（2026-08-23）。更新日が月の途中だと「期間末の下位変更の直後に、既に使った分が新上限を超えて月末まで止まる」
   問題（監査の指摘）への対策。契約期間＝請求期間に揃えると「払った期間の枠」という説明が素直になる。
+- 実装メモ（2026-08-23 完了）: migration `20260823000009`（`profiles.current_period_start`・`usage_events/usage_counters.month` の
+  CHECK を `YYYY-MM(-DD)?` へ）。期間キーの正本は `src/lib/usage/usage-period.ts`（`usagePeriodKeySql`/`currentUsagePeriodKey`。
+  `current_period_start` の JST 日付。未同期は従来の JST 暦月＝後方互換、既存行の移行なし）。`CURRENT_MONTH_JST_SQL` は廃止し、
+  reserve／投稿consume／投稿前ゲート／予約起票の予算ゲート／照合／残量表示／閾値通知の dedupe を期間キーへ。settle・refund と通知の
+  重複判定は元reserveの期間を使う（従来は通知だけ当月だった不整合も解消）。Stripe同期は `items[0].current_period_start` を検証して保存。
+  画面: カード見出し「利用枠」・リセット日＝`current_period_end`（未同期は「次回の更新日」）・バナー／通知／エラー文言を
+  「今の契約期間／次回の更新日」へ。運営者向け費用集計（doctor・日次サマリ）は暦月のまま（コメントを更新）。
+  検証: 単体＋実DB（期間の切替で0から・前期間への返却・サマリが期間の行を読む）＋E2E（plans.spec「T-M8-258」）。
+  法務ページの「月間」は T-M8-259 で改定。
 
 ### T-M8-259: 利用規約・特商法の「月間利用枠」を「契約期間ごとの利用枠」へ改定 `todo`
 - 参照: 要件06 §11 法務ページ・src/app/terms/page.tsx・legal-pages.test.ts / 依存: T-M8-258 / サイズ: S

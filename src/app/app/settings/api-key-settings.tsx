@@ -80,10 +80,10 @@ interface ApiKeySettingsProps {
   initialKeys: ApiKeyViewState[];
   plan: PlanId | null;
   /**
-   * プレミアムの月間利用枠（デザイン §設定・T-M8-25）。premium以外・未取得は null。
+   * プレミアムの利用枠（契約期間ごと・デザイン §設定・T-M8-25）。premium以外・未取得は null。
    *
    * キー登録が不要なプランでは、このタブは「不要です」の一文だけで**何も操作できない行き止まり**
-   * だった。キーの代わりに何が付いてくるのか（月間の枠と残量）をここで見せる。
+   * だった。キーの代わりに何が付いてくるのか（契約期間ごとの枠と残量）をここで見せる。
    * カードはホーム・課金タブと同じ `UsageSummaryCard` を使う（表示の定義を増やさない）。
    */
   usage?: UsageSummary | null;

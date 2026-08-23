@@ -51,6 +51,8 @@ export interface StripeSubscriptionGateway {
 export interface SubscriptionProjection {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: number;
+  /** 契約期間の開始（epoch秒）。利用枠の期間キーの元（T-M8-258）。 */
+  currentPeriodStart: number;
   /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
   scheduledPlan: PlanId | null;
   /** 予約が効く日時（epoch秒）。`scheduledPlan` とセット。 */
@@ -302,6 +304,14 @@ export function subscriptionProjection(
   if (!Number.isInteger(currentPeriodEnd) || currentPeriodEnd <= 0) {
     throw new StripeSubscriptionSyncError("Subscription period end is invalid.");
   }
+  const currentPeriodStart = items[0].current_period_start;
+  if (
+    !Number.isInteger(currentPeriodStart) ||
+    currentPeriodStart <= 0 ||
+    currentPeriodStart > currentPeriodEnd
+  ) {
+    throw new StripeSubscriptionSyncError("Subscription period start is invalid.");
+  }
   const customerId = expandedId(subscription.customer);
   if (!customerId) {
     throw new StripeSubscriptionSyncError("Subscription customer is missing.");
@@ -323,6 +333,7 @@ export function subscriptionProjection(
     // ままで、画面に何も出なかった（2026-08-05、利用者が実際に踏んだ）。
     cancelAtPeriodEnd: subscription.cancel_at_period_end || subscription.cancel_at != null,
     currentPeriodEnd,
+    currentPeriodStart,
     customerId,
     scheduledPlan: scheduled?.plan ?? null,
     scheduledPlanAt: scheduled?.at ?? null,
@@ -654,6 +665,7 @@ export async function applyPreparedStripeEvent(
             subscription_event_created_at = to_timestamp($9),
             scheduled_plan = $11::plan_type,
             scheduled_plan_at = case when $12::bigint is null then null else to_timestamp($12) end,
+            current_period_start = to_timestamp($13),
             trial_used_at = case
               when $3::subscription_status = 'trialing' then coalesce(
                 trial_used_at,
@@ -676,6 +688,7 @@ export async function applyPreparedStripeEvent(
       projection.trialStartedAt,
       projection.scheduledPlan,
       projection.scheduledPlanAt,
+      projection.currentPeriodStart,
     ],
   );
 

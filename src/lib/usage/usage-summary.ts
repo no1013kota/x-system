@@ -2,9 +2,9 @@ import { TEXT_DEFAULT_ESTIMATE_CREDITS } from "../ai/model-catalog";
 import type { PlanUsageLimits } from "../plans";
 
 /**
- * 運営キー系プラン（premium / expert）の月間利用枠の残量サマリ（要件03 §8・要件06 §10, T-M6-12）。usage_counters の当月値と
- * プランの usageLimits から used/limit/remaining を算出する純粋関数。SC-05ホーム・SC-11設定の
- * 残量表示と、上限到達エラー表示（残量＋翌月開始日時）に用いる。利用枠を増減する処理は別（reserve/consume）。
+ * 運営キー系プラン（premium / expert）の利用枠（契約期間ごと・T-M8-258）の残量サマリ（要件03 §8・要件06 §10, T-M6-12）。
+ * usage_counters の今期の値とプランの usageLimits から used/limit/remaining を算出する純粋関数。SC-05ホーム・SC-11設定の
+ * 残量表示と、上限到達エラー表示（残量＋次回更新日）に用いる。利用枠を増減する処理は別（reserve/consume）。
  */
 
 export interface UsageSlot {
@@ -35,6 +35,11 @@ export interface UsageSummary {
    * （エキスパートは数値も閾値通知も無いので、この表示が唯一の気付く経路・原則1）。
    */
   paused: boolean;
+  /**
+   * 枠がリセットされる日時（ISO）＝契約の次回更新日（`profiles.current_period_end`・T-M8-258）。
+   * 未同期なら null（画面は日付を作らず「次回の更新日」と書く）。
+   */
+  resetsAt: string | null;
 }
 
 export interface UsageCounters {
@@ -52,7 +57,7 @@ function slot(used: number, limit: number): UsageSlot {
 export function computeUsageSummary(
   counters: UsageCounters,
   limits: PlanUsageLimits,
-  options: { concealed?: boolean } = {},
+  options: { concealed?: boolean; resetsAt?: string | null } = {},
 ): UsageSummary {
   const concealed = options.concealed === true;
   const aiCredits = slot(counters.ai_credits_used, limits.aiCredits);
@@ -69,25 +74,17 @@ export function computeUsageSummary(
     url_posts: concealed ? empty : urlPosts,
     concealed,
     paused,
+    resetsAt: options.resetsAt ?? null,
   };
 }
 
 /**
- * 当月枠がリセットされる翌月開始（JST 1日 00:00）の瞬間を UTC Date で返す。上限到達エラー表示の
- * 「翌月開始日時」に使う。`now` は UTC 基準の Date（JST 変換は内部で行う）。12月→翌1月も繰り上がる。
+ * 枠がリセットされる日（次回更新日）の JST「YYYY年M月D日」表記（T-M8-258）。
+ * 日付が無い・壊れているときは存在しない日付を作らず「次回の更新日」と書く。
  */
-export function nextMonthStartJst(now: Date): Date {
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const year = jst.getUTCFullYear();
-  const month = jst.getUTCMonth(); // 0-based（JST基準）
-  // 翌月1日 00:00 JST を UTC で表す（JST = UTC+9 なので 9時間引く）。
-  return new Date(Date.UTC(year, month + 1, 1, 0, 0, 0) - 9 * 60 * 60 * 1000);
-}
-
-/** 翌月開始日時を JST の「YYYY年M月D日」表記へ整形する。 */
-export function formatNextMonthStartJst(now: Date): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "long",
-    timeZone: "Asia/Tokyo",
-  }).format(nextMonthStartJst(now));
+export function usageResetLabel(summary: Pick<UsageSummary, "resetsAt">): string {
+  if (!summary.resetsAt) return "次回の更新日";
+  const at = new Date(summary.resetsAt);
+  if (Number.isNaN(at.getTime())) return "次回の更新日";
+  return new Intl.DateTimeFormat("ja-JP", { dateStyle: "long", timeZone: "Asia/Tokyo" }).format(at);
 }

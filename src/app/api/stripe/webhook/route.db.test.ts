@@ -65,6 +65,7 @@ function subscriptionPayload(stub: SubscriptionStub): Record<string, unknown> {
         {
           price: { id: stub.priceId },
           current_period_end: stub.currentPeriodEnd,
+          current_period_start: stub.currentPeriodEnd - 2_592_000,
         },
       ],
     },

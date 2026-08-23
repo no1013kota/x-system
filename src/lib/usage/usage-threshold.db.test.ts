@@ -29,6 +29,7 @@ describe("notifyUsageThresholds (db)", () => {
     if (!available) ctx.skip();
   });
 
+  /** 未同期の利用者（current_period_start が null）は JST 暦月が期間キー（T-M8-258）。 */
   const MONTH = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
 
   async function makeUser(c: PoolClient, usageConfig: object): Promise<string> {
@@ -85,17 +86,17 @@ describe("notifyUsageThresholds (db)", () => {
   it("creates one notification per slot/threshold, idempotent across re-calls (dedupe_key)", async () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
     try {
-      await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200 }),
-      );
-      // 再更新・再実行しても増えない。
-      await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200 }),
-      );
-      const rows = await usageNotifs(uid);
       const month = (
         await withTransaction((c) => c.query<{ m: string }>(`select ${MONTH} as m`))
       ).rows[0].m;
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200, periodKey: month }),
+      );
+      // 再更新・再実行しても増えない。
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200, periodKey: month }),
+      );
+      const rows = await usageNotifs(uid);
       expect(rows.map((r) => r.dedupe_key)).toEqual([
         `usage:${month}:normal_posts:100`,
         `usage:${month}:normal_posts:80`,
@@ -110,7 +111,7 @@ describe("notifyUsageThresholds (db)", () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: false }));
     try {
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100 }),
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100, periodKey: "2026-08" }),
       );
       expect(await usageNotifs(uid)).toHaveLength(0);
     } finally {

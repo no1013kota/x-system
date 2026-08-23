@@ -39,7 +39,7 @@ const TYPE_DESCRIPTION: Record<(typeof NOTIFICATION_TYPES)[number], string> = {
   posted: "予約・自動投稿が完了したとき",
   error: "生成・投稿・X連携が失敗したとき",
   billing: "お支払いを確認できなかったとき",
-  usage: "月間利用枠の残りが少なくなったとき",
+  usage: "利用枠の残りが少なくなったとき",
   summary: "運用状況の毎日のまとめレポート",
 };
 

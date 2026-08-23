@@ -35,7 +35,7 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
     "利用規約・プライバシーポリシーが更新されています。画面上部の案内から同意してください。",
   automation_consent_required: "自動投稿を有効にするには、現在の説明への同意が必要です。",
   subscription_required: "現在のご契約状態ではこの操作を実行できません。",
-  usage_limit_exceeded: "今月の利用上限に達しています。",
+  usage_limit_exceeded: "今の契約期間の利用上限に達しています。次回の更新日にリセットされます。",
   /**
    * 利用枠を画面に出さないプラン（エキスパート）の上限到達（T-M8-168）。
    * **上限・残量の数値をこの文言にも details にも載せない**（内部ガード値を悟らせない）。

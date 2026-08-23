@@ -732,7 +732,7 @@ export async function collectDiagnostics(
        from external_api_usage_events
       -- **月の区切りは日本時間**（T-M8-254・運営者の指示 2026-08-23）。UTC月初で切ると
       -- UTCの月初になるため、**毎月1日のJST 0時〜9時は前月分の合計が「今月」として出る**。
-      -- 利用枠のリセットも月初なので、費用の月境界だけUTCだと説明が食い違う。
+      -- 費用は会計に合わせて**暦月**で集計する（利用者の利用枠は契約期間ごと・T-M8-258。ここは変えない）。
       where occurred_at >= (date_trunc('month', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo')
       group by provider order by 2 desc`,
   );

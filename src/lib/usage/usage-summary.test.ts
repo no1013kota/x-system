@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PLANS } from "../plans";
 import {
   computeUsageSummary,
-  formatNextMonthStartJst,
-  nextMonthStartJst,
+  usageResetLabel,
   type UsageCounters,
 } from "./usage-summary";
 
@@ -26,6 +25,7 @@ describe("computeUsageSummary (要件03 §8)", () => {
       url_posts: { used: 8, limit: 20, remaining: 12 },
       concealed: false,
       paused: false,
+      resetsAt: null,
     });
   });
 
@@ -53,6 +53,7 @@ describe("computeUsageSummary (要件03 §8)", () => {
       url_posts: empty,
       concealed: true,
       paused: false,
+      resetsAt: null,
     });
   });
 
@@ -89,23 +90,14 @@ describe("computeUsageSummary (要件03 §8)", () => {
   });
 });
 
-describe("nextMonthStartJst / formatNextMonthStartJst (翌月開始日時)", () => {
-  it("returns the first day of the next JST month at 00:00 JST", () => {
-    // 2026-07-25T10:00Z = JST 2026-07-25 19:00 → 翌月開始 = 2026-08-01 00:00 JST = 2026-07-31 15:00Z
-    const reset = nextMonthStartJst(new Date("2026-07-25T10:00:00Z"));
-    expect(reset.toISOString()).toBe("2026-07-31T15:00:00.000Z");
-    expect(formatNextMonthStartJst(new Date("2026-07-25T10:00:00Z"))).toBe("2026年8月1日");
+describe("usageResetLabel（次回更新日・T-M8-258）", () => {
+  it("契約の次回更新日を JST の日付で出す（UTC の日付では1日ずれる）", () => {
+    // 2026-09-30T15:00Z = 10/1 00:00 JST
+    expect(usageResetLabel({ resetsAt: "2026-09-30T15:00:00Z" })).toBe("2026年10月1日");
   });
 
-  it("rolls over December to the next January (JST)", () => {
-    // 2026-12-20T00:00Z = JST 2026-12-20 09:00 → 翌月開始 = 2027-01-01 00:00 JST = 2026-12-31 15:00Z
-    const reset = nextMonthStartJst(new Date("2026-12-20T00:00:00Z"));
-    expect(reset.toISOString()).toBe("2026-12-31T15:00:00.000Z");
-    expect(formatNextMonthStartJst(new Date("2026-12-20T00:00:00Z"))).toBe("2027年1月1日");
-  });
-
-  it("uses the JST calendar month even near UTC month boundaries", () => {
-    // 2026-07-31T20:00Z = JST 2026-08-01 05:00 → 既に8月 → 翌月開始 = 2026-09-01 00:00 JST
-    expect(formatNextMonthStartJst(new Date("2026-07-31T20:00:00Z"))).toBe("2026年9月1日");
+  it("日付が無い・壊れているときは存在しない日付を作らない", () => {
+    expect(usageResetLabel({ resetsAt: null })).toBe("次回の更新日");
+    expect(usageResetLabel({ resetsAt: "not-a-date" })).toBe("次回の更新日");
   });
 });

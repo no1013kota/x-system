@@ -33,7 +33,7 @@ import { getSettingsForUser } from "@/lib/settings-server";
 import { loadRecentPosts, type RecentPostView } from "@/lib/home/overview-server";
 import { listScheduleSlots } from "@/lib/schedule-slots";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
-import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
+import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -136,7 +136,7 @@ export default async function AppHomePage({
       // 失敗による空をUIで区別する（原則1）。ImportantNewsCard が理由を表示する。
       () => ({ failed: true, items: [] as NewsItemView[] }),
     );
-    // 運営キー系プランの月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
+    // 運営キー系プランの利用枠（契約期間ごと）の残量（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
     // BYOK（standard）と未契約は null（非表示）。
     const usagePromise = loadUsageSummaryForUser(
       user.id,
@@ -222,7 +222,7 @@ export default async function AppHomePage({
         <RecentResultsCard handle={handle} posts={recentPosts} summary={recentSummary} />
       ) : null}
       {usage ? (
-        <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
+        <UsageSummaryCard nextResetLabel={usageResetLabel(usage)} summary={usage} />
       ) : null}
     </main>
   );

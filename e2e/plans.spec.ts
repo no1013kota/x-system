@@ -292,3 +292,34 @@ test("下位プランへの予約が課金タブとバナーに出て、取り�
   );
   expect(row[0]?.scheduled_plan).toBe("standard");
 });
+
+/**
+ * 利用枠は契約期間ごと（T-M8-258）。画面のリセット日は翌月1日ではなく契約の次回更新日（JST）で、
+ * 残量は期間キー（期間開始日の JST 日付）の行から読む。
+ */
+test("利用枠のリセット日が次回更新日になり、残量は契約期間の行から読む（T-M8-258）", async ({ accounts, page }) => {
+  const account = await accounts.create("usage-period");
+  await query(
+    `update profiles set stripe_customer_id = 'cus_e2e_period', subscription_status = 'active',
+        current_period_start = '2026-08-14T15:00:00Z', -- 8/15 00:00 JST
+        current_period_end = '2026-09-14T15:00:00Z'   -- 9/15 00:00 JST
+      where id = $1`,
+    [account.userId],
+  );
+  await query(
+    `insert into usage_counters (user_id, month, normal_posts_count, url_posts_count, ai_credits_used)
+     values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 150, 15, 900),
+            ($1, '2026-08-15', 7, 2, 120)`,
+    [account.userId],
+  );
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=billing");
+  const card = page.getByRole("region", { name: "利用枠" });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("2026年9月15日にリセット");
+  // 暦月の行（150/15/900）ではなく期間の行（7/2/120）
+  await expect(card).toContainText("残り 880 / 1000");
+  await expect(card).toContainText("残り 193 / 200");
+  await expect(card).toContainText("残り 18 / 20");
+});
+

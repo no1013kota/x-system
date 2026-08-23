@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.64 |
+| バージョン | v1.85 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -10,7 +10,7 @@
 
 - 主キーは原則`uuid`、既定値は`gen_random_uuid()`。
 - 作成日時は`created_at timestamptz not null default now()`、更新対象は`updated_at timestamptz not null default now()`を持つ。
-- DB保存時刻はUTC、表示・月次カウント・スケジュール判定・日次上限はJST。
+- DB保存時刻はUTC、表示・利用枠の期間キー（契約期間の開始日）・スケジュール判定・日次上限はJST。
 - ユーザー所有データは`user_id`または`x_account_id`経由でRLSを適用する。
 - 認証済みクライアントには原則selectだけを許可し、insert/update/deleteはzod検証と所有権確認を行うServer Action/APIだけに許可する。
 - `service_role`にはpublicスキーマ全体のDML権限を付与する（Supabase既定と同じ姿勢。以降追加されるテーブルにも既定権限で自動付与）。RLSをバイパスするserver-only専用ロールであり、PostgREST経由の管理系クエリが権限エラーで落ちないようにする。付与漏れは直結pg（postgresで接続）では露見しないため、`service-role-grants.db.test.ts`で全テーブルを検査する。
@@ -57,6 +57,7 @@
 | `stripe_subscription_id` | `text` | unique null | Stripe subscription |
 | `subscription_status` | `subscription_status` | not null default `incomplete` | 課金状態 |
 | `subscription_event_created_at` | `timestamptz` | null | 最後に反映したStripe event時刻 |
+| `current_period_start` | `timestamptz` | null | 現在期間開始。利用枠の期間キー（JST日付）の元。nullは未同期＝暦月で数える（T-M8-258） |
 | `current_period_end` | `timestamptz` | null | 現在期間終了 |
 | `cancel_at_period_end` | `boolean` | not null default false | 期間末解約予定 |
 | `scheduled_plan` | `plan_type` | null | 期間末で切り替わる予約先のプラン（Portalの値下げ予約＝Stripe subscription schedule の次フェーズ。T-M8-260） |
@@ -370,7 +371,7 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `job_id` | `uuid` | FK nullable | 対象job |
 | `draft_id` | `uuid` | FK nullable | 対象draft |
 | `tweet_id` | `text` | null | 通常/URL付き投稿枠consume時 |
-| `month` | `text` | not null | JST `YYYY-MM` |
+| `month` | `text` | not null | 利用枠の期間キー。契約期間の開始日（JST `YYYY-MM-DD`）。未同期の利用者はJST暦月`YYYY-MM`（T-M8-258） |
 | `counter_type` | `usage_counter_type` | not null |  |
 | `operation` | `usage_event_operation` | not null | 消費・予約の操作種別 |
 | `delta` | `integer` | not null | 消費/返還クレジット数（±1〜±100000・T-M8-109。AIクレジットは円建て見積もり/実費） |
@@ -379,7 +380,7 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `ref_event_id` | `uuid` | self FK nullable | refund元reserve |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Constraints: month形式、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
+Constraints: month形式（`^\d{4}-\d{2}(-\d{2})?$`・migration `20260823000009`）、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
 Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`
 
@@ -390,7 +391,7 @@ RLS: 本人select可。writeはServer only。
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `user_id` | `uuid` | FK profiles, not null | 対象 |
-| `month` | `text` | not null | JST `YYYY-MM` |
+| `month` | `text` | not null | 利用枠の期間キー（`usage_events.month`と同じ。T-M8-258） |
 | `normal_posts_count` | `integer` | not null default 0 | URLなし通常投稿枠 |
 | `url_posts_count` | `integer` | not null default 0 | URL付き投稿枠 |
 | `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109。1クレジット=1円相当・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
@@ -988,3 +989,24 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.62 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
 | v1.63 | 2026-08-23 | フォロワー記録の毎時cronを復活（T-M8-257）: follower_snapshots の書き込みは cron＋ボタンの2入口、cron_runs の job_name に follower_snapshot が戻る（スキーマ変更なし） |
 | v1.64 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
+| v1.65 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
+| v1.66 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
+| v1.67 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
+| v1.68 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
+| v1.69 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
+| v1.70 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
+| v1.71 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
+| v1.72 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
+| v1.73 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
+| v1.74 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
+| v1.75 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
+| v1.76 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
+| v1.77 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
+| v1.78 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
+| v1.79 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
+| v1.80 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
+| v1.81 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
+| v1.82 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
+| v1.83 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
+| v1.84 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
+| v1.85 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |

@@ -1,13 +1,14 @@
 import "server-only";
-import { CURRENT_MONTH_JST_SQL } from "./current-month";
 
 import { getPool } from "../db/pool";
 import type { Queryable } from "../db/queryable";
 import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
+import { usagePeriodKeySql } from "./usage-period";
 import { computeUsageSummary, type UsageCounters, type UsageSummary } from "./usage-summary";
 
 /**
- * 運営キー系プラン（premium / expert）の当月（JST）利用枠サマリを usage_counters から読む
+ * 運営キー系プラン（premium / expert）の**今の契約期間**の利用枠サマリを usage_counters から読む
+ * （期間キーは `usage-period.ts`・T-M8-258。リセット日は `current_period_end`）
  * （要件03 §8, T-M6-12/T-M8-168）。BYOK（standard）は枠を持たないため null を返す
  * （SC-05/SC-11 は非表示にする）。counter 行が無ければ全0。expert は `concealed: true` が付き、
  * 画面は数値を出さず「無制限」と表示する。
@@ -27,19 +28,25 @@ export async function loadUsageSummary(
 ): Promise<UsageSummary | null> {
   const limits = usageLimitsForPlan(plan);
   if (!limits) return null;
-  const { rows } = await db.query<UsageCounters>(
-    `select coalesce(normal_posts_count, 0) as normal_posts_count,
-            coalesce(url_posts_count, 0) as url_posts_count,
-            coalesce(ai_credits_used, 0) as ai_credits_used
-       from usage_counters
-      where user_id = $1
-        and month = ${CURRENT_MONTH_JST_SQL}`,
+  const { rows } = await db.query<UsageCounters & { resets_at: string | null }>(
+    `select coalesce(c.normal_posts_count, 0) as normal_posts_count,
+            coalesce(c.url_posts_count, 0) as url_posts_count,
+            coalesce(c.ai_credits_used, 0) as ai_credits_used,
+            p.current_period_end::text as resets_at
+       from profiles p
+       left join usage_counters c
+         on c.user_id = p.id and c.month = ${usagePeriodKeySql("$1")}
+      where p.id = $1`,
     [userId],
   );
-  const counters = rows[0] ?? {
+  const row = rows[0];
+  const counters = row ?? {
     normal_posts_count: 0,
     url_posts_count: 0,
     ai_credits_used: 0,
   };
-  return computeUsageSummary(counters, limits, { concealed: concealsUsageLimits(plan) });
+  return computeUsageSummary(counters, limits, {
+    concealed: concealsUsageLimits(plan),
+    resetsAt: row?.resets_at ?? null,
+  });
 }

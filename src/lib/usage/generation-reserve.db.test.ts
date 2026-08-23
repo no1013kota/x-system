@@ -243,4 +243,55 @@ describe("reserveUsage / refundUsage (db)", () => {
       await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
     }
   });
+
+  /**
+   * 利用枠は契約期間ごと（T-M8-258）。期間キーは `profiles.current_period_start` の JST 日付。
+   * 更新日（期間の切替）で新しい期間の counter が 0 から始まり、前の期間の reserve を返すときは
+   * 前の期間へ戻る（今期の残量は増えない）。
+   */
+  it("keys reserve by the subscription period and resets at renewal; refund returns to the old period", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const job1 = await makeJob(xid);
+    const job2 = await makeJob(xid);
+    const setPeriod = (start: string) =>
+      withTransaction((c) =>
+        c.query(`update profiles set current_period_start = $2 where id = $1`, [uid, start]),
+      );
+    const counters = () =>
+      withTransaction((c) =>
+        c.query<{ month: string; ai_credits_used: number }>(
+          `select month, ai_credits_used from usage_counters where user_id = $1 order by month`,
+          [uid],
+        ),
+      ).then((r) => r.rows);
+    try {
+      await setPeriod("2026-07-14T15:00:00Z"); // 7/15 00:00 JST
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job1, type: "generation", limit: 1000, amount: 16 }));
+      expect(await counters()).toEqual([{ month: "2026-07-15", ai_credits_used: 16 }]);
+      const ev = await withTransaction((c) =>
+        c.query<{ month: string }>(`select month from usage_events where job_id = $1`, [job1]),
+      );
+      expect(ev.rows[0].month, "event も期間キーで記帳").toBe("2026-07-15");
+
+      // 更新日を越えた（webhook が current_period_start を進めた）→ 新しい期間は 0 から。
+      await setPeriod("2026-08-14T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job2, type: "generation", limit: 1000, amount: 16 }));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 16 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+
+      // 前の期間の job を返しても今期の残量は増えない。
+      await withTransaction((c) => refundUsage(c, job1, "generation"));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 0 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [[job1, job2]]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
 });

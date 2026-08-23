@@ -39,12 +39,14 @@ const UPD_ERROR = /update generation_jobs set error/;
 const NOTIFY = /insert into notifications/;
 const LEDGER = /insert into external_api_usage_events/;
 
+/** 利用枠の期間キー読取（`currentUsagePeriodKey`・T-M8-258）。実DBでは必ず1行返る。 */
+const PERIOD_KEY = /current_period_start[\s\S]*as key$/;
 function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const writes: { sql: string; params: unknown[] }[] = [];
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
-      const rows = handler(sql, params) as T[];
+      const rows = (PERIOD_KEY.test(sql) ? [{ key: "2026-08-15" }] : handler(sql, params)) as T[];
       return { rows, rowCount: rows.length };
     },
   };

@@ -116,8 +116,8 @@ export function usageLimitBanner(summary: UsageSummary | null): AppBanner | null
   return {
     id: "usage_limit",
     tone: "warning",
-    title: "今月の利用枠が上限に達しました",
-    description: `${atLimit.join("・")}が上限に達しました。翌月にリセットされます。既存の下書きの閲覧・編集は引き続きできます。`,
+    title: "利用枠が上限に達しました",
+    description: `${atLimit.join("・")}が上限に達しました。次回の更新日にリセットされます。既存の下書きの閲覧・編集は引き続きできます。`,
     actionLabel: "利用状況を見る",
     actionHref: "/app/settings?tab=billing",
   };

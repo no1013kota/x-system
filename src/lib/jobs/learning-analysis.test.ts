@@ -22,12 +22,14 @@ const JOB_ERROR = /update generation_jobs set error =/;
 
 type Handler = (sql: string, params: unknown[]) => { rows?: unknown[]; rowCount?: number };
 
+/** 利用枠の期間キー読取（`currentUsagePeriodKey`・T-M8-258）。実DBでは必ず1行返る。 */
+const PERIOD_KEY = /current_period_start[\s\S]*as key$/;
 function mockDb(handler: Handler) {
   const writes: { sql: string; params: unknown[] }[] = [];
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
-      const r = handler(sql, params);
+      const r = PERIOD_KEY.test(sql) ? { rows: [{ key: "2026-08-15" }] } : handler(sql, params);
       const rows = (r.rows ?? []) as T[];
       return { rows, rowCount: r.rowCount ?? rows.length };
     },

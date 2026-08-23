@@ -4,7 +4,7 @@ import {
   isOperatorManagedPlan,
   usageLimitsForPlan,
 } from "../plans";
-import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import { currentUsagePeriodKey, usagePeriodKeySql } from "@/lib/usage/usage-period";
 
 import { canPostThreadToday } from "../usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
@@ -80,10 +80,12 @@ async function consumePostSlot(
   },
 ): Promise<void> {
   await runInTx(async (tx) => {
+    // 投稿は tweet_id 成功時点の契約期間へ記録する（要件03 §7.2・T-M8-258）。
+    const period = await currentUsagePeriodKey(tx, params.userId);
     const ins = await tx.query(
       `insert into usage_events
          (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, $5, ${CURRENT_MONTH_JST_SQL}, $6, $7::usage_event_operation, 1, 'consume', $8)
+       values ($1, $2, $3, $4, $5, $9, $6, $7::usage_event_operation, 1, 'consume', $8)
        on conflict (idempotency_key) do nothing`,
       [
         params.userId,
@@ -94,27 +96,29 @@ async function consumePostSlot(
         params.counterType,
         params.operation,
         params.idempotencyKey,
+        period,
       ],
     );
     if ((ins.rowCount ?? 0) !== 1) return; // 既存consume → 冪等no-op
     if (!params.premiumLive) return; // 全プランはevent記帳のみ。premium月次counterはliveのみ加算（§10）
     const col = params.counterType === "post_url" ? "url_posts_count" : "normal_posts_count";
     await tx.query(
-      `insert into usage_counters (user_id, month) values ($1, ${CURRENT_MONTH_JST_SQL})
+      `insert into usage_counters (user_id, month) values ($1, $2)
        on conflict (user_id, month) do nothing`,
-      [params.userId],
+      [params.userId, period],
     );
     const updated = await tx.query<{ n: number }>(
       `update usage_counters set ${col} = ${col} + 1, updated_at = now()
-        where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}
+        where user_id = $1 and month = $2
         returning ${col} as n`,
-      [params.userId],
+      [params.userId, period],
     );
-    // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
+    // 80%/100% 到達通知（premium・枠/期間/閾値ごとに1件・要件03 §8, T-M6-13）。
     await notifyUsageThresholds(tx, {
       userId: params.userId,
       key: params.counterType === "post_url" ? "url_posts" : "normal_posts",
       newCount: updated.rows[0]?.n ?? 0,
+      periodKey: period,
     });
   });
 }
@@ -566,7 +570,7 @@ export async function executePostPublish(
     );
   }
 
-  // --- 検証: premium月次投稿枠のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
+  // --- 検証: premium投稿枠（契約期間ごと）のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
   // ロールバック（最終投稿失敗→prefixを作成+削除で各2消費）まで賄える残量を投稿前に確認する。
   // 不足時は X API を一切呼ばず・枠を消費せず失敗させ、通知する（premium かつ live のみ・§10）。
   if (isOperatorManagedPlan(job.plan) && deps.postingLive) {
@@ -576,7 +580,7 @@ export async function executePostPublish(
       const used = await db.query<{ normal_posts_count: number; url_posts_count: number }>(
         `select coalesce(normal_posts_count, 0) as normal_posts_count,
                 coalesce(url_posts_count, 0) as url_posts_count
-           from usage_counters where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}`,
+           from usage_counters where user_id = $1 and month = ${usagePeriodKeySql("$1")}`,
         [userId],
       );
       const usedNormal = used.rows[0]?.normal_posts_count ?? 0;
@@ -594,15 +598,15 @@ export async function executePostPublish(
         await createPostErrorNotification(db, {
           userId,
           draftId,
-          title: concealed ? "一時的に停止しています" : "今月の投稿枠が不足しています",
+          title: concealed ? "一時的に停止しています" : "投稿枠が不足しています",
           body: concealed
             ? "連続的な使用が検知されたため一時的に停止しております。お待ちください。"
-            : "今月の投稿枠が不足しているため投稿できませんでした。翌月まで待つか、内容を調整してください。",
+            : "今の契約期間の投稿枠が不足しているため投稿できませんでした。次回の更新日まで待つか、内容を調整してください。",
           dedupeSuffix: "usage_limit",
         });
         throw new PostPublishError(
           concealed ? "usage_paused" : "usage_limit_exceeded",
-          "monthly post quota insufficient for safe posting",
+          "post quota for the current period insufficient for safe posting",
         );
       }
     }

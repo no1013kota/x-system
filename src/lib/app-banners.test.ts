@@ -22,6 +22,7 @@ function summary(
   };
   return {
     ...slots,
+    resetsAt: null,
     concealed: options.concealed === true,
     // 実物（computeUsageSummary）と同じ既定: どれかの枠が尽きたら paused。
     paused:
