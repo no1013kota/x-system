@@ -100,6 +100,15 @@ describe("loadUsageSummaryForUser (db)", () => {
       expect(s?.normal_posts, "暦月の行（99）ではなく期間の行（3）").toEqual({ used: 3, limit: 200, remaining: 197 });
       expect(s?.ai_credits.used).toBe(50);
       expect(new Date(s?.resetsAt ?? "").toISOString()).toBe("2026-09-14T15:00:00.000Z");
+
+      // トライアル中はリセット日を出さない（リセットは最初の有料期間の終わり・D-36）。
+      await withTransaction((c) =>
+        c.query(
+          `update profiles set trial_used_at = current_period_start, trial_ends_at = current_period_end where id = $1`,
+          [uid],
+        ),
+      );
+      expect((await loadUsageSummaryForUser(uid, "premium"))?.resetsAt).toBeNull();
     } finally {
       await cleanup(uid);
     }

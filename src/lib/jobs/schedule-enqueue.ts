@@ -83,7 +83,7 @@ async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
              and xa.automation_disabled_at is null) as auto_consent_ok,
             p.plan, p.subscription_status, p.ai_purpose_config,
             to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM-DD') as jst_date,
-            ${usagePeriodKeyExpr("p.current_period_start")} as usage_period
+            ${usagePeriodKeyExpr("p")} as usage_period
        from schedule_slots ss
        join x_accounts xa on xa.id = ss.x_account_id
        join profiles p on p.id = xa.user_id
