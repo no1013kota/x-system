@@ -5,11 +5,16 @@
  * 決まっている挙動をそのまま日本語にしたもの。**押す前に画面へ出す**ためにここへ置く。
  *
  * 以前は「どちらもStripeの安全な画面へ移動します。解約は期間末で…」という1行しか無く、
- * **上位プランへ変えると即時に日割り請求が走る**ことも、**下位プランは期間末まで切り替わらない**
- * ことも画面から読めなかった。金額と時期が変わる操作で、押した後に初めて分かるのは避けたい。
+ * **上位プランへ変えると切り替えは即時で、差額は日割りで次回請求へ合算される**ことも、
+ * **下位プランは期間末まで切り替わらない**ことも画面から読めなかった。
+ * 金額と時期が変わる操作で、押した後に初めて分かるのは避けたい。
  *
  * 対応する設定（要件03 §2.2）:
- * - `subscription_update.proration_behavior = "create_prorations"` → 値上げは即時＋日割り
+ * - `subscription_update.proration_behavior = "create_prorations"` → 値上げは**切り替え即時**。
+ *   差額（旧プランの未使用分を引き、新プランの残り期間分を足す・秒単位の日割り）は
+ *   **その場では決済されず、次回更新日の請求書に合算**される（Stripe: "the prorations are
+ *   created but not automatically invoiced"。実測 2026-08-23）。その場で決済したいなら
+ *   `always_invoice` へ変える（運営判断）
  * - `subscription_update.schedule_at_period_end.conditions = [decreasing_item_amount]` → 値下げは期間末
  * - `subscription_update.trial_update_behavior = "continue_trial"` → トライアル中は期限を変えない
  * - `subscription_cancel = { mode: "at_period_end", proration_behavior: "none" }` → 解約は期間末・返金なし
