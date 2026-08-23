@@ -64,7 +64,11 @@ vi.mock("stripe", () => {
           customer: params.customer,
           items: {
             data: [
-              { current_period_end: state.periodEnd, price: { id: state.premiumPrice } },
+              {
+                current_period_start: state.periodEnd - 2_592_000,
+                current_period_end: state.periodEnd,
+                price: { id: state.premiumPrice },
+              },
             ],
           },
           livemode: false,

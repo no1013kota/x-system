@@ -30,6 +30,7 @@ const CREATED_SUBSCRIPTION = {
     data: [
       {
         price: { id: "price_premium" },
+        current_period_start: 1_797_400_000,
         current_period_end: 1_800_000_000,
       },
     ],
