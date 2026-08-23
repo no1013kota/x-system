@@ -147,10 +147,13 @@ export interface SubscriptionBannerProfile {
   cancelAtPeriodEnd?: boolean;
   /** 解約が効く日（`active` のときの期間末）。 */
   currentPeriodEnd?: string | null;
+  /** 期間末で切り替わる下位プランの予約（T-M8-260）。設定の課金タブの表示と同じ文。 */
+  scheduledPlanChange?: string | null;
 }
 
 export interface SubscriptionBannerModel {
-  action: "checkout" | "portal" | null;
+  /** `billing` は設定の課金タブへ（予約の取り消しはそこで行う・T-M8-260）。 */
+  action: "checkout" | "portal" | "billing" | null;
   description: string;
   title: string;
   tone: "info" | "warning";
@@ -187,6 +190,18 @@ export function subscriptionBannerFor(
       action: profile.stripeCustomerId ? "portal" : null,
       description: "それまでは今までどおりご利用いただけます。続ける場合は解約の取り消しができます。",
       title: `${planEndDate(endsAt)}に解約されます`,
+      tone: "info",
+    };
+  }
+  /*
+    **下位プランへの予約も知らせる**（T-M8-260）。予約は Portal で再変更できないため、
+    取り消したい人が行き先を探すことになる。設定の課金タブに取り消しがある。
+  */
+  if (profile.scheduledPlanChange && (status === "active" || status === "trialing")) {
+    return {
+      action: "billing",
+      description: "それまでは今のプランのままご利用いただけます。予約の取り消しは設定の「課金・プラン」からできます。",
+      title: profile.scheduledPlanChange,
       tone: "info",
     };
   }

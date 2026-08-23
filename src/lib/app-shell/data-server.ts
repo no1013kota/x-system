@@ -40,6 +40,9 @@ async function loadProfileRow(userId: string): Promise<AppShellProfileRow | null
             -- 解約予約を画面へ出すために読む（T-M8-253）。
             cancel_at_period_end,
             current_period_end::text as current_period_end,
+            -- 下位プランへの予約を画面へ出すために読む（T-M8-260）。
+            scheduled_plan,
+            scheduled_plan_at::text as scheduled_plan_at,
             stripe_customer_id,
             ${LEGAL_CONSENT_SELECT_POOLED}
        from profiles where id = $1`,

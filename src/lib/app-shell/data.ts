@@ -9,6 +9,7 @@ import {
   requiredLegalConsents,
   type LegalConsentProfile,
 } from "@/lib/auth/legal-consent";
+import { scheduledPlanChangeLabel } from "@/lib/billing/scheduled-plan-change";
 import {
   subscriptionBannerFor,
   type SubscriptionBannerModel,
@@ -28,6 +29,9 @@ export interface AppShellProfileRow extends LegalConsentProfile {
   trial_ends_at: string | null;
   cancel_at_period_end: boolean;
   current_period_end: string | null;
+  /** 期間末で切り替わる予約先のプラン（T-M8-260）。 */
+  scheduled_plan: PlanId | null;
+  scheduled_plan_at: string | null;
 }
 
 /** Ports required to assemble the App Shell without depending on DB or framework adapters. */
@@ -100,6 +104,7 @@ export async function loadAppShellDataWithDependencies(
       trialEndsAt: profileRow.trial_ends_at,
       cancelAtPeriodEnd: profileRow.cancel_at_period_end,
       currentPeriodEnd: profileRow.current_period_end,
+      scheduledPlanChange: scheduledPlanChangeLabel(profileRow),
     };
     stripeCustomerId = subscriptionProfile.stripeCustomerId;
     // バナーのPortalButtonが「解約する」/「解約予定を取り消す」を正しく出し分けるために渡す（T-M8-57）。

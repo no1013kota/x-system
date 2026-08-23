@@ -2439,7 +2439,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `legal-pages.test.ts` が新しい文言を固定する
 - メモ: 運営者の決定（2026-08-23）。**改定文案は公開前に運営者が確認する**（要決定D-35として案を添える）。
 
-### T-M8-260: 予約済みの下位変更を保存・表示し、アプリから取り消せるようにする `todo`
+### T-M8-260: 予約済みの下位変更を保存・表示し、アプリから取り消せるようにする `done`
 - 参照: 要件03 §2.2 Portal・要件06 §1.1 課金タブ・§2 バナー / 依存: なし / サイズ: M
 - 完了条件:
   - Portalで下位変更を予約すると、`profiles` に予約先のプランと切替日が保存される（解除されたら消える）
@@ -2448,6 +2448,13 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `customer.subscription.updated` で `schedule` の有無を見る。購読イベントの不足は doctor が検出する
 - メモ: 運営者の決定（2026-08-23・案A＋B）。予約が付いた契約はPortalで再変更できないため、取り消しの
   経路が無いと運営者のダッシュボード作業になる（deployment.md の既知事項）。
+- 実装メモ（2026-08-23 完了）: migration `20260823000008`（`profiles.scheduled_plan`/`scheduled_plan_at`・対のCHECK）。
+  同期は `subscription.schedule` があれば `subscriptionSchedules.retrieve` で次フェーズを読み、取得失敗は記録して
+  契約本体の反映を止めない（`loadSchedule`）。取り消しは `cancelScheduledPlanChangeAction`（`lib/stripe/scheduled-plan-change.ts`・
+  本人の `stripe_subscription_id` から `release`・Stripe失敗は `provider_error`）。表示は `scheduledPlanChangeLabel` を
+  課金タブとApp Shellバナーで共用し、予約中は「プランを変更」の代わりに取り消しボタンを出す（Portalが拒否するため）。
+  検証: 単体（投影・ラベル・バナー）＋実DB（書き込み・取り消し・CHECK）＋E2E（plans.spec「T-M8-260」）＋実ブラウザ
+  （1280/375・コンソールエラー0・Stripe失敗時のトースト）。Stripe実物の release は T-M8-261 のライブテストで通す。
 
 ### T-M8-261: 期間末の下位変更がアプリへ正しく効くことを自動テストで固定する `todo`
 - 参照: 要件03 §4 同期・T-M8-258/260 / 依存: T-M8-258, T-M8-260 / サイズ: S

@@ -66,6 +66,7 @@ import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
+import { scheduledPlanChangeLabel } from "@/lib/billing/scheduled-plan-change";
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
@@ -105,6 +106,9 @@ interface BillingProfile {
   /** ログイン中のメールアドレス（T-M8-95。どのアカウントで入っているかを確認できるように出す）。 */
   email: string | null;
   plan: PlanId | null;
+  /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
+  scheduled_plan: PlanId | null;
+  scheduled_plan_at: string | null;
   stripe_customer_id: string | null;
   subscription_status: string;
 }
@@ -160,7 +164,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     admin
       .from("profiles")
       .select(
-        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id",
+        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, scheduled_plan, scheduled_plan_at",
       )
       .eq("id", user.id)
       .maybeSingle<BillingProfile>(),
@@ -183,6 +187,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const plan: PlanId | null = profile.plan;
   // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
   const hasStripeCustomer = Boolean(profile.stripe_customer_id);
+  const scheduledChange = scheduledPlanChangeLabel(profile);
 
   // planに依存する第2波。
   // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
@@ -406,6 +411,12 @@ let promptTemplates: PromptTemplateView[] = [];
                       : "解約予定なし"}
                   </dd>
                 </div>
+                {scheduledChange ? (
+                  <div>
+                    <dt className="text-caption text-ink-3">プラン変更の予約</dt>
+                    <dd className="mt-1 text-body font-bold">{scheduledChange}</dd>
+                  </div>
+                ) : null}
               </dl>
               {/*
                 導線は1つにする（T-M8-29）。`PortalButton` が契約状態で行き先を変える
@@ -426,6 +437,7 @@ let promptTemplates: PromptTemplateView[] = [];
                       subscriptionStatus: profile.subscription_status,
                     })}
                     enabled={hasStripeCustomer}
+                    scheduledChange={scheduledChange}
                   />
                 )}
               </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CancelScheduledPlanChangeButton } from "@/components/billing/scheduled-plan-change-button";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
@@ -25,6 +26,7 @@ export function PortalButton({
   cancelAtPeriodEnd = false,
   effects,
   enabled,
+  scheduledChange = null,
 }: {
   /**
    * 期間末解約が予約済みか（T-M8-57）。予約済みのとき「解約する」を出し続けると、
@@ -35,6 +37,12 @@ export function PortalButton({
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
+  /**
+   * 期間末で切り替わる下位プランの予約が付いているときの説明文（T-M8-260）。
+   * 予約が付いた契約は Portal で再変更できない（Stripeがエラーを出す）ので、
+   * 「プランを変更」の代わりに予約の取り消しを出す。
+   */
+  scheduledChange?: string | null;
 }) {
   const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
   // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
@@ -76,17 +84,21 @@ export function PortalButton({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Button
-          aria-busy={pending === "update"}
-          className="h-9"
-          disabled={pending !== null}
-          onClick={open("update")}
-          size="lg"
-          type="button"
-          variant="brand"
-        >
-          {pending === "update" ? "開いています…" : "プランを変更"}
-        </Button>
+        {scheduledChange ? (
+          <CancelScheduledPlanChangeButton description={scheduledChange} />
+        ) : (
+          <Button
+            aria-busy={pending === "update"}
+            className="h-9"
+            disabled={pending !== null}
+            onClick={open("update")}
+            size="lg"
+            type="button"
+            variant="brand"
+          >
+            {pending === "update" ? "開いています…" : "プランを変更"}
+          </Button>
+        )}
         {cancelAtPeriodEnd ? (
           <Button
             aria-busy={pending === "manage"}
@@ -124,8 +136,13 @@ export function PortalButton({
         <ul className="grid gap-1.5 rounded-card border border-hairline bg-page px-4 py-3 text-body leading-6" role="list">
           {(
             [
-              ["上位プランへ変更", effects.upgrade],
-              ["下位プランへ変更", effects.downgrade],
+              // 予約が付いているあいだはプラン変更が行えないので、変更の説明は出さない（T-M8-260）。
+              ...(scheduledChange
+                ? []
+                : ([
+                    ["上位プランへ変更", effects.upgrade],
+                    ["下位プランへ変更", effects.downgrade],
+                  ] as const)),
               ["解約", effects.cancel],
               ...(effects.trialNote ? [["トライアル中の変更", effects.trialNote] as const] : []),
             ] as const

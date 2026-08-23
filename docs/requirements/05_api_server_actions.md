@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.59 |
+| バージョン | v1.60 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -83,6 +83,8 @@
 `POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返し、30分TTLの暗号化済み復帰marker cookieを発行する。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
 
 `POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、30分TTLの暗号化済み復帰marker cookieを発行する。ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
+
+**Server Action `cancelScheduledPlanChangeAction`**（`src/app/actions/billing.ts`・T-M8-260）は入力を持たず、認証済み本人の`profiles.stripe_subscription_id`からSubscriptionを取得し、`schedule`が付いていれば`subscriptionSchedules.release`で期間末の下位変更予約を解除して`scheduled_plan`／`scheduled_plan_at`を空にする（`released`）。scheduleが無ければStripeを変更せず表示だけ整える（`nothing_scheduled`）。契約が無ければ`subscription_required`。結果は共通の`BaseResult`。Stripe側の所有確認は契約IDをDBから取ることで担保し、入力からIDを受けない。
 
 `GET /api/stripe/return`は`source=checkout|portal`、認証済みsession、開始APIが発行した`HttpOnly`／`SameSite=Lax`の復帰markerを検証する。開始後のStripe event時刻がprofileへ反映済みなら外部APIなしで画面へredirectする。未反映時だけCheckout Sessionの本人性（checkoutのみ）を確認してSubscriptionを1回取得し、webhook共通projectionをtransaction適用する。markerは結果にかかわらず削除し、成功／反映済み／skip／失敗を秘密情報を含まない`sync` queryへ正規化する。markerのない通常画面はこのrouteを通らず、Stripe APIを呼ばない（要件03 §3）。
 
@@ -347,6 +349,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.57 | 2026-08-23 | `startAnalysisAction`（「分析を開始」）を追加し、`/api/cron/follower-snapshot` を廃止（T-M8-255）。§9を手動実行へ更新 |
 | v1.58 | 2026-08-23 | `/api/cron/follower-snapshot` を復活（T-M8-257・契約が有効な利用者のみ）。分析はボタンのまま |
 | v1.59 | 2026-08-23 | `POST /api/stripe/resume`（解約済み契約の再開）を追加（T-M8-264） |
+| v1.60 | 2026-08-23 | cancelScheduledPlanChangeAction（予約済み下位変更の取り消し・T-M8-260） |
 
 ### 下書きの投稿予約（T-M8-157）
 

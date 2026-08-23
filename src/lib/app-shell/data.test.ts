@@ -22,6 +22,8 @@ const PROFILE: AppShellProfileRow = {
   trial_ends_at: "2026-08-30T00:00:00.000Z",
   cancel_at_period_end: false,
   current_period_end: "2026-08-30T00:00:00.000Z",
+  scheduled_plan: null,
+  scheduled_plan_at: null,
 };
 
 function dependencies(

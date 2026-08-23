@@ -252,3 +252,43 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toHaveCount(2);
   await expect(page.getByText("期間終了日に解約予定")).toBeVisible();
 });
+
+/**
+ * 予約済みの下位プラン変更（T-M8-260）。Portalで値下げを選ぶと期間末の予約になり、
+ * 予約が付いた契約はPortalで再変更できない。予約の存在と取り消しの場所を画面に出す。
+ * Stripe本体の解除は実DBテスト（subscription-sync.db.test）が担い、ここは表示と導線を見る。
+ */
+test("下位プランへの予約が課金タブとバナーに出て、取り消しへ辿れる（T-M8-260）", async ({ accounts, page }) => {
+  const account = await accounts.create("plan-scheduled");
+  await query(
+    `update profiles set stripe_customer_id = 'cus_e2e_sched', subscription_status = 'active',
+        current_period_end = '2026-09-30T15:00:00Z',
+        scheduled_plan = 'standard', scheduled_plan_at = '2026-09-30T15:00:00Z' where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+  await page.goto("/app");
+  // App Shell バナー（JSTで10月1日）に取り消しの場所へのリンク
+  const banner = page.getByRole("complementary", { name: "ご契約のお知らせ" });
+  await expect(banner).toContainText("2026年10月1日にスタンダードプランへ切り替わる予約があります");
+  await banner.getByRole("link", { name: "課金・プランを確認" }).click();
+  await expect(page).toHaveURL(/settings\?tab=billing/);
+
+  // 課金タブ: 予約の行と、「プランを変更」の代わりに取り消しボタン
+  await expect(page.getByText("プラン変更の予約", { exact: true })).toBeVisible();
+  // バナーと課金カードの両方に同じ文（同じ正本 `scheduledPlanChangeLabel`）
+  await expect(page.getByText("2026年10月1日にスタンダードプランへ切り替わる予約があります")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "プランを変更", exact: true })).toHaveCount(0);
+  const cancel = page.getByRole("button", { name: "プラン変更の予約を取り消す" });
+  await expect(cancel).toBeVisible();
+
+  // 確認ダイアログで「キャンセル」なら何も変わらない
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await cancel.click();
+  await expect(cancel).toBeEnabled();
+  const row = await query<{ scheduled_plan: string | null }>(
+    "select scheduled_plan from profiles where id = $1",
+    [account.userId],
+  );
+  expect(row[0]?.scheduled_plan).toBe("standard");
+});

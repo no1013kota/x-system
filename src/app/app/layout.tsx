@@ -117,6 +117,14 @@ export default async function AppLayout({
                   enabled={Boolean(stripeCustomerId)}
                 />
               ) : null}
+              {banner.action === "billing" ? (
+                <Link
+                  className={`shrink-0 ${primaryLinkClassName}`}
+                  href="/app/settings?tab=billing"
+                >
+                  課金・プランを確認
+                </Link>
+              ) : null}
               {banner.action === "checkout" ? (
                 <Link
                   className={`shrink-0 ${primaryLinkClassName}`}

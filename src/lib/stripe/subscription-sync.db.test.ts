@@ -10,6 +10,7 @@ import {
   type PreparedStripeEvent,
   type SubscriptionProjection,
 } from "./subscription-sync";
+import { cancelScheduledPlanChange } from "./scheduled-plan-change";
 import {
   processStripeEvent,
   type StripeEventDatabase,
@@ -133,6 +134,8 @@ describe("Stripe subscription synchronization transaction", () => {
     await expect(
       run(`evt_sync_trial_${randomUUID()}`, {
         cancelAtPeriodEnd: false,
+        scheduledPlan: null,
+        scheduledPlanAt: null,
         currentPeriodEnd: 1_785_279_600,
         customerId: "cus_sync",
         eventCreated: trialCreated,
@@ -175,6 +178,8 @@ describe("Stripe subscription synchronization transaction", () => {
     await expect(
       run(`evt_sync_stale_${randomUUID()}`, {
         cancelAtPeriodEnd: true,
+        scheduledPlan: null,
+        scheduledPlanAt: null,
         currentPeriodEnd: 1_785_000_000,
         customerId: "cus_sync",
         eventCreated: trialCreated - 1,
@@ -198,6 +203,8 @@ describe("Stripe subscription synchronization transaction", () => {
     await expect(
       run(`evt_sync_active_${randomUUID()}`, {
         cancelAtPeriodEnd: true,
+        scheduledPlan: null,
+        scheduledPlanAt: null,
         currentPeriodEnd: 1_787_000_000,
         customerId: "cus_sync",
         eventCreated: trialCreated + 1,
@@ -225,6 +232,8 @@ describe("Stripe subscription synchronization transaction", () => {
 
     const failedProjection: SubscriptionProjection = {
       cancelAtPeriodEnd: false,
+      scheduledPlan: null,
+      scheduledPlanAt: null,
       currentPeriodEnd: 1_787_100_000,
       customerId: "cus_sync",
       eventCreated: trialCreated + 2,
@@ -330,6 +339,8 @@ describe("Stripe subscription synchronization transaction", () => {
     await expect(
       run(failedEventId, {
         cancelAtPeriodEnd: false,
+        scheduledPlan: null,
+        scheduledPlanAt: null,
         currentPeriodEnd: 1_788_000_000,
         customerId: "cus_missing",
         eventCreated: trialCreated + 6,
@@ -390,6 +401,8 @@ describe("Stripe subscription synchronization transaction", () => {
     const eventCreated = 1_784_675_200;
     const projection: SubscriptionProjection = {
       cancelAtPeriodEnd: false,
+      scheduledPlan: null,
+      scheduledPlanAt: null,
       currentPeriodEnd: eventCreated + 2_592_000,
       customerId: "cus_aff_referred",
       eventCreated,
@@ -528,6 +541,8 @@ describe("Stripe subscription synchronization transaction", () => {
     const eventCreated = 1_784_675_200;
     const projection: SubscriptionProjection = {
       cancelAtPeriodEnd: false,
+      scheduledPlan: null,
+      scheduledPlanAt: null,
       currentPeriodEnd: eventCreated + 2_592_000,
       customerId: "cus_stale_referred",
       eventCreated,
@@ -579,5 +594,98 @@ describe("Stripe subscription synchronization transaction", () => {
       [referredId],
     );
     expect(Number(prof.rows[0].created)).toBe(eventCreated + 100);
+  });
+
+  /**
+   * 予約済みの下位変更（T-M8-260）。webhookが schedule から読んだ予約を profiles へ書き、
+   * 取り消しは Stripe の schedule を解除して profiles を空へ戻す。
+   */
+  it("writes the scheduled plan from the projection and clears it on cancel", async (context) => {
+    if (!database) return context.skip();
+    const activeDatabase = database;
+    const userId = randomUUID();
+    await activeDatabase.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await activeDatabase.query("update profiles set stripe_customer_id = 'cus_sched' where id = $1", [userId]);
+    const base: SubscriptionProjection = {
+      cancelAtPeriodEnd: false,
+      scheduledPlan: "standard",
+      scheduledPlanAt: 1_785_279_600,
+      currentPeriodEnd: 1_785_279_600,
+      customerId: "cus_sched",
+      eventCreated: 1_784_675_200,
+      plan: "premium",
+      status: "active",
+      subscriptionId: "sub_sched",
+      trialEnd: null,
+      trialStartedAt: null,
+      userId,
+    };
+    await expect(applyPreparedStripeEvent(activeDatabase, { kind: "subscription_sync", eventType: "customer.subscription.updated", projection: base })).resolves.toBe("updated");
+    const read = () =>
+      activeDatabase
+        .query<{ scheduled_plan: string | null; scheduled_plan_at: Date | null }>(
+          "select scheduled_plan, scheduled_plan_at from profiles where id = $1",
+          [userId],
+        )
+        .then((r) => r.rows[0]);
+    expect(await read()).toEqual({ scheduled_plan: "standard", scheduled_plan_at: new Date(1_785_279_600 * 1000) });
+
+    // 取り消し: Stripe の schedule を解除し、profiles の予約を消す。本人の契約IDを profiles から取る。
+    const released: string[] = [];
+    await expect(
+      cancelScheduledPlanChange(
+        activeDatabase,
+        {
+          subscriptions: { retrieve: async (id) => ({ id, schedule: id === "sub_sched" ? "sub_sched_1" : null }) },
+          subscriptionSchedules: {
+            release: async (id) => {
+              released.push(id);
+              return { id, status: "released" };
+            },
+          },
+        },
+        userId,
+      ),
+    ).resolves.toBe("released");
+    expect(released).toEqual(["sub_sched_1"]);
+    expect(await read()).toEqual({ scheduled_plan: null, scheduled_plan_at: null });
+
+    // 予約が無い状態で押しても壊れない（Stripe側に schedule が無い→表示だけ整える）。
+    await expect(
+      cancelScheduledPlanChange(
+        activeDatabase,
+        {
+          subscriptions: { retrieve: async () => ({ schedule: null }) },
+          subscriptionSchedules: { release: async () => { throw new Error("must not release"); } },
+        },
+        userId,
+      ),
+    ).resolves.toBe("nothing_scheduled");
+
+    // 予約の片方だけは入らない（CHECK 制約）。
+    await activeDatabase.query("savepoint pair_check");
+    await expect(
+      activeDatabase.query("update profiles set scheduled_plan = 'standard', scheduled_plan_at = null where id = $1", [userId]),
+    ).rejects.toThrow(/profiles_scheduled_plan_pair/);
+    await activeDatabase.query("rollback to savepoint pair_check");
+
+    // 契約の無い利用者は取り消せない。
+    const noSub = randomUUID();
+    await activeDatabase.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+      [noSub, `${noSub}@example.com`],
+    );
+    await expect(
+      cancelScheduledPlanChange(
+        activeDatabase,
+        { subscriptions: { retrieve: async () => ({ schedule: "x" }) }, subscriptionSchedules: { release: async () => ({ id: "x", status: "released" }) } },
+        noSub,
+      ),
+    ).rejects.toMatchObject({ code: "subscription_required" });
   });
 });

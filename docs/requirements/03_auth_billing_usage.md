@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.45 |
+| バージョン | v1.46 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -136,7 +136,7 @@ invoice eventは現行Invoiceの`parent.subscription_details.subscription`から
 
 イベントの到着順が前後しても古い契約状態で上書きしない。
 
-同期値はSubscriptionの`customer`、`id`、`status`、`cancel_at_period_end`、`trial_end`、`trial_start`、metadata `user_id`と、単一Subscription ItemのPrice／`current_period_end`から作る。現行Stripe APIでは契約期間がitem単位のため、複数itemは未知Priceと同様に同期を拒否する。profileは既存`stripe_customer_id`、またはCustomer未保存時だけUUID形式のmetadata `user_id`で特定し、両者の不一致・複数／欠損profileはrollbackする。`plan`、`subscription_status`、`current_period_end`、`cancel_at_period_end`、`trial_ends_at`、Customer／Subscription ID、event時刻を更新する。statusを初めて`trialing`として同期するときだけ`trial_used_at`へ`trial_start`（欠落時event.created）を保存し、以後のactive・解約・再契約では上書き／null化しない。
+同期値はSubscriptionの`customer`、`id`、`status`、`cancel_at_period_end`、`trial_end`、`trial_start`、metadata `user_id`と、単一Subscription ItemのPrice／`current_period_end`から作る。現行Stripe APIでは契約期間がitem単位のため、複数itemは未知Priceと同様に同期を拒否する。profileは既存`stripe_customer_id`、またはCustomer未保存時だけUUID形式のmetadata `user_id`で特定し、両者の不一致・複数／欠損profileはrollbackする。`plan`、`subscription_status`、`current_period_end`、`cancel_at_period_end`、`scheduled_plan`／`scheduled_plan_at`（§2.2・T-M8-260）、`trial_ends_at`、Customer／Subscription ID、event時刻を更新する。statusを初めて`trialing`として同期するときだけ`trial_used_at`へ`trial_start`（欠落時event.created）を保存し、以後のactive・解約・再契約では上書き／null化しない。
 
 profile rowをtransaction内でlockし、保存済み`subscription_event_created_at`よりevent.createdが古い場合はprofile更新だけをskipしてeventを処理済み記録する。同時到着でもlock取得後に再判定する。新しいeventは再取得済みの現在状態を反映するため、event payloadの古いsnapshotへ戻さない。
 
@@ -177,7 +177,7 @@ Checkout・Portalのセッションは**`locale: "ja"` を固定で指定**す�
 
 「プランを変更」「解約する」は`flow_data`（`subscription_update`／`subscription_cancel`）でStripeの該当画面へ**直接**入る。対象のsubscriptionは`profiles.stripe_subscription_id`を正とし、**nullのときはStripeからその顧客の変更できる契約（active／trialing／past_due・新しい順）を引いて補う**（webhook同期前でも正しい画面に着くため・T-M8-56）。それでも見つからなければ**黙ってPortalのトップを開かず**`subscription_required`で止める——トップに着いても変更・解約はできず、押した人には何が起きたのか分からない（2026-08-05に利用者が実際に踏んだ）。
 
-Portal Configurationは`subscription_update.proration_behavior=create_prorations`により、値上げを**即時に切り替えつつ差額を日割り計算**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位。**`create_prorations` は日割り行を作るだけで即時請求はせず、次回更新日の請求書に合算される**——2026-08-23 実測。即時決済にするなら `always_invoice`）。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
+Portal Configurationは`subscription_update.proration_behavior=create_prorations`により、値上げを**即時に切り替えつつ差額を日割り計算**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位。**`create_prorations` は日割り行を作るだけで即時請求はせず、次回更新日の請求書に合算される**——2026-08-23 実測。即時決済にするなら `always_invoice`）。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。**期間末予約は契約本体のPriceを変えず subscription schedule を付ける**ため、同期は `subscription.schedule` があれば schedule を読み、次フェーズのPriceが現在と違い既知のプランなら `profiles.scheduled_plan` / `scheduled_plan_at` へ保存する（T-M8-260。schedule取得の失敗は記録して予約なしとして続け、契約本体の反映は止めない）。**予約が付いた契約はPortalで再変更できない**（Stripeがエラーを返す）ので、取り消しは Server Action `cancelScheduledPlanChangeAction`（要件05）が本人の契約の schedule を `release` して予約列を空にする。webhookが届く前でも画面から消えるように、解除直後にアプリ側でも空へ戻す。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
 
 | 変更 | 仕様 |
 |---|---|
@@ -186,6 +186,7 @@ Portal Configurationは`subscription_update.proration_behavior=create_prorations
 | premium ⇄ expert | どちらも運営キー（managed）なので連携は不変。利用枠の上限だけが変わる |
 | 遷移先の上限超過 | 遷移先プランの`xAccountLimit`（standard/premium=1・expert=3）を超えるactiveは、選択中→作成が古い順に残して超過分を`disabled`。データ・tokenは削除しない（T-M8-168で旧standard専用の「1件だけ残す」から汎用化） |
 | 解約予定 | `cancel_at_period_end = true`でも期間終了までは現在プランを利用可 |
+| 下位変更の予約 | `scheduled_plan` が入っていても切替日までは現在プランを利用可。画面に予約先と日付を出し、取り消しできる（T-M8-260） |
 
 複数Xアカウントの無効化はwebhook同期後の同一処理で行う。再アップグレード時にユーザーが再有効化する。
 
@@ -376,3 +377,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.43 | 2026-08-23 | `canceled`の閲覧範囲を「設定・プランのみ」へ（T-M8-266・運営者の指示。解約後は機能画面を見せない一般的なSaaSのUXへ。データは保持し/plansでその旨を案内） |
 | v1.44 | 2026-08-23 | 閲覧はどのstatusでも止めない方針へ（T-M8-268）。route guardは認証のみ・着地は/app統一・友達招待は契約不要であることを明記 |
 | v1.45 | 2026-08-23 | プラン未登録・解約中は機能画面をロックする方針へ（T-M8-269・運営者の指示。触れるのは友達招待と課金・プランのみ。past_due等の支払い滞りは対象外） |
+| v1.46 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |

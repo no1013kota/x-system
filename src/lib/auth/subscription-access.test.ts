@@ -169,4 +169,25 @@ describe("解約の予約を画面へ出す（T-M8-253）", () => {
   it("解約予約が無ければ active は従来どおりバナーを出さない", () => {
     expect(subscriptionBannerFor({ ...base, cancelAtPeriodEnd: false })).toBeNull();
   });
+
+  /** 下位プランへの予約（T-M8-260）。Portalで再変更できないので取り消しの行き先を示す。 */
+  it("下位プランへの予約があれば知らせ、行き先は設定の課金タブ", () => {
+    const banner = subscriptionBannerFor({
+      ...base,
+      scheduledPlanChange: "2026年9月30日にスタンダードへ切り替わる予約があります",
+    });
+    expect(banner).toMatchObject({ tone: "info", action: "billing" });
+    expect(banner?.title).toContain("スタンダード");
+    expect(banner?.description).toContain("課金・プラン");
+  });
+
+  it("解約予約が優先される（予約と解約が両方付くことは無いが、両方なら解約の方が重要）", () => {
+    const banner = subscriptionBannerFor({
+      ...base,
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: "2026-09-30T00:00:00Z",
+      scheduledPlanChange: "2026年9月30日にスタンダードへ切り替わる予約があります",
+    });
+    expect(banner?.title).toContain("解約");
+  });
 });

@@ -28,6 +28,14 @@ export interface StripeSubscriptionGateway {
     retrieve(id: string): Promise<Stripe.Subscription>;
   };
   /**
+   * 予約済みの下位変更（subscription schedule）を読む（T-M8-260）。
+   * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
+   * 予約先のプランと切替日はここから取るしかない。
+   */
+  subscriptionSchedules?: {
+    retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
+  };
+  /**
    * charge.refunded から invoice を引くために使う（T-M8-174レビュー修正）。
    * **現行API（2026-06-24.dahlia）の Charge には invoice フィールドが無い**
    * （2025-03-31.basil で削除）ため、payment_intent → InvoicePayments で解決する。
@@ -43,6 +51,10 @@ export interface StripeSubscriptionGateway {
 export interface SubscriptionProjection {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: number;
+  /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
+  scheduledPlan: PlanId | null;
+  /** 予約が効く日時（epoch秒）。`scheduledPlan` とセット。 */
+  scheduledPlanAt: number | null;
   customerId: string;
   eventCreated: number;
   plan: PlanId;
@@ -247,11 +259,37 @@ function userIdFromMetadata(metadata: Stripe.Metadata): string | null {
   return userId;
 }
 
+/**
+ * 予約済みの下位変更を schedule から読む（T-M8-260）。
+ *
+ * 「いま有効なフェーズの**次**」で、Priceが現在と違い、かつ既知のプランに対応するものを予約とみなす。
+ * 過去のフェーズや同じPriceへの"予約"（Portalが作る形としては無いが）は無視する。
+ * 解除済み（`released`/`canceled`）の schedule は予約ではない。
+ */
+export function scheduledPlanFromSchedule(
+  schedule: Stripe.SubscriptionSchedule | null | undefined,
+  currentPriceId: string,
+  priceIds: Record<PlanId, string>,
+  nowSec: number,
+): { plan: PlanId; at: number } | null {
+  if (!schedule || (schedule.status !== "active" && schedule.status !== "not_started")) return null;
+  const phases = schedule.phases ?? [];
+  const upcoming = phases.find((phase) => phase.start_date > nowSec);
+  if (!upcoming) return null;
+  const item = upcoming.items?.[0];
+  const priceId = typeof item?.price === "string" ? item.price : item?.price?.id;
+  if (!priceId || priceId === currentPriceId) return null;
+  const entry = Object.entries(priceIds).find(([, configured]) => configured === priceId);
+  if (!entry) return null;
+  return { plan: entry[0] as PlanId, at: upcoming.start_date };
+}
+
 export function subscriptionProjection(
   event: Stripe.Event,
   subscription: Stripe.Subscription,
   priceIds: Record<PlanId, string>,
   forceCanceled = false,
+  schedule?: Stripe.SubscriptionSchedule | null,
 ): SubscriptionProjection {
   const items = subscription.items?.data ?? [];
   const priceId = items.length === 1 ? items[0].price?.id : null;
@@ -272,6 +310,11 @@ export function subscriptionProjection(
   if (!SUBSCRIPTION_STATUSES.has(status)) {
     throw new StripeSubscriptionSyncError("Subscription status is unsupported.");
   }
+  // 解約・解約済みでは予約を持たない（期間末に契約自体が終わる）。
+  const scheduled =
+    forceCanceled || status === "canceled"
+      ? null
+      : scheduledPlanFromSchedule(schedule, priceId, priceIds, event.created);
 
   return {
     // **`cancel_at` も「解約予定」として読む**（T-M8-57）。トライアル中の解約では、Stripeは
@@ -281,6 +324,8 @@ export function subscriptionProjection(
     cancelAtPeriodEnd: subscription.cancel_at_period_end || subscription.cancel_at != null,
     currentPeriodEnd,
     customerId,
+    scheduledPlan: scheduled?.plan ?? null,
+    scheduledPlanAt: scheduled?.at ?? null,
     eventCreated: event.created,
     plan: planEntry[0] as PlanId,
     status: status as SubscriptionStatus,
@@ -353,6 +398,7 @@ export async function prepareStripeEvent(
     const subscriptionId = expandedId(subscription ?? null);
     if (!subscriptionId) return { kind: "none" };
     const current = await stripe.subscriptions.retrieve(subscriptionId);
+    const schedule = await loadSchedule(stripe, current);
     return {
       kind: "invoice_sync",
       invoice: {
@@ -363,7 +409,7 @@ export async function prepareStripeEvent(
         amountPaid: invoice.amount_paid ?? 0,
         paidAtSec: invoice.status_transitions?.paid_at ?? event.created,
       },
-      projection: subscriptionProjection(event, current, priceIds),
+      projection: subscriptionProjection(event, current, priceIds, false, schedule),
     };
   }
 
@@ -372,11 +418,31 @@ export async function prepareStripeEvent(
     throw new StripeSubscriptionSyncError("Stripe event has no subscription ID.");
   }
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const schedule = await loadSchedule(stripe, subscription);
   return {
     kind: "subscription_sync",
     eventType: event.type,
-    projection: subscriptionProjection(event, subscription, priceIds),
+    projection: subscriptionProjection(event, subscription, priceIds, false, schedule),
   };
+}
+
+/**
+ * 契約に schedule が付いていれば取りに行く（T-M8-260）。無ければ null。
+ * 取得に失敗しても同期全体は止めない——予約の表示が1回遅れるだけで、
+ * 契約状態の反映（plan/status）の方が重要。失敗は記録に残す。
+ */
+async function loadSchedule(
+  stripe: StripeSubscriptionGateway,
+  subscription: Stripe.Subscription,
+): Promise<Stripe.SubscriptionSchedule | null> {
+  const scheduleId = expandedId(subscription.schedule ?? null);
+  if (!scheduleId || !stripe.subscriptionSchedules) return null;
+  try {
+    return await stripe.subscriptionSchedules.retrieve(scheduleId);
+  } catch (error) {
+    recordUnexpectedError(error, { at: "stripe-sync:schedule", subscriptionId: subscription.id });
+    return null;
+  }
 }
 
 type InvoiceSyncDetail = Extract<
@@ -586,6 +652,8 @@ export async function applyPreparedStripeEvent(
             stripe_customer_id = $7,
             stripe_subscription_id = $8,
             subscription_event_created_at = to_timestamp($9),
+            scheduled_plan = $11::plan_type,
+            scheduled_plan_at = case when $12::bigint is null then null else to_timestamp($12) end,
             trial_used_at = case
               when $3::subscription_status = 'trialing' then coalesce(
                 trial_used_at,
@@ -606,6 +674,8 @@ export async function applyPreparedStripeEvent(
       projection.subscriptionId,
       projection.eventCreated,
       projection.trialStartedAt,
+      projection.scheduledPlan,
+      projection.scheduledPlanAt,
     ],
   );
 

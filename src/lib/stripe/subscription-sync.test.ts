@@ -289,3 +289,100 @@ describe("Stripe subscription synchronization", () => {
     ).toThrow("unknown Price ID");
   });
 });
+
+/**
+ * 予約済みの下位変更（subscription schedule・T-M8-260）。
+ * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
+ * 予約先と切替日は schedule の「次のフェーズ」から読む。
+ */
+describe("scheduled plan change (subscription schedule)", () => {
+  const NOW = 1_784_675_200;
+  function schedule(overrides: Partial<Stripe.SubscriptionSchedule> = {}): Stripe.SubscriptionSchedule {
+    return {
+      id: "sub_sched_1",
+      object: "subscription_schedule",
+      status: "active",
+      phases: [
+        { start_date: NOW - 100_000, end_date: 1_785_279_600, items: [{ price: "price_expert" }] },
+        { start_date: 1_785_279_600, end_date: 1_787_958_000, items: [{ price: "price_standard" }] },
+      ],
+      ...overrides,
+    } as unknown as Stripe.SubscriptionSchedule;
+  }
+
+  it("次のフェーズのPriceが違えば、予約先プランと切替日を投影へ載せる", () => {
+    const projection = subscriptionProjection(
+      event("customer.subscription.updated", {}, NOW),
+      subscription({ status: "active" }),
+      priceIds,
+      false,
+      schedule(),
+    );
+    expect(projection.scheduledPlan).toBe("standard");
+    expect(projection.scheduledPlanAt).toBe(1_785_279_600);
+  });
+
+  it("schedule が無い・解除済み・次フェーズが同じPrice・未知のPrice なら予約なし", () => {
+    const base = subscription({ status: "active" });
+    const ev = event("customer.subscription.updated", {}, NOW);
+    expect(subscriptionProjection(ev, base, priceIds, false, null).scheduledPlan).toBeNull();
+    expect(
+      subscriptionProjection(ev, base, priceIds, false, schedule({ status: "released" })).scheduledPlan,
+    ).toBeNull();
+    expect(
+      subscriptionProjection(
+        ev, base, priceIds, false,
+        schedule({ phases: [{ start_date: NOW - 1, end_date: NOW + 1, items: [{ price: "price_expert" }] },
+                            { start_date: NOW + 1, end_date: NOW + 2, items: [{ price: "price_expert" }] }] } as never),
+      ).scheduledPlan,
+    ).toBeNull();
+    expect(
+      subscriptionProjection(
+        ev, base, priceIds, false,
+        schedule({ phases: [{ start_date: NOW + 1, end_date: NOW + 2, items: [{ price: "price_unknown" }] }] } as never),
+      ).scheduledPlan,
+    ).toBeNull();
+  });
+
+  it("解約（deleted）では予約を持たない", () => {
+    const projection = subscriptionProjection(
+      event("customer.subscription.deleted", {}, NOW),
+      subscription({ status: "active" }),
+      priceIds,
+      true,
+      schedule(),
+    );
+    expect(projection.scheduledPlan).toBeNull();
+  });
+
+  it("prepareStripeEvent は契約に schedule が付いていれば取りに行き、失敗しても同期は続く", async () => {
+    const withSchedule = subscription({ status: "active", schedule: "sub_sched_1" } as never);
+    const ok = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      {
+        ...gateway(async () => withSchedule),
+        subscriptionSchedules: { retrieve: async () => schedule() },
+      },
+      priceIds,
+    );
+    expect(ok.kind).toBe("subscription_sync");
+    if (ok.kind === "subscription_sync") expect(ok.projection.scheduledPlan).toBe("standard");
+
+    const failing = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      {
+        ...gateway(async () => withSchedule),
+        subscriptionSchedules: {
+          retrieve: async () => {
+            throw new Error("stripe down");
+          },
+        },
+      },
+      priceIds,
+    );
+    if (failing.kind === "subscription_sync") {
+      expect(failing.projection.plan, "契約本体の同期は止めない").toBe("expert");
+      expect(failing.projection.scheduledPlan).toBeNull();
+    }
+  });
+});
