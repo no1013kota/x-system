@@ -107,6 +107,28 @@ describe("notifyUsageThresholds (db)", () => {
     }
   });
 
+  /** dedupe は枠・期間・閾値ごと（T-M8-258）。新しい契約期間では同じ閾値の通知がもう一度作られる。 */
+  it("creates the same threshold notification again in a new subscription period", async () => {
+    const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
+    try {
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-07-15" }),
+      );
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-08-15" }),
+      );
+      const rows = await usageNotifs(uid);
+      expect(rows.map((r) => r.dedupe_key).sort()).toEqual([
+        "usage:2026-07-15:ai_credits:100",
+        "usage:2026-07-15:ai_credits:80",
+        "usage:2026-08-15:ai_credits:100",
+        "usage:2026-08-15:ai_credits:80",
+      ]);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("respects notification_config: usage OFF creates no notification (banner is separate)", async () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: false }));
     try {

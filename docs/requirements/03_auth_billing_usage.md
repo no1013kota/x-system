@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.55 |
+| バージョン | v1.61 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -95,6 +95,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 - `cancel_at_period_end`
 - `trial_ends_at`
 - `trial_used_at`（trialingを初めて確認した時だけ設定し、以後保持）
+- `scheduled_plan`／`scheduled_plan_at`（期間末の下位変更の予約・§2.2・T-M8-260。schedule を読めなかった回は**上書きしない**）
 - `subscription_event_created_at`
 
 画面表示のたびにStripe APIを呼ばない。Checkout／Portal Session作成成功時だけ、user ID・`source=checkout|portal`・開始時刻をAES-256-GCMで改ざん検知した30分TTLの`HttpOnly`／`SameSite=Lax` cookieへ保存する。`GET /api/stripe/return`は認証済みuserとcookieのuser／sourceを照合し、次の規則で一度だけ復帰同期してcookieを削除する。
@@ -178,7 +179,7 @@ Checkout・Portalのセッションは**`locale: "ja"` を固定で指定**す�
 
 「プランを変更」「解約する」は`flow_data`（`subscription_update`／`subscription_cancel`）でStripeの該当画面へ**直接**入る。対象のsubscriptionは`profiles.stripe_subscription_id`を正とし、**nullのときはStripeからその顧客の変更できる契約（active／trialing／past_due・新しい順）を引いて補う**（webhook同期前でも正しい画面に着くため・T-M8-56）。それでも見つからなければ**黙ってPortalのトップを開かず**`subscription_required`で止める——トップに着いても変更・解約はできず、押した人には何が起きたのか分からない（2026-08-05に利用者が実際に踏んだ）。
 
-Portal Configurationは`subscription_update.proration_behavior=create_prorations`により、値上げを**即時に切り替えつつ差額を日割り計算**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位。**`create_prorations` は日割り行を作るだけで即時請求はせず、次回更新日の請求書に合算される**——2026-08-23 実測。即時決済にするなら `always_invoice`）。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。**期間末予約は契約本体のPriceを変えず subscription schedule を付ける**ため、同期は `subscription.schedule` があれば schedule を読み、次フェーズのPriceが現在と違い既知のプランなら `profiles.scheduled_plan` / `scheduled_plan_at` へ保存する（T-M8-260。schedule取得の失敗は記録して予約なしとして続け、契約本体の反映は止めない）。**予約が付いた契約はPortalで再変更できない**（Stripeがエラーを返す）ので、取り消しは Server Action `cancelScheduledPlanChangeAction`（要件05）が本人の契約の schedule を `release` して予約列を空にする。webhookが届く前でも画面から消えるように、解除直後にアプリ側でも空へ戻す。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
+Portal Configurationは`subscription_update.proration_behavior=create_prorations`により、値上げを**即時に切り替えつつ差額を日割り計算**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位。**`create_prorations` は日割り行を作るだけで即時請求はせず、次回更新日の請求書に合算される**——2026-08-23 実測。即時決済にするなら `always_invoice`）。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。**期間末予約は契約本体のPriceを変えず subscription schedule を付ける**ため、同期は `subscription.schedule` があれば schedule を読み、次フェーズのPriceが現在と違い既知のプランなら `profiles.scheduled_plan` / `scheduled_plan_at` へ保存する（T-M8-260。schedule取得の失敗は記録して**保存済みの予約を上書きせず**契約本体だけ反映する——失敗の空と正常の空を同じ null にしない。Portal からの戻り `/api/stripe/return` も同じく schedule を読む——読まないと予約を null で書き、後続の本物の webhook が stale 扱いになって予約が消える）。**Portal の実挙動（2026-08-23 テストモードの Portal を実ブラウザで操作して確認）**: Price が別 Product でも値下げは期間末予約の schedule（phases=[現在の期間, 新Priceが1秒]・`end_behavior=release`。切替後すぐ解除されて契約から外れる）になる。予約付きの契約でも Portal は別プランへの変更を受け付け、その場合は予約が置き換わる（上位なら即時）。**「今のプランのまま続ける（予約だけ取り消す）」は Portal に無い**ので、取り消しは Server Action `cancelScheduledPlanChangeAction`（要件05）が本人の契約の schedule を `release` して予約列を空にする。webhookが届く前でも画面から消えるように、解除直後にアプリ側でも空へ戻す。課金タブは予約中も「プランを変更」を出したまま、その隣に取り消しを置く。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
 
 | 変更 | 仕様 |
 |---|---|
@@ -259,7 +260,9 @@ reserveはjob開始時に1回だけ行い、**返還は失敗が確定したと�
 - 期間キーは`profiles.current_period_start`（Stripe subscription item の`current_period_start`を同期）の**JST日付`YYYY-MM-DD`**。列名は歴史的に`usage_events.month`／`usage_counters.month`のまま。SQL式の正本は`src/lib/usage/usage-period.ts`（`usagePeriodKeySql`／`currentUsagePeriodKey`）。
 - **未同期（`current_period_start`がnull）のあいだは従来のJST暦月`YYYY-MM`**で数える（後方互換。既存行の移行は行わず、切替後は各利用者の新しい期間キーの行が0から始まる＝利用者に不利にならない向き）。
 - 生成・画像はreserve時点、投稿はtweet_id成功時点の期間へ記録する。期間をまたいだrefund・settleは元reserveと同じ期間キーへ戻す（今期の残量は増えない）。80%/100%通知の重複判定（dedupe_key）も同じ期間キーを使う。
-- 上位への即時変更は期間を変えない（Stripeの請求サイクルも変わらない）ので、残り期間に新プランの上限が効く。期間末の下位変更・更新は新しい期間＝新上限で0から。**この遷移はStripeのテストクロックで実物検証する**（`npm run check:stripe-period`・`period-transition.live.test.ts`・T-M8-261。予約→取り消し→再予約→期間末越えで、plan・`current_period_start`・予約表示・利用枠の行を実DBで確認。テストモードの鍵でのみ動く）。
+- 上位への即時変更は期間を変えない（Stripeの請求サイクルも変わらない）ので、残り期間に新プランの上限が効く。期間末の下位変更・更新は新しい期間＝新上限で0から。
+- **トライアルも1つの契約期間**として数える（Stripe はトライアル中 `current_period_end = trial_end` とし、有料化の日に新しい期間を始めるため）。つまり7日間のトライアルに満額の枠があり、有料化の日にもう一度満額へ戻る。費用として許容するかは要決定D-36（暫定: 許容）。
+- **既存契約者の移行**: `current_period_start` は追加直後 null＝暦月で数え、画面のリセット日は「次回の更新日」と書く（日付を作らない）。`scheduler_tick` の日次処理「契約期間の補完」（要件04）が null の契約者を Stripe から読んで**期間の2列だけ**埋める（契約本体と event 時刻は触らない）ため、運営者の手順は不要で、切替は翌日までに揃う。切替の瞬間にその期間の使用量は0から数え直される（利用者に有利な向き・一度きり）。**この遷移はStripeのテストクロックで実物検証する**（`npm run check:stripe-period`・`period-transition.live.test.ts`・T-M8-261。予約→取り消し→再予約→期間末越えで、plan・`current_period_start`・予約表示・利用枠の行を実DBで確認。テストモードの鍵でのみ動く）。
 - 3 Xアカウント分をuser_idで合算し、繰り越さない。期間開始のreset jobは不要（キーが変わるだけ）。
 - **webhook未達で期間が更新されないとき**は前の期間キーのまま数え続ける（勝手にリセットされない）。実行そのものは期限切れ判定（§2「期限切れの実行停止」・`isSubscriptionPeriodStale`・T-M8-235）が止める。
 - 運営者向けの費用集計（doctor・運営者アラート・日次サマリの「今月かかった費用」）は**会計に合わせてJST暦月のまま**（`external_api_usage_events.occurred_at`ベース。利用枠とは別物）。
@@ -392,3 +395,9 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.53 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
 | v1.54 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
 | v1.55 | 2026-08-23 | 期間末の下位変更のテストクロック実物検証（check:stripe-period・T-M8-261） |
+| v1.56 | 2026-08-23 | 期間末の下位変更のテストクロック実物検証（check:stripe-period・T-M8-261） |
+| v1.57 | 2026-08-23 | 期間末の下位変更のテストクロック実物検証（check:stripe-period・T-M8-261） |
+| v1.58 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.59 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
+| v1.60 | 2026-08-23 | 期間末の下位変更のテストクロック実物検証（check:stripe-period・T-M8-261） |
+| v1.61 | 2026-08-23 | レビュー反映: Portal の実挙動（別Productでも期間末予約・予約付きでも変更可）、schedule を読めない回は予約を上書きしない、return 経路も schedule を読む、トライアルは独立した期間、既存契約者の補完（T-M8-258/260） |

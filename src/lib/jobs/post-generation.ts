@@ -22,7 +22,7 @@ import {
   fetchNewsDigest,
   fetchRecentPostBodies,
 } from "../ai/gen-context";
-import { AppError } from "@/lib/observability/errors";
+import { AppError, userMessageForCode } from "@/lib/observability/errors";
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
 
 import { genOutputSchema } from "../ai/gen-output";
@@ -306,7 +306,7 @@ export async function executePostGeneration(
 
   const failCtx = { jobId, userId: job.user_id, xAccountId: job.x_account_id };
 
-  // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
+  // premium は文章生成の開始時に生成枠を +1 reserve（契約期間ごとの上限確認・冪等。BYOK/standard/mdは消費しない）。
   // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
   {
     try {
@@ -332,7 +332,8 @@ export async function executePostGeneration(
         await persistFailure(
           db,
           failCtx,
-          { code: "usage_limit_exceeded", message: "今月の生成上限に達しています。翌月まで自動生成をご利用いただけません。", stage: "validating" },
+          // 文言は errors.ts の既定文と同じ（利用枠は契約期間ごと・T-M8-258）。
+          { code: "usage_limit_exceeded", message: userMessageForCode("usage_limit_exceeded"), stage: "validating" },
           EMPTY_USAGE,
         );
         throw new PostGenerationTerminalError("usage_limit_exceeded", "generation limit reached");

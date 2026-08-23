@@ -352,7 +352,7 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
 | 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**SupabaseのカスタムSMTPと差出人名**（`price-status`と同じ注入で読み取り・T-M8-136）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`）、**Stripeアカウントが実際に本番決済を受け付けられるか**（`stripe-account-status.ts`＝アプリからは何も見えず、鍵もPriceも正しいのに決済だけ失敗する・T-M8-148）、**デプロイ先が実際に使っている設定値**（`config-status.ts`＝既定値を持つ設定は欠けても起動するため起動時検証では気付けない。`X_POSTING_MODE` が既定の `dry_run` のままだった・T-M8-147） | X Developer App のcallback URL・X Developer App のcallback URL（APIで読めない）。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
-内訳: `src` 配下のテストファイル262本 = 単体191 ＋ `*.db.test.ts` 69 ＋ 実API `*.live.test.ts` 3（provider契約2・Stripe期間遷移1）。`npm test` の結果は 2,291 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-20 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
+内訳: `src` 配下のテストファイル277本 = 単体202 ＋ `*.db.test.ts` 72 ＋ 実API `*.live.test.ts` 3（provider契約2・Stripe期間遷移1）。`npm test` の結果は 2,291 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-20 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
 
 ### 層5と層6は別物（第1部§4で2種類あると書いた理由）
 

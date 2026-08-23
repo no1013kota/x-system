@@ -106,7 +106,7 @@ export default function CommercialTransactionsPage() {
   ];
 
   return (
-    <LegalDocument title="特定商取引法に基づく表記" updatedLabel="最終更新: 2026年8月8日">
+    <LegalDocument title="特定商取引法に基づく表記" updatedLabel="最終更新: 2026年8月23日">
       <p>
         特定商取引法第11条（通信販売についての広告）に基づき、次のとおり表示します。
       </p>

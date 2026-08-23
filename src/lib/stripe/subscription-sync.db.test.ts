@@ -136,6 +136,7 @@ describe("Stripe subscription synchronization transaction", () => {
         cancelAtPeriodEnd: false,
         scheduledPlan: null,
         scheduledPlanAt: null,
+        scheduleUnavailable: false,
         currentPeriodEnd: 1_785_279_600,
         currentPeriodStart: 1_785_279_600 - 2_592_000,
         customerId: "cus_sync",
@@ -181,6 +182,7 @@ describe("Stripe subscription synchronization transaction", () => {
         cancelAtPeriodEnd: true,
         scheduledPlan: null,
         scheduledPlanAt: null,
+        scheduleUnavailable: false,
         currentPeriodEnd: 1_785_000_000,
         currentPeriodStart: 1_785_000_000 - 2_592_000,
         customerId: "cus_sync",
@@ -207,6 +209,7 @@ describe("Stripe subscription synchronization transaction", () => {
         cancelAtPeriodEnd: true,
         scheduledPlan: null,
         scheduledPlanAt: null,
+        scheduleUnavailable: false,
         currentPeriodEnd: 1_787_000_000,
         currentPeriodStart: 1_787_000_000 - 2_592_000,
         customerId: "cus_sync",
@@ -237,6 +240,7 @@ describe("Stripe subscription synchronization transaction", () => {
       cancelAtPeriodEnd: false,
       scheduledPlan: null,
       scheduledPlanAt: null,
+      scheduleUnavailable: false,
       currentPeriodEnd: 1_787_100_000,
       currentPeriodStart: 1_787_100_000 - 2_592_000,
       customerId: "cus_sync",
@@ -345,6 +349,7 @@ describe("Stripe subscription synchronization transaction", () => {
         cancelAtPeriodEnd: false,
         scheduledPlan: null,
         scheduledPlanAt: null,
+        scheduleUnavailable: false,
         currentPeriodEnd: 1_788_000_000,
         currentPeriodStart: 1_788_000_000 - 2_592_000,
         customerId: "cus_missing",
@@ -408,6 +413,7 @@ describe("Stripe subscription synchronization transaction", () => {
       cancelAtPeriodEnd: false,
       scheduledPlan: null,
       scheduledPlanAt: null,
+      scheduleUnavailable: false,
       currentPeriodEnd: eventCreated + 2_592_000,
       currentPeriodStart: eventCreated,
       customerId: "cus_aff_referred",
@@ -549,6 +555,7 @@ describe("Stripe subscription synchronization transaction", () => {
       cancelAtPeriodEnd: false,
       scheduledPlan: null,
       scheduledPlanAt: null,
+      scheduleUnavailable: false,
       currentPeriodEnd: eventCreated + 2_592_000,
       currentPeriodStart: eventCreated,
       customerId: "cus_stale_referred",
@@ -621,6 +628,7 @@ describe("Stripe subscription synchronization transaction", () => {
       cancelAtPeriodEnd: false,
       scheduledPlan: "standard",
       scheduledPlanAt: 1_785_279_600,
+      scheduleUnavailable: false,
       currentPeriodEnd: 1_785_279_600,
       currentPeriodStart: 1_785_279_600 - 2_592_000,
       customerId: "cus_sched",
@@ -641,6 +649,33 @@ describe("Stripe subscription synchronization transaction", () => {
         )
         .then((r) => r.rows[0]);
     expect(await read()).toEqual({ scheduled_plan: "standard", scheduled_plan_at: new Date(1_785_279_600 * 1000) });
+
+    // schedule を読めなかった同期は保存済みの予約を残す（失敗の空で正常の空を上書きしない・原則1）。
+    await expect(
+      applyPreparedStripeEvent(activeDatabase, {
+        kind: "subscription_sync",
+        eventType: "customer.subscription.updated",
+        projection: { ...base, eventCreated: base.eventCreated + 1, scheduledPlan: null, scheduledPlanAt: null, scheduleUnavailable: true },
+      }),
+    ).resolves.toBe("updated");
+    expect(await read(), "読めなかった回は上書きしない").toEqual({ scheduled_plan: "standard", scheduled_plan_at: new Date(1_785_279_600 * 1000) });
+    // 読めて「予約なし」なら消す。
+    await expect(
+      applyPreparedStripeEvent(activeDatabase, {
+        kind: "subscription_sync",
+        eventType: "customer.subscription.updated",
+        projection: { ...base, eventCreated: base.eventCreated + 2, scheduledPlan: null, scheduledPlanAt: null, scheduleUnavailable: false },
+      }),
+    ).resolves.toBe("updated");
+    expect(await read()).toEqual({ scheduled_plan: null, scheduled_plan_at: null });
+    // 以降の取り消しの検証のため予約を戻す。
+    await expect(
+      applyPreparedStripeEvent(activeDatabase, {
+        kind: "subscription_sync",
+        eventType: "customer.subscription.updated",
+        projection: { ...base, eventCreated: base.eventCreated + 3 },
+      }),
+    ).resolves.toBe("updated");
 
     // 取り消し: Stripe の schedule を解除し、profiles の予約を消す。本人の契約IDを profiles から取る。
     const released: string[] = [];

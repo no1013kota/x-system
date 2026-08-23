@@ -291,6 +291,19 @@ describe("Stripe subscription synchronization", () => {
   });
 });
 
+describe("current_period_start projection (T-M8-258)", () => {
+  it("reads the period start from the item and rejects an invalid one", () => {
+    const ok = subscriptionProjection(event("customer.subscription.updated", {}), subscription(), priceIds);
+    expect(ok.currentPeriodStart).toBe(1_784_674_800);
+    const item = (over: object) =>
+      subscription({
+        items: { object: "list", data: [{ current_period_end: 1_785_279_600, current_period_start: 1_784_674_800, price: { id: "price_expert" }, ...over } as Stripe.SubscriptionItem], has_more: false, url: "" },
+      } as never);
+    expect(() => subscriptionProjection(event("customer.subscription.updated", {}), item({ current_period_start: undefined }), priceIds)).toThrow(/period start/);
+    expect(() => subscriptionProjection(event("customer.subscription.updated", {}), item({ current_period_start: 1_785_279_601 }), priceIds), "開始が終了より後").toThrow(/period start/);
+  });
+});
+
 /**
  * 予約済みの下位変更（subscription schedule・T-M8-260）。
  * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
@@ -384,6 +397,26 @@ describe("scheduled plan change (subscription schedule)", () => {
     if (failing.kind === "subscription_sync") {
       expect(failing.projection.plan, "契約本体の同期は止めない").toBe("expert");
       expect(failing.projection.scheduledPlan).toBeNull();
+      expect(failing.projection.scheduleUnavailable, "読めなかった回は保存済みの予約を上書きしない").toBe(true);
+    }
+
+    // gateway が schedule を読めない（billing-return の旧形）ときも「読めなかった」扱い。
+    const noGateway = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      gateway(async () => withSchedule),
+      priceIds,
+    );
+    if (noGateway.kind === "subscription_sync") expect(noGateway.projection.scheduleUnavailable).toBe(true);
+
+    // schedule が付いていない契約は「予約なし」（上書きしてよい）。
+    const plain = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      gateway(async () => subscription({ status: "active" })),
+      priceIds,
+    );
+    if (plain.kind === "subscription_sync") {
+      expect(plain.projection.scheduleUnavailable).toBe(false);
+      expect(plain.projection.scheduledPlan).toBeNull();
     }
   });
 });

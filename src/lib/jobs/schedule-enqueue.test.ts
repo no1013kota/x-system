@@ -66,7 +66,8 @@ function dueSlot(over: Partial<Row> = {}): Row {
     subscription_status: "active",
     ai_purpose_config: { text: "anthropic" },
     jst_date: "2026-07-24",
-    jst_month: "2026-07",
+    // 利用枠の期間キー（契約期間の開始日・T-M8-258）。
+    usage_period: "2026-07-15",
     ...over,
   };
 }
@@ -156,6 +157,12 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
         rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 1000 }],
       }),
     });
+  });
+  it("reads the budget row by the subscription-period key, not a calendar month (T-M8-258)", async () => {
+    const { db, writes } = makeDb(handlerFor(dueSlot({ plan: "premium" })));
+    await enqueueDueSlots(deps(db));
+    const budget = writes.find((w) => BUDGET.test(w.sql));
+    expect(budget?.params).toEqual(["u1", "2026-07-15"]);
   });
   it("skips premium auto when the normal post budget is exhausted", async () => {
     await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {

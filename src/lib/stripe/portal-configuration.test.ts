@@ -126,7 +126,7 @@ describe("PRODUCT_NAMES はアプリの表示名と1対1", () => {
 
 /**
  * Stripe側の商品説明はPortalの「プランを変更」画面にそのまま出る（T-M8-65）。
- * 数字（アカウント数・月間上限）を書き写しているので、`plans.ts` を変えたら
+ * 数字（アカウント数・利用上限）を書き写しているので、`plans.ts` を変えたら
  * ここで落ちて追随を強制する。
  */
 describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () => {
@@ -145,7 +145,7 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
     );
   });
 
-  it("プレミアムの月間上限が plans.ts と一致する", () => {
+  it("プレミアムの利用上限（契約期間ごと）が plans.ts と一致する", () => {
     const limits = PLANS.premium.usageLimits;
     expect(limits).not.toBeNull();
     expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain(
@@ -163,7 +163,8 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
    */
   it("廃止した呼び名・旧仕様が説明に残っていない", () => {
     for (const [key, text] of Object.entries(PRODUCT_DESCRIPTIONS)) {
-      for (const stale of ["ベースmd", "ベース.md", "発信設定", "文章生成", "画像生成枠", "生成枠"]) {
+      // 「月間」は T-M8-258 で契約期間ごとへ変わった（Portal・Checkout・請求書に出る文言）。
+      for (const stale of ["ベースmd", "ベース.md", "発信設定", "文章生成", "画像生成枠", "生成枠", "月間"]) {
         expect(text, `${key} に廃止した表現「${stale}」が残っている`).not.toContain(stale);
       }
     }

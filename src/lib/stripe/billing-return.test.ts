@@ -146,4 +146,41 @@ describe("billing return reconciliation", () => {
     ).resolves.toBe("skipped");
     expect(deps.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
   });
+
+  /**
+   * Portal で下位変更を予約した直後の戻りは本物の webhook より先に着く。ここで schedule を読まないと
+   * 予約を null で書き、後続の webhook が stale 扱いになって予約が画面に出ない（レビュー指摘・T-M8-260）。
+   */
+  it("reads the subscription schedule on a portal return so the reservation is not overwritten", async () => {
+    const withSchedule = { ...subscription(), schedule: "sub_sched_1" } as Stripe.Subscription;
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => withSchedule);
+    deps.stripe.subscriptionSchedules = {
+      retrieve: vi.fn(async () =>
+        ({
+          id: "sub_sched_1",
+          status: "active",
+          phases: [
+            { start_date: STARTED_AT - 86_400, end_date: STARTED_AT + 86_400, items: [{ price: "price_standard" }] },
+            { start_date: STARTED_AT + 86_400, end_date: STARTED_AT + 86_401, items: [{ price: "price_premium" }] },
+          ],
+        }) as unknown as Stripe.SubscriptionSchedule,
+      ),
+    };
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    const applied = vi.mocked(deps.applyProjection).mock.calls[0][0];
+    expect(applied.scheduledPlan).toBe("premium");
+    expect(applied.scheduledPlanAt).toBe(STARTED_AT + 86_400);
+    expect(applied.scheduleUnavailable).toBe(false);
+
+    // gateway が schedule を読めない形なら「読めなかった」として保存済みの予約を守る。
+    delete deps.stripe.subscriptionSchedules;
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    expect(vi.mocked(deps.applyProjection).mock.calls[1][0].scheduleUnavailable).toBe(true);
+  });
 });

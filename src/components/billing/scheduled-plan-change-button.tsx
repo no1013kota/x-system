@@ -10,8 +10,8 @@ import { useToast } from "@/components/ui/toast";
 /**
  * 予約済みの下位プラン変更の取り消し（T-M8-260）。
  *
- * 予約が付いた契約は Stripe Portal で再変更できないため、「やっぱり今のプランのまま」を
- * ここで完結させる。取り消しは Stripe の schedule を解除するだけで、請求は発生しない。
+ * Stripe Portal には「今のプランのまま続ける（予約だけ取り消す）」が無いため、ここで完結させる。
+ * 取り消しは Stripe の schedule を解除するだけで、請求は発生しない。
  */
 export function CancelScheduledPlanChangeButton({ description }: { description: string }) {
   const [pending, startTransition] = useTransition();

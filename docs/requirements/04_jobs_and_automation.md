@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.54 |
+| バージョン | v1.56 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -333,6 +333,8 @@ flowchart TD
 | v1.52 | 2026-08-23 | follower_snapshotを毎時10分→毎時00分へ（T-M8-262・運営者の指示。tokenのrefreshは行leaseで直列化されるためmetrics_collectorと同時刻でも競合しない） |
 | v1.53 | 2026-08-23 | 契約ガードを実行直前（leaseJob）にも置く（§4.1・T-M8-267）。解約後にAI生成・画像生成・X投稿が実行される6経路を監査で検出し、日時予約起票・metrics_collector・retry・学習ソース削除のゲートも追加 |
 | v1.54 | 2026-08-23 | 利用枠counterの「月次」を契約期間ごとへ（T-M8-258） |
+| v1.55 | 2026-08-23 | 利用枠counterの「月次」を契約期間ごとへ（T-M8-258） |
+| v1.56 | 2026-08-23 | scheduler_tick の日次処理に「契約期間の補完」を追加（T-M8-258・レビュー反映） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 
@@ -349,6 +351,10 @@ flowchart TD
 - **毎日1回**（`settle:{JST日付}`）: 確認期間（30日）を過ぎた報酬を `pending`→`payable` へ。
 - **毎月1回**（`payout:{前月YYYY-MM}`）: 前月締めのPayoutを作成（月末締め・翌月末支払・手数料¥980・最低¥5,000。詳細は要件03「招待プログラム」と正本 docs/cp/invite_cp.md）。二重作成は `unique (affiliate_account_id, period_start)` でも塞ぐ。
 - 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
+
+### 契約期間の補完（T-M8-258）
+
+`scheduler_tick` に相乗りし、1日1回（`cron_runs` の `(job_name='subscription_period_backfill', window_key=JST日付)`）、`profiles.current_period_start` が null で `stripe_subscription_id` を持つ契約中（trialing/active/past_due/unpaid/paused）の利用者を最大50件、Stripe の `subscriptions.retrieve` で読んで `current_period_start`／`current_period_end` の**2列だけ**埋める（`src/lib/stripe/period-backfill.ts`）。契約本体（plan/status）と `subscription_event_created_at` は触らない（投影全体を適用すると後続の webhook が stale になる）。読めなかった契約者は記録（Sentry `period-backfill`）して翌日に再試行。未注入（テスト・ローカル）では動かない。
 
 ### 運営者への状態メール（T-M8-164）
 

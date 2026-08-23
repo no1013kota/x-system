@@ -39,8 +39,9 @@ export function PortalButton({
   enabled: boolean;
   /**
    * 期間末で切り替わる下位プランの予約が付いているときの説明文（T-M8-260）。
-   * 予約が付いた契約は Portal で再変更できない（Stripeがエラーを出す）ので、
-   * 「プランを変更」の代わりに予約の取り消しを出す。
+   * Portal は予約付きの契約でも別プランへの変更を受け付ける（その場合は予約が置き換わる。
+   * 2026-08-23 テストモードで実測）が、「今のプランのまま続ける」は Portal に無いので、
+   * 取り消しボタンをアプリ側で「プランを変更」の隣に出す。
    */
   scheduledChange?: string | null;
 }) {
@@ -84,21 +85,18 @@ export function PortalButton({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {scheduledChange ? (
-          <CancelScheduledPlanChangeButton description={scheduledChange} />
-        ) : (
-          <Button
-            aria-busy={pending === "update"}
-            className="h-9"
-            disabled={pending !== null}
-            onClick={open("update")}
-            size="lg"
-            type="button"
-            variant="brand"
-          >
-            {pending === "update" ? "開いています…" : "プランを変更"}
-          </Button>
-        )}
+        {scheduledChange ? <CancelScheduledPlanChangeButton description={scheduledChange} /> : null}
+        <Button
+          aria-busy={pending === "update"}
+          className="h-9"
+          disabled={pending !== null}
+          onClick={open("update")}
+          size="lg"
+          type="button"
+          variant={scheduledChange ? "outline" : "brand"}
+        >
+          {pending === "update" ? "開いています…" : "プランを変更"}
+        </Button>
         {cancelAtPeriodEnd ? (
           <Button
             aria-busy={pending === "manage"}
@@ -136,13 +134,8 @@ export function PortalButton({
         <ul className="grid gap-1.5 rounded-card border border-hairline bg-page px-4 py-3 text-body leading-6" role="list">
           {(
             [
-              // 予約が付いているあいだはプラン変更が行えないので、変更の説明は出さない（T-M8-260）。
-              ...(scheduledChange
-                ? []
-                : ([
-                    ["上位プランへ変更", effects.upgrade],
-                    ["下位プランへ変更", effects.downgrade],
-                  ] as const)),
+              ["上位プランへ変更", effects.upgrade],
+              ["下位プランへ変更", effects.downgrade],
               ["解約", effects.cancel],
               ...(effects.trialNote ? [["トライアル中の変更", effects.trialNote] as const] : []),
             ] as const

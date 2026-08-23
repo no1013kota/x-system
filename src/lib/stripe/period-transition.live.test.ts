@@ -24,7 +24,9 @@ import { applyPreparedStripeEvent, prepareStripeEvent } from "./subscription-syn
  *
  * Stripe の **テストクロック**で「プレミアム契約 → 期間末にスタンダードへ下位変更を予約 → 取り消し →
  * 再予約 → 期間末を越える」を流し、webhook と同じ同期関数（prepareStripeEvent / applyPreparedStripeEvent）を
- * 実DBへ通す。見るもの:
+ * 実DBへ通す。予約の schedule は **Portal が実際に作る形**（2026-08-23 テストモードの Portal を
+ * 実ブラウザで操作して観測: phases=[現在の期間, 新Priceが1秒], end_behavior=release。別Productの
+ * Price 間でも期間末予約になった）に合わせて API で作る。見るもの:
  * - 予約が `scheduled_plan` / `scheduled_plan_at` に載り、取り消し（schedule release）で消える
  * - 期間末を越えると plan が standard・`current_period_start` が新期間・予約表示が消える
  * - 利用枠が新しい期間キーで 0 から始まる（前期間の reserve は前期間の行に残る）
@@ -179,9 +181,10 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
               start_date: schedule.phases[0].start_date,
               end_date: schedule.phases[0].end_date,
             },
+            // Portal と同じく新Priceのフェーズは1秒で終わり、schedule は release されて契約から外れる。
             {
               items: [{ price: PRICES.standard, quantity: 1 }],
-              duration: { interval: "month", interval_count: 1 },
+              end_date: schedule.phases[0].end_date + 1,
             },
           ],
         });
@@ -212,6 +215,7 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
       await waitForClock(stripe, clock.id);
       const renewed = await stripe.subscriptions.retrieve(created.id);
       expect(renewed.items.data[0].price.id, "Stripe 側で下位の Price へ切り替わっている").toBe(PRICES.standard);
+      expect(renewed.schedule, "効いた予約の schedule は契約から外れている（release）").toBeNull();
       expect(await sync(created.id, Math.floor(periodEnd1.getTime() / 1000) + 3_601)).toBe("updated");
       const p3 = await profile();
       expect(p3.plan).toBe("standard");

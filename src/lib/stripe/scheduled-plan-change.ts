@@ -5,9 +5,9 @@ import { recordUnexpectedError } from "@/lib/observability/sentry";
  * 予約済みの下位プラン変更の取り消し（T-M8-260）。
  *
  * Portalで下位プランを選ぶと Stripe は契約本体を変えず **subscription schedule** を付ける。
- * 予約が付いた契約は Portal で再変更できない（Stripeがエラーを返す・要件03 §2.2）ため、
- * 「やっぱり今のプランのままにする」の経路が運営者のダッシュボード作業になっていた。
- * ここで schedule を release（解除）して、契約を今のフェーズのまま続ける。
+ * Portal は予約付きでも別プランへの変更は受け付ける（予約は置き換わる）が、
+ * 「やっぱり今のプランのままにする」だけは Portal に無く、運営者のダッシュボード作業になっていた。
+ * ここで schedule を release（解除）して、契約を今のフェーズのまま続ける（要件03 §2.2）。
  *
  * 本人の契約だけを対象にする（`stripe_subscription_id` は profiles から取り、入力からは受けない）。
  */

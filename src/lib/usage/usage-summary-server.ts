@@ -32,7 +32,9 @@ export async function loadUsageSummary(
     `select coalesce(c.normal_posts_count, 0) as normal_posts_count,
             coalesce(c.url_posts_count, 0) as url_posts_count,
             coalesce(c.ai_credits_used, 0) as ai_credits_used,
-            p.current_period_end::text as resets_at
+            -- リセット日は期間が同期済み（期間キーが契約期間）のときだけ。未同期は暦月で数えているので
+            -- 更新日を出すと実際のリセットと食い違う（レビュー指摘）。
+            case when p.current_period_start is null then null else p.current_period_end end::text as resets_at
        from profiles p
        left join usage_counters c
          on c.user_id = p.id and c.month = ${usagePeriodKeySql("$1")}

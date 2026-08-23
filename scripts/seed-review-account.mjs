@@ -204,6 +204,8 @@ async function main() {
     await client.query(
       `update profiles
           set plan = 'premium', subscription_status = 'trialing',
+              -- 利用枠の期間キーの元（T-M8-258）。無いと暦月で数える後方互換に落ちる。
+              current_period_start = now(),
               current_period_end = coalesce($2::timestamptz, now() + interval '7 days'),
               trial_ends_at = coalesce($2::timestamptz, now() + interval '7 days'),
               stripe_customer_id = $3,

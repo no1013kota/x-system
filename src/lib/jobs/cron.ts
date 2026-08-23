@@ -104,6 +104,8 @@ export interface SchedulerTickResult {
   operatorAlert: OperatorAlertResult;
   /** 招待報酬の確定（1日1回）と月次Payout（月1回）の結果（T-M8-174）。 */
   affiliate: { settled: number; payoutsCreated: number };
+  /** 契約期間の補完（1日1回・T-M8-258）。未注入・実行済みなら null。 */
+  periodBackfill: { checked: number; updated: number; failed: number } | null;
 }
 
 /**
@@ -144,6 +146,13 @@ export async function runSchedulerTick(
         work: (db: AffiliateBatchDb) => Promise<T>,
       ) => Promise<T | null>;
     }) => Promise<{ settled: number; payoutsCreated: number }>;
+    /**
+     * 契約期間（`current_period_start`）が未同期の契約者を Stripe から埋める（T-M8-258 の移行）。
+     * **未注入なら動かない**（テスト・ローカル）。実体は route が渡す。1日1回。
+     */
+    runPeriodBackfill?: (deps: {
+      claimDay: (windowKey: string) => Promise<boolean>;
+    }) => Promise<{ checked: number; updated: number; failed: number } | null>;
   } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
@@ -246,6 +255,30 @@ export async function runSchedulerTick(
         })
     : { settled: 0, payoutsCreated: 0 };
 
+  /*
+    (3-d) 契約期間の補完（T-M8-258）。`current_period_start` が null の契約者を Stripe から埋める。
+    運営者の再同期コマンドに頼らない（原則3）。1日1回・失敗しても tick は止めない。
+  */
+  const periodBackfill = opts.runPeriodBackfill
+    ? await opts
+        .runPeriodBackfill({
+          claimDay: (windowKey) =>
+            withTransaction(async (client) => {
+              const res = await client.query(
+                `insert into cron_runs (job_name, window_key)
+                 values ('subscription_period_backfill', $1)
+                 on conflict (job_name, window_key) do nothing`,
+                [windowKey],
+              );
+              return (res.rowCount ?? 0) > 0;
+            }),
+        })
+        .catch((err) => {
+          opts.onCleanupError?.("subscription_period_backfill", err);
+          return null;
+        })
+    : null;
+
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
@@ -290,6 +323,7 @@ export async function runSchedulerTick(
   return {
     operatorAlert,
     affiliate,
+    periodBackfill,
     scheduledDrafts,
     scheduleRecovered,
     enqueued,

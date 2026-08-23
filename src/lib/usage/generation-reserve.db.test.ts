@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { AppError } from "../observability/errors";
-import { refundUsage, reserveUsage } from "./generation-reserve";
+import { refundUsage, reserveUsage, settleUsage } from "./generation-reserve";
 
 /**
  * DB integration tests for generation/image reserve & refund (T-M5-03, 要件03 §7.1〜§7.4).
@@ -287,6 +287,18 @@ describe("reserveUsage / refundUsage (db)", () => {
         { month: "2026-07-15", ai_credits_used: 0 },
         { month: "2026-08-15", ai_credits_used: 16 },
       ]);
+
+      // 期間をまたいだ精算（settle）も元reserveの期間へ（今期には触らない）。
+      const job3 = await makeJob(xid);
+      await setPeriod("2026-07-14T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job3, type: "generation", limit: 1000, amount: 16 }));
+      await setPeriod("2026-08-14T15:00:00Z");
+      await withTransaction((c) => settleUsage(c, { jobId: job3, type: "generation", actualCredits: 40 }));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 40 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [job3]));
     } finally {
       await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [[job1, job2]]));
       await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));

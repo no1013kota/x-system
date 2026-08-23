@@ -200,7 +200,7 @@ export function subscriptionBannerFor(
     };
   }
   /*
-    **下位プランへの予約も知らせる**（T-M8-260）。予約は Portal で再変更できないため、
+    **下位プランへの予約も知らせる**（T-M8-260）。「今のプランのまま続ける」は Portal に無く、
     取り消したい人が行き先を探すことになる。設定の課金タブに取り消しがある。
   */
   if (profile.scheduledPlanChange && (status === "active" || status === "trialing")) {

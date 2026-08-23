@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.60 |
+| バージョン | v1.62 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -34,7 +34,7 @@
   "ok": false,
   "error": {
     "code": "usage_limit_exceeded",
-    "message": "今月の利用上限に達しています。",
+    "message": "今の契約期間の利用上限に達しています。次回の更新日にリセットされます。",
     "details": {}
   }
 }
@@ -350,6 +350,8 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.58 | 2026-08-23 | `/api/cron/follower-snapshot` を復活（T-M8-257・契約が有効な利用者のみ）。分析はボタンのまま |
 | v1.59 | 2026-08-23 | `POST /api/stripe/resume`（解約済み契約の再開）を追加（T-M8-264） |
 | v1.60 | 2026-08-23 | cancelScheduledPlanChangeAction（予約済み下位変更の取り消し・T-M8-260） |
+| v1.61 | 2026-08-23 | cancelScheduledPlanChangeAction（予約済み下位変更の取り消し・T-M8-260） |
+| v1.62 | 2026-08-23 | 失敗例の usage_limit_exceeded 文言を契約期間ごとへ（T-M8-258） |
 
 ### 下書きの投稿予約（T-M8-157）
 

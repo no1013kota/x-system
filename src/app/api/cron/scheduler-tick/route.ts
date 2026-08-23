@@ -42,6 +42,17 @@ export async function GET(request: Request): Promise<Response> {
           const { runAffiliateBatch } = await import("@/lib/affiliate/cron-server");
           return runAffiliateBatch({ claimTx, nowIso: new Date().toISOString() });
         },
+        // 契約期間の補完（T-M8-258）。null の契約者だけを Stripe から読む（1日1回・最大50件）。
+        runPeriodBackfill: async ({ claimDay }) => {
+          const jstDay = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+          if (!(await claimDay(jstDay))) return null;
+          const [{ backfillSubscriptionPeriods }, { stripe }, { pooledQueryable }] = await Promise.all([
+            import("@/lib/stripe/period-backfill"),
+            import("@/lib/stripe/client"),
+            import("@/lib/db/pool"),
+          ]);
+          return backfillSubscriptionPeriods({ db: pooledQueryable(), stripe, limit: 50 });
+        },
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>
           console.error(`[scheduler_tick cleanup] ${scope}`, err),

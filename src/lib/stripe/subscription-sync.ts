@@ -57,6 +57,12 @@ export interface SubscriptionProjection {
   scheduledPlan: PlanId | null;
   /** 予約が効く日時（epoch秒）。`scheduledPlan` とセット。 */
   scheduledPlanAt: number | null;
+  /**
+   * 契約に schedule が付いているのに読めなかった（取得失敗・gateway が未対応）。true のときは
+   * **保存済みの予約を上書きしない**——失敗の空と正常の空を同じ null にすると、取得が1回失敗しただけで
+   * 画面の予約表示と取り消しボタンが消える（CLAUDE.md 原則1）。
+   */
+  scheduleUnavailable: boolean;
   customerId: string;
   eventCreated: number;
   plan: PlanId;
@@ -286,12 +292,15 @@ export function scheduledPlanFromSchedule(
   return { plan: entry[0] as PlanId, at: upcoming.start_date };
 }
 
+/** `loadSchedule` の結果。`"unavailable"` は schedule が付いているのに読めなかった状態。 */
+export type LoadedSchedule = Stripe.SubscriptionSchedule | null | "unavailable";
+
 export function subscriptionProjection(
   event: Stripe.Event,
   subscription: Stripe.Subscription,
   priceIds: Record<PlanId, string>,
   forceCanceled = false,
-  schedule?: Stripe.SubscriptionSchedule | null,
+  schedule?: LoadedSchedule,
 ): SubscriptionProjection {
   const items = subscription.items?.data ?? [];
   const priceId = items.length === 1 ? items[0].price?.id : null;
@@ -321,8 +330,10 @@ export function subscriptionProjection(
     throw new StripeSubscriptionSyncError("Subscription status is unsupported.");
   }
   // 解約・解約済みでは予約を持たない（期間末に契約自体が終わる）。
+  const canceled = forceCanceled || status === "canceled";
+  const scheduleUnavailable = !canceled && schedule === "unavailable";
   const scheduled =
-    forceCanceled || status === "canceled"
+    canceled || schedule === "unavailable"
       ? null
       : scheduledPlanFromSchedule(schedule, priceId, priceIds, event.created);
 
@@ -337,6 +348,7 @@ export function subscriptionProjection(
     customerId,
     scheduledPlan: scheduled?.plan ?? null,
     scheduledPlanAt: scheduled?.at ?? null,
+    scheduleUnavailable,
     eventCreated: event.created,
     plan: planEntry[0] as PlanId,
     status: status as SubscriptionStatus,
@@ -438,21 +450,25 @@ export async function prepareStripeEvent(
 }
 
 /**
- * 契約に schedule が付いていれば取りに行く（T-M8-260）。無ければ null。
- * 取得に失敗しても同期全体は止めない——予約の表示が1回遅れるだけで、
- * 契約状態の反映（plan/status）の方が重要。失敗は記録に残す。
+ * 契約に schedule が付いていれば取りに行く（T-M8-260）。付いていなければ null。
+ * 付いているのに読めない（取得失敗・gateway が schedule 未対応）ときは `"unavailable"` を返し、
+ * 投影は**保存済みの予約を上書きしない**。同期全体は止めない——契約状態の反映（plan/status）の方が重要で、
+ * 予約の表示は次のイベントで追いつく。失敗は記録に残す。
+ * Portal からの戻り（billing-return）も同じ関数で schedule を読む（読まないと予約を null で上書きし、
+ * 後続の本物の webhook が stale 扱いになって予約が消える）。
  */
-async function loadSchedule(
-  stripe: StripeSubscriptionGateway,
+export async function loadSchedule(
+  stripe: Pick<StripeSubscriptionGateway, "subscriptionSchedules">,
   subscription: Stripe.Subscription,
-): Promise<Stripe.SubscriptionSchedule | null> {
+): Promise<LoadedSchedule> {
   const scheduleId = expandedId(subscription.schedule ?? null);
-  if (!scheduleId || !stripe.subscriptionSchedules) return null;
+  if (!scheduleId) return null;
+  if (!stripe.subscriptionSchedules) return "unavailable";
   try {
     return await stripe.subscriptionSchedules.retrieve(scheduleId);
   } catch (error) {
     recordUnexpectedError(error, { at: "stripe-sync:schedule", subscriptionId: subscription.id });
-    return null;
+    return "unavailable";
   }
 }
 
@@ -663,8 +679,13 @@ export async function applyPreparedStripeEvent(
             stripe_customer_id = $7,
             stripe_subscription_id = $8,
             subscription_event_created_at = to_timestamp($9),
-            scheduled_plan = $11::plan_type,
-            scheduled_plan_at = case when $12::bigint is null then null else to_timestamp($12) end,
+            -- 予約は schedule を読めたときだけ更新する（読めなかった回は保存済みの値を残す・T-M8-260）。
+            scheduled_plan = case when $14::boolean then scheduled_plan else $11::plan_type end,
+            scheduled_plan_at = case
+              when $14::boolean then scheduled_plan_at
+              when $12::bigint is null then null
+              else to_timestamp($12)
+            end,
             current_period_start = to_timestamp($13),
             trial_used_at = case
               when $3::subscription_status = 'trialing' then coalesce(
@@ -689,6 +710,7 @@ export async function applyPreparedStripeEvent(
       projection.scheduledPlan,
       projection.scheduledPlanAt,
       projection.currentPeriodStart,
+      projection.scheduleUnavailable,
     ],
   );
 

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.63 |
+| バージョン | v1.64 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -399,7 +399,7 @@ RLS: 本人select可。writeはServer only。
 
 PK: (`user_id`, `month`)
 
-Constraints: month形式、各countは0以上。X投稿のDB上限は**最大プラン（expert）の月次枠**（`normal_posts_count <= 1000`、`url_posts_count <= 100`。migration `20260822000003`・T-M8-196。プラン別の上限実施はアプリ側ゲートが正で、制約は破損防止の下限——200/20のままだとexpertの投稿がX公開後にcheck違反で壊れた）。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
+Constraints: month形式、各countは0以上。X投稿のDB上限は**最大プラン（expert）の期間枠**（`normal_posts_count <= 1000`、`url_posts_count <= 100`。migration `20260822000003`・T-M8-196。プラン別の上限実施はアプリ側ゲートが正で、制約は破損防止の下限——200/20のままだとexpertの投稿がX公開後にcheck違反で壊れた）。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
 
 RLS: 本人select可。writeはServer only。
 
@@ -503,7 +503,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`） |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
 | `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
@@ -990,3 +990,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.61 | 2026-08-23 | フォロワー記録の毎時cronを復活（T-M8-257）: follower_snapshots の書き込みは cron＋ボタンの2入口、cron_runs の job_name に follower_snapshot が戻る（スキーマ変更なし） |
 | v1.62 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
 | v1.63 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |
+| v1.64 | 2026-08-23 | cron_runs.job_name に subscription_period_backfill（契約期間の補完・T-M8-258）。usage_counters 制約説明の「月次」を期間へ |

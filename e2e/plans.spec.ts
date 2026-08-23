@@ -276,11 +276,12 @@ test("下位プランへの予約が課金タブとバナーに出て、取り�
   await banner.getByRole("link", { name: "課金・プランを確認" }).click();
   await expect(page).toHaveURL(/settings\?tab=billing/);
 
-  // 課金タブ: 予約の行と、「プランを変更」の代わりに取り消しボタン
+  // 課金タブ: 予約の行と、「プランを変更」の隣に取り消しボタン
+  // （Portal は予約付きでも別プランへ変更できるので「プランを変更」は残す・実測 2026-08-23）
   await expect(page.getByText("プラン変更の予約", { exact: true })).toBeVisible();
   // バナーと課金カードの両方に同じ文（同じ正本 `scheduledPlanChangeLabel`）
   await expect(page.getByText("2026年10月1日にスタンダードプランへ切り替わる予約があります")).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "プランを変更", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "プランを変更", exact: true })).toBeVisible();
   const cancel = page.getByRole("button", { name: "プラン変更の予約を取り消す" });
   await expect(cancel).toBeVisible();
 

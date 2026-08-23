@@ -4,6 +4,7 @@ import type { PlanId } from "@/lib/plans";
 
 import {
   expandedId,
+  loadSchedule,
   subscriptionProjection,
   type SubscriptionApplyResult,
   type SubscriptionProjection,
@@ -27,6 +28,10 @@ export interface BillingReturnStripeGateway {
   };
   subscriptions: {
     retrieve(id: string): Promise<Stripe.Subscription>;
+  };
+  /** 予約済みの下位変更を読む（T-M8-260）。無いと予約を null で上書きしてしまうため、本番の client は必ず持つ。 */
+  subscriptionSchedules?: {
+    retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
   };
 }
 
@@ -108,11 +113,19 @@ export async function reconcileBillingReturn(
   if (!subscriptionId) return "skipped";
 
   const subscription = await deps.stripe.subscriptions.retrieve(subscriptionId);
+  /*
+    schedule（期間末の下位変更の予約）も読む。Portal の `after_completion` は即リダイレクトなので、
+    予約直後の戻りは本物の webhook より**先に**ここを通る。ここで予約を null で書くと、
+    後続の webhook（created が古い）は stale 扱いになり、予約が次の契約イベントまで画面に出ない。
+  */
+  const schedule = await loadSchedule(deps.stripe, subscription);
   const created = deps.now();
   const projection = subscriptionProjection(
     syntheticSubscriptionEvent(subscription, created),
     subscription,
     deps.priceIds,
+    false,
+    schedule,
   );
   const result = await deps.applyProjection(projection);
   return result === "stale" ? "stale" : "updated";
