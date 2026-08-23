@@ -55,17 +55,47 @@ const server = spawn("npx", ["next", "start", "--port", String(port)], {
   env: { ...process.env, PORT: String(port) },
 });
 let code = 1;
+let output = "";
 try {
   await waitFor(`${base}/login`, 60_000);
   const test = spawn(
     "npx",
     ["playwright", "test", "e2e/csp-runtime.spec.ts", "--reporter=line"],
-    { stdio: "inherit", env: { ...process.env, CSP_RUNTIME: "1", E2E_BASE_URL: base } },
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CSP_RUNTIME: "1", E2E_BASE_URL: base } },
   );
+  // 見せながら覚える（出力はそのまま流し、判定のために手元にも残す）。
+  test.stdout.on("data", (chunk) => {
+    output += chunk;
+    process.stdout.write(chunk);
+  });
+  test.stderr.on("data", (chunk) => {
+    output += chunk;
+    process.stderr.write(chunk);
+  });
   code = await new Promise((resolve) => test.on("close", resolve));
 } finally {
   server.kill();
 }
-if (code === 0) console.log("✅ 本番ビルドの実ブラウザでCSP違反はありませんでした。");
-else console.error("❌ CSP違反が出ました（上の出力に違反したscriptが出ています）。");
+if (code === 0) {
+  console.log("✅ 本番ビルドの実ブラウザでCSP違反はありませんでした。");
+  process.exit(0);
+}
+
+/*
+  **「検査できなかった」を「違反があった」と言わない**（2026-08-24・T-M8-282）。
+  ブラウザが起動できないだけでも exit は非0になる。それを「CSP違反が出ました」と報せると、
+  運営者は存在しないCSPの不具合を探すことになる（原則2「原因が開発知識なしで辿れる」に反する）。
+  macOSのsandbox下では `bootstrap_check_in ... Permission denied` で起動が落ちる。実際に踏んだ。
+*/
+const launchFailure = /browserType\.launch|Executable doesn't exist|mach_port_rendezvous|bootstrap_check_in/.test(
+  output,
+);
+if (launchFailure) {
+  console.error("❌ 検査できませんでした（ブラウザを起動できません）。**CSPの違反があったわけではありません。**");
+  console.error(
+    "   → `npx playwright install chromium` を実行してください。サンドボックス内で実行している場合は、外して実行し直してください。",
+  );
+} else {
+  console.error("❌ CSP違反が出ました（上の出力に違反したscriptが出ています）。");
+}
 process.exit(code ?? 1);

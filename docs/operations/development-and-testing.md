@@ -142,7 +142,7 @@ npm run dev       # アプリを起動する
 | `npm run check:turnstile` | 人間確認がその環境で実際に動くか確かめる | なし |
 | `npm run smoke:live` | AIを実際に1周させ、出来上がりまで確かめる | **約45円** |
 | `npm run check:stripe-period` | Stripeのテストクロックで「下位プランの予約→取り消し→期間末越え」を実際に流し、契約と利用枠がアプリへ正しく効くか確かめる（テストモードの鍵のみ） | なし |
-| `npm run check:csp-runtime` | **本番ビルドを起動して実ブラウザで開き**、CSP違反が出ないか見る（`release:check` に含む） | なし |
+| `npm run check:csp-runtime` | **本番ビルドを起動して実ブラウザで開き**、CSP違反が出ないか見る（`release:check` に含む）。ブラウザを起動できなかった場合は**「検査できなかった」と明示する**（CSP違反と言わない・T-M8-282） | なし |
 
 **AI を実際に呼ぶ確認について**
 
