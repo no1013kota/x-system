@@ -129,22 +129,6 @@ export async function requirePattern(
 }
 
 /**
- * 旧 enum（`p1`〜`p6`）から現在の行を引く。**移行の間だけ使う**（U5 で撤去）。
- * 既定パターンを削除済みなら null。
- */
-export async function findPatternBySeedKey(
-  db: Queryable,
-  xAccountId: string,
-  seedKey: string,
-): Promise<PatternOption | null> {
-  const { rows } = await db.query<PatternRow>(
-    `select ${COLUMNS} from post_patterns where x_account_id = $1 and seed_key = $2`,
-    [xAccountId, seedKey],
-  );
-  return rows[0] ? toOption(rows[0]) : null;
-}
-
-/**
  * 画面に出す説明文。**ポスト数はここで付ける**（説明文に書かせない・T-M8-33）。
  * 説明とポスト数が別々に書かれていると、片方だけ直して食い違う。
  */
@@ -214,7 +198,7 @@ export async function listPatternPrompts(
 export const PATTERN_PROMPT_MAX_CHARS = 8000;
 
 /** 空・長すぎを拒否する（DBのCHECKと同じ判定を、理由の分かる形で先に行う）。 */
-export function validatePatternPrompt(content: string): void {
+function validatePatternPrompt(content: string): void {
   if (content.trim().length === 0) {
     throw new AppError("validation_error", { details: { reason: "empty" } });
   }
@@ -636,7 +620,7 @@ export const PATTERN_PLACEHOLDER_MAX = 10;
 export const PATTERN_PLACEHOLDER_NAME_MAX_CHARS = 20;
 
 /** jsonb から読む。形が違う要素は落とす（壊れた定義で画面を壊さない）。 */
-export function parsePlaceholders(value: unknown): PatternPlaceholder[] {
+function parsePlaceholders(value: unknown): PatternPlaceholder[] {
   if (!Array.isArray(value)) return [];
   const out: PatternPlaceholder[] = [];
   for (const raw of value) {
@@ -672,7 +656,7 @@ let max: number | null = null;
 }
 
 /** プロンプトから決まる総ポスト数の上限（読み取れなければ全体の上限）。 */
-export function maxPostsFromPrompt(prompt: string): number {
+function maxPostsFromPrompt(prompt: string): number {
   const threads = threadCountFromPrompt(prompt);
   return threads === null ? PATTERN_MAX_POSTS_LIMIT : Math.min(PATTERN_MAX_POSTS_LIMIT, threads + 1);
 }

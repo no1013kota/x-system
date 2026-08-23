@@ -50,8 +50,36 @@ describe("RLS policies & ownership trigger", () => {
     expect(threw, "expected the query to be rejected").toBe(true);
   }
 
-  /** Switch the current transaction to the authenticated role acting as `uid`. */
+  /**
+   * service_role だけが読むテーブル（T-M8-252）。`actAs` の一時grantから除いて、
+   * 「authenticated には見えない」ことを検査し続けられるようにする。
+   */
+  const SERVICE_ROLE_ONLY_TABLES = [
+    "cron_runs",
+    "external_api_usage_events",
+    "news_fetch_outcomes",
+    "stripe_events",
+  ];
+
+  /**
+   * Switch the current transaction to the authenticated role acting as `uid`.
+   *
+   * **このtx内だけSELECT権限を与えてから切り替える**（T-M8-252）。本番の `authenticated` は
+   * `profiles` の3列しか読めない（アプリはPostgREST経由で読まないため）。ただし
+   * **RLSポリシー自体は「もし読めたとしても他人の行は見えない」ことの保証**として
+   * 生かしておきたいので、ここで一時的に権限を与えて検査する（rollbackで消える）。
+   * 権限そのものの検査は下の「authenticated が読めるのは…」が別に行う。
+   */
   async function actAs(c: Client, uid: string) {
+    // service_role専用のテーブルは除いて、このtx内だけ読めるようにする（rollbackで消える）。
+    const { rows } = await c.query<{ tablename: string }>(
+      `select tablename from pg_tables
+        where schemaname = 'public' and not (tablename = any($1::text[]))`,
+      [SERVICE_ROLE_ONLY_TABLES],
+    );
+    for (const { tablename } of rows) {
+      await c.query(`grant select on public."${tablename}" to authenticated`);
+    }
     await c.query(`select set_config('role', 'authenticated', true)`);
     await c.query(
       `select set_config('request.jwt.claims', $1, true)`,
@@ -231,6 +259,47 @@ describe("RLS policies & ownership trigger", () => {
         order by 1, 2`,
     );
     // authenticated に直接write権限を持つtableは無い（別ユーザーへの書込みも構造的に不可）。
+    expect(rows).toEqual([]);
+  });
+
+  /**
+   * **ブラウザ（PostgREST）から読める範囲は、実際に使う分だけ**（T-M8-252）。
+   *
+   * Supabase の既定で public の全テーブルに `authenticated` の SELECT が付いており、
+   * RLSがあるので他人の行は読めないものの、**自分の行の暗号文**（Xのトークン・APIキー・
+   * 振込先口座番号）はブラウザから直接読めた。アプリはこれらを service_role でしか読まない。
+   * 唯一の例外は proxy のルートガードが読む `profiles` の3列。
+   */
+  it("authenticated が読めるのは profiles の3列だけ（暗号文はブラウザから読めない）", async () => {
+    const tableWide = await db!.query<{ table_name: string }>(
+      `select table_name from information_schema.role_table_grants
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type = 'SELECT'
+        order by 1`,
+    );
+    expect(tableWide.rows, "テーブル全体のSELECTは残さない").toEqual([]);
+
+    const columns = await db!.query<{ grantee: string; table_name: string; column_name: string }>(
+      `select grantee, table_name, column_name from information_schema.column_privileges
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type = 'SELECT'
+        order by 2, 3`,
+    );
+    expect(columns.rows.map((r) => `${r.grantee}:${r.table_name}.${r.column_name}`)).toEqual([
+      "authenticated:profiles.id",
+      "authenticated:profiles.plan",
+      "authenticated:profiles.subscription_status",
+    ]);
+  });
+
+  /** TRUNCATE・TRIGGER・REFERENCES も既定のまま残さない（T-M8-252）。 */
+  it("authenticated / anon に TRUNCATE・TRIGGER・REFERENCES が残っていない", async () => {
+    const { rows } = await db!.query<{ table_name: string; privilege_type: string }>(
+      `select table_name, privilege_type from information_schema.role_table_grants
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type in ('TRUNCATE', 'TRIGGER', 'REFERENCES')
+        order by 1, 2`,
+    );
     expect(rows).toEqual([]);
   });
 });

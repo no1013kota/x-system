@@ -2255,6 +2255,33 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
     すべて維持**。80件緑。
 
+### T-M8-252: ブラウザ（PostgREST）から読める範囲を最小にする `done`
+- 参照: 要件02 §RLS・supabase/migrations / 依存: なし / サイズ: S
+- 完了条件:
+  - `authenticated` が読めるのは `profiles` の3列（id / plan / subscription_status）だけになる
+  - anon / authenticated の TRUNCATE・TRIGGER・REFERENCES が消える
+  - 以後に足すテーブルへ既定の権限が再発しない
+  - RLSポリシーの検査は「もし読めたとしても他人の行は見えない」形で残る
+- メモ: 監査（2026-08-23）で検出。Supabase既定で public の全26表に `authenticated` の SELECT が付いており、
+  RLSで他人の行は読めないものの、**自分の行の暗号文（Xトークン・APIキー・振込先口座番号）は
+  ブラウザから直接読めた**。アプリはこれらを service_role でしか読まない（唯一の例外が
+  proxyのルートガードが読む profiles の3列）。
+- 実装メモ（2026-08-23）: 権限そのものを固定する検査を `rls.db.test.ts` へ追加。既存のRLS検査は
+  **tx内だけ一時grant**して継続（`withTransaction` は commit するので、必ず revoke して戻す）。
+
+### T-M8-253: 監査の low 指摘をまとめて解消（索引・外部キー・日付・重複・docs） `done`
+- 参照: 監査（2026-08-23） / 依存: なし / サイズ: M
+- 完了条件:
+  - 通知一覧・報酬の日次処理・招待報酬の索引が追加され、要件02の索引記述と一致する
+  - `affiliate_commissions.referred_user_id` に外部キー（on delete set null）と索引が付く
+  - 報酬履歴の日付が日本時間で切られる
+  - 画像providerのキー取得が1か所になり、テストが付く
+  - 解約予約が画面のバナーに出る
+  - docs（invite_cp.md・03の対象イベント表・deployment.md・01の保持期間）が実装と一致する
+- メモ: 監査（2026-08-23）の low 指摘。うち「未使用export」は `findPatternBySeedKey` の削除と
+  3関数の非公開化で解消。朝の提案ジョブの**デッドロック**（テスト並行実行で断続的に落ちていた）は
+  ロック順を `order by xa.id` で固定して解消（順番が決まっていないと互いに待ち合う）。
+
 ### T-M8-251: 「すべて停止/再開」を2つとも常時表示し、対象を全枠にする `done`
 - 参照: 要件06 §3.5・要件05 §7・要件02 §3.10 / 依存: T-M8-233 / サイズ: S
 - 完了条件:

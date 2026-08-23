@@ -11,7 +11,7 @@ import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
-import { imageProvidersFor } from "@/lib/ai/image-providers-server";
+import { imageKeyRowsQuery, imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
@@ -43,15 +43,6 @@ const TABS: { id: Tab; label: string }[] = [
 
 interface PostsPageProps {
   searchParams: Promise<{ tab?: string; draftId?: string; news?: string }>;
-}
-
-/** valid な openai/google キーの行（plan判定前に並列で引けるよう、クエリと判定を分離・T-M8-67）。 */
-function imageKeyRowsQuery(userId: string) {
-  return getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
 }
 
 async function createTabData(userId: string, activeXAccountId: string) {

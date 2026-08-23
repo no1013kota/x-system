@@ -131,7 +131,9 @@ export async function loadInviteSummary(userId: string): Promise<InviteSummary> 
       [account.id],
     ),
     db.query<{ date: string; label: string; status: string; amount: number }>(
-      `select created_at::date::text as date, '紹介報酬' as label, status,
+      // **日付は日本時間で切る**（T-M8-253・運営者の指示 2026-08-23）。`created_at::date` は
+      // UTCの日付になり、JSTの朝9時より前に作られた報酬が「前日」として並ぶ（他の表示と最大1日ずれる）。
+      `select (created_at at time zone 'Asia/Tokyo')::date::text as date, '紹介報酬' as label, status,
               case when status = 'reversed' then -commission_amount else commission_amount end as amount
          from affiliate_commissions
         where affiliate_account_id = $1

@@ -75,6 +75,11 @@ export async function enqueueDailySuggestions(
      -- 親行が無く generation_jobs_x_account_id_fkey 違反になる。tick は cleanup の例外を
      -- 捕まえて先へ進むため、1人の解除でその日の分析が全利用者ぶん黙って起票されなくなる。
      -- 親行を先にロックしておけば、解除はこの文の完了まで待たされ、先に消えていれば0行になる。
+     --
+     -- **ロックの順番を固定する**（T-M8-253）。順番が決まっていないと、同じ集合を掴もうとする
+     -- 2つの実行が互いに待ち合ってデッドロックになる（実際にテストの並行実行で断続的に起きた）。
+     -- id 順に統一すれば、どちらが先でも同じ順に掴むので待ち合いにならない。
+      order by xa.id
        for key share of xa
      -- arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
      -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。

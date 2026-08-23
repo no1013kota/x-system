@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.16 |
-| 更新日 | 2026-08-22 |
+| バージョン | v1.17 |
+| 更新日 | 2026-08-23 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -42,7 +42,9 @@ npm run release:production   # main → production
 
 **Customer Portalの「プラン変更」に出る選択肢は「activeな全Price」**（T-M8-213）。価格改定で新Priceへ切り替えたら、**旧Priceをアーカイブ（active=false）しないと旧価格が並び続ける**。**ただしアーカイブだけだと、旧Priceのまま残っている契約はプラン変更フローを開けなくなる**（T-M8-215で実発生。Stripeは契約中のPriceがPortal対象に含まれることを要求し、`no price in the portal configuration` の400になる——画面には専用文言を出すよう対応済み）。**正しい手順は「①既存契約を新Priceへ移行（subscription itemsのprice差し替え・proration none）→②旧Priceをアーカイブ→③Portal設定の商品リストを現行3商品×現行Priceへ更新」**。③を怠ると**プラン変更に一部プランが出ない・変更先ゼロで開けない**（T-M8-215で実発生: 旧Portal設定の商品リストがスタンダード¥1,480とプレミアム旧¥2,980だけで、エキスパート未登録＋プレミアム候補が実質空だった）。この商品リストは現行APIのGETに現れないため**新しいPortal設定を作り直すのが確実**（作成時の`features[subscription_update][products]`は効く。テストモードは2026-08-22に `bpc_1U78flE811f4DP4qPdhugSfn` を作成し旧設定を無効化・env差し替え済み）。本番は運営者作業: liveモードで同様にPortal設定を作成（またはダッシュボードのカスタマーポータル設定→商品カタログを現行3商品へ）し、`STRIPE_PORTAL_CONFIGURATION_ID` を差し替える。**あわせて「サブスクリプションスケジュール」が付いた契約はPortalで変更不可**（過去のダウングレード予約で付く）——ダッシュボードからスケジュールをリリースして外す。Portal上部の見出し文はPortal設定の`business_profile.headline`（旧称Space AIになっていたのを修正済み・本番も確認）。
 
-**Stripe決済画面の商品名・説明文はコードではなくStripeのProductが持つ**（T-M8-211）。プラン名・説明を変えたら、Stripeダッシュボード（商品カタログ）で該当Productのnameとdescriptionを**テスト・本番の両モードで**更新する（テストモードは2026-08-22に現行文言へ更新済み。本番は運営者作業）。価格はPrice、表示文言はProductと覚える——envのPrice IDを差し替えても説明文は変わらない。
+**この商品リストは `expand=["features.subscription_update.products"]` を付ければAPIから読める**（素のGETでは `products` が返らない・T-M8-238）。そのため**手作業で確認する必要はない**——`npm run stripe:portal:setup -- --target <env>` が設定し、読み戻して不足Priceがあれば終了コード1で止まる。`doctor` の「プラン管理（Stripe）」も現行Priceが変更先に入っているかを毎回見る（2026-08-23、本番・stagingとも旧価格のままで契約者が「プランを変更」を開けない状態だったのを、この検査で検出して修正した）。
+
+**Stripe決済画面の商品名・説明文はコードではなくStripeのProductが持つ**（T-M8-211）。プラン名・説明を変えたら、Stripeダッシュボード（商品カタログ）で該当Productのnameとdescriptionを**テスト・本番の両モードで**更新する（テストモードは2026-08-22に現行文言へ更新済み。本番は2026-08-23に `stripe:portal:setup -- --target production` で現行文言へ更新済み）。価格はPrice、表示文言はProductと覚える——envのPrice IDを差し替えても説明文は変わらない。
 
 **ブログ記事（`blog/published/*.md`）の公開も同じ手順。** 記事のコミット（`/blog-publish`）→ `release:staging` → `release:production`。記事がデプロイへ同梱されることは `release:check` の `check:blog-trace` が出荷前に、デプロイ先では `doctor` の「ブログ記事の同梱」が確認する（T-M8-184）。
 

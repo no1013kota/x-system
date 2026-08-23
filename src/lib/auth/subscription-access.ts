@@ -138,6 +138,10 @@ export interface SubscriptionBannerProfile {
   stripeCustomerId: string | null;
   subscriptionStatus: string;
   trialEndsAt: string | null;
+  /** 期間末で解約する予約が入っているか（T-M8-253）。 */
+  cancelAtPeriodEnd?: boolean;
+  /** 解約が効く日（`active` のときの期間末）。 */
+  currentPeriodEnd?: string | null;
 }
 
 export interface SubscriptionBannerModel {
@@ -145,6 +149,14 @@ export interface SubscriptionBannerModel {
   description: string;
   title: string;
   tone: "info" | "warning";
+}
+
+/** 「◯月◯日」。日付が無い・壊れているときは存在しない日付を作らない（T-M8-253）。 */
+function planEndDate(value: string | null | undefined): string {
+  if (!value) return "現在の期間の終了日";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "現在の期間の終了日";
+  return new Intl.DateTimeFormat("ja-JP", { dateStyle: "long", timeZone: "Asia/Tokyo" }).format(at);
 }
 
 function trialDate(value: string | null): string {
@@ -159,6 +171,20 @@ export function subscriptionBannerFor(
   profile: SubscriptionBannerProfile,
 ): SubscriptionBannerModel | null {
   const status = profile.subscriptionStatus;
+  /*
+    **解約の予約は必ず知らせる**（T-M8-253）。以前は `active` で常に null を返し、
+    トライアル中に解約した人には「無料トライアル中」としか出ていなかった。
+    「解約したつもりが続いている」「続けるつもりが止まる」のどちらも起こりうる。
+  */
+  if (profile.cancelAtPeriodEnd) {
+    const endsAt = status === "trialing" ? profile.trialEndsAt : profile.currentPeriodEnd;
+    return {
+      action: profile.stripeCustomerId ? "portal" : null,
+      description: "それまでは今までどおりご利用いただけます。続ける場合は解約の取り消しができます。",
+      title: `${planEndDate(endsAt)}に解約されます`,
+      tone: "info",
+    };
+  }
   if (status === "active") return null;
   if (status === "trialing") {
     return {

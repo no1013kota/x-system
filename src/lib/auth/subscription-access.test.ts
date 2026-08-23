@@ -139,3 +139,51 @@ describe("isSubscriptionPeriodStale（契約の反映が届いていない疑い
     expect(isSubscriptionPeriodStale("past_due", { currentPeriodEnd: hoursAgo(99) }, now)).toBe(false);
   });
 });
+
+describe("解約の予約を画面へ出す（T-M8-253）", () => {
+  const base = {
+    stripeCustomerId: "cus_1",
+    subscriptionStatus: "active",
+    trialEndsAt: null,
+  };
+
+  /** 以前は active で常に null を返し、解約予約が画面のどこにも出なかった。 */
+  it("active で解約予約があれば日付つきで知らせる（tone は info）", () => {
+    const banner = subscriptionBannerFor({
+      ...base,
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: "2026-09-30T00:00:00Z",
+    });
+    expect(banner).toMatchObject({ tone: "info", action: "portal" });
+    expect(banner?.title).toContain("2026年9月30日");
+    expect(banner?.title).toContain("解約");
+  });
+
+  /** トライアル中に解約した人に「無料トライアル中」としか出ないのが元の問題。 */
+  it("trialing で解約予約があればトライアル終了日で知らせる", () => {
+    const banner = subscriptionBannerFor({
+      ...base,
+      subscriptionStatus: "trialing",
+      trialEndsAt: "2026-09-01T00:00:00Z",
+      cancelAtPeriodEnd: true,
+    });
+    expect(banner?.title).toContain("2026年9月1日");
+    expect(banner?.title, "「無料トライアル中」で終わらせない").toContain("解約");
+  });
+
+  it("日付が無い・壊れていても存在しない日付を作らない", () => {
+    for (const value of [null, "not-a-date"]) {
+      const banner = subscriptionBannerFor({
+        ...base,
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: value,
+      });
+      expect(banner?.title).toContain("現在の期間の終了日");
+      expect(banner?.title).not.toMatch(/\d{4}年/);
+    }
+  });
+
+  it("解約予約が無ければ active は従来どおりバナーを出さない", () => {
+    expect(subscriptionBannerFor({ ...base, cancelAtPeriodEnd: false })).toBeNull();
+  });
+});

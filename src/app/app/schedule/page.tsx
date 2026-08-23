@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
-import { imageProvidersFor } from "@/lib/ai/image-providers-server";
+import { imageKeyRowsQuery, imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
@@ -23,15 +23,6 @@ export const metadata: Metadata = { title: "スケジュール | Exos AI" };
 
 const pooledDb = pooledQueryable();
 
-/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。
- *  クエリと判定を分離してあるのは、plan取得と並列に走らせるため（T-M8-67）。 */
-function imageKeyRowsQuery(userId: string) {
-  return getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
-}
 
 export default async function SchedulePage() {
   const user = await getCurrentUser();

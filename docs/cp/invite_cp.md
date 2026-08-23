@@ -5,7 +5,7 @@
 App内に招待プログラム専用ページを1ページ作成する。
 
 ```text
-/dashboard/invite
+/app/invite
 ```
 
 ユーザーはこのページだけで、
@@ -291,6 +291,10 @@ https://example.com/r/abc123
 
 ```text
 解約時点で報酬期間終了
+
+> **実装の補足（T-M8-236）**: 「解約で終了」は**初回課金後**の話。一度も課金していない
+> （`commission_started_at` が null）解約では終了しない——Trial中の離脱で報酬機会が永久に消えるのを避ける。
+> また**解約日より前の支払い**は、解約イベントが先に届いても報酬になる（Stripeは配送順を保証せず最大3日リトライする）。
 ```
 
 とする。
@@ -526,6 +530,11 @@ Dashboard内から：
 ```
 
 銀行口座の機密情報は可能な限り外部Payout Providerで管理する。
+
+> **実装（2026-08-21〜。要決定D-33）**: Payout Provider は未契約のため、**口座番号はAES-256-GCM
+> （APIキーと同じ鍵運用）で暗号化して自社DBに保持する**（`provider='internal'`）。振込は運営者が
+> 手作業で行うため全桁が必要で、画面に出すのは**末尾4桁だけ**。全桁は
+> `npm run affiliate:payouts -- --show` でのみ復号する。Provider契約時に置き換える。
 
 自社DBでは最低限：
 
@@ -767,7 +776,7 @@ API structure
 ```text
 1. DB Migration
 
-2. /dashboard/invite
+2. /app/invite
 
 3. 高品質なResponsive UI
 

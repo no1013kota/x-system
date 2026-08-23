@@ -431,13 +431,26 @@ describe("post_patterns（ローカルDB）", () => {
       const a = await mk();
       const b = await mk();
 
+      /*
+        本番の `authenticated` は `profiles` の3列しか読めない（T-M8-252。アプリはPostgREST経由で
+        読まないため）。**RLSポリシー自体は「もし読めたとしても他人の行は見えない」保証**として
+        生かしたいので、ここだけ権限を与えて検査する。
+        **`withTransaction` は成功時に commit する**ので、rollback頼みにせず必ず戻す（下の finally）。
+      */
+      await c.query(`grant select on post_patterns to authenticated`);
       await c.query(`select set_config('role','authenticated', true)`);
       await c.query(`select set_config('request.jwt.claims', $1, true)`, [
         JSON.stringify({ sub: a.uid, role: "authenticated" }),
       ]);
-      const { rows } = await c.query<{ x_account_id: string }>(
-        `select distinct x_account_id from post_patterns`,
-      );
+      let rows: { x_account_id: string }[];
+      try {
+        ({ rows } = await c.query<{ x_account_id: string }>(
+          `select distinct x_account_id from post_patterns`,
+        ));
+      } finally {
+        await c.query(`select set_config('role','postgres', true)`);
+        await c.query(`revoke select on post_patterns from authenticated`);
+      }
       expect(rows.map((r) => r.x_account_id), "自分の分だけ見える").toEqual([a.xid]);
       expect(rows.some((r) => r.x_account_id === b.xid)).toBe(false);
 

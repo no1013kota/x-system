@@ -26,6 +26,8 @@ export interface AppShellProfileRow extends LegalConsentProfile {
   stripe_customer_id: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
+  cancel_at_period_end: boolean;
+  current_period_end: string | null;
 }
 
 /** Ports required to assemble the App Shell without depending on DB or framework adapters. */
@@ -95,6 +97,8 @@ export async function loadAppShellDataWithDependencies(
       stripeCustomerId: profileRow.stripe_customer_id,
       subscriptionStatus: profileRow.subscription_status,
       trialEndsAt: profileRow.trial_ends_at,
+      cancelAtPeriodEnd: profileRow.cancel_at_period_end,
+      currentPeriodEnd: profileRow.current_period_end,
     };
     stripeCustomerId = subscriptionProfile.stripeCustomerId;
     subscriptionBanner = subscriptionBannerFor(subscriptionProfile);

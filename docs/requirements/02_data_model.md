@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.58 |
+| バージョン | v1.59 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -418,7 +418,7 @@ RLS: 本人select可。writeはServer only。
 
 Unique index: (`user_id`, `dedupe_key`) where `dedupe_key is not null`
 
-Indexes: (`user_id`, `read_at`, `created_at desc`)
+Indexes: (`user_id`, `read_at`, `created_at desc`)〔未読件数用〕, (`user_id`, `created_at desc`, `id desc`)〔一覧の並び順。無いと1ページ目のたびにその利用者の全通知を読む・T-M8-253〕
 
 RLS: 本人select可。writeはServer Action/API only。 保持は`created_at`から40日で、`scheduler_tick`のcleanupが1起動500件まで削除する（**type を問わない**・T-M8-246。**既読を先に消し未読は後**——読む前に消えると「来たはずの知らせが無い」になる）。以前は`type='news'`だけを消しており、毎日1通作られる`summary`が永久に積もっていた。
 
@@ -654,6 +654,10 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 | `available_at` | `timestamptz` | not null | `payable`になれる時刻（支払＋30日） |
 | `payout_id` | `uuid` | nullable FK affiliate_payouts on delete set null | 月次バッチが束ねたPayout |
 | `created_at` | `timestamptz` | not null default now() | |
+
+Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた報酬を日次で払出可能へ上げる処理が全表走査になっていた・T-M8-253〕, (`referred_user_id`)
+
+`referred_user_id` は `profiles(id) on delete set null`（T-M8-253）。**外部キーが無く、報酬率の計算（累計有料招待ユーザー数）が実在しない利用者を数えうる**状態だった。履歴（金額・支払記録）は残したいので削除ではなくnull化する。
 
 ### 3.25 `affiliate_payout_accounts`
 
@@ -976,3 +980,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
 | v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
 | v1.58 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
+| v1.59 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |

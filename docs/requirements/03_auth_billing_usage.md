@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.39 |
+| バージョン | v1.40 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -118,9 +118,11 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 | `customer.subscription.updated` | subscriptionを再取得してplan/status/period/trial/cancel予定を同期 |
 | `customer.subscription.deleted` | `canceled`として同期 |
 | `invoice.payment_failed` | subscriptionを再取得して現在statusを同期し、課金通知を作成 |
-| `invoice.paid` | subscriptionを再取得して支払い復旧を同期 |
+| `invoice.paid` | subscriptionを再取得して支払い復旧を同期。招待報酬を作成（§招待プログラム） |
+| `charge.refunded` | 返金額（**その請求の累計**）で招待報酬を取消・減額（T-M8-236。`payment_intent`→InvoicePayments APIでinvoiceを解決する） |
+| `customer.subscription.trial_will_end` | 無料トライアル終了3日前。終了日と初回請求額を伝える通知を1回だけ作る（T-M8-243） |
 
-Price IDからplanへの変換に未知の値が来た場合はprofileを更新せず、Sentryへ記録して非2xxを返す。`stripe_events`も記録せず、Stripeの再送で復旧できる状態にする。
+Price IDからplanへの変換に未知の値が来た場合はprofileを更新せず、Sentryへ記録する。**`stripe_events`も記録しないが、応答は200を返す**（T-M8-245。再送しても直らない恒久エラーに500を返し続けると、Stripeが最大3日リトライしたのちendpoint自体を無効化し、他の全利用者の同期が止まる）。設定を直したあとダッシュボードから再送すれば処理できる。
 
 invoice eventは現行Invoiceの`parent.subscription_details.subscription`からSubscription IDを解決する。subscription由来でない一回払いinvoiceはeventだけを処理済み記録し、profile・通知を変更しない。`invoice.payment_failed`／`invoice.paid`はいずれもSubscriptionを再取得して§4.2の全契約項目を同期する。payment failedはprofile更新後、eventと同じtransaction内で`billing:invoice:{invoice_id}:payment_failed`をdedupe keyとする課金通知を作る。同一invoiceの再試行で通知を増やさず、設定snapshot・attempt count・invoice／subscription ID・同期statusをpayloadへ保存する。課金通知のin-app（メール通知はT-M8-222で廃止）がOFFなら通知rowを作らないが、profileの停止statusを使う常設バナーは設定にかかわらず表示する。`invoice.paid`は通知を作らず、再取得したactive等の現在statusへ復旧する。
 
@@ -331,3 +333,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.37 | 2026-08-21 | 「受取可能」の定義（振込完了で0・締めでは減らさない）と振込オペレーション文書への参照を追加（T-M8-176） |
 | v1.38 | 2026-08-22 | 再連携の上限判定をactive行のみ対象外へ（T-M8-196・disabled再activeは数える） |
 | v1.39 | 2026-08-23 | webhookの恒久エラーを200で返す方針へ（T-M8-245）。charge.refunded購読の完了とdoctor検査を反映（T-M8-238）。トライアル終了予告の通知（T-M8-243） |
+| v1.40 | 2026-08-23 | §4.1の対象イベント表に charge.refunded・trial_will_end を追記（T-M8-253） |

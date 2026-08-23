@@ -1,7 +1,21 @@
 import "server-only";
 
+import { getPool } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { isOperatorManagedPlan } from "@/lib/plans";
+
+/**
+ * 画像に使えるBYOKキーの取得（T-M8-253）。**SQLもここへ置く**——投稿作成と予約の
+ * 2ページへ逐語コピーされており、条件（provider/status）を変えるときに片方だけ直す形だった。
+ * plan取得と並列に走らせられるよう、Promiseを返すだけにして await はしない。
+ */
+export function imageKeyRowsQuery(userId: string) {
+  return getPool().query<{ provider: string }>(
+    `select provider from user_api_keys
+      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
+    [userId],
+  );
+}
 
 /**
  * 画像生成に使えるproviderの一覧（T-M8-180で posts/schedule ページの重複定義を集約）。
