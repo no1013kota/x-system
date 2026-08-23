@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.41 |
+| バージョン | v1.42 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -149,7 +149,7 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 | `past_due` | 可 | 停止 | 支払い更新 |
 | `unpaid` | 可 | 停止 | 支払い更新 |
 | `paused` | 可 | 停止 | 支払い方法登録・再開 |
-| `canceled` | 可 | 停止 | 新規Checkout |
+| `canceled` | 可 | 停止 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
 | `incomplete` | 設定・プランのみ | 停止 | Checkout完了 |
 | `incomplete_expired` | 設定・プランのみ | 停止 | 新規Checkout |
 
@@ -159,7 +159,7 @@ route guardでは`incomplete`／`incomplete_expired`（およびprofile取得不
 
 8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
 
-App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`は新規Checkoutへ誘導し、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
+App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`は新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
 
 ## 6. プラン変更
 
@@ -190,6 +190,35 @@ planが変わったSubscription同期は、profileの課金projection更新と�
 planが同一のstatus／期間更新では上記副作用を再実行しない。stale eventは課金projectionと同様にプラン変更副作用もskipする。下書き、投稿履歴、実績、アカウント.mdと履歴、学習source、token／key ciphertext、利用台帳は削除しない。
 
 OAuth再連携で同じ`x_user_id`が返った場合は既存`x_accounts` rowのtoken、`auth_type`、scope、statusを置き換え、アカウント.md・下書き・実績は維持する。**上限を数えないのはactiveな行への再連携だけ**（T-M8-196）——disabled（切断済み）・expiredの行を再activeにするのは枠を1つ新たに使うため、新規と同じくプラン上限を検証する（連携→切断→別を連携→切断済みを再連携、で上限を突破できた穴の修正）。別のX userが返った場合は新規アカウントとして扱い、プラン上限を検証する。
+
+### 6.1 解約済み契約の再開（T-M8-264）
+
+`subscription_status = 'canceled'` の利用者は、課金タブの**「プランを再開」**（`POST /api/stripe/resume`）で
+Stripeへの画面遷移なしに再開できる。Portalの`flow_data`は`active`/`trialing`/`past_due`の契約にしか
+入れないため、canceledではPortal導線（「プランを変更」）が行き止まりになる——canceledのときだけ
+`PortalButton`の代わりに`ResumePlanButton`を出す（SC-11）。
+
+- **同じプラン**（`profiles.plan`）のsubscriptionを、**保存済みカードの最新1枚**で作り直す。
+  Price・カード・customerはすべてserver-owned（clientから受け取らない）
+- **トライアルは付けない**（解約→再開の2回目無料を渡さない。T-M8-244と同じ趣旨）
+- `payment_behavior: "error_if_incomplete"`——決済が通らなければ契約を作らず、カードの確認・
+  /plans（Checkout＝カード入力つき）への案内を返す。incompleteの中途半端な契約を残さない
+- **二重契約ガード**: 作成前にStripeの契約一覧を確認し、生きているstatus（`LIVE_SUBSCRIPTION_STATUSES`）が
+  あれば作らない（DBがcanceledでもStripeが正・T-M8-237と同じ）
+- 冪等キー `exos-ai:resume:{customer}:{支払い方法ID}:{10分バケット}`——二度押しは同一作成に
+  まとまり、失敗（カード拒否）後の再試行は次のバケットで新規リクエストになる。**Stripeは成功も
+  失敗も同一キーで24時間リプレイする**ため時刻成分が必須（無いと「限度額を直して再試行」が
+  24時間無効になり、解約→再々開で過去の作成応答を新規成立と誤認する）
+- **createの応答を直接信用せず`retrieve`で現在状態を取り直してから反映する**——冪等リプレイの
+  応答は作成時のスナップショットで、その契約は既に解約済みかもしれない。取り直した状態が
+  生きていなければ`resume_not_confirmed`を返し成功と偽らない
+- 成功時は取り直したSubscriptionを合成イベントとして`applyPreparedStripeEvent`へ流し、**webhookを
+  待たずDBへ反映**する（billing-returnと同じ作法。反映に失敗しても契約は成立しているため
+  `synced:false`の成功として返し、UIは「反映には数十秒かかる」旨を添える。webhookが追いつく）
+- 再開成立後、**開いたままのCheckoutセッションをbest effortでexpire**する（Checkoutの完了時点には
+  二重契約ガードが無く、/plansで開いたセッションを後から完了されると2本目の契約になるため）
+- カード未保存は障害ではなく案内（402・`reason: payment_method_missing`・/plansへ）として返す
+- 別プランで再開したい場合は従来どおり`/plans`から新規Checkout（ボタン横に導線を併記）
 
 ## 7. プレミアム利用枠
 
@@ -335,3 +364,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.39 | 2026-08-23 | webhookの恒久エラーを200で返す方針へ（T-M8-245）。charge.refunded購読の完了とdoctor検査を反映（T-M8-238）。トライアル終了予告の通知（T-M8-243） |
 | v1.40 | 2026-08-23 | §4.1の対象イベント表に charge.refunded・trial_will_end を追記（T-M8-253） |
 | v1.41 | 2026-08-23 | 値上げ時の日割りは「次回請求へ合算」であることを明記（即時請求ではない・T-M8-256） |
+| v1.42 | 2026-08-23 | 解約済み契約の「プランを再開」（§6.1・T-M8-264）: 保存済みカードで即時再開する`POST /api/stripe/resume`を追加。§5の主導線を更新 |

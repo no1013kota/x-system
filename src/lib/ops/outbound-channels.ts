@@ -87,6 +87,8 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
       "lib/stripe/client.ts",
       "lib/stripe/checkout.ts",
       "lib/stripe/portal.ts",
+      "lib/stripe/resume.ts",
+      "lib/stripe/resume-browser.ts",
       "lib/stripe/subscription-sync.ts",
       "lib/stripe/billing-return.ts",
       "lib/stripe/billing-redirect.ts",

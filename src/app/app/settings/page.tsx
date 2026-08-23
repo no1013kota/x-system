@@ -11,6 +11,7 @@ import { TabNav } from "@/components/app-shell/tab-nav";
 import { UpgradePlanButton } from "@/components/billing/upgrade-plan-button";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { PortalButton } from "@/components/billing/portal-button";
+import { ResumePlanButton } from "@/components/billing/resume-plan-button";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
@@ -395,17 +396,23 @@ let promptTemplates: PromptTemplateView[] = [];
                 導線は1つにする（T-M8-29）。`PortalButton` が契約状態で行き先を変える
                 （契約中→Stripeのプラン管理／契約前→料金プラン）ので、`/plans` への
                 別リンクを並べると同じ行き先が2つ出る。
+                **解約済み（canceled）だけは `ResumePlanButton`**（T-M8-264）——Portalの
+                flow_dataは canceled の契約に入れないため、「プランを変更」が行き止まりになる。
               */}
               <div className="mt-7">
-                <PortalButton
-                  cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
-                  effects={planChangeEffects({
-                    cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
-                    currentPeriodEnd: profile.current_period_end,
-                    subscriptionStatus: profile.subscription_status,
-                  })}
-                  enabled={hasStripeCustomer}
-                />
+                {profile.subscription_status === "canceled" && profile.plan && hasStripeCustomer ? (
+                  <ResumePlanButton planLabel={PLANS[profile.plan].displayName} />
+                ) : (
+                  <PortalButton
+                    cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
+                    effects={planChangeEffects({
+                      cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
+                      currentPeriodEnd: profile.current_period_end,
+                      subscriptionStatus: profile.subscription_status,
+                    })}
+                    enabled={hasStripeCustomer}
+                  />
+                )}
               </div>
             </Card>
             {usage ? (

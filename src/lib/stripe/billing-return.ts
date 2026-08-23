@@ -40,7 +40,12 @@ export interface BillingReturnDependencies {
 
 export type BillingReturnResult = "current" | "skipped" | "stale" | "updated";
 
-function syntheticEvent(
+/**
+ * Stripeから引き直した現在状態を `applyPreparedStripeEvent` へ流すための合成イベント。
+ * `created` を現在時刻にするのでstale判定に負けず、確実に反映される。
+ * billing-return（Checkout/Portal復帰）と resume（プラン再開・T-M8-264）で共用する。
+ */
+export function syntheticSubscriptionEvent(
   subscription: Stripe.Subscription,
   created: number,
 ): Stripe.Event {
@@ -105,7 +110,7 @@ export async function reconcileBillingReturn(
   const subscription = await deps.stripe.subscriptions.retrieve(subscriptionId);
   const created = deps.now();
   const projection = subscriptionProjection(
-    syntheticEvent(subscription, created),
+    syntheticSubscriptionEvent(subscription, created),
     subscription,
     deps.priceIds,
   );

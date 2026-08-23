@@ -143,7 +143,7 @@ function sessionParams(input: {
  * 契約し直せる状態なので含めない。`incomplete` は支払い未完了のまま残っている Checkout の
  * 途中なので、作り直せるよう含めない。
  */
-const LIVE_SUBSCRIPTION_STATUSES = new Set([
+export const LIVE_SUBSCRIPTION_STATUSES = new Set([
   "active",
   "trialing",
   "past_due",

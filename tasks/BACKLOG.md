@@ -2255,6 +2255,37 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
     すべて維持**。80件緑。
 
+### T-M8-265: トライアル終了予告の通知（T-M8-243）が到達不能 `todo`
+- 参照: 要件03 §4（webhook表の`customer.subscription.trial_will_end`行） / 依存: なし / サイズ: S
+- 完了条件:
+  - `customer.subscription.trial_will_end` のwebhookで「無料トライアル終了の予告」通知が実際に作られる
+  - 再現手順: `prepareStripeEvent` に同イベントを渡すと現状 `{kind:"none"}` になる（subscription-sync.ts の
+    イベント種別フィルタに含まれていない）→ フィルタ通過後に `notifyTrialWillEnd` へ到達すること
+- メモ: T-M8-264の調査で発見。webhook.tsの購読リストには入っているが、`prepareStripeEvent` の
+  種別フィルタで落ちるため、`eventType === "customer.subscription.trial_will_end"` の通知分岐
+  （subscription-sync.ts:557）が到達不能。T-M8-243の意図（終了3日前の初回課金予告）が本番で
+  一度も動いていない。
+
+### T-M8-264: 解約済み契約を課金タブから即時再開できるようにする `done`
+- 参照: 要件03 §6.1・要件05 routes表・要件06 SC-11 / 依存: なし / サイズ: M
+- 完了条件:
+  - canceled の課金タブに「プランを再開」が出て、押すと保存済みカードで同一プランが即時再開する
+  - Portal導線（プランを変更）はcanceledでは出ない（flow_dataが入れず行き止まりのため）
+  - カード未保存・カード拒否は理由と直し方（/plans）を返す。二重契約は作らない
+- メモ: 運営者の指示（2026-08-23）。`POST /api/stripe/resume`（新規）。トライアルは付けない。
+  成功時はwebhookを待たず合成イベントでDBへ即時反映（billing-returnと同じ作法）。
+- 実装メモ（2026-08-23）:
+  - src/lib/stripe/resume.ts（中核・注入DI）＋ route ＋ ResumePlanButton。outbound-channels登録済み
+  - 冪等キー `exos-ai:resume:{customer}:{支払い方法ID}:{10分バケット}`・`payment_behavior: error_if_incomplete`
+  - 敵対的レビュー（3レンズ・検証つき）で6件検出→全修正: Stripeの24時間冪等リプレイ対策
+    （時刻バケット＋create後にretrieveで現在状態を確認）、開いたCheckoutセッションのexpire
+    （二重契約の窓）、UIのsynced反映、card_declinedのSentry記録、LIVE_SUBSCRIPTION_STATUSES共有化、
+    死にフィールド除去
+  - 単体10件＋route実DB3件＋分岐E2E1件（e2e/billing-resume.spec.ts）。
+    実Stripe（テストモード）で解約→ボタン→active→片付けの1周も確認済み
+  - **補足: 手動でDBのsubscription_statusを書き換えても、webhook／Stripe復帰同期がStripeの
+    実状態で上書きする（契約の正本はStripe）。テスト用の解約はStripe側で行うこと**
+
 ### T-M8-263: 設定タブ（SC-11）から「すべて停止/再開」を撤去 `done`
 - 参照: 要件06 SC-08/SC-11 / 依存: T-M8-251 / サイズ: S
 - 完了条件:

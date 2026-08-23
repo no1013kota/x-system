@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.58 |
+| バージョン | v1.59 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -68,6 +68,7 @@
 |---|---|---|---|
 | POST | `/api/stripe/checkout` | user | Checkout Session作成 |
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
+| POST | `/api/stripe/resume` | user＋Origin | 解約済み契約の再開（保存済みカードで同一プランを作り直しDBへ即時反映・要件03 §6.1・T-M8-264） |
 | GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
 | GET | `/auth/confirm` | Supabase `token_hash`, `type=recovery`（signupは6桁コード方式へ移行・T-M8-121。`type=signup` も後方互換で受ける）, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
@@ -345,6 +346,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.56 | 2026-08-23 | 「すべて停止/再開」の対象を全枠へ（T-M8-251） |
 | v1.57 | 2026-08-23 | `startAnalysisAction`（「分析を開始」）を追加し、`/api/cron/follower-snapshot` を廃止（T-M8-255）。§9を手動実行へ更新 |
 | v1.58 | 2026-08-23 | `/api/cron/follower-snapshot` を復活（T-M8-257・契約が有効な利用者のみ）。分析はボタンのまま |
+| v1.59 | 2026-08-23 | `POST /api/stripe/resume`（解約済み契約の再開）を追加（T-M8-264） |
 
 ### 下書きの投稿予約（T-M8-157）
 
