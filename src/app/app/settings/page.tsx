@@ -66,7 +66,9 @@ import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
-import { scheduledPlanChangeLabel } from "@/lib/billing/scheduled-plan-change";
+import { scheduledPlanChangeLabel, scheduledPlanChangeNote } from "@/lib/billing/scheduled-plan-change";
+import { stripe } from "@/lib/stripe/client";
+import { loadPendingProration, prorationNotice } from "@/lib/stripe/proration-preview";
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
@@ -110,6 +112,7 @@ interface BillingProfile {
   scheduled_plan: PlanId | null;
   scheduled_plan_at: string | null;
   stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   subscription_status: string;
 }
 
@@ -164,7 +167,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     admin
       .from("profiles")
       .select(
-        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, scheduled_plan, scheduled_plan_at",
+        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, scheduled_plan, scheduled_plan_at",
       )
       .eq("id", user.id)
       .maybeSingle<BillingProfile>(),
@@ -188,6 +191,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
   const hasStripeCustomer = Boolean(profile.stripe_customer_id);
   const scheduledChange = scheduledPlanChangeLabel(profile);
+  const scheduledChangeNote = scheduledPlanChangeNote(profile);
+  /*
+    Stripeの確認画面には独自の文章を書けない（T-M8-267）。上位プランへの変更は即時に切り替わるので
+    Stripeは「次回からのお支払い」しか出さず、**日割りの説明がどこにも出ない**。
+    「確定」直後に戻ってくるここで、実際の差額と加算先の請求日を出す（運営者の指示 2026-08-23）。
+  */
+  const pendingProration =
+    params.portal === "return" && profile.stripe_customer_id && profile.stripe_subscription_id
+      ? await loadPendingProration(stripe, {
+          customerId: profile.stripe_customer_id,
+          subscriptionId: profile.stripe_subscription_id,
+        })
+      : null;
 
   // planに依存する第2波。
   // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
@@ -374,6 +390,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 <Notice className="mt-4" tone="success"
                   role="status">
                   お支払い管理画面から戻りました。変更は数十秒ほどでこの画面に反映されます。
+                  {pendingProration ? ` ${prorationNotice(pendingProration)}` : null}
                 </Notice>
               ) : null}
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -386,6 +403,12 @@ let promptTemplates: PromptTemplateView[] = [];
                     {profile.plan ? (
                       <span className="text-caption font-normal text-ink-3">
                         月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
+                      </span>
+                    ) : null}
+                    {/* 予約済みの変更はプラン名と同じ場所に出す（運営者の指示 2026-08-23）。 */}
+                    {scheduledChangeNote ? (
+                      <span className="basis-full text-caption font-normal text-ink-2">
+                        {scheduledChangeNote}
                       </span>
                     ) : null}
                   </dd>
@@ -411,12 +434,6 @@ let promptTemplates: PromptTemplateView[] = [];
                       : "解約予定なし"}
                   </dd>
                 </div>
-                {scheduledChange ? (
-                  <div>
-                    <dt className="text-caption text-ink-3">プラン変更の予約</dt>
-                    <dd className="mt-1 text-body font-bold">{scheduledChange}</dd>
-                  </div>
-                ) : null}
               </dl>
               {/*
                 導線は1つにする（T-M8-29）。`PortalButton` が契約状態で行き先を変える
