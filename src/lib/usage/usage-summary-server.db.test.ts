@@ -101,7 +101,7 @@ describe("loadUsageSummaryForUser (db)", () => {
       expect(s?.ai_credits.used).toBe(50);
       expect(new Date(s?.resetsAt ?? "").toISOString()).toBe("2026-09-14T15:00:00.000Z");
 
-      // トライアル中はリセット日を出さない（リセットは最初の有料期間の終わり・D-36）。
+      // トライアル中はリセット日を出さない（リセットは最初の有料期間の終わり・D-38）。
       await withTransaction((c) =>
         c.query(
           `update profiles set trial_used_at = current_period_start, trial_ends_at = current_period_end where id = $1`,

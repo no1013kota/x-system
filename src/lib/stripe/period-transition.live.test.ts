@@ -251,7 +251,7 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
   }, 300_000);
 
   /**
-   * トライアル→有料化で利用枠が満額へ戻らない（運営者の指示 2026-08-23・D-36）。
+   * トライアル→有料化で利用枠が満額へ戻らない（運営者の指示 2026-08-23・D-38）。
    * Stripe の実挙動（トライアル中 `current_period_end = trial_end`、有料化で
    * `current_period_start = trial_end`、`trial_end` は有料化後も残る）に依存する読み替えなので、実物で確かめる。
    */
