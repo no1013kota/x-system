@@ -11,7 +11,6 @@ import {
   refreshXAccountStatusAction,
   setActiveXAccountAction,
 } from "@/app/actions/x-accounts";
-import { ResumeAllAutomationButton, StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -210,21 +209,8 @@ export function XAccountsSettings({
                   接続を確認
                 </Button>
 
-                {/* 停止と再開を2つとも出す（SC-08と同じ・T-M8-251）。対象が無ければ押せない。 */}
-                {account.pausedSlots + account.enabledSlots > 0 ? (
-                  <>
-                    <StopAllAutomationButton
-                      disabled={account.enabledSlots === 0}
-                      xAccountId={account.id}
-                    />
-                    <ResumeAllAutomationButton
-                      disabled={account.pausedSlots === 0}
-                      pausedIncludesAuto={account.pausedIncludesAuto}
-                      pausedSlots={account.pausedSlots}
-                      xAccountId={account.id}
-                    />
-                  </>
-                ) : null}
+                {/* スケジュールの全停止/全再開はSC-08（スケジュール画面）だけに置く
+                    （T-M8-251で一時ここにも出したが、運営者の指示 2026-08-23 で撤去）。 */}
 
                 {account.status !== "disabled" ? (
                   <DisconnectButton

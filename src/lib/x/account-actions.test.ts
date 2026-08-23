@@ -69,9 +69,6 @@ describe("listXAccountsForUser", () => {
         status: "active",
         is_active: true,
         automation_active: false,
-        paused_slots: "0",
-        enabled_slots: "0",
-        paused_includes_auto: false,
         x_premium: false,
       },
     ]);
@@ -86,10 +83,6 @@ describe("listXAccountsForUser", () => {
         status: "active",
         isActive: true,
         automationActive: false,
-        // 停止/再開は2つとも出し、対象が無い方を押せなくする（T-M8-251）。
-        pausedSlots: 0,
-        enabledSlots: 0,
-        pausedIncludesAuto: false,
         xPremium: false,
       },
     ]);
