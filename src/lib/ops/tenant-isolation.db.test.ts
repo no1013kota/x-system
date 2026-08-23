@@ -223,7 +223,7 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
   });
 
   it("ニュースの配信: 分野設定が違う2人には、それぞれの分野だけが届く", async () => {
-    const { fanOutNewsDigest } = await import("../jobs/news-digest");
+    const { fanOutNewsDigest, newsDigestDedupeKey } = await import("../jobs/news-digest");
     const a = await makeAccount({ categories: ["ai"] });
     const b = await makeAccount({ categories: ["web3"] });
 
@@ -246,13 +246,19 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
 
     try {
       await fanOutNewsDigest({ db, windowStart });
+      /*
+        **この窓の行だけを見る**（2026-08-24）。窓は専有しているつもりでも、同じ「ニュースの配信」を
+        検査する別ファイル（news-digest.db.test.ts）が**別の窓で全利用者へ配る**ため、
+        user_id だけで絞ると相手の配信が混ざる（並列実行の順番で出たり出なかったりする＝
+        flakyではなく絞り込み漏れ）。
+      */
       const notifications = await db.query<{ user_id: string; body: string }>(
         `select user_id, body from notifications
-          where type = 'news' and user_id = any($1::uuid[])`,
-        [[a.userId, b.userId]],
+          where type = 'news' and user_id = any($1::uuid[]) and dedupe_key = $2`,
+        [[a.userId, b.userId], newsDigestDedupeKey(windowStart)],
       );
       const byUser = Object.fromEntries(notifications.rows.map((r) => [r.user_id, r.body]));
-      // 窓を専有しているので「自分の1件だけ」を厳密に主張できる（混入すれば行数が増える）。
+      // 窓で絞っているので「自分の1件だけ」を厳密に主張できる（混入すれば行数が増える）。
       expect(byUser[a.userId], "Aへはaiのニュースだけが届く").toBe(`・AI-${marker}`);
       expect(byUser[b.userId], "Bへはweb3のニュースだけが届く").toBe(`・WEB3-${marker}`);
     } finally {

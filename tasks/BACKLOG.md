@@ -2624,6 +2624,23 @@ UI側boolean を壊しても投稿は誤爆しない）。
   なお**テスト環境の半額クーポンは利用上限2回に達していて `valid=false`**（doctorが検出する）。
 
 
+### T-M8-281: ニュース配信のテストが全体実行のときだけ落ちる（絞り込み漏れ） `done`
+- 参照: docs/operations/development-and-testing.md §「なぜ「flaky」と即断してはいけないか」 / 依存: なし / サイズ: S
+- 完了条件:
+  - 落ちる条件を特定して記録する（「並列だから」で片付けない）
+  - `REQUIRE_DB=1 npx vitest run` の全体実行が連続で緑
+- メモ: T-M8-280 のコミット時に `news-digest.db.test.ts` が全体実行でだけ失敗（単体では緑）。
+  原因は並列の運ではなく**検証の絞り込み漏れ**。`fanOutNewsDigest` は窓を指定すれば
+  **条件に合う利用者全員へ配る**ため、`tenant-isolation.db.test.ts` が**別の窓で**同じDBへ配ると
+  こちらのテスト用利用者にも2件目が入る。`user_id` と `type='news'` だけで数えていた3か所が
+  相手の配信まで数えていた（db testファイルを増やしたことで並列の組み合わせが変わり表面化）。
+- 実装メモ（2026-08-24 完了）: 3か所の検証を `dedupe_key = newsDigestDedupeKey(windowStart)` で
+  **自分の窓に絞る**（`news-digest.db.test.ts` ×2・`tenant-isolation.db.test.ts` ×1）。
+  対象2ファイルを5回連続・全体実行を2回連続で緑を確認。製品コードの変更なし（テスト側の誤り）。
+  教訓を development-and-testing.md へ追記——共有DBで「全員に配る」ジョブを検証するときは
+  利用者ではなく**窓（＝dedupe key）で絞る**。
+
+
 ### T-M8-280: 引き止めクーポンを受け取り済みの人が「解約する」を押せなくなる `done`
 - 参照: 要件03 §2.2 Portal / 依存: T-M8-272 / サイズ: S
 - 完了条件:

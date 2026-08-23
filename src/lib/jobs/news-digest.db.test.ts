@@ -153,6 +153,12 @@ describe("fanOutNewsDigest (db)", () => {
       expect(res.matchedUsers, `対象が2人未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
       expect(res.notified, `配信が2件未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
 
+      /*
+        **この窓の行だけを見る**（2026-08-24）。ローカルDBは共有で、同じ「ニュースの配信」を検査する
+        別ファイル（tenant-isolation.db.test.ts）が**別の窓で全利用者へ配る**ため、
+        user_id だけで絞ると相手の配信も数えて「1件のはずが2件」で落ちる。
+        並列実行の順番で出たり出なかったりする＝flakyではなく、絞り込み漏れ。
+      */
       const load = async (uid: string) =>
         (
           await withTransaction((c) =>
@@ -160,8 +166,9 @@ describe("fanOutNewsDigest (db)", () => {
               `select (payload->>'total_count')::int as total_count,
                       payload->'news_item_ids' as news_item_ids,
                       in_app_enabled
-                 from notifications where user_id = $1 and type = 'news'`,
-              [uid],
+                 from notifications
+                where user_id = $1 and type = 'news' and dedupe_key = $2`,
+              [uid, newsDigestDedupeKey(windowStart)],
             ),
           )
         ).rows;
@@ -263,7 +270,12 @@ describe("fanOutNewsDigest (db)", () => {
       });
       expect(res.notified, `配信されなかった。状態: ${JSON.stringify(ctx)}`).toBeGreaterThanOrEqual(1);
       const alive = await withTransaction((c) =>
-        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+        // この窓の行だけを見る（他ファイルの fan-out が別の窓で同じ利用者へ配るため・2026-08-24）。
+        c.query(
+          `select 1 from notifications
+            where user_id = $1 and type = 'news' and dedupe_key = $2`,
+          [seed.alive, newsDigestDedupeKey(windowStart)],
+        ),
       );
       expect(alive.rows, "残っている利用者へは届く").toHaveLength(1);
     } finally {
@@ -340,7 +352,12 @@ describe("fanOutNewsDigest (db)", () => {
       await fanOut;
       fanOut = null;
       const alive = await withTransaction((c) =>
-        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+        // この窓の行だけを見る（他ファイルの fan-out が別の窓で同じ利用者へ配るため・2026-08-24）。
+        c.query(
+          `select 1 from notifications
+            where user_id = $1 and type = 'news' and dedupe_key = $2`,
+          [seed.alive, newsDigestDedupeKey(windowStart)],
+        ),
       );
       expect(alive.rows, "退会の巻き添えにならず配信される").toHaveLength(1);
     } finally {
