@@ -42,8 +42,8 @@ test("招待リンクで30日Cookieが付き、そのまま登録すると招待
       .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
       .not.toBe("");
     await page.getByRole("button", { name: "メールアドレスで登録" }).click();
-    // メール確認は省略中（T-M8-202）。登録と同時にプラン選択へ着地する。
-    await expect(page).toHaveURL(/\/plans/, { timeout: 30_000 });
+    // メール確認は省略中（T-M8-202）。登録と同時にアプリ本体へ着地する（T-M8-268）。
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/, { timeout: 30_000 });
 
     // 登録の時点で帰属が記録される。
     const [attribution] = await query<{ affiliate_account_id: string }>(

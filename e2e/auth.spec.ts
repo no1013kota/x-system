@@ -20,7 +20,7 @@ import {
  * メールはローカルのMailpit（`supabase start` が起動）が受け取り、外部へは送信されない。
  */
 
-test("サインアップは確認コードなしで完了し、未契約はプラン選択で止まる（T-M8-202）", async ({ page }) => {
+test("サインアップは確認コードなしで完了し、そのままアプリへ着地する（T-M8-202→T-M8-268）", async ({ page }) => {
   const suffix = `signup-${randomUUID().slice(0, 8)}`;
   const email = `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
@@ -48,11 +48,13 @@ test("サインアップは確認コードなしで完了し、未契約はプ�
 
     /*
       メール確認は省略（T-M8-202・運営者の決定 2026-08-22）。登録と同時にセッションが張られ、
-      **そのままプラン選択へ着地し、成功の文言が出る**。確認コード画面には入らない。
+      **そのままアプリ本体へ着地し、成功の文言が出る**（T-M8-268で行き先を /plans から /app へ。
+      いきなり料金表へ送らず、中を見てもらってから実行時にプランへ案内する）。
+      確認コード画面には入らない。
       （戻す場合の挙動は supabase/config.toml と scripts/auth-settings.mjs のコメント参照。
       コード検証・再送のUIは次のテストが未確認ユーザー経由で引き続き検証している。）
     */
-    await expect(page).toHaveURL(/\/plans/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/, { timeout: 30_000 });
     await expect(page.getByText("登録が完了しました", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toHaveCount(0);
     expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
@@ -86,11 +88,12 @@ test("サインアップは確認コードなしで完了し、未契約はプ�
       .poll(() => page.locator('input[name="captcha_token"]').inputValue(), { timeout: 30_000 })
       .not.toBe("");
     await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/plans/);
+    // 未契約でもアプリ本体へ入る（T-M8-268。実行しようとしたときにプランへ案内する）。
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
-    // 未契約のまま /app を直接開いてもアプリ本体には入れない
-    await page.goto("/app");
-    await expect(page).toHaveURL(/\/plans/);
+    // 直接開いても弾かれない（閲覧は契約状態で止めない）。
+    await page.goto("/app/posts?tab=drafts");
+    await expect(page).toHaveURL(/\/app\/posts/);
   } finally {
     await destroyUserByEmail(email);
   }
@@ -155,7 +158,7 @@ test("未確認アカウントのログインは黄色の案内付き6桁画面�
     const code = await signUpCodeFromMail(resentMail.ID);
     await page.getByRole("textbox", { name: "確認コード" }).fill(code);
     await page.getByRole("button", { name: "登録を完了する" }).click();
-    await expect(page).toHaveURL(/\/plans/);
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/);
     expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
   } finally {
     await destroyUserByEmail(email);
