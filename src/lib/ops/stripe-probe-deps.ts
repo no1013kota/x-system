@@ -32,6 +32,7 @@ export async function buildStripeProbeDeps(): Promise<StripeProbeDeps> {
   return {
     portal: {
       configurationId: env.STRIPE_PORTAL_CONFIGURATION_ID,
+      retentionCouponId: env.STRIPE_RETENTION_COUPON_ID,
       // 変更先に「いまの料金プラン」が入っているかまで見る（T-M8-238）。
       expectedPriceIds: Object.values(priceIds).filter(
         (id): id is string => typeof id === "string" && id.length > 0,

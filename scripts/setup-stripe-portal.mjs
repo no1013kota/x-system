@@ -68,7 +68,7 @@ export const PRODUCT_NAMES = {
  * （利用者の要望）。文言は `/plans` のプランカード（`src/app/plans/page.tsx`）と揃え、
  * 数字（アカウント数・利用上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
  *
- * **文面の正本はここ**（2026-08-23、運営者がStripeダッシュボード〔テストモード〕で整えた文面へ合わせた・T-M8-267）。
+ * **文面の正本はここ**（2026-08-23、運営者がStripeダッシュボード〔テストモード〕で整えた文面へ合わせた・T-M8-270）。
  * ダッシュボードで直接編集すると次回の `stripe:portal:setup` で上書きされるので、**直すときはここを直して
  * 3環境へ流す**（`--target local|staging|production`）。3環境で同じ文面にすること（運営者の指示）。
  */
@@ -200,7 +200,7 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
         enabled: true,
         default_allowed_updates: ["price"],
         /*
-          値上げの差額（日割り）は**その場で決済せず次回請求へ合算**する（T-M8-267・運営者の指示 2026-08-23）。
+          値上げの差額（日割り）は**その場で決済せず次回請求へ合算**する（T-M8-270・運営者の指示 2026-08-23）。
           一度 `always_invoice`（即時決済）にすると Stripe の確認画面に内訳が出るが、そのとき同時に出る
           **「本日が期日の金額」という見出しが分かりにくい**ため戻した。Stripe組み込みの文言は差し替えられない
           （APIにもダッシュボードにも該当設定が無い・SDKの型で確認）ので、日割りの説明は

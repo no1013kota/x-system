@@ -5,7 +5,7 @@ import type Stripe from "stripe";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 /**
- * プラン変更で発生した日割り差額の下見（T-M8-267・運営者の指示 2026-08-23「Aにしてみましょう」）。
+ * プラン変更で発生した日割り差額の下見（T-M8-270・運営者の指示 2026-08-23「Aにしてみましょう」）。
  *
  * **Stripe の確認画面には独自の文章を書けない**（ポータルで設定できる文字は見出し・各種リンクだけ。
  * Stripe公式ドキュメントとSDKの型で確認）。上位プランへの変更は即時に切り替わるため、Stripeの確認画面は

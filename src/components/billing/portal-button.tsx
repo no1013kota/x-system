@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { KeepSubscriptionButton } from "@/components/billing/keep-subscription-button";
 import { CancelScheduledPlanChangeButton } from "@/components/billing/scheduled-plan-change-button";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
@@ -24,16 +25,19 @@ import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
  */
 export function PortalButton({
   cancelAtPeriodEnd = false,
+  cancelAtLabel = "",
   effects,
   enabled,
   scheduledChange = null,
 }: {
   /**
    * 期間末解約が予約済みか（T-M8-57）。予約済みのとき「解約する」を出し続けると、
-   * もう予約されているのに同じ操作を促すことになる。取り消し（Stripeの「プランを続ける」）へ
-   * 導線を替える。
+   * もう予約されているのに同じ操作を促すことになる。**その場で取り消せるボタン**へ導線を替える
+   * （T-M8-271。以前は Stripe の Portal トップを開いていた）。
    */
   cancelAtPeriodEnd?: boolean;
+  /** 解約日の表記（確認ダイアログに出す）。例「2026年9月15日」。 */
+  cancelAtLabel?: string;
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
@@ -45,18 +49,16 @@ export function PortalButton({
    */
   scheduledChange?: string | null;
 }) {
-  const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
+  const [pending, setPending] = useState<PortalIntent | null>(null);
   // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
   usePageshowReset(() => setPending(null));
   const toast = useToast();
 
-  function open(intent: PortalIntent | "manage") {
+  function open(intent: PortalIntent) {
     return async () => {
       setPending(intent);
       try {
-        // "manage" はPortalのトップ（解約予定の取り消しはStripeが「プランを続ける」として出す。
-        // flow_data に取り消し専用の型は無いため、トップから行うのが正規の経路）。
-        await startCustomerPortal(intent === "manage" ? undefined : intent);
+        await startCustomerPortal(intent);
       } catch (cause) {
         toast.show({
           tone: "error",
@@ -98,17 +100,7 @@ export function PortalButton({
           {pending === "update" ? "開いています…" : "プランを変更"}
         </Button>
         {cancelAtPeriodEnd ? (
-          <Button
-            aria-busy={pending === "manage"}
-            className="h-9"
-            disabled={pending !== null}
-            onClick={open("manage")}
-            size="lg"
-            type="button"
-            variant="outline"
-          >
-            {pending === "manage" ? "開いています…" : "解約予定を取り消す"}
-          </Button>
+          <KeepSubscriptionButton endsAtLabel={cancelAtLabel} />
         ) : (
           <Button
             aria-busy={pending === "cancel"}

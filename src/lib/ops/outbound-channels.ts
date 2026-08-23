@@ -94,7 +94,7 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
       "lib/stripe/billing-redirect.ts",
       "lib/stripe/webhook.ts",
       // 契約期間の補完（Stripe を読むだけ・T-M8-258）と、プラン変更後の日割り差額の下見
-      // （読むだけ・T-M8-267）。予約の取り消し（scheduled-plan-change.ts）は gateway 注入で
+      // （読むだけ・T-M8-270）。予約の取り消し（scheduled-plan-change.ts）は gateway 注入で
       // Stripe SDK を直接呼ばないため一覧の検出対象外。
       "lib/stripe/period-backfill.ts",
       "lib/stripe/proration-preview.ts",

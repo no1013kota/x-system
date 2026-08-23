@@ -193,7 +193,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const scheduledChange = scheduledPlanChangeLabel(profile);
   const scheduledChangeNote = scheduledPlanChangeNote(profile);
   /*
-    Stripeの確認画面には独自の文章を書けない（T-M8-267）。上位プランへの変更は即時に切り替わるので
+    この先に起きる1件（解約予定 > プラン変更の予約）。解約が予約されていればそちらが重要なので先に出す
+    （両方が同時に付くことはStripe側の挙動では起きないが、順序を決めておく）。
+  */
+  /*
+    解約日は `current_period_end` で表す——**この行のすぐ下に出す「現在の期間終了日」と同じ値**にする。
+    トライアル中もStripeは期間末＝トライアル終了日にするので（実測・T-M8-258）別扱いにしない。
+  */
+  const cancelAtLabel = formatPeriodEnd(profile.current_period_end);
+  const upcomingChange = profile.cancel_at_period_end
+    ? `${cancelAtLabel}に解約されます（それまでは今までどおりご利用いただけます）`
+    : scheduledChangeNote;
+  /*
+    Stripeの確認画面には独自の文章を書けない（T-M8-270）。上位プランへの変更は即時に切り替わるので
     Stripeは「次回からのお支払い」しか出さず、**日割りの説明がどこにも出ない**。
     「確定」直後に戻ってくるここで、実際の差額と加算先の請求日を出す（運営者の指示 2026-08-23）。
   */
@@ -405,12 +417,6 @@ let promptTemplates: PromptTemplateView[] = [];
                         月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
                       </span>
                     ) : null}
-                    {/* 予約済みの変更はプラン名と同じ場所に出す（運営者の指示 2026-08-23）。 */}
-                    {scheduledChangeNote ? (
-                      <span className="basis-full text-caption font-normal text-ink-2">
-                        {scheduledChangeNote}
-                      </span>
-                    ) : null}
                   </dd>
                 </div>
                 <div>
@@ -420,18 +426,21 @@ let promptTemplates: PromptTemplateView[] = [];
                       profile.subscription_status}
                   </dd>
                 </div>
+                {/*
+                  **解約・下位プランへの切り替えは「プラン」の下・「現在の期間終了日」の上に出す**
+                  （運営者の指示 2026-08-23・T-M8-271）。別行に離すと、プラン名だけ見た人は
+                  今のプランがそのまま続くと思ってしまう。予定が無いときは行ごと出さない。
+                */}
+                {upcomingChange ? (
+                  <div className="sm:col-span-2">
+                    <dt className="text-caption text-ink-3">この先の予定</dt>
+                    <dd className="mt-1 text-body font-bold text-ink">{upcomingChange}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-caption text-ink-3">現在の期間終了日</dt>
                   <dd className="mt-1 text-body font-bold">
                     {formatPeriodEnd(profile.current_period_end)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-caption text-ink-3">解約予定</dt>
-                  <dd className="mt-1 text-body font-bold">
-                    {profile.cancel_at_period_end
-                      ? "期間終了日に解約予定"
-                      : "解約予定なし"}
                   </dd>
                 </div>
               </dl>
@@ -448,6 +457,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 ) : (
                   <PortalButton
                     cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
+                      cancelAtLabel={cancelAtLabel}
                     effects={planChangeEffects({
                       cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
                       currentPeriodEnd: profile.current_period_end,

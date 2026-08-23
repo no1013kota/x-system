@@ -29,7 +29,7 @@ export type PortalFeatureKey = (typeof REQUIRED_PORTAL_FEATURES)[number]["key"];
 export const EXPECTED_TRIAL_UPDATE_BEHAVIOR = "continue_trial";
 
 /**
- * 値上げ時の日割り差額の扱い（T-M8-267）。`create_prorations`＝日割り行を作り**次回請求へ合算**する。
+ * 値上げ時の日割り差額の扱い（T-M8-270）。`create_prorations`＝日割り行を作り**次回請求へ合算**する。
  * `always_invoice` にするとその場で決済され、Stripe の確認画面に**差し替えできない**
  * 「本日が期日の金額」という分かりにくい見出しが出る（運営者の指示 2026-08-23 で戻した）。
  * 日割りの説明はプラン説明（`setup-stripe-portal.mjs` の `PLAN_CHANGE_NOTE`）が担う。
@@ -67,6 +67,11 @@ export interface PortalFeatureSnapshot {
   };
   /** いまアプリが契約に使っている Price（`STRIPE_PRICE_IDS`）。 */
   expectedPriceIds?: string[];
+  /**
+   * 解約前に提示するクーポンの状態（T-M8-272）。`unset` は提示されない状態、`invalid` は
+   * 設定はあるがStripeに無い／無効。判定できないときは `unknown`（判定しない）。
+   */
+  retentionCoupon?: "unset" | "valid" | "invalid" | "unknown";
 }
 
 export interface PortalFeatureJudgement {
@@ -142,6 +147,11 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
         `プラン変更の差額の扱いが画面の説明と違います（proration_behavior=${proration}。想定は${EXPECTED_PRORATION_BEHAVIOR}＝次回請求へ合算）`,
       );
     }
+    if (snapshot.retentionCoupon === "invalid") {
+      drift.push(
+        "解約前に提示するクーポンがStripeに見つからない（または無効）です（STRIPE_RETENTION_COUPON_ID）",
+      );
+    }
     const offered = snapshot.subscriptionUpdate?.priceIds;
     const expected = snapshot.expectedPriceIds ?? [];
     if (offered !== undefined && expected.length > 0) {
@@ -159,6 +169,16 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
         disabled: [],
         nextAction:
           "`npm run stripe:portal:setup -- --target <staging|production>` を実行して設定を作り直してください（ローカルは --target local）",
+      };
+    }
+    if (snapshot.retentionCoupon === "unset") {
+      return {
+        level: "warn",
+        detail:
+          "プラン変更・解約のどちらも操作できます。ただし解約前のクーポンは提示されません（STRIPE_RETENTION_COUPON_ID が未設定）",
+        disabled: [],
+        nextAction:
+          "引き止めクーポンを出すなら、その環境のクーポンIDを `STRIPE_RETENTION_COUPON_ID` に設定してください（Stripeダッシュボードの「顧客維持クーポン」設定はflow_data経由の解約画面には効きません・T-M8-272）",
       };
     }
     return {

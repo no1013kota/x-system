@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { type BaseResult, errorResult, requireUserId } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { stripe } from "@/lib/stripe/client";
+import { cancelScheduledCancellation } from "@/lib/stripe/scheduled-cancellation";
 import { cancelScheduledPlanChange } from "@/lib/stripe/scheduled-plan-change";
 
 /**
@@ -25,6 +26,30 @@ export async function cancelScheduledPlanChangeAction(): Promise<BaseResult> {
         outcome === "released"
           ? "プラン変更の予約を取り消しました。現在のプランのまま続きます。"
           : "取り消せる予約はありませんでした。表示を最新にしました。",
+    };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * 解約予定の取り消し（T-M8-271・運営者の指示 2026-08-23）。
+ *
+ * 以前は Stripe の Portal トップを開いて「プランを続ける」を押させていたが、**その場で終わらせる**。
+ * 解約済みの契約の再開は別経路（課金タブの「プランを再開」・T-M8-264）。
+ */
+export async function keepSubscriptionAction(): Promise<BaseResult> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const outcome = await cancelScheduledCancellation(pooledQueryable(), stripe, auth.userId);
+    revalidatePath("/app", "layout");
+    return {
+      status: "success",
+      message:
+        outcome === "resumed"
+          ? "解約予定を取り消しました。今までどおりご利用いただけます。"
+          : "取り消せる解約予定はありませんでした。表示を最新にしました。",
     };
   } catch (error) {
     return errorResult(error);

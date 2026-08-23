@@ -104,9 +104,26 @@ describe("次にやること", () => {
   it("正常なときは次の一手を出さない（読まなくてよいものを増やさない）", () => {
     const r = judgePortalFeatures({
       features: { subscription_update: { enabled: true }, subscription_cancel: { enabled: true } },
+      retentionCoupon: "valid",
     });
     expect(r.level).toBe("ok");
     expect(r.nextAction).toBeUndefined();
+  });
+
+  /** 解約前のクーポン（T-M8-272）。未設定＝黙って提示されない状態なので知らせる（原則1）。 */
+  it("解約前のクーポンが未設定なら warn、Stripeに無ければ error", () => {
+    const features = { subscription_update: { enabled: true }, subscription_cancel: { enabled: true } };
+    const unset = judgePortalFeatures({ features, retentionCoupon: "unset" });
+    expect(unset.level).toBe("warn");
+    expect(unset.detail).toContain("クーポンは提示されません");
+    expect(unset.nextAction).toContain("STRIPE_RETENTION_COUPON_ID");
+
+    const invalid = judgePortalFeatures({ features, retentionCoupon: "invalid" });
+    expect(invalid.level).toBe("error");
+    expect(invalid.detail).toContain("クーポン");
+
+    // 判定できないとき（鍵が無い等）は従来どおり ok のまま——分からないことで赤くしない。
+    expect(judgePortalFeatures({ features, retentionCoupon: "unknown" }).level).toBe("ok");
   });
 
   /**

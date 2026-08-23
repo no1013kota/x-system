@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadPendingProration, prorationNotice } from "./proration-preview";
 
 /**
- * プラン変更で発生した日割り差額の下見（T-M8-267）。Stripeの確認画面には独自の文章を書けないので、
+ * プラン変更で発生した日割り差額の下見（T-M8-270）。Stripeの確認画面には独自の文章を書けないので、
  * 「確定」直後に戻ってきた画面で実際の差額を出す。
  */
 function preview(lines: unknown[], over: object = {}) {

@@ -136,6 +136,29 @@ describe("portalFlowData（やりたいことを先に選ばせる・T-M8-31）"
     });
   });
 
+  /**
+   * **flow_dataで解約画面へ直接入ると、ダッシュボードの「顧客維持クーポン」は出ない**
+   * （2026-08-23 実測。運営者が「クーポンが提示されずに解約された」と報告）。
+   * ここで明示したものだけが「特別オファー」として出る。
+   */
+  it("解約前のクーポンは retention で明示したときだけ付く（T-M8-272）", () => {
+    expect(portalFlowData("cancel", "sub_1", RETURN_URL, "coupon_half")).toMatchObject({
+      subscription_cancel: {
+        subscription: "sub_1",
+        retention: { type: "coupon_offer", coupon_offer: { coupon: "coupon_half" } },
+      },
+    });
+    // 未設定なら従来どおり付けない（空文字も未設定として扱う）。
+    for (const unset of [undefined, null, ""]) {
+      const flow = portalFlowData("cancel", "sub_1", RETURN_URL, unset);
+      expect(flow?.subscription_cancel).not.toHaveProperty("retention");
+    }
+    // プラン変更のフローには付かない（Stripeが400を返す）。
+    expect(portalFlowData("update", "sub_1", RETURN_URL, "coupon_half")?.subscription_update).not.toHaveProperty(
+      "retention",
+    );
+  });
+
   it("完了後はアプリへ戻す（Stripeに残して迷子にしない）", () => {
     expect(portalFlowData("cancel", "sub_1", RETURN_URL)).toMatchObject({
       after_completion: { type: "redirect", redirect: { return_url: RETURN_URL } },

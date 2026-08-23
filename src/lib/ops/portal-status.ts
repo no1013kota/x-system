@@ -32,6 +32,8 @@ export interface PortalConfigurationGateway {
       }>;
     };
   };
+  /** 解約前に提示するクーポンの実在確認（T-M8-272）。読み取りのみ。 */
+  coupons?: { retrieve(id: string): Promise<{ id: string; valid?: boolean | null }> };
 }
 
 export interface PortalProbeDeps {
@@ -39,6 +41,8 @@ export interface PortalProbeDeps {
   stripe?: PortalConfigurationGateway | null;
   /** いまアプリが契約に使っている Price。変更先に入っているかを見る（T-M8-238）。 */
   expectedPriceIds?: string[];
+  /** 解約前に提示するクーポン（`STRIPE_RETENTION_COUPON_ID`）。未設定なら undefined。 */
+  retentionCouponId?: string | null;
 }
 
 export async function probePortalFeatures(
@@ -66,6 +70,7 @@ export async function probePortalFeatures(
         trialUpdateBehavior: update?.trial_update_behavior ?? null,
         prorationBehavior: update?.proration_behavior ?? null,
       },
+      retentionCoupon: await probeRetentionCoupon(deps),
     };
   } catch (error) {
     // **「設定IDが無い」と「Stripeへ届かない」を区別する**（T-M8-55）。
@@ -100,4 +105,23 @@ export function judgePortal(snapshot: PortalFeatureSnapshot): Check {
         }
       : {}),
   };
+}
+
+/**
+ * 解約前に提示するクーポンの状態（T-M8-272）。**設定していない＝解約時に何も提示されない**ので、
+ * 「未設定」と「設定はあるが無効（期限切れ・削除済み）」を区別して返す（原則1）。
+ */
+async function probeRetentionCoupon(
+  deps: PortalProbeDeps,
+): Promise<"unset" | "valid" | "invalid" | "unknown"> {
+  if (!deps.retentionCouponId) return "unset";
+  if (!deps.stripe?.coupons) return "unknown";
+  try {
+    const coupon = await deps.stripe.coupons.retrieve(deps.retentionCouponId);
+    return coupon.valid === false ? "invalid" : "valid";
+    // 存在しない（別環境のIDを入れている典型）も「無効」として扱う——待っても直らない。
+    // eslint-disable-next-line no-restricted-syntax -- 失敗自体が答え（doctorの状態確認）。記録は判定文で運営者へ出す。
+  } catch {
+    return "invalid";
+  }
 }

@@ -140,6 +140,12 @@ const schema = z
     STRIPE_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_PORTAL_CONFIGURATION_ID: z.string().min(1).optional(),
+    /**
+     * 解約を思いとどまってもらうためのクーポン（T-M8-272）。**flow_dataで解約画面へ直接入ると、
+     * ダッシュボードで設定した「顧客維持クーポン」は出ない**——`flow_data.subscription_cancel.retention`
+     * で明示したものだけが出る（2026-08-23 実測）。未設定なら提示しない（従来どおり）。
+     */
+    STRIPE_RETENTION_COUPON_ID: z.string().min(1).optional(),
     STRIPE_PRICE_STANDARD_MONTHLY: z.string().min(1).optional(),
     STRIPE_PRICE_EXPERT_MONTHLY: z.string().min(1).optional(),
     STRIPE_PRICE_PREMIUM_MONTHLY: z.string().min(1).optional(),

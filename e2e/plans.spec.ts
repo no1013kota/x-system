@@ -244,14 +244,20 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   // 取り消し（StripeのPortalトップにある「プランを続ける」）へ導線を替える。
   await query(`update profiles set cancel_at_period_end = true where id = $1`, [account.userId]);
   await page.reload();
-  await expect(page.getByText("2026年8月12日に解約されます")).toBeVisible();
+  // 「この先の予定」の行と、押す前の効果説明（解約: …）の2か所に出る。
+  await expect(page.getByText("2026年8月12日に解約されます")).toHaveCount(2);
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
   // 課金カードとヘッダー直下のバナー（T-M8-253）の両方が「解約する」を出さない。
   // バナー側は以前 `cancelAtPeriodEnd` を受けておらず「◯日に解約されます」の横に「解約する」が並んでいた。
   await expect(page.getByRole("button", { name: "解約する" })).toHaveCount(0);
   // 契約バナー（App Shell）とカードの両方に出る（バナー側の出し分け漏れはT-M8-266で修正）。
+  // **その場で取り消す**ボタン（Stripeへは遷移しない・T-M8-271）。
   await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toHaveCount(2);
-  await expect(page.getByText("期間終了日に解約予定")).toBeVisible();
+  // 解約・下位変更の予定は「プラン」の下・「現在の期間終了日」の上に出す（運営者の指示 2026-08-23）。
+  await expect(page.getByText("この先の予定")).toBeVisible();
+  await expect(
+    page.getByText("2026年8月12日に解約されます（それまでは今までどおりご利用いただけます）"),
+  ).toBeVisible();
 });
 
 /**

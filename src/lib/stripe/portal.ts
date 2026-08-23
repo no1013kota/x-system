@@ -38,11 +38,25 @@ export function portalFlowData(
   intent: PortalIntent | null,
   subscriptionId: string | null | undefined,
   returnUrl: string,
+  retentionCouponId?: string | null,
 ): Stripe.BillingPortal.SessionCreateParams.FlowData | undefined {
   if (!intent || !subscriptionId) return undefined;
   const after = { after_completion: { type: "redirect" as const, redirect: { return_url: returnUrl } } };
   if (intent === "cancel") {
-    return { type: "subscription_cancel", subscription_cancel: { subscription: subscriptionId }, ...after };
+    /*
+      **解約前にクーポンを提示する**（T-M8-272・運営者の指摘 2026-08-23「クーポンが提示されずに解約された」）。
+      ダッシュボードの「顧客維持クーポン」は**Portalのトップから解約したとき**の設定で、
+      `flow_data` で解約画面へ直接入るこの経路には効かない。ここで明示したものだけが出る（実測）。
+      未設定なら従来どおり提示しない（環境ごとにクーポンIDが違うため env で持つ）。
+    */
+    const retention = retentionCouponId
+      ? { retention: { type: "coupon_offer" as const, coupon_offer: { coupon: retentionCouponId } } }
+      : {};
+    return {
+      type: "subscription_cancel",
+      subscription_cancel: { subscription: subscriptionId, ...retention },
+      ...after,
+    };
   }
   return {
     type: "subscription_update",
@@ -92,6 +106,8 @@ export async function resolveSubscriptionForFlow(
 export interface PortalRouteDependencies {
   appBaseUrl: string;
   configurationId?: string;
+  /** 解約前に提示するクーポン（T-M8-272）。未設定なら提示しない。 */
+  retentionCouponId?: string | null;
   getCurrentUser(): Promise<{ id: string } | null>;
   getProfile(userId: string): Promise<PortalProfile | null>;
   stripe: PortalStripeGateway;
@@ -160,7 +176,12 @@ export async function handlePortalRequest(
         ? { configuration: deps.configurationId }
         : {}),
       ...(() => {
-        const flowData = portalFlowData(intent, subscriptionId, returnUrl);
+        const flowData = portalFlowData(
+          intent,
+          subscriptionId,
+          returnUrl,
+          deps.retentionCouponId,
+        );
         return flowData ? { flow_data: flowData } : {};
       })(),
     });
