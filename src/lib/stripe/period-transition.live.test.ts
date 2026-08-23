@@ -251,11 +251,11 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
   }, 300_000);
 
   /**
-   * トライアル→有料化で利用枠が満額へ戻らない（運営者の指示 2026-08-23・D-38）。
+   * トライアル→有料化で**利用枠が満額へ戻る**（運営者の指示 2026-08-23・D-38 再決定）。
    * Stripe の実挙動（トライアル中 `current_period_end = trial_end`、有料化で
-   * `current_period_start = trial_end`、`trial_end` は有料化後も残る）に依存する読み替えなので、実物で確かめる。
+   * `current_period_start = trial_end`）に依存するので、実物で確かめる。
    */
-  it("トライアルと最初の有料期間で1つの枠を共有し、2回目の有料期間で0から始まる", async () => {
+  it("トライアルと有料期間はそれぞれ別の枠になる（有料化で0から）", async () => {
     expect(SECRET.startsWith("sk_test_")).toBe(true);
     const { STRIPE_API_VERSION } = await import("./client");
     const stripe = new Stripe(SECRET, { apiVersion: STRIPE_API_VERSION });
@@ -295,9 +295,7 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
       const periodKey = () =>
         db
           .query<{ key: string }>(
-            `select (select coalesce(to_char(((case when p.trial_ends_at is not null and p.trial_used_at is not null
-                and (p.current_period_end = p.trial_ends_at or p.current_period_start = p.trial_ends_at)
-                then p.trial_used_at else p.current_period_start end) at time zone 'Asia/Tokyo'), 'YYYY-MM-DD'), 'none')
+            `select (select coalesce(to_char((p.current_period_start at time zone 'Asia/Tokyo'), 'YYYY-MM-DD'), 'none')
                 from profiles p where p.id = $1) as key`,
             [userId],
           )
@@ -324,9 +322,9 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
       expect(paid.items.data[0].current_period_start, "有料期間はトライアル終了から始まる").toBe(trialEndSec);
       expect(paid.trial_end, "trial_end は有料化後も残る").toBe(trialEndSec);
       expect(await sync(trialEndSec + 3_601)).toBe("updated");
-      expect(await periodKey(), "有料化しても期間キーは変わらない（枠を共有）").toBe(keyInTrial);
+      expect(await periodKey(), "有料化で新しい期間キーになる（枠が満額へ戻る）").not.toBe(keyInTrial);
       const resetsAt = (await loadUsageSummary(usageDb, userId, "premium"))?.resetsAt ?? "";
-      expect(new Date(resetsAt).getTime(), "リセット日は最初の有料期間の終わり").toBe(
+      expect(new Date(resetsAt).getTime(), "リセット日は有料期間の終わり").toBe(
         paid.items.data[0].current_period_end * 1000,
       );
 
@@ -335,7 +333,7 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
       await stripe.testHelpers.testClocks.advance(clock.id, { frozen_time: firstPaidEnd + 3_600 });
       await waitForClock(stripe, clock.id);
       expect(await sync(firstPaidEnd + 3_601)).toBe("updated");
-      expect(await periodKey(), "2回目の有料期間で新しいキー").not.toBe(keyInTrial);
+      expect(await periodKey(), "2回目の有料期間でもさらに新しいキー").not.toBe(keyInTrial);
     } finally {
       if (clockId) await stripe.testHelpers.testClocks.del(clockId).catch(() => undefined);
       await db.query(`delete from auth.users where id = $1`, [userId]);

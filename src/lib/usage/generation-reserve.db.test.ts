@@ -308,11 +308,10 @@ describe("reserveUsage / refundUsage (db)", () => {
   });
 
   /**
-   * トライアルは最初の有料期間と1つの枠を共有する（運営者の指示 2026-08-23・要決定D-38）。
-   * トライアル中→有料化（current_period_start = trial_end）では期間キーが変わらず、
-   * 2回目の有料期間で初めて新しいキーになる。
+   * トライアルは独立した期間で、**有料化の日に枠が満額へ戻る**（運営者の指示 2026-08-23・D-38 再決定）。
+   * 「試して気に入ったら払う」人が、払った初日から満額を使えるようにする。
    */
-  it("keeps one period key across the trial and the first paid period, then rolls over", async () => {
+  it("starts a fresh quota period when the trial converts to paid", async () => {
     const { uid, xid } = await withTransaction((c) => makeAccount(c));
     const jobs = [await makeJob(xid), await makeJob(xid), await makeJob(xid)];
     const setPeriod = (start: string, end: string) =>
@@ -340,16 +339,15 @@ describe("reserveUsage / refundUsage (db)", () => {
       await withTransaction((c) => c.query(`update profiles set subscription_status = 'active' where id = $1`, [uid]));
       await setPeriod("2026-08-21T15:00:00Z", "2026-09-21T15:00:00Z");
       await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: jobs[1], type: "generation", limit: 1000, amount: 16 }));
-      expect(await keys(), "トライアルと最初の有料期間で1つの枠").toEqual(["2026-08-15"]);
-      const used = await withTransaction((c) =>
-        c.query<{ n: number }>(`select ai_credits_used as n from usage_counters where user_id = $1`, [uid]),
-      );
-      expect(used.rows[0].n).toBe(32);
+      expect(await keys(), "有料化で新しい枠が始まる（トライアル分は持ち越さない）").toEqual([
+        "2026-08-15",
+        "2026-08-22",
+      ]);
 
-      // 2回目の有料期間: 新しいキーで 0 から。
+      // 2回目の有料期間: さらに新しいキーで 0 から。
       await setPeriod("2026-09-21T15:00:00Z", "2026-10-21T15:00:00Z");
       await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: jobs[2], type: "generation", limit: 1000, amount: 16 }));
-      expect(await keys()).toEqual(["2026-08-15", "2026-09-22"]);
+      expect(await keys()).toEqual(["2026-08-15", "2026-08-22", "2026-09-22"]);
     } finally {
       await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [jobs]));
       await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));

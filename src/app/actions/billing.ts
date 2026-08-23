@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { type BaseResult, errorResult, requireUserId } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { stripe } from "@/lib/stripe/client";
+import { saveCancellationSurvey } from "@/lib/billing/cancellation-survey";
 import { cancelScheduledCancellation } from "@/lib/stripe/scheduled-cancellation";
 import { cancelScheduledPlanChange } from "@/lib/stripe/scheduled-plan-change";
 
@@ -51,6 +52,26 @@ export async function keepSubscriptionAction(): Promise<BaseResult> {
           ? "解約予定を取り消しました。今までどおりご利用いただけます。"
           : "取り消せる解約予定はありませんでした。表示を最新にしました。",
     };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * 解約アンケートの記録（T-M8-277）。確認画面で理由を選んだ時点で呼ぶ。
+ * **失敗しても解約の導線は止めない**——記録できないことより、利用者が手続きを進められることを優先する
+ * （呼び出し側は結果を待つが、error でも画面は次へ進む）。
+ */
+export async function recordCancellationSurveyAction(input: {
+  reason: string;
+  detail?: string | null;
+  proceeded: boolean;
+}): Promise<BaseResult> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await saveCancellationSurvey(pooledQueryable(), auth.userId, input);
+    return { status: "success", message: "ご回答ありがとうございました。" };
   } catch (error) {
     return errorResult(error);
   }

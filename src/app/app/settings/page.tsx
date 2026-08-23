@@ -67,6 +67,7 @@ import { XAccountsSettings } from "./x-accounts-settings";
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
+import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
 import { scheduledPlanChangeLabel, scheduledPlanChangeNote } from "@/lib/billing/scheduled-plan-change";
 import { stripe } from "@/lib/stripe/client";
 import { loadPendingProration, prorationNotice } from "@/lib/stripe/proration-preview";
@@ -457,6 +458,11 @@ let promptTemplates: PromptTemplateView[] = [];
                   <PortalButton
                     cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
                       cancelAtLabel={cancelAtLabel}
+                    cancellation={cancellationEffects({
+                      plan: profile.plan,
+                      endsAtLabel: cancelAtLabel,
+                      trialing: profile.subscription_status === "trialing",
+                    })}
                     effects={planChangeEffects({
                       cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
                       currentPeriodEnd: profile.current_period_end,

@@ -5,18 +5,15 @@
  * 決まっている挙動をそのまま日本語にしたもの。**押す前に画面へ出す**ためにここへ置く。
  *
  * 以前は「どちらもStripeの安全な画面へ移動します。解約は期間末で…」という1行しか無く、
- * **上位プランへ変えると切り替えは即時で、差額は日割りで次回請求へ合算される**ことも、
+ * **上位プランへ変えると切り替えは即時で、差額は日割りでその場で決済される**ことも、
  * **下位プランは期間末まで切り替わらない**ことも画面から読めなかった。
  * 金額と時期が変わる操作で、押した後に初めて分かるのは避けたい。
  *
  * 対応する設定（要件03 §2.2）:
- * - `subscription_update.proration_behavior = "create_prorations"` → 値上げは**切り替え即時**。
- *   差額（旧プランの未使用分を引き、新プランの残り期間分を足す・秒単位の日割り）は
- *   **その場では決済されず、次回更新日の請求書に合算**される（実測 2026-08-23）。
- *   `always_invoice`（即時決済）にすると Stripe の確認画面に内訳が出るが、同時に出る
- *   「本日が期日の金額」が分かりにくいため戻した（T-M8-270・運営者の指示）。
- *   Stripeの確認画面は文言を差し替えられないので、日割りの説明は**プラン説明**
- *   （`setup-stripe-portal.mjs` の `PLAN_CHANGE_NOTE`。選択画面でプラン名の直下）とこの画面が担う
+ * - `subscription_update.proration_behavior = "always_invoice"` → 値上げは**切り替え即時**で、
+ *   差額（旧プランの未使用分を引き、新プランの残り期間分を足す・秒単位の日割り）を**その場で決済**する
+ *   （運営者の指示 2026-08-23・T-M8-275。Stripeの確認画面に内訳と本日の支払額が出る。
+ *   その見出し「本日が期日の金額」はStripe組み込みで差し替えられない）
  * - `subscription_update.schedule_at_period_end.conditions = [decreasing_item_amount]` → 値下げは期間末
  * - `subscription_update.trial_update_behavior = "continue_trial"` → トライアル中は期限を変えない
  * - `subscription_cancel = { mode: "at_period_end", proration_behavior: "none" }` → 解約は期間末・返金なし
@@ -114,8 +111,8 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
 
   return {
     upgrade: {
-      headline: "すぐに切り替わります",
-      detail: "差額は日割りで計算され、次回の請求に加算されます",
+      headline: "すぐに切り替わり、差額は日割りでその場でお支払いになります",
+      detail: "旧プランの未使用分を差し引いた金額を、確認画面で確かめてからお支払いいただけます",
     },
     downgrade: {
       headline: `${end}に切り替わります`,

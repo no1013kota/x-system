@@ -200,13 +200,14 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
         enabled: true,
         default_allowed_updates: ["price"],
         /*
-          値上げの差額（日割り）は**その場で決済せず次回請求へ合算**する（T-M8-270・運営者の指示 2026-08-23）。
-          一度 `always_invoice`（即時決済）にすると Stripe の確認画面に内訳が出るが、そのとき同時に出る
-          **「本日が期日の金額」という見出しが分かりにくい**ため戻した。Stripe組み込みの文言は差し替えられない
-          （APIにもダッシュボードにも該当設定が無い・SDKの型で確認）ので、日割りの説明は
-          **プラン説明（下の PRODUCT_DESCRIPTIONS。選択画面でプラン名の直下に出る）**で行う。
+          値上げの差額（日割り）は**その場で決済する**（`always_invoice`・運営者の指示 2026-08-23・T-M8-275）。
+          Stripe の確認画面に内訳（旧プランの未使用分クレジット／新プランの日割り請求／合計）と
+          本日の支払額が出る。**「本日が期日の金額」という見出しは Stripe 組み込みで差し替えられない**
+          （APIにもダッシュボードにも設定が無い・SDKの型と実画面で確認）——運営者がその表示を
+          了解したうえでこの設定を選んでいる。`create_prorations` にすると差額は次回更新日の請求書へ
+          合算され、確認画面には何も出ない（＝アプリの説明「その場でお支払い」と食い違う）。
         */
-        proration_behavior: "create_prorations",
+        proration_behavior: "always_invoice",
         products: updateProducts,
         schedule_at_period_end: {
           conditions: [{ type: "decreasing_item_amount" }],

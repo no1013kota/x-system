@@ -101,14 +101,16 @@ describe("loadUsageSummaryForUser (db)", () => {
       expect(s?.ai_credits.used).toBe(50);
       expect(new Date(s?.resetsAt ?? "").toISOString()).toBe("2026-09-14T15:00:00.000Z");
 
-      // トライアル中はリセット日を出さない（リセットは最初の有料期間の終わり・D-38）。
+      // トライアル中も「トライアル終了日にリセット」を出す（そこで枠が戻る・D-38 再決定）。
       await withTransaction((c) =>
         c.query(
-          `update profiles set trial_used_at = current_period_start, trial_ends_at = current_period_end where id = $1`,
+          `update profiles set trial_used_at = current_period_start, trial_ends_at = current_period_end,
+                  subscription_status = 'trialing' where id = $1`,
           [uid],
         ),
       );
-      expect((await loadUsageSummaryForUser(uid, "premium"))?.resetsAt).toBeNull();
+      const trial = await loadUsageSummaryForUser(uid, "premium");
+      expect(new Date(trial?.resetsAt ?? "").toISOString()).toBe("2026-09-14T15:00:00.000Z");
     } finally {
       await cleanup(uid);
     }

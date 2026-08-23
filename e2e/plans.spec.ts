@@ -332,3 +332,50 @@ test("利用枠のリセット日が次回更新日になり、残量は契約�
   await expect(card).toContainText("残り 18 / 20");
 });
 
+/**
+ * 解約の導線（T-M8-277・運営者の指示 2026-08-23）。押したら即Stripeへ、にしない。
+ * 1. 何が止まり何が残るかの確認 → 2. 理由のアンケート（選択必須・記述は任意）→ 3. Stripeの解約画面。
+ */
+test("解約は確認とアンケートを挟んでからStripeへ進む（T-M8-277）", async ({ accounts, page }) => {
+  const account = await accounts.create("cancel-flow");
+  await query(
+    `update profiles set stripe_customer_id = 'cus_e2e_cancel_flow', subscription_status = 'active',
+        current_period_end = '2026-09-15T00:00:00Z' where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=billing");
+
+  await page.getByRole("button", { name: "解約する" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByText("本当に解約しますか？")).toBeVisible();
+  // 止まることと残ること（不安だけ煽らない）。
+  await expect(dialog.getByText("予約した自動投稿・下書きの自動作成が止まります")).toBeVisible();
+  await expect(dialog.getByText("これまでの下書き・投稿履歴・分析結果は残ります（閲覧できます）")).toBeVisible();
+
+  // 「やめておく」で閉じる（既定の逃げ道が押しやすい側にある）。
+  await dialog.getByRole("button", { name: "やめておく" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // もう一度開いてアンケートへ。理由を選ぶまでは進めない。
+  await page.getByRole("button", { name: "解約する" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "解約に進む" }).click();
+  const survey = page.getByRole("alertdialog");
+  await expect(survey.getByText("解約の理由（1つ選んでください）")).toBeVisible();
+  await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toBeDisabled();
+  await survey.getByRole("radio", { name: "料金が高い" }).check();
+  await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toBeEnabled();
+
+  // 回答はDBへ残る（運営者が何を直すべきか読めるように）。
+  await survey.getByRole("button", { name: "解約手続きへ進む" }).click();
+  await expect
+    .poll(async () => {
+      const rows = await query<{ reason: string; proceeded: boolean }>(
+        `select reason, proceeded from cancellation_surveys where user_id = $1`,
+        [account.userId],
+      );
+      return rows[0]?.reason ?? null;
+    })
+    .toBe("price");
+});
+

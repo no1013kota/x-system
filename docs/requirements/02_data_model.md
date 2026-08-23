@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.65 |
+| バージョン | v1.66 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -531,7 +531,25 @@ Indexes: `occurred_at`（doctorの24時間集計・保持cleanup用）
 
 RLS: select/writeともservice roleのみ。**記録自体で状況を悪化させない**ため、同一プロセスで1分に1回まで・失敗は握り潰す（記録できないことより本処理を優先する）。`occurred_at`から40日保持し、期限後に`scheduler_tick`がcleanupする。
 
-### 3.20 `news_fetch_outcomes`
+### 3.20 `cancellation_surveys`
+
+**解約理由のアンケート**（T-M8-277・運営者の指示 2026-08-23）。解約は「押したら終わり」にせず、(1)何が止まり何が残るかを確認してもらい、(2)理由を任意で聞く。理由が分からないと運営者は**何を直せば解約が減るのか**を判断できない。Stripeの解約画面にも理由の選択はあるが、こちらに残せば運営者が自分のDB・画面で読める。**アンケートの保存に失敗しても解約手続きは止めない**（記録より利用者の操作を優先する）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `user_id` | `uuid` | FK profiles on delete cascade, not null | 回答者 |
+| `reason` | `text` | not null | 選択式の理由。値は`lib/billing/cancellation-reasons.ts`の定数と対応（**値を変えない**——集計が途切れる） |
+| `detail` | `text` | null, 1000文字以内 | 自由記述（任意）。空文字は入れずnullにする |
+| `proceeded` | `boolean` | not null default false | 確認画面から解約手続きへ進んだか（引き返した回答も残す） |
+| `plan` | `plan_type` | null | 回答時点のプラン（後から変わっても当時の内訳が読める） |
+| `created_at` | `timestamptz` | not null default now() |  |
+
+Indexes: `created_at`（直近N日の集計）、`user_id`
+
+RLS: **本人のinsertのみ**（`auth.uid() = user_id`）。読むのは運営者（service role）。
+
+### 3.21 `news_fetch_outcomes`
 
 `news_fetch`の**分野ごとの結果**を残す表（要件04 §6、T-M7-40）。`cron_runs`が「受付は高々一度」だけを保証するのに対し、こちらは**業務結果**を持ち、運営者向けの状態確認（`npm run doctor`／`GET /api/cron/doctor`）が「0件」の意味を説明するために読む。cronの受付判定には使わない。
 
@@ -558,7 +576,7 @@ Indexes: `ran_at desc`（直近の結果を引く／保持cleanup用）
 
 RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する（要件01 §9）。
 
-### 3.21 `x_timeline_posts`
+### 3.22 `x_timeline_posts`
 
 投稿分析（SUGGEST・「分析を開始」ボタンで実行・T-M8-255）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は実行時点の7日前から。いずれも7日前より過去へは遡らない）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
 
@@ -586,7 +604,7 @@ Indexes: `(x_account_id, posted_at desc)`
 
 RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
 
-### 3.22 `post_patterns`
+### 3.23 `post_patterns`
 
 投稿の「パターン」を**Xアカウントごとのマスタ**として持つ（T-M8-129）。以前はDB enum `post_pattern`（`p1`〜`p6`）の固定6種で、名前もプロンプトもコードにあった。利用者が**自分で追加・編集・削除できる**ようにするため表へ移す（運営者の指示・2026-08-18）。**既定の6件も削除できる。**
 
@@ -629,7 +647,7 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 この3つを満たすので`archived_at`のような論理削除は持たない。検査は`src/lib/post/post-patterns.db.test.ts`。
 
 
-### 3.23 `affiliate_accounts`
+### 3.24 `affiliate_accounts`
 
 招待プログラム（T-M8-174。正本: docs/cp/invite_cp.md）の招待者アカウント。`/app/invite` を開くと自動作成される。
 
@@ -643,7 +661,7 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 
 RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4表も同じ）。
 
-### 3.24 `affiliate_attributions`
+### 3.25 `affiliate_attributions`
 
 招待リンク経由の登録の帰属。**1ユーザーにつき招待者は1人・登録後変更不可**（`referred_user_id` unique＋`on conflict do nothing`）。Last Click（Cookieが最後のコードを持つ）・自己招待禁止はアプリ側で守る。
 
@@ -659,7 +677,7 @@ RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4
 | `created_at` | `timestamptz` | not null default now() | |
 | `updated_at` | `timestamptz` | not null default now() | |
 
-### 3.25 `affiliate_commissions`
+### 3.26 `affiliate_commissions`
 
 紹介報酬。**Stripeの支払成功（invoice.paid）がSource of Truth**。実際に支払われた金額×作成時点のランク率（snapshot）。Trial中（0円）は作らない。Refund（charge.refunded）で`reversed`。
 
@@ -682,7 +700,7 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 
 `referred_user_id` は `profiles(id) on delete set null`（T-M8-253）。**外部キーが無く、報酬率の計算（累計有料招待ユーザー数）が実在しない利用者を数えうる**状態だった。履歴（金額・支払記録）は残したいので削除ではなくnull化する。
 
-### 3.26 `affiliate_payout_accounts`
+### 3.27 `affiliate_payout_accounts`
 
 報酬の振込先口座。**口座番号はAES-256-GCM暗号文のみ**（要決定D-33。Payout Provider未契約のため。画面は末尾4桁だけ・全桁は運営者の `npm run affiliate:payouts -- --show` が復号）。
 
@@ -702,7 +720,7 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 | `created_at` | `timestamptz` | not null default now() | |
 | `updated_at` | `timestamptz` | not null default now() | |
 
-### 3.27 `affiliate_payouts`
+### 3.28 `affiliate_payouts`
 
 月次の振込（月末締め・翌月末支払・invite_cp.md §9〜§14）。**Commissionと手数料は会計分離**（gross/fee/netを別に保存し、Commission自体は減額しない）。¥5,000未満・口座未登録は作らず翌月へ繰越。
 
@@ -1010,3 +1028,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.63 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |
 | v1.64 | 2026-08-23 | cron_runs.job_name に subscription_period_backfill（契約期間の補完・T-M8-258）。usage_counters 制約説明の「月次」を期間へ |
 | v1.65 | 2026-08-23 | db_pool_events を追加（DB接続の待ち行列の観測・27テーブルへ・T-M8-198） |
+| v1.66 | 2026-08-23 | cancellation_surveys を追加（解約理由のアンケート・28テーブルへ・T-M8-277） |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useToast } from "@/components/ui/toast";
+import { inviteShareText } from "@/lib/invite/share-text";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 
@@ -24,9 +25,8 @@ export function InviteLinkActions({ inviteUrl }: { inviteUrl: string }) {
     }
   }
 
-  const shareUrl = `https://x.com/intent/post?text=${encodeURIComponent(
-    `X運用を自動化できるExos AI、招待リンクから7日間無料で試せます ${inviteUrl}`,
-  )}`;
+  // 文面の正本は `lib/invite/share-text.ts`（長さと表現を単体テストで固定する・T-M8-276）。
+  const shareUrl = `https://x.com/intent/post?text=${encodeURIComponent(inviteShareText(inviteUrl))}`;
 
   return (
     <div className="flex flex-wrap items-center gap-2.5">

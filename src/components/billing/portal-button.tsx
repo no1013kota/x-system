@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CancelSubscriptionButton } from "@/components/billing/cancel-subscription-button";
 import { KeepSubscriptionButton } from "@/components/billing/keep-subscription-button";
 import { CancelScheduledPlanChangeButton } from "@/components/billing/scheduled-plan-change-button";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
+import type { cancellationEffects } from "@/lib/billing/cancellation-reasons";
 import type { PlanChangeEffects } from "@/lib/billing/plan-change-effects";
 import type { PortalIntent } from "@/lib/stripe/portal";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
@@ -26,6 +28,7 @@ import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
 export function PortalButton({
   cancelAtPeriodEnd = false,
   cancelAtLabel = "",
+  cancellation = null,
   effects,
   enabled,
   scheduledChange = null,
@@ -38,6 +41,11 @@ export function PortalButton({
   cancelAtPeriodEnd?: boolean;
   /** 解約日の表記（確認ダイアログに出す）。例「2026年9月15日」。 */
   cancelAtLabel?: string;
+  /**
+   * 解約すると何が止まり何が残るか（T-M8-277）。渡されたときは**確認＋アンケート**を挟んでから
+   * Stripeの解約画面へ送る。渡されない場面（App Shellのバナー）は従来どおり直接送る。
+   */
+  cancellation?: ReturnType<typeof cancellationEffects> | null;
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
@@ -101,6 +109,9 @@ export function PortalButton({
         </Button>
         {cancelAtPeriodEnd ? (
           <KeepSubscriptionButton endsAtLabel={cancelAtLabel} />
+        ) : cancellation ? (
+          // 確認（何が止まり何が残るか）→ 理由のアンケート → Stripeの解約画面（T-M8-277）。
+          <CancelSubscriptionButton effects={cancellation} />
         ) : (
           <Button
             aria-busy={pending === "cancel"}
