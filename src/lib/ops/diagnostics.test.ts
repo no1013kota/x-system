@@ -6,6 +6,7 @@ import {
   judgeBlog,
   judgeCost,
   judgeDatabaseSize,
+  judgePoolWaits,
   judgeJobs,
   judgeNews,
   judgeScheduler,
@@ -445,5 +446,32 @@ describe("judgeSubscriptionSync（契約の同期・T-M8-238）", () => {
     expect(judgeSubscriptionSync({ hoursSinceLastEvent: 2, totalEvents: 12 })).toMatchObject({
       level: "ok",
     });
+  });
+});
+
+/**
+ * DB接続の待ち行列（T-M8-198）。要件01 §9 の移行条件「pooler接続の枯渇・待ち行列が観測された」を
+ * 運営者が画面1つで判断できるようにする。記録は待たされたときだけ入るので、通常は0件。
+ */
+describe("judgePoolWaits", () => {
+  it("待ちが無ければ ok（0件であることを言い切る）", () => {
+    const r = judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toContain("接続の待ちはありません");
+    expect(r.nextAction).toBeUndefined();
+  });
+
+  it("1件以上なら注意（件数と最長待ち時間を出す）", () => {
+    const r = judgePoolWaits({ waits24h: 3, maxWaitedMs: 1_500 });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("3回");
+    expect(r.detail).toContain("1.5秒");
+    expect(r.nextAction).toContain("Supabase Pro");
+  });
+
+  it("常態化したら異常（移行条件に該当することを名指しする）", () => {
+    const r = judgePoolWaits({ waits24h: 20, maxWaitedMs: 5_000 });
+    expect(r.level).toBe("error");
+    expect(r.nextAction).toContain("要件01 §9");
   });
 });

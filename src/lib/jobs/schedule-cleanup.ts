@@ -34,6 +34,8 @@ export interface CleanupResult {
   usageEvents: number;
   cronRuns: number;
   newsFetchOutcomes: number;
+  /** DB接続の待ちの記録（T-M8-198）。通常は0件のまま。 */
+  poolEvents: number;
   images: number;
 }
 
@@ -144,6 +146,20 @@ async function deleteOldCronRuns(db: Queryable): Promise<number> {
   return rowCount ?? 0;
 }
 
+/** (4c) occurred_at が40日超の db_pool_events（接続待ちの記録）を削除（T-M8-198）。 */
+async function deleteOldPoolEvents(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from db_pool_events
+      where id in (
+        select id from db_pool_events
+         where occurred_at < now() - make_interval(days => $1)
+         order by occurred_at
+         limit $2)`,
+    [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
 /** (4b) ran_at が40日超の news_fetch_outcomes（分野ごとの取得結果）を削除（要件02 §3.18・T-M7-40）。 */
 async function deleteOldNewsFetchOutcomes(db: Queryable): Promise<number> {
   const { rowCount } = await db.query(
@@ -217,6 +233,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     usageEvents: 0,
     cronRuns: 0,
     newsFetchOutcomes: 0,
+    poolEvents: 0,
     images: 0,
   };
 
@@ -246,6 +263,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("news_fetch_outcomes", async () => {
     result.newsFetchOutcomes = await deleteOldNewsFetchOutcomes(db);
+  });
+  await step("db_pool_events", async () => {
+    result.poolEvents = await deleteOldPoolEvents(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;

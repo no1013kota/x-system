@@ -414,6 +414,40 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
 }
 
 /** 当月の従量課金（AI・X API）の実績。原則4の可視化。 */
+/**
+ * DB接続の待ち行列（T-M8-198・要件01 §9）。**Supabase Pro へ上げる条件のひとつ**
+ * 「pooler接続の枯渇・待ち行列が観測された」を、運営者が画面1つで判断できるようにする。
+ *
+ * 記録は「接続の取得が待たされたときだけ」入る（`db_pool_events`）。正常なら0件で、
+ * 件数が続くようなら接続数の上限（`DB_POOL_MAX`）かプラン移行を検討する時期。
+ */
+export const DB_POOL_WAIT_WARN = 1;
+export const DB_POOL_WAIT_ERROR = 20;
+
+export function judgePoolWaits(input: { waits24h: number; maxWaitedMs: number }): Check {
+  const name = "DB接続の混み具合";
+  if (input.waits24h < DB_POOL_WAIT_WARN) {
+    return { name, level: "ok", detail: "直近24時間で接続の待ちはありません" };
+  }
+  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）`;
+  if (input.waits24h < DB_POOL_WAIT_ERROR) {
+    return {
+      name,
+      level: "warn",
+      detail: `${detail}。まだ動いていますが、増え続けるなら手を打つ時期です`,
+      nextAction:
+        "続くようなら DB_POOL_MAX を見直すか、Supabase Pro（専用pooler）への移行を検討してください（要件01 §9）",
+    };
+  }
+  return {
+    name,
+    level: "error",
+    detail: `${detail}。接続待ちが常態化しています`,
+    nextAction:
+      "Supabase Pro へ移行するか DB_POOL_MAX を調整してください（要件01 §9 の移行条件に該当します）",
+  };
+}
+
 export function judgeCost(input: { monthUsd: number; byProvider: { provider: string; usd: number }[] }): Check {
   const name = "今月かかった費用";
   const yen = approxYen(input.monthUsd);
@@ -741,6 +775,18 @@ export async function collectDiagnostics(
     judgeCost({
       monthUsd: byProvider.reduce((s, p) => s + p.usd, 0),
       byProvider,
+    }),
+  );
+
+  // DB接続の待ち行列（T-M8-198）。記録は待たされたときだけ入るので、通常は0件。
+  const poolWaits = await db.query<{ n: string; max_ms: string }>(
+    `select count(*)::text as n, coalesce(max(waited_ms), 0)::text as max_ms
+       from db_pool_events where occurred_at >= now() - interval '24 hours'`,
+  );
+  checks.push(
+    judgePoolWaits({
+      waits24h: Number(poolWaits.rows[0]?.n ?? 0),
+      maxWaitedMs: Number(poolWaits.rows[0]?.max_ms ?? 0),
     }),
   );
 
