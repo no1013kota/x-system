@@ -3,7 +3,8 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
-import { requiresPlanSelection } from "@/lib/auth/subscription-access";
+import { AppLockedNotice } from "@/components/app-shell/plan-required";
+import { appLockFor } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
@@ -180,8 +181,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
-  // 課金・プラン以外のタブを開けるか（T-M8-269）。同じ profile から判定し、追加のDB往復を作らない。
-  const planRequired = requiresPlanSelection(profile.subscription_status);
+  // 課金・プラン以外のタブを開けるか（T-M8-269→T-M8-273）。同じ profile から判定し、追加のDB往復を作らない。
+  const lock = appLockFor(profile.subscription_status);
   /*
     未契約(null)は route-guard により billing タブ以外へ来ない。以前は `?? "standard"` で
     最も権限の狭いプランへ倒していたが、新standardは編集権限を持つ（T-M8-168）ため
@@ -346,12 +347,10 @@ let promptTemplates: PromptTemplateView[] = [];
           2026-08-23）。タブ自体は残す——ここを消すと登録・再開の入口（課金・プラン）へ
           辿り着けなくなる。中身だけをロック表示に差し替える。
         */}
-        {planRequired && tab !== "billing" ? (
-          <LockedState
-            actionHref="/plans"
-            actionLabel="プランを登録する"
-            description="Xアカウントの連携やAIの設定は、プランの登録後にご利用いただけます。先にプランを登録してください（友達招待はプランの登録がなくてもご利用いただけます）。"
-            title="先にプランを登録してください"
+        {lock && tab !== "billing" ? (
+          <AppLockedNotice
+            description="Xアカウントの連携やAIの設定がご利用いただけます。"
+            reason={lock}
           />
         ) : tab === "general" ? (
           <div className="space-y-8">
@@ -428,7 +427,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 </div>
                 {/*
                   **解約・下位プランへの切り替えは「プラン」の下・「現在の期間終了日」の上に出す**
-                  （運営者の指示 2026-08-23・T-M8-271）。別行に離すと、プラン名だけ見た人は
+                  （運営者の指示 2026-08-23・T-M8-273）。別行に離すと、プラン名だけ見た人は
                   今のプランがそのまま続くと思ってしまう。予定が無いときは行ごと出さない。
                 */}
                 {upcomingChange ? (

@@ -87,3 +87,41 @@ test("プラン未登録では機能画面がロックされ、招待と課金�
   await page.goto("/app/invite");
   await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
 });
+
+/**
+ * 支払いが滞っている場合もロックする（T-M8-273・運営者の指示 2026-08-23）。
+ *
+ * **文言と導線がプラン未登録とは別**であることを固定する——プランはあるので
+ * 「プランを登録してください」では直せない。行き先も /plans ではなく課金・プラン（Portal）。
+ */
+test("支払いが滞っている場合はロックし、お支払い情報の更新へ案内する（T-M8-273）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("payment-locked");
+  await query(
+    `update profiles set subscription_status = 'past_due', stripe_customer_id = 'cus_e2e_pastdue'
+      where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+
+  await page.goto("/app/posts");
+  await expect(
+    page.getByRole("heading", { name: "お支払い情報を更新してください" }),
+  ).toBeVisible();
+  // プラン登録の案内は出さない（プランはあるので直し方が違う）。
+  await expect(page.getByRole("heading", { name: "先にプランを登録してください" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "お支払い情報を更新する" })).toHaveAttribute(
+    "href",
+    "/app/settings?tab=billing",
+  );
+
+  // 友達招待は支払いが滞っていても使える。
+  await page.goto("/app/invite");
+  await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
+
+  // 課金・プランタブは開けて、支払い方法の更新へ行ける。
+  await page.goto("/app/settings?tab=billing");
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+});

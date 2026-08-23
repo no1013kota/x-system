@@ -59,20 +59,26 @@ export const EXECUTABLE_SUBSCRIPTION_STATUSES = (
 ).filter((status) => SUBSCRIPTION_ACCESS[status].canExecute);
 
 /**
- * **プランの選択・再開が先に必要な状態か**（T-M8-269・運営者の指示 2026-08-23）。
+ * 機能画面をロックする理由（T-M8-269→T-M8-273・運営者の指示 2026-08-23）。
  *
- * 未契約（`incomplete`系）と解約済み（`canceled`）は、機能画面そのものをロックして
- * 「先にプランを登録してください」と出す（触れるのは友達招待と設定＞課金・プランだけ）。
- * 支払いが滞っているだけの状態（`past_due`／`unpaid`／`paused`）は**含めない**——
- * 直し方が違い（プラン選択ではなく支払い更新）、閲覧まで止めると復旧の判断材料も消える。
+ * **実行できない状態では機能画面そのものを開かせない。** 触れるのは友達招待（契約不要）と
+ * 設定＞課金・プランだけで、それ以外はホームを含めてロックする。ロックの理由で**直し方が
+ * 違う**ので、文言と導線を分けるために種類を返す（真偽値にすると「プランを登録してください」を
+ * 支払いが滞っているだけの利用者へ出してしまい、直せない案内になる）。
  *
- * 判定は `actionPath` から導く（`/plans` へ案内する＝プランが要る状態）。未知のstatusは
+ * - `plan_required`: プランの登録・再開が要る（未契約・申込期限切れ・解約済み）→ `/plans`
+ * - `payment_required`: お支払い情報の更新が要る（`past_due`／`unpaid`／`paused`）→ 課金・プラン
+ *
+ * 判定は `SUBSCRIPTION_ACCESS` から導く（`canExecute` と `actionPath`）。未知のstatusは
  * ロック側へ倒す（fail closed）。
  */
-export function requiresPlanSelection(status: string): boolean {
+export type AppLockReason = "plan_required" | "payment_required";
+
+export function appLockFor(status: string): AppLockReason | null {
   const access = subscriptionAccessFor(status);
-  if (!access) return true;
-  return !access.canExecute && access.actionPath === "/plans";
+  if (!access) return "plan_required";
+  if (access.canExecute) return null;
+  return access.actionPath === "/plans" ? "plan_required" : "payment_required";
 }
 
 export function subscriptionAccessFor(
@@ -223,8 +229,9 @@ export function subscriptionBannerFor(
   if (["past_due", "unpaid", "paused"].includes(status)) {
     return {
       action: profile.stripeCustomerId ? "portal" : "checkout",
+      // T-M8-273で機能画面もロックした。閲覧できると言わない（できないため）。
       description:
-        "既存データは閲覧できますが、生成・投稿・自動実行は停止しています。",
+        "お支払い情報を更新すると、すぐにご利用を再開できます（データは保持しています）。友達招待は引き続きご利用いただけます。",
       title:
         status === "past_due"
           ? "お支払いを確認できませんでした"

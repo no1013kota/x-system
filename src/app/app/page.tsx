@@ -41,8 +41,8 @@ import { ConfirmationQueueCard } from "./confirmation-queue";
 import { ImportantNewsCard } from "./important-news";
 import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
-import { LockedState } from "@/components/app-shell/page-state";
-import { isPlanRequired } from "@/lib/auth/plan-gate-server";
+import { AppLockedNotice } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -78,7 +78,8 @@ export default async function AppHomePage({
     どの機能もロックされている状態で空のダッシュボードを見せても、何ができないのかも
     どうすれば使えるのかも伝わらない。登録直後の「できたこと」（welcome）はここで言い切る。
   */
-  if (user && (await isPlanRequired(user.id))) {
+  const lock = user ? await loadAppLock(user.id) : null;
+  if (user && lock) {
     return (
       <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
         <div>
@@ -89,11 +90,9 @@ export default async function AppHomePage({
             {welcome}
           </Notice>
         ) : null}
-        <LockedState
-          actionHref="/plans"
-          actionLabel="プランを登録する"
-          description="投稿の作成・予約・分析、最新ニュース、Xアカウントの連携はプランの登録後にご利用いただけます。先にプランを登録してください（友達招待はプランの登録がなくてもご利用いただけます）。"
-          title="先にプランを登録してください"
+        <AppLockedNotice
+          description="投稿の作成・予約・分析、最新ニュース、Xアカウントの連携がご利用いただけます。"
+          reason={lock}
         />
       </main>
     );

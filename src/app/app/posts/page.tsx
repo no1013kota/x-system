@@ -4,8 +4,8 @@ import Link from "next/link";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { Notice } from "@/components/ui/notice";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
-import { PlanRequiredPage } from "@/components/app-shell/plan-required";
-import { isPlanRequired } from "@/lib/auth/plan-gate-server";
+import { AppLockedPage } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
@@ -150,17 +150,26 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       </main>
     );
   }
-  // プラン未登録・解約中は開けない（T-M8-269）。
-  if (await isPlanRequired(user.id)) {
+  /*
+    ロック判定と操作中アカウントの解決は互いに独立なので**1波でまとめる**（T-M8-274）。
+    直列にすると全遷移でDB往復が1本増える。ロック時に解決結果を捨てるのは軽い無駄だが、
+    ロックは稀な状態で、待たされるのは毎回の通常利用のほう。
+  */
+  const [lock, activeXAccountId] = await Promise.all([
+    loadAppLock(user.id),
+    resolveActiveXAccountForUser(user.id),
+  ]);
+  // 契約が有効でなければ開けない（T-M8-269→T-M8-273。理由で文言と導線が変わる）。
+  if (lock) {
     return (
-      <PlanRequiredPage
+      <AppLockedPage
         description="AIが投稿の下書きを作り、確認してからXへ投稿できます。"
+        reason={lock}
         title="投稿作成"
       />
     );
   }
   const tab: Tab = TABS.some((t) => t.id === params.tab) ? (params.tab as Tab) : "create";
-  const activeXAccountId = await resolveActiveXAccountForUser(user.id);
 
   let drafts: DraftView[] = [];
   let imageRegenEnabled = false;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AppError } from "@/lib/observability/errors";
 
-import { SUBSCRIPTION_ACCESS, isSubscriptionPeriodStale, requireExecutableSubscription, subscriptionBannerFor } from "./subscription-access";
+import { SUBSCRIPTION_ACCESS, appLockFor, isSubscriptionPeriodStale, requireExecutableSubscription, subscriptionBannerFor } from "./subscription-access";
 
 describe("subscription access matrix", () => {
   // 閲覧可否はここでは決めない（T-M8-268。画面は契約状態で弾かず、実行だけを止める）。
@@ -19,6 +19,25 @@ describe("subscription access matrix", () => {
     expect(SUBSCRIPTION_ACCESS[status]).toEqual({ actionPath, canExecute });
   });
 
+
+  /**
+   * ロックの理由（T-M8-273）。**直し方が違うので種類を分ける**——プランが無い人へ
+   * 「お支払い情報を更新」と言っても直せないし、支払いが滞っているだけの人へ
+   * 「プランを登録」と言うと二重契約を促す。
+   */
+  it.each([
+    ["trialing", null],
+    ["active", null],
+    ["incomplete", "plan_required"],
+    ["incomplete_expired", "plan_required"],
+    ["canceled", "plan_required"],
+    ["past_due", "payment_required"],
+    ["unpaid", "payment_required"],
+    ["paused", "payment_required"],
+    ["unknown-status", "plan_required"],
+  ] as const)("appLockFor(%s) = %s", (status, expected) => {
+    expect(appLockFor(status)).toBe(expected);
+  });
 
   it.each(["trialing", "active"])("allows execution for %s", (status) => {
     expect(() => requireExecutableSubscription(status)).not.toThrow();

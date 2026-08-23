@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { PlanRequiredPage } from "@/components/app-shell/plan-required";
-import { isPlanRequired } from "@/lib/auth/plan-gate-server";
+import { AppLockedPage } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   NEWS_IMPACTS,
@@ -51,20 +51,26 @@ function parseWindow(from?: string, to?: string): { from: string; to: string } |
 export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  // プラン未登録・解約中は開けない（T-M8-269）。
-  if (await isPlanRequired(user.id)) {
+  /*
+    ロック判定と操作中アカウントの解決は互いに独立なので**1波でまとめる**（T-M8-274）。
+    直列にすると全遷移でDB往復が1本増える。ロック時に解決結果を捨てるのは軽い無駄だが、
+    ロックは稀な状態で、待たされるのは毎回の通常利用のほう。
+  */
+  const [lock, activeId, params] = await Promise.all([
+    loadAppLock(user.id),
+    resolveActiveXAccountForUser(user.id),
+    searchParams,
+  ]);
+  // 契約が有効でなければ開けない（T-M8-269→T-M8-273。理由で文言と導線が変わる）。
+  if (lock) {
     return (
-      <PlanRequiredPage
+      <AppLockedPage
         description="6分野のニュースを毎日集め、そのまま投稿の題材にできます。"
+        reason={lock}
         title="最新ニュース"
       />
     );
   }
-
-  const [activeId, params] = await Promise.all([
-    resolveActiveXAccountForUser(user.id),
-    searchParams,
-  ]);
   const window = parseWindow(params.from, params.to);
   // 上限もクランプする（10001以上はschemaが弾き、一時障害風の誤メッセージになる・T-M8-192）。
   const requestedPage = Math.min(

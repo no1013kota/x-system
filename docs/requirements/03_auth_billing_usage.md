@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.53 |
+| バージョン | v1.54 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -144,32 +144,39 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 
 ## 5. 契約状態とアクセス
 
-**プランを登録するまでは機能画面を開けない**（T-M8-269・運営者の指示 2026-08-23）。触れるのは
-**友達招待（契約不要）と設定＞課金・プラン**だけで、それ以外はホームを含めてロックし、その場に
-「先にプランを登録してください」と登録導線を出す（リダイレクトはしない——どこへ来たのかが
-分かるまま理由を言う）。判定の正本は `requiresPlanSelection`（`actionPath === "/plans"` から導出）。
+**実行できない状態では機能画面を開けない**（T-M8-269→T-M8-273・運営者の指示 2026-08-23）。
+触れるのは**友達招待（契約不要）と設定＞課金・プラン**だけで、それ以外はホームを含めてロックし、
+その場に理由と直し方を出す（リダイレクトはしない——どこへ来たのかが分かるまま理由を言う）。
 
-**支払いが滞っているだけの状態（`past_due`／`unpaid`／`paused`）はロックしない**——直し方が違い
-（プラン選択ではなく支払い更新）、閲覧まで止めると復旧の判断材料も消える。
+**ロックの理由で文言と導線を分ける**（`appLockFor`。真偽値にすると直せない案内を出してしまう）:
+
+| 理由 | 対象 status | 画面の文言 | 導線 |
+|---|---|---|---|
+| `plan_required` | `incomplete`／`incomplete_expired`／`canceled` | 先にプランを登録してください | `/plans` |
+| `payment_required` | `past_due`／`unpaid`／`paused` | お支払い情報を更新してください | `/app/settings?tab=billing`（Portal） |
+
+プランはあるのに「プランを登録してください」と出すと直せず、支払いが滞っているだけの利用者へ
+プラン選択を出すと二重契約を促す。判定は `SUBSCRIPTION_ACCESS` の `canExecute` と `actionPath`
+から導き、未知のstatusは `plan_required` へ倒す（fail closed）。
 
 | status | 閲覧 | 生成・投稿・自動実行 | 友達招待 | 主導線 |
 |---|---|---|---|---|
 | `trialing` | 可 | 可 | 可 | trial終了日表示 |
 | `active` | 可 | 可 | 可 | 通常 |
-| `past_due` | 可 | 停止 | 可 | 支払い更新 |
-| `unpaid` | 可 | 停止 | 可 | 支払い更新 |
-| `paused` | 可 | 停止 | 可 | 支払い方法登録・再開 |
+| `past_due` | **課金・プランと友達招待のみ** | 停止 | 可 | 支払い更新（Portal） |
+| `unpaid` | **課金・プランと友達招待のみ** | 停止 | 可 | 支払い更新（Portal） |
+| `paused` | **課金・プランと友達招待のみ** | 停止 | 可 | 支払い方法登録・再開 |
 | `canceled` | **課金・プランと友達招待のみ** | 停止 | 可 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
 | `incomplete` | **課金・プランと友達招待のみ** | 停止 | 可 | Checkout完了 |
 | `incomplete_expired` | **課金・プランと友達招待のみ** | 停止 | 可 | 新規Checkout |
 
-`past_due`等（支払いが滞っているだけ）ではユーザーは既存下書き・履歴・分析・設定を閲覧できる。**どのstatusでも課金停止・解約を理由にデータを自動削除しない**（ロック中も保持し、登録・再開でそのまま使える）。**友達招待（要件06 SC-12）は契約を要さない**——契約前でも解約後でも参加でき、LPの招待セクションからも入れる（未ログインは`/login?next=/app/invite`経由でログイン後そのまま招待画面へ着く）。
+**どのstatusでも課金停止・解約を理由にデータを自動削除しない**（ロック中も保持し、登録・再開・支払い更新でそのまま使える。画面にもその旨を出す）。**友達招待（要件06 SC-12）は契約を要さない**——契約前でも解約後でも参加でき、LPの招待セクションからも入れる（未ログインは`/login?next=/app/invite`経由でログイン後そのまま招待画面へ着く）。
 
-**route guardは認証だけを見る**（T-M8-268）。未ログインを`/login?next=…`へ送るだけで、契約状態でのredirectは行わない（proxyのprofile読み取りも削除・要件01 §5）。プラン未登録のロックは**各画面が自分で**行う（`isPlanRequired`／設定は同じprofileから`requiresPlanSelection`）——リダイレクトにすると、どの画面へ来たのかが分からないまま料金表に着く。生成・投稿系の停止はServer Action側と job lease（要件04 §4.1）で行う。ログイン後・登録後の着地も`/app`（または`next`）で統一し、契約状態で行き先を変えない。
+**route guardは認証だけを見る**（T-M8-268）。未ログインを`/login?next=…`へ送るだけで、契約状態でのredirectは行わない（proxyのprofile読み取りも削除・要件01 §5）。ロックは**各画面が自分で**行う（`loadAppLock`／設定は同じprofileから`appLockFor`）——リダイレクトにすると、どの画面へ来たのかが分からないまま料金表に着く。生成・投稿系の停止はServer Action側と job lease（要件04 §4.1）で行う。ログイン後・登録後の着地も`/app`（または`next`）で統一し、契約状態で行き先を変えない。
 
 8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
 
-App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`・未契約は「閲覧と友達招待は使える／生成・投稿にはプランが要る」と正確に伝えて新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
+App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する（機能はロックされているので「閲覧はできる」と書かない）。Customer ID欠損時はCheckoutへfail closedする。`canceled`・未契約は「閲覧と友達招待は使える／生成・投稿にはプランが要る」と正確に伝えて新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
 
 ## 6. プラン変更
 
@@ -395,3 +402,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.51 | 2026-08-23 | Stripe確認画面に独自文が書けないことと、Portal帰還時に日割り差額を出す方針を明記（T-M8-270） |
 | v1.52 | 2026-08-23 | 解約前の引き止めクーポン（retention）と、解約予定のアプリ内取り消しを追加（T-M8-271/272） |
 | v1.53 | 2026-08-23 | trial_will_end を prepareStripeEvent の種別フィルタへ通す（予告通知が到達不能だった・T-M8-265） |
+| v1.54 | 2026-08-23 | 支払い滞り（past_due/unpaid/paused）も機能画面をロックする（T-M8-273・運営者の指示）。ロック理由を2種類に分け、文言と導線を「お支払い情報を更新」へ |
