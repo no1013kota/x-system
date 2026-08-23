@@ -29,11 +29,12 @@ export type PortalFeatureKey = (typeof REQUIRED_PORTAL_FEATURES)[number]["key"];
 export const EXPECTED_TRIAL_UPDATE_BEHAVIOR = "continue_trial";
 
 /**
- * 値上げ時の日割り差額の扱い（T-M8-267）。`always_invoice`＝**その場で決済**し、Stripe の確認画面に
- * 内訳と本日の支払額が出る。`create_prorations` だと次回請求へ合算され確認画面に何も出ない
- * （アプリの説明「差額は日割りでその場で決済」と食い違う）。
+ * 値上げ時の日割り差額の扱い（T-M8-267）。`create_prorations`＝日割り行を作り**次回請求へ合算**する。
+ * `always_invoice` にするとその場で決済され、Stripe の確認画面に**差し替えできない**
+ * 「本日が期日の金額」という分かりにくい見出しが出る（運営者の指示 2026-08-23 で戻した）。
+ * 日割りの説明はプラン説明（`setup-stripe-portal.mjs` の `PLAN_CHANGE_NOTE`）が担う。
  */
-export const EXPECTED_PRORATION_BEHAVIOR = "always_invoice";
+export const EXPECTED_PRORATION_BEHAVIOR = "create_prorations";
 
 export interface PortalFeatureSnapshot {
   /** 取得できた configuration の features（`enabled` だけを見る）。取得できなければ null。 */
@@ -138,7 +139,7 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
     const proration = snapshot.subscriptionUpdate?.prorationBehavior;
     if (proration != null && proration !== EXPECTED_PRORATION_BEHAVIOR) {
       drift.push(
-        `値上げの差額がその場で決済されず、確認画面に日割りの内訳が出ません（proration_behavior=${proration}）`,
+        `プラン変更の差額の扱いが画面の説明と違います（proration_behavior=${proration}。想定は${EXPECTED_PRORATION_BEHAVIOR}＝次回請求へ合算）`,
       );
     }
     const offered = snapshot.subscriptionUpdate?.priceIds;

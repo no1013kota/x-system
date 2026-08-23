@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.68 |
+| バージョン | v1.73 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -173,13 +173,13 @@ App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paus
 
 ## 6. プラン変更
 
-3つの月額Priceは**同一Productでなくてよい**（2026-08-03 修正）。Portalの`subscription_update.products`はProductごとの配列を受け取るため、`npm run stripe:portal:setup`がPriceをProductごとにまとめて列挙する。以前は「同一Product配下」を要求して例外で止まっており、そのため**`subscription_update`が無効なconfigurationが残ったまま**になっていた（画面の「プランを変更」がStripeに拒否される）。Customer Portalはプラン変更を有効にし、値下げを`decreasing_item_amount`条件で期間末予約、解約を期間末、trial中の変更を`continue_trial`に設定する。値上げは即時反映し、差額は日割りで計算して**その場で決済**する（`always_invoice`。運営者の指示 2026-08-23・T-M8-267）。
+3つの月額Priceは**同一Productでなくてよい**（2026-08-03 修正）。Portalの`subscription_update.products`はProductごとの配列を受け取るため、`npm run stripe:portal:setup`がPriceをProductごとにまとめて列挙する。以前は「同一Product配下」を要求して例外で止まっており、そのため**`subscription_update`が無効なconfigurationが残ったまま**になっていた（画面の「プランを変更」がStripeに拒否される）。Customer Portalはプラン変更を有効にし、値下げを`decreasing_item_amount`条件で期間末予約、解約を期間末、trial中の変更を`continue_trial`に設定する。値上げは即時反映し、差額は日割りで計算して**次回更新日の請求書に合算**する（`create_prorations`）。
 
 Checkout・Portalのセッションは**`locale: "ja"` を固定で指定**する（ブラウザ言語の推定に任せない・T-M8-58）。Stripe側の**商品名はアプリの表示名（スタンダードプラン／プレミアムプラン／エキスパートプラン）と同じにする**——Checkout・Portal・請求書にそのまま出るため、英語のままだと日本語のサービスの中でStripeの画面だけ英語になる。`stripe:portal:setup` が名前と**説明文**（プラン差の一言要約。Portalの「プランを変更」画面で商品名の下に表示され、説明が無いと名前と金額しか出ず選べない・T-M8-65）も揃え、対応表と`plans.ts`の一致は`portal-configuration.test.ts`が検査する。環境ごとに別のStripeアカウントなので、staging/productionには `--target` 付きの再実行で反映する。
 
 「プランを変更」「解約する」は`flow_data`（`subscription_update`／`subscription_cancel`）でStripeの該当画面へ**直接**入る。対象のsubscriptionは`profiles.stripe_subscription_id`を正とし、**nullのときはStripeからその顧客の変更できる契約（active／trialing／past_due・新しい順）を引いて補う**（webhook同期前でも正しい画面に着くため・T-M8-56）。それでも見つからなければ**黙ってPortalのトップを開かず**`subscription_required`で止める——トップに着いても変更・解約はできず、押した人には何が起きたのか分からない（2026-08-05に利用者が実際に踏んだ）。
 
-Portal Configurationは`subscription_update.proration_behavior=always_invoice`により、値上げを**即時に切り替えつつ差額を日割り計算してその場で決済**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位）。**Stripe の確認画面に「Prorated credit from 旧プラン／Prorated charge for 新プラン／Total／Amount due today」の内訳が出る**（2026-08-23 テストモードで実測。以前の `create_prorations` は日割り行を作るだけで次回請求へ合算され、確認画面には次回からの月額しか出なかった。運営者の指示で切替・T-M8-267）。doctor「プラン管理（Stripe）」が `proration_behavior` のずれも検出する。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。**期間末予約は契約本体のPriceを変えず subscription schedule を付ける**ため、同期は `subscription.schedule` があれば schedule を読み、次フェーズのPriceが現在と違い既知のプランなら `profiles.scheduled_plan` / `scheduled_plan_at` へ保存する（T-M8-260。schedule取得の失敗は記録して**保存済みの予約を上書きせず**契約本体だけ反映する——失敗の空と正常の空を同じ null にしない。Portal からの戻り `/api/stripe/return` も同じく schedule を読む——読まないと予約を null で書き、後続の本物の webhook が stale 扱いになって予約が消える）。**Portal の実挙動（2026-08-23 テストモードの Portal を実ブラウザで操作して確認）**: Price が別 Product でも値下げは期間末予約の schedule（phases=[現在の期間, 新Priceが1秒]・`end_behavior=release`。切替後すぐ解除されて契約から外れる）になる。予約付きの契約でも Portal は別プランへの変更を受け付け、その場合は予約が置き換わる（上位なら即時）。**「今のプランのまま続ける（予約だけ取り消す）」は Portal に無い**ので、取り消しは Server Action `cancelScheduledPlanChangeAction`（要件05）が本人の契約の schedule を `release` して予約列を空にする。webhookが届く前でも画面から消えるように、解除直後にアプリ側でも空へ戻す。課金タブは予約中も「プランを変更」を出したまま、その隣に取り消しを置く。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
+Portal Configurationは`subscription_update.proration_behavior=create_prorations`により、値上げを**即時に切り替えつつ差額を日割り計算**する（旧プランの未使用分をマイナス、新プランの残り期間分をプラスで秒単位）。**日割り行を作るだけで即時請求はせず、次回更新日の請求書に合算される**（2026-08-23 実測）。`always_invoice`（即時決済）にすると確認画面に内訳が出るが、同時に**差し替えできない「本日が期日の金額」という見出し**が出て分かりにくいため採らない（運営者の指示 2026-08-23・T-M8-267）。**Stripeの確認画面・Checkoutの文言はこちらで差し替えられない**（APIにもダッシュボードにも該当設定が無い）ため、プラン変更の説明は**商品説明**（`setup-stripe-portal.mjs` の `PLAN_CHANGE_NOTE`。プラン選択画面でプラン名の直下に出る。**Checkoutにも同じ文が出る**ので各プランに1文だけ）とアプリの課金タブが担う。doctor「プラン管理（Stripe）」が `proration_behavior` のずれも検出する。`schedule_at_period_end.conditions=[decreasing_item_amount]`に該当する値下げだけを期間末予約へ切り替える。**期間末予約は契約本体のPriceを変えず subscription schedule を付ける**ため、同期は `subscription.schedule` があれば schedule を読み、次フェーズのPriceが現在と違い既知のプランなら `profiles.scheduled_plan` / `scheduled_plan_at` へ保存する（T-M8-260。schedule取得の失敗は記録して**保存済みの予約を上書きせず**契約本体だけ反映する——失敗の空と正常の空を同じ null にしない。Portal からの戻り `/api/stripe/return` も同じく schedule を読む——読まないと予約を null で書き、後続の本物の webhook が stale 扱いになって予約が消える）。**Portal の実挙動（2026-08-23 テストモードの Portal を実ブラウザで操作して確認）**: Price が別 Product でも値下げは期間末予約の schedule（phases=[現在の期間, 新Priceが1秒]・`end_behavior=release`。切替後すぐ解除されて契約から外れる）になる。予約付きの契約でも Portal は別プランへの変更を受け付け、その場合は予約が置き換わる（上位なら即時）。**「今のプランのまま続ける（予約だけ取り消す）」は Portal に無い**ので、取り消しは Server Action `cancelScheduledPlanChangeAction`（要件05）が本人の契約の schedule を `release` して予約列を空にする。webhookが届く前でも画面から消えるように、解除直後にアプリ側でも空へ戻す。課金タブは予約中も「プランを変更」を出したまま、その隣に取り消しを置く。`subscription_cancel.mode=at_period_end`、`proration_behavior=none`、`trial_update_behavior=continue_trial`を固定し、請求履歴と支払方法更新も有効化する。
 
 | 変更 | 仕様 |
 |---|---|
@@ -408,3 +408,8 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.66 | 2026-08-23 | レビュー反映: Portal の実挙動（別Productでも期間末予約・予約付きでも変更可）、schedule を読めない回は予約を上書きしない、return 経路も schedule を読む、トライアルは独立した期間、既存契約者の補完（T-M8-258/260） |
 | v1.67 | 2026-08-23 | トライアルは最初の有料期間と利用枠を共有（有料化で満額へ戻さない・運営者の指示・D-36 解決・T-M8-258） |
 | v1.68 | 2026-08-23 | 値上げの日割り差額をその場で決済（always_invoice）へ。Stripe確認画面に内訳が出る（T-M8-267） |
+| v1.69 | 2026-08-23 | レビュー反映: Portal の実挙動（別Productでも期間末予約・予約付きでも変更可）、schedule を読めない回は予約を上書きしない、return 経路も schedule を読む、トライアルは独立した期間、既存契約者の補完（T-M8-258/260） |
+| v1.70 | 2026-08-23 | レビュー反映: Portal の実挙動（別Productでも期間末予約・予約付きでも変更可）、schedule を読めない回は予約を上書きしない、return 経路も schedule を読む、トライアルは独立した期間、既存契約者の補完（T-M8-258/260） |
+| v1.71 | 2026-08-23 | トライアルは最初の有料期間と利用枠を共有（有料化で満額へ戻さない・運営者の指示・D-36 解決・T-M8-258） |
+| v1.72 | 2026-08-23 | 値上げの日割り差額をその場で決済（always_invoice）へ。Stripe確認画面に内訳が出る（T-M8-267） |
+| v1.73 | 2026-08-23 | プラン変更の差額は次回請求へ合算（create_prorations）を維持し、説明は商品説明（PLAN_CHANGE_NOTE）で行う（T-M8-267） |

@@ -112,19 +112,19 @@ describe("次にやること", () => {
   /**
    * 金額と時期を決める設定のずれ（T-M8-238/267）。`enabled` だけでは守れない。
    */
-  it("日割り差額がその場で決済されない設定（create_prorations）は error", () => {
+  it("日割り差額の扱いが画面の説明と違う設定（always_invoice）は error", () => {
     const ok = { subscription_update: { enabled: true }, subscription_cancel: { enabled: true } };
     const r = judgePortalFeatures({
       features: ok,
-      subscriptionUpdate: { trialUpdateBehavior: "continue_trial", prorationBehavior: "create_prorations" },
+      subscriptionUpdate: { trialUpdateBehavior: "continue_trial", prorationBehavior: "always_invoice" },
     });
     expect(r.level).toBe("error");
-    expect(r.detail).toContain("proration_behavior=create_prorations");
+    expect(r.detail).toContain("proration_behavior=always_invoice");
     expect(r.nextAction).toContain("stripe:portal:setup");
     expect(
       judgePortalFeatures({
         features: ok,
-        subscriptionUpdate: { trialUpdateBehavior: "continue_trial", prorationBehavior: "always_invoice" },
+        subscriptionUpdate: { trialUpdateBehavior: "continue_trial", prorationBehavior: "create_prorations" },
       }).level,
     ).toBe("ok");
   });

@@ -28,7 +28,7 @@ describe("Stripe Portal configuration setup", () => {
     expect(configuration.features.subscription_update).toMatchObject({
       enabled: true,
       default_allowed_updates: ["price"],
-      proration_behavior: "always_invoice",
+      proration_behavior: "create_prorations",
       products: [
         {
           product: "prod_exos_ai",
@@ -137,7 +137,7 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
   it("Xアカウント数が plans.ts と一致する", () => {
     // standard/premium は1つ（「まで」を付けない）。expert だけ複数（2026-08-20）。
     expect(PLANS.standard.xAccountLimit).toBe(1);
-    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_STANDARD_MONTHLY).toContain("Xアカウント1つ＋");
+    expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_STANDARD_MONTHLY).toContain("Xアカウント1つ。");
     expect(PLANS.premium.xAccountLimit).toBe(1);
     expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain("Xアカウント1つ。");
     expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_EXPERT_MONTHLY).toContain(

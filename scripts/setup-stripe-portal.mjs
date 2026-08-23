@@ -67,15 +67,19 @@ export const PRODUCT_NAMES = {
  * 説明が無いと、プラン変更画面には名前と金額しか出ず、何が違うのかその場で判断できない
  * （利用者の要望）。文言は `/plans` のプランカード（`src/app/plans/page.tsx`）と揃え、
  * 数字（アカウント数・利用上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
+ *
+ * **文面の正本はここ**（2026-08-23、運営者がStripeダッシュボード〔テストモード〕で整えた文面へ合わせた・T-M8-267）。
+ * ダッシュボードで直接編集すると次回の `stripe:portal:setup` で上書きされるので、**直すときはここを直して
+ * 3環境へ流す**（`--target local|staging|production`）。3環境で同じ文面にすること（運営者の指示）。
  */
 export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_STANDARD_MONTHLY:
-    "Xアカウント1つ＋AIへの指示文（アカウント.md・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+    "キーはご自身で用意。Xアカウント1つ。ニュース取得、投稿作成、スケジュール予約、プロンプト編集、アカウント分析・改善など。",
   STRIPE_PRICE_PREMIUM_MONTHLY:
     "APIキーの用意が一切不要（運営キーで動作）。Xアカウント1つ。契約期間ごとの上限: AIクレジット1000・通常投稿200・URL付き20。",
   // エキスパートは表示上「無制限」（T-M8-168・運営者の決定）。内部ガード値をStripe画面にも出さない。
   STRIPE_PRICE_EXPERT_MONTHLY:
-    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。利用上限なし。",
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。AI生成と投稿の利用上限なし。",
 };
 
 const ACCOUNT_SCOPED = [
@@ -195,10 +199,14 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
       subscription_update: {
         enabled: true,
         default_allowed_updates: ["price"],
-        // 値上げの差額（日割り）は**その場で決済**し、Stripe の確認画面に内訳（Prorated credit /
-        // Prorated charge / Amount due today）を出させる（運営者の指示 2026-08-23・T-M8-267）。
-        // `create_prorations` だと差額が次回請求へ合算され、確認画面には何も出ない（実測）。
-        proration_behavior: "always_invoice",
+        /*
+          値上げの差額（日割り）は**その場で決済せず次回請求へ合算**する（T-M8-267・運営者の指示 2026-08-23）。
+          一度 `always_invoice`（即時決済）にすると Stripe の確認画面に内訳が出るが、そのとき同時に出る
+          **「本日が期日の金額」という見出しが分かりにくい**ため戻した。Stripe組み込みの文言は差し替えられない
+          （APIにもダッシュボードにも該当設定が無い・SDKの型で確認）ので、日割りの説明は
+          **プラン説明（下の PRODUCT_DESCRIPTIONS。選択画面でプラン名の直下に出る）**で行う。
+        */
+        proration_behavior: "create_prorations",
         products: updateProducts,
         schedule_at_period_end: {
           conditions: [{ type: "decreasing_item_amount" }],
