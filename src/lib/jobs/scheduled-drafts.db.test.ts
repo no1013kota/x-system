@@ -50,7 +50,10 @@ describe("enqueueDueScheduledDrafts (db)", () => {
       [uid, `${uid}@example.com`],
     );
     await c.query(
-      `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+      // 契約が有効な利用者だけ実行・起票の対象（T-M8-267。既定の incomplete では止まる）。
+      `insert into profiles (id, email, subscription_status)
+       values ($1, $2, 'active')
+       on conflict (id) do update set subscription_status = 'active'`,
       [uid, `${uid}@example.com`],
     );
     const { rows } = await c.query<{ id: string }>(
@@ -129,6 +132,33 @@ describe("enqueueDueScheduledDrafts (db)", () => {
   });
 
   /** 二重投稿を作らない。tickは5分ごとに走るので、これが効かないと毎回投稿しようとする。 */
+  /**
+   * 「契約中に予約 → 解約 → 予約時刻に投稿される」を止める（T-M8-267）。
+   * スロット予約（`enqueueDueSlots`）には契約ゲートがあったのに、日時予約だけ抜けていた。
+   */
+  it("契約が終了した利用者の予約は流さない（T-M8-267）", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    try {
+      await withTransaction((c) => makeDraft(c, xid, new Date(Date.now() - 60_000).toISOString()));
+      await withTransaction((c) =>
+        c.query(`update profiles set subscription_status = 'canceled' where id = $1`, [uid]),
+      );
+
+      const result = await enqueueDueScheduledDrafts(pooledDb);
+
+      expect(result.due).toBe(0);
+      expect(result.enqueued).toBe(0);
+      const jobs = (
+        await withTransaction((c) =>
+          c.query(`select 1 from generation_jobs where x_account_id = $1`, [xid]),
+        )
+      ).rowCount;
+      expect(jobs).toBe(0);
+    } finally {
+      await cleanup(uid, xid);
+    }
+  });
+
   it("同じ下書きを2回流さない（既にjobがあれば作らない）", async () => {
     const { uid, xid } = await withTransaction((c) => makeAccount(c));
     try {

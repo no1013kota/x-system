@@ -573,6 +573,12 @@ export async function retryGenerationJob(
     if (job.status !== "failed") {
       throw new AppError("job_conflict", { details: { reason: "not_failed" } });
     }
+    /*
+      **再試行にも契約の前提を課す**（T-M8-267）。以前は所有・failed・同時実行数しか見ておらず、
+      解約後に失敗ジョブを再試行するとAI生成やX読取が走った（`request_key` を変えれば何度でも）。
+      作成系（`createGenerationJob` 等）と同じ入口ゲートを通す。実行時の最終防壁は `leaseJob`。
+    */
+    await assertPrereqs(deps, userId, false);
     await assertJobBudget(tx, userId);
 
     const inserted = (

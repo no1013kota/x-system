@@ -50,7 +50,10 @@ describe("worker leaseJob / runJob", () => {
         [uid, `${uid}@example.com`],
       );
       await client.query(
-        `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+        // 契約が有効な利用者だけ実行・起票の対象（T-M8-267。既定の incomplete では止まる）。
+      `insert into profiles (id, email, subscription_status)
+       values ($1, $2, 'active')
+       on conflict (id) do update set subscription_status = 'active'`,
         [uid, `${uid}@example.com`],
       );
     }
@@ -104,6 +107,57 @@ describe("worker leaseJob / runJob", () => {
       expect(rows[0].status).toBe("running");
       expect(rows[0].locked_at).not.toBeNull();
       throw new Error("rollback"); // don't persist
+    }).catch((e) => {
+      if (!(e instanceof Error) || e.message !== "rollback") throw e;
+    });
+  });
+
+  /**
+   * 契約が無効になった利用者のジョブは実行しない（T-M8-267）。
+   *
+   * 入口（Server Action・enqueue）のガードだけでは、**契約中にqueuedになったジョブ**が
+   * 解約後に実行されるのを止められない（予約投稿・画像の子job・retry・tickの回収・stale再投入）。
+   * 2026-08-23の監査で6経路の実行到達を確認したため、すべての実行が通る lease で止める。
+   */
+  it.each(["canceled", "incomplete", "past_due", "unpaid", "paused"])(
+    "%s のジョブは lease せず、理由を残して canceled で終端する（T-M8-267）",
+    async (status) => {
+      await withTransaction(async (c) => {
+        const { uid, xid } = await makeAccount(c);
+        await c.query(
+          `update profiles set subscription_status = $2::subscription_status where id = $1`,
+          [uid, status],
+        );
+        const jobId = await makeJob(c, xid);
+
+        const result = await leaseJob(c, jobId, "worker-A");
+        expect(result.outcome).toBe("canceled_subscription");
+        expect(result.job).toBeUndefined();
+
+        const { rows } = await c.query<{ status: string; error: { code: string } | null }>(
+          `select status, error from generation_jobs where id = $1`,
+          [jobId],
+        );
+        // 黙って止めない——画面から「なぜ動かなかったか」が読める（原則1）。
+        expect(rows[0].status).toBe("canceled");
+        expect(rows[0].error?.code).toBe("subscription_required");
+        throw new Error("rollback");
+      }).catch((e) => {
+        if (!(e instanceof Error) || e.message !== "rollback") throw e;
+      });
+    },
+  );
+
+  it.each(["active", "trialing"])("%s のジョブは通常どおり lease できる", async (status) => {
+    await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      await c.query(
+        `update profiles set subscription_status = $2::subscription_status where id = $1`,
+        [uid, status],
+      );
+      const jobId = await makeJob(c, xid);
+      expect((await leaseJob(c, jobId, "worker-A")).outcome).toBe("leased");
+      throw new Error("rollback");
     }).catch((e) => {
       if (!(e instanceof Error) || e.message !== "rollback") throw e;
     });

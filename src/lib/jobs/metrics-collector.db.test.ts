@@ -53,10 +53,13 @@ describe("metrics_collector (local DB)", () => {
          values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
         [uid, `${uid}@example.com`],
       );
-      await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [
-        uid,
-        `${uid}@example.com`,
-      ]);
+      // 契約が有効な利用者だけ収集対象（T-M8-267。既定の incomplete では選定されない）。
+      await c.query(
+        `insert into profiles (id, email, subscription_status)
+         values ($1,$2,'active')
+         on conflict (id) do update set subscription_status = 'active'`,
+        [uid, `${uid}@example.com`],
+      );
       const xid = (
         await c.query<{ id: string }>(
           `insert into x_accounts

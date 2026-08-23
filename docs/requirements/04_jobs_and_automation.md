@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.52 |
+| バージョン | v1.53 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -237,6 +237,23 @@ flowchart TD
 - 自動投稿でも手動投稿でも同じ規則を適用する。
 - 1件でもtweet_idを作成したfailed draftは直接再投稿しない。曖昧状態と残存IDが解消済みなら本文・画像・引用情報を新しいdraftへ複製し、`parent_draft_id`で元draftへ結び付け、空の投稿状態から再開する。複製にはAIを使わずAIクレジットも消費しない。
 
+### 4.1 契約ガードは実行の直前にも置く（T-M8-267）
+
+**入口（Server Action・enqueue）のガードだけでは足りない。** 契約中に `queued` になったジョブは
+解約後も残り、`scheduler_tick` の回収dispatch・子jobの連鎖・retry・stale再投入のいずれも契約を
+見ないため、解約後にAI生成・画像生成・X投稿が実行されていた（2026-08-23の監査で6経路を確認）。
+
+**すべての実行が通る `leaseJob` で1か所だけ見る**（経路ごとに足すと必ず取りこぼす）。所有者の
+`subscription_status` が `EXECUTABLE_SUBSCRIPTION_STATUSES` でなければ lease せず、
+`status='canceled'` ＋ `error.code='subscription_required'` で終端する（黙って止めない・原則1）。
+利用枠の確保（reserve）より前なので返金の後始末は不要。
+
+併せて、費用が出る選抜SQLにも同じゲートを置く: **日時予約下書きの起票**（`enqueueDueScheduledDrafts`。
+スロット予約にはあったのに日時予約だけ抜けていた）と **`metrics_collector` の対象選抜**
+（follower_snapshot にはあったのに抜けており、解約後も最大30日X読取が続いていた）。
+入口側では `retryGenerationJob`（再試行に前提検証が無かった）と `removeLearningSource`
+（追加側にはある `assertPrereqs` が削除側だけ無かった）にも前提検証を足した。
+
 ## 12. 学習・改善
 
 - LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件、自己投稿は直近100件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。mergeには対象セクションの現在値と、同セクションへ反映する全active sourceのanalysisを渡す。
@@ -314,6 +331,7 @@ flowchart TD
 | v1.50 | 2026-08-23 | 投稿分析・フォロワー記録を「分析を開始」ボタンの手動実行へ（T-M8-255）: 定時トリガー4本→3本（follower_snapshot廃止）、tickの毎朝起票（enqueueDailySuggestions）を削除、SUGGESTの取得窓に過去7日上限、§6/§12/§13を更新 |
 | v1.51 | 2026-08-23 | フォロワー記録の毎時cron（follower_snapshot）を復活（T-M8-257。定時トリガー3本→4本）。推移グラフは毎日の点が要るため。復活時に「契約が有効な利用者のみ」ゲートを追加。投稿分析はボタンの手動実行のまま |
 | v1.52 | 2026-08-23 | follower_snapshotを毎時10分→毎時00分へ（T-M8-262・運営者の指示。tokenのrefreshは行leaseで直列化されるためmetrics_collectorと同時刻でも競合しない） |
+| v1.53 | 2026-08-23 | 契約ガードを実行直前（leaseJob）にも置く（§4.1・T-M8-267）。解約後にAI生成・画像生成・X投稿が実行される6経路を監査で検出し、日時予約起票・metrics_collector・retry・学習ソース削除のゲートも追加 |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

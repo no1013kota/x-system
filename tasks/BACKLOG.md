@@ -2255,6 +2255,22 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
     すべて維持**。80件緑。
 
+### T-M8-267: 解約後もAI生成・画像生成・X投稿が実行される6経路を塞ぐ `done`
+- 参照: 要件04 §4.1 / 依存: なし / サイズ: M
+- 完了条件:
+  - 契約が無効な利用者のジョブは lease されず、理由つき（subscription_required）で canceled になる
+  - 「契約中に日時予約 → 解約 → 予約時刻」でXへ投稿されない
+  - 解約後に metrics_collector のX読取（課金）が続かない
+  - retry・学習ソース削除からもAI実行を起票できない
+- メモ: 運営者の質問「実行ガードに穴はありませんか？」を受けた監査（4視点・敵対的検証つき）で
+  **6経路の実行到達を確認**。根本原因は「入口では見るが実行時に見ない」。経路ごとに足すと
+  取りこぼすため、すべての実行が通る `leaseJob` の1か所に置いた。
+- 実装メモ（2026-08-23）:
+  - `leaseJob` に契約ゲート（新outcome `canceled_subscription`）。reserveより前なので返金不要
+  - `enqueueDueScheduledDrafts` / `metrics_collector.selectDue` のSQLへ契約条件
+  - `retryGenerationJob` に `assertPrereqs`、`removeLearningSource` に `assertPrereqsFromInput`
+  - 回帰テスト: lease は7ケース（無効5状態は canceled・有効2状態は leased）、日時予約1件
+
 ### T-M8-266: 解約後は機能画面を見せない（一般的なSaaSの解約後UXへ） `done`
 - 参照: 要件03 §5・要件06 §2/SC-11 / 依存: T-M8-264 / サイズ: S
 - 完了条件:

@@ -1,3 +1,4 @@
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "@/lib/auth/subscription-access";
 import type { Queryable } from "../db/queryable";
 
 import { createFailedNotification } from "./notifications";
@@ -66,13 +67,23 @@ export async function enqueueDueScheduledDrafts(
   }>(
     `select d.id, d.x_account_id, xa.status as x_status,
             d.scheduled_at < coalesce($1::timestamptz, now()) - make_interval(mins => $3) as too_late
-       from drafts d join x_accounts xa on xa.id = d.x_account_id
+       from drafts d
+       join x_accounts xa on xa.id = d.x_account_id
+       join profiles p on p.id = xa.user_id
       where d.status = 'draft'
         and d.scheduled_at is not null
         and d.scheduled_at <= coalesce($1::timestamptz, now())
+        -- 契約が有効な利用者だけ（T-M8-267）。「契約中に予約 → 解約 → 予約時刻に投稿」を防ぐ。
+        -- スロット予約（schedule-enqueue）と同じゲートで、日時予約だけ抜けていた。
+        and p.subscription_status::text = any($4)
       order by d.scheduled_at asc
       limit $2`,
-    [nowIso ?? null, SCHEDULED_DRAFT_BATCH, SCHEDULED_DRAFT_MAX_LATE_MINUTES],
+    [
+      nowIso ?? null,
+      SCHEDULED_DRAFT_BATCH,
+      SCHEDULED_DRAFT_MAX_LATE_MINUTES,
+      EXECUTABLE_SUBSCRIPTION_STATUSES,
+    ],
   );
 
   let enqueued = 0;

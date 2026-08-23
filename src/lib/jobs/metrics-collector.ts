@@ -1,3 +1,4 @@
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "@/lib/auth/subscription-access";
 import { z } from "zod";
 
 import { isXAuthError, type XTweetMetrics } from "../x/client";
@@ -293,13 +294,17 @@ async function selectDue(
             d.tweet_ids, d.last_post_error, d.tweet_metrics
        from drafts d
        join x_accounts xa on xa.id = d.x_account_id
+       join profiles p on p.id = xa.user_id
       where d.next_metrics_at is not null
         and d.next_metrics_at <= $1
         and d.metrics_completed_at is null
         and xa.status = 'active'
+        -- 契約が有効な利用者だけ（T-M8-267）。解約後もX読取（$0.005/件）が最大30日続いていた。
+        -- follower_snapshot（T-M8-257）と同じゲートで、こちらだけ抜けていた。
+        and p.subscription_status::text = any($2)
       order by d.next_metrics_at asc, d.id asc
       limit 2000`,
-    [opts.now.toISOString()],
+    [opts.now.toISOString(), EXECUTABLE_SUBSCRIPTION_STATUSES],
   );
 
   const dueByAccount = new Map<string, DueDraft[]>();

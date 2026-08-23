@@ -3,6 +3,7 @@ import { insertMissedNotification } from "./schedule-recovery";
 
 import type { PoolClient } from "pg";
 
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "../auth/subscription-access";
 import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/locks";
 import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
@@ -24,7 +25,8 @@ export type LeaseOutcome =
   | "skipped_locked" // row locked by another worker (FOR UPDATE SKIP LOCKED)
   | "skipped_conflict" // same-account/user running job (concurrency guard)
   | "not_queued" // not queued or not yet due
-  | "canceled_missed"; // schedule-origin job past scheduled_for + 10min
+  | "canceled_missed" // schedule-origin job past scheduled_for + 10min
+  | "canceled_subscription"; // owner's subscription is no longer executable (T-M8-267)
 
 export interface LeasedJob {
   id: string;
@@ -127,6 +129,39 @@ export async function leaseJob(
 
   if (row.status !== "queued" || !row.available_now) {
     return { outcome: "not_queued" };
+  }
+
+  /*
+    **契約が無効になっていたら実行しない**（T-M8-267）。
+
+    入口（Server Action・enqueue）のガードだけでは足りない——契約中に queued になった job は
+    解約後も残り、`scheduler_tick` の回収dispatch・子jobの連鎖・retry・stale再投入のいずれも
+    契約を見ないため、**解約後にAI生成・画像生成・X投稿が実行されていた**（2026-08-23の監査で
+    6経路を確認）。経路ごとに足すと必ず取りこぼすので、**すべての実行が通る lease の1か所**で見る。
+
+    ここは reserve（利用枠の確保）より前なので、返金の後始末は不要。理由を `error` に残して
+    `canceled` で終端し、画面から「なぜ動かなかったか」が読めるようにする（原則1）。
+  */
+  const executable = await client.query(
+    `select 1
+       from x_accounts xa
+       join profiles p on p.id = xa.user_id
+      where xa.id = $1 and p.subscription_status::text = any($2)`,
+    [x_account_id, EXECUTABLE_SUBSCRIPTION_STATUSES],
+  );
+  if (executable.rowCount === 0) {
+    await client.query(
+      `update generation_jobs
+          set status = 'canceled', finished_at = now(),
+              error = jsonb_build_object(
+                'code', 'subscription_required',
+                'message', $2::text,
+                'retryable', false
+              )
+        where id = $1`,
+      [jobId, "ご契約が終了しているため実行を中止しました。"],
+    );
+    return { outcome: "canceled_subscription" };
   }
 
   // 4. concurrency guard: another running job on this account?
