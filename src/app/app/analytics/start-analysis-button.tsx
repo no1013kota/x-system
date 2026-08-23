@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
 /**
- * 「分析を開始」ボタン(K-2/K-3, T-M8-255)。毎朝の自動実行の廃止に伴い、
- * フォロワー数の当日記録と投稿分析はこのボタンだけが起点になる。
+ * 「分析を開始」ボタン(K-2/K-3, T-M8-255)。投稿分析の起点はこのボタンだけ
+ * （毎朝の自動実行は廃止）。フォロワー数の当日分も押した時点の最新値で上書きするが、
+ * 毎日の記録自体は毎時cron（follower_snapshot・T-M8-257）が担う。
  *
  * - 実行中(queued/running のsuggestion jobがある)は押せない——押しても
  *   already_running が返るだけなので、押せない理由をラベルで先に見せる(原則2)

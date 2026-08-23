@@ -77,7 +77,7 @@ export default async function AnalyticsPage() {
         <div>
           <h1 className={pageTitleClassName}>投稿分析</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作り、フォロワー数を本日分として記録します（1日1回）。
+            「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作ります（1日1回）。フォロワー数は毎日自動で記録されます。
           </p>
         </div>
         {/* 分析の起点はこのボタンだけ（毎朝の自動実行は T-M8-255 で廃止）。 */}

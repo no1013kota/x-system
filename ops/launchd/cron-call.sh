@@ -7,9 +7,9 @@ set -uo pipefail
 
 ENDPOINT="${1:-}"
 case "$ENDPOINT" in
-  news-fetch | scheduler-tick | metrics-collector) ;;
+  news-fetch | scheduler-tick | metrics-collector | follower-snapshot) ;;
   *)
-    echo "usage: cron-call.sh <news-fetch|scheduler-tick|metrics-collector>" >&2
+    echo "usage: cron-call.sh <news-fetch|scheduler-tick|metrics-collector|follower-snapshot>" >&2
     exit 2
     ;;
 esac

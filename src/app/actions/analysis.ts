@@ -17,7 +17,8 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
  * 「分析を開始」の Server Action（K-2/K-3, 要件05 §9, T-M8-255）。本人のみ。
  *
  * 1つのボタンで2つを行う:
- * 1. フォロワー数の当日分を記録する（K-3。X APIに履歴は無く、過去日は遡れない）
+ * 1. フォロワー数の当日分を記録する（K-3。押した時点の最新値で上書き。毎日の記録自体は
+ *    毎時cron follower_snapshot が担う——T-M8-257。X APIに履歴は無く、過去日は遡れない）
  * 2. 投稿分析（SUGGEST）を起票する（K-2。1日1回・冪等キーが上限を兼ねる）
  *
  * ゲート（所有・active・契約・BYOKキー）は中核（suggestion-jobs.ts）が判定する。

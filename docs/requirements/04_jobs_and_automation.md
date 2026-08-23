@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.50 |
+| バージョン | v1.51 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -96,15 +96,16 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | 投稿実行 | 200秒 | 60秒 |
 | NEWS 1分野 | 300秒（news_fetch route。6分野同時1巡＋後処理の余裕・T-M8-192） | 90秒 |
 
-## 6. 定時トリガー3本
+## 6. 定時トリガー4本
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
 | `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
+| `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
 
-**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（3本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。`follower_snapshot`（毎時10分）は2026-08-23のT-M8-255で廃止した——フォロワー数の記録は投稿分析画面の「分析を開始」ボタン（§13）が行う。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
+**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
@@ -112,18 +113,18 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
 
-`news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を**同時（最大6並列）**に実行し、分野ごとに成功結果をcommitする（3並列だと6分野が2巡になり、1巡目が遅い窓でmaxDurationを超えて後半分野とダイジェスト通知が消える・T-M8-192）。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metricsはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
+`news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を**同時（最大6並列）**に実行し、分野ごとに成功結果をcommitする（3並列だと6分野が2巡になり、1巡目が遅い窓でmaxDurationを超えて後半分野とダイジェスト通知が消える・T-M8-192）。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
 
-metricsはXアカウントごとにtweet_idを最大100件へまとめ、異なるuser tokenを同じrequestへ混ぜない。外部requestは最大10並列とし、Function deadlineで未開始分を次回へ残す。
+metricsはXアカウントごとにtweet_idを最大100件へまとめ、異なるuser tokenを同じrequestへ混ぜない。metrics/followerの外部requestは最大10並列とし、Function deadlineで未開始分を次回へ残す。
 
 launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複・並行起動に備え、各handlerは`job名 + 対象時刻窓`の受付（window claim）を最初に確保し、確保できなければ処理済み相当の2xxを返す。受付は`cron_runs`テーブル（`unique (job_name, window_key)`）へ`insert ... on conflict do nothing`する方式で、行を確保できた起動だけが本処理へ進む。Supavisor transaction modeプーラではセッションscope advisory lockがcheckout間で保持されずハンドラ全体をまたげないため、advisory lockは用いない（要件01 §3.2/§6、ADR-0003）。一度受け付けた時間窓は完了後も再受付しない（HTTP再試行・重複Cron起動での二重実行を防ぐ）。`news_fetch`は分野単位にも冪等keyを持ち、同じ時間窓のAIリサーチを重複実行しない。Vercel Cron移行後も呼び出し自体の再試行をVercelへ依存しない。
 
-`cron_runs`の責務は重複受付防止のみで、本処理の成否・完了は持たない。**受付（cron claim）と業務処理の完了は別状態**であり、`cron_runs`の行だけで本体成功を判断しない。完了状態の正本は、永続ジョブは`generation_jobs.status`/`finished_at`、状態ベースcron（`scheduler_tick`/`metrics_collector`）は対象業務データの現在状態とする（`cron_runs`の保持・cleanupは要件02 §3.18・要件01 §9）。
+`cron_runs`の責務は重複受付防止のみで、本処理の成否・完了は持たない。**受付（cron claim）と業務処理の完了は別状態**であり、`cron_runs`の行だけで本体成功を判断しない。完了状態の正本は、永続ジョブは`generation_jobs.status`/`finished_at`、状態ベースcron（`scheduler_tick`/`metrics_collector`/`follower_snapshot`）は対象業務データの現在状態とする（`cron_runs`の保持・cleanupは要件02 §3.18・要件01 §9）。
 
 実行保証:
 - Cronトリガー: `(job_name, window_key)`単位で**at-most-once**（同一窓の受付は高々一度）。
 - `generation_jobs`: retry（`attempt`上限3・指数backoff）とstale回収・scheduler再dispatchによる**at-least-once相当**。
-- 状態ベースcron: 同一窓は再実行せず、**次窓で現在状態を再走査してcatch-up**する（tickはqueued/staleを毎回回収、metricsはdue対象を毎回処理）。失敗・中断した窓の未処理は次窓が回収する。
+- 状態ベースcron: 同一窓は再実行せず、**次窓で現在状態を再走査してcatch-up**する（tickはqueued/staleを毎回回収、metrics/followerはdue対象を毎回処理）。失敗・中断した窓の未処理は次窓が回収する。
 - 副作用は冪等キーまたはDB制約（unique）で重複に耐える。
 - 本システムのどの経路も**exactly-onceは保証しない**。
 
@@ -263,7 +264,7 @@ flowchart TD
 - 1起動あたり50 account・500 tweet_id・外部request最大10並列を上限とし、Function deadline超過分は次回毎時起動へ委ねる。1アカウントのtoken取得失敗（失効）や読取失敗（401/403/429枯渇/5xx）はそのaccount/draft単位で隔離してスキップし、run全体を落とさない（失効はaccountスキップ、一時失敗は`next_metrics_at`据え置きで次窓が再走査）。
 - 30日表示用checkpointはnon-public metricsの取得期限を越えないよう投稿後29日〜30日未満で取得する。期限内の取得に失敗したprivate fieldはnullのまま確定し、public metricsもMVPでは更新終了する。
 - X上で削除済み・取得不能と確定したtweet_idは`unavailable`として以後のcheckpoint対象から外し、他のtweet_idの実績は継続する。
-- フォロワー数の記録は**投稿分析画面の「分析を開始」ボタン**（`startAnalysisAction`→`snapshotFollowerToday`）が行う（2026-08-23・T-M8-255。毎時cron `follower_snapshot`は廃止——アカウント数×毎日のX読取費用が利用の有無に関わらず積み上がるため）。操作中のXアカウント（`status=active`）のuser tokenで自アカウントの`followers_count`を読み、`(x_account_id, snapshot_date)`＝JST当日分へupsertする（unique制約で同日再押下は上書き・重複rowを作らない。原価台帳の冪等キーはJST日付単位で同日再押下をdedup）。token取得失敗・`followers_count`取得不能は理由つきで書き込まず、分析の起票は止めない。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——押さなかった日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
+- フォロワー数の記録の入口は2つで、どちらも`(x_account_id, snapshot_date)`＝JST当日分へのupsert（unique制約で同日は上書き・重複rowを作らない）。(1)**毎時cron `follower_snapshot`**——JST当日分snapshotが無い`status=active`のXアカウントのうち**所有者の契約が有効（trialing/active）なものだけ**を対象に（T-M8-257。解約済み利用者の読取費用$0.010/アカ/日を出さない）、user token別で自アカウントの`followers_count`を読んでupsertする。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。T-M8-255でいったんボタンのみへ移したが、推移グラフ（K-3）は毎日の点が揃って初めて意味を持つためT-M8-257で毎時cronを復活した（高コストだった投稿分析AIは手動のまま）。(2)**投稿分析画面の「分析を開始」ボタン**（`startAnalysisAction`→`snapshotFollowerToday`）——押した時点の最新値で当日分を上書きする（初回連携直後でも次のcronを待たずグラフに点が付く。原価台帳の冪等キーはJST日付単位で同日再押下をdedup。記録の失敗は分析の起票を止めない）。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
 
 ## 14. 通知
 
@@ -311,6 +312,7 @@ flowchart TD
 | v1.48 | 2026-08-22 | news_fetchを9〜21時の3時間おき（1日5回）へ変更（T-M8-195・運営者指示） |
 | v1.49 | 2026-08-22 | 複数アカウント総点検の修正（T-M8-196）: dispatchのユーザー間公平化・日時予約の永久沈黙と遅延投稿の解消・実行前提をジョブ対象アカウント基準へ・job予算のTOCTOU直列化 |
 | v1.50 | 2026-08-23 | 投稿分析・フォロワー記録を「分析を開始」ボタンの手動実行へ（T-M8-255）: 定時トリガー4本→3本（follower_snapshot廃止）、tickの毎朝起票（enqueueDailySuggestions）を削除、SUGGESTの取得窓に過去7日上限、§6/§12/§13を更新 |
+| v1.51 | 2026-08-23 | フォロワー記録の毎時cron（follower_snapshot）を復活（T-M8-257。定時トリガー3本→4本）。推移グラフは毎日の点が要るため。復活時に「契約が有効な利用者のみ」ゲートを追加。投稿分析はボタンの手動実行のまま |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

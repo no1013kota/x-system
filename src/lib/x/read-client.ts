@@ -14,7 +14,7 @@ import { recordedXCall, type XUsageContext } from "./usage";
 
 /**
  * X API 読取クライアント（L-1〜3・K-1・K-3, 要件04 §12/§13, T-M5-01）。学習・metrics_collector・
- * フォロワー数記録（「分析を開始」）で共用する。既存の `client.ts`（retry/backoff・401/403即失敗）を土台に、
+ * follower_snapshot・「分析を開始」で共用する。既存の `client.ts`（retry/backoff・401/403即失敗）を土台に、
  * ページング蓄積（timeline）・100件chunk（tweet lookup）・原価台帳への冪等記録（`recordedXCall`：
  * x_post_read / x_user_read）を加える。読取単価は `costs`（X_COST_*READ*_USD の snapshot）から取る
  * （T-M8-91。pay-per-usage は応答の resource 1件ごとに課金するため、単価0のままだと実費より小さく見える）。

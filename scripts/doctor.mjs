@@ -74,10 +74,9 @@ if (isLocal) {
   */
   /*
     **溜まったテストデータ**（T-M8-137）。E2Eは終了時に自分の作成分を消すが、
-    途中で落ちた回の分は残る。active なXアカウントが溜まると、全アカウントを走査する処理
-    （metrics-collector 等）のDBテストが件数上限に触れて落ち始め、**コードの不具合と
-    見分けがつかない**（実際に、原因の分からない単発失敗として4回observedした・当時は
-    follower-snapshot の走査上限100で発生。T-M8-255でバッチ自体は廃止済み）。掃除する導線を出す。
+    途中で落ちた回の分は残る。active なXアカウントが走査上限（100）を超えると
+    `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**
+    （実際に、原因の分からない単発失敗として4回observedした）。掃除する導線を出す。
   */
   if (dbOk) {
     try {
@@ -89,7 +88,7 @@ if (isLocal) {
       );
       await client.end();
       const active = rows[0]?.active ?? 0;
-      // 100は掃除を促すしきい値（旧 FOLLOWER_ACCOUNT_LIMIT 由来。溜まるほどDBテストが不安定になる）。
+      // 走査上限は `FOLLOWER_ACCOUNT_LIMIT`（100）。超えるとDBテストが落ち始める。
       const LIMIT = 100;
       checks.push(
         active < LIMIT

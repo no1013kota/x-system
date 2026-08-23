@@ -33,7 +33,7 @@ export interface HomeKpis {
  */
 export function followerKpi(points: { date: string; count: number }[]): KpiValue {
   if (points.length === 0) {
-    return { value: null, note: "投稿分析の「分析を開始」で記録されます" };
+    return { value: null, note: "毎日自動で記録されます" };
   }
   const latest = points[points.length - 1].count;
   if (points.length === 1) return { value: latest };

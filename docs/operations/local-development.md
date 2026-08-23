@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.13 |
-| 更新日 | 2026-08-22 |
+| 更新日 | 2026-08-23 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -120,7 +120,7 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
 | `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
 | `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
-| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。テストユーザーと関連データを削除する（実メールのアカウントには触れない。旧「送信待ちお知らせメール」の掃除はT-M8-222のメール通知廃止で不要になった）。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが溜まると全アカウント走査系のDBテスト（metrics-collector等。当時はfollower-snapshotの上限100で発生）が落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
+| `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。テストユーザーと関連データを削除する（実メールのアカウントには触れない。旧「送信待ちお知らせメール」の掃除はT-M8-222のメール通知廃止で不要になった）。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 
 ---
@@ -207,16 +207,19 @@ npm run dev                  # → http://127.0.0.1:3000
 
 ## 5.4 定時トリガー（cron）はローカルでは自動で動かない
 
-本番（Vercel）は `vercel.json` の Cron が3本の定時トリガーを起動するが、**ローカルには定時実行が無い**。
+本番（Vercel）は `vercel.json` の Cron が4本の定時トリガーを起動するが、**ローカルには定時実行が無い**。
 そのため次はローカルでは**手動で起動しない限り一度も動かない**（T-M8-99・2026-08-15判明）:
 
+- 毎時のフォロワー数記録（follower-snapshot）→ 投稿分析画面の「フォロワー数の推移」が空のまま
 - メトリクス収集（metrics-collector）・ニュース取得（news-fetch）・スケジュール投稿の起票
 
-投稿分析とフォロワー数記録は cron ではなく**投稿分析画面の「分析を開始」ボタン**で動く（T-M8-255で毎朝/毎時のcronを廃止）。ローカルでも画面から実行できる。
+投稿分析は cron ではなく**投稿分析画面の「分析を開始」ボタン**で動く（T-M8-255で毎朝の自動起票を廃止）。ボタンはフォロワー数の当日分も記録するため、ローカルはcronを叩かなくても画面から点を付けられる。
 
 手動起動（`npm run dev` 起動中に。同一時間窓の重複起動は `cron_runs` の窓claimで無害）:
 
 ```bash
+# フォロワー数を今日の分だけ記録（active・契約有効・当日未記録のアカウントが対象）
+curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/follower-snapshot
 # 5分tick（スケジュール起票・job dispatch・queued/stale回収）
 curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/scheduler-tick
 # メトリクス収集
@@ -224,7 +227,7 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/
 ```
 
 `$CRON_SECRET` は `.env.local` の値（`node --env-file=.env.local -e 'console.log(process.env.CRON_SECRET)'` で確認できる）。
-ローカルでも自走させるかは **要決定 D-29**（tasks/BACKLOG.md）。X APIは過去のフォロワー数を提供しないため、「分析を開始」を押さなかった日の推移は遡れない。
+ローカルでも自走させるかは **要決定 D-29**（tasks/BACKLOG.md）。X APIは過去のフォロワー数を提供しないため、記録開始日より前の推移は遡れない。
 
 ---
 

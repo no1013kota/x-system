@@ -25,6 +25,7 @@ const PLISTS = [
   { file: "com.spaceai.news-fetch.plist", label: "com.spaceai.news-fetch" },
   { file: "com.spaceai.scheduler-tick.plist", label: "com.spaceai.scheduler-tick" },
   { file: "com.spaceai.metrics-collector.plist", label: "com.spaceai.metrics-collector" },
+  { file: "com.spaceai.follower-snapshot.plist", label: "com.spaceai.follower-snapshot" },
 ];
 
 async function have(cmd: string): Promise<boolean> {
@@ -47,7 +48,7 @@ describe("launchd plists", () => {
     plutilOk = await have("plutil");
   });
 
-  it("all three plists pass plutil -lint", async (ctx) => {
+  it("all four plists pass plutil -lint", async (ctx) => {
     if (!plutilOk) return ctx.skip();
     for (const { file } of PLISTS) {
       const { stdout } = await execFileAsync("plutil", ["-lint", join(OPS_DIR, file)]);
@@ -72,7 +73,9 @@ describe("launchd plists", () => {
 
     const metrics = await plistJson("com.spaceai.metrics-collector.plist");
     expect((metrics.StartCalendarInterval as { Minute: number }).Minute).toBe(0);
-    // follower-snapshot は T-M8-255 で廃止（記録は画面の「分析を開始」ボタンが行う）。
+
+    const follower = await plistJson("com.spaceai.follower-snapshot.plist");
+    expect((follower.StartCalendarInterval as { Minute: number }).Minute).toBe(10);
   });
 
   it("never embed the secret in a plist", async (ctx) => {
