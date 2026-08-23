@@ -141,6 +141,7 @@ npm run dev       # アプリを起動する
 | `npm run check:providers` | AIへ送る形が正しいかをAI側に確認させる | ほぼ0円 |
 | `npm run check:turnstile` | 人間確認がその環境で実際に動くか確かめる | なし |
 | `npm run smoke:live` | AIを実際に1周させ、出来上がりまで確かめる | **約45円** |
+| `npm run check:stripe-period` | Stripeのテストクロックで「下位プランの予約→取り消し→期間末越え」を実際に流し、契約と利用枠がアプリへ正しく効くか確かめる（テストモードの鍵のみ） | なし |
 
 **AI を実際に呼ぶ確認について**
 
@@ -347,11 +348,11 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 3 | DB統合（66ファイル `*.db.test.ts`） | `npm run test:db` | 実DBでの制約・RLS・**ロール権限**・route/actionの本番実装 | 外部API・ブラウザ描画 |
 | 4 | E2E（19ファイル58件） | `npm run test:e2e` | 実ブラウザでの操作・遷移・CSP・署名URL・**実データの画像描画**（`naturalWidth > 0`）・**スマホ幅でページが横に伸びないこと** | AI生成の中身（費用と不確定性のため実行しない）。**外部サービスへの実セッション**（Stripeの決済ボタンは押さない）。**静的prerenderの影響**——E2Eは `npm run dev` で動き、dev modeはprerenderしないため、ビルド時に固定されるHTMLの不具合は原理的に再現しない（T-M8-87） |
 | 5 | provider契約 | `npm run check:providers` | **送っているリクエストが実APIに受理されるか** | 応答をアプリが扱えるか。**Googleは既定でskip**（`PROVIDER_CHECK_GOOGLE=1` で有効化・T-M7-17） |
-| 6 | 実物スモーク | `npm run smoke:live -- --account <id>` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
+| 6 | 実物スモーク | `npm run smoke:live -- --account <id>`／`npm run check:stripe-period` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item）。Stripe側は**テストクロックで期間末を越えたときの schedule・期間の実際の形**がアプリの同期と利用枠へ正しく効くか（`period-transition.live.test.ts`・T-M8-261） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
 | 8 | 外部サービス側の設定 | `npm run check:turnstile -- --base <URL>`／`npm run doctor -- --base <URL>` | **相手側の設定がその環境で実際に通るか**。Turnstileの許可ドメイン（層8の発端・T-M7-48）、SupabaseのCAPTCHA有効/無効（`captcha-status.ts`＝トークン無しで探査）、**SupabaseのカスタムSMTPと差出人名**（`price-status`と同じ注入で読み取り・T-M8-136）、**Supabase Auth のURL設定**（Site URL・Redirect URLs。`auth-url-status.ts`＝Management APIで読む・T-M8-90）、Stripeポータルの機能（`portal-status.ts`）、**Stripeアカウントが実際に本番決済を受け付けられるか**（`stripe-account-status.ts`＝アプリからは何も見えず、鍵もPriceも正しいのに決済だけ失敗する・T-M8-148）、**デプロイ先が実際に使っている設定値**（`config-status.ts`＝既定値を持つ設定は欠けても起動するため起動時検証では気付けない。`X_POSTING_MODE` が既定の `dry_run` のままだった・T-M8-147） | X Developer App のcallback URL・X Developer App のcallback URL（APIで読めない）。**`SUPABASE_ACCESS_TOKEN` が無い環境ではAuthのURL設定だけ「確認できません」になる**（緑にはしない） |
 
-内訳: `src` 配下のテストファイル262本 = 単体191 ＋ `*.db.test.ts` 69 ＋ provider契約 `*.live.test.ts` 2。`npm test` の結果は 2,291 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-20 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
+内訳: `src` 配下のテストファイル262本 = 単体191 ＋ `*.db.test.ts` 69 ＋ 実API `*.live.test.ts` 3（provider契約2・Stripe期間遷移1）。`npm test` の結果は 2,291 passed / 19 skipped（skipは既定で無効な実APIテスト）。**この数字は増え続けるので、乖離に気付いたら実測へ直す**（2026-08-20 時点）。**本数は他の文書へ写さない**——同じ数字を2か所に置くと片方だけ古くなる。
 
 ### 層5と層6は別物（第1部§4で2種類あると書いた理由）
 

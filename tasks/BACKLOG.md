@@ -2471,12 +2471,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
   検証: 単体（投影・ラベル・バナー）＋実DB（書き込み・取り消し・CHECK）＋E2E（plans.spec「T-M8-260」）＋実ブラウザ
   （1280/375・コンソールエラー0・Stripe失敗時のトースト）。Stripe実物の release は T-M8-261 のライブテストで通す。
 
-### T-M8-261: 期間末の下位変更がアプリへ正しく効くことを自動テストで固定する `todo`
+### T-M8-261: 期間末の下位変更がアプリへ正しく効くことを自動テストで固定する `done`
 - 参照: 要件03 §4 同期・T-M8-258/260 / 依存: T-M8-258, T-M8-260 / サイズ: S
 - 完了条件:
   - Stripeのテストクロックで「下位変更を予約→期間末を越える」を流し、plan が下位・X連携の切替・利用枠が新期間で0、予約表示が消える、まで実DBで確認するテスト（`*.live.test.ts`・鍵が無ければskip）
   - 同期コードに subscription schedule 付きの投影テスト（単体）がある
 - メモ: 検証（2026-08-23）で「期間末に実際に下位へ落ちる瞬間」が未観測だった（テストモードの予約は実行前に解除されていた）。
+- 実装メモ（2026-08-23 完了）: `src/lib/stripe/period-transition.live.test.ts`（`npm run check:stripe-period`・`STRIPE_LIVE=1` ゲート・
+  `sk_test_` 以外では走らない）。テストクロック＋`pm_card_visa` でプレミアム契約を作り、webhookと同じ同期関数で実DBへ反映→
+  schedule で下位予約→`scheduled_plan` 表示→`cancelScheduledPlanChange` で release→再予約→クロックを期間末+1hへ進める→
+  Stripe側が standard Price へ切替・plan=standard・`current_period_start`=前期間末・予約表示が消える・`usage_counters` は
+  前期間の行だけ残る、を確認（実測 約25秒・費用なし）。schedule付き投影の単体テストは T-M8-260 で追加済み
+  （`subscription-sync.test.ts`「scheduled plan change」）。X連携の切替は `applyPlanTransition` が同期内で走る（Xアカウント無しのため個別の断定はしていない）。
+
 
 ### T-M8-256: 値上げ時の日割りは「次回請求へ合算」であることを正本とコメントに明記 `done`
 - 参照: 要件03 §2.2・src/lib/billing/plan-change-effects.ts / 依存: なし / サイズ: S

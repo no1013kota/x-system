@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.50 |
+| バージョン | v1.55 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -259,7 +259,7 @@ reserveはjob開始時に1回だけ行い、**返還は失敗が確定したと�
 - 期間キーは`profiles.current_period_start`（Stripe subscription item の`current_period_start`を同期）の**JST日付`YYYY-MM-DD`**。列名は歴史的に`usage_events.month`／`usage_counters.month`のまま。SQL式の正本は`src/lib/usage/usage-period.ts`（`usagePeriodKeySql`／`currentUsagePeriodKey`）。
 - **未同期（`current_period_start`がnull）のあいだは従来のJST暦月`YYYY-MM`**で数える（後方互換。既存行の移行は行わず、切替後は各利用者の新しい期間キーの行が0から始まる＝利用者に不利にならない向き）。
 - 生成・画像はreserve時点、投稿はtweet_id成功時点の期間へ記録する。期間をまたいだrefund・settleは元reserveと同じ期間キーへ戻す（今期の残量は増えない）。80%/100%通知の重複判定（dedupe_key）も同じ期間キーを使う。
-- 上位への即時変更は期間を変えない（Stripeの請求サイクルも変わらない）ので、残り期間に新プランの上限が効く。期間末の下位変更・更新は新しい期間＝新上限で0から。
+- 上位への即時変更は期間を変えない（Stripeの請求サイクルも変わらない）ので、残り期間に新プランの上限が効く。期間末の下位変更・更新は新しい期間＝新上限で0から。**この遷移はStripeのテストクロックで実物検証する**（`npm run check:stripe-period`・`period-transition.live.test.ts`・T-M8-261。予約→取り消し→再予約→期間末越えで、plan・`current_period_start`・予約表示・利用枠の行を実DBで確認。テストモードの鍵でのみ動く）。
 - 3 Xアカウント分をuser_idで合算し、繰り越さない。期間開始のreset jobは不要（キーが変わるだけ）。
 - **webhook未達で期間が更新されないとき**は前の期間キーのまま数え続ける（勝手にリセットされない）。実行そのものは期限切れ判定（§2「期限切れの実行停止」・`isSubscriptionPeriodStale`・T-M8-235）が止める。
 - 運営者向けの費用集計（doctor・運営者アラート・日次サマリの「今月かかった費用」）は**会計に合わせてJST暦月のまま**（`external_api_usage_events.occurred_at`ベース。利用枠とは別物）。
@@ -387,3 +387,8 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.48 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
 | v1.49 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
 | v1.50 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
+| v1.51 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
+| v1.52 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
+| v1.53 | 2026-08-23 | 予約済み下位変更を schedule から同期して保存・取り消しの Server Action（T-M8-260） |
+| v1.54 | 2026-08-23 | 利用枠のリセットを暦月から契約期間ごとへ（§7.2 期間境界・profiles.current_period_start・T-M8-258） |
+| v1.55 | 2026-08-23 | 期間末の下位変更のテストクロック実物検証（check:stripe-period・T-M8-261） |

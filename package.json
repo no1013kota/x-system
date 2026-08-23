@@ -18,6 +18,7 @@
     "release:check": "npm run typecheck && npm run lint && npm run check:doc-dates && npm run check:doc-refs && npm run audit:check && npm run test:db && npm run build && npm run check:csp-nonce && npm run check:blog-trace && npm run test:e2e",
     "test:db": "REQUIRE_DB=1 vitest run",
     "check:providers": "PROVIDER_CHECK=1 vitest run src/lib/ai/provider-contract.live.test.ts",
+    "check:stripe-period": "STRIPE_LIVE=1 REQUIRE_DB=1 vitest run src/lib/stripe/period-transition.live.test.ts",
     "check:turnstile": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-turnstile.mjs",
     "smoke:live": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-live.mjs",
     "doctor": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/doctor.mjs",
