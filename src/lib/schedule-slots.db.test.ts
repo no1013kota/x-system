@@ -445,13 +445,13 @@ describe("enableScheduleSlot (local DB)", () => {
    * ここで「DBが厳しすぎないこと」も止める。
    */
   /**
-   * 「すべて停止」→「すべて再開」の往復（T-M8-233・運営者の指示 2026-08-23）。
+   * 「すべて停止」→「すべて再開」の往復（T-M8-233／T-M8-251・運営者の指示 2026-08-23）。
    *
    * 守りたいのは2つ。**下書き作成の枠も止まること**（以前は auto だけ止めていた）と、
-   * **利用者が個別に止めていた枠は再開で復活しないこと**（勝手に動き出すと投稿事故になる）。
-   * SQLの文字列検査（automation-consent.test.ts）では列の実在も往復も確かめられないので実DBで見る。
+   * **「すべて」が文字どおり全部であること**——個別に止めた枠も再開で動き出す。
+   * 押した結果が「全部止まる／全部動く」で一致していないと、運営者が状態を言い当てられない。
    */
-  it("すべて停止→再開: 下書き枠も止まり、個別に止めた枠は復活しない", async () => {
+  it("すべて停止→再開: 下書き枠も個別に止めた枠も、まとめて止まり・まとめて動く", async () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c, { consented: true }));
     try {
       const deps = depsFor(xAccountId);
@@ -480,15 +480,14 @@ describe("enableScheduleSlot (local DB)", () => {
       );
 
       const stopped = await disableXAutomation(userId, xAccountId, { runInTx: withTransaction });
-      // 動いていた2枠（auto と draft）が止まる。既に止まっていた1枠は数えない。
+      // 動いていた2枠（auto と draft）が止まる。既に止まっていた1枠は数えない（水増ししない）。
       expect(stopped.disabledSlots).toBe(2);
 
       const readSlots = async () =>
         (
           await withTransaction((c) =>
-            c.query<{ id: string; enabled: boolean; paused: string | null }>(
-              `select id, enabled, paused_by_stop_all_at::text as paused
-                 from schedule_slots where x_account_id = $1`,
+            c.query<{ id: string; enabled: boolean }>(
+              `select id, enabled from schedule_slots where x_account_id = $1`,
               [xAccountId],
             ),
           )
@@ -496,8 +495,6 @@ describe("enableScheduleSlot (local DB)", () => {
 
       const afterStop = await readSlots();
       expect(afterStop.every((r) => r.enabled === false), "下書き枠も止まっていない").toBe(true);
-      expect(afterStop.find((r) => r.id === manuallyStopped.id)?.paused, "個別停止に印を付けない").toBeNull();
-      expect(afterStop.find((r) => r.id === draft.id)?.paused).not.toBeNull();
 
       // 再開には現行版の同意が要る（停止で撤回されているため）。チェック無しでは戻さない。
       await expect(
@@ -514,14 +511,17 @@ describe("enableScheduleSlot (local DB)", () => {
         },
         { runInTx: withTransaction },
       );
-      expect(resumed).toMatchObject({ resumedSlots: 2, includesAuto: true, consentRecorded: true });
+      // 個別に止めた枠も含めて3枠すべてが戻る（T-M8-251）。
+      expect(resumed).toMatchObject({ resumedSlots: 3, includesAuto: true, consentRecorded: true });
 
       const afterResume = await readSlots();
       const byId = new Map(afterResume.map((r) => [r.id, r]));
       expect(byId.get(auto.id)?.enabled, "自動投稿の枠が戻っていない").toBe(true);
       expect(byId.get(draft.id)?.enabled, "下書きの枠が戻っていない").toBe(true);
-      expect(byId.get(manuallyStopped.id)?.enabled, "個別に止めた枠が勝手に復活した").toBe(false);
-      expect(afterResume.every((r) => r.paused === null), "再開後に印が残っている").toBe(true);
+      expect(
+        byId.get(manuallyStopped.id)?.enabled,
+        "「すべて再開」なのに個別に止めた枠が動いていない",
+      ).toBe(true);
 
       // 同意も戻っている（次の停止操作が効く状態）。
       const consent = await withTransaction((c) =>

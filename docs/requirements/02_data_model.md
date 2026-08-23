@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.57 |
+| バージョン | v1.58 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -318,7 +318,6 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `placeholder_values` | `jsonb` | not null default `'{}'`, CHECK（`schedule_slots_placeholder_values_ok()`。名前→文字列のオブジェクト・各2,000字以内） | **パターンの`{名前}`へ差し込む値**（T-M8-135）。予約は繰り返すので、ここで入れた値が毎回同じように入る。**そのパターンに無い項目の値は保存時に捨てる**（画面に出ない値が残ると説明できなくなる） |
 | `prompt_override` | `text` | null, CHECK（8,000字以内） | **この枠だけに使う生成プロンプト**（T-M8-135）。`null`ならパターンの本文を使う。同じパターンを少しだけ変えて別の枠に使うためのもの |
 | `enabled` | `boolean` | not null default true |  |
-| `paused_by_stop_all_at` | `timestamptz` | null | **「スケジュールをすべて停止」で無効化した日時**（T-M8-233）。null＝それ以外（利用者が個別に止めた枠・動いている枠）。「すべて再開」はこの列が非nullの枠**だけ**を`enabled=true`へ戻して列をnullに戻す——**個別に停止していた枠を勝手に復活させないため**。停止時に既に`enabled=false`だった枠には刻まない |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
@@ -976,3 +975,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
 | v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
 | v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
+| v1.58 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |

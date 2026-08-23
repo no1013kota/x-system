@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.55 |
+| バージョン | v1.56 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -144,8 +144,8 @@ Xキー削除では、2026-07-23時点の[X OAuth 2.0 user access token公式手
 | `disconnectXAccount` | `x_account_id` | status | Xのtoken revokeをbest effortで実行後、保存tokenを削除しstatus disabled。自動投稿同意も停止し全auto slotを無効化。選択中（`active_x_account_id`）だった場合は選択を解除する（フォールバック再選択は`setActiveXAccount`が扱う）。下書き・履歴・base_mdは削除しない |
 | `refreshXAccountStatus` | `x_account_id` | status | X `/users/me`で確認。handle・表示名・画像に加え **`x_premium`（`verified_type`= blue/business）も更新**する（T-M8-219。OAuth連携・再有効化でも同様に更新） |
 | `recordXAutomationConsent` | `x_account_id`, `consent_version`, `confirmed` | consent state | 現行説明versionの明示checkbox必須。`automation_consented_at`を保存しdisabledを解除 |
-| `disableXAutomation` | `x_account_id` | consent state, disabled slot count | `automation_disabled_at`を保存し、同じtransactionで**全スケジュール枠（auto・draftとも）**を無効化して`paused_by_stop_all_at`を刻む（T-M8-233） |
-| `resumeXAutomation` | `x_account_id`, `confirmed?`, `consent_version?` | resumed slot count | **「すべて停止」で止めた枠だけ**を`enabled=true`へ戻す（T-M8-233）。auto枠を含むときは現行版の同意が必要（未同意は`automation_consent_required`）。個別に停止した枠は戻さない |
+| `disableXAutomation` | `x_account_id` | consent state, disabled slot count | `automation_disabled_at`を保存し、同じtransactionで**全スケジュール枠（auto・draftとも）**を無効化する（T-M8-233） |
+| `resumeXAutomation` | `x_account_id`, `confirmed?`, `consent_version?` | resumed slot count | **止まっている枠をすべて**`enabled=true`へ戻す（T-M8-233／T-M8-251。個別に停止した枠も対象）。auto枠を含むときは現行版の同意が必要（未同意は`automation_consent_required`） |
 
 X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAuth clientとして使い、premiumは運営Appを使う。どちらもOAuth 2.0 user contextで利用者本人の権限を取得し、利用者に代わって投稿する。premiumも運営Appのapp-only tokenで投稿するのではなく、利用者ごとのaccess/refresh tokenを`x_accounts`へ暗号化保存して使うため、利用者自身のDeveloper App登録は不要である。
 
@@ -207,7 +207,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |
 | `deleteScheduleSlot` | slot_id, expected_updated_at | deleted | 所有者のみ |
 
-`disableXAutomation`は即時opt-outの正本とする。**画面の「スケジュールをすべて停止」は自動投稿だけでなく下書き作成の枠も止める**（T-M8-233。止めたい人は「いま何も動かないでほしい」のであって、下書きだけ作られ続けるのは意図と違う）。止めた枠には`paused_by_stop_all_at`を刻み、`resumeXAutomation`（「すべて再開」）がその枠だけを戻す（個別に停止していた枠は止まったまま／auto枠を含む再開は現行版の同意が必要）。Xアカウント切断など他の経路は従来どおり自動投稿だけを止める。実行後はslotを無効化し、すでにqueuedでもX投稿を開始していないauto起点jobをcancelする。running jobもX API呼び出し直前に同意状態を再確認し、撤回済みなら投稿せず停止する。draft modeと手動投稿は継続できる。
+`disableXAutomation`は即時opt-outの正本とする。**画面の「スケジュールをすべて停止」は自動投稿だけでなく下書き作成の枠も止める**（T-M8-233。止めたい人は「いま何も動かないでほしい」のであって、下書きだけ作られ続けるのは意図と違う）。`resumeXAutomation`（「すべて再開」）は**止まっている枠をすべて**戻す（T-M8-251。個別に停止した枠も対象／auto枠を含む再開は現行版の同意が必要）。Xアカウント切断など他の経路は従来どおり自動投稿だけを止める。実行後はslotを無効化し、すでにqueuedでもX投稿を開始していないauto起点jobをcancelする。running jobもX API呼び出し直前に同意状態を再確認し、撤回済みなら投稿せず停止する。draft modeと手動投稿は継続できる。
 
 ## 8. AI設定・学習
 
@@ -338,6 +338,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.53 | 2026-08-22 | createPattern/updatePatternのplaceholdersを画面側で本文から導出する運用へ（T-M8-194） |
 | v1.54 | 2026-08-22 | メール確認を省略（T-M8-202）。signUpはsession有無で分岐し即/plansへ。verifySignUpCodeは未確認ログイン経路用に残置 |
 | v1.55 | 2026-08-23 | 「すべて停止」を下書き枠へ拡張し `resumeXAutomation`（すべて再開）を追加（T-M8-233） |
+| v1.56 | 2026-08-23 | 「すべて停止/再開」の対象を全枠へ（T-M8-251） |
 
 ### 下書きの投稿予約（T-M8-157）
 

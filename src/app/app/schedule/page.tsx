@@ -47,9 +47,6 @@ export default async function SchedulePage() {
   let slots: ScheduleSlotView[] = [];
   let imageProviders: string[] = [];
   let automationConsented = false;
-  /** 「すべて停止」で止まっている枠（T-M8-233）。 */
-  let pausedSlots = 0;
-  let pausedIncludesAuto = false;
   let accountHandle: string | null = null;
   /**
    * 今後の予定（T-M8-226・運営者の指示 2026-08-22）: **投稿予約済みの下書きだけ**を読む。
@@ -74,21 +71,10 @@ export default async function SchedulePage() {
   const [loaded, meta, keyRows, draftRows, schedulable] = await Promise.all([
       listScheduleSlots(pooledDb, activeXAccountId),
       getPool()
-        .query<{
-          plan: string | null;
-          consented: boolean;
-          handle: string;
-          paused_slots: string;
-          paused_includes_auto: boolean;
-        }>(
-          // 「すべて停止」で止まっている枠（T-M8-233）。再開ボタンの表示と同意チェックの要否に使う。
+        .query<{ plan: string | null; consented: boolean; handle: string }>(
           `select p.plan, xa.handle,
                   (xa.automation_consent_version = $2 and xa.automation_consented_at is not null
-                   and xa.automation_disabled_at is null) as consented,
-                  (select count(*)::text from schedule_slots ss
-                    where ss.x_account_id = xa.id and ss.paused_by_stop_all_at is not null) as paused_slots,
-                  (select coalesce(bool_or(ss.mode = 'auto'), false) from schedule_slots ss
-                    where ss.x_account_id = xa.id and ss.paused_by_stop_all_at is not null) as paused_includes_auto
+                   and xa.automation_disabled_at is null) as consented
              from x_accounts xa join profiles p on p.id = xa.user_id
             where xa.id = $1`,
           [activeXAccountId, CURRENT_AUTOMATION_CONSENT_VERSION],
@@ -123,8 +109,6 @@ export default async function SchedulePage() {
     slots = loaded;
     imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
-    pausedSlots = Number(meta?.paused_slots ?? 0);
-    pausedIncludesAuto = meta?.paused_includes_auto === true;
     accountHandle = meta?.handle ?? null;
     scheduledDrafts = draftRows.rows;
   }
@@ -140,8 +124,6 @@ export default async function SchedulePage() {
         <XAccountRequiredNotice description="スケジュールを作成するには、まずXアカウントを連携してください。" />
       ) : (
         <ScheduleManager
-          pausedIncludesAuto={pausedIncludesAuto}
-          pausedSlots={pausedSlots}
           key={activeXAccountId}
           accountHandle={accountHandle}
           scheduledDrafts={scheduledDrafts}

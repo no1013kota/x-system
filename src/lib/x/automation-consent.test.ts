@@ -104,13 +104,12 @@ describe("disableAutomationForAccount", () => {
    * **下書き作成の枠も止める**（T-M8-233）。以前は `mode = 'auto'` だけを無効化していたため、
    * 「すべて停止」しても下書きは作られ続けた（運営者の指摘 2026-08-23）。
    */
-  it("stops draft slots too and marks what it paused so resume can restore exactly those", async () => {
+  it("stops draft slots too（scope=all では mode で絞らない）", async () => {
     const { db, writes } = makeDb(() => ({ rowCount: 1 }));
     await disableAutomationForAccount(db, XID, "all");
     const slots = writes.find((w) => SLOTS.test(w.sql));
     expect(slots?.sql, "mode で絞ると下書き枠が止まらない").not.toContain("mode = 'auto'");
-    expect(slots?.sql).toContain("paused_by_stop_all_at = now()");
-    // すでに止まっていた枠には印を付けない（再開で勝手に復活させないため）。
+    // 対象は「いま動いている枠」（既に止まっている枠は触らない＝更新件数を水増ししない）。
     expect(slots?.sql).toContain("enabled = true");
     const jobs = writes.find((w) => JOBS.test(w.sql));
     expect(jobs?.sql, "下書き生成のジョブも止める").not.toContain("mode = 'auto'");
@@ -118,15 +117,16 @@ describe("disableAutomationForAccount", () => {
 });
 
 describe("resumeAutomationForAccount", () => {
-  it("restores only the slots paused by stop-all and reports whether auto is included", async () => {
+  /** 「すべて再開」は文字どおり全部（T-M8-251）。個別に止めた枠も動かす。 */
+  it("止まっている枠をすべて戻し、autoを含むかを返す", async () => {
     const { db, writes } = makeDb((sql) =>
       RESUME_SLOTS.test(sql) ? { rowCount: 2, rows: [{ mode: "draft" }, { mode: "auto" }] } : { rowCount: 1 },
     );
     const res = await resumeAutomationForAccount(db, XID);
     expect(res).toEqual({ resumedSlots: 2, includesAuto: true });
     const sql = writes.find((w) => RESUME_SLOTS.test(w.sql))?.sql ?? "";
-    expect(sql).toContain("paused_by_stop_all_at is not null");
-    expect(sql).toContain("paused_by_stop_all_at = null");
+    expect(sql, "止まっている枠すべてが対象").toContain("enabled = false");
+    expect(sql, "停止の由来で選り分けない").not.toContain("paused_by_stop_all_at");
   });
 
   it("reports includesAuto=false when only draft slots were paused", async () => {

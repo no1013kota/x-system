@@ -210,15 +210,20 @@ export function XAccountsSettings({
                   接続を確認
                 </Button>
 
-                {/* 停止中なら再開、そうでなければ停止（SC-08と同じ出し分け・T-M8-233）。 */}
-                {account.pausedSlots > 0 ? (
-                  <ResumeAllAutomationButton
-                    pausedIncludesAuto={account.pausedIncludesAuto}
-                    pausedSlots={account.pausedSlots}
-                    xAccountId={account.id}
-                  />
-                ) : account.automationActive ? (
-                  <StopAllAutomationButton xAccountId={account.id} />
+                {/* 停止と再開を2つとも出す（SC-08と同じ・T-M8-251）。対象が無ければ押せない。 */}
+                {account.pausedSlots + account.enabledSlots > 0 ? (
+                  <>
+                    <StopAllAutomationButton
+                      disabled={account.enabledSlots === 0}
+                      xAccountId={account.id}
+                    />
+                    <ResumeAllAutomationButton
+                      disabled={account.pausedSlots === 0}
+                      pausedIncludesAuto={account.pausedIncludesAuto}
+                      pausedSlots={account.pausedSlots}
+                      xAccountId={account.id}
+                    />
+                  </>
                 ) : null}
 
                 {account.status !== "disabled" ? (

@@ -28,8 +28,10 @@ export interface XAccountListItem {
   status: XAccountStatus;
   isActive: boolean;
   automationActive: boolean;
-  /** 「すべて停止」で止まっている枠の数（T-M8-233）。0より大きいなら再開ボタンを出す。 */
+  /** 止まっている枠の数（T-M8-251）。0なら「すべて再開」を押せなくする。 */
   pausedSlots: number;
+  /** 動いている枠の数。0なら「すべて停止」を押せなくする。 */
+  enabledSlots: number;
   /** 止まっている枠に自動投稿が含まれるか。 */
   pausedIncludesAuto: boolean;
   /** X Premium加入（verified_type由来・T-M8-219）。SC-11のバッジ表示用。 */
@@ -90,6 +92,7 @@ export async function listXAccountsForUser(
     is_active: boolean;
     automation_active: boolean;
     paused_slots: string;
+    enabled_slots: string;
     paused_includes_auto: boolean;
     x_premium: boolean;
   }>(
@@ -98,11 +101,13 @@ export async function listXAccountsForUser(
             (p.active_x_account_id = xa.id) as is_active,
             (xa.automation_consented_at is not null
              and xa.automation_disabled_at is null) as automation_active,
-            -- 「すべて停止」で止まっている枠（T-M8-233）。停止/再開のどちらを出すかに使う。
+            -- 止まっている枠（T-M8-251）。SC-11 でも停止/再開の2つを出すために使う。
             (select count(*)::text from schedule_slots ss
-              where ss.x_account_id = xa.id and ss.paused_by_stop_all_at is not null) as paused_slots,
+              where ss.x_account_id = xa.id and ss.enabled = false) as paused_slots,
+            (select count(*)::text from schedule_slots ss
+              where ss.x_account_id = xa.id and ss.enabled = true) as enabled_slots,
             (select coalesce(bool_or(ss.mode = 'auto'), false) from schedule_slots ss
-              where ss.x_account_id = xa.id and ss.paused_by_stop_all_at is not null) as paused_includes_auto
+              where ss.x_account_id = xa.id and ss.enabled = false) as paused_includes_auto
        from x_accounts xa
        join profiles p on p.id = xa.user_id
       where xa.user_id = $1
@@ -119,6 +124,7 @@ export async function listXAccountsForUser(
     isActive: r.is_active,
     automationActive: r.automation_active,
     pausedSlots: Number(r.paused_slots ?? 0),
+    enabledSlots: Number(r.enabled_slots ?? 0),
     pausedIncludesAuto: r.paused_includes_auto,
     xPremium: r.x_premium,
   }));

@@ -14,8 +14,11 @@ import type { Queryable } from "./token-refresh";
  * **画面からの停止は「自動投稿」だけでなく「下書き作成」も止める**（運営者の指示 2026-08-23・T-M8-233）。
  * Xアカウントの切断など他の経路は従来どおり自動投稿だけを止める（`scope` で分ける）。
  * 止めたい人は「いま何も動かないでほしい」のであって、下書きだけ作られ続けるのは意図と違う。
- * 停止で無効化した枠には `paused_by_stop_all_at` を刻み、**再開はその枠だけ**を戻す
- * （利用者が個別に止めていた枠まで復活させない）。auto枠を含む再開は現行版の同意を取り直す。
+ *
+ * **「すべて」は文字どおり全部**（運営者の指示 2026-08-23・T-M8-251）。個別に止めた枠も
+ * すべて停止／すべて再開の対象にする。「どれが停止操作で止まったか」を覚えて選り分ける形は
+ * やめた——画面には停止と再開が常に両方あり、押した結果が「全部止まる／全部動く」で
+ * 一致している方が、運営者が状態を言い当てられる（CLAUDE.md 原則2）。
  */
 
 export const recordXAutomationConsentSchema = z.object({
@@ -67,9 +70,8 @@ export interface DisableAutomationResult {
  * その枠起点の queued job の cancel を同一 tx で行う。disconnectXAccount からも呼べるよう切り出す。
  * 所有権は呼び出し側で確認する。
  *
- * **下書き作成の枠（mode='draft'）も止める**（T-M8-233）。停止した枠には `paused_by_stop_all_at` を
- * 刻み、`resumeAutomationForAccount` がその枠だけを戻す。**既に無効だった枠には刻まない**ので、
- * 利用者が個別に停止していた枠は再開しても止まったままになる。
+ * **下書き作成の枠（mode='draft'）も止める**（T-M8-233）。`scope="all"` では**この時点で有効な枠を
+ * すべて**無効化する（T-M8-251。個別に止めていた枠は元から無効なので、結果は同じ「全部止まっている」）。
  * X投稿を開始済み（running）のjobはここでは触れない（worker が X 呼び出し直前に同意再確認する・T-M4-03）。
  */
 export async function disableAutomationForAccount(
@@ -90,7 +92,7 @@ export async function disableAutomationForAccount(
   );
   const slots = await tx.query(
     `update schedule_slots
-        set enabled = false, paused_by_stop_all_at = now(), updated_at = now()
+        set enabled = false, updated_at = now()
       where x_account_id = $1 and enabled = true${modeFilter}`,
     [xAccountId],
   );
@@ -111,7 +113,8 @@ export interface ResumeAutomationResult {
 }
 
 /**
- * 「すべて停止」で止めた枠だけを元に戻す（T-M8-233）。個別に停止していた枠は触らない。
+ * **止まっている枠をすべて動かす**（T-M8-251・運営者の指示 2026-08-23）。
+ * 個別に止めた枠も対象にする——「すべて再開」は文字どおり全部で、選り分けない。
  * 同意の復帰（`automation_disabled_at = null`）は呼び出し側が担う（auto枠を戻すときだけ必要）。
  */
 export async function resumeAutomationForAccount(
@@ -120,8 +123,8 @@ export async function resumeAutomationForAccount(
 ): Promise<ResumeAutomationResult> {
   const { rows } = await tx.query<{ mode: string }>(
     `update schedule_slots
-        set enabled = true, paused_by_stop_all_at = null, updated_at = now()
-      where x_account_id = $1 and paused_by_stop_all_at is not null
+        set enabled = true, updated_at = now()
+      where x_account_id = $1 and enabled = false
       returning mode`,
     [xAccountId],
   );
@@ -185,7 +188,7 @@ export async function resumeXAutomation(
     const pending = await tx.query<{ has_auto: boolean; total: string }>(
       `select coalesce(bool_or(mode = 'auto'), false) as has_auto, count(*)::text as total
          from schedule_slots
-        where x_account_id = $1 and paused_by_stop_all_at is not null`,
+        where x_account_id = $1 and enabled = false`,
       [input.x_account_id],
     );
     const needsConsent = pending.rows[0]?.has_auto === true;
