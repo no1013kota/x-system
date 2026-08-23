@@ -12,7 +12,7 @@ describe("subscription access matrix", () => {
     ["active", "app", true, null],
     ["past_due", "app", false, "/app/settings?tab=billing"],
     ["paused", "app", false, "/app/settings?tab=billing"],
-    ["canceled", "app", false, "/plans"],
+    ["canceled", "settings_plans", false, "/plans"],
     ["unpaid", "app", false, "/app/settings?tab=billing"],
   ] as const)(
     "%s maps browsing, execution, and primary action",
@@ -29,7 +29,8 @@ describe("subscription access matrix", () => {
     ["trialing", true],
     ["active", true],
     ["past_due", true],
-    ["canceled", true],
+    // 解約後は機能画面を見せない（T-M8-266）。
+    ["canceled", false],
     ["incomplete", false],
     ["incomplete_expired", false],
     ["unknown-status", false],

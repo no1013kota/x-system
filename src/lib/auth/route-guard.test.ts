@@ -74,10 +74,17 @@ describe("route guards", () => {
     expect(destination(path, { status: "incomplete" })).toBe("/plans");
   });
 
-  it.each(["trialing", "active", "past_due", "unpaid", "paused", "canceled"])(
+  it.each(["trialing", "active", "past_due", "unpaid", "paused"])(
     "allows %s users to browse app routes",
     (status) => {
       expect(destination("/app/posts?tab=history", { status })).toBeNull();
     },
   );
+
+  // 解約後は機能画面を見せない（T-M8-266・運営者の指示 2026-08-23）。課金タブだけ開ける。
+  it("redirects canceled users away from app routes except the billing tab", () => {
+    expect(destination("/app/posts?tab=history", { status: "canceled" })).toBe("/plans");
+    expect(destination("/app", { status: "canceled" })).toBe("/plans");
+    expect(destination("/app/settings?tab=billing", { status: "canceled" })).toBeNull();
+  });
 });

@@ -82,6 +82,7 @@ export async function loadAppShellDataWithDependencies(
       profileImageUrl: account.profileImageUrl,
     }));
 
+  let cancelAtPeriodEnd = false;
   let consentBanner: AppBanner | null = null;
   let dailyPostBanner: AppBanner | null = null;
   let stripeCustomerId: string | null = null;
@@ -101,6 +102,8 @@ export async function loadAppShellDataWithDependencies(
       currentPeriodEnd: profileRow.current_period_end,
     };
     stripeCustomerId = subscriptionProfile.stripeCustomerId;
+    // バナーのPortalButtonが「解約する」/「解約予定を取り消す」を正しく出し分けるために渡す（T-M8-57）。
+    cancelAtPeriodEnd = Boolean(profileRow.cancel_at_period_end);
     subscriptionBanner = subscriptionBannerFor(subscriptionProfile);
 
     if (profileRow.plan) {
@@ -134,6 +137,7 @@ export async function loadAppShellDataWithDependencies(
 
   return {
     activeAccountId,
+    cancelAtPeriodEnd,
     consentBanner,
     dailyPostBanner,
     notificationCursor: notificationPage.nextCursor,

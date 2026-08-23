@@ -162,34 +162,36 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   }
 });
 
-test("契約が切れた利用者は閲覧はできるが、実行はできずプラン選択へ案内される", async ({
+test("契約が切れた利用者は機能画面を見られず、/plansと課金タブだけ開ける（T-M8-266）", async ({
   accounts,
   page,
 }) => {
   const account = await accounts.create("plans-canceled");
   await query(
-    `update profiles set subscription_status = 'canceled', current_period_end = now() - interval '1 day'
+    `update profiles set subscription_status = 'canceled', stripe_customer_id = 'cus_e2e_plans_c',
+            current_period_end = now() - interval '1 day'
       where id = $1`,
     [account.userId],
   );
 
-  // `canceled` は viewScope=app なので**アプリ本体は見られる**（自分のデータを確認できる）。
-  // 実行（生成・投稿）だけを止めるのが仕様（`SUBSCRIPTION_ACCESS`・要件03 §2）。
-  await signIn(page, account);
-  await expect(page).toHaveURL(/\/app(\/|$|\?)/);
+  // 解約後は機能を見せない（運営者の指示 2026-08-23。旧仕様の「閲覧可・実行不可」から変更）。
+  // ログイン直後から /plans へ着地し、データ保持と再開の道（設定＞課金）が案内される。
+  await signIn(page, account, { waitFor: /\/plans(\/|$|\?)/ });
+  await expect(page.getByText("ご契約は終了しています。投稿・下書きなどのデータは保持されて", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "設定の課金・プラン（プランを再開）" }),
+  ).toHaveAttribute("href", "/app/settings?tab=billing");
 
-  // 契約のお知らせが出て、プラン選択への導線がある（行き止まりにしない）
-  const banner = page.getByRole("complementary", { name: "ご契約のお知らせ" });
-  await expect(banner).toBeVisible();
-  await expect(banner.getByRole("link", { name: "プランを選択" })).toBeVisible();
+  // 機能画面はすべて /plans へ送り返される（ホーム・投稿作成・投稿分析）。
+  for (const path of ["/app", "/app/posts?tab=create", "/app/analytics"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/plans(\/|$|\?)/);
+  }
 
-  // 実行はできない（投稿作成の前提チェックで止まる）
-  await page.goto("/app/posts?tab=create");
-  await expect(page.getByText("プラン", { exact: false }).first()).toBeVisible();
-
-  // 設定の課金タブは開ける
+  // 設定の課金タブだけは開け、「プランを再開」に到達できる。
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "プランを再開" })).toBeVisible();
 });
 
 /**
@@ -236,6 +238,7 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await expect(page.getByText("2026年8月12日に解約されます")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "解約する" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toBeVisible();
+  // 契約バナー（App Shell）とカードの両方に出る（バナー側の出し分け漏れはT-M8-266で修正）。
+  await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toHaveCount(2);
   await expect(page.getByText("期間終了日に解約予定")).toBeVisible();
 });

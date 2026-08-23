@@ -21,6 +21,7 @@ import { CheckoutButton } from "./checkout-button";
 import { CheckoutPending } from "./checkout-pending";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { PLANS, type PlanId } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
@@ -45,6 +46,8 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 送り返すと、設定＞課金の「プランを選ぶ」を押してもホームへ戻るだけで**何もできない**。
   // この状態はwebhookの到着順で一時的に起こり得るうえ、同期が来なければ恒久的に詰まるので、
   // 申し込みをやり直せる場所（この画面）へ入れる。
+  // 解約済み（データ保持中）の再開案内に使う（T-M8-266）。
+  let canceledPlanLabel: string | null = null;
   if (user) {
     const admin = createSupabaseAdminClient();
     const readProfile = () =>
@@ -70,6 +73,13 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
       subscriptionAccessFor(profile.subscription_status)?.canExecute
     ) {
       redirect("/app");
+    }
+    if (
+      profile?.subscription_status === "canceled" &&
+      profile.plan &&
+      profile.stripe_customer_id
+    ) {
+      canceledPlanLabel = PLANS[profile.plan as PlanId]?.displayName ?? null;
     }
   }
 
@@ -102,6 +112,22 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチと「お申し込み前の確認」にある（T-M8-66）。 */}
             </div>
           </header>
+
+          {/*
+            解約済みの着地（T-M8-266）。解約後は機能画面を開けないため、この画面が入口になる。
+            **データが消えていないこと**と、カード入力なしで戻れる道（設定＞課金の「プランを再開」）を
+            先に示す。別プランにしたい場合は下のカードから通常のCheckoutへ。
+          */}
+          {canceledPlanLabel ? (
+            <Notice className="mx-auto max-w-3xl" role="status" tone="warn">
+              ご契約は終了しています。投稿・下書きなどのデータは保持されており、再開するとそのまま使えます。
+              {canceledPlanLabel}を同じ条件で再開する場合は
+              <Link className="mx-1 underline" href="/app/settings?tab=billing">
+                設定の課金・プラン（プランを再開）
+              </Link>
+              から、別のプランにする場合は下から選べます。
+            </Notice>
+          ) : null}
 
           {params.checkout === "canceled" ? (
             <p className={`${cardClassName} mx-auto max-w-3xl p-4 text-sm`} role="status">

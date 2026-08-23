@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.42 |
+| バージョン | v1.43 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -149,13 +149,13 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 | `past_due` | 可 | 停止 | 支払い更新 |
 | `unpaid` | 可 | 停止 | 支払い更新 |
 | `paused` | 可 | 停止 | 支払い方法登録・再開 |
-| `canceled` | 可 | 停止 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
+| `canceled` | **設定（課金タブ）・プランのみ**（T-M8-266・運営者の指示 2026-08-23。解約後は機能画面を見せない） | 停止 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
 | `incomplete` | 設定・プランのみ | 停止 | Checkout完了 |
 | `incomplete_expired` | 設定・プランのみ | 停止 | 新規Checkout |
 
-`past_due`等でも、ユーザーは既存下書き・履歴・分析・設定を閲覧できる。課金停止を理由にデータを自動削除しない。
+`past_due`等（支払いが止まっているだけの状態）では、ユーザーは既存下書き・履歴・分析・設定を閲覧できる。**`canceled`は閲覧もできない**（T-M8-266で`incomplete`系と同じ「設定・プランのみ」へ変更——一般的なSaaSの解約後UX。/plansに「データは保持されており、再開するとそのまま使える」旨と設定＞課金の「プランを再開」への導線を出す）。どのstatusでも課金停止・解約を理由にデータを自動削除しない。
 
-route guardでは`incomplete`／`incomplete_expired`（およびprofile取得不能）を`/plans`へ送り、例外として`/app/settings?tab=billing`と`/app/settings?tab=support`だけを許可する。`trialing`／`active`／`past_due`／`unpaid`／`paused`／`canceled`は`/app`配下の閲覧を許可し、生成・投稿系の停止はServer Action側で行う。
+route guardでは`incomplete`／`incomplete_expired`／`canceled`（およびprofile取得不能）を`/plans`へ送り、例外として`/app/settings?tab=billing`と`/app/settings?tab=support`だけを許可する。`trialing`／`active`／`past_due`／`unpaid`／`paused`は`/app`配下の閲覧を許可し、生成・投稿系の停止はServer Action側で行う。
 
 8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
 
@@ -365,3 +365,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.40 | 2026-08-23 | §4.1の対象イベント表に charge.refunded・trial_will_end を追記（T-M8-253） |
 | v1.41 | 2026-08-23 | 値上げ時の日割りは「次回請求へ合算」であることを明記（即時請求ではない・T-M8-256） |
 | v1.42 | 2026-08-23 | 解約済み契約の「プランを再開」（§6.1・T-M8-264）: 保存済みカードで即時再開する`POST /api/stripe/resume`を追加。§5の主導線を更新 |
+| v1.43 | 2026-08-23 | `canceled`の閲覧範囲を「設定・プランのみ」へ（T-M8-266・運営者の指示。解約後は機能画面を見せない一般的なSaaSのUXへ。データは保持し/plansでその旨を案内） |

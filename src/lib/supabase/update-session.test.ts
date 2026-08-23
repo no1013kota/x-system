@@ -98,7 +98,8 @@ describe("updateSupabaseSession", () => {
     ).toBe("anonymous-v1");
   });
 
-  it.each(["active", "trialing", "past_due", "unpaid", "paused", "canceled"])(
+  // canceled は T-M8-266 で「設定・プランのみ」へ（解約後は機能画面を見せない）。
+  it.each(["active", "trialing", "past_due", "unpaid", "paused"])(
     "allows an authenticated %s profile to browse app routes",
     async (subscriptionStatus) => {
       const maybeSingle = vi.fn().mockResolvedValue({

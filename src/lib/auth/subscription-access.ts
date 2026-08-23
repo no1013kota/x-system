@@ -47,7 +47,9 @@ export const SUBSCRIPTION_ACCESS: Record<
   canceled: {
     actionPath: "/plans",
     canExecute: false,
-    viewScope: "app",
+    // 解約後は機能を見せない（運営者の指示 2026-08-23・T-M8-266。一般的なSaaSの解約後UXへ）。
+    // データは削除しない——viewScope が settings_plans でも保持され、再開すればそのまま見える。
+    viewScope: "settings_plans",
   },
   unpaid: {
     actionPath: "/app/settings?tab=billing",
@@ -209,8 +211,9 @@ export function subscriptionBannerFor(
   if (status === "canceled") {
     return {
       action: "checkout",
+      // 解約後は機能画面を開けない（T-M8-266）。データが消えていない事実と再開への道だけ言う。
       description:
-        "既存データは閲覧できます。再開するにはプランを選択してください。",
+        "投稿・下書きなどのデータは保持されています。プランを再開すると引き続きご利用いただけます。",
       title: "ご契約は終了しています",
       tone: "warning",
     };

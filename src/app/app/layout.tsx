@@ -33,6 +33,7 @@ export default async function AppLayout({
     : emptyAppShellData();
   const {
     activeAccountId,
+    cancelAtPeriodEnd,
     consentBanner,
     dailyPostBanner,
     notificationCursor,
@@ -109,7 +110,12 @@ export default async function AppLayout({
                 <p className="mt-1 text-sm leading-5">{banner.description}</p>
               </div>
               {banner.action === "portal" ? (
-                <PortalButton enabled={Boolean(stripeCustomerId)} />
+                // 解約予約中に「解約する」を出さない（T-M8-57。バナー本文の「取り消しができます」と
+                // ボタンが食い違っていた——cancelAtPeriodEnd を渡し忘れると再発する）。
+                <PortalButton
+                  cancelAtPeriodEnd={cancelAtPeriodEnd}
+                  enabled={Boolean(stripeCustomerId)}
+                />
               ) : null}
               {banner.action === "checkout" ? (
                 <Link
