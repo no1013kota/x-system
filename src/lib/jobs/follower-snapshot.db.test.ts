@@ -8,15 +8,16 @@ import { closePool, getPool, withTransaction } from "../db/pool";
 import { X_SCOPES } from "../x/oauth";
 import type { Queryable } from "../x/token-refresh";
 import {
-  executeFollowerSnapshot,
-  type FollowerSnapshotDeps,
+  snapshotFollowerToday,
+  type SnapshotFollowerDeps,
 } from "./follower-snapshot";
 
 /**
- * DB integration for follower_snapshot (K-3, 要件04 §13, 要件02 §3.11, T-M5-14): JST当日分の選定・upsert・
- * 重複防止・token失効/取得不能skip。X読取は mock を注入（原価台帳は経由しない）。
+ * DB integration for follower snapshot (K-3, 要件02 §3.11, T-M5-14→T-M8-255):
+ * 「分析を開始」からの単一アカウント記録。JST当日のupsert（同日再実行は上書き・行は増えない）、
+ * token取得不能/読取不能は理由つきで書かない。X読取は mock を注入（原価台帳は経由しない）。
  */
-describe("follower_snapshot (local DB)", () => {
+describe("snapshotFollowerToday (local DB)", () => {
   let available = false;
   const testKey = randomBytes(32);
   const encrypt = (p: string) => encryptWithKey(p, testKey);
@@ -69,29 +70,13 @@ describe("follower_snapshot (local DB)", () => {
   }
 
   function mockDeps(
-    counts: Record<string, number | null>,
-    over: Partial<FollowerSnapshotDeps> = {},
-  ): FollowerSnapshotDeps {
+    count: number | null,
+    over: Partial<SnapshotFollowerDeps> = {},
+  ): SnapshotFollowerDeps {
     return {
       db,
-      isPastDeadline: () => false,
-      /*
-        **選定は全アカウントを対象にするので、上限も広げる**（T-M8-161）。
-
-        `executeFollowerSnapshot` は「今日の分が無い active アカウント」を
-        `created_at asc, id asc` の順に `FOLLOWER_ACCOUNT_LIMIT`（=100）件だけ選ぶ。
-        テストが作るアカウントは**必ず最も新しい**ので、ローカルDBに他テスト・E2Eの
-        active アカウントが100件以上残っていると**このテストのアカウントが上限で切り落とされ**、
-        `snapshotsWritten` が 0 になって落ちる。実際に101件溜まった時点で再現した
-        （5〜6回に1回落ちる「flaky」に見えていたが、**溜まった件数で決まる決定的な失敗**だった）。
-
-        token=null の skip は元からあったが、それは「選ばれた後」の話で選定自体は防げない。
-        上限を広げても他アカウントは token=null で即skipされ、外部呼び出しは起きない。
-      */
-      limits: { accounts: 100_000, parallel: 4 },
-      // 他テストのアカウントは token=null で skip（グローバル選定の巻き込み回避）。
-      getAccessToken: async (xid) => (xid in counts ? "tok" : null),
-      readFollowersCount: async ({ xAccountId }) => counts[xAccountId] ?? null,
+      getAccessToken: async () => "tok",
+      readFollowersCount: async () => count,
       ...over,
     };
   }
@@ -112,15 +97,17 @@ describe("follower_snapshot (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
-  it("writes today's snapshot for an active account, no duplicate on same-day rerun", async () => {
-    const { uid, xid } = await seedAccount();
+  it("writes today's snapshot; same-day rerun overwrites without a duplicate row", async () => {
+    const { uid, xid, xUserId } = await seedAccount();
+    const acct = { userId: uid, xAccountId: xid, xUserId };
     try {
-      const res = await executeFollowerSnapshot(mockDeps({ [xid]: 1234 }));
-      expect(res.snapshotsWritten).toBeGreaterThanOrEqual(1);
+      const res = await snapshotFollowerToday(mockDeps(1234), acct);
+      expect(res).toEqual({ written: true, followersCount: 1234 });
       expect((await readSnapshot(xid))?.followers_count).toBe(1234);
 
-      // same-day rerun: account already has today's snapshot → not selected → count unchanged
-      await executeFollowerSnapshot(mockDeps({ [xid]: 9999 }));
+      // 同日再押下: 行は増えず値だけ最新に上書きされる（1日1回の上限は suggestion 側が担う）。
+      const rerun = await snapshotFollowerToday(mockDeps(9999), acct);
+      expect(rerun).toEqual({ written: true, followersCount: 9999 });
       const rows = (
         await db.query<{ n: string }>(
           `select count(*) as n from follower_snapshots
@@ -128,30 +115,36 @@ describe("follower_snapshot (local DB)", () => {
           [xid],
         )
       ).rows[0];
-      expect(Number(rows.n)).toBe(1); // no duplicate row
-      expect((await readSnapshot(xid))?.followers_count).toBe(1234); // unchanged (not re-read)
+      expect(Number(rows.n)).toBe(1);
+      expect((await readSnapshot(xid))?.followers_count).toBe(9999);
     } finally {
       await cleanup(uid, xid);
     }
   });
 
-  it("skips accounts with no valid token (left for next window)", async () => {
-    const { uid, xid } = await seedAccount();
+  it("does not write when the token is unavailable, and says why", async () => {
+    const { uid, xid, xUserId } = await seedAccount();
     try {
-      // token resolves to null for this account
-      const res = await executeFollowerSnapshot(mockDeps({}, { getAccessToken: async () => null }));
-      expect(res.snapshotsWritten).toBe(0);
+      const res = await snapshotFollowerToday(
+        mockDeps(1234, { getAccessToken: async () => null }),
+        { userId: uid, xAccountId: xid, xUserId },
+      );
+      expect(res).toEqual({ written: false, reason: "token_unavailable" });
       expect(await readSnapshot(xid)).toBeUndefined();
     } finally {
       await cleanup(uid, xid);
     }
   });
 
-  it("does not write when followers_count is unavailable (null), reports deferred", async () => {
-    const { uid, xid } = await seedAccount();
+  it("does not write when followers_count is unavailable (null), and says why", async () => {
+    const { uid, xid, xUserId } = await seedAccount();
     try {
-      const res = await executeFollowerSnapshot(mockDeps({ [xid]: null }));
-      expect(res.deferred).toBe(true);
+      const res = await snapshotFollowerToday(mockDeps(null), {
+        userId: uid,
+        xAccountId: xid,
+        xUserId,
+      });
+      expect(res).toEqual({ written: false, reason: "count_unavailable" });
       expect(await readSnapshot(xid)).toBeUndefined();
     } finally {
       await cleanup(uid, xid);

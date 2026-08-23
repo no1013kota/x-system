@@ -46,10 +46,11 @@ function buildConfig(): ResolveConfig {
   };
 }
 
-function buildTextGen(key: ResolvedKey, deadline?: Deadline): TextGen {
+function buildTextGen(key: ResolvedKey, deadline?: Deadline, maxTokens?: number): TextGen {
   switch (key.provider) {
     case "anthropic":
-      return createAnthropicTextGen({ apiKey: key.apiKey, model: key.model, deadline });
+      // maxTokens は Anthropic だけ必須パラメータのため明示上限を持つ（OpenAI/Gemini はAPI既定＝モデル上限）。
+      return createAnthropicTextGen({ apiKey: key.apiKey, model: key.model, deadline, maxTokens });
     case "openai":
       return createOpenAITextGen({ apiKey: key.apiKey, model: key.model });
     case "google":
@@ -69,14 +70,14 @@ export interface ResolvedTextProvider {
 /** text系job（GEN/LRN/SUGGEST/MD-MERGE）のprovider解決。 */
 export async function resolveTextProvider(
   job: { plan: PlanId; userId: string },
-  opts: { deadline?: Deadline } = {},
+  opts: { deadline?: Deadline; maxTokens?: number } = {},
 ): Promise<ResolvedTextProvider> {
   const config = buildConfig();
   const key = await withTransaction((client) =>
     resolveTextKey({ plan: job.plan, userId: job.userId }, { client, decrypt, config }),
   );
   return {
-    textGen: buildTextGen(key, opts.deadline),
+    textGen: buildTextGen(key, opts.deadline, opts.maxTokens),
     provider: key.provider,
     model: key.model,
     keySource: key.keySource,

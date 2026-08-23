@@ -35,10 +35,9 @@ function jobName(path: string): string {
 }
 
 describe("vercel.json の定時実行", () => {
-  it("4本ある（要件04 §6「定時トリガー4本」）", () => {
+  it("3本ある（要件04 §6「定時トリガー3本」。follower-snapshot は T-M8-255 で廃止）", () => {
     // 減っていても増えていても落とす。1本消えると、その処理だけが黙って止まる。
     expect(crons.map((c) => c.path).sort()).toEqual([
-      "/api/cron/follower-snapshot",
       "/api/cron/metrics-collector",
       "/api/cron/news-fetch",
       "/api/cron/scheduler-tick",

@@ -47,7 +47,7 @@ function PromptStrip() {
 function WorkspaceStrip() {
   // ドットの意味は④のスケジュール表と同じ（○=下書きまで ●=そのまま投稿）。3種類目を増やさない。
   const rows: { title: string; meta: string; state: SlotDotKind }[] = [
-    { title: "伸びた投稿：AI活用の始め方（表示1.2万）", meta: "毎朝レポート", state: "post" },
+    { title: "伸びた投稿：AI活用の始め方（表示1.2万）", meta: "分析レポート", state: "post" },
     { title: "プロンプト改善の提案が1件届いています", meta: "反映は自分で", state: "draft" },
   ];
   return (

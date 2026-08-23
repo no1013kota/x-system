@@ -2255,6 +2255,33 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - **法定開示の機械検査（legal-pages.test.ts 17+21+13項目・landing-page.test.ts の開示3点など）は
     すべて維持**。80件緑。
 
+### T-M8-255: 投稿分析・フォロワー記録を「分析を開始」ボタンの手動実行へ戻し、毎朝/毎時のcronを廃止 `done`
+- 参照: PRD K-2/K-3・要件04 §6/§12/§13・要件05 §9・要件06 SC-09 / 依存: なし / サイズ: M
+- 完了条件:
+  - 投稿分析画面に「分析を開始」ボタンがあり、押すと (1)フォロワー数の当日分を記録 (2)投稿分析jobを起票する
+  - 分析は1日1回まで（冪等キー`sug-manual:{x_account_id}:{JST日付}`）。2回目は「実行済み」を言葉で返す
+  - 取り込む投稿は過去7日まで・最大100件（長期間押していなくても取得費用が跳ねない）
+  - 毎朝8:00の自動起票（enqueueDailySuggestions）と毎時のfollower-snapshot cron（route・vercel.json・launchd plist）が消えている
+  - 起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）がトーストで返る
+- メモ: 運営者の指示（2026-08-23）。自動実行は利用者数×毎日のAI・X読取費用が利用の有無に関わらず
+  積み上がるため（原価分析で投稿分析AIが最大の不確定要素だった）。
+  **指示の「過去に収集できていない日にち（最大90日）のフォロワー数を収集」は実現不能**——
+  X APIはフォロワー数の履歴を提供せず取れるのは現在値のみ。ボタンは当日分を記録し、
+  押さなかった日はグラフ上の欠測のまま埋めない（偽値で埋めない・原則1）。
+  「過去に分析できていない分の投稿（最大7日間）」はタイムライン増分取得の7日窓として実装。
+- 実装メモ（2026-08-23）:
+  - `createManualSuggestionJob`（suggestion-jobs.ts）: 所有・active・契約・BYOKキーのゲート→
+    冪等insert→作れない理由をalready_running/already_done_todayで言い分け
+  - `snapshotFollowerToday`（follower-snapshot.ts）: バッチ（全アカウント走査・上限100）から
+    単一アカウントのupsertへ全面書き換え。原価台帳の冪等キーはJST日付単位
+  - `startAnalysisAction`（actions/analysis.ts・新規）: フォロワー記録はゲートを通ったときだけ
+    （契約無効の利用者の操作でX読取費用を発生させない）。dispatchは`after()`
+  - `timelineFetchStart`にnow注入で7日floor追加。cron.tsから(6.5)毎朝起票とdailySuggestionsを削除
+  - 削除: `/api/cron/follower-snapshot` route・vercel.json crons 4→3本・
+    `com.spaceai.follower-snapshot.plist`・`enqueueDailySuggestions`
+  - `follower_snapshots`テーブル・グラフ・KPIは維持（DBスキーマ変更なし・migration不要）
+  - E2E 2件追加（起票・実行中はボタン無効）。文言更新: LP・分析画面・KPI・プラン比較表
+
 ### T-M8-254: 日付・時刻をすべて日本時間（JST）基準へ揃える `done`
 - 参照: 運営者の指示（2026-08-23）・要件02 §13 / 依存: なし / サイズ: M
 - 完了条件:

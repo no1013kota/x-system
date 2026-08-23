@@ -98,8 +98,6 @@ export interface SchedulerTickResult {
   promptsSynced: number;
   /** 作成した日次サマリ通知の件数（1日1通なので通常は0か1）。 */
   dailySummaries: number;
-  /** 毎朝の投稿分析jobの新規作成数（T-M8-94）。 */
-  dailySuggestions: number;
   /** 期限到来した日時予約の下書きを投稿へ流した結果（T-M8-157）。 */
   scheduledDrafts: EnqueueScheduledDraftsResult;
   /** doctorの判定を運営者へ届けた結果（T-M8-164）。1日1回。 */
@@ -171,7 +169,7 @@ export async function runSchedulerTick(
     (3) 未dispatchのqueuedジョブを再dispatch。
     **選抜はユーザー間で公平にする**（T-M8-196・レビュー修正）: 素の
     `order by scheduled_for, created_at limit 50` だと、1ユーザーの滞留（例: 失効中に溜まった
-    日時予約）が50枠を独占し、他ユーザーの予約投稿・毎朝の分析が何時間も選ばれない
+    日時予約）が50枠を独占し、他ユーザーの予約投稿・投稿分析が何時間も選ばれない
     （実DBで再現: 60件滞留で他ユーザーのjobがbatchに一切入らなかった）。
     ユーザーごとに古い順で番号を振り、「各ユーザーの1件目→2件目→…」の順で50件取る。
   */
@@ -275,17 +273,8 @@ export async function runSchedulerTick(
     opts.onCleanupError?.("daily_summary", err);
   }
 
-  // (6.5) 毎朝の投稿分析（T-M8-94）。JST8時以降のtickで、対象アカウントぶんの suggestion job を
-  // 冪等に作る（request_key `sug-daily:{xid}:{JST日付}`）。dispatch は次tickの dispatch フェーズが拾う。
-  // 失敗しても tick 本体を止めない。
-  let dailySuggestions = 0;
-  try {
-    const { enqueueDailySuggestions } = await import("./suggestion-jobs");
-    dailySuggestions = (await enqueueDailySuggestions(pooledDb, new Date(Date.now()).toISOString()))
-      .created;
-  } catch (err) {
-    opts.onCleanupError?.("daily_suggestions", err);
-  }
+  // （旧(6.5) 毎朝の投稿分析の一括起票はT-M8-255で廃止——起票は画面の「分析を開始」ボタンだけが行う。
+  //  dispatch漏れ分の回収は従来どおり上の dispatch フェーズが担う）
 
   // (7) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
   // 解決順は「account上書き → system default行 → コード定数」で、DB行が古いままだと
@@ -309,6 +298,5 @@ export async function runSchedulerTick(
     cleaned,
     promptsSynced,
     dailySummaries,
-    dailySuggestions,
   };
 }

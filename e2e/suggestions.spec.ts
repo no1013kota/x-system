@@ -99,12 +99,12 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
 
 // 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
-test("BYOKでAIキーが未登録なら、始まらない理由と登録導線を出す（T-M8-95）", async ({
+test("BYOKでAIキーが未登録なら、始められない理由と登録導線を出す（T-M8-95）", async ({
   accounts,
   page,
 }) => {
   const account = await accounts.create("sug-nokey");
-  // fixtureはpremium。BYOK（md）へ変え、AIキーは登録しない → 毎朝の分析jobが作られない状態。
+  // fixtureはpremium。BYOKへ変え、AIキーは登録しない → 「分析を開始」しても起票されない状態。
   await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
 
   await signIn(page, account);
@@ -115,4 +115,57 @@ test("BYOKでAIキーが未登録なら、始まらない理由と登録導線�
     "href",
     "/app/settings?tab=api-keys",
   );
+
+  // 押した結果も言葉で返る（原則1）。BYOK未登録は起票ゲートで弾かれ、jobは作られない。
+  await page.getByRole("button", { name: "分析を開始" }).click();
+  await expect(page.getByText("分析を開始できませんでした")).toBeVisible();
+});
+
+/**
+ * 「分析を開始」ボタン（K-2/K-3, T-M8-255）。毎朝の自動実行の廃止後、起票の入口はこれだけ。
+ * 生成そのものはX API・実AIを叩くためE2Eでは完走しない（dispatchされたjobは後段で失敗してよく、
+ * 失敗までの時間も不定）。押した直後の状態に依存する検証はせず、
+ * (1) 押すと suggestion job が trigger='manual'・1日1回の冪等キーで作られること
+ * (2) 実行中（queued）はボタンが「分析中…」で押せないこと（DBへ直接seedして確定させる）
+ * を分けて確認する。
+ */
+test("「分析を開始」でjobが trigger='manual' で起票される（T-M8-255）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("sug-start");
+
+  await signIn(page, account);
+  await page.goto("/app/analytics");
+
+  await page.getByRole("button", { name: "分析を開始" }).click();
+  await expect(page.getByText("分析を開始しました")).toBeVisible();
+
+  // 起票の実体（statusはdispatch結果次第で動くため見ない）。
+  const rows = await query<{ trigger: string; request_key: string }>(
+    `select trigger::text as trigger, request_key from generation_jobs
+      where x_account_id = $1 and kind = 'suggestion'`,
+    [account.xAccountId],
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0].trigger).toBe("manual");
+  expect(rows[0].request_key).toMatch(/^sug-manual:/);
+});
+
+test("分析の実行中はボタンが「分析中…」になり押せない（T-M8-255）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("sug-busy");
+  // dispatchを伴わずに実行中の状態を作る（dev環境ではtickが動かないため回収されない）。
+  await query(
+    `insert into generation_jobs (x_account_id, kind, trigger, status)
+     values ($1, 'suggestion', 'manual', 'queued')`,
+    [account.xAccountId],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/analytics");
+
+  await expect(page.getByRole("button", { name: "分析中…" })).toBeDisabled();
 });

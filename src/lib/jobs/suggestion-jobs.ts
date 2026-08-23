@@ -2,95 +2,107 @@ import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "@/lib/auth/subscription-access
 import type { Queryable } from "../x/token-refresh";
 
 /**
- * 投稿分析（SUGGEST）の起票と読み出し（K-2, 要件04 §12, 要件05 §9, T-M8-94）。
+ * 投稿分析（SUGGEST）の起票と読み出し（K-2, 要件04 §12, 要件05 §9, T-M8-94→T-M8-255）。
  *
- * 2026-08-15 の刷新で**手動の「提案を更新」を廃止し、毎朝8:00 JSTの自動実行**にした
- * （運営者の指示）。起票は `scheduler_tick` が `enqueueDailySuggestions` で行う:
- * - JST 8時前は何もしない（日次サマリ `deliverDailySummaries` と同じゲートの形）
- * - 対象は status='active' の Xアカウントのうち、契約が有効（trialing/active）で、
- *   BYOKならAIキーが1つ以上 valid のもの（キーが無いと provider解決で必ず失敗し、
- *   毎朝失敗通知が届き続けるため入口で除く）
- * - 冪等キーは request_key = `sug-daily:{x_account_id}:{JST日付}`（unique制約が1日1回を保証）
- * - dispatch はしない。queued に置けば tick の dispatch フェーズ（最大50件/回）が拾う
- *
- * 旧・手動起票（refreshSuggestions と already_today / no_new_metrics 等のゲート）は削除した。
- * 1日1回の費用上限は request_key の冪等がそのまま担う。
+ * 2026-08-23 の刷新で**毎朝8:00の自動実行を廃止し、利用者がボタンで開始する手動実行**へ戻した
+ * （運営者の指示。自動実行は利用者数×毎日のAI費用が上限なしで積み上がるため）。
+ * - 起票は投稿分析画面の「分析を開始」ボタン（Server Action）だけが行う
+ * - 対象ゲートは自動実行時と同じ: status='active'・契約が有効（trialing/active）・
+ *   BYOKならAIキーが1つ以上 valid（キーが無いと provider解決で必ず失敗するため入口で弾く）
+ * - 冪等キーは request_key = `sug-manual:{x_account_id}:{JST日付}`（unique制約が**1日1回**を保証。
+ *   費用の上限はこの冪等がそのまま担う）
+ * - dispatch は Action が `after()` で行い、失敗分は tick の回収フェーズが拾う
+ * - 取り込む投稿は**最大7日前まで**（`suggestion-timeline.ts` の取得窓）
  */
 
-export interface DailyEnqueueResult {
-  /** 新しく作った job の数（既存＝実行済みの日はカウントしない）。 */
-  created: number;
-}
-
 const JST_OFFSET_MS = 9 * 3_600_000;
-/** 自動実行の時刻（JST時）。日次サマリ（SUMMARY_HOUR_JST）と同じ朝8時。 */
-export const SUGGESTION_HOUR_JST = 8;
 
 /** `YYYY-MM-DD`（JST）。 */
 export function jstDateOf(nowIso: string): string {
   return new Date(Date.parse(nowIso) + JST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** 自動実行の冪等キーの前置き。SQL側の組み立てとここだけが正（T-M8-249）。 */
-export const DAILY_SUGGESTION_KEY_PREFIX = "sug-daily:";
+/** 手動実行の冪等キーの前置き。SQL側の組み立てとここだけが正（T-M8-249）。 */
+export const MANUAL_SUGGESTION_KEY_PREFIX = "sug-manual:";
 
-/** 自動実行の冪等キー。unique(request_key) が「1アカウント1日1回」を保証する。 */
-export function dailySuggestionKey(xAccountId: string, jstDate: string): string {
-  return `${DAILY_SUGGESTION_KEY_PREFIX}${xAccountId}:${jstDate}`;
+/** 手動実行の冪等キー。unique(request_key) が「1アカウント1日1回」を保証する。 */
+export function manualSuggestionKey(xAccountId: string, jstDate: string): string {
+  return `${MANUAL_SUGGESTION_KEY_PREFIX}${xAccountId}:${jstDate}`;
+}
+
+export type ManualSuggestionRejection =
+  | "not_found"
+  | "x_account_inactive"
+  | "subscription_inactive"
+  | "api_key_required"
+  | "already_running"
+  | "already_done_today";
+
+export interface ManualSuggestionResult {
+  ok: boolean;
+  jobId?: string;
+  reason?: ManualSuggestionRejection;
 }
 
 /**
- * 毎朝の投稿分析jobを一括で冪等作成する（scheduler_tick から毎回呼ばれる）。
- * JST 8時前は no-op。作成済みの日は on conflict do nothing で0件になる。
+ * 「分析を開始」からの手動起票。所有・状態・契約・（BYOKの）AIキーを検証し、
+ * 1日1回の冪等キーで generation_jobs(kind=suggestion, trigger=manual) を作る。
+ * 既に今日実行済み／実行中なら理由を返して作らない（黙って二重起票しない・原則2）。
  */
-export async function enqueueDailySuggestions(
+export async function createManualSuggestionJob(
   db: Queryable,
-  nowIso: string,
-): Promise<DailyEnqueueResult> {
-  const jstHour = new Date(Date.parse(nowIso) + JST_OFFSET_MS).getUTCHours();
-  if (jstHour < SUGGESTION_HOUR_JST) return { created: 0 };
-  const date = jstDateOf(nowIso);
+  params: { userId: string; xAccountId: string; nowIso: string },
+): Promise<ManualSuggestionResult> {
+  const date = jstDateOf(params.nowIso);
 
-  // 対象アカウントを1クエリで選び、そのまま冪等insertする（enqueueDueSlots と同じ「置くだけ」の形。
-  // dispatch は tick の dispatch フェーズに任せる）。
-  const { rows } = await db.query<{ id: string }>(
+  const gate = await db.query<{
+    status: string;
+    subscription_status: string;
+    plan: string | null;
+    has_ai_key: boolean;
+  }>(
+    `select xa.status::text as status, p.subscription_status::text as subscription_status,
+            p.plan::text as plan,
+            exists (
+              select 1 from user_api_keys k
+               where k.user_id = p.id and k.status = 'valid' and k.provider <> 'x'
+            ) as has_ai_key
+       from x_accounts xa join profiles p on p.id = xa.user_id
+      where xa.id = $1 and xa.user_id = $2`,
+    [params.xAccountId, params.userId],
+  );
+  const row = gate.rows[0];
+  if (!row) return { ok: false, reason: "not_found" };
+  if (row.status !== "active") return { ok: false, reason: "x_account_inactive" };
+  if (!(EXECUTABLE_SUBSCRIPTION_STATUSES as readonly string[]).includes(row.subscription_status)) {
+    return { ok: false, reason: "subscription_inactive" };
+  }
+  // 運営キー系プラン（premium/expert）はキー登録なしで対象（T-M8-168）。
+  if (!(row.plan === "premium" || row.plan === "expert") && !row.has_ai_key) {
+    return { ok: false, reason: "api_key_required" };
+  }
+
+  // arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
+  // partial-unique の両方を吸収する。冪等キーの組み立ては `manualSuggestionKey` の1か所だけ
+  // （T-M8-249。SQL側で `||` の手組みを重複させない）。
+  const inserted = await db.query<{ id: string }>(
     `insert into generation_jobs (x_account_id, kind, trigger, request_key, status)
-     select xa.id, 'suggestion', 'schedule', $1 || xa.id || ':' || $2, 'queued'
-       from x_accounts xa
-       join profiles p on p.id = xa.user_id
-      where xa.status = 'active'
-        and p.subscription_status = any($3::subscription_status[])
-        and (
-          -- 運営キー系プラン（premium/expert）はキー登録なしで対象（T-M8-168）。
-          p.plan in ('premium', 'expert')
-          -- AIのキーに限る（provider='x' はX App資格情報で、LLMの解決には使えない）。
-          or exists (
-            select 1 from user_api_keys k
-             where k.user_id = p.id and k.status = 'valid' and k.provider <> 'x'
-          )
-        )
-     -- 下の for key share が要る理由（T-M8-116。news-digest.ts・daily-summary.ts と同じ）:
-     -- 同じ文の中でも、SELECT が見る行と外部キー検査が見る行は別のスナップショットで決まる。
-     -- SELECT の直後にXアカウントの連携解除（や退会のcascade）がコミットされると、検査時点では
-     -- 親行が無く generation_jobs_x_account_id_fkey 違反になる。tick は cleanup の例外を
-     -- 捕まえて先へ進むため、1人の解除でその日の分析が全利用者ぶん黙って起票されなくなる。
-     -- 親行を先にロックしておけば、解除はこの文の完了まで待たされ、先に消えていれば0行になる。
-     --
-     -- **ロックの順番を固定する**（T-M8-253）。順番が決まっていないと、同じ集合を掴もうとする
-     -- 2つの実行が互いに待ち合ってデッドロックになる（実際にテストの並行実行で断続的に起きた）。
-     -- id 順に統一すれば、どちらが先でも同じ順に掴むので待ち合いにならない。
-      order by xa.id
-       for key share of xa
-     -- arbiter を限定しない: request_key（1日1回）と「activeなsuggestionは1件」の
-     -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。
+     values ($1, 'suggestion', 'manual', $2, 'queued')
      on conflict do nothing
      returning id`,
-    // 冪等キーの組み立ては `dailySuggestionKey` と同じ形（前置き＋アカウントID＋日付）。
-    // **SQL側で文字列を手組みしない**——2か所に別々の組み立てがあると、片方だけ変えて
-    // 「1日1回」が壊れても誰も気付けない（T-M8-249）。
-    [DAILY_SUGGESTION_KEY_PREFIX, date, EXECUTABLE_SUBSCRIPTION_STATUSES],
+    [params.xAccountId, manualSuggestionKey(params.xAccountId, date)],
   );
-  return { created: rows.length };
+  if (inserted.rows[0]) return { ok: true, jobId: inserted.rows[0].id };
+
+  // 作れなかった理由を言い分ける（実行中か、今日はもう実行済みか）。
+  const running = await db.query<{ id: string }>(
+    `select id from generation_jobs
+      where x_account_id = $1 and kind = 'suggestion' and status in ('queued', 'running')
+      limit 1`,
+    [params.xAccountId],
+  );
+  if (running.rows[0]) return { ok: false, reason: "already_running" };
+  return { ok: false, reason: "already_done_today" };
 }
 
 export interface SuggestionView {

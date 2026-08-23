@@ -21,7 +21,7 @@ Sentryは「**過去に起きた例外**」。2026-08-19のAIクレジット切�
 「特定の利用者の操作だけ落ちる」は後者でしか見つからない。
 
 **`doctor` はVercelの定時実行には入っていない**（`vercel.json` の cron は
-`news-fetch`／`scheduler_tick`／`metrics-collector`／`follower-snapshot` の4本）。
+`news-fetch`／`scheduler_tick`／`metrics-collector` の3本。旧`follower-snapshot`はT-M8-255で廃止）。
 毎朝のメールは `scheduler_tick` に相乗りしており、**doctor用の定時実行は増やしていない**（原則3）。
 
 **環境ごとの届き方**: 毎朝のメールが届くのは**Vercel Cronが動く環境（本番）だけ**。

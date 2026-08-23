@@ -91,7 +91,9 @@ describe.runIf(ENABLED)("投稿分析 実AI 1周（手動）", () => {
       console.log(`保存済み投稿: ${stored.length}件`);
 
       const { createAnthropicTextGen } = await import("../ai/anthropic-client");
-      const textGen = createAnthropicTextGen();
+      // 本番と同じ出力上限で回す（suggestion-server の SUGGEST_MAX_OUTPUT_TOKENS と同値。
+      // 既定8192だと全文提案つきレポートのJSONが途中で切れて必ず落ちる・2026-08-23）。
+      const textGen = createAnthropicTextGen({ maxTokens: 16_384 });
       const started = Date.now();
       const res = await executeSuggestion({
         db,

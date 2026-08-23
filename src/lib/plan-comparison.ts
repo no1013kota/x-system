@@ -42,7 +42,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
   },
   {
     label: "投稿実績の記録と分析レポート",
-    note: "毎朝、伸びた投稿を根拠つきで示します",
+    note: "伸びた投稿を根拠つきで示します",
     cell: () => true,
   },
   {

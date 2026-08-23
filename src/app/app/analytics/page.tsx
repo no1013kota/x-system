@@ -16,6 +16,7 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { AnalyticsView } from "./analytics-view";
 import { FollowerChart } from "./follower-chart";
+import { StartAnalysisButton } from "./start-analysis-button";
 import { SuggestionsPanel } from "./suggestions-panel";
 import { pageTitleClassName } from "@/components/ui/card";
 
@@ -55,7 +56,7 @@ export default async function AnalyticsPage() {
       xAccountId,
     ]),
     // 提案のプロンプト全文は、編集権限（canEditMdAndPrompts）の有無で出し分ける（T-M8-91/T-M8-168）。
-    // AIキーの有無は、BYOKで毎朝の分析が始まらない理由（未登録）を画面から説明するために読む（T-M8-95）。
+    // AIキーの有無は、BYOKで分析を開始できない理由（未登録）を画面から説明するために読む（T-M8-95）。
     pooledQueryable().query<{ plan: PlanId | null; has_ai_key: boolean }>(
       `select p.plan,
               exists (
@@ -72,11 +73,15 @@ export default async function AnalyticsPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
-      <header>
-        <h1 className={pageTitleClassName}>投稿分析</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className={pageTitleClassName}>投稿分析</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作り、フォロワー数を本日分として記録します（1日1回）。
+          </p>
+        </div>
+        {/* 分析の起点はこのボタンだけ（毎朝の自動実行は T-M8-255 で廃止）。 */}
+        <StartAnalysisButton generating={suggestionsSection.generating} />
       </header>
       {/* 並びは 分析レポート → 投稿ごとの実績 → フォロワー推移（運営者の指示・2026-08-15。
           レポートがこの画面の主目的で、フォロワー推移は補助情報のため最後）。 */}

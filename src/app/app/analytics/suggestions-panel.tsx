@@ -13,9 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 
 /**
- * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94）。
+ * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94→T-M8-255）。
  *
- * **毎朝8:00 JSTに自動で生成される**（手動の「提案を更新」は 2026-08-15 に廃止・運営者の指示）。
+ * **画面上部の「分析を開始」ボタンで生成する**（2026-08-23 に毎朝8:00の自動実行を廃止し
+ * 手動実行へ戻した・運営者の指示。実行はこのパネルではなく `start-analysis-button.tsx`）。
  *
  * 画面は上から ①まとめ ②良かった投稿 ③良かった投稿に近づくプロンプト設定 の3段で、
  * **段ごとに番号付きの見出しを置く**（T-M8-114）。以前は総評・投稿リンク・推奨が
@@ -179,7 +180,7 @@ export function SuggestionsPanel({
    * 現在は全プランが true（旧standardの撤廃により、false は未契約のみ）。
    */
   canEditPrompts: boolean;
-  /** BYOKでvalidなAIキーが無い＝毎朝の分析が始まらない状態（T-M8-95。登録導線を出す）。 */
+  /** BYOKでvalidなAIキーが無い＝分析を開始できない状態（T-M8-95。登録導線を出す）。 */
   needsAiKey?: boolean;
 }) {
   const toast = useToast();
@@ -225,8 +226,7 @@ export function SuggestionsPanel({
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">
-        毎朝8時ごろ、Xへ投稿したポスト（このアプリで作った投稿に限りません）を自動で取得・分析します。
-        操作は不要です。
+        「分析を開始」を押すと、Xへ投稿したポスト（このアプリで作った投稿に限りません）の直近7日分を取得・分析します。
       </p>
 
       {suggestions.length === 0 ? (
@@ -234,17 +234,17 @@ export function SuggestionsPanel({
           {generating ? (
             "投稿を分析しています。しばらくすると、ここに結果が表示されます。"
           ) : needsAiKey ? (
-            // BYOKはAIキーが無いと毎朝の分析jobがそもそも作られない（起票側のゲート）。
-            // 「待っていれば出る」ように見せず、始まらない理由と直し方を出す（原則1）。
+            // BYOKはAIキーが無いと分析jobがそもそも作られない（起票側のゲート）。
+            // 押してから分かる形にせず、始められない理由と直し方を先に出す（原則2）。
             <>
               分析にはAIのAPIキーが必要です。
               <Link className="mx-1 text-info-fg hover:underline" href="/app/settings?tab=api-keys">
                 設定のAPIキー
               </Link>
-              から登録すると、毎朝8時ごろの自動分析が始まります。
+              から登録すると、「分析を開始」が使えるようになります。
             </>
           ) : (
-            "まだレポートがありません。毎朝8時ごろに自動で作られます（Xに投稿が1件も無い場合は作られません）。"
+            "まだレポートがありません。「分析を開始」を押すと作られます（Xに投稿が1件も無い場合は作られません）。"
           )}
         </div>
       ) : (
@@ -256,7 +256,7 @@ export function SuggestionsPanel({
               <p className="mt-1.5 text-sm font-medium leading-6 text-ink">{s.content}</p>
 
               {s.kind === "legacy" ? (
-                // 旧形式（〜2026-08-15の軸ベース提案）。翌朝の自動実行で新形式に置き換わる。
+                // 旧形式（〜2026-08-15の軸ベース提案）。次回の実行で新形式に置き換わる。
                 s.legacySummary ? (
                   <p className="mt-2 text-sm text-muted-foreground">{s.legacySummary}</p>
                 ) : null

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.59 |
+| バージョン | v1.60 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -327,6 +327,8 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.11 `follower_snapshots`
 
+フォロワー数の日次記録（K-3）。書き込みは投稿分析画面の「分析を開始」ボタンのみ（T-M8-255で毎時cronを廃止・要件04 §13）。X APIは履歴を提供しないため、押さなかった日は行が無い＝グラフ上の欠測になる（偽の値で埋めない）。
+
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
@@ -493,12 +495,12 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 
 ### 3.18 `cron_runs`
 
-定時トリガーの「`job名 + 時間窓`の受付は高々一度」を保証する重複受付防止テーブル（window claim / dedup marker、要件04 §6、ADR-0003）。Supavisor transaction modeプーラではセッションscope advisory lockが接続checkout間で保持されないため、unique制約付きの受付行で重複起動・完了後の再試行を防ぐ。**責務は重複受付防止のみで、本処理の成否・完了は持たない**（この行だけで本体成功を判断しない）。完了状態の正本は、永続ジョブは`generation_jobs.status`/`generation_jobs.finished_at`、状態ベースcron（tick/metrics/follower）は対象業務データの現在状態とする。
+定時トリガーの「`job名 + 時間窓`の受付は高々一度」を保証する重複受付防止テーブル（window claim / dedup marker、要件04 §6、ADR-0003）。Supavisor transaction modeプーラではセッションscope advisory lockが接続checkout間で保持されないため、unique制約付きの受付行で重複起動・完了後の再試行を防ぐ。**責務は重複受付防止のみで、本処理の成否・完了は持たない**（この行だけで本体成功を判断しない）。完了状態の正本は、永続ジョブは`generation_jobs.status`/`generation_jobs.finished_at`、状態ベースcron（tick/metrics）は対象業務データの現在状態とする。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`） |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`。旧`follower_snapshot`はT-M8-255で廃止・過去行は保持） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
 | `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
@@ -537,7 +539,7 @@ RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期�
 
 ### 3.20 `x_timeline_posts`
 
-投稿分析（SUGGEST・毎朝8:00 JST自動実行）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は期間で区切らず最新100件・T-M8-97）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
+投稿分析（SUGGEST・「分析を開始」ボタンで実行・T-M8-255）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は実行時点の7日前から。いずれも7日前より過去へは遡らない）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -981,3 +983,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
 | v1.58 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
 | v1.59 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
+| v1.60 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |

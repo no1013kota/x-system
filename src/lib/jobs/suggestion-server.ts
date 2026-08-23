@@ -32,10 +32,20 @@ const pooledDb = pooledQueryable();
 
 const runInTx = runInPooledTx;
 
+/**
+ * SUGGESTの出力上限。レポートはアカウント.md全文改訂案＋プロンプト全文を含み日本語で8kトークンを
+ * 超えることがある。既定の8192だとJSONが途中で切れて検証に落ちる（2026-08-23、`npm run check:suggest`
+ * で2回連続再現。修復callも同じ理由で切れて必ず失敗する）。カタログの全Claudeモデルが16384に対応。
+ */
+const SUGGEST_MAX_OUTPUT_TOKENS = 16_384;
+
 async function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   // provider解決はenv検証に触れるため、実際にLLMを呼ぶ時点（投稿1件以上のとき）まで遅延ロードする。
   const { resolveTextProvider } = await import("../ai/resolve-provider-server");
-  return resolveTextProvider({ plan: input.plan as PlanId, userId: input.userId }, { deadline: input.deadline });
+  return resolveTextProvider(
+    { plan: input.plan as PlanId, userId: input.userId },
+    { deadline: input.deadline, maxTokens: SUGGEST_MAX_OUTPUT_TOKENS },
+  );
 }
 
 /** Exos AIで作った投稿の tweet_id → 型/テーマ の索引（新規取得分へタグ付けする）。 */
@@ -54,9 +64,9 @@ async function fetchPosts(
     jobId,
   });
 
-  // 1. 増分の窓を決める（保存済み最新の48時間前〜。初回は窓なし＝最新100件・T-M8-97）。
+  // 1. 増分の窓を決める（保存済み最新の48時間前〜。初回・長期未実行でも過去7日まで・T-M8-255）。
   const newest = await newestStoredPostedAt(pooledDb, job.xAccountId);
-  const startTime = timelineFetchStart(newest);
+  const startTime = timelineFetchStart(newest, Date.now());
 
   const [{ posts }, draftTags] = await Promise.all([
     readUserTimeline(readDeps, {

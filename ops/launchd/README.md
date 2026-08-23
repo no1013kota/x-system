@@ -10,7 +10,6 @@
 | `com.spaceai.news-fetch.plist` | news_fetch | **9:00〜21:00 3時間おき**（9/12/15/18/21時・T-M8-195） | `/api/cron/news-fetch` |
 | `com.spaceai.scheduler-tick.plist` | scheduler_tick | 5分間隔（00・05・…・55の12エントリ） | `/api/cron/scheduler-tick` |
 | `com.spaceai.metrics-collector.plist` | metrics_collector | 毎時00分 | `/api/cron/metrics-collector` |
-| `com.spaceai.follower-snapshot.plist` | follower_snapshot | 毎時10分 | `/api/cron/follower-snapshot` |
 | `cron-call.sh` | 共通呼び出し | — | Bearer 付きで endpoint を叩く |
 
 `StartInterval` ではなく `StartCalendarInterval` を使う。plist に秘密値は書かない。
@@ -30,7 +29,7 @@
 4. `sudo cp com.spaceai.*.plist /Library/LaunchDaemons/` して各 plist を bootstrap:
    ```sh
    sudo launchctl bootstrap system /Library/LaunchDaemons/com.spaceai.news-fetch.plist
-   # scheduler-tick / metrics-collector / follower-snapshot も同様
+   # scheduler-tick / metrics-collector も同様
    ```
 5. `plutil -lint /Library/LaunchDaemons/com.spaceai.*.plist` で妥当性を確認する。
 6. 手動起動で疎通確認（2xx／secret不一致で401）:
@@ -49,6 +48,6 @@
 
 ## 注記
 
-- `metrics_collector` / `follower_snapshot` の route 本体は分析系マイルストーンで実装する。それまでは
+- `metrics_collector` の route 本体は分析系マイルストーンで実装する。それまでは
   認証疎通（401/404）確認までとし、route 実装後に再検証する。
 - 実Macへの配置・`launchctl bootstrap`・24時間監視は open_questions（運用メモ §1/§2）。

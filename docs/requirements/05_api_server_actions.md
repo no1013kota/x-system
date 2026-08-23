@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.56 |
+| バージョン | v1.57 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -76,7 +76,6 @@
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
 | GET | `/api/cron/scheduler-tick` | `CRON_SECRET` | スロットenqueue・dispatch／回収・cleanup |
 | GET | `/api/cron/metrics-collector` | `CRON_SECRET` | tweet_id別実績取得 |
-| GET | `/api/cron/follower-snapshot` | `CRON_SECRET` | フォロワー数保存 |
 | POST | `/api/jobs/run` | `CRON_SECRET` | queued job 1件のworker実行（内部dispatch専用。202を即時返却し本処理は`after()`で実行） |
 
 `POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返し、30分TTLの暗号化済み復帰marker cookieを発行する。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
@@ -234,7 +233,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 ## 9. 投稿分析
 
-**Server Actionは無い**（2026-08-15・T-M8-94で手動の`refreshSuggestions`を削除した）。分析レポートは毎朝8:00 JSTに`scheduler_tick`が自動起票する（要件04 §12）。
+| Action | 入力 | 返却 | 備考 |
+|---|---|---|---|
+| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId?, followerRecorded? | 「分析を開始」ボタン（T-M8-255）。フォロワー数の当日記録（要件04 §13）→ `suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
+
+2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー記録は起票ゲートを通ったときだけ行い、記録の失敗は分析を止めない。
 
 実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
@@ -339,6 +342,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.54 | 2026-08-22 | メール確認を省略（T-M8-202）。signUpはsession有無で分岐し即/plansへ。verifySignUpCodeは未確認ログイン経路用に残置 |
 | v1.55 | 2026-08-23 | 「すべて停止」を下書き枠へ拡張し `resumeXAutomation`（すべて再開）を追加（T-M8-233） |
 | v1.56 | 2026-08-23 | 「すべて停止/再開」の対象を全枠へ（T-M8-251） |
+| v1.57 | 2026-08-23 | `startAnalysisAction`（「分析を開始」）を追加し、`/api/cron/follower-snapshot` を廃止（T-M8-255）。§9を手動実行へ更新 |
 
 ### 下書きの投稿予約（T-M8-157）
 
