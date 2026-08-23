@@ -58,6 +58,23 @@ export const EXECUTABLE_SUBSCRIPTION_STATUSES = (
   Object.keys(SUBSCRIPTION_ACCESS) as SubscriptionStatus[]
 ).filter((status) => SUBSCRIPTION_ACCESS[status].canExecute);
 
+/**
+ * **プランの選択・再開が先に必要な状態か**（T-M8-269・運営者の指示 2026-08-23）。
+ *
+ * 未契約（`incomplete`系）と解約済み（`canceled`）は、機能画面そのものをロックして
+ * 「先にプランを登録してください」と出す（触れるのは友達招待と設定＞課金・プランだけ）。
+ * 支払いが滞っているだけの状態（`past_due`／`unpaid`／`paused`）は**含めない**——
+ * 直し方が違い（プラン選択ではなく支払い更新）、閲覧まで止めると復旧の判断材料も消える。
+ *
+ * 判定は `actionPath` から導く（`/plans` へ案内する＝プランが要る状態）。未知のstatusは
+ * ロック側へ倒す（fail closed）。
+ */
+export function requiresPlanSelection(status: string): boolean {
+  const access = subscriptionAccessFor(status);
+  if (!access) return true;
+  return !access.canExecute && access.actionPath === "/plans";
+}
+
 export function subscriptionAccessFor(
   status: string,
 ): SubscriptionAccess | null {
@@ -197,19 +214,19 @@ export function subscriptionBannerFor(
   if (status === "canceled") {
     return {
       action: "checkout",
-      // 閲覧はできる（T-M8-268）。止まっているのは生成・投稿・自動実行だけだと正確に言う。
+      // 何が使えて何が使えないかを正確に言う（T-M8-269で機能画面はロック・招待だけ残る）。
       description:
-        "既存データの閲覧と友達招待はご利用いただけます。生成・投稿・自動実行を再開するにはプランを選択してください。",
+        "友達招待は引き続きご利用いただけます。投稿の作成・予約・分析やニュースを再びご利用になるには、プランを再開してください（データは保持しています）。",
       title: "ご契約は終了しています",
       tone: "warning",
     };
   }
-  // 未契約（incomplete 等）。**画面は見られる**ので、できること／できないことを正直に言う。
+  // 未契約（incomplete 等）。できること／できないことを正直に言う（T-M8-269）。
   return {
     action: "checkout",
     description:
-      "画面の確認と友達招待はご利用いただけます。投稿の生成・予約にはプランの選択が必要です。",
-    title: "プランが未選択です",
+      "友達招待はプランの登録がなくてもご利用いただけます。投稿の作成・予約・分析やニュースをご利用になるには、プランの登録が必要です。",
+    title: "プランが未登録です",
     tone: "warning",
   };
 }

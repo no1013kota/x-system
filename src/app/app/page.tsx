@@ -41,6 +41,8 @@ import { ConfirmationQueueCard } from "./confirmation-queue";
 import { ImportantNewsCard } from "./important-news";
 import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
+import { LockedState } from "@/components/app-shell/page-state";
+import { isPlanRequired } from "@/lib/auth/plan-gate-server";
 import { pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -70,6 +72,32 @@ export default async function AppHomePage({
 }) {
   const welcome = WELCOME_MESSAGES[(await searchParams).welcome ?? ""] ?? null;
   const user = await getCurrentUser();
+
+  /*
+    **プラン未登録・解約中はホームも開かない**（T-M8-269・運営者の指示 2026-08-23）。
+    どの機能もロックされている状態で空のダッシュボードを見せても、何ができないのかも
+    どうすれば使えるのかも伝わらない。登録直後の「できたこと」（welcome）はここで言い切る。
+  */
+  if (user && (await isPlanRequired(user.id))) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+        <div>
+          <h1 className={pageTitleClassName}>ホーム</h1>
+        </div>
+        {welcome ? (
+          <Notice role="status" tone="success">
+            {welcome}
+          </Notice>
+        ) : null}
+        <LockedState
+          actionHref="/plans"
+          actionLabel="プランを登録する"
+          description="投稿の作成・予約・分析、最新ニュース、Xアカウントの連携はプランの登録後にご利用いただけます。先にプランを登録してください（友達招待はプランの登録がなくてもご利用いただけます）。"
+          title="先にプランを登録してください"
+        />
+      </main>
+    );
+  }
   let checklist: SetupChecklistItem[] = [];
   let pendingDrafts: DraftView[] = [];
   let usage: UsageSummary | null = null;

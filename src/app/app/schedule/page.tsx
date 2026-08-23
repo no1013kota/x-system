@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
+import { PlanRequiredPage } from "@/components/app-shell/plan-required";
+import { isPlanRequired } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { imageKeyRowsQuery, imageProvidersFor } from "@/lib/ai/image-providers-server";
@@ -31,6 +33,15 @@ export default async function SchedulePage() {
       <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8">
         <p className="text-sm text-muted-foreground">ログインが必要です。</p>
       </main>
+    );
+  }
+  // プラン未登録・解約中は開けない（T-M8-269）。
+  if (await isPlanRequired(user.id)) {
+    return (
+      <PlanRequiredPage
+        description="曜日と時刻を決めておくと、AIが下書きを用意し、そのまま投稿もできます。"
+        title="スケジュール"
+      />
     );
   }
   const activeXAccountId = await resolveActiveXAccountForUser(user.id);

@@ -163,7 +163,7 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   }
 });
 
-test("契約が切れても通常画面と友達招待は使えて、操作でプラン選択へ案内される（T-M8-268）", async ({
+test("契約が切れると機能画面はロックされ、友達招待と課金・プランだけ使える（T-M8-269）", async ({
   accounts,
   page,
 }) => {
@@ -175,26 +175,30 @@ test("契約が切れても通常画面と友達招待は使えて、操作で�
     [account.userId],
   );
 
-  // ログイン直後はアプリ本体（/plansへ飛ばさない・運営者の指示 2026-08-23）。
+  // ログイン直後はアプリ本体（/plansへは飛ばさず、その場でロックの理由を出す）。
   await signIn(page, account);
   await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
-  // 契約のお知らせが出て、できること（閲覧・招待）とプラン選択への導線が読める。
+  // 契約のお知らせが出て、再開への導線が読める。
   const banner = page.getByRole("complementary", { name: "ご契約のお知らせ" });
   await expect(banner).toBeVisible();
   await expect(banner.getByRole("link", { name: "プランを選択" })).toBeVisible();
 
-  // 機能画面も設定も開ける（データの確認・再開の判断ができる）。
-  for (const path of ["/app/posts?tab=drafts", "/app/analytics", "/app/settings?tab=general"]) {
+  // 機能画面はロックされ、リダイレクトではなくその場で理由と導線が出る（T-M8-269）。
+  for (const path of ["/app", "/app/posts?tab=drafts", "/app/analytics", "/app/settings?tab=general"]) {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(path.split("?")[0].replace(/\//g, "\\/")));
+    await expect(
+      page.getByRole("heading", { name: "先にプランを登録してください" }),
+      `${path} がロックされていない`,
+    ).toBeVisible();
   }
 
   // 友達招待は契約なしでも参加できる（招待リンクが出る）。
   await page.goto("/app/invite");
   await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
 
-  // 課金タブからは再開できる。
+  // 課金タブからは再開できる（ロック中もここへは辿り着ける）。
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
   await expect(page.getByRole("button", { name: "プランを再開" })).toBeVisible();

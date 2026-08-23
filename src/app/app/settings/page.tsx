@@ -3,6 +3,7 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
+import { requiresPlanSelection } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
@@ -172,6 +173,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     throw new Error("Billing profile could not be loaded.");
   }
   const profile = result.data;
+  // 課金・プラン以外のタブを開けるか（T-M8-269）。同じ profile から判定し、追加のDB往復を作らない。
+  const planRequired = requiresPlanSelection(profile.subscription_status);
   /*
     未契約(null)は route-guard により billing タブ以外へ来ない。以前は `?? "standard"` で
     最も権限の狭いプランへ倒していたが、新standardは編集権限を持つ（T-M8-168）ため
@@ -305,7 +308,19 @@ let promptTemplates: PromptTemplateView[] = [];
           />
         ) : null}
 
-        {tab === "general" ? (
+        {/*
+          **プラン未登録・解約中は課金・プラン以外のタブを開けない**（T-M8-269・運営者の指示
+          2026-08-23）。タブ自体は残す——ここを消すと登録・再開の入口（課金・プラン）へ
+          辿り着けなくなる。中身だけをロック表示に差し替える。
+        */}
+        {planRequired && tab !== "billing" ? (
+          <LockedState
+            actionHref="/plans"
+            actionLabel="プランを登録する"
+            description="Xアカウントの連携やAIの設定は、プランの登録後にご利用いただけます。先にプランを登録してください（友達招待はプランの登録がなくてもご利用いただけます）。"
+            title="先にプランを登録してください"
+          />
+        ) : tab === "general" ? (
           <div className="space-y-8">
             {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で設定タブ先頭へ移動・運営者の指示）。
                 確認メール・領収書の宛先でもある。 */}

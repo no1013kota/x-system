@@ -36,7 +36,6 @@ test("プラン未選択（登録しただけ）でも招待画面で招待リ�
     [account.userId],
   );
 
-  // 登録しただけでもアプリ本体へ入れる（以前は /plans へ弾かれていた）。
   await signIn(page, account);
   await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
@@ -44,4 +43,47 @@ test("プラン未選択（登録しただけ）でも招待画面で招待リ�
   await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
   // 招待リンクはアカウントが無ければその場で作られる（契約に依存しない）。
   await expect(page.getByText("/r/", { exact: false }).first()).toBeVisible();
+});
+
+/**
+ * プラン未登録では機能が使えない（T-M8-269・運営者の指示 2026-08-23）。
+ *
+ * **リダイレクトではなくその場でロックを見せる**（どこへ来たのか分かるまま理由を出す）。
+ * 触れるのは友達招待と設定＞課金・プランだけ。ここが緩むと、費用の出る操作の入口が
+ * 未契約者へ開く（実行はサーバー側で止まるが、押せてしまう時点で説明になっていない）。
+ */
+test("プラン未登録では機能画面がロックされ、招待と課金・プランだけ使える（T-M8-269）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("plan-locked");
+  await query(
+    `update profiles set plan = null, subscription_status = 'incomplete',
+            current_period_end = null, trial_ends_at = null
+      where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+
+  // ホームと機能画面はロック。理由と登録導線がその場に出る。
+  for (const path of ["/app", "/app/news", "/app/posts", "/app/schedule", "/app/analytics"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(path.replace(/\//g, "\\/")));
+    await expect(
+      page.getByRole("heading", { name: "先にプランを登録してください" }),
+      `${path} がロックされていない`,
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "プランを登録する" })).toBeVisible();
+  }
+
+  // 設定＞設定（Xアカウント連携）もロック。ただしタブは残り、課金・プランへ行ける。
+  await page.goto("/app/settings?tab=general");
+  await expect(page.getByRole("heading", { name: "先にプランを登録してください" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Xアカウント", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "課金・プラン" }).click();
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+
+  // 友達招待はプラン未登録でも使える。
+  await page.goto("/app/invite");
+  await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
 });

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { Notice } from "@/components/ui/notice";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
+import { PlanRequiredPage } from "@/components/app-shell/plan-required";
+import { isPlanRequired } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
@@ -146,6 +148,15 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8">
         <p className="text-sm text-muted-foreground">ログインが必要です。</p>
       </main>
+    );
+  }
+  // プラン未登録・解約中は開けない（T-M8-269）。
+  if (await isPlanRequired(user.id)) {
+    return (
+      <PlanRequiredPage
+        description="AIが投稿の下書きを作り、確認してからXへ投稿できます。"
+        title="投稿作成"
+      />
     );
   }
   const tab: Tab = TABS.some((t) => t.id === params.tab) ? (params.tab as Tab) : "create";

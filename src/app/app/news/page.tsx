@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { PlanRequiredPage } from "@/components/app-shell/plan-required";
+import { isPlanRequired } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   NEWS_IMPACTS,
@@ -49,6 +51,15 @@ function parseWindow(from?: string, to?: string): { from: string; to: string } |
 export default async function NewsPage({ searchParams }: NewsPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // プラン未登録・解約中は開けない（T-M8-269）。
+  if (await isPlanRequired(user.id)) {
+    return (
+      <PlanRequiredPage
+        description="6分野のニュースを毎日集め、そのまま投稿の題材にできます。"
+        title="最新ニュース"
+      />
+    );
+  }
 
   const [activeId, params] = await Promise.all([
     resolveActiveXAccountForUser(user.id),

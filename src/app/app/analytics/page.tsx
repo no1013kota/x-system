@@ -10,6 +10,8 @@ import {
   loadSuggestionsForUser,
 } from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
+import { PlanRequiredPage } from "@/components/app-shell/plan-required";
+import { isPlanRequired } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { pooledQueryable } from "@/lib/db/pool";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
@@ -27,6 +29,15 @@ const ANALYTICS_PERIOD_DAYS = 90;
 export default async function AnalyticsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/app/analytics");
+  // プラン未登録・解約中は開けない（T-M8-269）。
+  if (await isPlanRequired(user.id)) {
+    return (
+      <PlanRequiredPage
+        description="投稿の実績とフォロワーの推移を記録し、伸びた投稿をAIが分析します。"
+        title="投稿分析"
+      />
+    );
+  }
 
   const xAccountId = await resolveActiveXAccountForUser(user.id);
   if (!xAccountId) {
