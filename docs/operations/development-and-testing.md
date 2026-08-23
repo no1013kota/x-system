@@ -142,6 +142,7 @@ npm run dev       # アプリを起動する
 | `npm run check:turnstile` | 人間確認がその環境で実際に動くか確かめる | なし |
 | `npm run smoke:live` | AIを実際に1周させ、出来上がりまで確かめる | **約45円** |
 | `npm run check:stripe-period` | Stripeのテストクロックで「下位プランの予約→取り消し→期間末越え」を実際に流し、契約と利用枠がアプリへ正しく効くか確かめる（テストモードの鍵のみ） | なし |
+| `npm run check:csp-runtime` | **本番ビルドを起動して実ブラウザで開き**、CSP違反が出ないか見る（`release:check` に含む） | なし |
 
 **AI を実際に呼ぶ確認について**
 
@@ -347,6 +348,7 @@ npm run doctor の結果を見て、直せるものは直してください。
 | 2 | 単体（160ファイル） | `npm test` | 純粋関数・モック注入での分岐と境界値 | **モックした境界の向こう側すべて** |
 | 3 | DB統合（66ファイル `*.db.test.ts`） | `npm run test:db` | 実DBでの制約・RLS・**ロール権限**・route/actionの本番実装 | 外部API・ブラウザ描画 |
 | 4 | E2E（19ファイル58件） | `npm run test:e2e` | 実ブラウザでの操作・遷移・CSP・署名URL・**実データの画像描画**（`naturalWidth > 0`）・**スマホ幅でページが横に伸びないこと** | AI生成の中身（費用と不確定性のため実行しない）。**外部サービスへの実セッション**（Stripeの決済ボタンは押さない）。**静的prerenderの影響**——E2Eは `npm run dev` で動き、dev modeはprerenderしないため、ビルド時に固定されるHTMLの不具合は原理的に再現しない（T-M8-87） |
+| 4b | 本番ビルドのCSP | `npm run check:csp-runtime` | **ストリーミング中に後から注入されるscriptのnonce**（`check:csp-nonce` はビルド済みHTMLの静的検査なので見えない。E2Eは `next dev` で動きHMRのscriptがnonce無しのため判定に使えない・T-M8-170） | 認証が要らない・ブラウザを使わない不具合 |
 | 5 | provider契約 | `npm run check:providers` | **送っているリクエストが実APIに受理されるか** | 応答をアプリが扱えるか。**Googleは既定でskip**（`PROVIDER_CHECK_GOOGLE=1` で有効化・T-M7-17） |
 | 6 | 実物スモーク | `npm run smoke:live -- --account <id>`／`npm run check:stripe-period` | **応答をアプリが扱えて成果物が正しいか**（下書き・画像・news item）。Stripe側は**テストクロックで期間末を越えたときの schedule・期間の実際の形**がアプリの同期と利用枠へ正しく効くか（`period-transition.live.test.ts`・T-M8-261） | 本番固有の環境差・**ブラウザ描画**（ブラウザを起動しない） |
 | 7 | CI | push / PR で自動 | 1〜4 の実行そのものを強制 | 5・6（実キーが必要でCIへ置かない） |
