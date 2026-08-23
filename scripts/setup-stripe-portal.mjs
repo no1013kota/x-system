@@ -195,7 +195,10 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
       subscription_update: {
         enabled: true,
         default_allowed_updates: ["price"],
-        proration_behavior: "create_prorations",
+        // 値上げの差額（日割り）は**その場で決済**し、Stripe の確認画面に内訳（Prorated credit /
+        // Prorated charge / Amount due today）を出させる（運営者の指示 2026-08-23・T-M8-267）。
+        // `create_prorations` だと差額が次回請求へ合算され、確認画面には何も出ない（実測）。
+        proration_behavior: "always_invoice",
         products: updateProducts,
         schedule_at_period_end: {
           conditions: [{ type: "decreasing_item_amount" }],

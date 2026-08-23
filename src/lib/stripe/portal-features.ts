@@ -28,6 +28,13 @@ export type PortalFeatureKey = (typeof REQUIRED_PORTAL_FEATURES)[number]["key"];
  */
 export const EXPECTED_TRIAL_UPDATE_BEHAVIOR = "continue_trial";
 
+/**
+ * 値上げ時の日割り差額の扱い（T-M8-267）。`always_invoice`＝**その場で決済**し、Stripe の確認画面に
+ * 内訳と本日の支払額が出る。`create_prorations` だと次回請求へ合算され確認画面に何も出ない
+ * （アプリの説明「差額は日割りでその場で決済」と食い違う）。
+ */
+export const EXPECTED_PRORATION_BEHAVIOR = "always_invoice";
+
 export interface PortalFeatureSnapshot {
   /** 取得できた configuration の features（`enabled` だけを見る）。取得できなければ null。 */
   features: Partial<Record<PortalFeatureKey, { enabled?: boolean } | undefined>> | null;
@@ -49,6 +56,8 @@ export interface PortalFeatureSnapshot {
   subscriptionUpdate?: {
     /** `continue_trial` / `end_trial` など。 */
     trialUpdateBehavior?: string | null;
+    /** `always_invoice` / `create_prorations` / `none`。 */
+    prorationBehavior?: string | null;
     /**
      * 変更先として提示できる Price の一覧（`expand` しないと返らない）。
      * **明示していない設定では undefined**（Stripeの既定に任せる形）なので、その場合は判定しない。
@@ -126,6 +135,12 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
         `トライアル中にプラン変更すると無料期間が終了して即時課金されます（trial_update_behavior=${behavior}）`,
       );
     }
+    const proration = snapshot.subscriptionUpdate?.prorationBehavior;
+    if (proration != null && proration !== EXPECTED_PRORATION_BEHAVIOR) {
+      drift.push(
+        `値上げの差額がその場で決済されず、確認画面に日割りの内訳が出ません（proration_behavior=${proration}）`,
+      );
+    }
     const offered = snapshot.subscriptionUpdate?.priceIds;
     const expected = snapshot.expectedPriceIds ?? [];
     if (offered !== undefined && expected.length > 0) {
@@ -142,7 +157,7 @@ export function judgePortalFeatures(snapshot: PortalFeatureSnapshot): PortalFeat
         detail: `Stripe側の設定が今の料金プランと合っていません: ${drift.join("／")}`,
         disabled: [],
         nextAction:
-          "`npm run stripe:portal:setup -- --target <staging|production>` を実行して設定を作り直してください（ローカルは --target なしで実行）",
+          "`npm run stripe:portal:setup -- --target <staging|production>` を実行して設定を作り直してください（ローカルは --target local）",
       };
     }
     return {

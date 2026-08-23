@@ -23,6 +23,7 @@ export interface PortalConfigurationGateway {
           subscription_update?: {
             enabled?: boolean;
             trial_update_behavior?: string | null;
+            proration_behavior?: string | null;
             /** `expand` したときだけ返る（未指定の設定では undefined）。 */
             products?: { product: string; prices: string[] }[] | null;
           };
@@ -63,6 +64,7 @@ export async function probePortalFeatures(
           ? update.products.flatMap((entry) => entry.prices)
           : undefined,
         trialUpdateBehavior: update?.trial_update_behavior ?? null,
+        prorationBehavior: update?.proration_behavior ?? null,
       },
     };
   } catch (error) {

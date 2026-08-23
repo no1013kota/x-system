@@ -28,7 +28,7 @@ describe("Stripe Portal configuration setup", () => {
     expect(configuration.features.subscription_update).toMatchObject({
       enabled: true,
       default_allowed_updates: ["price"],
-      proration_behavior: "create_prorations",
+      proration_behavior: "always_invoice",
       products: [
         {
           product: "prod_exos_ai",

@@ -16,10 +16,11 @@ const base = {
 };
 
 describe("planChangeEffects", () => {
-  it("上位プランは即時＋日割り（proration_behavior=create_prorations）", () => {
+  it("上位プランは即時＋日割りをその場で決済（proration_behavior=always_invoice）", () => {
     const e = planChangeEffects(base);
-    expect(e.upgrade.headline).toContain("すぐに切り替わります");
-    expect(e.upgrade.detail).toContain("日割り");
+    expect(e.upgrade.headline).toContain("すぐに切り替わり");
+    expect(e.upgrade.headline, "画面は headline しか出さないので、日割りの決済は headline に書く").toContain("日割り");
+    expect(e.upgrade.headline).toContain("その場で決済");
   });
 
   it("下位プランは期間末（schedule_at_period_end=decreasing_item_amount）で、日付を出す", () => {

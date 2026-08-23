@@ -2481,6 +2481,19 @@ UI側boolean を壊しても投稿は誤爆しない）。
   Portal からの戻り（billing-return）も schedule を読む（読まないと予約が null で書かれ後続 webhook が stale になる）、
   予約中も「プランを変更」を残す。
 
+### T-M8-267: 上位プランへの変更は差額をその場で決済し、Stripeの確認画面に日割りの内訳を出す `done`
+- 参照: 要件03 §2.2 Portal・要件06 §1.1 課金タブ / 依存: なし / サイズ: S
+- 完了条件:
+  - Portal設定の `proration_behavior` が `always_invoice`（`stripe:portal:setup`）で、doctor がずれを検出する
+  - Stripeの確認画面（上位プランへの変更）に日割りの内訳と本日の支払額が出る（テストモードで実測）
+  - アプリ側の説明が「すぐに切り替わり、差額は日割りでその場で決済」になっている
+- メモ: 運営者の要望（2026-08-23）。「プラン名の下に、すぐ切り替わって金額は日割りで集計される旨を出したい」。Stripeの確認画面に
+  こちらの文章は足せないが、`always_invoice` にすると Stripe 自身が「Prorated credit from 旧プラン／Prorated charge for
+  新プラン／Total／Amount due today」を描く（実測）。下位プランへの変更の表示（期間末に更新）は従来どおり。
+- 実装メモ（2026-08-23 完了）: `scripts/setup-stripe-portal.mjs`・`portal-features.ts`（`EXPECTED_PRORATION_BEHAVIOR`）・
+  `portal-status.ts`・`plan-change-effects.ts`。ローカルの Portal 設定は適用済み。**本番・staging は
+  `npm run stripe:portal:setup -- --target <staging|production>` を1回**（doctor が未適用なら赤で知らせる）。
+
 ### T-M8-261: 期間末の下位変更がアプリへ正しく効くことを自動テストで固定する `done`
 - 参照: 要件03 §4 同期・T-M8-258/260 / 依存: T-M8-258, T-M8-260 / サイズ: S
 - 完了条件:

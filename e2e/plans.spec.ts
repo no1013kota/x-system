@@ -222,9 +222,9 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await page.goto("/app/settings?tab=billing");
 
   await expect(page.getByRole("button", { name: "プランを変更" })).toBeVisible();
-  // 上位＝即時＋日割り、下位＝期間末（日付つき）、解約＝期間末まで使える
+  // 上位＝即時＋日割りをその場で決済、下位＝期間末（日付つき）、解約＝期間末まで使える
+  // （トライアル中の利用者なので「差額」の行は出ない。非トライアルの文言は単体テストが固定）
   await expect(page.getByText("すぐに切り替わります")).toBeVisible();
-  await expect(page.getByText("すぐに切り替わります", { exact: false })).toBeVisible();
   await expect(page.getByText("2026年8月12日に切り替わります")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toBeVisible();
   /*
