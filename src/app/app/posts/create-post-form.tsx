@@ -245,9 +245,15 @@ export function CreatePostForm({
   const promptEdited = promptDraft !== null && promptDraft !== (currentTemplate?.content ?? "");
   const promptOverLimit = promptValue.length > PROMPT_MAX_CHARS;
 
-function addPattern() {
+  /**
+   * パターンの追加。**送信中は他の操作と同じく無効化する**（T-M8-248）。
+   * 以前は `void (async () => …)()` で走らせていたため `pending` に乗らず、
+   * 押し続けると同じ型が何本も作られた（予約画面側は既に `startTransition` で揃っている）。
+   */
+  function addPattern() {
     if (!newPattern) return;
-    void (async () => {
+    setNewPatternError(null);
+    startTransition(async () => {
       const res = await createPatternAction({ x_account_id: xAccountId, ...toPatternPayload(newPattern, null) });
       if (res.status === "success" && res.pattern) {
         const added = res.pattern;
@@ -271,7 +277,7 @@ function addPattern() {
       } else {
         setNewPatternError(patternReasonMessage(actionReason(res), res.message));
       }
-    })();
+    });
   }
 
 /**

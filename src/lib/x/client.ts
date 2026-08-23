@@ -174,7 +174,22 @@ async function callX<T>(
       const res = await deps.http(req);
       const text = await res.text();
       if (res.ok) {
-        return { body: text ? (JSON.parse(text) as T) : ({} as T), requestId: res.requestId };
+        /*
+          **空本文や壊れたJSONを `{}` として通さない**（T-M8-250）。以前は空なら `{} as T` を
+          返していたため、呼び出し側は「成功したが中身が無い」応答を受け取り、
+          投稿IDが取れないまま先へ進んだ（原因が「通信断」なのか「本文が壊れている」のかも
+          区別できなかった）。**同じ結果になるなら、その場で失敗として止める方が原因へ辿れる。**
+          どちらも再送で直らないので `invalid`（retryしない種別）にする。
+        */
+        if (!text) {
+          throw new XApiError(res.status, "empty_body", "invalid");
+        }
+        try {
+          return { body: JSON.parse(text) as T, requestId: res.requestId };
+          // eslint-disable-next-line no-restricted-syntax -- 壊れたJSONであること自体が判定結果。本文は載せない（要件01 §8）
+        } catch {
+          throw new XApiError(res.status, "malformed_body", "invalid");
+        }
       }
       err = new XApiError(res.status, parseErrorCode(text), classify(res.status));
     } catch (e) {

@@ -1,4 +1,8 @@
 import {
+  EXECUTABLE_SUBSCRIPTION_STATUSES,
+  type SubscriptionStatus,
+} from "@/lib/auth/subscription-access";
+import {
   IMAGE_DEFAULT_ESTIMATE_CREDITS,
   TEXT_DEFAULT_ESTIMATE_CREDITS,
 } from "../ai/model-catalog";
@@ -176,7 +180,10 @@ async function isEligible(
   spec: PatternSpec,
   dailyLimit: number,
 ): Promise<boolean> {
-  if (slot.subscription_status !== "trialing" && slot.subscription_status !== "active") return false;
+  // 実行できる契約かは `SUBSCRIPTION_ACCESS` から導く（T-M8-249。可否を2か所に書かない）。
+  if (!EXECUTABLE_SUBSCRIPTION_STATUSES.includes(slot.subscription_status as SubscriptionStatus)) {
+    return false;
+  }
   if (slot.x_status !== "active") return false;
   if (slot.base_md_version < 1) return false;
   // 引用URLが必須のパターンは予約に使えない（DBのトリガも拒否する）。保険としてここでも見る。

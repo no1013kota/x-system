@@ -56,6 +56,15 @@ export const SUBSCRIPTION_ACCESS: Record<
   },
 };
 
+/**
+ * 生成・投稿・自動実行を許す status（T-M8-249）。**`SUBSCRIPTION_ACCESS` から導出する**——
+ * 以前は `'trialing', 'active'` がSQLとTSへ直書きされており、可否を変えるときに
+ * 片方だけ直す形になっていた（表と実装がずれても誰も気付けない）。
+ */
+export const EXECUTABLE_SUBSCRIPTION_STATUSES = (
+  Object.keys(SUBSCRIPTION_ACCESS) as SubscriptionStatus[]
+).filter((status) => SUBSCRIPTION_ACCESS[status].canExecute);
+
 export function subscriptionAccessFor(
   status: string,
 ): SubscriptionAccess | null {

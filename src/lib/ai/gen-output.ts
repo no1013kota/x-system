@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { weightedLength } from "@/lib/text/weighted-length";
+import { weightedLength } from "@/lib/post/text-metrics";
 
 /**
  * SYS-GEN の出力契約（プロンプト設計書 §6.1/§7.1）と draft.thread への変換（要件02 §4.7, T-M3-05）。

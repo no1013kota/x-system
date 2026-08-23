@@ -1,3 +1,4 @@
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "@/lib/auth/subscription-access";
 import type { Queryable } from "../x/token-refresh";
 
 /**
@@ -30,9 +31,12 @@ export function jstDateOf(nowIso: string): string {
   return new Date(Date.parse(nowIso) + JST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** 自動実行の冪等キーの前置き。SQL側の組み立てとここだけが正（T-M8-249）。 */
+export const DAILY_SUGGESTION_KEY_PREFIX = "sug-daily:";
+
 /** 自動実行の冪等キー。unique(request_key) が「1アカウント1日1回」を保証する。 */
 export function dailySuggestionKey(xAccountId: string, jstDate: string): string {
-  return `sug-daily:${xAccountId}:${jstDate}`;
+  return `${DAILY_SUGGESTION_KEY_PREFIX}${xAccountId}:${jstDate}`;
 }
 
 /**
@@ -51,11 +55,11 @@ export async function enqueueDailySuggestions(
   // dispatch は tick の dispatch フェーズに任せる）。
   const { rows } = await db.query<{ id: string }>(
     `insert into generation_jobs (x_account_id, kind, trigger, request_key, status)
-     select xa.id, 'suggestion', 'schedule', 'sug-daily:' || xa.id || ':' || $1, 'queued'
+     select xa.id, 'suggestion', 'schedule', $1 || xa.id || ':' || $2, 'queued'
        from x_accounts xa
        join profiles p on p.id = xa.user_id
       where xa.status = 'active'
-        and p.subscription_status in ('trialing', 'active')
+        and p.subscription_status = any($3::subscription_status[])
         and (
           -- 運営キー系プラン（premium/expert）はキー登録なしで対象（T-M8-168）。
           p.plan in ('premium', 'expert')
@@ -76,7 +80,10 @@ export async function enqueueDailySuggestions(
      -- partial-unique の両方を吸収する（前日のjobが残っていても23505でtickを落とさない）。
      on conflict do nothing
      returning id`,
-    [date],
+    // 冪等キーの組み立ては `dailySuggestionKey` と同じ形（前置き＋アカウントID＋日付）。
+    // **SQL側で文字列を手組みしない**——2か所に別々の組み立てがあると、片方だけ変えて
+    // 「1日1回」が壊れても誰も気付けない（T-M8-249）。
+    [DAILY_SUGGESTION_KEY_PREFIX, date, EXECUTABLE_SUBSCRIPTION_STATUSES],
   );
   return { created: rows.length };
 }

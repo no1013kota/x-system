@@ -211,3 +211,33 @@ describe("X client — retry policy (要件04 §5)", () => {
     expect(m.calls()).toBe(1); // no retry
   });
 });
+
+describe("空・壊れた応答を成功として通さない（T-M8-250）", () => {
+  /**
+   * 以前は空本文を `{}` として返していたため、呼び出し側は「成功したが投稿IDが無い」応答を
+   * 受け取り、原因（通信断／本文が壊れている）も区別できなかった。
+   */
+  const bodyOf = (text: string): XHttpResponse => ({
+    ok: true,
+    status: 200,
+    requestId: "req-1",
+    text: async () => text,
+  });
+
+  it("200で本文が空なら empty_body で失敗する（{}を捏造しない）", async () => {
+    const m = mockHttp([bodyOf("")]);
+    const err = await createPost("tok", { text: "x" }, liveDeps(m.http)).catch((e) => e);
+    expect(err).toBeInstanceOf(XApiError);
+    expect((err as XApiError).errorCode).toBe("empty_body");
+    expect((err as XApiError).kind).toBe("invalid");
+    expect(m.calls(), "再送しても直らないので1回で止める").toBe(1);
+  });
+
+  it("200でJSONが壊れていれば malformed_body で失敗する（通信断と区別する）", async () => {
+    const m = mockHttp([bodyOf("<html>gateway timeout</html>")]);
+    const err = await createPost("tok", { text: "x" }, liveDeps(m.http)).catch((e) => e);
+    expect((err as XApiError).errorCode).toBe("malformed_body");
+    expect((err as XApiError).kind).toBe("invalid");
+    expect(m.calls()).toBe(1);
+  });
+});
