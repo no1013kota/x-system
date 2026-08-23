@@ -2,6 +2,7 @@ import "server-only";
 
 import type { DraftView } from "@/lib/drafts";
 import { env } from "@/lib/env";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -22,12 +23,28 @@ export async function attachSignedImageUrls(drafts: DraftView[]): Promise<DraftV
   const admin = createSupabaseAdminClient();
   const bucket = env.SUPABASE_STORAGE_BUCKET_IMAGES;
   const urlByPath = new Map<string, string>();
-  await Promise.all(
-    [...new Set(targets.map((img) => img.storage_path))].map(async (path) => {
-      const { data } = await admin.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SEC);
-      if (data?.signedUrl) urlByPath.set(path, data.signedUrl);
-    }),
-  );
+  const paths = [...new Set(targets.map((img) => img.storage_path))];
+  /*
+    **1リクエストにまとめる**（T-M8-246）。以前は1枚ずつ `createSignedUrl` を呼んでいたため、
+    下書き一覧を開くたびに画像の枚数だけStorageへ往復していた。
+    **失敗も記録する**——署名URLが作れないと画面から画像が黙って消えるので、
+    「画像が出ない」の原因が運営者には辿れなかった（CLAUDE.md 原則1/2）。
+  */
+  const { data, error } = await admin.storage
+    .from(bucket)
+    .createSignedUrls(paths, SIGNED_URL_TTL_SEC);
+  if (error) {
+    recordUnexpectedError(error, { at: "signed-url", count: paths.length });
+  }
+  for (const entry of data ?? []) {
+    if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl);
+    else if (entry.error) {
+      recordUnexpectedError(new Error(`signed url failed: ${entry.error}`), {
+        at: "signed-url",
+        path: entry.path ?? null,
+      });
+    }
+  }
 
   return drafts.map((d) => ({
     ...d,

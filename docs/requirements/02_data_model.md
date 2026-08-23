@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.56 |
+| バージョン | v1.57 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -421,7 +421,7 @@ Unique index: (`user_id`, `dedupe_key`) where `dedupe_key is not null`
 
 Indexes: (`user_id`, `read_at`, `created_at desc`)
 
-RLS: 本人select可。writeはServer Action/API only。
+RLS: 本人select可。writeはServer Action/API only。 保持は`created_at`から40日で、`scheduler_tick`のcleanupが1起動500件まで削除する（**type を問わない**・T-M8-246。**既読を先に消し未読は後**——読む前に消えると「来たはずの知らせが無い」になる）。以前は`type='news'`だけを消しており、毎日1通作られる`summary`が永久に積もっていた。
 
 ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で**固定20件**まで保存し（旧`max_items`はT-M8-187で廃止）、本文には先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
 
@@ -975,3 +975,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
 | v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
 | v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
+| v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |

@@ -133,6 +133,21 @@ describe("cleanupOldData (db)", () => {
       const itemC = await insertNewsItem(c, 41); // old, referenced by a recent notif → kept
       const oldNotif = await insertNewsNotif(c, uid, 41, itemA);
       const recentNotif = await insertNewsNotif(c, uid, 0, itemC);
+      /*
+        news以外の通知（T-M8-246）。以前は `type='news'` しか消しておらず、毎日1通の
+        `summary` などが**永久に積もった**。古い既読は消え、直近は残ることを確かめる。
+      */
+      const insertOther = async (ageDays: number, readAt: string | null): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into notifications (user_id, type, dedupe_key, title, body, in_app_enabled, read_at, created_at)
+           values ($1, 'summary', $2, 't', 'b', true, $3::timestamptz,
+                   now() - make_interval(days => $4)) returning id`,
+          [uid, `sm-${randomUUID()}`, readAt, ageDays],
+        );
+        return rows[0].id;
+      };
+      const oldSummary = await insertOther(41, new Date().toISOString());
+      const recentSummary = await insertOther(1, null);
       await c.query(
         `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, source_news_item_id)
          values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'draft', $2)`,
@@ -168,7 +183,10 @@ describe("cleanupOldData (db)", () => {
           [`w-${randomUUID()}`],
         )
       ).rows[0].id;
-      return { uid, xid, itemA, itemB, itemC, oldNotif, recentNotif, usageOld, usageNew, cronOld, cronNew };
+      return {
+        uid, xid, itemA, itemB, itemC, oldNotif, recentNotif, oldSummary, recentSummary,
+        usageOld, usageNew, cronOld, cronNew,
+      };
     });
 
     try {
@@ -183,6 +201,9 @@ describe("cleanupOldData (db)", () => {
 
       expect(await alive("notifications", seed.oldNotif)).toBe(false);
       expect(await alive("notifications", seed.recentNotif)).toBe(true);
+      // news以外の通知にも保持期間が効く（T-M8-246）。
+      expect(await alive("notifications", seed.oldSummary), "古い通知が残っている").toBe(false);
+      expect(await alive("notifications", seed.recentSummary), "直近の通知まで消している").toBe(true);
       // news通知を先に消したので itemA は未参照になり削除される。
       expect(await alive("news_items", seed.itemA)).toBe(false);
       expect(await alive("news_items", seed.itemB)).toBe(true); // draft参照

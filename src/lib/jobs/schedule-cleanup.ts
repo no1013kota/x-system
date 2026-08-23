@@ -28,6 +28,8 @@ export interface CleanupDeps {
 
 export interface CleanupResult {
   newsNotifications: number;
+  /** news以外で保持期間を過ぎた通知（summary など・T-M8-246）。 */
+  otherNotifications: number;
   newsItems: number;
   usageEvents: number;
   cronRuns: number;
@@ -43,6 +45,26 @@ async function deleteOldNewsNotifications(db: Queryable): Promise<number> {
         select id from notifications
          where type = 'news' and created_at < now() - make_interval(days => $1)
          order by created_at
+         limit $2)`,
+    [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * (1b) 保持期間を過ぎた**news以外の通知**を削除（T-M8-246）。
+ *
+ * 以前は `type='news'` だけを消していたため、毎日1通作られる `summary` などが**永久に積もった**
+ * （利用者が増えるほど線形に増え、無料枠のDB容量を静かに食う）。既読を先に消し、
+ * 未読は残る側にしておく（読む前に消えると「来たはずの知らせが無い」になる）。
+ */
+async function deleteOldNotifications(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from notifications
+      where id in (
+        select id from notifications
+         where type <> 'news' and created_at < now() - make_interval(days => $1)
+         order by (read_at is null), created_at
          limit $2)`,
     [RETENTION_DAYS, BATCH],
   );
@@ -190,6 +212,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   const onError = deps.onError ?? (() => {});
   const result: CleanupResult = {
     newsNotifications: 0,
+    otherNotifications: 0,
     newsItems: 0,
     usageEvents: 0,
     cronRuns: 0,
@@ -207,6 +230,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
 
   await step("news_notifications", async () => {
     result.newsNotifications = await deleteOldNewsNotifications(db);
+  });
+  await step("other_notifications", async () => {
+    result.otherNotifications = await deleteOldNotifications(db);
   });
   await step("news_items", async () => {
     result.newsItems = await deleteUnreferencedNewsItems(db);

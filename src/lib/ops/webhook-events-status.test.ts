@@ -64,7 +64,7 @@ describe("judgeWebhookEvents", () => {
     expect(check.nextAction).toContain("Webhooks");
   });
 
-  it("受け口が無い・無効なら error", () => {
+  it("受け口が無い・無効なら error（デプロイ先）", () => {
     expect(judgeWebhookEvents({ found: false }).level).toBe("error");
     expect(
       judgeWebhookEvents({ found: true, status: "disabled", enabledEvents: ALL }).level,
@@ -81,5 +81,14 @@ describe("judgeWebhookEvents", () => {
     const check = judgeWebhookEvents({ unavailable: true });
     expect(check.level).toBe("warn");
     expect(check.nextAction).toBeTruthy();
+  });
+});
+
+describe("ローカルは赤くしない（T-M8-247）", () => {
+  /** `stripe listen` は課金を試すときだけ起動するもの。常に赤い表示は読まれなくなる。 */
+  it("受け口が無くても development では warn で、起動コマンドを案内する", () => {
+    const check = judgeWebhookEvents({ found: false, expected: false });
+    expect(check.level).toBe("warn");
+    expect(check.nextAction).toContain("stripe listen");
   });
 });

@@ -294,6 +294,8 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
     // (5) cleanup 段: 各段は失敗を握り潰すため、応答形と onCleanupError 未発火で成功を確かめる。
     expect(body.cleaned).toEqual({
       newsNotifications: expect.any(Number),
+      // news以外の通知にも保持期間が効く（T-M8-246）。
+      otherNotifications: expect.any(Number),
       newsItems: expect.any(Number),
       usageEvents: expect.any(Number),
       cronRuns: expect.any(Number),

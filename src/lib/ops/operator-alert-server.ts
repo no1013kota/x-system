@@ -1,6 +1,7 @@
 import "server-only";
 
 import { collectDiagnostics } from "./diagnostics";
+import { buildStripeProbeDeps } from "./stripe-probe-deps";
 import { buildOperatorAlert } from "./operator-alert";
 
 import { env } from "@/lib/env";
@@ -74,8 +75,17 @@ export async function deliverOperatorAlert(
   const claimed = await deps.claimDay(`operator-alert:${label}:${date}`);
   if (!claimed) return { sent: false, skipped: "already_sent" };
 
+  /*
+    **Stripeの検査もここで渡す**（T-M8-247）。以前は1つも渡していなかったため、
+    設定済みなのに「未設定です」と毎日送っていた。事実と違う警告は読まれなくなり、
+    本当の異常まで埋もれる（CLAUDE.md 原則2）。入口は doctor と同じものを使う。
+  */
+  const stripeProbes = await buildStripeProbeDeps();
   const report = await collectDiagnostics(deps.db, {
+    ...stripeProbes,
     schedulerExpected: env.APP_ENV === "production",
+    subscriptionSyncExpected: env.APP_ENV === "production",
+    mailSenderEmail: env.SMTP_USER ?? null,
     config: {
       appEnv: env.APP_ENV,
       postingMode: env.X_POSTING_MODE,

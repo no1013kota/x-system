@@ -25,9 +25,16 @@ export interface WebhookEventsProbeDeps {
   /** この環境のwebhook受け口（`APP_BASE_URL` から作る）。未設定なら判定しない。 */
   webhookUrl?: string | null;
   stripe?: WebhookEndpointGateway | null;
+  /** デプロイ先（preview/production）なら true。ローカルは false で警告どまりにする。 */
+  expected?: boolean;
 }
 
 export interface WebhookEventsSnapshot {
+  /**
+   * この環境でwebhookが届いている前提か（T-M8-247）。ローカルは `stripe listen` を
+   * 常時動かすものではないので、受け口が無いだけで赤くしない（常に赤い表示は読まれなくなる）。
+   */
+  expected?: boolean;
   /** 受け口が見つかったか。false は「この環境向けの endpoint がStripeに無い」。 */
   found?: boolean;
   /** endpoint の status（`enabled` / `disabled`）。 */
@@ -41,17 +48,22 @@ export interface WebhookEventsSnapshot {
 export async function probeWebhookEvents(
   deps: WebhookEventsProbeDeps,
 ): Promise<WebhookEventsSnapshot> {
-  if (!deps.webhookUrl || !deps.stripe) return { unavailable: true };
+  if (!deps.webhookUrl || !deps.stripe) return { unavailable: true, expected: deps.expected };
   try {
     const list = await deps.stripe.webhookEndpoints.list({ limit: 100 });
     // 末尾スラッシュの差だけで「無い」と言わない（設定は手で入れるもの）。
     const normalize = (url: string) => url.replace(/\/+$/, "");
     const target = list.data.find((e) => normalize(e.url) === normalize(deps.webhookUrl!));
-    if (!target) return { found: false };
-    return { found: true, status: target.status, enabledEvents: target.enabled_events };
+    if (!target) return { found: false, expected: deps.expected };
+    return {
+      enabledEvents: target.enabled_events,
+      expected: deps.expected,
+      found: true,
+      status: target.status,
+    };
   // eslint-disable-next-line no-restricted-syntax -- 失敗そのものが答え（鍵が無い・通信不可）。判定へ unavailable として渡し「確認できませんでした」＋次の一手を出す。ここで投げると doctor 全体が落ちる
   } catch {
-    return { unavailable: true };
+    return { unavailable: true, expected: deps.expected };
   }
 }
 
@@ -66,13 +78,17 @@ export function judgeWebhookEvents(snapshot: WebhookEventsSnapshot): Check {
     };
   }
   if (snapshot.found === false) {
+    // ローカルは `stripe listen` を常時動かすものではないので、赤くせず手順だけ出す。
+    const local = snapshot.expected === false;
     return {
       name,
-      level: "error",
-      detail:
-        "この環境のwebhook受け口がStripeに登録されていません。契約・解約・返金が1件もアプリへ届きません",
-      nextAction:
-        "Stripeダッシュボード → Developers → Webhooks で `<APP_BASE_URL>/api/stripe/webhook` を追加してください",
+      level: local ? "warn" : "error",
+      detail: local
+        ? "ローカルのwebhook受け口がありません（課金を試すときだけ `stripe listen` が要ります）"
+        : "この環境のwebhook受け口がStripeに登録されていません。契約・解約・返金が1件もアプリへ届きません",
+      nextAction: local
+        ? "`stripe listen --forward-to http://127.0.0.1:3000/api/stripe/webhook` を起動してください（起動しないと、Stripe側で契約を変えてもローカルDBへ反映されません）"
+        : "Stripeダッシュボード → Developers → Webhooks で `<APP_BASE_URL>/api/stripe/webhook` を追加してください",
     };
   }
   if (snapshot.status !== "enabled") {
