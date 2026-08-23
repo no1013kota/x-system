@@ -31,6 +31,12 @@ export default function TermsPage() {
     <LegalDocument
       title="利用規約"
       versionLabel={consentVersionLabel(CURRENT_TERMS_VERSION)}
+      /*
+        2026-08-23: 第5条の利用枠を「月間」から「契約期間ごと」へ改定（T-M8-259）。利用者に不利益の
+        ない変更（枠の期間が短くなることはない）のため、同意version（CURRENT_TERMS_VERSION）は
+        据え置き＝再同意は求めない（要決定D-35・案A）。改定した事実は見出しの横に残す。
+      */
+      updatedLabel="2026年8月23日 一部改定（利用枠の数え方を契約期間ごとへ）"
     >
       <p>
         本利用規約（以下「本規約」）は、{LEGAL_ENTITY.name}（屋号: {LEGAL_ENTITY.tradeName}
@@ -84,10 +90,12 @@ export default function TermsPage() {
           ただし本条第3項の利用条件が適用されます。
         </p>
         <p>
-          {PLANS.premium.displayName}の月間利用枠は、通常投稿{premium?.normalPosts}件、
-          URL付き投稿クレジット{premium?.urlPosts}、AIクレジット{premium?.aiCredits}
-          （文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
-          {PLANS.expert.displayName}に月間の利用枠はありません。ただし、システムの安全と
+          {PLANS.premium.displayName}の利用枠は、<strong>契約期間（お支払いの更新日から次の更新日まで）ごと</strong>に、
+          通常投稿{premium?.normalPosts}件、URL付き投稿クレジット{premium?.urlPosts}、
+          AIクレジット{premium?.aiCredits}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
+          利用枠は更新日に新しい契約期間の上限へ戻り、使い残した分は次の契約期間へ繰り越されません。
+          契約期間の途中で上位のプランへ変更した場合は、その時点から同じ契約期間内で変更後のプランの上限が適用されます。
+          {PLANS.expert.displayName}に利用枠はありません。ただし、システムの安全と
           サービス品質の維持のため、<strong>通常の利用を大きく超える連続的な利用を検知した場合、
           実行を一時的に停止することがあります</strong>。利用枠および本項の条件は外部APIの原価や
           運用状況に応じて改定する場合があります。

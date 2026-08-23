@@ -17,7 +17,7 @@ export const metadata: Metadata = {
  * 追加した項目（草案では欠けていた法定事項）:
  * - **商品代金以外に必要な費用**: BYOKプランでは利用者がX APIと生成AI APIの従量課金を
  *   直接負担する。法11条の「その他負担すべき金銭」に当たるため必須。
- * - **販売条件（数量の制限）**: 連携できるXアカウント数とプレミアムの月間利用枠。
+ * - **販売条件（数量の制限）**: 連携できるXアカウント数とプレミアムの利用枠（契約期間ごと・T-M8-259）。
  * - **申込みの有効期限**、**返品特約**（デジタルサービスのため返品不可である旨の明示）。
  * 金額・上限は `PLANS` から描画する（画面へ数字を書き写さない）。
  */
@@ -78,9 +78,9 @@ export default function CommercialTransactionsPage() {
       description:
         `連携できるXアカウント数は、${PLANS.standard.displayName}・${PLANS.premium.displayName}が${PLANS.standard.xAccountLimit}件、${PLANS.expert.displayName}が${PLANS.expert.xAccountLimit}件です。` +
         (premium
-          ? `${PLANS.premium.displayName}には月間の利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。`
+          ? `${PLANS.premium.displayName}には契約期間（お支払いの更新日から次の更新日まで）ごとの利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。使い残した分は次の契約期間へ繰り越されません。`
           : "") +
-        `${PLANS.expert.displayName}に月間の利用枠はありません（通常の利用を大きく超える連続的な利用を検知した場合、実行を一時的に停止することがあります）。` +
+        `${PLANS.expert.displayName}に利用枠はありません（通常の利用を大きく超える連続的な利用を検知した場合、実行を一時的に停止することがあります）。` +
         "また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に上限を設けています。",
     },
     {
