@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.85 |
+| バージョン | v1.63 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -968,45 +968,25 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 |---|---|---|
 | v1.42 | 2026-08-18 | 投稿パターンを利用者定義マスタへ（T-M8-129〜132・ADR-0008）。`post_patterns` 新設、旧 `post_pattern` enum と関連列の撤去、`placeholders` 追加 |
 | v1.43 | 2026-08-18 | 予約枠に生成入力を追加（T-M8-135）: `source_url`・`placeholder_values`・`prompt_override` |
-| v1.44 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
-| v1.45 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
-| v1.46 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
-| v1.47 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
-| v1.48 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
-| v1.49 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
-| v1.50 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
-| v1.51 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
-| v1.52 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
-| v1.53 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
-| v1.54 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
-| v1.55 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
-| v1.56 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
-| v1.57 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
-| v1.58 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
-| v1.59 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
-| v1.60 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
-| v1.61 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
-| v1.62 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
-| v1.63 | 2026-08-23 | フォロワー記録の毎時cronを復活（T-M8-257）: follower_snapshots の書き込みは cron＋ボタンの2入口、cron_runs の job_name に follower_snapshot が戻る（スキーマ変更なし） |
-| v1.64 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
-| v1.65 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
-| v1.66 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
-| v1.67 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
-| v1.68 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
-| v1.69 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
-| v1.70 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
-| v1.71 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
-| v1.72 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
-| v1.73 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
-| v1.74 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
-| v1.75 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
-| v1.76 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
-| v1.77 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
-| v1.78 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
-| v1.79 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
-| v1.80 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
-| v1.81 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
-| v1.82 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
-| v1.83 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
-| v1.84 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
-| v1.85 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |
+| v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
+| v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
+| v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
+| v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
+| v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
+| v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
+| v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
+| v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
+| v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
+| v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
+| v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
+| v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
+| v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
+| v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
+| v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
+| v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
+| v1.58 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
+| v1.59 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
+| v1.60 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
+| v1.61 | 2026-08-23 | フォロワー記録の毎時cronを復活（T-M8-257）: follower_snapshots の書き込みは cron＋ボタンの2入口、cron_runs の job_name に follower_snapshot が戻る（スキーマ変更なし） |
+| v1.62 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
+| v1.63 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |
