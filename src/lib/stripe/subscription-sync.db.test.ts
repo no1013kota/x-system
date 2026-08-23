@@ -731,4 +731,78 @@ describe("Stripe subscription synchronization transaction", () => {
       ),
     ).rejects.toMatchObject({ code: "subscription_required" });
   });
+
+  /**
+   * 無料トライアル終了の予告（T-M8-243）が実際に作られること（T-M8-265）。
+   * 購読リストには入っていたのに種別フィルタで落ちており、本番で一度も動いていなかった。
+   */
+  it("creates the trial-will-end notice from the webhook event (idempotent)", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `update profiles set stripe_customer_id = 'cus_trial_end',
+         notification_config = jsonb_set(notification_config, '{billing}', '{"in_app":true}'::jsonb)
+       where id = $1`,
+      [userId],
+    );
+    const trialEnd = 1_785_279_600;
+    const projection: SubscriptionProjection = {
+      cancelAtPeriodEnd: false,
+      scheduledPlan: null,
+      scheduledPlanAt: null,
+      scheduleUnavailable: false,
+      currentPeriodEnd: trialEnd,
+      currentPeriodStart: trialEnd - 604_800,
+      customerId: "cus_trial_end",
+      eventCreated: trialEnd - 259_200,
+      plan: "premium",
+      status: "trialing",
+      subscriptionId: "sub_trial_end",
+      trialEnd,
+      trialStartedAt: trialEnd - 604_800,
+      userId,
+    };
+    const apply = (eventCreated: number) =>
+      applyPreparedStripeEvent(db, {
+        kind: "subscription_sync",
+        eventType: "customer.subscription.trial_will_end",
+        projection: { ...projection, eventCreated },
+      });
+    await expect(apply(projection.eventCreated)).resolves.toBe("updated");
+    // 同じ契約で再送されても増えない（dedupe key）。
+    await expect(apply(projection.eventCreated + 1)).resolves.toBe("updated");
+
+    const notices = await db.query<{ dedupe_key: string; title: string; body: string; link: string }>(
+      `select dedupe_key, title, body, link from notifications
+        where user_id = $1 and type = 'billing'`,
+      [userId],
+    );
+    expect(notices.rowCount, "3日前の予告は1件だけ").toBe(1);
+    expect(notices.rows[0]).toMatchObject({
+      dedupe_key: "billing:trial_will_end:sub_trial_end",
+      title: "無料トライアルがまもなく終了します",
+      link: "/app/settings?tab=billing",
+    });
+    expect(notices.rows[0].body, "いつ・いくら請求されるかを書く").toContain("3,980円");
+
+    // 予告以外の同期では作られない（毎回の updated で通知が増えない）。
+    await expect(
+      applyPreparedStripeEvent(db, {
+        kind: "subscription_sync",
+        eventType: "customer.subscription.updated",
+        projection: { ...projection, eventCreated: projection.eventCreated + 2, subscriptionId: "sub_other" },
+      }),
+    ).resolves.toBe("updated");
+    const after = await db.query(
+      `select 1 from notifications where user_id = $1 and type = 'billing'`,
+      [userId],
+    );
+    expect(after.rowCount).toBe(1);
+  });
 });

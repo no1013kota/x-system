@@ -291,6 +291,35 @@ describe("Stripe subscription synchronization", () => {
   });
 });
 
+/**
+ * トライアル終了の予告（T-M8-243）が届かなかった件（T-M8-265）。購読リストには入っていたのに、
+ * `prepareStripeEvent` の種別フィルタで落ちて `{kind:"none"}` になり、通知の分岐へ到達しなかった。
+ */
+describe("customer.subscription.trial_will_end（T-M8-265）", () => {
+  it("種別フィルタで捨てず、通知の分岐へ渡せる形（subscription_sync）にする", async () => {
+    const prepared = await prepareStripeEvent(
+      event("customer.subscription.trial_will_end", { id: "sub_current" }),
+      gateway(async () => subscription()),
+      priceIds,
+    );
+    expect(prepared.kind, "ここが none だと予告通知は永久に作られない").toBe("subscription_sync");
+    if (prepared.kind === "subscription_sync") {
+      expect(prepared.eventType).toBe("customer.subscription.trial_will_end");
+      expect(prepared.projection.status).toBe("trialing");
+      expect(prepared.projection.trialEnd).toBe(1_785_279_600);
+    }
+  });
+
+  it("扱わない種別は従来どおり none（購読の取りこぼしを一般化しない）", async () => {
+    const prepared = await prepareStripeEvent(
+      event("customer.subscription.paused", { id: "sub_current" }),
+      gateway(async () => subscription()),
+      priceIds,
+    );
+    expect(prepared.kind).toBe("none");
+  });
+});
+
 describe("current_period_start projection (T-M8-258)", () => {
   it("reads the period start from the item and rejects an invalid one", () => {
     const ok = subscriptionProjection(event("customer.subscription.updated", {}), subscription(), priceIds);

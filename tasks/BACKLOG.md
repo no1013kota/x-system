@@ -2326,7 +2326,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
     layout.tsxのPortalButtonへcancelAtPeriodEnd未伝播）も同時に修正
   - e2e/plans.spec.ts の canceled ケースを新仕様（/plans着地・機能画面リダイレクト・課金タブ到達）へ書き換え
 
-### T-M8-265: トライアル終了予告の通知（T-M8-243）が到達不能 `todo`
+### T-M8-265: トライアル終了予告の通知（T-M8-243）が到達不能 `done`
 - 参照: 要件03 §4（webhook表の`customer.subscription.trial_will_end`行） / 依存: なし / サイズ: S
 - 完了条件:
   - `customer.subscription.trial_will_end` のwebhookで「無料トライアル終了の予告」通知が実際に作られる
@@ -2336,6 +2336,10 @@ UI側boolean を壊しても投稿は誤爆しない）。
   種別フィルタで落ちるため、`eventType === "customer.subscription.trial_will_end"` の通知分岐
   （subscription-sync.ts:557）が到達不能。T-M8-243の意図（終了3日前の初回課金予告）が本番で
   一度も動いていない。
+- 実装メモ（2026-08-23 完了）: `prepareStripeEvent` の種別フィルタへ `customer.subscription.trial_will_end` を追加
+  （これだけで一般経路→`applyPreparedStripeEvent` の予告分岐へ届く）。単体テストで「noneにならないこと」と
+  「扱わない種別は従来どおり none」を固定し、実DBテストで**通知が1件だけ作られる**（再送でも増えない・
+  他の同期では作られない）ことを確認。
 
 ### T-M8-264: 解約済み契約を課金タブから即時再開できるようにする `done`
 - 参照: 要件03 §6.1・要件05 routes表・要件06 SC-11 / 依存: なし / サイズ: M
@@ -3158,12 +3162,18 @@ UI側boolean を壊しても投稿は誤爆しない）。
   pool.connect()〜release()で束ねる。遅延影響は1クエリ数msの直列化のみ（誤差）。
   全ゲート緑: 単体2,424件・build・CSP・E2E 97件。
 
-### T-M8-198: pool枯渇の観測をdoctorへ載せる（Supabase Pro移行条件の可視化） `todo`
+### T-M8-198: pool枯渇の観測をdoctorへ載せる（Supabase Pro移行条件の可視化） `done`
 - 参照: 要件01 §9・src/lib/db/pool.ts（poolStats実装済み・未活用） / 依存: なし / サイズ: S
 - 完了条件:
   - doctor（またはcanary）がpoolStats（total/idle/waiting）を報告し、waiting>0が続いたら運営者へ通知される
   - 要件01 §9の移行条件「pooler接続の枯渇・待ち行列が観測された」を実際に観測できる
 - メモ: 同時接続の容量分析（2026-08-22）の優先5。原則1（黙って壊れない）・原則4（費用の判断材料）。
+- 実装メモ（2026-08-23 完了）: 点で読む `poolStats()` だけでは「続いているか」が分からないため、
+  **接続の取得が待たされたときだけ**1行入れる表 `db_pool_events`（migration `20260823000010`）を追加し、
+  doctor「DB接続の混み具合」が直近24時間の件数と最長待ち時間で判定する（0件=ok／1件以上=注意／20件以上=異常。
+  異常時は要件01 §9 の移行条件に該当することを名指しする）。運営者アラートは既存のdoctor経由で届く。
+  記録自体で状況を悪化させないよう、閾値200ms未満は書かない・同一プロセスで1分に1回まで・失敗は握り潰す。
+  40日で cleanup（scheduler_tick 相乗り）。
 
 ### T-M8-195: ニュース取得を9:00〜21:00・3時間おきへ変更 `done`
 - 参照: PRD N-1・要件04 §2/§6・プロンプト設計書 §6.10 / 依存: なし / サイズ: S

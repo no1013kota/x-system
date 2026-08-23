@@ -397,6 +397,10 @@ export async function prepareStripeEvent(
     event.type !== "customer.subscription.created" &&
     event.type !== "customer.subscription.updated" &&
     event.type !== "customer.subscription.deleted" &&
+    // **トライアル終了の予告を落とさない**（T-M8-265）。ここに無いと下の一般経路へ進めず
+    // `{kind:"none"}` になり、`applyPreparedStripeEvent` の予告通知（T-M8-243）へ到達しない。
+    // 購読リスト（webhook.ts）には入っていたのに、この種別フィルタで黙って捨てていた。
+    event.type !== "customer.subscription.trial_will_end" &&
     event.type !== "invoice.payment_failed" &&
     event.type !== "invoice.paid"
   ) {

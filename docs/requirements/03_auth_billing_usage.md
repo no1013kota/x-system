@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.52 |
+| バージョン | v1.53 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -122,7 +122,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 | `invoice.payment_failed` | subscriptionを再取得して現在statusを同期し、課金通知を作成 |
 | `invoice.paid` | subscriptionを再取得して支払い復旧を同期。招待報酬を作成（§招待プログラム） |
 | `charge.refunded` | 返金額（**その請求の累計**）で招待報酬を取消・減額（T-M8-236。`payment_intent`→InvoicePayments APIでinvoiceを解決する） |
-| `customer.subscription.trial_will_end` | 無料トライアル終了3日前。終了日と初回請求額を伝える通知を1回だけ作る（T-M8-243） |
+| `customer.subscription.trial_will_end` | 無料トライアル終了3日前。終了日と初回請求額を伝える通知を1回だけ作る（T-M8-243）。**購読リストに入れるだけでなく、`prepareStripeEvent` の種別フィルタにも入れる**——落とすと通知の分岐へ到達せず、黙って一度も作られない（T-M8-265で実際にそうなっていた） |
 
 Price IDからplanへの変換に未知の値が来た場合はprofileを更新せず、Sentryへ記録する。**`stripe_events`も記録しないが、応答は200を返す**（T-M8-245。再送しても直らない恒久エラーに500を返し続けると、Stripeが最大3日リトライしたのちendpoint自体を無効化し、他の全利用者の同期が止まる）。設定を直したあとダッシュボードから再送すれば処理できる。
 
@@ -394,3 +394,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.50 | 2026-08-23 | トライアルは最初の有料期間と利用枠を共有（有料化で満額へ戻さない・運営者の指示・D-36 解決・T-M8-258） |
 | v1.51 | 2026-08-23 | Stripe確認画面に独自文が書けないことと、Portal帰還時に日割り差額を出す方針を明記（T-M8-270） |
 | v1.52 | 2026-08-23 | 解約前の引き止めクーポン（retention）と、解約予定のアプリ内取り消しを追加（T-M8-271/272） |
+| v1.53 | 2026-08-23 | trial_will_end を prepareStripeEvent の種別フィルタへ通す（予告通知が到達不能だった・T-M8-265） |
