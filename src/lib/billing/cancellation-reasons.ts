@@ -42,7 +42,7 @@ export function cancellationEffects(input: {
   const managedKeys = Boolean(plan?.usageLimits);
   return {
     title: input.trialing
-      ? `${input.endsAtLabel}に無料トライアルが終了し、そこで利用できなくなります`
+      ? "無料トライアルは、解約するとその場で終了します（残りの期間は繰り越せません）"
       : `${input.endsAtLabel}までご利用いただけます。その後は次の機能が止まります`,
     stops: [
       "予約した自動投稿・下書きの自動作成が止まります",
@@ -53,7 +53,12 @@ export function cancellationEffects(input: {
     keeps: [
       "これまでの下書き・投稿履歴・分析結果は残ります（閲覧できます）",
       "同じアカウントでいつでも再開できます",
-      ...(input.trialing ? ["トライアル終了日までは料金が発生しません"] : ["お支払い済みの期間の日割り返金はありません"]),
+      ...(input.trialing
+        ? [
+            "料金は発生しません（カードへの請求はありません）",
+            `${input.endsAtLabel}までなら、残りの期間で無料トライアルを再開できます`,
+          ]
+        : ["お支払い済みの期間の日割り返金はありません"]),
     ],
   };
 }

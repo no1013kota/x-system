@@ -25,8 +25,10 @@ const UUID_PATTERN =
 
 export interface StripeSubscriptionGateway {
   subscriptions: {
-    retrieve(id: string): Promise<Stripe.Subscription>;
+    retrieve(id: string, params?: { expand: string[] }): Promise<Stripe.Subscription>;
   };
+  /** 適用中のクーポンの内容を読む（T-M8-279）。無ければ割引は無しとして扱う。 */
+  coupons?: { retrieve(id: string): Promise<Stripe.Coupon> };
   /**
    * 予約済みの下位変更（subscription schedule）を読む（T-M8-260）。
    * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
@@ -53,6 +55,8 @@ export interface SubscriptionProjection {
   currentPeriodEnd: number;
   /** 契約期間の開始（epoch秒）。利用枠の期間キーの元（T-M8-258）。 */
   currentPeriodStart: number;
+  /** 適用中の割引（T-M8-279）。無ければ null。画面はプラン名の下にこれを出す。 */
+  discount: { percentOff: number | null; amountOffJpy: number | null; endsAt: number | null } | null;
   /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
   scheduledPlan: PlanId | null;
   /** 予約が効く日時（epoch秒）。`scheduledPlan` とセット。 */
@@ -301,6 +305,7 @@ export function subscriptionProjection(
   priceIds: Record<PlanId, string>,
   forceCanceled = false,
   schedule?: LoadedSchedule,
+  discount?: SubscriptionProjection["discount"],
 ): SubscriptionProjection {
   const items = subscription.items?.data ?? [];
   const priceId = items.length === 1 ? items[0].price?.id : null;
@@ -349,6 +354,8 @@ export function subscriptionProjection(
     scheduledPlan: scheduled?.plan ?? null,
     scheduledPlanAt: scheduled?.at ?? null,
     scheduleUnavailable,
+    // 解約・解約済みでは割引の表示も持たない（契約自体が終わる）。
+    discount: canceled ? null : (discount ?? null),
     eventCreated: event.created,
     plan: planEntry[0] as PlanId,
     status: status as SubscriptionStatus,
@@ -424,8 +431,9 @@ export async function prepareStripeEvent(
     const subscription = invoice.parent?.subscription_details?.subscription;
     const subscriptionId = expandedId(subscription ?? null);
     if (!subscriptionId) return { kind: "none" };
-    const current = await stripe.subscriptions.retrieve(subscriptionId);
+    const current = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["discounts"] });
     const schedule = await loadSchedule(stripe, current);
+    const discount = await loadDiscount(stripe, current);
     return {
       kind: "invoice_sync",
       invoice: {
@@ -436,7 +444,7 @@ export async function prepareStripeEvent(
         amountPaid: invoice.amount_paid ?? 0,
         paidAtSec: invoice.status_transitions?.paid_at ?? event.created,
       },
-      projection: subscriptionProjection(event, current, priceIds, false, schedule),
+      projection: subscriptionProjection(event, current, priceIds, false, schedule, discount),
     };
   }
 
@@ -444,13 +452,43 @@ export async function prepareStripeEvent(
   if (!subscriptionId) {
     throw new StripeSubscriptionSyncError("Stripe event has no subscription ID.");
   }
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["discounts"] });
   const schedule = await loadSchedule(stripe, subscription);
+  const discount = await loadDiscount(stripe, subscription);
   return {
     kind: "subscription_sync",
     eventType: event.type,
-    projection: subscriptionProjection(event, subscription, priceIds, false, schedule),
+    projection: subscriptionProjection(event, subscription, priceIds, false, schedule, discount),
   };
+}
+
+/**
+ * 適用中の割引を読む（T-M8-279）。**引き止めクーポン（半額・3か月）を受け取っても画面に何も出ず**、
+ * 「いくら払うのか」が分からなかったため足した。`discounts` は expand しないとIDだけが返り、
+ * 割引率はクーポン側にあるので、クーポンを1回引く（割引が付いているときだけ）。
+ * 読めなければ null（表示が出ないだけで、契約の反映は止めない）。
+ */
+export async function loadDiscount(
+  stripe: Pick<StripeSubscriptionGateway, "coupons">,
+  subscription: Stripe.Subscription,
+): Promise<SubscriptionProjection["discount"]> {
+  const first = subscription.discounts?.[0];
+  if (!first || typeof first === "string") return null;
+  const couponId =
+    typeof first.source?.coupon === "string" ? first.source.coupon : (first.source?.coupon?.id ?? null);
+  if (!couponId || !stripe.coupons) return null;
+  try {
+    const coupon = await stripe.coupons.retrieve(couponId);
+    if (!coupon.percent_off && !coupon.amount_off) return null;
+    return {
+      percentOff: coupon.percent_off ?? null,
+      amountOffJpy: coupon.amount_off ?? null,
+      endsAt: first.end ?? null,
+    };
+  } catch (error) {
+    recordUnexpectedError(error, { at: "stripe-sync:discount", subscriptionId: subscription.id });
+    return null;
+  }
 }
 
 /**
@@ -691,6 +729,9 @@ export async function applyPreparedStripeEvent(
               else to_timestamp($12)
             end,
             current_period_start = to_timestamp($13),
+            discount_percent_off = $15,
+            discount_amount_off_jpy = $16,
+            discount_ends_at = case when $17::bigint is null then null else to_timestamp($17) end,
             trial_used_at = case
               when $3::subscription_status = 'trialing' then coalesce(
                 trial_used_at,
@@ -715,6 +756,9 @@ export async function applyPreparedStripeEvent(
       projection.scheduledPlanAt,
       projection.currentPeriodStart,
       projection.scheduleUnavailable,
+      projection.discount?.percentOff ?? null,
+      projection.discount?.amountOffJpy ?? null,
+      projection.discount?.endsAt ?? null,
     ],
   );
 

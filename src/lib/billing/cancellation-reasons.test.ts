@@ -15,10 +15,11 @@ describe("cancellationEffects", () => {
     expect(e.keeps.join()).toContain("日割り返金はありません");
   });
 
-  it("トライアル中: 終了日で使えなくなることと、料金が発生しないことを伝える", () => {
+  it("トライアル中: その場で終了することと、残り期間で再開できることを伝える（T-M8-278）", () => {
     const e = cancellationEffects({ plan: "premium", endsAtLabel: "2026年8月30日", trialing: true });
-    expect(e.title).toContain("無料トライアルが終了");
-    expect(e.keeps.join()).toContain("料金が発生しません");
+    expect(e.title).toContain("その場で終了");
+    expect(e.keeps.join()).toContain("料金は発生しません");
+    expect(e.keeps.join(), "取り消せることを同じ画面で伝える").toContain("残りの期間で無料トライアルを再開できます");
     expect(e.keeps.join()).not.toContain("日割り返金");
   });
 

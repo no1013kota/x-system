@@ -43,6 +43,12 @@ const RESUME_ATTEMPT_BUCKET_S = 600;
 export interface ResumeProfile {
   plan: PlanId | null;
   stripe_customer_id: string | null;
+  /**
+   * トライアルの終了日（T-M8-278）。**期限が未来なら、その日までのトライアルとして作り直す**——
+   * トライアル中に解約した人が「残りの期間で再開」できるようにするため。
+   * 期限切れ・未設定なら通常の有料契約として作る（無料期間は付けない）。
+   */
+  trial_ends_at?: string | null;
 }
 
 export interface ResumeStripeGateway {
@@ -184,6 +190,18 @@ export async function handleResumeRequest(
       );
     }
 
+    /*
+      **残りのトライアルを引き継ぐ**（T-M8-278）。トライアル中の解約は即時終了させるので、
+      期限内に再開した人は「残りの日数」で戻れるべき（新しく7日を配り直すのではない）。
+      期限切れなら通常の有料契約として作る。
+    */
+    const trialEndsAtSec = profile.trial_ends_at
+      ? Math.floor(new Date(profile.trial_ends_at).getTime() / 1000)
+      : null;
+    const remainingTrialEnd =
+      trialEndsAtSec && Number.isFinite(trialEndsAtSec) && trialEndsAtSec > deps.now()
+        ? trialEndsAtSec
+        : null;
     const attemptBucket = Math.floor(deps.now() / RESUME_ATTEMPT_BUCKET_S);
     let created: Stripe.Subscription;
     try {
@@ -195,6 +213,8 @@ export async function handleResumeRequest(
           metadata: { user_id: user.id },
           // 決済が通らないなら契約を作らない（incompleteを残さない）。
           payment_behavior: "error_if_incomplete",
+          // 残りのトライアル期間があれば、その終了日で作り直す（T-M8-278）。
+          ...(remainingTrialEnd ? { trial_end: remainingTrialEnd } : {}),
         },
         { idempotencyKey: `exos-ai:resume:${customerId}:${card.id}:${attemptBucket}` },
       );

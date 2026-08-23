@@ -94,8 +94,10 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
             detail: "すでに解約が予約されています。料金はかかりません。",
           }
         : {
-            headline: `${end}まで使えて、その後停止します`,
-            detail: "トライアル中に解約すれば料金はかかりません。",
+            // トライアルの解約は**その場で終了**する（T-M8-278・運営者の指示）。
+            // 「終了日まで使える」と書くと実際の挙動と食い違う。
+            headline: `押した時点で終了します（${end}までなら残りの期間で再開できます）`,
+            detail: "料金はかかりません。再開すると残りの日数でトライアルが続きます。",
           },
       /*
         **画面は `headline` しか出さない**（portal-button.tsx）。トライアル中の要点は

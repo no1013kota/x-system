@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
     async getProfile(userId) {
       const result = await admin
         .from("profiles")
-        .select("plan, stripe_customer_id")
+        .select("plan, stripe_customer_id, trial_ends_at")
         .eq("id", userId)
         .maybeSingle();
       if (result.error) throw result.error;

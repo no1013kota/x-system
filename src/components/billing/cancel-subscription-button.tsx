@@ -3,7 +3,9 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useState, useTransition } from "react";
 
-import { recordCancellationSurveyAction } from "@/app/actions/billing";
+import { useRouter } from "next/navigation";
+
+import { cancelTrialNowAction, recordCancellationSurveyAction } from "@/app/actions/billing";
 import { Button } from "@/components/ui/button";
 import { cardTitleClassName } from "@/components/ui/card";
 import {
@@ -25,13 +27,20 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  */
 export function CancelSubscriptionButton({
   effects,
+  trialing = false,
 }: {
   effects: ReturnType<typeof cancellationEffects>;
+  /**
+   * 無料トライアル中か（T-M8-278）。トライアルは**その場で終了**させる（払っていない期間を
+   * 「終了日まで使える」とするのは説明しにくい）。有料契約はStripeの期間末解約へ送る。
+   */
+  trialing?: boolean;
 }) {
   const [step, setStep] = useState<"confirm" | "survey">("confirm");
   const [reason, setReason] = useState<string>("");
   const [detail, setDetail] = useState("");
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
   const toast = useToast();
 
   function close() {
@@ -51,6 +60,17 @@ export function CancelSubscriptionButton({
           title: "ご意見を保存できませんでした",
           description: "解約の手続きはこのまま進められます。",
         });
+      }
+      if (trialing) {
+        // トライアルはその場で終了させる（Stripeの画面へは送らない・T-M8-278）。
+        const result = await cancelTrialNowAction();
+        if (result.status === "error") {
+          toast.show({ tone: "error", title: "解約できませんでした", description: result.message });
+          return;
+        }
+        toast.show({ tone: "success", title: result.message });
+        router.refresh();
+        return;
       }
       try {
         await startCustomerPortal("cancel");
@@ -158,7 +178,7 @@ export function CancelSubscriptionButton({
                   type="button"
                   variant="danger"
                 >
-                  {pending ? "開いています…" : "解約手続きへ進む"}
+                  {pending ? "処理しています…" : trialing ? "今すぐ解約する" : "解約手続きへ進む"}
                 </Button>
               </div>
               {!reason ? (

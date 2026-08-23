@@ -17,7 +17,17 @@ import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
  * `POST /api/stripe/resume` を呼び、**保存済みカードでその場で再開**する。
  * 成功・失敗はトーストで返し（原則1）、成功時は refresh で契約状態の表示を更新する。
  */
-export function ResumePlanButton({ planLabel }: { planLabel: string }) {
+export function ResumePlanButton({
+  planLabel,
+  remainingTrialLabel = null,
+}: {
+  planLabel: string;
+  /**
+   * 残っている無料トライアルの終了日（T-M8-278）。トライアル中に解約した人が期限内に戻ってきたら、
+   * **残りの期間で再開**する（新しく配り直すのではない）。無ければ通常の有料再開。
+   */
+  remainingTrialLabel?: string | null;
+}) {
   const [pending, setPending] = useState(false);
   usePageshowReset(() => setPending(false));
   const router = useRouter();
@@ -70,7 +80,7 @@ export function ResumePlanButton({ planLabel }: { planLabel: string }) {
           type="button"
           variant="brand"
         >
-          {pending ? "再開しています…" : "プランを再開"}
+          {pending ? "再開しています…" : remainingTrialLabel ? "無料トライアルを再開" : "プランを再開"}
         </Button>
         {/* 別プランで再開したい・カードを替えたい場合の逃げ道（Checkout＝カード入力つき）。 */}
         <Link className="text-body text-info-fg hover:underline" href="/plans">
@@ -79,7 +89,9 @@ export function ResumePlanButton({ planLabel }: { planLabel: string }) {
       </div>
       {/* 押す前に「いつから・いくら・無料か」が分かるようにする（T-M8-55と同じ原則）。 */}
       <p className="text-caption text-ink-3">
-        登録済みのお支払い方法で{planLabel}を本日から再開し、月額料金の請求が始まります（無料期間はありません）。
+        {remainingTrialLabel
+          ? `${planLabel}の無料トライアルを${remainingTrialLabel}まで（残りの期間で）再開します。期間中は料金が発生しません。`
+          : `登録済みのお支払い方法で${planLabel}を本日から再開し、月額料金の請求が始まります（無料期間はありません）。`}
       </p>
     </div>
   );

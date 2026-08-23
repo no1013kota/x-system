@@ -169,8 +169,11 @@ test("契約が切れると機能画面はロックされ、友達招待と課�
 }) => {
   const account = await accounts.create("plans-canceled");
   await query(
+    // トライアル期間も終えた「有料契約が切れた」状態にする（残りトライアルがあると
+    // 再開ボタンが「無料トライアルを再開」になる・T-M8-278）。
     `update profiles set subscription_status = 'canceled', stripe_customer_id = 'cus_e2e_plans_c',
-            current_period_end = now() - interval '1 day'
+            current_period_end = now() - interval '1 day',
+            trial_ends_at = now() - interval '30 days'
       where id = $1`,
     [account.userId],
   );
@@ -222,10 +225,12 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await page.goto("/app/settings?tab=billing");
 
   await expect(page.getByRole("button", { name: "プランを変更" })).toBeVisible();
-  // 上位＝即時＋日割り、下位＝期間末（日付つき）、解約＝期間末まで使える
-  await expect(page.getByText("すぐに切り替わります")).toBeVisible();
+  // 上位＝即時、下位＝期間末（日付つき）、解約＝トライアル中は押した時点で終了（T-M8-278）
+  await expect(page.getByText("すぐに切り替わり", { exact: false })).toBeVisible();
   await expect(page.getByText("2026年8月12日に切り替わります")).toBeVisible();
-  await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toBeVisible();
+  await expect(
+    page.getByText("押した時点で終了します（2026年8月12日までなら残りの期間で再開できます）"),
+  ).toBeVisible();
   /*
     トライアル中は**日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` なので、
     変更しても無料期間は変わらず、終了後に新しい料金で請求が始まる。以前は
@@ -246,7 +251,7 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await page.reload();
   // 「この先の予定」の行と、押す前の効果説明（解約: …）の2か所に出る。
   await expect(page.getByText("2026年8月12日に解約されます")).toHaveCount(2);
-  await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
+  await expect(page.getByText("押した時点で終了します", { exact: false })).toHaveCount(0);
   // 課金カードとヘッダー直下のバナー（T-M8-253）の両方が「解約する」を出さない。
   // バナー側は以前 `cancelAtPeriodEnd` を受けておらず「◯日に解約されます」の横に「解約する」が並んでいた。
   await expect(page.getByRole("button", { name: "解約する" })).toHaveCount(0);

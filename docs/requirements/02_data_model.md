@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.66 |
+| バージョン | v1.67 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -58,6 +58,9 @@
 | `subscription_status` | `subscription_status` | not null default `incomplete` | 課金状態 |
 | `subscription_event_created_at` | `timestamptz` | null | 最後に反映したStripe event時刻 |
 | `current_period_start` | `timestamptz` | null | 現在期間開始。利用枠の期間キー（JST日付）の元。nullは未同期＝暦月で数える（T-M8-258） |
+| `discount_percent_off` | `integer` | null, 1〜100 | 適用中クーポンの割引率。プラン名の下の表示に使う（T-M8-279） |
+| `discount_amount_off_jpy` | `integer` | null, `> 0` | 適用中クーポンの割引額（円） |
+| `discount_ends_at` | `timestamptz` | null | 割引の終了日時。nullは終了日なし |
 | `current_period_end` | `timestamptz` | null | 現在期間終了 |
 | `cancel_at_period_end` | `boolean` | not null default false | 期間末解約予定 |
 | `scheduled_plan` | `plan_type` | null | 期間末で切り替わる予約先のプラン（Portalの値下げ予約＝Stripe subscription schedule の次フェーズ。T-M8-260） |
@@ -1029,3 +1032,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.64 | 2026-08-23 | cron_runs.job_name に subscription_period_backfill（契約期間の補完・T-M8-258）。usage_counters 制約説明の「月次」を期間へ |
 | v1.65 | 2026-08-23 | db_pool_events を追加（DB接続の待ち行列の観測・27テーブルへ・T-M8-198） |
 | v1.66 | 2026-08-23 | cancellation_surveys を追加（解約理由のアンケート・28テーブルへ・T-M8-277） |
+| v1.67 | 2026-08-23 | profiles に適用中の割引（discount_*）を追加（T-M8-279） |

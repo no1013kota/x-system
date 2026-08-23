@@ -30,6 +30,7 @@ export function PortalButton({
   cancelAtLabel = "",
   cancellation = null,
   effects,
+  trialing = false,
   enabled,
   scheduledChange = null,
 }: {
@@ -46,6 +47,8 @@ export function PortalButton({
    * Stripeの解約画面へ送る。渡されない場面（App Shellのバナー）は従来どおり直接送る。
    */
   cancellation?: ReturnType<typeof cancellationEffects> | null;
+  /** 無料トライアル中か（T-M8-278）。トライアルの解約はその場で終了させる。 */
+  trialing?: boolean;
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
@@ -111,7 +114,7 @@ export function PortalButton({
           <KeepSubscriptionButton endsAtLabel={cancelAtLabel} />
         ) : cancellation ? (
           // 確認（何が止まり何が残るか）→ 理由のアンケート → Stripeの解約画面（T-M8-277）。
-          <CancelSubscriptionButton effects={cancellation} />
+          <CancelSubscriptionButton effects={cancellation} trialing={trialing} />
         ) : (
           <Button
             aria-busy={pending === "cancel"}

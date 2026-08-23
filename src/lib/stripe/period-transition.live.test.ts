@@ -339,4 +339,72 @@ describe.skipIf(!ENABLED)("Stripe 期間末の下位変更（テストクロッ�
       await db.query(`delete from auth.users where id = $1`, [userId]);
     }
   }, 300_000);
+
+  /**
+   * 適用中の割引（引き止めクーポン）が profiles へ同期されること（T-M8-279）。
+   * `discounts` は expand しないとIDだけ・割引率はクーポン側、という Stripe の形に依存するので実物で見る。
+   */
+  it("クーポンを適用すると割引率と終了日が同期される", async () => {
+    expect(SECRET.startsWith("sk_test_")).toBe(true);
+    const { STRIPE_API_VERSION } = await import("./client");
+    const stripe = new Stripe(SECRET, { apiVersion: STRIPE_API_VERSION });
+    const userId = randomUUID();
+    let clockId: string | null = null;
+    let couponId: string | null = null;
+    try {
+      await db.query(
+        `insert into auth.users (id, instance_id, aud, role, email)
+         values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+        [userId, `${userId}@example.com`],
+      );
+      // テスト用のクーポンをその場で作る（本番用クーポンの利用回数を消費しない）。
+      const coupon = await stripe.coupons.create({
+        percent_off: 50,
+        duration: "repeating",
+        duration_in_months: 3,
+        name: "live-test-half",
+      });
+      couponId = coupon.id;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const clock = await stripe.testHelpers.testClocks.create({ frozen_time: nowSec, name: `exos-disc-${userId.slice(0, 8)}` });
+      clockId = clock.id;
+      const customer = await stripe.customers.create({
+        test_clock: clock.id,
+        payment_method: "pm_card_visa",
+        invoice_settings: { default_payment_method: "pm_card_visa" },
+        metadata: { user_id: userId },
+      });
+      await db.query(`update profiles set stripe_customer_id = $2 where id = $1`, [userId, customer.id]);
+      const created = await stripe.subscriptions.create({
+        customer: customer.id,
+        items: [{ price: PRICES.premium }],
+        discounts: [{ coupon: coupon.id }],
+        metadata: { user_id: userId },
+      });
+
+      const prepared = await prepareStripeEvent(
+        syntheticEvent("customer.subscription.updated", created.id, nowSec + 1),
+        stripe,
+        PRICES,
+      );
+      expect(prepared.kind).toBe("subscription_sync");
+      if (prepared.kind === "subscription_sync") {
+        expect(prepared.projection.discount?.percentOff, "割引率はクーポンから読む").toBe(50);
+        expect(prepared.projection.discount?.endsAt, "3か月後の終了日が入る").toBeGreaterThan(nowSec);
+      }
+      await applyPreparedStripeEvent(db, prepared);
+      const row = (
+        await db.query<{ percent: number | null; ends: Date | null }>(
+          `select discount_percent_off as percent, discount_ends_at as ends from profiles where id = $1`,
+          [userId],
+        )
+      ).rows[0];
+      expect(row.percent).toBe(50);
+      expect(row.ends).not.toBeNull();
+    } finally {
+      if (clockId) await stripe.testHelpers.testClocks.del(clockId).catch(() => undefined);
+      if (couponId) await stripe.coupons.del(couponId).catch(() => undefined);
+      await db.query(`delete from auth.users where id = $1`, [userId]);
+    }
+  }, 300_000);
 });

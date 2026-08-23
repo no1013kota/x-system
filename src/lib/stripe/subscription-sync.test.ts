@@ -129,7 +129,8 @@ describe("Stripe subscription synchronization", () => {
       priceIds,
     );
 
-    expect(retrieve).toHaveBeenCalledWith(expectedId);
+    // 割引はexpandしないとIDだけ返るので、同期は必ずexpandして引く（T-M8-279）。
+    expect(retrieve).toHaveBeenCalledWith(expectedId, { expand: ["discounts"] });
     expect(prepared).toMatchObject({
       kind: "subscription_sync",
       projection: {
@@ -180,7 +181,7 @@ describe("Stripe subscription synchronization", () => {
       priceIds,
     );
 
-    expect(retrieve).toHaveBeenCalledWith("sub_invoice");
+    expect(retrieve).toHaveBeenCalledWith("sub_invoice", { expand: ["discounts"] });
     expect(prepared).toMatchObject({
       kind: "invoice_sync",
       invoice: { id: "in_001", attemptCount: 2, paymentState },

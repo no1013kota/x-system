@@ -68,6 +68,7 @@ import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
+import { discountLabel } from "@/lib/billing/discount-label";
 import { scheduledPlanChangeLabel, scheduledPlanChangeNote } from "@/lib/billing/scheduled-plan-change";
 import { stripe } from "@/lib/stripe/client";
 import { loadPendingProration, prorationNotice } from "@/lib/stripe/proration-preview";
@@ -115,6 +116,12 @@ interface BillingProfile {
   scheduled_plan_at: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  /** トライアル終了日（解約後の「残り期間で再開」の判定に使う・T-M8-278）。 */
+  trial_ends_at: string | null;
+  /** 適用中の割引（T-M8-279）。プラン名の下に「いつまで・いくら」を出す。 */
+  discount_percent_off: number | null;
+  discount_amount_off_jpy: number | null;
+  discount_ends_at: string | null;
   subscription_status: string;
 }
 
@@ -169,7 +176,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     admin
       .from("profiles")
       .select(
-        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, scheduled_plan, scheduled_plan_at",
+        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, scheduled_plan, scheduled_plan_at, trial_ends_at, discount_percent_off, discount_amount_off_jpy, discount_ends_at",
       )
       .eq("id", user.id)
       .maybeSingle<BillingProfile>(),
@@ -194,6 +201,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const hasStripeCustomer = Boolean(profile.stripe_customer_id);
   const scheduledChange = scheduledPlanChangeLabel(profile);
   const scheduledChangeNote = scheduledPlanChangeNote(profile);
+  // 割引はプラン名のすぐ下に出す（「次にいくら払うのか」が契約者の関心・T-M8-279）。
+  const discount = discountLabel(profile);
   /*
     この先に起きる1件（解約予定 > プラン変更の予約）。解約が予約されていればそちらが重要なので先に出す
     （両方が同時に付くことはStripe側の挙動では起きないが、順序を決めておく）。
@@ -203,6 +212,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     トライアル中もStripeは期間末＝トライアル終了日にするので（実測・T-M8-258）別扱いにしない。
   */
   const cancelAtLabel = formatPeriodEnd(profile.current_period_end);
+  /*
+    解約後も**残っている無料トライアル**があるか（T-M8-278）。トライアル中の解約はその場で終了するが、
+    期限内なら残りの期間で再開できる。期限切れなら通常の有料再開になる。
+  */
+  const trialEndsAt = profile.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+  const remainingTrialLabel =
+    trialEndsAt && !Number.isNaN(trialEndsAt.getTime()) && trialEndsAt > new Date()
+      ? formatPeriodEnd(profile.trial_ends_at)
+      : null;
   const upcomingChange = profile.cancel_at_period_end
     ? `${cancelAtLabel}に解約されます（それまでは今までどおりご利用いただけます）`
     : scheduledChangeNote;
@@ -417,6 +435,9 @@ let promptTemplates: PromptTemplateView[] = [];
                         月額 ¥{yen(PLANS[profile.plan].monthlyPriceJpy)}（税込）
                       </span>
                     ) : null}
+                    {discount ? (
+                      <span className="basis-full text-caption font-normal text-brand">{discount}</span>
+                    ) : null}
                   </dd>
                 </div>
                 <div>
@@ -453,7 +474,10 @@ let promptTemplates: PromptTemplateView[] = [];
               */}
               <div className="mt-7">
                 {profile.subscription_status === "canceled" && profile.plan && hasStripeCustomer ? (
-                  <ResumePlanButton planLabel={PLANS[profile.plan].displayName} />
+                  <ResumePlanButton
+                    planLabel={PLANS[profile.plan].displayName}
+                    remainingTrialLabel={remainingTrialLabel}
+                  />
                 ) : (
                   <PortalButton
                     cancelAtPeriodEnd={Boolean(profile.cancel_at_period_end)}
@@ -463,6 +487,7 @@ let promptTemplates: PromptTemplateView[] = [];
                       endsAtLabel: cancelAtLabel,
                       trialing: profile.subscription_status === "trialing",
                     })}
+                    trialing={profile.subscription_status === "trialing"}
                     effects={planChangeEffects({
                       cancelAtPeriodEnd: Boolean(profile.cancel_at_period_end),
                       currentPeriodEnd: profile.current_period_end,

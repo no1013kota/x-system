@@ -6,6 +6,7 @@ import { type BaseResult, errorResult, requireUserId } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { stripe } from "@/lib/stripe/client";
 import { saveCancellationSurvey } from "@/lib/billing/cancellation-survey";
+import { cancelTrialNow } from "@/lib/stripe/cancel-now";
 import { cancelScheduledCancellation } from "@/lib/stripe/scheduled-cancellation";
 import { cancelScheduledPlanChange } from "@/lib/stripe/scheduled-plan-change";
 
@@ -72,6 +73,28 @@ export async function recordCancellationSurveyAction(input: {
   try {
     await saveCancellationSurvey(pooledQueryable(), auth.userId, input);
     return { status: "success", message: "ご回答ありがとうございました。" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * 無料トライアル中の解約（T-M8-278・運営者の指示 2026-08-23）。**その場で終了**させる。
+ * 有料契約はPortalの期間末解約なので、この経路は trialing のときだけ画面に出す。
+ * 残りのトライアル期間は `profiles.trial_ends_at` に残り、「トライアルを再開する」で戻せる。
+ */
+export async function cancelTrialNowAction(): Promise<BaseResult> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const result = await cancelTrialNow(pooledQueryable(), stripe, auth.userId);
+    revalidatePath("/app", "layout");
+    return {
+      status: "success",
+      message: result.trialEndsAt
+        ? "無料トライアルを終了しました。期限内なら残りの期間で再開できます。"
+        : "無料トライアルを終了しました。",
+    };
   } catch (error) {
     return errorResult(error);
   }

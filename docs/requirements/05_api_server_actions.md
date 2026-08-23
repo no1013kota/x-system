@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.63 |
+| バージョン | v1.64 |
 | 更新日 | 2026-08-23 |
 | 関連 | 全画面、全ジョブ |
 
@@ -84,7 +84,11 @@
 
 `POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、30分TTLの暗号化済み復帰marker cookieを発行する。ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
 
+**Server Action `cancelTrialNowAction`**（`src/app/actions/billing.ts`・T-M8-278）は入力を持たず、**`trialing`のときだけ**本人の契約を即時解約する（`subscriptions.cancel`）。`profiles`を`canceled`にし、`trial_ends_at`は残す（残り期間での再開に使う）。trialing以外・契約なしは`subscription_required`、Stripe障害は`provider_error`。
+
 **Server Action `recordCancellationSurveyAction`**（`src/app/actions/billing.ts`・T-M8-277）は解約前のアンケート（`reason`必須・`detail`任意1000文字以内・`proceeded`）を`cancellation_surveys`へ保存する。未知の`reason`・長すぎる`detail`は`validation_error`。**保存に失敗しても画面は解約手続きへ進む**（記録より利用者の操作を優先）。結果は共通の`BaseResult`。
+
+`POST /api/stripe/resume`は、`profiles.trial_ends_at`が未来なら**その終了日のトライアルとして契約を作り直す**（T-M8-278。期限切れなら無料期間なしの有料契約）。
 
 **Server Action `keepSubscriptionAction`**（`src/app/actions/billing.ts`・T-M8-271）は入力を持たず、認証済み本人の`profiles.stripe_subscription_id`の解約予定（`cancel_at`／`cancel_at_period_end`）を消して`profiles.cancel_at_period_end`を`false`にする（`resumed`）。Stripe側に予定が無ければStripeを変更せず表示だけ整える（`nothing_scheduled`）。契約が無い・解約済み（`canceled`）は`subscription_required`（解約済みの再開は`POST /api/stripe/resume`・T-M8-264）。結果は共通の`BaseResult`。
 
@@ -357,6 +361,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.61 | 2026-08-23 | 失敗例の usage_limit_exceeded 文言を契約期間ごとへ（T-M8-258） |
 | v1.62 | 2026-08-23 | keepSubscriptionAction（解約予定のアプリ内取り消し・T-M8-271） |
 | v1.63 | 2026-08-23 | recordCancellationSurveyAction（解約理由のアンケート・T-M8-277） |
+| v1.64 | 2026-08-23 | cancelTrialNowAction（トライアルの即時解約）と、残りトライアルでの再開（T-M8-278） |
 
 ### 下書きの投稿予約（T-M8-157）
 
