@@ -12,11 +12,14 @@ import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 
+import { StartAnalysisButton } from "./start-analysis-button";
+
 /**
  * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94→T-M8-255）。
  *
- * **画面上部の「分析を開始」ボタンで生成する**（2026-08-23 に毎朝8:00の自動実行を廃止し
- * 手動実行へ戻した・運営者の指示。実行はこのパネルではなく `start-analysis-button.tsx`）。
+ * **このパネル右上の「分析を開始」ボタンで生成する**（2026-08-23 に毎朝8:00の自動実行を廃止し
+ * 手動実行へ戻した・運営者の指示。ボタンをページヘッダに置くとフォロワー推移にも掛かる操作に
+ * 見えるため、対象であるレポート欄の中に置く・運営者の指示 2026-08-23）。
  *
  * 画面は上から ①まとめ ②良かった投稿 ③良かった投稿に近づくプロンプト設定 の3段で、
  * **段ごとに番号付きの見出しを置く**（T-M8-114）。以前は総評・投稿リンク・推奨が
@@ -223,6 +226,10 @@ export function SuggestionsPanel({
         ) : latestAt ? (
           <span className="text-xs text-muted-foreground">最終更新 {formatJst(latestAt)}</span>
         ) : null}
+        {/* 操作対象（レポート）の枠内・右上に置く。ページヘッダだとフォロワー推移も対象に見える。 */}
+        <div className="ml-auto">
+          <StartAnalysisButton generating={generating} />
+        </div>
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">

@@ -75,7 +75,9 @@ describe("launchd plists", () => {
     expect((metrics.StartCalendarInterval as { Minute: number }).Minute).toBe(0);
 
     const follower = await plistJson("com.spaceai.follower-snapshot.plist");
-    expect((follower.StartCalendarInterval as { Minute: number }).Minute).toBe(10);
+    // 毎時00分（運営者の指示 2026-08-23。旧10分は分かりにくい。token refreshは行lease
+    // （token_refresh_lock_id）で直列化されるためmetrics-collectorと同時刻でも競合しない）。
+    expect((follower.StartCalendarInterval as { Minute: number }).Minute).toBe(0);
   });
 
   it("never embed the secret in a plist", async (ctx) => {

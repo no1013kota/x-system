@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.51 |
+| バージョン | v1.52 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -103,7 +103,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
-| `follower_snapshot` | 毎時10分 | `10 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
+| `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
 
 **production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
@@ -264,7 +264,7 @@ flowchart TD
 - 1起動あたり50 account・500 tweet_id・外部request最大10並列を上限とし、Function deadline超過分は次回毎時起動へ委ねる。1アカウントのtoken取得失敗（失効）や読取失敗（401/403/429枯渇/5xx）はそのaccount/draft単位で隔離してスキップし、run全体を落とさない（失効はaccountスキップ、一時失敗は`next_metrics_at`据え置きで次窓が再走査）。
 - 30日表示用checkpointはnon-public metricsの取得期限を越えないよう投稿後29日〜30日未満で取得する。期限内の取得に失敗したprivate fieldはnullのまま確定し、public metricsもMVPでは更新終了する。
 - X上で削除済み・取得不能と確定したtweet_idは`unavailable`として以後のcheckpoint対象から外し、他のtweet_idの実績は継続する。
-- フォロワー数の記録の入口は2つで、どちらも`(x_account_id, snapshot_date)`＝JST当日分へのupsert（unique制約で同日は上書き・重複rowを作らない）。(1)**毎時cron `follower_snapshot`**——JST当日分snapshotが無い`status=active`のXアカウントのうち**所有者の契約が有効（trialing/active）なものだけ**を対象に（T-M8-257。解約済み利用者の読取費用$0.010/アカ/日を出さない）、user token別で自アカウントの`followers_count`を読んでupsertする。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。T-M8-255でいったんボタンのみへ移したが、推移グラフ（K-3）は毎日の点が揃って初めて意味を持つためT-M8-257で毎時cronを復活した（高コストだった投稿分析AIは手動のまま）。(2)**投稿分析画面の「分析を開始」ボタン**（`startAnalysisAction`→`snapshotFollowerToday`）——押した時点の最新値で当日分を上書きする（初回連携直後でも次のcronを待たずグラフに点が付く。原価台帳の冪等キーはJST日付単位で同日再押下をdedup。記録の失敗は分析の起票を止めない）。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
+- フォロワー数の記録の入口は2つで、どちらも`(x_account_id, snapshot_date)`＝JST当日分へのupsert（unique制約で同日は上書き・重複rowを作らない）。(1)**毎時cron `follower_snapshot`**（毎時00分。旧10分から2026-08-23に揃えた——metrics_collectorと同時刻でも、tokenのrefreshは行lease（`token_refresh_lock_id`）で直列化されるため競合しない）——JST当日分snapshotが無い`status=active`のXアカウントのうち**所有者の契約が有効（trialing/active）なものだけ**を対象に（T-M8-257。解約済み利用者の読取費用$0.010/アカ/日を出さない）、user token別で自アカウントの`followers_count`を読んでupsertする。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。T-M8-255でいったんボタンのみへ移したが、推移グラフ（K-3）は毎日の点が揃って初めて意味を持つためT-M8-257で毎時cronを復活した（高コストだった投稿分析AIは手動のまま）。(2)**投稿分析画面の「分析を開始」ボタン**（`startAnalysisAction`→`snapshotFollowerToday`）——押した時点の最新値で当日分を上書きする（初回連携直後でも次のcronを待たずグラフに点が付く。原価台帳の冪等キーはJST日付単位で同日再押下をdedup。記録の失敗は分析の起票を止めない）。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
 
 ## 14. 通知
 
@@ -313,6 +313,7 @@ flowchart TD
 | v1.49 | 2026-08-22 | 複数アカウント総点検の修正（T-M8-196）: dispatchのユーザー間公平化・日時予約の永久沈黙と遅延投稿の解消・実行前提をジョブ対象アカウント基準へ・job予算のTOCTOU直列化 |
 | v1.50 | 2026-08-23 | 投稿分析・フォロワー記録を「分析を開始」ボタンの手動実行へ（T-M8-255）: 定時トリガー4本→3本（follower_snapshot廃止）、tickの毎朝起票（enqueueDailySuggestions）を削除、SUGGESTの取得窓に過去7日上限、§6/§12/§13を更新 |
 | v1.51 | 2026-08-23 | フォロワー記録の毎時cron（follower_snapshot）を復活（T-M8-257。定時トリガー3本→4本）。推移グラフは毎日の点が要るため。復活時に「契約が有効な利用者のみ」ゲートを追加。投稿分析はボタンの手動実行のまま |
+| v1.52 | 2026-08-23 | follower_snapshotを毎時10分→毎時00分へ（T-M8-262・運営者の指示。tokenのrefreshは行leaseで直列化されるためmetrics_collectorと同時刻でも競合しない） |
 
 ### 日時予約された下書きの投稿（T-M8-157）
 

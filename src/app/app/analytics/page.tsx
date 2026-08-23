@@ -16,7 +16,6 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { AnalyticsView } from "./analytics-view";
 import { FollowerChart } from "./follower-chart";
-import { StartAnalysisButton } from "./start-analysis-button";
 import { SuggestionsPanel } from "./suggestions-panel";
 import { pageTitleClassName } from "@/components/ui/card";
 
@@ -73,15 +72,11 @@ export default async function AnalyticsPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className={pageTitleClassName}>投稿分析</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作ります（1日1回）。フォロワー数は毎日自動で記録されます。
-          </p>
-        </div>
-        {/* 分析の起点はこのボタンだけ（毎朝の自動実行は T-M8-255 で廃止）。 */}
-        <StartAnalysisButton generating={suggestionsSection.generating} />
+      <header>
+        <h1 className={pageTitleClassName}>投稿分析</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作ります（1日1回）。フォロワー数は毎日自動で記録されます。
+        </p>
       </header>
       {/* 並びは 分析レポート → 投稿ごとの実績 → フォロワー推移（運営者の指示・2026-08-15。
           レポートがこの画面の主目的で、フォロワー推移は補助情報のため最後）。 */}
