@@ -42,6 +42,7 @@ import { ImportantNewsCard } from "./important-news";
 import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
 import { pageTitleClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 /** 直近の実績カードの集計期間（日）。SC-09の期間切替とは独立の固定値。 */
 const RECENT_PERIOD_DAYS = 7;
@@ -56,7 +57,18 @@ export const metadata: Metadata = {
   title: `ホーム | ${APP_NAME}`,
 };
 
-export default async function AppHomePage() {
+/** 登録・メール確認の着地で「できたこと」を言う（原則1・T-M8-268で行き先を /app へ移した）。 */
+const WELCOME_MESSAGES: Record<string, string> = {
+  confirmed: "メールアドレスの確認が完了しました。プランを選ぶと、すべての機能を使えます。",
+  signup: "登録が完了しました。プランを選ぶと、すべての機能を使えます。",
+};
+
+export default async function AppHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ welcome?: string }>;
+}) {
+  const welcome = WELCOME_MESSAGES[(await searchParams).welcome ?? ""] ?? null;
   const user = await getCurrentUser();
   let checklist: SetupChecklistItem[] = [];
   let pendingDrafts: DraftView[] = [];
@@ -152,6 +164,12 @@ export default async function AppHomePage() {
         <h1 className={pageTitleClassName}>ホーム</h1>
         <p className="mt-1 text-body text-ink-2">{greeting}</p>
       </div>
+
+      {welcome ? (
+        <Notice role="status" tone="success">
+          {welcome}
+        </Notice>
+      ) : null}
 
       {/* KPI 4カード。実データに繋ぐ（記録が無いときは0ではなく「記録なし」と出す）。 */}
       {kpis ? (

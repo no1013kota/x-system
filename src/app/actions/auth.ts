@@ -30,7 +30,6 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
-import { canBrowseApp } from "@/lib/auth/subscription-access";
 import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -214,7 +213,7 @@ export async function signUp(
     return { status: "error", message: SIGNUP_ERROR_MESSAGE };
   }
   // redirect は NEXT_REDIRECT を投げるため try/catch の外で行う（握り潰すと無言で止まる）。
-  if (confirmedImmediately) redirect("/plans?signup=1");
+  if (confirmedImmediately) redirect("/app?welcome=signup");
   return { status: "error", message: SIGNUP_ERROR_MESSAGE };
 }
 
@@ -316,8 +315,9 @@ export async function verifySignUpCode(
     return { status: "error", message: CODE_INVALID_MESSAGE, email };
   }
 
-  // 確認できたことを着地側で言う（T-M8-58。無言で料金表に変わると成功したか分からない）。
-  redirect("/plans?confirmed=1");
+  // 確認できたことを着地側で言う（T-M8-58。無言で画面が変わると成功したか分からない）。
+  // 行き先はアプリ本体（T-M8-268。まず中を見てもらい、プランは常設バナーと実行時に案内する）。
+  redirect("/app?welcome=confirmed");
 }
 
 export async function resendSignUpConfirmation(
@@ -497,7 +497,7 @@ export async function signIn(
     const readProfile = () =>
       admin
         .from("profiles")
-        .select("subscription_status")
+        .select("id")
         .eq("id", data.user.id)
         .maybeSingle();
 
@@ -518,9 +518,13 @@ export async function signIn(
       });
     }
 
-    destination = !canBrowseApp(profile.data.subscription_status)
-      ? "/plans"
-      : (safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app");
+    /*
+      **契約状態で行き先を変えない**（T-M8-268・運営者の指示 2026-08-23）。以前は契約が無い／
+      終わっていると必ず `/plans` へ送っていたため、登録しただけの利用者も解約した利用者も
+      **アプリを一度も見られず**、招待キャンペーンへの参加も自分のデータの確認もできなかった。
+      プランの案内は常設バナーが担い、実行しようとした時点で `/plans` へ導く。
+    */
+    destination = safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app";
   } catch (error) {
     // 認証情報の誤りは上の error 分岐で処理済み。ここへ来るのは想定外の失敗だけなので記録する。
     recordUnexpectedError(error, { at: "sign-in" });

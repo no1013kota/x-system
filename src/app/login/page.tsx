@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
 
@@ -43,6 +44,23 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </p>
       ) : null}
       {requestingReset ? <PasswordResetRequestForm /> : <LoginForm next={next} />}
+      {/*
+        **アカウントを持っていない人の行き止まりを作らない**（T-M8-268）。LPの友達招待CTAや
+        `next` 付きのリンクからここへ着く人は、まだ登録していないことがある。登録後も同じ
+        行き先へ戻れるよう `next` を引き継ぐ。
+      */}
+      {!requestingReset ? (
+        <p className="text-center text-body text-ink-2">
+          アカウントをお持ちでない方は
+          <Link
+            className="mx-1 font-medium text-info-fg hover:underline"
+            href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
+          >
+            新規登録
+          </Link>
+          へ
+        </p>
+      ) : null}
     </AuthPageShell>
   );
 }

@@ -5,9 +5,10 @@ export type SubscriptionStatus =
   (typeof DB_ENUMS.subscription_status)[number];
 
 export interface SubscriptionAccess {
+  /** 実行できないときに案内する場所。 */
   actionPath: "/app/settings?tab=billing" | "/plans" | null;
+  /** 生成・投稿・自動実行を許すか。**画面の閲覧可否はここでは決めない**（T-M8-268）。 */
   canExecute: boolean;
-  viewScope: "app" | "settings_plans";
 }
 
 export const SUBSCRIPTION_ACCESS: Record<
@@ -17,44 +18,34 @@ export const SUBSCRIPTION_ACCESS: Record<
   incomplete: {
     actionPath: "/plans",
     canExecute: false,
-    viewScope: "settings_plans",
   },
   incomplete_expired: {
     actionPath: "/plans",
     canExecute: false,
-    viewScope: "settings_plans",
   },
   trialing: {
     actionPath: "/app/settings?tab=billing",
     canExecute: true,
-    viewScope: "app",
   },
   active: {
     actionPath: null,
     canExecute: true,
-    viewScope: "app",
   },
   past_due: {
     actionPath: "/app/settings?tab=billing",
     canExecute: false,
-    viewScope: "app",
   },
   paused: {
     actionPath: "/app/settings?tab=billing",
     canExecute: false,
-    viewScope: "app",
   },
   canceled: {
     actionPath: "/plans",
     canExecute: false,
-    // 解約後は機能を見せない（運営者の指示 2026-08-23・T-M8-266。一般的なSaaSの解約後UXへ）。
-    // データは削除しない——viewScope が settings_plans でも保持され、再開すればそのまま見える。
-    viewScope: "settings_plans",
   },
   unpaid: {
     actionPath: "/app/settings?tab=billing",
     canExecute: false,
-    viewScope: "app",
   },
 };
 
@@ -116,11 +107,6 @@ export function isSubscriptionPeriodStale(
   const endsAt = Date.parse(raw);
   if (Number.isNaN(endsAt)) return false;
   return now.getTime() > endsAt + SUBSCRIPTION_STALE_GRACE_MS;
-}
-
-/** True when the status grants access to the app body (viewScope === "app"). */
-export function canBrowseApp(status: string): boolean {
-  return subscriptionAccessFor(status)?.viewScope === "app";
 }
 
 /** Shared execution gate for generation, posting, and automation mutations. */
@@ -211,17 +197,19 @@ export function subscriptionBannerFor(
   if (status === "canceled") {
     return {
       action: "checkout",
-      // 解約後は機能画面を開けない（T-M8-266）。データが消えていない事実と再開への道だけ言う。
+      // 閲覧はできる（T-M8-268）。止まっているのは生成・投稿・自動実行だけだと正確に言う。
       description:
-        "投稿・下書きなどのデータは保持されています。プランを再開すると引き続きご利用いただけます。",
+        "既存データの閲覧と友達招待はご利用いただけます。生成・投稿・自動実行を再開するにはプランを選択してください。",
       title: "ご契約は終了しています",
       tone: "warning",
     };
   }
+  // 未契約（incomplete 等）。**画面は見られる**ので、できること／できないことを正直に言う。
   return {
     action: "checkout",
-    description: "プランを選択してお申し込みを完了してください。",
-    title: "ご契約の開始が必要です",
+    description:
+      "画面の確認と友達招待はご利用いただけます。投稿の生成・予約にはプランの選択が必要です。",
+    title: "プランが未選択です",
     tone: "warning",
   };
 }

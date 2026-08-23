@@ -20,6 +20,7 @@ import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
 import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
@@ -73,6 +74,12 @@ const NAV_LINKS: [string, string][] = [
   ["#how", "しくみ"],
   ["#pricing", "料金"],
   // ページ遷移のリンク（T-M8-173）。アンカーと同じ場所に置く（タブが2系統あると迷う）。
+  //
+  // **友達招待は契約前でも参加できる**（T-M8-268・運営者の指示 2026-08-23）。行き先は
+  // `/app/invite` 固定でよい——未ログインなら route guard が `/login?next=/app/invite` へ送り、
+  // ログイン後そのまま招待画面へ着く（ログイン画面から新規登録へも行ける）。
+  // 「未ログインなら登録画面」を条件分岐で書き分けると、判定が2か所（LPとguard）に増える。
+  ["/app/invite", "友達招待"],
   ["/prompt-templates", "プロンプト集"],
   ["/blog", "ブログ"],
 ];
@@ -491,6 +498,40 @@ export default function Home() {
 
 
         {/* 07 よくある質問 */}
+        {/*
+          友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。**契約前でも参加できる**ので
+          料金の直後に置く（「まだ使わないが紹介はしたい」人の受け皿）。行き先は `/app/invite` 固定——
+          未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま招待画面に着く。
+        */}
+        <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          <div className="overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
+            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+              <div className="max-w-[560px]">
+                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                  <Icon aria-hidden="true" name="star_shine" size={13} />
+                  友達招待キャンペーン
+                </p>
+                <h2 className={`${H2} mt-3`}>
+                  紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
+                </h2>
+                <p className="mt-2.5 text-body leading-6 text-ink-2">
+                  ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
+                  最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
+                </p>
+              </div>
+              <Link
+                className={cn(
+                  buttonVariants({ variant: "brand" }),
+                  "h-11 shrink-0 px-6 text-body font-bold",
+                )}
+                href="/app/invite"
+              >
+                招待リンクを受け取る
+              </Link>
+            </div>
+          </div>
+        </section>
+
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           {/* 06 利用者の声を隠しているあいだは番号を詰める（復活時は "07" へ戻す・T-M8-231）。 */}
           <SectionMark label="よくある質問" no="06" />

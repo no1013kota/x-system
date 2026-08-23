@@ -98,16 +98,21 @@ describe("updateSupabaseSession", () => {
     ).toBe("anonymous-v1");
   });
 
-  // canceled は T-M8-266 で「設定・プランのみ」へ（解約後は機能画面を見せない）。
-  it.each(["active", "trialing", "past_due", "unpaid", "paused"])(
-    "allows an authenticated %s profile to browse app routes",
-    async (subscriptionStatus) => {
-      const maybeSingle = vi.fn().mockResolvedValue({
-        data: { plan: "standard", subscription_status: subscriptionStatus },
-        error: null,
-      });
-      const eq = vi.fn().mockReturnValue({ maybeSingle });
-      const select = vi.fn().mockReturnValue({ eq });
+  /**
+   * **契約状態は proxy で見ない**（T-M8-268）。画面を弾かなくなったので、`/app` 配下の
+   * 全リクエストで走っていた profiles の SELECT も消した（遷移のたびの往復を1本削減）。
+   */
+  it.each([
+    "active",
+    "trialing",
+    "past_due",
+    "unpaid",
+    "paused",
+    "canceled",
+    "incomplete",
+    "incomplete_expired",
+  ])("allows an authenticated %s profile to browse app routes", async () => {
+      const from = vi.fn();
       mocks.createServerClient.mockReturnValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({
@@ -115,7 +120,7 @@ describe("updateSupabaseSession", () => {
             error: null,
           }),
         },
-        from: vi.fn().mockReturnValue({ select }),
+        from,
       });
 
       const response = await updateSupabaseSession(
@@ -132,18 +137,12 @@ describe("updateSupabaseSession", () => {
       expect(
         response.headers.get("x-middleware-request-x-exos-verified-user-email"),
       ).toBe("user%40example.com");
-      expect(select).toHaveBeenCalledWith("plan, subscription_status");
-      expect(eq).toHaveBeenCalledWith("id", "user-1");
+      // profiles を読まない（画面遷移のたびのDB往復をやめた・T-M8-268）。
+      expect(from).not.toHaveBeenCalled();
     },
   );
 
-  it("redirects an incomplete profile to plans but allows billing/support tabs", async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({
-      data: { plan: null, subscription_status: "incomplete" },
-      error: null,
-    });
-    const eq = vi.fn().mockReturnValue({ maybeSingle });
-    const select = vi.fn().mockReturnValue({ eq });
+  it("プラン未選択でも /app 配下を閲覧できる（T-M8-268）", async () => {
     mocks.createServerClient.mockReturnValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -151,67 +150,15 @@ describe("updateSupabaseSession", () => {
           error: null,
         }),
       },
-      from: vi.fn().mockReturnValue({ select }),
+      from: vi.fn(),
     });
 
-    const blocked = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/posts"),
-    );
-    const billing = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/settings?tab=billing"),
-    );
-    const support = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/settings?tab=support"),
-    );
-
-    expect(blocked.headers.get("location")).toBe(
-      "https://exos-ai.example/plans",
-    );
-    expect(billing.headers.get("location")).toBeNull();
-    expect(support.headers.get("location")).toBeNull();
+    for (const path of ["/app/posts", "/app/invite", "/app/settings?tab=billing"]) {
+      const response = await updateSupabaseSession(
+        new NextRequest(`https://exos-ai.example${path}`),
+      );
+      expect(response.headers.get("location")).toBeNull();
+    }
   });
 
-  /**
-   * profile読み取りが失敗したときの扱い（T-M8-159）。
-   *
-   * **向きは変えない**（fail closed のまま `/plans` へ送る。要件01 §5の意図）。
-   * 変えるのは「黙って起きる」ことだけ——記録が無いと、DB障害を運営者は
-   * 「解約が急増した」としか読めなかった（原則1）。
-   *
-   * **proxyは全リクエストを通るのでthrowしてはいけない。** 投げると `/app` 配下だけでなく
-   * ログイン画面まで落ちる。ここはその2点を同時に固定する。
-   */
-  it("profile読み取りの失敗はthrowせず、fail closedのまま記録する", async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({
-      data: null,
-      error: { code: "57014", message: "canceling statement due to timeout" },
-    });
-    const eq = vi.fn().mockReturnValue({ maybeSingle });
-    const select = vi.fn().mockReturnValue({ eq });
-    mocks.createServerClient.mockReturnValue({
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "user-1" } },
-          error: null,
-        }),
-      },
-      from: vi.fn().mockReturnValue({ select }),
-    });
-
-    const response = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/posts"),
-    );
-
-    // 落ちずに応答を返し、向きは従来どおり /plans。
-    expect(response.headers.get("location")).toBe(
-      "https://exos-ai.example/plans",
-    );
-    // 黙って起きない。
-    expect(mocks.captureServerException).toHaveBeenCalledTimes(1);
-    const [error, context] = mocks.captureServerException.mock.calls[0];
-    expect((error as Error).message).toContain("route-guard profile");
-    expect(context).toMatchObject({
-      reason: "route_guard_profile_read_failed",
-    });
-  });
 });

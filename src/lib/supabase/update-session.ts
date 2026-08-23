@@ -7,8 +7,6 @@ import { env } from "@/lib/env";
 import { routeGuardDestination } from "@/lib/auth/route-guard";
 import { writeVerifiedUserHeaders } from "@/lib/auth/request-user";
 import { getAppEncryptionKey } from "@/lib/crypto";
-import { AppError } from "@/lib/observability/errors";
-import { captureServerException } from "@/lib/observability/sentry";
 import {
   applySecurityResponseHeaders,
   buildContentSecurityPolicy,
@@ -19,60 +17,6 @@ import {
 import { authCookieOptions, withAuthCookiePolicy } from "./cookie-options";
 
 const SESSION_RESPONSE_HEADERS = ["cache-control", "expires", "pragma"];
-
-type RouteGuardProfile = { plan: string | null; subscription_status: string };
-
-/**
- * profile読み取りの連続失敗を記録するときの間隔（T-M8-159）。
- *
- * proxyは`/app`配下の**全リクエスト**で走るため、素直に毎回記録するとDB障害中に
- * 記録先が溢れて他の異常が埋まる。1分に1回へ落とす（失敗が続いていることは分かる）。
- */
-const PROFILE_READ_FAILURE_LOG_INTERVAL_MS = 60_000;
-let lastProfileReadFailureLoggedAt = 0;
-
-/**
- * route-guard 判定に必要な plan/subscription_status を読む。判定は /app 配下でのみ
- * profile を要するため、未ログインや /app 以外のパスでは DB を叩かず null を返す。
- */
-async function loadRouteGuardProfile(
-  supabase: ReturnType<typeof createServerClient>,
-  request: NextRequest,
-  userId: string | null,
-): Promise<RouteGuardProfile | null> {
-  if (!userId) return null;
-  const path = request.nextUrl.pathname;
-  if (path !== "/app" && !path.startsWith("/app/")) return null;
-  const result = await supabase
-    .from("profiles")
-    .select("plan, subscription_status")
-    .eq("id", userId)
-    .maybeSingle();
-  if (result.error) {
-    /*
-      **失敗しても null を返す（fail closed のまま）。** `routeGuardDestination` は
-      `!profile?.plan` で `/plans` へ送るため、DBが読めない間は誰も `/app` へ入れない。
-      これは要件01の意図した向きなので変えない。**変えるのは「黙って起きる」ことだけ**——
-      記録が無いと、運営者には「解約が急に増えた」ようにしか見えなかった（原則1）。
-
-      ここで throw してはいけない。proxyは全リクエストを通るので、投げると
-      `/app` 配下だけでなくログイン画面まで含めて全部が落ちる。
-    */
-    const now = Date.now();
-    if (now - lastProfileReadFailureLoggedAt > PROFILE_READ_FAILURE_LOG_INTERVAL_MS) {
-      lastProfileReadFailureLoggedAt = now;
-      captureServerException(
-        new AppError("internal_error", {
-          cause: result.error,
-          message: "Failed to read the route-guard profile; treating as no plan.",
-        }),
-        { path, reason: "route_guard_profile_read_failed" },
-      );
-    }
-    return null;
-  }
-  return result.data;
-}
 
 function redirectWithSessionState(
   request: NextRequest,
@@ -160,14 +104,13 @@ export async function updateSupabaseSession(request: NextRequest) {
     );
   });
   sessionHeaders.forEach((value, name) => response.headers.set(name, value));
-  const profile = await loadRouteGuardProfile(
-    supabase,
-    request,
-    data.user?.id ?? null,
-  );
-
+  /*
+    **契約状態のためのDB読み取りをやめた**（T-M8-268）。以前は `/app` 配下の**全リクエスト**で
+    profiles を1回SELECTしており、画面遷移のたびに往復が増えていた。判定が認証だけになった
+    （契約で画面を弾かない）ので、proxyはDBに触れない。
+  */
   const destination = routeGuardDestination({
-    profile,
+    profile: null,
     url: request.nextUrl,
     userId: data.user?.id ?? null,
   });

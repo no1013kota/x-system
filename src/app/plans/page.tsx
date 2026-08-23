@@ -120,7 +120,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           */}
           {canceledPlanLabel ? (
             <Notice className="mx-auto max-w-3xl" role="status" tone="warn">
-              ご契約は終了しています。投稿・下書きなどのデータは保持されており、再開するとそのまま使えます。
+              ご契約は終了しています。データは保持されており、再開するとそのまま使えます。
               {canceledPlanLabel}を同じ条件で再開する場合は
               <Link className="mx-1 underline" href="/app/settings?tab=billing">
                 設定の課金・プラン（プランを再開）

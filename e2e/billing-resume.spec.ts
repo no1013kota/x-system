@@ -24,8 +24,7 @@ test("解約済み＋Stripe顧客ありの課金タブは「プランを再開�
     [account.userId],
   );
 
-  // 解約後は機能画面を見せないため、ログイン直後は /plans に着地する（T-M8-266）。
-  await signIn(page, account, { waitFor: /\/plans(\/|$|\?)/ });
+  await signIn(page, account);
   await page.goto("/app/settings?tab=billing");
 
   await expect(page.getByText("解約済み")).toBeVisible();

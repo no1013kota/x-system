@@ -55,8 +55,9 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
     [account.userId],
   );
 
-  // 未契約はアプリ本体へ入れず、プラン選択へ送られる（要件03 §2）
-  await signIn(page, account, { waitFor: /\/plans/ });
+  // 未契約でもアプリ本体は見られる（T-M8-268）。プラン選択は自分で開く。
+  await signIn(page, account);
+  await page.goto("/plans");
 
   // 3プランがカードとして並ぶ（T-M8-169でカード型へ。名前はPRDと同じ日本語表記・T-M8-21）。
   for (const name of ["スタンダードプラン", "プレミアムプラン", "エキスパートプラン"]) {
@@ -162,7 +163,7 @@ test("契約中の利用者はプラン選択に留まらず、契約状態が�
   }
 });
 
-test("契約が切れた利用者は機能画面を見られず、/plansと課金タブだけ開ける（T-M8-266）", async ({
+test("契約が切れても通常画面と友達招待は使えて、操作でプラン選択へ案内される（T-M8-268）", async ({
   accounts,
   page,
 }) => {
@@ -174,21 +175,26 @@ test("契約が切れた利用者は機能画面を見られず、/plansと課�
     [account.userId],
   );
 
-  // 解約後は機能を見せない（運営者の指示 2026-08-23。旧仕様の「閲覧可・実行不可」から変更）。
-  // ログイン直後から /plans へ着地し、データ保持と再開の道（設定＞課金）が案内される。
-  await signIn(page, account, { waitFor: /\/plans(\/|$|\?)/ });
-  await expect(page.getByText("ご契約は終了しています。投稿・下書きなどのデータは保持されて", { exact: false })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "設定の課金・プラン（プランを再開）" }),
-  ).toHaveAttribute("href", "/app/settings?tab=billing");
+  // ログイン直後はアプリ本体（/plansへ飛ばさない・運営者の指示 2026-08-23）。
+  await signIn(page, account);
+  await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
-  // 機能画面はすべて /plans へ送り返される（ホーム・投稿作成・投稿分析）。
-  for (const path of ["/app", "/app/posts?tab=create", "/app/analytics"]) {
+  // 契約のお知らせが出て、できること（閲覧・招待）とプラン選択への導線が読める。
+  const banner = page.getByRole("complementary", { name: "ご契約のお知らせ" });
+  await expect(banner).toBeVisible();
+  await expect(banner.getByRole("link", { name: "プランを選択" })).toBeVisible();
+
+  // 機能画面も設定も開ける（データの確認・再開の判断ができる）。
+  for (const path of ["/app/posts?tab=drafts", "/app/analytics", "/app/settings?tab=general"]) {
     await page.goto(path);
-    await expect(page).toHaveURL(/\/plans(\/|$|\?)/);
+    await expect(page).toHaveURL(new RegExp(path.split("?")[0].replace(/\//g, "\\/")));
   }
 
-  // 設定の課金タブだけは開け、「プランを再開」に到達できる。
+  // 友達招待は契約なしでも参加できる（招待リンクが出る）。
+  await page.goto("/app/invite");
+  await expect(page.getByRole("heading", { name: "友達招待" })).toBeVisible();
+
+  // 課金タブからは再開できる。
   await page.goto("/app/settings?tab=billing");
   await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
   await expect(page.getByRole("button", { name: "プランを再開" })).toBeVisible();

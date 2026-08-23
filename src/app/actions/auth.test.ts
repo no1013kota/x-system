@@ -380,7 +380,7 @@ describe("auth actions", () => {
         auth: { signInWithPassword, signOut: signOutSession },
       });
       mocks.profileMaybeSingle.mockResolvedValue({
-        data: { subscription_status: subscriptionStatus },
+        data: { id: "user-1", subscription_status: subscriptionStatus },
         error: null,
       });
       return { signInWithPassword, signOutSession };
@@ -404,21 +404,19 @@ describe("auth actions", () => {
         options: { captchaToken: "captcha-value" },
         password: "safe-password-123",
       });
-      expect(mocks.profileSelect).toHaveBeenCalledWith("subscription_status");
+      // profile は「行が在るか（＝修復が要るか）」だけのために読む（T-M8-268で契約は見ない）。
+      expect(mocks.profileSelect).toHaveBeenCalledWith("id");
       expect(mocks.profileUpsert).not.toHaveBeenCalled();
       expect(mocks.profileMaybeSingle).toHaveBeenCalledOnce();
       expect(mocks.profileSelectEq).toHaveBeenCalledWith("id", "user-1");
       expect(mocks.redirect).toHaveBeenCalledWith("/app/posts?tab=drafts");
     });
 
-    it("repairs a missing profile and reads the subscription again", async () => {
+    it("repairs a missing profile row and still lands in the app", async () => {
       mockSignInSuccess();
       mocks.profileMaybeSingle
         .mockResolvedValueOnce({ data: null, error: null })
-        .mockResolvedValueOnce({
-          data: { subscription_status: "incomplete" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { id: "user-1" }, error: null });
 
       await expect(
         signIn(INITIAL_AUTH_FORM_STATE, validSignInForm()),
@@ -426,22 +424,27 @@ describe("auth actions", () => {
 
       expect(mocks.profileUpsert).toHaveBeenCalledOnce();
       expect(mocks.profileMaybeSingle).toHaveBeenCalledTimes(2);
-      expect(mocks.redirect).toHaveBeenCalledWith("/plans");
+      expect(mocks.redirect).toHaveBeenCalledWith("/app");
     });
 
-    it.each(["incomplete", "incomplete_expired"])(
-      "redirects %s subscriptions to plans even when next is present",
+    /**
+     * **契約状態でログイン後の行き先を変えない**（T-M8-268・運営者の指示 2026-08-23）。
+     * 以前は未契約・解約済みを必ず `/plans` へ送っており、アプリを一度も見られなかった
+     * （招待キャンペーンへの参加も、自分のデータの確認もできない）。
+     */
+    it.each(["incomplete", "incomplete_expired", "canceled", "past_due"])(
+      "%s でもログイン後はアプリ本体（next 指定も尊重する）",
       async (subscriptionStatus) => {
         mockSignInSuccess(subscriptionStatus);
 
         await expect(
           signIn(
             INITIAL_AUTH_FORM_STATE,
-            validSignInForm({ next: "/app/posts" }),
+            validSignInForm({ next: "/app/invite" }),
           ),
         ).rejects.toThrow("NEXT_REDIRECT");
 
-        expect(mocks.redirect).toHaveBeenCalledWith("/plans");
+        expect(mocks.redirect).toHaveBeenCalledWith("/app/invite");
       },
     );
 

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.43 |
+| バージョン | v1.44 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -142,24 +142,28 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 
 ## 5. 契約状態とアクセス
 
-| status | 閲覧 | 生成・投稿・自動実行 | 主導線 |
-|---|---|---|---|
-| `trialing` | 可 | 可 | trial終了日表示 |
-| `active` | 可 | 可 | 通常 |
-| `past_due` | 可 | 停止 | 支払い更新 |
-| `unpaid` | 可 | 停止 | 支払い更新 |
-| `paused` | 可 | 停止 | 支払い方法登録・再開 |
-| `canceled` | **設定（課金タブ）・プランのみ**（T-M8-266・運営者の指示 2026-08-23。解約後は機能画面を見せない） | 停止 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
-| `incomplete` | 設定・プランのみ | 停止 | Checkout完了 |
-| `incomplete_expired` | 設定・プランのみ | 停止 | 新規Checkout |
+**閲覧はどの status でも止めない**（T-M8-268・運営者の指示 2026-08-23）。登録しただけの利用者も
+解約した利用者も、まず通常の画面を見て、**実行しようとしたときに**プラン選択へ案内する。画面を
+隠すと、友達招待（契約不要）への参加も、再開の判断に必要な自分のデータの確認もできない。
 
-`past_due`等（支払いが止まっているだけの状態）では、ユーザーは既存下書き・履歴・分析・設定を閲覧できる。**`canceled`は閲覧もできない**（T-M8-266で`incomplete`系と同じ「設定・プランのみ」へ変更——一般的なSaaSの解約後UX。/plansに「データは保持されており、再開するとそのまま使える」旨と設定＞課金の「プランを再開」への導線を出す）。どのstatusでも課金停止・解約を理由にデータを自動削除しない。
+| status | 閲覧 | 生成・投稿・自動実行 | 友達招待 | 主導線 |
+|---|---|---|---|---|
+| `trialing` | 可 | 可 | 可 | trial終了日表示 |
+| `active` | 可 | 可 | 可 | 通常 |
+| `past_due` | 可 | 停止 | 可 | 支払い更新 |
+| `unpaid` | 可 | 停止 | 可 | 支払い更新 |
+| `paused` | 可 | 停止 | 可 | 支払い方法登録・再開 |
+| `canceled` | 可 | 停止 | 可 | **課金タブの「プランを再開」**（保存済みカードで即時再開・T-M8-264）または新規Checkout（/plans） |
+| `incomplete` | 可 | 停止 | 可 | Checkout完了 |
+| `incomplete_expired` | 可 | 停止 | 可 | 新規Checkout |
 
-route guardでは`incomplete`／`incomplete_expired`／`canceled`（およびprofile取得不能）を`/plans`へ送り、例外として`/app/settings?tab=billing`と`/app/settings?tab=support`だけを許可する。`trialing`／`active`／`past_due`／`unpaid`／`paused`は`/app`配下の閲覧を許可し、生成・投稿系の停止はServer Action側で行う。
+どのstatusでもユーザーは既存下書き・履歴・分析・設定を閲覧でき、課金停止・解約を理由にデータを自動削除しない。**友達招待（要件06 SC-12）は契約を要さない**——契約前でも解約後でも参加でき、LPの招待セクションからも入れる（未ログインは`/login?next=/app/invite`経由でログイン後そのまま招待画面へ着く）。
+
+**route guardは認証だけを見る**（T-M8-268）。未ログインを`/login?next=…`へ送るだけで、契約状態でのredirectは行わない（proxyのprofile読み取りも削除・要件01 §5）。生成・投稿系の停止はServer Action側と job lease（要件04 §4.1）で行う。ログイン後・登録後の着地も`/app`（または`next`）で統一し、契約状態で行き先を変えない。
 
 8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
 
-App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`は新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
+App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する。Customer ID欠損時はCheckoutへfail closedする。`canceled`・未契約は「閲覧と友達招待は使える／生成・投稿にはプランが要る」と正確に伝えて新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
 
 ## 6. プラン変更
 
@@ -366,3 +370,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.41 | 2026-08-23 | 値上げ時の日割りは「次回請求へ合算」であることを明記（即時請求ではない・T-M8-256） |
 | v1.42 | 2026-08-23 | 解約済み契約の「プランを再開」（§6.1・T-M8-264）: 保存済みカードで即時再開する`POST /api/stripe/resume`を追加。§5の主導線を更新 |
 | v1.43 | 2026-08-23 | `canceled`の閲覧範囲を「設定・プランのみ」へ（T-M8-266・運営者の指示。解約後は機能画面を見せない一般的なSaaSのUXへ。データは保持し/plansでその旨を案内） |
+| v1.44 | 2026-08-23 | 閲覧はどのstatusでも止めない方針へ（T-M8-268）。route guardは認証のみ・着地は/app統一・友達招待は契約不要であることを明記 |

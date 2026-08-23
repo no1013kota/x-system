@@ -2,41 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import { AppError } from "@/lib/observability/errors";
 
-import { SUBSCRIPTION_ACCESS, canBrowseApp, isSubscriptionPeriodStale, requireExecutableSubscription, subscriptionBannerFor } from "./subscription-access";
+import { SUBSCRIPTION_ACCESS, isSubscriptionPeriodStale, requireExecutableSubscription, subscriptionBannerFor } from "./subscription-access";
 
 describe("subscription access matrix", () => {
+  // 閲覧可否はここでは決めない（T-M8-268。画面は契約状態で弾かず、実行だけを止める）。
   it.each([
-    ["incomplete", "settings_plans", false, "/plans"],
-    ["incomplete_expired", "settings_plans", false, "/plans"],
-    ["trialing", "app", true, "/app/settings?tab=billing"],
-    ["active", "app", true, null],
-    ["past_due", "app", false, "/app/settings?tab=billing"],
-    ["paused", "app", false, "/app/settings?tab=billing"],
-    ["canceled", "settings_plans", false, "/plans"],
-    ["unpaid", "app", false, "/app/settings?tab=billing"],
-  ] as const)(
-    "%s maps browsing, execution, and primary action",
-    (status, viewScope, canExecute, actionPath) => {
-      expect(SUBSCRIPTION_ACCESS[status]).toEqual({
-        actionPath,
-        canExecute,
-        viewScope,
-      });
-    },
-  );
-
-  it.each([
-    ["trialing", true],
-    ["active", true],
-    ["past_due", true],
-    // 解約後は機能画面を見せない（T-M8-266）。
-    ["canceled", false],
-    ["incomplete", false],
-    ["incomplete_expired", false],
-    ["unknown-status", false],
-  ] as const)("canBrowseApp(%s) = %s", (status, expected) => {
-    expect(canBrowseApp(status)).toBe(expected);
+    ["incomplete", false, "/plans"],
+    ["incomplete_expired", false, "/plans"],
+    ["trialing", true, "/app/settings?tab=billing"],
+    ["active", true, null],
+    ["past_due", false, "/app/settings?tab=billing"],
+    ["paused", false, "/app/settings?tab=billing"],
+    ["canceled", false, "/plans"],
+    ["unpaid", false, "/app/settings?tab=billing"],
+  ] as const)("%s maps execution and primary action", (status, canExecute, actionPath) => {
+    expect(SUBSCRIPTION_ACCESS[status]).toEqual({ actionPath, canExecute });
   });
+
 
   it.each(["trialing", "active"])("allows execution for %s", (status) => {
     expect(() => requireExecutableSubscription(status)).not.toThrow();

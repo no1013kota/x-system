@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.27 |
+| バージョン | v1.28 |
 | 更新日 | 2026-08-23 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
@@ -167,9 +167,9 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | 通常プランでmd/プロンプトタブへアクセス | タブ内容はロック表示。直接編集APIも403 |
 | Xアカウント未選択・active失効 | `created_at`最古の`status=active`アカウントを選択し`profiles.active_x_account_id`へ永続化する。activeが指すアカウントが`expired`/`disabled`になった場合も同じ規則で再選択し、候補がなければ`/app`で初期設定ガイドを表示 |
 
-proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人のRLS経由で`profiles.plan, subscription_status`を取得する。検証結果（user id／emailまたは未認証）は、外部から来た同名値を削除・上書きし、`APP_ENCRYPTION_KEY`によるHMAC-SHA256署名を付けたうえで`NextResponse.next({ request: { headers } })`のupstream request headerとして同一リクエストのServer Components／Server Actions／Route Handlersへ渡す。後段の共通認証helperは署名一致時だけこれを再利用し、不在・改ざん・proxyを通らない内部呼び出しは`getUser()`へフォールバックする。upstream headerはブラウザ応答へ出さず、cookie内の未検証userを認可に使わない。これにより画面表示ごとの重複したAuth HTTP往復を作らない。
+proxyは`getUser()`でsessionを検証する。**契約状態のためのDB読み取りは行わない**（T-M8-268。画面を契約で弾かなくなったため、`/app`配下の全リクエストで走っていた`profiles`のSELECTを削除した＝遷移のたびの往復を1本削減）。検証結果（user id／emailまたは未認証）は、外部から来た同名値を削除・上書きし、`APP_ENCRYPTION_KEY`によるHMAC-SHA256署名を付けたうえで`NextResponse.next({ request: { headers } })`のupstream request headerとして同一リクエストのServer Components／Server Actions／Route Handlersへ渡す。後段の共通認証helperは署名一致時だけこれを再利用し、不在・改ざん・proxyを通らない内部呼び出しは`getUser()`へフォールバックする。upstream headerはブラウザ応答へ出さず、cookie内の未検証userを認可に使わない。これにより画面表示ごとの重複したAuth HTTP往復を作らない。
 
-session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。profile取得不能時は未契約としてfail closedし`/plans`へ送る。**このときproxyは例外を投げず、取得失敗を記録する**（T-M8-159）。向きを変えないのは要件どおりだが、記録が無いとDB障害が「解約の急増」としか読めない。proxyは`/app`配下の全リクエストを通るため、記録は60秒に1回へ間引く（失敗が続いていることは分かる）。**ここでthrowするとログイン画面まで落ちる。**`past_due`／`unpaid`／`paused`／`canceled`はrouteで遮断せず、後続のmutation認可と常設バナーで制御する。
+session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。**proxyのredirectは未認証のときだけ**（`/login?next=…`）で、契約状態では画面を遮断しない（T-M8-268）——実行の抑止はmutation認可（要件03 §5）とjob lease（要件04 §4.1）が持ち、案内は常設バナーが担う。profile取得不能時のfail closed（T-M8-159）は、読み取り自体が無くなったため不要になった。**proxyでthrowするとログイン画面まで落ちる**点は変わらない。
 
 ## 6. 実行環境の前提
 
@@ -242,3 +242,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.25 | 2026-08-21 | §4 に公開コンテンツroute（/prompt-templates・/blog・/blog/[slug]）を追記（T-M8-184） |
 | v1.26 | 2026-08-22 | §3.6 メール: 利用者向け通知メールの廃止（T-M8-222）。EMAIL_REPLY_TO削除・送信は運営者向けopsメールのみ |
 | v1.27 | 2026-08-23 | base_md履歴の保持期間を要件02（最新5版）へ揃えた（T-M8-253） |
+| v1.28 | 2026-08-23 | proxyから契約状態のDB読み取りを削除（T-M8-268。画面は契約で弾かず、実行側で止める。全ページ遷移のDB往復を1本削減） |
