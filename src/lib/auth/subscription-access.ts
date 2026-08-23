@@ -154,6 +154,11 @@ export interface SubscriptionBannerProfile {
 export interface SubscriptionBannerModel {
   /** `billing` は設定の課金タブへ（予約の取り消しはそこで行う・T-M8-260）。 */
   action: "checkout" | "portal" | "billing" | null;
+  /**
+   * 解約が予約済みか。`portal` のボタンは「解約する」ではなく「解約予定を取り消す」を出す
+   * （「◯日に解約されます」の横に「解約する」が並んでいた・T-M8-55 のE2Eで検出）。
+   */
+  cancelAtPeriodEnd?: boolean;
   description: string;
   title: string;
   tone: "info" | "warning";
@@ -188,6 +193,7 @@ export function subscriptionBannerFor(
     const endsAt = status === "trialing" ? profile.trialEndsAt : profile.currentPeriodEnd;
     return {
       action: profile.stripeCustomerId ? "portal" : null,
+      cancelAtPeriodEnd: true,
       description: "それまでは今までどおりご利用いただけます。続ける場合は解約の取り消しができます。",
       title: `${planEndDate(endsAt)}に解約されます`,
       tone: "info",

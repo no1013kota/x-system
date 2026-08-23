@@ -137,7 +137,7 @@ describe("解約の予約を画面へ出す（T-M8-253）", () => {
       cancelAtPeriodEnd: true,
       currentPeriodEnd: "2026-09-30T00:00:00Z",
     });
-    expect(banner).toMatchObject({ tone: "info", action: "portal" });
+    expect(banner).toMatchObject({ tone: "info", action: "portal", cancelAtPeriodEnd: true });
     expect(banner?.title).toContain("2026年9月30日");
     expect(banner?.title).toContain("解約");
   });

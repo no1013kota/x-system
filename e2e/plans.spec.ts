@@ -247,6 +247,8 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await page.reload();
   await expect(page.getByText("2026年8月12日に解約されます")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toHaveCount(0);
+  // 課金カードとヘッダー直下のバナー（T-M8-253）の両方が「解約する」を出さない。
+  // バナー側は以前 `cancelAtPeriodEnd` を受けておらず「◯日に解約されます」の横に「解約する」が並んでいた。
   await expect(page.getByRole("button", { name: "解約する" })).toHaveCount(0);
   // 契約バナー（App Shell）とカードの両方に出る（バナー側の出し分け漏れはT-M8-266で修正）。
   await expect(page.getByRole("button", { name: "解約予定を取り消す" })).toHaveCount(2);
