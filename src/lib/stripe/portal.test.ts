@@ -252,3 +252,62 @@ describe("intentつきの subscription 解決", () => {
     expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 一度クーポンを受け取った人は、Stripeが同じクーポンの提示を断る（顧客ごとに1回だけ。
+ * 割引が切れた後も同じ・2026-08-23 実測）。**そこで諦めると解約画面が開けなくなる**ので、
+ * 提示なしで開き直す（T-M8-280）。
+ */
+describe("解約フロー: クーポンを提示できないときは提示なしで開き直す（T-M8-280）", () => {
+  /** 解約intentの本文つきリクエスト（この節だけ本文が要る）。 */
+  function cancelRequest(): Request {
+    return new Request(`${APP_BASE_URL}/api/stripe/portal`, {
+      method: "POST",
+      headers: { origin: APP_BASE_URL, "content-type": "application/json" },
+      body: JSON.stringify({ intent: "cancel" }),
+    });
+  }
+  function depsWith(create: ReturnType<typeof vi.fn>): PortalRouteDependencies {
+    return dependencies({
+      retentionCouponId: "c_1",
+      getProfile: vi.fn(async () => ({
+        stripe_customer_id: "cus_existing",
+        stripe_subscription_id: "sub_1",
+      })),
+      stripe: {
+        billingPortal: { sessions: { create } },
+        subscriptions: { list: vi.fn(async () => ({ data: [] })) },
+      },
+    } as Partial<PortalRouteDependencies>);
+  }
+
+  it("retentionを外して作り直し、解約画面のURLを返す", async () => {
+    const calls: { flow_data?: { subscription_cancel?: { retention?: unknown } } }[] = [];
+    const create = vi.fn(async (params: { flow_data?: { subscription_cancel?: { retention?: unknown } } }) => {
+      calls.push(params);
+      if (params.flow_data?.subscription_cancel?.retention) {
+        throw new Error(
+          "The coupon c_1 doesn't apply to the subscription sub_1. Please ensure the coupon will apply to the products and currency of the subscription and is still usable by the customer.",
+        );
+      }
+      return { url: "https://billing.stripe.test/p/session/no-offer" };
+    });
+    const response = await handlePortalRequest(cancelRequest(), depsWith(create));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: { url: expect.stringContaining("no-offer") },
+    });
+    expect(calls, "1回目は提示つき・2回目は提示なし").toHaveLength(2);
+    expect(calls[0].flow_data?.subscription_cancel?.retention).toBeTruthy();
+    expect(calls[1].flow_data?.subscription_cancel?.retention).toBeUndefined();
+  });
+
+  it("それ以外の失敗は握り潰さない（provider_error のまま）", async () => {
+    const create = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    const response = await handlePortalRequest(cancelRequest(), depsWith(create));
+    expect(response.status).toBe(502);
+  });
+});
