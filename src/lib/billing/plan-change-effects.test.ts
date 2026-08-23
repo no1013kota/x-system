@@ -53,8 +53,15 @@ describe("planChangeEffects", () => {
       expect(item.detail).toContain("料金が発生しません");
       expect(item.detail, "トライアル中に日割りの説明を出さない").not.toContain("日割り");
     }
-    // 同じことを2か所に書かない（注記は本文へ畳んだ）。
-    expect(e.trialNote).toBeNull();
+    // 上位は即時、下位は期間末（Portal設定 schedule_at_period_end）。見出しは分けたまま。
+    expect(e.upgrade.headline).toBe("すぐに切り替わります");
+    expect(e.downgrade.headline).toContain("に切り替わります");
+    expect(e.downgrade.headline).not.toBe("すぐに切り替わります");
+    // 画面は headline しか出さないので、トライアル中の要点は注記の見出しで必ず出す。
+    expect(e.trialNote?.headline).toContain("までは料金が発生しません");
+    expect(e.trialNote?.headline, "「変わりません」は日割り説明と食い違って読めた").not.toContain(
+      "変わりません",
+    );
   });
 
   it("トライアル中でなければ注記を出さない", () => {

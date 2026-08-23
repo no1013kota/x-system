@@ -215,10 +215,15 @@ test("プラン変更で何が起きるかを押す前に読める（T-M8-55）"
   await expect(page.getByText("すぐに切り替わります", { exact: false })).toBeVisible();
   await expect(page.getByText("2026年8月12日に切り替わります")).toBeVisible();
   await expect(page.getByText("2026年8月12日まで使えて、その後停止します")).toBeVisible();
-  // トライアル中は終了日が変わらないことを添える
+  /*
+    トライアル中は**日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` なので、
+    変更しても無料期間は変わらず、終了後に新しい料金で請求が始まる。以前は
+    「差額は日割りで次回請求に加算」と「終了日まで請求は発生しない」が同時に出ていた。
+  */
   await expect(
-    page.getByText("トライアルの終了日（2026年8月12日）は変わりません"),
+    page.getByText("トライアルの終了日（2026年8月12日）までは料金が発生しません"),
   ).toBeVisible();
+  await expect(page.getByText("日割り"), "トライアル中に日割りを出さない").toHaveCount(0);
 
   // **Markdownの記号が画面に出ていない**（強調は要素で表す・実際に `**` が出た）
   await expect(page.getByText("**", { exact: false })).toHaveCount(0);

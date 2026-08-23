@@ -75,7 +75,15 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
     const trialDetail = `トライアルの終了日（${end}）までは料金が発生しません。終了後に、変更後のプランの料金で請求が始まります。`;
     return {
       upgrade: { headline: "すぐに切り替わります", detail: trialDetail },
-      downgrade: { headline: "すぐに切り替わります", detail: trialDetail },
+      /*
+        下位への変更は**期間末に切り替わる**（Portal設定 `schedule_at_period_end` の
+        `decreasing_item_amount`）。トライアル中の「期間末」＝トライアル終了日なので、
+        上位変更と同じ「すぐに」にはしない。
+      */
+      downgrade: {
+        headline: `${end}に切り替わります`,
+        detail: `それまでは今のプランのまま使えます。${trialDetail}`,
+      },
       cancel: input.cancelAtPeriodEnd
         ? {
             headline: `${end}に解約されます`,
@@ -85,8 +93,15 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
             headline: `${end}まで使えて、その後停止します`,
             detail: "トライアル中に解約すれば料金はかかりません。",
           },
-      // 上の説明に含めたので、同じことを2か所に書かない。
-      trialNote: null,
+      /*
+        **画面は `headline` しか出さない**（portal-button.tsx）。トライアル中の要点は
+        「終了日まで料金が発生しない」ことなので、その1行はここで必ず出す。
+        以前の「終了日は変わりません」は、上の日割り説明と食い違って読めた（T-M8-243）。
+      */
+      trialNote: {
+        headline: `トライアルの終了日（${end}）までは料金が発生しません`,
+        detail: "終了後に、変更後のプランの料金で請求が始まります。",
+      },
     };
   }
 
