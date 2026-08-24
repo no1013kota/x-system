@@ -298,7 +298,7 @@ export async function handleResumeRequest(
         schedule と discount は渡さない（＝null）。ここは `subscriptions.create` で
         **契約を作り直した直後**なので、予約も割引も付いていないのが正しい状態。
         Portalからの戻り（billing-return）は既存の契約を引き直すため事情が逆で、
-        読まずに null を書くと消してしまう（T-M8-286で実際に割引が消えていた）。
+        読まずに null を書くと消してしまう（T-M8-293で実際に割引が消えていた）。
       */
       const projection = subscriptionProjection(
         syntheticSubscriptionEvent(current, deps.now()),

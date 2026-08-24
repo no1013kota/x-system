@@ -186,7 +186,7 @@ describe("billing return reconciliation", () => {
 
   /**
    * 解約導線で引き止めの半額クーポンを受け取った直後の戻りも、本物の webhook より先に着く
-   * （T-M8-286・運営者の報告 2026-08-24）。schedule と同じ理由で discount も読まないと
+   * （T-M8-293・運営者の報告 2026-08-24）。schedule と同じ理由で discount も読まないと
    * null で上書きし、後続の webhook は `created` が古いため stale 扱いになって、
    * 「半額適用中」の表示（T-M8-279）が**一度も出ないまま**になる。実際にそうなっていた。
    */

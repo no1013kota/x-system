@@ -37,7 +37,7 @@ export interface BillingReturnStripeGateway {
   subscriptionSchedules?: {
     retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
   };
-  /** 適用中の割引を読む（T-M8-286）。schedule と同じ理由で、無いと割引を null で上書きしてしまう。 */
+  /** 適用中の割引を読む（T-M8-293）。schedule と同じ理由で、無いと割引を null で上書きしてしまう。 */
   coupons?: {
     retrieve(id: string): Promise<Stripe.Coupon>;
   };
@@ -130,7 +130,7 @@ export async function reconcileBillingReturn(
     本物の webhook より先にここを通る**。ここで null を書くと、後続の webhook は
     `created` が古いため stale 扱いになり、次の契約イベントまで画面に出ない。
 
-    **割引がこれに当たっていた**（T-M8-286・運営者の報告 2026-08-24）。解約導線で引き止めの
+    **割引がこれに当たっていた**（T-M8-293・運営者の報告 2026-08-24）。解約導線で引き止めの
     半額クーポンを受け取って戻ってくると、この経路が `discount` を null で書き、
     「半額適用中」の表示（T-M8-279）が**一度も出ないまま**になっていた。
     schedule だけ読んで discount を読まない、という取りこぼしだった。
