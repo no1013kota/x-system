@@ -222,3 +222,96 @@ describe("billing return reconciliation", () => {
     });
   });
 });
+
+/**
+ * トライアル中に下位プランへ切り替えたら、その場でプランが変わり**利用枠も0へ戻る**
+ * （T-M8-299・運営者の指示 2026-08-25）。Stripe はトライアル中の価格変更で
+ * `current_period_start` を動かさない（2026-08-25 実測）ので、枠は自動では戻らない。
+ */
+describe("トライアル中の下位変更で枠を戻す（T-M8-299）", () => {
+  let deps: BillingReturnDependencies;
+
+  beforeEach(() => {
+    deps = dependencies();
+  });
+
+  /** 期間の値は `subscription()` のものを保つ（消すと投影が「期間が不正」で落ちる）。 */
+  function trialing(plan: "standard" | "premium" | "expert") {
+    const base = subscription();
+    const item = base.items.data[0] as unknown as Record<string, unknown>;
+    return {
+      ...base,
+      status: "trialing",
+      trial_end: STARTED_AT + 86_400,
+      items: { data: [{ ...item, id: "si_1", price: { id: `price_${plan}` } }] },
+    } as unknown as Stripe.Subscription;
+  }
+
+  it("下がったら resetUsage を呼ぶ", async () => {
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => trialing("standard"));
+    deps.getProfile = vi.fn(async () => ({
+      plan: "expert" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.resetUsage = vi.fn(async () => {});
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    expect(deps.resetUsage).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("上位へ変えたときは戻さない（枠が増えるので戻す必要がない）", async () => {
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => trialing("expert"));
+    deps.getProfile = vi.fn(async () => ({
+      plan: "standard" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.resetUsage = vi.fn(async () => {});
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    expect(deps.resetUsage).not.toHaveBeenCalled();
+  });
+
+  it("有料契約で下げたときは戻さない（払った期間ぶんは使えるべき）", async () => {
+    const active = { ...trialing("standard"), status: "active" } as unknown as Stripe.Subscription;
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => active);
+    deps.getProfile = vi.fn(async () => ({
+      plan: "expert" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.resetUsage = vi.fn(async () => {});
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    expect(deps.resetUsage).not.toHaveBeenCalled();
+  });
+
+  it("枠のリセットに失敗しても戻り自体は成功にする（契約の反映のほうが重い）", async () => {
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => trialing("standard"));
+    deps.getProfile = vi.fn(async () => ({
+      plan: "expert" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.resetUsage = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    await expect(
+      reconcileBillingReturn(
+        { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+        deps,
+      ),
+    ).resolves.toBe("updated");
+  });
+});

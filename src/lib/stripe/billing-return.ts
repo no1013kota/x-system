@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 
-import type { PlanId } from "@/lib/plans";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
+import { PLANS, type PlanId } from "@/lib/plans";
 
 import {
   expandedId,
@@ -10,6 +11,7 @@ import {
   type SubscriptionApplyResult,
   type SubscriptionProjection,
 } from "./subscription-sync";
+import { applyTrialDowngradeNow } from "./trial-plan-change";
 import type {
   BillingReturnMarker,
   BillingReturnSource,
@@ -19,6 +21,8 @@ export interface BillingReturnProfile {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_event_created_at: string | null;
+  /** 変更前のプラン（T-M8-299）。トライアル中に下がったかどうかの判定に使う。 */
+  plan?: PlanId | null;
 }
 
 export interface BillingReturnStripeGateway {
@@ -32,10 +36,17 @@ export interface BillingReturnStripeGateway {
       id: string,
       params?: { expand: string[] },
     ): Promise<Stripe.Subscription>;
+    /** トライアル中の下位変更を即時に反映する（T-M8-299）。 */
+    update?(
+      id: string,
+      params: Stripe.SubscriptionUpdateParams,
+    ): Promise<Stripe.Subscription>;
   };
   /** 予約済みの下位変更を読む（T-M8-260）。無いと予約を null で上書きしてしまうため、本番の client は必ず持つ。 */
   subscriptionSchedules?: {
     retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
+    /** トライアル中の下位変更を即時へ畳むために解除する（T-M8-299）。無い gateway では畳まない。 */
+    release?(id: string): Promise<{ id: string; status: string }>;
   };
   /** 適用中の割引を読む（T-M8-293）。schedule と同じ理由で、無いと割引を null で上書きしてしまう。 */
   coupons?: {
@@ -48,6 +59,11 @@ export interface BillingReturnDependencies {
   getProfile(userId: string): Promise<BillingReturnProfile | null>;
   now(): number;
   priceIds: Record<PlanId, string>;
+  /**
+   * 利用枠を今すぐ0へ戻す（T-M8-299）。トライアル中に下位プランへ切り替えたときだけ呼ぶ。
+   * 省略された場合はリセットしない（テストや古い呼び出しで枠が勝手に消えないように）。
+   */
+  resetUsage?(userId: string): Promise<void>;
   stripe: BillingReturnStripeGateway;
 }
 
@@ -137,15 +153,61 @@ export async function reconcileBillingReturn(
   */
   const schedule = await loadSchedule(deps.stripe, subscription);
   const discount = await loadDiscount(deps.stripe, subscription);
+  /*
+    **トライアル中の下位変更はここで即時へ畳む**（T-M8-299・運営者の指示 2026-08-25）。
+    Portal は値下げを期間末の予約にするが、1円も払っていないトライアル中に
+    期間末まで上位プランのまま待たせる理由がない。予約を解除して今すぐ差し替え、
+    利用枠も0へ戻す（Stripe は `current_period_start` を動かさないので自動では戻らない）。
+  */
+  const trialChange =
+    deps.stripe.subscriptions.update && deps.stripe.subscriptionSchedules?.release
+      ? await applyTrialDowngradeNow(
+          {
+            subscriptionSchedules: { release: deps.stripe.subscriptionSchedules.release },
+            subscriptions: { update: deps.stripe.subscriptions.update },
+          },
+          subscription,
+          // "unavailable"（読めなかった）は予約の有無が分からないので畳まない。
+          schedule === "unavailable" ? null : schedule,
+          deps.priceIds,
+          deps.now(),
+        )
+      : { plan: null, subscription: null };
+  const effective = trialChange.subscription ?? subscription;
+  // 即時に畳んだあとは予約が無い状態が正（release済みなので schedule は読み直さず null 扱い）。
+  const effectiveSchedule = trialChange.subscription ? null : schedule;
   const created = deps.now();
   const projection = subscriptionProjection(
-    syntheticSubscriptionEvent(subscription, created),
-    subscription,
+    syntheticSubscriptionEvent(effective, created),
+    effective,
     deps.priceIds,
     false,
-    schedule,
+    effectiveSchedule,
     discount,
   );
   const result = await deps.applyProjection(projection);
+  /*
+    枠のリセットは**反映のあと**に行う（先に進めると、反映が失敗したときだけ枠が消える）。
+    失敗しても戻り自体は成功として返す——枠は次の期間で戻るが、契約の反映のほうが重い。
+  */
+  /*
+    **トライアル中にプランが下がったら枠を0へ戻す**（T-M8-299・運営者の指示 2026-08-25）。
+    予約を畳んだ経路（`trialChange`）だけを見ると取りこぼす——Portalが予約を作らず
+    その場で下げることもあるため、**変更前後のプランを比べて**判定する。
+    Stripe はトライアル中の価格変更で `current_period_start` を動かさない（2026-08-25 実測）ので、
+    枠は自動では戻らない。上位への変更では戻さない（枠が増えるので戻す必要がない）。
+  */
+  const wentDownDuringTrial =
+    projection.status === "trialing" &&
+    profile.plan != null &&
+    projection.plan !== profile.plan &&
+    PLANS[projection.plan].monthlyPriceJpy < PLANS[profile.plan].monthlyPriceJpy;
+  if (wentDownDuringTrial && deps.resetUsage) {
+    try {
+      await deps.resetUsage(input.userId);
+    } catch (error) {
+      recordUnexpectedError(error, { at: "stripe:trial-downgrade-usage", userId: input.userId });
+    }
+  }
   return result === "stale" ? "stale" : "updated";
 }

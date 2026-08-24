@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.70 |
+| バージョン | v1.71 |
 | 更新日 | 2026-08-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -58,6 +58,7 @@
 | `subscription_status` | `subscription_status` | not null default `incomplete` | 課金状態 |
 | `subscription_event_created_at` | `timestamptz` | null | 最後に反映したStripe event時刻 |
 | `current_period_start` | `timestamptz` | null | 現在期間開始。利用枠の期間キー（JST日付）の元。nullは未同期＝暦月で数える（T-M8-258） |
+| `usage_epoch` | `integer` | not null default 0, >= 0 | 利用枠の世代。**期間の途中で枠を0へ戻す**ときに増やす（T-M8-299）。期間キーは `YYYY-MM-DD` の後ろに `#世代` が付く（0のときは付かないので既存の枠は動かない）。Stripeはトライアル中の価格変更で `current_period_start` を動かさない（2026-08-25 実測）ため、日付だけでは同日のリセットを区切れない。`usage_events` は消さないので原価の台帳は残る |
 | `discount_percent_off` | `integer` | null, 1〜100 | 適用中クーポンの割引率。プラン名の下の表示に使う（T-M8-279） |
 | `discount_amount_off_jpy` | `integer` | null, `> 0` | 適用中クーポンの割引額（円） |
 | `discount_ends_at` | `timestamptz` | null | 割引の終了日時。nullは終了日なし |
@@ -1038,3 +1039,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.68 | 2026-08-24 | usage_events に当日投稿数用の部分索引を追加し、保持期間が無いこと・索引が効く述語で書くことを明記（T-M8-294） |
 | v1.69 | 2026-08-24 | drafts に一覧の並び順の式索引を追加（T-M8-289） |
 | v1.70 | 2026-08-25 | cancellation_surveys の `reason` を `reasons text[]` へ（解約理由の複数選択・T-M8-294） |
+| v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |

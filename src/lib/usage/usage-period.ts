@@ -26,9 +26,25 @@ export function usagePeriodStartExpr(p: string): string {
   return `${p}.current_period_start`;
 }
 
-/** 期間キーのSQL式。`p` は profiles の別名（例 `p`）。 */
+/**
+ * 期間キーのSQL式。`p` は profiles の別名（例 `p`）。
+ *
+ * **世代（`usage_epoch`）が付く**（T-M8-299）。トライアル中に下位プランへ切り替えたときのように
+ * **期間の途中で枠をリセットする**場合、Stripe は `current_period_start` を動かさない
+ * （2026-08-25 実測）ので日付だけでは区切れない。世代を足すと同じ日でも必ず別のキーになる。
+ * `0` のあいだは従来と同じ文字列なので、既存の利用者の枠は動かない。
+ */
 export function usagePeriodKeyExpr(p: string): string {
-  return `coalesce(to_char((${usagePeriodStartExpr(p)} at time zone 'Asia/Tokyo'), 'YYYY-MM-DD'), to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'))`;
+  const base = `coalesce(to_char((${usagePeriodStartExpr(p)} at time zone 'Asia/Tokyo'), 'YYYY-MM-DD'), to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'))`;
+  return `(${base} || case when coalesce(${p}.usage_epoch, 0) > 0 then '#' || ${p}.usage_epoch else '' end)`;
+}
+
+/**
+ * **枠を今すぐリセットする**（T-M8-299）。世代を1つ進めるだけ——`usage_events` は消さないので
+ * 原価の台帳は残り、集計だけが0から数え直しになる。
+ */
+export function bumpUsageEpochSql(userIdParam: string): string {
+  return `update profiles set usage_epoch = usage_epoch + 1 where id = ${userIdParam}`;
 }
 
 /** 利用者IDのパラメータ（例 `$1`）から期間キーを引くサブクエリ。 */

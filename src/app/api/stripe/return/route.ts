@@ -15,6 +15,7 @@ import { readBillingReturnMarker } from "@/lib/stripe/billing-return-server";
 import { stripe } from "@/lib/stripe/client";
 import { STRIPE_PRICE_IDS } from "@/lib/stripe/prices";
 import { applyPreparedStripeEvent } from "@/lib/stripe/subscription-sync";
+import { bumpUsageEpochSql } from "@/lib/usage/usage-period";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           const result = await admin
             .from("profiles")
             .select(
-              "stripe_customer_id, stripe_subscription_id, subscription_event_created_at",
+              "stripe_customer_id, stripe_subscription_id, subscription_event_created_at, plan",
             )
             .eq("id", userId)
             .maybeSingle();
@@ -73,6 +74,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         },
         now: () => Math.floor(Date.now() / 1000),
         priceIds: STRIPE_PRICE_IDS,
+        /*
+          トライアル中に下位プランへ切り替えたときだけ枠を0へ戻す（T-M8-299）。
+          `usage_events` は消さない（原価の台帳）。世代を進めて集計だけ数え直しにする。
+        */
+        async resetUsage(userId) {
+          await withTransaction((database) =>
+            database.query(bumpUsageEpochSql("$1"), [userId]),
+          );
+        },
         stripe,
       },
     );

@@ -98,6 +98,9 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
       // Stripe SDK を直接呼ばないため一覧の検出対象外。
       "lib/stripe/period-backfill.ts",
       "lib/stripe/proration-preview.ts",
+      // トライアル中の下位変更を即時へ畳む（T-M8-299）。gateway注入で呼ぶので直接の送信は
+      // しないが、型を SDK から取るため検出される。Stripe の面の一部として登録しておく。
+      "lib/stripe/trial-plan-change.ts",
     ],
   },
   {
