@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.28 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.29 |
+| 更新日 | 2026-08-24 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -167,6 +167,8 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | 通常プランでmd/プロンプトタブへアクセス | タブ内容はロック表示。直接編集APIも403 |
 | Xアカウント未選択・active失効 | `created_at`最古の`status=active`アカウントを選択し`profiles.active_x_account_id`へ永続化する。activeが指すアカウントが`expired`/`disabled`になった場合も同じ規則で再選択し、候補がなければ`/app`で初期設定ガイドを表示 |
 
+**画面表示のためのDB読み取りは「利用者まわりの1行」に束ねる**（T-M8-288）。App Shellが必要とする profile・Xキー状態・通知の未読数・利用枠カウンタは、いずれも`user_id`一本で決まる単一行・スカラーなので1文（`loadRequestProfile`・React `cache()`）で読み、同一リクエスト内のロック判定・ホーム・設定もそこから供給する。App Shellの往復は8→5になり、ホーム・設定が重ねて投げていた利用枠の取得も消える。**呼び出しごとに列を絞った別クエリを足さない**——往復が増え、どの列を誰が読むか分からなくなる。
+
 proxyは`getUser()`でsessionを検証する。**契約状態のためのDB読み取りは行わない**（T-M8-268。画面を契約で弾かなくなったため、`/app`配下の全リクエストで走っていた`profiles`のSELECTを削除した＝遷移のたびの往復を1本削減）。検証結果（user id／emailまたは未認証）は、外部から来た同名値を削除・上書きし、`APP_ENCRYPTION_KEY`によるHMAC-SHA256署名を付けたうえで`NextResponse.next({ request: { headers } })`のupstream request headerとして同一リクエストのServer Components／Server Actions／Route Handlersへ渡す。後段の共通認証helperは署名一致時だけこれを再利用し、不在・改ざん・proxyを通らない内部呼び出しは`getUser()`へフォールバックする。upstream headerはブラウザ応答へ出さず、cookie内の未検証userを認可に使わない。これにより画面表示ごとの重複したAuth HTTP往復を作らない。
 
 session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。**proxyのredirectは未認証のときだけ**（`/login?next=…`）で、契約状態では画面を遮断しない（T-M8-268）——実行の抑止はmutation認可（要件03 §5）とjob lease（要件04 §4.1）が持ち、案内は常設バナーが担う。profile取得不能時のfail closed（T-M8-159）は、読み取り自体が無くなったため不要になった。**proxyでthrowするとログイン画面まで落ちる**点は変わらない。
@@ -243,3 +245,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.26 | 2026-08-22 | §3.6 メール: 利用者向け通知メールの廃止（T-M8-222）。EMAIL_REPLY_TO削除・送信は運営者向けopsメールのみ |
 | v1.27 | 2026-08-23 | base_md履歴の保持期間を要件02（最新5版）へ揃えた（T-M8-253） |
 | v1.28 | 2026-08-23 | proxyから契約状態のDB読み取りを削除（T-M8-268。画面は契約で弾かず、実行側で止める。全ページ遷移のDB往復を1本削減） |
+| v1.29 | 2026-08-24 | 画面表示用のDB読み取りを「利用者まわりの1行」へ束ねる方針を追加（T-M8-288。App Shell 8→5往復） |

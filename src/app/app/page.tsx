@@ -34,7 +34,7 @@ import { loadRecentPosts, type RecentPostView } from "@/lib/home/overview-server
 import { listScheduleSlots } from "@/lib/schedule-slots";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
-import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
+import { usageSummaryFrom } from "@/lib/usage/usage-summary";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ConfirmationQueueCard } from "./confirmation-queue";
@@ -136,9 +136,9 @@ export default async function AppHomePage({
     );
     // 運営キー系プランの利用枠（契約期間ごと）の残量（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
     // BYOK（standard）と未契約は null（非表示）。
-    const usagePromise = loadUsageSummaryForUser(
-      user.id,
-      profileRow?.plan ?? "",
+    // 利用枠は App Shell と同じ1行から作る（T-M8-288。専用クエリを持つと往復が1本増える）。
+    const usagePromise = Promise.resolve(
+      usageSummaryFrom(profileRow, profileRow?.plan ?? "", profileRow?.usage_resets_at ?? null),
     );
     if (activeXAccountId) {
       // 確認待ちキュー（status=draftを新しい順・要件06 §1）・次回の予定・直近の実績・KPI。

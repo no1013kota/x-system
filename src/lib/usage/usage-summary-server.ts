@@ -2,9 +2,8 @@ import "server-only";
 
 import { getPool } from "../db/pool";
 import type { Queryable } from "../db/queryable";
-import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
 import { usagePeriodKeySql, usageResetsAtExpr } from "./usage-period";
-import { computeUsageSummary, type UsageCounters, type UsageSummary } from "./usage-summary";
+import { usageSummaryFrom, type UsageCounters, type UsageSummary } from "./usage-summary";
 
 /**
  * 運営キー系プラン（premium / expert）の**今の契約期間**の利用枠サマリを usage_counters から読む
@@ -26,8 +25,6 @@ export async function loadUsageSummary(
   userId: string,
   plan: string,
 ): Promise<UsageSummary | null> {
-  const limits = usageLimitsForPlan(plan);
-  if (!limits) return null;
   const { rows } = await db.query<UsageCounters & { resets_at: string | null }>(
     `select coalesce(c.normal_posts_count, 0) as normal_posts_count,
             coalesce(c.url_posts_count, 0) as url_posts_count,
@@ -42,13 +39,6 @@ export async function loadUsageSummary(
     [userId],
   );
   const row = rows[0];
-  const counters = row ?? {
-    normal_posts_count: 0,
-    url_posts_count: 0,
-    ai_credits_used: 0,
-  };
-  return computeUsageSummary(counters, limits, {
-    concealed: concealsUsageLimits(plan),
-    resetsAt: row?.resets_at ?? null,
-  });
+  // 組み立ては純粋層の単一正本へ（T-M8-288。App Shellの束ね読みと同じ結果になる）。
+  return usageSummaryFrom(row ?? null, plan, row?.resets_at ?? null);
 }

@@ -41,7 +41,8 @@ import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
-import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
+import { loadRequestProfile } from "@/lib/profile/request-profile-server";
+import { usageSummaryFrom } from "@/lib/usage/usage-summary";
 import { readSingleRow } from "@/lib/supabase/single-row";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -246,8 +247,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     tab === "general" && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
+    // 利用枠は App Shell と同じ1行から作る（T-M8-288。専用クエリを持つと往復が1本増える）。
     tab === "billing" || tab === "general"
-      ? loadUsageSummaryForUser(user.id, plan ?? "")
+      ? loadRequestProfile(user.id).then((bundle) =>
+          usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
+        )
       : Promise.resolve(null as UsageSummary | null),
     (tab === "account" || tab === "prompts") && profile.active_x_account_id
       ? admin

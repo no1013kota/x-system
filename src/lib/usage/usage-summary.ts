@@ -1,5 +1,5 @@
 import { TEXT_DEFAULT_ESTIMATE_CREDITS } from "../ai/model-catalog";
-import type { PlanUsageLimits } from "../plans";
+import { concealsUsageLimits, usageLimitsForPlan, type PlanUsageLimits } from "../plans";
 
 /**
  * 運営キー系プラン（premium / expert）の利用枠（契約期間ごと・T-M8-258）の残量サマリ（要件03 §8・要件06 §10, T-M6-12）。
@@ -87,4 +87,25 @@ export function usageResetLabel(summary: Pick<UsageSummary, "resetsAt">): string
   const at = new Date(summary.resetsAt);
   if (Number.isNaN(at.getTime())) return "次回の更新日";
   return new Intl.DateTimeFormat("ja-JP", { dateStyle: "long", timeZone: "Asia/Tokyo" }).format(at);
+}
+
+/**
+ * カウンタ行（無ければ0）とプランから利用枠サマリを作る単一正本（T-M8-288）。
+ *
+ * 以前は `loadUsageSummary`（SQL付き）の中にだけこの組み立てがあり、同じ値を別経路
+ * （App Shellの1文へ束ねた読み取り）から作りたいときに写経が必要だった。**読み方（SQL）と
+ * 組み立て方（判定）を分ける**ことで、どちらから来ても同じ結果になる。
+ */
+export function usageSummaryFrom(
+  counters: UsageCounters | null,
+  plan: string,
+  resetsAt: string | null,
+): UsageSummary | null {
+  const limits = usageLimitsForPlan(plan);
+  if (!limits) return null;
+  return computeUsageSummary(
+    counters ?? { ai_credits_used: 0, normal_posts_count: 0, url_posts_count: 0 },
+    limits,
+    { concealed: concealsUsageLimits(plan), resetsAt },
+  );
 }
