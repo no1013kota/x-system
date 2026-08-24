@@ -4,6 +4,7 @@ import type { PlanId } from "@/lib/plans";
 
 import {
   expandedId,
+  loadDiscount,
   loadSchedule,
   subscriptionProjection,
   type SubscriptionApplyResult,
@@ -27,11 +28,18 @@ export interface BillingReturnStripeGateway {
     };
   };
   subscriptions: {
-    retrieve(id: string): Promise<Stripe.Subscription>;
+    retrieve(
+      id: string,
+      params?: { expand: string[] },
+    ): Promise<Stripe.Subscription>;
   };
   /** 予約済みの下位変更を読む（T-M8-260）。無いと予約を null で上書きしてしまうため、本番の client は必ず持つ。 */
   subscriptionSchedules?: {
     retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
+  };
+  /** 適用中の割引を読む（T-M8-286）。schedule と同じ理由で、無いと割引を null で上書きしてしまう。 */
+  coupons?: {
+    retrieve(id: string): Promise<Stripe.Coupon>;
   };
 }
 
@@ -112,13 +120,23 @@ export async function reconcileBillingReturn(
   }
   if (!subscriptionId) return "skipped";
 
-  const subscription = await deps.stripe.subscriptions.retrieve(subscriptionId);
+  // `discounts` は expand しないとIDだけしか返らない（割引率はクーポン側）。
+  const subscription = await deps.stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["discounts"],
+  });
   /*
-    schedule（期間末の下位変更の予約）も読む。Portal の `after_completion` は即リダイレクトなので、
-    予約直後の戻りは本物の webhook より**先に**ここを通る。ここで予約を null で書くと、
-    後続の webhook（created が古い）は stale 扱いになり、予約が次の契約イベントまで画面に出ない。
+    schedule（期間末の下位変更の予約）と discount（適用中の割引）も読む。
+    Portal の `after_completion` は即リダイレクトなので、**Portalでの操作直後の戻りは
+    本物の webhook より先にここを通る**。ここで null を書くと、後続の webhook は
+    `created` が古いため stale 扱いになり、次の契約イベントまで画面に出ない。
+
+    **割引がこれに当たっていた**（T-M8-286・運営者の報告 2026-08-24）。解約導線で引き止めの
+    半額クーポンを受け取って戻ってくると、この経路が `discount` を null で書き、
+    「半額適用中」の表示（T-M8-279）が**一度も出ないまま**になっていた。
+    schedule だけ読んで discount を読まない、という取りこぼしだった。
   */
   const schedule = await loadSchedule(deps.stripe, subscription);
+  const discount = await loadDiscount(deps.stripe, subscription);
   const created = deps.now();
   const projection = subscriptionProjection(
     syntheticSubscriptionEvent(subscription, created),
@@ -126,6 +144,7 @@ export async function reconcileBillingReturn(
     deps.priceIds,
     false,
     schedule,
+    discount,
   );
   const result = await deps.applyProjection(projection);
   return result === "stale" ? "stale" : "updated";

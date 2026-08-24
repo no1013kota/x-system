@@ -183,4 +183,42 @@ describe("billing return reconciliation", () => {
     );
     expect(vi.mocked(deps.applyProjection).mock.calls[1][0].scheduleUnavailable).toBe(true);
   });
+
+  /**
+   * 解約導線で引き止めの半額クーポンを受け取った直後の戻りも、本物の webhook より先に着く
+   * （T-M8-286・運営者の報告 2026-08-24）。schedule と同じ理由で discount も読まないと
+   * null で上書きし、後続の webhook は `created` が古いため stale 扱いになって、
+   * 「半額適用中」の表示（T-M8-279）が**一度も出ないまま**になる。実際にそうなっていた。
+   */
+  it("reads the applied discount on a portal return so the retention coupon is not overwritten", async () => {
+    /*
+      `discounts` は expand したうえで **`source.coupon` にクーポンIDの文字列**が入る形
+      （2026-08-24 に実データで確認。`discount.coupon` は返らない）。
+    */
+    const withDiscount = {
+      ...subscription(),
+      discounts: [
+        { id: "di_1", source: { type: "coupon", coupon: "half_off" }, end: STARTED_AT + 7_776_000 },
+      ],
+    } as unknown as Stripe.Subscription;
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => withDiscount);
+    deps.stripe.coupons = {
+      retrieve: vi.fn(async () => ({ id: "half_off", percent_off: 50 }) as unknown as Stripe.Coupon),
+    };
+
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    const applied = vi.mocked(deps.applyProjection).mock.calls[0][0];
+    expect(applied.discount, "戻りの同期で割引が消えている").toEqual({
+      percentOff: 50,
+      amountOffJpy: null,
+      endsAt: STARTED_AT + 7_776_000,
+    });
+    // expand を落とすと discounts がIDだけになり割引率を読めない。retrieve の呼び方も固定する。
+    expect(deps.stripe.subscriptions.retrieve).toHaveBeenCalledWith("sub_current", {
+      expand: ["discounts"],
+    });
+  });
 });
