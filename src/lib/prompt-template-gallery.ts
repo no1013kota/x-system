@@ -76,7 +76,7 @@ export function galleryTemplates(): GalleryTemplate[] {
       // 実ファイルの1行目の見出し（persona-settings.ts）だが、一覧の題名には使わない）。
       name: "アカウント.md",
       description:
-        "全投稿の土台になる1枚。誰として・誰に・どんな口調で発信するかをAIへ指示します。初期設定から自動生成され、学習と改善提案で育ちます（下はサンプル値での初版）。",
+        "アカウント自体の説明。誰として・誰に・どんな口調で発信するかをAIへ指示します。",
       content: sampleBaseMd(),
       group: "account-md",
       placeholders: [],

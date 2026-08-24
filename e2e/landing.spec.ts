@@ -41,8 +41,16 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
   // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。
   // 文言そのものは landing-page.test.ts が担当する）。
-  await expect(page.getByText(/投稿されませんか/)).toBeVisible();
-  await expect(page.getByText("されません。", { exact: false })).toBeVisible();
+  const autoPostQuestion = page.locator("dt").filter({ hasText: /投稿されませんか/ });
+  await expect(autoPostQuestion).toBeVisible();
+  /*
+    **文言ではなく「回答が読める状態か」を見る**（2026-08-24）。以前は回答の先頭
+    「されません。」を直接探しており、文言を磨いただけでspecが落ちた。何を書くかは
+    `landing-page.test.ts` が担当し、ここは折りたたまれていないことだけを守る。
+  */
+  const autoPostAnswer = autoPostQuestion.locator("xpath=following-sibling::dd[1]");
+  await expect(autoPostAnswer).toBeVisible();
+  await expect(autoPostAnswer).not.toBeEmpty();
   // クリックしないと読めない状態へ戻っていないこと（LPで最も読まれるべき内容を隠さない）。
   await expect(page.locator("details")).toHaveCount(0);
 

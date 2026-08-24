@@ -167,7 +167,6 @@ export function ApiKeySettings({
    * そのため `bad id` や上限超えでも押せて、押してからサーバーに弾かれた。
    * 写経をやめたので、条件が増えても画面側の追従漏れが起きない。文言の正本もスキーマ側。
    */
-  const secretTrimmed = clientSecret.trim();
   const xSaveBlocker = xApiKeySaveBlocker({ clientId, clientSecret });
   /** 失敗を伝える。文面はServer Actionが返すものをそのまま出す（原因が具体的なため）。 */
   function showError(message: string) {
@@ -430,17 +429,12 @@ export function ApiKeySettings({
               value={clientSecret}
             />
             {/*
-              保存は Client ID だけで通るが、**連携には実質必須**（T-M8-63・F3）。
-              手順ガイドが指示する「Web App, Automated App or Bot」は confidential client で、
+              **画面に注記は出さない**（運営者の判断 2026-08-24）。保存は Client ID だけで通るが、
+              手順ガイドが指示する「Web App, Automated App or Bot」は confidential client なので、
               Secret 無しの token 交換は401（unauthorized_client）で拒否される。
-              空のまま保存できてしまうと、失敗するのは連携を試みた後になる。
-              入れれば消えるので、正常な操作を警告色で妨げない（muted の小文字にする）。
+              つまり**空のまま保存でき、失敗するのは連携を試みたとき**になる（T-M8-63 が注記で
+              塞いでいた経路。BACKLOG T-M8-284 に記録）。
             */}
-            {secretTrimmed.length === 0 ? (
-              <p className="text-xs font-normal text-muted-foreground">
-                手順どおり「Web App, Automated App or Bot」で作ったAppでは必須です。空のまま保存すると、Xアカウントの連携時にXから拒否されます。
-              </p>
-            ) : null}
           </label>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -627,7 +621,7 @@ export function ApiKeySettings({
             <div>
               <p className="font-medium">Client IDとClient Secretをコピーして、このページに保存する</p>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>セットアップを終えると <strong>Client ID</strong> と <strong>Client Secret</strong> が表示されます。<strong>Client Secretはこの1回しか表示されない</strong>ので、この場で両方コピーします（Client IDはAppの「Keys and Tokens」ページからも確認できます）。</li>
+                <li>セットアップを終えると <strong>Client ID</strong> と <strong>Client Secret</strong> が表示されます。<strong>Client Secretはこの1回しか表示されない</strong>ので、この場で両方コピーします。</li>
                 <li>このページ上部の「X APIキー」の入力欄に<strong>両方とも</strong>貼って、「Xキーを保存」を押します。</li>
                 <li>Client Secretを控え損ねた場合は、「Keys and Tokens」ページで<strong>再発行（Regenerate）</strong>できます。</li>
               </ul>
@@ -641,27 +635,6 @@ export function ApiKeySettings({
                 X APIは<strong>前払い（クレジット）方式の従量課金</strong>です。Billing → Credits → Purchase Creditsから購入できます。
                 クレジット（米ドル）を購入しておくと、投稿のたびにそこから差し引かれます。
               </p>
-              <dl className="mt-2 space-y-2 rounded-lg border bg-muted/40 p-3 text-xs leading-5">
-                <div>
-                  <dt className="font-bold">かかる費用の目安（2026年8月時点の公式単価）</dt>
-                  <dd className="mt-0.5 text-muted-foreground">
-                    投稿1件 約$0.015（約2円）／URL付き投稿1件 約$0.200（約30円）。
-                    たとえば1日3投稿を1か月続けると約$1.35（約200円）です。単価は変わることがあるので、購入前にDeveloper Consoleの表示を確認してください。
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-bold">自動チャージ（auto-recharge）</dt>
-                  <dd className="mt-0.5 text-muted-foreground">
-                    残高が設定額を下回ると自動でカードから買い足す機能です。
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-bold">支出上限（spending limit）</dt>
-                  <dd className="mt-0.5 text-muted-foreground">
-                    請求期間ごとの上限額です。上限に達するとAPIが止まるので、想定外の高額請求を防ぐ安全装置になります（止まった場合はチャージすれば再開できます）。
-                  </dd>
-                </div>
-              </dl>
               <a className="mt-2 inline-flex min-h-10 items-center gap-1 text-info-fg underline underline-offset-4" href="https://docs.x.com/x-api/getting-started/pricing" rel="noreferrer" target="_blank">
                 X公式の料金・予算設定を確認<Icon name="open_in_new" size={16} />
               </a>
