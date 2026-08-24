@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPendingProration, prorationNotice } from "./proration-preview";
+import {
+  loadPendingProration,
+  loadRecentProrationCharge,
+  prorationChargedNotice,
+  prorationNotice,
+  RECENT_CHARGE_WINDOW_SEC,
+} from "./proration-preview";
 
 /**
  * プラン変更で発生した日割り差額の下見（T-M8-270）。Stripeの確認画面には独自の文章を書けないので、
@@ -76,5 +82,76 @@ describe("prorationNotice", () => {
         "変更前後の料金を日割りで計算した差額 ¥2,500 は、次回のご請求に加算されます。",
       );
     }
+  });
+});
+
+/**
+ * `always_invoice`（T-M8-275）にしてから、上位変更の差額は**即時に請求・決済され**、
+ * 次回請求の下見には1行も出なくなった（2026-08-25 テストクロックで実測: 変更時に
+ * `subscription_update` の請求書が即時 paid になり、次回プレビューは月額1行だけ）。
+ * `loadPendingProration` だけを見ていたため「差額はいくらか」の説明が**どの経路でも
+ * 出なくなっていた**——それを塞ぐのがこちら（T-M8-296）。
+ */
+function invoices(data: unknown[]) {
+  return {
+    invoices: {
+      createPreview: vi.fn(),
+      list: vi.fn(async () => ({ data })),
+    },
+  } as never;
+}
+const NOW = 1_790_000_000;
+const charged = (over: object = {}) => ({
+  billing_reason: "subscription_update",
+  amount_paid: 7_330,
+  created: NOW - 60,
+  status_transitions: { paid_at: NOW - 60 },
+  ...over,
+});
+
+describe("loadRecentProrationCharge", () => {
+  it("戻ってきた直後に決済された差額を返す", async () => {
+    const result = await loadRecentProrationCharge(invoices([charged()]), {
+      ...input,
+      nowSec: NOW,
+    });
+    expect(result).toEqual({ amountJpy: 7_330, paidAt: "2026-09-21T14:12:20.000Z" });
+  });
+
+  it("古い変更を「いま払った」と出さない（窓の外は無視する）", async () => {
+    const old = charged({ created: NOW - RECENT_CHARGE_WINDOW_SEC - 1 });
+    expect(
+      await loadRecentProrationCharge(invoices([old]), { ...input, nowSec: NOW }),
+    ).toBeNull();
+  });
+
+  it("月次更新や未払いの請求書は差額として出さない", async () => {
+    const cycle = charged({ billing_reason: "subscription_cycle" });
+    const unpaid = charged({ amount_paid: 0 });
+    expect(
+      await loadRecentProrationCharge(invoices([cycle, unpaid]), { ...input, nowSec: NOW }),
+    ).toBeNull();
+  });
+
+  it("読めなくても画面は止めない（nullを返す）", async () => {
+    const broken = {
+      invoices: {
+        createPreview: vi.fn(),
+        list: vi.fn(async () => {
+          throw new Error("stripe down");
+        }),
+      },
+    } as never;
+    expect(
+      await loadRecentProrationCharge(broken, { ...input, nowSec: NOW }),
+    ).toBeNull();
+  });
+});
+
+describe("prorationChargedNotice", () => {
+  it("「次回に加算」ではなく「いま支払った」と書く", () => {
+    expect(prorationChargedNotice({ amountJpy: 7_330 })).toBe(
+      "変更前後の料金を日割りで計算した差額 ¥7,330 を、ただいまお支払いいただきました。",
+    );
   });
 });

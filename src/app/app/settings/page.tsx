@@ -72,7 +72,12 @@ import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
 import { discountLabel } from "@/lib/billing/discount-label";
 import { scheduledPlanChangeLabel, scheduledPlanChangeNote } from "@/lib/billing/scheduled-plan-change";
 import { stripe } from "@/lib/stripe/client";
-import { loadPendingProration, prorationNotice } from "@/lib/stripe/proration-preview";
+import {
+  loadPendingProration,
+  loadRecentProrationCharge,
+  prorationChargedNotice,
+  prorationNotice,
+} from "@/lib/stripe/proration-preview";
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
@@ -248,13 +253,24 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     Stripeは「次回からのお支払い」しか出さず、**日割りの説明がどこにも出ない**。
     「確定」直後に戻ってくるここで、実際の差額と加算先の請求日を出す（運営者の指示 2026-08-23）。
   */
-  const pendingProration =
+  const billingReturn =
     params.portal === "return" && profile.stripe_customer_id && profile.stripe_subscription_id
-      ? await loadPendingProration(stripe, {
-          customerId: profile.stripe_customer_id,
-          subscriptionId: profile.stripe_subscription_id,
-        })
+      ? { customerId: profile.stripe_customer_id, subscriptionId: profile.stripe_subscription_id }
       : null;
+  /*
+    **まず「その場で払った差額」を見る**（T-M8-296）。Portalを `always_invoice` にした（T-M8-275）ので、
+    上位変更の差額は即時に請求・決済され、次回請求の下見には1行も出ない。
+    `loadPendingProration` だけを見ていたため、**この説明がどの経路でも出なくなっていた**。
+    未請求の差額（設定を変える前に発生して残っているもの）は、その次に、別の文言で出す。
+  */
+  const prorationCharge = billingReturn
+    ? await loadRecentProrationCharge(stripe, {
+        ...billingReturn,
+        nowSec: Math.floor((await serverNowMs()) / 1000),
+      })
+    : null;
+  const pendingProration =
+    billingReturn && !prorationCharge ? await loadPendingProration(stripe, billingReturn) : null;
 
   // planに依存する第2波。
   // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
@@ -442,6 +458,7 @@ let promptTemplates: PromptTemplateView[] = [];
                 <Notice className="mt-4" tone="success"
                   role="status">
                   お支払い管理画面から戻りました。変更は数十秒ほどでこの画面に反映されます。
+                  {prorationCharge ? ` ${prorationChargedNotice(prorationCharge)}` : null}
                   {pendingProration ? ` ${prorationNotice(pendingProration)}` : null}
                 </Notice>
               ) : null}
