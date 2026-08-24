@@ -43,6 +43,7 @@ import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
 import { AppLockedNotice } from "@/components/app-shell/plan-required";
 import { loadAppLock } from "@/lib/auth/plan-gate-server";
+import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -114,15 +115,13 @@ export default async function AppHomePage({
      * まとめる（T-M8-67）。以前は約9段の直列awaitで、Supabaseへの往復（本番で
      * 1回あたり数十〜百ms）がそのまま初回表示の待ち時間に積み上がっていた。
      */
-    const [input, activeXAccountId, settings, planRows] = await Promise.all([
+    const [input, activeXAccountId, settings, profileRow] = await Promise.all([
       // 充足判定は実行前提検証ヘルパを再利用する（要件06 §3.1・T-M2-24）。
       gatherExecutionPrereqInputs(user.id),
       resolveActiveXAccountForUser(user.id),
       getSettingsForUser(user.id),
-      pooledDb.query<{ plan: string }>(
-        `select plan::text as plan from profiles where id = $1`,
-        [user.id],
-      ),
+      // profile は App Shell・ロック判定と同じ行を共有する（T-M8-286）。
+      loadRequestProfile(user.id),
     ]);
     if (input) checklist = buildSetupChecklist(input);
     // 重要ニュース: 利用者のニュース設定の分野で impact=high のみ（要件06 §1.4）。
@@ -139,7 +138,7 @@ export default async function AppHomePage({
     // BYOK（standard）と未契約は null（非表示）。
     const usagePromise = loadUsageSummaryForUser(
       user.id,
-      planRows.rows[0]?.plan ?? "",
+      profileRow?.plan ?? "",
     );
     if (activeXAccountId) {
       // 確認待ちキュー（status=draftを新しい順・要件06 §1）・次回の予定・直近の実績・KPI。

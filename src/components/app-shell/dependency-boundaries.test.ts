@@ -33,7 +33,9 @@ const CORE_FORBIDDEN = [
   ['import "server-only"', /import\s+["']server-only["']/, "lib/app-shell/data-server.ts"],
   ["@/lib/env", /@\/lib\/env/, "lib/app-shell/data-server.ts"],
   ["*-server module", SERVER_ADAPTER, "lib/app-shell/data-server.ts"],
-  ["@/lib/db/pool", /@\/lib\/db\/pool/, "lib/app-shell/data-server.ts"],
+  // profile の読み出しは共有リーダーへ移した（T-M8-286）。data-server.ts は pool を直接
+  // 持たなくなったので、検出器が生きていることは実際に pool を使う側で確かめる。
+  ["@/lib/db/pool", /@\/lib\/db\/pool/, "lib/profile/request-profile-server.ts"],
   // Supabase clientはAuth専用で、データ読み出しはpool経由という分担（T-M8-158）。
   ["@/lib/supabase", /@\/lib\/supabase/, "lib/auth/session.ts"],
   ["next/headers", /next\/headers/, "lib/supabase/server.ts"],

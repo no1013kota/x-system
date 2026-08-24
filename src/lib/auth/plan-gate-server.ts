@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
-import { pooledQueryable } from "@/lib/db/pool";
+import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 
 import { appLockFor, type AppLockReason } from "./subscription-access";
 
@@ -19,10 +19,8 @@ import { appLockFor, type AppLockReason } from "./subscription-access";
  * 復帰できるが、逆（無いのに開く）は費用の出る操作へ通してしまう。
  */
 export const loadAppLock = cache(async (userId: string): Promise<AppLockReason | null> => {
-  const { rows } = await pooledQueryable().query<{ subscription_status: string }>(
-    `select subscription_status::text as subscription_status from profiles where id = $1`,
-    [userId],
-  );
-  const status = rows[0]?.subscription_status;
-  return status === undefined ? "plan_required" : appLockFor(status);
+  // profile は App Shell と同じ行なので**リクエスト内で共有する**（T-M8-286。
+  // 専用クエリを持つと、同じ行のために遷移のたび往復が1本増える）。
+  const profile = await loadRequestProfile(userId);
+  return profile === null ? "plan_required" : appLockFor(profile.subscription_status);
 });
