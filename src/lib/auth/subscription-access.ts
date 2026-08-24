@@ -1,5 +1,6 @@
 import { DB_ENUMS } from "@/lib/db/enums";
 import { AppError } from "@/lib/observability/errors";
+import { remainingTrialLabel } from "@/lib/billing/remaining-trial";
 
 export type SubscriptionStatus =
   (typeof DB_ENUMS.subscription_status)[number];
@@ -188,6 +189,8 @@ function trialDate(value: string | null): string {
 
 export function subscriptionBannerFor(
   profile: SubscriptionBannerProfile,
+  /** 現在時刻（ms）。残りトライアルの判定に使う。既定は now（テストは固定値を渡す）。 */
+  nowMs: number = Date.now(),
 ): SubscriptionBannerModel | null {
   const status = profile.subscriptionStatus;
   /*
@@ -240,12 +243,19 @@ export function subscriptionBannerFor(
     };
   }
   if (status === "canceled") {
+    /*
+      **無料トライアルが残っているなら、まずそれを言う**（T-M8-298・運営者の指示 2026-08-25）。
+      「プランを再開してください」だけだと料金が発生すると読めて、無料で戻れる人が戻らない。
+      残りの期間はどのプランでも無料なので、元のプランに限らないことも書く。
+    */
+    const trialLeft = remainingTrialLabel(profile.trialEndsAt, nowMs);
     return {
       action: "checkout",
       // 何が使えて何が使えないかを正確に言う（T-M8-269で機能画面はロック・招待だけ残る）。
-      description:
-        "友達招待は引き続きご利用いただけます。投稿の作成・予約・分析やニュースを再びご利用になるには、プランを再開してください（データは保持しています）。",
-      title: "ご契約は終了しています",
+      description: trialLeft
+        ? `無料トライアルは${trialLeft}まで残っています。どのプランでも、その日までは料金が発生しません。投稿の作成・予約・分析やニュースを再びご利用になるには、無料トライアルを再開してください（データは保持しています）。友達招待は引き続きご利用いただけます。`
+        : "友達招待は引き続きご利用いただけます。投稿の作成・予約・分析やニュースを再びご利用になるには、プランを再開してください（データは保持しています）。",
+      title: trialLeft ? "無料トライアルを再開できます" : "ご契約は終了しています",
       tone: "warning",
     };
   }

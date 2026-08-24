@@ -301,3 +301,55 @@ describe("2回目の無料トライアルを渡さない（T-M8-244）", () => {
     expect(params.subscription_data?.trial_period_days).toBe(7);
   });
 });
+
+/**
+ * 解約後に残っている無料トライアル（T-M8-298・運営者の指示 2026-08-25）。
+ * **`trial_used_at` があるからと満額を請求してはいけない**——2026-08-25、運営者が
+ * トライアル中に解約したあと「プランを選択」して、その場で ¥3,980 が課金された。
+ */
+describe("残りトライアルの引き継ぎ（T-M8-298）", () => {
+  const NOW = Date.parse("2026-08-25T10:00:00Z");
+  const future = "2026-08-31T06:51:00Z";
+
+  it("期限内ならどのプランでも trial_end を引き継ぐ（trial_period_days は付けない）", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: "2026-08-24T15:51:16.000Z",
+      trial_ends_at: future,
+    }));
+    await handleCheckoutRequest(request({ plan: "expert" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_end).toBe(Math.floor(Date.parse(future) / 1000));
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("期限切れなら無料期間を作らない", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: "2026-08-01T00:00:00.000Z",
+      trial_ends_at: "2026-08-08T00:00:00.000Z",
+    }));
+    await handleCheckoutRequest(request({ plan: "expert" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_end).toBeUndefined();
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("新規（トライアル未使用）は従来どおり7日", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: null,
+      trial_ends_at: null,
+    }));
+    await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_period_days).toBe(7);
+    expect(params.subscription_data?.trial_end).toBeUndefined();
+  });
+});

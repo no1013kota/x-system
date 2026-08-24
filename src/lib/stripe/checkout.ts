@@ -7,6 +7,7 @@ import { AppError } from "@/lib/observability/errors";
 
 import { isLiveChargesDisabled } from "./stripe-errors";
 import { PLAN_IDS, type PlanId } from "@/lib/plans";
+import { remainingTrialEndSec } from "@/lib/billing/remaining-trial";
 
 export const checkoutInputSchema = z
   .object({
@@ -22,6 +23,11 @@ export interface CheckoutUser {
 export interface CheckoutProfile {
   stripe_customer_id: string | null;
   trial_used_at: string | null;
+  /**
+   * 解約後に残っている無料トライアルの期限（T-M8-298）。**期限内ならどのプランでも**
+   * その日まで無料で始められる（元のプランに限らない・運営者の指示 2026-08-25）。
+   */
+  trial_ends_at?: string | null;
 }
 
 export interface CheckoutStripeGateway {
@@ -53,6 +59,8 @@ export interface CheckoutRouteDependencies {
   appBaseUrl: string;
   getCurrentUser(): Promise<CheckoutUser | null>;
   getProfile(userId: string): Promise<CheckoutProfile | null>;
+  /** 現在時刻（ms）。残りトライアルの判定に使う（テストで固定できるように注入する）。 */
+  now?: () => number;
   priceIds: Record<PlanId, string>;
   saveStripeCustomerId(userId: string, customerId: string): Promise<void>;
   stripe: CheckoutStripeGateway;
@@ -106,6 +114,8 @@ function sessionParams(input: {
   plan: PlanId;
   priceId: string;
   trialUsedAt: string | null;
+  /** 解約後に残っている無料トライアルの期限（epoch秒）。あれば `trial_end` として引き継ぐ。 */
+  remainingTrialEndSec?: number | null;
   userId: string;
 }): Stripe.Checkout.SessionCreateParams {
   const appBaseUrl = input.appBaseUrl.replace(/\/$/, "");
@@ -133,7 +143,17 @@ function sessionParams(input: {
       metadata: {
         user_id: input.userId,
       },
-      ...(input.trialUsedAt === null ? { trial_period_days: 7 } : {}),
+      /*
+        **残りのトライアルがあればそれを引き継ぐ**（T-M8-298）。トライアル中に解約した人が
+        別のプランを選んだとき、`trial_used_at` があるからと満額を請求してはいけない
+        （2026-08-25、運営者が解約後に「プランを選択」して即座に課金された）。
+        新規（トライアル未使用）は従来どおり7日。どちらでもなければ無料期間なし。
+      */
+      ...(input.remainingTrialEndSec
+        ? { trial_end: input.remainingTrialEndSec }
+        : input.trialUsedAt === null
+          ? { trial_period_days: 7 }
+          : {}),
     },
   };
 }
@@ -233,6 +253,8 @@ export async function handleCheckoutRequest(
         customerId,
         plan: parsed.data.plan,
         priceId: deps.priceIds[parsed.data.plan],
+        // 解約後に残っているトライアルは、どのプランでも引き継ぐ（T-M8-298）。
+        remainingTrialEndSec: remainingTrialEndSec(profile.trial_ends_at, (deps.now ?? Date.now)()),
         // DBとStripeのどちらかが「使用済み」と言えば付けない（T-M8-244）。
         trialUsedAt: trialAlreadyUsed ? new Date().toISOString() : profile.trial_used_at,
         userId: user.id,

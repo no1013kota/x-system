@@ -22,6 +22,11 @@ import { CheckoutPending } from "./checkout-pending";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { PLANS, type PlanId } from "@/lib/plans";
+import {
+  remainingTrialHeadline,
+  remainingTrialLabel,
+} from "@/lib/billing/remaining-trial";
+import { serverNowMs } from "@/lib/time/server-now";
 
 export const metadata: Metadata = {
   title: `プラン選択 | ${APP_NAME}`,
@@ -48,12 +53,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 申し込みをやり直せる場所（この画面）へ入れる。
   // 解約済み（データ保持中）の再開案内に使う（T-M8-266）。
   let canceledPlanLabel: string | null = null;
+  /** 解約後に残っている無料トライアルの期限（「2026年8月31日」）。無ければ null。 */
+  let trialLabel: string | null = null;
   if (user) {
     const admin = createSupabaseAdminClient();
     const readProfile = () =>
       admin
         .from("profiles")
-        .select("plan, subscription_status, stripe_customer_id, trial_used_at")
+        .select("plan, subscription_status, stripe_customer_id, trial_used_at, trial_ends_at")
         .eq("id", user.id)
         .maybeSingle();
     let profileResult = await readProfile();
@@ -67,6 +74,12 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
     // 理由の分からないまま `/plans` に留まる。
     const profile = readSingleRow(profileResult, "plans profile");
     if (profile?.trial_used_at) trialAvailable = false;
+    /*
+      **解約後に残っている無料トライアル**（T-M8-298・運営者の指示 2026-08-25）。
+      期限内なら**どのプランでも**その日まで無料で始められる。`trial_used_at` があるからと
+      「トライアルなし」の顔をすると、無料のはずの人が満額を請求される（実際に起きた）。
+    */
+    trialLabel = remainingTrialLabel(profile?.trial_ends_at ?? null, await serverNowMs());
     if (
       profile?.plan &&
       profile.stripe_customer_id &&
@@ -100,7 +113,13 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             </div>
             <div className="space-y-3">
               {/* 参考ページの「Special offer」ピルに相当（T-M8-169）。 */}
-              {trialAvailable ? (
+              {trialLabel ? (
+                // 残りのトライアルがある人には「何日まで・どのプランでも無料」を出す（T-M8-298）。
+                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+                  <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
+                  {trialLabel}まで、どのプランでも無料
+                </p>
+              ) : trialAvailable ? (
                 <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
                   <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
                   すべてのプランを7日間無料でお試し
@@ -121,11 +140,31 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           {canceledPlanLabel ? (
             <Notice className="mx-auto max-w-3xl" role="status" tone="warn">
               ご契約は終了しています。データは保持されており、再開するとそのまま使えます。
-              {canceledPlanLabel}を同じ条件で再開する場合は
-              <Link className="mx-1 underline" href="/app/settings?tab=billing">
-                設定の課金・プラン（プランを再開）
-              </Link>
-              から、別のプランにする場合は下から選べます。
+              {trialLabel ? (
+                <>
+                  {/*
+                    **無料トライアルが残っていることを最初に言う**（T-M8-298・運営者の指示
+                    2026-08-25）。ここが「再開してください」だけだと、料金が発生すると読めて
+                    しまい、無料で戻れる人が戻らない。
+                  */}
+                  <strong className="mx-1">
+                    {remainingTrialHeadline(trialLabel)}
+                  </strong>
+                  {canceledPlanLabel}のまま再開する場合は
+                  <Link className="mx-1 underline" href="/app/settings?tab=billing">
+                    設定の課金・プラン（無料トライアルを再開）
+                  </Link>
+                  から、別のプランにする場合は下から選べます（どちらも料金は発生しません）。
+                </>
+              ) : (
+                <>
+                  {canceledPlanLabel}を同じ条件で再開する場合は
+                  <Link className="mx-1 underline" href="/app/settings?tab=billing">
+                    設定の課金・プラン（プランを再開）
+                  </Link>
+                  から、別のプランにする場合は下から選べます。
+                </>
+              )}
             </Notice>
           ) : null}
 
@@ -174,6 +213,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
               cta={(planId, planName) => (
                 <CheckoutButton
                   plan={planId}
+                  remainingTrialLabel={trialLabel}
                   planName={planName}
                   trialAvailable={trialAvailable}
                   variant={planId === RECOMMENDED_PLAN ? "brand" : "subtle"}
