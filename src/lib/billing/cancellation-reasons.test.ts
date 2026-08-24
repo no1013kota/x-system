@@ -11,7 +11,13 @@ describe("cancellationEffects", () => {
     expect(e.title).toContain("2026年9月15日までご利用いただけます");
     expect(e.stops.join()).toContain("自動投稿");
     expect(e.stops.join(), "運営キーのプランはその点も伝える").toContain("運営が用意しているAIキー");
-    expect(e.keeps.join(), "データが消えないことを必ず伝える").toContain("残ります");
+    expect(e.keeps.join(), "データが消えないことを必ず伝える").toContain("消えません");
+    /*
+      **「閲覧できます」とは書かない**（運営者の指摘 2026-08-24）。データは残るが、解約後は
+      課金・プラン以外のタブがロックされる（T-M8-269）ので開いて見ることはできない。
+      「見られる」と読める書き方に戻すと、解約してから食い違いに気付くことになる。
+    */
+    expect(e.keeps.join(), "解約中も見られると読めてはいけない").not.toContain("閲覧できます");
     expect(e.keeps.join()).toContain("日割り返金はありません");
   });
 

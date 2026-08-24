@@ -356,7 +356,12 @@ test("解約は確認とアンケートを挟んでからStripeへ進む（T-M8-
   await expect(dialog.getByText("本当に解約しますか？")).toBeVisible();
   // 止まることと残ること（不安だけ煽らない）。
   await expect(dialog.getByText("予約した自動投稿・下書きの自動作成が止まります")).toBeVisible();
-  await expect(dialog.getByText("これまでの下書き・投稿履歴・分析結果は残ります（閲覧できます）")).toBeVisible();
+  await expect(dialog.getByText(/下書き・投稿履歴・分析結果は消えません/)).toBeVisible();
+  /*
+    **「閲覧できます」とは書かない**（運営者の指摘 2026-08-24）。データが消えないのは本当だが、
+    解約後は課金・プラン以外がロックされる（T-M8-269）ので、開いて見ることはできない。
+  */
+  await expect(dialog.getByText(/閲覧できます/)).toHaveCount(0);
 
   // 「やめておく」で閉じる（既定の逃げ道が押しやすい側にある）。
   await dialog.getByRole("button", { name: "やめておく" }).click();
@@ -384,3 +389,46 @@ test("解約は確認とアンケートを挟んでからStripeへ進む（T-M8-
     .toBe("price");
 });
 
+
+/**
+ * トライアル中の解約確認（T-M8-278・文言の修正は運営者の指摘 2026-08-24）。
+ *
+ * 有料の解約と**別の画面文言**になる（その場で終了する・残り期間で再開できる）ので別に守る。
+ * 特に「データは消えないが、解約中は開けない」の言い分けを固定する——ここを
+ * 「閲覧できます」に戻すと、解約してから食い違いに気付くことになる（解約中は課金・プラン以外が
+ * ロックされる・T-M8-269）。**最後まで押さない**（押すと実Stripeへ向かうため）。
+ */
+test("トライアル中の解約確認は「その場で終了」と、データの扱いを正しく伝える（T-M8-278）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("cancel-trial-copy");
+  await query(
+    `update profiles set stripe_customer_id = 'cus_e2e_cancel_trial', subscription_status = 'trialing',
+        trial_ends_at = now() + interval '5 days', current_period_end = now() + interval '5 days'
+      where id = $1`,
+    [account.userId],
+  );
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=billing");
+
+  await page.getByRole("button", { name: "解約する" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByText("本当に解約しますか？")).toBeVisible();
+  // 有料と違い「終了日まで使える」ではない。押した時点で終わることを先に言う。
+  await expect(dialog.getByText(/その場で終了します/)).toBeVisible();
+  await expect(dialog.getByText(/繰り越せません/)).toBeVisible();
+  // データは消えないが、解約中は開けない。両方を1行で言い切る。
+  await expect(dialog.getByText(/下書き・投稿履歴・分析結果は消えません/)).toBeVisible();
+  await expect(dialog.getByText(/解約中は開けませんが、再開すればそのまま使えます/)).toBeVisible();
+  await expect(dialog.getByText(/閲覧できます/)).toHaveCount(0);
+  // 残り期間で戻れることも、押す前に読める。
+  await expect(dialog.getByText(/残りの期間で無料トライアルを再開できます/)).toBeVisible();
+
+  // トライアルはStripeの解約画面へ送らず、その場で終わらせる（ボタンの言葉が違う）。
+  await dialog.getByRole("button", { name: "解約に進む" }).click();
+  const survey = page.getByRole("alertdialog");
+  await survey.getByRole("radio", { name: "料金が高い" }).check();
+  await expect(survey.getByRole("button", { name: "今すぐ解約する" })).toBeEnabled();
+  await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toHaveCount(0);
+});
