@@ -22,10 +22,14 @@ const mocks = vi.hoisted(() => ({
   profileUpdate: vi.fn(),
   profileUpsert: vi.fn(),
   redirect: vi.fn(),
+  isRegisteredEmail: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: mocks.createSupabaseAdminClient,
+}));
+vi.mock("@/lib/auth/registered-email-server", () => ({
+  isRegisteredEmail: mocks.isRegisteredEmail,
 }));
 vi.mock("@/lib/env", () => ({
   env: {
@@ -510,30 +514,86 @@ describe("auth actions", () => {
       expect(reusedResult.message).not.toContain("timeout-or-duplicate");
     });
 
-    it("uses one generic message for invalid credentials and rate limits", async () => {
-      const messages: string[] = [];
-      for (const error of [
-        { code: "invalid_credentials", message: "email is missing" },
-        { code: "over_request_rate_limit", message: "too many attempts" },
-      ]) {
-        mocks.createSupabaseServerClient.mockResolvedValue({
-          auth: {
-            signInWithPassword: vi.fn().mockResolvedValue({
-              data: { user: null },
-              error,
-            }),
-          },
-        });
-        const result = await signIn(
-          INITIAL_AUTH_FORM_STATE,
-          validSignInForm(),
-        );
-        messages.push(result.message);
-        expect(result.status).toBe("error");
-        expect(result.message).not.toContain(error.message);
-      }
+    /** providerの生メッセージを画面へ出さない（どの失敗でも共通の約束）。 */
+    it.each([
+      { code: "invalid_credentials", message: "email is missing" },
+      { code: "over_request_rate_limit", message: "too many attempts" },
+    ])("does not leak the provider message for $code", async (error) => {
+      mocks.isRegisteredEmail.mockResolvedValue(true);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi
+            .fn()
+            .mockResolvedValue({ data: { user: null }, error }),
+        },
+      });
 
-      expect(new Set(messages).size).toBe(1);
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.message).not.toContain(error.message);
+    });
+
+    /**
+     * **ログインの失敗は原因ごとに言い分ける**（T-M8-295・運営者の指示 2026-08-25）。
+     * Supabase はどちらも `invalid_credentials` を返すので、アプリ側で存在を確かめる。
+     * 以前は共通文言で「時間をおいて再度お試しください」と出しており、登録していない人が
+     * 正しいパスワードを探して何度も試すことになった。
+     */
+    it("登録が無ければ「登録されていません」と新規登録への導線を返す", async () => {
+      mocks.isRegisteredEmail.mockResolvedValue(false);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.message).toContain("登録されていません");
+      expect(result.action).toEqual({ href: "/signup", label: "新規登録へ" });
+      // 待っても直らない失敗に「時間をおいて」と言わない。
+      expect(result.message).not.toContain("時間をおいて");
+    });
+
+    it("登録済みなら存在を伏せず、資格情報の誤りとして返す（登録導線は出さない）", async () => {
+      mocks.isRegisteredEmail.mockResolvedValue(true);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.message).toContain("正しくありません");
+      expect(result.action).toBeUndefined();
+    });
+
+    /** 存在確認そのものが落ちても、打ち間違いを「予期しないエラー」にしない（原則1）。 */
+    it("存在確認が失敗したら、登録済みとして扱い汎用の文言へ落とす", async () => {
+      mocks.isRegisteredEmail.mockRejectedValue(new Error("db down"));
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.action).toBeUndefined();
+      expect(result.message).toContain("正しくありません");
     });
 
     it("invalidates the new session when profile lookup fails", async () => {

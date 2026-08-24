@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.61 |
+| バージョン | v1.62 |
 | 更新日 | 2026-08-25 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
@@ -11,14 +11,38 @@
 | 項目 | 仕様 |
 |---|---|
 | 登録 | Supabase Authのメール＋パスワード。確認メールを必須にする |
-| ログイン | `signInWithPassword`成功後に欠損profileを補完し、`subscription_status=incomplete|incomplete_expired`は`/plans`、それ以外は安全な`next`または`/app`へ遷移する。`email_not_confirmed`は黄色の案内付き6桁コード画面へ切り替え、新しいTurnstile token取得後にコードを自動再送する |
+| ログイン | `signInWithPassword`成功後に欠損profileを補完し、安全な`next`または`/app`へ遷移する（契約状態で行き先を変えない・T-M8-268）。`email_not_confirmed`は黄色の案内付き6桁コード画面へ切り替え、新しいTurnstile token取得後にコードを自動再送する。**失敗は原因ごとに言い分ける**（§1.1） |
 | パスワード再設定 | `resetPasswordForEmail`は登録有無にかかわらず同じ受理応答を返す。recoveryリンクで確立したsessionと、user_idを束縛した15分TTLの改ざん検知HttpOnly cookieが一致するときだけ`updateUser`を許可し、成功後は両方を破棄する |
 | パスワード | 8文字以上64文字以内かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、proxyが`getUser()`でsessionを検証する。Server Components／Server Actions／API Routeの共通helperは同一リクエストへ引き継いだ検証済みuserを再利用し、proxyを通らない呼び出しだけ`getUser()`へフォールバックする。refreshはproxyで後段request cookieとブラウザ向けcookie／cache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
 | profile作成 | `auth.users`のAFTER INSERT trigger（`security definer`・空`search_path`）で作成。欠損時はsignup確認完了、ログイン成功、または認証済みで`/plans`へ入った時だけservice roleが`id`競合時DO NOTHINGの冪等insertを行い、既存値を更新しない。全画面共通認証helperでは毎回の存在確認をしない |
 | ログアウト | Supabase sessionを破棄し`/login`へ遷移 |
 
-認証エラーで秘密値、メールの存在有無、外部providerレスポンス本文をそのまま表示しない。
+認証エラーで秘密値や外部providerレスポンス本文をそのまま表示しない。
+
+### 1.1 ログイン失敗の言い分け（T-M8-295）
+
+Supabase は「登録が無い」も「パスワードが違う」も同じ `invalid_credentials` を返すため、
+アプリ側で `auth.users` の存在を確かめて**原因ごとに直し方を出す**（運営者の指示 2026-08-25）。
+
+| 状態 | 文言 | 導線 |
+|---|---|---|
+| 登録が無い | このメールアドレスは登録されていません。新規登録してください。 | 「新規登録へ」（`/signup`） |
+| 登録はあるが資格情報が違う | メールアドレスまたはパスワードが正しくありません。 | なし |
+| その他（レート制限・障害など） | ログインできませんでした。時間をおいて再度お試しください。 | なし |
+
+- 存在の判定は**`auth.users` を正**とする。`profiles` は行が欠けていることがあり（欠損時の修復経路が
+  ログインにある）、そちらで判定すると**登録済みの人へ「新規登録してください」と案内**してしまう。
+- **存在確認そのものが失敗したら「登録済み」として扱う**——ここで失敗を表に出すと、パスワードの
+  打ち間違いがDB障害で「予期しないエラー」に化ける。失敗自体はSentryへ記録する（原則1）。
+- 「時間をおいて」は**待てば直る失敗にだけ**言う。資格情報の誤りに言うと案内が嘘になる。
+
+**アカウントの存在を明かすことについて**: 以前はログインでも有無を伏せていたが、
+(1)新規登録が既に「登録済み」を明かしている（T-M8-149）ので伏せても分かる、
+(2)ログインは Turnstile の通過が必須で総当たりの列挙が難しい、
+(3)登録が無いと分からず何度も試すほうが実害が大きい、の3点で明かす側へ変えた。
+**パスワード再設定は従来どおり有無を明かさない**——メールを送る経路なので、存在確認と同時に
+第三者へメールを送りつける手段になり得る。伏せる方へ戻すときはこの3点をまとめて見直すこと。
 
 ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。Supabaseの安定した`email_not_confirmed`コードだけは6桁コード入力状態として扱い、providerのmessage文字列では分岐しない。ログイン用Turnstile tokenは検証済みで1回限りのため再送へ使い回さず、切替後の`signup-resend` widgetが発行したtokenで`resend({type:'signup'})`を1回だけ自動実行する。自動再送後も手動再送を残し、失敗時の行き止まりを作らない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する（2026-08-19 [Supabase resend](https://supabase.com/docs/reference/javascript/auth-resend)と[Cloudflare Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)を確認）。
 
@@ -421,3 +445,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.59 | 2026-08-25 | Portalからの戻りが割引を読まず、引き止めクーポンの表示が消えていたのを修正（T-M8-293） |
 | v1.60 | 2026-08-25 | 解約理由を複数選択に（T-M8-294）。プラン未登録では設定画面ごとロック（T-M8-295） |
 | v1.61 | 2026-08-25 | 即時決済された日割り差額の案内（`always_invoice` で説明が出なくなっていた・T-M8-296） |
+| v1.62 | 2026-08-25 | ログイン失敗を原因ごとに言い分ける方針へ（§1.1・T-M8-295・運営者の指示）。パスワード再設定の非開示は維持 |

@@ -63,8 +63,18 @@ const CODE_BLOCKED_MESSAGE =
 const SIGNUP_ERROR_MESSAGE = SIGNUP_GENERIC_ERROR.message;
 const RESEND_ACCEPTED_MESSAGE =
   "確認メールを再送しました。登録可能なメールアドレスの場合にメールが届きます。";
+/**
+ * ログイン失敗の文言（T-M8-295で言い分けるようにした）。
+ *
+ * 以前はどの失敗でも「入力内容を確認し、**時間をおいて**再度お試しください」と出していたが、
+ * 資格情報の誤りは待っても直らないので案内として嘘だった。原因ごとに直し方を言う。
+ */
 const SIGNIN_ERROR_MESSAGE =
-  "ログインできませんでした。入力内容を確認し、時間をおいて再度お試しください。";
+  "ログインできませんでした。時間をおいて再度お試しください。";
+const SIGNIN_INVALID_CREDENTIALS_MESSAGE =
+  "メールアドレスまたはパスワードが正しくありません。";
+const SIGNIN_NOT_REGISTERED_MESSAGE =
+  "このメールアドレスは登録されていません。新規登録してください。";
 const RESET_REQUEST_ACCEPTED_MESSAGE =
   "再設定メールを受け付けました。登録可能なメールアドレスの場合にメールが届きます。";
 const UPDATE_PASSWORD_ERROR_MESSAGE =
@@ -487,6 +497,34 @@ export async function signIn(
           message: "メール確認が終わっていません",
           email: input.email,
         };
+      }
+      /*
+        **「登録が無い」と「パスワードが違う」を言い分ける**（T-M8-295・運営者の指示 2026-08-25）。
+        Supabase はどちらも同じ `invalid_credentials` を返すので、認証応答だけでは分からない。
+        登録が無いのに「入力内容を確認してください」と言われると、正しいパスワードを探して
+        何度も試すことになる（実際に運営者が踏んだ）。存在の確認は `auth.users` を正とする。
+
+        存在確認そのものが失敗したときは**元の汎用文言に戻す**——ここで throw すると、
+        パスワードの打ち間違いがDB障害で「予期しないエラー」になってしまう。
+      */
+      if (hasErrorCode(error, "invalid_credentials")) {
+        let registered = true;
+        try {
+          const { isRegisteredEmail } = await import("@/lib/auth/registered-email-server");
+          registered = await isRegisteredEmail(input.email);
+        } catch (cause) {
+          recordUnexpectedError(cause, { at: "sign-in:registered-lookup" });
+        }
+        if (!registered) {
+          return {
+            status: "error",
+            message: SIGNIN_NOT_REGISTERED_MESSAGE,
+            // 行き止まりにしない（T-M8-127）。入力したメールを引き継いで登録画面へ。
+            action: { href: "/signup", label: "新規登録へ" },
+            email: input.email,
+          };
+        }
+        return { status: "error", message: SIGNIN_INVALID_CREDENTIALS_MESSAGE };
       }
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }

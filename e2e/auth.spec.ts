@@ -99,7 +99,18 @@ test("サインアップは確認コードなしで完了し、そのままア�
   }
 });
 
-test("未登録のメールではログインできず、原因を推測させる情報も出さない", async ({ page }) => {
+/**
+ * **ログインでは登録の有無を明かす**（T-M8-295・運営者の指示 2026-08-25。それ以前は逆だった）。
+ *
+ * 元は列挙対策で有無を伏せていたが、登録していない人が「入力内容を確認してください」を見て
+ * 正しいパスワードを探し続ける状態になっていた（運営者が実際に踏んだ）。判断の材料:
+ * - **新規登録は既に「登録済み」を明かしている**（T-M8-149）ので、ログインだけ伏せても分かる
+ * - ログインは Turnstile の通過が必須で、総当たりの列挙は難しい
+ * - **パスワード再設定は従来どおり伏せる**（メールを送る経路なので、存在確認と同時に
+ *   第三者へメールを送りつける手段になり得る。`password-reset.spec.ts` が固定している）
+ * 伏せる方へ戻すときは、この3点をまとめて見直すこと。
+ */
+test("未登録のメールでは登録が無いと伝え、新規登録へ案内する", async ({ page }) => {
   await page.goto("/login");
   await page.locator('input[type="email"]').fill(`e2e-nobody-${randomUUID().slice(0, 8)}@example.com`);
   await page.locator('input[type="password"]').fill("Wrong-Password-1");
@@ -112,8 +123,7 @@ test("未登録のメールではログインできず、原因を推測させ�
   await expect(page).not.toHaveURL(/\/app(\/|$)/);
   const alert = alertIn(page);
   await expect(alert).toBeVisible();
-  // 「このメールは登録されていません」等、アカウントの存在を教えない（列挙対策）
-  await expect(alert).not.toContainText("登録されていません");
+  await expect(alert).toContainText("登録されていません");
 });
 
 test("未確認アカウントのログインは黄色の案内付き6桁画面へ移り、コードを自動再送する", async ({

@@ -20,8 +20,12 @@ test("LPの招待タブは未ログインならログイン画面へ送り、ロ
 
   // 未ログインはログイン画面。戻り先が招待画面として保たれている。
   await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Finvite/);
-  // ログイン画面から新規登録へも行ける（初めての人の受け皿・行き止まりにしない）。
-  await expect(page.getByRole("link", { name: "新規登録" })).toBeVisible();
+  // ログイン画面から登録へも行ける（初めての人の受け皿・行き止まりにしない）。
+  // 導線は1つだけ（T-M8-295で二重に出ていたのを解消した）。
+  const signUpLink = page.getByRole("link", { name: "会員登録" });
+  await expect(signUpLink).toHaveCount(1);
+  // 登録後も招待画面へ戻れるよう next を引き継ぐ。
+  await expect(signUpLink).toHaveAttribute("href", "/signup?next=%2Fapp%2Finvite");
 });
 
 test("プラン未選択（登録しただけ）でも招待画面で招待リンクを受け取れる", async ({

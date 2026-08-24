@@ -41,6 +41,18 @@ export function LoginForm({ next }: { next: string }) {
         {state.status === "error" ? (
           <Notice role="alert" tone="danger">
             {state.message}
+            {/*
+              行き先が返ってきたら一緒に出す（T-M8-127と同じ形）。「登録されていません」だけだと
+              同じフォームでパスワードを探し続けることになるので、登録画面への導線を添える。
+            */}
+            {state.action ? (
+              <Link
+                className="ml-1 font-medium underline underline-offset-4"
+                href={state.action.href}
+              >
+                {state.action.label}
+              </Link>
+            ) : null}
           </Notice>
         ) : null}
 
@@ -93,9 +105,18 @@ export function LoginForm({ next }: { next: string }) {
         </Button>
       </form>
 
+      {/*
+        **アカウントを持っていない人の行き止まりを作らない**（T-M8-268）。LPの友達招待CTAや
+        `next` 付きのリンクからここへ着く人は、まだ登録していないことがある。登録後も同じ
+        行き先へ戻れるよう `next` を引き継ぐ。**導線はここ1つだけにする**——ページ側にも
+        同じリンクがあって二重に出ていた（T-M8-295で解消）。
+      */}
       <p className="text-center text-sm text-muted-foreground">
         アカウントをお持ちでない方は{" "}
-        <Link className="font-medium text-foreground underline" href="/signup">
+        <Link
+          className="font-medium text-foreground underline"
+          href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
+        >
           会員登録
         </Link>
       </p>
