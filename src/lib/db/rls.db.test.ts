@@ -134,6 +134,66 @@ describe("RLS policies & ownership trigger", () => {
     });
   });
 
+  /**
+   * 招待プログラムの5表が**利用者ごとに分離**されていること（T-M8-300）。
+   *
+   * ここが緩いと、他人の**銀行口座の情報**（銀行名・支店・名義・末尾4桁）や報酬額が読める。
+   * 全表にRLSが有効かは下の横断テストが見るが、**ポリシーの中身が正しいか**は表ごとに要る
+   * （「有効だが誰でも読める」ポリシーでも横断テストは通ってしまう）。
+   */
+  it("isolates the invite tables (affiliate_*) per user", async () => {
+    await inTx(async (c) => {
+      const a = await makeUser(c);
+      const b = await makeUser(c);
+
+      const accounts: Record<string, string> = {};
+      for (const [key, user] of [["a", a], ["b", b]] as const) {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into affiliate_accounts (user_id, code) values ($1, $2) returning id`,
+          [user.uid, `code${key}${randomUUID().slice(0, 4)}`],
+        );
+        accounts[key] = rows[0].id;
+        await c.query(
+          `insert into affiliate_payout_accounts
+             (affiliate_account_id, bank_name, branch_name, account_number_ciphertext,
+              bank_account_last4, account_holder_name)
+           values ($1, $2, '本店', 'cipher', '9999', '名義')`,
+          [rows[0].id, `${key}銀行`],
+        );
+      }
+      // B が誰かを招待して報酬を得ている状態を作る（A から見えてはいけない）。
+      const referred = await makeUser(c);
+      await c.query(
+        `insert into affiliate_attributions (affiliate_account_id, referred_user_id) values ($1, $2)`,
+        [accounts.b, referred.uid],
+      );
+      await c.query(
+        `insert into affiliate_commissions
+           (affiliate_account_id, referred_user_id, stripe_invoice_id, eligible_amount,
+            original_amount, commission_rate_bps, commission_amount, available_at)
+         values ($1, $2, $3, 10000, 10000, 3000, 3000, now())`,
+        [accounts.b, referred.uid, `in_${randomUUID()}`],
+      );
+      await c.query(
+        `insert into affiliate_payouts
+           (affiliate_account_id, period_start, period_end, gross_amount, fee_amount,
+            net_amount, payment_due_at)
+         values ($1, '2026-07-01', '2026-07-31', 10000, 980, 9020, now())`,
+        [accounts.b],
+      );
+
+      await actAs(c, a.uid);
+      const own = await c.query<{ id: string }>(`select id from affiliate_accounts`);
+      expect(own.rows.map((r) => r.id), "自分の招待アカウントだけが見える").toEqual([accounts.a]);
+      // **他人の口座・報酬・振込は1行も見えない。**
+      const banks = await c.query<{ bank_name: string }>(`select bank_name from affiliate_payout_accounts`);
+      expect(banks.rows.map((r) => r.bank_name)).toEqual(["a銀行"]);
+      expect((await c.query(`select id from affiliate_attributions`)).rows).toHaveLength(0);
+      expect((await c.query(`select id from affiliate_commissions`)).rows).toHaveLength(0);
+      expect((await c.query(`select id from affiliate_payouts`)).rows).toHaveLength(0);
+    });
+  });
+
   it("lets any authenticated user read news_items but not stripe_events", async () => {
     await inTx(async (c) => {
       const a = await makeUser(c);

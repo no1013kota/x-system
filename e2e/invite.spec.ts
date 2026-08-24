@@ -95,3 +95,69 @@ test("友達招待ページ: リンク・報酬率・ランクが出て、銀行
   await expect(page.getByText("****4321", { exact: false })).toBeVisible();
   await expect(page.getByText("7654321")).toHaveCount(0);
 });
+
+/**
+ * **契約状態を変えても招待は使える**（T-M8-300・運営者の指示 2026-08-25
+ * 「様々なアカウント状況を仮定して、網羅的かつ完全にテストしてください」）。
+ *
+ * 招待は契約を必要としない（要件03 §2.1・T-M8-269）。ところが機能画面のロックは
+ * 契約状態で決まるので、**ロックの条件を変えるたびに招待まで巻き込む**危険がある
+ * （実際 T-M8-295 で設定画面をロックしたとき、招待だけは残す判断が要った）。
+ * ここで全状態を並べて、招待が開けることとリンクが出ることを固定する。
+ */
+for (const state of [
+  { label: "プラン未登録", plan: null, status: "incomplete" },
+  { label: "無料トライアル中", plan: "premium", status: "trialing" },
+  { label: "契約中", plan: "premium", status: "active" },
+  { label: "解約済み", plan: "premium", status: "canceled" },
+  { label: "支払いが滞っている", plan: "premium", status: "past_due" },
+] as const) {
+  test(`友達招待は「${state.label}」でも開けて招待リンクが出る（T-M8-300）`, async ({
+    accounts,
+    page,
+  }) => {
+    const account = await accounts.create(`invite-state-${state.status}`);
+    await query(
+      `update profiles
+          set plan = $2::plan_type, subscription_status = $3,
+              current_period_end = now() + interval '10 days'
+        where id = $1`,
+      [account.userId, state.plan, state.status],
+    );
+    await signIn(page, account);
+    await page.goto("/app/invite");
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: "友達招待" }),
+      `${state.label} で招待画面が開けない`,
+    ).toBeVisible();
+    // リンクが出ないと共有しようがない（招待アカウントは画面を開いた時点で自動発行される）。
+    await expect(page.getByText(/\/r\/[a-z2-9]{8}/)).toBeVisible();
+    // ロック画面へ倒れていないこと（契約を求める文言が出ていたら巻き込まれている）。
+    await expect(page.getByRole("heading", { name: "先にプランを登録してください" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "お支払い情報を更新してください" })).toHaveCount(0);
+  });
+}
+
+/**
+ * 自己招待は成立しない（T-M8-300）。自分のリンクを踏んでから登録し直す人は実際に居るが、
+ * 成立させると**自分に報酬を払う**ことになる。Cookieは付くが帰属だけが起きない、を固定する。
+ */
+test("自分の招待リンクを踏んでも自分には帰属しない（T-M8-300）", async ({ accounts, page }) => {
+  const account = await accounts.create("invite-self");
+  await signIn(page, account);
+  await page.goto("/app/invite");
+  const link = await page.getByText(/\/r\/[a-z2-9]{8}/).innerText();
+  const code = link.trim().split("/r/")[1]!;
+
+  await page.goto(`/r/${code}`);
+  // Cookieは付く（踏んだ事実は残る）。帰属していないことをDBで確かめる。
+  const cookie = (await page.context().cookies()).find((c) => c.name === "exos_ref");
+  expect(cookie?.value, "招待Cookieが付いていない").toBe(code);
+
+  const rows = await query<{ n: string }>(
+    `select count(*)::text as n from affiliate_attributions where referred_user_id = $1`,
+    [account.userId],
+  );
+  expect(rows[0]?.n, "自分自身へ帰属してはいけない").toBe("0");
+});

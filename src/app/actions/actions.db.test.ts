@@ -403,6 +403,94 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     expect(after.rows).toHaveLength(0);
   });
 
+  /**
+   * 振込先口座の登録（T-M8-301）。**入力の検証だけがテストされていなかった**——
+   * happy path はE2Eが通しているが、弾くべき入力を弾けているかはどこも見ていなかった。
+   * ここは**運営者がターミナルへ表示して振込に使う値**なので、
+   * 制御文字（ANSIエスケープ）が混ざると表示上の金額や名義を偽装され得る。
+   */
+  describe("振込先口座の入力検証（T-M8-301）", () => {
+    const valid = {
+      account_holder_name: "テスト タロウ",
+      account_number: "1234567",
+      account_type: "ordinary" as const,
+      bank_name: "テスト銀行",
+      branch_name: "本店",
+    };
+
+    it("正しい入力は保存でき、口座番号は末尾4桁しか残らない", async (ctx) => {
+      if (!available) return ctx.skip();
+      const { saveAffiliatePayoutAccount } = await import("./affiliate");
+      const res = await saveAffiliatePayoutAccount(valid);
+      expect(res.status, JSON.stringify(res)).toBe("success");
+
+      const { rows } = await withTransaction((c) =>
+        c.query<{ last4: string; cipher: string }>(
+          `select p.bank_account_last4 as last4, p.account_number_ciphertext as cipher
+             from affiliate_payout_accounts p
+             join affiliate_accounts a on a.id = p.affiliate_account_id
+            where a.user_id = $1`,
+          [userId],
+        ),
+      );
+      expect(rows[0]?.last4).toBe("4567");
+      expect(rows[0]?.cipher, "口座番号を平文で持たない").not.toContain("1234567");
+    });
+
+    it("桁数・文字種の違う口座番号は弾く", async (ctx) => {
+      if (!available) return ctx.skip();
+      const { saveAffiliatePayoutAccount } = await import("./affiliate");
+      for (const account_number of ["123", "123456789", "12a4567", "", "１２３４５６７"]) {
+        const res = await saveAffiliatePayoutAccount({ ...valid, account_number });
+        expect(res.status, `${account_number} を受け付けてしまった`).toBe("error");
+        expect(res.code).toBe("validation_error");
+      }
+    });
+
+    it("制御文字を含む名義・銀行名は弾く（運営者の画面で表示を偽装させない）", async (ctx) => {
+      if (!available) return ctx.skip();
+      const { saveAffiliatePayoutAccount } = await import("./affiliate");
+      const spoof = "テスト\u001b[2K\r振込済み";
+      for (const field of ["account_holder_name", "bank_name", "branch_name"] as const) {
+        const res = await saveAffiliatePayoutAccount({ ...valid, [field]: spoof });
+        expect(res.status, `${field} に制御文字が通ってしまった`).toBe("error");
+        expect(res.code).toBe("validation_error");
+      }
+    });
+
+    it("空欄・長すぎる値・知らない口座種別は弾く", async (ctx) => {
+      if (!available) return ctx.skip();
+      const { saveAffiliatePayoutAccount } = await import("./affiliate");
+      expect((await saveAffiliatePayoutAccount({ ...valid, bank_name: "   " })).code).toBe(
+        "validation_error",
+      );
+      expect(
+        (await saveAffiliatePayoutAccount({ ...valid, branch_name: "あ".repeat(101) })).code,
+      ).toBe("validation_error");
+      expect((await saveAffiliatePayoutAccount({ ...valid, account_type: "savings" })).code).toBe(
+        "validation_error",
+      );
+    });
+
+    it("登録し直すと1件のまま更新される（口座は1人1つ）", async (ctx) => {
+      if (!available) return ctx.skip();
+      const { saveAffiliatePayoutAccount } = await import("./affiliate");
+      await saveAffiliatePayoutAccount({ ...valid, account_number: "1111111" });
+      await saveAffiliatePayoutAccount({ ...valid, account_number: "2222222" });
+      const { rows } = await withTransaction((c) =>
+        c.query<{ last4: string; n: string }>(
+          `select p.bank_account_last4 as last4, count(*) over ()::text as n
+             from affiliate_payout_accounts p
+             join affiliate_accounts a on a.id = p.affiliate_account_id
+            where a.user_id = $1`,
+          [userId],
+        ),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.last4, "最後に登録した口座になる").toBe("2222");
+    });
+  });
+
   it("認証されていなければ内部エラーではなく認可エラーを返す", async () => {
     session.getCurrentUser.mockResolvedValue(null);
     const { listXAccountsAction } = await import("./x-accounts");
