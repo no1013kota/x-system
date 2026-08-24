@@ -48,15 +48,46 @@ try {
   const paidId = flag("paid");
 
   if (paidId) {
-    const updated = await client.query(
-      `update affiliate_payouts
-          set status = 'paid', paid_at = now(), updated_at = now()
-        where id = $1 and status = 'created' returning id`,
+    /*
+      **記録の直前に金額を突き合わせる**（T-M8-301・要件03 §2.4）。
+      正本は前からこう書いていたが、実装はここで生SQLを流すだけで突き合わせていなかった
+      （突き合わせる `markPayoutPaid` はテストからしか呼ばれず、本番では死んでいた）。
+      ②（--show）で額を見てから振り込むまでの間に返金が届くと、束ねている報酬は減るのに
+      振込予定の額は古いまま残る。そこへ `paid` を書くと、**実際に振り込んだ額と台帳が食い違う**。
+
+      ここでは**黙って直さない**。金額が動いていたら記録せずに止めて、運営者へ
+      「いくらへ変わったか」を見せる（原則3: 忘れたら壊れる手順にしない）。
+    */
+    const check = await client.query(
+      `select p.gross_amount, p.fee_amount, p.status,
+              coalesce(sum(c.commission_amount) filter (where c.status = 'payable'), 0)::int as bundled
+         from affiliate_payouts p
+         left join affiliate_commissions c on c.payout_id = p.id
+        where p.id = $1
+        group by p.gross_amount, p.fee_amount, p.status`,
       [paidId],
     );
-    if (updated.rowCount === 0) {
-      console.log("対象がありません（IDの誤り、または既に支払済み）。");
+    const row = check.rows[0];
+    if (!row) {
+      console.log("対象がありません（IDの誤り）。");
+    } else if (row.status !== "created") {
+      console.log(`対象がありません（status=${row.status}。既に支払済み、または取消済み）。`);
+    } else if (row.bundled !== row.gross_amount) {
+      console.log("⚠️  振込予定の額と、いま束ねている報酬の合計が一致しません。記録を中止しました。");
+      console.log(`   振込予定: ¥${row.gross_amount.toLocaleString("ja-JP")}`);
+      console.log(`   いまの合計: ¥${row.bundled.toLocaleString("ja-JP")}（差 ¥${(row.gross_amount - row.bundled).toLocaleString("ja-JP")}）`);
+      console.log("   → 返金が入った可能性があります。`--show` で見直してから、実際に振り込んだ額で記録してください。");
+      process.exitCode = 1;
+    } else if (row.bundled <= row.fee_amount) {
+      console.log("⚠️  手数料を下回るため、この振込は成立しません。記録を中止しました。");
+      process.exitCode = 1;
     } else {
+      await client.query(
+        `update affiliate_payouts
+            set status = 'paid', paid_at = now(), updated_at = now()
+          where id = $1 and status = 'created'`,
+        [paidId],
+      );
       await client.query(`update affiliate_commissions set status = 'paid' where payout_id = $1`, [paidId]);
       console.log(`✅ ${paidId} を支払済みにしました（束ねた報酬もpaidへ）。`);
     }
