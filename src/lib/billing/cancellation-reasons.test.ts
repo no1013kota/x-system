@@ -10,7 +10,19 @@ describe("cancellationEffects", () => {
     const e = cancellationEffects({ plan: "premium", endsAtLabel: "2026年9月15日", trialing: false });
     expect(e.title).toContain("2026年9月15日までご利用いただけます");
     expect(e.stops.join()).toContain("自動投稿");
-    expect(e.stops.join(), "運営キーのプランはその点も伝える").toContain("運営が用意しているAIキー");
+    /*
+      **文言ではなく「運営キーのプランには1行多い」ことを見る**（2026-08-25）。
+      以前は文面をそのまま探しており、運営者が言い回しを磨いただけでspecが落ちた。
+      守りたいのは「運営がキーを用意しているプランでは、その点も止まると伝わること」。
+    */
+    const byok = cancellationEffects({ plan: "standard", endsAtLabel: "2026年9月15日", trialing: false });
+    expect(
+      e.stops.length,
+      "運営キーのプランはBYOKより止まることが1つ多いはず",
+    ).toBe(byok.stops.length + 1);
+    const extra = e.stops.find((line) => !byok.stops.includes(line));
+    expect(extra, "運営キーのプラン向けの1行が無い").toBeTruthy();
+    expect(extra, "AIの生成が止まることが読めない").toMatch(/AI|生成/);
     expect(e.keeps.join(), "データが消えないことを必ず伝える").toContain("消えません");
     /*
       **「閲覧できます」とは書かない**（運営者の指摘 2026-08-24）。データは残るが、解約後は

@@ -371,22 +371,25 @@ test("解約は確認とアンケートを挟んでからStripeへ進む（T-M8-
   await page.getByRole("button", { name: "解約する" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "解約に進む" }).click();
   const survey = page.getByRole("alertdialog");
-  await expect(survey.getByText("解約の理由（1つ選んでください）")).toBeVisible();
+  await expect(survey.getByText("解約の理由（あてはまるものをすべて選んでください）")).toBeVisible();
   await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toBeDisabled();
-  await survey.getByRole("radio", { name: "料金が高い" }).check();
+  // **複数選べる**（T-M8-294）。理由は1つに絞れないことが多く、絞らせると集計が歪む。
+  await survey.getByRole("checkbox", { name: "料金が高い" }).check();
+  await survey.getByRole("checkbox", { name: "あまり使わなかった" }).check();
   await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toBeEnabled();
 
   // 回答はDBへ残る（運営者が何を直すべきか読めるように）。
   await survey.getByRole("button", { name: "解約手続きへ進む" }).click();
   await expect
     .poll(async () => {
-      const rows = await query<{ reason: string; proceeded: boolean }>(
-        `select reason, proceeded from cancellation_surveys where user_id = $1`,
+      const rows = await query<{ reasons: string[]; proceeded: boolean }>(
+        `select reasons, proceeded from cancellation_surveys where user_id = $1`,
         [account.userId],
       );
-      return rows[0]?.reason ?? null;
+      return rows[0]?.reasons?.join(",") ?? null;
     })
-    .toBe("price");
+    // 選んだ2つが両方残る（片方だけになっていたら複数選択が保存できていない）。
+    .toBe("price,not_used");
 });
 
 
@@ -428,7 +431,7 @@ test("トライアル中の解約確認は「その場で終了」と、デー�
   // トライアルはStripeの解約画面へ送らず、その場で終わらせる（ボタンの言葉が違う）。
   await dialog.getByRole("button", { name: "解約に進む" }).click();
   const survey = page.getByRole("alertdialog");
-  await survey.getByRole("radio", { name: "料金が高い" }).check();
+  await survey.getByRole("checkbox", { name: "料金が高い" }).check();
   await expect(survey.getByRole("button", { name: "今すぐ解約する" })).toBeEnabled();
   await expect(survey.getByRole("button", { name: "解約手続きへ進む" })).toHaveCount(0);
 });

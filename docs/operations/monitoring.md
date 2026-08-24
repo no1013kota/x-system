@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.0 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.1 |
+| 更新日 | 2026-08-25 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[デプロイ手順](./deployment.md)／要件01 §2・§8／要件04 §14 |
 
 運営者が「いま何が壊れているか」を知る経路と、それぞれが**何を見て何を見ないか**をまとめる。
@@ -82,7 +82,47 @@ stagingは別プロジェクトとして本番デプロイになっていれば�
   **AIの残高不足のような「設定・外部要因の異常」も入らない**——例外ではなく状態なので、doctor側が担う。
 - **保持期間は90日**（現行プランで固定・短縮不可。要決定D-19）。データ保存先はEU（ドイツ）リージョン。
 
-## 4. 切れる前に気付けないもの
+## 4. 解約理由を読む（SQL）
+
+解約前のアンケートは `cancellation_surveys` に残る（要件02 §3.20）。**Stripeのダッシュボードを
+見に行かなくても、自分のDBで読める**。`service_role` に SELECT があるので、Supabase の
+SQL Editor でそのまま叩ける。
+
+**理由は複数選べる**（T-M8-294）ので、`unnest(reasons)` で展開して数える。
+1件の回答が複数の理由に数えられるため、**合計は回答数より多くなる**。
+
+```sql
+-- 理由ごとの件数（直近30日・実際に解約手続きへ進んだ分だけ）
+select reason, count(*) as 件数
+  from cancellation_surveys, unnest(reasons) as reason
+ where created_at >= now() - interval '30 days' and proceeded
+ group by reason order by 件数 desc;
+```
+
+```sql
+-- 自由記述（何を直すべきかは、たいていここに書いてある）
+select created_at::date as 日, plan as プラン, reasons as 理由, detail as 記述
+  from cancellation_surveys
+ where detail is not null
+ order by created_at desc limit 50;
+```
+
+```sql
+-- 確認画面で引き返した人（＝留まった人）の理由。何が刺さって留まったかが分かる
+select reason, count(*) as 件数
+  from cancellation_surveys, unnest(reasons) as reason
+ where not proceeded
+ group by reason order by 件数 desc;
+```
+
+`proceeded` は**確認画面から解約手続きへ進んだか**。引き返した回答も残しているので、
+`proceeded` で絞らないと「留まった人の不満」まで解約理由として数えてしまう。
+`plan` は**回答時点**のプランなので、後からプランが変わっても当時の内訳が読める。
+
+**理由の値は変えない**（`src/lib/billing/cancellation-reasons.ts` の定数）。変えると
+過去の集計と接続できなくなる。選択肢を増やすのは安全、既存の値を書き換えるのは危険。
+
+## 5. 切れる前に気付けないもの
 
 **AIの残高（クレジット）は事前警告を作れない。** 提供元が残高を読むAPIを公開していないため、
 アプリ側からは「使おうとして失敗した」時点でしか分からない。

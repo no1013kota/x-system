@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.69 |
-| 更新日 | 2026-08-24 |
+| バージョン | v1.70 |
+| 更新日 | 2026-08-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -385,9 +385,9 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 
 Constraints: month形式（`^\d{4}-\d{2}(-\d{2})?$`・migration `20260823000009`）、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
-Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`、**(`x_account_id`, `created_at desc`) where `operation='post_create'`**（部分索引・migration `20260824000001`・T-M8-287）
+Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`、**(`x_account_id`, `created_at desc`) where `operation='post_create'`**（部分索引・migration `20260824000001`・T-M8-294）
 
-**この表に保持期間は無い**（原価・利用枠の台帳として永続する。cleanup対象は`external_api_usage_events`であって本表ではない）。行は利用者数に比例して増え続けるため、**本表を読む経路には必ず索引が効く述語を使う**。当日投稿数の集計（`/app`の全描画・予約枠のenqueue・投稿実行の3経路）は上の部分索引に乗る**範囲比較**で書く——`(created_at at time zone 'Asia/Tokyo')::date = …` のように日付関数で包むと索引が使えず全走査になる（T-M8-287で実際にそうなっていた。200,000行のベンチでコスト2759→130）。
+**この表に保持期間は無い**（原価・利用枠の台帳として永続する。cleanup対象は`external_api_usage_events`であって本表ではない）。行は利用者数に比例して増え続けるため、**本表を読む経路には必ず索引が効く述語を使う**。当日投稿数の集計（`/app`の全描画・予約枠のenqueue・投稿実行の3経路）は上の部分索引に乗る**範囲比較**で書く——`(created_at at time zone 'Asia/Tokyo')::date = …` のように日付関数で包むと索引が使えず全走査になる（T-M8-294で実際にそうなっていた。200,000行のベンチでコスト2759→130）。
 
 RLS: 本人select可。writeはServer only。
 
@@ -544,13 +544,13 @@ RLS: select/writeともservice roleのみ。**記録自体で状況を悪化さ�
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
 | `user_id` | `uuid` | FK profiles on delete cascade, not null | 回答者 |
-| `reason` | `text` | not null | 選択式の理由。値は`lib/billing/cancellation-reasons.ts`の定数と対応（**値を変えない**——集計が途切れる） |
+| `reasons` | `text[]` | not null, 1〜8要素 | 選択式の理由。**複数選べる**（T-M8-294・運営者の指示 2026-08-25。理由は1つに絞れないことが多く、絞らせると集計が「仕方なく選んだ1つ」に寄る）。値は`lib/billing/cancellation-reasons.ts`の定数と対応（**値を変えない**——集計が途切れる）。並びは定数の順に正規化し重複は落とす。集計は`unnest(reasons)`で数えるため、**合計は回答数より多くなる** |
 | `detail` | `text` | null, 1000文字以内 | 自由記述（任意）。空文字は入れずnullにする |
 | `proceeded` | `boolean` | not null default false | 確認画面から解約手続きへ進んだか（引き返した回答も残す） |
 | `plan` | `plan_type` | null | 回答時点のプラン（後から変わっても当時の内訳が読める） |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Indexes: `created_at`（直近N日の集計）、`user_id`
+Indexes: `created_at`（直近N日の集計）、`user_id`、`reasons`（GIN・理由での絞り込み）
 
 RLS: **本人のinsertのみ**（`auth.uid() = user_id`）。読むのは運営者（service role）。
 
@@ -1035,5 +1035,6 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.65 | 2026-08-23 | db_pool_events を追加（DB接続の待ち行列の観測・27テーブルへ・T-M8-198） |
 | v1.66 | 2026-08-23 | cancellation_surveys を追加（解約理由のアンケート・28テーブルへ・T-M8-277） |
 | v1.67 | 2026-08-23 | profiles に適用中の割引（discount_*）を追加（T-M8-279） |
-| v1.68 | 2026-08-24 | usage_events に当日投稿数用の部分索引を追加し、保持期間が無いこと・索引が効く述語で書くことを明記（T-M8-287） |
+| v1.68 | 2026-08-24 | usage_events に当日投稿数用の部分索引を追加し、保持期間が無いこと・索引が効く述語で書くことを明記（T-M8-294） |
 | v1.69 | 2026-08-24 | drafts に一覧の並び順の式索引を追加（T-M8-289） |
+| v1.70 | 2026-08-25 | cancellation_surveys の `reason` を `reasons text[]` へ（解約理由の複数選択・T-M8-294） |

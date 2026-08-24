@@ -64,7 +64,8 @@ export async function keepSubscriptionAction(): Promise<BaseResult> {
  * （呼び出し側は結果を待つが、error でも画面は次へ進む）。
  */
 export async function recordCancellationSurveyAction(input: {
-  reason: string;
+  /** 選んだ理由（1つ以上・複数可・T-M8-294）。 */
+  reasons: string[];
   detail?: string | null;
   proceeded: boolean;
 }): Promise<BaseResult> {

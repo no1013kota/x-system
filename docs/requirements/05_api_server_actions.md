@@ -86,7 +86,7 @@
 
 **Server Action `cancelTrialNowAction`**（`src/app/actions/billing.ts`・T-M8-278）は入力を持たず、**`trialing`のときだけ**本人の契約を即時解約する（`subscriptions.cancel`）。`profiles`を`canceled`にし、`trial_ends_at`は残す（残り期間での再開に使う）。trialing以外・契約なしは`subscription_required`、Stripe障害は`provider_error`。
 
-**Server Action `recordCancellationSurveyAction`**（`src/app/actions/billing.ts`・T-M8-277）は解約前のアンケート（`reason`必須・`detail`任意1000文字以内・`proceeded`）を`cancellation_surveys`へ保存する。未知の`reason`・長すぎる`detail`は`validation_error`。**保存に失敗しても画面は解約手続きへ進む**（記録より利用者の操作を優先）。結果は共通の`BaseResult`。
+**Server Action `recordCancellationSurveyAction`**（`src/app/actions/billing.ts`・T-M8-277）は解約前のアンケート（`reasons`＝**1つ以上・複数可**・`detail`任意1000文字以内・`proceeded`）を`cancellation_surveys`へ保存する。0件・未知の理由・長すぎる`detail`は`validation_error`。重複は落とし、並びは定数の順に正規化する（T-M8-294）。**保存に失敗しても画面は解約手続きへ進む**（記録より利用者の操作を優先）。結果は共通の`BaseResult`。
 
 `POST /api/stripe/resume`は、`profiles.trial_ends_at`が未来なら**その終了日のトライアルとして契約を作り直す**（T-M8-278。期限切れなら無料期間なしの有料契約）。
 

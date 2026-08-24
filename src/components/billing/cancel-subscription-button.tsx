@@ -37,7 +37,8 @@ export function CancelSubscriptionButton({
   trialing?: boolean;
 }) {
   const [step, setStep] = useState<"confirm" | "survey">("confirm");
-  const [reason, setReason] = useState<string>("");
+  /** 選んだ理由（複数可・T-M8-294）。解約の理由は1つに絞れないことが多い。 */
+  const [reasons, setReasons] = useState<string[]>([]);
   const [detail, setDetail] = useState("");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -46,14 +47,14 @@ export function CancelSubscriptionButton({
   function close() {
     // 次に開いたときは最初から（前回の入力を残さない）。
     setStep("confirm");
-    setReason("");
+    setReasons([]);
     setDetail("");
   }
 
   function proceed() {
     startTransition(async () => {
       // 記録は待つが、失敗しても解約手続きは止めない（原則: 利用者の操作を人の都合で妨げない）。
-      const saved = await recordCancellationSurveyAction({ reason, detail, proceeded: true });
+      const saved = await recordCancellationSurveyAction({ reasons, detail, proceeded: true });
       if (saved.status === "error") {
         toast.show({
           tone: "error",
@@ -138,16 +139,24 @@ export function CancelSubscriptionButton({
                 今後の改善にのみ使います。回答しても解約の手続きは変わりません。
               </AlertDialog.Description>
               <fieldset className="mt-4">
-                <legend className="text-sm font-bold text-ink">解約の理由（1つ選んでください）</legend>
+                <legend className="text-sm font-bold text-ink">
+                  解約の理由（あてはまるものをすべて選んでください）
+                </legend>
                 <div className="mt-2 space-y-1.5">
                   {CANCELLATION_REASONS.map((option) => (
                     <label className="flex items-center gap-2 text-sm leading-6" key={option.value}>
                       <input
-                        checked={reason === option.value}
+                        checked={reasons.includes(option.value)}
                         className="size-4"
                         name="cancellation-reason"
-                        onChange={() => setReason(option.value)}
-                        type="radio"
+                        onChange={(event) =>
+                          setReasons((current) =>
+                            event.target.checked
+                              ? [...current, option.value]
+                              : current.filter((value) => value !== option.value),
+                          )
+                        }
+                        type="checkbox"
                         value={option.value}
                       />
                       {option.label}
@@ -172,7 +181,7 @@ export function CancelSubscriptionButton({
                 </Button>
                 <Button
                   aria-busy={pending}
-                  disabled={!reason || pending}
+                  disabled={reasons.length === 0 || pending}
                   onClick={proceed}
                   size="lg"
                   type="button"
@@ -181,9 +190,9 @@ export function CancelSubscriptionButton({
                   {pending ? "処理しています…" : trialing ? "今すぐ解約する" : "解約手続きへ進む"}
                 </Button>
               </div>
-              {!reason ? (
+              {reasons.length === 0 ? (
                 <p className="mt-2 text-right text-xs text-muted-foreground">
-                  理由を1つ選ぶと次へ進めます
+                  理由を1つ以上選ぶと次へ進めます
                 </p>
               ) : null}
             </>
