@@ -52,7 +52,7 @@ test("プラン未選択（登録しただけ）でも招待画面で招待リ�
  * 触れるのは友達招待と設定＞課金・プランだけ。ここが緩むと、費用の出る操作の入口が
  * 未契約者へ開く（実行はサーバー側で止まるが、押せてしまう時点で説明になっていない）。
  */
-test("プラン未登録では機能画面がロックされ、招待と課金・プランだけ使える（T-M8-269）", async ({
+test("プラン未登録では機能画面と設定がロックされ、友達招待だけ使える（T-M8-269→T-M8-295）", async ({
   accounts,
   page,
 }) => {
@@ -76,12 +76,24 @@ test("プラン未登録では機能画面がロックされ、招待と課金�
     await expect(page.getByRole("link", { name: "プランを登録する" })).toBeVisible();
   }
 
-  // 設定＞設定（Xアカウント連携）もロック。ただしタブは残り、課金・プランへ行ける。
-  await page.goto("/app/settings?tab=general");
-  await expect(page.getByRole("heading", { name: "先にプランを登録してください" })).toBeVisible();
+  /*
+    **設定は画面ごとロックする**（T-M8-295・運営者の指示 2026-08-25）。以前はタブを残して
+    中身だけ差し替えていたが、一度も契約していない人には触れるものが無く、
+    タブだけが並ぶ意味の無い画面だった。課金・プランのタブも出ない——登録の入口は
+    このロック画面の「プランを登録する」（/plans）に1本化する。
+  */
+  for (const tab of ["general", "billing", "api-keys"]) {
+    await page.goto(`/app/settings?tab=${tab}`);
+    await expect(
+      page.getByRole("heading", { name: "先にプランを登録してください" }),
+      `設定(${tab}) がロックされていない`,
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "プランを登録する" })).toBeVisible();
+  }
+  // タブ自体が出ない（押せる先が無いのに並べない）。
+  await expect(page.getByRole("link", { name: "課金・プラン" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Xアカウント", exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "課金・プラン" }).click();
-  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
 
   // 友達招待はプラン未登録でも使える。
   await page.goto("/app/invite");

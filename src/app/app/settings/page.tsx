@@ -3,7 +3,7 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
-import { AppLockedNotice } from "@/components/app-shell/plan-required";
+import { AppLockedNotice, AppLockedPage } from "@/components/app-shell/plan-required";
 import { appLockFor } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
@@ -198,6 +198,24 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     null のまま扱い、各判定関数（promptEditablePlan / isOperatorManagedPlan）が false を返す。
   */
   const plan: PlanId | null = profile.plan;
+  /*
+    **プラン未登録なら設定画面ごとロックする**（T-M8-295・運営者の指示 2026-08-25）。
+    以前はタブを出したまま中身だけを差し替えていたが、一度も契約していない人にとっては
+    設定画面のどこにも触れるものが無く、タブだけが並ぶ意味の無い画面になっていた。
+
+    **解約済み・支払い滞りはここへ入れない**。課金・プランのタブに「プランを再開」（T-M8-264）と
+    お支払い情報の更新（T-M8-273）があり、ここを塞ぐと**戻る手段ごと消える**。
+    未登録（`plan` が無い＝一度も契約していない）だけを対象にする。
+  */
+  if (lock && !plan) {
+    return (
+      <AppLockedPage
+        description="Xアカウントの連携やAIの設定がご利用いただけます。"
+        reason={lock}
+        title="設定"
+      />
+    );
+  }
   // Portalセッションを作れるか。無いあいだは `/plans` へ送る（T-M8-89）。
   const hasStripeCustomer = Boolean(profile.stripe_customer_id);
   const scheduledChange = scheduledPlanChangeLabel(profile);
@@ -247,7 +265,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     tab === "general" && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
-    // 利用枠は App Shell と同じ1行から作る（T-M8-288。専用クエリを持つと往復が1本増える）。
+    // 利用枠は App Shell と同じ1行から作る（T-M8-295。専用クエリを持つと往復が1本増える）。
     tab === "billing" || tab === "general"
       ? loadRequestProfile(user.id).then((bundle) =>
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
