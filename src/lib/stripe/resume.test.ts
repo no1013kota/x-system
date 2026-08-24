@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleResumeRequest, type ResumeRouteDependencies } from "./resume";
+import { handleResumeRequest, type ResumeRouteDependencies , resumeIdempotencyKey } from "./resume";
 
 /**
  * 解約済み契約の再開（T-M8-264）の中核検証。checkout/portal と同じ観点:
@@ -97,7 +97,7 @@ describe("POST /api/stripe/resume core", () => {
         payment_behavior: "error_if_incomplete",
       },
       // 10分バケット = floor(1_790_000_000 / 600)。二度押しは同一作成、再試行は次バケットで新規。
-      { idempotencyKey: "exos-ai:resume:cus_existing:pm_card_1:2983333" },
+      { idempotencyKey: "exos-ai:resume:cus_existing:pm_card_1:t2983333:premium" },
     );
     // webhookを待たない即時反映（billing-returnと同じ合成イベント経由）。
     expect(deps.applyProjection).toHaveBeenCalledTimes(1);
@@ -203,5 +203,43 @@ describe("POST /api/stripe/resume core", () => {
       ok: true,
       data: { status: "active", synced: false },
     });
+  });
+});
+
+/**
+ * 「無料トライアルを再開」を押すと「プランを再開できませんでした」が出て、何回か押すと通る
+ * （運営者の報告 2026-08-25・T-M8-297）。原因は冪等キーを**時間で区切っていた**こと。
+ * Stripeの冪等リプレイは24時間有効なので、同じ10分の中で「再開→解約→再開」をすると
+ * 2回目の作成が1回目の応答（＝いま解約した契約）を返し、`canceled` なので確定できない。
+ * 実物のStripeで再現したうえで、置き換える契約IDを鍵にした。
+ */
+describe("resumeIdempotencyKey", () => {
+  const base = { customerId: "cus_1", cardId: "pm_1", nowSec: 1_790_000_000 };
+
+  it("同じ意図の二度押しはまとまる（対象が同じなら同じ鍵）", () => {
+    const first = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_old" });
+    const second = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_old", nowSec: base.nowSec + 3 });
+    expect(second).toBe(first);
+  });
+
+  it("解約してからもう一度なら別の作成になる（時間を待たなくてよい）", () => {
+    const first = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_old" });
+    // 再開で作られた契約を解約すると、直近の契約が入れ替わる。
+    const afterResume = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_resumed", nowSec: base.nowSec + 5 });
+    expect(afterResume).not.toBe(first);
+  });
+
+  it("同じ対象でもプランが違えば別の作成になる（残りトライアルで別プランを選ぶ・T-M8-298）", () => {
+    const premium = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_old", plan: "premium" });
+    const expert = resumeIdempotencyKey({ ...base, latestSubscriptionId: "sub_old", plan: "expert" });
+    expect(expert).not.toBe(premium);
+  });
+
+  it("置き換える契約が無いときだけ時間で区切る", () => {
+    const a = resumeIdempotencyKey({ ...base, latestSubscriptionId: null });
+    const sameBucket = resumeIdempotencyKey({ ...base, latestSubscriptionId: null, nowSec: base.nowSec + 59 });
+    const nextBucket = resumeIdempotencyKey({ ...base, latestSubscriptionId: null, nowSec: base.nowSec + 601 });
+    expect(sameBucket).toBe(a);
+    expect(nextBucket).not.toBe(a);
   });
 });

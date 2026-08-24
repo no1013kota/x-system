@@ -8,12 +8,20 @@ export type ResumeResult =
   | { ok: true; data: { status: string; synced: boolean } }
   | { ok: false; error?: { message?: string } };
 
-export async function startPlanResume(): Promise<ResumeResult> {
+export type ResumeFailure = ResumeResult & { ok: false; status?: number };
+
+/**
+ * @param plan 別のプランで再開する場合に指定する（T-M8-298）。省略なら元のプラン。
+ *   トライアルが残っている人は `/plans` から任意のプランを選んでも、残りの期間を無料で始められる。
+ */
+export async function startPlanResume(plan?: string): Promise<ResumeResult & { status?: number }> {
   const res = await fetch("/api/stripe/resume", {
+    body: plan ? JSON.stringify({ plan }) : undefined,
     headers: { "content-type": "application/json" },
     method: "POST",
   });
   const body = (await res.json().catch(() => null)) as ResumeResult | null;
-  if (!body) return { ok: false };
-  return body;
+  // 呼び出し側が「カードが無いだけ」(402) と本当の失敗を区別できるように status を返す。
+  if (!body) return { ok: false, status: res.status };
+  return { ...body, status: res.status };
 }

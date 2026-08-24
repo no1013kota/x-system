@@ -4,7 +4,7 @@ import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
 import { AppError } from "@/lib/observability/errors";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
-import type { PlanId } from "@/lib/plans";
+import { PLAN_IDS, type PlanId } from "@/lib/plans";
 
 import { syntheticSubscriptionEvent } from "./billing-return";
 import { LIVE_SUBSCRIPTION_STATUSES } from "./checkout";
@@ -37,8 +37,35 @@ import {
  *   expire**する（完了時点にはガードが無く、後から完了されると2本目の契約＝二重請求になるため）
  */
 
-/** 二度押しをまとめ、再試行をStripeの24時間冪等リプレイから逃がす時間幅（秒）。 */
+/**
+ * 冪等キーの「回」を表す値（T-M8-297）。
+ *
+ * **時間で区切らない。** 以前は10分のバケットを使っていたが、Stripeの冪等リプレイは24時間有効なので、
+ * 同じ10分のあいだに「再開 → もう一度解約 → また再開」をすると、2回目の作成が
+ * **1回目の応答（＝いま解約したばかりの契約）をそのまま返す**。取り直すと `canceled` なので
+ * 「再開を確定できませんでした」になり、**10分待って次のバケットに入るまで直らなかった**
+ * （2026-08-25、運営者の報告「何回か押すと再開できます」を実物のStripeで再現）。
+ *
+ * 置き換える対象の契約IDを使う。同じ意図の二度押しはIDが変わらないのでまとめられ、
+ * 「解約してからもう一度」は対象が変わるので別の作成になる。
+ * 置き換える契約が1本も無いときだけ、従来どおり時間で区切る。
+ */
 const RESUME_ATTEMPT_BUCKET_S = 600;
+
+export function resumeIdempotencyKey(input: {
+  customerId: string;
+  cardId: string;
+  /** 直近の契約（＝これから置き換えるもの）のID。無ければ null。 */
+  latestSubscriptionId: string | null;
+  nowSec: number;
+  /** 作るプラン（T-M8-298）。**鍵に入れる**——同じ対象から別プランで再開できるようにするため。 */
+  plan?: PlanId;
+}): string {
+  const attempt =
+    input.latestSubscriptionId ?? `t${Math.floor(input.nowSec / RESUME_ATTEMPT_BUCKET_S)}`;
+  const plan = input.plan ? `:${input.plan}` : "";
+  return `exos-ai:resume:${input.customerId}:${input.cardId}:${attempt}${plan}`;
+}
 
 export interface ResumeProfile {
   plan: PlanId | null;
@@ -132,6 +159,31 @@ export async function handleResumeRequest(
     return apiError(new AppError("internal_error", { cause: error }));
   }
   if (!profile) return apiError(new AppError("internal_error"));
+  /*
+    **どのプランで再開するか**（T-M8-298・運営者の指示 2026-08-25）。省略なら元のプラン。
+    トライアルが残っている人は別のプランでも残りの期間を無料で始められるべきで、
+    そのときだけ `/plans` からプランを指定して呼ぶ（カード入力の画面を挟まない）。
+    知らない値は黙って元のプランへ倒さず弾く（画面と食い違ったまま契約を作らない）。
+  */
+  let requestedPlan: PlanId | null = null;
+  try {
+    const raw: unknown = await request.clone().json();
+    const value = (raw as { plan?: unknown } | null)?.plan;
+    if (value !== undefined) {
+      if (typeof value !== "string" || !PLAN_IDS.includes(value as PlanId)) {
+        return apiError(new AppError("validation_error", { message: "プランを選び直してください。" }));
+      }
+      requestedPlan = value as PlanId;
+    }
+  } catch (cause) {
+    /*
+      **本文が無い／JSONでないのは正常**（設定＞課金の「プランを再開」は本文を送らない）。
+      ここで拾えるのはパース失敗だけで、それ自体が「指定なし」の答えになる。
+      元のプランで続けるのが正しいので記録しない（`cause` は握り潰しでないことを示すため受ける）。
+    */
+    void cause;
+  }
+
   if (!profile.stripe_customer_id || !profile.plan) {
     // 再開できる下地（Stripe顧客と元のプラン）が無い＝新規契約の話なので /plans へ。
     return apiError(
@@ -152,6 +204,11 @@ export async function handleResumeRequest(
       status: "all",
     });
     const live = existing.data.find((sub) => LIVE_SUBSCRIPTION_STATUSES.has(sub.status));
+    /*
+      冪等キーに使う「置き換える対象」。`list` は新しい順なので先頭が直近の契約。
+      解約するたびにこれが変わるので、「解約してからもう一度再開」が別の作成になる（T-M8-297）。
+    */
+    const latestSubscriptionId = existing.data[0]?.id ?? null;
     if (live) {
       return apiError(
         new AppError("subscription_required", {
@@ -202,21 +259,29 @@ export async function handleResumeRequest(
       trialEndsAtSec && Number.isFinite(trialEndsAtSec) && trialEndsAtSec > deps.now()
         ? trialEndsAtSec
         : null;
-    const attemptBucket = Math.floor(deps.now() / RESUME_ATTEMPT_BUCKET_S);
+    // 指定が無ければ元のプラン（設定＞課金の「プランを再開」はこちら）。
+    const targetPlan: PlanId = requestedPlan ?? profile.plan;
+    const idempotencyKey = resumeIdempotencyKey({
+      cardId: card.id,
+      customerId,
+      latestSubscriptionId,
+      nowSec: deps.now(),
+      plan: targetPlan,
+    });
     let created: Stripe.Subscription;
     try {
       created = await deps.stripe.subscriptions.create(
         {
           customer: customerId,
           default_payment_method: card.id,
-          items: [{ price: deps.priceIds[profile.plan] }],
+          items: [{ price: deps.priceIds[targetPlan] }],
           metadata: { user_id: user.id },
           // 決済が通らないなら契約を作らない（incompleteを残さない）。
           payment_behavior: "error_if_incomplete",
           // 残りのトライアル期間があれば、その終了日で作り直す（T-M8-278）。
           ...(remainingTrialEnd ? { trial_end: remainingTrialEnd } : {}),
         },
-        { idempotencyKey: `exos-ai:resume:${customerId}:${card.id}:${attemptBucket}` },
+        { idempotencyKey },
       );
     } catch (cause) {
       if (isCardError(cause)) {

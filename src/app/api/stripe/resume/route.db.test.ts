@@ -193,13 +193,18 @@ describe("POST /api/stripe/resume（route 実装・実DB）", () => {
       default_payment_method: "pm_db_card",
       payment_behavior: "error_if_incomplete",
     });
-    // 冪等キーは 10分バケット付き（Stripeの24時間リプレイから再試行を逃がす）。
+    /*
+      冪等キーは**置き換える契約のID**で区切る（T-M8-297）。以前は10分のバケットだったが、
+      Stripeの冪等リプレイは24時間有効なので、同じ10分の中で「再開→解約→再開」をすると
+      2回目が1回目の応答（いま解約した契約）を返し、「再開を確定できませんでした」になった。
+      置き換える契約が1本も無いこのケースだけ、従来どおり時間で区切る（`t` 付き）。
+    */
     const bucket = Math.floor(Date.now() / 1000 / 600);
     const key = (createCalls[0].options as { idempotencyKey: string }).idempotencyKey;
     expect([
-      `exos-ai:resume:${customerId}:pm_db_card:${bucket}`,
+      `exos-ai:resume:${customerId}:pm_db_card:t${bucket}:premium`,
       // 実行がバケット境界をまたいだ場合の1つ前も許容する。
-      `exos-ai:resume:${customerId}:pm_db_card:${bucket - 1}`,
+      `exos-ai:resume:${customerId}:pm_db_card:t${bucket - 1}:premium`,
     ]).toContain(key);
 
     // **applyPreparedStripeEvent が実DBへ書いたこと**（webhookなしで active になる）。
