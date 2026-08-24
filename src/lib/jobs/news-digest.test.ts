@@ -61,12 +61,14 @@ describe("fanOutNewsDigest", () => {
     expect(res.matchedUsers).toBe(1);
     expect(res.notified).toBe(1);
     expect(res.createdIds).toHaveLength(1);
+    // 1文で全員ぶんを作る（T-M8-290）。パラメータは列ごとの配列。
     const ins = writes.find((w) => INSERT.test(w.sql))!;
+    expect(writes.filter((w) => INSERT.test(w.sql)), "対象者ごとに文を投げない").toHaveLength(1);
     expect(ins.params[1]).toBe("news-digest:2026-07-19T00:00:00Z"); // dedupe_key
-    expect(ins.params[2]).toBe("ニュースダイジェスト 7件"); // title
-    expect(ins.params[3]).toBe("・t1\n・t2\n・t3\n・t4\n・t5\nほか2件"); // body: top5 + remainder
-    expect(ins.params[6]).toBe(true); // in_app_enabled
-    const payload = JSON.parse(ins.params[5] as string);
+    expect(ins.params[3]).toEqual(["ニュースダイジェスト 7件"]); // titles
+    expect(ins.params[4]).toEqual(["・t1\n・t2\n・t3\n・t4\n・t5\nほか2件"]); // bodies: top5 + remainder
+    expect(ins.params[6]).toEqual([true]); // in_app_enabled
+    const payload = JSON.parse((ins.params[5] as string[])[0]);
     expect(payload).toEqual({
       window_started_at: "2026-07-19T00:00:00Z",
       window_ended_at: "2026-07-19T01:00:00Z",
@@ -78,7 +80,7 @@ describe("fanOutNewsDigest", () => {
   it("omits the remainder line when 5 or fewer items match", async () => {
     const { db, writes } = mockDb([aggRow({ total_count: 3, top_titles: ["a", "b", "c"] })]);
     await fanOutNewsDigest({ db, windowStart });
-    expect(writes.find((w) => INSERT.test(w.sql))!.params[3]).toBe("・a\n・b\n・c");
+    expect(writes.find((w) => INSERT.test(w.sql))!.params[4]).toEqual(["・a\n・b\n・c"]);
   });
 
   it("creates nothing when no user matches", async () => {
