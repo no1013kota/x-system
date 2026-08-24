@@ -96,6 +96,9 @@ export async function listDraftsForAccount(
     params.push(options.limit);
     limitClause = ` limit $${params.length}`;
   }
+  // 並び順は `drafts_account_list_order_idx`（x_account_id, coalesce(posted_at, updated_at) desc,
+  // created_at desc）に一致させてある（T-M8-289）。式を変えると索引から外れ、アカウントの
+  // 全行を読んで並べ直す形（200,000行のベンチでコスト3641・Sort有）へ戻る。
   const { rows } = await db.query<DraftView>(
     `select ${DRAFT_COLUMNS} from drafts
       where x_account_id = $1 and status = any($2)

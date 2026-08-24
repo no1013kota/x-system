@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.68 |
+| バージョン | v1.69 |
 | 更新日 | 2026-08-24 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -301,7 +301,7 @@ RLS: 本人select可。writeはServer only。
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Indexes: (`x_account_id`, `status`, `created_at desc`), (`x_account_id`, `posted_at desc`), (`next_metrics_at`) where `metrics_completed_at is null`, `source_news_item_id`, `parent_draft_id`
+Indexes: (`x_account_id`, `status`, `created_at desc`), (`x_account_id`, `posted_at desc`), **(`x_account_id`, `coalesce(posted_at, updated_at) desc`, `created_at desc`)**（一覧の並び順に一致させる式索引・migration `20260824000002`・T-M8-289。この式を変えると索引から外れ、アカウントの全行を読んで並べ直す形へ戻る）, (`next_metrics_at`) where `metrics_completed_at is null`, `source_news_item_id`, `parent_draft_id`
 
 RLS: x_account所有者select可。本文編集は`status = draft`のみServer Action経由。投稿状態とjobからの更新はServer only。
 
@@ -1036,3 +1036,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.66 | 2026-08-23 | cancellation_surveys を追加（解約理由のアンケート・28テーブルへ・T-M8-277） |
 | v1.67 | 2026-08-23 | profiles に適用中の割引（discount_*）を追加（T-M8-279） |
 | v1.68 | 2026-08-24 | usage_events に当日投稿数用の部分索引を追加し、保持期間が無いこと・索引が効く述語で書くことを明記（T-M8-287） |
+| v1.69 | 2026-08-24 | drafts に一覧の並び順の式索引を追加（T-M8-289） |
