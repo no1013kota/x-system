@@ -290,6 +290,71 @@ describe("affiliate scenarios (db)", () => {
     expect(rows.filter((r) => r.referred_user_id === null)).toHaveLength(1);
   });
 
+  /**
+   * **ランクが上がったら、昔招待した人の「その後の支払い」も新しい率になる**
+   * （運営者の質問 2026-08-25「ランクが1つ上がると過去の招待も含めて%が増えるのか」）。
+   *
+   * 率は**報酬1件ごと**に、そのときの累計有料招待人数で決まる（`recordCommissionForInvoice`）。
+   * つまり「過去の招待者」も報酬期間（6ヶ月）のあいだ払い続けるかぎり、新しい率が乗る。
+   * 一方、**すでに作られた報酬の率は書き換わらない**（snapshot）。この2つは別の話。
+   */
+  it("ランクが上がると、先に招待した人の次の支払いも新しい率になる", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+
+    // 1人目を招待して1回目の支払い（このとき30%）。
+    const first = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: first });
+    const firstInvoice = `in_${randomUUID()}`;
+    await recordCommissionForInvoice(database, {
+      referredUserId: first,
+      stripeInvoiceId: firstInvoice,
+      amountPaid: 10000,
+      paidAtSec: sec("2026-03-01T00:00:00Z"),
+    });
+
+    // さらに5人（合計6人）。**6人目から35%**なので、ここでランクが上がる。
+    for (let i = 0; i < 5; i++) {
+      const u = await makeUser(database);
+      await attributeSignup(database, { code: account.code, newUserId: u });
+      await recordCommissionForInvoice(database, {
+        referredUserId: u,
+        stripeInvoiceId: `in_${randomUUID()}`,
+        amountPaid: 10000,
+        paidAtSec: sec("2026-03-02T00:00:00Z"),
+      });
+    }
+
+    // **1人目の2回目の支払い**（翌月）。このとき累計は6人なので35%が乗る。
+    const secondInvoice = `in_${randomUUID()}`;
+    await recordCommissionForInvoice(database, {
+      referredUserId: first,
+      stripeInvoiceId: secondInvoice,
+      amountPaid: 10000,
+      paidAtSec: sec("2026-04-01T00:00:00Z"),
+    });
+
+    const rows = await commissionsOf(database, account.id);
+    const before = rows.find((r) => r.commission_rate_bps === 3000 && r.eligible_amount === 10000);
+    expect(before, "1回目は30%のまま残る").toBeTruthy();
+    const after = await database.query<{ rate: number; amount: number }>(
+      `select commission_rate_bps as rate, commission_amount as amount
+         from affiliate_commissions where stripe_invoice_id = $1`,
+      [secondInvoice],
+    );
+    expect(after.rows[0]?.rate, "先に招待した人の2回目の支払いも35%になる").toBe(3500);
+    expect(after.rows[0]?.amount).toBe(3500);
+    // 1回目の報酬は書き換わっていない（snapshot）。
+    const original = await database.query<{ rate: number; amount: number }>(
+      `select commission_rate_bps as rate, commission_amount as amount
+         from affiliate_commissions where stripe_invoice_id = $1`,
+      [firstInvoice],
+    );
+    expect(original.rows[0]?.rate, "過去に作られた報酬の率は変わらない").toBe(3000);
+    expect(original.rows[0]?.amount).toBe(3000);
+  });
+
   it("率のsnapshotは後から率が上がっても過去の報酬を書き換えない", async (ctx) => {
     if (!database) return ctx.skip();
     const inviter = await makeUser(database);

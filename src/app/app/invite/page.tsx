@@ -57,10 +57,6 @@ export default async function InvitePage() {
   const { tier } = summary;
   // 次の1人に適用される率（要決定D-41・案B）。今の率と同じなら画面に出さない。
   const nextRateBps = nextReferralRateBps(summary.paidReferralCount);
-  const progressToNext = tier.next
-    ? Math.min(1, summary.paidReferralCount / tier.nextAtCount)
-    : 1;
-
   return (
     // 器は他のapp画面と同一（要件06 §2・T-M8-179。素のdivだと幅と余白が揃わない）。
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
@@ -88,43 +84,35 @@ export default async function InvitePage() {
             <span className="text-[26px] font-extrabold tabular-nums text-brand">
               {formatRateBps(tier.currentRateBps)}
             </span>
-            {tier.next ? (
-              /*
-                必要人数を招待し終えると**目標が次の段へ進む**ので（`tierProgress`）、
-                ここが「あと0人」になることはない（運営者の指示 2026-08-25
-                「5人ちょうどの時は 5 / 10人」）。
-              */
-              <span className="text-caption text-ink-2">
-                あと{tier.remainingToNext}人の有料招待で {formatRateBps(tier.next.rateBps)} にアップ
-              </span>
-            ) : (
+            {/*
+              **「あと◯人で◯%にアップ」「次のランクまで ◯/◯人」は出さない**
+              （運営者の指示 2026-08-25「ややこしいので」）。
+              率が上がる人数（表の見出し）と、ランクアップに必要な人数（進捗の分母）は
+              1つずれた別の数で、並べて出すと読み手に2種類の数え方を強いていた。
+              いま出すのは「現在の率」と、変わる直前だけ出る「次の紹介から◯%」の2つ。
+              進捗バーも消した——分母の文字を消すと、何に対する割合か分からなくなるため。
+              有料招待の人数は下のKPIカードにあるので情報は失われない。
+            */}
+            {tier.next ? null : (
               <span className="text-caption text-ink-2">最上位ランクです</span>
             )}
           </div>
-          {tier.next ? (
-            <div
-              aria-hidden="true"
-              className="mt-2.5 h-2 overflow-hidden rounded-pill bg-brand-subtle"
-            >
-              <div
-                className="h-full rounded-pill bg-brand"
-                style={{ width: `${Math.round(progressToNext * 100)}%` }}
-              />
-            </div>
-          ) : null}
-          <p className="mt-1.5 text-caption text-ink-3">
-            有料招待 {summary.paidReferralCount}人
-            {tier.next ? ` ／ 次のランクまで ${summary.paidReferralCount} / ${tier.nextAtCount}人` : ""}
-          </p>
           {/*
-            **次の1人に適用される率**（要決定D-41・運営者の判断 2026-08-25「案B」）。
-            率は「その紹介を含めた累計人数」で決まるので、あと1人でランクが上がる人は
-            **次の紹介から**上の率になる。見出しの「現在の率」だけだと食い違って見える。
-            率が変わらないときは出さない（同じ数字を2回書かない）。
+            **あと1人でランクが上がることを伝える**（要決定D-41・運営者の指示 2026-08-25）。
+            率は「その紹介を**含めた**累計人数」で決まるので、必要人数を招待し終えた人は
+            もう1人でランクが上がる。この行が出るのは 5人・10人・25人・50人ちょうどのときだけ
+            （率が変わらないときは出さない＝同じ数字を2回書かない）。
+
+            **「過去に招待した人にも適用されます」とは書かない。**
+            上がった率が乗るのは**これからのお支払い**で、**すでに発生した報酬は
+            その時の率のまま**（作成時にsnapshotする・`recordCommissionForInvoice`）。
+            「過去にも適用」と読めると「前の報酬も増える」と期待され、増えないので苦情になる。
+            過去に招待した人が**続けて払っている限り新しい率が乗る**、が正しい説明。
           */}
           {nextRateBps !== tier.currentRateBps ? (
             <p className="mt-1 text-caption font-bold text-brand">
-              次の紹介から {formatRateBps(nextRateBps)} になります
+              もう一人招待すると、あなたの報酬率が {formatRateBps(nextRateBps)} に上がります
+              （過去に招待した方の次回以降のお支払いにも適用されます）
             </p>
           ) : null}
           {/* 招待ランクの段（運営者の指示 2026-08-21: 報酬率の直下に小さく）。 */}
