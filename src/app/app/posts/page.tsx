@@ -37,6 +37,14 @@ type Tab = "create" | "drafts" | "history";
  * 上限に達したときは「直近N件」と画面に明示する（黙って切り捨てない）。
  */
 const HISTORY_LIMIT = 50;
+/**
+ * 下書きタブの表示件数（要決定D-39・運営者の判断 2026-08-25「案A」）。
+ *
+ * これまで下書きだけ**上限なしで全件**取っていた。`thread`・`images` のJSONを含むので、
+ * 溜めている人ほど画面が重くなる（利用者数ではなく**その人の下書き数**に比例）。
+ * 履歴タブと同じ50件＋「ほかN件は…」に揃える——同じ形なら説明が要らない。
+ */
+const DRAFTS_LIMIT = 50;
 const TABS: { id: Tab; label: string }[] = [
   { id: "create", label: "作成" },
   { id: "drafts", label: "下書き" },
@@ -177,6 +185,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
   let historyTruncated = false;
+  let draftsTruncated = false;
   /** 操作中アカウントのX Premium加入（文字数上限の緩和・T-M8-221）。 */
   let xPremium = false;
   /** 進行中の生成job（T-M8-209）。下書きタブの先頭に作成中カードを出す。 */
@@ -190,7 +199,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         pooledDb,
         activeXAccountId,
         tab === "history" ? "history" : "drafts",
-        tab === "history" ? { limit: HISTORY_LIMIT } : {},
+        { limit: tab === "history" ? HISTORY_LIMIT : DRAFTS_LIMIT },
       ),
       getPool()
         .query<{ plan: string | null }>(`select plan from profiles where id = $1`, [user.id])
@@ -220,6 +229,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     drafts = await attachSignedImageUrls(loaded);
     xPremium = premiumRow?.rows[0]?.x_premium ?? false;
     historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
+    draftsTruncated = tab === "drafts" && loaded.length === DRAFTS_LIMIT;
     /**
      * 通知が指す下書きが、このタブに見当たらないとき（T-M8-115）。
      *
@@ -313,6 +323,10 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
             selectedDraftId={params.draftId}
             xPremium={xPremium}
           />
+          {draftsTruncated ? (
+            // 履歴タブと同じ形にする（要決定D-39・案A）。黙って切らず、切ったことを言う。
+            <p className="text-caption text-ink-3">直近{DRAFTS_LIMIT}件を表示しています。</p>
+          ) : null}
         </>
       ) : (
         <>
