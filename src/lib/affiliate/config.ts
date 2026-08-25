@@ -13,11 +13,18 @@ export interface InviteTier {
 /** ランク表（invite_cp.md §3）。minPaidUsers の昇順を保つこと。 */
 export const INVITE_TIERS: readonly InviteTier[] = [
   // 2026-08-22 運営者の指示で全ランク+10pt（20〜40% → 30〜50%）。過去分はsnapshot済みのため不変。
+  /*
+    2026-08-25 運営者の指示で**区切りを 1〜5 / 6〜10 / 11〜25 / 26〜50 / 51〜 へ変更**。
+    以前は 1〜4 / 5〜9 / 10〜24 / 25〜49 / 50〜 で、表の見出し（5人・10人…）と
+    実際に上がる人数（5人目・10人目…）が1人ずれていた。
+    `minPaidUsers` は**その率になる最初の人数**なので、区切りの下端をそのまま入れる。
+    率は作成時にsnapshotされるので、**過去の報酬は書き換わらない**（変更時点で報酬0件）。
+  */
   { minPaidUsers: 1, rateBps: 3000 },
-  { minPaidUsers: 5, rateBps: 3500 },
-  { minPaidUsers: 10, rateBps: 4000 },
-  { minPaidUsers: 25, rateBps: 4500 },
-  { minPaidUsers: 50, rateBps: 5000 },
+  { minPaidUsers: 6, rateBps: 3500 },
+  { minPaidUsers: 11, rateBps: 4000 },
+  { minPaidUsers: 26, rateBps: 4500 },
+  { minPaidUsers: 51, rateBps: 5000 },
 ];
 
 /** 振込1回あたりの手数料（利用者負担・Commissionからは引かず会計分離）。 */

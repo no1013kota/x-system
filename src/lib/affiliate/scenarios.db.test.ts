@@ -303,9 +303,9 @@ describe("affiliate scenarios (db)", () => {
       paidAtSec: sec("2026-08-01T00:00:00Z"),
     });
 
-    // 5人目まで増やして率を上げる。
+    // 6人目まで増やして率を上げる（区切りは 1〜5 / 6〜10・2026-08-25）。
     let fifth = "";
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const u = await makeUser(database);
       fifth = u;
       await attributeSignup(database, { code: account.code, newUserId: u });
@@ -327,7 +327,7 @@ describe("affiliate scenarios (db)", () => {
     const fifthRow = rows.find((r) => r.referred_user_id === fifth);
     expect(firstRow?.commission_rate_bps, "1件目は30%のまま").toBe(3000);
     expect(firstRow?.commission_amount).toBe(3000);
-    expect(fifthRow?.commission_rate_bps, "5人目は35%").toBe(3500);
+    expect(fifthRow?.commission_rate_bps, "6人目は35%").toBe(3500);
     expect(fifthRow?.commission_amount, "35%で計算される").toBe(3500);
   });
 

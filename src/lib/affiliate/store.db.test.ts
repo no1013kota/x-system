@@ -174,14 +174,19 @@ describe("affiliate store (db)", () => {
     ).toBe("skipped");
   });
 
-  it("率は累計有料招待ユーザー数で上がる（5人目から25%）", async (ctx) => {
+  /*
+    区切りは 1〜5 / 6〜10 / …（運営者の指示 2026-08-25）。**6人目から35%**。
+    以前の題名は「5人目から25%」で、率の改定（2026-08-22の+10pt）にも
+    区切りの変更にも追随していなかった。
+  */
+  it("率は累計有料招待ユーザー数で上がる（6人目から35%）", async (ctx) => {
     if (!database) return ctx.skip();
     const db = database;
     const inviter = await makeUser(db);
     const account = await ensureAffiliateAccount(db, inviter);
     const paidAt = Math.floor(Date.now() / 1000);
     const rates: number[] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const invited = await makeUser(db);
       await attributeSignup(db, { code: account.code, newUserId: invited });
       const invoice = `in_${randomUUID()}`;
@@ -197,7 +202,7 @@ describe("affiliate store (db)", () => {
       );
       rates.push(row.rows[0].commission_rate_bps);
     }
-    expect(rates).toEqual([3000, 3000, 3000, 3000, 3500]);
+    expect(rates).toEqual([3000, 3000, 3000, 3000, 3000, 3500]);
   });
 
   it("Refundで取消（reversed）・確認期間経過でpayableへ", async (ctx) => {
