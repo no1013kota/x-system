@@ -9,6 +9,7 @@ import {
   judgePoolWaits,
   judgeJobs,
   judgeNews,
+  judgeRepeatedFailures,
   judgeScheduler,
   judgeStuckJobs,
   judgeSubscriptionSync,
@@ -497,5 +498,58 @@ describe("judgePoolWaits の上限表示（T-M8-303）", () => {
 
   it("上限が分からないときは数字を作らない", () => {
     expect(judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 }).detail).not.toContain("上限");
+  });
+});
+
+/**
+ * 合計だけでは見えない壊れ方を運営者へ届ける（T-M8-307）。
+ * 2026-08-25 の不具合は「1人の利用者の実行が全滅、画面には残り満額」という形だった。
+ */
+describe("judgeRepeatedFailures（誰がどう壊れているかを出す）", () => {
+  const group = (message: string, count: number, users = 1) => ({ message, count, users });
+
+  it("失敗が無ければ ok", () => {
+    const c = judgeRepeatedFailures({ groups: [], allFailingUsers: 0 });
+    expect(c.level).toBe("ok");
+    expect(c.detail).toContain("失敗はありません");
+  });
+
+  it("ばらけた少数の失敗は ok（毎日赤くしない）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("画像の生成に失敗しました", 2), group("Xへの投稿に失敗しました", 1)],
+      allFailingUsers: 0,
+    });
+    expect(c.level).toBe("ok");
+    expect(c.detail).toContain("2");
+  });
+
+  it("同じ理由が繰り返していれば warn（仕組みの問題の疑い）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("AIの利用残高が不足しています", 9, 4)],
+      allFailingUsers: 0,
+    });
+    expect(c.level).toBe("warn");
+    expect(c.detail).toContain("AIの利用残高が不足しています");
+    expect(c.detail).toContain("利用者 4 名");
+    expect(c.nextAction).toBeTruthy();
+  });
+
+  it("実行が全滅している利用者がいれば error（合計では warn 止まりでも）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("しばらくしてからもう一度お試しください", 3)],
+      allFailingUsers: 1,
+    });
+    expect(c.level).toBe("error");
+    expect(c.detail).toContain("1 名");
+    // 「次に何をすればよいか」が無いと運営者は動けない（原則2）。
+    expect(c.nextAction).toContain("調べて");
+  });
+
+  it("運営者向けでも個人が特定できる値は文面に載せない", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("AIの利用残高が不足しています", 5, 2)],
+      allFailingUsers: 2,
+    });
+    expect(c.detail).not.toMatch(/@|[0-9a-f]{8}-[0-9a-f]{4}/);
   });
 });

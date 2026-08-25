@@ -85,6 +85,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 |---|---|
 | DB schema / RLS / GRANT / migration | `/verify-integration`（**ロール権限＝`service_role`のGRANT**を含む） |
 | Server Action / API route | 本番実装を通す `*.db.test.ts`（DBとSupabaseクライアントをモックしない） |
+| **DBへ書く値の「形式」を変えた**（キー・ID・列挙・日付書式・接尾辞） | その値を**実際にinsertする** `*.db.test.ts`。**文字列の組み立てを検査する単体テストでは足りない**——2026-08-24、利用枠の期間キーへ世代 `#N` を足した変更が `month` のCHECK制約に弾かれ、トライアル中にプランを下げた利用者が翌日まで何も実行できない状態で出ていた（T-M8-299→T-M8-307）。読み取りは行が無いだけなので画面は「残り満額」と表示し、利用者からも見えない。登録は `src/lib/db/check-constraints.db.test.ts` の `REGISTRY` へ |
 | **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |

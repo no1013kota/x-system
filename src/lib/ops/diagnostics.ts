@@ -87,6 +87,123 @@ export function judgeJobs(input: { succeeded: number; failed: number }): Check {
   };
 }
 
+/** 同じ理由が何件以上出たら「繰り返し」とみなすか。1〜2件は個別の事情のことが多い。 */
+export const REPEATED_FAILURE_MIN = 3;
+
+/** 直近24時間で同じ理由の失敗が何件出たか。 */
+export interface FailureGroup {
+  /** 利用者へ出している文言をそのまま使う（内部コードは運営者にも出さない）。 */
+  message: string;
+  count: number;
+  /** その理由に当たった利用者の数。 */
+  users: number;
+}
+
+/**
+ * **同じ原因で繰り返している失敗**と、**実行が全部失敗している利用者**を運営者へ届ける（T-M8-307）。
+ *
+ * {@link judgeJobs} は全体の成功/失敗の**合計**しか見ない。1人の利用者の実行が全滅していても、
+ * 他の利用者の成功に紛れて「注意」止まりになり、**誰がどう壊れているかは出ない**。
+ * 2026-08-25 に見つかった不具合（利用枠の世代付きキーがcheck制約で弾かれ、トライアル中に
+ * プランを下げた利用者は以後まったく実行できない・T-M8-299）はまさにこの形だった。
+ * 画面には「残り満額」と出るため利用者からも見えず、**気付けたのは開発中に偶然踏んだから**。
+ *
+ * 仕組みの問題は「特定の利用者だけ全部失敗」か「同じ理由が何度も出る」として現れる。
+ * 個人が特定できる値（メール・ID）は載せない——**人数と理由だけで運営者は動ける**。
+ */
+export function judgeRepeatedFailures(input: {
+  groups: FailureGroup[];
+  /** 直近24時間の実行が「成功0・失敗2件以上」だった利用者の数。 */
+  allFailingUsers: number;
+}): Check {
+  const name = "繰り返している失敗";
+  const describe = (g: FailureGroup) => `「${g.message}」が ${g.count} 件（利用者 ${g.users} 名）`;
+  const repeated = input.groups.filter((g) => g.count >= REPEATED_FAILURE_MIN);
+
+  if (input.allFailingUsers > 0) {
+    return {
+      name,
+      level: "error",
+      detail:
+        `直近24時間の実行がすべて失敗している利用者が ${input.allFailingUsers} 名います` +
+        (input.groups.length > 0 ? `。最も多い理由: ${describe(input.groups[0])}` : ""),
+      nextAction:
+        "その利用者は今アプリを使えません。Claudeに「実行がすべて失敗している利用者の原因を調べて」と伝えてください",
+    };
+  }
+  if (repeated.length > 0) {
+    return {
+      name,
+      level: "warn",
+      detail: `同じ理由の失敗が続いています: ${repeated.map(describe).join(" / ")}`,
+      nextAction: "Claudeに「繰り返している失敗の原因を調べて」と伝えてください",
+    };
+  }
+  if (input.groups.length === 0) {
+    return { name, level: "ok", detail: "直近24時間で失敗はありません" };
+  }
+  return {
+    name,
+    level: "ok",
+    detail: `失敗はありますが、同じ理由の繰り返しではありません（最多で ${input.groups[0].count} 件）`,
+  };
+}
+
+/**
+ * {@link judgeRepeatedFailures} の材料を集める（直近24時間）。
+ *
+ * 取るのは**人数と、利用者へ既に出している文言だけ**。メール・IDのような個人が特定できる値は
+ * 運営者向けの通知にも載せない（`/security-audit` の方針と揃える）。
+ */
+export async function collectFailurePatterns(
+  db: Queryable,
+  options: {
+    /** 対象の利用者を絞る（**テスト用**。本番は未指定＝全利用者）。 */
+    userIds?: string[];
+  } = {},
+): Promise<{ groups: FailureGroup[]; allFailingUsers: number }> {
+  const { rows } = await db.query<{ groups: FailureGroup[]; all_failing_users: number }>(
+    `with recent as (
+       select gj.status, xa.user_id, gj.error->>'message' as message
+         from generation_jobs gj
+         join x_accounts xa on xa.id = gj.x_account_id
+        where gj.created_at > now() - interval '24 hours'
+          and ($1::uuid[] is null or xa.user_id = any($1::uuid[]))
+     ),
+     grouped as (
+       -- 文言でまとめる（内部のcodeは運営者にも見せないので、そのまま出せる形で数える）。
+       select coalesce(message, '原因が記録されていない失敗') as message,
+              count(*)::int as n, count(distinct user_id)::int as u
+         from recent
+        where status = 'failed'
+        group by 1
+        order by count(*) desc
+        limit 3
+     )
+     select coalesce(
+              (select json_agg(json_build_object('message', message, 'count', n, 'users', u)
+                               order by n desc)
+                 from grouped),
+              '[]'::json
+            ) as groups,
+            (select count(*)::int
+               from (
+                 -- 「成功0・失敗2件以上」＝その利用者はいまアプリを使えていない。
+                 -- 失敗1件だけは普通に起こるので2件から数える。
+                 select user_id
+                   from recent
+                  group by user_id
+                 having count(*) filter (where status = 'succeeded') = 0
+                    and count(*) filter (where status = 'failed') >= 2
+               ) t) as all_failing_users`,
+    [options.userIds ?? null],
+  );
+  return {
+    groups: rows[0]?.groups ?? [],
+    allFailingUsers: Number(rows[0]?.all_failing_users ?? 0),
+  };
+}
+
 /**
  * ニュース取得が動いているか。
  *
@@ -666,6 +783,9 @@ export async function collectDiagnostics(
       failed: Number(jobs.rows[0]?.failed ?? 0),
     }),
   );
+
+  // **合計だけでは「誰がどう壊れているか」が出ない**（T-M8-307）。集計は `collectFailurePatterns`。
+  checks.push(judgeRepeatedFailures(await collectFailurePatterns(db)));
 
   const tick = await db.query<{ minutes: string | null }>(
     `select (extract(epoch from (now() - max(claimed_at))) / 60)::text as minutes
