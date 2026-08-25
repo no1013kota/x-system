@@ -95,13 +95,13 @@ describe("affiliate scenarios (db)", () => {
     ]);
 
     const newcomer = await makeUser(database);
-    /*
-      **`unknown_code` で返る**のが正しい（`self` や `already_attributed` と混ぜない）。
-      呼び出し側はこれを「取りこぼしの疑い」として記録できる（原則1）。
-    */
-    expect(await attributeSignup(database, { code: account.code, newUserId: newcomer })).toBe(
-      "unknown_code",
+    await attributeSignup(database, { code: account.code, newUserId: newcomer });
+    // 停止中は**帰属の行を作らない**（戻り値の区別は下の T-M8-302 のテストが持つ）。
+    const { rows } = await database.query<{ n: string }>(
+      `select count(*)::text as n from affiliate_attributions where referred_user_id = $1`,
+      [newcomer],
     );
+    expect(rows[0]?.n).toBe("0");
   });
 
   it("コードが大文字で届いても帰属する（リンクの転記で崩れても取りこぼさない）", async (ctx) => {
@@ -511,5 +511,95 @@ describe("affiliate scenarios (db)", () => {
       );
       expect(rows[0]?.gross_amount, "他の招待者の報酬が混ざっている").toBe(expected);
     }
+  });
+
+  // ---------------------------------------------------------------- 運営者が止める（D-40）
+
+  it("停止された招待者のコードは `suspended` を返す（打ち間違いと区別する）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+    await database.query(`update affiliate_accounts set status = 'suspended' where id = $1`, [
+      account.id,
+    ]);
+    const newcomer = await makeUser(database);
+    /*
+      **`unknown_code` と混ぜない**（T-M8-302）。混ぜると、運営者が1人止めるたびに
+      登録側のSentryへ「不明なコード」が上がり、本物の取りこぼしが埋もれる。
+    */
+    expect(await attributeSignup(database, { code: account.code, newUserId: newcomer })).toBe(
+      "suspended",
+    );
+    // 存在しないコードは従来どおり unknown_code。
+    expect(
+      await attributeSignup(database, { code: "zzzzzzzz", newUserId: await makeUser(database) }),
+    ).toBe("unknown_code");
+  });
+
+  it("保留（held）にした報酬は振込に束ねられない", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+    await addBankAccount(database, account.id);
+    const referred = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: referred });
+    await recordCommissionForInvoice(database, {
+      referredUserId: referred,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      amountPaid: 100000,
+      paidAtSec: sec("2026-07-01T00:00:00Z"),
+    });
+    await settleMatureCommissions(database);
+    // 運営者が保留にする（scripts/affiliate-moderate.mjs --hold と同じSQL）。
+    await database.query(
+      `update affiliate_commissions set status = 'held', payout_id = null
+        where affiliate_account_id = $1 and status in ('pending', 'payable')`,
+      [account.id],
+    );
+    await createMonthlyPayouts(database, "2026-09-05T00:00:00Z");
+
+    const { rows } = await database.query<{ n: string }>(
+      `select count(*)::text as n from affiliate_payouts where affiliate_account_id = $1`,
+      [account.id],
+    );
+    expect(rows[0]?.n, "保留中の報酬で振込を作ってはいけない").toBe("0");
+  });
+
+  it("保留を解除すると、確認期間を過ぎていれば payable・まだなら pending へ戻る", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+    const old = await makeUser(database);
+    const fresh = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: old });
+    await attributeSignup(database, { code: account.code, newUserId: fresh });
+    // 確認期間を過ぎたもの／まだのもの。
+    await recordCommissionForInvoice(database, {
+      referredUserId: old,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      amountPaid: 10000,
+      paidAtSec: sec("2026-07-01T00:00:00Z"),
+    });
+    await recordCommissionForInvoice(database, {
+      referredUserId: fresh,
+      stripeInvoiceId: `in_${randomUUID()}`,
+      amountPaid: 10000,
+      paidAtSec: Math.floor(Date.now() / 1000),
+    });
+    await database.query(
+      `update affiliate_commissions set status = 'held' where affiliate_account_id = $1`,
+      [account.id],
+    );
+    // 解除（--release と同じSQL）。**一律 payable にしない**——確認期間中の分を先に払えてしまう。
+    await database.query(
+      `update affiliate_commissions
+          set status = case when available_at <= now() then 'payable' else 'pending' end
+        where affiliate_account_id = $1 and status = 'held'`,
+      [account.id],
+    );
+
+    const rows = await commissionsOf(database, account.id);
+    expect(rows.find((r) => r.referred_user_id === old)?.status).toBe("payable");
+    expect(rows.find((r) => r.referred_user_id === fresh)?.status).toBe("pending");
   });
 });

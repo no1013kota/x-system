@@ -70,7 +70,13 @@ export type AttributionOutcome =
   | "attributed"
   | "self"
   | "already_attributed"
-  /** そのコードの招待アカウントが無い（無効化済み・打ち間違い・保存時の取り違え）。 */
+  /**
+   * 招待者が**停止されている**（要決定D-40・T-M8-302）。運営者が意図して止めた状態なので、
+   * `unknown_code`（取りこぼしの疑い）と混ぜない——混ぜると、止めるたびにSentryへ
+   * 「不明なコード」が上がり、本物の取りこぼしが埋もれる。
+   */
+  | "suspended"
+  /** そのコードの招待アカウントが無い（打ち間違い・保存時の取り違え）。 */
   | "unknown_code";
 
 /**
@@ -82,13 +88,15 @@ export async function attributeSignup(
   db: AffiliateDb,
   input: { code: string; newUserId: string },
 ): Promise<AttributionOutcome> {
-  const affiliate = await db.query<{ id: string; user_id: string }>(
+  const affiliate = await db.query<{ id: string; user_id: string; status: string }>(
     // コードは小文字で発行する。大文字混じりで届いても取りこぼさない（T-M8-242）。
-    `select id, user_id from affiliate_accounts where code = lower($1) and status = 'active'`,
+    `select id, user_id, status from affiliate_accounts where code = lower($1)`,
     [input.code],
   );
   const row = affiliate.rows[0];
   if (!row) return "unknown_code";
+  // 停止中は帰属させないが、「無いコード」とは区別して返す（T-M8-302）。
+  if (row.status !== "active") return "suspended";
   if (row.user_id === input.newUserId) return "self"; // 自己招待禁止
   const inserted = await db.query(
     `insert into affiliate_attributions (affiliate_account_id, referred_user_id)

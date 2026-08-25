@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.71 |
+| バージョン | v1.72 |
 | 更新日 | 2026-08-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -662,7 +662,7 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 | `id` | `uuid` | PK | |
 | `user_id` | `uuid` | not null unique FK profiles on delete cascade | 招待者（1利用者1アカウント） |
 | `code` | `text` | not null unique | 招待コード（URL `/r/{code}`。紛らわしい文字を避けた8桁） |
-| `status` | `text` | not null default `active`、`active`\|`suspended` | 停止すると新規帰属・新規報酬が止まる |
+| `status` | `text` | not null default `active`、`active`\|`suspended` | 停止すると新規帰属・新規報酬が止まる。**`npm run affiliate:moderate -- --suspend <招待コード>` で切り替える**（T-M8-302）。停止中のコードは `attributeSignup` が `suspended` を返し、打ち間違い（`unknown_code`）と区別される——混ぜると停止のたびにSentryへ「不明なコード」が上がる。**既存の報酬は消えない**（1件ずつ止めるなら下の `held`） |
 | `created_at` | `timestamptz` | not null default now() | |
 
 RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4表も同じ）。
@@ -1040,3 +1040,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.69 | 2026-08-24 | drafts に一覧の並び順の式索引を追加（T-M8-289） |
 | v1.70 | 2026-08-25 | cancellation_surveys の `reason` を `reasons text[]` へ（解約理由の複数選択・T-M8-294） |
 | v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |
+| v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
