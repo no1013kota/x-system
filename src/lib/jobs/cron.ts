@@ -302,6 +302,18 @@ export async function runSchedulerTick(
       onError: (userId, err) => opts.onCleanupError?.(`daily_summary:${userId}`, err),
     });
     dailySummaries = delivered.created;
+    /*
+      **積み残しは黙って捨てない**（T-M8-291）。1回のtickで作れる人数には上限があり、
+      残りは次のtick（5分後）が拾うが、**それが常態化していること自体は異常**なので
+      運営者の気付ける経路へ載せる（毎朝のメール・doctorが読む `onCleanupError`）。
+      「届いていない人がいる」を数字で言わないと、増えているのか一時的なのかが分からない。
+    */
+    if (delivered.remaining > 0) {
+      opts.onCleanupError?.(
+        "daily_summary",
+        new Error(`日次サマリの積み残し ${delivered.remaining}人（次のtickで続きを作ります）`),
+      );
+    }
   } catch (err) {
     opts.onCleanupError?.("daily_summary", err);
   }

@@ -159,4 +159,48 @@ describe("deliverDailySummaries (local DB)", () => {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
+
+  /**
+   * **利用者が増えても黙って途中で終わらない**（T-M8-291）。
+   *
+   * 1人あたり集計5往復＋作成1往復かかり、`scheduler_tick` の maxDuration は200秒。
+   * 上限が無いと利用者が増えたときに打ち切られ、**後半の利用者に届かないまま
+   * 「成功」として終わる**（原則1違反）。上限で切った残りは次のtickが拾う。
+   */
+  it("1回で処理する人数に上限があり、積み残しの人数を返す", async (ctx) => {
+    if (!available) return ctx.skip();
+    const uids: string[] = [];
+    try {
+      for (let i = 0; i < 3; i++) uids.push(await withTransaction((c) => makeUser(c)));
+      // 対象を自分たちの3人に絞り、上限を2人に見立てて2回に分ける代わりに、
+      // 1回目で全員ぶんが作られること＋積み残しが0であることを見る。
+      const first = await deliverDailySummaries(db, jstAt(SUMMARY_HOUR_JST), { userIds: uids });
+      expect(first.created).toBe(3);
+      expect(first.remaining, "全員ぶん作れたなら積み残しは0").toBe(0);
+
+      /*
+        **2回目は何も作らない**（その日ぶんは作成済み）。以前は1人ずつ「作ったか？」を
+        問い合わせていたので、5分ごとのtickのたびに人数ぶんの往復が走っていた。
+        いまは対象抽出の時点で除かれるので、対象0人＝積み残しも0になる。
+      */
+      const second = await deliverDailySummaries(db, jstAt(SUMMARY_HOUR_JST), { userIds: uids });
+      expect(second.created).toBe(0);
+      expect(second.remaining, "作成済みの人は対象にも積み残しにも数えない").toBe(0);
+    } finally {
+      for (const uid of uids) {
+        await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+      }
+    }
+  });
+
+  it("JSTの配信時刻より前は何もせず、積み残しも0で返す", async (ctx) => {
+    if (!available) return ctx.skip();
+    const uid = await withTransaction((c) => makeUser(c));
+    try {
+      const res = await deliverDailySummaries(db, jstAt(SUMMARY_HOUR_JST - 1), { userIds: [uid] });
+      expect(res).toEqual({ created: 0, createdIds: [], remaining: 0 });
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
+    }
+  });
 });

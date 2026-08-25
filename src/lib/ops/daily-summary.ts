@@ -286,11 +286,20 @@ export async function collectDailySummary(
 /** サマリを届ける時刻（JSTの時）。この時刻以降のtickで、その日の分を1回だけ作る。 */
 export const SUMMARY_HOUR_JST = 8;
 
+/** 1回の実行で処理する人数の上限（T-M8-291）。理由は `deliverDailySummaries` を参照。 */
+export const SUMMARY_BATCH_LIMIT = 200;
+
 export interface DeliverDailySummaryResult {
   /** 作成した通知の件数（既に作ってあれば0）。 */
   created: number;
   /** 作成した通知のid（即時メール送信の対象）。 */
   createdIds: string[];
+  /**
+   * **この回で処理しきれなかった人数**（T-M8-291）。0でなければ次のtickが続きを作る。
+   * 呼び出し側はこれを運営者が気付ける経路へ載せること——黙って途中で終わると、
+   * 後半の利用者にサマリが届かないのに「成功」に見える（原則1）。
+   */
+  remaining: number;
 }
 
 /**
@@ -311,32 +320,56 @@ export async function deliverDailySummaries(
   } = {},
 ): Promise<DeliverDailySummaryResult> {
   const jstHour = new Date(new Date(nowIso).getTime() + JST_OFFSET_MS).getUTCHours();
-  if (jstHour < SUMMARY_HOUR_JST) return { created: 0, createdIds: [] };
+  if (jstHour < SUMMARY_HOUR_JST) return { created: 0, createdIds: [], remaining: 0 };
   const date = jstDateOf(nowIso);
   const dedupeKey = `summary:${date}`;
 
-  // 対象: **Xアカウントを連携済みで**、サマリのアプリ内通知を受け取る設定の利用者
-  // （メール通知はT-M8-222で廃止）。連携前の利用者はまだ運用が始まっていないので届けない。
-  const { rows: users } = await db.query<{ id: string; in_app: boolean }>(
-    `select p.id,
-            coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app
-       from profiles p
-      where exists (select 1 from x_accounts xa where xa.user_id = p.id)
-        and ($1::uuid[] is null or p.id = any($1::uuid[]))
-        and coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)`,
-    [options.userIds ?? null],
+  /*
+    対象: **Xアカウントを連携済みで**、サマリのアプリ内通知を受け取る設定の利用者
+    （メール通知はT-M8-222で廃止）。連携前の利用者はまだ運用が始まっていないので届けない。
+
+    **その日ぶんを既に作った人はここで除く**（T-M8-291）。以前は1人ずつ
+    「作ったか？」を問い合わせていたので、対象者の数だけ往復が増えていた。
+    しかも除外されるのは問い合わせた**あと**なので、5分ごとのtickのたびに
+    全員ぶんの往復が走っていた（作るのは1日1回きりなのに）。
+
+    **人数に上限を置く**。`scheduler_tick` の maxDuration は200秒で、1人あたり
+    集計5往復＋作成1往復かかる。上限が無いと利用者が増えたとき**打ち切られ、
+    後半の利用者に届かないまま「成功」として終わる**（原則1違反）。
+    上限で切った残りは次のtick（5分後）が拾う——その日ぶんを作っていない人が
+    そのまま対象に残るので、待ち行列を別に持つ必要がない。
+  */
+  const { rows: users } = await db.query<{ id: string; in_app: boolean; remaining: string }>(
+    `with target as (
+       select p.id,
+              coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app
+         from profiles p
+        where exists (select 1 from x_accounts xa where xa.user_id = p.id)
+          and ($1::uuid[] is null or p.id = any($1::uuid[]))
+          and coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)
+          and not exists (
+            select 1 from notifications n
+             where n.user_id = p.id and n.dedupe_key = $2
+          )
+     )
+     select id, in_app, (select count(*) from target)::text as remaining
+       from target
+      order by id
+      limit $3`,
+    [options.userIds ?? null, dedupeKey, SUMMARY_BATCH_LIMIT],
   );
+  // `remaining` は全件数（どの行にも同じ値が入る）。処理する分を引いて「積み残し」にする。
+  const remaining = Math.max(0, Number(users[0]?.remaining ?? "0") - users.length);
 
   const createdIds: string[] = [];
   for (const user of users) {
     // 1人分が失敗しても他の利用者のまとめは作る（1件の不整合で全員分が止まらないように）。
     try {
-      const already = await db.query(
-        `select 1 from notifications where user_id = $1 and dedupe_key = $2 limit 1`,
-        [user.id, dedupeKey],
-      );
-      if ((already.rowCount ?? 0) > 0) continue;
-
+      /*
+        重複チェックは上の対象抽出（`not exists`）が済ませている。ここで再度問い合わせない
+        （T-M8-291）。作成の `on conflict do nothing` が最後の砦なので、抽出と作成の間に
+        別のtickが同じ人を作っても二重にならない。
+      */
       const summary = buildDailySummary(await collectDailySummary(db, user.id, nowIso));
       // 利用者が消えていたら何もしない（`select from profiles` で存在を条件にする）。
       // 集めてから作るまでの間に退会・削除が起きても、FK違反を「異常」として報告しない。
@@ -358,5 +391,5 @@ export async function deliverDailySummaries(
       options.onError?.(user.id, err);
     }
   }
-  return { created: createdIds.length, createdIds };
+  return { created: createdIds.length, createdIds, remaining };
 }
