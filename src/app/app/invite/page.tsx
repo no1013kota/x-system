@@ -58,7 +58,7 @@ export default async function InvitePage() {
   // 次の1人に適用される率（要決定D-41・案B）。今の率と同じなら画面に出さない。
   const nextRateBps = nextReferralRateBps(summary.paidReferralCount);
   const progressToNext = tier.next
-    ? Math.min(1, summary.paidReferralCount / tier.next.minPaidUsers)
+    ? Math.min(1, summary.paidReferralCount / tier.nextAtCount)
     : 1;
 
   return (
@@ -88,9 +88,18 @@ export default async function InvitePage() {
             <span className="text-[26px] font-extrabold tabular-nums text-brand">
               {formatRateBps(tier.currentRateBps)}
             </span>
-            {tier.next ? (
+            {tier.next && tier.remainingToNext > 0 ? (
               <span className="text-caption text-ink-2">
                 あと{tier.remainingToNext}人の有料招待で {formatRateBps(tier.next.rateBps)} にアップ
+              </span>
+            ) : tier.next ? (
+              /*
+                必要人数を招待し終えた状態（運営者の指示 2026-08-25「5人招待が完了した時点で
+                ランクアップ」）。**「あと0人」とは書かない**——数えられる残りが無いのに
+                「あと」と言うと、まだ足りないように読める。
+              */
+              <span className="text-caption font-bold text-brand">
+                {formatRateBps(tier.next.rateBps)} にアップしました
               </span>
             ) : (
               <span className="text-caption text-ink-2">最上位ランクです</span>
@@ -109,7 +118,7 @@ export default async function InvitePage() {
           ) : null}
           <p className="mt-1.5 text-caption text-ink-3">
             有料招待 {summary.paidReferralCount}人
-            {tier.next ? ` ／ 次のランクまで ${summary.paidReferralCount} / ${tier.next.minPaidUsers}人` : ""}
+            {tier.next ? ` ／ 次のランクまで ${summary.paidReferralCount} / ${tier.nextAtCount}人` : ""}
           </p>
           {/*
             **次の1人に適用される率**（要決定D-41・運営者の判断 2026-08-25「案B」）。

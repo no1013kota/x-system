@@ -46,24 +46,40 @@ describe("招待ランク（invite_cp.md §3）", () => {
     }
   });
 
-  it("0人のとき「次のランク」は同率の第1段ではなく35%（あと6人）", () => {
+  /*
+    **進捗は「ランクアップが成立する人数」を分母にする**（運営者の指示 2026-08-25
+    「5人招待が完了した時点でランクアップ」）。`minPaidUsers` は「その率で報酬が出る
+    最初の人数」（6人目）なので、分母にそのまま使うと「0 / 6人」になって数え方と食い違う。
+  */
+  it("0人のときは「あと5人で35%」「0 / 5人」", () => {
     const p = tierProgress(0);
     expect(p.currentRateBps).toBe(3000);
     expect(p.next?.rateBps).toBe(3500);
-    expect(p.remainingToNext).toBe(6);
+    expect(p.remainingToNext).toBe(5);
+    expect(p.nextAtCount).toBe(5);
   });
 
-  it("次ランクまでの残数（8人なら あと3人で40%）", () => {
+  it("次ランクまでの残数（8人なら あと2人で40%・8 / 10人）", () => {
     const p = tierProgress(8);
     expect(p.currentRateBps).toBe(3500);
     expect(p.next?.rateBps).toBe(4000);
-    expect(p.remainingToNext).toBe(3);
-    // 最上位は次が無い
+    expect(p.remainingToNext).toBe(2);
+    expect(p.nextAtCount).toBe(10);
+  });
+
+  it("必要人数を招待し終えたら残りは0（「あと0人」と書かせない）", () => {
+    for (const [count, at] of [[5, 5], [10, 10], [25, 25], [50, 50]] as const) {
+      const p = tierProgress(count);
+      expect(p.remainingToNext, `${count}人で残りが0でない`).toBe(0);
+      expect(p.nextAtCount).toBe(at);
+      expect(p.next, `${count}人はまだ最上位ではない`).not.toBeNull();
+    }
+  });
+
+  it("最上位（51人〜）は次が無い", () => {
     expect(tierProgress(51).next).toBeNull();
     expect(tierProgress(51).remainingToNext).toBe(0);
-    // 50人はまだ最上位ではない（帯の端で1人ずれていないこと）。
-    expect(tierProgress(50).next?.rateBps).toBe(5000);
-    expect(tierProgress(50).remainingToNext).toBe(1);
+    expect(tierProgress(51).nextAtCount).toBe(0);
   });
 });
 

@@ -52,18 +52,30 @@ export interface TierProgress {
   currentRateBps: number;
   /** 次のランク。最上位なら null。 */
   next: InviteTier | null;
-  /** 次のランクまであと何人（最上位なら 0）。 */
+  /** 次のランクまであと何人（最上位なら 0。到達済みなら 0）。 */
   remainingToNext: number;
+  /**
+   * **ランクアップが成立する招待人数**（運営者の指示 2026-08-25）。5人・10人・25人・50人。
+   *
+   * `next.minPaidUsers` は「その率で報酬が出る最初の人数」（6人目・11人目…）なので、
+   * 進捗の分母にそのまま使うと「0 / 6人」になり、**5人招待し終えた時点でランクが上がる**
+   * という数え方と食い違って見える。分母は帯の終わり（＝完了に必要な人数）を使う。
+   * 最上位なら 0。
+   */
+  nextAtCount: number;
 }
 
 export function tierProgress(paidCount: number): TierProgress {
   const currentRateBps = rateBpsForPaidCount(paidCount);
-  // 「次のランク」は率が今より上がる段（0人のとき第1段=同率20%を次と言わない）。
+  // 「次のランク」は率が今より上がる段（0人のとき第1段=同率30%を次と言わない）。
   const next = INVITE_TIERS.find((tier) => tier.rateBps > currentRateBps) ?? null;
+  // 帯の終わり＝ランクアップが成立する人数（6人目から35%なら、5人招待し終えた時点）。
+  const nextAtCount = next ? next.minPaidUsers - 1 : 0;
   return {
     currentRateBps,
     next,
-    remainingToNext: next ? next.minPaidUsers - paidCount : 0,
+    nextAtCount,
+    remainingToNext: next ? Math.max(0, nextAtCount - paidCount) : 0,
   };
 }
 
