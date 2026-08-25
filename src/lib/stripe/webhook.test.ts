@@ -192,6 +192,51 @@ describe("Stripe webhook foundation", () => {
     expect(JSON.stringify(await response.json())).not.toContain("price_unknown");
   });
 
+  /**
+   * **署名検証の失敗でリクエスト本文をログへ出さない**（T-M8-300）。
+   *
+   * Stripe SDK の `StripeSignatureVerificationError` は `payload`（本文全文）と `header` を
+   * **public プロパティ**に持ち、`console.error(error)` でオブジェクトごと出ると本番ログへ
+   * 落ちる。secret の不一致が続くと、届くたびに顧客のメール・氏名・請求先住所・カード下4桁が
+   * 平文で溜まる。ここは**実SDKの検証**（`routeDependencies` が `constructEvent` を使う）を
+   * 通すので、この検査は実物のエラークラスに当たる。
+   */
+  it("署名検証に失敗しても、リクエスト本文をログへ出さない", async () => {
+    const { database } = memoryDatabase();
+    const deps = routeDependencies(database);
+    const secretish = "customer_email_that_must_not_be_logged@example.com";
+    const payload = eventPayload({ eventType: "invoice.paid" }).replace(
+      '"id"',
+      `"customer_email":"${secretish}","id"`,
+    );
+    const errorArgs: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
+      errorArgs.push(...args);
+    });
+
+    try {
+      const response = await handleStripeWebhookRequest(
+        new Request("https://app.example.com/api/stripe/webhook", {
+          method: "POST",
+          headers: { "stripe-signature": "t=1,v1=deadbeef" },
+          body: payload,
+        }),
+        deps.dependencies,
+      );
+      expect(response.status).toBe(400);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // 記録は残す（黙って400にしない）が、本文は載せない。
+    const logged = errorArgs
+      .map((a) => (a instanceof Error ? `${a.message}${JSON.stringify(Object.entries(a))}` : String(a)))
+      .join(" ");
+    expect(logged).toContain("stripe-webhook:verify");
+    expect(logged, "リクエスト本文がログへ出ている").not.toContain(secretish);
+    expect(logged, "本文の断片がログへ出ている").not.toContain("invoice.paid");
+  });
+
   it("acknowledges unsupported signed events without recording them", async () => {
     const store = memoryDatabase();
     const deps = routeDependencies(store.database);

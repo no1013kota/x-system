@@ -173,9 +173,22 @@ export async function handleStripeWebhookRequest(
   try {
     event = dependencies.verifyEvent(payload, signature);
   } catch (error) {
-    // 署名検証の失敗。攻撃だけでなく STRIPE_WEBHOOK_SECRET の設定ミスでも起き、その場合は
-    // 全webhookが黙って400になり課金同期が永久に止まる。無記録にはしない。
-    recordUnexpectedError(error, { at: "stripe-webhook:verify" });
+    /*
+      署名検証の失敗。攻撃だけでなく STRIPE_WEBHOOK_SECRET の設定ミスでも起き、その場合は
+      全webhookが黙って400になり課金同期が永久に止まる。無記録にはしない。
+
+      **例外オブジェクトをそのまま渡さない**（T-M8-300）。Stripe SDK の
+      `StripeSignatureVerificationError` は `payload`（リクエスト本文の全文）と `header` を
+      **public プロパティ**に持ち、`recordUnexpectedError` は `console.error(error)` で
+      オブジェクトごと出すため、本番ログへ本文が落ちる。secret の不一致が続くと、届くたびに
+      顧客のメール・氏名・請求先住所・カード下4桁が平文で溜まる（実行して再現済み）。
+      記録の目的は「黙って400にしない」ことなので、**理由の文言だけ**あれば足りる。
+    */
+    const reason = error instanceof Error ? error.message : "unknown";
+    recordUnexpectedError(
+      new Error(`stripe webhook signature verification failed: ${reason}`),
+      { at: "stripe-webhook:verify" },
+    );
     return webhookResponse(
       { ok: false, error: toUserFacingError(new AppError("forbidden")) },
       400,
