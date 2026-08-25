@@ -67,8 +67,17 @@ export interface TierProgress {
 
 export function tierProgress(paidCount: number): TierProgress {
   const currentRateBps = rateBpsForPaidCount(paidCount);
-  // 「次のランク」は率が今より上がる段（0人のとき第1段=同率30%を次と言わない）。
-  const next = INVITE_TIERS.find((tier) => tier.rateBps > currentRateBps) ?? null;
+  /*
+    **「次のランク」は、次の紹介に適用される率のさらに上**（運営者の指示 2026-08-25）。
+    「5人招待が完了した時点でランクアップ」という数え方なので、5人招待し終えた人の
+    目標は35%ではなく**その次の40%（10人）**になる。5人で止まったままだと
+    「あと0人で35%」や「5 / 5人」という、もう達成しているのに残っているような表示になる。
+
+    次の紹介に適用される率（＝`nextReferralRateBps`）を基準に、そこから上がる段を探す。
+    0人なら次の紹介は1人目で30%なので、次のランクは35%（5人招待し終えた時点）。
+  */
+  const appliedNextRateBps = nextReferralRateBps(paidCount);
+  const next = INVITE_TIERS.find((tier) => tier.rateBps > appliedNextRateBps) ?? null;
   // 帯の終わり＝ランクアップが成立する人数（6人目から35%なら、5人招待し終えた時点）。
   const nextAtCount = next ? next.minPaidUsers - 1 : 0;
   return {

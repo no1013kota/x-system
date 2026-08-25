@@ -67,18 +67,38 @@ describe("招待ランク（invite_cp.md §3）", () => {
     expect(p.nextAtCount).toBe(10);
   });
 
-  it("必要人数を招待し終えたら残りは0（「あと0人」と書かせない）", () => {
-    for (const [count, at] of [[5, 5], [10, 10], [25, 25], [50, 50]] as const) {
+  it("4人のときは まだ35%が目標（0 / 5人 の帯の中）", () => {
+    const p = tierProgress(4);
+    expect(p.next?.rateBps).toBe(3500);
+    expect(p.nextAtCount).toBe(5);
+    expect(p.remainingToNext).toBe(1);
+  });
+
+  /*
+    **必要人数を招待し終えたら目標は次の段へ進む**（運営者の指示 2026-08-25
+    「5人ちょうどの時は 5 / 10人」）。5人で止めると「5 / 5人」「あと0人」という、
+    もう達成しているのに残っているような表示になる。
+  */
+  it("5人ちょうどで目標が10人へ進む（5 / 10人・あと5人で40%）", () => {
+    const p = tierProgress(5);
+    expect(p.nextAtCount).toBe(10);
+    expect(p.remainingToNext).toBe(5);
+    expect(p.next?.rateBps).toBe(4000);
+  });
+
+  it("どの段の境目でも目標が進み、残りが0にならない", () => {
+    for (const [count, at] of [[5, 10], [10, 25], [25, 50]] as const) {
       const p = tierProgress(count);
-      expect(p.remainingToNext, `${count}人で残りが0でない`).toBe(0);
-      expect(p.nextAtCount).toBe(at);
-      expect(p.next, `${count}人はまだ最上位ではない`).not.toBeNull();
+      expect(p.nextAtCount, `${count}人での目標`).toBe(at);
+      expect(p.remainingToNext, `${count}人で残りが0になっている`).toBeGreaterThan(0);
     }
   });
 
-  it("最上位（51人〜）は次が無い", () => {
+  it("50人を招待し終えたら最上位（次が無い）", () => {
+    // 51人目から50%なので、50人招待し終えた時点で最上位に達している。
+    expect(tierProgress(50).next).toBeNull();
+    expect(tierProgress(50).remainingToNext).toBe(0);
     expect(tierProgress(51).next).toBeNull();
-    expect(tierProgress(51).remainingToNext).toBe(0);
     expect(tierProgress(51).nextAtCount).toBe(0);
   });
 });

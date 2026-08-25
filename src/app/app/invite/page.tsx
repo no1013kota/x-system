@@ -88,18 +88,14 @@ export default async function InvitePage() {
             <span className="text-[26px] font-extrabold tabular-nums text-brand">
               {formatRateBps(tier.currentRateBps)}
             </span>
-            {tier.next && tier.remainingToNext > 0 ? (
+            {tier.next ? (
+              /*
+                必要人数を招待し終えると**目標が次の段へ進む**ので（`tierProgress`）、
+                ここが「あと0人」になることはない（運営者の指示 2026-08-25
+                「5人ちょうどの時は 5 / 10人」）。
+              */
               <span className="text-caption text-ink-2">
                 あと{tier.remainingToNext}人の有料招待で {formatRateBps(tier.next.rateBps)} にアップ
-              </span>
-            ) : tier.next ? (
-              /*
-                必要人数を招待し終えた状態（運営者の指示 2026-08-25「5人招待が完了した時点で
-                ランクアップ」）。**「あと0人」とは書かない**——数えられる残りが無いのに
-                「あと」と言うと、まだ足りないように読める。
-              */
-              <span className="text-caption font-bold text-brand">
-                {formatRateBps(tier.next.rateBps)} にアップしました
               </span>
             ) : (
               <span className="text-caption text-ink-2">最上位ランクです</span>
