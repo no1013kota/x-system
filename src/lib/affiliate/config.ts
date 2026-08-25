@@ -60,6 +60,18 @@ export function tierProgress(paidCount: number): TierProgress {
   };
 }
 
+/**
+ * **次の紹介1人に適用される率**（要決定D-41・運営者の判断 2026-08-25「案B」）。
+ *
+ * 報酬の率は「その紹介を**含めた**累計有料招待人数」で決まる（`recordCommissionForInvoice`）。
+ * つまり有料招待が4人の人の次の紹介は5人目なので、画面に出ている現在の率（30%）ではなく
+ * **1段上（35%）**が適用される。ここを現在の率だけで説明すると、
+ * 「増えるはずが増えていない」と読まれる。
+ */
+export function nextReferralRateBps(paidCount: number): number {
+  return rateBpsForPaidCount(paidCount + 1);
+}
+
 /** 実際に支払われた金額に対する報酬額（切り捨て・integer円）。 */
 export function commissionAmount(eligibleAmount: number, rateBps: number): number {
   return Math.floor((eligibleAmount * rateBps) / 10000);

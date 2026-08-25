@@ -6,7 +6,13 @@ import { InviteLinkActions } from "./invite-link-card";
 
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
-import { INVITE_TIERS, MIN_PAYOUT_JPY, PAYOUT_FEE_JPY, formatRateBps } from "@/lib/affiliate/config";
+import {
+  INVITE_TIERS,
+  MIN_PAYOUT_JPY,
+  PAYOUT_FEE_JPY,
+  formatRateBps,
+  nextReferralRateBps,
+} from "@/lib/affiliate/config";
 import { loadInviteSummary } from "@/lib/affiliate/summary-server";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -49,6 +55,8 @@ export default async function InvitePage() {
   const base = env.APP_BASE_URL ?? "http://127.0.0.1:3000";
   const inviteUrl = `${base.replace(/\/$/, "")}/r/${summary.account.code}`;
   const { tier } = summary;
+  // 次の1人に適用される率（要決定D-41・案B）。今の率と同じなら画面に出さない。
+  const nextRateBps = nextReferralRateBps(summary.paidReferralCount);
   const progressToNext = tier.next
     ? Math.min(1, summary.paidReferralCount / tier.next.minPaidUsers)
     : 1;
@@ -103,6 +111,17 @@ export default async function InvitePage() {
             有料招待 {summary.paidReferralCount}人
             {tier.next ? ` ／ 次のランクまで ${summary.paidReferralCount} / ${tier.next.minPaidUsers}人` : ""}
           </p>
+          {/*
+            **次の1人に適用される率**（要決定D-41・運営者の判断 2026-08-25「案B」）。
+            率は「その紹介を含めた累計人数」で決まるので、あと1人でランクが上がる人は
+            **次の紹介から**上の率になる。見出しの「現在の率」だけだと食い違って見える。
+            率が変わらないときは出さない（同じ数字を2回書かない）。
+          */}
+          {nextRateBps !== tier.currentRateBps ? (
+            <p className="mt-1 text-caption font-bold text-brand">
+              次の紹介から {formatRateBps(nextRateBps)} になります
+            </p>
+          ) : null}
           {/* 招待ランクの段（運営者の指示 2026-08-21: 報酬率の直下に小さく）。 */}
           <div aria-label="招待ランク" className="mt-3 grid grid-cols-5 gap-1.5" role="list">
             {INVITE_TIERS.map((tierRow, index) => {

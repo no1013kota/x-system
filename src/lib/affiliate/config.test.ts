@@ -7,6 +7,7 @@ import {
   maskEmail,
   rateBpsForPaidCount,
   tierProgress,
+  nextReferralRateBps,
 } from "./config";
 
 describe("招待ランク（invite_cp.md §3）", () => {
@@ -68,5 +69,27 @@ describe("maskEmail", () => {
     expect(maskEmail("yamada@gmail.com")).toBe("y***@gmail.com");
     expect(maskEmail("a@b.jp")).toBe("a***@b.jp");
     expect(maskEmail("broken")).toBe("***");
+  });
+});
+
+/**
+ * 次の1人に適用される率（要決定D-41・運営者の判断 2026-08-25「案B」）。
+ * 率は「その紹介を**含めた**累計人数」で決まるので、画面の「現在の率」と
+ * 次の紹介の率は**あと1人でランクが上がる人だけ食い違う**。
+ */
+describe("nextReferralRateBps", () => {
+  it("あと1人でランクが上がる人は、次の紹介から上の率になる", () => {
+    // 4人目まで30%。5人目（＝次の紹介）から35%。
+    expect(rateBpsForPaidCount(4)).toBe(3000);
+    expect(nextReferralRateBps(4)).toBe(3500);
+    expect(nextReferralRateBps(9)).toBe(4000);
+    expect(nextReferralRateBps(24)).toBe(4500);
+    expect(nextReferralRateBps(49)).toBe(5000);
+  });
+
+  it("段の途中では現在の率と同じ（画面は同じ数字を2回書かない）", () => {
+    for (const n of [0, 1, 5, 10, 25, 50, 100]) {
+      expect(nextReferralRateBps(n)).toBe(rateBpsForPaidCount(n));
+    }
   });
 });
