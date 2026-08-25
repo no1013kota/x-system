@@ -41,9 +41,19 @@ describe("cancellationEffects", () => {
     expect(e.keeps.join()).not.toContain("日割り返金");
   });
 
-  it("BYOKプラン（standard）では運営キーの話を出さない", () => {
-    const e = cancellationEffects({ plan: "standard", endsAtLabel: "2026年9月15日", trialing: false });
-    expect(e.stops.join()).not.toContain("運営が用意しているAIキー");
+  /**
+   * 検出器の生存確認つき（開発とテストの進め方 §11）。否定形だけだと、**文言を変えた瞬間に
+   * 何にも当たらなくなって緑のまま通る**——実際 T-M8-309 の文言変更で
+   * 「運営が用意しているAIキー」を探すこの検査が空振りになっていた。
+   * 運営キー系プランで**出ること**を同時に確かめて、探す文字列が生きていることを担保する。
+   */
+  it("運営キー系プランでだけAI生成の停止を伝える（standardでは出さない）", () => {
+    const managed = cancellationEffects({ plan: "premium", endsAtLabel: "2026年9月15日", trialing: false });
+    expect(managed.stops.join(), "検出器が死んでいる（探している文言が実装に無い）").toContain(
+      "AIでの投稿生成や画像生成",
+    );
+    const byok = cancellationEffects({ plan: "standard", endsAtLabel: "2026年9月15日", trialing: false });
+    expect(byok.stops.join()).not.toContain("AIでの投稿生成や画像生成");
   });
 });
 
