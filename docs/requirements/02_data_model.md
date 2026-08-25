@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.72 |
+| バージョン | v1.73 |
 | 更新日 | 2026-08-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -384,7 +384,7 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `ref_event_id` | `uuid` | self FK nullable | refund元reserve |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Constraints: month形式（`^\d{4}-\d{2}(-\d{2})?$`・migration `20260823000009`）、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
+Constraints: month形式（`^\d{4}-\d{2}(-\d{2})?(#\d+)?$`・migration `20260825000003`。末尾の `#N` は利用枠リセットの世代＝`profiles.usage_epoch`。**世代を許さない形に戻すと、トライアル中に下位プランへ切り替えた利用者は以降の利用枠を記録できず生成が一切できなくなる**・T-M8-306）、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
 Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`、**(`x_account_id`, `created_at desc`) where `operation='post_create'`**（部分索引・migration `20260824000001`・T-M8-294）
 
@@ -1041,3 +1041,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.70 | 2026-08-25 | cancellation_surveys の `reason` を `reasons text[]` へ（解約理由の複数選択・T-M8-294） |
 | v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |
 | v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
+| v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |

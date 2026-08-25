@@ -64,6 +64,11 @@ export interface BillingReturnDependencies {
    * 省略された場合はリセットしない（テストや古い呼び出しで枠が勝手に消えないように）。
    */
   resetUsage?(userId: string): Promise<void>;
+  /**
+   * 下位変更で戻した枠を**巻き戻す**（T-M8-306）。トライアル中に上位プランへ戻したときだけ呼ぶ。
+   * 省略された場合は巻き戻さない（`resetUsage` と同じ理由）。
+   */
+  restoreUsage?(userId: string): Promise<void>;
   stripe: BillingReturnStripeGateway;
 }
 
@@ -197,16 +202,39 @@ export async function reconcileBillingReturn(
     Stripe はトライアル中の価格変更で `current_period_start` を動かさない（2026-08-25 実測）ので、
     枠は自動では戻らない。上位への変更では戻さない（枠が増えるので戻す必要がない）。
   */
-  const wentDownDuringTrial =
+  const changedPlanDuringTrial =
     projection.status === "trialing" &&
     profile.plan != null &&
-    projection.plan !== profile.plan &&
-    PLANS[projection.plan].monthlyPriceJpy < PLANS[profile.plan].monthlyPriceJpy;
+    projection.plan !== profile.plan;
+  const wentDownDuringTrial =
+    changedPlanDuringTrial &&
+    PLANS[projection.plan].monthlyPriceJpy < PLANS[profile.plan!].monthlyPriceJpy;
   if (wentDownDuringTrial && deps.resetUsage) {
     try {
       await deps.resetUsage(input.userId);
     } catch (error) {
       recordUnexpectedError(error, { at: "stripe:trial-downgrade-usage", userId: input.userId });
+    }
+  }
+  /*
+    **上位へ戻したらリセットを巻き戻す**（T-M8-306・運営者の指示 2026-08-25・要決定D-44 案A）。
+
+    これが無いと、トライアル中に「上位で使い切る→下位へ下げてリセット→上位へ戻す」を
+    繰り返すだけで**枠が何度でも満額に戻った**（上限だけが元へ戻り、消費は0のまま）。
+    支払いは0円なので、運営者のAI実費が青天井になる。
+
+    世代を戻すと、その世代の `usage_counters` 行（消費済み）へ戻るので、往復しても
+    プランごとに1回ぶんの枠しか使えない。**下げたときのリセット自体は残す**——
+    「下げたら0から数え直し」は運営者の指示（T-M8-299）で、変えるのは往復だけ。
+  */
+  const wentUpDuringTrial =
+    changedPlanDuringTrial &&
+    PLANS[projection.plan].monthlyPriceJpy > PLANS[profile.plan!].monthlyPriceJpy;
+  if (wentUpDuringTrial && deps.restoreUsage) {
+    try {
+      await deps.restoreUsage(input.userId);
+    } catch (error) {
+      recordUnexpectedError(error, { at: "stripe:trial-upgrade-usage", userId: input.userId });
     }
   }
   return result === "stale" ? "stale" : "updated";

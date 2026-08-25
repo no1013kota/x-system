@@ -15,7 +15,7 @@ import { readBillingReturnMarker } from "@/lib/stripe/billing-return-server";
 import { stripe } from "@/lib/stripe/client";
 import { STRIPE_PRICE_IDS } from "@/lib/stripe/prices";
 import { applyPreparedStripeEvent } from "@/lib/stripe/subscription-sync";
-import { bumpUsageEpochSql } from "@/lib/usage/usage-period";
+import { bumpUsageEpochSql, restoreUsageEpochSql } from "@/lib/usage/usage-period";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +81,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         async resetUsage(userId) {
           await withTransaction((database) =>
             database.query(bumpUsageEpochSql("$1"), [userId]),
+          );
+        },
+        /*
+          上位へ戻したら世代も戻す（T-M8-306）。戻した先には消費済みの行が残っているので、
+          「下げてリセット→上げ直す」を繰り返しても枠は増えない。
+        */
+        async restoreUsage(userId) {
+          await withTransaction((database) =>
+            database.query(restoreUsageEpochSql("$1"), [userId]),
           );
         },
         stripe,

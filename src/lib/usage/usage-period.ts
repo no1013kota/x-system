@@ -47,6 +47,23 @@ export function bumpUsageEpochSql(userIdParam: string): string {
   return `update profiles set usage_epoch = usage_epoch + 1 where id = ${userIdParam}`;
 }
 
+/**
+ * **リセットを巻き戻す**（T-M8-306）。トライアル中に下位へ下げてリセットした人が、
+ * そのまま上位へ戻したときに呼ぶ。世代を1つ戻す。
+ *
+ * これが往復を閉じる仕組み: 世代は 0→1→0→1 と**同じ番号を行き来する**ので、戻った先には
+ * その世代の `usage_counters` 行がそのまま残っている。つまり
+ * 「上げ直す→下げ直す」を繰り返しても、各世代の消費は積み上がったままで、
+ * **プランごとに1回ぶんの枠しか使えない**（上位で使い切ってから下げても、下位の枠は
+ * 前回そこで使った分から続きになる）。
+ *
+ * `greatest(...,0)` は、下げたことが無い利用者が上位へ変えたときに負にしないため
+ * （`usage_epoch >= 0` のcheck制約に触れる）。
+ */
+export function restoreUsageEpochSql(userIdParam: string): string {
+  return `update profiles set usage_epoch = greatest(usage_epoch - 1, 0) where id = ${userIdParam}`;
+}
+
 /** 利用者IDのパラメータ（例 `$1`）から期間キーを引くサブクエリ。 */
 export function usagePeriodKeySql(userIdParam: string): string {
   return `(select ${usagePeriodKeyExpr("p")} from profiles p where p.id = ${userIdParam})`;

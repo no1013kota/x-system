@@ -263,7 +263,14 @@ describe("トライアル中の下位変更で枠を戻す（T-M8-299）", () =>
     expect(deps.resetUsage).toHaveBeenCalledWith(USER_ID);
   });
 
-  it("上位へ変えたときは戻さない（枠が増えるので戻す必要がない）", async () => {
+  /**
+   * **上位へ戻したらリセットを巻き戻す**（T-M8-306・要決定D-44 案A）。
+   *
+   * これが無いと「上位で使い切る→下位へ下げてリセット→上位へ戻す」の往復で枠が何度でも
+   * 満額に戻り、支払い0円のトライアル中に運営者のAI実費が青天井になった。
+   * 世代を戻すと消費済みの行へ戻るので、往復してもプランごとに1回ぶんしか使えない。
+   */
+  it("上位へ戻したら restoreUsage を呼ぶ（リセットの巻き戻し）", async () => {
     deps.stripe.subscriptions.retrieve = vi.fn(async () => trialing("expert"));
     deps.getProfile = vi.fn(async () => ({
       plan: "standard" as const,
@@ -272,11 +279,49 @@ describe("トライアル中の下位変更で枠を戻す（T-M8-299）", () =>
       subscription_event_created_at: null,
     }));
     deps.resetUsage = vi.fn(async () => {});
+    deps.restoreUsage = vi.fn(async () => {});
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    // 上位への変更で枠を0に戻すことはしない（それは下位変更のときだけ）。
+    expect(deps.resetUsage).not.toHaveBeenCalled();
+    expect(deps.restoreUsage).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("有料契約で上位へ変えたときは巻き戻さない（トライアル中だけの仕組み）", async () => {
+    const active = { ...trialing("expert"), status: "active" } as unknown as Stripe.Subscription;
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => active);
+    deps.getProfile = vi.fn(async () => ({
+      plan: "standard" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.restoreUsage = vi.fn(async () => {});
+    await reconcileBillingReturn(
+      { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
+      deps,
+    );
+    expect(deps.restoreUsage).not.toHaveBeenCalled();
+  });
+
+  it("プランが変わっていなければどちらも呼ばない", async () => {
+    deps.stripe.subscriptions.retrieve = vi.fn(async () => trialing("premium"));
+    deps.getProfile = vi.fn(async () => ({
+      plan: "premium" as const,
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_current",
+      subscription_event_created_at: null,
+    }));
+    deps.resetUsage = vi.fn(async () => {});
+    deps.restoreUsage = vi.fn(async () => {});
     await reconcileBillingReturn(
       { marker: { issuedAt: STARTED_AT, source: "portal", userId: USER_ID }, sessionId: null, source: "portal", userId: USER_ID },
       deps,
     );
     expect(deps.resetUsage).not.toHaveBeenCalled();
+    expect(deps.restoreUsage).not.toHaveBeenCalled();
   });
 
   it("有料契約で下げたときは戻さない（払った期間ぶんは使えるべき）", async () => {
