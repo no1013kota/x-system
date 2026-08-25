@@ -3,13 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   FREE_DB_SIZE_LIMIT_BYTES,
   describeEmptyCategories,
+  judgeBlog,
   judgeCost,
   judgeDatabaseSize,
+  judgePoolWaits,
   judgeJobs,
   judgeNews,
-  judgeQueuedEmails,
+  judgeRepeatedFailures,
   judgeScheduler,
   judgeStuckJobs,
+  judgeSubscriptionSync,
   judgeXAccounts,
   summarize,
   type Check,
@@ -112,7 +115,9 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
     ]);
     expect(r.noMatch).toEqual(["web3"]);
     expect(r.allDropped).toEqual([{ category: "sns", reasons: "title:too_big×4" }]);
-    expect(r.failed).toEqual([{ category: "business", errorCode: null }]);
+    expect(r.failed).toEqual([
+      { category: "business", errorCode: null, failureKind: null },
+    ]);
   });
 
   it("全件破棄は取得件数があっても注意として上げる（テーマが永久に0件になるのを見逃さない）", () => {
@@ -183,40 +188,11 @@ describe("テーマごとの0件の意味を運営者へ出す（T-M7-40）", ()
   });
 });
 
-describe("judgeQueuedEmails", () => {
-  it("溜まっていなければ正常", () => {
-    expect(judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0 }).level).toBe("ok");
-  });
-
-  it("24時間より古い滞留は注意（本番で一斉送信される・D-9）", () => {
-    const r = judgeQueuedEmails({ queued: 53, oldestHours: 128, failed: 0 });
-    expect(r.level).toBe("warn");
-    expect(r.detail).toContain("53");
-    expect(r.nextAction).toBeTruthy();
-  });
-
-  it("直近の滞留は送信待ちとして正常", () => {
-    expect(judgeQueuedEmails({ queued: 2, oldestHours: 1, failed: 0 }).level).toBe("ok");
-  });
-
-  // T-M8-40: `queued = 0` を無条件に「ok」としていたため、**SMTP認証が間違っていて
-  // 通知メールが全滅している状態**（全件 failed・queued は0）で doctor が ✅ を出していた。
-  it("送信待ちが0でも失敗が残っていればエラー（正常な空と失敗による空を区別する）", () => {
-    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 7 });
-    expect(r.level).toBe("error");
-    expect(r.detail).toContain("7");
-    expect(r.nextAction).toContain("SMTP");
-  });
-
-  it("失敗は送信待ちより先に扱う（自動では回収されないため）", () => {
-    const r = judgeQueuedEmails({ queued: 3, oldestHours: 1, failed: 1 });
-    expect(r.level).toBe("error");
-  });
-});
+// （judgeQueuedEmails のテストはT-M8-222で削除——メール通知機能ごと廃止）
 
 /**
- * 定時実行の生存（T-M8-51）。`judgeQueuedEmails` と同型の見落としで、止まっていても
- * doctor はどこも赤くならなかった。tick が死ぬと予約投稿・通知メール・日次サマリが静かに全部止まる。
+ * 定時実行の生存（T-M8-51）。旧・お知らせメール検査と同型の見落としで、止まっていても
+ * doctor はどこも赤くならなかった。tick が死ぬと予約投稿・アプリ内通知・日次サマリが静かに全部止まる。
  */
 describe("judgeScheduler", () => {
   it("本番で15分以内に動いていれば正常", () => {
@@ -240,28 +216,6 @@ describe("judgeScheduler", () => {
   it("定時実行が前提でない環境では赤くしない", () => {
     expect(judgeScheduler({ minutesSinceLastRun: null, schedulerExpected: false }).level).toBe("ok");
     expect(judgeScheduler({ minutesSinceLastRun: 999, schedulerExpected: false }).level).toBe("ok");
-  });
-});
-
-describe("judgeQueuedEmails の期間の窓（T-M8-51）", () => {
-  // 窓が無いと1件失敗しただけで恒久的に赤くなり、赤が常態化して他の異常が埋もれる。
-  it("古い失敗だけなら注意に落とす（恒久的に赤くしない）", () => {
-    const r = judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 3 });
-    expect(r.level).toBe("warn");
-    expect(r.detail).toContain("3");
-  });
-
-  it("直近の失敗があればエラーで、古い分は件数として添える", () => {
-    const r = judgeQueuedEmails({ queued: 1, oldestHours: 2, failed: 2, failedOlder: 5 });
-    expect(r.level).toBe("error");
-    expect(r.detail).toContain("2");
-    expect(r.detail).toContain("5");
-  });
-
-  it("どちらも無ければ正常", () => {
-    expect(
-      judgeQueuedEmails({ queued: 0, oldestHours: null, failed: 0, failedOlder: 0 }).level,
-    ).toBe("ok");
   });
 });
 
@@ -356,5 +310,246 @@ describe("judgeDatabaseSize", () => {
 
   it("上限0でも壊れない（設定ミス時に例外を出さない）", () => {
     expect(() => judgeDatabaseSize({ bytes: 100, limitBytes: 0 })).not.toThrow();
+  });
+});
+
+/**
+ * providerの失敗を運営者が直せる言葉で出す（T-M8-163）。
+ *
+ * 2026-08-20、本番は「取得に失敗したテーマ: ai（http_400）」＋「Claudeに聞いてください」だけを出し、
+ * 実際の原因（Anthropicのクレジット切れ＝運営者が5分で直せる）へ辿れなかった。
+ */
+describe("providerの失敗理由を直せる言葉で出す（T-M8-163）", () => {
+  const failedOutcome = (category: string, failureKind: string | null) => ({
+    category,
+    ok: false,
+    fetched: 0,
+    dropped: 0,
+    dropReasons: {},
+    errorCode: "http_400",
+    failureKind: failureKind as never,
+  });
+
+  it("クレジット切れは「残高が不足」と出し、購入の操作を出す（http_400 で終わらせない）", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [
+        failedOutcome("ai", "credit_exhausted"),
+        failedOutcome("investment", "credit_exhausted"),
+      ],
+    });
+
+    expect(r.detail).toContain("残高が不足");
+    expect(r.detail).not.toContain("http_400");
+    expect(r.nextAction).toContain("クレジット");
+  });
+
+  /** 待てば直るものと、お金を払わないと直らないものを混同しない。 */
+  it("レート制限は待つ案内になる", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "rate_limited")],
+    });
+
+    expect(r.nextAction).toContain("待つ");
+  });
+
+  /** 原因が混ざっているときに片方の操作を勧めると、案内そのものが信用されなくなる。 */
+  it("原因が混ざっているときは決めつけず記録を見る案内へ戻す", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [
+        failedOutcome("ai", "credit_exhausted"),
+        failedOutcome("sns", "invalid_key"),
+      ],
+    });
+
+    expect(r.nextAction).toContain("失敗記録");
+  });
+
+  it("分類できなければ従来どおりコードを出す（勝手に決めつけない）", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "unknown")],
+    });
+
+    expect(r.detail).toContain("http_400");
+    expect(r.nextAction).toContain("失敗記録");
+  });
+
+  /**
+   * **providerの応答本文を運営者向けの出力へ載せない**（要件01 §8）。
+   * 分類のために本文を読むようになったので、漏れないことをここで固定する。
+   */
+  it("providerの応答本文は detail にも nextAction にも出ない", () => {
+    const r = judgeNews({
+      itemsLast48h: 0,
+      hoursSinceLastRun: 1,
+      schedulerExpected: true,
+      outcomes: [failedOutcome("ai", "credit_exhausted")],
+    });
+
+    const rendered = `${r.detail} ${r.nextAction ?? ""}`;
+    for (const leak of ["request_id", "invalid_request_error", "Your credit balance"]) {
+      expect(rendered, leak).not.toContain(leak);
+    }
+  });
+});
+
+describe("judgeBlog（ブログ記事の同梱・T-M8-184）", () => {
+  it("blog/ が同梱されていなければ error（本番だけ「準備中」になる事故）", () => {
+    const check = judgeBlog({ directoryExists: false, published: 0, drafts: 0, invalidFiles: [] });
+    expect(check.level).toBe("error");
+    expect(check.nextAction).toContain("outputFileTracingIncludes");
+  });
+
+  it("不備のある記事があれば warn で blog:check を案内する", () => {
+    const check = judgeBlog({
+      directoryExists: true,
+      published: 2,
+      drafts: 1,
+      invalidFiles: ["broken.md"],
+    });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("broken.md");
+    expect(check.nextAction).toContain("npm run blog:check");
+  });
+
+  it("公開0件でもディレクトリがあれば ok（記事が無いのは正常な空）", () => {
+    const check = judgeBlog({ directoryExists: true, published: 0, drafts: 0, invalidFiles: [] });
+    expect(check.level).toBe("ok");
+    expect(check.detail).toBe("公開 0 件・下書き 0 件");
+  });
+});
+
+describe("judgeSubscriptionSync（契約の同期・T-M8-238）", () => {
+  it("イベント0件は warn（契約者がまだいなければ正常）", () => {
+    const check = judgeSubscriptionSync({ hoursSinceLastEvent: null, totalEvents: 0 });
+    expect(check.level).toBe("warn");
+    expect(check.nextAction).toContain("webhook");
+  });
+
+  it("最後の受信から時間が経ちすぎていたら warn", () => {
+    const check = judgeSubscriptionSync({ hoursSinceLastEvent: 100, totalEvents: 12 });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("100 時間");
+  });
+
+  it("直近に受信していれば ok", () => {
+    expect(judgeSubscriptionSync({ hoursSinceLastEvent: 2, totalEvents: 12 })).toMatchObject({
+      level: "ok",
+    });
+  });
+});
+
+/**
+ * DB接続の待ち行列（T-M8-198）。要件01 §9 の移行条件「pooler接続の枯渇・待ち行列が観測された」を
+ * 運営者が画面1つで判断できるようにする。記録は待たされたときだけ入るので、通常は0件。
+ */
+describe("judgePoolWaits", () => {
+  it("待ちが無ければ ok（0件であることを言い切る）", () => {
+    const r = judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toContain("接続の待ちはありません");
+    expect(r.nextAction).toBeUndefined();
+  });
+
+  it("1件以上なら注意（件数と最長待ち時間を出す）", () => {
+    const r = judgePoolWaits({ waits24h: 3, maxWaitedMs: 1_500 });
+    expect(r.level).toBe("warn");
+    expect(r.detail).toContain("3回");
+    expect(r.detail).toContain("1.5秒");
+    expect(r.nextAction).toContain("Supabase Pro");
+  });
+
+  it("常態化したら異常（移行条件に該当することを名指しする）", () => {
+    const r = judgePoolWaits({ waits24h: 20, maxWaitedMs: 5_000 });
+    expect(r.level).toBe("error");
+    expect(r.nextAction).toContain("要件01 §9");
+  });
+});
+
+/**
+ * 効いている接続上限を必ず出す（要決定D-43・T-M8-303）。
+ * `DB_POOL_MAX` はデプロイ先の環境変数なので「設定したつもりで入っていない」が起こる。
+ * 回数だけ見せても、運営者は「対策が効いていないのか、対策はしたが足りないのか」を
+ * 区別できない（原則2: 原因が開発知識なしで辿れる）。
+ */
+describe("judgePoolWaits の上限表示（T-M8-303）", () => {
+  it("待ちが無くても、いま効いている上限を出す", () => {
+    const check = judgePoolWaits({ waits24h: 0, maxWaitedMs: 0, poolMax: 3 });
+    expect(check.level).toBe("ok");
+    expect(check.detail).toContain("1インスタンスあたり上限 3");
+  });
+
+  it("警告のときも上限を添える（対策済みかどうかが読める）", () => {
+    const check = judgePoolWaits({ waits24h: 5, maxWaitedMs: 900, poolMax: 10 });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("1インスタンスあたり上限 10");
+  });
+
+  it("上限が分からないときは数字を作らない", () => {
+    expect(judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 }).detail).not.toContain("上限");
+  });
+});
+
+/**
+ * 合計だけでは見えない壊れ方を運営者へ届ける（T-M8-307）。
+ * 2026-08-25 の不具合は「1人の利用者の実行が全滅、画面には残り満額」という形だった。
+ */
+describe("judgeRepeatedFailures（誰がどう壊れているかを出す）", () => {
+  const group = (message: string, count: number, users = 1) => ({ message, count, users });
+
+  it("失敗が無ければ ok", () => {
+    const c = judgeRepeatedFailures({ groups: [], allFailingUsers: 0 });
+    expect(c.level).toBe("ok");
+    expect(c.detail).toContain("失敗はありません");
+  });
+
+  it("ばらけた少数の失敗は ok（毎日赤くしない）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("画像の生成に失敗しました", 2), group("Xへの投稿に失敗しました", 1)],
+      allFailingUsers: 0,
+    });
+    expect(c.level).toBe("ok");
+    expect(c.detail).toContain("2");
+  });
+
+  it("同じ理由が繰り返していれば warn（仕組みの問題の疑い）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("AIの利用残高が不足しています", 9, 4)],
+      allFailingUsers: 0,
+    });
+    expect(c.level).toBe("warn");
+    expect(c.detail).toContain("AIの利用残高が不足しています");
+    expect(c.detail).toContain("利用者 4 名");
+    expect(c.nextAction).toBeTruthy();
+  });
+
+  it("実行が全滅している利用者がいれば error（合計では warn 止まりでも）", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("しばらくしてからもう一度お試しください", 3)],
+      allFailingUsers: 1,
+    });
+    expect(c.level).toBe("error");
+    expect(c.detail).toContain("1 名");
+    // 「次に何をすればよいか」が無いと運営者は動けない（原則2）。
+    expect(c.nextAction).toContain("調べて");
+  });
+
+  it("運営者向けでも個人が特定できる値は文面に載せない", () => {
+    const c = judgeRepeatedFailures({
+      groups: [group("AIの利用残高が不足しています", 5, 2)],
+      allFailingUsers: 2,
+    });
+    expect(c.detail).not.toMatch(/@|[0-9a-f]{8}-[0-9a-f]{4}/);
   });
 });

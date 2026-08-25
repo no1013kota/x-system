@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { weightedLength } from "@/lib/text/weighted-length";
+import { weightedLength } from "@/lib/post/text-metrics";
 
 import { genOutputSchema, postsToThread, stripProviderMarkup } from "./gen-output";
 

@@ -9,17 +9,21 @@ import { pooledQueryable } from "@/lib/db/pool";
 import { cloneFailedDraftForRetry } from "@/lib/drafts-clone";
 import { env } from "@/lib/env";
 import {
+  cancelDraftSchedule,
   discardDraft,
   listDraftsForAccount,
+  scheduleDraft,
   updateDraft,
   type DraftView,
 } from "@/lib/drafts";
+import { assertDraftSchedulable } from "@/lib/draft-schedule";
 import { reconcileDraftPosting } from "@/lib/reconcile-posting";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { getRecentPosts, getTweetMetrics } from "@/lib/x/client";
 import { xClientDeps } from "@/lib/x/client-server";
 import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
+import { AppError } from "@/lib/observability/errors";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 
 /**
@@ -41,6 +45,16 @@ const updateSchema = z.object({
     .array(z.object({ local_id: z.string().optional(), text: z.string().max(10000) }))
     .min(1),
   image_local_ids: z.array(z.string()).optional(),
+});
+const scheduleSchema = z.object({
+  draft_id: z.string().uuid(),
+  expected_updated_at: z.string().min(1),
+  /** `datetime-local` 由来のJST文字列も ISO も受ける。判定は純粋層が行う。 */
+  scheduled_at: z.string().min(1),
+});
+const cancelScheduleSchema = z.object({
+  draft_id: z.string().uuid(),
+  expected_updated_at: z.string().min(1),
 });
 const discardSchema = z.object({
   draft_id: z.string().uuid(),
@@ -197,4 +211,80 @@ export async function discardDraftAction(input: unknown): Promise<BaseResult> {
   } catch (error) {
     return errorResult(error);
   }
+}
+
+
+/**
+ * 下書きに投稿予約日時を設定する（要件05 §5・T-M8-157）。
+ *
+ * **押す前に理由が分かるように**、判定は画面と同じ `checkDraftSchedule` を通す
+ * （`assertDraftSchedulable` が日本語の理由付きで止める）。対象アカウントの有効性は
+ * 下書きの所有チェックと同じクエリで読む。
+ */
+export async function scheduleDraftAction(input: unknown): Promise<BaseResult> {
+  const parsed = parseUserInput(scheduleSchema, input);
+  if (!parsed.success) {
+    return validationErrorResult(parsed.error);
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const target = await loadDraftScheduleTarget(auth.userId, parsed.data.draft_id);
+    const scheduledAt = assertDraftSchedulable(
+      target,
+      parsed.data.scheduled_at,
+      Date.now(),
+    );
+    await scheduleDraft(pooledDb, {
+      draftId: parsed.data.draft_id,
+      expectedUpdatedAt: parsed.data.expected_updated_at,
+      scheduledAt,
+      userId: auth.userId,
+    });
+    revalidatePath("/app/posts");
+    revalidatePath("/app");
+    return { message: "投稿を予約しました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/** 予約を解除する（要件05 §5・T-M8-157）。 */
+export async function cancelDraftScheduleAction(
+  input: unknown,
+): Promise<BaseResult> {
+  const parsed = parseUserInput(cancelScheduleSchema, input);
+  if (!parsed.success) {
+    return validationErrorResult(parsed.error);
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await cancelDraftSchedule(pooledDb, {
+      draftId: parsed.data.draft_id,
+      expectedUpdatedAt: parsed.data.expected_updated_at,
+      userId: auth.userId,
+    });
+    revalidatePath("/app/posts");
+    revalidatePath("/app");
+    return { message: "予約を解除しました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/** 予約の判定に必要な最小の情報（下書きの状態と対象アカウントの有効性）。 */
+async function loadDraftScheduleTarget(
+  userId: string,
+  draftId: string,
+): Promise<{ status: string; xAccountActive: boolean }> {
+  const { rows } = await pooledDb.query<{ status: string; x_status: string }>(
+    `select d.status, xa.status as x_status
+       from drafts d join x_accounts xa on xa.id = d.x_account_id
+      where d.id = $1 and xa.user_id = $2`,
+    [draftId, userId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("not_found");
+  return { status: row.status, xAccountActive: row.x_status === "active" };
 }

@@ -37,10 +37,13 @@ async function seedNews(items: SeedItem[]): Promise<void> {
             ) + interval '1 minute')::text as base`,
   );
   for (const item of items) {
+    // fetched_at も published_at と同じ計算時刻にする——一覧の新着順は fetched_at 基準
+    // （T-M8-188）なので、投入順の now() では minutesAgo の並びが崩れる。
     await query(
       `insert into news_items (id, category, title, summary, source_url, impact, published_at, fetched_at)
        values ($1, $2::news_category, $3, $4, $5, $6::impact_level,
-               $8::timestamptz + make_interval(mins => 60 - $7), now())`,
+               $8::timestamptz + make_interval(mins => 60 - $7),
+               $8::timestamptz + make_interval(mins => 60 - $7))`,
       [
         item.id,
         item.category,
@@ -61,19 +64,19 @@ async function removeNews(ids: string[]): Promise<void> {
   await query(`delete from news_items where id = any($1::uuid[])`, [ids]);
 }
 
-test("ニュース一覧は既定の分野・インパクトで絞られ、絞り込みを変えると追従する", async ({
+test("ニュース一覧は低インパクトも表示し、テーマ・インパクトの選択で先頭へ寄せられる（T-M8-188）", async ({
   accounts,
   page,
 }) => {
   const run = randomUUID().slice(0, 8);
   const items: SeedItem[] = [
-    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} AI重要`, minutesAgo: 5 },
-    { id: randomUUID(), category: "ai", impact: "low", title: `E2E-${run} AI軽微`, minutesAgo: 10 },
+    { id: randomUUID(), category: "ai", impact: "low", title: `E2E-${run} AI軽微`, minutesAgo: 5 },
+    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} AI重要`, minutesAgo: 10 },
     {
       id: randomUUID(),
       category: "investment",
-      impact: "high",
-      title: `E2E-${run} 投資重要`,
+      impact: "mid",
+      title: `E2E-${run} 投資中`,
       minutesAgo: 15,
     },
   ];
@@ -84,25 +87,123 @@ test("ニュース一覧は既定の分野・インパクトで絞られ、絞�
     await signIn(page, account);
     await page.goto("/app/news");
 
-    // 既定は全分野・high+mid（要件02 §3.4）。low は出ない。
+    // **絞り込みは無く、low も含めて全部出る**（旧: 既定でhigh+midに絞っていた）。
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
-    await expect(page.getByText(`E2E-${run} 投資重要`)).toBeVisible();
-    await expect(page.getByText(`E2E-${run} AI軽微`)).toHaveCount(0);
+    await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} AI軽微`)).toBeVisible();
+    // 旧UI（絞り込み・表示件数・保存）が出ていない。
+    await expect(page.getByRole("region", { name: "絞り込み" })).toHaveCount(0);
+    await expect(page.getByText("表示件数")).toHaveCount(0);
 
-    // 分野トグルを外して「この条件で表示して保存」を押すと、対象外が消える。
-    // トグルだけでは取り直さない（保存と一覧再取得が同じ操作にまとまっている・要件06 §3.4）。
-    const filter = page.getByRole("region", { name: "絞り込み" });
-    await filter.getByRole("button", { name: "投資", exact: true }).click();
-    await filter.getByRole("button", { name: "この条件で表示して保存" }).click();
-    await expect(page.getByText(`E2E-${run} 投資重要`)).toHaveCount(0);
-    await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
-
-    // 条件は news_config として保存され、通知にも使われる（副作用の明示）。
-    const [saved] = await query<{ categories: string[] }>(
-      `select news_config->'categories' as categories from profiles where id = $1`,
-      [account.userId],
+    /*
+      選択式ソート（T-M8-188）: 選んだテーマ・インパクトの記事が先頭へ寄る。
+      **時間窓の深リンクの中で見る**——窓なしだとローカルDBの実データが混ざり、
+      seedの並び比較が環境依存になる。selectの変更は窓を保ったままURLを進める。
+    */
+    const [{ from, to }] = await query<{ from: string; to: string }>(
+      `select (min(fetched_at) - interval '1 minute')::text as from,
+              (max(fetched_at) + interval '1 minute')::text as to
+         from news_items where id = any($1::uuid[])`,
+      [items.map((i) => i.id)],
     );
-    expect(saved.categories, "外した分野が保存されていないこと").not.toContain("investment");
+    await page.goto(
+      `/app/news?from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}`,
+    );
+    // 新着順のボタンは無い（新着順が基本）。
+    await expect(page.getByRole("link", { name: "新着順" })).toHaveCount(0);
+
+    const orderOf = async (): Promise<(needle: string) => number> => {
+      const titles = await page
+        .locator("li")
+        .filter({ hasText: `E2E-${run}` })
+        .allInnerTexts();
+      return (needle: string) => titles.findIndex((t) => t.includes(needle));
+    };
+
+    // インパクト「高」を選ぶと高が先頭へ（低は残るが後ろ。記事は消えない）。
+    await page.getByLabel("インパクトで先頭へ").selectOption("high");
+    await expect(page).toHaveURL(/impact=high/);
+    await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
+    let idx = await orderOf();
+    expect(idx("AI重要")).toBeLessThan(idx("投資中"));
+    expect(idx("AI重要")).toBeLessThan(idx("AI軽微"));
+
+    // テーマ「投資」を足すと投資が最優先（テーマ→インパクト→新着の順で寄る）。
+    await page.getByLabel("テーマで先頭へ").selectOption("investment");
+    await expect(page).toHaveURL(/theme=investment/);
+    await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
+    idx = await orderOf();
+    expect(idx("投資中")).toBeLessThan(idx("AI重要"));
+  } finally {
+    await removeNews(items.map((i) => i.id));
+  }
+});
+
+/** 50件ずつのページ送り（T-M8-188）。seedは既存全行より新しいので1ページ目の先頭に並ぶ。 */
+test("ニュース一覧は50件ずつページ送りできる", async ({ accounts, page }) => {
+  const run = randomUUID().slice(0, 8);
+  const items: SeedItem[] = Array.from({ length: 55 }, (_, i) => ({
+    id: randomUUID(),
+    category: "ai" as const,
+    impact: "mid" as const,
+    title: `E2E-${run} P${String(i + 1).padStart(2, "0")}`,
+    minutesAgo: i + 1, // P01が最新
+  }));
+
+  try {
+    await seedNews(items);
+    const account = await accounts.create("news-pager");
+    await signIn(page, account);
+    await page.goto("/app/news");
+
+    // 1ページ目: 最新50件（P01〜P50）。P55（最古）は出ない。
+    await expect(page.getByText(`E2E-${run} P01`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} P55`)).toHaveCount(0);
+    await expect(page.getByText(/1 \/ \d+ページ/)).toBeVisible();
+
+    await page.getByRole("link", { name: "次の50件" }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.getByText(`E2E-${run} P55`)).toBeVisible();
+    await expect(page.getByText(`E2E-${run} P01`)).toHaveCount(0);
+
+    await page.getByRole("link", { name: "前の50件" }).click();
+    await expect(page.getByText(`E2E-${run} P01`)).toBeVisible();
+  } finally {
+    await removeNews(items.map((i) => i.id));
+  }
+});
+
+/** すぐに投稿作成 → 投稿作成画面へ遷移し、ニュース解説＋{ニュース}が自動入力される（T-M8-210）。 */
+test("すぐに投稿作成は投稿作成画面へ引き継ぎ、{ニュース}に記事が自動入力される", async ({
+  accounts,
+  page,
+}) => {
+  const run = randomUUID().slice(0, 8);
+  const items: SeedItem[] = [
+    { id: randomUUID(), category: "ai", impact: "high", title: `E2E-${run} 引き継ぎ記事`, minutesAgo: 1 },
+  ];
+  try {
+    await seedNews(items);
+    const account = await accounts.create("news-handoff");
+    await signIn(page, account);
+    await page.goto("/app/news");
+
+    await page
+      .locator("li")
+      .filter({ hasText: `E2E-${run} 引き継ぎ記事` })
+      .getByRole("link", { name: "すぐに投稿作成" })
+      .click();
+
+    // 投稿作成画面へ遷移し、ニュース解説が選択されている。
+    await expect(page).toHaveURL(/\/app\/posts\?tab=create&news=/);
+    await expect(page.getByRole("radio", { name: /ニュース解説/ })).toBeChecked();
+    // {ニュース} の入力欄に記事の見出し・要約が自動で入っている。
+    const newsField = page.getByLabel("ニュース（任意）");
+    await expect(newsField).toHaveValue(new RegExp(`E2E-${run} 引き継ぎ記事`));
+    // 参考URLにも記事URLが入る。
+    await expect(page.getByLabel("参考URL（任意）")).toHaveValue(/example\.com\/e2e-news/);
+    // テーマは「その他」が選ばれ、そのまま生成できる状態。
+    await expect(page.getByLabel("テーマ")).toHaveValue("other");
   } finally {
     await removeNews(items.map((i) => i.id));
   }

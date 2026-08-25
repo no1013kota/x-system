@@ -22,7 +22,7 @@ describe("AI purpose config storage", () => {
     }
   });
 
-  async function createUser(plan: "standard" | "md" | "premium") {
+  async function createUser(plan: "standard" | "premium" | "expert") {
     const userId = randomUUID();
     await database!.query(
       `insert into auth.users (id, instance_id, aud, role, email)
@@ -43,7 +43,7 @@ describe("AI purpose config storage", () => {
   it("allows BYOK purposes only for registered valid keys", async (context) => {
     if (!database) return context.skip();
     const db = database;
-    const userId = await createUser("md");
+    const userId = await createUser("standard");
     await db.query(
       `insert into user_api_keys
         (user_id, provider, credentials_ciphertext, status)
@@ -61,7 +61,7 @@ describe("AI purpose config storage", () => {
       }),
     ).resolves.toMatchObject({
       config: { future: true, image: "google", text: "anthropic" },
-      plan: "md",
+      plan: "standard",
     });
     await expect(
       updateAiPurposeConfigRecord(db as unknown as PoolClient, {
@@ -119,6 +119,27 @@ describe("AI purpose config storage", () => {
         )
       ).rows[0].ai_purpose_config,
     ).toEqual({ future: true, image: "google", image_model: null, text: null });
+  });
+
+  /**
+   * expert も運営キー分岐で保存できること（T-M8-168）。判定が `plan === "premium"` のままだと
+   * expert はBYOK分岐へ落ち、user_api_keysに鍵が無いため保存が常に validation_error になる
+   * （レビューで検出。isOperatorManagedPlan で判定する）。
+   */
+  it("expert も運営キー分岐で保存できる（AIキー登録なしで画像providerを設定）", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = await createUser("expert");
+    await expect(
+      updateAiPurposeConfigRecord(db as unknown as PoolClient, {
+        operatorImageProviders: new Set(["google"]),
+        patch: { image: "google" },
+        userId,
+      }),
+    ).resolves.toMatchObject({
+      config: { image: "google", text: "anthropic" },
+      plan: "expert",
+    });
   });
 
   it("モデル選択を保存し、providerを外すとモデルも外れる（T-M8-107）", async (context) => {

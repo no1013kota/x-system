@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
+import { AppLockedPage } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
-import { env } from "@/lib/env";
+import { imageKeyRowsQuery, imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
-import { formatJst } from "@/lib/format";
 import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import {
   listPatternPrompts,
@@ -20,32 +18,13 @@ import {
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ScheduleManager } from "./schedule-manager";
-import { CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
+import { pageTitleClassName } from "@/components/ui/card";
 import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 export const metadata: Metadata = { title: "スケジュール | Exos AI" };
 
 const pooledDb = pooledQueryable();
 
-/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。
- *  クエリと判定を分離してあるのは、plan取得と並列に走らせるため（T-M8-67）。 */
-function imageKeyRowsQuery(userId: string) {
-  return getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
-}
-
-function imageProvidersFor(plan: string | null, keyRows: { provider: string }[]): string[] {
-  if (plan === "premium") {
-    const providers: string[] = [];
-    if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
-    if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
-    return providers;
-  }
-  return keyRows.map((r) => r.provider);
-}
 
 export default async function SchedulePage() {
   const user = await getCurrentUser();
@@ -56,15 +35,40 @@ export default async function SchedulePage() {
       </main>
     );
   }
-  const activeXAccountId = await resolveActiveXAccountForUser(user.id);
+  /*
+    ロック判定と操作中アカウントの解決は互いに独立なので**1波でまとめる**（T-M8-274）。
+    直列にすると全遷移でDB往復が1本増える。ロック時に解決結果を捨てるのは軽い無駄だが、
+    ロックは稀な状態で、待たされるのは毎回の通常利用のほう。
+  */
+  const [lock, activeXAccountId] = await Promise.all([
+    loadAppLock(user.id),
+    resolveActiveXAccountForUser(user.id),
+  ]);
+  // 契約が有効でなければ開けない（T-M8-269→T-M8-273。理由で文言と導線が変わる）。
+  if (lock) {
+    return (
+      <AppLockedPage
+        description="曜日と時刻を決めておくと、AIが下書きを用意し、そのまま投稿もできます。"
+        reason={lock}
+        title="スケジュール"
+      />
+    );
+  }
 
   let slots: ScheduleSlotView[] = [];
   let imageProviders: string[] = [];
   let automationConsented = false;
   let accountHandle: string | null = null;
-  // デザインは「下書き・スケジュール」が1画面（T-M8-10）。**URLは変えない**方針なので、
-  // どちらのURLでも両方を出す。ここでは下書きも読み込む。
-let drafts: DraftView[] = [];
+  /**
+   * 今後の予定（T-M8-226・運営者の指示 2026-08-22）: **投稿予約済みの下書きだけ**を読む。
+   * 未予約の下書きはこの画面に出さない（編集・投稿は投稿作成＞下書きが担う）。
+   */
+  let scheduledDrafts: {
+    id: string;
+    pattern_name: string;
+    scheduled_at: string;
+    excerpt: string;
+  }[] = [];
   /** 予約に使えるパターン（引用URLが必須のものは除く・T-M8-129 U3）。 */
   let patterns: PatternOption[] = [];
   /**
@@ -88,8 +92,20 @@ let drafts: DraftView[] = [];
         )
         .then((r) => r.rows[0]),
       imageKeyRowsQuery(user.id),
-      // この画面が描画するのは先頭5件だけ（下のカード）。全件は取得しない。
-    listDraftsForAccount(pooledDb, activeXAccountId, "drafts", { limit: 5 }),
+      getPool().query<{
+        id: string;
+        pattern_name: string;
+        scheduled_at: string;
+        excerpt: string;
+      }>(
+        `select id, pattern_name, scheduled_at::text as scheduled_at,
+                coalesce(thread->0->>'text', '') as excerpt
+           from drafts
+          where x_account_id = $1 and status = 'draft' and scheduled_at is not null
+          order by scheduled_at asc
+          limit 20`,
+        [activeXAccountId],
+      ),
       listSchedulablePatterns(pooledDb, activeXAccountId),
     ]);
     patterns = schedulable;
@@ -105,23 +121,23 @@ let drafts: DraftView[] = [];
     imageProviders = imageProvidersFor(meta?.plan ?? null, keyRows.rows);
     automationConsented = meta?.consented === true;
     accountHandle = meta?.handle ?? null;
-    drafts = draftRows;
+    scheduledDrafts = draftRows.rows;
   }
+
 
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
       <header>
         <h1 className={pageTitleClassName}>スケジュール</h1>
-        <p className="mt-1 text-body text-ink-2">
-          曜日と時刻を決めて、下書き作成や自動投稿を定期実行します。
-        </p>
       </header>
 
       {!activeXAccountId ? (
         <XAccountRequiredNotice description="スケジュールを作成するには、まずXアカウントを連携してください。" />
       ) : (
         <ScheduleManager
+          key={activeXAccountId}
           accountHandle={accountHandle}
+          scheduledDrafts={scheduledDrafts}
           automationConsented={automationConsented}
           imageProviders={imageProviders}
           patternPrompts={patternPrompts}
@@ -131,50 +147,6 @@ let drafts: DraftView[] = [];
         />
       )}
 
-      {activeXAccountId ? (
-        <section
-          aria-label="未確認の下書き"
-          className={`${cardClassName} px-5 py-4`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>未確認の下書き</CardTitle>
-            <Link
-              className="inline-flex items-center py-2 -my-2 text-caption font-medium text-brand underline-offset-2 hover:underline"
-              href="/app/posts?tab=drafts"
-            >
-              編集・投稿する
-            </Link>
-          </div>
-          <ul className="mt-3 space-y-2">
-            {drafts.length === 0 ? (
-              <li className="rounded-card border border-hairline px-4 py-8 text-center text-body text-ink-2">
-                未確認の下書きはありません。
-              </li>
-            ) : (
-              drafts.slice(0, 5).map((draft) => (
-                <li key={draft.id}>
-                  <Link
-                    className="block rounded-card border border-hairline p-3 transition-colors duration-150 hover:bg-black/[0.02]"
-                    href={`/app/posts?tab=drafts&draftId=${draft.id}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge tone="brand">
-                        {draft.pattern_name}
-                      </Badge>
-                      <span className="ml-auto text-caption text-ink-3 tabular-nums">
-                        {formatJst(draft.updated_at)}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 line-clamp-2 text-body leading-5 text-ink-2">
-                      {draft.thread[0]?.text ?? ""}
-                    </p>
-                  </Link>
-                </li>
-              ))
-            )}
-          </ul>
-        </section>
-      ) : null}
     </main>
   );
 }

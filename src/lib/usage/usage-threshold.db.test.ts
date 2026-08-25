@@ -29,6 +29,7 @@ describe("notifyUsageThresholds (db)", () => {
     if (!available) ctx.skip();
   });
 
+  /** 未同期の利用者（current_period_start が null）は JST 暦月が期間キー（T-M8-258）。 */
   const MONTH = `to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM')`;
 
   async function makeUser(c: PoolClient, usageConfig: object): Promise<string> {
@@ -73,8 +74,8 @@ describe("notifyUsageThresholds (db)", () => {
   };
   async function usageNotifs(uid: string) {
     return withTransaction(async (c) => {
-      const r = await c.query<{ dedupe_key: string; email_status: string }>(
-        `select dedupe_key, email_status from notifications
+      const r = await c.query<{ dedupe_key: string; in_app_enabled: boolean }>(
+        `select dedupe_key, in_app_enabled from notifications
           where user_id = $1 and type = 'usage' order by dedupe_key`,
         [uid],
       );
@@ -83,34 +84,56 @@ describe("notifyUsageThresholds (db)", () => {
   }
 
   it("creates one notification per slot/threshold, idempotent across re-calls (dedupe_key)", async () => {
-    const uid = await withTransaction((c) => makeUser(c, { in_app: true, email: false }));
+    const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
     try {
-      await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200 }),
-      );
-      // 再更新・再実行しても増えない。
-      await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200 }),
-      );
-      const rows = await usageNotifs(uid);
       const month = (
         await withTransaction((c) => c.query<{ m: string }>(`select ${MONTH} as m`))
       ).rows[0].m;
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200, periodKey: month }),
+      );
+      // 再更新・再実行しても増えない。
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "normal_posts", newCount: 200, periodKey: month }),
+      );
+      const rows = await usageNotifs(uid);
       expect(rows.map((r) => r.dedupe_key)).toEqual([
         `usage:${month}:normal_posts:100`,
         `usage:${month}:normal_posts:80`,
       ]);
-      expect(rows.every((r) => r.email_status === "not_requested")).toBe(true); // email OFF
+      expect(rows.every((r) => r.in_app_enabled)).toBe(true);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /** dedupe は枠・期間・閾値ごと（T-M8-258）。新しい契約期間では同じ閾値の通知がもう一度作られる。 */
+  it("creates the same threshold notification again in a new subscription period", async () => {
+    const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
+    try {
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-07-15" }),
+      );
+      await withTransaction((c) =>
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-08-15" }),
+      );
+      const rows = await usageNotifs(uid);
+      expect(rows.map((r) => r.dedupe_key).sort()).toEqual([
+        "usage:2026-07-15:ai_credits:100",
+        "usage:2026-07-15:ai_credits:80",
+        "usage:2026-08-15:ai_credits:100",
+        "usage:2026-08-15:ai_credits:80",
+      ]);
     } finally {
       await cleanup(uid);
     }
   });
 
   it("respects notification_config: usage OFF creates no notification (banner is separate)", async () => {
-    const uid = await withTransaction((c) => makeUser(c, { in_app: false, email: false }));
+    const uid = await withTransaction((c) => makeUser(c, { in_app: false }));
     try {
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100 }),
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100, periodKey: "2026-08" }),
       );
       expect(await usageNotifs(uid)).toHaveLength(0);
     } finally {
@@ -118,22 +141,8 @@ describe("notifyUsageThresholds (db)", () => {
     }
   });
 
-  it("queues email when usage.email is ON", async () => {
-    const uid = await withTransaction((c) => makeUser(c, { in_app: true, email: true }));
-    try {
-      await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 800 }), // 80% of 1000
-      );
-      const rows = await usageNotifs(uid);
-      expect(rows).toHaveLength(1);
-      expect(rows[0].email_status).toBe("queued");
-    } finally {
-      await cleanup(uid);
-    }
-  });
-
   it("reserveUsage crossing 80% creates the usage notification end-to-end", async () => {
-    const uid = await withTransaction((c) => makeUser(c, { in_app: true, email: false }));
+    const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
     try {
       const jobId = await withTransaction((c) => seedJob(c, uid));
       // 784→800（AIクレジット 80% = ceil(1000×0.8)・T-M8-109）。

@@ -231,6 +231,54 @@ export function buildPatternRules(
   return lines.join("\n");
 }
 
+/**
+ * プロンプト本文から `{名前}` のプレースホルダー名を出現順に取り出す（T-M8-186）。
+ *
+ * 画面の入力欄はこの結果から**リアルタイムに増減**し、パターン保存時の placeholders 定義も
+ * ここから導出する（宣言と本文が食い違う状態を作らない）。
+ * - 名前の規則は保存時の検証（validatePlaceholders）と同じ: 1〜20字・`{}`／改行／`<`／`>` を含まない
+ * - `{{...}}` はシステム変数の記法なので対象外
+ * - 上限10件（PATTERN_PLACEHOLDER_MAX と同値）。超過分は黙って落とさず呼び出し側が伝える
+ */
+export const PROMPT_PLACEHOLDER_MAX = 10;
+
+export function extractPlaceholderNames(
+  prompt: string,
+  max: number = PROMPT_PLACEHOLDER_MAX,
+): string[] {
+  const names: string[] = [];
+  const pattern = /\{([^{}\n\r<>]{1,20})\}/g;
+  for (const match of prompt.matchAll(pattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    // `{{name}}` のような二重括弧はシステム変数の記法なので拾わない。
+    if (prompt[start - 1] === "{" || prompt[end] === "}") continue;
+    const name = match[1].trim();
+    if (name.length === 0) continue;
+    if (!names.includes(name)) names.push(name);
+    if (names.length >= max) break;
+  }
+  return names;
+}
+
+/**
+ * 生成時に差し込む対象のプレースホルダー集合（T-M8-186）。
+ * パターン定義（spec.placeholders）に加えて、**利用者が値を渡した名前のうち本文に
+ * `{名前}` として実在するもの**を含める——プロンプト上書きで増やした項目も差し込めるようにする。
+ * 本文に無い宣言はfillが素通りするだけなので害はない。
+ */
+export function placeholdersForFill(
+  prompt: string,
+  declared: readonly { name: string }[],
+  values: Readonly<Record<string, string>>,
+): { name: string }[] {
+  const names = new Set(declared.map((item) => item.name));
+  for (const key of Object.keys(values)) {
+    if (!names.has(key) && prompt.includes(`{${key}}`)) names.add(key);
+  }
+  return [...names].map((name) => ({ name }));
+}
+
 /** 未入力のプレースホルダーに入れる語（`<input>` の書き方と揃える）。 */
 const PLACEHOLDER_UNSPECIFIED = "（未指定）";
 

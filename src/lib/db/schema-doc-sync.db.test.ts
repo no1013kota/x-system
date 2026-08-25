@@ -25,7 +25,8 @@ function documentedColumns(): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const sections = doc.matchAll(/### 3\.\d+ `([a-z_]+)`([\s\S]*?)(?=\n### |\n## |$)/g);
   for (const [, table, body] of sections) {
-    const columns = [...body.matchAll(/^\| `([a-z_]+)` \|/gm)].map((m) => m[1]);
+    // 数字入りのカラム名（bank_account_last4 等）も拾う。
+    const columns = [...body.matchAll(/^\| `([a-z0-9_]+)` \|/gm)].map((m) => m[1]);
     if (columns.length > 0) out.set(table, columns);
   }
   return out;

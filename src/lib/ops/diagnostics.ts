@@ -1,6 +1,12 @@
 import "server-only";
+import {
+  classifyProviderFailure,
+  providerFailureGuide,
+  type ProviderFailureKind,
+} from "@/lib/ai/provider-failure";
 
 import { classifyNewsOutcome } from "@/lib/news-outcome";
+import { poolMax } from "@/lib/db/pool";
 
 import type { Queryable } from "../x/token-refresh";
 
@@ -8,16 +14,27 @@ import { judgeCaptcha, probeCaptcha, type CaptchaProbeDeps } from "./captcha-sta
 import {
   approxYen,
   type Check,
-  FAILED_EMAIL_WINDOW_DAYS,
   type Level,
   summarize,
   worstLevel,
 } from "./check";
+import { type ConfigFacts, judgeConfig, judgePendingConfirmations } from "./config-status";
 import { judgePortal, probePortalFeatures, type PortalProbeDeps } from "./portal-status";
 import { judgePrices, probePrices, type PriceProbeDeps } from "./price-status";
+import {
+  judgeStripeAccount,
+  probeStripeAccount,
+  type StripeAccountProbeDeps,
+} from "./stripe-account-status";
+import { judgeAffiliatePayouts } from "./affiliate-payout-status";
+import {
+  judgeWebhookEvents,
+  probeWebhookEvents,
+  type WebhookEventsProbeDeps,
+} from "./webhook-events-status";
 
 // 型と全体まとめは `check.ts` が正本（`scripts/doctor.mjs` も同じものを読む・R31）。
-export { approxYen, FAILED_EMAIL_WINDOW_DAYS, summarize, worstLevel };
+export { approxYen, summarize, worstLevel };
 export type { Check, Level };
 
 /**
@@ -70,6 +87,123 @@ export function judgeJobs(input: { succeeded: number; failed: number }): Check {
   };
 }
 
+/** 同じ理由が何件以上出たら「繰り返し」とみなすか。1〜2件は個別の事情のことが多い。 */
+export const REPEATED_FAILURE_MIN = 3;
+
+/** 直近24時間で同じ理由の失敗が何件出たか。 */
+export interface FailureGroup {
+  /** 利用者へ出している文言をそのまま使う（内部コードは運営者にも出さない）。 */
+  message: string;
+  count: number;
+  /** その理由に当たった利用者の数。 */
+  users: number;
+}
+
+/**
+ * **同じ原因で繰り返している失敗**と、**実行が全部失敗している利用者**を運営者へ届ける（T-M8-307）。
+ *
+ * {@link judgeJobs} は全体の成功/失敗の**合計**しか見ない。1人の利用者の実行が全滅していても、
+ * 他の利用者の成功に紛れて「注意」止まりになり、**誰がどう壊れているかは出ない**。
+ * 2026-08-25 に見つかった不具合（利用枠の世代付きキーがcheck制約で弾かれ、トライアル中に
+ * プランを下げた利用者は以後まったく実行できない・T-M8-299）はまさにこの形だった。
+ * 画面には「残り満額」と出るため利用者からも見えず、**気付けたのは開発中に偶然踏んだから**。
+ *
+ * 仕組みの問題は「特定の利用者だけ全部失敗」か「同じ理由が何度も出る」として現れる。
+ * 個人が特定できる値（メール・ID）は載せない——**人数と理由だけで運営者は動ける**。
+ */
+export function judgeRepeatedFailures(input: {
+  groups: FailureGroup[];
+  /** 直近24時間の実行が「成功0・失敗2件以上」だった利用者の数。 */
+  allFailingUsers: number;
+}): Check {
+  const name = "繰り返している失敗";
+  const describe = (g: FailureGroup) => `「${g.message}」が ${g.count} 件（利用者 ${g.users} 名）`;
+  const repeated = input.groups.filter((g) => g.count >= REPEATED_FAILURE_MIN);
+
+  if (input.allFailingUsers > 0) {
+    return {
+      name,
+      level: "error",
+      detail:
+        `直近24時間の実行がすべて失敗している利用者が ${input.allFailingUsers} 名います` +
+        (input.groups.length > 0 ? `。最も多い理由: ${describe(input.groups[0])}` : ""),
+      nextAction:
+        "その利用者は今アプリを使えません。Claudeに「実行がすべて失敗している利用者の原因を調べて」と伝えてください",
+    };
+  }
+  if (repeated.length > 0) {
+    return {
+      name,
+      level: "warn",
+      detail: `同じ理由の失敗が続いています: ${repeated.map(describe).join(" / ")}`,
+      nextAction: "Claudeに「繰り返している失敗の原因を調べて」と伝えてください",
+    };
+  }
+  if (input.groups.length === 0) {
+    return { name, level: "ok", detail: "直近24時間で失敗はありません" };
+  }
+  return {
+    name,
+    level: "ok",
+    detail: `失敗はありますが、同じ理由の繰り返しではありません（最多で ${input.groups[0].count} 件）`,
+  };
+}
+
+/**
+ * {@link judgeRepeatedFailures} の材料を集める（直近24時間）。
+ *
+ * 取るのは**人数と、利用者へ既に出している文言だけ**。メール・IDのような個人が特定できる値は
+ * 運営者向けの通知にも載せない（`/security-audit` の方針と揃える）。
+ */
+export async function collectFailurePatterns(
+  db: Queryable,
+  options: {
+    /** 対象の利用者を絞る（**テスト用**。本番は未指定＝全利用者）。 */
+    userIds?: string[];
+  } = {},
+): Promise<{ groups: FailureGroup[]; allFailingUsers: number }> {
+  const { rows } = await db.query<{ groups: FailureGroup[]; all_failing_users: number }>(
+    `with recent as (
+       select gj.status, xa.user_id, gj.error->>'message' as message
+         from generation_jobs gj
+         join x_accounts xa on xa.id = gj.x_account_id
+        where gj.created_at > now() - interval '24 hours'
+          and ($1::uuid[] is null or xa.user_id = any($1::uuid[]))
+     ),
+     grouped as (
+       -- 文言でまとめる（内部のcodeは運営者にも見せないので、そのまま出せる形で数える）。
+       select coalesce(message, '原因が記録されていない失敗') as message,
+              count(*)::int as n, count(distinct user_id)::int as u
+         from recent
+        where status = 'failed'
+        group by 1
+        order by count(*) desc
+        limit 3
+     )
+     select coalesce(
+              (select json_agg(json_build_object('message', message, 'count', n, 'users', u)
+                               order by n desc)
+                 from grouped),
+              '[]'::json
+            ) as groups,
+            (select count(*)::int
+               from (
+                 -- 「成功0・失敗2件以上」＝その利用者はいまアプリを使えていない。
+                 -- 失敗1件だけは普通に起こるので2件から数える。
+                 select user_id
+                   from recent
+                  group by user_id
+                 having count(*) filter (where status = 'succeeded') = 0
+                    and count(*) filter (where status = 'failed') >= 2
+               ) t) as all_failing_users`,
+    [options.userIds ?? null],
+  );
+  return {
+    groups: rows[0]?.groups ?? [],
+    allFailingUsers: Number(rows[0]?.all_failing_users ?? 0),
+  };
+}
+
 /**
  * ニュース取得が動いているか。
  *
@@ -96,7 +230,11 @@ export interface NewsCategoryOutcome {
  */
 export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
   /** 失敗した分野と、その種別（応答本文は持たない・T-M8-86）。 */
-  failed: { category: string; errorCode: string | null }[];
+  failed: {
+    category: string;
+    errorCode: string | null;
+    failureKind: ProviderFailureKind | null;
+  }[];
   allDropped: { category: string; reasons: string }[];
   noMatch: string[];
   /**
@@ -108,7 +246,11 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
 } {
-  const failed: { category: string; errorCode: string | null }[] = [];
+  const failed: {
+    category: string;
+    errorCode: string | null;
+    failureKind: ProviderFailureKind | null;
+  }[] = [];
   const allDropped: { category: string; reasons: string }[] = [];
   const noMatch: string[] = [];
   const mostly: {
@@ -123,7 +265,11 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
     const verdict = classifyNewsOutcome(o);
     switch (verdict.kind) {
       case "failed":
-        failed.push({ category: verdict.category, errorCode: verdict.errorCode });
+        failed.push({
+          category: verdict.category,
+          errorCode: verdict.errorCode,
+          failureKind: verdict.failureKind,
+        });
         break;
       case "mostly_dropped":
         mostly.push({
@@ -146,6 +292,26 @@ export function describeEmptyCategories(outcomes: NewsCategoryOutcome[]): {
   return { failed, allDropped, noMatch, mostlyDropped: mostly };
 }
 
+/**
+ * 失敗した分野の型から次の一手を決める（T-M8-163）。
+ *
+ * **全分野が同じ型なら、その操作を断定して出す。** 混ざっているときは決めつけず記録を見る案内へ戻す
+ * ——違う原因に同じ操作を勧めると、運営者はその案内を信じなくなる。
+ */
+function newsFailureNextAction(
+  failed: { failureKind: ProviderFailureKind | null }[],
+): string {
+  const kinds = new Set(
+    failed.map((f) => f.failureKind).filter((k): k is ProviderFailureKind => k != null),
+  );
+  kinds.delete("unknown");
+  if (kinds.size === 1) {
+    const [only] = [...kinds];
+    return providerFailureGuide(only).nextAction;
+  }
+  return providerFailureGuide("unknown").nextAction;
+}
+
 export function judgeNews(input: {
   itemsLast48h: number;
   hoursSinceLastRun: number | null;
@@ -162,7 +328,13 @@ export function judgeNews(input: {
       ? [
           empty.failed.length > 0
             ? `取得に失敗したテーマ: ${empty.failed
-                .map((f) => (f.errorCode ? `${f.category}（${f.errorCode}）` : f.category))
+                .map((f) => {
+                  // **`http_400` だけを見せない**（T-M8-163）。運営者が直せる言い方にする。
+                  const kind = f.failureKind && f.failureKind !== "unknown"
+                    ? providerFailureGuide(f.failureKind).label
+                    : f.errorCode;
+                  return kind ? `${f.category}（${kind}）` : f.category;
+                })
                 .join("・")}`
             : null,
           empty.allDropped.length > 0
@@ -207,8 +379,7 @@ export function judgeNews(input: {
         name,
         level: "warn",
         detail,
-        nextAction:
-          "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
+        nextAction: newsFailureNextAction(empty.failed),
       };
     }
     return {
@@ -249,8 +420,7 @@ export function judgeNews(input: {
       name,
       level: input.itemsLast48h === 0 ? "error" : "warn",
       detail,
-      nextAction:
-        "Claudeに「ニュース取得の失敗記録を見せて」と伝えてください（AIが何を返して落ちたかが記録されています）",
+      nextAction: newsFailureNextAction(empty.failed),
     };
   }
   if (input.itemsLast48h === 0) {
@@ -265,67 +435,9 @@ export function judgeNews(input: {
 }
 
 /**
- * お知らせメールの状態。
- *
- * **`failed` を数える**（T-M8-40）。以前は `queued` だけを見て `queued === 0` を「ok」としていた。
- * `failed` は終端状態（401/403 または3回失敗で確定）なので、**SMTP認証が間違っていて通知メールが
- * 全滅している状態は `queued = 0` になり、`doctor` が ✅ を出す**。
- * CLAUDE.md 原則1「正常な空と失敗による空を別の値で表す」に正面から反していた。
- */
-
-export function judgeQueuedEmails(input: {
-  queued: number;
-  oldestHours: number | null;
-  /** 直近 `FAILED_EMAIL_WINDOW_DAYS` 日の失敗。 */
-  failed: number;
-  /** それより古い失敗（記録として出すだけで、赤くしない）。 */
-  failedOlder?: number;
-}): Check {
-  const name = "お知らせメール";
-  // 失敗は自動では回収されない（`recoverQueuedEmails` は queued だけを拾う）。
-  // 放置すると届かないままなので、送信待ちより先に扱う。
-  //
-  // **ただし期間で区切る**（T-M8-51）。窓が無いと、1件失敗しただけで doctor が恒久的に赤・
-  // 日次サマリに毎日出続け、**赤が常態化して他の異常が埋もれる**（原則1の逆効果）。
-  // 古い失敗は「もう送る意味が薄い」ものでもあるので、記録として添えるだけにする。
-  const older = input.failedOlder ?? 0;
-  const olderNote = older > 0 ? `。${FAILED_EMAIL_WINDOW_DAYS}日より前の失敗が別に ${older} 件` : "";
-  if (input.failed > 0) {
-    return {
-      name,
-      level: "error",
-      detail:
-        `直近${FAILED_EMAIL_WINDOW_DAYS}日で送れなかったメールが ${input.failed} 件あります` +
-        `（送信待ちは ${input.queued} 件）${olderNote}`,
-      nextAction:
-        "メール設定（SMTP）が正しいか確認してください。直したら通知ベルの「メールを再送」で送り直せます",
-    };
-  }
-  if (older > 0 && input.queued === 0) {
-    return {
-      name,
-      level: "warn",
-      detail: `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったメールが ${older} 件あります（直近の失敗はありません）`,
-      nextAction: "古い失敗なので急ぎではありません。送り直すなら通知ベルの「メールを再送」から行えます",
-    };
-  }
-  if (input.queued === 0) return { name, level: "ok", detail: "送信待ち・送信失敗はありません" };
-  const detail = `送信待ちが ${input.queued} 件（最も古いものは ${Math.round(input.oldestHours ?? 0)} 時間前）`;
-  if ((input.oldestHours ?? 0) > 24) {
-    return {
-      name,
-      level: "warn",
-      detail,
-      nextAction: "本番で初めて動いたときに一斉送信されます。Claudeに「古いお知らせメールを掃除して」と伝えてください",
-    };
-  }
-  return { name, level: "ok", detail };
-}
-
-/**
  * 定時実行（`scheduler_tick`）が生きているか（T-M8-51）。
  *
- * `judgeQueuedEmails` と**同じ型の見落とし**が残っていた——止まっていても doctor はどこも赤く
+ * 旧・お知らせメール検査と**同じ型の見落とし**が残っていた——止まっていても doctor はどこも赤く
  * ならない。tick が死ぬと予約投稿・通知メール送信・日次サマリ・期限切れ回収の**すべてが静かに
  * 止まる**（「実行はありません」は正常時と同じ表示になる）。5分間隔なので、15分以上音沙汰が
  * 無ければ異常。
@@ -420,6 +532,51 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
 }
 
 /** 当月の従量課金（AI・X API）の実績。原則4の可視化。 */
+/**
+ * DB接続の待ち行列（T-M8-198・要件01 §9）。**Supabase Pro へ上げる条件のひとつ**
+ * 「pooler接続の枯渇・待ち行列が観測された」を、運営者が画面1つで判断できるようにする。
+ *
+ * 記録は「接続の取得が待たされたときだけ」入る（`db_pool_events`）。正常なら0件で、
+ * 件数が続くようなら接続数の上限（`DB_POOL_MAX`）かプラン移行を検討する時期。
+ */
+export const DB_POOL_WAIT_WARN = 1;
+export const DB_POOL_WAIT_ERROR = 20;
+
+export function judgePoolWaits(input: {
+  waits24h: number;
+  maxWaitedMs: number;
+  /** いま効いている1インスタンスあたりの上限（T-M8-303）。 */
+  poolMax?: number;
+}): Check {
+  const name = "DB接続の混み具合";
+  /*
+    **効いている値を必ず出す**（T-M8-303）。`DB_POOL_MAX` はデプロイ先の環境変数なので、
+    「設定したつもりで入っていない」が起こる。回数だけ見せても、運営者は
+    「対策が効いていないのか、対策はしたが足りないのか」を区別できない（原則2）。
+  */
+  const limit = input.poolMax ? `（1インスタンスあたり上限 ${input.poolMax}）` : "";
+  if (input.waits24h < DB_POOL_WAIT_WARN) {
+    return { name, level: "ok", detail: `直近24時間で接続の待ちはありません${limit}` };
+  }
+  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}`;
+  if (input.waits24h < DB_POOL_WAIT_ERROR) {
+    return {
+      name,
+      level: "warn",
+      detail: `${detail}。まだ動いていますが、増え続けるなら手を打つ時期です`,
+      nextAction:
+        "続くようなら DB_POOL_MAX を見直すか、Supabase Pro（専用pooler）への移行を検討してください（要件01 §9）",
+    };
+  }
+  return {
+    name,
+    level: "error",
+    detail: `${detail}。接続待ちが常態化しています`,
+    nextAction:
+      "Supabase Pro へ移行するか DB_POOL_MAX を調整してください（要件01 §9 の移行条件に該当します）",
+  };
+}
+
 export function judgeCost(input: { monthUsd: number; byProvider: { provider: string; usd: number }[] }): Check {
   const name = "今月かかった費用";
   const yen = approxYen(input.monthUsd);
@@ -481,6 +638,94 @@ export function judgeDatabaseSize(input: { bytes: number; limitBytes: number }):
   return { name, level: "ok", detail };
 }
 
+/** デプロイ先が持っているブログ記事の事実（T-M8-184）。`readBlogCollection()` の要約。 */
+export interface BlogFacts {
+  /** `blog/` ディレクトリがデプロイに含まれているか。 */
+  directoryExists: boolean;
+  published: number;
+  drafts: number;
+  /** front matter の不備で公開できていないファイル名。 */
+  invalidFiles: string[];
+}
+
+/**
+ * **ブログ記事がデプロイに同梱されているか**（T-M8-184）。
+ *
+ * 記事はリポジトリの `blog/*.md` をリクエスト時に読む。Vercel は静的 import から辿れる
+ * ファイルしか同梱しないので、`next.config.ts` の `outputFileTracingIncludes` が欠けると
+ * **本番だけ「準備中」になる**（ローカルと dev は cwd から読めるので全部緑のまま）。
+ * HTTPは200を返し画面も整っているため、URLを叩く検査では分からない。
+ *
+ * 見ているのは **doctor 自身の関数に同梱されたファイル**。`/blog` の関数と同じ設定
+ * （`outputFileTracingIncludes`）で同梱されることは、出荷前に `npm run check:blog-trace`
+ * （`release:check`）が3つの route のトレースを突き合わせて保証する。
+ */
+export function judgeBlog(input: BlogFacts): Check {
+  const name = "ブログ記事の同梱";
+  if (!input.directoryExists) {
+    return {
+      name,
+      level: "error",
+      detail:
+        "記事ディレクトリ blog/ がこのデプロイに含まれていません（/blog は「準備中」になります。blog/ に .md が1つも無い場合も同じ表示）",
+      nextAction:
+        "npm run build && npm run check:blog-trace で同梱を確認し、next.config.ts の outputFileTracingIncludes を直して再デプロイしてください（記事を置いていないだけなら blog/README.md があれば消えます）",
+    };
+  }
+  const detail = `公開 ${input.published} 件・下書き ${input.drafts} 件`;
+  if (input.invalidFiles.length > 0) {
+    return {
+      name,
+      level: "warn",
+      detail: `${detail}・不備 ${input.invalidFiles.length} 件（${input.invalidFiles.join(", ")}）は公開されていません`,
+      nextAction: "npm run blog:check で理由を確認して直してください",
+    };
+  }
+  return { name, level: "ok", detail };
+}
+
+/**
+ * **契約が1件でもある環境で、Stripeからのイベントを受け取れているか**（T-M8-238）。
+ *
+ * webhook が届かなくなっても「配送されない」だけなので例外は起きない。解約・プラン変更・
+ * 返金がDBへ反映されないまま、画面は正常に見え続ける（CLAUDE.md 原則1）。
+ * 直近の受信からの経過時間で「止まっているかもしれない」ことだけを言う——
+ * イベントは契約者がいなければ来ないので、**0件は警告どまり**にする。
+ */
+export const STRIPE_EVENT_STALE_HOURS = 72;
+
+export function judgeSubscriptionSync(input: {
+  hoursSinceLastEvent: number | null;
+  totalEvents: number;
+}): Check {
+  const name = "契約の同期（Stripe → アプリ）";
+  if (input.totalEvents === 0) {
+    return {
+      name,
+      level: "warn",
+      detail:
+        "Stripeからのイベントを1件も受け取っていません（契約者がまだいないなら正常です）",
+      nextAction:
+        "契約があるのにこの表示なら、doctorの「契約イベントの受け取り（Stripe webhook）」を確認してください",
+    };
+  }
+  const hours = input.hoursSinceLastEvent ?? Number.POSITIVE_INFINITY;
+  if (hours > STRIPE_EVENT_STALE_HOURS) {
+    return {
+      name,
+      level: "warn",
+      detail: `最後にStripeのイベントを受け取ってから ${Math.floor(hours)} 時間が経っています（合計 ${input.totalEvents} 件）`,
+      nextAction:
+        "解約やプラン変更がアプリへ反映されていない可能性があります。Stripeダッシュボード → Webhooks で配信の失敗を確認してください",
+    };
+  }
+  return {
+    name,
+    level: "ok",
+    detail: `直近の受信は ${Math.floor(hours)} 時間前（合計 ${input.totalEvents} 件）`,
+  };
+}
+
 // --- 収集（実DBを叩く。routeとscriptの両方から使う） ---
 
 export interface DiagnosticsOptions {
@@ -492,6 +737,24 @@ export interface DiagnosticsOptions {
   portal?: PortalProbeDeps;
   /** 請求額と表示額の突き合わせ（T-M8-141）。鍵やPrice IDが無い環境では「判定できません」。 */
   prices?: PriceProbeDeps;
+  /**
+   * デプロイ先が実際に使っている設定（T-M8-147）。**秘密値は渡さない**（種別・有無だけ）。
+   * 未指定なら設定の判定を行わない（ローカルの `doctor` から呼ぶ経路を壊さないため）。
+   */
+  config?: ConfigFacts;
+  /** 確認メールの送信元アドレス（T-M8-147）。未確認の登録が送信元自身かを見分けるのに使う。 */
+  mailSenderEmail?: string | null;
+  /** Stripeアカウントが決済を受け付けられるか（T-M8-148）。鍵が無ければ判定しない。 */
+  stripeAccount?: StripeAccountProbeDeps;
+  /** ブログ記事の同梱状況（T-M8-184）。未指定なら判定しない（DBだけの経路を壊さない）。 */
+  blog?: BlogFacts;
+  /** webhookの購読イベント（T-M8-238）。鍵かURLが無ければ「確認できません」。 */
+  webhookEvents?: WebhookEventsProbeDeps;
+  /**
+   * 契約同期の鮮度（T-M8-238）。**本番でのみ判定する**——ローカル・previewは
+   * `stripe listen` を動かしていないのが普通なので、赤くすると読まれなくなる。
+   */
+  subscriptionSyncExpected?: boolean;
 }
 
 export async function collectDiagnostics(
@@ -499,6 +762,14 @@ export async function collectDiagnostics(
   options: DiagnosticsOptions,
 ): Promise<DiagnosticsReport> {
   const checks: Check[] = [];
+
+  /*
+    **設定が本番へ反映されているか**（T-M8-147）を最初に出す。必須の環境変数は起動時検証が
+    落とすが、**既定値を持つものは欠けても起動する**ため、画面が全部正常に見えたまま
+    機能だけが止まる。2026-08-18、本番が `dry_run` のままでXへ1件も投稿していなかった
+    （テスト・release:check・doctor はいずれも env を見ていなかった）。
+  */
+  if (options.config) checks.push(...judgeConfig(options.config));
 
   const jobs = await db.query<{ succeeded: string; failed: string }>(
     `select count(*) filter (where status = 'succeeded')::text as succeeded,
@@ -512,6 +783,9 @@ export async function collectDiagnostics(
       failed: Number(jobs.rows[0]?.failed ?? 0),
     }),
   );
+
+  // **合計だけでは「誰がどう壊れているか」が出ない**（T-M8-307）。集計は `collectFailurePatterns`。
+  checks.push(judgeRepeatedFailures(await collectFailurePatterns(db)));
 
   const tick = await db.query<{ minutes: string | null }>(
     `select (extract(epoch from (now() - max(claimed_at))) / 60)::text as minutes
@@ -538,11 +812,21 @@ export async function collectDiagnostics(
     dropped: number;
     drop_reasons: Record<string, number> | null;
     error_code: string | null;
+    provider_raw_error: string | null;
   }>(
-    // **`provider_raw_error` は select しない**（T-M8-86）。doctor はHTTPでも返るため、
-    // 本文をクエリの段階で取らない（`getGenerationJob` が `error - 'provider_raw_error'` で
-    // やっているのと同じ考え方）。運営者は必要なときDBで見る。
-    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code
+    /*
+      **`provider_raw_error` は分類にだけ使い、応答へ載せない**（T-M8-86 / T-M8-163）。
+
+      以前はここで select しない方針だった（doctorはHTTPでも返るため、本文をクエリの段階で
+      取らないという防ぎ方）。しかしそのために `http_400` しか出せず、**運営者が原因へ辿れなかった**
+      ——2026-08-20 の本番はAnthropicのクレジット切れで、運営者が5分で直せるものだったのに
+      「Claudeに聞いてください」と案内していた（原則2違反）。
+
+      そこで**取ってすぐ型へ落とし、生文字列はこのスコープから外へ出さない**形に変えた。
+      「外へ出ない」ことは `diagnostics.news.test.ts` が応答オブジェクトを走査して固定する。
+    */
+    `select category::text as category, ok, fetched, dropped, drop_reasons, error_code,
+            provider_raw_error
        from news_fetch_outcomes
       where window_key = (select window_key from news_fetch_outcomes order by ran_at desc limit 1)`,
   );
@@ -558,38 +842,15 @@ export async function collectDiagnostics(
         dropped: Number(r.dropped),
         dropReasons: r.drop_reasons ?? {},
         errorCode: r.error_code,
+        // ここで型へ落とし、生文字列は捨てる（この先へ渡さない）。
+        failureKind: r.ok
+          ? null
+          : classifyProviderFailure(r.error_code, r.provider_raw_error),
       })),
     }),
   );
 
-  const emails = await db.query<{
-    queued: string;
-    oldest: string | null;
-    failed: string;
-    failed_older: string;
-  }>(
-    `select count(*) filter (where email_status = 'queued')::text as queued,
-            (extract(epoch from (now() - min(created_at)
-                                 filter (where email_status = 'queued'))) / 3600)::text as oldest,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) > now() - ($1 || ' days')::interval
-            )::text as failed,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) <= now() - ($1 || ' days')::interval
-            )::text as failed_older
-       from notifications where email_status in ('queued', 'failed')`,
-    [String(FAILED_EMAIL_WINDOW_DAYS)],
-  );
-  checks.push(
-    judgeQueuedEmails({
-      queued: Number(emails.rows[0]?.queued ?? 0),
-      oldestHours: emails.rows[0]?.oldest == null ? null : Number(emails.rows[0].oldest),
-      failed: Number(emails.rows[0]?.failed ?? 0),
-      failedOlder: Number(emails.rows[0]?.failed_older ?? 0),
-    }),
-  );
+  // （旧「お知らせメール」検査はT-M8-222で廃止——通知はアプリ内のみで、メール配送台帳が無い）
 
   const accounts = await db.query<{ handle: string; status: string; hours: string | null }>(
     `select handle, status::text as status,
@@ -606,6 +867,26 @@ export async function collectDiagnostics(
     ),
   );
 
+  /*
+    **メール確認が終わっていない登録**（T-M8-147）。件数だけなら異常ではないが、
+    「送信元と同じアドレスで登録した」ケースだけは**どこにも記録が出ない**まま
+    「メールが届かない」に見えるため、ここで名指しする（`config-status.ts` のコメント参照）。
+    直近7日に絞る（古い放置分で常に黄色くしない）。
+  */
+  const pending = await db.query<{ email: string }>(
+    `select email from auth.users
+      where email_confirmed_at is null
+        and email is not null
+        and created_at > now() - interval '7 days'
+      order by created_at desc limit 50`,
+  );
+  checks.push(
+    judgePendingConfirmations({
+      senderEmail: options.mailSenderEmail ?? null,
+      unconfirmedEmails: pending.rows.map((r) => r.email),
+    }),
+  );
+
   const stuck = await db.query<{ n: string }>(
     `select count(*)::text as n from generation_jobs
       where status = 'running' and coalesce(locked_at, started_at) < now() - interval '30 minutes'`,
@@ -615,7 +896,10 @@ export async function collectDiagnostics(
   const cost = await db.query<{ provider: string; usd: string }>(
     `select provider::text as provider, coalesce(sum(estimated_cost_usd), 0)::text as usd
        from external_api_usage_events
-      where occurred_at >= date_trunc('month', now())
+      -- **月の区切りは日本時間**（T-M8-254・運営者の指示 2026-08-23）。UTC月初で切ると
+      -- UTCの月初になるため、**毎月1日のJST 0時〜9時は前月分の合計が「今月」として出る**。
+      -- 費用は会計に合わせて**暦月**で集計する（利用者の利用枠は契約期間ごと・T-M8-258。ここは変えない）。
+      where occurred_at >= (date_trunc('month', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo')
       group by provider order by 2 desc`,
   );
   const byProvider = cost.rows.map((r) => ({ provider: r.provider, usd: Number(r.usd) }));
@@ -623,6 +907,19 @@ export async function collectDiagnostics(
     judgeCost({
       monthUsd: byProvider.reduce((s, p) => s + p.usd, 0),
       byProvider,
+    }),
+  );
+
+  // DB接続の待ち行列（T-M8-198）。記録は待たされたときだけ入るので、通常は0件。
+  const poolWaits = await db.query<{ n: string; max_ms: string }>(
+    `select count(*)::text as n, coalesce(max(waited_ms), 0)::text as max_ms
+       from db_pool_events where occurred_at >= now() - interval '24 hours'`,
+  );
+  checks.push(
+    judgePoolWaits({
+      waits24h: Number(poolWaits.rows[0]?.n ?? 0),
+      maxWaitedMs: Number(poolWaits.rows[0]?.max_ms ?? 0),
+      poolMax: poolMax(),
     }),
   );
 
@@ -652,6 +949,67 @@ export async function collectDiagnostics(
     利用者の申告でしか気付けない事故になる（原則4）。読み取りのみで費用は無い。
   */
   checks.push(judgePrices(await probePrices(options.prices ?? {})));
+
+  /*
+    **Stripeアカウントが実際に決済を受け付けられるか**（T-M8-148）。2026-08-18、本番で
+    「7日間無料で利用」が必ず失敗した。原因はアカウントの本番有効化が未完了だったこと
+    （`Your account cannot currently make live charges.`）。鍵は本番・Priceの金額も一致・
+    ポータルも有効だったので、**既存の検査はすべて緑のまま押した人だけが行き止まりになった**。
+    読み取りのみで費用は無い。
+  */
+  checks.push(judgeStripeAccount(await probeStripeAccount(options.stripeAccount ?? {})));
+
+  /*
+    **Stripeのイベントが届く設定になっているか**（T-M8-238）。購読するイベントの選択は
+    ダッシュボード側の設定でコードに現れない。実際に本番・stagingとも `charge.refunded` が
+    抜けており、**返金しても招待報酬が取り消されない**状態だった。届かないイベントは
+    例外にならないので、Sentryにも画面にも出ない。
+  */
+  if (options.webhookEvents) {
+    checks.push(judgeWebhookEvents(await probeWebhookEvents(options.webhookEvents)));
+  }
+
+  /*
+    **契約の同期が生きているか**（T-M8-238）。`profiles` を更新する経路は webhook だけなので、
+    届かなくなっても例外は起きず、画面は正常に見えたまま解約・プラン変更が反映されなくなる。
+    実際にローカルで「DBはトライアル中のスタンダード／Stripeはエキスパートで課金済み」に
+    なっていた。直近の受信が途絶えていないかを、受け取ったイベントの記録で見る。
+  */
+  if (options.subscriptionSyncExpected) {
+    const events = await db.query<{ hours: string | null; total: string }>(
+      `select (extract(epoch from (now() - max(event_created_at))) / 3600)::text as hours,
+              count(*)::text as total
+         from stripe_events`,
+    );
+    checks.push(
+      judgeSubscriptionSync({
+        hoursSinceLastEvent:
+          events.rows[0]?.hours == null ? null : Number(events.rows[0].hours),
+        totalEvents: Number(events.rows[0]?.total ?? 0),
+      }),
+    );
+  }
+
+  /*
+    **招待報酬の振込期限**（T-M8-241）。振込は運営者の手作業なので、締めが自動でも
+    「払うこと」自体が記憶頼みだった（原則3）。期限が近い/過ぎたら名指しする。
+  */
+  const payouts = await db.query<{ pending: string; net: string | null; due: string | null }>(
+    `select count(*)::text as pending,
+            coalesce(sum(net_amount), 0)::text as net,
+            min(payment_due_at)::text as due
+       from affiliate_payouts where status = 'created'`,
+  );
+  checks.push(
+    judgeAffiliatePayouts({
+      dueAt: payouts.rows[0]?.due ?? null,
+      netTotal: Number(payouts.rows[0]?.net ?? 0),
+      pending: Number(payouts.rows[0]?.pending ?? 0),
+    }),
+  );
+
+  // ブログ記事がこのデプロイに同梱されているか（T-M8-184）。同梱漏れは本番だけ「準備中」になる。
+  if (options.blog) checks.push(judgeBlog(options.blog));
 
   return {
     level: worstLevel(checks.map((c) => c.level)),

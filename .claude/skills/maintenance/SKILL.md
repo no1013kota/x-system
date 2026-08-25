@@ -1,6 +1,6 @@
 ---
 name: maintenance
-description: 時間経過で壊れる部分（外部APIの仕様変更・依存の脆弱性・溜まったデータ・費用）を定期点検する。週次と月次の2モードがあり、引数なしは週次。/maintenance monthly で月次も回す。
+description: 時間経過で壊れる部分（外部APIの仕様変更・脆弱性・溜まったデータ・費用）を定期点検する。引数なしは週次、/maintenance monthly で月次も回す。
 model: inherit
 ---
 
@@ -15,6 +15,7 @@ model: inherit
 上から順に実行し、**途中で失敗しても止めずに最後まで進める**（結果をまとめて報告するため）。
 
 1. **状態確認**: `npm run doctor`。⚠️/❌ があれば原因を調べる。
+   （本番の異常は毎朝メールでも届く。詳しくは[動いているかの見張り方](../../../docs/operations/monitoring.md)）
 2. **外部APIの受理確認**: `npm run check:providers`（実費ほぼ0円）。落ちたら**その日の変更ではなく provider 側の仕様変更**を疑い、公式ドキュメントで該当箇所を確認する。
 3. **実物1周**: `npm run smoke:live -- --account <xAccountId>`（実費 約45円・要 `npm run dev`）。生成・画像・ニュースの成果物と、報告に出る生成物の形（字数・改行・タグ・URL）を目で見る。
 4. **依存の脆弱性**: `npm run audit:check`。新しい high/critical が出ていたら、allowlist に足す前に**上げられるか**を試す（`overrides` でnested版も寄せられることがある。T-M7-32）。
@@ -40,7 +41,7 @@ model: inherit
 
 ## なぜこれが必要か
 
-[開発とテストの進め方](../../../docs/operations/development-and-testing.md) §9 の7層はすべて**変更起点**で走る。変更していないのに壊れる次の4つは、どの層も捕まえない。
+[開発とテストの進め方](../../../docs/operations/development-and-testing.md) §9 の8層はすべて**変更起点**で走る。変更していないのに壊れる次の4つは、どの層も捕まえない。
 
 | 時間経過で壊れるもの | 週次で見る手順 |
 |---|---|

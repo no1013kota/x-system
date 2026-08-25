@@ -81,10 +81,10 @@ function makeDeps(over: Partial<NewsResearchDeps> & Pick<NewsResearchDeps, "db" 
 
 describe("newsLookbackHours / jstHourOf", () => {
   it("maps JST launch hours to lookback windows (§6.10・T-M7-55)", () => {
-    // 初回は前日の最終回（20:00）からの空白14時間を埋める。
-    expect(newsLookbackHours(10)).toBe(14);
-    // 以降は間隔2時間＋重なり1時間。
-    for (const h of [12, 14, 16, 18, 20]) expect(newsLookbackHours(h)).toBe(3);
+    // 初回は前日の最終回（21:00）からの空白12時間を埋める。
+    expect(newsLookbackHours(9)).toBe(12);
+    // 以降は間隔3時間＋重なり1時間。
+    for (const h of [12, 15, 18, 21]) expect(newsLookbackHours(h)).toBe(4);
   });
 
   it("**窓は起動間隔より広い**（隣の回と重なり、1回失敗しても欠落しない）", () => {
@@ -99,7 +99,7 @@ describe("newsLookbackHours / jstHourOf", () => {
   });
 
   it("想定外の時刻に起動されても欠落させない側へ倒す", () => {
-    for (const h of [0, 3, 9, 11, 23]) expect(newsLookbackHours(h)).toBe(14);
+    for (const h of [0, 3, 10, 11, 23]) expect(newsLookbackHours(h)).toBe(12);
   });
   it("derives the JST hour from a UTC instant", () => {
     expect(jstHourOf(new Date("2026-07-24T00:00:00Z"))).toBe(9);
@@ -115,23 +115,23 @@ describe("researchNews", () => {
 
     const req = requests[0];
     expect(req.system[0]).toContain("「AI」分野");
-    expect(req.system[0]).toContain("直近3時間"); // JST 12:00 → hours 3
+    expect(req.system[0]).toContain("直近4時間"); // JST 12:00 → hours 4
     expect(req.system[0]).toContain("最大5件");
     expect(req.webSearch?.maxUses).toBe(5);
     expect(req.user).toContain("https://known.example/1");
     expect(req.user).toContain("<known_urls>");
-    expect(res.hours).toBe(3);
+    expect(res.hours).toBe(4);
     expect(res.items).toHaveLength(1);
   });
 
-  it("初回（10:00 JST）は夜間を埋める14時間の窓で問い合わせる", async () => {
+  it("初回（9:00 JST）は夜間を埋める12時間の窓で問い合わせる", async () => {
     const { gen, requests } = mockTextGen([validResponse]);
     const { db } = mockDb([]);
     // 01:00Z = 10:00 JST（定時取得の初回）。
-    const res = await researchNews("web3", makeDeps({ db, textGen: gen, clock: new Date("2026-07-24T01:00:00Z") }));
-    expect(requests[0].system[0]).toContain("直近14時間");
+    const res = await researchNews("web3", makeDeps({ db, textGen: gen, clock: new Date("2026-07-24T00:00:00Z") }));
+    expect(requests[0].system[0]).toContain("直近12時間");
     expect(requests[0].system[0]).toContain("「Web3」分野");
-    expect(res.hours).toBe(14);
+    expect(res.hours).toBe(12);
   });
 
   it("accepts a code-fenced response and an empty items array", async () => {

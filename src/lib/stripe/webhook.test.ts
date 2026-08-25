@@ -2,17 +2,13 @@ import type { QueryResult } from "pg";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  handleStripeWebhookRequest,
-  processStripeEvent,
-  type StripeEventDatabase,
-} from "./webhook";
+import { UnknownStripePriceError, handleStripeWebhookRequest, isPermanentEventError, processStripeEvent, type StripeEventDatabase } from "./webhook";
 
 const WEBHOOK_SECRET = "whsec_test_exos_ai";
 const stripe = new Stripe("sk_test_not_used");
 const priceIds = {
   standard: "price_standard",
-  md: "price_md",
+  expert: "price_expert",
   premium: "price_premium",
 } as const;
 
@@ -169,6 +165,11 @@ describe("Stripe webhook foundation", () => {
     expect(deps.applyEvent).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * **未知のPriceは200で返す**（T-M8-245）。再送しても直らない失敗に500を返し続けると、
+   * Stripeが endpoint 自体を無効化し、**他の全利用者の契約同期まで巻き添えで止まる**。
+   * 記録（captureException）は残すので、doctorとSentryから追える。
+   */
   it("rejects an unknown Price before recording or applying the event and captures it", async () => {
     const store = memoryDatabase();
     const deps = routeDependencies(store.database);
@@ -177,7 +178,7 @@ describe("Stripe webhook foundation", () => {
       deps.dependencies,
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status, "恒久エラーは200で返す（endpointを止めない）").toBe(200);
     expect(store.rows.size).toBe(0);
     expect(deps.applyEvent).not.toHaveBeenCalled();
     expect(deps.captureException).toHaveBeenCalledWith(
@@ -189,6 +190,51 @@ describe("Stripe webhook foundation", () => {
       },
     );
     expect(JSON.stringify(await response.json())).not.toContain("price_unknown");
+  });
+
+  /**
+   * **署名検証の失敗でリクエスト本文をログへ出さない**（T-M8-300）。
+   *
+   * Stripe SDK の `StripeSignatureVerificationError` は `payload`（本文全文）と `header` を
+   * **public プロパティ**に持ち、`console.error(error)` でオブジェクトごと出ると本番ログへ
+   * 落ちる。secret の不一致が続くと、届くたびに顧客のメール・氏名・請求先住所・カード下4桁が
+   * 平文で溜まる。ここは**実SDKの検証**（`routeDependencies` が `constructEvent` を使う）を
+   * 通すので、この検査は実物のエラークラスに当たる。
+   */
+  it("署名検証に失敗しても、リクエスト本文をログへ出さない", async () => {
+    const { database } = memoryDatabase();
+    const deps = routeDependencies(database);
+    const secretish = "customer_email_that_must_not_be_logged@example.com";
+    const payload = eventPayload({ eventType: "invoice.paid" }).replace(
+      '"id"',
+      `"customer_email":"${secretish}","id"`,
+    );
+    const errorArgs: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
+      errorArgs.push(...args);
+    });
+
+    try {
+      const response = await handleStripeWebhookRequest(
+        new Request("https://app.example.com/api/stripe/webhook", {
+          method: "POST",
+          headers: { "stripe-signature": "t=1,v1=deadbeef" },
+          body: payload,
+        }),
+        deps.dependencies,
+      );
+      expect(response.status).toBe(400);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // 記録は残す（黙って400にしない）が、本文は載せない。
+    const logged = errorArgs
+      .map((a) => (a instanceof Error ? `${a.message}${JSON.stringify(Object.entries(a))}` : String(a)))
+      .join(" ");
+    expect(logged).toContain("stripe-webhook:verify");
+    expect(logged, "リクエスト本文がログへ出ている").not.toContain(secretish);
+    expect(logged, "本文の断片がログへ出ている").not.toContain("invoice.paid");
   });
 
   it("acknowledges unsupported signed events without recording them", async () => {
@@ -204,5 +250,26 @@ describe("Stripe webhook foundation", () => {
       data: { result: "ignored" },
     });
     expect(store.rows.size).toBe(0);
+  });
+});
+
+describe("isPermanentEventError（T-M8-245）", () => {
+  it("未知Price・profile対応不能は恒久エラー（再送しても直らない）", () => {
+    expect(
+      isPermanentEventError(
+        new UnknownStripePriceError(
+          { id: "evt_1", type: "customer.subscription.updated" } as never,
+          "price_x",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isPermanentEventError(new Error("Subscription profile mapping does not match.")),
+    ).toBe(true);
+  });
+
+  it("DB障害など再送で直りうるものは恒久エラーではない（500で再送させる）", () => {
+    expect(isPermanentEventError(new Error("connection terminated"))).toBe(false);
+    expect(isPermanentEventError(null)).toBe(false);
   });
 });

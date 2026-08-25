@@ -59,7 +59,6 @@ const PREVIEW_PROD_REQUIRED = [
   "SMTP_USER",
   "SMTP_APP_PASSWORD",
   "EMAIL_FROM",
-  "EMAIL_REPLY_TO",
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
   "TURNSTILE_SECRET_KEY",
   "SENTRY_DSN",
@@ -82,7 +81,7 @@ const ALWAYS_REQUIRED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_PRICE_STANDARD_MONTHLY",
-  "STRIPE_PRICE_MD_MONTHLY",
+  "STRIPE_PRICE_EXPERT_MONTHLY",
   "STRIPE_PRICE_PREMIUM_MONTHLY",
   "ANTHROPIC_TEXT_MODEL",
   "OPENAI_TEXT_MODEL",
@@ -141,8 +140,14 @@ const schema = z
     STRIPE_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_PORTAL_CONFIGURATION_ID: z.string().min(1).optional(),
+    /**
+     * 解約を思いとどまってもらうためのクーポン（T-M8-272）。**flow_dataで解約画面へ直接入ると、
+     * ダッシュボードで設定した「顧客維持クーポン」は出ない**——`flow_data.subscription_cancel.retention`
+     * で明示したものだけが出る（2026-08-23 実測）。未設定なら提示しない（従来どおり）。
+     */
+    STRIPE_RETENTION_COUPON_ID: z.string().min(1).optional(),
     STRIPE_PRICE_STANDARD_MONTHLY: z.string().min(1).optional(),
-    STRIPE_PRICE_MD_MONTHLY: z.string().min(1).optional(),
+    STRIPE_PRICE_EXPERT_MONTHLY: z.string().min(1).optional(),
     STRIPE_PRICE_PREMIUM_MONTHLY: z.string().min(1).optional(),
 
     // §3.4 X API
@@ -156,6 +161,12 @@ const schema = z
     GEMINI_API_KEY: z.string().min(1).optional(),
     PREMIUM_TEXT_PROVIDER: z.enum(AI_PROVIDERS).default("anthropic"),
     NEWS_TEXT_PROVIDER: z.enum(AI_PROVIDERS).default("anthropic"),
+    /**
+     * ニュース収集専用のモデル上書き（任意・T-M8-200）。未設定なら NEWS_TEXT_PROVIDER の
+     * `*_TEXT_MODEL` を使う。ニュースは要約・抽出タスクで軽量モデルでも品質が保てるため、
+     * プレミアム生成のモデルを落とさずにニュースだけ安いモデルへ替えられるようにする。
+     */
+    NEWS_TEXT_MODEL: z.string().min(1).optional(),
     ANTHROPIC_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_IMAGE_MODEL: z.string().min(1).optional(),
@@ -171,7 +182,6 @@ const schema = z
     SMTP_USER: z.string().min(1).optional(),
     SMTP_APP_PASSWORD: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
-    EMAIL_REPLY_TO: z.string().min(1).optional(),
     SUPPORT_EMAIL: z.string().email().optional(),
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
     TURNSTILE_SECRET_KEY: z.string().min(1).optional(),

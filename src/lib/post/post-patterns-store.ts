@@ -3,7 +3,7 @@ import { AppError } from "@/lib/observability/errors";
 import type { Queryable } from "../db/queryable";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "../prompts/gen-prompts";
 import { toIso } from "../format";
-import type { PatternPolicy } from "./pattern-spec";
+import { extractPlaceholderNames, type PatternPolicy } from "./pattern-spec";
 import { GENERATION_MAX_POSTS } from "./thread-limits";
 
 /**
@@ -129,22 +129,6 @@ export async function requirePattern(
 }
 
 /**
- * 旧 enum（`p1`〜`p6`）から現在の行を引く。**移行の間だけ使う**（U5 で撤去）。
- * 既定パターンを削除済みなら null。
- */
-export async function findPatternBySeedKey(
-  db: Queryable,
-  xAccountId: string,
-  seedKey: string,
-): Promise<PatternOption | null> {
-  const { rows } = await db.query<PatternRow>(
-    `select ${COLUMNS} from post_patterns where x_account_id = $1 and seed_key = $2`,
-    [xAccountId, seedKey],
-  );
-  return rows[0] ? toOption(rows[0]) : null;
-}
-
-/**
  * 画面に出す説明文。**ポスト数はここで付ける**（説明文に書かせない・T-M8-33）。
  * 説明とポスト数が別々に書かれていると、片方だけ直して食い違う。
  */
@@ -214,7 +198,7 @@ export async function listPatternPrompts(
 export const PATTERN_PROMPT_MAX_CHARS = 8000;
 
 /** 空・長すぎを拒否する（DBのCHECKと同じ判定を、理由の分かる形で先に行う）。 */
-export function validatePatternPrompt(content: string): void {
+function validatePatternPrompt(content: string): void {
   if (content.trim().length === 0) {
     throw new AppError("validation_error", { details: { reason: "empty" } });
   }
@@ -241,17 +225,29 @@ export async function applyUpdatePatternPrompt(
   },
 ): Promise<PatternPromptView> {
   validatePatternPrompt(input.content);
+  /*
+    placeholders は**本文から導出して同時に保存する**（T-M8-186）。プロンプトだけ更新して
+    宣言が残ると、(1) 本文に無い宣言が後のパターン編集で placeholder_not_used に当たる
+    (2) 本文に増やした {名前} の入力欄が定義に現れない、の両方が起きる。
+  */
+  const derived = extractPlaceholderNames(input.content).map((name) => ({ name }));
   const first = input.expectedUpdatedAt === null;
   const res = await db.query(
     first
-      ? `update post_patterns set prompt = $3, updated_at = now()
+      ? `update post_patterns set prompt = $3, placeholders = $4::jsonb, updated_at = now()
           where x_account_id = $1 and id = $2 and prompt is null`
-      : `update post_patterns set prompt = $3, updated_at = now()
+      : `update post_patterns set prompt = $3, placeholders = $4::jsonb, updated_at = now()
           where x_account_id = $1 and id = $2 and prompt is not null
-            and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+            and date_trunc('milliseconds', updated_at) = $5::timestamptz`,
     first
-      ? [input.xAccountId, input.patternId, input.content]
-      : [input.xAccountId, input.patternId, input.content, input.expectedUpdatedAt],
+      ? [input.xAccountId, input.patternId, input.content, JSON.stringify(derived)]
+      : [
+          input.xAccountId,
+          input.patternId,
+          input.content,
+          JSON.stringify(derived),
+          input.expectedUpdatedAt,
+        ],
   );
   if ((res.rowCount ?? 0) !== 1) {
     throw new AppError("job_conflict", { details: { reason: "prompt_template_changed" } });
@@ -624,7 +620,7 @@ export const PATTERN_PLACEHOLDER_MAX = 10;
 export const PATTERN_PLACEHOLDER_NAME_MAX_CHARS = 20;
 
 /** jsonb から読む。形が違う要素は落とす（壊れた定義で画面を壊さない）。 */
-export function parsePlaceholders(value: unknown): PatternPlaceholder[] {
+function parsePlaceholders(value: unknown): PatternPlaceholder[] {
   if (!Array.isArray(value)) return [];
   const out: PatternPlaceholder[] = [];
   for (const raw of value) {
@@ -660,18 +656,7 @@ let max: number | null = null;
 }
 
 /** プロンプトから決まる総ポスト数の上限（読み取れなければ全体の上限）。 */
-export function maxPostsFromPrompt(prompt: string): number {
+function maxPostsFromPrompt(prompt: string): number {
   const threads = threadCountFromPrompt(prompt);
   return threads === null ? PATTERN_MAX_POSTS_LIMIT : Math.min(PATTERN_MAX_POSTS_LIMIT, threads + 1);
-}
-
-/** 画面へ出す説明（読み取れたか／読み取れなかったかを言い分ける）。 */
-export function threadCountFromPromptLabel(prompt: string): string {
-  const threads = threadCountFromPrompt(prompt);
-  if (threads === null) {
-    return `スレッド数の指定が読み取れません（最大${PATTERN_MAX_POSTS_LIMIT}ポストまで作られます）`;
-  }
-  return threads === 0
-    ? "このプロンプトはメインポストのみ（単発）"
-    : `このプロンプトはメイン＋スレッド${threads}（最大${threads + 1}ポスト）`;
 }

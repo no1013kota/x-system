@@ -34,7 +34,7 @@ describe("BYOK API key storage", () => {
     }
   });
 
-  async function createUser(plan: "standard" | "md" | "premium") {
+  async function createUser(plan: "standard" | "premium" | "expert") {
     const userId = randomUUID();
     await database!.query(
       `insert into auth.users (id, instance_id, aud, role, email)
@@ -145,7 +145,7 @@ describe("BYOK API key storage", () => {
   it("upserts each AI provider with ciphertext and only a last-four hint", async (context) => {
     if (!database) return context.skip();
     const db = database;
-    const userId = await createUser("md");
+    const userId = await createUser("standard");
     const secrets = {
       anthropic: "anthropic-secret-value-1111",
       google: "google-secret-value-3333",

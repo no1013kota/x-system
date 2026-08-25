@@ -7,13 +7,9 @@ import { parseUserInput } from "@/lib/validation/user-input";
 import { pooledQueryable, runInPooledTx } from "@/lib/db/pool";
 import { env } from "@/lib/env";
 import { gatherExecutionPrereqInputs } from "@/lib/execution-prereqs-server";
-import {
-  AppError,
-} from "@/lib/observability/errors";
 import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   cancelGenerationJob,
-  createDraftFromNews,
   createGenerationJob,
   createGenerationJobSchema,
   getGenerationJob,
@@ -29,8 +25,6 @@ import {
   type GenerationJobDeps,
   type GenerationJobView,
 } from "@/lib/jobs/generation-jobs";
-import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
-import { z } from "zod";
 
 /**
  * 生成jobの Server Actions（要件05 §5, T-M3-07）。本人のみ。zod検証・前提/所有権/冪等/5件制限は
@@ -66,43 +60,11 @@ export async function createGenerationJobAction(input: unknown): Promise<JobIdRe
   }
 }
 
-/** SC-06 の入力（x_account_id は表示中アカウントをサーバで解決するため受け取らない）。 */
-const createDraftFromNewsActionSchema = z.object({
-  request_key: z.string().min(1).max(200),
-  news_item_id: z.string().uuid(),
-  instructions: z.string().max(2000).nullish(),
-  image_enabled: z.boolean().optional(),
-});
-
-export async function createDraftFromNewsAction(input: unknown): Promise<JobIdResult> {
-  const parsed = parseUserInput(createDraftFromNewsActionSchema, input);
-  if (!parsed.success) {
-    return validationErrorResult(parsed.error);
-  }
-  const auth = await requireExecutionUserId();
-  if (!auth.ok) return auth.result;
-  const activeId = await resolveActiveXAccountForUser(auth.userId);
-  if (!activeId) {
-    return {
-      ...errorResult(
-        new AppError("not_found", { details: { settingsPath: "/app/settings?tab=api-keys" } }),
-      ),
-      message: "先にXアカウントを連携してください。",
-    };
-  }
-  try {
-    const { jobId, deduped } = await createDraftFromNews(
-      auth.userId,
-      { ...parsed.data, x_account_id: activeId },
-      jobDeps,
-    );
-    if (!deduped) after(() => dispatchJob(jobId));
-    return { jobId, message: "生成を開始しました。", status: "success" };
-  } catch (error) {
-    return errorResult(error);
-  }
-}
-
+/*
+  旧 createDraftFromNewsAction（SC-06からの直接job作成）はT-M8-210で削除。
+  「すぐに投稿作成」は投稿作成画面への遷移＋{ニュース}自動入力になった（news_item_idは
+  通常の createGenerationJobAction が受けて作成済みバッジへつながる）。
+*/
 export async function retryGenerationJobAction(input: unknown): Promise<JobIdResult> {
   const parsed = parseUserInput(retryJobSchema, input);
   if (!parsed.success) {

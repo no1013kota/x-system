@@ -4,6 +4,7 @@ import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
 import { classifyTurnstileError } from "@/lib/auth/turnstile-errors";
+import { turnstileWidgetVisibilityOptions } from "@/lib/auth/turnstile-widget-options";
 
 interface TurnstileApi {
   render(
@@ -14,9 +15,9 @@ interface TurnstileApi {
       /** Turnstile はエラーコード（例 "110200"）を渡してくる。捨てずに文言へ反映する。 */
       "error-callback": (code?: string) => void;
       "expired-callback": () => void;
+      /** 通常は隠し、追加操作が必要な利用者にだけ表示する。 */
+      appearance?: "interaction-only";
       sitekey: string;
-      /** `invisible` は利用者に何も見せない（疑わしいときだけCloudflareが割り込む）。 */
-      size?: "invisible";
       theme: "auto";
     },
   ): string;
@@ -39,6 +40,8 @@ const TURNSTILE_SCRIPT_URL =
 interface TurnstileWidgetProps {
   action: "login" | "password-reset" | "signup" | "signup-resend";
   fieldError?: string;
+  /** Reports a fresh token (or an empty value after reset/error/expiry) to the owning form. */
+  onTokenChange?: (token: string) => void;
   resetSignal: unknown;
   /**
    * 目に見えない形で確認する（T-M8-138・運営者の指示 2026-08-18）。
@@ -48,24 +51,33 @@ interface TurnstileWidgetProps {
    * 「コードを打つのに確認が要る」と読めてしまう。
    *
    * **確認そのものは残す。** Supabaseの `resend` はプロジェクトでcaptchaを有効にしていると
-   * トークン無しでは拒否するため、外すと再送が壊れる。`size: "invisible"` は
-   * 疑わしいときだけCloudflareが割り込み、通常は利用者に何も見せない。
+   * トークン無しでは拒否するため、外すと再送が壊れる。`appearance: "interaction-only"` は
+   * 追加操作が必要な場合だけCloudflareを表示し、通常は画面の場所を取らない。
+   *
+   * Cloudflareの`size`に`invisible`という値は無い（normal/flexible/compactのみ）。以前の
+   * 指定はブラウザでTurnstileErrorになり得たため、表示タイミングを制御する正式なoptionを使う。
    */
-  invisible?: boolean;
+  interactionOnly?: boolean;
 }
 
 export function TurnstileWidget({
   action,
   fieldError,
+  onTokenChange,
   resetSignal,
-  invisible = false,
+  interactionOnly = false,
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const onTokenChangeRef = useRef(onTokenChange);
   const [scriptReady, setScriptReady] = useState(false);
   const [token, setToken] = useState("");
   const [widgetError, setWidgetError] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+  useEffect(() => {
+    onTokenChangeRef.current = onTokenChange;
+  }, [onTokenChange]);
 
   /**
    * `onReady` だけに依存しない（2026-07-31）。
@@ -110,22 +122,25 @@ export function TurnstileWidget({
       action,
       callback: (nextToken) => {
         setToken(nextToken);
+        onTokenChangeRef.current?.(nextToken);
         setWidgetError("");
       },
       "error-callback": (code) => {
         setToken("");
+        onTokenChangeRef.current?.("");
         // 設定の問題（ドメイン未許可など）で「もう一度お試しください」と出すと、直らない再試行を
         // 延々と繰り返させることになる。コードで種類を分ける（T-M7-48）。
         setWidgetError(classifyTurnstileError(code).message);
       },
       "expired-callback": () => {
         setToken("");
+        onTokenChangeRef.current?.("");
         setWidgetError(
           "人間であることの確認の有効期限が切れました。もう一度お試しください。",
         );
       },
       sitekey: siteKey,
-      ...(invisible ? { size: "invisible" as const } : {}),
+      ...turnstileWidgetVisibilityOptions(interactionOnly),
       theme: "auto",
     });
 
@@ -133,13 +148,14 @@ export function TurnstileWidget({
       if (widgetIdRef.current) turnstile.remove(widgetIdRef.current);
       widgetIdRef.current = null;
     };
-  }, [action, invisible, scriptReady, siteKey]);
+  }, [action, interactionOnly, scriptReady, siteKey]);
 
   useEffect(() => {
     const widgetId = widgetIdRef.current;
     if (!widgetId || !window.turnstile) return;
     window.turnstile.reset(widgetId);
     setToken("");
+    onTokenChangeRef.current?.("");
   }, [resetSignal]);
 
   if (!siteKey) {
@@ -161,7 +177,7 @@ export function TurnstileWidget({
         strategy="afterInteractive"
       />
       <input name="captcha_token" type="hidden" value={token} />
-      <div ref={containerRef} className={invisible ? undefined : "min-h-16"} />
+      <div ref={containerRef} className={interactionOnly ? undefined : "min-h-16"} />
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}

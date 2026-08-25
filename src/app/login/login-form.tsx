@@ -3,11 +3,9 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
-import {
-  resendSignUpConfirmation,
-  signIn,
-} from "@/app/actions/auth";
+import { signIn } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
+import { EmailCodeForm } from "@/components/auth/email-code-form";
 import { FieldError, authInputClassName } from "@/components/auth/field-error";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
@@ -18,10 +16,16 @@ export function LoginForm({ next }: { next: string }) {
     signIn,
     INITIAL_AUTH_FORM_STATE,
   );
-  const [resendState, resendAction, resending] = useActionState(
-    resendSignUpConfirmation,
-    INITIAL_AUTH_FORM_STATE,
-  );
+
+  if (state.status === "email_unconfirmed" && state.email) {
+    return (
+      <EmailCodeForm
+        autoResend
+        email={state.email}
+        entryNotice={state.message}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -37,6 +41,18 @@ export function LoginForm({ next }: { next: string }) {
         {state.status === "error" ? (
           <Notice role="alert" tone="danger">
             {state.message}
+            {/*
+              行き先が返ってきたら一緒に出す（T-M8-127と同じ形）。「登録されていません」だけだと
+              同じフォームでパスワードを探し続けることになるので、登録画面への導線を添える。
+            */}
+            {state.action ? (
+              <Link
+                className="ml-1 font-medium underline underline-offset-4"
+                href={state.action.href}
+              >
+                {state.action.label}
+              </Link>
+            ) : null}
           </Notice>
         ) : null}
 
@@ -89,38 +105,18 @@ export function LoginForm({ next }: { next: string }) {
         </Button>
       </form>
 
-      {state.status === "email_unconfirmed" ? (
-        <Notice
-          as="section"
-          aria-labelledby="email-unconfirmed-heading"
-          className="space-y-3"
-          tone="warn"
-        >
-          <h2 className="font-semibold" id="email-unconfirmed-heading">
-            メール確認が必要です
-          </h2>
-          <p className="text-sm">{state.message}</p>
-          <form action={resendAction} className="space-y-2">
-            <input name="email" type="hidden" value={state.email ?? ""} />
-            <TurnstileWidget
-              action="signup-resend"
-              resetSignal={resendState}
-            />
-            <Button disabled={resending} type="submit" variant="outline">
-              {resending ? "再送しています…" : "確認メールを再送"}
-            </Button>
-          </form>
-          {resendState.status !== "idle" ? (
-            <p className="text-sm" role="status">
-              {resendState.message}
-            </p>
-          ) : null}
-        </Notice>
-      ) : null}
-
+      {/*
+        **アカウントを持っていない人の行き止まりを作らない**（T-M8-268）。LPの友達招待CTAや
+        `next` 付きのリンクからここへ着く人は、まだ登録していないことがある。登録後も同じ
+        行き先へ戻れるよう `next` を引き継ぐ。**導線はここ1つだけにする**——ページ側にも
+        同じリンクがあって二重に出ていた（T-M8-295で解消）。
+      */}
       <p className="text-center text-sm text-muted-foreground">
         アカウントをお持ちでない方は{" "}
-        <Link className="font-medium text-foreground underline" href="/signup">
+        <Link
+          className="font-medium text-foreground underline"
+          href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
+        >
           会員登録
         </Link>
       </p>

@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { query } from "./fixtures/account";
 import { expect, signIn, test } from "./fixtures/test";
 
@@ -72,8 +70,8 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   await expect(page.getByText("表示3200回", { exact: false })).toBeVisible();
 
   // 段の見出しが3つ並ぶ（順序が読み取れる）。
-  for (const heading of ["まとめ", "良かった投稿", "近づけるための設定"]) {
-    await expect(report.getByRole("heading", { name: heading })).toBeVisible();
+  for (const heading of ["まとめ", "良かった投稿", "良かった投稿に近づくプロンプト設定"]) {
+    await expect(report.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
 
   // ③ アドバイスは画面表記（POST_PATTERN_LABELS / postThemeLabel）で出す。内部キーは出さない。
@@ -99,42 +97,15 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   );
 });
 
-test("standardにはプロンプト全文を出さず、mdプラン以上の案内を出す", async ({ accounts, page }) => {
-  const account = await accounts.create("sug-std");
-  await query(`update profiles set plan = 'standard', stripe_customer_id = $2 where id = $1`, [
-    account.userId,
-    `cus_e2e_${randomUUID().slice(0, 8)}`,
-  ]);
-  await query(
-    `with job as (
-       insert into generation_jobs (x_account_id, kind, trigger, status, finished_at)
-       values ($1, 'suggestion', 'manual', 'succeeded', now()) returning id
-     )
-     insert into improvement_suggestions (x_account_id, source_job_id, content, evidence)
-     select $1, job.id, $2, $3::jsonb from job`,
-    [account.xAccountId, "総評テキスト", JSON.stringify(EVIDENCE)],
-  );
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
-  await signIn(page, account);
-  await page.goto("/app/analytics");
-
-  await expect(page.getByText("総評テキスト")).toBeVisible();
-  // 貼り先（設定＞プロンプト）が使えないプランには2提案とも全文もコピーも出さない。
-  await expect(page.getByText("# タスク", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("E2E提案の中身", { exact: false })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: /プロンプトのカスタマイズ（mdプラン以上）/ }),
-  ).toHaveAttribute("href", "/app/settings?tab=prompts&sec=post-prompt");
-});
-
-test("BYOKでAIキーが未登録なら、始まらない理由と登録導線を出す（T-M8-95）", async ({
+test("BYOKでAIキーが未登録なら、始められない理由と登録導線を出す（T-M8-95）", async ({
   accounts,
   page,
 }) => {
   const account = await accounts.create("sug-nokey");
-  // fixtureはpremium。BYOK（md）へ変え、AIキーは登録しない → 毎朝の分析jobが作られない状態。
-  await query(`update profiles set plan = 'md' where id = $1`, [account.userId]);
+  // fixtureはpremium。BYOKへ変え、AIキーは登録しない → 「分析を開始」しても起票されない状態。
+  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
 
   await signIn(page, account);
   await page.goto("/app/analytics");
@@ -144,4 +115,57 @@ test("BYOKでAIキーが未登録なら、始まらない理由と登録導線�
     "href",
     "/app/settings?tab=api-keys",
   );
+
+  // 押した結果も言葉で返る（原則1）。BYOK未登録は起票ゲートで弾かれ、jobは作られない。
+  await page.getByRole("button", { name: "分析を開始" }).click();
+  await expect(page.getByText("分析を開始できませんでした")).toBeVisible();
+});
+
+/**
+ * 「分析を開始」ボタン（K-2/K-3, T-M8-255）。毎朝の自動実行の廃止後、起票の入口はこれだけ。
+ * 生成そのものはX API・実AIを叩くためE2Eでは完走しない（dispatchされたjobは後段で失敗してよく、
+ * 失敗までの時間も不定）。押した直後の状態に依存する検証はせず、
+ * (1) 押すと suggestion job が trigger='manual'・1日1回の冪等キーで作られること
+ * (2) 実行中（queued）はボタンが「分析中…」で押せないこと（DBへ直接seedして確定させる）
+ * を分けて確認する。
+ */
+test("「分析を開始」でjobが trigger='manual' で起票される（T-M8-255）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("sug-start");
+
+  await signIn(page, account);
+  await page.goto("/app/analytics");
+
+  await page.getByRole("button", { name: "分析を開始" }).click();
+  await expect(page.getByText("分析を開始しました")).toBeVisible();
+
+  // 起票の実体（statusはdispatch結果次第で動くため見ない）。
+  const rows = await query<{ trigger: string; request_key: string }>(
+    `select trigger::text as trigger, request_key from generation_jobs
+      where x_account_id = $1 and kind = 'suggestion'`,
+    [account.xAccountId],
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0].trigger).toBe("manual");
+  expect(rows[0].request_key).toMatch(/^sug-manual:/);
+});
+
+test("分析の実行中はボタンが「分析中…」になり押せない（T-M8-255）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("sug-busy");
+  // dispatchを伴わずに実行中の状態を作る（dev環境ではtickが動かないため回収されない）。
+  await query(
+    `insert into generation_jobs (x_account_id, kind, trigger, status)
+     values ($1, 'suggestion', 'manual', 'queued')`,
+    [account.xAccountId],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/analytics");
+
+  await expect(page.getByRole("button", { name: "分析中…" })).toBeDisabled();
 });

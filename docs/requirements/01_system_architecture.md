@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.29 |
+| 更新日 | 2026-08-24 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -37,7 +37,7 @@ flowchart TB
 | レイヤ | 技術 | 実装方針 |
 |---|---|---|
 | アプリ | Next.js App Router + TypeScript | UI、API、Server Actions、cronを同一リポジトリで管理 |
-| UI | Tailwind CSS + shadcn/ui | 画面共通部品はApp Shell配下に集約 |
+| UI | Tailwind CSS + shadcn/ui | 画面横断部品は共通UI層、アプリ内だけの部品はApp Shell配下に集約 |
 | 認証 | Supabase Auth（初期Free） | `@supabase/ssr`のcookie sessionをリクエスト単位のServer clientで扱い、Server Components／Server Actions／API Routeは共通helperの`getUser()`で本人性を検証する。メール認証、ログイン、パスワード再設定。Auth側もメール確認必須・password最小8文字とし、許可済みの`APP_BASE_URL/auth/confirm`だけをメールredirect先に使う。漏洩パスワード保護はPro移行後に有効化 |
 | DB | Supabase PostgreSQL + RLS（初期Free） | すべてのユーザー系テーブルでRLSを必須化。Free中は定期的な論理backupで補完 |
 | Storage | Supabase Storage | 生成画像、投稿前プレビュー画像を保存 |
@@ -47,7 +47,11 @@ flowchart TB
 | 文字数検証 | 公式`twitter-text` | 加重文字数（URLはt.co固定長・CJK/絵文字重み）とcashtag抽出。投稿本文の280検証とPT-FIX判定に共用（要件05 §12・プロンプト設計書§7） |
 | 不正利用防止 | Cloudflare Turnstile + Supabase Auth rate limit | 明示render widgetのtokenをsignup、login、password reset Server ActionからSupabase Authへ渡し、Auth側のTurnstile検証を必須化 |
 | 暗号化 | AES-256-GCM | APIキー/OAuthトークンをアプリ層で暗号化 |
-| 監視 | Sentry | Server Actions、API、cronの例外を収集 |
+| 監視 | Sentry | Server Actions、API、cronの例外を収集。**DSNが未設定・不正なら`Sentry.init`はno-opで黙って無効化される**ため、`doctor`（`config-status.ts`）が**DSNの種別**（未設定/仮の値/有効）と受け先ホストを検査する。値そのものは応答へ載せない（T-M8-162） |
+
+共通App Shellのデータ取得は、表示用model、DB／frameworkに依存しない組み立てcore、Supabase・pool・env等を接続するserver adapterの3層に分ける。`layout.tsx`は認証済みuser idをadapterへ渡して表示用modelを受け取るだけとし、通知・Xアカウント・profile・利用量の個別adapterを直接参照しない。App ShellのClient ComponentはApp RouterのServer Actionを直接importせず、layout境界から必要なAction契約をpropsで受け取る。これにより、表示部品・組み立て規則・外部接続の変更を別々に検証できるようにする（T-M8-155）。
+
+server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-158）。PostgRESTの`maybeSingle()`は`.throwOnError()`が無いと失敗も`{data:null,error}`で解決するため、`result.data`をそのまま返すと「行が無い」と「読めなかった」が同じ`null`になる。単一行の読み出しは`src/lib/supabase/single-row.ts`の`readSingleRow`を通し、失敗は`AppError('internal_error')`で包んで投げる。App Shellのprofile取得はpooled query（`getPool()`）へ寄せ、同じ波で読む他の依存と同じく失敗時にrejectする。失敗はルート直下のerror boundary（`src/app/error.tsx`）が受ける——`src/app/app/error.tsx`は**同一セグメントの`app/app/layout.tsx`の例外を受けない**ため、これが無いとApp Shellの取得失敗がNext.js既定のエラーページになる。
 
 ## 3. 環境変数
 
@@ -85,9 +89,9 @@ flowchart TB
 | `STRIPE_SECRET_KEY` | dev/preview/prod | Checkout/Portal/Webhook API | Server only |
 | `STRIPE_WEBHOOK_SECRET` | dev/preview/prod | Webhook署名検証 | 環境ごとに別値 |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | preview/prod | プラン変更・解約方針を設定したPortal configuration | **環境ごとに別のID**。Stripe Dashboardで1つ作り、内容は `npm run stripe:portal:setup -- --target <env>` で合わせる（既存を上書き更新する。新規作成はしない）。3価格は**同一Product配下でなくてよい**（要件03 §2.2）。devは任意。手順は[デプロイ手順 §1.4](../operations/deployment.md) |
-| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | 通常プラン価格ID | 500円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
-| `STRIPE_PRICE_MD_MONTHLY` | dev/preview/prod | mdプラン価格ID | 1,000円/月（同上） |
-| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアム価格ID | 2,980円/月（同上） |
+| `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | スタンダードプラン価格ID | 1,480円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
+| `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアムプラン価格ID | 3,980円/月（同上） |
+| `STRIPE_PRICE_EXPERT_MONTHLY` | dev/preview/prod | エキスパートプラン価格ID | 14,800円/月（同上。T-M8-168で STRIPE_PRICE_MD_MONTHLY を置き換え） |
 
 ### 3.4 X API
 
@@ -119,16 +123,15 @@ flowchart TB
 | `SMTP_HOST` | preview/prod | Gmail SMTP host | `smtp.gmail.com` |
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
-| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——通知メール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
-| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>` |
-| `EMAIL_REPLY_TO` | preview/prod | Reply-Toアドレス | `matsubuz.10@gmail.com` |
+| `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——運営者向けopsメール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
+| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>`。`EMAIL_REPLY_TO`はT-M8-222（通知メール廃止）で削除 |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | preview/prod | Supabase Auth CAPTCHAのsite key | signup/login/password reset |
 | `TURNSTILE_SECRET_KEY` | preview/prod | Supabase Auth CAPTCHAのsecret | Server only |
 | `SENTRY_DSN` | preview/prod | サーバー例外収集 | Server only |
 | `NEXT_PUBLIC_SENTRY_DSN` | preview/prod | ブラウザ例外収集 | Public |
 
-通知メール送信は `nodemailer`（Gmail SMTP・587 STARTTLS）で行う（`lib/email/notification-email-server.ts`）。中核（`notification-email.ts`）はDB・トランスポート注入で純粋に保ち、`email_status='queued'` の通知を送って `sent`／`failed` を確定する。provider冪等は `Message-ID = <notification:{id}@{from-domain}>`＋`id AND email_status='queued'` guard、再送分類は 429/5xx/network=retryable（最大3 attempt・指数backoff）／401/403=終端（要件04 §14）。`email_error` には秘密値・宛先を含まない要約（`smtp:{code}[:{responseCode}]`）だけを保存する。SMTP env 未設定時は送信を skip する。通知row commit後は best-effort に `after()` で即時送信し、残りは `scheduler_tick` が回収する（回収は T-M4-17）。実Gmail送信の確認は App Password 発行後に行う（open_questions）。
+**利用者向け通知メールはT-M8-222で廃止した**（通知はアプリ内のみ・運営者の指示 2026-08-22）。アプリからのメール送信は運営者向けopsアラート（`lib/email/operator-mail-server.ts`・要件04 §15）だけで、`nodemailer`（Gmail SMTP・587 STARTTLS）を使い、`canSendViaSmtp`（`lib/email/smtp-guard.ts`）が非productionからの外部SMTP送信を拒否する。認証メール（サインアップ確認・パスワードリセット）はSupabase Authが同じSMTP資格情報で送る。
 
 ## 4. ルーティング
 
@@ -148,7 +151,9 @@ flowchart TB
 
 画面IDを持たない公開補助routeとして`/terms`、`/privacy`、`/legal/commercial-transactions`を用意する。LP、会員登録、プラン選択、アプリ設定のfooterから到達可能にする。
 
-認証補助Route Handlerとして`GET /auth/confirm`を用意する。Supabaseのconfirmation／recoveryメールテンプレートは`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し、`token_hash`と`type=signup|recovery`をServer側で`verifyOtp`する。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
+公開コンテンツroute（認証不要・`PublicPageShell` の共通ヘッダ／フッタ）として `/prompt-templates`（プロンプト集・T-M8-173）と `/blog`・`/blog/[slug]`（ブログ・T-M8-184。記事はリポジトリ直下 `blog/*.md` をリクエスト時に読むため、`next.config.ts` の `outputFileTracingIncludes` で同梱する）を用意する。画面仕様は要件06 §1。
+
+認証補助Route Handlerとして`GET /auth/confirm`を用意する。**方式はメールの種類で違う**（T-M8-121）。会員登録の確認メールは`{{ .Token }}`の**6桁コード**で、利用者が画面へ入力した値をServer側で`verifyOtp`する（`type=signup`のリンクは使わない）。パスワード再設定メールは引き続きリンク方式で、`RedirectTo`・`TokenHash`からこのrouteへのリンクを生成し`token_hash`と`type=recovery`をServer側で`verifyOtp`する。テンプレートの正本は`supabase/templates/`で、反映は`npm run auth:templates -- --apply`（`doctor`が確認メールに6桁コードが載っているかを見る）。signup確認は`/plans`、recoveryは`/reset-password`へ遷移する。`next`を受ける場合は`/plans`、`/reset-password`、`/app`配下の相対パスだけに限定し、遷移前にURLから`token_hash`、`type`、`next`とfragmentを除く。
 
 ## 5. 認証ガード
 
@@ -162,7 +167,11 @@ flowchart TB
 | 通常プランでmd/プロンプトタブへアクセス | タブ内容はロック表示。直接編集APIも403 |
 | Xアカウント未選択・active失効 | `created_at`最古の`status=active`アカウントを選択し`profiles.active_x_account_id`へ永続化する。activeが指すアカウントが`expired`/`disabled`になった場合も同じ規則で再選択し、候補がなければ`/app`で初期設定ガイドを表示 |
 
-proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人のRLS経由で`profiles.plan, subscription_status`を取得する。session refreshで発行されたcookieと`Cache-Control`／`Expires`／`Pragma`はredirect応答にも引き継ぐ。profile取得不能時は未契約としてfail closedし`/plans`へ送る。`past_due`／`unpaid`／`paused`／`canceled`はrouteで遮断せず、後続のmutation認可と常設バナーで制御する。
+**画面表示のためのDB読み取りは「利用者まわりの1行」に束ねる**（T-M8-288）。App Shellが必要とする profile・Xキー状態・通知の未読数・利用枠カウンタは、いずれも`user_id`一本で決まる単一行・スカラーなので1文（`loadRequestProfile`・React `cache()`）で読み、同一リクエスト内のロック判定・ホーム・設定もそこから供給する。App Shellの往復は8→5になり、ホーム・設定が重ねて投げていた利用枠の取得も消える。**呼び出しごとに列を絞った別クエリを足さない**——往復が増え、どの列を誰が読むか分からなくなる。
+
+proxyは`getUser()`でsessionを検証する。**契約状態のためのDB読み取りは行わない**（T-M8-268。画面を契約で弾かなくなったため、`/app`配下の全リクエストで走っていた`profiles`のSELECTを削除した＝遷移のたびの往復を1本削減）。検証結果（user id／emailまたは未認証）は、外部から来た同名値を削除・上書きし、`APP_ENCRYPTION_KEY`によるHMAC-SHA256署名を付けたうえで`NextResponse.next({ request: { headers } })`のupstream request headerとして同一リクエストのServer Components／Server Actions／Route Handlersへ渡す。後段の共通認証helperは署名一致時だけこれを再利用し、不在・改ざん・proxyを通らない内部呼び出しは`getUser()`へフォールバックする。upstream headerはブラウザ応答へ出さず、cookie内の未検証userを認可に使わない。これにより画面表示ごとの重複したAuth HTTP往復を作らない。
+
+session refreshで発行されたcookieは更新後のrequest cookieとして後段へ渡し、`Set-Cookie`と`Cache-Control`／`Expires`／`Pragma`は通常応答へ、redirect時も同じ状態を引き継ぐ。**proxyのredirectは未認証のときだけ**（`/login?next=…`）で、契約状態では画面を遮断しない（T-M8-268）——実行の抑止はmutation認可（要件03 §5）とjob lease（要件04 §4.1）が持ち、案内は常設バナーが担う。profile取得不能時のfail closed（T-M8-159）は、読み取り自体が無くなったため不要になった。**proxyでthrowするとログイン画面まで落ちる**点は変わらない。
 
 ## 6. 実行環境の前提
 
@@ -195,7 +204,7 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 
 
 - production cookieは`Secure`、認証・OAuth補助cookieは`HttpOnly`、`SameSite=Lax`を既定とする。Supabaseのsignup／signin／signout等の認証フロー操作はServer Action／Route Handlerに限定してブラウザclientからsession tokenを直接扱わず、refresh用proxyがcookie更新と`Cache-Control: private, no-store`等の応答headerを反映する。
-- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、**アプリ全体の動的レンダリング化**）はADR-0005を正とする。nonceはリクエストごとに作るためビルド時のHTMLへ焼き付けられず、静的prerenderされたページはscriptが1本も実行されない（＝画面が壊れる）。そのため `src/app/layout.tsx` で全ルートを `force-dynamic` にし、破られていないことを `npm run check:csp-nonce` がビルド成果物の走査で確認する（`release:check` に組込み）。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
+- CSPはnonceベースとし、`frame-ancestors 'none'`、`object-src 'none'`を含める。HSTS、`X-Content-Type-Options: nosniff`、厳格なReferrer-Policyをproductionで付与する。実装方針（`script-src`のnonce＋`strict-dynamic`、Turnstile・外部画像・Sentryの許可、**アプリ全体の動的レンダリング化**）はADR-0005を正とする。`connect-src`はTurnstile・Sentryに加え、押下時の接続準備に限ってStripe Checkout／Customer Portalのhostを許可する。nonceはリクエストごとに作るためビルド時のHTMLへ焼き付けられず、静的prerenderされたページはscriptが1本も実行されない（＝画面が壊れる）。そのため `src/app/layout.tsx` で全ルートを `force-dynamic` にし、破られていないことを `npm run check:csp-nonce` がビルド成果物の走査で確認する（`release:check` に組込み）。proxy（`updateSupabaseSession`）がリクエストごとにnonceを発行し全応答へCSP等を付与する。
 - service role、暗号鍵、provider key、OAuth tokenはServer only moduleからだけ参照し、Client Componentへimportできない境界を設ける。
 - 未知の例外（`AppError` 以外＝`internal_error` に丸められるもの）は、利用者向けの結果へ変換される境界で必ず1度記録する（`recordUnexpectedError`）。`onRequestError`（`src/instrumentation.ts`）はthrowされた例外だけをSentryへ送るため、catchして値を返す共通出口——Server Actionの`errorResult`／API Routeの`apiError`／jobの`failJob`——では発火せず、記録が無いと原因が画面にもログにもDBにも残らない。`AppError`は仕様どおりの分岐なので記録しない（本物の異常がノイズに埋もれるため）。引数なし`catch {}`は`src/app/actions`・`src/app/api`・`src/lib`のlintが禁止し、記録しない場合は理由を`eslint-disable`のコメントで宣言する（URL/JSONのparseなど「失敗が答え」の検証処理が該当）。
 - 原因不明（`internal_error`）を特定の原因として断定する画面文言を出さない。X連携では`provider_error`（X通信失敗と判明）と`internal_error`（原因不明）を別文言にする。
@@ -215,11 +224,25 @@ proxyは`getUser()`でsessionを検証し、保護対象の`/app`だけ本人の
 - `cron_runs`（定時トリガーの重複受付防止行）は`claimed_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する。`window_key`は時刻由来で単調増加するため、cleanup後に保持期間超過の過去窓が再来・再実行されることはない（要件02 §3.18、ADR-0003）。
 - `news_fetch_outcomes`（分野ごとの取得結果）は`ran_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する（要件02 §3.19、T-M7-40）。
 - 運営側の確認・集計はSupabase Studio/SQLで直接行う（admin UIはMVP対象外）。ユーザー別月次原価の確認・実測分析は、明細の40日保持内（翌月10日まで）にSQLで実施する。
-- 参照のないStorage画像は24時間後から1起動100件までbest effortで削除する。参照中の画像、draft、投稿履歴、base_md履歴、利用枠・課金台帳はサービス提供中保持する。法令上必要な個別対応は§9の自動保持処理と分けて運営が手作業で行う。
-- Sentryとメールproviderのlog保持期間は各サービス設定で30日以下とし、秘密値・投稿前入力を送信しない。
+- 参照のないStorage画像は24時間後から1起動100件までbest effortで削除する。参照中の画像、draft、投稿履歴、利用枠・課金台帳はサービス提供中保持する。**base_md履歴は1 Xアカウントあたり最新5版まで**（要件02 §3.4。ここに「サービス提供中保持」と書いていたのは誤りで、実装と要件02は最新5版・T-M8-253）。法令上必要な個別対応は§9の自動保持処理と分けて運営が手作業で行う。
+- Sentryとメールproviderのlogには秘密値・投稿前入力を送信しない（`redactEvent` で強制）。**保持期間はSentryの現行プランで90日固定・短縮不可**（2026-08-20 確認・要決定D-19）。以前ここは「各サービス設定で30日以下とし」と書いていたが、**設定できない値を要件にしていた**ため実態へ直した。プライバシーポリシーには確認できた90日を記載する（書けない期間を書くと虚偽になるため、確認までは空欄にしていた）。
 
 ## 変更履歴
 
 | version | 日付 | 変更内容 |
 |---|---|---|
 | v1.15 | 2026-08-18 | `SMTP_*` が Supabase Auth のカスタムSMTPにも使われることを明記（T-M8-144） |
+| v1.16 | 2026-08-19 | Stripe画面への押下時preconnectに必要なCSP許可先を反映（T-M8-152） |
+| v1.17 | 2026-08-19 | proxyの検証済み認証結果とrefresh済みcookieを同一リクエストの後段へ引き継ぎ、重複Auth往復を削減（T-M8-154） |
+| v1.18 | 2026-08-20 | 共通App Shellを表示model・純粋core・server adapterへ分離し、Client ComponentへAction契約を注入する依存方針を追加（T-M8-155） |
+| v1.19 | 2026-08-20 | server adapterが取得失敗を正常な空へ潰さない方針と、ルート直下のerror boundaryを追加（T-M8-158） |
+| v1.20 | 2026-08-20 | proxyのprofile取得失敗を記録する方針を追加（向きはfail closedのまま・T-M8-159） |
+| v1.21 | 2026-08-20 | §4の認証メール方式を種類別（登録=6桁コード／再設定=リンク）へ修正（T-M8-144 #27） |
+| v1.22 | 2026-08-20 | Sentry DSNの設定状態をdoctorで検査する方針を追加（T-M8-162） |
+| v1.23 | 2026-08-20 | エラーlogの保持期間を実態（Sentry 90日固定）へ修正（要決定D-19解決） |
+| v1.24 | 2026-08-20 | プラン再編（T-M8-168）: STRIPE_PRICE_MD_MONTHLY を STRIPE_PRICE_EXPERT_MONTHLY へ置き換え、Price金額を1,480/3,980/14,800円へ |
+| v1.25 | 2026-08-21 | §4 に公開コンテンツroute（/prompt-templates・/blog・/blog/[slug]）を追記（T-M8-184） |
+| v1.26 | 2026-08-22 | §3.6 メール: 利用者向け通知メールの廃止（T-M8-222）。EMAIL_REPLY_TO削除・送信は運営者向けopsメールのみ |
+| v1.27 | 2026-08-23 | base_md履歴の保持期間を要件02（最新5版）へ揃えた（T-M8-253） |
+| v1.28 | 2026-08-23 | proxyから契約状態のDB読み取りを削除（T-M8-268。画面は契約で弾かず、実行側で止める。全ページ遷移のDB往復を1本削減） |
+| v1.29 | 2026-08-24 | 画面表示用のDB読み取りを「利用者まわりの1行」へ束ねる方針を追加（T-M8-288。App Shell 8→5往復） |

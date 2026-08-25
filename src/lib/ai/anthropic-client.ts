@@ -16,6 +16,8 @@ export interface AnthropicClientOptions {
   /** 未指定なら env のテキストモデル。 */
   model?: string;
   deadline?: Deadline;
+  /** 出力上限。未指定は DEFAULT_MAX_TOKENS（8192）。長い成果物を返すjob（SUGGEST）だけ広げる。 */
+  maxTokens?: number;
 }
 
 /**
@@ -41,5 +43,5 @@ export function createAnthropicTextGen(
     return res as unknown as RawMessageResponse;
   };
 
-  return new AnthropicTextGen({ createMessage, model, deadline: opts.deadline });
+  return new AnthropicTextGen({ createMessage, model, deadline: opts.deadline, maxTokens: opts.maxTokens });
 }

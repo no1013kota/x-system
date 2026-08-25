@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 
 import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { AppError } from "@/lib/observability/errors";
 
 export interface PortalProfile {
@@ -37,11 +38,25 @@ export function portalFlowData(
   intent: PortalIntent | null,
   subscriptionId: string | null | undefined,
   returnUrl: string,
+  retentionCouponId?: string | null,
 ): Stripe.BillingPortal.SessionCreateParams.FlowData | undefined {
   if (!intent || !subscriptionId) return undefined;
   const after = { after_completion: { type: "redirect" as const, redirect: { return_url: returnUrl } } };
   if (intent === "cancel") {
-    return { type: "subscription_cancel", subscription_cancel: { subscription: subscriptionId }, ...after };
+    /*
+      **解約前にクーポンを提示する**（T-M8-272・運営者の指摘 2026-08-23「クーポンが提示されずに解約された」）。
+      ダッシュボードの「顧客維持クーポン」は**Portalのトップから解約したとき**の設定で、
+      `flow_data` で解約画面へ直接入るこの経路には効かない。ここで明示したものだけが出る（実測）。
+      未設定なら従来どおり提示しない（環境ごとにクーポンIDが違うため env で持つ）。
+    */
+    const retention = retentionCouponId
+      ? { retention: { type: "coupon_offer" as const, coupon_offer: { coupon: retentionCouponId } } }
+      : {};
+    return {
+      type: "subscription_cancel",
+      subscription_cancel: { subscription: subscriptionId, ...retention },
+      ...after,
+    };
   }
   return {
     type: "subscription_update",
@@ -91,6 +106,8 @@ export async function resolveSubscriptionForFlow(
 export interface PortalRouteDependencies {
   appBaseUrl: string;
   configurationId?: string;
+  /** 解約前に提示するクーポン（T-M8-272）。未設定なら提示しない。 */
+  retentionCouponId?: string | null;
   getCurrentUser(): Promise<{ id: string } | null>;
   getProfile(userId: string): Promise<PortalProfile | null>;
   stripe: PortalStripeGateway;
@@ -150,21 +167,71 @@ export async function handlePortalRequest(
         );
       }
     }
-    const session = await deps.stripe.billingPortal.sessions.create({
+    const base = {
       customer: profile.stripe_customer_id,
       // Checkoutと同じく日本語へ固定（T-M8-58）。
-      locale: "ja",
+      locale: "ja" as const,
       return_url: returnUrl,
-      ...(deps.configurationId
-        ? { configuration: deps.configurationId }
-        : {}),
-      ...(() => {
-        const flowData = portalFlowData(intent, subscriptionId, returnUrl);
-        return flowData ? { flow_data: flowData } : {};
-      })(),
-    });
+      ...(deps.configurationId ? { configuration: deps.configurationId } : {}),
+    };
+    const withRetention = portalFlowData(intent, subscriptionId, returnUrl, deps.retentionCouponId);
+    let session: { url: string };
+    try {
+      session = await deps.stripe.billingPortal.sessions.create({
+        ...base,
+        ...(withRetention ? { flow_data: withRetention } : {}),
+      });
+    } catch (cause) {
+      /*
+        **一度クーポンを受け取った人には、同じクーポンをもう提示できない**（Stripeは顧客ごとに
+        1回だけ提示を許し、2回目はセッション作成を400で断る。割引が切れた後も同じ・2026-08-23 実測）。
+        ここで諦めると**解約画面そのものが開けなくなる**ので、提示なしで開き直す（T-M8-280）。
+      */
+      if (!isRetentionUnavailable(cause) || !withRetention) throw cause;
+      const withoutRetention = portalFlowData(intent, subscriptionId, returnUrl, null);
+      session = await deps.stripe.billingPortal.sessions.create({
+        ...base,
+        ...(withoutRetention ? { flow_data: withoutRetention } : {}),
+      });
+    }
     return apiJson({ ok: true, data: { url: session.url } });
   } catch (cause) {
+    /*
+      旧価格のまま残っている契約は、Portal設定に変更先が無くflowを開けない（T-M8-215で実発生。
+      価格改定で旧Priceをアーカイブすると、その価格の契約はStripe側で
+      "no price in the portal configuration available to change to" になる）。
+      「通信に失敗」と言うと再試行させてしまうので、原因どおりに伝える。
+      恒久対応は契約の新Priceへの移行（deployment.md）。
+    */
+    if (
+      cause instanceof Error &&
+      cause.message.includes("no price in the portal configuration")
+    ) {
+      // toUserFacingErrorはcode既定文へ丸めるため、この分岐だけ具体文で直接返す。
+      recordUnexpectedError(cause, { at: "api-route:provider_error" });
+      return apiJson(
+        {
+          ok: false,
+          error: {
+            code: "provider_error",
+            message:
+              "このご契約は旧価格のままのため、プラン変更画面を開けません。お手数ですがお問い合わせください（運営側で新価格へ切り替えます）。",
+            details: { reason: "portal_price_unavailable" },
+          },
+        },
+        502,
+      );
+    }
     return apiError(new AppError("provider_error", { cause }));
   }
+}
+
+/**
+ * 「このクーポンはこの契約に適用できない」型の失敗か（T-M8-280）。
+ * 顧客が既に受け取り済みのときにStripeが返す。提示なしで開き直せば解約はできるので、
+ * これだけは失敗として扱わない。
+ */
+function isRetentionUnavailable(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : "";
+  return /coupon .* doesn't apply to the subscription|still usable by the customer/i.test(message);
 }

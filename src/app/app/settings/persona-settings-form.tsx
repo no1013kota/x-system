@@ -11,7 +11,7 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
-import { THEME_OPTIONS, type ThemeId } from "@/lib/themes";
+import { OPERATED_THEME_OPTIONS, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
@@ -142,10 +142,6 @@ export function PersonaSettingsForm({
           対象アカウント: <strong>@{accountHandle}</strong>
         </span>
         {/* 呼称は他タブと同じ「アカウント.md」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
-        <span className="text-xs text-muted-foreground">
-          アカウント.md version {version}
-          {version >= 1 ? "" : "（未作成）"}
-        </span>
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
@@ -228,7 +224,20 @@ export function PersonaSettingsForm({
                 {group === "primary" ? "主テーマ *" : "副テーマ（任意）"}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {THEME_OPTIONS.map((theme) => (
+                {/*
+                  選択肢は運用中の6テーマ（T-M8-189）。旧テーマ（ビジネス等）は**開いた時点で
+                  選択されていたものだけ**出す——編集中stateで判定すると、チェックを外した瞬間に
+                  選択肢ごと消えて戻せなくなる（レビュー指摘・T-M8-192）。初期値基準なら
+                  外しても選択肢は残り、保存前なら再チェックできる。
+                */}
+                {[
+                  ...OPERATED_THEME_OPTIONS,
+                  ...THEME_OPTIONS.filter(
+                    (theme) =>
+                      !OPERATED_THEME_OPTIONS.some((o) => o.id === theme.id) &&
+                      initialSettings.themes[group].includes(theme.id),
+                  ),
+                ].map((theme) => (
                   <label
                     className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
                     key={theme.id}

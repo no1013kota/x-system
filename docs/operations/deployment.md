@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.11 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.18 |
+| 更新日 | 2026-08-25 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -40,6 +40,14 @@ npm run release:production   # main → production
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
+**Customer Portalの「プラン変更」に出る選択肢は「activeな全Price」**（T-M8-213）。価格改定で新Priceへ切り替えたら、**旧Priceをアーカイブ（active=false）しないと旧価格が並び続ける**。**ただしアーカイブだけだと、旧Priceのまま残っている契約はプラン変更フローを開けなくなる**（T-M8-215で実発生。Stripeは契約中のPriceがPortal対象に含まれることを要求し、`no price in the portal configuration` の400になる——画面には専用文言を出すよう対応済み）。**正しい手順は「①既存契約を新Priceへ移行（subscription itemsのprice差し替え・proration none）→②旧Priceをアーカイブ→③Portal設定の商品リストを現行3商品×現行Priceへ更新」**。③を怠ると**プラン変更に一部プランが出ない・変更先ゼロで開けない**（T-M8-215で実発生: 旧Portal設定の商品リストがスタンダード¥1,480とプレミアム旧¥2,980だけで、エキスパート未登録＋プレミアム候補が実質空だった）。この商品リストは現行APIのGETに現れないため**新しいPortal設定を作り直すのが確実**（作成時の`features[subscription_update][products]`は効く。テストモードは2026-08-22に `bpc_1U78flE811f4DP4qPdhugSfn` を作成し旧設定を無効化・env差し替え済み）。本番は運営者作業: liveモードで同様にPortal設定を作成（またはダッシュボードのカスタマーポータル設定→商品カタログを現行3商品へ）し、`STRIPE_PORTAL_CONFIGURATION_ID` を差し替える。**あわせて、価格移行時に付けた「サブスクリプションスケジュール」の phase が旧Priceを指していると Portal で変更不可**（Portal 設定に無い Price が schedule にあるため）——ダッシュボードからスケジュールをリリースして外す。Portal 自身が作る値下げ予約の schedule は変更の妨げにならない（予約付きでも別プランへ変更でき、アプリから取り消せる・T-M8-260）。Portal上部の見出し文はPortal設定の`business_profile.headline`（旧称Space AIになっていたのを修正済み・本番も確認）。
+
+**この商品リストは `expand=["features.subscription_update.products"]` を付ければAPIから読める**（素のGETでは `products` が返らない・T-M8-238）。そのため**手作業で確認する必要はない**——`npm run stripe:portal:setup -- --target <env>` が設定し、読み戻して不足Priceがあれば終了コード1で止まる。`doctor` の「プラン管理（Stripe）」も現行Priceが変更先に入っているかを毎回見る（2026-08-23、本番・stagingとも旧価格のままで契約者が「プランを変更」を開けない状態だったのを、この検査で検出して修正した）。
+
+**Stripe決済画面の商品名・説明文はコードではなくStripeのProductが持つ**（T-M8-211）。プラン名・説明を変えたら、Stripeダッシュボード（商品カタログ）で該当Productのnameとdescriptionを**テスト・本番の両モードで**更新する（テストモードは2026-08-22に現行文言へ更新済み。本番は2026-08-23に `stripe:portal:setup -- --target production` で現行文言へ更新済み）。価格はPrice、表示文言はProductと覚える——envのPrice IDを差し替えても説明文は変わらない。
+
+**ブログ記事（`blog/published/*.md`）の公開も同じ手順。** 記事のコミット（`/blog-publish`）→ `release:staging` → `release:production`。記事がデプロイへ同梱されることは `release:check` の `check:blog-trace` が出荷前に、デプロイ先では `doctor` の「ブログ記事の同梱」が確認する（T-M8-184）。
+
 すべて通ると、続けて**デプロイ後の検証**（`smoke:live --base <URL>`・実費 約$0.30）を実行する。`-- --account <Xのユーザー名>`（UUIDも可。または `SMOKE_X_ACCOUNT_ID`）を渡すと生成・画像も含め、無ければニュース取得だけを検証する。
 
 ```bash
@@ -73,7 +81,7 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 デプロイ前に、ローカルで次がすべて緑であること。
 
 ```bash
-npm run release:check    # typecheck → lint → 依存監査 → test:db → build → check:csp-nonce → test:e2e
+npm run release:check    # typecheck → lint → check:doc-dates → check:doc-refs → 依存監査 → test:db → build → check:csp-nonce → check:blog-trace → test:e2e
 ```
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。
@@ -90,9 +98,20 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 4. 必須チェック2本が緑になったらマージ → production ビルドが始まる
 5. `npm run release:production -- --apply` で migration 適用とデプロイ後検証を行う
 
-> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**ツリーは同一だがSHAが分岐**しており、
+> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**SHAが分岐**しており、
 > PRにすると同じ内容の55件が差分として並ぶ。staging を検証したいときは `stg` へ別途 push する
 > （`supabase link` の向き先を張り替えてから・§5）。**本番へ入れるのは `main` から切った作業ブランチ**にする。
+>
+> **`stg` はforce-push禁止の保護つき**（D-16）。SHA分岐のままだと通常pushも拒否されるので、
+> **内容を変えずに旧履歴だけ祖先へ取り込む**（2026-08-22 に確立した手順）:
+> ```bash
+> git branch -f stg <反映したいコミット>
+> git checkout stg
+> git merge -s ours origin/stg -m "chore: stgの旧履歴を取り込む（D-28）"  # ツリーはこちら側のまま
+> git push origin stg   # fast-forwardになる
+> ```
+> `-s ours` が安全なのは、origin/stg の内容（2026-08-17時点）がPR #13でmainへ全て入っているため。
+> 逆方向（stgの内容を残す）には決して使わないこと。
 
 保護の必須チェックは `型・lint` と `release:check（DB・build・E2E）` の2本。
 **2026-07-30 時点では「private × GitHub Free では保護が使えない」と記録していたが、現在は有効になっている**
@@ -112,12 +131,13 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 | `APP_ENV` | `preview` / `production` |
 | `CRON_SECRET` | 自分で生成（下記）。cron・job dispatch の認証 |
 | `APP_ENCRYPTION_KEY` | 自分で生成（下記）。**環境ごとに別の値**。紛失すると保存済みトークン・APIキーを復号できない |
-| `SUPPORT_EMAIL` | 問い合わせ先 |
+| `SUPPORT_EMAIL` | 問い合わせ先（画面表示）と、運営者向けメール（doctorの日次アラート）の**宛先**。**`EMAIL_FROM` と別のアドレスにする**——Gmailは自分が送ったメールを自分の受信トレイに入れないため、同じにすると異常が起きてもアラートが届かない（T-M8-147と同じ罠。2026-08-25まで3つとも同じアドレスだった） |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase プロジェクト設定 → API |
 | `DATABASE_URL` | Supabase → Connect → **Transaction pooler**（Supavisor）。直結ではなくpooler側 |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe。**非productionでは `sk_test_` のみ**（`sk_live_` を置くと起動時検証で落ちる。実課金を防ぐため・T-M7-51） |
-| `STRIPE_PRICE_STANDARD_MONTHLY` / `_MD_` / `_PREMIUM_` | Stripe の Price ID 3種 |
+| `STRIPE_PRICE_STANDARD_MONTHLY` / `_PREMIUM_` / `_EXPERT_` | Stripe の Price ID 3種 |
 | `ANTHROPIC_TEXT_MODEL` / `OPENAI_TEXT_MODEL` / `OPENAI_IMAGE_MODEL` / `GEMINI_TEXT_MODEL` / `GEMINI_IMAGE_MODEL` | 採用モデル名 |
+| `NEWS_TEXT_MODEL` | ニュース取得専用モデル（任意・T-M8-200）。未設定は `NEWS_TEXT_PROVIDER` の `*_TEXT_MODEL`。`claude-haiku-4-5` にすると本番のプレミアム生成（Sonnet）を保ったままニュースだけ約45%安くなる（実測$0.152→$0.093/回） |
 
 ### 1.2 preview / production で追加必須（16）
 
@@ -126,9 +146,10 @@ npm run release:check    # typecheck → lint → 依存監査 → test:db → b
 | `NEWS_TEXT_PROVIDER` | `anthropic` / `openai` / `google` |
 | `X_MANAGED_CLIENT_ID` | 運営 X App（premium 用）の Client ID |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | Customer Portal 構成ID（Stripe Dashboard で1つ作り、内容は下の §1.4 で合わせる） |
+| `STRIPE_RETENTION_COUPON_ID` | 解約前に提示するクーポンのID（任意・T-M8-272）。**環境ごとに別のID**。未設定だと解約画面にクーポンが出ない（doctorが警告する）。ダッシュボードの「顧客維持クーポン」設定はアプリの解約導線には効かない |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` / `X_COST_POST_READ_USD` / `X_COST_USER_READ_USD` | X Developer Console の pay-per-use 実単価（読取2つはT-M8-91で追加。読取は応答のresource数で乗算課金される） |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等。**`npm run auth:templates -- --apply` が Supabase Auth のカスタムSMTP設定にも同じ値を流用する**（アプリの通知メールと認証メールで同じ資格情報・T-M8-136） |
-| `EMAIL_FROM` / `EMAIL_REPLY_TO` | 送信元・返信先 |
+| `EMAIL_FROM` | 運営者向けメール（doctorの日次アラート）の送信元。**利用者向けのパスワード再設定メールの差出人はこれではない**——そちらは Supabase Auth 側の設定で、`npm run auth:templates -- --apply` が `SMTP_USER` から流し込む。`EMAIL_REPLY_TO` は T-M8-222（利用者向け通知メールの廃止）で不要になったので**設定しない**（残っていても読まれない） |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |
 
@@ -169,11 +190,6 @@ npm run doctor -- --base "$STAGING_BASE_URL"     # 「プラン管理（Stripe�
 
 ### 実測: staging を設定したときの記録（2026-08-04）
 
-初回は3往復した（1件ずつしか足りない値を教えていなかったため）。改善後は次の2手で済む。
-
-1. `npm run stripe:portal:setup -- --target staging` → 足りない5件が並ぶ
-2. Vercel の Preview から5つコピーして `.env.local` へ貼り、もう一度実行
-
 stagingのStripeアカウントには **Stripeが自動生成した既定の構成が1件だけ**あり、`subscription_update` が無効・`default_return_url` が未設定だった（＝このスクリプトが一度も適用されていない状態）。適用後は `features` が両方 `true` になり、`npm run doctor -- --base <stg>` の「プラン管理（Stripe）」が ✅ になる。
 - スクリプトは既存の構成を**上書き更新**する（新規作成しない）。IDが変わらないので Vercel 側の書き換えは不要。
 - 実行後に読み戻して機能が有効か確認し、無効なら exit 1 する。
@@ -192,7 +208,8 @@ stagingのStripeアカウントには **Stripeが自動生成した既定の構�
 
 3. seed（`prompt_templates` 等）が必要なら投入する。`supabase/seed.sql` はローカル用なので、本番へ入れる範囲を確認してから流す。
 4. Auth 設定: メール確認を有効化、**rate limit** を設定、Turnstile（CAPTCHA）を有効化。
-5. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
+5. **メール確認は省略中**（T-M8-202・運営者の決定 2026-08-22）。`npm run auth:templates -- --target <env> --apply` が `mailer_autoconfirm: true` を反映し、**登録即ログイン**になる（確認メールは送られない）。**戻す手順**: (1) `scripts/auth-settings.mjs` の `mailer_autoconfirm` を false (2) `supabase/config.toml` の `enable_confirmations` を true (3) `npm run auth:templates -- --target <env> --apply` を再実行 (4) E2E `invite.spec.ts` のフォールバックテストをgit履歴から復元。アプリはsignUp応答のsession有無で自動追従するためコード変更は不要。以下の確認メールの説明は**確認を戻した場合**の話。
+5.1. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
    - **stagingの動作確認だけなら**: 自分（Supabaseの組織メンバー）のアドレスで登録すれば内蔵送信で足りる。
    - **本番、または他人のアドレスで試すなら**: Supabase の Authentication → Emails → SMTP Settings へ**カスタムSMTPを設定する**（アプリ用と同じGmail App Passwordを流用できる）。設定後の上限は 30通/時から。
 5.5. **認証メールのテンプレートを反映する（`npm run auth:templates -- --target production --apply`）。** **2026-08-18、この手順を忘れて本番の新規登録が止まった**（画面には「リンクを確認できませんでした」だけが出る）。**手順を1コマンドへ畳んだので、以後は手作業で貼り替えない**（原則3）。コマンドは (1) カスタムSMTPが未設定なら `SMTP_*` から先に設定し（Freeプラン＋内蔵送信では**テンプレートを変更できない**）(2) `supabase/templates/*.html` を反映し (3) 反映後に読み直して確認する。`npm run doctor` も**確認メールに6桁コード（`{{ .Token }}`）が入っているか**を見るようになったので、忘れたら気付ける。以下は手作業の場合の説明。 ** `supabase/config.toml` の `[auth.email.template.*]` は**ローカル専用**で、リモートには効かない。既定テンプレートは `{{ .ConfirmationURL }}` を使うため、**確認メールに入力すべき6桁コード（`{{ .Token }}`）が載らず、登録を完了できない**（T-M8-121でコード方式へ移行。それ以前はリンク方式で `token_hash` が付かず「リンクを確認できませんでした」になった。2026-08-02と08-18に発生。T-M7-45 のStorage bucketと同じ「config.tomlにしか無い」型）。パスワード再設定は引き続きリンク方式（`{{ .TokenHash }}`）。
@@ -250,7 +267,7 @@ curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x
 | サービス | 登録内容 |
 |---|---|
 | X Developer App | callback URL に `APP_BASE_URL + X_OAUTH_REDIRECT_PATH` を登録。scope 5種。staging と production で**別App**にする |
-| Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ |
+| Stripe | Webhook endpoint に `APP_BASE_URL/api/stripe/webhook` を登録し、払い出された署名シークレットを `STRIPE_WEBHOOK_SECRET` へ。購読イベントは要件05のwebhook節の一覧（`charge.refunded` を含む・T-M8-174）と揃える |
 | Turnstile | **Hostname Management にそのドメインを登録**（staging/production 別キー）。登録漏れだと `error-callback` 110200 になり**ログインも新規登録もできない**。`npm run check:turnstile -- --base <URL>` で確認する |
 | Supabase Auth | Site URL / Redirect URLs に `APP_BASE_URL` を登録 |
 
@@ -268,7 +285,11 @@ curl -sD- -o /dev/null "https://<project-ref>.supabase.co/auth/v1/verify?token=x
 | **ログインも新規登録もできない**。人間確認の欄が空で「もう一度お試しください」だけ出る | Cloudflare の Turnstile で**そのドメインを許可していない**（エラーコード110200）。何度再試行しても直らない | Cloudflare → Turnstile → 該当ウィジェット → **Hostname Management** へそのドメイン（例 `x-system-stg.vercel.app`）を追加。`npm run check:turnstile -- --base <URL>` で確認できる |
 | 人間確認の欄が出ず「読み込めませんでした」 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` が未設定、または**設定後に再デプロイしていない**（この値はビルド時にバンドルへ埋まる） | Vercelへ設定し、**新しいデプロイを作る**（Redeployでも可） |
 | サインアップしても**確認メールが届かない** | 確認メールは**Supabase Authが送る**（アプリの `SMTP_*` とは別）。内蔵送信は**2通/時・組織メンバー宛のみ** | 自分のアドレスで試す、または Supabase → Authentication → Emails → **SMTP Settings** にカスタムSMTPを設定する（§2-5） |
+| **カスタムSMTP設定済みなのに確認メールが届かない**（コード入力画面までは進む） | 登録したアドレスが**カスタムSMTPの送信元（`SMTP_USER`）と同じ**だった。Gmailは自分のSMTPで自分宛に送ったメールを Message-ID で重複排除するため、**受信トレイに入らず「送信済み」にだけ残る**。Supabase側は送信成功でSMTPエラーも出ず、`auth_logs` にも何も残らないので**どのログを見ても分からない**（2026-08-18 本番で発生・T-M8-147） | Gmailの**「送信済み」または「すべてのメール」**でコードを探す。動作確認は**送信元とは別のアドレス**で行う。`npm run doctor -- --base <URL>` の「メール確認が終わっていない登録」がこの状態を名指しする |
+| **未確認のまま同じアドレスで再登録した**とき、既登録の案内が出ずコード入力画面へ進む | Supabase の仕様。**確認済み**のアドレスは `user_already_exists` を返すが、**未確認**のアドレスは成功扱いで確認メールを再送する（ローカルで実測・毎回1通送られる）。総当たりでアドレスの存在を調べられないようにするための挙動 | 異常ではない。届いたコードを入力すればそのまま確認が完了する |
 | 確認メールのリンクを開くと**「リンクを確認できませんでした」** | メールテンプレートは `supabase/config.toml` で指定しているが**これはローカル専用**。リモートは既定テンプレートで、アプリが要求する `token_hash` がリンクに付かない（T-M7-45 のStorage bucketと同じ型） | Supabase → Authentication → Emails → Templates の **Confirm signup / Reset password** を `supabase/templates/*.html` と同じ内容へ差し替える。あわせて URL Configuration の **Redirect URLs** に `<APP_BASE_URL>/auth/confirm` を追加する（§2-5.5）。※既定テンプレートでもSupabase側の確認自体は完了するので、**そのままログインできる**ことがある |
+| **「7日間無料で利用」を押すと必ず「決済画面を開けませんでした」** | Stripeアカウントが**本番決済を受け付けられない状態**（`Your account cannot currently make live charges.`・`card_payments = inactive`）。**鍵は本番・Priceの金額も一致・ポータルも有効なので、既存の検査は全部緑**だった（2026-08-18・T-M8-148） | Stripeダッシュボードのホームで有効化の残作業と審査状況を確認する。アプリ側では直せない。`npm run doctor -- --base <URL>` の「決済の受付（Stripeアカウント）」で状態が読める |
+| **登録済みのアドレスで登録してもエラーが出ずコード入力画面へ進む** | ホスト版のSupabaseは列挙対策で、登録済みでも成功と同じ形（`identities` が空配列）を返し**メールを送らない**。ローカルのSupabaseは `user_already_exists` を返すため、**エラーコードだけを見ていると本番でだけ通り抜けた**（T-M8-149） | 修正済み（`classifySignUpUser` が成功応答からも判定してログイン導線付きのエラーを出す） |
 | stagingの動作確認で**本当に課金されないか不安** | 判定はキーの種別だけで決まる | 非productionに `sk_live_` を置くと**起動時に落ちる**ので、起動していれば `sk_test_` である（T-M7-51）。Checkout画面に **TEST MODE** の帯が出ること、テストカード `4242 4242 4242 4242` が通ることでも確認できる |
 
 **デプロイ先を覗くコマンドだけが鍵を要る。** `smoke:live -- --base <URL>` と `doctor -- --base <URL>` の2つで、**E2Eはローカル限定**（`e2e/fixtures/guard.ts` がローカル以外を拒否する）なので鍵は不要。`check:turnstile -- --base <URL>` はログイン画面を見るだけなので鍵は不要。本番の鍵を手元に置きたくない場合は、これらをCIから実行する構成も選べる。

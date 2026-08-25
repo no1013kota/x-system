@@ -14,6 +14,15 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     /**
+     * **時刻は日本時間で走らせる**（T-M8-254・運営者の指示 2026-08-23）。
+     *
+     * 指定が無いと実行環境のTZになり、**手元（JST）では通るのにCI（UTC）では落ちる**
+     * （逆も同じ）テストが書けてしまう。アプリの表示・日付境界はすべてJST基準なので、
+     * テストも同じ基準で回して「手元で再現しない失敗」を作らない。
+     * E2E（playwright.config.ts）は既に `timezoneId: "Asia/Tokyo"` を指定している。
+     */
+    env: { TZ: "Asia/Tokyo" },
+    /**
      * 既定の5秒から引き上げる（T-M8-07）。
      *
      * `*.db.test.ts` は実DBへ何往復もし、env読み込みの都合で本文中に `await import()` を持つ。

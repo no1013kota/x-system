@@ -31,6 +31,12 @@ export default function TermsPage() {
     <LegalDocument
       title="利用規約"
       versionLabel={consentVersionLabel(CURRENT_TERMS_VERSION)}
+      /*
+        2026-08-23: 第5条の利用枠を「月間」から「契約期間ごと」へ改定（T-M8-259）。利用者に不利益の
+        ない変更（枠の期間が短くなることはない）のため、同意version（CURRENT_TERMS_VERSION）は
+        据え置き＝再同意は求めない（要決定D-35・案A）。改定した事実は見出しの横に残す。
+      */
+      updatedLabel="2026年8月23日 一部改定（利用枠の数え方を契約期間ごとへ）"
     >
       <p>
         本利用規約（以下「本規約」）は、{LEGAL_ENTITY.name}（屋号: {LEGAL_ENTITY.tradeName}
@@ -72,27 +78,34 @@ export default function TermsPage() {
 
       <LegalArticle n={3} title="利用者ご自身でご用意いただくもの・費用のご負担">
         <p>
-          {PLANS.standard.displayName}および{PLANS.md.displayName}
+          {PLANS.standard.displayName}
           をご利用の場合、X APIおよび生成AIのAPIキーは利用者ご自身でご用意いただきます。
           この場合、<strong>本サービスの月額料金とは別に、X社および各AI事業者から利用者へ
           直接、従量課金による利用料が請求されます</strong>。その金額と支払条件は各事業者の
           定めによるものであり、当方は関与しません。
         </p>
         <p>
-          {PLANS.premium.displayName}
+          {PLANS.premium.displayName}および{PLANS.expert.displayName}
           をご利用の場合、これらのAPIキーは当方が用意し、API利用料の追加負担はありません。
-          ただし本条第3項の月間利用枠が適用されます。
+          ただし本条第3項の利用条件が適用されます。
         </p>
         <p>
-          {PLANS.premium.displayName}の月間利用枠は、通常投稿{premium?.normalPosts}件、
-          URL付き投稿クレジット{premium?.urlPosts}、AIクレジット{premium?.aiCredits}
-          （文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。利用枠は外部APIの原価や運用状況に応じて改定する場合があります。
+          {PLANS.premium.displayName}の利用枠は、<strong>契約期間（お支払いの更新日から次の更新日まで）ごと</strong>に、
+          通常投稿{premium?.normalPosts}件、URL付き投稿クレジット{premium?.urlPosts}、
+          AIクレジット{premium?.aiCredits}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
+          利用枠は更新日に新しい契約期間の上限へ戻り、使い残した分は次の契約期間へ繰り越されません。
+          無料トライアル期間にも同じ利用枠があり、トライアル終了後に有料の契約期間が始まる時点で
+          利用枠は新しい契約期間の上限に戻ります（使い残した分の繰り越しはありません）。
+          契約期間の途中で上位のプランへ変更した場合は、その時点から同じ契約期間内で変更後のプランの上限が適用されます。
+          {PLANS.expert.displayName}に利用枠はありません。ただし、システムの安全と
+          サービス品質の維持のため、<strong>通常の利用を大きく超える連続的な利用を検知した場合、
+          実行を一時的に停止することがあります</strong>。利用枠および本項の条件は外部APIの原価や
+          運用状況に応じて改定する場合があります。
           利用者に不利益となる変更を行う場合は、第17条の手続きにより事前に周知します。
         </p>
         <p>
-          プランに応じて連携できるXアカウント数の上限（{PLANS.standard.displayName}は
-          {PLANS.standard.xAccountLimit}件、{PLANS.md.displayName}および
-          {PLANS.premium.displayName}は{PLANS.premium.xAccountLimit}件）が適用されます。
+          連携できるXアカウント数の上限は、{PLANS.standard.displayName}・{PLANS.premium.displayName}が
+          {PLANS.standard.xAccountLimit}件、{PLANS.expert.displayName}が{PLANS.expert.xAccountLimit}件です。
           また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に
           上限を設けています。
         </p>
@@ -102,16 +115,16 @@ export default function TermsPage() {
         <p>
           各プランの月額料金は税込表示で、
           {PLANS.standard.displayName} {PLANS.standard.monthlyPriceJpy.toLocaleString()}円、
-          {PLANS.md.displayName} {PLANS.md.monthlyPriceJpy.toLocaleString()}円、
-          {PLANS.premium.displayName} {PLANS.premium.monthlyPriceJpy.toLocaleString()}円です。
+          {PLANS.premium.displayName} {PLANS.premium.monthlyPriceJpy.toLocaleString()}円、
+          {PLANS.expert.displayName} {PLANS.expert.monthlyPriceJpy.toLocaleString()}円です。
           お申し込みにはクレジットカードの登録が必要です。
         </p>
         {RELEASE_CAMPAIGN.active ? (
           <p>
             上記はリリース記念キャンペーンの適用価格です。{RELEASE_CAMPAIGN.afterLabel}の月額は
             {PLANS.standard.displayName} {PLANS.standard.regularPriceJpy.toLocaleString()}円、
-            {PLANS.md.displayName} {PLANS.md.regularPriceJpy.toLocaleString()}円、
-            {PLANS.premium.displayName} {PLANS.premium.regularPriceJpy.toLocaleString()}円を予定しています。
+            {PLANS.premium.displayName} {PLANS.premium.regularPriceJpy.toLocaleString()}円、
+            {PLANS.expert.displayName} {PLANS.expert.regularPriceJpy.toLocaleString()}円を予定しています。
             価格を改定する場合は、本規約の変更と同じ方法で事前にお知らせし、改定後の料金は
             お知らせ後に到来する更新日から適用します。
           </p>
@@ -143,7 +156,7 @@ export default function TermsPage() {
 
       <LegalArticle n={6} title="退会とデータの取扱い">
         <p>
-          アカウントの削除をご希望の場合は、第19条のお問い合わせ窓口へご連絡ください
+          アカウントの削除をご希望の場合は、第20条のお問い合わせ窓口へご連絡ください
           （現在、画面上でご自身で削除する機能は提供していません）。ご本人確認のうえ、
           アカウントおよび関連データを削除します。
         </p>
@@ -164,6 +177,12 @@ export default function TermsPage() {
         <p>
           生成物が第三者の権利を侵害しないことを当方は保証しません。利用者は、自らの責任で
           適法性を確認したうえで利用してください。
+        </p>
+        <p>
+          利用者が本サービス上で作成したプロンプト（投稿の型・画像生成の指示・アカウント.mdを
+          含みます）は、<strong>氏名・メールアドレス・Xアカウント等の識別情報を付けない匿名の形で、
+          本サービスの公開ページ「プロンプト集」に掲載されることがあります</strong>。
+          掲載を望まない場合は第20条のお問い合わせ窓口へご連絡ください。すみやかに掲載を停止します。
         </p>
       </LegalArticle>
 
@@ -301,7 +320,33 @@ export default function TermsPage() {
         </p>
       </LegalArticle>
 
-      <LegalArticle n={19} title="お問い合わせ・準拠法・管轄">
+      {/* 招待プログラム（T-M8-174）。報酬という金銭の約束を画面で提示するため、条件の骨子と
+          変更・終了・無効化の権利を規約に置く（詳細な数値は招待ページの表示を正とする）。 */}
+      <LegalArticle n={19} title="招待プログラム">
+        <p>
+          当方は、利用者が発行する招待リンク経由で登録した方が有料プランの支払いを行った場合に、
+          その支払額に応じた紹介報酬を支払う招待プログラムを提供することがあります。
+          報酬率・対象期間・支払条件（締め日・支払期日・振込手数料・最低支払額）等の条件は、
+          本サービス内の招待ページに表示するものを適用します。
+        </p>
+        <p>
+          報酬の対象期間は紹介された方の初回の有料課金から最大6ヶ月とし、その方が解約した時点で
+          終了します（再契約しても再開しません）。支払いが返金された場合、対応する報酬は
+          取消しまたは減額されます。無料トライアル期間中の利用は報酬の対象になりません。
+        </p>
+        <p>
+          自分自身の招待（別アカウントの作成を含む）、虚偽・誤認を招く方法での勧誘、
+          その他不正な方法による報酬の取得を禁止します。当方は、不正が判明した場合に
+          該当する報酬を無効化し、プログラムの利用を停止できるものとします。
+        </p>
+        <p>
+          当方は、第17条の手続きにより本プログラムの条件を変更し、または本プログラムを
+          終了することができます。報酬を受け取る権利は第三者に譲渡できません。
+          報酬にかかる税金の申告・納付は受領者ご自身の責任で行ってください。
+        </p>
+      </LegalArticle>
+
+      <LegalArticle n={20} title="お問い合わせ・準拠法・管轄">
         <p>
           本規約および本サービスに関するお問い合わせは、{LEGAL_ENTITY.email} までご連絡ください。
           個人情報の取扱いについては

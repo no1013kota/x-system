@@ -15,3 +15,7 @@ export const primaryLinkClassName =
 /** 副操作（枠線のみ）。主操作と並べるときに使う。 */
 export const secondaryLinkClassName =
   "inline-flex h-9 items-center justify-center rounded-card border border-hairline bg-surface px-4 text-body font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/** Primary action used in centered empty/locked state cards. */
+export const stateActionClassName =
+  "mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-body font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";

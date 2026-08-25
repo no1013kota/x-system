@@ -15,6 +15,8 @@ const LOAD_JOB = /select gj\.draft_id, gj\.input, gj\.trigger/;
 const LOAD_DRAFT = /select status, requires_quote_url, thread, images, tweet_ids/;
 const LOCK = /update drafts set status = 'posting'/;
 const DAILY = /count\(\*\)::int as n from usage_events/;
+/** 利用枠の期間キー読取（`currentUsagePeriodKey`・T-M8-258）。実DBでは必ず1行返る。 */
+const PERIOD_KEY = /current_period_start[\s\S]*as key$/;
 const APPEND_TWEET = /update drafts set tweet_ids/;
 const CONSUME = /insert into usage_events/;
 const POSTED = /update drafts\s+set status = 'posted'/;
@@ -33,7 +35,7 @@ function makeDb(handler: (sql: string, params: unknown[]) => Row[]) {
   const db: Queryable = {
     query: async <T = unknown>(sql: string, params: unknown[] = []) => {
       writes.push({ sql, params });
-      const rows = handler(sql, params) as T[];
+      const rows = (PERIOD_KEY.test(sql) ? [{ key: "2026-08-15" }] : handler(sql, params)) as T[];
       return { rows, rowCount: rows.length };
     },
   };

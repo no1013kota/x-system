@@ -2,9 +2,14 @@ import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
-import { BrandLogo, LogoTile } from "@/components/app-shell/brand-logo";
+import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
+import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import {
+  ConceptCycleFigure,
+  GrowthChartFigure,
+  PromptEditorFigure,
+  PostComposeFigure,
   AnalyticsFigure,
   NewsFeedFigure,
   ScheduleFigure,
@@ -14,7 +19,9 @@ import { HeroMock } from "@/components/lp/hero-mock";
 import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
-import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-config";
+import { Icon } from "@/components/ui/icon";
+import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
+import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -45,7 +52,7 @@ const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-
  * （同じことを別の言い方で2箇所に書くと、読み手はどちらが正か迷う）。
  */
 const CARD_REGISTRATION_NOTE =
-  "開始にはカード登録が必要です（7日間は無料。期間中に解約すれば料金はかかりません）。";
+  "運用するほどプロンプトとアカウントが成長。7日間は無料でお試しいただけます。";
 
 /** 主CTA（無料で始める）と副CTA（料金を見る）は同じ寸法にする（T-M8-79）。 */
 const CTA_SIZE = "h-11 px-7 text-sm font-bold";
@@ -66,34 +73,70 @@ const NAV_LINKS: [string, string][] = [
   ["#features", "できること"],
   ["#how", "しくみ"],
   ["#pricing", "料金"],
+  // ページ遷移のリンク（T-M8-173）。アンカーと同じ場所に置く（タブが2系統あると迷う）。
+  //
+  // **友達招待は契約前でも参加できる**（T-M8-268・運営者の指示 2026-08-23）。行き先は
+  // `/app/invite` 固定でよい——未ログインなら route guard が `/login?next=/app/invite` へ送り、
+  // ログイン後そのまま招待画面へ着く（ログイン画面から新規登録へも行ける）。
+  // 「未ログインなら登録画面」を条件分岐で書き分けると、判定が2か所（LPとguard）に増える。
+  ["/app/invite", "友達招待"],
+  ["/prompt-templates", "プロンプト集"],
+  ["/blog", "ブログ"],
 ];
 
-/** 課題は `docs/marketing/lp-design-brief.md` §1 の3つ（作業量／費用／自分らしさ）を正とする。 */
-const PROBLEMS: [string, string][] = [
-  [
-    "毎日続けるには、やることが多すぎる",
-    "ネタ探し、情報収集、文章と画像の作成、投稿、反応の確認。本業の合間にこれを毎日回すのは、時間がいくらあっても足りません。",
-  ],
-  [
-    "代行に頼むには、費用が大きすぎる",
-    "SNS運用の代行は月あたりの負担が大きく、個人や小規模の事業では手が出しにくいのが実情です。",
-  ],
-  [
-    "適切なプロンプトを作成できない",
-    "本ツールでは毎日の運用の中で、投稿結果を自動で分析してプロンプトの改善を行います。またご自身でもプロンプトの編集が可能です。",
-  ],
-];
+// ── 06 利用者の声 は一時的に非表示（運営者の指示 2026-08-23・T-M8-231）─────────────
+//
+// **復活は行頭の `// ` を外すだけ**（この定数と、下の <section> の2か所）。あわせて
+// `xProfileUrl` を `@/lib/app-config` の import へ戻す（いま未使用のため外してある）。
+// 掲載条件は据え置き: **実在の提携アカウントのみ**・本人確認済みのコメントだけ
+// （他人名義の創作コメントは公開しない。design_handoff_lp/README §禁止表現）。
+// アバター画像 public/lp-avatars/*.jpg も消さずに残してある。
+//
+// /**
+//  * 06 利用者の声（T-M8-214・運営者の指示 2026-08-22）。**実在の提携アカウントのみ**掲載する
+//  * （禁止表現リストの「利用者の声」は架空の声を禁じる趣旨で、提携者の実名掲載は
+//  * design_handoff_lp/README §禁止表現の改定どおり可）。
+//  *
+//  * **コメント文はドラフト。** 本番リリース前に、各提携者の本人確認済みコメントへ
+//  * 名前はX APIの実表示名（2026-08-22取得）。コメント文は運営者が本人確認のうえ差し替えること
+//  * （他人名義の創作コメントを公開しない）。
+//  */
+// const TESTIMONIALS: { handle: string; name: string; comment: string }[] = [
+//   {
+//     handle: "ai_newinfo",
+//     name: "MATSUMOTO | 非エンジニア向けClaude活用術",
+//     comment:
+//       "ニュース収集から下書きまで自動で揃うので、毎日の投稿が続けやすくなりました。",
+//   },
+//   {
+//     handle: "picaso_youtube",
+//     name: "ピカソ AI×YouTube運用",
+//     comment: "プロンプトを自分の言葉に直せるのが良い。使うほど投稿の雰囲気が馴染んでいきます。",
+//   },
+//   {
+//     handle: "lin_youtube3",
+//     name: "ハヤシ｜海外ネタ輸入_非属人YouTuber",
+//     comment: "予約と分析までひとつの画面で完結するので、運用の手間が大きく減りました。",
+//   },
+//   {
+//     handle: "kimi_marriage",
+//     name: "キミマリ@婚活アドバイザー",
+//     comment: "分析レポートで何が伸びたかが分かるので、次に何を書くか迷わなくなりました。",
+//   },
+// ];
 
 const HOW_TO_STEPS: [string, string][] = [
-  ["アカウント作成", "メールアドレスとパスワードで登録。確認メールで本人認証します。"],
+  ["アカウント作成", "メールアドレスで登録し、確認メールで本人認証。"],
   ["カード登録", "ここから7日間の無料トライアルが始まります。"],
-  ["初期設定", "Xアカウントの連携とアカウント設定。画面の案内に沿って、任意の順で進められます。"],
+  ["初期設定", "Xアカウントを連携し、発信の設定をする。順番は自由。"],
   ["運用開始", "下書きの確認から、あなたのペースで。"],
 ];
 
-const POST_TYPE_CHIPS = ["ニュース解説", "考え・意見", "ノウハウ", "トレンド便乗", "週次まとめ"];
-
-/** 「02 できること」の4枚。上端グラデ3pxは「投稿の生成」＝AIが動く瞬間だけ（デザイン §カラー）。 */
+/**
+ * 「02 できること」の5枚（T-M8-172・運営者の指示 2026-08-21）。
+ * 並び順は運用の流れと同じ: ニュース解説→プロンプト作成→投稿作成→スケジュール→結果分析・プロンプト改善
+ * （ヒーローのモックとも揃える）。上端グラデ3pxは「投稿作成」＝AIが動く瞬間だけ（デザイン §カラー）。
+ */
 const FEATURES: {
   eyebrow: string;
   title: string;
@@ -103,28 +146,23 @@ const FEATURES: {
 }[] = [
   {
     eyebrow: "情報収集の自動化",
-    title: "ニュースが2時間おきに届く",
+    title: "ニュースが3時間おきに届く",
     // 重要度チップと時刻は図版が示すので文からは外してある（T-M8-76）。
-    body: "AI・投資・SNS運用の3分野を、10:00〜20:00に2時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。",
+    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、9:00〜21:00に3時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。",
     figure: <NewsFeedFigure />,
+  },
+  {
+    eyebrow: "プロンプトの設計・編集",
+    title: "AIへの指示を、自分の言葉で磨ける",
+    body: "投稿の土台になるアカウント.md、投稿の型、画像生成のプロンプトを、そのまま確認・編集できます。テンプレートから始めて、反応を見ながらあなた用に育てられます。",
+    figure: <PromptEditorFigure />,
   },
   {
     eyebrow: "投稿・画像の自動作成",
     title: "5種類の型で、文章も画像も",
     body: "スレッド形式の文章と、添える画像をまとめて生成します。編集や、追加指示つきの再生成もできます。",
     gradientTop: true,
-    figure: (
-      <div className="flex flex-wrap gap-1.5">
-        {POST_TYPE_CHIPS.map((chip) => (
-          <span
-            className="inline-flex h-[22px] items-center rounded-chip bg-brand-subtle px-2 text-caption text-brand"
-            key={chip}
-          >
-            {chip}
-          </span>
-        ))}
-      </div>
-    ),
+    figure: <PostComposeFigure />,
   },
   {
     eyebrow: "融通の効くスケジュール設定",
@@ -133,60 +171,22 @@ const FEATURES: {
     figure: <ScheduleFigure />,
   },
   {
-    eyebrow: "使うほど投稿の質が上がる",
-    title: "何が伸びたかを、分析してプロンプトを自動で改善",
+    eyebrow: "結果分析・プロンプト改善",
+    title: "何が伸びたかを分析して、改善案まで届く",
     // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
-    body: "表示回数・いいね・リポスト・プロフィール表示とフォロワー数を自動で記録。毎朝、どの投稿が伸びたかを根拠つきのレポートで示します（1日1回・表示のみ。設定への反映はあなたが選べます）。",
+    body: "表示回数・いいね・リポスト・フォロワー数を自動で記録。ボタン1つで、どの投稿が伸びたかを根拠つきのレポートにし、アカウント.mdとプロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
     figure: <AnalyticsFigure />,
   },
 ];
 
 /**
- * 「03 しくみ」の4ステップ＝**サービスの4つの特徴を1周の流れ**として並べる（T-M8-80）。
- *
- * 以前は「学習させる素材 → アカウント.md → 生成 → 分析」で、(1)特徴1（ニュースの自動取得）が
- * どこにも無く (2)最後の「分析」が次へ戻らない一方通行だった。
- * **仕様値（3分野・5種類・9:00〜22:00・記録タイミング）は書かない**——それは「02 できること」の
- * 担当で、ここは「何を受け取って何を次へ渡すか」だけを言う（02の言い直しにしない）。
+ * 「03 しくみ」（T-M8-172・運営者の指示 2026-08-21）: 4ステップのカード列から
+ * **成長グラフ**へ変えた。伝えたいのは工程の説明ではなく「使うほどプロンプトも
+ * アカウント.mdも成長する」こと（コンセプト画像と同じ主張の中身側）。
+ * 工程は小さなサイクル表記（集める→作る→出す→測る→反映）で添える。
+ * 「反映するかはあなたが選ぶ」の開示は落とさない（禁止表現「AIが自動で学習し続けて最適化」を避ける）。
  */
-const HOW_STEPS: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  /** 次のステップへ渡すもの。4枚とも同じ器に入れて高さのばらつきを消す。 */
-  slot: string;
-  /** 生成中バー。AIが動く瞬間を示すブランドグラデーションはこの1枚だけ。 */
-  bar?: boolean;
-  gradientTop?: boolean;
-}[] = [
-  {
-    eyebrow: "01 集める",
-    title: "ニュースが自動で届く",
-    body: "決めた分野のニュースが自動で集まり、その日の素材になります。",
-    slot: "次へ渡す：その日のニュース",
-  },
-  {
-    eyebrow: "02 作る",
-    title: "文章と画像ができる",
-    body: "素材とアカウント.mdから、文章と画像のそろった下書きができます。毎回の指示は要りません。",
-    slot: "次へ渡す：下書き（通常60〜90秒）",
-    bar: true,
-    gradientTop: true,
-  },
-  {
-    eyebrow: "03 出す",
-    title: "スケジュール通りに投稿",
-    body: "できた下書きは、事前に設定したスケジュール通りに投稿されます。",
-    slot: "次へ渡す：予約ずみの投稿",
-  },
-  {
-    eyebrow: "04 測る",
-    // 「1日1回・表示のみ」は落とさない（落とすと禁止表現「AIが自動で学習し続けて最適化」に触れる）。
-    title: "伸びた条件がわかる",
-    body: "出した投稿の反応が自動で記録され、何が伸びたかを根拠つきで示します（1日1回・表示のみ）。",
-    slot: "次へ渡す：伸びた条件",
-  },
-];
+const CYCLE_STEPS = ["集める", "作る", "出す", "測る", "反映する"];
 
 export default function Home() {
   const startingPrice = `${yen(PLANS.standard.monthlyPriceJpy)}円`;
@@ -202,11 +202,15 @@ export default function Home() {
           <nav aria-label="セクション" className="hidden items-center gap-6 min-[880px]:flex">
             {NAV_LINKS.map(([href, label]) => (
               <a
-                className="inline-flex min-h-6 items-center text-body font-medium text-ink-2 transition-colors hover:text-brand"
+                className="inline-flex min-h-6 items-center gap-1 text-body font-medium text-ink-2 transition-colors hover:text-brand"
                 href={href}
                 key={href}
               >
                 {label}
+                {/* ページ遷移するリンクにはマークを付ける（アンカーと区別・T-M8-175）。 */}
+                {!href.startsWith("#") ? (
+                  <Icon aria-hidden="true" name="open_in_new" size={13} />
+                ) : null}
               </a>
             ))}
           </nav>
@@ -245,9 +249,11 @@ export default function Home() {
               <h1
                 className={`text-[length:clamp(31px,calc(17px_+_3.4vw),44px)] leading-[1.34] ${HEADING}`}
               >
-                ネタ探しから投稿、分析まで。
+                プロンプトドリブンの
                 <br />
-                X運用の毎日を<span className="text-brand">自動化</span>。
+                使用するほど性能が上がる
+                <br />
+                <span className="text-brand">SNS自動化プラットフォーム</span>
               </h1>
               <p className="mt-5 max-w-[42em] text-sm text-ink-2">
                 AIが情報収集から投稿作成・投稿予約・分析・プロンプト改善までを自動で実施。運用は1日数分の確認をするだけ。
@@ -272,7 +278,8 @@ export default function Home() {
                   </a>
                 </div>
                 <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
-                <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-caption text-ink-2">
+                {/* CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。 */}
+                <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-sm font-medium text-ink-2">
                   {["高品質な投稿を自動作成", "高品質なプロンプトの確認及び改善", `月額${startingPrice}から`].map(
                     (item) => (
                       <span className="inline-flex items-center gap-1.5" key={item}>
@@ -298,38 +305,26 @@ export default function Home() {
           前3つは「02 できること」、月額はヒーローのチェックと料金セクションの見出し。
         */}
 
-        {/* 01 課題 */}
+        {/* 01 コンセプト（T-M8-172・運営者の指示 2026-08-21。旧「01 課題」を置き換えた） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           <div className={TWO_COL}>
             <div>
-              <SectionMark label="課題" no="01" />
-                              <h2 className={H2}>
-                  毎日のX運用に
-                  <br />
-                  時間を取られていませんか？
-                </h2>
-              {/* リード文は見出しと3項目で足りるため削除（T-M8-76）。 */}
+              <SectionMark label="コンセプト" no="01" />
+              <h2 className={H2}>
+                使うほど、
+                <br />
+                プロンプトが磨かれる。
+              </h2>
+              <p className="mt-4 max-w-[38em] text-sm text-ink-2">
+                {APP_NAME}はプロンプト駆動のSNS運用プラットフォームです。プロンプトを設計し、投稿を生成・運用し、結果を分析して、プロンプトを改善する——この1周を回すたびに、あなたのアカウントとプロンプトが育ちます。
+              </p>
             </div>
-            <div>
-              {PROBLEMS.map(([title, body], index) => (
-                <div
-                  className={cn(
-                    "border-t border-hairline",
-                    index === PROBLEMS.length - 1 && "border-b",
-                  )}
-                  key={title}
-                >
-                  <div className="flex gap-[18px] py-[18px]">
-                    <span className="flex-none pt-0.5 text-body font-bold text-brand">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <p className="text-[15px] leading-[1.6] font-bold">{title}</p>
-                      <p className="mt-1.5 text-sm text-ink-2">{body}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="min-w-0">
+              {/*
+                コンセプトの循環図（T-M8-177）。JPEG埋め込みをやめ、ページのトークンで描く
+                （内容は docs/lp/コンセプト.png と同じ。LP図版はCSS/DOM/SVGの原則へ戻った）。
+              */}
+              <ConceptCycleFigure />
             </div>
           </div>
         </section>
@@ -341,7 +336,7 @@ export default function Home() {
         >
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="できること" no="02" />
-                          <h2 className={H2}>情報収集から分析まで、4つの仕事を引き受けます</h2>
+                          <h2 className={H2}>情報収集からプロンプト改善まで、5つの仕事を引き受けます</h2>
             {/*
               ベントーグリッド（12col・7/5→5/7）から**4枚の縦積み**へ変更（T-M8-77）。
               各カードは全幅になるので、本文を左・図版を右の2カラムに置く
@@ -381,24 +376,39 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 03 しくみ */}
+        {/* 03 しくみ（T-M8-172: 4ステップのカード列 → 成長グラフ） */}
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
+          <h2 className={H2}>使うほど、プロンプトもアカウントも成長する</h2>
+          {/* 説明は1文に簡潔化（運営者の指示 2026-08-22・T-M8-201）。 */}
+          <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
+            {CYCLE_STEPS.join("→")}のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。
+          </p>
+          <div className="mt-7">
+            <GrowthChartFigure />
+          </div>
           {/*
-            見出しは**4ステップ全体（＝サービスの4つの特徴）**を指す。「アカウント.mdが土台」という
-            見出しでは、最後の「測る」を説明できなかった。アカウント.mdは強調せずリード文で役割を述べる。
+            グラフ下の開示行はT-M8-181で削除（運営者の指示）。「反映するかはあなたが選べます」の
+            開示は02できることの「結果分析・プロンプト改善」カード本文が引き続き担う
+            （禁止表現「AIが自動で学習し続けて最適化」の回避はそちらで維持）。
           */}
-                      <h2 className={H2}>ネタ探し→投稿作成→スケジュール化→効果測定とプロンプト改善のサイクルを自動化</h2>
-                      <p className="mt-3.5 max-w-[42em] text-sm text-ink-2">
-              最初の設定でできる1枚（アカウント.md）を土台に、4つの工程が順にまわります。あなたが手を動かすのは、上がってきた下書きを確認するところだけです。
-            </p>
-          {/*
-            4ステップは**同じ器・同じ構造**で並べる（T-M8-78）。特定のステップを強調しない。
-            上端3pxグラデと生成バーは「作る」＝AIが動く瞬間の1枚だけ（デザイン §カラーの規定）。
-          */}
-          <div className="mt-8 grid gap-3.5 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
-            {HOW_STEPS.map((step, index) => (
-              <Fragment key={step.title}>
+        </section>
+
+        {/*
+          「04 安全性」セクションは削除した（T-M8-77）。主張の中心（勝手に投稿しない／即座に停止）は
+          ヒーローのチェック3点とFAQ「勝手に投稿されませんか？」が担う。
+          **APIキーの暗号化・末尾4桁はFAQからも外した**（運営者の判断 2026-08-24・T-M8-284）。
+          LP上の置き場所は無くなり、プライバシーポリシー（法務3リンクから辿れる）が担う。
+        */}
+
+        {/* 04 初めかた（T-M8-172: 名称変更＋フロー図） */}
+        <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          <SectionMark label="初めかた" no="04" />
+          <h2 className={H2}>初めかたは4ステップ</h2>
+          {/* フロー図: 各ステップを矢印でつなぐ（960px未満は縦の流れ）。 */}
+          <div className="mt-[30px] grid gap-3 min-[960px]:grid-cols-[1fr_26px_1fr_26px_1fr_26px_1fr] min-[960px]:items-stretch">
+            {HOW_TO_STEPS.map(([title, body], index) => (
+              <Fragment key={title}>
                 {index > 0 && (
                   <div
                     aria-hidden="true"
@@ -407,75 +417,17 @@ export default function Home() {
                     →
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div
-                    className={cn(
-                      cardClassName,
-                      "relative flex h-full flex-col overflow-hidden p-[18px]",
-                    )}
+                <div className={cn(cardClassName, "flex h-full flex-col p-[18px]")}>
+                  <span
+                    aria-hidden="true"
+                    className="inline-flex size-8 items-center justify-center rounded-pill bg-brand-subtle text-[15px] font-bold text-brand"
                   >
-                    {step.gradientTop && (
-                      <div
-                        aria-hidden="true"
-                        className="absolute inset-x-0 top-0 h-[3px] [background-image:var(--brand-gradient)]"
-                      />
-                    )}
-                    <p className="text-caption font-bold tracking-[0.06em] text-ink-3">
-                      {step.eyebrow}
-                    </p>
-                    <CardTitle as="h3" className="mt-1.5">
-                      {step.title}
-                    </CardTitle>
-                    <p className="mt-2 flex-1 text-body text-ink-2">{step.body}</p>
-                    {/* 4枚とも同じ器の「次へ渡すもの」。STEP4だけ図版が無い不揃いを解消する。 */}
-                    <div
-                      aria-hidden="true"
-                      className="mt-2.5 flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-caption text-ink-3"
-                    >
-                      {step.bar && (
-                        <span className="h-1 w-10 flex-none overflow-hidden rounded-pill bg-surface">
-                          <span className="lp-anim-bar block h-full w-[70%] rounded-pill [background-image:var(--brand-gradient)]" />
-                        </span>
-                      )}
-                      {step.slot}
-                    </div>
-                  </div>
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-2.5 text-[15px] font-bold">{title}</h3>
+                  <p className="mt-1.5 text-body text-ink-2">{body}</p>
                 </div>
               </Fragment>
-            ))}
-          </div>
-          {/*
-            「測る」から次の1周へ戻る線。これが無いと最後のステップが一方通行に見える。
-            同時に「取り入れると決めたことだけ」＝提案は自動反映しないことの開示になる
-            （禁止表現「AIが自動で学習し続けて最適化」を避ける）。
-          */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-caption text-ink-3">
-            <span aria-hidden="true">←</span>
-            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
-            <span>取り入れると決めたことだけが、次の1周に効きます</span>
-            <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-hairline" />
-          </div>
-        </section>
-
-        {/*
-          「04 安全性」セクションは削除した（T-M8-77）。主張の中心（勝手に投稿しない／即座に停止）は
-          ヒーローのチェック3点とFAQ「勝手に投稿されませんか？」が担う。
-          **APIキーの暗号化・末尾4桁だけはここが唯一の置き場所だったので、FAQの回答へ戻した。**
-        */}
-
-        {/* 04 使い方 */}
-        <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <SectionMark label="使い方" no="04" />
-                      <h2 className={H2}>始め方は4ステップ</h2>
-          <div className="mt-[30px] grid grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-x-3.5 gap-y-6">
-            {HOW_TO_STEPS.map(([title, body], index) => (
-              <div className="border-t-2 border-brand pt-4" key={title}>
-                <p aria-hidden="true" className="text-[20px] font-bold text-brand">
-                  {index + 1}
-                </p>
-                <h3 className="mt-1.5 text-[15px] font-bold">{title}</h3>
-                <p className="mt-1.5 text-body text-ink-2">{body}</p>
-              </div>
             ))}
           </div>
         </section>
@@ -489,20 +441,105 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 06 よくある質問 */}
+        {/*
+          ── 06 利用者の声 は一時的に非表示（運営者の指示 2026-08-23・T-M8-231）──
+          復活はこの {/* … *⁄} を外し、定数 TESTIMONIALS の `// ` も外す。
+          中の `*⁄`（U+2044）は元はアスタリスク＋スラッシュ。そのままだとJSXコメントが閉じてしまうため置換した。戻すときに直す。
+
+        {/* 06 利用者の声（T-M8-214） *⁄}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          <SectionMark label="利用者の声" no="06" />
+          {/*
+            Xの投稿カードに寄せる（運営者の指示 2026-08-22）: 上段=アバター（実画像・
+            public/lp-avatars/）＋名前＋@ハンドル＋右上にXロゴ、下に本文。
+            アバターはリリース時にリポジトリへ同梱した静的画像（外部ホットリンクはCSP・
+            変更耐性の点で使わない。更新するときは unavatar.io/x/<handle> から取り直す）。
+          *⁄}
+          <div className="mt-[clamp(24px,3vw,38px)] grid gap-4 sm:grid-cols-2">
+            {TESTIMONIALS.map(({ handle, name, comment }) => (
+              <figure
+                // 長い表示名（truncate=nowrap）のmin-contentがgrid列を390px超へ押し広げないよう
+                // min-w-0 を明示する（2026-08-22、実名反映で横スクロールが出た）。
+                className={cn(cardClassName, "flex min-w-0 flex-col gap-3 p-5")}
+                key={handle}
+              >
+                <figcaption className="flex items-start gap-3">
+                  <a
+                    className="group flex min-w-0 flex-1 items-start gap-3"
+                    href={xProfileUrl(handle)}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- 静的同梱の小画像（最適化不要） *⁄}
+                    <img
+                      alt={`${name}のXアイコン`}
+                      className="size-11 flex-none rounded-pill border border-hairline object-cover"
+                      height={44}
+                      loading="lazy"
+                      src={`/lp-avatars/${handle}.jpg`}
+                      width={44}
+                    />
+                    <span className="min-w-0 leading-tight">
+                      <span className="block truncate text-body font-bold text-ink group-hover:underline">
+                        {name}
+                      </span>
+                      <span className="block truncate text-caption text-ink-3">@{handle}</span>
+                    </span>
+                  </a>
+                  <XLogo aria-hidden="true" className="mt-0.5 flex-none text-ink-2" size={17} />
+                </figcaption>
+                <blockquote className="text-sm leading-[1.9] whitespace-pre-line text-ink">
+                  {comment}
+                </blockquote>
+              </figure>
+            ))}
+          </div>
+        </section>
+        */}
+
+
+        {/* 07 よくある質問 */}
+        {/*
+          友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。**契約前でも参加できる**ので
+          料金の直後に置く（「まだ使わないが紹介はしたい」人の受け皿）。行き先は `/app/invite` 固定——
+          未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま招待画面に着く。
+        */}
+        <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          <div className="overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
+            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+              <div className="max-w-[560px]">
+                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                  <Icon aria-hidden="true" name="star_shine" size={13} />
+                  友達招待キャンペーン
+                </p>
+                <h2 className={`${H2} mt-3`}>
+                  紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
+                </h2>
+                <p className="mt-2.5 text-body leading-6 text-ink-2">
+                  ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
+                  最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
+                </p>
+              </div>
+              <Link
+                className={cn(
+                  buttonVariants({ variant: "brand" }),
+                  "h-11 shrink-0 px-6 text-body font-bold",
+                )}
+                href="/app/invite"
+              >
+                招待リンクを受け取る
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className={`${CONTAINER} ${SECTION_PAD}`}>
+          {/* 06 利用者の声を隠しているあいだは番号を詰める（復活時は "07" へ戻す・T-M8-231）。 */}
           <SectionMark label="よくある質問" no="06" />
-          <div className={`${TWO_COL} mt-[18px]`}>
-            <div>
-              <h2 className={`text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-normal ${HEADING}`}>
-                気になることは、
-                <br />
-                先に答えておきます
-              </h2>
-            </div>
-            <div>
-              <FaqList />
-            </div>
+          {/* 見出しの言い換え（「気になることは、先に答えておきます」）を置かず、
+              質問と回答そのものを大きく出す（2026-08-20 運営者の指示）。 */}
+          <div className="mt-[clamp(24px,3vw,38px)] max-w-[840px]">
+            <FaqList />
           </div>
         </section>
 
@@ -544,16 +581,35 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-hairline bg-page">
-        <div
-          className={`${CONTAINER} flex flex-wrap items-center justify-between gap-x-6 gap-y-4 py-8`}
-        >
+        {/*
+          1行目にロゴと©、右側にXアイコンと法務3リンク。幅が狭いと法務リンクだけ2行目へ折り返し、
+          Xアイコンは1行目のロゴの右端に残る（アイコンが1つだけ3行目へ落ちて孤立しない・T-M8-183）。
+          DOM順＝見た目の順（`order` を使わない。フォーカス順と視覚順をずらさない・WCAG 2.4.3）。
+        */}
+        <div className={`${CONTAINER} flex flex-wrap items-center gap-x-6 gap-y-4 py-8`}>
           <div className="flex items-center gap-2.5">
             <LogoTile size={24} />
             <span className="text-body font-bold">{APP_NAME}</span>
             <span className="text-caption text-ink-3">© 2026 Exos AI</span>
           </div>
+          {/*
+            運営者のXアカウント（T-M8-183）。アイコンだけのリンクなので aria-label で
+            行き先と「新しいタブ」を読み上げる。タップ領域は size-9（36px・WCAG 2.5.8）。
+          */}
+          <a
+            aria-label={`運営者のXアカウント @${OPERATOR_X_HANDLE}（新しいタブで開く）`}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon" }),
+              "ml-auto rounded-full text-ink-2 hover:bg-brand-subtle hover:text-brand",
+            )}
+            href={OPERATOR_X_URL}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <XLogo className="size-4.5" size={18} />
+          </a>
           <LegalFooterLinks
-            className="flex flex-wrap gap-x-5 gap-y-2"
+            className="flex basis-full flex-wrap gap-x-5 gap-y-2 sm:basis-auto"
             linkClassName="inline-flex min-h-6 items-center text-caption text-ink-2 transition-colors hover:text-brand"
           />
         </div>

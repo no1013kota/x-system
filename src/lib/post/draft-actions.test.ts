@@ -25,6 +25,7 @@ function draft(over: Partial<DraftView> = {}): DraftView {
     root_tweet_id: null,
     tweet_ids: [],
     posted_mode: null,
+  scheduled_at: null,
     last_post_error: null,
     posted_at: null,
     created_at: "2026-08-04T00:00:00.000Z",

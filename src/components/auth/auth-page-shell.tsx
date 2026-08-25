@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { LogoTile } from "@/components/app-shell/brand-logo";
+import { LogoTile } from "@/components/brand/brand-logo";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 

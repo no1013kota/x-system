@@ -11,7 +11,6 @@ import {
   refreshXAccountStatusAction,
   setActiveXAccountAction,
 } from "@/app/actions/x-accounts";
-import { StopAllAutomationButton } from "@/app/app/schedule/schedule-manager";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +48,7 @@ function reconnectPath(startPath: string, accountId: string): string {
 
 const AUTH_TYPE_LABEL: Record<string, string> = {
   byok: "自分のApp（BYOK）",
-  managed: "運営App（プレミアムプラン）",
+  managed: "運営App（キー登録不要のプラン）",
 };
 
 export function XAccountsSettings({
@@ -60,7 +59,7 @@ export function XAccountsSettings({
   xApiKeyRegistered,
 }: {
   accounts: XAccountListItem[];
-  plan: PlanId;
+  plan: PlanId | null;
   oauthStartPath: string;
   connected: boolean;
   /** BYOKプランでX APIキー（Client ID）が登録済みか。premiumは常にtrue（運営キーを使う）。 */
@@ -111,6 +110,8 @@ export function XAccountsSettings({
                   {account.isActive ? (
                     <Badge tone="info">操作中</Badge>
                   ) : null}
+                  {/* X Premium加入はバッジで示す（T-M8-219）。連携時と「接続を確認」で更新される。 */}
+                  {account.xPremium ? <Badge tone="neutral">X Premium</Badge> : null}
                 </p>
                 <p className="text-sm text-muted-foreground">{account.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -208,9 +209,8 @@ export function XAccountsSettings({
                   接続を確認
                 </Button>
 
-                {account.automationActive ? (
-                  <StopAllAutomationButton xAccountId={account.id} />
-                ) : null}
+                {/* スケジュールの全停止/全再開はSC-08（スケジュール画面）だけに置く
+                    （T-M8-251で一時ここにも出したが、運営者の指示 2026-08-23 で撤去）。 */}
 
                 {account.status !== "disabled" ? (
                   <DisconnectButton
@@ -232,7 +232,8 @@ export function XAccountsSettings({
 
   const toast = useToast();
 
-  const limit = PLANS[plan].xAccountLimit;
+  // 未契約(null)はこの画面へ来ない（route-guard）。型上のフォールバックだけ置く。
+  const limit = plan ? PLANS[plan].xAccountLimit : PLANS.standard.xAccountLimit;
   const activeCount = accounts.filter((a) => a.status === "active").length;
   const atLimit = activeCount >= limit;
 

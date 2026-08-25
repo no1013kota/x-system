@@ -17,7 +17,10 @@ describe("APP_NAVIGATION_ITEMS", () => {
       { href: "/app/posts", label: "投稿作成" },
       { href: "/app/schedule", label: "スケジュール" },
       { href: "/app/analytics", label: "投稿分析" },
+      { href: "/app/invite", label: "友達招待" },
       { href: "/app/settings", label: "設定" },
+      { href: "/prompt-templates", label: "プロンプト集" },
+      { href: "/blog", label: "ブログ" },
     ]);
   });
 
@@ -39,6 +42,18 @@ describe("APP_NAVIGATION_ITEMS", () => {
     const root = fileURLToPath(new URL("../../app/app/", import.meta.url));
     const checked: string[] = [];
     for (const item of APP_NAVIGATION_ITEMS) {
+      // App Shellの外の公開ページは別ツリーから読む（/prompt-templates・T-M8-173）。
+      if (!item.href.startsWith("/app")) {
+        const publicFile = fileURLToPath(
+          new URL(`../../app${item.href}/page.tsx`, import.meta.url),
+        );
+        const publicSource = readFileSync(publicFile, "utf8");
+        const heading = /<h1[^>]*>([^<]+)<\/h1>/.exec(publicSource);
+        expect(heading, `${item.href} に h1 が見つからない`).not.toBeNull();
+        expect(heading![1].trim(), `${item.href} のナビラベルと h1 が違う`).toBe(item.label);
+        checked.push(item.href);
+        continue;
+      }
       // `/app` → app/page.tsx、`/app/news` → app/news/page.tsx
       const rel = item.href.replace(/^\/app\/?/, "");
       const file = `${root}${rel ? `${rel}/` : ""}page.tsx`;

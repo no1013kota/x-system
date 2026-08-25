@@ -1,17 +1,14 @@
 import { PLANS, type PlanDefinition, type PlanId } from "./plans";
 
 /**
- * プランの違いを1つの表で示す（T-M8-125）。
- *
- * **運営者の指摘（2026-08-18）**: 3プランの違いが分かりにくい。機能を行見出しにして、
- * 各プランに ✓ か − が付く表にしたい。
+ * プランの違いの行定義（T-M8-125で表向けに作成。T-M8-171からはLP・/plans共通の
+ * プランカード `PlanPricingCards` がこの行をそのまま描く）。
  *
  * ## ここが正本
  *
- * 行の並びと各プランの可否は**すべて `PLANS` から導く**。画面側に ✓ / − を書き写さない
+ * 行の並びと各プランの可否は**すべて `PLANS` から導く**。画面側に ✓ / 値を書き写さない
  * （以前カードの箇条書きを画面ごとに持っていて、`/plans` とLPで内容が食い違った）。
- * 「mdプランの全機能」のような**入れ子の言い方をやめた**のも狙いで、
- * 表なら上位プランに何が積まれるかがその場で見える。
+ * カードの「変更・追加」の強調も、書き写しではなく下位プランとのセル比較で機械的に決まる。
  */
 
 /** 表のセルの中身。`true`/`false` は ✓ / −、文字列はそのまま出す（件数や上限）。 */
@@ -45,7 +42,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
   },
   {
     label: "投稿実績の記録と分析レポート",
-    note: "毎朝、伸びた投稿を根拠つきで示します",
+    note: "伸びた投稿を根拠つきで示します",
     cell: () => true,
   },
   {
@@ -65,14 +62,19 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
     label: "APIキーの用意",
     note: "X・生成AIのキー",
     // BYOKかどうかはアプリ側上限の有無と一致する（plans.ts の定義参照）。
-    cell: (plan) => (plan.usageLimits ? "不要" : "自分で用意"),
+    // BYOKのAPI実費の開示はこの行が唯一の常時表示（T-M8-171で注意書きを畳んだため落とさない）。
+    cell: (plan) =>
+      plan.usageLimits ? "不要（運営が用意）" : "自分で用意（利用料はご自身のAPI課金）",
   },
   {
-    label: "月間の利用上限",
-    cell: (plan) =>
-      plan.usageLimits
+    label: "利用上限（契約期間ごと）",
+    cell: (plan) => {
+      // エキスパートは「無制限」と表示する（T-M8-168・運営者の決定）。内部ガード値は出さない。
+      if (plan.concealsLimits) return "無制限";
+      return plan.usageLimits
         ? `AIクレジット${plan.usageLimits.aiCredits}／通常投稿${plan.usageLimits.normalPosts}／URL付き${plan.usageLimits.urlPosts}`
-        : "なし（ご自身のAPI課金の範囲）",
+        : "なし（ご自身のAPI課金の範囲）";
+    },
   },
 ];
 

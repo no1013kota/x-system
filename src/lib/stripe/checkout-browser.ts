@@ -4,6 +4,7 @@ import {
   startBillingRedirect,
   type BillingRedirectDependencies,
 } from "./billing-redirect";
+import { STRIPE_CHECKOUT_ORIGIN } from "./hosted-origins";
 
 const DEFAULT_ERROR_MESSAGE =
   "決済画面を開けませんでした。時間をおいてもう一度お試しください。";
@@ -16,6 +17,7 @@ export async function startCheckout(
   await startBillingRedirect(
     "/api/stripe/checkout",
     DEFAULT_ERROR_MESSAGE,
+    STRIPE_CHECKOUT_ORIGIN,
     dependencies,
     {
       headers: { "content-type": "application/json" },

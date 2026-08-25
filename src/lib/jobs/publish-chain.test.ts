@@ -29,7 +29,7 @@ const INSERT = /insert into generation_jobs/;
 describe("自動投稿への連鎖（T-M8-143）", () => {
   it("待機中・実行中の投稿jobが無ければ1件作る", async () => {
     const { db, calls } = makeDb((sql) => ({ rowCount: INSERT.test(sql) ? 1 : 0 }));
-    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe(true);
+    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe("created");
     const ins = calls.find((c) => INSERT.test(c.sql));
     expect(ins, "insert が実行されていない").toBeDefined();
     // trigger は system（利用者の操作ではない）。mode=auto を input へ入れる。
@@ -40,7 +40,7 @@ describe("自動投稿への連鎖（T-M8-143）", () => {
 
   it("すでに待機中・実行中があれば作らない（二重投稿を防ぐ）", async () => {
     const { db, calls } = makeDb((sql) => ({ rowCount: ACTIVE.test(sql) ? 1 : 0 }));
-    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe(false);
+    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe("active");
     expect(calls.some((c) => INSERT.test(c.sql)), "insert してしまっている").toBe(false);
   });
 
@@ -53,9 +53,9 @@ describe("自動投稿への連鎖（T-M8-143）", () => {
     expect(autoPostPublishKey("d1")).not.toContain("parent:");
   });
 
-  it("on conflict で衝突したら false（作ったと誤って報告しない）", async () => {
+  it("on conflict で衝突したら spent（終端jobがkeyを保持＝二度と作れない・T-M8-196）", async () => {
     const { db } = makeDb(() => ({ rowCount: 0 }));
-    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe(false);
+    expect(await ensureAutoPostPublishJob(db, { xAccountId: "xa1", draftId: "d1" })).toBe("spent");
   });
 
   it("auto かどうかは input.mode だけで決める", () => {

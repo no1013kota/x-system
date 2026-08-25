@@ -1,14 +1,16 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 
 import {
   createScheduleSlotAction,
   deleteScheduleSlotAction,
   disableScheduleSlotAction,
   disableXAutomationAction,
+  resumeXAutomationAction,
   enableScheduleSlotAction,
   recordXAutomationConsentAction,
   updateScheduleSlotAction,
@@ -19,7 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import { CURRENT_AUTOMATION_CONSENT_VERSION, consentVersionLabel } from "@/lib/legal";
-import { nextScheduleRun, type NextRun } from "@/lib/schedule/next-run";
+import { formatJst } from "@/lib/format";
+import { nextScheduleRun } from "@/lib/schedule/next-run";
 import type { ScheduleSlotView } from "@/lib/schedule-slots";
 import { PatternRadioGroup } from "@/components/post/pattern-radio-group";
 import {
@@ -29,6 +32,8 @@ import {
 } from "@/lib/post/post-patterns-store";
 import {
   PatternFields,
+  PlaceholderCallout,
+  PlaceholderOverflowWarning,
   actionReason,
   emptyPatternDraft,
   patternReasonMessage,
@@ -36,8 +41,10 @@ import {
   type PatternDraft,
 } from "@/components/post/pattern-fields";
 import { PromptBlock } from "@/components/post/prompt-block";
+import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 import {
   createPatternAction,
+  deletePatternAction,
   updatePatternPromptAction,
 } from "@/app/actions/post-patterns";
 
@@ -140,8 +147,17 @@ function toFormValues(slot: ScheduleSlotView): SlotFormValues {
   };
 }
 
+/** 予約済み下書き（1回きり）。今後の予定としてスケジュール枠と同じ一覧に混ぜる（T-M8-228）。 */
+export interface ScheduledDraftEntry {
+  id: string;
+  pattern_name: string;
+  scheduled_at: string;
+  excerpt: string;
+}
+
 export function ScheduleManager({
   slots,
+  scheduledDrafts,
   patterns,
   patternPrompts,
   imageProviders,
@@ -150,10 +166,11 @@ export function ScheduleManager({
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  scheduledDrafts: ScheduledDraftEntry[];
   /** 予約に使えるパターン（引用URLが必須のものは含まない・T-M8-129 U3）。 */
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -165,12 +182,13 @@ export function ScheduleManager({
 }) {
   const [creating, setCreating] = useState(false);
   const hasAutoSlots = slots.some((s) => s.mode === "auto" && s.enabled);
-  const activeSlots = slots.filter((s) => s.enabled);
-  // 有効スロットのうち最も近い次回実行（「次にいつ何が投稿されるか」を先頭に出す）。
-  const upcoming = activeSlots
-    .map((slot) => ({ slot, run: nextScheduleRun(slot) }))
-    .filter((entry): entry is { slot: ScheduleSlotView; run: NextRun } => entry.run !== null)
-    .sort((a, b) => a.run.at.getTime() - b.run.at.getTime())[0];
+  /*
+    まとめ操作の対象数は**画面が持っている枠から数える**（T-M8-251）。サーバから別の数を
+    渡すと、行の停止/再開で画面だけ変わってボタンの状態が食い違う（同じ事実を2か所で持たない）。
+  */
+  const enabledCount = slots.filter((s) => s.enabled).length;
+  const stoppedCount = slots.length - enabledCount;
+  const stoppedIncludesAuto = slots.some((s) => !s.enabled && s.mode === "auto");
 
   return (
     <div className="space-y-6">
@@ -178,35 +196,44 @@ export function ScheduleManager({
         <div className="space-y-1 text-sm">
           {/* 同意状態を基準に「いま自動投稿が有効か」を常時示す（要件06 §3.5）。 */}
           <p className="font-medium">
-            自動投稿:{" "}
-            {automationConsented
-              ? hasAutoSlots
-                ? "有効 — 指定時刻に確認なしでXへ投稿されます"
-                : "同意済み（自動投稿のスケジュールはありません）"
-              : "未設定（下書き作成のみ）"}
+            {stoppedCount > 0 && enabledCount === 0
+              ? `停止中 — ${stoppedCount}件のスケジュールが止まっています`
+              : `自動投稿: ${
+                  automationConsented
+                    ? hasAutoSlots
+                      ? "有効 — 指定時刻に確認なしでXへ投稿されます"
+                      : "同意済み（自動投稿のスケジュールはありません）"
+                    : "未設定（下書き作成のみ）"
+                }`}
           </p>
-          {upcoming ? (
-            // 「確認なしで」等の説明は上のステータス行が担う。ここは事実だけ（T-M8-66）。
-            <p className="text-muted-foreground">
-              次回の実行: {upcoming.run.label} —「
-              {patternLabel(upcoming.slot.pattern_name)}」
-              {upcoming.slot.mode === "auto" ? "を自動投稿します" : "の下書きを作成します"}
-            </p>
-          ) : (
-            <p className="text-muted-foreground">有効なスケジュールはありません。</p>
-          )}
+          {/* 「次回の実行」の行は出さない（運営者の指示 2026-08-22。次回はページ末尾の「今後の予定」が時間順で示す・T-M8-226） */}
         </div>
-        {automationConsented ? <StopAllAutomationButton xAccountId={xAccountId} /> : null}
       </div>
 
       <WeekPreview slots={slots} />
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {!creating ? (
           <Button className="h-9 px-4 text-body" onClick={() => setCreating(true)} type="button" variant="brand">
             スケジュールを追加
           </Button>
         ) : null}
+      </div>
+
+      {/*
+        まとめて止める／動かす（運営者の指示 2026-08-23・T-M8-251）。**2つとも常に出す**——
+        片方だけ出す形は「いまどちらの状態か」を押す前に読み取らせるつもりだったが、
+        運営者には「押せるボタンが入れ替わる」方が分かりにくかった。対象が無いときは
+        押せなくして、何が起きるかは確認ダイアログが説明する。
+      */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <StopAllAutomationButton disabled={enabledCount === 0} xAccountId={xAccountId} />
+        <ResumeAllAutomationButton
+          disabled={stoppedCount === 0}
+          pausedIncludesAuto={stoppedIncludesAuto}
+          pausedSlots={stoppedCount}
+          xAccountId={xAccountId}
+        />
       </div>
 
       {creating ? (
@@ -233,6 +260,7 @@ export function ScheduleManager({
         imageProviders={imageProviders}
         patternPrompts={patternPrompts}
         patterns={patterns}
+        scheduledDrafts={scheduledDrafts}
         slots={slots}
         xAccountId={xAccountId}
       />
@@ -240,8 +268,132 @@ export function ScheduleManager({
   );
 }
 
-/** SC-08/SC-11 共通の「自動投稿をすべて停止」（要件06 §3.5・§7）。opt-out即時反映＋無効化件数表示。 */
-export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) {
+/**
+ * SC-08/SC-11 共通の「スケジュールをすべて再開」（T-M8-233／T-M8-251・運営者の指示 2026-08-23）。
+ *
+ * **止まっている枠をすべて動かす。** 個別に止めた枠も対象——「すべて再開」は文字どおり全部で、
+ * どれが何で止まったかを選り分けない。自動投稿の枠を戻すときは**現行版の同意を取り直す**
+ * （停止＝同意の撤回なので、黙って自動投稿を再開しない）。同意が要るかどうかは
+ * サーバーが決め、必要なら `automation_consent_required` を返すのでチェック付きで送り直す。
+ */
+export function ResumeAllAutomationButton({
+  xAccountId,
+  pausedSlots,
+  pausedIncludesAuto,
+  disabled = false,
+}: {
+  xAccountId: string;
+  /** 止まっている枠の数（0でもボタンは出す。押しても何も起きないので無効化する）。 */
+  pausedSlots: number;
+  /** 止まっている枠に自動投稿が含まれるか。含むなら同意チェックを出す。 */
+  pausedIncludesAuto: boolean;
+  /** 動かす対象が無いときに押せなくする。 */
+  disabled?: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [agreed, setAgreed] = useState(false);
+  const toast = useToast();
+
+  function resumeAll() {
+    startTransition(async () => {
+      const res = await resumeXAutomationAction({
+        confirmed: pausedIncludesAuto ? agreed : undefined,
+        consent_version: pausedIncludesAuto && agreed ? CURRENT_AUTOMATION_CONSENT_VERSION : undefined,
+        x_account_id: xAccountId,
+      });
+      if (res.status === "success") {
+        toast.show({
+          description: `${res.result?.resumedSlots ?? 0}件のスケジュールを再開しました。`,
+          title: "スケジュールを再開しました",
+          tone: "success",
+        });
+        setAgreed(false);
+        router.refresh();
+      } else {
+        toast.show({
+          description: res.message,
+          title: "スケジュールを再開できませんでした",
+          tone: "error",
+        });
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <AlertDialog.Root onOpenChange={(open) => !open && setAgreed(false)}>
+        <AlertDialog.Trigger
+          render={<Button disabled={pending || disabled} size="sm" type="button" variant="outline" />}
+        >
+          スケジュールをすべて再開
+        </AlertDialog.Trigger>
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
+          <AlertDialog.Popup className={alertDialogPopupClassName()}>
+            <AlertDialog.Title className={cardTitleClassName}>
+              スケジュールをすべて再開しますか？
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+              止まっている{pausedSlots}件のスケジュールをすべて動かします（個別に停止したものも含みます）。
+            </AlertDialog.Description>
+            {pausedIncludesAuto ? (
+              <>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
+                  <li>
+                    自動投稿の設定が含まれます。再開すると、生成された内容が
+                    <span className="font-medium text-foreground">指定時刻に確認なしでXへ投稿</span>
+                    されます。
+                  </li>
+                  <li>投稿内容の責任は利用者本人が負います。</li>
+                </ul>
+                <label className="mt-4 flex items-start gap-2 text-sm">
+                  <input
+                    checked={agreed}
+                    className="mt-0.5"
+                    onChange={(e) => setAgreed(e.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    上記の説明（{consentVersionLabel(CURRENT_AUTOMATION_CONSENT_VERSION)}
+                    ）を理解し、自動投稿に同意します。
+                  </span>
+                </label>
+              </>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-2">
+              <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
+                キャンセル
+              </AlertDialog.Close>
+              <AlertDialog.Close
+                disabled={pending || (pausedIncludesAuto && !agreed)}
+                onClick={resumeAll}
+                render={<Button size="lg" type="button" variant="brand" />}
+              >
+                すべて再開
+              </AlertDialog.Close>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </div>
+  );
+}
+
+/**
+ * SC-08/SC-11 共通の「スケジュールをすべて停止」（要件06 §3.5・§7）。opt-out即時反映＋無効化件数表示。
+ *
+ * **自動投稿だけでなく下書き作成の枠も止める**（運営者の指示 2026-08-23・T-M8-233）。
+ * 戻すのは `ResumeAllAutomationButton`（停止操作で止めた枠だけを復元する）。
+ */
+export function StopAllAutomationButton({
+  xAccountId,
+  disabled = false,
+}: {
+  xAccountId: string;
+  /** 止める対象が無いときに押せなくする（T-M8-251）。 */
+  disabled?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const toast = useToast();
@@ -252,14 +404,14 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
       if (res.status === "success") {
         toast.show({
           tone: "success",
-          title: "自動投稿を停止しました",
-          description: `${res.result?.disabledSlots ?? 0}件のスケジュールを無効にしました。`,
+          title: "スケジュールを停止しました",
+          description: `${res.result?.disabledSlots ?? 0}件のスケジュール（自動投稿・下書き作成）を停止しました。`,
         });
         router.refresh();
       } else {
         // **失敗も緑色の `role="status"` で出ていた**（T-M8-17）。同じstateに成功と失敗を
         // 入れていたため色と読み上げが成功のままだった。トーストは種別を分けて持つ。
-        toast.show({ tone: "error", title: "自動投稿を停止できませんでした", description: res.message });
+        toast.show({ tone: "error", title: "スケジュールを停止できませんでした", description: res.message });
       }
     });
   }
@@ -268,19 +420,20 @@ export function StopAllAutomationButton({ xAccountId }: { xAccountId: string }) 
     <div className="flex flex-col items-end gap-1">
       <AlertDialog.Root>
         <AlertDialog.Trigger
-          render={<Button disabled={pending} size="sm" type="button" variant="outline" />}
+          render={<Button disabled={pending || disabled} size="sm" type="button" variant="outline" />}
         >
-          自動投稿をすべて停止
+          スケジュールをすべて停止
         </AlertDialog.Trigger>
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
           <AlertDialog.Popup className={alertDialogPopupClassName()}>
             <AlertDialog.Title className={cardTitleClassName}>
-              自動投稿をすべて停止しますか？
+              スケジュールをすべて停止しますか？
             </AlertDialog.Title>
             {/* 「スロット」「ジョブ」は内部用語。画面には出さない（T-M8-66・要件06 §8と同方針）。 */}
             <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-              このアカウントの自動投稿をすべて停止します。下書きの作成と手動での投稿はそのまま使えます。
+              このアカウントのスケジュールをすべて停止します（自動投稿も、下書きの作成も止まります）。
+              手動での作成・投稿はそのまま使えます。あとから「スケジュールをすべて再開」で全部戻せます。
             </AlertDialog.Description>
             <div className="mt-6 flex justify-end gap-2">
               <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
@@ -409,6 +562,7 @@ function WeekPreview({ slots }: { slots: ScheduleSlotView[] }) {
 
 function SlotList({
   slots,
+  scheduledDrafts,
   patterns,
   patternPrompts,
   imageProviders,
@@ -417,9 +571,10 @@ function SlotList({
   accountHandle,
 }: {
   slots: ScheduleSlotView[];
+  scheduledDrafts: ScheduledDraftEntry[];
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -428,22 +583,68 @@ function SlotList({
   xAccountId: string;
   accountHandle: string | null;
 }) {
-  if (slots.length === 0) return null;
+  if (slots.length === 0 && scheduledDrafts.length === 0) return null;
+  /*
+   * スケジュール枠（繰り返し）と予約済み下書き（1回きり）を**同じ一覧に時間順で混ぜる**
+   * （T-M8-228・運営者の指示 2026-08-22。枠を2つに分けると認知負荷が大きい）。
+   * 並びのキーは「次に起きる時刻」——枠は次回実行、下書きは予約時刻。
+   * 停止中・次回を計算できない枠は末尾（時刻が無いので時間順に混ぜられない）。
+   */
+  const entries: (
+    | { kind: "slot"; at: number; slot: ScheduleSlotView }
+    | { kind: "draft"; at: number; draft: ScheduledDraftEntry }
+  )[] = [
+    ...slots.map((slot) => {
+      const next = slot.enabled ? nextScheduleRun(slot) : null;
+      return { kind: "slot" as const, at: next ? next.at.getTime() : Number.MAX_SAFE_INTEGER, slot };
+    }),
+    ...scheduledDrafts.map((draft) => ({
+      kind: "draft" as const,
+      at: new Date(draft.scheduled_at).getTime(),
+      draft,
+    })),
+  ].sort((a, b) => a.at - b.at);
   return (
     <ul className="space-y-3">
-      {slots.map((slot) => (
-      <SlotRow
-          accountHandle={accountHandle}
-          automationConsented={automationConsented}
-          imageProviders={imageProviders}
-          key={slot.id}
-          patternPrompts={patternPrompts}
-          patterns={patterns}
-          slot={slot}
-          xAccountId={xAccountId}
-        />
-      ))}
+      {entries.map((entry) =>
+        entry.kind === "slot" ? (
+          <SlotRow
+            accountHandle={accountHandle}
+            automationConsented={automationConsented}
+            imageProviders={imageProviders}
+            key={entry.slot.id}
+            patternPrompts={patternPrompts}
+            patterns={patterns}
+            slot={entry.slot}
+            xAccountId={xAccountId}
+          />
+        ) : (
+          <ScheduledDraftRow draft={entry.draft} key={`draft-${entry.draft.id}`} />
+        ),
+      )}
     </ul>
+  );
+}
+
+/**
+ * 予約済み下書きの行（T-M8-228）。スケジュール枠の行と同じ器で、
+ * パターン名＋「予約 <日時>」バッジ（SC-07の一覧と同じ形）＋本文冒頭を出し、行全体を下書きへのリンクにする。
+ */
+function ScheduledDraftRow({ draft }: { draft: ScheduledDraftEntry }) {
+  return (
+    <li className={cardClassName}>
+      <Link
+        className="flex flex-wrap items-center gap-2 p-4 text-sm transition-colors duration-150 hover:bg-black/[0.02]"
+        href={`/app/posts?tab=drafts&draftId=${draft.id}`}
+      >
+        <span className="font-semibold">{draft.pattern_name}</span>
+        <Badge tone="info">予約 {formatJst(draft.scheduled_at)}</Badge>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {draft.excerpt}
+        </span>
+        <span className="text-caption font-medium text-brand">下書きを開く</span>
+      </Link>
+    </li>
   );
 }
 
@@ -459,7 +660,7 @@ function SlotRow({
   slot: ScheduleSlotView;
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -615,7 +816,7 @@ function SlotFields({
   initial?: SlotFormValues;
   patterns: PatternOption[];
   /**
-   * 生成に使うプロンプト（パターンID → 本文）。**null = standard**（mdプラン以上の機能）。
+   * 生成に使うプロンプト（パターンID → 本文）。**null = 編集権限なし（未契約）**。
    * null のときはセクションごと出さない（編集できない欄を見せない・T-M8-135）。
    */
   patternPrompts: Record<string, PatternPromptView> | null;
@@ -664,6 +865,8 @@ function SlotFields({
   const [prompts, setPrompts] = useState(patternPrompts);
   const [newPattern, setNewPattern] = useState<PatternDraft | null>(null);
   const [newPatternError, setNewPatternError] = useState<string | null>(null);
+  /** 追加を開く前に選んでいたパターン（キャンセルで戻すため・T-M8-203）。 */
+  const prevPatternRef = useRef<string>("");
   /** 編集中のプロンプト本文（null = 未編集）。パターンを切り替えたら破棄する。 */
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   /** once = この予約にだけ保存 ／ save = パターン自体を書き換える。 */
@@ -677,14 +880,38 @@ function SlotFields({
    * 保存済みの上書きに気付かないまま上書きを消してしまう。
    */
   const promptValue = promptDraft ?? v.prompt_override ?? patternPrompt?.content ?? "";
+  // 入力欄は**いま見えているプロンプト本文**から導出（T-M8-186/203。追加中は追加フォームの
+  // 本文を見る。編集で {名前} を増減するとその場で入力欄も増減する。生成側も本文基準で差し込む）。
+  const activePlaceholderNames = extractPlaceholderNames(newPattern ? newPattern.prompt : promptValue);
   const promptBase = v.prompt_override ?? patternPrompt?.content ?? "";
   const promptEdited = promptDraft !== null && promptDraft !== promptBase;
 
   /** パターンを切り替えたら、前のパターン向けの編集と入力値を持ち越さない。 */
   function selectPattern(id: string) {
+    // 追加中に既存パターンを選んだら追加をやめてそちらへ（フォームを2つ同時に出さない・T-M8-203）。
+    if (newPattern) {
+      setNewPattern(null);
+      setNewPatternError(null);
+    }
     setV((cur) => ({ ...cur, pattern_id: id, placeholder_values: {}, prompt_override: null }));
     setPromptDraft(null);
     setPromptApply("once");
+  }
+
+  /** 追加フォームを開く。既存パターンのアクティブを外す（運営者の指示 2026-08-22・T-M8-203）。 */
+  function openAddPattern() {
+    prevPatternRef.current = v.pattern_id;
+    setV((cur) => ({ ...cur, pattern_id: "", placeholder_values: {}, prompt_override: null }));
+    setPromptDraft(null);
+    setPromptApply("once");
+    setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE));
+  }
+
+  /** 追加をやめて元の選択へ戻す。 */
+  function cancelAddPattern() {
+    setNewPattern(null);
+    setNewPatternError(null);
+    setV((cur) => ({ ...cur, pattern_id: prevPatternRef.current || (options[0]?.id ?? "") }));
   }
 
   function addPattern() {
@@ -719,6 +946,38 @@ function SlotFields({
       setNewPattern(null);
       selectPattern(created.id);
       toast.show({ tone: "success", title: "パターンを追加しました" });
+    });
+  }
+
+  /**
+   * パターンの削除（T-M8-205・運営者の指示 2026-08-22）。投稿作成と同じ操作を予約画面でも。
+   * 消したら選択を先頭へ戻す（消した型が選ばれたままにしない）。
+   */
+  function removePattern(target2: PatternOption) {
+    startTransition(async () => {
+      const res = await deletePatternAction({ pattern_id: target2.id });
+      if (res.status === "success") {
+        const rest = options.filter((o) => o.id !== target2.id);
+        setOptions(rest);
+        if (v.pattern_id === target2.id) {
+          selectPattern(rest[0]?.id ?? "");
+        }
+        const stopped = res.disabledSlots ?? 0;
+        toast.show({
+          tone: "success",
+          title: `「${res.deletedName ?? target2.name}」を削除しました`,
+          description:
+            stopped > 0
+              ? `このパターンを使っていた予約${stopped}件を停止しました（曜日・時刻は残っています）。`
+              : "過去の下書き・履歴の表示はそのまま残ります。",
+        });
+      } else {
+        toast.show({
+          tone: "error",
+          title: "削除できませんでした",
+          description: patternReasonMessage(actionReason(res), res.message),
+        });
+      }
     });
   }
 
@@ -774,7 +1033,10 @@ function SlotFields({
         instructions: v.instructions.trim() || undefined,
         image_enabled: v.image_enabled,
         source_url: v.source_url.trim() || null,
-        placeholder_values: v.placeholder_values,
+        // 本文に実在する名前だけ送る（消した {名前} の値を持ち越さない・T-M8-186）。
+        placeholder_values: Object.fromEntries(
+          activePlaceholderNames.map((name) => [name, v.placeholder_values[name] ?? ""]),
+        ),
         prompt_override: promptOverride,
       };
       const res =
@@ -872,8 +1134,11 @@ function SlotFields({
 
       {/* 投稿作成と同じ部品（T-M8-29）。削除は出さない（編集中の枠の足元が崩れる・T-M8-134）。 */}
       <PatternRadioGroup
+        deleteDisabled={pending}
         name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
         onChange={selectPattern}
+        // 投稿作成と同じく各カードから削除できる（T-M8-205。編集権限のあるときだけ）。
+        onDelete={prompts ? removePattern : undefined}
         options={options}
         value={v.pattern_id}
       />
@@ -894,16 +1159,7 @@ function SlotFields({
               <Button disabled={pending} onClick={addPattern} size="sm" type="button">
                 {pending ? "追加中…" : "追加"}
               </Button>
-              <Button
-                disabled={pending}
-                onClick={() => {
-                  setNewPattern(null);
-                  setNewPatternError(null);
-                }}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
+              <Button disabled={pending} onClick={cancelAddPattern} size="sm" type="button" variant="ghost">
                 キャンセル
               </Button>
             </div>
@@ -911,7 +1167,7 @@ function SlotFields({
         ) : (
           <Button
             disabled={pending}
-            onClick={() => setNewPattern(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
+            onClick={openAddPattern}
             type="button"
             /* 投稿作成の同じボタンと同じ見た目にする（T-M8-138）。同じ操作が画面で違って見えないように。 */
             variant="subtle"
@@ -922,55 +1178,49 @@ function SlotFields({
       ) : null}
 
       {/*
-        生成に使うプロンプト（T-M8-135）。**mdプラン以上**（投稿作成・AI設定と同じ境界）。
-        予約は繰り返し実行されるので「この生成にだけ」ではなく**この予約にだけ**が既定。
+        選択中パターンのプロンプト編集（T-M8-135/203）。折りたたみをやめ「パターンを追加」の
+        記入欄と同じUIをインラインで出す。予約は繰り返し実行されるので
+        「この生成にだけ」ではなく**この予約にだけ**が既定。追加フォームを開いている間は出さない。
       */}
-      {prompts ? (
-        <details className="rounded-card border border-hairline bg-page">
-          <summary className="cursor-pointer select-none px-4 py-3 text-body font-medium text-ink">
-            生成に使うプロンプト
-            {promptEdited ? <span className="ml-2 text-caption text-brand">編集中</span> : null}
-            {v.prompt_override ? (
-              <span className="ml-2 text-caption text-ink-3">（この予約用に変更済み）</span>
-            ) : null}
-          </summary>
-          <div className="space-y-3 px-4 pb-4">
-            <p className="text-xs text-muted-foreground">
-              この予約の生成に使われる指示です。直して、この予約にだけ使うか、パターン自体に
-              保存して他でも使うかを選べます。
-            </p>
-            <PromptBlock
-              edited={promptEdited}
-              // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
-              groupName={`${slotFieldPrefix}-prompt-apply`}
-              label={`選択中の型（${selectedPattern?.name ?? "未選択"}）の生成プロンプト`}
-              limit={PROMPT_MAX_CHARS}
-              mode={promptApply}
-              onceLabel="この予約にだけ使う"
-              onChange={setPromptDraft}
-              onMode={setPromptApply}
-              onReset={() => {
+      {prompts && !newPattern && selectedPattern ? (
+        <div className={`${cardClassName} p-4`}>
+          <PromptBlock
+            edited={promptEdited}
+            footer={
+              <>
+                <PlaceholderOverflowWarning prompt={promptValue} />
+                <PlaceholderCallout />
+              </>
+            }
+            // 同一ページに新規＋各スロットの編集フォームが並ぶので、枠ごとに別のグループにする。
+            groupName={`${slotFieldPrefix}-prompt-apply`}
+            label={`生成プロンプト（${selectedPattern.name}）${v.prompt_override ? "（この予約用に変更済み）" : ""}`}
+            limit={PROMPT_MAX_CHARS}
+            mode={promptApply}
+            onceLabel="この予約にだけ使う"
+            onChange={setPromptDraft}
+            onMode={setPromptApply}
+            onReset={() => {
+              setPromptDraft(null);
+              setPromptApply("once");
+            }}
+            saveLabel="パターンに保存して他でも使う"
+            value={promptValue}
+          />
+          {v.prompt_override ? (
+            <button
+              className="mt-2 text-body text-info-fg hover:underline"
+              onClick={() => {
+                setV((cur) => ({ ...cur, prompt_override: null }));
                 setPromptDraft(null);
                 setPromptApply("once");
               }}
-              saveLabel="パターンに保存して他でも使う"
-              value={promptValue}
-            />
-            {v.prompt_override ? (
-              <button
-                className="text-body text-info-fg hover:underline"
-                onClick={() => {
-                  setV((cur) => ({ ...cur, prompt_override: null }));
-                  setPromptDraft(null);
-                  setPromptApply("once");
-                }}
-                type="button"
-              >
-                この予約用の変更をやめてパターンの内容に戻す
-              </button>
-            ) : null}
-          </div>
-        </details>
+              type="button"
+            >
+              この予約用の変更をやめてパターンの内容に戻す
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {/* 参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じ扱い。 */}
@@ -995,31 +1245,31 @@ function SlotFields({
         プレースホルダー（T-M8-132／T-M8-135）。選んだパターンが持つ `{名前}` の分だけ出す。
         予約は繰り返すので、ここで入れた値が毎回同じように差し込まれる。
       */}
-      {selectedPattern && selectedPattern.placeholders.length > 0 ? (
+      {activePlaceholderNames.length > 0 ? (
         <div className="space-y-2">
-          {selectedPattern.placeholders.map((ph) => (
-            <div key={ph.name}>
+          {activePlaceholderNames.map((name) => (
+            <div key={name}>
               <label
                 className="block font-medium"
-                htmlFor={`${slotFieldPrefix}-ph-${ph.name}`}
+                htmlFor={`${slotFieldPrefix}-ph-${name}`}
               >
-                {ph.name}（任意）
+                {name}（任意）
               </label>
               <textarea
                 className="mt-1 w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-                id={`${slotFieldPrefix}-ph-${ph.name}`}
+                id={`${slotFieldPrefix}-ph-${name}`}
                 maxLength={2000}
                 onChange={(e) =>
                   setV((cur) => ({
                     ...cur,
-                    placeholder_values: { ...cur.placeholder_values, [ph.name]: e.target.value },
+                    placeholder_values: { ...cur.placeholder_values, [name]: e.target.value },
                   }))
                 }
                 rows={2}
-                value={v.placeholder_values[ph.name] ?? ""}
+                value={v.placeholder_values[name] ?? ""}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                プロンプトの <code>{`{${ph.name}}`}</code> に入ります。
+                プロンプトの <code>{`{${name}}`}</code> に入ります。
               </p>
             </div>
           ))}

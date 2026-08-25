@@ -9,7 +9,7 @@ import { expect, horizontalOverflow, test } from "./fixtures/test";
 test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("X運用の毎日を");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SNS自動化プラットフォーム");
 
   // 会員登録・ログインへの導線（ヘッダー）
   const header = page.getByRole("banner");
@@ -23,29 +23,36 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   await page.getByRole("link", { name: "料金を見る" }).click();
   await expect(page.locator("#pricing")).toBeInViewport();
 
-  // 比較表が plans.ts の価格・上限を実際に描画している（T-M8-125で表へ変えた）。
+  // プランカードが plans.ts の価格・上限を実際に描画している（T-M8-171でカードへ変えた）。
   const pricing = page.locator("#pricing");
-  await expect(pricing).toContainText("¥2,980");
+  await expect(pricing).toContainText("¥3,980");
   await expect(pricing).toContainText("AIクレジット1000");
+  await expect(pricing.getByText(/1日あたり 約\d/).first()).toBeVisible();
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
   expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
   // 無料の条件（初回のみ・カード登録・解約すれば無料）を同じ場所で言う（景表法・要件03 §54）。
-  await expect(pricing.getByText("初回のみ7日間無料", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText(/初回のみ7日間/).first()).toBeVisible();
   await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
-  await expect(pricing.getByText("APIキーをご自身でご用意いただく方式")).toBeVisible();
+  // BYOKのAPI実費はスタンダードカードの「APIキーの用意」行が唯一の常時表示（T-M8-171）。
+  await expect(pricing.getByText(/ご自身のAPI課金/).first()).toBeVisible();
 
-  // FAQはネイティブdetailsで開閉できる。
-  // 回答の全文ではなく<details>の開閉状態を見る（文言を1文字直すたびにE2Eが落ちるのを避ける。
+  // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
+  // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。
   // 文言そのものは landing-page.test.ts が担当する）。
-  // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため）。
-  const faq = page.locator("details").filter({ hasText: /投稿されませんか/ });
-  await expect(faq).toHaveCount(1);
-  await expect(faq).not.toHaveAttribute("open", /.*/);
-  await faq.locator("summary").click();
-  await expect(faq).toHaveAttribute("open", /.*/);
-  await expect(faq.getByText("されません。", { exact: false })).toBeVisible();
+  const autoPostQuestion = page.locator("dt").filter({ hasText: /投稿されませんか/ });
+  await expect(autoPostQuestion).toBeVisible();
+  /*
+    **文言ではなく「回答が読める状態か」を見る**（2026-08-24）。以前は回答の先頭
+    「されません。」を直接探しており、文言を磨いただけでspecが落ちた。何を書くかは
+    `landing-page.test.ts` が担当し、ここは折りたたまれていないことだけを守る。
+  */
+  const autoPostAnswer = autoPostQuestion.locator("xpath=following-sibling::dd[1]");
+  await expect(autoPostAnswer).toBeVisible();
+  await expect(autoPostAnswer).not.toBeEmpty();
+  // クリックしないと読めない状態へ戻っていないこと（LPで最も読まれるべき内容を隠さない）。
+  await expect(page.locator("details")).toHaveCount(0);
 
   // 法務3リンク（LegalFooterLinks）
   const footer = page.getByRole("contentinfo");
@@ -56,6 +63,11 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   ] as const) {
     await expect(footer.getByRole("link", { name })).toHaveAttribute("href", href);
   }
+  // 運営者のXアカウント（T-M8-183）。アイコンだけのリンクなので名前は aria-label で読む。
+  const xLink = footer.getByRole("link", { name: /運営者のXアカウント/ });
+  await expect(xLink).toBeVisible();
+  await expect(xLink).toHaveAttribute("href", "https://x.com/ai_newinfo");
+  await expect(xLink).toHaveAttribute("target", "_blank");
 });
 
 /**
@@ -104,7 +116,7 @@ test.describe("JSが動かない環境", () => {
      * 「JSが動かなくてもLPが白紙にならない」ことで、コピーの一致ではない。ラベルは節の識別子で、
      * コピー修正では変わらない。
      */
-    for (const label of ["課題", "できること", "しくみ", "使い方", "料金", "よくある質問"]) {
+    for (const label of ["コンセプト", "できること", "しくみ", "初めかた", "料金", "よくある質問"]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
 
@@ -142,8 +154,8 @@ test("reduced-motion では全要素が即時表示され、3幅で横に伸び�
  * リリース記念キャンペーンの見せ方（T-M8-118）。
  *
  * **取り消し線に「通常価格」と書かない。** 景品表示法の二重価格表示は、通常価格として示すなら
- * 実際にその価格で相当期間販売した実績が必要で、この3プランにその実績は無い（500円・1,000円・
- * 2,980円でのみ販売してきた）。将来価格として「キャンペーン終了後」と示す形を固定する。
+ * 実際にその価格で相当期間販売した実績が必要で、この3プランにその実績は無い（キャンペーン価格での
+ * 販売のみ・T-M8-168）。将来価格として「キャンペーン終了後」と示す形を固定する。
  */
 test("料金カードに半額バッジと終了後価格が出て、「通常価格」とは書かない（T-M8-118）", async ({
   page,
@@ -157,9 +169,9 @@ test("料金カードに半額バッジと終了後価格が出て、「通常�
   expect(await badges.count()).toBeGreaterThanOrEqual(3);
 
   // 請求額（大きい方）と終了後価格（取り消し線）が両方読める。
-  await expect(pricing.getByText("2,980", { exact: false }).first()).toBeVisible();
+  await expect(pricing.getByText("3,980", { exact: false }).first()).toBeVisible();
   await expect(pricing.getByText("キャンペーン終了後", { exact: false }).first()).toBeVisible();
-  await expect(pricing.locator(".line-through").filter({ hasText: "5,960" }).first()).toBeVisible();
+  await expect(pricing.locator(".line-through").filter({ hasText: "7,960" }).first()).toBeVisible();
 
   // 景表法: 「通常価格」の語を使わない。
   await expect(pricing.getByText("通常価格")).toHaveCount(0);

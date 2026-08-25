@@ -28,20 +28,24 @@ import { loadPostsThisWeek } from "@/lib/home/kpi-server";
 import { nextRunKpi } from "@/lib/home/next-run-kpi";
 import { KpiCard, NextRunCard } from "@/components/app-shell/kpi-card";
 import type { NewsItemView } from "@/lib/news-items";
-import { listNewsItemsForUser } from "@/lib/news-items-server";
+import { listTopHighImpactNewsForUser } from "@/lib/news-items-server";
 import { getSettingsForUser } from "@/lib/settings-server";
 import { loadRecentPosts, type RecentPostView } from "@/lib/home/overview-server";
 import { listScheduleSlots } from "@/lib/schedule-slots";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
-import { formatNextMonthStartJst, type UsageSummary } from "@/lib/usage/usage-summary";
-import { loadUsageSummaryForUser } from "@/lib/usage/usage-summary-server";
+import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
+import { usageSummaryFrom } from "@/lib/usage/usage-summary";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 import { ConfirmationQueueCard } from "./confirmation-queue";
 import { ImportantNewsCard } from "./important-news";
 import { RecentResultsCard } from "./recent-results";
 import { UpcomingScheduleCard } from "./upcoming-schedule";
+import { AppLockedNotice } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
+import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { pageTitleClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 
 /** 直近の実績カードの集計期間（日）。SC-09の期間切替とは独立の固定値。 */
 const RECENT_PERIOD_DAYS = 7;
@@ -56,8 +60,44 @@ export const metadata: Metadata = {
   title: `ホーム | ${APP_NAME}`,
 };
 
-export default async function AppHomePage() {
+/** 登録・メール確認の着地で「できたこと」を言う（原則1・T-M8-268で行き先を /app へ移した）。 */
+const WELCOME_MESSAGES: Record<string, string> = {
+  confirmed: "メールアドレスの確認が完了しました。プランを選ぶと、すべての機能を使えます。",
+  signup: "登録が完了しました。プランを選ぶと、すべての機能を使えます。",
+};
+
+export default async function AppHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ welcome?: string }>;
+}) {
+  const welcome = WELCOME_MESSAGES[(await searchParams).welcome ?? ""] ?? null;
   const user = await getCurrentUser();
+
+  /*
+    **プラン未登録・解約中はホームも開かない**（T-M8-269・運営者の指示 2026-08-23）。
+    どの機能もロックされている状態で空のダッシュボードを見せても、何ができないのかも
+    どうすれば使えるのかも伝わらない。登録直後の「できたこと」（welcome）はここで言い切る。
+  */
+  const lock = user ? await loadAppLock(user.id) : null;
+  if (user && lock) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
+        <div>
+          <h1 className={pageTitleClassName}>ホーム</h1>
+        </div>
+        {welcome ? (
+          <Notice role="status" tone="success">
+            {welcome}
+          </Notice>
+        ) : null}
+        <AppLockedNotice
+          description="投稿の作成・予約・分析、最新ニュース、Xアカウントの連携がご利用いただけます。"
+          reason={lock}
+        />
+      </main>
+    );
+  }
   let checklist: SetupChecklistItem[] = [];
   let pendingDrafts: DraftView[] = [];
   let usage: UsageSummary | null = null;
@@ -75,32 +115,30 @@ export default async function AppHomePage() {
      * まとめる（T-M8-67）。以前は約9段の直列awaitで、Supabaseへの往復（本番で
      * 1回あたり数十〜百ms）がそのまま初回表示の待ち時間に積み上がっていた。
      */
-    const [input, activeXAccountId, settings, planRows] = await Promise.all([
+    const [input, activeXAccountId, settings, profileRow] = await Promise.all([
       // 充足判定は実行前提検証ヘルパを再利用する（要件06 §3.1・T-M2-24）。
       gatherExecutionPrereqInputs(user.id),
       resolveActiveXAccountForUser(user.id),
       getSettingsForUser(user.id),
-      pooledDb.query<{ plan: string }>(
-        `select plan::text as plan from profiles where id = $1`,
-        [user.id],
-      ),
+      // profile は App Shell・ロック判定と同じ行を共有する（T-M8-286）。
+      loadRequestProfile(user.id),
     ]);
     if (input) checklist = buildSetupChecklist(input);
     // 重要ニュース: 利用者のニュース設定の分野で impact=high のみ（要件06 §1.4）。
     const categories = settings?.newsConfig?.categories ?? [...DEFAULT_NEWS_CONFIG.categories];
-    const newsPromise = listNewsItemsForUser({
+    const newsPromise = listTopHighImpactNewsForUser({
       categories,
-      impacts: ["high"],
       limit: IMPORTANT_NEWS_LIMIT,
     }).then(
-      (page) => ({ failed: false, items: page.items }),
+      (items) => ({ failed: false, items }),
       // 失敗による空をUIで区別する（原則1）。ImportantNewsCard が理由を表示する。
       () => ({ failed: true, items: [] as NewsItemView[] }),
     );
-    // premium 月間利用枠の残量（要件03 §8・要件06 §10, T-M6-12）。premium以外は null（非表示）。
-    const usagePromise = loadUsageSummaryForUser(
-      user.id,
-      planRows.rows[0]?.plan ?? "standard",
+    // 運営キー系プランの利用枠（契約期間ごと）の残量（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
+    // BYOK（standard）と未契約は null（非表示）。
+    // 利用枠は App Shell と同じ1行から作る（T-M8-288。専用クエリを持つと往復が1本増える）。
+    const usagePromise = Promise.resolve(
+      usageSummaryFrom(profileRow, profileRow?.plan ?? "", profileRow?.usage_resets_at ?? null),
     );
     if (activeXAccountId) {
       // 確認待ちキュー（status=draftを新しい順・要件06 §1）・次回の予定・直近の実績・KPI。
@@ -153,6 +191,12 @@ export default async function AppHomePage() {
         <p className="mt-1 text-body text-ink-2">{greeting}</p>
       </div>
 
+      {welcome ? (
+        <Notice role="status" tone="success">
+          {welcome}
+        </Notice>
+      ) : null}
+
       {/* KPI 4カード。実データに繋ぐ（記録が無いときは0ではなく「記録なし」と出す）。 */}
       {kpis ? (
         <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
@@ -176,7 +220,7 @@ export default async function AppHomePage() {
         <RecentResultsCard handle={handle} posts={recentPosts} summary={recentSummary} />
       ) : null}
       {usage ? (
-        <UsageSummaryCard nextResetLabel={formatNextMonthStartJst(new Date())} summary={usage} />
+        <UsageSummaryCard nextResetLabel={usageResetLabel(usage)} summary={usage} />
       ) : null}
     </main>
   );

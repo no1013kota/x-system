@@ -173,7 +173,7 @@ test("テーマを選ばないと生成を始められず、理由が画面に�
  * - 編集すると「この生成にだけ使う／保存して以後の生成にも使う」を選べ、「元に戻す」で破棄できる
  * - 型を切り替えると編集は破棄される（別の型へ持ち越さない）
  */
-test("プロンプトを表示・編集でき、型の切替で編集が破棄される（T-M8-92/93）", async ({
+test("プロンプトをインラインで表示・編集でき、型の切替で編集が破棄される（T-M8-92/203）", async ({
   accounts,
   page,
 }) => {
@@ -181,20 +181,22 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");
 
-  const section = page.locator("details", { hasText: "生成に使うプロンプト" });
-  await expect(section).toBeVisible();
-  await section.locator("summary").click();
+  /*
+    折りたたみ「生成に使うプロンプト」（アカウント.md/投稿の型/画像の3タブ）はT-M8-203で廃止。
+    選択中パターンの編集欄が**開かなくても見えている**こと、アカウント.md・画像の編集が
+    この画面に無い（設定＞プロンプトへ集約）ことを固定する。
+  */
+  await expect(page.locator("details", { hasText: "生成に使うプロンプト" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "プロンプトの種類" })).toHaveCount(0);
 
-  // 3ブロック（アカウント.md／投稿の型／画像生成）。既定はアカウント.md（T-M8-105・一番左）。
-  const tabs = page.getByRole("tablist", { name: "プロンプトの種類" }).getByRole("tab");
-  await expect(tabs).toHaveText(["アカウント.md", "投稿の型", "画像生成"]);
-  await expect(page.getByLabel(/アカウント.md（全パターン共通/)).toBeVisible();
-
-  // 投稿の型タブ: 既定パターン（p1）の system default が入っている。
-  await page.getByRole("tab", { name: "投稿の型" }).click();
-  const editor = page.getByLabel(/選択中の型（.+）の生成プロンプト/);
+  // 既定パターン（p1）の解決済み本文がインラインで見えている。
+  const editor = page.getByLabel(/生成プロンプト（.+）/);
+  await expect(editor).toBeVisible();
   await expect(editor).toHaveValue(/# タスク/);
   await expect(editor).toHaveValue(/ニュース/);
+
+  // {名前} の説明カラウトが目立つ形で出ている（T-M8-203）。
+  await expect(page.getByText("その名前の入力欄がこの下に自動で出ます", { exact: false })).toBeVisible();
 
   // 編集 → 適用方法の選択と「元に戻す」が現れる。
   await editor.fill("# タスク\nE2E編集テスト");
@@ -209,30 +211,9 @@ test("プロンプトを表示・編集でき、型の切替で編集が破棄�
   await editor.fill("別の編集");
   await page.getByRole("button", { name: "元に戻す" }).click();
   await expect(page.getByRole("button", { name: "元に戻す" })).toHaveCount(0);
-
-  // アカウント.mdタブ: fixtureのアカウント.mdが表示され、編集で同じ選択肢が出る（T-M8-93）。
-  await page.getByRole("tab", { name: "アカウント.md" }).click();
-  const baseMdEditor = page.getByLabel(/アカウント.md（全パターン共通/);
-  await expect(baseMdEditor).toHaveValue(/発信定義書/);
-  await baseMdEditor.fill((await baseMdEditor.inputValue()) + "\n- E2E追記");
-  await expect(page.getByLabel("この生成にだけ使う")).toBeVisible();
-  await page.getByRole("button", { name: "元に戻す" }).click();
-
-  // 画像生成タブ: PT-IMG の system default が表示される（T-M8-93）。
-  await page.getByRole("tab", { name: "画像生成" }).click();
-  await expect(page.getByLabel(/画像生成プロンプト/)).toHaveValue(/# タスク/);
 });
 
-test("standardには生成プロンプトのセクションを出さない（T-M8-92）", async ({ accounts, page }) => {
-  const account = await accounts.create("prompt-std");
-  await query(`update profiles set plan = 'standard' where id = $1`, [account.userId]);
-  await signIn(page, account);
-  await page.goto("/app/posts?tab=create");
-
-  // 画面自体は使える（テーマ選択は出る）が、プロンプトのセクションは無い。
-  await expect(page.getByLabel("テーマ", { exact: true })).toBeVisible();
-  await expect(page.getByText("生成に使うプロンプト")).toHaveCount(0);
-});
+// 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
 /**
  * 生成中に画面を開き直したとき Hydration mismatch が出ないこと（T-M8-113）。
@@ -290,25 +271,29 @@ test("投稿作成画面からパターンを追加でき、そのまま選択�
   page,
 }) => {
   const account = await accounts.create("pattern-inline");
-  // プロンプトの編集はmdプラン以上（設定＞プロンプトと同じ境界）。
+  // 契約中のプランを設定する（未契約はプロンプト編集がロックされる・T-M8-168）。
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
   await page.goto("/app/posts?tab=create");
 
 await page.getByRole("button", { name: "パターンを追加" }).click();
+  // 追加中は既存パターンのアクティブが外れる（T-M8-203。フォームが2つの対象を同時に指さない）。
+  await expect(page.getByRole("radio", { checked: true })).toHaveCount(0);
+  // 追加中は生成できない（理由も画面に出る）。
+  await expect(page.getByText("パターンを追加中です", { exact: false })).toBeVisible();
   // プロンプト欄には雛形が入っている（空欄から書き始めさせない）。
   await expect(page.locator("#new-pattern-prompt")).toHaveValue(
     /# 投稿内容[\s\S]*# 構成と分量とスレッド数[\s\S]*# 語り口/,
   );
-  // プレースホルダーを作り、プロンプトへ {対象読者} を書く。
-  await page.getByRole("button", { name: "プレースホルダーを追加" }).click();
-  await page.locator("#new-pattern-placeholder-0").fill("対象読者");
+  // プレースホルダーは手入力欄ではなく、プロンプトの {対象読者} から自動で導出される（T-M8-194）。
   await page.locator("#new-pattern-name").fill("画面から作った型");
   await page
     .locator("#new-pattern-prompt")
     .fill(
       "# 投稿内容\n画面から作った型のプロンプト\n\n# 構成と分量とスレッド数\nメインポスト：\n\n# 語り口\n{対象読者} に向けて書く",
     );
+  // 書いた時点で {対象読者} の入力欄が自動で出る（T-M8-194/203。グレー小の列挙は出さない・2026-08-22）。
+  await expect(page.getByLabel("対象読者（任意）")).toBeVisible();
   await page.getByRole("button", { name: "追加", exact: true }).click();
 
   // 追加した型が選択肢に出て、選ばれている。
@@ -341,7 +326,7 @@ const [saved] = await query<{
     削除は各パターンのカードの中にあり、読み上げ名にパターン名が入る（T-M8-134）。
   */
   await page.getByRole("button", { name: "「画面から作った型」を削除" }).click();
-  await expect(page.getByText("過去の下書き・履歴の表示は名前のまま残ります")).toBeVisible();
+  await expect(page.getByText("過去の下書き・履歴は残ります")).toBeVisible();
   await page.getByRole("button", { name: "削除する" }).click();
   await expect(page.getByRole("radio", { name: /画面から作った型/ })).toHaveCount(0);
   expect(

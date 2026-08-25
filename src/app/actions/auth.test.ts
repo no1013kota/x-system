@@ -18,14 +18,18 @@ const mocks = vi.hoisted(() => ({
   profileFrom: vi.fn(),
   profileSelect: vi.fn(),
   profileSelectEq: vi.fn(),
-  profileSingle: vi.fn(),
+  profileMaybeSingle: vi.fn(),
   profileUpdate: vi.fn(),
   profileUpsert: vi.fn(),
   redirect: vi.fn(),
+  isRegisteredEmail: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: mocks.createSupabaseAdminClient,
+}));
+vi.mock("@/lib/auth/registered-email-server", () => ({
+  isRegisteredEmail: mocks.isRegisteredEmail,
 }));
 vi.mock("@/lib/env", () => ({
   env: {
@@ -107,11 +111,11 @@ describe("auth actions", () => {
     mocks.profileEq.mockResolvedValue({ error: null });
     mocks.profileUpsert.mockResolvedValue({ error: null });
     mocks.profileUpdate.mockReturnValue({ eq: mocks.profileEq });
-    mocks.profileSingle.mockResolvedValue({
+    mocks.profileMaybeSingle.mockResolvedValue({
       data: { subscription_status: "active" },
       error: null,
     });
-    mocks.profileSelectEq.mockReturnValue({ single: mocks.profileSingle });
+    mocks.profileSelectEq.mockReturnValue({ maybeSingle: mocks.profileMaybeSingle });
     mocks.profileSelect.mockReturnValue({ eq: mocks.profileSelectEq });
     mocks.profileFrom.mockReturnValue({
       select: mocks.profileSelect,
@@ -159,6 +163,54 @@ describe("auth actions", () => {
         terms_version: CURRENT_TERMS_VERSION,
       });
       expect(mocks.profileEq).toHaveBeenCalledWith("id", "user-1");
+    });
+
+    /**
+     * T-M8-149。**エラーが無くても登録済みのことがある。**
+     * ホスト版のSupabaseは列挙対策で、登録済みでも成功と同じ形（`identities` が空）を返し
+     * メールを送らない。素通りさせると来ないコードを待つ画面へ送り込むことになる
+     * （2026-08-18に本番で発生。ローカルはエラーを返すため気付けなかった）。
+     */
+    it("成功応答でも identities が空なら登録済みとして案内する", async () => {
+      const signUpAuth = vi.fn().mockResolvedValue({
+        data: { user: { id: "user-1", identities: [] } },
+        error: null,
+      });
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: { signUp: signUpAuth },
+      });
+
+      const result = await signUp(INITIAL_AUTH_FORM_STATE, validSignUpForm());
+
+      expect(result).toMatchObject({
+        status: "error",
+        message: expect.stringContaining("既に登録されています"),
+        action: { href: "/login" },
+      });
+      // 同意の記録もしない（他人のアカウントの同意状態を書き換えないため）。
+      expect(mocks.profileUpdate).not.toHaveBeenCalled();
+    });
+
+    it("成功応答で確認済みの日時が入っていても登録済みとして案内する", async () => {
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signUp: vi.fn().mockResolvedValue({
+            data: {
+              user: {
+                id: "user-1",
+                identities: [{ provider: "email" }],
+                email_confirmed_at: "2026-08-01T00:00:00Z",
+              },
+            },
+            error: null,
+          }),
+        },
+      });
+
+      const result = await signUp(INITIAL_AUTH_FORM_STATE, validSignUpForm());
+
+      expect(result).toMatchObject({ status: "error" });
+      expect(result.message).toContain("既に登録されています");
     });
 
     it("passes a supplied captcha token to Supabase Auth", async () => {
@@ -331,8 +383,8 @@ describe("auth actions", () => {
       mocks.createSupabaseServerClient.mockResolvedValue({
         auth: { signInWithPassword, signOut: signOutSession },
       });
-      mocks.profileSingle.mockResolvedValue({
-        data: { subscription_status: subscriptionStatus },
+      mocks.profileMaybeSingle.mockResolvedValue({
+        data: { id: "user-1", subscription_status: subscriptionStatus },
         error: null,
       });
       return { signInWithPassword, signOutSession };
@@ -356,25 +408,47 @@ describe("auth actions", () => {
         options: { captchaToken: "captcha-value" },
         password: "safe-password-123",
       });
-      expect(mocks.profileSelect).toHaveBeenCalledWith("subscription_status");
-      expect(mocks.profileUpsert).toHaveBeenCalledOnce();
+      // profile は「行が在るか（＝修復が要るか）」だけのために読む（T-M8-268で契約は見ない）。
+      expect(mocks.profileSelect).toHaveBeenCalledWith("id");
+      expect(mocks.profileUpsert).not.toHaveBeenCalled();
+      expect(mocks.profileMaybeSingle).toHaveBeenCalledOnce();
       expect(mocks.profileSelectEq).toHaveBeenCalledWith("id", "user-1");
       expect(mocks.redirect).toHaveBeenCalledWith("/app/posts?tab=drafts");
     });
 
-    it.each(["incomplete", "incomplete_expired"])(
-      "redirects %s subscriptions to plans even when next is present",
+    it("repairs a missing profile row and still lands in the app", async () => {
+      mockSignInSuccess();
+      mocks.profileMaybeSingle
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { id: "user-1" }, error: null });
+
+      await expect(
+        signIn(INITIAL_AUTH_FORM_STATE, validSignInForm()),
+      ).rejects.toThrow("NEXT_REDIRECT");
+
+      expect(mocks.profileUpsert).toHaveBeenCalledOnce();
+      expect(mocks.profileMaybeSingle).toHaveBeenCalledTimes(2);
+      expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    });
+
+    /**
+     * **契約状態でログイン後の行き先を変えない**（T-M8-268・運営者の指示 2026-08-23）。
+     * 以前は未契約・解約済みを必ず `/plans` へ送っており、アプリを一度も見られなかった
+     * （招待キャンペーンへの参加も、自分のデータの確認もできない）。
+     */
+    it.each(["incomplete", "incomplete_expired", "canceled", "past_due"])(
+      "%s でもログイン後はアプリ本体（next 指定も尊重する）",
       async (subscriptionStatus) => {
         mockSignInSuccess(subscriptionStatus);
 
         await expect(
           signIn(
             INITIAL_AUTH_FORM_STATE,
-            validSignInForm({ next: "/app/posts" }),
+            validSignInForm({ next: "/app/invite" }),
           ),
         ).rejects.toThrow("NEXT_REDIRECT");
 
-        expect(mocks.redirect).toHaveBeenCalledWith("/plans");
+        expect(mocks.redirect).toHaveBeenCalledWith("/app/invite");
       },
     );
 
@@ -408,6 +482,7 @@ describe("auth actions", () => {
 
       expect(result).toMatchObject({
         email: "user@example.com",
+        message: "メール確認が終わっていません",
         status: "email_unconfirmed",
       });
       expect(result.message).not.toContain("provider detail");
@@ -439,35 +514,91 @@ describe("auth actions", () => {
       expect(reusedResult.message).not.toContain("timeout-or-duplicate");
     });
 
-    it("uses one generic message for invalid credentials and rate limits", async () => {
-      const messages: string[] = [];
-      for (const error of [
-        { code: "invalid_credentials", message: "email is missing" },
-        { code: "over_request_rate_limit", message: "too many attempts" },
-      ]) {
-        mocks.createSupabaseServerClient.mockResolvedValue({
-          auth: {
-            signInWithPassword: vi.fn().mockResolvedValue({
-              data: { user: null },
-              error,
-            }),
-          },
-        });
-        const result = await signIn(
-          INITIAL_AUTH_FORM_STATE,
-          validSignInForm(),
-        );
-        messages.push(result.message);
-        expect(result.status).toBe("error");
-        expect(result.message).not.toContain(error.message);
-      }
+    /** providerの生メッセージを画面へ出さない（どの失敗でも共通の約束）。 */
+    it.each([
+      { code: "invalid_credentials", message: "email is missing" },
+      { code: "over_request_rate_limit", message: "too many attempts" },
+    ])("does not leak the provider message for $code", async (error) => {
+      mocks.isRegisteredEmail.mockResolvedValue(true);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi
+            .fn()
+            .mockResolvedValue({ data: { user: null }, error }),
+        },
+      });
 
-      expect(new Set(messages).size).toBe(1);
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.message).not.toContain(error.message);
+    });
+
+    /**
+     * **ログインの失敗は原因ごとに言い分ける**（T-M8-295・運営者の指示 2026-08-25）。
+     * Supabase はどちらも `invalid_credentials` を返すので、アプリ側で存在を確かめる。
+     * 以前は共通文言で「時間をおいて再度お試しください」と出しており、登録していない人が
+     * 正しいパスワードを探して何度も試すことになった。
+     */
+    it("登録が無ければ「登録されていません」と新規登録への導線を返す", async () => {
+      mocks.isRegisteredEmail.mockResolvedValue(false);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.message).toContain("登録されていません");
+      expect(result.action).toEqual({ href: "/signup", label: "新規登録へ" });
+      // 待っても直らない失敗に「時間をおいて」と言わない。
+      expect(result.message).not.toContain("時間をおいて");
+    });
+
+    it("登録済みなら存在を伏せず、資格情報の誤りとして返す（登録導線は出さない）", async () => {
+      mocks.isRegisteredEmail.mockResolvedValue(true);
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.message).toContain("正しくありません");
+      expect(result.action).toBeUndefined();
+    });
+
+    /** 存在確認そのものが落ちても、打ち間違いを「予期しないエラー」にしない（原則1）。 */
+    it("存在確認が失敗したら、登録済みとして扱い汎用の文言へ落とす", async () => {
+      mocks.isRegisteredEmail.mockRejectedValue(new Error("db down"));
+      mocks.createSupabaseServerClient.mockResolvedValue({
+        auth: {
+          signInWithPassword: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: { code: "invalid_credentials", message: "Invalid login credentials" },
+          }),
+        },
+      });
+
+      const result = await signIn(INITIAL_AUTH_FORM_STATE, validSignInForm());
+
+      expect(result.status).toBe("error");
+      expect(result.action).toBeUndefined();
+      expect(result.message).toContain("正しくありません");
     });
 
     it("invalidates the new session when profile lookup fails", async () => {
       const { signOutSession } = mockSignInSuccess();
-      mocks.profileSingle.mockResolvedValue({
+      mocks.profileMaybeSingle.mockResolvedValue({
         data: null,
         error: new Error("profile unavailable"),
       });

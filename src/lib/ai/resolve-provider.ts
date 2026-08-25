@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { isOperatorManagedPlan } from "../plans";
 
 import { resolvePremiumTextPurpose } from "../ai-purpose-config";
 import { isCatalogImageModel, isCatalogTextModel } from "./model-catalog";
@@ -75,6 +76,8 @@ export class ApiKeyRequiredError extends Error {
 export interface ResolveConfig {
   premiumTextProvider: Provider;
   newsTextProvider: Provider;
+  /** ニュース収集専用のモデル上書き（任意・T-M8-200）。未設定は provider の textModels を使う。 */
+  newsTextModel?: string;
   /** 運営キー（未設定はundefined）。 */
   operatorApiKeys: Partial<Record<Provider, string>>;
   textModels: Partial<Record<Provider, string>>;
@@ -179,7 +182,7 @@ export async function resolveTextKey(
   input: { plan: PlanId; userId: string },
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
-  if (input.plan === "premium") {
+  if (isOperatorManagedPlan(input.plan)) {
     // providerは運営固定。モデルはユーザー選択を尊重する（T-M8-107。運営キーの実費が
     // モデルで変わるため、単価はMODEL_RATESが台帳へ反映する）。
     const provider = resolvePremiumTextPurpose(deps.config.premiumTextProvider);
@@ -222,7 +225,9 @@ export async function resolveTextKey(
 
 /** news（全プラン共通・運営固定）。無効・未設定は失敗し別providerへ自動切替しない（要件01 §7）。 */
 export function resolveNewsKey(config: ResolveConfig): ResolvedKey {
-  return operatorTextKey(config.newsTextProvider, config);
+  const base = operatorTextKey(config.newsTextProvider, config);
+  // ニュースだけモデルを差し替えられる（プレミアム生成と独立にコストを調整する・T-M8-200）。
+  return config.newsTextModel ? { ...base, model: config.newsTextModel } : base;
 }
 
 /**
@@ -233,7 +238,7 @@ export async function resolveImageKey(
   input: { plan: PlanId; userId: string },
   deps: ResolveDeps,
 ): Promise<ResolvedKey> {
-  if (input.plan === "premium") {
+  if (isOperatorManagedPlan(input.plan)) {
     // premiumのimageは運営キーを使うが、providerはユーザーがopenai/googleから選べる
     //（要件02 §4.1・要件06。textの固定と異なりimageは選択を尊重する）。
     const cfg = await getAiPurposeConfig(deps.client, input.userId);

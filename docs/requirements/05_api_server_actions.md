@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.40 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.65 |
+| 更新日 | 2026-08-25 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -34,7 +34,7 @@
   "ok": false,
   "error": {
     "code": "usage_limit_exceeded",
-    "message": "今月の生成枠を使い切っています。",
+    "message": "今の契約期間の利用上限に達しています。次回の更新日にリセットされます。",
     "details": {}
   }
 }
@@ -48,7 +48,8 @@
 | `legal_consent_required` | 403 | 重大改定後の利用規約同意／privacy確認が未完了 |
 | `automation_consent_required` | 403 | 自動投稿（mode=auto）の現行version同意が未完了 |
 | `subscription_required` | 402 | 課金状態により実行不可 |
-| `usage_limit_exceeded` | 403 | premium利用枠不足 |
+| `usage_limit_exceeded` | 403 | 運営キー系プランの利用枠不足 |
+| `usage_paused` | 429 | エキスパートの内部ガード到達（T-M8-168）。**文言・detailsに数値を出さない**。「連続的な使用が検知されたため一時的に停止しております。お待ちください。」 |
 | `x_account_required` | 400 | Xアカウント未連携 |
 | `api_key_required` | 400 | BYOKキー不足 |
 | `persona_required` | 400 | アカウント設定（L-4〜L-7）の必須項目が未保存 |
@@ -67,6 +68,7 @@
 |---|---|---|---|
 | POST | `/api/stripe/checkout` | user | Checkout Session作成 |
 | POST | `/api/stripe/portal` | user | Customer Portal Session作成 |
+| POST | `/api/stripe/resume` | user＋Origin | 解約済み契約の再開（保存済みカードで同一プランを作り直しDBへ即時反映・要件03 §6.1・T-M8-264） |
 | GET | `/api/stripe/return` | user＋復帰marker | Checkout／Portal復帰時の未反映Subscription同期 |
 | POST | `/api/stripe/webhook` | Stripe署名 | 課金状態同期 |
 | GET | `/auth/confirm` | Supabase `token_hash`, `type=recovery`（signupは6桁コード方式へ移行・T-M8-121。`type=signup` も後方互換で受ける）, `next`(optional) | Server側`verifyOtp`。signupは`/plans?confirmed=1`（着地側が「メール確認が完了しました」を出す。成功が無言だと確認できたのか分からない・T-M8-58）、recoveryはuser_id・発行時刻を封緘した15分TTLのHttpOnly marker cookieを発行して`/reset-password`へ遷移。`next`は`/plans`／`/reset-password`／`/app`配下だけ許可し、token queryを除去 |
@@ -75,16 +77,26 @@
 | GET | `/api/cron/news-fetch` | `CRON_SECRET` | ニュース取得 |
 | GET | `/api/cron/scheduler-tick` | `CRON_SECRET` | スロットenqueue・dispatch／回収・cleanup |
 | GET | `/api/cron/metrics-collector` | `CRON_SECRET` | tweet_id別実績取得 |
-| GET | `/api/cron/follower-snapshot` | `CRON_SECRET` | フォロワー数保存 |
+| GET | `/api/cron/follower-snapshot` | `CRON_SECRET` | フォロワー数保存（契約が有効な利用者のみ・T-M8-257） |
 | POST | `/api/jobs/run` | `CRON_SECRET` | queued job 1件のworker実行（内部dispatch専用。202を即時返却し本処理は`after()`で実行） |
 
 `POST /api/stripe/checkout`のJSON入力は`plan`（`standard`／`md`／`premium`）だけとし、Price ID、success/cancel/return URL、user_id、Customer ID、未知フィールドを拒否する。成功は共通形式の`data.url`にStripe Checkout URLを返し、30分TTLの暗号化済み復帰marker cookieを発行する。未認証は`unauthorized`、`Origin`不一致は`forbidden`、入力不正は`validation_error`、Stripe障害はprovider本文を隠した`provider_error`とし、応答を`no-store`にする。Price IDと戻り先はサーバー側の環境変数および`APP_BASE_URL`から解決する（課金処理の詳細は要件03 §2.1）。
 
 `POST /api/stripe/portal`は入力fieldを持たず、認証済み本人の`profiles.stripe_customer_id`、サーバー側の`STRIPE_PORTAL_CONFIGURATION_ID`、`APP_BASE_URL`からPortal Sessionを作る。Customer未作成は`subscription_required`（`details.settingsPath=/plans`）、未認証は`unauthorized`、`Origin`不一致は`forbidden`、Stripe障害は`provider_error`とする。成功は`no-store`の共通形式で`data.url`だけを返し、30分TTLの暗号化済み復帰marker cookieを発行する。ブラウザはHTTPSだけへ遷移する（要件03 §2.2）。
 
+**Server Action `cancelTrialNowAction`**（`src/app/actions/billing.ts`・T-M8-278）は入力を持たず、**`trialing`のときだけ**本人の契約を即時解約する（`subscriptions.cancel`）。`profiles`を`canceled`にし、`trial_ends_at`は残す（残り期間での再開に使う）。trialing以外・契約なしは`subscription_required`、Stripe障害は`provider_error`。
+
+**Server Action `recordCancellationSurveyAction`**（`src/app/actions/billing.ts`・T-M8-277）は解約前のアンケート（`reasons`＝**1つ以上・複数可**・`detail`任意1000文字以内・`proceeded`）を`cancellation_surveys`へ保存する。0件・未知の理由・長すぎる`detail`は`validation_error`。重複は落とし、並びは定数の順に正規化する（T-M8-294）。**保存に失敗しても画面は解約手続きへ進む**（記録より利用者の操作を優先）。結果は共通の`BaseResult`。
+
+`POST /api/stripe/resume`は、`profiles.trial_ends_at`が未来なら**その終了日のトライアルとして契約を作り直す**（T-M8-278。期限切れなら無料期間なしの有料契約）。
+
+**Server Action `keepSubscriptionAction`**（`src/app/actions/billing.ts`・T-M8-271）は入力を持たず、認証済み本人の`profiles.stripe_subscription_id`の解約予定（`cancel_at`／`cancel_at_period_end`）を消して`profiles.cancel_at_period_end`を`false`にする（`resumed`）。Stripe側に予定が無ければStripeを変更せず表示だけ整える（`nothing_scheduled`）。契約が無い・解約済み（`canceled`）は`subscription_required`（解約済みの再開は`POST /api/stripe/resume`・T-M8-264）。結果は共通の`BaseResult`。
+
+**Server Action `cancelScheduledPlanChangeAction`**（`src/app/actions/billing.ts`・T-M8-260）は入力を持たず、認証済み本人の`profiles.stripe_subscription_id`からSubscriptionを取得し、`schedule`が付いていれば`subscriptionSchedules.release`で期間末の下位変更予約を解除して`scheduled_plan`／`scheduled_plan_at`を空にする（`released`）。scheduleが無ければStripeを変更せず表示だけ整える（`nothing_scheduled`）。契約が無ければ`subscription_required`。結果は共通の`BaseResult`。Stripe側の所有確認は契約IDをDBから取ることで担保し、入力からIDを受けない。
+
 `GET /api/stripe/return`は`source=checkout|portal`、認証済みsession、開始APIが発行した`HttpOnly`／`SameSite=Lax`の復帰markerを検証する。開始後のStripe event時刻がprofileへ反映済みなら外部APIなしで画面へredirectする。未反映時だけCheckout Sessionの本人性（checkoutのみ）を確認してSubscriptionを1回取得し、webhook共通projectionをtransaction適用する。markerは結果にかかわらず削除し、成功／反映済み／skip／失敗を秘密情報を含まない`sync` queryへ正規化する。markerのない通常画面はこのrouteを通らず、Stripe APIを呼ばない（要件03 §3）。
 
-`POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
+`POST /api/stripe/webhook`はraw bodyと`Stripe-Signature`をSDKで検証し、署名header欠落／不正は共通の安全な400を返す。対象eventは`checkout.session.completed`、`customer.subscription.created|updated|deleted`、`invoice.payment_failed|paid`、`charge.refunded`（招待報酬の取消・減額・T-M8-174）だけで、対象外は記録せず200とする。処理成功・重複eventは`data.result=processed|duplicate`、対象外は`ignored`として200、未知Priceや内部処理失敗は詳細を隠した`internal_error`で500を返す。すべて`no-store`とし、非2xxはアプリ内retryせずStripe再送を利用する（transaction／順序の詳細は要件03 §4）。
 
 初期はlaunchd、移行後はVercel Cronが同じGET routeを起動する。定時routeは`force-dynamic`とし、redirect・cacheを発生させない。呼び出し元に依存する処理分岐は持たない。
 
@@ -94,15 +106,17 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化 |
-| `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——到達できるのは直前に登録した本人だけで、登録時にTurnstileを通しており、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
-| `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみ再送状態。契約未選択は`/plans`、他はsafeな相対`next`または`/app` |
+| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化。**エラーが無い応答でも登録済みを判定する**（T-M8-149。`identities` が空、または `email_confirmed_at` が入っていれば既存アカウント。ホスト版Supabaseは列挙対策で登録済みでも成功と同じ形を返しメールを送らないため、素通りさせると来ないコードを待つ画面へ送り込む） |
+| `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——直前の登録または未確認ログインで既にpassword／Turnstileを検証済みで、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
+| `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみemail付きの6桁コード入力状態。画面側は新しい再送専用Turnstile tokenで`resendSignUpConfirmation`を自動実行する。契約未選択は`/plans`、他はsafeな相対`next`または`/app`。認証成功後はprofileを1回読み、欠損時だけ作成・再読込する（通常ログインで存在確認upsertを行わない）。profile確認に失敗したsessionは破棄する |
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
 | `updatePassword` | password, password_confirmation | redirect | 有効なSupabase sessionと15分TTLのrecovery markerが同じuser_idであることを必須化。成功後はlocal sessionとmarkerを破棄して`/login?password_updated=1`へ遷移 |
 | `signOut` | none | redirect | session破棄 |
 | `acceptLegalUpdates` | 現行version、文書別の明示checkbox | redirect | 本人profileを再読込し、古い文書のversion／同意時刻だけ更新。現行文書は上書きしない |
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通。**確認自体はコード方式**なのでリンクは使わない）。成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。
+**登録済みアドレスの扱い**（T-M8-149）: Supabaseの応答は環境で違う。ローカルは`user_already_exists`を返すが、**ホスト版は列挙対策で成功と同じ形（`identities`が空配列）を返しメールを送らない**。エラーコードだけを見ていると本番でだけ通り抜けるため、成功応答も`classifySignUpUser`で判定し、登録済みならログイン導線付きのエラーへ振り分ける（文言の正本は`signup-errors.ts`）。**未確認アドレスの再登録は「作成」として扱う**——Supabaseが毎回コードを再送するため、そのまま進めてよい。
+
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認は省略中**（T-M8-202・`mailer_autoconfirm`）: signUp応答に**sessionが付いていれば登録完了として`/plans?signup=1`へredirect**し、無ければ従来どおりコード入力へ切り替わる（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
 
 ### 4.1 アカウント・設定
 
@@ -139,9 +153,10 @@ Xキー削除では、2026-07-23時点の[X OAuth 2.0 user access token公式手
 | `listXAccounts` | none | accounts | 本人のみ |
 | `enableXAccount` | `x_account_id` | status | plan上限、auth_type、tokenを検証してactive化 |
 | `disconnectXAccount` | `x_account_id` | status | Xのtoken revokeをbest effortで実行後、保存tokenを削除しstatus disabled。自動投稿同意も停止し全auto slotを無効化。選択中（`active_x_account_id`）だった場合は選択を解除する（フォールバック再選択は`setActiveXAccount`が扱う）。下書き・履歴・base_mdは削除しない |
-| `refreshXAccountStatus` | `x_account_id` | status | X `/users/me`で確認 |
+| `refreshXAccountStatus` | `x_account_id` | status | X `/users/me`で確認。handle・表示名・画像に加え **`x_premium`（`verified_type`= blue/business）も更新**する（T-M8-219。OAuth連携・再有効化でも同様に更新） |
 | `recordXAutomationConsent` | `x_account_id`, `consent_version`, `confirmed` | consent state | 現行説明versionの明示checkbox必須。`automation_consented_at`を保存しdisabledを解除 |
-| `disableXAutomation` | `x_account_id` | consent state, disabled slot count | `automation_disabled_at`を保存し、同じtransactionで全auto slotを無効化 |
+| `disableXAutomation` | `x_account_id` | consent state, disabled slot count | `automation_disabled_at`を保存し、同じtransactionで**全スケジュール枠（auto・draftとも）**を無効化する（T-M8-233） |
+| `resumeXAutomation` | `x_account_id`, `confirmed?`, `consent_version?` | resumed slot count | **止まっている枠をすべて**`enabled=true`へ戻す（T-M8-233／T-M8-251。個別に停止した枠も対象）。auto枠を含むときは現行版の同意が必要（未同意は`automation_consent_required`） |
 
 X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAuth clientとして使い、premiumは運営Appを使う。どちらもOAuth 2.0 user contextで利用者本人の権限を取得し、利用者に代わって投稿する。premiumも運営Appのapp-only tokenで投稿するのではなく、利用者ごとのaccess/refresh tokenを`x_accounts`へ暗号化保存して使うため、利用者自身のDeveloper App登録は不要である。
 
@@ -190,7 +205,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
 | `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled | job_id | N-4。バックグラウンド生成 |
 
-`listNewsItems`は`from`/`to`が揃う場合は`fetched_at`の時間窓（ダイジェストの`window_started_at`/`window_ended_at`と一致・掲載外も含む）で、無い場合は`published_at`基準の既定7日で絞る。並び・keyset cursorは`coalesce(published_at, fetched_at) desc, id desc`。categories/impactsは列挙値のみ・未指定は全件。SC-06の絞り込みUIは選択条件を`news_config`（分野・インパクト・表示件数）として`updateNewsConfig`で保存し、その条件で一覧を取り直す。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。専用の更新Actionは持たない。
+`listNewsItems`は**新着順（`fetched_at`）で数えた最新500件**（`NEWS_MAX_STORED_ITEMS`）を対象に、`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-188。範囲外のpageは最終ページへ丸める）。`theme`（news_category）・`impact`（high|mid|low）は**選択式ソート**で、一致する記事を先頭へ寄せる（whereでは絞らない——記事は消えない）。SC-06はサーバー描画＋URLの`?theme=&impact=&page=`で遷移する。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
 
 ## 7. スケジュール
 
@@ -203,7 +218,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `enableScheduleSlot` | slot_id, expected_updated_at | slot | 所有者のみ。楽観lock。autoの再開は現行versionの明示同意必須 |
 | `deleteScheduleSlot` | slot_id, expected_updated_at | deleted | 所有者のみ |
 
-`disableXAutomation`は即時opt-outの正本とする。実行後はauto slotを無効化し、すでにqueuedでもX投稿を開始していないauto起点jobをcancelする。running jobもX API呼び出し直前に同意状態を再確認し、撤回済みなら投稿せず停止する。draft modeと手動投稿は継続できる。
+`disableXAutomation`は即時opt-outの正本とする。**画面の「スケジュールをすべて停止」は自動投稿だけでなく下書き作成の枠も止める**（T-M8-233。止めたい人は「いま何も動かないでほしい」のであって、下書きだけ作られ続けるのは意図と違う）。`resumeXAutomation`（「すべて再開」）は**止まっている枠をすべて**戻す（T-M8-251。個別に停止した枠も対象／auto枠を含む再開は現行版の同意が必要）。Xアカウント切断など他の経路は従来どおり自動投稿だけを止める。実行後はslotを無効化し、すでにqueuedでもX投稿を開始していないauto起点jobをcancelする。running jobもX API呼び出し直前に同意状態を再確認し、撤回済みなら投稿せず停止する。draft modeと手動投稿は継続できる。
 
 ## 8. AI設定・学習
 
@@ -220,7 +235,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePromptTemplate` | kind, content, expected_updated_at | template | md/premiumのみ。楽観lock |
 | `resetPromptTemplate` | kind | template | md/premiumのみ。account override削除 |
 | `listPatterns` | none | patterns, prompts, plan | 投稿パターン一覧＋プロンプト本文（T-M8-129） |
-| `createPattern` | name, description, prompt, placeholders | pattern | md/premiumのみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132） |
+| `createPattern` | name, description, prompt, placeholders | pattern | 契約中のみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132）。placeholdersは画面が本文の`{名前}`から導出して送る（T-M8-194） |
 | `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す。**名前・説明・プロンプト・プレースホルダー・分量だけを更新**し、他の列は触らない |
 | `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
 | `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
@@ -230,7 +245,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 ## 9. 投稿分析
 
-**Server Actionは無い**（2026-08-15・T-M8-94で手動の`refreshSuggestions`を削除した）。分析レポートは毎朝8:00 JSTに`scheduler_tick`が自動起票する（要件04 §12）。
+| Action | 入力 | 返却 | 備考 |
+|---|---|---|---|
+| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId?, followerRecorded? | 「分析を開始」ボタン（T-M8-255）。フォロワー数の当日記録（押した時点の最新値で上書き。毎日の記録自体は毎時cronが担う・T-M8-257）→ `suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
+
+2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー記録は起票ゲートを通ったときだけ行い、記録の失敗は分析を止めない。
 
 実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
@@ -242,7 +261,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 アカウント.md更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。アカウント設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
-対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。
+対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。**ただし履歴は最新5版までしか保持しないため（要件02 §3.4・T-M8-156）、6版以上前を指定した`rollbackBaseMd`は`not_found`（`version_not_found`）を返す。**画面の履歴一覧も保持分だけを出すので、選べない版への導線は出ない。
 
 `listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。**この制限はコードで強制する**（T-M8-139）: Actionの`kind`は`image`のみを受け、store側も型プロンプトが渡されたら`validation_error`で落とす。以前は記述だけがこうで実装は`p1`〜`p6`も扱っており、**画像プロンプトの編集画面で「再読み込み」を押すと編集対象がp1へすり替わり、保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きしていた**（利用者のデータが壊れる）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
@@ -252,10 +271,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `listNotifications` | cursor, unread_only | notifications（`email_status`を含む） | 本人のみ |
+| `listNotifications` | cursor, unread_only | notifications | 本人のみ |
 | `markNotificationRead` | notification_id | notification | 本人のみ |
 | `markAllNotificationsRead` | none | count | 本人のみ |
-| `retryNotificationEmail` | notification_id | notification | `email_status=failed`のみ。attemptを0へ戻しqueued化。通知ごとに1分1回まで。**導線は通知ベルの該当行**（要件06 §2） |
+
+`retryNotificationEmail` はT-M8-222（メール通知の廃止）で削除した。
 
 ## 11. Webhook/cronの認可
 
@@ -286,7 +306,7 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 | `instructions` / `user_opinion` | 各2,000文字以下 |
 | prompt / base_md | prompt 8,000文字、base_md 5,000文字以下 |
 | image | JPG/PNG/WEBP、5MB以下、1枚 |
-| `news_config` | categories/impact_filterは重複なしで各1件以上、`max_items`は1〜100 |
+| `news_config` | categories/impact_filterは重複なしで各1件以上（通知条件。旧`max_items`は受け取っても黙って落とす・T-M8-187） |
 | `captcha_token` | signup／確認メール再送／login／password reset申請ごとに発行された1〜2,048文字のTurnstile token。Server側でSupabase Authへ渡す。5分TTL・1回限りで、Action完了後にwidgetをresetして再利用を許可しない |
 
 同一ユーザーが`queued/running`のjobを5件持つ場合、新規生成・学習・提案を`job_conflict`で拒否する。投稿はさらに`X_DAILY_POST_LIMIT`とpremium残量を確認する。
@@ -300,8 +320,15 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 - 課金webhook: `stripe_events`
 - 投稿結果・部分失敗: `drafts.tweet_ids`, `drafts.last_post_error`
 - アカウント.md変更: `base_md_versions`
-- 通知/メール送信: `notifications`
+- 通知: `notifications`
 - 外部API利用量・推定原価: `external_api_usage_events`
+## 招待プログラム（T-M8-174）
+
+- **Server Action `saveAffiliatePayoutAccount`**: 振込先口座の登録・変更（本人のみ）。口座番号は4〜8桁の数字を検証し、AES-256-GCMで暗号化して保存（応答・画面には末尾4桁のみ）。結果は共通の `BaseResult`。
+- **公開route `GET /r/{code}`**: 30日Cookie（`exos_ref`・httpOnly・Last Click）を付けて `/` へ302。コードの実在はここでは確かめない（登録時に照合）。
+- **紐づけの実行点は2つ**（T-M8-191）: (1) `signUp` 成功時（主経路。成功したらCookieを消す）、(2) `verifySignUpCode` 成功時（フォールバック。登録時の紐づけがDB一時障害等で失敗しCookieが残っている場合だけ動く。**メール確認の省略中（T-M8-202）はこの経路は休眠**——確認を戻したらE2E「登録時に紐づけできなくても…」をgit履歴から復元する）。どちらも冪等（1ユーザー1招待者のunique）で、失敗しても登録・確認は止めない。
+- **webhook**: `charge.refunded` を購読イベントへ追加（該当invoiceの報酬取消）。`invoice.paid`・`customer.subscription.deleted` の副作用は要件03「招待プログラム」。
+
 ## 変更履歴
 
 | version | 日付 | 変更内容 |
@@ -311,3 +338,32 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.38 | 2026-08-18 | `createScheduleSlot`／`updateScheduleSlot` に `source_url`・`placeholder_values`・`prompt_override` を追加（T-M8-135） |
 | v1.39 | 2026-08-18 | `prompt_templates` 系は `kind=image` のみを受けることをコードで強制（T-M8-140。型プロンプトは `post_patterns` 側） |
 | v1.40 | 2026-08-18 | `validation_error` の理由一覧を実装へ揃えた（T-M8-144） |
+| v1.41 | 2026-08-19 | `signUp` がエラー無しの応答からも登録済みを判定するようにした（T-M8-149）。決済の失敗のうち「Stripeアカウントが本番決済を受け付けられない」を `feature_disabled` へ分け、画面はサーバの文言を出す（T-M8-148。従来は必ず「時間をおいて再度」で嘘になっていた） |
+| v1.42 | 2026-08-19 | 通常ログインのprofile確認をread-firstにしてDB往復を1回削減し、欠損時だけ修復するよう変更。6桁コード再送のTurnstileを正式な`interaction-only`表示へ修正（T-M8-151） |
+| v1.43 | 2026-08-19 | 未確認ログインを6桁コード入力状態へ返し、新しい再送用Turnstile tokenでコードを自動再送する契約を追加（T-M8-153） |
+| v1.44 | 2026-08-20 | 履歴上限により6版以上前の`rollbackBaseMd`が`not_found`になることを明記（T-M8-156） |
+| v1.45 | 2026-08-20 | 下書きの投稿予約・解除のServer Actionを追加（T-M8-157） |
+| v1.46 | 2026-08-20 | §2.2の失敗例messageを実装の文言へ修正（T-M8-144 #47） |
+| v1.47 | 2026-08-20 | プラン再編（T-M8-168）: エラーコード usage_paused（429・エキスパートの内部ガード到達）を追加 |
+| v1.48 | 2026-08-21 | 招待プログラムのAction・公開route・webhook購読イベント追加を記載（T-M8-174） |
+| v1.49 | 2026-08-21 | webhook対象イベント一覧へ charge.refunded を追記（T-M8-174のdoc同期漏れ・T-M8-180で検出） |
+| v1.50 | 2026-08-21 | ニュース一覧APIを全件・sort/pageの50件ページングへ改定（T-M8-187。cursor・絞り込み入力・専用Action廃止） |
+| v1.51 | 2026-08-22 | listNewsItemsを最新500件対象・theme/impactの選択式ソートへ（T-M8-188） |
+| v1.52 | 2026-08-22 | 招待の紐づけをverifySignUpCode成功時にもフォールバック実行（T-M8-191） |
+| v1.53 | 2026-08-22 | createPattern/updatePatternのplaceholdersを画面側で本文から導出する運用へ（T-M8-194） |
+| v1.54 | 2026-08-22 | メール確認を省略（T-M8-202）。signUpはsession有無で分岐し即/plansへ。verifySignUpCodeは未確認ログイン経路用に残置 |
+| v1.55 | 2026-08-23 | 「すべて停止」を下書き枠へ拡張し `resumeXAutomation`（すべて再開）を追加（T-M8-233） |
+| v1.56 | 2026-08-23 | 「すべて停止/再開」の対象を全枠へ（T-M8-251） |
+| v1.57 | 2026-08-23 | `startAnalysisAction`（「分析を開始」）を追加し、`/api/cron/follower-snapshot` を廃止（T-M8-255）。§9を手動実行へ更新 |
+| v1.58 | 2026-08-23 | `/api/cron/follower-snapshot` を復活（T-M8-257・契約が有効な利用者のみ）。分析はボタンのまま |
+| v1.59 | 2026-08-23 | `POST /api/stripe/resume`（解約済み契約の再開）を追加（T-M8-264） |
+| v1.60 | 2026-08-23 | cancelScheduledPlanChangeAction（予約済み下位変更の取り消し・T-M8-260） |
+| v1.61 | 2026-08-23 | 失敗例の usage_limit_exceeded 文言を契約期間ごとへ（T-M8-258） |
+| v1.62 | 2026-08-23 | keepSubscriptionAction（解約予定のアプリ内取り消し・T-M8-271） |
+| v1.63 | 2026-08-23 | recordCancellationSurveyAction（解約理由のアンケート・T-M8-277） |
+| v1.64 | 2026-08-23 | cancelTrialNowAction（トライアルの即時解約）と、残りトライアルでの再開（T-M8-278） |
+| v1.65 | 2026-08-25 | recordCancellationSurveyAction を複数選択（`reasons`）へ（T-M8-294） |
+
+### 下書きの投稿予約（T-M8-157）
+
+`scheduleDraftAction` / `cancelDraftScheduleAction`（本人のみ・`status=draft` のみ）。日時の判定は純粋層 `src/lib/draft-schedule.ts`（`checkDraftSchedule`）が持ち、**画面と同じ判定を受理直前にもう一度通す**——押す前に理由が分かる形にし、画面をすり抜けても投稿されないようにする。却下理由は日本語で返す（`1分以上先の日時`・`90日先まで`・`投稿済みまたは破棄済み`・`Xアカウントが連携解除`）。更新は他の下書き操作と同じ `expected_updated_at` の楽観lockで、ずれていれば `job_conflict`。保存はUTC、画面表示はJST。

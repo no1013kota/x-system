@@ -4,21 +4,22 @@ import Link from "next/link";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { Notice } from "@/components/ui/notice";
 import { XAccountRequiredNotice } from "@/components/x-account-required-notice";
+import { AppLockedPage } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { serverNowMs } from "@/lib/time/server-now";
 import { getPool, pooledQueryable } from "@/lib/db/pool";
 import { listDraftsForAccount, type DraftView } from "@/lib/drafts";
 import { locateDraft, type DraftLocation } from "@/lib/drafts/locate-draft";
-import { listScheduleSlots, type ScheduleSlotView } from "@/lib/schedule-slots";
 import { ScheduleSummary } from "./schedule-summary";
 import { env } from "@/lib/env";
+import { imageKeyRowsQuery, imageProvidersFor } from "@/lib/ai/image-providers-server";
 import { attachSignedImageUrls } from "@/lib/images/signed-url-server";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 const pooledDb = pooledQueryable();
 
 import { listPatterns, listPatternPrompts } from "@/lib/post/post-patterns-store";
-import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
 
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
@@ -36,6 +37,14 @@ type Tab = "create" | "drafts" | "history";
  * 上限に達したときは「直近N件」と画面に明示する（黙って切り捨てない）。
  */
 const HISTORY_LIMIT = 50;
+/**
+ * 下書きタブの表示件数（要決定D-39・運営者の判断 2026-08-25「案A」）。
+ *
+ * これまで下書きだけ**上限なしで全件**取っていた。`thread`・`images` のJSONを含むので、
+ * 溜めている人ほど画面が重くなる（利用者数ではなく**その人の下書き数**に比例）。
+ * 履歴タブと同じ50件＋「ほかN件は…」に揃える——同じ形なら説明が要らない。
+ */
+const DRAFTS_LIMIT = 50;
 const TABS: { id: Tab; label: string }[] = [
   { id: "create", label: "作成" },
   { id: "drafts", label: "下書き" },
@@ -43,30 +52,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 interface PostsPageProps {
-  searchParams: Promise<{ tab?: string; draftId?: string }>;
-}
-
-/** valid な openai/google キーの行（plan判定前に並列で引けるよう、クエリと判定を分離・T-M8-67）。 */
-function imageKeyRowsQuery(userId: string) {
-  return getPool().query<{ provider: string }>(
-    `select provider from user_api_keys
-      where user_id = $1 and provider in ('openai','google') and status = 'valid'`,
-    [userId],
-  );
-}
-
-/** BYOKは valid な openai/google キー、premiumは運営キー＋画像モデルが設定済みのproviderを返す。 */
-function imageProvidersFor(
-  plan: string | null,
-  keyRows: { provider: string }[],
-): string[] {
-  if (plan === "premium") {
-    const providers: string[] = [];
-    if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
-    if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
-    return providers;
-  }
-  return keyRows.map((r) => r.provider);
+  searchParams: Promise<{ tab?: string; draftId?: string; news?: string }>;
 }
 
 async function createTabData(userId: string, activeXAccountId: string) {
@@ -96,43 +82,21 @@ async function createTabData(userId: string, activeXAccountId: string) {
     : allPatterns.filter((option) => !option.requiresQuoteUrl);
   const plan = profileResult.rows[0]?.plan ?? null;
   const imageProviders = imageProvidersFor(plan, keyRows.rows);
-  // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは mdプラン以上
+  // 生成に使うプロンプトの表示・編集（T-M8-92）。プロンプトのカスタマイズは編集権限のあるプラン（T-M8-168で全プラン）
   // （AI設定＞プロンプトと同じ境界）なので、standard には渡さない＝セクションごと出さない。
   // updatedAt は「保存して以後も使う」の楽観ロック（AI設定と同じ仕組み）に使う。
   let promptTemplates: Record<string, { content: string; updatedAt: string | null; isOverride: boolean }> | null =
     null;
-  let baseMd: { content: string; version: number } | null = null;
   // 判定は `promptEditablePlan` に集約（T-M8-144）。
+  // アカウント.md・画像プロンプトの編集は設定＞プロンプトへ集約（T-M8-203）。ここは
+  // パターンの本文（`post_patterns.prompt`・解決済み）だけを渡す。キーはパターンID（uuid）。
   if (promptEditablePlan(plan ?? "")) {
-    const [patternPrompts, listed, baseMdRow] = await Promise.all([
-      // パターンのプロンプトは `post_patterns.prompt`（U2/U3）。画像だけ `prompt_templates`。
-      listPatternPrompts(pooledDb, activeXAccountId),
-      listPromptTemplatesForUser(userId),
-      getPool().query<{ base_md: string; base_md_version: number }>(
-        `select base_md, base_md_version from x_accounts where id = $1`,
-        [activeXAccountId],
-      ),
-    ]);
-    // キーはパターンID（uuid）と `image`。**内部ID（`p1`）では引かない**（T-M8-129 U3）。
-    const image = listed.templates.find((tpl) => tpl.kind === "image");
-    promptTemplates = {
-      ...Object.fromEntries(
-        patterns
-          .filter((option) => patternPrompts[option.id])
-          .map((option) => [option.id, patternPrompts[option.id]]),
-      ),
-      ...(image
-        ? {
-            image: {
-              content: image.content,
-              updatedAt: image.updatedAt,
-              isOverride: image.isOverride,
-            },
-          }
-        : {}),
-    };
-    const row = baseMdRow.rows[0];
-    baseMd = row ? { content: row.base_md ?? "", version: Number(row.base_md_version ?? 0) } : null;
+    const patternPrompts = await listPatternPrompts(pooledDb, activeXAccountId);
+    promptTemplates = Object.fromEntries(
+      patterns
+        .filter((option) => patternPrompts[option.id])
+        .map((option) => [option.id, patternPrompts[option.id]]),
+    );
   }
   const inflight = inflightResult.rows[0];
   const initialJob: ActiveJob | null = inflight
@@ -147,7 +111,7 @@ async function createTabData(userId: string, activeXAccountId: string) {
     : null;
   // 経過表示の基準（T-M8-113）。サーバーとブラウザで同じ値を使わないと
   // 「経過 0:06」と「経過 0:07」が食い違って描き直しになる。
-  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates, baseMd };
+  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates };
 }
 
 /**
@@ -194,41 +158,78 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       </main>
     );
   }
+  /*
+    ロック判定と操作中アカウントの解決は互いに独立なので**1波でまとめる**（T-M8-274）。
+    直列にすると全遷移でDB往復が1本増える。ロック時に解決結果を捨てるのは軽い無駄だが、
+    ロックは稀な状態で、待たされるのは毎回の通常利用のほう。
+  */
+  const [lock, activeXAccountId] = await Promise.all([
+    loadAppLock(user.id),
+    resolveActiveXAccountForUser(user.id),
+  ]);
+  // 契約が有効でなければ開けない（T-M8-269→T-M8-273。理由で文言と導線が変わる）。
+  if (lock) {
+    return (
+      <AppLockedPage
+        description="AIが投稿の下書きを作り、確認してからXへ投稿できます。"
+        reason={lock}
+        title="投稿作成"
+      />
+    );
+  }
   const tab: Tab = TABS.some((t) => t.id === params.tab) ? (params.tab as Tab) : "create";
-  const activeXAccountId = await resolveActiveXAccountForUser(user.id);
 
   let drafts: DraftView[] = [];
   let imageRegenEnabled = false;
   let xHandle: string | null = null;
   // デザインは「下書き・スケジュール」が1画面（T-M8-10）。URLは変えず、下書きタブでは
   // スケジュールの概要も併せて出す。編集はスケジュール画面で行う。
-  let slots: ScheduleSlotView[] = [];
   let historyTruncated = false;
+  let draftsTruncated = false;
+  /** 操作中アカウントのX Premium加入（文字数上限の緩和・T-M8-221）。 */
+  let xPremium = false;
+  /** 進行中の生成job（T-M8-209）。下書きタブの先頭に作成中カードを出す。 */
+  let generatingJobs: { id: string; createdAt: string }[] = [];
   /** 通知から来たが対象が見つからなかったときの案内（null＝案内不要）。 */
   let missingDraft: DraftLocation | null = null;
   if (activeXAccountId && (tab === "drafts" || tab === "history")) {
     // 相互に独立な取得を1波にまとめる（T-M8-67。以前は drafts → 署名URL → provider → slots の直列4段）。
-    const [loaded, plan, keyRows, loadedSlots, handleRow] = await Promise.all([
+    const [loaded, plan, keyRows, handleRow, inflightRows, premiumRow] = await Promise.all([
       listDraftsForAccount(
         pooledDb,
         activeXAccountId,
         tab === "history" ? "history" : "drafts",
-        tab === "history" ? { limit: HISTORY_LIMIT } : {},
+        { limit: tab === "history" ? HISTORY_LIMIT : DRAFTS_LIMIT },
       ),
       getPool()
         .query<{ plan: string | null }>(`select plan from profiles where id = $1`, [user.id])
         .then((r) => r.rows[0]?.plan ?? null),
       tab === "drafts" ? imageKeyRowsQuery(user.id) : Promise.resolve(null),
-      tab === "drafts" ? listScheduleSlots(pooledDb, activeXAccountId) : Promise.resolve([]),
       tab === "history"
         ? getPool().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
             activeXAccountId,
           ])
         : Promise.resolve(null),
+      // 進行中の生成（T-M8-209）。下書きタブの先頭に「作成中」の枠を出す。
+      tab === "drafts"
+        ? getPool().query<{ id: string; created_at: string }>(
+            `select id, created_at from generation_jobs
+              where x_account_id = $1 and kind = 'post_generation'
+                and status in ('queued', 'running')
+              order by created_at desc
+              limit 3`,
+            [activeXAccountId],
+          )
+        : Promise.resolve(null),
+      getPool().query<{ x_premium: boolean }>(
+        `select x_premium from x_accounts where id = $1`,
+        [activeXAccountId],
+      ),
     ]);
     drafts = await attachSignedImageUrls(loaded);
-    slots = loadedSlots;
+    xPremium = premiumRow?.rows[0]?.x_premium ?? false;
     historyTruncated = tab === "history" && loaded.length === HISTORY_LIMIT;
+    draftsTruncated = tab === "drafts" && loaded.length === DRAFTS_LIMIT;
     /**
      * 通知が指す下書きが、このタブに見当たらないとき（T-M8-115）。
      *
@@ -242,12 +243,45 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     if (tab === "drafts") {
       // BYOKでopenai/googleがともに未登録なら再生成providerが無いので非活性にする（PRD §8.2）。
       imageRegenEnabled = imageProvidersFor(plan, keyRows?.rows ?? []).length > 0;
+      generatingJobs = (inflightRows?.rows ?? []).map((r) => ({
+        id: r.id,
+        createdAt: new Date(r.created_at).toISOString(),
+      }));
     } else {
       xHandle = handleRow?.rows[0]?.handle ?? null;
     }
   }
   const createData =
     activeXAccountId && tab === "create" ? await createTabData(user.id, activeXAccountId) : null;
+
+  /*
+    ニュースからの引き継ぎ（T-M8-210・運営者の指示 2026-08-22）。SC-06の「すぐに投稿作成」は
+    ここへ遷移し、ニュース解説パターンを選択した状態で {ニュース} に記事内容を自動入力する。
+    記事が消えていて（保持期限切れ等）も画面は開く（prefillが無いだけ）。
+  */
+  let newsPrefill: {
+    patternId: string;
+    newsItemId: string;
+    newsText: string;
+    sourceUrl: string;
+  } | null = null;
+  if (tab === "create" && params.news && /^[0-9a-f-]{36}$/i.test(params.news) && createData) {
+    const { rows } = await getPool().query<{
+      title: string;
+      summary: string;
+      source_url: string;
+    }>(`select title, summary, source_url from news_items where id = $1`, [params.news]);
+    const item = rows[0];
+    const p1 = createData.patterns.find((option) => option.seedKey === "p1");
+    if (item && p1) {
+      newsPrefill = {
+        patternId: p1.id,
+        newsItemId: params.news,
+        newsText: `${item.title}\n${item.summary}`,
+        sourceUrl: item.source_url,
+      };
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-[1180px] space-y-3.5 px-4 py-[26px] lg:px-8">
@@ -267,24 +301,32 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         <XAccountRequiredNotice description="投稿を生成するには、まずXアカウントを連携してください。" />
       ) : tab === "create" && createData ? (
         <CreatePostForm
+          // ニュース引き継ぎ時はkeyへ含め、別記事への遷移でstateを作り直す（T-M8-210）。
+          key={`${activeXAccountId}:${newsPrefill?.newsItemId ?? ""}`}
           imageProviders={createData.imageProviders}
+          newsPrefill={newsPrefill}
           initialJob={createData.initialJob}
           initialNowMs={createData.nowMs}
           patterns={createData.patterns}
-          baseMd={createData.baseMd}
           promptTemplates={createData.promptTemplates}
           xAccountId={activeXAccountId}
         />
       ) : tab === "drafts" ? (
         <>
           <MissingDraftNotice location={missingDraft} tab="drafts" />
-          <ScheduleSummary slots={slots} />
+          <ScheduleSummary />
           <DraftsList
             drafts={drafts}
+            generatingJobs={generatingJobs}
             imageRegenEnabled={imageRegenEnabled}
             quotePostEnabled={env.FEATURE_QUOTE_POST_ENABLED}
             selectedDraftId={params.draftId}
+            xPremium={xPremium}
           />
+          {draftsTruncated ? (
+            // 履歴タブと同じ形にする（要決定D-39・案A）。黙って切らず、切ったことを言う。
+            <p className="text-caption text-ink-3">直近{DRAFTS_LIMIT}件を表示しています。</p>
+          ) : null}
         </>
       ) : (
         <>

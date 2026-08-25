@@ -1,7 +1,11 @@
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import {
+  concealsUsageLimits,
+  isOperatorManagedPlan,
+  usageLimitsForPlan,
+} from "../plans";
+import { currentUsagePeriodKey, usagePeriodKeySql } from "@/lib/usage/usage-period";
 
-import { PLANS } from "../plans";
 import { canPostThreadToday } from "../usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "../usage/daily-post-limit-server";
 import { notifyUsageThresholds } from "../usage/usage-threshold";
@@ -13,7 +17,7 @@ import {
   hasUrl,
   postConsumeKey,
 } from "../post/posting-text";
-import { findOverLengthText } from "../post/text-metrics";
+import { findOverLengthText, maxWeightedLengthFor } from "../post/text-metrics";
 import {
   XApiError,
   type XCreatePostResult,
@@ -76,10 +80,12 @@ async function consumePostSlot(
   },
 ): Promise<void> {
   await runInTx(async (tx) => {
+    // 投稿は tweet_id 成功時点の契約期間へ記録する（要件03 §7.2・T-M8-258）。
+    const period = await currentUsagePeriodKey(tx, params.userId);
     const ins = await tx.query(
       `insert into usage_events
          (user_id, x_account_id, job_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, $5, ${CURRENT_MONTH_JST_SQL}, $6, $7::usage_event_operation, 1, 'consume', $8)
+       values ($1, $2, $3, $4, $5, $9, $6, $7::usage_event_operation, 1, 'consume', $8)
        on conflict (idempotency_key) do nothing`,
       [
         params.userId,
@@ -90,27 +96,29 @@ async function consumePostSlot(
         params.counterType,
         params.operation,
         params.idempotencyKey,
+        period,
       ],
     );
     if ((ins.rowCount ?? 0) !== 1) return; // 既存consume → 冪等no-op
     if (!params.premiumLive) return; // 全プランはevent記帳のみ。premium月次counterはliveのみ加算（§10）
     const col = params.counterType === "post_url" ? "url_posts_count" : "normal_posts_count";
     await tx.query(
-      `insert into usage_counters (user_id, month) values ($1, ${CURRENT_MONTH_JST_SQL})
+      `insert into usage_counters (user_id, month) values ($1, $2)
        on conflict (user_id, month) do nothing`,
-      [params.userId],
+      [params.userId, period],
     );
     const updated = await tx.query<{ n: number }>(
       `update usage_counters set ${col} = ${col} + 1, updated_at = now()
-        where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}
+        where user_id = $1 and month = $2
         returning ${col} as n`,
-      [params.userId],
+      [params.userId, period],
     );
-    // 80%/100% 到達通知（premium・枠/月/閾値ごとに1件・要件03 §8, T-M6-13）。
+    // 80%/100% 到達通知（premium・枠/期間/閾値ごとに1件・要件03 §8, T-M6-13）。
     await notifyUsageThresholds(tx, {
       userId: params.userId,
       key: params.counterType === "post_url" ? "url_posts" : "normal_posts",
       newCount: updated.rows[0]?.n ?? 0,
+      periodKey: period,
     });
   });
 }
@@ -145,6 +153,8 @@ interface PublishJobRow {
   x_user_id: string;
   user_id: string;
   plan: string;
+  /** X Premium加入。文字数上限の緩和判定（T-M8-221）。 */
+  x_premium: boolean;
 }
 
 interface PublishDraftRow {
@@ -199,7 +209,7 @@ export interface PostPublishResult {
 
 async function loadJob(db: Queryable, jobId: string): Promise<PublishJobRow | null> {
   const { rows } = await db.query<PublishJobRow>(
-    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, xa.x_user_id, p.plan
+    `select gj.draft_id, gj.input, gj.trigger, gj.x_account_id, xa.user_id, xa.x_user_id, xa.x_premium, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -259,19 +269,14 @@ async function createPostedNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'posted', $2, '投稿が完了しました',
             'スレッドをXへ投稿しました。実績は追って集計されます。',
             '/app/posts?tab=history&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'posted'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'posted'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'posted'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'posted'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'posted'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, `draft:${params.draftId}:posted`, params.draftId],
   );
@@ -287,18 +292,13 @@ async function createPostErrorNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'error', $2, $4, $5,
             '/app/posts?tab=drafts&draftId=' || $3::text, jsonb_build_object('draft_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, dedupeKey, params.draftId, title, body],
   );
@@ -324,7 +324,7 @@ async function rollbackThread(
 ): Promise<void> {
   const { db } = deps;
   const { usageCtx, draftId, tweetIds } = params;
-  const premiumLive = params.plan === "premium" && deps.postingLive;
+  const premiumLive = isOperatorManagedPlan(params.plan) && deps.postingLive;
   const deleted: string[] = [];
   const remaining: string[] = [];
   const ambiguousDelete: string[] = [];
@@ -508,13 +508,18 @@ export async function executePostPublish(
     throw new PostPublishError("quote_target_missing", "p5 draft has no quote target");
   }
 
-  const overLength = findOverLengthText(thread.map((_, index) => finalTextAt(index)));
+  // X Premiumのアカウントは280超も投稿できる（上限25,000・T-M8-221）。
+  const lengthLimit = maxWeightedLengthFor(job.x_premium);
+  const overLength = findOverLengthText(
+    thread.map((_, index) => finalTextAt(index)),
+    lengthLimit,
+  );
   if (overLength) {
     // Xへは1件も出していないので `draft` へ戻す（編集して直せる状態にする）。
     await revertDraftWithReason(db, draftId, {
       code: "length_exceeded",
       message:
-        `${overLength.index + 1}本目の本文が長すぎます（上限280・いま${overLength.weightedLength}）。` +
+        `${overLength.index + 1}本目の本文が長すぎます（上限${lengthLimit.toLocaleString()}・いま${overLength.weightedLength.toLocaleString()}）。` +
         `編集して短くしてから投稿してください。Xへの投稿は1件も行っていません。`,
     });
     throw new PostPublishError("length_exceeded", "post exceeds the weighted length limit");
@@ -565,17 +570,17 @@ export async function executePostPublish(
     );
   }
 
-  // --- 検証: premium月次投稿枠のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
+  // --- 検証: premium投稿枠（契約期間ごと）のロールバック安全残量（要件03 §7.4・要件06 §7, T-M6-07）---
   // ロールバック（最終投稿失敗→prefixを作成+削除で各2消費）まで賄える残量を投稿前に確認する。
   // 不足時は X API を一切呼ばず・枠を消費せず失敗させ、通知する（premium かつ live のみ・§10）。
-  if (job.plan === "premium" && deps.postingLive) {
-    const limits = PLANS.premium.usageLimits;
+  if (isOperatorManagedPlan(job.plan) && deps.postingLive) {
+    const limits = usageLimitsForPlan(job.plan);
     if (limits) {
       const required = requiredPostSlots(thread.map((_, i) => finalTextAt(i)));
       const used = await db.query<{ normal_posts_count: number; url_posts_count: number }>(
         `select coalesce(normal_posts_count, 0) as normal_posts_count,
                 coalesce(url_posts_count, 0) as url_posts_count
-           from usage_counters where user_id = $1 and month = ${CURRENT_MONTH_JST_SQL}`,
+           from usage_counters where user_id = $1 and month = ${usagePeriodKeySql("$1")}`,
         [userId],
       );
       const usedNormal = used.rows[0]?.normal_posts_count ?? 0;
@@ -588,16 +593,20 @@ export async function executePostPublish(
         await db.query(`update drafts set status = 'draft', updated_at = now() where id = $1`, [
           draftId,
         ]);
+        // エキスパート（表向き無制限・T-M8-168）は枠の存在を文言に出さない。
+        const concealed = concealsUsageLimits(job.plan);
         await createPostErrorNotification(db, {
           userId,
           draftId,
-          title: "今月の投稿枠が不足しています",
-          body: "今月のプレミアム投稿枠が不足しているため投稿できませんでした。翌月まで待つか、内容を調整してください。",
+          title: concealed ? "一時的に停止しています" : "投稿枠が不足しています",
+          body: concealed
+            ? "連続的な使用が検知されたため一時的に停止しております。お待ちください。"
+            : "今の契約期間の投稿枠が不足しているため投稿できませんでした。次回の更新日まで待つか、内容を調整してください。",
           dedupeSuffix: "usage_limit",
         });
         throw new PostPublishError(
-          "usage_limit_exceeded",
-          "monthly post quota insufficient for safe posting",
+          concealed ? "usage_paused" : "usage_limit_exceeded",
+          "post quota for the current period insufficient for safe posting",
         );
       }
     }
@@ -662,7 +671,7 @@ export async function executePostPublish(
       counterType: counterTypeFor(finalTextAt(i)),
       operation: "post_create",
       idempotencyKey: postConsumeKey(draftId, tweetId, "post_create"),
-      premiumLive: job.plan === "premium" && deps.postingLive,
+      premiumLive: isOperatorManagedPlan(job.plan) && deps.postingLive,
     });
   };
 

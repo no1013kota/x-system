@@ -94,6 +94,7 @@ describe("X OAuth callback link (local DB)", () => {
     id: `x-${randomUUID()}`,
     username,
     name: username,
+    premium: false,
     profileImageUrl: null,
   });
   const countXAccounts = async (uid: string): Promise<number> =>
@@ -163,6 +164,7 @@ describe("X OAuth callback link (local DB)", () => {
         username: "acme",
         name: "Acme",
         profileImageUrl: "https://img",
+        premium: true,
       };
       const res = await handleXOAuthCallback(
         { code: "c", returnedState: "st", sealedStateCookie: "s", sessionUserId: uid },
@@ -179,9 +181,10 @@ describe("X OAuth callback link (local DB)", () => {
             oauth_scopes: string[];
             access_token_ciphertext: string;
             refresh_token_ciphertext: string;
+            x_premium: boolean;
           }>(
             `select x_user_id, handle, auth_type, status, oauth_scopes,
-                    access_token_ciphertext, refresh_token_ciphertext
+                    access_token_ciphertext, refresh_token_ciphertext, x_premium
                from x_accounts where id = $1`,
             [res.xAccountId],
           ),
@@ -192,6 +195,8 @@ describe("X OAuth callback link (local DB)", () => {
       expect(row.auth_type).toBe("byok");
       expect(row.status).toBe("active");
       expect(row.oauth_scopes).toEqual([...X_SCOPES]);
+      // X Premium状態は連携時の users/me から保存される（T-M8-219）。
+      expect(row.x_premium).toBe(true);
       expect(decrypt(row.access_token_ciphertext)).toBe("access-1");
       expect(decrypt(row.refresh_token_ciphertext)).toBe("refresh-1");
 
@@ -261,6 +266,7 @@ describe("X OAuth callback link (local DB)", () => {
       username: "acme",
       name: "Acme",
       profileImageUrl: null,
+      premium: false,
     };
     try {
       const first = await handleXOAuthCallback(
@@ -313,7 +319,7 @@ describe("X OAuth callback link (local DB)", () => {
 
   // T-M2-14: 別 x_user_id は新規アカウントとしてplan上限を検証し、超過時は保存しない（要件03 §6）。
   it("blocks a new X account once the plan limit (standard=1) is reached, without saving it", async () => {
-    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1（2026-08-20）
     try {
       await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser("first")));
       expect(await countXAccounts(uid)).toBe(1);
@@ -330,8 +336,8 @@ describe("X OAuth callback link (local DB)", () => {
     }
   });
 
-  it("md plan allows up to 3 X accounts and blocks the 4th", async () => {
-    const uid = await withTransaction((c) => makeUserWithByokKey(c, { plan: "md" }));
+  it("expert plan allows up to 3 X accounts and blocks the 4th", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c, { plan: "expert" }));
     try {
       for (const h of ["one", "two", "three"]) {
         await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a", "r"), mkUser(h)));
@@ -348,11 +354,12 @@ describe("X OAuth callback link (local DB)", () => {
     }
   });
 
-  // T-M2-14: 同一 x_user_id の再連携は上限対象外（既存rowをupsert）。standard=1 の枠が埋まっていても成立する。
+  // T-M2-14: 同一 x_user_id の再連携は上限対象外（既存rowをupsert）。上限の枠が埋まっていても成立する。
   it("allows re-linking the same x_user_id even when the plan limit is already reached", async () => {
-    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
-    const same = mkUser("same"); // one active account = at the limit
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1（2026-08-20）
+    const same = mkUser("same");
     try {
+      // 上限まで埋めた状態を作る（same 1件で limit=1 に到達）。
       const first = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a1", "r1"), same));
       const second = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a2", "r2"), same));
       expect(second.xAccountId).toBe(first.xAccountId); // same row, not blocked
@@ -361,6 +368,26 @@ describe("X OAuth callback link (local DB)", () => {
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = $1`, [uid]),
       );
+    }
+  });
+
+  // T-M8-196: disabled（切断済み）行の再連携は「枠を1つ新たに使う」ので上限を数える。
+  // 連携→切断→別アカウント連携→切断済みを再連携、で上限を突破できた穴の再発防止。
+  it("counts re-activating a disabled account against the plan limit", async () => {
+    const uid = await withTransaction((c) => makeUserWithByokKey(c)); // standard, limit 1
+    try {
+      const first = await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a1", "r1"), mkUser("one")));
+      // 切断（disabled化）してから別のアカウントを連携する（active 1件のまま）。
+      await withTransaction((c) =>
+        c.query(`update x_accounts set status = 'disabled' where id = $1`, [first.xAccountId]),
+      );
+      await handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a2", "r2"), mkUser("two")));
+      // 切断済みの1件目を再連携すると active 2件になるため、上限1を理由に拒否される。
+      await expect(
+        handleXOAuthCallback(cbInput(uid), deps(uid, mkToken("a3", "r3"), mkUser("one"))),
+      ).rejects.toMatchObject({ code: "forbidden" });
+    } finally {
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }
   });
 

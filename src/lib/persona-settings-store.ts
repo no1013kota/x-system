@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { pruneBaseMdVersions } from "./base-md-history";
 
 import { withTransaction } from "@/lib/db/pool";
 import { AppError } from "@/lib/observability/errors";
@@ -118,6 +119,7 @@ export async function applyPersonaSettingsUpdate(
       version === 1 ? "アカウント設定から初版を作成" : "アカウント設定からセクション1〜4を更新",
     ],
   );
+  await pruneBaseMdVersions(client, account.id);
   return { baseMd, version };
 }
 

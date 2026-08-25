@@ -6,6 +6,8 @@ import {
   disableAutomationForAccount,
   disableXAutomation,
   recordXAutomationConsent,
+  resumeAutomationForAccount,
+  resumeXAutomation,
 } from "./automation-consent";
 import type { Queryable } from "./token-refresh";
 
@@ -16,7 +18,10 @@ const XID = "44444444-4444-4444-4444-444444444444";
 const RECORD = /update x_accounts\s+set automation_consent_version/;
 const OWNED = /select 1 from x_accounts where id = \$1 and user_id/;
 const DISABLED_AT = /automation_disabled_at = coalesce/;
-const SLOTS = /update schedule_slots set enabled = false/;
+const SLOTS = /update schedule_slots\s+set enabled = false/;
+const RESUME_SLOTS = /update schedule_slots\s+set enabled = true/;
+const PENDING = /select coalesce\(bool_or\(mode = 'auto'\), false\) as has_auto/;
+const CONSENTED = /select 1 from x_accounts\s+where id = \$1 and automation_consent_version/;
 const JOBS = /update generation_jobs set status = 'canceled'/;
 
 function makeDb(handler: (sql: string) => { rows?: Row[]; rowCount: number }) {
@@ -74,7 +79,14 @@ describe("recordXAutomationConsent", () => {
 });
 
 describe("disableAutomationForAccount", () => {
-  it("sets disabled_at, disables auto slots, cancels queued auto jobs and returns counts", async () => {
+  it("既定（scope=auto）は自動投稿の枠だけを止める（切断など下書き設定を消さない経路のため）", async () => {
+    const { db, writes } = makeDb(() => ({ rowCount: 1 }));
+    await disableAutomationForAccount(db, XID);
+    expect(writes.find((w) => SLOTS.test(w.sql))?.sql).toContain("mode = 'auto'");
+    expect(writes.find((w) => JOBS.test(w.sql))?.sql).toContain("mode = 'auto'");
+  });
+
+  it("sets disabled_at, disables slots, cancels queued jobs and returns counts", async () => {
     const { db, writes } = makeDb((sql) => {
       if (SLOTS.test(sql)) return { rowCount: 2 };
       if (JOBS.test(sql)) return { rowCount: 3 };
@@ -86,7 +98,124 @@ describe("disableAutomationForAccount", () => {
     const jobs = writes.find((w) => JOBS.test(w.sql));
     expect(jobs?.sql).toContain("kind in ('post_generation', 'post_publish')");
     expect(jobs?.sql).toContain("status = 'queued'");
-    expect(jobs?.sql).toContain("mode = 'auto'");
+  });
+
+  /**
+   * **下書き作成の枠も止める**（T-M8-233）。以前は `mode = 'auto'` だけを無効化していたため、
+   * 「すべて停止」しても下書きは作られ続けた（運営者の指摘 2026-08-23）。
+   */
+  it("stops draft slots too（scope=all では mode で絞らない）", async () => {
+    const { db, writes } = makeDb(() => ({ rowCount: 1 }));
+    await disableAutomationForAccount(db, XID, "all");
+    const slots = writes.find((w) => SLOTS.test(w.sql));
+    expect(slots?.sql, "mode で絞ると下書き枠が止まらない").not.toContain("mode = 'auto'");
+    // 対象は「いま動いている枠」（既に止まっている枠は触らない＝更新件数を水増ししない）。
+    expect(slots?.sql).toContain("enabled = true");
+    const jobs = writes.find((w) => JOBS.test(w.sql));
+    expect(jobs?.sql, "下書き生成のジョブも止める").not.toContain("mode = 'auto'");
+  });
+});
+
+describe("resumeAutomationForAccount", () => {
+  /** 「すべて再開」は文字どおり全部（T-M8-251）。個別に止めた枠も動かす。 */
+  it("止まっている枠をすべて戻し、autoを含むかを返す", async () => {
+    const { db, writes } = makeDb((sql) =>
+      RESUME_SLOTS.test(sql) ? { rowCount: 2, rows: [{ mode: "draft" }, { mode: "auto" }] } : { rowCount: 1 },
+    );
+    const res = await resumeAutomationForAccount(db, XID);
+    expect(res).toEqual({ resumedSlots: 2, includesAuto: true });
+    const sql = writes.find((w) => RESUME_SLOTS.test(w.sql))?.sql ?? "";
+    expect(sql, "止まっている枠すべてが対象").toContain("enabled = false");
+    expect(sql, "停止の由来で選り分けない").not.toContain("paused_by_stop_all_at");
+  });
+
+  it("reports includesAuto=false when only draft slots were paused", async () => {
+    const { db } = makeDb((sql) =>
+      RESUME_SLOTS.test(sql) ? { rowCount: 1, rows: [{ mode: "draft" }] } : { rowCount: 1 },
+    );
+    expect(await resumeAutomationForAccount(db, XID)).toEqual({
+      resumedSlots: 1,
+      includesAuto: false,
+    });
+  });
+});
+
+describe("resumeXAutomation", () => {
+  const deps = (db: Queryable) => ({ runInTx: <T,>(fn: (tx: Queryable) => Promise<T>) => fn(db) });
+
+  /** 止まっている枠の内訳を返すダミー。`hasAuto` で同意の要否が変わる。 */
+  function makeResumeDb(opts: { hasAuto: boolean; alreadyConsented: boolean; owned?: boolean }) {
+    return makeDb((sql) => {
+      if (OWNED.test(sql)) return { rowCount: opts.owned === false ? 0 : 1 };
+      if (PENDING.test(sql)) {
+        return { rowCount: 1, rows: [{ has_auto: opts.hasAuto, total: "1" }] };
+      }
+      if (CONSENTED.test(sql)) return { rowCount: opts.alreadyConsented ? 1 : 0 };
+      if (RESUME_SLOTS.test(sql)) {
+        return { rowCount: 1, rows: [{ mode: opts.hasAuto ? "auto" : "draft" }] };
+      }
+      return { rowCount: 1 };
+    });
+  }
+
+  it("throws not_found for an unowned account", async () => {
+    const { db } = makeResumeDb({ hasAuto: false, alreadyConsented: false, owned: false });
+    await expect(
+      resumeXAutomation("u1", { x_account_id: XID }, deps(db)),
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("resumes draft-only schedules without asking for consent", async () => {
+    const { db, writes } = makeResumeDb({ hasAuto: false, alreadyConsented: false });
+    const res = await resumeXAutomation("u1", { x_account_id: XID }, deps(db));
+    expect(res).toEqual({ resumedSlots: 1, includesAuto: false, consentRecorded: false });
+    expect(writes.some((w) => RECORD.test(w.sql)), "同意は記録しない").toBe(false);
+  });
+
+  /** 停止＝同意の撤回なので、自動投稿を戻すときは黙って再開せず同意を取り直す（PRD §8.1）。 */
+  it("requires current-version consent before resuming auto schedules", async () => {
+    const { db, writes } = makeResumeDb({ hasAuto: true, alreadyConsented: false });
+    await expect(
+      resumeXAutomation("u1", { x_account_id: XID }, deps(db)),
+    ).rejects.toMatchObject({ code: "automation_consent_required" });
+    expect(writes.some((w) => RESUME_SLOTS.test(w.sql)), "同意前に枠を戻さない").toBe(false);
+
+    const stale = makeResumeDb({ hasAuto: true, alreadyConsented: false });
+    await expect(
+      resumeXAutomation(
+        "u1",
+        { x_account_id: XID, confirmed: true, consent_version: "v0-old" },
+        deps(stale.db),
+      ),
+    ).rejects.toMatchObject({ code: "automation_consent_required" });
+
+    const unchecked = makeResumeDb({ hasAuto: true, alreadyConsented: false });
+    await expect(
+      resumeXAutomation(
+        "u1",
+        { x_account_id: XID, confirmed: false, consent_version: CURRENT_AUTOMATION_CONSENT_VERSION },
+        deps(unchecked.db),
+      ),
+    ).rejects.toMatchObject({ code: "automation_consent_required" });
+  });
+
+  it("records consent and resumes when the checkbox and current version are sent", async () => {
+    const { db, writes } = makeResumeDb({ hasAuto: true, alreadyConsented: false });
+    const res = await resumeXAutomation(
+      "u1",
+      { x_account_id: XID, confirmed: true, consent_version: CURRENT_AUTOMATION_CONSENT_VERSION },
+      deps(db),
+    );
+    expect(res).toEqual({ resumedSlots: 1, includesAuto: true, consentRecorded: true });
+    const record = writes.find((w) => RECORD.test(w.sql));
+    expect(record?.sql).toContain("automation_disabled_at = null");
+  });
+
+  it("skips re-consent when the account is still consented on the current version", async () => {
+    const { db, writes } = makeResumeDb({ hasAuto: true, alreadyConsented: true });
+    const res = await resumeXAutomation("u1", { x_account_id: XID }, deps(db));
+    expect(res).toEqual({ resumedSlots: 1, includesAuto: true, consentRecorded: false });
+    expect(writes.some((w) => RECORD.test(w.sql))).toBe(false);
   });
 });
 

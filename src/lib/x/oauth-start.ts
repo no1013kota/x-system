@@ -1,7 +1,7 @@
 import type { XAppCredentials } from "@/lib/api-keys";
 import { requireExecutableSubscription } from "@/lib/auth/subscription-access";
 import { AppError } from "@/lib/observability/errors";
-import { PLANS, type PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 
 import {
   buildAuthorizeUrl,
@@ -23,9 +23,9 @@ import {
 const X_KEY_SETTINGS_PATH = "/app/settings?tab=api-keys";
 const DEFAULT_RETURN_PATH = "/app/settings?tab=api-keys";
 
-/** premiumは運営App(managed)、standard/mdはユーザーApp(byok)。 */
+/** 運営キー系（premium/expert）は運営App(managed)、BYOK（standard）はユーザーApp(byok)。 */
 export function expectedAuthTypeForPlan(plan: PlanId): XAuthType {
-  return plan === "premium" ? "managed" : "byok";
+  return isOperatorManagedPlan(plan) ? "managed" : "byok";
 }
 
 export interface XOAuthStartProfile {
@@ -66,9 +66,10 @@ export async function buildXOAuthStart(
 
   // plan上限: active な連携が上限に達していたら新規連携を止める（設定導線へ戻す）。
   //
-  // **再連携は新規ではないので数えない**（T-M8-53）。上限まで使っていると失効アカウントを
-  // 直せなくなり、「壊れているのに直す手段が無い」行き止まりになる（callback側の
-  // `assertCanLinkXAccount` も同一 x_user_id を上限対象外にしている）。
+  // **失効アカウントの再連携は新規ではないので数えない**（T-M8-53）。上限まで使っていると
+  // 失効アカウントを直せなくなり、「壊れているのに直す手段が無い」行き止まりになる。
+  // ここは開始時のUXゲートで、正式な判定はcallback側の `assertCanLinkXAccount`
+  // （activeな行への再連携だけ上限対象外・disabled再activeは数える・T-M8-196）が行う。
   const active = input.reconnectXUserId ? 0 : await deps.getActiveXAccountCount(input.userId);
   if (active >= PLANS[profile.plan].xAccountLimit) {
     throw new AppError("forbidden", {

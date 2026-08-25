@@ -2,11 +2,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.3 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.4 |
+| 更新日 | 2026-08-23 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[デプロイ手順](./deployment.md)／[CI](./ci.md)／[システム構成 §3/§7/§9](../requirements/01_system_architecture.md)／[PRD §8.1](../PRD.md)／[DBバックアップ](./database-backup-restore.md)／[launchd→Cron](./launchd-to-vercel-cron.md)／[認証・課金・利用枠 §9](../requirements/03_auth_billing_usage.md) |
 
-MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キー・法務確認が要る項目は §3 に担当・期日欄付きで残す。
+MVPリリース前の判定項目。開発側で消化できる項目は本セッション（T-M6-21, 2026-07-25）で実施・記録した。運営者アカウント・実キーが要る項目は §3 に担当・期日欄付きで残す。
 
 ## 1. 開発側で消化済み（実施・記録）
 
@@ -26,8 +26,8 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 ## 2. dry_run → live 切替手順と rollback
 
 ### 切替手順（本番のみ）
-0. **ローカルDBを本番へ持ち込む場合に限り**、先に `npm run db:clean-test-data -- --apply` を実行する。ローカル検証で作られた送信待ちのお知らせメールが残っていると、**本番で初回の定時実行がまとめて送信する**（T-M7-31・D-9 案A）。滞留の有無は `npm run doctor` の「お知らせメール」で分かる。別DBを新規に用意する通常の流れでは不要。
-1. §3 の人間側項目（本番キー・アカウント・単価確認・法務確認）がすべて完了していることを確認する。
+0. **ローカルDBを本番へ持ち込む場合に限り**、先に `npm run db:clean-test-data -- --apply` を実行する（テストユーザーの掃除。旧「送信待ちお知らせメール」の掃除はT-M8-222のメール通知廃止で不要になった）。別DBを新規に用意する通常の流れでは不要。
+1. §3 の人間側項目（本番キー・アカウント・単価確認）がすべて完了していることを確認する。
 2. X 検証用アカウントで「少数ポスト投稿 → 自動 rollback 削除」の live E2E を本番相当で1回実施する（要決定 M3・費用発生のため実施タイミングは運営判断）。
 3. Vercel 本番環境変数に `X_POSTING_MODE=live` を設定する（dev/preview は `dry_run` のまま。設定すると起動時検証で弾かれる）。
 4. デプロイ後、起動時 env 検証がパスすること（本番なので live 許容）と、少数の実投稿で成功・rollback を確認する。
@@ -39,22 +39,23 @@ MVPリリース前の判定項目。開発側で消化できる項目は本セ�
 
 ## 3. 人間側残項目（担当・期日）
 
-> 担当は「運営者」（アカウント・キー・法務・費用判断）。期日は原則「本番リリース前」。詳細は `tasks/BACKLOG.md` の「要決定・外部準備」を正とする。
+> 担当は「運営者」（アカウント・キー・費用判断）。期日は原則「本番リリース前」。詳細は `tasks/BACKLOG.md` の「要決定・外部準備」を正とする。
 
 | # | 項目 | 担当 | 期日 |
 |---|---|---|---|
 | 1 | X Developer App（本番/運営・BYOK検証用）作成、callback URL 登録、credit/予算設定、pay-per-use 実単価確認（`X_COST_*`） | 運営者 | リリース前 |
-| 2 | Stripe 本番 Price 3種・`STRIPE_WEBHOOK_SECRET`・Customer Portal Configuration・API バージョン確認（結果は実装メモ/ADR へ） | 運営者 | リリース前 |
+| 2 | Stripe 本番 Price 3種・`STRIPE_WEBHOOK_SECRET`・Customer Portal Configuration・API バージョン確認（結果は実装メモ/ADR へ） | 運営者 | ✅ 済 |
+| 2.5 | **Stripeアカウントの本番決済有効化**（`card_payments = active`）。**アプリからは見えない**——鍵もPriceも正しく画面も正常なのに申し込みだけ必ず失敗する（T-M8-148）。確認は `npm run doctor -- --base <URL>`（`stripe-account-status.ts`） | 運営者 | ✅ 済（2026-08-20） |
 | 3 | AI 各社（Anthropic/OpenAI/Gemini）本番キー発行と採用モデル名確定（`*_TEXT_MODEL`／`*_IMAGE_MODEL`） | 運営者 | リリース前 |
 | 4 | Supabase preview/prod プロジェクト、Auth rate limit／Turnstile、Gmail App Password（SMTP）設定 | 運営者 | リリース前 |
 | 5 | `SENTRY_DSN`／`NEXT_PUBLIC_SENTRY_DSN` 発行 | 運営者 | リリース前 |
 | 6 | 本番 `APP_ENCRYPTION_KEY`・`CRON_SECRET` の生成と安全な保管（Vercel/1Password 等） | 運営者 | リリース前 |
 | 7 | 独自ドメイン・`APP_BASE_URL`・Vercel Pro 契約 | 運営者 | リリース前 |
-| 8 | 利用規約／プライバシー／特定商取引法表記の文面確定と法務専門家確認、`CURRENT_TERMS/PRIVACY_VERSION` 確定 | 運営者 | リリース前 |
+| 8 | 利用規約／プライバシー／特定商取引法表記の文面確定、`CURRENT_TERMS/PRIVACY_VERSION` 確定（**弁護士レビューは行わない**＝要決定D-17の決定・2026-08-20。記載事項の網羅は `legal-pages.test.ts` が機械検査する） | 運営者 | リリース前 |
 | 9 | ~~依存脆弱性の残り high（`sharp`／nested `postcss`）の解消~~ → **2026-08-01 完了（T-M7-32）**。`sharp` 0.35.3・`postcss` 8.5系へ上げ、`overrides` で next の nested 版も寄せた。本番依存の high は `brace-expansion`（ビルド時のみ到達）1件のみ | 開発 | 完了 |
 | 10 | 常時稼働 Mac（Asia/Tokyo・スリープ無効・launchd）の実配置、バックアップ実行環境・暗号化ファイル保管先・`BACKUP_ENCRYPTION_KEY` の保管 | 運営者 | リリース前 |
 | 11 | X live E2E（少数ポスト投稿→自動 rollback 削除）の本番相当での1回実施 | 運営者 | 切替直前 |
-| 12 | 自動投稿同意文（consent_version）・通知メール文面の最終確認（X Automation Rules 準拠の専門家確認含む） | 運営者 | リリース前 |
+| 12 | 自動投稿同意文（consent_version）の最終確認（X Automation Rules を運営者自身で読み合わせる。専門家確認はD-17の決定により行わない） | 運営者 | リリース前 |
 
 ## 変更履歴
 

@@ -6,7 +6,7 @@
  * the SQL `CREATE TYPE ... AS ENUM (...)` value order.
  */
 export const DB_ENUMS = {
-  plan_type: ["standard", "md", "premium"],
+  plan_type: ["standard", "premium", "expert"],
   subscription_status: [
     "incomplete",
     "incomplete_expired",
@@ -29,7 +29,7 @@ export const DB_ENUMS = {
     "removing",
     "removed",
   ],
-  news_category: ["ai", "web3", "investment", "business", "business_ops", "sns"],
+  news_category: ["ai", "web3", "investment", "business", "business_ops", "sns", "love", "beauty"],
   impact_level: ["high", "mid", "low"],
   job_kind: [
     "post_generation",
@@ -69,7 +69,6 @@ export const DB_ENUMS = {
     "usage",
     "summary",
   ],
-  email_delivery_status: ["not_requested", "queued", "sent", "failed"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type DbEnumName = keyof typeof DB_ENUMS;

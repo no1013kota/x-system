@@ -34,6 +34,79 @@ test("スロットを停止して再開でき、DBの enabled が追従する", 
   ).toBe(true);
 });
 
+/**
+ * 「スケジュールをすべて停止」→「すべて再開」（T-M8-233／T-M8-251・運営者の指示 2026-08-23）。
+ *
+ * ここでしか見えないのは**2つのボタンが常に並んでいること**（対象が無い方は押せない）と、
+ * **同意チェックが無いと再開できない**こと。DB側の往復は schedule-slots.db.test.ts が見る。
+ */
+test("すべて停止で下書き枠も止まり、すべて再開で個別に止めた枠まで戻る", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("stop-all", { automationConsent: true });
+  const slotIds = await query<{ id: string; mode: string }>(
+    `insert into schedule_slots (x_account_id, pattern_id, weekdays, time_jst, mode, theme, enabled)
+     values
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{1}', '19:00', 'auto', 'other', true),
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{2}', '20:00', 'draft', 'other', true),
+       ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p3'), '{3}', '21:00', 'draft', 'other', false)
+     returning id, mode`,
+    [account.xAccountId],
+  );
+  const enabledOf = async () =>
+    Object.fromEntries(
+      (
+        await query<{ id: string; enabled: boolean }>(
+          `select id, enabled from schedule_slots where x_account_id = $1`,
+          [account.xAccountId],
+        )
+      ).map((r) => [r.id, r.enabled]),
+    );
+
+  await signIn(page, account);
+  await page.goto("/app/schedule");
+
+  // 2つとも常に出ている（押せるボタンが入れ替わる形はやめた・T-M8-251）。
+  const stopAll = page.getByRole("button", { name: "スケジュールをすべて停止" });
+  const resumeAll = page.getByRole("button", { name: "スケジュールをすべて再開" });
+  await expect(stopAll).toBeVisible();
+  await expect(resumeAll).toBeVisible();
+
+  await stopAll.click();
+  await page.getByRole("button", { name: "すべて停止", exact: true }).click();
+  // 全部止まったので、停止は押せなくなり再開だけが押せる。
+  await expect(stopAll).toBeDisabled();
+  await expect(resumeAll).toBeEnabled();
+
+  /*
+    DBは Server Action の完了後に変わる。ボタンの状態が変わった直後に読むと、
+    まだ前の値が返ることがあるので `expect.poll` で追いつくまで待つ（時刻や件数の競合ではなく、
+    単に「反映待ち」なので待てば必ず一致する）。
+  */
+  await expect
+    .poll(async () => Object.values(await enabledOf()).filter(Boolean).length, {
+      message: "下書き枠が止まっていない",
+    })
+    .toBe(0);
+
+  // 再開: 自動投稿を含むので同意チェックが要る（外したままでは押せない）。
+  await resumeAll.click();
+  const confirm = page.getByRole("button", { name: "すべて再開", exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("checkbox").check();
+  await confirm.click();
+  await expect(resumeAll).toBeDisabled();
+  await expect(stopAll).toBeEnabled();
+
+  // **個別に止めていた枠も動く**（「すべて再開」は文字どおり全部・T-M8-251）。
+  await expect
+    .poll(async () => Object.values(await enabledOf()).filter(Boolean).length, {
+      message: "止まったままの枠がある（すべて再開は全部が対象）",
+    })
+    .toBe(slotIds.length);
+});
+
 test("本日の投稿上限に達したら、投稿を試す前にバナーで分かる（要決定D-15 案A）", async ({
   accounts,
   page,

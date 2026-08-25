@@ -6,7 +6,6 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  retryNotificationEmail,
   type NotificationPage,
 } from "./notifications";
 
@@ -38,9 +37,3 @@ export function markAllNotificationsReadForUser(userId: string): Promise<number>
   return markAllNotificationsRead(pooledDb, userId);
 }
 
-export function retryNotificationEmailForUser(
-  userId: string,
-  notificationId: string,
-): Promise<void> {
-  return retryNotificationEmail(pooledDb, userId, notificationId);
-}

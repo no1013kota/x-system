@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { OTHER_POST_THEME, POST_THEME_IDS } from "@/lib/post/post-theme";
+import { POST_THEME_IDS } from "@/lib/post/post-theme";
+import { requirePattern } from "@/lib/post/post-patterns-store";
 
 import {
   assertPrereqsFromInput,
@@ -11,7 +12,6 @@ import { AppError } from "@/lib/observability/errors";
 
 import { validateManualBaseMd } from "../base-md";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
-import { findPatternBySeedKey, requirePattern } from "@/lib/post/post-patterns-store";
 
 import type { Queryable } from "../x/token-refresh";
 import { assertActiveAccount, assertJobBudget, MAX_ACTIVE_JOBS } from "./job-guards";
@@ -194,63 +194,8 @@ export async function createGenerationJob(
   });
 }
 
-export const createDraftFromNewsSchema = z.object({
-  request_key: z.string().min(1).max(200),
-  x_account_id: z.string().uuid(),
-  news_item_id: z.string().uuid(),
-  instructions: z.string().max(2000).nullish(),
-  image_enabled: z.boolean().optional(),
-});
-
-export type CreateDraftFromNewsInput = z.infer<typeof createDraftFromNewsSchema>;
-
-/**
- * N-4: ニュース起点の下書き生成（要件05 §6, GEN-P1）。`news_item` の `source_url` を引き継いだ
- * P-1 の post_generation を冪等作成する。前提再検証・所有権/active一致・
- * queued/running 5件制限・request_key 冪等は `createGenerationJob` に委譲する。作成後 worker が
- * `input.news_item_id` を `drafts.source_news_item_id` へ保存する（作成済みバッジの導出元）。
- */
-export async function createDraftFromNews(
-  userId: string,
-  input: CreateDraftFromNewsInput,
-  deps: GenerationJobDeps,
-): Promise<CreateJobResult> {
-  const source = await deps.runInTx((tx) =>
-    tx.query<{ source_url: string }>(
-      `select source_url from news_items where id = $1`,
-      [input.news_item_id],
-    ),
-  );
-  const sourceUrl = source.rows[0]?.source_url;
-  if (!sourceUrl) throw new AppError("not_found");
-  /**
-   * ニュースから作るときのパターン。既定の「ニュース解説」を使う（T-M8-129 U5）。
-   * **消されていたら黙って別の型で作らない**——利用者は記事の解説を期待して押しているので、
-   * 週次まとめ等で作られると意図と違う投稿になる。理由を返して復元へ導く。
-   */
-  const newsPattern = await deps.runInTx((tx) =>
-    findPatternBySeedKey(tx, input.x_account_id, "p1"),
-  );
-  if (!newsPattern) {
-    throw new AppError("validation_error", { details: { reason: "news_pattern_missing" } });
-  }
-  return createGenerationJob(
-    userId,
-    {
-      request_key: input.request_key,
-      x_account_id: input.x_account_id,
-    pattern_id: newsPattern.id,
-      // ニュースから作る場合は分野を選ばせない（記事そのものが題材なので、分野で絞る意味が無い）。
-      theme: OTHER_POST_THEME,
-      source_url: sourceUrl,
-      quote_url: null,
-      instructions: input.instructions ?? null,
-      image_enabled: input.image_enabled ?? false,
-      news_item_id: input.news_item_id,
-    },
-    deps,
-  );
-}
+// 旧 createDraftFromNews（SC-06からの直接job作成）はT-M8-210で削除。
+// 「すぐに投稿作成」は投稿作成画面への遷移＋{ニュース}自動入力になった。
 
 export const regenerateDraftSchema = z.object({
   request_key: z.string().min(1).max(200),
@@ -628,6 +573,12 @@ export async function retryGenerationJob(
     if (job.status !== "failed") {
       throw new AppError("job_conflict", { details: { reason: "not_failed" } });
     }
+    /*
+      **再試行にも契約の前提を課す**（T-M8-267）。以前は所有・failed・同時実行数しか見ておらず、
+      解約後に失敗ジョブを再試行するとAI生成やX読取が走った（`request_key` を変えれば何度でも）。
+      作成系（`createGenerationJob` 等）と同じ入口ゲートを通す。実行時の最終防壁は `leaseJob`。
+    */
+    await assertPrereqs(deps, userId, false);
     await assertJobBudget(tx, userId);
 
     const inserted = (

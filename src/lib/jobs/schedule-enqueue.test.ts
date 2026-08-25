@@ -66,7 +66,8 @@ function dueSlot(over: Partial<Row> = {}): Row {
     subscription_status: "active",
     ai_purpose_config: { text: "anthropic" },
     jst_date: "2026-07-24",
-    jst_month: "2026-07",
+    // 利用枠の期間キー（契約期間の開始日・T-M8-258）。
+    usage_period: "2026-07-15",
     ...over,
   };
 }
@@ -103,8 +104,8 @@ describe("enqueueDueSlots — eligible", () => {
     expect(res.enqueued).toBe(0);
   });
 
-  // 条件3: BYOK（standard/md）は月間投稿枠を持たないため残量判定をskipしてenqueueする（要件04 §7.1）。
-  it.each(["standard", "md"])(
+  // 条件3: BYOK（standard）は月間投稿枠を持たないため残量判定をskipしてenqueueする（要件04 §7.1）。
+  it.each(["standard"])(
     "enqueues an eligible %s (BYOK) slot without consulting the premium budget",
     async (plan) => {
       const { db, writes } = makeDb(handlerFor(dueSlot({ plan })));
@@ -157,6 +158,12 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
       }),
     });
   });
+  it("reads the budget row by the subscription-period key, not a calendar month (T-M8-258)", async () => {
+    const { db, writes } = makeDb(handlerFor(dueSlot({ plan: "premium" })));
+    await enqueueDueSlots(deps(db));
+    const budget = writes.find((w) => BUDGET.test(w.sql));
+    expect(budget?.params).toEqual(["u1", "2026-07-15"]);
+  });
   it("skips premium auto when the normal post budget is exhausted", async () => {
     await expectSkipped(dueSlot({ plan: "premium", mode: "auto", auto_consent_ok: true }), {
       budget: () => ({
@@ -194,7 +201,7 @@ describe("enqueueDueSlots — 枠の生成入力（T-M8-135）", () => {
   it("参考URL・プレースホルダー・この枠のプロンプトを input へ渡す", async () => {
     const slot = dueSlot({
       // プロンプトの上書きは md/premium だけ有効（下の standard のテストが境界を固定する）。
-      plan: "md",
+      plan: "standard",
       source_url: "https://example.com/a",
       placeholder_values: { 自分の考え: "私はこう考える" },
       prompt_override: "# タスク\nこの枠だけのプロンプト",
@@ -215,10 +222,10 @@ describe("enqueueDueSlots — 枠の生成入力（T-M8-135）", () => {
     expect(input.instructions).toBe("冒頭に「検証:」を付ける");
   });
 
-  it("standardプランでは prompt_override を渡さない（画面に出ない指示で生成しない）", async () => {
-    // プロンプトの編集は md/premium だけ。standard へ下がった枠の上書きは画面から消えるので、
-    // 実行でも使わない（使うと「画面に無い指示で生成される」状態になる）。
-    const slot = dueSlot({ plan: "standard", prompt_override: "# 画面から見えない指示" });
+  it("編集権限が無い状態（未契約=plan null相当）では prompt_override を渡さない", async () => {
+    // 旧standard（編集不可プラン）はT-M8-168で撤廃。ガード自体は残す——
+    // 未知・未契約のplanで上書きが使われると「画面に無い指示で生成される」状態になる。
+    const slot = dueSlot({ plan: "" as never, prompt_override: "# 画面から見えない指示" });
     const { db, writes } = makeDb(handlerFor(slot));
     await enqueueDueSlots(deps(db));
     const insert = writes.find((w) => INSERT.test(w.sql));
@@ -230,8 +237,8 @@ describe("enqueueDueSlots — 枠の生成入力（T-M8-135）", () => {
     expect(input.source_url).toBeDefined();
   });
 
-  it("md/premium では prompt_override を渡す", async () => {
-    for (const plan of ["md", "premium"]) {
+  it("編集権限のあるプラン（全プラン・T-M8-168）では prompt_override を渡す", async () => {
+    for (const plan of ["standard", "premium", "expert"]) {
       const slot = dueSlot({ plan, prompt_override: "# この枠の指示" });
       const { db, writes } = makeDb(handlerFor(slot));
       await enqueueDueSlots(deps(db));

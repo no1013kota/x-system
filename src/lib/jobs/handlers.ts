@@ -1,5 +1,3 @@
-import type { PoolClient } from "pg";
-
 /**
  * kind別のジョブ処理ハンドラのレジストリ（要件04 §2）。post_generation は T-M3-05、
  * image_generation は T-M3-15、post_publish は T-M3-18 で実装済み。実処理（env・pool・provider
@@ -23,7 +21,7 @@ export interface JobContext {
 }
 
 /** ハンドラは lease 済みジョブの本処理を行う。throw で失敗扱い。 */
-export type JobHandler = (ctx: JobContext, client: PoolClient) => Promise<void>;
+export type JobHandler = (ctx: JobContext) => Promise<void>;
 
 const postGeneration: JobHandler = async (ctx) => {
   const { postGenerationHandler } = await import("./post-generation-server");

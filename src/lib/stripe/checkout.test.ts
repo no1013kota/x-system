@@ -29,8 +29,8 @@ function dependencies(
     })),
     priceIds: {
       standard: "price_standard_server",
-      md: "price_md_server",
       premium: "price_premium_server",
+      expert: "price_expert_server",
     },
     saveStripeCustomerId: vi.fn(async () => undefined),
     stripe: {
@@ -44,6 +44,10 @@ function dependencies(
             url: "https://checkout.stripe.test/c/pay/cs_test_123",
           })),
         },
+      },
+      // 既定は「契約なし」。二重契約ガード（T-M8-237）の検査だけ overrides で差し替える。
+      subscriptions: {
+        list: vi.fn(async () => ({ data: [] as { id: string; status: string }[] })),
       },
     },
     ...overrides,
@@ -101,7 +105,7 @@ describe("POST /api/stripe/checkout core", () => {
 
   it.each([
     ["standard", "price_standard_server"],
-    ["md", "price_md_server"],
+    ["expert", "price_expert_server"],
     ["premium", "price_premium_server"],
   ] as const)("maps %s to its server-owned Price ID", async (plan, priceId) => {
     const response = await handleCheckoutRequest(request({ plan }), deps);
@@ -128,9 +132,9 @@ describe("POST /api/stripe/checkout core", () => {
       success_url:
         "https://app.example.com/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://app.example.com/plans?checkout=canceled",
-      metadata: { plan: "premium", user_id: "user_123" },
+      metadata: { user_id: "user_123" },
       subscription_data: {
-        metadata: { plan: "premium", user_id: "user_123" },
+        metadata: { user_id: "user_123" },
         trial_period_days: 7,
       },
     });
@@ -150,7 +154,7 @@ describe("POST /api/stripe/checkout core", () => {
     expect(deps.stripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         subscription_data: {
-          metadata: { plan: "standard", user_id: "user_123" },
+          metadata: { user_id: "user_123" },
         },
       }),
     );
@@ -161,7 +165,7 @@ describe("POST /api/stripe/checkout core", () => {
       stripe_customer_id: null,
       trial_used_at: null,
     }));
-    const response = await handleCheckoutRequest(request({ plan: "md" }), deps);
+    const response = await handleCheckoutRequest(request({ plan: "premium" }), deps);
     expect(response.status).toBe(200);
     expect(deps.stripe.customers.create).toHaveBeenCalledWith(
       {
@@ -198,5 +202,154 @@ describe("POST /api/stripe/checkout core", () => {
     const response = await handleCheckoutRequest(request({ plan: "standard" }), deps);
     expect(response.status).toBe(500);
     expect(deps.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("既に契約がある利用者に2本目を作らない（T-M8-237）", () => {
+  /** `/plans` に留まる past_due などから押されても、Checkout を作らず設定＞課金へ誘導する。 */
+  it.each(["active", "trialing", "past_due", "unpaid", "paused"])(
+    "%s の契約があれば Checkout を作らず subscription_required を返す",
+    async (status) => {
+      const deps = dependencies({
+        stripe: {
+          customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+          checkout: {
+            sessions: { create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test" })) },
+          },
+          subscriptions: {
+            list: vi.fn(async () => ({ data: [{ id: "sub_1", status }] })),
+          },
+        },
+      });
+      const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+      expect(res.status).toBe(402);
+      expect(await res.json()).toMatchObject({
+        error: { code: "subscription_required" },
+      });
+      expect(deps.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("canceled / incomplete_expired だけなら契約し直せる", async () => {
+    const deps = dependencies({
+      stripe: {
+        customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+        checkout: {
+          sessions: {
+            create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test/c" })),
+          },
+        },
+        subscriptions: {
+          list: vi.fn(async () => ({
+            data: [
+              { id: "sub_old", status: "canceled" },
+              { id: "sub_dead", status: "incomplete_expired" },
+            ],
+          })),
+        },
+      },
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    expect(deps.stripe.checkout.sessions.create).toHaveBeenCalled();
+  });
+
+  it("Customer未作成（初回）なら既存契約を問い合わせない", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: null, trial_used_at: null })),
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("2回目の無料トライアルを渡さない（T-M8-244）", () => {
+  /**
+   * `profiles.trial_used_at` だけに頼ると、webhookが届かなかった利用者は永久に null のままになり、
+   * 解約→再契約でもう一度7日間の無料が取れる。Stripe側の `trial_start` を根拠にする。
+   */
+  it("過去にトライアルを使った契約がStripeにあれば trial を付けない（DBがnullでも）", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing", trial_used_at: null })),
+      stripe: {
+        customers: { create: vi.fn(async () => ({ id: "cus_created" })) },
+        checkout: {
+          sessions: { create: vi.fn(async () => ({ id: "cs", url: "https://checkout.test/c" })) },
+        },
+        subscriptions: {
+          list: vi.fn(async () => ({
+            data: [{ id: "sub_old", status: "canceled", trial_start: 1_700_000_000 }],
+          })),
+        },
+      },
+    });
+    const res = await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    expect(res.status).toBe(200);
+    const params = (deps.stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { subscription_data?: { trial_period_days?: number } };
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("トライアル歴が無ければ従来どおり7日間を付ける", async () => {
+    const deps = dependencies({
+      getProfile: vi.fn(async () => ({ stripe_customer_id: "cus_existing", trial_used_at: null })),
+    });
+    await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    const params = (deps.stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { subscription_data?: { trial_period_days?: number } };
+    expect(params.subscription_data?.trial_period_days).toBe(7);
+  });
+});
+
+/**
+ * 解約後に残っている無料トライアル（T-M8-298・運営者の指示 2026-08-25）。
+ * **`trial_used_at` があるからと満額を請求してはいけない**——2026-08-25、運営者が
+ * トライアル中に解約したあと「プランを選択」して、その場で ¥3,980 が課金された。
+ */
+describe("残りトライアルの引き継ぎ（T-M8-298）", () => {
+  const NOW = Date.parse("2026-08-25T10:00:00Z");
+  const future = "2026-08-31T06:51:00Z";
+
+  it("期限内ならどのプランでも trial_end を引き継ぐ（trial_period_days は付けない）", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: "2026-08-24T15:51:16.000Z",
+      trial_ends_at: future,
+    }));
+    await handleCheckoutRequest(request({ plan: "expert" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_end).toBe(Math.floor(Date.parse(future) / 1000));
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("期限切れなら無料期間を作らない", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: "2026-08-01T00:00:00.000Z",
+      trial_ends_at: "2026-08-08T00:00:00.000Z",
+    }));
+    await handleCheckoutRequest(request({ plan: "expert" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_end).toBeUndefined();
+    expect(params.subscription_data?.trial_period_days).toBeUndefined();
+  });
+
+  it("新規（トライアル未使用）は従来どおり7日", async () => {
+    const deps = dependencies();
+    deps.now = () => NOW;
+    deps.getProfile = vi.fn(async () => ({
+      stripe_customer_id: "cus_existing",
+      trial_used_at: null,
+      trial_ends_at: null,
+    }));
+    await handleCheckoutRequest(request({ plan: "standard" }), deps);
+    const params = vi.mocked(deps.stripe.checkout.sessions.create).mock.calls[0][0];
+    expect(params.subscription_data?.trial_period_days).toBe(7);
+    expect(params.subscription_data?.trial_end).toBeUndefined();
   });
 });

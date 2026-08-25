@@ -27,6 +27,13 @@ export interface SignUpErrorMessage {
   action?: { href: string; label: string };
 }
 
+/** 「既に登録されている」ときの文言。**エラー経路と成功経路の両方から使う**（T-M8-149）。 */
+export const SIGNUP_ALREADY_REGISTERED: SignUpErrorMessage = {
+  message:
+    "このメールアドレスは既に登録されています。ログイン、またはパスワードをお忘れの場合は再設定してください。",
+  action: { href: "/login", label: "ログイン画面へ" },
+};
+
 /** 原因を特定できなかったときの文言（従来どおり）。 */
 export const SIGNUP_GENERIC_ERROR: SignUpErrorMessage = {
   message: "登録を完了できませんでした。入力内容を確認し、時間をおいて再度お試しください。",
@@ -55,11 +62,7 @@ export function signUpErrorMessage(error: unknown): SignUpErrorMessage {
   switch (authErrorCode(error)) {
     case "user_already_exists":
     case "email_exists":
-      return {
-        message:
-          "このメールアドレスは既に登録されています。ログイン、またはパスワードをお忘れの場合は再設定してください。",
-        action: { href: "/login", label: "ログイン画面へ" },
-      };
+      return SIGNUP_ALREADY_REGISTERED;
     case "over_email_send_rate_limit":
     case "over_request_rate_limit":
       // **「入力内容を確認」と言わない**——入力は正しいのに直せと言うことになる。
@@ -75,4 +78,48 @@ export function signUpErrorMessage(error: unknown): SignUpErrorMessage {
     default:
       return SIGNUP_GENERIC_ERROR;
   }
+}
+
+/**
+ * 登録が**エラー無しで返ってきたとき**に、本当に確認コードが送られたのかを判定する（T-M8-149）。
+ *
+ * ## なぜ必要か
+ *
+ * 2026-08-18、本番で登録済みのアドレスを入力すると**エラーにならずコード入力画面へ進み、
+ * メールは永久に来なかった**。Supabase（ホスト版）はアカウント列挙を防ぐため、
+ * **登録済みでも成功と同じ形の応答を返してメールを送らない**。
+ * 応答は `identities` が空配列になるのが目印（Supabaseが公開している判別方法）。
+ *
+ * ローカルのSupabaseは同じ状況で `user_already_exists` を返すため、
+ * **エラーコードだけを見ていると本番でだけ通り抜ける**。両方を見る。
+ *
+ * ## 判定の順序
+ *
+ * 0. **セッションが返っている → 新規登録**（メール確認省略中（T-M8-202・mailer_autoconfirm）は
+ *    新規でも `email_confirmed_at` が即座に入るため、confirmed_atより先に見る。
+ *    列挙対策の偽装応答は決してセッションを持たない）
+ * 1. `identities` が空 → 登録済み（列挙対策の応答）
+ * 2. `email_confirmed_at` が入っている → 登録済みで確認も完了している
+ *    （確認必須モードの新規登録では確認前なので必ず空。入っていれば既存アカウント）
+ * 3. それ以外 → 送られたものとして進む（未確認アドレスの再登録はSupabaseが毎回再送する）
+ */
+export interface SignUpUserFacts {
+  identities?: unknown[] | null;
+  email_confirmed_at?: string | null;
+  /** signUp応答にセッションが付いていたか（autoconfirm時の新規はtrue・T-M8-202）。 */
+  hasSession?: boolean;
+}
+
+export type SignUpVerdict = "created" | "already_registered";
+
+export function classifySignUpUser(user: SignUpUserFacts | null | undefined): SignUpVerdict {
+  if (!user) return "already_registered";
+  if (user.hasSession) return "created";
+  if (Array.isArray(user.identities) && user.identities.length === 0) {
+    return "already_registered";
+  }
+  if (typeof user.email_confirmed_at === "string" && user.email_confirmed_at !== "") {
+    return "already_registered";
+  }
+  return "created";
 }

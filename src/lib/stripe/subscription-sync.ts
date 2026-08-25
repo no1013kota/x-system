@@ -1,5 +1,13 @@
 import type Stripe from "stripe";
 
+import {
+  adjustCommissionForInvoiceRefund,
+  recordCommissionForInvoice,
+  terminateAttributionForReferredUser,
+} from "@/lib/affiliate/store";
+import { recordUnexpectedError } from "@/lib/observability/sentry";
+import { isOperatorManagedPlan, PLANS } from "../plans";
+
 import { revalidateByokAiPurposeConfig } from "@/lib/ai-purpose-config";
 import { DB_ENUMS } from "@/lib/db/enums";
 import type { PlanId } from "@/lib/plans";
@@ -17,13 +25,48 @@ const UUID_PATTERN =
 
 export interface StripeSubscriptionGateway {
   subscriptions: {
-    retrieve(id: string): Promise<Stripe.Subscription>;
+    retrieve(id: string, params?: { expand: string[] }): Promise<Stripe.Subscription>;
+  };
+  /** 適用中のクーポンの内容を読む（T-M8-279）。無ければ割引は無しとして扱う。 */
+  coupons?: { retrieve(id: string): Promise<Stripe.Coupon> };
+  /**
+   * 予約済みの下位変更（subscription schedule）を読む（T-M8-260）。
+   * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
+   * 予約先のプランと切替日はここから取るしかない。
+   */
+  subscriptionSchedules?: {
+    retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
+  };
+  /**
+   * charge.refunded から invoice を引くために使う（T-M8-174レビュー修正）。
+   * **現行API（2026-06-24.dahlia）の Charge には invoice フィールドが無い**
+   * （2025-03-31.basil で削除）ため、payment_intent → InvoicePayments で解決する。
+   */
+  invoicePayments: {
+    list(params: {
+      payment: { type: "payment_intent"; payment_intent: string };
+      limit?: number;
+    }): Promise<{ data: { invoice: string | { id: string } | null }[] }>;
   };
 }
 
 export interface SubscriptionProjection {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: number;
+  /** 契約期間の開始（epoch秒）。利用枠の期間キーの元（T-M8-258）。 */
+  currentPeriodStart: number;
+  /** 適用中の割引（T-M8-279）。無ければ null。画面はプラン名の下にこれを出す。 */
+  discount: { percentOff: number | null; amountOffJpy: number | null; endsAt: number | null } | null;
+  /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
+  scheduledPlan: PlanId | null;
+  /** 予約が効く日時（epoch秒）。`scheduledPlan` とセット。 */
+  scheduledPlanAt: number | null;
+  /**
+   * 契約に schedule が付いているのに読めなかった（取得失敗・gateway が未対応）。true のときは
+   * **保存済みの予約を上書きしない**——失敗の空と正常の空を同じ null にすると、取得が1回失敗しただけで
+   * 画面の予約表示と取り消しボタンが消える（CLAUDE.md 原則1）。
+   */
+  scheduleUnavailable: boolean;
   customerId: string;
   eventCreated: number;
   plan: PlanId;
@@ -35,15 +78,33 @@ export interface SubscriptionProjection {
 }
 
 export type PreparedStripeEvent =
-  | { kind: "subscription_sync"; projection: SubscriptionProjection }
+  | {
+      kind: "subscription_sync";
+      projection: SubscriptionProjection;
+      /** 元のイベント種別（`customer.subscription.trial_will_end` の見分けに使う・T-M8-243）。 */
+      eventType?: string;
+    }
   | {
       kind: "invoice_sync";
       invoice: {
         attemptCount: number;
         id: string;
         paymentState: "failed" | "paid";
+        /** 実際に支払われた金額（JPY）。招待報酬の計算に使う（T-M8-174）。 */
+        amountPaid: number;
+        /** 支払時刻（unix秒）。 */
+        paidAtSec: number;
       };
       projection: SubscriptionProjection;
+    }
+  /** Refund（charge.refunded）。該当invoiceの招待報酬を取消・減額する（T-M8-174）。 */
+  | {
+      kind: "charge_refund";
+      stripeInvoiceId: string | null;
+      /** チャージ上の累計返金額（JPY）。部分返金の減額に使う。 */
+      amountRefunded: number;
+      /** 全額返金か（Stripeの `charge.refunded` フラグ）。 */
+      fullyRefunded: boolean;
     }
   | { kind: "none" };
 
@@ -82,31 +143,45 @@ async function clearInactiveSelection(
   );
 }
 
-async function applyStandardAccountLimit(
+/**
+ * 遷移先プランのXアカウント上限を超える分を disabled にする（T-M8-168で汎用化）。
+ *
+ * 旧実装は `applyStandardAccountLimit` ＝「1つだけ残して他を全部無効化」の**ハードコード**
+ * だった。上限はプランごとに違い今後も変わる（standard/premium=1・expert=3、2026-08-20時点）ため、
+ * ハードコードのままだと上限の変更のたびに正当なアカウントを黙って無効化し得る。plans.ts から引く。
+ * 残す優先順位は 選択中 → 作成が古い順（旧実装と同じ）。データは消さない（status変更のみ）。
+ */
+async function applyXAccountLimit(
   database: StripeEventDatabase,
   target: PlanTransitionTarget,
+  limit: number,
 ): Promise<void> {
-  const keeper = await database.query<{ id: string }>(
+  const keepers = await database.query<{ id: string }>(
     `select id from x_accounts
       where user_id = $1 and status = 'active'
       order by (id = $2::uuid) desc, created_at asc, id asc
-      limit 1`,
-    [target.id, target.active_x_account_id],
+      limit $3`,
+    [target.id, target.active_x_account_id, limit],
   );
-  const keeperId = keeper.rows[0]?.id ?? null;
+  const keeperIds = keepers.rows.map((row) => row.id);
   await database.query(
     `update x_accounts
         set status = 'disabled', updated_at = now()
       where user_id = $1
         and status = 'active'
-        and ($2::uuid is null or id <> $2::uuid)`,
-    [target.id, keeperId],
+        and not (id = any($2::uuid[]))`,
+    [target.id, keeperIds],
   );
+  // 選択中が残っていればそのまま。消えたら先頭（選択中優先→最古）の残存へ付け替える。
+  const nextActive =
+    target.active_x_account_id && keeperIds.includes(target.active_x_account_id)
+      ? target.active_x_account_id
+      : (keeperIds[0] ?? null);
   await database.query(
     `update profiles
         set active_x_account_id = $2::uuid, updated_at = now()
       where id = $1`,
-    [target.id, keeperId],
+    [target.id, nextActive],
   );
 }
 
@@ -140,13 +215,16 @@ async function applyPlanTransition(
 ): Promise<void> {
   if (target.plan === nextPlan) return;
 
-  if (nextPlan === "premium") {
+  // 遷移先プランで使えない auth_type の連携は expired にする（premium⇄expert間は同じmanagedなので不変）。
+  const nextManaged = isOperatorManagedPlan(nextPlan);
+  const prevManaged = isOperatorManagedPlan(target.plan);
+  if (nextManaged && !prevManaged) {
     await database.query(
       `update x_accounts set status = 'expired', updated_at = now()
         where user_id = $1 and auth_type = 'byok' and status <> 'expired'`,
       [target.id],
     );
-  } else if (target.plan === "premium") {
+  } else if (!nextManaged && prevManaged) {
     await database.query(
       `update x_accounts set status = 'expired', updated_at = now()
         where user_id = $1 and auth_type = 'managed' and status <> 'expired'`,
@@ -155,11 +233,8 @@ async function applyPlanTransition(
     await revalidateByokPurposeConfig(database, target);
   }
 
-  if (nextPlan === "standard") {
-    await applyStandardAccountLimit(database, target);
-  } else {
-    await clearInactiveSelection(database, target.id);
-  }
+  await applyXAccountLimit(database, target, PLANS[nextPlan].xAccountLimit);
+  await clearInactiveSelection(database, target.id);
 }
 
 export function expandedId(value: { id: string } | string | null): string | null {
@@ -196,11 +271,41 @@ function userIdFromMetadata(metadata: Stripe.Metadata): string | null {
   return userId;
 }
 
+/**
+ * 予約済みの下位変更を schedule から読む（T-M8-260）。
+ *
+ * 「いま有効なフェーズの**次**」で、Priceが現在と違い、かつ既知のプランに対応するものを予約とみなす。
+ * 過去のフェーズや同じPriceへの"予約"（Portalが作る形としては無いが）は無視する。
+ * 解除済み（`released`/`canceled`）の schedule は予約ではない。
+ */
+export function scheduledPlanFromSchedule(
+  schedule: Stripe.SubscriptionSchedule | null | undefined,
+  currentPriceId: string,
+  priceIds: Record<PlanId, string>,
+  nowSec: number,
+): { plan: PlanId; at: number } | null {
+  if (!schedule || (schedule.status !== "active" && schedule.status !== "not_started")) return null;
+  const phases = schedule.phases ?? [];
+  const upcoming = phases.find((phase) => phase.start_date > nowSec);
+  if (!upcoming) return null;
+  const item = upcoming.items?.[0];
+  const priceId = typeof item?.price === "string" ? item.price : item?.price?.id;
+  if (!priceId || priceId === currentPriceId) return null;
+  const entry = Object.entries(priceIds).find(([, configured]) => configured === priceId);
+  if (!entry) return null;
+  return { plan: entry[0] as PlanId, at: upcoming.start_date };
+}
+
+/** `loadSchedule` の結果。`"unavailable"` は schedule が付いているのに読めなかった状態。 */
+export type LoadedSchedule = Stripe.SubscriptionSchedule | null | "unavailable";
+
 export function subscriptionProjection(
   event: Stripe.Event,
   subscription: Stripe.Subscription,
   priceIds: Record<PlanId, string>,
   forceCanceled = false,
+  schedule?: LoadedSchedule,
+  discount?: SubscriptionProjection["discount"],
 ): SubscriptionProjection {
   const items = subscription.items?.data ?? [];
   const priceId = items.length === 1 ? items[0].price?.id : null;
@@ -213,6 +318,14 @@ export function subscriptionProjection(
   if (!Number.isInteger(currentPeriodEnd) || currentPeriodEnd <= 0) {
     throw new StripeSubscriptionSyncError("Subscription period end is invalid.");
   }
+  const currentPeriodStart = items[0].current_period_start;
+  if (
+    !Number.isInteger(currentPeriodStart) ||
+    currentPeriodStart <= 0 ||
+    currentPeriodStart > currentPeriodEnd
+  ) {
+    throw new StripeSubscriptionSyncError("Subscription period start is invalid.");
+  }
   const customerId = expandedId(subscription.customer);
   if (!customerId) {
     throw new StripeSubscriptionSyncError("Subscription customer is missing.");
@@ -221,6 +334,13 @@ export function subscriptionProjection(
   if (!SUBSCRIPTION_STATUSES.has(status)) {
     throw new StripeSubscriptionSyncError("Subscription status is unsupported.");
   }
+  // 解約・解約済みでは予約を持たない（期間末に契約自体が終わる）。
+  const canceled = forceCanceled || status === "canceled";
+  const scheduleUnavailable = !canceled && schedule === "unavailable";
+  const scheduled =
+    canceled || schedule === "unavailable"
+      ? null
+      : scheduledPlanFromSchedule(schedule, priceId, priceIds, event.created);
 
   return {
     // **`cancel_at` も「解約予定」として読む**（T-M8-57）。トライアル中の解約では、Stripeは
@@ -229,7 +349,13 @@ export function subscriptionProjection(
     // ままで、画面に何も出なかった（2026-08-05、利用者が実際に踏んだ）。
     cancelAtPeriodEnd: subscription.cancel_at_period_end || subscription.cancel_at != null,
     currentPeriodEnd,
+    currentPeriodStart,
     customerId,
+    scheduledPlan: scheduled?.plan ?? null,
+    scheduledPlanAt: scheduled?.at ?? null,
+    scheduleUnavailable,
+    // 解約・解約済みでは割引の表示も持たない（契約自体が終わる）。
+    discount: canceled ? null : (discount ?? null),
     eventCreated: event.created,
     plan: planEntry[0] as PlanId,
     status: status as SubscriptionStatus,
@@ -247,11 +373,41 @@ export async function prepareStripeEvent(
   stripe: StripeSubscriptionGateway,
   priceIds: Record<PlanId, string>,
 ): Promise<PreparedStripeEvent> {
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    // 旧APIバージョンのpayload互換（basil以前はChargeにinvoiceがあった）。
+    let invoiceId = expandedId(
+      ((charge as unknown as { invoice?: unknown }).invoice ?? null) as
+        | { id: string }
+        | string
+        | null,
+    );
+    // 現行API（dahlia）: payment_intent → InvoicePayments でinvoiceを解決する。
+    const paymentIntentId = expandedId(charge.payment_intent);
+    if (!invoiceId && paymentIntentId) {
+      const payments = await stripe.invoicePayments.list({
+        payment: { type: "payment_intent", payment_intent: paymentIntentId },
+        limit: 1,
+      });
+      invoiceId = expandedId(payments.data[0]?.invoice ?? null);
+    }
+    return {
+      kind: "charge_refund",
+      stripeInvoiceId: invoiceId,
+      amountRefunded: charge.amount_refunded ?? 0,
+      fullyRefunded: charge.refunded === true,
+    };
+  }
+
   if (
     event.type !== "checkout.session.completed" &&
     event.type !== "customer.subscription.created" &&
     event.type !== "customer.subscription.updated" &&
     event.type !== "customer.subscription.deleted" &&
+    // **トライアル終了の予告を落とさない**（T-M8-265）。ここに無いと下の一般経路へ進めず
+    // `{kind:"none"}` になり、`applyPreparedStripeEvent` の予告通知（T-M8-243）へ到達しない。
+    // 購読リスト（webhook.ts）には入っていたのに、この種別フィルタで黙って捨てていた。
+    event.type !== "customer.subscription.trial_will_end" &&
     event.type !== "invoice.payment_failed" &&
     event.type !== "invoice.paid"
   ) {
@@ -275,7 +431,9 @@ export async function prepareStripeEvent(
     const subscription = invoice.parent?.subscription_details?.subscription;
     const subscriptionId = expandedId(subscription ?? null);
     if (!subscriptionId) return { kind: "none" };
-    const current = await stripe.subscriptions.retrieve(subscriptionId);
+    const current = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["discounts"] });
+    const schedule = await loadSchedule(stripe, current);
+    const discount = await loadDiscount(stripe, current);
     return {
       kind: "invoice_sync",
       invoice: {
@@ -283,8 +441,10 @@ export async function prepareStripeEvent(
         id: invoice.id,
         paymentState:
           event.type === "invoice.payment_failed" ? "failed" : "paid",
+        amountPaid: invoice.amount_paid ?? 0,
+        paidAtSec: invoice.status_transitions?.paid_at ?? event.created,
       },
-      projection: subscriptionProjection(event, current, priceIds),
+      projection: subscriptionProjection(event, current, priceIds, false, schedule, discount),
     };
   }
 
@@ -292,11 +452,66 @@ export async function prepareStripeEvent(
   if (!subscriptionId) {
     throw new StripeSubscriptionSyncError("Stripe event has no subscription ID.");
   }
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["discounts"] });
+  const schedule = await loadSchedule(stripe, subscription);
+  const discount = await loadDiscount(stripe, subscription);
   return {
     kind: "subscription_sync",
-    projection: subscriptionProjection(event, subscription, priceIds),
+    eventType: event.type,
+    projection: subscriptionProjection(event, subscription, priceIds, false, schedule, discount),
   };
+}
+
+/**
+ * 適用中の割引を読む（T-M8-279）。**引き止めクーポン（半額・3か月）を受け取っても画面に何も出ず**、
+ * 「いくら払うのか」が分からなかったため足した。`discounts` は expand しないとIDだけが返り、
+ * 割引率はクーポン側にあるので、クーポンを1回引く（割引が付いているときだけ）。
+ * 読めなければ null（表示が出ないだけで、契約の反映は止めない）。
+ */
+export async function loadDiscount(
+  stripe: Pick<StripeSubscriptionGateway, "coupons">,
+  subscription: Stripe.Subscription,
+): Promise<SubscriptionProjection["discount"]> {
+  const first = subscription.discounts?.[0];
+  if (!first || typeof first === "string") return null;
+  const couponId =
+    typeof first.source?.coupon === "string" ? first.source.coupon : (first.source?.coupon?.id ?? null);
+  if (!couponId || !stripe.coupons) return null;
+  try {
+    const coupon = await stripe.coupons.retrieve(couponId);
+    if (!coupon.percent_off && !coupon.amount_off) return null;
+    return {
+      percentOff: coupon.percent_off ?? null,
+      amountOffJpy: coupon.amount_off ?? null,
+      endsAt: first.end ?? null,
+    };
+  } catch (error) {
+    recordUnexpectedError(error, { at: "stripe-sync:discount", subscriptionId: subscription.id });
+    return null;
+  }
+}
+
+/**
+ * 契約に schedule が付いていれば取りに行く（T-M8-260）。付いていなければ null。
+ * 付いているのに読めない（取得失敗・gateway が schedule 未対応）ときは `"unavailable"` を返し、
+ * 投影は**保存済みの予約を上書きしない**。同期全体は止めない——契約状態の反映（plan/status）の方が重要で、
+ * 予約の表示は次のイベントで追いつく。失敗は記録に残す。
+ * Portal からの戻り（billing-return）も同じ関数で schedule を読む（読まないと予約を null で上書きし、
+ * 後続の本物の webhook が stale 扱いになって予約が消える）。
+ */
+export async function loadSchedule(
+  stripe: Pick<StripeSubscriptionGateway, "subscriptionSchedules">,
+  subscription: Stripe.Subscription,
+): Promise<LoadedSchedule> {
+  const scheduleId = expandedId(subscription.schedule ?? null);
+  if (!scheduleId) return null;
+  if (!stripe.subscriptionSchedules) return "unavailable";
+  try {
+    return await stripe.subscriptionSchedules.retrieve(scheduleId);
+  } catch (error) {
+    recordUnexpectedError(error, { at: "stripe-sync:schedule", subscriptionId: subscription.id });
+    return "unavailable";
+  }
 }
 
 type InvoiceSyncDetail = Extract<
@@ -306,9 +521,53 @@ type InvoiceSyncDetail = Extract<
 
 /**
  * 請求失敗（invoice payment_failed）時のユーザー通知を冪等に記録する。billing通知の
- * in_app/email いずれかが有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
- * 二重通知を防ぐ。event claim transaction 内で呼ぶ。
+ * in_app が有効なときだけ dedupe_key 付きで insert し、リトライ webhook の
+ * 二重通知を防ぐ（メール通知はT-M8-222で廃止）。event claim transaction 内で呼ぶ。
  */
+/**
+ * 無料トライアル終了の予告（T-M8-243）。終了日と初回請求額を本文に入れる
+ * （「そのうち終わります」では利用者は準備できない）。`billing` の通知設定に従う。
+ */
+async function notifyTrialWillEnd(
+  database: StripeEventDatabase,
+  target: { id: string; notification_config: unknown },
+  projection: SubscriptionProjection,
+): Promise<void> {
+  const config = target.notification_config as { billing?: { in_app?: unknown } } | null;
+  if (config?.billing?.in_app !== true) return;
+  if (projection.trialEnd === null) return;
+  const endsAt = new Date(projection.trialEnd * 1000);
+  const endLabel = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "Asia/Tokyo",
+  }).format(endsAt);
+  const amount = PLANS[projection.plan].monthlyPriceJpy;
+  await database.query(
+    `insert into notifications
+      (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+     values (
+       $1, 'billing', $2,
+       '無料トライアルがまもなく終了します',
+       $3,
+       '/app/settings?tab=billing', $4::jsonb, true
+     )
+     on conflict (user_id, dedupe_key) where dedupe_key is not null
+     do nothing`,
+    [
+      target.id,
+      `billing:trial_will_end:${projection.subscriptionId}`,
+      `${endLabel}に無料期間が終了し、${PLANS[projection.plan].displayName}の料金 ${amount.toLocaleString("ja-JP")}円（税込）の初回お支払いが発生します。続けない場合は終了日までに解約してください。`,
+      {
+        plan: projection.plan,
+        subscription_id: projection.subscriptionId,
+        trial_end: endsAt.toISOString(),
+      },
+    ],
+  );
+}
+
 async function notifyInvoicePaymentFailed(
   database: StripeEventDatabase,
   target: { id: string; notification_config: unknown },
@@ -316,24 +575,19 @@ async function notifyInvoicePaymentFailed(
   projection: SubscriptionProjection,
 ): Promise<void> {
   const config = target.notification_config as {
-    billing?: { email?: unknown; in_app?: unknown };
+    billing?: { in_app?: unknown };
   } | null;
   const inAppEnabled = config?.billing?.in_app === true;
-  const emailEnabled = config?.billing?.email === true;
-  if (!inAppEnabled && !emailEnabled) return;
+  if (!inAppEnabled) return;
   const dedupeKey = `billing:invoice:${invoice.id}:payment_failed`;
   await database.query(
     `insert into notifications
-      (user_id, type, dedupe_key, title, body, link, payload,
-       in_app_enabled, email_status, email_available_at)
+      (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
      values (
        $1, 'billing', $2,
        'お支払いを確認できませんでした',
        'お支払い方法をご確認ください。更新後は契約状態へ自動的に反映されます。',
-       '/app/settings?tab=billing', $3::jsonb, $4,
-       case when $5 then 'queued'::email_delivery_status
-            else 'not_requested'::email_delivery_status end,
-       case when $5 then now() else null end
+       '/app/settings?tab=billing', $3::jsonb, $4
      )
      on conflict (user_id, dedupe_key) where dedupe_key is not null
      do nothing`,
@@ -343,15 +597,11 @@ async function notifyInvoicePaymentFailed(
       {
         attempt_count: invoice.attemptCount,
         invoice_id: invoice.id,
-        notification_config_snapshot: {
-          email: emailEnabled,
-          in_app: inAppEnabled,
-        },
+        notification_config_snapshot: { in_app: inAppEnabled },
         subscription_id: projection.subscriptionId,
         subscription_status: projection.status,
       },
       inAppEnabled,
-      emailEnabled,
     ],
   );
 }
@@ -363,6 +613,30 @@ export async function applyPreparedStripeEvent(
 ): Promise<SubscriptionApplyResult> {
   const value = prepared as PreparedStripeEvent;
   if (!value || value.kind === "none") return "not_applicable";
+  if (value.kind === "charge_refund") {
+    // Refund: 該当invoiceの招待報酬を取消・減額する（profileの照合は不要・T-M8-174）。
+    if (!value.stripeInvoiceId) {
+      // invoiceを解決できない返金（サブスク外の決済等）は報酬対象外のことが多いが、
+      // **黙って捨てない**（原則1）。Sentryへ記録して運営者が追える形にする。
+      recordUnexpectedError(new Error("charge.refunded: invoice unresolved"), {
+        at: "affiliate-refund",
+      });
+      return "updated";
+    }
+    const adjusted = await adjustCommissionForInvoiceRefund(database, value.stripeInvoiceId, {
+      amountRefunded: value.amountRefunded,
+      fullyRefunded: value.fullyRefunded,
+    });
+    if (adjusted.paidUntouched > 0) {
+      // 支払済み報酬への返金は自動では触らない（invite_cp.md「運営者が個別調整」）。
+      // ただし調整が必要になった事実は残す——無検知の損失にしない（原則1）。
+      recordUnexpectedError(
+        new Error(`charge.refunded on paid commission: ${value.stripeInvoiceId}`),
+        { at: "affiliate-refund-paid" },
+      );
+    }
+    return "updated";
+  }
   const projection = value.projection;
 
   const targets = await database.query<{
@@ -397,9 +671,45 @@ export async function applyPreparedStripeEvent(
   const lastCreated = target.subscription_event_created_at
     ? new Date(target.subscription_event_created_at).getTime() / 1000
     : null;
-  if (lastCreated !== null && projection.eventCreated < lastCreated) {
-    return "stale";
+  const stale = lastCreated !== null && projection.eventCreated < lastCreated;
+
+  /*
+    **招待報酬と請求失敗通知は stale でも実行する**（T-M8-174レビュー修正）。
+    Stripeはイベントの配送順を保証せず、初回checkoutでは subscription.updated と
+    invoice.paid がほぼ同時に発行される。staleで早期returnすると、イベントは
+    stripe_events にclaim済みのためリトライは duplicate になり、**報酬が恒久に作られない**。
+    どちらも冪等（invoice unique・dedupe key）なので、順序に依らず実行してよい。
+    staleが守るのは profiles の投影だけにする。
+  */
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
+    await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
   }
+  /*
+    **無料トライアル終了の予告**（T-M8-243）。Stripeが終了3日前に送るイベントで、
+    「いつ・いくら請求されるか」を先に知らせる。知らせないまま満額を引き落とすのは、
+    LPの「7日間は無料」と合わせて不意打ちになる。請求失敗通知と同じく冪等（dedupe key）。
+  */
+  if (value.kind === "subscription_sync" && value.eventType === "customer.subscription.trial_will_end") {
+    await notifyTrialWillEnd(database, target, projection);
+  }
+  if (value.kind === "invoice_sync" && value.invoice.paymentState === "paid") {
+    await recordCommissionForInvoice(database, {
+      referredUserId: target.id,
+      stripeInvoiceId: value.invoice.id,
+      amountPaid: value.invoice.amountPaid,
+      paidAtSec: value.invoice.paidAtSec,
+    });
+  }
+  // 紹介ユーザーの解約で報酬期間を終了する（再契約でも再開しない・invite_cp.md §7）。
+  if (projection.status === "canceled") {
+    await terminateAttributionForReferredUser(
+      database,
+      target.id,
+      new Date(projection.eventCreated * 1000).toISOString(),
+    );
+  }
+
+  if (stale) return "stale";
 
   await database.query(
     `update profiles
@@ -411,6 +721,17 @@ export async function applyPreparedStripeEvent(
             stripe_customer_id = $7,
             stripe_subscription_id = $8,
             subscription_event_created_at = to_timestamp($9),
+            -- 予約は schedule を読めたときだけ更新する（読めなかった回は保存済みの値を残す・T-M8-260）。
+            scheduled_plan = case when $14::boolean then scheduled_plan else $11::plan_type end,
+            scheduled_plan_at = case
+              when $14::boolean then scheduled_plan_at
+              when $12::bigint is null then null
+              else to_timestamp($12)
+            end,
+            current_period_start = to_timestamp($13),
+            discount_percent_off = $15,
+            discount_amount_off_jpy = $16,
+            discount_ends_at = case when $17::bigint is null then null else to_timestamp($17) end,
             trial_used_at = case
               when $3::subscription_status = 'trialing' then coalesce(
                 trial_used_at,
@@ -431,13 +752,16 @@ export async function applyPreparedStripeEvent(
       projection.subscriptionId,
       projection.eventCreated,
       projection.trialStartedAt,
+      projection.scheduledPlan,
+      projection.scheduledPlanAt,
+      projection.currentPeriodStart,
+      projection.scheduleUnavailable,
+      projection.discount?.percentOff ?? null,
+      projection.discount?.amountOffJpy ?? null,
+      projection.discount?.endsAt ?? null,
     ],
   );
 
   await applyPlanTransition(database, target, projection.plan);
-
-  if (value.kind === "invoice_sync" && value.invoice.paymentState === "failed") {
-    await notifyInvoicePaymentFailed(database, target, value.invoice, projection);
-  }
   return "updated";
 }

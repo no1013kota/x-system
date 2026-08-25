@@ -19,17 +19,29 @@ export function autoPostPublishKey(draftId: string): string {
   return `job:${draftId}:post_publish:auto`;
 }
 
+export type EnsureAutoPublishResult =
+  /** 新しく作った。 */
+  | "created"
+  /** 実行中／待機中のjobがある（この呼び出しでは何もしない）。 */
+  | "active"
+  /** 過去のautoジョブが終端していてkeyを保持している（**二度と作れない**・呼び出し側で後始末する）。 */
+  | "spent";
+
 /**
- * 自動投稿の `post_publish` 子jobを、無ければ1件だけ作る。作ったら true。
+ * 自動投稿の `post_publish` 子jobを、無ければ1件だけ作る。
  *
  * **阻害警告や同意の確認はここでしない。** `post-publish` handler が投稿直前に
  * `threadBlocksAutoPost` と自動投稿同意を見て、止めた理由を draft の `last_post_error` へ
  * 残す（要件04 §10 step2）。判定を2箇所に置くと、片方だけ直して食い違う。
+ *
+ * 戻り値は3値（T-M8-196）: `request_key` は全statusにまたがる恒久uniqueなので、過去のautoジョブが
+ * canceled/failed で終端しているとinsertは永遠に0行になる。これを `active` と区別しないと、
+ * 日時予約が**エラーも通知も無いまま二度と投稿されない**（永久沈黙・実DBで再現）。
  */
 export async function ensureAutoPostPublishJob(
   db: Queryable,
   params: { xAccountId: string; draftId: string },
-): Promise<boolean> {
+): Promise<EnsureAutoPublishResult> {
   // 実行中／待機中のものがあれば作らない（`request_key` の衝突だけでは、
   // 過去に終わったjobがあるときに再作成を止められない）。
   const active = await db.query(
@@ -38,7 +50,7 @@ export async function ensureAutoPostPublishJob(
       limit 1`,
     [params.draftId],
   );
-  if ((active.rowCount ?? 0) > 0) return false;
+  if ((active.rowCount ?? 0) > 0) return "active";
   const inserted = await db.query(
     `insert into generation_jobs
        (x_account_id, kind, trigger, draft_id, input, request_key, status)
@@ -51,7 +63,7 @@ export async function ensureAutoPostPublishJob(
       autoPostPublishKey(params.draftId),
     ],
   );
-  return (inserted.rowCount ?? 0) > 0;
+  return (inserted.rowCount ?? 0) > 0 ? "created" : "spent";
 }
 
 /** この生成が自動投稿まで進むか（jobのinputから読む）。 */

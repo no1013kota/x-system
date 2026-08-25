@@ -14,6 +14,8 @@ const HTTP_STATUS_FOR_ERROR: Record<ErrorCode, number> = {
   automation_consent_required: 403,
   subscription_required: 402,
   usage_limit_exceeded: 403,
+  // 一時停止（エキスパートの内部ガード・T-M8-168）。恒久拒否ではないので 429。
+  usage_paused: 429,
   x_account_required: 400,
   api_key_required: 400,
   persona_required: 400,

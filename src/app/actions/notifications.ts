@@ -9,25 +9,28 @@ import {
   listNotificationsForUser,
   markAllNotificationsReadForUser,
   markNotificationReadForUser,
-  retryNotificationEmailForUser,
 } from "@/lib/notifications-server";
-import type { NotificationView } from "@/lib/notifications";
+import type {
+  NotificationListPayload,
+  NotificationMutationPayload,
+} from "@/lib/notifications";
 
 /**
  * アプリ内通知の Server Actions（要件05 §10）。本人のみ。閲覧・既読化を提供し、既読系は最新の
  * 未読件数を返してベルのバッジを即時更新できるようにする。
  */
 
-export interface ListNotificationsActionResult extends BaseResult {
-  items?: NotificationView[];
-  nextCursor?: string | null;
-  unreadCount?: number;
-}
+/**
+ * payloadの形は `@/lib/notifications` を正本にする（T-M8-158）。ここへ列挙を書き戻すと、
+ * propsでAction契約を受け取るヘッダ通知ベルとの二重定義が復活し、改名が型検査を抜ける。
+ */
+export interface ListNotificationsActionResult
+  extends BaseResult,
+    NotificationListPayload {}
 
-export interface NotificationMutationResult extends BaseResult {
-  unreadCount?: number;
-  count?: number;
-}
+export interface NotificationMutationResult
+  extends BaseResult,
+    NotificationMutationPayload {}
 
 const listSchema = z.object({
   cursor: z.string().optional(),
@@ -93,19 +96,3 @@ export async function markAllNotificationsReadAction(): Promise<NotificationMuta
   }
 }
 
-export async function retryNotificationEmailAction(
-  input: unknown,
-): Promise<BaseResult> {
-  const parsed = parseUserInput(idSchema, input);
-  if (!parsed.success) {
-    return validationErrorResult(parsed.error);
-  }
-  const auth = await requireUserId();
-  if (!auth.ok) return auth.result;
-  try {
-    await retryNotificationEmailForUser(auth.userId, parsed.data.notification_id);
-    return { message: "メールの再送を予約しました。", status: "success" };
-  } catch (error) {
-    return errorResult(error);
-  }
-}

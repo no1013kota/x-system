@@ -1,6 +1,8 @@
 "use server";
 
 import { cookies } from "next/headers";
+
+import { ATTRIBUTION_COOKIE_NAME } from "@/lib/affiliate/config";
 import { redirect } from "next/navigation";
 
 import { safeAuthNext } from "@/lib/auth/confirm";
@@ -11,7 +13,12 @@ import {
   recordCodeFailure,
 } from "@/lib/auth/code-attempts";
 import { EMAIL_CODE_LENGTH, normalizeEmailCode } from "@/lib/auth/email-code";
-import { SIGNUP_GENERIC_ERROR, signUpErrorMessage } from "@/lib/auth/signup-errors";
+import {
+  classifySignUpUser,
+  SIGNUP_ALREADY_REGISTERED,
+  SIGNUP_GENERIC_ERROR,
+  signUpErrorMessage,
+} from "@/lib/auth/signup-errors";
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
@@ -23,7 +30,6 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
-import { canBrowseApp } from "@/lib/auth/subscription-access";
 import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -57,8 +63,18 @@ const CODE_BLOCKED_MESSAGE =
 const SIGNUP_ERROR_MESSAGE = SIGNUP_GENERIC_ERROR.message;
 const RESEND_ACCEPTED_MESSAGE =
   "確認メールを再送しました。登録可能なメールアドレスの場合にメールが届きます。";
+/**
+ * ログイン失敗の文言（T-M8-295で言い分けるようにした）。
+ *
+ * 以前はどの失敗でも「入力内容を確認し、**時間をおいて**再度お試しください」と出していたが、
+ * 資格情報の誤りは待っても直らないので案内として嘘だった。原因ごとに直し方を言う。
+ */
 const SIGNIN_ERROR_MESSAGE =
-  "ログインできませんでした。入力内容を確認し、時間をおいて再度お試しください。";
+  "ログインできませんでした。時間をおいて再度お試しください。";
+const SIGNIN_INVALID_CREDENTIALS_MESSAGE =
+  "メールアドレスまたはパスワードが正しくありません。";
+const SIGNIN_NOT_REGISTERED_MESSAGE =
+  "このメールアドレスは登録されていません。新規登録してください。";
 const RESET_REQUEST_ACCEPTED_MESSAGE =
   "再設定メールを受け付けました。登録可能なメールアドレスの場合にメールが届きます。";
 const UPDATE_PASSWORD_ERROR_MESSAGE =
@@ -101,6 +117,7 @@ export async function signUp(
   }
 
   const input = parsed.data;
+  let confirmedImmediately = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signUp({
@@ -124,6 +141,51 @@ export async function signUp(
       return { status: "error", message, ...(action ? { action } : {}) };
     }
 
+    /*
+      **エラーが無くても登録済みのことがある**（T-M8-149）。ホスト版のSupabaseはアカウント
+      列挙を防ぐため、登録済みのアドレスでも成功と同じ形の応答を返し、**メールを送らない**。
+      ここを素通りさせると、来ないコードを待つ画面へ利用者を送り込むことになる
+      （2026-08-18に本番で発生。ローカルのSupabaseは同じ状況でエラーを返すため気付けなかった）。
+    */
+    if (classifySignUpUser({ ...data.user, hasSession: Boolean(data.session) }) === "already_registered") {
+      return {
+        status: "error",
+        message: SIGNUP_ALREADY_REGISTERED.message,
+        ...(SIGNUP_ALREADY_REGISTERED.action ? { action: SIGNUP_ALREADY_REGISTERED.action } : {}),
+      };
+    }
+
+    /*
+      招待リンク経由の登録を招待者へ紐づける（T-M8-174・invite_cp.md §4）。
+      **失敗しても登録は止めない**（報酬の紐づけ漏れより登録の失敗のほうが重い）。
+      Cookieは使い切り（Last Clickの証跡はDB側のunique行が持つ）。
+    */
+    try {
+      const store = await cookies();
+      const referralCode = store.get(ATTRIBUTION_COOKIE_NAME)?.value;
+      if (referralCode) {
+        const { attributeSignup } = await import("@/lib/affiliate/store");
+        const { pooledQueryable } = await import("@/lib/db/pool");
+        const outcome = await attributeSignup(pooledQueryable(), {
+          code: referralCode,
+          newUserId: data.user.id,
+        });
+        /*
+          **「招待コードが見つからない」は取りこぼしの疑いとして記録する**（T-M8-242）。
+          自己招待・紐づけ済みは正常なので記録しない。以前は結果を捨てていたため、
+          「そもそも招待なし」と「コードが届いたのに付かなかった」を区別できなかった（原則1）。
+        */
+        if (outcome === "unknown_code") {
+          recordUnexpectedError(new Error(`unknown affiliate code: ${referralCode}`), {
+            at: "signup-attribution-unknown-code",
+          });
+        }
+        store.delete(ATTRIBUTION_COOKIE_NAME);
+      }
+    } catch (error) {
+      recordUnexpectedError(error, { at: "signup-attribution" });
+    }
+
     const acceptedAt = new Date().toISOString();
     const admin = createSupabaseAdminClient();
     const { error: profileError } = await admin
@@ -140,15 +202,29 @@ export async function signUp(
       return { status: "error", message: SIGNUP_ERROR_MESSAGE };
     }
 
-    return {
-      status: "success",
-      message: SIGNUP_ACCEPTED_MESSAGE,
-      email: input.email,
-    };
+    /*
+      メール確認を省略している間（T-M8-202・運営者の決定 2026-08-22）は、Supabaseが
+      登録と同時にセッションを返す。**判定は設定値ではなく session の有無で行う**——
+      Supabase側の設定（mailer_autoconfirm / enable_confirmations）とアプリの分岐が
+      食い違っても、確認が必要ならコード画面へ、不要なら即プランへと自動で追従する。
+      確認を戻すときは設定だけ変えればよい（scripts/auth-settings.mjs のコメント参照）。
+    */
+    if (data.session) {
+      confirmedImmediately = true;
+    } else {
+      return {
+        status: "success",
+        message: SIGNUP_ACCEPTED_MESSAGE,
+        email: input.email,
+      };
+    }
   } catch (error) {
     recordUnexpectedError(error, { at: "sign-up" });
     return { status: "error", message: SIGNUP_ERROR_MESSAGE };
   }
+  // redirect は NEXT_REDIRECT を投げるため try/catch の外で行う（握り潰すと無言で止まる）。
+  if (confirmedImmediately) redirect("/app?welcome=signup");
+  return { status: "error", message: SIGNUP_ERROR_MESSAGE };
 }
 
 /** Resends signup confirmation without revealing whether the email exists. */
@@ -158,9 +234,10 @@ export async function signUp(
  * 成功すると Supabase がセッションを張るので、そのまま `/plans` へ進める（**確認のためだけに
  * もう一度ログインさせない**）。`verifyOtp` はコードの期限・使い切りをSupabase側で管理する。
  *
- * captchaはここでは要求しない。**このフォームに到達できるのは直前に登録した本人だけ**で、
- * すでに登録時にTurnstileを通している。ここで再度求めると、コードを打つだけの画面で
- * 人間確認が失敗して詰む経路を増やす（T-M8-87の教訓）。
+ * captchaはここでは要求しない。このフォームへは、直前の登録でTurnstileを通った場合か、
+ * passwordとログイン用TurnstileをSupabaseへ検証させて`email_not_confirmed`になった場合だけ進む。
+ * ここでさらに要求すると、コードを打つだけの画面で人間確認が失敗して詰む経路を増やす
+ * （T-M8-87の教訓）。
  */
 export async function verifySignUpCode(
   _previousState: AuthFormState,
@@ -209,13 +286,48 @@ export async function verifySignUpCode(
     // profile行が無いまま進むと、同意の記録が無くて再同意を求める経路へ落ちる（T-M8-73）。
     // 登録時のtriggerで作られているはずだが、無ければここで作る（既存値は触らない）。
     await ensureUserProfileWithClient(data.user, createSupabaseAdminClient());
+
+    /*
+      招待の紐づけのフォールバック（T-M8-191）。通常は登録時（signUp）に紐づけて
+      Cookieを消している。ここにCookieが残っているのは (a) 登録時の紐づけが失敗した
+      （DB一時障害など）か、(b) 登録後〜コード入力前に招待リンクを踏んだ場合。
+      (b) も Last Click Attribution（invite_cp.md §4）の範囲内として紐づける
+      （登録フローの途中での最後のクリック）。冪等: 1ユーザー1招待者のuniqueで
+      二重紐づけにはならない。失敗しても検証は止めない（登録完了のほうが重い）。
+    */
+    try {
+      const store = await cookies();
+      const referralCode = store.get(ATTRIBUTION_COOKIE_NAME)?.value;
+      if (referralCode) {
+        const { attributeSignup } = await import("@/lib/affiliate/store");
+        const { pooledQueryable } = await import("@/lib/db/pool");
+        const outcome = await attributeSignup(pooledQueryable(), {
+          code: referralCode,
+          newUserId: data.user.id,
+        });
+        /*
+          **「招待コードが見つからない」は取りこぼしの疑いとして記録する**（T-M8-242）。
+          自己招待・紐づけ済みは正常なので記録しない。以前は結果を捨てていたため、
+          「そもそも招待なし」と「コードが届いたのに付かなかった」を区別できなかった（原則1）。
+        */
+        if (outcome === "unknown_code") {
+          recordUnexpectedError(new Error(`unknown affiliate code: ${referralCode}`), {
+            at: "signup-attribution-unknown-code",
+          });
+        }
+        store.delete(ATTRIBUTION_COOKIE_NAME);
+      }
+    } catch (error) {
+      recordUnexpectedError(error, { at: "verify-signup-attribution" });
+    }
   } catch (error) {
     recordUnexpectedError(error, { at: "verify-signup-code" });
     return { status: "error", message: CODE_INVALID_MESSAGE, email };
   }
 
-  // 確認できたことを着地側で言う（T-M8-58。無言で料金表に変わると成功したか分からない）。
-  redirect("/plans?confirmed=1");
+  // 確認できたことを着地側で言う（T-M8-58。無言で画面が変わると成功したか分からない）。
+  // 行き先はアプリ本体（T-M8-268。まず中を見てもらい、プランは常設バナーと実行時に案内する）。
+  redirect("/app?welcome=confirmed");
 }
 
 export async function resendSignUpConfirmation(
@@ -362,6 +474,9 @@ export async function signIn(
 
   const input = parsed.data;
   let destination: string;
+  let authenticatedClient: Awaited<
+    ReturnType<typeof createSupabaseServerClient>
+  > | null = null;
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -379,39 +494,86 @@ export async function signIn(
       if (hasErrorCode(error, "email_not_confirmed")) {
         return {
           status: "email_unconfirmed",
-          message:
-            "メールアドレスの確認が完了していません。確認メールを再送してください。",
+          message: "メール確認が終わっていません",
           email: input.email,
         };
+      }
+      /*
+        **「登録が無い」と「パスワードが違う」を言い分ける**（T-M8-295・運営者の指示 2026-08-25）。
+        Supabase はどちらも同じ `invalid_credentials` を返すので、認証応答だけでは分からない。
+        登録が無いのに「入力内容を確認してください」と言われると、正しいパスワードを探して
+        何度も試すことになる（実際に運営者が踏んだ）。存在の確認は `auth.users` を正とする。
+
+        存在確認そのものが失敗したときは**元の汎用文言に戻す**——ここで throw すると、
+        パスワードの打ち間違いがDB障害で「予期しないエラー」になってしまう。
+      */
+      if (hasErrorCode(error, "invalid_credentials")) {
+        let registered = true;
+        try {
+          const { isRegisteredEmail } = await import("@/lib/auth/registered-email-server");
+          registered = await isRegisteredEmail(input.email);
+        } catch (cause) {
+          recordUnexpectedError(cause, { at: "sign-in:registered-lookup" });
+        }
+        if (!registered) {
+          return {
+            status: "error",
+            message: SIGNIN_NOT_REGISTERED_MESSAGE,
+            // 行き止まりにしない（T-M8-127）。入力したメールを引き継いで登録画面へ。
+            action: { href: "/signup", label: "新規登録へ" },
+            email: input.email,
+          };
+        }
+        return { status: "error", message: SIGNIN_INVALID_CREDENTIALS_MESSAGE };
       }
       return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
     if (!data.user) return { status: "error", message: SIGNIN_ERROR_MESSAGE };
+    authenticatedClient = supabase;
 
     const admin = createSupabaseAdminClient();
-    await ensureUserProfileWithClient(data.user, admin);
-    const profile = await admin
-      .from("profiles")
-      .select("subscription_status")
-      .eq("id", data.user.id)
-      .single();
+    const readProfile = () =>
+      admin
+        .from("profiles")
+        .select("id")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+    /*
+      正常な利用者には auth.users 作成triggerで profile が必ずある。以前はログインのたびに
+      `upsert → select` を直列実行していたため、存在する行へ毎回1往復余計に通信していた。
+      まず読むだけにし、欠損時だけ修復する。修復後は競合やtrigger遅延を考慮して再読込する。
+    */
+    let profile = await readProfile();
+    if (!profile.error && !profile.data) {
+      await ensureUserProfileWithClient(data.user, admin);
+      profile = await readProfile();
+    }
     if (profile.error || !profile.data) {
-      // ここは service_role で profiles を読む経路。権限・接続の失敗が「入力内容を確認して」
-      // という誤案内になり原因も残らないため必ず記録する（2026-07-26 のGRANT漏れと同型）。
-      recordUnexpectedError(profile.error ?? new Error("profile not found after sign-in"), {
-        at: "sign-in:profile",
-        userId: data.user.id,
+      throw new AppError("internal_error", {
+        cause: profile.error ?? new Error("profile not found after sign-in repair"),
+        message: "Failed to load the profile after sign-in.",
       });
-      await supabase.auth.signOut();
-      return { status: "error", message: SIGNIN_ERROR_MESSAGE };
     }
 
-    destination = !canBrowseApp(profile.data.subscription_status)
-      ? "/plans"
-      : (safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app");
+    /*
+      **契約状態で行き先を変えない**（T-M8-268・運営者の指示 2026-08-23）。以前は契約が無い／
+      終わっていると必ず `/plans` へ送っていたため、登録しただけの利用者も解約した利用者も
+      **アプリを一度も見られず**、招待キャンペーンへの参加も自分のデータの確認もできなかった。
+      プランの案内は常設バナーが担い、実行しようとした時点で `/plans` へ導く。
+    */
+    destination = safeAuthNext(input.next, env.APP_BASE_URL as string) ?? "/app";
   } catch (error) {
     // 認証情報の誤りは上の error 分岐で処理済み。ここへ来るのは想定外の失敗だけなので記録する。
     recordUnexpectedError(error, { at: "sign-in" });
+    // signInWithPassword 成功後のprofile読込／修復で失敗しても、半端なログイン状態を残さない。
+    if (authenticatedClient) {
+      try {
+        await authenticatedClient.auth.signOut();
+      } catch (signOutError) {
+        recordUnexpectedError(signOutError, { at: "sign-in:rollback" });
+      }
+    }
     return { status: "error", message: SIGNIN_ERROR_MESSAGE };
   }
 

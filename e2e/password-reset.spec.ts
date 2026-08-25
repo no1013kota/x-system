@@ -77,8 +77,8 @@ test("再設定メールから新しいパスワードを設定してログイ�
       .not.toBe("")
       ;
     await page.locator('button[type="submit"]').click();
-    // 未契約なのでプラン選択へ入る（要件03 §2 の閲覧ゲート）
-    await expect(page).toHaveURL(/\/plans/);
+    // 未契約でもアプリ本体へ入る（T-M8-268。閲覧は契約状態で止めない）。
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
     // --- 古いパスワードでは入れない ---
     await page.context().clearCookies();
@@ -90,7 +90,7 @@ test("再設定メールから新しいパスワードを設定してログイ�
       .not.toBe("");
     await page.locator('button[type="submit"]').click();
     await expect(alertIn(page)).toBeVisible();
-    await expect(page).not.toHaveURL(/\/plans/);
+    await expect(page).toHaveURL(/\/login/);
   } finally {
     await destroyUserByEmail(email);
   }

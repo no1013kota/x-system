@@ -53,10 +53,13 @@ describe("metrics_collector (local DB)", () => {
          values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
         [uid, `${uid}@example.com`],
       );
-      await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [
-        uid,
-        `${uid}@example.com`,
-      ]);
+      // 契約が有効な利用者だけ収集対象（T-M8-267。既定の incomplete では選定されない）。
+      await c.query(
+        `insert into profiles (id, email, subscription_status)
+         values ($1,$2,'active')
+         on conflict (id) do update set subscription_status = 'active'`,
+        [uid, `${uid}@example.com`],
+      );
       const xid = (
         await c.query<{ id: string }>(
           `insert into x_accounts
@@ -293,6 +296,33 @@ describe("metrics_collector (local DB)", () => {
       const after2 = await readDraft(draftId);
       expect(after2.tweet_metrics[t1].checkpoints["1"]?.impressions).toBe(10); // not overwritten (not due)
       expect(new Date(after2.next_metrics_at!).getTime()).toBe(new Date(after1.next_metrics_at!).getTime());
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /**
+   * **「0件」と「全部失敗して0件」を結果で区別する**（T-M8-239・CLAUDE.md 原則1）。
+   * 以前は読取失敗を握って `console.error` へ流すだけで、cronの応答にも運営者にも現れず、
+   * 実績が更新されなくなっても「静かに0件」に見えていた。
+   */
+  it("読取が落ちた分を failed として数え、onError へ渡す", async () => {
+    const { uid, xid } = await seedAccount();
+    const t1 = `t-${randomUUID()}`;
+    await seedPostedDraft(xid, [t1], { postedDaysAgo: 2, nextDueDaysAgo: 1 });
+    try {
+      const errors: unknown[] = [];
+      const res = await executeMetricsCollection(
+        mockDeps(xid, {}, {
+          onError: (_scope, err) => errors.push(err),
+          readTweetMetrics: async () => {
+            throw new Error("X API down");
+          },
+        }),
+      );
+      expect(res.failed, "失敗が結果に出ていない").toBeGreaterThanOrEqual(1);
+      expect(res.draftsProcessed).toBe(0);
+      expect(errors.length, "記録口へ渡っていない").toBe(res.failed);
     } finally {
       await cleanup(uid);
     }

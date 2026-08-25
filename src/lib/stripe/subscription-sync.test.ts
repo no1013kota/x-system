@@ -8,7 +8,7 @@ import {
 
 const priceIds = {
   standard: "price_standard",
-  md: "price_md",
+  expert: "price_expert",
   premium: "price_premium",
 } as const;
 
@@ -25,7 +25,8 @@ function subscription(
       data: [
         {
           current_period_end: 1_785_279_600,
-          price: { id: "price_md" },
+          current_period_start: 1_784_674_800,
+          price: { id: "price_expert" },
         } as Stripe.SubscriptionItem,
       ],
       has_more: false,
@@ -52,7 +53,70 @@ function event(
   } as unknown as Stripe.Event;
 }
 
+/** テスト用gateway。invoicePaymentsは呼ばれないテストでは空の実装でよい。 */
+function gateway(
+  retrieve: (id: string) => Promise<Stripe.Subscription>,
+  invoicePaymentsList?: (params: unknown) => Promise<{ data: { invoice: string | { id: string } | null }[] }>,
+) {
+  return {
+    subscriptions: { retrieve },
+    invoicePayments: {
+      list:
+        invoicePaymentsList ??
+        (async () => {
+          throw new Error("invoicePayments.list should not be called in this test");
+        }),
+    },
+  };
+}
+
 describe("Stripe subscription synchronization", () => {
+  /**
+   * charge.refunded のinvoice解決（T-M8-174レビュー修正）。
+   * **現行API（2026-06-24.dahlia）のChargeにはinvoiceフィールドが無い**（basilで削除）ため、
+   * payment_intent → InvoicePayments で解決する。preparedを直接注入するdbテストでは
+   * この層を素通りするので、ここで prepareStripeEvent を実際に通す。
+   */
+  it("charge.refunded: payment_intentからInvoicePayments経由でinvoiceを解決する", async () => {
+    const list = vi.fn(async () => ({ data: [{ invoice: "in_resolved" }] }));
+    const prepared = await prepareStripeEvent(
+      event("charge.refunded", {
+        id: "ch_1",
+        payment_intent: "pi_1",
+        amount_refunded: 500,
+        refunded: false,
+      }),
+      gateway(vi.fn(), list),
+      priceIds,
+    );
+    expect(list).toHaveBeenCalledWith({
+      payment: { type: "payment_intent", payment_intent: "pi_1" },
+      limit: 1,
+    });
+    expect(prepared).toEqual({
+      kind: "charge_refund",
+      stripeInvoiceId: "in_resolved",
+      amountRefunded: 500,
+      fullyRefunded: false,
+    });
+  });
+
+  it("charge.refunded: 旧API形状（charge.invoiceあり）はそのまま使い、解決不能はnull", async () => {
+    const legacy = await prepareStripeEvent(
+      event("charge.refunded", { id: "ch_2", invoice: "in_legacy", refunded: true, amount_refunded: 3980 }),
+      gateway(vi.fn()),
+      priceIds,
+    );
+    expect(legacy).toMatchObject({ kind: "charge_refund", stripeInvoiceId: "in_legacy", fullyRefunded: true });
+
+    const none = await prepareStripeEvent(
+      event("charge.refunded", { id: "ch_3", payment_intent: null, refunded: true, amount_refunded: 100 }),
+      gateway(vi.fn(), async () => ({ data: [] })),
+      priceIds,
+    );
+    expect(none).toMatchObject({ kind: "charge_refund", stripeInvoiceId: null });
+  });
+
   it.each([
     ["checkout.session.completed", { id: "cs_001", subscription: "sub_checkout" }, "sub_checkout"],
     ["customer.subscription.created", { id: "sub_created" }, "sub_created"],
@@ -61,15 +125,16 @@ describe("Stripe subscription synchronization", () => {
     const retrieve = vi.fn(async () => subscription());
     const prepared = await prepareStripeEvent(
       event(type, object),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
-    expect(retrieve).toHaveBeenCalledWith(expectedId);
+    // 割引はexpandしないとIDだけ返るので、同期は必ずexpandして引く（T-M8-279）。
+    expect(retrieve).toHaveBeenCalledWith(expectedId, { expand: ["discounts"] });
     expect(prepared).toMatchObject({
       kind: "subscription_sync",
       projection: {
-        plan: "md",
+        plan: "expert",
         status: "trialing",
         currentPeriodEnd: 1_785_279_600,
         trialStartedAt: 1_784_674_800,
@@ -82,7 +147,7 @@ describe("Stripe subscription synchronization", () => {
     const deleted = subscription({ id: "sub_deleted", status: "active" });
     const prepared = await prepareStripeEvent(
       event("customer.subscription.deleted", deleted as unknown as Record<string, unknown>),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
@@ -112,11 +177,11 @@ describe("Stripe subscription synchronization", () => {
     } as Stripe.Invoice;
     const prepared = await prepareStripeEvent(
       event(type, invoice as unknown as Record<string, unknown>),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
 
-    expect(retrieve).toHaveBeenCalledWith("sub_invoice");
+    expect(retrieve).toHaveBeenCalledWith("sub_invoice", { expand: ["discounts"] });
     expect(prepared).toMatchObject({
       kind: "invoice_sync",
       invoice: { id: "in_001", attemptCount: 2, paymentState },
@@ -132,7 +197,7 @@ describe("Stripe subscription synchronization", () => {
         attempt_count: 1,
         parent: null,
       }),
-      { subscriptions: { retrieve } },
+      gateway(retrieve),
       priceIds,
     );
     expect(prepared).toEqual({ kind: "none" });
@@ -146,7 +211,7 @@ describe("Stripe subscription synchronization", () => {
       priceIds,
     );
     expect(projection).toMatchObject({
-      plan: "md",
+      plan: "expert",
       status: "active",
       currentPeriodEnd: 1_785_279_600,
       trialEnd: null,
@@ -214,8 +279,8 @@ describe("Stripe subscription synchronization", () => {
           items: {
             object: "list",
             data: [
-              { current_period_end: 1_785_279_600, price: { id: "price_md" } },
-              { current_period_end: 1_785_279_600, price: { id: "price_md" } },
+              { current_period_end: 1_785_279_600, price: { id: "price_expert" } },
+              { current_period_end: 1_785_279_600, price: { id: "price_expert" } },
             ] as Stripe.SubscriptionItem[],
             has_more: false,
             url: "/v1/subscription_items",
@@ -224,5 +289,164 @@ describe("Stripe subscription synchronization", () => {
         priceIds,
       ),
     ).toThrow("unknown Price ID");
+  });
+});
+
+/**
+ * トライアル終了の予告（T-M8-243）が届かなかった件（T-M8-265）。購読リストには入っていたのに、
+ * `prepareStripeEvent` の種別フィルタで落ちて `{kind:"none"}` になり、通知の分岐へ到達しなかった。
+ */
+describe("customer.subscription.trial_will_end（T-M8-265）", () => {
+  it("種別フィルタで捨てず、通知の分岐へ渡せる形（subscription_sync）にする", async () => {
+    const prepared = await prepareStripeEvent(
+      event("customer.subscription.trial_will_end", { id: "sub_current" }),
+      gateway(async () => subscription()),
+      priceIds,
+    );
+    expect(prepared.kind, "ここが none だと予告通知は永久に作られない").toBe("subscription_sync");
+    if (prepared.kind === "subscription_sync") {
+      expect(prepared.eventType).toBe("customer.subscription.trial_will_end");
+      expect(prepared.projection.status).toBe("trialing");
+      expect(prepared.projection.trialEnd).toBe(1_785_279_600);
+    }
+  });
+
+  it("扱わない種別は従来どおり none（購読の取りこぼしを一般化しない）", async () => {
+    const prepared = await prepareStripeEvent(
+      event("customer.subscription.paused", { id: "sub_current" }),
+      gateway(async () => subscription()),
+      priceIds,
+    );
+    expect(prepared.kind).toBe("none");
+  });
+});
+
+describe("current_period_start projection (T-M8-258)", () => {
+  it("reads the period start from the item and rejects an invalid one", () => {
+    const ok = subscriptionProjection(event("customer.subscription.updated", {}), subscription(), priceIds);
+    expect(ok.currentPeriodStart).toBe(1_784_674_800);
+    const item = (over: object) =>
+      subscription({
+        items: { object: "list", data: [{ current_period_end: 1_785_279_600, current_period_start: 1_784_674_800, price: { id: "price_expert" }, ...over } as Stripe.SubscriptionItem], has_more: false, url: "" },
+      } as never);
+    expect(() => subscriptionProjection(event("customer.subscription.updated", {}), item({ current_period_start: undefined }), priceIds)).toThrow(/period start/);
+    expect(() => subscriptionProjection(event("customer.subscription.updated", {}), item({ current_period_start: 1_785_279_601 }), priceIds), "開始が終了より後").toThrow(/period start/);
+  });
+});
+
+/**
+ * 予約済みの下位変更（subscription schedule・T-M8-260）。
+ * Portalの期間末予約は契約本体のPriceを変えず schedule を付けるだけなので、
+ * 予約先と切替日は schedule の「次のフェーズ」から読む。
+ */
+describe("scheduled plan change (subscription schedule)", () => {
+  const NOW = 1_784_675_200;
+  function schedule(overrides: Partial<Stripe.SubscriptionSchedule> = {}): Stripe.SubscriptionSchedule {
+    return {
+      id: "sub_sched_1",
+      object: "subscription_schedule",
+      status: "active",
+      phases: [
+        { start_date: NOW - 100_000, end_date: 1_785_279_600, items: [{ price: "price_expert" }] },
+        { start_date: 1_785_279_600, end_date: 1_787_958_000, items: [{ price: "price_standard" }] },
+      ],
+      ...overrides,
+    } as unknown as Stripe.SubscriptionSchedule;
+  }
+
+  it("次のフェーズのPriceが違えば、予約先プランと切替日を投影へ載せる", () => {
+    const projection = subscriptionProjection(
+      event("customer.subscription.updated", {}, NOW),
+      subscription({ status: "active" }),
+      priceIds,
+      false,
+      schedule(),
+    );
+    expect(projection.scheduledPlan).toBe("standard");
+    expect(projection.scheduledPlanAt).toBe(1_785_279_600);
+  });
+
+  it("schedule が無い・解除済み・次フェーズが同じPrice・未知のPrice なら予約なし", () => {
+    const base = subscription({ status: "active" });
+    const ev = event("customer.subscription.updated", {}, NOW);
+    expect(subscriptionProjection(ev, base, priceIds, false, null).scheduledPlan).toBeNull();
+    expect(
+      subscriptionProjection(ev, base, priceIds, false, schedule({ status: "released" })).scheduledPlan,
+    ).toBeNull();
+    expect(
+      subscriptionProjection(
+        ev, base, priceIds, false,
+        schedule({ phases: [{ start_date: NOW - 1, end_date: NOW + 1, items: [{ price: "price_expert" }] },
+                            { start_date: NOW + 1, end_date: NOW + 2, items: [{ price: "price_expert" }] }] } as never),
+      ).scheduledPlan,
+    ).toBeNull();
+    expect(
+      subscriptionProjection(
+        ev, base, priceIds, false,
+        schedule({ phases: [{ start_date: NOW + 1, end_date: NOW + 2, items: [{ price: "price_unknown" }] }] } as never),
+      ).scheduledPlan,
+    ).toBeNull();
+  });
+
+  it("解約（deleted）では予約を持たない", () => {
+    const projection = subscriptionProjection(
+      event("customer.subscription.deleted", {}, NOW),
+      subscription({ status: "active" }),
+      priceIds,
+      true,
+      schedule(),
+    );
+    expect(projection.scheduledPlan).toBeNull();
+  });
+
+  it("prepareStripeEvent は契約に schedule が付いていれば取りに行き、失敗しても同期は続く", async () => {
+    const withSchedule = subscription({ status: "active", schedule: "sub_sched_1" } as never);
+    const ok = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      {
+        ...gateway(async () => withSchedule),
+        subscriptionSchedules: { retrieve: async () => schedule() },
+      },
+      priceIds,
+    );
+    expect(ok.kind).toBe("subscription_sync");
+    if (ok.kind === "subscription_sync") expect(ok.projection.scheduledPlan).toBe("standard");
+
+    const failing = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      {
+        ...gateway(async () => withSchedule),
+        subscriptionSchedules: {
+          retrieve: async () => {
+            throw new Error("stripe down");
+          },
+        },
+      },
+      priceIds,
+    );
+    if (failing.kind === "subscription_sync") {
+      expect(failing.projection.plan, "契約本体の同期は止めない").toBe("expert");
+      expect(failing.projection.scheduledPlan).toBeNull();
+      expect(failing.projection.scheduleUnavailable, "読めなかった回は保存済みの予約を上書きしない").toBe(true);
+    }
+
+    // gateway が schedule を読めない（billing-return の旧形）ときも「読めなかった」扱い。
+    const noGateway = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      gateway(async () => withSchedule),
+      priceIds,
+    );
+    if (noGateway.kind === "subscription_sync") expect(noGateway.projection.scheduleUnavailable).toBe(true);
+
+    // schedule が付いていない契約は「予約なし」（上書きしてよい）。
+    const plain = await prepareStripeEvent(
+      event("customer.subscription.updated", { id: "sub_current" }, NOW),
+      gateway(async () => subscription({ status: "active" })),
+      priceIds,
+    );
+    if (plain.kind === "subscription_sync") {
+      expect(plain.projection.scheduleUnavailable).toBe(false);
+      expect(plain.projection.scheduledPlan).toBeNull();
+    }
   });
 });

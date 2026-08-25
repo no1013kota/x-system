@@ -12,17 +12,21 @@ import { CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 
+import { StartAnalysisButton } from "./start-analysis-button";
+
 /**
- * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94）。
+ * SC-09 分析レポート（表示専用, K-2, 要件06 §8, PRD §5.6, T-M8-94→T-M8-255）。
  *
- * **毎朝8:00 JSTに自動で生成される**（手動の「提案を更新」は 2026-08-15 に廃止・運営者の指示）。
+ * **このパネル右上の「分析を開始」ボタンで生成する**（2026-08-23 に毎朝8:00の自動実行を廃止し
+ * 手動実行へ戻した・運営者の指示。ボタンをページヘッダに置くとフォロワー推移にも掛かる操作に
+ * 見えるため、対象であるレポート欄の中に置く・運営者の指示 2026-08-23）。
  *
- * 画面は上から ①まとめ ②良かった投稿 ③近づけるための設定 の3段で、
+ * 画面は上から ①まとめ ②良かった投稿 ③良かった投稿に近づくプロンプト設定 の3段で、
  * **段ごとに番号付きの見出しを置く**（T-M8-114）。以前は総評・投稿リンク・推奨が
  * 同じ濃さの文字で続いていて、どこまでが何の話か読み取れなかった。
  *
  * 承認・却下・自動反映は存在しない（PRD §10「自動反映しない」）。
- * プロンプトの保存先（AI設定＞プロンプト）は mdプラン以上のため、standard には全文を出さず
+ * プロンプトの保存先（AI設定＞プロンプト）は編集権限のあるプランのみのため、権限が無ければ全文を出さず
  * 案内だけ出す（貼り先の無い文字列を渡さない）。
  */
 
@@ -167,13 +171,19 @@ function ProposalBlock({
 export function SuggestionsPanel({
   suggestions,
   generating,
-  plan,
+  canEditPrompts,
   needsAiKey = false,
 }: {
   suggestions: SuggestionDisplay[];
   generating: boolean;
-  plan: "standard" | "md" | "premium";
-  /** BYOKでvalidなAIキーが無い＝毎朝の分析が始まらない状態（T-M8-95。登録導線を出す）。 */
+  /**
+   * アカウント.md・プロンプトを編集できるプランか（`promptEditablePlan`・T-M8-168）。
+   * 以前はプランIDを受けて `plan === "standard"` で分けていたが、プラン名ではなく
+   * 権限で分ける（プランが増減しても表示が正本の PLANS 定義へ追随する）。
+   * 現在は全プランが true（旧standardの撤廃により、false は未契約のみ）。
+   */
+  canEditPrompts: boolean;
+  /** BYOKでvalidなAIキーが無い＝分析を開始できない状態（T-M8-95。登録導線を出す）。 */
   needsAiKey?: boolean;
 }) {
   const toast = useToast();
@@ -216,11 +226,14 @@ export function SuggestionsPanel({
         ) : latestAt ? (
           <span className="text-xs text-muted-foreground">最終更新 {formatJst(latestAt)}</span>
         ) : null}
+        {/* 操作対象（レポート）の枠内・右上に置く。ページヘッダだとフォロワー推移も対象に見える。 */}
+        <div className="ml-auto">
+          <StartAnalysisButton generating={generating} />
+        </div>
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">
-        毎朝8時ごろ、Xへ投稿したポスト（このアプリで作った投稿に限りません）を自動で取得・分析します。
-        操作は不要です。
+        「分析を開始」を押すと、Xへ投稿したポスト（このアプリで作った投稿に限りません）の直近7日分を取得・分析します。
       </p>
 
       {suggestions.length === 0 ? (
@@ -228,17 +241,17 @@ export function SuggestionsPanel({
           {generating ? (
             "投稿を分析しています。しばらくすると、ここに結果が表示されます。"
           ) : needsAiKey ? (
-            // BYOKはAIキーが無いと毎朝の分析jobがそもそも作られない（起票側のゲート）。
-            // 「待っていれば出る」ように見せず、始まらない理由と直し方を出す（原則1）。
+            // BYOKはAIキーが無いと分析jobがそもそも作られない（起票側のゲート）。
+            // 押してから分かる形にせず、始められない理由と直し方を先に出す（原則2）。
             <>
               分析にはAIのAPIキーが必要です。
               <Link className="mx-1 text-info-fg hover:underline" href="/app/settings?tab=api-keys">
                 設定のAPIキー
               </Link>
-              から登録すると、毎朝8時ごろの自動分析が始まります。
+              から登録すると、「分析を開始」が使えるようになります。
             </>
           ) : (
-            "まだレポートがありません。毎朝8時ごろに自動で作られます（Xに投稿が1件も無い場合は作られません）。"
+            "まだレポートがありません。「分析を開始」を押すと作られます（Xに投稿が1件も無い場合は作られません）。"
           )}
         </div>
       ) : (
@@ -250,7 +263,7 @@ export function SuggestionsPanel({
               <p className="mt-1.5 text-sm font-medium leading-6 text-ink">{s.content}</p>
 
               {s.kind === "legacy" ? (
-                // 旧形式（〜2026-08-15の軸ベース提案）。翌朝の自動実行で新形式に置き換わる。
+                // 旧形式（〜2026-08-15の軸ベース提案）。次回の実行で新形式に置き換わる。
                 s.legacySummary ? (
                   <p className="mt-2 text-sm text-muted-foreground">{s.legacySummary}</p>
                 ) : null
@@ -269,7 +282,7 @@ export function SuggestionsPanel({
 
                   {s.advice ? (
                     <div className="mt-5">
-                      <SectionHeading step={3}>近づけるための設定</SectionHeading>
+                      <SectionHeading step={3}>良かった投稿に近づくプロンプト設定</SectionHeading>
                       <p className="mt-1 text-caption text-ink-3">
                         投稿作成・スケジュールの画面で、そのまま選べます。
                       </p>
@@ -298,22 +311,22 @@ export function SuggestionsPanel({
                         ) : null}
                       </dl>
 
-                      {(s.advice.prompt || s.advice.accountMd) && plan === "standard" ? (
-                        // 貼り先（設定＞プロンプト）が mdプラン以上のため、standardには全文を出さない。
+                      {(s.advice.prompt || s.advice.accountMd) && !canEditPrompts ? (
+                        // 貼り先（設定＞プロンプト）は編集権限が必要なため、権限が無ければ全文を出さない。
                         <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
                           この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
                           <Link
                             className="text-info-fg hover:underline"
                             href="/app/settings?tab=prompts&sec=post-prompt"
                           >
-                            プロンプトのカスタマイズ（mdプラン以上）
+                            プロンプトのカスタマイズ
                           </Link>
                           で利用できます。
                         </p>
                       ) : null}
 
                       {/* アカウント.mdの編集提案（T-M8-106）。全パターン共通の土台なので先に出す。 */}
-                      {s.advice.accountMd && plan !== "standard" ? (
+                      {s.advice.accountMd && canEditPrompts ? (
                         <ProposalBlock
                           content={s.advice.accountMd.content}
                           copied={copied === "account_md"}
@@ -325,7 +338,7 @@ export function SuggestionsPanel({
                         />
                       ) : null}
 
-                      {s.advice.prompt && plan !== "standard" ? (
+                      {s.advice.prompt && canEditPrompts ? (
                         <ProposalBlock
                           content={s.advice.prompt.content}
                           copied={copied === "prompt"}

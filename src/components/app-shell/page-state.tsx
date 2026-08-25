@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { stateActionClassName } from "@/components/ui/link-button";
 
 interface StateProps {
   description: string;
@@ -27,13 +28,6 @@ interface LockedStateProps extends EmptyStateProps {
    */
   action?: ReactNode;
 }
-
-/**
- * 状態カードの主操作の見た目。**リンクとボタンで同じものを使う**（T-M8-89）。
- * 別々に書くと、片方だけ寸法や色を直したときに同じ位置の操作が違う見え方になる。
- */
-export const stateActionClassName =
-  "mt-4 inline-flex min-h-11 items-center rounded-card bg-brand px-6 text-body font-bold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 // 空状態はカード内 padding 44px・中央寄せ・灰円アイコン48px（デザイン §補助画面 E）。
 // 器の見た目は `Card` と同じものを使う（T-M8-51。同じ並びを手書きしない）。

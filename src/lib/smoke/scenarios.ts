@@ -255,7 +255,10 @@ async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
     const jobId = await createJob(xAccountId, "自分の考え・意見", {
       requested_mode: "draft",
       image_enabled: true,
-      user_opinion: "AIツールの選び方について、要点を短くまとめてください。",
+      // パターンの入力は placeholder_values（T-M8-132）。旧 user_opinion はパイプラインが
+      // 読まなくなっており、{自分の考え} が（未指定）のままだとモデルが正当に書けないと返す
+      // （2026-08-22のスモークで実測）。
+      placeholder_values: { "自分の考え": "AIツールの選び方について、要点を短くまとめてください。" },
     });
     jobIds.push(jobId);
     await runJob(jobId);

@@ -20,8 +20,16 @@ export interface ScheduleRecoveryResult {
   canceledFeatureDisabled: number;
 }
 
-/** schedule_missed の error 通知（設定を尊重・両channel OFFなら作らない）。冪等key単位で1件。 */
-async function insertMissedNotification(
+/**
+ * schedule_missed の error 通知（設定を尊重・両channel OFFなら作らない）。冪等key単位で1件。
+ *
+ * **canceled にした側が呼ぶ**（T-M8-160・監査#22）。以前は worker の lease 経路が
+ * cancel だけ行い通知を tick へ委ねていたが、tick の `cancelExpiredJobs` は `status='queued'` しか
+ * 拾わず、`notifyUnenqueuedMissed` は当該 `schedule_run_key` の job が在る窓を除外するため、
+ * **worker が canceled にした予約はどちらからも永久に外れて利用者へ何も届かなかった**（原則1違反）。
+ * `dedupe_key` の unique で slot定刻ごと1件に集約されるので、両方から呼ばれても二重にならない。
+ */
+export async function insertMissedNotification(
   db: Queryable,
   params: { userId: string; slotId: string; occDate: string; occTime: string },
 ): Promise<boolean> {
@@ -29,19 +37,14 @@ async function insertMissedNotification(
   const { rowCount } = await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select $1, 'error', $2, '自動投稿の予定時刻を過ぎました',
             '予定時刻から10分を超えたため投稿を見送りました。次回の予定をお待ちください。',
             '/app/schedule', jsonb_build_object('slot_id', $3::text),
-            coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-            case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-                 then now() else null end
+            coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
        from profiles p
       where p.id = $1
-        and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-             or coalesce((p.notification_config->'error'->>'email')::boolean, false))
+        and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [params.userId, dedupe, params.slotId],
   );

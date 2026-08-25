@@ -6,10 +6,12 @@ import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest"
 import { runNewsFetch } from "@/lib/jobs/news-fetch";
 import { researchNews } from "@/lib/jobs/news-research";
 
-/** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。毎時起動・6分野最大3並列・分野別commit。 */
+/** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。定時起動・6分野同時（最大6並列）・分野別commit。 */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 200;
+// 6分野を1巡で回しても、1分野の実行予算（deadline 180秒）＋後処理に余裕を持たせる
+// （200秒だと1分野が遅いだけで打ち切られ、ダイジェスト通知まで消える・T-M8-192）。
+export const maxDuration = 300;
 
 const pooledDb = pooledQueryable();
 
@@ -39,10 +41,8 @@ export async function GET(request: Request): Promise<Response> {
         onError: (category, err) => console.error(`[news_fetch] ${category}`, err),
       });
       // 6分野settle後、成功分野の新規ニュースを対象に時間単位ダイジェストを fan-out する（要件04 §14）。
+      // 通知はアプリ内のみ（メール送信はT-M8-222で廃止）。
       const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
-      // commit後の best-effort 即時メール送信（残りは scheduler_tick が回収, T-M4-16/17）。
-      const { dispatchNotificationEmail } = await import("@/lib/email/notification-email-server");
-      for (const id of digest.createdIds) dispatchNotificationEmail(id);
       return { ...fetched, digest: { matchedUsers: digest.matchedUsers, notified: digest.notified } };
     },
     response: ({ ran, windowKey, result }) => ({

@@ -296,6 +296,13 @@ export async function removeLearningSource(
     ).rows[0];
     if (priorJob) return { jobId: priorJob.id };
 
+    /*
+      **削除mergeにも契約の前提を課す**（T-M8-267）。追加側（`addLearningSource`）は
+      `assertPrereqs` を通すのに削除側だけ抜けており、解約後に MD-MERGE のAI実行が起票できた。
+      データ整理の顔をしているが、実費が出るのは生成と同じ。
+    */
+    assertPrereqsFromInput(await deps.gatherPrereqInputs(userId, { imageRequested: false }));
+
     await assertActiveAccount(tx, userId, input.x_account_id);
 
     const source = (

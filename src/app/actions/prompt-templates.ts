@@ -24,12 +24,18 @@ import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
  * 以前は `p1`〜`p6` も通り、画像プロンプトの本文が投稿パターンへ書き込まれる事故が起きた。
  */
 const kindSchema = z.literal("image");
+/**
+ * `x_account_id` は**表示中アカウントをクライアントが送る**（T-M8-196・レビュー修正）。
+ * kindだけで宛先を決めると、別タブで切り替えた後の保存・リセットが**別アカウントの
+ * 画像プロンプトを上書き・削除**していた（実DBで再現）。サーバはactiveとの一致を検証する。
+ */
 const updateSchema = z.object({
   kind: kindSchema,
+  x_account_id: z.string().uuid(),
   content: z.string(),
   expected_updated_at: z.string().nullable(),
 });
-const resetSchema = z.object({ kind: kindSchema });
+const resetSchema = z.object({ kind: kindSchema, x_account_id: z.string().uuid() });
 
 function toError(error: unknown): BaseResult {
   if (error instanceof NoActiveAccountError) {
@@ -76,6 +82,7 @@ export async function updatePromptTemplateAction(
     const template = await updatePromptTemplateForUser({
       userId: auth.userId,
       kind: parsed.data.kind,
+      expectedXAccountId: parsed.data.x_account_id,
       content: parsed.data.content,
       expectedUpdatedAt: parsed.data.expected_updated_at,
     });
@@ -98,6 +105,7 @@ export async function resetPromptTemplateAction(
     const template = await resetPromptTemplateForUser({
       userId: auth.userId,
       kind: parsed.data.kind,
+      expectedXAccountId: parsed.data.x_account_id,
     });
     return { message: "システム既定に戻しました。", status: "success", template };
   } catch (error) {

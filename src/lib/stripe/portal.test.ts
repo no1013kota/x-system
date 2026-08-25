@@ -136,6 +136,29 @@ describe("portalFlowData（やりたいことを先に選ばせる・T-M8-31）"
     });
   });
 
+  /**
+   * **flow_dataで解約画面へ直接入ると、ダッシュボードの「顧客維持クーポン」は出ない**
+   * （2026-08-23 実測。運営者が「クーポンが提示されずに解約された」と報告）。
+   * ここで明示したものだけが「特別オファー」として出る。
+   */
+  it("解約前のクーポンは retention で明示したときだけ付く（T-M8-272）", () => {
+    expect(portalFlowData("cancel", "sub_1", RETURN_URL, "coupon_half")).toMatchObject({
+      subscription_cancel: {
+        subscription: "sub_1",
+        retention: { type: "coupon_offer", coupon_offer: { coupon: "coupon_half" } },
+      },
+    });
+    // 未設定なら従来どおり付けない（空文字も未設定として扱う）。
+    for (const unset of [undefined, null, ""]) {
+      const flow = portalFlowData("cancel", "sub_1", RETURN_URL, unset);
+      expect(flow?.subscription_cancel).not.toHaveProperty("retention");
+    }
+    // プラン変更のフローには付かない（Stripeが400を返す）。
+    expect(portalFlowData("update", "sub_1", RETURN_URL, "coupon_half")?.subscription_update).not.toHaveProperty(
+      "retention",
+    );
+  });
+
   it("完了後はアプリへ戻す（Stripeに残して迷子にしない）", () => {
     expect(portalFlowData("cancel", "sub_1", RETURN_URL)).toMatchObject({
       after_completion: { type: "redirect", redirect: { return_url: RETURN_URL } },
@@ -227,5 +250,64 @@ describe("intentつきの subscription 解決", () => {
     const response = await handlePortalRequest(request(), deps);
     expect(response.status).toBe(200);
     expect(deps.stripe.subscriptions.list).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 一度クーポンを受け取った人は、Stripeが同じクーポンの提示を断る（顧客ごとに1回だけ。
+ * 割引が切れた後も同じ・2026-08-23 実測）。**そこで諦めると解約画面が開けなくなる**ので、
+ * 提示なしで開き直す（T-M8-280）。
+ */
+describe("解約フロー: クーポンを提示できないときは提示なしで開き直す（T-M8-280）", () => {
+  /** 解約intentの本文つきリクエスト（この節だけ本文が要る）。 */
+  function cancelRequest(): Request {
+    return new Request(`${APP_BASE_URL}/api/stripe/portal`, {
+      method: "POST",
+      headers: { origin: APP_BASE_URL, "content-type": "application/json" },
+      body: JSON.stringify({ intent: "cancel" }),
+    });
+  }
+  function depsWith(create: ReturnType<typeof vi.fn>): PortalRouteDependencies {
+    return dependencies({
+      retentionCouponId: "c_1",
+      getProfile: vi.fn(async () => ({
+        stripe_customer_id: "cus_existing",
+        stripe_subscription_id: "sub_1",
+      })),
+      stripe: {
+        billingPortal: { sessions: { create } },
+        subscriptions: { list: vi.fn(async () => ({ data: [] })) },
+      },
+    } as Partial<PortalRouteDependencies>);
+  }
+
+  it("retentionを外して作り直し、解約画面のURLを返す", async () => {
+    const calls: { flow_data?: { subscription_cancel?: { retention?: unknown } } }[] = [];
+    const create = vi.fn(async (params: { flow_data?: { subscription_cancel?: { retention?: unknown } } }) => {
+      calls.push(params);
+      if (params.flow_data?.subscription_cancel?.retention) {
+        throw new Error(
+          "The coupon c_1 doesn't apply to the subscription sub_1. Please ensure the coupon will apply to the products and currency of the subscription and is still usable by the customer.",
+        );
+      }
+      return { url: "https://billing.stripe.test/p/session/no-offer" };
+    });
+    const response = await handlePortalRequest(cancelRequest(), depsWith(create));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: { url: expect.stringContaining("no-offer") },
+    });
+    expect(calls, "1回目は提示つき・2回目は提示なし").toHaveLength(2);
+    expect(calls[0].flow_data?.subscription_cancel?.retention).toBeTruthy();
+    expect(calls[1].flow_data?.subscription_cancel?.retention).toBeUndefined();
+  });
+
+  it("それ以外の失敗は握り潰さない（provider_error のまま）", async () => {
+    const create = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    const response = await handlePortalRequest(cancelRequest(), depsWith(create));
+    expect(response.status).toBe(502);
   });
 });

@@ -35,6 +35,7 @@ const USER: XCallbackUser = {
   username: "acme",
   name: "Acme",
   profileImageUrl: null,
+  premium: false,
 };
 const SEALED: SealedTokens = {
   accessTokenCiphertext: "AT",

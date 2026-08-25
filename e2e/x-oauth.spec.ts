@@ -16,6 +16,8 @@ test("設定画面の「Xアカウントを追加」からX認可URLへリダイ
   page,
 }) => {
   const account = await accounts.create("xoauth");
+  // fixtureが1件連携済みで、premiumの上限は1（2026-08-20）。追加ボタンを出すため上限3のexpertにする。
+  await query(`update profiles set plan = 'expert' where id = $1`, [account.userId]);
   await signIn(page, account);
   await page.goto("/app/settings?tab=x-accounts");
 
@@ -117,15 +119,11 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
   await expect(save).toBeEnabled();
 
   /*
-    保存できても Secret が空なら**連携時に拒否される**ことを、押す前に伝える（F3・T-M8-63）。
-    手順ガイドが指示する App 種別は confidential client で、Secret 無しの token 交換は
-    401 になる。以前は Client ID を入れた時点で押せない理由ごと消え、Secret を空でよいのか
-    駄目なのかを言う文が画面のどこにも無かった。
+    **Secret が空でも保存できる**（Native App 等の public client を締め出さないため）。
+    以前はここで「空のまま保存すると連携時にXから拒否されます」という注記を検査していたが、
+    その注記は運営者の判断で画面から外した（2026-08-24・T-M8-284）。
+    注記を戻すときはここも戻す。
   */
-  const secretNote = page.getByText("空のまま保存すると、Xアカウントの連携時にXから拒否されます", {
-    exact: false,
-  });
-  await expect(secretNote).toBeVisible();
 
   // Secret を入れかけのあいだは、その理由が出る
   await page.getByLabel("Client Secret").fill("short");
@@ -133,8 +131,6 @@ test("Xキーの保存が押せないときは理由が画面に出る（T-M8-46
   await expect(page.getByText("Client Secretは8文字以上です（いま5文字）。")).toBeVisible();
   await page.getByLabel("Client Secret").fill("secret-value-1234");
   await expect(save).toBeEnabled();
-  // 入れたら注記は消える（正常な操作を妨げない）
-  await expect(secretNote).toHaveCount(0);
 
   // 「Client種別」という利用者が答えられない質問を戻さない（T-M8-62）
   await expect(page.getByLabel("Client種別")).toHaveCount(0);
@@ -156,49 +152,7 @@ test("AI APIキーが短いあいだは必要な文字数が画面に出る（T-
   await expect(card.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
 });
 
-/**
- * 表示件数の欄が**打ち直せる**こと（T-M8-51）。
- *
- * T-M8-37 で打鍵ごとに `clampNewsMaxItems` を掛けたため、欄を空にできず（0が即1へ丸められる）
- * 「100」を消して打ち直すこともできなくなっていた。丸めるのは確定時（blur・保存）だけにする。
- * 「押す前に止める」は維持し、範囲外のあいだは保存させない。
- */
-test("ニュースの表示件数は入力中に丸められず、範囲外では保存できない（T-M8-51）", async ({
-  accounts,
-  page,
-}) => {
-  const account = await accounts.create("news-max-items", { personaReady: true });
-  await signIn(page, account);
-  await page.goto("/app/settings?tab=notifications");
-
-  const field = page.getByLabel("表示件数", { exact: false });
-  await expect(field).toBeVisible();
-  const save = page.locator("section", { hasText: "ニュース通知" }).getByRole("button", {
-    name: "保存",
-    exact: true,
-  });
-
-  // 空にできる（打ち直せる）
-  await field.fill("");
-  await expect(field).toHaveValue("");
-  await expect(save).toBeDisabled();
-  await expect(page.getByText("表示件数は1〜100で指定してください。")).toBeVisible();
-
-  // 範囲外も入力自体は許し、保存だけ止める
-  await field.fill("101");
-  await expect(field).toHaveValue("101");
-  await expect(save).toBeDisabled();
-
-  // 範囲内へ直すと保存できるようになり、理由の文字も消える
-  await field.fill("30");
-  await expect(save).toBeEnabled();
-  await expect(page.getByText("表示件数は1〜100で指定してください。")).toHaveCount(0);
-
-  // 確定（blur）で丸められる
-  await field.fill("999");
-  await field.blur();
-  await expect(field).toHaveValue("100");
-});
+// ニュースの表示件数の欄はT-M8-187で廃止した（一覧は常に全件・50件ずつのページ表示）。
 
 /**
  * 「再連携」は対象を指定する（T-M8-53）。
@@ -253,7 +207,7 @@ test("契約は有効だが顧客未紐づけでも、必ず進める行き先�
   // プラン名は比較表の列見出しへ移った（T-M8-125 でカード見出しから表になった）。
   // **文言そのものではなく「プラン選択の中身が出ている」ことを見る**——文言はキャンペーンで変わる。
   await expect(page.getByRole("heading", { name: /プラン/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /通常プラン/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /スタンダードプラン/ }).first()).toBeVisible();
 
   // 顧客が紐づいたら通常どおり /app へ送り返す（決済直後に行き止まらないための既存の挙動）
   await query(`update profiles set stripe_customer_id = 'cus_review_check' where id = $1`, [

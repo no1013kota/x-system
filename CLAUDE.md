@@ -31,14 +31,36 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `docs/` | 仕様の正本3領域＋ADR。構成と更新ルールは`docs/README.md` |
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト8層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
-| `.claude/skills/` | 開発用スキル（add-task / dev-loop / doc-sync / maintenance / refactor / ui-polish / playwright-cli / verify-integration / verify-e2e） |
+| `blog/` | 公開ブログの記事（Markdown・1ファイル＝1記事）。書き方と投稿の流れは`blog/README.md` |
+| `.claude/skills/` | 開発用スキル。一覧と使い分けは下の「スキルの地図」 |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
 
+## スキルの地図
+
+| スキル | いつ使う | 出力 |
+|---|---|---|
+| `/add-task` | 要望・不具合を受け取ったとき。**実装の前段** | BACKLOGへタスク起票（コードは変えない） |
+| `/dev-loop` | タスクを1件完了させる（WIP=1） | 実装＋テスト＋docs同期＋コミット |
+| `/doc-sync` | コミット前。毎回 | docsの更新と影響表 |
+| `/verify-integration` | DB・migration・RLS・Action・API・job・課金を触った | 統合検証の結果 |
+| `/verify-e2e` | ユーザー向けフローを触った | 実ブラウザでの通し確認 |
+| `/ui-polish` | 画面・コンポーネントを作る／直す | 実装＋画面幅・状態・a11y・実ブラウザ確認 |
+| `/refactor` | 振る舞いを変えず内部品質を上げる（WIP=1） | 1単位のリファクタ＋計画更新 |
+| `/speed-up` | 密結合をほどいて画面遷移を速くする（WIP=1）。**利用者に害があるならやらない** | 前後の数字つきの1単位＋落とした候補の理由 |
+| `/security-audit` | セキュリティの穴を探す。**反証してから**直すか要決定へ回す | 直した穴＋要決定＋棄却した候補と理由 |
+| `/maintenance` | 週次・月次の定期点検 | 時間経過で壊れた箇所の報告 |
+| `/blog-write` | ブログ記事を書く（テーマか参考URLを渡す） | `blog/` に下書き（`draft: true`）＋ `blog:check` 緑 |
+| `/blog-publish` | 下書き記事を公開する | draft解除・日付更新・記事ファイルだけのコミット |
+| `/playwright-cli` | ブラウザ操作の道具箱（他スキルから参照） | — |
+
+**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット。
+連続自動開発は `/loop /dev-loop`。
+
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
 
-- **何を作るか** → `docs/PRD.md`（機能ID: A/L/N/P/S/K/M/O）
-- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（SC-01〜11、DB21テーブル、定時トリガー4本）
+- **何を作るか** → `docs/PRD.md`（機能ID: A/L/N/P/S/K/M/O/R）
+- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（SC-01〜12、DB28テーブル、定時トリガー4本）
 - **AIの動かし方** → `docs/プロンプト設計書.md`（実行ID: GEN/NEWS/LRN/MD-MERGE/SUGGEST、プロンプト全文、検証）
 - versionはファイル名ではなく文書内ヘッダを正とする（運用ルールは`docs/README.md`）
 
@@ -46,35 +68,72 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 
 - タスクは`tasks/BACKLOG.md`で管理する。ステータス運用ルールは同ファイル冒頭に記載。
 - **要望を受け取ったら `/add-task` で起票してから実装へ進む。** 利用者の「〜したい」「〜が動かない」を、docs の正本と照合したうえでBACKLOGのタスクへ変える（実装はしない）。`todo` が1件も無いと `/dev-loop` は動かないため、これが入口になる。
-- `/dev-loop` で「次のタスク選択 → 実装 → 検証 → ドキュメント同期 → コミット」を1サイクル実行する。
-- 連続で自動開発する場合は `/loop /dev-loop`。
-- `/dev-loop` の検証手段は下の「変更影響 → 必須の検証」表で決める。新規実装か既存更新かでは分けない。
+- `/dev-loop` の検証手段は下の「変更影響 → 必須の検証」で決める（新規実装か既存更新かでは分けない）。
 - ユーザー向け画面・コンポーネントの作成／更新は `/ui-polish` を使用し、Next.js DevToolsとPlaywrightによる実ブラウザ検証まで同じ作業単位で行う。
 - 1タスク = 1コミット。コミットメッセージにタスクIDを含める（例: `feat(T-M1-01): メール認証を実装`）。
 - ユーザー判断が必要な事項は勝手に決めず、`tasks/BACKLOG.md` の「要決定」セクションに追記して先へ進む（可能なら暫定案を添える）。
 
 ## 変更影響 → 必須の検証（判断ではなく対応表で決める）
 
+### 1. 触った層 → 必須の検証
+
 テストが緑・docs同期済みでも「実際には動かない」ことがある。2026-07-28、Web検索付き生成・画像生成・ニュース取得・画像プレビューの4系統が**同時に壊れているのを利用者の手動操作で初めて発見した**（T-M7-15/20/21/22/24）。当時 単体1,261件・E2E13件・CI はすべて緑だった。いずれも**外部境界（provider API・ブラウザ・SMTP）をモックしているテストでは原理的に検出できない**種類で、その場の判断で検証手段を選んでいたことが見落としの原因だった。
 
-触った層で必須の検証を機械的に決める。**該当行が複数あればすべて実行する**。実行しなかった行がある場合は理由を報告する（黙って省略しない）。各層が何を守り何が見えないかは [開発とテストの進め方](docs/operations/development-and-testing.md) §2。
+触った層で必須の検証を機械的に決める。**該当行が複数あればすべて実行する**。実行しなかった行がある場合は理由を報告する（黙って省略しない）。各層が何を守り何が見えないかは [開発とテストの進め方](docs/operations/development-and-testing.md) §9「テストは8層あり、それぞれ見えないものがある」。
 
 | 触った層 | 必須の検証 |
 |---|---|
 | DB schema / RLS / GRANT / migration | `/verify-integration`（**ロール権限＝`service_role`のGRANT**を含む） |
 | Server Action / API route | 本番実装を通す `*.db.test.ts`（DBとSupabaseクライアントをモックしない） |
+| **DBへ書く値の「形式」を変えた**（キー・ID・列挙・日付書式・接尾辞） | その値を**実際にinsertする** `*.db.test.ts`。**文字列の組み立てを検査する単体テストでは足りない**——2026-08-24、利用枠の期間キーへ世代 `#N` を足した変更が `month` のCHECK制約に弾かれ、トライアル中にプランを下げた利用者が翌日まで何も実行できない状態で出ていた（T-M8-299→T-M8-307）。読み取りは行が無いだけなので画面は「残り満額」と表示し、利用者からも見えない。登録は `src/lib/db/check-constraints.db.test.ts` の `REGISTRY` へ |
 | **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
 | 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
 | **レンダリングモード・CSP・proxy（middleware）** | `npm run build` ＋ **`npm run check:csp-nonce`**（`release:check` に含む）＋ **実ブラウザで公開ページのコンソールエラーと失敗リクエストまで見る**。nonceベースCSPと静的prerenderは両立しないため、prerenderされたページは**scriptが1本も実行されない**。**HTTPは200を返し本文も表示される**ので、URLを叩く検査では見えない。E2Eは `next dev` で動きprerenderしないため原理的に再現しない（2026-08-14、本番の `/signup`・`/reset-password` が18日間この状態だった・T-M8-87） |
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
-| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する |
+| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**ブログ記事 `blog/published/*.md`・`blog/drafts/*.md` は例外**で `npm run blog:check`（front matter・画像の実在）を通す |
 | 上記以外 | `npm run release:check` |
 
 **「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。手段は **`npm run smoke:live -- --account <xAccountId>`**（要 `npm run dev`）。判定は `src/lib/smoke/scenarios.ts` にあり、デプロイ先では同じものを `/api/cron/canary` で叩ける。
 
 **費用**: 実物を1周させるとAI APIの実費が発生する（実測1周 約$0.30）。**要決定D-10 の決定（2026-07-28・案A）**: 差分が `src/lib/ai/**`・`src/lib/jobs/**`・`src/lib/prompts/**` に触れたときだけ自動実行し、**1周あたり上限$0.50**。上限はprovider側でかけられないため事後測定で、超過したら停止して報告する。パス判定は取りこぼし得るので、表に無くてもproviderへ送る内容・受け取る内容に影響しうるなら実行する。
+
+### 2. いつ回すか
+
+**遅いのはE2Eとbuildだけ**なので、その2つだけpush前へまとめる（実測値と経緯は[開発とテストの進め方](docs/operations/development-and-testing.md) §「検証をいつ回すか」）。
+`.github/workflows/ci.yml` が push時に `release:check`（build・E2E込み）を回すため、
+**コミットごとにローカルでE2Eまで回すのはCIとの二重実行**になる。
+
+| 段 | 何を回すか | 実測 |
+|---|---|---|
+| 変更ごと | `npm run typecheck && npm run lint && REQUIRE_DB=1 npx vitest run` | 約40秒 |
+| コミット前 | ＋ `npm run check:doc-dates && npm run check:doc-refs` | ＋5秒 |
+| **push前（まとめて1回）** | ＋ `npm run build && npm run check:csp-nonce && npm run test:e2e` | 約10分 |
+
+**ただし上の表の該当行が「その変更に固有の検証」を指しているときは、段を待たずにその場で回す**
+（AI provider の `smoke:live`、外部サービス設定の `check:turnstile`、cronの実叩き、
+レンダリングモード・CSPに触ったときの `build` ＋ `check:csp-nonce`）。
+段分けは「毎回E2Eを回すか」の話で、必須行を省く許可ではない。
+
+### 3. 落とし穴（実際に踏んだもの）
+
+- **パイプで終了コードを捨てるな。** `npm run release:check | tail` は `tail` の終了コードを返すため、
+  **失敗したゲートが成功に見える**（2026-08-20、`check:doc-refs` の失敗を「exit 0」と誤読した）。
+  出力はファイルへ落として `echo $?` を別に確認する。
+- **`check:doc-refs` は `git ls-files` で実在を判定する。** 新規ファイルを **stageするまで**、
+  そこを指すdocsの記述は「実在しない」と報告される。ファイルを追加した変更では先に `git add` する。
+- **E2Eの1件目のtimeoutを「flaky」と即断しない。** `src/**` を編集した直後の初回E2Eは、
+  devサーバのroute初回コンパイルで `page.goto` が60秒を超えることがある（3回連続で
+  `ai-settings.spec.ts:39` がこれに当たった）。**編集を挟まず再実行して緑になるかを見てから**判断する。
+  逆に、編集していないのに落ちたなら本物の失敗として扱う。
+- **Next.js 16 は同一ディレクトリで2つ目の `next dev` を拒否する。** 障害を注入して画面を確かめたいときは、
+  稼働中のdevサーバを止めるのではなく `npm run build` ＋ `PORT=<別> npx next start` を使う。
+- **落ちた回数ではなく落ちる条件を探す。** 「5〜6回に1回落ちる」は溜まったデータ件数で決まる
+  決定的な失敗だった（T-M8-161。詳細は[開発とテストの進め方](docs/operations/development-and-testing.md)
+  §「なぜ「flaky」と即断してはいけないか」）。
+- **失敗を注入して確かめたら、必ず元へ戻す。** 注入した行・一時specの削除まで含めて1つの作業とする
+  （`$TMPDIR` はsandboxの有無で変わるのでバックアップ先に使わない）。
 
 ## Definition of Done（全タスク共通）
 
@@ -93,5 +152,6 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 ## 規約
 
 - ドキュメント・コミットメッセージ・ユーザーへの応答は日本語。コードの識別子・コード内コメントは英語。
+- **`git add -A` を使わない。** 利用者が並行して編集中のファイルを巻き込む（2026-08-20、無関係な2ファイルをstageしかけた）。パスを明示して `git add` する。
 - 秘密情報（APIキー・トークン・暗号鍵等）は `.env`（gitignore済み）のみに置く。コード・ドキュメント・コミットに実キーを書かない。
 - 外部API（X API・Claude/OpenAI/Gemini・Stripe）の仕様は変更が頻繁。ドキュメント内にも「実装時に要確認」注記があるため、該当箇所の実装時は必ず公式ドキュメントで最新仕様を確認する。

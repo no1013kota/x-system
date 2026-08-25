@@ -5,11 +5,15 @@
  * 決まっている挙動をそのまま日本語にしたもの。**押す前に画面へ出す**ためにここへ置く。
  *
  * 以前は「どちらもStripeの安全な画面へ移動します。解約は期間末で…」という1行しか無く、
- * **上位プランへ変えると即時に日割り請求が走る**ことも、**下位プランは期間末まで切り替わらない**
- * ことも画面から読めなかった。金額と時期が変わる操作で、押した後に初めて分かるのは避けたい。
+ * **上位プランへ変えると切り替えは即時で、差額は日割りでその場で決済される**ことも、
+ * **下位プランは期間末まで切り替わらない**ことも画面から読めなかった。
+ * 金額と時期が変わる操作で、押した後に初めて分かるのは避けたい。
  *
  * 対応する設定（要件03 §2.2）:
- * - `subscription_update.proration_behavior = "create_prorations"` → 値上げは即時＋日割り
+ * - `subscription_update.proration_behavior = "always_invoice"` → 値上げは**切り替え即時**で、
+ *   差額（旧プランの未使用分を引き、新プランの残り期間分を足す・秒単位の日割り）を**その場で決済**する
+ *   （運営者の指示 2026-08-23・T-M8-275。Stripeの確認画面に内訳と本日の支払額が出る。
+ *   その見出し「本日が期日の金額」はStripe組み込みで差し替えられない）
  * - `subscription_update.schedule_at_period_end.conditions = [decreasing_item_amount]` → 値下げは期間末
  * - `subscription_update.trial_update_behavior = "continue_trial"` → トライアル中は期限を変えない
  * - `subscription_cancel = { mode: "at_period_end", proration_behavior: "none" }` → 解約は期間末・返金なし
@@ -65,10 +69,52 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
   const end = periodEndLabel(input.currentPeriodEnd);
   const trialing = input.subscriptionStatus === "trialing";
 
+  /*
+    **トライアル中は日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` なので、
+    トライアル中に変更しても**無料期間は変わらず、終了後に新しい料金で請求が始まる**。
+    にもかかわらず「差額は日割りで次回請求に加算されます」と「終了日まで請求は発生しません」が
+    同時に出ており、読み手はどちらが本当か分からなかった（Portal設定と1対1に保つ規約に反する）。
+  */
+  if (trialing) {
+    const trialDetail = `トライアルの終了日（${end}）までは料金が発生しません。終了後に、変更後のプランの料金で請求が始まります。`;
+    return {
+      upgrade: { headline: "すぐに切り替わります", detail: trialDetail },
+      /*
+        下位への変更は**期間末に切り替わる**（Portal設定 `schedule_at_period_end` の
+        `decreasing_item_amount`）。トライアル中の「期間末」＝トライアル終了日なので、
+        上位変更と同じ「すぐに」にはしない。
+      */
+      downgrade: {
+        headline: `${end}に切り替わります`,
+        detail: `それまでは今のプランのまま使えます。${trialDetail}`,
+      },
+      cancel: input.cancelAtPeriodEnd
+        ? {
+            headline: `${end}に解約されます`,
+            detail: "すでに解約が予約されています。料金はかかりません。",
+          }
+        : {
+            // トライアルの解約は**その場で終了**する（T-M8-278・運営者の指示）。
+            // 「終了日まで使える」と書くと実際の挙動と食い違う。
+            headline: `押した時点で終了します（${end}までなら残りの期間で再開できます）`,
+            detail: "料金はかかりません。再開すると残りの日数でトライアルが続きます。",
+          },
+      /*
+        **画面は `headline` しか出さない**（portal-button.tsx）。トライアル中の要点は
+        「終了日まで料金が発生しない」ことなので、その1行はここで必ず出す。
+        以前の「終了日は変わりません」は、上の日割り説明と食い違って読めた（T-M8-243）。
+      */
+      trialNote: {
+        headline: `トライアルの終了日（${end}）までは料金が発生しません`,
+        detail: "終了後に、変更後のプランの料金で請求が始まります。",
+      },
+    };
+  }
+
   return {
     upgrade: {
-      headline: "すぐに切り替わります",
-      detail: "差額は日割りで計算され、次回の請求に加算されます",
+      headline: "すぐに切り替わり、差額は日割りでその場でお支払いになります",
+      detail: "旧プランの未使用分を差し引いた金額を、確認画面で確かめてからお支払いいただけます",
     },
     downgrade: {
       headline: `${end}に切り替わります`,
@@ -83,11 +129,6 @@ export function planChangeEffects(input: PlanChangeEffectInput): PlanChangeEffec
           headline: `${end}まで使えて、その後停止します`,
           detail: "日割りの返金はありません。",
         },
-    trialNote: trialing
-      ? {
-          headline: `トライアルの終了日（${end}）は変わりません`,
-          detail: "終了後に、変更後のプランの料金で請求が始まります。",
-        }
-      : null,
+    trialNote: null,
   };
 }

@@ -1,11 +1,12 @@
 import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
-import {
-  recoverQueuedEmails,
-  type RecoverQueuedEmailsDeps,
-  type RecoverQueuedEmailsResult,
-} from "../email/recover-queued";
 import { cleanupOldData, type CleanupResult } from "./schedule-cleanup";
 import { dispatchJob, type DispatchResult } from "./dispatch";
+import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./scheduled-drafts";
+// **型だけ**を取る（`import type` は消えるので env 検証が module 読込で走らない）。
+// 実体は route から注入する——`cron.ts` が env 依存モジュールをimportすると
+// テストの module 読込で env 検証が走って落ちる（このファイル冒頭の dailyLimit と同じ理由）。
+import type { OperatorAlertResult } from "../ops/operator-alert-server";
+import type { AffiliateDb as AffiliateBatchDb } from "../affiliate/db";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
 import { recoverStaleJobs, type StaleRecoveryResult } from "./stale";
@@ -92,14 +93,19 @@ export interface SchedulerTickResult {
   enqueued: EnqueueResult;
   dispatched: number;
   recovered: StaleRecoveryResult;
-  emailsRecovered: RecoverQueuedEmailsResult;
   cleaned: CleanupResult;
   /** コード定数へ追随させた system default プロンプトの件数（通常は0）。 */
   promptsSynced: number;
   /** 作成した日次サマリ通知の件数（1日1通なので通常は0か1）。 */
   dailySummaries: number;
-  /** 毎朝の投稿分析jobの新規作成数（T-M8-94）。 */
-  dailySuggestions: number;
+  /** 期限到来した日時予約の下書きを投稿へ流した結果（T-M8-157）。 */
+  scheduledDrafts: EnqueueScheduledDraftsResult;
+  /** doctorの判定を運営者へ届けた結果（T-M8-164）。1日1回。 */
+  operatorAlert: OperatorAlertResult;
+  /** 招待報酬の確定（1日1回）と月次Payout（月1回）の結果（T-M8-174）。 */
+  affiliate: { settled: number; payoutsCreated: number };
+  /** 契約期間の補完（1日1回・T-M8-258）。未注入・実行済みなら null。 */
+  periodBackfill: { checked: number; updated: number; failed: number } | null;
 }
 
 /**
@@ -117,8 +123,36 @@ export async function runSchedulerTick(
     removeStorageObjects?: (paths: string[]) => Promise<void>;
     imageBucket?: string;
     onCleanupError?: (scope: string, err: unknown) => void;
-    sendEmail?: RecoverQueuedEmailsDeps["send"];
-    onEmailStaleWarning?: (oldestAgeMs: number) => void;
+    /**
+     * doctorの判定を運営者へ届ける処理（T-M8-164）。**未注入なら送らない**（テスト・ローカル）。
+     * 実体は route が渡す（`cron.ts` を env 非依存に保つため）。
+     */
+    runOperatorAlert?: (deps: {
+      claimDay: (windowKey: string) => Promise<boolean>;
+    }) => Promise<OperatorAlertResult>;
+    /**
+     * 招待報酬の確定と月次Payout（T-M8-174）。**未注入なら動かない**（テスト・ローカル）。
+     * 実体は route が渡す（cron.ts を env 非依存に保つ）。
+     */
+    runAffiliateBatch?: (deps: {
+      /**
+       * claimと本処理を**同一トランザクション**で実行する（レビュー修正）。
+       * claimを先にコミットすると、本処理の一度の失敗でその窓が消費済みになり
+       * 月次Payoutが翌月まで作られない。失敗時はclaimごとロールバックされ、次のtickが再試行する。
+       * 未claim（他のtickが実行済み）なら null を返す。
+       */
+      claimTx: <T>(
+        windowKey: string,
+        work: (db: AffiliateBatchDb) => Promise<T>,
+      ) => Promise<T | null>;
+    }) => Promise<{ settled: number; payoutsCreated: number }>;
+    /**
+     * 契約期間（`current_period_start`）が未同期の契約者を Stripe から埋める（T-M8-258 の移行）。
+     * **未注入なら動かない**（テスト・ローカル）。実体は route が渡す。1日1回。
+     */
+    runPeriodBackfill?: (deps: {
+      claimDay: (windowKey: string) => Promise<boolean>;
+    }) => Promise<{ checked: number; updated: number; failed: number } | null>;
   } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
@@ -136,12 +170,32 @@ export async function runSchedulerTick(
     dailyLimit: opts.dailyLimit ?? 50,
   });
 
-  // (3) 未dispatchのqueuedジョブを再dispatch
+  // (2') 期限到来した「日時予約された下書き」を投稿へ流す（T-M8-157）。
+  // スロットのenqueueの直後に置くのは、この後の (3) dispatch で同じtick内に投稿まで進むため。
+  const scheduledDrafts = await enqueueDueScheduledDrafts(pooledDb);
+
+  /*
+    (3) 未dispatchのqueuedジョブを再dispatch。
+    **選抜はユーザー間で公平にする**（T-M8-196・レビュー修正）: 素の
+    `order by scheduled_for, created_at limit 50` だと、1ユーザーの滞留（例: 失効中に溜まった
+    日時予約）が50枠を独占し、他ユーザーの予約投稿・投稿分析が何時間も選ばれない
+    （実DBで再現: 60件滞留で他ユーザーのjobがbatchに一切入らなかった）。
+    ユーザーごとに古い順で番号を振り、「各ユーザーの1件目→2件目→…」の順で50件取る。
+  */
   const rows = await withTransaction((c) =>
     c.query<{ id: string }>(
-      `select id from generation_jobs
-        where status = 'queued' and available_at <= now()
-        order by scheduled_for asc nulls last, created_at asc
+      `select id from (
+         select j.id,
+                row_number() over (
+                  partition by xa.user_id
+                  order by j.scheduled_for asc nulls last, j.created_at asc
+                ) as user_rank,
+                j.scheduled_for, j.created_at
+           from generation_jobs j
+           join x_accounts xa on xa.id = j.x_account_id
+          where j.status = 'queued' and j.available_at <= now()
+       ) ranked
+        order by user_rank asc, scheduled_for asc nulls last, created_at asc
         limit 50`,
     ),
   );
@@ -151,17 +205,84 @@ export async function runSchedulerTick(
     if (res.ok) dispatched += 1;
   }
 
+  /*
+    (3') doctorの判定を運営者へ1日1回届ける（T-M8-164）。**定時トリガーは増やさない**（原則3）。
+    判定は揃っているのに届いておらず、ニュースが1.5日全滅しても運営者へ何も出なかった。
+    dispatchの後に置くのは、その回の状態まで含めて見るため。
+  */
+  const operatorAlert = opts.runOperatorAlert
+    ? await opts.runOperatorAlert({
+        claimDay: (windowKey) =>
+          withTransaction(async (client) => {
+            const res = await client.query(
+              `insert into cron_runs (job_name, window_key)
+               values ('operator_alert', $1)
+               on conflict (job_name, window_key) do nothing`,
+              [windowKey],
+            );
+            return (res.rowCount ?? 0) > 0;
+          }),
+      }).catch((err) => {
+        // 運営者への連絡が失敗しても tick は止めない（本体の処理を人への連絡で妨げない）。
+        opts.onCleanupError?.("operator_alert", err);
+        return { sent: false } as OperatorAlertResult;
+      })
+    : { sent: false, skipped: "no_recipient" as const };
+
+  /*
+    (3'') 招待報酬（T-M8-174・invite_cp.md §8/§9）。確認期間を過ぎた報酬の確定（1日1回）と、
+    月末締めのPayout作成（月1回）。**定時トリガーは増やさない**（原則3）。冪等キーは cron_runs。
+  */
+  const affiliate = opts.runAffiliateBatch
+    ? await opts
+        .runAffiliateBatch({
+          claimTx: (windowKey, work) =>
+            withTransaction(async (client) => {
+              const res = await client.query(
+                `insert into cron_runs (job_name, window_key)
+                 values ('affiliate_batch', $1)
+                 on conflict (job_name, window_key) do nothing`,
+                [windowKey],
+              );
+              if ((res.rowCount ?? 0) === 0) return null;
+              // 本処理が失敗したらclaimごとロールバック→次のtickが再試行する。
+              return work(client);
+            }),
+        })
+        .catch((err) => {
+          opts.onCleanupError?.("affiliate_batch", err);
+          return { settled: 0, payoutsCreated: 0 };
+        })
+    : { settled: 0, payoutsCreated: 0 };
+
+  /*
+    (3-d) 契約期間の補完（T-M8-258）。`current_period_start` が null の契約者を Stripe から埋める。
+    運営者の再同期コマンドに頼らない（原則3）。1日1回・失敗しても tick は止めない。
+  */
+  const periodBackfill = opts.runPeriodBackfill
+    ? await opts
+        .runPeriodBackfill({
+          claimDay: (windowKey) =>
+            withTransaction(async (client) => {
+              const res = await client.query(
+                `insert into cron_runs (job_name, window_key)
+                 values ('subscription_period_backfill', $1)
+                 on conflict (job_name, window_key) do nothing`,
+                [windowKey],
+              );
+              return (res.rowCount ?? 0) > 0;
+            }),
+        })
+        .catch((err) => {
+          opts.onCleanupError?.("subscription_period_backfill", err);
+          return null;
+        })
+    : null;
+
   // (4) stale回収
   const recovered = await recoverStaleJobs();
 
-  // (4') queuedメール回収（100件/10並列。要件04 §6/§14, T-M4-17）。sendEmail 未注入なら skip。
-  const emailsRecovered = opts.sendEmail
-    ? await recoverQueuedEmails({
-        db: pooledDb,
-        send: opts.sendEmail,
-        onStaleWarning: opts.onEmailStaleWarning,
-      })
-    : { processed: 0, sent: 0, requeued: 0, failed: 0 };
+  // （旧(4') queuedメール回収はT-M8-222で廃止——通知はアプリ内のみ）
 
   // (5) 保持cleanup（40日超データ・24時間超の未参照Storage画像。要件04 §14）。
   // 失敗しても他段・tick本体を止めない（cleanupOldData 内で段ごとに握り潰し onError へ記録）。
@@ -181,25 +302,24 @@ export async function runSchedulerTick(
       onError: (userId, err) => opts.onCleanupError?.(`daily_summary:${userId}`, err),
     });
     dailySummaries = delivered.created;
-    // commit後の best-effort 即時メール（残りは下の通知メール回収が拾う）。
-    if (opts.sendEmail) {
-      for (const id of delivered.createdIds) await opts.sendEmail(id).catch(() => {});
+    /*
+      **積み残しは黙って捨てない**（T-M8-291）。1回のtickで作れる人数には上限があり、
+      残りは次のtick（5分後）が拾うが、**それが常態化していること自体は異常**なので
+      運営者の気付ける経路へ載せる（毎朝のメール・doctorが読む `onCleanupError`）。
+      「届いていない人がいる」を数字で言わないと、増えているのか一時的なのかが分からない。
+    */
+    if (delivered.remaining > 0) {
+      opts.onCleanupError?.(
+        "daily_summary",
+        new Error(`日次サマリの積み残し ${delivered.remaining}人（次のtickで続きを作ります）`),
+      );
     }
   } catch (err) {
     opts.onCleanupError?.("daily_summary", err);
   }
 
-  // (6.5) 毎朝の投稿分析（T-M8-94）。JST8時以降のtickで、対象アカウントぶんの suggestion job を
-  // 冪等に作る（request_key `sug-daily:{xid}:{JST日付}`）。dispatch は次tickの dispatch フェーズが拾う。
-  // 失敗しても tick 本体を止めない。
-  let dailySuggestions = 0;
-  try {
-    const { enqueueDailySuggestions } = await import("./suggestion-jobs");
-    dailySuggestions = (await enqueueDailySuggestions(pooledDb, new Date(Date.now()).toISOString()))
-      .created;
-  } catch (err) {
-    opts.onCleanupError?.("daily_suggestions", err);
-  }
+  // （旧(6.5) 毎朝の投稿分析の一括起票はT-M8-255で廃止——起票は画面の「分析を開始」ボタンだけが行う。
+  //  dispatch漏れ分の回収は従来どおり上の dispatch フェーズが担う）
 
   // (7) プロンプトのsystem default行をコード定数へ追随させる（T-M7-37）。
   // 解決順は「account上書き → system default行 → コード定数」で、DB行が古いままだと
@@ -213,14 +333,16 @@ export async function runSchedulerTick(
   }
 
   return {
+    operatorAlert,
+    affiliate,
+    periodBackfill,
+    scheduledDrafts,
     scheduleRecovered,
     enqueued,
     dispatched,
     recovered,
-    emailsRecovered,
     cleaned,
     promptsSynced,
     dailySummaries,
-    dailySuggestions,
   };
 }

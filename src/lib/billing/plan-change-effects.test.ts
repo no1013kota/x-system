@@ -16,10 +16,11 @@ const base = {
 };
 
 describe("planChangeEffects", () => {
-  it("上位プランは即時＋日割り（proration_behavior=create_prorations）", () => {
+  it("上位プランは即時＋日割りをその場で決済（proration_behavior=always_invoice）", () => {
     const e = planChangeEffects(base);
-    expect(e.upgrade.headline).toContain("すぐに切り替わります");
-    expect(e.upgrade.detail).toContain("日割り");
+    expect(e.upgrade.headline).toContain("すぐに切り替わり");
+    // 画面は headline しか出さないので、支払いの時期は headline に書く。
+    expect(e.upgrade.headline).toContain("その場でお支払い");
   });
 
   it("下位プランは期間末（schedule_at_period_end=decreasing_item_amount）で、日付を出す", () => {
@@ -42,10 +43,26 @@ describe("planChangeEffects", () => {
     expect(e.cancel.detail).not.toContain("返金はありません");
   });
 
-  it("トライアル中は終了日が変わらないことを添える（trial_update_behavior=continue_trial）", () => {
+  /**
+   * **トライアル中は日割りの話をしない**（T-M8-243）。Portal設定は `continue_trial` で、
+   * トライアル中に変更しても無料期間は変わらず、終了後に新しい料金で請求が始まる。
+   * 以前は「差額は日割りで次回請求に加算」と「終了日まで請求は発生しない」が同時に出ていた。
+   */
+  it("トライアル中は日割りを言わず、終了日まで無料であることを両方向で説明する", () => {
     const e = planChangeEffects({ ...base, subscriptionStatus: "trialing" });
-    expect(e.trialNote?.headline).toContain("トライアルの終了日");
-    expect(e.trialNote?.headline).toContain("変わりません");
+    for (const item of [e.upgrade, e.downgrade]) {
+      expect(item.detail).toContain("料金が発生しません");
+      expect(item.detail, "トライアル中に日割りの説明を出さない").not.toContain("日割り");
+    }
+    // 上位は即時、下位は期間末（Portal設定 schedule_at_period_end）。見出しは分けたまま。
+    expect(e.upgrade.headline).toBe("すぐに切り替わります");
+    expect(e.downgrade.headline).toContain("に切り替わります");
+    expect(e.downgrade.headline).not.toBe("すぐに切り替わります");
+    // 画面は headline しか出さないので、トライアル中の要点は注記の見出しで必ず出す。
+    expect(e.trialNote?.headline).toContain("までは料金が発生しません");
+    expect(e.trialNote?.headline, "「変わりません」は日割り説明と食い違って読めた").not.toContain(
+      "変わりません",
+    );
   });
 
   it("トライアル中でなければ注記を出さない", () => {
@@ -72,8 +89,9 @@ describe("planChangeEffects", () => {
   it("文言にMarkdownの強調記号を混ぜない", () => {
     const e = planChangeEffects({ ...base, subscriptionStatus: "trialing" });
     for (const item of [e.upgrade, e.downgrade, e.cancel, e.trialNote]) {
-      expect(item?.headline).not.toContain("*");
-      expect(item?.detail).not.toContain("*");
+      if (!item) continue; // trialNote は本文へ畳んだので null になり得る（T-M8-243）
+      expect(item.headline).not.toContain("*");
+      expect(item.detail).not.toContain("*");
     }
   });
 });

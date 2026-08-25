@@ -12,6 +12,15 @@ export const STRIPE_WEBHOOK_EVENT_TYPES = [
   "customer.subscription.deleted",
   "invoice.payment_failed",
   "invoice.paid",
+  // 招待報酬のRefund取消（T-M8-174）。Stripeダッシュボードのwebhook設定にも追加が要る。
+  "charge.refunded",
+  /*
+    無料トライアル終了の3日前にStripeが送る（T-M8-243）。**初回課金の予告**に使う——
+    「いつ・いくら請求されるか」を知らせないまま満額を引き落とすのは、
+    LPの「7日間は無料」と合わせて不意打ちになる。
+    購読設定の不足は doctor の「契約イベントの受け取り（Stripe webhook）」が検出する。
+  */
+  "customer.subscription.trial_will_end",
 ] as const;
 
 const SUPPORTED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
@@ -37,6 +46,17 @@ export interface StripeEventProcessorDependencies {
 }
 
 export type StripeEventProcessResult = "processed" | "duplicate" | "ignored";
+
+/**
+ * **再送しても直らない失敗か**（T-M8-245）。人が設定やデータを直すまで永久に失敗する種類。
+ * これらに500を返し続けると Stripe が endpoint を無効化し、他の利用者の同期まで止まる。
+ */
+export function isPermanentEventError(error: unknown): boolean {
+  if (error instanceof UnknownStripePriceError) return true;
+  // profile の対応が付かない／曖昧（別環境のCustomer・手作業の取り違えなど）。
+  const message = error instanceof Error ? error.message : "";
+  return /Subscription profile mapping/.test(message);
+}
 
 export class UnknownStripePriceError extends Error {
   readonly eventId: string;
@@ -153,9 +173,22 @@ export async function handleStripeWebhookRequest(
   try {
     event = dependencies.verifyEvent(payload, signature);
   } catch (error) {
-    // 署名検証の失敗。攻撃だけでなく STRIPE_WEBHOOK_SECRET の設定ミスでも起き、その場合は
-    // 全webhookが黙って400になり課金同期が永久に止まる。無記録にはしない。
-    recordUnexpectedError(error, { at: "stripe-webhook:verify" });
+    /*
+      署名検証の失敗。攻撃だけでなく STRIPE_WEBHOOK_SECRET の設定ミスでも起き、その場合は
+      全webhookが黙って400になり課金同期が永久に止まる。無記録にはしない。
+
+      **例外オブジェクトをそのまま渡さない**（T-M8-300）。Stripe SDK の
+      `StripeSignatureVerificationError` は `payload`（リクエスト本文の全文）と `header` を
+      **public プロパティ**に持ち、`recordUnexpectedError` は `console.error(error)` で
+      オブジェクトごと出すため、本番ログへ本文が落ちる。secret の不一致が続くと、届くたびに
+      顧客のメール・氏名・請求先住所・カード下4桁が平文で溜まる（実行して再現済み）。
+      記録の目的は「黙って400にしない」ことなので、**理由の文言だけ**あれば足りる。
+    */
+    const reason = error instanceof Error ? error.message : "unknown";
+    recordUnexpectedError(
+      new Error(`stripe webhook signature verification failed: ${reason}`),
+      { at: "stripe-webhook:verify" },
+    );
     return webhookResponse(
       { ok: false, error: toUserFacingError(new AppError("forbidden")) },
       400,
@@ -178,6 +211,22 @@ export async function handleStripeWebhookRequest(
           }
         : { event_id: event.id, event_type: event.type };
     dependencies.captureException(error, context);
+    /*
+      **再送しても直らない失敗に500を返し続けない**（T-M8-245）。
+
+      Stripeは500を返したイベントを最大3日リトライし、失敗が続くと**endpoint 自体を無効化する**。
+      未知のPrice IDや profile の対応不能は、待っても再送しても直らない（人が設定を直すまで
+      永久に失敗する）。その1件のために endpoint が止まると、**他の全利用者の契約同期まで
+      巻き添えで停止する**。恒久エラーは記録して200を返し、再送で直りうるもの（DB障害など）
+      だけ500にする。記録は Sentry（上の captureException）と doctor の
+      「契約の同期（Stripe → アプリ）」が担う。
+    */
+    if (isPermanentEventError(error)) {
+      return webhookResponse(
+        { ok: true, data: { received: true, result: "permanent_error" } },
+        200,
+      );
+    }
     return webhookResponse(
       { ok: false, error: toUserFacingError(new AppError("internal_error")) },
       500,

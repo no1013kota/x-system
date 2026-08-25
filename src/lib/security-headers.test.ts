@@ -62,6 +62,14 @@ describe("buildContentSecurityPolicy", () => {
       else process.env.NEXT_PUBLIC_SENTRY_DSN = prev;
     }
   });
+
+  it("allows preconnect to both Stripe-hosted billing pages", () => {
+    const connect = buildContentSecurityPolicy("n", true)
+      .split("; ")
+      .find((d) => d.startsWith("connect-src "))!;
+    expect(connect).toContain("https://checkout.stripe.com");
+    expect(connect).toContain("https://billing.stripe.com");
+  });
 });
 
 describe("applySecurityResponseHeaders", () => {

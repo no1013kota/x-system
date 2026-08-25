@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { OPERATOR_X_URL } from "@/lib/app-config";
 import { RELEASE_CAMPAIGN } from "@/lib/plans";
 
 /**
@@ -31,8 +32,10 @@ const PRICING = read("src/components/lp/pricing.tsx");
  * 検査は「実際に `regularPriceJpy` を描く画面」へ向ける。
  */
 const SETTINGS_BILLING = read("src/app/app/settings/page.tsx");
-/** プラン比較表（T-M8-125）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
-const COMPARISON_TABLE = read("src/components/billing/plan-comparison-table.tsx");
+/** プランカード（T-M8-171）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
+const PRICING_CARDS = read("src/components/billing/plan-pricing-cards.tsx");
+/** プロモ帯（T-M8-171）。「初回のみ」「カード登録が必要」の開示はここが唯一の常時表示。 */
+const CAMPAIGN_CALLOUT = read("src/components/billing/campaign-callout.tsx");
 const COMPARISON = read("src/lib/plan-comparison.ts");
 const GLOBALS_CSS = read("src/app/globals.css");
 /** コメントを除いたCSS。解説文に書いたセレクタ名を規則と誤認しないため。 */
@@ -65,6 +68,20 @@ function lpFile(name: string): string {
 
 const FAQ = lpFile("faq.tsx");
 
+/**
+ * **利用者に見える回答だけを検査対象にする**（2026-08-24）。
+ *
+ * これまで `FAQ`（ファイル全文）へ `toMatch` していたため、**回答から文が消えても
+ * 冒頭のコメントに同じ語が残っていれば緑のまま**だった。実際に「暗号化」「末尾4桁」
+ * 「キャンセル」が回答から消えたのにテストは通っていた——守っているつもりで守れていない。
+ * 文字列リテラルだけを集めて、画面に出る文言で判定する。
+ */
+const FAQ_ANSWERS = (() => {
+  const body = FAQ.slice(FAQ.indexOf("const FAQ_ITEMS"));
+  const literals = body.match(/(["`])(?:\\.|(?!\1)[\s\S])*\1/g) ?? [];
+  return literals.join("\n");
+})();
+
 describe("SC-01 LP: 導線", () => {
   it("会員登録・ログイン・ページ内アンカーへの導線がある", () => {
     expect(PAGE).toContain('href="/signup"');
@@ -83,14 +100,40 @@ describe("SC-01 LP: 導線", () => {
     expect(PAGE).not.toContain("/terms");
     expect(PAGE).not.toContain("/privacy");
   });
+
+  /**
+   * フッタの運営者Xアカウント（T-M8-183）。URLは `app-config.ts` だけが持ち、
+   * 画面は定数を参照する（直書きすると変えたとき片方だけ古くなる）。
+   * 新しいタブで開く外部リンクなので rel="noopener noreferrer" と読み上げラベルを必須にする。
+   */
+  it("フッタに運営者のXアカウントへのリンクがある（URLは app-config の定数経由・新しいタブ・ラベル付き）", () => {
+    expect(OPERATOR_X_URL).toBe("https://x.com/ai_newinfo");
+    expect(PAGE).toContain("href={OPERATOR_X_URL}");
+    expect(PAGE, "x.com のURLを画面へ直書きしない").not.toMatch(/https:\/\/x\.com\//);
+    const anchor = PAGE.match(/<a\s[^>]*href=\{OPERATOR_X_URL\}[^>]*>/)?.[0];
+    expect(anchor, "OPERATOR_X_URL を href に持つ <a> がある").toBeTruthy();
+    expect(anchor).toContain('target="_blank"');
+    expect(anchor).toContain('rel="noopener noreferrer"');
+    expect(anchor).toMatch(/aria-label=/);
+    expect(PAGE).toContain("<XLogo");
+  });
 });
 
 describe("SC-01 LP: 法令・仕様上の固定文言", () => {
-  it("主CTA直下のカード登録注記が2箇所（ヒーロー・最終CTA）にある", () => {
-    // 言い回しではなく、開示すべき3点（カード登録が要る／7日間無料／期間中の解約で無料）を見る。
-    expect(PAGE, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
-    expect(PAGE, "無料期間の長さが消えている").toMatch(/7日間は無料/);
-    expect(PAGE, "期間中に解約すれば無料である事実が消えている").toMatch(/期間中に解約すれば料金はかかりません/);
+  it("主CTAの近くに開示3点（カード登録・7日間無料・期間中の解約）が載っている", () => {
+    /*
+     * 言い回しではなく**開示すべき3点が載っていること**を見る（T-M8-79）。
+     * 2026-08-23、運営者がCTA直下の注記を訴求文へ差し替えたため、**開示の置き場所は
+     * プロモ帯（CampaignCallout）**になった。LPは page.tsx と帯の合成で描かれるので、
+     * 検査も合成で見る（どちらかに載っていればよい。両方から消えたら落ちる）。
+     */
+    const lp = PAGE + CAMPAIGN_CALLOUT;
+    expect(lp, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
+    expect(lp, "無料期間の長さが消えている").toMatch(/7日間(は|の)無料/);
+    expect(lp, "期間中に解約すれば無料である事実が消えている").toMatch(
+      /期間中に解約すれば料金はかかりません/,
+    );
+    // CTA直下の注記そのものは2箇所（ヒーロー・最終CTA）に残す。
     const usages = PAGE.match(/\{CARD_REGISTRATION_NOTE\}/g) ?? [];
     expect(usages.length, "ヒーローと最終CTAの2箇所で使う").toBeGreaterThanOrEqual(2);
   });
@@ -103,41 +146,40 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
    * ここでは**カードそのものが消えないこと**だけを守る。詳細な法定事項は
    * `/legal/commercial-transactions` と利用規約が担い、`legal-pages.test.ts` が検査する。
    */
-  it("BYOK注記がプランカード直下に折りたたみなしで表示される", () => {
-    expect(PRICING).toContain("APIキーの費用について");
-    expect(PRICING, "BYOK方式であることの説明が消えている").toMatch(
-      /APIキーをご自身でご用意いただく方式/,
-    );
-    expect(PRICING, "プレミアムとの違いが消えている").toMatch(/プレミアムプランは運営がAPIキー/);
-    expect(PRICING, "折りたたみ（details）にしない").not.toContain("<details");
+  /**
+   * BYOK（スタンダード）のAPI実費の開示（T-M8-171で注意書きカードを畳んだ・運営者の決定
+   * 2026-08-21）。**常時表示の置き場所はカードの「APIキーの用意」行だけ**になったので、
+   * 行定義から消えると LP・/plans の両方から開示が消える。
+   */
+  it("BYOKのAPI実費の開示がプラン行定義に残る", () => {
+    expect(COMPARISON, "BYOKのAPI実費の開示が消えている").toMatch(/ご自身のAPI課金/);
+    // FAQも折りたたまない（2026-08-20 運営者の指示。LPで最も読まれるべき内容を隠していた）。
+    expect(FAQ, "FAQを折りたたみ（details）へ戻さない").not.toContain("<details");
   });
 
-  it("申込前確認事項カードが料金セクションにある", () => {
-    expect(PRICING).toContain("お申し込み前にご確認ください");
-    for (const item of ["料金：", "無料期間：", "解約方法：", "提供開始："]) {
-      expect(PRICING, `「${item}」が消えている`).toContain(item);
-    }
-  });
-
-  it("無料トライアルが初回限定であることが料金セクションに残る", () => {
+  it("無料トライアルの条件（初回のみ・カード登録）がプロモ帯に残る", () => {
     // 「初回のみ」が消えると「無条件で7日間無料」の表示になり、2回目以降の申込みで事実と異なる
-    // （景表法の有利誤認・特商法11条）。言い回しは変わりうるので、事実の有無だけを見る。
-    expect(PRICING, "初回限定の開示が申込前確認事項から消えている").toMatch(/初回のみ/);
-    expect(PRICING, "無料期間の長さが消えている").toMatch(/7日間/);
+    // （景表法の有利誤認・特商法11条）。「カード登録が必要」は無料の条件の開示。
+    // T-M8-171で申込前確認カードを畳んだため、**プロモ帯が唯一の常時表示**。
+    expect(CAMPAIGN_CALLOUT, "初回限定の開示が消えている").toMatch(/初回のみ/);
+    expect(CAMPAIGN_CALLOUT, "無料期間の長さが消えている").toMatch(/7日間/);
+    expect(CAMPAIGN_CALLOUT, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
+    expect(PRICING, "LPの料金セクションがプロモ帯を使っていない").toContain("CampaignCallout");
   });
 });
 
 describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("プランの数値を参照で埋める（直書きしない）", () => {
-    // T-M8-125で比較表へ移した。**数値を持つ場所を見る**——LP側だけを見ていると、
-    // 表へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
-    expect(PRICING, "LPは共通の比較表を使う").toContain("PlanComparisonTable");
+    // T-M8-171でLPも/plansと同じプランカードにした。**数値を持つ場所を見る**——LP側だけを
+    // 見ていると、部品へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
+    expect(PRICING, "LPは共通のプランカードを使う").toContain("PlanPricingCards");
     // 行の可否・件数・上限は定義側（`plan-comparison.ts`）が持つ。
     for (const ref of ["PLANS", "xAccountLimit", "usageLimits"]) {
       expect(COMPARISON, `${ref} を定義から引く`).toContain(ref);
     }
-    // 価格は表示側が定義から引く（表のヘッダ）。
-    expect(COMPARISON_TABLE, "価格を定義から引く").toContain("monthlyPriceJpy");
+    // 価格・1日あたり概算は表示側が定義から引く。
+    expect(PRICING_CARDS, "価格を定義から引く").toContain("monthlyPriceJpy");
+    expect(PRICING_CARDS, "1日あたりの概算が消えている").toMatch(/1日あたり/);
   });
 
   it("価格・プレミアム上限の数値がLPソースに直書きされていない", () => {
@@ -164,19 +206,18 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("取り消し線の価格に「通常価格」と書かず、終了後の価格だと分かる形にする", () => {
     // 表示はLPと /plans で共通の部品（T-M8-122）。**その部品を見る**——LP側だけを見ていると、
     // 部品へ切り出したときに検査が空振りする（実際に一度そうなった）。
-    // 表のヘッダがキャンペーン価格を出す（T-M8-125）。設定＞課金は自前で描くので、
-    // **両方が決まりを守っていること**を見る（片方だけ見ると他方が黙って外れる）。
-    for (const source of [COMPARISON_TABLE, SETTINGS_BILLING]) {
-      expect(source).toContain("regularPriceJpy");
-      expect(source).toContain("RELEASE_CAMPAIGN.afterLabel");
-    }
+    // 設定＞課金は「キャンペーン終了後」の併記を出さない（運営者の指示 2026-08-22。
+    // 月額をプラン名の真横に出すだけ）。終了後価格の表示ルールはプランカード側だけに残る。
+    expect(PRICING_CARDS).toContain("regularPriceJpy");
+    expect(PRICING_CARDS).toContain("RELEASE_CAMPAIGN.afterLabel");
     // 画面に出る文字だけを見る（コメントで理由を書くのは妨げない）。
     const withoutComments = (source: string) =>
       source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const [name, source] of [
-      ["比較表", COMPARISON_TABLE],
+      ["プランカード", PRICING_CARDS],
       ["設定＞課金", SETTINGS_BILLING],
       ["LP料金", PRICING],
+      ["プロモ帯", CAMPAIGN_CALLOUT],
     ] as const) {
       expect(withoutComments(source), `${name}で「通常価格」は景表法上使えない`).not.toContain(
         "通常価格",
@@ -189,13 +230,14 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
 describe("SC-01 LP: 禁止表現（ハンドオフREADME §禁止表現）", () => {
   it("実装が事実と異なる主張・保証表現を含まない", () => {
     for (const banned of [
-      "6分野",
+      // 「6分野」はT-M8-189で事実になった（禁止解除）。逆に旧仕様の「3分野」を禁止する。
+      "3分野",
       "6種類",
       "一瞬で",
       "数秒で",
       "No.1",
       "導入実績",
-      "利用者の声",
+      // 「利用者の声」はT-M8-214で解禁（実在の提携者・本人確認済みコメントのみ可）。
       "LINE通知",
       "動画生成",
       "承認ワークフロー",
@@ -213,13 +255,12 @@ describe("SC-01 LP: デザイン制約", () => {
     expect(LP_SOURCES.length).toBeGreaterThan(5000);
   });
 
-  it("ブランドグラデーションは規定の5箇所だけ（ロゴはLogoTile側なので数えない）", () => {
-    // 生成中バー2本（ヒーローモック・しくみSTEP3）＋上端3pxバー2本（「投稿の生成」カード・
-    // STEP3カード）。ハンドオフREADME §デザイントークン の規定どおり。
-    // **T-M8-125で4本になった**——料金をプランカードから比較表へ変えたため、
-    // プレミアムカードの上端バーが無くなった（表のヘッダはグラデを使わない）。
+  it("ブランドグラデーションは規定の2箇所だけ（ロゴはLogoTile側なので数えない）", () => {
+    // 生成中バー1本（ヒーローモックの「投稿作成」）＋上端3pxバー1本（02の「投稿作成」カード）
+    // ＋生成画像のサムネイル1枚（02「投稿・画像の自動作成」の簡易画像・T-M8-201）。
+    // 3つとも「AIが作る瞬間・作った物」なのでブランドグラデの意味（デザイン §カラー）に合う。
     const direct = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
-    expect(direct.length).toBe(4);
+    expect(direct.length).toBe(3);
   });
 
   /**
@@ -231,8 +272,9 @@ describe("SC-01 LP: デザイン制約", () => {
    */
   it("グラデを出すカードの枚数が増えていない（フラグの数を数える）", () => {
     const count = (source: string, pattern: RegExp) => (source.match(pattern) ?? []).length;
-    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(2);
-    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(1);
+    // 02できることの「投稿作成」1枚だけ（T-M8-172で03しくみのカード列が無くなった）。
+    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(1);
+    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(0);
   });
 
   it("reduced-motion で生成ループの装飾が止まる", () => {
@@ -271,20 +313,25 @@ describe("SC-01 LP: デザイン制約", () => {
     }
   });
 
-  it("ヒーローの見出しと固定コピーがハンドオフどおり", () => {
-    expect(PAGE).toContain("ネタ探しから投稿、分析まで。");
-    expect(PAGE).toContain("X運用の毎日を");
-    expect(PAGE).toContain("1日数分の確認から、");
+  it("ヒーローの見出しと固定コピーがハンドオフどおり（2026-08-22の運営者指示で改定）", () => {
+    expect(PAGE).toContain("プロンプトドリブンの");
+    expect(PAGE).toContain("使用するほど性能が上がる");
+    expect(PAGE).toContain("SNS自動化プラットフォーム");
   });
 
   it("安全性の説明がFAQに残っている（独立セクションを持たないため）", () => {
     // 「04 安全性」を削除し（T-M8-77）、ヒーローのチェック3点も特徴の訴求へ変わった（T-M8-79）。
     // その結果、**安全性の説明はFAQだけがLP上の置き場所**になった。ここが消えると、
     // 「Xアカウントを預けて勝手に投稿されないか」という最大の購入障壁に答える記述がLPから消える。
-    expect(FAQ, "勝手に投稿されない説明がLPから消えている").toMatch(/下書きまで/);
-    expect(FAQ, "自動投稿に同意が要ることが消えている").toMatch(/同意/);
-    expect(FAQ, "自動投稿を止められることが消えている").toMatch(/キャンセル/);
-    expect(FAQ, "APIキーの保管方法がLPから消えている").toMatch(/暗号化/);
-    expect(FAQ, "末尾4桁のみ表示が消えている").toMatch(/末尾4桁/);
+    expect(FAQ_ANSWERS, "勝手に投稿されない説明がLPから消えている").toMatch(/下書きまで/);
+    expect(FAQ_ANSWERS, "自動投稿に同意が要ることが消えている").toMatch(/同意/);
+    /*
+      **ここで守る範囲を狭めた**（運営者の判断 2026-08-24・BACKLOG T-M8-284）。
+      「実行待ちの投稿もキャンセルされる」「APIキーは暗号化・末尾4桁のみ表示・削除可」
+      「生成物は投稿前に確認」の3点はFAQの書き直しでLPから外した。**テストを緑にするために
+      外したのではなく、外すと決めたので検査も外した**——理由と、代わりにどこで担保するか
+      （利用規約第7条・特定商取引法に基づく表記・設定画面）はBACKLOGに記録した。
+      戻すときはここへ `toMatch` を足し直す。
+    */
   });
 });

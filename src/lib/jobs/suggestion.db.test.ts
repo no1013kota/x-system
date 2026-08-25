@@ -168,7 +168,7 @@ describe("suggestion worker (local DB)", () => {
     });
 
   it("1件の提案を format=2・advice・post_count 付きで保存する", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       const posts = [post("t1", 100, "ノウハウ・ハウツー"), post("t2", 300), post("t3", 200)];
       const res = await executeSuggestion(deps(jobId, VALID("t2"), posts));
@@ -191,7 +191,7 @@ describe("suggestion worker (local DB)", () => {
   });
 
   it("アカウント.mdがあれば<account_md>としてプロンプトへ渡り、編集提案がevidenceへ残る（T-M8-106）", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       const currentMd = [
         "# 発信定義書（アカウント.md）",
@@ -243,7 +243,7 @@ describe("suggestion worker (local DB)", () => {
   });
 
   it("前回のレポート（format=2）がプロンプトへ渡り、evidence.previous_id に残る（T-M8-98）", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       // 前回のレポートを直接seedする（旧形式=format無しの行は対象外であることも同時に確認する）。
       const prevId = await withTransaction(async (c) => {
@@ -311,7 +311,7 @@ describe("suggestion worker (local DB)", () => {
   });
 
   it("投稿が1件も無ければLLMを呼ばず提案0件で正常終了する", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       const res = await executeSuggestion(deps(jobId, VALID("t1"), []));
       expect(res).toMatchObject({ status: "no_suggestions", count: 0 });
@@ -323,7 +323,7 @@ describe("suggestion worker (local DB)", () => {
   });
 
   it("投稿が1件だけでもLLMを呼んで提案を作る（実績3件の下限は廃止・T-M8-91）", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       const res = await executeSuggestion(deps(jobId, VALID("t1"), [post("t1", 100)]));
       expect(res).toMatchObject({ status: "saved", count: 1 });
@@ -364,7 +364,7 @@ describe("suggestion worker (local DB)", () => {
   });
 
   it("X取得が失敗したら理由を保存して落ちる（静かに0件にしない・原則1）", async () => {
-    const { uid, xid, jobId } = await seed("md");
+    const { uid, xid, jobId } = await seed("standard");
     try {
       const failing = {
         ...deps(jobId, VALID("t1"), []),

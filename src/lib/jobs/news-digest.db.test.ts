@@ -44,7 +44,6 @@ describe("fanOutNewsDigest (db)", () => {
       categories: string[];
       impact: string[];
       newsInApp: boolean;
-      newsEmail: boolean;
     },
   ): Promise<string> {
     const uid = randomUUID();
@@ -57,7 +56,7 @@ describe("fanOutNewsDigest (db)", () => {
       `insert into profiles (id, email, subscription_status, news_config, notification_config)
        values ($1, $2, $3::subscription_status,
                jsonb_build_object('categories', $4::jsonb, 'impact_filter', $5::jsonb, 'max_items', 20),
-               jsonb_build_object('news', jsonb_build_object('in_app', $6::boolean, 'email', $7::boolean)))
+               jsonb_build_object('news', jsonb_build_object('in_app', $6::boolean)))
        on conflict (id) do update set
          subscription_status = excluded.subscription_status,
          news_config = excluded.news_config,
@@ -69,7 +68,6 @@ describe("fanOutNewsDigest (db)", () => {
         JSON.stringify(opts.categories),
         JSON.stringify(opts.impact),
         opts.newsInApp,
-        opts.newsEmail,
       ],
     );
     return uid;
@@ -87,35 +85,30 @@ describe("fanOutNewsDigest (db)", () => {
         categories: ["ai", "web3"],
         impact: ["high", "mid"],
         newsInApp: true,
-        newsEmail: false,
       });
       const userB = await makeUser(c, {
         status: "active",
         categories: ["ai"],
         impact: ["high"],
-        newsInApp: false,
-        newsEmail: true,
+        newsInApp: true,
       });
       const userOff = await makeUser(c, {
         status: "trialing",
         categories: ["ai"],
         impact: ["high"],
-        newsInApp: false,
-        newsEmail: false, // both channels off → excluded
+        newsInApp: false, // in_app off → excluded（メール通知はT-M8-222で廃止）
       });
       const userCanceled = await makeUser(c, {
         status: "canceled",
         categories: ["ai"],
         impact: ["high"],
-        newsInApp: true,
-        newsEmail: true, // non-contract → excluded
+        newsInApp: true, // non-contract → excluded
       });
       const userNoMatch = await makeUser(c, {
         status: "trialing",
         categories: ["sns"],
         impact: ["high"],
-        newsInApp: true,
-        newsEmail: true, // no matching items → excluded
+        newsInApp: true, // no matching items → excluded
       });
 
       // items inside the window (fetched_at = windowStart + 30min)
@@ -160,15 +153,22 @@ describe("fanOutNewsDigest (db)", () => {
       expect(res.matchedUsers, `対象が2人未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
       expect(res.notified, `配信が2件未満。状態: ${detail}`).toBeGreaterThanOrEqual(2);
 
+      /*
+        **この窓の行だけを見る**（2026-08-24）。ローカルDBは共有で、同じ「ニュースの配信」を検査する
+        別ファイル（tenant-isolation.db.test.ts）が**別の窓で全利用者へ配る**ため、
+        user_id だけで絞ると相手の配信も数えて「1件のはずが2件」で落ちる。
+        並列実行の順番で出たり出なかったりする＝flakyではなく、絞り込み漏れ。
+      */
       const load = async (uid: string) =>
         (
           await withTransaction((c) =>
-            c.query<{ total_count: number; news_item_ids: string[]; email_status: string; in_app_enabled: boolean }>(
+            c.query<{ total_count: number; news_item_ids: string[]; in_app_enabled: boolean }>(
               `select (payload->>'total_count')::int as total_count,
                       payload->'news_item_ids' as news_item_ids,
-                      email_status, in_app_enabled
-                 from notifications where user_id = $1 and type = 'news'`,
-              [uid],
+                      in_app_enabled
+                 from notifications
+                where user_id = $1 and type = 'news' and dedupe_key = $2`,
+              [uid, newsDigestDedupeKey(windowStart)],
             ),
           )
         ).rows;
@@ -178,12 +178,11 @@ describe("fanOutNewsDigest (db)", () => {
       expect(a[0].total_count).toBe(2); // ai/high + web3/mid
       expect(a[0].news_item_ids[0]).toBe(seed.aiHigh); // high ranked before mid
       expect(a[0].in_app_enabled).toBe(true);
-      expect(a[0].email_status).toBe("not_requested"); // email off
 
       const b = await load(seed.userB);
       expect(b).toHaveLength(1);
       expect(b[0].total_count).toBe(1); // ai/high only
-      expect(b[0].email_status).toBe("queued"); // email on
+      expect(b[0].in_app_enabled).toBe(true);
 
       expect(await load(seed.userOff)).toHaveLength(0);
       expect(await load(seed.userCanceled)).toHaveLength(0);
@@ -227,14 +226,12 @@ describe("fanOutNewsDigest (db)", () => {
         categories: ["ai"],
         impact: ["high"],
         newsInApp: true,
-        newsEmail: false,
       });
       const alive = await makeUser(c, {
         status: "active",
         categories: ["ai"],
         impact: ["high"],
         newsInApp: true,
-        newsEmail: false,
       });
       await c.query(
         `insert into news_items (category, title, summary, source_url, impact, fetched_at)
@@ -273,7 +270,12 @@ describe("fanOutNewsDigest (db)", () => {
       });
       expect(res.notified, `配信されなかった。状態: ${JSON.stringify(ctx)}`).toBeGreaterThanOrEqual(1);
       const alive = await withTransaction((c) =>
-        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+        // この窓の行だけを見る（他ファイルの fan-out が別の窓で同じ利用者へ配るため・2026-08-24）。
+        c.query(
+          `select 1 from notifications
+            where user_id = $1 and type = 'news' and dedupe_key = $2`,
+          [seed.alive, newsDigestDedupeKey(windowStart)],
+        ),
       );
       expect(alive.rows, "残っている利用者へは届く").toHaveLength(1);
     } finally {
@@ -350,7 +352,12 @@ describe("fanOutNewsDigest (db)", () => {
       await fanOut;
       fanOut = null;
       const alive = await withTransaction((c) =>
-        c.query(`select 1 from notifications where user_id = $1 and type = 'news'`, [seed.alive]),
+        // この窓の行だけを見る（他ファイルの fan-out が別の窓で同じ利用者へ配るため・2026-08-24）。
+        c.query(
+          `select 1 from notifications
+            where user_id = $1 and type = 'news' and dedupe_key = $2`,
+          [seed.alive, newsDigestDedupeKey(windowStart)],
+        ),
       );
       expect(alive.rows, "退会の巻き添えにならず配信される").toHaveLength(1);
     } finally {

@@ -17,7 +17,7 @@ export const metadata: Metadata = {
  * 追加した項目（草案では欠けていた法定事項）:
  * - **商品代金以外に必要な費用**: BYOKプランでは利用者がX APIと生成AI APIの従量課金を
  *   直接負担する。法11条の「その他負担すべき金銭」に当たるため必須。
- * - **販売条件（数量の制限）**: 連携できるXアカウント数とプレミアムの月間利用枠。
+ * - **販売条件（数量の制限）**: 連携できるXアカウント数とプレミアムの利用枠（契約期間ごと・T-M8-259）。
  * - **申込みの有効期限**、**返品特約**（デジタルサービスのため返品不可である旨の明示）。
  * 金額・上限は `PLANS` から描画する（画面へ数字を書き写さない）。
  */
@@ -25,10 +25,10 @@ export default function CommercialTransactionsPage() {
   const premium = PLANS.premium.usageLimits;
   // 表示するのは**実際に支払う額**（法11条の販売価格）。キャンペーン中はその旨と
   // 終了後の予定額も併記する（値上げを隠して申し込ませない・T-M8-118）。
-  const priceLine = [PLANS.standard, PLANS.md, PLANS.premium]
+  const priceLine = [PLANS.standard, PLANS.premium, PLANS.expert]
     .map((plan) => `${plan.displayName} ${plan.monthlyPriceJpy.toLocaleString()}円`)
     .join("／");
-  const afterCampaignLine = [PLANS.standard, PLANS.md, PLANS.premium]
+  const afterCampaignLine = [PLANS.standard, PLANS.premium, PLANS.expert]
     .map((plan) => `${plan.displayName} ${plan.regularPriceJpy.toLocaleString()}円`)
     .join("／");
 
@@ -49,9 +49,9 @@ export default function CommercialTransactionsPage() {
     {
       term: "商品代金以外に必要な費用",
       description:
-        `${PLANS.standard.displayName}および${PLANS.md.displayName}をご利用の場合、X APIおよび生成AIのAPIキーはお客様ご自身でご用意いただくため、` +
+        `${PLANS.standard.displayName}をご利用の場合、X APIおよび生成AIのAPIキーはお客様ご自身でご用意いただくため、` +
         `月額料金とは別に、X社および各AI事業者からお客様へ直接、従量課金による利用料が請求されます（金額はご利用量により変動し、当方は関与しません）。` +
-        `${PLANS.premium.displayName}では、これらのAPI利用料の追加負担はありません。インターネット接続に必要な通信料はお客様のご負担となります。`,
+        `${PLANS.premium.displayName}および${PLANS.expert.displayName}では、これらのAPI利用料の追加負担はありません。インターネット接続に必要な通信料はお客様のご負担となります。`,
     },
     {
       term: "支払方法",
@@ -76,10 +76,11 @@ export default function CommercialTransactionsPage() {
     {
       term: "販売条件（ご利用の制限）",
       description:
-        `連携できるXアカウント数は、${PLANS.standard.displayName}は${PLANS.standard.xAccountLimit}件、${PLANS.md.displayName}および${PLANS.premium.displayName}は${PLANS.premium.xAccountLimit}件です。` +
+        `連携できるXアカウント数は、${PLANS.standard.displayName}・${PLANS.premium.displayName}が${PLANS.standard.xAccountLimit}件、${PLANS.expert.displayName}が${PLANS.expert.xAccountLimit}件です。` +
         (premium
-          ? `${PLANS.premium.displayName}には月間の利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。`
+          ? `${PLANS.premium.displayName}には契約期間（お支払いの更新日から次の更新日まで）ごとの利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。使い残した分は次の契約期間へ繰り越されません。無料トライアル期間にも同じ利用枠があり、有料の契約期間が始まる時点で利用枠は新しい上限に戻ります。`
           : "") +
+        `${PLANS.expert.displayName}に利用枠はありません（通常の利用を大きく超える連続的な利用を検知した場合、実行を一時的に停止することがあります）。` +
         "また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に上限を設けています。",
     },
     {
@@ -105,9 +106,22 @@ export default function CommercialTransactionsPage() {
   ];
 
   return (
-    <LegalDocument title="特定商取引法に基づく表記" updatedLabel="最終更新: 2026年8月8日">
+    <LegalDocument title="特定商取引法に基づく表記" updatedLabel="最終更新: 2026年8月23日">
       <p>
         特定商取引法第11条（通信販売についての広告）に基づき、次のとおり表示します。
+      </p>
+      {/*
+        **住所・電話番号の省略には、この一文の表示が要る**（運営者の指示 2026-08-25）。
+        消費者庁「通信販売広告Q&A」Q17: 請求により広告表示事項を記載した書面・電子メール等を
+        遅滞なく提供する旨を**広告に表示し**、かつ実際に遅滞なく提供できる措置を講じている場合に
+        限り、住所・電話番号の表示を省略できる（2026-08-25 に消費者庁のページで確認）。
+        **書くだけでは足りず、実際に応じられることが条件。** 問い合わせ窓口を止めるなら
+        住所の表示へ戻すこと（`lib/legal-entity.ts` の `address`）。
+      */}
+      <p>
+        本表記に記載のない事項、および所在地・電話番号については、
+        {LEGAL_ENTITY.email} へご請求いただければ、遅滞なく書面または電子メールにて
+        お知らせします。
       </p>
       <LegalDefinitions items={items} />
     </LegalDocument>

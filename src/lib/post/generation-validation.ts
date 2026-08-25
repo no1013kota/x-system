@@ -3,6 +3,7 @@ import type { ThreadItem } from "@/lib/ai/gen-output";
 import { matchNgWords } from "./ng-words";
 import {
   MAX_WEIGHTED_LENGTH,
+  maxWeightedLengthFor,
   measurePostText,
   MIN_SHORTENED_WEIGHTED_LENGTH,
   TARGET_WEIGHTED_LENGTH,
@@ -42,13 +43,16 @@ export const PATTERN_MAX_POSTS: Record<string, number> = {
 /**
  * 下書き編集時のポスト再検証（要件06 §4.3, T-M3-10）。加重文字数を再計算し、length/cashtag/NG の
  * 警告を付け直す。PT-FIX短縮・SSRF・インジェクション判定は行わない（生成時の finalizeThread が担う）。
+ * `premium`（X Premium加入アカウント）は上限を25,000へ緩和する（T-M8-221。投稿直前の再検証と同じ判定）。
  */
 export function revalidateEditedThread(
   posts: { local_id?: string; text: string; sources?: string[] }[],
   ngWords: readonly string[],
+  opts: { premium?: boolean } = {},
 ): ThreadItem[] {
+  const limit = maxWeightedLengthFor(opts.premium ?? false);
   return posts.map((post, index) => {
-    const metrics = measurePostText(post.text);
+    const metrics = measurePostText(post.text, limit);
     const warnings: string[] = [];
     if (!metrics.withinLimit) warnings.push(WARNING.lengthExceeded);
     if (!metrics.cashtagOk) warnings.push(WARNING.cashtagMultiple);

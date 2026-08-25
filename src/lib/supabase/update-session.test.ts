@@ -8,12 +8,20 @@ const mocks = vi.hoisted(() => ({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
     NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
   },
+  captureServerException: vi.fn(),
+  secret: Buffer.alloc(32, 5),
 }));
 
 vi.mock("@supabase/ssr", () => ({
   createServerClient: mocks.createServerClient,
 }));
 vi.mock("@/lib/env", () => ({ env: mocks.env }));
+vi.mock("@/lib/crypto", () => ({
+  getAppEncryptionKey: () => mocks.secret,
+}));
+vi.mock("@/lib/observability/sentry", () => ({
+  captureServerException: mocks.captureServerException,
+}));
 
 import { updateSupabaseSession } from "./update-session";
 
@@ -64,23 +72,55 @@ describe("updateSupabaseSession", () => {
     );
   });
 
-  it.each(["active", "trialing", "past_due", "unpaid", "paused", "canceled"])(
-    "allows an authenticated %s profile to browse app routes",
-    async (subscriptionStatus) => {
-      const maybeSingle = vi.fn().mockResolvedValue({
-        data: { plan: "standard", subscription_status: subscriptionStatus },
-        error: null,
-      });
-      const eq = vi.fn().mockReturnValue({ maybeSingle });
-      const select = vi.fn().mockReturnValue({ eq });
+  it("forwards a refreshed cookie and verified anonymous state upstream", async () => {
+    mocks.createServerClient.mockImplementation((_url, _key, options) => ({
+      auth: {
+        getUser: vi.fn().mockImplementation(async () => {
+          options.cookies.setAll(
+            [{ name: "sb-auth", value: "refreshed", options: {} }],
+            { "Cache-Control": "private, no-store" },
+          );
+          return { data: { user: null }, error: null };
+        }),
+      },
+    }));
+
+    const response = await updateSupabaseSession(
+      new NextRequest("https://exos-ai.example/login"),
+    );
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "sb-auth=refreshed",
+    );
+    expect(
+      response.headers.get("x-middleware-request-x-exos-verified-auth"),
+    ).toBe("anonymous-v1");
+  });
+
+  /**
+   * **契約状態は proxy で見ない**（T-M8-268）。画面を弾かなくなったので、`/app` 配下の
+   * 全リクエストで走っていた profiles の SELECT も消した（遷移のたびの往復を1本削減）。
+   */
+  it.each([
+    "active",
+    "trialing",
+    "past_due",
+    "unpaid",
+    "paused",
+    "canceled",
+    "incomplete",
+    "incomplete_expired",
+  ])("allows an authenticated %s profile to browse app routes", async () => {
+      const from = vi.fn();
       mocks.createServerClient.mockReturnValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: "user-1" } },
+            data: { user: { id: "user-1", email: "user@example.com" } },
             error: null,
           }),
         },
-        from: vi.fn().mockReturnValue({ select }),
+        from,
       });
 
       const response = await updateSupabaseSession(
@@ -88,18 +128,21 @@ describe("updateSupabaseSession", () => {
       );
 
       expect(response.headers.get("location")).toBeNull();
-      expect(select).toHaveBeenCalledWith("plan, subscription_status");
-      expect(eq).toHaveBeenCalledWith("id", "user-1");
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-auth"),
+      ).toBe("authenticated-v1");
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-user-id"),
+      ).toBe("user-1");
+      expect(
+        response.headers.get("x-middleware-request-x-exos-verified-user-email"),
+      ).toBe("user%40example.com");
+      // profiles を読まない（画面遷移のたびのDB往復をやめた・T-M8-268）。
+      expect(from).not.toHaveBeenCalled();
     },
   );
 
-  it("redirects an incomplete profile to plans but allows billing/support tabs", async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({
-      data: { plan: null, subscription_status: "incomplete" },
-      error: null,
-    });
-    const eq = vi.fn().mockReturnValue({ maybeSingle });
-    const select = vi.fn().mockReturnValue({ eq });
+  it("プラン未選択でも /app 配下を閲覧できる（T-M8-268）", async () => {
     mocks.createServerClient.mockReturnValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -107,23 +150,15 @@ describe("updateSupabaseSession", () => {
           error: null,
         }),
       },
-      from: vi.fn().mockReturnValue({ select }),
+      from: vi.fn(),
     });
 
-    const blocked = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/posts"),
-    );
-    const billing = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/settings?tab=billing"),
-    );
-    const support = await updateSupabaseSession(
-      new NextRequest("https://exos-ai.example/app/settings?tab=support"),
-    );
-
-    expect(blocked.headers.get("location")).toBe(
-      "https://exos-ai.example/plans",
-    );
-    expect(billing.headers.get("location")).toBeNull();
-    expect(support.headers.get("location")).toBeNull();
+    for (const path of ["/app/posts", "/app/invite", "/app/settings?tab=billing"]) {
+      const response = await updateSupabaseSession(
+        new NextRequest(`https://exos-ai.example${path}`),
+      );
+      expect(response.headers.get("location")).toBeNull();
+    }
   });
+
 });

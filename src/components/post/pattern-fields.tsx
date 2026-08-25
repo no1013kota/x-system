@@ -14,10 +14,10 @@ import {
   PATTERN_PLACEHOLDER_MAX,
   PATTERN_PLACEHOLDER_NAME_MAX_CHARS,
   PATTERN_PROMPT_MAX_CHARS,
-  threadCountFromPromptLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
+import { extractPlaceholderNames } from "@/lib/post/pattern-spec";
 
 /**
  * 投稿パターンの入力欄（T-M8-130）。
@@ -31,18 +31,20 @@ import {
  */
 
 
-/** 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。 */
+/**
+ * 画面が扱う1件分の値。`maxPosts` は総ポスト数（表示はスレッド数へ変換する）。
+ * プレースホルダーの定義は持たない——**本文の `{名前}` から自動で導出する**
+ * （T-M8-194・運営者の指示 2026-08-22。手で名前を並べる欄は廃止した）。
+ */
 export interface PatternDraft {
   name: string;
   description: string;
   prompt: string;
-  /** プロンプト内の `{名前}` に差し込む入力の定義。 */
-  placeholders: { name: string }[];
 }
 
 /** 新規作成の初期値。プロンプトは雛形を入れて渡す（呼び出し側で `NEW_PATTERN_PROMPT_TEMPLATE`）。 */
 export function emptyPatternDraft(prompt: string): PatternDraft {
-  return { name: "", description: "", prompt, placeholders: [] };
+  return { name: "", description: "", prompt };
 }
 
 export function toPatternDraft(
@@ -53,13 +55,14 @@ export function toPatternDraft(
     name: item.name,
     description: item.description ?? "",
     prompt: prompt?.content ?? "",
-    placeholders: item.placeholders.map((ph) => ({ name: ph.name })),
   };
 }
 
 /**
  * サーバーへ送る形（`snake_case`）。
  * 既定パターンで本文がシステム既定と同じなら `null`（＝既定のまま）にする。
+ * placeholders は本文の `{名前}` から導出する（保存時の導出
+ * `applyUpdatePatternPrompt`（T-M8-186）と同じ規則。宣言と本文がズレない）。
  */
 export function toPatternPayload(draft: PatternDraft, systemDefaultPrompt: string | null) {
   const prompt = draft.prompt.trim();
@@ -68,9 +71,7 @@ export function toPatternPayload(draft: PatternDraft, systemDefaultPrompt: strin
     name: draft.name,
     description: draft.description.trim() === "" ? null : draft.description.trim(),
     prompt: isDefaultBody ? null : prompt,
-    placeholders: draft.placeholders
-      .map((ph) => ({ name: ph.name.trim() }))
-      .filter((ph) => ph.name.length > 0),
+    placeholders: extractPlaceholderNames(prompt).map((name) => ({ name })),
   };
 }
 
@@ -117,16 +118,52 @@ export function actionReason(res: unknown): string | undefined {
   return typeof details?.reason === "string" ? details.reason : undefined;
 }
 
+/**
+ * 「{名前} と書くと入力欄が出る」の目立つ説明（T-M8-203・運営者の指示 2026-08-22）。
+ * 小さな注記では気付かれなかったため、投稿作成・スケジュール・設定＞プロンプトの
+ * すべてでこのカラウトだけを出す（グレー小の列挙は廃止・運営者の指示 2026-08-22）。
+ *
+ * `prompt` を渡すと、本文から導出したプレースホルダーを説明文の下に一覧する
+ * （設定＞プロンプト用・運営者の指示 2026-08-22。投稿作成・スケジュールは実際の
+ * 入力欄がすぐ下に並ぶため渡さない＝二重に見せない）。
+ */
+export function PlaceholderCallout({ prompt }: { prompt?: string }) {
+  const names = prompt == null ? [] : extractPlaceholderNames(prompt);
+  return (
+    <div className="mt-2 rounded-card border border-brand/40 bg-brand-subtle px-3 py-2.5 text-body leading-[1.7] text-ink">
+      <span className="font-bold text-brand">プロンプトの中に {"{名前}"} と書くと、</span>
+      その名前の入力欄がこの下に自動で出ます。生成のたびに入力した内容が {"{名前}"} の位置へ
+      差し込まれます（例: <code>{"{自分の考え}"}</code>）。
+      {names.length > 0 ? (
+        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="font-bold text-brand">このプロンプトのプレースホルダー:</span>
+          {names.map((name) => (
+            <code
+              className="rounded-card border border-brand/30 bg-surface px-1.5 py-0.5 text-caption"
+              key={name}
+            >
+              {`{${name}}`}
+            </code>
+          ))}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PatternFields({
   draft,
   idPrefix,
   onChange,
   promptRequired,
+  listPlaceholders = false,
 }: {
   draft: PatternDraft;
   idPrefix: string;
   onChange: (next: Partial<PatternDraft>) => void;
   promptRequired: boolean;
+  /** true = カラウト内にプレースホルダー一覧も出す（設定＞プロンプト・運営者の指示 2026-08-22）。 */
+  listPlaceholders?: boolean;
 }) {
   const over = draft.prompt.length > PATTERN_PROMPT_MAX_CHARS;
   return (
@@ -155,65 +192,6 @@ export function PatternFields({
         </label>
       </div>
 
-      {/*
-        **入力項目（プレースホルダー）**（T-M8-132・運営者の指示 2026-08-18）。
-        プロンプトの中に `{名前}` と書いておくと、投稿作成画面にその名前の入力欄が出て、
-        入力した内容が `{名前}` の位置へ差し込まれる。
-        「自分の考え」のような固定の入力欄をやめ、型ごとに何を毎回入れたいかを決められるようにした。
-      */}
-      <fieldset>
-        <legend className="mb-1 text-body font-medium">プレースホルダー（任意）</legend>
-        <p className="mb-2 text-caption text-ink-3">
-        ここでプレースホルダー名を決めて、下のプロンプトの中に <code>{"{プレースホルダー名}"}</code>{" "}
-          と書いてください。投稿作成のときにその名前の入力欄が出て、入力した内容が{" "}
-          <code>{"{プレースホルダー名}"}</code> の位置に入ります。
-        </p>
-        <div className="space-y-2">
-          {draft.placeholders.map((ph, index) => (
-            <div className="flex items-center gap-2" key={index}>
-              <input
-                aria-label={`プレースホルダー名${index + 1}`}
-                className="h-9 w-full max-w-xs rounded-card border border-hairline bg-surface px-2 text-body"
-                id={`${idPrefix}-placeholder-${index}`}
-                maxLength={PATTERN_PLACEHOLDER_NAME_MAX_CHARS}
-                onChange={(e) =>
-                  onChange({
-                    placeholders: draft.placeholders.map((cur, i) =>
-                      i === index ? { name: e.target.value } : cur,
-                    ),
-                  })
-                }
-                placeholder="例: 自分の考え"
-                value={ph.name}
-              />
-              <span className="text-caption text-ink-3">
-                プロンプトには <code>{`{${ph.name || "名前"}}`}</code>
-              </span>
-            <button
-                // パターン自体の「削除」と紛れないよう、読み上げ名を分ける。
-                aria-label={`プレースホルダー${ph.name ? `「${ph.name}」` : index + 1}を削除`}
-                className="ml-auto shrink-0 text-body text-danger-fg hover:underline"
-                onClick={() =>
-                  onChange({ placeholders: draft.placeholders.filter((_, i) => i !== index) })
-                }
-                type="button"
-              >
-                削除
-              </button>
-            </div>
-          ))}
-        </div>
-        {draft.placeholders.length < PATTERN_PLACEHOLDER_MAX ? (
-          <button
-            className="mt-2 text-body text-info-fg hover:underline"
-            onClick={() => onChange({ placeholders: [...draft.placeholders, { name: "" }] })}
-            type="button"
-          >
-          プレースホルダーを追加
-          </button>
-        ) : null}
-      </fieldset>
-
       <div>
         <div className="flex items-center justify-between">
           <label className="text-body font-medium" htmlFor={`${idPrefix}-prompt`}>
@@ -231,12 +209,34 @@ export function PatternFields({
           value={draft.prompt}
         />
         {/*
-          **分量はプロンプトから読む**（T-M8-132）。読み取った結果をその場に出す——
-          書いたつもりの本数と実際に作られる本数が違うことに、生成してから気付かないようにする。
+          プレースホルダーは本文の {名前} から自動で作られる（T-M8-194）。スレッド数・
+          プレースホルダーのグレー小の列挙は出さない（運営者の指示 2026-08-22）。上限超過
+          だけは黙って捨てず警告する（原則1）。
         */}
-        <p className="mt-1 text-caption text-ink-3">{threadCountFromPromptLabel(draft.prompt)}</p>
+        <PlaceholderOverflowWarning prompt={draft.prompt} />
+        <PlaceholderCallout prompt={listPlaceholders ? draft.prompt : undefined} />
       </div>
     </div>
+  );
+}
+
+/**
+ * プレースホルダーの上限超過だけを警告する（一覧の常時表示はしない・運営者の指示 2026-08-22）。
+ * 11個目以降が黙って文字のまま送られる状態を作らない（原則1）。
+ */
+export function PlaceholderOverflowWarning({ prompt }: { prompt: string }) {
+  const names = extractPlaceholderNames(prompt);
+  // 上限＋1で数え直して超過を検出する（黙って11個目以降を捨てない・原則1）。
+  const overflowing = extractPlaceholderNames(prompt, PATTERN_PLACEHOLDER_MAX + 1).length > names.length;
+  return (
+    <>
+      {overflowing ? (
+        <p className="mt-1 text-caption font-medium text-danger-fg">
+          プレースホルダーは{PATTERN_PLACEHOLDER_MAX}個までです。{PATTERN_PLACEHOLDER_MAX + 1}
+          個目以降の {"{名前}"} には入力欄が出ず、そのままの文字でAIへ渡ります。
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -279,10 +279,13 @@ export function DeletePatternButton({
           <AlertDialog.Title className="text-body font-bold text-ink">
             「{name}」を削除しますか？
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 text-body text-ink-2">
-            過去の下書き・履歴の表示は名前のまま残ります。このパターンを使っている予約は
-            停止し、曜日・時刻・テーマは残るので別のパターンを選べば再開できます。
-            はじめから用意されているパターンは、あとから「既定のパターンを戻す」で復元できます。
+          {/* 説明は簡潔な箇条書きで（運営者の指示 2026-08-22・T-M8-205）。 */}
+          <AlertDialog.Description className="mt-2 text-body text-ink-2" render={<div />}>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>過去の下書き・履歴は残ります</li>
+              <li>このパターンを使う予約は停止します（別のパターンを選べば再開できます）</li>
+              <li>既定のパターンは「既定のパターンを戻す」で復元できます</li>
+            </ul>
           </AlertDialog.Description>
           <div className="mt-4 flex justify-end gap-2">
             <AlertDialog.Close className="inline-flex h-9 items-center rounded-card border border-hairline px-4 text-body">

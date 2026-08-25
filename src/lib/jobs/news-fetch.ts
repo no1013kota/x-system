@@ -6,7 +6,7 @@ import { providerFailureCode, providerRawOutputOf } from "../ai/pipeline";
 import { formatFailureRawError } from "../ai/raw-error";
 
 /**
- * news_fetch オーケストレーション（要件04 §2/§6, N-1, T-M4-11）。6分野を最大3並列でリサーチし、
+ * news_fetch オーケストレーション（要件04 §2/§6, N-1, T-M4-11）。6分野を同時（最大6並列）にリサーチし、
  * 分野ごとに独立してnews_itemsへcommitする。1分野が失敗しても他分野をrollbackせず、失敗分野は
  * 既存ニュースを保持して onError（Sentry想定）へ記録し次回起動へ委ねる（要件04 §6）。
  * 窓の重なりで届く同一記事は `source_url` を canonical 化した unique 制約（on conflict do nothing）で
@@ -62,7 +62,13 @@ export function emptyReasonOf(
   return r.dropped > 0 ? "all_dropped" : "no_match";
 }
 
-const DEFAULT_CONCURRENCY = 3;
+/**
+ * 既定は全6分野を同時に回す（T-M8-189/192）。3並列のままだと6分野が2巡になり、
+ * 1巡目が遅い窓（web検索＋pause_turn継続で1分野100〜180秒は正当に起こる）で
+ * 関数のmaxDurationを超え、**後半分野の結果とダイジェスト通知が黙って消える**。
+ * 1巡＝最悪1分野ぶんの所要（≈180秒）に収めるのが目的で、費用は並列度に依存しない。
+ */
+const DEFAULT_CONCURRENCY = 6;
 
 /** 分野の新規ニュースを保存する（canonical source_url・on conflict do nothing で重複排除）。 */
 async function saveItems(

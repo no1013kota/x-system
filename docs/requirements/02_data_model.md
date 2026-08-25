@@ -2,15 +2,15 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.43 |
-| 更新日 | 2026-08-18 |
+| バージョン | v1.73 |
+| 更新日 | 2026-08-25 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
 
 - 主キーは原則`uuid`、既定値は`gen_random_uuid()`。
 - 作成日時は`created_at timestamptz not null default now()`、更新対象は`updated_at timestamptz not null default now()`を持つ。
-- DB保存時刻はUTC、表示・月次カウント・スケジュール判定・日次上限はJST。
+- DB保存時刻はUTC、表示・利用枠の期間キー（契約期間の開始日）・スケジュール判定・日次上限はJST。
 - ユーザー所有データは`user_id`または`x_account_id`経由でRLSを適用する。
 - 認証済みクライアントには原則selectだけを許可し、insert/update/deleteはzod検証と所有権確認を行うServer Action/APIだけに許可する。
 - `service_role`にはpublicスキーマ全体のDML権限を付与する（Supabase既定と同じ姿勢。以降追加されるテーブルにも既定権限で自動付与）。RLSをバイパスするserver-only専用ロールであり、PostgREST経由の管理系クエリが権限エラーで落ちないようにする。付与漏れは直結pg（postgresで接続）では露見しないため、`service-role-grants.db.test.ts`で全テーブルを検査する。
@@ -22,7 +22,7 @@
 
 | enum | 値 |
 |---|---|
-| `plan_type` | `standard`, `md`, `premium` |
+| `plan_type` | `standard`, `premium`, `expert`（T-M8-168で入れ替え。旧md→standard・旧standard→NULL） |
 | `subscription_status` | `incomplete`, `incomplete_expired`, `trialing`, `active`, `past_due`, `paused`, `canceled`, `unpaid` |
 | `api_provider` | `x`, `anthropic`, `openai`, `google` |
 | `api_key_status` | `valid`, `invalid`, `unchecked` |
@@ -30,7 +30,7 @@
 | `x_account_status` | `active`, `expired`, `disabled`, `error` |
 | `learning_source_type` | `ref_account`, `ref_post`, `own_posts` |
 | `learning_source_status` | `pending`, `analyzed`, `failed`, `removing`, `removed` |
-| `news_category` | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns` |
+| `news_category` | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`, `love`, `beauty`（運用は6分野＝ai/web3/sns/investment/love/beauty。business系はT-M8-189で運用終了・既存データ用に残置） |
 | `impact_level` | `high`, `mid`, `low` |
 | `job_kind` | `post_generation`, `image_generation`, `post_publish`, `learning_analysis`, `md_merge`, `suggestion` |
 | `job_trigger` | `manual`, `news`, `schedule`, `system` |
@@ -43,7 +43,6 @@
 | `usage_event_reason` | `reserve`, `refund`, `consume` |
 | `usage_event_operation` | `generation`, `image_generation`, `post_create`, `post_delete` |
 | `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary` |
-| `email_delivery_status` | `not_requested`, `queued`, `sent`, `failed` |
 
 ## 3. テーブル定義
 
@@ -53,13 +52,20 @@
 |---|---|---|---|
 | `id` | `uuid` | PK, FK `auth.users.id` | ユーザーID |
 | `email` | `text` | not null | メールアドレス |
-| `plan` | `plan_type` | not null default `standard` | 現在プラン |
+| `plan` | `plan_type` | **nullable・defaultなし**（T-M8-168） | 現在プラン。**未契約は NULL**（checkout完了時にsubscription-syncが設定） |
 | `stripe_customer_id` | `text` | unique null | Stripe customer |
 | `stripe_subscription_id` | `text` | unique null | Stripe subscription |
 | `subscription_status` | `subscription_status` | not null default `incomplete` | 課金状態 |
 | `subscription_event_created_at` | `timestamptz` | null | 最後に反映したStripe event時刻 |
+| `current_period_start` | `timestamptz` | null | 現在期間開始。利用枠の期間キー（JST日付）の元。nullは未同期＝暦月で数える（T-M8-258） |
+| `usage_epoch` | `integer` | not null default 0, >= 0 | 利用枠の世代。**期間の途中で枠を0へ戻す**ときに増やす（T-M8-299）。期間キーは `YYYY-MM-DD` の後ろに `#世代` が付く（0のときは付かないので既存の枠は動かない）。Stripeはトライアル中の価格変更で `current_period_start` を動かさない（2026-08-25 実測）ため、日付だけでは同日のリセットを区切れない。`usage_events` は消さないので原価の台帳は残る |
+| `discount_percent_off` | `integer` | null, 1〜100 | 適用中クーポンの割引率。プラン名の下の表示に使う（T-M8-279） |
+| `discount_amount_off_jpy` | `integer` | null, `> 0` | 適用中クーポンの割引額（円） |
+| `discount_ends_at` | `timestamptz` | null | 割引の終了日時。nullは終了日なし |
 | `current_period_end` | `timestamptz` | null | 現在期間終了 |
 | `cancel_at_period_end` | `boolean` | not null default false | 期間末解約予定 |
+| `scheduled_plan` | `plan_type` | null | 期間末で切り替わる予約先のプラン（Portalの値下げ予約＝Stripe subscription schedule の次フェーズ。T-M8-260） |
+| `scheduled_plan_at` | `timestamptz` | null | 予約が効く日時。`scheduled_plan` と必ず対（CHECK `profiles_scheduled_plan_pair`） |
 | `trial_ends_at` | `timestamptz` | null | trial終了 |
 | `trial_used_at` | `timestamptz` | null | 初回trial付与日時。再付与防止 |
 | `terms_version` | `text` | null | 同意済み利用規約version |
@@ -113,6 +119,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `handle` | `text` | not null | `@`なし |
 | `name` | `text` | not null | X表示名 |
 | `profile_image_url` | `text` | null | Xプロフィール画像 |
+| `x_premium` | `boolean` | not null default `false` | X Premium加入（`/users/me` の `verified_type` = blue/business。users/meを呼ぶたびに更新・T-M8-219） |
 | `auth_type` | `x_auth_type` | not null | BYOK/managed |
 | `access_token_ciphertext` | `text` | null | 切断時はnull |
 | `refresh_token_ciphertext` | `text` | null | 暗号化済み |
@@ -157,6 +164,8 @@ RLS: 本人select可。writeはServer Actionのみ。
 | `created_at` | `timestamptz` | not null default now() |  |
 
 Constraints: unique(`x_account_id`, `version`), `version > 0`
+
+**保持は1 x_accountあたり最新5版まで**（T-M8-156・運営者の指示 2026-08-20）。版はアカウント.md**全文**を持ち、`md_merge`が学習のたびに自動で積むため、上限が無いと利用者の操作なしにストレージが増え続ける（原則4「費用が見える」）。刈り込みは`pruneBaseMdVersions`（`src/lib/base-md-history.ts`）で、**版を積んだのと同じtransaction内**で行う（別ジョブに寄せると忘れたら効かない手順になる・原則3）。適用対象は`settings`／`learning`／`manual`／`rollback`の全経路。**この上限はロールバック可能な範囲でもある**——6版以上前へは戻せない（要件05）。
 
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
@@ -206,7 +215,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `category` | `news_category` | not null | 6分野（AI/Web3/投資/ビジネス/業務改善/SNS運用） |
+| `category` | `news_category` | not null | 分野（運用6: AI/Web3/SNS運用/投資/恋愛/美容。T-M8-189） |
 | `title` | `text` | not null |  |
 | `summary` | `text` | not null |  |
 | `source_url` | `text` | not null unique | canonical化して重複排除 |
@@ -284,6 +293,7 @@ RLS: 本人select可。writeはServer only。
 | `root_tweet_id` | `text` | null | スレッド先頭 |
 | `tweet_ids` | `jsonb` | not null default `[]` | 投稿順のtweet_id配列 |
 | `posted_mode` | `posted_mode` | null | auto/manual |
+| `scheduled_at` | `timestamptz` | null | 投稿予約日時（UTC保存・画面はJST）。**`status=draft` のときだけ意味を持ち、`not null` が予約済みを表す**（T-M8-157） |
 | `posted_at` | `timestamptz` | null | 投稿完了時刻。部分失敗で残存IDが確定した時も設定し、metrics_collectorのcheckpoint基準（アンカー）とする（要件04 §13） |
 | `tweet_metrics` | `jsonb` | not null default `{}` | tweet_id・checkpoint別実績 |
 | `next_metrics_at` | `timestamptz` | null | 次checkpoint/retryのdue時刻 |
@@ -292,7 +302,7 @@ RLS: 本人select可。writeはServer only。
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Indexes: (`x_account_id`, `status`, `created_at desc`), (`x_account_id`, `posted_at desc`), (`next_metrics_at`) where `metrics_completed_at is null`, `source_news_item_id`, `parent_draft_id`
+Indexes: (`x_account_id`, `status`, `created_at desc`), (`x_account_id`, `posted_at desc`), **(`x_account_id`, `coalesce(posted_at, updated_at) desc`, `created_at desc`)**（一覧の並び順に一致させる式索引・migration `20260824000002`・T-M8-289。この式を変えると索引から外れ、アカウントの全行を読んで並べ直す形へ戻る）, (`next_metrics_at`) where `metrics_completed_at is null`, `source_news_item_id`, `parent_draft_id`
 
 RLS: x_account所有者select可。本文編集は`status = draft`のみServer Action経由。投稿状態とjobからの更新はServer only。
 
@@ -308,7 +318,7 @@ RLS: x_account所有者select可。本文編集は`status = draft`のみServer A
 | `weekdays` | `integer[]` | not null | 0=日〜6=土 |
 | `time_jst` | `time` | not null | 9:00〜22:00、00/30分 |
 | `mode` | `schedule_mode` | not null | 下書き/自動投稿 |
-| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの6値＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の6値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
+| `theme` | `text` | **not null**, CHECK（テーマ選択肢マスタの8値〔運用6＋旧2・T-M8-189〕＋`other`） | **テーマ**。**保存できる語彙**は`src/lib/post/post-theme.ts`の`POST_THEME_IDS`（§4.4の8値＋`other`）のまま——旧テーマの既存枠を壊さない。**画面で選べる選択肢**は運用中テーマ＋`other`（`SELECTABLE_POST_THEME_OPTIONS`・T-M8-100。編集中の運用外テーマは「（現在の設定）」として残す）。`other`＝「追加指示に記載」でプロンプトへテーマを出さない。**「指定なし」＝NULLは許さない**（既定のまま押されると選んだつもりで選んでいない状態になる） |
 | `instructions` | `text` | null | 追加指示 |
 | `image_enabled` | `boolean` | not null default false |  |
 | `source_url` | `text` | null, CHECK（`^https://`。投稿作成のzodと同条件） | **参考URL**（T-M8-135）。毎回このURLをAIが読んで題材にする。投稿作成画面の「参考にするURL」と同じもの |
@@ -323,6 +333,8 @@ Constraints: patternは`p5`不可、曜日は0〜6で1件以上、時刻は09:00
 RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.11 `follower_snapshots`
+
+フォロワー数の日次記録（K-3）。書き込みは毎時cron `follower_snapshot`（契約が有効な利用者のみ・T-M8-257）と投稿分析画面の「分析を開始」ボタンの2入口（要件04 §13）。X APIは履歴を提供しないため、記録が無い日は行が無い＝グラフ上の欠測になる（偽の値で埋めない）。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -363,7 +375,7 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `job_id` | `uuid` | FK nullable | 対象job |
 | `draft_id` | `uuid` | FK nullable | 対象draft |
 | `tweet_id` | `text` | null | 通常/URL付き投稿枠consume時 |
-| `month` | `text` | not null | JST `YYYY-MM` |
+| `month` | `text` | not null | 利用枠の期間キー。契約期間の開始日（JST `YYYY-MM-DD`）。未同期の利用者はJST暦月`YYYY-MM`（T-M8-258） |
 | `counter_type` | `usage_counter_type` | not null |  |
 | `operation` | `usage_event_operation` | not null | 消費・予約の操作種別 |
 | `delta` | `integer` | not null | 消費/返還クレジット数（±1〜±100000・T-M8-109。AIクレジットは円建て見積もり/実費） |
@@ -372,9 +384,11 @@ RLS: x_account所有者select可。writeはServer only（SUGGEST jobのみ作成
 | `ref_event_id` | `uuid` | self FK nullable | refund元reserve |
 | `created_at` | `timestamptz` | not null default now() |  |
 
-Constraints: month形式、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
+Constraints: month形式（`^\d{4}-\d{2}(-\d{2})?(#\d+)?$`・migration `20260825000003`。末尾の `#N` は利用枠リセットの世代＝`profiles.usage_epoch`。**世代を許さない形に戻すと、トライアル中に下位プランへ切り替えた利用者は以降の利用枠を記録できず生成が一切できなくなる**・T-M8-306）、deltaは±1〜±100000かつ0でない（migration `20260816000001`）、reserve/consumeは正、refundは負、refundは`ref_event_id`必須かつ元eventと同じcounter/month/operation。**精算（settle・T-M8-109）**は`job:{id}:{type}:settle`キーの追加イベントで表す——実費>見積もりはconsume（正）、実費<見積もりはrefund（負）、いずれも元reserveを`ref_event_id`で指す。`post_create`と`post_delete`はcounter_typeが`post_normal`または`post_url`かつreason=`consume`。同じtweet_idの`post_delete`は対応する`post_create`と同じcounter_typeを使う。
 
-Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`
+Indexes: (`user_id`, `month`), `job_id`, `draft_id`, `tweet_id`、**(`x_account_id`, `created_at desc`) where `operation='post_create'`**（部分索引・migration `20260824000001`・T-M8-294）
+
+**この表に保持期間は無い**（原価・利用枠の台帳として永続する。cleanup対象は`external_api_usage_events`であって本表ではない）。行は利用者数に比例して増え続けるため、**本表を読む経路には必ず索引が効く述語を使う**。当日投稿数の集計（`/app`の全描画・予約枠のenqueue・投稿実行の3経路）は上の部分索引に乗る**範囲比較**で書く——`(created_at at time zone 'Asia/Tokyo')::date = …` のように日付関数で包むと索引が使えず全走査になる（T-M8-294で実際にそうなっていた。200,000行のベンチでコスト2759→130）。
 
 RLS: 本人select可。writeはServer only。
 
@@ -383,7 +397,7 @@ RLS: 本人select可。writeはServer only。
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `user_id` | `uuid` | FK profiles, not null | 対象 |
-| `month` | `text` | not null | JST `YYYY-MM` |
+| `month` | `text` | not null | 利用枠の期間キー（`usage_events.month`と同じ。T-M8-258） |
 | `normal_posts_count` | `integer` | not null default 0 | URLなし通常投稿枠 |
 | `url_posts_count` | `integer` | not null default 0 | URL付き投稿枠 |
 | `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109。1クレジット=1円相当・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
@@ -391,7 +405,7 @@ RLS: 本人select可。writeはServer only。
 
 PK: (`user_id`, `month`)
 
-Constraints: month形式、各countは0以上。X投稿の上限はpremiumの`normal_posts_count <= 200`、`url_posts_count <= 20`。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
+Constraints: month形式、各countは0以上。X投稿のDB上限は**最大プラン（expert）の期間枠**（`normal_posts_count <= 1000`、`url_posts_count <= 100`。migration `20260822000003`・T-M8-196。プラン別の上限実施はアプリ側ゲートが正で、制約は破損防止の下限——200/20のままだとexpertの投稿がX公開後にcheck違反で壊れた）。`ai_credits_used`のDB上限は置かない（精算の追加消費は上限1000を超えても計上する——既に発生した実費は拒否できない・T-M8-109。上限判定はreserve時にアプリ側が行う）。
 
 RLS: 本人select可。writeはServer only。
 
@@ -408,25 +422,18 @@ RLS: 本人select可。writeはServer only。
 | `link` | `text` | null | アプリ内相対パス |
 | `payload` | `jsonb` | not null default `{}` | 種別固有データ。ニュースダイジェストは時間窓、件数、対象news item IDを保存 |
 | `in_app_enabled` | `boolean` | not null | 作成時設定のsnapshot |
-| `email_status` | `email_delivery_status` | not null default `not_requested` | メール送信状態 |
-| `email_attempts` | `integer` | not null default 0 | 送信試行回数 |
-| `email_available_at` | `timestamptz` | null | 次回retry可能時刻 |
-| `email_last_attempt_at` | `timestamptz` | null | 最終送信試行 |
-| `email_provider_id` | `text` | null | 送信サービスのmessage ID |
-| `email_sent_at` | `timestamptz` | null | 送信成功日時 |
-| `email_error` | `text` | null | 秘密値を含めない失敗要約 |
 | `read_at` | `timestamptz` | null | 既読 |
 | `created_at` | `timestamptz` | not null default now() |  |
 
+**メール配送台帳の列（`email_status`ほか7列）と `email_delivery_status` enum はT-M8-222で削除**（メール通知の廃止・migration `20260823000002`）。
+
 Unique index: (`user_id`, `dedupe_key`) where `dedupe_key is not null`
 
-Indexes: (`user_id`, `read_at`, `created_at desc`), (`email_status`, `email_available_at`)
+Indexes: (`user_id`, `read_at`, `created_at desc`)〔未読件数用〕, (`user_id`, `created_at desc`, `id desc`)〔一覧の並び順。無いと1ページ目のたびにその利用者の全通知を読む・T-M8-253〕
 
-Constraints: `email_attempts >= 0`。`email_status = queued`のとき`email_available_at`必須。
+RLS: 本人select可。writeはServer Action/API only。 保持は`created_at`から40日で、`scheduler_tick`のcleanupが1起動500件まで削除する（**type を問わない**・T-M8-246。**既読を先に消し未読は後**——読む前に消えると「来たはずの知らせが無い」になる）。以前は`type='news'`だけを消しており、毎日1通作られる`summary`が永久に積もっていた。
 
-RLS: 本人select可。writeはServer Action/API only。
-
-ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で`max_items`（1〜100、既定20）まで保存し、本文・メールには先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
+ニュースダイジェストの`payload`は次の形式とする。`news_item_ids`はユーザーの`news_config`に一致した新着だけを優先度順で**固定20件**まで保存し（旧`max_items`はT-M8-187で廃止）、本文には先頭5件を掲載する。保存上限を超える場合も`total_count`には全件数を入れる。
 
 ```json
 {
@@ -437,7 +444,7 @@ RLS: 本人select可。writeはServer Action/API only。
 }
 ```
 
-決済失敗通知は`dedupe_key=billing:invoice:{invoice_id}:payment_failed`でinvoiceごとに1件とし、`link=/app/settings?tab=billing`を保存する。`notification_config.billing`の両channelがOFFならrowを作らない。作成時の`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映し、監査可能なsnapshotもpayloadへ保存する。
+決済失敗通知は`dedupe_key=billing:invoice:{invoice_id}:payment_failed`でinvoiceごとに1件とし、`link=/app/settings?tab=billing`を保存する。`notification_config.billing.in_app`がOFFならrowを作らない（メール通知はT-M8-222で廃止）。作成時の`in_app`は`in_app_enabled`へ反映し、監査可能なsnapshotもpayloadへ保存する。
 
 ```json
 {
@@ -446,13 +453,12 @@ RLS: 本人select可。writeはServer Action/API only。
   "subscription_id": "sub_...",
   "subscription_status": "past_due",
   "notification_config_snapshot": {
-    "in_app": true,
-    "email": true
+    "in_app": true
   }
 }
 ```
 
-X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`・`invalid_request`。Xは失効・ローテート済みrefresh tokenに`invalid_request`を返すことがある——2026-08-15に実アカウントで確認・T-M8-96）・必要scope不足・refresh token不在で`x_accounts.status`を`active`→`expired`へ遷移させたときに`type=error`で1件作成し、`link=/app/settings?tab=api-keys`と`payload={x_account_id, reason}`を保存する。`notification_config.error`の両channelがOFFならrowを作らない（`in_app`は`in_app_enabled`、`email`は`email_status=queued|not_requested`と`email_available_at`へ反映）。`dedupe_key`は付けない（遷移は1エピソードにつき1度だけ通知作成が走るため重複せず、再連携後の再失効でも新規に作成できる）。
+X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`・`invalid_request`。Xは失効・ローテート済みrefresh tokenに`invalid_request`を返すことがある——2026-08-15に実アカウントで確認・T-M8-96）・必要scope不足・refresh token不在で`x_accounts.status`を`active`→`expired`へ遷移させたときに`type=error`で1件作成し、`link=/app/settings?tab=api-keys`と`payload={x_account_id, reason}`を保存する。`notification_config.error.in_app`がOFFならrowを作らない（`in_app`は`in_app_enabled`へ反映。メール通知はT-M8-222で廃止）。`dedupe_key`は付けない（遷移は1エピソードにつき1度だけ通知作成が走るため重複せず、再連携後の再失効でも新規に作成できる）。
 
 ### 3.16 `stripe_events`
 
@@ -503,7 +509,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`） |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
 | `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
@@ -513,7 +519,43 @@ Indexes: `claimed_at`（保持cleanup用）
 
 RLS: select/writeともservice roleのみ。行は受付ごとに増えるため`claimed_at`から40日保持し、期限後に`scheduler_tick`がcleanupする（M4、要件01 §9）。cleanup後は同一`window_key`を再claim可能になるが、`window_key`は時刻由来で単調増加するため通常運用で保持期間超過窓が再来・再実行されることはない。
 
-### 3.19 `news_fetch_outcomes`
+### 3.19 `db_pool_events`
+
+**DB接続の待ち行列の観測**（T-M8-198・要件01 §9）。`poolStats()`（`src/lib/db/pool.ts`）は実装済みだったがどこからも読まれておらず、Supabase Pro への移行条件「pooler接続の枯渇・待ち行列が観測された」を判断する材料が無かった。**接続の取得が待たされたときだけ1行**入り、状態確認（doctor）が直近24時間の件数と最長待ち時間を「DB接続の混み具合」として報告する（0件なら ok、1件以上で注意、20件以上で異常）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `waited_ms` | `integer` | not null, `>= 0` | 接続取得までに待った時間。閾値（200ms）未満は記録しない |
+| `total_count` | `integer` | not null, `>= 0` | 記録時点のプールの接続数（pgの`totalCount`） |
+| `idle_count` | `integer` | not null, `>= 0` | 同 `idleCount` |
+| `waiting_count` | `integer` | not null, `>= 0` | 同 `waitingCount`（待ち行列の 長さ） |
+| `source` | `text` | not null | 待った場所（`query` / `transaction`） |
+| `occurred_at` | `timestamptz` | not null default now() |  |
+
+Indexes: `occurred_at`（doctorの24時間集計・保持cleanup用）
+
+RLS: select/writeともservice roleのみ。**記録自体で状況を悪化させない**ため、同一プロセスで1分に1回まで・失敗は握り潰す（記録できないことより本処理を優先する）。`occurred_at`から40日保持し、期限後に`scheduler_tick`がcleanupする。
+
+### 3.20 `cancellation_surveys`
+
+**解約理由のアンケート**（T-M8-277・運営者の指示 2026-08-23）。解約は「押したら終わり」にせず、(1)何が止まり何が残るかを確認してもらい、(2)理由を任意で聞く。理由が分からないと運営者は**何を直せば解約が減るのか**を判断できない。Stripeの解約画面にも理由の選択はあるが、こちらに残せば運営者が自分のDB・画面で読める。**アンケートの保存に失敗しても解約手続きは止めない**（記録より利用者の操作を優先する）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK |  |
+| `user_id` | `uuid` | FK profiles on delete cascade, not null | 回答者 |
+| `reasons` | `text[]` | not null, 1〜8要素 | 選択式の理由。**複数選べる**（T-M8-294・運営者の指示 2026-08-25。理由は1つに絞れないことが多く、絞らせると集計が「仕方なく選んだ1つ」に寄る）。値は`lib/billing/cancellation-reasons.ts`の定数と対応（**値を変えない**——集計が途切れる）。並びは定数の順に正規化し重複は落とす。集計は`unnest(reasons)`で数えるため、**合計は回答数より多くなる** |
+| `detail` | `text` | null, 1000文字以内 | 自由記述（任意）。空文字は入れずnullにする |
+| `proceeded` | `boolean` | not null default false | 確認画面から解約手続きへ進んだか（引き返した回答も残す） |
+| `plan` | `plan_type` | null | 回答時点のプラン（後から変わっても当時の内訳が読める） |
+| `created_at` | `timestamptz` | not null default now() |  |
+
+Indexes: `created_at`（直近N日の集計）、`user_id`、`reasons`（GIN・理由での絞り込み）
+
+RLS: **本人のinsertのみ**（`auth.uid() = user_id`）。読むのは運営者（service role）。
+
+### 3.21 `news_fetch_outcomes`
 
 `news_fetch`の**分野ごとの結果**を残す表（要件04 §6、T-M7-40）。`cron_runs`が「受付は高々一度」だけを保証するのに対し、こちらは**業務結果**を持ち、運営者向けの状態確認（`npm run doctor`／`GET /api/cron/doctor`）が「0件」の意味を説明するために読む。cronの受付判定には使わない。
 
@@ -540,9 +582,9 @@ Indexes: `ran_at desc`（直近の結果を引く／保持cleanup用）
 
 RLS: select/writeともservice roleのみ。`ran_at`から40日保持し、期限後は`scheduler_tick`が1起動500件まで削除する（要件01 §9）。
 
-### 3.20 `x_timeline_posts`
+### 3.22 `x_timeline_posts`
 
-投稿分析（SUGGEST・毎朝8:00 JST自動実行）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は期間で区切らず最新100件・T-M8-97）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
+投稿分析（SUGGEST・「分析を開始」ボタンで実行・T-M8-255）が読むXタイムラインの投稿の保存先（T-M8-94、要件04 §12）。取得は増分（保存済み最新投稿の48時間前から。初回は実行時点の7日前から。いずれも7日前より過去へは遡らない）で、48時間の重なり分はメトリクスを取り直して上書きする。分析は本表の全投稿（新しい順に最大300件）を対象にする。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -568,7 +610,7 @@ Indexes: `(x_account_id, posted_at desc)`
 
 RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
 
-### 3.21 `post_patterns`
+### 3.23 `post_patterns`
 
 投稿の「パターン」を**Xアカウントごとのマスタ**として持つ（T-M8-129）。以前はDB enum `post_pattern`（`p1`〜`p6`）の固定6種で、名前もプロンプトもコードにあった。利用者が**自分で追加・編集・削除できる**ようにするため表へ移す（運営者の指示・2026-08-18）。**既定の6件も削除できる。**
 
@@ -582,13 +624,13 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `description` | `text` | nullable | 補足説明。**ポスト数はここに書かせない**（`max_posts`から画面が自動で付ける） |
 | `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
 | `max_posts` | `smallint` | not null default 4、1〜8 | **生成時**に作る総ポスト数の上限。**プロンプトの「# 構成と分量とスレッド数」に書かれた `Nスレッド目` から保存時に読む**（T-M8-132）。**読み取れないときの扱いは3段**（T-M8-139）: ①既定パターンでプロンプトを既定へ戻したならその型の既定値（`GENERATION_MAX_POSTS`。P-1=4 等）②それ以外は**今の値を保つ**③新規作成だけ全体の上限（8）。**保存しただけで分量が変わってはいけない**——既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため、以前は既定パターンを保存するたびに8へ跳ね上がり、既定表が1クリックで失われていた。黙って短い値を当てて切り詰めることもしない |
-| `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(7, max_posts + 2)` |
+| `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(8, max_posts + 2)`（`PATTERN_MAX_POSTS_LIMIT`＝8・T-M8-130で7から引き上げ） |
 | `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131） |
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
 | `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
 | `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
 | `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
-| `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。投稿作成画面がこの名前で入力欄を出す。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
+| `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。**プロンプト保存時に本文から自動導出して更新する**（`extractPlaceholderNames`・T-M8-186。宣言と本文を食い違わせない）。画面の入力欄は保存値ではなく表示中の本文から導出する。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
 | `sort_order` | `integer` | not null default 100 | 画面の並び順 |
 | `seed_key` | `text` | nullable、`unique (x_account_id, seed_key)`、`p1`〜`p6`のいずれか | 既定として投入されたパターンの元ID。旧enumからの引き当てと「既定の復元」に使う。自作は`null` |
 | `created_at` | `timestamptz` | not null default now() | |
@@ -609,6 +651,101 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 | `generation_jobs`（実行中のjob） | `pattern_id`を`null`にする。`pattern_spec`は残す | 実行中のjobは凍結したspecでそのまま完走する |
 
 この3つを満たすので`archived_at`のような論理削除は持たない。検査は`src/lib/post/post-patterns.db.test.ts`。
+
+
+### 3.24 `affiliate_accounts`
+
+招待プログラム（T-M8-174。正本: docs/cp/invite_cp.md）の招待者アカウント。`/app/invite` を開くと自動作成される。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `user_id` | `uuid` | not null unique FK profiles on delete cascade | 招待者（1利用者1アカウント） |
+| `code` | `text` | not null unique | 招待コード（URL `/r/{code}`。紛らわしい文字を避けた8桁） |
+| `status` | `text` | not null default `active`、`active`\|`suspended` | 停止すると新規帰属・新規報酬が止まる。**`npm run affiliate:moderate -- --suspend <招待コード>` で切り替える**（T-M8-302）。停止中のコードは `attributeSignup` が `suspended` を返し、打ち間違い（`unknown_code`）と区別される——混ぜると停止のたびにSentryへ「不明なコード」が上がる。**既存の報酬は消えない**（1件ずつ止めるなら下の `held`） |
+| `created_at` | `timestamptz` | not null default now() | |
+
+RLS: 所有者はselect可。writeはServer（service_role）のみ（以下の4表も同じ）。
+
+### 3.25 `affiliate_attributions`
+
+招待リンク経由の登録の帰属。**1ユーザーにつき招待者は1人・登録後変更不可**（`referred_user_id` unique＋`on conflict do nothing`）。Last Click（Cookieが最後のコードを持つ）・自己招待禁止はアプリ側で守る。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade | 招待者 |
+| `referred_user_id` | `uuid` | not null unique FK profiles on delete cascade | 招待された利用者 |
+| `attributed_at` | `timestamptz` | not null default now() | 帰属した時刻 |
+| `commission_started_at` | `timestamptz` | nullable | 初回有料課金の時刻（ここから報酬期間） |
+| `commission_ends_at` | `timestamptz` | nullable | 報酬期間の終了（開始＋6ヶ月。解約で前倒し） |
+| `commission_terminated_reason` | `text` | nullable、`subscription_cancelled` | 入っていたら以後Commissionを作らない（**再契約でも再開しない**） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+### 3.26 `affiliate_commissions`
+
+紹介報酬。**Stripeの支払成功（invoice.paid）がSource of Truth**。実際に支払われた金額×作成時点のランク率（snapshot）。Trial中（0円）は作らない。Refund（charge.refunded）で`reversed`。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade | |
+| `referred_user_id` | `uuid` | not null | |
+| `stripe_invoice_id` | `text` | not null unique | リトライwebhookの冪等キー |
+| `eligible_amount` | `integer` | not null、>=0 | 報酬の対象額（JPY）。返金があれば `original_amount - 累計返金額` へ下がる |
+| `original_amount` | `integer` | not null、>=0 | **返金前の対象売上**（`invoice.amount_paid`）。Stripeの`charge.refunded`が持つ`amount_refunded`は**その請求の累計**なので、返金は毎回この額から引き直す（減額済みの額から引くと二重に差し引かれる・T-M8-236） |
+| `commission_rate_bps` | `integer` | not null、0〜10000 | 作成時点の率のsnapshot |
+| `commission_amount` | `integer` | not null、>=0 | 報酬額（切り捨て） |
+| `status` | `text` | not null default `pending`、`pending`\|`payable`\|`paid`\|`reversed`\|`held` | 確認期間（30日）経過で`payable`（tickが昇格）。振込完了で`paid` |
+| `available_at` | `timestamptz` | not null | `payable`になれる時刻（支払＋30日） |
+| `payout_id` | `uuid` | nullable FK affiliate_payouts on delete set null | 月次バッチが束ねたPayout |
+| `created_at` | `timestamptz` | not null default now() | |
+
+Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた報酬を日次で払出可能へ上げる処理が全表走査になっていた・T-M8-253〕, (`referred_user_id`)
+
+`referred_user_id` は `profiles(id) on delete set null`（T-M8-253）。**外部キーが無く、報酬率の計算（累計有料招待ユーザー数）が実在しない利用者を数えうる**状態だった。履歴（金額・支払記録）は残したいので削除ではなくnull化する。
+
+### 3.27 `affiliate_payout_accounts`
+
+報酬の振込先口座。**口座番号はAES-256-GCM暗号文のみ**（要決定D-33。Payout Provider未契約のため。画面は末尾4桁だけ・全桁は運営者の `npm run affiliate:payouts -- --show` が復号）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null unique FK affiliate_accounts on delete cascade | 1招待者1口座 |
+| `provider` | `text` | not null default `internal` | 将来Payout Providerへ移行するときの区分 |
+| `external_account_id` | `text` | nullable | Provider側のID（internalでは未使用） |
+| `bank_name` | `text` | not null | |
+| `branch_name` | `text` | not null | |
+| `account_type` | `text` | not null default `ordinary`、`ordinary`\|`checking` | 普通/当座 |
+| `account_number_ciphertext` | `text` | not null | 口座番号（暗号文。平文カラムは作らない） |
+| `bank_account_last4` | `text` | not null、4文字 | 画面表示用 |
+| `account_holder_name` | `text` | not null | 口座名義 |
+| `status` | `text` | not null default `active`、`active`\|`disabled` | |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+### 3.28 `affiliate_payouts`
+
+月次の振込（月末締め・翌月末支払・invite_cp.md §9〜§14）。**Commissionと手数料は会計分離**（gross/fee/netを別に保存し、Commission自体は減額しない）。¥5,000未満・口座未登録は作らず翌月へ繰越。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `affiliate_account_id` | `uuid` | not null FK affiliate_accounts on delete cascade。`unique (affiliate_account_id, period_start)` | 複合uniqueで月次バッチの再実行を冪等に |
+| `period_start` | `date` | not null | 締め期間（前月・JST）の開始 |
+| `period_end` | `date` | not null | 同・終了 |
+| `gross_amount` | `integer` | not null、>=0 | 束ねた報酬の合計 |
+| `fee_amount` | `integer` | not null、>=0 | 振込手数料（980円・利用者負担） |
+| `net_amount` | `integer` | not null、>=0 | 実際の振込額 |
+| `status` | `text` | not null default `created`、`created`\|`paid`\|`canceled` | 運営者が振込後に `npm run affiliate:payouts -- --paid` で`paid`へ |
+| `payment_due_at` | `timestamptz` | not null | 支払期限（翌月末・JST） |
+| `paid_at` | `timestamptz` | nullable | |
+| `external_reference` | `text` | nullable | 振込の控え番号など |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
 
 ## 4. JSONスキーマ
 
@@ -633,31 +770,30 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 
 ```json
 {
-  "categories": ["ai", "investment", "sns"],
-  "impact_filter": ["high", "mid"],
-  "max_items": 20
+  "categories": ["ai", "web3", "sns", "investment", "love", "beauty"],
+  "impact_filter": ["high", "mid"]
 }
 ```
 
-`categories`と`impact_filter`は重複なしで各1件以上、`max_items`は1〜100とする。既定は**取得3分野**（`NEWS_FETCH_CATEGORIES`・T-M7-55。migration `20260802000001`で既定値も3分野へ変更済み）。表示一覧と時間単位ダイジェストの両方へ適用する。
+`categories`と`impact_filter`は重複なしで各1件以上とする。既定は**取得している分野**（`NEWS_FETCH_CATEGORIES`＝運用6分野・T-M7-55の原則／T-M8-189で6分野へ。migration `20260822000001`で新規登録の既定も6分野へ変更済み。既存利用者の保存値は`20260822000002`が**旧既定値そのままの行だけ**新既定へ更新する——意図的に絞った設定は保全。放置すると新分野の通知が既存ユーザーに永久に届かない・T-M8-192）。**通知（時間単位ダイジェスト）の対象条件にのみ使う**——一覧（SC-06）は最新500件表示（T-M8-188）。旧`max_items`（表示件数）は廃止し、保存値はmigration `20260821000002`で取り除いた（schemaは旧キーを黙って落とす）。
 
 ### 4.3 `profiles.notification_config`
 
 ```json
 {
-  "news": { "in_app": true, "email": true },
-  "draft_created": { "in_app": true, "email": true },
-  "posted": { "in_app": true, "email": false },
-  "error": { "in_app": true, "email": true },
-  "billing": { "in_app": true, "email": true },
-  "usage": { "in_app": true, "email": true },
-  "summary": { "in_app": true, "email": true }
+  "news": { "in_app": true },
+  "draft_created": { "in_app": true },
+  "posted": { "in_app": true },
+  "error": { "in_app": true },
+  "billing": { "in_app": true },
+  "usage": { "in_app": true },
+  "summary": { "in_app": true }
 }
 ```
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
 
-`summary`は日次サマリ（T-M7-29）。**1日1通なのでメールも既定ON**とする（画面を見に行かなくても静かな劣化に気付ける形にするのが目的で、既定OFFでは目的を果たさない）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成triggerの両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。
+**チャネルはアプリ内のみ・既定は全種別ON**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止。認証メールと運営者向けopsアラートは別系統で残る）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
 
 ### 4.4 `x_accounts.settings`
 
@@ -685,7 +821,7 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 }
 ```
 
-`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタ（6テーマ）のIDから選ぶ。6テーマは表示名と`news_category`を`ai=AI`、`web3=Web3`、`investment=投資`、`business=ビジネス`、`business_ops=業務改善`、`sns=SNS運用`で1対1対応させ、P-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。`free_text`は自由入力で、該当判定の対象外とする。発信テーマ（L-5）の選択肢は**6テーマのまま**（PRD §8.3。生成の方向づけに使うため縮小しない——投稿作成・分析の選択肢を運用分野へ絞ったT-M8-100の対象外）。
+`themes.primary`/`secondary`はコード定数のテーマ選択肢マスタのIDから選ぶ。語彙は運用6テーマ（`ai=AI`、`web3=Web3`、`sns=SNS運用`、`investment=投資`、`love=恋愛`、`beauty=美容`）＋旧2テーマ（`business=ビジネス`、`business_ops=業務改善`。T-M8-189で運用終了、保存済みデータの表示・検証用に残置）で、`news_category`と1対1対応しP-6の`<news_digest>`該当判定に使う。`primary`は1件以上必須とし、両配列を通じた重複と未知IDを拒否する。**画面の選択肢は運用6テーマ**（旧テーマは選択中のときだけ表示し、開いただけで値が消えないようにする）。`free_text`は自由入力で、該当判定の対象外とする。
 
 `tone.sentence_style`は`polite|assertive`、`emoji_policy`は`none|limited`とする。絵文字を使わない場合は`emoji_max_per_post=0`を必須とし、絵文字・ハッシュタグの上限は0以上の整数とする。初期値は要件06 §3.4を正とする。`ng`の3配列は空を許可するが、要素を持つ場合は空文字を拒否する。NGワード原文はコード照合用としてsettingsだけに保持し、アカウント.mdへ展開しない。
 
@@ -693,19 +829,19 @@ RLS: 所有者はselect可（`authenticated`へ`select`をGRANT）。writeはSer
 
 ```json
 {
-  "pattern": "p1",
+  "pattern_id": "uuid",
+  "theme": "ai",
   "source_url": "https://example.com",
   "quote_url": null,
-  "quote_tweet_id": null,
-  "user_opinion": null,
+  "placeholder_values": { "名前": "値" },
   "instructions": null,
   "image_enabled": true,
   "news_item_id": "uuid",
-  "requested_mode": "draft"
+  "prompt_override": null
 }
 ```
 
-対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
+キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
 
 ### 4.6 `generation_jobs.usage`
 
@@ -844,26 +980,9 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 
 ## 5. RLS方針
 
-| 対象 | select | insert/update/delete |
-|---|---|---|
-| `profiles` | `id = auth.uid()` | Server only |
-| `user_api_keys` | 本人。ciphertextはAPIで返さない | Server Actionのみ |
-| `x_accounts` | `user_id = auth.uid()` | Server only |
-| `base_md_versions` | x_account所有者 | Server only |
-| `prompt_templates` | system defaultまたはx_account所有者 | md/premiumのServer Actionのみ |
-| `learning_sources` | x_account所有者 | Server only |
-| `news_items` | 認証済み全員 | service roleのみ |
-| `generation_jobs` | x_account所有者 | Server only |
-| `drafts` | x_account所有者 | Server only |
-| `schedule_slots` | x_account所有者 | Server Actionのみ |
-| `follower_snapshots` | x_account所有者 | service roleのみ |
-| `improvement_suggestions` | x_account所有者 | Server only |
-| `usage_events` | `user_id = auth.uid()` | service roleのみ。post_create/post_delete consumeは全プランで通常/URL付き種別も記録し、他eventはpremium |
-| `usage_counters` | `user_id = auth.uid()` | service roleのみ |
-| `notifications` | `user_id = auth.uid()` | Server only |
-| `stripe_events` | 不可 | service roleのみ |
-| `external_api_usage_events` | 不可 | service roleのみ |
-| `cron_runs` | 不可 | service roleのみ |
+**各テーブルのRLSは §3.1〜3.21 の各節末に書く**（そこが正本。構造の実物は `rls.db.test.ts` が検査する）。
+ここへ一覧を写さない——以前あった表は後から足した3表（`news_fetch_outcomes`・`x_timeline_posts`・`post_patterns`）が
+抜けたままで、「増えるだけで誰も見ない一覧」になっていた。
 
 暗号化envelope（`x_accounts`のtoken類、`user_api_keys.credentials_ciphertext`）は行単位RLSにより本人のselect結果へ含まれ得る。復号鍵（`APP_ENCRYPTION_KEY`）はServer onlyであり平文はブラウザへ返さないため、ciphertextの露出は受容済みリスクとする（カラム分離・カラム単位GRANTはMVPでは行わない）。
 
@@ -874,9 +993,8 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | システム既定プロンプト（画像） | `prompt_templates` に system default として `image` を1件作成（§3.5） |
 | 投稿パターン | Xアカウント作成時に既定6件を**トリガで自動投入**（§3.21）。プロンプトは`null`＝コード定数を使うので行に本文を持たない |
 | プラン定義 | コード定数で価格、Xアカウント上限、利用枠を定義。Stripe Price IDは環境変数 |
-| 通知設定 | アプリ内は全種別ON。メールはニュースの時間単位ダイジェスト、下書き、エラー、課金、利用枠をON |
-| テーマ選択肢マスタ | L-5の6選択肢をコード定数で定義。各選択肢は`news_category`の6分野と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100。最新ニュース画面の絞り込みと同じ導出元で、運用分野を変えれば全画面が追随する） |
-| ニュースカテゴリ | `ai`, `web3`, `investment`, `business`, `business_ops`, `sns`をコード定数化 |
+| 通知設定・ニュースカテゴリ | 既定値の正本は §4.3 / §4.4（ここへ写さない——以前写した通知設定は `summary` が抜けていた） |
+| テーマ選択肢マスタ | L-5の選択肢をコード定数で定義（運用6＋旧2）。各選択肢は`news_category`と1対1対応（§4.4）。**画面で選べるテーマ（投稿作成・スケジュール）と投稿分析の推奨テーマは、運用中のニュース分野（`NEWS_FETCH_CATEGORIES`）に対応する`OPERATED_THEME_OPTIONS`＋「その他」に限定**（T-M8-100/188。最新ニュース画面のソート選択肢と同じ導出元で、運用分野を変えれば全画面が追随する） |
 | Storage | private bucket `generated-images`を**migrationで作成**（`20260801000003`）。ユーザー/x_account単位でpathを分離。`config.toml` の定義は**ローカルの `supabase start` 専用**でリモートには効かないため、migrationに入れて全環境で自動的に揃うようにする（T-M7-45。2026-08-01、stagingでbucketが存在せず画像保存だけが失敗する状態を実測） |
 
 ## 7. 保持と個別対応
@@ -894,3 +1012,33 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.43 | 2026-08-18 | 予約枠に生成入力を追加（T-M8-135）: `source_url`・`placeholder_values`・`prompt_override` |
 | v1.42 | 2026-08-18 | `max_posts` の読み取り不能時の扱いを3段（既定値へ戻す／今の値を保つ／新規は上限）へ明記（T-M8-139） |
 | v1.43 | 2026-08-18 | 使われていない `asks_user_opinion` を撤去（T-M8-145。T-M8-132 でプレースホルダーへ一般化した時点で読まれなくなっていた） |
+| v1.44 | 2026-08-20 | `base_md_versions`の保持を1アカウント最新5版までに制限（T-M8-156） |
+| v1.45 | 2026-08-20 | `generation_jobs.input`の例を実キー（pattern_id/theme/placeholder_values）へ、自作パターンのmax_posts_edit既定をmin(8,…)へ修正（T-M8-144 #23/#54） |
+| v1.46 | 2026-08-20 | §5 RLS表と§6 seedの写しを各節への参照へ（T-M8-166） |
+| v1.47 | 2026-08-20 | プラン再編（T-M8-168）: plan_type enumを standard/premium/expert へ入れ替え、profiles.plan を nullable（未契約=NULL）へ |
+| v1.48 | 2026-08-21 | 招待プログラムの5表（affiliate_accounts/attributions/commissions/payout_accounts/payouts）を追加（T-M8-174） |
+| v1.49 | 2026-08-21 | post_patterns.placeholdersをプロンプト保存時に本文から導出する旨を追記（T-M8-186） |
+| v1.50 | 2026-08-21 | news_configからmax_itemsを廃止（T-M8-187・migration 20260821000002。ダイジェストpayload上限は固定20へ） |
+| v1.51 | 2026-08-22 | news_categoryへlove/beautyを追加し運用6分野へ。テーマ語彙は運用6＋旧2。既定news_configを6分野へ（T-M8-189・migration 20260822000001） |
+| v1.52 | 2026-08-22 | 既存news_configのbackfill（旧既定値のみ・20260822000002）とschedule_slots語彙の記述修正（T-M8-192・レビュー指摘） |
+| v1.53 | 2026-08-22 | usage_countersのcheck上限をexpert枠（1000/100）へ拡張（T-M8-196・20260822000003） |
+| v1.54 | 2026-08-22 | 通知既定をメール3種へ（T-M8-206・migration 20260822000004） |
+| v1.55 | 2026-08-23 | schedule_slots に paused_by_stop_all_at を追加（「すべて停止/再開」・T-M8-233） |
+| v1.56 | 2026-08-23 | affiliate_commissions に original_amount を追加（部分返金の二重差引を修正・T-M8-236） |
+| v1.57 | 2026-08-23 | notifications の保持期間を type 全体へ広げた（T-M8-246） |
+| v1.58 | 2026-08-23 | schedule_slots.paused_by_stop_all_at を削除（「すべて停止/再開」は全枠が対象になったため・T-M8-251） |
+| v1.59 | 2026-08-23 | 通知・招待報酬の索引と referred_user_id の外部キーを追加。PostgRESTの権限を最小化（T-M8-252/253） |
+| v1.60 | 2026-08-23 | 投稿分析の手動実行化（T-M8-255）: follower_snapshots の書き込み元を「分析を開始」ボタンへ、x_timeline_posts の取得窓に過去7日上限、cron_runs の job_name から follower_snapshot を廃止（スキーマ変更なし） |
+| v1.61 | 2026-08-23 | フォロワー記録の毎時cronを復活（T-M8-257）: follower_snapshots の書き込みは cron＋ボタンの2入口、cron_runs の job_name に follower_snapshot が戻る（スキーマ変更なし） |
+| v1.62 | 2026-08-23 | profiles に scheduled_plan / scheduled_plan_at（予約済み下位変更の保存・T-M8-260） |
+| v1.63 | 2026-08-23 | profiles.current_period_start を追加、usage_events/usage_counters.month を契約期間キー（YYYY-MM-DD）へ拡張（T-M8-258） |
+| v1.64 | 2026-08-23 | cron_runs.job_name に subscription_period_backfill（契約期間の補完・T-M8-258）。usage_counters 制約説明の「月次」を期間へ |
+| v1.65 | 2026-08-23 | db_pool_events を追加（DB接続の待ち行列の観測・27テーブルへ・T-M8-198） |
+| v1.66 | 2026-08-23 | cancellation_surveys を追加（解約理由のアンケート・28テーブルへ・T-M8-277） |
+| v1.67 | 2026-08-23 | profiles に適用中の割引（discount_*）を追加（T-M8-279） |
+| v1.68 | 2026-08-24 | usage_events に当日投稿数用の部分索引を追加し、保持期間が無いこと・索引が効く述語で書くことを明記（T-M8-294） |
+| v1.69 | 2026-08-24 | drafts に一覧の並び順の式索引を追加（T-M8-289） |
+| v1.70 | 2026-08-25 | cancellation_surveys の `reason` を `reasons text[]` へ（解約理由の複数選択・T-M8-294） |
+| v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |
+| v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
+| v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |

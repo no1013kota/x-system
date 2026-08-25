@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
+import {
+  CURRENT_AUTOMATION_CONSENT_VERSION,
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from "@/lib/legal";
 import { PROCESSORS } from "@/lib/legal-entity";
 
 /**
@@ -49,6 +53,15 @@ describe("法務3ページに開発中の表示が残っていない", () => {
 
   it("レビュー用アカウントのseedが現行versionを書き込む（古いと再同意ガードで弾かれる）", () => {
     expect(SEED).toContain(`export const LEGAL_VERSION = "${CURRENT_TERMS_VERSION}"`);
+    expect(SEED).toContain(
+      `export const AUTOMATION_CONSENT_VERSION = "${CURRENT_AUTOMATION_CONSENT_VERSION}"`,
+    );
+  });
+
+  it("レビュー用アカウントのseedが現行の投稿パターンFKを使う", () => {
+    expect(SEED).toContain("pattern_id");
+    expect(SEED).not.toContain("::post_pattern");
+    expect(SEED).not.toContain("(x_account_id, pattern,");
   });
 });
 
@@ -213,5 +226,27 @@ describe("プライバシーポリシーに個人情報保護法上の記載事�
         ).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+/**
+ * 利用枠は契約期間ごと（T-M8-258）。法務ページがアプリの数え方と食い違うと、
+ * 「月間」と書いてあるのに更新日でリセットされる説明になる（T-M8-259）。
+ */
+describe("利用枠の数え方が「契約期間ごと」で統一されている（T-M8-259）", () => {
+  it("利用規約・特商法に「月間利用枠」が残っていない", () => {
+    for (const [name, src] of [["利用規約", TERMS], ["特商法", TOKUSHOHO]] as const) {
+      expect(src, `${name}に「月間」の利用枠表記が残っている`).not.toMatch(/月間(の)?利用枠/);
+      expect(src, `${name}が契約期間ごとの利用枠を説明していない`).toContain("契約期間");
+      expect(src, `${name}が繰り越しの扱いを説明していない`).toContain("繰り越");
+      expect(src, `${name}がトライアル期間の利用枠の扱いを説明していない（D-38）`).toContain("無料トライアル期間にも同じ利用枠");
+    }
+  });
+
+  it("改定は同意versionを上げずに見出しへ残す（利用者に不利益のない変更・要決定D-35 案A）", () => {
+    // 版を上げると全利用者に再同意を要求する（legal.ts）。不利益のない改定は版を据え置き、
+    // 改定した事実だけを updatedLabel で示す。
+    expect(TERMS).toContain("updatedLabel=");
+    expect(TERMS).toMatch(/updatedLabel="[^"]*契約期間[^"]*"/);
   });
 });

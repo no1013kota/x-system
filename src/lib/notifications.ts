@@ -19,14 +19,6 @@ export interface NotificationView {
   link: string | null;
   createdAt: string;
   readAt: string | null;
-  /**
-   * メール配信の状態（T-M8-40）。`failed` のときだけ画面に再送の導線を出すために持つ。
-   *
-   * これを持たない間、`failed` は**運営者からまったく見えなかった**。終端状態なので
-   * `recoverQueuedEmails`（queued のみ対象）も拾わず、`retryNotificationEmailAction` は
-   * 実装済みなのに呼び出し元が無かった＝**復旧手段がコード上どこからも到達できない**状態だった。
-   */
-  emailStatus: string;
 }
 
 export interface NotificationCursor {
@@ -37,6 +29,27 @@ export interface NotificationCursor {
 export interface NotificationPage {
   items: NotificationView[];
   nextCursor: string | null;
+}
+
+/**
+ * 通知のServer Actionが返す payload の**単一の正本**（T-M8-158）。
+ *
+ * action側の結果型（`ListNotificationsActionResult`）と、propsでAction契約を受け取る
+ * ヘッダ通知ベルの期待は、**両方ここから作る**。以前は同じ形をベル側へ手書きで複製しており、
+ * payloadが全部optionalなため **action側で `nextCursor` を改名しても props代入の型検査が通り、
+ * 実行時に undefined を読む**状態だった（T-M8-155 のレビューで最小再現により確認）。
+ * 定義が1つなら、改名した瞬間に読み出し側（`res.nextCursor`）がコンパイルエラーになる。
+ */
+export interface NotificationListPayload {
+  items?: NotificationView[];
+  nextCursor?: string | null;
+  unreadCount?: number;
+}
+
+/** 既読化・再送など、通知を変更するActionが返す payload。上と同じ理由で正本を1つにする。 */
+export interface NotificationMutationPayload {
+  count?: number;
+  unreadCount?: number;
 }
 
 export function encodeNotificationCursor(cursor: NotificationCursor): string {
@@ -64,7 +77,6 @@ interface NotificationRow {
   link: string | null;
   read_at: Date | string | null;
   created_at: Date | string;
-  email_status: string;
 }
 
 /**
@@ -89,7 +101,7 @@ export async function listNotifications(
   params.push(limit + 1);
 
   const { rows } = await db.query<NotificationRow>(
-    `select id, type, title, body, link, read_at, created_at, email_status::text as email_status
+    `select id, type, title, body, link, read_at, created_at
        from notifications
       where ${where}
       order by created_at desc, id desc
@@ -107,7 +119,6 @@ export async function listNotifications(
     link: r.link,
     createdAt: toIso(r.created_at),
     readAt: r.read_at ? toIso(r.read_at) : null,
-    emailStatus: r.email_status,
   }));
   const last = page[page.length - 1];
   const nextCursor =
@@ -159,35 +170,4 @@ export async function markAllNotificationsRead(
   return rowCount ?? 0;
 }
 
-/**
- * 失敗した通知メールの再送要求（要件04 §14・要件05 §10, T-M4-17）。本人・`email_status='failed'` のみ受理し、
- * `attempts` を0へ戻して queued 化する（scheduler_tick が回収して送る）。同一通知の1分以内の連続実行は
- * `email_last_attempt_at` guard で拒否する（job_conflict）。不在・他人・非failedも job_conflict/not_found。
- */
-export async function retryNotificationEmail(
-  db: Queryable,
-  userId: string,
-  notificationId: string,
-): Promise<void> {
-  const { rows } = await db.query<{ email_status: string }>(
-    `select email_status from notifications where id = $1 and user_id = $2`,
-    [notificationId, userId],
-  );
-  const row = rows[0];
-  if (!row) throw new AppError("not_found");
-  if (row.email_status !== "failed") {
-    throw new AppError("job_conflict", { details: { reason: "not_failed" } });
-  }
-  const { rowCount } = await db.query(
-    `update notifications
-        set email_status = 'queued', email_attempts = 0, email_error = null,
-            email_available_at = now()
-      where id = $1 and user_id = $2 and email_status = 'failed'
-        and (email_last_attempt_at is null or email_last_attempt_at < now() - interval '1 minute')`,
-    [notificationId, userId],
-  );
-  // status は failed 確認済み。0件は時刻guard不成立＝1分以内の連続実行。
-  if ((rowCount ?? 0) === 0) {
-    throw new AppError("job_conflict", { details: { reason: "retry_too_soon" } });
-  }
-}
+

@@ -3,6 +3,7 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 import { AppError } from "@/lib/observability/errors";
 
+import { pruneBaseMdVersions } from "./base-md-history";
 import { validateBaseMdStructure } from "./persona-settings";
 
 /**
@@ -117,6 +118,8 @@ export async function applyUpdateBaseMdManual(
      values ($1, $2, $3, 'manual', '手動編集')`,
     [input.xAccountId, version, input.content],
   );
+  // 版を積んだ同じtxで古い版を落とす（T-M8-156）。
+  await pruneBaseMdVersions(client, input.xAccountId);
   return { version };
 }
 
@@ -157,6 +160,7 @@ export async function applyRollbackBaseMd(
      values ($1, $2, $3, 'rollback', $4)`,
     [input.xAccountId, version, target.content, `v${input.targetVersion}へロールバック`],
   );
+  await pruneBaseMdVersions(client, input.xAccountId);
   return { version };
 }
 

@@ -2,14 +2,15 @@ import { DB_ENUMS } from "./db/enums";
 
 /**
  * Plan definitions (要件03 §2, PRD §6). Prices are 税込 JPY; Stripe Price IDs
- * live in env (要件01 §3.3), not here. Only premium has app-side monthly usage
- * limits (要件03 §7); standard/md run on the user's own API billing.
+ * live in env (要件01 §3.3), not here. Operator-managed plans (premium /
+ * expert) have app-side monthly usage limits (要件03 §7); standard (BYOK)
+ * runs on the user's own API billing.
  * The all-plan daily post safety cap is env-driven (X_DAILY_POST_LIMIT).
  * PlanId is derived from the plan_type DB enum so code and DB never drift.
  */
 export type PlanId = (typeof DB_ENUMS.plan_type)[number];
 
-export interface PremiumUsageLimits {
+export interface PlanUsageLimits {
   normalPosts: number;
   urlPosts: number;
   /** AIクレジット（T-M8-109。1クレジット=1円相当・文章/画像のAI実行で実費消費）。 */
@@ -44,47 +45,89 @@ export interface PlanDefinition {
   regularPriceJpy: number;
   xAccountLimit: number;
   /** null = no app-side monthly limits (BYOK plans). */
-  usageLimits: PremiumUsageLimits | null;
-  /** md/premium can edit base_md and prompt templates (要件02 §3.5, PRD §5.7). */
+  usageLimits: PlanUsageLimits | null;
+  /** 全プランで true（T-M8-168で旧standardを撤廃）。未知・未契約(null)を弾く機構として残す。 */
   canEditMdAndPrompts: boolean;
+  /**
+   * 利用枠を画面に出さないか（エキスパート・T-M8-168）。
+   *
+   * true のプランは残量・上限の**数値をどこにも出さない**。表示は「無制限」、上限到達時は
+   * 「連続的な使用が検知されたため一時的に停止しております。お待ちください。」（`usage_paused`）。
+   * 数値の上限は不正利用・費用暴走への内部ガードで、通知・エラー details にも数値を載せない。
+   * **注記なしで「無制限」と表示するのは運営者の決定**（2026-08-20。景表法の優良誤認リスクは
+   * 提示のうえでの判断。利用規約には一時停止があり得る旨を記載する）。
+   */
+  concealsLimits: boolean;
 }
 
 export const PLANS: Record<PlanId, PlanDefinition> = {
+  // 旧mdプランと同内容（T-M8-168で旧standard(¥500)を撤廃し、mdを「スタンダード」へ改名・改定）。
   standard: {
     id: "standard",
-    displayName: "通常プラン",
-    tagline: "まずは1つのXアカウントを着実に運用",
-    monthlyPriceJpy: 500,
-    regularPriceJpy: 1000,
+    displayName: "スタンダードプラン",
+    tagline: "自分のAPIキーで、手ごろに始める",
+    monthlyPriceJpy: 1480,
+    regularPriceJpy: 2960,
     xAccountLimit: 1,
     usageLimits: null,
-    canEditMdAndPrompts: false,
-  },
-  md: {
-    id: "md",
-    displayName: "mdプラン",
-    tagline: "複数アカウントと発信設計を細かく管理",
-    monthlyPriceJpy: 1000,
-    regularPriceJpy: 2000,
-    xAccountLimit: 3,
-    usageLimits: null,
     canEditMdAndPrompts: true,
+    concealsLimits: false,
   },
   premium: {
     id: "premium",
     displayName: "プレミアムプラン",
     tagline: "APIキーなしで、運用をまとめておまかせ",
-    monthlyPriceJpy: 2980,
-    regularPriceJpy: 5960,
-    xAccountLimit: 3,
+    monthlyPriceJpy: 3980,
+    regularPriceJpy: 7960,
+    xAccountLimit: 1,
     usageLimits: {
       normalPosts: 200,
       urlPosts: 20,
       aiCredits: 1000,
     },
     canEditMdAndPrompts: true,
+    concealsLimits: false,
+  },
+  expert: {
+    id: "expert",
+    displayName: "エキスパートプラン",
+    tagline: "上限を気にせず、すべておまかせで運用",
+    monthlyPriceJpy: 14800,
+    regularPriceJpy: 29600,
+    // エキスパートだけ複数（利用枠は合算）。standard/premiumは1（2026-08-20運営者の指示）。
+    xAccountLimit: 3,
+    // 内部ガード（画面に出さない）。到達時は usage_paused（一時停止の文言）を出す。
+    usageLimits: {
+      normalPosts: 1000,
+      urlPosts: 100,
+      aiCredits: 5000,
+    },
+    canEditMdAndPrompts: true,
+    concealsLimits: true,
   },
 };
+
+/**
+ * 運営がAPIキーを用意するプランか（X連携=managed OAuth・AI=運営キー・アプリ側の利用枠あり）。
+ * 判定は「利用枠を持つか」と一致させる（plans.ts の定義がその対応の正本）。
+ * 旧コードの `plan === "premium"` 比較はプランが増えると漏れるため、この関数だけを使う。
+ */
+export function isOperatorManagedPlan(plan: string | null | undefined): boolean {
+  return plan != null && PLANS[plan as PlanId]?.usageLimits != null;
+}
+
+/** 利用枠を画面に出さないプランか（無制限表示・到達時は一時停止の文言）。 */
+export function concealsUsageLimits(plan: string | null | undefined): boolean {
+  return plan != null && PLANS[plan as PlanId]?.concealsLimits === true;
+}
+
+/** そのプランの利用枠。BYOK（アプリ側上限なし）と未知・未契約は null。 */
+export function usageLimitsForPlan(
+  plan: string | null | undefined,
+): PlanUsageLimits | null {
+  if (plan == null) return null;
+  return PLANS[plan as PlanId]?.usageLimits ?? null;
+}
 
 /** Stable tuple shared by input schemas and Stripe price mapping. */
 export const PLAN_IDS = DB_ENUMS.plan_type;
@@ -96,7 +139,7 @@ export const PLAN_IDS = DB_ENUMS.plan_type;
  *
  * `regularPriceJpy` を「通常価格」として取り消し線で出すだけにはしない。二重価格表示は、
  * 通常価格として示すなら**実際にその価格で相当期間販売した実績**が必要で、この3プランに
- * その実績は無い（スタンダードとmdは 500円・1,000円でのみ販売してきた）。
+ * その実績は無い（新3プランはキャンペーン価格でのみ販売してきた・T-M8-168）。
  * そのため画面では必ず「キャンペーン終了後の価格」と分かる形で出す（`AFTER_LABEL`）。
  *
  * ## 終わらせる手順
@@ -129,12 +172,12 @@ export const RELEASE_CAMPAIGN = {
  * アプリの動作には影響しない。
  *
  * 適用後の月額（キャンペーン価格のさらに半額）を**3ヶ月**だけ適用する。
- * スタンダード 250円 / md 500円 / プレミアム 1,490円。
+ * スタンダード 740円 / プレミアム 1,990円 / エキスパート 7,400円。
  *
- * **プレミアムはフル利用だと赤字になる。** 上限まで使われたときの原価は約2,120円で、
- * 1,490円の手取り（約1,436円）を下回る（月700円程度の損失）。**3ヶ月限定なので
- * 1人あたりの損失は最大2,100円程度で止まる**。運営者が承知のうえで決めている
- * （解約を止める価値が上回るという判断・2026-08-17）。実績を見て見直す。
+ * **運営キー系プランはフル利用だと赤字になる。** premiumの上限までの原価は約3,020〜3,240円、
+ * expertの内部ガードまでの原価は約14,900〜15,300円で、割引後の手取りを大きく下回る。
+ * **3ヶ月限定なので1人あたりの損失は有限**。運営者が承知のうえで決めている
+ * （解約を止める価値が上回るという判断・2026-08-17。金額はT-M8-168の改定に追随）。実績を見て見直す。
  */
 export const RETENTION_DISCOUNT = {
   /** Stripeの顧客維持クーポンに設定する割引率（%）。 */
@@ -145,7 +188,7 @@ export const RETENTION_DISCOUNT = {
    */
   durationMonths: 3,
   /** 適用後の月額（表示・記録用。請求はStripeのクーポンが決める）。 */
-  monthlyPriceJpy: { standard: 250, md: 500, premium: 1490 },
+  monthlyPriceJpy: { standard: 740, premium: 1990, expert: 7400 },
 } as const;
 
 /** キャンペーン中で、かつそのプランに割引がある（＝取り消し線を出す）か。 */

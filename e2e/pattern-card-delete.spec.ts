@@ -89,16 +89,23 @@ test("投稿作成: 削除は各カードの中にあり、確認の暗幕がヘ
 });
 
 /**
- * **スケジュール画面には削除を出さない**（T-M8-134）。
- * 予約を組み立てている最中にその型を消せると、いま編集中の枠の足元が崩れる。
+ * **スケジュール画面でも各カードから削除できる**（T-M8-205・運営者の指示 2026-08-22。
+ * T-M8-134の「SC-08には出さない」を運営者判断で反転）。投稿作成と同じ部品・同じ確認文言。
  */
-test("スケジュール: パターンのカードに削除は出ない", async ({ accounts, page }) => {
-  const account = await accounts.create("pattern-card-no-delete");
+test("スケジュール: パターンのカードからも削除できる", async ({ accounts, page }) => {
+  const account = await accounts.create("pattern-card-delete-sched");
   await signIn(page, account);
   await page.goto("/app/schedule");
 
   // パターンの選択肢は追加フォームを開くと出る。
   await page.getByRole("button", { name: "スケジュールを追加" }).click();
   await expect(page.getByRole("radio", { name: /ニュース解説/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /」を削除$/ })).toHaveCount(0);
+  // パターンのカードごとに削除ボタンが付く（引用型はスケジュールの選択肢に出ないためカードと同数。
+  // radio はモード選択にもあるので、パターンの fieldset 内だけを数える）。
+  const patternRadios = await page
+    .locator("fieldset", { has: page.getByRole("radio", { name: /ニュース解説/ }) })
+    .getByRole("radio")
+    .count();
+  expect(patternRadios).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: /」を削除$/ })).toHaveCount(patternRadios);
 });

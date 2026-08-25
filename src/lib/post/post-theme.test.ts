@@ -24,11 +24,14 @@ describe("SELECTABLE_POST_THEME_OPTIONS", () => {
     expect(OPERATED_THEME_IDS).toEqual([...NEWS_FETCH_CATEGORIES]);
   });
 
-  it("ラベルはニュース画面と同じ（AI・投資・SNS運用）", () => {
+  it("ラベルはニュース画面と同じ（運用6テーマ・T-M8-189）", () => {
     expect(SELECTABLE_POST_THEME_OPTIONS.map((o) => o.label)).toEqual([
       "AI",
-      "投資",
+      "Web3",
       "SNS運用",
+      "投資",
+      "恋愛",
+      "美容",
       "その他（追加指示に記載）",
     ]);
   });

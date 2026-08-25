@@ -10,7 +10,7 @@ import { validateSlotForm } from "./slot-form";
  * 出さない」という要求が、ここまで機械検査に載っていなかった。
  */
 
-const base = { weekdays: [1], theme: "ai", mode: "draft" };
+const base = { weekdays: [1], theme: "ai", mode: "draft", pattern_id: "p-1" };
 
 describe("validateSlotForm", () => {
   it("曜日が0件なら止める", () => {
@@ -18,6 +18,12 @@ describe("validateSlotForm", () => {
       error: "曜日を1つ以上選択してください。",
       needsConsent: false,
     });
+  });
+
+  it("パターン未選択（追加中）なら止める（T-M8-203）", () => {
+    expect(validateSlotForm({ ...base, pattern_id: "" }, { consented: true }).error).toMatch(
+      /パターンを選択してください/,
+    );
   });
 
   it("テーマ未選択なら止める（どの項目が悪いか分かる文言で）", () => {
@@ -54,7 +60,7 @@ describe("validateSlotForm", () => {
    */
   it("複数の不足があれば曜日を先に伝える", () => {
     const verdict = validateSlotForm(
-      { weekdays: [], theme: null, mode: "auto" },
+      { weekdays: [], theme: null, mode: "auto", pattern_id: "" },
       { consented: false },
     );
     expect(verdict.error).toBe("曜日を1つ以上選択してください。");

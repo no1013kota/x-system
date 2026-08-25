@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { canSendViaSmtp } from "../email/notification-email";
+import { canSendViaSmtp } from "../email/smtp-guard";
 import {
   OUTBOUND_CHANNELS,
   OUTBOUND_MARKERS,

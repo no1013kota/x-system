@@ -1,3 +1,4 @@
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "@/lib/auth/subscription-access";
 import { z } from "zod";
 
 import { isXAuthError, type XTweetMetrics } from "../x/client";
@@ -184,6 +185,12 @@ export interface MetricsCollectorResult {
   tweetIdsRead: number;
   /** 上限またはdeadlineで未処理を次回へ残したか。 */
   deferred: boolean;
+  /**
+   * 読み取り／保存に失敗した件数（T-M8-239）。**0件と「全部失敗して0件」を区別する**ため、
+   * 結果に数として載せる（CLAUDE.md 原則1）。以前は握って `console.error` に流すだけで、
+   * cronの応答にも doctor にも現れなかった。
+   */
+  failed: number;
 }
 
 /**
@@ -209,6 +216,8 @@ export async function executeMetricsCollection(
   let draftsProcessed = 0;
   let tweetIdsRead = 0;
   let deferred = selectionDeferred;
+  // 失敗件数（T-M8-239）。握って握りつぶすと「0件」と「全部失敗」が同じ見え方になる。
+  let failed = 0;
 
   // 収集対象IDが無い due draft（例: 全ID取得済み、ambiguous_delete のみ）は token/読取不要で
   // next_metrics_at だけ前進させ due 窓から外す（永久ループ防止）。
@@ -221,6 +230,7 @@ export async function executeMetricsCollection(
       await saveDraftCheckpoints(deps, draft, []);
       draftsProcessed += 1;
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId: draft.xAccountId, draftId: draft.draftId }, err);
     }
   }
@@ -235,6 +245,7 @@ export async function executeMetricsCollection(
     try {
       token = await deps.getAccessToken(xAccountId);
     } catch (err) {
+      failed += 1;
       deps.onError?.({ xAccountId }, err);
       return;
     }
@@ -252,6 +263,7 @@ export async function executeMetricsCollection(
         draftsProcessed += 1;
       } catch (err) {
         // 読取/保存失敗は run 全体を落とさず隔離。next_metrics_at は据え置きで次窓が再走査する。
+        failed += 1;
         deps.onError?.({ xAccountId, draftId: draft.draftId }, err);
         if (isXAuthError(err)) return; // 失効はアカウント単位でスキップ（getAccessToken null 相当）
         deferred = true; // 一時失敗（429/5xx枯渇等）は次窓へ
@@ -270,7 +282,7 @@ export async function executeMetricsCollection(
   });
   await Promise.all(workers);
 
-  return { accountsProcessed, draftsProcessed, tweetIdsRead, deferred };
+  return { accountsProcessed, draftsProcessed, tweetIdsRead, deferred, failed };
 }
 
 async function selectDue(
@@ -282,13 +294,17 @@ async function selectDue(
             d.tweet_ids, d.last_post_error, d.tweet_metrics
        from drafts d
        join x_accounts xa on xa.id = d.x_account_id
+       join profiles p on p.id = xa.user_id
       where d.next_metrics_at is not null
         and d.next_metrics_at <= $1
         and d.metrics_completed_at is null
         and xa.status = 'active'
+        -- 契約が有効な利用者だけ（T-M8-267）。解約後もX読取（$0.005/件）が最大30日続いていた。
+        -- follower_snapshot（T-M8-257）と同じゲートで、こちらだけ抜けていた。
+        and p.subscription_status::text = any($2)
       order by d.next_metrics_at asc, d.id asc
       limit 2000`,
-    [opts.now.toISOString()],
+    [opts.now.toISOString(), EXECUTABLE_SUBSCRIPTION_STATUSES],
   );
 
   const dueByAccount = new Map<string, DueDraft[]>();

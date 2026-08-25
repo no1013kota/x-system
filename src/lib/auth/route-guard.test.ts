@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isLimitedSettingsRoute,
-  isProtectedRoute,
-  routeGuardDestination,
-} from "./route-guard";
+import { isProtectedRoute, routeGuardDestination } from "./route-guard";
 
 const BASE = "https://app.example.com";
 
@@ -47,37 +43,29 @@ describe("route guards", () => {
     },
   );
 
+  /**
+   * 契約状態で画面を弾かない（T-M8-268・運営者の指示 2026-08-23）。
+   *
+   * 登録しただけの利用者も解約した利用者も通常の画面を見られる——招待キャンペーンへの参加も、
+   * 再開の判断に必要な自分のデータの確認も、画面を隠すとできない。実行の抑止は
+   * Server Action と job lease の契約ガード（要件04 §4.1）が持つ。
+   */
   it.each([
-    { plan: null, status: "active" },
-    { plan: "standard", status: "incomplete" },
-    { plan: "premium", status: "incomplete_expired" },
-  ])("redirects an unselected or incomplete plan to plans", (profile) => {
-    expect(destination("/app/posts", profile)).toBe("/plans");
+    { plan: null, status: "incomplete", label: "登録しただけ（プラン未選択）" },
+    { plan: "premium", status: "canceled", label: "解約済み" },
+    { plan: "premium", status: "past_due", label: "支払い確認中" },
+    { plan: "standard", status: "incomplete_expired", label: "申し込み期限切れ" },
+    { plan: "premium", status: "trialing", label: "トライアル中" },
+    { plan: "premium", status: "active", label: "契約中" },
+  ])("$label は /app 配下を閲覧できる", ({ plan, status }) => {
+    for (const path of ["/app", "/app/posts", "/app/invite", "/app/settings?tab=billing"]) {
+      expect(destination(path, { plan, status })).toBeNull();
+    }
   });
 
-  it.each(["billing", "support"])(
-    "allows incomplete users to reach the %s settings tab",
-    (tab) => {
-      const path = `/app/settings?tab=${tab}`;
-      expect(
-        destination(path, { plan: null, status: "incomplete" }),
-      ).toBeNull();
-      expect(isLimitedSettingsRoute(new URL(path, BASE))).toBe(true);
-    },
-  );
-
-  it.each([
-    "/app/settings",
-    "/app/settings?tab=api-keys",
-    "/app/settings/billing",
-  ])("redirects incomplete users away from non-billing settings %s", (path) => {
-    expect(destination(path, { status: "incomplete" })).toBe("/plans");
+  it("プロフィールが読めなくても閲覧は止めない（実行側で止まる）", () => {
+    expect(
+      routeGuardDestination({ profile: null, url: new URL("/app", BASE), userId: "user-1" }),
+    ).toBeNull();
   });
-
-  it.each(["trialing", "active", "past_due", "unpaid", "paused", "canceled"])(
-    "allows %s users to browse app routes",
-    (status) => {
-      expect(destination("/app/posts?tab=history", { status })).toBeNull();
-    },
-  );
 });

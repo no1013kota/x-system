@@ -126,6 +126,19 @@ describe("checkExecutionPrerequisites — premium", () => {
     expect(checkExecutionPrerequisites(premium())).toBeNull();
   });
 
+  /**
+   * expert も運営キー系（T-M8-168）。判定が `plan === "premium"` のままだと expert がBYOK扱いに
+   * なり、¥14,800のプランで生成・投稿が全滅する（レビューで検出。isOperatorManagedPlanで判定する）。
+   */
+  it("expert もX/AIキーなしで通る（運営キー系はplans.tsのusageLimitsで判定）", () => {
+    expect(checkExecutionPrerequisites(premium({ plan: "expert" }))).toBeNull();
+    expect(checkPostingPrerequisites(premium({ plan: "expert" }))).toBeNull();
+    // 初期設定ガイドも運営キー系の2項目（X連携・アカウント設定）になる。
+    expect(buildSetupChecklist(premium({ plan: "expert" })).map((i) => i)).toEqual(
+      buildSetupChecklist(premium()),
+    );
+  });
+
   it("does not require X/AI keys even when unset or image is requested", () => {
     expect(
       checkExecutionPrerequisites(
@@ -290,3 +303,40 @@ describe("assertPrereqsFromInput", () => {
     expect(() => assertPrereqsFromInput(byok())).not.toThrow();
   });
 });
+
+describe("契約の期限切れ（webhook未達）を実行前提で止める（T-M8-235）", () => {
+  const base = {
+    plan: "premium" as const,
+    subscriptionStatus: "trialing",
+    xApiKeyStatus: "valid",
+    hasActiveXAccount: true,
+    textAiKeyValid: true,
+    imageRequested: false,
+    imageAiKeyValid: true,
+    baseMdVersion: 1,
+  };
+
+  it("期限を渡さなければ従来どおり通る", () => {
+    expect(checkExecutionPrerequisites(base)).toBeNull();
+    expect(checkPostingPrerequisites(base)).toBeNull();
+  });
+
+  it("トライアル期限を大きく過ぎていたら subscription 不足として止める", () => {
+    const stale = { ...base, trialEndsAt: "2020-01-01T00:00:00Z" };
+    expect(checkExecutionPrerequisites(stale)).toMatchObject({
+      code: "subscription_required",
+      missing: ["subscription"],
+    });
+    expect(checkPostingPrerequisites(stale)).toMatchObject({ code: "subscription_required" });
+  });
+
+  it("期限が未来なら止めない（猶予の内側でも止めない）", () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    expect(checkExecutionPrerequisites({ ...base, trialEndsAt: future })).toBeNull();
+    const justEnded = new Date(Date.now() - 3_600_000).toISOString();
+    expect(
+      checkExecutionPrerequisites({ ...base, subscriptionStatus: "active", currentPeriodEnd: justEnded }),
+      "更新直後の数時間で支払い済みの利用者を締め出さない",
+    ).toBeNull();
+  });
+})

@@ -79,6 +79,11 @@ export interface XUser {
   username: string;
   name: string;
   profileImageUrl: string | null;
+  /**
+   * X Premium加入（T-M8-219）。verified_type が blue（Premium個人）/ business（認証済み組織）
+   * のとき true。government・none・未取得は false。
+   */
+  premium: boolean;
 }
 export interface XUserResult extends XApiMeta {
   user: XUser;
@@ -169,7 +174,22 @@ async function callX<T>(
       const res = await deps.http(req);
       const text = await res.text();
       if (res.ok) {
-        return { body: text ? (JSON.parse(text) as T) : ({} as T), requestId: res.requestId };
+        /*
+          **空本文や壊れたJSONを `{}` として通さない**（T-M8-250）。以前は空なら `{} as T` を
+          返していたため、呼び出し側は「成功したが中身が無い」応答を受け取り、
+          投稿IDが取れないまま先へ進んだ（原因が「通信断」なのか「本文が壊れている」のかも
+          区別できなかった）。**同じ結果になるなら、その場で失敗として止める方が原因へ辿れる。**
+          どちらも再送で直らないので `invalid`（retryしない種別）にする。
+        */
+        if (!text) {
+          throw new XApiError(res.status, "empty_body", "invalid");
+        }
+        try {
+          return { body: JSON.parse(text) as T, requestId: res.requestId };
+          // eslint-disable-next-line no-restricted-syntax -- 壊れたJSONであること自体が判定結果。本文は載せない（要件01 §8）
+        } catch {
+          throw new XApiError(res.status, "malformed_body", "invalid");
+        }
       }
       err = new XApiError(res.status, parseErrorCode(text), classify(res.status));
     } catch (e) {
@@ -237,17 +257,28 @@ export async function deletePost(
   return { deleted: res.data.deleted === true, requestId, quantity: 1, dryRun: false };
 }
 
-/** GET /2/users/me（連携確認・handle/表示名取得, 要件05 §4.3）。読取はmodeに依らず実行。 */
+/** verified_type → X Premium加入の判定（T-M8-219）。 */
+function isPremiumVerifiedType(verifiedType: string | undefined): boolean {
+  return verifiedType === "blue" || verifiedType === "business";
+}
+
+/** GET /2/users/me（連携確認・handle/表示名/Premium取得, 要件05 §4.3・T-M8-219）。読取はmodeに依らず実行。 */
 export async function getMe(
   accessToken: string,
   deps: XClientDeps,
 ): Promise<XUserResult> {
   const { body: res, requestId } = await callX<{
-    data: { id: string; username: string; name: string; profile_image_url?: string };
+    data: {
+      id: string;
+      username: string;
+      name: string;
+      profile_image_url?: string;
+      verified_type?: string;
+    };
   }>(
     {
       method: "GET",
-      url: `${baseUrl(deps)}/users/me?user.fields=profile_image_url`,
+      url: `${baseUrl(deps)}/users/me?user.fields=profile_image_url,verified_type`,
       headers: authHeaders(accessToken, false),
     },
     deps,
@@ -258,6 +289,7 @@ export async function getMe(
       username: res.data.username,
       name: res.data.name,
       profileImageUrl: res.data.profile_image_url ?? null,
+      premium: isPremiumVerifiedType(res.data.verified_type),
     },
     requestId,
     quantity: 1,
@@ -287,6 +319,8 @@ export async function getUserByUsername(
       username: res.data.username,
       name: res.data.name,
       profileImageUrl: res.data.profile_image_url ?? null,
+      // 参考アカウント解決ではPremium状態を使わないため取得しない（T-M8-219）。
+      premium: false,
     },
     requestId,
     quantity: 1,

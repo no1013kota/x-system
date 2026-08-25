@@ -1,9 +1,11 @@
+import { NEWS_MAX_STORED_ITEMS, NEWS_ORDER_BY } from "../news-items";
 import type { Queryable } from "../x/token-refresh";
 
 /**
  * scheduler_tick の保持cleanup（要件04 §14, 要件01 §9, 要件02 §3.18, ADR-0003, T-M4-09）。
  * 40日を過ぎた保持データと、24時間を過ぎて未参照のStorage画像を各上限まで削除する。
- * 順序は §14 準拠: (1)news通知 → (2)未参照 news_items → (3)external_api_usage_events 明細 →
+ * 順序は §14 準拠: (1)news通知 → (2)未参照 news_items（40日超＋新着500件超・T-M8-188） →
+ * (3)external_api_usage_events 明細 →
  * (4)cron_runs → (4b)news_fetch_outcomes → (5)未参照 Storage画像。news通知を先に消すことで、それが参照していた news_items が
  * 未参照になり削除対象へ移る。各段は独立の try/catch で、失敗しても他段・tick本体を止めず onError
  * （Sentry想定）へ記録して次回起動へ繰り越す（cleanup失敗は投稿系処理を失敗させない）。
@@ -26,10 +28,14 @@ export interface CleanupDeps {
 
 export interface CleanupResult {
   newsNotifications: number;
+  /** news以外で保持期間を過ぎた通知（summary など・T-M8-246）。 */
+  otherNotifications: number;
   newsItems: number;
   usageEvents: number;
   cronRuns: number;
   newsFetchOutcomes: number;
+  /** DB接続の待ちの記録（T-M8-198）。通常は0件のまま。 */
+  poolEvents: number;
   images: number;
 }
 
@@ -41,6 +47,26 @@ async function deleteOldNewsNotifications(db: Queryable): Promise<number> {
         select id from notifications
          where type = 'news' and created_at < now() - make_interval(days => $1)
          order by created_at
+         limit $2)`,
+    [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * (1b) 保持期間を過ぎた**news以外の通知**を削除（T-M8-246）。
+ *
+ * 以前は `type='news'` だけを消していたため、毎日1通作られる `summary` などが**永久に積もった**
+ * （利用者が増えるほど線形に増え、無料枠のDB容量を静かに食う）。既読を先に消し、
+ * 未読は残る側にしておく（読む前に消えると「来たはずの知らせが無い」になる）。
+ */
+async function deleteOldNotifications(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from notifications
+      where id in (
+        select id from notifications
+         where type <> 'news' and created_at < now() - make_interval(days => $1)
+         order by (read_at is null), created_at
          limit $2)`,
     [RETENTION_DAYS, BATCH],
   );
@@ -61,6 +87,33 @@ async function deleteUnreferencedNewsItems(db: Queryable): Promise<number> {
          order by ni.fetched_at
          limit $2)`,
     [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * (2b) 新着順で `NEWS_MAX_STORED_ITEMS`（500件）を超えた news_items を削除する
+ * （運営者の指示 2026-08-22・T-M8-188。DBの肥大防止）。一覧の表示上限と同じ並び
+ * （`NEWS_ORDER_BY`）で数え、draft・通知payloadから参照される行は40日cleanupと同じ
+ * ガードで残す（参照付きの古い行は表示上限の外なので画面には出ない）。
+ */
+async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
+  // 参照ガードは**LIMITより前**（サブクエリ内）に置く。DELETE側に置くと、参照付きの行が
+  // バッチ500枠を食い潰して選択窓が先へ進まず、未参照の古い行が永久に残る
+  // （敵対的レビューで実DB再現・T-M8-192。rn自体は全行で数え、削除候補の選抜だけを参照除外後に絞る）。
+  const { rowCount } = await db.query(
+    `delete from news_items
+      where id in (
+        select ranked.id from (
+          select id, row_number() over (order by ${NEWS_ORDER_BY}) as rn
+            from news_items) ranked
+         where ranked.rn > $1
+           and not exists (select 1 from drafts d where d.source_news_item_id = ranked.id)
+           and not exists (
+             select 1 from notifications n
+              where jsonb_exists(n.payload->'news_item_ids', ranked.id::text))
+         limit $2)`,
+    [NEWS_MAX_STORED_ITEMS, BATCH],
   );
   return rowCount ?? 0;
 }
@@ -87,6 +140,20 @@ async function deleteOldCronRuns(db: Queryable): Promise<number> {
         select id from cron_runs
          where claimed_at < now() - make_interval(days => $1)
          order by claimed_at
+         limit $2)`,
+    [RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/** (4c) occurred_at が40日超の db_pool_events（接続待ちの記録）を削除（T-M8-198）。 */
+async function deleteOldPoolEvents(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from db_pool_events
+      where id in (
+        select id from db_pool_events
+         where occurred_at < now() - make_interval(days => $1)
+         order by occurred_at
          limit $2)`,
     [RETENTION_DAYS, BATCH],
   );
@@ -161,10 +228,12 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   const onError = deps.onError ?? (() => {});
   const result: CleanupResult = {
     newsNotifications: 0,
+    otherNotifications: 0,
     newsItems: 0,
     usageEvents: 0,
     cronRuns: 0,
     newsFetchOutcomes: 0,
+    poolEvents: 0,
     images: 0,
   };
 
@@ -179,8 +248,12 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   await step("news_notifications", async () => {
     result.newsNotifications = await deleteOldNewsNotifications(db);
   });
+  await step("other_notifications", async () => {
+    result.otherNotifications = await deleteOldNotifications(db);
+  });
   await step("news_items", async () => {
     result.newsItems = await deleteUnreferencedNewsItems(db);
+    result.newsItems += await trimNewsItemsOverCap(db);
   });
   await step("usage_events", async () => {
     result.usageEvents = await deleteOldUsageEvents(db);
@@ -190,6 +263,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("news_fetch_outcomes", async () => {
     result.newsFetchOutcomes = await deleteOldNewsFetchOutcomes(db);
+  });
+  await step("db_pool_events", async () => {
+    result.poolEvents = await deleteOldPoolEvents(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;

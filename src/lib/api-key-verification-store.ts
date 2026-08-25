@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 
 import { AppError } from "@/lib/observability/errors";
-import type { PlanId } from "@/lib/plans";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 
 import type { VerifiableApiKeyProvider } from "./api-key-verification";
 
@@ -22,7 +22,7 @@ export async function loadApiKeyVerificationTarget(
   );
   const row = result.rows[0];
   if (!row) throw new AppError("not_found");
-  if (row.plan === "premium") throw new AppError("forbidden");
+  if (isOperatorManagedPlan(row.plan)) throw new AppError("forbidden");
   if (!row.credentials_ciphertext) {
     throw new AppError("api_key_required", {
       details: { provider: input.provider, settingsPath: "/app/settings?tab=api-keys" },

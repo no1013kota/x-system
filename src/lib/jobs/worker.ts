@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { insertMissedNotification } from "./schedule-recovery";
 
 import type { PoolClient } from "pg";
 
+import { EXECUTABLE_SUBSCRIPTION_STATUSES } from "../auth/subscription-access";
 import { acquireXactLock, postPublishLockKey, xAccountLockKey } from "../db/locks";
 import { withTransaction } from "../db/pool";
 import { dispatchJob } from "./dispatch";
@@ -23,7 +25,8 @@ export type LeaseOutcome =
   | "skipped_locked" // row locked by another worker (FOR UPDATE SKIP LOCKED)
   | "skipped_conflict" // same-account/user running job (concurrency guard)
   | "not_queued" // not queued or not yet due
-  | "canceled_missed"; // schedule-origin job past scheduled_for + 10min
+  | "canceled_missed" // schedule-origin job past scheduled_for + 10min
+  | "canceled_subscription"; // owner's subscription is no longer executable (T-M8-267)
 
 export interface LeasedJob {
   id: string;
@@ -75,11 +78,17 @@ export async function leaseJob(
     attempt: number;
     available_now: boolean;
     schedule_expired: boolean;
+    slot_id: string | null;
+    occ_date: string | null;
+    occ_time: string | null;
   }>(
     `select status, trigger, attempt,
             (available_at <= now()) as available_now,
             (scheduled_for is not null
-               and now() > scheduled_for + interval '10 minutes') as schedule_expired
+               and now() > scheduled_for + interval '10 minutes') as schedule_expired,
+            slot_id,
+            to_char(scheduled_for at time zone 'Asia/Tokyo', 'YYYY-MM-DD') as occ_date,
+            to_char(scheduled_for at time zone 'Asia/Tokyo', 'HH24:MI') as occ_time
        from generation_jobs
       where id = $1
       for update skip locked`,
@@ -88,8 +97,15 @@ export async function leaseJob(
   if (locked.rowCount === 0) return { outcome: "skipped_locked" };
   const row = locked.rows[0];
 
-  // schedule-origin post_generation past its window → cancel (要件04 §7.2)。
-  // schedule_missed 通知の作成は scheduler_tick（M4）が担う。
+  /*
+    schedule-origin post_generation past its window → cancel (要件04 §7.2)。
+
+    **cancel した側が通知も作る**（T-M8-160・監査#22）。以前は「通知は scheduler_tick が担う」と
+    コメントして cancel だけ行っていたが、tick の `cancelExpiredJobs` は `status='queued'` しか拾わず、
+    `notifyUnenqueuedMissed` は当該 `schedule_run_key` の job が在る窓を除外するため、
+    **この経路で見送られた予約は利用者へ何も届かなかった**（黙って投稿されない・原則1）。
+    通知は `dedupe_key` で slot定刻ごと1件に集約されるので、tick 側と重なっても二重にならない。
+  */
   if (
     kind === "post_generation" &&
     row.trigger === "schedule" &&
@@ -100,11 +116,52 @@ export async function leaseJob(
       `update generation_jobs set status = 'canceled', finished_at = now() where id = $1`,
       [jobId],
     );
+    if (row.slot_id && row.occ_date && row.occ_time) {
+      await insertMissedNotification(client, {
+        occDate: row.occ_date,
+        occTime: row.occ_time,
+        slotId: row.slot_id,
+        userId: user_id,
+      });
+    }
     return { outcome: "canceled_missed" };
   }
 
   if (row.status !== "queued" || !row.available_now) {
     return { outcome: "not_queued" };
+  }
+
+  /*
+    **契約が無効になっていたら実行しない**（T-M8-267）。
+
+    入口（Server Action・enqueue）のガードだけでは足りない——契約中に queued になった job は
+    解約後も残り、`scheduler_tick` の回収dispatch・子jobの連鎖・retry・stale再投入のいずれも
+    契約を見ないため、**解約後にAI生成・画像生成・X投稿が実行されていた**（2026-08-23の監査で
+    6経路を確認）。経路ごとに足すと必ず取りこぼすので、**すべての実行が通る lease の1か所**で見る。
+
+    ここは reserve（利用枠の確保）より前なので、返金の後始末は不要。理由を `error` に残して
+    `canceled` で終端し、画面から「なぜ動かなかったか」が読めるようにする（原則1）。
+  */
+  const executable = await client.query(
+    `select 1
+       from x_accounts xa
+       join profiles p on p.id = xa.user_id
+      where xa.id = $1 and p.subscription_status::text = any($2)`,
+    [x_account_id, EXECUTABLE_SUBSCRIPTION_STATUSES],
+  );
+  if (executable.rowCount === 0) {
+    await client.query(
+      `update generation_jobs
+          set status = 'canceled', finished_at = now(),
+              error = jsonb_build_object(
+                'code', 'subscription_required',
+                'message', $2::text,
+                'retryable', false
+              )
+        where id = $1`,
+      [jobId, "ご契約が終了しているため実行を中止しました。"],
+    );
+    return { outcome: "canceled_subscription" };
   }
 
   // 4. concurrency guard: another running job on this account?
@@ -228,9 +285,7 @@ export async function runJob(
 
   const job = lease.job;
   try {
-    await withTransaction((c) =>
-      getJobHandler(job.kind)({ jobId, kind: job.kind, workerId }, c),
-    );
+    await getJobHandler(job.kind)({ jobId, kind: job.kind, workerId });
     await withTransaction((c) =>
       c.query(
         `update generation_jobs

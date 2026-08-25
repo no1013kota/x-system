@@ -14,7 +14,15 @@ const TEXT_CAPABLE_PROVIDERS = ["anthropic", "openai", "google"] as const;
  */
 export async function gatherExecutionPrereqInputs(
   userId: string,
-  opts: { imageRequested?: boolean } = {},
+  opts: {
+    imageRequested?: boolean;
+    /**
+     * 判定対象のXアカウント（T-M8-196）。**ジョブ実行時は必ずジョブのx_account_idを渡す**——
+     * 省略時のactive基準だと、別アカウントを表示中（設定中・失効中）なだけで
+     * 健全なアカウントのスケジュール生成が terminally fail していた（実DBで再現）。
+     */
+    xAccountId?: string;
+  } = {},
 ): Promise<ExecutionPrereqInput | null> {
   const pool = getPool();
   const prof = (
@@ -23,8 +31,13 @@ export async function gatherExecutionPrereqInputs(
       subscription_status: string;
       ai_purpose_config: { text?: string | null; image?: string | null } | null;
       active_x_account_id: string | null;
+      trial_ends_at: string | null;
+      current_period_end: string | null;
     }>(
-      `select plan, subscription_status, ai_purpose_config, active_x_account_id
+      // 期限（trial_ends_at / current_period_end）も読む。status が `trialing`/`active` のまま
+      // 期限切れなら「契約の反映が届いていない」として実行を止める（T-M8-235）。
+      `select plan, subscription_status, ai_purpose_config, active_x_account_id,
+              trial_ends_at::text as trial_ends_at, current_period_end::text as current_period_end
          from profiles where id = $1`,
       [userId],
     )
@@ -43,12 +56,13 @@ export async function gatherExecutionPrereqInputs(
 
   let hasActiveXAccount = false;
   let baseMdVersion = 0;
-  if (prof.active_x_account_id) {
+  const targetAccountId = opts.xAccountId ?? prof.active_x_account_id;
+  if (targetAccountId) {
     const acct = (
       await pool.query<{ base_md_version: number }>(
         `select base_md_version from x_accounts
           where id = $1 and user_id = $2 and status = 'active'`,
-        [prof.active_x_account_id, userId],
+        [targetAccountId, userId],
       )
     ).rows[0];
     if (acct) {
@@ -72,5 +86,8 @@ export async function gatherExecutionPrereqInputs(
     imageRequested: opts.imageRequested ?? false,
     imageAiKeyValid: !!ai.image && keyStatus[ai.image] === "valid",
     baseMdVersion,
+    // 契約期間の期限（T-M8-235）。status だけでは webhook 未達を見抜けない。
+    trialEndsAt: prof.trial_ends_at,
+    currentPeriodEnd: prof.current_period_end,
   };
 }

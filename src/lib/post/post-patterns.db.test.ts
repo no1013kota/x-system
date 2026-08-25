@@ -1,3 +1,4 @@
+import { applyUpdatePatternPrompt } from "./post-patterns-store";
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
@@ -77,6 +78,58 @@ describe("post_patterns（ローカルDB）", () => {
         [xid],
       );
       expect(nulls[0].n).toBe("6");
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  /**
+   * プロンプト保存で placeholders が本文から導出される（T-M8-186）。
+   * 宣言と本文が食い違うと、後のパターン編集が placeholder_not_used で落ちるか、
+   * 増やした {名前} の入力欄が出ない。
+   */
+  it("プロンプト保存で placeholders が本文から導出される", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      const { rows } = await withTransaction((c) =>
+        c.query<{ id: string }>(
+          `select id from post_patterns where x_account_id = $1 and seed_key = 'p2'`,
+          [xid],
+        ),
+      );
+      const patternId = rows[0].id;
+      // 初回保存（prompt is null → 上書き作成）: {お題} と {切り口} を含む本文。
+      const saved = await withTransaction((c) =>
+        applyUpdatePatternPrompt(c, {
+          xAccountId: xid,
+          patternId,
+          content: "# タスク\nお題: {お題} 切り口: {切り口}\n# 構成と分量とスレッド数\n1スレッド目のみ",
+          expectedUpdatedAt: null,
+        }),
+      );
+      const after = await withTransaction((c) =>
+        c.query<{ placeholders: { name: string }[] }>(
+          `select placeholders from post_patterns where id = $1`,
+          [patternId],
+        ),
+      );
+      expect(after.rows[0].placeholders).toEqual([{ name: "お題" }, { name: "切り口" }]);
+      // 2回目: {お題} だけへ減らすと宣言も減る。
+      await withTransaction((c) =>
+        applyUpdatePatternPrompt(c, {
+          xAccountId: xid,
+          patternId,
+          content: "# タスク\nお題: {お題}\n# 構成と分量とスレッド数\n1スレッド目のみ",
+          expectedUpdatedAt: saved.updatedAt,
+        }),
+      );
+      const reduced = await withTransaction((c) =>
+        c.query<{ placeholders: { name: string }[] }>(
+          `select placeholders from post_patterns where id = $1`,
+          [patternId],
+        ),
+      );
+      expect(reduced.rows[0].placeholders).toEqual([{ name: "お題" }]);
     } finally {
       await cleanup(uid);
     }
@@ -378,13 +431,26 @@ describe("post_patterns（ローカルDB）", () => {
       const a = await mk();
       const b = await mk();
 
+      /*
+        本番の `authenticated` は `profiles` の3列しか読めない（T-M8-252。アプリはPostgREST経由で
+        読まないため）。**RLSポリシー自体は「もし読めたとしても他人の行は見えない」保証**として
+        生かしたいので、ここだけ権限を与えて検査する。
+        **`withTransaction` は成功時に commit する**ので、rollback頼みにせず必ず戻す（下の finally）。
+      */
+      await c.query(`grant select on post_patterns to authenticated`);
       await c.query(`select set_config('role','authenticated', true)`);
       await c.query(`select set_config('request.jwt.claims', $1, true)`, [
         JSON.stringify({ sub: a.uid, role: "authenticated" }),
       ]);
-      const { rows } = await c.query<{ x_account_id: string }>(
-        `select distinct x_account_id from post_patterns`,
-      );
+      let rows: { x_account_id: string }[];
+      try {
+        ({ rows } = await c.query<{ x_account_id: string }>(
+          `select distinct x_account_id from post_patterns`,
+        ));
+      } finally {
+        await c.query(`select set_config('role','postgres', true)`);
+        await c.query(`revoke select on post_patterns from authenticated`);
+      }
       expect(rows.map((r) => r.x_account_id), "自分の分だけ見える").toEqual([a.xid]);
       expect(rows.some((r) => r.x_account_id === b.xid)).toBe(false);
 

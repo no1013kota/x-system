@@ -47,8 +47,8 @@ export function Badge({
 /**
  * ニュース分野のチップ。分野ごとに固定の配色（デザイン §カラー）。
  *
- * **取得している3分野以外も定義を残す**。過去に保存された記事や、利用者が以前
- * 選んでいた分野の表示で使われるため（T-M7-55 で取得は3分野へ絞ったが、
+ * **取得している分野以外も定義を残す**。過去に保存された記事や、利用者が以前
+ * 選んでいた分野の表示で使われるため（取得分野は運用で変わるが（T-M7-55/T-M8-189）、
  * 既存データは消していない）。
  */
 /** `CategoryChip` 専用（外へ出さない・T-M8-51）。色は意味で決まるので個別に使わせない。 */
@@ -59,6 +59,8 @@ const NEWS_CATEGORY_CHIP: Record<string, string> = {
   business: "bg-[#eef1f9] text-[#4c71ba]",
   business_ops: "bg-warn-bg text-warn-fg",
   sns: "bg-[#fdeee6] text-[#c94a06]",
+  love: "bg-[#fdeaf2] text-[#c2266b]",
+  beauty: "bg-[#f4eefc] text-[#7a4fc9]",
 };
 
 /**

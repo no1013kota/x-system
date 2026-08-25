@@ -32,6 +32,14 @@ export const TEMPLATES = [
 ];
 
 export const AUTH_SETTINGS = {
+  /**
+   * メール確認の省略（T-M8-202・運営者の決定 2026-08-22）。true = 登録即ログイン
+   * （6桁コードを送らない・確認画面に入らない）。**戻すときは false へ**変えて
+   * `npm run auth:templates -- --target <env> --apply` を再実行し、`supabase/config.toml` の
+   * `enable_confirmations` も true へ戻す。アプリ側は signUp 応答の session 有無で
+   * 自動追従する（コード変更不要）。コード検証・再送のコードは残してある。
+   */
+  mailer_autoconfirm: true,
   /** 確認コードの桁数。`EMAIL_CODE_LENGTH`（画面側）と必ず一致させる。 */
   mailer_otp_length: 6,
   /** コードの有効期間（秒）。画面の案内文（1時間）と合わせる。 */

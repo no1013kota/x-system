@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { IntentPrefetchLink } from "@/components/navigation/intent-prefetch-link";
 import { cn } from "@/lib/utils";
 
 import { TabLabel } from "./tab-nav-label";
@@ -66,7 +65,7 @@ export function TabNav({
   return (
     <nav aria-label={label} className={tabNavClassName(className)}>
       {items.map((item) => (
-        <Link
+        <IntentPrefetchLink
           aria-current={active === item.value ? "page" : undefined}
           className={tabLinkClassName(
             active === item.value,
@@ -75,9 +74,10 @@ export function TabNav({
           )}
           href={hrefFor(item.value)}
           key={item.value}
+          prefetch={active === item.value ? false : undefined}
         >
           <TabLabel label={item.label} />
-        </Link>
+        </IntentPrefetchLink>
       ))}
     </nav>
   );

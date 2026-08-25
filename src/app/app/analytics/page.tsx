@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { isOperatorManagedPlan, type PlanId } from "@/lib/plans";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { EmptyState } from "@/components/app-shell/page-state";
@@ -8,6 +10,8 @@ import {
   loadSuggestionsForUser,
 } from "@/lib/analytics-server";
 import { APP_NAME } from "@/lib/app-config";
+import { AppLockedPage } from "@/components/app-shell/plan-required";
+import { loadAppLock } from "@/lib/auth/plan-gate-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { pooledQueryable } from "@/lib/db/pool";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
@@ -25,8 +29,25 @@ const ANALYTICS_PERIOD_DAYS = 90;
 export default async function AnalyticsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/app/analytics");
-
-  const xAccountId = await resolveActiveXAccountForUser(user.id);
+  /*
+    ロック判定と操作中アカウントの解決は互いに独立なので**1波でまとめる**（T-M8-274）。
+    直列にすると全遷移でDB往復が1本増える。ロック時に解決結果を捨てるのは軽い無駄だが、
+    ロックは稀な状態で、待たされるのは毎回の通常利用のほう。
+  */
+  const [lock, xAccountId] = await Promise.all([
+    loadAppLock(user.id),
+    resolveActiveXAccountForUser(user.id),
+  ]);
+  // 契約が有効でなければ開けない（T-M8-269→T-M8-273。理由で文言と導線が変わる）。
+  if (lock) {
+    return (
+      <AppLockedPage
+        description="投稿の実績とフォロワーの推移を記録し、伸びた投稿をAIが分析します。"
+        reason={lock}
+        title="投稿分析"
+      />
+    );
+  }
   if (!xAccountId) {
     return (
       <main className="mx-auto w-full max-w-[1180px] px-4 py-[26px] lg:px-8">
@@ -52,9 +73,9 @@ export default async function AnalyticsPage() {
     pooledQueryable().query<{ handle: string }>(`select handle from x_accounts where id = $1`, [
       xAccountId,
     ]),
-    // 提案のプロンプト全文は貼り先（AI設定＞プロンプト）が mdプラン以上のため、プランで出し分ける（T-M8-91）。
-    // AIキーの有無は、BYOKで毎朝の分析が始まらない理由（未登録）を画面から説明するために読む（T-M8-95）。
-    pooledQueryable().query<{ plan: "standard" | "md" | "premium"; has_ai_key: boolean }>(
+    // 提案のプロンプト全文は、編集権限（canEditMdAndPrompts）の有無で出し分ける（T-M8-91/T-M8-168）。
+    // AIキーの有無は、BYOKで分析を開始できない理由（未登録）を画面から説明するために読む（T-M8-95）。
+    pooledQueryable().query<{ plan: PlanId | null; has_ai_key: boolean }>(
       `select p.plan,
               exists (
                 select 1 from user_api_keys k
@@ -73,7 +94,7 @@ export default async function AnalyticsPage() {
       <header>
         <h1 className={pageTitleClassName}>投稿分析</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          毎朝8時ごろに、Xへ投稿したポストを自動で取得・分析してレポートを作ります。下の実績表は、このアプリから投稿したポストを投稿後1日・7日・30日の3回記録したものです。
+          「分析を開始」を押すと、Xの投稿を取得・分析してレポートを作ります（1日1回）。フォロワー数は毎日自動で記録されます。
         </p>
       </header>
       {/* 並びは 分析レポート → 投稿ごとの実績 → フォロワー推移（運営者の指示・2026-08-15。
@@ -82,9 +103,9 @@ export default async function AnalyticsPage() {
         <SuggestionsPanel
           generating={suggestionsSection.generating}
           needsAiKey={
-            (profile.rows[0]?.plan ?? "standard") !== "premium" && !profile.rows[0]?.has_ai_key
+            !isOperatorManagedPlan(profile.rows[0]?.plan ?? null) && !profile.rows[0]?.has_ai_key
           }
-          plan={profile.rows[0]?.plan ?? "standard"}
+          canEditPrompts={promptEditablePlan(profile.rows[0]?.plan ?? "")}
           suggestions={suggestionsSection.suggestions}
         />
         <AnalyticsView drafts={drafts} handle={handle} />

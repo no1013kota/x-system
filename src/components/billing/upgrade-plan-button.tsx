@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { stateActionClassName } from "@/components/app-shell/page-state";
+import { stateActionClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
+import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
 
 /**
  * 上位プランへの変更へ直接入る導線（T-M8-89）。
@@ -31,6 +32,8 @@ export function UpgradePlanButton({
   enabled: boolean;
 }) {
   const [pending, setPending] = useState(false);
+  // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
+  usePageshowReset(() => setPending(false));
   const toast = useToast();
 
   if (!enabled) {

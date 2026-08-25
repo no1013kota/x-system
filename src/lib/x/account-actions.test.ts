@@ -44,6 +44,7 @@ const me: Awaited<ReturnType<XMeFetcher>> = {
   username: "acme",
   name: "Acme",
   profileImageUrl: "https://img",
+  premium: false,
 };
 
 /** Resolves to the rejection reason (as AppError); throws if the promise resolves. */
@@ -68,6 +69,7 @@ describe("listXAccountsForUser", () => {
         status: "active",
         is_active: true,
         automation_active: false,
+        x_premium: false,
       },
     ]);
     const list = await listXAccountsForUser(db, "u1");
@@ -81,6 +83,7 @@ describe("listXAccountsForUser", () => {
         status: "active",
         isActive: true,
         automationActive: false,
+        xPremium: false,
       },
     ]);
   });
@@ -88,9 +91,12 @@ describe("listXAccountsForUser", () => {
 
 describe("refreshXAccountStatus", () => {
   it("sets active and applies /me fields when /me succeeds", async () => {
-    const { db, writes } = makeDb((sql) =>
-      OWNED.test(sql) ? [{ status: "active", auth_type: "managed", plan: "premium" }] : [],
-    );
+    const { db, writes } = makeDb((sql) => {
+      if (OWNED.test(sql)) return [{ status: "active", auth_type: "managed", plan: "premium" }];
+      // applyMe の UPDATE は「更新できた」1行を返す（disabledガード・T-M8-196——0行だと切断済み扱いになる）。
+      if (/update x_accounts\s+set handle/.test(sql)) return [{}];
+      return [];
+    });
     const res = await refreshXAccountStatus("a1", "u1", {
       db,
       getAccessToken: async () => "tok",
@@ -98,7 +104,8 @@ describe("refreshXAccountStatus", () => {
     });
     expect(res.status).toBe("active");
     const update = writes.find((w) => /update x_accounts\s+set handle/.test(w.sql));
-    expect(update?.params).toEqual(["a1", "acme", "Acme", "https://img"]);
+    // x_premium も /me の verified_type 由来の値で毎回更新する（T-M8-219）。
+    expect(update?.params).toEqual(["a1", "acme", "Acme", "https://img", false]);
   });
 
   it("returns the stored status (e.g. expired) when token refresh throws", async () => {
@@ -155,7 +162,7 @@ describe("enableXAccount", () => {
   }
 
   it("activates when auth_type matches the plan, /me succeeds, and there is room", async () => {
-    const { db: d } = db("premium", "managed", 0); // premium limit 3
+    const { db: d } = db("premium", "managed", 0); // premium limit 1・active 0 なので枠あり
     const res = await enableXAccount("a1", "u1", {
       db: d,
       runInTx: runInTxPassthrough(d),
@@ -194,7 +201,7 @@ describe("enableXAccount", () => {
   });
 
   it("rejects when the plan limit is already full", async () => {
-    const { db: d } = db("standard", "byok", 1); // standard limit 1, already 1 other active
+    const { db: d } = db("standard", "byok", 1); // standard limit 1（2026-08-20）, already 1 other active
     const err = await rejection(
       enableXAccount("a1", "u1", {
         db: d,
@@ -223,7 +230,7 @@ describe("disconnectXAccount", () => {
     expect(revoke).toHaveBeenCalledWith("a1");
     expect(writes.some((w) => /status = 'disabled'/.test(w.sql))).toBe(true);
     expect(
-      writes.some((w) => /update schedule_slots set enabled = false/.test(w.sql) && /mode = 'auto'/.test(w.sql)),
+      writes.some((w) => /update schedule_slots\s+set enabled = false/.test(w.sql) && /mode = 'auto'/.test(w.sql)),
     ).toBe(true);
     expect(writes.some((w) => /update profiles set active_x_account_id = null/.test(w.sql))).toBe(true);
   });

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { AppError } from "../observability/errors";
-import { refundUsage, reserveUsage } from "./generation-reserve";
+import { refundUsage, reserveUsage, settleUsage } from "./generation-reserve";
 
 /**
  * DB integration tests for generation/image reserve & refund (T-M5-03, 要件03 §7.1〜§7.4).
@@ -238,6 +238,118 @@ describe("reserveUsage / refundUsage (db)", () => {
       expect(julyCount).toBe(0); // refund hit the original month, not the current one
     } finally {
       await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [jobId]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
+  /**
+   * 利用枠は契約期間ごと（T-M8-258）。期間キーは `profiles.current_period_start` の JST 日付。
+   * 更新日（期間の切替）で新しい期間の counter が 0 から始まり、前の期間の reserve を返すときは
+   * 前の期間へ戻る（今期の残量は増えない）。
+   */
+  it("keys reserve by the subscription period and resets at renewal; refund returns to the old period", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const job1 = await makeJob(xid);
+    const job2 = await makeJob(xid);
+    const setPeriod = (start: string) =>
+      withTransaction((c) =>
+        c.query(`update profiles set current_period_start = $2 where id = $1`, [uid, start]),
+      );
+    const counters = () =>
+      withTransaction((c) =>
+        c.query<{ month: string; ai_credits_used: number }>(
+          `select month, ai_credits_used from usage_counters where user_id = $1 order by month`,
+          [uid],
+        ),
+      ).then((r) => r.rows);
+    try {
+      await setPeriod("2026-07-14T15:00:00Z"); // 7/15 00:00 JST
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job1, type: "generation", limit: 1000, amount: 16 }));
+      expect(await counters()).toEqual([{ month: "2026-07-15", ai_credits_used: 16 }]);
+      const ev = await withTransaction((c) =>
+        c.query<{ month: string }>(`select month from usage_events where job_id = $1`, [job1]),
+      );
+      expect(ev.rows[0].month, "event も期間キーで記帳").toBe("2026-07-15");
+
+      // 更新日を越えた（webhook が current_period_start を進めた）→ 新しい期間は 0 から。
+      await setPeriod("2026-08-14T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job2, type: "generation", limit: 1000, amount: 16 }));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 16 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+
+      // 前の期間の job を返しても今期の残量は増えない。
+      await withTransaction((c) => refundUsage(c, job1, "generation"));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 0 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+
+      // 期間をまたいだ精算（settle）も元reserveの期間へ（今期には触らない）。
+      const job3 = await makeJob(xid);
+      await setPeriod("2026-07-14T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: job3, type: "generation", limit: 1000, amount: 16 }));
+      await setPeriod("2026-08-14T15:00:00Z");
+      await withTransaction((c) => settleUsage(c, { jobId: job3, type: "generation", actualCredits: 40 }));
+      expect(await counters()).toEqual([
+        { month: "2026-07-15", ai_credits_used: 40 },
+        { month: "2026-08-15", ai_credits_used: 16 },
+      ]);
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = $1`, [job3]));
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [[job1, job2]]));
+      await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
+      await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
+      await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));
+    }
+  });
+
+  /**
+   * トライアルは独立した期間で、**有料化の日に枠が満額へ戻る**（運営者の指示 2026-08-23・D-38 再決定）。
+   * 「試して気に入ったら払う」人が、払った初日から満額を使えるようにする。
+   */
+  it("starts a fresh quota period when the trial converts to paid", async () => {
+    const { uid, xid } = await withTransaction((c) => makeAccount(c));
+    const jobs = [await makeJob(xid), await makeJob(xid), await makeJob(xid)];
+    const setPeriod = (start: string, end: string) =>
+      withTransaction((c) =>
+        c.query(`update profiles set current_period_start = $2, current_period_end = $3 where id = $1`, [uid, start, end]),
+      );
+    const keys = () =>
+      withTransaction((c) =>
+        c.query<{ month: string }>(`select month from usage_counters where user_id = $1 order by month`, [uid]),
+      ).then((r) => r.rows.map((x) => x.month));
+    try {
+      // トライアル: 8/15 00:00 JST 開始・8/22 00:00 JST 終了（Stripe は期間末＝trial_end）。
+      await withTransaction((c) =>
+        c.query(
+          `update profiles set trial_used_at = '2026-08-14T15:00:00Z', trial_ends_at = '2026-08-21T15:00:00Z',
+                  subscription_status = 'trialing' where id = $1`,
+          [uid],
+        ),
+      );
+      await setPeriod("2026-08-14T15:00:00Z", "2026-08-21T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: jobs[0], type: "generation", limit: 1000, amount: 16 }));
+      expect(await keys()).toEqual(["2026-08-15"]);
+
+      // 有料化: 期間は trial_end から1か月。枠は同じキーのまま（満額へ戻らない）。
+      await withTransaction((c) => c.query(`update profiles set subscription_status = 'active' where id = $1`, [uid]));
+      await setPeriod("2026-08-21T15:00:00Z", "2026-09-21T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: jobs[1], type: "generation", limit: 1000, amount: 16 }));
+      expect(await keys(), "有料化で新しい枠が始まる（トライアル分は持ち越さない）").toEqual([
+        "2026-08-15",
+        "2026-08-22",
+      ]);
+
+      // 2回目の有料期間: さらに新しいキーで 0 から。
+      await setPeriod("2026-09-21T15:00:00Z", "2026-10-21T15:00:00Z");
+      await withTransaction((c) => reserveUsage(c, { userId: uid, jobId: jobs[2], type: "generation", limit: 1000, amount: 16 }));
+      expect(await keys()).toEqual(["2026-08-15", "2026-08-22", "2026-09-22"]);
+    } finally {
+      await withTransaction((c) => c.query(`delete from usage_events where job_id = any($1)`, [jobs]));
       await withTransaction((c) => c.query(`delete from usage_counters where user_id = $1`, [uid]));
       await withTransaction((c) => c.query(`delete from x_accounts where id = $1`, [xid]));
       await withTransaction((c) => c.query(`delete from profiles where id = $1`, [uid]));

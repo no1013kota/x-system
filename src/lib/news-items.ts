@@ -1,33 +1,43 @@
 import { z } from "zod";
 
-import { DB_ENUMS } from "./db/enums";
 import { toIsoOrNull } from "./format";
+import { NEWS_CATEGORIES } from "./news";
 import { AppError } from "./observability/errors";
 import type { Queryable } from "./x/token-refresh";
 
 /**
- * SC-06 ニュース一覧の中核（要件05 §6, 要件06 §10, N-2, T-M4-14）。認証済みユーザー向けに
- * `news_items` を分野・インパクトで絞り、時間窓（from/to・最大24時間）または既定の直近7日で返す。
- * 並び・keyset cursor は `coalesce(published_at, fetched_at) desc, id desc`。DBは注入し純粋に保つ。
+ * SC-06 ニュース一覧の中核（要件05 §6, 要件06 §10, N-2, T-M4-14／T-M8-188）。
+ *
+ * **新着順（取得時刻の新しい順）が基本**で、最新 `NEWS_MAX_STORED_ITEMS` 件までを
+ * 50件ずつのページで返す（運営者の指示 2026-08-22）。テーマ・インパクトは**選択式のソート**：
+ * 選んだ値に一致する記事が先頭へ集まり、その中と残りはそれぞれ新着順（絞り込みではない——
+ * 選んでも記事は消えない）。取得は従来どおり全ユーザー共通なので、表示をどう変えても費用は
+ * 変わらない。通知の条件（news_config）とは独立。
+ *
+ * 時間窓（from/to・最大24時間）は通知のダイジェストからの深リンク用に残す。
  * ニュースは全ユーザー共通のため本人スコープを持たない（RLSで認証済みselectを許可）。
  */
 
-export const NEWS_LIST_DEFAULT_LIMIT = 20;
-export const NEWS_LIST_MAX_LIMIT = 100;
+export const NEWS_PAGE_SIZE = 50;
 export const NEWS_WINDOW_MAX_HOURS = 24;
-const DEFAULT_LOOKBACK_DAYS = 7;
 
-const categorySchema = z.enum(DB_ENUMS.news_category as unknown as [string, ...string[]]);
-const impactSchema = z.enum(DB_ENUMS.impact_level as unknown as [string, ...string[]]);
+/**
+ * 保持・表示の上限件数（運営者の指示 2026-08-22）。一覧はこの件数までしか出さず、
+ * これを超えた古い行は定時cleanup（schedule-cleanup.ts）がDBから削除する。
+ */
+export const NEWS_MAX_STORED_ITEMS = 500;
+
+export const NEWS_IMPACTS = ["high", "mid", "low"] as const;
 
 export const listNewsItemsSchema = z
   .object({
-    categories: z.array(categorySchema).max(DB_ENUMS.news_category.length).optional(),
-    impacts: z.array(impactSchema).max(DB_ENUMS.impact_level.length).optional(),
+    page: z.number().int().min(1).max(10_000).optional(),
+    /** 選択式ソート: このテーマの記事を先頭へ（値は news_category。未知値は弾く）。 */
+    theme: z.enum(NEWS_CATEGORIES).optional(),
+    /** 選択式ソート: このインパクトの記事を先頭へ。 */
+    impact: z.enum(NEWS_IMPACTS).optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
-    cursor: z.string().optional(),
-    limit: z.number().int().min(1).max(NEWS_LIST_MAX_LIMIT).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -61,27 +71,11 @@ export interface NewsItemView {
 
 export interface NewsItemsPage {
   items: NewsItemView[];
-  nextCursor: string | null;
-}
-
-interface NewsCursor {
-  ts: string;
-  id: string;
-}
-
-export function encodeNewsCursor(cursor: NewsCursor): string {
-  return Buffer.from(`${cursor.ts}|${cursor.id}`, "utf8").toString("base64url");
-}
-
-export function decodeNewsCursor(raw: string | null | undefined): NewsCursor | null {
-  if (!raw) return null;
-  const decoded = Buffer.from(raw, "base64url").toString("utf8");
-  const sep = decoded.lastIndexOf("|");
-  if (sep <= 0) return null;
-  const ts = decoded.slice(0, sep);
-  const id = decoded.slice(sep + 1);
-  if (!ts || !id) return null;
-  return { ts, id };
+  /** 1始まり。範囲外を要求されたら最終ページへ丸める。 */
+  page: number;
+  pageCount: number;
+  /** 表示対象の件数（`NEWS_MAX_STORED_ITEMS` を超えない）。 */
+  total: number;
 }
 
 interface NewsItemRow {
@@ -92,12 +86,19 @@ interface NewsItemRow {
   source_url: string;
   impact: string;
   published_at: Date | string | null;
-  order_ts: Date | string;
 }
 
 /**
- * ニュースを新しい順に返す（keyset cursor）。入力は `listNewsItemsSchema` で検証し、from/to が
- * 揃っていれば `fetched_at` の時間窓（≤24h・ダイジェスト掲載外も含む）、無ければ直近7日で絞る。
+ * 新着順の並び。取得時刻（同一バッチ内は記事の日時）の新しい順。
+ * cleanupの「最新500件」判定（schedule-cleanup.ts）と同じキーを使う。
+ */
+export const NEWS_ORDER_BY = "fetched_at desc, coalesce(published_at, fetched_at) desc, id desc";
+
+/**
+ * ニュースを50件ずつで返す（offsetページング・T-M8-188）。表示対象は**新着順で数えた最新
+ * `NEWS_MAX_STORED_ITEMS` 件**（DB側も定時cleanupで同じ件数へ切り詰める）。theme／impact の
+ * 選択があれば、その500件の中で一致する記事を先頭へ並べ替える（件数は変わらない）。
+ * from/to が揃っていれば `fetched_at` の時間窓（≤24h）で絞る（ダイジェスト深リンク用）。
  */
 export async function listNewsItems(
   db: Queryable,
@@ -107,47 +108,89 @@ export async function listNewsItems(
   if (!parsed.success) throw new AppError("validation_error");
   const value = parsed.data;
 
-  const limit = value.limit ?? NEWS_LIST_DEFAULT_LIMIT;
-  const categories = value.categories ?? [];
-  const impacts = value.impacts ?? [];
-  const cursor = decodeNewsCursor(value.cursor);
-
-  const params: unknown[] = [categories, impacts];
-  const conds: string[] = [
-    "(cardinality($1::text[]) = 0 or category::text = any($1::text[]))",
-    "(cardinality($2::text[]) = 0 or impact::text = any($2::text[]))",
-  ];
+  const params: unknown[] = [];
+  const conds: string[] = ["true"];
   if (value.from && value.to) {
     params.push(value.from, value.to);
     conds.push(
       `fetched_at >= $${params.length - 1}::timestamptz and fetched_at < $${params.length}::timestamptz`,
     );
-  } else {
-    conds.push(
-      `coalesce(published_at, fetched_at) >= now() - make_interval(days => ${DEFAULT_LOOKBACK_DAYS})`,
-    );
   }
-  if (cursor) {
-    params.push(cursor.ts, cursor.id);
-    conds.push(
-      `(coalesce(published_at, fetched_at), id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`,
-    );
-  }
-  params.push(limit + 1);
 
+  const counted = await db.query<{ n: string }>(
+    `select count(*)::text as n from news_items where ${conds.join(" and ")}`,
+    params,
+  );
+  // 表示は最新500件まで（cleanupの削除が追いつく前でも画面の総数は一致させる）。
+  const total = Math.min(Number(counted.rows[0]?.n ?? "0"), NEWS_MAX_STORED_ITEMS);
+  const pageCount = Math.max(1, Math.ceil(total / NEWS_PAGE_SIZE));
+  // 範囲外のページ要求は最終ページへ丸める（空ページで「消えた」と誤解させない・原則1）。
+  const page = Math.min(value.page ?? 1, pageCount);
+
+  // 選択式ソート: 一致行を先頭へ（一致・不一致の中はどちらも新着順）。
+  const rank: string[] = [];
+  if (value.theme) {
+    params.push(value.theme);
+    rank.push(`(category::text = $${params.length}) desc`);
+  }
+  if (value.impact) {
+    params.push(value.impact);
+    rank.push(`(impact::text = $${params.length}) desc`);
+  }
+
+  const offset = (page - 1) * NEWS_PAGE_SIZE;
+  params.push(NEWS_MAX_STORED_ITEMS, Math.min(NEWS_PAGE_SIZE, total - offset), offset);
   const { rows } = await db.query<NewsItemRow>(
-    `select id, category::text as category, title, summary, source_url, impact::text as impact,
-            published_at, coalesce(published_at, fetched_at) as order_ts
-       from news_items
-      where ${conds.join(" and ")}
-      order by coalesce(published_at, fetched_at) desc, id desc
-      limit $${params.length}`,
+    `select id, category, title, summary, source_url, impact, published_at
+       from (
+         select id, category::text as category, title, summary, source_url,
+                impact::text as impact, published_at, fetched_at
+           from news_items
+          where ${conds.join(" and ")}
+          order by ${NEWS_ORDER_BY}
+          limit $${params.length - 2}
+       ) newest
+      order by ${[...rank, NEWS_ORDER_BY].join(", ")}
+      limit $${params.length - 1} offset $${params.length}`,
     params,
   );
 
-  const hasMore = rows.length > limit;
-  const page = rows.slice(0, limit);
-  const items: NewsItemView[] = page.map((r) => ({
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      category: r.category,
+      title: r.title,
+      summary: r.summary,
+      sourceUrl: r.source_url,
+      impact: r.impact,
+      publishedAt: toIsoOrNull(r.published_at),
+    })),
+    page,
+    pageCount,
+    total,
+  };
+}
+
+/**
+ * ホームの重要ニュース（要件06 §1.4）: impact=high を新しい順に最大 `limit` 件。
+ * 一覧（全件・ページ表示）とは目的が違うため専用に持つ（T-M8-187で一覧から絞り込みを
+ * 廃止した際、ホームまで旧スキーマ入力で壊れたのを分離して直した）。
+ */
+export async function listTopHighImpactNews(
+  db: Queryable,
+  input: { categories: string[]; limit: number },
+): Promise<NewsItemView[]> {
+  const { rows } = await db.query<NewsItemRow>(
+    `select id, category::text as category, title, summary, source_url, impact::text as impact,
+            published_at
+       from news_items
+      where impact = 'high'
+        and (cardinality($1::text[]) = 0 or category::text = any($1::text[]))
+      order by coalesce(published_at, fetched_at) desc, id desc
+      limit $2`,
+    [input.categories, input.limit],
+  );
+  return rows.map((r) => ({
     id: r.id,
     category: r.category,
     title: r.title,
@@ -156,12 +199,6 @@ export async function listNewsItems(
     impact: r.impact,
     publishedAt: toIsoOrNull(r.published_at),
   }));
-  const last = page[page.length - 1];
-  const nextCursor =
-    hasMore && last
-      ? encodeNewsCursor({ ts: toIsoOrNull(last.order_ts) as string, id: last.id })
-      : null;
-  return { items, nextCursor };
 }
 
 /**

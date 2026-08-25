@@ -12,6 +12,11 @@ import {
   reconcileDraftPostingAction,
 } from "@/app/actions/drafts";
 import {
+  ScheduleDraftPanel,
+  ScheduleDraftToggle,
+  scheduledLabel,
+} from "./schedule-draft-control";
+import {
   getGenerationJobAction,
   publishDraftAction,
   regenerateDraftAction,
@@ -26,7 +31,6 @@ import { createPollGuard, POLL_INTERVAL_MS, pollGiveUpMessage } from "@/lib/ui/p
 import { useToast } from "@/components/ui/toast";
 import type { DraftView } from "@/lib/drafts";
 import { draftActionState } from "@/lib/post/draft-actions";
-import { formatJst } from "@/lib/format";
 import {
   alertDialogBackdropClassName,
   alertDialogPopupClassName,
@@ -54,39 +58,103 @@ function WarningBadge({ code }: { code: string }) {
 }
 
 export function DraftsList({
+  xAccountActive = true,
+  xPremium = false,
   drafts,
+  generatingJobs = [],
   selectedDraftId,
   imageRegenEnabled,
   quotePostEnabled,
 }: {
   drafts: DraftView[];
+  /** 操作中XアカウントのX Premium加入。文字数上限の緩和（T-M8-221）。 */
+  xPremium?: boolean;
+  /** 進行中の生成job（T-M8-209）。あるだけ先頭に「作成中」の枠を出す。 */
+  generatingJobs?: { id: string; createdAt: string }[];
   selectedDraftId?: string;
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
+  /**
+   * 対象Xアカウントが active か（T-M8-157）。この一覧は解決済みの選択中アカウントに
+   * スコープされ、`resolveActiveXAccountForUser` が active のみ返すため既定は true。
+   * 明示的に受けるのは、予約可否の理由を画面で出す判定に使うため。
+   */
+  xAccountActive?: boolean;
 }) {
-  if (drafts.length === 0) {
+  if (drafts.length === 0 && generatingJobs.length === 0) {
     return (
       <EmptyNotice>
         未投稿の下書きはありません。「作成」タブから生成できます。
       </EmptyNotice>
     );
   }
+  /*
+   * 投稿に失敗した下書きは**専用の枠で先頭に集める**（T-M8-227・運営者の指示 2026-08-22）。
+   * 対象は status=failed（X上に記録が残る失敗）と、Xへ出す前に差し戻された
+   * status=draft＋last_post_error（理由つき）。予約・自動投稿の失敗はここに載り、
+   * 各カードの保存済み理由（Notice）と既存の操作（編集・投稿・日時指定予約・再試行）で
+   * やり直せる。別タブに分けないのは、失敗は見に行かないと気付けない場所に置かず、
+   * 下書きの操作（編集・予約）と同じ場所で完結させるため（原則1）。
+   */
+  const failedDrafts = drafts.filter(
+    (d) => d.status === "failed" || d.last_post_error != null,
+  );
+  const normalDrafts = drafts.filter((d) => !failedDrafts.includes(d));
+  const cards = (list: DraftView[]) =>
+    list.map((draft) => (
+      <DraftCard
+        draft={draft}
+        highlighted={draft.id === selectedDraftId}
+        imageRegenEnabled={imageRegenEnabled}
+        key={draft.id}
+        quotePostEnabled={quotePostEnabled}
+        xAccountActive={xAccountActive}
+        xPremium={xPremium}
+      />
+    ));
   return (
-    <ul className="space-y-4">
-      {drafts.map((draft) => (
-        <DraftCard
-          draft={draft}
-          highlighted={draft.id === selectedDraftId}
-          imageRegenEnabled={imageRegenEnabled}
-          key={draft.id}
-          quotePostEnabled={quotePostEnabled}
-        />
-      ))}
-    </ul>
+    <div className="space-y-4">
+      {failedDrafts.length > 0 ? (
+        <section
+          aria-label="投稿に失敗した下書き"
+          className="rounded-card border border-danger-fg/30 bg-danger-bg/30 p-3"
+        >
+          <h3 className="text-body font-bold text-danger-fg">投稿に失敗した下書き</h3>
+          <p className="mt-0.5 text-caption leading-4 text-ink-2">
+            各カードに失敗の理由が出ています。内容を確認して、編集・投稿・日時指定の予約をやり直せます。
+          </p>
+          <ul className="mt-3 space-y-4">{cards(failedDrafts)}</ul>
+        </section>
+      ) : null}
+      <ul className="space-y-4">
+        {/* 作成中の枠（T-M8-209・運営者の指示 2026-08-22）。完了すると次の読込で実物に置き換わる。 */}
+        {generatingJobs.map((job) => (
+          <li
+            className={`${cardClassName} border-dashed p-4`}
+            key={job.id}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex size-2.5 flex-none">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-pill bg-brand opacity-60" />
+                <span className="relative inline-flex size-2.5 rounded-pill bg-brand" />
+              </span>
+              <p className="text-body font-medium text-ink">下書きを作成しています…</p>
+              <span className="ml-auto text-caption text-ink-3">通常60〜90秒</span>
+            </div>
+            <div className="mt-3 h-1 overflow-hidden rounded-pill bg-page">
+              <div className="h-full w-[60%] animate-pulse rounded-pill [background-image:var(--brand-gradient)]" />
+            </div>
+          </li>
+        ))}
+        {cards(normalDrafts)}
+      </ul>
+    </div>
   );
 }
 
 function DraftCard({
+  xAccountActive,
+  xPremium,
   draft,
   highlighted,
   imageRegenEnabled,
@@ -96,11 +164,15 @@ function DraftCard({
   highlighted: boolean;
   imageRegenEnabled: boolean;
   quotePostEnabled: boolean;
+  xAccountActive: boolean;
+  xPremium: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  // 予約パネルの開閉はカードが持つ（T-M8-226。ボタン群の内側で開くとヘッダー行が折り返して崩れる）。
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
 
@@ -118,7 +190,7 @@ function DraftCard({
     posting,
     quoteDisabled: p5Disabled,
     unresolvedPosting,
-  } = draftActionState(draft, { quotePostEnabled });
+  } = draftActionState(draft, { quotePostEnabled, xPremium });
   // 画面の一時状態と合成する（ここだけは純関数に渡せない）。
   // 投稿中は編集・破棄・再生成・再投稿を無効化する。リロードしても復元できるよう status も見る（要件06 §7）。
   const publishing = pending || publishJobId !== null || posting;
@@ -238,7 +310,11 @@ function DraftCard({
             )
           ) : null}
           {imageFailed ? <WarningBadge code="image_failed" /> : null}
-          <span className="text-xs text-muted-foreground">{formatJst(draft.updated_at)}</span>
+          {/* 予約済みは日時ごと出す（T-M8-157）。いつ投稿されるかを開かずに分かるようにする。 */}
+          {draft.status === "draft" && draft.scheduled_at ? (
+            <Badge tone="info">{scheduledLabel(draft.scheduled_at)}</Badge>
+          ) : null}
+          {/* 更新日時の常時表示は置かない（運営者の指示 2026-08-22。タイトル横の現在日時に見えて紛らわしい）。 */}
         </div>
         {/* 状態テキストとボタンが同居する行。折り返せないと狭い幅で横にはみ出す（T-M8-70）。 */}
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -251,6 +327,14 @@ function DraftCard({
             <span className="text-xs text-muted-foreground">
               引用ポスト機能は現在利用できません
             </span>
+          ) : null}
+          {editable && !editing && !publishing && !p5Disabled ? (
+            <ScheduleDraftToggle
+              disabled={locked}
+              onToggle={() => setScheduleOpen((v) => !v)}
+              open={scheduleOpen}
+              scheduledAt={draft.scheduled_at}
+            />
           ) : null}
           {editable && !editing && !publishing && !p5Disabled ? (
             <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
@@ -293,6 +377,21 @@ function DraftCard({
           />
         </div>
       </div>
+
+      {/* 予約パネルはヘッダー行の下の独立した行（T-M8-226。ボタン群の中で開くと折り返して崩れる）。
+          開閉ボタンが右端にあるため右揃えで置く（運営者の指示 2026-08-22）。 */}
+      {scheduleOpen && editable && !editing && !publishing && !p5Disabled ? (
+        <div className="mt-2 flex justify-end">
+          <ScheduleDraftPanel
+            disabled={locked}
+            draftId={draft.id}
+            onClose={() => setScheduleOpen(false)}
+            scheduledAt={draft.scheduled_at}
+            updatedAt={draft.updated_at}
+            xAccountActive={xAccountActive}
+          />
+        </div>
+      ) : null}
 
       {/*
         **保存された失敗理由をそのまま出す**（T-M8-51）。
@@ -340,7 +439,7 @@ function DraftCard({
       ) : null}
 
       {editing ? (
-        <DraftEditor draft={draft} onDone={() => setEditing(false)} />
+        <DraftEditor draft={draft} onDone={() => setEditing(false)} xPremium={xPremium} />
       ) : (
         <ol className="mt-3 space-y-2">
           {draft.thread.map((post) => (

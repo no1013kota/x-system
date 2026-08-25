@@ -20,11 +20,7 @@ const base: DailySummaryData = {
   allDropped: [],
   mostlyDropped: [],
   stuckJobs: 0,
-  queuedEmails: 0,
-  failedEmails: 0,
   monthUsd: 18.35,
-  dbBytes: 26 * 1024 * 1024,
-  dbLimitBytes: 500 * 1024 * 1024,
 };
 
 describe("jstDateOf", () => {
@@ -89,13 +85,8 @@ describe("buildDailySummary", () => {
     expect(s.body).toContain("成功 3 件");
     expect(s.body).toContain("$18.35");
     expect(s.body).toContain("約2753円");
-    expect(s.body, "容量も毎日出す（止まってから気付かないため）").toContain("26 MB / 500 MB");
-  });
-
-  it("容量が上限に近づいたら気になる点として上げる", () => {
-    const s = buildDailySummary({ ...base, dbBytes: 450 * 1024 * 1024 });
-    expect(s.needsAttention).toBe(true);
-    expect(s.body).toContain("データベースの使用量が 450 MB / 500 MB（90%）");
+    // 容量と運営者側の支出は利用者向けサマリに出さない（T-M8-234）。
+    expect(s.body, "DBの使用量は運営者の情報").not.toContain("データベースの使用量");
   });
 
   it("3日連続で取れていないテーマを強調する（T-M7-24の再発検知）", () => {
@@ -138,34 +129,7 @@ describe("buildDailySummary", () => {
     expect(s.title).toContain("気になる点が 2 件");
   });
 
-  /**
-   * 窓より前の失敗は**警告にせず数字だけ**（F7）。
-   *
-   * 以前は全期間の `failed` を「気になる点」に数えていたため、**7日より前の失敗しか
-   * 無い状態でも毎日通知が出続けた**。同じ状況を doctor は「急ぎではない」と言っており、
-   * 2つの通知が食い違っていた。
-   */
-  it("窓より前の送信失敗は数字を出すが警告にはしない", () => {
-    const s = buildDailySummary({ ...base, failedEmails: 0, olderFailedEmails: 3 });
-    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
-    expect(s.needsAttention, "古い失敗で毎日赤くすると通知が読まれなくなる").toBe(false);
-  });
-
-  it("直近の失敗があれば警告にする（古い分は別行で添える）", () => {
-    const s = buildDailySummary({ ...base, failedEmails: 2, olderFailedEmails: 3 });
-    expect(s.body).toContain("送れなかったお知らせメール: 2 件");
-    expect(s.body).toContain("7日より前に送れなかったお知らせメール: 3 件");
-    expect(s.needsAttention).toBe(true);
-  });
-
-  it("送れなかったお知らせメールを出す（送信待ちと別物として扱う・T-M8-40）", () => {
-    // `failed` は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
-    // サマリに載せないと、運営者は通知メールが届いていないことに気付けない。
-    const s = buildDailySummary({ ...base, failedEmails: 4 });
-    expect(s.body).toContain("送れなかったお知らせメール: 4 件");
-    expect(s.body).toContain("再送");
-    expect(s.needsAttention).toBe(true);
-  });
+  // （旧・お知らせメール失敗の行のテストはT-M8-222で削除——メール通知機能ごと廃止）
 
   it("実行が無かった日も「実行なし」と分かる（0件と混同しない）", () => {
     const s = buildDailySummary({ ...base, jobs: { succeeded: 0, failed: 0 } });

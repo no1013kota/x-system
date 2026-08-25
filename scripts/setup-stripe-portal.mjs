@@ -52,36 +52,41 @@ let TARGET = "local";
  */
 /**
  * Stripe側の商品名（T-M8-58）。**Checkout・Portal・請求書にそのまま出る**。
- * 英語のまま（Standard/md/Premium）だと、日本語で作っている画面の中でStripeの画面だけ
+ * 英語のまま（Standard/Premium/Expert）だと、日本語で作っている画面の中でStripeの画面だけ
  * 英語の商品名になる。アプリの表示名（`src/lib/plans.ts` の displayName）と同じにする——
  * 対応が崩れていないことは `portal-configuration.test.ts` が検査する。
  */
 export const PRODUCT_NAMES = {
-  STRIPE_PRICE_STANDARD_MONTHLY: "通常プラン",
-  STRIPE_PRICE_MD_MONTHLY: "mdプラン",
+  STRIPE_PRICE_STANDARD_MONTHLY: "スタンダードプラン",
   STRIPE_PRICE_PREMIUM_MONTHLY: "プレミアムプラン",
+  STRIPE_PRICE_EXPERT_MONTHLY: "エキスパートプラン",
 };
 
 /**
  * Stripe側の商品説明（T-M8-65）。**Portalの「プランを変更」画面で商品名の下にそのまま出る**。
  * 説明が無いと、プラン変更画面には名前と金額しか出ず、何が違うのかその場で判断できない
  * （利用者の要望）。文言は `/plans` のプランカード（`src/app/plans/page.tsx`）と揃え、
- * 数字（アカウント数・月間上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
+ * 数字（アカウント数・利用上限）が `plans.ts` から乖離したら `portal-configuration.test.ts` が落ちる。
+ *
+ * **文面の正本はここ**（2026-08-23、運営者がStripeダッシュボード〔テストモード〕で整えた文面へ合わせた・T-M8-270）。
+ * ダッシュボードで直接編集すると次回の `stripe:portal:setup` で上書きされるので、**直すときはここを直して
+ * 3環境へ流す**（`--target local|staging|production`）。3環境で同じ文面にすること（運営者の指示）。
  */
 export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_STANDARD_MONTHLY:
-    "まずは1つのXアカウントを着実に運用。X APIキー・生成AIキーはご自身で用意（利用料は実費）。月間の利用上限なし。",
-  STRIPE_PRICE_MD_MONTHLY:
-    "Xアカウント3つまで＋AIへの指示文（アカウント.md・プロンプト）を直接編集可能。キーはご自身で用意（利用料は実費）。",
+    "キーはご自身で用意。Xアカウント1つ。ニュース取得、投稿作成、スケジュール予約、プロンプト編集、アカウント分析・改善など。",
   STRIPE_PRICE_PREMIUM_MONTHLY:
-    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。月間上限: AIクレジット1000・通常投稿200・URL付き20。",
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント1つ。契約期間ごとの上限: AIクレジット1000・通常投稿200・URL付き20。",
+  // エキスパートは表示上「無制限」（T-M8-168・運営者の決定）。内部ガード値をStripe画面にも出さない。
+  STRIPE_PRICE_EXPERT_MONTHLY:
+    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。AI生成と投稿の利用上限なし。",
 };
 
 const ACCOUNT_SCOPED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_STANDARD_MONTHLY",
-  "STRIPE_PRICE_MD_MONTHLY",
   "STRIPE_PRICE_PREMIUM_MONTHLY",
+  "STRIPE_PRICE_EXPERT_MONTHLY",
   "STRIPE_PORTAL_CONFIGURATION_ID",
 ];
 
@@ -194,7 +199,15 @@ export function portalConfiguration({ appBaseUrl, updateProducts }) {
       subscription_update: {
         enabled: true,
         default_allowed_updates: ["price"],
-        proration_behavior: "create_prorations",
+        /*
+          値上げの差額（日割り）は**その場で決済する**（`always_invoice`・運営者の指示 2026-08-23・T-M8-275）。
+          Stripe の確認画面に内訳（旧プランの未使用分クレジット／新プランの日割り請求／合計）と
+          本日の支払額が出る。**「本日が期日の金額」という見出しは Stripe 組み込みで差し替えられない**
+          （APIにもダッシュボードにも設定が無い・SDKの型と実画面で確認）——運営者がその表示を
+          了解したうえでこの設定を選んでいる。`create_prorations` にすると差額は次回更新日の請求書へ
+          合算され、確認画面には何も出ない（＝アプリの説明「その場でお支払い」と食い違う）。
+        */
+        proration_behavior: "always_invoice",
         products: updateProducts,
         schedule_at_period_end: {
           conditions: [{ type: "decreasing_item_amount" }],
@@ -244,7 +257,7 @@ async function main() {
   const account = await requireAccountScoped();
   const priceIds = [
     account.STRIPE_PRICE_STANDARD_MONTHLY,
-    account.STRIPE_PRICE_MD_MONTHLY,
+    account.STRIPE_PRICE_EXPERT_MONTHLY,
     account.STRIPE_PRICE_PREMIUM_MONTHLY,
   ];
 
@@ -320,9 +333,19 @@ async function main() {
   const existingId = account.STRIPE_PORTAL_CONFIGURATION_ID;
   const configuration = await stripe.billingPortal.configurations.update(existingId, desired);
 
-  // 画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
-  // （「更新した」だけでは、送った内容が反映された保証にならない）。
-  const applied = await stripe.billingPortal.configurations.retrieve(configuration.id);
+  /*
+    画面のボタンが依存する機能が本当に有効になったかを読み戻して確かめる
+    （「更新した」だけでは、送った内容が反映された保証にならない）。
+
+    **`enabled` だけでは足りない**（T-M8-238）。2026-08-23の監査で、本番・stagingとも
+    `enabled=true` のまま**変更先のPriceが旧価格のまま**になっていた（＝契約者は
+    「プランを変更」を開けない）。金額と時期を決めるのは `products` と
+    `trial_update_behavior` なので、そこまで読み戻して一致を確かめる。
+    **`products` は expand しないと返らない**（素のGETでは undefined）。
+  */
+  const applied = await stripe.billingPortal.configurations.retrieve(configuration.id, {
+    expand: ["features.subscription_update.products"],
+  });
   const features = {
     subscription_update: applied.features?.subscription_update?.enabled === true,
     subscription_cancel: applied.features?.subscription_cancel?.enabled === true,
@@ -330,6 +353,15 @@ async function main() {
   const missing = Object.entries(features)
     .filter(([, enabled]) => !enabled)
     .map(([key]) => key);
+
+  // 送った Price がすべて変更先に載ったか（載っていなければ「成功」と言ってはいけない）。
+  const appliedPriceIds = new Set(
+    (applied.features?.subscription_update?.products ?? []).flatMap((entry) => entry.prices),
+  );
+  const missingPrices = priceIds.filter((id) => !appliedPriceIds.has(id));
+  const appliedTrialBehavior = applied.features?.subscription_update?.trial_update_behavior ?? null;
+  const desiredTrialBehavior = desired.features.subscription_update.trial_update_behavior;
+  const trialBehaviorOk = appliedTrialBehavior === desiredTrialBehavior;
   console.log(
     JSON.stringify(
       {
@@ -344,6 +376,12 @@ async function main() {
         productNames: renamed.length > 0 ? renamed : "既に揃っています",
         productDescriptions: described.length > 0 ? `更新: ${described.join("・")}` : "既に揃っています",
         features,
+        // 変更先に載った Price と、トライアル中の変更挙動（doctorが見るのと同じ2点）。
+        planChangePrices:
+          missingPrices.length === 0
+            ? `現行 ${priceIds.length} プランすべてが変更先に入っています`
+            : `不足 ${missingPrices.length}/${priceIds.length} 件: ${missingPrices.join(", ")}`,
+        trialUpdateBehavior: appliedTrialBehavior,
       },
       null,
       2,
@@ -351,6 +389,20 @@ async function main() {
   );
   if (missing.length > 0) {
     console.error(`Portal features still disabled after apply: ${missing.join(", ")}`);
+    process.exitCode = 1;
+  }
+  if (missingPrices.length > 0) {
+    console.error(
+      `変更先に載らなかった Price があります: ${missingPrices.join(", ")}。` +
+        `契約者は「プランを変更」を開けません（Stripeダッシュボードで確認してください）`,
+    );
+    process.exitCode = 1;
+  }
+  if (!trialBehaviorOk) {
+    console.error(
+      `トライアル中の変更挙動が ${appliedTrialBehavior} のままです（期待: ${desiredTrialBehavior}）。` +
+        `このままだとトライアル中にプラン変更すると即時課金されます`,
+    );
     process.exitCode = 1;
   }
 }

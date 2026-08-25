@@ -21,7 +21,7 @@ import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
 } from "@/lib/ai-purpose-view";
-import type { PlanId } from "@/lib/plans";
+import { concealsUsageLimits, isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
@@ -35,7 +35,7 @@ const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
 interface AiPurposeSettingsProps {
   initialConfig: unknown;
   operatorImageProviders: ImageAiProvider[];
-  plan: PlanId;
+  plan: PlanId | null;
   validUserProviders: AiKeyProvider[];
 }
 
@@ -62,7 +62,7 @@ export function AiPurposeSettings({
   const cfg = (initialConfig ?? {}) as Record<string, unknown>;
   const [textModel, setTextModel] = useState<string>(() => {
     const saved = typeof cfg.text_model === "string" ? cfg.text_model : "";
-    const provider = plan === "premium" ? "anthropic" : (configuredPurpose(initialConfig, "text", options.text) as AiKeyProvider | null);
+    const provider = isOperatorManagedPlan(plan) ? "anthropic" : (configuredPurpose(initialConfig, "text", options.text) as AiKeyProvider | null);
     return provider && saved && isCatalogTextModel(provider, saved) ? saved : "";
   });
   const [imageModel, setImageModel] = useState<string>(() => {
@@ -72,12 +72,12 @@ export function AiPurposeSettings({
   });
   const toast = useToast();
   // premiumの文章providerは運営固定（anthropic）。モデル選択の対象provider。
-  const effectiveTextProvider: AiKeyProvider | "" = plan === "premium" ? "anthropic" : textProvider;
+  const effectiveTextProvider: AiKeyProvider | "" = isOperatorManagedPlan(plan) ? "anthropic" : textProvider;
 
   function save() {
     startTransition(async () => {
       const result = await updateAiPurposeConfig(
-        plan === "premium"
+        isOperatorManagedPlan(plan)
           ? {
               image: imageProvider || null,
               image_model: (imageProvider && imageModel) || null,
@@ -111,19 +111,21 @@ export function AiPurposeSettings({
           </span>
           <div>
             <CardTitle id="text-purpose-heading">文章生成・リサーチ</CardTitle>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-caption leading-6 text-ink-3">
               投稿文の生成とWebリサーチには同じAIを使います。
             </p>
           </div>
         </div>
 
-        {plan === "premium" ? (
-          <div className="mt-5 rounded-card border bg-muted/35 p-4">
-            <p className="text-xs font-medium text-muted-foreground">利用するAI</p>
-            <p className="mt-1 font-semibold">運営Claude（変更不可）</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              プレミアムプランではExos AIの運営環境で文章生成とリサーチを実行します。モデルは選べます。
-            </p>
+        {isOperatorManagedPlan(plan) ? (
+          <>
+            {/* 灰色枠には入れず、画像生成セクションと同じ並び（ラベル＋欄）にする（運営者の指示 2026-08-22）。 */}
+            <div className="mt-5 block max-w-xl space-y-2 text-body font-medium">
+              <p>利用するAI</p>
+              <p className="flex h-11 w-full items-center rounded-lg border bg-page px-3 font-normal text-ink">
+                運営Claude（APIキー不要）
+              </p>
+            </div>
             <ModelSelect
               defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
               disabled={isPending}
@@ -133,9 +135,9 @@ export function AiPurposeSettings({
               plan={plan}
               value={textModel}
             />
-          </div>
+          </>
         ) : options.text.length > 0 ? (
-          <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
+          <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
             文章生成・リサーチに使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
@@ -156,7 +158,7 @@ export function AiPurposeSettings({
         ) : (
           <MissingProviderMessage purpose="文章生成・リサーチ" />
         )}
-        {plan !== "premium" && effectiveTextProvider ? (
+        {!isOperatorManagedPlan(plan) && effectiveTextProvider ? (
           <ModelSelect
             defaultEstimate={TEXT_DEFAULT_ESTIMATE_CREDITS}
             disabled={isPending}
@@ -176,14 +178,14 @@ export function AiPurposeSettings({
           </span>
           <div>
             <CardTitle id="image-purpose-heading">画像生成</CardTitle>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-caption leading-6 text-ink-3">
               OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
             </p>
           </div>
         </div>
 
         {options.image.length > 0 ? (
-          <label className="mt-5 block max-w-xl space-y-2 text-sm font-medium">
+          <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
             画像生成に使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
@@ -216,16 +218,16 @@ export function AiPurposeSettings({
           <Notice className="mt-5" tone="warn">
             <p className="font-medium">画像生成は現在利用できません</p>
             <p className="mt-1 leading-6">
-              {plan === "premium"
+              {isOperatorManagedPlan(plan)
                 ? "運営環境にOpenAIまたはGoogleの画像生成キーが設定されるまで、画像生成はOFFになります。"
                 : "OpenAIまたはGoogleのAPIキーを登録し、接続確認に成功すると選べるようになります。"}
             </p>
-            {plan !== "premium" ? <ApiKeySettingsLink /> : null}
+            {!isOperatorManagedPlan(plan) ? <ApiKeySettingsLink /> : null}
           </Notice>
         ) : null}
       </section>
 
-      {plan !== "premium" && !textProvider ? (
+      {!isOperatorManagedPlan(plan) && !textProvider ? (
         // 文章AIが未割り当てだと生成の前提を満たさない（execution-prereqs）。保存前に警告する。
         <Notice tone="warn" role="status">
           文章生成に使うAIが未設定のため、投稿の生成・自動運用は実行できません。AIを選んで保存してください。
@@ -247,6 +249,8 @@ export function AiPurposeSettings({
  * 消費目安は「1回あたり」で出す（per MTok表記は分かりにくいため廃止・2026-08-16 運営者の指示）:
  * premium=「約Nクレジット/回」、BYOK=「約N円/回」（自分のAPI課金の目安。1クレジット=1円相当で同値）。
  * 実費消費のため確定値ではなく目安（成功時に実費で精算・T-M8-109）。
+ * **利用枠を出さないプラン（expert）には消費目安ごと出さない**（T-M8-168。「無制限」の画面に
+ * クレジット単位の消費を見せると内部で計量していることを悟らせる）。
  */
 function ModelSelect({
   disabled,
@@ -261,14 +265,15 @@ function ModelSelect({
   label: string;
   onChange: (value: string) => void;
   options: readonly { id: string; label: string; estimateCredits: number }[];
-  plan: PlanId;
+  plan: PlanId | null;
   /** 「おまかせ」の消費目安（運営の既定モデル想定）。 */
   defaultEstimate: number;
   value: string;
 }) {
-  const unit = plan === "premium" ? "クレジット/回" : "円/回";
+  const unit = isOperatorManagedPlan(plan) ? "クレジット/回" : "円/回";
+  const showEstimate = !concealsUsageLimits(plan);
   return (
-    <label className="mt-3 block max-w-xl space-y-2 text-sm font-medium">
+    <label className="mt-3 block max-w-xl space-y-2 text-body font-medium">
       {label}
       <select
         className="h-11 w-full rounded-lg border bg-background px-3"
@@ -276,11 +281,15 @@ function ModelSelect({
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
-        <option value="">{`おまかせ（運営の既定モデル・約${defaultEstimate}${unit}）`}</option>
+        <option value="">
+          {showEstimate
+            ? `おまかせ（運営の既定モデル・約${defaultEstimate}${unit}）`
+            : "おまかせ（運営の既定モデル）"}
+        </option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
-            {option.label} — 約{option.estimateCredits}
-            {unit}
+            {option.label}
+            {showEstimate ? ` — 約${option.estimateCredits}${unit}` : ""}
           </option>
         ))}
       </select>

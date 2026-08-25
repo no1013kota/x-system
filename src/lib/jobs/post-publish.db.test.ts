@@ -211,6 +211,50 @@ describe("post_publish 投稿枠 consume/counter (local DB)", () => {
     }
   });
 
+  /**
+   * 投稿枠は契約期間ごと（T-M8-258）。期間が同期済みなら記帳・counter・投稿前ゲートのすべてが
+   * 期間キー（期間開始日の JST 日付）の行を使い、暦月の行は見ない。
+   */
+  it("premium+live: consumes and gates by the subscription-period key, not the calendar month (T-M8-258)", async () => {
+    const { uid, jobId } = await withTransaction((c) =>
+      seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "本文2")] }),
+    );
+    try {
+      await withTransaction((c) =>
+        c.query(
+          `update profiles set current_period_start = '2026-08-14T15:00:00Z', -- 8/15 00:00 JST
+                               current_period_end = '2026-09-14T15:00:00Z' where id = $1`,
+          [uid],
+        ),
+      );
+      // 暦月の行は上限いっぱい（199/200）。期間キーで数えるなら、この行はゲートに影響しない。
+      await withTransaction((c) =>
+        c.query(
+          `insert into usage_counters (user_id, month, normal_posts_count)
+           values ($1, to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM'), 199)`,
+          [uid],
+        ),
+      );
+      const res = await executePostPublish(deps(jobId));
+      expect(res.status).toBe("posted");
+      const rows = await withTransaction((c) =>
+        c.query<{ month: string; normal_posts_count: number }>(
+          `select month, normal_posts_count from usage_counters where user_id = $1 order by month`,
+          [uid],
+        ),
+      );
+      const byKey = new Map(rows.rows.map((r) => [r.month, r.normal_posts_count]));
+      expect(byKey.get("2026-08-15"), "期間キーの行に +2").toBe(2);
+      expect([...byKey.values()].sort((a, b) => a - b), "暦月の行（199）は触らない").toEqual([2, 199]);
+      const events = await withTransaction((c) =>
+        c.query<{ month: string }>(`select distinct month from usage_events where user_id = $1`, [uid]),
+      );
+      expect(events.rows.map((r) => r.month), "event も期間キーで記帳").toEqual(["2026-08-15"]);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("premium+live: insufficient monthly slots fail before any X call, no consume, notify (T-M6-07)", async () => {
     const { uid, jobId, draftId } = await withTransaction((c) =>
       seed(c, { plan: "premium", thread: [post("p1", "本文1"), post("p2", "本文2")] }),

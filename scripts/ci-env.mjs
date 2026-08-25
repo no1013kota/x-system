@@ -55,8 +55,8 @@ const PLACEHOLDERS = {
   STRIPE_PORTAL_CONFIGURATION_ID: "bpc_ci_placeholder",
   // プラン解決を検証するため3つは必ず別の値にする。
   STRIPE_PRICE_STANDARD_MONTHLY: "price_ci_standard",
-  STRIPE_PRICE_MD_MONTHLY: "price_ci_md",
   STRIPE_PRICE_PREMIUM_MONTHLY: "price_ci_premium",
+  STRIPE_PRICE_EXPERT_MONTHLY: "price_ci_expert",
   X_MANAGED_CLIENT_ID: "ci-managed-client-id",
   X_MANAGED_CLIENT_SECRET: "ci-managed-client-secret",
   ANTHROPIC_API_KEY: "sk-ant-ci-placeholder",
@@ -70,7 +70,6 @@ const PLACEHOLDERS = {
   SMTP_USER: "ci@example.com",
   SMTP_APP_PASSWORD: "ci-placeholder",
   EMAIL_FROM: "ci@example.com",
-  EMAIL_REPLY_TO: "ci@example.com",
   SUPPORT_EMAIL: "ci@example.com",
 };
 

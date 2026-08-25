@@ -9,7 +9,7 @@ import type { Queryable } from "../x/token-refresh";
  * - 該当0件・両channel OFF・非契約ユーザーには作らない（一致集合が空なら行が出ない）。
  * - `user_id + dedupe_key`（`news-digest:{window_started_at}`）で同一窓の再実行を冪等化する。
  * - タイトル/本文は高impact優先・同impactは新しい順で最大5件＋全件数＋一覧リンク。payloadの
- *   `news_item_ids` は `max_items`（既定20）まで、`total_count` は全件数を保持する。
+ *   `news_item_ids` は固定20件まで（旧`news_config.max_items`はT-M8-187で廃止）、`total_count` は全件数を保持する。
  * - 一部分野の失敗は「新規行が無い」だけで自然に除外され、失敗自体はニュース通知しない（要件04 §6）。
  */
 
@@ -48,7 +48,6 @@ export function newsDigestDedupeKey(windowStart: Date): string {
 interface DigestRow {
   user_id: string;
   in_app: boolean;
-  email: boolean;
   total_count: number;
   item_ids: string[];
   top_titles: string[];
@@ -70,16 +69,15 @@ async function loadDigestRows(
        select p.id as user_id,
               coalesce(p.news_config->'categories', '[]'::jsonb) as categories,
               coalesce(p.news_config->'impact_filter', '[]'::jsonb) as impact_filter,
-              coalesce((p.news_config->>'max_items')::int, 20) as max_items,
-              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app,
-              coalesce((p.notification_config->'news'->>'email')::boolean, false) as email
+              20 as max_items, -- 旧news_config.max_itemsはT-M8-187で廃止（payload上限は固定20）
+              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app
          from profiles p
         where p.subscription_status in ('trialing', 'active')
-          and (coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
-               or coalesce((p.notification_config->'news'->>'email')::boolean, false))
+          -- 通知はアプリ内のみ（メールはT-M8-222で廃止）。in_app OFF の利用者には行を作らない。
+          and coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
      ),
      matched as (
-       select e.user_id, e.max_items, e.in_app, e.email, ni.id, ni.title, ni.impact,
+       select e.user_id, e.max_items, e.in_app, ni.id, ni.title, ni.impact,
               row_number() over (
                 partition by e.user_id
                 order by case ni.impact when 'high' then 0 when 'mid' then 1 else 2 end,
@@ -89,7 +87,7 @@ async function loadDigestRows(
          join new_items ni
            on (e.categories ? ni.category) and (e.impact_filter ? ni.impact)
      )
-     select user_id, in_app, email,
+     select user_id, in_app,
             count(*)::int as total_count,
             coalesce(
               jsonb_agg(id order by rn) filter (where rn <= max_items),
@@ -100,7 +98,7 @@ async function loadDigestRows(
               '{}'
             ) as top_titles
        from matched
-      group by user_id, in_app, email`,
+      group by user_id, in_app`,
     [windowStart.toISOString(), windowEnd.toISOString()],
   );
   return rows;
@@ -124,42 +122,52 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
 
   const digestRows = await loadDigestRows(deps.db, windowStart, windowEnd);
 
-  const createdIds: string[] = [];
-  for (const row of digestRows) {
-    const title = `ニュースダイジェスト ${row.total_count}件`;
-    const body = buildBody(row.top_titles, row.total_count);
-    const payload = {
-      window_started_at: fromIso,
-      window_ended_at: toIso,
-      total_count: row.total_count,
-      news_item_ids: row.item_ids,
-    };
-    // **`values` ではなく `select ... from profiles ... for key share` にする**（T-M7-54, T-M8-19）。
-    // 対象を選んでから挿入するまでの間にその利用者が退会すると、`values` では外部キー違反で
-    // 例外になり、**まだ配信していない他の利用者の分まで巻き添えで止まる**。
-    // 消えていれば0行になるだけ、という形にして1人の退会が全体を壊さないようにする
-    // （日次サマリで同じ修正を入れた `ops/daily-summary.ts` と同じ考え方）。
-    //
-    // `for key share of p` が要る理由（T-M8-19）: **同じ文の中でも、SELECT が見る行と外部キー検査が
-    // 見る行は別のスナップショット**で決まる。SELECT の直後に退会がコミットされると、検査時点では
-    // 親行が無く外部キー違反になった（2026-08-03、`npm test` の並列実行で3回に1回ほど再現）。
-    // 親行を先にロックしておけば、退会はこの文の完了まで待たされ、先に消えていれば0行になる。
-    const { rows } = await deps.db.query<{ id: string }>(
-      `insert into notifications
-         (user_id, type, dedupe_key, title, body, link, payload,
-          in_app_enabled, email_status, email_available_at)
-       select p.id, 'news', $2, $3, $4, $5, $6::jsonb, $7,
-              case when $8 then 'queued'::email_delivery_status else 'not_requested'::email_delivery_status end,
-              case when $8 then now() else null end
-         from profiles p
-        where p.id = $1
-          for key share of p
-       on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
-       returning id`,
-      [row.user_id, dedupeKey, title, body, link, JSON.stringify(payload), row.in_app, row.email],
-    );
-    if (rows[0]) createdIds.push(rows[0].id);
+  /*
+    **1文でまとめて作る**（T-M8-290）。以前は対象者1人につき1往復を直列に投げており、
+    利用者が増えるほどcronの所要時間が線形に伸びた（1日5回走るニュース取得の最後で、
+    ここが遅れると同じ窓のダイジェストがまるごと落ちる）。
+
+    **`values` ではなく `profiles` を join して `for key share` する**形は維持する（T-M7-54, T-M8-19）。
+    対象を選んでから挿入するまでの間にその利用者が退会すると、`values` では外部キー違反で例外になり、
+    **まだ配信していない他の利用者の分まで巻き添えで止まる**。消えていればその行が0件になるだけ、
+    という形にして1人の退会が全体を壊さないようにする。
+
+    `for key share of p` が要る理由（T-M8-19）: **同じ文の中でも、SELECT が見る行と外部キー検査が
+    見る行は別のスナップショット**で決まる。SELECT の直後に退会がコミットされると、検査時点では
+    親行が無く外部キー違反になった（2026-08-03、`npm test` の並列実行で3回に1回ほど再現）。
+    親行を先にロックしておけば、退会はこの文の完了まで待たされ、先に消えていれば0行になる。
+  */
+  if (digestRows.length === 0) {
+    return { matchedUsers: 0, notified: 0, createdIds: [] };
   }
+  const { rows: created } = await deps.db.query<{ id: string }>(
+    `insert into notifications
+       (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+     select p.id, 'news', $2, u.title, u.body, $3, u.payload::jsonb, u.in_app
+       from unnest($1::uuid[], $4::text[], $5::text[], $6::text[], $7::boolean[])
+              as u(user_id, title, body, payload, in_app)
+       join profiles p on p.id = u.user_id
+        for key share of p
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
+     returning id`,
+    [
+      digestRows.map((row) => row.user_id),
+      dedupeKey,
+      link,
+      digestRows.map((row) => `ニュースダイジェスト ${row.total_count}件`),
+      digestRows.map((row) => buildBody(row.top_titles, row.total_count)),
+      digestRows.map((row) =>
+        JSON.stringify({
+          window_started_at: fromIso,
+          window_ended_at: toIso,
+          total_count: row.total_count,
+          news_item_ids: row.item_ids,
+        }),
+      ),
+      digestRows.map((row) => row.in_app),
+    ],
+  );
+  const createdIds = created.map((row) => row.id);
 
   return { matchedUsers: digestRows.length, notified: createdIds.length, createdIds };
 }

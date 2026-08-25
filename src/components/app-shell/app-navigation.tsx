@@ -1,14 +1,48 @@
 "use client";
 
-import Link from "next/link";
+import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
+import { IntentPrefetchLink } from "@/components/navigation/intent-prefetch-link";
 import { Icon } from "@/components/ui/icon";
 
 import { APP_NAVIGATION_ITEMS } from "./navigation-items";
 
 function isCurrentPath(pathname: string, href: string): boolean {
   return href === "/app" ? pathname === href : pathname.startsWith(href);
+}
+
+function NavigationLinkContent({
+  current,
+  icon,
+  label,
+  mobile,
+}: {
+  current: boolean;
+  icon: Parameters<typeof Icon>[0]["name"];
+  label: string;
+  mobile: boolean;
+}) {
+  const { pending } = useLinkStatus();
+  return (
+    <>
+      <span className="relative inline-flex shrink-0">
+        <Icon
+          className={pending ? "opacity-20" : undefined}
+          filled={current}
+          name={icon}
+          size={mobile ? 20 : 19}
+        />
+        {pending ? (
+          <span
+            aria-hidden
+            className="absolute inset-0 m-auto size-4 animate-spin rounded-full border-[1.5px] border-current border-t-transparent"
+          />
+        ) : null}
+      </span>
+      <span className={mobile ? "" : "leading-tight"}>{label}</span>
+    </>
+  );
 }
 
 /**
@@ -25,13 +59,15 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
       aria-label={mobile ? "メインナビゲーション（モバイル）" : "メインナビゲーション"}
       className={mobile ? "grid grid-cols-7" : "space-y-0.5 px-3"}
     >
-      {APP_NAVIGATION_ITEMS.map((item) => {
+      {APP_NAVIGATION_ITEMS.filter(
+        (item) => !mobile || !("mobileHidden" in item && item.mobileHidden),
+      ).map((item) => {
         const current = isCurrentPath(pathname, item.href);
         const stateClass = current
           ? "bg-brand-subtle text-brand"
           : "text-ink-2 hover:bg-black/[0.03] hover:text-ink";
         return (
-          <Link
+          <IntentPrefetchLink
             aria-current={current ? "page" : undefined}
             className={
               mobile
@@ -40,10 +76,19 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
             }
             href={item.href}
             key={item.href}
+            prefetch={current ? false : undefined}
           >
-            <Icon filled={current} name={item.icon} size={mobile ? 20 : 19} />
-            <span className={mobile ? "" : "leading-tight"}>{item.label}</span>
-          </Link>
+            <NavigationLinkContent
+              current={current}
+              icon={item.icon}
+              label={item.label}
+              mobile={mobile}
+            />
+            {/* App Shellの外へ遷移する項目にはマークを付ける（T-M8-175）。 */}
+            {!item.href.startsWith("/app") && !mobile ? (
+              <Icon aria-hidden="true" className="ml-auto text-ink-3" name="open_in_new" size={14} />
+            ) : null}
+          </IntentPrefetchLink>
         );
       })}
     </nav>

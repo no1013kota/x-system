@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import { resendSignUpConfirmation, verifySignUpCode } from "@/app/actions/auth";
 import { INITIAL_AUTH_FORM_STATE } from "@/app/actions/auth-state";
@@ -17,7 +17,17 @@ import { EMAIL_CODE_LENGTH, isEmailCodeComplete, normalizeEmailCode } from "@/li
  * 「登録した画面から離れずに終われる」こと——だから入力欄をこの場に出し、
  * 送信できないあいだは**なぜ押せないかを画面に出す**（押しても何も起きないボタンを作らない）。
  */
-export function EmailCodeForm({ email }: { email: string }) {
+export function EmailCodeForm({
+  autoResend = false,
+  email,
+  entryNotice,
+}: {
+  /** Sends a fresh code as soon as the resend-only Turnstile produces its own token. */
+  autoResend?: boolean;
+  email: string;
+  /** Persistent context shown before the code entry controls. */
+  entryNotice?: string;
+}) {
   const [state, formAction, isPending] = useActionState(
     verifySignUpCode,
     INITIAL_AUTH_FORM_STATE,
@@ -27,12 +37,30 @@ export function EmailCodeForm({ email }: { email: string }) {
     INITIAL_AUTH_FORM_STATE,
   );
   const [code, setCode] = useState("");
+  const [resendCaptchaToken, setResendCaptchaToken] = useState("");
+  const resendFormRef = useRef<HTMLFormElement>(null);
+  const autoResendStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoResend || !resendCaptchaToken || autoResendStartedRef.current) return;
+    const form = resendFormRef.current;
+    if (!form) return;
+    // 同じtokenで二重送信しない。Action完了後はwidgetがresetされ、手動再送用の新tokenを得る。
+    autoResendStartedRef.current = true;
+    form.requestSubmit();
+  }, [autoResend, resendCaptchaToken]);
 
   const digits = normalizeEmailCode(code);
   const complete = isEmailCodeComplete(code);
 
   return (
     <section aria-labelledby="code-heading" className="space-y-5">
+      {entryNotice ? (
+        <Notice role="status" tone="warn">
+          {entryNotice}
+        </Notice>
+      ) : null}
+
       <div className="space-y-2">
         <h2 className="text-xl font-semibold" id="code-heading">
           確認コードを入力してください
@@ -84,7 +112,11 @@ export function EmailCodeForm({ email }: { email: string }) {
         </Button>
       </form>
 
-      <form action={resendAction} className="space-y-3 border-t border-hairline pt-4">
+      <form
+        action={resendAction}
+        className="space-y-3 border-t border-hairline pt-4"
+        ref={resendFormRef}
+      >
         <input name="email" type="hidden" value={email} />
         <p className="text-sm text-muted-foreground">
           コードが届かない場合は、迷惑メールフォルダをご確認のうえ再送してください。
@@ -94,9 +126,14 @@ export function EmailCodeForm({ email }: { email: string }) {
           コード検証自体は人間確認を求めていないので、同じ画面にウィジェットが見えていると
           「コードを打つのに確認が要る」と読めてしまう。
           ただし Supabase の `resend` はcaptcha有効時にトークン無しを拒否するため、
-          確認そのものは不可視で残す（外すと再送が壊れる）。
+          確認そのものはinteraction-onlyで残す（外すと再送が壊れる）。
         */}
-        <TurnstileWidget action="signup-resend" invisible resetSignal={resendState} />
+        <TurnstileWidget
+          action="signup-resend"
+          interactionOnly
+          onTokenChange={setResendCaptchaToken}
+          resetSignal={resendState}
+        />
         <Button disabled={isResending} type="submit" variant="outline">
           {isResending ? "再送しています…" : "コードを再送"}
         </Button>

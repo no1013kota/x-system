@@ -4,8 +4,8 @@ import { classifyNewsOutcome } from "@/lib/news-outcome";
 
 import type { Queryable } from "../x/token-refresh";
 
-import { approxYen, FAILED_EMAIL_WINDOW_DAYS } from "./check";
-import { FREE_DB_SIZE_LIMIT_BYTES, judgeDatabaseSize } from "./diagnostics";
+import { approxYen } from "./check";
+
 
 /**
  * 日次サマリ（T-M7-29）。`CLAUDE.md`「前提：運営者は個人」原則1に対応する。
@@ -80,21 +80,8 @@ export interface DailySummaryData {
    */
   mostlyDropped: { category: string; fetched: number; dropped: number; ages: string | null }[];
   stuckJobs: number;
-  queuedEmails: number;
-  /** 送れなかったお知らせメール。終端状態なので放置すると届かないまま（T-M8-40）。 */
-  failedEmails: number;
-  /**
-   * 窓より前の送信失敗（F7）。**警告にはしないが数字は出す**。
-   *
-   * 全期間を「気になる点」に数えていたため、7日より前の失敗しか無い状態でも
-   * 毎日通知が出続けていた。かといって黙って落とすと、届かなかったメールの存在が
-   * どこにも見えなくなる（原則1）。doctor 側と同じ扱いに揃える。
-   */
-  olderFailedEmails?: number;
+  /** **この利用者の**当月の外部API費用（T-M8-234。運営者側の支出は含めない）。 */
   monthUsd: number;
-  /** DBの使用量（バイト）と上限。上限に近づいたら知らせる（T-M7-43）。 */
-  dbBytes: number;
-  dbLimitBytes: number;
 }
 
 export interface DailySummary {
@@ -154,34 +141,15 @@ export function buildDailySummary(data: DailySummaryData): DailySummary {
     lines.push(`止まっている処理: ${data.stuckJobs} 件`);
     attention.push(`止まっている処理が ${data.stuckJobs} 件`);
   }
-  // 失敗は終端状態で、`recoverQueuedEmails` は queued しか拾わない。
-  // **黙って届かないまま**になるので「気になる点」に数える（T-M8-40）。
-  // ただし**直近の失敗だけ**（F7）。窓が無いと1件失敗しただけで毎日出続け、
-  // 赤が常態化して他の異常が埋もれる（doctor 側は T-M8-51 で同じ窓を入れている）。
-  if (data.failedEmails > 0) {
-    lines.push(
-      `送れなかったお知らせメール: ${data.failedEmails} 件（メール設定を確認し、通知ベルから再送してください）`,
-    );
-    attention.push(`送れなかったお知らせメールが ${data.failedEmails} 件`);
-  }
-  // 窓より前の失敗は**警告にしないが数字は出す**（黙って消すと存在が見えなくなる・原則1）。
-  const olderFailed = data.olderFailedEmails ?? 0;
-  if (olderFailed > 0) {
-    lines.push(
-      `${FAILED_EMAIL_WINDOW_DAYS}日より前に送れなかったお知らせメール: ${olderFailed} 件（急ぎではありません）`,
-    );
-  }
-  if (data.queuedEmails > 0) {
-    lines.push(`送信待ちのお知らせメール: ${data.queuedEmails} 件`);
-  }
+  // （送れなかった／送信待ちのお知らせメールの行はT-M8-222で廃止——通知はアプリ内のみ）
 
   // 円換算は doctor と同じ関数を使う（別々に持つと同じ月の費用を違う円額で伝える・R30）。
   lines.push(`今月かかった費用: $${data.monthUsd.toFixed(2)}（約${approxYen(data.monthUsd)}円）`);
 
-  // 容量は「止まってから気付く」種類なので、毎日必ず数字を出す（2026-08-01に組織ごと停止した）。
-  const dbCheck = judgeDatabaseSize({ bytes: data.dbBytes, limitBytes: data.dbLimitBytes });
-  lines.push(`データベースの使用量: ${dbCheck.detail}`);
-  if (dbCheck.level !== "ok") attention.push(`データベースの使用量が ${dbCheck.detail}`);
+  /*
+    **DB使用量の行はここに置かない**（T-M8-234）。このサマリは利用者へ配る通知で、
+    容量は運営者の情報。運営者は `npm run doctor` と毎朝の運営者アラート（operator-alert）で見る。
+  */
 
   const needsAttention = attention.length > 0;
   const title = needsAttention
@@ -212,7 +180,9 @@ export async function collectDailySummary(
 
   // 分野ごとの日別保存件数（直近14日）。実行のあった日だけが行になる。
   const news = await db.query<{ date: string; category: string; saved: number; dropped: number }>(
-    `select to_char((ran_at + interval '9 hours')::date, 'YYYY-MM-DD') as date,
+    // 日付は `at time zone 'Asia/Tokyo'` で切る（T-M8-254）。`+ interval '9 hours'` は
+    // **DBセッションのTZがUTCであること**に暗黙に依存していて、設定が変わると黙ってずれる。
+    `select to_char((ran_at at time zone 'Asia/Tokyo')::date, 'YYYY-MM-DD') as date,
             category::text as category, sum(saved)::int as saved, sum(dropped)::int as dropped
        from news_fetch_outcomes
       where ran_at > now() - interval '14 days'
@@ -255,43 +225,25 @@ export async function collectDailySummary(
     [userId],
   );
 
-  /**
-   * 送れなかったメールは**窓で区切る**（F7）。
-   *
-   * doctor 側は T-M8-51 で7日窓を入れたのに、ここは全期間を数えていた。そのため
-   * **7日より前の失敗しか無い状態でも毎日「気になる点」を出し続け**、同じ状況を
-   * doctor は「急ぎではない」、サマリは「対応が必要」と食い違って伝えていた。
-   * 窓は `ops/check.ts` の1つだけを使う。古い分は数字として残す（黙って消さない・原則1）。
-   */
-  const emails = await db.query<{ queued: string; failed: string; failed_older: string }>(
-    `select count(*) filter (where email_status = 'queued')::text as queued,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) > now() - ($2 || ' days')::interval
-            )::text as failed,
-            count(*) filter (
-              where email_status = 'failed'
-                and coalesce(email_last_attempt_at, created_at) <= now() - ($2 || ' days')::interval
-            )::text as failed_older
-       from notifications where user_id = $1 and email_status in ('queued', 'failed')`,
-    [userId, String(FAILED_EMAIL_WINDOW_DAYS)],
-  );
-
+  /*
+    **この利用者の分だけ**を集計する（T-M8-234）。以前は `or user_id is null` を含めていたため、
+    運営者側の支出（ニュース取得など、利用者に紐づかない実行）まで足して**全利用者へ同じ額を配っていた**。
+    実測では当月の `user_id is null` が5,245件・$7.19に対し利用者分は20件・$0.39で、
+    「今月かかった費用」はほぼ運営者の支出だった。DB使用量も同様に運営者の情報なので、
+    利用者向けサマリからは外す（運営者は `npm run doctor` と毎朝の運営者アラートで見る）。
+  */
   const cost = await db.query<{ usd: string | null }>(
     `select sum(estimated_cost_usd)::text as usd from external_api_usage_events
-      where occurred_at >= date_trunc('month', now())
-        and (user_id = $1 or user_id is null)`,
+      -- **月の区切りは日本時間**（T-M8-254・運営者の指示 2026-08-23）。UTC月初で切ると
+      -- UTCの月初になるため、**毎月1日のJST 0時〜9時は前月分の合計が「今月」として出る**。
+      -- 費用は会計に合わせて**暦月**で集計する（利用者の利用枠は契約期間ごと・T-M8-258。ここは変えない）。
+      where occurred_at >= (date_trunc('month', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo')
+        and user_id = $1`,
     [userId],
-  );
-
-  const dbSize = await db.query<{ bytes: string }>(
-    `select pg_database_size(current_database())::text as bytes`,
   );
 
   return {
     date,
-    dbBytes: Number(dbSize.rows[0]?.bytes ?? 0),
-    dbLimitBytes: FREE_DB_SIZE_LIMIT_BYTES,
     jobs: {
       succeeded: Number(jobs.rows[0]?.succeeded ?? 0),
       failed: Number(jobs.rows[0]?.failed ?? 0),
@@ -327,9 +279,6 @@ export async function collectDailySummary(
         ages: v.ages,
       })),
     stuckJobs: Number(stuck.rows[0]?.n ?? 0),
-    queuedEmails: Number(emails.rows[0]?.queued ?? 0),
-    failedEmails: Number(emails.rows[0]?.failed ?? 0),
-    olderFailedEmails: Number(emails.rows[0]?.failed_older ?? 0),
     monthUsd: Number(cost.rows[0]?.usd ?? 0),
   };
 }
@@ -337,11 +286,20 @@ export async function collectDailySummary(
 /** サマリを届ける時刻（JSTの時）。この時刻以降のtickで、その日の分を1回だけ作る。 */
 export const SUMMARY_HOUR_JST = 8;
 
+/** 1回の実行で処理する人数の上限（T-M8-291）。理由は `deliverDailySummaries` を参照。 */
+export const SUMMARY_BATCH_LIMIT = 200;
+
 export interface DeliverDailySummaryResult {
   /** 作成した通知の件数（既に作ってあれば0）。 */
   created: number;
   /** 作成した通知のid（即時メール送信の対象）。 */
   createdIds: string[];
+  /**
+   * **この回で処理しきれなかった人数**（T-M8-291）。0でなければ次のtickが続きを作る。
+   * 呼び出し側はこれを運営者が気付ける経路へ載せること——黙って途中で終わると、
+   * 後半の利用者にサマリが届かないのに「成功」に見える（原則1）。
+   */
+  remaining: number;
 }
 
 /**
@@ -349,7 +307,7 @@ export interface DeliverDailySummaryResult {
  *
  * 冪等性は `notifications.dedupe_key = 'summary:{JSTの日付}'` の unique 制約で担保する
  * （5分ごとのtickから何度呼ばれても1日1通）。JST {@link SUMMARY_HOUR_JST} 時より前は作らない。
- * 通知設定（`summary`）で in_app/email をどちらもOFFにしている利用者には作らない。
+ * 通知設定（`summary`）で in_app をOFFにしている利用者には作らない。
  */
 export async function deliverDailySummaries(
   db: Queryable,
@@ -362,34 +320,56 @@ export async function deliverDailySummaries(
   } = {},
 ): Promise<DeliverDailySummaryResult> {
   const jstHour = new Date(new Date(nowIso).getTime() + JST_OFFSET_MS).getUTCHours();
-  if (jstHour < SUMMARY_HOUR_JST) return { created: 0, createdIds: [] };
+  if (jstHour < SUMMARY_HOUR_JST) return { created: 0, createdIds: [], remaining: 0 };
   const date = jstDateOf(nowIso);
   const dedupeKey = `summary:${date}`;
 
-  // 対象: **Xアカウントを連携済みで**、サマリをどちらかのチャネルで受け取る設定の利用者。
-  // 連携前の利用者はまだ運用が始まっていないので届けない（初日から不要な通知を出さない）。
-  const { rows: users } = await db.query<{ id: string; in_app: boolean; email: boolean }>(
-    `select p.id,
-            coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app,
-            coalesce((p.notification_config->'summary'->>'email')::boolean, true) as email
-       from profiles p
-      where exists (select 1 from x_accounts xa where xa.user_id = p.id)
-        and ($1::uuid[] is null or p.id = any($1::uuid[]))
-        and (coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)
-             or coalesce((p.notification_config->'summary'->>'email')::boolean, true))`,
-    [options.userIds ?? null],
+  /*
+    対象: **Xアカウントを連携済みで**、サマリのアプリ内通知を受け取る設定の利用者
+    （メール通知はT-M8-222で廃止）。連携前の利用者はまだ運用が始まっていないので届けない。
+
+    **その日ぶんを既に作った人はここで除く**（T-M8-291）。以前は1人ずつ
+    「作ったか？」を問い合わせていたので、対象者の数だけ往復が増えていた。
+    しかも除外されるのは問い合わせた**あと**なので、5分ごとのtickのたびに
+    全員ぶんの往復が走っていた（作るのは1日1回きりなのに）。
+
+    **人数に上限を置く**。`scheduler_tick` の maxDuration は200秒で、1人あたり
+    集計5往復＋作成1往復かかる。上限が無いと利用者が増えたとき**打ち切られ、
+    後半の利用者に届かないまま「成功」として終わる**（原則1違反）。
+    上限で切った残りは次のtick（5分後）が拾う——その日ぶんを作っていない人が
+    そのまま対象に残るので、待ち行列を別に持つ必要がない。
+  */
+  const { rows: users } = await db.query<{ id: string; in_app: boolean; remaining: string }>(
+    `with target as (
+       select p.id,
+              coalesce((p.notification_config->'summary'->>'in_app')::boolean, true) as in_app
+         from profiles p
+        where exists (select 1 from x_accounts xa where xa.user_id = p.id)
+          and ($1::uuid[] is null or p.id = any($1::uuid[]))
+          and coalesce((p.notification_config->'summary'->>'in_app')::boolean, true)
+          and not exists (
+            select 1 from notifications n
+             where n.user_id = p.id and n.dedupe_key = $2
+          )
+     )
+     select id, in_app, (select count(*) from target)::text as remaining
+       from target
+      order by id
+      limit $3`,
+    [options.userIds ?? null, dedupeKey, SUMMARY_BATCH_LIMIT],
   );
+  // `remaining` は全件数（どの行にも同じ値が入る）。処理する分を引いて「積み残し」にする。
+  const remaining = Math.max(0, Number(users[0]?.remaining ?? "0") - users.length);
 
   const createdIds: string[] = [];
   for (const user of users) {
     // 1人分が失敗しても他の利用者のまとめは作る（1件の不整合で全員分が止まらないように）。
     try {
-      const already = await db.query(
-        `select 1 from notifications where user_id = $1 and dedupe_key = $2 limit 1`,
-        [user.id, dedupeKey],
-      );
-      if ((already.rowCount ?? 0) > 0) continue;
-
+      /*
+        重複チェックは上の対象抽出（`not exists`）が済ませている。ここで再度問い合わせない
+        （T-M8-291）。作成の `on conflict do nothing` が最後の砦なので、抽出と作成の間に
+        別のtickが同じ人を作っても二重にならない。
+      */
       const summary = buildDailySummary(await collectDailySummary(db, user.id, nowIso));
       // 利用者が消えていたら何もしない（`select from profiles` で存在を条件にする）。
       // 集めてから作るまでの間に退会・削除が起きても、FK違反を「異常」として報告しない。
@@ -399,21 +379,17 @@ export async function deliverDailySummaries(
       // 仕組みの回帰テストは `jobs/news-digest.db.test.ts`（同じSQL形なのでここでは重複させない）。
       const { rows } = await db.query<{ id: string }>(
         `insert into notifications
-           (user_id, type, dedupe_key, title, body, link, payload,
-            in_app_enabled, email_status, email_available_at)
-         select p.id, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text),
-                $6, case when $7 then 'queued'::email_delivery_status
-                         else 'not_requested'::email_delivery_status end,
-                case when $7 then now() else null end
+           (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+         select p.id, 'summary', $2, $3, $4, '/app', jsonb_build_object('date', $5::text), $6
            from profiles p where p.id = $1 for key share of p
          on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
          returning id`,
-        [user.id, dedupeKey, summary.title, summary.body, date, user.in_app, user.email],
+        [user.id, dedupeKey, summary.title, summary.body, date, user.in_app],
       );
       if (rows[0]) createdIds.push(rows[0].id);
     } catch (err) {
       options.onError?.(user.id, err);
     }
   }
-  return { created: createdIds.length, createdIds };
+  return { created: createdIds.length, createdIds, remaining };
 }

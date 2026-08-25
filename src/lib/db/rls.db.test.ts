@@ -50,8 +50,36 @@ describe("RLS policies & ownership trigger", () => {
     expect(threw, "expected the query to be rejected").toBe(true);
   }
 
-  /** Switch the current transaction to the authenticated role acting as `uid`. */
+  /**
+   * service_role だけが読むテーブル（T-M8-252）。`actAs` の一時grantから除いて、
+   * 「authenticated には見えない」ことを検査し続けられるようにする。
+   */
+  const SERVICE_ROLE_ONLY_TABLES = [
+    "cron_runs",
+    "external_api_usage_events",
+    "news_fetch_outcomes",
+    "stripe_events",
+  ];
+
+  /**
+   * Switch the current transaction to the authenticated role acting as `uid`.
+   *
+   * **このtx内だけSELECT権限を与えてから切り替える**（T-M8-252）。本番の `authenticated` は
+   * `profiles` の3列しか読めない（アプリはPostgREST経由で読まないため）。ただし
+   * **RLSポリシー自体は「もし読めたとしても他人の行は見えない」ことの保証**として
+   * 生かしておきたいので、ここで一時的に権限を与えて検査する（rollbackで消える）。
+   * 権限そのものの検査は下の「authenticated が読めるのは…」が別に行う。
+   */
   async function actAs(c: Client, uid: string) {
+    // service_role専用のテーブルは除いて、このtx内だけ読めるようにする（rollbackで消える）。
+    const { rows } = await c.query<{ tablename: string }>(
+      `select tablename from pg_tables
+        where schemaname = 'public' and not (tablename = any($1::text[]))`,
+      [SERVICE_ROLE_ONLY_TABLES],
+    );
+    for (const { tablename } of rows) {
+      await c.query(`grant select on public."${tablename}" to authenticated`);
+    }
     await c.query(`select set_config('role', 'authenticated', true)`);
     await c.query(
       `select set_config('request.jwt.claims', $1, true)`,
@@ -103,6 +131,66 @@ describe("RLS policies & ownership trigger", () => {
       // A cannot see B's draft
       const drafts = await c.query(`select id from drafts`);
       expect(drafts.rows).toHaveLength(0);
+    });
+  });
+
+  /**
+   * 招待プログラムの5表が**利用者ごとに分離**されていること（T-M8-300）。
+   *
+   * ここが緩いと、他人の**銀行口座の情報**（銀行名・支店・名義・末尾4桁）や報酬額が読める。
+   * 全表にRLSが有効かは下の横断テストが見るが、**ポリシーの中身が正しいか**は表ごとに要る
+   * （「有効だが誰でも読める」ポリシーでも横断テストは通ってしまう）。
+   */
+  it("isolates the invite tables (affiliate_*) per user", async () => {
+    await inTx(async (c) => {
+      const a = await makeUser(c);
+      const b = await makeUser(c);
+
+      const accounts: Record<string, string> = {};
+      for (const [key, user] of [["a", a], ["b", b]] as const) {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into affiliate_accounts (user_id, code) values ($1, $2) returning id`,
+          [user.uid, `code${key}${randomUUID().slice(0, 4)}`],
+        );
+        accounts[key] = rows[0].id;
+        await c.query(
+          `insert into affiliate_payout_accounts
+             (affiliate_account_id, bank_name, branch_name, account_number_ciphertext,
+              bank_account_last4, account_holder_name)
+           values ($1, $2, '本店', 'cipher', '9999', '名義')`,
+          [rows[0].id, `${key}銀行`],
+        );
+      }
+      // B が誰かを招待して報酬を得ている状態を作る（A から見えてはいけない）。
+      const referred = await makeUser(c);
+      await c.query(
+        `insert into affiliate_attributions (affiliate_account_id, referred_user_id) values ($1, $2)`,
+        [accounts.b, referred.uid],
+      );
+      await c.query(
+        `insert into affiliate_commissions
+           (affiliate_account_id, referred_user_id, stripe_invoice_id, eligible_amount,
+            original_amount, commission_rate_bps, commission_amount, available_at)
+         values ($1, $2, $3, 10000, 10000, 3000, 3000, now())`,
+        [accounts.b, referred.uid, `in_${randomUUID()}`],
+      );
+      await c.query(
+        `insert into affiliate_payouts
+           (affiliate_account_id, period_start, period_end, gross_amount, fee_amount,
+            net_amount, payment_due_at)
+         values ($1, '2026-07-01', '2026-07-31', 10000, 980, 9020, now())`,
+        [accounts.b],
+      );
+
+      await actAs(c, a.uid);
+      const own = await c.query<{ id: string }>(`select id from affiliate_accounts`);
+      expect(own.rows.map((r) => r.id), "自分の招待アカウントだけが見える").toEqual([accounts.a]);
+      // **他人の口座・報酬・振込は1行も見えない。**
+      const banks = await c.query<{ bank_name: string }>(`select bank_name from affiliate_payout_accounts`);
+      expect(banks.rows.map((r) => r.bank_name)).toEqual(["a銀行"]);
+      expect((await c.query(`select id from affiliate_attributions`)).rows).toHaveLength(0);
+      expect((await c.query(`select id from affiliate_commissions`)).rows).toHaveLength(0);
+      expect((await c.query(`select id from affiliate_payouts`)).rows).toHaveLength(0);
     });
   });
 
@@ -231,6 +319,47 @@ describe("RLS policies & ownership trigger", () => {
         order by 1, 2`,
     );
     // authenticated に直接write権限を持つtableは無い（別ユーザーへの書込みも構造的に不可）。
+    expect(rows).toEqual([]);
+  });
+
+  /**
+   * **ブラウザ（PostgREST）から読める範囲は、実際に使う分だけ**（T-M8-252）。
+   *
+   * Supabase の既定で public の全テーブルに `authenticated` の SELECT が付いており、
+   * RLSがあるので他人の行は読めないものの、**自分の行の暗号文**（Xのトークン・APIキー・
+   * 振込先口座番号）はブラウザから直接読めた。アプリはこれらを service_role でしか読まない。
+   * 唯一の例外は proxy のルートガードが読む `profiles` の3列。
+   */
+  it("authenticated が読めるのは profiles の3列だけ（暗号文はブラウザから読めない）", async () => {
+    const tableWide = await db!.query<{ table_name: string }>(
+      `select table_name from information_schema.role_table_grants
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type = 'SELECT'
+        order by 1`,
+    );
+    expect(tableWide.rows, "テーブル全体のSELECTは残さない").toEqual([]);
+
+    const columns = await db!.query<{ grantee: string; table_name: string; column_name: string }>(
+      `select grantee, table_name, column_name from information_schema.column_privileges
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type = 'SELECT'
+        order by 2, 3`,
+    );
+    expect(columns.rows.map((r) => `${r.grantee}:${r.table_name}.${r.column_name}`)).toEqual([
+      "authenticated:profiles.id",
+      "authenticated:profiles.plan",
+      "authenticated:profiles.subscription_status",
+    ]);
+  });
+
+  /** TRUNCATE・TRIGGER・REFERENCES も既定のまま残さない（T-M8-252）。 */
+  it("authenticated / anon に TRUNCATE・TRIGGER・REFERENCES が残っていない", async () => {
+    const { rows } = await db!.query<{ table_name: string; privilege_type: string }>(
+      `select table_name, privilege_type from information_schema.role_table_grants
+        where grantee in ('anon', 'authenticated') and table_schema = 'public'
+          and privilege_type in ('TRUNCATE', 'TRIGGER', 'REFERENCES')
+        order by 1, 2`,
+    );
     expect(rows).toEqual([]);
   });
 });

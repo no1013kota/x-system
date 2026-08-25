@@ -78,6 +78,53 @@ describe("cleanupOldData (db)", () => {
     return rows[0].id;
   }
 
+  it("新着500件を超えた news_items を削除し、参照付きの行は残す（T-M8-188）", async () => {
+    const tag = randomUUID().slice(0, 8);
+    // 500件上限を確実に超えるよう、まとめて520件seedする（既存行数に依存しない）。
+    const { referencedId, notifUid } = await withTransaction(async (c: PoolClient) => {
+      await c.query(
+        `insert into news_items (category, title, summary, source_url, impact, fetched_at)
+         select 'ai', 'bulk-' || $1, 's', 'https://example.com/' || $1 || '-' || g, 'low',
+                now() - make_interval(mins => 30 + g)
+           from generate_series(1, 520) g`,
+        [tag],
+      );
+      // 上限の外（最古扱い）だが通知payloadから参照される行 → 消えないこと。
+      const referencedId = await insertNewsItem(c, 30);
+      const { uid } = await makeAccount(c);
+      await insertNewsNotif(c, uid, 1, referencedId);
+      return { referencedId, notifUid: uid };
+    });
+
+    try {
+      // 1回のBATCH(500)で削りきれない量でも、数回で上限まで収束する。
+      // 参照付き行がバッチ枠を塞いで未参照行が残る飢餓（レビュー指摘・T-M8-192）もここで見る。
+      for (let i = 0; i < 5; i++) await cleanupOldData({ db: pooledDb });
+
+      const { rows } = await pooledDb.query<{ n: string; ref: string }>(
+        `select
+           (select count(*) from news_items ni
+             where not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
+               and not exists (
+                 select 1 from notifications n
+                  where jsonb_exists(n.payload->'news_item_ids', ni.id::text)))::text as n,
+           (select count(*) from news_items where id = $1)::text as ref`,
+        [referencedId],
+      );
+      expect(Number(rows[0].n), "参照なし行は500件以下へ切り詰められる").toBeLessThanOrEqual(500);
+      expect(rows[0].ref, "参照付きの行は上限の外でも残る").toBe("1");
+    } finally {
+      await withTransaction(async (c) => {
+        await c.query(`delete from news_items where title = $1`, [`bulk-${tag}`]);
+        await c.query(`delete from notifications where user_id = $1`, [notifUid]);
+        await c.query(`delete from news_items where id = $1`, [referencedId]);
+        await c.query(`delete from x_accounts where user_id = $1`, [notifUid]);
+        await c.query(`delete from profiles where id = $1`, [notifUid]);
+        await c.query(`delete from auth.users where id = $1`, [notifUid]);
+      });
+    }
+  });
+
   it("deletes 40日超 retention rows and keeps recent/referenced ones (news notif deleted before news_items)", async () => {
     const seed = await withTransaction(async (c) => {
       const { uid, xid } = await makeAccount(c);
@@ -86,6 +133,21 @@ describe("cleanupOldData (db)", () => {
       const itemC = await insertNewsItem(c, 41); // old, referenced by a recent notif → kept
       const oldNotif = await insertNewsNotif(c, uid, 41, itemA);
       const recentNotif = await insertNewsNotif(c, uid, 0, itemC);
+      /*
+        news以外の通知（T-M8-246）。以前は `type='news'` しか消しておらず、毎日1通の
+        `summary` などが**永久に積もった**。古い既読は消え、直近は残ることを確かめる。
+      */
+      const insertOther = async (ageDays: number, readAt: string | null): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into notifications (user_id, type, dedupe_key, title, body, in_app_enabled, read_at, created_at)
+           values ($1, 'summary', $2, 't', 'b', true, $3::timestamptz,
+                   now() - make_interval(days => $4)) returning id`,
+          [uid, `sm-${randomUUID()}`, readAt, ageDays],
+        );
+        return rows[0].id;
+      };
+      const oldSummary = await insertOther(41, new Date().toISOString());
+      const recentSummary = await insertOther(1, null);
       await c.query(
         `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, source_news_item_id)
          values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p1'), '[]'::jsonb, '[]'::jsonb, 'draft', $2)`,
@@ -121,7 +183,10 @@ describe("cleanupOldData (db)", () => {
           [`w-${randomUUID()}`],
         )
       ).rows[0].id;
-      return { uid, xid, itemA, itemB, itemC, oldNotif, recentNotif, usageOld, usageNew, cronOld, cronNew };
+      return {
+        uid, xid, itemA, itemB, itemC, oldNotif, recentNotif, oldSummary, recentSummary,
+        usageOld, usageNew, cronOld, cronNew,
+      };
     });
 
     try {
@@ -136,6 +201,9 @@ describe("cleanupOldData (db)", () => {
 
       expect(await alive("notifications", seed.oldNotif)).toBe(false);
       expect(await alive("notifications", seed.recentNotif)).toBe(true);
+      // news以外の通知にも保持期間が効く（T-M8-246）。
+      expect(await alive("notifications", seed.oldSummary), "古い通知が残っている").toBe(false);
+      expect(await alive("notifications", seed.recentSummary), "直近の通知まで消している").toBe(true);
       // news通知を先に消したので itemA は未参照になり削除される。
       expect(await alive("news_items", seed.itemA)).toBe(false);
       expect(await alive("news_items", seed.itemB)).toBe(true); // draft参照

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PLANS } from "../plans";
 
-import { RESERVE_LIMIT_BY_TYPE, reserveIfPremium } from "./reserve-if-premium";
+import { reserveIfPremium, reserveLimitFor } from "./reserve-if-premium";
 
 /**
  * premium の枠 reserve（R28）。
@@ -14,11 +14,15 @@ import { RESERVE_LIMIT_BY_TYPE, reserveIfPremium } from "./reserve-if-premium";
  * 別ファイルにあるため気付けない。対応表そのものを検査する。
  */
 
-describe("RESERVE_LIMIT_BY_TYPE", () => {
-  it("文章・画像とも同じAIクレジット上限を共有する（T-M8-109）", () => {
-    expect(RESERVE_LIMIT_BY_TYPE.generation).toBe(PLANS.premium.usageLimits?.aiCredits);
-    expect(RESERVE_LIMIT_BY_TYPE.image).toBe(PLANS.premium.usageLimits?.aiCredits);
+describe("reserveLimitFor", () => {
+  it("上限はプランのAIクレジット枠（premium=1000 / expert=5000・T-M8-109/168）", () => {
+    expect(reserveLimitFor("premium")).toBe(PLANS.premium.usageLimits?.aiCredits);
+    expect(reserveLimitFor("expert")).toBe(PLANS.expert.usageLimits?.aiCredits);
     expect(PLANS.premium.usageLimits?.aiCredits).toBe(1000);
+    expect(PLANS.expert.usageLimits?.aiCredits).toBe(5000);
+    // BYOK・未知は上限なし（reserve自体が走らない）。
+    expect(reserveLimitFor("standard")).toBeUndefined();
+    expect(reserveLimitFor("")).toBeUndefined();
   });
 });
 
@@ -31,6 +35,10 @@ describe("reserveIfPremium", () => {
         // モデル選択の読み出し（T-M8-108）。
         if (/ai_purpose_config from profiles/.test(sql)) {
           return { rows: [{ ai_purpose_config: aiPurposeConfig }] as never[], rowCount: 1 };
+        }
+        // 利用枠の期間キー（T-M8-258）。実DBでは必ず1行返る。
+        if (/current_period_start[\s\S]*as key$/.test(sql)) {
+          return { rows: [{ key: "2026-08-15" }] as never[], rowCount: 1 };
         }
         // reserveUsage が読む行を返す（上限判定・冪等判定を通す最小の形）。
         return { rows: [] as never[], rowCount: 0 };
@@ -46,8 +54,8 @@ describe("reserveIfPremium", () => {
 
   const base = { userId: "u1", xAccountId: "x1", jobId: "j1", type: "generation" as const };
 
-  it("BYOK（standard / md）は枠を消費しない＝transactionにも入らない", async () => {
-    for (const plan of ["standard", "md"]) {
+  it("BYOK（standard）と未契約は枠を消費しない＝transactionにも入らない", async () => {
+    for (const plan of ["standard", ""]) {
       const s = spy();
       await reserveIfPremium(s.runInTx, { ...base, plan });
       expect(s.entered(), `${plan} で reserve が走っている`).toBe(0);

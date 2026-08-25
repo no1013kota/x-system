@@ -43,6 +43,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </p>
       ) : null}
       {requestingReset ? <PasswordResetRequestForm /> : <LoginForm next={next} />}
+      {/* 新規登録への導線は `LoginForm` が1つだけ持つ（T-M8-295。ここにもあって二重に出ていた）。 */}
     </AuthPageShell>
   );
 }

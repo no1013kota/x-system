@@ -288,17 +288,18 @@ describe("jobs/draft/ledger tables schema & constraints", () => {
     });
   });
 
-  it("enforces usage_counters premium limits and PK", async () => {
+  it("enforces usage_counters expert limits and PK", async () => {
     await inTx(async (c) => {
       const { uid } = await makeAccount(c);
+      // 上限はexpertの月次枠（1000/100・T-M8-196）。ゲートの正はアプリ側、制約は破損防止。
       await c.query(
-        `insert into usage_counters (user_id, month, normal_posts_count) values ($1, '2026-07', 200)`,
+        `insert into usage_counters (user_id, month, normal_posts_count) values ($1, '2026-07', 1000)`,
         [uid],
       );
-      // over premium normal limit
+      // over expert normal limit
       await expectViolation(c, () =>
         c.query(
-          `insert into usage_counters (user_id, month, normal_posts_count) values ($1, '2026-08', 201)`,
+          `insert into usage_counters (user_id, month, normal_posts_count) values ($1, '2026-08', 1001)`,
           [uid],
         ),
       );

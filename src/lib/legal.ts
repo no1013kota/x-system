@@ -6,8 +6,8 @@
  * 生成・投稿・自動実行の前に再同意を要求する（利用規約「本規約の変更」の裏付け）。
  * `-draft` のような内部向け接尾辞は付けない（利用者に露出する・T-M8-72）。
  */
-export const CURRENT_TERMS_VERSION = "2026-08-08";
-export const CURRENT_PRIVACY_VERSION = "2026-08-08";
+export const CURRENT_TERMS_VERSION = "2026-08-20";
+export const CURRENT_PRIVACY_VERSION = "2026-08-20";
 
 /**
  * 自動投稿の明示同意で保存する説明文version（要件02 §3.3, 要件05 §7）。

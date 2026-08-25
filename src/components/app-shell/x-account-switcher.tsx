@@ -4,15 +4,15 @@ import { Menu } from "@base-ui/react/menu";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-import { setActiveXAccountAction } from "@/app/actions/x-accounts";
 import { useToast } from "@/components/ui/toast";
 import { Icon } from "@/components/ui/icon";
+import type { AppShellSwitcherAccount } from "@/lib/app-shell/types";
 
-export interface SwitcherAccount {
-  id: string;
-  handle: string;
-  profileImageUrl: string | null;
-}
+export type SwitcherAccount = AppShellSwitcherAccount;
+
+export type SwitchAccountAction = (input: {
+  x_account_id: string;
+}) => Promise<{ message: string; status: "error" | "success" }>;
 
 // モバイル幅でも「どのアカウントを操作中か」を隠さない（誤アカウント投稿を防ぐ・要件06 §2）。
 const CHIP_CLASS =
@@ -27,9 +27,11 @@ const CHIP_CLASS =
 export function XAccountSwitcher({
   accounts,
   activeId,
+  switchAccountAction,
 }: {
   accounts: SwitcherAccount[];
   activeId: string | null;
+  switchAccountAction: SwitchAccountAction;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -50,7 +52,7 @@ export function XAccountSwitcher({
   function switchTo(id: string) {
     if (id === activeId || pending) return;
     startTransition(async () => {
-      const res = await setActiveXAccountAction({ x_account_id: id });
+      const res = await switchAccountAction({ x_account_id: id });
       if (res.status === "error") {
         // 操作の結果はトーストへ集約する（T-M8-16）。この通知はApp Shell常駐で
         // `/app/**` の全画面に `role="alert"` を1個足していた。

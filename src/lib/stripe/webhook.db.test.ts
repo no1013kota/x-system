@@ -41,7 +41,7 @@ describe("Stripe event database claim", () => {
       },
       priceIds: {
         standard: "price_standard",
-        md: "price_md",
+        expert: "price_expert",
         premium: "price_premium",
       },
       transaction: <T>(callback: (db: StripeEventDatabase) => Promise<T>) =>

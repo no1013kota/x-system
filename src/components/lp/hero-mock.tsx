@@ -1,4 +1,4 @@
-import { LogoTile } from "@/components/app-shell/brand-logo";
+import { LogoTile } from "@/components/brand/brand-logo";
 import { APP_NAME } from "@/lib/app-config";
 import { cardClassName } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -8,9 +8,8 @@ import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
  * ヒーロー右の運用イメージ（LP専用の装飾）。図版はすべてCSS/DOMで描く（画像アセット無し）。
  * 実画面のスクリーンショットではないので全体が `aria-hidden`。
  *
- * 4枚でサービスの4つの特徴を上から順になぞる（T-M8-79）:
- * ①ニュースからの下書き＝情報収集の自動化 ②生成中＝投稿・画像の自動作成
- * ③下書き・予約・分析 ④スケジュール投稿＝融通の効くスケジュール設定
+ * 並び順は運用の流れ（T-M8-172・運営者の指示 2026-08-21。02できることと揃える）:
+ * ①ニュース解説 ②プロンプト作成 ③投稿作成（生成中） ④スケジュール ⑤結果分析・プロンプト改善
  */
 
 function Chip({ label }: { label: string }) {
@@ -21,25 +20,44 @@ function Chip({ label }: { label: string }) {
   );
 }
 
+/** ② プロンプト作成。アカウント.md・投稿の型を自分で磨けることを示す。 */
+function PromptStrip() {
+  return (
+    <div className={cn(cardClassName, "px-3.5 py-3")}>
+      <div className="flex items-center gap-1.5">
+        <Chip label="プロンプト作成" />
+        <span className="ml-auto text-[11px] text-ink-3">アカウント.md</span>
+      </div>
+      <p className="mt-2 truncate text-[11px] leading-[1.7] text-ink-2">
+        ## 文体：断定しすぎず、実体験ベースで語る…
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-subtle px-[7px] text-[11px] font-medium text-brand">
+          保存
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
- * ③ 下書き・予約・分析。**タブと中身がある「画面」に見える形**にする。
+ * ⑤ 結果分析・プロンプト改善。**タブと中身がある「画面」に見える形**にする。
  * 数字を3つ並べただけでは、その3つがどんな画面なのか想像できなかった。
  */
 function WorkspaceStrip() {
-  // 見出しは架空の一般文。02の型チップ（ニュース解説／週次まとめ）を流用すると「型の一覧」に見える。
   // ドットの意味は④のスケジュール表と同じ（○=下書きまで ●=そのまま投稿）。3種類目を増やさない。
   const rows: { title: string; meta: string; state: SlotDotKind }[] = [
-    { title: "AI活用の始め方を3ステップで", meta: "下書き", state: "draft" },
-    { title: "今週読んだ記事のまとめ", meta: "予約 19:30", state: "post" },
+    { title: "伸びた投稿：AI活用の始め方（表示1.2万）", meta: "分析レポート", state: "post" },
+    { title: "プロンプト改善の提案が1件届いています", meta: "反映は自分で", state: "draft" },
   ];
   return (
     <div className={cn(cardClassName, "overflow-hidden")}>
+      {/* タブは「フォロワー推移／分析・改善」（運営者の指示 2026-08-22・旧「下書き・予約」を置換）。 */}
       <div className="flex items-end gap-3 border-b border-hairline px-3.5 pt-2.5">
+        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">フォロワー推移</span>
         <span className="border-b-2 border-brand pb-1.5 text-[11px] font-medium text-brand">
-          下書き
+          分析・改善
         </span>
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">予約</span>
-        <span className="border-b-2 border-transparent pb-1.5 text-[11px] text-ink-3">分析</span>
       </div>
       <div className="grid gap-2 px-3.5 py-2.5">
         {rows.map((row) => (
@@ -100,9 +118,7 @@ export function HeroMock() {
           <div className={cn(cardClassName, "px-3.5 py-3")}>
             <div className="flex flex-wrap items-center gap-1.5">
               <Chip label="ニュース解説" />
-              <span className="inline-flex h-5 items-center rounded-chip border border-hairline px-2 text-[11px] text-ink-2">
-                重要度：高
-              </span>
+              {/* 重要度チップは削除（運営者の指示 2026-08-22・T-M8-201）。 */}
               <span className="ml-auto text-[11px] text-ink-3">予約 9:30</span>
             </div>
             <p className="mt-2 text-caption leading-[1.7] text-ink">
@@ -118,10 +134,13 @@ export function HeroMock() {
             </div>
           </div>
 
-          {/* ② 生成中（AIが動く瞬間） */}
+          {/* ② プロンプト作成 */}
+          <PromptStrip />
+
+          {/* ③ 投稿作成＝生成中（AIが動く瞬間） */}
           <div className={cn(cardClassName, "px-3.5 py-3")}>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Chip label="自分の考え・意見" />
+              <Chip label="投稿作成" />
               <span className="ml-auto text-[11px] text-ink-3">画像も生成中</span>
             </div>
             <div className="mt-3 h-1 overflow-hidden rounded-pill bg-page">
@@ -135,11 +154,11 @@ export function HeroMock() {
             </div>
           </div>
 
-          {/* ③ 下書き・予約・分析 */}
-          <WorkspaceStrip />
-
           {/* ④ スケジュール投稿 */}
           <SchedulePreview />
+
+          {/* ⑤ 結果分析・プロンプト改善 */}
+          <WorkspaceStrip />
         </div>
       </div>
       <div className="lp-anim-float absolute right-[-8px] bottom-0 flex items-center gap-2.5 rounded-card border border-hairline bg-surface px-3.5 py-3 shadow-[var(--shadow-pop)]">

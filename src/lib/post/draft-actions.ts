@@ -51,7 +51,7 @@ export interface DraftActionState {
 
 export function draftActionState(
   draft: DraftView,
-  options: { quotePostEnabled: boolean },
+  options: { quotePostEnabled: boolean; xPremium?: boolean },
 ): DraftActionState {
   const imageFailed = draft.images.some((img) => img.status === "failed");
   // failed の投稿状態（要件06 §7）: 作成履歴あり=直接再投稿/破棄不可（cloneで再開）。
@@ -76,7 +76,9 @@ export function draftActionState(
     // 判定は**生成時に写した値**（T-M8-129 U3a）。旧enumを見ない。
     quoteDisabled: draft.requires_quote_url && !options.quotePostEnabled,
     // 文字数超過はXが受け付けないため、編集するまで投稿させない（投稿前の再検証と同じ判定）。
-    lengthExceeded: draft.thread.some((p) => p.warnings.includes("length_exceeded")),
+    // X Premiumのアカウントは280超も投稿できるため止めない（上限25,000は投稿直前に再検証・T-M8-221）。
+    lengthExceeded:
+      !options.xPremium && draft.thread.some((p) => p.warnings.includes("length_exceeded")),
     posting: draft.status === "posting",
   };
 }

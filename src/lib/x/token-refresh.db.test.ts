@@ -218,7 +218,7 @@ describe("getValidAccessToken (local DB)", () => {
     try {
       await withTransaction((c) =>
         c.query(
-          `update profiles set notification_config = '{"error":{"in_app":true,"email":true}}'::jsonb where id = $1`,
+          `update profiles set notification_config = '{"error":{"in_app":true}}'::jsonb where id = $1`,
           [uid],
         ),
       );
@@ -229,11 +229,10 @@ describe("getValidAccessToken (local DB)", () => {
           type: string;
           link: string;
           in_app_enabled: boolean;
-          email_status: string;
           reason: string;
           account: string;
         }>(
-          `select type, link, in_app_enabled, email_status,
+          `select type, link, in_app_enabled,
                   payload->>'reason' as reason, payload->>'x_account_id' as account
              from notifications where user_id = $1`,
           [uid],
@@ -243,7 +242,6 @@ describe("getValidAccessToken (local DB)", () => {
       expect(rows[0].type).toBe("error");
       expect(rows[0].link).toBe("/app/settings?tab=api-keys");
       expect(rows[0].in_app_enabled).toBe(true);
-      expect(rows[0].email_status).toBe("queued"); // error.email = true
       expect(rows[0].reason).toBe("invalid_grant");
       expect(rows[0].account).toBe(xid);
     } finally {
@@ -251,12 +249,12 @@ describe("getValidAccessToken (local DB)", () => {
     }
   });
 
-  it("createXRelinkNotification writes nothing when both error channels are off", async () => {
+  it("createXRelinkNotification writes nothing when the error channel is off", async () => {
     const { uid, xid } = await withTransaction((c) => makeAccount(c));
     try {
       await withTransaction((c) =>
         c.query(
-          `update profiles set notification_config = '{"error":{"in_app":false,"email":false}}'::jsonb where id = $1`,
+          `update profiles set notification_config = '{"error":{"in_app":false}}'::jsonb where id = $1`,
           [uid],
         ),
       );

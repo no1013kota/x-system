@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Exos AI follower_snapshot（要件04 §6・運用メモ §2）。毎時10分。
+<!-- Exos AI follower_snapshot（要件04 §6・運用メモ §2）。毎時00分。
      __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。
      route本体は分析系マイルストーンで実装。それまでは認証疎通（401/404）確認のみ。 -->
 <plist version="1.0">
@@ -23,7 +23,7 @@
   <key>StartCalendarInterval</key>
   <dict>
     <key>Minute</key>
-    <integer>10</integer>
+    <integer>0</integer>
   </dict>
   <key>RunAtLoad</key>
   <false/>

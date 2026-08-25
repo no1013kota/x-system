@@ -61,6 +61,14 @@ describe("Supabase Auth の設定値がコードと一致する（T-M8-144）", 
     expect(CODE_ATTEMPT_WINDOW_MS, "失敗数えの窓 ↔ 有効期間").toBe(expiry * 1000);
   });
 
+  it("メール確認の省略がローカルとリモートで一致する（T-M8-202。食い違うとE2Eと本番で挙動が割れる）", async () => {
+    const { AUTH_SETTINGS } = await import("../../../scripts/auth-settings.mjs");
+    // mailer_autoconfirm: true ⇔ enable_confirmations = false（意味が反転している点に注意）。
+    expect(AUTH_SETTINGS.mailer_autoconfirm, "リモートへ送る値 ↔ config.toml").toBe(
+      emailSetting("enable_confirmations") === "false",
+    );
+  });
+
   it("メールの件名が config.toml とリモートへ送る値で一致する", async () => {
     const { TEMPLATES } = await import("../../../scripts/auth-settings.mjs");
     for (const tpl of TEMPLATES) {

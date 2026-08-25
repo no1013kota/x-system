@@ -11,7 +11,9 @@ describe("startCustomerPortal", () => {
       }),
     );
     const navigate = vi.fn();
-    await startCustomerPortal(undefined, { fetcher, navigate });
+    const prepareHostedOrigin = vi.fn();
+    await startCustomerPortal(undefined, { fetcher, navigate, prepareHostedOrigin });
+    expect(prepareHostedOrigin).toHaveBeenCalledWith("https://billing.stripe.com");
     expect(fetcher).toHaveBeenCalledWith("/api/stripe/portal", {
       method: "POST",
     });

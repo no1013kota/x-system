@@ -1,5 +1,5 @@
 import { AppError } from "@/lib/observability/errors";
-import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import { usagePeriodKeySql } from "@/lib/usage/usage-period";
 
 import type { ThreadItem } from "./ai/gen-output";
 import { counterTypeFor, finalTextResolver, postConsumeKey } from "./post/posting-text";
@@ -101,7 +101,7 @@ export async function reconcileDraftPosting(
     db.query(
       `insert into usage_events
          (user_id, x_account_id, draft_id, tweet_id, month, counter_type, operation, delta, reason, idempotency_key)
-       values ($1, $2, $3, $4, ${CURRENT_MONTH_JST_SQL},
+       values ($1, $2, $3, $4, ${usagePeriodKeySql("$1")},
                $5, $6, 1, 'consume', $7)
        on conflict (idempotency_key) do nothing`,
       [

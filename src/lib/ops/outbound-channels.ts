@@ -56,11 +56,11 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
   },
   {
     id: "smtp",
-    label: "お知らせメールの送信",
+    label: "運営者への状態メールの送信（利用者向け通知メールはT-M8-222で廃止）",
     guard:
       "`canSendViaSmtp` が production 以外ではループバック宛（localhost/127.0.0.1）以外を拒否し、" +
       "transport を作らない。2026-07-27に98通の誤送信を起こした経路（T-M7-23）。",
-    files: ["lib/email/notification-email-server.ts", "lib/email/smtp-error.ts"],
+    files: ["lib/email/operator-mail-server.ts"],
   },
   {
     id: "ai_provider",
@@ -87,10 +87,20 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
       "lib/stripe/client.ts",
       "lib/stripe/checkout.ts",
       "lib/stripe/portal.ts",
+      "lib/stripe/resume.ts",
+      "lib/stripe/resume-browser.ts",
       "lib/stripe/subscription-sync.ts",
       "lib/stripe/billing-return.ts",
       "lib/stripe/billing-redirect.ts",
       "lib/stripe/webhook.ts",
+      // 契約期間の補完（Stripe を読むだけ・T-M8-258）と、プラン変更後の日割り差額の下見
+      // （読むだけ・T-M8-270）。予約の取り消し（scheduled-plan-change.ts）は gateway 注入で
+      // Stripe SDK を直接呼ばないため一覧の検出対象外。
+      "lib/stripe/period-backfill.ts",
+      "lib/stripe/proration-preview.ts",
+      // トライアル中の下位変更を即時へ畳む（T-M8-299）。gateway注入で呼ぶので直接の送信は
+      // しないが、型を SDK から取るため検出される。Stripe の面の一部として登録しておく。
+      "lib/stripe/trial-plan-change.ts",
     ],
   },
   {

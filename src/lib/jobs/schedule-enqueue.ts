@@ -1,9 +1,13 @@
 import {
+  EXECUTABLE_SUBSCRIPTION_STATUSES,
+  type SubscriptionStatus,
+} from "@/lib/auth/subscription-access";
+import {
   IMAGE_DEFAULT_ESTIMATE_CREDITS,
   TEXT_DEFAULT_ESTIMATE_CREDITS,
 } from "../ai/model-catalog";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import { CURRENT_MONTH_JST_SQL } from "@/lib/usage/current-month";
+import { usagePeriodKeyExpr } from "@/lib/usage/usage-period";
 import { canPostThreadToday } from "@/lib/usage/daily-post-limit";
 import { countTodaysPostsForXAccount } from "@/lib/usage/daily-post-limit-server";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
@@ -24,8 +28,8 @@ import type { Queryable } from "../x/token-refresh";
  * 同一 transaction で更新して冪等化する（同一slot・同一定刻窓で複数tickでもjobは1件）。1起動500件上限。
  */
 
-/** premium月次上限（要件03 §7・plans.ts と一致）。 */
-const PREMIUM_LIMITS = { normalPosts: 200, urlPosts: 20, aiCredits: 1000 };
+/** 運営キー系プランの月次上限（要件03 §7・T-M8-168）。plans.ts の usageLimits が正本。 */
+import { usageLimitsForPlan, isOperatorManagedPlan } from "@/lib/plans";
 
 interface DueSlotRow {
   id: string;
@@ -51,7 +55,8 @@ interface DueSlotRow {
   subscription_status: string;
   ai_purpose_config: { text?: string; image?: string } | null;
   jst_date: string;
-  jst_month: string;
+  /** 利用枠の期間キー（契約期間の開始日・T-M8-258）。`usage_counters.month` の値。 */
+  usage_period: string;
 }
 
 export interface ScheduleEnqueueDeps {
@@ -78,7 +83,7 @@ async function loadDueSlots(db: Queryable): Promise<DueSlotRow[]> {
              and xa.automation_disabled_at is null) as auto_consent_ok,
             p.plan, p.subscription_status, p.ai_purpose_config,
             to_char((now() at time zone 'Asia/Tokyo'), 'YYYY-MM-DD') as jst_date,
-            ${CURRENT_MONTH_JST_SQL} as jst_month
+            ${usagePeriodKeyExpr("p")} as usage_period
        from schedule_slots ss
        join x_accounts xa on xa.id = ss.x_account_id
        join profiles p on p.id = xa.user_id
@@ -115,11 +120,14 @@ async function keysValid(db: Queryable, slot: DueSlotRow): Promise<boolean> {
   });
 }
 
-async function premiumBudgetOk(
+async function operatorBudgetOk(
   db: Queryable,
   slot: DueSlotRow,
   spec: PatternSpec,
 ): Promise<boolean> {
+  // プランごとの上限（premium / expert・T-M8-168）。無ければ呼ばれない（isOperatorManagedPlanが偽）。
+  const limits = usageLimitsForPlan(slot.plan);
+  if (!limits) return true;
   const { rows } = await db.query<{
     normal_posts_count: number;
     url_posts_count: number;
@@ -127,7 +135,7 @@ async function premiumBudgetOk(
   }>(
     `select normal_posts_count, url_posts_count, ai_credits_used
        from usage_counters where user_id = $1 and month = $2`,
-    [slot.user_id, slot.jst_month],
+    [slot.user_id, slot.usage_period],
   );
   const c = rows[0] ?? {
     normal_posts_count: 0,
@@ -139,12 +147,12 @@ async function premiumBudgetOk(
   //（厳密判定はreserveが行う。ここで厳しくしすぎると実行できるjobまで塞ぐ）。
   const estimate =
     TEXT_DEFAULT_ESTIMATE_CREDITS + (slot.image_enabled ? IMAGE_DEFAULT_ESTIMATE_CREDITS : 0);
-  if (c.ai_credits_used + estimate > PREMIUM_LIMITS.aiCredits) return false;
+  if (c.ai_credits_used + estimate > limits.aiCredits) return false;
   if (slot.mode === "auto") {
     // パターンの設定から導く（T-M8-129 U3）。
     const need = scheduledPostSlots(spec);
-    if (c.normal_posts_count + need.normal > PREMIUM_LIMITS.normalPosts) return false;
-    if (c.url_posts_count + need.url > PREMIUM_LIMITS.urlPosts) return false;
+    if (c.normal_posts_count + need.normal > limits.normalPosts) return false;
+    if (c.url_posts_count + need.url > limits.urlPosts) return false;
   }
   return true;
 }
@@ -173,7 +181,10 @@ async function isEligible(
   spec: PatternSpec,
   dailyLimit: number,
 ): Promise<boolean> {
-  if (slot.subscription_status !== "trialing" && slot.subscription_status !== "active") return false;
+  // 実行できる契約かは `SUBSCRIPTION_ACCESS` から導く（T-M8-249。可否を2か所に書かない）。
+  if (!EXECUTABLE_SUBSCRIPTION_STATUSES.includes(slot.subscription_status as SubscriptionStatus)) {
+    return false;
+  }
   if (slot.x_status !== "active") return false;
   if (slot.base_md_version < 1) return false;
   // 引用URLが必須のパターンは予約に使えない（DBのトリガも拒否する）。保険としてここでも見る。
@@ -181,8 +192,8 @@ async function isEligible(
   if (slot.mode === "auto" && !slot.auto_consent_ok) return false;
   // 学習ソース削除merge中は新規生成を止める（要件04 §12, T-M5-05）。
   if (await hasRemovingLearningSource(db, slot.x_account_id)) return false;
-  if (slot.plan === "premium") {
-    if (!(await premiumBudgetOk(db, slot, spec))) return false;
+  if (isOperatorManagedPlan(slot.plan)) {
+    if (!(await operatorBudgetOk(db, slot, spec))) return false;
   } else {
     if (!(await keysValid(db, slot))) return false;
   }
@@ -209,7 +220,7 @@ async function enqueueSlot(deps: ScheduleEnqueueDeps, slot: DueSlotRow): Promise
     placeholder_values: slot.placeholder_values ?? null,
     /*
       **プラン境界を実行時にも守る**（T-M8-135）。プロンプトの編集は md/premium だけなので、
-      standard へ下がった枠の `prompt_override` は使わない。
+      編集権限の無い状態（未契約へ下がった枠）の `prompt_override` は使わない。
       画面はこのときセクションごと隠すため、使い続けると
       **画面に出ていない指示で生成される**（原則1・原則2に反する）。
     */

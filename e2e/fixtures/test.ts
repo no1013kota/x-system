@@ -127,6 +127,21 @@ export interface MailpitMessage {
 
 /** 宛先が一致する最新のメールを待つ（Mailpitは共有なので宛先で絞る）。 */
 export async function waitForMail(to: string): Promise<MailpitMessage> {
+  return waitForMailExcept(to, new Set());
+}
+
+/** Waits for another message to the same recipient after a known message. */
+export async function waitForNewMail(
+  to: string,
+  previousMessageId: string,
+): Promise<MailpitMessage> {
+  return waitForMailExcept(to, new Set([previousMessageId]));
+}
+
+async function waitForMailExcept(
+  to: string,
+  excludedIds: ReadonlySet<string>,
+): Promise<MailpitMessage> {
   let last: MailpitMessage | undefined;
   await expect
     .poll(
@@ -134,7 +149,9 @@ export async function waitForMail(to: string): Promise<MailpitMessage> {
         const res = await fetch(`${MAILPIT}/api/v1/messages?limit=50`);
         if (!res.ok) return false;
         const body = (await res.json()) as { messages: MailpitMessage[] };
-        last = body.messages.find((m) => m.To.some((t) => t.Address === to));
+        last = body.messages.find(
+          (m) => !excludedIds.has(m.ID) && m.To.some((t) => t.Address === to),
+        );
         return Boolean(last);
       },
       { timeout: 30_000, message: `${to} 宛の確認メールが届くこと` },
@@ -171,5 +188,4 @@ export async function confirmUrlFromMail(messageId: string): Promise<string> {
   // HTMLメールでは & が &amp; にエスケープされるため戻す。
   return (match as RegExpExecArray)[0].replace(/&amp;/g, "&");
 }
-
 

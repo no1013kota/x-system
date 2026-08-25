@@ -297,24 +297,18 @@ export async function createXRelinkNotification(
   await db.query(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload,
-        in_app_enabled, email_status, email_available_at)
+        in_app_enabled)
      select
        x.user_id, 'error', null,
        'Xとの連携が切れました',
        '再連携するまで自動投稿・投稿・読み取りを停止します。設定から再連携してください。',
        '/app/settings?tab=api-keys',
        jsonb_build_object('x_account_id', x.id, 'reason', $2::text),
-       coalesce((p.notification_config->'error'->>'in_app')::boolean, false),
-       case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-            then 'queued'::email_delivery_status
-            else 'not_requested'::email_delivery_status end,
-       case when coalesce((p.notification_config->'error'->>'email')::boolean, false)
-            then now() else null end
+       coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
      from x_accounts x
      join profiles p on p.id = x.user_id
      where x.id = $1
-       and (coalesce((p.notification_config->'error'->>'in_app')::boolean, false)
-            or coalesce((p.notification_config->'error'->>'email')::boolean, false))`,
+       and coalesce((p.notification_config->'error'->>'in_app')::boolean, false)`,
     [xAccountId, reason],
   );
 }

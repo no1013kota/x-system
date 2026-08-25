@@ -17,7 +17,6 @@ import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
-  threadCountLabel,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -47,11 +46,14 @@ export function PatternManager({
   initialPatterns,
   initialPrompts,
   systemDefaultPrompts,
+  xAccountId,
 }: {
   initialPatterns: PatternOption[];
   initialPrompts: Record<string, PatternPromptView>;
   /** 既定パターンのシステム既定本文（パターンID → 本文）。「既定に戻す」の判定に使う。 */
   systemDefaultPrompts: Record<string, string>;
+  /** 表示中のXアカウント。作成・復元の宛先ズレ防止に送る（T-M8-196）。 */
+  xAccountId: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -129,7 +131,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
   function create() {
     if (!creating) return;
     void (async () => {
-      const res = await run(() => createPatternAction(toPatternPayload(creating, null)));
+      const res = await run(() => createPatternAction({ x_account_id: xAccountId, ...toPatternPayload(creating, null) }));
     if (res.status === "success" && res.pattern) {
         const added = res.pattern;
         setPatterns((prev) => [...prev, added]);
@@ -172,7 +174,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
 
   function restoreDefaults() {
     void (async () => {
-      const res = await run(() => restoreDefaultPatternsAction());
+      const res = await run(() => restoreDefaultPatternsAction({ x_account_id: xAccountId }));
       if (res.status === "success") {
         const n = res.restored ?? 0;
         toast.show({
@@ -228,6 +230,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
           <CardTitle>新しいパターン</CardTitle>
           {errors.new ? <Notice tone="danger">{errors.new}</Notice> : null}
           <PatternFields
+            listPlaceholders
             draft={creating}
             idPrefix="new"
             onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
@@ -271,9 +274,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
                 </Badge>
                 {item.isSystemDefault ? <Badge tone="neutral">はじめから用意</Badge> : null}
                 {item.requiresQuoteUrl ? <Badge tone="neutral">予約に使えません</Badge> : null}
-                <span className="ml-auto text-caption text-ink-3">
-                {threadCountLabel(item.maxPosts)}・編集は{item.maxPostsEdit}ポストまで
-                </span>
+                {/* 「メイン＋スレッド最大N・編集はNポストまで」の右上表記は出さない（運営者の指示 2026-08-22）。 */}
               </div>
 
               {errors[item.id] ? (
@@ -283,6 +284,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
               ) : null}
 
               <PatternFields
+                listPlaceholders
                 draft={draft}
                 // **数字で始まるidにしない。** uuidをそのまま使うとCSSセレクタとして無効になり、
                 // 検証（E2E）からもラベルの `htmlFor` からも引けなくなる。

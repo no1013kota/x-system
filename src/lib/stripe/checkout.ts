@@ -4,7 +4,10 @@ import { z } from "zod";
 import { apiError, apiJson } from "@/lib/http/api-response";
 import { hasExactAppOrigin } from "@/lib/http/origin";
 import { AppError } from "@/lib/observability/errors";
+
+import { isLiveChargesDisabled } from "./stripe-errors";
 import { PLAN_IDS, type PlanId } from "@/lib/plans";
+import { remainingTrialEndSec } from "@/lib/billing/remaining-trial";
 
 export const checkoutInputSchema = z
   .object({
@@ -20,6 +23,11 @@ export interface CheckoutUser {
 export interface CheckoutProfile {
   stripe_customer_id: string | null;
   trial_used_at: string | null;
+  /**
+   * 解約後に残っている無料トライアルの期限（T-M8-298）。**期限内ならどのプランでも**
+   * その日まで無料で始められる（元のプランに限らない・運営者の指示 2026-08-25）。
+   */
+  trial_ends_at?: string | null;
 }
 
 export interface CheckoutStripeGateway {
@@ -37,15 +45,42 @@ export interface CheckoutStripeGateway {
       }>;
     };
   };
+  /** 既存契約の確認（T-M8-237）。二重契約＝二重請求を作らないため Checkout の前に見る。 */
+  subscriptions: {
+    list(params: {
+      customer: string;
+      status: "all";
+      limit: number;
+    }): Promise<{ data: { id: string; status: string; trial_start?: number | null }[] }>;
+  };
 }
 
 export interface CheckoutRouteDependencies {
   appBaseUrl: string;
   getCurrentUser(): Promise<CheckoutUser | null>;
   getProfile(userId: string): Promise<CheckoutProfile | null>;
+  /** 現在時刻（ms）。残りトライアルの判定に使う（テストで固定できるように注入する）。 */
+  now?: () => number;
   priceIds: Record<PlanId, string>;
   saveStripeCustomerId(userId: string, customerId: string): Promise<void>;
   stripe: CheckoutStripeGateway;
+}
+
+/**
+ * Stripeの失敗を利用者向けコードへ振り分ける（T-M8-148）。
+ *
+ * **アカウントが本番決済を受け付けられない状態は `provider_error` にしない。**
+ * その文言は「時間をおいて再度お試しください」で、待っても直らないので嘘になる
+ * （T-M8-127と同じ型の問題）。原因は `doctor` の「決済の受付（Stripeアカウント）」が示す。
+ */
+function billingError(cause: unknown): AppError {
+  if (isLiveChargesDisabled(cause)) {
+    return new AppError("feature_disabled", {
+      cause,
+      details: { feature: "billing", reason: "live_charges_disabled" },
+    });
+  }
+  return new AppError("provider_error", { cause });
 }
 
 async function createCustomer(
@@ -62,7 +97,7 @@ async function createCustomer(
       { idempotencyKey: `exos-ai:customer:${user.id}` },
     );
   } catch (cause) {
-    throw new AppError("provider_error", { cause });
+    throw billingError(cause);
   }
 
   try {
@@ -79,6 +114,8 @@ function sessionParams(input: {
   plan: PlanId;
   priceId: string;
   trialUsedAt: string | null;
+  /** 解約後に残っている無料トライアルの期限（epoch秒）。あれば `trial_end` として引き継ぐ。 */
+  remainingTrialEndSec?: number | null;
   userId: string;
 }): Stripe.Checkout.SessionCreateParams {
   const appBaseUrl = input.appBaseUrl.replace(/\/$/, "");
@@ -93,19 +130,46 @@ function sessionParams(input: {
     payment_method_collection: "always",
     success_url: `${appBaseUrl}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appBaseUrl}/plans?checkout=canceled`,
+    /*
+      **`plan` は metadata へ持たない**（T-M8-253）。プランの正は Price（`subscription.items`）で、
+      同期もそこから決めている。metadata に書くと**プラン変更後も作成時の値が残り**、
+      Stripeダッシュボードを見た運営者が古いプランを信じることになる（誰も読まないのに誤解だけ生む）。
+      `user_id` は Customer 未保存時の突き合わせに使うので残す。
+    */
     metadata: {
-      plan: input.plan,
       user_id: input.userId,
     },
     subscription_data: {
       metadata: {
-        plan: input.plan,
         user_id: input.userId,
       },
-      ...(input.trialUsedAt === null ? { trial_period_days: 7 } : {}),
+      /*
+        **残りのトライアルがあればそれを引き継ぐ**（T-M8-298）。トライアル中に解約した人が
+        別のプランを選んだとき、`trial_used_at` があるからと満額を請求してはいけない
+        （2026-08-25、運営者が解約後に「プランを選択」して即座に課金された）。
+        新規（トライアル未使用）は従来どおり7日。どちらでもなければ無料期間なし。
+      */
+      ...(input.remainingTrialEndSec
+        ? { trial_end: input.remainingTrialEndSec }
+        : input.trialUsedAt === null
+          ? { trial_period_days: 7 }
+          : {}),
     },
   };
 }
+
+/**
+ * 「もう契約がある」とみなす status（T-M8-237）。`canceled`・`incomplete_expired` は
+ * 契約し直せる状態なので含めない。`incomplete` は支払い未完了のまま残っている Checkout の
+ * 途中なので、作り直せるよう含めない。
+ */
+export const LIVE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+  "paused",
+]);
 
 /** Implements the authenticated, same-origin Checkout API with injectable I/O. */
 export async function handleCheckoutRequest(
@@ -146,13 +210,53 @@ export async function handleCheckoutRequest(
     const customerId =
       profile.stripe_customer_id ??
       (await createCustomer(deps, user as CheckoutUser & { email: string }));
+
+    /*
+      **既に契約があるなら Checkout を作らない**（T-M8-237）。Stripeは同じCustomerに複数の
+      subscription を許すので、押した回数だけ契約＝請求ができてしまう。画面側は
+      `/plans` からの送り返しで防いでいたが、その条件は `trialing`/`active` だけで、
+      **`past_due`・`unpaid`・`paused` の利用者は `/plans` に留まりCTAが押せる**。
+      その状態で押すと `trial_used_at` は既にあるのでトライアルも付かず、満額の2本目が走る。
+      プラン変更・支払い方法の更新は Portal が担うので、ここでは作らずそちらへ誘導する。
+    */
+    let trialAlreadyUsed = false;
+    if (profile.stripe_customer_id) {
+      const existing = await deps.stripe.subscriptions.list({
+        customer: customerId,
+        limit: 10,
+        status: "all",
+      });
+      /*
+        **2回目の無料トライアルを渡さない**（T-M8-244）。判定を `profiles.trial_used_at` だけに
+        頼ると、webhookが届かなかった利用者は永久に null のままになり、解約→再契約で
+        もう一度7日間の無料が取れてしまう。Stripe側に `trial_start` を持つ契約が1本でもあれば、
+        DBの状態に関わらずトライアルは付けない。
+      */
+      trialAlreadyUsed = existing.data.some((sub) => sub.trial_start != null);
+      const live = existing.data.find((sub) => LIVE_SUBSCRIPTION_STATUSES.has(sub.status));
+      if (live) {
+        return apiError(
+          new AppError("subscription_required", {
+            details: {
+              missing: ["subscription"],
+              reason: "already_subscribed",
+              settingsPath: "/app/settings?tab=billing",
+            },
+          }),
+        );
+      }
+    }
+
     const session = await deps.stripe.checkout.sessions.create(
       sessionParams({
         appBaseUrl: deps.appBaseUrl,
         customerId,
         plan: parsed.data.plan,
         priceId: deps.priceIds[parsed.data.plan],
-        trialUsedAt: profile.trial_used_at,
+        // 解約後に残っているトライアルは、どのプランでも引き継ぐ（T-M8-298）。
+        remainingTrialEndSec: remainingTrialEndSec(profile.trial_ends_at, (deps.now ?? Date.now)()),
+        // DBとStripeのどちらかが「使用済み」と言えば付けない（T-M8-244）。
+        trialUsedAt: trialAlreadyUsed ? new Date().toISOString() : profile.trial_used_at,
         userId: user.id,
       }),
     );
@@ -164,6 +268,6 @@ export async function handleCheckoutRequest(
     });
   } catch (error) {
     if (error instanceof AppError) return apiError(error);
-    return apiError(new AppError("provider_error", { cause: error }));
+    return apiError(billingError(error));
   }
 }

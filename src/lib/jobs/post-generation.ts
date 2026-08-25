@@ -7,6 +7,7 @@ import { finalizeThread } from "@/lib/post/generation-validation";
 import {
   buildPatternRules,
   fillPlaceholders,
+  placeholdersForFill,
   parsePatternSpec,
   patternPrompt,
   sourceRequiredForSpec,
@@ -21,7 +22,7 @@ import {
   fetchNewsDigest,
   fetchRecentPostBodies,
 } from "../ai/gen-context";
-import { AppError } from "@/lib/observability/errors";
+import { AppError, userMessageForCode } from "@/lib/observability/errors";
 import { reduceWebSearchMaxUses } from "../ai/anthropic";
 
 import { genOutputSchema } from "../ai/gen-output";
@@ -127,7 +128,7 @@ export interface PostGenerationDeps {
   /** 実行前提の入力収集（server配線は gatherExecutionPrereqInputs）。 */
   gatherPrereqInputs: (
     userId: string,
-    opts: { imageRequested: boolean },
+    opts: { imageRequested: boolean; xAccountId?: string },
   ) => Promise<ExecutionPrereqInput | null>;
   /** 出典URLのSSRF検証（server配線は validateSourceUrlServer）。 */
   validateSource: (url: string) => Promise<boolean>;
@@ -305,7 +306,7 @@ export async function executePostGeneration(
 
   const failCtx = { jobId, userId: job.user_id, xAccountId: job.x_account_id };
 
-  // premium は文章生成の開始時に生成枠を +1 reserve（月次上限確認・冪等。BYOK/standard/mdは消費しない）。
+  // premium は文章生成の開始時に生成枠を +1 reserve（契約期間ごとの上限確認・冪等。BYOK/standard/mdは消費しない）。
   // GEN-FIX・JSON修復・出典再生成は同一jobの内部callで追加reserveしない（開始時1回のみ）。
   {
     try {
@@ -317,11 +318,22 @@ export async function executePostGeneration(
         type: "generation",
       });
     } catch (error) {
+      if (error instanceof AppError && error.code === "usage_paused") {
+        // エキスパートの内部ガード（T-M8-168）。保存する理由にも数値・「上限」の語を出さない。
+        await persistFailure(
+          db,
+          failCtx,
+          { code: "usage_paused", message: "連続的な使用が検知されたため一時的に停止しております。お待ちください。", stage: "validating" },
+          EMPTY_USAGE,
+        );
+        throw new PostGenerationTerminalError("usage_paused", "usage paused (concealed limit reached)");
+      }
       if (error instanceof AppError && error.code === "usage_limit_exceeded") {
         await persistFailure(
           db,
           failCtx,
-          { code: "usage_limit_exceeded", message: "今月の生成上限に達しています。翌月まで自動生成をご利用いただけません。", stage: "validating" },
+          // 文言は errors.ts の既定文と同じ（利用枠は契約期間ごと・T-M8-258）。
+          { code: "usage_limit_exceeded", message: userMessageForCode("usage_limit_exceeded"), stage: "validating" },
           EMPTY_USAGE,
         );
         throw new PostGenerationTerminalError("usage_limit_exceeded", "generation limit reached");
@@ -333,8 +345,11 @@ export async function executePostGeneration(
   try {
   // --- stage: validating（前提再検証）---
   await recordStage("validating");
+  // 判定は**ジョブの対象アカウント**基準（T-M8-196）。activeアカウント基準だと、
+  // 別アカウントを設定中・失効中なだけで健全なアカウントの生成が失敗する。
   const prereqInput = await deps.gatherPrereqInputs(job.user_id, {
     imageRequested: Boolean(job.input.image_enabled),
+    xAccountId: job.x_account_id,
   });
   // throw せず code だけを失敗確定へ回すので、判定だけを共有関数から借りる。
   const prereqError = resolveExecutionPrereqError(prereqInput);
@@ -369,7 +384,12 @@ export async function executePostGeneration(
   const resolvedPatternPrompt =
     basePatternPrompt === null
       ? null
-      : fillPlaceholders(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {});
+      : fillPlaceholders(
+          basePatternPrompt,
+          // 上書きプロンプトで増やした {名前} も差し込む（T-M8-186）。
+          placeholdersForFill(basePatternPrompt, spec.placeholders, job.input.placeholder_values ?? {}),
+          job.input.placeholder_values ?? {},
+        );
   if (resolvedPatternPrompt === null) {
     throw new PostGenerationTerminalError(
       "pattern_prompt_missing",

@@ -16,6 +16,8 @@ export async function POST(request: Request): Promise<Response> {
   const response = await handlePortalRequest(request, {
     appBaseUrl: env.APP_BASE_URL as string,
     configurationId: env.STRIPE_PORTAL_CONFIGURATION_ID,
+    // 解約前に提示するクーポン（T-M8-272）。環境ごとにIDが違うため env から渡す。
+    retentionCouponId: env.STRIPE_RETENTION_COUPON_ID,
     getCurrentUser: billingUser.getCurrentUser,
     async getProfile(userId) {
       const result = await admin

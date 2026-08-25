@@ -3,12 +3,17 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CancelSubscriptionButton } from "@/components/billing/cancel-subscription-button";
+import { KeepSubscriptionButton } from "@/components/billing/keep-subscription-button";
+import { CancelScheduledPlanChangeButton } from "@/components/billing/scheduled-plan-change-button";
 import { Button } from "@/components/ui/button";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { useToast } from "@/components/ui/toast";
+import type { cancellationEffects } from "@/lib/billing/cancellation-reasons";
 import type { PlanChangeEffects } from "@/lib/billing/plan-change-effects";
 import type { PortalIntent } from "@/lib/stripe/portal";
 import { startCustomerPortal } from "@/lib/stripe/portal-browser";
+import { usePageshowReset } from "@/lib/ui/use-pageshow-reset";
 
 /**
  * プラン管理の導線（T-M8-31）。
@@ -22,29 +27,49 @@ import { startCustomerPortal } from "@/lib/stripe/portal-browser";
  */
 export function PortalButton({
   cancelAtPeriodEnd = false,
+  cancelAtLabel = "",
+  cancellation = null,
   effects,
+  trialing = false,
   enabled,
+  scheduledChange = null,
 }: {
   /**
    * 期間末解約が予約済みか（T-M8-57）。予約済みのとき「解約する」を出し続けると、
-   * もう予約されているのに同じ操作を促すことになる。取り消し（Stripeの「プランを続ける」）へ
-   * 導線を替える。
+   * もう予約されているのに同じ操作を促すことになる。**その場で取り消せるボタン**へ導線を替える
+   * （T-M8-271。以前は Stripe の Portal トップを開いていた）。
    */
   cancelAtPeriodEnd?: boolean;
+  /** 解約日の表記（確認ダイアログに出す）。例「2026年9月15日」。 */
+  cancelAtLabel?: string;
+  /**
+   * 解約すると何が止まり何が残るか（T-M8-277）。渡されたときは**確認＋アンケート**を挟んでから
+   * Stripeの解約画面へ送る。渡されない場面（App Shellのバナー）は従来どおり直接送る。
+   */
+  cancellation?: ReturnType<typeof cancellationEffects> | null;
+  /** 無料トライアル中か（T-M8-278）。トライアルの解約はその場で終了させる。 */
+  trialing?: boolean;
   /** プラン変更・解約で何が起きるか（`planChangeEffects`）。契約前は不要。 */
   effects?: PlanChangeEffects;
   enabled: boolean;
+  /**
+   * 期間末で切り替わる下位プランの予約が付いているときの説明文（T-M8-260）。
+   * Portal は予約付きの契約でも別プランへの変更を受け付ける（その場合は予約が置き換わる。
+   * 2026-08-23 テストモードで実測）が、「今のプランのまま続ける」は Portal に無いので、
+   * 取り消しボタンをアプリ側で「プランを変更」の隣に出す。
+   */
+  scheduledChange?: string | null;
 }) {
-  const [pending, setPending] = useState<PortalIntent | "manage" | null>(null);
+  const [pending, setPending] = useState<PortalIntent | null>(null);
+  // Stripeから「戻る」で復帰したとき押せる状態へ戻す（T-M8-212）。
+  usePageshowReset(() => setPending(null));
   const toast = useToast();
 
-  function open(intent: PortalIntent | "manage") {
+  function open(intent: PortalIntent) {
     return async () => {
       setPending(intent);
       try {
-        // "manage" はPortalのトップ（解約予定の取り消しはStripeが「プランを続ける」として出す。
-        // flow_data に取り消し専用の型は無いため、トップから行うのが正規の経路）。
-        await startCustomerPortal(intent === "manage" ? undefined : intent);
+        await startCustomerPortal(intent);
       } catch (cause) {
         toast.show({
           tone: "error",
@@ -73,6 +98,7 @@ export function PortalButton({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
+        {scheduledChange ? <CancelScheduledPlanChangeButton description={scheduledChange} /> : null}
         <Button
           aria-busy={pending === "update"}
           className="h-9"
@@ -80,22 +106,15 @@ export function PortalButton({
           onClick={open("update")}
           size="lg"
           type="button"
-          variant="brand"
+          variant={scheduledChange ? "outline" : "brand"}
         >
           {pending === "update" ? "開いています…" : "プランを変更"}
         </Button>
         {cancelAtPeriodEnd ? (
-          <Button
-            aria-busy={pending === "manage"}
-            className="h-9"
-            disabled={pending !== null}
-            onClick={open("manage")}
-            size="lg"
-            type="button"
-            variant="outline"
-          >
-            {pending === "manage" ? "開いています…" : "解約予定を取り消す"}
-          </Button>
+          <KeepSubscriptionButton endsAtLabel={cancelAtLabel} />
+        ) : cancellation ? (
+          // 確認（何が止まり何が残るか）→ 理由のアンケート → Stripeの解約画面（T-M8-277）。
+          <CancelSubscriptionButton effects={cancellation} trialing={trialing} />
         ) : (
           <Button
             aria-busy={pending === "cancel"}
@@ -116,25 +135,23 @@ export function PortalButton({
         切り替わらないことも画面から読めなかった。金額と時期が変わる操作なので、
         Stripeへ移動する前に結果を示す（文言はStripe側の設定と1対1で対応する）。
       */}
+      {/* 各項目1行に簡潔化（運営者の指示 2026-08-22・T-M8-207。「いつから・いくら」の要点だけ残す）。 */}
       {effects ? (
-        <dl className="grid gap-3 rounded-card border border-hairline bg-page px-4 py-3.5 text-body leading-5 sm:grid-cols-2">
+        <ul className="grid gap-1.5 rounded-card border border-hairline bg-page px-4 py-3 text-body leading-6" role="list">
           {(
             [
               ["上位プランへ変更", effects.upgrade],
               ["下位プランへ変更", effects.downgrade],
               ["解約", effects.cancel],
-              ...(effects.trialNote ? [["無料トライアル中の変更", effects.trialNote] as const] : []),
+              ...(effects.trialNote ? [["トライアル中の変更", effects.trialNote] as const] : []),
             ] as const
           ).map(([label, effect]) => (
-            <div key={label}>
-              <dt className="text-caption text-ink-3">{label}</dt>
-              <dd className="mt-0.5">
-                <span className="font-bold text-ink">{effect.headline}</span>
-                <span className="mt-0.5 block text-ink-2">{effect.detail}</span>
-              </dd>
-            </div>
+            <li key={label}>
+              <span className="font-medium text-ink-2">{label}: </span>
+              <span className="text-ink">{effect.headline}</span>
+            </li>
           ))}
-        </dl>
+        </ul>
       ) : null}
     </div>
   );

@@ -65,6 +65,7 @@ function subscriptionPayload(stub: SubscriptionStub): Record<string, unknown> {
         {
           price: { id: stub.priceId },
           current_period_end: stub.currentPeriodEnd,
+          current_period_start: stub.currentPeriodEnd - 2_592_000,
         },
       ],
     },
@@ -126,7 +127,7 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
   let available = false;
   let POST: (request: Request) => Promise<Response>;
   // env を流し込んだ後に読む必要があるため動的import（静的importはhoistされ先に走る）。
-  let priceIds: Record<"md" | "premium" | "standard", string>;
+  let priceIds: Record<"standard" | "premium" | "expert", string>;
   let closePool: () => Promise<void>;
   const userIds: string[] = [];
   const eventIds: string[] = [];
@@ -299,7 +300,7 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
       cancelAtPeriodEnd: false,
       currentPeriodEnd: created + 2_592_000,
       customerId,
-      priceId: priceIds.md,
+      priceId: priceIds.expert,
       status: "active",
       subscriptionId: `sub_dup_${userId.slice(0, 8)}`,
       trialEnd: null,
@@ -379,7 +380,8 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
       `select plan, subscription_status from profiles where id = $1`,
       [userId],
     );
-    expect(profiles[0]).toEqual({ plan: "standard", subscription_status: "incomplete" });
+    // 未契約の既定は null（T-M8-168）。不正署名でDBが変わらないこと。
+    expect(profiles[0]).toEqual({ plan: null, subscription_status: "incomplete" });
   });
 
   it("stripe-signature ヘッダが無ければ本文を読む前に400で返す", async () => {
@@ -417,7 +419,12 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     expect(events[0].count).toBe(0);
   });
 
-  it("未知のPrice IDは500にし、claim も残さない（設定修復後にStripeが再送できる）", async () => {
+  /**
+   * **恒久エラーは200で返す**（T-M8-245）。再送しても直らない失敗に500を返し続けると、
+   * Stripeが最大3日リトライしたのち **endpoint 自体を無効化**し、他の全利用者の契約同期まで止まる。
+   * claim を残さない点は従来どおり（設定を直したあと手動で再送すれば処理できる）。
+   */
+  it("未知のPrice IDは200で返し（endpointを止めない）、claim も残さない", async () => {
     const { customerId, userId } = await makeProfile();
     const created = 1_784_710_000;
     const stub: SubscriptionStub = {
@@ -437,21 +444,22 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     const res = await post(subscriptionEvent(id, created, stub));
     const body = (await res.json()) as WebhookBody;
 
-    expect(res.status).toBe(500);
-    expect(body.error?.code).toBe("internal_error");
+    expect(res.status, "恒久エラーで endpoint を止めない").toBe(200);
+    expect(body.error?.code).toBeUndefined();
     const events = await sql<{ count: number }>(
       `select count(*)::int as count from stripe_events where event_id = $1`,
       [id],
     );
     expect(events[0].count).toBe(0);
-    const profiles = await sql<{ plan: string }>(
+    const profiles = await sql<{ plan: string | null }>(
       `select plan from profiles where id = $1`,
       [userId],
     );
-    expect(profiles[0].plan).toBe("standard");
+    // 未契約の既定は null（T-M8-168で default 'standard' を撤廃）。失敗イベントでplanが変わらないこと。
+    expect(profiles[0].plan).toBeNull();
   });
 
-  it("profileに紐付かないcustomerは500にし、実トランザクションが claim をロールバックする", async () => {
+  it("profileに紐付かないcustomerは200で返し（恒久エラー）、実トランザクションが claim をロールバックする", async () => {
     const created = 1_784_720_000;
     const stub: SubscriptionStub = {
       cancelAtPeriodEnd: false,
@@ -470,8 +478,8 @@ describe("POST /api/stripe/webhook（route 実装・実DB）", () => {
     const res = await post(subscriptionEvent(id, created, stub));
     const body = (await res.json()) as WebhookBody;
 
-    expect(res.status).toBe(500);
-    expect(body.error?.code).toBe("internal_error");
+    expect(res.status, "恒久エラーで endpoint を止めない").toBe(200);
+    expect(body.error?.code).toBeUndefined();
     // insert 済みの claim が commit されていないこと＝実 withTransaction の rollback が効いている。
     const events = await sql<{ count: number }>(
       `select count(*)::int as count from stripe_events where event_id = $1`,

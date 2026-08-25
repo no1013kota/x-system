@@ -5,7 +5,6 @@ import type { ExecutionPrereqInput } from "@/lib/execution-prereqs";
 
 import {
   cancelGenerationJob,
-  createDraftFromNews,
   createGenerationJob,
   getGenerationJob,
   publishDraft,
@@ -517,80 +516,7 @@ describe("getGenerationJob", () => {
   });
 });
 
-const NEWS_LOOKUP = /select source_url from news_items where id/;
-const NID = "22222222-2222-4222-8222-222222222222";
-
-describe("createDraftFromNews", () => {
-  it("throws not_found when the news item is missing", async () => {
-    const { db } = makeDb((sql) => (NEWS_LOOKUP.test(sql) ? [] : []));
-    const err = await rejection(
-      createDraftFromNews("u1", { request_key: "n1", x_account_id: XID, news_item_id: NID }, deps(db)),
-    );
-    expect(err.code).toBe("not_found");
-  });
-
-  it("creates a P-1 post_generation carrying the news source_url and news_item_id", async () => {
-    const { db, writes } = makeDb((sql) => {
-      if (NEWS_LOOKUP.test(sql)) return [{ source_url: "https://n.example/a" }];
-      if (EXISTING.test(sql)) return [];
-      if (ACCOUNT.test(sql)) return [{ status: "active", active_x_account_id: XID }];
-      if (BUDGET.test(sql)) return [{ n: 0 }];
-      if (INSERT.test(sql)) return [{ id: "job-news" }];
-      return [];
-    });
-    const res = await createDraftFromNews(
-      "u1",
-      { request_key: "n1", x_account_id: XID, news_item_id: NID },
-      deps(db),
-    );
-    expect(res).toEqual({ jobId: "job-news", deduped: false });
-    const ins = writes.find((w) => INSERT.test(w.sql))!;
-  // ニュースから作るときは既定の「ニュース解説」パターンを使う（T-M8-129 U5）。
-    expect(ins.params[1]).toBe(PID);
-    const inputJson = JSON.parse(ins.params[2] as string);
-    expect(inputJson.source_url).toBe("https://n.example/a");
-    expect(inputJson.news_item_id).toBe(NID);
-  });
-
-  it("is idempotent: an existing request_key returns the same job (deduped)", async () => {
-    const { db } = makeDb((sql) => {
-      if (NEWS_LOOKUP.test(sql)) return [{ source_url: "https://n.example/a" }];
-      if (EXISTING.test(sql)) return [{ id: "job-existing" }];
-      return [];
-    });
-    const res = await createDraftFromNews(
-      "u1",
-      { request_key: "n1", x_account_id: XID, news_item_id: NID },
-      deps(db),
-    );
-    expect(res).toEqual({ jobId: "job-existing", deduped: true });
-  });
-
-  it("runs the image prerequisite check when image_enabled (parity with createGenerationJob)", async () => {
-    let seenImageRequested = false;
-    const { db } = makeDb((sql) => {
-      if (NEWS_LOOKUP.test(sql)) return [{ source_url: "https://n.example/a" }];
-      if (EXISTING.test(sql)) return [];
-      if (ACCOUNT.test(sql)) return [{ status: "active", active_x_account_id: XID }];
-      return [];
-    });
-    const d = deps(db, {
-      gatherPrereqInputs: async (_u, opts) => {
-        seenImageRequested = opts.imageRequested;
-        return { ...okPrereq(), imageRequested: true, imageAiKeyValid: false };
-      },
-    });
-    const err = await rejection(
-      createDraftFromNews(
-        "u1",
-        { request_key: "n1", x_account_id: XID, news_item_id: NID, image_enabled: true },
-        d,
-      ),
-    );
-    expect(seenImageRequested).toBe(true);
-    expect(err.details?.settingsPath).toBeDefined();
-  });
-});
+// createDraftFromNews のテストはT-M8-210（経路削除）で撤去。
 
 const REMOVING = /from learning_sources[\s\S]*status = 'removing'/;
 
