@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.17 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.18 |
+| 更新日 | 2026-08-25 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -131,7 +131,7 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `APP_ENV` | `preview` / `production` |
 | `CRON_SECRET` | 自分で生成（下記）。cron・job dispatch の認証 |
 | `APP_ENCRYPTION_KEY` | 自分で生成（下記）。**環境ごとに別の値**。紛失すると保存済みトークン・APIキーを復号できない |
-| `SUPPORT_EMAIL` | 問い合わせ先 |
+| `SUPPORT_EMAIL` | 問い合わせ先（画面表示）と、運営者向けメール（doctorの日次アラート）の**宛先**。**`EMAIL_FROM` と別のアドレスにする**——Gmailは自分が送ったメールを自分の受信トレイに入れないため、同じにすると異常が起きてもアラートが届かない（T-M8-147と同じ罠。2026-08-25まで3つとも同じアドレスだった） |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase プロジェクト設定 → API |
 | `DATABASE_URL` | Supabase → Connect → **Transaction pooler**（Supavisor）。直結ではなくpooler側 |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe。**非productionでは `sk_test_` のみ**（`sk_live_` を置くと起動時検証で落ちる。実課金を防ぐため・T-M7-51） |
@@ -149,7 +149,7 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `STRIPE_RETENTION_COUPON_ID` | 解約前に提示するクーポンのID（任意・T-M8-272）。**環境ごとに別のID**。未設定だと解約画面にクーポンが出ない（doctorが警告する）。ダッシュボードの「顧客維持クーポン」設定はアプリの解約導線には効かない |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` / `X_COST_POST_READ_USD` / `X_COST_USER_READ_USD` | X Developer Console の pay-per-use 実単価（読取2つはT-M8-91で追加。読取は応答のresource数で乗算課金される） |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等。**`npm run auth:templates -- --apply` が Supabase Auth のカスタムSMTP設定にも同じ値を流用する**（アプリの通知メールと認証メールで同じ資格情報・T-M8-136） |
-| `EMAIL_FROM` / `EMAIL_REPLY_TO` | 送信元・返信先 |
+| `EMAIL_FROM` | 運営者向けメール（doctorの日次アラート）の送信元。**利用者向けのパスワード再設定メールの差出人はこれではない**——そちらは Supabase Auth 側の設定で、`npm run auth:templates -- --apply` が `SMTP_USER` から流し込む。`EMAIL_REPLY_TO` は T-M8-222（利用者向け通知メールの廃止）で不要になったので**設定しない**（残っていても読まれない） |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |
 
