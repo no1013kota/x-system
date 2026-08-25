@@ -2800,6 +2800,23 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 既存の `route.db.test.ts` は `constructEvent` を素の `Error` でスタブしていたため、
     `payload` を持つ実クラスが一度も通らず、この経路を守る検出器が無かった。
 
+### T-M8-308: ジョブ処理をまるごと1トランザクションで囲うのをやめる `done`
+- 参照: 要件04 §2・§5 / 要件01 §3.2（Supavisor transaction mode・`DB_POOL_MAX`） / 依存: なし / サイズ: S
+- 完了条件:
+  - `runJob` がハンドラ本体を `withTransaction` で包まない
+  - `JobHandler` が `PoolClient` を受け取らない（必要な書き込みはハンドラ側が自分で境界を持つ）
+  - lease と成否の確定は従来どおりそれぞれのトランザクションで行う
+- メモ: 以前は `withTransaction((c) => handler(ctx, c))` でジョブ全体を囲っていたため、
+  **AI provider への呼び出し（数十秒かかる）のあいだプール接続を1本占有し続けていた**。
+  `DB_POOL_MAX` は既定3（T-M8-303）なので、生成が2〜3本走るだけで他の画面表示が接続待ちになる。
+  ハンドラは以前から `*-server` 側で自分のトランザクションを開いており、渡された client を
+  使っていなかったため、外側の境界は待ち時間を作るだけだった。
+- 実装メモ: `worker.ts` の `runJob` からハンドラを囲う `withTransaction` を外し、
+  `handlers.ts` の `JobHandler` から `PoolClient` 引数を削除。lease（`leaseJob`）と
+  成功・失敗の確定は従来どおり個別のトランザクション。全2,640件緑・typecheck/lint 0件。
+- **記録の注記**: この起票と実装メモは、コミット前に残っていた差分を読んで作成したもの
+  （作業した本人のメモではない）。意図が違っていれば直すこと。
+
 ### T-M8-307: 「テストはあるが実物を通っていない」型の欠陥を仕組みで止める `done`
 - 参照: CLAUDE.md 変更影響表 / docs/operations/development-and-testing.md §11 / docs/operations/monitoring.md §2 / 依存: T-M8-299, T-M8-300, T-M8-306 / サイズ: M
 - 完了条件:

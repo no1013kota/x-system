@@ -285,9 +285,7 @@ export async function runJob(
 
   const job = lease.job;
   try {
-    await withTransaction((c) =>
-      getJobHandler(job.kind)({ jobId, kind: job.kind, workerId }, c),
-    );
+    await getJobHandler(job.kind)({ jobId, kind: job.kind, workerId });
     await withTransaction((c) =>
       c.query(
         `update generation_jobs
