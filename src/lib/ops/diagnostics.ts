@@ -6,6 +6,7 @@ import {
 } from "@/lib/ai/provider-failure";
 
 import { classifyNewsOutcome } from "@/lib/news-outcome";
+import { poolMax } from "@/lib/db/pool";
 
 import type { Queryable } from "../x/token-refresh";
 
@@ -424,12 +425,23 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
 export const DB_POOL_WAIT_WARN = 1;
 export const DB_POOL_WAIT_ERROR = 20;
 
-export function judgePoolWaits(input: { waits24h: number; maxWaitedMs: number }): Check {
+export function judgePoolWaits(input: {
+  waits24h: number;
+  maxWaitedMs: number;
+  /** いま効いている1インスタンスあたりの上限（T-M8-303）。 */
+  poolMax?: number;
+}): Check {
   const name = "DB接続の混み具合";
+  /*
+    **効いている値を必ず出す**（T-M8-303）。`DB_POOL_MAX` はデプロイ先の環境変数なので、
+    「設定したつもりで入っていない」が起こる。回数だけ見せても、運営者は
+    「対策が効いていないのか、対策はしたが足りないのか」を区別できない（原則2）。
+  */
+  const limit = input.poolMax ? `（1インスタンスあたり上限 ${input.poolMax}）` : "";
   if (input.waits24h < DB_POOL_WAIT_WARN) {
-    return { name, level: "ok", detail: "直近24時間で接続の待ちはありません" };
+    return { name, level: "ok", detail: `直近24時間で接続の待ちはありません${limit}` };
   }
-  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）`;
+  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}`;
   if (input.waits24h < DB_POOL_WAIT_ERROR) {
     return {
       name,
@@ -787,6 +799,7 @@ export async function collectDiagnostics(
     judgePoolWaits({
       waits24h: Number(poolWaits.rows[0]?.n ?? 0),
       maxWaitedMs: Number(poolWaits.rows[0]?.max_ms ?? 0),
+      poolMax: poolMax(),
     }),
   );
 

@@ -19,12 +19,27 @@ import { LOCAL_DB_URL } from "./test-utils";
 
 let pool: Pool | null = null;
 
+/**
+ * 1インスタンスが持つ最大接続数（要決定D-43・T-M8-303）。
+ *
+ * Supabase Free の pooler はクライアント上限200で、これを「Vercelのインスタンス数 × ここの値」が
+ * 食い潰す。既定を10のままにすると**環境変数を設定し忘れた環境だけが上限を食い潰す**——
+ * しかも症状は「たまに遅い」なので気付きにくい（原則3: 忘れたら壊れる手順にしない）。
+ * 既定を3にして、**設定を忘れても安全側**に倒す。増やしたい環境だけが `DB_POOL_MAX` を持つ。
+ */
+export const DEFAULT_DB_POOL_MAX = 3;
+
+export function poolMax(): number {
+  const raw = Number(process.env.DB_POOL_MAX);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DB_POOL_MAX;
+}
+
 export function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL ?? LOCAL_DB_URL,
       // small ceiling: serverless functions should hold few connections
-      max: Number(process.env.DB_POOL_MAX ?? 10),
+      max: poolMax(),
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 10_000,
     });

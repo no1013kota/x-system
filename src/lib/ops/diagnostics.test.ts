@@ -475,3 +475,27 @@ describe("judgePoolWaits", () => {
     expect(r.nextAction).toContain("要件01 §9");
   });
 });
+
+/**
+ * 効いている接続上限を必ず出す（要決定D-43・T-M8-303）。
+ * `DB_POOL_MAX` はデプロイ先の環境変数なので「設定したつもりで入っていない」が起こる。
+ * 回数だけ見せても、運営者は「対策が効いていないのか、対策はしたが足りないのか」を
+ * 区別できない（原則2: 原因が開発知識なしで辿れる）。
+ */
+describe("judgePoolWaits の上限表示（T-M8-303）", () => {
+  it("待ちが無くても、いま効いている上限を出す", () => {
+    const check = judgePoolWaits({ waits24h: 0, maxWaitedMs: 0, poolMax: 3 });
+    expect(check.level).toBe("ok");
+    expect(check.detail).toContain("1インスタンスあたり上限 3");
+  });
+
+  it("警告のときも上限を添える（対策済みかどうかが読める）", () => {
+    const check = judgePoolWaits({ waits24h: 5, maxWaitedMs: 900, poolMax: 10 });
+    expect(check.level).toBe("warn");
+    expect(check.detail).toContain("1インスタンスあたり上限 10");
+  });
+
+  it("上限が分からないときは数字を作らない", () => {
+    expect(judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 }).detail).not.toContain("上限");
+  });
+});
