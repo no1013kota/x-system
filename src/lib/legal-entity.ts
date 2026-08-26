@@ -106,7 +106,7 @@ export const PROCESSORS: readonly Processor[] = [
     service: "Stripe",
     purpose: "payment",
     use: "クレジットカード決済とプラン管理",
-    data: "メールアドレス、契約プラン・課金状態（カード番号等の決済情報は当社を経由せず、Stripeが直接取得・管理します）",
+    data: "メールアドレス、契約プラン・課金状態（カード番号等の決済情報は当方を経由せず、Stripeが直接取得・管理します）",
   },
   {
     provider: "Anthropic PBC",

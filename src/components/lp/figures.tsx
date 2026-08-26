@@ -333,7 +333,7 @@ const CONCEPT_STEPS: { no: string; label: string; icon: IconName; pos: string }[
 
 export function ConceptCycleFigure() {
   return (
-    <figure aria-label="プロンプトを設計→投稿を生成・運用→投稿結果を分析→プロンプトを改善、の4ステップが循環する図。使うほど、プロンプトが磨かれる。">
+    <figure aria-label="プロンプトを設計→投稿を生成・運用→投稿結果を分析→プロンプトを改善、の4ステップが循環する図。使うほど、プロンプトとアカウントが同時に成長します。">
       <div aria-hidden="true" className="relative mx-auto aspect-[4/3] w-full max-w-[520px]">
         {/* 循環の矢印（4本の弧）。 */}
         <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 300">
@@ -379,7 +379,7 @@ export function ConceptCycleFigure() {
       </div>
       <figcaption className="mt-4 flex items-center justify-center gap-3 text-sm font-bold text-ink">
         <span aria-hidden="true" className="h-px w-8 bg-brand" />
-        使うほど、プロンプトが磨かれる。
+        使うほど、プロンプトとアカウントが同時に成長します
         <span aria-hidden="true" className="h-px w-8 bg-brand" />
       </figcaption>
     </figure>

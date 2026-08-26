@@ -72,7 +72,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <footer className="mt-12 rounded-card border border-hairline bg-surface px-6 py-6 text-center">
           <p className="text-sm font-bold text-ink">{APP_NAME} でX運用を自動化する</p>
           <p className="mt-1 text-body text-ink-2">
-              運用するほどプロンプトとアカウントが成長。7日間は無料でお試しいただけます。
+              7日間は無料でお試しいただけます。
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2.5">
             <Link

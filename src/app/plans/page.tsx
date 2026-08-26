@@ -197,8 +197,9 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
             <>
           {/*
             申込前の定型文はプロモ帯（CampaignCallout）へ畳んだ（T-M8-171・運営者の決定 2026-08-21）。
-            「初回のみ」「カード登録が必要」の開示は帯の中に残る。自動更新・解約の法定事項は
-            フッタの特定商取引法ページ・利用規約が担う。
+            「カード登録が必要」の開示は帯の中に残る。**「初回限り」は2026-08-26に帯から外した**
+            （運営者の最終レビュー）ので、この画面の本文には出ない——開示はフッタの
+            特定商取引法ページ・利用規約が担う。自動更新・解約の法定事項も同じ。
           */}
           <CampaignCallout className="mx-auto max-w-3xl" trialAvailable={trialAvailable} />
 

@@ -1,3 +1,4 @@
+import { extractPlaceholderNames } from "./post/pattern-spec";
 import { generateInitialBaseMd } from "./persona-settings";
 import {
   SYSTEM_DEFAULT_TEMPLATES,
@@ -28,19 +29,25 @@ export interface GalleryTemplate {
   placeholders: string[];
 }
 
+/**
+ * 既定パターンの題名と説明。**プレースホルダーはここに書かない**（T-M8-317）。
+ *
+ * 以前は `placeholders: string[]` を手で並べ「変えるときは両方揃える」と注記していたが、
+ * T-M8-210 で PT-P1 へ `{ニュース}` を足したときに**この表だけ追随せず**、プロンプト集の
+ * ニュース解説だけプレースホルダーが出ない状態になっていた（2026-08-26 に運営者が発見）。
+ * 揃える先が2つある限り同じズレは再発するので、**本文から導出する**。
+ */
 const POST_PATTERN_INFO: {
   kind: PromptTemplateKind;
   name: string;
   description: string;
-  /** 既定パターンのplaceholders（seedと同値・T-M8-178）。変えるときは両方揃える。 */
-  placeholders: string[];
 }[] = [
-  { kind: "p1", name: "ニュース解説", description: "話題のニュースを解説するスレッド", placeholders: [] },
-  { kind: "p2", name: "自分の考え・意見", description: "本人の視点で述べる単発ポスト", placeholders: ["自分の考え"] },
-  { kind: "p3", name: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド", placeholders: [] },
-  { kind: "p4", name: "トレンド便乗", description: "いま話題のトピックに便乗する短いスレッド", placeholders: [] },
-  { kind: "p5", name: "引用ポスト", description: "対象ポストへの引用（URL付き投稿）", placeholders: [] },
-  { kind: "p6", name: "週次まとめ", description: "直近7日の関連ニュースまとめ", placeholders: [] },
+  { kind: "p1", name: "ニュース解説", description: "話題のニュースを解説するスレッド" },
+  { kind: "p2", name: "自分の考え・意見", description: "本人の視点で述べる単発ポスト" },
+  { kind: "p3", name: "ノウハウ・ハウツー", description: "今日から実践できる手順スレッド" },
+  { kind: "p4", name: "トレンド便乗", description: "いま話題のトピックに便乗する短いスレッド" },
+  { kind: "p5", name: "引用ポスト", description: "対象ポストへの引用（URL付き投稿）" },
+  { kind: "p6", name: "週次まとめ", description: "直近7日の関連ニュースまとめ" },
 ];
 
 /** サンプルのアカウント.md初版を、実際の生成関数で作る（構造・見出しが常に実物と一致する）。 */
@@ -81,13 +88,14 @@ export function galleryTemplates(): GalleryTemplate[] {
       group: "account-md",
       placeholders: [],
     },
-    ...POST_PATTERN_INFO.map(({ kind, name, description, placeholders }) => ({
+    ...POST_PATTERN_INFO.map(({ kind, name, description }) => ({
       id: kind,
       name,
       description,
       content: SYSTEM_DEFAULT_TEMPLATES[kind],
       group: "post" as const,
-      placeholders,
+      // **本文が正本**。投稿作成画面の入力欄と同じ関数で導出する（要件06 §SC-07）。
+      placeholders: extractPlaceholderNames(SYSTEM_DEFAULT_TEMPLATES[kind]),
     })),
     {
       id: "image",

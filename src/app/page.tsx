@@ -52,7 +52,7 @@ const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-
  * （同じことを別の言い方で2箇所に書くと、読み手はどちらが正か迷う）。
  */
 const CARD_REGISTRATION_NOTE =
-  "運用するほどプロンプトとアカウントが成長。7日間は無料でお試しいただけます。";
+  "7日間は無料でお試しいただけます。";
 
 /** 主CTA（無料で始める）と副CTA（料金を見る）は同じ寸法にする（T-M8-79）。 */
 const CTA_SIZE = "h-11 px-7 text-sm font-bold";
@@ -148,7 +148,7 @@ const FEATURES: {
     eyebrow: "情報収集の自動化",
     title: "ニュースが3時間おきに届く",
     // 重要度チップと時刻は図版が示すので文からは外してある（T-M8-76）。
-    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、9:00〜21:00に3時間おきで自動収集。気になった記事から、そのまま投稿の作成に進めます。",
+    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、9:00〜21:00に3時間おきで自動収集します。気になった記事から、そのまま投稿の作成に進めます。",
     figure: <NewsFeedFigure />,
   },
   {
@@ -174,7 +174,7 @@ const FEATURES: {
     eyebrow: "結果分析・プロンプト改善",
     title: "何が伸びたかを分析して、改善案まで届く",
     // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
-    body: "表示回数・いいね・リポスト・フォロワー数を自動で記録。ボタン1つで、どの投稿が伸びたかを根拠つきのレポートにし、アカウント.mdとプロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
+    body: "表示回数・いいね・リポスト・フォロワー数を自動で記録します。ボタン1つで、どの投稿が伸びたかを根拠つきのレポートにし、アカウント.mdとプロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
     figure: <AnalyticsFigure />,
   },
 ];
@@ -256,7 +256,14 @@ export default function Home() {
                 <span className="text-brand">SNS自動化プラットフォーム</span>
               </h1>
               <p className="mt-5 max-w-[42em] text-sm text-ink-2">
-                AIが情報収集から投稿作成・投稿予約・分析・プロンプト改善までを自動で実施。運用は1日数分の確認をするだけ。
+                {/*
+                  **長い文はですます調**（T-M8-312・運営者の指示 2026-08-26）。
+                  あわせて「分析・プロンプト改善までを自動で実施」を事実に合わせた——
+                  投稿分析の起点は「分析を開始」ボタンだけで（T-M8-255）、改善案は表示専用。
+                  禁止表現「AIが自動で学習し続けて最適化」に触れる書き方だった。
+                */}
+                AIが情報収集から投稿作成、投稿予約、分析、プロンプト改善までを自動で実施。
+                運用するほどプロンプトとアカウントが成長。
               </p>
               <div>
                 <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -278,9 +285,18 @@ export default function Home() {
                   </a>
                 </div>
                 <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
-                {/* CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。 */}
+                {/*
+                  CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。
+
+                  **文言は禁止表現リスト（`design_handoff_lp/README.md` §禁止表現）を通ること**（T-M8-311）。
+                  2026-08-26 の指定は「多くのX運用者が利用」だったが利用者数の表示に当たるため採らず、
+                  続く指定「プロンプトと投稿結果を自動で分析・改善」からも**「自動で」を外した**——
+                  投稿分析の起点は「分析を開始」ボタンだけ（`analytics/start-analysis-button.tsx`・T-M8-255）で、
+                  リストにも「AIが自動で学習し続けて最適化（正: 提案は押したときだけ・1日1回・表示専用）」とある。
+                  価格は `startingPrice` から作り、数値を画面へ書き写さない（R30）。
+                */}
                 <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-sm font-medium text-ink-2">
-                  {["高品質な投稿を自動作成", "高品質なプロンプトの確認及び改善", `月額${startingPrice}から`].map(
+                  {["高品質なプロンプトをデフォルトで完備", "プロンプトテンプレを何個でも管理", `月額${startingPrice}から`].map(
                     (item) => (
                       <span className="inline-flex items-center gap-1.5" key={item}>
                         <span aria-hidden="true" className="font-bold text-brand">
@@ -379,7 +395,7 @@ export default function Home() {
         {/* 03 しくみ（T-M8-172: 4ステップのカード列 → 成長グラフ） */}
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
-          <h2 className={H2}>使うほど、プロンプトもアカウントも成長する</h2>
+          <h2 className={H2}>運用によるプロンプトの成長が、アカウントも成長させます</h2>
           {/* 説明は1文に簡潔化（運営者の指示 2026-08-22・T-M8-201）。 */}
           <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
             {CYCLE_STEPS.join("→")}のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。
@@ -438,6 +454,38 @@ export default function Home() {
             <SectionMark label="料金" no="05" />
                           <h2 className={H2}>月額{startingPrice}から。全プラン7日間の無料トライアル付き。</h2>
             <PricingCards />
+            {/*
+              友達招待キャンペーン（T-M8-268）。**料金の直後・同じ白い面に置く**
+              （運営者の指示 2026-08-26）。別セクションにすると背景がグレーへ切り替わり、
+              上下にセクション余白が二重に入って間延びする。行き先は `/app/invite` 固定——
+              未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま着く。
+            */}
+            <div className="mt-12 overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div className="max-w-[560px]">
+                  <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                    <Icon aria-hidden="true" name="star_shine" size={13} />
+                    友達招待キャンペーン
+                  </p>
+                  <h2 className={`${H2} mt-3`}>
+                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
+                  </h2>
+                  <p className="mt-2.5 text-body leading-6 text-ink-2">
+                    ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
+                    最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
+                  </p>
+                </div>
+                <Link
+                  className={cn(
+                    buttonVariants({ variant: "brand" }),
+                    "h-11 shrink-0 px-6 text-body font-bold",
+                  )}
+                  href="/app/invite"
+                >
+                  招待リンクを受け取る
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -499,39 +547,6 @@ export default function Home() {
 
 
         {/* 07 よくある質問 */}
-        {/*
-          友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。**契約前でも参加できる**ので
-          料金の直後に置く（「まだ使わないが紹介はしたい」人の受け皿）。行き先は `/app/invite` 固定——
-          未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま招待画面に着く。
-        */}
-        <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <div className="overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
-            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div className="max-w-[560px]">
-                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
-                  <Icon aria-hidden="true" name="star_shine" size={13} />
-                  友達招待キャンペーン
-                </p>
-                <h2 className={`${H2} mt-3`}>
-                  紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
-                </h2>
-                <p className="mt-2.5 text-body leading-6 text-ink-2">
-                  ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
-                  最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
-                </p>
-              </div>
-              <Link
-                className={cn(
-                  buttonVariants({ variant: "brand" }),
-                  "h-11 shrink-0 px-6 text-body font-bold",
-                )}
-                href="/app/invite"
-              >
-                招待リンクを受け取る
-              </Link>
-            </div>
-          </div>
-        </section>
 
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           {/* 06 利用者の声を隠しているあいだは番号を詰める（復活時は "07" へ戻す・T-M8-231）。 */}
