@@ -12,8 +12,8 @@ const TAB_MAP: Record<string, string> = {
   persona: "/app/settings?tab=account",
   learning: "/app/settings?tab=account", // 学習ソースタブは廃止（T-M8-103）
   purposes: "/app/settings?tab=purposes",
-  "base-md": "/app/settings?tab=prompts&sec=account-md",
-  prompts: "/app/settings?tab=prompts&sec=post-prompt",
+  "base-md": "/app/prompts?sec=account-md",
+  prompts: "/app/prompts?sec=post-prompt",
 };
 
 interface AiSettingsPageProps {

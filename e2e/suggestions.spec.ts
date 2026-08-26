@@ -87,13 +87,13 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   await expect(page.getByText("E2E提案の中身", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "設定で編集する" })).toHaveAttribute(
     "href",
-    "/app/settings?tab=prompts&sec=account-md",
+    "/app/prompts?sec=account-md",
   );
   await expect(page.getByText("# タスク", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(2);
   await expect(page.getByRole("link", { name: "設定で保存する" })).toHaveAttribute(
     "href",
-    "/app/settings?tab=prompts&sec=post-prompt",
+    "/app/prompts?sec=post-prompt",
   );
 });
 

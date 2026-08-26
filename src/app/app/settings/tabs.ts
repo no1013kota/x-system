@@ -9,7 +9,11 @@ export const SETTINGS_TABS = [
   ["billing", "課金・プラン"],
   ["account", "アカウント設定"],
   ["purposes", "AIモデル設定"],
-  ["prompts", "プロンプト"],
+  /*
+    **「プロンプト」タブは廃止**（T-M8-328・運営者の指示 2026-08-27）。
+    `/app/prompts` の独立した画面へ移した。旧slugは下のエイリアスで転送する——
+    DBに保存済みの通知リンクや利用者のブックマークが `?tab=prompts` のまま届くため。
+  */
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number][0];
@@ -30,8 +34,14 @@ const TAB_ALIASES: Record<string, SettingsTab> = {
   // 旧・AI設定
   persona: "account",
   learning: "account", // 学習ソースタブは廃止（T-M8-103。参考ソースはアカウント設定の一番下）
-  "base-md": "prompts",
+  // プロンプト関連は `/app/prompts` へ移設（T-M8-328）。設定側へ来たら先頭タブへ丸め、
+  // 画面側で新しい場所を案内する（白画面にしない）。
+  prompts: "general",
+  "base-md": "general",
 };
+
+/** `/app/prompts` へ移した旧タブslug（T-M8-328）。リンク元がまだ古いときの案内に使う。 */
+export const MOVED_TO_PROMPTS_SLUGS: readonly string[] = ["prompts", "base-md"];
 
 /** リンクとして許容するslug（新タブ＋旧エイリアス）。tabs.test.ts の静的検査が使う。 */
 export const ACCEPTED_SETTINGS_TAB_SLUGS: readonly string[] = [

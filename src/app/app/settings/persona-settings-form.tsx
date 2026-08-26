@@ -150,7 +150,7 @@ export function PersonaSettingsForm({
         <Notice tone="warn"
           role="status">
           保存すると、プロンプトのアカウント.mdが書き換えられます。以前の内容は
-          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=prompts&sec=account-md">
+          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/prompts?sec=account-md">
             アカウント.mdタブの変更履歴
           </Link>
           からいつでも戻せます。

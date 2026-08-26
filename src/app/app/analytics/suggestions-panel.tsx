@@ -317,7 +317,7 @@ export function SuggestionsPanel({
                           この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
                           <Link
                             className="text-info-fg hover:underline"
-                            href="/app/settings?tab=prompts&sec=post-prompt"
+                            href="/app/prompts?sec=post-prompt"
                           >
                             プロンプトのカスタマイズ
                           </Link>
@@ -330,7 +330,7 @@ export function SuggestionsPanel({
                         <ProposalBlock
                           content={s.advice.accountMd.content}
                           copied={copied === "account_md"}
-                          href="/app/settings?tab=prompts&sec=account-md"
+                          href="/app/prompts?sec=account-md"
                           linkLabel="設定で編集する"
                           onCopy={() => copyProposal("account_md", s.advice!.accountMd!.content)}
                           reason={s.advice.accountMd.reason}
@@ -342,7 +342,7 @@ export function SuggestionsPanel({
                         <ProposalBlock
                           content={s.advice.prompt.content}
                           copied={copied === "prompt"}
-                          href="/app/settings?tab=prompts&sec=post-prompt"
+                          href="/app/prompts?sec=post-prompt"
                           linkLabel="設定で保存する"
                           onCopy={() => copyProposal("prompt", s.advice!.prompt!.content)}
                           title={`投稿作成プロンプト（${legacyPatternLabel(

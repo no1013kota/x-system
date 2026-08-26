@@ -16,10 +16,18 @@ export const APP_NAVIGATION_ITEMS = [
   { href: "/app/posts", icon: "edit_square", label: "投稿作成" },
   { href: "/app/schedule", icon: "schedule", label: "スケジュール" },
   { href: "/app/analytics", icon: "monitoring", label: "投稿分析" },
+  /*
+    プロンプト管理（T-M8-328・運営者の指示 2026-08-27）。設定のタブから独立した画面へ移した。
+    並びは運営者の指定（投稿分析 → プロンプト → 友達招待）。
+  */
+  { href: "/app/prompts", icon: "smart_toy", label: "プロンプト" },
   // 招待プログラム（T-M8-174）。共有はスマホからが多いためモバイルにも出す。
   { href: "/app/invite", icon: "star_shine", label: "友達招待" },
-  // 旧「AI設定」はT-M8-104で「設定」へ統合（/app/ai-settings はリダイレクトのみ）。
-  { href: "/app/settings", icon: "tune", label: "設定" },
+  /*
+    **「設定」はナビに置かない**（T-M8-328・運営者の指示 2026-08-27）。
+    サイドバー下部のアカウントアイコンを押すと、設定の各タブとログアウトが出る。
+    毎日使うものではないので、常設の1枠を使わない。
+  */
   // 公開ページへの導線（T-M8-173・運営者の指示）。App Shellの外だがナビから辿れる。
   // モバイル下部ナビは7枠が上限なので出さない（mobileHidden）。
   { href: "/prompt-templates", icon: "drafts", label: "プロンプト集", mobileHidden: true },

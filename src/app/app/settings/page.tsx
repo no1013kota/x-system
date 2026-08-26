@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
@@ -8,9 +7,8 @@ import { appLockFor } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
-import { EmptyState, LockedState } from "@/components/app-shell/page-state";
+import { EmptyState } from "@/components/app-shell/page-state";
 import { TabNav } from "@/components/app-shell/tab-nav";
-import { UpgradePlanButton } from "@/components/billing/upgrade-plan-button";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { PortalButton } from "@/components/billing/portal-button";
 import { ResumePlanButton } from "@/components/billing/resume-plan-button";
@@ -18,11 +16,6 @@ import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
-import type { BaseMdVersionView } from "@/lib/base-md";
-import {
-  isLearningRunningForUser,
-  listBaseMdVersionsForUser,
-} from "@/lib/base-md-server";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
 import {
@@ -32,11 +25,6 @@ import {
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
-import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
-import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
-import { listPatternsForUser } from "@/lib/post/post-patterns-server";
-import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
-import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
@@ -52,16 +40,11 @@ import {
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { ApiKeySettings } from "./api-key-settings";
-import { BaseMdEditor } from "./base-md-editor";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
-import { PatternManager } from "./pattern-manager";
-import { PromptTemplatesEditor } from "./prompt-templates-editor";
 import { SettingsPreferences } from "./settings-preferences";
 import {
-  PROMPT_SECTIONS,
   SETTINGS_TABS,
-  normalizePromptSection,
   normalizeSettingsTab,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
@@ -175,7 +158,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (!user) redirect("/login?next=/app/settings");
 
   const tab = normalizeSettingsTab(params.tab);
-  const promptSection = normalizePromptSection(params.sec);
   const admin = createSupabaseAdminClient();
   // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
   const [result, xAccounts, userSettings] = await Promise.all([
@@ -287,7 +269,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
         )
       : Promise.resolve(null as UsageSummary | null),
-    (tab === "account" || tab === "prompts") && profile.active_x_account_id
+    tab === "account" && profile.active_x_account_id
       ? admin
           .from("x_accounts")
           .select("id, handle, settings, base_md, base_md_version")
@@ -327,44 +309,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   }
 
   // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
-  let baseMdHistory: BaseMdVersionView[] = [];
-  let baseMdLearningRunning = false;
-  if (
-    tab === "prompts" &&
-    promptSection === "account-md" &&
-    account &&
-    promptEditablePlan(plan ?? "") &&
-    account.base_md_version >= 1
-  ) {
-    [baseMdHistory, baseMdLearningRunning] = await Promise.all([
-      listBaseMdVersionsForUser(user.id, account.id),
-      isLearningRunningForUser(user.id, account.id),
-    ]);
-  }
-let promptTemplates: PromptTemplateView[] = [];
-  /** 投稿作成プロンプト＝パターン管理（T-M8-129 U4b）。プルダウンをやめ全件並べる。 */
-  let patterns: PatternOption[] = [];
-  let patternPrompts: Record<string, PatternPromptView> = {};
-  let systemDefaultPrompts: Record<string, string> = {};
-  if (tab === "prompts" && promptSection !== "account-md" && account && promptEditablePlan(plan ?? "")) {
-    if (promptSection === "image-prompt") {
-      const res = await listPromptTemplatesForUser(user.id);
-      promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
-    } else {
-      const res = await listPatternsForUser(user.id);
-      patterns = res.patterns;
-      patternPrompts = res.prompts;
-      // 「プロンプトを既定に戻す」の比較元。既定パターンだけが持つ。
-      systemDefaultPrompts = Object.fromEntries(
-        res.patterns
-          .filter((option) => option.isSystemDefault && option.seedKey !== null)
-          .map((option) => [
-            option.id,
-            SYSTEM_DEFAULT_TEMPLATES[option.seedKey as PromptTemplateKind] ?? "",
-          ]),
-      );
-    }
-  }
+  /* プロンプト関連の読み込みは `/app/prompts` へ移設（T-M8-328）。 */
   let validUserProviders: AiKeyProvider[] = [];
   if (purposeKeys) {
     validUserProviders = purposeKeys
@@ -578,60 +523,7 @@ let promptTemplates: PromptTemplateView[] = [];
             plan={plan}
             validUserProviders={validUserProviders}
           />
-        ) : !promptEditablePlan(plan ?? "") ? (
-          // プロンプトタブは全プランで編集可（T-M8-168）。未契約（plan NULL）だけロックする。
-          <LockedState
-            action={<UpgradePlanButton enabled={hasStripeCustomer} />}
-            description="学習・設定の結果はアカウント.mdに反映され、投稿生成に使われています。ご契約中のプランでは内容とプロンプトを直接確認・編集できます。"
-            title="アカウント.md・プロンプトの確認・編集にはご契約が必要です"
-          />
-        ) : !account ? (
-          <NoAccountState />
-        ) : (
-          <div className="space-y-4">
-            {/* プロンプトタブ内の区分（T-M8-104）。アカウント.mdを一番左に置く。 */}
-            <TabNav
-              active={promptSection}
-              hrefFor={(slug) => `/app/settings?tab=prompts&sec=${slug}`}
-              items={PROMPT_SECTIONS.map(([value, label]) => ({ value, label }))}
-              label="プロンプトの区分"
-            />
-            {account.base_md_version < 1 ? (
-              <EmptyState
-                actionHref="/app/settings?tab=account"
-                actionLabel="アカウント設定へ"
-                description="編集対象のアカウント.mdを、先にアカウント設定から保存してください。"
-                title="先にアカウント設定を保存してください"
-              />
-            ) : promptSection === "account-md" ? (
-              <BaseMdEditor
-                initialContent={account.base_md}
-                initialHistory={baseMdHistory}
-                initialVersion={account.base_md_version}
-                // アカウント切替でstateを捨てる（実ブラウザ再現: 切替後もtextareaが前アカウントの本文のまま
-                // 保存でき、別アカウントのアカウント.mdを上書きできた・T-M8-196）。
-                key={account.id}
-                learningRunning={baseMdLearningRunning}
-                xAccountId={account.id}
-              />
-            ) : promptSection === "image-prompt" ? (
-              <PromptTemplatesEditor
-                initialTemplates={promptTemplates}
-                // アカウント切替でstateを確実に捨てる（前アカウントの本文を持ち越さない・T-M8-196）。
-                key={`${promptSection}:${account.id}`}
-                xAccountId={account.id}
-              />
-            ) : (
-              <PatternManager
-                initialPatterns={patterns}
-                initialPrompts={patternPrompts}
-                key={`${promptSection}:${account.id}`}
-                systemDefaultPrompts={systemDefaultPrompts}
-                xAccountId={account.id}
-              />
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
     </main>
   );

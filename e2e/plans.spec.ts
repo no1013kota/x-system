@@ -332,7 +332,8 @@ test("利用枠のリセット日が次回更新日になり、残量は契約�
   await expect(card).toBeVisible();
   await expect(card).toContainText("2026年9月15日にリセット");
   // 暦月の行（150/15/900）ではなく期間の行（7/2/120）
-  await expect(card).toContainText("残り 880 / 1000");
+  // クレジットは100倍の粒度（T-M8-325）。表示は桁区切りつき。
+  await expect(card).toContainText("残り 99,880 / 100,000");
   await expect(card).toContainText("残り 193 / 200");
   await expect(card).toContainText("残り 18 / 20");
 });

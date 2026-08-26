@@ -39,7 +39,7 @@ const VALID_BASE_MD = [
 test("アカウント.mdを編集して保存でき、versionが上がって履歴に残る", async ({ accounts, page }) => {
   const account = await accounts.create("base-md");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=base-md");
+  await page.goto("/app/prompts?sec=account-md");
 
   const editor = page.getByLabel("アカウント.md本文");
   await expect(editor).toBeVisible();
@@ -72,7 +72,7 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
 test("見出し構造が壊れた内容は保存されず、何を直せばよいか分かる", async ({ accounts, page }) => {
   const account = await accounts.create("base-md-invalid");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=base-md");
+  await page.goto("/app/prompts?sec=account-md");
 
   const editor = page.getByLabel("アカウント.md本文");
   await expect(editor).toBeVisible();
@@ -231,7 +231,7 @@ test("プロンプトを保存すると、成功が出た時点でもう次の�
 }) => {
   const account = await accounts.create("prompt-pending");
   await signIn(page, account);
-  await page.goto("/app/settings?tab=prompts&sec=post-prompt");
+  await page.goto("/app/prompts?sec=post-prompt");
 
   // 投稿作成プロンプトはパターン管理（全件を並べる）になった（T-M8-129 U4b）。
   // **保存の成功が出た時点で次の操作ができる**という判断は変わらない。
