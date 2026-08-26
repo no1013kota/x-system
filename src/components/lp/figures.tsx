@@ -379,7 +379,7 @@ export function ConceptCycleFigure() {
       </div>
       <figcaption className="mt-4 flex items-center justify-center gap-3 text-sm font-bold text-ink">
         <span aria-hidden="true" className="h-px w-8 bg-brand" />
-        使うほど、プロンプトとアカウントが同時に成長します。
+        使うほど、プロンプトとアカウントが同時に成長します
         <span aria-hidden="true" className="h-px w-8 bg-brand" />
       </figcaption>
     </figure>
