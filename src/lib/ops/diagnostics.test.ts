@@ -9,6 +9,9 @@ import {
   judgePoolWaits,
   judgeJobs,
   judgeNews,
+  hoursSinceDueNewsRun,
+  NEWS_FETCH_UTC_HOURS,
+  NEWS_RUN_GRACE_HOURS,
   judgeRepeatedFailures,
   judgeScheduler,
   judgeStuckJobs,
@@ -69,8 +72,14 @@ describe("judgeNews（定時実行が動かない環境で赤くしない）", (
     expect(r.detail).toContain("自動で動きません");
   });
 
-  it("本番で6時間以上止まっていれば異常", () => {
-    const r = judgeNews({ itemsLast48h: 10, hoursSinceLastRun: 7, schedulerExpected: true });
+  it("予定の回が飛んでいれば異常（T-M8-310で「6時間固定」から予定時刻基準へ変更）", () => {
+    // UTC 9:30 に最後の実行が7時間前（＝2:30）＝6時の回が飛んでいる。
+    const r = judgeNews({
+      itemsLast48h: 10,
+      hoursSinceLastRun: 7,
+      schedulerExpected: true,
+      now: new Date("2026-08-25T09:30:00Z"),
+    });
     expect(r.level).toBe("error");
     expect(r.nextAction).toBeTruthy();
   });
@@ -551,5 +560,69 @@ describe("judgeRepeatedFailures（誰がどう壊れているかを出す）", (
       allFailingUsers: 2,
     });
     expect(c.detail).not.toMatch(/@|[0-9a-f]{8}-[0-9a-f]{4}/);
+  });
+});
+
+/**
+ * ニュース取得の停止判定は「予定時刻」を基準にする（T-M8-310）。
+ * 旧実装は `hoursSinceLastRun > 6` で、UTC12時→翌0時の**予定どおりの12時間の空き**でも
+ * 赤くなり、毎晩 JST 3〜9時に運営者アラートが飛んでいた。
+ */
+describe("judgeNews の停止判定（予定時刻ベース・T-M8-310）", () => {
+  const at = (utc: string) => new Date(utc);
+  const base = { itemsLast48h: 51, schedulerExpected: true, outcomes: [] };
+
+  it("予定の空き（UTC12時→翌0時）では赤くしない", () => {
+    // UTC 23:57＝JST 8:57。直前の実行は予定どおり UTC12時（11.95時間前）。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 11.95, now: at("2026-08-25T23:57:00Z") });
+    expect(c.level, "予定どおりなのに赤い（毎晩の誤報が再発している）").toBe("ok");
+  });
+
+  it("予定の1本が飛んだら赤くする", () => {
+    // 同じ時刻で UTC12時の回が飛んでいれば、最後の実行は UTC9時＝約15時間前。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 15, now: at("2026-08-25T23:57:00Z") });
+    expect(c.level).toBe("error");
+    expect(c.nextAction).toContain("走るはずの時刻");
+  });
+
+  it("日中も同じ基準で判定する", () => {
+    // UTC 9:30。直前の実行が0.5時間前（＝9時の回）なら正常。
+    expect(judgeNews({ ...base, hoursSinceLastRun: 0.5, now: at("2026-08-25T09:30:00Z") }).level).toBe("ok");
+    // 6時間前（＝3:30）が最後なら、6時の回が飛んでいる。
+    expect(judgeNews({ ...base, hoursSinceLastRun: 6, now: at("2026-08-25T09:30:00Z") }).level).toBe("error");
+  });
+
+  it("cronの起動が数分遅れているだけなら赤くしない", () => {
+    // UTC 3:10。3時の回がまだでも、最後の実行が0時なら猶予の内側。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 3.08, now: at("2026-08-25T03:10:00Z") });
+    expect(c.level).toBe("ok");
+  });
+
+  it("一度も実行されていなければ従来どおり赤い", () => {
+    const c = judgeNews({ ...base, hoursSinceLastRun: null, now: at("2026-08-25T23:57:00Z") });
+    expect(c.level).toBe("error");
+  });
+});
+
+describe("hoursSinceDueNewsRun", () => {
+  it("「終わっているはずの回」からの経過を返す", () => {
+    // UTC 9:30・猶予1時間 → 8:30以前の予定＝6時。9.5-6=3.5
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T09:30:00Z"))).toBeCloseTo(3.5, 5);
+    // UTC 23:57 → 22:57以前の予定＝12時。23.95-12=11.95
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T23:57:00Z"))).toBeCloseTo(11.95, 2);
+  });
+
+  it("その日まだ「終わっているはずの回」が無ければ前日の最後から数える", () => {
+    // UTC 0:30・猶予1時間 → 当日の予定はどれも猶予の内側。前日12時から12.5時間。
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T00:30:00Z"))).toBeCloseTo(12.5, 5);
+  });
+
+  it("予定表が空でも例外にせず、赤くしない側へ倒す", () => {
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T05:00:00Z"), [])).toBe(0);
+  });
+
+  it("猶予は0より大きい（0だと起動の遅れで毎回赤くなる）", () => {
+    expect(NEWS_RUN_GRACE_HOURS).toBeGreaterThan(0);
+    expect(NEWS_FETCH_UTC_HOURS.length).toBeGreaterThan(0);
   });
 });

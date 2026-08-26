@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { NEWS_FETCH_UTC_HOURS } from "./diagnostics";
+
 /**
  * `vercel.json` の cron と要件04 §6 の表が一致していることを検査する（T-M8-88）。
  *
@@ -81,5 +83,44 @@ describe("vercel.json の定時実行", () => {
       // 存在しないpathを登録すると、Vercelは404を叩き続けて「動いているのに何も起きない」。
       expect(() => readRoot(`src/app${cron.path}/route.ts`), `${cron.path} の route が無い`).not.toThrow();
     }
+  });
+});
+
+/**
+ * doctor の停止判定はこのスケジュールを前提にしている（T-M8-310）。
+ * **`vercel.json` だけ直して判定を直さないと、毎晩かならず赤くなるか、逆に止まっても気付けない。**
+ * cron式から実際の時刻を導き、`diagnostics.ts` の定数と突き合わせる。
+ */
+describe("news_fetch のスケジュールと doctor の判定が揃っている（T-M8-310）", () => {
+  /** `0 0-12/3 * * *` のような「分 時 …」から、走る時（UTC）を展開する。 */
+  function utcHoursOf(schedule: string): number[] {
+    const hourField = schedule.split(/\s+/)[1];
+    const out = new Set<number>();
+    for (const part of hourField.split(",")) {
+      const [range, stepRaw] = part.split("/");
+      const step = stepRaw ? Number(stepRaw) : 1;
+      if (range === "*") {
+        for (let h = 0; h < 24; h += step) out.add(h);
+        continue;
+      }
+      const [from, to] = range.split("-").map(Number);
+      for (let h = from; h <= (to ?? from); h += step) out.add(h);
+    }
+    return [...out].sort((a, b) => a - b);
+  }
+
+  it("cron式の展開が正しい（この展開器自体の確認）", () => {
+    expect(utcHoursOf("0 0-12/3 * * *")).toEqual([0, 3, 6, 9, 12]);
+    expect(utcHoursOf("0 * * * *")).toHaveLength(24);
+    expect(utcHoursOf("*/5 * * * *")).toHaveLength(24);
+  });
+
+  it("vercel.json の news_fetch と NEWS_FETCH_UTC_HOURS が一致する", () => {
+    const news = crons.find((c) => jobName(c.path) === "news_fetch");
+    expect(news, "news_fetch の cron が見つからない").toBeDefined();
+    expect(
+      utcHoursOf(news!.schedule),
+      "vercel.json を変えたら diagnostics.ts の NEWS_FETCH_UTC_HOURS も直すこと（doctorの停止判定が狂う）",
+    ).toEqual([...NEWS_FETCH_UTC_HOURS]);
   });
 });
