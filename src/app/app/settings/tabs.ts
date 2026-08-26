@@ -76,3 +76,12 @@ export function settingsTabHref(tab: SettingsTab, section?: PromptSection): stri
     ? `/app/settings?tab=${tab}&sec=${section}`
     : `/app/settings?tab=${tab}`;
 }
+
+/**
+ * アカウントメニューに出す設定への導線（T-M8-328）。
+ * **`SETTINGS_TABS` から作る**——タブを増減したらメニューも自動で追随する（書き写さない）。
+ */
+export const ACCOUNT_MENU_SETTINGS_LINKS = SETTINGS_TABS.map(([value, label]) => ({
+  href: settingsTabHref(value),
+  label,
+}));

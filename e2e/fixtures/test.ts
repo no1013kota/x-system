@@ -189,3 +189,13 @@ export async function confirmUrlFromMail(messageId: string): Promise<string> {
   return (match as RegExpExecArray)[0].replace(/&amp;/g, "&");
 }
 
+/**
+ * アカウントメニューを開く（T-M8-328）。
+ *
+ * **ヘッダーを廃止したので、ログアウトとXアカウント切替はサイドバー下部の
+ * アカウントメニューの中にある。** 各specが位置を直接知ると、次に置き場所を変えたとき
+ * 全部書き換えることになるので、到達手段をここへ1本化する。
+ */
+export async function openAccountMenu(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /@|アカウント/ }).last().click();
+}

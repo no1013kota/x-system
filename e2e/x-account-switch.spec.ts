@@ -94,9 +94,10 @@ test("設定のXアカウント一覧から操作対象を切り替えられ、�
   await secondRow.getByRole("button", { name: "このアカウントを操作する" }).click();
   await expect(toastIn(page)).toContainText(`@${second.handle} に切り替えました`);
 
-  // ヘッダーの表示も追従する（読み上げ名にも操作中のアカウントが入る）
+  // サイドバー下部のアカウント表示も追従する（ヘッダー廃止でそこへ移った・T-M8-328）。
+  // **どのアカウントを操作中かが常に見えていること**が要点（誤アカウント投稿を防ぐ・要件06 §2）。
   await expect(
-    page.getByRole("button", { name: new RegExp(`操作中: @${second.handle}`) }),
+    page.getByRole("button", { name: new RegExp(`@${second.handle}`) }).last(),
   ).toBeVisible();
 
   // 下書きが入れ替わる
