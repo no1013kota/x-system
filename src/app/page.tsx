@@ -278,9 +278,18 @@ export default function Home() {
                   </a>
                 </div>
                 <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
-                {/* CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。 */}
+                {/*
+                  CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。
+
+                  **文言は禁止表現リスト（`design_handoff_lp/README.md` §禁止表現）を通ること**（T-M8-311）。
+                  2026-08-26 の指定は「多くのX運用者が利用」だったが利用者数の表示に当たるため採らず、
+                  続く指定「プロンプトと投稿結果を自動で分析・改善」からも**「自動で」を外した**——
+                  投稿分析の起点は「分析を開始」ボタンだけ（`analytics/start-analysis-button.tsx`・T-M8-255）で、
+                  リストにも「AIが自動で学習し続けて最適化（正: 提案は押したときだけ・1日1回・表示専用）」とある。
+                  価格は `startingPrice` から作り、数値を画面へ書き写さない（R30）。
+                */}
                 <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-sm font-medium text-ink-2">
-                  {["高品質な投稿を自動作成", "高品質なプロンプトの確認及び改善", `月額${startingPrice}から`].map(
+                  {["高品質なプロンプトによる高品質な投稿", "投稿結果を分析してプロンプトを改善", `月額${startingPrice}から`].map(
                     (item) => (
                       <span className="inline-flex items-center gap-1.5" key={item}>
                         <span aria-hidden="true" className="font-bold text-brand">
@@ -379,7 +388,7 @@ export default function Home() {
         {/* 03 しくみ（T-M8-172: 4ステップのカード列 → 成長グラフ） */}
         <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
           <SectionMark label="しくみ" no="03" />
-          <h2 className={H2}>使うほど、プロンプトもアカウントも成長する</h2>
+          <h2 className={H2}>運用によるプロンプトの成長が、アカウントも成長させる</h2>
           {/* 説明は1文に簡潔化（運営者の指示 2026-08-22・T-M8-201）。 */}
           <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
             {CYCLE_STEPS.join("→")}のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。

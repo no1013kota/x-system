@@ -35,7 +35,7 @@ export function CampaignCallout({
         <p className={cn("text-body text-ink-2", RELEASE_CAMPAIGN.active && "mt-1")}>
           {/* 半額が終わったあとは「さらに」で始めない（前段が無くなるため）。 */}
           {RELEASE_CAMPAIGN.active ? "さらに" : ""}
-          <strong className="font-bold text-ink">初回のみ7日間の無料トライアル</strong>を実施中
+          <strong className="font-bold text-ink">7日間の無料トライアル</strong>を実施中
           （カード登録が必要です。期間中に解約すれば料金はかかりません）。
         </p>
       ) : null}
