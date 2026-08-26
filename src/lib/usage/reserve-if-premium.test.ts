@@ -18,8 +18,8 @@ describe("reserveLimitFor", () => {
   it("上限はプランのAIクレジット枠（premium=1000 / expert=5000・T-M8-109/168）", () => {
     expect(reserveLimitFor("premium")).toBe(PLANS.premium.usageLimits?.aiCredits);
     expect(reserveLimitFor("expert")).toBe(PLANS.expert.usageLimits?.aiCredits);
-    expect(PLANS.premium.usageLimits?.aiCredits).toBe(1000);
-    expect(PLANS.expert.usageLimits?.aiCredits).toBe(5000);
+    expect(PLANS.premium.usageLimits?.aiCredits).toBe(100_000);
+    expect(PLANS.expert.usageLimits?.aiCredits).toBe(500_000);
     // BYOK・未知は上限なし（reserve自体が走らない）。
     expect(reserveLimitFor("standard")).toBeUndefined();
     expect(reserveLimitFor("")).toBeUndefined();
@@ -74,15 +74,15 @@ describe("reserveIfPremium", () => {
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
     expect(insert, "usage_eventsへのreserveが走る").toBeTruthy();
-    // reserveUsage の $7 = amount（見積もりクレジット）。カタログの estimateCredits（Fable 5=55・実測ベース）。
-    expect(insert!.params[6]).toBe(55);
+    // reserveUsage の $7 = amount（見積もりクレジット）。カタログの estimateCredits（Fable 5=5,500・実測ベース）。
+    expect(insert!.params[6]).toBe(5_500);
   });
 
-  it("未選択（おまかせ）は基準見積もり16クレジット", async () => {
+  it("未選択（おまかせ）は基準見積もり1,600クレジット", async () => {
     const s = spy({ text: "anthropic" });
     await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
     const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
-    expect(insert!.params[6]).toBe(16);
+    expect(insert!.params[6]).toBe(1_600);
   });
 
   /**

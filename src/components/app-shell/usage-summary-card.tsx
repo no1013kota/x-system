@@ -1,5 +1,6 @@
 import type { UsageSlot, UsageSummary } from "@/lib/usage/usage-summary";
 import { Card, CardTitle } from "@/components/ui/card";
+import { yen } from "@/lib/format";
 
 /**
  * 運営キー系プランの利用枠（契約期間ごと・T-M8-258）の残量カード（要件03 §8・要件06 §10, T-M6-12/T-M8-168）。
@@ -26,7 +27,7 @@ function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; 
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         <span className="text-sm text-muted-foreground">
-          残り {slot.remaining} / {slot.limit}
+          残り {yen(slot.remaining)} / {yen(slot.limit)}
         </span>
       </div>
       <div

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.55 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.56 |
+| 更新日 | 2026-08-27 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -365,3 +365,4 @@ flowchart TD
 - 本文には T-M8-163 の「直せる言葉」と次の一手を載せ、**providerの応答本文は載せない**（要件01 §8）。
 - 送信は `lib/email/operator-mail-server.ts`。ガードは `canSendViaSmtp`（`lib/email/smtp-guard.ts`）で、非productionから外部SMTPへは送らない（`outbound-channels.ts` の `smtp` へ登録済み。利用者向け通知メールはT-M8-222で廃止し、SMTP送信はこの運営者向けメールだけになった）。
 - **これが無かった間**、2026-08-19 10:00 JST から1.5日間ニュースが全滅していたのに運営者へ何も届かず、運営者が自分で `doctor` を叩いて初めて分かった。
+| v1.56 | 2026-08-27 | ニュース取得を1日2回（JST 12時・19時）へ減らし、production 限定にした（T-M8-326。外部API費用の97.6%がこのcronだった） |

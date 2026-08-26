@@ -6,6 +6,7 @@ import { CURRENT_TERMS_VERSION, consentVersionLabel } from "@/lib/legal";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
 import { PLANS, RELEASE_CAMPAIGN } from "@/lib/plans";
 import { LegalArticle, LegalDocument } from "@/components/legal-document";
+import { yen } from "@/lib/format";
 
 export const metadata: Metadata = { title: `利用規約 | ${APP_NAME}` };
 
@@ -92,7 +93,7 @@ export default function TermsPage() {
         <p>
           {PLANS.premium.displayName}の利用枠は、<strong>契約期間（お支払いの更新日から次の更新日まで）ごと</strong>に、
           通常投稿{premium?.normalPosts}件、URL付き投稿クレジット{premium?.urlPosts}、
-          AIクレジット{premium?.aiCredits}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
+          AIクレジット{premium ? yen(premium.aiCredits) : ""}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
           利用枠は更新日に新しい契約期間の上限へ戻り、使い残した分は次の契約期間へ繰り越されません。
           無料トライアル期間にも同じ利用枠があり、トライアル終了後に有料の契約期間が始まる時点で
           利用枠は新しい契約期間の上限に戻ります（使い残した分の繰り越しはありません）。

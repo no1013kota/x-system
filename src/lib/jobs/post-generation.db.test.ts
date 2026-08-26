@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { TEXT_DEFAULT_ESTIMATE_CREDITS } from "@/lib/ai/model-catalog";
+
 import { emptyUsage, type TextGen, type TextGenResult } from "../ai/types";
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
@@ -263,9 +265,10 @@ describe("executePostGeneration (local DB)", () => {
       const s = await genState(uid, jobId);
       // AIクレジット（T-M8-109）: 見積もり16をreserve→実費（モックは原価0→最低1）で精算。
       // 精算の部分返還は reason='refund'（settle key）で入るため refunds=1 になる。
-      expect(s.gen).toBe(1);
+      // 実費で精算された量（100トークン入力・50出力の想定原価）。単位はT-M8-325で0.01円へ。
+      expect(s.gen).toBe(51);
       expect(s.reserves).toBe(1);
-      expect(s.refunds).toBe(1); // settleの差分調整（16→1）
+      expect(s.refunds).toBe(1); // settleの差分調整（見積もり→実費）
     } finally {
       await cleanupUsage(uid);
     }
@@ -302,7 +305,7 @@ describe("executePostGeneration (local DB)", () => {
       const s = await genState(uid, jobId);
       expect(s.reserves).toBe(1);
       expect(s.refunds).toBe(0);
-      expect(s.gen).toBe(16); // 見積もり16クレジットのreserveが残る（T-M8-109）
+      expect(s.gen).toBe(TEXT_DEFAULT_ESTIMATE_CREDITS); // 見積もりのreserveが残る（T-M8-109）
       // 失敗が確定すると全額返還される
       await failJob(jobId, "post_generation", new Error("terminal"));
       const after = await genState(uid, jobId);

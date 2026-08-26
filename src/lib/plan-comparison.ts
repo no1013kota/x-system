@@ -1,4 +1,5 @@
 import { PLANS, type PlanDefinition, type PlanId } from "./plans";
+import { yen } from "@/lib/format";
 
 /**
  * プランの違いの行定義（T-M8-125で表向けに作成。T-M8-171からはLP・/plans共通の
@@ -72,7 +73,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
       // エキスパートは「無制限」と表示する（T-M8-168・運営者の決定）。内部ガード値は出さない。
       if (plan.concealsLimits) return "無制限";
       return plan.usageLimits
-        ? `AIクレジット${plan.usageLimits.aiCredits}／通常投稿${plan.usageLimits.normalPosts}／URL付き${plan.usageLimits.urlPosts}`
+        ? `AIクレジット${yen(plan.usageLimits.aiCredits)}／通常投稿${plan.usageLimits.normalPosts}／URL付き${plan.usageLimits.urlPosts}`
         : "なし（ご自身のAPI課金の範囲）";
     },
   },

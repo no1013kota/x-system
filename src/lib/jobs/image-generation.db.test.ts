@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { IMAGE_DEFAULT_ESTIMATE_CREDITS } from "@/lib/ai/model-catalog";
+
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import type { ImageGen } from "../ai/image";
@@ -147,9 +149,9 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
     try {
       await expect(executeImageGeneration(deps(jobId, true))).rejects.toThrow();
       // handler は返還しない（retry差し戻しでクレジットが消える事故を防ぐため）。
-      // 親の消費1 + 画像見積もり12（IMAGE_DEFAULT_ESTIMATE_CREDITS・モデル未選択・T-M8-110）。
-      expect(await credits(uid)).toBe(13);
-      // 失敗確定で画像reserve分（12）だけが返る。親の1は触らない。
+      // 親の消費1 + 画像見積もり（IMAGE_DEFAULT_ESTIMATE_CREDITS・モデル未選択・T-M8-110）。
+      expect(await credits(uid)).toBe(1 + IMAGE_DEFAULT_ESTIMATE_CREDITS);
+      // 失敗確定で画像reserve分だけが返る。親の1は触らない。
       await failJob(jobId, "image_generation", new Error("terminal"));
       expect(await credits(uid)).toBe(1);
     } finally {

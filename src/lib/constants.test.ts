@@ -57,13 +57,13 @@ describe("plan definitions", () => {
     expect(PLANS.premium.usageLimits).toEqual({
       normalPosts: 200,
       urlPosts: 20,
-      aiCredits: 1000,
+      aiCredits: 100_000,
     });
     // エキスパートの内部ガード（運営者の指示 2026-08-20）。**画面には出さない値**。
     expect(PLANS.expert.usageLimits).toEqual({
       normalPosts: 1000,
       urlPosts: 100,
-      aiCredits: 5000,
+      aiCredits: 500_000,
     });
   });
 

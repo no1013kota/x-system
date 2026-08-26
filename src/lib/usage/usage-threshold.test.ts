@@ -25,13 +25,13 @@ function makeDb(plan: string | null = "premium") {
 describe("notifyUsageThresholds", () => {
   it("inserts nothing below 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 799, periodKey: "2026-08-15" }); // 80% of 1000 = 800
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 79_999, periodKey: "2026-08-15" }); // 80% of 100,000 = 80,000
     expect(inserts).toHaveLength(0);
   });
 
   it("inserts only the 80% notification at exactly 80%", async () => {
     const { db, inserts } = makeDb();
-    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 800, periodKey: "2026-08-15" });
+    await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 80_000, periodKey: "2026-08-15" });
     expect(inserts).toEqual([{ key: "ai_credits", threshold: 80 }]);
   });
 
@@ -60,7 +60,7 @@ describe("notifyUsageThresholds", () => {
    */
   it("エキスパートには閾値通知を作らない（数値を漏らさない）", async () => {
     const { db, inserts } = makeDb("expert");
-    // expertの内部上限（ai_credits 5000）に達していても通知しない。
+    // expertの内部上限（ai_credits 500,000）に達していても通知しない。
     await notifyUsageThresholds(db, { userId: "u1", key: "ai_credits", newCount: 5000, periodKey: "2026-08-15" });
     expect(inserts).toHaveLength(0);
   });

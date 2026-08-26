@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { yen } from "@/lib/format";
+
 import { PLANS } from "@/lib/plans";
 
 import {
@@ -149,7 +151,7 @@ describe("PRODUCT_DESCRIPTIONS はプラン定義の数字と一致する", () =
     const limits = PLANS.premium.usageLimits;
     expect(limits).not.toBeNull();
     expect(PRODUCT_DESCRIPTIONS.STRIPE_PRICE_PREMIUM_MONTHLY).toContain(
-      `AIクレジット${limits?.aiCredits}・通常投稿${limits?.normalPosts}・URL付き${limits?.urlPosts}`,
+      `AIクレジット${yen(limits?.aiCredits ?? 0)}・通常投稿${limits?.normalPosts}・URL付き${limits?.urlPosts}`,
     );
   });
 

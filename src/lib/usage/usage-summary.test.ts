@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { TEXT_DEFAULT_ESTIMATE_CREDITS } from "../ai/model-catalog";
+
 import { PLANS } from "../plans";
 import {
   computeUsageSummary,
@@ -20,7 +22,7 @@ describe("computeUsageSummary (要件03 §8)", () => {
       LIMITS,
     );
     expect(s).toEqual({
-      ai_credits: { used: 220, limit: 1000, remaining: 780 },
+      ai_credits: { used: 220, limit: 100_000, remaining: 99_780 },
       normal_posts: { used: 38, limit: 200, remaining: 162 },
       url_posts: { used: 8, limit: 20, remaining: 12 },
       concealed: false,
@@ -65,13 +67,13 @@ describe("computeUsageSummary (要件03 §8)", () => {
   it("concealed はAIクレジット残が1回分の見積もり未満で paused になる", () => {
     const limits = PLANS.expert.usageLimits!;
     const nearlyOut = computeUsageSummary(
-      counters({ ai_credits_used: limits.aiCredits - 15 }), // 残15 < TEXT_DEFAULT_ESTIMATE_CREDITS(16)
+      counters({ ai_credits_used: limits.aiCredits - (TEXT_DEFAULT_ESTIMATE_CREDITS - 1) }), // 残りが1回分に満たない
       limits,
       { concealed: true },
     );
     expect(nearlyOut.paused).toBe(true);
     const enough = computeUsageSummary(
-      counters({ ai_credits_used: limits.aiCredits - 16 }), // 残16 = ちょうど1回分
+      counters({ ai_credits_used: limits.aiCredits - TEXT_DEFAULT_ESTIMATE_CREDITS }), // ちょうど1回分
       limits,
       { concealed: true },
     );
@@ -81,7 +83,7 @@ describe("computeUsageSummary (要件03 §8)", () => {
   it("clamps remaining at 0 when over the limit and reflects 上限到達", () => {
     // AIクレジットは精算の追加消費で上限を超え得る（拒否せず計上する・T-M8-109）。
     const s = computeUsageSummary(
-      counters({ normal_posts_count: 205, url_posts_count: 20, ai_credits_used: 1010 }),
+      counters({ normal_posts_count: 205, url_posts_count: 20, ai_credits_used: 101_000 }),
       LIMITS,
     );
     expect(s.normal_posts.remaining).toBe(0); // 205 > 200 → 0（負数にしない）
