@@ -205,6 +205,44 @@ export async function collectFailurePatterns(
 }
 
 /**
+ * `news_fetch` が走る **UTC の時刻**（`vercel.json` の `0 0-12/3 * * *` ＝ JST 9/12/15/18/21時）。
+ *
+ * **UTC12時の次はUTC0時＝12時間空く**。この空きが「止まっている」判定より長いので、
+ * 経過時間だけで判定すると**毎晩かならず赤くなる**（T-M8-310。2026-08-26 に本番で
+ * 「13時間実行されていません」と出たが、直前の実行は予定どおりで何も壊れていなかった）。
+ * 直せない理由で赤くすると本物の異常が隠れる（T-M7-44・T-M8-51 と同じ判断）。
+ *
+ * ここを変えたら `vercel.json` も変える。ズレは `vercel-crons.test.ts` が落とす。
+ */
+export const NEWS_FETCH_UTC_HOURS = [0, 3, 6, 9, 12] as const;
+
+/** cronの起動遅れと実行時間の余裕。これを超えて遅れていれば本当に走っていない。 */
+export const NEWS_RUN_GRACE_HOURS = 1;
+
+/**
+ * **「もう終わっているはずの回」から何時間経ったか。**
+ *
+ * 判定の基準になる値。`now` から {@link NEWS_RUN_GRACE_HOURS} を引いた時点より前の予定のうち
+ * 最も新しいものを「もう終わっているはず」とみなし、そこからの経過時間を返す。
+ * 実際の最終実行がこれより古ければ、**予定の回が1本飛んでいる**ことになる。
+ *
+ * 猶予を先に引くことで、cronの起動が数分遅れているだけの状態を異常にしない。
+ * 予定表が空なら 0 を返す（判定を赤くしない側へ倒す）。
+ */
+export function hoursSinceDueNewsRun(
+  now: Date,
+  hoursUtc: readonly number[] = NEWS_FETCH_UTC_HOURS,
+  graceHours: number = NEWS_RUN_GRACE_HOURS,
+): number {
+  if (hoursUtc.length === 0) return 0;
+  const nowFrac = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const dueBy = nowFrac - graceHours;
+  const past = hoursUtc.filter((h) => h <= dueBy);
+  // その日まだ「終わっているはずの回」が無ければ、前日の最後の予定から数える。
+  return past.length > 0 ? nowFrac - Math.max(...past) : nowFrac + 24 - Math.max(...hoursUtc);
+}
+
+/**
  * ニュース取得が動いているか。
  *
  * **0件そのものは異常ではない**が、長時間まったく取れていないのは異常（T-M7-24 の再発検知）。
@@ -319,6 +357,8 @@ export function judgeNews(input: {
   schedulerExpected: boolean;
   /** 直近1回の分野ごとの結果（無ければ空）。0件の意味を説明するために使う。 */
   outcomes?: NewsCategoryOutcome[];
+  /** 判定時刻（テストで固定するために注入する。既定は現在時刻）。 */
+  now?: Date;
 }): Check {
   const name = "ニュースの取得";
   const empty = describeEmptyCategories(input.outcomes ?? []);
@@ -406,12 +446,19 @@ export function judgeNews(input: {
   ]
     .filter(Boolean)
     .join(" / ");
-  if (input.hoursSinceLastRun > 6) {
+  /*
+    **「何時間空いたか」ではなく「走るはずの時刻を過ぎたか」で見る**（T-M8-310）。
+    news_fetch は UTC0〜12時の3時間おきで、UTC12時→翌0時は**予定として12時間空く**。
+    固定の閾値（旧: 6時間）だと、その空きのあいだ毎晩かならず赤くなり、
+    運営者アラートが毎朝届いて本物の異常が埋もれていた。
+  */
+  if (input.hoursSinceLastRun > hoursSinceDueNewsRun(input.now ?? new Date())) {
     return {
       name,
       level: "error",
       detail,
-      nextAction: "6時間以上実行されていません。定時実行が止まっている可能性があります",
+      nextAction:
+        "走るはずの時刻を過ぎても実行されていません。定時実行が止まっている可能性があります",
     };
   }
   if (problem) {
