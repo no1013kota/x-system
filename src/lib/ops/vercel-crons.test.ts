@@ -13,7 +13,7 @@ import { NEWS_FETCH_UTC_HOURS } from "./diagnostics";
  * `npm run doctor` で初めて検出した）。schedule は文字列1つの違いで意味が変わるので、
  * 正本（要件04 §6）とコード（`vercel.json`）の突き合わせを人の目に任せない。
  *
- * **UTCとJSTの取り違えが一番効く**。`news_fetch` は JST 9〜21時の3時間おき＝UTC 0〜12時で、
+ * **UTCとJSTの取り違えが一番効く**。`news_fetch` は JST 12時・19時＝UTC 3時・10時で、
  * ここを JST のまま書くと夜中に走って費用だけ出る。時刻の意味も併せて固定する。
  */
 
@@ -62,12 +62,12 @@ describe("vercel.json の定時実行", () => {
     }
   });
 
-  it("ニュース取得は JST 9〜21時の3時間おき（UTCで書かれている・T-M8-195）", () => {
+  it("ニュース取得は JST 12時・19時の1日2回（UTCで書かれている・T-M8-326）", () => {
     const news = crons.find((c) => c.path === "/api/cron/news-fetch");
-    expect(news?.schedule).toBe("0 0-12/3 * * *");
+    expect(news?.schedule).toBe("0 3,10 * * *");
     // schedule の意味を数字で固定する。JSTのまま書く取り違えをここで落とす。
-    const utcHours = [0, 3, 6, 9, 12];
-    expect(utcHours.map((h) => (h + 9) % 24)).toEqual([9, 12, 15, 18, 21]);
+    const utcHours = [3, 10];
+    expect(utcHours.map((h) => (h + 9) % 24)).toEqual([12, 19]);
   });
 
   it("予約投稿の起動は5分間隔（要件04 §6・遅れの回収がこの間隔に依存する）", () => {

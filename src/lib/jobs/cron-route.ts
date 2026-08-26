@@ -28,10 +28,28 @@ export async function handleCronRoute<T>(
     windowKey: (now: Date) => string;
     work: (ctx: CronRouteContext) => Promise<T>;
     response: (result: CronRouteResult<T>) => unknown;
+    /**
+     * **production でしか動かさない**（T-M8-326）。費用の出るcronを、運営者が意図的に
+     * 戻すまで stg・ローカルで止めるために使う。`ran: false` と `skipped` を返し、
+     * **黙って何もしない形にはしない**（原則1。呼んだ側が「止めた」と「動いて0件」を区別できる）。
+     */
+    productionOnly?: boolean;
   },
 ): Promise<Response> {
   if (!isValidCronAuth(request.headers.get("authorization"))) {
     return new Response("unauthorized", { status: 401 });
+  }
+  if (opts.productionOnly) {
+    // env はmodule読込で検証が走るため、**認証を通したあとに遅延ロードする**
+    // （route-auth.test.ts が env 無しで route を読む・このリポジトリの既定の作法）。
+    const { env } = await import("@/lib/env");
+    if (env.APP_ENV !== "production") {
+      return Response.json({
+        ok: true,
+        ran: false,
+        skipped: `${opts.name} は production でのみ実行します（いまは ${env.APP_ENV}）`,
+      });
+    }
   }
   const now = new Date();
   const windowKey = opts.windowKey(now);

@@ -18,6 +18,13 @@ const pooledDb = pooledQueryable();
 export async function GET(request: Request): Promise<Response> {
   return handleCronRoute(request, {
     name: "news_fetch",
+    /*
+      **stg・ローカルでは動かさない**（T-M8-326・運営者の指示 2026-08-27
+      「私が意図的に戻すまで起動しないように」）。本番の外部API費用の97.6%がこのcronで
+      （実測: Anthropic $23.31 のうち $23.14 が196回）、検証環境で回すと同じだけ費用が出る。
+      戻すときはこの1行を消す。
+    */
+    productionOnly: true,
     windowKey: hourWindowKey,
     work: async ({ now, windowKey }) => {
       // provider解決はenvに触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。

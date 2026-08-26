@@ -100,7 +100,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
+| `news_fetch` | **JST 12:00・19:00の1日2回**（T-M8-326・運営者の指示 2026-08-27。国内の発表は午前と夕方に集中するのでその直後。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `0 3,10 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
