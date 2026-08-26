@@ -364,7 +364,10 @@ function removePattern(target: PatternOption) {
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
-        pattern,
+        // **`pattern_id` で送る**（T-M8-330）。T-M8-129 U5 で内部IDからパターンIDへ改めたとき、
+        // スケジュール側だけ追随し**この画面は `pattern` のままだった**ため、
+        // 生成が毎回「入力内容に誤りがあります」で弾かれていた（赤くなる項目も出ない）。
+        pattern_id: pattern,
         // ニュース引き継ぎ時は下書きへ紐づけ、一覧の「作成済み」バッジの導出元にする（T-M8-210）。
         news_item_id: newsPrefill?.newsItemId,
         source_url: sourceUrl.trim() || undefined,
