@@ -205,7 +205,11 @@ export async function collectFailurePatterns(
 }
 
 /**
- * `news_fetch` が走る **UTC の時刻**（`vercel.json` の `0 0-12/3 * * *` ＝ JST 9/12/15/18/21時）。
+ * `news_fetch` が走る **UTC の時刻**（`vercel.json` の `0 3,10 * * *` ＝ **JST 12時・19時**）。
+ *
+ * **1日2回**（T-M8-326・運営者の指示 2026-08-27）。国内の発表は午前と夕方に集中するため、
+ * その直後に寄せた。以前は3時間おき5回で、**本番の外部API費用の97.6%がここだった**
+ * （実測: Anthropic $23.31 のうち $23.14 が196回のニュース取得）。
  *
  * **UTC12時の次はUTC0時＝12時間空く**。この空きが「止まっている」判定より長いので、
  * 経過時間だけで判定すると**毎晩かならず赤くなる**（T-M8-310。2026-08-26 に本番で
@@ -214,7 +218,7 @@ export async function collectFailurePatterns(
  *
  * ここを変えたら `vercel.json` も変える。ズレは `vercel-crons.test.ts` が落とす。
  */
-export const NEWS_FETCH_UTC_HOURS = [0, 3, 6, 9, 12] as const;
+export const NEWS_FETCH_UTC_HOURS = [3, 10] as const;
 
 /** cronの起動遅れと実行時間の余裕。これを超えて遅れていれば本当に走っていない。 */
 export const NEWS_RUN_GRACE_HOURS = 1;
@@ -590,23 +594,40 @@ export const DB_POOL_WAIT_WARN = 1;
 export const DB_POOL_WAIT_ERROR = 20;
 
 export function judgePoolWaits(input: {
+  /** 接続の取得を待たされた回数（接続の新規確立を含む）。 */
   waits24h: number;
+  /** **そのうち実際に待ち行列ができていた回数**（`waiting_count > 0`）。判定の主軸。 */
+  queuedWaits24h?: number;
   maxWaitedMs: number;
-  /** いま効いている1インスタンスあたりの上限（T-M8-303）。 */
   poolMax?: number;
 }): Check {
   const name = "DB接続の混み具合";
-  /*
-    **効いている値を必ず出す**（T-M8-303）。`DB_POOL_MAX` はデプロイ先の環境変数なので、
-    「設定したつもりで入っていない」が起こる。回数だけ見せても、運営者は
-    「対策が効いていないのか、対策はしたが足りないのか」を区別できない（原則2）。
-  */
   const limit = input.poolMax ? `（1インスタンスあたり上限 ${input.poolMax}）` : "";
-  if (input.waits24h < DB_POOL_WAIT_WARN) {
-    return { name, level: "ok", detail: `直近24時間で接続の待ちはありません${limit}` };
+  /*
+    **「並んだ」と「接続を張った」を分けて判定する**（T-M8-323）。
+
+    以前は件数だけで判定していたため、**5分ごとのcronが新しい接続を張るだけで毎日必ず赤**に
+    なっていた（2026-08-27、本番302件のうち292件は `total_count=1 / waiting_count=0`＝
+    プールが空で誰も並んでいない。単に接続確立に約600msかかっていただけ）。
+    サーバーレスでは実行のたびに新しいインスタンスが立つので、**接続の確立は避けられない**。
+    直せない正常な状態を赤くすると本物の異常が埋もれる（T-M7-44・T-M8-310と同じ判断）。
+
+    本物の混雑は `waiting_count > 0`＝**空きを待って並んだ**ときだけ起きる。そちらを主軸にし、
+    接続確立の回数は数字として出すが赤くしない。
+  */
+  const queued = input.queuedWaits24h ?? input.waits24h;
+  const setup = Math.max(0, input.waits24h - queued);
+  const setupNote = setup > 0 ? `。ほかに接続を新しく張った待ちが ${setup} 回（混雑ではありません）` : "";
+
+  if (queued < DB_POOL_WAIT_WARN) {
+    return {
+      name,
+      level: "ok",
+      detail: `直近24時間で空き待ちはありません${limit}${setupNote}`,
+    };
   }
-  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}`;
-  if (input.waits24h < DB_POOL_WAIT_ERROR) {
+  const detail = `直近24時間で空き待ちが${queued}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}${setupNote}`;
+  if (queued < DB_POOL_WAIT_ERROR) {
     return {
       name,
       level: "warn",
@@ -618,7 +639,7 @@ export function judgePoolWaits(input: {
   return {
     name,
     level: "error",
-    detail: `${detail}。接続待ちが常態化しています`,
+    detail: `${detail}。空き待ちが常態化しています`,
     nextAction:
       "Supabase Pro へ移行するか DB_POOL_MAX を調整してください（要件01 §9 の移行条件に該当します）",
   };
@@ -958,13 +979,22 @@ export async function collectDiagnostics(
   );
 
   // DB接続の待ち行列（T-M8-198）。記録は待たされたときだけ入るので、通常は0件。
-  const poolWaits = await db.query<{ n: string; max_ms: string }>(
-    `select count(*)::text as n, coalesce(max(waited_ms), 0)::text as max_ms
+  /*
+    **「並んだ回数」と「接続を張るのにかかった回数」を分けて数える**（T-M8-323）。
+    以前は件数だけを見ていたため、5分ごとのcronが新しい接続を張るたびに1件積まれ、
+    **それだけで毎日必ず閾値を超えて赤**になっていた（2026-08-27、本番302件のうち292件が
+    `total_count=1 / waiting_count=0`＝プールが空で誰も並んでいない状態だった）。
+  */
+  const poolWaits = await db.query<{ n: string; queued: string; max_ms: string }>(
+    `select count(*)::text as n,
+            count(*) filter (where waiting_count > 0)::text as queued,
+            coalesce(max(waited_ms), 0)::text as max_ms
        from db_pool_events where occurred_at >= now() - interval '24 hours'`,
   );
   checks.push(
     judgePoolWaits({
       waits24h: Number(poolWaits.rows[0]?.n ?? 0),
+      queuedWaits24h: Number(poolWaits.rows[0]?.queued ?? 0),
       maxWaitedMs: Number(poolWaits.rows[0]?.max_ms ?? 0),
       poolMax: poolMax(),
     }),
