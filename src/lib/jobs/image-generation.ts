@@ -375,6 +375,8 @@ export async function executeImageGeneration(
     // AIクレジットを実費で精算（premium・T-M8-109）。画像分はモデル別の概算単価が実費になる。
     await settleIfPremium(deps.runInTx, {
       plan: job.plan,
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
       jobId,
       type: "image",
       estimatedCostUsdTotal: calls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0),

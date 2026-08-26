@@ -3,7 +3,6 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { TEXT_DEFAULT_ESTIMATE_CREDITS } from "@/lib/ai/model-catalog";
 
 import { emptyUsage, type TextGen, type TextGenResult } from "../ai/types";
 import { encryptWithKey } from "../crypto/envelope";
@@ -252,7 +251,7 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-    it("premium: reserves exactly +1 generation on success (JSON repair does not double-count)", async () => {
+    it("premium: 成功時に実費だけを1回書く（JSON修復で二重に引かない）", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -267,8 +266,9 @@ describe("executePostGeneration (local DB)", () => {
       // 精算の部分返還は reason='refund'（settle key）で入るため refunds=1 になる。
       // 実費で精算された量（100トークン入力・50出力の想定原価）。単位はT-M8-325で0.01円へ。
       expect(s.gen).toBe(51);
-      expect(s.reserves).toBe(1);
-      expect(s.refunds).toBe(1); // settleの差分調整（見積もり→実費）
+      // 予約を廃止したので reserve も refund も無い（T-M8-324）。書くのは実費の1回だけ。
+      expect(s.reserves).toBe(0);
+      expect(s.refunds).toBe(0);
     } finally {
       await cleanupUsage(uid);
     }
@@ -289,7 +289,7 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-  it("premium: 失敗確定（failJob）で生成枠が返還される。handler単体では返還しない", async () => {
+  it("premium: **失敗しても生成枠は引かれない**（T-M8-324）", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -300,16 +300,14 @@ describe("executePostGeneration (local DB)", () => {
           deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
         ),
       ).rejects.toThrow();
-      // 返還は handler ではなく runJob の failJob が失敗確定時に行う（要件03 §7.3）。
-      // handler 単体では reserve が残ったままであることを確認する。
+      // **失敗しても枠は引かれない**（予約を廃止したので返還も要らない・T-M8-324）。
       const s = await genState(uid, jobId);
-      expect(s.reserves).toBe(1);
+      expect(s.reserves).toBe(0);
       expect(s.refunds).toBe(0);
-      expect(s.gen).toBe(TEXT_DEFAULT_ESTIMATE_CREDITS); // 見積もりのreserveが残る（T-M8-109）
-      // 失敗が確定すると全額返還される
+      expect(s.gen).toBe(0);
+      // 失敗確定でも変わらない（返すものが無い）
       await failJob(jobId, "post_generation", new Error("terminal"));
       const after = await genState(uid, jobId);
-      expect(after.refunds).toBe(1);
       expect(after.gen).toBe(0);
     } finally {
       await cleanupUsage(uid);

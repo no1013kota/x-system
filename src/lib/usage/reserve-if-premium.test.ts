@@ -69,20 +69,14 @@ describe("reserveIfPremium", () => {
     expect(s.calls.length).toBeGreaterThan(0);
   });
 
-  it("上位モデル選択時は見積もりもモデル別に大きくなる（T-M8-108/109/110）", async () => {
-    const s = spy({ text: "anthropic", text_model: "claude-fable-5" });
-    await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
-    const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
-    expect(insert, "usage_eventsへのreserveが走る").toBeTruthy();
-    // reserveUsage の $7 = amount（見積もりクレジット）。カタログの estimateCredits（Fable 5=5,500・実測ベース）。
-    expect(insert!.params[6]).toBe(5_500);
-  });
 
-  it("未選択（おまかせ）は基準見積もり1,600クレジット", async () => {
-    const s = spy({ text: "anthropic" });
-    await reserveIfPremium(s.runInTx, { ...base, plan: "premium" });
-    const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
-    expect(insert!.params[6]).toBe(1_600);
+
+  it("**usage_events へは1行も書かない**（予約を廃止した・T-M8-324）", () => {
+    const s = spy({ text: "anthropic", text_model: "claude-fable-5" });
+    return reserveIfPremium(s.runInTx, { ...base, plan: "premium" }).then(() => {
+      const insert = s.calls.find((c) => /insert into usage_events/.test(c.sql));
+      expect(insert, "開始前に消費を書いている（完了時に数字が下がって見える）").toBeUndefined();
+    });
   });
 
   /**

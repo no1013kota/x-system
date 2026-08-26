@@ -288,6 +288,8 @@ export async function executeLearningAnalysis(
     // AIクレジットを実費で精算（premium・T-M8-109）。
     await settleIfPremium(deps.runInTx, {
       plan: job.plan,
+      userId: job.user_id,
+      xAccountId: job.x_account_id,
       jobId,
       type: "generation",
       estimatedCostUsdTotal: result.usage.estimated_cost_usd_total,

@@ -48,9 +48,15 @@ export interface UsageCounters {
   ai_credits_used: number;
 }
 
-function slot(used: number, limit: number): UsageSlot {
+/**
+ * 投稿枠は0で止める（超えられない）。**AIクレジットだけはマイナスを許す**（T-M8-324）——
+ * 予約をやめて「走り出した生成は最後まで通す」形にしたので、実際に上限を超えうる。
+ * 0で止めて見せると、超過した事実も、次の期間へ繰り越される事実も画面から消える（原則1）。
+ */
+function slot(used: number, limit: number, allowNegative = false): UsageSlot {
   const u = Math.max(0, Math.trunc(used));
-  return { used: u, limit, remaining: Math.max(0, limit - u) };
+  const remaining = limit - u;
+  return { used: u, limit, remaining: allowNegative ? remaining : Math.max(0, remaining) };
 }
 
 /** usage_counters の当月値と premium 上限から残量サマリを算出する。 */
@@ -60,7 +66,7 @@ export function computeUsageSummary(
   options: { concealed?: boolean; resetsAt?: string | null } = {},
 ): UsageSummary {
   const concealed = options.concealed === true;
-  const aiCredits = slot(counters.ai_credits_used, limits.aiCredits);
+  const aiCredits = slot(counters.ai_credits_used, limits.aiCredits, true);
   const normalPosts = slot(counters.normal_posts_count, limits.normalPosts);
   const urlPosts = slot(counters.url_posts_count, limits.urlPosts);
   const exhausted = [aiCredits, normalPosts, urlPosts].some((s) => s.remaining <= 0);

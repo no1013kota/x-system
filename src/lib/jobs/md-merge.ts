@@ -305,6 +305,8 @@ export async function executeMdMerge(
           jobId: deps.jobId,
           type: "generation",
           estimatedCostUsdTotal: total,
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
         });
       }
       return { version: written, section: target };

@@ -607,6 +607,8 @@ const hasInputUrl = Boolean(job.input.source_url);
   // AIクレジットを実費で精算（premium・T-M8-109）。見積もりreserveとの差分を調整する。
   await settleIfPremium(deps.runInTx, {
     plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
     jobId,
     type: "generation",
     estimatedCostUsdTotal: usage.estimated_cost_usd_total,

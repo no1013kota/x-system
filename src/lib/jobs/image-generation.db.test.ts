@@ -3,7 +3,6 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { IMAGE_DEFAULT_ESTIMATE_CREDITS } from "@/lib/ai/model-catalog";
 
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
@@ -144,14 +143,15 @@ describe("image_generation 枠 reserve/refund (local DB)", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
-  it("失敗確定（failJob）で画像分の見積もりだけが返り、親（生成）の消費分は触らない", async () => {
+  it("**失敗しても画像分は引かれない**（予約を廃止したので返還も要らない・T-M8-324）", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
       await expect(executeImageGeneration(deps(jobId, true))).rejects.toThrow();
       // handler は返還しない（retry差し戻しでクレジットが消える事故を防ぐため）。
-      // 親の消費1 + 画像見積もり（IMAGE_DEFAULT_ESTIMATE_CREDITS・モデル未選択・T-M8-110）。
-      expect(await credits(uid)).toBe(1 + IMAGE_DEFAULT_ESTIMATE_CREDITS);
-      // 失敗確定で画像reserve分だけが返る。親の1は触らない。
+      // 実費が確定していないので画像分は0。親の消費1だけが残る。
+      // 以前は開始時に見積もりを押さえ、失敗確定で返していた（数字が上下して見えた）。
+      expect(await credits(uid)).toBe(1);
+      // 失敗確定でも変わらない（返すものが無い）。
       await failJob(jobId, "image_generation", new Error("terminal"));
       expect(await credits(uid)).toBe(1);
     } finally {

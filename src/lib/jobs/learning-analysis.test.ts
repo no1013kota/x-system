@@ -128,11 +128,11 @@ describe("executeLearningAnalysis", () => {
     );
   });
 
-  it("reserves a generation for premium at start", async () => {
+  it("**開始時に枠を押さえない**（実費が確定したときだけ書く・T-M8-324）", async () => {
     const { db, writes } = mockDb(jobHandler({ type: "ref_account", url: "https://x.com/foo", status: "pending", plan: "premium" }));
     await executeLearningAnalysis(deps({ db }));
-    const reserve = writes.find((w) => RESERVE.test(w.sql))!;
-    expect(reserve.params[5]).toBe("job:job1:generation:reserve"); // idempotency key
+    const reserve = writes.find((w) => RESERVE.test(w.sql));
+    expect(reserve, "開始前に消費を書いている").toBeUndefined();
   });
 
   it("skips re-analysis when the source is already analyzed", async () => {

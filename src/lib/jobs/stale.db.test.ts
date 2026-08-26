@@ -66,6 +66,12 @@ describe("heartbeat & recoverStaleJobs", () => {
     return rows[0].id;
   }
 
+  /*
+    **返還の検査は撤去した**（T-M8-324）。予約をやめたので、失敗確定時に返すものが無い。
+    「失敗しても枠が引かれない」ことは `post-generation.db.test.ts` と
+    `image-generation.db.test.ts` が各jobの経路で見ている。
+  */
+
   it("heartbeat advances locked_at and sets stage for a running job", async () => {
     const { xid, jobId } = await withTransaction(async (c) => {
       const xid = await makeXid(c);
@@ -191,49 +197,5 @@ describe("heartbeat & recoverStaleJobs", () => {
     await withTransaction((c) => c.query(`delete from auth.users where id=$1`, [uid]));
   };
 
-  it("refunds a reserved generation slot when a stale job is finalized failed (attempt>=3)", async () => {
-    const { uid, jobId } = await withTransaction(async (c) => {
-      const { uid, xid } = await seedPremium(c);
-      const jobId = await makeRunningJob(c, xid, 15, 3); // stale, attempt>=3
-      await reserveUsage(c as unknown as Parameters<typeof reserveUsage>[0], {
-        userId: uid,
-        xAccountId: xid,
-        jobId,
-        type: "generation",
-      });
-      return { uid, xid, jobId };
-    });
-    try {
-      expect((await genState(uid, jobId)).gen).toBe(1); // reserved
-      await recoverStaleJobs(); // real finalizeFailedJob refunds in the same tx
-      const s = await genState(uid, jobId);
-      expect(s.refunds).toBe(1); // exactly one refund event
-      expect(s.gen).toBe(0); // counter restored
-    } finally {
-      await cleanupUsage(uid);
-    }
-  });
 
-  it("does not add a second refund when the worker already refunded (idempotent)", async () => {
-    const { uid, jobId } = await withTransaction(async (c) => {
-      const { uid, xid } = await seedPremium(c);
-      const jobId = await makeRunningJob(c, xid, 15, 3);
-      const tx = c as unknown as Parameters<typeof reserveUsage>[0];
-      await reserveUsage(tx, { userId: uid, xAccountId: xid, jobId, type: "generation" });
-      return { uid, xid, jobId };
-    });
-    try {
-      // worker already refunded (same idempotency key として先に refund event を作る)
-      await withTransaction(async (c) => {
-        const { refundUsage } = await import("../usage/generation-reserve");
-        await refundUsage(c as unknown as Parameters<typeof refundUsage>[0], jobId, "generation");
-      });
-      expect(await genState(uid, jobId)).toEqual({ gen: 0, refunds: 1 });
-
-      await recoverStaleJobs(); // stale finalize must not double-refund
-      expect(await genState(uid, jobId)).toEqual({ gen: 0, refunds: 1 });
-    } finally {
-      await cleanupUsage(uid);
-    }
-  });
 });

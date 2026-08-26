@@ -80,7 +80,7 @@ describe("computeUsageSummary (要件03 §8)", () => {
     expect(enough.paused).toBe(false);
   });
 
-  it("clamps remaining at 0 when over the limit and reflects 上限到達", () => {
+  it("投稿枠は0で丸め、**AIクレジットはマイナスを見せる**（T-M8-324）", () => {
     // AIクレジットは精算の追加消費で上限を超え得る（拒否せず計上する・T-M8-109）。
     const s = computeUsageSummary(
       counters({ normal_posts_count: 205, url_posts_count: 20, ai_credits_used: 101_000 }),
@@ -88,7 +88,8 @@ describe("computeUsageSummary (要件03 §8)", () => {
     );
     expect(s.normal_posts.remaining).toBe(0); // 205 > 200 → 0（負数にしない）
     expect(s.url_posts.remaining).toBe(0); // 20 == 20 → 0（上限到達）
-    expect(s.ai_credits.remaining).toBe(0);
+    // 超過した事実と、次の期間へ繰り越される事実を画面から消さない（原則1）。
+    expect(s.ai_credits.remaining).toBe(-1_000);
   });
 });
 
