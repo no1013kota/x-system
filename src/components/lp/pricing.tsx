@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
  * （landing-page.test.ts が固定する）。
  *
  * 下部の注意書き（APIキーの費用・申込前確認）は運営者の決定で削除した（2026-08-21）。
- * 法令上の開示は次で担う: 「初回のみ」「カード登録が必要」＝CampaignCallout、
+ * 法令上の開示は次で担う: 「カード登録が必要」＝CampaignCallout、
+ * **「初回限り」はFAQ（「はじめてのお申し込みに限り7日間無料です」）と特商法ページ**（2026-08-26に帯から外した）、
  * BYOKのAPI実費＝スタンダードカードの「APIキーの用意」行、法定事項の全文＝特商法ページ・利用規約。
  */
 export function PricingCards() {

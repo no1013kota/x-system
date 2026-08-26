@@ -82,11 +82,11 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   /**
    * 申込前の開示（T-M8-171・運営者の決定 2026-08-21）。
    *
-   * 定型文はプロモ帯（CampaignCallout）へ畳んだ。**「初回のみ」「カード登録が必要」は
+   * 定型文はプロモ帯（CampaignCallout）へ畳んだ。**「カード登録が必要」は
    * 帯の中に残る**（景表法の有利誤認回避・無料の条件）。自動更新・解約の法定事項の全文は
    * フッタから辿れる特定商取引法ページが担う。
    */
-  await expect(page.getByText("初回のみ7日間", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("7日間の無料トライアル", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "特定商取引法に基づく表記" }).first(),

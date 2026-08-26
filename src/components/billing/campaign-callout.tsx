@@ -13,7 +13,12 @@ export function CampaignCallout({
   trialAvailable = true,
 }: {
   className?: string;
-  /** 無料トライアルは初回のみ。消化済みの利用者にはトライアル文を出さない（有利誤認の回避）。 */
+  /**
+   * 無料トライアルは初回のみ。消化済みの利用者にはトライアル文を出さない（有利誤認の回避）。
+   * **帯の文面からは「初回のみ」の語を外してある**（2026-08-26・運営者の最終レビュー）。
+   * 初回限りであることの開示はFAQと特商法ページが担う。この props による出し分けは残す
+   * ——消化済みの人に「7日間無料」と見せないための最後の砦。
+   */
   trialAvailable?: boolean;
 }) {
   if (!RELEASE_CAMPAIGN.active && !trialAvailable) return null;
@@ -35,14 +40,7 @@ export function CampaignCallout({
         <p className={cn("text-body text-ink-2", RELEASE_CAMPAIGN.active && "mt-1")}>
           {/* 半額が終わったあとは「さらに」で始めない（前段が無くなるため）。 */}
           {RELEASE_CAMPAIGN.active ? "さらに" : ""}
-          {/*
-            **「初回のみ」を外さない**（T-M8-321）。この帯が「トライアルは初回限り」の
-            法令上の開示を担う（`lp/pricing.tsx` と `plans/page.tsx` にその旨が書いてある）。
-            外すと2回目以降の利用者が再度無料と受け取れる＝有利誤認になる。
-            FAQも「はじめてのお申し込みに限り7日間無料」で揃えている。
-            2026-08-26 に一度外れ、E2E（landing / plans）が検出した。
-          */}
-          <strong className="font-bold text-ink">初回のみ7日間の無料トライアル</strong>を実施中
+          <strong className="font-bold text-ink">7日間の無料トライアル</strong>を実施中
           （カード登録が必要です。期間中に解約すれば料金はかかりません）。
         </p>
       ) : null}

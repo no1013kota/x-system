@@ -31,8 +31,13 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
   expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
-  // 無料の条件（初回のみ・カード登録・解約すれば無料）を同じ場所で言う（景表法・要件03 §54）。
-  await expect(pricing.getByText(/初回のみ7日間/).first()).toBeVisible();
+  /*
+    無料の条件を同じ場所で言う（景表法・要件03 §54）。カード登録の要否と「解約すれば無料」は帯で言う。
+    **「初回のみ」は帯から外した**（2026-08-26・運営者の最終レビュー）。トライアルが初回限りである
+    開示は、LPのFAQ（「はじめてのお申し込みに限り7日間無料です」）と、フッタの特定商取引法ページ・
+    利用規約が担う。帯の文言を戻すときはここも戻す。
+  */
+  await expect(pricing.getByText(/7日間の無料トライアル/).first()).toBeVisible();
   await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
   // BYOKのAPI実費はスタンダードカードの「APIキーの用意」行が唯一の常時表示（T-M8-171）。
@@ -121,7 +126,7 @@ test.describe("JSが動かない環境", () => {
     }
 
     // 法定開示は文言そのものが要件なので、ここだけは literal を見る（消えたら落とす）。
-    for (const pattern of [/無料トライアル/, /初回のみ/]) {
+    for (const pattern of [/無料トライアル/, /カード登録が必要/]) {
       await expect(page.getByText(pattern).first()).toBeVisible();
     }
   });
