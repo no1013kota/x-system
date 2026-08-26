@@ -28,7 +28,8 @@ interface Cron {
   schedule: string;
 }
 
-const crons: Cron[] = JSON.parse(readRoot("vercel.json")).crons;
+const vercelConfig = JSON.parse(readRoot("vercel.json"));
+const crons: Cron[] = vercelConfig.crons;
 const requirements = readRoot("docs/requirements/04_jobs_and_automation.md");
 
 /** `/api/cron/news-fetch` → `news_fetch`（正本の表はjob名で書かれている）。 */
@@ -122,5 +123,29 @@ describe("news_fetch のスケジュールと doctor の判定が揃っている
       utcHoursOf(news!.schedule),
       "vercel.json を変えたら diagnostics.ts の NEWS_FETCH_UTC_HOURS も直すこと（doctorの停止判定が狂う）",
     ).toEqual([...NEWS_FETCH_UTC_HOURS]);
+  });
+});
+
+/**
+ * **アプリを動かす場所は東京に固定する**（T-M8-320）。
+ *
+ * 指定が無いとVercelの既定＝`iad1`（ワシントンD.C.）になり、**利用者もDBも東京なのに
+ * アプリだけアメリカ東海岸**で動く。1回の画面遷移で太平洋を最大4回横断し、
+ * ページの大きさに関係なく固定で0.2〜0.35秒かかっていた（2026-08-26 実測。
+ * `x-vercel-id: hnd1::iad1::…` の2つ目が実行リージョン）。
+ *
+ * **Supabaseのリージョンと揃える**のが要点。片方だけ動かすと往復が増える。
+ */
+describe("実行リージョン（T-M8-320）", () => {
+  it("東京（hnd1）に固定されている", () => {
+    expect(
+      vercelConfig.regions,
+      "regions を消すと既定の iad1（ワシントンD.C.）になり、全画面が0.2〜0.35秒遅くなる",
+    ).toEqual(["hnd1"]);
+  });
+
+  it("Supabaseのリージョン（ap-northeast-1＝東京）と同じ場所にある", () => {
+    // 対応表: Vercel hnd1 ↔ AWS ap-northeast-1。どちらかを動かすなら両方を見直す。
+    expect(vercelConfig.regions[0]).toBe("hnd1");
   });
 });

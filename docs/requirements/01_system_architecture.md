@@ -2,13 +2,21 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.29 |
-| 更新日 | 2026-08-24 |
+| バージョン | v1.30 |
+| 更新日 | 2026-08-26 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
 
 Exos AIはNext.js単一アプリとして実装し、Vercel上でUI、API Routes、Server Actions、定時処理handlerを動かす。初期環境の永続化、認証、StorageはSupabase Free、課金はStripe、外部投稿はX API、AI実行はClaude/OpenAI/Geminiを利用する。定時handlerは初期に常時稼働Macの`launchd`から呼び、移行条件到達後にVercel Cronへ切り替える。Supabaseの移行条件は§9、実行基盤の判断は[ADR-0001](../decisions/0001-initial-infrastructure-plan.md)を正とする。
+
+**実行リージョンは東京（`hnd1`）に固定する**（T-M8-320・2026-08-26）。`vercel.json` の `regions` を
+指定しないとVercelの既定 `iad1`（ワシントンD.C.）になり、**利用者もSupabaseも東京なのにアプリだけ
+アメリカ東海岸**で動く。1回の画面遷移で太平洋を最大4回横断し、**ページの大きさに関係なく固定で
+0.2〜0.35秒**かかっていた（実測: 静的ファイル0.156s に対しページ0.356s。`/` と `/login` が
+同じ0.50sで、描画量では変わらなかった）。実行リージョンは `x-vercel-id: <入口>::<実行>::…` の
+2つ目で確認できる。**Supabaseのリージョン（`ap-northeast-1`）と揃えるのが要点**で、
+片方だけ動かすと往復が増える。再発は `src/lib/ops/vercel-crons.test.ts` が止める。
 
 ```mermaid
 flowchart TB
@@ -246,3 +254,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.27 | 2026-08-23 | base_md履歴の保持期間を要件02（最新5版）へ揃えた（T-M8-253） |
 | v1.28 | 2026-08-23 | proxyから契約状態のDB読み取りを削除（T-M8-268。画面は契約で弾かず、実行側で止める。全ページ遷移のDB往復を1本削減） |
 | v1.29 | 2026-08-24 | 画面表示用のDB読み取りを「利用者まわりの1行」へ束ねる方針を追加（T-M8-288。App Shell 8→5往復） |
+| v1.30 | 2026-08-26 | 実行リージョンを東京（hnd1）へ固定（T-M8-320）。既定の iad1 では利用者・Supabaseとも離れ、画面遷移ごとに固定で0.2〜0.35秒かかっていた |
