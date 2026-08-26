@@ -454,6 +454,38 @@ export default function Home() {
             <SectionMark label="料金" no="05" />
                           <h2 className={H2}>月額{startingPrice}から。全プラン7日間の無料トライアル付き。</h2>
             <PricingCards />
+            {/*
+              友達招待キャンペーン（T-M8-268）。**料金の直後・同じ白い面に置く**
+              （運営者の指示 2026-08-26）。別セクションにすると背景がグレーへ切り替わり、
+              上下にセクション余白が二重に入って間延びする。行き先は `/app/invite` 固定——
+              未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま着く。
+            */}
+            <div className="mt-12 overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div className="max-w-[560px]">
+                  <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                    <Icon aria-hidden="true" name="star_shine" size={13} />
+                    友達招待キャンペーン
+                  </p>
+                  <h2 className={`${H2} mt-3`}>
+                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
+                  </h2>
+                  <p className="mt-2.5 text-body leading-6 text-ink-2">
+                    ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
+                    最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
+                  </p>
+                </div>
+                <Link
+                  className={cn(
+                    buttonVariants({ variant: "brand" }),
+                    "h-11 shrink-0 px-6 text-body font-bold",
+                  )}
+                  href="/app/invite"
+                >
+                  招待リンクを受け取る
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -515,39 +547,6 @@ export default function Home() {
 
 
         {/* 07 よくある質問 */}
-        {/*
-          友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。**契約前でも参加できる**ので
-          料金の直後に置く（「まだ使わないが紹介はしたい」人の受け皿）。行き先は `/app/invite` 固定——
-          未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま招待画面に着く。
-        */}
-        <section className={`${CONTAINER} ${SECTION_PAD}`}>
-          <div className="overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
-            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div className="max-w-[560px]">
-                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
-                  <Icon aria-hidden="true" name="star_shine" size={13} />
-                  友達招待キャンペーン
-                </p>
-                <h2 className={`${H2} mt-3`}>
-                  紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
-                </h2>
-                <p className="mt-2.5 text-body leading-6 text-ink-2">
-                  ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
-                  最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
-                </p>
-              </div>
-              <Link
-                className={cn(
-                  buttonVariants({ variant: "brand" }),
-                  "h-11 shrink-0 px-6 text-body font-bold",
-                )}
-                href="/app/invite"
-              >
-                招待リンクを受け取る
-              </Link>
-            </div>
-          </div>
-        </section>
 
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
           {/* 06 利用者の声を隠しているあいだは番号を詰める（復活時は "07" へ戻す・T-M8-231）。 */}
