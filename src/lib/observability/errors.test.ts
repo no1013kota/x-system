@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AppError, toUserFacingError, userMessageForCode } from "./errors";
+import { ALL_ERROR_CODES, AppError, toUserFacingError, userMessageForCode } from "./errors";
 
 describe("toUserFacingError", () => {
   it("maps an AppError to its code and safe message", () => {
@@ -39,5 +39,39 @@ describe("toUserFacingError", () => {
     });
     const out = toUserFacingError(e);
     expect(JSON.stringify(out)).not.toContain("sk-xxx");
+  });
+});
+
+/**
+ * 利用者向け文言の質を固定する（T-M8-329・運営者の指摘 2026-08-27
+ * 「エラー内容がユーザー目線でわかりやすいように」）。
+ *
+ * **「何が起きたか」だけの文言は問い合わせにしかならない**（CLAUDE.md 原則2）。
+ * 検出器が空振りしないよう、当たる先を明示して数える。
+ */
+describe("利用者向けエラー文言（T-M8-329）", () => {
+  const messages = ALL_ERROR_CODES.map((code) => [code, userMessageForCode(code)] as const);
+
+  it("全コードに文言がある（コードを足したら文言も足す）", () => {
+    for (const [code, text] of messages) {
+      expect(text, `${code} の文言が空`).toBeTruthy();
+      expect(text.length, `${code} の文言が短すぎる`).toBeGreaterThan(8);
+    }
+  });
+
+  it("行き詰まる文言を残さない（次にやることが書いてある）", () => {
+    // 「〜できません。」だけで終わる文言を落とす。何をすればよいかが無いと打つ手がない。
+    const deadEnds = messages.filter(
+      ([, t]) =>
+        !/(ください|お待ち|お問い合わせ)/.test(t),
+    );
+    expect(deadEnds.map(([c]) => c), "次の一手が書かれていない文言がある").toEqual([]);
+  });
+
+  it("内部の値を混ぜない（上限・ID・providerの生文言）", () => {
+    for (const [code, text] of messages) {
+      expect(text, `${code} に数値の上限が出ている`).not.toMatch(/\d{3,}/);
+      expect(text, `${code} に内部語が出ている`).not.toMatch(/service_role|null|undefined|Error/);
+    }
   });
 });
