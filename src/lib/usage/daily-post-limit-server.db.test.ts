@@ -58,6 +58,20 @@ describe("countTodaysPostsForXAccount (db)", () => {
    *
    * `counter_type` は operation に合わせる（`usage_events_post_op` 制約が投稿系の組み合わせを縛る）。
    */
+  /**
+   * **同じJST日に必ず収まる「少し前」**を返す（T-M8-322）。
+   *
+   * 固定の `-1 minute` は JST 00:00台に走ると前日へ落ちる。日の先頭では戻す量を縮めて、
+   * どの時刻に走っても今日のうちに収める。offsetは `$6::interval` のパラメータ値なので
+   * SQL式ではなくJS側で作る。
+   */
+  function earlierToday(): string {
+    const jst = new Date(Date.now() + 9 * 3_600_000);
+    const secondsIntoDay =
+      jst.getUTCHours() * 3600 + jst.getUTCMinutes() * 60 + jst.getUTCSeconds();
+    return `-${Math.min(60, Math.max(0, secondsIntoDay - 1))} seconds`;
+  }
+
   async function addEvent(
     c: PoolClient,
     seed: { userId: string; xAccountId: string },
@@ -86,8 +100,14 @@ describe("countTodaysPostsForXAccount (db)", () => {
     const seed = await withTransaction(makeAccount);
     try {
       await withTransaction(async (c) => {
+        /*
+          **「いまから-1分」を使わない**（T-M8-322）。JST 00:00台に走ると -1分は前日になり、
+          「今日の件数」が1件しか数えられず**毎日1分間だけ必ず落ちる**
+          （2026-08-27 00:00 に実際に落ちた。落ちた回数ではなく落ちる条件を見る・CLAUDE.md）。
+          同じJST日の中に確実に収まる2点を使う。
+        */
         await addEvent(c, seed, { operation: "post_create", offset: "0" });
-        await addEvent(c, seed, { operation: "post_create", offset: "-1 minute" });
+        await addEvent(c, seed, { operation: "post_create", offset: earlierToday() });
         // 削除は「Xへ出た本数」ではないので数えない。
         await addEvent(c, seed, { operation: "post_delete", offset: "0" });
         // 生成（下書きを作っただけ）も投稿ではない。
