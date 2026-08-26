@@ -5831,15 +5831,17 @@ UI側boolean を壊しても投稿は誤爆しない）。
   そこから読むか、`news_fetch` の窓（12時間）と同じ定数を使う。**閾値を単に伸ばすだけにしない**
   ——夜間に本当に止まっても朝まで気付けなくなる。
 
-**D-46: メール確認の廃止（T-M8-202）がリモートに反映されていない（起票 2026-08-26・本番反映の作業中に発見・**決定 2026-08-26: 運営者が案A〔決定どおり true にする〕を選択。staging は適用済み／本番は未適用**）** — T-M8-202（`done`・2026-08-22）と D-36 は「6桁確認を一時的に廃止し、登録→即ログインにする」だった。リポジトリ側は決定どおり（`supabase/config.toml` の `enable_confirmations = false`、`scripts/auth-settings.mjs` の `mailer_autoconfirm: true`、整合は `auth-settings-sync.test` が固定）。**ところが staging・本番の実設定はどちらも `mailer_autoconfirm = false`** で、決定から4日間、**実際には6桁確認が要るまま**だった（2026-08-26 に Management API で実測）。反映コマンド `npm run auth:templates -- --target <env> --apply` が決定後に一度も実行されていない。
+**D-46: メール確認の廃止（T-M8-202）がリモートに反映されていない（起票 2026-08-26・本番反映の作業中に発見・**決定 2026-08-26: 運営者が案A〔決定どおり true にする〕を選択。staging・本番とも適用済み**）** — T-M8-202（`done`・2026-08-22）と D-36 は「6桁確認を一時的に廃止し、登録→即ログインにする」だった。リポジトリ側は決定どおり（`supabase/config.toml` の `enable_confirmations = false`、`scripts/auth-settings.mjs` の `mailer_autoconfirm: true`、整合は `auth-settings-sync.test` が固定）。**ところが staging・本番の実設定はどちらも `mailer_autoconfirm = false`** で、決定から4日間、**実際には6桁確認が要るまま**だった（2026-08-26 に Management API で実測）。反映コマンド `npm run auth:templates -- --target <env> --apply` が決定後に一度も実行されていない。
 - **アプリは壊れていない。** `signUp` 応答の `data.session` の有無で分岐するため、設定がどちらでも自動追従する（T-M8-202 の実装メモ）。壊れているのは「決めたことが効いていない」点だけ。
 - (案A) **決定どおり `true` にする**（`npm run auth:templates -- --target staging --apply` と `--target production --apply`）。ただし副作用として**メール確認なしで登録できる**＝他人のアドレスでも登録できる状態になる。D-36 で説明済みのデメリットがそのまま効く
 - (案B) **現状（確認あり）を正とし、リポジトリ側を戻す**（`enable_confirmations = true` / `mailer_autoconfirm: false`）。ダッシュボードから意図的に戻した可能性があるなら、こちらが実態
 - **勝手に反映しなかった理由**: 決定は存在するが、**2環境とも一致して `false`** なので「未反映」か「意図的に戻した」かを外から区別できない。外向き・セキュリティに関わる変更なので運営者の確認を取る（2026-08-26・運営者は就寝中）。**どちらでもアプリは動くので急ぎではない**が、放置すると「決めたことと実物が違う」状態が続く
 - **適用状況（2026-08-26）**: staging は `npm run auth:templates -- --target staging --apply` で
   `mailer_autoconfirm: true` を確認済み（差出人名「Exos AI」も維持）。
-  **本番は未適用**——同じコマンドが自動承認の判定でブロックされたため、運営者が手元で実行する必要がある:
-  `npm run auth:templates -- --target production --apply`。実行すると本番も登録→即ログインになる。
+  **本番も適用済み**（2026-08-26・運営者が手元で `npm run auth:templates -- --target production --apply` を実行。
+  Claude からの実行は自動承認の判定でブロックされたため）。両環境を読み直して
+  `差出人名: Exos AI` / `mailer_autoconfirm: true` / `反映は不要です` を確認した。
+  **これで「登録→即ログイン」が実際に効いている状態になった**（決定から4日遅れで追いついた）。
 - 参考: **差出人名は staging だけ「Space AI」だったので直した**（本番は既に「Exos AI」）。この作業で `--apply` を使うと `mailer_autoconfirm` まで一緒に変わるため、差出人名だけを狙って Management API へ PATCH した
 
 **D-45: Claude Code に `git push` を許すか（起票 2026-08-25・**決定 2026-08-25: 当面は許す〔案A〕。本番リリース後に案Bへ戻す**）** — `.claude/settings.json` の `permissions.deny` に `Bash(git push:*)` があり、これが他のすべての設定に優先するため Claude は push できない（`settings.local.json` の `defaultMode: bypassPermissions` より deny が強い）。ネットワーク側は `github.com` が許可済みなので、障害はこの1行だけ。
