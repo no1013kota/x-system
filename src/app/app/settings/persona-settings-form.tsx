@@ -137,25 +137,32 @@ export function PersonaSettingsForm({
 
   return (
     <form className="space-y-6" noValidate onSubmit={submit}>
-      <div className="flex flex-col gap-2 rounded-card border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          対象アカウント: <strong>@{accountHandle}</strong>
-        </span>
-        {/* 呼称は他タブと同じ「アカウント.md」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
+      {/*
+        **この画面が何を決めるのかを1文で言う**（T-M8-344）。上の参考ソースから
+        自動で作れるようになったので、「ここは何をする場所か」「作った後どうなるか」が
+        分からないと、上下どちらを触ればよいか迷う。
+      */}
+      <div className="rounded-card border border-hairline bg-page px-4 py-3">
+        <CardTitle>アカウント設定</CardTitle>
+        <p className="mt-1 text-body leading-6 text-ink-2">
+          AIが「誰として・誰に・どう書くか」を、ここの内容から決めます。
+          上の参考ソースから作った内容もここに入ります。
+          <strong className="text-ink">気になるところは直接直せます。</strong>
+        </p>
+        <p className="mt-1 text-caption text-ink-3">
+          対象アカウント: <strong className="text-ink-2">@{accountHandle}</strong>
+          {version >= 1 ? "（保存すると次の生成から反映されます）" : "（まだ保存されていません）"}
+        </p>
       </div>
 
       {version >= 1 && (savedDifference || dirty) ? (
         // 6セクションのタイトル列挙は読み飛ばされるだけだった（T-M8-66）。
         // 「戻せる」導線があれば安心して保存できるので、要点2文に絞る。
+        // 学習の反映先が**この設定そのもの**になった（T-M8-344）ので、
+        // 「学習で磨いた分が戻る」という注意は要らなくなった（同じ値を編集している）。
         <Notice tone="warn"
           role="status">
-          保存すると、プロンプトのアカウント.mdが書き換えられます。
-          {/*
-            **参考ソースの学習で洗練された分も戻る**ことを明示する（T-M8-336）。
-            学習の反映先をセクション1〜4へ移したため、ここの保存で上書きされる範囲に
-            AIが磨いた文章が含まれるようになった。黙って消えると気付けない（原則1）。
-          */}
-          参考ソースの学習で磨かれた表現も、この画面の入力から作り直した内容に戻ります。以前の内容は
+          保存すると、プロンプトのアカウント.mdが書き換えられます。以前の内容は
           <Link className="mx-1 font-medium underline underline-offset-4" href="/app/prompts?sec=account-md">
             プロンプト画面の変更履歴
           </Link>

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.58 |
+| バージョン | v1.59 |
 | 更新日 | 2026-08-27 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -259,7 +259,7 @@ flowchart TD
 
 ## 12. 学習・改善
 
-- LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。**mergeの反映先はアカウント.mdのセクション1〜4**（T-M8-336。5〜6から変更）で、現在の1〜4と**全active sourceのanalysis**を渡す（種別でセクションを分けない）。モデルは`analysis`級で固定する（プロンプト設計書 §5.1）。
+- LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件を取得し、**分析結果の保存までで終わる**（T-M8-344。以前は同じjobでMD-MERGEまで続けていた）。**設定への反映は利用者が「参考ソースからアカウント設定を作る／更新する」を押したとき**に、`learning_source_id` を持たない単独 `md_merge` job として走る——自分の設定がいつ書き換わるかを利用者が決められるようにするため。mergeは**アカウント設定そのもの**（`x_accounts.settings`）を書き換え、アカウント.mdはそこから作り直す（T-M8-341）。**アカウント設定が未保存でも走る**（分析だけを材料に初版を作る。分析が1件も無ければ `validation_error`）。渡すのは現在の設定と**全active sourceのanalysis**。モデルは`analysis`級で固定する（プロンプト設計書 §5.1）。
 - ~~own_posts再取り込みの30日制御~~ **own_posts（自分の過去投稿から学習）は2026-08-15に廃止**（T-M8-103。毎朝の投稿分析K-2と重複）。learning_analysisの対象は参考アカウント（PT-L1）と参考投稿（PT-L2）のみ。二重送信は進行中jobの`job_conflict`で止める。
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
 - **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
@@ -371,3 +371,4 @@ flowchart TD
 | v1.56 | 2026-08-27 | ニュース取得を1日2回（JST 12時・19時）へ減らし、production 限定にした（T-M8-326。外部API費用の97.6%がこのcronだった） |
 | v1.57 | 2026-08-27 | 学習の反映先をアカウント.mdのセクション1〜4へ（T-M8-336）。ニュースの検索上限を3へ（T-M8-335） |
 | v1.58 | 2026-08-27 | ニュース取得をMessage Batches API＋20分おきの取り込みcronへ（T-M8-338）。取得窓を起動時刻の表から導く形へ修正（T-M8-337） |
+| v1.59 | 2026-08-27 | 学習の反映をボタン起動の単独 md_merge へ（T-M8-344）。分析と反映を分け、アカウント設定が未保存でも作れるようにした |

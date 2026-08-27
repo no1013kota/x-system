@@ -50,7 +50,14 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
       [ctx.jobId],
     )
   ).rows[0];
-  if (!meta?.learning_source_id) return; // 対象ソース無し → no-op
+  if (!meta) return; // job が消えている → no-op
+  /*
+    `learning_source_id` の有無で**何のためのmergeか**が決まる（T-M8-344）。
+    - 有り: 学習ソースの**削除**に伴う作り直し（その1件を除いて再構成する）
+    - 無し: 利用者が「学習ソースからアカウント設定を作る」を押した反映
+      （登録済みの分析をすべて使う。アカウント設定が未保存でも作れる）
+  */
+  const removedSourceId = meta.learning_source_id ?? undefined;
 
   // 削除mergeも生成枠を1消費（premium・要件04 §12）。冪等keyで再実行安全。
   await reserveIfPremium(runInTx, {
@@ -65,7 +72,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   try {
     await executeMdMerge(
       { db: pooledDb, jobId: ctx.jobId, runInTx, runInTxForSettle: runInTx, resolveProvider, makeDeadline: () => deadline },
-      { removedSourceId: meta.learning_source_id },
+      removedSourceId ? { removedSourceId } : {},
     );
   } catch (error) {
     // retryable は attempt<3 で queued 自己終端（runJob の failed 化を空振り）・reserve 保持。

@@ -101,10 +101,17 @@ describe("cleanupOldData (db)", () => {
       // 参照付き行がバッチ枠を塞いで未参照行が残る飢餓（レビュー指摘・T-M8-192）もここで見る。
       for (let i = 0; i < 5; i++) await cleanupOldData({ db: pooledDb });
 
+      /*
+        **数えるのはこのテストが作った時間帯の行だけ**（`fetched_at <= now()-31分`）。
+        全件を数えると、**並行して走る別のテストが1件でもニュースを入れた瞬間に501件**になり、
+        cleanupは正しく効いているのに落ちる（実際に全体実行でだけ落ちた・T-M8-161と同型）。
+        seedした520件はすべて30分より前なので、この境界で切れば意図（上限まで削れているか）は保てる。
+      */
       const { rows } = await pooledDb.query<{ n: string; ref: string }>(
         `select
            (select count(*) from news_items ni
-             where not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
+             where ni.fetched_at <= now() - interval '31 minutes'
+               and not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
                and not exists (
                  select 1 from notifications n
                   where jsonb_exists(n.payload->'news_item_ids', ni.id::text)))::text as n,

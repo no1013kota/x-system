@@ -10,7 +10,6 @@ import { readTweetMetrics, readUserTimeline } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import { createDeadline, type Deadline } from "./deadline";
 import { executeLearningAnalysis } from "./learning-analysis";
-import { executeMdMerge } from "./md-merge";
 import type { JobContext } from "./handlers";
 
 /**
@@ -60,13 +59,12 @@ export async function learningAnalysisHandler(ctx: JobContext): Promise<void> {
     runInTx,
     resolveProvider,
     makeDeadline,
-    // 分析成功後、同一job内で該当セクションをmergeしてbase_md新versionを確定する（T-M5-04）。
-    mergeAfterAnalysis: async (sourceId) => {
-      await executeMdMerge(
-        { db: pooledDb, jobId: ctx.jobId, runInTx, resolveProvider, makeDeadline },
-        { confirmSourceId: sourceId },
-      );
-    },
+    /*
+      **分析だけで終わる**（T-M8-344・運営者の指示 2026-08-27）。以前はここで続けて
+      アカウント設定へ反映していたが、反映は利用者が「学習ソースからアカウント設定を作る」を
+      押したときに行う形にした——**いつ設定が書き換わるのかを利用者が決められる**ようにするため。
+      未注入の経路が source を `analyzed` にするので、ここでは何も渡さない。
+    */
     fetchReferenceAccountPosts: async ({ handle }) => {
       const user = await getUserByUsername(accessToken, handle, client);
       const { posts } = await readUserTimeline(readDeps, {

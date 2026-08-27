@@ -4,9 +4,13 @@
 //   npm run check:mail-sender -- --send    # 実際に1通、SUPPORT_EMAIL 宛へ送る
 //
 // **なぜコマンドが要るか**: 差出人を support@exosai.net にしても、送信側（Gmail/Workspace）で
-// そのアドレスを名乗る許可が無ければ送信は拒否される。設定画面をいくら見ても分からず、
-// 「利用者に確認メールが届かない」形でしか表面化しない（画面には「送信しました」と出る）。
-// **押す前に分かる**ようにする（CLAUDE.md 原則2）。
+// そのアドレスを名乗る許可が無ければ、そのアドレスでは届かない。
+//
+// **重要（2026-08-27に実際に踏んだ）**: Gmailは許可の無いFromを**拒否せず、黙って
+// ログインアカウントのアドレスへ書き換える**。SMTPは 250 OK を返し、送信側からは成功に見える。
+// つまり**「送れた」ことは「そのアドレスで届いた」ことを意味しない**。
+// 判定できるのは**受信したメールのFromヘッダだけ**なので、このコマンドは
+// 「送信まで到達したか」しか言わない。最後は受信箱の差出人表示を人が見る必要がある。
 //
 // 秘密値は表示しない。SMTPのユーザー名はドメインだけを出す。
 
@@ -56,15 +60,33 @@ if (senderMatchesLogin) {
   console.log(`✅ ログインユーザー自身が ${EXPECTED_SENDER_EMAIL} です（別名の認証は不要）`);
 } else {
   console.log(
-    `ℹ️  ログインユーザーと差出人が違います（${EXPECTED_SENDER_EMAIL} を名乗る形）。\n` +
-      "    Gmail/Workspace では「他のアドレスとしてメールを送信」の認証が必要です。" +
-      "認証が無いと送信時に 5xx で拒否されます。",
+    `⚠️  ログインユーザーと差出人が違います（${EXPECTED_SENDER_EMAIL} を名乗る形）。\n` +
+      "    Gmail/Workspace では「他のアドレスとしてメールを送信」の認証が要ります。\n" +
+      "    **認証が無くても送信は成功します**——Gmailは拒否せず、Fromを黙って\n" +
+      `    @${userDomain} のアドレスへ書き換えます（2026-08-27に実際に踏んだ）。\n` +
+      "    確かめられるのは受信箱のFromヘッダだけです。",
   );
+}
+
+/*
+  **差出人と宛先が同じだと届かない**（T-M8-343）。Gmailは自分が送ったメールを自分の
+  受信トレイに入れないため、アラートの宛先が差出人と同じだと**異常が起きても気付けない**。
+  2026-08-25に同じ罠を踏んでいる。
+*/
+const alertTo = process.env.OPERATOR_ALERT_EMAIL ?? to;
+if (alertTo && alertTo.toLowerCase() === EXPECTED_SENDER_EMAIL.toLowerCase()) {
+  console.log(
+    `\n❌ 運営者向けアラートの宛先が差出人と同じ（${EXPECTED_SENDER_EMAIL}）です。\n` +
+      "    Gmailは自分宛のメールを受信トレイに入れないため、**異常が起きても気付けません**。\n" +
+      "    `OPERATOR_ALERT_EMAIL` に別のアドレス（運営者個人など）を設定してください。",
+  );
+} else if (alertTo) {
+  console.log(`✅ アラートの宛先は差出人と別です`);
 }
 
 if (!send) {
   console.log(
-    "\n実際に送れるかは、送ってみないと分かりません（拒否は送信時にしか返らない）。\n" +
+    "\n実際にそのアドレスで届くかは、送って**受信箱のFromを見る**まで分かりません。\n" +
       `  npm run check:mail-sender -- --send    # ${to ?? "SUPPORT_EMAIL"} 宛に1通送ります\n`,
   );
   process.exit(0);
@@ -85,16 +107,34 @@ try {
       "このメールは差出人アドレスの確認のために送信されました。\n" +
       `差出人が「${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>」になっていれば設定は正しいです。\n`,
   });
-  console.log(`\n✅ 送信できました（${EXPECTED_SENDER_EMAIL} を名乗れています）`);
-  console.log(`    宛先: ${to}`);
-  console.log(`    受信箱で**差出人の表示**を確認してください（「〜に代わって送信」と出ていないか）`);
+  console.log(`\n✅ 送信まで到達しました（宛先: ${to}）`);
+  console.log("");
+  console.log("⚠️  **これは「そのアドレスで届いた」ことを意味しません。**");
+  console.log(
+    `    Gmailは許可の無いFromを拒否せず、黙って @${userDomain} のアドレスへ書き換えます\n` +
+      "    （SMTPは 250 OK を返すため、送信側からは成功に見える）。",
+  );
+  console.log("");
+  console.log("👉 受信箱を開き、**差出人の表示**を確かめてください:");
+  console.log(`    ・「${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>」→ 設定は正しい`);
+  console.log(`    ・「${EXPECTED_SENDER_NAME} <${user}>」→ **書き換えられています**（下の対処が必要）`);
+  console.log("");
+  console.log("書き換えられていた場合の対処（どちらか）:");
+  console.log(
+    `    A. Gmail → 設定 → アカウント → 「他のアドレスとしてメールを送信」へ ${EXPECTED_SENDER_EMAIL} を追加し、\n` +
+      "       確認コードのメールを受け取って認証する（そのアドレスで受信できることが前提）",
+  );
+  console.log(
+    `    B. ${EXPECTED_SENDER_EMAIL} 自体のSMTP資格情報を SMTP_USER / SMTP_APP_PASSWORD に入れる\n` +
+      "       （Google Workspace等でそのアドレスのメールボックスがある場合）",
+  );
   if (info.rejected?.length) console.log(`    ⚠️ 拒否された宛先: ${info.rejected.length}件`);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`\n❌ 送信できませんでした: ${message}`);
   if (/not allowed|5\.7\.\d|553|550/i.test(message)) {
     console.error(
-      `    **${EXPECTED_SENDER_EMAIL} を名乗る許可がありません。**\n` +
+      `    **${EXPECTED_SENDER_EMAIL} を名乗る許可がありません**（拒否まで返るのは珍しい形）。\n` +
         "    Gmail → 設定 → アカウント → 「他のアドレスとしてメールを送信」で追加し、\n" +
         "    確認メールのリンクを踏んでから、もう一度実行してください。",
     );

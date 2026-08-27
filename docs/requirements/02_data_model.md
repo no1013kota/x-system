@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.77 |
+| バージョン | v1.76 |
 | 更新日 | 2026-08-27 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -42,7 +42,7 @@
 | `usage_counter_type` | `post_normal`, `post_url`, `generation`, `image`, `ai_credit`（T-M8-109。generation/imageは旧イベント行の互換で残置） |
 | `usage_event_reason` | `reserve`, `refund`, `consume` |
 | `usage_event_operation` | `generation`, `image_generation`, `post_create`, `post_delete` |
-| `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary`, `settings_updated` |
+| `notification_type` | `news`, `draft_created`, `posted`, `error`, `billing`, `usage`, `summary` |
 
 ## 3. テーブル定義
 
@@ -1091,4 +1091,3 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.74 | 2026-08-27 | generation_jobs.input の `mode`／`scheduled_at` を投稿作成の「生成したあと」と共用することを明記（T-M8-331） |
 | v1.75 | 2026-08-27 | §3.29 prompt_presets を新設（アカウント.md・画像生成プロンプトを複数持ち使用中を選ぶ・T-M8-332） |
 | v1.76 | 2026-08-27 | §3.30 news_batches を新設（ニュース取得のBatch実行・T-M8-338） |
-| v1.77 | 2026-08-27 | notification_type へ settings_updated を追加（学習がアカウント設定を書き換えたことの通知・T-M8-341） |

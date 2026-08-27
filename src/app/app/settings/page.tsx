@@ -26,6 +26,7 @@ import {
 } from "@/lib/persona-settings";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 import { getSettingsForUser } from "@/lib/settings-server";
+import { pooledQueryable } from "@/lib/db/pool";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
@@ -69,6 +70,8 @@ import { xRedirectUri } from "@/lib/x/oauth-server";
  * AIモデル設定／プロンプト（アカウント.md・投稿作成・画像生成）。
  * 問い合わせタブは廃止（2026-08-15 運営者の指示）。旧slugは tabs.ts のエイリアスが受ける。
  */
+
+const pooledDb = pooledQueryable();
 
 export const metadata: Metadata = {
   title: `設定 | ${APP_NAME}`,
@@ -302,10 +305,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       initialDifference = true;
     }
   }
-  // 参考ソースはアカウント設定タブの一番下に置く（T-M8-103）。
+  // 参考ソースはアカウント設定タブの**先頭**に置く（T-M8-344。設定を作る入口だから）。
   let learningSources: LearningSourceView[] = [];
+  /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
+  let learningApplying = false;
   if (tab === "account" && account && account.base_md_version >= 1) {
     learningSources = await listLearningSourcesForUser(user.id, account.id);
+    learningApplying =
+      (
+        await pooledDb.query<{ n: number }>(
+          `select count(*)::int as n from generation_jobs
+            where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
+              and status in ('queued', 'running')`,
+          [account.id],
+        )
+      ).rows[0]?.n > 0;
   }
 
   // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
@@ -492,6 +506,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             <NoAccountState />
           ) : (
             <div className="space-y-8">
+              {/*
+                **参考ソースを先に置く**（T-M8-344・運営者の指示 2026-08-27）。
+                アカウント設定の保存を待たずに出し、「学習ソースからアカウント設定を作る」を
+                入口にする——「誰に何を発信するか」を最初から言葉にできる人ばかりではないので、
+                真似したいアカウントを挙げるところから始められる方が易しい。
+                作った設定は下のフォームでいつでも直せる。
+              */}
+              <LearningSourcesManager
+                initialApplying={learningApplying}
+                initialNowMs={nowMs}
+                initialSources={learningSources}
+                key={`sources:${account.id}`}
+                settingsMissing={account.base_md_version < 1}
+                xAccountId={account.id}
+              />
               <PersonaSettingsForm
                 accountHandle={account.handle}
                 baseMdVersion={account.base_md_version}
@@ -501,14 +530,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 key={account.id}
                 xAccountId={account.id}
               />
-              {/* 参考ソースは学習の反映先（アカウント.md）ができてから出す（T-M8-103）。 */}
-              {account.base_md_version >= 1 ? (
-                <LearningSourcesManager
-                  initialNowMs={nowMs}
-                  initialSources={learningSources}
-                  xAccountId={account.id}
-                />
-              ) : null}
             </div>
           )
         ) : tab === "purposes" ? (

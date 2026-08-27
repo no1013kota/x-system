@@ -12,7 +12,8 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * `doctor` の判定を1日1回、運営者へメールで届ける（T-M8-164）。
  *
  * **毎朝の日次サマリには混ぜない**——あれはX連携済みの全利用者へ配るもので、
- * 運営の内情（設定ミス・APIキー・残高）を利用者へ届けてはいけない。宛先は `SUPPORT_EMAIL` だけ。
+ * 運営の内情（設定ミス・APIキー・残高）を利用者へ届けてはいけない。宛先は運営者のアドレス
+ * （`OPERATOR_ALERT_EMAIL`、無ければ `SUPPORT_EMAIL`）だけ。
  *
  * 呼び出しは `scheduler_tick` の中（5分ごとに来る）で、`cron_runs` の
  * `(job_name='operator_alert', window_key=JSTの日付)` を確保できた回だけ実際に送る。
@@ -62,7 +63,13 @@ export async function deliverOperatorAlert(
   const { date, hour } = jstDate(deps.nowIso);
   if (hour < OPERATOR_ALERT_HOUR_JST) return { sent: false, skipped: "before_hour" };
 
-  const to = env.SUPPORT_EMAIL;
+  /*
+    **アラートの宛先は問い合わせ先と別にできる**（T-M8-343）。差出人が support@exosai.net に
+    なったので、宛先も同じにすると **Gmailが自分宛のメールを受信トレイに入れず、
+    異常が起きても気付けない**（2026-08-25に同じ罠を踏んでいる）。
+    未設定なら従来どおり `SUPPORT_EMAIL` へ送る（新しい変数を必須にして既存環境を落とさない）。
+  */
+  const to = env.OPERATOR_ALERT_EMAIL ?? env.SUPPORT_EMAIL;
   if (!to) return { sent: false, skipped: "no_recipient" };
 
   const label = environmentLabel(env.APP_ENV);

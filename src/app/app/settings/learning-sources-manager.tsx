@@ -1,9 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import {
   addLearningSourceAction,
+  applyLearningToSettingsAction,
+  learningApplyStatusAction,
   listLearningSourcesAction,
   removeLearningSourceAction,
 } from "@/app/actions/learning-sources";
@@ -11,14 +14,19 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
+import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 /**
  * 参考ソース（L-1/L-2, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
- * 削除、進行/失敗表示、removing中の生成停止案内。アカウント設定タブの一番下に置く（T-M8-103）。
- * 「自分の過去投稿から学習」（own_posts・30日制御）は T-M8-103 で廃止——投稿分析（K-2）が
- * 自分の投稿の分析を担うため重複機能になった。
+ * 削除、進行/失敗表示、removing中の生成停止案内。
+ *
+ * **アカウント設定を作る入口**（T-M8-344・運営者の指示 2026-08-27）。以前は
+ * アカウント設定を保存した後にしか出せなかったが、順序を逆にした——
+ * 「誰に何を発信するか」を最初から言葉にできる人ばかりではないので、
+ * **真似したいアカウントを挙げるところから始められる**方が入口として易しい。
+ * 反映は登録時の自動ではなく**ボタンを押したとき**に行う（いつ設定が変わるかを利用者が決める）。
  */
 
 type RefType = "ref_account" | "ref_post";
@@ -75,12 +83,19 @@ export function LearningSourcesManager({
   xAccountId,
   initialNowMs,
   initialSources,
+  initialApplying,
+  settingsMissing,
 }: {
   xAccountId: string;
   /** サーバーが描画した時刻（ミリ秒）。滞留判定の初期値。 */
   initialNowMs: number;
   initialSources: LearningSourceView[];
+  /** 反映のjobが進行中か（再訪しても「書き換え中」が出るように・T-M8-344）。 */
+  initialApplying: boolean;
+  /** アカウント設定が未保存か。文言を「作る」「更新する」で切り替える。 */
+  settingsMissing: boolean;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [sources, setSources] = useState<LearningSourceView[]>(initialSources);
   // 参考アカウント／参考投稿は別々の欄にする（T-M8-112）。種別selectを挟むと、
@@ -93,6 +108,12 @@ export function LearningSourcesManager({
    * ブラウザの描画で判定が割れ、表示が食い違って描き直しになる。
    */
   const [now, setNow] = useState(initialNowMs);
+  /**
+   * アカウント設定へ反映中か（T-M8-344）。**押した後の状態を画面に出す**——
+   * 完了まで数十秒かかるので、何も出ないと「押せていないのでは」と分からなくなる（原則1）。
+   * 初期値はサーバーが見たjobの有無（再訪でも進行が分かる）。
+   */
+  const [applying, setApplying] = useState(initialApplying);
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
   useEffect(() => {
@@ -141,12 +162,51 @@ export function LearningSourcesManager({
   }
 
   function remove(sourceId: string) {
-    if (!confirm("この学習ソースを削除しますか？反映済みの場合はアカウント.mdから知見を取り除く処理が実行されます。")) return;
+    if (!confirm("この参考ソースを削除しますか？反映済みの場合は、アカウント設定からその知見を取り除く処理が走ります。")) return;
     startTransition(async () => {
       const res = await removeLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, source_id: sourceId });
       if (res.status === "success") {
-        toast.show({ tone: "success", title: "学習ソースを削除しました" });
+        toast.show({ tone: "success", title: "参考ソースを削除しました" });
         await refresh();
+      } else {
+        showError(res);
+      }
+    });
+  }
+
+  /** 分析が終わっているソース（反映の材料）。1件も無ければ押せない。 */
+  const analyzedCount = sources.filter((s) => s.status === "analyzed").length;
+
+  /**
+   * 反映中は定期的に見に行き、終わったら画面を作り直す（T-M8-344）。
+   * **完了を待たずにボタンを戻さない**——戻すと「終わったのに設定が古いまま」に見える。
+   */
+  useEffect(() => {
+    if (!applying) return;
+    const timer = setInterval(async () => {
+      const res = await learningApplyStatusAction({ x_account_id: xAccountId });
+      if (res.status === "success" && res.running === false) {
+        setApplying(false);
+        // 設定そのものはサーバーが描画しているので、画面ごと取り直す。
+        router.refresh();
+        toast.show({
+          tone: "success",
+          title: "アカウント設定を更新しました",
+          description: "内容を確認して、必要なら直してください。",
+        });
+      }
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [applying, router, toast, xAccountId]);
+
+  function applyToSettings() {
+    startTransition(async () => {
+      const res = await applyLearningToSettingsAction({
+        request_key: uuid(),
+        x_account_id: xAccountId,
+      });
+      if (res.status === "success") {
+        setApplying(true);
       } else {
         showError(res);
       }
@@ -161,15 +221,69 @@ export function LearningSourcesManager({
     <div className="space-y-6">
       {removing ? (
         <Notice tone="warn">
-          学習ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
+          参考ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
         </Notice>
       ) : null}
+
+      {/*
+        **押した後の状態をここに出す**（T-M8-344）。反映には数十秒かかるので、
+        何も出ないと「押せていないのでは」と分からなくなる（原則1）。
+        完了したら画面を作り直して、新しい設定が上に出る。
+      */}
+      {applying ? (
+        <Notice role="status" tone="info">
+          アカウント設定を書き換え中です。1分ほどで終わります（この画面を離れても続きます）。
+        </Notice>
+      ) : null}
+
+      {/*
+        **アカウント設定を作る／更新するボタン**（T-M8-344・運営者の指示 2026-08-27）。
+        登録しただけでは設定は変わらない——いつ書き換わるかを利用者が決められるようにする。
+      */}
+      <section className="rounded-card border border-brand/40 bg-brand-subtle p-4">
+        <CardTitle>
+          {settingsMissing
+            ? "参考ソースからアカウント設定を作る"
+            : "参考ソースでアカウント設定を更新する"}
+        </CardTitle>
+        <p className="mt-1 text-body leading-6 text-ink-2">
+          {settingsMissing
+            ? "登録した参考ソースの分析から、発信者・読者・テーマ・トーンを組み立てます。作ったあとは、この下の「アカウント設定」でいつでも直せます。"
+            : "登録した参考ソースの分析を、いまのアカウント設定へ反映します。変更後の内容はこの下の「アカウント設定」で確認・修正できます。"}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button
+            disabled={pending || applying || removing || analyzedCount === 0}
+            onClick={applyToSettings}
+            type="button"
+            variant="brand"
+          >
+            {applying
+              ? "書き換え中…"
+              : settingsMissing
+                ? "アカウント設定を作る"
+                : "アカウント設定を更新する"}
+          </Button>
+          {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
+          {analyzedCount === 0 ? (
+            <span className="text-caption text-ink-3">
+              {sources.length === 0
+                ? "先に参考アカウントか参考投稿を追加してください。"
+                : "分析が終わるまで待ってください（1分ほど）。"}
+            </span>
+          ) : (
+            <span className="text-caption text-ink-3">分析済み {analyzedCount} 件を使います。</span>
+          )}
+        </div>
+      </section>
 
       {/* 追加フォーム: 参考アカウントと参考投稿で欄を分ける（T-M8-112）。 */}
       <section className="rounded-card border border-hairline bg-surface p-4">
         <CardTitle>参考ソースを追加</CardTitle>
-        <p className="mt-1 text-xs text-muted-foreground">
-          参考にしたいXアカウントや投稿のURLを登録すると、文体・型を学習してアカウント.mdへ反映します。
+        <p className="mt-1 text-body leading-6 text-ink-2">
+          真似したいXアカウントや投稿のURLを登録すると、文体・構成・題材の傾向を分析します。
+          {/* **登録だけでは設定は変わらない**ことを明示する（T-M8-344）。反映は上のボタン。 */}
+          分析が終わったら、上の「{settingsMissing ? "アカウント設定を作る" : "アカウント設定を更新する"}」を押してください。
         </p>
         <div className="mt-4 space-y-4">
           {REF_FIELDS.map(({ type, max, placeholder, hint }) => {
@@ -226,10 +340,10 @@ export function LearningSourcesManager({
 
       {/* 一覧 */}
       <section>
-        <CardTitle>登録済みの学習ソース</CardTitle>
+        <CardTitle>登録済みの参考ソース</CardTitle>
         {sources.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-            まだ学習ソースはありません。
+            まだ参考ソースはありません。上の欄から追加してください。
           </p>
         ) : (
           <ul className="mt-2 space-y-2">

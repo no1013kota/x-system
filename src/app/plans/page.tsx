@@ -11,7 +11,7 @@ import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 import { CampaignCallout } from "@/components/billing/campaign-callout";
 import { PlanPricingCards, RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
-import { env } from "@/lib/env";
+import { LEGAL_ENTITY } from "@/lib/legal-entity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
@@ -192,7 +192,13 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
 
           {/* 反映待ちの間はプラン比較表とCTAを描画せず、待機カードだけを出す（二重申込の防止）。 */}
           {awaitingCheckout ? (
-            <CheckoutPending supportEmail={env.SUPPORT_EMAIL ?? null} />
+            /*
+              問い合わせ先は**法務ページと同じ値**を使う（T-M8-343）。以前は
+              `env.SUPPORT_EMAIL` を出していたため、法務ページ（`LEGAL_ENTITY.email`）と
+              別のアドレスになりうる二重管理だった。`SUPPORT_EMAIL` は
+              **運営者向けアラートの宛先**として残す（利用者には出さない）。
+            */
+            <CheckoutPending supportEmail={LEGAL_ENTITY.email} />
           ) : (
             <>
           {/*

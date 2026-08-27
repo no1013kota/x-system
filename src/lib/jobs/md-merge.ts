@@ -1,13 +1,12 @@
 import {
+  generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
-  settingsDiffLabels,
   type PersonaSettings,
 } from "../persona-settings";
 import { parseAndValidate } from "../ai/parse";
 import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { pruneBaseMdVersions } from "../base-md-history";
-import { createSettingsUpdatedNotification } from "./notifications";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
@@ -241,16 +240,23 @@ export async function executeMdMerge(
     if (!deadline.canStartCall()) throw new MdMergeConflictError("insufficient deadline for md-merge");
 
     const state = await loadMergeState(deps.db, job.x_account_id, opts);
-    if (state.version < 1) throw new Error("base_md is not initialized (version 0)");
 
-    // 設定が読めない（未保存・壊れている）アカウントは対象外。学習で作り出さない。
+    /*
+      **アカウント設定が無くても走る**（T-M8-344・運営者の指示 2026-08-27）。
+      「学習ソースによってアカウント設定をする」ための経路なので、未保存＝対象外にできない。
+      設定が読めないときは `<current>` を "none" にして、分析だけから作らせる。
+    */
     const currentSettings = personaSettingsSchema.safeParse(state.settings);
-    if (!currentSettings.success) throw new MdMergeStructureError();
+    const isFirstSetup = !currentSettings.success;
+    if (isFirstSetup && state.analyses.length === 0) {
+      // 材料も土台も無い。**空の設定を作らない**（何を根拠に決めたか説明できない設定になる）。
+      throw new MdMergeStructureError();
+    }
 
     const { settings: merged, calls } = await mergeSection(
       { textGen, model },
       {
-        current: JSON.stringify(currentSettings.data),
+        current: currentSettings.success ? JSON.stringify(currentSettings.data) : "none",
         analyses: state.analyses,
         removed: state.removed,
         deadline,
@@ -263,8 +269,10 @@ export async function executeMdMerge(
       作り直す（`rebuildSettingsSections`）ので、画面の表示・本文・学習の成果が常に一致する。
       セクション5〜6（利用者の手入力）はバイト単位で残る。
     */
-    const newBaseMd = rebuildSettingsSections(state.baseMd, merged); // 6見出し構造を検証
-    const changed = settingsDiffLabels(currentSettings.data, merged);
+    // 初回は初版を作る（version 0 → 1）。2回目以降はセクション1〜4だけ作り直す。
+    const newBaseMd = isFirstSetup
+      ? generateInitialBaseMd(merged)
+      : rebuildSettingsSections(state.baseMd, merged); // 6見出し構造を検証
     const nextVersion = state.version + 1;
 
     const written = await deps.runInTx(async (tx) => {
@@ -289,16 +297,11 @@ export async function executeMdMerge(
         content: newBaseMd,
       });
       /*
-        **書き換えたことを知らせる**（T-M8-341）。利用者が何もしていないのに設定が変わるので、
-        黙って変えると「設定した覚えのない値になっている」状態になる（原則1）。
-        同じtxで入れる——通知だけ落ちると、変わった事実が誰にも伝わらない。
+        **お知らせは出さない**（T-M8-344・運営者の指示 2026-08-27）。反映は利用者が
+        ボタンを押して始めるものになったので、進行と完了は**その画面**で示す
+        （「アカウント設定を書き換え中です」→ 完了したら新しい設定が表示される）。
+        押していないのに変わることが無いなら、通知で追いかける必要も無い。
       */
-      await createSettingsUpdatedNotification(tx, {
-        userId: job.user_id,
-        xAccountId: job.x_account_id,
-        version: nextVersion,
-        changed,
-      });
       if (opts.confirmSourceId) {
         await tx.query(`update learning_sources set status = 'analyzed', updated_at = now() where id = $1`, [
           opts.confirmSourceId,

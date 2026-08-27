@@ -139,11 +139,12 @@ describe("executeMdMerge", () => {
     expect(newBaseMd).toContain("## 6. 参考にする型\n旧セクション6");
     // 設定そのものも同じUPDATEで保存する（画面の表示と本文が食い違わない）。
     expect(JSON.parse(upd.params[4] as string).persona.speaker).toBe("A（現場の実務者へ手順で説明する）");
-    // **変わったことを知らせる**（利用者は何もしていない・T-M8-341）。
-    const notice = writes.find((w) => /insert into notifications/.test(w.sql))!;
-    expect(notice, "設定が変わったのに通知が無い").toBeTruthy();
-    expect(notice.params[2]).toContain("発信者");
-    expect(notice.params[2]).toContain("一人称");
+    /*
+      **お知らせは出さない**（T-M8-344・運営者の指示 2026-08-27）。反映は利用者が
+      ボタンを押して始めるものになったので、進行と完了は設定画面が示す。
+      押していないのに変わることが無いなら、通知で追いかける必要も無い。
+    */
+    expect(writes.some((w) => /insert into notifications/.test(w.sql))).toBe(false);
     expect(upd.params[2]).toBe(4);
     expect(upd.params[3]).toBe(3); // expected version guard
 
