@@ -124,11 +124,17 @@ export interface PostGenerationDeps {
   jobId: string;
   /** 利用枠 reserve/refund を1 transactionで束ねる（server配線は withTransaction）。 */
   runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
-  /** plan/userId から TextGen・provider・model を解決する（server配線は resolveTextProvider）。 */
+  /**
+   * plan/userId から TextGen・provider・model を解決する（server配線は resolveTextProvider）。
+   *
+   * `purpose: "mechanical"` は**裏方の処理用**（T-M8-334）。本文を作るのは既定の解決で、
+   * 文字数オーバーの短縮（PT-FIX）だけ安いモデルへ寄せる。
+   */
   resolveProvider: (input: {
     plan: string;
     userId: string;
     deadline: Deadline;
+    purpose?: "mechanical";
   }) => Promise<{ textGen: TextGen; provider: Provider; model: string }>;
   /** 実行前提の入力収集（server配線は gatherExecutionPrereqInputs）。 */
   gatherPrereqInputs: (
@@ -433,21 +439,36 @@ const hasInputUrl = Boolean(job.input.source_url);
     deadline,
   });
 
-  // GEN-FIX 短縮（親jobと同じproviderで実行し、usageは親jobへ合算）。
+  /*
+    GEN-FIX 短縮（usageは親jobへ合算）。**意味と口調を変えずに縮めるだけ**なので、
+    本文生成とは別に安いモデルを解決する（T-M8-334）。1文字も超えなければ呼ばれないため、
+    **実際に短縮が要るときだけ**解決する（毎回2回キーを引かない）。
+    単価の記録も短縮に使ったモデルで行う——親のモデルで記録すると原価台帳がずれる（原則4）。
+  */
   const fixCalls: ProviderCall[] = [];
+  let fixProvider: { textGen: TextGen; model: string } | null = null;
   const shorten = async (text: string, limit: number): Promise<string> => {
+    if (!fixProvider) {
+      const resolved = await deps.resolveProvider({
+        plan: job.plan,
+        userId: job.user_id,
+        deadline,
+        purpose: "mechanical",
+      });
+      fixProvider = { textGen: resolved.textGen, model: resolved.model };
+    }
     const start = now();
-    const out = await textGen.generate({
+    const out = await fixProvider.textGen.generate({
       system: [],
       user: PT_FIX.replaceAll("{{limit}}", String(limit)).replaceAll("{{post}}", text),
       timeoutMs: deadline.callTimeoutMs(),
     });
     fixCalls.push(
       toProviderCall(out, {
-        model,
+        model: fixProvider.model,
         operation: "text_generation",
         latencyMs: now() - start,
-        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage, fixProvider.model),
       }),
     );
     return out.text.trim();

@@ -93,3 +93,54 @@ export function isCatalogTextModel(provider: Provider, model: string): boolean {
 export function isCatalogImageModel(provider: ImageProvider, model: string): boolean {
   return IMAGE_MODEL_OPTIONS[provider]?.some((m) => m.id === model) ?? false;
 }
+
+/**
+ * 用途別の固定モデル（T-M8-334・運営者の指示 2026-08-27）。
+ *
+ * **成果物そのものを作る処理は利用者の選択のまま**（投稿生成 GEN・投稿分析レポート SUGGEST）。
+ * 裏方の処理まで同じ最高性能モデルで動かすと、品質に一切効かないところで10倍の単価を払う
+ * （Fable 5 = 入力$10/出力$50、Haiku 4.5 = $1/$5・100万トークンあたり）。
+ *
+ * - `mechanical`: 形を整えるだけ（文字数オーバーの短縮・画像プロンプトの作成・アカウント.mdの統合）
+ * - `analysis`: 観察して要約する（学習分析 L1/L2）
+ *
+ * providerごとに同じ役割の型を1つずつ置く。**BYOKの利用者にも同じ表を使う**——
+ * 裏方に高いモデルを使う理由は運営でも利用者でも変わらない（利用者の請求も同じだけ下がる）。
+ */
+export type TextModelPurpose = "mechanical" | "analysis";
+
+export const PURPOSE_TEXT_MODELS: Record<TextModelPurpose, Record<Provider, string>> = {
+  mechanical: {
+    anthropic: "claude-haiku-4-5",
+    openai: "gpt-5.6-luna",
+    google: "gemini-3.5-flash-lite",
+  },
+  analysis: {
+    anthropic: "claude-sonnet-5",
+    openai: "gpt-5.6-terra",
+    google: "gemini-3.7-flash",
+  },
+};
+
+/**
+ * 用途に対応する固定モデルを返す。**カタログに無いものは返さない**——
+ * 単価表（`MODEL_RATES`）にも無いモデルを使うと原価台帳が算出不能になる（原則4）。
+ */
+export function purposeTextModel(purpose: TextModelPurpose, provider: Provider): string | null {
+  const model = PURPOSE_TEXT_MODELS[purpose][provider];
+  return model && isCatalogTextModel(provider, model) ? model : null;
+}
+
+/**
+ * 画像モデルの既定（T-M8-334・運営者の指示 2026-08-27）。**環境変数が未設定でもここが効く。**
+ *
+ * `gpt-image-2`（$0.19/枚）ではなく `gpt-image-1.5`（$0.07/枚）を既定にする——
+ * 1枚あたり2.7倍の差があり、既定のまま使う利用者が最も多いため費用への効き方が大きい。
+ * **より高い品質が要る人は設定＞AIモデル設定で選び直せる**（選択は常に優先される）。
+ * 環境変数（`OPENAI_IMAGE_MODEL` / `GEMINI_IMAGE_MODEL`）を入れればそちらが優先される
+ * ——運営が緊急にモデルを替えたいときの逃げ道として残す。
+ */
+export const DEFAULT_IMAGE_MODELS: Record<ImageProvider, string> = {
+  openai: "gpt-image-1.5",
+  google: "gemini-3.1-flash-image",
+};

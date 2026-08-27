@@ -23,7 +23,11 @@ const pooledDb = pooledQueryable();
 const runInTx = runInPooledTx;
 
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
-  return resolveTextProvider({ plan: input.plan as PlanId, userId: input.userId }, { deadline: input.deadline });
+  // アカウント.mdの1セクション（400字以内）を書き直すだけ（T-M8-334）。安いモデルで固定する。
+  return resolveTextProvider(
+    { plan: input.plan as PlanId, userId: input.userId },
+    { deadline: input.deadline, purpose: "mechanical" },
+  );
 }
 
 export async function mdMergeHandler(ctx: JobContext): Promise<void> {

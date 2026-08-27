@@ -16,6 +16,11 @@ import {
   type ResolveConfig,
   type ResolvedKey,
 } from "./resolve-provider";
+import {
+  DEFAULT_IMAGE_MODELS,
+  purposeTextModel,
+  type TextModelPurpose,
+} from "./model-catalog";
 import type { Provider, TextGen } from "./types";
 
 /**
@@ -39,9 +44,14 @@ function buildConfig(): ResolveConfig {
       openai: env.OPENAI_TEXT_MODEL,
       google: env.GEMINI_TEXT_MODEL,
     },
+    /*
+      画像モデルの既定はコード側に持つ（T-M8-334）。環境変数は上書き用——
+      未設定でも既定で動くようにしておかないと、環境変数を入れ忘れた環境で
+      「画像だけ設定エラーで作れない」という、画面から理由の分からない状態になる（原則3）。
+    */
     imageModels: {
-      openai: env.OPENAI_IMAGE_MODEL,
-      google: env.GEMINI_IMAGE_MODEL,
+      openai: env.OPENAI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODELS.openai,
+      google: env.GEMINI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODELS.google,
     },
   };
 }
@@ -67,15 +77,24 @@ export interface ResolvedTextProvider {
   keySource: KeySource;
 }
 
-/** text系job（GEN/LRN/SUGGEST/MD-MERGE）のprovider解決。 */
+/**
+ * text系job（GEN/LRN/SUGGEST/MD-MERGE）のprovider解決。
+ *
+ * `purpose` を渡すと**モデルだけ**を用途別の固定モデルへ差し替える（T-M8-334）。
+ * providerとキーは変えない——providerを変えるとキーの有無で失敗経路が増えるうえ、
+ * 利用者が選んだ会社と違うところへ本文が渡ることになる。
+ * 未知providerでカタログに無ければ差し替えない（元のモデルのまま動く）。
+ */
 export async function resolveTextProvider(
   job: { plan: PlanId; userId: string },
-  opts: { deadline?: Deadline; maxTokens?: number } = {},
+  opts: { deadline?: Deadline; maxTokens?: number; purpose?: TextModelPurpose } = {},
 ): Promise<ResolvedTextProvider> {
   const config = buildConfig();
-  const key = await withTransaction((client) =>
+  const resolved = await withTransaction((client) =>
     resolveTextKey({ plan: job.plan, userId: job.userId }, { client, decrypt, config }),
   );
+  const fixed = opts.purpose ? purposeTextModel(opts.purpose, resolved.provider) : null;
+  const key: ResolvedKey = fixed ? { ...resolved, model: fixed } : resolved;
   return {
     textGen: buildTextGen(key, opts.deadline, opts.maxTokens),
     provider: key.provider,
