@@ -73,12 +73,12 @@ if (senderMatchesLogin) {
   受信トレイに入れないため、アラートの宛先が差出人と同じだと**異常が起きても気付けない**。
   2026-08-25に同じ罠を踏んでいる。
 */
-const alertTo = process.env.OPERATOR_ALERT_EMAIL ?? to;
+const alertTo = to;
 if (alertTo && alertTo.toLowerCase() === EXPECTED_SENDER_EMAIL.toLowerCase()) {
   console.log(
     `\n❌ 運営者向けアラートの宛先が差出人と同じ（${EXPECTED_SENDER_EMAIL}）です。\n` +
       "    Gmailは自分宛のメールを受信トレイに入れないため、**異常が起きても気付けません**。\n" +
-      "    `OPERATOR_ALERT_EMAIL` に別のアドレス（運営者個人など）を設定してください。",
+      "    `SUPPORT_EMAIL` には運営者自身の受け取れるアドレス（差出人とは別）を設定してください。",
   );
 } else if (alertTo) {
   console.log(`✅ アラートの宛先は差出人と別です`);

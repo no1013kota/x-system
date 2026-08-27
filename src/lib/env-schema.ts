@@ -185,15 +185,11 @@ const schema = z
     SMTP_USER: z.string().min(1).optional(),
     SMTP_APP_PASSWORD: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
-    SUPPORT_EMAIL: z.string().email().optional(),
     /**
-     * 運営者向けアラート（doctorの日次判定）の宛先（T-M8-343）。
-     *
-     * **問い合わせ先（`SUPPORT_EMAIL`）と別にする。** 差出人が support@exosai.net なので
-     * 同じアドレスを宛先にすると、Gmailが自分宛のメールを受信トレイに入れず
-     * **異常が起きてもアラートに気付けない**（2026-08-25に同じ罠を踏んでいる）。
+     * 運営者向けアラート（doctorの日次判定）の**宛先**。画面に出す問い合わせ先は
+     * `LEGAL_ENTITY.email`（support@exosai.net）が正本で、こちらとは別物（T-M8-343）。
      */
-    OPERATOR_ALERT_EMAIL: z.string().email().optional(),
+    SUPPORT_EMAIL: z.string().email().optional(),
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
     TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
     SENTRY_DSN: z.string().min(1).optional(),

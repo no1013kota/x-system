@@ -12,8 +12,7 @@ import type { Queryable } from "@/lib/x/token-refresh";
  * `doctor` の判定を1日1回、運営者へメールで届ける（T-M8-164）。
  *
  * **毎朝の日次サマリには混ぜない**——あれはX連携済みの全利用者へ配るもので、
- * 運営の内情（設定ミス・APIキー・残高）を利用者へ届けてはいけない。宛先は運営者のアドレス
- * （`OPERATOR_ALERT_EMAIL`、無ければ `SUPPORT_EMAIL`）だけ。
+ * 運営の内情（設定ミス・APIキー・残高）を利用者へ届けてはいけない。宛先は `SUPPORT_EMAIL` だけ。
  *
  * 呼び出しは `scheduler_tick` の中（5分ごとに来る）で、`cron_runs` の
  * `(job_name='operator_alert', window_key=JSTの日付)` を確保できた回だけ実際に送る。
@@ -64,12 +63,12 @@ export async function deliverOperatorAlert(
   if (hour < OPERATOR_ALERT_HOUR_JST) return { sent: false, skipped: "before_hour" };
 
   /*
-    **アラートの宛先は問い合わせ先と別にできる**（T-M8-343）。差出人が support@exosai.net に
-    なったので、宛先も同じにすると **Gmailが自分宛のメールを受信トレイに入れず、
-    異常が起きても気付けない**（2026-08-25に同じ罠を踏んでいる）。
-    未設定なら従来どおり `SUPPORT_EMAIL` へ送る（新しい変数を必須にして既存環境を落とさない）。
+    宛先は `SUPPORT_EMAIL`（運営者のアドレス）。**画面に出す問い合わせ先とは別物**で、
+    そちらは `LEGAL_ENTITY.email`（support@exosai.net）が正本（T-M8-343）。
+    差出人と宛先が同じだと、Gmailは自分宛のメールを受信トレイに入れないため
+    **異常が起きても気付けない**（2026-08-25に踏んだ）。同じ値にしないこと。
   */
-  const to = env.OPERATOR_ALERT_EMAIL ?? env.SUPPORT_EMAIL;
+  const to = env.SUPPORT_EMAIL;
   if (!to) return { sent: false, skipped: "no_recipient" };
 
   const label = environmentLabel(env.APP_ENV);
