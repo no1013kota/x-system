@@ -66,10 +66,13 @@ describe("用途別の固定モデル", () => {
  */
 describe("裏方の処理は安いモデルへ配線されている", () => {
   const cases: [string, string][] = [
+    // 形を整えるだけ（短縮・JSON整形・画像プロンプトの作成）
     ["src/lib/jobs/image-generation-server.ts", "mechanical"],
-    ["src/lib/jobs/md-merge-server.ts", "mechanical"],
     ["src/lib/jobs/post-generation.ts", "mechanical"],
+    // 観察して判断する（学習分析・アカウント.mdの洗練・投稿分析レポート）
     ["src/lib/jobs/learning-analysis-server.ts", "analysis"],
+    ["src/lib/jobs/md-merge-server.ts", "analysis"],
+    ["src/lib/jobs/suggestion-server.ts", "analysis"],
   ];
 
   it.each(cases)("%s は purpose: %s を渡す", (file, purpose) => {
@@ -79,9 +82,13 @@ describe("裏方の処理は安いモデルへ配線されている", () => {
     );
   });
 
-  it("学習分析はMD-MERGEを安いモデルで走らせる（同じjobの中で用途が違う）", () => {
-    const src = readFileSync("src/lib/jobs/learning-analysis-server.ts", "utf8");
-    expect(src).toContain('purpose: "mechanical"');
-    expect(src).toContain("resolveProvider: resolveMergeProvider");
+  /**
+   * **利用者の選択が効くのは文章生成と画像生成だけ**（T-M8-336・運営者の指示 2026-08-27）。
+   * 投稿生成（GEN）以外のtext系ジョブが利用者のモデルで走っていたら、この整理が崩れている。
+   */
+  it("投稿生成だけが利用者の選んだモデルで走る", () => {
+    const src = readFileSync("src/lib/jobs/post-generation-server.ts", "utf8");
+    // 本文の生成は purpose を渡さない＝利用者の選択がそのまま効く。
+    expect(src).toContain("{ deadline, purpose }");
   });
 });

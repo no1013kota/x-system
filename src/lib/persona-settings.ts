@@ -205,6 +205,37 @@ export const BASE_MD_SECTION5_TITLE = BASE_MD_SECTION_TITLES[4];
 export const BASE_MD_SECTION6_TITLE = BASE_MD_SECTION_TITLES[5];
 
 /**
+ * **セクション1〜4を学習の反映結果で置き換える**（MD-MERGE, L-8・T-M8-336）。
+ * 前文（`# 発信定義書` とコメント）とセクション5〜6はバイト単位で保持する。
+ *
+ * 学習の反映先を5〜6から1〜4へ移した（運営者の指示 2026-08-27）。
+ * 参考ソースから読み取れるのは「誰に・何を・どう書くか」の具体であり、
+ * それは**発信の定義そのもの**（1〜4）を鮮明にする材料だから。
+ * 6見出し構造を前後で検証する（崩れた出力は throw して呼び出し側が構造エラー処理する）。
+ */
+export function replaceProfileSections(existingContent: string, profileBody: string): string {
+  validateBaseMdStructure(existingContent);
+  const sectionOne = /^## 1\.[^\n]*$/m.exec(existingContent);
+  const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
+  if (sectionOne?.index === undefined || sectionFive?.index === undefined) {
+    throw new Error("アカウント.mdのセクション1または5を特定できません。");
+  }
+  const preamble = existingContent.slice(0, sectionOne.index); // `# 発信定義書` とコメント
+  const tail = existingContent.slice(sectionFive.index); // セクション5〜6
+  const rebuilt = `${preamble}${profileBody.trim()}\n\n${tail}`;
+  validateBaseMdStructure(rebuilt);
+  return rebuilt;
+}
+
+/** セクション1〜4の本文（見出しを含む）。MD-MERGEへ「いまの定義」として渡す。 */
+export function extractProfileSections(content: string): string {
+  const sectionOne = /^## 1\.[^\n]*$/m.exec(content);
+  const sectionFive = /^## 5\.[^\n]*$/m.exec(content);
+  if (sectionOne?.index === undefined || sectionFive?.index === undefined) return "";
+  return content.slice(sectionOne.index, sectionFive.index).trim();
+}
+
+/**
  * セクション5・6の本文だけをmerge結果で置き換え、セクション1〜4は不変で保持する（MD-MERGE, L-8）。
  * 6見出し構造を前後で検証する（崩れた出力は throw して呼び出し側が構造エラー処理する）。
  */

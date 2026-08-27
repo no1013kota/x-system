@@ -1,6 +1,6 @@
 import {
-  extractBaseMdSection,
-  replaceLearningSections,
+  extractProfileSections,
+  replaceProfileSections,
 } from "../persona-settings";
 import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { pruneBaseMdVersions } from "../base-md-history";
@@ -25,7 +25,6 @@ import { defaultRecordStage } from "./stale";
  */
 
 export const MD_MERGE_MAX_RETRIES = 2;
-const HEADING_RE = /^#{1,6}\s/m;
 
 export class MdMergeConflictError extends Error {
   readonly retryable = true;
@@ -64,7 +63,8 @@ export interface MdMergeDeps {
 
 export interface MdMergeResult {
   version: number;
-  section: 5 | 6;
+  /** 反映先。セクション1〜4を1回で書き直す（T-M8-336）。 */
+  section: "profile";
 }
 
 interface JobMetaRow {
@@ -85,10 +85,6 @@ interface MergeState {
   removed: unknown[];
 }
 
-function isSection5(type: string): boolean {
-  return type === "own_posts";
-}
-
 async function loadJobMeta(db: Queryable, jobId: string): Promise<JobMetaRow | null> {
   const { rows } = await db.query<JobMetaRow>(
     `select gj.x_account_id, gj.kind::text as kind, xa.user_id, p.plan
@@ -101,28 +97,10 @@ async function loadJobMeta(db: Queryable, jobId: string): Promise<JobMetaRow | n
   return rows[0] ?? null;
 }
 
-/** トリガー（確定 or 削除）ソースの種別から対象セクション（5 or 6）を決める（§4.2 該当セクションのみ）。 */
-async function resolveTargetSection(
-  db: Queryable,
-  opts: { confirmSourceId?: string; removedSourceId?: string },
-): Promise<5 | 6> {
-  const id = opts.confirmSourceId ?? opts.removedSourceId;
-  if (!id) throw new Error("md-merge requires confirmSourceId or removedSourceId");
-  const row = (
-    await db.query<{ type: string }>(
-      `select type::text as type from learning_sources where id = $1`,
-      [id],
-    )
-  ).rows[0];
-  if (!row) throw new Error("md-merge trigger source not found");
-  return isSection5(row.type) ? 5 : 6;
-}
-
-/** 最新の base_md＋version と、対象セクションの active/removed analyses を読む（競合retryで都度再読）。 */
+/** 最新の base_md＋version と、active/removed analyses を読む（競合retryで都度再読）。 */
 async function loadMergeState(
   db: Queryable,
   xAccountId: string,
-  target: 5 | 6,
   opts: { confirmSourceId?: string; removedSourceId?: string },
 ): Promise<MergeState> {
   const acct = (
@@ -133,17 +111,19 @@ async function loadMergeState(
   ).rows[0];
   if (!acct) throw new Error("x_account not found for md-merge");
 
-  // 対象セクションに属する type だけを集める（own_posts→5 / ref_account,ref_post→6）。
-  const typeFilter = target === 5 ? ["own_posts"] : ["ref_account", "ref_post"];
+  /*
+    **参考ソースの分析をすべて集める**（T-M8-336）。以前は「own_posts→セクション5 /
+    参考ソース→セクション6」と種別でセクションを分けていたが、反映先をセクション1〜4へ
+    まとめたので分ける理由が無くなった（own_posts＝自分の過去投稿からの学習はT-M8-103で廃止済み）。
+  */
   const { rows } = await db.query<SourceAnalysisRow>(
     `select id, type::text as type, analysis_summary
        from learning_sources
       where x_account_id = $1
         and analysis_summary is not null
-        and type::text = any($4::text[])
         and (status = 'analyzed' or id = $2)
         and ($3::uuid is null or id <> $3)`,
-    [xAccountId, opts.confirmSourceId ?? null, opts.removedSourceId ?? null, typeFilter],
+    [xAccountId, opts.confirmSourceId ?? null, opts.removedSourceId ?? null],
   );
   const analyses = rows.map((r) => r.analysis_summary);
 
@@ -195,14 +175,24 @@ async function mergeSection(
     return out.text.trim();
   };
 
-  const invalid = (body: string): boolean =>
-    HEADING_RE.test(body) || (hadContent && body.length === 0);
+  /*
+    **セクション1〜4の見出しが順番どおり各1回あること**を規約とする（T-M8-336）。
+    以前は「本文のみ・見出し禁止」だったが、反映先が4セクションになったので
+    見出しが**必須**へ反転した。ここを緩めると、差し替え後に6見出し構造が壊れて
+    `replaceProfileSections` が throw する（＝原因の分からない失敗になる）。
+  */
+  const invalid = (body: string): boolean => {
+    if (hadContent && body.length === 0) return true;
+    const numbers = [...body.matchAll(/^## ([1-6])\.[^\n]*$/gm)].map((m) => m[1]);
+    return numbers.join(",") !== "1,2,3,4";
+  };
 
   let body = await call("");
   if (invalid(body)) {
-    // 本文のみ規約違反（見出し混入 or 消失）→ 1回だけ修復指示を付けて再生成する（§7.1）。
+    // 規約違反（見出しの欠落・順序違い・5以降の混入・内容の消失）→ 1回だけ直して再生成（§7.1）。
     body = await call(
-      "出力はセクション本文のみとし、`#`で始まる見出しや前置きを含めず、内容を空にしないでください。",
+      "出力は「## 1.」「## 2.」「## 3.」「## 4.」の4つの見出しを順番どおり各1回だけ含め、" +
+        "セクション5以降・前置き・説明は書かず、内容を空にしないでください。",
     );
   }
   if (invalid(body)) throw new MdMergeStructureError();
@@ -228,7 +218,6 @@ export async function executeMdMerge(
   if (!job) throw new Error("job not found for md-merge");
 
   await recordStage("merging");
-  const target = await resolveTargetSection(deps.db, opts);
   // Function 全体で1つの deadline を共有する（分析phaseと合算した実経過を反映）。
   const deadline = (deps.makeDeadline ?? createDeadline)();
   const { textGen, model } = await deps.resolveProvider({
@@ -241,13 +230,13 @@ export async function executeMdMerge(
     // 残り時間が追加call最低分に満たなければ retryable として次回起動へ委ねる（要件04 §5）。
     if (!deadline.canStartCall()) throw new MdMergeConflictError("insufficient deadline for md-merge");
 
-    const state = await loadMergeState(deps.db, job.x_account_id, target, opts);
+    const state = await loadMergeState(deps.db, job.x_account_id, opts);
     if (state.version < 1) throw new Error("base_md is not initialized (version 0)");
 
     const { body: merged, calls } = await mergeSection(
       { textGen, model },
       {
-        current: extractBaseMdSection(state.baseMd, target),
+        current: extractProfileSections(state.baseMd),
         analyses: state.analyses,
         removed: state.removed,
         deadline,
@@ -255,10 +244,8 @@ export async function executeMdMerge(
       now,
     );
     allCalls.push(...calls);
-    // 対象セクションだけを差し替え、非対象は現状を byte-for-byte 保持する（§4.2 該当セクションのみ）。
-    const section5 = target === 5 ? merged : extractBaseMdSection(state.baseMd, 5);
-    const section6 = target === 6 ? merged : extractBaseMdSection(state.baseMd, 6);
-    const newBaseMd = replaceLearningSections(state.baseMd, section5, section6); // 6見出し構造を検証
+    // セクション1〜4だけを差し替え、前文とセクション5〜6は byte-for-byte 保持する（T-M8-336）。
+    const newBaseMd = replaceProfileSections(state.baseMd, merged); // 6見出し構造を検証
     const nextVersion = state.version + 1;
 
     const written = await deps.runInTx(async (tx) => {
@@ -317,7 +304,7 @@ export async function executeMdMerge(
           xAccountId: job.x_account_id,
         });
       }
-      return { version: written, section: target };
+      return { version: written, section: "profile" as const };
     }
     // 競合: 次ループで最新stateを再読して再merge（並行変更を取り込み、上書き消失させない）。
   }

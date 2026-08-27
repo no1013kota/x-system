@@ -22,7 +22,10 @@ const pooledDb = pooledQueryable();
 
 const runInTx = runInPooledTx;
 
-/** 学習分析（L1/L2）は観察して要約する仕事（T-M8-334）。中間クラスで固定する。 */
+/**
+ * 学習分析（L1/L2）と、そのあとに続くアカウント.mdの洗練（MD-MERGE）は
+ * どちらも**観察して判断する仕事**（T-M8-334／T-M8-336）。中間クラスで固定する。
+ */
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   return resolveTextProvider(
     { plan: input.plan as PlanId, userId: input.userId },
@@ -30,13 +33,7 @@ function resolveProvider(input: { plan: string; userId: string; deadline: Deadli
   );
 }
 
-/** 分析成功後に同じjobで走るMD-MERGEは書き直しだけ。安いモデルで固定する（T-M8-334）。 */
-function resolveMergeProvider(input: { plan: string; userId: string; deadline: Deadline }) {
-  return resolveTextProvider(
-    { plan: input.plan as PlanId, userId: input.userId },
-    { deadline: input.deadline, purpose: "mechanical" },
-  );
-}
+
 
 export async function learningAnalysisHandler(ctx: JobContext): Promise<void> {
   const meta = (
@@ -66,7 +63,7 @@ export async function learningAnalysisHandler(ctx: JobContext): Promise<void> {
     // 分析成功後、同一job内で該当セクションをmergeしてbase_md新versionを確定する（T-M5-04）。
     mergeAfterAnalysis: async (sourceId) => {
       await executeMdMerge(
-        { db: pooledDb, jobId: ctx.jobId, runInTx, resolveProvider: resolveMergeProvider, makeDeadline },
+        { db: pooledDb, jobId: ctx.jobId, runInTx, resolveProvider, makeDeadline },
         { confirmSourceId: sourceId },
       );
     },

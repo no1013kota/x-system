@@ -23,10 +23,14 @@ const pooledDb = pooledQueryable();
 const runInTx = runInPooledTx;
 
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
-  // アカウント.mdの1セクション（400字以内）を書き直すだけ（T-M8-334）。安いモデルで固定する。
+  /*
+    アカウント.mdのセクション1〜4を、参考ソースの分析を踏まえて洗練する（T-M8-336）。
+    **書き直しではなく判断が要る仕事**（どの具体を足すか・設定由来の値を守るか）なので、
+    学習分析と同じ中間クラスで固定する（運営者の指示 2026-08-27）。
+  */
   return resolveTextProvider(
     { plan: input.plan as PlanId, userId: input.userId },
-    { deadline: input.deadline, purpose: "mechanical" },
+    { deadline: input.deadline, purpose: "analysis" },
   );
 }
 

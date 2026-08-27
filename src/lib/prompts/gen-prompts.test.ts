@@ -19,11 +19,15 @@ describe("GEN prompt constants", () => {
     expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
   });
 
-  it("PT-MD-MERGE keeps its placeholders and body-only contract (§6.14)", () => {
+  it("PT-MD-MERGE keeps its placeholders and the sections 1-4 contract (§6.14, T-M8-336)", () => {
     expect(PT_MD_MERGE).toContain("{{current_section}}");
     expect(PT_MD_MERGE).toContain("{{active_analyses}}");
     expect(PT_MD_MERGE).toContain("{{removed_analyses}}");
-    expect(PT_MD_MERGE).toContain("セクション本文のみ");
+    // 反映先はセクション1〜4。出力に見出し4つを求める（`md-merge.ts` の検証と対）。
+    expect(PT_MD_MERGE).toContain("セクション1〜4");
+    expect(PT_MD_MERGE).toContain("「## 1.」");
+    // **設定由来の値を変えさせない**（画面の設定と実際の指示が食い違わないように）。
+    expect(PT_MD_MERGE).toContain("設定由来の行の値を変えない");
     expect(PT_MD_MERGE).toBe(PT_MD_MERGE.trim());
   });
 

@@ -34,6 +34,19 @@ const BASE_MD = `# 発信定義書
 旧6
 `;
 
+/** 洗練後のセクション1〜4（見出し4つを順番どおり含むのが新しい規約・T-M8-336）。 */
+const POLISHED = `## 1. ペルソナ
+- 発信者: A（現場の実務者へ、手順で説明する）
+
+## 2. 発信テーマ
+- 主テーマ: AI
+
+## 3. トーン&マナー
+- 文末: です・ます調
+
+## 4. やらないこと
+- 煽らない`;
+
 function gen(body: string): TextGen {
   return {
     generate: async () => ({ provider: "anthropic", requestId: "r", text: body, citations: [], usage: emptyUsage(), stopReason: "end_turn" }),
@@ -104,10 +117,10 @@ describe("executeMdMerge (db)", () => {
     return { uid, xid, jobId, sourceId };
   }
 
-  it("writes a new base_md version (learning), history row, and confirms source analyzed atomically; keeps 1-4", async () => {
+  it("セクション1〜4を洗練して版・履歴・ソース確定を同じtxで書く（5〜6は不変）", async () => {
     const s = await withTransaction((c) => seed(c));
     try {
-      const res = await executeMdMerge(deps(s.jobId, "統合された新セクション"), { confirmSourceId: s.sourceId });
+      const res = await executeMdMerge(deps(s.jobId, POLISHED), { confirmSourceId: s.sourceId });
       expect(res.version).toBe(3); // 2 -> 3
 
       const acct = (
@@ -119,10 +132,11 @@ describe("executeMdMerge (db)", () => {
         )
       ).rows[0];
       expect(acct.base_md_version).toBe(3);
-      expect(acct.base_md).toContain("## 1. ペルソナ"); // sections 1-4 unchanged
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n統合された新セクション"); // own_posts → target §5
-      expect(acct.base_md).not.toContain("旧5");
-      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6"); // NON-target §6 preserved
+      // 反映先はセクション1〜4（T-M8-336）。5〜6と前文はバイト単位で残る。
+      expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）");
+      expect(acct.base_md).toContain("# 発信定義書");
+      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5");
+      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6");
 
       const ver = (
         await withTransaction((c) =>
@@ -182,8 +196,8 @@ describe("executeMdMerge (db)", () => {
       return { uid, xid, removed, mergeJob };
     });
     try {
-      const res = await executeMdMerge(deps(seeded.mergeJob, "残りの型で再構築"), { removedSourceId: seeded.removed });
-      expect(res.section).toBe(6); // ref_post → §6
+      const res = await executeMdMerge(deps(seeded.mergeJob, POLISHED), { removedSourceId: seeded.removed });
+      expect(res.section).toBe("profile");
 
       const acct = (
         await withTransaction((c) =>
@@ -191,8 +205,9 @@ describe("executeMdMerge (db)", () => {
         )
       ).rows[0];
       expect(acct.base_md_version).toBe(3);
-      expect(acct.base_md).toContain("## 6. 参考にする型\n残りの型で再構築"); // target rebuilt
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5"); // non-target preserved
+      expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）"); // 1〜4が書き直された
+      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5"); // 5〜6は不変
+      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6");
 
       const rm = (
         await withTransaction((c) =>
