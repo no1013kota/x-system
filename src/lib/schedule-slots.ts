@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { assertAutomationConsent } from "@/lib/x/automation-consent";
 import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
@@ -125,32 +125,6 @@ async function requireActiveAccount(deps: ScheduleSlotDeps, userId: string): Pro
   const id = await deps.resolveActiveXAccountId(userId);
   if (!id) throw new AppError("x_account_required");
   return id;
-}
-
-/** mode=auto を有効化する操作の同意ゲート（要件02 §3.3/§3.10, 要件05 §7）。 */
-async function assertAutomationConsent(
-  tx: Queryable,
-  xAccountId: string,
-): Promise<void> {
-  const row = (
-    await tx.query<{
-      automation_consent_version: string | null;
-      consented: boolean;
-      disabled: boolean;
-    }>(
-      `select automation_consent_version,
-              (automation_consented_at is not null) as consented,
-              (automation_disabled_at is not null) as disabled
-         from x_accounts where id = $1`,
-      [xAccountId],
-    )
-  ).rows[0];
-  const ok =
-    row != null &&
-    row.automation_consent_version === CURRENT_AUTOMATION_CONSENT_VERSION &&
-    row.consented &&
-    !row.disabled;
-  if (!ok) throw new AppError("automation_consent_required");
 }
 
 export async function listScheduleSlots(

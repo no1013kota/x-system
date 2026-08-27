@@ -19,6 +19,7 @@ export function PatternRadioGroup({
   legend = "パターン",
   deleteDisabled,
   name,
+  onAdd,
   onChange,
   onDelete,
   options,
@@ -39,6 +40,13 @@ export function PatternRadioGroup({
    * いま組み立てている予約の足元が崩れる。消すのは投稿作成か設定画面から。
    */
   onDelete?: (option: PatternOption) => void;
+  /**
+   * 渡すと**並んでいるパターンの最後に、同じパネル形式の「パターンを追加」**が出る
+   * （T-M8-331・運営者の指示 2026-08-27）。以前は一覧の外側に単独のボタンがあり、
+   * 「選ぶ」操作と「増やす」操作が別の場所に分かれていた。追加も選択肢の一種として
+   * 同じ並びに置くと、目線が一覧から外れない。
+   */
+  onAdd?: () => void;
   options: PatternOption[];
   value: string;
 }) {
@@ -87,6 +95,28 @@ export function PatternRadioGroup({
             ) : null}
           </div>
         ))}
+        {onAdd ? (
+          /*
+            **既存パネルと同じ寸法・同じ並び**にする（枠線を破線にして「まだ無いもの」を示す）。
+            `<label>` ではなく `<button>`——選択ではなく追加なので、ラジオの仲間に見せない。
+          */
+          <button
+            className="flex h-full min-h-[62px] cursor-pointer items-center gap-2 rounded-card border border-dashed border-hairline bg-surface px-3 py-2.5 text-left transition-colors duration-150 hover:border-brand hover:bg-brand-subtle disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={disabled}
+            onClick={onAdd}
+            type="button"
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-hairline text-ink-3">
+              ＋
+            </span>
+            <span className="min-w-0">
+              <span className="block text-body font-medium text-ink">パターンを追加</span>
+              <span className="mt-0.5 block text-caption leading-4 text-ink-3">
+                自分の型を作って選べるようにする
+              </span>
+            </span>
+          </button>
+        ) : null}
       </div>
     </fieldset>
   );

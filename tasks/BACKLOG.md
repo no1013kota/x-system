@@ -5848,6 +5848,28 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - **積み残し（判断が要る）**: モバイルのナビラベルが窮屈（7項目・390px幅で2行折り返し）。
   以前から同じで悪化はしていないが、気になるなら**プロンプトをモバイルでは隠す**などで緩められる。
 
+### T-M8-331: 投稿作成に「生成したあと」を置き、パターン追加を一覧の最後のパネルへ `done`
+- 参照: 要件06 §4.2・§1.5共通 / 要件05 §createGenerationJob / 依存: なし / サイズ: M
+- 完了条件: 追加指示の下で下書き／すぐに投稿／予約投稿を選べる（予約は日時指定つき）／
+  スケジュール画面のモードが時刻の下にある／両画面の「パターンを追加」が一覧末尾のパネルになっている
+- メモ: 運営者の指示（2026-08-27）。「作ったあとどうするか」を作る前に決められるようにする。
+- 実装メモ（2026-08-27 完了）:
+  - `createGenerationJob` に `post_mode`（draft/now/scheduled）と `scheduled_at` を追加。
+    `now` は生成jobの `input.mode = auto` で既存の投稿連鎖（`ensureAutoPostPublishJob`）に乗せ、
+    `scheduled` は `input.scheduled_at` を**下書き作成と同じINSERT**で `drafts.scheduled_at` へ入れる
+    （別UPDATEにすると、その間に落ちたとき「予約したはずが下書きのまま」になる）。
+    予約は投稿へ連鎖させない——連鎖させると予約時刻より前に出る。
+  - **同意ゲートを共通化**した。`assertAutomationConsent` を `schedule-slots.ts` から
+    `lib/x/automation-consent.ts` へ移し、投稿作成の `now`／`scheduled` でも受理前に通す。
+    同意モーダルもスケジュールと共用（`components/x/automation-consent-modal.tsx`）。
+    **生成の費用を使ったあとで「投稿できない」と分かる形にしない**（原則2）。
+  - 日時の判定・JST解釈は下書き画面と同じ純粋層（`lib/draft-schedule.ts`）を画面とサーバーの両方で通す。
+  - 検証: `generation-jobs.db.test.ts` に5件（既定/同意なし拒否/auto/JST→UTC/過去日時）、
+    `post-generation.db.test.ts` に1件（予約が下書きへ乗る）、E2E `post-mode.spec.ts` に2件。
+    **本番実装を通す形で書き、ゲートを外すと赤くなることを確認した。**
+  - `generation.spec.ts` の「チェック済みradioが0件」は、モードのradioが増えたため
+    パターンのgroup内に限定するよう直した（画面が増えたときに壊れる書き方だった）。
+
 ### T-M8-330: 投稿作成から生成できない（送信キーがスキーマと食い違う） `done`
 - 参照: `src/app/app/posts/create-post-form.tsx` / `src/lib/jobs/generation-jobs.ts` / 依存: なし / サイズ: S
 - 完了条件: 投稿作成から生成が始められる／同じ食い違いが再発しない形になっている

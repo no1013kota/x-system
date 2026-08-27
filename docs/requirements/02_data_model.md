@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.73 |
-| 更新日 | 2026-08-25 |
+| バージョン | v1.74 |
+| 更新日 | 2026-08-27 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -841,7 +841,7 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 }
 ```
 
-キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
+キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。**`mode`（`auto`＝生成後に投稿まで進む／`draft`）と`scheduled_at`（UTC ISO）は投稿作成の「生成したあと」とスケジュールの実行モードで共用する**（T-M8-143／T-M8-331。キー名を画面ごとに変えると、生成worker側が見るのは`input`だけなので「片方の画面でだけ効かない」差になる）。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
 
 ### 4.6 `generation_jobs.usage`
 
@@ -1042,3 +1042,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |
 | v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
 | v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |
+| v1.74 | 2026-08-27 | generation_jobs.input の `mode`／`scheduled_at` を投稿作成の「生成したあと」と共用することを明記（T-M8-331） |

@@ -49,7 +49,7 @@ function toJstInputValue(iso: string | null): string {
  * ちょうど今にすると「1分以上先」の判定（MIN_SCHEDULE_LEAD_MS）に触れて開いた瞬間から
  * エラーになるため、少し先へ丸める。
  */
-function defaultScheduleValue(): string {
+export function defaultScheduleValue(): string {
   return toJstInputValue(new Date(Date.now() + 5 * 60_000).toISOString());
 }
 

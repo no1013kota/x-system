@@ -64,6 +64,7 @@ import {
   alertDialogBackdropClassName,
   alertDialogPopupClassName,
 } from "@/components/ui/alert-dialog-classes";
+import { AutomationConsentModal } from "@/components/x/automation-consent-modal";
 
 /**
  * SC-08 スケジュール管理UI（要件06 §2, T-M4-04）。週間プレビュー＋スロットCRUD。Server Action経由で
@@ -1137,6 +1138,8 @@ function SlotFields({
         deleteDisabled={pending}
         name={`pattern-${target.kind === "edit" ? target.slotId : "new"}`}
         onChange={selectPattern}
+        // 追加は一覧の最後のパネル（T-M8-331）。投稿作成と同じ形にする。
+        onAdd={prompts && !newPattern ? openAddPattern : undefined}
         // 投稿作成と同じく各カードから削除できる（T-M8-205。編集権限のあるときだけ）。
         onDelete={prompts ? removePattern : undefined}
         options={options}
@@ -1164,17 +1167,7 @@ function SlotFields({
               </Button>
             </div>
           </div>
-        ) : (
-          <Button
-            disabled={pending}
-            onClick={openAddPattern}
-            type="button"
-            /* 投稿作成の同じボタンと同じ見た目にする（T-M8-138）。同じ操作が画面で違って見えないように。 */
-            variant="subtle"
-          >
-            パターンを追加
-          </Button>
-        )
+        ) : null
       ) : null}
 
       {/*
@@ -1299,7 +1292,12 @@ function SlotFields({
         </div>
       </fieldset>
 
-      <div className="flex flex-wrap gap-4">
+      {/*
+        **モードは時刻の下に置く**（T-M8-331・運営者の指示 2026-08-27）。
+        横並びだと「時刻の設定の一部」に見え、下書きか自動投稿かという**別の決めごと**が
+        埋もれる。上から順に「いつ（曜日→時刻）→どうする（モード）」と読める形にする。
+      */}
+      <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
           <span className="font-medium">時刻</span>
           <select
@@ -1382,75 +1380,5 @@ function SlotFields({
           .join("・")} ${v.time_jst} に「${patternLabel(patterns.find((o) => o.id === v.pattern_id)?.name ?? null)}」を生成し、確認なしでXへ投稿します。`}
       />
     </div>
-  );
-}
-
-/** 自動投稿の説明＋説明文version付き明示checkbox（要件06 §3.5）。同意までauto slotは保存できない。 */
-function AutomationConsentModal({
-  open,
-  onOpenChange,
-  onConfirm,
-  pending,
-  accountHandle,
-  settingSummary,
-  firstRunLabel,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-  pending: boolean;
-  /** 対象アカウント（@handle）。どのアカウントの話かを明示するため。 */
-  accountHandle: string | null;
-  /** 「毎週 月・水 9:00 に「ニュース解説」を生成し…」の要約。 */
-  settingSummary: string;
-  /** 初回実行の日時表示。算出できないときは null。 */
-  firstRunLabel: string | null;
-}) {
-  const [agreed, setAgreed] = useState(false);
-  return (
-    <AlertDialog.Root onOpenChange={onOpenChange} open={open}>
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className={alertDialogBackdropClassName} />
-        <AlertDialog.Popup className={alertDialogPopupClassName("lg")}>
-          <AlertDialog.Title className={cardTitleClassName}>
-            {accountHandle ? `@${accountHandle} の自動投稿を有効にします` : "自動投稿を有効にします"}
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            この設定: {settingSummary}
-            {firstRunLabel ? `　最初の実行は ${firstRunLabel} です。` : ""}
-          </AlertDialog.Description>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            この同意は
-            {accountHandle ? `@${accountHandle}` : "このアカウント"}
-            の自動投稿すべて（今後追加するスケジュールを含む）に適用されます。
-          </p>
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
-            <li>生成された内容が、指定時刻に<span className="font-medium text-foreground">確認なしでXへ投稿</span>されます。</li>
-            <li>スレッド途中で失敗した場合、作成済みのポストを自動削除します。<span className="font-medium text-foreground">削除したポストはX上で復元できません。</span></li>
-            <li>投稿内容の責任は利用者本人が負います。</li>
-            <li>停止は「自動投稿をすべて停止」またはスロットの停止でいつでも行えます。</li>
-          </ul>
-          <label className="mt-4 flex items-start gap-2 text-sm">
-            <input
-              checked={agreed}
-              className="mt-0.5"
-              onChange={(e) => setAgreed(e.target.checked)}
-              type="checkbox"
-            />
-            <span>
-              上記の説明（{consentVersionLabel(CURRENT_AUTOMATION_CONSENT_VERSION)}）を理解し、自動投稿に同意します。
-            </span>
-          </label>
-          <div className="mt-6 flex justify-end gap-2">
-            <AlertDialog.Close render={<Button size="lg" type="button" variant="outline" />}>
-              キャンセル
-            </AlertDialog.Close>
-            <Button disabled={!agreed || pending} onClick={onConfirm} size="lg" type="button">
-              同意して保存
-            </Button>
-          </div>
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
   );
 }

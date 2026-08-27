@@ -21,6 +21,7 @@ const pooledDb = pooledQueryable();
 
 import { listPatterns, listPatternPrompts } from "@/lib/post/post-patterns-store";
 
+import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { CreatePostForm, type ActiveJob } from "./create-post-form";
 import { DraftsList } from "./drafts-list";
 import { HistoryList } from "./history-list";
@@ -57,10 +58,21 @@ interface PostsPageProps {
 
 async function createTabData(userId: string, activeXAccountId: string) {
   // 3クエリは相互に独立（T-M8-67。以前は plan → キー → 実行中job の3段直列だった）。
-  const [profileResult, keyRows, inflightResult, allPatterns] = await Promise.all([
+  const [profileResult, consentResult, keyRows, inflightResult, allPatterns] = await Promise.all([
     getPool().query<{ plan: string | null }>(`select plan from profiles where id = $1`, [
       userId,
     ]),
+    /*
+      自動投稿の同意状況（T-M8-331）。「すぐに投稿」「予約投稿」は本文を見ないまま
+      Xへ出るので、スケジュールと同じ同意が要る。**押す前に**求めるためここで読む。
+    */
+    getPool().query<{ consented: boolean; handle: string }>(
+      `select handle,
+              (automation_consent_version = $2 and automation_consented_at is not null
+               and automation_disabled_at is null) as consented
+         from x_accounts where id = $1`,
+      [activeXAccountId, CURRENT_AUTOMATION_CONSENT_VERSION],
+    ),
     imageKeyRowsQuery(userId),
     getPool().query<{
       id: string;
@@ -111,7 +123,15 @@ async function createTabData(userId: string, activeXAccountId: string) {
     : null;
   // 経過表示の基準（T-M8-113）。サーバーとブラウザで同じ値を使わないと
   // 「経過 0:06」と「経過 0:07」が食い違って描き直しになる。
-  return { patterns, imageProviders, initialJob, nowMs: await serverNowMs(), promptTemplates };
+  return {
+    patterns,
+    imageProviders,
+    initialJob,
+    nowMs: await serverNowMs(),
+    promptTemplates,
+    automationConsented: consentResult.rows[0]?.consented === true,
+    accountHandle: consentResult.rows[0]?.handle ?? null,
+  };
 }
 
 /**
@@ -307,6 +327,8 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           newsPrefill={newsPrefill}
           initialJob={createData.initialJob}
           initialNowMs={createData.nowMs}
+          accountHandle={createData.accountHandle}
+          automationConsented={createData.automationConsented}
           patterns={createData.patterns}
           promptTemplates={createData.promptTemplates}
           xAccountId={activeXAccountId}

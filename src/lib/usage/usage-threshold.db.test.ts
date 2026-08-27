@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
-import { reserveUsage, settleUsage } from "./generation-reserve";
+import { settleUsage } from "./generation-reserve";
 import { notifyUsageThresholds } from "./usage-threshold";
 
 /**

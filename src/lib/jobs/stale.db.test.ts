@@ -4,7 +4,6 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
-import { reserveUsage } from "../usage/generation-reserve";
 import { heartbeat, recoverStaleJobs } from "./stale";
 
 /**
@@ -157,45 +156,5 @@ describe("heartbeat & recoverStaleJobs", () => {
       );
     }
   });
-
-  // T-M6-05: reserve済みjobがstale→failed確定する際、同一transactionで利用枠がrefundされる。
-  async function seedPremium(c: PoolClient): Promise<{ uid: string; xid: string }> {
-    const uid = randomUUID();
-    await c.query(
-      `insert into auth.users (id, instance_id, aud, role, email)
-       values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
-      [uid, `${uid}@example.com`],
-    );
-    await c.query(
-      `insert into profiles (id, email, plan) values ($1,$2,'premium') on conflict (id) do update set plan = 'premium'`,
-      [uid, `${uid}@example.com`],
-    );
-    const xid = (
-      await c.query<{ id: string }>(
-        `insert into x_accounts (user_id, x_user_id, handle, name, auth_type) values ($1,$2,'h','n','byok') returning id`,
-        [uid, `x-${randomUUID()}`],
-      )
-    ).rows[0].id;
-    return { uid, xid };
-  }
-  async function genState(uid: string, jobId: string): Promise<{ gen: number; refunds: number }> {
-    return withTransaction(async (c) => {
-      const cnt = await c.query<{ n: number }>(
-        `select coalesce(ai_credits_used,0) as n from usage_counters where user_id=$1`,
-        [uid],
-      );
-      const rf = await c.query<{ n: number }>(
-        `select count(*)::int as n from usage_events where job_id=$1 and reason='refund'`,
-        [jobId],
-      );
-      return { gen: cnt.rows[0]?.n ?? 0, refunds: rf.rows[0].n };
-    });
-  }
-  const cleanupUsage = async (uid: string) => {
-    await withTransaction((c) => c.query(`delete from usage_events where user_id=$1`, [uid]));
-    await withTransaction((c) => c.query(`delete from usage_counters where user_id=$1`, [uid]));
-    await withTransaction((c) => c.query(`delete from auth.users where id=$1`, [uid]));
-  };
-
 
 });

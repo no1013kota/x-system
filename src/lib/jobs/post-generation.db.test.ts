@@ -366,6 +366,32 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
+  it("input.scheduled_at があれば予約済みの下書きとして作られる（T-M8-331）", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      // 投稿作成画面の「予約投稿」。受理済みのUTC ISOが job.input に入っている。
+      const at = new Date(Date.now() + 2 * 3_600_000).toISOString();
+      await db.query(`update generation_jobs set input = $2::jsonb where id = $1`, [
+        jobId,
+        JSON.stringify({ scheduled_at: at }),
+      ]);
+      const provider = mockProvider('{"posts":["予約する本文"],"sources":[],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const row = (
+        await db.query<{ scheduled_at: string | null; status: string }>(
+          `select scheduled_at::text as scheduled_at, status from drafts where id = $1`,
+          [res.draftId],
+        )
+      ).rows[0];
+      expect(row.status, "予約は下書きのまま持つ（投稿は cron が行う）").toBe("draft");
+      expect(new Date(String(row.scheduled_at)).toISOString()).toBe(at);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("is idempotent: a second run returns already_done without a duplicate draft", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {

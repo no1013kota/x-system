@@ -8,7 +8,9 @@ import {
   checkPostingPrerequisites,
   type ExecutionPrereqInput,
 } from "@/lib/execution-prereqs";
+import { assertDraftSchedulable } from "@/lib/draft-schedule";
 import { AppError } from "@/lib/observability/errors";
+import { assertAutomationConsent } from "@/lib/x/automation-consent";
 
 import { validateManualBaseMd } from "../base-md";
 import { hasRemovingLearningSource } from "@/lib/learning-sources";
@@ -49,6 +51,21 @@ export const createGenerationJobSchema = z.object({
    */
   theme: z.enum(POST_THEME_IDS),
   image_enabled: z.boolean().optional().default(false),
+  /**
+   * 生成したあとどうするか（T-M8-331・運営者の指示 2026-08-27）。
+   * - `draft`: 下書きに置く（既定・従来の挙動）
+   * - `now`: 生成が終わり次第 `post_publish` へ連鎖する（スケジュールの mode=auto と同じ経路）
+   * - `scheduled`: 下書きへ `scheduled_at` を入れる。到来したら `scheduled-drafts` の cron が拾う
+   *
+   * `now`／`scheduled` は**利用者が本文を見ないまま投稿される**ので、自動投稿の同意が要る。
+   */
+  post_mode: z.enum(["draft", "now", "scheduled"]).optional().default("draft"),
+  /**
+   * `post_mode = "scheduled"` の予約日時。`datetime-local` の素の値（TZ無し）は
+   * **日本時間として**解釈する——判定と変換は `@/lib/draft-schedule` の純粋層に任せる
+   * （ここで独自に変換すると本番のUTCサーバで9時間ずれる・T-M8-229）。
+   */
+  scheduled_at: z.string().min(1).max(40).nullish(),
   news_item_id: z.string().uuid().nullish(),
   /**
    * この生成にだけ使うプロンプト（T-M8-92/93・md/premium）。
@@ -96,7 +113,12 @@ export interface CreateJobResult {
   deduped: boolean;
 }
 
-function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown> {
+function buildInputJson(
+  input: CreateGenerationJobInput,
+  /** 受理済みの予約日時（UTCのISO）。`post_mode` が `scheduled` 以外なら null。 */
+  scheduledAtIso: string | null,
+): Record<string, unknown> {
+  const postMode = input.post_mode ?? "draft";
   return {
     source_url: input.source_url ?? null,
     quote_url: input.quote_url ?? null,
@@ -111,7 +133,15 @@ function buildInputJson(input: CreateGenerationJobInput): Record<string, unknown
     prompt_override: input.prompt_override?.trim() ? input.prompt_override : null,
     base_md_override: input.base_md_override?.trim() ? input.base_md_override : null,
     image_prompt_override: input.image_prompt_override?.trim() ? input.image_prompt_override : null,
-    requested_mode: "draft",
+    /*
+      **投稿まで進むかを job に持たせる**（T-M8-331）。生成worker（`post-generation.ts`）は
+      `job.input.mode` しか見ないので、スケジュールと同じキー名で渡す。
+      `scheduled` を `auto` にはしない——投稿へ連鎖させると**予約時刻より前に出てしまう**。
+      予約は下書きの `scheduled_at` に入れ、到来したら cron（`scheduled-drafts`）が拾う。
+    */
+    mode: postMode === "now" ? "auto" : "draft",
+    requested_mode: postMode === "now" ? "auto" : "draft",
+    scheduled_at: scheduledAtIso,
   };
 }
 
@@ -141,6 +171,20 @@ export async function createGenerationJob(
   if (input.base_md_override?.trim()) {
     validateManualBaseMd(input.base_md_override);
   }
+  /*
+    **投稿まで進む指定は、生成を始める前に受理判定する**（T-M8-331・原則2）。
+    日時の判定と JST→UTC 変換は下書き画面と同じ純粋層に通す——ここで独自に判定すると
+    「画面では通るのに保存で弾かれる」「本番のUTCサーバで9時間ずれる」が起きる。
+  */
+  const postMode = input.post_mode ?? "draft";
+  const scheduledAtIso =
+    postMode === "scheduled"
+      ? assertDraftSchedulable(
+          { status: "draft", xAccountActive: true },
+          input.scheduled_at ?? "",
+          Date.now(),
+        )
+      : null;
   const key = requestKey(userId, input.request_key);
   return deps.runInTx(async (tx) => {
     const existing = (
@@ -157,6 +201,15 @@ export async function createGenerationJob(
       throw new AppError("job_conflict", { details: { reason: "learning_removing" } });
     }
     await assertPrereqs(deps, userId, input.image_enabled);
+    /*
+      **投稿する指定なら、投稿の前提と自動投稿の同意もここで見る**（T-M8-331）。
+      生成が終わってから投稿直前に弾くと、AIの費用を使ったあとで「投稿されない」ことに
+      気付くことになる。同意ゲートはスケジュールと同じ関数を使う（判定を2箇所に置かない）。
+    */
+    if (postMode !== "draft") {
+      await assertPostingPrereqs(deps, userId);
+      await assertAutomationConsent(tx, input.x_account_id);
+    }
     await assertJobBudget(tx, userId);
 
     // 所有者チェックを兼ねてパターンを取り、引用ポストの feature flag をここで見る
@@ -178,7 +231,7 @@ export async function createGenerationJob(
          values ($1, 'post_generation', 'manual', $2, $3::jsonb, $4, 'queued')
          on conflict (request_key) do nothing
          returning id`,
-        [input.x_account_id, pattern.id, JSON.stringify(buildInputJson(input)), key],
+        [input.x_account_id, pattern.id, JSON.stringify(buildInputJson(input, scheduledAtIso)), key],
       )
     ).rows[0];
     if (inserted) return { jobId: inserted.id, deduped: false };

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.65 |
-| 更新日 | 2026-08-25 |
+| バージョン | v1.66 |
+| 更新日 | 2026-08-27 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -173,7 +173,7 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override, base_md_override, image_prompt_override | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`*_override`（T-M8-92/93）は**この生成にだけ**使う指示で、通常の解決を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない**。`prompt_override`=パターンプロンプト（≦8,000字）、`base_md_override`=アカウント.md（≦5,000字・保存版と同じ見出し検証を通す。GENのsystemと画像のセクション3抽出の両方に効く）、`image_prompt_override`=PT-IMG（≦8,000字・画像ONのとき`image_generation`子jobのinputへ引き継がれる） |
+| `createGenerationJob` | request_key, pattern, theme, source_url, quote_url, user_opinion, instructions, image_enabled, news_item_id, prompt_override, base_md_override, image_prompt_override, **post_mode**, **scheduled_at** | job_id | `post_generation`を冪等作成し`after()`でdispatch。P-5は検証済み対象X URL必須。`*_override`（T-M8-92/93）は**この生成にだけ**使う指示で、通常の解決を飛ばす。保存はしない。**再生成（`regenerateDraft`）へは引き継がない**。`prompt_override`=パターンプロンプト（≦8,000字）、`base_md_override`=アカウント.md（≦5,000字・保存版と同じ見出し検証を通す。GENのsystemと画像のセクション3抽出の両方に効く）、`image_prompt_override`=PT-IMG（≦8,000字・画像ONのとき`image_generation`子jobのinputへ引き継がれる） |
 | `regenerateDraft` | request_key, draft_id, additional_instructions, image_enabled | job_id | 元draftを保持し、`parent_draft_id`を持つ新draftを生成 |
 | `getGenerationJob` | job_id | job | 所有者のみ |
 | `retryGenerationJob` | request_key, job_id | new_job_id | failedのみ。新jobを冪等作成 |
@@ -185,6 +185,8 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 | `reconcileDraftPosting` | draft_id | draft | failedのみ。既知IDと直近投稿をXから再照合 |
 | `cloneFailedDraftForRetry` | request_key, draft_id | new_draft | 投稿ID作成履歴があり、曖昧状態・残存IDが解消済みのfailedだけ。AI呼び出しなし |
 | `regenerateImage` | request_key, draft_id | job_id | `image_generation`を冪等作成。画像は1ポスト目に添付・providerはアカウント設定(ai_purpose_config)から解決（初回生成と同じ）。冪等はrequest_keyと「1draftにactive画像job1件」で担保 |
+
+**`post_mode`（T-M8-331・SC-07の「生成したあと」）**: `draft`（既定）／`now`（生成後にそのまま投稿）／`scheduled`（生成した下書きへ予約日時を入れる）。`now`は生成jobの`input.mode`を`auto`にして`post_publish`へ連鎖させ、`scheduled`は`input.scheduled_at`（UTC ISO）を下書き作成のINSERTで`drafts.scheduled_at`へ入れる（投稿は`scheduled-drafts`のcronが行う。連鎖させると予約時刻より前に出るため）。`scheduled_at`は`datetime-local`の素の値でも受け、**日本時間として解釈**して`assertDraftSchedulable`（`lib/draft-schedule.ts`）で判定する（1分以上先・90日以内）。`draft`以外は**受理前に**投稿の前提（`checkPostingPrerequisites`）と自動投稿の同意（`assertAutomationConsent`）を確認し、不足なら`automation_consent_required`等でjobを作らずに止める——生成の費用を使ったあとで「投稿できない」と分かる形にしない。
 
 `createGenerationJob`でP-5を指定する場合は`quote_url`を必須とする。サーバー側でtweet_idを抽出し、対象ポスト取得に成功した場合だけjobを作る。生成・編集時は対象URLをdraftへ別管理し、投稿時に1ポスト目の本文末尾へ合成する。`quote_tweet_id`をX投稿APIへ指定しない。
 
@@ -363,6 +365,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.63 | 2026-08-23 | recordCancellationSurveyAction（解約理由のアンケート・T-M8-277） |
 | v1.64 | 2026-08-23 | cancelTrialNowAction（トライアルの即時解約）と、残りトライアルでの再開（T-M8-278） |
 | v1.65 | 2026-08-25 | recordCancellationSurveyAction を複数選択（`reasons`）へ（T-M8-294） |
+| v1.66 | 2026-08-27 | createGenerationJob に `post_mode`／`scheduled_at`（投稿作成の「生成したあと」）を追加（T-M8-331） |
 
 ### 下書きの投稿予約（T-M8-157）
 

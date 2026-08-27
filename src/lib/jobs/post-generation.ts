@@ -101,6 +101,11 @@ interface JobRow {
      * （要件04 §10 手順6/7・T-M8-143）。手動起点は未設定＝下書きで止まる。
      */
     mode?: "draft" | "auto";
+    /**
+     * 投稿作成画面の「予約投稿」で指定された日時（UTCのISO・T-M8-331）。
+     * 入っていれば下書きに予約として乗せる。到来したら `scheduled-drafts` の cron が拾う。
+     */
+    scheduled_at?: string | null;
   };
   x_account_id: string;
   /** 今回のattempt番号（leaseで加算済み）。再試行時のWeb検索縮退に使う。 */
@@ -569,11 +574,13 @@ const hasInputUrl = Boolean(job.input.source_url);
   const inserted = await db.query<{ id: string }>(
     // **パターンの写しを明示的に入れる**（U2/U3）。名前・上限・引用必須をここで凍結するので、
     // 後からパターンを編集・削除しても履歴の表示と本文の再検証が変わらない。
+    // **予約は draft を作る瞬間に入れる**（T-M8-331）。生成後に別UPDATEで入れると、
+    // その間に落ちたとき「予約したはずが下書きのまま」になり、画面から説明できない。
     `insert into drafts
        (x_account_id, pattern_id, pattern_name, max_posts, max_posts_edit, requires_quote_url,
         thread, initial_thread, status, source_job_id,
-        source_news_item_id, parent_draft_id)
-     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10)
+        source_news_item_id, parent_draft_id, scheduled_at)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10, $11::timestamptz)
      on conflict (source_job_id) do nothing
      returning id`,
     [
@@ -588,6 +595,7 @@ const hasInputUrl = Boolean(job.input.source_url);
       jobId,
       job.input.news_item_id ?? null,
       job.input.parent_draft_id ?? null,
+      job.input.scheduled_at ?? null,
     ],
   );
   const draftId = inserted.rows[0]?.id ?? (await existingDraftId(db, jobId));
