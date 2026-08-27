@@ -15,7 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import { actionReason } from "@/components/post/pattern-fields";
-import { PRESET_MAX_CHARS, type PromptPresetKind, type PromptPresetView } from "@/lib/prompts/prompt-presets";
+import {
+  PRESET_MAX_CHARS,
+  PRESET_MAX_COUNT,
+  type PromptPresetKind,
+  type PromptPresetView,
+} from "@/lib/prompts/prompt-presets";
 
 import { PromptListLead, PromptPanelCard, PromptAddPanel, PromptBodyField } from "./prompt-list-parts";
 
@@ -223,9 +228,18 @@ export function PromptPresetManager({
     })();
   }
 
+  /** 上限に達したら「追加」を止めて理由を出す（T-M8-350）。押せてしまうと理由の分からない失敗になる。 */
+  const atLimit = presets.length >= PRESET_MAX_COUNT[kind];
+
   return (
     <div className="space-y-4">
-      <PromptListLead count={presets.length} lead={lead} onReload={() => void reload()} pending={pending} />
+      <PromptListLead
+        count={presets.length}
+        lead={lead}
+        maxCount={PRESET_MAX_COUNT[kind]}
+        onReload={() => void reload()}
+        pending={pending}
+      />
 
       <ul className="grid gap-4 lg:grid-cols-2">
         {presets.map((item) => {
@@ -320,8 +334,12 @@ export function PromptPresetManager({
         ) : (
           /* 追加は**一覧の最後**に同じパネル形式で置く（T-M8-331 と同じ考え方）。 */
           <PromptAddPanel
-            disabled={pending}
-            hint="いまの内容は残したまま、別の書き方を試せます"
+            disabled={pending || atLimit}
+            hint={
+              atLimit
+                ? `上限の${PRESET_MAX_COUNT[kind]}件です。使わないものを削除すると追加できます`
+                : "いまの内容は残したまま、別の書き方を試せます"
+            }
             label="プロンプトを追加"
             onClick={() => setCreating({ name: "", content: emptyContentTemplate })}
           />

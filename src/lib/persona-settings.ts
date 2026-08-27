@@ -164,6 +164,17 @@ export function extractBaseMdSection(content: string, section: number): string {
   return body.trim();
 }
 
+/**
+ * 自由入力でアカウント.mdを新しく作るときの雛形（T-M8-350・運営者の指示 2026-08-28）。
+ *
+ * **6見出しの構造は必須**（生成が節ごとに読む）なので、白紙から書かせると
+ * 「保存できない理由が見出しの形」という、書いてみるまで分からない失敗になる。
+ * 見出しだけ用意して中身を空にする——何を書く場所かは見出しが言う。
+ */
+export const BLANK_BASE_MD_TEMPLATE = BASE_MD_SECTION_TITLES.map(
+  (title, index) => `## ${index + 1}. ${title}\n`,
+).join("\n");
+
 /** Creates version 1 without learned content in sections 5 and 6. */
 export function generateInitialBaseMd(input: unknown): string {
   const content = `${buildSettingsSections(input)}

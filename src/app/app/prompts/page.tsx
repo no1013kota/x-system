@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -10,6 +11,7 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { appLockFor } from "@/lib/auth/subscription-access";
 import type { BaseMdVersionView } from "@/lib/base-md";
+import { BLANK_BASE_MD_TEMPLATE } from "@/lib/persona-settings";
 import { isLearningRunningForUser, listBaseMdVersionsForUser } from "@/lib/base-md-server";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
 import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
@@ -112,7 +114,12 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   let systemDefaultPrompts: Record<string, string> = {};
 
   if (account && editable) {
-    if (section === "account-md" && account.base_md_version >= 1) {
+    if (section === "account-md") {
+      /*
+        **設定が未保存でも読む**（T-M8-350・運営者の指示 2026-08-28）。
+        アカウント.mdは自由入力で何本でも作れるようにしたので、
+        「アカウント設定を保存するまで1本も作れない」形にはできない。
+      */
       [presets, baseMdHistory, baseMdLearningRunning] = await Promise.all([
         listPromptPresetsForUser({ userId: user.id, xAccountId: account.id, kind: "base_md" }),
         listBaseMdVersionsForUser(user.id, account.id),
@@ -169,19 +176,6 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
             description="編集にはXアカウントの連携が必要です。"
             title="先にXアカウントを連携してください"
           />
-        ) : section === "account-md" && account.base_md_version < 1 ? (
-          /*
-            **アカウント.mdの区分だけ**アカウント設定を要求する（T-M8-337）。
-            投稿作成プロンプトと画像生成プロンプトはアカウント.mdが無くても編集でき、
-            生成もできる（前提から外した）。ここで画面全体を止めると、
-            設定を埋めるまでプロンプトを1つも触れないことになる。
-          */
-          <EmptyState
-            actionHref="/app/settings?tab=account"
-            actionLabel="アカウント設定へ"
-            description="アカウント.mdは、アカウント設定を保存すると作られます。設定しなくても投稿は作れます。"
-            title="アカウント.mdはまだありません"
-          />
         ) : (
           <Card className="p-4 sm:p-5">
             {section === "account-md" ? (
@@ -191,9 +185,23 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                     学習の反映処理中です。完了するまでアカウント.mdは保存できません。
                   </Notice>
                 ) : null}
+                {/*
+                  **1本目はアカウント設定から作られる**（T-M8-350・運営者の指示 2026-08-28）。
+                  まだ無いときに「作れません」で止めない——自由入力で足せるので、
+                  どちらから始めてもよいことを言う（原則2）。
+                */}
+                {account.base_md_version < 1 ? (
+                  <Notice tone="info">
+                    1本目のアカウント.mdは、
+                    <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=account">
+                      アカウント設定
+                    </Link>
+                    を保存すると作られます。ここで自分で書いて追加することもできます。
+                  </Notice>
+                ) : null}
                 <PromptPresetManager
                   bodyLabel="アカウント.mdの本文"
-                  emptyContentTemplate={account.base_md}
+                  emptyContentTemplate={account.base_md || BLANK_BASE_MD_TEMPLATE}
                   initialPresets={presets}
                   // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
                   key={`${section}:${account.id}`}

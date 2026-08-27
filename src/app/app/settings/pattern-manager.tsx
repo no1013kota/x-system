@@ -21,6 +21,7 @@ import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
+  PATTERN_MAX_COUNT,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -211,6 +212,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
         <PromptListLead
           count={patterns.length}
           lead="投稿作成とスケジュールで選べるパターンです。"
+          maxCount={PATTERN_MAX_COUNT}
           onReload={() => void reload()}
           pending={pending}
         />
@@ -318,8 +320,12 @@ const [patterns, setPatterns] = useState(initialPatterns);
         ) : (
           /* 追加は一覧の最後（T-M8-331/332）。「選ぶ」と「増やす」を同じ並びに置く。 */
           <PromptAddPanel
-            disabled={pending}
-            hint="自分の型を作って投稿作成・スケジュールで選べるようにする"
+            disabled={pending || patterns.length >= PATTERN_MAX_COUNT}
+            hint={
+              patterns.length >= PATTERN_MAX_COUNT
+                ? `上限の${PATTERN_MAX_COUNT}件です。使わないものを削除すると追加できます`
+                : "自分の型を作って投稿作成・スケジュールで選べるようにする"
+            }
             label="パターンを追加"
             onClick={() => setCreating(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
           />

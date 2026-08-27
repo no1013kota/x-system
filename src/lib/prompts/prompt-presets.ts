@@ -30,6 +30,24 @@ export const PRESET_MAX_CHARS: Record<PromptPresetKind, number> = {
   image: 8000,
 };
 
+/**
+ * 区分ごとの**持てる件数**の上限（T-M8-350・運営者の指示 2026-08-28）。
+ *
+ * 数えるのは**Xアカウント1件あたり**。プロンプトはXアカウントに紐づくので、
+ * ここ以外に数えられる単位が無い（1アカウントの利用者なら「1ユーザーにつき」と同じ）。
+ * 上限が無いと、選ぶ画面が長くなるだけで「いまどれが効いているか」が見つけにくくなる。
+ */
+export const PRESET_MAX_COUNT: Record<PromptPresetKind, number> = {
+  base_md: 5,
+  image: 5,
+};
+
+/** 区分の日本語名（上限に達したときの文言に使う）。 */
+const PRESET_KIND_LABEL: Record<PromptPresetKind, string> = {
+  base_md: "アカウント.md",
+  image: "画像生成プロンプト",
+};
+
 /** 画面に出す1件。 */
 export interface PromptPresetView {
   id: string;
@@ -162,6 +180,21 @@ export async function applyCreatePromptPreset(
 ): Promise<PromptPresetView> {
   const name = assertName(input.name);
   validatePresetContent(input.kind, input.content);
+  /*
+    **上限は作る前に見る**（T-M8-350）。書き終えてから弾かれると、書いた内容の行き先が無い。
+    画面も残数を出して「増やす」を止めるが、ここでも見る（画面だけの制限は迂回できる）。
+  */
+  const counted = await db.query<{ n: string }>(
+    `select count(*)::text as n from prompt_presets where x_account_id = $1 and kind = $2`,
+    [input.xAccountId, input.kind],
+  );
+  const max = PRESET_MAX_COUNT[input.kind];
+  if (Number(counted.rows[0]?.n ?? "0") >= max) {
+    throw new AppError("validation_error", {
+      message: `${PRESET_KIND_LABEL[input.kind]}は${max}件までです。使わないものを削除してから追加してください。`,
+      details: { reason: "preset_limit", max },
+    });
+  }
   const { rows } = await db.query<PresetRow>(
     `insert into prompt_presets (x_account_id, kind, name, content, is_default)
      values ($1, $2, $3, $4, false)

@@ -18,11 +18,14 @@ import { cardClassName } from "@/components/ui/card";
 export function PromptListLead({
   count,
   lead,
+  maxCount,
   onReload,
   pending,
 }: {
   count: number;
   lead: string;
+  /** 持てる件数の上限（T-M8-350）。**上限は作る前に見せる**——書き終えてから弾かれない。 */
+  maxCount?: number;
   onReload?: () => void;
   pending?: boolean;
 }) {
@@ -30,7 +33,7 @@ export function PromptListLead({
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-body text-ink-2">
         {lead}
-        {count > 0 ? `${count}件。` : ""}
+        {maxCount ? `${count} / ${maxCount}件。` : count > 0 ? `${count}件。` : ""}
       </p>
       {onReload ? (
         <Button disabled={pending} onClick={onReload} size="sm" type="button" variant="ghost">

@@ -135,6 +135,47 @@ describe("prompt presets（local DB）", () => {
     }
   });
 
+  /**
+   * 持てる件数の上限（T-M8-350・運営者の指示 2026-08-28）。
+   *
+   * **書き終えてから弾かれない。** 画面は残数を出して「追加」を止めるが、
+   * 画面だけの制限は迂回できるのでサーバー側でも見る。
+   */
+  it("アカウント.mdは5件まで。6件目は理由つきで断る", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c));
+    try {
+      // 1件目は「いま効いている内容」として自動で入る。
+      await listPromptPresetsForUser({ userId: uid, xAccountId: xid, kind: "base_md" });
+      for (let i = 2; i <= 5; i++) {
+        await createPromptPresetForUser({
+          userId: uid,
+          xAccountId: xid,
+          kind: "base_md",
+          name: `控え${i}`,
+          content: VALID_BASE_MD.replace("テスト用の発信者", `発信者${i}`),
+        });
+      }
+      const listed = await listPromptPresetsForUser({
+        userId: uid,
+        xAccountId: xid,
+        kind: "base_md",
+      });
+      expect(listed).toHaveLength(5);
+
+      await expect(
+        createPromptPresetForUser({
+          userId: uid,
+          xAccountId: xid,
+          kind: "base_md",
+          name: "6件目",
+          content: VALID_BASE_MD.replace("テスト用の発信者", "発信者6"),
+        }),
+      ).rejects.toMatchObject({ code: "validation_error" });
+    } finally {
+      await cleanup(uid, xid);
+    }
+  });
+
   it("追加しただけでは切り替わらない。使用中にすると x_accounts.base_md まで変わる", async () => {
     const { uid, xid } = await withTransaction((c) => seed(c));
     try {

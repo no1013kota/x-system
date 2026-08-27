@@ -102,6 +102,26 @@ describe("post_patterns CRUD（ローカルDB）", () => {
     }
   });
 
+  /**
+   * 持てる件数の上限（T-M8-350・運営者の指示 2026-08-28）。既定6件を含めて20件まで。
+   * **書き終えてから弾かれない**よう画面も残数を出すが、画面だけの制限は迂回できる。
+   */
+  it("投稿作成プロンプトは20件まで。21件目は理由つきで断る", async () => {
+    const { uid, xid } = await seedAccount();
+    try {
+      // 既定6件があるので、あと14件で上限。
+      for (let i = 0; i < 14; i++) {
+        await applyCreatePattern(getPool(), { ...input({ name: `自作${i}` }), xAccountId: xid });
+      }
+      expect((await listPatterns(getPool(), xid)).length).toBe(20);
+      await expect(
+        applyCreatePattern(getPool(), { ...input({ name: "21件目" }), xAccountId: xid }),
+      ).rejects.toMatchObject({ code: "validation_error", details: { reason: "pattern_limit" } });
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("名前が重複したら理由の分かるエラーを返す（大文字小文字と前後空白は無視）", async () => {
     const { uid, xid } = await seedAccount();
     try {
