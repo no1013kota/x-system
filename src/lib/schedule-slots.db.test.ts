@@ -112,6 +112,64 @@ describe("enableScheduleSlot (local DB)", () => {
    * **そのパターンに無いプレースホルダーの値は捨てられる**こと。
    * 残すと、どこにも表示されない値が保存され続けて画面で説明できなくなる。
    */
+  /**
+   * T-M8-333。**枠だけの上書きが増やした `{名前}` の値を、保存で消さない。**
+   *
+   * 画面は「いま見えているプロンプト本文」から入力欄を出す（T-M8-186/203）ので、
+   * 枠の上書きに `{対象読者}` を足すとその欄が出る。以前はサーバが
+   * **パターンが宣言した名前しか残さなかった**ため、書いた値は保存の瞬間に消え、
+   * 生成では「（未指定）」が差し込まれていた。画面にもエラーは出ない（原則1）。
+   */
+  it("枠だけの上書きが増やしたプレースホルダーの値は残る（T-M8-333）", async () => {
+    const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
+    try {
+      const deps = depsFor(xAccountId);
+      const p2 = await withTransaction((c) => patternId(c, xAccountId, "p2"));
+      const created = await createScheduleSlot(
+        userId,
+        {
+          pattern_id: p2,
+          weekdays: [2],
+          time_jst: "10:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+          source_url: null,
+          // 画面はこの本文から入力欄を2つ出す（{自分の考え} はパターン由来・{対象読者} は上書き由来）。
+          prompt_override: "# タスク\n{自分の考え} を {対象読者} 向けに書く",
+          placeholder_values: { 自分の考え: "AIの選び方", 対象読者: "初心者" },
+        },
+        deps,
+      );
+      expect(created.placeholder_values, "上書きが増やした項目の値が消えている").toEqual({
+        自分の考え: "AIの選び方",
+        対象読者: "初心者",
+      });
+
+      // 上書きを消したら、その名前は本文に無くなるので値も残さない（表示されない値を持たない）。
+      const cleared = await updateScheduleSlot(
+        userId,
+        {
+          slot_id: created.id,
+          expected_updated_at: created.updated_at,
+          pattern_id: p2,
+          weekdays: [2],
+          time_jst: "10:00",
+          mode: "draft",
+          theme: "other",
+          image_enabled: false,
+          source_url: null,
+          prompt_override: null,
+          placeholder_values: { 自分の考え: "AIの選び方", 対象読者: "初心者" },
+        },
+        deps,
+      );
+      expect(cleared.placeholder_values).toEqual({ 自分の考え: "AIの選び方" });
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
   it("保存した生成入力が往復し、パターンに無いプレースホルダーは捨てられる", async () => {
     const { userId, xAccountId } = await withTransaction((c) => makeAccount(c));
     try {

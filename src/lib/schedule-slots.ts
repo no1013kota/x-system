@@ -149,9 +149,25 @@ export async function listScheduleSlots(
 function keptPlaceholderValues(
   pattern: { placeholders: { name: string }[] },
   values: Record<string, string> | undefined,
+  /**
+   * この枠だけのプロンプト（正規化済み）。**上書きが増やした `{名前}` の値も残す**（T-M8-333）。
+   *
+   * 以前はパターンが宣言した名前だけを残していたため、枠の上書きで足した項目は
+   * **画面に入力欄が出て、値を書いて保存できたのに、保存の瞬間に消えていた**。
+   * 次に開くと空欄で、生成では「（未指定）」が差し込まれる——利用者からは
+   * 「入れたはずの指示が効かない」としか見えない（原則1）。
+   * 判定は生成側（`placeholdersForFill`）と同じ「本文に `{名前}` があるか」に揃える。
+   */
+  promptOverride: string | null,
 ): Record<string, string> {
+  const names = new Set(pattern.placeholders.map((item) => item.name));
+  if (promptOverride) {
+    for (const key of Object.keys(values ?? {})) {
+      if (promptOverride.includes(`{${key}}`)) names.add(key);
+    }
+  }
   const out: Record<string, string> = {};
-  for (const { name } of pattern.placeholders) {
+  for (const name of names) {
     const v = values?.[name];
     if (typeof v === "string" && v.trim() !== "") out[name] = v.trim();
   }
@@ -191,7 +207,13 @@ export async function createScheduleSlot(
         input.instructions ?? null,
         input.image_enabled,
         input.source_url ?? null,
-        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        JSON.stringify(
+          keptPlaceholderValues(
+            pattern,
+            input.placeholder_values,
+            normalizePromptOverride(input.prompt_override),
+          ),
+        ),
         normalizePromptOverride(input.prompt_override),
       ],
     );
@@ -244,7 +266,13 @@ export async function updateScheduleSlot(
         input.instructions ?? null,
         input.image_enabled,
         input.source_url ?? null,
-        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        JSON.stringify(
+          keptPlaceholderValues(
+            pattern,
+            input.placeholder_values,
+            normalizePromptOverride(input.prompt_override),
+          ),
+        ),
         normalizePromptOverride(input.prompt_override),
       ],
     );
