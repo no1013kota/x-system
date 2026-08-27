@@ -101,6 +101,17 @@ describe("checkExecutionPrerequisites — BYOK", () => {
     expect(checkExecutionPrerequisites(byok({ baseMdVersion: 0 }))).toBeNull();
   });
 
+  /**
+   * T-M8-337。**生成の前提から外しても、初期設定ガイドからは消さない。**
+   * 前提の判定結果をそのままガイドに使うと、未保存なのに「完了」と表示されて
+   * 設定へ辿り着く導線が消える（実際にE2Eがこれを検出した）。
+   */
+  it("生成の前提から外しても、初期設定ガイドには未完了として残る", () => {
+    const items = buildSetupChecklist(byok({ baseMdVersion: 0 }));
+    const persona = items.find((i) => i.item === "persona");
+    expect(persona?.satisfied, "アカウント設定がガイドから消えている").toBe(false);
+  });
+
   it("collects all missing items in precedence order", () => {
     const r = checkExecutionPrerequisites({
       plan: "standard",

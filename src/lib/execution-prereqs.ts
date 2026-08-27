@@ -262,6 +262,13 @@ export function buildSetupChecklist(
   const missing = new Set(
     checkExecutionPrerequisites({ ...input, imageRequested: false })?.missing ?? [],
   );
+  /*
+    **アカウント設定は「生成の前提」ではなくなったが、案内は続ける**（T-M8-337）。
+    生成の前提（`checkExecutionPrerequisites`）から外したので、その結果をそのまま使うと
+    未保存でも「完了」と表示され、初期設定ガイドから項目ごと消える。
+    ここだけは自分で判定する——**設定した方が良いことは変わっていない**。
+  */
+  if (input.baseMdVersion < 1) missing.add("persona");
   const items = isOperatorManagedPlan(input.plan) ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
   return items.map((item) => {
     const satisfied = !missing.has(item);
