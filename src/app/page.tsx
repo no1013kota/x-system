@@ -468,11 +468,11 @@ export default function Home() {
                     友達招待キャンペーン
                   </p>
                   <h2 className={`${H2} mt-3`}>
-                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}を報酬に。
+                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬となります
                   </h2>
                   <p className="mt-2.5 text-body leading-6 text-ink-2">
-                    ご自身のプラン契約がなくても参加できます。招待した方が有料プランを利用した月から、
-                    最大{COMMISSION_MONTHS}か月ぶんが対象です（報酬率は招待人数に応じて上がります）。
+                    ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、
+                    最大{COMMISSION_MONTHS}か月分が報酬対象です（報酬率は招待人数に応じて上がります）。
                   </p>
                 </div>
                 <Link
