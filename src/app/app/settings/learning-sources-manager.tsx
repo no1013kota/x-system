@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { Button } from "@/components/ui/button";
-import { CardTitle } from "@/components/ui/card";
+import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 /**
@@ -100,7 +100,15 @@ export function LearningSourcesManager({
   const [sources, setSources] = useState<LearningSourceView[]>(initialSources);
   // 参考アカウント／参考投稿は別々の欄にする（T-M8-112）。種別selectを挟むと、
   // 「どちらを登録しようとしているか」を毎回選ばせることになり、上限や入力例も1つしか出せない。
-  const [urls, setUrls] = useState<Record<RefType, string>>({ ref_account: "", ref_post: "" });
+  /**
+   * 記入欄（T-M8-346・運営者の指示 2026-08-28）。**欄ごとの「追加」ボタンは置かない。**
+   * 参考アカウント・参考投稿をその場に並べて書き、下の1つのボタンでまとめて反映する——
+   * 「追加」を何度も押させると、どこまで登録できたのかを利用者が数える羽目になる。
+   */
+  const [rows, setRows] = useState<{ type: RefType; url: string }[]>([
+    { type: "ref_account", url: "" },
+    { type: "ref_post", url: "" },
+  ]);
   const toast = useToast();
   /**
    * 「分析が進んでいない」の判定に使う現在時刻（T-M8-113）。**初期値はサーバーが測った時刻**。
@@ -122,7 +130,6 @@ export function LearningSourcesManager({
     return () => clearInterval(t);
   }, [sources]);
 
-  const refCount = (t: string) => sources.filter((s) => s.type === t).length;
   const removing = sources.some((s) => s.status === "removing");
 
   async function refresh() {
@@ -141,24 +148,25 @@ export function LearningSourcesManager({
     });
   }
 
-  function add(type: RefType) {
-    // 押せない状態にしてあるので通常は到達しない（保険）。**黙って return しない**のが要点で、
-    // 以前はここで無言で抜けており、ボタンは押せるのに何も起きなかった（T-M8-37）。
-    const url = urls[type].trim();
-    if (!url) {
-      toast.show({ tone: "error", title: "XのURLを入力してください" });
-      return;
-    }
-    startTransition(async () => {
-      const res = await addLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, type, url });
-      if (res.status === "success") {
-        setUrls((current) => ({ ...current, [type]: "" }));
-        toast.show({ tone: "success", title: `${TYPE_LABEL[type]}を追加しました` });
-        await refresh();
-      } else {
-        showError(res);
-      }
-    });
+  /** 記入欄を1つ増やす（種別ごとの上限まで）。 */
+  function addRow(type: RefType) {
+    setRows((current) => [...current, { type, url: "" }]);
+  }
+
+  function setRowUrl(index: number, url: string) {
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, url } : row)));
+  }
+
+  function removeRow(index: number) {
+    setRows((current) => current.filter((_, i) => i !== index));
+  }
+
+  /** その種別で、いま登録済み＋記入中の合計（上限判定に使う）。 */
+  function plannedCount(type: RefType): number {
+    return (
+      sources.filter((s) => s.type === type).length +
+      rows.filter((r) => r.type === type && r.url.trim()).length
+    );
   }
 
   function remove(sourceId: string) {
@@ -174,7 +182,10 @@ export function LearningSourcesManager({
     });
   }
 
-  /** 分析が終わっているソース（反映の材料）。1件も無ければ押せない。 */
+  /** 記入中のURLが1つでもあるか（ボタンを押せる条件の片方）。 */
+  const hasEnteredUrl = rows.some((r) => r.url.trim().length > 0);
+
+  /** 分析が終わっているソース（反映の材料）。記入も無くこれも0なら押せない。 */
   const analyzedCount = sources.filter((s) => s.status === "analyzed").length;
 
   /**
@@ -199,18 +210,58 @@ export function LearningSourcesManager({
     return () => clearInterval(timer);
   }, [applying, router, toast, xAccountId]);
 
+  /**
+   * **記入した内容を登録して、そのままアカウント設定へ反映する**（T-M8-346）。
+   *
+   * 1つのボタンで「登録 → 分析 → 反映」まで進む。分析は数十秒かかるので、
+   * 終わるのを待ってから反映を起票する（`applying` の間は画面が「書き換え中」を出す）。
+   * **押した後にもう一度押させない**——どこまで進んだかを利用者に数えさせないため。
+   */
   function applyToSettings() {
+    const entered = rows.map((r) => ({ ...r, url: r.url.trim() })).filter((r) => r.url);
     startTransition(async () => {
-      const res = await applyLearningToSettingsAction({
-        request_key: uuid(),
-        x_account_id: xAccountId,
-      });
-      if (res.status === "success") {
-        setApplying(true);
-      } else {
-        showError(res);
+      setApplying(true);
+      for (const row of entered) {
+        const res = await addLearningSourceAction({
+          request_key: uuid(),
+          x_account_id: xAccountId,
+          type: row.type,
+          url: row.url,
+        });
+        if (res.status !== "success") {
+          setApplying(false);
+          showError(res);
+          return;
+        }
       }
+      if (entered.length > 0) {
+        setRows([{ type: "ref_account", url: "" }]);
+        await refresh();
+      }
+      /*
+        分析が終わってから反映を起票する。**ここで待たずに起票すると
+        「分析済みが1件も無い」で弾かれる**（材料がまだ無いため）。
+        待つあいだも画面は「書き換え中」のままなので、利用者から見れば1つの操作。
+      */
+      const started = await waitForAnalysisThenApply();
+      if (!started) setApplying(false);
     });
+  }
+
+  /** 分析の完了を待って反映を起票する。起票できたら true。 */
+  async function waitForAnalysisThenApply(): Promise<boolean> {
+    for (let i = 0; i < 60; i++) {
+      const status = await learningApplyStatusAction({ x_account_id: xAccountId });
+      if (status.status === "success" && status.running === false) break;
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
+    const res = await applyLearningToSettingsAction({
+      request_key: uuid(),
+      x_account_id: xAccountId,
+    });
+    if (res.status === "success") return true;
+    showError(res);
+    return false;
   }
 
   function isStalePending(s: LearningSourceView): boolean {
@@ -237,23 +288,75 @@ export function LearningSourcesManager({
       ) : null}
 
       {/*
-        **アカウント設定を作る／更新するボタン**（T-M8-344・運営者の指示 2026-08-27）。
-        登録しただけでは設定は変わらない——いつ書き換わるかを利用者が決められるようにする。
+        **1つの枠で完結させる**（T-M8-346・運営者の指示 2026-08-28）。記入欄をこの中に置き、
+        欄ごとの「追加」ボタンは持たない。下の1つのボタンで「登録→分析→反映」まで進む——
+        押すたびに何が起きたかを利用者に数えさせない。
       */}
-      <section className="rounded-card border border-brand/40 bg-brand-subtle p-4">
+      <section className={`${cardClassName} p-4 sm:p-5`}>
         <CardTitle>
-          {settingsMissing
-            ? "参考ソースからアカウント設定を作る"
-            : "参考ソースでアカウント設定を更新する"}
+          {settingsMissing ? "参考ソースからアカウント設定を作る" : "参考ソースで設定を更新する"}
         </CardTitle>
         <p className="mt-1 text-body leading-6 text-ink-2">
-          {settingsMissing
-            ? "登録した参考ソースの分析から、発信者・読者・テーマ・トーンを組み立てます。作ったあとは、この下の「アカウント設定」でいつでも直せます。"
-            : "登録した参考ソースの分析を、いまのアカウント設定へ反映します。変更後の内容はこの下の「アカウント設定」で確認・修正できます。"}
+          真似したいXアカウントや投稿のURLを入れて、下のボタンを押してください。
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+
+        <div className="mt-4 space-y-3">
+          {rows.map((row, index) => {
+            const field = REF_FIELDS.find((f) => f.type === row.type)!;
+            const inputId = `ref-url-${index}`;
+            return (
+              <div className="flex flex-wrap items-center gap-2" key={index}>
+                <label className="w-28 shrink-0 text-body font-medium text-ink" htmlFor={inputId}>
+                  {TYPE_LABEL[row.type]}
+                </label>
+                <input
+                  className="min-h-11 min-w-0 flex-1 rounded-card border border-hairline bg-surface px-3 disabled:opacity-50"
+                  disabled={applying || removing}
+                  id={inputId}
+                  onChange={(e) => setRowUrl(index, e.target.value)}
+                  placeholder={field.placeholder}
+                  type="url"
+                  value={row.url}
+                />
+                {/* 行を減らせる（増やせるだけだと書き間違いを消せない）。1行目は残す。 */}
+                {rows.length > 1 ? (
+                  <button
+                    aria-label={`${TYPE_LABEL[row.type]}の欄を削除`}
+                    className="min-h-11 rounded-card px-2 text-body text-ink-3 hover:text-ink disabled:opacity-50"
+                    disabled={applying}
+                    onClick={() => removeRow(index)}
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {REF_FIELDS.map((field) => {
+            const full = plannedCount(field.type) >= field.max;
+            return (
+              <Button
+                disabled={applying || removing || full}
+                key={field.type}
+                onClick={() => addRow(field.type)}
+                size="sm"
+                type="button"
+                variant="subtle"
+              >
+                ＋ {TYPE_LABEL[field.type]}の欄を増やす
+                {full ? `（上限${field.max}件）` : ""}
+              </Button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-hairline pt-4">
           <Button
-            disabled={pending || applying || removing || analyzedCount === 0}
+            disabled={pending || applying || removing || (!hasEnteredUrl && analyzedCount === 0)}
             onClick={applyToSettings}
             type="button"
             variant="brand"
@@ -265,76 +368,15 @@ export function LearningSourcesManager({
                 : "アカウント設定を更新する"}
           </Button>
           {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
-          {analyzedCount === 0 ? (
+          {!hasEnteredUrl && analyzedCount === 0 ? (
             <span className="text-caption text-ink-3">
-              {sources.length === 0
-                ? "先に参考アカウントか参考投稿を追加してください。"
-                : "分析が終わるまで待ってください（1分ほど）。"}
+              XのURLを入れると押せます（{TYPE_LABEL.ref_account}か{TYPE_LABEL.ref_post}）。
             </span>
           ) : (
-            <span className="text-caption text-ink-3">分析済み {analyzedCount} 件を使います。</span>
+            <span className="text-caption text-ink-3">
+              押すと登録・分析してから、下のアカウント設定へ反映します（1〜2分）。
+            </span>
           )}
-        </div>
-      </section>
-
-      {/* 追加フォーム: 参考アカウントと参考投稿で欄を分ける（T-M8-112）。 */}
-      <section className="rounded-card border border-hairline bg-surface p-4">
-        <CardTitle>参考ソースを追加</CardTitle>
-        <p className="mt-1 text-body leading-6 text-ink-2">
-          真似したいXアカウントや投稿のURLを登録すると、文体・構成・題材の傾向を分析します。
-          {/* **登録だけでは設定は変わらない**ことを明示する（T-M8-344）。反映は上のボタン。 */}
-          分析が終わったら、上の「{settingsMissing ? "アカウント設定を作る" : "アカウント設定を更新する"}」を押してください。
-        </p>
-        <div className="mt-4 space-y-4">
-          {REF_FIELDS.map(({ type, max, placeholder, hint }) => {
-            const count = refCount(type);
-            const full = count >= max;
-            const value = urls[type];
-            const inputId = `ref-url-${type}`;
-            return (
-              <div key={type}>
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <label className="text-sm font-medium" htmlFor={inputId}>
-                    {TYPE_LABEL[type]}
-                  </label>
-                  <span className="text-xs text-muted-foreground">
-                    {count}/{max}
-                    {full ? "（上限）" : ""}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <input
-                    className="min-h-11 min-w-0 flex-1 rounded-lg border bg-background px-3 disabled:opacity-50"
-                    disabled={full || removing}
-                    id={inputId}
-                    onChange={(e) => setUrls((current) => ({ ...current, [type]: e.target.value }))}
-                    placeholder={placeholder}
-                    type="url"
-                    value={value}
-                  />
-                  <button
-                    // 「追加」ボタンが2つ並ぶため、読み上げでどちらか分かるようにする（WCAG 2.2 AA）。
-                    aria-label={`${TYPE_LABEL[type]}を追加`}
-                    className="inline-flex h-11 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
-                    disabled={pending || removing || !value.trim() || full}
-                    onClick={() => add(type)}
-                    type="button"
-                  >
-                    追加
-                  </button>
-                </div>
-                {/* **押せない理由を欄ごとに出す**（T-M8-37）。無効化だけだと壊れているのか区別できない。 */}
-                {full ? (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    上限の{max}件です。追加するには、下の一覧からどれかを削除してください。
-                  </p>
-                ) : !value.trim() && !removing ? (
-                  <p className="mt-1.5 text-xs text-muted-foreground">XのURLを入力すると追加できます。</p>
-                ) : null}
-              </div>
-            );
-          })}
         </div>
       </section>
 

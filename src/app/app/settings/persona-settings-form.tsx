@@ -138,22 +138,14 @@ export function PersonaSettingsForm({
   return (
     <form className="space-y-6" noValidate onSubmit={submit}>
       {/*
-        **この画面が何を決めるのかを1文で言う**（T-M8-344）。上の参考ソースから
-        自動で作れるようになったので、「ここは何をする場所か」「作った後どうなるか」が
-        分からないと、上下どちらを触ればよいか迷う。
+        見出しと説明は置かない（T-M8-346・運営者の指示 2026-08-28）。タブ名が
+        「アカウント設定」なので、同じ言葉を画面の中でもう一度言う必要が無い。
+        対象アカウントだけは、切り替えを使う人のために残す。
       */}
-      <div className="rounded-card border border-hairline bg-page px-4 py-3">
-        <CardTitle>アカウント設定</CardTitle>
-        <p className="mt-1 text-body leading-6 text-ink-2">
-          AIが「誰として・誰に・どう書くか」を、ここの内容から決めます。
-          上の参考ソースから作った内容もここに入ります。
-          <strong className="text-ink">気になるところは直接直せます。</strong>
-        </p>
-        <p className="mt-1 text-caption text-ink-3">
-          対象アカウント: <strong className="text-ink-2">@{accountHandle}</strong>
-          {version >= 1 ? "（保存すると次の生成から反映されます）" : "（まだ保存されていません）"}
-        </p>
-      </div>
+      <p className="text-caption text-ink-3">
+        対象アカウント: <strong className="text-ink-2">@{accountHandle}</strong>
+        {version >= 1 ? "（保存すると次の生成から反映されます）" : "（まだ保存されていません）"}
+      </p>
 
       {version >= 1 && (savedDifference || dirty) ? (
         // 6セクションのタイトル列挙は読み飛ばされるだけだった（T-M8-66）。

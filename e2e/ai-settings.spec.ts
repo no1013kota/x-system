@@ -99,19 +99,24 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
 test("学習ソースを追加すると分析中として並び、削除できる", async ({ accounts, page }) => {
   const account = await accounts.create("learning");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
+  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの先頭（T-M8-344）
 
-  await expect(page.getByRole("heading", { name: "参考ソースを追加" })).toBeVisible();
-
-  // 追加（分析はAIを呼ぶため、ここでは受け付けられて pending になることだけを見る）
+  /*
+    **登録専用のボタンは無い**（T-M8-346）。記入して「アカウント設定を作る」を押すと、
+    登録 → 分析 → 反映まで1つの操作として進む。ここで見るのは登録が受け付けられて
+    pending になるところまで（分析はAIを呼ぶので走らせきらない）。
+  */
   const handle = `e2e_ref_${randomUUID().slice(0, 6)}`;
-  // 入力欄・追加ボタンは種別ごとに分かれている（T-M8-112）。
-  await page.getByLabel("参考アカウント", { exact: true }).fill(`https://x.com/${handle}`);
-  await page.getByRole("button", { name: "参考アカウントを追加" }).click();
+  await page.getByRole("textbox", { name: "参考アカウント" }).first().fill(`https://x.com/${handle}`);
+  await page.getByRole("button", { name: /アカウント設定を(作る|更新する)/ }).click();
 
-  // **成功したことが利用者に分かる**（T-M8-18）。以前は追加が通っても画面は無言で、
-  // 一覧に行が増えたことに気づけるかどうかに委ねていた。
-  await expect(toastIn(page)).toContainText("参考アカウントを追加しました");
+  /*
+    **押した結果が画面に出る**（T-M8-18／原則1）。ここでは一覧に「分析待ち」の行が増えることで見る。
+    「アカウント設定を書き換え中です」の表示は分析が終わるまでの間だけ出るもので、
+    E2EはダミーのAIキーで動くため分析が即座に終わって（材料0件で）消える——
+    このテストで押さえると、実装ではなく鍵の有無で結果が変わる。
+  */
+  await expect(page.getByRole("listitem").filter({ hasText: handle })).toContainText("分析待ち");
 
   // DBに登録され、分析待ちになる
   await expect
@@ -172,32 +177,11 @@ test("学習ソースを追加すると分析中として並び、削除でき�
 
 // 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
-/**
- * URL未入力の「追加」が**完全に無反応**だった問題（T-M8-37）。
- *
- * `add()` は先頭で `if (!url.trim()) return;` と黙って抜けており、ボタンは押せる状態だった。
- * 押してもトースト無し・強調無し・進行表示無しで、利用者からは壊れているのか自分の操作が
- * 悪いのか区別できなかった（CLAUDE.md 原則1）。同じ画面の他の操作は全てトーストを出しており、
- * ここだけが例外だった。
- */
-test("URLが空のあいだ「追加」は押せず、理由が画面に出る（T-M8-37）", async ({
-  accounts,
-  page,
-}) => {
-  const account = await accounts.create("learning-empty-url", { personaReady: true });
-  await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
-
-  const add = page.getByRole("button", { name: "参考アカウントを追加" });
-  await expect(add).toBeDisabled();
-  // 理由は欄ごとに出る（参考アカウント・参考投稿の2欄・T-M8-112）。
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(2);
-
-  await page.getByLabel("参考アカウント", { exact: true }).fill("https://x.com/example");
-  await expect(add).toBeEnabled();
-  // 入力した側だけ理由が消える（もう片方は残る）。
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(1);
-});
+/*
+  URL未入力で押せない理由を出すこと（T-M8-37）の検証は `learning-setup.spec.ts` へ移した。
+  欄ごとの「追加」ボタンが無くなり（T-M8-346）、押せる／押せないの判定が
+  「アカウント設定を作る」1つになったため、同じことを2か所で見る意味がなくなった。
+*/
 
 /**
  * 保存後に画面が「保存中…」のまま固まらないこと（T-M8-68）。
