@@ -9,6 +9,8 @@ import {
   generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
+  replaceFreeSections,
+  type FreeSections,
   type PersonaSettings,
 } from "./persona-settings";
 
@@ -23,6 +25,11 @@ interface PersonaSettingsAccountRow {
 export interface UpdatePersonaSettingsInput {
   expectedBaseMdVersion: number;
   settings: PersonaSettings;
+  /**
+   * 手で書くセクション5・6（T-M8-355）。**渡されなければ既存を1バイトも変えない**——
+   * 他の経路（学習・ロールバック・mdエディタ）が書いた内容を知らないうちに消さないため。
+   */
+  freeSections?: FreeSections;
   userId: string;
   xAccountId: string;
 }
@@ -81,10 +88,14 @@ export async function applyPersonaSettingsUpdate(
     });
   }
 
-  const baseMd =
+  const rebuilt =
     account.base_md_version === 0
       ? generateInitialBaseMd(settings)
       : rebuildSettingsSections(account.base_md, settings);
+  // 5・6の記入欄から来た内容があれば書き戻す（T-M8-355）。無ければ既存のまま。
+  const baseMd = input.freeSections
+    ? replaceFreeSections(rebuilt, input.freeSections)
+    : rebuilt;
   const version = account.base_md_version + 1;
   const update = await client.query(
     /*

@@ -9,6 +9,7 @@ import { Card, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { appLockFor } from "@/lib/auth/subscription-access";
 import type { BaseMdVersionView } from "@/lib/base-md";
 import { BLANK_BASE_MD_TEMPLATE } from "@/lib/persona-settings";
@@ -61,20 +62,12 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   const section = normalizePromptSection(params.sec);
 
   /*
-    `loadRequestProfile` は `active_x_account_id` を持たない（App Shell用の1行・T-M8-286）。
-    ここは選択中アカウントが要るので profiles を直接読む（設定ページと同じ形）。
+    **profiles は1リクエストにつき1回だけ読む**（T-M8-286→T-M8-355）。以前はここで
+    PostgREST経由の別クエリを投げていた——App Shell が既に読んでいる同じ行なので、
+    往復が1つ丸ごと無駄だった（`active_x_account_id` を共有の1行へ足して解消）。
   */
   const admin = createSupabaseAdminClient();
-  const profileResult = await admin
-    .from("profiles")
-    .select("active_x_account_id, plan, subscription_status")
-    .eq("id", user.id)
-    .maybeSingle<{
-      active_x_account_id: string | null;
-      plan: string | null;
-      subscription_status: string;
-    }>();
-  const profile = readSingleRow(profileResult, "prompts profile");
+  const profile = await loadRequestProfile(user.id);
   if (!profile) redirect("/app");
   const plan = profile.plan;
   const lock = appLockFor(profile.subscription_status);

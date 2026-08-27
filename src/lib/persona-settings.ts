@@ -138,6 +138,44 @@ function buildSettingsSections(input: unknown): string {
 ${ngLines.join("\n")}`;
 }
 
+/**
+ * 手で書くセクション（5・6）の最大文字数（T-M8-355）。
+ * アカウント.md全体の上限（5,000字）に対して、1〜4の生成分の余地を残す。
+ */
+export const FREE_SECTION_MAX_CHARS = 1000;
+
+/** 手で書くセクションの本文。空文字は「書いていない」（見出しだけ残す）。 */
+export interface FreeSections {
+  /** `## 5. 文体・自分らしさ` */
+  voice: string;
+  /** `## 6. 参考にする型` */
+  referenceStyle: string;
+}
+
+/**
+ * アカウント.mdの5・6セクションの本文を差し替える（T-M8-355・運営者の指示 2026-08-28）。
+ *
+ * **1〜4はアカウント設定から機械生成されるが、5〜6は人が書く場所**で、これまでは
+ * プロンプト画面のmdエディタからしか触れなかった。アカウント設定の画面に記入欄を置くため、
+ * 保存時にここへ書き戻す。**渡されなければ既存を1バイトも変えない**——
+ * 他の経路（学習・ロールバック）が触った内容を、知らないうちに消さないため。
+ */
+export function replaceFreeSections(content: string, sections: FreeSections): string {
+  validateBaseMdStructure(content);
+  const fifth = /^## 5\.[^\n]*$/m.exec(content);
+  if (fifth?.index === undefined) {
+    throw new Error("アカウント.mdのセクション5を特定できません。");
+  }
+  const head = content.slice(0, fifth.index).replace(/\s+$/, "");
+  const voice = sections.voice.trim();
+  const reference = sections.referenceStyle.trim();
+  const rebuilt =
+    `${head}\n\n## 5. ${BASE_MD_SECTION_TITLES[4]}\n${voice ? `${voice}\n` : ""}` +
+    `\n## 6. ${BASE_MD_SECTION_TITLES[5]}\n${reference ? `${reference}\n` : ""}`;
+  validateBaseMdStructure(rebuilt);
+  return rebuilt;
+}
+
 /** Enforces exactly one ordered `## 1.` through `## 6.` heading. */
 export function validateBaseMdStructure(content: string): void {
   const numbers = [...content.matchAll(BASE_MD_HEADING_PATTERN)].map(

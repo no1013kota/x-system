@@ -21,6 +21,7 @@ import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
 import {
   DEFAULT_TONE_SETTINGS,
   baseMdSettingsDiffer,
+  extractBaseMdSection,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
@@ -308,6 +309,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       ? personaSettingsSchema.safeParse(account.settings_proposal)
       : null;
   const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
+  /*
+    アカウント.mdの手書きセクション5・6（T-M8-355）。**mdから読む**——設定には持っていない
+    （生成されるのは1〜4だけ）。まだmdが無ければ空欄から書き始められる。
+  */
+  const freeSections = {
+    voice: account ? extractBaseMdSection(account.base_md, 5) : "",
+    referenceStyle: account ? extractBaseMdSection(account.base_md, 6) : "",
+  };
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
     try {
@@ -326,16 +335,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     ——参考ソースはアカウント設定を作る入口なので、未保存のときこそ要る（原則1）。
   */
   if (tab === "account" && account) {
-    learningSources = await listLearningSourcesForUser(user.id, account.id);
-    learningApplying =
-      (
-        await pooledDb.query<{ n: number }>(
-          `select count(*)::int as n from generation_jobs
-            where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
-              and status in ('queued', 'running')`,
-          [account.id],
-        )
-      ).rows[0]?.n > 0;
+    /*
+      **2本を同時に投げる**（T-M8-355）。互いに依存しないので直列にすると往復が2回ぶん
+      待ち時間に乗る。片方が失敗したときにもう片方だけで描かないよう、Promise.all で揃える。
+    */
+    const [sources, running] = await Promise.all([
+      listLearningSourcesForUser(user.id, account.id),
+      pooledDb.query<{ n: number }>(
+        `select count(*)::int as n from generation_jobs
+          where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
+            and status in ('queued', 'running')`,
+        [account.id],
+      ),
+    ]);
+    learningSources = sources;
+    learningApplying = (running.rows[0]?.n ?? 0) > 0;
   }
 
   // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
@@ -534,10 +548,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </p>
 
               <PersonaSettingsForm
-                accountHandle={account.handle}
                 baseMdVersion={account.base_md_version}
                 initialDifference={initialDifference}
+                initialReferenceStyle={freeSections.referenceStyle}
                 initialSettings={initialSettings}
+                initialVoice={freeSections.voice}
                 // アカウント切替でstateを捨てる（前アカウントの内容を新アカウントへ保存させない・T-M8-196）。
                 key={account.id}
                 proposal={settingsProposal}

@@ -164,6 +164,70 @@ describe("updatePersonaSettings transaction", () => {
   });
 
   /**
+   * アカウント.mdの5・6章を画面から書ける（T-M8-355・運営者の指示 2026-08-28）。
+   *
+   * **渡されなければ1バイトも変えない。** 学習・mdエディタ・ロールバックが書いた内容を、
+   * 別経路の保存で知らないうちに消さないため（原則1）。
+   */
+  it("5・6章は渡したときだけ書き換わる（渡さなければそのまま）", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    const xAccountId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000',
+               'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `insert into x_accounts
+        (id, user_id, x_user_id, handle, name, auth_type, status)
+       values ($1, $2, $3, 'free_sections', 'Free Sections', 'byok', 'active')`,
+      [xAccountId, userId, `x_${xAccountId}`],
+    );
+    await db.query(
+      `update profiles
+          set plan = 'standard', subscription_status = 'active', active_x_account_id = $2
+        where id = $1`,
+      [userId, xAccountId],
+    );
+
+    const first = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: 0,
+      freeSections: { voice: "数字と手順で書く。", referenceStyle: "結論→理由→具体例。" },
+      settings: settings("初回の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(first.baseMd).toContain("## 5. 文体・自分らしさ\n数字と手順で書く。");
+    expect(first.baseMd).toContain("## 6. 参考にする型\n結論→理由→具体例。");
+
+    // 渡さない保存では**触らない**（別経路が書いた内容を消さない）。
+    const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: first.version,
+      settings: settings("2回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(second.baseMd).toContain("数字と手順で書く。");
+    expect(second.baseMd).toContain("結論→理由→具体例。");
+    expect(second.baseMd).toContain("2回目の発信者");
+
+    // 空文字を渡したら消える（「書かない」を選べる）。
+    const third = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: second.version,
+      freeSections: { voice: "", referenceStyle: "" },
+      settings: settings("3回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(third.baseMd).not.toContain("数字と手順で書く。");
+    expect(third.baseMd, "見出しは残る（6見出し構造）").toContain("## 5. 文体・自分らしさ");
+    expect(third.baseMd).toContain("## 6. 参考にする型");
+  });
+
+  /**
    * 参考ソースからの反映は**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
    *
    * 保存で提案を消さないと、画面を開き直すたびに「参考ソースから作った内容を入れました。

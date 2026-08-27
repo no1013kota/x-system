@@ -30,6 +30,12 @@ import type { UsageCounters } from "@/lib/usage/usage-summary";
  * どこが何を読んでいるか分からなくなる（この関数が生まれた理由そのもの）。
  */
 export interface RequestProfileBundle extends AppShellProfileRow, UsageCounters {
+  /**
+   * いま選んでいるXアカウント（T-M8-355）。**この1行へ足す**——以前はこの列が無いために
+   * プロンプト画面が profiles をもう一度（PostgREST経由で）読んでいた。
+   * 往復が1つ増えるうえ、同じ行を2か所から別々に読む形はこの関数が生まれた理由そのもの。
+   */
+  active_x_account_id: string | null;
   /** Xの開発者キーの登録状態（未登録は null）。 */
   x_api_key_status: string | null;
   /** アプリ内通知の未読数。 */
@@ -42,6 +48,7 @@ export const loadRequestProfile = cache(
   async (userId: string): Promise<RequestProfileBundle | null> => {
     const { rows } = await getPool().query<RequestProfileBundle>(
       `select p.plan,
+              p.active_x_account_id,
               p.subscription_status,
               p.trial_ends_at::text as trial_ends_at,
               -- 解約予約を画面へ出すために読む（T-M8-253）。

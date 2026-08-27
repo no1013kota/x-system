@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.68 |
+| バージョン | v1.69 |
 | 更新日 | 2026-08-28 |
 | 関連 | 全画面、全ジョブ |
 
@@ -372,6 +372,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.66 | 2026-08-27 | createGenerationJob に `post_mode`／`scheduled_at`（投稿作成の「生成したあと」）を追加（T-M8-331） |
 | v1.67 | 2026-08-27 | プロンプトの本棚（listPromptPresets 他5本）を追加し、base_md/画像プロンプトの旧Actionを削除（T-M8-332） |
 | v1.68 | 2026-08-28 | uploadDraftImage / removeDraftImage を追加（下書きに自分の画像を添える・T-M8-353） |
+| v1.69 | 2026-08-28 | updatePersonaSettings に voice / reference_style（アカウント.mdの5・6章）を追加（T-M8-355） |
 
 ### 下書きの投稿予約（T-M8-157）
 

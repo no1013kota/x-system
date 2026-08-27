@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
+  FREE_SECTION_MAX_CHARS,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
@@ -16,7 +17,6 @@ import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
-  accountHandle: string;
   baseMdVersion: number;
   initialDifference: boolean;
   initialSettings: PersonaSettings;
@@ -26,6 +26,13 @@ interface PersonaSettingsFormProps {
    * null は「提案が無い」——保存済みの設定をそのまま出す。
    */
   proposal: PersonaSettings | null;
+  /**
+   * アカウント.mdの手書きセクション（T-M8-355・運営者の指示 2026-08-28）。
+   * 1〜4はこのフォームから機械生成されるが、5〜6は人が書く場所で、これまでは
+   * プロンプト画面のmdエディタからしか触れなかった。**同じ画面で書けるようにする。**
+   */
+  initialVoice: string;
+  initialReferenceStyle: string;
   xAccountId: string;
 }
 
@@ -55,10 +62,11 @@ function lines(value: string): string[] {
 }
 
 export function PersonaSettingsForm({
-  accountHandle,
   baseMdVersion,
   initialDifference,
+  initialReferenceStyle,
   initialSettings,
+  initialVoice,
   proposal,
   xAccountId,
 }: PersonaSettingsFormProps) {
@@ -72,6 +80,12 @@ export function PersonaSettingsForm({
   const [dirty, setDirty] = useState(false);
   /** 提案を表示中か（保存すると消える）。 */
   const [showProposal, setShowProposal] = useState(proposal != null);
+  /*
+    アカウント.mdの5・6セクション（T-M8-355）。**参考ソースの反映では変わらない**——
+    反映が書き換えるのは1〜4（ペルソナ〜NG設定）だけで、ここは人が書く場所。
+  */
+  const [voice, setVoice] = useState(initialVoice);
+  const [referenceStyle, setReferenceStyle] = useState(initialReferenceStyle);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
   /**
@@ -138,7 +152,9 @@ export function PersonaSettingsForm({
     setSubmitting(true);
     const result = await updatePersonaSettings({
       expected_base_md_version: version,
+      reference_style: referenceStyle,
       settings: parsed.data,
+      voice,
       x_account_id: xAccountId,
     });
     setSubmitting(false);
@@ -478,6 +494,52 @@ export function PersonaSettingsForm({
                 }}
                 value={ngText[field]}
               />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/*
+        **アカウント.mdの手書きセクション**（T-M8-355・運営者の指示 2026-08-28）。
+        1〜4はこの画面から機械生成されるが、5〜6は人が書く場所で、これまでは
+        プロンプト画面のmdエディタからしか触れなかった。同じ画面で書けるようにする。
+        **参考ソースの反映では変わらない**——反映が書き換えるのは1〜4だけ。
+      */}
+      <section aria-labelledby="free-group" className={groupClassName} role="group">
+        <CardTitle id="free-group">文体・参考にする型（任意）</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          アカウント.mdの5・6章にそのまま入ります。空でも保存できます。
+        </p>
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          {([
+            ["voice", "文体・自分らしさ", voice, setVoice, "例: 数字と手順で書く。断定は根拠とセットにする。"],
+            [
+              "reference",
+              "参考にする型",
+              referenceStyle,
+              setReferenceStyle,
+              "例: 結論→理由→具体例→まとめ の4段で書く。",
+            ],
+          ] as const).map(([id, label, value, setValue, placeholder]) => (
+            <div key={id}>
+              <label className="text-sm font-medium" htmlFor={`free.${id}`}>
+                {label}
+              </label>
+              <textarea
+                className={inputClassName}
+                id={`free.${id}`}
+                maxLength={FREE_SECTION_MAX_CHARS}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  setDirty(true);
+                }}
+                placeholder={placeholder}
+                rows={4}
+                value={value}
+              />
+              <p className="mt-1 text-caption text-ink-3">
+                {value.length} / {FREE_SECTION_MAX_CHARS}字
+              </p>
             </div>
           ))}
         </div>
