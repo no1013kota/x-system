@@ -203,13 +203,24 @@ export async function recordCommissionForInvoice(
     return "skipped"; // 最大6ヶ月を超えた支払いは対象外
   }
 
-  // 累計有料招待ユーザー数（この利用者を含む）で率を決める。reversedだけの利用者は数えない。
+  /*
+    率を決める人数は**いま続いている有料招待ユーザー**（T-M8-345・運営者の指示 2026-08-28）。
+
+    以前は「一度でも課金があれば永久に1人」と数えていたため、招待した人が全員解約しても
+    率は上がったまま下がらなかった。**招待し続けている人ほど率が高い**という制度の趣旨に
+    合わせて、解約した利用者（`commission_terminated_reason` あり）は数から外す。
+    **過去のCommissionは作成時の率をsnapshot済みなので書き換わらない**（下がるのは以後の分だけ）。
+  */
   const counted = await db.query<{ n: string }>(
-    `select count(distinct referred_user_id)::text as n
-       from affiliate_commissions
-      where affiliate_account_id = $1
-        and status <> 'reversed'
-        and referred_user_id <> $2`,
+    `select count(distinct c.referred_user_id)::text as n
+       from affiliate_commissions c
+       join affiliate_attributions a
+         on a.affiliate_account_id = c.affiliate_account_id
+        and a.referred_user_id = c.referred_user_id
+      where c.affiliate_account_id = $1
+        and c.status <> 'reversed'
+        and c.referred_user_id <> $2
+        and a.commission_terminated_reason is null`,
     [att.affiliate_account_id, input.referredUserId],
   );
   const paidCount = Number(counted.rows[0]?.n ?? "0") + 1;

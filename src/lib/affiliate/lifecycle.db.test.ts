@@ -224,6 +224,51 @@ describe("招待された利用者の契約が動いたときの報酬 (db)", ()
     expect(rates[59], "60人目も50%").toBe(5000);
   });
 
+  /**
+   * T-M8-345・運営者の指示 2026-08-28。**解約した人は率の人数から外れる。**
+   *
+   * 以前は「一度でも課金があれば永久に1人」だったため、招待した人が全員解約しても
+   * 率は上がったままだった。招待し続けている人ほど率が高い、という制度の趣旨に合わせる。
+   * **過去のCommissionは作成時の率をsnapshot済みなので書き換わらない**（下がるのは以後の分だけ）。
+   */
+  it("招待した人が解約すると、次の報酬から率の人数が減る", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+
+    // 6人招待して全員課金 → 6人目は35%（帯が上がる）。
+    const referred: string[] = [];
+    const rates: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const u = await makeUser(database);
+      await attributeSignup(database, { code: account.code, newUserId: u });
+      const { invoice } = await pay(database, u, 10000, "2026-03-01T00:00:00Z");
+      referred.push(u);
+      rates.push((await commissionOf(database, invoice))!.commission_rate_bps);
+    }
+    expect(rates[5], "6人目で35%へ上がる").toBe(3500);
+
+    // 2人が解約 → 続いているのは4人。次に払う人は30%の帯へ戻る。
+    await terminateAttributionForReferredUser(database, referred[0], "2026-04-01T00:00:00Z");
+    await terminateAttributionForReferredUser(database, referred[1], "2026-04-01T00:00:00Z");
+
+    const next = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: next });
+    const { invoice } = await pay(database, next, 10000, "2026-04-02T00:00:00Z");
+    expect(
+      (await commissionOf(database, invoice))!.commission_rate_bps,
+      "解約2人を除くと5人目なので30%",
+    ).toBe(3000);
+
+    // **過去の報酬は書き換わらない**（作成時の率で確定している）。
+    const past = await database.query<{ n: string }>(
+      `select count(*)::text as n from affiliate_commissions
+        where affiliate_account_id = $1 and commission_rate_bps = 3500`,
+      [account.id],
+    );
+    expect(past.rows[0]?.n, "35%で作られた報酬はそのまま残る").toBe("1");
+  });
+
   it("同じ人が何回払っても「有料招待1人」のまま（率が水増しされない）", async (ctx) => {
     if (!database) return ctx.skip();
     const { account, referred } = await pair(database);
