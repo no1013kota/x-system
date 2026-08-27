@@ -65,6 +65,59 @@ export interface TierProgress {
   nextAtCount: number;
 }
 
+/**
+ * 報酬率の人数に数える契約状態（T-M8-351・運営者の指示 2026-08-28）。
+ *
+ * **Trial中の人も1人と数える**——招待した時点で「連れてきた」ことは変わらず、
+ * 課金を待つ間だけ率が下がるのは招待する側から見て説明が付かない。
+ * **Trial中に解約した人は数えない**（下の `CANCELLED_SUBSCRIPTION_STATUSES`）。
+ * `incomplete` は申込の途中なので、まだ数えない（解約でもない）。
+ */
+export const COUNTED_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "paused"] as const;
+
+/**
+ * 「解約済み」として扱う契約状態（T-M8-345/351）。
+ * **報酬期間の終了（`commission_terminated_reason`）だけでは足りない**——それは
+ * 初回課金後にしか付かないので、Trial中に解約した人が「Trial」のまま残ってしまう。
+ */
+export const CANCELLED_SUBSCRIPTION_STATUSES = ["canceled", "unpaid", "incomplete_expired"] as const;
+
+/** SQLの `in (...)` に使う（引用符つきのカンマ区切り）。 */
+export function sqlStatusList(statuses: readonly string[]): string {
+  return statuses.map((value) => `'${value}'`).join(", ");
+}
+
+/**
+ * **報酬率の人数に数える招待**を選ぶSQL条件（T-M8-351）。
+ *
+ * 使う側は `affiliate_attributions a` と `profiles pr` を join してから、この条件を
+ * `and` でつなぐ。**率を決める場所（`store.ts`）と画面に出す場所（`summary-server.ts`）で
+ * 同じ条件を使う**——片方だけ直すと、画面の率と実際に付く率が食い違う（原則1）。
+ *
+ * 数える条件は3つ:
+ * 1. 報酬期間が終わっていない（`commission_terminated_reason is null`）
+ * 2. 契約が続いている（Trial中も含む。解約・未払い・期限切れは外す）
+ * 3. **全額返金だけの利用者ではない**——報酬が全部取り消された人で率が上がったままになると、
+ *    返金で戻ったお金の分だけ率が居座る（T-M8-236の意図を保つ）。
+ *    報酬がまだ1件も無い人（Trial中）は、この条件では外れない。
+ */
+export const COUNTED_REFERRAL_SQL = `
+  a.commission_terminated_reason is null
+  and pr.subscription_status::text in (${sqlStatusList(COUNTED_SUBSCRIPTION_STATUSES)})
+  and (
+    not exists (
+      select 1 from affiliate_commissions c0
+       where c0.affiliate_account_id = a.affiliate_account_id
+         and c0.referred_user_id = a.referred_user_id
+    )
+    or exists (
+      select 1 from affiliate_commissions c1
+       where c1.affiliate_account_id = a.affiliate_account_id
+         and c1.referred_user_id = a.referred_user_id
+         and c1.status <> 'reversed'
+    )
+  )`;
+
 export function tierProgress(paidCount: number): TierProgress {
   const currentRateBps = rateBpsForPaidCount(paidCount);
   /*

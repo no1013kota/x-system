@@ -39,7 +39,17 @@ describe("招待された利用者の契約が動いたときの報酬 (db)", ()
     }
   });
 
-  async function makeUser(db: NonNullable<typeof database>): Promise<string> {
+  /**
+   * 利用者を1人作る。**契約状態を明示する**（T-M8-351）。
+   *
+   * 報酬率の人数は `profiles.subscription_status` を見て数えるようになった
+   * （Trial中も1人・解約は外す）。既定の `incomplete`（＝申込の途中）のままだと、
+   * 支払いが起きているのに誰も数えられず、**テストが現実と食い違う**。
+   */
+  async function makeUser(
+    db: NonNullable<typeof database>,
+    status: "active" | "trialing" | "canceled" | "incomplete" = "active",
+  ): Promise<string> {
     const id = randomUUID();
     await db.query(
       `insert into auth.users (id, instance_id, aud, role, email)
@@ -47,6 +57,10 @@ describe("招待された利用者の契約が動いたときの報酬 (db)", ()
                'authenticated', 'authenticated', $2)`,
       [id, `${id}@example.com`],
     );
+    await db.query(`update profiles set subscription_status = $2::subscription_status where id = $1`, [
+      id,
+      status,
+    ]);
     return id;
   }
 
@@ -231,6 +245,81 @@ describe("招待された利用者の契約が動いたときの報酬 (db)", ()
    * 率は上がったままだった。招待し続けている人ほど率が高い、という制度の趣旨に合わせる。
    * **過去のCommissionは作成時の率をsnapshot済みなので書き換わらない**（下がるのは以後の分だけ）。
    */
+  /**
+   * Trial中の扱い（T-M8-351・運営者の指示 2026-08-28）。
+   *
+   * **Trial中の人も1人と数える。** 招待した時点で「連れてきた」ことは変わらず、
+   * 課金を待つ間だけ率が下がるのは招待する側から見て説明が付かない。
+   */
+  it("Trial中の招待も率の人数に数える（課金を待たずに帯が上がる）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+
+    // 課金したのは1人だけ。あとの4人はTrial中（まだ1円も払っていない）。
+    const paidUser = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: paidUser });
+    await pay(database, paidUser, 10000, "2026-03-01T00:00:00Z");
+    for (let i = 0; i < 4; i++) {
+      const u = await makeUser(database, "trialing");
+      await attributeSignup(database, { code: account.code, newUserId: u });
+    }
+
+    // 続いている招待は5人。次に払う人は6人目なので35%。
+    const next = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: next });
+    const { invoice } = await pay(database, next, 10000, "2026-03-02T00:00:00Z");
+    expect(
+      (await commissionOf(database, invoice))!.commission_rate_bps,
+      "Trial中の4人を数えないと5人目のままで30%になる",
+    ).toBe(3500);
+  });
+
+  /**
+   * Trial中に解約した人は**解約済み扱い**（T-M8-351・運営者の指示 2026-08-28）。
+   *
+   * 報酬期間の終了（`commission_terminated_reason`）は**初回課金後にしか付かない**ので、
+   * それだけを見ていると Trial 中に解約した人が「Trial」のまま数に残る。
+   */
+  it("Trial中に解約した招待は数から外れる（報酬期間は始まっていない）", async (ctx) => {
+    if (!database) return ctx.skip();
+    const inviter = await makeUser(database);
+    const account = await ensureAffiliateAccount(database, inviter);
+
+    const paidUser = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: paidUser });
+    await pay(database, paidUser, 10000, "2026-03-01T00:00:00Z");
+    const trials: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const u = await makeUser(database, "trialing");
+      await attributeSignup(database, { code: account.code, newUserId: u });
+      trials.push(u);
+    }
+
+    // 2人がTrial中に解約（報酬期間は始まっていないので terminated は付かない）。
+    for (const u of trials.slice(0, 2)) {
+      await database.query(
+        `update profiles set subscription_status = 'canceled'::subscription_status where id = $1`,
+        [u],
+      );
+    }
+    const terminated = await database.query<{ n: string }>(
+      `select count(*)::text as n from affiliate_attributions
+        where affiliate_account_id = $1 and commission_terminated_reason is not null`,
+      [account.id],
+    );
+    expect(terminated.rows[0]?.n, "Trial解約では報酬期間の終了は付かない").toBe("0");
+
+    // 続いているのは3人（課金1＋Trial2）。次に払う人は4人目なので30%のまま。
+    const next = await makeUser(database);
+    await attributeSignup(database, { code: account.code, newUserId: next });
+    const { invoice } = await pay(database, next, 10000, "2026-03-02T00:00:00Z");
+    expect(
+      (await commissionOf(database, invoice))!.commission_rate_bps,
+      "Trial解約を数えたままだと6人目になり35%になってしまう",
+    ).toBe(3000);
+  });
+
   it("招待した人が解約すると、次の報酬から率の人数が減る", async (ctx) => {
     if (!database) return ctx.skip();
     const inviter = await makeUser(database);

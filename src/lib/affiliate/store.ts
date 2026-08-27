@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
   COMMISSION_CONFIRMATION_DAYS,
   COMMISSION_MONTHS,
+  COUNTED_REFERRAL_SQL,
   commissionAmount,
   rateBpsForPaidCount,
 } from "./config";
@@ -204,23 +205,27 @@ export async function recordCommissionForInvoice(
   }
 
   /*
-    率を決める人数は**いま続いている有料招待ユーザー**（T-M8-345・運営者の指示 2026-08-28）。
+    率を決める人数は**いま続いている招待ユーザー**（T-M8-345/351・運営者の指示 2026-08-28）。
 
     以前は「一度でも課金があれば永久に1人」と数えていたため、招待した人が全員解約しても
     率は上がったまま下がらなかった。**招待し続けている人ほど率が高い**という制度の趣旨に
-    合わせて、解約した利用者（`commission_terminated_reason` あり）は数から外す。
+    合わせて、解約した人（報酬期間の終了、または契約が切れている状態）は数から外す。
+
+    **Trial中の人も1人と数える**（T-M8-351）。招待した時点で「連れてきた」ことは変わらず、
+    課金を待つ間だけ率が下がるのは招待する側から見て説明が付かない。
     **過去のCommissionは作成時の率をsnapshot済みなので書き換わらない**（下がるのは以後の分だけ）。
+
+    いま支払った本人（`$2`）はこの数に含めず、下で +1 する——この時点の
+    `profiles.subscription_status` は webhook の届く順で `trialing` のこともあるため、
+    状態を見て数えると本人が数え落ちることがある。
   */
   const counted = await db.query<{ n: string }>(
-    `select count(distinct c.referred_user_id)::text as n
-       from affiliate_commissions c
-       join affiliate_attributions a
-         on a.affiliate_account_id = c.affiliate_account_id
-        and a.referred_user_id = c.referred_user_id
-      where c.affiliate_account_id = $1
-        and c.status <> 'reversed'
-        and c.referred_user_id <> $2
-        and a.commission_terminated_reason is null`,
+    `select count(*)::text as n
+       from affiliate_attributions a
+       join profiles pr on pr.id = a.referred_user_id
+      where a.affiliate_account_id = $1
+        and a.referred_user_id <> $2
+        and ${COUNTED_REFERRAL_SQL}`,
     [att.affiliate_account_id, input.referredUserId],
   );
   const paidCount = Number(counted.rows[0]?.n ?? "0") + 1;

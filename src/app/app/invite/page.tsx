@@ -152,7 +152,12 @@ export default async function InvitePage() {
       {/* ② KPI（invite_cp.md §2②） */}
       <section aria-label="実績" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ["有料招待", `${summary.paidReferralCount}人`],
+          /*
+            **数えるのは「いま続いている招待」**（T-M8-351・運営者の指示 2026-08-28）。
+            Trial中の人も1人と数え、解約した人は外れる。「有料招待」だと
+            Trial中の人が入っていない数に見える。
+          */
+          ["報酬率の人数", `${summary.paidReferralCount}人`],
           ["現在の報酬率", formatRateBps(tier.currentRateBps)],
           ["確定前報酬", `¥${yen(summary.pendingAmount)}`],
           ["受取可能", `¥${yen(summary.payableAmount)}`],

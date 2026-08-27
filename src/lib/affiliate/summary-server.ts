@@ -1,6 +1,12 @@
 import "server-only";
 
-import { maskEmail, tierProgress, type TierProgress } from "./config";
+import {
+  CANCELLED_SUBSCRIPTION_STATUSES,
+  COUNTED_REFERRAL_SQL,
+  maskEmail,
+  tierProgress,
+  type TierProgress,
+} from "./config";
 import { ensureAffiliateAccount, type AffiliateAccount } from "./store";
 
 import { pooledQueryable } from "@/lib/db/pool";
@@ -58,11 +64,8 @@ export interface InviteSummary {
   }[];
 }
 
-/**
- * 「解約済み」として扱う契約状態（T-M8-345）。`incomplete` は申込の途中なので含めない
- * （まだ始まっていないだけで、解約ではない）。
- */
-const CANCELLED_SUBSCRIPTION_STATUSES = new Set(["canceled", "unpaid", "incomplete_expired"]);
+/** 「解約済み」として扱う契約状態（正本は `config.ts`・T-M8-345/351）。 */
+const CANCELLED_STATUS_SET = new Set<string>(CANCELLED_SUBSCRIPTION_STATUSES);
 
 export async function loadInviteSummary(userId: string): Promise<InviteSummary> {
   const db = pooledQueryable();
@@ -71,19 +74,17 @@ export async function loadInviteSummary(userId: string): Promise<InviteSummary> 
   const [totals, payout, bank, invited, history] = await Promise.all([
     db.query<{ paid_users: string; pending: string; payable: string }>(
       /*
-        **報酬率の人数は「いま続いている」有料招待ユーザー**（T-M8-345・運営者の指示 2026-08-28）。
-        解約した利用者は数から外す——`store.ts` の率の計算と**同じ条件**にしないと、
-        画面に出ている率と実際に付く率が食い違う（原則1）。
+        **報酬率の人数は「いま続いている」招待ユーザー**（T-M8-345/351・運営者の指示 2026-08-28）。
+        Trial中の人も1人と数え、解約した人（報酬期間の終了、または契約が切れている状態）は外す。
+        `store.ts` の率の計算と**同じ条件**にしないと、画面に出ている率と
+        実際に付く率が食い違う（原則1）。
         金額（pending/payable）は解約後も残るので、そちらは全件から集計する。
       */
-      `select (select count(distinct c.referred_user_id)
-                 from affiliate_commissions c
-                 join affiliate_attributions a
-                   on a.affiliate_account_id = c.affiliate_account_id
-                  and a.referred_user_id = c.referred_user_id
-                where c.affiliate_account_id = $1
-                  and c.status <> 'reversed'
-                  and a.commission_terminated_reason is null)::text as paid_users,
+      `select (select count(*)
+                 from affiliate_attributions a
+                 join profiles pr on pr.id = a.referred_user_id
+                where a.affiliate_account_id = $1
+                  and ${COUNTED_REFERRAL_SQL})::text as paid_users,
               coalesce(sum(commission_amount) filter (where status = 'pending'), 0)::text as pending,
               coalesce(sum(commission_amount)
                 filter (where status = 'payable'), 0)::text as payable
@@ -197,7 +198,7 @@ export async function loadInviteSummary(userId: string): Promise<InviteSummary> 
         以前は「Trial」のまま並び続け、招待した側からは解約したことが分からなかった。
       */
       status:
-        row.terminated || CANCELLED_SUBSCRIPTION_STATUSES.has(row.subscription_status ?? "")
+        row.terminated || CANCELLED_STATUS_SET.has(row.subscription_status ?? "")
           ? "cancelled"
           : row.subscription_status === "trialing"
             ? "trial"
