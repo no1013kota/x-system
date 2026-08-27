@@ -1,9 +1,13 @@
 import {
-  extractProfileSections,
-  replaceProfileSections,
+  personaSettingsSchema,
+  rebuildSettingsSections,
+  settingsDiffLabels,
+  type PersonaSettings,
 } from "../persona-settings";
+import { parseAndValidate } from "../ai/parse";
 import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { pruneBaseMdVersions } from "../base-md-history";
+import { createSettingsUpdatedNotification } from "./notifications";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
@@ -81,6 +85,8 @@ interface SourceAnalysisRow {
 interface MergeState {
   baseMd: string;
   version: number;
+  /** 現在のアカウント設定（フォームの値そのもの）。mergeの入力であり出力の形でもある。 */
+  settings: unknown;
   analyses: unknown[];
   removed: unknown[];
 }
@@ -104,8 +110,8 @@ async function loadMergeState(
   opts: { confirmSourceId?: string; removedSourceId?: string },
 ): Promise<MergeState> {
   const acct = (
-    await db.query<{ base_md: string; base_md_version: number }>(
-      `select base_md, base_md_version from x_accounts where id = $1`,
+    await db.query<{ base_md: string; base_md_version: number; settings: unknown }>(
+      `select base_md, base_md_version, settings from x_accounts where id = $1`,
       [xAccountId],
     )
   ).rows[0];
@@ -138,19 +144,26 @@ async function loadMergeState(
     if (rm?.analysis_summary) removed.push(rm.analysis_summary);
   }
 
-  return { baseMd: acct.base_md, version: acct.base_md_version, analyses, removed };
+  return {
+    baseMd: acct.base_md,
+    version: acct.base_md_version,
+    settings: acct.settings,
+    analyses,
+    removed,
+  };
 }
 
 /**
- * 対象セクションを1つmergeし、本文のみ（見出しなし）を返す。見出し混入は1回修復→なお不正なら構造エラー。
- * 内容（現在本文 or active analyses）があるのに空出力になった場合も、学習の消失を防ぐため構造エラーにする。
+ * アカウント設定を1回mergeし、**検証を通ったsettings**を返す（T-M8-341）。
+ *
+ * 出力は `personaSettingsSchema` と同じ形のJSON。読めない・形が違うものは1回だけ直させ、
+ * それでも駄目なら構造エラー（学習を捨てるより、設定を壊さない方を採る）。
  */
 async function mergeSection(
   provider: { textGen: TextGen; model: string },
   input: { current: string; analyses: unknown[]; removed: unknown[]; deadline: Deadline },
   now: () => number,
-): Promise<{ body: string; calls: ProviderCall[] }> {
-  const hadContent = input.current.trim().length > 0 || input.analyses.length > 0;
+): Promise<{ settings: PersonaSettings; calls: ProviderCall[] }> {
   const calls: ProviderCall[] = [];
   const buildUser = (): string =>
     PT_MD_MERGE.replaceAll("{{current_section}}", input.current)
@@ -176,27 +189,24 @@ async function mergeSection(
   };
 
   /*
-    **セクション1〜4の見出しが順番どおり各1回あること**を規約とする（T-M8-336）。
-    以前は「本文のみ・見出し禁止」だったが、反映先が4セクションになったので
-    見出しが**必須**へ反転した。ここを緩めると、差し替え後に6見出し構造が壊れて
-    `replaceProfileSections` が throw する（＝原因の分からない失敗になる）。
+    **設定の形を満たすまで**（T-M8-341）。ここを緩めると、保存の瞬間に
+    「設定画面が開けない壊れた設定」を書き込むことになる。読めない出力は1回だけ直させる。
   */
-  const invalid = (body: string): boolean => {
-    if (hadContent && body.length === 0) return true;
-    const numbers = [...body.matchAll(/^## ([1-6])\.[^\n]*$/gm)].map((m) => m[1]);
-    return numbers.join(",") !== "1,2,3,4";
+  const parseSettings = (text: string): PersonaSettings | null => {
+    const parsed = parseAndValidate(text, personaSettingsSchema);
+    return parsed.ok ? parsed.value : null;
   };
 
-  let body = await call("");
-  if (invalid(body)) {
-    // 規約違反（見出しの欠落・順序違い・5以降の混入・内容の消失）→ 1回だけ直して再生成（§7.1）。
-    body = await call(
-      "出力は「## 1.」「## 2.」「## 3.」「## 4.」の4つの見出しを順番どおり各1回だけ含め、" +
-        "セクション5以降・前置き・説明は書かず、内容を空にしないでください。",
+  let settings = parseSettings(await call(""));
+  if (!settings) {
+    settings = parseSettings(
+      await call(
+        "出力は<current>と同じ形のJSONだけにしてください（前置き・説明・コードフェンスを付けない）。",
+      ),
     );
   }
-  if (invalid(body)) throw new MdMergeStructureError();
-  return { body, calls };
+  if (!settings) throw new MdMergeStructureError();
+  return { settings, calls };
 }
 
 /**
@@ -233,10 +243,14 @@ export async function executeMdMerge(
     const state = await loadMergeState(deps.db, job.x_account_id, opts);
     if (state.version < 1) throw new Error("base_md is not initialized (version 0)");
 
-    const { body: merged, calls } = await mergeSection(
+    // 設定が読めない（未保存・壊れている）アカウントは対象外。学習で作り出さない。
+    const currentSettings = personaSettingsSchema.safeParse(state.settings);
+    if (!currentSettings.success) throw new MdMergeStructureError();
+
+    const { settings: merged, calls } = await mergeSection(
       { textGen, model },
       {
-        current: extractProfileSections(state.baseMd),
+        current: JSON.stringify(currentSettings.data),
         analyses: state.analyses,
         removed: state.removed,
         deadline,
@@ -244,15 +258,20 @@ export async function executeMdMerge(
       now,
     );
     allCalls.push(...calls);
-    // セクション1〜4だけを差し替え、前文とセクション5〜6は byte-for-byte 保持する（T-M8-336）。
-    const newBaseMd = replaceProfileSections(state.baseMd, merged); // 6見出し構造を検証
+    /*
+      **アカウント設定そのものを更新する**（T-M8-341）。アカウント.mdはその設定から
+      作り直す（`rebuildSettingsSections`）ので、画面の表示・本文・学習の成果が常に一致する。
+      セクション5〜6（利用者の手入力）はバイト単位で残る。
+    */
+    const newBaseMd = rebuildSettingsSections(state.baseMd, merged); // 6見出し構造を検証
+    const changed = settingsDiffLabels(currentSettings.data, merged);
     const nextVersion = state.version + 1;
 
     const written = await deps.runInTx(async (tx) => {
       const upd = await tx.query(
-        `update x_accounts set base_md = $2, base_md_version = $3
+        `update x_accounts set base_md = $2, base_md_version = $3, settings = $5::jsonb
           where id = $1 and base_md_version = $4`,
-        [job.x_account_id, newBaseMd, nextVersion, state.version],
+        [job.x_account_id, newBaseMd, nextVersion, state.version, JSON.stringify(merged)],
       );
       if ((upd.rowCount ?? 0) !== 1) return null; // 競合 → 最新versionから再merge
       await tx.query(
@@ -268,6 +287,17 @@ export async function executeMdMerge(
         xAccountId: job.x_account_id,
         kind: "base_md",
         content: newBaseMd,
+      });
+      /*
+        **書き換えたことを知らせる**（T-M8-341）。利用者が何もしていないのに設定が変わるので、
+        黙って変えると「設定した覚えのない値になっている」状態になる（原則1）。
+        同じtxで入れる——通知だけ落ちると、変わった事実が誰にも伝わらない。
+      */
+      await createSettingsUpdatedNotification(tx, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        version: nextVersion,
+        changed,
       });
       if (opts.confirmSourceId) {
         await tx.query(`update learning_sources set status = 'analyzed', updated_at = now() where id = $1`, [

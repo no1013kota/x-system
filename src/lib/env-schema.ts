@@ -48,7 +48,11 @@ function blankToUndefined(value: unknown): unknown {
 const PREVIEW_PROD_REQUIRED = [
   // 文章運営キー（ANTHROPIC/OPENAI/GEMINI）は PREMIUM_TEXT_PROVIDER / NEWS_TEXT_PROVIDER の選択に応じて
   // superRefine で動的に必須化する（既定anthropicなら ANTHROPIC_API_KEY を要求）。
-  "NEWS_TEXT_PROVIDER",
+  //
+  // **`NEWS_TEXT_PROVIDER` と `EMAIL_FROM` はこの一覧から外した**（T-M8-340）。どちらも
+  // コード側に既定を持つようになったため（provider=anthropic / 差出人=support@exosai.net）、
+  // ここに残すと「必須」と読めるのに実際は絶対に落ちない（既定で埋まる）検査になる。
+  // **意味の無い行を一覧へ残さない**——次に読む人が「消したら落ちる」と誤解する。
   "X_MANAGED_CLIENT_ID",
   "STRIPE_PORTAL_CONFIGURATION_ID",
   "X_COST_CONTENT_CREATE_USD",
@@ -58,7 +62,6 @@ const PREVIEW_PROD_REQUIRED = [
   "SMTP_PORT",
   "SMTP_USER",
   "SMTP_APP_PASSWORD",
-  "EMAIL_FROM",
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
   "TURNSTILE_SECRET_KEY",
   "SENTRY_DSN",

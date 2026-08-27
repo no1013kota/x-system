@@ -135,6 +135,40 @@ export async function createDraftCreatedNotification(
 }
 
 /**
+ * **学習がアカウント設定を書き換えたことを知らせる**（T-M8-341・運営者の指示 2026-08-27）。
+ *
+ * 参考ソースの分析はフォームの値そのものを更新するので、**利用者が何もしていないのに
+ * 設定が変わる**。黙って変えると「設定した覚えのない値になっている」という、
+ * 画面から説明できない状態になる（原則1）。何が変わったかを名前で出し、確認先へ送る。
+ *
+ * **購読設定に関係なく出す**（他の通知と違い `notification_config` を見ない）——
+ * 自分のデータが自動で書き換わった事実は、通知を切っていても伝わるべき。
+ */
+export async function createSettingsUpdatedNotification(
+  db: Queryable,
+  params: { userId: string; xAccountId: string; version: number; changed: readonly string[] },
+): Promise<void> {
+  if (params.changed.length === 0) return; // 変わっていないなら知らせることは無い
+  await db.query(
+    `insert into notifications
+       (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
+     values ($1, 'settings_updated', $2,
+             '学習でアカウント設定を更新しました',
+             $3, '/app/settings?tab=account',
+             jsonb_build_object('x_account_id', $4::text, 'version', $5::int), true)
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+    [
+      params.userId,
+      `base_md:${params.xAccountId}:${params.version}`,
+      `参考ソースの分析をもとに ${params.changed.join("・")} を書き換えました。` +
+        "内容はアカウント設定で確認・修正できます（元に戻すこともできます）。",
+      params.xAccountId,
+      params.version,
+    ],
+  );
+}
+
+/**
  * job失敗を確定させる3手順（R23）。
  *
  * どの job も失敗時に同じ順序で同じことをする。

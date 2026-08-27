@@ -68,6 +68,8 @@ export const DB_ENUMS = {
     "billing",
     "usage",
     "summary",
+    // 学習がアカウント設定を書き換えたことの通知（T-M8-341）。
+    "settings_updated",
   ],
 } as const satisfies Record<string, readonly string[]>;
 

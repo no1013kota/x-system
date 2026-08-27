@@ -34,18 +34,26 @@ const BASE_MD = `# 発信定義書
 旧6
 `;
 
-/** 洗練後のセクション1〜4（見出し4つを順番どおり含むのが新しい規約・T-M8-336）。 */
-const POLISHED = `## 1. ペルソナ
-- 発信者: A（現場の実務者へ、手順で説明する）
+/** いまのアカウント設定（mergeの入力・T-M8-341）。 */
+const SETTINGS = {
+  ng: { rules: ["煽らない"], topics: ["政治"], words: [] },
+  persona: { audience: "実務者", speaker: "A", value: "手順が分かる" },
+  themes: { free_text: "", primary: ["ai"], secondary: [] },
+  tone: {
+    emoji_max_per_post: 1,
+    emoji_policy: "limited",
+    first_person: "私",
+    hashtags_max: 0,
+    sentence_style: "polite",
+    thread_numbering: true,
+  },
+};
 
-## 2. 発信テーマ
-- 主テーマ: AI
-
-## 3. トーン&マナー
-- 文末: です・ます調
-
-## 4. やらないこと
-- 煽らない`;
+/** 洗練後の設定（AIが返すJSON）。発信者が具体化されている。 */
+const POLISHED = JSON.stringify({
+  ...SETTINGS,
+  persona: { ...SETTINGS.persona, speaker: "A（現場の実務者へ、手順で説明する）" },
+});
 
 function gen(body: string): TextGen {
   return {
@@ -95,9 +103,10 @@ describe("executeMdMerge (db)", () => {
     await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
     const xid = (
       await c.query<{ id: string }>(
-        `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version)
-         values ($1,$2,'h','n','byok',$3,2) returning id`,
-        [uid, `x-${randomUUID()}`, BASE_MD],
+        `insert into x_accounts
+           (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version, settings)
+         values ($1,$2,'h','n','byok',$3,2,$4::jsonb) returning id`,
+        [uid, `x-${randomUUID()}`, BASE_MD, JSON.stringify(SETTINGS)],
       )
     ).rows[0].id;
     const sourceId = (
@@ -173,9 +182,10 @@ describe("executeMdMerge (db)", () => {
       await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
       const xid = (
         await c.query<{ id: string }>(
-          `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version)
-           values ($1,$2,'h','n','byok',$3,2) returning id`,
-          [uid, `x-${randomUUID()}`, BASE_MD],
+          `insert into x_accounts
+             (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version, settings)
+           values ($1,$2,'h','n','byok',$3,2,$4::jsonb) returning id`,
+          [uid, `x-${randomUUID()}`, BASE_MD, JSON.stringify(SETTINGS)],
         )
       ).rows[0].id;
       // remove a ref_post source (→ §6). status must be 'removing' (set by removeLearningSource).

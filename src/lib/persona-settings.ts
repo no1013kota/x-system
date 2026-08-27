@@ -254,3 +254,42 @@ export function replaceLearningSections(
   validateBaseMdStructure(rebuilt);
   return rebuilt;
 }
+
+/** 設定項目の日本語名（通知で「何が変わったか」を出すため・T-M8-341）。 */
+const SETTINGS_FIELD_LABELS: Record<string, string> = {
+  "persona.speaker": "発信者",
+  "persona.audience": "読者",
+  "persona.value": "読者が得るもの",
+  "themes.primary": "主テーマ",
+  "themes.secondary": "サブテーマ",
+  "themes.free_text": "テーマの補足",
+  "tone.first_person": "一人称",
+  "tone.sentence_style": "文末",
+  "tone.emoji_policy": "絵文字",
+  "tone.emoji_max_per_post": "絵文字の数",
+  "tone.hashtags_max": "ハッシュタグの数",
+  "tone.thread_numbering": "スレッド番号",
+  "ng.topics": "扱わない話題",
+  "ng.rules": "やらないこと",
+  "ng.words": "NGワード",
+};
+
+/**
+ * 2つの設定を比べて、**変わった項目の日本語名**を返す（T-M8-341）。
+ *
+ * 学習がアカウント設定を書き換えたことを通知で伝えるために使う。
+ * **値そのものは返さない**——通知に全文を載せると長くなるうえ、
+ * 「何が変わったか」を知って設定画面で確かめる方が確実。
+ */
+export function settingsDiffLabels(before: unknown, after: unknown): string[] {
+  const changed: string[] = [];
+  const a = (before ?? {}) as Record<string, Record<string, unknown>>;
+  const b = (after ?? {}) as Record<string, Record<string, unknown>>;
+  for (const key of Object.keys(SETTINGS_FIELD_LABELS)) {
+    const [group, field] = key.split(".");
+    const left = a[group]?.[field];
+    const right = b[group]?.[field];
+    if (JSON.stringify(left) !== JSON.stringify(right)) changed.push(SETTINGS_FIELD_LABELS[key]);
+  }
+  return changed;
+}

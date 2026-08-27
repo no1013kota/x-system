@@ -19,15 +19,17 @@ describe("GEN prompt constants", () => {
     expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
   });
 
-  it("PT-MD-MERGE keeps its placeholders and the sections 1-4 contract (§6.14, T-M8-336)", () => {
+  it("PT-MD-MERGE はアカウント設定のJSONを返す契約（§6.14, T-M8-341）", () => {
     expect(PT_MD_MERGE).toContain("{{current_section}}");
     expect(PT_MD_MERGE).toContain("{{active_analyses}}");
     expect(PT_MD_MERGE).toContain("{{removed_analyses}}");
-    // 反映先はセクション1〜4。出力に見出し4つを求める（`md-merge.ts` の検証と対）。
-    expect(PT_MD_MERGE).toContain("セクション1〜4");
-    expect(PT_MD_MERGE).toContain("「## 1.」");
-    // **設定由来の値を変えさせない**（画面の設定と実際の指示が食い違わないように）。
-    expect(PT_MD_MERGE).toContain("設定由来の行の値を変えない");
+    // 出力は設定と同じ形のJSON（`md-merge.ts` が personaSettingsSchema で検証する）。
+    expect(PT_MD_MERGE).toContain("**同じ形のJSON**");
+    expect(PT_MD_MERGE).toContain("JSONのみ");
+    // **新しいテーマを作らせない**（画面の選択肢に無い値は設定として保存できない）。
+    expect(PT_MD_MERGE).toContain("新しいテーマを作らない");
+    // NGワードは利用者が個別に管理している欄なので触らせない。
+    expect(PT_MD_MERGE).toContain("ng.words は変えない");
     expect(PT_MD_MERGE).toBe(PT_MD_MERGE.trim());
   });
 
