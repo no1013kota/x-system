@@ -141,6 +141,39 @@ describe("prompt presets（local DB）", () => {
    * **書き終えてから弾かれない。** 画面は残数を出して「追加」を止めるが、
    * 画面だけの制限は迂回できるのでサーバー側でも見る。
    */
+  /**
+   * **先に自分で1件作ってからアカウント設定を保存した場合**（T-M8-355）。
+   *
+   * アカウント.mdは設定の保存前から作れる（T-M8-350）ので、この順番が実際に起きる。
+   * 「空のときだけ埋める」形だと、生成が読む内容（`base_md`）を表す行がどこにも無くなり、
+   * 画面には「控え」しか並ばない——**いま何が効いているのかが説明できない**（原則1）。
+   */
+  it("控えだけがある状態で開いても、いま効いている内容が使用中として並ぶ", async () => {
+    const { uid, xid } = await withTransaction((c) => seed(c));
+    try {
+      // 使用中を持たない状態を作る（自分で1件だけ作った直後と同じ）。
+      await withTransaction((c) =>
+        c.query(
+          `insert into prompt_presets (x_account_id, kind, name, content, is_default)
+           values ($1, 'base_md', '自分の書き方', $2, false)`,
+          [xid, VALID_BASE_MD.replace("テスト用の発信者", "自分で書いた発信者")],
+        ),
+      );
+
+      const listed = await listPromptPresetsForUser({
+        userId: uid,
+        xAccountId: xid,
+        kind: "base_md",
+      });
+      expect(listed, "控え1件＋いま効いている内容").toHaveLength(2);
+      expect(listed[0].inUse, "使用中が先頭に来る").toBe(true);
+      expect(listed[0].content, "使用中は生成が読む内容と同じ").toBe(VALID_BASE_MD);
+      expect(listed[1].inUse).toBe(false);
+    } finally {
+      await cleanup(uid, xid);
+    }
+  });
+
   it("アカウント.mdは5件まで。6件目は理由つきで断る", async () => {
     const { uid, xid } = await withTransaction((c) => seed(c));
     try {

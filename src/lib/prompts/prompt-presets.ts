@@ -118,7 +118,7 @@ function assertName(name: string): string {
 }
 
 /**
- * 一覧を返す。**空なら「いま効いている内容」を使用中の1件として作る**（原則2）。
+ * 一覧を返す。**使用中が無ければ「いま効いている内容」を使用中の1件として作る**（原則2）。
  *
  * 作らないと、この画面を開いた瞬間に本棚が空になり「いま何が生成に使われているのか」が
  * 画面から消える。既存アカウントの取り込みはmigrationが行うが、その後に
@@ -134,18 +134,36 @@ export async function listPromptPresets(
       order by is_default desc, created_at`,
     [params.xAccountId, params.kind],
   );
-  if (rows.rows.length > 0) return rows.rows.map(toView);
+  /*
+    **「使用中が1件も無い」ときも埋める**（T-M8-355）。空のときだけ埋める形だと、
+    利用者が先に自分で1件作ってからアカウント設定を保存した場合に、
+    **生成が読む内容（`base_md`）を表す行がどこにも無い**状態になる——
+    画面には「控え」しか並ばず、いま何が効いているのかが説明できない（原則1）。
+    アカウント.mdを設定の保存前から作れるようにした（T-M8-350）ので、実際に起きうる。
+  */
+  if (rows.rows.some((row) => row.is_default)) return rows.rows.map(toView);
 
   const fallback = params.fallbackContent.trim();
-  if (fallback.length === 0 || fallback.length > PRESET_MAX_CHARS[params.kind]) return [];
+  if (fallback.length === 0 || fallback.length > PRESET_MAX_CHARS[params.kind]) {
+    return rows.rows.map(toView);
+  }
+  // 上限に達していたら足さない（数えられる件数を超えさせない）。
+  if (rows.rows.length >= PRESET_MAX_COUNT[params.kind]) return rows.rows.map(toView);
   const seeded = await db.query<PresetRow>(
+    // 名前は既存と重ならないものにする（同じ区分で名前はunique）。
     `insert into prompt_presets (x_account_id, kind, name, content, is_default)
-     values ($1, $2, '既定', $3, true)
+     values ($1, $2,
+             case when exists (
+               select 1 from prompt_presets e
+                where e.x_account_id = $1 and e.kind = $2 and lower(e.name) = '既定'
+             ) then '既定（アカウント設定）' else '既定' end,
+             $3, true)
      on conflict do nothing
      returning ${PRESET_COLUMNS}`,
     [params.xAccountId, params.kind, params.fallbackContent],
   );
-  return seeded.rows.map(toView);
+  // 使用中が先頭（上の `order by is_default desc, created_at` と同じ並び）。
+  return [...seeded.rows, ...rows.rows].map(toView);
 }
 
 /** 使用中の1件（無ければ null）。写す元を決めるのに使う。 */
