@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.13 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.14 |
+| 更新日 | 2026-08-28 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -118,8 +118,9 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run check:suggest` | **投稿分析の実AI 1周**（現実的な12投稿を実DBへ保存→実Claudeで分析→zod検証→レポート保存。実測 約$0.02/回）。PT-SUGGESTのプロンプト・出力schemaを変えたら回す（T-M8-94） |
 | `npm run check:providers` | **実APIへの provider 契約テスト**（Web検索・構造化出力・画像生成が受理されるか）。実キーと少額の費用が必要なためCI・`release:check` には入れない。外部APIの仕様変更・リクエスト形状の誤りを検出する唯一の層。Googleは既定で対象外（T-M7-17。`PROVIDER_CHECK_GOOGLE=1` で有効化） |
 | `npm run build` / `npm run start` | 本番ビルド / 本番起動 |
-| `supabase db reset` | DB再作成 + migrations再適用 + seed（DBを初期化したいとき） |
-| `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`db reset`→`npm test`） |
+| `supabase migration up` | **未適用のmigrationだけを当てる（ふだんはこちら）**。ローカルに作ったXアカウント・下書き・APIキーはそのまま残る |
+| `supabase db reset` | DB再作成 + migrations再適用 + seed。**中のデータは全部消える**ので、使うのは下の2つが起きたときだけ: (a) 適用済みのmigrationファイルを編集・削除した（`migration up` では辻褄が合わない）、(b) seedを当て直したい |
+| `supabase migration new <name>` | 新規マイグレーション雛形作成（→SQL記述→`supabase migration up`→`npm test`） |
 | `npm run db:clean-test-data` | ローカルDBの掃除（既定はdry-run、`-- --apply` で反映）。テストユーザーと関連データを削除する（実メールのアカウントには触れない。旧「送信待ちお知らせメール」の掃除はT-M8-222のメール通知廃止で不要になった）。**掃除が必要になったら `npm run doctor` が教える**——activeなXアカウントが走査上限（100）を超えると `follower-snapshot.db.test.ts` などが落ち始め、**コードの不具合と見分けがつかない**（2026-08-18、原因の分からない単発失敗として4回観測した・T-M8-137） |
 | `npm run db:backup` / `db:restore` | 論理バックアップ/復元（[手順](./database-backup-restore.md)） |
 

@@ -13,7 +13,8 @@ DBスキーマの正本は `docs/requirements/02_data_model.md`。マイグレ�
 
 ```bash
 supabase start          # ローカルスタック起動（初回はイメージpull）
-supabase db reset       # DBを再作成し migrations/ を順に再適用（+ seed.sql）
+supabase migration up   # 未適用のmigrationだけを当てる（ふだんはこちら。中のデータは残る）
+supabase db reset       # DBを再作成し migrations/ を順に再適用（+ seed.sql）。**中のデータは全部消える**
 supabase migration new <name>   # 新しいマイグレーションSQLの雛形を作成
 supabase stop           # スタック停止
 ```
@@ -24,7 +25,8 @@ supabase stop           # スタック停止
 
 1. `supabase migration new <name>` で `migrations/<timestamp>_<name>.sql` を作成し、SQLを書く。
 2. enum・テーブル・制約などの値の正本はコード側（例: `src/lib/db/enums.ts`）と一致させる。
-3. `supabase db reset` で再適用が通ることを確認する。
+3. `supabase migration up` で適用する。**`db reset` を既定にしない**——ローカルに作ったXアカウント・下書き・APIキーが毎回消え、画面確認をやり直すことになる。
+   **`db reset` が要るのは、適用済みのmigrationファイルを編集・削除したとき**（差分では辻褄が合わないため）。逆に言えば、**一度適用したファイルは編集せず新しいmigrationを足す**。
 4. DB検証テスト（`src/lib/db/*.db.test.ts`）を `npm run test` で実行する。ローカルスタック未起動時はスキップされる。
 
 ## 注意
