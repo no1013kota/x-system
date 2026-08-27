@@ -23,14 +23,27 @@ export interface PlanComparisonRow {
   cell: (plan: PlanDefinition) => PlanCell;
 }
 
+/**
+ * 料金表・料金カードに出す機能一覧（T-M8-354・運営者の指示 2026-08-28）。
+ *
+ * **並びと文言は運営者が決めた一覧をそのまま持つ。** 共通8行のあと、プランで差が出る2行
+ * （APIキーの用意・利用上限）を置く。「連携できるXアカウント」はカードでは専用の帯に出すため
+ * 機能一覧からは外れる（`ACCOUNT_ROW_LABEL`）。
+ */
 export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
   {
     label: "連携できるXアカウント",
     cell: (plan) => `${plan.xAccountLimit}件`,
   },
+  // ── 全プラン共通 ──────────────────────────────
   {
     label: "ニュースの自動収集",
     note: "設定したテーマの新着を毎日集めます",
+    cell: () => true,
+  },
+  {
+    label: "デフォルトプロンプト",
+    note: "すぐ使える投稿の型を最初から用意しています",
     cell: () => true,
   },
   {
@@ -38,7 +51,11 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
     cell: () => true,
   },
   {
-    label: "スケジュール投稿・自動投稿",
+    label: "投稿の下書き管理・自動投稿",
+    cell: () => true,
+  },
+  {
+    label: "投稿予約・投稿スケジュール管理",
     cell: () => true,
   },
   {
@@ -51,21 +68,17 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
     cell: () => true,
   },
   {
-    label: "アカウント.md・プロンプトの直接編集",
+    label: "プロンプトの管理・編集",
     note: "AIへの指示を自分で書き換えられます",
-    cell: (plan) => plan.canEditMdAndPrompts,
+    // 全プランで編集できる（T-M8-168）。プラン差はもう無いので常に true。
+    cell: () => true,
   },
+  // ── プランで差が出る2行 ────────────────────────
   {
-    label: "編集履歴とロールバック",
-    cell: (plan) => plan.canEditMdAndPrompts,
-  },
-  {
-    label: "APIキーの用意",
-    note: "X・生成AIのキー",
+    label: "AI生成・X連携用の専用鍵（APIキー）",
     // BYOKかどうかはアプリ側上限の有無と一致する（plans.ts の定義参照）。
     // BYOKのAPI実費の開示はこの行が唯一の常時表示（T-M8-171で注意書きを畳んだため落とさない）。
-    cell: (plan) =>
-      plan.usageLimits ? "不要（運営が用意）" : "自分で用意（利用料はご自身のAPI課金）",
+    cell: (plan) => (plan.usageLimits ? "不要" : "自分で用意（利用料はご自身のAPI課金）"),
   },
   {
     label: "利用上限（契約期間ごと）",
@@ -73,7 +86,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
       // エキスパートは「無制限」と表示する（T-M8-168・運営者の決定）。内部ガード値は出さない。
       if (plan.concealsLimits) return "無制限";
       return plan.usageLimits
-        ? `AIクレジット${yen(plan.usageLimits.aiCredits)}／通常投稿${plan.usageLimits.normalPosts}／URL付き${plan.usageLimits.urlPosts}`
+        ? `AIクレジット${yen(plan.usageLimits.aiCredits)}／通常投稿${plan.usageLimits.normalPosts}回／URL付き投稿${plan.usageLimits.urlPosts}回`
         : "なし（ご自身のAPI課金の範囲）";
     },
   },

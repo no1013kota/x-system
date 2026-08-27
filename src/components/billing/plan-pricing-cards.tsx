@@ -83,15 +83,16 @@ function PlanCard({
 
   return (
     /*
-      md以上はCSS subgrid（親の18行を3枚で共有）で、**枠の大きさと各行の高さを3枚の間で
-      完全に揃える**（T-M8-181・運営者の指示）。行数は「9セグメント＋機能9行」で全プラン同数
-      （featureItemsForが全行を返すため）。行を増減するときは span の18も揃えること。
+      md以上はCSS subgrid（親の19行を3枚で共有）で、**枠の大きさと各行の高さを3枚の間で
+      完全に揃える**（T-M8-181・運営者の指示）。行数は「9セグメント＋機能10行」で全プラン同数
+      （featureItemsForが全行を返すため）。**機能の行を増減したら span の数も直すこと**——
+      揃っていないと3枚の高さがずれる（T-M8-354で9→10行に増やしたときに18→19へ変えた）。
     */
     <Card
       aria-labelledby={headingId}
       as="article"
       className={cn(
-        "relative flex flex-col p-5 sm:p-6 md:grid md:grid-rows-subgrid md:[grid-row:span_18]",
+        "relative flex flex-col p-5 sm:p-6 md:grid md:grid-rows-subgrid md:[grid-row:span_19]",
         recommended && "border-brand ring-1 ring-brand",
       )}
     >

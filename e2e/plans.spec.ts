@@ -66,10 +66,26 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 推奨（プレミアム）にだけ「おすすめ」バッジが付く。
   const premiumCard = page.getByRole("article", { name: /プレミアムプラン/ });
   await expect(premiumCard.getByText("おすすめ")).toBeVisible();
-  // 機能リストは表と同じデータ源（plan-comparison.ts）から出る。
-  await expect(
-    page.getByText("アカウント.md・プロンプトの直接編集").first(),
-  ).toBeVisible();
+  /*
+    機能リストは表と同じデータ源（`plan-comparison.ts`）から出る。
+    **運営者が決めた一覧の文言を固定する**（T-M8-354・2026-08-28）——
+    ここが変わるとLPと/plansの両方の説明が同時に変わるので、勝手に変わらないようにする。
+  */
+  for (const label of [
+    "ニュースの自動収集",
+    "デフォルトプロンプト",
+    "投稿文と画像の自動生成",
+    "投稿の下書き管理・自動投稿",
+    "投稿予約・投稿スケジュール管理",
+    "投稿実績の記録と分析レポート",
+    "分析にもとづくプロンプトの改善提案",
+    "プロンプトの管理・編集",
+  ]) {
+    await expect(page.getByText(label).first(), `料金カードに「${label}」が出る`).toBeVisible();
+  }
+  // プランで差が出る2行（APIキー・利用上限）。
+  await expect(page.getByText("AI生成・X連携用の専用鍵（APIキー）").first()).toBeVisible();
+  await expect(page.getByText(/AIクレジット100,000／通常投稿200回／URL付き投稿20回/)).toBeVisible();
   // 各カードにXアカウント数のバンドが出る。
   await expect(page.getByText(/Xアカウント 3件までを連携/)).toBeVisible();
   // エキスパートは「無制限」とだけ出て、内部ガードの数値（5000等）は出ない（T-M8-168）。
