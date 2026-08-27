@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.66 |
+| バージョン | v1.67 |
 | 更新日 | 2026-08-27 |
 | 関連 | 全画面、全ジョブ |
 
@@ -230,12 +230,12 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
 | `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
-| `getBaseMd` | x_account_id | content/version | 所有者のみ |
-| `updateBaseMdManual` | content, expected_version | version | md/premiumのみ。6見出し構造を検証し、現行version不一致は409 |
 | `rollbackBaseMd` | version, expected_version | new_version | md/premium。指定版を内容とする新versionを作成 |
-| `listPromptTemplates` | none | templates | system + account override（**`kind=image` のみ**） |
-| `updatePromptTemplate` | kind, content, expected_updated_at | template | md/premiumのみ。楽観lock |
-| `resetPromptTemplate` | kind | template | md/premiumのみ。account override削除 |
+| `listPromptPresets` | x_account_id, kind | presets | 本棚の一覧（T-M8-332）。空なら「いま効いている内容」を使用中の1件として作る |
+| `createPromptPreset` | x_account_id, kind, name, content | preset | 契約中のみ。**追加しただけでは使用中にならない** |
+| `updatePromptPreset` | x_account_id, preset_id, name, content, expected_updated_at | preset | 楽観lock。使用中なら生成が読む置き場へ同じtxで写す |
+| `setPromptPresetInUse` | x_account_id, preset_id | preset | 区分ごとに1件。切り替えは置き場への写しまで含めて1tx |
+| `deletePromptPreset` | x_account_id, preset_id | deletedName | **使用中は拒否**（`preset_in_use`） |
 | `listPatterns` | none | patterns, prompts, plan | 投稿パターン一覧＋プロンプト本文（T-M8-129） |
 | `createPattern` | name, description, prompt, placeholders | pattern | 契約中のみ。**プロンプト必須**（自作は既定を持たない）。分量はプロンプトから読む（T-M8-132）。placeholdersは画面が本文の`{名前}`から導出して送る（T-M8-194） |
 | `updatePattern` | pattern_id ＋ createPatternと同じ項目 | pattern | md/premiumのみ。既定パターンも編集可。`prompt=null`で既定へ戻す。**名前・説明・プロンプト・プレースホルダー・分量だけを更新**し、他の列は触らない |
@@ -263,7 +263,9 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 アカウント.md更新は`x_accounts.base_md`、`base_md_version`、`base_md_versions`を同一transactionで更新する。アカウント設定変更はセクション1〜4だけをテンプレートから再構築し、セクション5〜6をそのまま保持する。LLMは呼ばず生成枠も消費しない。
 
-対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、`updateBaseMdManual`、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。**ただし履歴は最新5版までしか保持しないため（要件02 §3.4・T-M8-156）、6版以上前を指定した`rollbackBaseMd`は`not_found`（`version_not_found`）を返す。**画面の履歴一覧も保持分だけを出すので、選べない版への導線は出ない。
+**アカウント.mdと画像生成プロンプトは複数持てる**（T-M8-332・要件02 §3.29・要件06 §9）。`prompt_presets` が本棚で、**使用中の1件だけ**が生成が実際に読む置き場（`x_accounts.base_md` / `prompt_templates`）へ写される。写しは**同じtransaction**で行う——別txにすると、写す前に落ちたときに「画面は新しい文字・生成は古い文字」という説明できない食い違いが残る。逆に置き場が別経路（学習反映・アカウント設定の保存）で書き換わったときは `syncInUsePreset` が使用中の行へ書き戻す。アカウント.mdの本文検証（6見出し・5,000字）と版・履歴は従来どおり `applyUpdateBaseMdManual` を通るので、切り替えも保存もロールバックで元へ戻せる。旧 `getBaseMd`／`updateBaseMdManual`／`listPromptTemplates`／`updatePromptTemplate`／`resetPromptTemplate` の Server Action は本棚へ置き換わったため削除した（中核の `applyUpdateBaseMdManual`・`resolvePromptTemplate` は引き続き使う）。
+
+対象Xアカウントで`learning_analysis`/`md_merge`がrunningの間、`updatePersonaSettings`、アカウント.mdの本棚の保存・切り替え、`rollbackBaseMd`は`job_conflict`を返す。base_mdを書き換えるtransactionは必ずexpected versionを条件に含める。`base_md_version = 0`（初版未生成）の間は`updateBaseMdManual`／`rollbackBaseMd`は`persona_required`を返し、先に`updatePersonaSettings`で初版を作らせる。`updateBaseMdManual`は`base_md_versions.change_source = manual`、`rollbackBaseMd`は`rollback`で新versionを記録し、`rollback`は指定版の内容を新versionとして積むだけで履歴は書き換えない。**ただし履歴は最新5版までしか保持しないため（要件02 §3.4・T-M8-156）、6版以上前を指定した`rollbackBaseMd`は`not_found`（`version_not_found`）を返す。**画面の履歴一覧も保持分だけを出すので、選べない版への導線は出ない。
 
 `listPromptTemplates`はactive Xアカウントの**画像プロンプト（`kind=image`）**について、account上書き（`x_account_id`=当該）があればそれを、なければsystem default（`x_account_id is null`）を合成し、上書きの有無（既定/カスタム）と上書き行の`updated_at`を返す。**投稿の型プロンプトはここでは扱わない**——正本は`post_patterns.prompt`（要件02 §3.21）で、`listPatterns`が返す（T-M8-129 U2/U3）。**この制限はコードで強制する**（T-M8-139）: Actionの`kind`は`image`のみを受け、store側も型プロンプトが渡されたら`validation_error`で落とす。以前は記述だけがこうで実装は`p1`〜`p6`も扱っており、**画像プロンプトの編集画面で「再読み込み」を押すと編集対象がp1へすり替わり、保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きしていた**（利用者のデータが壊れる）。`updatePromptTemplate`はmd/premiumのみ、8,000字以下・空文字不可を検証し、account上書きrowを作成/更新する。楽観lockは`expected_updated_at`で行い、未上書き（`null`）からの作成時に既にrowがある場合、または指定時刻が現在の`updated_at`（ミリ秒精度）と一致しない場合は`job_conflict`を返す。`resetPromptTemplate`はaccount上書きrowを削除してsystem defaultへ戻す（冪等）。system default（`x_account_id is null`）は編集対象にしない。GEN-IMG は常にこの解決（account上書き→system default→コード定数）で現行テンプレートを正とする。
 
@@ -366,6 +368,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.64 | 2026-08-23 | cancelTrialNowAction（トライアルの即時解約）と、残りトライアルでの再開（T-M8-278） |
 | v1.65 | 2026-08-25 | recordCancellationSurveyAction を複数選択（`reasons`）へ（T-M8-294） |
 | v1.66 | 2026-08-27 | createGenerationJob に `post_mode`／`scheduled_at`（投稿作成の「生成したあと」）を追加（T-M8-331） |
+| v1.67 | 2026-08-27 | プロンプトの本棚（listPromptPresets 他5本）を追加し、base_md/画像プロンプトの旧Actionを削除（T-M8-332） |
 
 ### 下書きの投稿予約（T-M8-157）
 

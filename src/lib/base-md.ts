@@ -3,6 +3,8 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 import { AppError } from "@/lib/observability/errors";
 
+import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
+
 import { pruneBaseMdVersions } from "./base-md-history";
 import { validateBaseMdStructure } from "./persona-settings";
 
@@ -120,6 +122,12 @@ export async function applyUpdateBaseMdManual(
   );
   // 版を積んだ同じtxで古い版を落とす（T-M8-156）。
   await pruneBaseMdVersions(client, input.xAccountId);
+  // 本棚の「使用中」へも同じ内容を残す（T-M8-332）。**本棚と実物が食い違わないようにする**。
+  await syncInUsePreset(client, {
+    xAccountId: input.xAccountId,
+    kind: "base_md",
+    content: input.content,
+  });
   return { version };
 }
 
@@ -161,6 +169,11 @@ export async function applyRollbackBaseMd(
     [input.xAccountId, version, target.content, `v${input.targetVersion}へロールバック`],
   );
   await pruneBaseMdVersions(client, input.xAccountId);
+  await syncInUsePreset(client, {
+    xAccountId: input.xAccountId,
+    kind: "base_md",
+    content: target.content,
+  });
   return { version };
 }
 

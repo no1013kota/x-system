@@ -5,6 +5,7 @@ import { EmptyState, LockedState } from "@/components/app-shell/page-state";
 import { AppLockedPage } from "@/components/app-shell/plan-required";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { Card, pageTitleClassName } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { appLockFor } from "@/lib/auth/subscription-access";
@@ -13,14 +14,15 @@ import { isLearningRunningForUser, listBaseMdVersionsForUser } from "@/lib/base-
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
 import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
-import { promptEditablePlan, type PromptTemplateView } from "@/lib/prompts/prompt-templates";
-import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
+import type { PromptPresetView } from "@/lib/prompts/prompt-presets";
+import { listPromptPresetsForUser } from "@/lib/prompts/prompt-presets-server";
+import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
+import { PromptPresetManager } from "@/components/prompt/prompt-preset-manager";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readSingleRow } from "@/lib/supabase/single-row";
 
-import { BaseMdEditor } from "../settings/base-md-editor";
+import { BaseMdHistory } from "../settings/base-md-history-panel";
 import { PatternManager } from "../settings/pattern-manager";
-import { PromptTemplatesEditor } from "../settings/prompt-templates-editor";
 import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
 
 /**
@@ -30,9 +32,11 @@ import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
  * 設定（連携・課金・通知）とは使う頻度も目的も違う。ナビの一項目にして、
  * アカウント.md・投稿の型・画像生成の3つを横並びで扱えるようにする。
  *
- * データ取得と描画は設定ページから移設したもの。編集部品（`BaseMdEditor` /
- * `PatternManager` / `PromptTemplatesEditor`）は `../settings/` のものをそのまま使う——
- * **中身は同じなので複製しない**（複製すると片方だけ直る）。
+ * **3区分とも同じ形で扱う**（T-M8-332）。アカウント.mdと画像生成プロンプトも複数持てて、
+ * 「使用中」の1件が生成に使われる（`PromptPresetManager`）。投稿作成プロンプトは
+ * `PatternManager` が担うが、一覧・追加・保存の並びは共通部品
+ * （`components/prompt/prompt-list-parts.tsx`）で揃えてある——**区分を移るたびに
+ * 操作を探し直させない**。
  */
 export const metadata: Metadata = { title: `プロンプト | ${APP_NAME}` };
 
@@ -101,20 +105,25 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
 
   let baseMdHistory: BaseMdVersionView[] = [];
   let baseMdLearningRunning = false;
-  let promptTemplates: PromptTemplateView[] = [];
+  /** 本棚（複数持てるプロンプト・T-M8-332）。区分ごとに読む。 */
+  let presets: PromptPresetView[] = [];
   let patterns: PatternOption[] = [];
   let patternPrompts: Record<string, PatternPromptView> = {};
   let systemDefaultPrompts: Record<string, string> = {};
 
   if (account && editable) {
     if (section === "account-md" && account.base_md_version >= 1) {
-      [baseMdHistory, baseMdLearningRunning] = await Promise.all([
+      [presets, baseMdHistory, baseMdLearningRunning] = await Promise.all([
+        listPromptPresetsForUser({ userId: user.id, xAccountId: account.id, kind: "base_md" }),
         listBaseMdVersionsForUser(user.id, account.id),
         isLearningRunningForUser(user.id, account.id),
       ]);
     } else if (section === "image-prompt") {
-      const res = await listPromptTemplatesForUser(user.id);
-      promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
+      presets = await listPromptPresetsForUser({
+        userId: user.id,
+        xAccountId: account.id,
+        kind: "image",
+      });
     } else if (section === "post-prompt") {
       const res = await listPatternsForUser(user.id);
       patterns = res.patterns;
@@ -170,19 +179,38 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
         ) : (
           <Card className="p-4 sm:p-5">
             {section === "account-md" ? (
-              <BaseMdEditor
-                initialContent={account.base_md}
-                initialHistory={baseMdHistory}
-                initialVersion={account.base_md_version}
-                // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
-                key={account.id}
-                learningRunning={baseMdLearningRunning}
-                xAccountId={account.id}
-              />
+              <div className="space-y-6">
+                {baseMdLearningRunning ? (
+                  <Notice tone="warn">
+                    学習の反映処理中です。完了するまでアカウント.mdは保存できません。
+                  </Notice>
+                ) : null}
+                <PromptPresetManager
+                  bodyLabel="アカウント.mdの本文"
+                  emptyContentTemplate={account.base_md}
+                  initialPresets={presets}
+                  // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
+                  key={`${section}:${account.id}`}
+                  kind="base_md"
+                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。"
+                  xAccountId={account.id}
+                />
+                {/* 使用中の本文の版と、その版へ戻す操作（学習・アカウント設定の反映もここに出る）。 */}
+                <BaseMdHistory
+                  currentVersion={account.base_md_version}
+                  history={baseMdHistory}
+                  learningRunning={baseMdLearningRunning}
+                  xAccountId={account.id}
+                />
+              </div>
             ) : section === "image-prompt" ? (
-              <PromptTemplatesEditor
-                initialTemplates={promptTemplates}
+              <PromptPresetManager
+                bodyLabel="画像プロンプトの本文"
+                emptyContentTemplate={SYSTEM_DEFAULT_TEMPLATES.image}
+                initialPresets={presets}
                 key={`${section}:${account.id}`}
+                kind="image"
+                lead="画像を作るときにAIへ渡す指示です。使用中の1つが生成に使われます。"
                 xAccountId={account.id}
               />
             ) : (

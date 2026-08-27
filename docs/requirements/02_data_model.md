@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.74 |
+| バージョン | v1.75 |
 | 更新日 | 2026-08-27 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -747,6 +747,27 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 | `updated_at` | `timestamptz` | not null default now() | |
 
 
+### 3.29 `prompt_presets`
+
+**アカウント.mdと画像生成プロンプトを複数持ち、使う1件を選ぶための本棚**（T-M8-332・運営者の指示 2026-08-27）。投稿作成プロンプトは §3.23 `post_patterns` が同じ役割を持つ（あちらは複数持てた）。
+
+**生成が読む場所は変えていない。** アカウント.mdは `x_accounts.base_md`、画像は §3.5 `prompt_templates`（`kind='image'`）のままで、**「使用中」の1件をその置き場へ写す**（`lib/prompts/prompt-presets-server.ts` の `mirror`）。読む側を変えないので、生成・学習・画像のどの経路にも新しい失敗の種が増えない。逆に置き場が別経路（学習反映・アカウント設定の保存）で書き換わったときは `syncInUsePreset` が使用中の行へ書き戻す——**本棚と実物が食い違うと、画面に出ている文字と生成に使われる文字が違う**ことになる（原則1）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `x_account_id` | `uuid` | not null FK x_accounts on delete cascade | |
+| `kind` | `text` | not null、`base_md`\|`image` | 区分 |
+| `name` | `text` | not null、1〜30字、改行と`<` `>`を禁止 | 画面に出る唯一の名前 |
+| `content` | `text` | not null、`base_md`は1〜5,000字／`image`は1〜8,000字 | 本文。上限は各編集画面の保存上限と同じ |
+| `is_default` | `boolean` | not null default false | **使用中**。区分ごとに1件だけ（部分unique） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Constraints/Indexes: `unique (x_account_id, kind, lower(name))`（同じ区分に同名を作らない）／`unique (x_account_id, kind) where is_default`（**使用中が2件になると「どちらが効いているか」を説明できない**）／`(x_account_id, kind, created_at)`
+
+RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。アプリは service_role でだけ読む）。migration適用時に、既存の `x_accounts.base_md`（`base_md_version >= 1`）と `prompt_templates` の画像上書きを「既定」という名前の使用中1件として取り込む。取り込まないと、画面を開いた瞬間に本棚が空になり「いま何が効いているか」が消える。
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -1043,3 +1064,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
 | v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |
 | v1.74 | 2026-08-27 | generation_jobs.input の `mode`／`scheduled_at` を投稿作成の「生成したあと」と共用することを明記（T-M8-331） |
+| v1.75 | 2026-08-27 | §3.29 prompt_presets を新設（アカウント.md・画像生成プロンプトを複数持ち使用中を選ぶ・T-M8-332） |

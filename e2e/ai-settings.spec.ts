@@ -41,7 +41,8 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
   await signIn(page, account);
   await page.goto("/app/prompts?sec=account-md");
 
-  const editor = page.getByLabel("アカウント.md本文");
+  // 複数持てるようになったので、**使用中の1件**を編集する（T-M8-332）。
+  const editor = page.getByLabel("アカウント.mdの本文");
   await expect(editor).toBeVisible();
 
   const marker = `E2E-${randomUUID().slice(0, 8)}`;
@@ -65,8 +66,8 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
     [account.xAccountId],
   );
   expect(Number(versions[0].n), "履歴が作られること").toBeGreaterThan(0);
-  // 見出しと説明文の2箇所に出るため見出しだけを見る。
-  await expect(page.getByRole("heading", { name: "変更履歴" })).toBeVisible();
+  // 履歴は本文の下に残る（学習・アカウント設定の反映もここに出る）。
+  await expect(page.getByRole("heading", { name: /変更履歴/ })).toBeVisible();
 });
 
 test("見出し構造が壊れた内容は保存されず、何を直せばよいか分かる", async ({ accounts, page }) => {
@@ -74,7 +75,7 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
   await signIn(page, account);
   await page.goto("/app/prompts?sec=account-md");
 
-  const editor = page.getByLabel("アカウント.md本文");
+  const editor = page.getByLabel("アカウント.mdの本文");
   await expect(editor).toBeVisible();
 
   // 「## 3.」を落とした状態（6見出しが揃っていない）
@@ -82,7 +83,7 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
   // 何が悪いかが具体的に出る（「エラー」だけで終わらせない）
-  await expect(page.getByText("見出し構造が不正です", { exact: false })).toBeVisible({
+  await expect(page.getByText("見出しの形が合っていません", { exact: false })).toBeVisible({
     timeout: 20_000,
   });
 

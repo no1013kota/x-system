@@ -78,6 +78,47 @@ async function acceptedSourceUrls(): Promise<string[]> {
   });
 }
 
+/**
+ * 本棚（`prompt_presets`）の名前で、**画面の検証を通ったもの**（T-M8-332）。
+ * 通す側（`assertName`）と DBのCHECK が食い違うと、保存を押した瞬間に
+ * 「入力内容を確認してください」だけが出る（T-M8-299 と同型）。
+ */
+async function acceptedPresetNames(): Promise<string[]> {
+  const { applyCreatePromptPreset } = await import("@/lib/prompts/prompt-presets");
+  const candidates = [
+    "ふつうの名前",
+    "スペース 入り",
+    "  前後に空白  ",
+    "絵文字🙂入り",
+    "a<b",
+    "a>b",
+    "a\nb",
+  ];
+  const out: string[] = [];
+  for (const name of candidates) {
+    // **本番の生成器をそのまま通す**（検証だけを写経しない）。DBは差し替えて値を捕まえる。
+    let captured: string | null = null;
+    const db = {
+      query: async (_sql: string, params?: unknown[]) => {
+        captured = (params?.[2] as string) ?? null;
+        return { rows: [{ id: "x", kind: "image", name: captured, content: "c", is_default: false, updated_at: new Date() }], rowCount: 1 };
+      },
+    };
+    try {
+      await applyCreatePromptPreset(db as never, {
+        xAccountId: "00000000-0000-0000-0000-000000000000",
+        kind: "image",
+        name,
+        content: "本文",
+      });
+      if (captured !== null) out.push(captured);
+    } catch {
+      // 画面側が弾く値はDBまで届かないので対象外。
+    }
+  }
+  return out;
+}
+
 /** `validatePatternInput` が通す名前。**実際にinsertされるのは trim 後の値**。 */
 async function acceptedPatternNames(): Promise<string[]> {
   const candidates = [
@@ -137,6 +178,14 @@ const REGISTRY: Registered[] = [
     column: "name",
     producer: "src/lib/post/post-patterns-store.ts の validatePatternInput",
     accept: acceptedPatternNames,
+    reject: ["a<b", "a>b", "a\nb", "a\rb"],
+  },
+  {
+    table: "prompt_presets",
+    constraint: "prompt_presets_name_safe",
+    column: "name",
+    producer: "src/lib/prompts/prompt-presets.ts の assertName",
+    accept: acceptedPresetNames,
     reject: ["a<b", "a>b", "a\nb", "a\rb"],
   },
 ];

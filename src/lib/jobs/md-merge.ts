@@ -2,6 +2,7 @@ import {
   extractBaseMdSection,
   replaceLearningSections,
 } from "../persona-settings";
+import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { pruneBaseMdVersions } from "../base-md-history";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
@@ -274,6 +275,13 @@ export async function executeMdMerge(
       );
       // 学習は利用者の操作なしに版を積むので、ここでの刈り込みが無いと無制限に増える（T-M8-156）。
       await pruneBaseMdVersions(tx, job.x_account_id);
+      // 本棚の「使用中」へも写す（T-M8-332）。学習の反映が本棚に出ないと、
+      // プロンプト画面の本文と生成に使われる本文が食い違う。
+      await syncInUsePreset(tx, {
+        xAccountId: job.x_account_id,
+        kind: "base_md",
+        content: newBaseMd,
+      });
       if (opts.confirmSourceId) {
         await tx.query(`update learning_sources set status = 'analyzed', updated_at = now() where id = $1`, [
           opts.confirmSourceId,
