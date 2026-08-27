@@ -87,10 +87,16 @@ export async function applyPersonaSettingsUpdate(
       : rebuildSettingsSections(account.base_md, settings);
   const version = account.base_md_version + 1;
   const update = await client.query(
+    /*
+      **保存したら提案は消す**（T-M8-349）。参考ソースからの反映は `settings_proposal` に
+      置かれ、この保存で確定する。残したままにすると、画面を開き直すたびに
+      「反映しました」が出続け、確定済みかどうかが分からなくなる（原則1）。
+    */
     `update x_accounts
         set settings = $3::jsonb,
             base_md = $4,
-            base_md_version = $5
+            base_md_version = $5,
+            settings_proposal = null
       where id = $1
         and user_id = $2
         and status = 'active'

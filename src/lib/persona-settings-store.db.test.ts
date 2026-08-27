@@ -162,4 +162,50 @@ describe("updatePersonaSettings transaction", () => {
       version_count: 3,
     });
   });
+
+  /**
+   * 参考ソースからの反映は**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
+   *
+   * 保存で提案を消さないと、画面を開き直すたびに「参考ソースから作った内容を入れました。
+   * まだ保存されていません」が出続け、**確定したのかどうかが分からなくなる**（原則1）。
+   */
+  it("保存すると settings_proposal が消える（提案が残り続けない）", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    const xAccountId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000',
+               'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `insert into x_accounts
+        (id, user_id, x_user_id, handle, name, auth_type, status, settings_proposal)
+       values ($1, $2, $3, 'proposal_test', 'Proposal Test', 'byok', 'active', $4::jsonb)`,
+      [xAccountId, userId, `x_${xAccountId}`, JSON.stringify(settings("提案の発信者"))],
+    );
+    await db.query(
+      `update profiles
+          set plan = 'standard', subscription_status = 'active', active_x_account_id = $2
+        where id = $1`,
+      [userId, xAccountId],
+    );
+
+    await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: 0,
+      settings: settings("確定した発信者"),
+      userId,
+      xAccountId,
+    });
+
+    const after = await db.query<{ proposal: unknown; speaker: string }>(
+      `select settings_proposal as proposal, settings->'persona'->>'speaker' as speaker
+         from x_accounts where id = $1`,
+      [xAccountId],
+    );
+    expect(after.rows[0].proposal, "保存したら提案は残さない").toBeNull();
+    expect(after.rows[0].speaker).toBe("確定した発信者");
+  });
 });

@@ -108,7 +108,7 @@ test("学習ソースを追加すると分析中として並び、削除でき�
   */
   const handle = `e2e_ref_${randomUUID().slice(0, 6)}`;
   await page.getByRole("textbox", { name: "参考アカウント" }).first().fill(`https://x.com/${handle}`);
-  await page.getByRole("button", { name: /アカウント設定を(作る|更新する)/ }).click();
+  await page.getByRole("button", { name: "アカウント設定を反映する" }).click();
 
   /*
     **押した結果が画面に出る**（T-M8-18／原則1）。ここでは一覧に「分析待ち」の行が増えることで見る。

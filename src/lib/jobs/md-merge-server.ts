@@ -58,6 +58,12 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
       （登録済みの分析をすべて使う。アカウント設定が未保存でも作れる）
   */
   const removedSourceId = meta.learning_source_id ?? undefined;
+  /*
+    反映merge（`learning_source_id` 無し）は**保存前の提案**として置く（T-M8-349）。
+    削除mergeは知見を取り除く処理なので、これまでどおりその場で確定させる——
+    「消したのにまだ効いている」状態を残さないため。
+  */
+  const proposalOnly = removedSourceId === undefined;
 
   // 削除mergeも生成枠を1消費（premium・要件04 §12）。冪等keyで再実行安全。
   await reserveIfPremium(runInTx, {
@@ -72,7 +78,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   try {
     await executeMdMerge(
       { db: pooledDb, jobId: ctx.jobId, runInTx, runInTxForSettle: runInTx, resolveProvider, makeDeadline: () => deadline },
-      removedSourceId ? { removedSourceId } : {},
+      removedSourceId ? { removedSourceId } : { proposalOnly },
     );
   } catch (error) {
     // retryable は attempt<3 で queued 自己終端（runJob の failed 化を空振り）・reserve 保持。

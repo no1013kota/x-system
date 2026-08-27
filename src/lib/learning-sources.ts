@@ -112,14 +112,17 @@ async function assertPrereqs(deps: LearningSourceDeps, userId: string): Promise<
 async function assertNotBusy(
   tx: Queryable,
   xAccountId: string,
-  opts: { includeQueuedJobs: boolean },
+  opts: { includeQueuedJobs: boolean; busyMessage?: string },
 ): Promise<void> {
   const removing = await tx.query(
     `select 1 from learning_sources where x_account_id = $1 and status = 'removing' limit 1`,
     [xAccountId],
   );
   if ((removing.rowCount ?? 0) > 0) {
-    throw new AppError("job_conflict", { details: { reason: "learning_busy" } });
+    throw new AppError("job_conflict", {
+      ...(opts.busyMessage ? { message: opts.busyMessage } : {}),
+      details: { reason: "learning_busy" },
+    });
   }
   if (opts.includeQueuedJobs) {
     const jobs = await tx.query(
@@ -129,7 +132,10 @@ async function assertNotBusy(
       [xAccountId],
     );
     if ((jobs.rowCount ?? 0) > 0) {
-      throw new AppError("job_conflict", { details: { reason: "learning_busy" } });
+      throw new AppError("job_conflict", {
+        ...(opts.busyMessage ? { message: opts.busyMessage } : {}),
+        details: { reason: "learning_busy" },
+      });
     }
   }
 }
@@ -192,8 +198,17 @@ export async function applyLearningToSettings(
     // AI実行なので契約の前提は課す（削除mergeと同じ・T-M8-267）。
     await assertPrereqs(deps, userId);
     await assertActiveAccount(tx, userId, input.x_account_id);
-    // 進行中の学習・mergeがあるなら重ねない（同じ設定を2つのjobが書き換えない）。
-    await assertNotBusy(tx, input.x_account_id, { includeQueuedJobs: true });
+    /*
+      進行中の学習・mergeがあるなら重ねない（同じ設定を2つのjobが書き換えない）。
+      **文言はこの状況のものにする**（T-M8-349）。既定の「ほかの操作と重なりました。
+      画面を再読み込みしてから、もう一度お試しください」は、分析が終わるのを待つべき場面で
+      **再読み込みという無意味な行動**を指示していた（運営者の報告 2026-08-28）。
+    */
+    await assertNotBusy(tx, input.x_account_id, {
+      includeQueuedJobs: true,
+      busyMessage:
+        "参考ソースの分析中です。一覧が「反映済み」になってから、もう一度お試しください。",
+    });
 
     /*
       **材料が無いのに押させない**（原則2）。分析済みのソースが1件も無ければ、

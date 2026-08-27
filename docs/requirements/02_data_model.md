@@ -132,6 +132,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `token_refresh_lock_id` | `uuid` | null | refresh実行者識別子 |
 | `status` | `x_account_status` | not null default `active` | 連携状態 |
 | `settings` | `jsonb` | not null default `{}` | L-4〜L-7フォーム値 |
+| `settings_proposal` | `jsonb` | null可 | 参考ソースの反映で作った**保存前**のアカウント設定（T-M8-349）。画面のフォームがこの値を読み込み、利用者が「アカウント設定を保存」を押すと`settings`へ確定して`null`へ戻る。`null`は「提案が無い」 |
 | `base_md` | `text` | not null default `''` | 現行アカウント.md |
 | `base_md_version` | `integer` | not null default 0 | 未生成は0 |
 | `created_at` | `timestamptz` | not null default now() |  |

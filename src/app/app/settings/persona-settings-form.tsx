@@ -20,6 +20,12 @@ interface PersonaSettingsFormProps {
   baseMdVersion: number;
   initialDifference: boolean;
   initialSettings: PersonaSettings;
+  /**
+   * 参考ソースから作った**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
+   * あるときは各欄をこの値で埋め、「保存すると確定する」ことを画面で言う。
+   * null は「提案が無い」——保存済みの設定をそのまま出す。
+   */
+  proposal: PersonaSettings | null;
   xAccountId: string;
 }
 
@@ -32,8 +38,12 @@ const inputClassName =
  * 枠線が途切れて背景の灰色が覗く。`display:block` では直らず、`float` で流れへ戻すと
  * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
  * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
+ *
+ * **カードは1枚**（T-M8-349・運営者の指示 2026-08-28）。以前は ペルソナ／テーマ／トーン／NG設定 が
+ * それぞれ独立したカードで、間に灰色の地が見えて「4つの別の設定」に見えていた。
+ * 中は区切り線で分ける——ひと続きの1つの設定であることを形で示す。
  */
-const groupClassName = `${cardClassName} p-5 sm:p-6`;
+const groupClassName = "border-t border-hairline pt-6 first:border-t-0 first:pt-0";
 
 type NgField = "words" | "topics" | "rules";
 
@@ -49,12 +59,19 @@ export function PersonaSettingsForm({
   baseMdVersion,
   initialDifference,
   initialSettings,
+  proposal,
   xAccountId,
 }: PersonaSettingsFormProps) {
   const router = useRouter();
-  const [settings, setSettings] = useState(initialSettings);
+  /*
+    **提案があればそれを出す**（T-M8-349）。参考ソースからの反映は保存前の下書きなので、
+    保存済みの値ではなく提案を欄へ入れる。保存するまで `settings` は変わらない。
+  */
+  const [settings, setSettings] = useState(proposal ?? initialSettings);
   const [version, setVersion] = useState(baseMdVersion);
   const [dirty, setDirty] = useState(false);
+  /** 提案を表示中か（保存すると消える）。 */
+  const [showProposal, setShowProposal] = useState(proposal != null);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
   /**
@@ -66,10 +83,13 @@ export function PersonaSettingsForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   // NG設定は入力中の生テキストを保持する。表示値を正規化済み配列から作ると、改行した瞬間に
   // 末尾の空行が捨てられて2行目が打てなくなるため（保存する値は従来どおり正規化した配列）。
-  const [ngText, setNgText] = useState<Record<NgField, string>>({
-    rules: initialSettings.ng.rules.join("\n"),
-    topics: initialSettings.ng.topics.join("\n"),
-    words: initialSettings.ng.words.join("\n"),
+  const [ngText, setNgText] = useState<Record<NgField, string>>(() => {
+    const base = proposal ?? initialSettings;
+    return {
+      rules: base.ng.rules.join("\n"),
+      topics: base.ng.topics.join("\n"),
+      words: base.ng.words.join("\n"),
+    };
   });
 
   const updateSettings = (next: PersonaSettings) => {
@@ -131,21 +151,30 @@ export function PersonaSettingsForm({
       setVersion(result.version);
       setDirty(false);
       setSavedDifference(false);
+      setShowProposal(false);
       router.refresh();
     }
   };
 
   return (
-    <form className="space-y-6" noValidate onSubmit={submit}>
+    /*
+      **1枚の白いカードに全部入れる**（T-M8-349・運営者の指示 2026-08-28）。
+      見出しと説明は置かない（T-M8-346。タブ名が「アカウント設定」なので繰り返さない）。
+      対象アカウントの行はタブの直下（`page.tsx`）へ移した——どのアカウントを直しているかは
+      **編集を始める前に**見えている必要がある。
+    */
+    <form className={`${cardClassName} space-y-6 p-5 sm:p-6`} noValidate onSubmit={submit}>
       {/*
-        見出しと説明は置かない（T-M8-346・運営者の指示 2026-08-28）。タブ名が
-        「アカウント設定」なので、同じ言葉を画面の中でもう一度言う必要が無い。
-        対象アカウントだけは、切り替えを使う人のために残す。
+        **参考ソースからの反映は保存前の提案**（T-M8-349）。押した瞬間に本番の設定が
+        変わると、利用者は中身を見る前に書き換えられてしまう。ここで「まだ保存されていない」
+        ことを言い、保存で確定させる（原則1）。
       */}
-      <p className="text-caption text-ink-3">
-        対象アカウント: <strong className="text-ink-2">@{accountHandle}</strong>
-        {version >= 1 ? "（保存すると次の生成から反映されます）" : "（まだ保存されていません）"}
-      </p>
+      {showProposal ? (
+        <Notice role="status" tone="info">
+          参考ソースから作った内容を入れました。<strong>まだ保存されていません。</strong>
+          気になるところを直してから、下の「アカウント設定を保存」を押してください。
+        </Notice>
+      ) : null}
 
       {version >= 1 && (savedDifference || dirty) ? (
         // 6セクションのタイトル列挙は読み飛ばされるだけだった（T-M8-66）。
@@ -460,7 +489,11 @@ export function PersonaSettingsForm({
         </Notice>
       ) : null}
 
-      <div className="flex justify-end">
+      {/*
+        **保存はカードの中の左下**（T-M8-349・運営者の指示 2026-08-28）。
+        下の「アカウント設定を反映する」と同じ側に置いて、押す場所を揃える。
+      */}
+      <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-6">
         <button
           className="min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           disabled={submitting}
@@ -468,6 +501,9 @@ export function PersonaSettingsForm({
         >
           {submitting ? "保存しています…" : "アカウント設定を保存"}
         </button>
+        <span className="text-caption text-ink-3">
+          {version >= 1 ? "保存すると次の生成から反映されます。" : "保存するとアカウント.mdが作られます。"}
+        </span>
       </div>
     </form>
   );

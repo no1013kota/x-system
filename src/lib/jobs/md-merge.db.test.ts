@@ -170,6 +170,53 @@ describe("executeMdMerge (db)", () => {
     }
   });
 
+  /**
+   * 反映merge（T-M8-349・運営者の指示 2026-08-28）。
+   *
+   * **押した瞬間に本番の設定を書き換えない。** 参考ソースからの反映は保存前の提案として
+   * `settings_proposal` に置き、利用者が確認して保存したときに確定する。
+   * これを取り違えると「見る前に設定が変わっていた」に戻る。
+   */
+  it("proposalOnly: settings_proposal だけに書き、settings・base_md・版は変えない", async () => {
+    const s = await withTransaction((c) => seed(c));
+    try {
+      await executeMdMerge(deps(s.jobId, POLISHED), { proposalOnly: true });
+
+      const acct = (
+        await withTransaction((c) =>
+          c.query<{
+            base_md: string;
+            base_md_version: number;
+            settings: { persona: { speaker: string } };
+            settings_proposal: { persona: { speaker: string } } | null;
+          }>(
+            `select base_md, base_md_version, settings, settings_proposal from x_accounts where id = $1`,
+            [s.xid],
+          ),
+        )
+      ).rows[0];
+      // 提案だけが入る。
+      expect(acct.settings_proposal?.persona.speaker).toBe("A（現場の実務者へ、手順で説明する）");
+      // 保存済みの設定・アカウント.md・版は動かない（保存で初めて変わる）。
+      expect(acct.settings.persona.speaker).toBe(SETTINGS.persona.speaker);
+      expect(acct.base_md_version).toBe(2);
+      expect(acct.base_md).toBe(BASE_MD);
+
+      // 版を積まない（まだ何も確定していないので履歴に残す出来事が無い）。
+      const versions = (
+        await withTransaction((c) =>
+          c.query<{ n: string }>(`select count(*)::text as n from base_md_versions where x_account_id = $1`, [
+            s.xid,
+          ]),
+        )
+      ).rows[0];
+      expect(versions.n).toBe("0");
+    } finally {
+      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [s.xid]));
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
+    }
+  });
+
   it("removal path: rebuilds the target section, sets source removed(removed_at), preserves the other section", async () => {
     const seeded = await withTransaction(async (c) => {
       // 独自アカウント（seed の running learning_analysis job と競合しないよう別立て）。

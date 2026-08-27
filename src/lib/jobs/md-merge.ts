@@ -215,7 +215,19 @@ async function mergeSection(
  */
 export async function executeMdMerge(
   deps: MdMergeDeps,
-  opts: { confirmSourceId?: string; removedSourceId?: string } = {},
+  opts: {
+    confirmSourceId?: string;
+    removedSourceId?: string;
+    /**
+     * **保存前の提案として置くだけにする**（T-M8-349・運営者の指示 2026-08-28）。
+     *
+     * 「参考ソースからアカウント設定を反映する」の経路で使う。`settings` も
+     * アカウント.mdも触らず `settings_proposal` へ書く——押した瞬間に本番の設定が
+     * 変わると、利用者は**中身を見る前に**書き換えられてしまう。画面のフォームが
+     * この提案を読み込み、確認して「アカウント設定を保存」を押したときに確定する。
+     */
+    proposalOnly?: boolean;
+  } = {},
 ): Promise<MdMergeResult> {
   const recordStage = deps.recordStage ?? defaultRecordStage(deps.jobId);
   const maxRetries = deps.maxRetries ?? MD_MERGE_MAX_RETRIES;
@@ -274,6 +286,37 @@ export async function executeMdMerge(
       ? generateInitialBaseMd(merged)
       : rebuildSettingsSections(state.baseMd, merged); // 6見出し構造を検証
     const nextVersion = state.version + 1;
+
+    /*
+      提案として置くだけの経路（T-M8-349）。版を積まず、本棚にも写さない——
+      まだ何も確定していないので、履歴に残す出来事が無い。
+    */
+    if (opts.proposalOnly) {
+      await deps.runInTx(async (tx) => {
+        await tx.query(
+          `update x_accounts set settings_proposal = $2::jsonb where id = $1`,
+          [job.x_account_id, JSON.stringify(merged)],
+        );
+      });
+      await recordProviderCalls(deps.db, allCalls, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId: deps.jobId,
+        keyPrefix: `mdmerge:${deps.jobId}`,
+      });
+      if (job.kind === "md_merge" && deps.runInTxForSettle) {
+        const total = allCalls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0);
+        await settleIfPremium(deps.runInTxForSettle, {
+          plan: job.plan,
+          jobId: deps.jobId,
+          type: "generation",
+          estimatedCostUsdTotal: total,
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
+        });
+      }
+      return { version: state.version, section: "profile" as const };
+    }
 
     const written = await deps.runInTx(async (tx) => {
       const upd = await tx.query(

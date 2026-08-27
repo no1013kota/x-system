@@ -55,6 +55,16 @@ const TYPE_LABEL: Record<string, string> = {
   ref_account: "参考アカウント",
   ref_post: "参考投稿",
 };
+
+/**
+ * 欄に出す上限の言い方（T-M8-349・運営者の指示 2026-08-28）。
+ * **上限は押してから知らせない。** 何件まで入れられるかが分からないと、
+ * 書き足してから弾かれることになる（原則2）。
+ */
+function limitLabel(type: RefType, used: number): string {
+  const field = REF_FIELDS.find((f) => f.type === type)!;
+  return `${used} / ${field.max}件`;
+}
 const STATUS_LABEL: Record<string, string> = {
   pending: "分析待ち",
   analyzed: "反映済み",
@@ -74,6 +84,13 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   failed: "danger",
   removing: "warn",
 };
+
+/**
+ * 分析の完了を待つ間隔と回数（T-M8-349）。参考アカウント1件の分析は実測で30〜60秒。
+ * 3秒 × 60回 = 3分まで待ち、それでも終わらなければ理由を出して押し直してもらう。
+ */
+const ANALYSIS_WAIT_INTERVAL_MS = 3_000;
+const ANALYSIS_WAIT_TRIES = 60;
 
 function uuid(): string {
   return crypto.randomUUID();
@@ -122,6 +139,11 @@ export function LearningSourcesManager({
    * 初期値はサーバーが見たjobの有無（再訪でも進行が分かる）。
    */
   const [applying, setApplying] = useState(initialApplying);
+  /**
+   * 分析が終わらないまま待ち時間を使い切ったか（T-M8-349）。
+   * **「押したのに何も起きない」を作らない**——理由を画面に出して、押し直せるようにする。
+   */
+  const [waitingAnalysis, setWaitingAnalysis] = useState(false);
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
   useEffect(() => {
@@ -202,8 +224,8 @@ export function LearningSourcesManager({
         router.refresh();
         toast.show({
           tone: "success",
-          title: "アカウント設定を更新しました",
-          description: "内容を確認して、必要なら直してください。",
+          title: "アカウント設定の欄へ反映しました",
+          description: "内容を確認して「アカウント設定を保存」を押すと確定します。",
         });
       }
     }, 5_000);
@@ -211,16 +233,17 @@ export function LearningSourcesManager({
   }, [applying, router, toast, xAccountId]);
 
   /**
-   * **記入した内容を登録して、そのままアカウント設定へ反映する**（T-M8-346）。
+   * **記入した内容を登録して、アカウント設定へ「反映」する**（T-M8-349）。
    *
-   * 1つのボタンで「登録 → 分析 → 反映」まで進む。分析は数十秒かかるので、
-   * 終わるのを待ってから反映を起票する（`applying` の間は画面が「書き換え中」を出す）。
-   * **押した後にもう一度押させない**——どこまで進んだかを利用者に数えさせないため。
+   * 1つのボタンで「登録 → 分析 → 反映」まで進む。**反映＝保存ではない**——
+   * 結果は保存前の提案として下のフォームへ入り、利用者が確認して
+   * 「アカウント設定を保存」を押したときに確定する（運営者の指示 2026-08-28）。
    */
   function applyToSettings() {
     const entered = rows.map((r) => ({ ...r, url: r.url.trim() })).filter((r) => r.url);
     startTransition(async () => {
       setApplying(true);
+      setWaitingAnalysis(false);
       for (const row of entered) {
         const res = await addLearningSourceAction({
           request_key: uuid(),
@@ -239,8 +262,8 @@ export function LearningSourcesManager({
         await refresh();
       }
       /*
-        分析が終わってから反映を起票する。**ここで待たずに起票すると
-        「分析済みが1件も無い」で弾かれる**（材料がまだ無いため）。
+        分析が終わってから反映を起票する。**待たずに起票すると弾かれる**——
+        サーバーは「分析中は重ねない」ので `job_conflict`、材料が無ければ検証エラーになる。
         待つあいだも画面は「書き換え中」のままなので、利用者から見れば1つの操作。
       */
       const started = await waitForAnalysisThenApply();
@@ -248,12 +271,30 @@ export function LearningSourcesManager({
     });
   }
 
-  /** 分析の完了を待って反映を起票する。起票できたら true。 */
+  /**
+   * 分析の完了を待って反映を起票する。起票できたら true。
+   *
+   * **待ち切れなかったら起票しない**（T-M8-349）。以前は待ち時間を使い切ったあとに
+   * そのまま起票していたため、分析が動いている間は必ず `job_conflict` になり、
+   * 画面には「ほかの操作と重なりました。画面を再読み込みしてから…」という
+   * **何をすればよいか分からない文言**だけが出ていた（運営者の報告 2026-08-28）。
+   * 分析が終わっていないのなら、そう言って待ってもらう方が短い。
+   */
   async function waitForAnalysisThenApply(): Promise<boolean> {
-    for (let i = 0; i < 60; i++) {
+    let running = true;
+    for (let i = 0; i < ANALYSIS_WAIT_TRIES; i++) {
       const status = await learningApplyStatusAction({ x_account_id: xAccountId });
-      if (status.status === "success" && status.running === false) break;
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      if (status.status === "success" && status.running === false) {
+        running = false;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, ANALYSIS_WAIT_INTERVAL_MS));
+    }
+    if (running) {
+      // まだ分析中。**押し直せる状態に戻して理由を出す**（黙って失敗させない）。
+      await refresh();
+      setWaitingAnalysis(true);
+      return false;
     }
     const res = await applyLearningToSettingsAction({
       request_key: uuid(),
@@ -283,7 +324,19 @@ export function LearningSourcesManager({
       */}
       {applying ? (
         <Notice role="status" tone="info">
-          アカウント設定を書き換え中です。1分ほどで終わります（この画面を離れても続きます）。
+          参考ソースを読み込んでアカウント設定を作っています。1〜2分ほどで、上の欄へ入ります
+          （この画面を離れても続きます）。
+        </Notice>
+      ) : null}
+
+      {/*
+        **待ち切れなかったことを言う**（T-M8-349）。以前はここで反映を起票していたため
+        「ほかの操作と重なりました」という、何をすればよいか分からない失敗になっていた。
+      */}
+      {waitingAnalysis ? (
+        <Notice role="status" tone="warn">
+          参考ソースの分析がまだ終わっていません。下の一覧が「反映済み」になったら、
+          もう一度「アカウント設定を反映する」を押してください。
         </Notice>
       ) : null}
 
@@ -306,8 +359,12 @@ export function LearningSourcesManager({
             const inputId = `ref-url-${index}`;
             return (
               <div className="flex flex-wrap items-center gap-2" key={index}>
-                <label className="w-28 shrink-0 text-body font-medium text-ink" htmlFor={inputId}>
+                <label className="w-40 shrink-0 text-body font-medium text-ink" htmlFor={inputId}>
                   {TYPE_LABEL[row.type]}
+                  {/* **上限は入力の前に見せる**（T-M8-349）。押してから弾かれない。 */}
+                  <span className="ml-1 text-caption font-normal text-ink-3">
+                    （{limitLabel(row.type, plannedCount(row.type))}）
+                  </span>
                 </label>
                 <input
                   className="min-h-11 min-w-0 flex-1 rounded-card border border-hairline bg-surface px-3 disabled:opacity-50"
@@ -361,11 +418,7 @@ export function LearningSourcesManager({
             type="button"
             variant="brand"
           >
-            {applying
-              ? "書き換え中…"
-              : settingsMissing
-                ? "アカウント設定を作る"
-                : "アカウント設定を更新する"}
+            {applying ? "反映しています…" : "アカウント設定を反映する"}
           </Button>
           {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
           {!hasEnteredUrl && analyzedCount === 0 ? (
@@ -374,7 +427,8 @@ export function LearningSourcesManager({
             </span>
           ) : (
             <span className="text-caption text-ink-3">
-              押すと登録・分析してから、下のアカウント設定へ反映します（1〜2分）。
+              押すと登録・分析して、上のアカウント設定の欄へ入れます（1〜2分）。
+              内容を確認して「アカウント設定を保存」を押すと確定します。
             </span>
           )}
         </div>

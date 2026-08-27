@@ -123,6 +123,8 @@ interface AccountRow {
   handle: string;
   id: string;
   settings: unknown;
+  /** 参考ソースから作った保存前の提案（T-M8-349）。無ければ null。 */
+  settings_proposal: unknown;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -275,7 +277,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     tab === "account" && profile.active_x_account_id
       ? admin
           .from("x_accounts")
-          .select("id, handle, settings, base_md, base_md_version")
+          .select("id, handle, settings, settings_proposal, base_md, base_md_version")
           .eq("id", profile.active_x_account_id)
           .eq("user_id", user.id)
           .eq("status", "active")
@@ -297,6 +299,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // アカウント設定タブ: 保存済み設定と、アカウント.mdとの差分有無・参考ソース。
   const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
   const initialSettings = parsedSettings?.success ? parsedSettings.data : EMPTY_SETTINGS;
+  /*
+    保存前の提案（T-M8-349）。**読めない提案は無かったことにする**——形が変わった古い提案で
+    フォームを埋めると、利用者は自分が書いた覚えのない値を保存することになる。
+  */
+  const parsedProposal =
+    account && account.settings_proposal
+      ? personaSettingsSchema.safeParse(account.settings_proposal)
+      : null;
+  const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
     try {
@@ -309,7 +320,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   let learningSources: LearningSourceView[] = [];
   /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
   let learningApplying = false;
-  if (tab === "account" && account && account.base_md_version >= 1) {
+  /*
+    **設定が未保存でも読む**（T-M8-349）。以前は `base_md_version >= 1` を条件にしていたため、
+    参考ソースを登録しても一覧が空のままで、「登録できたのか」が画面から分からなかった
+    ——参考ソースはアカウント設定を作る入口なので、未保存のときこそ要る（原則1）。
+  */
+  if (tab === "account" && account) {
     learningSources = await listLearningSourcesForUser(user.id, account.id);
     learningApplying =
       (
@@ -507,20 +523,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           ) : (
             <div className="space-y-8">
               {/*
-                **参考ソースを先に置く**（T-M8-344・運営者の指示 2026-08-27）。
-                アカウント設定の保存を待たずに出し、「学習ソースからアカウント設定を作る」を
-                入口にする——「誰に何を発信するか」を最初から言葉にできる人ばかりではないので、
-                真似したいアカウントを挙げるところから始められる方が易しい。
-                作った設定は下のフォームでいつでも直せる。
+                **どのアカウントを直しているかを最初に言う**（T-M8-349・運営者の指示 2026-08-28）。
+                アカウント切替を使う人にとっては、編集を始める前に見えている必要がある。
               */}
-              <LearningSourcesManager
-                initialApplying={learningApplying}
-                initialNowMs={nowMs}
-                initialSources={learningSources}
-                key={`sources:${account.id}`}
-                settingsMissing={account.base_md_version < 1}
-                xAccountId={account.id}
-              />
+              <p className="text-caption text-ink-3">
+                対象アカウント: <strong className="text-ink-2">@{account.handle}</strong>
+                {account.base_md_version >= 1
+                  ? "（保存すると次の生成から反映されます）"
+                  : "（まだ保存されていません）"}
+              </p>
+
               <PersonaSettingsForm
                 accountHandle={account.handle}
                 baseMdVersion={account.base_md_version}
@@ -528,6 +540,22 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 initialSettings={initialSettings}
                 // アカウント切替でstateを捨てる（前アカウントの内容を新アカウントへ保存させない・T-M8-196）。
                 key={account.id}
+                proposal={settingsProposal}
+                xAccountId={account.id}
+              />
+
+              {/*
+                **参考ソースは設定の下**（T-M8-349・運営者の指示 2026-08-28）。
+                押すと上のフォームへ内容が入り、そこで確認して保存する流れなので、
+                「入れる場所」→「入れる材料」の順に並べる。
+                設定が未保存でも使える（T-M8-344。真似したいアカウントを挙げるところから始められる）。
+              */}
+              <LearningSourcesManager
+                initialApplying={learningApplying}
+                initialNowMs={nowMs}
+                initialSources={learningSources}
+                key={`sources:${account.id}`}
+                settingsMissing={account.base_md_version < 1}
                 xAccountId={account.id}
               />
             </div>
