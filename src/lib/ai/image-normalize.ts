@@ -119,6 +119,12 @@ async function encode(
  * 既に許可形式かつ上限以下で targetFormat 指定がなければそのまま返す。それ以外は
  * 品質を下げ、届かなければ縮小して上限内に収める。収まらなければ検証エラー。
  */
+/**
+ * 形式→拡張子。**Storageのpathを作る側が2か所ある**（生成・アップロード）ので、
+ * 変換した形式と拡張子の対応はここ1か所に置く（T-M8-353）。
+ */
+export const EXT_BY_FORMAT: Record<string, string> = { jpeg: "jpg", png: "png", webp: "webp" };
+
 export async function normalizeForX(
   bytes: Buffer,
   opts: NormalizeOptions = {},

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.67 |
-| 更新日 | 2026-08-27 |
+| バージョン | v1.68 |
+| 更新日 | 2026-08-28 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -185,6 +185,8 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 | `reconcileDraftPosting` | draft_id | draft | failedのみ。既知IDと直近投稿をXから再照合 |
 | `cloneFailedDraftForRetry` | request_key, draft_id | new_draft | 投稿ID作成履歴があり、曖昧状態・残存IDが解消済みのfailedだけ。AI呼び出しなし |
 | `regenerateImage` | request_key, draft_id | job_id | `image_generation`を冪等作成。画像は1ポスト目に添付・providerはアカウント設定(ai_purpose_config)から解決（初回生成と同じ）。冪等はrequest_keyと「1draftにactive画像job1件」で担保 |
+| `uploadDraftImage` | FormData（draft_id, file） | — | **自分の画像を添える**（T-M8-353）。`status=draft`のみ。PNG/JPEG/WEBP・入力20MBまで。中身は`normalizeForX`（形式判定・5MB以下へ圧縮）を通す。**足さずに置き換える**（投稿に使われるのは最初の`ready`画像1枚）。差し替えで不要になった実体はStorageから削除（失敗は記録のみで操作は成功） |
+| `removeDraftImage` | draft_id | — | 添えた画像を外す（生成物も外せる）。`status=draft`のみ。実体もStorageから削除する |
 
 **`post_mode`（T-M8-331・SC-07の「生成したあと」）**: `draft`（既定）／`now`（生成後にそのまま投稿）／`scheduled`（生成した下書きへ予約日時を入れる）。`now`は生成jobの`input.mode`を`auto`にして`post_publish`へ連鎖させ、`scheduled`は`input.scheduled_at`（UTC ISO）を下書き作成のINSERTで`drafts.scheduled_at`へ入れる（投稿は`scheduled-drafts`のcronが行う。連鎖させると予約時刻より前に出るため）。`scheduled_at`は`datetime-local`の素の値でも受け、**日本時間として解釈**して`assertDraftSchedulable`（`lib/draft-schedule.ts`）で判定する（1分以上先・90日以内）。`draft`以外は**受理前に**投稿の前提（`checkPostingPrerequisites`）と自動投稿の同意（`assertAutomationConsent`）を確認し、不足なら`automation_consent_required`等でjobを作らずに止める——生成の費用を使ったあとで「投稿できない」と分かる形にしない。
 
@@ -369,6 +371,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.65 | 2026-08-25 | recordCancellationSurveyAction を複数選択（`reasons`）へ（T-M8-294） |
 | v1.66 | 2026-08-27 | createGenerationJob に `post_mode`／`scheduled_at`（投稿作成の「生成したあと」）を追加（T-M8-331） |
 | v1.67 | 2026-08-27 | プロンプトの本棚（listPromptPresets 他5本）を追加し、base_md/画像プロンプトの旧Actionを削除（T-M8-332） |
+| v1.68 | 2026-08-28 | uploadDraftImage / removeDraftImage を追加（下書きに自分の画像を添える・T-M8-353） |
 
 ### 下書きの投稿予約（T-M8-157）
 

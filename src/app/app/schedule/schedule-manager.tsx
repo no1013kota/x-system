@@ -1346,6 +1346,12 @@ function SlotFields({
         />
         画像を生成して添付する
       </label>
+      {/*
+        **自分の画像も使えることを、生成のチェックの隣で言う**（T-M8-353・運営者の指示 2026-08-28）。
+      */}
+      <p className="text-caption text-ink-3">
+        画像は下書きから自分でアップロードすることもできます。
+      </p>
       {v.image_enabled && imageProviders.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           画像を生成するAIが未設定です。設定の「AIモデル設定」で画像AIを選ぶまでは画像なしで作成されます。

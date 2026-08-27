@@ -109,25 +109,38 @@ try {
   });
   console.log(`\n✅ 送信まで到達しました（宛先: ${to}）`);
   console.log("");
-  console.log("⚠️  **これは「そのアドレスで届いた」ことを意味しません。**");
-  console.log(
-    `    Gmailは許可の無いFromを拒否せず、黙って @${userDomain} のアドレスへ書き換えます\n` +
-      "    （SMTPは 250 OK を返すため、送信側からは成功に見える）。",
-  );
-  console.log("");
-  console.log("👉 受信箱を開き、**差出人の表示**を確かめてください:");
-  console.log(`    ・「${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>」→ 設定は正しい`);
-  console.log(`    ・「${EXPECTED_SENDER_NAME} <${user}>」→ **書き換えられています**（下の対処が必要）`);
-  console.log("");
-  console.log("書き換えられていた場合の対処（どちらか）:");
-  console.log(
-    `    A. Gmail → 設定 → アカウント → 「他のアドレスとしてメールを送信」へ ${EXPECTED_SENDER_EMAIL} を追加し、\n` +
-      "       確認コードのメールを受け取って認証する（そのアドレスで受信できることが前提）",
-  );
-  console.log(
-    `    B. ${EXPECTED_SENDER_EMAIL} 自体のSMTP資格情報を SMTP_USER / SMTP_APP_PASSWORD に入れる\n` +
-      "       （Google Workspace等でそのアドレスのメールボックスがある場合）",
-  );
+  /*
+    **ログインしているアドレス自身が差出人なら、書き換えは起きない**（T-M8-352）。
+    以前はこの場合でも「書き換えられています」の対処を出しており、
+    同じアドレスが2行並ぶ意味の通らない案内になっていた（2026-08-28に実際に出た）。
+  */
+  if (senderMatchesLogin) {
+    console.log(`👉 受信箱の差出人が「${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>」なら設定は正しいです。`);
+    console.log(
+      "    ログインしているアドレス自身が差出人なので、送信側で書き換えられることはありません。",
+    );
+    console.log("    届かない場合は迷惑メールに入っていないかを見てください（SPF/DKIMの設定漏れで起きます）。");
+  } else {
+    console.log("⚠️  **これは「そのアドレスで届いた」ことを意味しません。**");
+    console.log(
+      `    Gmailは許可の無いFromを拒否せず、黙って @${userDomain} のアドレスへ書き換えます\n` +
+        "    （SMTPは 250 OK を返すため、送信側からは成功に見える）。",
+    );
+    console.log("");
+    console.log("👉 受信箱を開き、**差出人の表示**を確かめてください:");
+    console.log(`    ・「${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>」→ 設定は正しい`);
+    console.log(`    ・「${EXPECTED_SENDER_NAME} <${user}>」→ **書き換えられています**（下の対処が必要）`);
+    console.log("");
+    console.log("書き換えられていた場合の対処（どちらか）:");
+    console.log(
+      `    A. Gmail → 設定 → アカウント → 「他のアドレスとしてメールを送信」へ ${EXPECTED_SENDER_EMAIL} を追加し、\n` +
+        "       確認コードのメールを受け取って認証する（そのアドレスで受信できることが前提）",
+    );
+    console.log(
+      `    B. ${EXPECTED_SENDER_EMAIL} 自体のSMTP資格情報を SMTP_USER / SMTP_APP_PASSWORD に入れる\n` +
+        "       （Google Workspace等でそのアドレスのメールボックスがある場合）",
+    );
+  }
   if (info.rejected?.length) console.log(`    ⚠️ 拒否された宛先: ${info.rejected.length}件`);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

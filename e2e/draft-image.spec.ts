@@ -150,3 +150,72 @@ test("画像生成に失敗した下書きは「画像なし」と分かる形�
   await expect(page.getByText("画像なし（生成失敗）").first()).toBeVisible();
   await expect(page.getByAltText("生成画像プレビュー")).toHaveCount(0);
 });
+
+/**
+ * 自分の画像を下書きへ添える（T-M8-353・運営者の指示 2026-08-28）。
+ *
+ * **画面から選んだファイルが、実際にStorageへ入って表示されるところまで見る。**
+ * サーバー側の検証（形式・大きさ）は単体テストが見るので、ここでは
+ * 「ブラウザのファイル選択 → Server Action → 署名URL → 描画」という**繋がり**を見る。
+ * ここが切れると、押しても何も起きない・画像だけ出ない、という形で静かに壊れる。
+ */
+test("下書きに自分の画像をアップロードでき、外せる", async ({ accounts, page }) => {
+  const account = await accounts.create("draft-image-upload");
+  const thread = [
+    { local_id: "p1", text: "画像を自分で添える下書きです。", weighted_length: 16, sources: [], warnings: [] },
+  ];
+  const [draft] = await query<{ id: string }>(
+    `insert into drafts (x_account_id, pattern_id, thread, initial_thread, status, images)
+     values ($1, (select id from post_patterns where x_account_id = $1 and seed_key = 'p2'), $2::jsonb, $2::jsonb, 'draft', '[]'::jsonb) returning id`,
+    [account.xAccountId, JSON.stringify(thread)],
+  );
+
+  await signIn(page, account);
+  await page.goto(`/app/posts?tab=drafts&draftId=${draft.id}`);
+
+  // 画像が無い下書きでも入口が出る（無いと「AIに作らせるしかない」と受け取られる）。
+  const label = page.getByText("画像をアップロード", { exact: true });
+  await expect(label).toBeVisible();
+
+  const sharp = (await import("sharp")).default;
+  const png = await sharp({
+    create: { width: 240, height: 135, channels: 3, background: { r: 200, g: 210, b: 240 } },
+  })
+    .png()
+    .toBuffer();
+  await page.locator(`#draft-image-${draft.id}`).setInputFiles({
+    name: "mine.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+
+  // **実際に読み込めるところまで見る**（要素の存在では足りない・T-M7-22）。
+  const img = page.getByAltText("生成画像プレビュー");
+  await expect(img).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(
+      async () => img.evaluate((el: HTMLImageElement) => el.naturalWidth),
+      { message: "アップロードした画像がブラウザで読み込めること", timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
+  // 生成物と自分の画像を区別して出す（どちらが投稿されるか分かるように）。
+  await expect(page.getByText("自分でアップロードした画像です。")).toBeVisible();
+
+  // DBにも1枚だけ入る（投稿に使われるのは1枚なので、足さずに置き換える）。
+  const [row] = await query<{ n: string; provider: string }>(
+    `select jsonb_array_length(images)::text as n, images->0->>'provider' as provider
+       from drafts where id = $1`,
+    [draft.id],
+  );
+  expect(row.n).toBe("1");
+  expect(row.provider).toBe("upload");
+
+  // 外すと画像なしへ戻る。
+  await page.getByRole("button", { name: "画像を外す" }).click();
+  await expect(page.getByAltText("生成画像プレビュー")).toHaveCount(0, { timeout: 20_000 });
+  const [after] = await query<{ n: string }>(
+    `select jsonb_array_length(images)::text as n from drafts where id = $1`,
+    [draft.id],
+  );
+  expect(after.n).toBe("0");
+});

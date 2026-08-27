@@ -7,7 +7,7 @@ import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
 
 import type { ThreadItem } from "../ai/gen-output";
 import type { AspectRatio, ImageGen } from "../ai/image";
-import { normalizeForX } from "../ai/image-normalize";
+import { EXT_BY_FORMAT, normalizeForX } from "../ai/image-normalize";
 import type { ProviderCall } from "../ai/normalize";
 import { providerRawOutputOf, runTextGeneration } from "../ai/pipeline";
 import { formatFailureRawError } from "../ai/raw-error";
@@ -64,7 +64,6 @@ function toAspectRatio(raw: string | undefined): AspectRatio {
   return SUPPORTED_ASPECTS.find((a) => a === raw) ?? "16:9";
 }
 
-const EXT_BY_FORMAT: Record<string, string> = { jpeg: "jpg", png: "png", webp: "webp" };
 
 /** 画像生成の終端エラー（retry非対象）。draftは画像なしで確定済み。runJob が failed にする。 */
 export class ImageGenerationTerminalError extends Error {
