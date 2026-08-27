@@ -31,6 +31,15 @@ export function hourWindowKey(now: Date): string {
   )}T${pad(now.getUTCHours())}`;
 }
 
+/**
+ * UTCの20分バケット（`YYYY-MM-DDTHH:MM`）の窓key。ニュースBatchの取り込み用（T-M8-338）。
+ * 重複起動を同じ窓へ畳むためのもので、間隔そのものは `vercel.json` の cron が決める。
+ */
+export function twentyMinWindowKey(now: Date): string {
+  const m = Math.floor(now.getUTCMinutes() / 20) * 20;
+  return `${hourWindowKey(now)}:${pad(m)}`;
+}
+
 /** UTCの5分バケット（`YYYY-MM-DDTHH:MM`）の窓key。scheduler_tick用。 */
 export function fiveMinWindowKey(now: Date): string {
   const m = Math.floor(now.getUTCMinutes() / 5) * 5;

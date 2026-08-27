@@ -127,7 +127,7 @@ export const newsOutputSchema = z.object({
  * 英語ソースのため title 38〜56字・summary 210〜293字となり当時の上限30/120字に抵触、4件すべて破棄）。
  * 器だけを検証して item は個別に選別する（`pickValidItems`）。
  */
-const newsEnvelopeSchema = z.object({
+export const newsEnvelopeSchema = z.object({
   items: z.array(z.unknown()).max(NEWS_MAX_ITEMS * 4),
 });
 
@@ -255,11 +255,18 @@ export function applyRecencyPolicy(
 
 export type NewsItemOut = z.infer<typeof newsItemSchema>;
 
-/** 定時取得の起動時刻（JST）。9〜21時の3時間おき・1日5回（2026-08-22 運営者決定・T-M8-195）。 */
-export const NEWS_FETCH_JST_HOURS = [9, 12, 15, 18, 21] as const;
+/**
+ * 定時取得の起動時刻（JST）。**1日2回・12時と19時**（T-M8-326 → T-M8-337で追随）。
+ *
+ * **`vercel.json` の cron（`0 3,10 * * *` ＝ UTC 3時・10時）と同じ値でなければならない。**
+ * T-M8-326 で cron を1日2回へ減らしたとき**ここが 9/12/15/18/21 のまま残り**、
+ * 12時の起動が「前回から4時間」で走っていた（実際の空きは前日19時からの17時間）。
+ * つまり **19時〜翌8時のニュースが一度も取りに行かれない**状態だった。
+ * 画面には「取得0件」ではなく「その時間帯の記事が無い」ように見えるので、
+ * 利用者からも運営者からも気付けない（原則1）。
+ */
+export const NEWS_FETCH_JST_HOURS = [12, 19] as const;
 
-/** 起動間隔（時間）。窓はこれより広く取り、隣の回と必ず重ねる。 */
-const FETCH_INTERVAL_HOURS = 3;
 /** 重なり分。1回失敗しても次の回が拾えるようにするための余裕。 */
 const OVERLAP_HOURS = 1;
 
@@ -268,18 +275,30 @@ const OVERLAP_HOURS = 1;
  * （1回失敗しても次で拾える＝欠落しない）。
  *
  * 2026-08-02、毎時×6分野の実費が月$518〜1,071と判明し2時間おきへ縮小（T-M7-55・当時3分野）。
- * 2026-08-22、運用6分野へ再拡大（T-M8-189）のうえ**9〜21時の3時間おき（1日5回）**へ変更
- * （T-M8-195・運営者の指示）。**頻度だけ変えると窓が足りずニュースを取りこぼす**ので、窓も追随させる。
+ * 2026-08-22、運用6分野へ再拡大（T-M8-189）のうえ9〜21時の3時間おき（T-M8-195）。
+ * 2026-08-27、**1日2回（12時・19時）**へ（T-M8-326）。
  *
- * - 初回（9:00）: 前日の最終回（21:00）からの空白を埋めるため **12時間**さかのぼる。
- * - 以降（12:00〜21:00）: 間隔3時間＋重なり1時間の **4時間**。
- * - 想定外の時刻に起動された場合も欠落させない方へ倒し、初回と同じ12時間を使う。
+ * **窓は起動時刻の表から導く**（T-M8-337）。回数を変えたときに窓の定数を直し忘れると、
+ * 「頻度は減ったのに窓は狭いまま」＝**取りに行かない時間帯が生まれる**。
+ * 前の回からの空き（前日をまたぐ場合も込み）＋重なり1時間で計算する。
+ *
+ * - 12:00 → 前回は前日19:00 なので 17時間＋1 = **18時間**
+ * - 19:00 → 前回は当日12:00 なので 7時間＋1 = **8時間**
+ * - 想定外の時刻に起動された場合は欠落させない方へ倒し、**最大の窓**を使う。
  */
 export function newsLookbackHours(jstHour: number): number {
-  const [first, ...rest] = NEWS_FETCH_JST_HOURS;
-  if (jstHour === first) return 24 - NEWS_FETCH_JST_HOURS[NEWS_FETCH_JST_HOURS.length - 1] + first;
-  if ((rest as readonly number[]).includes(jstHour)) return FETCH_INTERVAL_HOURS + OVERLAP_HOURS;
-  return 24 - NEWS_FETCH_JST_HOURS[NEWS_FETCH_JST_HOURS.length - 1] + first;
+  const hours: number[] = [...NEWS_FETCH_JST_HOURS];
+  const gapBefore = (hour: number): number => {
+    const index = hours.indexOf(hour);
+    const previous = index === 0 ? hours[hours.length - 1] - 24 : hours[index - 1];
+    return hour - previous;
+  };
+  const index = hours.indexOf(jstHour);
+  if (index === -1) {
+    // 予定外の起動。**どの窓よりも広く**取って取りこぼさない方へ倒す。
+    return Math.max(...hours.map((hour) => gapBefore(hour))) + OVERLAP_HOURS;
+  }
+  return gapBefore(jstHour) + OVERLAP_HOURS;
 }
 
 /** UTC時刻→JSTの時（0-23）。 */
@@ -346,50 +365,39 @@ async function recordNewsUsage(
   });
 }
 
-/** 1分野のニュースリサーチを実行する。 */
-export async function researchNews(
+/**
+ * 1分野ぶんのリクエスト（system/user/検索回数）を組み立てる（T-M8-338）。
+ *
+ * **同期実行とBatch実行で同じものを使う。** 片方だけ直すと「同期では効くのにBatchでは効かない」
+ * 差が生まれ、画面からは説明できない（プロンプト・検索回数・既知URLのどれもここが正）。
+ */
+export async function buildNewsRequest(
   category: NewsCategory,
-  deps: NewsResearchDeps,
-): Promise<NewsResearchResult> {
+  deps: Pick<NewsResearchDeps, "db" | "clock" | "webSearchMaxUses">,
+): Promise<{ system: string; user: string; webSearchMaxUses: number; hours: number }> {
   const hours = newsLookbackHours(jstHourOf(deps.clock));
   const knownUrls = await loadKnownUrls(deps.db, category);
+  return {
+    system: SYS_NEWS.replaceAll("{{category_ja}}", newsCategoryLabel(category))
+      .replaceAll("{{hours}}", String(hours))
+      .replaceAll("{{n}}", String(NEWS_MAX_ITEMS)),
+    user: `<known_urls>\n${knownUrls.join("\n")}\n</known_urls>`,
+    webSearchMaxUses: deps.webSearchMaxUses ?? NEWS_WEB_SEARCH_MAX_USES,
+    hours,
+  };
+}
 
-  const system = SYS_NEWS.replaceAll("{{category_ja}}", newsCategoryLabel(category))
-    .replaceAll("{{hours}}", String(hours))
-    .replaceAll("{{n}}", String(NEWS_MAX_ITEMS));
-  const user = `<known_urls>\n${knownUrls.join("\n")}\n</known_urls>`;
-
-  const deadline = (deps.makeDeadline ?? createDeadline)();
-  // Web検索併用のため構造化出力(jsonSchema)は使わず、JSON出力指示＋コード検証へフォールバックする（§5.1）。
-  let result;
-  try {
-    result = await runTextGeneration({
-      provider: deps.textGen,
-      providerId: deps.provider,
-      request: {
-        system: [system],
-        user,
-        webSearch: { maxUses: deps.webSearchMaxUses ?? NEWS_WEB_SEARCH_MAX_USES },
-        timeoutMs: deadline.callTimeoutMs(),
-      },
-      schema: newsEnvelopeSchema,
-      model: deps.model,
-      operation: "text_generation",
-      now: deps.now,
-    });
-  } catch (error) {
-    // 例外で終わったcallも原価台帳へ残す（D-4 案A・要件04 §10）。分野単位で失敗しても記帳は行う。
-    const failedUsage = usageFromError(error);
-    if (failedUsage && failedUsage.calls.length > 0) {
-      await recordNewsUsage(deps, failedUsage.calls);
-    }
-    throw error;
-  }
-
-  await recordNewsUsage(deps, result.usage.calls);
-  const picked = pickValidItems(result.parsed.items);
-  // 契約を満たした item を、さらに取得窓の新しさで選別する（プロンプトの指示だけに頼らない）。
-  const recency = applyRecencyPolicy(picked.items, { now: deps.clock, hours });
+/**
+ * 検証を通った応答（`{items:[...]}`）を、保存できる形へ選別する（T-M8-338）。
+ * 契約・新しさの判定は**ここ1か所**に置き、同期実行とBatch実行の両方が通る。
+ */
+export function selectNewsItems(
+  category: NewsCategory,
+  parsedItems: unknown[],
+  opts: { now: Date; hours: number },
+): Omit<NewsResearchResult, "usage"> {
+  const picked = pickValidItems(parsedItems as never);
+  const recency = applyRecencyPolicy(picked.items, opts);
   const dropped = picked.dropped + recency.dropped;
   const reasons = { ...picked.reasons, ...recency.reasons };
   if (dropped > 0) {
@@ -408,9 +416,48 @@ export async function researchNews(
     dropped,
     dropReasons: reasons,
     futureAdjusted: recency.futureAdjusted,
-    usage: result.usage,
-    hours,
+    hours: opts.hours,
     // 契約違反で落ちた分だけ中身を残す（`published_at:too_old` は良性なので残さない・T-M8-86）。
     providerRawError: formatRejectedItems(picked.rejected),
+  };
+}
+
+/** 1分野のニュースリサーチを実行する（同期実行）。 */
+export async function researchNews(
+  category: NewsCategory,
+  deps: NewsResearchDeps,
+): Promise<NewsResearchResult> {
+  const { system, user, webSearchMaxUses, hours } = await buildNewsRequest(category, deps);
+  const deadline = (deps.makeDeadline ?? createDeadline)();
+  // Web検索併用のため構造化出力(jsonSchema)は使わず、JSON出力指示＋コード検証へフォールバックする（§5.1）。
+  let result;
+  try {
+    result = await runTextGeneration({
+      provider: deps.textGen,
+      providerId: deps.provider,
+      request: {
+        system: [system],
+        user,
+        webSearch: { maxUses: webSearchMaxUses },
+        timeoutMs: deadline.callTimeoutMs(),
+      },
+      schema: newsEnvelopeSchema,
+      model: deps.model,
+      operation: "text_generation",
+      now: deps.now,
+    });
+  } catch (error) {
+    // 例外で終わったcallも原価台帳へ残す（D-4 案A・要件04 §10）。分野単位で失敗しても記帳は行う。
+    const failedUsage = usageFromError(error);
+    if (failedUsage && failedUsage.calls.length > 0) {
+      await recordNewsUsage(deps, failedUsage.calls);
+    }
+    throw error;
+  }
+
+  await recordNewsUsage(deps, result.usage.calls);
+  return {
+    ...selectNewsItems(category, result.parsed.items, { now: deps.clock, hours }),
+    usage: result.usage,
   };
 }

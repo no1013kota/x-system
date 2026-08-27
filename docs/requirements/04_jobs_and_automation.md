@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.57 |
+| バージョン | v1.58 |
 | 更新日 | 2026-08-27 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -96,22 +96,25 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | 投稿実行 | 200秒 | 60秒 |
 | NEWS 1分野 | 300秒（news_fetch route。6分野同時1巡＋後処理の余裕・T-M8-192） | 90秒 |
 
-## 6. 定時トリガー4本
+## 6. 定時トリガー5本
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **JST 12:00・19:00の1日2回**（T-M8-326・運営者の指示 2026-08-27。国内の発表は午前と夕方に集中するのでその直後。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `0 3,10 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
+| `news_fetch` | **JST 12:00・19:00の1日2回**（T-M8-326・運営者の指示 2026-08-27。国内の発表は午前と夕方に集中するのでその直後。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `0 3,10 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を**Message Batchesへまとめて投げる**（T-M8-338）。取得窓は起動時刻の表から導く（12時＝18h／19時＝8h・T-M8-337） | 6分野 |
+| `news_batch_collect` | 20分間隔 | `*/20 * * * *` | 投げたバッチの結果を取り込み、`news_items` へ保存・`news_fetch_outcomes` へ記録・ダイジェスト通知を配る（T-M8-338） | 5バッチまで |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
 
-**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
+**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（5本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
 `news_fetch`は分野ごとに**取得結果を`news_fetch_outcomes`へ残す**（要件02 §3.19）。「0件」が「該当ニュースが無かった（正常な空）」のか「取得したが規定を満たさず全件破棄した（失敗による空）」のかを、cron応答（`categories[].dropped`/`dropReasons`・`emptyCategories`）と運営者向け状態確認（`npm run doctor`／`GET /api/cron/doctor`）の両方で区別できるようにする。除外理由をログにだけ出す形にしない（CLAUDE.md 原則1）。**判定は `src/lib/news-outcome.ts` の1箇所だけに置く**（T-M8-83）。以前は「取得窓より古いだけ＝良性」の判定がスモークと `doctor` に二重にあり日次サマリには無かったため、同じ状況を doctor は「該当なし」、サマリは「全件破棄」と正反対に通知していた。また**「取れてはいるが大半落ちた」状態はどの経路にも出ていなかった**（doctorは `fetched > 0` を素通り、サマリの抽出は `fetched = 0`）ので、取得件数が静かに減っても気付けなかった。除外が取得を上回る分野は、doctor では注意、サマリでは数字のみで出す（運営者が直せないことで警告は出さない）。`drop_reasons` には**何時間古かったか**を `_too_old_min_age_h` / `_too_old_max_age_h` として併せて残す（`_` 始まりは理由として数えない。境界すぐ外か、そもそも古い記事しか無かったのかを区別して対策を判断するため）。
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
+
+**ニュース取得は Message Batches API で回す**（T-M8-338・運営者の指示 2026-08-27）。定時cronは6分野を1つのバッチとして投げて終わり、20分おきの `news_batch_collect` が結果を取り込む。**トークン単価が半額**になる代わりに結果が同期で返らないため、「投げた／取り込んだ／失効した」を `news_batches`（要件02 §3.30）で持つ。行が無いと運営者から「なぜニュースが来ないのか」を追えない（原則1・原則2）。24時間で失効したバッチは `expired` として畳み、次の定時に委ねる（失効分は課金されない）。取り込み時の選別（契約・新しさ）と記録は同期実行と**同じ関数**（`selectNewsItems`／`saveItems`／`recordOutcome`）を通す——別々に書くと「同期では捨てる記事がBatchでは残る」ズレが生まれる。新しさの基準時刻は**投げたとき**を使う（取り込みは任意の時刻に走るため）。`NEWS_TEXT_PROVIDER` がAnthropic以外の構成では従来どおり同期実行へ落とす。原価台帳にはトークン分だけを半額にした見積もりを記録する（検索料は割引対象と明記されていない）。
 
 `news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を**同時（最大6並列）**に実行し、分野ごとに成功結果をcommitする（3並列だと6分野が2巡になり、1巡目が遅い窓でmaxDurationを超えて後半分野とダイジェスト通知が消える・T-M8-192）。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
 
@@ -367,3 +370,4 @@ flowchart TD
 - **これが無かった間**、2026-08-19 10:00 JST から1.5日間ニュースが全滅していたのに運営者へ何も届かず、運営者が自分で `doctor` を叩いて初めて分かった。
 | v1.56 | 2026-08-27 | ニュース取得を1日2回（JST 12時・19時）へ減らし、production 限定にした（T-M8-326。外部API費用の97.6%がこのcronだった） |
 | v1.57 | 2026-08-27 | 学習の反映先をアカウント.mdのセクション1〜4へ（T-M8-336）。ニュースの検索上限を3へ（T-M8-335） |
+| v1.58 | 2026-08-27 | ニュース取得をMessage Batches API＋20分おきの取り込みcronへ（T-M8-338）。取得窓を起動時刻の表から導く形へ修正（T-M8-337） |

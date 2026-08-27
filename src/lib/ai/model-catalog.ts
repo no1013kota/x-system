@@ -144,3 +144,14 @@ export const DEFAULT_IMAGE_MODELS: Record<ImageProvider, string> = {
   openai: "gpt-image-1.5",
   google: "gemini-3.1-flash-image",
 };
+
+/**
+ * ニュース取得のモデル既定（T-M8-337・運営者の指示 2026-08-27）。
+ *
+ * **環境変数 `NEWS_TEXT_MODEL` が未設定でもここが効く**（画像の既定と同じ考え方・原則3）。
+ * 検索して要約するタスクなので中間クラスで足りる。実測（2026-08-22・同一分野同一窓で比較）は
+ * **Sonnet $0.15〜0.17/回・Haiku $0.09/回**で、1日12回なら月あたり約9,200円と約5,200円の差
+ * （検索を5→3回へ減らした分だけ両方とも下がる）。品質を優先して Sonnet を既定にする。
+ * 安い方へ振るなら、この行を `mechanical` の表と同じモデルへ差し替えれば足りる。
+ */
+export const DEFAULT_NEWS_TEXT_MODELS: Record<Provider, string> = PURPOSE_TEXT_MODELS.analysis;

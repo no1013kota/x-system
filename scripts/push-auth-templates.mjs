@@ -67,7 +67,9 @@ if (!token) {
 
 const { projectRefFromCsp } = await import("../src/lib/ops/release-gate.ts");
 // 差出人名は doctor の検査と同じ定数を使う（別々に書くと片方だけ直して食い違う）。
-const { EXPECTED_SENDER_NAME } = await import("../src/lib/ops/auth-url-status.ts");
+const { EXPECTED_SENDER_NAME, EXPECTED_SENDER_EMAIL } = await import(
+  "../src/lib/ops/auth-url-status.ts"
+);
 
 const baseUrl = process.argv.includes("--base")
   ? process.argv[process.argv.indexOf("--base") + 1]
@@ -121,7 +123,14 @@ function smtpPatch() {
     smtp_port: String(port),
     smtp_user: user,
     smtp_pass: pass,
-    smtp_admin_email: user,
+    /*
+      **差出人アドレスは運営の窓口固定**（T-M8-339・運営者の指示 2026-08-27）。
+      以前は送信に使うSMTPのユーザー名（＝運営者個人のアドレス）をそのまま差出人にしていたため、
+      利用者には見知らぬ個人アドレスから6桁コードが届き、返信も個人の受信箱へ入っていた。
+      **送信側でこのアドレスを名乗れることが前提**（Gmail/Workspaceなら「他のアドレスとして
+      メールを送信」の認証）。名乗れない場合は送信自体が拒否されるので、反映後に doctor で確かめる。
+    */
+    smtp_admin_email: EXPECTED_SENDER_EMAIL,
     smtp_sender_name: EXPECTED_SENDER_NAME,
   };
 }
@@ -169,6 +178,15 @@ if (!current.smtp_host) {
   broken += 1;
 } else {
   console.log(`✅ カスタムSMTP: ${current.smtp_host}`);
+}
+if (current.smtp_admin_email === EXPECTED_SENDER_EMAIL) {
+  console.log(`✅ 差出人アドレス: ${current.smtp_admin_email}`);
+} else {
+  console.log(
+    `❌ 差出人アドレス: ${current.smtp_admin_email || "(未設定)"} → ${EXPECTED_SENDER_EMAIL} にします\n` +
+      "    利用者には見知らぬアドレスから届き、返信も運営の窓口へ届きません",
+  );
+  broken += 1;
 }
 if (current.smtp_sender_name === EXPECTED_SENDER_NAME) {
   console.log(`✅ 差出人名: ${current.smtp_sender_name}`);

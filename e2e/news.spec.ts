@@ -121,7 +121,7 @@ test("ニュース一覧は低インパクトも表示し、テーマ・イン�
     };
 
     // インパクト「高」を選ぶと高が先頭へ（低は残るが後ろ。記事は消えない）。
-    await page.getByLabel("インパクトで先頭へ").selectOption("high");
+    await page.getByLabel("インパクト").selectOption("high");
     await expect(page).toHaveURL(/impact=high/);
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
     let idx = await orderOf();
@@ -129,7 +129,7 @@ test("ニュース一覧は低インパクトも表示し、テーマ・イン�
     expect(idx("AI重要")).toBeLessThan(idx("AI軽微"));
 
     // テーマ「投資」を足すと投資が最優先（テーマ→インパクト→新着の順で寄る）。
-    await page.getByLabel("テーマで先頭へ").selectOption("investment");
+    await page.getByLabel("テーマ").selectOption("investment");
     await expect(page).toHaveURL(/theme=investment/);
     await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
     idx = await orderOf();

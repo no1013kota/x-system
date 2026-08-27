@@ -38,14 +38,24 @@ function jobName(path: string): string {
 }
 
 describe("vercel.json の定時実行", () => {
-  it("4本ある（要件04 §6「定時トリガー4本」）", () => {
+  it("5本ある（要件04 §6「定時トリガー5本」）", () => {
     // 減っていても増えていても落とす。1本消えると、その処理だけが黙って止まる。
     expect(crons.map((c) => c.path).sort()).toEqual([
       "/api/cron/follower-snapshot",
       "/api/cron/metrics-collector",
+      "/api/cron/news-batch-collect",
       "/api/cron/news-fetch",
       "/api/cron/scheduler-tick",
     ]);
+  });
+
+  /**
+   * T-M8-338。**投げる側と取り込む側は対**。取り込みが消えると、ニュースは
+   * 投げっぱなしで24時間後に失効し、画面には「記事が無い」としか出ない（原則1）。
+   */
+  it("ニュースBatchの取り込みは20分おき", () => {
+    const collect = crons.find((c) => c.path === "/api/cron/news-batch-collect");
+    expect(collect?.schedule).toBe("*/20 * * * *");
   });
 
   it("各scheduleが要件04 §6 の表に書かれた値と一致する", () => {

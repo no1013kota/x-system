@@ -18,6 +18,7 @@ import {
 } from "./resolve-provider";
 import {
   DEFAULT_IMAGE_MODELS,
+  DEFAULT_NEWS_TEXT_MODELS,
   purposeTextModel,
   type TextModelPurpose,
 } from "./model-catalog";
@@ -33,7 +34,8 @@ function buildConfig(): ResolveConfig {
   return {
     premiumTextProvider: env.PREMIUM_TEXT_PROVIDER,
     newsTextProvider: env.NEWS_TEXT_PROVIDER,
-    newsTextModel: env.NEWS_TEXT_MODEL,
+    // ニュースの既定もコード側に持つ（envは上書き用・T-M8-337）。
+    newsTextModel: env.NEWS_TEXT_MODEL ?? DEFAULT_NEWS_TEXT_MODELS[env.NEWS_TEXT_PROVIDER],
     operatorApiKeys: {
       anthropic: env.ANTHROPIC_API_KEY,
       openai: env.OPENAI_API_KEY,

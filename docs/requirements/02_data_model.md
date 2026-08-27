@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.75 |
+| バージョン | v1.76 |
 | 更新日 | 2026-08-27 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -768,6 +768,31 @@ Constraints/Indexes: `unique (x_account_id, kind, lower(name))`（同じ区分�
 
 RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。アプリは service_role でだけ読む）。migration適用時に、既存の `x_accounts.base_md`（`base_md_version >= 1`）と `prompt_templates` の画像上書きを「既定」という名前の使用中1件として取り込む。取り込まないと、画面を開いた瞬間に本棚が空になり「いま何が効いているか」が消える。
 
+### 3.30 `news_batches`
+
+**ニュース取得をMessage Batches APIで回すための状態表**（T-M8-338・運営者の指示 2026-08-27。要件04 §6）。定時cron（JST 12時・19時）が6分野を1つのバッチとして投げ、20分おきの `news_batch_collect` が結果を取り込む。
+
+**「投げた」と「取り込んだ」の間を行として持つ**のがこの表の理由。同期実行なら成否はその場で決まるが、非同期では「AI側で処理中」「24時間で失効した」という中間状態が生まれる。行が無いと運営者から見て「なぜニュースが来ないのか」が追えない（原則1・原則2）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `provider_batch_id` | `text` | not null unique | provider側のバッチID（`msgbatch_...`） |
+| `window_key` | `text` | not null unique | 対象の時間窓（`cron_runs` と同じ `YYYY-MM-DDTHH`・UTC）。**1窓につき1バッチ** |
+| `categories` | `text[]` | not null | 投げた分野（`custom_id` と対）。取り込み時に「何が返ってこなかったか」を出せる |
+| `lookback_hours` | `smallint` | not null | 投げたときの取得窓。**取り込みで計算し直さない**（取り込みは任意の時刻に走るため） |
+| `model` | `text` | not null | 投げたときのモデル。原価台帳の単価はこれで決まる |
+| `status` | `text` | not null default `pending`、`pending`\|`collected`\|`expired`\|`failed` | `expired` は24時間の期限切れ（**課金されない**が、その回のニュースは無い） |
+| `submitted_at` | `timestamptz` | not null default now() | 新しさの判定の基準時刻としても使う |
+| `collected_at` | `timestamptz` | nullable | |
+| `error_code` | `text` | nullable | 短く安全な識別子（doctor に出してよい） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Indexes: `(submitted_at) where status = 'pending'`（取り込みcronが古い順に引く）
+
+RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -1065,3 +1090,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |
 | v1.74 | 2026-08-27 | generation_jobs.input の `mode`／`scheduled_at` を投稿作成の「生成したあと」と共用することを明記（T-M8-331） |
 | v1.75 | 2026-08-27 | §3.29 prompt_presets を新設（アカウント.md・画像生成プロンプトを複数持ち使用中を選ぶ・T-M8-332） |
+| v1.76 | 2026-08-27 | §3.30 news_batches を新設（ニュース取得のBatch実行・T-M8-338） |

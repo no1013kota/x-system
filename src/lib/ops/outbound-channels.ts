@@ -70,6 +70,8 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
       "1周上限$0.50）で抑え、テストでは provider を注入して実HTTPを出さない。",
     files: [
       "lib/ai/anthropic-client.ts",
+      // Message Batches API（ニュース取得・T-M8-338）。同じAnthropicキーで、単価が半額になる経路。
+      "lib/ai/anthropic-batch.ts",
       "lib/ai/openai-client.ts",
       "lib/ai/gemini-client.ts",
       "lib/ai/image-client.ts",

@@ -169,12 +169,18 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
             description="編集にはXアカウントの連携が必要です。"
             title="先にXアカウントを連携してください"
           />
-        ) : account.base_md_version < 1 ? (
+        ) : section === "account-md" && account.base_md_version < 1 ? (
+          /*
+            **アカウント.mdの区分だけ**アカウント設定を要求する（T-M8-337）。
+            投稿作成プロンプトと画像生成プロンプトはアカウント.mdが無くても編集でき、
+            生成もできる（前提から外した）。ここで画面全体を止めると、
+            設定を埋めるまでプロンプトを1つも触れないことになる。
+          */
           <EmptyState
             actionHref="/app/settings?tab=account"
             actionLabel="アカウント設定へ"
-            description="編集対象のアカウント.mdを、先にアカウント設定から保存してください。"
-            title="先にアカウント設定を保存してください"
+            description="アカウント.mdは、アカウント設定を保存すると作られます。設定しなくても投稿は作れます。"
+            title="アカウント.mdはまだありません"
           />
         ) : (
           <Card className="p-4 sm:p-5">

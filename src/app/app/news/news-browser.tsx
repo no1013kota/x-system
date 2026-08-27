@@ -138,14 +138,14 @@ export function NewsBrowser({
       ) : (
         // 集約仕様・通知の配信条件は一覧を見る操作に不要なため書かない（T-M8-66）。
         <p className="text-sm text-muted-foreground">
-          最新のニュースを9時〜21時の間、3時間おきに自動取得し、500件までを新しい順に表示します。
+          最新のニュースを毎日12時と19時に自動取得し、500件までを新しい順に表示します。
         </p>
       )}
 
       {/* 選択式ソート（T-M8-188）。選ぶと一致する記事が先頭へ。URLで持つのでリロード・共有でも保たれる。 */}
       <div className="flex flex-wrap items-end gap-3">
         <label className="block text-caption font-medium text-ink-2">
-          テーマで先頭へ
+          テーマ
           <select
             className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
             onChange={(event) => applySort({ theme: event.target.value })}
@@ -160,7 +160,7 @@ export function NewsBrowser({
           </select>
         </label>
         <label className="block text-caption font-medium text-ink-2">
-          インパクトで先頭へ
+          インパクト
           <select
             className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
             onChange={(event) => applySort({ impact: event.target.value })}

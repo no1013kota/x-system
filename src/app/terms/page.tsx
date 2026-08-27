@@ -92,7 +92,7 @@ export default function TermsPage() {
         </p>
         <p>
           {PLANS.premium.displayName}の利用枠は、<strong>契約期間（お支払いの更新日から次の更新日まで）ごと</strong>に、
-          通常投稿{premium?.normalPosts}件、URL付き投稿クレジット{premium?.urlPosts}、
+          通常投稿{premium?.normalPosts}件、URL付き投稿回数{premium?.urlPosts}、
           AIクレジット{premium ? yen(premium.aiCredits) : ""}（文章・画像のAI実行が対象。モデルと内容に応じた量を消費します）です。
           利用枠は更新日に新しい契約期間の上限へ戻り、使い残した分は次の契約期間へ繰り越されません。
           無料トライアル期間にも同じ利用枠があり、トライアル終了後に有料の契約期間が始まる時点で

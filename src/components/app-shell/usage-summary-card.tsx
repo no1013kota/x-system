@@ -15,8 +15,8 @@ import { yen } from "@/lib/format";
 // 並びは AIクレジット → 通常投稿 → URL付き投稿（T-M8-109・運営者の指示）。
 const SLOT_LABELS: ["ai_credits" | "normal_posts" | "url_posts", string][] = [
   ["ai_credits", "AIクレジット"],
-  ["normal_posts", "通常投稿クレジット"],
-  ["url_posts", "URL付き投稿クレジット"],
+  ["normal_posts", "通常投稿回数"],
+  ["url_posts", "URL付き投稿回数"],
 ];
 
 function SlotRow({ label, slot, resetLabel }: { label: string; slot: UsageSlot; resetLabel: string }) {

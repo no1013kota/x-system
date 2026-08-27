@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_IMAGE_MODELS,
+  DEFAULT_NEWS_TEXT_MODELS,
   PURPOSE_TEXT_MODELS,
   isCatalogImageModel,
   isCatalogTextModel,
@@ -48,6 +49,14 @@ describe("用途別の固定モデル", () => {
   it("カタログに無いモデルを指定しても差し替えない（null を返す）", () => {
     expect(purposeTextModel("mechanical", "anthropic")).toBe("claude-haiku-4-5");
     expect(purposeTextModel("analysis", "anthropic")).toBe("claude-sonnet-5");
+  });
+
+  it("ニュースの既定は中間クラス（envが無くても動く）", () => {
+    for (const [provider, model] of Object.entries(DEFAULT_NEWS_TEXT_MODELS)) {
+      expect(isCatalogTextModel(provider as never, model)).toBe(true);
+      expect(MODEL_RATES[model]).toBeDefined();
+    }
+    expect(DEFAULT_NEWS_TEXT_MODELS.anthropic).toBe("claude-sonnet-5");
   });
 
   it("画像の既定はカタログにあり、より高い選択肢も残っている", () => {

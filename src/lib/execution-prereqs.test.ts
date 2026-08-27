@@ -92,10 +92,13 @@ describe("checkExecutionPrerequisites — BYOK", () => {
     expect(r?.missing).toEqual(["image_ai_key"]);
   });
 
-  it("requires persona (base_md_version >= 1)", () => {
-    const r = checkExecutionPrerequisites(byok({ baseMdVersion: 0 }));
-    expect(r?.code).toBe("persona_required");
-    expect(r?.settingsPath).toBe("/app/settings?tab=account");
+  /**
+   * T-M8-337・運営者の指示 2026-08-27。**アカウント設定が未保存でも生成できる。**
+   * アカウント.mdは「誰として書くか」を鮮明にする補助であって、無ければ作れないものではない。
+   * 登録直後に設定を全部埋めさせる足止めの方が害が大きい。
+   */
+  it("アカウント設定が未保存でも生成をブロックしない", () => {
+    expect(checkExecutionPrerequisites(byok({ baseMdVersion: 0 }))).toBeNull();
   });
 
   it("collects all missing items in precedence order", () => {
@@ -115,7 +118,6 @@ describe("checkExecutionPrerequisites — BYOK", () => {
       "x_account",
       "text_ai_key",
       "image_ai_key",
-      "persona",
     ]);
     expect(r?.code).toBe("subscription_required"); // primary = first
   });
@@ -147,16 +149,15 @@ describe("checkExecutionPrerequisites — premium", () => {
     ).toBeNull();
   });
 
-  it("still requires subscription, X connection, and persona", () => {
+  it("契約とX連携は引き続き必要（アカウント設定は必須ではない）", () => {
     expect(checkExecutionPrerequisites(premium({ subscriptionStatus: "unpaid" }))?.code).toBe(
       "subscription_required",
     );
     expect(checkExecutionPrerequisites(premium({ hasActiveXAccount: false }))?.code).toBe(
       "x_account_required",
     );
-    expect(checkExecutionPrerequisites(premium({ baseMdVersion: 0 }))?.code).toBe(
-      "persona_required",
-    );
+    // アカウント設定は前提から外れた（T-M8-337）。初期設定ガイドでは案内し続ける。
+    expect(checkExecutionPrerequisites(premium({ baseMdVersion: 0 }))).toBeNull();
   });
 });
 

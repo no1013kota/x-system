@@ -146,9 +146,10 @@ const FEATURES: {
 }[] = [
   {
     eyebrow: "情報収集の自動化",
-    title: "ニュースが3時間おきに届く",
+    title: "ニュースが毎日届く",
     // 重要度チップと時刻は図版が示すので文からは外してある（T-M8-76）。
-    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、9:00〜21:00に3時間おきで自動収集します。気になった記事から、そのまま投稿の作成に進めます。",
+    // 取得は1日2回（12時・19時）へ変更済み（T-M8-326）。**実際の仕様と揃える**（T-M8-337）。
+    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、毎日12時と19時に自動収集します。気になった記事から、そのまま投稿の作成に進めます。",
     figure: <NewsFeedFigure />,
   },
   {
@@ -468,7 +469,7 @@ export default function Home() {
                     友達招待キャンペーン
                   </p>
                   <h2 className={`${H2} mt-3`}>
-                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬となります
+                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬に
                   </h2>
                   <p className="mt-2.5 text-body leading-6 text-ink-2">
                     ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、

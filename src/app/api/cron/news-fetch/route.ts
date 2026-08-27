@@ -29,6 +29,31 @@ export async function GET(request: Request): Promise<Response> {
     work: async ({ now, windowKey }) => {
       // provider解決はenvに触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。
       const { resolveNewsProvider } = await import("@/lib/ai/resolve-provider-server");
+      const { collectNewsBatches, newsBatchAvailable, submitNewsBatch } = await import(
+        "@/lib/jobs/news-batch-server"
+      );
+
+      /*
+        **Batchで投げて終わる**（T-M8-338・運営者の指示 2026-08-27）。トークンが半額になる。
+        結果はこの起動では返らないので、20分おきの `news-batch-collect` が取り込む。
+        ここでも1回だけ取り込みを試すのは、**前回ぶんが残っていたら先に片付けるため**
+        （取り込みcronが止まっていても、次の定時で回復する経路を1本持たせる）。
+
+        Batchが使えない構成（`NEWS_TEXT_PROVIDER` がAnthropic以外）では従来どおり同期実行する。
+      */
+      if (newsBatchAvailable()) {
+        const collectedFirst = await collectNewsBatches(now);
+        const { model } = resolveNewsProvider();
+        const submitted = await submitNewsBatch({ windowKey, now, model });
+        // ダイジェスト通知は取り込み側が出す（ここではまだ保存されたニュースが無い）。
+        return {
+          mode: "batch" as const,
+          submitted: submitted !== null,
+          categories: submitted?.categories.length ?? 0,
+          collectedFirst,
+        };
+      }
+
       const fetched = await runNewsFetch({
         db: pooledDb,
         // 分野ごとの結果を残す（0件が「該当なし」か「全件破棄」かを後から説明できるように・T-M7-40）。

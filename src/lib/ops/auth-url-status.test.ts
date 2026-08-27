@@ -273,6 +273,21 @@ describe("確認メールの届き方と差出人（T-M8-136）", () => {
     expect(check.nextAction).toContain("npm run auth:templates");
   });
 
+  /**
+   * T-M8-339。**差出人アドレスが運営の窓口になっているか。**
+   * 既定ではSMTPのユーザー名（運営者個人のアドレス）がそのまま出てしまう。
+   */
+  it("差出人アドレスが support@exosai.net でなければ落とす", () => {
+    const check = judgeAuthUrls({
+      ...ok,
+      smtpHost: "smtp.gmail.com",
+      smtpSenderName: EXPECTED_SENDER_NAME,
+      smtpSenderEmail: "someone@gmail.com",
+    });
+    expect(check.level).toBe("error");
+    expect(check.detail).toContain("support@exosai.net");
+  });
+
   it("差出人名が既定のままなら error にする", () => {
     const check = judgeAuthUrls({
       ...ok,

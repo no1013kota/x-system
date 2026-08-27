@@ -21,9 +21,16 @@ export interface NewsDigestItem {
   impact: string;
 }
 
-/** 固定部（キャッシュ対象）。base_md は最後のブロックに置き、更新時のみキャッシュが切れる。 */
+/**
+ * 固定部。`SYS_GEN` ＋ アカウント.md。
+ *
+ * **アカウント.mdが空なら `<base_md>` ごと渡さない**（T-M8-337）。アカウント設定が未保存でも
+ * 生成できるようにしたため、空の封筒を渡すと「発信定義書は空です」という情報を
+ * わざわざ伝えることになり、モデルが「定義が無い」ことに引きずられる。
+ * 渡さなければ、パターンのプロンプトと入力だけで書く。
+ */
 export function buildGenSystem(baseMd: string): string[] {
-  return [SYS_GEN, `<base_md>\n${baseMd}\n</base_md>`];
+  return baseMd.trim() ? [SYS_GEN, `<base_md>\n${baseMd}\n</base_md>`] : [SYS_GEN];
 }
 
 /** codepoint単位で先頭n文字に切り詰める（絵文字のサロゲートペアを割らない）。 */
