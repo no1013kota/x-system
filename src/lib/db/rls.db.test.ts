@@ -81,6 +81,16 @@ describe("RLS policies & ownership trigger", () => {
   ];
 
   /**
+   * **2つの表リストが重ならないこと**（T-M8-354）。`RLS_READ_TABLES` へ
+   * service_role専用の表を足すと、「authenticated には見えない」ことの検査が
+   * 自分で権限を与えたせいで無意味になる——**気付けない形で守りが消える**ので、ここで止める。
+   */
+  it("読める表のリストに service_role 専用の表を混ぜない", () => {
+    const overlap = RLS_READ_TABLES.filter((t) => SERVICE_ROLE_ONLY_TABLES.includes(t));
+    expect(overlap, "service_role専用の表へ権限を与えている").toEqual([]);
+  });
+
+  /**
    * Switch the current transaction to the authenticated role acting as `uid`.
    *
    * **このtx内だけSELECT権限を与えてから切り替える**（T-M8-252）。本番の `authenticated` は
