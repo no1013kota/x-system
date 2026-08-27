@@ -79,15 +79,14 @@ describe("招待画面のサマリ（db）", () => {
       const summary = await loadInviteSummary(inviter);
       expect(summary.paidReferralCount, "課金1人＋Trial1人。解約した1人は数えない").toBe(2);
 
-      const byStatus = Object.fromEntries(
-        summary.invitedUsers.map((row) => [row.totalCommission > 0 ? "paid" : row.status, row.status]),
-      );
+      // 3人がそれぞれ別の状態で並ぶ（人数が減った理由を一覧から辿れるように）。
+      const statuses = summary.invitedUsers.map((row) => row.status).sort();
       expect(
-        summary.invitedUsers.filter((row) => row.status === "cancelled"),
+        statuses,
         "Trial中に解約した人は解約済みとして出す（報酬期間は始まっていない）",
-      ).toHaveLength(1);
-      expect(summary.invitedUsers.filter((row) => row.status === "trial")).toHaveLength(1);
-      expect(byStatus.paid, "課金した人は有料として出す").toBe("paid");
+      ).toEqual(["cancelled", "paid", "trial"]);
+      const paid = summary.invitedUsers.find((row) => row.status === "paid");
+      expect(paid?.totalCommission, "課金した人には報酬が付いている").toBeGreaterThan(0);
     } finally {
       // profiles / affiliate_* は auth.users へ cascade する。
       await withTransaction((c) =>
