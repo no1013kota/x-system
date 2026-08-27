@@ -32,7 +32,7 @@ describe("reduceWebSearchMaxUses", () => {
 });
 
 describe("buildAnthropicParams", () => {
-  it("keeps system as the fixed blocks verbatim, user in messages, cache on last block", () => {
+  it("systemは固定ブロックのまま・可変はmessagesへ・キャッシュは付けない", () => {
     const params = buildAnthropicParams(
       baseReq,
       [{ role: "user", content: baseReq.user }],
@@ -43,9 +43,14 @@ describe("buildAnthropicParams", () => {
       "SYS-GEN固定",
       "base_md固定",
     ]);
-    // prompt caching applied to the last fixed block only
-    expect(params.system[0].cache_control).toBeUndefined();
-    expect(params.system[1].cache_control).toEqual({ type: "ephemeral" });
+    /*
+      **キャッシュは付けない**（T-M8-335・運営者の判断 2026-08-27）。
+      当たるのは「同じ入力を5分以内に再送したとき」だけで、先頭ブロックに
+      アカウント.mdが入るため利用者をまたいで共有されない。当たらないキャッシュは
+      書き込み料（入力の1.25倍）を捨てているだけなので切った。
+      `system` に可変値を入れない作りは残してあるので、戻すのは1行で済む。
+    */
+    expect(params.system.every((b) => b.cache_control === undefined)).toBe(true);
     // variable input lives in messages, not system
     expect(params.messages[0]).toEqual({ role: "user", content: "可変ユーザ入力" });
   });

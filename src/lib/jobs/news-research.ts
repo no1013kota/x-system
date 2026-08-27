@@ -44,7 +44,15 @@ export const NEWS_TITLE_MAX_LENGTH = 60;
 export const NEWS_SUMMARY_MAX_LENGTH = 200;
 const KNOWN_URLS_WINDOW_HOURS = 48;
 const KNOWN_URLS_LIMIT = 200;
-const NEWS_WEB_SEARCH_MAX_USES = 5;
+/**
+ * 1分野あたりのWeb検索回数の上限（T-M8-335・運営者の指示 2026-08-27。5→3）。
+ *
+ * **費用は分野数×実行回数×この数**で決まる（6分野×1日2回）。検索は1回ごとに課金され、
+ * 取得した本文が入力トークンにも乗るため、ニュース取得の費用に最も効く数字。
+ * プロンプト（`SYS_NEWS`）の「検索は3〜5回」もこれに合わせて3回へ揃える——
+ * **指示と実際の上限が食い違うと、モデルは4回目を試して弾かれる**（無駄な往復になる）。
+ */
+const NEWS_WEB_SEARCH_MAX_USES = 3;
 
 /**
  * `published_at` をISO 8601（オフセット付き）へ寄せる。寄せられなければ `undefined` を返し、

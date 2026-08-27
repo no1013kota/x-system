@@ -117,7 +117,8 @@ describe("researchNews", () => {
     expect(req.system[0]).toContain("「AI」分野");
     expect(req.system[0]).toContain("直近4時間"); // JST 12:00 → hours 4
     expect(req.system[0]).toContain("最大5件");
-    expect(req.webSearch?.maxUses).toBe(5);
+    // 検索回数の上限（T-M8-335で5→3）。費用が分野数×実行回数×この数で決まる。
+    expect(req.webSearch?.maxUses).toBe(3);
     expect(req.user).toContain("https://known.example/1");
     expect(req.user).toContain("<known_urls>");
     expect(res.hours).toBe(4);

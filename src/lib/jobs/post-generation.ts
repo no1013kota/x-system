@@ -446,17 +446,19 @@ const hasInputUrl = Boolean(job.input.source_url);
     単価の記録も短縮に使ったモデルで行う——親のモデルで記録すると原価台帳がずれる（原則4）。
   */
   const fixCalls: ProviderCall[] = [];
-  let fixProvider: { textGen: TextGen; model: string } | null = null;
+  let mechanical: { textGen: TextGen; provider: Provider; model: string } | null = null;
+  /** 裏方用の安いproviderを1度だけ解決する（短縮とJSON整形で共用）。 */
+  const resolveMechanical = async () => {
+    mechanical ??= await deps.resolveProvider({
+      plan: job.plan,
+      userId: job.user_id,
+      deadline,
+      purpose: "mechanical",
+    });
+    return mechanical;
+  };
   const shorten = async (text: string, limit: number): Promise<string> => {
-    if (!fixProvider) {
-      const resolved = await deps.resolveProvider({
-        plan: job.plan,
-        userId: job.user_id,
-        deadline,
-        purpose: "mechanical",
-      });
-      fixProvider = { textGen: resolved.textGen, model: resolved.model };
-    }
+    const fixProvider = await resolveMechanical();
     const start = now();
     const out = await fixProvider.textGen.generate({
       system: [],
@@ -493,6 +495,11 @@ const hasInputUrl = Boolean(job.input.source_url);
       model,
       operation: "text_generation",
       now,
+      // JSONとして読めなかったときは、まず安いモデルで**形だけ**直す（T-M8-335）。
+      reformatProvider: async () => {
+        const on = await resolveMechanical();
+        return { provider: on.textGen, providerId: on.provider, model: on.model };
+      },
     });
   } catch (error) {
     if (error instanceof InvalidProviderOutputError) {
@@ -568,6 +575,10 @@ const hasInputUrl = Boolean(job.input.source_url);
       model,
       operation: "text_generation",
       now,
+      reformatProvider: async () => {
+        const on = await resolveMechanical();
+        return { provider: on.textGen, providerId: on.provider, model: on.model };
+      },
     });
     usageCalls.push(...retry.usage.calls);
     if (!retry.parsed.error) {

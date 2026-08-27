@@ -445,10 +445,51 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-  it("JSON invalid after repair: fails with invalid_output, no draft", async () => {
+  /**
+   * T-M8-335。**前後に説明文が付いただけの失敗は、安い整形1回で直る。**
+   *
+   * 以前はこの場合でも「元の依頼をまるごと生成し直す」（Web検索も再実行）ため、
+   * 初回とほぼ同じ費用がもう一度かかっていた。整形が効けば作り直しは呼ばれない。
+   */
+  it("JSONの前後に説明文が付いただけなら、整形1回で下書きまで進む", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
-      const provider = mockProvider("", ["これはJSONではない", "まだJSONではない"]);
+      const provider = mockProvider("", [
+        'この投稿を作りました。\n{"posts":["整形で救われた本文"],"sources":[],"error":null}\nご確認ください。',
+        '{"posts":["整形で救われた本文"],"sources":[],"error":null}',
+        // 3回目（作り直し）は呼ばれないはず。呼ばれたらこの本文が下書きに出る。
+        '{"posts":["作り直しが走ってしまった"],"sources":[],"error":null}',
+      ]);
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const draft = (
+        await db.query<{ thread: { text: string }[] }>(`select thread from drafts where id = $1`, [
+          res.draftId,
+        ])
+      ).rows[0];
+      expect(draft.thread[0].text).toBe("整形で救われた本文");
+      const job = (
+        await db.query<{ usage: { calls: unknown[] } }>(
+          `select usage from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.usage.calls.length, "初回＋整形の2回で終わる（作り直しは呼ばない）").toBe(2);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("整形でも作り直しでも直らなければ invalid_output（下書きは作らない）", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      // 初回 → 整形（安いモデル）→ 作り直し（本モデル）の3回とも読めない場合（T-M8-335）。
+      const provider = mockProvider("", [
+        "これはJSONではない",
+        "整形してもJSONではない",
+        "作り直してもJSONではない",
+      ]);
       await expect(
         executePostGeneration(deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) })),
       ).rejects.toBeInstanceOf(InvalidProviderOutputError);
@@ -460,7 +501,7 @@ describe("executePostGeneration (local DB)", () => {
         )
       ).rows[0];
       expect(job.error?.code).toBe("invalid_output");
-      expect(job.usage.calls.length).toBe(2); // initial + repair recorded
+      expect(job.usage.calls.length, "初回・整形・作り直しの3回が台帳に残る").toBe(3);
       const drafts = (
         await db.query<{ n: number }>(`select count(*)::int as n from drafts where source_job_id = $1`, [jobId])
       ).rows[0].n;

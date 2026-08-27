@@ -100,8 +100,13 @@ describe("buildSuggestionInput", () => {
     expect(input.posts).toHaveLength(SUGGEST_TIMELINE_MAX);
   });
 
-  it("上限は100件（= X読取費用の上限 100×$0.005=$0.50/回。変えるときは費用も変わる）", () => {
-    expect(SUGGEST_TIMELINE_MAX).toBe(100);
+  /**
+   * **この数字がレポート1回の費用をほぼ決める**（1件300字なので50件で約1.5万字）。
+   * 100→50（T-M8-335・運営者の指示 2026-08-27）。取得・保存の上限（TIMELINE_FETCH_MAX=100 /
+   * SUGGEST_ANALYZE_MAX=300）とは別物で、そちらは変えていない。
+   */
+  it("LLMへ渡すのは50件（変えるとレポートの費用が変わる）", () => {
+    expect(SUGGEST_TIMELINE_MAX).toBe(50);
   });
 });
 
