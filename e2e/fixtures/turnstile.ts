@@ -35,8 +35,12 @@ import type { Page } from "@playwright/test";
  * ——スクリプトの読み込みとウィジェット描画の回帰（T-M7-26）を、実物で押さえ続けるため。
  */
 
-/** アプリが受け取るダミートークン。中身は問わない（siteverifyが常に成功するため）。 */
-export const STUB_TURNSTILE_TOKEN = "e2e-stub-turnstile-token";
+/**
+ * ダミートークンの接頭辞。**中身は問わない**（テストsecretのsiteverifyは常に成功する）が、
+ * **毎回違う値にする**——同じ文字列を短時間に何百回も検証させると、相手側で
+ * 使い回しとして扱われる余地が残る。手元で完結させる目的からも、値を固定する理由が無い。
+ */
+export const STUB_TURNSTILE_TOKEN_PREFIX = "e2e-stub-turnstile-token";
 
 /**
  * `window.turnstile` の最小実装。本物と同じく `render=explicit` を前提にする。
@@ -52,7 +56,10 @@ const STUB_SCRIPT = `(() => {
     const w = widgets.get(id);
     if (!w) return;
     setTimeout(() => {
-      if (widgets.has(id)) w.options.callback("${STUB_TURNSTILE_TOKEN}");
+      if (widgets.has(id))
+        w.options.callback(
+          "${STUB_TURNSTILE_TOKEN_PREFIX}-" + Math.random().toString(36).slice(2) + "-" + Date.now(),
+        );
     }, 0);
   };
   window.turnstile = {

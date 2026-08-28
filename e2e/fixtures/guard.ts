@@ -82,6 +82,9 @@ async function warmUpRoutes(baseUrl: string): Promise<void> {
     "/app/news",
     "/app/analytics",
     "/app/invite",
+    // 公開ページも1件目のspecがコンパイルを被る（ブログ本文は動的routeなので別枠）。
+    "/blog",
+    "/prompt-templates",
   ];
   await Promise.all(
     paths.map((path) =>

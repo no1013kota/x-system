@@ -113,25 +113,28 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     E2EはダミーのAIキーで動くため分析が即座に終わって（材料0件で）消える——
     このテストで押さえると、実装ではなく鍵の有無で結果が変わる。
   */
-  await expect(page.getByRole("listitem").filter({ hasText: handle })).toContainText("分析待ち");
+  /*
+    **状態は指定しない**（T-M8-358）。E2EはダミーのX/AIキーで動くので、分析jobが
+    その場で失敗して `pending` を通り越していることがある。ここで見たいのは
+    「登録が受け付けられて一覧に出ること」で、**通り過ぎる途中の状態を掴もうとすると
+    速さで結果が変わる**（実際にフルスイートで `failed` を掴んで落ちた）。
+  */
+  await expect(page.getByRole("listitem").filter({ hasText: handle })).toBeVisible();
 
-  // DBに登録され、分析待ちになる
+  // DBにも登録されている（状態は問わない）。
   await expect
     .poll(
       async () =>
         (
-          await query<{ status: string }>(
-            `select status::text as status from learning_sources
+          await query<{ n: string }>(
+            `select count(*)::text as n from learning_sources
               where x_account_id = $1 and url like $2 and removed_at is null`,
             [account.xAccountId, `%${handle}%`],
           )
-        )[0]?.status,
+        )[0]?.n,
       { timeout: 20_000, message: "学習ソースが登録されること" },
     )
-    .toBe("pending");
-
-  // 画面にも「分析中」として出る（進行が分かる）
-  await expect(page.getByText(handle, { exact: false })).toBeVisible();
+    .toBe("1");
 
   // 分析が終わった状態にしてから削除する（AIは呼ばない）。
   //
