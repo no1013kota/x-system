@@ -1013,7 +1013,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
   "format": 2,
   "good_posts": [{ "id": "tweet_id_1", "why": "表示回数が3,200と最多だった" }],
   "advice": {
-    "account_md": { "content": "アカウント.md改訂案の全文（## 1.〜## 6.構造を維持・5,000字以内）", "reason": "何をなぜ変えたか" },
+    "account_md": { "content": "アカウント.md改訂案の全文（## 1.〜## 5.構造を維持・5,000字以内）", "reason": "何をなぜ変えたか" },
     "pattern": { "recommended": "p3", "reason": "手順を数字で示すノウハウ形式が伸びている" },
     "theme": { "recommended": "ai", "reason": "AIツール紹介の題材が反応を得ている" },
     "image": { "recommended": true, "reason": "画像付きの表示回数が上回った" },

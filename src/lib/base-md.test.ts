@@ -17,10 +17,7 @@ const VALID = `# 発信定義書
 ## 4. やらないこと
 - 煽らない
 
-## 5. 文体・自分らしさ
-実例
-
-## 6. 参考にする型
+## 5. 参考にする型
 型
 `;
 
@@ -47,19 +44,19 @@ describe("validateManualBaseMd", () => {
   });
 
   it("rejects a missing heading (structure)", () => {
-    const missing = VALID.replace("## 6. 参考にする型\n型\n", "");
+    const missing = VALID.replace("## 5. 参考にする型\n型\n", "");
     const r = code(() => validateManualBaseMd(missing));
     expect(r.code).toBe("validation_error");
     expect(r.reason).toBe("structure");
   });
 
   it("rejects a duplicated heading (structure)", () => {
-    const dup = VALID.replace("## 5. 文体・自分らしさ", "## 3. トーン&マナー");
+    const dup = VALID.replace("## 5. 参考にする型", "## 3. トーン&マナー");
     expect(code(() => validateManualBaseMd(dup)).reason).toBe("structure");
   });
 
   it("rejects out-of-order headings (structure)", () => {
-    const swapped = `## 2. b\n\n## 1. a\n\n## 3. c\n\n## 4. d\n\n## 5. e\n\n## 6. f\n`;
+    const swapped = `## 2. b\n\n## 1. a\n\n## 3. c\n\n## 4. d\n\n## 5. e\n`;
     expect(code(() => validateManualBaseMd(swapped)).reason).toBe("structure");
   });
 });

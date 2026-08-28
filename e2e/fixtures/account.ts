@@ -21,6 +21,32 @@ const DB_URL =
   process.env.DATABASE_URL ??
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
+/**
+ * 連携済みアカウントのアカウント.md（E2E）。
+ *
+ * **本物と同じ見出し構造にする**（T-M8-356）。以前は見出しの無い1行だったため、
+ * この状態から「アカウント設定を保存」する経路が**必ず構造エラーで落ちる**のに、
+ * どのE2Eもそこを踏んでいなかった（保存の経路がテストの網に入っていなかった）。
+ */
+const E2E_BASE_MD = [
+  "# 発信定義書（アカウント.md）",
+  "",
+  "## 1. ペルソナ",
+  "- 発信者: E2Eの発信者",
+  "",
+  "## 2. 発信テーマ",
+  "- 主テーマ: AI",
+  "",
+  "## 3. トーン&マナー",
+  "- 文末: です・ます調",
+  "",
+  "## 4. やらないこと",
+  "- 煽らない",
+  "",
+  "## 5. 参考にする型",
+  "",
+].join("\n");
+
 export interface TestAccount {
   email: string;
   password: string;
@@ -126,7 +152,7 @@ export async function createTestAccount(
         handle,
         sealed,
         X_SCOPES,
-        options.personaReady === false ? "" : "# 発信定義書\n\nE2E用のアカウント.mdです。",
+        options.personaReady === false ? "" : E2E_BASE_MD,
         options.personaReady === false ? 0 : 1,
         options.automationConsent ? CURRENT_AUTOMATION_CONSENT_VERSION : null,
         options.automationConsent ? new Date() : null,

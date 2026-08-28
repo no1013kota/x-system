@@ -27,11 +27,8 @@ const BASE_MD = `# 発信定義書（アカウント.md）
 ## 4. やらないこと
 - 煽らない
 
-## 5. 文体・自分らしさ
+## 5. 参考にする型
 旧セクション5
-
-## 6. 参考にする型
-旧セクション6
 `;
 
 /** いまのアカウント設定（mergeの入力）。 */
@@ -135,8 +132,7 @@ describe("executeMdMerge", () => {
     // アカウント.mdは**設定から作り直す**ので、書き換えた値がそのまま本文に出る（T-M8-341）。
     expect(newBaseMd).toContain("- 発信者: A（現場の実務者へ手順で説明する）");
     expect(newBaseMd).toContain("- 一人称: 自分");
-    expect(newBaseMd).toContain("## 5. 文体・自分らしさ\n旧セクション5"); // 5〜6は不変
-    expect(newBaseMd).toContain("## 6. 参考にする型\n旧セクション6");
+    expect(newBaseMd).toContain("## 5. 参考にする型\n旧セクション5"); // 5は不変
     // 設定そのものも同じUPDATEで保存する（画面の表示と本文が食い違わない）。
     expect(JSON.parse(upd.params[4] as string).persona.speaker).toBe("A（現場の実務者へ手順で説明する）");
     /*

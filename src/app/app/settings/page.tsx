@@ -50,7 +50,7 @@ import {
   normalizeSettingsTab,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
@@ -314,8 +314,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     （生成されるのは1〜4だけ）。まだmdが無ければ空欄から書き始められる。
   */
   const freeSections = {
-    voice: account ? extractBaseMdSection(account.base_md, 5) : "",
-    referenceStyle: account ? extractBaseMdSection(account.base_md, 6) : "",
+    referenceStyle: account ? extractBaseMdSection(account.base_md, 5) : "",
   };
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
@@ -547,32 +546,39 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   : "（まだ保存されていません）"}
               </p>
 
-              <PersonaSettingsForm
-                baseMdVersion={account.base_md_version}
-                initialDifference={initialDifference}
-                initialReferenceStyle={freeSections.referenceStyle}
-                initialSettings={initialSettings}
-                initialVoice={freeSections.voice}
-                // アカウント切替でstateを捨てる（前アカウントの内容を新アカウントへ保存させない・T-M8-196）。
-                key={account.id}
-                proposal={settingsProposal}
-                xAccountId={account.id}
-              />
-
               {/*
-                **参考ソースは設定の下**（T-M8-349・運営者の指示 2026-08-28）。
-                押すと上のフォームへ内容が入り、そこで確認して保存する流れなので、
-                「入れる場所」→「入れる材料」の順に並べる。
+                **1枚のカードに「参考ソース → アカウント設定」の順で入れる**
+                （T-M8-356・運営者の指示 2026-08-28）。参考ソースはペルソナの上に置く——
+                材料を入れてから中身を確認する流れが、上から下へ一直線になる。
                 設定が未保存でも使える（T-M8-344。真似したいアカウントを挙げるところから始められる）。
               */}
-              <LearningSourcesManager
-                initialApplying={learningApplying}
-                initialNowMs={nowMs}
-                initialSources={learningSources}
-                key={`sources:${account.id}`}
-                settingsMissing={account.base_md_version < 1}
-                xAccountId={account.id}
-              />
+              <div className={`${cardClassName} space-y-6 p-5 sm:p-6`}>
+                <LearningSourcesManager
+                  initialApplying={learningApplying}
+                  initialNowMs={nowMs}
+                  initialSources={learningSources}
+                  key={`sources:${account.id}`}
+                  settingsMissing={account.base_md_version < 1}
+                  xAccountId={account.id}
+                />
+                <PersonaSettingsForm
+                  baseMdVersion={account.base_md_version}
+                  initialDifference={initialDifference}
+                  initialReferenceStyle={freeSections.referenceStyle}
+                  initialSettings={initialSettings}
+                  /*
+                    **提案が届いたら作り直す**（T-M8-356）。フォームの初期値は
+                    `useState` なので、`router.refresh()` で新しい提案を渡しても
+                    **すでにmountされた画面は古い値のまま**だった——反映を押しても
+                    欄に何も入らない、という形で静かに壊れていた（運営者の報告 2026-08-28）。
+                    アカウント切替でもstateを捨てる（前アカウントの内容を新アカウントへ
+                    保存させない・T-M8-196）。
+                  */
+                  key={`${account.id}:${settingsProposal ? "proposal" : "saved"}`}
+                  proposal={settingsProposal}
+                  xAccountId={account.id}
+                />
+              </div>
             </div>
           )
         ) : tab === "purposes" ? (

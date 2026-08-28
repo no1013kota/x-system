@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatJst } from "@/lib/format";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { Button } from "@/components/ui/button";
-import { CardTitle, cardClassName } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 /**
@@ -342,10 +342,12 @@ export function LearningSourcesManager({
 
       {/*
         **1つの枠で完結させる**（T-M8-346・運営者の指示 2026-08-28）。記入欄をこの中に置き、
-        欄ごとの「追加」ボタンは持たない。下の1つのボタンで「登録→分析→反映」まで進む——
+        欄ごとの「追加」ボタンは持たない。1つのボタンで「登録→分析→反映」まで進む——
         押すたびに何が起きたかを利用者に数えさせない。
+        **枠はアカウント設定のカードの中**（T-M8-356・運営者の指示 2026-08-28）。
+        ペルソナの上に置き、区切り線で分ける。
       */}
-      <section className={`${cardClassName} p-4 sm:p-5`}>
+      <section className="border-b border-hairline pb-6">
         <CardTitle>
           {settingsMissing ? "参考ソースからアカウント設定を作る" : "参考ソースで設定を更新する"}
         </CardTitle>
@@ -411,32 +413,9 @@ export function LearningSourcesManager({
           })}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-hairline pt-4">
-          <Button
-            disabled={pending || applying || removing || (!hasEnteredUrl && analyzedCount === 0)}
-            onClick={applyToSettings}
-            type="button"
-            variant="brand"
-          >
-            {applying ? "反映しています…" : "アカウント設定を反映する"}
-          </Button>
-          {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
-          {!hasEnteredUrl && analyzedCount === 0 ? (
-            <span className="text-caption text-ink-3">
-              XのURLを入れると押せます（{TYPE_LABEL.ref_account}か{TYPE_LABEL.ref_post}）。
-            </span>
-          ) : (
-            <span className="text-caption text-ink-3">
-              押すと登録・分析して、上のアカウント設定の欄へ入れます（1〜2分）。
-              内容を確認して「アカウント設定を保存」を押すと確定します。
-            </span>
-          )}
-        </div>
-      </section>
-
-      {/* 一覧 */}
-      <section>
-        <CardTitle>登録済みの参考ソース</CardTitle>
+        {/* 登録済みの一覧はこの枠の中（実行ボタンの上）。**押す前に何が材料か見える。** */}
+        <div className="mt-5 border-t border-hairline pt-4">
+          <p className="text-body font-medium text-ink">登録済みの参考ソース</p>
         {sources.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
             まだ参考ソースはありません。上の欄から追加してください。
@@ -482,6 +461,32 @@ export function LearningSourcesManager({
             ))}
           </ul>
         )}
+        </div>
+        {/*
+          **実行ボタンはこの枠の右下**（T-M8-356・運営者の指示 2026-08-28）。
+          記入 → 材料の確認 → 実行、の順で目が動く並びにする。
+        */}
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+          {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
+          {!hasEnteredUrl && analyzedCount === 0 ? (
+            <span className="text-caption text-ink-3">
+              XのURLを入れると押せます（{TYPE_LABEL.ref_account}か{TYPE_LABEL.ref_post}）。
+            </span>
+          ) : (
+            <span className="text-caption text-ink-3">
+              押すと登録・分析して、上のアカウント設定の欄へ入れます（1〜2分）。
+              内容を確認して「アカウント設定を保存」を押すと確定します。
+            </span>
+          )}
+          <Button
+            disabled={pending || applying || removing || (!hasEnteredUrl && analyzedCount === 0)}
+            onClick={applyToSettings}
+            type="button"
+            variant="brand"
+          >
+            {applying ? "反映しています…" : "アカウント設定を反映する"}
+          </Button>
+        </div>
       </section>
     </div>
   );

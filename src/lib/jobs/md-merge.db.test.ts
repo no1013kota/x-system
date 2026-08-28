@@ -27,11 +27,8 @@ const BASE_MD = `# 発信定義書
 ## 4. やらないこと
 - 煽らない
 
-## 5. 文体・自分らしさ
+## 5. 参考にする型
 旧5
-
-## 6. 参考にする型
-旧6
 `;
 
 /** いまのアカウント設定（mergeの入力・T-M8-341）。 */
@@ -144,8 +141,7 @@ describe("executeMdMerge (db)", () => {
       // 反映先はセクション1〜4（T-M8-336）。5〜6と前文はバイト単位で残る。
       expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）");
       expect(acct.base_md).toContain("# 発信定義書");
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5");
-      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6");
+      expect(acct.base_md).toContain("## 5. 参考にする型\n旧5");
 
       const ver = (
         await withTransaction((c) =>
@@ -263,8 +259,7 @@ describe("executeMdMerge (db)", () => {
       ).rows[0];
       expect(acct.base_md_version).toBe(3);
       expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）"); // 1〜4が書き直された
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5"); // 5〜6は不変
-      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6");
+      expect(acct.base_md).toContain("## 5. 参考にする型\n旧5"); // 5は不変
 
       const rm = (
         await withTransaction((c) =>

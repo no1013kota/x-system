@@ -74,7 +74,7 @@ describe("updatePersonaSettings transaction", () => {
     });
     expect(first.version).toBe(1);
     expect(first.baseMd).toContain("- 発信者: 初回の発信者");
-    expect(first.baseMd).toMatch(/## 5\.[^\n]*\n\n## 6\.[^\n]*\n$/);
+    expect(first.baseMd).toMatch(/## 5\.[^\n]*\n$/);
     const firstRows = await db.query(
       `select x.settings, x.base_md, x.base_md_version,
               v.version, v.change_source
@@ -92,8 +92,8 @@ describe("updatePersonaSettings transaction", () => {
     });
 
     const learned = first.baseMd.replace(
-      "## 5. 文体・自分らしさ\n\n## 6. 参考にする型",
-      "## 5. 文体・自分らしさ\n- 学習済み文体\n\n## 6. 参考にする型\n- 学習済み構成",
+      "## 5. 参考にする型\n",
+      "## 5. 参考にする型\n- 学習済み構成\n",
     );
     await db.query(
       "update x_accounts set base_md = $2, base_md_version = 2 where id = $1",
@@ -169,7 +169,7 @@ describe("updatePersonaSettings transaction", () => {
    * **渡されなければ1バイトも変えない。** 学習・mdエディタ・ロールバックが書いた内容を、
    * 別経路の保存で知らないうちに消さないため（原則1）。
    */
-  it("5・6章は渡したときだけ書き換わる（渡さなければそのまま）", async (context) => {
+  it("5章（参考にする型）は渡したときだけ書き換わる（渡さなければそのまま）", async (context) => {
     if (!database) return context.skip();
     const db = database;
     const userId = randomUUID();
@@ -195,13 +195,12 @@ describe("updatePersonaSettings transaction", () => {
 
     const first = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
       expectedBaseMdVersion: 0,
-      freeSections: { voice: "数字と手順で書く。", referenceStyle: "結論→理由→具体例。" },
+      freeSections: { referenceStyle: "結論→理由→具体例。" },
       settings: settings("初回の発信者"),
       userId,
       xAccountId,
     });
-    expect(first.baseMd).toContain("## 5. 文体・自分らしさ\n数字と手順で書く。");
-    expect(first.baseMd).toContain("## 6. 参考にする型\n結論→理由→具体例。");
+    expect(first.baseMd).toContain("## 5. 参考にする型\n結論→理由→具体例。");
 
     // 渡さない保存では**触らない**（別経路が書いた内容を消さない）。
     const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
@@ -210,21 +209,19 @@ describe("updatePersonaSettings transaction", () => {
       userId,
       xAccountId,
     });
-    expect(second.baseMd).toContain("数字と手順で書く。");
     expect(second.baseMd).toContain("結論→理由→具体例。");
     expect(second.baseMd).toContain("2回目の発信者");
 
     // 空文字を渡したら消える（「書かない」を選べる）。
     const third = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
       expectedBaseMdVersion: second.version,
-      freeSections: { voice: "", referenceStyle: "" },
+      freeSections: { referenceStyle: "" },
       settings: settings("3回目の発信者"),
       userId,
       xAccountId,
     });
-    expect(third.baseMd).not.toContain("数字と手順で書く。");
-    expect(third.baseMd, "見出しは残る（6見出し構造）").toContain("## 5. 文体・自分らしさ");
-    expect(third.baseMd).toContain("## 6. 参考にする型");
+    expect(third.baseMd).not.toContain("結論→理由→具体例。");
+    expect(third.baseMd, "見出しは残る（5見出し構造）").toContain("## 5. 参考にする型");
   });
 
   /**

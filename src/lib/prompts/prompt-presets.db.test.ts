@@ -40,9 +40,6 @@ const VALID_BASE_MD = [
   "## 5. 実績・知見",
   "なし",
   "",
-  "## 6. NG事項",
-  "なし",
-  "",
 ].join("\n");
 
 describe("prompt presets（local DB）", () => {

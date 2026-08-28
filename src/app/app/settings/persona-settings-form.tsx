@@ -13,7 +13,7 @@ import {
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { OPERATED_THEME_OPTIONS, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
-import { cardClassName, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
@@ -28,10 +28,9 @@ interface PersonaSettingsFormProps {
   proposal: PersonaSettings | null;
   /**
    * アカウント.mdの手書きセクション（T-M8-355・運営者の指示 2026-08-28）。
-   * 1〜4はこのフォームから機械生成されるが、5〜6は人が書く場所で、これまでは
-   * プロンプト画面のmdエディタからしか触れなかった。**同じ画面で書けるようにする。**
+   * 1〜4はこのフォームから機械生成されるが、5（参考にする型）は人が書く場所で、
+   * これまではプロンプト画面のmdエディタからしか触れなかった。**同じ画面で書けるようにする。**
    */
-  initialVoice: string;
   initialReferenceStyle: string;
   xAccountId: string;
 }
@@ -66,7 +65,6 @@ export function PersonaSettingsForm({
   initialDifference,
   initialReferenceStyle,
   initialSettings,
-  initialVoice,
   proposal,
   xAccountId,
 }: PersonaSettingsFormProps) {
@@ -81,10 +79,9 @@ export function PersonaSettingsForm({
   /** 提案を表示中か（保存すると消える）。 */
   const [showProposal, setShowProposal] = useState(proposal != null);
   /*
-    アカウント.mdの5・6セクション（T-M8-355）。**参考ソースの反映では変わらない**——
+    アカウント.mdの5セクション（T-M8-355）。**参考ソースの反映では変わらない**——
     反映が書き換えるのは1〜4（ペルソナ〜NG設定）だけで、ここは人が書く場所。
   */
-  const [voice, setVoice] = useState(initialVoice);
   const [referenceStyle, setReferenceStyle] = useState(initialReferenceStyle);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
@@ -154,7 +151,6 @@ export function PersonaSettingsForm({
       expected_base_md_version: version,
       reference_style: referenceStyle,
       settings: parsed.data,
-      voice,
       x_account_id: xAccountId,
     });
     setSubmitting(false);
@@ -174,12 +170,12 @@ export function PersonaSettingsForm({
 
   return (
     /*
-      **1枚の白いカードに全部入れる**（T-M8-349・運営者の指示 2026-08-28）。
+      **カードの外枠は `page.tsx` が持つ**（T-M8-356・運営者の指示 2026-08-28）。
+      参考ソースの欄をペルソナの上へ入れるため、1枚のカードの中に
+      「参考ソース → このフォーム」を並べる。ここで枠を持つと二重の枠になる。
       見出しと説明は置かない（T-M8-346。タブ名が「アカウント設定」なので繰り返さない）。
-      対象アカウントの行はタブの直下（`page.tsx`）へ移した——どのアカウントを直しているかは
-      **編集を始める前に**見えている必要がある。
     */
-    <form className={`${cardClassName} space-y-6 p-5 sm:p-6`} noValidate onSubmit={submit}>
+    <form className="space-y-6" noValidate onSubmit={submit}>
       {/*
         **参考ソースからの反映は保存前の提案**（T-M8-349）。押した瞬間に本番の設定が
         変わると、利用者は中身を見る前に書き換えられてしまう。ここで「まだ保存されていない」
@@ -500,48 +496,35 @@ export function PersonaSettingsForm({
       </section>
 
       {/*
-        **アカウント.mdの手書きセクション**（T-M8-355・運営者の指示 2026-08-28）。
-        1〜4はこの画面から機械生成されるが、5〜6は人が書く場所で、これまでは
+        **アカウント.mdの手書きセクション**（T-M8-355／T-M8-356・運営者の指示 2026-08-28）。
+        1〜4はこの画面から機械生成されるが、5は人が書く場所で、これまでは
         プロンプト画面のmdエディタからしか触れなかった。同じ画面で書けるようにする。
         **参考ソースの反映では変わらない**——反映が書き換えるのは1〜4だけ。
       */}
       <section aria-labelledby="free-group" className={groupClassName} role="group">
-        <CardTitle id="free-group">文体・参考にする型（任意）</CardTitle>
+        <CardTitle id="free-group">参考にする型（任意）</CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          アカウント.mdの5・6章にそのまま入ります。空でも保存できます。
+          アカウント.mdの5章にそのまま入ります。空でも保存できます。
         </p>
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
-          {([
-            ["voice", "文体・自分らしさ", voice, setVoice, "例: 数字と手順で書く。断定は根拠とセットにする。"],
-            [
-              "reference",
-              "参考にする型",
-              referenceStyle,
-              setReferenceStyle,
-              "例: 結論→理由→具体例→まとめ の4段で書く。",
-            ],
-          ] as const).map(([id, label, value, setValue, placeholder]) => (
-            <div key={id}>
-              <label className="text-sm font-medium" htmlFor={`free.${id}`}>
-                {label}
-              </label>
-              <textarea
-                className={inputClassName}
-                id={`free.${id}`}
-                maxLength={FREE_SECTION_MAX_CHARS}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  setDirty(true);
-                }}
-                placeholder={placeholder}
-                rows={4}
-                value={value}
-              />
-              <p className="mt-1 text-caption text-ink-3">
-                {value.length} / {FREE_SECTION_MAX_CHARS}字
-              </p>
-            </div>
-          ))}
+        <div className="mt-5">
+          <label className="sr-only" htmlFor="free.reference">
+            参考にする型
+          </label>
+          <textarea
+            className={inputClassName}
+            id="free.reference"
+            maxLength={FREE_SECTION_MAX_CHARS}
+            onChange={(event) => {
+              setReferenceStyle(event.target.value);
+              setDirty(true);
+            }}
+            placeholder="例: 結論→理由→具体例→まとめ の4段で書く。"
+            rows={4}
+            value={referenceStyle}
+          />
+          <p className="mt-1 text-caption text-ink-3">
+            {referenceStyle.length} / {FREE_SECTION_MAX_CHARS}字
+          </p>
         </div>
       </section>
 

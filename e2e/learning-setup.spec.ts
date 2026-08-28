@@ -25,17 +25,17 @@ test("アカウント設定が未保存でも参考ソースを登録でき、�
   await page.goto("/app/settings?tab=account");
 
   /*
-    **並びはアカウント設定 → 参考ソース**（T-M8-349・運営者の指示 2026-08-28）。
-    反映を押すと上のフォームへ内容が入り、そこで確認して保存する流れなので、
-    「入れる場所」→「入れる材料」の順に置く。**「アカウント設定」という見出しは無い**
-    （T-M8-346。タブ名と同じ言葉を画面内で繰り返さない）。
+    **並びは参考ソース → ペルソナ〜**（T-M8-356・運営者の指示 2026-08-28）。
+    材料を入れてから中身を確認する流れが、上から下へ一直線になる。
+    **「アカウント設定」という見出しは無い**（T-M8-346。タブ名と同じ言葉を画面内で繰り返さない）。
   */
   const order = await page.evaluate(() =>
     [...document.querySelectorAll("h2")].map((h) => (h.textContent ?? "").trim()),
   );
-  expect(order.slice(0, 2)).toEqual(["ペルソナ", "テーマ"]);
-  expect(order).toContain("参考ソースからアカウント設定を作る");
+  expect(order.slice(0, 3)).toEqual(["参考ソースからアカウント設定を作る", "ペルソナ", "テーマ"]);
   expect(order).not.toContain("アカウント設定");
+  // 廃止した見出し（T-M8-356・運営者の指示）。
+  expect(order).not.toContain("文体・自分らしさ（任意）");
   // 対象アカウントはタブの直下（編集を始める前に見えている必要がある）。
   await expect(page.getByText(/対象アカウント: @/)).toBeVisible();
 
@@ -62,4 +62,63 @@ test("アカウント設定が未保存でも参考ソースを登録でき、�
   await page.getByRole("button", { name: /参考投稿の欄を増やす/ }).click();
   await expect(page.getByRole("textbox", { name: "参考投稿" })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "アカウント設定を反映する" })).toHaveCount(1);
+});
+
+/**
+ * **反映した内容がアカウント設定の欄に入る**（T-M8-356・運営者の報告 2026-08-28）。
+ *
+ * 反映は保存前の提案（`x_accounts.settings_proposal`）としてDBへ入り、画面がそれを
+ * フォームへ読み込む。**ここが切れていた**——フォームの初期値は `useState` なので、
+ * `router.refresh()` で新しい提案を渡しても、すでにmountされた画面は古い値のままだった。
+ * 押しても欄に何も入らない、という形で静かに壊れる（原則1）。
+ *
+ * AIは呼ばない（提案はmd_mergeが書くので、ここでは同じ形の行を直接入れて描画を見る）。
+ */
+test("反映した内容（提案）がアカウント設定の欄に入り、保存するまで確定しない", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("learn-proposal");
+  const proposal = {
+    ng: { rules: [], topics: [], words: [] },
+    persona: {
+      audience: "提案された読者",
+      speaker: "提案された発信者",
+      value: "提案された価値",
+    },
+    themes: { free_text: "", primary: ["ai"], secondary: [] },
+    tone: {
+      emoji_max_per_post: 1,
+      emoji_policy: "limited",
+      first_person: "私",
+      hashtags_max: 0,
+      sentence_style: "polite",
+      thread_numbering: true,
+    },
+  };
+  await query(
+    `update x_accounts set settings_proposal = $2::jsonb where id = $1`,
+    [account.xAccountId, JSON.stringify(proposal)],
+  );
+
+  await signIn(page, account);
+  await page.goto("/app/settings?tab=account");
+
+  // 欄が提案の値で埋まっている（ここが本題）。
+  await expect(page.getByLabel("発信者")).toHaveValue("提案された発信者");
+  await expect(page.getByLabel("対象読者")).toHaveValue("提案された読者");
+  await expect(page.getByLabel("提供価値")).toHaveValue("提案された価値");
+  // **まだ保存されていない**ことを画面が言う。
+  await expect(page.getByText("まだ保存されていません。")).toBeVisible();
+
+  // 保存で確定し、提案は消える（開き直すたびに「反映しました」が出続けない）。
+  await page.getByRole("button", { name: "アカウント設定を保存" }).click();
+  await expect(page.getByText("まだ保存されていません。")).toHaveCount(0, { timeout: 20_000 });
+  const [row] = await query<{ speaker: string; proposal: unknown }>(
+    `select settings->'persona'->>'speaker' as speaker, settings_proposal as proposal
+       from x_accounts where id = $1`,
+    [account.xAccountId],
+  );
+  expect(row.speaker).toBe("提案された発信者");
+  expect(row.proposal).toBeNull();
 });
