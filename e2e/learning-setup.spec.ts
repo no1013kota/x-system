@@ -111,6 +111,28 @@ test("反映した内容（提案）がアカウント設定の欄に入り、�
   // **まだ保存されていない**ことを画面が言う。
   await expect(page.getByText("まだ保存されていません。")).toBeVisible();
 
+  /*
+    **取り消す道がある**（T-M8-360）。気に入らない反映から抜ける方法が無いと、
+    開くたびに「まだ保存されていません」が出るのに消せない状態になる。
+  */
+  await page
+    .getByRole("button", { name: "この反映を取り消して、保存済みの内容に戻す" })
+    .click();
+  await expect(page.getByText("まだ保存されていません。")).toHaveCount(0, { timeout: 20_000 });
+  const [discarded] = await query<{ proposal: unknown }>(
+    `select settings_proposal as proposal from x_accounts where id = $1`,
+    [account.xAccountId],
+  );
+  expect(discarded.proposal, "取り消したら提案は残らない").toBeNull();
+
+  // もう一度提案を入れて、今度は保存で確定させる。
+  await query(`update x_accounts set settings_proposal = $2::jsonb where id = $1`, [
+    account.xAccountId,
+    JSON.stringify(proposal),
+  ]);
+  await page.reload();
+  await expect(page.getByLabel("発信者")).toHaveValue("提案された発信者");
+
   // 保存で確定し、提案は消える（開き直すたびに「反映しました」が出続けない）。
   await page.getByRole("button", { name: "アカウント設定を保存" }).click();
   await expect(page.getByText("まだ保存されていません。")).toHaveCount(0, { timeout: 20_000 });

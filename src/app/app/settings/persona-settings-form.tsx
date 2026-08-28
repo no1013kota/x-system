@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-import { updatePersonaSettings } from "@/app/actions/persona-settings";
+import {
+  discardSettingsProposal,
+  updatePersonaSettings,
+} from "@/app/actions/persona-settings";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
@@ -78,6 +81,23 @@ export function PersonaSettingsForm({
   const [dirty, setDirty] = useState(false);
   /** 提案を表示中か（保存すると消える）。 */
   const [showProposal, setShowProposal] = useState(proposal != null);
+  const [discarding, setDiscarding] = useState(false);
+
+  /** 提案を捨てて保存済みの内容へ戻す（T-M8-360）。画面ごと取り直す。 */
+  function discardProposal() {
+    setDiscarding(true);
+    void discardSettingsProposal({ x_account_id: xAccountId })
+      .then((res) => {
+        if (res.status === "success") {
+          setShowProposal(false);
+          toast.show({ tone: "success", title: "反映を取り消しました" });
+          router.refresh();
+        } else {
+          toast.show({ tone: "error", title: "取り消せませんでした", description: res.message });
+        }
+      })
+      .finally(() => setDiscarding(false));
+  }
   /*
     アカウント.mdの5セクション（T-M8-355）。**参考ソースの反映では変わらない**——
     反映が書き換えるのは1〜4（ペルソナ〜NG設定）だけで、ここは人が書く場所。
@@ -183,8 +203,22 @@ export function PersonaSettingsForm({
       */}
       {showProposal ? (
         <Notice role="status" tone="info">
-          参考ソースから作った内容を入れました。<strong>まだ保存されていません。</strong>
-          気になるところを直してから、下の「アカウント設定を保存」を押してください。
+          <span className="block">
+            参考ソースから作った内容を入れました。<strong>まだ保存されていません。</strong>
+            気になるところを直してから、下の「アカウント設定を保存」を押してください。
+          </span>
+          {/*
+            **戻る道を用意する**（T-M8-360）。気に入らない反映から抜ける方法が無いと、
+            開くたびに「まだ保存されていません」が出るのに消せない状態になる（原則2）。
+          */}
+          <button
+            className="mt-2 text-caption underline underline-offset-4 hover:no-underline disabled:opacity-60"
+            disabled={discarding}
+            onClick={discardProposal}
+            type="button"
+          >
+            {discarding ? "取り消しています…" : "この反映を取り消して、保存済みの内容に戻す"}
+          </button>
         </Notice>
       ) : null}
 

@@ -39,4 +39,3 @@ export const APP_NAVIGATION_ITEMS = [
   mobileHidden?: boolean;
 }[];
 
-export type AppNavigationIcon = (typeof APP_NAVIGATION_ITEMS)[number]["icon"];

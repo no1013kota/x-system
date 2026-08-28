@@ -95,7 +95,8 @@ describe("App Shell dependency boundaries", () => {
     for (const required of [
       "components/app-shell/notification-bell.tsx",
       "components/app-shell/sign-out-button.tsx",
-      "components/app-shell/x-account-switcher.tsx",
+      // 切替UIは account-menu へ畳んだ（T-M8-360で使われなくなった旧ファイルを削除）。
+      "components/app-shell/account-menu.tsx",
     ]) {
       expect(scanned, `${required} is no longer scanned as a client component`).toContain(required);
     }
@@ -151,14 +152,23 @@ describe("App Shell dependency boundaries", () => {
     },
   );
 
+  /**
+   * 操作の見た目は UI 層が持つ（画面どうしが互いのcomponentを覗きに行かない）。
+   * **検査の相手は「いま実在する利用者」にする**——消えたファイルを見張り続けると、
+   * 検査そのものが落ちて何も守らなくなる（T-M8-360で `upgrade-plan-button.tsx` を削除した）。
+   */
   it("shared action styling is owned by the UI layer", () => {
-    const billing = read("components/billing/upgrade-plan-button.tsx");
     const pageState = read("components/app-shell/page-state.tsx");
     const linkButton = read("components/ui/link-button.ts");
 
-    expect(billing).not.toContain("@/components/app-shell/page-state");
     expect(pageState).toContain('from "@/components/ui/link-button"');
     expect(linkButton).toContain("export const stateActionClassName");
+    /*
+      `page-state` は画面をまたいで使う空/読み込み/エラー表示なので、各画面がimportするのは
+      設計どおり（禁じるのは**見た目の手書き**）。以前ここで見張っていた
+      「billing が page-state を覗いていないこと」は、その相手（`upgrade-plan-button.tsx`）が
+      使われないまま残っていたファイルで、T-M8-360で削除した。
+    */
   });
 
   it("cross-screen brand components are not owned by App Shell", () => {

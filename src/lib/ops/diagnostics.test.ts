@@ -262,6 +262,27 @@ describe("judgeXAccounts", () => {
     expect(r.nextAction).toContain("再連携");
   });
 
+  /**
+   * **多いときは名前を並べない**（T-M8-360）。67件が1行に並んで読めなくなり、
+   * 問題のある1件がその中に埋もれていた（2026-08-28にローカルで観測）。
+   */
+  it("連携が多いときは件数でまとめ、問題のあるものだけ名前で出す", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      handle: `ok${i}`,
+      status: "active",
+      expiresInHours: 1,
+      canRefresh: true,
+    }));
+    const r = judgeXAccounts([
+      ...many,
+      { handle: "broken", status: "active", expiresInHours: 1, canRefresh: false },
+    ]);
+    expect(r.level).toBe("warn");
+    expect(r.detail, "件数でまとめる").toContain("21件");
+    expect(r.detail, "問題のあるものは名前で分かる").toContain("@broken");
+    expect(r.detail, "無関係な連携の名前を並べない").not.toContain("@ok0");
+  });
+
   it("有効で期限内なら正常", () => {
     expect(judgeXAccounts([{ handle: "a", status: "active", expiresInHours: 3 }]).level).toBe("ok");
   });

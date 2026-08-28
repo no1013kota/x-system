@@ -166,18 +166,6 @@ export async function listPromptPresets(
   return [...seeded.rows, ...rows.rows].map(toView);
 }
 
-/** 使用中の1件（無ければ null）。写す元を決めるのに使う。 */
-export async function inUsePreset(
-  db: Queryable,
-  params: { xAccountId: string; kind: PromptPresetKind },
-): Promise<PromptPresetView | null> {
-  const { rows } = await db.query<PresetRow>(
-    `select ${PRESET_COLUMNS} from prompt_presets
-      where x_account_id = $1 and kind = $2 and is_default`,
-    [params.xAccountId, params.kind],
-  );
-  return rows[0] ? toView(rows[0]) : null;
-}
 
 async function loadPreset(
   db: Queryable,

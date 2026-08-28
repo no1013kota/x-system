@@ -1,10 +1,3 @@
-import {
-  imageEstimateCredits,
-  textEstimateCredits,
-} from "../ai/model-catalog";
-import type { ImageProvider } from "../ai/resolve-provider";
-import type { Provider } from "../ai/types";
-
 /**
  * AIクレジットの換算（T-M8-109→T-M8-325）。**1クレジット = 0.01円相当**（UIに円換算は出さない）。
  * premiumのAI実行（文章・画像）は契約期間ごとに100,000クレジットを共有し、**実費ベース**で減る:
@@ -30,11 +23,4 @@ export function creditsFromUsd(usd: number): number {
   return Math.max(1, Math.ceil(usd * JPY_PER_USD * CREDITS_PER_JPY));
 }
 
-/** reserve時の見積もりクレジット。正本はモデルカタログの `estimateCredits`（T-M8-110）。 */
-export function textReserveEstimate(provider: Provider, model: string | null): number {
-  return textEstimateCredits(provider, model);
-}
 
-export function imageReserveEstimate(provider: ImageProvider, model: string | null): number {
-  return imageEstimateCredits(provider, model);
-}

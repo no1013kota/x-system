@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Icon } from "@/components/ui/icon";
-import type { AppShellSwitcherAccount } from "@/lib/app-shell/types";
-
-import type { SwitchAccountAction } from "./x-account-switcher";
+import type { AppShellSwitcherAccount, SwitchAccountAction } from "@/lib/app-shell/types";
 
 /**
  * サイドバー下部のアカウントメニュー（T-M8-328・運営者の指示 2026-08-27）。

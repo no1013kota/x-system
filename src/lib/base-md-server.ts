@@ -3,12 +3,9 @@ import "server-only";
 import { withTransaction, pooledQueryable } from "./db/pool";
 import {
   applyRollbackBaseMd,
-  applyUpdateBaseMdManual,
-  getBaseMd,
   isLearningRunning,
   listBaseMdVersions,
   type BaseMdVersionView,
-  type BaseMdView,
   type BaseMdWriteResult,
 } from "./base-md";
 
@@ -16,14 +13,6 @@ import {
 
 const pooledDb = pooledQueryable();
 
-export function updateBaseMdManualForUser(input: {
-  userId: string;
-  xAccountId: string;
-  content: string;
-  expectedVersion: number;
-}): Promise<BaseMdWriteResult> {
-  return withTransaction((client) => applyUpdateBaseMdManual(client, input));
-}
 
 export function rollbackBaseMdForUser(input: {
   userId: string;
@@ -34,9 +23,6 @@ export function rollbackBaseMdForUser(input: {
   return withTransaction((client) => applyRollbackBaseMd(client, input));
 }
 
-export function getBaseMdForUser(userId: string, xAccountId: string): Promise<BaseMdView> {
-  return getBaseMd(pooledDb, userId, xAccountId);
-}
 
 export function listBaseMdVersionsForUser(
   userId: string,

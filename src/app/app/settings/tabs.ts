@@ -40,8 +40,6 @@ const TAB_ALIASES: Record<string, SettingsTab> = {
   "base-md": "general",
 };
 
-/** `/app/prompts` へ移した旧タブslug（T-M8-328）。リンク元がまだ古いときの案内に使う。 */
-export const MOVED_TO_PROMPTS_SLUGS: readonly string[] = ["prompts", "base-md"];
 
 /** リンクとして許容するslug（新タブ＋旧エイリアス）。tabs.test.ts の静的検査が使う。 */
 export const ACCEPTED_SETTINGS_TAB_SLUGS: readonly string[] = [

@@ -568,14 +568,11 @@ export function judgeXAccounts(
   const broken = rows.filter((r) => r.status !== "active");
   // 自動更新の材料が無いものだけを警告する（期限切れそのものは正常な状態）。
   const cannotRefresh = rows.filter((r) => r.status === "active" && r.canRefresh === false);
-  const detail = rows
-    .map((r) => `@${r.handle}（${r.status === "active" ? "有効" : "要再連携"}）`)
-    .join(" / ");
   if (broken.length > 0) {
     return {
       name,
       level: "error",
-      detail,
+      detail: `${summarizeAccounts(rows)}。要再連携: ${listHandles(broken)}`,
       nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
@@ -583,12 +580,38 @@ export function judgeXAccounts(
     return {
       name,
       level: "warn",
-      detail: `${detail}（自動更新に使う許可が保存されていません。次に使ったときに切れます）`,
+      detail:
+        `${summarizeAccounts(rows)}。自動更新に使う許可が保存されていないものがあります` +
+        `（次に使ったときに切れます）: ${listHandles(cannotRefresh)}`,
       nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
-  return { name, level: "ok", detail };
+  return { name, level: "ok", detail: summarizeAccounts(rows) };
 }
+
+/**
+ * 何件あるかを1行で言う（T-M8-360）。**全件のhandleを並べない**——
+ * 連携が数十件ある環境では1行が数百文字になり、**問題のある1件がその中に埋もれる**
+ * （2026-08-28、67件が1行に並んで読めなかった）。少数なら従来どおり名前で出す。
+ */
+function summarizeAccounts(rows: { handle: string; status: string }[]): string {
+  if (rows.length <= ACCOUNT_LIST_MAX) {
+    return rows
+      .map((r) => `@${r.handle}（${r.status === "active" ? "有効" : "要再連携"}）`)
+      .join(" / ");
+  }
+  const active = rows.filter((r) => r.status === "active").length;
+  return `${rows.length}件（有効 ${active}件 / 要再連携 ${rows.length - active}件）`;
+}
+
+/** 問題のあるものだけを名前で出す。多すぎるときは先頭数件＋残数。 */
+function listHandles(rows: { handle: string }[]): string {
+  const shown = rows.slice(0, ACCOUNT_LIST_MAX).map((r) => `@${r.handle}`).join(" / ");
+  return rows.length > ACCOUNT_LIST_MAX ? `${shown} ほか${rows.length - ACCOUNT_LIST_MAX}件` : shown;
+}
+
+/** これを超えたら名前を並べずに件数で言う。 */
+const ACCOUNT_LIST_MAX = 5;
 
 /** 途中で止まったまま動いていない処理。 */
 export function judgeStuckJobs(input: { stuck: number }): Check {

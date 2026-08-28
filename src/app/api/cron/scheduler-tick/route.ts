@@ -59,6 +59,14 @@ export async function GET(request: Request): Promise<Response> {
           古くなり、久しぶりに使ったときに要再連携になる**（T-M8-96）。
         */
         runXTokenRefresh: async ({ claimHour }) => {
+          /*
+            **開発環境では動かさない**（T-M8-360）。ここはXのtoken endpointへ実際に
+            リクエストを出す**外向きの処理**で、ローカルやE2Eのアカウントは偽のtokenを持つ。
+            動かすと毎時、相手のAPIへ確実に失敗するリクエストを投げ続けることになる
+            （CLAUDE.md「外向き副作用は非productionで実行されないことの確認」）。
+            preview/production は本物の連携を持つので先回り更新の対象にする。
+          */
+          if (env.APP_ENV === "development") return null;
           // JSTの「日付T時」で1時間に1回に絞る（cron_runs の window_key）。
           const jst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
           if (!(await claimHour(`${jst.slice(0, 13)}`))) return null;
