@@ -53,6 +53,30 @@ export async function GET(request: Request): Promise<Response> {
           ]);
           return backfillSubscriptionPeriods({ db: pooledQueryable(), stripe, limit: 50 });
         },
+        /*
+          Xの連携を切らさない（T-M8-359・運営者の指示 2026-08-28）。1時間に1回、
+          期限が近いtokenを先回りで更新する。**使わない日が続くとrefresh tokenが寝たまま
+          古くなり、久しぶりに使ったときに要再連携になる**（T-M8-96）。
+        */
+        runXTokenRefresh: async ({ claimHour }) => {
+          // JSTの「日付T時」で1時間に1回に絞る（cron_runs の window_key）。
+          const jst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
+          if (!(await claimHour(`${jst.slice(0, 13)}`))) return null;
+          const [{ refreshDueXTokens }, { getValidXAccessToken }, { pooledQueryable }] =
+            await Promise.all([
+              import("@/lib/x/token-keepalive"),
+              import("@/lib/x/token-refresh-server"),
+              import("@/lib/db/pool"),
+            ]);
+          return refreshDueXTokens(
+            pooledQueryable(),
+            (xAccountId) => getValidXAccessToken(xAccountId),
+            {
+              // 失敗の中身（要再連携か一時エラーか）は getValidXAccessToken が状態と通知へ書く。
+              onError: (id, err) => console.error(`[x_token_refresh] ${id}`, err),
+            },
+          );
+        },
         // TODO: Sentry配線後は captureException へ。現状は運用ログのみ（tickを止めない）。
         onCleanupError: (scope, err) =>
           console.error(`[scheduler_tick cleanup] ${scope}`, err),

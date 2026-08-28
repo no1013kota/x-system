@@ -146,6 +146,14 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     `learning_analysis` だけを畳んでいたため、**タイミング次第で削除だけが弾かれて**いた
     （フルスイートでだけ稀に落ちる形。単独で回すと反映まで進む前に削除が走って通っていた）。
   */
+  /*
+    **先に画面を作り直して、反映の待ちループを止める**（T-M8-358）。
+    ボタンを押した画面は「分析が終わるのを待って反映を起票する」ループを回しているので、
+    先にjobを畳むと**その瞬間に「終わった」と判断して `md_merge` を起票する**——
+    畳んだ側から新しいjobが生えて、削除だけが弾かれる。順番が結果を決めるので、
+    ループを捨ててから状態を作る。
+  */
+  await page.reload();
   await query(
     `update generation_jobs set status = 'canceled', finished_at = now()
       where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
@@ -158,6 +166,21 @@ test("学習ソースを追加すると分析中として並び、削除でき�
       where x_account_id = $1 and url like $2`,
     [account.xAccountId, `%${handle}%`],
   );
+  // 残っていないことを確かめてから進む（残っていれば削除は job_conflict で弾かれる）。
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ n: string }>(
+            `select count(*)::text as n from generation_jobs
+              where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+                and status in ('queued','running')`,
+            [account.xAccountId],
+          )
+        )[0]?.n,
+      { timeout: 20_000, message: "学習系jobが残っていないこと" },
+    )
+    .toBe("0");
   await page.reload();
 
   // 削除は確認ダイアログを挟む（誤操作でアカウント.mdの知見を失わないため）

@@ -89,6 +89,16 @@ export async function deliverOperatorAlert(
   const stripeProbes = await buildStripeProbeDeps();
   const report = await collectDiagnostics(deps.db, {
     ...stripeProbes,
+    /*
+      **人間確認の接続情報もここで渡す**（T-M8-359）。Stripeと同じ抜けが残っていて、
+      毎朝「Supabaseの接続情報が無いため確認できません」という【注意】が届いていた——
+      設定はあるのに、渡していないから確認できていないだけ。事実と違う警告は読まれなくなり、
+      本当の異常まで埋もれる（原則2）。渡す値は doctor の route と同じ。
+    */
+    captcha: {
+      supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+      anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    },
     schedulerExpected: env.APP_ENV === "production",
     subscriptionSyncExpected: env.APP_ENV === "production",
     mailSenderEmail: env.SMTP_USER ?? null,

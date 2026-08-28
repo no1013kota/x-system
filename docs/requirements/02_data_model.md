@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.78 |
+| バージョン | v1.79 |
 | 更新日 | 2026-08-28 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -510,7 +510,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`） |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`。tick 相乗りの毎時窓: `x_token_refresh`（T-M8-359）） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
 | `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
@@ -1096,3 +1096,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.76 | 2026-08-27 | §3.30 news_batches を新設（ニュース取得のBatch実行・T-M8-338） |
 | v1.77 | 2026-08-28 | x_accounts に settings_proposal を追加（参考ソースの反映を保存前の提案にする・T-M8-349） |
 | v1.78 | 2026-08-28 | prompt_presets: 使用中が1件も無ければ一覧表示時に補うことを明記（T-M8-355） |
+| v1.79 | 2026-08-28 | cron_runs に毎時窓 `x_token_refresh` を追加（Xトークンの先回り更新・T-M8-359） |

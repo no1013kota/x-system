@@ -6,6 +6,7 @@ import {
   type AccountOptions,
   type TestAccount,
 } from "./account";
+import { stubTurnstile } from "./turnstile";
 
 /**
  * E2Eの共通fixture（T-M7-05）。`accounts.create()` で作ったアカウントは、テスト終了時に
@@ -17,7 +18,22 @@ export interface AccountFactory {
   create(label: string, options?: AccountOptions): Promise<TestAccount>;
 }
 
-export const test = base.extend<{ accounts: AccountFactory }>({
+export const test = base.extend<{
+  accounts: AccountFactory;
+  /**
+   * 本物のTurnstileを使うか（T-M8-358）。既定は false ＝スタブ。
+   *
+   * **通しの実行でだけ落ちる原因が「毎回外部サービスへチャレンジを要求すること」だった**
+   * ため、既定はスタブにする（理由と見えなくなるものは `fixtures/turnstile.ts`）。
+   * 本物のウィジェットを見たいspecだけ `test.use({ realTurnstile: true })` を書く。
+   */
+  realTurnstile: boolean;
+}>({
+  realTurnstile: [false, { option: true }],
+  page: async ({ page, realTurnstile }, use) => {
+    if (!realTurnstile) await stubTurnstile(page);
+    await use(page);
+  },
   accounts: async ({}, use) => {
     const created: TestAccount[] = [];
     await use({

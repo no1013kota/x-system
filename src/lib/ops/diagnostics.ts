@@ -534,9 +534,27 @@ export function judgeScheduler(input: {
   return { name, level: "ok", detail: `${Math.round(input.minutesSinceLastRun)} 分前に動いています` };
 }
 
-/** X（Twitter）連携の有効期限。 */
+/**
+ * X（Twitter）連携の状態。
+ *
+ * **access tokenが切れていること自体は異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+ * Xのaccess tokenは2時間で切れる設計で、refresh tokenがあれば
+ * 先回り更新（1時間ごと・`token-keepalive.ts`）と実行時の自動更新で戻る。
+ * ここで毎朝【注意】を出していたため、**直す必要のない警告が毎日届き**、
+ * 本当の異常（要再連携）まで読み飛ばされる状態だった（原則2）。
+ *
+ * 見るのは「**人が操作しないと直らないか**」の一点にする:
+ * - `status` が active でない → 要再連携（error）
+ * - refresh token が無い → 次に使ったときに必ず失効する（warn。放っておくと切れる）
+ */
 export function judgeXAccounts(
-  rows: { handle: string; status: string; expiresInHours: number | null }[],
+  rows: {
+    handle: string;
+    status: string;
+    expiresInHours: number | null;
+    /** refresh token を持っているか（自動更新できるか）。 */
+    canRefresh?: boolean;
+  }[],
 ): Check {
   const name = "Xアカウントの連携";
   if (rows.length === 0) {
@@ -548,7 +566,8 @@ export function judgeXAccounts(
     };
   }
   const broken = rows.filter((r) => r.status !== "active");
-  const expired = rows.filter((r) => r.status === "active" && (r.expiresInHours ?? 1) <= 0);
+  // 自動更新の材料が無いものだけを警告する（期限切れそのものは正常な状態）。
+  const cannotRefresh = rows.filter((r) => r.status === "active" && r.canRefresh === false);
   const detail = rows
     .map((r) => `@${r.handle}（${r.status === "active" ? "有効" : "要再連携"}）`)
     .join(" / ");
@@ -560,11 +579,12 @@ export function judgeXAccounts(
       nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
-  if (expired.length > 0) {
+  if (cannotRefresh.length > 0) {
     return {
       name,
       level: "warn",
-      detail: `${detail}（アクセス許可の期限が切れています。次の操作で自動更新されます）`,
+      detail: `${detail}（自動更新に使う許可が保存されていません。次に使ったときに切れます）`,
+      nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
   return { name, level: "ok", detail };
@@ -590,8 +610,20 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
  * 記録は「接続の取得が待たされたときだけ」入る（`db_pool_events`）。正常なら0件で、
  * 件数が続くようなら接続数の上限（`DB_POOL_MAX`）かプラン移行を検討する時期。
  */
-export const DB_POOL_WAIT_WARN = 1;
-export const DB_POOL_WAIT_ERROR = 20;
+/*
+  **短い待ちが数回あるだけでは異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+  以前は24時間に1回でも並べば【注意】を出していたため、**0.2秒の待ちが5回**という
+  実用上どうでもいない状態で毎朝メールが届いていた。直す必要のない警告は読まれなくなり、
+  本当の異常まで埋もれる（原則2。T-M8-323で同じ理由から「接続確立の待ち」を判定から外した）。
+
+  本物の枯渇は**回数が多い**か**待ちが長い**かのどちらかに必ず出る。両方を見て、
+  どちらかが閾値を超えたときだけ知らせる。
+*/
+export const DB_POOL_WAIT_WARN = 20;
+export const DB_POOL_WAIT_ERROR = 100;
+/** 1回でもこれだけ待たされたら、回数が少なくても知らせる（体感に出る長さ）。 */
+export const DB_POOL_WAITED_MS_WARN = 2_000;
+export const DB_POOL_WAITED_MS_ERROR = 10_000;
 
 export function judgePoolWaits(input: {
   /** 接続の取得を待たされた回数（接続の新規確立を含む）。 */
@@ -619,15 +651,16 @@ export function judgePoolWaits(input: {
   const setup = Math.max(0, input.waits24h - queued);
   const setupNote = setup > 0 ? `。ほかに接続を新しく張った待ちが ${setup} 回（混雑ではありません）` : "";
 
-  if (queued < DB_POOL_WAIT_WARN) {
-    return {
-      name,
-      level: "ok",
-      detail: `直近24時間で空き待ちはありません${limit}${setupNote}`,
-    };
+  const crowded = queued >= DB_POOL_WAIT_WARN || input.maxWaitedMs >= DB_POOL_WAITED_MS_WARN;
+  if (!crowded) {
+    const few =
+      queued > 0
+        ? `直近24時間の空き待ちは${queued}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）で、混雑と呼ぶ量ではありません`
+        : "直近24時間で空き待ちはありません";
+    return { name, level: "ok", detail: `${few}${limit}${setupNote}` };
   }
   const detail = `直近24時間で空き待ちが${queued}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}${setupNote}`;
-  if (queued < DB_POOL_WAIT_ERROR) {
+  if (queued < DB_POOL_WAIT_ERROR && input.maxWaitedMs < DB_POOL_WAITED_MS_ERROR) {
     return {
       name,
       level: "warn",
@@ -920,9 +953,15 @@ export async function collectDiagnostics(
 
   // （旧「お知らせメール」検査はT-M8-222で廃止——通知はアプリ内のみで、メール配送台帳が無い）
 
-  const accounts = await db.query<{ handle: string; status: string; hours: string | null }>(
+  const accounts = await db.query<{
+    handle: string;
+    status: string;
+    hours: string | null;
+    can_refresh: boolean;
+  }>(
     `select handle, status::text as status,
-            (extract(epoch from (token_expires_at - now())) / 3600)::text as hours
+            (extract(epoch from (token_expires_at - now())) / 3600)::text as hours,
+            (refresh_token_ciphertext is not null) as can_refresh
        from x_accounts order by created_at`,
   );
   checks.push(
@@ -931,6 +970,7 @@ export async function collectDiagnostics(
         handle: r.handle,
         status: r.status,
         expiresInHours: r.hours == null ? null : Number(r.hours),
+        canRefresh: r.can_refresh,
       })),
     ),
   );

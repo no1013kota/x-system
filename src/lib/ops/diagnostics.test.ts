@@ -241,10 +241,25 @@ describe("judgeXAccounts", () => {
     expect(r.nextAction).toBeTruthy();
   });
 
-  it("期限切れは注意どまり（次の操作で自動更新される）", () => {
-    const r = judgeXAccounts([{ handle: "a", status: "active", expiresInHours: -22 }]);
-    expect(r.level).toBe("warn");
+  /**
+   * **access tokenが切れていること自体は異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+   * Xのtokenは2時間で切れる設計で、先回り更新と実行時の自動更新で戻る。
+   * ここで毎朝【注意】を出していたため、直す必要のない警告が毎日届いていた。
+   */
+  it("期限切れでも自動更新できるなら正常（毎朝の誤報を作らない）", () => {
+    const r = judgeXAccounts([
+      { handle: "a", status: "active", expiresInHours: -22, canRefresh: true },
+    ]);
+    expect(r.level).toBe("ok");
     expect(r.detail).toContain("@a");
+  });
+
+  it("自動更新の許可が無ければ注意（放っておくと切れる）", () => {
+    const r = judgeXAccounts([
+      { handle: "a", status: "active", expiresInHours: -22, canRefresh: false },
+    ]);
+    expect(r.level).toBe("warn");
+    expect(r.nextAction).toContain("再連携");
   });
 
   it("有効で期限内なら正常", () => {
@@ -471,16 +486,32 @@ describe("judgePoolWaits", () => {
     expect(r.nextAction).toBeUndefined();
   });
 
-  it("1件以上なら注意（件数と最長待ち時間を出す）", () => {
-    const r = judgePoolWaits({ waits24h: 3, maxWaitedMs: 1_500 });
+  /**
+   * **短い待ちが数回あるだけでは知らせない**（T-M8-359・運営者の指摘 2026-08-28）。
+   * 「0.2秒の待ちが5回」で毎朝メールが届いていた。直す必要のない警告は読まれなくなる。
+   */
+  it("短い待ちが数回なら ok（数字は残すが混雑とは言わない）", () => {
+    const r = judgePoolWaits({ waits24h: 5, queuedWaits24h: 5, maxWaitedMs: 200 });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toContain("5回");
+    expect(r.nextAction).toBeUndefined();
+  });
+
+  it("回数が増えたら注意（件数と最長待ち時間を出す）", () => {
+    const r = judgePoolWaits({ waits24h: 25, maxWaitedMs: 1_500 });
     expect(r.level).toBe("warn");
-    expect(r.detail).toContain("3回");
+    expect(r.detail).toContain("25回");
     expect(r.detail).toContain("1.5秒");
     expect(r.nextAction).toContain("Supabase Pro");
   });
 
+  it("回数が少なくても待ちが長ければ注意（体感に出る）", () => {
+    const r = judgePoolWaits({ waits24h: 2, queuedWaits24h: 2, maxWaitedMs: 4_000 });
+    expect(r.level).toBe("warn");
+  });
+
   it("常態化したら異常（移行条件に該当することを名指しする）", () => {
-    const r = judgePoolWaits({ waits24h: 20, maxWaitedMs: 5_000 });
+    const r = judgePoolWaits({ waits24h: 120, maxWaitedMs: 5_000 });
     expect(r.level).toBe("error");
     expect(r.nextAction).toContain("要件01 §9");
   });
@@ -500,7 +531,7 @@ describe("judgePoolWaits の上限表示（T-M8-303）", () => {
   });
 
   it("警告のときも上限を添える（対策済みかどうかが読める）", () => {
-    const check = judgePoolWaits({ waits24h: 5, maxWaitedMs: 900, poolMax: 10 });
+    const check = judgePoolWaits({ waits24h: 30, maxWaitedMs: 900, poolMax: 10 });
     expect(check.level).toBe("warn");
     expect(check.detail).toContain("1インスタンスあたり上限 10");
   });
@@ -645,12 +676,17 @@ describe("judgePoolWaits が接続確立と混雑を区別する（T-M8-323）",
   });
 
   it("**本物の待ち行列**が続けば従来どおり赤い", () => {
-    const c = judgePoolWaits({ waits24h: 400, queuedWaits24h: 50, maxWaitedMs: 3000, poolMax: 3 });
+    const c = judgePoolWaits({ waits24h: 400, queuedWaits24h: 150, maxWaitedMs: 3000, poolMax: 3 });
     expect(c.level).toBe("error");
     expect(c.nextAction).toBeTruthy();
   });
 
+  it("待ちが極端に長ければ、回数が少なくても赤い（1回で10秒は止まって見える）", () => {
+    const c = judgePoolWaits({ waits24h: 3, queuedWaits24h: 3, maxWaitedMs: 12_000, poolMax: 3 });
+    expect(c.level).toBe("error");
+  });
+
   it("queuedWaits24h が無い呼び出しは従来どおり全件を空き待ちとみなす（後方互換）", () => {
-    expect(judgePoolWaits({ waits24h: 50, maxWaitedMs: 900 }).level).toBe("error");
+    expect(judgePoolWaits({ waits24h: 150, maxWaitedMs: 900 }).level).toBe("error");
   });
 });

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.59 |
-| 更新日 | 2026-08-27 |
+| バージョン | v1.60 |
+| 更新日 | 2026-08-28 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -354,6 +354,22 @@ flowchart TD
 - **毎月1回**（`payout:{前月YYYY-MM}`）: 前月締めのPayoutを作成（月末締め・翌月末支払・手数料¥980・最低¥5,000。詳細は要件03「招待プログラム」と正本 docs/cp/invite_cp.md）。二重作成は `unique (affiliate_account_id, period_start)` でも塞ぐ。
 - 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
 
+### Xトークンの先回り更新（T-M8-359）
+
+`scheduler_tick` に相乗りし、**1時間に1回**（`cron_runs` の `(job_name='x_token_refresh', window_key=JSTの「日付T時」)`）、
+**期限が90分以内に来る `status='active'` のXアカウント**を最大25件、`getValidAccessToken` で更新する（`src/lib/x/token-keepalive.ts`）。
+
+**なぜ要るか**: Xのaccess tokenは2時間で切れ、refresh tokenは**使うたびに入れ替わる**。
+「使うときに切れていたら更新する」だけだと、投稿も分析も走らない日が続いたアカウントの
+refresh tokenが古いまま置き去りになり、久しぶりに使ったときに `invalid_request` で弾かれて
+**要再連携**になる（2026-08-15に実アカウント2つで発生・T-M8-96）。
+利用者から見れば「何もしていないのに連携が切れた」で、最も体験が悪い壊れ方をする。
+
+- 対象は refresh token を持つものだけ。`expired` は人が再連携するまで直らないので触らない（毎時APIを叩いて毎時失敗させない）。
+- **1件の失敗で他を巻き添えにしない**。失敗の中身（要再連携か一時エラーか）は `getValidAccessToken` が状態と通知へ書く。
+- 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
+- 状態確認（`doctor`）は**access tokenが切れていること自体を警告しない**——refresh tokenがあれば戻るため。警告するのは「refresh tokenが無い」＝人が再連携しないと直らない場合だけ（T-M8-359）。
+
 ### 契約期間の補完（T-M8-258）
 
 `scheduler_tick` に相乗りし、1日1回（`cron_runs` の `(job_name='subscription_period_backfill', window_key=JST日付)`）、`profiles.current_period_start` が null で `stripe_subscription_id` を持つ契約中（trialing/active/past_due/unpaid/paused）の利用者を最大50件、Stripe の `subscriptions.retrieve` で読んで `current_period_start`／`current_period_end` の**2列だけ**埋める（`src/lib/stripe/period-backfill.ts`）。契約本体（plan/status）と `subscription_event_created_at` は触らない（投影全体を適用すると後続の webhook が stale になる）。読めなかった契約者は記録（Sentry `period-backfill`）して翌日に再試行。未注入（テスト・ローカル）では動かない。
@@ -372,3 +388,4 @@ flowchart TD
 | v1.57 | 2026-08-27 | 学習の反映先をアカウント.mdのセクション1〜4へ（T-M8-336）。ニュースの検索上限を3へ（T-M8-335） |
 | v1.58 | 2026-08-27 | ニュース取得をMessage Batches API＋20分おきの取り込みcronへ（T-M8-338）。取得窓を起動時刻の表から導く形へ修正（T-M8-337） |
 | v1.59 | 2026-08-27 | 学習の反映をボタン起動の単独 md_merge へ（T-M8-344）。分析と反映を分け、アカウント設定が未保存でも作れるようにした |
+| v1.60 | 2026-08-28 | Xトークンの先回り更新（1時間に1回・tick相乗り）を追加し、状態確認は期限切れ自体を警告しない形へ（T-M8-359） |
