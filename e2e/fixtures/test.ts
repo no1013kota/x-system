@@ -106,7 +106,7 @@ export async function signIn(
       return false;
     }
   };
-  if (!(await waitForToken(15_000))) {
+  if (!(await waitForToken(8_000))) {
     await page.reload();
     await form.locator('input[type="email"]').fill(account.email);
     await form.locator('input[type="password"]').fill(account.password);
