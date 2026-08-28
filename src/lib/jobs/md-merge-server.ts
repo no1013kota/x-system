@@ -5,7 +5,7 @@ import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
 import type { PlanId } from "../plans";
 import { reserveIfPremium } from "../usage/reserve-if-premium";
 import { createDeadline, type Deadline } from "./deadline";
-import { executeMdMerge } from "./md-merge";
+import { executeMdMerge, mergeModeFor } from "./md-merge";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
 import { finalizeFailedJob } from "./terminal";
 import type { JobContext } from "./handlers";
@@ -57,13 +57,12 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
     - 無し: 利用者が「学習ソースからアカウント設定を作る」を押した反映
       （登録済みの分析をすべて使う。アカウント設定が未保存でも作れる）
   */
-  const removedSourceId = meta.learning_source_id ?? undefined;
   /*
     反映merge（`learning_source_id` 無し）は**保存前の提案**として置く（T-M8-349）。
     削除mergeは知見を取り除く処理なので、これまでどおりその場で確定させる——
-    「消したのにまだ効いている」状態を残さないため。
+    「消したのにまだ効いている」状態を残さないため。判定は `mergeModeFor`（単体テストあり）。
   */
-  const proposalOnly = removedSourceId === undefined;
+  const mode = mergeModeFor(meta.learning_source_id);
 
   // 削除mergeも生成枠を1消費（premium・要件04 §12）。冪等keyで再実行安全。
   await reserveIfPremium(runInTx, {
@@ -78,7 +77,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   try {
     await executeMdMerge(
       { db: pooledDb, jobId: ctx.jobId, runInTx, runInTxForSettle: runInTx, resolveProvider, makeDeadline: () => deadline },
-      removedSourceId ? { removedSourceId } : { proposalOnly },
+      mode,
     );
   } catch (error) {
     // retryable は attempt<3 で queued 自己終端（runJob の failed 化を空振り）・reserve 保持。

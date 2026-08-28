@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { emptyUsage, type TextGen } from "../ai/types";
 import type { Queryable } from "../x/token-refresh";
-import { executeMdMerge, MdMergeConflictError, MdMergeStructureError } from "./md-merge";
+import {
+  executeMdMerge,
+  MdMergeConflictError,
+  MdMergeStructureError,
+  mergeModeFor,
+} from "./md-merge";
 
 const JOB_META = /select gj\.x_account_id, gj\.kind::text as kind, xa\.user_id, p\.plan/;
 const LOAD_REMOVED = /select analysis_summary from learning_sources where id = \$1/;
@@ -211,5 +216,21 @@ describe("executeMdMerge", () => {
     await expect(
       executeMdMerge(deps(db, textGen("   ")), { confirmSourceId: "s1" }),
     ).rejects.toBeInstanceOf(MdMergeStructureError);
+  });
+});
+
+/**
+ * 何のためのmergeかの判定（T-M8-356）。
+ *
+ * **ここが逆に配線されると、押した瞬間に本番の設定が書き換わる／削除したのに知見が残る**、
+ * というどちらも画面からは説明できない壊れ方をする（原則1）。1行の判定でも網へ入れておく。
+ */
+describe("mergeModeFor", () => {
+  it("学習ソースの削除は、その場で確定させる", () => {
+    expect(mergeModeFor("src-1")).toEqual({ removedSourceId: "src-1" });
+  });
+
+  it("利用者が押した反映は、保存前の提案として置く", () => {
+    expect(mergeModeFor(null)).toEqual({ proposalOnly: true });
   });
 });

@@ -19,10 +19,10 @@ import { defaultRecordStage } from "./stale";
 
 /**
  * 同一job内 MD-MERGE（L-8, プロンプト設計書 §4.2/§6.14, 要件04 §1/§12, 要件05 §9, 要件02 §3.4, T-M5-04）。
- * トリガーソースの種別が決める「該当セクション1つだけ」を「対象セクション現在値＋全active source analyses」
- * から書き直す（§4.2「該当セクションのみ」・§6.14「1セクションを書き直す」）。own_posts→セクション5
- * （文体・自分らしさ）、ref_account/ref_post→セクション6（参考にする型）。非対象セクションと1〜4は
- * byte-for-byte 保持する。新versionを change_source=learning で確定し、開始時 base_md_version と異なれば
+ * **反映先はセクション1〜4**（T-M8-336で5〜6から移した）。「対象セクション現在値＋全active source
+ * analyses」から書き直す。人が書くセクション5（参考にする型）は byte-for-byte 保持する
+ * （T-M8-356で「文体・自分らしさ」を廃止し、見出しは1〜5になった）。
+ * 新versionを change_source=learning で確定し、開始時 base_md_version と異なれば
  * （updatePersonaSettings等と競合）最新versionから再merge（上書き消失させない）。枯渇/時間不足は retryable。
  * merge出力は本文のみで、見出し混入や（内容があるのに）空出力は構造エラーとして修復・失敗させる。
  */
@@ -206,6 +206,21 @@ async function mergeSection(
   }
   if (!settings) throw new MdMergeStructureError();
   return { settings, calls };
+}
+
+/**
+ * **何のためのmergeかを `learning_source_id` の有無で決める**（T-M8-344／T-M8-356）。
+ *
+ * - 有り: 学習ソースの**削除**に伴う作り直し（その1件を除いて再構成し、その場で確定する）
+ * - 無し: 利用者が「アカウント設定を反映する」を押した反映（**保存前の提案として置く**）
+ *
+ * 判定を関数にしておく——ここが逆に配線されると、押した瞬間に本番の設定が書き換わる／
+ * 削除したのに知見が残る、という**どちらも画面からは説明できない**壊れ方をする（原則1）。
+ */
+export function mergeModeFor(
+  learningSourceId: string | null,
+): { removedSourceId: string } | { proposalOnly: true } {
+  return learningSourceId ? { removedSourceId: learningSourceId } : { proposalOnly: true };
 }
 
 /**
