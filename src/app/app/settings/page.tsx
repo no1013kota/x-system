@@ -310,6 +310,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       : null;
   const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
   /*
+    フォームを作り直す合図（T-M8-356/357）。**中身が変わったら作り直す**——
+    「提案があるか」だけを見ていると、保存せずに2回続けて反映したとき
+    （2回目の提案で欄が更新されない）に、また「押しても入らない」に戻る。
+    文字列そのものをkeyにすると長くなるので、長さと文字コードの畳み込みで十分。
+  */
+  const proposalKey = settingsProposal
+    ? `p${[...JSON.stringify(settingsProposal)].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
+    : "saved";
+  /*
     アカウント.mdの手書きセクション5・6（T-M8-355）。**mdから読む**——設定には持っていない
     （生成されるのは1〜4だけ）。まだmdが無ければ空欄から書き始められる。
   */
@@ -574,7 +583,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     アカウント切替でもstateを捨てる（前アカウントの内容を新アカウントへ
                     保存させない・T-M8-196）。
                   */
-                  key={`${account.id}:${settingsProposal ? "proposal" : "saved"}`}
+                  key={`${account.id}:${proposalKey}`}
                   proposal={settingsProposal}
                   xAccountId={account.id}
                 />

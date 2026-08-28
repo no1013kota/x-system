@@ -135,13 +135,21 @@ test("学習ソースを追加すると分析中として並び、削除でき�
 
   // 分析が終わった状態にしてから削除する（AIは呼ばない）。
   //
-  // **実行中の分析jobも終端させる。** 削除は「同一アカウントに queued/running の学習jobがあれば
-  // job_conflict」で弾く仕様（要件05 §8）。追加時にdispatchされたjobが残っていると削除が通らず、
-  // 環境によって結果が変わる（2026-08-01、CIはダミーキーでjobが残り続けて落ちた。手元は実キーで
-  // jobが早く終わるため通っていた）。状態を作るテストなので、前提を揃えてから操作する。
+  /*
+    **実行中の学習系jobを終端させる。** 削除は「同一アカウントに queued/running の学習jobがあれば
+    job_conflict」で弾く仕様（要件05 §8）。追加時にdispatchされたjobが残っていると削除が通らず、
+    環境によって結果が変わる（2026-08-01、CIはダミーキーでjobが残り続けて落ちた。手元は実キーで
+    jobが早く終わるため通っていた）。状態を作るテストなので、前提を揃えてから操作する。
+
+    **`md_merge` も含める**（T-M8-357）。反映のボタンは「登録→分析→反映」まで進むので、
+    分析がダミーキーで即失敗すると、そのまま反映の `md_merge` が起票される。
+    `learning_analysis` だけを畳んでいたため、**タイミング次第で削除だけが弾かれて**いた
+    （フルスイートでだけ稀に落ちる形。単独で回すと反映まで進む前に削除が走って通っていた）。
+  */
   await query(
     `update generation_jobs set status = 'canceled', finished_at = now()
-      where x_account_id = $1 and kind = 'learning_analysis' and status in ('queued','running')`,
+      where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+        and status in ('queued','running')`,
     [account.xAccountId],
   );
   await query(
