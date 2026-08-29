@@ -128,7 +128,17 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     pending になるところまで（分析はAIを呼ぶので走らせきらない）。
   */
   const handle = `e2e_ref_${randomUUID().slice(0, 6)}`;
-  await page.getByRole("textbox", { name: "参考アカウント" }).first().fill(`https://x.com/${handle}`);
+  const url = `https://x.com/${handle}`;
+  const field = page.getByRole("textbox", { name: "参考アカウント" }).first();
+  /*
+    **入れた文字が残っていることを確かめてから押す**（T-M8-368と同型）。hydration前の入力は
+    再描画で消え、欄が空だと「反映する」がdisabledのまま——フルスイートの負荷時だけ
+    click が90秒待って落ちていた（2026-08-30）。残らない間は入れ直す。
+  */
+  await expect(async () => {
+    await field.fill(url);
+    await expect(field).toHaveValue(url, { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByRole("button", { name: "アカウント設定を反映する" }).click();
 
   /*
