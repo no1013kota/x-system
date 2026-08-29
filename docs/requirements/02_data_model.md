@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.79 |
-| 更新日 | 2026-08-28 |
+| バージョン | v1.80 |
+| 更新日 | 2026-08-29 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -148,27 +148,9 @@ RLS: 本人select可。writeはServer Actionのみ。
 
 プラン変更のSubscription同期では、profileと同じtransaction内でXアカウントの利用可否を更新する。BYOK（standard／md）→premiumは`auth_type=byok`、premium→BYOKは`auth_type=managed`を`expired`にする。新planがstandardの場合は、互換性のないauth typeを先に失効した後、現在の`active_x_account_id`がなおactiveならその1件、そうでなければ`created_at, id`順で最古のactive 1件を維持し、他のactiveを`disabled`にする。維持候補がなければ`active_x_account_id=null`とする。
 
-この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`base_md_versions`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す（providerが外れたら`text_model`／`image_model`も外す・T-M8-107）。`credentials_ciphertext`自体は保持する。
+この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す（providerが外れたら`text_model`／`image_model`も外す・T-M8-107）。`credentials_ciphertext`自体は保持する。
 
 自動投稿への有効な同意は、`automation_consent_version`が現行説明versionと一致し、`automation_consented_at is not null`かつ`automation_disabled_at is null`の場合に限る。OAuth scopeの付与はこの同意の代わりにしない。opt-outでは同じtransactionで`automation_disabled_at`を設定し、対象Xアカウントの`mode=auto`スロットをすべて無効化する。
-
-### 3.4 `base_md_versions`
-
-| カラム | 型 | 制約/既定値 | 説明 |
-|---|---|---|---|
-| `id` | `uuid` | PK |  |
-| `x_account_id` | `uuid` | FK, not null | 対象 |
-| `version` | `integer` | not null | 1始まり |
-| `content` | `text` | not null | アカウント.md全文 |
-| `change_source` | `text` | not null | `settings`（アカウント設定フォーム。初版作成を含む）/`learning`/`manual`/`rollback` |
-| `summary` | `text` | null | 変更要約 |
-| `created_at` | `timestamptz` | not null default now() |  |
-
-Constraints: unique(`x_account_id`, `version`), `version > 0`
-
-**保持は1 x_accountあたり最新5版まで**（T-M8-156・運営者の指示 2026-08-20）。版はアカウント.md**全文**を持ち、`md_merge`が学習のたびに自動で積むため、上限が無いと利用者の操作なしにストレージが増え続ける（原則4「費用が見える」）。刈り込みは`pruneBaseMdVersions`（`src/lib/base-md-history.ts`）で、**版を積んだのと同じtransaction内**で行う（別ジョブに寄せると忘れたら効かない手順になる・原則3）。適用対象は`settings`／`learning`／`manual`／`rollback`の全経路。**この上限はロールバック可能な範囲でもある**——6版以上前へは戻せない（要件05）。
-
-RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.5 `prompt_templates`
 
@@ -1097,3 +1079,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.77 | 2026-08-28 | x_accounts に settings_proposal を追加（参考ソースの反映を保存前の提案にする・T-M8-349） |
 | v1.78 | 2026-08-28 | prompt_presets: 使用中が1件も無ければ一覧表示時に補うことを明記（T-M8-355） |
 | v1.79 | 2026-08-28 | cron_runs に毎時窓 `x_token_refresh` を追加（Xトークンの先回り更新・T-M8-359） |
+| v1.80 | 2026-08-29 | §3.4 `base_md_versions` を廃止（アカウント.mdの変更履歴・ロールバックを撤去。控えは `prompt_presets` が担う・T-M8-362） |

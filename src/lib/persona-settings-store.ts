@@ -1,6 +1,5 @@
 import type { PoolClient } from "pg";
 import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
-import { pruneBaseMdVersions } from "./base-md-history";
 
 import { withTransaction } from "@/lib/db/pool";
 import { AppError } from "@/lib/observability/errors";
@@ -126,18 +125,6 @@ export async function applyPersonaSettingsUpdate(
       details: { reason: "base_md_version_changed" },
     });
   }
-  await client.query(
-    `insert into base_md_versions
-      (x_account_id, version, content, change_source, summary)
-     values ($1, $2, $3, 'settings', $4)`,
-    [
-      account.id,
-      version,
-      baseMd,
-      version === 1 ? "アカウント設定から初版を作成" : "アカウント設定からセクション1〜4を更新",
-    ],
-  );
-  await pruneBaseMdVersions(client, account.id);
   // 本棚の「使用中」へも写す（T-M8-332）。アカウント設定はセクション1〜4を書き換えるので、
   // 写さないとプロンプト画面が古い本文を出したままになる。
   await syncInUsePreset(client, { xAccountId: account.id, kind: "base_md", content: baseMd });

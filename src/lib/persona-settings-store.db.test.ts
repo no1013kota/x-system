@@ -76,20 +76,11 @@ describe("updatePersonaSettings transaction", () => {
     expect(first.baseMd).toContain("- 発信者: 初回の発信者");
     expect(first.baseMd).toMatch(/## 5\.[^\n]*\n$/);
     const firstRows = await db.query(
-      `select x.settings, x.base_md, x.base_md_version,
-              v.version, v.change_source
-         from x_accounts x
-         join base_md_versions v on v.x_account_id = x.id
-        where x.id = $1`,
+      `select x.settings, x.base_md, x.base_md_version from x_accounts x where x.id = $1`,
       [xAccountId],
     );
     expect(firstRows.rows).toHaveLength(1);
-    expect(firstRows.rows[0]).toMatchObject({
-      base_md: first.baseMd,
-      base_md_version: 1,
-      change_source: "settings",
-      version: 1,
-    });
+    expect(firstRows.rows[0]).toMatchObject({ base_md: first.baseMd, base_md_version: 1 });
 
     const learned = first.baseMd.replace(
       "## 5. 参考にする型\n",
@@ -97,12 +88,6 @@ describe("updatePersonaSettings transaction", () => {
     );
     await db.query(
       "update x_accounts set base_md = $2, base_md_version = 2 where id = $1",
-      [xAccountId, learned],
-    );
-    await db.query(
-      `insert into base_md_versions
-        (x_account_id, version, content, change_source)
-       values ($1, 2, $2, 'learning')`,
       [xAccountId, learned],
     );
     const learnedTail = learned.slice(learned.indexOf("## 5."));
@@ -148,8 +133,6 @@ describe("updatePersonaSettings transaction", () => {
 
     const afterConflicts = await db.query(
       `select x.base_md_version, x.base_md,
-              (select count(*)::int from base_md_versions v
-                where v.x_account_id = x.id) as version_count,
               (select count(*)::int from usage_events u
                 where u.x_account_id = x.id) as usage_count
          from x_accounts x where x.id = $1`,
@@ -159,7 +142,6 @@ describe("updatePersonaSettings transaction", () => {
       base_md: second.baseMd,
       base_md_version: 3,
       usage_count: 0,
-      version_count: 3,
     });
   });
 

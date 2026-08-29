@@ -6,7 +6,6 @@ import {
 } from "../persona-settings";
 import { parseAndValidate } from "../ai/parse";
 import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
-import { pruneBaseMdVersions } from "../base-md-history";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
@@ -340,13 +339,6 @@ export async function executeMdMerge(
         [job.x_account_id, newBaseMd, nextVersion, state.version, JSON.stringify(merged)],
       );
       if ((upd.rowCount ?? 0) !== 1) return null; // 競合 → 最新versionから再merge
-      await tx.query(
-        `insert into base_md_versions (x_account_id, version, content, change_source, summary)
-         values ($1, $2, $3, 'learning', $4)`,
-        [job.x_account_id, nextVersion, newBaseMd, opts.removedSourceId ? "学習ソース削除に伴うmerge" : "学習分析の反映"],
-      );
-      // 学習は利用者の操作なしに版を積むので、ここでの刈り込みが無いと無制限に増える（T-M8-156）。
-      await pruneBaseMdVersions(tx, job.x_account_id);
       // 本棚の「使用中」へも写す（T-M8-332）。学習の反映が本棚に出ないと、
       // プロンプト画面の本文と生成に使われる本文が食い違う。
       await syncInUsePreset(tx, {

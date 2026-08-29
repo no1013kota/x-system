@@ -14,7 +14,6 @@ const LOAD_REMOVED = /select analysis_summary from learning_sources where id = \
 const LOAD_ACCT = /select base_md, base_md_version, settings from x_accounts/;
 const LOAD_ANALYSES = /from learning_sources[\s\S]*analysis_summary is not null/;
 const UPDATE_ACCT = /update x_accounts set base_md = \$2, base_md_version = \$3/;
-const INSERT_VERSION = /insert into base_md_versions/;
 const CONFIRM = /update learning_sources set status = 'analyzed'/;
 const REMOVED_UPDATE = /update learning_sources set status = 'removed'/;
 
@@ -149,7 +148,8 @@ describe("executeMdMerge", () => {
     expect(upd.params[2]).toBe(4);
     expect(upd.params[3]).toBe(3); // expected version guard
 
-    expect(writes.some((w) => INSERT_VERSION.test(w.sql) && w.sql.includes("'learning'"))).toBe(true);
+    // 変更履歴は廃止した（T-M8-362）。版を積む書き込みが復活していないことも見る。
+    expect(writes.some((w) => /insert into base_md_versions/.test(w.sql))).toBe(false);
     expect(writes.some((w) => CONFIRM.test(w.sql))).toBe(true);
   });
 
@@ -175,8 +175,7 @@ describe("executeMdMerge", () => {
     expect(res.section).toBe("profile");
     expect(writes.some((w) => REMOVED_UPDATE.test(w.sql))).toBe(true); // source removed in same tx
     expect(writes.some((w) => CONFIRM.test(w.sql))).toBe(false); // not a confirm path
-    const ver = writes.find((w) => INSERT_VERSION.test(w.sql))!;
-    expect(ver.params[3]).toContain("削除"); // summary mentions deletion
+    expect(writes.some((w) => /insert into base_md_versions/.test(w.sql))).toBe(false);
   });
 
   it("re-merges from the latest version on a conflict without losing the concurrent change", async () => {

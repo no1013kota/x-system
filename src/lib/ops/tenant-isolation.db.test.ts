@@ -54,7 +54,6 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
           "follower_snapshots",
           "learning_sources",
           "prompt_templates",
-          "base_md_versions",
           "generation_jobs",
           "drafts",
           "schedule_slots",

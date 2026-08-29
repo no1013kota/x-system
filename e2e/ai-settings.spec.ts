@@ -57,14 +57,8 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
   expect(saved.base_md, "編集内容が保存されていること").toContain(marker);
   expect(saved.version, "versionが上がること").toBeGreaterThan(1);
 
-  // 変更履歴に残る（いつでも戻せる）
-  const versions = await query<{ n: string }>(
-    `select count(*)::text as n from base_md_versions where x_account_id = $1`,
-    [account.xAccountId],
-  );
-  expect(Number(versions[0].n), "履歴が作られること").toBeGreaterThan(0);
-  // 履歴は本文の下に残る（学習・アカウント設定の反映もここに出る）。
-  await expect(page.getByRole("heading", { name: /変更履歴/ })).toBeVisible();
+  // 変更履歴は廃止した（T-M8-362）。戻したいときは本棚で別の本文を選ぶ。
+  await expect(page.getByRole("heading", { name: /変更履歴/ })).toHaveCount(0);
 });
 
 test("見出し構造が壊れた内容は保存されず、何を直せばよいか分かる", async ({ accounts, page }) => {

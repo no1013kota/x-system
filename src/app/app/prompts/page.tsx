@@ -11,9 +11,8 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { appLockFor } from "@/lib/auth/subscription-access";
-import type { BaseMdVersionView } from "@/lib/base-md";
 import { BLANK_BASE_MD_TEMPLATE } from "@/lib/persona-settings";
-import { isLearningRunningForUser, listBaseMdVersionsForUser } from "@/lib/base-md-server";
+import { isLearningRunningForUser } from "@/lib/base-md-server";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
 import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
@@ -24,7 +23,6 @@ import { PromptPresetManager } from "@/components/prompt/prompt-preset-manager";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readSingleRow } from "@/lib/supabase/single-row";
 
-import { BaseMdHistory } from "../settings/base-md-history-panel";
 import { PatternManager } from "../settings/pattern-manager";
 import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
 
@@ -98,7 +96,6 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
 
   const editable = promptEditablePlan(plan ?? "");
 
-  let baseMdHistory: BaseMdVersionView[] = [];
   let baseMdLearningRunning = false;
   /** 本棚（複数持てるプロンプト・T-M8-332）。区分ごとに読む。 */
   let presets: PromptPresetView[] = [];
@@ -113,9 +110,8 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
         アカウント.mdは自由入力で何本でも作れるようにしたので、
         「アカウント設定を保存するまで1本も作れない」形にはできない。
       */
-      [presets, baseMdHistory, baseMdLearningRunning] = await Promise.all([
+      [presets, baseMdLearningRunning] = await Promise.all([
         listPromptPresetsForUser({ userId: user.id, xAccountId: account.id, kind: "base_md" }),
-        listBaseMdVersionsForUser(user.id, account.id),
         isLearningRunningForUser(user.id, account.id),
       ]);
     } else if (section === "image-prompt") {
@@ -200,13 +196,6 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   key={`${section}:${account.id}`}
                   kind="base_md"
                   lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。"
-                  xAccountId={account.id}
-                />
-                {/* 使用中の本文の版と、その版へ戻す操作（学習・アカウント設定の反映もここに出る）。 */}
-                <BaseMdHistory
-                  currentVersion={account.base_md_version}
-                  history={baseMdHistory}
-                  learningRunning={baseMdLearningRunning}
                   xAccountId={account.id}
                 />
               </div>

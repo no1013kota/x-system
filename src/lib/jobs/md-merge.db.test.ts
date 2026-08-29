@@ -123,7 +123,7 @@ describe("executeMdMerge (db)", () => {
     return { uid, xid, jobId, sourceId };
   }
 
-  it("セクション1〜4を洗練して版・履歴・ソース確定を同じtxで書く（5〜6は不変）", async () => {
+  it("セクション1〜4を洗練して版とソース確定を同じtxで書く（5は不変）", async () => {
     const s = await withTransaction((c) => seed(c));
     try {
       const res = await executeMdMerge(deps(s.jobId, POLISHED), { confirmSourceId: s.sourceId });
@@ -143,15 +143,6 @@ describe("executeMdMerge (db)", () => {
       expect(acct.base_md).toContain("# 発信定義書");
       expect(acct.base_md).toContain("## 5. 参考にする型\n旧5");
 
-      const ver = (
-        await withTransaction((c) =>
-          c.query<{ change_source: string }>(
-            `select change_source from base_md_versions where x_account_id = $1 and version = 3`,
-            [s.xid],
-          ),
-        )
-      ).rows;
-      expect(ver[0]?.change_source).toBe("learning");
 
       const src = (
         await withTransaction((c) =>
@@ -160,8 +151,6 @@ describe("executeMdMerge (db)", () => {
       ).rows[0];
       expect(src.status).toBe("analyzed");
     } finally {
-      // base_md_versions は x_accounts への FK が cascade でないため先に消す。
-      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [s.xid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
     }
   });
@@ -199,16 +188,7 @@ describe("executeMdMerge (db)", () => {
       expect(acct.base_md).toBe(BASE_MD);
 
       // 版を積まない（まだ何も確定していないので履歴に残す出来事が無い）。
-      const versions = (
-        await withTransaction((c) =>
-          c.query<{ n: string }>(`select count(*)::text as n from base_md_versions where x_account_id = $1`, [
-            s.xid,
-          ]),
-        )
-      ).rows[0];
-      expect(versions.n).toBe("0");
     } finally {
-      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [s.xid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
     }
   });
@@ -269,7 +249,6 @@ describe("executeMdMerge (db)", () => {
       expect(rm.status).toBe("removed");
       expect(rm.removed_at).not.toBeNull();
     } finally {
-      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [seeded.xid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [seeded.uid]));
     }
   });

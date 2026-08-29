@@ -92,11 +92,7 @@ describe("prompt presets（local DB）", () => {
     return { uid, xid };
   }
 
-  /** `base_md_versions` は cascade しないので先に落とす（`base-md.db.test.ts` と同じ）。 */
-  const cleanup = async (uid: string, xid: string) => {
-    await withTransaction((c) =>
-      c.query(`delete from base_md_versions where x_account_id = $1`, [xid]),
-    );
+  const cleanup = async (uid: string) => {
     await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
   };
 
@@ -128,7 +124,7 @@ describe("prompt presets（local DB）", () => {
       expect(presets[0].inUse).toBe(true);
       expect(presets[0].content).toBe(VALID_BASE_MD);
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -167,7 +163,7 @@ describe("prompt presets（local DB）", () => {
       expect(listed[0].content, "使用中は生成が読む内容と同じ").toBe(VALID_BASE_MD);
       expect(listed[1].inUse).toBe(false);
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -202,7 +198,7 @@ describe("prompt presets（local DB）", () => {
         }),
       ).rejects.toMatchObject({ code: "validation_error" });
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -234,7 +230,7 @@ describe("prompt presets（local DB）", () => {
         before.base_md_version + 1,
       );
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -274,7 +270,7 @@ describe("prompt presets（local DB）", () => {
       });
       expect((await baseMdOf(xid)).base_md, "控えの編集で生成が変わってはいけない").toBe(edited);
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -298,7 +294,7 @@ describe("prompt presets（local DB）", () => {
       ).rejects.toMatchObject({ code: "validation_error" });
       expect((await baseMdOf(xid)).base_md).toBe(VALID_BASE_MD);
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -314,7 +310,7 @@ describe("prompt presets（local DB）", () => {
         deletePromptPresetForUser({ userId: uid, xAccountId: xid, presetId: inUse.id }),
       ).rejects.toMatchObject({ code: "validation_error" });
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -340,7 +336,7 @@ describe("prompt presets（local DB）", () => {
       await setPromptPresetInUseForUser({ userId: uid, xAccountId: xid, presetId: added.id });
       expect(await imageOverrideOf(xid)).toBe("写実的な写真として描写する。文字は入れない。");
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 
@@ -368,7 +364,7 @@ describe("prompt presets（local DB）", () => {
         "画面の本文と生成に使われる本文が食い違っている",
       ).toBe(merged);
     } finally {
-      await cleanup(uid, xid);
+      await cleanup(uid);
     }
   });
 });

@@ -50,7 +50,6 @@ const BY_X_ACCOUNT = [
   "follower_snapshots",
   "learning_sources",
   "prompt_templates",
-  "base_md_versions",
   "generation_jobs",
   "drafts",
   "schedule_slots",
