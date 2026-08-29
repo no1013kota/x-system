@@ -57,6 +57,7 @@ describe("RLS policies & ownership trigger", () => {
   const SERVICE_ROLE_ONLY_TABLES = [
     "cron_runs",
     "external_api_usage_events",
+    "kpi_daily",
     "news_fetch_outcomes",
     "stripe_events",
   ];

@@ -164,7 +164,8 @@ describe("cleanupOldData (db)", () => {
         await c.query<{ id: string }>(
           `insert into external_api_usage_events
              (provider, operation, status, idempotency_key, occurred_at)
-           values ('openai', 'text_generation', 'succeeded', $1, now() - make_interval(days => 41)) returning id`,
+           -- 原価台帳の保持は400日（T-M8-373で40→400日）。
+           values ('openai', 'text_generation', 'succeeded', $1, now() - make_interval(days => 401)) returning id`,
           [`u-${randomUUID()}`],
         )
       ).rows[0].id;

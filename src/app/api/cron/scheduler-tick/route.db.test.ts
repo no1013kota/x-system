@@ -325,6 +325,8 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
       // 分析用データの保持期間（T-M8-364）。
       timelinePosts: expect.any(Number),
       followerSnapshots: expect.any(Number),
+      // KPIスナップショットの保持期間（T-M8-373）。
+      kpiDaily: expect.any(Number),
       images: expect.any(Number),
     });
     expect(errors.filter((e) => e.includes("[scheduler_tick cleanup]"))).toEqual([]);

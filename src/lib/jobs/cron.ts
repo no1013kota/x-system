@@ -98,6 +98,8 @@ export async function withCronWindowClaim<T>(
 }
 
 export interface SchedulerTickResult {
+  /** 事業KPIスナップショットで書いた行数（その日の担当tickだけ非0・T-M8-373）。 */
+  kpiSnapshot: number;
   scheduleRecovered: ScheduleRecoveryResult;
   enqueued: EnqueueResult;
   dispatched: number;
@@ -338,6 +340,33 @@ export async function runSchedulerTick(
     onError: opts.onCleanupError,
   });
 
+  /*
+    (5.5) 事業KPIの日次スナップショット（T-M8-373・運営者の指示 2026-08-29）。
+    **定時トリガーは増やさない**（原則3）。日付が変わって最初のtickが「前日の終わり」を書く。
+    元データ（原価台帳・profilesの契約状態）は消えるか上書きされるので、
+    ここで書き出さないと /admin の推移グラフが描けない。失敗しても tick 本体は止めない。
+  */
+  let kpiSnapshot = 0;
+  try {
+    const { jstDateOf, runDailyKpiSnapshot } = await import("../ops/kpi");
+    const nowIso = new Date(Date.now()).toISOString();
+    const claimed = await withTransaction(async (client) => {
+      const res = await client.query(
+        `insert into cron_runs (job_name, window_key)
+         values ('kpi_snapshot', $1)
+         on conflict (job_name, window_key) do nothing`,
+        [jstDateOf(nowIso)],
+      );
+      return (res.rowCount ?? 0) > 0;
+    });
+    if (claimed) {
+      const result = await runDailyKpiSnapshot(pooledDb, nowIso);
+      kpiSnapshot = result.written;
+    }
+  } catch (err) {
+    opts.onCleanupError?.("kpi_snapshot", err);
+  }
+
   // (6) 日次サマリ（T-M7-29）。JST8時以降のtickで、その日の分を1通だけ作る（dedupe keyで冪等）。
   // 静かな劣化（分野が何日も0件など）は「いまの状態」だけでは見えないため、日をまたぐ推移を届ける。
   let dailySummaries = 0;
@@ -380,6 +409,7 @@ export async function runSchedulerTick(
   return {
     operatorAlert,
     affiliate,
+    kpiSnapshot,
     periodBackfill,
     xTokens,
     scheduledDrafts,
