@@ -101,6 +101,11 @@ interface JobRow {
      * （要件04 §10 手順6/7・T-M8-143）。手動起点は未設定＝下書きで止まる。
      */
     mode?: "draft" | "auto";
+    /**
+     * 投稿作成画面の「予約投稿」で指定された日時（UTCのISO・T-M8-331）。
+     * 入っていれば下書きに予約として乗せる。到来したら `scheduled-drafts` の cron が拾う。
+     */
+    scheduled_at?: string | null;
   };
   x_account_id: string;
   /** 今回のattempt番号（leaseで加算済み）。再試行時のWeb検索縮退に使う。 */
@@ -119,11 +124,17 @@ export interface PostGenerationDeps {
   jobId: string;
   /** 利用枠 reserve/refund を1 transactionで束ねる（server配線は withTransaction）。 */
   runInTx: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
-  /** plan/userId から TextGen・provider・model を解決する（server配線は resolveTextProvider）。 */
+  /**
+   * plan/userId から TextGen・provider・model を解決する（server配線は resolveTextProvider）。
+   *
+   * `purpose: "mechanical"` は**裏方の処理用**（T-M8-334）。本文を作るのは既定の解決で、
+   * 文字数オーバーの短縮（PT-FIX）だけ安いモデルへ寄せる。
+   */
   resolveProvider: (input: {
     plan: string;
     userId: string;
     deadline: Deadline;
+    purpose?: "mechanical";
   }) => Promise<{ textGen: TextGen; provider: Provider; model: string }>;
   /** 実行前提の入力収集（server配線は gatherExecutionPrereqInputs）。 */
   gatherPrereqInputs: (
@@ -428,21 +439,38 @@ const hasInputUrl = Boolean(job.input.source_url);
     deadline,
   });
 
-  // GEN-FIX 短縮（親jobと同じproviderで実行し、usageは親jobへ合算）。
+  /*
+    GEN-FIX 短縮（usageは親jobへ合算）。**意味と口調を変えずに縮めるだけ**なので、
+    本文生成とは別に安いモデルを解決する（T-M8-334）。1文字も超えなければ呼ばれないため、
+    **実際に短縮が要るときだけ**解決する（毎回2回キーを引かない）。
+    単価の記録も短縮に使ったモデルで行う——親のモデルで記録すると原価台帳がずれる（原則4）。
+  */
   const fixCalls: ProviderCall[] = [];
+  let mechanical: { textGen: TextGen; provider: Provider; model: string } | null = null;
+  /** 裏方用の安いproviderを1度だけ解決する（短縮とJSON整形で共用）。 */
+  const resolveMechanical = async () => {
+    mechanical ??= await deps.resolveProvider({
+      plan: job.plan,
+      userId: job.user_id,
+      deadline,
+      purpose: "mechanical",
+    });
+    return mechanical;
+  };
   const shorten = async (text: string, limit: number): Promise<string> => {
+    const fixProvider = await resolveMechanical();
     const start = now();
-    const out = await textGen.generate({
+    const out = await fixProvider.textGen.generate({
       system: [],
       user: PT_FIX.replaceAll("{{limit}}", String(limit)).replaceAll("{{post}}", text),
       timeoutMs: deadline.callTimeoutMs(),
     });
     fixCalls.push(
       toProviderCall(out, {
-        model,
+        model: fixProvider.model,
         operation: "text_generation",
         latencyMs: now() - start,
-        estimatedCostUsd: estimateProviderCost(out.provider, out.usage),
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage, fixProvider.model),
       }),
     );
     return out.text.trim();
@@ -467,6 +495,11 @@ const hasInputUrl = Boolean(job.input.source_url);
       model,
       operation: "text_generation",
       now,
+      // JSONとして読めなかったときは、まず安いモデルで**形だけ**直す（T-M8-335）。
+      reformatProvider: async () => {
+        const on = await resolveMechanical();
+        return { provider: on.textGen, providerId: on.provider, model: on.model };
+      },
     });
   } catch (error) {
     if (error instanceof InvalidProviderOutputError) {
@@ -542,6 +575,10 @@ const hasInputUrl = Boolean(job.input.source_url);
       model,
       operation: "text_generation",
       now,
+      reformatProvider: async () => {
+        const on = await resolveMechanical();
+        return { provider: on.textGen, providerId: on.provider, model: on.model };
+      },
     });
     usageCalls.push(...retry.usage.calls);
     if (!retry.parsed.error) {
@@ -569,11 +606,13 @@ const hasInputUrl = Boolean(job.input.source_url);
   const inserted = await db.query<{ id: string }>(
     // **パターンの写しを明示的に入れる**（U2/U3）。名前・上限・引用必須をここで凍結するので、
     // 後からパターンを編集・削除しても履歴の表示と本文の再検証が変わらない。
+    // **予約は draft を作る瞬間に入れる**（T-M8-331）。生成後に別UPDATEで入れると、
+    // その間に落ちたとき「予約したはずが下書きのまま」になり、画面から説明できない。
     `insert into drafts
        (x_account_id, pattern_id, pattern_name, max_posts, max_posts_edit, requires_quote_url,
         thread, initial_thread, status, source_job_id,
-        source_news_item_id, parent_draft_id)
-     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10)
+        source_news_item_id, parent_draft_id, scheduled_at)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $7::jsonb, 'draft', $8, $9, $10, $11::timestamptz)
      on conflict (source_job_id) do nothing
      returning id`,
     [
@@ -588,6 +627,7 @@ const hasInputUrl = Boolean(job.input.source_url);
       jobId,
       job.input.news_item_id ?? null,
       job.input.parent_draft_id ?? null,
+      job.input.scheduled_at ?? null,
     ],
   );
   const draftId = inserted.rows[0]?.id ?? (await existingDraftId(db, jobId));
@@ -607,6 +647,8 @@ const hasInputUrl = Boolean(job.input.source_url);
   // AIクレジットを実費で精算（premium・T-M8-109）。見積もりreserveとの差分を調整する。
   await settleIfPremium(deps.runInTx, {
     plan: job.plan,
+    userId: job.user_id,
+    xAccountId: job.x_account_id,
     jobId,
     type: "generation",
     estimatedCostUsdTotal: usage.estimated_cost_usd_total,

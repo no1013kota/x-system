@@ -74,28 +74,28 @@ describe("personaSettingsSchema", () => {
 });
 
 describe("base md generation", () => {
-  it("creates the six headings exactly once in order", () => {
+  it("creates the five headings exactly once in order", () => {
     const content = generateInitialBaseMd(validSettings());
-    const headings = [...content.matchAll(/^## ([1-6])\./gm)].map(
+    const headings = [...content.matchAll(/^## ([1-9])\./gm)].map(
       (match) => match[1],
     );
-    expect(headings).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect(headings).toEqual(["1", "2", "3", "4", "5"]);
     expect(() => validateBaseMdStructure(content)).not.toThrow();
   });
 
-  it("writes settings into sections 1-4 and leaves 5-6 empty", () => {
+  it("writes settings into sections 1-4 and leaves 5 empty", () => {
     const content = generateInitialBaseMd(validSettings());
     expect(content).toContain("- 発信者: 中小企業向け業務改善コンサルタント");
     expect(content).toContain("- 主テーマ: 業務改善");
     expect(content).toContain("- 扱う範囲: AI、個人事業主向け");
     expect(content).toContain("- 文末: です・ます調");
-    expect(content).toMatch(/## 5\. 文体・自分らしさ\n\n## 6\. 参考にする型\n$/);
+    expect(content).toMatch(/## 5\. 参考にする型\n$/);
   });
 
-  it("rebuilds only sections 1-4 and preserves learned sections 5-6", () => {
+  it("rebuilds only sections 1-4 and preserves the hand-written section 5", () => {
     const current = generateInitialBaseMd(validSettings()).replace(
-      "## 5. 文体・自分らしさ\n\n## 6. 参考にする型",
-      "## 5. 文体・自分らしさ\n- 学習済みの文体\n\n## 6. 参考にする型\n- @example: 構成",
+      "## 5. 参考にする型\n",
+      "## 5. 参考にする型\n- @example: 構成\n",
     );
     const sectionFive = current.slice(current.indexOf("## 5."));
     const changed = validSettings();
@@ -110,8 +110,8 @@ describe("base md generation", () => {
     const generated = generateInitialBaseMd(validSettings());
     expect(baseMdSettingsDiffer(generated, validSettings())).toBe(false);
     const learned = generated.replace(
-      "## 5. 文体・自分らしさ",
-      "## 5. 文体・自分らしさ\n- 学習済み",
+      "## 5. 参考にする型",
+      "## 5. 参考にする型\n- 学習済み",
     );
     expect(baseMdSettingsDiffer(learned, validSettings())).toBe(false);
     const manuallyEdited = generated.replace(
@@ -122,9 +122,9 @@ describe("base md generation", () => {
   });
 
   it.each([
-    "## 1. a\n## 2. b\n## 3. c\n## 4. d\n## 5. e",
-    "## 1. a\n## 2. b\n## 2. duplicate\n## 3. c\n## 4. d\n## 5. e\n## 6. f",
-    "## 1. a\n## 3. c\n## 2. b\n## 4. d\n## 5. e\n## 6. f",
+    "## 1. a\n## 2. b\n## 3. c\n## 4. d",
+    "## 1. a\n## 2. b\n## 2. duplicate\n## 3. c\n## 4. d\n## 5. e",
+    "## 1. a\n## 3. c\n## 2. b\n## 4. d\n## 5. e",
   ])("rejects a missing, duplicate, or out-of-order structure", (content) => {
     expect(() => validateBaseMdStructure(content)).toThrow(/順番どおり各1回/);
   });

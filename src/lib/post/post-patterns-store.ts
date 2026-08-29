@@ -267,6 +267,12 @@ async function requirePatternPrompt(
 }
 
 /** 名前の上限（要件02 §3.21 の CHECK と一致）。 */
+/**
+ * 投稿作成プロンプト（パターン）の**持てる件数**の上限（T-M8-350・運営者の指示 2026-08-28）。
+ * 数えるのはXアカウント1件あたり（既定パターンを含む）。
+ */
+export const PATTERN_MAX_COUNT = 20;
+
 export const PATTERN_NAME_MAX_CHARS = 30;
 /** 説明の上限（DBに CHECK は無いが、画面が破綻しない長さで止める）。 */
 export const PATTERN_DESCRIPTION_MAX_CHARS = 120;
@@ -397,6 +403,20 @@ export async function applyCreatePattern(
   validatePatternInput(input, { isSystemDefault: false });
   if (await nameTaken(db, input.xAccountId, input.name.trim(), null)) {
     throw new AppError("validation_error", { details: { reason: "name_taken" } });
+  }
+  /*
+    **上限は作る前に見る**（T-M8-350）。書き終えてから弾かれると書いた内容の行き先が無い。
+    画面も残数を出すが、ここでも見る（画面だけの制限は迂回できる）。
+  */
+  const counted = await db.query<{ n: string }>(
+    `select count(*)::text as n from post_patterns where x_account_id = $1`,
+    [input.xAccountId],
+  );
+  if (Number(counted.rows[0]?.n ?? "0") >= PATTERN_MAX_COUNT) {
+    throw new AppError("validation_error", {
+      message: `投稿作成プロンプトは${PATTERN_MAX_COUNT}件までです。使わないものを削除してから追加してください。`,
+      details: { reason: "pattern_limit", max: PATTERN_MAX_COUNT },
+    });
   }
 // 分量はプロンプトの「Nスレッド目」から読む（T-M8-132）。読み取れなければ全体の上限まで許す。
   const maxPosts = maxPostsFromPrompt(input.prompt ?? "");

@@ -90,7 +90,6 @@ describe("core tables schema & constraints", () => {
             "profiles",
             "user_api_keys",
             "x_accounts",
-            "base_md_versions",
             "prompt_templates",
             "learning_sources",
             "news_items",
@@ -98,7 +97,6 @@ describe("core tables schema & constraints", () => {
         ],
       );
       expect(rows.map((r) => r.table_name).sort()).toEqual([
-        "base_md_versions",
         "learning_sources",
         "news_items",
         "profiles",
@@ -143,26 +141,7 @@ describe("core tables schema & constraints", () => {
     });
   });
 
-  it("rejects duplicate (x_account_id, version) on base_md_versions", async () => {
-    await inTx(async (c) => {
-      const uid = await makeProfile(c);
-      const xid = await makeXAccount(c, uid);
-      await c.query(
-        `insert into base_md_versions (x_account_id, version, content, change_source)
-         values ($1, 1, 'a', 'settings')`,
-        [xid],
-      );
-      await expectViolation(c, () =>
-        c.query(
-          `insert into base_md_versions (x_account_id, version, content, change_source)
-           values ($1, 1, 'b', 'learning')`,
-          [xid],
-        ),
-      );
-    });
-  });
-
-  it("rejects base_md_version < 0 and version <= 0", async () => {
+  it("rejects base_md_version < 0", async () => {
     await inTx(async (c) => {
       const uid = await makeProfile(c);
       await expectViolation(c, () =>
@@ -170,14 +149,6 @@ describe("core tables schema & constraints", () => {
           `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md_version)
            values ($1, 'x', 'h', 'n', 'byok', -1)`,
           [uid],
-        ),
-      );
-      const xid = await makeXAccount(c, uid);
-      await expectViolation(c, () =>
-        c.query(
-          `insert into base_md_versions (x_account_id, version, content, change_source)
-           values ($1, 0, 'a', 'settings')`,
-          [xid],
         ),
       );
     });

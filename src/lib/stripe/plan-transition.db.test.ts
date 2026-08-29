@@ -73,10 +73,10 @@ describe("Stripe plan transition side effects", () => {
       "update profiles set active_x_account_id = $2 where id = $1",
       [userId, selectedId],
     );
+    // プラン変更で**本棚（アカウント.mdの控え）が消えない**ことを見る（履歴はT-M8-362で廃止）。
     await db.query(
-      `insert into base_md_versions
-        (x_account_id, version, content, change_source)
-       values ($1, 1, 'preserved base history', 'settings')`,
+      `insert into prompt_presets (x_account_id, kind, name, content, is_default)
+       values ($1, 'base_md', '控え', 'preserved preset body', false)`,
       [newestId],
     );
     const draftId = randomUUID();
@@ -134,13 +134,13 @@ describe("Stripe plan transition side effects", () => {
     ]);
     const preserved = await db.query(
       `select d.thread, d.tweet_ids, d.tweet_metrics,
-              (select count(*)::int from base_md_versions b
-                where b.x_account_id = $2) as base_history_count
+              (select count(*)::int from prompt_presets b
+                where b.x_account_id = $2) as base_preset_count
          from drafts d where d.id = $1`,
       [draftId, newestId],
     );
     expect(preserved.rows[0]).toMatchObject({
-      base_history_count: 1,
+      base_preset_count: 1,
       thread: [{ text: "preserved" }],
       tweet_ids: ["tweet_1"],
       tweet_metrics: { tweet_1: { likes: 7 } },

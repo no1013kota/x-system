@@ -278,7 +278,10 @@ test("投稿作成画面からパターンを追加でき、そのまま選択�
 
 await page.getByRole("button", { name: "パターンを追加" }).click();
   // 追加中は既存パターンのアクティブが外れる（T-M8-203。フォームが2つの対象を同時に指さない）。
-  await expect(page.getByRole("radio", { checked: true })).toHaveCount(0);
+  // **パターンの選択肢だけを見る**（T-M8-331で「生成したあと」のラジオが同じ画面に増えた）。
+  await expect(
+    page.getByRole("group", { name: "パターン" }).getByRole("radio", { checked: true }),
+  ).toHaveCount(0);
   // 追加中は生成できない（理由も画面に出る）。
   await expect(page.getByText("パターンを追加中です", { exact: false })).toBeVisible();
   // プロンプト欄には雛形が入っている（空欄から書き始めさせない）。

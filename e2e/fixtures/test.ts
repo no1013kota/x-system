@@ -6,6 +6,7 @@ import {
   type AccountOptions,
   type TestAccount,
 } from "./account";
+import { stubTurnstile } from "./turnstile";
 
 /**
  * E2Eの共通fixture（T-M7-05）。`accounts.create()` で作ったアカウントは、テスト終了時に
@@ -17,7 +18,22 @@ export interface AccountFactory {
   create(label: string, options?: AccountOptions): Promise<TestAccount>;
 }
 
-export const test = base.extend<{ accounts: AccountFactory }>({
+export const test = base.extend<{
+  accounts: AccountFactory;
+  /**
+   * 本物のTurnstileを使うか（T-M8-358）。既定は false ＝スタブ。
+   *
+   * **通しの実行でだけ落ちる原因が「毎回外部サービスへチャレンジを要求すること」だった**
+   * ため、既定はスタブにする（理由と見えなくなるものは `fixtures/turnstile.ts`）。
+   * 本物のウィジェットを見たいspecだけ `test.use({ realTurnstile: true })` を書く。
+   */
+  realTurnstile: boolean;
+}>({
+  realTurnstile: [false, { option: true }],
+  page: async ({ page, realTurnstile }, use) => {
+    if (!realTurnstile) await stubTurnstile(page);
+    await use(page);
+  },
   accounts: async ({}, use) => {
     const created: TestAccount[] = [];
     await use({
@@ -76,6 +92,13 @@ export async function horizontalOverflow(page: Page): Promise<number> {
  * ログインフォームから認証してAppへ入る。Turnstileはローカルのテストキー
  * （`1x00000000000000000000AA`＝常に通過）で自動的に解決されるため、hidden の
  * `captcha_token` に値が入るまで待ってから送信する（空のまま送ると検証エラーになる）。
+ *
+ * **トークンが来ないときは1度だけ読み込み直す**（T-M8-357）。テストキーでも
+ * ウィジェット本体は `challenges.cloudflare.com` から読み込むため、**フルスイートを
+ * 短時間に何度も回すと、途中からトークンが返らなくなる**（2026-08-28に観測。
+ * 1回目1件→2回目8件→3回目21件と、回すほど増えた。落ちたのは全て
+ * このログイン待ちで、単独で回すと必ず通る）。1回の読み込み直しでほぼ回復するので、
+ * **落ちる条件が分かっているものを「flaky」として放置しない**（CLAUDE.md）。
  */
 export async function signIn(
   page: Page,
@@ -89,12 +112,29 @@ export async function signIn(
   const form = page.getByTestId("login-form");
   await form.locator('input[type="email"]').fill(account.email);
   await form.locator('input[type="password"]').fill(account.password);
-  await expect
-    .poll(() => form.locator('input[name="captcha_token"]').inputValue(), {
-      timeout: 30_000,
-      message: "Turnstileのトークンが入らない（challenges.cloudflare.com へ到達できない可能性）",
-    })
-    .not.toBe("");
+  const token = () => form.locator('input[name="captcha_token"]').inputValue();
+  const waitForToken = async (timeout: number): Promise<boolean> => {
+    try {
+      await expect.poll(token, { timeout }).not.toBe("");
+      return true;
+      // 取れなかったことが判定結果（下で読み込み直す）
+    } catch {
+      return false;
+    }
+  };
+  if (!(await waitForToken(8_000))) {
+    await page.reload();
+    await form.locator('input[type="email"]').fill(account.email);
+    await form.locator('input[type="password"]').fill(account.password);
+    await expect
+      .poll(token, {
+        timeout: 25_000,
+        message:
+          "Turnstileのトークンが入らない（読み込み直しても取れない。" +
+          "challenges.cloudflare.com へ到達できないか、連続実行で絞られている可能性）",
+      })
+      .not.toBe("");
+  }
   await page.getByTestId("login-submit").click();
   // 契約状態によって遷移先が変わる（未契約は /plans。要件03 §2）。既定はアプリ本体。
   await page.waitForURL(options.waitFor ?? /\/app(\/|$|\?)/);
@@ -189,3 +229,13 @@ export async function confirmUrlFromMail(messageId: string): Promise<string> {
   return (match as RegExpExecArray)[0].replace(/&amp;/g, "&");
 }
 
+/**
+ * アカウントメニューを開く（T-M8-328）。
+ *
+ * **ヘッダーを廃止したので、ログアウトとXアカウント切替はサイドバー下部の
+ * アカウントメニューの中にある。** 各specが位置を直接知ると、次に置き場所を変えたとき
+ * 全部書き換えることになるので、到達手段をここへ1本化する。
+ */
+export async function openAccountMenu(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /@|アカウント/ }).last().click();
+}

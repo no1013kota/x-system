@@ -12,11 +12,16 @@ import {
 } from "@/app/actions/post-patterns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CardTitle, cardClassName } from "@/components/ui/card";
+import {
+  PromptAddPanel,
+  PromptListLead,
+  PromptPanelCard,
+} from "@/components/prompt/prompt-list-parts";
 import { Notice } from "@/components/ui/notice";
 import { useToast } from "@/components/ui/toast";
 import {
   NEW_PATTERN_PROMPT_TEMPLATE,
+  PATTERN_MAX_COUNT,
   type PatternOption,
   type PatternPromptView,
 } from "@/lib/post/post-patterns-store";
@@ -202,61 +207,24 @@ const [patterns, setPatterns] = useState(initialPatterns);
         プロンプトの編集はPCでの操作を推奨します。モバイルでは閲覧のみを想定しています。
       </p>
 
+      {/* 3区分で同じ形にする（T-M8-332）。説明＋件数＋再読み込みを同じ位置に置く。 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-body text-ink-2">
-          投稿作成とスケジュールで選べるパターンです。{patterns.length}件。
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {missingDefaults > 0 ? (
-            <Button disabled={pending} onClick={restoreDefaults} type="button" variant="subtle">
-              既定のパターンを戻す（{missingDefaults}件）
-            </Button>
-          ) : null}
-          {!creating ? (
-            <Button
-              disabled={pending}
-              onClick={() => setCreating(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
-              type="button"
-              variant="brand"
-            >
-              パターンを追加
-            </Button>
-          ) : null}
-        </div>
+        <PromptListLead
+          count={patterns.length}
+          lead="投稿作成とスケジュールで選べるパターンです。"
+          maxCount={PATTERN_MAX_COUNT}
+          onReload={() => void reload()}
+          pending={pending}
+        />
+        {missingDefaults > 0 ? (
+          <Button disabled={pending} onClick={restoreDefaults} size="sm" type="button" variant="subtle">
+            既定のパターンを戻す（{missingDefaults}件）
+          </Button>
+        ) : null}
       </div>
 
-      {creating ? (
-        <section className={`${cardClassName} p-4`}>
-          <CardTitle>新しいパターン</CardTitle>
-          {errors.new ? <Notice tone="danger">{errors.new}</Notice> : null}
-          <PatternFields
-            listPlaceholders
-            draft={creating}
-            idPrefix="new"
-            onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
-            promptRequired
-          />
-          <div className="mt-3 flex gap-2">
-            <Button disabled={pending} onClick={create} type="button" variant="brand">
-              追加
-            </Button>
-            <Button
-              disabled={pending}
-              onClick={() => {
-                setCreating(null);
-                setErrors((prev) => ({ ...prev, new: "" }));
-              }}
-              type="button"
-              variant="subtle"
-            >
-              キャンセル
-            </Button>
-          </div>
-        </section>
-      ) : null}
-
       {/* **全パターンを並べる。** プルダウンで1件ずつ選ぶ形はやめた（運営者の指示・2026-08-18）。 */}
-      <ul className="space-y-4">
+      <ul className="grid gap-4 lg:grid-cols-2">
         {patterns.map((item) => {
           const draft = drafts[item.id];
           if (!draft) return null;
@@ -264,18 +232,19 @@ const [patterns, setPatterns] = useState(initialPatterns);
           const isDefaultBody =
             defaultBody !== null && draft.prompt.trim() === defaultBody.trim();
           return (
-            <li className={`${cardClassName} p-4`} key={item.id}>
-              <div className="flex flex-wrap items-center gap-2">
-              {/* 見出しは**編集中の名前**を映す。保存前の名前を出すと、直したつもりが
-                    反映されていないように見える。 */}
-                <h3 className="text-body font-bold text-ink">{draft.name || item.name}</h3>
-              <Badge tone={item.hasCustomPrompt ? "brand" : "neutral"}>
-                  {item.hasCustomPrompt ? "プロンプト変更済み" : "既定のプロンプト"}
-                </Badge>
-                {item.isSystemDefault ? <Badge tone="neutral">はじめから用意</Badge> : null}
-                {item.requiresQuoteUrl ? <Badge tone="neutral">予約に使えません</Badge> : null}
-                {/* 「メイン＋スレッド最大N・編集はNポストまで」の右上表記は出さない（運営者の指示 2026-08-22）。 */}
-              </div>
+            <PromptPanelCard
+              badges={
+                <>
+                  <Badge tone={item.hasCustomPrompt ? "brand" : "neutral"}>
+                    {item.hasCustomPrompt ? "プロンプト変更済み" : "既定のプロンプト"}
+                  </Badge>
+                  {item.isSystemDefault ? <Badge tone="neutral">はじめから用意</Badge> : null}
+                  {item.requiresQuoteUrl ? <Badge tone="neutral">予約に使えません</Badge> : null}
+                </>
+              }
+              key={item.id}
+              title={draft.name || item.name}
+            >
 
               {errors[item.id] ? (
                 <div className="mt-2">
@@ -313,9 +282,54 @@ const [patterns, setPatterns] = useState(initialPatterns);
                   onConfirm={() => remove(item)}
                 />
               </div>
-            </li>
+            </PromptPanelCard>
           );
         })}
+
+        {creating ? (
+          <PromptPanelCard title="新しいパターン">
+            {errors.new ? (
+              <div className="mt-2">
+                <Notice tone="danger">{errors.new}</Notice>
+              </div>
+            ) : null}
+            <PatternFields
+              listPlaceholders
+              draft={creating}
+              idPrefix="new"
+              onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
+              promptRequired
+            />
+            <div className="mt-3 flex gap-2">
+              <Button disabled={pending} onClick={create} type="button" variant="brand">
+                追加
+              </Button>
+              <Button
+                disabled={pending}
+                onClick={() => {
+                  setCreating(null);
+                  setErrors((prev) => ({ ...prev, new: "" }));
+                }}
+                type="button"
+                variant="subtle"
+              >
+                キャンセル
+              </Button>
+            </div>
+          </PromptPanelCard>
+        ) : (
+          /* 追加は一覧の最後（T-M8-331/332）。「選ぶ」と「増やす」を同じ並びに置く。 */
+          <PromptAddPanel
+            disabled={pending || patterns.length >= PATTERN_MAX_COUNT}
+            hint={
+              patterns.length >= PATTERN_MAX_COUNT
+                ? `上限の${PATTERN_MAX_COUNT}件です。使わないものを削除すると追加できます`
+                : "自分の型を作って投稿作成・スケジュールで選べるようにする"
+            }
+            label="パターンを追加"
+            onClick={() => setCreating(emptyPatternDraft(NEW_PATTERN_PROMPT_TEMPLATE))}
+          />
+        )}
       </ul>
     </div>
   );

@@ -2,6 +2,7 @@ import "server-only";
 
 import { canSendViaSmtp } from "./smtp-guard";
 import { env } from "@/lib/env";
+import { EXPECTED_SENDER_EMAIL, EXPECTED_SENDER_NAME } from "@/lib/ops/auth-url-status";
 
 /**
  * 運営者への状態メールを送る（T-M8-164）。
@@ -16,8 +17,8 @@ export async function sendOperatorMail(msg: {
   text: string;
   to: string;
 }): Promise<void> {
-  if (!env.SMTP_HOST || !env.EMAIL_FROM) {
-    console.warn("[operator-mail] SMTPまたは差出人が未設定のため送信をskipしました");
+  if (!env.SMTP_HOST) {
+    console.warn("[operator-mail] SMTPが未設定のため送信をskipしました");
     return;
   }
   if (!canSendViaSmtp({ appEnv: env.APP_ENV, host: env.SMTP_HOST })) {
@@ -35,7 +36,12 @@ export async function sendOperatorMail(msg: {
     auth: { user: env.SMTP_USER, pass: env.SMTP_APP_PASSWORD },
   });
   await transporter.sendMail({
-    from: env.EMAIL_FROM,
+    /*
+      **Exos AIから出るメールはすべて同じ差出人**（T-M8-339・運営者の指示 2026-08-27）。
+      envを入れ忘れた環境で運営者個人のアドレスから出るのを防ぐため、既定をコード側に持つ
+      （原則3）。envは緊急の差し替え用に残す。
+    */
+    from: env.EMAIL_FROM ?? `${EXPECTED_SENDER_NAME} <${EXPECTED_SENDER_EMAIL}>`,
     to: msg.to,
     subject: msg.subject,
     text: msg.text,

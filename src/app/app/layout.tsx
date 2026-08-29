@@ -7,15 +7,13 @@ import {
   markNotificationReadAction,
 } from "@/app/actions/notifications";
 import { setActiveXAccountAction } from "@/app/actions/x-accounts";
+import { AccountMenu } from "@/components/app-shell/account-menu";
+import { ACCOUNT_MENU_SETTINGS_LINKS } from "@/app/app/settings/tabs";
 import { AppNavigation } from "@/components/app-shell/app-navigation";
 import { BrandLogo } from "@/components/brand/brand-logo";
-import { CurrentScreenTitle } from "@/components/app-shell/current-screen-title";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
-import { SignOutButton } from "@/components/app-shell/sign-out-button";
-import { XAccountSwitcher } from "@/components/app-shell/x-account-switcher";
 import { PortalButton } from "@/components/billing/portal-button";
 import { LegalFooter } from "@/components/legal-footer";
-import { Icon } from "@/components/ui/icon";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import {
   emptyAppShellData,
@@ -60,40 +58,33 @@ export default async function AppLayout({
           未契約の利用者はそもそも `/plans` に留められる（要件03 §2）ため、常設の導線は要らない。
         */}
         <AppNavigation />
+
+        {/*
+          **ヘッダーを廃止したので、その導線をここへ集めた**（T-M8-328・運営者の指示 2026-08-27）。
+          お知らせとアカウント（Xアカウント切替・設定の各タブ・ログアウト）を最下部に置く。
+          設定はナビの1枠を使うほど毎日触るものではないため、アカウントの中へ畳んだ。
+        */}
+        <div className="mt-auto space-y-1 border-t border-hairline p-2">
+          <NotificationBell
+            initialCursor={notificationCursor}
+            initialItems={notifications}
+            initialUnread={unreadCount}
+            listNotificationsAction={listNotificationsAction}
+            markAllNotificationsReadAction={markAllNotificationsReadAction}
+            markNotificationReadAction={markNotificationReadAction}
+            sidebar
+          />
+          <AccountMenu
+            accounts={switcherAccounts}
+            activeId={activeAccountId}
+            settingsLinks={ACCOUNT_MENU_SETTINGS_LINKS}
+            signOutAction={signOut}
+            switchAccountAction={setActiveXAccountAction}
+          />
+        </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-20 lg:pb-0">
-        {/* トップバー54px。左=現在の画面名、右=通知・Xアカウント（デザイン §レイアウト骨格）。 */}
-        <header className="sticky top-0 z-20 flex h-[54px] items-center gap-3 border-b border-hairline bg-surface px-4 lg:px-6">
-          <BrandLogo className="lg:hidden" priority />
-          <CurrentScreenTitle />
-          <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <XAccountSwitcher
-              accounts={switcherAccounts}
-              activeId={activeAccountId}
-              switchAccountAction={setActiveXAccountAction}
-            />
-            <NotificationBell
-              initialCursor={notificationCursor}
-              initialItems={notifications}
-              initialUnread={unreadCount}
-              listNotificationsAction={listNotificationsAction}
-              markAllNotificationsReadAction={markAllNotificationsReadAction}
-              markNotificationReadAction={markNotificationReadAction}
-            />
-            <Link
-              aria-label="設定"
-              className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-card px-2 text-sm font-medium text-ink-2 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              // 先頭タブ（設定）へ入る。以前は課金・プランを指していたが、ヘッダの「設定」から
-              // 課金画面が開くのは行き先の予想と違う（2026-08-18 運営者の指示・T-M8-126）。
-              href="/app/settings"
-            >
-              <Icon name="tune" size={18} />
-              <span className="hidden md:inline">設定</span>
-            </Link>
-            <SignOutButton signOutAction={signOut} />
-          </div>
-        </header>
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-36 lg:pb-0">
 
         {banner ? (
           <aside
@@ -174,8 +165,34 @@ export default async function AppLayout({
         <LegalFooter className="mt-auto" />
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <AppNavigation mobile />
+      {/*
+        モバイル: ヘッダーを廃止したので、お知らせとアカウントを下部バーの上段へ置く
+        （T-M8-328）。ナビは7枠が上限なので同じ行には入れない。
+      */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <div className="flex items-center gap-1 border-b border-hairline px-2 py-1">
+          <BrandLogo className="mr-auto" priority />
+          <NotificationBell
+            initialCursor={notificationCursor}
+            initialItems={notifications}
+            initialUnread={unreadCount}
+            listNotificationsAction={listNotificationsAction}
+            markAllNotificationsReadAction={markAllNotificationsReadAction}
+            markNotificationReadAction={markNotificationReadAction}
+          />
+          <div className="w-[190px]">
+            <AccountMenu
+              accounts={switcherAccounts}
+              activeId={activeAccountId}
+              settingsLinks={ACCOUNT_MENU_SETTINGS_LINKS}
+              signOutAction={signOut}
+              switchAccountAction={setActiveXAccountAction}
+            />
+          </div>
+        </div>
+        <div className="px-1">
+          <AppNavigation mobile />
+        </div>
       </div>
     </div>
   );

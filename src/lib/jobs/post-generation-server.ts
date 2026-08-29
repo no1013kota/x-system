@@ -22,10 +22,10 @@ export async function postGenerationHandler(ctx: JobContext): Promise<void> {
     db: pooledDb,
     jobId: ctx.jobId,
     runInTx: runInPooledTx,
-    resolveProvider: async ({ plan, userId, deadline }) => {
+    resolveProvider: async ({ plan, userId, deadline, purpose }) => {
       const resolved = await resolveTextProvider(
         { plan: plan as PlanId, userId },
-        { deadline },
+        { deadline, purpose },
       );
       return {
         textGen: resolved.textGen,

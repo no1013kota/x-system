@@ -31,6 +31,15 @@ export function hourWindowKey(now: Date): string {
   )}T${pad(now.getUTCHours())}`;
 }
 
+/**
+ * UTCの20分バケット（`YYYY-MM-DDTHH:MM`）の窓key。ニュースBatchの取り込み用（T-M8-338）。
+ * 重複起動を同じ窓へ畳むためのもので、間隔そのものは `vercel.json` の cron が決める。
+ */
+export function twentyMinWindowKey(now: Date): string {
+  const m = Math.floor(now.getUTCMinutes() / 20) * 20;
+  return `${hourWindowKey(now)}:${pad(m)}`;
+}
+
 /** UTCの5分バケット（`YYYY-MM-DDTHH:MM`）の窓key。scheduler_tick用。 */
 export function fiveMinWindowKey(now: Date): string {
   const m = Math.floor(now.getUTCMinutes() / 5) * 5;
@@ -106,6 +115,8 @@ export interface SchedulerTickResult {
   affiliate: { settled: number; payoutsCreated: number };
   /** 契約期間の補完（1日1回・T-M8-258）。未注入・実行済みなら null。 */
   periodBackfill: { checked: number; updated: number; failed: number } | null;
+  /** Xトークンの先回り更新（1時間に1回・T-M8-359）。未注入・実行済みなら null。 */
+  xTokens: { targeted: number; refreshed: number; failed: number } | null;
 }
 
 /**
@@ -153,6 +164,13 @@ export async function runSchedulerTick(
     runPeriodBackfill?: (deps: {
       claimDay: (windowKey: string) => Promise<boolean>;
     }) => Promise<{ checked: number; updated: number; failed: number } | null>;
+    /**
+     * Xの連携を切らさないための先回り更新（T-M8-359）。**未注入なら動かない**（テスト・ローカル）。
+     * 実体は route が渡す（cron.ts を env 非依存に保つ）。1時間に1回。
+     */
+    runXTokenRefresh?: (deps: {
+      claimHour: (windowKey: string) => Promise<boolean>;
+    }) => Promise<{ targeted: number; refreshed: number; failed: number } | null>;
   } = {},
 ): Promise<SchedulerTickResult> {
   // (1) 期限切れschedule jobのcancel＋schedule_missed通知＋P-5(flag off)のcancel（要件04 §1/§7.2, T-M4-07）
@@ -228,6 +246,33 @@ export async function runSchedulerTick(
         return { sent: false } as OperatorAlertResult;
       })
     : { sent: false, skipped: "no_recipient" as const };
+
+  /*
+    (3''') Xの連携を切らさない（T-M8-359・運営者の指示 2026-08-28）。**定時トリガーは増やさない**
+    （原則3）。1時間に1回、期限が近いtokenを先回りで更新する——使わない日が続くと
+    refresh tokenが寝たまま古くなり、久しぶりに使ったときに要再連携になる（T-M8-96）。
+    利用者から見れば「何もしていないのに切れた」で、最も体験が悪い壊れ方をする。
+  */
+  const xTokens = opts.runXTokenRefresh
+    ? await opts
+        .runXTokenRefresh({
+          claimHour: (windowKey) =>
+            withTransaction(async (client) => {
+              const res = await client.query(
+                `insert into cron_runs (job_name, window_key)
+                 values ('x_token_refresh', $1)
+                 on conflict (job_name, window_key) do nothing`,
+                [windowKey],
+              );
+              return (res.rowCount ?? 0) > 0;
+            }),
+        })
+        .catch((err) => {
+          // token更新の失敗で tick 全体を止めない（予約投稿の方が優先度が高い）。
+          opts.onCleanupError?.("x_token_refresh", err);
+          return null;
+        })
+    : null;
 
   /*
     (3'') 招待報酬（T-M8-174・invite_cp.md §8/§9）。確認期間を過ぎた報酬の確定（1日1回）と、
@@ -336,6 +381,7 @@ export async function runSchedulerTick(
     operatorAlert,
     affiliate,
     periodBackfill,
+    xTokens,
     scheduledDrafts,
     scheduleRecovered,
     enqueued,

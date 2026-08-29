@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
@@ -8,9 +7,8 @@ import { appLockFor } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
-import { EmptyState, LockedState } from "@/components/app-shell/page-state";
+import { EmptyState } from "@/components/app-shell/page-state";
 import { TabNav } from "@/components/app-shell/tab-nav";
-import { UpgradePlanButton } from "@/components/billing/upgrade-plan-button";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { PortalButton } from "@/components/billing/portal-button";
 import { ResumePlanButton } from "@/components/billing/resume-plan-button";
@@ -18,26 +16,18 @@ import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
-import type { BaseMdVersionView } from "@/lib/base-md";
-import {
-  isLearningRunningForUser,
-  listBaseMdVersionsForUser,
-} from "@/lib/base-md-server";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
 import {
   DEFAULT_TONE_SETTINGS,
   baseMdSettingsDiffer,
+  extractBaseMdSection,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
-import type { PromptTemplateView } from "@/lib/prompts/prompt-templates";
-import { listPromptTemplatesForUser } from "@/lib/prompts/prompt-templates-server";
-import { listPatternsForUser } from "@/lib/post/post-patterns-server";
-import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
-import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
 import { getSettingsForUser } from "@/lib/settings-server";
+import { pooledQueryable } from "@/lib/db/pool";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
@@ -52,20 +42,15 @@ import {
 
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { ApiKeySettings } from "./api-key-settings";
-import { BaseMdEditor } from "./base-md-editor";
 import { LearningSourcesManager } from "./learning-sources-manager";
 import { PersonaSettingsForm } from "./persona-settings-form";
-import { PatternManager } from "./pattern-manager";
-import { PromptTemplatesEditor } from "./prompt-templates-editor";
 import { SettingsPreferences } from "./settings-preferences";
 import {
-  PROMPT_SECTIONS,
   SETTINGS_TABS,
-  normalizePromptSection,
   normalizeSettingsTab,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
+import { Card, CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
@@ -86,6 +71,8 @@ import { xRedirectUri } from "@/lib/x/oauth-server";
  * AIモデル設定／プロンプト（アカウント.md・投稿作成・画像生成）。
  * 問い合わせタブは廃止（2026-08-15 運営者の指示）。旧slugは tabs.ts のエイリアスが受ける。
  */
+
+const pooledDb = pooledQueryable();
 
 export const metadata: Metadata = {
   title: `設定 | ${APP_NAME}`,
@@ -109,27 +96,6 @@ interface SettingsPageProps {
   }>;
 }
 
-interface BillingProfile {
-  active_x_account_id: string | null;
-  ai_purpose_config: unknown;
-  cancel_at_period_end: boolean;
-  current_period_end: string | null;
-  /** ログイン中のメールアドレス（T-M8-95。どのアカウントで入っているかを確認できるように出す）。 */
-  email: string | null;
-  plan: PlanId | null;
-  /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
-  scheduled_plan: PlanId | null;
-  scheduled_plan_at: string | null;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  /** トライアル終了日（解約後の「残り期間で再開」の判定に使う・T-M8-278）。 */
-  trial_ends_at: string | null;
-  /** 適用中の割引（T-M8-279）。プラン名の下に「いつまで・いくら」を出す。 */
-  discount_percent_off: number | null;
-  discount_amount_off_jpy: number | null;
-  discount_ends_at: string | null;
-  subscription_status: string;
-}
 
 interface AccountRow {
   base_md: string;
@@ -137,6 +103,8 @@ interface AccountRow {
   handle: string;
   id: string;
   settings: unknown;
+  /** 参考ソースから作った保存前の提案（T-M8-349）。無ければ null。 */
+  settings_proposal: unknown;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -175,26 +143,24 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (!user) redirect("/login?next=/app/settings");
 
   const tab = normalizeSettingsTab(params.tab);
-  const promptSection = normalizePromptSection(params.sec);
   const admin = createSupabaseAdminClient();
   // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
-  const [result, xAccounts, userSettings] = await Promise.all([
-    admin
-      .from("profiles")
-      .select(
-        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, scheduled_plan, scheduled_plan_at, trial_ends_at, discount_percent_off, discount_amount_off_jpy, discount_ends_at",
-      )
-      .eq("id", user.id)
-      .maybeSingle<BillingProfile>(),
+  /*
+    **profiles は1リクエストにつき1回だけ読む**（T-M8-286→T-M8-361）。以前はここで
+    PostgREST経由の別クエリを投げていたが、App Shell がすでに同じ行をpooled接続で読んでいる。
+    往復が1つ丸ごと無駄で、**実測でいちばん遅い画面**がこの設定タブだった。
+  */
+  const [profile, xAccounts, userSettings] = await Promise.all([
+    loadRequestProfile(user.id),
     tab === "general" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
     tab === "general"
       ? getSettingsForUser(user.id)
       : Promise.resolve(null as UserSettings | null),
   ]);
-  if (result.error || !result.data) {
+  // 行が無い（profile未作成）と取得の失敗は `loadRequestProfile` が区別する（失敗はthrow）。
+  if (!profile) {
     throw new Error("Billing profile could not be loaded.");
   }
-  const profile = result.data;
   // 課金・プラン以外のタブを開けるか（T-M8-269→T-M8-273）。同じ profile から判定し、追加のDB往復を作らない。
   const lock = appLockFor(profile.subscription_status);
   /*
@@ -287,10 +253,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
         )
       : Promise.resolve(null as UsageSummary | null),
-    (tab === "account" || tab === "prompts") && profile.active_x_account_id
+    tab === "account" && profile.active_x_account_id
       ? admin
           .from("x_accounts")
-          .select("id, handle, settings, base_md, base_md_version")
+          .select("id, handle, settings, settings_proposal, base_md, base_md_version")
           .eq("id", profile.active_x_account_id)
           .eq("user_id", user.id)
           .eq("status", "active")
@@ -312,6 +278,31 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // アカウント設定タブ: 保存済み設定と、アカウント.mdとの差分有無・参考ソース。
   const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
   const initialSettings = parsedSettings?.success ? parsedSettings.data : EMPTY_SETTINGS;
+  /*
+    保存前の提案（T-M8-349）。**読めない提案は無かったことにする**——形が変わった古い提案で
+    フォームを埋めると、利用者は自分が書いた覚えのない値を保存することになる。
+  */
+  const parsedProposal =
+    account && account.settings_proposal
+      ? personaSettingsSchema.safeParse(account.settings_proposal)
+      : null;
+  const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
+  /*
+    フォームを作り直す合図（T-M8-356/357）。**中身が変わったら作り直す**——
+    「提案があるか」だけを見ていると、保存せずに2回続けて反映したとき
+    （2回目の提案で欄が更新されない）に、また「押しても入らない」に戻る。
+    文字列そのものをkeyにすると長くなるので、長さと文字コードの畳み込みで十分。
+  */
+  const proposalKey = settingsProposal
+    ? `p${[...JSON.stringify(settingsProposal)].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
+    : "saved";
+  /*
+    アカウント.mdの手書きセクション5・6（T-M8-355）。**mdから読む**——設定には持っていない
+    （生成されるのは1〜4だけ）。まだmdが無ければ空欄から書き始められる。
+  */
+  const freeSections = {
+    referenceStyle: account ? extractBaseMdSection(account.base_md, 5) : "",
+  };
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
     try {
@@ -320,51 +311,35 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       initialDifference = true;
     }
   }
-  // 参考ソースはアカウント設定タブの一番下に置く（T-M8-103）。
+  // 参考ソースはアカウント設定タブの**先頭**に置く（T-M8-344。設定を作る入口だから）。
   let learningSources: LearningSourceView[] = [];
-  if (tab === "account" && account && account.base_md_version >= 1) {
-    learningSources = await listLearningSourcesForUser(user.id, account.id);
+  /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
+  let learningApplying = false;
+  /*
+    **設定が未保存でも読む**（T-M8-349）。以前は `base_md_version >= 1` を条件にしていたため、
+    参考ソースを登録しても一覧が空のままで、「登録できたのか」が画面から分からなかった
+    ——参考ソースはアカウント設定を作る入口なので、未保存のときこそ要る（原則1）。
+  */
+  if (tab === "account" && account) {
+    /*
+      **2本を同時に投げる**（T-M8-355）。互いに依存しないので直列にすると往復が2回ぶん
+      待ち時間に乗る。片方が失敗したときにもう片方だけで描かないよう、Promise.all で揃える。
+    */
+    const [sources, running] = await Promise.all([
+      listLearningSourcesForUser(user.id, account.id),
+      pooledDb.query<{ n: number }>(
+        `select count(*)::int as n from generation_jobs
+          where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
+            and status in ('queued', 'running')`,
+        [account.id],
+      ),
+    ]);
+    learningSources = sources;
+    learningApplying = (running.rows[0]?.n ?? 0) > 0;
   }
 
   // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
-  let baseMdHistory: BaseMdVersionView[] = [];
-  let baseMdLearningRunning = false;
-  if (
-    tab === "prompts" &&
-    promptSection === "account-md" &&
-    account &&
-    promptEditablePlan(plan ?? "") &&
-    account.base_md_version >= 1
-  ) {
-    [baseMdHistory, baseMdLearningRunning] = await Promise.all([
-      listBaseMdVersionsForUser(user.id, account.id),
-      isLearningRunningForUser(user.id, account.id),
-    ]);
-  }
-let promptTemplates: PromptTemplateView[] = [];
-  /** 投稿作成プロンプト＝パターン管理（T-M8-129 U4b）。プルダウンをやめ全件並べる。 */
-  let patterns: PatternOption[] = [];
-  let patternPrompts: Record<string, PatternPromptView> = {};
-  let systemDefaultPrompts: Record<string, string> = {};
-  if (tab === "prompts" && promptSection !== "account-md" && account && promptEditablePlan(plan ?? "")) {
-    if (promptSection === "image-prompt") {
-      const res = await listPromptTemplatesForUser(user.id);
-      promptTemplates = res.templates.filter((tpl) => tpl.kind === "image");
-    } else {
-      const res = await listPatternsForUser(user.id);
-      patterns = res.patterns;
-      patternPrompts = res.prompts;
-      // 「プロンプトを既定に戻す」の比較元。既定パターンだけが持つ。
-      systemDefaultPrompts = Object.fromEntries(
-        res.patterns
-          .filter((option) => option.isSystemDefault && option.seedKey !== null)
-          .map((option) => [
-            option.id,
-            SYSTEM_DEFAULT_TEMPLATES[option.seedKey as PromptTemplateKind] ?? "",
-          ]),
-      );
-    }
-  }
+  /* プロンプト関連の読み込みは `/app/prompts` へ移設（T-M8-328）。 */
   let validUserProviders: AiKeyProvider[] = [];
   if (purposeKeys) {
     validUserProviders = purposeKeys
@@ -547,23 +522,50 @@ let promptTemplates: PromptTemplateView[] = [];
             <NoAccountState />
           ) : (
             <div className="space-y-8">
-              <PersonaSettingsForm
-                accountHandle={account.handle}
-                baseMdVersion={account.base_md_version}
-                initialDifference={initialDifference}
-                initialSettings={initialSettings}
-                // アカウント切替でstateを捨てる（前アカウントの内容を新アカウントへ保存させない・T-M8-196）。
-                key={account.id}
-                xAccountId={account.id}
-              />
-              {/* 参考ソースは学習の反映先（アカウント.md）ができてから出す（T-M8-103）。 */}
-              {account.base_md_version >= 1 ? (
+              {/*
+                **どのアカウントを直しているかを最初に言う**（T-M8-349・運営者の指示 2026-08-28）。
+                アカウント切替を使う人にとっては、編集を始める前に見えている必要がある。
+              */}
+              <p className="text-caption text-ink-3">
+                対象アカウント: <strong className="text-ink-2">@{account.handle}</strong>
+                {account.base_md_version >= 1
+                  ? "（保存すると次の生成から反映されます）"
+                  : "（まだ保存されていません）"}
+              </p>
+
+              {/*
+                **1枚のカードに「参考ソース → アカウント設定」の順で入れる**
+                （T-M8-356・運営者の指示 2026-08-28）。参考ソースはペルソナの上に置く——
+                材料を入れてから中身を確認する流れが、上から下へ一直線になる。
+                設定が未保存でも使える（T-M8-344。真似したいアカウントを挙げるところから始められる）。
+              */}
+              <div className={`${cardClassName} space-y-6 p-5 sm:p-6`}>
                 <LearningSourcesManager
+                  initialApplying={learningApplying}
                   initialNowMs={nowMs}
                   initialSources={learningSources}
+                  key={`sources:${account.id}`}
+                  settingsMissing={account.base_md_version < 1}
                   xAccountId={account.id}
                 />
-              ) : null}
+                <PersonaSettingsForm
+                  baseMdVersion={account.base_md_version}
+                  initialDifference={initialDifference}
+                  initialReferenceStyle={freeSections.referenceStyle}
+                  initialSettings={initialSettings}
+                  /*
+                    **提案が届いたら作り直す**（T-M8-356）。フォームの初期値は
+                    `useState` なので、`router.refresh()` で新しい提案を渡しても
+                    **すでにmountされた画面は古い値のまま**だった——反映を押しても
+                    欄に何も入らない、という形で静かに壊れていた（運営者の報告 2026-08-28）。
+                    アカウント切替でもstateを捨てる（前アカウントの内容を新アカウントへ
+                    保存させない・T-M8-196）。
+                  */
+                  key={`${account.id}:${proposalKey}`}
+                  proposal={settingsProposal}
+                  xAccountId={account.id}
+                />
+              </div>
             </div>
           )
         ) : tab === "purposes" ? (
@@ -578,60 +580,7 @@ let promptTemplates: PromptTemplateView[] = [];
             plan={plan}
             validUserProviders={validUserProviders}
           />
-        ) : !promptEditablePlan(plan ?? "") ? (
-          // プロンプトタブは全プランで編集可（T-M8-168）。未契約（plan NULL）だけロックする。
-          <LockedState
-            action={<UpgradePlanButton enabled={hasStripeCustomer} />}
-            description="学習・設定の結果はアカウント.mdに反映され、投稿生成に使われています。ご契約中のプランでは内容とプロンプトを直接確認・編集できます。"
-            title="アカウント.md・プロンプトの確認・編集にはご契約が必要です"
-          />
-        ) : !account ? (
-          <NoAccountState />
-        ) : (
-          <div className="space-y-4">
-            {/* プロンプトタブ内の区分（T-M8-104）。アカウント.mdを一番左に置く。 */}
-            <TabNav
-              active={promptSection}
-              hrefFor={(slug) => `/app/settings?tab=prompts&sec=${slug}`}
-              items={PROMPT_SECTIONS.map(([value, label]) => ({ value, label }))}
-              label="プロンプトの区分"
-            />
-            {account.base_md_version < 1 ? (
-              <EmptyState
-                actionHref="/app/settings?tab=account"
-                actionLabel="アカウント設定へ"
-                description="編集対象のアカウント.mdを、先にアカウント設定から保存してください。"
-                title="先にアカウント設定を保存してください"
-              />
-            ) : promptSection === "account-md" ? (
-              <BaseMdEditor
-                initialContent={account.base_md}
-                initialHistory={baseMdHistory}
-                initialVersion={account.base_md_version}
-                // アカウント切替でstateを捨てる（実ブラウザ再現: 切替後もtextareaが前アカウントの本文のまま
-                // 保存でき、別アカウントのアカウント.mdを上書きできた・T-M8-196）。
-                key={account.id}
-                learningRunning={baseMdLearningRunning}
-                xAccountId={account.id}
-              />
-            ) : promptSection === "image-prompt" ? (
-              <PromptTemplatesEditor
-                initialTemplates={promptTemplates}
-                // アカウント切替でstateを確実に捨てる（前アカウントの本文を持ち越さない・T-M8-196）。
-                key={`${promptSection}:${account.id}`}
-                xAccountId={account.id}
-              />
-            ) : (
-              <PatternManager
-                initialPatterns={patterns}
-                initialPrompts={patternPrompts}
-                key={`${promptSection}:${account.id}`}
-                systemDefaultPrompts={systemDefaultPrompts}
-                xAccountId={account.id}
-              />
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
     </main>
   );

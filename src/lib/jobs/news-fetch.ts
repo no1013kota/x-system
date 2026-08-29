@@ -2,6 +2,8 @@ import { NEWS_FETCH_CATEGORIES, type NewsCategory } from "../news";
 import { canonicalizeSourceUrl } from "../news-url";
 import type { Queryable } from "../x/token-refresh";
 import type { NewsItemOut, NewsResearchResult } from "./news-research";
+import { selectNewsItems } from "./news-research";
+import type { CollectedCategory } from "./news-batch";
 import { providerFailureCode, providerRawOutputOf } from "../ai/pipeline";
 import { formatFailureRawError } from "../ai/raw-error";
 
@@ -144,6 +146,86 @@ async function recordOutcome(
       detail.providerRawError,
     ],
   );
+}
+
+/**
+ * Batchの結果を取り込んで保存する（T-M8-338）。
+ *
+ * **同期実行と同じ選別・同じ記録**を通す（`selectNewsItems` / `saveItems` / `recordOutcome`）。
+ * 別々に書くと「同期では捨てる記事がBatchでは残る」ようなズレが生まれ、
+ * 画面からは説明できない差になる。
+ *
+ * 新しさの判定の基準時刻は**投げたとき**（`submittedAt`）にする——取り込みは任意の時刻に
+ * 走るので、そのときの時刻で判定すると投げたときと違う基準で記事を落とす。
+ */
+export async function collectNewsBatch(deps: {
+  db: Queryable;
+  windowKey: string;
+  submittedAt: Date;
+  lookbackHours: number;
+  collected: readonly CollectedCategory[];
+  /** 応答テキストの検証（`newsEnvelopeSchema` を通す）。落ちたら失敗として記録する。 */
+  parseEnvelope: (text: string) => { ok: true; items: unknown[] } | { ok: false; reason: string };
+}): Promise<NewsFetchResult> {
+  const categories: NewsFetchCategoryResult[] = [];
+  for (const entry of deps.collected) {
+    let outcome: NewsFetchCategoryResult;
+    let detail: OutcomeFailureDetail = { errorCode: null, providerRawError: null };
+    if (!entry.ok || !entry.text) {
+      outcome = {
+        category: entry.category,
+        ok: false,
+        fetched: 0,
+        saved: 0,
+        dropped: 0,
+        futureAdjusted: 0,
+        dropReasons: {},
+      };
+      detail = { errorCode: entry.errorCode ?? "batch_failed", providerRawError: null };
+    } else {
+      const parsed = deps.parseEnvelope(entry.text);
+      if (!parsed.ok) {
+        outcome = {
+          category: entry.category,
+          ok: false,
+          fetched: 0,
+          saved: 0,
+          dropped: 0,
+          futureAdjusted: 0,
+          dropReasons: {},
+        };
+        // 応答の中身は台帳にだけ残す（HTTP応答へは出さない・要件01 §8）。
+        detail = { errorCode: "invalid_output", providerRawError: parsed.reason };
+      } else {
+        const selected = selectNewsItems(entry.category, parsed.items, {
+          now: deps.submittedAt,
+          hours: deps.lookbackHours,
+        });
+        const saved = await saveItems(deps.db, entry.category, selected.items);
+        outcome = {
+          category: entry.category,
+          ok: true,
+          fetched: selected.items.length,
+          saved,
+          dropped: selected.dropped,
+          futureAdjusted: selected.futureAdjusted,
+          dropReasons: selected.dropReasons,
+        };
+        detail = { errorCode: null, providerRawError: selected.providerRawError };
+      }
+    }
+    await recordOutcome(deps.db, deps.windowKey, outcome, detail);
+    categories.push(outcome);
+  }
+  return {
+    categories,
+    totalSaved: categories.reduce((sum, r) => sum + r.saved, 0),
+    emptyCategories: categories
+      .map((r) => ({ category: r.category, reason: emptyReasonOf(r) }))
+      .filter((e): e is { category: NewsCategory; reason: "no_match" | "all_dropped" | "failed" } =>
+        e.reason !== null,
+      ),
+  };
 }
 
 /** items を最大 limit 並列で worker に流す固定サイズプール。 */

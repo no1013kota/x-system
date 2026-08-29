@@ -92,10 +92,24 @@ describe("checkExecutionPrerequisites — BYOK", () => {
     expect(r?.missing).toEqual(["image_ai_key"]);
   });
 
-  it("requires persona (base_md_version >= 1)", () => {
-    const r = checkExecutionPrerequisites(byok({ baseMdVersion: 0 }));
-    expect(r?.code).toBe("persona_required");
-    expect(r?.settingsPath).toBe("/app/settings?tab=account");
+  /**
+   * T-M8-337・運営者の指示 2026-08-27。**アカウント設定が未保存でも生成できる。**
+   * アカウント.mdは「誰として書くか」を鮮明にする補助であって、無ければ作れないものではない。
+   * 登録直後に設定を全部埋めさせる足止めの方が害が大きい。
+   */
+  it("アカウント設定が未保存でも生成をブロックしない", () => {
+    expect(checkExecutionPrerequisites(byok({ baseMdVersion: 0 }))).toBeNull();
+  });
+
+  /**
+   * T-M8-337。**生成の前提から外しても、初期設定ガイドからは消さない。**
+   * 前提の判定結果をそのままガイドに使うと、未保存なのに「完了」と表示されて
+   * 設定へ辿り着く導線が消える（実際にE2Eがこれを検出した）。
+   */
+  it("生成の前提から外しても、初期設定ガイドには未完了として残る", () => {
+    const items = buildSetupChecklist(byok({ baseMdVersion: 0 }));
+    const persona = items.find((i) => i.item === "persona");
+    expect(persona?.satisfied, "アカウント設定がガイドから消えている").toBe(false);
   });
 
   it("collects all missing items in precedence order", () => {
@@ -115,7 +129,6 @@ describe("checkExecutionPrerequisites — BYOK", () => {
       "x_account",
       "text_ai_key",
       "image_ai_key",
-      "persona",
     ]);
     expect(r?.code).toBe("subscription_required"); // primary = first
   });
@@ -147,16 +160,15 @@ describe("checkExecutionPrerequisites — premium", () => {
     ).toBeNull();
   });
 
-  it("still requires subscription, X connection, and persona", () => {
+  it("契約とX連携は引き続き必要（アカウント設定は必須ではない）", () => {
     expect(checkExecutionPrerequisites(premium({ subscriptionStatus: "unpaid" }))?.code).toBe(
       "subscription_required",
     );
     expect(checkExecutionPrerequisites(premium({ hasActiveXAccount: false }))?.code).toBe(
       "x_account_required",
     );
-    expect(checkExecutionPrerequisites(premium({ baseMdVersion: 0 }))?.code).toBe(
-      "persona_required",
-    );
+    // アカウント設定は前提から外れた（T-M8-337）。初期設定ガイドでは案内し続ける。
+    expect(checkExecutionPrerequisites(premium({ baseMdVersion: 0 }))).toBeNull();
   });
 });
 

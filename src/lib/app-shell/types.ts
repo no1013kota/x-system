@@ -9,6 +9,18 @@ export interface AppShellSwitcherAccount {
   profileImageUrl: string | null;
 }
 
+/**
+ * 操作対象のXアカウントを切り替えるServer Actionの形（T-M8-360）。
+ *
+ * **App Shellの型はここへ集める。** 以前は使われなくなったコンポーネント
+ * （`x-account-switcher.tsx`）に置いたままで、**中身が消えた後も型のためだけに
+ * ファイルが残っていた**。client componentは `@/app/actions/*` を直接importできない
+ * （`dependency-boundaries.test.ts`）ので、この形をpropsで受け取る。
+ */
+export type SwitchAccountAction = (input: {
+  x_account_id: string;
+}) => Promise<{ message: string; status: "error" | "success" }>;
+
 export interface AppShellData {
   activeAccountId: string | null;
   /** 解約予約中か。契約バナーのPortalButtonの出し分けに使う（T-M8-57）。 */

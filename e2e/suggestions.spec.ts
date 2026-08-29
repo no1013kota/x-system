@@ -85,15 +85,15 @@ test("分析レポートは総評・良かった投稿・アドバイスが画�
   // 2つの編集提案（fixtureはpremium）: アカウント.md提案と投稿作成プロンプト（T-M8-106）。
   await expect(page.getByText("アカウント.mdへの編集提案", { exact: false })).toBeVisible();
   await expect(page.getByText("E2E提案の中身", { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: "設定で編集する" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "プロンプト画面で編集する" })).toHaveAttribute(
     "href",
-    "/app/settings?tab=prompts&sec=account-md",
+    "/app/prompts?sec=account-md",
   );
   await expect(page.getByText("# タスク", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "コピー" })).toHaveCount(2);
-  await expect(page.getByRole("link", { name: "設定で保存する" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "プロンプト画面で保存する" })).toHaveAttribute(
     "href",
-    "/app/settings?tab=prompts&sec=post-prompt",
+    "/app/prompts?sec=post-prompt",
   );
 });
 

@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { pruneBaseMdVersions } from "./base-md-history";
+import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 
 import { withTransaction } from "@/lib/db/pool";
 import { AppError } from "@/lib/observability/errors";
@@ -8,6 +8,8 @@ import {
   generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
+  replaceFreeSections,
+  type FreeSections,
   type PersonaSettings,
 } from "./persona-settings";
 
@@ -22,6 +24,11 @@ interface PersonaSettingsAccountRow {
 export interface UpdatePersonaSettingsInput {
   expectedBaseMdVersion: number;
   settings: PersonaSettings;
+  /**
+   * 手で書くセクション5・6（T-M8-355）。**渡されなければ既存を1バイトも変えない**——
+   * 他の経路（学習・ロールバック・mdエディタ）が書いた内容を知らないうちに消さないため。
+   */
+  freeSections?: FreeSections;
   userId: string;
   xAccountId: string;
 }
@@ -80,16 +87,26 @@ export async function applyPersonaSettingsUpdate(
     });
   }
 
-  const baseMd =
+  const rebuilt =
     account.base_md_version === 0
       ? generateInitialBaseMd(settings)
       : rebuildSettingsSections(account.base_md, settings);
+  // 5・6の記入欄から来た内容があれば書き戻す（T-M8-355）。無ければ既存のまま。
+  const baseMd = input.freeSections
+    ? replaceFreeSections(rebuilt, input.freeSections)
+    : rebuilt;
   const version = account.base_md_version + 1;
   const update = await client.query(
+    /*
+      **保存したら提案は消す**（T-M8-349）。参考ソースからの反映は `settings_proposal` に
+      置かれ、この保存で確定する。残したままにすると、画面を開き直すたびに
+      「反映しました」が出続け、確定済みかどうかが分からなくなる（原則1）。
+    */
     `update x_accounts
         set settings = $3::jsonb,
             base_md = $4,
-            base_md_version = $5
+            base_md_version = $5,
+            settings_proposal = null
       where id = $1
         and user_id = $2
         and status = 'active'
@@ -108,18 +125,9 @@ export async function applyPersonaSettingsUpdate(
       details: { reason: "base_md_version_changed" },
     });
   }
-  await client.query(
-    `insert into base_md_versions
-      (x_account_id, version, content, change_source, summary)
-     values ($1, $2, $3, 'settings', $4)`,
-    [
-      account.id,
-      version,
-      baseMd,
-      version === 1 ? "アカウント設定から初版を作成" : "アカウント設定からセクション1〜4を更新",
-    ],
-  );
-  await pruneBaseMdVersions(client, account.id);
+  // 本棚の「使用中」へも写す（T-M8-332）。アカウント設定はセクション1〜4を書き換えるので、
+  // 写さないとプロンプト画面が古い本文を出したままになる。
+  await syncInUsePreset(client, { xAccountId: account.id, kind: "base_md", content: baseMd });
   return { baseMd, version };
 }
 

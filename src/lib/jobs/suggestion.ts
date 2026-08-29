@@ -228,6 +228,28 @@ export async function loadPreviousSuggestion(
  * 無いのに「大量に追加された」と誤認する（2026-08-15、実アカウントで2回連続で観測）。
  * posted_at_jst と created_at_jst は同じ `YYYY-MM-DD HH:mm` 形式なので辞書順比較でよい。
  */
+/**
+ * 前回レポートから**アカウント.md改訂案の全文を落とす**（T-M8-335・運営者の指示 2026-08-27）。
+ *
+ * 全文は最大5,000字あり、毎回そのまま送り返していた。だが**いまのアカウント.mdは
+ * `<account_md>` で別に渡している**ので、前回の「提案」の本文は要らない——
+ * 利用者が採用したなら `<account_md>` に入っており、採用しなかったなら
+ * もう一度同じ文章を見せる意味がない。何を提案したか（reason）だけ残す。
+ *
+ * **投稿作成プロンプトの全文は残す**——PT-SUGGESTが「前回のプロンプトを土台に磨く
+ * （ゼロから書き直さない）」と指示しており、そこは前回の本文が要る。
+ */
+function withoutAccountMdBody(advice: unknown): unknown {
+  if (typeof advice !== "object" || advice === null) return advice;
+  const record = advice as Record<string, unknown>;
+  const accountMd = record.account_md;
+  if (typeof accountMd !== "object" || accountMd === null) return advice;
+  const rest = Object.fromEntries(
+    Object.entries(accountMd as Record<string, unknown>).filter(([key]) => key !== "content"),
+  );
+  return { ...record, account_md: { ...rest, content_omitted: true } };
+}
+
 function renderPreviousBlock(previous: PreviousSuggestion | null, input: SuggestionInput): string {
   if (!previous) return "none";
   const createdAtJst = toJstLabel(previous.createdAt);
@@ -238,7 +260,7 @@ function renderPreviousBlock(previous: PreviousSuggestion | null, input: Suggest
     created_at_jst: createdAtJst,
     new_posts_since_previous: newPosts,
     summary: previous.summary,
-    advice: previous.advice,
+    advice: withoutAccountMdBody(previous.advice),
   });
 }
 

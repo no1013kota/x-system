@@ -11,6 +11,7 @@ import {
   discardDraftAction,
   reconcileDraftPostingAction,
 } from "@/app/actions/drafts";
+import { DraftImagePanel } from "./draft-image-panel";
 import {
   ScheduleDraftPanel,
   ScheduleDraftToggle,
@@ -20,7 +21,6 @@ import {
   getGenerationJobAction,
   publishDraftAction,
   regenerateDraftAction,
-  regenerateImageAction,
 } from "@/app/actions/generation-jobs";
 import { EmptyNotice } from "@/components/app-shell/page-state";
 import { Badge } from "@/components/ui/badge";
@@ -421,12 +421,19 @@ function DraftCard({
         <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
       ) : null}
 
-      {readyImage || imageFailed ? (
-        <ImageSection
+      {/*
+        **画像の欄は編集できる下書きなら常に出す**（T-M8-353・運営者の指示 2026-08-28）。
+        自分の画像を添えられるようになったので、いま画像が無い下書きでも入口が要る。
+      */}
+      {readyImage || imageFailed || editable ? (
+        <DraftImagePanel
+          canUpload={editable && !publishing}
+          draftId={draft.id}
           enabled={imageRegenEnabled && !publishing && !p5Disabled}
           failed={imageFailed && !readyImage}
+          hasImage={Boolean(readyImage)}
           imageUrl={readyImage?.signed_url}
-          draftId={draft.id}
+          uploaded={readyImage?.provider === "upload"}
         />
       ) : null}
 
@@ -456,118 +463,6 @@ function DraftCard({
         </ol>
       )}
     </li>
-  );
-}
-
-function ImageSection({
-  draftId,
-  imageUrl,
-  failed,
-  enabled,
-}: {
-  draftId: string;
-  imageUrl?: string;
-  failed: boolean;
-  enabled: boolean;
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [jobId, setJobId] = useState<string | null>(null);
-  const toast = useToast();
-
-  const running = pending || jobId !== null;
-
-  // 再生成jobを終端までpollする。成功でrefresh（新画像の署名URLを取り直す）。失敗は既存画像を維持。
-  // 取得できない状態が続いたら打ち切って伝える（T-M8-51）。
-  useEffect(() => {
-    if (!jobId) return;
-    const guard = createPollGuard();
-    const timer = setInterval(async () => {
-      const res = await getGenerationJobAction({ job_id: jobId });
-      const ok = res.status === "success" && Boolean(res.job);
-      if (guard.tick(ok) === "give-up") {
-        clearInterval(timer);
-        setJobId(null);
-        toast.show({ tone: "error", ...pollGiveUpMessage(guard.reason()) });
-        router.refresh();
-        return;
-      }
-      if (!ok || !res.job) return;
-      if (!TERMINAL.has(res.job.status)) return;
-      clearInterval(timer);
-      setJobId(null);
-      if (res.job.status === "succeeded") {
-        // 成功が無言だと「押しても何も起きない」ように見える（T-M8-16）。
-        toast.show({ tone: "success", title: "画像を再生成しました" });
-        router.refresh();
-      } else {
-        toast.show({
-          tone: "error",
-          title: "画像を再生成できませんでした",
-          description: "既存の画像はそのままです。",
-        });
-      }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [jobId, router, toast]);
-
-  function regenerate() {
-    startTransition(async () => {
-      const res = await regenerateImageAction({
-        request_key: crypto.randomUUID(),
-        draft_id: draftId,
-      });
-      if (res.status !== "success" || !res.jobId) {
-        toast.show({
-          tone: "error",
-          title: "画像の再生成を開始できませんでした",
-          description: res.message,
-        });
-        return;
-      }
-      setJobId(res.jobId);
-    });
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="relative inline-block">
-        {imageUrl ? (
-          // 署名URLは短時間・外部domainのため next/image ではなく素の img を使う。
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            alt="生成画像プレビュー"
-            className="max-h-48 rounded-lg border object-contain"
-            src={imageUrl}
-          />
-        ) : failed ? (
-          <div className="flex h-24 w-40 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
-            画像なし（生成失敗）
-          </div>
-        ) : null}
-        {running ? (
-          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40 text-xs font-medium text-white">
-            再生成中…
-          </div>
-        ) : null}
-      </div>
-      <div className="flex items-center gap-2">
-        <Button
-          disabled={!enabled || running}
-          onClick={regenerate}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {running ? "再生成中…" : "画像を再生成"}
-        </Button>
-        {!enabled ? (
-          <span className="text-xs text-muted-foreground">
-            画像プロバイダのAPIキーが未登録です。
-          </span>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

@@ -22,8 +22,8 @@ function limitFor(plan: string | null, key: UsageCounterKey): number | undefined
 }
 
 const LABEL: Record<UsageCounterKey, string> = {
-  normal_posts: "通常投稿クレジット",
-  url_posts: "URL付き投稿クレジット",
+  normal_posts: "通常投稿回数",
+  url_posts: "URL付き投稿回数",
   ai_credits: "AIクレジット",
 };
 

@@ -113,7 +113,7 @@ describe("usageLimitBanner (T-M6-13)", () => {
     const banner = usageLimitBanner(summary({ url_posts: 0, ai_credits: 0 }));
     expect(banner?.id).toBe("usage_limit");
     expect(banner?.tone).toBe("warning");
-    expect(banner?.description).toContain("URL付き投稿クレジット");
+    expect(banner?.description).toContain("URL付き投稿回数");
     expect(banner?.description).toContain("AIクレジット");
     expect(banner?.actionHref).toBe("/app/settings?tab=billing");
   });

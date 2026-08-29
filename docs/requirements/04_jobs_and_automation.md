@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.55 |
-| 更新日 | 2026-08-23 |
+| バージョン | v1.61 |
+| 更新日 | 2026-08-29 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -96,22 +96,25 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | 投稿実行 | 200秒 | 60秒 |
 | NEWS 1分野 | 300秒（news_fetch route。6分野同時1巡＋後処理の余裕・T-M8-192） | 90秒 |
 
-## 6. 定時トリガー4本
+## 6. 定時トリガー5本
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **9:00〜21:00の3時間おき**（9/12/15/18/21時・1日5回。T-M8-195） | `0 0-12/3 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を直近4時間ラップ取得（初回9時は夜間を埋める12h）、重複排除、時間単位ダイジェスト作成 | 6分野 |
+| `news_fetch` | **JST 12:00・19:00の1日2回**（T-M8-326・運営者の指示 2026-08-27。国内の発表は午前と夕方に集中するのでその直後。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `0 3,10 * * *` | **6分野**（ai・web3・sns・investment・love・beauty。T-M8-189）を**Message Batchesへまとめて投げる**（T-M8-338）。取得窓は起動時刻の表から導く（12時＝18h／19時＝8h・T-M8-337） | 6分野 |
+| `news_batch_collect` | 20分間隔 | `*/20 * * * *` | 投げたバッチの結果を取り込み、`news_items` へ保存・`news_fetch_outcomes` へ記録・ダイジェスト通知を配る（T-M8-338） | 5バッチまで |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
 
-**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
+**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（5本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
 `news_fetch`は分野ごとに**取得結果を`news_fetch_outcomes`へ残す**（要件02 §3.19）。「0件」が「該当ニュースが無かった（正常な空）」のか「取得したが規定を満たさず全件破棄した（失敗による空）」のかを、cron応答（`categories[].dropped`/`dropReasons`・`emptyCategories`）と運営者向け状態確認（`npm run doctor`／`GET /api/cron/doctor`）の両方で区別できるようにする。除外理由をログにだけ出す形にしない（CLAUDE.md 原則1）。**判定は `src/lib/news-outcome.ts` の1箇所だけに置く**（T-M8-83）。以前は「取得窓より古いだけ＝良性」の判定がスモークと `doctor` に二重にあり日次サマリには無かったため、同じ状況を doctor は「該当なし」、サマリは「全件破棄」と正反対に通知していた。また**「取れてはいるが大半落ちた」状態はどの経路にも出ていなかった**（doctorは `fetched > 0` を素通り、サマリの抽出は `fetched = 0`）ので、取得件数が静かに減っても気付けなかった。除外が取得を上回る分野は、doctor では注意、サマリでは数字のみで出す（運営者が直せないことで警告は出さない）。`drop_reasons` には**何時間古かったか**を `_too_old_min_age_h` / `_too_old_max_age_h` として併せて残す（`_` 始まりは理由として数えない。境界すぐ外か、そもそも古い記事しか無かったのかを区別して対策を判断するため）。
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
+
+**ニュース取得は Message Batches API で回す**（T-M8-338・運営者の指示 2026-08-27）。定時cronは6分野を1つのバッチとして投げて終わり、20分おきの `news_batch_collect` が結果を取り込む。**トークン単価が半額**になる代わりに結果が同期で返らないため、「投げた／取り込んだ／失効した」を `news_batches`（要件02 §3.30）で持つ。行が無いと運営者から「なぜニュースが来ないのか」を追えない（原則1・原則2）。24時間で失効したバッチは `expired` として畳み、次の定時に委ねる（失効分は課金されない）。取り込み時の選別（契約・新しさ）と記録は同期実行と**同じ関数**（`selectNewsItems`／`saveItems`／`recordOutcome`）を通す——別々に書くと「同期では捨てる記事がBatchでは残る」ズレが生まれる。新しさの基準時刻は**投げたとき**を使う（取り込みは任意の時刻に走るため）。`NEWS_TEXT_PROVIDER` がAnthropic以外の構成では従来どおり同期実行へ落とす。原価台帳にはトークン分だけを半額にした見積もりを記録する（検索料は割引対象と明記されていない）。
 
 `news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty。実測$0.24〜$0.50/分野・回＝月$260〜540・T-M8-189）を**同時（最大6並列）**に実行し、分野ごとに成功結果をcommitする（3並列だと6分野が2巡になり、1巡目が遅い窓でmaxDurationを超えて後半分野とダイジェスト通知が消える・T-M8-192）。一部分野の失敗で他分野をrollbackせず、失敗分野は既存ニュースを保持してSentryへ記録する。全分野の処理がsettleした後、成功分野で新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
 
@@ -256,13 +259,13 @@ flowchart TD
 
 ## 12. 学習・改善
 
-- LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件、自己投稿は直近100件を取得し、分析結果保存後に同じtop-level job内でMD-MERGEする。mergeには対象セクションの現在値と、同セクションへ反映する全active sourceのanalysisを渡す。
+- LRN-1〜3はsource単位の`learning_analysis` job。参考アカウントは直近20件、参考投稿は対象1件を取得し、**分析結果の保存までで終わる**（T-M8-344。以前は同じjobでMD-MERGEまで続けていた）。**設定への反映は利用者が「参考ソースからアカウント設定を作る／更新する」を押したとき**に、`learning_source_id` を持たない単独 `md_merge` job として走る——自分の設定がいつ書き換わるかを利用者が決められるようにするため。mergeは**アカウント設定そのもの**（`x_accounts.settings`）を書き換え、アカウント.mdはそこから作り直す（T-M8-341）。**アカウント設定が未保存でも走る**（分析だけを材料に初版を作る。分析が1件も無ければ `validation_error`）。渡すのは現在の設定と**全active sourceのanalysis**。モデルは`analysis`級で固定する（プロンプト設計書 §5.1）。
 - ~~own_posts再取り込みの30日制御~~ **own_posts（自分の過去投稿から学習）は2026-08-15に廃止**（T-M8-103。毎朝の投稿分析K-2と重複）。learning_analysisの対象は参考アカウント（PT-L1）と参考投稿（PT-L2）のみ。二重送信は進行中jobの`job_conflict`で止める。
 - `learning_analysis`の失敗時は`error`に到達済みstage（`research`=素材取得／`writing`=分析call以降）と`provider_raw_error`（providerまたはX APIの生の文面）を残す。画面には出さない（要件06 §5）が、これが無いと原因を追えない。
 - **`provider_raw_error`は生成・学習・画像・提案の4経路すべてで残す。上限と切り詰めは`src/lib/ai/raw-error.ts`（`RAW_ERROR_MAX`＝4,000字）が正本**（F4・F5）。AIの出力が検証に通らなかったとき（`invalid_output`）は**各試行の応答本文**を「1回目の応答: …／2回目の応答（修復指示つき）: …」の形で入れる。修復callを挟むため両方を残す（初回が妥当なJSONで長さ超過・修復callは中身が違う、という組み合わせが実際にあり片方では特定できない）。応答が空だった試行も「（空）」として残す（何も返らなかったこと自体が手がかりで、行が消えると「そのcallが無かった」と読めてしまう）。**この値をブラウザへ返さないことは`getGenerationJob`のクエリで担保する**（`error - 'provider_raw_error'`。描画側の注意に頼らない・要件01 §8）。運営者は`npm run smoke:live`とDBで中身を見る。
 - **ニュース取得は`generation_jobs`を持たないため`news_fetch_outcomes.error_code` / `provider_raw_error`へ同じ上限で残す**（T-M8-86）。契約違反で落とした候補の中身（先頭5件まで）と、分野が例外で終わったときの原因を保存する。**`published_at:too_old`だけの除外では本文を作らない**——窓より古いだけのitemは契約を満たしており良性なので、本文を積むと「正常な空」と混ざる。**cron応答（`GET /api/cron/news-fetch`）・スモーク・日次サマリへは載せない**（routeが結果をそのまま応答へ展開するため、型に載せた時点で外へ出る）。`doctor`には`error_code`と、**そこから求めた「運営者が直せる型」**を添える（T-M8-163）。型は`classifyProviderFailure`（`src/lib/ai/provider-failure.ts`）がクレジット残高不足／レート制限／キー無効／モデル名不正／入力長超過／提供元障害／不明の7種へ落とし、画面へ出るのは**その型に対応する定型文だけ**——応答本文は分類にだけ使い、選択したスコープから外へ出さない（`diagnostics.test.ts`が応答へ漏れないことを固定する）。以前は`error_code`だけを添え本文をselectしない方針だったが、**`http_400`からは原因が分からず運営者が自力で辿れなかった**（2026-08-20、実際はAnthropicのクレジット切れで運営者が直せるものだった）。
 - **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary.in_app`がONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
-- 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisから対象セクションを再構築し、削除sourceだけに由来する知見を残さない。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
+- 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisからセクション1〜4を作り直し、削除sourceだけに由来する知見を残さない（T-M8-336）。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
 - SUGGESTは**利用者が投稿分析画面の「分析を開始」ボタンで実行する**（2026-08-23・T-M8-255。2026-08-15〜の毎朝8:00 JST自動実行`enqueueDailySuggestions`は廃止した——利用者数×毎日のAI・X読取費用が利用の有無に関わらず積み上がるため）。起票はServer Action `startAnalysisAction`の`createManualSuggestionJob`——対象ゲート（`status='active'`かつ契約が`trialing/active`かつ〔premium/expert または validなAIキーあり〕）を通れば`suggestion` jobを`trigger='manual'`・request_key `sug-manual:{x_account_id}:{JST日付}`で冪等作成する（uniqueが1日1回を保証し、これが費用の上限を兼ねる。作れなかったときは実行中か当日実行済みかを言い分けて画面へ返す）。dispatchはActionの`after()`が行い、失敗分はtickのdispatchフェーズが回収する。同じActionがフォロワー数の当日記録（§13）も行う。
 - **取得は増分・過去7日まで**: ハンドラが`GET /2/users/:id/tweets`（リポスト・返信を除く・メトリクス付き）を、保存済み最新投稿の**48時間前**から取得する（初回は実行時点の7日前から。いずれも**7日前より過去へは遡らない**——手動実行化で、長期間押していない利用者が押した瞬間の大量取得を防ぐ・T-M8-255。1回最大100件=X読取費用の上限$0.50）。48時間の重なり分はupsertでメトリクス（表示回数等）を追い直す——重なりが無いと直近投稿の実績が「取得した朝の値」で凍結される。表示回数（`non_public_metrics`）はX公称では投稿から30日以内しか提供されないためnull許容で扱う（実挙動では30日超の投稿にも返る場合があることを2026-08-15に実アカウントで確認。nullは「表示回数が不明」であり0と区別する）。取得結果は`x_timeline_posts`（要件02 §3.20）へ保存し、本サービス経由の投稿には`drafts.tweet_ids`の突合で型とテーマを付与する（一度付いたら保持。外部の投稿はnull）。分析時は**直前のレポート**（format=2）を読み込みプロンプトへ渡す（前回の推奨の効果検証と提案の連続性のため。前回以降の新規投稿数はコードで数えて渡す。参照したレポートidはevidence.previous_idに残る・T-M8-98）。
@@ -351,6 +354,23 @@ flowchart TD
 - **毎月1回**（`payout:{前月YYYY-MM}`）: 前月締めのPayoutを作成（月末締め・翌月末支払・手数料¥980・最低¥5,000。詳細は要件03「招待プログラム」と正本 docs/cp/invite_cp.md）。二重作成は `unique (affiliate_account_id, period_start)` でも塞ぐ。
 - 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
 
+### Xトークンの先回り更新（T-M8-359）
+
+`scheduler_tick` に相乗りし、**1時間に1回**（`cron_runs` の `(job_name='x_token_refresh', window_key=JSTの「日付T時」)`）、
+**期限が90分以内に来る `status='active'` のXアカウント**を最大25件、`getValidAccessToken` で更新する（`src/lib/x/token-keepalive.ts`）。
+
+**なぜ要るか**: Xのaccess tokenは2時間で切れ、refresh tokenは**使うたびに入れ替わる**。
+「使うときに切れていたら更新する」だけだと、投稿も分析も走らない日が続いたアカウントの
+refresh tokenが古いまま置き去りになり、久しぶりに使ったときに `invalid_request` で弾かれて
+**要再連携**になる（2026-08-15に実アカウント2つで発生・T-M8-96）。
+利用者から見れば「何もしていないのに連携が切れた」で、最も体験が悪い壊れ方をする。
+
+- 対象は refresh token を持つものだけ。`expired` は人が再連携するまで直らないので触らない（毎時APIを叩いて毎時失敗させない）。
+- **1件の失敗で他を巻き添えにしない**。失敗の中身（要再連携か一時エラーか）は `getValidAccessToken` が状態と通知へ書く。
+- 失敗しても tick 本体を止めない（operator_alert と同じ扱い）。
+- **`APP_ENV=development` では動かさない**（T-M8-360）。Xのtoken endpointへ実際にリクエストを出す外向きの処理で、ローカル・E2Eのアカウントは偽のtokenを持つため、動かすと毎時「確実に失敗するリクエスト」を相手のAPIへ投げ続けることになる。
+- 状態確認（`doctor`）は**access tokenが切れていること自体を警告しない**——refresh tokenがあれば戻るため。警告するのは「refresh tokenが無い」＝人が再連携しないと直らない場合だけ（T-M8-359）。
+
 ### 契約期間の補完（T-M8-258）
 
 `scheduler_tick` に相乗りし、1日1回（`cron_runs` の `(job_name='subscription_period_backfill', window_key=JST日付)`）、`profiles.current_period_start` が null で `stripe_subscription_id` を持つ契約中（trialing/active/past_due/unpaid/paused）の利用者を最大50件、Stripe の `subscriptions.retrieve` で読んで `current_period_start`／`current_period_end` の**2列だけ**埋める（`src/lib/stripe/period-backfill.ts`）。契約本体（plan/status）と `subscription_event_created_at` は触らない（投影全体を適用すると後続の webhook が stale になる）。読めなかった契約者は記録（Sentry `period-backfill`）して翌日に再試行。未注入（テスト・ローカル）では動かない。
@@ -365,3 +385,9 @@ flowchart TD
 - 本文には T-M8-163 の「直せる言葉」と次の一手を載せ、**providerの応答本文は載せない**（要件01 §8）。
 - 送信は `lib/email/operator-mail-server.ts`。ガードは `canSendViaSmtp`（`lib/email/smtp-guard.ts`）で、非productionから外部SMTPへは送らない（`outbound-channels.ts` の `smtp` へ登録済み。利用者向け通知メールはT-M8-222で廃止し、SMTP送信はこの運営者向けメールだけになった）。
 - **これが無かった間**、2026-08-19 10:00 JST から1.5日間ニュースが全滅していたのに運営者へ何も届かず、運営者が自分で `doctor` を叩いて初めて分かった。
+| v1.56 | 2026-08-27 | ニュース取得を1日2回（JST 12時・19時）へ減らし、production 限定にした（T-M8-326。外部API費用の97.6%がこのcronだった） |
+| v1.57 | 2026-08-27 | 学習の反映先をアカウント.mdのセクション1〜4へ（T-M8-336）。ニュースの検索上限を3へ（T-M8-335） |
+| v1.58 | 2026-08-27 | ニュース取得をMessage Batches API＋20分おきの取り込みcronへ（T-M8-338）。取得窓を起動時刻の表から導く形へ修正（T-M8-337） |
+| v1.59 | 2026-08-27 | 学習の反映をボタン起動の単独 md_merge へ（T-M8-344）。分析と反映を分け、アカウント設定が未保存でも作れるようにした |
+| v1.60 | 2026-08-28 | Xトークンの先回り更新（1時間に1回・tick相乗り）を追加し、状態確認は期限切れ自体を警告しない形へ（T-M8-359） |
+| v1.61 | 2026-08-29 | 先回り更新を `APP_ENV=development` では動かさないことを明記（外向き呼び出しの環境ガード・T-M8-360） |

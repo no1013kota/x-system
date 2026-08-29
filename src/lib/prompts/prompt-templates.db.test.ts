@@ -7,19 +7,15 @@ import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
 import { X_SCOPES } from "../x/oauth";
 import { SYSTEM_DEFAULT_TEMPLATES } from "./gen-prompts";
-import {
-  applyResetPromptTemplate,
-  applyUpdatePromptTemplate,
-  listPromptTemplates,
-  resolvePromptTemplate,
-  seedSystemPromptTemplates,
-} from "./prompt-templates";
-import { AppError } from "../observability/errors";
+import { resolvePromptTemplate, seedSystemPromptTemplates } from "./prompt-templates";
 import type { Queryable } from "../x/token-refresh";
 
 /**
- * DB integration for prompt_templates seed + resolution (T-M3-02, 要件02 §3.5):
- * idempotent 7-row system default seed, and override → system default resolution.
+ * `prompt_templates` の seed と解決（T-M3-02・要件02 §3.5）。
+ *
+ * **保存・既定へ戻すはここには無い**（T-M8-332）。画像プロンプトは複数持てるようになり、
+ * 読み書きは本棚（`prompt-presets.db.test.ts`）が受け持つ。この表に残る役割は
+ * 「いま使う1件の置き場」と「system default の同期」だけ。
  */
 describe("prompt-templates (local DB)", () => {
   let available = false;
@@ -134,165 +130,10 @@ describe("prompt-templates (local DB)", () => {
         SYSTEM_DEFAULT_TEMPLATES.image,
       );
 
-      /*
-        **一覧は画像だけ**（T-M8-139）。型プロンプトの正本は `post_patterns` で、
-        読み出しは `listPatternPrompts` が担う（ADR-0008・要件05 §8）。
-        以前ここが p1〜p6 も返していたため、画像プロンプトの編集画面が
-        「再読み込み」で p1 の編集画面に変わり、保存で投稿パターンを上書きしていた。
-      */
-      const views = await listPromptTemplates(db, xid);
-      expect(views.map((v) => v.kind)).toEqual(["image"]);
-      expect(views[0]).toMatchObject({ content: "CUSTOM IMG", isOverride: true });
-    } finally {
-      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
-    }
-  });
-
-  async function seedAccount(): Promise<{ uid: string; xid: string }> {
-    return withTransaction(async (c: PoolClient) => {
-      const uid = randomUUID();
-      await c.query(
-        `insert into auth.users (id, instance_id, aud, role, email)
-         values ($1,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',$2)`,
-        [uid, `${uid}@example.com`],
+      // 型プロンプトの正本は `post_patterns`（ADR-0008）。ここは画像だけを解決する。
+      expect(await resolvePromptTemplate(db, { xAccountId: xid, kind: "image" })).not.toBe(
+        "CUSTOM P1",
       );
-      await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [
-        uid,
-        `${uid}@example.com`,
-      ]);
-      const xid = (
-        await c.query<{ id: string }>(
-          `insert into x_accounts
-             (user_id, x_user_id, handle, name, auth_type, status,
-              access_token_ciphertext, refresh_token_ciphertext, oauth_scopes, token_expires_at)
-           values ($1,$2,'h','n','byok','active',$3,$3,$4, now() + interval '1 hour')
-           returning id`,
-          [uid, `x-${randomUUID()}`, encrypt("t"), X_SCOPES],
-        )
-      ).rows[0].id;
-      return { uid, xid };
-    });
-  }
-
-  async function reject(p: Promise<unknown>): Promise<AppError> {
-    try {
-      await p;
-    } catch (e) {
-      return e as AppError;
-    }
-    throw new Error("expected rejection");
-  }
-
-  it("update creates an override (expectedUpdatedAt=null), then version-locks", async () => {
-    await seedSystemPromptTemplates(db);
-    const { uid, xid } = await seedAccount();
-    try {
-      const created = await applyUpdatePromptTemplate(db, {
-        xAccountId: xid,
-        kind: "image",
-        content: "OVR 1",
-        expectedUpdatedAt: null,
-        plan: "standard",
-        quotePostEnabled: true,
-      });
-      expect(created).toMatchObject({ kind: "image", content: "OVR 1", isOverride: true });
-      expect(created.updatedAt).not.toBeNull();
-
-      // creating again with null must conflict (already exists)
-      const dup = await reject(
-        applyUpdatePromptTemplate(db, {
-          xAccountId: xid,
-          kind: "image",
-          content: "OVR X",
-          expectedUpdatedAt: null,
-          plan: "standard",
-          quotePostEnabled: true,
-        }),
-      );
-      expect(dup.code).toBe("job_conflict");
-
-      // stale timestamp conflicts
-      const stale = await reject(
-        applyUpdatePromptTemplate(db, {
-          xAccountId: xid,
-          kind: "image",
-          content: "OVR 2",
-          expectedUpdatedAt: "2000-01-01T00:00:00.000Z",
-          plan: "standard",
-          quotePostEnabled: true,
-        }),
-      );
-      expect(stale.code).toBe("job_conflict");
-      expect(stale.details?.reason).toBe("prompt_template_changed");
-
-      // correct timestamp succeeds
-      const updated = await applyUpdatePromptTemplate(db, {
-        xAccountId: xid,
-        kind: "image",
-        content: "OVR 2",
-        expectedUpdatedAt: created.updatedAt,
-        plan: "premium",
-        quotePostEnabled: true,
-      });
-      expect(updated.content).toBe("OVR 2");
-      // 画像プロンプトの保存先は `prompt_templates`（型プロンプトは post_patterns 側・T-M8-139）。
-      const saved = await db.query<{ content: string }>(
-        `select content from prompt_templates where x_account_id = $1 and kind = 'image'`,
-        [xid],
-      );
-      expect(saved.rows[0].content, "保存先が prompt_templates になっている").toBe("OVR 2");
-    } finally {
-      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
-    }
-  });
-
-  it("reset removes the override and returns to system default", async () => {
-    await seedSystemPromptTemplates(db);
-    const { uid, xid } = await seedAccount();
-    try {
-      await applyUpdatePromptTemplate(db, {
-        xAccountId: xid,
-        kind: "image",
-        content: "OVR IMG",
-        expectedUpdatedAt: null,
-        plan: "standard",
-        quotePostEnabled: true,
-      });
-      const reset = await applyResetPromptTemplate(db, {
-        xAccountId: xid,
-        kind: "image",
-        plan: "standard",
-        quotePostEnabled: true,
-      });
-      expect(reset).toMatchObject({
-        kind: "image",
-        isOverride: false,
-        content: SYSTEM_DEFAULT_TEMPLATES.image,
-        updatedAt: null,
-      });
-      const views = await listPromptTemplates(db, xid);
-      expect(views.find((v) => v.kind === "image")?.isOverride).toBe(false);
-    } finally {
-      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
-    }
-  });
-
-  // 旧standard（編集不可プラン）はT-M8-168で撤廃。forbiddenになるのは未知・未契約のplanだけ。
-  it("未知・未契約のplanは forbidden（編集権限ガードは残る）", async () => {
-    await seedSystemPromptTemplates(db);
-    const { uid, xid } = await seedAccount();
-    try {
-      const forbidden = await reject(
-        applyUpdatePromptTemplate(db, {
-          xAccountId: xid,
-          kind: "image",
-          content: "X",
-          expectedUpdatedAt: null,
-          plan: "",
-          quotePostEnabled: true,
-        }),
-      );
-      expect(forbidden.code).toBe("forbidden");
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));
     }

@@ -66,12 +66,12 @@ describe("gatherExecutionPrereqInputs (local DB)", () => {
     try {
       const input = await gatherExecutionPrereqInputs(uid);
       const result = checkExecutionPrerequisites(input!);
+      // アカウント設定（persona）は前提から外れた（T-M8-337）。
       expect(result?.missing).toEqual([
         "subscription",
         "x_api_key",
         "x_account",
         "text_ai_key",
-        "persona",
       ]);
     } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [uid]));

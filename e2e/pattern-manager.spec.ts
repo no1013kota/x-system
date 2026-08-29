@@ -9,7 +9,7 @@ test("パターン管理: 全件が並び、追加・編集・削除ができる
   const account = await accounts.create("pattern-manage");
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
-  await page.goto("/app/settings?tab=prompts&sec=post-prompt");
+  await page.goto("/app/prompts?sec=post-prompt");
 
   // **プルダウンは無い**。既定6件がすべて並ぶ。
   await expect(page.getByRole("combobox", { name: "プロンプト種別" })).toHaveCount(0);
@@ -100,14 +100,19 @@ const [createdRow] = await query<{ max_posts: number }>(
   ).toBe("0");
 });
 
-test("画像プロンプトの画面にプルダウンを置かない", async ({ accounts, page }) => {
+test("画像プロンプトの画面にプルダウンを置かない（使用中が一覧の中で分かる）", async ({
+  accounts,
+  page,
+}) => {
   const account = await accounts.create("image-prompt");
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
-  await page.goto("/app/settings?tab=prompts&sec=image-prompt");
+  await page.goto("/app/prompts?sec=image-prompt");
   await expect(page.getByRole("combobox", { name: "プロンプト種別" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 3, name: "画像プロンプト" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "プロンプト本文" })).toBeVisible();
+  // 複数持てるので一覧＋「使用中」バッジになった（T-M8-332）。
+  await expect(page.getByRole("textbox", { name: "画像プロンプトの本文" })).toBeVisible();
+  await expect(page.getByText("使用中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "プロンプトを追加" })).toBeVisible();
 });
 
 /**
@@ -124,16 +129,16 @@ test("画像プロンプトの画面は再読み込みしても対象が変わ�
   const account = await accounts.create("image-prompt-reload");
   await query(`update profiles set plan = 'premium' where id = $1`, [account.userId]);
   await signIn(page, account);
-  await page.goto("/app/settings?tab=prompts&sec=image-prompt");
+  await page.goto("/app/prompts?sec=image-prompt");
 
-  const body = page.getByRole("textbox", { name: "プロンプト本文" });
+  const body = page.getByRole("textbox", { name: "画像プロンプトの本文" });
   await expect(body).toBeVisible();
   const before = await body.inputValue();
 
   await page.getByRole("button", { name: /再読み込み/ }).first().click();
 
-  // 見出しも本文も変わらない（p1「ニュース解説」へ移らない）。
-  await expect(page.getByRole("heading", { level: 3, name: "画像プロンプト" })).toBeVisible();
+  // 対象も本文も変わらない（p1「ニュース解説」へ移らない）。
+  await expect(page.getByRole("textbox", { name: "画像プロンプトの本文" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "ニュース解説" })).toHaveCount(0);
   await expect(body).toHaveValue(before);
 

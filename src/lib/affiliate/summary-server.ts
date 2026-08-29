@@ -1,6 +1,12 @@
 import "server-only";
 
-import { maskEmail, tierProgress, type TierProgress } from "./config";
+import {
+  CANCELLED_SUBSCRIPTION_STATUSES,
+  COUNTED_REFERRAL_SQL,
+  maskEmail,
+  tierProgress,
+  type TierProgress,
+} from "./config";
 import { ensureAffiliateAccount, type AffiliateAccount } from "./store";
 
 import { pooledQueryable } from "@/lib/db/pool";
@@ -58,14 +64,27 @@ export interface InviteSummary {
   }[];
 }
 
+/** 「解約済み」として扱う契約状態（正本は `config.ts`・T-M8-345/351）。 */
+const CANCELLED_STATUS_SET = new Set<string>(CANCELLED_SUBSCRIPTION_STATUSES);
+
 export async function loadInviteSummary(userId: string): Promise<InviteSummary> {
   const db = pooledQueryable();
   const account = await ensureAffiliateAccount(db, userId);
 
   const [totals, payout, bank, invited, history] = await Promise.all([
     db.query<{ paid_users: string; pending: string; payable: string }>(
-      `select count(distinct referred_user_id)
-                filter (where status <> 'reversed')::text as paid_users,
+      /*
+        **報酬率の人数は「いま続いている」招待ユーザー**（T-M8-345/351・運営者の指示 2026-08-28）。
+        Trial中の人も1人と数え、解約した人（報酬期間の終了、または契約が切れている状態）は外す。
+        `store.ts` の率の計算と**同じ条件**にしないと、画面に出ている率と
+        実際に付く率が食い違う（原則1）。
+        金額（pending/payable）は解約後も残るので、そちらは全件から集計する。
+      */
+      `select (select count(*)
+                 from affiliate_attributions a
+                 join profiles pr on pr.id = a.referred_user_id
+                where a.affiliate_account_id = $1
+                  and ${COUNTED_REFERRAL_SQL})::text as paid_users,
               coalesce(sum(commission_amount) filter (where status = 'pending'), 0)::text as pending,
               coalesce(sum(commission_amount)
                 filter (where status = 'payable'), 0)::text as payable
@@ -172,13 +191,20 @@ export async function loadInviteSummary(userId: string): Promise<InviteSummary> 
       : null,
     invitedUsers: invited.rows.map((row) => ({
       maskedEmail: maskEmail(row.email),
-      status: row.terminated
-        ? "cancelled"
-        : row.subscription_status === "trialing"
-          ? "trial"
-          : row.first_paid_at
-            ? "paid"
-            : "free",
+      /*
+        **解約が分かるようにする**（T-M8-345・運営者の指示 2026-08-28）。
+        報酬期間が終了した（`terminated`）場合に加えて、**契約が切れている状態**も解約として出す
+        ——トライアル中に解約した人は `terminated` が付かない（報酬期間が始まっていないため）ので、
+        以前は「Trial」のまま並び続け、招待した側からは解約したことが分からなかった。
+      */
+      status:
+        row.terminated || CANCELLED_STATUS_SET.has(row.subscription_status ?? "")
+          ? "cancelled"
+          : row.subscription_status === "trialing"
+            ? "trial"
+            : row.first_paid_at
+              ? "paid"
+              : "free",
       firstPaidAt: row.first_paid_at,
       totalCommission: Number(row.total),
     })),

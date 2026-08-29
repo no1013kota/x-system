@@ -1,5 +1,10 @@
 import Stripe from "stripe";
 
+// `plans.ts` が数字の正本。ここへ書き写さない（T-M8-325）。
+import { PLANS } from "../src/lib/plans.ts";
+
+const JPY = new Intl.NumberFormat("ja-JP");
+
 const API_VERSION = "2026-06-24.dahlia";
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -75,8 +80,12 @@ export const PRODUCT_NAMES = {
 export const PRODUCT_DESCRIPTIONS = {
   STRIPE_PRICE_STANDARD_MONTHLY:
     "キーはご自身で用意。Xアカウント1つ。ニュース取得、投稿作成、スケジュール予約、プロンプト編集、アカウント分析・改善など。",
+  // 数字は書き写さない（T-M8-325）。`plans.ts` を直したらここも直る形にする——
+  // 100倍へ変えたとき、ここだけ旧値のまま残っていた（テストが検出した）。
   STRIPE_PRICE_PREMIUM_MONTHLY:
-    "APIキーの用意が一切不要（運営キーで動作）。Xアカウント1つ。契約期間ごとの上限: AIクレジット1000・通常投稿200・URL付き20。",
+    `APIキーの用意が一切不要（運営キーで動作）。Xアカウント${PLANS.premium.xAccountLimit}つ。契約期間ごとの上限: ` +
+    `AIクレジット${JPY.format(PLANS.premium.usageLimits.aiCredits)}・通常投稿${PLANS.premium.usageLimits.normalPosts}` +
+    `・URL付き${PLANS.premium.usageLimits.urlPosts}。`,
   // エキスパートは表示上「無制限」（T-M8-168・運営者の決定）。内部ガード値をStripe画面にも出さない。
   STRIPE_PRICE_EXPERT_MONTHLY:
     "APIキーの用意が一切不要（運営キーで動作）。Xアカウント3つまで。AI生成と投稿の利用上限なし。",

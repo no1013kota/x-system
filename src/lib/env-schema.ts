@@ -48,7 +48,11 @@ function blankToUndefined(value: unknown): unknown {
 const PREVIEW_PROD_REQUIRED = [
   // 文章運営キー（ANTHROPIC/OPENAI/GEMINI）は PREMIUM_TEXT_PROVIDER / NEWS_TEXT_PROVIDER の選択に応じて
   // superRefine で動的に必須化する（既定anthropicなら ANTHROPIC_API_KEY を要求）。
-  "NEWS_TEXT_PROVIDER",
+  //
+  // **`NEWS_TEXT_PROVIDER` と `EMAIL_FROM` はこの一覧から外した**（T-M8-340）。どちらも
+  // コード側に既定を持つようになったため（provider=anthropic / 差出人=support@exosai.net）、
+  // ここに残すと「必須」と読めるのに実際は絶対に落ちない（既定で埋まる）検査になる。
+  // **意味の無い行を一覧へ残さない**——次に読む人が「消したら落ちる」と誤解する。
   "X_MANAGED_CLIENT_ID",
   "STRIPE_PORTAL_CONFIGURATION_ID",
   "X_COST_CONTENT_CREATE_USD",
@@ -58,7 +62,6 @@ const PREVIEW_PROD_REQUIRED = [
   "SMTP_PORT",
   "SMTP_USER",
   "SMTP_APP_PASSWORD",
-  "EMAIL_FROM",
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
   "TURNSTILE_SECRET_KEY",
   "SENTRY_DSN",
@@ -85,9 +88,16 @@ const ALWAYS_REQUIRED = [
   "STRIPE_PRICE_PREMIUM_MONTHLY",
   "ANTHROPIC_TEXT_MODEL",
   "OPENAI_TEXT_MODEL",
-  "OPENAI_IMAGE_MODEL",
   "GEMINI_TEXT_MODEL",
-  "GEMINI_IMAGE_MODEL",
+  /*
+    **`*_IMAGE_MODEL` はここに入れない**（T-M8-370）。画像モデルの既定は
+    **コード**（`DEFAULT_IMAGE_MODELS`）が持ち、envは**上書き用**というのが決定事項
+    （プロンプト設計書 §3・T-M8-334・運営者の指示 2026-08-27）。必須にすると
+    「envの入れ忘れで画像だけ作れない」状態を作る（原則3）——実際、2026-08-29 に
+    Vercelから両環境の `OPENAI_IMAGE_MODEL` が消えており、**build が
+    「環境変数の検証に失敗しました」で止まって stg も prd も反映できなかった**。
+    稼働中のデプロイはenvを取り込んだ時点の値で動いていたため、画面上は正常に見えていた。
+  */
 ] as const;
 
 const schema = z
@@ -169,9 +179,13 @@ const schema = z
     NEWS_TEXT_MODEL: z.string().min(1).optional(),
     ANTHROPIC_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_TEXT_MODEL: z.string().min(1).optional(),
-    OPENAI_IMAGE_MODEL: z.string().min(1).optional(),
+    // 空文字も未設定として扱う（T-M8-370）。上書き用の値なので、
+    // 空欄を残したまま保存されても既定（`DEFAULT_IMAGE_MODELS`）で動く方が良い。
+    OPENAI_IMAGE_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     GEMINI_TEXT_MODEL: z.string().min(1).optional(),
-    GEMINI_IMAGE_MODEL: z.string().min(1).optional(),
+    // 空文字も未設定として扱う（T-M8-370）。上書き用の値なので、
+    // 空欄を残したまま保存されても既定（`DEFAULT_IMAGE_MODELS`）で動く方が良い。
+    GEMINI_IMAGE_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 
     // §3.6 メール・監視
     SMTP_HOST: z.string().min(1).optional(),
@@ -182,6 +196,10 @@ const schema = z
     SMTP_USER: z.string().min(1).optional(),
     SMTP_APP_PASSWORD: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
+    /**
+     * 運営者向けアラート（doctorの日次判定）の**宛先**。画面に出す問い合わせ先は
+     * `LEGAL_ENTITY.email`（support@exosai.net）が正本で、こちらとは別物（T-M8-343）。
+     */
     SUPPORT_EMAIL: z.string().email().optional(),
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
     TURNSTILE_SECRET_KEY: z.string().min(1).optional(),

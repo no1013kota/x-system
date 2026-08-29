@@ -112,14 +112,17 @@ async function assertPrereqs(deps: LearningSourceDeps, userId: string): Promise<
 async function assertNotBusy(
   tx: Queryable,
   xAccountId: string,
-  opts: { includeQueuedJobs: boolean },
+  opts: { includeQueuedJobs: boolean; busyMessage?: string },
 ): Promise<void> {
   const removing = await tx.query(
     `select 1 from learning_sources where x_account_id = $1 and status = 'removing' limit 1`,
     [xAccountId],
   );
   if ((removing.rowCount ?? 0) > 0) {
-    throw new AppError("job_conflict", { details: { reason: "learning_busy" } });
+    throw new AppError("job_conflict", {
+      ...(opts.busyMessage ? { message: opts.busyMessage } : {}),
+      details: { reason: "learning_busy" },
+    });
   }
   if (opts.includeQueuedJobs) {
     const jobs = await tx.query(
@@ -129,7 +132,10 @@ async function assertNotBusy(
       [xAccountId],
     );
     if ((jobs.rowCount ?? 0) > 0) {
-      throw new AppError("job_conflict", { details: { reason: "learning_busy" } });
+      throw new AppError("job_conflict", {
+        ...(opts.busyMessage ? { message: opts.busyMessage } : {}),
+        details: { reason: "learning_busy" },
+      });
     }
   }
 }
@@ -159,6 +165,82 @@ async function createLearningJob(
   ).rows[0];
   if (!raced) throw new AppError("job_conflict", { details: { reason: "learning_job_race" } });
   return { jobId: raced.id, deduped: true };
+}
+
+export const applyLearningToSettingsSchema = z.object({
+  request_key: z.string().min(1).max(200),
+  x_account_id: z.string().uuid(),
+});
+export type ApplyLearningToSettingsInput = z.infer<typeof applyLearningToSettingsSchema>;
+
+/**
+ * **学習ソースからアカウント設定を作る／更新する**（T-M8-344・運営者の指示 2026-08-27）。
+ *
+ * 以前は学習ソースを登録した時点で自動的にアカウント.mdへ反映していた。いまは
+ * 分析までを自動で行い、**設定へ反映するのは利用者がボタンを押したとき**にする——
+ * 自分の設定がいつ書き換わるのかを利用者が決められるようにするため。
+ *
+ * `learning_source_id` を持たない `md_merge` job を作る（削除起因のmergeと区別する）。
+ * **アカウント設定が未保存でも実行できる**（そのための機能なので前提にしない）。
+ */
+export async function applyLearningToSettings(
+  userId: string,
+  input: ApplyLearningToSettingsInput,
+  deps: LearningSourceDeps,
+): Promise<{ jobId: string }> {
+  const key = requestKey(userId, input.request_key);
+  return deps.runInTx(async (tx) => {
+    const priorJob = (
+      await tx.query<{ id: string }>(`select id from generation_jobs where request_key = $1`, [key])
+    ).rows[0];
+    if (priorJob) return { jobId: priorJob.id };
+
+    // AI実行なので契約の前提は課す（削除mergeと同じ・T-M8-267）。
+    await assertPrereqs(deps, userId);
+    await assertActiveAccount(tx, userId, input.x_account_id);
+    /*
+      進行中の学習・mergeがあるなら重ねない（同じ設定を2つのjobが書き換えない）。
+      **文言はこの状況のものにする**（T-M8-349）。既定の「ほかの操作と重なりました。
+      画面を再読み込みしてから、もう一度お試しください」は、分析が終わるのを待つべき場面で
+      **再読み込みという無意味な行動**を指示していた（運営者の報告 2026-08-28）。
+    */
+    await assertNotBusy(tx, input.x_account_id, {
+      includeQueuedJobs: true,
+      busyMessage:
+        "参考ソースの分析中です。一覧が「反映済み」になってから、もう一度お試しください。",
+    });
+
+    /*
+      **材料が無いのに押させない**（原則2）。分析済みのソースが1件も無ければ、
+      作れるのは根拠の無い設定だけになる。押す前に画面が止めるが、ここでも見る。
+    */
+    const analyzed = await tx.query(
+      `select 1 from learning_sources
+        where x_account_id = $1 and status = 'analyzed' and analysis_summary is not null
+        limit 1`,
+      [input.x_account_id],
+    );
+    if ((analyzed.rowCount ?? 0) === 0) {
+      throw new AppError("validation_error", { details: { reason: "no_analyzed_source" } });
+    }
+
+    const inserted = (
+      await tx.query<{ id: string }>(
+        `insert into generation_jobs
+           (x_account_id, kind, trigger, input, request_key, status)
+         values ($1, 'md_merge', 'manual', '{}'::jsonb, $2, 'queued')
+         on conflict (request_key) do nothing
+         returning id`,
+        [input.x_account_id, key],
+      )
+    ).rows[0];
+    if (inserted) return { jobId: inserted.id };
+    const raced = (
+      await tx.query<{ id: string }>(`select id from generation_jobs where request_key = $1`, [key])
+    ).rows[0];
+    if (!raced) throw new AppError("job_conflict", { details: { reason: "learning_job_race" } });
+    return { jobId: raced.id };
+  });
 }
 
 /**

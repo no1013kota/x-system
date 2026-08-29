@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+
+import { query } from "./fixtures/account";
 import { expect, horizontalOverflow, signIn, test } from "./fixtures/test";
 
 /**
@@ -81,5 +84,43 @@ test("モバイル幅では入力欄のfont-sizeが16px以上（iOSズーム防�
           .map((el) => `${el.tagName}#${el.id || el.getAttribute("aria-label") || "?"}`),
     );
     expect(small, `${path} に16px未満の入力欄が無いこと`).toEqual([]);
+  }
+});
+
+/**
+ * **折り返せない長い文字列で横に伸びない**（T-M8-365）。
+ *
+ * ニュースの見出し・本文はAIが書いた文章がそのまま入るので、長いURLや区切りの無い語が
+ * 混ざりうる。`break-words` が無いと390pxでページ全体が横スクロールした。
+ * 上の一覧テストは**そのときDBに入っていたデータ次第**でしか落ちず、
+ * 通し実行でだけ落ちて単独では素通しだった——条件をデータで固定する。
+ */
+test("ニュースに折り返せない長い文字列が来ても横に伸びない（390px）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("mobile-longword");
+  // source_url は unique。実行ごとに違う値にする（同じspecを2回回しても落ちない）。
+  const long = `https://example.com/${randomUUID()}/${"a".repeat(160)}`;
+  await query(
+    `insert into news_items (category, title, summary, source_url, impact, published_at, fetched_at)
+     values ('ai', $1, $2, $3, 'high', now(), now())`,
+    [long, `${long} ${long}`, long],
+  );
+
+  try {
+    await signIn(page, account);
+    await page.setViewportSize({ width: WIDTH, height: 844 });
+    await page.goto("/app/news");
+    await expect(page.getByRole("main")).toBeVisible();
+    expect(await horizontalOverflow(page), "長い文字列で横に伸びている").toBeLessThanOrEqual(0);
+  } finally {
+    /*
+      **入れたニュースは必ず片付ける**（T-M8-365）。`news_items` はアカウントに紐づかないので
+      fixtureの後片付けでは消えない。残すと**他のテストが見るニュースの中身が変わり**、
+      「そのときDBに入っていた内容次第」で落ちるテストを増やす（実際に `gen-context.db.test.ts`
+      を落とした）。
+    */
+    await query(`delete from news_items where source_url = $1`, [long]);
   }
 });

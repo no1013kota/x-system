@@ -3,20 +3,23 @@ import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 
 import { AppError } from "@/lib/observability/errors";
 
-import { pruneBaseMdVersions } from "./base-md-history";
+import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
+
 import { validateBaseMdStructure } from "./persona-settings";
 
 /**
- * アカウント.mdの手動編集・履歴・ロールバック（M-1, 要件05 §8/§9/§12, 要件02 §3.4, プロンプト §3.1, T-M5-08）。
- * md/premium のみ編集可（standard は forbidden）。6見出し構造＋5,000字を検証し、expected version 一致時のみ
- * `x_accounts.base_md`/`base_md_version` と `base_md_versions`（change_source=manual/rollback）を同一tx更新する。
- * learning_analysis/md_merge が running の間は編集/ロールバックを job_conflict で拒否する（要件04 §12）。
- * DB(pool)は呼び出し側が withTransaction で束ねる（persona-settings-store と同じ版管理パターン）。
+ * アカウント.mdの手動編集（M-1, 要件05 §8, 要件02 §3.3, プロンプト §3.1）。
+ * 見出し構造＋5,000字を検証し、expected version 一致時のみ `x_accounts.base_md`/`base_md_version`
+ * を更新する。`learning_analysis`/`md_merge` が running の間は job_conflict で拒否する（要件04 §12）。
+ *
+ * **変更履歴とロールバックは廃止した**（T-M8-362・運営者の指示 2026-08-29）。
+ * `base_md_version` は**楽観ロックの番号として残す**——「誰かが後ろで書き換えた」を
+ * 検出する仕組みで、履歴とは別物。戻したいときはプロンプト画面の本棚で別の本文を選ぶ。
  */
 
 export const BASE_MD_MAX_CHARS = 5000;
 
-/** 6見出し構造（## 1.〜## 6. 各1回・順序）＋5,000字上限を検証（違反は validation_error）。 */
+/** 5見出し構造（## 1.〜## 5. 各1回・順序）＋5,000字上限を検証（違反は validation_error）。 */
 export function validateManualBaseMd(content: string): void {
   if (content.length > BASE_MD_MAX_CHARS) {
     throw new AppError("validation_error", {
@@ -113,54 +116,12 @@ export async function applyUpdateBaseMdManual(
   if (upd.rowCount !== 1) {
     throw new AppError("job_conflict", { details: { reason: "base_md_version_changed" } });
   }
-  await client.query(
-    `insert into base_md_versions (x_account_id, version, content, change_source, summary)
-     values ($1, $2, $3, 'manual', '手動編集')`,
-    [input.xAccountId, version, input.content],
-  );
-  // 版を積んだ同じtxで古い版を落とす（T-M8-156）。
-  await pruneBaseMdVersions(client, input.xAccountId);
-  return { version };
-}
-
-/** M-1 ロールバック: 指定版の内容を新versionとして作成（履歴は書き換えない・change_source=rollback）。 */
-export async function applyRollbackBaseMd(
-  client: PoolClient,
-  input: { userId: string; xAccountId: string; targetVersion: number; expectedVersion: number },
-): Promise<BaseMdWriteResult> {
-  const acct = await loadForWrite(client, input.userId, input.xAccountId);
-  assertEditablePlan(acct.plan);
-  if (acct.base_md_version === 0) throw new AppError("persona_required");
-  if (acct.base_md_version !== input.expectedVersion) {
-    throw new AppError("job_conflict", {
-      details: { reason: "base_md_version_changed", currentBaseMdVersion: acct.base_md_version },
-    });
-  }
-  await assertNoLearningRunning(client, input.xAccountId);
-
-  const target = (
-    await client.query<{ content: string }>(
-      `select content from base_md_versions where x_account_id = $1 and version = $2`,
-      [input.xAccountId, input.targetVersion],
-    )
-  ).rows[0];
-  if (!target) throw new AppError("not_found", { details: { reason: "version_not_found" } });
-
-  const version = acct.base_md_version + 1;
-  const upd = await client.query(
-    `update x_accounts set base_md = $3, base_md_version = $4
-      where id = $1 and user_id = $2 and status = 'active' and base_md_version = $5`,
-    [input.xAccountId, input.userId, target.content, version, input.expectedVersion],
-  );
-  if (upd.rowCount !== 1) {
-    throw new AppError("job_conflict", { details: { reason: "base_md_version_changed" } });
-  }
-  await client.query(
-    `insert into base_md_versions (x_account_id, version, content, change_source, summary)
-     values ($1, $2, $3, 'rollback', $4)`,
-    [input.xAccountId, version, target.content, `v${input.targetVersion}へロールバック`],
-  );
-  await pruneBaseMdVersions(client, input.xAccountId);
+  // 本棚の「使用中」へも同じ内容を残す（T-M8-332）。**本棚と実物が食い違わないようにする**。
+  await syncInUsePreset(client, {
+    xAccountId: input.xAccountId,
+    kind: "base_md",
+    content: input.content,
+  });
   return { version };
 }
 
@@ -186,7 +147,7 @@ export async function getBaseMd(
   return { content: row.base_md, version: row.base_md_version };
 }
 
-/** 所有者のアカウントで learning_analysis/md_merge がrunningか（SC-10 編集不可表示用の読み取り）。 */
+/** 所有者のアカウントで learning_analysis/md_merge がrunningか（編集不可表示用の読み取り）。 */
 export async function isLearningRunning(
   db: { query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount: number | null }> },
   userId: string,
@@ -201,38 +162,4 @@ export async function isLearningRunning(
     [xAccountId, userId],
   );
   return (rowCount ?? 0) > 0;
-}
-
-export interface BaseMdVersionView {
-  version: number;
-  changeSource: string;
-  summary: string | null;
-  createdAt: string;
-}
-
-/** 版履歴（新しい順・所有者のみ）。SC-10 ロールバックUI用。 */
-export async function listBaseMdVersions(
-  db: { query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount: number | null }> },
-  userId: string,
-  xAccountId: string,
-): Promise<BaseMdVersionView[]> {
-  const { rows } = await db.query<{
-    version: number;
-    change_source: string;
-    summary: string | null;
-    created_at: Date | string;
-  }>(
-    `select v.version, v.change_source, v.summary, v.created_at
-       from base_md_versions v
-       join x_accounts x on x.id = v.x_account_id
-      where v.x_account_id = $1 and x.user_id = $2
-      order by v.version desc`,
-    [xAccountId, userId],
-  );
-  return rows.map((r) => ({
-    version: r.version,
-    changeSource: r.change_source,
-    summary: r.summary,
-    createdAt: typeof r.created_at === "string" ? new Date(r.created_at).toISOString() : r.created_at.toISOString(),
-  }));
 }

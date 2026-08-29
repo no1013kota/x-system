@@ -26,7 +26,12 @@ export async function imageGenerationHandler(ctx: JobContext): Promise<void> {
     jobId: ctx.jobId,
     runInTx: runInPooledTx,
     resolveTextProvider: async ({ plan, userId, deadline }) => {
-      const resolved = await resolveTextProvider({ plan: plan as PlanId, userId }, { deadline });
+      // PT-IMG は「本文＋トンマナ→英文の画像指示」に変換するだけ（T-M8-334）。
+      // 成果物の絵は画像モデルが決めるので、ここは安いモデルで固定する。
+      const resolved = await resolveTextProvider(
+        { plan: plan as PlanId, userId },
+        { deadline, purpose: "mechanical" },
+      );
       return {
         textGen: resolved.textGen,
         provider: resolved.provider,

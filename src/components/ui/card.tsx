@@ -84,7 +84,3 @@ export function CardBody({ className, ...props }: ComponentProps<"div">) {
   return <div className={cn("px-5 pt-4 pb-5", className)} {...props} />;
 }
 
-/** 見出しの下の補足文。 */
-export function CardDescription({ className, ...props }: ComponentProps<"p">) {
-  return <p className={cn("text-body leading-5 text-ink-2", className)} {...props} />;
-}

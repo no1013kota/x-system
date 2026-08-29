@@ -56,6 +56,44 @@ export function assertSafeE2eEnv(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-export default function globalSetup(): void {
+/**
+ * devサーバのrouteを先に温める（T-M8-358）。
+ *
+ * `next dev` はrouteを**最初のリクエストで初めてコンパイルする**ため、
+ * 1件目のテストだけがその時間を丸ごと被り、`src/**` を触った直後は
+ * 20〜30秒かかることがある（CLAUDE.mdの落とし穴に記録がある事象）。
+ * テストの数だけ再現条件が変わるのに、**落ちるのはいつも先頭のspec**という
+ * 分かりにくい形になるので、走り出す前にまとめて叩いておく。
+ *
+ * **失敗しても止めない**——温めは速さのためのもので、正しさの前提ではない。
+ * 認証が要るrouteはログイン画面へ流れるが、middlewareとlayoutのコンパイルは進む。
+ */
+async function warmUpRoutes(baseUrl: string): Promise<void> {
+  const paths = [
+    "/",
+    "/login",
+    "/signup",
+    "/plans",
+    "/app",
+    "/app/posts",
+    "/app/settings",
+    "/app/prompts",
+    "/app/schedule",
+    "/app/news",
+    "/app/analytics",
+    "/app/invite",
+    // 公開ページも1件目のspecがコンパイルを被る（ブログ本文は動的routeなので別枠）。
+    "/blog",
+    "/prompt-templates",
+  ];
+  await Promise.all(
+    paths.map((path) =>
+      fetch(`${baseUrl}${path}`, { redirect: "manual" }).catch(() => undefined),
+    ),
+  );
+}
+
+export default async function globalSetup(): Promise<void> {
   assertSafeE2eEnv();
+  await warmUpRoutes(process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000");
 }

@@ -88,7 +88,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | **DBへ書く値の「形式」を変えた**（キー・ID・列挙・日付書式・接尾辞） | その値を**実際にinsertする** `*.db.test.ts`。**文字列の組み立てを検査する単体テストでは足りない**——2026-08-24、利用枠の期間キーへ世代 `#N` を足した変更が `month` のCHECK制約に弾かれ、トライアル中にプランを下げた利用者が翌日まで何も実行できない状態で出ていた（T-M8-299→T-M8-307）。読み取りは行が無いだけなので画面は「残り満額」と表示し、利用者からも見えない。登録は `src/lib/db/check-constraints.db.test.ts` の `REGISTRY` へ |
 | **AI provider adapter・プロンプト・出力schema・tool定義** | `npm run check:providers` ＋ **`npm run smoke:live`**（実APIで生成・画像・ニュースを1周し成果物まで検証） |
 | **UI（生成物を描画する画面）** | `/ui-polish` ＋ **実データを描画するE2E**（画像・グラフ・カード。CSP・署名URL・レイアウト崩れはブラウザでしか出ない） |
-| 外向き副作用（X投稿・SMTP・Stripe・Storage削除） | 非productionで実行されないことの確認（環境ガードの有無） |
+| 外向き副作用（X投稿・SMTP・Stripe・Storage削除・**X tokenの更新**） | 非productionで実行されないことの確認（環境ガードの有無）。**定時処理へ外向き呼び出しを足したときが危ない**——2026-08-29、Xトークンの先回り更新を tick へ足したところ、ローカル・E2Eの偽tokenで毎時「確実に失敗するリクエスト」を相手のAPIへ投げる形になっていた（実DBのroute testが時間切れになって気付いた・T-M8-360） |
 | **レンダリングモード・CSP・proxy（middleware）** | `npm run build` ＋ **`npm run check:csp-nonce`**（`release:check` に含む）＋ **実ブラウザで公開ページのコンソールエラーと失敗リクエストまで見る**。nonceベースCSPと静的prerenderは両立しないため、prerenderされたページは**scriptが1本も実行されない**。**HTTPは200を返し本文も表示される**ので、URLを叩く検査では見えない。E2Eは `next dev` で動きprerenderしないため原理的に再現しない（2026-08-14、本番の `/signup`・`/reset-password` が18日間この状態だった・T-M8-87） |
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |

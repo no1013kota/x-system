@@ -41,6 +41,13 @@ export function Notice({
 }: ComponentProps<"div"> & { as?: "div" | "section" | "p"; tone?: NoticeTone }) {
   return (
     <Tag
+      /*
+        テストが「どの重大度の通知が出たか」で待てるようにする（T-M8-368）。
+        失敗はインライン通知に出るのにテストは成功トーストだけを待っていたため、
+        保存が失敗したときの結果が「要素が見つからない」で、理由が分からなかった。
+      */
+      data-slot="notice"
+      data-tone={tone}
       className={cn(
         "rounded-card border px-4 py-3 text-body leading-6",
         TONES[tone],

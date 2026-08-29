@@ -7,6 +7,7 @@ import {
   signIn,
   signUpCodeFromMail,
   test,
+  openAccountMenu,
   waitForMail,
 } from "./fixtures/test";
 
@@ -75,7 +76,9 @@ test("サインアップは確認コードなしで完了し、そのままア�
 
     // 未契約は /plans に留められる（App Shellのヘッダへ到達できない）ので、
     // この画面のログアウトから抜けられること（PRD A-2・T-M7-19）。
-    await page.getByRole("button", { name: "ログアウト" }).click();
+    // ヘッダー廃止でアカウントメニューの中へ移った（T-M8-328）。
+    await openAccountMenu(page);
+    await page.getByRole("menuitem", { name: "ログアウト" }).click();
     await expect(page).toHaveURL(/\/login/);
     // sessionが破棄されており、保護routeへ戻れない
     await page.goto("/app");
@@ -175,13 +178,14 @@ test("未確認アカウントのログインは黄色の案内付き6桁画面�
   }
 });
 
-test("アプリ内のどの画面からでもヘッダのログアウトで抜けられる", async ({ accounts, page }) => {
+test("アプリ内のどの画面からでもアカウントメニューのログアウトで抜けられる", async ({ accounts, page }) => {
   const account = await accounts.create("signout");
   await signIn(page, account);
 
   // ホーム以外の画面からでも到達できる（ヘッダはApp Shell共通・要件06 §2）
   await page.goto("/app/posts?tab=drafts");
-  await page.getByRole("button", { name: "ログアウト" }).click();
+  await openAccountMenu(page);
+  await page.getByRole("menuitem", { name: "ログアウト" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   // session破棄後は保護routeへ戻れない（要件03 §1）

@@ -32,6 +32,14 @@ import {
   toPatternPayload,
   type PatternDraft,
 } from "@/components/post/pattern-fields";
+import {
+  checkDraftSchedule,
+  DRAFT_SCHEDULE_REASONS,
+} from "@/lib/draft-schedule";
+import { defaultScheduleValue } from "./schedule-draft-control";
+import { AutomationConsentModal } from "@/components/x/automation-consent-modal";
+import { recordXAutomationConsentAction } from "@/app/actions/schedule";
+import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import { selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
@@ -91,6 +99,16 @@ const QUEUED_SLOW_MS = 60_000;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
 /**
+ * 予約日時の不備を日本語で返す（問題なければ null・T-M8-331）。
+ * 生成前なので下書きはまだ無い。**日時そのものの妥当性だけ**を見る
+ * （下書きの状態とアカウントの有効性は受理時にサーバーが見る）。
+ */
+function scheduleReason(value: string): string | null {
+  const check = checkDraftSchedule({ status: "draft", xAccountActive: true }, value, Date.now());
+  return check.ok || !check.reason ? null : DRAFT_SCHEDULE_REASONS[check.reason];
+}
+
+/**
  * **前提が足りずに始められなかった**ときだけ画面へ残す（T-M8-18）。解決先へのリンクを伴い、
  * 直しに行って戻ってきたときにも見えている必要があるため、消えるトーストにはしない。
  * それ以外の「始められなかった」はトーストへ出す。
@@ -116,6 +134,8 @@ export function CreatePostForm({
   initialNowMs,
   promptTemplates = null,
   newsPrefill = null,
+  automationConsented = false,
+  accountHandle = null,
 }: {
   xAccountId: string;
   patterns: PatternOption[];
@@ -132,6 +152,10 @@ export function CreatePostForm({
     newsText: string;
     sourceUrl: string;
   } | null;
+  /** 自動投稿に同意済みか（T-M8-331）。「すぐに投稿」「予約投稿」を選ぶと同意を求める。 */
+  automationConsented?: boolean;
+  /** 同意モーダルに出す対象アカウント（@handle）。 */
+  accountHandle?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [pattern, setPattern] = useState(newsPrefill?.patternId ?? patterns[0]?.id ?? "");
@@ -147,6 +171,27 @@ export function CreatePostForm({
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>(
     newsPrefill ? { ニュース: newsPrefill.newsText } : {},
   );
+  /**
+   * 生成したあとどうするか（T-M8-331・運営者の指示 2026-08-27）。
+   *
+   * **「作って終わり」ではないことを、作る前に決められるようにする。** 以前は必ず下書きになり、
+   * 投稿したい人は生成完了を待って下書きタブへ移動し、もう一度押す必要があった。
+   * - `draft`: 下書きに置く（従来どおり・既定）
+   * - `now`: 生成が終わったらそのまま投稿する
+   * - `scheduled`: 生成が終わったら指定日時で予約する（下書き画面と同じ判定を使う）
+   */
+  const [mode, setMode] = useState<"draft" | "now" | "scheduled">("draft");
+  const [scheduledAt, setScheduledAt] = useState("");
+  /**
+   * 予約日時の不備（T-M8-331）。**押す前に理由を出す**（原則2）。
+   * 判定は下書き画面と同じ `checkDraftSchedule`——別々に持つと
+   * 「ここでは通るのにサーバーで弾かれる」が起きる。
+   * 描画中ではなく入力のたびに判定する（`Date.now()` を描画で呼ばない）。
+   */
+  const [scheduleProblem, setScheduleProblem] = useState<string | null>(null);
+  /** 自動投稿の同意（このアカウント単位）。サーバーの現況を初期値にする。 */
+  const [consented, setConsented] = useState(automationConsented);
+  const [showConsent, setShowConsent] = useState(false);
   const [imageEnabled, setImageEnabled] = useState(false);
   /**
    * 生成に使うプロンプト（T-M8-92・md/premium）。
@@ -314,7 +359,38 @@ function removePattern(target: PatternOption) {
     });
   }
 
+  /**
+   * 生成を始める（T-M8-331）。**投稿まで進む指定なら、先に自動投稿の同意を取る。**
+   * 同意が無いまま送るとサーバーが `automation_consent_required` で弾く——
+   * 押してから分かる失敗にしない（原則2）。
+   */
   function submit() {
+    if (mode !== "draft" && !consented) {
+      setShowConsent(true);
+      return;
+    }
+    doSubmit();
+  }
+
+  /** 同意モーダルの「同意して生成する」→ 記録できたらそのまま生成を始める。 */
+  function confirmConsentAndSubmit() {
+    startTransition(async () => {
+      const res = await recordXAutomationConsentAction({
+        x_account_id: xAccountId,
+        consent_version: CURRENT_AUTOMATION_CONSENT_VERSION,
+        confirmed: true,
+      });
+      if (res.status !== "success") {
+        toast.show({ tone: "error", title: "同意を記録できませんでした", description: res.message });
+        return;
+      }
+      setConsented(true);
+      setShowConsent(false);
+      doSubmit();
+    });
+  }
+
+  function doSubmit() {
     setPrereq(null);
     startTransition(async () => {
       // 編集して「保存して以後も使う」を選んだブロックは、生成の前に保存を確定する
@@ -364,7 +440,10 @@ function removePattern(target: PatternOption) {
       const res = await createGenerationJobAction({
         request_key: crypto.randomUUID(),
         x_account_id: xAccountId,
-        pattern,
+        // **`pattern_id` で送る**（T-M8-330）。T-M8-129 U5 で内部IDからパターンIDへ改めたとき、
+        // スケジュール側だけ追随し**この画面は `pattern` のままだった**ため、
+        // 生成が毎回「入力内容に誤りがあります」で弾かれていた（赤くなる項目も出ない）。
+        pattern_id: pattern,
         // ニュース引き継ぎ時は下書きへ紐づけ、一覧の「作成済み」バッジの導出元にする（T-M8-210）。
         news_item_id: newsPrefill?.newsItemId,
         source_url: sourceUrl.trim() || undefined,
@@ -377,6 +456,10 @@ function removePattern(target: PatternOption) {
         instructions: instructions.trim() || undefined,
         image_enabled: imageEnabled,
         prompt_override: promptOverride,
+        // 生成したあとどうするか（T-M8-331）。予約日時は**素の値のまま**送り、
+        // JST解釈とUTC変換はサーバー側の純粋層（`@/lib/draft-schedule`）に任せる。
+        post_mode: mode,
+        scheduled_at: mode === "scheduled" ? scheduledAt : undefined,
       });
       if (res.status === "error") {
         const settingsPath = res.details?.settingsPath as string | undefined;
@@ -499,6 +582,8 @@ function removePattern(target: PatternOption) {
             setPromptDraft(null);
             setPromptApply("once");
           }}
+          // 追加は一覧の最後のパネル（T-M8-331）。編集権限のあるプランだけ。
+          onAdd={templates && !newPattern ? openAddPattern : undefined}
           // 削除は各カードの中に置く（T-M8-134）。設定画面まで行かなくても消せる。
           onDelete={templates ? removePattern : undefined}
           options={options}
@@ -538,13 +623,7 @@ function removePattern(target: PatternOption) {
                 </Button>
               </div>
             </div>
-          ) : (
-            <div className="mt-2">
-              <Button disabled={pending} onClick={openAddPattern} type="button" variant="subtle">
-                パターンを追加
-              </Button>
-            </div>
-          )
+          ) : null
         ) : null}
 
         {/*
@@ -642,6 +721,67 @@ function removePattern(target: PatternOption) {
           />
         </div>
 
+        {/* **モードは追加指示の下**（運営者の指示 2026-08-27）。作る前に行き先を決める。 */}
+        <fieldset className="space-y-2">
+          <legend className="text-body font-medium text-ink">生成したあと</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {(
+              [
+                ["draft", "下書きに置く"],
+                ["now", "すぐに投稿"],
+                ["scheduled", "予約投稿"],
+              ] as const
+            ).map(([value, label]) => (
+              <label
+                className="flex min-h-9 cursor-pointer items-center gap-1.5 text-body text-ink"
+                key={value}
+              >
+                <input
+                  checked={mode === value}
+                  className="size-4"
+                  name="post-mode"
+                  onChange={() => {
+                    setMode(value);
+                    if (value !== "scheduled") {
+                      setScheduleProblem(null);
+                      return;
+                    }
+                    // 予約を選んだ瞬間に空欄から選ばせない（下書き画面と同じ「+5分」の既定）。
+                    const next = scheduledAt || defaultScheduleValue();
+                    setScheduledAt(next);
+                    setScheduleProblem(scheduleReason(next));
+                  }}
+                  type="radio"
+                  value={value}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          {mode === "scheduled" ? (
+            <div>
+              <label className="block text-body font-medium text-ink" htmlFor="scheduled-at">
+                投稿する日時
+              </label>
+              <input
+                className="mt-1 rounded-card border border-hairline px-3 py-2 text-body focus:border-brand focus:outline-none"
+                id="scheduled-at"
+                onChange={(e) => {
+                  setScheduledAt(e.target.value);
+                  setScheduleProblem(scheduleReason(e.target.value));
+                }}
+                type="datetime-local"
+                value={scheduledAt}
+              />
+              {scheduleProblem ? (
+                <p className="mt-1 text-xs text-danger-fg" role="alert">
+                  {scheduleProblem}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </fieldset>
+
         <div className="space-y-2">
           <label className="flex min-h-9 cursor-pointer items-center gap-2 text-body font-medium text-ink">
             <input
@@ -658,19 +798,35 @@ function removePattern(target: PatternOption) {
               </span>
             ) : null}
           </label>
-          {/* どのAIが使われるかは操作に影響しない内部説明のため出さない（T-M8-66）。 */}
+          {/*
+            **自分の画像も使えることを、生成のチェックの隣で言う**（T-M8-353・運営者の指示 2026-08-28）。
+            ここで言わないと「画像はAIに作らせるしかない」と受け取られる（原則2）。
+            どのAIが使われるかは操作に影響しない内部説明のため出さない（T-M8-66）。
+          */}
+          <p className="text-caption text-ink-3">
+            画像は下書きから自分でアップロードすることもできます。
+          </p>
         </div>
 
         {/* グラデーションは「AIが動く瞬間」の合図（デザイン §カラー）。ここ以外へ広げない。 */}
         <Button
           className="h-10 w-full gap-1.5 text-body"
-          disabled={pending || inProgress || !theme || !pattern || promptOverLimit}
+          disabled={pending || inProgress || !theme || !pattern || promptOverLimit || scheduleProblem !== null}
           onClick={submit}
           type="button"
           variant="gradient"
         >
           <Icon name="star_shine" size={17} />
-          {inProgress ? "生成中…" : pending ? "生成を開始しています…" : "ポストを生成する"}
+          {inProgress
+            ? "生成中…"
+            : pending
+              ? "生成を開始しています…"
+              : /* **押す前に行き先が分かる文言にする**（T-M8-331）。 */
+                mode === "now"
+                ? "生成してすぐに投稿する"
+                : mode === "scheduled"
+                  ? "生成して予約する"
+                  : "ポストを生成する"}
         </Button>
         {/*
           **押せない理由を画面に出す**（T-M8-37）。無効化だけだと「なぜ押せないのか」が分からない。
@@ -685,7 +841,30 @@ function removePattern(target: PatternOption) {
             パターンを追加中です。「追加」または「キャンセル」で確定すると生成できます。
           </p>
         ) : null}
+        {mode !== "draft" && !inProgress ? (
+          <p className="text-caption text-ink-2">
+            {mode === "now"
+              ? "生成が終わり次第、内容を確認せずにXへ投稿します。"
+              : "生成した本文を指定日時に投稿します。それまでは下書きとして編集・取り消しができます。"}
+          </p>
+        ) : null}
       </section>
+
+      {/* 自動投稿の同意（スケジュール画面と同じモーダル・要件06 §3.5）。 */}
+      <AutomationConsentModal
+        accountHandle={accountHandle}
+        confirmLabel="同意して生成する"
+        firstRunLabel={null}
+        onConfirm={confirmConsentAndSubmit}
+        onOpenChange={setShowConsent}
+        open={showConsent}
+        pending={pending}
+        settingSummary={
+          mode === "now"
+            ? "いま生成した本文を、確認なしでXへ投稿します。"
+            : "いま生成した本文を、指定した日時に確認なしでXへ投稿します。"
+        }
+      />
 
       {/* 結果（ステート2・3） */}
       <section aria-label="プレビュー・結果"
@@ -753,8 +932,17 @@ function removePattern(target: PatternOption) {
 
         {job?.status === "succeeded" ? (
           <div className="space-y-3">
+            {/*
+              **結果は選んだモードで言い分ける**（T-M8-331）。「下書きを作成しました」だけだと、
+              すぐに投稿を選んだ人には**投稿されたのかどうかが分からない**（原則1）。
+              投稿そのものは `post_publish` が続けるので、ここでは「進んでいる」ことまでを伝える。
+            */}
             <Notice tone="success" role="status">
-              生成が完了し、下書きを作成しました。
+              {mode === "now"
+                ? "生成が完了しました。続けてXへ投稿します（結果は下書き・履歴で確認できます）。"
+                : mode === "scheduled"
+                  ? "生成が完了し、指定日時の予約として保存しました。"
+                  : "生成が完了し、下書きを作成しました。"}
             </Notice>
             <Link
               className={primaryLinkClassName}

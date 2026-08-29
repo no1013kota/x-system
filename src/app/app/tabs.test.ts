@@ -65,9 +65,13 @@ describe("設定のタブへのリンク", () => {
     expect(unknown.map((l) => `${l.file}: ?tab=${l.slug}`)).toEqual([]);
   });
 
-  it("プロンプトタブの sec= もすべて実在する区分を指している（T-M8-104）", () => {
+  /**
+   * プロンプトは `/app/prompts` の独立した画面へ移した（T-M8-328）。
+   * リンク先の `sec=` が実在する区分を指していることは引き続き固定する。
+   */
+  it("プロンプト画面の sec= もすべて実在する区分を指している（T-M8-104→T-M8-328）", () => {
     const knownSections = PROMPT_SECTIONS.map(([slug]) => slug) as readonly string[];
-    const pattern = /\/app\/settings\?tab=prompts&sec=([a-z0-9-]+)/g;
+    const pattern = /\/app\/prompts\?sec=([a-z0-9-]+)/g;
     const unknown: string[] = [];
     for (const root of ROOTS) {
       for (const file of sourceFiles(root)) {

@@ -41,7 +41,17 @@ describe("affiliate scenarios (db)", () => {
     }
   });
 
-  async function makeUser(db: NonNullable<typeof database>): Promise<string> {
+  /**
+   * 利用者を1人作る。**契約状態を明示する**（T-M8-351）。
+   *
+   * 報酬率の人数は `profiles.subscription_status` を見て数えるようになった
+   * （Trial中も1人・解約は外す）。既定の `incomplete`（＝申込の途中）のままだと、
+   * 支払いが起きているのに誰も数えられず、**テストが現実と食い違う**。
+   */
+  async function makeUser(
+    db: NonNullable<typeof database>,
+    status: "active" | "trialing" | "canceled" | "incomplete" = "active",
+  ): Promise<string> {
     const id = randomUUID();
     await db.query(
       `insert into auth.users (id, instance_id, aud, role, email)
@@ -49,6 +59,10 @@ describe("affiliate scenarios (db)", () => {
                'authenticated', 'authenticated', $2)`,
       [id, `${id}@example.com`],
     );
+    await db.query(`update profiles set subscription_status = $2::subscription_status where id = $1`, [
+      id,
+      status,
+    ]);
     return id;
   }
 

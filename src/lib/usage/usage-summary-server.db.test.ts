@@ -60,7 +60,7 @@ describe("loadUsageSummaryForUser (db)", () => {
       );
       const s = await loadUsageSummaryForUser(uid, "premium");
       expect(s).toEqual({
-        ai_credits: { used: 220, limit: 1000, remaining: 780 },
+        ai_credits: { used: 220, limit: 100_000, remaining: 99_780 },
         normal_posts: { used: 38, limit: 200, remaining: 162 },
         url_posts: { used: 8, limit: 20, remaining: 12 },
         concealed: false,
@@ -131,7 +131,7 @@ describe("loadUsageSummaryForUser (db)", () => {
     try {
       const s = await loadUsageSummaryForUser(uid, "premium");
       expect(s?.normal_posts).toEqual({ used: 0, limit: 200, remaining: 200 });
-      expect(s?.ai_credits).toEqual({ used: 0, limit: 1000, remaining: 1000 });
+      expect(s?.ai_credits).toEqual({ used: 0, limit: 100_000, remaining: 100_000 });
     } finally {
       await cleanup(uid);
     }

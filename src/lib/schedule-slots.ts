@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
+import { assertAutomationConsent } from "@/lib/x/automation-consent";
 import { AppError } from "@/lib/observability/errors";
 
 import type { Queryable } from "./x/token-refresh";
@@ -127,32 +127,6 @@ async function requireActiveAccount(deps: ScheduleSlotDeps, userId: string): Pro
   return id;
 }
 
-/** mode=auto を有効化する操作の同意ゲート（要件02 §3.3/§3.10, 要件05 §7）。 */
-async function assertAutomationConsent(
-  tx: Queryable,
-  xAccountId: string,
-): Promise<void> {
-  const row = (
-    await tx.query<{
-      automation_consent_version: string | null;
-      consented: boolean;
-      disabled: boolean;
-    }>(
-      `select automation_consent_version,
-              (automation_consented_at is not null) as consented,
-              (automation_disabled_at is not null) as disabled
-         from x_accounts where id = $1`,
-      [xAccountId],
-    )
-  ).rows[0];
-  const ok =
-    row != null &&
-    row.automation_consent_version === CURRENT_AUTOMATION_CONSENT_VERSION &&
-    row.consented &&
-    !row.disabled;
-  if (!ok) throw new AppError("automation_consent_required");
-}
-
 export async function listScheduleSlots(
   db: Queryable,
   xAccountId: string,
@@ -175,9 +149,25 @@ export async function listScheduleSlots(
 function keptPlaceholderValues(
   pattern: { placeholders: { name: string }[] },
   values: Record<string, string> | undefined,
+  /**
+   * この枠だけのプロンプト（正規化済み）。**上書きが増やした `{名前}` の値も残す**（T-M8-333）。
+   *
+   * 以前はパターンが宣言した名前だけを残していたため、枠の上書きで足した項目は
+   * **画面に入力欄が出て、値を書いて保存できたのに、保存の瞬間に消えていた**。
+   * 次に開くと空欄で、生成では「（未指定）」が差し込まれる——利用者からは
+   * 「入れたはずの指示が効かない」としか見えない（原則1）。
+   * 判定は生成側（`placeholdersForFill`）と同じ「本文に `{名前}` があるか」に揃える。
+   */
+  promptOverride: string | null,
 ): Record<string, string> {
+  const names = new Set(pattern.placeholders.map((item) => item.name));
+  if (promptOverride) {
+    for (const key of Object.keys(values ?? {})) {
+      if (promptOverride.includes(`{${key}}`)) names.add(key);
+    }
+  }
   const out: Record<string, string> = {};
-  for (const { name } of pattern.placeholders) {
+  for (const name of names) {
     const v = values?.[name];
     if (typeof v === "string" && v.trim() !== "") out[name] = v.trim();
   }
@@ -217,7 +207,13 @@ export async function createScheduleSlot(
         input.instructions ?? null,
         input.image_enabled,
         input.source_url ?? null,
-        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        JSON.stringify(
+          keptPlaceholderValues(
+            pattern,
+            input.placeholder_values,
+            normalizePromptOverride(input.prompt_override),
+          ),
+        ),
         normalizePromptOverride(input.prompt_override),
       ],
     );
@@ -270,7 +266,13 @@ export async function updateScheduleSlot(
         input.instructions ?? null,
         input.image_enabled,
         input.source_url ?? null,
-        JSON.stringify(keptPlaceholderValues(pattern, input.placeholder_values)),
+        JSON.stringify(
+          keptPlaceholderValues(
+            pattern,
+            input.placeholder_values,
+            normalizePromptOverride(input.prompt_override),
+          ),
+        ),
         normalizePromptOverride(input.prompt_override),
       ],
     );

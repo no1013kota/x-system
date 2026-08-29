@@ -21,7 +21,10 @@ import { ensureAutoPostPublishJob } from "./publish-chain";
  * `recoverStaleJobs` が failed 確定と**同一 transaction**（同じ `PoolClient`）で呼ぶ。
  * すべて冪等（tickを複数回実行しても二重に効かない）で、対象が無い場合は no-op:
  *
- * - 未返還 reserve の refund（生成/画像・`refundUsage`）。冪等key `job:{id}:generation:refund` /
+ * - 未返還 reserve の refund（生成/画像・`refundUsage`）。**T-M8-324で予約を廃止したので
+ *   通常は何も返すものが無く no-op になる。** それでも呼び続けるのは、**変更をデプロイした時点で
+ *   走行中だったjob**が旧方式の reserve を持っているため——消すとその分が返らず引かれたままになる。
+ *   旧reserveが一巡して消えたら、この呼び出しごと削除してよい。冪等key `job:{id}:generation:refund` /
  *   `job:{id}:image:refund` の unique と「元reserveが在る場合のみ」で二重返還を防ぐ。
  *   reserve作成は learning_analysis（T-M5-03）が生成枠で開始済み。生成/画像jobの reserve は M6。
  * - kind別の draft/source 後始末:

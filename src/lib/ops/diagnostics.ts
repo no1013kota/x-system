@@ -205,7 +205,11 @@ export async function collectFailurePatterns(
 }
 
 /**
- * `news_fetch` が走る **UTC の時刻**（`vercel.json` の `0 0-12/3 * * *` ＝ JST 9/12/15/18/21時）。
+ * `news_fetch` が走る **UTC の時刻**（`vercel.json` の `0 3,10 * * *` ＝ **JST 12時・19時**）。
+ *
+ * **1日2回**（T-M8-326・運営者の指示 2026-08-27）。国内の発表は午前と夕方に集中するため、
+ * その直後に寄せた。以前は3時間おき5回で、**本番の外部API費用の97.6%がここだった**
+ * （実測: Anthropic $23.31 のうち $23.14 が196回のニュース取得）。
  *
  * **UTC12時の次はUTC0時＝12時間空く**。この空きが「止まっている」判定より長いので、
  * 経過時間だけで判定すると**毎晩かならず赤くなる**（T-M8-310。2026-08-26 に本番で
@@ -214,7 +218,7 @@ export async function collectFailurePatterns(
  *
  * ここを変えたら `vercel.json` も変える。ズレは `vercel-crons.test.ts` が落とす。
  */
-export const NEWS_FETCH_UTC_HOURS = [0, 3, 6, 9, 12] as const;
+export const NEWS_FETCH_UTC_HOURS = [3, 10] as const;
 
 /** cronの起動遅れと実行時間の余裕。これを超えて遅れていれば本当に走っていない。 */
 export const NEWS_RUN_GRACE_HOURS = 1;
@@ -530,9 +534,27 @@ export function judgeScheduler(input: {
   return { name, level: "ok", detail: `${Math.round(input.minutesSinceLastRun)} 分前に動いています` };
 }
 
-/** X（Twitter）連携の有効期限。 */
+/**
+ * X（Twitter）連携の状態。
+ *
+ * **access tokenが切れていること自体は異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+ * Xのaccess tokenは2時間で切れる設計で、refresh tokenがあれば
+ * 先回り更新（1時間ごと・`token-keepalive.ts`）と実行時の自動更新で戻る。
+ * ここで毎朝【注意】を出していたため、**直す必要のない警告が毎日届き**、
+ * 本当の異常（要再連携）まで読み飛ばされる状態だった（原則2）。
+ *
+ * 見るのは「**人が操作しないと直らないか**」の一点にする:
+ * - `status` が active でない → 要再連携（error）
+ * - refresh token が無い → 次に使ったときに必ず失効する（warn。放っておくと切れる）
+ */
 export function judgeXAccounts(
-  rows: { handle: string; status: string; expiresInHours: number | null }[],
+  rows: {
+    handle: string;
+    status: string;
+    expiresInHours: number | null;
+    /** refresh token を持っているか（自動更新できるか）。 */
+    canRefresh?: boolean;
+  }[],
 ): Check {
   const name = "Xアカウントの連携";
   if (rows.length === 0) {
@@ -544,27 +566,52 @@ export function judgeXAccounts(
     };
   }
   const broken = rows.filter((r) => r.status !== "active");
-  const expired = rows.filter((r) => r.status === "active" && (r.expiresInHours ?? 1) <= 0);
-  const detail = rows
-    .map((r) => `@${r.handle}（${r.status === "active" ? "有効" : "要再連携"}）`)
-    .join(" / ");
+  // 自動更新の材料が無いものだけを警告する（期限切れそのものは正常な状態）。
+  const cannotRefresh = rows.filter((r) => r.status === "active" && r.canRefresh === false);
   if (broken.length > 0) {
     return {
       name,
       level: "error",
-      detail,
+      detail: `${summarizeAccounts(rows)}。要再連携: ${listHandles(broken)}`,
       nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
-  if (expired.length > 0) {
+  if (cannotRefresh.length > 0) {
     return {
       name,
       level: "warn",
-      detail: `${detail}（アクセス許可の期限が切れています。次の操作で自動更新されます）`,
+      detail:
+        `${summarizeAccounts(rows)}。自動更新に使う許可が保存されていないものがあります` +
+        `（次に使ったときに切れます）: ${listHandles(cannotRefresh)}`,
+      nextAction: "設定画面のXアカウントから再連携してください",
     };
   }
-  return { name, level: "ok", detail };
+  return { name, level: "ok", detail: summarizeAccounts(rows) };
 }
+
+/**
+ * 何件あるかを1行で言う（T-M8-360）。**全件のhandleを並べない**——
+ * 連携が数十件ある環境では1行が数百文字になり、**問題のある1件がその中に埋もれる**
+ * （2026-08-28、67件が1行に並んで読めなかった）。少数なら従来どおり名前で出す。
+ */
+function summarizeAccounts(rows: { handle: string; status: string }[]): string {
+  if (rows.length <= ACCOUNT_LIST_MAX) {
+    return rows
+      .map((r) => `@${r.handle}（${r.status === "active" ? "有効" : "要再連携"}）`)
+      .join(" / ");
+  }
+  const active = rows.filter((r) => r.status === "active").length;
+  return `${rows.length}件（有効 ${active}件 / 要再連携 ${rows.length - active}件）`;
+}
+
+/** 問題のあるものだけを名前で出す。多すぎるときは先頭数件＋残数。 */
+function listHandles(rows: { handle: string }[]): string {
+  const shown = rows.slice(0, ACCOUNT_LIST_MAX).map((r) => `@${r.handle}`).join(" / ");
+  return rows.length > ACCOUNT_LIST_MAX ? `${shown} ほか${rows.length - ACCOUNT_LIST_MAX}件` : shown;
+}
+
+/** これを超えたら名前を並べずに件数で言う。 */
+const ACCOUNT_LIST_MAX = 5;
 
 /** 途中で止まったまま動いていない処理。 */
 export function judgeStuckJobs(input: { stuck: number }): Check {
@@ -586,27 +633,57 @@ export function judgeStuckJobs(input: { stuck: number }): Check {
  * 記録は「接続の取得が待たされたときだけ」入る（`db_pool_events`）。正常なら0件で、
  * 件数が続くようなら接続数の上限（`DB_POOL_MAX`）かプラン移行を検討する時期。
  */
-export const DB_POOL_WAIT_WARN = 1;
-export const DB_POOL_WAIT_ERROR = 20;
+/*
+  **短い待ちが数回あるだけでは異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+  以前は24時間に1回でも並べば【注意】を出していたため、**0.2秒の待ちが5回**という
+  実用上どうでもいない状態で毎朝メールが届いていた。直す必要のない警告は読まれなくなり、
+  本当の異常まで埋もれる（原則2。T-M8-323で同じ理由から「接続確立の待ち」を判定から外した）。
+
+  本物の枯渇は**回数が多い**か**待ちが長い**かのどちらかに必ず出る。両方を見て、
+  どちらかが閾値を超えたときだけ知らせる。
+*/
+export const DB_POOL_WAIT_WARN = 20;
+export const DB_POOL_WAIT_ERROR = 100;
+/** 1回でもこれだけ待たされたら、回数が少なくても知らせる（体感に出る長さ）。 */
+export const DB_POOL_WAITED_MS_WARN = 2_000;
+export const DB_POOL_WAITED_MS_ERROR = 10_000;
 
 export function judgePoolWaits(input: {
+  /** 接続の取得を待たされた回数（接続の新規確立を含む）。 */
   waits24h: number;
+  /** **そのうち実際に待ち行列ができていた回数**（`waiting_count > 0`）。判定の主軸。 */
+  queuedWaits24h?: number;
   maxWaitedMs: number;
-  /** いま効いている1インスタンスあたりの上限（T-M8-303）。 */
   poolMax?: number;
 }): Check {
   const name = "DB接続の混み具合";
-  /*
-    **効いている値を必ず出す**（T-M8-303）。`DB_POOL_MAX` はデプロイ先の環境変数なので、
-    「設定したつもりで入っていない」が起こる。回数だけ見せても、運営者は
-    「対策が効いていないのか、対策はしたが足りないのか」を区別できない（原則2）。
-  */
   const limit = input.poolMax ? `（1インスタンスあたり上限 ${input.poolMax}）` : "";
-  if (input.waits24h < DB_POOL_WAIT_WARN) {
-    return { name, level: "ok", detail: `直近24時間で接続の待ちはありません${limit}` };
+  /*
+    **「並んだ」と「接続を張った」を分けて判定する**（T-M8-323）。
+
+    以前は件数だけで判定していたため、**5分ごとのcronが新しい接続を張るだけで毎日必ず赤**に
+    なっていた（2026-08-27、本番302件のうち292件は `total_count=1 / waiting_count=0`＝
+    プールが空で誰も並んでいない。単に接続確立に約600msかかっていただけ）。
+    サーバーレスでは実行のたびに新しいインスタンスが立つので、**接続の確立は避けられない**。
+    直せない正常な状態を赤くすると本物の異常が埋もれる（T-M7-44・T-M8-310と同じ判断）。
+
+    本物の混雑は `waiting_count > 0`＝**空きを待って並んだ**ときだけ起きる。そちらを主軸にし、
+    接続確立の回数は数字として出すが赤くしない。
+  */
+  const queued = input.queuedWaits24h ?? input.waits24h;
+  const setup = Math.max(0, input.waits24h - queued);
+  const setupNote = setup > 0 ? `。ほかに接続を新しく張った待ちが ${setup} 回（混雑ではありません）` : "";
+
+  const crowded = queued >= DB_POOL_WAIT_WARN || input.maxWaitedMs >= DB_POOL_WAITED_MS_WARN;
+  if (!crowded) {
+    const few =
+      queued > 0
+        ? `直近24時間の空き待ちは${queued}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）で、混雑と呼ぶ量ではありません`
+        : "直近24時間で空き待ちはありません";
+    return { name, level: "ok", detail: `${few}${limit}${setupNote}` };
   }
-  const detail = `直近24時間で接続の待ちが${input.waits24h}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}`;
-  if (input.waits24h < DB_POOL_WAIT_ERROR) {
+  const detail = `直近24時間で空き待ちが${queued}回（最長${(input.maxWaitedMs / 1000).toFixed(1)}秒）${limit}${setupNote}`;
+  if (queued < DB_POOL_WAIT_ERROR && input.maxWaitedMs < DB_POOL_WAITED_MS_ERROR) {
     return {
       name,
       level: "warn",
@@ -618,7 +695,7 @@ export function judgePoolWaits(input: {
   return {
     name,
     level: "error",
-    detail: `${detail}。接続待ちが常態化しています`,
+    detail: `${detail}。空き待ちが常態化しています`,
     nextAction:
       "Supabase Pro へ移行するか DB_POOL_MAX を調整してください（要件01 §9 の移行条件に該当します）",
   };
@@ -899,9 +976,15 @@ export async function collectDiagnostics(
 
   // （旧「お知らせメール」検査はT-M8-222で廃止——通知はアプリ内のみで、メール配送台帳が無い）
 
-  const accounts = await db.query<{ handle: string; status: string; hours: string | null }>(
+  const accounts = await db.query<{
+    handle: string;
+    status: string;
+    hours: string | null;
+    can_refresh: boolean;
+  }>(
     `select handle, status::text as status,
-            (extract(epoch from (token_expires_at - now())) / 3600)::text as hours
+            (extract(epoch from (token_expires_at - now())) / 3600)::text as hours,
+            (refresh_token_ciphertext is not null) as can_refresh
        from x_accounts order by created_at`,
   );
   checks.push(
@@ -910,6 +993,7 @@ export async function collectDiagnostics(
         handle: r.handle,
         status: r.status,
         expiresInHours: r.hours == null ? null : Number(r.hours),
+        canRefresh: r.can_refresh,
       })),
     ),
   );
@@ -958,13 +1042,22 @@ export async function collectDiagnostics(
   );
 
   // DB接続の待ち行列（T-M8-198）。記録は待たされたときだけ入るので、通常は0件。
-  const poolWaits = await db.query<{ n: string; max_ms: string }>(
-    `select count(*)::text as n, coalesce(max(waited_ms), 0)::text as max_ms
+  /*
+    **「並んだ回数」と「接続を張るのにかかった回数」を分けて数える**（T-M8-323）。
+    以前は件数だけを見ていたため、5分ごとのcronが新しい接続を張るたびに1件積まれ、
+    **それだけで毎日必ず閾値を超えて赤**になっていた（2026-08-27、本番302件のうち292件が
+    `total_count=1 / waiting_count=0`＝プールが空で誰も並んでいない状態だった）。
+  */
+  const poolWaits = await db.query<{ n: string; queued: string; max_ms: string }>(
+    `select count(*)::text as n,
+            count(*) filter (where waiting_count > 0)::text as queued,
+            coalesce(max(waited_ms), 0)::text as max_ms
        from db_pool_events where occurred_at >= now() - interval '24 hours'`,
   );
   checks.push(
     judgePoolWaits({
       waits24h: Number(poolWaits.rows[0]?.n ?? 0),
+      queuedWaits24h: Number(poolWaits.rows[0]?.queued ?? 0),
       maxWaitedMs: Number(poolWaits.rows[0]?.max_ms ?? 0),
       poolMax: poolMax(),
     }),

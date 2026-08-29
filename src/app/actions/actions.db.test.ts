@@ -85,7 +85,7 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
     const uid = userId;
     userId = "";
     xAccountId = "";
-    // FK順に子から消す（`base_md_versions` 等が x_accounts を参照している）。
+    // FK順に子から消す（子テーブルが x_accounts を参照している）。
     await withTransaction(async (c) => {
       for (const table of [
         "external_api_usage_events",
@@ -94,7 +94,6 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
         "follower_snapshots",
         "learning_sources",
         "prompt_templates",
-        "base_md_versions",
         "generation_jobs",
         "drafts",
         "schedule_slots",

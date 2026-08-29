@@ -312,12 +312,12 @@ export function SuggestionsPanel({
                       </dl>
 
                       {(s.advice.prompt || s.advice.accountMd) && !canEditPrompts ? (
-                        // 貼り先（設定＞プロンプト）は編集権限が必要なため、権限が無ければ全文を出さない。
+                        // 貼り先（プロンプト画面）は編集権限が必要なため、権限が無ければ全文を出さない。
                         <p className="mt-3 rounded-card border border-hairline bg-page px-3.5 py-3 text-body leading-5 text-ink-2">
                           この特徴を毎回の生成に反映する編集提案（アカウント.md・投稿作成プロンプト）も用意しました。
                           <Link
                             className="text-info-fg hover:underline"
-                            href="/app/settings?tab=prompts&sec=post-prompt"
+                            href="/app/prompts?sec=post-prompt"
                           >
                             プロンプトのカスタマイズ
                           </Link>
@@ -330,8 +330,8 @@ export function SuggestionsPanel({
                         <ProposalBlock
                           content={s.advice.accountMd.content}
                           copied={copied === "account_md"}
-                          href="/app/settings?tab=prompts&sec=account-md"
-                          linkLabel="設定で編集する"
+                          href="/app/prompts?sec=account-md"
+                          linkLabel="プロンプト画面で編集する"
                           onCopy={() => copyProposal("account_md", s.advice!.accountMd!.content)}
                           reason={s.advice.accountMd.reason}
                           title="アカウント.mdへの編集提案 — そのまま貼って保存できます"
@@ -342,8 +342,8 @@ export function SuggestionsPanel({
                         <ProposalBlock
                           content={s.advice.prompt.content}
                           copied={copied === "prompt"}
-                          href="/app/settings?tab=prompts&sec=post-prompt"
-                          linkLabel="設定で保存する"
+                          href="/app/prompts?sec=post-prompt"
+                          linkLabel="プロンプト画面で保存する"
                           onCopy={() => copyProposal("prompt", s.advice!.prompt!.content)}
                           title={`投稿作成プロンプト（${legacyPatternLabel(
                             s.advice.prompt.kind,

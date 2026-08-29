@@ -62,6 +62,35 @@ describe("RLS policies & ownership trigger", () => {
   ];
 
   /**
+   * このテストが `authenticated` として読む表（T-M8-354）。
+   * **`SERVICE_ROLE_ONLY_TABLES` はここに入れない**（見えないことを検査する側なので）。
+   * 表を読むテストを足すときはここへ追加する（足し忘れたら権限エラーで落ちるので気付ける）。
+   */
+  const RLS_READ_TABLES = [
+    "affiliate_accounts",
+    "affiliate_attributions",
+    "affiliate_commissions",
+    "affiliate_payout_accounts",
+    "affiliate_payouts",
+    "drafts",
+    "news_items",
+    "post_patterns",
+    "profiles",
+    "prompt_templates",
+    "x_accounts",
+  ];
+
+  /**
+   * **2つの表リストが重ならないこと**（T-M8-354）。`RLS_READ_TABLES` へ
+   * service_role専用の表を足すと、「authenticated には見えない」ことの検査が
+   * 自分で権限を与えたせいで無意味になる——**気付けない形で守りが消える**ので、ここで止める。
+   */
+  it("読める表のリストに service_role 専用の表を混ぜない", () => {
+    const overlap = RLS_READ_TABLES.filter((t) => SERVICE_ROLE_ONLY_TABLES.includes(t));
+    expect(overlap, "service_role専用の表へ権限を与えている").toEqual([]);
+  });
+
+  /**
    * Switch the current transaction to the authenticated role acting as `uid`.
    *
    * **このtx内だけSELECT権限を与えてから切り替える**（T-M8-252）。本番の `authenticated` は
@@ -71,13 +100,15 @@ describe("RLS policies & ownership trigger", () => {
    * 権限そのものの検査は下の「authenticated が読めるのは…」が別に行う。
    */
   async function actAs(c: Client, uid: string) {
-    // service_role専用のテーブルは除いて、このtx内だけ読めるようにする（rollbackで消える）。
-    const { rows } = await c.query<{ tablename: string }>(
-      `select tablename from pg_tables
-        where schemaname = 'public' and not (tablename = any($1::text[]))`,
-      [SERVICE_ROLE_ONLY_TABLES],
-    );
-    for (const { tablename } of rows) {
+    /*
+      **このテストが実際に読む表にだけ権限を与える**（T-M8-354）。
+      以前は public の全表（30以上）へ `grant` していた。`GRANT` は表ごとに
+      ACCESS EXCLUSIVE ロックを取るため、**同時に走る他のdbテストが書き込み中の表で待たされ**、
+      フルスイートでだけ稀に失敗していた（2026-08-28に観測）。
+      読む表だけに絞れば、掛かるロックは自分が触る範囲に収まる。
+      service_role専用の表は**わざと外す**（「authenticated には見えない」ことの検査対象）。
+    */
+    for (const tablename of RLS_READ_TABLES) {
       await c.query(`grant select on public."${tablename}" to authenticated`);
     }
     await c.query(`select set_config('role', 'authenticated', true)`);

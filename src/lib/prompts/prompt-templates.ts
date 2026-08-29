@@ -3,36 +3,19 @@ import { PLANS, type PlanId } from "@/lib/plans";
 
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "./gen-prompts";
 import type { Queryable } from "../db/queryable";
-import { toIso } from "../format";
 
 /** `prompt_templates` が持ち続ける種別。型プロンプトは `post_patterns` へ移した（U2）。 */
 const IMAGE_TEMPLATE_KINDS = ["image"] as const;
 
 /**
- * **このモジュールは画像プロンプトだけを扱う**（ADR-0008・要件05 §8・T-M8-139）。
- *
- * 型プロンプト（`p1`〜`p6`）は `post_patterns.prompt` が正本で、
- * 読み書きは `post/post-patterns-store.ts` の `pattern_id` 経路が担う。
- *
- * 以前はここが `seed_key` で `post_patterns` を読み書きする分岐を持っていたため、
- * **画像プロンプトの編集画面で「再読み込み」を押すと編集対象が p1 へすり替わり、
- * 保存すると投稿パターンのプロンプトを画像プロンプトの本文で上書きした**。
- * 分岐ごと閉じて、型プロンプトがこの経路へ来たら落とす。
- */
-function assertImageKind(kind: PromptTemplateKind): void {
-  if (kind !== "image") {
-    throw new AppError("validation_error", {
-      details: { reason: "pattern_prompt_not_here", kind },
-    });
-  }
-}
-
-/**
  * prompt_templates の system default seed と解決（要件02 §3.5, T-M3-02）。DBは注入し純粋に保つ。
  * system default（x_account_id=null）はコード定数を正としてseedで冪等に同期する。account上書き
  * （x_account_id=当該）があればそれを優先し、なければsystem default、無ければコード定数へフォールバック。
- * 手動編集（list/update/reset）の中核は要件05 §8/§9・T-M5-10。md/premium のみ更新可、p1〜p6/image・
- * 8,000字上限・expected_updated_at 楽観lock。p5 は FEATURE_QUOTE_POST_ENABLED=false の間 feature_disabled。
+ *
+ * **画像プロンプトの一覧・保存・既定へ戻すはここには無い**（T-M8-332）。複数持てるように
+ * なったので、読み書きは本棚（`prompt-presets.ts`／`prompt-presets-server.ts`）が担い、
+ * 使用中の1件だけがこの表の上書き行へ写される。ここに残るのは**生成が使う解決**と
+ * system default の同期、プランと本文の検証だけ。
  */
 
 /**
@@ -154,123 +137,4 @@ export function validatePromptContent(content: string): void {
       details: { reason: "too_long", max: PROMPT_TEMPLATE_MAX_CHARS, length: content.length },
     });
   }
-}
-
-/**
- * **画像プロンプト**を system default（x_account_id=null）＋account上書きで合成して返す。
- * 上書きがあれば content=上書き・isOverride=true・updatedAt=上書き行のupdated_at、
- * なければ system default（無ければコード定数）・isOverride=false・updatedAt=null。
- */
-export async function listPromptTemplates(
-  db: Queryable,
-  xAccountId: string,
-): Promise<PromptTemplateView[]> {
-  const [overrides, systems] = await Promise.all([
-    db.query<{ kind: string; content: string; updated_at: Date | string }>(
-      `select kind, content, updated_at from prompt_templates where x_account_id = $1`,
-      [xAccountId],
-    ),
-    db.query<{ kind: string; content: string }>(
-      `select kind, content from prompt_templates where x_account_id is null`,
-    ),
-  ]);
-  const ov = new Map(overrides.rows.map((r) => [r.kind, r]));
-  const sys = new Map(systems.rows.map((r) => [r.kind, r.content]));
-
-  // **画像だけを返す**（上のコメントの理由）。型プロンプトは `listPatternPrompts` から引く。
-  const views: PromptTemplateView[] = [];
-  for (const kind of IMAGE_TEMPLATE_KINDS) {
-    const o = ov.get(kind);
-    views.push(
-      o
-        ? { kind, content: o.content, isOverride: true, updatedAt: toIso(o.updated_at) }
-        : {
-            kind,
-            content: sys.get(kind) ?? SYSTEM_DEFAULT_TEMPLATES[kind],
-            isOverride: false,
-            updatedAt: null,
-          },
-    );
-  }
-  return views;
-}
-
-async function getPromptTemplateView(
-  db: Queryable,
-  xAccountId: string,
-  kind: PromptTemplateKind,
-): Promise<PromptTemplateView> {
-  assertImageKind(kind);
-  const override = (
-    await db.query<{ content: string; updated_at: Date | string }>(
-      `select content, updated_at from prompt_templates where x_account_id = $1 and kind = $2`,
-      [xAccountId, kind],
-    )
-  ).rows[0];
-  if (override) {
-    return { kind, content: override.content, isOverride: true, updatedAt: toIso(override.updated_at) };
-  }
-  return { kind, content: await systemTemplateContent(db, kind), isOverride: false, updatedAt: null };
-}
-
-/**
- * account上書きを作成/更新する。plan/kindを検証し8,000字上限を確認、expected_updated_at で楽観lock。
- * expected_updated_at=null は新規作成（既に存在すれば job_conflict）、非nullは ms精度一致時のみ更新。
- */
-export async function applyUpdatePromptTemplate(
-  db: Queryable,
-  input: {
-    xAccountId: string;
-    kind: PromptTemplateKind;
-    content: string;
-    expectedUpdatedAt: string | null;
-    plan: string;
-    quotePostEnabled: boolean;
-  },
-): Promise<PromptTemplateView> {
-  assertPromptEditablePlan(input.plan);
-  assertPromptKindAllowed(input.kind, input.quotePostEnabled);
-  validatePromptContent(input.content);
-
-  // 型プロンプトはここでは書かない（`applyUpdatePatternPrompt` が担う）。
-  assertImageKind(input.kind);
-
-  if (input.expectedUpdatedAt === null) {
-    const ins = await db.query(
-      `insert into prompt_templates (x_account_id, kind, content)
-       values ($1, $2, $3)
-       on conflict (x_account_id, kind) where x_account_id is not null do nothing`,
-      [input.xAccountId, input.kind, input.content],
-    );
-    if ((ins.rowCount ?? 0) !== 1) {
-      throw new AppError("job_conflict", { details: { reason: "prompt_template_changed" } });
-    }
-  } else {
-    const upd = await db.query(
-      `update prompt_templates set content = $3
-        where x_account_id = $1 and kind = $2
-          and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
-      [input.xAccountId, input.kind, input.content, input.expectedUpdatedAt],
-    );
-    if ((upd.rowCount ?? 0) !== 1) {
-      throw new AppError("job_conflict", { details: { reason: "prompt_template_changed" } });
-    }
-  }
-  return getPromptTemplateView(db, input.xAccountId, input.kind);
-}
-
-/** account上書きを削除し system default へ戻す（冪等）。plan/kindを検証。 */
-export async function applyResetPromptTemplate(
-  db: Queryable,
-  input: { xAccountId: string; kind: PromptTemplateKind; plan: string; quotePostEnabled: boolean },
-): Promise<PromptTemplateView> {
-  assertPromptEditablePlan(input.plan);
-  assertPromptKindAllowed(input.kind, input.quotePostEnabled);
-  // 型プロンプトはここでは戻さない（パターン管理の「システム既定に戻す」が担う）。
-  assertImageKind(input.kind);
-  await db.query(`delete from prompt_templates where x_account_id = $1 and kind = $2`, [
-    input.xAccountId,
-    input.kind,
-  ]);
-  return getPromptTemplateView(db, input.xAccountId, input.kind);
 }

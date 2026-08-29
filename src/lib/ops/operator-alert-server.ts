@@ -62,6 +62,12 @@ export async function deliverOperatorAlert(
   const { date, hour } = jstDate(deps.nowIso);
   if (hour < OPERATOR_ALERT_HOUR_JST) return { sent: false, skipped: "before_hour" };
 
+  /*
+    宛先は `SUPPORT_EMAIL`（運営者のアドレス）。**画面に出す問い合わせ先とは別物**で、
+    そちらは `LEGAL_ENTITY.email`（support@exosai.net）が正本（T-M8-343）。
+    差出人と宛先が同じだと、Gmailは自分宛のメールを受信トレイに入れないため
+    **異常が起きても気付けない**（2026-08-25に踏んだ）。同じ値にしないこと。
+  */
   const to = env.SUPPORT_EMAIL;
   if (!to) return { sent: false, skipped: "no_recipient" };
 
@@ -83,6 +89,16 @@ export async function deliverOperatorAlert(
   const stripeProbes = await buildStripeProbeDeps();
   const report = await collectDiagnostics(deps.db, {
     ...stripeProbes,
+    /*
+      **人間確認の接続情報もここで渡す**（T-M8-359）。Stripeと同じ抜けが残っていて、
+      毎朝「Supabaseの接続情報が無いため確認できません」という【注意】が届いていた——
+      設定はあるのに、渡していないから確認できていないだけ。事実と違う警告は読まれなくなり、
+      本当の異常まで埋もれる（原則2）。渡す値は doctor の route と同じ。
+    */
+    captcha: {
+      supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+      anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    },
     schedulerExpected: env.APP_ENV === "production",
     subscriptionSyncExpected: env.APP_ENV === "production",
     mailSenderEmail: env.SMTP_USER ?? null,

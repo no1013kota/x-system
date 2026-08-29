@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
-import { reserveUsage } from "./generation-reserve";
+import { settleUsage } from "./generation-reserve";
 import { notifyUsageThresholds } from "./usage-threshold";
 
 /**
@@ -112,10 +112,10 @@ describe("notifyUsageThresholds (db)", () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
     try {
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-07-15" }),
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100_000, periodKey: "2026-07-15" }),
       );
       await withTransaction((c) =>
-        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 1000, periodKey: "2026-08-15" }),
+        notifyUsageThresholds(c, { userId: uid, key: "ai_credits", newCount: 100_000, periodKey: "2026-08-15" }),
       );
       const rows = await usageNotifs(uid);
       expect(rows.map((r) => r.dedupe_key).sort()).toEqual([
@@ -141,7 +141,7 @@ describe("notifyUsageThresholds (db)", () => {
     }
   });
 
-  it("reserveUsage crossing 80% creates the usage notification end-to-end", async () => {
+  it("実費の記録で80%を越えると通知が作られる（T-M8-324で予約を廃止）", async () => {
     const uid = await withTransaction((c) => makeUser(c, { in_app: true }));
     try {
       const jobId = await withTransaction((c) => seedJob(c, uid));
@@ -154,7 +154,7 @@ describe("notifyUsageThresholds (db)", () => {
         ),
       );
       await withTransaction((c) =>
-        reserveUsage(c, { userId: uid, jobId, type: "generation", limit: 1000, amount: 16 }),
+        settleUsage(c, { userId: uid, jobId, type: "generation", actualCredits: 80_000 }),
       );
       const rows = await usageNotifs(uid);
       const month = (

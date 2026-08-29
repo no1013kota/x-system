@@ -123,9 +123,17 @@ export function checkExecutionPrerequisites(
   if (!operatorManaged && input.imageRequested && !input.imageAiKeyValid) {
     missing.push("image_ai_key");
   }
-  if (input.baseMdVersion < 1) {
-    missing.push("persona");
-  }
+  /*
+    **アカウント設定が未保存でも生成はできる**（T-M8-337・運営者の指示 2026-08-27）。
+
+    以前はここで止めていたが、アカウント.mdは「誰として書くか」を鮮明にする**補助**であって、
+    無ければ投稿を作れないものではない（パターンのプロンプトと入力だけでも生成できる）。
+    登録直後に「まず設定を全部埋めてから」と足止めする方が、使い始めの障害が大きい。
+    未保存のときは `<base_md>` を渡さず、AIはパターンと入力だけで書く（`gen-context.ts`）。
+
+    **初期設定ガイドからは消さない**——設定した方が良いことに変わりはないので、
+    ホームのチェックリスト（`SETUP_ITEMS_*`）には残して案内し続ける。
+  */
 
   if (missing.length === 0) return null;
   const primary = missing[0];
@@ -254,6 +262,13 @@ export function buildSetupChecklist(
   const missing = new Set(
     checkExecutionPrerequisites({ ...input, imageRequested: false })?.missing ?? [],
   );
+  /*
+    **アカウント設定は「生成の前提」ではなくなったが、案内は続ける**（T-M8-337）。
+    生成の前提（`checkExecutionPrerequisites`）から外したので、その結果をそのまま使うと
+    未保存でも「完了」と表示され、初期設定ガイドから項目ごと消える。
+    ここだけは自分で判定する——**設定した方が良いことは変わっていない**。
+  */
+  if (input.baseMdVersion < 1) missing.add("persona");
   const items = isOperatorManagedPlan(input.plan) ? SETUP_ITEMS_PREMIUM : SETUP_ITEMS_BYOK;
   return items.map((item) => {
     const satisfied = !missing.has(item);

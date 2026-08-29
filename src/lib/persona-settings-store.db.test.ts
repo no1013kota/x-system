@@ -74,35 +74,20 @@ describe("updatePersonaSettings transaction", () => {
     });
     expect(first.version).toBe(1);
     expect(first.baseMd).toContain("- 発信者: 初回の発信者");
-    expect(first.baseMd).toMatch(/## 5\.[^\n]*\n\n## 6\.[^\n]*\n$/);
+    expect(first.baseMd).toMatch(/## 5\.[^\n]*\n$/);
     const firstRows = await db.query(
-      `select x.settings, x.base_md, x.base_md_version,
-              v.version, v.change_source
-         from x_accounts x
-         join base_md_versions v on v.x_account_id = x.id
-        where x.id = $1`,
+      `select x.settings, x.base_md, x.base_md_version from x_accounts x where x.id = $1`,
       [xAccountId],
     );
     expect(firstRows.rows).toHaveLength(1);
-    expect(firstRows.rows[0]).toMatchObject({
-      base_md: first.baseMd,
-      base_md_version: 1,
-      change_source: "settings",
-      version: 1,
-    });
+    expect(firstRows.rows[0]).toMatchObject({ base_md: first.baseMd, base_md_version: 1 });
 
     const learned = first.baseMd.replace(
-      "## 5. 文体・自分らしさ\n\n## 6. 参考にする型",
-      "## 5. 文体・自分らしさ\n- 学習済み文体\n\n## 6. 参考にする型\n- 学習済み構成",
+      "## 5. 参考にする型\n",
+      "## 5. 参考にする型\n- 学習済み構成\n",
     );
     await db.query(
       "update x_accounts set base_md = $2, base_md_version = 2 where id = $1",
-      [xAccountId, learned],
-    );
-    await db.query(
-      `insert into base_md_versions
-        (x_account_id, version, content, change_source)
-       values ($1, 2, $2, 'learning')`,
       [xAccountId, learned],
     );
     const learnedTail = learned.slice(learned.indexOf("## 5."));
@@ -148,8 +133,6 @@ describe("updatePersonaSettings transaction", () => {
 
     const afterConflicts = await db.query(
       `select x.base_md_version, x.base_md,
-              (select count(*)::int from base_md_versions v
-                where v.x_account_id = x.id) as version_count,
               (select count(*)::int from usage_events u
                 where u.x_account_id = x.id) as usage_count
          from x_accounts x where x.id = $1`,
@@ -159,7 +142,113 @@ describe("updatePersonaSettings transaction", () => {
       base_md: second.baseMd,
       base_md_version: 3,
       usage_count: 0,
-      version_count: 3,
     });
+  });
+
+  /**
+   * アカウント.mdの5・6章を画面から書ける（T-M8-355・運営者の指示 2026-08-28）。
+   *
+   * **渡されなければ1バイトも変えない。** 学習・mdエディタ・ロールバックが書いた内容を、
+   * 別経路の保存で知らないうちに消さないため（原則1）。
+   */
+  it("5章（参考にする型）は渡したときだけ書き換わる（渡さなければそのまま）", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    const xAccountId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000',
+               'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `insert into x_accounts
+        (id, user_id, x_user_id, handle, name, auth_type, status)
+       values ($1, $2, $3, 'free_sections', 'Free Sections', 'byok', 'active')`,
+      [xAccountId, userId, `x_${xAccountId}`],
+    );
+    await db.query(
+      `update profiles
+          set plan = 'standard', subscription_status = 'active', active_x_account_id = $2
+        where id = $1`,
+      [userId, xAccountId],
+    );
+
+    const first = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: 0,
+      freeSections: { referenceStyle: "結論→理由→具体例。" },
+      settings: settings("初回の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(first.baseMd).toContain("## 5. 参考にする型\n結論→理由→具体例。");
+
+    // 渡さない保存では**触らない**（別経路が書いた内容を消さない）。
+    const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: first.version,
+      settings: settings("2回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(second.baseMd).toContain("結論→理由→具体例。");
+    expect(second.baseMd).toContain("2回目の発信者");
+
+    // 空文字を渡したら消える（「書かない」を選べる）。
+    const third = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: second.version,
+      freeSections: { referenceStyle: "" },
+      settings: settings("3回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(third.baseMd).not.toContain("結論→理由→具体例。");
+    expect(third.baseMd, "見出しは残る（5見出し構造）").toContain("## 5. 参考にする型");
+  });
+
+  /**
+   * 参考ソースからの反映は**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
+   *
+   * 保存で提案を消さないと、画面を開き直すたびに「参考ソースから作った内容を入れました。
+   * まだ保存されていません」が出続け、**確定したのかどうかが分からなくなる**（原則1）。
+   */
+  it("保存すると settings_proposal が消える（提案が残り続けない）", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    const xAccountId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000',
+               'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `insert into x_accounts
+        (id, user_id, x_user_id, handle, name, auth_type, status, settings_proposal)
+       values ($1, $2, $3, 'proposal_test', 'Proposal Test', 'byok', 'active', $4::jsonb)`,
+      [xAccountId, userId, `x_${xAccountId}`, JSON.stringify(settings("提案の発信者"))],
+    );
+    await db.query(
+      `update profiles
+          set plan = 'standard', subscription_status = 'active', active_x_account_id = $2
+        where id = $1`,
+      [userId, xAccountId],
+    );
+
+    await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: 0,
+      settings: settings("確定した発信者"),
+      userId,
+      xAccountId,
+    });
+
+    const after = await db.query<{ proposal: unknown; speaker: string }>(
+      `select settings_proposal as proposal, settings->'persona'->>'speaker' as speaker
+         from x_accounts where id = $1`,
+      [xAccountId],
+    );
+    expect(after.rows[0].proposal, "保存したら提案は残さない").toBeNull();
+    expect(after.rows[0].speaker).toBe("確定した発信者");
   });
 });

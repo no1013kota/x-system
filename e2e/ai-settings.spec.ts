@@ -28,28 +28,51 @@ const VALID_BASE_MD = [
   "## 4. やらないこと",
   "- テストに関係ない話はしない",
   "",
-  "## 5. 文体・自分らしさ",
-  "- よく使う語彙: 「確認します」",
-  "",
-  "## 6. 参考にする型",
+  "## 5. 参考にする型",
   "- 伸びた投稿の型: 結論から書く",
   "",
 ].join("\n");
 
-test("アカウント.mdを編集して保存でき、versionが上がって履歴に残る", async ({ accounts, page }) => {
+test("アカウント.mdを編集して保存でき、versionが上がる", async ({ accounts, page }) => {
   const account = await accounts.create("base-md");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=base-md");
+  await page.goto("/app/prompts?sec=account-md");
 
-  const editor = page.getByLabel("アカウント.md本文");
+  // 複数持てるようになったので、**使用中の1件**を編集する（T-M8-332）。
+  const editor = page.getByLabel("アカウント.mdの本文");
   await expect(editor).toBeVisible();
 
   const marker = `E2E-${randomUUID().slice(0, 8)}`;
-  await editor.fill(VALID_BASE_MD.replace("テスト用の発信者", `テスト用の発信者 ${marker}`));
+  const desired = VALID_BASE_MD.replace("テスト用の発信者", `テスト用の発信者 ${marker}`);
+  /*
+    **入れた文字が残っていることを確かめてから押す**（T-M8-368）。textareaはReactの制御下に
+    あるので、**hydrationが終わる前に入れた値は、直後の再描画でサーバー側の値へ戻される**。
+    そのまま押すと「元の本文を保存した」ことになり、CIでは構造エラーで落ちていた
+    （2026-08-29。devサーバが冷えているCIでだけ再現し、手元では常に通っていた）。
+    入れ直しても残らない間は繰り返す。
+  */
+  await expect(async () => {
+    await editor.fill(desired);
+    await expect(editor).toHaveValue(desired, { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
-  // 保存できたことが画面で分かる（versionつき）
-  await expect(page.getByText("保存しました", { exact: false })).toBeVisible({ timeout: 20_000 });
+  /*
+    **成功と失敗の両方を待つ**（T-M8-368）。保存の失敗はトーストではなくインライン通知に出る
+    仕様（要件06 §2.1）なので、成功トーストだけを待つと、失敗したときの結果が
+    「要素が見つからない」になり**何が起きたのか分からない**（原則1/2）。
+    先に出た方を掴み、失敗ならその文言を添えて落とす。
+
+    待ちを60秒にしているのは、devサーバが**Server Actionを初回だけコンパイルする**ため。
+    2026-08-29、CIの冷えたrunnerでここが20秒を超えて落ちた（手元は3〜7秒で通る）。
+    `/app/prompts` はglobalSetupで温めているが、温めるのはGETでactionは含まれない。
+  */
+  const savedToast = page.getByText("保存しました", { exact: false });
+  const inlineError = page.locator('[data-slot="notice"][data-tone="danger"]');
+  await expect(savedToast.or(inlineError).first()).toBeVisible({ timeout: 60_000 });
+  if (await inlineError.first().isVisible()) {
+    throw new Error(`保存が失敗した: ${await inlineError.first().innerText()}`);
+  }
 
   // DBに反映され、versionが上がっている
   const [saved] = await query<{ base_md: string; version: number }>(
@@ -59,30 +82,29 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
   expect(saved.base_md, "編集内容が保存されていること").toContain(marker);
   expect(saved.version, "versionが上がること").toBeGreaterThan(1);
 
-  // 変更履歴に残る（いつでも戻せる）
-  const versions = await query<{ n: string }>(
-    `select count(*)::text as n from base_md_versions where x_account_id = $1`,
-    [account.xAccountId],
-  );
-  expect(Number(versions[0].n), "履歴が作られること").toBeGreaterThan(0);
-  // 見出しと説明文の2箇所に出るため見出しだけを見る。
-  await expect(page.getByRole("heading", { name: "変更履歴" })).toBeVisible();
+  // 変更履歴は廃止した（T-M8-362）。戻したいときは本棚で別の本文を選ぶ。
+  await expect(page.getByRole("heading", { name: /変更履歴/ })).toHaveCount(0);
 });
 
 test("見出し構造が壊れた内容は保存されず、何を直せばよいか分かる", async ({ accounts, page }) => {
   const account = await accounts.create("base-md-invalid");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=base-md");
+  await page.goto("/app/prompts?sec=account-md");
 
-  const editor = page.getByLabel("アカウント.md本文");
+  const editor = page.getByLabel("アカウント.mdの本文");
   await expect(editor).toBeVisible();
 
-  // 「## 3.」を落とした状態（6見出しが揃っていない）
-  await editor.fill(VALID_BASE_MD.replace("## 3. トーン&マナー", "### 3. トーン&マナー"));
+  // 「## 3.」を落とした状態（5見出しが揃っていない）。ここも hydration 前の入力が
+  // 戻されると**正しい本文を保存してしまい、テストの前提が消える**ので残ったことを確かめる。
+  const broken = VALID_BASE_MD.replace("## 3. トーン&マナー", "### 3. トーン&マナー");
+  await expect(async () => {
+    await editor.fill(broken);
+    await expect(editor).toHaveValue(broken, { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
   // 何が悪いかが具体的に出る（「エラー」だけで終わらせない）
-  await expect(page.getByText("見出し構造が不正です", { exact: false })).toBeVisible({
+  await expect(page.getByText("見出しの形が合っていません", { exact: false })).toBeVisible({
     timeout: 20_000,
   });
 
@@ -98,47 +120,71 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
 test("学習ソースを追加すると分析中として並び、削除できる", async ({ accounts, page }) => {
   const account = await accounts.create("learning");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
+  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの先頭（T-M8-344）
 
-  await expect(page.getByRole("heading", { name: "参考ソースを追加" })).toBeVisible();
-
-  // 追加（分析はAIを呼ぶため、ここでは受け付けられて pending になることだけを見る）
+  /*
+    **登録専用のボタンは無い**（T-M8-346）。記入して「アカウント設定を作る」を押すと、
+    登録 → 分析 → 反映まで1つの操作として進む。ここで見るのは登録が受け付けられて
+    pending になるところまで（分析はAIを呼ぶので走らせきらない）。
+  */
   const handle = `e2e_ref_${randomUUID().slice(0, 6)}`;
-  // 入力欄・追加ボタンは種別ごとに分かれている（T-M8-112）。
-  await page.getByLabel("参考アカウント", { exact: true }).fill(`https://x.com/${handle}`);
-  await page.getByRole("button", { name: "参考アカウントを追加" }).click();
+  await page.getByRole("textbox", { name: "参考アカウント" }).first().fill(`https://x.com/${handle}`);
+  await page.getByRole("button", { name: "アカウント設定を反映する" }).click();
 
-  // **成功したことが利用者に分かる**（T-M8-18）。以前は追加が通っても画面は無言で、
-  // 一覧に行が増えたことに気づけるかどうかに委ねていた。
-  await expect(toastIn(page)).toContainText("参考アカウントを追加しました");
+  /*
+    **押した結果が画面に出る**（T-M8-18／原則1）。ここでは一覧に「分析待ち」の行が増えることで見る。
+    「アカウント設定を書き換え中です」の表示は分析が終わるまでの間だけ出るもので、
+    E2EはダミーのAIキーで動くため分析が即座に終わって（材料0件で）消える——
+    このテストで押さえると、実装ではなく鍵の有無で結果が変わる。
+  */
+  /*
+    **状態は指定しない**（T-M8-358）。E2EはダミーのX/AIキーで動くので、分析jobが
+    その場で失敗して `pending` を通り越していることがある。ここで見たいのは
+    「登録が受け付けられて一覧に出ること」で、**通り過ぎる途中の状態を掴もうとすると
+    速さで結果が変わる**（実際にフルスイートで `failed` を掴んで落ちた）。
+  */
+  await expect(page.getByRole("listitem").filter({ hasText: handle })).toBeVisible();
 
-  // DBに登録され、分析待ちになる
+  // DBにも登録されている（状態は問わない）。
   await expect
     .poll(
       async () =>
         (
-          await query<{ status: string }>(
-            `select status::text as status from learning_sources
+          await query<{ n: string }>(
+            `select count(*)::text as n from learning_sources
               where x_account_id = $1 and url like $2 and removed_at is null`,
             [account.xAccountId, `%${handle}%`],
           )
-        )[0]?.status,
+        )[0]?.n,
       { timeout: 20_000, message: "学習ソースが登録されること" },
     )
-    .toBe("pending");
-
-  // 画面にも「分析中」として出る（進行が分かる）
-  await expect(page.getByText(handle, { exact: false })).toBeVisible();
+    .toBe("1");
 
   // 分析が終わった状態にしてから削除する（AIは呼ばない）。
   //
-  // **実行中の分析jobも終端させる。** 削除は「同一アカウントに queued/running の学習jobがあれば
-  // job_conflict」で弾く仕様（要件05 §8）。追加時にdispatchされたjobが残っていると削除が通らず、
-  // 環境によって結果が変わる（2026-08-01、CIはダミーキーでjobが残り続けて落ちた。手元は実キーで
-  // jobが早く終わるため通っていた）。状態を作るテストなので、前提を揃えてから操作する。
+  /*
+    **実行中の学習系jobを終端させる。** 削除は「同一アカウントに queued/running の学習jobがあれば
+    job_conflict」で弾く仕様（要件05 §8）。追加時にdispatchされたjobが残っていると削除が通らず、
+    環境によって結果が変わる（2026-08-01、CIはダミーキーでjobが残り続けて落ちた。手元は実キーで
+    jobが早く終わるため通っていた）。状態を作るテストなので、前提を揃えてから操作する。
+
+    **`md_merge` も含める**（T-M8-357）。反映のボタンは「登録→分析→反映」まで進むので、
+    分析がダミーキーで即失敗すると、そのまま反映の `md_merge` が起票される。
+    `learning_analysis` だけを畳んでいたため、**タイミング次第で削除だけが弾かれて**いた
+    （フルスイートでだけ稀に落ちる形。単独で回すと反映まで進む前に削除が走って通っていた）。
+  */
+  /*
+    **先に画面を作り直して、反映の待ちループを止める**（T-M8-358）。
+    ボタンを押した画面は「分析が終わるのを待って反映を起票する」ループを回しているので、
+    先にjobを畳むと**その瞬間に「終わった」と判断して `md_merge` を起票する**——
+    畳んだ側から新しいjobが生えて、削除だけが弾かれる。順番が結果を決めるので、
+    ループを捨ててから状態を作る。
+  */
+  await page.reload();
   await query(
     `update generation_jobs set status = 'canceled', finished_at = now()
-      where x_account_id = $1 and kind = 'learning_analysis' and status in ('queued','running')`,
+      where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+        and status in ('queued','running')`,
     [account.xAccountId],
   );
   await query(
@@ -147,56 +193,62 @@ test("学習ソースを追加すると分析中として並び、削除でき�
       where x_account_id = $1 and url like $2`,
     [account.xAccountId, `%${handle}%`],
   );
-  await page.reload();
-
-  // 削除は確認ダイアログを挟む（誤操作でアカウント.mdの知見を失わないため）
-  page.on("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: "削除", exact: true }).first().click();
-
-  // 削除処理に入る（removing → 生成の一時停止案内が出る）
+  // 残っていないことを確かめてから進む（残っていれば削除は job_conflict で弾かれる）。
   await expect
     .poll(
       async () =>
         (
-          await query<{ status: string }>(
-            `select status::text as status from learning_sources
-              where x_account_id = $1 and url like $2`,
-            [account.xAccountId, `%${handle}%`],
+          await query<{ n: string }>(
+            `select count(*)::text as n from generation_jobs
+              where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+                and status in ('queued','running')`,
+            [account.xAccountId],
           )
-        )[0]?.status,
-      { timeout: 20_000, message: "削除処理へ入ること" },
+        )[0]?.n,
+      { timeout: 20_000, message: "学習系jobが残っていないこと" },
     )
-    .not.toBe("analyzed");
+    .toBe("0");
+  await page.reload();
+
+  // 削除は確認ダイアログを挟む（誤操作でアカウント.mdの知見を失わないため）
+  page.on("dialog", (d) => d.accept());
+
+  /*
+    **削除が受理されたことは成功トーストで確かめる**（T-M8-367）。
+    DBの `status` を見ると、削除は analyzed→removing へ進むが、その md_merge が
+    ダミーキーで失敗すると `finalizeFailedJob` が removing→analyzed へ**戻す**ため、
+    「analyzed でない」を待つと戻り値を掴んで落ちる（実際にフルスイートで落ちた）。
+    削除そのものの状態遷移は `learning-sources.db.test.ts` が見ているので、ここは
+    **UIの削除操作が受理される**ことだけを見る。job_conflict のときは畳み直して押し直す。
+  */
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // 直前に生えた学習jobを畳んでから押す（残っていれば削除は job_conflict で弾かれる）。
+    await query(
+      `update generation_jobs set status = 'canceled', finished_at = now()
+        where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+          and status in ('queued','running')`,
+      [account.xAccountId],
+    );
+    await page.getByRole("button", { name: "削除", exact: true }).first().click();
+    const ok = toastIn(page).getByText("参考ソースを削除しました");
+    const conflict = toastIn(page).getByText("実行できませんでした");
+    // 成功トーストが出れば終わり。conflictトーストが出たら畳み直して再試行。
+    // 待ちは長めに取る（負荷で結果が変わらないように・T-M8-368）。どちらのトーストが出たかで
+    // 分岐するので、長くしても失敗の検出は遅れない（成功なら即座に抜ける）。
+    await expect(ok.or(conflict).first()).toBeVisible({ timeout: 30_000 });
+    if (await ok.isVisible()) break;
+    await page.reload();
+  }
+  await expect(toastIn(page).getByText("参考ソースを削除しました")).toBeVisible();
 });
 
 // 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
 
-/**
- * URL未入力の「追加」が**完全に無反応**だった問題（T-M8-37）。
- *
- * `add()` は先頭で `if (!url.trim()) return;` と黙って抜けており、ボタンは押せる状態だった。
- * 押してもトースト無し・強調無し・進行表示無しで、利用者からは壊れているのか自分の操作が
- * 悪いのか区別できなかった（CLAUDE.md 原則1）。同じ画面の他の操作は全てトーストを出しており、
- * ここだけが例外だった。
- */
-test("URLが空のあいだ「追加」は押せず、理由が画面に出る（T-M8-37）", async ({
-  accounts,
-  page,
-}) => {
-  const account = await accounts.create("learning-empty-url", { personaReady: true });
-  await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの一番下（T-M8-103）
-
-  const add = page.getByRole("button", { name: "参考アカウントを追加" });
-  await expect(add).toBeDisabled();
-  // 理由は欄ごとに出る（参考アカウント・参考投稿の2欄・T-M8-112）。
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(2);
-
-  await page.getByLabel("参考アカウント", { exact: true }).fill("https://x.com/example");
-  await expect(add).toBeEnabled();
-  // 入力した側だけ理由が消える（もう片方は残る）。
-  await expect(page.getByText("XのURLを入力すると追加できます。")).toHaveCount(1);
-});
+/*
+  URL未入力で押せない理由を出すこと（T-M8-37）の検証は `learning-setup.spec.ts` へ移した。
+  欄ごとの「追加」ボタンが無くなり（T-M8-346）、押せる／押せないの判定が
+  「アカウント設定を作る」1つになったため、同じことを2か所で見る意味がなくなった。
+*/
 
 /**
  * 保存後に画面が「保存中…」のまま固まらないこと（T-M8-68）。
@@ -231,7 +283,7 @@ test("プロンプトを保存すると、成功が出た時点でもう次の�
 }) => {
   const account = await accounts.create("prompt-pending");
   await signIn(page, account);
-  await page.goto("/app/settings?tab=prompts&sec=post-prompt");
+  await page.goto("/app/prompts?sec=post-prompt");
 
   // 投稿作成プロンプトはパターン管理（全件を並べる）になった（T-M8-129 U4b）。
   // **保存の成功が出た時点で次の操作ができる**という判断は変わらない。

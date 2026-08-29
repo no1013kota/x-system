@@ -42,9 +42,15 @@ const SUGGEST_MAX_OUTPUT_TOKENS = 16_384;
 async function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
   // provider解決はenv検証に触れるため、実際にLLMを呼ぶ時点（投稿1件以上のとき）まで遅延ロードする。
   const { resolveTextProvider } = await import("../ai/resolve-provider-server");
+  /*
+    **投稿分析レポートは中間クラスで固定する**（T-M8-336・運営者の指示 2026-08-27）。
+    設定＞AIモデル設定の選択が効くのは**文章生成と画像生成だけ**という整理にしたため、
+    分析はここで固定する。入力（投稿50件）と出力（アカウント.md改訂案・プロンプト全文）が
+    どちらも大きく、1回の費用が最も重いジョブなので効き方も大きい。
+  */
   return resolveTextProvider(
     { plan: input.plan as PlanId, userId: input.userId },
-    { deadline: input.deadline, maxTokens: SUGGEST_MAX_OUTPUT_TOKENS },
+    { deadline: input.deadline, maxTokens: SUGGEST_MAX_OUTPUT_TOKENS, purpose: "analysis" },
   );
 }
 

@@ -29,6 +29,19 @@ export const AUTH_URL_CHECK_NAME = "登録・再設定メールの行き先（Su
  */
 export const EXPECTED_SENDER_NAME = "Exos AI";
 
+/**
+ * 認証メールの差出人アドレス（T-M8-339・運営者の指示 2026-08-27）。
+ *
+ * **Exos AIから出るメールはすべてここから送る。** 以前は送信に使うSMTPのユーザー名
+ * （＝運営者個人のアドレス）がそのまま差出人になっており、利用者から見ると
+ * 見知らぬ個人アドレスから6桁コードが届く状態だった。迷惑メール判定にも不利。
+ *
+ * **送信側（SMTP）でこのアドレスを名乗れることが前提**——Gmail/Workspaceなら
+ * 「他のアドレスとしてメールを送信」の認証が要る。名乗れないと送信自体が拒否される
+ * ので、`doctor` と `auth:templates` の両方で実際の設定値を突き合わせる。
+ */
+export const EXPECTED_SENDER_EMAIL = "support@exosai.net";
+
 /** Management APIのトークンを置く環境変数名。 */
 export const AUTH_TOKEN_ENV = "SUPABASE_ACCESS_TOKEN";
 
@@ -130,6 +143,8 @@ export function judgeAuthUrls(input: {
   smtpHost?: string | null;
   /** リモートの送信者名（`smtp_sender_name`）。未取得なら undefined。 */
   smtpSenderName?: string | null;
+  /** リモートの差出人アドレス（`smtp_admin_email`）。未取得なら undefined。 */
+  smtpSenderEmail?: string | null;
 }): Check {
   const target = confirmRedirectUrl(input.appBaseUrl);
   const allowed = isRedirectAllowed(input.uriAllowList, target);
@@ -201,6 +216,28 @@ export function judgeAuthUrls(input: {
       nextAction:
         "`npm run auth:templates -- --target <環境> --apply` を実行してください" +
         "（差出人名もあわせて設定します）",
+    };
+  }
+
+  /**
+   * **差出人アドレスが support@exosai.net か**（T-M8-339・運営者の指示 2026-08-27）。
+   *
+   * 既定では送信に使うSMTPのユーザー名（＝運営者個人のアドレス）がそのまま差出人になる。
+   * 利用者から見ると見知らぬ個人アドレスから6桁コードが届くことになり、
+   * 返信先としても機能しない（返信が個人の受信箱へ入る）。
+   */
+  if (input.smtpSenderEmail !== undefined && input.smtpSenderEmail !== EXPECTED_SENDER_EMAIL) {
+    return {
+      name: AUTH_URL_CHECK_NAME,
+      level: "error",
+      detail:
+        `確認メールの差出人アドレスが「${input.smtpSenderEmail || "(未設定)"}」です` +
+        `（「${EXPECTED_SENDER_EMAIL}」であるべき）。利用者には見知らぬアドレスから届き、` +
+        "返信も運営の窓口へ届きません",
+      nextAction:
+        "`npm run auth:templates -- --target <環境> --apply` を実行してください" +
+        `（送信側で ${EXPECTED_SENDER_EMAIL} を名乗る許可が要ります。Gmail/Workspaceなら` +
+        "「他のアドレスとしてメールを送信」の認証を先に済ませてください）",
     };
   }
 

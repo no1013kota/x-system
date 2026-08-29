@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.73 |
-| 更新日 | 2026-08-25 |
+| バージョン | v1.82 |
+| 更新日 | 2026-08-29 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -132,6 +132,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `token_refresh_lock_id` | `uuid` | null | refresh実行者識別子 |
 | `status` | `x_account_status` | not null default `active` | 連携状態 |
 | `settings` | `jsonb` | not null default `{}` | L-4〜L-7フォーム値 |
+| `settings_proposal` | `jsonb` | null可 | 参考ソースの反映で作った**保存前**のアカウント設定（T-M8-349）。画面のフォームがこの値を読み込み、利用者が「アカウント設定を保存」を押すと`settings`へ確定して`null`へ戻る。`null`は「提案が無い」 |
 | `base_md` | `text` | not null default `''` | 現行アカウント.md |
 | `base_md_version` | `integer` | not null default 0 | 未生成は0 |
 | `created_at` | `timestamptz` | not null default now() |  |
@@ -147,27 +148,9 @@ RLS: 本人select可。writeはServer Actionのみ。
 
 プラン変更のSubscription同期では、profileと同じtransaction内でXアカウントの利用可否を更新する。BYOK（standard／md）→premiumは`auth_type=byok`、premium→BYOKは`auth_type=managed`を`expired`にする。新planがstandardの場合は、互換性のないauth typeを先に失効した後、現在の`active_x_account_id`がなおactiveならその1件、そうでなければ`created_at, id`順で最古のactive 1件を維持し、他のactiveを`disabled`にする。維持候補がなければ`active_x_account_id=null`とする。
 
-この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`base_md_versions`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す（providerが外れたら`text_model`／`image_model`も外す・T-M8-107）。`credentials_ciphertext`自体は保持する。
+この同期は`status`／`active_x_account_id`だけを変更し、access／refresh token、OAuth scope、自動投稿同意、`settings`、`base_md`、`learning_sources`、下書き、tweet ID、実績、利用台帳を削除・null化しない。premium→BYOKでは`ai_purpose_config.text|image`を`user_api_keys.status=valid`の登録済みproviderと照合し、textはanthropic／openai／google、imageはopenai／googleのvalidキーだけを維持して、その他を`null`へ戻す（providerが外れたら`text_model`／`image_model`も外す・T-M8-107）。`credentials_ciphertext`自体は保持する。
 
 自動投稿への有効な同意は、`automation_consent_version`が現行説明versionと一致し、`automation_consented_at is not null`かつ`automation_disabled_at is null`の場合に限る。OAuth scopeの付与はこの同意の代わりにしない。opt-outでは同じtransactionで`automation_disabled_at`を設定し、対象Xアカウントの`mode=auto`スロットをすべて無効化する。
-
-### 3.4 `base_md_versions`
-
-| カラム | 型 | 制約/既定値 | 説明 |
-|---|---|---|---|
-| `id` | `uuid` | PK |  |
-| `x_account_id` | `uuid` | FK, not null | 対象 |
-| `version` | `integer` | not null | 1始まり |
-| `content` | `text` | not null | アカウント.md全文 |
-| `change_source` | `text` | not null | `settings`（アカウント設定フォーム。初版作成を含む）/`learning`/`manual`/`rollback` |
-| `summary` | `text` | null | 変更要約 |
-| `created_at` | `timestamptz` | not null default now() |  |
-
-Constraints: unique(`x_account_id`, `version`), `version > 0`
-
-**保持は1 x_accountあたり最新5版まで**（T-M8-156・運営者の指示 2026-08-20）。版はアカウント.md**全文**を持ち、`md_merge`が学習のたびに自動で積むため、上限が無いと利用者の操作なしにストレージが増え続ける（原則4「費用が見える」）。刈り込みは`pruneBaseMdVersions`（`src/lib/base-md-history.ts`）で、**版を積んだのと同じtransaction内**で行う（別ジョブに寄せると忘れたら効かない手順になる・原則3）。適用対象は`settings`／`learning`／`manual`／`rollback`の全経路。**この上限はロールバック可能な範囲でもある**——6版以上前へは戻せない（要件05）。
-
-RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.5 `prompt_templates`
 
@@ -266,6 +249,8 @@ Indexes: (`status`, `available_at`, `created_at`), (`x_account_id`, `created_at 
 
 Partial unique indexes: (`draft_id`) where kind=`post_publish` and status in (`queued`,`running`); (`draft_id`) where kind=`image_generation` and status in (`queued`,`running`); (`x_account_id`) where kind=`suggestion` and status in (`queued`,`running`); (`x_account_id`) where kind in (`learning_analysis`,`md_merge`) and status=`running`。
 
+**保持は終了から90日**（T-M8-363・運営者の指示 2026-08-29）。以前は削除経路が1つも無く、実行のたびに1行ずつ**無限に増えていた**（`input` には上書きプロンプト最大8,000字まで入る・原則4）。`scheduler_tick` のcleanupが**終端した行（succeeded/failed/canceled）だけ**を1起動500件まで削除する——queued/running を消すと実行側が「jobが無い」で黙って終わる。子（`parent_job_id`）が残っている親は消さない。**40日ではなく90日**にするのは `request_key` が全statusにまたがる恒久uniqueで、行を消すと同じキーで作り直せるようになるため（予約の期限60分や日次キーの寿命を大きく超えるところまで待つ）。成果物（下書き・レポート）は別の表にあるので、行を消しても画面から何かが消えることはない。
+
 「同一Xアカウントの全kind直列」と「同一userの`post_publish`直列」は、workerのlease transactionが取得する`pg_advisory_xact_lock`で強制する（要件04 §4。上記indexはDBレベルの追加ガード）。
 
 RLS: 本人select可。writeはServer only。
@@ -346,7 +331,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 Constraints: unique(`x_account_id`, `snapshot_date`), `followers_count >= 0`
 
-RLS: x_account所有者select可。writeはservice roleのみ。
+RLS: x_account所有者select可。writeはservice roleのみ。**保持は`snapshot_date`から400日**（T-M8-364・運営者の決定 2026-08-29）。以前は削除経路が無く、アカウントが生きている限り1日1行ずつ増え続けていた。1年より前のフォロワー推移は描けなくなる（1年ぶんの振り返りは残る幅として選んだ）。
 
 ### 3.12 `improvement_suggestions`
 
@@ -471,7 +456,7 @@ X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`
 
 Indexes: (`object_id`, `event_created_at desc`)
 
-RLS: select/writeともservice roleのみ。
+RLS: select/writeともservice roleのみ。**保持は`event_created_at`から90日**（T-M8-363）。重複が届くのはStripeの再送窓（数日）の中だけなので、それを大きく超えた行が守るものは無い。以前は削除経路が無く増え続けていた。
 
 ### 3.17 `external_api_usage_events`
 
@@ -509,7 +494,7 @@ RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK |  |
-| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`） |
+| `job_name` | `text` | not null | cron種別（`news_fetch`/`scheduler_tick`/`metrics_collector`/`follower_snapshot`。tick 相乗りの日次窓: `operator_alert`/`affiliate_batch`/`subscription_period_backfill`。tick 相乗りの毎時窓: `x_token_refresh`（T-M8-359）） |
 | `window_key` | `text` | not null | 対象時刻窓（毎時=`YYYY-MM-DDTHH`、5分tick=`YYYY-MM-DDTHH:MM`、いずれもUTC） |
 | `claimed_at` | `timestamptz` | not null default now() | 受付（claim）時刻。完了時刻ではない |
 
@@ -608,7 +593,7 @@ Constraints: `unique (x_account_id, tweet_id)`
 
 Indexes: `(x_account_id, posted_at desc)`
 
-RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
+RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。**保持は`posted_at`から400日**（T-M8-364）。**投稿日時で切る**（取得日ではない）——取り込み直しで`fetched_at`が新しくなっても、古い投稿は古い投稿のまま扱う。1年より前の分析レポートでは引用投稿が空欄になる。
 
 ### 3.23 `post_patterns`
 
@@ -747,6 +732,54 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 | `updated_at` | `timestamptz` | not null default now() | |
 
 
+### 3.29 `prompt_presets`
+
+**アカウント.mdと画像生成プロンプトを複数持ち、使う1件を選ぶための本棚**（T-M8-332・運営者の指示 2026-08-27）。投稿作成プロンプトは §3.23 `post_patterns` が同じ役割を持つ（あちらは複数持てた）。
+
+**生成が読む場所は変えていない。** アカウント.mdは `x_accounts.base_md`、画像は §3.5 `prompt_templates`（`kind='image'`）のままで、**「使用中」の1件をその置き場へ写す**（`lib/prompts/prompt-presets-server.ts` の `mirror`）。読む側を変えないので、生成・学習・画像のどの経路にも新しい失敗の種が増えない。逆に置き場が別経路（学習反映・アカウント設定の保存）で書き換わったときは `syncInUsePreset` が使用中の行へ書き戻す——**本棚と実物が食い違うと、画面に出ている文字と生成に使われる文字が違う**ことになる（原則1）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `x_account_id` | `uuid` | not null FK x_accounts on delete cascade | |
+| `kind` | `text` | not null、`base_md`\|`image` | 区分 |
+| `name` | `text` | not null、1〜30字、改行と`<` `>`を禁止 | 画面に出る唯一の名前 |
+| `content` | `text` | not null、`base_md`は1〜5,000字／`image`は1〜8,000字 | 本文。上限は各編集画面の保存上限と同じ |
+| `is_default` | `boolean` | not null default false | **使用中**。区分ごとに1件だけ（部分unique） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Constraints/Indexes: `unique (x_account_id, kind, lower(name))`（同じ区分に同名を作らない）／`unique (x_account_id, kind) where is_default`（**使用中が2件になると「どちらが効いているか」を説明できない**）／`(x_account_id, kind, created_at)`
+
+RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。アプリは service_role でだけ読む）。migration適用時に、既存の `x_accounts.base_md`（`base_md_version >= 1`）と `prompt_templates` の画像上書きを「既定」という名前の使用中1件として取り込む。取り込まないと、画面を開いた瞬間に本棚が空になり「いま何が効いているか」が消える。
+
+**一覧を開いたとき、その区分に「使用中」が1件も無ければ、いま生成が読んでいる内容を使用中の1件として作る**（T-M8-355）。「本棚が空のときだけ作る」形では足りない——アカウント.mdは設定の保存前から自分で作れる（T-M8-350）ため、**先に控えを1件作ってからアカウント設定を保存する**と、生成が読む内容を表す行がどこにも無い状態になる（画面には控えしか並ばず、いま何が効いているのか説明できない）。件数の上限に達しているときは足さない。
+
+### 3.30 `news_batches`
+
+**ニュース取得をMessage Batches APIで回すための状態表**（T-M8-338・運営者の指示 2026-08-27。要件04 §6）。定時cron（JST 12時・19時）が6分野を1つのバッチとして投げ、20分おきの `news_batch_collect` が結果を取り込む。
+
+**「投げた」と「取り込んだ」の間を行として持つ**のがこの表の理由。同期実行なら成否はその場で決まるが、非同期では「AI側で処理中」「24時間で失効した」という中間状態が生まれる。行が無いと運営者から見て「なぜニュースが来ないのか」が追えない（原則1・原則2）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | PK | |
+| `provider_batch_id` | `text` | not null unique | provider側のバッチID（`msgbatch_...`） |
+| `window_key` | `text` | not null unique | 対象の時間窓（`cron_runs` と同じ `YYYY-MM-DDTHH`・UTC）。**1窓につき1バッチ** |
+| `categories` | `text[]` | not null | 投げた分野（`custom_id` と対）。取り込み時に「何が返ってこなかったか」を出せる |
+| `lookback_hours` | `smallint` | not null | 投げたときの取得窓。**取り込みで計算し直さない**（取り込みは任意の時刻に走るため） |
+| `model` | `text` | not null | 投げたときのモデル。原価台帳の単価はこれで決まる |
+| `status` | `text` | not null default `pending`、`pending`\|`collected`\|`expired`\|`failed` | `expired` は24時間の期限切れ（**課金されない**が、その回のニュースは無い） |
+| `submitted_at` | `timestamptz` | not null default now() | 新しさの判定の基準時刻としても使う |
+| `collected_at` | `timestamptz` | nullable | |
+| `error_code` | `text` | nullable | 短く安全な識別子（doctor に出してよい） |
+| `created_at` | `timestamptz` | not null default now() | |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+Indexes: `(submitted_at) where status = 'pending'`（取り込みcronが古い順に引く）
+
+RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -841,7 +874,7 @@ Indexes: (`available_at`) where `status = 'pending'`〔確認期間を過ぎた�
 }
 ```
 
-キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
+キーの正本は`createGenerationJobSchema`（`src/lib/jobs/generation-jobs.ts`）。**パターンは内部ID（`p1`等）では受けず`post_patterns.id`で受ける**（T-M8-129 U5）、毎回の入力は`placeholder_values`（キーは項目名・T-M8-132）、分野`theme`は必須（T-M8-29）。対象draft/sourceは専用FK列へ保存し、`input`へ重複保存しない。**`mode`（`auto`＝生成後に投稿まで進む／`draft`）と`scheduled_at`（UTC ISO）は投稿作成の「生成したあと」とスケジュールの実行モードで共用する**（T-M8-143／T-M8-331。キー名を画面ごとに変えると、生成worker側が見るのは`input`だけなので「片方の画面でだけ効かない」差になる）。使用するfieldは`job_kind`ごとにzod discriminated unionで制約する。
 
 ### 4.6 `generation_jobs.usage`
 
@@ -964,7 +997,7 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
   "format": 2,
   "good_posts": [{ "id": "tweet_id_1", "why": "表示回数が3,200と最多だった" }],
   "advice": {
-    "account_md": { "content": "アカウント.md改訂案の全文（## 1.〜## 6.構造を維持・5,000字以内）", "reason": "何をなぜ変えたか" },
+    "account_md": { "content": "アカウント.md改訂案の全文（## 1.〜## 5.構造を維持・5,000字以内）", "reason": "何をなぜ変えたか" },
     "pattern": { "recommended": "p3", "reason": "手順を数字で示すノウハウ形式が伸びている" },
     "theme": { "recommended": "ai", "reason": "AIツール紹介の題材が反応を得ている" },
     "image": { "recommended": true, "reason": "画像付きの表示回数が上回った" },
@@ -1042,3 +1075,12 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.71 | 2026-08-25 | profiles.usage_epoch を追加（トライアル中の下位変更で利用枠を即リセット・T-M8-299） |
 | v1.72 | 2026-08-25 | 招待の停止・保留を運営コマンドから切り替える運用を明記（T-M8-302） |
 | v1.73 | 2026-08-25 | usage_events/usage_counters の month に世代の接尾辞 `#N` を許可（T-M8-306。許さないと世代付きキーで書き込みが落ちる） |
+| v1.74 | 2026-08-27 | generation_jobs.input の `mode`／`scheduled_at` を投稿作成の「生成したあと」と共用することを明記（T-M8-331） |
+| v1.75 | 2026-08-27 | §3.29 prompt_presets を新設（アカウント.md・画像生成プロンプトを複数持ち使用中を選ぶ・T-M8-332） |
+| v1.76 | 2026-08-27 | §3.30 news_batches を新設（ニュース取得のBatch実行・T-M8-338） |
+| v1.77 | 2026-08-28 | x_accounts に settings_proposal を追加（参考ソースの反映を保存前の提案にする・T-M8-349） |
+| v1.78 | 2026-08-28 | prompt_presets: 使用中が1件も無ければ一覧表示時に補うことを明記（T-M8-355） |
+| v1.79 | 2026-08-28 | cron_runs に毎時窓 `x_token_refresh` を追加（Xトークンの先回り更新・T-M8-359） |
+| v1.80 | 2026-08-29 | §3.4 `base_md_versions` を廃止（アカウント.mdの変更履歴・ロールバックを撤去。控えは `prompt_presets` が担う・T-M8-362） |
+| v1.81 | 2026-08-29 | `generation_jobs`（終了から90日・終端のみ）と `stripe_events`（90日）に保持期間を追加（T-M8-363） |
+| v1.82 | 2026-08-29 | `x_timeline_posts`・`follower_snapshots` に400日の保持期間を追加（運営者の決定・T-M8-364） |

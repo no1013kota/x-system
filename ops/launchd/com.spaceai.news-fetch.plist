@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Exos AI news_fetch（要件04 §6・運用メモ §2）。JST 9/12/15/18/21時の00分（T-M8-195）。
+<!-- Exos AI news_fetch（要件04 §6・運用メモ §2）。JST 12時・19時の00分（T-M8-326／T-M8-337）。
      __INSTALL_DIR__ を実配置先へ setup で置換する（既定 /opt/space-ai）。秘密値は含めない。 -->
 <plist version="1.0">
 <dict>
@@ -21,11 +21,8 @@
   </dict>
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>RunAtLoad</key>
   <false/>

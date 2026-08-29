@@ -54,7 +54,6 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
           "follower_snapshots",
           "learning_sources",
           "prompt_templates",
-          "base_md_versions",
           "generation_jobs",
           "drafts",
           "schedule_slots",
@@ -122,41 +121,41 @@ describe("利用者どうしの分離（挙動の干渉）", () => {
     return rows[0].id;
   }
 
-  it("生成枠: Aが月次上限を使い切ってもBの枠は減らない", async () => {
-    const { reserveUsage } = await import("../usage/generation-reserve");
+  it("生成枠: Aが上限を使い切ってもBの枠は減らない", async () => {
+    const { reserveUsage, settleUsage } = await import("../usage/generation-reserve");
     const a = await makeAccount();
     const b = await makeAccount();
 
     // usage_events は job を参照するため、実際のjob行を用意して枠を消費する。
-    const jobsA = [await seedJob(a.xAccountId, "queued"), await seedJob(a.xAccountId, "queued")];
-    const jobA3 = await seedJob(a.xAccountId, "queued");
+    const jobA1 = await seedJob(a.xAccountId, "queued");
+    const jobA2 = await seedJob(a.xAccountId, "queued");
     const jobB1 = await seedJob(b.xAccountId, "queued");
 
-    // A の枠を2に見立てて使い切る。
-    await withTransaction(async (c) => {
-      for (const [i, jobId] of jobsA.entries()) {
-        const okA = await reserveUsage(c, {
-          userId: a.userId,
-          xAccountId: a.xAccountId,
-          jobId,
-          type: "generation",
-          limit: 2,
-        });
-        expect(okA, `Aの${i + 1}件目は通る`).toBe(true);
-      }
-    });
-
-    // 上限到達は例外（`usage_limit_exceeded`）で返る。txを分けて確認する。
-    let overAError = "";
-    await withTransaction(async (c) => {
-      await reserveUsage(c, {
+    /*
+      **消費は実費の確定時にだけ書く**（T-M8-324）。以前はここで reserveUsage が
+      枠を押さえていたが、いまは `settleUsage` が唯一の書き込み。
+    */
+    await withTransaction((c) =>
+      settleUsage(c, {
+        jobId: jobA1,
+        type: "generation",
+        actualCredits: 2,
         userId: a.userId,
         xAccountId: a.xAccountId,
-        jobId: jobA3,
+      }),
+    );
+
+    // 上限に達していれば次は始められない（例外で返る）。txを分けて確認する。
+    let overAError = "";
+    await withTransaction((c) =>
+      reserveUsage(c, {
+        userId: a.userId,
+        xAccountId: a.xAccountId,
+        jobId: jobA2,
         type: "generation",
         limit: 2,
-      });
-    }).catch((err: unknown) => {
+      }),
+    ).catch((err: unknown) => {
       overAError = err instanceof Error ? err.message : String(err);
     });
     expect(overAError, "Aは上限で止まる").toContain("usage_limit_exceeded");

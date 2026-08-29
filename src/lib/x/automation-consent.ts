@@ -218,3 +218,35 @@ export async function resumeXAutomation(
     return { ...result, consentRecorded };
   });
 }
+
+/**
+ * 確認なしでXへ投稿する操作の同意ゲート（要件02 §3.3/§3.10, 要件05 §7）。
+ *
+ * **スケジュール（mode=auto）だけの話ではない**（T-M8-331）。投稿作成画面の
+ * 「すぐに投稿」「予約投稿」も、生成された本文を利用者が見ないままXへ出る——
+ * 同じ同意が要る。判定を2箇所に置くと片方だけ直して食い違うので、ここ1つに置く。
+ */
+export async function assertAutomationConsent(
+  tx: Queryable,
+  xAccountId: string,
+): Promise<void> {
+  const row = (
+    await tx.query<{
+      automation_consent_version: string | null;
+      consented: boolean;
+      disabled: boolean;
+    }>(
+      `select automation_consent_version,
+              (automation_consented_at is not null) as consented,
+              (automation_disabled_at is not null) as disabled
+         from x_accounts where id = $1`,
+      [xAccountId],
+    )
+  ).rows[0];
+  const ok =
+    row != null &&
+    row.automation_consent_version === CURRENT_AUTOMATION_CONSENT_VERSION &&
+    row.consented &&
+    !row.disabled;
+  if (!ok) throw new AppError("automation_consent_required");
+}

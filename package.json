@@ -36,7 +36,8 @@
     "logo": "node scripts/build-logo.mjs",
     "auth:templates": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/push-auth-templates.mjs",
     "affiliate:payouts": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/affiliate-payouts.mjs",
-    "affiliate:moderate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/affiliate-moderate.mjs"
+    "affiliate:moderate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/affiliate-moderate.mjs",
+    "check:mail-sender": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-mail-sender.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

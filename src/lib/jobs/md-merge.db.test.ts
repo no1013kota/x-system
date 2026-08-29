@@ -27,12 +27,30 @@ const BASE_MD = `# 発信定義書
 ## 4. やらないこと
 - 煽らない
 
-## 5. 文体・自分らしさ
+## 5. 参考にする型
 旧5
-
-## 6. 参考にする型
-旧6
 `;
+
+/** いまのアカウント設定（mergeの入力・T-M8-341）。 */
+const SETTINGS = {
+  ng: { rules: ["煽らない"], topics: ["政治"], words: [] },
+  persona: { audience: "実務者", speaker: "A", value: "手順が分かる" },
+  themes: { free_text: "", primary: ["ai"], secondary: [] },
+  tone: {
+    emoji_max_per_post: 1,
+    emoji_policy: "limited",
+    first_person: "私",
+    hashtags_max: 0,
+    sentence_style: "polite",
+    thread_numbering: true,
+  },
+};
+
+/** 洗練後の設定（AIが返すJSON）。発信者が具体化されている。 */
+const POLISHED = JSON.stringify({
+  ...SETTINGS,
+  persona: { ...SETTINGS.persona, speaker: "A（現場の実務者へ、手順で説明する）" },
+});
 
 function gen(body: string): TextGen {
   return {
@@ -82,9 +100,10 @@ describe("executeMdMerge (db)", () => {
     await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
     const xid = (
       await c.query<{ id: string }>(
-        `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version)
-         values ($1,$2,'h','n','byok',$3,2) returning id`,
-        [uid, `x-${randomUUID()}`, BASE_MD],
+        `insert into x_accounts
+           (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version, settings)
+         values ($1,$2,'h','n','byok',$3,2,$4::jsonb) returning id`,
+        [uid, `x-${randomUUID()}`, BASE_MD, JSON.stringify(SETTINGS)],
       )
     ).rows[0].id;
     const sourceId = (
@@ -104,10 +123,10 @@ describe("executeMdMerge (db)", () => {
     return { uid, xid, jobId, sourceId };
   }
 
-  it("writes a new base_md version (learning), history row, and confirms source analyzed atomically; keeps 1-4", async () => {
+  it("セクション1〜4を洗練して版とソース確定を同じtxで書く（5は不変）", async () => {
     const s = await withTransaction((c) => seed(c));
     try {
-      const res = await executeMdMerge(deps(s.jobId, "統合された新セクション"), { confirmSourceId: s.sourceId });
+      const res = await executeMdMerge(deps(s.jobId, POLISHED), { confirmSourceId: s.sourceId });
       expect(res.version).toBe(3); // 2 -> 3
 
       const acct = (
@@ -119,20 +138,11 @@ describe("executeMdMerge (db)", () => {
         )
       ).rows[0];
       expect(acct.base_md_version).toBe(3);
-      expect(acct.base_md).toContain("## 1. ペルソナ"); // sections 1-4 unchanged
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n統合された新セクション"); // own_posts → target §5
-      expect(acct.base_md).not.toContain("旧5");
-      expect(acct.base_md).toContain("## 6. 参考にする型\n旧6"); // NON-target §6 preserved
+      // 反映先はセクション1〜4（T-M8-336）。5〜6と前文はバイト単位で残る。
+      expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）");
+      expect(acct.base_md).toContain("# 発信定義書");
+      expect(acct.base_md).toContain("## 5. 参考にする型\n旧5");
 
-      const ver = (
-        await withTransaction((c) =>
-          c.query<{ change_source: string }>(
-            `select change_source from base_md_versions where x_account_id = $1 and version = 3`,
-            [s.xid],
-          ),
-        )
-      ).rows;
-      expect(ver[0]?.change_source).toBe("learning");
 
       const src = (
         await withTransaction((c) =>
@@ -141,8 +151,44 @@ describe("executeMdMerge (db)", () => {
       ).rows[0];
       expect(src.status).toBe("analyzed");
     } finally {
-      // base_md_versions は x_accounts への FK が cascade でないため先に消す。
-      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [s.xid]));
+      await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
+    }
+  });
+
+  /**
+   * 反映merge（T-M8-349・運営者の指示 2026-08-28）。
+   *
+   * **押した瞬間に本番の設定を書き換えない。** 参考ソースからの反映は保存前の提案として
+   * `settings_proposal` に置き、利用者が確認して保存したときに確定する。
+   * これを取り違えると「見る前に設定が変わっていた」に戻る。
+   */
+  it("proposalOnly: settings_proposal だけに書き、settings・base_md・版は変えない", async () => {
+    const s = await withTransaction((c) => seed(c));
+    try {
+      await executeMdMerge(deps(s.jobId, POLISHED), { proposalOnly: true });
+
+      const acct = (
+        await withTransaction((c) =>
+          c.query<{
+            base_md: string;
+            base_md_version: number;
+            settings: { persona: { speaker: string } };
+            settings_proposal: { persona: { speaker: string } } | null;
+          }>(
+            `select base_md, base_md_version, settings, settings_proposal from x_accounts where id = $1`,
+            [s.xid],
+          ),
+        )
+      ).rows[0];
+      // 提案だけが入る。
+      expect(acct.settings_proposal?.persona.speaker).toBe("A（現場の実務者へ、手順で説明する）");
+      // 保存済みの設定・アカウント.md・版は動かない（保存で初めて変わる）。
+      expect(acct.settings.persona.speaker).toBe(SETTINGS.persona.speaker);
+      expect(acct.base_md_version).toBe(2);
+      expect(acct.base_md).toBe(BASE_MD);
+
+      // 版を積まない（まだ何も確定していないので履歴に残す出来事が無い）。
+    } finally {
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [s.uid]));
     }
   });
@@ -159,9 +205,10 @@ describe("executeMdMerge (db)", () => {
       await c.query(`insert into profiles (id, email) values ($1,$2) on conflict (id) do nothing`, [uid, `${uid}@example.com`]);
       const xid = (
         await c.query<{ id: string }>(
-          `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version)
-           values ($1,$2,'h','n','byok',$3,2) returning id`,
-          [uid, `x-${randomUUID()}`, BASE_MD],
+          `insert into x_accounts
+             (user_id, x_user_id, handle, name, auth_type, base_md, base_md_version, settings)
+           values ($1,$2,'h','n','byok',$3,2,$4::jsonb) returning id`,
+          [uid, `x-${randomUUID()}`, BASE_MD, JSON.stringify(SETTINGS)],
         )
       ).rows[0].id;
       // remove a ref_post source (→ §6). status must be 'removing' (set by removeLearningSource).
@@ -182,8 +229,8 @@ describe("executeMdMerge (db)", () => {
       return { uid, xid, removed, mergeJob };
     });
     try {
-      const res = await executeMdMerge(deps(seeded.mergeJob, "残りの型で再構築"), { removedSourceId: seeded.removed });
-      expect(res.section).toBe(6); // ref_post → §6
+      const res = await executeMdMerge(deps(seeded.mergeJob, POLISHED), { removedSourceId: seeded.removed });
+      expect(res.section).toBe("profile");
 
       const acct = (
         await withTransaction((c) =>
@@ -191,8 +238,8 @@ describe("executeMdMerge (db)", () => {
         )
       ).rows[0];
       expect(acct.base_md_version).toBe(3);
-      expect(acct.base_md).toContain("## 6. 参考にする型\n残りの型で再構築"); // target rebuilt
-      expect(acct.base_md).toContain("## 5. 文体・自分らしさ\n旧5"); // non-target preserved
+      expect(acct.base_md).toContain("- 発信者: A（現場の実務者へ、手順で説明する）"); // 1〜4が書き直された
+      expect(acct.base_md).toContain("## 5. 参考にする型\n旧5"); // 5は不変
 
       const rm = (
         await withTransaction((c) =>
@@ -202,7 +249,6 @@ describe("executeMdMerge (db)", () => {
       expect(rm.status).toBe("removed");
       expect(rm.removed_at).not.toBeNull();
     } finally {
-      await withTransaction((c) => c.query(`delete from base_md_versions where x_account_id = $1`, [seeded.xid]));
       await withTransaction((c) => c.query(`delete from auth.users where id = $1`, [seeded.uid]));
     }
   });

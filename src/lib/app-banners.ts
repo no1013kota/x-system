@@ -82,8 +82,8 @@ export function computeXAccountBanners(input: XBannerInputs): AppBanner[] {
 
 const USAGE_SLOT_LABELS: ["ai_credits" | "normal_posts" | "url_posts", string][] = [
   ["ai_credits", "AIクレジット"],
-  ["normal_posts", "通常投稿クレジット"],
-  ["url_posts", "URL付き投稿クレジット"],
+  ["normal_posts", "通常投稿回数"],
+  ["url_posts", "URL付き投稿回数"],
 ];
 
 /**

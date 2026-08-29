@@ -1,8 +1,11 @@
 import {
-  extractBaseMdSection,
-  replaceLearningSections,
+  generateInitialBaseMd,
+  personaSettingsSchema,
+  rebuildSettingsSections,
+  type PersonaSettings,
 } from "../persona-settings";
-import { pruneBaseMdVersions } from "../base-md-history";
+import { parseAndValidate } from "../ai/parse";
+import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
@@ -15,16 +18,15 @@ import { defaultRecordStage } from "./stale";
 
 /**
  * 同一job内 MD-MERGE（L-8, プロンプト設計書 §4.2/§6.14, 要件04 §1/§12, 要件05 §9, 要件02 §3.4, T-M5-04）。
- * トリガーソースの種別が決める「該当セクション1つだけ」を「対象セクション現在値＋全active source analyses」
- * から書き直す（§4.2「該当セクションのみ」・§6.14「1セクションを書き直す」）。own_posts→セクション5
- * （文体・自分らしさ）、ref_account/ref_post→セクション6（参考にする型）。非対象セクションと1〜4は
- * byte-for-byte 保持する。新versionを change_source=learning で確定し、開始時 base_md_version と異なれば
+ * **反映先はセクション1〜4**（T-M8-336で5〜6から移した）。「対象セクション現在値＋全active source
+ * analyses」から書き直す。人が書くセクション5（参考にする型）は byte-for-byte 保持する
+ * （T-M8-356で「文体・自分らしさ」を廃止し、見出しは1〜5になった）。
+ * 新versionを change_source=learning で確定し、開始時 base_md_version と異なれば
  * （updatePersonaSettings等と競合）最新versionから再merge（上書き消失させない）。枯渇/時間不足は retryable。
  * merge出力は本文のみで、見出し混入や（内容があるのに）空出力は構造エラーとして修復・失敗させる。
  */
 
 export const MD_MERGE_MAX_RETRIES = 2;
-const HEADING_RE = /^#{1,6}\s/m;
 
 export class MdMergeConflictError extends Error {
   readonly retryable = true;
@@ -63,7 +65,8 @@ export interface MdMergeDeps {
 
 export interface MdMergeResult {
   version: number;
-  section: 5 | 6;
+  /** 反映先。セクション1〜4を1回で書き直す（T-M8-336）。 */
+  section: "profile";
 }
 
 interface JobMetaRow {
@@ -80,12 +83,10 @@ interface SourceAnalysisRow {
 interface MergeState {
   baseMd: string;
   version: number;
+  /** 現在のアカウント設定（フォームの値そのもの）。mergeの入力であり出力の形でもある。 */
+  settings: unknown;
   analyses: unknown[];
   removed: unknown[];
-}
-
-function isSection5(type: string): boolean {
-  return type === "own_posts";
 }
 
 async function loadJobMeta(db: Queryable, jobId: string): Promise<JobMetaRow | null> {
@@ -100,49 +101,33 @@ async function loadJobMeta(db: Queryable, jobId: string): Promise<JobMetaRow | n
   return rows[0] ?? null;
 }
 
-/** トリガー（確定 or 削除）ソースの種別から対象セクション（5 or 6）を決める（§4.2 該当セクションのみ）。 */
-async function resolveTargetSection(
-  db: Queryable,
-  opts: { confirmSourceId?: string; removedSourceId?: string },
-): Promise<5 | 6> {
-  const id = opts.confirmSourceId ?? opts.removedSourceId;
-  if (!id) throw new Error("md-merge requires confirmSourceId or removedSourceId");
-  const row = (
-    await db.query<{ type: string }>(
-      `select type::text as type from learning_sources where id = $1`,
-      [id],
-    )
-  ).rows[0];
-  if (!row) throw new Error("md-merge trigger source not found");
-  return isSection5(row.type) ? 5 : 6;
-}
-
-/** 最新の base_md＋version と、対象セクションの active/removed analyses を読む（競合retryで都度再読）。 */
+/** 最新の base_md＋version と、active/removed analyses を読む（競合retryで都度再読）。 */
 async function loadMergeState(
   db: Queryable,
   xAccountId: string,
-  target: 5 | 6,
   opts: { confirmSourceId?: string; removedSourceId?: string },
 ): Promise<MergeState> {
   const acct = (
-    await db.query<{ base_md: string; base_md_version: number }>(
-      `select base_md, base_md_version from x_accounts where id = $1`,
+    await db.query<{ base_md: string; base_md_version: number; settings: unknown }>(
+      `select base_md, base_md_version, settings from x_accounts where id = $1`,
       [xAccountId],
     )
   ).rows[0];
   if (!acct) throw new Error("x_account not found for md-merge");
 
-  // 対象セクションに属する type だけを集める（own_posts→5 / ref_account,ref_post→6）。
-  const typeFilter = target === 5 ? ["own_posts"] : ["ref_account", "ref_post"];
+  /*
+    **参考ソースの分析をすべて集める**（T-M8-336）。以前は「own_posts→セクション5 /
+    参考ソース→セクション6」と種別でセクションを分けていたが、反映先をセクション1〜4へ
+    まとめたので分ける理由が無くなった（own_posts＝自分の過去投稿からの学習はT-M8-103で廃止済み）。
+  */
   const { rows } = await db.query<SourceAnalysisRow>(
     `select id, type::text as type, analysis_summary
        from learning_sources
       where x_account_id = $1
         and analysis_summary is not null
-        and type::text = any($4::text[])
         and (status = 'analyzed' or id = $2)
         and ($3::uuid is null or id <> $3)`,
-    [xAccountId, opts.confirmSourceId ?? null, opts.removedSourceId ?? null, typeFilter],
+    [xAccountId, opts.confirmSourceId ?? null, opts.removedSourceId ?? null],
   );
   const analyses = rows.map((r) => r.analysis_summary);
 
@@ -157,19 +142,26 @@ async function loadMergeState(
     if (rm?.analysis_summary) removed.push(rm.analysis_summary);
   }
 
-  return { baseMd: acct.base_md, version: acct.base_md_version, analyses, removed };
+  return {
+    baseMd: acct.base_md,
+    version: acct.base_md_version,
+    settings: acct.settings,
+    analyses,
+    removed,
+  };
 }
 
 /**
- * 対象セクションを1つmergeし、本文のみ（見出しなし）を返す。見出し混入は1回修復→なお不正なら構造エラー。
- * 内容（現在本文 or active analyses）があるのに空出力になった場合も、学習の消失を防ぐため構造エラーにする。
+ * アカウント設定を1回mergeし、**検証を通ったsettings**を返す（T-M8-341）。
+ *
+ * 出力は `personaSettingsSchema` と同じ形のJSON。読めない・形が違うものは1回だけ直させ、
+ * それでも駄目なら構造エラー（学習を捨てるより、設定を壊さない方を採る）。
  */
 async function mergeSection(
   provider: { textGen: TextGen; model: string },
   input: { current: string; analyses: unknown[]; removed: unknown[]; deadline: Deadline },
   now: () => number,
-): Promise<{ body: string; calls: ProviderCall[] }> {
-  const hadContent = input.current.trim().length > 0 || input.analyses.length > 0;
+): Promise<{ settings: PersonaSettings; calls: ProviderCall[] }> {
   const calls: ProviderCall[] = [];
   const buildUser = (): string =>
     PT_MD_MERGE.replaceAll("{{current_section}}", input.current)
@@ -194,18 +186,40 @@ async function mergeSection(
     return out.text.trim();
   };
 
-  const invalid = (body: string): boolean =>
-    HEADING_RE.test(body) || (hadContent && body.length === 0);
+  /*
+    **設定の形を満たすまで**（T-M8-341）。ここを緩めると、保存の瞬間に
+    「設定画面が開けない壊れた設定」を書き込むことになる。読めない出力は1回だけ直させる。
+  */
+  const parseSettings = (text: string): PersonaSettings | null => {
+    const parsed = parseAndValidate(text, personaSettingsSchema);
+    return parsed.ok ? parsed.value : null;
+  };
 
-  let body = await call("");
-  if (invalid(body)) {
-    // 本文のみ規約違反（見出し混入 or 消失）→ 1回だけ修復指示を付けて再生成する（§7.1）。
-    body = await call(
-      "出力はセクション本文のみとし、`#`で始まる見出しや前置きを含めず、内容を空にしないでください。",
+  let settings = parseSettings(await call(""));
+  if (!settings) {
+    settings = parseSettings(
+      await call(
+        "出力は<current>と同じ形のJSONだけにしてください（前置き・説明・コードフェンスを付けない）。",
+      ),
     );
   }
-  if (invalid(body)) throw new MdMergeStructureError();
-  return { body, calls };
+  if (!settings) throw new MdMergeStructureError();
+  return { settings, calls };
+}
+
+/**
+ * **何のためのmergeかを `learning_source_id` の有無で決める**（T-M8-344／T-M8-356）。
+ *
+ * - 有り: 学習ソースの**削除**に伴う作り直し（その1件を除いて再構成し、その場で確定する）
+ * - 無し: 利用者が「アカウント設定を反映する」を押した反映（**保存前の提案として置く**）
+ *
+ * 判定を関数にしておく——ここが逆に配線されると、押した瞬間に本番の設定が書き換わる／
+ * 削除したのに知見が残る、という**どちらも画面からは説明できない**壊れ方をする（原則1）。
+ */
+export function mergeModeFor(
+  learningSourceId: string | null,
+): { removedSourceId: string } | { proposalOnly: true } {
+  return learningSourceId ? { removedSourceId: learningSourceId } : { proposalOnly: true };
 }
 
 /**
@@ -215,7 +229,19 @@ async function mergeSection(
  */
 export async function executeMdMerge(
   deps: MdMergeDeps,
-  opts: { confirmSourceId?: string; removedSourceId?: string } = {},
+  opts: {
+    confirmSourceId?: string;
+    removedSourceId?: string;
+    /**
+     * **保存前の提案として置くだけにする**（T-M8-349・運営者の指示 2026-08-28）。
+     *
+     * 「参考ソースからアカウント設定を反映する」の経路で使う。`settings` も
+     * アカウント.mdも触らず `settings_proposal` へ書く——押した瞬間に本番の設定が
+     * 変わると、利用者は**中身を見る前に**書き換えられてしまう。画面のフォームが
+     * この提案を読み込み、確認して「アカウント設定を保存」を押したときに確定する。
+     */
+    proposalOnly?: boolean;
+  } = {},
 ): Promise<MdMergeResult> {
   const recordStage = deps.recordStage ?? defaultRecordStage(deps.jobId);
   const maxRetries = deps.maxRetries ?? MD_MERGE_MAX_RETRIES;
@@ -227,7 +253,6 @@ export async function executeMdMerge(
   if (!job) throw new Error("job not found for md-merge");
 
   await recordStage("merging");
-  const target = await resolveTargetSection(deps.db, opts);
   // Function 全体で1つの deadline を共有する（分析phaseと合算した実経過を反映）。
   const deadline = (deps.makeDeadline ?? createDeadline)();
   const { textGen, model } = await deps.resolveProvider({
@@ -240,13 +265,24 @@ export async function executeMdMerge(
     // 残り時間が追加call最低分に満たなければ retryable として次回起動へ委ねる（要件04 §5）。
     if (!deadline.canStartCall()) throw new MdMergeConflictError("insufficient deadline for md-merge");
 
-    const state = await loadMergeState(deps.db, job.x_account_id, target, opts);
-    if (state.version < 1) throw new Error("base_md is not initialized (version 0)");
+    const state = await loadMergeState(deps.db, job.x_account_id, opts);
 
-    const { body: merged, calls } = await mergeSection(
+    /*
+      **アカウント設定が無くても走る**（T-M8-344・運営者の指示 2026-08-27）。
+      「学習ソースによってアカウント設定をする」ための経路なので、未保存＝対象外にできない。
+      設定が読めないときは `<current>` を "none" にして、分析だけから作らせる。
+    */
+    const currentSettings = personaSettingsSchema.safeParse(state.settings);
+    const isFirstSetup = !currentSettings.success;
+    if (isFirstSetup && state.analyses.length === 0) {
+      // 材料も土台も無い。**空の設定を作らない**（何を根拠に決めたか説明できない設定になる）。
+      throw new MdMergeStructureError();
+    }
+
+    const { settings: merged, calls } = await mergeSection(
       { textGen, model },
       {
-        current: extractBaseMdSection(state.baseMd, target),
+        current: currentSettings.success ? JSON.stringify(currentSettings.data) : "none",
         analyses: state.analyses,
         removed: state.removed,
         deadline,
@@ -254,26 +290,68 @@ export async function executeMdMerge(
       now,
     );
     allCalls.push(...calls);
-    // 対象セクションだけを差し替え、非対象は現状を byte-for-byte 保持する（§4.2 該当セクションのみ）。
-    const section5 = target === 5 ? merged : extractBaseMdSection(state.baseMd, 5);
-    const section6 = target === 6 ? merged : extractBaseMdSection(state.baseMd, 6);
-    const newBaseMd = replaceLearningSections(state.baseMd, section5, section6); // 6見出し構造を検証
+    /*
+      **アカウント設定そのものを更新する**（T-M8-341）。アカウント.mdはその設定から
+      作り直す（`rebuildSettingsSections`）ので、画面の表示・本文・学習の成果が常に一致する。
+      セクション5〜6（利用者の手入力）はバイト単位で残る。
+    */
+    // 初回は初版を作る（version 0 → 1）。2回目以降はセクション1〜4だけ作り直す。
+    const newBaseMd = isFirstSetup
+      ? generateInitialBaseMd(merged)
+      : rebuildSettingsSections(state.baseMd, merged); // 6見出し構造を検証
     const nextVersion = state.version + 1;
+
+    /*
+      提案として置くだけの経路（T-M8-349）。版を積まず、本棚にも写さない——
+      まだ何も確定していないので、履歴に残す出来事が無い。
+    */
+    if (opts.proposalOnly) {
+      await deps.runInTx(async (tx) => {
+        await tx.query(
+          `update x_accounts set settings_proposal = $2::jsonb where id = $1`,
+          [job.x_account_id, JSON.stringify(merged)],
+        );
+      });
+      await recordProviderCalls(deps.db, allCalls, {
+        userId: job.user_id,
+        xAccountId: job.x_account_id,
+        jobId: deps.jobId,
+        keyPrefix: `mdmerge:${deps.jobId}`,
+      });
+      if (job.kind === "md_merge" && deps.runInTxForSettle) {
+        const total = allCalls.reduce((sum, c) => sum + (c.estimated_cost_usd ?? 0), 0);
+        await settleIfPremium(deps.runInTxForSettle, {
+          plan: job.plan,
+          jobId: deps.jobId,
+          type: "generation",
+          estimatedCostUsdTotal: total,
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
+        });
+      }
+      return { version: state.version, section: "profile" as const };
+    }
 
     const written = await deps.runInTx(async (tx) => {
       const upd = await tx.query(
-        `update x_accounts set base_md = $2, base_md_version = $3
+        `update x_accounts set base_md = $2, base_md_version = $3, settings = $5::jsonb
           where id = $1 and base_md_version = $4`,
-        [job.x_account_id, newBaseMd, nextVersion, state.version],
+        [job.x_account_id, newBaseMd, nextVersion, state.version, JSON.stringify(merged)],
       );
       if ((upd.rowCount ?? 0) !== 1) return null; // 競合 → 最新versionから再merge
-      await tx.query(
-        `insert into base_md_versions (x_account_id, version, content, change_source, summary)
-         values ($1, $2, $3, 'learning', $4)`,
-        [job.x_account_id, nextVersion, newBaseMd, opts.removedSourceId ? "学習ソース削除に伴うmerge" : "学習分析の反映"],
-      );
-      // 学習は利用者の操作なしに版を積むので、ここでの刈り込みが無いと無制限に増える（T-M8-156）。
-      await pruneBaseMdVersions(tx, job.x_account_id);
+      // 本棚の「使用中」へも写す（T-M8-332）。学習の反映が本棚に出ないと、
+      // プロンプト画面の本文と生成に使われる本文が食い違う。
+      await syncInUsePreset(tx, {
+        xAccountId: job.x_account_id,
+        kind: "base_md",
+        content: newBaseMd,
+      });
+      /*
+        **お知らせは出さない**（T-M8-344・運営者の指示 2026-08-27）。反映は利用者が
+        ボタンを押して始めるものになったので、進行と完了は**その画面**で示す
+        （「アカウント設定を書き換え中です」→ 完了したら新しい設定が表示される）。
+        押していないのに変わることが無いなら、通知で追いかける必要も無い。
+      */
       if (opts.confirmSourceId) {
         await tx.query(`update learning_sources set status = 'analyzed', updated_at = now() where id = $1`, [
           opts.confirmSourceId,
@@ -305,9 +383,11 @@ export async function executeMdMerge(
           jobId: deps.jobId,
           type: "generation",
           estimatedCostUsdTotal: total,
+          userId: job.user_id,
+          xAccountId: job.x_account_id,
         });
       }
-      return { version: written, section: target };
+      return { version: written, section: "profile" as const };
     }
     // 競合: 次ループで最新stateを再読して再merge（並行変更を取り込み、上書き消失させない）。
   }

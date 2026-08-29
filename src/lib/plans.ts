@@ -13,7 +13,12 @@ export type PlanId = (typeof DB_ENUMS.plan_type)[number];
 export interface PlanUsageLimits {
   normalPosts: number;
   urlPosts: number;
-  /** AIクレジット（T-M8-109。1クレジット=1円相当・文章/画像のAI実行で実費消費）。 */
+  /**
+   * AIクレジット（T-M8-109）。**1クレジット = 0.01円相当**（T-M8-325・運営者の指示 2026-08-27）。
+   * 文章・画像のAI実行で実費ぶん消費する。金額としては従来と同じ（プレミアム＝1,000円ぶん）で、
+   * **粒度だけ100倍細かい**。丸めが1円単位だったころは $0.001 の実行（0.16円）も1円として
+   * 引かれており、細かい実行ほど割高だった。
+   */
   aiCredits: number;
 }
 
@@ -83,7 +88,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     usageLimits: {
       normalPosts: 200,
       urlPosts: 20,
-      aiCredits: 1000,
+      aiCredits: 100_000,
     },
     canEditMdAndPrompts: true,
     concealsLimits: false,
@@ -100,7 +105,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     usageLimits: {
       normalPosts: 1000,
       urlPosts: 100,
-      aiCredits: 5000,
+      aiCredits: 500_000,
     },
     canEditMdAndPrompts: true,
     concealsLimits: true,

@@ -69,13 +69,19 @@ export const personaSettingsSchema = z
 
 export type PersonaSettings = z.infer<typeof personaSettingsSchema>;
 
-const BASE_MD_HEADING_PATTERN = /^## ([1-6])\.[^\n]*$/gm;
+const BASE_MD_HEADING_PATTERN = /^## ([1-5])\.[^\n]*$/gm;
+/**
+ * アカウント.mdの見出し（T-M8-356・運営者の指示 2026-08-28で「文体・自分らしさ」を廃止）。
+ *
+ * 1〜4はアカウント設定から機械生成し、5（参考にする型）は人が書く。
+ * **既存の「## 5. 文体・自分らしさ」はmigrationで参考にする型へ畳んだ**——
+ * 書いてあった内容を黙って消さないため（原則1）。
+ */
 export const BASE_MD_SECTION_TITLES = [
   "ペルソナ",
   "発信テーマ",
   "トーン&マナー",
   "やらないこと",
-  "文体・自分らしさ",
   "参考にする型",
 ] as const;
 
@@ -138,14 +144,47 @@ function buildSettingsSections(input: unknown): string {
 ${ngLines.join("\n")}`;
 }
 
-/** Enforces exactly one ordered `## 1.` through `## 6.` heading. */
+/**
+ * 手で書くセクション（5・6）の最大文字数（T-M8-355）。
+ * アカウント.md全体の上限（5,000字）に対して、1〜4の生成分の余地を残す。
+ */
+export const FREE_SECTION_MAX_CHARS = 1000;
+
+/** 手で書くセクションの本文。空文字は「書いていない」（見出しだけ残す）。 */
+export interface FreeSections {
+  /** `## 5. 参考にする型` */
+  referenceStyle: string;
+}
+
+/**
+ * アカウント.mdの5セクション（参考にする型）の本文を差し替える（T-M8-355／T-M8-356）。
+ *
+ * **1〜4はアカウント設定から機械生成されるが、5は人が書く場所**で、これまでは
+ * プロンプト画面のmdエディタからしか触れなかった。アカウント設定の画面に記入欄を置くため、
+ * 保存時にここへ書き戻す。**渡されなければ既存を1バイトも変えない**——
+ * 他の経路（学習・ロールバック）が触った内容を、知らないうちに消さないため。
+ */
+export function replaceFreeSections(content: string, sections: FreeSections): string {
+  validateBaseMdStructure(content);
+  const fifth = /^## 5\.[^\n]*$/m.exec(content);
+  if (fifth?.index === undefined) {
+    throw new Error("アカウント.mdのセクション5を特定できません。");
+  }
+  const head = content.slice(0, fifth.index).replace(/\s+$/, "");
+  const reference = sections.referenceStyle.trim();
+  const rebuilt = `${head}\n\n## 5. ${BASE_MD_SECTION_TITLES[4]}\n${reference ? `${reference}\n` : ""}`;
+  validateBaseMdStructure(rebuilt);
+  return rebuilt;
+}
+
+/** Enforces exactly one ordered `## 1.` through `## 5.` heading. */
 export function validateBaseMdStructure(content: string): void {
   const numbers = [...content.matchAll(BASE_MD_HEADING_PATTERN)].map(
     (match) => match[1],
   );
-  if (numbers.join(",") !== "1,2,3,4,5,6") {
+  if (numbers.join(",") !== "1,2,3,4,5") {
     throw new Error(
-      "アカウント.mdは## 1.〜## 6.の見出しを順番どおり各1回含める必要があります。",
+      "アカウント.mdは## 1.〜## 5.の見出しを順番どおり各1回含める必要があります。",
     );
   }
 }
@@ -159,24 +198,33 @@ export function extractBaseMdSection(content: string, section: number): string {
   const start = new RegExp(`^## ${section}\\.[^\\n]*$`, "m").exec(content);
   if (start?.index === undefined) return "";
   const rest = content.slice(start.index + start[0].length);
-  const next = /^## [1-6]\.[^\n]*$/m.exec(rest);
+  const next = /^## [1-5]\.[^\n]*$/m.exec(rest);
   const body = next?.index === undefined ? rest : rest.slice(0, next.index);
   return body.trim();
 }
+
+/**
+ * 自由入力でアカウント.mdを新しく作るときの雛形（T-M8-350・運営者の指示 2026-08-28）。
+ *
+ * **6見出しの構造は必須**（生成が節ごとに読む）なので、白紙から書かせると
+ * 「保存できない理由が見出しの形」という、書いてみるまで分からない失敗になる。
+ * 見出しだけ用意して中身を空にする——何を書く場所かは見出しが言う。
+ */
+export const BLANK_BASE_MD_TEMPLATE = BASE_MD_SECTION_TITLES.map(
+  (title, index) => `## ${index + 1}. ${title}\n`,
+).join("\n");
 
 /** Creates version 1 without learned content in sections 5 and 6. */
 export function generateInitialBaseMd(input: unknown): string {
   const content = `${buildSettingsSections(input)}
 
 ## 5. ${BASE_MD_SECTION_TITLES[4]}
-
-## 6. ${BASE_MD_SECTION_TITLES[5]}
 `;
   validateBaseMdStructure(content);
   return content;
 }
 
-/** Rebuilds sections 1-4 while preserving the existing 5-6 byte-for-byte. */
+/** Rebuilds sections 1-4 while preserving the existing 5 byte-for-byte. */
 export function rebuildSettingsSections(
   existingContent: string,
   input: unknown,
@@ -200,26 +248,6 @@ export function baseMdSettingsDiffer(
   return rebuildSettingsSections(existingContent, input) !== existingContent;
 }
 
-/** アカウント.mdの学習セクション見出し（MD-MERGE の再構築で使う）。 */
-export const BASE_MD_SECTION5_TITLE = BASE_MD_SECTION_TITLES[4];
-export const BASE_MD_SECTION6_TITLE = BASE_MD_SECTION_TITLES[5];
 
-/**
- * セクション5・6の本文だけをmerge結果で置き換え、セクション1〜4は不変で保持する（MD-MERGE, L-8）。
- * 6見出し構造を前後で検証する（崩れた出力は throw して呼び出し側が構造エラー処理する）。
- */
-export function replaceLearningSections(
-  existingContent: string,
-  section5Body: string,
-  section6Body: string,
-): string {
-  validateBaseMdStructure(existingContent);
-  const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
-  if (sectionFive?.index === undefined) {
-    throw new Error("アカウント.mdのセクション5を特定できません。");
-  }
-  const prefix = existingContent.slice(0, sectionFive.index); // セクション1〜4（＋前文）
-  const rebuilt = `${prefix}## 5. ${BASE_MD_SECTION5_TITLE}\n${section5Body.trim()}\n\n## 6. ${BASE_MD_SECTION6_TITLE}\n${section6Body.trim()}\n`;
-  validateBaseMdStructure(rebuilt);
-  return rebuilt;
-}
+
+

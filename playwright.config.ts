@@ -21,7 +21,12 @@ export default defineConfig({
   retries: 0,
   // CIの2コアランナーでは各routeの初回コンパイルが数十秒かかるため待ち時間を広げる。
   // ここを詰めるとアプリの不具合ではなくコンパイル待ちで落ち、CIが信用されなくなる。
-  timeout: process.env.CI ? 150_000 : 60_000,
+  //
+  // **手元も90秒**（T-M8-357）。各テストはログインから始まり、Turnstileのウィジェットは
+  // `challenges.cloudflare.com` から読む。フルスイート（125件）を短時間に繰り返すと
+  // トークンが返るまで十数秒かかるようになり、**60秒ではログインだけで使い切って**いた
+  // （2026-08-28に観測。落ちるのは常にログイン直後の遷移待ちで、アプリ側は数秒で応答している）。
+  timeout: process.env.CI ? 150_000 : 90_000,
   expect: { timeout: process.env.CI ? 30_000 : 10_000 },
   reporter: [["list"]],
   use: {

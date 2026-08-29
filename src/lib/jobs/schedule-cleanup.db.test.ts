@@ -101,10 +101,17 @@ describe("cleanupOldData (db)", () => {
       // 参照付き行がバッチ枠を塞いで未参照行が残る飢餓（レビュー指摘・T-M8-192）もここで見る。
       for (let i = 0; i < 5; i++) await cleanupOldData({ db: pooledDb });
 
+      /*
+        **数えるのはこのテストが作った時間帯の行だけ**（`fetched_at <= now()-31分`）。
+        全件を数えると、**並行して走る別のテストが1件でもニュースを入れた瞬間に501件**になり、
+        cleanupは正しく効いているのに落ちる（実際に全体実行でだけ落ちた・T-M8-161と同型）。
+        seedした520件はすべて30分より前なので、この境界で切れば意図（上限まで削れているか）は保てる。
+      */
       const { rows } = await pooledDb.query<{ n: string; ref: string }>(
         `select
            (select count(*) from news_items ni
-             where not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
+             where ni.fetched_at <= now() - interval '31 minutes'
+               and not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
                and not exists (
                  select 1 from notifications n
                   where jsonb_exists(n.payload->'news_item_ids', ni.id::text)))::text as n,
@@ -219,6 +226,127 @@ describe("cleanupOldData (db)", () => {
         await c.query(`delete from news_items where id = any($1)`, [[seed.itemB, seed.itemC]]);
         await c.query(`delete from external_api_usage_events where id = $1`, [seed.usageNew]);
         await c.query(`delete from cron_runs where id = $1`, [seed.cronNew]);
+      });
+    }
+  });
+
+  /**
+   * 終わったジョブとStripeイベントにも保持期間を付けた（T-M8-363・運営者の指示 2026-08-29）。
+   *
+   * **どちらも削除経路が1つも無く、使うほど無限に増えていた**（原則4）。
+   * 実行中の行を消すと実行側が「job が無い」で黙って終わるので、**終端したものだけ**を消す。
+   */
+  it("終わって90日を過ぎたジョブとStripeイベントを消し、実行中・直近は残す", async () => {
+    const eventOld = `evt_old_${randomUUID()}`;
+    const eventNew = `evt_new_${randomUUID()}`;
+    const seed = await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      const job = async (status: string, ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, status, finished_at, input)
+           values ($1, 'learning_analysis', 'manual', $2::job_status,
+                   now() - make_interval(days => $3), '{}'::jsonb) returning id`,
+          [xid, status, ageDays],
+        );
+        return rows[0].id;
+      };
+      const running = (
+        await c.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, status, input)
+           values ($1, 'learning_analysis', 'manual', 'running', '{}'::jsonb) returning id`,
+          [xid],
+        )
+      ).rows[0].id;
+      await c.query(
+        `insert into stripe_events (event_id, type, event_created_at)
+         values ($1, 'invoice.paid', now() - make_interval(days => 91)),
+                ($2, 'invoice.paid', now())`,
+        [eventOld, eventNew],
+      );
+      return {
+        uid,
+        oldDone: await job("succeeded", 91),
+        recentDone: await job("succeeded", 3),
+        running,
+      };
+    });
+
+    try {
+      await cleanupOldData({ db: pooledDb });
+
+      const jobAlive = async (id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from generation_jobs where id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+      const eventAlive = async (id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from stripe_events where event_id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+
+      expect(await jobAlive(seed.oldDone), "終わって90日を過ぎたジョブが残っている").toBe(false);
+      expect(await jobAlive(seed.recentDone), "直近のジョブまで消している").toBe(true);
+      expect(await jobAlive(seed.running), "実行中のジョブを消している（実行側が黙って終わる）").toBe(true);
+      expect(await eventAlive(eventOld)).toBe(false);
+      expect(await eventAlive(eventNew)).toBe(true);
+    } finally {
+      await withTransaction(async (c) => {
+        await c.query(`delete from auth.users where id = $1`, [seed.uid]);
+        await c.query(`delete from stripe_events where event_id = any($1)`, [[eventOld, eventNew]]);
+      });
+    }
+  });
+
+  /**
+   * 分析用データの保持期間（T-M8-364・運営者の決定 2026-08-29）。
+   *
+   * **投稿日時で切る**（取得日ではない）。取り込み直しで `fetched_at` が新しくなっても、
+   * 古い投稿は古い投稿のまま扱う。1年ぶんの振り返りは残る幅として400日を選んだ。
+   */
+  it("400日を過ぎた分析用データ（投稿・フォロワー数）を消し、1年以内は残す", async () => {
+    const seed = await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      const post = async (ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into x_timeline_posts (x_account_id, tweet_id, text, posted_at)
+           values ($1, $2, 't', now() - make_interval(days => $3)) returning id`,
+          [xid, `tw-${randomUUID()}`, ageDays],
+        );
+        return rows[0].id;
+      };
+      const snapshot = async (ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into follower_snapshots (x_account_id, snapshot_date, followers_count)
+           values ($1, (now() - make_interval(days => $2))::date, 10) returning id`,
+          [xid, ageDays],
+        );
+        return rows[0].id;
+      };
+      return {
+        uid,
+        oldPost: await post(401),
+        recentPost: await post(30),
+        oldSnapshot: await snapshot(401),
+        recentSnapshot: await snapshot(30),
+      };
+    });
+
+    try {
+      await cleanupOldData({ db: pooledDb });
+      const alive = async (table: string, id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from ${table} where id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+
+      expect(await alive("x_timeline_posts", seed.oldPost), "1年より前の投稿が残っている").toBe(false);
+      expect(await alive("x_timeline_posts", seed.recentPost), "1年以内の投稿まで消している").toBe(true);
+      expect(await alive("follower_snapshots", seed.oldSnapshot)).toBe(false);
+      expect(await alive("follower_snapshots", seed.recentSnapshot)).toBe(true);
+    } finally {
+      // follower_snapshots は x_accounts へ cascade しないので先に落とす。
+      await withTransaction(async (c) => {
+        await c.query(
+          `delete from follower_snapshots where x_account_id in
+             (select id from x_accounts where user_id = $1)`,
+          [seed.uid],
+        );
+        await c.query(`delete from auth.users where id = $1`, [seed.uid]);
       });
     }
   });

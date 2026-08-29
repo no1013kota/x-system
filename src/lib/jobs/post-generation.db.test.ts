@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+
 import { emptyUsage, type TextGen, type TextGenResult } from "../ai/types";
 import { encryptWithKey } from "../crypto/envelope";
 import { closePool, getPool, withTransaction } from "../db/pool";
@@ -250,7 +251,7 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-    it("premium: reserves exactly +1 generation on success (JSON repair does not double-count)", async () => {
+    it("premium: 成功時に実費だけを1回書く（JSON修復で二重に引かない）", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -263,9 +264,11 @@ describe("executePostGeneration (local DB)", () => {
       const s = await genState(uid, jobId);
       // AIクレジット（T-M8-109）: 見積もり16をreserve→実費（モックは原価0→最低1）で精算。
       // 精算の部分返還は reason='refund'（settle key）で入るため refunds=1 になる。
-      expect(s.gen).toBe(1);
-      expect(s.reserves).toBe(1);
-      expect(s.refunds).toBe(1); // settleの差分調整（16→1）
+      // 実費で精算された量（100トークン入力・50出力の想定原価）。単位はT-M8-325で0.01円へ。
+      expect(s.gen).toBe(51);
+      // 予約を廃止したので reserve も refund も無い（T-M8-324）。書くのは実費の1回だけ。
+      expect(s.reserves).toBe(0);
+      expect(s.refunds).toBe(0);
     } finally {
       await cleanupUsage(uid);
     }
@@ -286,7 +289,7 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-  it("premium: 失敗確定（failJob）で生成枠が返還される。handler単体では返還しない", async () => {
+  it("premium: **失敗しても生成枠は引かれない**（T-M8-324）", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     await setPremium(uid);
     try {
@@ -297,16 +300,14 @@ describe("executePostGeneration (local DB)", () => {
           deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
         ),
       ).rejects.toThrow();
-      // 返還は handler ではなく runJob の failJob が失敗確定時に行う（要件03 §7.3）。
-      // handler 単体では reserve が残ったままであることを確認する。
+      // **失敗しても枠は引かれない**（予約を廃止したので返還も要らない・T-M8-324）。
       const s = await genState(uid, jobId);
-      expect(s.reserves).toBe(1);
+      expect(s.reserves).toBe(0);
       expect(s.refunds).toBe(0);
-      expect(s.gen).toBe(16); // 見積もり16クレジットのreserveが残る（T-M8-109）
-      // 失敗が確定すると全額返還される
+      expect(s.gen).toBe(0);
+      // 失敗確定でも変わらない（返すものが無い）
       await failJob(jobId, "post_generation", new Error("terminal"));
       const after = await genState(uid, jobId);
-      expect(after.refunds).toBe(1);
       expect(after.gen).toBe(0);
     } finally {
       await cleanupUsage(uid);
@@ -365,6 +366,32 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
+  it("input.scheduled_at があれば予約済みの下書きとして作られる（T-M8-331）", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      // 投稿作成画面の「予約投稿」。受理済みのUTC ISOが job.input に入っている。
+      const at = new Date(Date.now() + 2 * 3_600_000).toISOString();
+      await db.query(`update generation_jobs set input = $2::jsonb where id = $1`, [
+        jobId,
+        JSON.stringify({ scheduled_at: at }),
+      ]);
+      const provider = mockProvider('{"posts":["予約する本文"],"sources":[],"error":null}');
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const row = (
+        await db.query<{ scheduled_at: string | null; status: string }>(
+          `select scheduled_at::text as scheduled_at, status from drafts where id = $1`,
+          [res.draftId],
+        )
+      ).rows[0];
+      expect(row.status, "予約は下書きのまま持つ（投稿は cron が行う）").toBe("draft");
+      expect(new Date(String(row.scheduled_at)).toISOString()).toBe(at);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
   it("is idempotent: a second run returns already_done without a duplicate draft", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
@@ -418,10 +445,51 @@ describe("executePostGeneration (local DB)", () => {
     }
   });
 
-  it("JSON invalid after repair: fails with invalid_output, no draft", async () => {
+  /**
+   * T-M8-335。**前後に説明文が付いただけの失敗は、安い整形1回で直る。**
+   *
+   * 以前はこの場合でも「元の依頼をまるごと生成し直す」（Web検索も再実行）ため、
+   * 初回とほぼ同じ費用がもう一度かかっていた。整形が効けば作り直しは呼ばれない。
+   */
+  it("JSONの前後に説明文が付いただけなら、整形1回で下書きまで進む", async () => {
     const { uid, jobId } = await withTransaction((c) => seed(c));
     try {
-      const provider = mockProvider("", ["これはJSONではない", "まだJSONではない"]);
+      const provider = mockProvider("", [
+        'この投稿を作りました。\n{"posts":["整形で救われた本文"],"sources":[],"error":null}\nご確認ください。',
+        '{"posts":["整形で救われた本文"],"sources":[],"error":null}',
+        // 3回目（作り直し）は呼ばれないはず。呼ばれたらこの本文が下書きに出る。
+        '{"posts":["作り直しが走ってしまった"],"sources":[],"error":null}',
+      ]);
+      const res = await executePostGeneration(
+        deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) }),
+      );
+      const draft = (
+        await db.query<{ thread: { text: string }[] }>(`select thread from drafts where id = $1`, [
+          res.draftId,
+        ])
+      ).rows[0];
+      expect(draft.thread[0].text).toBe("整形で救われた本文");
+      const job = (
+        await db.query<{ usage: { calls: unknown[] } }>(
+          `select usage from generation_jobs where id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+      expect(job.usage.calls.length, "初回＋整形の2回で終わる（作り直しは呼ばない）").toBe(2);
+    } finally {
+      await cleanup(uid);
+    }
+  });
+
+  it("整形でも作り直しでも直らなければ invalid_output（下書きは作らない）", async () => {
+    const { uid, jobId } = await withTransaction((c) => seed(c));
+    try {
+      // 初回 → 整形（安いモデル）→ 作り直し（本モデル）の3回とも読めない場合（T-M8-335）。
+      const provider = mockProvider("", [
+        "これはJSONではない",
+        "整形してもJSONではない",
+        "作り直してもJSONではない",
+      ]);
       await expect(
         executePostGeneration(deps({ jobId, resolveProvider: async () => ({ textGen: provider, provider: "anthropic", model: "m" }) })),
       ).rejects.toBeInstanceOf(InvalidProviderOutputError);
@@ -433,7 +501,7 @@ describe("executePostGeneration (local DB)", () => {
         )
       ).rows[0];
       expect(job.error?.code).toBe("invalid_output");
-      expect(job.usage.calls.length).toBe(2); // initial + repair recorded
+      expect(job.usage.calls.length, "初回・整形・作り直しの3回が台帳に残る").toBe(3);
       const drafts = (
         await db.query<{ n: number }>(`select count(*)::int as n from drafts where source_job_id = $1`, [jobId])
       ).rows[0].n;

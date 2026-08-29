@@ -80,15 +80,21 @@ function makeDeps(over: Partial<NewsResearchDeps> & Pick<NewsResearchDeps, "db" 
 }
 
 describe("newsLookbackHours / jstHourOf", () => {
-  it("maps JST launch hours to lookback windows (§6.10・T-M7-55)", () => {
-    // 初回は前日の最終回（21:00）からの空白12時間を埋める。
-    expect(newsLookbackHours(9)).toBe(12);
-    // 以降は間隔3時間＋重なり1時間。
-    for (const h of [12, 15, 18, 21]) expect(newsLookbackHours(h)).toBe(4);
+  /**
+   * T-M8-337。**窓は起動時刻の表から導く**（回数を変えたときに直し忘れない）。
+   * T-M8-326で1日2回へ減らしたとき、この表が5回のまま残り
+   * 12時の起動が「前回から4時間」で走っていた（実際の空きは17時間）＝
+   * **19時〜翌8時のニュースを一度も取りに行っていなかった**。
+   */
+  it("起動時刻ごとに、前の回からの空き＋1時間の窓になる（T-M8-337）", () => {
+    expect(newsLookbackHours(12), "前日19時からの17時間＋1").toBe(18);
+    expect(newsLookbackHours(19), "当日12時からの7時間＋1").toBe(8);
+    // 予定外の時刻は最大の窓（取りこぼさない方へ倒す）。
+    expect(newsLookbackHours(3)).toBe(18);
   });
 
   it("**窓は起動間隔より広い**（隣の回と重なり、1回失敗しても欠落しない）", () => {
-    const hours = [...NEWS_FETCH_JST_HOURS];
+    const hours: number[] = [...NEWS_FETCH_JST_HOURS];
     for (let i = 1; i < hours.length; i++) {
       const gap = hours[i] - hours[i - 1];
       expect(newsLookbackHours(hours[i]), `${hours[i]}時の窓が間隔${gap}hより広い`).toBeGreaterThan(gap);
@@ -98,8 +104,27 @@ describe("newsLookbackHours / jstHourOf", () => {
     expect(newsLookbackHours(hours[0])).toBeGreaterThanOrEqual(overnightGap);
   });
 
+  /**
+   * **cronの時刻と取得の時刻表が一致していること**（T-M8-337）。
+   * ここがずれると「取りに行かない時間帯」が生まれるが、画面は「記事が無い」ようにしか
+   * 見えないので誰も気付けない。`vercel.json` を正として突き合わせる。
+   */
+  it("vercel.json の cron と起動時刻表が一致する", async () => {
+    const { readFileSync } = await import("node:fs");
+    const config = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+      crons?: { path: string; schedule: string }[];
+    };
+    const cron = config.crons?.find((c) => c.path.includes("news-fetch"));
+    expect(cron, "news-fetch の cron が vercel.json に無い").toBeDefined();
+    // `分 時 * * *` の「時」はUTC。JST = UTC + 9。
+    const utcHours = cron!.schedule.split(" ")[1].split(",").map(Number);
+    const jstHours = utcHours.map((h) => (h + 9) % 24).sort((a, b) => a - b);
+    expect(jstHours).toEqual([...NEWS_FETCH_JST_HOURS]);
+  });
+
   it("想定外の時刻に起動されても欠落させない側へ倒す", () => {
-    for (const h of [0, 3, 10, 11, 23]) expect(newsLookbackHours(h)).toBe(12);
+    // 予定に無い時刻は**最大の窓**（12時の18時間）を使う。
+    for (const h of [0, 3, 10, 11, 23]) expect(newsLookbackHours(h)).toBe(18);
   });
   it("derives the JST hour from a UTC instant", () => {
     expect(jstHourOf(new Date("2026-07-24T00:00:00Z"))).toBe(9);
@@ -115,23 +140,24 @@ describe("researchNews", () => {
 
     const req = requests[0];
     expect(req.system[0]).toContain("「AI」分野");
-    expect(req.system[0]).toContain("直近4時間"); // JST 12:00 → hours 4
+    expect(req.system[0]).toContain("直近18時間"); // JST 12:00 → 前日19時からの17時間＋1
     expect(req.system[0]).toContain("最大5件");
-    expect(req.webSearch?.maxUses).toBe(5);
+    // 検索回数の上限（T-M8-335で5→3）。費用が分野数×実行回数×この数で決まる。
+    expect(req.webSearch?.maxUses).toBe(3);
     expect(req.user).toContain("https://known.example/1");
     expect(req.user).toContain("<known_urls>");
-    expect(res.hours).toBe(4);
+    expect(res.hours).toBe(18);
     expect(res.items).toHaveLength(1);
   });
 
-  it("初回（9:00 JST）は夜間を埋める12時間の窓で問い合わせる", async () => {
+  it("2回目（19:00 JST）は当日12時からの8時間の窓で問い合わせる", async () => {
     const { gen, requests } = mockTextGen([validResponse]);
     const { db } = mockDb([]);
-    // 01:00Z = 10:00 JST（定時取得の初回）。
-    const res = await researchNews("web3", makeDeps({ db, textGen: gen, clock: new Date("2026-07-24T00:00:00Z") }));
-    expect(requests[0].system[0]).toContain("直近12時間");
+    // 10:00Z = 19:00 JST（定時取得の2回目）。
+    const res = await researchNews("web3", makeDeps({ db, textGen: gen, clock: new Date("2026-07-24T10:00:00Z") }));
+    expect(requests[0].system[0]).toContain("直近8時間");
     expect(requests[0].system[0]).toContain("「Web3」分野");
-    expect(res.hours).toBe(12);
+    expect(res.hours).toBe(8);
   });
 
   it("accepts a code-fenced response and an empty items array", async () => {
@@ -251,6 +277,25 @@ describe("pickValidItems（item単位の選別）", () => {
     const r = pickValidItems([{ nonsense: true }, valid]);
     expect(r.items).toHaveLength(1);
     expect(r.dropped).toBe(1);
+  });
+
+  /**
+   * **http/https 以外の source_url を残さない**（T-M8-366）。source_url はAIが書き、
+   * 画面で `<a href>` として描く。`z.url()` は `data:`・`ftp:`・`javascript:` も通すため、
+   * プロンプトインジェクションで非http(s)のURLを混ぜられると、リンクに載る。
+   * React 19 が `javascript:` を止め、CSPが inline script を止めるので実害は限定的だが、
+   * **正規のニュースURLは必ず http(s)** なので、入口で落とすのが素直（多層防御）。
+   */
+  it("http/https 以外の source_url を持つitemは落とす", () => {
+    const r = pickValidItems([
+      { ...valid, source_url: "data:text/html,<script>1</script>" },
+      { ...valid, source_url: "javascript:alert(1)" },
+      { ...valid, source_url: "ftp://example.com/a" },
+      { ...valid, source_url: "https://example.com/ok" },
+    ]);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].source_url).toBe("https://example.com/ok");
+    expect(r.dropped).toBe(3);
   });
 
   it("最大件数で打ち切る", () => {

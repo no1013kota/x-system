@@ -72,7 +72,6 @@ async function removeExisting(client) {
       "follower_snapshots",
       "learning_sources",
       "prompt_templates",
-      "base_md_versions",
       "generation_jobs",
       "drafts",
       "schedule_slots",
@@ -259,20 +258,6 @@ async function main() {
       if (!patternIds.has(seedKey)) {
         throw new Error(`既定の投稿パターン ${seedKey} を作成できませんでした`);
       }
-    }
-
-    // --- ベースmdの変更履歴（ロールバックを試せるように）---
-    for (const version of [1, 2]) {
-      await client.query(
-        `insert into base_md_versions (x_account_id, version, content, change_source, summary)
-         values ($1, $2, $3, 'manual', $4)`,
-        [
-          xAccountId,
-          version,
-          `${BASE_MD}\n<!-- version ${version} -->`,
-          version === 1 ? "発信設定の保存で作成" : "手動編集",
-        ],
-      );
     }
 
     // --- スケジュール（有効2件・停止中1件）---

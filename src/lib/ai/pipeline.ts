@@ -22,6 +22,37 @@ export function withRepairInstruction(req: TextGenRequest): TextGenRequest {
   return { ...req, user: `${req.user}\n\n${REPAIR_INSTRUCTION}` };
 }
 
+/**
+ * **整形だけ**を頼む指示（T-M8-335）。
+ *
+ * 従来の修復（`withRepairInstruction`）は元の依頼をまるごと生成し直す——Web検索も
+ * もう一度走り、費用は初回とほぼ同じ。だが実際の失敗の多くは
+ * 「JSONの前後に説明文が付いた」「末尾にカンマが残った」といった**形の問題**で、
+ * 中身を作り直す必要は無い。そこを安いモデルの整形1回で済ませ、
+ * それでも直らないときだけ従来の作り直しへ落とす（品質は下げず、費用だけ下げる）。
+ *
+ * **中身を作らせない**のがこの指示の要。足りないキーを勝手に埋められると、
+ * 検証は通るのに中身が嘘になる（それは修復ではなく捏造）。
+ */
+export const REFORMAT_INSTRUCTION = [
+  "次の<output>はJSONとして解釈できませんでした。JSONとして解釈できる形に直してください。",
+  "",
+  "# 規則",
+  "- コードフェンス・前後の説明文・末尾のカンマなど、**形の問題だけ**を取り除く",
+  "- キーと値の中身は変えない。要約・翻訳・言い換えをしない",
+  "- 足りないキーがあっても**作らない**（分かる範囲だけをそのままJSONにする）",
+  "- 出力はJSONのみ",
+].join("\n");
+
+export function reformatRequest(rawOutput: string, timeoutMs: number): TextGenRequest {
+  return {
+    system: [],
+    user: `${REFORMAT_INSTRUCTION}\n\n<output>\n${rawOutput}\n</output>`,
+    // **Web検索は付けない**（形を直すだけなので検索は要らない＝検索料も掛からない）。
+    timeoutMs,
+  };
+}
+
 /** parse失敗が修復callでも解消しなかった終端エラー（§5.6: JSON parse失敗はfailed・retry非対象）。 */
 export class InvalidProviderOutputError extends Error {
   readonly retryable = false;
@@ -78,6 +109,11 @@ export interface RunTextGenerationOptions<T> {
   operation: string;
   /** 修復リクエストの組み立て（既定: withRepairInstruction）。 */
   repair?: (req: TextGenRequest) => TextGenRequest;
+  /**
+   * 整形専用の安いprovider（T-M8-335）。**失敗したときだけ**解決したいので関数で受ける。
+   * 省略すると従来どおり本モデルで作り直す。
+   */
+  reformatProvider?: () => Promise<{ provider: TextGen; providerId: Provider; model: string }>;
   hooks?: PostValidationHooks<T>;
   /** テスト用の時刻source（latency計測）。既定: Date.now。 */
   now?: () => number;
@@ -151,18 +187,26 @@ export async function runTextGeneration<T>(
   const repair = opts.repair ?? withRepairInstruction;
   const calls: ProviderCall[] = [];
 
-  const callOnce = async (req: TextGenRequest) => {
+  /** どのproviderで呼ぶか（整形だけ別モデルへ回すため・T-M8-335）。 */
+  const callOnce = async (
+    req: TextGenRequest,
+    on: { provider: TextGen; providerId: Provider; model: string } = {
+      provider: opts.provider,
+      providerId: opts.providerId,
+      model: opts.model,
+    },
+  ) => {
     const start = now();
     let out;
     try {
-      out = await opts.provider.generate(req);
+      out = await on.provider.generate(req);
     } catch (error) {
       // 例外で終わったcallも「発生事実」として残す（要件04 §10・D-4 案A）。SDKはthrow時に
       // usageを返さないため、記録できるのは request ID と error code に限られる。
       calls.push(
         failedProviderCall({
-          provider: opts.providerId,
-          model: opts.model,
+          provider: on.providerId,
+          model: on.model,
           operation: opts.operation,
           latencyMs: now() - start,
           requestId: readString(error, "requestId") ?? readString(error, "request_id"),
@@ -176,10 +220,11 @@ export async function runTextGeneration<T>(
     }
     calls.push(
       toProviderCall(out, {
-        model: opts.model,
+        model: on.model,
         operation: opts.operation,
         latencyMs: now() - start,
-        estimatedCostUsd: estimateProviderCost(out.provider, out.usage, opts.model),
+        // 単価は**実際に使ったモデル**で見積もる（親のモデルで記録すると実費とずれる）。
+        estimatedCostUsd: estimateProviderCost(out.provider, out.usage, on.model),
       }),
     );
     return out;
@@ -193,7 +238,23 @@ export async function runTextGeneration<T>(
   attempts.push(out.text);
   let result = parseAndValidate(out.text, opts.schema);
 
-  // 失敗時のみ修復指示付きで1回だけ再生成（§7.1、job retryには含めない）
+  /*
+    失敗時の直し方は2段（§7.1、job retryには含めない）。
+
+    1. **整形だけ**（T-M8-335）: 安いモデルへ「形を直して」と頼む。失敗の多くは
+       前後の説明文や末尾カンマなので、これで直る。Web検索も付けないので費用はごく小さい。
+    2. **作り直し**（従来）: 整形で直らなければ、本モデルで元の依頼をやり直す。
+       中身が壊れている・途中で切れている場合はここでしか直せない。
+
+    整形を先に置くのは費用のためで、**品質は下げない**——2段目が従来と同じだから、
+    直せる範囲は増えることはあっても減らない。
+  */
+  if (!result.ok && opts.reformatProvider) {
+    const on = await opts.reformatProvider();
+    out = await callOnce(reformatRequest(out.text, opts.request.timeoutMs), on);
+    attempts.push(out.text);
+    result = parseAndValidate(out.text, opts.schema);
+  }
   if (!result.ok) {
     out = await callOnce(repair(opts.request));
     attempts.push(out.text);

@@ -3,23 +3,38 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-import { updatePersonaSettings } from "@/app/actions/persona-settings";
+import {
+  discardSettingsProposal,
+  updatePersonaSettings,
+} from "@/app/actions/persona-settings";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
+  FREE_SECTION_MAX_CHARS,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { OPERATED_THEME_OPTIONS, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
-import { cardClassName, CardTitle } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 interface PersonaSettingsFormProps {
-  accountHandle: string;
   baseMdVersion: number;
   initialDifference: boolean;
   initialSettings: PersonaSettings;
+  /**
+   * 参考ソースから作った**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
+   * あるときは各欄をこの値で埋め、「保存すると確定する」ことを画面で言う。
+   * null は「提案が無い」——保存済みの設定をそのまま出す。
+   */
+  proposal: PersonaSettings | null;
+  /**
+   * アカウント.mdの手書きセクション（T-M8-355・運営者の指示 2026-08-28）。
+   * 1〜4はこのフォームから機械生成されるが、5（参考にする型）は人が書く場所で、
+   * これまではプロンプト画面のmdエディタからしか触れなかった。**同じ画面で書けるようにする。**
+   */
+  initialReferenceStyle: string;
   xAccountId: string;
 }
 
@@ -32,8 +47,12 @@ const inputClassName =
  * 枠線が途切れて背景の灰色が覗く。`display:block` では直らず、`float` で流れへ戻すと
  * 中の grid が崩れる（実際に崩した）。`role="group"` ＋ `aria-labelledby` で読み上げ上の
  * グループは保ったまま、見出しを普通の要素にしてレイアウトを取り戻す。
+ *
+ * **カードは1枚**（T-M8-349・運営者の指示 2026-08-28）。以前は ペルソナ／テーマ／トーン／NG設定 が
+ * それぞれ独立したカードで、間に灰色の地が見えて「4つの別の設定」に見えていた。
+ * 中は区切り線で分ける——ひと続きの1つの設定であることを形で示す。
  */
-const groupClassName = `${cardClassName} p-5 sm:p-6`;
+const groupClassName = "border-t border-hairline pt-6 first:border-t-0 first:pt-0";
 
 type NgField = "words" | "topics" | "rules";
 
@@ -45,16 +64,45 @@ function lines(value: string): string[] {
 }
 
 export function PersonaSettingsForm({
-  accountHandle,
   baseMdVersion,
   initialDifference,
+  initialReferenceStyle,
   initialSettings,
+  proposal,
   xAccountId,
 }: PersonaSettingsFormProps) {
   const router = useRouter();
-  const [settings, setSettings] = useState(initialSettings);
+  /*
+    **提案があればそれを出す**（T-M8-349）。参考ソースからの反映は保存前の下書きなので、
+    保存済みの値ではなく提案を欄へ入れる。保存するまで `settings` は変わらない。
+  */
+  const [settings, setSettings] = useState(proposal ?? initialSettings);
   const [version, setVersion] = useState(baseMdVersion);
   const [dirty, setDirty] = useState(false);
+  /** 提案を表示中か（保存すると消える）。 */
+  const [showProposal, setShowProposal] = useState(proposal != null);
+  const [discarding, setDiscarding] = useState(false);
+
+  /** 提案を捨てて保存済みの内容へ戻す（T-M8-360）。画面ごと取り直す。 */
+  function discardProposal() {
+    setDiscarding(true);
+    void discardSettingsProposal({ x_account_id: xAccountId })
+      .then((res) => {
+        if (res.status === "success") {
+          setShowProposal(false);
+          toast.show({ tone: "success", title: "反映を取り消しました" });
+          router.refresh();
+        } else {
+          toast.show({ tone: "error", title: "取り消せませんでした", description: res.message });
+        }
+      })
+      .finally(() => setDiscarding(false));
+  }
+  /*
+    アカウント.mdの5セクション（T-M8-355）。**参考ソースの反映では変わらない**——
+    反映が書き換えるのは1〜4（ペルソナ〜NG設定）だけで、ここは人が書く場所。
+  */
+  const [referenceStyle, setReferenceStyle] = useState(initialReferenceStyle);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
   /**
@@ -66,10 +114,13 @@ export function PersonaSettingsForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   // NG設定は入力中の生テキストを保持する。表示値を正規化済み配列から作ると、改行した瞬間に
   // 末尾の空行が捨てられて2行目が打てなくなるため（保存する値は従来どおり正規化した配列）。
-  const [ngText, setNgText] = useState<Record<NgField, string>>({
-    rules: initialSettings.ng.rules.join("\n"),
-    topics: initialSettings.ng.topics.join("\n"),
-    words: initialSettings.ng.words.join("\n"),
+  const [ngText, setNgText] = useState<Record<NgField, string>>(() => {
+    const base = proposal ?? initialSettings;
+    return {
+      rules: base.ng.rules.join("\n"),
+      topics: base.ng.topics.join("\n"),
+      words: base.ng.words.join("\n"),
+    };
   });
 
   const updateSettings = (next: PersonaSettings) => {
@@ -118,6 +169,7 @@ export function PersonaSettingsForm({
     setSubmitting(true);
     const result = await updatePersonaSettings({
       expected_base_md_version: version,
+      reference_style: referenceStyle,
       settings: parsed.data,
       x_account_id: xAccountId,
     });
@@ -131,29 +183,60 @@ export function PersonaSettingsForm({
       setVersion(result.version);
       setDirty(false);
       setSavedDifference(false);
+      setShowProposal(false);
       router.refresh();
     }
   };
 
   return (
+    /*
+      **カードの外枠は `page.tsx` が持つ**（T-M8-356・運営者の指示 2026-08-28）。
+      参考ソースの欄をペルソナの上へ入れるため、1枚のカードの中に
+      「参考ソース → このフォーム」を並べる。ここで枠を持つと二重の枠になる。
+      見出しと説明は置かない（T-M8-346。タブ名が「アカウント設定」なので繰り返さない）。
+    */
     <form className="space-y-6" noValidate onSubmit={submit}>
-      <div className="flex flex-col gap-2 rounded-card border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          対象アカウント: <strong>@{accountHandle}</strong>
-        </span>
-        {/* 呼称は他タブと同じ「アカウント.md」に揃える。「n回目の更新」はversionの言い換えで冗長（T-M8-66）。 */}
-      </div>
+      {/*
+        **参考ソースからの反映は保存前の提案**（T-M8-349）。押した瞬間に本番の設定が
+        変わると、利用者は中身を見る前に書き換えられてしまう。ここで「まだ保存されていない」
+        ことを言い、保存で確定させる（原則1）。
+      */}
+      {showProposal ? (
+        <Notice role="status" tone="info">
+          <span className="block">
+            参考ソースから作った内容を入れました。<strong>まだ保存されていません。</strong>
+            気になるところを直してから、下の「アカウント設定を保存」を押してください。
+          </span>
+          {/*
+            **戻る道を用意する**（T-M8-360）。気に入らない反映から抜ける方法が無いと、
+            開くたびに「まだ保存されていません」が出るのに消せない状態になる（原則2）。
+          */}
+          <button
+            className="mt-2 text-caption underline underline-offset-4 hover:no-underline disabled:opacity-60"
+            disabled={discarding}
+            onClick={discardProposal}
+            type="button"
+          >
+            {discarding ? "取り消しています…" : "この反映を取り消して、保存済みの内容に戻す"}
+          </button>
+        </Notice>
+      ) : null}
 
       {version >= 1 && (savedDifference || dirty) ? (
-        // 6セクションのタイトル列挙は読み飛ばされるだけだった（T-M8-66）。
-        // 「戻せる」導線があれば安心して保存できるので、要点2文に絞る。
+        /*
+          セクション名の列挙は読み飛ばされるだけだった（T-M8-66）ので要点だけにする。
+          **変更履歴は廃止した**（T-M8-362）ので「履歴から戻せる」とは書けない。
+          代わりに、取っておきたい本文は**本棚へ控えを作れる**ことを案内する
+          ——「戻せない」とだけ言うと、保存する前に何をすればよいか分からない（原則2）。
+        */
         <Notice tone="warn"
           role="status">
-          保存すると、プロンプトのアカウント.mdが書き換えられます。以前の内容は
-          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=prompts&sec=account-md">
-            アカウント.mdタブの変更履歴
+          保存すると、プロンプトのアカウント.mdが書き換えられます。いまの内容を残したいときは、
+          先に
+          <Link className="mx-1 font-medium underline underline-offset-4" href="/app/prompts?sec=account-md">
+            プロンプト画面
           </Link>
-          からいつでも戻せます。
+          で控えを作ってください。
         </Notice>
       ) : null}
 
@@ -449,13 +532,50 @@ export function PersonaSettingsForm({
         </div>
       </section>
 
+      {/*
+        **アカウント.mdの手書きセクション**（T-M8-355／T-M8-356・運営者の指示 2026-08-28）。
+        1〜4はこの画面から機械生成されるが、5は人が書く場所で、これまでは
+        プロンプト画面のmdエディタからしか触れなかった。同じ画面で書けるようにする。
+        **参考ソースの反映では変わらない**——反映が書き換えるのは1〜4だけ。
+      */}
+      <section aria-labelledby="free-group" className={groupClassName} role="group">
+        <CardTitle id="free-group">参考にする型（任意）</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          アカウント.mdの5章にそのまま入ります。空でも保存できます。
+        </p>
+        <div className="mt-5">
+          <label className="sr-only" htmlFor="free.reference">
+            参考にする型
+          </label>
+          <textarea
+            className={inputClassName}
+            id="free.reference"
+            maxLength={FREE_SECTION_MAX_CHARS}
+            onChange={(event) => {
+              setReferenceStyle(event.target.value);
+              setDirty(true);
+            }}
+            placeholder="例: 結論→理由→具体例→まとめ の4段で書く。"
+            rows={4}
+            value={referenceStyle}
+          />
+          <p className="mt-1 text-caption text-ink-3">
+            {referenceStyle.length} / {FREE_SECTION_MAX_CHARS}字
+          </p>
+        </div>
+      </section>
+
       {validationMessage ? (
         <Notice role="alert" tone="danger">
           {validationMessage}
         </Notice>
       ) : null}
 
-      <div className="flex justify-end">
+      {/*
+        **保存はカードの中の左下**（T-M8-349・運営者の指示 2026-08-28）。
+        下の「アカウント設定を反映する」と同じ側に置いて、押す場所を揃える。
+      */}
+      <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-6">
         <button
           className="min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           disabled={submitting}
@@ -463,6 +583,9 @@ export function PersonaSettingsForm({
         >
           {submitting ? "保存しています…" : "アカウント設定を保存"}
         </button>
+        <span className="text-caption text-ink-3">
+          {version >= 1 ? "保存すると次の生成から反映されます。" : "保存するとアカウント.mdが作られます。"}
+        </span>
       </div>
     </form>
   );

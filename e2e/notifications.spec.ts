@@ -4,7 +4,7 @@ import { query } from "./fixtures/account";
 import { expect, signIn, test } from "./fixtures/test";
 
 /**
- * ヘッダの通知ベル（O-2, 要件06 §2, T-M8-32）。
+ * お知らせ（O-2, 要件06 §2, T-M8-32）。ヘッダー廃止でサイドバー下部へ移した（T-M8-328）。
  *
  * 押した瞬間に閉じて遷移することと、未読数がその場で減ることを固定する。以前は**既読化の
  * サーバ往復を待ってから**閉じて遷移していたため、押しても何も起きない時間があった。
@@ -21,7 +21,7 @@ test("通知を押すと即座に閉じて遷移し、未読数がその場で�
 
   await signIn(page, account);
 
-  const bell = page.getByRole("button", { name: /通知/ });
+  const bell = page.getByRole("button", { name: /お知らせ/ });
   await expect(bell).toContainText("2");
   await bell.click();
 
@@ -61,7 +61,7 @@ test("すべて既読で未読バッジが消え、DBにも反映される", asy
   );
 
   await signIn(page, account);
-  const bell = page.getByRole("button", { name: /通知/ });
+  const bell = page.getByRole("button", { name: /お知らせ/ });
   await expect(bell).toContainText("3");
   await bell.click();
   await page.getByRole("button", { name: "すべて既読" }).click();

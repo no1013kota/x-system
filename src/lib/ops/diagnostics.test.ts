@@ -241,10 +241,46 @@ describe("judgeXAccounts", () => {
     expect(r.nextAction).toBeTruthy();
   });
 
-  it("期限切れは注意どまり（次の操作で自動更新される）", () => {
-    const r = judgeXAccounts([{ handle: "a", status: "active", expiresInHours: -22 }]);
-    expect(r.level).toBe("warn");
+  /**
+   * **access tokenが切れていること自体は異常ではない**（T-M8-359・運営者の指摘 2026-08-28）。
+   * Xのtokenは2時間で切れる設計で、先回り更新と実行時の自動更新で戻る。
+   * ここで毎朝【注意】を出していたため、直す必要のない警告が毎日届いていた。
+   */
+  it("期限切れでも自動更新できるなら正常（毎朝の誤報を作らない）", () => {
+    const r = judgeXAccounts([
+      { handle: "a", status: "active", expiresInHours: -22, canRefresh: true },
+    ]);
+    expect(r.level).toBe("ok");
     expect(r.detail).toContain("@a");
+  });
+
+  it("自動更新の許可が無ければ注意（放っておくと切れる）", () => {
+    const r = judgeXAccounts([
+      { handle: "a", status: "active", expiresInHours: -22, canRefresh: false },
+    ]);
+    expect(r.level).toBe("warn");
+    expect(r.nextAction).toContain("再連携");
+  });
+
+  /**
+   * **多いときは名前を並べない**（T-M8-360）。67件が1行に並んで読めなくなり、
+   * 問題のある1件がその中に埋もれていた（2026-08-28にローカルで観測）。
+   */
+  it("連携が多いときは件数でまとめ、問題のあるものだけ名前で出す", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      handle: `ok${i}`,
+      status: "active",
+      expiresInHours: 1,
+      canRefresh: true,
+    }));
+    const r = judgeXAccounts([
+      ...many,
+      { handle: "broken", status: "active", expiresInHours: 1, canRefresh: false },
+    ]);
+    expect(r.level).toBe("warn");
+    expect(r.detail, "件数でまとめる").toContain("21件");
+    expect(r.detail, "問題のあるものは名前で分かる").toContain("@broken");
+    expect(r.detail, "無関係な連携の名前を並べない").not.toContain("@ok0");
   });
 
   it("有効で期限内なら正常", () => {
@@ -467,20 +503,36 @@ describe("judgePoolWaits", () => {
   it("待ちが無ければ ok（0件であることを言い切る）", () => {
     const r = judgePoolWaits({ waits24h: 0, maxWaitedMs: 0 });
     expect(r.level).toBe("ok");
-    expect(r.detail).toContain("接続の待ちはありません");
+    expect(r.detail).toContain("空き待ちはありません");
     expect(r.nextAction).toBeUndefined();
   });
 
-  it("1件以上なら注意（件数と最長待ち時間を出す）", () => {
-    const r = judgePoolWaits({ waits24h: 3, maxWaitedMs: 1_500 });
+  /**
+   * **短い待ちが数回あるだけでは知らせない**（T-M8-359・運営者の指摘 2026-08-28）。
+   * 「0.2秒の待ちが5回」で毎朝メールが届いていた。直す必要のない警告は読まれなくなる。
+   */
+  it("短い待ちが数回なら ok（数字は残すが混雑とは言わない）", () => {
+    const r = judgePoolWaits({ waits24h: 5, queuedWaits24h: 5, maxWaitedMs: 200 });
+    expect(r.level).toBe("ok");
+    expect(r.detail).toContain("5回");
+    expect(r.nextAction).toBeUndefined();
+  });
+
+  it("回数が増えたら注意（件数と最長待ち時間を出す）", () => {
+    const r = judgePoolWaits({ waits24h: 25, maxWaitedMs: 1_500 });
     expect(r.level).toBe("warn");
-    expect(r.detail).toContain("3回");
+    expect(r.detail).toContain("25回");
     expect(r.detail).toContain("1.5秒");
     expect(r.nextAction).toContain("Supabase Pro");
   });
 
+  it("回数が少なくても待ちが長ければ注意（体感に出る）", () => {
+    const r = judgePoolWaits({ waits24h: 2, queuedWaits24h: 2, maxWaitedMs: 4_000 });
+    expect(r.level).toBe("warn");
+  });
+
   it("常態化したら異常（移行条件に該当することを名指しする）", () => {
-    const r = judgePoolWaits({ waits24h: 20, maxWaitedMs: 5_000 });
+    const r = judgePoolWaits({ waits24h: 120, maxWaitedMs: 5_000 });
     expect(r.level).toBe("error");
     expect(r.nextAction).toContain("要件01 §9");
   });
@@ -500,7 +552,7 @@ describe("judgePoolWaits の上限表示（T-M8-303）", () => {
   });
 
   it("警告のときも上限を添える（対策済みかどうかが読める）", () => {
-    const check = judgePoolWaits({ waits24h: 5, maxWaitedMs: 900, poolMax: 10 });
+    const check = judgePoolWaits({ waits24h: 30, maxWaitedMs: 900, poolMax: 10 });
     expect(check.level).toBe("warn");
     expect(check.detail).toContain("1インスタンスあたり上限 10");
   });
@@ -572,29 +624,29 @@ describe("judgeNews の停止判定（予定時刻ベース・T-M8-310）", () =
   const at = (utc: string) => new Date(utc);
   const base = { itemsLast48h: 51, schedulerExpected: true, outcomes: [] };
 
-  it("予定の空き（UTC12時→翌0時）では赤くしない", () => {
-    // UTC 23:57＝JST 8:57。直前の実行は予定どおり UTC12時（11.95時間前）。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 11.95, now: at("2026-08-25T23:57:00Z") });
+  it("予定の空き（UTC10時→翌3時）では赤くしない", () => {
+    // UTC 23:57＝JST 8:57。直前の実行は予定どおり UTC10時（13.95時間前）。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 13.95, now: at("2026-08-25T23:57:00Z") });
     expect(c.level, "予定どおりなのに赤い（毎晩の誤報が再発している）").toBe("ok");
   });
 
   it("予定の1本が飛んだら赤くする", () => {
-    // 同じ時刻で UTC12時の回が飛んでいれば、最後の実行は UTC9時＝約15時間前。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 15, now: at("2026-08-25T23:57:00Z") });
+    // 同じ時刻で UTC10時の回が飛んでいれば、最後の実行は前日UTC3時＝約21時間前。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 21, now: at("2026-08-25T23:57:00Z") });
     expect(c.level).toBe("error");
     expect(c.nextAction).toContain("走るはずの時刻");
   });
 
   it("日中も同じ基準で判定する", () => {
-    // UTC 9:30。直前の実行が0.5時間前（＝9時の回）なら正常。
-    expect(judgeNews({ ...base, hoursSinceLastRun: 0.5, now: at("2026-08-25T09:30:00Z") }).level).toBe("ok");
-    // 6時間前（＝3:30）が最後なら、6時の回が飛んでいる。
-    expect(judgeNews({ ...base, hoursSinceLastRun: 6, now: at("2026-08-25T09:30:00Z") }).level).toBe("error");
+    // UTC 9:30（JST 18:30）。直前の予定は UTC3時なので 6.5時間前までは正常。
+    expect(judgeNews({ ...base, hoursSinceLastRun: 6.4, now: at("2026-08-25T09:30:00Z") }).level).toBe("ok");
+    // 前日 UTC10時が最後＝23.5時間前なら、当日 UTC3時の回が飛んでいる。
+    expect(judgeNews({ ...base, hoursSinceLastRun: 23.5, now: at("2026-08-25T09:30:00Z") }).level).toBe("error");
   });
 
   it("cronの起動が数分遅れているだけなら赤くしない", () => {
-    // UTC 3:10。3時の回がまだでも、最後の実行が0時なら猶予の内側。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 3.08, now: at("2026-08-25T03:10:00Z") });
+    // UTC 3:10。3時の回がまだでも、前日UTC10時が最後（17.2時間前）なら猶予の内側。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 17.1, now: at("2026-08-25T03:10:00Z") });
     expect(c.level).toBe("ok");
   });
 
@@ -606,15 +658,15 @@ describe("judgeNews の停止判定（予定時刻ベース・T-M8-310）", () =
 
 describe("hoursSinceDueNewsRun", () => {
   it("「終わっているはずの回」からの経過を返す", () => {
-    // UTC 9:30・猶予1時間 → 8:30以前の予定＝6時。9.5-6=3.5
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T09:30:00Z"))).toBeCloseTo(3.5, 5);
-    // UTC 23:57 → 22:57以前の予定＝12時。23.95-12=11.95
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T23:57:00Z"))).toBeCloseTo(11.95, 2);
+    // UTC 9:30・猶予1時間 → 8:30以前の予定＝3時。9.5-3=6.5
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T09:30:00Z"))).toBeCloseTo(6.5, 5);
+    // UTC 23:57 → 22:57以前の予定＝10時。23.95-10=13.95
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T23:57:00Z"))).toBeCloseTo(13.95, 2);
   });
 
   it("その日まだ「終わっているはずの回」が無ければ前日の最後から数える", () => {
-    // UTC 0:30・猶予1時間 → 当日の予定はどれも猶予の内側。前日12時から12.5時間。
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T00:30:00Z"))).toBeCloseTo(12.5, 5);
+    // UTC 0:30・猶予1時間 → 当日の予定（3時・10時）はまだ。前日10時から14.5時間。
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T00:30:00Z"))).toBeCloseTo(14.5, 5);
   });
 
   it("予定表が空でも例外にせず、赤くしない側へ倒す", () => {
@@ -624,5 +676,38 @@ describe("hoursSinceDueNewsRun", () => {
   it("猶予は0より大きい（0だと起動の遅れで毎回赤くなる）", () => {
     expect(NEWS_RUN_GRACE_HOURS).toBeGreaterThan(0);
     expect(NEWS_FETCH_UTC_HOURS.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * DB接続の判定は「並んだ回数」だけを見る（T-M8-323）。
+ * 5分ごとのcronが新しい接続を張るだけで毎日必ず赤になっていた（本番302件のうち292件）。
+ */
+describe("judgePoolWaits が接続確立と混雑を区別する（T-M8-323）", () => {
+  it("cronの接続確立だけなら緑（本番の実データ相当: 302件中292件が空き待ちではない）", () => {
+    const c = judgePoolWaits({ waits24h: 302, queuedWaits24h: 10, maxWaitedMs: 948, poolMax: 3 });
+    expect(c.level, "接続を張っただけで赤くなっている（毎日の誤報が再発）").not.toBe("error");
+  });
+
+  it("接続確立の回数は数字として残す（黙って捨てない）", () => {
+    const c = judgePoolWaits({ waits24h: 302, queuedWaits24h: 0, maxWaitedMs: 700, poolMax: 3 });
+    expect(c.level).toBe("ok");
+    expect(c.detail).toContain("302");
+    expect(c.detail).toContain("混雑ではありません");
+  });
+
+  it("**本物の待ち行列**が続けば従来どおり赤い", () => {
+    const c = judgePoolWaits({ waits24h: 400, queuedWaits24h: 150, maxWaitedMs: 3000, poolMax: 3 });
+    expect(c.level).toBe("error");
+    expect(c.nextAction).toBeTruthy();
+  });
+
+  it("待ちが極端に長ければ、回数が少なくても赤い（1回で10秒は止まって見える）", () => {
+    const c = judgePoolWaits({ waits24h: 3, queuedWaits24h: 3, maxWaitedMs: 12_000, poolMax: 3 });
+    expect(c.level).toBe("error");
+  });
+
+  it("queuedWaits24h が無い呼び出しは従来どおり全件を空き待ちとみなす（後方互換）", () => {
+    expect(judgePoolWaits({ waits24h: 150, maxWaitedMs: 900 }).level).toBe("error");
   });
 });

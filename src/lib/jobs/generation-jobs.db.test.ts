@@ -118,6 +118,117 @@ describe("generation-jobs actions (local DB)", () => {
       ...over,
     }) as CreateGenerationJobInput;
 
+  /*
+    投稿作成画面の「モード」（T-M8-331）。**本番実装をそのまま通す**——ここが黙って
+    落ちると「すぐに投稿を選んだのに下書きのまま」「予約したのに9時間ずれる」になり、
+    画面からは説明できない（原則1・原則2）。
+  */
+  describe("post_mode（生成したあとどうするか・T-M8-331）", () => {
+    /** 現行versionの自動投稿同意を入れる。 */
+    const consent = (xid: string) =>
+      withTransaction(async (c) => {
+        const { CURRENT_AUTOMATION_CONSENT_VERSION } = await import("@/lib/legal");
+        await c.query(
+          `update x_accounts
+              set automation_consent_version = $2, automation_consented_at = now(),
+                  automation_disabled_at = null
+            where id = $1`,
+          [xid, CURRENT_AUTOMATION_CONSENT_VERSION],
+        );
+      });
+
+    const jobInput = (jobId: string) =>
+      db
+        .query<{ input: Record<string, unknown> }>(
+          `select input from generation_jobs where id = $1`,
+          [jobId],
+        )
+        .then((r) => r.rows[0].input);
+
+    it("既定（post_mode なし）は下書きで止まる", async () => {
+      const { uid, xid } = await withTransaction((c) => seed(c));
+      try {
+        const { jobId } = await createGenerationJob(uid, await input(xid), deps());
+        expect(await jobInput(jobId)).toMatchObject({ mode: "draft", scheduled_at: null });
+      } finally {
+        await cleanup(uid);
+      }
+    });
+
+    it("すぐに投稿は自動投稿の同意が無いと受け付けない（生成を始めない）", async () => {
+      const { uid, xid } = await withTransaction((c) => seed(c));
+      try {
+        await expect(
+          createGenerationJob(uid, await input(xid, { post_mode: "now" }), deps()),
+        ).rejects.toMatchObject({ code: "automation_consent_required" });
+        const n = (
+          await db.query<{ n: number }>(
+            `select count(*)::int as n from generation_jobs where x_account_id = $1`,
+            [xid],
+          )
+        ).rows[0].n;
+        expect(n, "弾いたのにjobが残っている").toBe(0);
+      } finally {
+        await cleanup(uid);
+      }
+    });
+
+    it("同意済みのすぐに投稿は mode=auto で作られる（生成後に投稿へ連鎖する）", async () => {
+      const { uid, xid } = await withTransaction((c) => seed(c));
+      try {
+        await consent(xid);
+        const { jobId } = await createGenerationJob(
+          uid,
+          await input(xid, { post_mode: "now" }),
+          deps(),
+        );
+        expect(await jobInput(jobId)).toMatchObject({ mode: "auto", scheduled_at: null });
+      } finally {
+        await cleanup(uid);
+      }
+    });
+
+    it("予約投稿は日本時間として解釈した UTC を持ち、投稿へは連鎖しない", async () => {
+      const { uid, xid } = await withTransaction((c) => seed(c));
+      try {
+        await consent(xid);
+        // 実行環境のTZに関係なく「JSTの日時」として保存されること（T-M8-229）。
+        const jstInput = new Date(Date.now() + 3 * 3_600_000 + 9 * 3_600_000)
+          .toISOString()
+          .slice(0, 16);
+        const { jobId } = await createGenerationJob(
+          uid,
+          await input(xid, { post_mode: "scheduled", scheduled_at: jstInput }),
+          deps(),
+        );
+        const stored = await jobInput(jobId);
+        expect(stored.mode, "予約なのに投稿へ連鎖している").toBe("draft");
+        expect(new Date(String(stored.scheduled_at)).toISOString()).toBe(
+          new Date(`${jstInput}:00+09:00`).toISOString(),
+        );
+      } finally {
+        await cleanup(uid);
+      }
+    });
+
+    it("過ぎた日時の予約は受け付けない（理由は日本語）", async () => {
+      const { uid, xid } = await withTransaction((c) => seed(c));
+      try {
+        await consent(xid);
+        const past = new Date(Date.now() - 3_600_000 + 9 * 3_600_000).toISOString().slice(0, 16);
+        await expect(
+          createGenerationJob(
+            uid,
+            await input(xid, { post_mode: "scheduled", scheduled_at: past }),
+            deps(),
+          ),
+        ).rejects.toMatchObject({ code: "validation_error" });
+      } finally {
+        await cleanup(uid);
+      }
+    });
+  });
+
   it("is idempotent on request_key (same key → same job, no duplicate row)", async () => {
     const { uid, xid } = await withTransaction((c) => seed(c));
     try {

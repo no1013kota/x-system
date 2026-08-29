@@ -23,6 +23,16 @@ import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 import { getRecentPosts, getTweetMetrics } from "@/lib/x/client";
 import { xClientDeps } from "@/lib/x/client-server";
 import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
+import { randomUUID } from "node:crypto";
+
+import { EXT_BY_FORMAT, normalizeForX } from "@/lib/ai/image-normalize";
+import {
+  assertUploadableImage,
+  draftImagePath,
+  replacedImagePaths,
+  uploadedImagesJson,
+} from "@/lib/post/draft-image-upload";
+import type { DraftImage } from "@/lib/drafts";
 import { AppError } from "@/lib/observability/errors";
 import { recordUnexpectedError } from "@/lib/observability/sentry";
 
@@ -36,6 +46,9 @@ import { recordUnexpectedError } from "@/lib/observability/sentry";
 const IMAGE_BUCKET = env.SUPABASE_STORAGE_BUCKET_IMAGES;
 
 const pooledDb = pooledQueryable();
+
+/** 画像アップロードは FormData 経由なので zod を通す前に形を見る（T-M8-353）。 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const listSchema = z.object({ tab: z.enum(["drafts", "history"]).default("drafts") });
 const updateSchema = z.object({
@@ -287,4 +300,149 @@ async function loadDraftScheduleTarget(
   const row = rows[0];
   if (!row) throw new AppError("not_found");
   return { status: row.status, xAccountActive: row.x_status === "active" };
+}
+
+/**
+ * 下書きに自分の画像を添える（T-M8-353・運営者の指示 2026-08-28）。
+ *
+ * **投稿に使われる画像は1枚**（`post-publish` は最初の `ready` 画像を使う）ので、
+ * アップロードは**置き換え**にする。2枚目を足せる形にすると、画面には2枚出ているのに
+ * 投稿されるのは片方、という説明できない状態になる（原則1）。
+ *
+ * 中身は `normalizeForX` に通す——申告されたMIMEは信用できず、Xの5MB上限も
+ * ここで守らないと**投稿の瞬間に初めて失敗する**（そのときには本文だけがXに残り得る）。
+ */
+export async function uploadDraftImageAction(formData: FormData): Promise<BaseResult> {
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  const draftId = formData.get("draft_id");
+  const file = formData.get("file");
+  if (typeof draftId !== "string" || !UUID_RE.test(draftId)) {
+    return { message: "下書きが見つかりません。", status: "error" };
+  }
+  if (!(file instanceof File)) {
+    return { message: "画像ファイルを選んでください。", status: "error" };
+  }
+  try {
+    assertUploadableImage({ name: file.name, size: file.size, type: file.type });
+    const target = await loadDraftImageTarget(auth.userId, draftId);
+    if (target.status !== "draft") {
+      throw new AppError("job_conflict", {
+        message: "この下書きはもう編集できません（投稿済み・処理中）。",
+        details: { reason: `not_editable:${target.status}` },
+      });
+    }
+
+    const normalized = await normalizeForX(Buffer.from(await file.arrayBuffer()));
+    const localId = randomUUID();
+    const path = draftImagePath({
+      userId: auth.userId,
+      xAccountId: target.xAccountId,
+      draftId,
+      localId,
+      ext: EXT_BY_FORMAT[normalized.format] ?? "bin",
+    });
+    const admin = createSupabaseAdminClient();
+    const uploaded = await admin.storage
+      .from(IMAGE_BUCKET)
+      .upload(path, normalized.bytes, { contentType: normalized.mime, upsert: true });
+    if (uploaded.error) throw new Error(`storage upload failed: ${uploaded.error.message}`);
+
+    const image = {
+      local_id: localId,
+      post_local_id: target.firstPostLocalId ?? undefined,
+      storage_path: path,
+      provider: "upload",
+      mime_type: normalized.mime,
+      size_bytes: normalized.bytes.length,
+      status: "ready",
+    };
+    await pooledDb.query(`update drafts set images = $2::jsonb, updated_at = now() where id = $1`, [
+      draftId,
+      JSON.stringify(uploadedImagesJson(image)),
+    ]);
+    /*
+      **差し替えた古い画像は消す**（原則4）。DBから外れただけの実体が残ると、
+      使われないファイルがStorageの課金対象として増え続ける。
+      消せなくても本体の操作は成功しているので、失敗は記録だけして進む。
+    */
+    const stale = replacedImagePaths(target.images, path);
+    if (stale.length > 0) {
+      const removed = await admin.storage.from(IMAGE_BUCKET).remove(stale);
+      if (removed.error) {
+        recordUnexpectedError(removed.error, { at: "draft-image-upload:remove", draftId });
+      }
+    }
+    revalidatePath("/app/posts");
+    return { message: "画像をアップロードしました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/** 添えた画像を外す（生成した画像も外せる。外すと画像なしで投稿される）。 */
+export async function removeDraftImageAction(input: unknown): Promise<BaseResult> {
+  const parsed = parseUserInput(z.object({ draft_id: z.string().uuid() }), input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const target = await loadDraftImageTarget(auth.userId, parsed.data.draft_id);
+    if (target.status !== "draft") {
+      throw new AppError("job_conflict", {
+        message: "この下書きはもう編集できません（投稿済み・処理中）。",
+        details: { reason: `not_editable:${target.status}` },
+      });
+    }
+    await pooledDb.query(`update drafts set images = '[]'::jsonb, updated_at = now() where id = $1`, [
+      parsed.data.draft_id,
+    ]);
+    const stale = replacedImagePaths(target.images, "");
+    if (stale.length > 0) {
+      const removed = await createSupabaseAdminClient()
+        .storage.from(IMAGE_BUCKET)
+        .remove(stale);
+      if (removed.error) {
+        recordUnexpectedError(removed.error, {
+          at: "draft-image-remove",
+          draftId: parsed.data.draft_id,
+        });
+      }
+    }
+    revalidatePath("/app/posts");
+    return { message: "画像を外しました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/** 画像を差し替える対象（所有・状態・既存画像・1本目のlocal_id）。 */
+async function loadDraftImageTarget(
+  userId: string,
+  draftId: string,
+): Promise<{
+  status: string;
+  xAccountId: string;
+  images: DraftImage[];
+  firstPostLocalId: string | null;
+}> {
+  const { rows } = await pooledDb.query<{
+    status: string;
+    x_account_id: string;
+    images: DraftImage[] | null;
+    thread: { local_id?: string }[] | null;
+  }>(
+    `select d.status, d.x_account_id, d.images, d.thread
+       from drafts d join x_accounts xa on xa.id = d.x_account_id
+      where d.id = $1 and xa.user_id = $2`,
+    [draftId, userId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("not_found");
+  return {
+    status: row.status,
+    xAccountId: row.x_account_id,
+    images: row.images ?? [],
+    firstPostLocalId: row.thread?.[0]?.local_id ?? null,
+  };
 }

@@ -115,13 +115,22 @@ export function buildAnthropicParams(
   messages: RawCreateParams["messages"],
   opts: { model: string; webSearchToolType: string; maxTokens: number },
 ): RawCreateParams {
+  /*
+    **プロンプトキャッシュは使わない**（T-M8-335・運営者の判断 2026-08-27）。
+
+    キャッシュが当たるのは「同じ並びの入力を5分以内にもう一度送ったとき」だけで、
+    キャッシュ対象の先頭ブロックには**そのアカウントのアカウント.md**が入るため、
+    他の利用者とは共有されない。1人が5分以内に生成を繰り返すことはほぼ無いので、
+    **書いては捨てるだけ**になっていた。キャッシュ書き込みは通常の入力より1.25倍高いので、
+    当たらないぶんは純粋な損になる。
+
+    `system` に可変値を入れない作りは**残す**——将来、生成頻度が上がって
+    キャッシュが当たるようになったとき、この1行を戻すだけで有効化できる。
+  */
   const system: RawSystemBlock[] = req.system.map((text) => ({
     type: "text",
     text,
   }));
-  if (system.length > 0) {
-    system[system.length - 1].cache_control = { type: "ephemeral" };
-  }
 
   const params: RawCreateParams = {
     model: opts.model,

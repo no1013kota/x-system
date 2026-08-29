@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.30 |
-| 更新日 | 2026-08-26 |
+| バージョン | v1.32 |
+| 更新日 | 2026-08-29 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -120,9 +120,9 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `NEWS_TEXT_PROVIDER` | preview/prod | 共通ニュース取得provider | 既定値`anthropic`。無効時に別providerへ自動切替しない |
 | `ANTHROPIC_TEXT_MODEL` | dev/preview/prod | Claude文章モデル | 実装時に公式仕様確認 |
 | `OPENAI_TEXT_MODEL` | dev/preview/prod | OpenAI文章モデル | 実装時に公式仕様確認 |
-| `OPENAI_IMAGE_MODEL` | dev/preview/prod | OpenAI画像モデル | 実装時に公式仕様確認 |
+| `OPENAI_IMAGE_MODEL` | 任意（上書き用） | OpenAI画像モデル | 未設定なら`DEFAULT_IMAGE_MODELS`（コード）を使う。必須にしない（T-M8-334/370・原則3） |
 | `GEMINI_TEXT_MODEL` | dev/preview/prod | Gemini文章モデル | 実装時に公式仕様確認 |
-| `GEMINI_IMAGE_MODEL` | dev/preview/prod | Gemini画像モデル | 実装時に公式仕様確認 |
+| `GEMINI_IMAGE_MODEL` | 任意（上書き用） | Gemini画像モデル | 未設定なら`DEFAULT_IMAGE_MODELS`（コード）を使う。必須にしない（T-M8-334/370・原則3） |
 
 ### 3.6 メール・監視
 
@@ -132,7 +132,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `SMTP_PORT` | preview/prod | Gmail SMTP port | STARTTLSの`587` |
 | `SMTP_USER` | preview/prod | Gmail SMTP user | `matsubuz.10@gmail.com` |
 | `SMTP_APP_PASSWORD` | preview/prod | Gmail SMTP認証 | Server only。Google 2段階認証で発行するApp Password。**この4つは Supabase Auth のカスタムSMTP設定にも同じ値を使う**（`npm run auth:templates -- --apply` が流用する）——運営者向けopsメール（アプリ）と認証メール（Supabase Auth）は**送信経路が別**だが資格情報は共通・T-M8-136 |
-| `EMAIL_FROM` | preview/prod | Fromアドレス | `Exos AI <matsubuz.10@gmail.com>`。`EMAIL_REPLY_TO`はT-M8-222（通知メール廃止）で削除 |
+| `EMAIL_FROM` | 任意 | Fromアドレス | **未設定なら `Exos AI <support@exosai.net>`**（T-M8-339。既定はコード側 `EXPECTED_SENDER_EMAIL`。envは緊急の差し替え用）。`EMAIL_REPLY_TO`はT-M8-222（通知メール廃止）で削除 |
 | `SUPPORT_EMAIL` | dev/preview/prod | 問い合わせ先 | `matsubuz.10@gmail.com`。SC-11と法務ページに使用 |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | preview/prod | Supabase Auth CAPTCHAのsite key | signup/login/password reset |
 | `TURNSTILE_SECRET_KEY` | preview/prod | Supabase Auth CAPTCHAのsecret | Server only |
@@ -255,3 +255,5 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.28 | 2026-08-23 | proxyから契約状態のDB読み取りを削除（T-M8-268。画面は契約で弾かず、実行側で止める。全ページ遷移のDB往復を1本削減） |
 | v1.29 | 2026-08-24 | 画面表示用のDB読み取りを「利用者まわりの1行」へ束ねる方針を追加（T-M8-288。App Shell 8→5往復） |
 | v1.30 | 2026-08-26 | 実行リージョンを東京（hnd1）へ固定（T-M8-320）。既定の iad1 では利用者・Supabaseとも離れ、画面遷移ごとに固定で0.2〜0.35秒かかっていた |
+| v1.31 | 2026-08-27 | Exos AIから出るメールの差出人を `support@exosai.net` へ統一（T-M8-339。既定はコード側に持ち、envは差し替え用） |
+| v1.32 | 2026-08-29 | `*_IMAGE_MODEL` を必須から任意（上書き用）へ。既定はコード（`DEFAULT_IMAGE_MODELS`）が持つ決定（T-M8-334）に合わせた。必須のままだったためVercelのbuildが止まり、stg/prdへ反映できなかった（T-M8-370） |

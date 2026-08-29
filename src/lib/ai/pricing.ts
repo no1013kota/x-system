@@ -54,7 +54,7 @@ export const PROVIDER_RATES: Record<Provider, ProviderRates> = {
  * 単価の出典: 各社公式pricing（2026-08-15確認）。cacheはAnthropic=書込1.25×入力/読出0.1×入力、
  * OpenAI=読出のみ公式のcached input（書込は入力と同額扱い）、Geminiはprovider既定のまま。
  */
-const MODEL_RATES: Record<string, Partial<ProviderRates>> = {
+export const MODEL_RATES: Record<string, Partial<ProviderRates>> = {
   // Anthropic
   "claude-fable-5": { inputPerMTok: 10, outputPerMTok: 50, cacheWritePerMTok: 12.5, cacheReadPerMTok: 1 },
   "claude-opus-5": { inputPerMTok: 5, outputPerMTok: 25, cacheWritePerMTok: 6.25, cacheReadPerMTok: 0.5 },

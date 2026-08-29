@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.18 |
-| 更新日 | 2026-08-25 |
+| バージョン | v1.19 |
+| 更新日 | 2026-08-29 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -37,6 +37,7 @@ npm run release:production   # main → production
 2. 未コミットの変更が無いか
 3. 未pushのコミットが無いか（反映されるのはリモートの内容）
 4. 自動テスト（CI）が緑か（赤・実行中・結果なしは止まる）
+4.5 **デプロイ（Vercel）のbuildが成功しているか**（失敗・build中は止まる。`gh` が無い環境では判定を飛ばす）——**CIが緑でもbuildは落ちる**。CIとVercelでは環境変数が別物で、2026-08-29 に `OPENAI_IMAGE_MODEL` がVercelに無いためbuildが3回連続で失敗していたのに、この判定が無く「✅ 反映と検証が完了しました」と出ていた（**古い版が動いたまま成功に見える**・T-M8-370）
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
 
@@ -149,7 +150,9 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `STRIPE_RETENTION_COUPON_ID` | 解約前に提示するクーポンのID（任意・T-M8-272）。**環境ごとに別のID**。未設定だと解約画面にクーポンが出ない（doctorが警告する）。ダッシュボードの「顧客維持クーポン」設定はアプリの解約導線には効かない |
 | `X_COST_CONTENT_CREATE_USD` / `_WITH_URL_USD` / `X_COST_INTERACTION_DELETE_USD` / `X_COST_POST_READ_USD` / `X_COST_USER_READ_USD` | X Developer Console の pay-per-use 実単価（読取2つはT-M8-91で追加。読取は応答のresource数で乗算課金される） |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_APP_PASSWORD` | Gmail App Password 等。**`npm run auth:templates -- --apply` が Supabase Auth のカスタムSMTP設定にも同じ値を流用する**（アプリの通知メールと認証メールで同じ資格情報・T-M8-136） |
-| `EMAIL_FROM` | 運営者向けメール（doctorの日次アラート）の送信元。**利用者向けのパスワード再設定メールの差出人はこれではない**——そちらは Supabase Auth 側の設定で、`npm run auth:templates -- --apply` が `SMTP_USER` から流し込む。`EMAIL_REPLY_TO` は T-M8-222（利用者向け通知メールの廃止）で不要になったので**設定しない**（残っていても読まれない） |
+| `EMAIL_FROM` | 運営者向けメール（doctorの日次アラート）の送信元。**未設定でよい**——コード側の既定 `Exos AI <support@exosai.net>` が使われる（T-M8-339）。利用者向けの認証メールの差出人は Supabase Auth 側の設定で、`npm run auth:templates -- --apply` が**同じ `support@exosai.net`** を流し込む（以前は `SMTP_USER`＝運営者個人のアドレスだった）。**送信側でこのアドレスを名乗る許可が要る**（Gmail/Workspaceの「他のアドレスとしてメールを送信」）。`EMAIL_REPLY_TO` は T-M8-222 で不要 |
+
+**差出人アドレスを変えたら `npm run check:mail-sender` で確かめる**（T-M8-342）。Gmail/Workspaceは「他のアドレスとしてメールを送信」の認証が無いと送信を拒否するが、**それは送信時にしか分からない**（設定画面を見ても分からず、利用者に届かない形でしか表面化する）。`--send` を付けると `SUPPORT_EMAIL` 宛に1通だけ送って実際に名乗れるかを確かめる（宛先は運営者自身に固定してある）。
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |
 

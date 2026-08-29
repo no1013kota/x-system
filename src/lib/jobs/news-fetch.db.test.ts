@@ -35,6 +35,63 @@ describe("runNewsFetch (db)", () => {
     if (!available) ctx.skip();
   });
 
+  /**
+   * T-M8-338。**Batchの取り込みが、同期実行と同じ選別・同じ記録を通る**ことを実DBで見る。
+   *
+   * ここがずれると「同期では捨てる記事がBatchでは残る」という、画面から説明できない差になる。
+   * 失敗した分野が `news_fetch_outcomes` へ `ok=false` で残ることも同時に固定する
+   * （「該当なし」と「取りに行けなかった」を混ぜない・原則1）。
+   */
+  it("Batchの結果を取り込み、成功分野は保存・失敗分野は理由つきで記録する", async () => {
+    const { collectNewsBatch } = await import("./news-fetch");
+    const windowKey = `2026-08-27T${Math.floor(Math.random() * 90) + 10}`;
+    const url = `https://example.test/${randomUUID()}`;
+    const submittedAt = new Date();
+    const body = JSON.stringify({
+      items: [
+        {
+          title: "見出し",
+          summary: "要約",
+          source_url: url,
+          impact: "high",
+          published_at: new Date(submittedAt.getTime() - 3_600_000).toISOString(),
+        },
+      ],
+    });
+    try {
+      const res = await collectNewsBatch({
+        db: pooledDb,
+        windowKey,
+        submittedAt,
+        lookbackHours: 18,
+        collected: [
+          { category: "ai", ok: true, text: body, errorCode: null, usage: null },
+          { category: "web3", ok: false, text: null, errorCode: "expired", usage: null },
+        ],
+        parseEnvelope: (text) => ({ ok: true, items: (JSON.parse(text) as { items: unknown[] }).items }),
+      });
+      expect(res.totalSaved).toBe(1);
+      expect(res.emptyCategories).toEqual([{ category: "web3", reason: "failed" }]);
+
+      const outcomes = (
+        await pooledDb.query<{ category: string; ok: boolean; saved: number; error_code: string | null }>(
+          `select category::text as category, ok, saved, error_code
+             from news_fetch_outcomes where window_key = $1 order by category`,
+          [windowKey],
+        )
+      ).rows;
+      expect(outcomes).toEqual([
+        { category: "ai", ok: true, saved: 1, error_code: null },
+        { category: "web3", ok: false, saved: 0, error_code: "expired" },
+      ]);
+    } finally {
+      await withTransaction((c) => c.query(`delete from news_items where source_url = $1`, [url]));
+      await withTransaction((c) =>
+        c.query(`delete from news_fetch_outcomes where window_key = $1`, [windowKey]),
+      );
+    }
+  });
+
   function research(urls: string[]): NewsResearchResult {
     const items: NewsItemOut[] = urls.map((u) => ({
       title: "t",

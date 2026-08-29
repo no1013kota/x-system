@@ -9,7 +9,7 @@ import { expect, horizontalOverflow, test } from "./fixtures/test";
 test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("SNS自動化プラットフォーム");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SNS運用プラットフォーム");
 
   // 会員登録・ログインへの導線（ヘッダー）
   const header = page.getByRole("banner");
@@ -26,7 +26,7 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // プランカードが plans.ts の価格・上限を実際に描画している（T-M8-171でカードへ変えた）。
   const pricing = page.locator("#pricing");
   await expect(pricing).toContainText("¥3,980");
-  await expect(pricing).toContainText("AIクレジット1000");
+  await expect(pricing).toContainText("AIクレジット100,000");
   await expect(pricing.getByText(/1日あたり 約\d/).first()).toBeVisible();
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });

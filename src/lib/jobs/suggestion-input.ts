@@ -12,8 +12,15 @@
  * - Exos AIで作った投稿には **型とテーマ** を付ける（drafts の tweet_ids と突合。分からなければ null）
  */
 
-/** 後方互換の別名（取得上限の正本は suggestion-timeline.ts の TIMELINE_FETCH_MAX）。 */
-export const SUGGEST_TIMELINE_MAX = 100;
+/**
+ * `<posts>` へ渡す投稿の件数（T-M8-335・運営者の指示 2026-08-27。100→50）。
+ *
+ * **入力の大きさがこのレポートの費用をほぼ決める**（1件300字なので50件で約1.5万字）。
+ * 傾向を読むには直近50件で足り、古い投稿ほど今の書き方との関係が薄い。
+ * 取得・保存の上限（`TIMELINE_FETCH_MAX` / `SUGGEST_ANALYZE_MAX`）は変えない——
+ * 画面の実績表示や次回以降の分析はそのまま保存済みデータを使う。
+ */
+export const SUGGEST_TIMELINE_MAX = 50;
 /** 本文をLLMへ渡す長さ。書き出し・構成の観察に足る長さ（200→300へ・T-M8-98。保存は500字）。 */
 export const SUGGEST_POST_TEXT_CHARS = 300;
 

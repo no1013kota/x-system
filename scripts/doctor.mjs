@@ -195,6 +195,7 @@ async function authUrlCheck() {
       smtpHost: body.smtp_host ?? null,
       // 差出人名（T-M8-136）。既定のままだと見知らぬ差出人から6桁コードが届く。
       smtpSenderName: body.smtp_sender_name ?? null,
+      smtpSenderEmail: body.smtp_admin_email ?? null,
       uriAllowList: parseAllowList(body.uri_allow_list),
     });
   } catch (error) {

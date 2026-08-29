@@ -29,6 +29,29 @@ const ok: ReleaseContext = {
   targetProjectRef: "uykffujqpsogqffbnsrz",
 };
 
+/**
+ * **CIが緑でもデプロイのbuildは別に落ちる**（T-M8-370）。2026-08-29、Vercelに
+ * `OPENAI_IMAGE_MODEL` が無くbuildが3回連続で失敗していたのに、この判定が無かったため
+ * 「反映と検証が完了しました」と出て**古い版が動いたまま成功に見えていた**（原則1）。
+ */
+describe("デプロイ（Vercel）の結果", () => {
+  it("buildが失敗していたら止める", () => {
+    const steps = evaluateReleaseGate({ ...ok, deployConclusion: "failure" });
+    const stop = steps.find((s) => s.level === "stop");
+    expect(stop?.name).toBe("デプロイ（Vercel）");
+  });
+
+  it("build中も止める（終わるまで待たせる）", () => {
+    const steps = evaluateReleaseGate({ ...ok, deployConclusion: "pending" });
+    expect(steps.find((s) => s.level === "stop")?.name).toBe("デプロイ（Vercel）");
+  });
+
+  it("判定できないとき（ghが無い等）は止めない", () => {
+    const steps = evaluateReleaseGate({ ...ok, deployConclusion: null });
+    expect(steps.find((s) => s.level === "stop")).toBeUndefined();
+  });
+});
+
 describe("expectedBranchFor", () => {
   it("staging は stg、production は main", () => {
     expect(expectedBranchFor("staging")).toBe("stg");

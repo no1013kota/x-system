@@ -154,7 +154,7 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
   it("skips premium when the generation budget is exhausted", async () => {
     await expectSkipped(dueSlot({ plan: "premium" }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 1000 }],
+        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 100_000 }],
       }),
     });
   });
@@ -181,7 +181,7 @@ describe("enqueueDueSlots — §7.1 exclusions", () => {
   it("skips premium when the image budget is exhausted and images are enabled", async () => {
     await expectSkipped(dueSlot({ plan: "premium", image_enabled: true }), {
       budget: () => ({
-        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 1000 }],
+        rows: [{ normal_posts_count: 0, url_posts_count: 0, ai_credits_used: 100_000 }],
       }),
     });
   });

@@ -25,6 +25,7 @@ import { concealsUsageLimits, isOperatorManagedPlan, type PlanId } from "@/lib/p
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { yen } from "@/lib/format";
 
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
@@ -289,7 +290,7 @@ function ModelSelect({
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {option.label}
-            {showEstimate ? ` — 約${option.estimateCredits}${unit}` : ""}
+            {showEstimate ? ` — 約${yen(option.estimateCredits)}${unit}` : ""}
           </option>
         ))}
       </select>

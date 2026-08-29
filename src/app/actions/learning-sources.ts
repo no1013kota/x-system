@@ -1,5 +1,7 @@
 "use server";
 
+import { z } from "zod";
+
 import { after } from "next/server";
 
 import { type BaseResult, errorResult, requireUserId, validationErrorResult } from "./_helpers";
@@ -10,6 +12,8 @@ import { dispatchJob } from "@/lib/jobs/dispatch";
 import {
   addLearningSource,
   addLearningSourceSchema,
+  applyLearningToSettings,
+  applyLearningToSettingsSchema,
   listLearningSources,
   removeLearningSource,
   removeLearningSourceSchema,
@@ -82,6 +86,56 @@ export async function removeLearningSourceAction(
       message: jobId ? "学習内容の削除を開始しました。" : "学習ソースを削除しました。",
       status: "success",
     };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * **学習ソースからアカウント設定を作る／更新する**（T-M8-344・運営者の指示 2026-08-27）。
+ *
+ * アカウント設定が未保存でも実行できる（そのための機能）。実行中は画面が
+ * 「アカウント設定を書き換え中です」と出し、完了したら新しい設定が表示される。
+ */
+export async function applyLearningToSettingsAction(
+  input: unknown,
+): Promise<BaseResult & { jobId?: string }> {
+  const parsed = parseUserInput(applyLearningToSettingsSchema, input);
+  if (!parsed.success) {
+    return validationErrorResult(parsed.error);
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { jobId } = await applyLearningToSettings(auth.userId, parsed.data, learningDeps);
+    after(() => dispatchJob(jobId));
+    return { jobId, message: "アカウント設定の書き換えを開始しました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * 反映がまだ動いているか（T-M8-344）。画面が「アカウント設定を書き換え中です」を
+ * いつ下ろすかを決めるために使う。**jobの中身は返さない**——画面が要るのは進行中かどうかだけ。
+ */
+export async function learningApplyStatusAction(
+  input: unknown,
+): Promise<BaseResult & { running?: boolean }> {
+  const parsed = parseUserInput(z.object({ x_account_id: z.string().uuid() }), input);
+  if (!parsed.success) return validationErrorResult(parsed.error);
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    const { rows } = await pooledDb.query<{ n: number }>(
+      `select count(*)::int as n
+         from generation_jobs gj join x_accounts xa on xa.id = gj.x_account_id
+        where gj.x_account_id = $1 and xa.user_id = $2
+          and gj.kind in ('md_merge', 'learning_analysis')
+          and gj.status in ('queued', 'running')`,
+      [parsed.data.x_account_id, auth.userId],
+    );
+    return { message: "", running: (rows[0]?.n ?? 0) > 0, status: "success" };
   } catch (error) {
     return errorResult(error);
   }

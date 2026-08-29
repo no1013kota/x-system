@@ -49,6 +49,7 @@ export function NotificationBell({
   listNotificationsAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
+  sidebar = false,
 }: {
   initialUnread: number;
   initialItems: NotificationView[];
@@ -60,6 +61,8 @@ export function NotificationBell({
   markNotificationReadAction: (input: {
     notification_id: string;
   }) => Promise<unknown>;
+  /** サイドバー下部に置く形（T-M8-328）。ラベル付きの横並びにする。 */
+  sidebar?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -112,18 +115,30 @@ export function NotificationBell({
   return (
     <Popover.Root onOpenChange={setOpen} open={open}>
       <Popover.Trigger
-        aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
-        className="relative inline-flex size-9 items-center justify-center rounded-card text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        aria-label={unread > 0 ? `お知らせ（未読${unread}件）` : "お知らせ"}
+        className={
+          sidebar
+            ? // サイドバーではナビ項目と同じ見た目にする（アイコンだけだと何の印か分からない）。
+              "relative flex min-h-10 w-full items-center gap-2.5 rounded-card px-3 text-body font-medium text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            : "relative inline-flex size-9 items-center justify-center rounded-card text-ink-2 transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        }
       >
-        <Icon name="notifications" size={20} />
+        <Icon name="notifications" size={sidebar ? 22 : 20} />
+        {sidebar ? <span className="flex-1 text-left">お知らせ</span> : null}
         {unread > 0 ? (
-          <span className="absolute top-1 right-1 inline-flex min-w-4 items-center justify-center rounded-pill bg-danger-dot px-1 text-[11px] leading-4 font-bold text-white">
+          <span
+            className={
+              sidebar
+                ? "inline-flex min-w-5 items-center justify-center rounded-pill bg-danger-dot px-1.5 text-[11px] leading-4 font-bold text-white"
+                : "absolute top-1 right-1 inline-flex min-w-4 items-center justify-center rounded-pill bg-danger-dot px-1 text-[11px] leading-4 font-bold text-white"
+            }
+          >
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner align="end" className="z-40" sideOffset={8}>
+        <Popover.Positioner align={sidebar ? "start" : "end"} className="z-40" side={sidebar ? "top" : "bottom"} sideOffset={8}>
           <Popover.Popup className="w-[min(340px,calc(100vw-1rem))] overflow-hidden rounded-card border border-hairline bg-surface shadow-[var(--shadow-modal)] outline-none">
             <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
               <p className="text-body font-bold text-ink">通知</p>

@@ -5,7 +5,7 @@ import { withTransaction, pooledQueryable, runInPooledTx } from "../db/pool";
 import type { PlanId } from "../plans";
 import { reserveIfPremium } from "../usage/reserve-if-premium";
 import { createDeadline, type Deadline } from "./deadline";
-import { executeMdMerge } from "./md-merge";
+import { executeMdMerge, mergeModeFor } from "./md-merge";
 import { MAX_ATTEMPTS, backoffMs } from "./retry";
 import { finalizeFailedJob } from "./terminal";
 import type { JobContext } from "./handlers";
@@ -23,7 +23,15 @@ const pooledDb = pooledQueryable();
 const runInTx = runInPooledTx;
 
 function resolveProvider(input: { plan: string; userId: string; deadline: Deadline }) {
-  return resolveTextProvider({ plan: input.plan as PlanId, userId: input.userId }, { deadline: input.deadline });
+  /*
+    アカウント.mdのセクション1〜4を、参考ソースの分析を踏まえて洗練する（T-M8-336）。
+    **書き直しではなく判断が要る仕事**（どの具体を足すか・設定由来の値を守るか）なので、
+    学習分析と同じ中間クラスで固定する（運営者の指示 2026-08-27）。
+  */
+  return resolveTextProvider(
+    { plan: input.plan as PlanId, userId: input.userId },
+    { deadline: input.deadline, purpose: "analysis" },
+  );
 }
 
 export async function mdMergeHandler(ctx: JobContext): Promise<void> {
@@ -42,7 +50,19 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
       [ctx.jobId],
     )
   ).rows[0];
-  if (!meta?.learning_source_id) return; // 対象ソース無し → no-op
+  if (!meta) return; // job が消えている → no-op
+  /*
+    `learning_source_id` の有無で**何のためのmergeか**が決まる（T-M8-344）。
+    - 有り: 学習ソースの**削除**に伴う作り直し（その1件を除いて再構成する）
+    - 無し: 利用者が「学習ソースからアカウント設定を作る」を押した反映
+      （登録済みの分析をすべて使う。アカウント設定が未保存でも作れる）
+  */
+  /*
+    反映merge（`learning_source_id` 無し）は**保存前の提案**として置く（T-M8-349）。
+    削除mergeは知見を取り除く処理なので、これまでどおりその場で確定させる——
+    「消したのにまだ効いている」状態を残さないため。判定は `mergeModeFor`（単体テストあり）。
+  */
+  const mode = mergeModeFor(meta.learning_source_id);
 
   // 削除mergeも生成枠を1消費（premium・要件04 §12）。冪等keyで再実行安全。
   await reserveIfPremium(runInTx, {
@@ -57,7 +77,7 @@ export async function mdMergeHandler(ctx: JobContext): Promise<void> {
   try {
     await executeMdMerge(
       { db: pooledDb, jobId: ctx.jobId, runInTx, runInTxForSettle: runInTx, resolveProvider, makeDeadline: () => deadline },
-      { removedSourceId: meta.learning_source_id },
+      mode,
     );
   } catch (error) {
     // retryable は attempt<3 で queued 自己終端（runJob の failed 化を空振り）・reserve 保持。

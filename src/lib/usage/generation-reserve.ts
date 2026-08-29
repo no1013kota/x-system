@@ -1,4 +1,5 @@
 import { AppError } from "../observability/errors";
+import { carryOverUsage } from "./usage-carryover";
 import { currentUsagePeriodKey } from "./usage-period";
 import type { Queryable } from "../x/token-refresh";
 import { notifyUsageThresholds } from "./usage-threshold";
@@ -18,10 +19,6 @@ export type UsageReserveType = "generation" | "image";
 const COUNTER_COLUMN: Record<UsageReserveType, string> = {
   generation: "ai_credits_used",
   image: "ai_credits_used",
-};
-const COUNTER_TYPE: Record<UsageReserveType, string> = {
-  generation: "ai_credit",
-  image: "ai_credit",
 };
 const OPERATION: Record<UsageReserveType, string> = {
   generation: "generation",
@@ -50,9 +47,64 @@ export async function reserveUsage(
     amount?: number;
   },
 ): Promise<boolean> {
-  const key = `job:${params.jobId}:${params.type}:reserve`;
   const column = COUNTER_COLUMN[params.type];
-  const amount = Math.max(1, Math.floor(params.amount ?? 1));
+  const period = await currentUsagePeriodKey(tx, params.userId);
+  // 期間が変わった最初の1回で、前期の超過分を初期値として持ち込む（T-M8-324）。
+  if (params.limit !== undefined) {
+    await carryOverUsage(tx, { userId: params.userId, limit: params.limit });
+  } else {
+    await tx.query(
+      `insert into usage_counters (user_id, month)
+       values ($1, $2)
+       on conflict (user_id, month) do nothing`,
+      [params.userId, period],
+    );
+  }
+  /*
+    **開始前に「まだ残っているか」だけを見る**（T-M8-324・運営者の指示 2026-08-27）。
+
+    以前は見積もりを先に押さえ（reserve）、成功時に実費で精算し、失敗時に返還していた。
+    そのため**完了のたびに使用量が下がって見え**、利用者から「何もしていないのに減る」と
+    問い合わせが来た。いまは**実費が確定したときだけ書く**（`chargeUsage`）。
+
+    上限の当たり方（要決定D-48・案A）:
+    - 残量が尽きていれば**新しい生成を始めさせない**
+    - **走り出した生成は最後まで通す**ので、結果として使用量が上限を超えうる（残量はマイナス）
+    - 超過分は次の期間へ繰り越して差し引く（`carryOverUsageSql`）
+  */
+  const current = (
+    await tx.query<{ n: number }>(
+      `select ${column} as n from usage_counters where user_id = $1 and month = $2 for update`,
+      [params.userId, period],
+    )
+  ).rows[0];
+  if (params.limit !== undefined && (current?.n ?? 0) >= params.limit) {
+    throw new AppError("usage_limit_exceeded", {
+      details: { type: params.type, limit: params.limit, count: current?.n ?? 0 },
+    });
+  }
+  return true;
+}
+
+/**
+ * **実費を記録する**（T-M8-109→T-M8-324）。予約をやめたので、ここが唯一の消費の書き込み。
+ *
+ * 冪等キーは job と種別で1つ（`job:{id}:{type}:charge`）。同じjobを何度精算しても二重に引かない。
+ * **上限を超えても拒否しない**——既に発生した実費は無かったことにできない。超過は残量が
+ * マイナスとして見え、次の期間へ繰り越される（要決定D-48・案A）。
+ */
+export async function settleUsage(
+  tx: Queryable,
+  params: {
+    jobId: string;
+    type: UsageReserveType;
+    actualCredits: number;
+    userId: string;
+    xAccountId?: string | null;
+  },
+): Promise<boolean> {
+  const chargeKey = `job:${params.jobId}:${params.type}:charge`;
+  const amount = Math.max(1, Math.ceil(params.actualCredits));
   const period = await currentUsagePeriodKey(tx, params.userId);
   await tx.query(
     `insert into usage_counters (user_id, month)
@@ -60,109 +112,37 @@ export async function reserveUsage(
      on conflict (user_id, month) do nothing`,
     [params.userId, period],
   );
-  // 今期のcounterをロックして現在値を読む（並行reserveの上限すり抜けを防ぐ・要件03 §7.4）。
-  const current = (
-    await tx.query<{ n: number }>(
-      `select ${column} as n from usage_counters where user_id = $1 and month = $2 for update`,
-      [params.userId, period],
-    )
-  ).rows[0];
-  // 冪等: 既に予約済みなら no-op（上限判定しない＝再実行が既存予約を失敗させない）。
-  const dup = await tx.query(`select 1 from usage_events where idempotency_key = $1`, [key]);
-  if (dup.rowCount) return false;
-  // 上限確認（premiumのみ・limit指定時）。消費量を足すと超えるなら event/counter を変えずに失敗。
-  if (params.limit !== undefined && (current?.n ?? 0) + amount > params.limit) {
-    throw new AppError("usage_limit_exceeded", {
-      details: { type: params.type, limit: params.limit, count: current?.n ?? 0, amount },
-    });
-  }
-  await tx.query(
+  const inserted = await tx.query(
     `insert into usage_events
        (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key)
-     values ($1, $2, $3, $8,
-             $4::usage_counter_type, $5::usage_event_operation, $7, 'reserve', $6)
-     on conflict (idempotency_key) do nothing`,
-    [params.userId, params.xAccountId ?? null, params.jobId, COUNTER_TYPE[params.type], OPERATION[params.type], key, amount, period],
+     values ($1, $2, $3, $4, 'ai_credit'::usage_counter_type,
+             $5::usage_event_operation, $6, 'consume', $7)
+     on conflict (idempotency_key) do nothing
+     returning id`,
+    [
+      params.userId,
+      params.xAccountId ?? null,
+      params.jobId,
+      period,
+      OPERATION[params.type],
+      amount,
+      chargeKey,
+    ],
   );
+  if (!inserted.rowCount) return false; // 既に記録済み（冪等）
   const updated = await tx.query<{ n: number }>(
-    `update usage_counters set ${column} = ${column} + $2, updated_at = now()
-      where user_id = $1 and month = $3
-      returning ${column} as n`,
-    [params.userId, amount, period],
+    `update usage_counters
+        set ai_credits_used = ai_credits_used + $3, updated_at = now()
+      where user_id = $1 and month = $2
+      returning ai_credits_used as n`,
+    [params.userId, period, amount],
   );
-  // 80%/100% 到達通知（premium・枠/期間/閾値ごとに1件・要件03 §8, T-M6-13）。
   await notifyUsageThresholds(tx, {
     userId: params.userId,
     key: "ai_credits",
     newCount: updated.rows[0]?.n ?? 0,
     periodKey: period,
   });
-  return true;
-}
-
-/**
- * 成功確定時の精算（T-M8-109）。reserveした見積もりと実費（クレジット）の差分を調整する:
- * 実費>見積もり→追加consume（**上限チェックしない**——既に発生した実費は拒否できない）、
- * 実費<見積もり→部分refund。reserveが無い（BYOK）・差分0はno-op。冪等（settle keyのon conflict）。
- */
-export async function settleUsage(
-  tx: Queryable,
-  params: { jobId: string; type: UsageReserveType; actualCredits: number },
-): Promise<boolean> {
-  const reserveKey = `job:${params.jobId}:${params.type}:reserve`;
-  const settleKey = `job:${params.jobId}:${params.type}:settle`;
-  const actual = Math.max(1, Math.ceil(params.actualCredits));
-  const { rows } = await tx.query<{
-    id: string;
-    user_id: string;
-    x_account_id: string | null;
-    month: string;
-    delta: number;
-  }>(
-    `select id, user_id, x_account_id, month, delta from usage_events
-      where idempotency_key = $1 and reason = 'reserve'`,
-    [reserveKey],
-  );
-  const reserve = rows[0];
-  if (!reserve) return false; // BYOK（reserveなし）
-  const diff = actual - reserve.delta;
-  if (diff === 0) return false;
-  const inserted = await tx.query(
-    `insert into usage_events
-       (user_id, x_account_id, job_id, month, counter_type, operation, delta, reason, idempotency_key, ref_event_id)
-     values ($1, $2, $3, $4, 'ai_credit'::usage_counter_type,
-             $5::usage_event_operation, $6, $7, $8, $9)
-     on conflict (idempotency_key) do nothing
-     returning id`,
-    [
-      reserve.user_id,
-      reserve.x_account_id,
-      params.jobId,
-      reserve.month,
-      OPERATION[params.type],
-      diff,
-      diff > 0 ? "consume" : "refund",
-      settleKey,
-      reserve.id,
-    ],
-  );
-  if (!inserted.rowCount) return false; // 既に精算済み（冪等）
-  const updated = await tx.query<{ n: number }>(
-    `update usage_counters
-        set ai_credits_used = greatest(0, ai_credits_used + $3), updated_at = now()
-      where user_id = $1 and month = $2
-      returning ai_credits_used as n`,
-    [reserve.user_id, reserve.month, diff],
-  );
-  if (diff > 0) {
-    // 通知の重複判定も**元reserveの期間**で行う（期間をまたいだ精算で今期の通知を作らない）。
-    await notifyUsageThresholds(tx, {
-      userId: reserve.user_id,
-      key: "ai_credits",
-      newCount: updated.rows[0]?.n ?? 0,
-      periodKey: reserve.month,
-    });
-  }
   return true;
 }
 

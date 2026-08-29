@@ -14,13 +14,11 @@
  * 呼び出し側には server-only のもの（`md-merge-server.ts`）もあるため。
  */
 
-import { isImageProvider } from "../ai/resolve-provider";
 import type { Queryable } from "../db/queryable";
 import { concealsUsageLimits, usageLimitsForPlan } from "../plans";
 
 import { AppError } from "../observability/errors";
 
-import { imageReserveEstimate, textReserveEstimate } from "./ai-credits";
 import { reserveUsage, settleUsage, type UsageReserveType } from "./generation-reserve";
 
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
@@ -45,8 +43,8 @@ export function reserveLimitFor(plan: string): number | undefined {
  * 画像なしで確定するかは job ごとに違うため、判断は呼び出し側に残す。
  */
 /**
- * 成功確定時の実費精算（T-M8-109）。usage の推定原価（USD）をクレジット（円・切り上げ）へ換算し、
- * reserveした見積もりとの差分を調整する。BYOK（reserveなし）は no-op。
+ * 成功確定時の実費記録（T-M8-109→T-M8-324）。usage の推定原価（USD）をクレジットへ換算して書く。
+ * **予約は廃止した**ので、ここが唯一の消費の書き込み。BYOK（利用枠なし）は no-op。
  */
 export async function settleIfPremium(
   runInTx: RunInTx,
@@ -55,6 +53,9 @@ export async function settleIfPremium(
     jobId: string;
     type: UsageReserveType;
     estimatedCostUsdTotal: number;
+    /** 実費の書き込み先（T-M8-324で予約を廃止したため、精算時にも利用者が要る）。 */
+    userId: string;
+    xAccountId?: string | null;
   },
 ): Promise<void> {
   if (!usageLimitsForPlan(params.plan)) return;
@@ -64,10 +65,23 @@ export async function settleIfPremium(
       jobId: params.jobId,
       type: params.type,
       actualCredits: creditsFromUsd(params.estimatedCostUsdTotal),
+      userId: params.userId,
+      xAccountId: params.xAccountId ?? null,
     }),
   );
 }
 
+/**
+ * **開始してよいかを確かめる**（T-M8-324で予約を廃止。関数名は参照を壊さないため据え置き）。
+ *
+ * 利用枠を持つプラン（premium / expert）のときだけ、**残量が尽きていないか**を見る。
+ * BYOK（standard）は消費しないので何もしない。
+ *
+ * 以前はここでモデル別の見積もりを押さえていたが、**書き込むのは実費が確定したときだけ**に
+ * 変えたので、見積もりは画面表示（AIモデル設定の「約N クレジット」）専用になった。
+ *
+ * **例外は握らない**。上限到達をどう扱うかは job ごとに違うため、判断は呼び出し側に残す。
+ */
 export async function reserveIfPremium(
   runInTx: RunInTx,
   params: {
@@ -81,24 +95,6 @@ export async function reserveIfPremium(
   const limits = usageLimitsForPlan(params.plan);
   if (!limits) return;
   await runInTx(async (tx) => {
-    // 選択モデル（AIモデル設定）からクレジット消費量を決める。text providerは運営固定（anthropic）。
-    const { rows } = await tx.query<{ ai_purpose_config: unknown }>(
-      `select ai_purpose_config from profiles where id = $1`,
-      [params.userId],
-    );
-    const cfg =
-      rows[0]?.ai_purpose_config && typeof rows[0].ai_purpose_config === "object"
-        ? (rows[0].ai_purpose_config as Record<string, unknown>)
-        : {};
-    const textModel = typeof cfg.text_model === "string" ? cfg.text_model : null;
-    const imageProvider =
-      typeof cfg.image === "string" && isImageProvider(cfg.image) ? cfg.image : "openai";
-    const imageModel = typeof cfg.image_model === "string" ? cfg.image_model : null;
-    // 見積もりクレジット（T-M8-109）。成功時に実費で精算（settleIfPremium）、失敗時は全額返還。
-    const amount =
-      params.type === "generation"
-        ? textReserveEstimate("anthropic", textModel)
-        : imageReserveEstimate(imageProvider, imageModel);
     try {
       await reserveUsage(tx, {
         userId: params.userId,
@@ -106,7 +102,6 @@ export async function reserveIfPremium(
         jobId: params.jobId,
         type: params.type,
         limit: limits.aiCredits,
-        amount,
       });
     } catch (error) {
       /*

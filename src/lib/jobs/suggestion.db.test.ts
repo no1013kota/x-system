@@ -198,10 +198,9 @@ describe("suggestion worker (local DB)", () => {
         "## 1. ペルソナ",
         "現行の中身",
         "## 2. 発信テーマ",
-        "## 3. トンマナ",
-        "## 4. NG",
-        "## 5. 学習",
-        "## 6. その他",
+        "## 3. トーン&マナー",
+        "## 4. やらないこと",
+        "## 5. 参考にする型",
       ].join("\n");
       await withTransaction((c) =>
         c.query(`update x_accounts set base_md = $2, base_md_version = 1 where id = $1`, [xid, currentMd]),

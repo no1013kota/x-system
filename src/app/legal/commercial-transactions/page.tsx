@@ -4,6 +4,7 @@ import { APP_NAME } from "@/lib/app-config";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
 import { PLANS, RELEASE_CAMPAIGN } from "@/lib/plans";
 import { LegalDefinitions, LegalDocument } from "@/components/legal-document";
+import { yen } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${APP_NAME}`,
@@ -78,7 +79,7 @@ export default function CommercialTransactionsPage() {
       description:
         `連携できるXアカウント数は、${PLANS.standard.displayName}・${PLANS.premium.displayName}が${PLANS.standard.xAccountLimit}件、${PLANS.expert.displayName}が${PLANS.expert.xAccountLimit}件です。` +
         (premium
-          ? `${PLANS.premium.displayName}には契約期間（お支払いの更新日から次の更新日まで）ごとの利用枠（通常投稿クレジット${premium.normalPosts}・URL付き投稿クレジット${premium.urlPosts}・AIクレジット${premium.aiCredits}〔AIの実行はモデルと内容に応じた量を消費〕）があります。使い残した分は次の契約期間へ繰り越されません。無料トライアル期間にも同じ利用枠があり、有料の契約期間が始まる時点で利用枠は新しい上限に戻ります。`
+          ? `${PLANS.premium.displayName}には契約期間（お支払いの更新日から次の更新日まで）ごとの利用枠（通常投稿回数${premium.normalPosts}・URL付き投稿回数${premium.urlPosts}・AIクレジット${yen(premium.aiCredits)}〔AIの実行はモデルと内容に応じた量を消費〕）があります。使い残した分は次の契約期間へ繰り越されません。無料トライアル期間にも同じ利用枠があり、有料の契約期間が始まる時点で利用枠は新しい上限に戻ります。`
           : "") +
         `${PLANS.expert.displayName}に利用枠はありません（通常の利用を大きく超える連続的な利用を検知した場合、実行を一時的に停止することがあります）。` +
         "また、アカウントの安全のため、プランを問わず1つのXアカウントにつき1日あたりの投稿数に上限を設けています。",
