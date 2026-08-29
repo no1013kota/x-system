@@ -51,6 +51,14 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
 
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "運営ダッシュボード" })).toBeVisible();
+  // いまどの環境のデータかが出る（E2Eは常に development＝ローカル・T-M8-374）。
+  const envNav = page.getByRole("navigation", { name: "環境の切替" });
+  await expect(envNav.getByText("ローカル")).toBeVisible();
+  // 他環境へは移動リンク（DBが分離されているため横断表示はしない）。
+  await expect(envNav.getByRole("link", { name: "本番" })).toHaveAttribute(
+    "href",
+    "https://exosai.net/admin",
+  );
   // サマリカード（MRR・原価・粗利）とファネルが出る。
   await expect(page.getByText("MRR（月間経常収益）")).toBeVisible();
   await expect(page.getByText("今月の粗利（MRR−原価）")).toBeVisible();
@@ -60,6 +68,13 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
   // ファネルには少なくとも自分（登録1人以上）が入る。
   const registered = page.getByRole("row").filter({ hasText: "登録" }).first();
   await expect(registered).toBeVisible();
+
+  // 利用者一覧に自分（運営者）の行が代表データ付きで出る（T-M8-374）。
+  await expect(
+    page.getByRole("heading", { name: /利用者一覧/ }),
+  ).toBeVisible();
+  const myRow = page.getByRole("row").filter({ hasText: operatorEmail! });
+  await expect(myRow.first()).toBeVisible();
 
   // ページがスマホ幅で横に溢れない（管理画面も外で見ることがある）。
   await page.setViewportSize({ width: 390, height: 844 });
