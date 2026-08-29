@@ -36,6 +36,17 @@ export interface RequestProfileBundle extends AppShellProfileRow, UsageCounters 
    * 往復が1つ増えるうえ、同じ行を2か所から別々に読む形はこの関数が生まれた理由そのもの。
    */
   active_x_account_id: string | null;
+  /**
+   * 設定画面が要る列（T-M8-361）。**同じ行をPostgREST経由でもう一度読んでいた**——
+   * App Shellがすでにpooled接続で読んでいる行なので、往復が1つ丸ごと無駄だった
+   * （実測で最も遅い画面が設定タブだった）。
+   */
+  email: string | null;
+  ai_purpose_config: unknown;
+  stripe_subscription_id: string | null;
+  discount_percent_off: number | null;
+  discount_amount_off_jpy: number | null;
+  discount_ends_at: string | null;
   /** Xの開発者キーの登録状態（未登録は null）。 */
   x_api_key_status: string | null;
   /** アプリ内通知の未読数。 */
@@ -49,6 +60,12 @@ export const loadRequestProfile = cache(
     const { rows } = await getPool().query<RequestProfileBundle>(
       `select p.plan,
               p.active_x_account_id,
+              p.email,
+              p.ai_purpose_config,
+              p.stripe_subscription_id,
+              p.discount_percent_off,
+              p.discount_amount_off_jpy,
+              p.discount_ends_at::text as discount_ends_at,
               p.subscription_status,
               p.trial_ends_at::text as trial_ends_at,
               -- 解約予約を画面へ出すために読む（T-M8-253）。

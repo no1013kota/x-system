@@ -96,27 +96,6 @@ interface SettingsPageProps {
   }>;
 }
 
-interface BillingProfile {
-  active_x_account_id: string | null;
-  ai_purpose_config: unknown;
-  cancel_at_period_end: boolean;
-  current_period_end: string | null;
-  /** ログイン中のメールアドレス（T-M8-95。どのアカウントで入っているかを確認できるように出す）。 */
-  email: string | null;
-  plan: PlanId | null;
-  /** 期間末で切り替わる予約先のプラン（T-M8-260）。予約が無ければ null。 */
-  scheduled_plan: PlanId | null;
-  scheduled_plan_at: string | null;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  /** トライアル終了日（解約後の「残り期間で再開」の判定に使う・T-M8-278）。 */
-  trial_ends_at: string | null;
-  /** 適用中の割引（T-M8-279）。プラン名の下に「いつまで・いくら」を出す。 */
-  discount_percent_off: number | null;
-  discount_amount_off_jpy: number | null;
-  discount_ends_at: string | null;
-  subscription_status: string;
-}
 
 interface AccountRow {
   base_md: string;
@@ -166,23 +145,22 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const tab = normalizeSettingsTab(params.tab);
   const admin = createSupabaseAdminClient();
   // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
-  const [result, xAccounts, userSettings] = await Promise.all([
-    admin
-      .from("profiles")
-      .select(
-        "active_x_account_id, ai_purpose_config, email, plan, subscription_status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, scheduled_plan, scheduled_plan_at, trial_ends_at, discount_percent_off, discount_amount_off_jpy, discount_ends_at",
-      )
-      .eq("id", user.id)
-      .maybeSingle<BillingProfile>(),
+  /*
+    **profiles は1リクエストにつき1回だけ読む**（T-M8-286→T-M8-361）。以前はここで
+    PostgREST経由の別クエリを投げていたが、App Shell がすでに同じ行をpooled接続で読んでいる。
+    往復が1つ丸ごと無駄で、**実測でいちばん遅い画面**がこの設定タブだった。
+  */
+  const [profile, xAccounts, userSettings] = await Promise.all([
+    loadRequestProfile(user.id),
     tab === "general" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
     tab === "general"
       ? getSettingsForUser(user.id)
       : Promise.resolve(null as UserSettings | null),
   ]);
-  if (result.error || !result.data) {
+  // 行が無い（profile未作成）と取得の失敗は `loadRequestProfile` が区別する（失敗はthrow）。
+  if (!profile) {
     throw new Error("Billing profile could not be loaded.");
   }
-  const profile = result.data;
   // 課金・プラン以外のタブを開けるか（T-M8-269→T-M8-273）。同じ profile から判定し、追加のDB往復を作らない。
   const lock = appLockFor(profile.subscription_status);
   /*
