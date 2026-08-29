@@ -19,7 +19,7 @@ import { validateBaseMdStructure } from "./persona-settings";
 
 export const BASE_MD_MAX_CHARS = 5000;
 
-/** 6見出し構造（## 1.〜## 6. 各1回・順序）＋5,000字上限を検証（違反は validation_error）。 */
+/** 5見出し構造（## 1.〜## 5. 各1回・順序）＋5,000字上限を検証（違反は validation_error）。 */
 export function validateManualBaseMd(content: string): void {
   if (content.length > BASE_MD_MAX_CHARS) {
     throw new AppError("validation_error", {

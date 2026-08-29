@@ -93,7 +93,7 @@ export function PromptPresetManager({
   function messageFor(res: { message?: string; details?: Record<string, unknown> }): string {
     switch (actionReason(res)) {
       case "structure":
-        return "見出しの形が合っていません。「## 1.」から「## 6.」までを順に1つずつ入れてください。";
+        return "見出しの形が合っていません。「## 1.」から「## 5.」までを順に1つずつ入れてください。";
       case "empty":
         return "本文を入力してください。";
       case "too_long":
