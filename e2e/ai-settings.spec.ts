@@ -43,7 +43,18 @@ test("アカウント.mdを編集して保存でき、versionが上がる", asyn
   await expect(editor).toBeVisible();
 
   const marker = `E2E-${randomUUID().slice(0, 8)}`;
-  await editor.fill(VALID_BASE_MD.replace("テスト用の発信者", `テスト用の発信者 ${marker}`));
+  const desired = VALID_BASE_MD.replace("テスト用の発信者", `テスト用の発信者 ${marker}`);
+  /*
+    **入れた文字が残っていることを確かめてから押す**（T-M8-368）。textareaはReactの制御下に
+    あるので、**hydrationが終わる前に入れた値は、直後の再描画でサーバー側の値へ戻される**。
+    そのまま押すと「元の本文を保存した」ことになり、CIでは構造エラーで落ちていた
+    （2026-08-29。devサーバが冷えているCIでだけ再現し、手元では常に通っていた）。
+    入れ直しても残らない間は繰り返す。
+  */
+  await expect(async () => {
+    await editor.fill(desired);
+    await expect(editor).toHaveValue(desired, { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
   /*
@@ -83,8 +94,13 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
   const editor = page.getByLabel("アカウント.mdの本文");
   await expect(editor).toBeVisible();
 
-  // 「## 3.」を落とした状態（6見出しが揃っていない）
-  await editor.fill(VALID_BASE_MD.replace("## 3. トーン&マナー", "### 3. トーン&マナー"));
+  // 「## 3.」を落とした状態（5見出しが揃っていない）。ここも hydration 前の入力が
+  // 戻されると**正しい本文を保存してしまい、テストの前提が消える**ので残ったことを確かめる。
+  const broken = VALID_BASE_MD.replace("## 3. トーン&マナー", "### 3. トーン&マナー");
+  await expect(async () => {
+    await editor.fill(broken);
+    await expect(editor).toHaveValue(broken, { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
   // 何が悪いかが具体的に出る（「エラー」だけで終わらせない）
