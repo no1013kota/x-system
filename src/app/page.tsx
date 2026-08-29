@@ -254,7 +254,7 @@ export default function Home() {
                 <br />
                 使用するほど性能が上がる
                 <br />
-                <span className="text-brand">SNS自動化プラットフォーム</span>
+                <span className="text-brand">SNS運用プラットフォーム</span>
               </h1>
               <p className="mt-5 max-w-[42em] text-sm text-ink-2">
                 {/*

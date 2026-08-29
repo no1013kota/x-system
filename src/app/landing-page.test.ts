@@ -316,7 +316,7 @@ describe("SC-01 LP: デザイン制約", () => {
   it("ヒーローの見出しと固定コピーがハンドオフどおり（2026-08-22の運営者指示で改定）", () => {
     expect(PAGE).toContain("プロンプトドリブンの");
     expect(PAGE).toContain("使用するほど性能が上がる");
-    expect(PAGE).toContain("SNS自動化プラットフォーム");
+    expect(PAGE).toContain("SNS運用プラットフォーム");
   });
 
   it("安全性の説明がFAQに残っている（独立セクションを持たないため）", () => {
