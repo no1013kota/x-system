@@ -816,37 +816,52 @@ export function judgeBlog(input: BlogFacts): Check {
  * 直近の受信からの経過時間で「止まっているかもしれない」ことだけを言う——
  * イベントは契約者がいなければ来ないので、**0件は警告どまり**にする。
  */
-export const STRIPE_EVENT_STALE_HOURS = 72;
+/*
+  **「静かなこと」を異常として扱わない**（T-M8-371）。
+
+  以前は「最後の受信から72時間」で warn にしていたが、**Stripeのイベントは契約に動きが
+  あったときにしか来ない**。利用者が数人でトライアル中なら、何日も無音なのが正常な状態で、
+  この判定は毎日かならず warn を出す。運営者の朝のメールに毎日出る警告は、
+  **本物の異常を埋もれさせる**（2026-08-29、本番で実際に「83時間」の warn が出ていた。
+  中身は「トライアル中の契約が1件あり、まだ何も起きていない」だけだった）。
+
+  代わりに**ずれている証拠**を見る: 更新日・トライアル終了日を過ぎたのに、
+  その後のイベントを1件も受け取っていない契約があるか。あれば本当に反映されていない。
+*/
+/** 期限切れとみなすまでの猶予（Stripeの課金処理とwebhook配送の遅れを吸収する）。 */
+export const SUBSCRIPTION_OVERDUE_GRACE_HOURS = 6;
 
 export function judgeSubscriptionSync(input: {
   hoursSinceLastEvent: number | null;
   totalEvents: number;
+  /** 期限を過ぎたのに、その後のイベントを受け取っていない契約の数。 */
+  overdueSubscriptions: number;
 }): Check {
   const name = "契約の同期（Stripe → アプリ）";
-  if (input.totalEvents === 0) {
+  if (input.overdueSubscriptions > 0) {
     return {
       name,
       level: "warn",
-      detail:
-        "Stripeからのイベントを1件も受け取っていません（契約者がまだいないなら正常です）",
-      nextAction:
-        "契約があるのにこの表示なら、doctorの「契約イベントの受け取り（Stripe webhook）」を確認してください",
-    };
-  }
-  const hours = input.hoursSinceLastEvent ?? Number.POSITIVE_INFINITY;
-  if (hours > STRIPE_EVENT_STALE_HOURS) {
-    return {
-      name,
-      level: "warn",
-      detail: `最後にStripeのイベントを受け取ってから ${Math.floor(hours)} 時間が経っています（合計 ${input.totalEvents} 件）`,
+      detail: `更新日を過ぎたのに反映されていない契約が ${input.overdueSubscriptions} 件あります`,
       nextAction:
         "解約やプラン変更がアプリへ反映されていない可能性があります。Stripeダッシュボード → Webhooks で配信の失敗を確認してください",
     };
   }
+  if (input.totalEvents === 0) {
+    return {
+      name,
+      level: "ok",
+      detail: "Stripeからのイベントはまだありません（契約に動きがなければ正常です）",
+    };
+  }
+  const hours = input.hoursSinceLastEvent;
   return {
     name,
     level: "ok",
-    detail: `直近の受信は ${Math.floor(hours)} 時間前（合計 ${input.totalEvents} 件）`,
+    detail:
+      hours == null
+        ? `合計 ${input.totalEvents} 件（期限を過ぎたまま未反映の契約はありません）`
+        : `直近の受信は ${Math.floor(hours)} 時間前（合計 ${input.totalEvents} 件・期限を過ぎたまま未反映の契約はありません）`,
   };
 }
 
@@ -1121,11 +1136,29 @@ export async function collectDiagnostics(
               count(*)::text as total
          from stripe_events`,
     );
+    /*
+      **期限を過ぎたのに、その後のイベントが無い契約**を数える（T-M8-371）。
+      これが「webhookが届いていない」の唯一の確かな証拠。無音そのものは正常でありうる。
+    */
+    const overdue = await db.query<{ overdue: string }>(
+      `select count(*)::text as overdue
+         from profiles p
+        where p.stripe_subscription_id is not null
+          and p.subscription_status in ('trialing', 'active', 'past_due')
+          and coalesce(p.current_period_end, p.trial_ends_at)
+              < now() - ($1 || ' hours')::interval
+          and not exists (
+            select 1 from stripe_events e
+             where e.event_created_at > coalesce(p.current_period_end, p.trial_ends_at)
+          )`,
+      [String(SUBSCRIPTION_OVERDUE_GRACE_HOURS)],
+    );
     checks.push(
       judgeSubscriptionSync({
         hoursSinceLastEvent:
           events.rows[0]?.hours == null ? null : Number(events.rows[0].hours),
         totalEvents: Number(events.rows[0]?.total ?? 0),
+        overdueSubscriptions: Number(overdue.rows[0]?.overdue ?? 0),
       }),
     );
   }
