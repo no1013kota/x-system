@@ -32,6 +32,16 @@ export interface ReleaseContext {
   unpushed: number;
   /** GitHub Actions の結論（`success` / `failure` / `in_progress` / null=見つからない）。 */
   ciConclusion: string | null;
+  /**
+   * **いまのコミットに対するデプロイ（Vercel）の結論**（判定できなければ null）。
+   *
+   * CIが緑でも**デプロイのbuildは別に落ちる**（環境変数はCIとVercelで別物）。2026-08-29、
+   * `OPENAI_IMAGE_MODEL` がVercelに無いためbuildが3回連続で失敗していたのに、ここを見て
+   * いなかったので「✅ 反映と検証が完了しました」と出ていた。**古い版が動いたまま成功に
+   * 見える**のが一番まずい（原則1）。判定できないときは止めずに warn にする——
+   * `gh` が無い環境でも反映そのものは進められるようにするため。
+   */
+  deployConclusion?: string | null;
   /** 未適用の migration ファイル名（空なら適用済み）。 */
   unappliedMigrations: string[];
   /** 反映先のURL（未設定なら空文字）。 */
@@ -117,6 +127,25 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
       level: "stop",
       detail: `結果が ${ctx.ciConclusion} です`,
       nextAction: "赤いまま反映しないでください。Claudeに「CIの失敗原因を調べて」と伝えてください",
+    });
+  }
+
+  if (ctx.deployConclusion === "success") {
+    steps.push({ name: "デプロイ（Vercel）", level: "ok", detail: "このコミットのbuildは成功しています" });
+  } else if (ctx.deployConclusion === "failure" || ctx.deployConclusion === "error") {
+    steps.push({
+      name: "デプロイ（Vercel）",
+      level: "stop",
+      detail: "このコミットのbuildが失敗しています（古い版が動いたままです）",
+      nextAction:
+        "Vercelのbuildログを見てください（`npx vercel inspect <デプロイID> --logs`）。CIが緑でも環境変数の違いで落ちます",
+    });
+  } else if (ctx.deployConclusion === "pending") {
+    steps.push({
+      name: "デプロイ（Vercel）",
+      level: "stop",
+      detail: "まだbuild中です",
+      nextAction: "終わるまで待ってから、もう一度このコマンドを実行してください",
     });
   }
 

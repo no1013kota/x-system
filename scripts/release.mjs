@@ -75,6 +75,27 @@ function ciConclusion() {
   }
 }
 
+/**
+ * **いまのコミットに対するVercel buildの結論**（`gh` が無い/未認証なら null＝判定しない）。
+ * Vercelはコミットのstatusへ結果を書くので、それをSHAで突き合わせる。
+ * CIとVercelは環境変数が別物なので、**CIが緑でもbuildは落ちる**（2026-08-29に実際に起きた）。
+ */
+function deployConclusion() {
+  const head = sh("git rev-parse HEAD", { allowFail: true });
+  if (!head) return null;
+  const raw = sh(`gh api repos/{owner}/{repo}/commits/${head}/status 2>/dev/null`, {
+    allowFail: true,
+  });
+  if (!raw) return null;
+  try {
+    const body = JSON.parse(raw);
+    const vercel = (body.statuses ?? []).find((s) => (s.context ?? "").startsWith("Vercel"));
+    return vercel ? vercel.state : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 未適用のmigration（`supabase migration list --linked` の出力から Local/Remote の差を読む）。 */
 function unappliedMigrations() {
   const local = readdirSync("supabase/migrations")
@@ -143,6 +164,7 @@ const steps = evaluateReleaseGate({
   dirty,
   unpushed,
   ciConclusion: ciConclusion(),
+  deployConclusion: deployConclusion(),
   unappliedMigrations: unapplied,
   baseUrl,
   linkedProjectRef: linkedProjectRef(),
