@@ -36,9 +36,10 @@ describe("draft image upload", () => {
 
   it("空ファイルと大きすぎるファイルは、理由つきで断る", () => {
     expect(() => assertUploadableImage(file({ size: 0 }))).toThrowError(/空です/);
+    // 上限はXの画像上限＝5MBに合わせ、Server Action の bodySizeLimit と揃える（T-M8-367）。
     expect(() =>
       assertUploadableImage(file({ size: UPLOAD_MAX_INPUT_BYTES + 1 })),
-    ).toThrowError(/20MBまで/);
+    ).toThrowError(/5MBまで/);
   });
 
   it("置き場は生成画像と同じ並び（利用者/アカウント/下書き/画像ID）", () => {

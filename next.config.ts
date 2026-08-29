@@ -4,6 +4,14 @@ const nextConfig: NextConfig = {
   // Next.js dev logs include serialized Server Function arguments by default.
   // API keys and OAuth credentials must never be written to terminal logs.
   logging: { serverFunctions: false },
+  // Server Action の本文上限（T-M8-367・運営者の決定 2026-08-29「案A」）。
+  // 既定は 1MB。下書きの画像アップロード（uploadDraftImageAction）は最大5MBの画像を FormData で
+  // 受けるため、1MB のままだと **1MB を超える画像がこの検査に届く前にフレームワーク層で失敗し**、
+  // 利用者には汎用エラーだけが出ていた（D-50）。X の画像上限と同じ 5MB へ広げる。
+  // **これは全 Server Action に効く**（DoS surface が 1MB→5MB に広がる）が、全 Action は
+  // 認証必須で未認証の入口は増えない。`UPLOAD_MAX_INPUT_BYTES` と同じ値に揃える。
+  // Next 16 では `experimental.serverActions` の下（config-shared.d.ts）。
+  experimental: { serverActions: { bodySizeLimit: "5mb" } },
   // Local dev is served over http://127.0.0.1:3000 (X OAuth requires 127.0.0.1,
   // not localhost). Without this, Next dev treats 127.0.0.1 as cross-origin and
   // blocks the HMR WebSocket (/_next/webpack-hmr), which stalls client hydration

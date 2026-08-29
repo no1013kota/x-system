@@ -18,10 +18,14 @@ import type { DraftImage } from "../drafts";
 export const UPLOAD_ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp"] as const;
 
 /**
- * 受け取る前に断る大きさ（バイト）。`normalizeForX` が5MBまで圧縮できるので、
- * それより大きい元画像も受け取れるが、**復号してから断ると無駄が大きい**ので入口で切る。
+ * 受け取る前に断る大きさ（バイト）。**5MB**（T-M8-367・運営者の決定 2026-08-29「案A」）。
+ *
+ * Xの投稿画像の上限が5MBで、`normalizeForX` もそこまでしか圧縮できない。それより大きい元画像を
+ * 受けても最終的に弾くだけなので、Xの上限に合わせる。**`next.config` の
+ * `serverActions.bodySizeLimit` と揃える**——フレームワークの本文上限より大きい値をここに書くと、
+ * この検査に届く前にフレームワーク層で汎用エラーになり、「何MBまでか」を画面で言えなくなる（D-50）。
  */
-export const UPLOAD_MAX_INPUT_BYTES = 20 * 1024 * 1024;
+export const UPLOAD_MAX_INPUT_BYTES = 5 * 1024 * 1024;
 
 export interface UploadedFileInfo {
   name: string;

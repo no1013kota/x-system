@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { deleteTestImage, query, uploadTestImage } from "./fixtures/account";
 import { expect, signIn, test } from "./fixtures/test";
@@ -209,6 +209,26 @@ test("下書きに自分の画像をアップロードでき、外せる", async
   );
   expect(row.n).toBe("1");
   expect(row.provider).toBe("upload");
+
+  /*
+    **1MBを超える画像でも通る**（T-M8-367）。Server Action の本文上限は既定1MBで、
+    `next.config` で5MBへ広げた（D-50）。ここを小さい画像だけで確かめていたため、
+    「1MB超はフレームワーク層で失敗する」不具合を素通しにしていた。
+    圧縮が効かないよう乱数のピクセルで約2MBのPNGを作る。
+  */
+  const big = await sharp(Buffer.from(randomBytes(1400 * 1400 * 3)), {
+    raw: { width: 1400, height: 1400, channels: 3 },
+  })
+    .png()
+    .toBuffer();
+  expect(big.length, "1MBを超える画像で検査する").toBeGreaterThan(1024 * 1024);
+  await page.locator(`#draft-image-${draft.id}`).setInputFiles({
+    name: "big.png",
+    mimeType: "image/png",
+    buffer: big,
+  });
+  await expect(page.getByAltText("生成画像プレビュー")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("自分でアップロードした画像です。")).toBeVisible();
 
   // 外すと画像なしへ戻る。
   await page.getByRole("button", { name: "画像を外す" }).click();
