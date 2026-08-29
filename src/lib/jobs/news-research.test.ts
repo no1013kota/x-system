@@ -279,6 +279,25 @@ describe("pickValidItems（item単位の選別）", () => {
     expect(r.dropped).toBe(1);
   });
 
+  /**
+   * **http/https 以外の source_url を残さない**（T-M8-366）。source_url はAIが書き、
+   * 画面で `<a href>` として描く。`z.url()` は `data:`・`ftp:`・`javascript:` も通すため、
+   * プロンプトインジェクションで非http(s)のURLを混ぜられると、リンクに載る。
+   * React 19 が `javascript:` を止め、CSPが inline script を止めるので実害は限定的だが、
+   * **正規のニュースURLは必ず http(s)** なので、入口で落とすのが素直（多層防御）。
+   */
+  it("http/https 以外の source_url を持つitemは落とす", () => {
+    const r = pickValidItems([
+      { ...valid, source_url: "data:text/html,<script>1</script>" },
+      { ...valid, source_url: "javascript:alert(1)" },
+      { ...valid, source_url: "ftp://example.com/a" },
+      { ...valid, source_url: "https://example.com/ok" },
+    ]);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].source_url).toBe("https://example.com/ok");
+    expect(r.dropped).toBe(3);
+  });
+
   it("最大件数で打ち切る", () => {
     const many = Array.from({ length: 9 }, (_, i) => ({
       ...valid,

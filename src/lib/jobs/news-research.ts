@@ -106,7 +106,15 @@ const newsItemSchema = z.object({
   // `summary:too_big` で分野ごと全滅する事象が実測で2回連続発生した（T-M7-25）。
   // 表示側は `line-clamp-2` なので長くてもレイアウトは破綻しない。
   summary: z.preprocess(stripMarkupLoose, z.string().min(1).max(NEWS_SUMMARY_MAX_LENGTH)),
-  source_url: z.url(),
+  /*
+    **http/https だけ受ける**（T-M8-366）。`source_url` はAIが書き、画面で `<a href>` として
+    描かれる。`z.url()` は `data:`・`ftp:`・`javascript:` も通すので、プロンプトインジェクションで
+    非http(s)のURLを混ぜられるとリンクに載る。正規のニュースURLは必ず http(s) なので入口で落とす
+    （React 19 と CSP が実害を止めるが、多層防御として。無効なitemは `pickValidItems` が捨てる）。
+  */
+  source_url: z.url().refine((u) => /^https?:\/\//i.test(u), {
+    error: "source_url must be http(s)",
+  }),
   impact: z.enum(["high", "mid", "low"]),
   // **任意項目なので、形式が違っても item ごと捨てない**（正規化できなければ落とすだけ）。
   // ニュース記事は日付だけ（`2026-07-28`）やタイムゾーン無しで書かれることが多く、
