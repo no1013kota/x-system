@@ -108,9 +108,19 @@ test("ニュースに折り返せない長い文字列が来ても横に伸び�
     [long, `${long} ${long}`, long],
   );
 
-  await signIn(page, account);
-  await page.setViewportSize({ width: WIDTH, height: 844 });
-  await page.goto("/app/news");
-  await expect(page.getByRole("main")).toBeVisible();
-  expect(await horizontalOverflow(page), "長い文字列で横に伸びている").toBeLessThanOrEqual(0);
+  try {
+    await signIn(page, account);
+    await page.setViewportSize({ width: WIDTH, height: 844 });
+    await page.goto("/app/news");
+    await expect(page.getByRole("main")).toBeVisible();
+    expect(await horizontalOverflow(page), "長い文字列で横に伸びている").toBeLessThanOrEqual(0);
+  } finally {
+    /*
+      **入れたニュースは必ず片付ける**（T-M8-365）。`news_items` はアカウントに紐づかないので
+      fixtureの後片付けでは消えない。残すと**他のテストが見るニュースの中身が変わり**、
+      「そのときDBに入っていた内容次第」で落ちるテストを増やす（実際に `gen-context.db.test.ts`
+      を落とした）。
+    */
+    await query(`delete from news_items where source_url = $1`, [long]);
+  }
 });
