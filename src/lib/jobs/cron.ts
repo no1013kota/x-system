@@ -6,6 +6,7 @@ import { enqueueDueScheduledDrafts, type EnqueueScheduledDraftsResult } from "./
 // 実体は route から注入する——`cron.ts` が env 依存モジュールをimportすると
 // テストの module 読込で env 検証が走って落ちる（このファイル冒頭の dailyLimit と同じ理由）。
 import type { OperatorAlertResult } from "../ops/operator-alert-server";
+import type { Queryable } from "../x/token-refresh";
 import type { AffiliateDb as AffiliateBatchDb } from "../affiliate/db";
 import { enqueueDueSlots, type EnqueueResult } from "./schedule-enqueue";
 import { recoverSchedule, type ScheduleRecoveryResult } from "./schedule-recovery";
@@ -350,19 +351,29 @@ export async function runSchedulerTick(
   try {
     const { jstDateOf, runDailyKpiSnapshot } = await import("../ops/kpi");
     const nowIso = new Date(Date.now()).toISOString();
-    const claimed = await withTransaction(async (client) => {
+    /*
+      **claimと本処理を同一トランザクションで行う**（affiliate_batch の claimTx と同じ理由）。
+      claimを先にコミットすると、本処理の一度の失敗でその日が消費済みになり、
+      **翌日までスナップショットが書かれない**——2026-08-30 の本番で実際に起きた：
+      コードのデプロイが migration 適用より数分早く、00:40 のtickが claim 後に
+      「relation kpi_daily does not exist」で落ちて、その日のclaimだけが残った。
+      同一txなら失敗時に claim ごとロールバックされ、次のtick（5分後）が再試行する。
+    */
+    const result = await withTransaction(async (client) => {
       const res = await client.query(
         `insert into cron_runs (job_name, window_key)
          values ('kpi_snapshot', $1)
          on conflict (job_name, window_key) do nothing`,
         [jstDateOf(nowIso)],
       );
-      return (res.rowCount ?? 0) > 0;
+      if ((res.rowCount ?? 0) === 0) return null;
+      const txDb: Queryable = {
+        query: <T = unknown>(text: string, params?: unknown[]) =>
+          client.query(text, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
+      };
+      return runDailyKpiSnapshot(txDb, nowIso);
     });
-    if (claimed) {
-      const result = await runDailyKpiSnapshot(pooledDb, nowIso);
-      kpiSnapshot = result.written;
-    }
+    if (result) kpiSnapshot = result.written;
   } catch (err) {
     opts.onCleanupError?.("kpi_snapshot", err);
   }

@@ -158,6 +158,37 @@ describe("KPIスナップショット（db）", () => {
     expect(Array.isArray(await readRecentCancellations(db, 10))).toBe(true);
   });
 
+  /**
+   * **claimと本処理は同一トランザクションで落ちれば両方消える**（T-M8-373の本番障害の回帰）。
+   * 2026-08-30、コードのデプロイが migration 適用より数分早く、claim 後に
+   * 「relation kpi_daily does not exist」で落ちて**その日のclaimだけが残り**、
+   * 翌日までスナップショットが書かれない状態になった。ここでは cron.ts と同じ形
+   * （claim→本処理を1つのtxで）を失敗させ、claimがロールバックされることを固定する。
+   */
+  it("本処理が失敗したらclaimも消える（同一トランザクション）", async () => {
+    if (!available) return;
+    const windowKey = `kpi-test-${randomUUID().slice(0, 8)}`;
+    await expect(
+      withTransaction(async (c: PoolClient) => {
+        const res = await c.query(
+          `insert into cron_runs (job_name, window_key)
+           values ('kpi_snapshot', $1)
+           on conflict (job_name, window_key) do nothing`,
+          [windowKey],
+        );
+        expect(res.rowCount).toBe(1);
+        // 本処理に相当する失敗（存在しない表を読む＝本番で起きた形）。
+        // 例外を握り潰さず tx の外へ伝える——cron.ts の実装と同じ流れ。
+        await c.query(`select * from kpi_daily_missing_table`);
+      }),
+    ).rejects.toThrow();
+    const { rows } = await db.query<{ n: string }>(
+      `select count(*)::text as n from cron_runs where job_name = 'kpi_snapshot' and window_key = $1`,
+      [windowKey],
+    );
+    expect(Number(rows[0]?.n ?? 1), "claimが残っていない（次のtickが再試行できる）").toBe(0);
+  });
+
   it("ファネルは登録済みの利用者を段階別に数える", async () => {
     if (!available) return;
     await makeUser();
