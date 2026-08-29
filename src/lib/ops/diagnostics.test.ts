@@ -475,23 +475,44 @@ describe("judgeBlog（ブログ記事の同梱・T-M8-184）", () => {
   });
 });
 
-describe("judgeSubscriptionSync（契約の同期・T-M8-238）", () => {
-  it("イベント0件は warn（契約者がまだいなければ正常）", () => {
-    const check = judgeSubscriptionSync({ hoursSinceLastEvent: null, totalEvents: 0 });
-    expect(check.level).toBe("warn");
-    expect(check.nextAction).toContain("webhook");
+describe("judgeSubscriptionSync（契約の同期・T-M8-238 / T-M8-371）", () => {
+  it("イベント0件でも、期限切れの契約が無ければ ok（動きが無いだけ）", () => {
+    const check = judgeSubscriptionSync({
+      hoursSinceLastEvent: null,
+      totalEvents: 0,
+      overdueSubscriptions: 0,
+    });
+    expect(check.level).toBe("ok");
   });
 
-  it("最後の受信から時間が経ちすぎていたら warn", () => {
-    const check = judgeSubscriptionSync({ hoursSinceLastEvent: 100, totalEvents: 12 });
+  /*
+    **無音を異常にしない**（T-M8-371）。2026-08-29 の本番はトライアル中の契約が1件だけで、
+    83時間イベントが無いのは正常だったのに warn が出ていた。毎日出る警告は本物を埋もれさせる。
+  */
+  it("長く無音でも、期限切れの契約が無ければ ok", () => {
+    const check = judgeSubscriptionSync({
+      hoursSinceLastEvent: 100,
+      totalEvents: 12,
+      overdueSubscriptions: 0,
+    });
+    expect(check.level).toBe("ok");
+  });
+
+  it("更新日を過ぎたのに反映されていない契約があれば warn", () => {
+    const check = judgeSubscriptionSync({
+      hoursSinceLastEvent: 100,
+      totalEvents: 12,
+      overdueSubscriptions: 2,
+    });
     expect(check.level).toBe("warn");
-    expect(check.detail).toContain("100 時間");
+    expect(check.detail).toContain("2 件");
+    expect(check.nextAction).toContain("Webhooks");
   });
 
   it("直近に受信していれば ok", () => {
-    expect(judgeSubscriptionSync({ hoursSinceLastEvent: 2, totalEvents: 12 })).toMatchObject({
-      level: "ok",
-    });
+    expect(
+      judgeSubscriptionSync({ hoursSinceLastEvent: 2, totalEvents: 12, overdueSubscriptions: 0 }),
+    ).toMatchObject({ level: "ok" });
   });
 });
 
