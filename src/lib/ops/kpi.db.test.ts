@@ -13,6 +13,7 @@ import {
   readKpiSeries,
   readMonthCostBreakdown,
   readRecentCancellations,
+  readUsersOverview,
   runDailyKpiSnapshot,
 } from "./kpi";
 
@@ -156,6 +157,22 @@ describe("KPIスナップショット（db）", () => {
       expect(Array.isArray(await readMonthCostBreakdown(db, group, 5))).toBe(true);
     }
     expect(Array.isArray(await readRecentCancellations(db, 10))).toBe(true);
+  });
+
+  it("利用者一覧は自分の行を代表データ付きで返す（T-M8-374）", async () => {
+    if (!available) return;
+    const uid = await makeUser(2);
+    const rows = await readUsersOverview(db, 500);
+    const mine = rows.find((r) => r.email === `kpi-${uid}@example.com`);
+    expect(mine, "作った利用者が一覧に出る").toBeTruthy();
+    expect(mine?.confirmed).toBe(true);
+    expect(mine?.signedUpDate).toBeTruthy();
+    expect(mine?.generations).toBe(0);
+    expect(mine?.monthCostUsd).toBe(0);
+    // 登録の新しい順（created_at が null の行は末尾）。
+    const dates = rows.map((r) => r.signedUpDate).filter((d): d is string => d != null);
+    const sorted = [...dates].sort((a, b) => (a < b ? 1 : -1));
+    expect(dates).toEqual(sorted);
   });
 
   /**

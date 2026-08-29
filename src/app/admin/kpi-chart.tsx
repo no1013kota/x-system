@@ -44,6 +44,8 @@ export function KpiChart({
 }) {
   const [days, setDays] = useState<number>(90);
   const [nowMs] = useState(() => Date.now());
+  /** ホバー中の点のindex（filtered基準）。タッチでも同じ経路で更新する（T-M8-374）。 */
+  const [hover, setHover] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
     const cutoff = nowMs - days * DAY_MS;
@@ -71,6 +73,31 @@ export function KpiChart({
     return { path, x, y, times, minV };
   }, [filtered, max]);
 
+  /*
+    **カーソル位置から最も近い点を選ぶ**（T-M8-374・運営者の指示）。
+    viewBoxで縮尺が変わるため、clientX をそのまま使わず svg の実描画幅で
+    viewBox座標へ換算してから、各点のx座標と比べる。点そのものへのホバーを
+    要求すると半径2.5pxを狙うことになり実用にならない。
+  */
+  function pickNearest(e: { clientX: number; currentTarget: SVGSVGElement }) {
+    if (!geom || filtered.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const vx = ((e.clientX - rect.left) / rect.width) * W;
+    let best = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < filtered.length; i++) {
+      const d = Math.abs(geom.x(geom.times[i]) - vx);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    setHover(best);
+  }
+
+  const hovered = hover != null ? filtered[hover] : null;
+
   return (
     <section aria-label={title} className="min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -95,15 +122,33 @@ export function KpiChart({
         <p className="mt-3 text-sm text-ink-2">まだデータがありません（日次スナップショットが貯めます）。</p>
       ) : (
         <>
-          <p className="mt-1 text-sm text-ink-2">
-            最新 {latest ? `${fmtDate(latest.date)} ${fmtValue(latest.value, unit)}` : "—"} ／ 期間最大{" "}
-            {fmtValue(max, unit)}
+          <p className="mt-1 text-sm text-ink-2" aria-live="polite">
+            {hovered ? (
+              <>
+                <span className="font-bold text-ink">
+                  {fmtDate(hovered.date)} {fmtValue(hovered.value, unit)}
+                </span>
+                {" ／ 期間最大 "}
+                {fmtValue(max, unit)}
+              </>
+            ) : (
+              <>
+                最新 {latest ? `${fmtDate(latest.date)} ${fmtValue(latest.value, unit)}` : "—"} ／ 期間最大{" "}
+                {fmtValue(max, unit)}
+              </>
+            )}
           </p>
           <svg
             className="mt-2 h-auto w-full max-w-full"
             viewBox={`0 0 ${W} ${H}`}
             role="img"
             aria-label={`${title}の推移（${days}日間・最新 ${latest ? fmtValue(latest.value, unit) : "なし"}）`}
+            onMouseMove={pickNearest}
+            onMouseLeave={() => setHover(null)}
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              if (t) pickNearest({ clientX: t.clientX, currentTarget: e.currentTarget });
+            }}
           >
             {geom ? (
               <>
@@ -120,10 +165,37 @@ export function KpiChart({
                     key={p.date}
                     cx={geom.x(geom.times[i])}
                     cy={geom.y(p.value)}
-                    r="2.5"
+                    r={hover === i ? 4.5 : 2.5}
                     fill="var(--color-brand)"
-                  />
+                  >
+                    {/* ネイティブのtooltip（マウスが点上で止まったときの補助）。 */}
+                    <title>{`${fmtDate(p.date)} ${fmtValue(p.value, unit)}`}</title>
+                  </circle>
                 ))}
+                {hovered && geom ? (
+                  <g pointerEvents="none">
+                    {/* 縦の目印線と、点の近くの値ラベル（枠外へはみ出す側を避けて左右を切替）。 */}
+                    <line
+                      x1={geom.x(geom.times[hover ?? 0])}
+                      y1={PAD.top}
+                      x2={geom.x(geom.times[hover ?? 0])}
+                      y2={H - PAD.bottom}
+                      stroke="var(--color-hairline)"
+                    />
+                    <text
+                      fill="var(--color-ink)"
+                      fontSize="11"
+                      fontWeight="bold"
+                      x={
+                        geom.x(geom.times[hover ?? 0]) + (geom.x(geom.times[hover ?? 0]) > W / 2 ? -8 : 8)
+                      }
+                      y={Math.max(PAD.top + 12, geom.y(hovered.value) - 8)}
+                      textAnchor={geom.x(geom.times[hover ?? 0]) > W / 2 ? "end" : "start"}
+                    >
+                      {`${fmtDate(hovered.date)} ${fmtValue(hovered.value, unit)}`}
+                    </text>
+                  </g>
+                ) : null}
                 {/* SVG内の軸ラベルは follower-chart.tsx と同じ fontSize 属性で指定する
                     （15px未満の任意値クラスは type-scale.test.ts が禁止している）。 */}
                 <text fill="rgba(0,0,0,.45)" fontSize="10" x={PAD.left} y={PAD.top + 4}>

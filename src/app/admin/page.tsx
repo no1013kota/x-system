@@ -14,6 +14,7 @@ import {
   readKpiSeries,
   readMonthCostBreakdown,
   readRecentCancellations,
+  readUsersOverview,
 } from "@/lib/ops/kpi";
 
 import { KpiChart } from "./kpi-chart";
@@ -35,6 +36,20 @@ export const runtime = "nodejs";
 export const metadata: Metadata = { title: `運営ダッシュボード | ${APP_NAME}` };
 
 const SERIES_DAYS = 400;
+
+/**
+ * 環境ごとのダッシュボード（T-M8-374・運営者の指示 2026-08-30）。
+ *
+ * **環境のDBは分離されている**（stgの検証データが本番へ混ざらないための構成・deployment.md）。
+ * 1画面から3環境を横断して読むには本番へstgのDB鍵を置くことになるため、
+ * **各環境の /admin へ移動する**形にする。表示中の環境は APP_ENV で判定する。
+ * URLの正本は deployment.md（STAGING_BASE_URL / PRODUCTION_BASE_URL の値と同じ）。
+ */
+const ENV_DASHBOARDS = [
+  { env: "production", label: "本番", href: "https://exosai.net/admin" },
+  { env: "preview", label: "staging", href: "https://x-system-stg.vercel.app/admin" },
+  { env: "development", label: "ローカル", href: "http://127.0.0.1:3000/admin" },
+] as const;
 
 function yen(v: number): string {
   return `¥${Math.round(v).toLocaleString("ja-JP")}`;
@@ -61,25 +76,60 @@ export default async function AdminPage() {
   if (!operator || (user.email ?? "").toLowerCase() !== operator.toLowerCase()) notFound();
 
   const db = pooledQueryable();
-  const [summary, funnel, mrrSeries, usersSeries, costSeries, byProvider, byOperation, byUser, cancels] =
-    await Promise.all([
-      readAdminSummary(db),
-      readFunnel(db),
-      readKpiSeries(db, "mrr_jpy", SERIES_DAYS),
-      readKpiSeries(db, "users_total", SERIES_DAYS),
-      readKpiSeries(db, "cost_usd", SERIES_DAYS),
-      readMonthCostBreakdown(db, "provider", 6),
-      readMonthCostBreakdown(db, "operation", 8),
-      readMonthCostBreakdown(db, "user", 5),
-      readRecentCancellations(db, 10),
-    ]);
+  const [
+    summary,
+    funnel,
+    mrrSeries,
+    usersSeries,
+    costSeries,
+    byProvider,
+    byOperation,
+    byUser,
+    cancels,
+    users,
+  ] = await Promise.all([
+    readAdminSummary(db),
+    readFunnel(db),
+    readKpiSeries(db, "mrr_jpy", SERIES_DAYS),
+    readKpiSeries(db, "users_total", SERIES_DAYS),
+    readKpiSeries(db, "cost_usd", SERIES_DAYS),
+    readMonthCostBreakdown(db, "provider", 6),
+    readMonthCostBreakdown(db, "operation", 8),
+    readMonthCostBreakdown(db, "user", 5),
+    readRecentCancellations(db, 10),
+    readUsersOverview(db, 200),
+  ]);
 
   const costSeriesJpy = costSeries.map((p) => ({ ...p, value: p.value * JPY_PER_USD }));
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className={pageTitleClassName}>運営ダッシュボード</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className={pageTitleClassName}>運営ダッシュボード</h1>
+          {/* いまどの環境のデータを見ているか（DBは環境ごとに分離されている）。 */}
+          <nav aria-label="環境の切替" className="flex items-center gap-1">
+            {ENV_DASHBOARDS.map((d) =>
+              d.env === env.APP_ENV ? (
+                <span
+                  key={d.env}
+                  aria-current="page"
+                  className="rounded-md bg-ink px-2 py-1 text-xs font-bold text-surface"
+                >
+                  {d.label}
+                </span>
+              ) : (
+                <a
+                  key={d.env}
+                  className="rounded-md px-2 py-1 text-xs text-ink-2 underline hover:text-ink"
+                  href={d.href}
+                >
+                  {d.label}
+                </a>
+              ),
+            )}
+          </nav>
+        </div>
         <Link className="text-sm text-ink-2 underline hover:text-ink" href="/app">
           アプリへ戻る
         </Link>
@@ -176,6 +226,65 @@ export default async function AdminPage() {
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* 利用者一覧 */}
+      <Card as="section" className="mt-6 px-5 py-4">
+        <CardTitle as="h2">利用者一覧（登録の新しい順・最大200人）</CardTitle>
+        {users.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-2">まだ利用者がいません。</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-ink-2">
+                  <th className="py-1 pr-3 font-normal">メール</th>
+                  <th className="py-1 pr-3 font-normal">登録日</th>
+                  <th className="py-1 pr-3 font-normal">プラン / 状態</th>
+                  <th className="py-1 pr-3 font-normal">X連携</th>
+                  <th className="py-1 pr-3 font-normal text-right">生成</th>
+                  <th className="py-1 pr-3 font-normal text-right">投稿</th>
+                  <th className="py-1 pr-3 font-normal text-right">今月の原価</th>
+                  <th className="py-1 font-normal">最終利用</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.email} className="border-t border-hairline align-top">
+                    <td className="max-w-[220px] break-words py-2 pr-3">
+                      {u.email}
+                      {u.confirmed ? null : (
+                        <span className="ml-1 text-xs text-warn-fg">（メール未確認）</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-ink-2">
+                      {u.signedUpDate ?? "—"}
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3">
+                      {u.plan ?? "未契約"}
+                      <span className="text-xs text-ink-2"> / {u.subscriptionStatus ?? "—"}</span>
+                    </td>
+                    <td className="max-w-[160px] break-words py-2 pr-3">{u.handles ?? "—"}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{u.generations}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{u.posts}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{usd(u.monthCostUsd)}</td>
+                    <td className="whitespace-nowrap py-2 text-ink-2">
+                      {u.lastUsedAt
+                        ? new Intl.DateTimeFormat("ja-JP", {
+                            dateStyle: "short",
+                            timeZone: "Asia/Tokyo",
+                          }).format(new Date(u.lastUsedAt))
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-ink-2">
+          生成・投稿は累計（利用枠の消費記録から）。原価は今月のAI・X API実費（USD）。
+        </p>
       </Card>
 
       {/* 解約アンケート */}

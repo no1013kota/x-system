@@ -417,6 +417,79 @@ export async function readAdminSummary(db: Queryable): Promise<AdminSummary> {
   };
 }
 
+export interface UserOverviewRow {
+  email: string;
+  signedUpDate: string | null;
+  confirmed: boolean;
+  plan: string | null;
+  subscriptionStatus: string | null;
+  /** 連携中のXハンドル（カンマ区切り。無ければnull）。 */
+  handles: string | null;
+  generations: number;
+  posts: number;
+  monthCostUsd: number;
+  lastUsedAt: string | null;
+}
+
+/**
+ * 利用者一覧と利用者別の代表データ（T-M8-374・運営者の指示 2026-08-30）。
+ *
+ * 利用者が少ないうちは集計より**1人ずつ見る**方が判断に効く（誰がどこで止まっているか・
+ * 誰に原価がかかっているか）。登録の新しい順。運営者しか見ない画面なのでメールを出す。
+ * `auth.users.created_at` はローカルのテストデータでは null があり得る（GoTrueがアプリ側で
+ * 入れる値のため）——nulls last で並べ、表示は「—」にする。
+ */
+export async function readUsersOverview(db: Queryable, limit: number): Promise<UserOverviewRow[]> {
+  const { rows } = await db.query<{
+    email: string;
+    signed_up: string | null;
+    confirmed: boolean;
+    plan: string | null;
+    status: string | null;
+    handles: string | null;
+    generations: string;
+    posts: string;
+    month_cost: string;
+    last_used: string | null;
+  }>(
+    `select u.email,
+            (u.created_at at time zone 'Asia/Tokyo')::date::text as signed_up,
+            (u.email_confirmed_at is not null) as confirmed,
+            p.plan::text as plan,
+            p.subscription_status::text as status,
+            (select string_agg('@' || xa.handle, ', ' order by xa.created_at)
+               from x_accounts xa where xa.user_id = u.id) as handles,
+            (select count(*) from usage_events e
+              where e.user_id = u.id and e.reason = 'consume' and e.delta = 1
+                and e.operation in ('generation', 'image_generation'))::text as generations,
+            (select count(*) from usage_events e
+              where e.user_id = u.id and e.reason = 'consume' and e.delta = 1
+                and e.operation = 'post_create')::text as posts,
+            (select coalesce(sum(c.estimated_cost_usd), 0) from external_api_usage_events c
+              where c.user_id = u.id
+                and date_trunc('month', c.occurred_at at time zone 'Asia/Tokyo')
+                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as month_cost,
+            (select max(e.created_at) from usage_events e where e.user_id = u.id)::text as last_used
+       from auth.users u
+       left join profiles p on p.id = u.id
+      order by u.created_at desc nulls last
+      limit $1`,
+    [limit],
+  );
+  return rows.map((r) => ({
+    email: r.email,
+    signedUpDate: r.signed_up,
+    confirmed: r.confirmed,
+    plan: r.plan,
+    subscriptionStatus: r.status,
+    handles: r.handles,
+    generations: Number(r.generations),
+    posts: Number(r.posts),
+    monthCostUsd: Number(r.month_cost),
+    lastUsedAt: r.last_used,
+  }));
+}
+
 export interface CancellationRow {
   createdAt: string;
   plan: string | null;
