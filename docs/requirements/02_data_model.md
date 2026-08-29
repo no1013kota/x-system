@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.82 |
+| バージョン | v1.83 |
 | 更新日 | 2026-08-29 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -485,7 +485,7 @@ Constraints: `operation`は上記列挙値、`status in ('succeeded','failed')`�
 
 Indexes: (`user_id`, `occurred_at desc`), (`provider`, `operation`, `occurred_at desc`), `job_id`
 
-RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、token、外部レスポンス本文は保存しない。明細は`occurred_at`から40日保持し、期限後にcleanupする（前月分の月次集計・実測分析は翌月10日までにSQLで実施する。要件01 §9）。
+RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、token、外部レスポンス本文は保存しない。明細は`occurred_at`から**400日**保持し、期限後にcleanupする（T-M8-373・運営者の決定 2026-08-29「明細も400日残す」。誰が・どの機能で・いくら使ったかの唯一の記録で、消えるとプラン別採算を遡れない。/admin の原価内訳もここを読む）。
 
 ### 3.18 `cron_runs`
 
@@ -779,6 +779,20 @@ RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。ア
 Indexes: `(submitted_at) where status = 'pending'`（取り込みcronが古い順に引く）
 
 RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。
+
+### 3.31 `kpi_daily`
+
+**事業KPIの日次スナップショット**（T-M8-373・運営者の指示 2026-08-29。読むのは `/admin` だけ）。元データは消えるか（原価台帳400日・generation_jobs 90日）、現在の状態しか持たない（`profiles.plan` は変わると前の値が消える）ため、「その日の契約者数・MRR・原価」を毎日書き出して推移を残す。書き手は `scheduler_tick`（JST日付ごとに1回・`cron_runs` でclaim・冪等upsert）。表が空のときは残っている元データから出来事指標を最大400日バックフィルする（手作業のコマンドは作らない・原則3）。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `metric_date` | `date` | PK（複合） | JSTの日付。状態指標は「前日の終わり」として前日の日付で書く |
+| `metric` | `text` | PK（複合） | 指標名（`signups`／`email_confirmed`／`x_connected_users`／`trials_started`／`usage_consumed`／`cost_usd`／`cancellations`／`users_total`／`users_paying`／`users_trialing`／`mrr_jpy`／`x_accounts_active`） |
+| `dimension` | `text` | PK（複合）、not null default `''` | 内訳キー（provider名・プラン名・operation名）。内訳の無い指標は空文字 |
+| `value` | `numeric(14,4)` | not null | 件数・金額（`cost_usd` はUSD。円換算は読む側が1ドル=160円で行う） |
+| `updated_at` | `timestamptz` | not null default now() | |
+
+RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。保持は400日（`ANALYTICS_RETENTION_DAYS`・要件04 §14）。
 
 ## 4. JSONスキーマ
 
@@ -1084,3 +1098,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.80 | 2026-08-29 | §3.4 `base_md_versions` を廃止（アカウント.mdの変更履歴・ロールバックを撤去。控えは `prompt_presets` が担う・T-M8-362） |
 | v1.81 | 2026-08-29 | `generation_jobs`（終了から90日・終端のみ）と `stripe_events`（90日）に保持期間を追加（T-M8-363） |
 | v1.82 | 2026-08-29 | `x_timeline_posts`・`follower_snapshots` に400日の保持期間を追加（運営者の決定・T-M8-364） |
+| v1.83 | 2026-08-29 | kpi_daily を追加（事業KPIの日次スナップショット・31テーブルへ・T-M8-373）。external_api_usage_events の保持を40→400日へ（運営者の決定「明細も400日残す」） |

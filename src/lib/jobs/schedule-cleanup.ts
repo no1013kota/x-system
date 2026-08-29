@@ -34,6 +34,12 @@ const JOB_RETENTION_DAYS = 90;
  * 1年より前のフォロワー推移が描けなくなる——1年ぶんの振り返りは残る幅として選んだ。
  */
 const ANALYTICS_RETENTION_DAYS = 400;
+/**
+ * 原価台帳（external_api_usage_events）の保持期間（T-M8-373・運営者の決定 2026-08-29
+ * 「明細も400日残す」）。以前は40日だったが、**誰が・どの機能で・いくら使ったかの唯一の記録**で、
+ * 消えるとプラン別の採算を後から遡れない。/admin の内訳もここを読む。
+ */
+const COST_RETENTION_DAYS = 400;
 const IMAGE_STALE_HOURS = 24;
 const BATCH = 500;
 const IMAGE_BATCH = 100;
@@ -65,6 +71,8 @@ export interface CleanupResult {
   /** 400日を過ぎた分析用データ（T-M8-364）。 */
   timelinePosts: number;
   followerSnapshots: number;
+  /** 400日を過ぎたKPIスナップショット（T-M8-373）。 */
+  kpiDaily: number;
   images: number;
 }
 
@@ -147,7 +155,7 @@ async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
   return rowCount ?? 0;
 }
 
-/** (3) 40日超の原価台帳明細を削除（要件02 §3.17/§3.18）。 */
+/** (3) 400日超の原価台帳明細を削除（要件02 §3.17/§3.18・T-M8-373で40→400日）。 */
 async function deleteOldUsageEvents(db: Queryable): Promise<number> {
   const { rowCount } = await db.query(
     `delete from external_api_usage_events
@@ -156,7 +164,17 @@ async function deleteOldUsageEvents(db: Queryable): Promise<number> {
          where occurred_at < now() - make_interval(days => $1)
          order by occurred_at
          limit $2)`,
-    [RETENTION_DAYS, BATCH],
+    [COST_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/** (3b) 400日超のKPIスナップショットを削除（T-M8-373。運営者の指示は「400日分持つ」）。 */
+async function deleteOldKpiDaily(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from kpi_daily
+      where metric_date < current_date - make_interval(days => $1)`,
+    [ANALYTICS_RETENTION_DAYS],
   );
   return rowCount ?? 0;
 }
@@ -343,6 +361,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     stripeEvents: 0,
     timelinePosts: 0,
     followerSnapshots: 0,
+    kpiDaily: 0,
     images: 0,
   };
 
@@ -387,6 +406,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("follower_snapshots", async () => {
     result.followerSnapshots = await deleteOldFollowerSnapshots(db);
+  });
+  await step("kpi_daily", async () => {
+    result.kpiDaily = await deleteOldKpiDaily(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;

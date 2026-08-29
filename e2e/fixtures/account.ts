@@ -60,6 +60,13 @@ export interface AccountOptions {
   personaReady?: boolean;
   /** 自動投稿への同意済みにする。 */
   automationConsent?: boolean;
+  /**
+   * メールアドレスを固定する（T-M8-373・/admin の運営者ゲート検証用）。
+   * 運営者判定は「ログイン利用者のメール === SUPPORT_EMAIL」なので、
+   * その一致を作るにはランダムではないメールが要る。**同じメールの残骸が
+   * ローカルDBにあると auth.users の unique で落ちる**ため、呼び出し側で先に消すこと。
+   */
+  email?: string;
 }
 
 async function withDb<T>(fn: (c: Client) => Promise<T>): Promise<T> {
@@ -119,7 +126,7 @@ export async function createTestAccount(
   options: AccountOptions = {},
 ): Promise<TestAccount> {
   const suffix = `${label}-${randomUUID().slice(0, 8)}`;
-  const email = `e2e-${suffix}@example.com`;
+  const email = options.email ?? `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
   const userId = await createAuthUser(email, password);
   const handle = `e2e_${suffix.replace(/-/g, "_")}`;
