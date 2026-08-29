@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.81 |
+| バージョン | v1.82 |
 | 更新日 | 2026-08-29 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -331,7 +331,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 Constraints: unique(`x_account_id`, `snapshot_date`), `followers_count >= 0`
 
-RLS: x_account所有者select可。writeはservice roleのみ。
+RLS: x_account所有者select可。writeはservice roleのみ。**保持は`snapshot_date`から400日**（T-M8-364・運営者の決定 2026-08-29）。以前は削除経路が無く、アカウントが生きている限り1日1行ずつ増え続けていた。1年より前のフォロワー推移は描けなくなる（1年ぶんの振り返りは残る幅として選んだ）。
 
 ### 3.12 `improvement_suggestions`
 
@@ -593,7 +593,7 @@ Constraints: `unique (x_account_id, tweet_id)`
 
 Indexes: `(x_account_id, posted_at desc)`
 
-RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。
+RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはSUGGEST jobが行う）。**保持は`posted_at`から400日**（T-M8-364）。**投稿日時で切る**（取得日ではない）——取り込み直しで`fetched_at`が新しくなっても、古い投稿は古い投稿のまま扱う。1年より前の分析レポートでは引用投稿が空欄になる。
 
 ### 3.23 `post_patterns`
 
@@ -1083,3 +1083,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.79 | 2026-08-28 | cron_runs に毎時窓 `x_token_refresh` を追加（Xトークンの先回り更新・T-M8-359） |
 | v1.80 | 2026-08-29 | §3.4 `base_md_versions` を廃止（アカウント.mdの変更履歴・ロールバックを撤去。控えは `prompt_presets` が担う・T-M8-362） |
 | v1.81 | 2026-08-29 | `generation_jobs`（終了から90日・終端のみ）と `stripe_events`（90日）に保持期間を追加（T-M8-363） |
+| v1.82 | 2026-08-29 | `x_timeline_posts`・`follower_snapshots` に400日の保持期間を追加（運営者の決定・T-M8-364） |

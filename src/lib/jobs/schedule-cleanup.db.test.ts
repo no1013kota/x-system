@@ -293,4 +293,61 @@ describe("cleanupOldData (db)", () => {
       });
     }
   });
+
+  /**
+   * 分析用データの保持期間（T-M8-364・運営者の決定 2026-08-29）。
+   *
+   * **投稿日時で切る**（取得日ではない）。取り込み直しで `fetched_at` が新しくなっても、
+   * 古い投稿は古い投稿のまま扱う。1年ぶんの振り返りは残る幅として400日を選んだ。
+   */
+  it("400日を過ぎた分析用データ（投稿・フォロワー数）を消し、1年以内は残す", async () => {
+    const seed = await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      const post = async (ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into x_timeline_posts (x_account_id, tweet_id, text, posted_at)
+           values ($1, $2, 't', now() - make_interval(days => $3)) returning id`,
+          [xid, `tw-${randomUUID()}`, ageDays],
+        );
+        return rows[0].id;
+      };
+      const snapshot = async (ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into follower_snapshots (x_account_id, snapshot_date, followers_count)
+           values ($1, (now() - make_interval(days => $2))::date, 10) returning id`,
+          [xid, ageDays],
+        );
+        return rows[0].id;
+      };
+      return {
+        uid,
+        oldPost: await post(401),
+        recentPost: await post(30),
+        oldSnapshot: await snapshot(401),
+        recentSnapshot: await snapshot(30),
+      };
+    });
+
+    try {
+      await cleanupOldData({ db: pooledDb });
+      const alive = async (table: string, id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from ${table} where id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+
+      expect(await alive("x_timeline_posts", seed.oldPost), "1年より前の投稿が残っている").toBe(false);
+      expect(await alive("x_timeline_posts", seed.recentPost), "1年以内の投稿まで消している").toBe(true);
+      expect(await alive("follower_snapshots", seed.oldSnapshot)).toBe(false);
+      expect(await alive("follower_snapshots", seed.recentSnapshot)).toBe(true);
+    } finally {
+      // follower_snapshots は x_accounts へ cascade しないので先に落とす。
+      await withTransaction(async (c) => {
+        await c.query(
+          `delete from follower_snapshots where x_account_id in
+             (select id from x_accounts where user_id = $1)`,
+          [seed.uid],
+        );
+        await c.query(`delete from auth.users where id = $1`, [seed.uid]);
+      });
+    }
+  });
 });

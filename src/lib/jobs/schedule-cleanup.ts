@@ -25,6 +25,15 @@ const RETENTION_DAYS = 40;
  * ところまで待てば、その差が意味を持つ場面が無くなる。
  */
 const JOB_RETENTION_DAYS = 90;
+/**
+ * 分析用データの保持期間（T-M8-364・運営者の決定 2026-08-29「400日で消す」）。
+ *
+ * `x_timeline_posts`（分析のために読んだ自分の投稿）と `follower_snapshots`（1日1行）は
+ * **削除経路が無く、アカウントが生きている限り増え続けていた**。
+ * 400日にすると**1年より前**の分析レポートで引用投稿が空欄になり、
+ * 1年より前のフォロワー推移が描けなくなる——1年ぶんの振り返りは残る幅として選んだ。
+ */
+const ANALYTICS_RETENTION_DAYS = 400;
 const IMAGE_STALE_HOURS = 24;
 const BATCH = 500;
 const IMAGE_BATCH = 100;
@@ -53,6 +62,9 @@ export interface CleanupResult {
   generationJobs: number;
   /** 90日を過ぎたStripeイベント台帳（T-M8-363）。 */
   stripeEvents: number;
+  /** 400日を過ぎた分析用データ（T-M8-364）。 */
+  timelinePosts: number;
+  followerSnapshots: number;
   images: number;
 }
 
@@ -206,6 +218,39 @@ async function deleteOldStripeEvents(db: Queryable): Promise<number> {
   return rowCount ?? 0;
 }
 
+/**
+ * (4f) `ANALYTICS_RETENTION_DAYS` を過ぎた分析用データを削除（T-M8-364）。
+ *
+ * **投稿日時で切る**（取得日ではない）。取り込み直しで `fetched_at` が新しくなっても、
+ * 古い投稿は古い投稿のまま扱う。
+ */
+async function deleteOldTimelinePosts(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from x_timeline_posts
+      where id in (
+        select id from x_timeline_posts
+         where posted_at < now() - make_interval(days => $1)
+         order by posted_at
+         limit $2)`,
+    [ANALYTICS_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/** (4g) `ANALYTICS_RETENTION_DAYS` を過ぎたフォロワー数の記録を削除（T-M8-364）。 */
+async function deleteOldFollowerSnapshots(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from follower_snapshots
+      where id in (
+        select id from follower_snapshots
+         where snapshot_date < (now() - make_interval(days => $1))::date
+         order by snapshot_date
+         limit $2)`,
+    [ANALYTICS_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
 /** (4c) occurred_at が40日超の db_pool_events（接続待ちの記録）を削除（T-M8-198）。 */
 async function deleteOldPoolEvents(db: Queryable): Promise<number> {
   const { rowCount } = await db.query(
@@ -296,6 +341,8 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     poolEvents: 0,
     generationJobs: 0,
     stripeEvents: 0,
+    timelinePosts: 0,
+    followerSnapshots: 0,
     images: 0,
   };
 
@@ -334,6 +381,12 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("stripe_events", async () => {
     result.stripeEvents = await deleteOldStripeEvents(db);
+  });
+  await step("x_timeline_posts", async () => {
+    result.timelinePosts = await deleteOldTimelinePosts(db);
+  });
+  await step("follower_snapshots", async () => {
+    result.followerSnapshots = await deleteOldFollowerSnapshots(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;
