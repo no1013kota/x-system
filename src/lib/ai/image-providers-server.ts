@@ -30,8 +30,14 @@ export function imageProvidersFor(
 ): string[] {
   if (isOperatorManagedPlan(plan)) {
     const providers: string[] = [];
-    if (env.OPENAI_API_KEY && env.OPENAI_IMAGE_MODEL) providers.push("openai");
-    if (env.GEMINI_API_KEY && env.GEMINI_IMAGE_MODEL) providers.push("google");
+    /*
+      **モデルの設定有無で判定しない**（T-M8-370）。画像モデルはenvが無ければ
+      `DEFAULT_IMAGE_MODELS` が埋めるので（`resolve-provider.ts` と同じ）、
+      ここでenvを条件にすると**実行はできるのに画面では選べない**という、この関数が
+      無くそうとしている食い違いそのものが起きる。判定は運営キーの有無だけにする。
+    */
+    if (env.OPENAI_API_KEY) providers.push("openai");
+    if (env.GEMINI_API_KEY) providers.push("google");
     return providers;
   }
   return keyRows.map((row) => row.provider);

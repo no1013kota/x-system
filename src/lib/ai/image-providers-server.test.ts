@@ -2,12 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db/pool", () => ({ getPool: () => ({ query: async () => ({ rows: [] }) }) }));
+/*
+  **画像モデルのenvはわざと空にしてある**（T-M8-370）。既定はコード
+  （`DEFAULT_IMAGE_MODELS`）が持つので、envが無くても provider は選べなければならない。
+  ここに値を入れて検査すると、envを消した瞬間に画面から provider が消える不具合を
+  見逃す（2026-08-29、Vercelから消えていて実際に起きた）。
+*/
 vi.mock("@/lib/env", () => ({
   env: {
     OPENAI_API_KEY: "sk-test",
-    OPENAI_IMAGE_MODEL: "gpt-image-1",
+    OPENAI_IMAGE_MODEL: undefined,
     GEMINI_API_KEY: "",
-    GEMINI_IMAGE_MODEL: "",
+    GEMINI_IMAGE_MODEL: undefined,
   },
 }));
 
@@ -26,8 +32,8 @@ describe("imageProvidersFor", () => {
     expect(imageProvidersFor("standard", []), "キーが無ければ選べない").toEqual([]);
   });
 
-  it("運営キー系（premium/expert）はキー登録が無くても、鍵とモデルが揃った provider を返す", () => {
-    // env は openai だけ揃えてある（google はモデル未設定）。
+  it("運営キー系（premium/expert）はキー登録が無くても、運営キーのある provider を返す", () => {
+    // env は openai の鍵だけ。**画像モデルは未設定でも選べる**（既定がコードにある）。
     expect(imageProvidersFor("premium", [])).toEqual(["openai"]);
     expect(imageProvidersFor("expert", [])).toEqual(["openai"]);
   });

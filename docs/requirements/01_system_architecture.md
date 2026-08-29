@@ -120,9 +120,9 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `NEWS_TEXT_PROVIDER` | preview/prod | 共通ニュース取得provider | 既定値`anthropic`。無効時に別providerへ自動切替しない |
 | `ANTHROPIC_TEXT_MODEL` | dev/preview/prod | Claude文章モデル | 実装時に公式仕様確認 |
 | `OPENAI_TEXT_MODEL` | dev/preview/prod | OpenAI文章モデル | 実装時に公式仕様確認 |
-| `OPENAI_IMAGE_MODEL` | dev/preview/prod | OpenAI画像モデル | 実装時に公式仕様確認 |
+| `OPENAI_IMAGE_MODEL` | 任意（上書き用） | OpenAI画像モデル | 未設定なら`DEFAULT_IMAGE_MODELS`（コード）を使う。必須にしない（T-M8-334/370・原則3） |
 | `GEMINI_TEXT_MODEL` | dev/preview/prod | Gemini文章モデル | 実装時に公式仕様確認 |
-| `GEMINI_IMAGE_MODEL` | dev/preview/prod | Gemini画像モデル | 実装時に公式仕様確認 |
+| `GEMINI_IMAGE_MODEL` | 任意（上書き用） | Gemini画像モデル | 未設定なら`DEFAULT_IMAGE_MODELS`（コード）を使う。必須にしない（T-M8-334/370・原則3） |
 
 ### 3.6 メール・監視
 

@@ -21,9 +21,9 @@ function devBase(): Record<string, string | undefined> {
     STRIPE_PRICE_PREMIUM_MONTHLY: "price_prem",
     ANTHROPIC_TEXT_MODEL: "claude-x",
     OPENAI_TEXT_MODEL: "gpt-x",
-    OPENAI_IMAGE_MODEL: "gpt-image-x",
     GEMINI_TEXT_MODEL: "gemini-x",
-    GEMINI_IMAGE_MODEL: "gemini-image-x",
+    // **画像モデルはわざと入れない**（T-M8-370）。既定はコードにあり env は上書き用なので、
+    // 無くても検証は通らなければならない。ここに入れると必須化の再発を見逃す。
   };
 }
 
@@ -52,6 +52,21 @@ function prodBase(): Record<string, string | undefined> {
     X_POSTING_MODE: "live",
   };
 }
+
+/**
+ * **画像モデルのenvが無くても起動できる**（T-M8-370・原則3）。
+ *
+ * 2026-08-29、Vercelの preview / production の両方から `OPENAI_IMAGE_MODEL` が消えており、
+ * `next build` が「環境変数の検証に失敗しました」で止まって **stgもprdも反映できなかった**。
+ * 稼働中のデプロイは取り込み済みの値で動いていたため、画面は正常に見えていた（黙って壊れる形）。
+ * 既定はコード（`DEFAULT_IMAGE_MODELS`）が持つ、というのが決定事項（T-M8-334）。
+ */
+describe("画像モデルのenvは上書き用（未設定でも通る）", () => {
+  it("development でも production でも、画像モデル無しで検証を通す", () => {
+    expect(() => buildServerEnv(devBase())).not.toThrow();
+    expect(() => buildServerEnv(prodBase())).not.toThrow();
+  });
+});
 
 describe("buildServerEnv defaults", () => {
   it("applies defaults for optional-with-default vars", () => {

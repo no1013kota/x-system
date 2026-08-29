@@ -88,9 +88,16 @@ const ALWAYS_REQUIRED = [
   "STRIPE_PRICE_PREMIUM_MONTHLY",
   "ANTHROPIC_TEXT_MODEL",
   "OPENAI_TEXT_MODEL",
-  "OPENAI_IMAGE_MODEL",
   "GEMINI_TEXT_MODEL",
-  "GEMINI_IMAGE_MODEL",
+  /*
+    **`*_IMAGE_MODEL` はここに入れない**（T-M8-370）。画像モデルの既定は
+    **コード**（`DEFAULT_IMAGE_MODELS`）が持ち、envは**上書き用**というのが決定事項
+    （プロンプト設計書 §3・T-M8-334・運営者の指示 2026-08-27）。必須にすると
+    「envの入れ忘れで画像だけ作れない」状態を作る（原則3）——実際、2026-08-29 に
+    Vercelから両環境の `OPENAI_IMAGE_MODEL` が消えており、**build が
+    「環境変数の検証に失敗しました」で止まって stg も prd も反映できなかった**。
+    稼働中のデプロイはenvを取り込んだ時点の値で動いていたため、画面上は正常に見えていた。
+  */
 ] as const;
 
 const schema = z
@@ -172,9 +179,13 @@ const schema = z
     NEWS_TEXT_MODEL: z.string().min(1).optional(),
     ANTHROPIC_TEXT_MODEL: z.string().min(1).optional(),
     OPENAI_TEXT_MODEL: z.string().min(1).optional(),
-    OPENAI_IMAGE_MODEL: z.string().min(1).optional(),
+    // 空文字も未設定として扱う（T-M8-370）。上書き用の値なので、
+    // 空欄を残したまま保存されても既定（`DEFAULT_IMAGE_MODELS`）で動く方が良い。
+    OPENAI_IMAGE_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     GEMINI_TEXT_MODEL: z.string().min(1).optional(),
-    GEMINI_IMAGE_MODEL: z.string().min(1).optional(),
+    // 空文字も未設定として扱う（T-M8-370）。上書き用の値なので、
+    // 空欄を残したまま保存されても既定（`DEFAULT_IMAGE_MODELS`）で動く方が良い。
+    GEMINI_IMAGE_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 
     // §3.6 メール・監視
     SMTP_HOST: z.string().min(1).optional(),
