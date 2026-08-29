@@ -211,7 +211,15 @@ for (const [key, want] of Object.entries(AUTH_SETTINGS)) {
   broken += 1;
 }
 
-if (Object.keys(patch).length === 0) {
+/*
+  **「直すものが1つも無い」ときだけ「反映は不要」と言う**（T-M8-372）。
+
+  以前はテンプレートの差分（`patch`）だけで判定していたため、**差出人アドレスがずれていても
+  「✅ 反映は不要です」と出て exit 0 していた**。doctorは「このコマンドを実行してください」と
+  案内するので、運営者は言われたとおり実行し、何も起きないまま同じ警告を受け取り続ける
+  （2026-08-29、本番が実際にこの状態だった）。**直せないのに「不要」と言わない。**
+*/
+if (broken === 0) {
   console.log("\n✅ 反映は不要です。");
   process.exit(0);
 }
@@ -245,6 +253,37 @@ if (current.smtp_host && current.smtp_sender_name !== EXPECTED_SENDER_NAME) {
   console.log("✅ 差出人名を設定しました");
 }
 
+/*
+  **差出人アドレスも直す**（T-M8-372）。差出人「名」だけを直していたため、
+  アドレスは検査で ❌ を出すのに**直す経路がどこにも無かった**。
+  SMTP設定の更新は資格情報ごと送る（Supabaseは部分更新でも受けるが、
+  ここは `smtpPatch()` の一式で送り、host/user/pass と齟齬が出ないようにする）。
+
+  **前提**: 送信側でこのアドレスを名乗れること。Gmailは**許可の無いFromを拒否せず
+  黙って書き換える**（250 OKを返す）ので、先に `npm run check:mail-sender -- --send` で
+  受信箱のFromを人が確かめてから実行する。名乗れないまま切り替えると、
+  確認メールが利用者へ届かなくなる。
+*/
+if (current.smtp_host && current.smtp_admin_email !== EXPECTED_SENDER_EMAIL) {
+  const smtp = smtpPatch();
+  if (!smtp) {
+    fail(
+      "差出人アドレスを直すには SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_APP_PASSWORD が要ります（.env.local を確認してください）",
+    );
+  }
+  console.log(
+    `\n→ 差出人アドレスが「${current.smtp_admin_email || "(未設定)"}」なので「${EXPECTED_SENDER_EMAIL}」へ直します`,
+  );
+  await fetch(api, { method: "PATCH", headers, body: JSON.stringify(smtp) }).then(async (r) => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) fail(`差出人アドレスの設定に失敗しました: ${body.message ?? r.status}`);
+  });
+  console.log("✅ 差出人アドレスを設定しました");
+  console.log(
+    "    → 実際にそのアドレスで届くかは受信箱のFromでしか分かりません。`npm run check:mail-sender -- --send` で1通送って確かめてください",
+  );
+}
+
 // SMTPが未設定ならテンプレート変更は拒否されるので、先に入れる。
 if (!current.smtp_host) {
   const smtp = smtpPatch();
@@ -262,10 +301,12 @@ if (!current.smtp_host) {
   console.log("✅ カスタムSMTPを設定しました");
 }
 
-await fetch(api, { method: "PATCH", headers, body: JSON.stringify(patch) }).then(async (r) => {
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) fail(`反映に失敗しました: ${body.message ?? r.status}`);
-});
+if (Object.keys(patch).length > 0) {
+  await fetch(api, { method: "PATCH", headers, body: JSON.stringify(patch) }).then(async (r) => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) fail(`反映に失敗しました: ${body.message ?? r.status}`);
+  });
+}
 
 // 反映後に読み直して確認する（PATCHが通っても内容が入っていないことがある）。
 const after = await fetch(api, { headers }).then((r) => r.json());
