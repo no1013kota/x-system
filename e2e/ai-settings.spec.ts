@@ -182,22 +182,32 @@ test("学習ソースを追加すると分析中として並び、削除でき�
 
   // 削除は確認ダイアログを挟む（誤操作でアカウント.mdの知見を失わないため）
   page.on("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: "削除", exact: true }).first().click();
 
-  // 削除処理に入る（removing → 生成の一時停止案内が出る）
-  await expect
-    .poll(
-      async () =>
-        (
-          await query<{ status: string }>(
-            `select status::text as status from learning_sources
-              where x_account_id = $1 and url like $2`,
-            [account.xAccountId, `%${handle}%`],
-          )
-        )[0]?.status,
-      { timeout: 20_000, message: "削除処理へ入ること" },
-    )
-    .not.toBe("analyzed");
+  /*
+    **削除が受理されたことは成功トーストで確かめる**（T-M8-367）。
+    DBの `status` を見ると、削除は analyzed→removing へ進むが、その md_merge が
+    ダミーキーで失敗すると `finalizeFailedJob` が removing→analyzed へ**戻す**ため、
+    「analyzed でない」を待つと戻り値を掴んで落ちる（実際にフルスイートで落ちた）。
+    削除そのものの状態遷移は `learning-sources.db.test.ts` が見ているので、ここは
+    **UIの削除操作が受理される**ことだけを見る。job_conflict のときは畳み直して押し直す。
+  */
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // 直前に生えた学習jobを畳んでから押す（残っていれば削除は job_conflict で弾かれる）。
+    await query(
+      `update generation_jobs set status = 'canceled', finished_at = now()
+        where x_account_id = $1 and kind in ('learning_analysis', 'md_merge')
+          and status in ('queued','running')`,
+      [account.xAccountId],
+    );
+    await page.getByRole("button", { name: "削除", exact: true }).first().click();
+    const ok = toastIn(page).getByText("参考ソースを削除しました");
+    const conflict = toastIn(page).getByText("実行できませんでした");
+    // 成功トーストが出れば終わり。conflictトーストが出たら畳み直して再試行。
+    await expect(ok.or(conflict).first()).toBeVisible({ timeout: 10_000 });
+    if (await ok.isVisible()) break;
+    await page.reload();
+  }
+  await expect(toastIn(page).getByText("参考ソースを削除しました")).toBeVisible();
 });
 
 // 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。
