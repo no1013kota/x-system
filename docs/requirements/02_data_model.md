@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.80 |
+| バージョン | v1.81 |
 | 更新日 | 2026-08-29 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -249,6 +249,8 @@ Indexes: (`status`, `available_at`, `created_at`), (`x_account_id`, `created_at 
 
 Partial unique indexes: (`draft_id`) where kind=`post_publish` and status in (`queued`,`running`); (`draft_id`) where kind=`image_generation` and status in (`queued`,`running`); (`x_account_id`) where kind=`suggestion` and status in (`queued`,`running`); (`x_account_id`) where kind in (`learning_analysis`,`md_merge`) and status=`running`。
 
+**保持は終了から90日**（T-M8-363・運営者の指示 2026-08-29）。以前は削除経路が1つも無く、実行のたびに1行ずつ**無限に増えていた**（`input` には上書きプロンプト最大8,000字まで入る・原則4）。`scheduler_tick` のcleanupが**終端した行（succeeded/failed/canceled）だけ**を1起動500件まで削除する——queued/running を消すと実行側が「jobが無い」で黙って終わる。子（`parent_job_id`）が残っている親は消さない。**40日ではなく90日**にするのは `request_key` が全statusにまたがる恒久uniqueで、行を消すと同じキーで作り直せるようになるため（予約の期限60分や日次キーの寿命を大きく超えるところまで待つ）。成果物（下書き・レポート）は別の表にあるので、行を消しても画面から何かが消えることはない。
+
 「同一Xアカウントの全kind直列」と「同一userの`post_publish`直列」は、workerのlease transactionが取得する`pg_advisory_xact_lock`で強制する（要件04 §4。上記indexはDBレベルの追加ガード）。
 
 RLS: 本人select可。writeはServer only。
@@ -454,7 +456,7 @@ X再連携通知は、token refreshが**token endpointの4xx**（`invalid_grant`
 
 Indexes: (`object_id`, `event_created_at desc`)
 
-RLS: select/writeともservice roleのみ。
+RLS: select/writeともservice roleのみ。**保持は`event_created_at`から90日**（T-M8-363）。重複が届くのはStripeの再送窓（数日）の中だけなので、それを大きく超えた行が守るものは無い。以前は削除経路が無く増え続けていた。
 
 ### 3.17 `external_api_usage_events`
 
@@ -1080,3 +1082,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.78 | 2026-08-28 | prompt_presets: 使用中が1件も無ければ一覧表示時に補うことを明記（T-M8-355） |
 | v1.79 | 2026-08-28 | cron_runs に毎時窓 `x_token_refresh` を追加（Xトークンの先回り更新・T-M8-359） |
 | v1.80 | 2026-08-29 | §3.4 `base_md_versions` を廃止（アカウント.mdの変更履歴・ロールバックを撤去。控えは `prompt_presets` が担う・T-M8-362） |
+| v1.81 | 2026-08-29 | `generation_jobs`（終了から90日・終端のみ）と `stripe_events`（90日）に保持期間を追加（T-M8-363） |

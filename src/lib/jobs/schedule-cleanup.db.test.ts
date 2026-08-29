@@ -229,4 +229,68 @@ describe("cleanupOldData (db)", () => {
       });
     }
   });
+
+  /**
+   * 終わったジョブとStripeイベントにも保持期間を付けた（T-M8-363・運営者の指示 2026-08-29）。
+   *
+   * **どちらも削除経路が1つも無く、使うほど無限に増えていた**（原則4）。
+   * 実行中の行を消すと実行側が「job が無い」で黙って終わるので、**終端したものだけ**を消す。
+   */
+  it("終わって90日を過ぎたジョブとStripeイベントを消し、実行中・直近は残す", async () => {
+    const eventOld = `evt_old_${randomUUID()}`;
+    const eventNew = `evt_new_${randomUUID()}`;
+    const seed = await withTransaction(async (c) => {
+      const { uid, xid } = await makeAccount(c);
+      const job = async (status: string, ageDays: number): Promise<string> => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, status, finished_at, input)
+           values ($1, 'learning_analysis', 'manual', $2::job_status,
+                   now() - make_interval(days => $3), '{}'::jsonb) returning id`,
+          [xid, status, ageDays],
+        );
+        return rows[0].id;
+      };
+      const running = (
+        await c.query<{ id: string }>(
+          `insert into generation_jobs (x_account_id, kind, trigger, status, input)
+           values ($1, 'learning_analysis', 'manual', 'running', '{}'::jsonb) returning id`,
+          [xid],
+        )
+      ).rows[0].id;
+      await c.query(
+        `insert into stripe_events (event_id, type, event_created_at)
+         values ($1, 'invoice.paid', now() - make_interval(days => 91)),
+                ($2, 'invoice.paid', now())`,
+        [eventOld, eventNew],
+      );
+      return {
+        uid,
+        oldDone: await job("succeeded", 91),
+        recentDone: await job("succeeded", 3),
+        running,
+      };
+    });
+
+    try {
+      await cleanupOldData({ db: pooledDb });
+
+      const jobAlive = async (id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from generation_jobs where id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+      const eventAlive = async (id: string): Promise<boolean> =>
+        ((await withTransaction((c) => c.query(`select 1 from stripe_events where event_id = $1`, [id])))
+          .rowCount ?? 0) > 0;
+
+      expect(await jobAlive(seed.oldDone), "終わって90日を過ぎたジョブが残っている").toBe(false);
+      expect(await jobAlive(seed.recentDone), "直近のジョブまで消している").toBe(true);
+      expect(await jobAlive(seed.running), "実行中のジョブを消している（実行側が黙って終わる）").toBe(true);
+      expect(await eventAlive(eventOld)).toBe(false);
+      expect(await eventAlive(eventNew)).toBe(true);
+    } finally {
+      await withTransaction(async (c) => {
+        await c.query(`delete from auth.users where id = $1`, [seed.uid]);
+        await c.query(`delete from stripe_events where event_id = any($1)`, [[eventOld, eventNew]]);
+      });
+    }
+  });
 });

@@ -319,6 +319,9 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
       newsFetchOutcomes: expect.any(Number),
       // DB接続の待ちの記録（T-M8-198）。通常は0件のまま消える対象が無い。
       poolEvents: expect.any(Number),
+      // 終わったジョブとStripeイベントの保持期間（T-M8-363）。
+      generationJobs: expect.any(Number),
+      stripeEvents: expect.any(Number),
       images: expect.any(Number),
     });
     expect(errors.filter((e) => e.includes("[scheduler_tick cleanup]"))).toEqual([]);

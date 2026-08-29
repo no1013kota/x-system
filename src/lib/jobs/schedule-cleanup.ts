@@ -12,6 +12,19 @@ import type { Queryable } from "../x/token-refresh";
  */
 
 const RETENTION_DAYS = 40;
+/**
+ * 終わったジョブとStripeイベントの保持期間（T-M8-363・運営者の指示 2026-08-29）。
+ *
+ * **どちらも削除経路が1つも無く、利用者が使うほど無限に増えていた**（原則4「費用が見える」）。
+ * `generation_jobs` は1実行1行で `input` に上書きプロンプト（最大8,000字）まで入るため、
+ * 積み上がりが最も速い。成果物（下書き・レポート）は別の表にあるので、
+ * 終わったジョブの行を消しても**画面から何かが消えることはない**。
+ *
+ * **40日ではなく90日**にするのは `request_key` の冪等キーのため。全statusにまたがる恒久uniqueで、
+ * 行を消すと同じキーで作り直せるようになる。予約の期限（60分）や日次キーの寿命を大きく超える
+ * ところまで待てば、その差が意味を持つ場面が無くなる。
+ */
+const JOB_RETENTION_DAYS = 90;
 const IMAGE_STALE_HOURS = 24;
 const BATCH = 500;
 const IMAGE_BATCH = 100;
@@ -36,6 +49,10 @@ export interface CleanupResult {
   newsFetchOutcomes: number;
   /** DB接続の待ちの記録（T-M8-198）。通常は0件のまま。 */
   poolEvents: number;
+  /** 終わってから90日を過ぎたジョブ（T-M8-363）。 */
+  generationJobs: number;
+  /** 90日を過ぎたStripeイベント台帳（T-M8-363）。 */
+  stripeEvents: number;
   images: number;
 }
 
@@ -146,6 +163,49 @@ async function deleteOldCronRuns(db: Queryable): Promise<number> {
   return rowCount ?? 0;
 }
 
+/**
+ * (4d) 終わってから `JOB_RETENTION_DAYS` を過ぎた `generation_jobs` を削除（T-M8-363）。
+ *
+ * **終端したものだけ**を消す（queued/running は絶対に消さない——実行中の行が消えると
+ * 実行側が「job が無い」で黙って終わる）。子ジョブ（`parent_job_id`）を先に消してから親を消す。
+ */
+async function deleteOldGenerationJobs(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from generation_jobs
+      where id in (
+        select id from generation_jobs
+         where status in ('succeeded', 'failed', 'canceled')
+           and finished_at is not null
+           and finished_at < now() - make_interval(days => $1)
+           -- 親が残っている子は先に消えるが、親は子が消えるまで残す（FKの向きに合わせる）
+           and not exists (
+             select 1 from generation_jobs child where child.parent_job_id = generation_jobs.id
+           )
+         order by finished_at
+         limit $2)`,
+    [JOB_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * (4e) `JOB_RETENTION_DAYS` を過ぎた `stripe_events`（webhookの重複受付を防ぐ台帳）を削除（T-M8-363）。
+ *
+ * 重複が届くのはStripeの再送窓（数日）の中だけなので、90日を過ぎた行が守るものは無い。
+ */
+async function deleteOldStripeEvents(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from stripe_events
+      where event_id in (
+        select event_id from stripe_events
+         where event_created_at < now() - make_interval(days => $1)
+         order by event_created_at
+         limit $2)`,
+    [JOB_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
 /** (4c) occurred_at が40日超の db_pool_events（接続待ちの記録）を削除（T-M8-198）。 */
 async function deleteOldPoolEvents(db: Queryable): Promise<number> {
   const { rowCount } = await db.query(
@@ -234,6 +294,8 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     cronRuns: 0,
     newsFetchOutcomes: 0,
     poolEvents: 0,
+    generationJobs: 0,
+    stripeEvents: 0,
     images: 0,
   };
 
@@ -266,6 +328,12 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("db_pool_events", async () => {
     result.poolEvents = await deleteOldPoolEvents(db);
+  });
+  await step("generation_jobs", async () => {
+    result.generationJobs = await deleteOldGenerationJobs(db);
+  });
+  await step("stripe_events", async () => {
+    result.stripeEvents = await deleteOldStripeEvents(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;
