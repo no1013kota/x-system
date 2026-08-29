@@ -33,7 +33,7 @@ const VALID_BASE_MD = [
   "",
 ].join("\n");
 
-test("アカウント.mdを編集して保存でき、versionが上がって履歴に残る", async ({ accounts, page }) => {
+test("アカウント.mdを編集して保存でき、versionが上がる", async ({ accounts, page }) => {
   const account = await accounts.create("base-md");
   await signIn(page, account);
   await page.goto("/app/prompts?sec=account-md");
@@ -46,8 +46,22 @@ test("アカウント.mdを編集して保存でき、versionが上がって履�
   await editor.fill(VALID_BASE_MD.replace("テスト用の発信者", `テスト用の発信者 ${marker}`));
   await page.getByRole("button", { name: "保存", exact: true }).click();
 
-  // 保存できたことが画面で分かる（versionつき）
-  await expect(page.getByText("保存しました", { exact: false })).toBeVisible({ timeout: 20_000 });
+  /*
+    **成功と失敗の両方を待つ**（T-M8-368）。保存の失敗はトーストではなくインライン通知に出る
+    仕様（要件06 §2.1）なので、成功トーストだけを待つと、失敗したときの結果が
+    「要素が見つからない」になり**何が起きたのか分からない**（原則1/2）。
+    先に出た方を掴み、失敗ならその文言を添えて落とす。
+
+    待ちを60秒にしているのは、devサーバが**Server Actionを初回だけコンパイルする**ため。
+    2026-08-29、CIの冷えたrunnerでここが20秒を超えて落ちた（手元は3〜7秒で通る）。
+    `/app/prompts` はglobalSetupで温めているが、温めるのはGETでactionは含まれない。
+  */
+  const savedToast = page.getByText("保存しました", { exact: false });
+  const inlineError = page.locator('[data-slot="notice"][data-tone="danger"]');
+  await expect(savedToast.or(inlineError).first()).toBeVisible({ timeout: 60_000 });
+  if (await inlineError.first().isVisible()) {
+    throw new Error(`保存が失敗した: ${await inlineError.first().innerText()}`);
+  }
 
   // DBに反映され、versionが上がっている
   const [saved] = await query<{ base_md: string; version: number }>(
@@ -203,7 +217,9 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     const ok = toastIn(page).getByText("参考ソースを削除しました");
     const conflict = toastIn(page).getByText("実行できませんでした");
     // 成功トーストが出れば終わり。conflictトーストが出たら畳み直して再試行。
-    await expect(ok.or(conflict).first()).toBeVisible({ timeout: 10_000 });
+    // 待ちは長めに取る（負荷で結果が変わらないように・T-M8-368）。どちらのトーストが出たかで
+    // 分岐するので、長くしても失敗の検出は遅れない（成功なら即座に抜ける）。
+    await expect(ok.or(conflict).first()).toBeVisible({ timeout: 30_000 });
     if (await ok.isVisible()) break;
     await page.reload();
   }
