@@ -192,10 +192,21 @@ export function NewsBrowser({
           )}
         </div>
       ) : (
-        // 2カラム。`minmax(0,1fr)` で長いタイトルによる潰れを防ぐ（デザイン §形状・余白）。
-        <ul className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(0,1fr))] xl:grid-cols-2">
+        /*
+          広い画面だけ2カラム（デザイン §形状・余白）。
+          **`repeat(auto-fill, minmax(0,1fr))` は使わない**（T-M8-365）。最小幅が0だと
+          `auto-fill` が入る限りトラックを作るため、**狭い画面でカードが数十pxまで潰れ**、
+          中の固定幅（「すぐに投稿作成」ボタン）がはみ出してページごと横スクロールした。
+          件数が増えるほど起きるので、**データが増えたときだけ落ちる**形になっていた。
+        */
+        <ul className="grid gap-3.5 xl:grid-cols-2">
           {page.items.map((item) => (
-            <li className={`${cardClassName} flex flex-col p-4`} key={item.id}>
+            /*
+              **`min-w-0` が要る**（T-M8-365）。gridの子は既定で `min-width: auto` なので、
+              中身（折り返せない長いURL等）より小さくならず、`break-words` を付けても
+              **箱の方が広がってページごと横スクロールする**。
+            */
+            <li className={`${cardClassName} flex min-w-0 flex-col p-4`} key={item.id}>
               <div className="flex items-center gap-2">
                 <CategoryChip category={item.category} />
                 <Badge tone={IMPACT_TONE[item.impact] ?? "neutral"}>
@@ -207,15 +218,21 @@ export function NewsBrowser({
                   </span>
                 ) : null}
               </div>
+              {/*
+                **折り返せない長い文字列で横に伸びない**（T-M8-365）。見出しと本文はAIが書いた
+                文章がそのまま入るので、長いURLや区切りの無い語が混ざりうる。`break-words` が
+                無いと390pxで**ページ全体が横スクロールする**（実データが入っている通し実行でだけ
+                mobile-layout が落ちて見つかった。単独実行では素通しだった）。
+              */}
               <a
-                className="mt-2 block text-sm font-bold leading-5 text-ink hover:underline"
+                className="mt-2 block text-sm font-bold leading-5 text-ink break-words hover:underline"
                 href={item.sourceUrl}
                 rel="noopener noreferrer"
                 target="_blank"
               >
                 {item.title}
               </a>
-              <p className="mt-1 text-body leading-5 text-ink-2">{item.summary}</p>
+              <p className="mt-1 text-body leading-5 text-ink-2 break-words">{item.summary}</p>
               <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
                 <span className="truncate text-caption text-ink-3">{domainOf(item.sourceUrl)}</span>
                 <span className="ml-auto">

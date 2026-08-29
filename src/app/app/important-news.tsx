@@ -75,8 +75,15 @@ export function ImportantNewsCard({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1.5 text-sm font-bold leading-5 text-ink">{item.title}</p>
-              <p className="mt-1 line-clamp-2 text-body leading-5 text-ink-2">{item.summary}</p>
+              {/*
+                **折り返せない長い文字列で横に伸びない**（T-M8-365）。見出し・本文はAIが書いた
+                文章がそのまま入る。`line-clamp` は行数を切るだけで**1行の幅は切らない**ので、
+                長いURLが1つ混ざるとページ全体が横スクロールする。
+              */}
+              <p className="mt-1.5 text-sm font-bold leading-5 text-ink break-words">{item.title}</p>
+              <p className="mt-1 line-clamp-2 text-body leading-5 text-ink-2 break-words">
+                {item.summary}
+              </p>
               <a
                 className="mt-2 inline-block text-caption text-brand underline-offset-2 hover:underline"
                 href={item.sourceUrl}
