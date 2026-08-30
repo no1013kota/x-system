@@ -1,4 +1,4 @@
-import { NEWS_MAX_STORED_ITEMS, NEWS_ORDER_BY } from "../news-items";
+import { NEWS_MAX_STORED_PER_CATEGORY, NEWS_ORDER_BY } from "../news-items";
 import type { Queryable } from "../x/token-refresh";
 
 /**
@@ -131,10 +131,10 @@ async function deleteUnreferencedNewsItems(db: Queryable): Promise<number> {
 }
 
 /**
- * (2b) 新着順で `NEWS_MAX_STORED_ITEMS`（500件）を超えた news_items を削除する
- * （運営者の指示 2026-08-22・T-M8-188。DBの肥大防止）。一覧の表示上限と同じ並び
- * （`NEWS_ORDER_BY`）で数え、draft・通知payloadから参照される行は40日cleanupと同じ
- * ガードで残す（参照付きの古い行は表示上限の外なので画面には出ない）。
+ * (2b) **分野ごとに**新着順で `NEWS_MAX_STORED_PER_CATEGORY`（150件）を超えた news_items を
+ * 削除する（T-M8-188のDB肥大防止をT-M8-382で分野別へ。RSS化で流量が分野間で大きく違い、
+ * 全体上限だと多産な分野が低頻度・高価値の分野を押し出すため）。並びは一覧と同じ
+ * `NEWS_ORDER_BY`、draft・通知payloadから参照される行は40日cleanupと同じガードで残す。
  */
 async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
   // 参照ガードは**LIMITより前**（サブクエリ内）に置く。DELETE側に置くと、参照付きの行が
@@ -144,7 +144,7 @@ async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
     `delete from news_items
       where id in (
         select ranked.id from (
-          select id, row_number() over (order by ${NEWS_ORDER_BY}) as rn
+          select id, row_number() over (partition by category order by ${NEWS_ORDER_BY}) as rn
             from news_items) ranked
          where ranked.rn > $1
            and not exists (select 1 from drafts d where d.source_news_item_id = ranked.id)
@@ -152,7 +152,7 @@ async function trimNewsItemsOverCap(db: Queryable): Promise<number> {
              select 1 from notifications n
               where jsonb_exists(n.payload->'news_item_ids', ranked.id::text))
          limit $2)`,
-    [NEWS_MAX_STORED_ITEMS, BATCH],
+    [NEWS_MAX_STORED_PER_CATEGORY, BATCH],
   );
   return rowCount ?? 0;
 }

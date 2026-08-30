@@ -78,9 +78,9 @@ describe("cleanupOldData (db)", () => {
     return rows[0].id;
   }
 
-  it("新着500件を超えた news_items を削除し、参照付きの行は残す（T-M8-188）", async () => {
+  it("分野ごとに新着150件を超えた news_items を削除し、参照付き・他分野の行は残す（T-M8-188→T-M8-382）", async () => {
     const tag = randomUUID().slice(0, 8);
-    // 500件上限を確実に超えるよう、まとめて520件seedする（既存行数に依存しない）。
+    // ai分野の上限（150件）を確実に超えるよう、まとめて520件seedする（既存行数に依存しない）。
     const { referencedId, notifUid } = await withTransaction(async (c: PoolClient) => {
       await c.query(
         `insert into news_items (category, title, summary, source_url, impact, fetched_at)
@@ -108,17 +108,20 @@ describe("cleanupOldData (db)", () => {
         seedした520件はすべて30分より前なので、この境界で切れば意図（上限まで削れているか）は保てる。
       */
       const { rows } = await pooledDb.query<{ n: string; ref: string }>(
+        // 数えるのは**このテストがseedしたai分野の行だけ**（title一致）。他分野・他テストの行を
+        // 混ぜると分野別上限の検証にならない（全体500上限の頃の余裕が無くなった・T-M8-382）。
         `select
            (select count(*) from news_items ni
-             where ni.fetched_at <= now() - interval '31 minutes'
+             where ni.title = $2
                and not exists (select 1 from drafts d where d.source_news_item_id = ni.id)
                and not exists (
                  select 1 from notifications n
                   where jsonb_exists(n.payload->'news_item_ids', ni.id::text)))::text as n,
            (select count(*) from news_items where id = $1)::text as ref`,
-        [referencedId],
+        [referencedId, `bulk-${tag}`],
       );
-      expect(Number(rows[0].n), "参照なし行は500件以下へ切り詰められる").toBeLessThanOrEqual(500);
+      // 分野別上限（150件）＋他テストの並行分の余裕（境界は31分で切ってあるので実質このseedのみ）。
+      expect(Number(rows[0].n), "参照なし行は分野別150件以下へ切り詰められる").toBeLessThanOrEqual(150);
       expect(rows[0].ref, "参照付きの行は上限の外でも残る").toBe("1");
     } finally {
       await withTransaction(async (c) => {
