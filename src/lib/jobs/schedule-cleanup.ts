@@ -73,6 +73,8 @@ export interface CleanupResult {
   followerSnapshots: number;
   /** 400日を過ぎたKPIスナップショット（T-M8-373）。 */
   kpiDaily: number;
+  /** 40日を過ぎたページ閲覧の生記録（T-M8-378。日次集計は kpi_daily が持つ）。 */
+  pageViews: number;
   images: number;
 }
 
@@ -165,6 +167,16 @@ async function deleteOldUsageEvents(db: Queryable): Promise<number> {
          order by occurred_at
          limit $2)`,
     [COST_RETENTION_DAYS, BATCH],
+  );
+  return rowCount ?? 0;
+}
+
+/** (3c) 40日超のページ閲覧の生記録を削除（T-M8-378。日次集計は kpi_daily が400日持つ）。 */
+async function deleteOldPageViews(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `delete from page_views
+      where view_date < current_date - make_interval(days => $1)`,
+    [RETENTION_DAYS],
   );
   return rowCount ?? 0;
 }
@@ -362,6 +374,7 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
     timelinePosts: 0,
     followerSnapshots: 0,
     kpiDaily: 0,
+    pageViews: 0,
     images: 0,
   };
 
@@ -409,6 +422,9 @@ export async function cleanupOldData(deps: CleanupDeps): Promise<CleanupResult> 
   });
   await step("kpi_daily", async () => {
     result.kpiDaily = await deleteOldKpiDaily(db);
+  });
+  await step("page_views", async () => {
+    result.pageViews = await deleteOldPageViews(db);
   });
   if (deps.removeStorageObjects && deps.imageBucket) {
     const removeStorageObjects = deps.removeStorageObjects;

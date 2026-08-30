@@ -26,6 +26,25 @@ test("未ログインはログイン画面へ送られる", async ({ page }) => 
   await expect(page).toHaveURL(/\/login/);
 });
 
+test("公開ページを開くと閲覧が記録される（bot・先読み除外つき・T-M8-378)", async ({ page }) => {
+  // 未ログインでLPを開くだけで page_views に行が増える（記録は応答後のafter()なのでpollで待つ）。
+  await page.goto("/");
+  await expect
+    .poll(
+      async () =>
+        Number(
+          (
+            await query<{ n: string }>(
+              `select coalesce(sum(views), 0)::text as n from page_views
+                where path = '/' and view_date = (now() at time zone 'Asia/Tokyo')::date`,
+            )
+          )[0]?.n ?? 0,
+        ),
+      { timeout: 15_000, message: "LPの閲覧が記録されること" },
+    )
+    .toBeGreaterThanOrEqual(1);
+});
+
 test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", async ({ accounts, page }) => {
   const operatorEmail = process.env.SUPPORT_EMAIL;
   expect(operatorEmail, "SUPPORT_EMAIL が .env に必要です（devサーバの起動条件でもある）").toBeTruthy();
@@ -65,6 +84,11 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
   await expect(
     page.getByRole("heading", { name: "ファネル（いまいる利用者の到達段階）" }),
   ).toBeVisible();
+  // 入口ファネル（未ログイン含む・T-M8-378）も出る。
+  await expect(
+    page.getByRole("heading", { name: /入口ファネル/ }),
+  ).toBeVisible();
+  await expect(page.getByText("ホーム（LP）")).toBeVisible();
   // ファネルには少なくとも自分（登録1人以上）が入る。
   const registered = page.getByRole("row").filter({ hasText: "登録" }).first();
   await expect(registered).toBeVisible();

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { recordPageView } from "@/lib/ops/page-view-server";
 
 import { AuthPageShell } from "@/components/auth/auth-page-shell";
 
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
   title: `会員登録 | ${APP_NAME}`,
 };
 
-export default function SignUpPage() {
+export default async function SignUpPage() {
+  // 入口ファネル（T-M8-378）。応答後に書くので表示は遅くならない。
+  await recordPageView("/signup");
+
   return (
     <AuthPageShell
       // 6桁コード方式（T-M8-121）。**リンクを追わせない**——以前の文言は

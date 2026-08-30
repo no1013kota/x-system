@@ -59,6 +59,7 @@ describe("RLS policies & ownership trigger", () => {
     "external_api_usage_events",
     "kpi_daily",
     "news_fetch_outcomes",
+    "page_views",
     "stripe_events",
   ];
 

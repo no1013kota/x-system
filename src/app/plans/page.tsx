@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { recordPageView } from "@/lib/ops/page-view-server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -37,6 +38,9 @@ interface PlansPageProps {
 }
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
+  // 入口ファネル（T-M8-378）。応答後に書くので表示は遅くならない。
+  await recordPageView("/plans");
+
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   // Checkout直後の反映待ち。反映が済むと下の判定で /app へリダイレクトされる。
   const awaitingCheckout = params.checkout === "success";

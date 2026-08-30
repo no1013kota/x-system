@@ -9,6 +9,7 @@ import type { Queryable } from "../x/token-refresh";
 import {
   jstDateOf,
   readAdminSummary,
+  readEntryFunnel,
   readFunnel,
   readKpiSeries,
   readMonthCostBreakdown,
@@ -204,6 +205,41 @@ describe("KPIスナップショット（db）", () => {
       [windowKey],
     );
     expect(Number(rows[0]?.n ?? 1), "claimが残っていない（次のtickが再試行できる）").toBe(0);
+  });
+
+  it("ページ閲覧が日次集計と入口ファネルへ載る（T-M8-378）", async () => {
+    if (!available) return;
+    // 昨日の閲覧を2人ぶん作る（同じ人の2回目は views が増えるだけで行は増えない）。
+    const day = (await db.query<{ d: string }>(`select (current_date - 1)::text as d`)).rows[0].d;
+    const h1 = `t378-${randomUUID().slice(0, 8)}`;
+    const h2 = `t378-${randomUUID().slice(0, 8)}`;
+    try {
+      for (const h of [h1, h1, h2]) {
+        await db.query(
+          `insert into page_views (view_date, path, visitor_hash) values ($1, '/', $2)
+           on conflict (view_date, path, visitor_hash) do update set views = page_views.views + 1`,
+          [day, h],
+        );
+      }
+      const nowIso = new Date().toISOString();
+      await runDailyKpiSnapshot(db, nowIso);
+      const { rows } = await db.query<{ metric: string; value: string }>(
+        `select metric, value::text as value from kpi_daily
+          where metric in ('page_views', 'page_uniques') and dimension = '/' and metric_date = $1`,
+        [day],
+      );
+      const views = rows.find((r) => r.metric === "page_views");
+      const uniques = rows.find((r) => r.metric === "page_uniques");
+      expect(Number(views?.value ?? 0)).toBeGreaterThanOrEqual(3);
+      expect(Number(uniques?.value ?? 0)).toBeGreaterThanOrEqual(2);
+
+      const entry = await readEntryFunnel(db);
+      expect(entry.map((s) => s.path)).toEqual(["/", "/signup", "/plans"]);
+      expect(entry[0].views).toBeGreaterThanOrEqual(3);
+      expect(entry[0].uniqueVisitorDays).toBeGreaterThanOrEqual(2);
+    } finally {
+      await db.query(`delete from page_views where visitor_hash in ($1, $2)`, [h1, h2]);
+    }
   });
 
   it("ファネルは登録済みの利用者を段階別に数える", async () => {
