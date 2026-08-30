@@ -133,6 +133,15 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
     files: ["lib/post/source-url-server.ts"],
   },
   {
+    id: "news_rss",
+    label: "ニュースRSSフィードの取得（読み取り専用のHTTP GET）",
+    guard:
+      "宛先はコードに固定した監視フィード（`lib/news/feeds.ts`・実在確認済みの報道機関のみ）への" +
+      "読み取り専用GET。外部状態を変えず、秘密値も送らない。cron本体（route）は " +
+      "productionOnly で stg・ローカルでは走らない。スモークは運営者が明示的に叩いたときだけ。",
+    files: ["app/api/cron/news-fetch/route.ts", "lib/smoke/scenarios.ts"],
+  },
+  {
     id: "captcha_status",
     label: "人間確認が有効かの確認（自分のSupabaseプロジェクトへの読み取り試行）",
     guard:

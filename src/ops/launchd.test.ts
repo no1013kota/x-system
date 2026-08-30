@@ -6,8 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { NEWS_FETCH_JST_HOURS } from "../lib/jobs/news-research";
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -60,11 +58,9 @@ describe("launchd plists", () => {
     if (!plutilOk) return ctx.skip();
     const news = await plistJson("com.spaceai.news-fetch.plist");
     expect(news.Label).toBe("com.spaceai.news-fetch");
-    const newsSched = news.StartCalendarInterval as { Hour: number; Minute: number }[];
-    // 起動時刻は費用に直結する。**コード側の定義（NEWS_FETCH_JST_HOURS）と一致すること**を検査し、
-    // 片方だけ変えて取りこぼす／余計に課金される状態を防ぐ（T-M7-55）。
-    expect(newsSched.map((e) => e.Hour)).toEqual([...NEWS_FETCH_JST_HOURS]);
-    expect(newsSched.every((e) => e.Minute === 0)).toBe(true);
+    const newsSched = news.StartCalendarInterval as { Minute: number }[];
+    // RSS巡回は20分おき（T-M8-380）。vercel.json の `*/20 * * * *` と同じ意味に保つ。
+    expect(newsSched.map((e) => e.Minute)).toEqual([0, 20, 40]);
 
     const tick = await plistJson("com.spaceai.scheduler-tick.plist");
     const tickSched = tick.StartCalendarInterval as { Minute: number }[];

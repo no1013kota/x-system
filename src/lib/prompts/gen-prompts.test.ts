@@ -10,13 +10,13 @@ import {
   PT_MD_MERGE,
   PT_SUGGEST,
   SYS_GEN,
-  SYS_NEWS,
+  SYS_NEWS_SUM,
   SYSTEM_DEFAULT_TEMPLATES,
 } from "./gen-prompts";
 
 describe("GEN prompt constants", () => {
   it("match the design doc §6 snapshot (drift detection)", () => {
-    expect({ SYS_GEN, SYS_NEWS, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+    expect({ SYS_GEN, SYS_NEWS_SUM, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
   });
 
   it("PT-MD-MERGE はアカウント設定のJSONを返す契約（§6.14, T-M8-341）", () => {
@@ -59,12 +59,12 @@ describe("GEN prompt constants", () => {
     for (const p of [PT_L1, PT_L2]) expect(p).toBe(p.trim());
   });
 
-  it("SYS-NEWS keeps its runtime placeholders and JSON output contract (§6.10)", () => {
-    expect(SYS_NEWS).toContain("{{category_ja}}");
-    expect(SYS_NEWS).toContain("{{hours}}");
-    expect(SYS_NEWS).toContain("最大{{n}}件");
-    expect(SYS_NEWS).toContain('"impact":"high|mid|low"');
-    expect(SYS_NEWS).toBe(SYS_NEWS.trim());
+  it("SYS-NEWS-SUM keeps its runtime placeholder and input contract (§6.10・T-M8-380)", () => {
+    expect(SYS_NEWS_SUM).toContain("{{category_ja}}");
+    // RSSの要約はWeb検索を使わない（発見はフィードが済ませている）。
+    expect(SYS_NEWS_SUM).toContain("<articles>");
+    expect(SYS_NEWS_SUM).toContain('impact: high');
+    expect(SYS_NEWS_SUM).toBe(SYS_NEWS_SUM.trim());
   });
 
   it("SYS-GEN declares the JSON output contract", () => {

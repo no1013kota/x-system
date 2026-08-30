@@ -1,81 +1,73 @@
 import { pooledQueryable } from "@/lib/db/pool";
-import { hourWindowKey } from "@/lib/jobs/cron";
+import { twentyMinWindowKey } from "@/lib/jobs/cron";
 import { handleCronRoute } from "@/lib/jobs/cron-route";
-import { createDeadline } from "@/lib/jobs/deadline";
 import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest";
-import { runNewsFetch } from "@/lib/jobs/news-fetch";
-import { researchNews } from "@/lib/jobs/news-research";
+import { runNewsRssFetch } from "@/lib/jobs/news-rss";
 
-/** ニュース取得cron（要件04 §2/§6, N-1, T-M4-11）。定時起動・6分野同時（最大6並列）・分野別commit。 */
+/**
+ * ニュース取得cron（要件04 §2/§6, N-1）。**RSS巡回**（T-M8-380・運営者の指示 2026-08-30）。
+ *
+ * 旧: 1日2回、AIがWeb検索でリサーチ（Message Batches・1回$2.3）。
+ * 新: **20分おきにRSSを巡回**し、新着があったときだけ安いモデルで要約する。
+ * 発見は無料なので、頻度を上げても費用は新着の件数にしか比例しない。
+ */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// 6分野を1巡で回しても、1分野の実行予算（deadline 180秒）＋後処理に余裕を持たせる
-// （200秒だと1分野が遅いだけで打ち切られ、ダイジェスト通知まで消える・T-M8-192）。
-export const maxDuration = 300;
+// フィード十数本のHTTP取得＋新着があれば要約1〜数call。90秒あれば足りるが余裕を持つ。
+export const maxDuration = 120;
 
 const pooledDb = pooledQueryable();
+
+/** フィード取得。1本10秒で諦める（遅い1本に巡回全体を引きずらせない）。 */
+async function fetchFeed(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+  const res = await fetch(url, {
+    headers: { "user-agent": "Mozilla/5.0 (compatible; ExosAI-news/1.0)" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(10_000),
+  });
+  return { ok: res.ok, status: res.status, text: res.ok ? await res.text() : "" };
+}
 
 export async function GET(request: Request): Promise<Response> {
   return handleCronRoute(request, {
     name: "news_fetch",
     /*
-      **stg・ローカルでは動かさない**（T-M8-326・運営者の指示 2026-08-27
-      「私が意図的に戻すまで起動しないように」）。本番の外部API費用の97.6%がこのcronで
-      （実測: Anthropic $23.31 のうち $23.14 が196回）、検証環境で回すと同じだけ費用が出る。
+      **stg・ローカルでは動かさない**（T-M8-326の決定を維持）。RSSなら費用はほぼ無いが、
+      検証環境が同じ記事を保存し始めると「本番で新着が出ない」（検証で先に取得済みに見える）
+      類の混乱は起きないものの、動作確認はsmokeで明示的に叩く運用に揃えておく。
       戻すときはこの1行を消す。
     */
     productionOnly: true,
-    windowKey: hourWindowKey,
+    windowKey: twentyMinWindowKey,
     work: async ({ now, windowKey }) => {
-      // provider解決はenvに触れるため認証・受付通過後に遅延ロードする（module読込で env 検証を走らせない）。
-      const { resolveNewsProvider } = await import("@/lib/ai/resolve-provider-server");
-      const { collectNewsBatches, newsBatchAvailable, submitNewsBatch } = await import(
-        "@/lib/jobs/news-batch-server"
-      );
-
-      /*
-        **Batchで投げて終わる**（T-M8-338・運営者の指示 2026-08-27）。トークンが半額になる。
-        結果はこの起動では返らないので、20分おきの `news-batch-collect` が取り込む。
-        ここでも1回だけ取り込みを試すのは、**前回ぶんが残っていたら先に片付けるため**
-        （取り込みcronが止まっていても、次の定時で回復する経路を1本持たせる）。
-
-        Batchが使えない構成（`NEWS_TEXT_PROVIDER` がAnthropic以外）では従来どおり同期実行する。
-      */
-      if (newsBatchAvailable()) {
-        const collectedFirst = await collectNewsBatches(now);
-        const { model } = resolveNewsProvider();
-        const submitted = await submitNewsBatch({ windowKey, now, model });
-        // ダイジェスト通知は取り込み側が出す（ここではまだ保存されたニュースが無い）。
-        return {
-          mode: "batch" as const,
-          submitted: submitted !== null,
-          categories: submitted?.categories.length ?? 0,
-          collectedFirst,
-        };
-      }
-
-      const fetched = await runNewsFetch({
+      // provider解決はenvに触れるため認証・受付通過後に遅延ロードする。
+      const { summarizeArticles } = await import("@/lib/news/summarize-server");
+      const fetched = await runNewsRssFetch({
         db: pooledDb,
-        // 分野ごとの結果を残す（0件が「該当なし」か「全件破棄」かを後から説明できるように・T-M7-40）。
+        fetchFeed,
+        summarize: (category, articles) =>
+          summarizeArticles(category, articles, {
+            ledgerKey: `news-sum:${windowKey}:${category}`,
+          }),
+        now,
         windowKey,
-        researchCategory: (category) => {
-          // 分野ごとに新しい deadline を与える（pause_turn継続予算・要件04 §5）。
-          const { textGen, provider, model } = resolveNewsProvider({ deadline: createDeadline() });
-          return researchNews(category, {
-            db: pooledDb,
-            textGen,
-            provider,
-            model,
-            clock: now,
-            ledgerKeyPrefix: `news:${windowKey}:${category}`,
-          });
-        },
         onError: (category, err) => console.error(`[news_fetch] ${category}`, err),
       });
-      // 6分野settle後、成功分野の新規ニュースを対象に時間単位ダイジェストを fan-out する（要件04 §14）。
-      // 通知はアプリ内のみ（メール送信はT-M8-222で廃止）。
+      // 新着があった分だけ時間単位ダイジェストを fan-out する（旧仕組みと同じ・要件04 §14）。
       const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
-      return { ...fetched, digest: { matchedUsers: digest.matchedUsers, notified: digest.notified } };
+      return {
+        totalSaved: fetched.totalSaved,
+        categories: fetched.categories.map((c) => ({
+          category: c.category,
+          ok: c.ok,
+          fetched: c.fetched,
+          saved: c.saved,
+          dropped: c.dropped,
+          feeds: `${c.feedsOk}/${c.feedsTotal}`,
+          errorCode: c.errorCode,
+        })),
+        digest: { matchedUsers: digest.matchedUsers, notified: digest.notified },
+      };
     },
     response: ({ ran, windowKey, result }) => ({
       ok: true,
