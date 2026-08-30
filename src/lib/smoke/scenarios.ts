@@ -6,7 +6,6 @@ import { pooledQueryable } from "../db/pool";
 import { runJob } from "../jobs/worker";
 import { weightedLength } from "../post/text-metrics";
 import { resolveXAccountId } from "./resolve-account";
-import { onlyOutsideWindow } from "@/lib/news-outcome";
 
 /**
  * 実物スモーク（T-M7-25）。**実APIを叩いてアプリの最終成果物まで検証する**。
@@ -84,33 +83,6 @@ export function findProviderMarkup(texts: string[]): string[] {
  * ときだけ全滅＝異常とする。この2つを区別できなかったため、web3分野は長期間0件のまま
  * 「成功」として記録され続けていた。
  */
-/**
- * 判定・整形の実体は `lib/news-outcome.ts`（診断・通知・スモークの単一の正本）。
- * 以前はここと `ops/diagnostics.ts` に同じ判定が二重にあり、通知側には無かった（T-M8-83）。
- */
-export { onlyOutsideWindow } from "@/lib/news-outcome";
-
-export function newsOutcome(
-  items: number,
-  dropped: number,
-  reasons: Record<string, number> = {},
-): { ok: boolean; detail: string } {
-  if (items === 0 && dropped > 0) {
-    // 窓外だけなら「該当なし」と同じ扱い（成功）。件数は出して黙って流さない。
-    if (onlyOutsideWindow(reasons)) {
-      return {
-        ok: true,
-        detail: `取得0件（${dropped}件はいずれも取得窓より古い記事＝その時間帯に新しいニュースが無い）`,
-      };
-    }
-    return {
-      ok: false,
-      detail: `全滅: 取得0件だが${dropped}件を規定外で除外した（応答が出力契約を満たしていない）`,
-    };
-  }
-  if (items === 0) return { ok: true, detail: "取得0件（除外も0件＝該当ニュースが無い）" };
-  return { ok: true, detail: `${items}件取得（除外${dropped}件）` };
-}
 
 // --- シナリオ ---
 
@@ -379,6 +351,33 @@ async function newsRss(): Promise<SmokeResult> {
     if (feedsOk === 0) {
       return { name, ok: false, costUsd: 0, detail: `フィードが1本も読めません（${feeds.length}本試行）` };
     }
+
+    /*
+      **全分野の全フィードの健全性も見る**（T-M8-381）。フィードは相手側の都合で死ぬ
+      （実測: Gaiaxは更新が止まり最新448時間前になっていた）。読めない・空のフィードを
+      名指しで出し、分野が静かに痩せる前に気付けるようにする。AIは呼ばない（HTTPだけ）。
+    */
+    const unhealthy: string[] = [];
+    for (const [cat, list] of Object.entries(NEWS_FEEDS)) {
+      for (const feed of list) {
+        if (cat === "ai") continue; // 上で確認済み
+        try {
+          const res = await fetch(feed.url, {
+            headers: { "user-agent": "Mozilla/5.0 (compatible; ExosAI-news/1.0)" },
+            redirect: "follow",
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!res.ok) {
+            unhealthy.push(`${feed.source}(${res.status})`);
+            continue;
+          }
+          if (parseFeed(await res.text()).length === 0) unhealthy.push(`${feed.source}(0件)`);
+          // eslint-disable-next-line no-restricted-syntax -- 個々の不調は unhealthy の一覧で報告する
+        } catch {
+          unhealthy.push(`${feed.source}(接続不可)`);
+        }
+      }
+    }
     const urls = [...new Set(articles.map((a) => a.url))];
     const { rows } = await db.query<{ source_url: string }>(
       `select source_url from news_items where source_url = any($1)`,
@@ -387,12 +386,15 @@ async function newsRss(): Promise<SmokeResult> {
     const known = new Set(rows.map((r) => r.source_url));
     const fresh = articles.filter((a) => !known.has(a.url)).slice(0, 3);
 
+    const feedWarning =
+      unhealthy.length > 0 ? `読めないフィード: ${unhealthy.join("、")}` : undefined;
     if (fresh.length === 0) {
       return {
         name,
         ok: true,
         costUsd: 0,
         detail: `フィード${feedsOk}/${feeds.length}本から${urls.length}件取得・新着なし（巡回済み）`,
+        warning: feedWarning,
       };
     }
     const summarized = await summarizeArticles("ai", fresh, {
@@ -413,6 +415,7 @@ async function newsRss(): Promise<SmokeResult> {
       // 要約の実費は台帳へ記録済み。ここでは概算を出さない（Haiku級で$0.01未満）。
       costUsd: 0,
       detail: `フィード${feedsOk}/${feeds.length}本・新着${fresh.length}件を要約（例:「${sample?.title ?? ""}」impact=${sample?.impact ?? "?"}）`,
+      warning: feedWarning,
     };
   } catch (error) {
     return { name, ok: false, costUsd: 0, detail: `例外: ${(error as Error).message}` };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeGenerated, findProviderMarkup, newsOutcome, onlyOutsideWindow } from "./scenarios";
+import { describeGenerated, findProviderMarkup } from "./scenarios";
 
 describe("findProviderMarkup", () => {
   it("実測した cite タグを検出する（T-M7-20）", () => {
@@ -18,25 +18,6 @@ describe("findProviderMarkup", () => {
 
   it("正常な本文では空", () => {
     expect(findProviderMarkup(["今週のAIまとめ📰", "条件は a < b です"])).toEqual([]);
-  });
-});
-
-describe("newsOutcome（0件と全滅の区別・T-M7-24）", () => {
-  it("0件かつ除外ありは全滅として失敗にする", () => {
-    const r = newsOutcome(0, 4);
-    expect(r.ok).toBe(false);
-    expect(r.detail).toContain("全滅");
-  });
-
-  it("0件で除外も0件なら正常（該当ニュースが無いだけ）", () => {
-    expect(newsOutcome(0, 0).ok).toBe(true);
-  });
-
-  it("取得できていれば除外があっても成功（件数は残す）", () => {
-    const r = newsOutcome(3, 2);
-    expect(r.ok).toBe(true);
-    expect(r.detail).toContain("3件");
-    expect(r.detail).toContain("2件");
   });
 });
 
@@ -69,31 +50,3 @@ describe("describeGenerated（生成物の形を測って見せる・T-M7-37）"
  * `published_at:too_old` になり「全滅（失敗）」と判定された。実際には**その時間帯に新しい
  * 記事が無かっただけ**で、運営者に直せるものは無い。直せない理由で赤くすると読まれなくなる。
  */
-describe("newsOutcome — 窓外と契約違反を分ける", () => {
-  it("窓外だけで0件なら成功（件数は出す）", () => {
-    const r = newsOutcome(0, 5, { "published_at:too_old": 5 });
-    expect(r.ok).toBe(true);
-    expect(r.detail).toContain("5件はいずれも取得窓より古い");
-  });
-
-  it("契約違反が混じっていれば失敗（直すべきものがある）", () => {
-    expect(newsOutcome(0, 3, { "title:too_big": 3 }).ok).toBe(false);
-    expect(newsOutcome(0, 4, { "title:too_big": 1, "published_at:too_old": 3 }).ok).toBe(false);
-  });
-
-  it("除外0の0件は従来どおり成功", () => {
-    const r = newsOutcome(0, 0, {});
-    expect(r.ok).toBe(true);
-    expect(r.detail).toContain("除外も0件");
-  });
-
-  it("取得できていれば成功", () => {
-    expect(newsOutcome(3, 1, { "title:too_big": 1 }).ok).toBe(true);
-  });
-
-  it("onlyOutsideWindow は理由が空なら false（判断材料が無い）", () => {
-    expect(onlyOutsideWindow({})).toBe(false);
-    expect(onlyOutsideWindow({ "published_at:too_old": 2 })).toBe(true);
-    expect(onlyOutsideWindow({ "published_at:too_old": 2, "summary:too_big": 1 })).toBe(false);
-  });
-});
