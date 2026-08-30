@@ -309,6 +309,39 @@ export async function readKpiSeries(
   return rows.map((r) => ({ date: r.d, value: Number(r.v) }));
 }
 
+/**
+ * ホーム（LP）来訪者の日次推移（T-M8-379・運営者の指示 2026-08-30）。
+ *
+ * 過去分は `kpi_daily`（400日）、**今日の途中経過は生の `page_views`** から足す——
+ * スナップショットは「前日まで」しか書かないので、kpi_dailyだけだと今日が常に0に見える。
+ * 出来事指標は昨日までしか書かれないため日付の重複は起きないが、念のためJS側でも
+ * 同日が2つ来たら後勝ち（生データ優先）にする。
+ */
+export async function readHomeVisitorSeries(
+  db: Queryable,
+  days: number,
+): Promise<KpiSeriesPoint[]> {
+  const { rows } = await db.query<{ d: string; v: string }>(
+    `select d, v from (
+       select metric_date::text as d, sum(value)::text as v
+         from kpi_daily
+        where metric = 'page_uniques' and dimension = '/'
+          and metric_date > current_date - make_interval(days => $1)
+        group by 1
+       union all
+       select view_date::text as d, count(*)::text as v
+         from page_views
+        where path = '/' and view_date = (now() at time zone 'Asia/Tokyo')::date
+        group by 1
+     ) merged
+     order by d`,
+    [days],
+  );
+  const byDate = new Map<string, number>();
+  for (const r of rows) byDate.set(r.d, Number(r.v));
+  return [...byDate.entries()].map(([date, value]) => ({ date, value }));
+}
+
 export interface EntryFunnelStage {
   label: string;
   path: string;

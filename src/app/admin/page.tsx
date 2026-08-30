@@ -12,6 +12,7 @@ import {
   readAdminSummary,
   readEntryFunnel,
   readFunnel,
+  readHomeVisitorSeries,
   readKpiSeries,
   readMonthCostBreakdown,
   readRecentCancellations,
@@ -89,6 +90,7 @@ export default async function AdminPage() {
     cancels,
     users,
     entryFunnel,
+    homeVisitors,
   ] = await Promise.all([
     readAdminSummary(db),
     readFunnel(db),
@@ -101,6 +103,7 @@ export default async function AdminPage() {
     readRecentCancellations(db, 10),
     readUsersOverview(db, 200),
     readEntryFunnel(db),
+    readHomeVisitorSeries(db, SERIES_DAYS),
   ]);
 
   const costSeriesJpy = costSeries.map((p) => ({ ...p, value: p.value * JPY_PER_USD }));
@@ -239,6 +242,7 @@ export default async function AdminPage() {
       {/* 時系列 */}
       <Card as="section" className="mt-6 space-y-8 px-5 py-4">
         <KpiChart points={mrrSeries} title="MRRの推移" unit="円" />
+        <KpiChart points={homeVisitors} title="ホーム来訪者／日（ユニーク・今日を含む）" unit="人" />
         <KpiChart points={usersSeries} title="登録者数（累計）の推移" unit="人" />
         <KpiChart points={costSeriesJpy} title="原価／日（円換算）" unit="円" />
       </Card>

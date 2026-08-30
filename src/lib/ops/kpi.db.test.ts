@@ -11,6 +11,7 @@ import {
   readAdminSummary,
   readEntryFunnel,
   readFunnel,
+  readHomeVisitorSeries,
   readKpiSeries,
   readMonthCostBreakdown,
   readRecentCancellations,
@@ -237,6 +238,30 @@ describe("KPIスナップショット（db）", () => {
       expect(entry.map((s) => s.path)).toEqual(["/", "/signup", "/plans"]);
       expect(entry[0].views).toBeGreaterThanOrEqual(3);
       expect(entry[0].uniqueVisitorDays).toBeGreaterThanOrEqual(2);
+
+      /*
+        来訪者推移は「昨日まで=kpi_daily・今日=生データ」の合成（T-M8-379）。
+        昨日ぶんはスナップショットが書いた値、今日ぶんは生から出ることを両方見る。
+      */
+      const todayHash = `t379-${randomUUID().slice(0, 8)}`;
+      await db.query(
+        `insert into page_views (view_date, path, visitor_hash)
+         values ((now() at time zone 'Asia/Tokyo')::date, '/', $1)
+         on conflict do nothing`,
+        [todayHash],
+      );
+      try {
+        const series = await readHomeVisitorSeries(db, 30);
+        const dates = series.map((p) => p.date);
+        expect(dates).toContain(day); // 昨日（kpi_daily由来）
+        const today = jstDateOf(new Date().toISOString());
+        expect(dates).toContain(today); // 今日（生データ由来）
+        // 昇順・日付の重複なし。
+        expect([...dates].sort()).toEqual(dates);
+        expect(new Set(dates).size).toBe(dates.length);
+      } finally {
+        await db.query(`delete from page_views where visitor_hash = $1`, [todayHash]);
+      }
     } finally {
       await db.query(`delete from page_views where visitor_hash in ($1, $2)`, [h1, h2]);
     }

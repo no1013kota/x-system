@@ -89,6 +89,8 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
     page.getByRole("heading", { name: /入口ファネル/ }),
   ).toBeVisible();
   await expect(page.getByText("ホーム（LP）")).toBeVisible();
+  // 来訪者推移のグラフ（T-M8-379）。
+  await expect(page.getByRole("heading", { name: /ホーム来訪者／日/ })).toBeVisible();
   // ファネルには少なくとも自分（登録1人以上）が入る。
   const registered = page.getByRole("row").filter({ hasText: "登録" }).first();
   await expect(registered).toBeVisible();
