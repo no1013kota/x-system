@@ -28,3 +28,27 @@ export async function isRegisteredEmail(email: string): Promise<boolean> {
   );
   return rows[0]?.exists ?? false;
 }
+
+/**
+ * **設定変更前に登録された未確認アカウントを、ログイン時に確認済みへ揃える**
+ * （T-M8-377・運営者の指示 2026-08-30）。
+ *
+ * 新規登録はメール確認なしで完了する設定（mailer_autoconfirm）なので、確認を要求される
+ * 経路は本来存在しない。ところが設定変更より前に登録された利用者は未確認のまま残っており、
+ * Supabase がログインを `email_not_confirmed` で拒否して**6桁コード画面へ回されていた**。
+ * 登録時に求めない確認をログインでだけ求めるのは一貫しないので、ログイン試行の前に
+ * その場で確認済みへ更新する。
+ *
+ * セキュリティ上の整理: 確認を付けてもセッションは発行されない（パスワードが正しいときだけ
+ * Supabase が発行する）。また「確認なしで使える」こと自体は新規登録が既に許しているので、
+ * この更新で新しくできるようになることは無い。`confirmed_at` は生成列のため
+ * `email_confirmed_at` だけを埋める（E2Eのfixtureと同じ形）。
+ */
+export async function confirmLegacyUnconfirmedEmail(email: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    `update auth.users set email_confirmed_at = now()
+      where lower(email) = lower($1) and email_confirmed_at is null`,
+    [email],
+  );
+  return (rowCount ?? 0) > 0;
+}
