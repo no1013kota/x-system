@@ -32,6 +32,10 @@ jobs:
     name: 型・lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # **stg→main のPRでは走らせない**（T-M8-376）。同じコミットのpush時runが既に検査しており、
+    # 必須チェックはコミット単位で判定されるためpush時の結果がPRにも効く。skippedは必須チェック上
+    # 成功扱い。1リリースで同一内容のフルCIを3回（stg push→PR→main push・計約40分）回していた。
+    if: github.event_name != 'pull_request' || github.head_ref != 'stg'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     # supabase のイメージ取得と Playwright を含むため長め。
     timeout-minutes: 40
+    # static と同じ理由（stg→main のPRはpush時runが検査済み・T-M8-376）。
+    if: github.event_name != 'pull_request' || github.head_ref != 'stg'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,21 +62,51 @@ jobs:
           # 見えて誤検知する**（2026-08-18、手元は緑なのにCIだけが落ちた）。
           # 検査側も浅いcloneを検出して止めるので、ここを消せば赤くなって気付ける。
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+
+      - name: 同一内容の緑を探す（マージ元で検証済みなら以降をスキップ）
+        # **mainへのマージコミットは中身がstg headと同一**（stgはmainから分岐せず常に先行）。
+        # 同じtreeを再検証しても結果は変わらないので、マージ元コミットに成功済みの
+        # 「release:check」check runがあればスキップする（T-M8-376）。
+        # treeが一致しない（真に新しい内容の）pushは従来どおりフルで走る。
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          skip=false
+          if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+            if [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'HEAD^2^{tree}')" ]; then
+              src=$(git rev-parse HEAD^2)
+              greens=$(gh api "repos/${{ github.repository }}/commits/${src}/check-runs" \
+                --jq '[.check_runs[] | select(.name == "release:check（DB・build・E2E）" and .conclusion == "success")] | length')
+              if [ "${greens}" -ge 1 ]; then
+                echo "マージ元 ${src} が同一treeで検証済み。以降をスキップします。"
+                skip=true
+              fi
+            fi
+          fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+
+      - if: steps.reuse.outputs.skip != 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: "26"
           cache: npm
-      - run: npm ci
+      - if: steps.reuse.outputs.skip != 'true'
+        run: npm ci
 
-      - uses: supabase/setup-cli@v1
+      - if: steps.reuse.outputs.skip != 'true'
+        uses: supabase/setup-cli@v1
         with:
           # ローカルと同じCLIを使う（migration適用の挙動差を避ける）。
           version: 2.109.1
 
       - name: ローカルSupabaseを起動（migration＋seedを適用）
+        if: steps.reuse.outputs.skip != 'true'
         run: supabase start
 
       - name: CI用の .env.local を生成
+        if: steps.reuse.outputs.skip != 'true'
         run: |
           set -euo pipefail
           # 出力には local 用のANON/SERVICE_ROLEキーが含まれるのでログへ出さずファイルへ。
@@ -80,16 +116,19 @@ jobs:
 
       - name: service_role の権限が適用されているか（migration 20260726000002 の確認）
         # 2026-07-26 のX連携不具合の原因。ここが落ちたら以降のテストは全滞するので先に見る。
+        if: steps.reuse.outputs.skip != 'true'
         run: |
           set -euo pipefail
           npx vitest run src/lib/db/service-role-grants.db.test.ts
 
       - name: Playwright のブラウザを取得
+        if: steps.reuse.outputs.skip != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: release:check
         # 手元で実行するゲートと同一コマンド。CI側で手順を書き写すと release:check への
         # 追加がCIに反映されず穴が開くため、分解せずそのまま呼ぶ。
+        if: steps.reuse.outputs.skip != 'true'
         run: npm run release:check
 
       - name: 失敗時の証跡を保存
