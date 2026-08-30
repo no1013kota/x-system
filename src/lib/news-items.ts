@@ -27,6 +27,16 @@ export const NEWS_WINDOW_MAX_HOURS = 24;
  */
 export const NEWS_MAX_STORED_ITEMS = 500;
 
+/**
+ * **分野ごと**の保存上限（T-M8-382・RSS化のフォロー）。
+ *
+ * RSS巡回にしたことで流量が分野で大きく違う（実測: 東洋経済系は約40件/日、AINOWは0.5件/日）。
+ * 全体500件の上限だけだと、多産な分野（投資・美容）が新着順の枠を埋め、
+ * **AIのような低頻度・高価値の分野が数日で押し出される**。分野ごとに新着150件を守ることで、
+ * どの分野も自分の枠内でしか消えない（6分野×150=最大900行。1行は短いtextなのでDB肥大は軽微）。
+ */
+export const NEWS_MAX_STORED_PER_CATEGORY = 150;
+
 export const NEWS_IMPACTS = ["high", "mid", "low"] as const;
 
 export const listNewsItemsSchema = z

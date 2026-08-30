@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.64 |
-| 更新日 | 2026-08-30 |
+| バージョン | v1.65 |
+| 更新日 | 2026-08-31 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -308,7 +308,7 @@ flowchart TD
 - タイトル・本文には高impact、同一impactなら新しい順で最大5件を掲載し、全件数と一覧リンクを付ける。対象IDは**固定20件**まで（旧`news_config.max_items`はT-M8-187で廃止）、時間窓とともに`payload`へ保存する。
 - 一部分野が失敗した時間帯は成功分野だけでダイジェストを作り、失敗そのものを利用者へニュース通知として送らない。運営監視へ記録し、次回取得を継続する。
 - アプリ内一覧は`in_app_enabled = true`だけを返す。
-- `scheduler_tick`のcleanupは40日を過ぎた`news`通知を先に削除し、その後に参照されない40日超の`news_items`と、**新着順で500件（`NEWS_MAX_STORED_ITEMS`）を超えた`news_items`**（T-M8-188・DB肥大防止。draft・通知payloadから参照される行は残す）を各500件まで削除する。`external_api_usage_events`の**400日**超の明細（T-M8-373で40→400日）と、400日超の`kpi_daily`、40日超の`page_views`（T-M8-378）も削除する。期限切れ削除の失敗は投稿系jobを失敗させず、Sentryへ記録して次回へ繰り越す。
+- `scheduler_tick`のcleanupは40日を過ぎた`news`通知を先に削除し、その後に参照されない40日超の`news_items`と、**分野ごとに新着順で150件（`NEWS_MAX_STORED_PER_CATEGORY`）を超えた`news_items`**（T-M8-188→T-M8-382。RSS化で流量が分野間で大きく違い、全体上限だと多産な分野〔投資・美容〕が低頻度・高価値の分野〔AI〕を押し出すため分野別へ。draft・通知payloadから参照される行は残す）を各500件まで削除する。`external_api_usage_events`の**400日**超の明細（T-M8-373で40→400日）と、400日超の`kpi_daily`、40日超の`page_views`（T-M8-378）も削除する。期限切れ削除の失敗は投稿系jobを失敗させず、Sentryへ記録して次回へ繰り越す。
 - `scheduler_tick`は、作成から24時間を過ぎてもdraftから参照されないStorage画像も1起動100件までbest effortで削除する。参照確認と削除の間に参照された場合に備え、削除直前にも未参照であることを再確認する。
 
 ## 変更履歴
@@ -402,3 +402,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.62 | 2026-08-29 | 事業KPIの日次スナップショット（tick相乗り・kpi_daily）を追加。原価台帳の保持を40→400日へ（T-M8-373） |
 | v1.63 | 2026-08-30 | 公開3ページの閲覧記録（page_views・40日保持）を追加し、日次集計をkpi_dailyへ（T-M8-378） |
 | v1.64 | 2026-08-30 | ニュース取得をAIリサーチ（Message Batches・1日2回）からRSS巡回（20分おき＋新着だけ安いモデルで要約）へ置き換え（T-M8-380・運営者の指示）。news_batch_collect と news_batches を廃止し、定時トリガーは4本へ |
+| v1.65 | 2026-08-31 | news_itemsの保存上限を全体500件から分野別150件へ（T-M8-382）。監視フィードの実測見直し（sns差し替え・AI英語速報追加・T-M8-381） |
