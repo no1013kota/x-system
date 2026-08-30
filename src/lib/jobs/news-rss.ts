@@ -6,7 +6,13 @@ import {
   clampTitle,
   type NewsItemOut,
   newsItemSchema,
+  PUBLISHED_AT_AGE_SLACK_HOURS,
 } from "../news/item-rules";
+import {
+  META_TOO_OLD_MAX_AGE_H,
+  META_TOO_OLD_MIN_AGE_H,
+  REASON_TOO_OLD,
+} from "../news-outcome";
 import { parseFeed } from "../news/rss";
 import type { ArticleForSummary, SummarizedArticle } from "../news/summarize-server";
 import { canonicalizeSourceUrl } from "../news-url";
@@ -191,12 +197,35 @@ async function runCategory(
     deps.db,
     unique.map((e) => e.url),
   );
-  const fresh = unique
-    .filter((e) => !known.has(e.url))
+  /*
+    **鮮度の判定は要約の前に行う**（2026-08-30 本番初回で実測: 週末はメディアの新着が無く、
+    フィードの在庫（3日〜数か月前の記事）が毎回「要約→鮮度で破棄」を繰り返して
+    AI費用だけが出ていた）。古い記事はAIに渡す前に落とす。落とした件数・古さは
+    outcome に残す（「該当なし」と「全部古かった」を区別するため）。
+  */
+  const cutoffMs = now.getTime() - (RSS_FRESHNESS_HOURS + PUBLISHED_AT_AGE_SLACK_HOURS) * 3_600_000;
+  const preReasons: Record<string, number> = {};
+  let preDropped = 0;
+  const tooOldAgesH: number[] = [];
+  const candidatesFresh = unique.filter((e) => {
+    if (known.has(e.url)) return false;
+    if (!e.publishedAt) return true;
+    const ts = new Date(e.publishedAt).getTime();
+    if (Number.isNaN(ts) || ts >= cutoffMs) return true;
+    preDropped += 1;
+    preReasons[REASON_TOO_OLD] = (preReasons[REASON_TOO_OLD] ?? 0) + 1;
+    tooOldAgesH.push((now.getTime() - ts) / 3_600_000);
+    return false;
+  });
+  if (tooOldAgesH.length > 0) {
+    preReasons[META_TOO_OLD_MIN_AGE_H] = Math.round(Math.min(...tooOldAgesH) * 10) / 10;
+    preReasons[META_TOO_OLD_MAX_AGE_H] = Math.round(Math.max(...tooOldAgesH) * 10) / 10;
+  }
+  const fresh = candidatesFresh
     .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""))
     .slice(0, MAX_NEW_PER_RUN);
   if (fresh.length === 0) {
-    return { ...base, ok: true, errorCode: null };
+    return { ...base, ok: true, dropped: preDropped, dropReasons: preReasons, errorCode: null };
   }
 
   // 要約（失敗したらフィードの生情報でフォールバック）。
@@ -222,8 +251,8 @@ async function runCategory(
   });
 
   // 保存規定（item-rules）は旧仕組みと同じものを通す。
-  const reasons: Record<string, number> = {};
-  let dropped = 0;
+  const reasons: Record<string, number> = { ...preReasons };
+  let dropped = preDropped;
   const valid: NewsItemOut[] = [];
   for (const c of candidates) {
     const parsed = newsItemSchema.safeParse(c);
@@ -259,8 +288,9 @@ export function emptyReasonOf(
 ): "no_match" | "all_dropped" | "failed" | null {
   if (!r.ok) return "failed";
   if (r.saved > 0) return null;
-  if (r.fetched === 0) return "no_match";
-  return r.dropped > 0 ? "all_dropped" : "no_match";
+  // 要約前に鮮度で全部落ちた場合は fetched=0 でも dropped>0（「該当なし」ではなく「全部古かった」）。
+  if (r.dropped > 0) return "all_dropped";
+  return "no_match";
 }
 
 export async function runNewsRssFetch(deps: NewsRssDeps): Promise<NewsRssResult> {
