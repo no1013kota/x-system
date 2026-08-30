@@ -28,6 +28,11 @@ export const NEWS_FEEDS: Record<NewsCategory, NewsFeed[]> = {
     { source: "AINOW", url: "https://ainow.ai/feed/" },
     { source: "OpenAI News", url: "https://openai.com/news/rss.xml" },
     { source: "Google AI Blog", url: "https://blog.google/technology/ai/rss/" },
+    // 英語の速報メディア（2026-08-31実測: TechCrunch 最新1.1h前・5.7件/日、Verge 0.5h前・
+    // 3.2件/日）。国内メディアは週末に止まる（実測で全滅した）ため、速報の穴を英語圏で埋める。
+    // 要約時に日本語のtitle・summaryへ直す（SYS-NEWS-SUM）。
+    { source: "TechCrunch AI", url: "https://techcrunch.com/category/artificial-intelligence/feed/" },
+    { source: "The Verge AI", url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml" },
   ],
   web3: [
     { source: "CoinPost", url: "https://coinpost.jp/?feed=rss2" },
@@ -35,7 +40,9 @@ export const NEWS_FEEDS: Record<NewsCategory, NewsFeed[]> = {
   ],
   sns: [
     { source: "ITmedia マーケティング", url: "https://rss.itmedia.co.jp/rss/2.0/marketing.xml" },
-    { source: "ソーシャルメディアラボ（Gaiax）", url: "https://gaiax-socialmedialab.jp/feed/" },
+    // Gaiaxソーシャルメディアラボは2026-08-31の実測で最新記事が448時間前（更新0.1件/日）
+    // だったため外し、MarkeZine（7.5件/日）へ差し替えた。
+    { source: "MarkeZine", url: "https://markezine.jp/rss/new/20/index.xml" },
   ],
   investment: [
     { source: "東洋経済オンライン", url: "https://toyokeizai.net/list/feed/rss" },
