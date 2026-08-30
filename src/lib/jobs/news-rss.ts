@@ -146,26 +146,23 @@ async function runCategory(
   deps: NewsRssDeps,
   category: NewsCategory,
   now: Date,
+  prefetched: Map<string, FetchedFeed>,
 ): Promise<NewsRssCategoryResult> {
   const feeds = NEWS_FEEDS[category] ?? [];
   const entries: ArticleForSummary[] = [];
   let feedsOk = 0;
   for (const feed of feeds) {
-    try {
-      const res = await deps.fetchFeed(feed.url);
-      if (!res.ok) continue;
-      feedsOk += 1;
-      for (const e of parseFeed(res.text)) {
-        entries.push({
-          url: canonicalizeSourceUrl(e.link),
-          source: feed.source,
-          title: e.title,
-          snippet: e.snippet,
-          publishedAt: e.publishedAt,
-        });
-      }
-    } catch (err) {
-      deps.onError?.(category, err);
+    const res = prefetched.get(feed.url);
+    if (!res || !res.ok) continue;
+    feedsOk += 1;
+    for (const e of parseFeed(res.text)) {
+      entries.push({
+        url: canonicalizeSourceUrl(e.link),
+        source: feed.source,
+        title: e.title,
+        snippet: e.snippet,
+        publishedAt: e.publishedAt,
+      });
     }
   }
   const base: Omit<NewsRssCategoryResult, "ok" | "errorCode"> = {
@@ -269,11 +266,30 @@ export function emptyReasonOf(
 export async function runNewsRssFetch(deps: NewsRssDeps): Promise<NewsRssResult> {
   const now = deps.now ?? new Date();
   const categories = deps.categories ?? NEWS_FETCH_CATEGORIES;
+
+  /*
+    **全フィードを並列で先読みする**（本番初回で実測: 直列だと17本×最大10秒で
+    maxDuration 120秒を超えて504になった・2026-08-30）。壁時間は「最も遅い1本」まで縮む。
+    失敗したフィードはMapに載らない＝runCategory側で「読めなかった」として数える。
+  */
+  const prefetched = new Map<string, FetchedFeed>();
+  await Promise.all(
+    categories.flatMap((category) =>
+      (NEWS_FEEDS[category] ?? []).map(async (feed) => {
+        try {
+          prefetched.set(feed.url, await deps.fetchFeed(feed.url));
+        } catch (err) {
+          deps.onError?.(category, err);
+        }
+      }),
+    ),
+  );
+
   const results: NewsRssCategoryResult[] = [];
   for (const category of categories) {
     let result: NewsRssCategoryResult;
     try {
-      result = await runCategory(deps, category, now);
+      result = await runCategory(deps, category, now, prefetched);
     } catch (err) {
       // 分野単位で失敗しても他分野を止めない（旧仕組みと同じ・要件04 §6）。
       deps.onError?.(category, err);
