@@ -5,10 +5,8 @@ import {
   alertIn,
   expect,
   signIn,
-  signUpCodeFromMail,
   test,
   openAccountMenu,
-  waitForMail,
 } from "./fixtures/test";
 
 /**
@@ -129,22 +127,19 @@ test("未登録のメールでは登録が無いと伝え、新規登録へ案�
   await expect(alert).toContainText("登録されていません");
 });
 
-test("未確認アカウントのログインは黄色の案内付き6桁画面へ移り、コードを自動再送する", async ({
+test("未確認アカウントでもコード画面なしでログインできる（登録時に確認を求めないため）", async ({
   page,
 }) => {
   const suffix = `unconfirmed-login-${randomUUID().slice(0, 8)}`;
   const email = `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
-  const turnstileErrors: string[] = [];
-  page.on("pageerror", (error) => {
-    if (error.message.includes("Turnstile")) turnstileErrors.push(error.message);
-  });
 
   try {
     /*
-      未確認アカウントをAdmin APIで作る（T-M8-202以降、画面からの登録は即confirmedになるため）。
-      過去に登録したまま確認していない利用者・確認を再有効化した後の利用者が該当する経路で、
-      6桁コードの画面と自動再送はこのテストが引き続き守る。
+      未確認アカウントをAdmin APIで作る（T-M8-202以降、画面からの登録は即confirmedになる）。
+      **以前はこの経路が6桁コード画面へ回されていた**（T-M8-377・運営者の指摘 2026-08-30）。
+      新規登録は確認なしで完了する設定なので、ログインでも確認を求めない——
+      ログイン時にその場で確認済みへ揃え、そのままアプリへ入れることを守る。
     */
     await createUnconfirmedAuthUser(email, password);
 
@@ -157,22 +152,16 @@ test("未確認アカウントのログインは黄色の案内付き6桁画面�
       .not.toBe("");
     await page.getByTestId("login-submit").click();
 
-    // ログインフォームを残さず、要求どおり6桁コードの画面へ切り替える。
-    await expect(page.getByTestId("login-form")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible();
-    const warning = page.getByText("メール確認が終わっていません", { exact: true });
-    await expect(warning).toBeVisible();
-    await expect(warning).toHaveClass(/border-warn-fg/);
+    // コード画面を出さず、契約なしの着地（/plans）かアプリ本体へ入る。
+    await expect(page).toHaveURL(/\/(app|plans)(\/|$|\?)/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toHaveCount(0);
 
-    // ログイン用tokenの再利用ではなく、切替後のwidgetが新しいtokenを得て自動再送する。
-    const resentMail = await waitForMail(email);
-    await expect(page.getByText("確認メールを再送しました", { exact: false })).toBeVisible();
-
-    const code = await signUpCodeFromMail(resentMail.ID);
-    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
-    await page.getByRole("button", { name: "登録を完了する" }).click();
-    await expect(page).toHaveURL(/\/app(\/|$|\?)/);
-    expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
+    // DB上も確認済みへ揃っている（次回以降のログインで同じ分岐を通らない）。
+    const rows = await query<{ confirmed: boolean }>(
+      `select email_confirmed_at is not null as confirmed from auth.users where email = $1`,
+      [email],
+    );
+    expect(rows[0]?.confirmed).toBe(true);
   } finally {
     await destroyUserByEmail(email);
   }

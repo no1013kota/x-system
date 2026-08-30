@@ -10,6 +10,7 @@ import { env } from "@/lib/env";
 import {
   JPY_PER_USD,
   readAdminSummary,
+  readEntryFunnel,
   readFunnel,
   readKpiSeries,
   readMonthCostBreakdown,
@@ -87,6 +88,7 @@ export default async function AdminPage() {
     byUser,
     cancels,
     users,
+    entryFunnel,
   ] = await Promise.all([
     readAdminSummary(db),
     readFunnel(db),
@@ -98,6 +100,7 @@ export default async function AdminPage() {
     readMonthCostBreakdown(db, "user", 5),
     readRecentCancellations(db, 10),
     readUsersOverview(db, 200),
+    readEntryFunnel(db),
   ]);
 
   const costSeriesJpy = costSeries.map((p) => ({ ...p, value: p.value * JPY_PER_USD }));
@@ -154,6 +157,48 @@ export default async function AdminPage() {
         <SummaryCard label="トライアル中" value={`${summary.trialing}人`} />
         <SummaryCard label="登録者（累計）" value={`${summary.usersTotal}人`} />
       </div>
+
+      {/* 入口ファネル（未ログイン含む・直近30日） */}
+      <Card as="section" className="mt-6 px-5 py-4">
+        <CardTitle as="h2">入口ファネル（直近30日・未ログイン含む）</CardTitle>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-ink-2">
+                <th className="py-1 pr-3 font-normal">ページ</th>
+                <th className="py-1 pr-3 font-normal text-right">表示回数</th>
+                <th className="py-1 pr-3 font-normal text-right">ユニーク（日次合計）</th>
+                <th className="py-1 font-normal">前段からの通過率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entryFunnel.map((stage, i) => {
+                const prev = i === 0 ? null : entryFunnel[i - 1].uniqueVisitorDays;
+                const raw =
+                  prev == null || prev === 0
+                    ? null
+                    : Math.round((stage.uniqueVisitorDays / prev) * 100);
+                const rate = raw != null && raw > 100 ? null : raw;
+                return (
+                  <tr key={stage.path} className="border-t border-hairline">
+                    <td className="py-2 pr-3">
+                      {stage.label}
+                      <span className="ml-1 text-xs text-ink-2">{stage.path}</span>
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">{stage.views}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{stage.uniqueVisitorDays}</td>
+                    <td className="py-2 text-ink-2">{rate == null ? "—" : `${rate}%`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs text-ink-2">
+          訪問者はCookieなし・日替わりハッシュで数えるため、ユニークは「日ごとのユニークの合計」です
+          （同じ人が別の日に来ると複数回数えます）。botとページ先読みは除外。
+        </p>
+      </Card>
 
       {/* ファネル */}
       <Card as="section" className="mt-6 px-5 py-4">

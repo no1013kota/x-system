@@ -30,6 +30,7 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
+import { confirmLegacyUnconfirmedEmail } from "@/lib/auth/registered-email-server";
 import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -478,6 +479,17 @@ export async function signIn(
     ReturnType<typeof createSupabaseServerClient>
   > | null = null;
   try {
+    /*
+      **未確認アカウントを先に確認済みへ揃える**（T-M8-377・運営者の指示 2026-08-30）。
+      新規登録は確認なしで完了する設定なのに、設定変更前に登録された未確認アカウントは
+      Supabase がログインを拒否して6桁コード画面へ回していた。失敗しても止めない——
+      その場合は従来どおり下の email_not_confirmed 分岐（コード画面）が受ける。
+    */
+    try {
+      await confirmLegacyUnconfirmedEmail(input.email);
+    } catch (cause) {
+      recordUnexpectedError(cause, { at: "sign-in:legacy-confirm" });
+    }
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: input.email,

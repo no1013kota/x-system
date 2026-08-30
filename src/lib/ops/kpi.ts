@@ -158,6 +158,19 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
     rows.push({ metric_date: r.d, metric: "cost_usd", dimension: r.provider, value: Number(r.usd) });
   }
 
+  // 公開ページの閲覧（T-M8-378）。行そのものは40日で消えるので、日次の集計を残す。
+  const pv = await db.query<{ d: string; path: string; views: string; uniques: string }>(
+    `select view_date::text as d, path, sum(views)::text as views, count(*)::text as uniques
+       from page_views
+      where view_date between $1 and $2
+      group by 1, 2`,
+    range,
+  );
+  for (const r of pv.rows) {
+    rows.push({ metric_date: r.d, metric: "page_views", dimension: r.path, value: Number(r.views) });
+    rows.push({ metric_date: r.d, metric: "page_uniques", dimension: r.path, value: Number(r.uniques) });
+  }
+
   // 解約アンケート（proceeded=true が実際に解約へ進んだ数）。
   const cancels = await db.query<{ d: string; n: string }>(
     `select ${day("created_at")}::text as d, count(*)::text as n
@@ -294,6 +307,40 @@ export async function readKpiSeries(
     [metric, days],
   );
   return rows.map((r) => ({ date: r.d, value: Number(r.v) }));
+}
+
+export interface EntryFunnelStage {
+  label: string;
+  path: string;
+  views: number;
+  /** 日次ユニークの合計（識別は日替わりハッシュなので日をまたいだ同一人物は複数回数える）。 */
+  uniqueVisitorDays: number;
+}
+
+/**
+ * 入口ファネル（直近30日・未ログイン含む）: ホーム → 新規登録 → 料金（T-M8-378）。
+ * 生の `page_views`（40日保持）から読む——kpi_daily は前日までしか無く、
+ * 運営者が見たいのは「いま」を含む直近の入りだから。
+ */
+export async function readEntryFunnel(db: Queryable): Promise<EntryFunnelStage[]> {
+  const { rows } = await db.query<{ path: string; views: string; uniques: string }>(
+    `select path, coalesce(sum(views), 0)::text as views, count(*)::text as uniques
+       from page_views
+      where view_date > current_date - 30
+      group by path`,
+  );
+  const byPath = new Map(rows.map((r) => [r.path, r]));
+  const stages: { label: string; path: string }[] = [
+    { label: "ホーム（LP）", path: "/" },
+    { label: "新規登録画面", path: "/signup" },
+    { label: "料金画面", path: "/plans" },
+  ];
+  return stages.map((s) => ({
+    label: s.label,
+    path: s.path,
+    views: Number(byPath.get(s.path)?.views ?? 0),
+    uniqueVisitorDays: Number(byPath.get(s.path)?.uniques ?? 0),
+  }));
 }
 
 export interface FunnelStage {

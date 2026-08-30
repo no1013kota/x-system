@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { recordPageView } from "@/lib/ops/page-view-server";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
@@ -189,7 +190,10 @@ const FEATURES: {
  */
 const CYCLE_STEPS = ["集める", "作る", "出す", "測る", "反映する"];
 
-export default function Home() {
+export default async function Home() {
+  // 入口ファネルの分母（T-M8-378）。応答後に書くので表示は遅くならない。
+  await recordPageView("/");
+
   const startingPrice = `${yen(PLANS.standard.monthlyPriceJpy)}円`;
   return (
     <div className="flex min-h-screen flex-col bg-page text-sm leading-[1.8] text-ink tabular-nums [text-wrap:pretty]">

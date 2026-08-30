@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.83 |
-| 更新日 | 2026-08-29 |
+| バージョン | v1.84 |
+| 更新日 | 2026-08-30 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -794,6 +794,19 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。保持は400日（`ANALYTICS_RETENTION_DAYS`・要件04 §14）。
 
+### 3.32 `page_views`
+
+**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `view_date` | `date` | PK（複合） | JSTの日付 |
+| `path` | `text` | PK（複合） | `/`・`/signup`・`/plans` のいずれか |
+| `visitor_hash` | `text` | PK（複合） | HMAC-SHA256(日付\|IP\|UA) の先頭32桁。生のIP・UAは持たない |
+| `views` | `integer` | not null default 1 | 同一訪問者の同日再訪で加算 |
+
+RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。生記録の保持は40日（日次集計は `kpi_daily` が400日持つ・要件04 §14）。
+
 ## 4. JSONスキーマ
 
 ### 4.1 `profiles.ai_purpose_config`
@@ -1099,3 +1112,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.81 | 2026-08-29 | `generation_jobs`（終了から90日・終端のみ）と `stripe_events`（90日）に保持期間を追加（T-M8-363） |
 | v1.82 | 2026-08-29 | `x_timeline_posts`・`follower_snapshots` に400日の保持期間を追加（運営者の決定・T-M8-364） |
 | v1.83 | 2026-08-29 | kpi_daily を追加（事業KPIの日次スナップショット・31テーブルへ・T-M8-373）。external_api_usage_events の保持を40→400日へ（運営者の決定「明細も400日残す」） |
+| v1.84 | 2026-08-30 | page_views を追加（公開3ページの閲覧記録・Cookieなし日替わりハッシュ・32テーブルへ・T-M8-378） |
