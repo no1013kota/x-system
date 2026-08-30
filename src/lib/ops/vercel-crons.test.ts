@@ -38,24 +38,14 @@ function jobName(path: string): string {
 }
 
 describe("vercel.json の定時実行", () => {
-  it("5本ある（要件04 §6「定時トリガー5本」）", () => {
+  it("4本ある（要件04 §6「定時トリガー4本」。news-batch-collect はT-M8-380で廃止）", () => {
     // 減っていても増えていても落とす。1本消えると、その処理だけが黙って止まる。
     expect(crons.map((c) => c.path).sort()).toEqual([
       "/api/cron/follower-snapshot",
       "/api/cron/metrics-collector",
-      "/api/cron/news-batch-collect",
       "/api/cron/news-fetch",
       "/api/cron/scheduler-tick",
     ]);
-  });
-
-  /**
-   * T-M8-338。**投げる側と取り込む側は対**。取り込みが消えると、ニュースは
-   * 投げっぱなしで24時間後に失効し、画面には「記事が無い」としか出ない（原則1）。
-   */
-  it("ニュースBatchの取り込みは20分おき", () => {
-    const collect = crons.find((c) => c.path === "/api/cron/news-batch-collect");
-    expect(collect?.schedule).toBe("*/20 * * * *");
   });
 
   it("各scheduleが要件04 §6 の表に書かれた値と一致する", () => {
@@ -72,12 +62,9 @@ describe("vercel.json の定時実行", () => {
     }
   });
 
-  it("ニュース取得は JST 12時・19時の1日2回（UTCで書かれている・T-M8-326）", () => {
+  it("ニュース取得（RSS巡回）は20分おき（T-M8-380。発見は無料なので頻度がコストに響かない）", () => {
     const news = crons.find((c) => c.path === "/api/cron/news-fetch");
-    expect(news?.schedule).toBe("0 3,10 * * *");
-    // schedule の意味を数字で固定する。JSTのまま書く取り違えをここで落とす。
-    const utcHours = [3, 10];
-    expect(utcHours.map((h) => (h + 9) % 24)).toEqual([12, 19]);
+    expect(news?.schedule).toBe("*/20 * * * *");
   });
 
   it("予約投稿の起動は5分間隔（要件04 §6・遅れの回収がこの間隔に依存する）", () => {

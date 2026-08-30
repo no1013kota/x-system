@@ -6,7 +6,7 @@ import { pooledQueryable } from "../db/pool";
 import { runJob } from "../jobs/worker";
 import { weightedLength } from "../post/text-metrics";
 import { resolveXAccountId } from "./resolve-account";
-import { formatTooOldAges, onlyOutsideWindow } from "@/lib/news-outcome";
+import { onlyOutsideWindow } from "@/lib/news-outcome";
 
 /**
  * 実物スモーク（T-M7-25）。**実APIを叩いてアプリの最終成果物まで検証する**。
@@ -327,48 +327,92 @@ async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
   }
 }
 
-/** ニュース取得が例外にならず、0件のときはそれが「該当なし」だと説明できること。 */
-async function newsResearch(): Promise<SmokeResult> {
-  const name = "ニュース取得（aiテーマ）";
+/**
+ * ニュース取得（RSS巡回・T-M8-380）が実際に1周すること。
+ *
+ * 見るのは3点: (1) 監視フィードが実HTTPで読めて記事が取れる (2) 新着の判定（DB照合）が動く
+ * (3) 新着があれば要約AI（安いモデル・実API）が日本語のtitle/summary/impactを返す。
+ * **DBへは保存しない**（スモークは成果物を残さない・従来と同じ方針）。要約は費用を抑えるため
+ * 最大3件に絞る。新着0件は正常（フィードは20分おきに巡回済みのはずなので、直近に新着が
+ * 無いだけ）。
+ */
+async function newsRss(): Promise<SmokeResult> {
+  const name = "ニュース取得（aiテーマ・RSS）";
   try {
-    const { researchNews, formatDropReasons } = await import("../jobs/news-research");
-    const { resolveNewsProvider } = await import("../ai/resolve-provider-server");
-    const { createDeadline } = await import("../jobs/deadline");
-    const { textGen, provider, model } = resolveNewsProvider({ deadline: createDeadline() });
+    const { NEWS_FEEDS } = await import("../news/feeds");
+    const { parseFeed } = await import("../news/rss");
+    const { canonicalizeSourceUrl } = await import("../news-url");
+    const { summarizeArticles } = await import("../news/summarize-server");
 
-    // 実行時刻で取得窓が変わる（10時=14時間 / 12〜20時=3時間 / それ以外=14時間）。
-    // どの窓が使われたかを出さないと、除外の多さが「窓が短かっただけ」なのか判断できなかった（T-M8-83）。
-    const clock = new Date();
-    const { jstHourOf, newsLookbackHours, PUBLISHED_AT_AGE_SLACK_HOURS } = await import(
-      "../jobs/news-research"
+    const feeds = NEWS_FEEDS.ai;
+    let feedsOk = 0;
+    const articles: {
+      url: string;
+      source: string;
+      title: string;
+      snippet: string;
+      publishedAt: string | null;
+    }[] = [];
+    for (const feed of feeds) {
+      try {
+        const res = await fetch(feed.url, {
+          headers: { "user-agent": "Mozilla/5.0 (compatible; ExosAI-news/1.0)" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) continue;
+        feedsOk += 1;
+        for (const e of parseFeed(await res.text())) {
+          articles.push({
+            url: canonicalizeSourceUrl(e.link),
+            source: feed.source,
+            title: e.title,
+            snippet: e.snippet,
+            publishedAt: e.publishedAt,
+          });
+        }
+        // eslint-disable-next-line no-restricted-syntax -- 1本の不調は失敗ではなく feedsOk の数で報告する
+      } catch {
+        // 1本の不調は数で見る（feedsOkに入らない）。
+      }
+    }
+    if (feedsOk === 0) {
+      return { name, ok: false, costUsd: 0, detail: `フィードが1本も読めません（${feeds.length}本試行）` };
+    }
+    const urls = [...new Set(articles.map((a) => a.url))];
+    const { rows } = await db.query<{ source_url: string }>(
+      `select source_url from news_items where source_url = any($1)`,
+      [urls],
     );
-    const jstHour = jstHourOf(clock);
-    const hours = newsLookbackHours(jstHour);
+    const known = new Set(rows.map((r) => r.source_url));
+    const fresh = articles.filter((a) => !known.has(a.url)).slice(0, 3);
 
-    const res = await researchNews("ai", {
-      db,
-      textGen,
-      provider,
-      model,
-      clock,
-      ledgerKeyPrefix: `smoke:${randomUUID()}`,
+    if (fresh.length === 0) {
+      return {
+        name,
+        ok: true,
+        costUsd: 0,
+        detail: `フィード${feedsOk}/${feeds.length}本から${urls.length}件取得・新着なし（巡回済み）`,
+      };
+    }
+    const summarized = await summarizeArticles("ai", fresh, {
+      ledgerKey: `smoke:${randomUUID()}`,
     });
-    const costUsd = res.usage.estimated_cost_usd_total ?? 0;
-    const outcome = newsOutcome(res.items.length, res.dropped, res.dropReasons);
-    const window = `JST${jstHour}時に実行 / 取得窓${hours}時間（${hours + PUBLISHED_AT_AGE_SLACK_HOURS}時間前まで許容）`;
-    const ages = formatTooOldAges(res.dropReasons);
-    // 取得できたitemはDBへ保存しない（スモークは成果物を残さない）。
+    if (summarized === null) {
+      return {
+        name,
+        ok: false,
+        costUsd: 0,
+        detail: `要約AIが失敗しました（新着${fresh.length}件・本番ではフィードの生情報で保存されます）`,
+      };
+    }
+    const sample = summarized[0];
     return {
       name,
-      ok: outcome.ok,
-      costUsd,
-      detail: `${outcome.detail}／${window}`,
-      warning:
-        res.dropped > 0
-          ? `${res.dropped}件を規定外で除外（${formatDropReasons(res.dropReasons)}${
-              ages ? `・${ages}の記事` : ""
-            }）`
-          : undefined,
+      ok: true,
+      // 要約の実費は台帳へ記録済み。ここでは概算を出さない（Haiku級で$0.01未満）。
+      costUsd: 0,
+      detail: `フィード${feedsOk}/${feeds.length}本・新着${fresh.length}件を要約（例:「${sample?.title ?? ""}」impact=${sample?.impact ?? "?"}）`,
     };
   } catch (error) {
     return { name, ok: false, costUsd: 0, detail: `例外: ${(error as Error).message}` };
@@ -409,7 +453,7 @@ export async function runSmoke(account?: string): Promise<SmokeReport> {
   } else {
     skipped.push("生成・画像（検証するXアカウントが指定されていない）");
   }
-  results.push(await newsResearch());
+  results.push(await newsRss());
 
   return {
     ok: results.every((r) => r.ok),

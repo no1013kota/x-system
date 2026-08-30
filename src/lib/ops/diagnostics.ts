@@ -218,7 +218,11 @@ export async function collectFailurePatterns(
  *
  * ここを変えたら `vercel.json` も変える。ズレは `vercel-crons.test.ts` が落とす。
  */
-export const NEWS_FETCH_UTC_HOURS = [3, 10] as const;
+/**
+ * news_fetch の起動時（UTC）。RSS巡回は20分おき＝毎時走る（T-M8-380で1日2回のAIリサーチから変更）。
+ * `vercel.json` の cron 式から `vercel-crons.test.ts` が突き合わせる。
+ */
+export const NEWS_FETCH_UTC_HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** cronの起動遅れと実行時間の余裕。これを超えて遅れていれば本当に走っていない。 */
 export const NEWS_RUN_GRACE_HOURS = 1;

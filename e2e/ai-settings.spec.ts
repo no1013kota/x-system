@@ -131,15 +131,18 @@ test("学習ソースを追加すると分析中として並び、削除でき�
   const url = `https://x.com/${handle}`;
   const field = page.getByRole("textbox", { name: "参考アカウント" }).first();
   /*
-    **入れた文字が残っていることを確かめてから押す**（T-M8-368と同型）。hydration前の入力は
-    再描画で消え、欄が空だと「反映する」がdisabledのまま——フルスイートの負荷時だけ
-    click が90秒待って落ちていた（2026-08-30）。残らない間は入れ直す。
+    **ボタンが押せる状態になるまで入れ直す**（T-M8-368と同型の競合）。hydration前のfillは
+    DOMに値が残っても**Reactの状態は空のまま**になり得る（onChangeが再生されない）。
+    その場合「反映する」はdisabledのままで、値の確認だけでは突破できない
+    （2026-08-30、toHaveValue確認つきでもフルスイートの負荷時に90秒待ちで落ちた）。
+    押せる＝状態に値が入った、を直接待つ。
   */
+  const reflect = page.getByRole("button", { name: "アカウント設定を反映する" });
   await expect(async () => {
     await field.fill(url);
-    await expect(field).toHaveValue(url, { timeout: 2_000 });
+    await expect(reflect).toBeEnabled({ timeout: 2_000 });
   }).toPass({ timeout: 60_000 });
-  await page.getByRole("button", { name: "アカウント設定を反映する" }).click();
+  await reflect.click();
 
   /*
     **押した結果が画面に出る**（T-M8-18／原則1）。ここでは一覧に「分析待ち」の行が増えることで見る。

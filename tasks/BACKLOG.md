@@ -5880,6 +5880,27 @@ UI側boolean を壊しても投稿は誤爆しない）。
     その後のイベントを1件も受け取っていない契約の件数。0件なら無音でも ok。
   - あわせて「イベント0件」もwarn→okへ（契約に動きが無ければ正常）。
 
+### T-M8-380: ニュース取得をAIリサーチからRSS巡回へ置き換える `done`
+- 参照: ADR-0009 / PRD N-1 / 要件04 §2・§6 / プロンプト設計書 §6.10 / 依存: なし / サイズ: L
+- 完了条件: 監視フィードから新着が最短20分で画面に載る／UI・投稿生成の材料・doctorは変わらない／旧仕組み（Batch）が消えている
+- メモ: 運営者の指示（2026-08-30「監視すべきサイトはあなたが選ぶ。AIは重点的に。既存のAIリサーチはもう不要。impact判定とテーマ判定と日時記入と新着順も可能であれば残す」）。
+- 実装メモ（2026-08-30 完了）:
+  - **発見と要約を分離**（ADR-0009）: 発見＝RSS巡回（20分おき・無料）、要約＝新着があったときだけ
+    mechanicalモデル（Haiku級）で日本語title・summary・**impact判定**。テーマ判定はフィードの
+    所属分野で確定、**日時**はフィードのpubDate/updated、**新着順**は従来どおり
+    `coalesce(published_at, fetched_at) desc`——4点とも維持。
+  - **費用: 月$137〜156 → $1〜3。速報性: 最大12時間遅れ → 最短20分。**
+  - 監視フィード（`src/lib/news/feeds.ts`・全URL実取得確認済み）: AI重点6本
+    （ITmedia AI＋・Publickey・MITテックレビューJP・AINOW・OpenAI News・Google AI Blog）＋
+    web3/sns/investment/love/beauty 各2〜3本。**Google News RSSは規約が個人・非商用限定のため
+    不採用**（商用サービスに規約違反を埋め込まない）。
+  - 要約AIが失敗してもフィードの生情報で保存（summary_fallback・原則1）。全フィード不通の分野
+    だけ failed。1分野1回15件上限（初回洪水対策。鮮度窓48時間内で次の巡回が拾う）。
+  - 削除: news-batch collect route・news_batches表（migration）・news-research/news-fetch/
+    news-batch 一式。保存規定は `news/item-rules.ts` へ移設（T-M8-366のhttp必須含む）。
+  - スモーク実測: フィード6/6本・新着3件を要約（「AIエージェントが結託、Hugging Face侵害の
+    報告書公開」impact=high）。単体2,699件緑。
+
 ### T-M8-379: /adminへホーム来訪者数の推移グラフを足す `done`
 - 参照: PRD O-6 / monitoring.md / 依存: T-M8-378 / サイズ: S
 - 完了条件: 来訪者／日（ユニーク）の推移が30/90/400日で見える／今日の途中経過も出る

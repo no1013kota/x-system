@@ -645,29 +645,24 @@ describe("judgeNews の停止判定（予定時刻ベース・T-M8-310）", () =
   const at = (utc: string) => new Date(utc);
   const base = { itemsLast48h: 51, schedulerExpected: true, outcomes: [] };
 
-  it("予定の空き（UTC10時→翌3時）では赤くしない", () => {
-    // UTC 23:57＝JST 8:57。直前の実行は予定どおり UTC10時（13.95時間前）。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 13.95, now: at("2026-08-25T23:57:00Z") });
-    expect(c.level, "予定どおりなのに赤い（毎晩の誤報が再発している）").toBe("ok");
+  /*
+    T-M8-380でRSS巡回（20分おき＝毎時走る）になった。判定は同じ「予定時刻ベース」のまま、
+    予定表が毎時になったぶん「2時間以上空いたら異常」という意味になる。
+  */
+  it("直近1時間以内に走っていれば正常（20分おきの巡回）", () => {
+    const c = judgeNews({ ...base, hoursSinceLastRun: 0.4, now: at("2026-08-25T23:57:00Z") });
+    expect(c.level, "巡回直後なのに赤い").toBe("ok");
   });
 
-  it("予定の1本が飛んだら赤くする", () => {
-    // 同じ時刻で UTC10時の回が飛んでいれば、最後の実行は前日UTC3時＝約21時間前。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 21, now: at("2026-08-25T23:57:00Z") });
+  it("2時間以上空いたら赤くする（毎時の予定が飛んでいる）", () => {
+    const c = judgeNews({ ...base, hoursSinceLastRun: 2.5, now: at("2026-08-25T23:57:00Z") });
     expect(c.level).toBe("error");
     expect(c.nextAction).toContain("走るはずの時刻");
   });
 
-  it("日中も同じ基準で判定する", () => {
-    // UTC 9:30（JST 18:30）。直前の予定は UTC3時なので 6.5時間前までは正常。
-    expect(judgeNews({ ...base, hoursSinceLastRun: 6.4, now: at("2026-08-25T09:30:00Z") }).level).toBe("ok");
-    // 前日 UTC10時が最後＝23.5時間前なら、当日 UTC3時の回が飛んでいる。
-    expect(judgeNews({ ...base, hoursSinceLastRun: 23.5, now: at("2026-08-25T09:30:00Z") }).level).toBe("error");
-  });
-
   it("cronの起動が数分遅れているだけなら赤くしない", () => {
-    // UTC 3:10。3時の回がまだでも、前日UTC10時が最後（17.2時間前）なら猶予の内側。
-    const c = judgeNews({ ...base, hoursSinceLastRun: 17.1, now: at("2026-08-25T03:10:00Z") });
+    // UTC 3:10。3時の回がまだでも、2時台の回が走っていれば猶予の内側。
+    const c = judgeNews({ ...base, hoursSinceLastRun: 1.1, now: at("2026-08-25T03:10:00Z") });
     expect(c.level).toBe("ok");
   });
 
@@ -678,16 +673,16 @@ describe("judgeNews の停止判定（予定時刻ベース・T-M8-310）", () =
 });
 
 describe("hoursSinceDueNewsRun", () => {
-  it("「終わっているはずの回」からの経過を返す", () => {
-    // UTC 9:30・猶予1時間 → 8:30以前の予定＝3時。9.5-3=6.5
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T09:30:00Z"))).toBeCloseTo(6.5, 5);
-    // UTC 23:57 → 22:57以前の予定＝10時。23.95-10=13.95
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T23:57:00Z"))).toBeCloseTo(13.95, 2);
+  it("「終わっているはずの回」からの経過を返す（毎時予定・T-M8-380）", () => {
+    // UTC 9:30・猶予1時間 → 8:30以前の予定＝8時。9.5-8=1.5
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T09:30:00Z"))).toBeCloseTo(1.5, 5);
+    // UTC 23:57 → 22:57以前の予定＝22時。23.95-22=1.95
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T23:57:00Z"))).toBeCloseTo(1.95, 2);
   });
 
   it("その日まだ「終わっているはずの回」が無ければ前日の最後から数える", () => {
-    // UTC 0:30・猶予1時間 → 当日の予定（3時・10時）はまだ。前日10時から14.5時間。
-    expect(hoursSinceDueNewsRun(new Date("2026-08-25T00:30:00Z"))).toBeCloseTo(14.5, 5);
+    // UTC 0:30・猶予1時間 → -0.5時以前の予定は当日に無い。前日23時から1.5時間。
+    expect(hoursSinceDueNewsRun(new Date("2026-08-25T00:30:00Z"))).toBeCloseTo(1.5, 5);
   });
 
   it("予定表が空でも例外にせず、赤くしない側へ倒す", () => {
