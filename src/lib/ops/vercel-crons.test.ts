@@ -62,9 +62,9 @@ describe("vercel.json の定時実行", () => {
     }
   });
 
-  it("ニュース取得（RSS巡回）は20分おき（T-M8-380。発見は無料なので頻度がコストに響かない）", () => {
+  it("ニュース取得（RSS巡回）は10分おき（T-M8-383・運営者の指示。発見は無料なので頻度がコストに響かない）", () => {
     const news = crons.find((c) => c.path === "/api/cron/news-fetch");
-    expect(news?.schedule).toBe("*/20 * * * *");
+    expect(news?.schedule).toBe("*/10 * * * *");
   });
 
   it("予約投稿の起動は5分間隔（要件04 §6・遅れの回収がこの間隔に依存する）", () => {

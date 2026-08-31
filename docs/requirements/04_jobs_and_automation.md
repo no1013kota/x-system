@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.65 |
+| バージョン | v1.66 |
 | 更新日 | 2026-08-31 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -100,7 +100,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **20分間隔**（T-M8-380・運営者の指示 2026-08-30。RSS巡回は発見が無料なので頻度がコストに響かない。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `*/20 * * * *` | **6分野**（ai・web3・sns・investment・love・beauty）の監視フィード（`src/lib/news/feeds.ts`）をHTTPで巡回し、**新着があったときだけ**安いモデル（mechanical・Haiku級）で日本語要約とimpact判定を行う。鮮度窓48時間 | 6分野 |
+| `news_fetch` | **10分間隔**（T-M8-383・運営者の指示 2026-08-31。RSS巡回は発見が無料なので頻度がコストに響かない〔費用は新着数にのみ比例〕。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `*/10 * * * *` | **6分野**（ai・web3・sns・investment・love・beauty）の監視フィード（`src/lib/news/feeds.ts`）をHTTPで巡回し、**新着があったときだけ**安いモデル（mechanical・Haiku級）で日本語要約とimpact判定を行う。鮮度窓48時間 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
@@ -403,3 +403,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.63 | 2026-08-30 | 公開3ページの閲覧記録（page_views・40日保持）を追加し、日次集計をkpi_dailyへ（T-M8-378） |
 | v1.64 | 2026-08-30 | ニュース取得をAIリサーチ（Message Batches・1日2回）からRSS巡回（20分おき＋新着だけ安いモデルで要約）へ置き換え（T-M8-380・運営者の指示）。news_batch_collect と news_batches を廃止し、定時トリガーは4本へ |
 | v1.65 | 2026-08-31 | news_itemsの保存上限を全体500件から分野別150件へ（T-M8-382）。監視フィードの実測見直し（sns差し替え・AI英語速報追加・T-M8-381） |
+| v1.66 | 2026-08-31 | ニュース取得を20分間隔→10分間隔へ（T-M8-383・運営者の指示。費用は新着数にのみ比例するため増加は月$1未満） |

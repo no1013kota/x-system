@@ -59,8 +59,8 @@ describe("launchd plists", () => {
     const news = await plistJson("com.spaceai.news-fetch.plist");
     expect(news.Label).toBe("com.spaceai.news-fetch");
     const newsSched = news.StartCalendarInterval as { Minute: number }[];
-    // RSS巡回は20分おき（T-M8-380）。vercel.json の `*/20 * * * *` と同じ意味に保つ。
-    expect(newsSched.map((e) => e.Minute)).toEqual([0, 20, 40]);
+    // RSS巡回は10分おき（T-M8-383）。vercel.json の `*/10 * * * *` と同じ意味に保つ。
+    expect(newsSched.map((e) => e.Minute)).toEqual([0, 10, 20, 30, 40, 50]);
 
     const tick = await plistJson("com.spaceai.scheduler-tick.plist");
     const tickSched = tick.StartCalendarInterval as { Minute: number }[];

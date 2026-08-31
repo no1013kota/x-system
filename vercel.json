@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/news-fetch",
-      "schedule": "*/20 * * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/scheduler-tick",
