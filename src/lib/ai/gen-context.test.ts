@@ -40,7 +40,7 @@ describe("buildGenUser", () => {
   it("assembles pattern/input/recent_posts and uses （未指定） for empty input", () => {
     const user = buildGenUser({ ...base, input: "" });
     expect(user).toContain("<pattern>\nPT-P1\n</pattern>");
-    expect(user).toContain(`<input>\n${UNSPECIFIED}\n</input>`);
+    expect(user).toContain(`<user_input>\n${UNSPECIFIED}\n</user_input>`);
     expect(user).toContain("<recent_posts>\n- 最初の投稿\n</recent_posts>");
   });
 

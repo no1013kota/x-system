@@ -207,7 +207,7 @@ export function buildPatternRules(
   if (ctx.webSearchMaxUses === null) {
     lines.push(
       spec.webSearchPolicy === "with_url"
-        ? "Web検索: 使わない（<input>に参考URLが無いため）"
+        ? "Web検索: 使わない（<user_input>に参考URLが無いため）"
         : "Web検索: 使わない",
     );
   } else {
@@ -221,7 +221,7 @@ export function buildPatternRules(
   } else if (spec.sourcePolicy === "with_url") {
     lines.push(
       ctx.hasInputUrl
-        ? "参考URL: <input>のURLを含め、根拠になるURLを sources へ入れる（本文にURLは書かない）"
+        ? "参考URL: <user_input>のURLを含め、根拠になるURLを sources へ入れる（本文にURLは書かない）"
         : "参考URL: 無理に付けない（sources は空でよい）",
     );
   } else {
@@ -279,7 +279,7 @@ export function placeholdersForFill(
   return [...names].map((name) => ({ name }));
 }
 
-/** 未入力のプレースホルダーに入れる語（`<input>` の書き方と揃える）。 */
+/** 未入力のプレースホルダーに入れる語（`<user_input>` の書き方と揃える）。 */
 const PLACEHOLDER_UNSPECIFIED = "（未指定）";
 
 /**
