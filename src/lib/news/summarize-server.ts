@@ -17,10 +17,11 @@ import { clampSummary, clampTitle } from "./item-rules";
 /**
  * RSS新着の要約・impact判定（T-M8-380）。
  *
- * **モデルは裏方の固定モデル（mechanical・Haiku級）**——発見はRSSが済ませており、
- * ここは日本語整形とimpact分類だけなので成果物の品質に高いモデルは効かない
- * （model-catalog.ts の方針と同じ）。Web検索なしなので構造化出力（jsonSchema）が使える。
- * 原価は従来どおり台帳へ記録する（原則4・keyPrefixで冪等）。
+ * **モデルは analysis 層（Sonnet級）で固定**（T-M8-384・運営者の指示 2026-08-31）。
+ * 当初は mechanical（Haiku級）だったが、要約とimpact判定は「観察して要約する」処理で、
+ * model-catalog.ts の分類では analysis に当たる。英語記事の日本語化・impactの見極めは
+ * 利用者の画面と投稿素材に直結するため品質側へ倒す（費用差は月+$10前後・新着数に比例）。
+ * Web検索なしなので構造化出力（jsonSchema）が使える。原価は台帳へ記録（原則4・keyPrefixで冪等）。
  */
 
 export interface ArticleForSummary {
@@ -84,7 +85,7 @@ export async function summarizeArticles(
   if (articles.length === 0) return [];
   const deadline = createDeadline();
   const { textGen, provider, model } = resolveNewsProvider({ deadline });
-  const cheapModel = purposeTextModel("mechanical", provider) ?? model;
+  const summaryModel = purposeTextModel("analysis", provider) ?? model;
   const system = SYS_NEWS_SUM.replace(
     "{{category_ja}}",
     newsCategoryLabel(category),
@@ -110,7 +111,7 @@ export async function summarizeArticles(
         timeoutMs: deadline.callTimeoutMs(),
       },
       schema: outputSchema,
-      model: cheapModel,
+      model: summaryModel,
       operation: "text_generation",
       now: opts.now,
     });

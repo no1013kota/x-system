@@ -100,7 +100,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
-| `news_fetch` | **10分間隔**（T-M8-383・運営者の指示 2026-08-31。RSS巡回は発見が無料なので頻度がコストに響かない〔費用は新着数にのみ比例〕。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `*/10 * * * *` | **6分野**（ai・web3・sns・investment・love・beauty）の監視フィード（`src/lib/news/feeds.ts`）をHTTPで巡回し、**新着があったときだけ**安いモデル（mechanical・Haiku級）で日本語要約とimpact判定を行う。鮮度窓48時間 | 6分野 |
+| `news_fetch` | **10分間隔**（T-M8-383・運営者の指示 2026-08-31。RSS巡回は発見が無料なので頻度がコストに響かない〔費用は新着数にのみ比例〕。**productionでのみ実行**——stg・ローカルは運営者が戻すまで止める） | `*/10 * * * *` | **6分野**（ai・web3・sns・investment・love・beauty）の監視フィード（`src/lib/news/feeds.ts`）をHTTPで巡回し、**新着があったときだけ** analysis層のモデル（Sonnet級・T-M8-384）で日本語要約とimpact判定を行う。鮮度窓48時間 | 6分野 |
 | `scheduler_tick` | 5分間隔 | `*/5 * * * *` | due slot enqueue＋dispatch、queued/stale jobの再dispatch、期限切れschedule jobのcancel、期限切れデータ回収、プロンプトsystem defaultの差分同期、日次サマリの作成 | enqueue 500、dispatch 50、cancel 500、DB cleanup各500、Storage cleanup 100 |
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |

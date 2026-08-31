@@ -33,6 +33,11 @@ export const NEWS_FEEDS: Record<NewsCategory, NewsFeed[]> = {
     // 要約時に日本語のtitle・summaryへ直す（SYS-NEWS-SUM）。
     { source: "TechCrunch AI", url: "https://techcrunch.com/category/artificial-intelligence/feed/" },
     { source: "The Verge AI", url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml" },
+    // Claude/Anthropicのニュース（運営者の指示 2026-08-31「AIにはclaudeも入れて」）。
+    // Anthropic公式のRSSは存在しない（/news/rss.xml 等すべて404を確認）ため、
+    // TechCrunchのAnthropic専門タグフィードで補う。AI総合フィードとの重複記事は
+    // source_url のcanonical重複排除が吸収する。
+    { source: "TechCrunch – Anthropic", url: "https://techcrunch.com/tag/anthropic/feed/" },
   ],
   web3: [
     { source: "CoinPost", url: "https://coinpost.jp/?feed=rss2" },
