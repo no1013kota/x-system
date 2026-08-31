@@ -43,6 +43,13 @@ const nextConfig: NextConfig = {
       "./node_modules/@img/sharp-linux-x64/**",
       "./node_modules/@img/sharp-libvips-linux-x64/**",
     ],
+    // 下書きの画像アップロード（T-M8-353）のServer Actionも sharp を使う。ここが無いと
+    // Vercel上で /app/posts の**全Action**が sharp の読み込み失敗で500になる（T-M8-385で実発生。
+    // 遅延importで巻き添えは止めたが、アップロード自体を動かすには同梱が要る）。
+    "/app/posts": [
+      "./node_modules/@img/sharp-linux-x64/**",
+      "./node_modules/@img/sharp-libvips-linux-x64/**",
+    ],
   },
 };
 

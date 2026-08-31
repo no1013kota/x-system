@@ -5880,6 +5880,20 @@ UI側boolean を壊しても投稿は誤爆しない）。
     その後のイベントを1件も受け取っていない契約の件数。0件なら無音でも ok。
   - あわせて「イベント0件」もwarn→okへ（契約に動きが無ければ正常）。
 
+### T-M8-385: 本番の投稿作成Actionが全て500（sharpのLinuxバイナリ欠落）を修復 `done`
+- 参照: 要件01 §（Vercel）/ 運用: local-development §check:sharp-trace / 依存: T-M8-353 / サイズ: M
+- 完了条件: 本番で投稿生成・画像アップロードが動く／sharp読込失敗が画像操作以外を巻き込まない／同種の宣言漏れを出荷前に機械検出する
+- メモ: 運営者の報告（2026-08-31「投稿生成で『画面を読み込めませんでした』」）。実体は POST /app/posts の500。
+- 実装メモ（2026-08-31 完了）:
+  - **原因**: T-M8-353で画像正規化に足した `import sharp` が /app/posts のAction bundleへ静的に入り、
+    本番のみ `libvips-cpp.so` 欠落で**モジュール読込ごと失敗**＝投稿作成の全Actionが500になっていた
+    （8/30から）。Linuxバイナリはmacに無いため、ローカル・CIでは原理的に再現しない。
+  - **修正1（縮退）**: sharpを遅延import化。読込に失敗しても壊れるのは画像操作だけになり、
+    そのエラーは各Actionのcatch→トーストに載る（画面遷移なしで正しいメッセージが出る形・原則1）。
+  - **修正2（同梱）**: next.config.ts の `outputFileTracingIncludes` へ /app/posts のsharp同梱を宣言。
+  - **修正3（検出器）**: `npm run check:sharp-trace` を新設し release:check へ追加。sharp依存routeを
+    `.nft.json` から**数え上げ**て宣言と照合する（手書きのroute一覧を持たない——増えたら自動で検出対象）。
+
 ### T-M8-384: AI分野へClaude/Anthropicのフィードを追加し、要約をSonnet固定へ `done`
 - 参照: ADR-0009 / プロンプト設計書 §6.10 / 依存: T-M8-380 / サイズ: S
 - 完了条件: Claude/Anthropicのニュースが取得される／要約モデルがSonnet級で固定／全フィード取得テスト緑
