@@ -287,6 +287,28 @@ export function parseAppliedRemote(raw: string): Set<string> | null {
 }
 
 /**
+ * 同一コミット（headSha）の複数のworkflow runから、ゲートが見るべきCIの結論を1つ選ぶ（T-M8-389）。
+ *
+ * PRを作ると**同じSHAにPRトリガーのrunがもう1本増え**、CI重複排除（T-M8-372の
+ * `github.head_ref != 'stg'` スキップ）によりそのrunは `skipped` で終わる。`gh run list` は
+ * 新しい順なので、**先頭一致で拾うとpush時の `success` がPRの `skipped` に隠れて**
+ * 「結果が skipped です」で止まる（2026-08-31、T-M8-388のstaging再検証で実際に止まった）。
+ * 実行された結論（success / failure / …）を skipped より優先し、実行中があればそれを返す
+ * （まだ結論が出ていないことを隠さない）。
+ */
+export function pickCiConclusion(
+  runs: { headSha?: string; status?: string; conclusion?: string | null }[],
+  headSha: string,
+): string | null {
+  const mine = runs.filter((r) => r.headSha === headSha);
+  if (mine.length === 0) return null; // このコミットのCIはまだ無い＝止める
+  const running = mine.find((r) => r.status !== "completed");
+  if (running) return running.status ?? null;
+  const decisive = mine.find((r) => r.conclusion && r.conclusion !== "skipped");
+  return decisive?.conclusion ?? mine[0].conclusion ?? null;
+}
+
+/**
  * デプロイ先の CSP ヘッダから Supabase プロジェクトのrefを読む（T-M7-52）。
  *
  * `NEXT_PUBLIC_SUPABASE_URL` はCSPの `connect-src` に載る。**認証情報が不要で、refは秘密値でない**。
