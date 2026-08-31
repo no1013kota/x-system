@@ -1,5 +1,5 @@
 import { pooledQueryable } from "@/lib/db/pool";
-import { twentyMinWindowKey } from "@/lib/jobs/cron";
+import { tenMinWindowKey } from "@/lib/jobs/cron";
 import { handleCronRoute } from "@/lib/jobs/cron-route";
 import { fanOutNewsDigest, newsDigestWindowStart } from "@/lib/jobs/news-digest";
 import { runNewsRssFetch } from "@/lib/jobs/news-rss";
@@ -8,7 +8,7 @@ import { runNewsRssFetch } from "@/lib/jobs/news-rss";
  * ニュース取得cron（要件04 §2/§6, N-1）。**RSS巡回**（T-M8-380・運営者の指示 2026-08-30）。
  *
  * 旧: 1日2回、AIがWeb検索でリサーチ（Message Batches・1回$2.3）。
- * 新: **20分おきにRSSを巡回**し、新着があったときだけ安いモデルで要約する。
+ * 新: **10分おきにRSSを巡回**し（T-M8-383で20分→10分。費用は新着数にしか比例しない）、新着があったときだけ安いモデルで要約する。
  * 発見は無料なので、頻度を上げても費用は新着の件数にしか比例しない。
  */
 export const runtime = "nodejs";
@@ -38,7 +38,7 @@ export async function GET(request: Request): Promise<Response> {
       戻すときはこの1行を消す。
     */
     productionOnly: true,
-    windowKey: twentyMinWindowKey,
+    windowKey: tenMinWindowKey,
     work: async ({ now, windowKey }) => {
       // provider解決はenvに触れるため認証・受付通過後に遅延ロードする。
       const { summarizeArticles } = await import("@/lib/news/summarize-server");
