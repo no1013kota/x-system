@@ -1103,36 +1103,11 @@ function SlotFields({
   return (
     <div className="space-y-4 text-sm">
       {/*
-        並び順は運営者の指示（2026-08-18）: テーマ → パターン → パターンを追加 →
-        生成に使うプロンプト → 参考URL → プレースホルダー → 追加指示 → 曜日 → 時刻 → モード。
-        **「何を作るか」を上から順に決めてから、「いつ出すか」を決める**流れにする。
+        並び順は運営者の指示（2026-08-31。2026-08-18の指示を上書き）:
+        パターン → パターンを追加 → 生成に使うプロンプト → **この型の入力項目（プレースホルダー）** →
+        **共通の入力（テーマ・参考URL・追加指示）** → 曜日 → 時刻 → モード。
+        プレースホルダーと共通入力の区別が付かなかったため、囲み＋見出しで分け、型に属するものを先に置く。
       */}
-      <div className="max-w-xs">
-        <label className="block font-medium" htmlFor={themeFieldId}>
-          テーマ
-        </label>
-        <select
-          aria-describedby={`${themeFieldId}-help`}
-          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-body"
-          id={themeFieldId}
-          onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
-          required
-          value={v.theme}
-        >
-          <option value="">選択してください</option>
-          {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存枠の旧値は保全される。 */}
-          {selectablePostThemeOptions(v.theme).map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs text-muted-foreground" id={`${themeFieldId}-help`}>
-          テーマを決めずにAIに任せるときは「その他」を選んでください。
-        </p>
-      </div>
-
-
       {/* 投稿作成と同じ部品（T-M8-29）。削除は出さない（編集中の枠の足元が崩れる・T-M8-134）。 */}
       <PatternRadioGroup
         deleteDisabled={pending}
@@ -1216,30 +1191,16 @@ function SlotFields({
         </div>
       ) : null}
 
-      {/* 参考URL（T-M8-135）。投稿作成の「参考にするURL」と同じ扱い。 */}
-      <div>
-        <label className="block font-medium" htmlFor={`${slotFieldPrefix}-source-url`}>
-          参考URL（任意）
-        </label>
-        <input
-          className="mt-1 h-9 w-full max-w-xl rounded-card border border-hairline bg-surface px-2 text-body"
-          id={`${slotFieldPrefix}-source-url`}
-          inputMode="url"
-          onChange={(e) => setV((cur) => ({ ...cur, source_url: e.target.value }))}
-          placeholder="https://..."
-          value={v.source_url}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          毎回このURLをAIが読んで題材にします。空欄ならAIが自分で題材を探します。
-        </p>
-      </div>
-
       {/*
         プレースホルダー（T-M8-132／T-M8-135）。選んだパターンが持つ `{名前}` の分だけ出す。
         予約は繰り返すので、ここで入れた値が毎回同じように差し込まれる。
       */}
       {activePlaceholderNames.length > 0 ? (
-        <div className="space-y-2">
+        <fieldset className="space-y-2 rounded-card border border-hairline p-4">
+          <legend className="px-1 font-medium">この型の入力項目</legend>
+          <p className="text-xs text-muted-foreground">
+            選んだ型のプロンプトにある <code>{"{名前}"}</code> の穴へ、そのまま入ります。
+          </p>
           {activePlaceholderNames.map((name) => (
             <div key={name}>
               <label
@@ -1266,8 +1227,55 @@ function SlotFields({
               </p>
             </div>
           ))}
-        </div>
+        </fieldset>
       ) : null}
+
+      {/* 共通の入力: どの型でも毎回AIへ補足として渡るもの（テーマ・参考URL・追加指示）。 */}
+      <fieldset className="space-y-4 rounded-card border border-hairline p-4">
+        <legend className="px-1 font-medium">共通の入力</legend>
+        <p className="text-xs text-muted-foreground">
+          型に関係なく、毎回AIへ補足として渡ります。
+        </p>
+      <div className="max-w-xs">
+        <label className="block font-medium" htmlFor={themeFieldId}>
+          テーマ
+        </label>
+        <select
+          aria-describedby={`${themeFieldId}-help`}
+          className="mt-1 h-9 w-full rounded-card border border-hairline bg-surface px-2 text-body"
+          id={themeFieldId}
+          onChange={(e) => setV((cur) => ({ ...cur, theme: e.target.value }))}
+          required
+          value={v.theme}
+        >
+          <option value="">選択してください</option>
+          {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存枠の旧値は保全される。 */}
+          {selectablePostThemeOptions(v.theme).map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted-foreground" id={`${themeFieldId}-help`}>
+          テーマを決めずにAIに任せるときは「その他」を選んでください。
+        </p>
+      </div>
+      <div>
+        <label className="block font-medium" htmlFor={`${slotFieldPrefix}-source-url`}>
+          参考URL（任意）
+        </label>
+        <input
+          className="mt-1 h-9 w-full max-w-xl rounded-card border border-hairline bg-surface px-2 text-body"
+          id={`${slotFieldPrefix}-source-url`}
+          inputMode="url"
+          onChange={(e) => setV((cur) => ({ ...cur, source_url: e.target.value }))}
+          placeholder="https://..."
+          value={v.source_url}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          毎回このURLをAIが読んで題材にします。空欄ならAIが自分で題材を探します。
+        </p>
+      </div>
 
       <label className="flex flex-col gap-1">
         <span className="font-medium">追加指示（任意）</span>
@@ -1279,6 +1287,8 @@ function SlotFields({
           value={v.instructions}
         />
       </label>
+
+      </fieldset>
 
       <fieldset>
         <legend className="mb-1 font-medium">曜日</legend>
