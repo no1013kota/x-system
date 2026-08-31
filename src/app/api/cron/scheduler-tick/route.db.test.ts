@@ -258,6 +258,21 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
   it("認証済み: 200 で窓をclaimし、tick の全段が実DBで走る", async () => {
     const account = await makeAccount();
     xAccountId = account.xAccountId;
+
+    /*
+      日次サマリの積み残し警告を、**このDBに溜まった過去のテスト利用者の人数**から切り離す。
+      対象は「X連携済みで今日のサマリ通知が無い利用者」なので、既存利用者ぶんを先に
+      「今日は作成済み」にしておく（人数がバッチ上限を超えると警告が出てこのテストが赤くなる。
+      件数依存の決定的な失敗・T-M8-161と同型。2026-09-01に蓄積で実際に落ちた）。
+    */
+    const jstDate = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+    await sql(
+      `insert into notifications (user_id, type, dedupe_key, title, body, in_app_enabled)
+       select p.id, 'summary', $1, 'test-presummarized', '', false from profiles p
+        where exists (select 1 from x_accounts xa where xa.user_id = p.id)
+       on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+      [`summary:${jstDate}`],
+    );
     const queuedJobId = await insertQueuedJob(xAccountId);
     const staleJobId = await insertStaleJob(xAccountId);
 

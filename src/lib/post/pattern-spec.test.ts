@@ -339,3 +339,13 @@ describe("placeholdersForFill（T-M8-186）", () => {
     expect(filled).toBe("お題: 週次ふりかえり");
   });
 });
+
+describe("buildPatternRules 文字数（T-M8-391）", () => {
+  const spec = { maxPosts: 4, webSearchPolicy: "always", sourcePolicy: "always" } as never;
+  it("premiumは長文可、非premiumは280以内を明示する", () => {
+    const premium = buildPatternRules(spec, { hasInputUrl: false, webSearchMaxUses: 2, premium: true });
+    expect(premium).toContain("文字数: 長文可");
+    const free = buildPatternRules(spec, { hasInputUrl: false, webSearchMaxUses: 2 });
+    expect(free).toContain("文字数: 1ポストは加重280字");
+  });
+});

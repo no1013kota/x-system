@@ -194,7 +194,7 @@ export function scheduledPostSlots(spec: PatternSpec): { normal: number; url: nu
  */
 export function buildPatternRules(
   spec: PatternSpec,
-  ctx: { hasInputUrl: boolean; webSearchMaxUses: number | null },
+  ctx: { hasInputUrl: boolean; webSearchMaxUses: number | null; premium?: boolean },
 ): string {
   const lines: string[] = [];
 
@@ -202,6 +202,17 @@ export function buildPatternRules(
     spec.maxPosts <= 1
       ? "分量: メインポストのみ（スレッドにしない。posts は1要素）"
       : `分量: メインポスト＋スレッド最大${spec.maxPosts - 1}（posts は合計${spec.maxPosts}要素以内）`,
+  );
+
+  /*
+    文字数はアカウントの X Premium 加入で分岐する（T-M8-391・運営者の指示 2026-09-01）。
+    固定文（SYS-GEN）に書くとキャッシュの都合で切り替えられないため、可変のここで渡す。
+    非Premiumは投稿時にXへ拒否される長さを作らない（生成後にPT-FIXで切ると締めが落ちる）。
+  */
+  lines.push(
+    ctx.premium
+      ? "文字数: 長文可（X Premium加入アカウント）。各ポストは伝わる密度を優先し、埋め草で伸ばさない"
+      : "文字数: 1ポストは加重280字（日本語は全角140字相当）以内に必ず収める",
   );
 
   if (ctx.webSearchMaxUses === null) {

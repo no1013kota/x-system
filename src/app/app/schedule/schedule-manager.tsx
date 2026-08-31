@@ -1104,7 +1104,7 @@ function SlotFields({
     <div className="space-y-4 text-sm">
       {/*
         並び順は運営者の指示（2026-08-31。2026-08-18の指示を上書き）:
-        パターン → パターンを追加 → 生成に使うプロンプト → **この型の入力項目（プレースホルダー）** →
+        パターン → パターンを追加 → 生成に使うプロンプト → **プレースホルダー** →
         **共通の入力（テーマ・参考URL・追加指示）** → 曜日 → 時刻 → モード。
         プレースホルダーと共通入力の区別が付かなかったため、囲み＋見出しで分け、型に属するものを先に置く。
       */}
@@ -1197,7 +1197,7 @@ function SlotFields({
       */}
       {activePlaceholderNames.length > 0 ? (
         <fieldset className="space-y-2 rounded-card border border-hairline p-4">
-          <legend className="px-1 font-medium">この型の入力項目</legend>
+          <legend className="px-1 font-medium">プレースホルダー</legend>
           <p className="text-xs text-muted-foreground">
             選んだ型のプロンプトにある <code>{"{名前}"}</code> の穴へ、そのまま入ります。
           </p>
@@ -1232,7 +1232,7 @@ function SlotFields({
 
       {/* 共通の入力: どの型でも毎回AIへ補足として渡るもの（テーマ・参考URL・追加指示）。 */}
       <fieldset className="space-y-4 rounded-card border border-hairline p-4">
-        <legend className="px-1 font-medium">共通の入力</legend>
+        <legend className="px-1 font-medium">共通の入力（user_input）</legend>
         <p className="text-xs text-muted-foreground">
           型に関係なく、毎回AIへ補足として渡ります。
         </p>
