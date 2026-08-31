@@ -549,32 +549,6 @@ function removePattern(target: PatternOption) {
         aria-label="生成入力"
         className={`${cardClassName} space-y-5 p-5`}
       >
-        {/* テーマを先頭に置く（T-M8-101・運営者の指示 2026-08-15。何を書くかを先に決め、書き方の型をその後に選ぶ）。 */}
-        <div>
-          <label className="block text-body font-medium text-ink" htmlFor="theme">
-            テーマ
-          </label>
-          <select
-            aria-describedby="theme-help"
-            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-            id="theme"
-            onChange={(e) => setTheme(e.target.value)}
-            required
-            value={theme}
-          >
-            <option value="">選択してください</option>
-            {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存の旧値は保全される。 */}
-            {selectablePostThemeOptions(theme).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
-            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
-          </p>
-        </div>
-
         {/*
           パターン選択はスケジュール画面と同じ部品を使う（T-M8-29）。
           同じものを選ぶ操作なので、画面によって見た目や情報量が変わらないようにする。
@@ -668,6 +642,74 @@ function removePattern(target: PatternOption) {
           </div>
         ) : null}
 
+      {/*
+          **入力の並びは「型の入力項目 → 共通の入力」**（運営者の指示 2026-08-31。
+          プレースホルダーと共通入力の区別が付かなかったため、囲み＋見出しで分け、
+          型に属するものを先に置く。テーマ先頭（T-M8-101・2026-08-15）はこの指示で上書き）。
+          プレースホルダー（T-M8-132）: パターンの `{名前}` の分だけ欄を出し、値を穴へ差し込む。
+        */}
+        {activePlaceholderNames.length > 0 ? (
+          <fieldset className="space-y-4 rounded-card border border-hairline p-4">
+            <legend className="px-1 text-body font-medium text-ink">この型の入力項目</legend>
+            <p className="text-xs text-muted-foreground">
+              選んだ型のプロンプトにある <code>{"{名前}"}</code> の穴へ、そのまま入ります。
+            </p>
+            {activePlaceholderNames.map((name) => (
+              <div key={name}>
+                <label
+                  className="block text-body font-medium text-ink"
+                  htmlFor={`placeholder-${name}`}
+                >
+                  {name}（任意）
+                </label>
+                <textarea
+                  className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
+                  id={`placeholder-${name}`}
+                  onChange={(e) =>
+                    setPlaceholderValues((prev) => ({ ...prev, [name]: e.target.value }))
+                  }
+                  rows={2}
+                  value={placeholderValues[name] ?? ""}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  プロンプトの <code>{`{${name}}`}</code> に入ります。空欄なら「（未指定）」になります。
+                </p>
+              </div>
+            ))}
+          </fieldset>
+        ) : null}
+
+        {/* 共通の入力: どの型でも毎回AIへ補足として渡るもの（テーマ・参考URL・追加指示）。 */}
+        <fieldset className="space-y-4 rounded-card border border-hairline p-4">
+          <legend className="px-1 text-body font-medium text-ink">共通の入力</legend>
+          <p className="text-xs text-muted-foreground">
+            型に関係なく、毎回AIへ補足として渡ります。
+          </p>
+        <div>
+          <label className="block text-body font-medium text-ink" htmlFor="theme">
+            テーマ
+          </label>
+          <select
+            aria-describedby="theme-help"
+            className="mt-1 h-10 w-full rounded-card border border-hairline bg-surface px-3 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
+            id="theme"
+            onChange={(e) => setTheme(e.target.value)}
+            required
+            value={theme}
+          >
+            <option value="">選択してください</option>
+            {/* 選択肢は最新ニュース画面と同じ運用テーマ＋その他（T-M8-100）。既存の旧値は保全される。 */}
+            {selectablePostThemeOptions(theme).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground" id="theme-help">
+            決めずに書かせたいときは「その他」を選び、追加指示に書いてください。
+          </p>
+        </div>
+
         <div>
           <label className="block text-body font-medium text-ink" htmlFor="source_url">
             参考URL（任意）
@@ -689,35 +731,6 @@ function removePattern(target: PatternOption) {
             </p>
         </div>
 
-      {/*
-          **入力項目（プレースホルダー）**（T-M8-132）。パターンが `{名前}` を持つとき、
-          その名前の入力欄をここに出し、入力内容をプロンプトの `{名前}` へ差し込む。
-          以前は「自分の考え」だけが固定の欄だった（`<user_input>`（当時の名は `<input>`）に `自分の考え: …` として
-          載せるだけで、プロンプトのどこへ効くかは型の書き方任せだった）。
-        */}
-        {activePlaceholderNames.map((name) => (
-          <div key={name}>
-            <label
-              className="block text-body font-medium text-ink"
-              htmlFor={`placeholder-${name}`}
-            >
-              {name}（任意）
-            </label>
-            <textarea
-              className="mt-1 w-full rounded-card border border-hairline px-3 py-2 text-body transition-colors duration-150 focus:border-brand focus:outline-none"
-              id={`placeholder-${name}`}
-              onChange={(e) =>
-                setPlaceholderValues((prev) => ({ ...prev, [name]: e.target.value }))
-              }
-              rows={2}
-              value={placeholderValues[name] ?? ""}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              プロンプトの <code>{`{${name}}`}</code> に入ります。空欄なら「（未指定）」になります。
-            </p>
-          </div>
-        ))}
-
         <div>
           <label className="block text-body font-medium text-ink" htmlFor="instructions">
             追加指示（任意）
@@ -731,6 +744,8 @@ function removePattern(target: PatternOption) {
             value={instructions}
           />
         </div>
+
+        </fieldset>
 
         {/* **モードは追加指示の下**（運営者の指示 2026-08-27）。作る前に行き先を決める。 */}
         <fieldset className="space-y-2">
