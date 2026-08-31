@@ -233,3 +233,50 @@ describe("finalizeThread — 目標字数とポスト数を仕組みで担保す
     expect(res.thread[2].warnings).not.toContain(WARNING.postCountTrimmed);
   });
 });
+
+/**
+ * X Premium アカウントの長文（T-M8-391・運営者の指示 2026-09-01「文字数制限は忘れて良い」）。
+ * 長文プロンプトの成果物を280/240への短縮で壊さないことがこのグループの契約。
+ */
+describe("finalizeThread premium (T-M8-391)", () => {
+  it("premiumでは長文（280超）を短縮せず、警告も付けない", async () => {
+    const long = "長".repeat(500); // 加重1,000。非premiumなら2回短縮＋警告になる長さ
+    const shorten = vi.fn(async () => "短くされた");
+    const res = await finalizeThread(
+      {
+        maxPosts: 1, sourceRequired: false, posts: [long], aiSources: [],
+        ngWords: [], hasReferenceUrl: false, premium: true,
+      },
+      deps({ shorten }),
+    );
+    expect(shorten).not.toHaveBeenCalled();
+    expect(res.thread[0].text).toBe(long);
+    expect(res.thread[0].warnings).not.toContain(WARNING.lengthExceeded);
+    expect(res.thread[0].warnings).not.toContain(WARNING.lengthOverTarget);
+  });
+
+  it("premiumでも上限25,000超は短縮対象（Xに投稿できない長さは作らない）", async () => {
+    const tooLong = "長".repeat(13_000); // 加重26,000
+    const shorten = vi.fn(async () => "収まる長さ");
+    const res = await finalizeThread(
+      {
+        maxPosts: 1, sourceRequired: false, posts: [tooLong], aiSources: [],
+        ngWords: [], hasReferenceUrl: false, premium: true,
+      },
+      deps({ shorten }),
+    );
+    expect(shorten).toHaveBeenCalledWith(tooLong, 25_000);
+    expect(res.thread[0].warnings).not.toContain(WARNING.lengthExceeded);
+  });
+
+  it("premium指定なしは従来どおり280へ短縮する（後方互換）", async () => {
+    const long = "長".repeat(200);
+    const shorten = vi.fn(async () => "短い投稿");
+    const res = await finalizeThread(
+      { maxPosts: 1, sourceRequired: false, posts: [long], aiSources: [], ngWords: [], hasReferenceUrl: false },
+      deps({ shorten }),
+    );
+    expect(shorten).toHaveBeenCalled();
+    expect(res.thread[0].warnings).not.toContain(WARNING.lengthExceeded);
+  });
+});

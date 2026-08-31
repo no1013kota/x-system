@@ -117,6 +117,8 @@ interface JobRow {
     ng?: { words?: string[] };
   } | null;
   plan: string;
+  /** X Premium加入（/meのverified_type由来・T-M8-219）。文字数の分岐に使う（T-M8-391）。 */
+  x_premium: boolean;
 }
 
 export interface PostGenerationDeps {
@@ -176,7 +178,7 @@ export function composeUserInput(input: JobRow["input"]): string {
 async function loadJob(db: Queryable, jobId: string): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
     `select gj.pattern_id, gj.pattern_spec, gj.trigger, gj.input, gj.x_account_id, gj.attempt,
-            xa.user_id, xa.base_md, xa.settings, p.plan
+            xa.user_id, xa.base_md, xa.settings, xa.x_premium, p.plan
        from generation_jobs gj
        join x_accounts xa on xa.id = gj.x_account_id
        join profiles p on p.id = xa.user_id
@@ -425,6 +427,7 @@ const hasInputUrl = Boolean(job.input.source_url);
     patternRules: buildPatternRules(spec, {
       hasInputUrl,
       webSearchMaxUses: webSearch?.maxUses ?? null,
+      premium: job.x_premium,
     }),
     input: composeUserInput(job.input),
     recentPosts,
@@ -562,6 +565,7 @@ const hasInputUrl = Boolean(job.input.source_url);
       aiSources: generated.parsed.sources,
       ngWords,
       hasReferenceUrl,
+      premium: job.x_premium,
     },
     { shorten, validateSource: deps.validateSource },
   );
@@ -590,6 +594,7 @@ const hasInputUrl = Boolean(job.input.source_url);
           aiSources: retry.parsed.sources,
           ngWords,
           hasReferenceUrl,
+          premium: job.x_premium,
         },
         { shorten, validateSource: deps.validateSource },
       );

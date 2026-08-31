@@ -2,7 +2,6 @@ import type { ThreadItem } from "@/lib/ai/gen-output";
 
 import { matchNgWords } from "./ng-words";
 import {
-  MAX_WEIGHTED_LENGTH,
   maxWeightedLengthFor,
   measurePostText,
   MIN_SHORTENED_WEIGHTED_LENGTH,
@@ -107,6 +106,8 @@ export interface FinalizeThreadInput {
   aiSources: string[];
   ngWords: readonly string[];
   hasReferenceUrl: boolean;
+  /** X Premium加入アカウント。true なら上限25,000・240字への読みやすさ短縮もしない（T-M8-391）。 */
+  premium?: boolean;
 }
 
 export interface FinalizeThreadDeps {
@@ -141,26 +142,34 @@ export async function finalizeThread(
   // ポスト数の上限をコードで担保する（プロンプトの分量指示は守られない・T-M7-41）。
   const capped = capPostCount(input.maxPosts, input.posts);
 
+  /*
+    文字数上限はアカウントの X Premium 加入で分岐する（T-M8-391・運営者の指示 2026-09-01）。
+    Premium は長文が正当な成果物なので、280への短縮も「読みやすさの240目標」も適用しない
+    （どちらも本文を削る＝長文プロンプトの意図を壊す）。上限25,000だけは投稿可否として守る。
+  */
+  const premium = input.premium ?? false;
+  const limit = maxWeightedLengthFor(premium);
+
   const thread: ThreadItem[] = [];
   for (let index = 0; index < capped.posts.length; index++) {
     let text = capped.posts[index];
     const warnings: string[] = [];
 
-    // 加重文字数280超過はPT-FIXで最大2回短縮（なお超過は編集必須警告）。
-    let metrics = measurePostText(text);
+    // 加重文字数の上限超過はPT-FIXで最大2回短縮（なお超過は編集必須警告）。
+    let metrics = measurePostText(text, limit);
     let attempts = 0;
     while (!metrics.withinLimit && attempts < MAX_FIX_ATTEMPTS) {
-      text = await deps.shorten(text, MAX_WEIGHTED_LENGTH);
-      metrics = measurePostText(text);
+      text = await deps.shorten(text, limit);
+      metrics = measurePostText(text, limit);
       attempts++;
     }
     if (!metrics.withinLimit) warnings.push(WARNING.lengthExceeded);
 
     // 読みやすさの目標（加重240）超過は1回だけ縮める。契約ではないので失敗にはしない。
-    // 縮めた結果が短すぎる（内容を削り過ぎた）場合は元の本文を採る。
-    if (metrics.withinLimit && metrics.weightedLength > TARGET_WEIGHTED_LENGTH) {
+    // 縮めた結果が短すぎる（内容を削り過ぎた）場合は元の本文を採る。Premiumは適用しない。
+    if (!premium && metrics.withinLimit && metrics.weightedLength > TARGET_WEIGHTED_LENGTH) {
       const shortened = await deps.shorten(text, TARGET_WEIGHTED_LENGTH);
-      const candidate = measurePostText(shortened);
+      const candidate = measurePostText(shortened, limit);
       const usable =
         candidate.withinLimit &&
         !candidate.empty &&
