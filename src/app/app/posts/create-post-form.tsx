@@ -40,7 +40,7 @@ import { defaultScheduleValue } from "./schedule-draft-control";
 import { AutomationConsentModal } from "@/components/x/automation-consent-modal";
 import { recordXAutomationConsentAction } from "@/app/actions/schedule";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
-import { selectablePostThemeOptions } from "@/lib/post/post-theme";
+import { SELECTABLE_POST_THEME_OPTIONS, selectablePostThemeOptions } from "@/lib/post/post-theme";
 import { primaryLinkClassName } from "@/components/ui/link-button";
 import { CardTitle, cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
@@ -151,6 +151,8 @@ export function CreatePostForm({
     newsItemId: string;
     newsText: string;
     sourceUrl: string;
+    /** 記事の分野（テーマの初期値に使う・T-M8-386）。 */
+    category: string;
   } | null;
   /** 自動投稿に同意済みか（T-M8-331）。「すぐに投稿」「予約投稿」を選ぶと同意を求める。 */
   automationConsented?: boolean;
@@ -164,8 +166,17 @@ export function CreatePostForm({
    * テーマ。**選択は必須**（2026-08-03 ユーザー判断）。空文字は「まだ選んでいない」状態で、
    * 生成ボタンを押せない状態にする（`lib/post/post-theme.ts` の判断）。
    */
-  // ニュース引き継ぎ時は記事そのものが題材なので「その他」を初期選択にする（1押しで生成できる形）。
-  const [theme, setTheme] = useState(newsPrefill ? "other" : "");
+  /*
+    ニュース引き継ぎ時は**記事の分野をテーマの初期値にする**（T-M8-386・運営者の指示 2026-08-31。
+    以前は一律「その他」で、テーマを選び直す手間があった）。分野が画面で選べない
+    運用外テーマのときだけ「その他」へ倒す（選択肢に無い値を初期値にすると保存で詰まる）。
+  */
+  const prefillTheme = newsPrefill
+    ? SELECTABLE_POST_THEME_OPTIONS.some((o) => o.id === newsPrefill.category)
+      ? newsPrefill.category
+      : "other"
+    : "";
+  const [theme, setTheme] = useState(prefillTheme);
   const [instructions, setInstructions] = useState("");
 /** パターンの入力項目の値（`{名前}` へ差し込む・T-M8-132）。 */
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>(
