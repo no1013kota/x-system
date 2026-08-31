@@ -5,7 +5,7 @@ import type { Queryable } from "../x/token-refresh";
 /**
  * GEN のコンテキスト組み立て（プロンプト設計書 §4.1/§4.2, 要件02 §4.4, T-M3-04）。
  * system は「SYS-GEN＋<base_md>」の固定バイト列（可変値を混ぜない＝プロンプトキャッシュ効率）。
- * user は <pattern><input><recent_posts>（P-6のみ<news_digest>／P-5有効化後のみ<quote_post>）。
+ * user は <pattern><user_input><recent_posts>（P-6のみ<news_digest>／P-5有効化後のみ<quote_post>）。
  * DB読取は注入し純粋に保つ。recent_posts のためのX API追加読取は行わない（保存済みdraftから組む）。
  */
 
@@ -77,7 +77,7 @@ parts.push(`<pattern>\n${params.pattern}\n</pattern>`);
   if (params.patternRules) {
     parts.push(`<pattern_rules>\n${params.patternRules}\n</pattern_rules>`);
   }
-  parts.push(`<input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</input>`);
+  parts.push(`<user_input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</user_input>`);
   const recent = params.recentPosts.length > 0 ? formatRecentPosts(params.recentPosts) : UNSPECIFIED;
   parts.push(`<recent_posts>\n${recent}\n</recent_posts>`);
   if (params.previousDraft && params.previousDraft.length > 0) {

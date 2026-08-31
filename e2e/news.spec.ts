@@ -202,8 +202,8 @@ test("すぐに投稿作成は投稿作成画面へ引き継ぎ、{ニュース}
     await expect(newsField).toHaveValue(new RegExp(`E2E-${run} 引き継ぎ記事`));
     // 参考URLにも記事URLが入る。
     await expect(page.getByLabel("参考URL（任意）")).toHaveValue(/example\.com\/e2e-news/);
-    // テーマは「その他」が選ばれ、そのまま生成できる状態。
-    await expect(page.getByLabel("テーマ")).toHaveValue("other");
+    // テーマは記事の分野（AI）が選ばれ、そのまま生成できる状態（T-M8-386）。
+    await expect(page.getByLabel("テーマ")).toHaveValue("ai");
   } finally {
     await removeNews(items.map((i) => i.id));
   }

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v4.19 |
-| 更新日 | 2026-08-30 |
+| バージョン | v4.20 |
+| 更新日 | 2026-08-31 |
 | 関連 | [ローカル開発](./local-development.md)／[CI](./ci.md)／[デプロイ手順](./deployment.md)／[リリース前チェックリスト](./release-checklist.md)／[ドキュメントマップ](../README.md)／`CLAUDE.md` |
 
 このリポジトリで開発を進めるときの手順書です。**開発とテストは Claude Code に任せる前提**で書いてあります。専門知識は要りません。
@@ -453,7 +453,7 @@ ADR のように「判断した時点のファイル名」を書き残したい�
 
 ### ビルド成果物を走査する検査
 
-ソースでもブラウザでもなく、**`next build` が吐いたものを読む**検査。`npm run check:csp-nonce`（HTMLのnonce）と `npm run check:blog-trace`（ブログ記事の同梱・T-M8-184。ビルドが出すトレース一覧に `blog/published/*.md` が載っているか）の2つで、`release:check` の `build` 直後に走る。
+ソースでもブラウザでもなく、**`next build` が吐いたものを読む**検査。`npm run check:csp-nonce`（HTMLのnonce）・`npm run check:blog-trace`（ブログ記事の同梱・T-M8-184。ビルドが出すトレース一覧に `blog/published/*.md` が載っているか）・`npm run check:sharp-trace`（sharpのLinuxバイナリ同梱・T-M8-385。sharpに依存するrouteをビルドのトレース一覧から数え上げ、`outputFileTracingIncludes` の宣言と照合する。漏れると**本番だけ500**）の3つで、`release:check` の `build` 直後に走る。
 
 なぜこの層が要るのか。2026-08-14、本番の `/signup` と `/reset-password` が動いていなかった。CSPの `script-src` は `'nonce-…' 'strict-dynamic'` で、`'strict-dynamic'` はホスト指定（`'self'`）を無視させる。nonceはリクエストごとに作るので**ビルド時のHTMLへ焼き付けられず**、静的prerenderされたページはscriptが1本も実行されない。会員登録もパスワード再設定もできない状態が18日間続いた。
 

@@ -284,13 +284,19 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     newsItemId: string;
     newsText: string;
     sourceUrl: string;
+    category: string;
   } | null = null;
   if (tab === "create" && params.news && /^[0-9a-f-]{36}$/i.test(params.news) && createData) {
     const { rows } = await getPool().query<{
       title: string;
       summary: string;
       source_url: string;
-    }>(`select title, summary, source_url from news_items where id = $1`, [params.news]);
+      category: string;
+    }>(
+      `select title, summary, source_url, category::text as category
+         from news_items where id = $1`,
+      [params.news],
+    );
     const item = rows[0];
     const p1 = createData.patterns.find((option) => option.seedKey === "p1");
     if (item && p1) {
@@ -299,6 +305,8 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         newsItemId: params.news,
         newsText: `${item.title}\n${item.summary}`,
         sourceUrl: item.source_url,
+        // 記事の分野をテーマの初期値へ引き継ぐ（T-M8-386・運営者の指示 2026-08-31）。
+        category: item.category,
       };
     }
   }

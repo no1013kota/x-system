@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.19 |
-| 更新日 | 2026-08-29 |
+| バージョン | v1.20 |
+| 更新日 | 2026-08-31 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -82,7 +82,7 @@ npm run release:staging -- --base https://x-system-stg.vercel.app --account ai_n
 デプロイ前に、ローカルで次がすべて緑であること。
 
 ```bash
-npm run release:check    # typecheck → lint → check:doc-dates → check:doc-refs → 依存監査 → test:db → build → check:csp-nonce → check:blog-trace → test:e2e
+npm run release:check    # typecheck → lint → check:doc-dates → check:doc-refs → 依存監査 → test:db → build → check:csp-nonce → check:csp-runtime → check:blog-trace → check:sharp-trace → test:e2e
 ```
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。

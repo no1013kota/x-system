@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.70 |
-| 更新日 | 2026-08-29 |
+| バージョン | v1.71 |
+| 更新日 | 2026-08-31 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -298,7 +298,7 @@ Server ActionsはNext.jsの同一origin検証を有効のまま使用し、`allo
 
 | 入力 | 制約 |
 |---|---|
-| 参考URL（`source_url`等） | `https://`形式のみ検証する。アプリは本文を取得せず、URL文字列を`<input>`でproviderへ渡し、内容確認はproviderのWeb検索が行う（確認できない場合の挙動はプロンプト側の中止条件・error返却に従う） |
+| 参考URL（`source_url`等） | `https://`形式のみ検証する。アプリは本文を取得せず、URL文字列を`<user_input>`でproviderへ渡し、内容確認はproviderのWeb検索が行う（確認できない場合の挙動はプロンプト側の中止条件・error返却に従う） |
 | 出典URL検証 | DNS解決後のprivate/loopback/link-local IPを拒否し、redirect先も再検証する（本文は取得しない。timeout 10秒） |
 | `request_key` | クライアント生成UUID。ユーザーIDをprefixしてjobのunique keyへ保存 |
 | X投稿URL（`ref_post`） | hostは`x.com`/`twitter.com`、pathは`/{handle}/status/{numeric_id}`だけ許可 |
@@ -373,6 +373,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.68 | 2026-08-28 | uploadDraftImage / removeDraftImage を追加（下書きに自分の画像を添える・T-M8-353） |
 | v1.69 | 2026-08-28 | updatePersonaSettings に reference_style（アカウント.mdの5章「参考にする型」）を追加（T-M8-355／T-M8-356） |
 | v1.70 | 2026-08-29 | rollbackBaseMd を削除（アカウント.mdの変更履歴を廃止・T-M8-362）。discardSettingsProposal を追加（T-M8-360） |
+| v1.71 | 2026-08-31 | 生成userの構造タグ `<input>` を `<user_input>` へ改名（T-M8-387）。参考URLの記載も更新 |
 
 ### 下書きの投稿予約（T-M8-157）
 

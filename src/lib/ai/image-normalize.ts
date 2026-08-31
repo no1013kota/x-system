@@ -1,5 +1,20 @@
 // sharp 0.35 で `sharp.Metadata` の名前空間型が無くなったため、型は名前付きでimportする（T-M7-32）。
-import sharp, { type Metadata } from "sharp";
+import type { Metadata } from "sharp";
+
+/*
+  **sharpは使う瞬間まで読み込まない**（T-M8-385）。静的importにすると、この module を
+  経由する route（/app/posts のServer Action束）全体が sharp のネイティブバイナリに依存し、
+  Vercelで同梱が漏れた瞬間に**画像と無関係なボタンまで全部500**になる——実際に
+  T-M8-353のデプロイ後、本番の投稿作成の全Actionが「画面を読み込めませんでした」に
+  なっていた（ローカルはmacバイナリ・E2Eはnext devで原理的に見えない）。
+  遅延なら、読み込み失敗は画像を処理する操作だけの失敗として呼び出し元のcatchへ落ち、
+  トーストで理由が出る。
+*/
+let sharpModule: typeof import("sharp") | null = null;
+async function loadSharp(): Promise<typeof import("sharp").default> {
+  sharpModule ??= await import("sharp");
+  return sharpModule.default;
+}
 
 /**
  * プロバイダ返却画像の検証と正規化（プロンプト設計書 §5.5, 要件06 §6）。
@@ -54,7 +69,7 @@ export interface InspectedImage {
 export async function inspectImage(bytes: Buffer): Promise<InspectedImage> {
   let meta: Metadata;
   try {
-    meta = await sharp(bytes).metadata();
+    meta = await (await loadSharp())(bytes).metadata();
   // eslint-disable-next-line no-restricted-syntax -- デコード不能そのものが判定結果。ImageValidationError で呼び出し元へ伝わる
   } catch {
     throw new ImageValidationError("unreadable", "image could not be decoded");
@@ -96,6 +111,7 @@ async function encode(
   scale: number,
   sourceWidth: number,
 ): Promise<Buffer> {
+  const sharp = await loadSharp();
   let pipeline = sharp(bytes).rotate(); // EXIF 回転を焼き込む
   if (scale < 1) {
     // 元画像の幅は inspectImage で判定済み（申告MIME前の実データ由来）。圧縮ループで
@@ -150,7 +166,7 @@ export async function normalizeForX(
   for (let attempt = 0; attempt < 16; attempt++) {
     const out = await encode(bytes, targetFormat, quality, scale, meta.width);
     if (out.length <= maxBytes) {
-      const outMeta = await sharp(out).metadata();
+      const outMeta = await (await loadSharp())(out).metadata();
       return {
         bytes: out,
         mime: MIME_BY_FORMAT[targetFormat],

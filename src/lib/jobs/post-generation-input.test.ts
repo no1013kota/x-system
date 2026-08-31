@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { composeUserInput } from "./post-generation";
 
 /**
- * `<input>` ブロックの組み立て（T-M8-28）。
+ * `<user_input>` ブロックの組み立て（T-M8-28）。
  *
  * 分野（発信テーマ）を渡せるようにしたので、**入る順番と未指定時の扱い**を固定する。
  * 分野を先に置くのは、題材の選び方を最初に縛るため（SYS-GEN の「分野があればその分野に限定する」）。

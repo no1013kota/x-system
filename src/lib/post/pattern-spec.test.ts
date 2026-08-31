@@ -275,7 +275,7 @@ describe("buildPatternRules（設定をAIへ渡す文）", () => {
 
   it("URLが無くて検索しない場合は、その理由まで書く", () => {
     const text = rules("p2", {}, { webSearchMaxUses: null, hasInputUrl: false });
-    expect(text).toContain("<input>に参考URLが無いため");
+    expect(text).toContain("<user_input>に参考URLが無いため");
   });
 
   it("参考URLの方針を書く。**本文にURLを書かせない**ことも毎回伝える", () => {
@@ -285,7 +285,7 @@ describe("buildPatternRules（設定をAIへ渡す文）", () => {
   });
 
   it("「入力があるときだけ」はURLの有無で言うことが変わる", () => {
-    expect(rules("p3", {}, { hasInputUrl: true })).toContain("<input>のURLを含め");
+    expect(rules("p3", {}, { hasInputUrl: true })).toContain("<user_input>のURLを含め");
     expect(rules("p3", {}, { hasInputUrl: false })).toContain("無理に付けない");
   });
 });
