@@ -6,6 +6,7 @@ import {
   firstStop,
   judgeLinkedProject,
   onlyMigrationsPending,
+  pickCiConclusion,
   projectRefFromCsp,
   summarizeGate,
   type ReleaseContext,
@@ -192,5 +193,50 @@ describe("接続先の取り違えとmigration適用の関係", () => {
     // stop が2つになるため onlyMigrationsPending が false になり、--apply が効かない。
     expect(onlyMigrationsPending(steps)).toBe(false);
     expect(firstStop(steps)?.name).toBe("データベースの接続先");
+  });
+});
+
+describe("pickCiConclusion (T-M8-389)", () => {
+  const sha = "abc123";
+  it("PRのskippedがpushのsuccessを隠さない（新しい順の先頭がskippedでも実行結果を選ぶ）", () => {
+    expect(
+      pickCiConclusion(
+        [
+          { headSha: sha, status: "completed", conclusion: "skipped" },
+          { headSha: sha, status: "completed", conclusion: "success" },
+        ],
+        sha,
+      ),
+    ).toBe("success");
+  });
+  it("failureはskippedより優先して伝える", () => {
+    expect(
+      pickCiConclusion(
+        [
+          { headSha: sha, status: "completed", conclusion: "skipped" },
+          { headSha: sha, status: "completed", conclusion: "failure" },
+        ],
+        sha,
+      ),
+    ).toBe("failure");
+  });
+  it("実行中のrunがあれば結論を先取りしない", () => {
+    expect(
+      pickCiConclusion(
+        [
+          { headSha: sha, status: "in_progress", conclusion: null },
+          { headSha: sha, status: "completed", conclusion: "success" },
+        ],
+        sha,
+      ),
+    ).toBe("in_progress");
+  });
+  it("全部skippedならskippedのまま止める（緑をでっち上げない）", () => {
+    expect(
+      pickCiConclusion([{ headSha: sha, status: "completed", conclusion: "skipped" }], sha),
+    ).toBe("skipped");
+  });
+  it("該当SHAのrunが無ければnull（CIがまだ無い＝止める）", () => {
+    expect(pickCiConclusion([{ headSha: "other", status: "completed", conclusion: "success" }], sha)).toBeNull();
   });
 });
