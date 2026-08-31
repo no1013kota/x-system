@@ -95,10 +95,11 @@ describe("GEN prompt constants", () => {
 });
 
 describe("日本のXで不利にならない規約（T-M7-37）", () => {
-  it("共通ルールに改行・字数・ハッシュタグ・URLの扱いがある", () => {
+  it("共通ルールに改行・ハッシュタグ・URLの扱いと、文字数の委譲がある", () => {
     // どれも欠けると「140字ベタ打ち・タグ乱用・本文にURL」という伸びない形が出る。
+    // 文字数はSYS-GEN固定文ではなく<pattern_rules>で渡す（X Premiumで分岐する・T-M8-391）。
     expect(SYS_GEN).toContain("改行で読ませる");
-    expect(SYS_GEN).toContain("60〜120字");
+    expect(SYS_GEN).toContain("文字数・Web検索・参考URLの扱いは<pattern_rules>に従う");
     expect(SYS_GEN).toContain("ハッシュタグは使わない");
     expect(SYS_GEN).toContain("URLは本文へ書かない");
   });
