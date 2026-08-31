@@ -650,7 +650,7 @@ function removePattern(target: PatternOption) {
         */}
         {activePlaceholderNames.length > 0 ? (
           <fieldset className="space-y-4 rounded-card border border-hairline p-4">
-            <legend className="px-1 text-body font-medium text-ink">この型の入力項目</legend>
+            <legend className="px-1 text-body font-medium text-ink">プレースホルダー</legend>
             <p className="text-xs text-muted-foreground">
               選んだ型のプロンプトにある <code>{"{名前}"}</code> の穴へ、そのまま入ります。
             </p>
@@ -681,7 +681,7 @@ function removePattern(target: PatternOption) {
 
         {/* 共通の入力: どの型でも毎回AIへ補足として渡るもの（テーマ・参考URL・追加指示）。 */}
         <fieldset className="space-y-4 rounded-card border border-hairline p-4">
-          <legend className="px-1 text-body font-medium text-ink">共通の入力</legend>
+          <legend className="px-1 text-body font-medium text-ink">共通の入力（user_input）</legend>
           <p className="text-xs text-muted-foreground">
             型に関係なく、毎回AIへ補足として渡ります。
           </p>
