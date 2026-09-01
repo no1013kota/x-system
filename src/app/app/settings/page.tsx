@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
@@ -18,13 +19,6 @@ import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
-import {
-  DEFAULT_TONE_SETTINGS,
-  baseMdSettingsDiffer,
-  extractBaseMdSection,
-  personaSettingsSchema,
-  type PersonaSettings,
-} from "@/lib/persona-settings";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 import { getSettingsForUser } from "@/lib/settings-server";
 import { pooledQueryable } from "@/lib/db/pool";
@@ -43,7 +37,6 @@ import {
 import { AiPurposeSettings } from "./ai-purpose-settings";
 import { ApiKeySettings } from "./api-key-settings";
 import { LearningSourcesManager } from "./learning-sources-manager";
-import { PersonaSettingsForm } from "./persona-settings-form";
 import { SettingsPreferences } from "./settings-preferences";
 import {
   SETTINGS_TABS,
@@ -78,14 +71,6 @@ export const metadata: Metadata = {
   title: `設定 | ${APP_NAME}`,
 };
 
-const EMPTY_SETTINGS: PersonaSettings = {
-  ng: { rules: [], topics: [], words: [] },
-  persona: { audience: "", speaker: "", value: "" },
-  themes: { free_text: "", primary: [], secondary: [] },
-  tone: { ...DEFAULT_TONE_SETTINGS },
-  volume: { free_text: "" },
-};
-
 interface SettingsPageProps {
   searchParams: Promise<{
     portal?: string;
@@ -99,13 +84,9 @@ interface SettingsPageProps {
 
 
 interface AccountRow {
-  base_md: string;
   base_md_version: number;
   handle: string;
   id: string;
-  settings: unknown;
-  /** 参考ソースから作った保存前の提案（T-M8-349）。無ければ null。 */
-  settings_proposal: unknown;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -257,7 +238,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     tab === "account" && profile.active_x_account_id
       ? admin
           .from("x_accounts")
-          .select("id, handle, settings, settings_proposal, base_md, base_md_version")
+          .select("id, handle, base_md_version")
           .eq("id", profile.active_x_account_id)
           .eq("user_id", user.id)
           .eq("status", "active")
@@ -276,35 +257,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // ちょうど60秒あたりで判定が割れ、表示が食い違って描き直しになる。
   const nowMs = await serverNowMs();
 
-  // アカウント設定タブ: 保存済み設定と、アカウント.mdとの差分有無・参考ソース。
-  const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
-  const initialSettings = parsedSettings?.success ? parsedSettings.data : EMPTY_SETTINGS;
-  /*
-    保存前の提案（T-M8-349）。**読めない提案は無かったことにする**——形が変わった古い提案で
-    フォームを埋めると、利用者は自分が書いた覚えのない値を保存することになる。
-  */
-  const parsedProposal =
-    account && account.settings_proposal
-      ? personaSettingsSchema.safeParse(account.settings_proposal)
-      : null;
-  const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
-  /*
-    フォームを作り直す合図（T-M8-356/357）。**中身が変わったら作り直す**——
-    「提案があるか」だけを見ていると、保存せずに2回続けて反映したとき
-    （2回目の提案で欄が更新されない）に、また「押しても入らない」に戻る。
-    文字列そのものをkeyにすると長くなるので、長さと文字コードの畳み込みで十分。
-  */
-  const proposalKey = settingsProposal
-    ? `p${[...JSON.stringify(settingsProposal)].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
-    : "saved";
-  let initialDifference = false;
-  if (account && account.base_md_version >= 1 && parsedSettings?.success) {
-    try {
-      initialDifference = baseMdSettingsDiffer(account.base_md, parsedSettings.data);
-    } catch {
-      initialDifference = true;
-    }
-  }
   // 参考ソースはアカウント設定タブの**先頭**に置く（T-M8-344。設定を作る入口だから）。
   let learningSources: LearningSourceView[] = [];
   /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
@@ -528,10 +480,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               </p>
 
               {/*
-                **1枚のカードに「参考ソース → アカウント設定」の順で入れる**
-                （T-M8-356・運営者の指示 2026-08-28）。参考ソースはペルソナの上に置く——
-                材料を入れてから中身を確認する流れが、上から下へ一直線になる。
-                設定が未保存でも使える（T-M8-344。真似したいアカウントを挙げるところから始められる）。
+                **このタブは参考アカウントの登録・反映だけにする**（T-M8-396・運営者の指示
+                2026-09-01）。5項目の入力欄（ペルソナ〜NG設定）は プロンプト > アカウント.md へ
+                移した——参考アカウントを材料に、反映結果はそちらの入力欄へ入る。
               */}
               <div className={`${cardClassName} space-y-6 p-5 sm:p-6`}>
                 <LearningSourcesManager
@@ -542,22 +493,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   settingsMissing={account.base_md_version < 1}
                   xAccountId={account.id}
                 />
-                <PersonaSettingsForm
-                  baseMdVersion={account.base_md_version}
-                  initialDifference={initialDifference}
-                  initialSettings={initialSettings}
-                  /*
-                    **提案が届いたら作り直す**（T-M8-356）。フォームの初期値は
-                    `useState` なので、`router.refresh()` で新しい提案を渡しても
-                    **すでにmountされた画面は古い値のまま**だった——反映を押しても
-                    欄に何も入らない、という形で静かに壊れていた（運営者の報告 2026-08-28）。
-                    アカウント切替でもstateを捨てる（前アカウントの内容を新アカウントへ
-                    保存させない・T-M8-196）。
-                  */
-                  key={`${account.id}:${proposalKey}`}
-                  proposal={settingsProposal}
-                  xAccountId={account.id}
-                />
+                <p className="border-t border-hairline pt-4 text-caption text-ink-3">
+                  反映した内容は
+                  <Link className="mx-1 font-medium underline underline-offset-4" href="/app/prompts?sec=account-md">
+                    プロンプト &gt; アカウント.md
+                  </Link>
+                  の入力項目に入ります。確認して保存すると確定します。
+                </p>
               </div>
             </div>
           )

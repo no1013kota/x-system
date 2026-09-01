@@ -69,7 +69,8 @@ export async function learningAnalysisHandler(ctx: JobContext): Promise<void> {
       const user = await getUserByUsername(accessToken, handle, client);
       const { posts } = await readUserTimeline(readDeps, {
         userId: user.user.id,
-        limit: 20,
+        // 30件（T-M8-396・運営者の指示 2026-09-01「過去の30投稿くらい」）。
+        limit: 30,
         idempotencyKeyBase: `learning:${ctx.jobId}:ref_account`,
       });
       return posts.map((p) => p.text);

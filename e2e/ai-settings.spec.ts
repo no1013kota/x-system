@@ -96,7 +96,7 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
 
   // 「## 3.」を落とした状態（5見出しが揃っていない）。ここも hydration 前の入力が
   // 戻されると**正しい本文を保存してしまい、テストの前提が消える**ので残ったことを確かめる。
-  const broken = VALID_BASE_MD.replace("## 3. トーン&マナー", "### 3. トーン&マナー");
+  const broken = VALID_BASE_MD.replace("## 3. トーン", "### 3. トーン");
   await expect(async () => {
     await editor.fill(broken);
     await expect(editor).toHaveValue(broken, { timeout: 2_000 });

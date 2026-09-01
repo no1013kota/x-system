@@ -484,6 +484,43 @@ export function PersonaSettingsForm({
         </div>
       </section>
 
+      {/*
+        スレッド量や文章量（T-M8-395・運営者の指示 2026-09-01）。アカウント.mdの4章に入る。
+        旧「参考にする型」（手書きセクション）は廃止——役割は参考アカウント分析と
+        パターン別の参考投稿が継いだ。
+      */}
+      <section aria-labelledby="volume-group" className={groupClassName} role="group">
+        <CardTitle id="volume-group">スレッド量や文章量（任意）</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          アカウント.mdの4章にそのまま入ります。空なら「投稿の型の設定に従う」になります。
+        </p>
+        <div className="mt-5">
+          <label className="sr-only" htmlFor="volume.free_text">
+            スレッド量や文章量
+          </label>
+          <textarea
+            className={inputClassName}
+            id="volume.free_text"
+            maxLength={500}
+            onChange={(event) =>
+              updateSettings({
+                ...settings,
+                volume: { free_text: event.target.value },
+              })
+            }
+            placeholder="例: 1ポストは3〜5行で読み切れる密度に。スレッドは長くても4ポストまで。"
+            rows={3}
+            value={settings.volume.free_text}
+          />
+          <p className="mt-1 text-caption text-ink-3">
+            {settings.volume.free_text.length} / 500字
+          </p>
+          {errorFor("volume.free_text") ? (
+            <p className="mt-1 text-caption text-danger-fg">{errorFor("volume.free_text")}</p>
+          ) : null}
+        </div>
+      </section>
+
       <section aria-labelledby="ng-group" className={groupClassName} role="group">
         <CardTitle id="ng-group">
           NG設定（任意）
@@ -522,42 +559,6 @@ export function PersonaSettingsForm({
         </div>
       </section>
 
-      {/*
-        スレッド量や文章量（T-M8-395・運営者の指示 2026-09-01）。アカウント.mdの4章に入る。
-        旧「参考にする型」（手書きセクション）は廃止——役割は参考アカウント分析と
-        パターン別の参考投稿が継いだ。
-      */}
-      <section aria-labelledby="volume-group" className={groupClassName} role="group">
-        <CardTitle id="volume-group">スレッド量や文章量（任意）</CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">
-          アカウント.mdの4章にそのまま入ります。空なら「投稿の型の設定に従う」になります。
-        </p>
-        <div className="mt-5">
-          <label className="sr-only" htmlFor="volume.free_text">
-            スレッド量や文章量
-          </label>
-          <textarea
-            className={inputClassName}
-            id="volume.free_text"
-            maxLength={500}
-            onChange={(event) =>
-              updateSettings({
-                ...settings,
-                volume: { free_text: event.target.value },
-              })
-            }
-            placeholder="例: 1ポストは3〜5行で読み切れる密度に。スレッドは長くても4ポストまで。"
-            rows={3}
-            value={settings.volume.free_text}
-          />
-          <p className="mt-1 text-caption text-ink-3">
-            {settings.volume.free_text.length} / 500字
-          </p>
-          {errorFor("volume.free_text") ? (
-            <p className="mt-1 text-caption text-danger-fg">{errorFor("volume.free_text")}</p>
-          ) : null}
-        </div>
-      </section>
 
       {validationMessage ? (
         <Notice role="alert" tone="danger">
