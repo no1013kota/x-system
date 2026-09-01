@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.77 |
+| バージョン | v1.78 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -116,7 +116,7 @@
 
 **登録済みアドレスの扱い**（T-M8-149）: Supabaseの応答は環境で違う。ローカルは`user_already_exists`を返すが、**ホスト版は列挙対策で成功と同じ形（`identities`が空配列）を返しメールを送らない**。エラーコードだけを見ていると本番でだけ通り抜けるため、成功応答も`classifySignUpUser`で判定し、登録済みならログイン導線付きのエラーへ振り分ける（文言の正本は`signup-errors.ts`）。**未確認アドレスの再登録は「作成」として扱う**——Supabaseが毎回コードを再送するため、そのまま進めてよい。
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認は省略中**（T-M8-202・`mailer_autoconfirm`）: signUp応答に**sessionが付いていれば登録完了として`/plans?signup=1`へredirect**し、無ければ従来どおりコード入力へ切り替わる（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認（6桁コード）は必須**（T-M8-404・運営者の指示 2026-09-01。T-M8-202の省略は2026-08-22〜09-01のみ）: signUp応答は**sessionなし**で返り、同じ画面がコード入力へ切り替わる。設定が自動確認ならsession付きで`/app?welcome=signup`へredirectする（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
 
 ### 4.1 アカウント・設定
 
@@ -381,6 +381,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.75 | 2026-09-01 | generatePatternPromptAction の表行を追加。参考投稿にX投稿のURLを受け付け本文へ引き直す・読めないURLは理由つきで拒否・Sonnet 5固定（T-M8-399） |
 | v1.76 | 2026-09-01 | addLearningSource: 画面から登録できるのは ref_account のみ（ref_post はAPI互換で残置・T-M8-400） |
 | v1.77 | 2026-09-01 | `startAnalysisAction` からフォロワー数の当日記録を外す（`followerRecorded` を廃止・T-M8-403） |
+| v1.78 | 2026-09-01 | signUp: メール確認（6桁コード）を必須へ戻す。signIn: 未確認アカウントの自動確認を廃止し `email_not_confirmed` はコード画面へ（T-M8-404） |
 
 ### 下書きの投稿予約（T-M8-157）
 

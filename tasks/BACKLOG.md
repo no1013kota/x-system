@@ -5891,7 +5891,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
     その後のイベントを1件も受け取っていない契約の件数。0件なら無音でも ok。
   - あわせて「イベント0件」もwarn→okへ（契約に動きが無ければ正常）。
 
-### T-M8-404: 新規登録のメール確認（6桁コード）を必須に戻す（ログインでは求めない） `todo`
+### T-M8-404: 新規登録のメール確認（6桁コード）を必須に戻す（ログインでは求めない） `done`
 - 参照: 要件03 §1（登録） / 要件05 §1（`signUp`・`verifySignUpCode`・`signIn`） / 要件06 §1（SC-02）・§11 / deployment.md §2 / 依存: なし / サイズ: M
 - 完了条件:
   - 新規登録すると確認コード画面へ進み、メールの6桁コードを入れるまでログイン状態にならない（ローカルは Mailpit で受信）
@@ -5899,6 +5899,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `supabase/config.toml`（`enable_confirmations=true`）と `scripts/auth-settings.mjs`（`mailer_autoconfirm=false`）が揃い、staging/本番へ反映する手順が deployment.md にある
   - E2E: 登録→コード入力→着地、未確認ログイン→コード画面、を実メール（Mailpit）で通す
 - メモ: 運営者の指示（2026-09-01「新規登録では6桁認証を必要に。ログイン時は不要」）。T-M8-202（2026-08-22）で一時的に省略していたものを戻す。反映は `npm run auth:templates -- --target <env> --apply` を staging/本番で実行する必要がある（運営者作業）。
+- 実装メモ（2026-09-01 完了）:
+  - `config.toml enable_confirmations=true`／`auth-settings.mjs mailer_autoconfirm=false`（auth-settings-sync.test が対で固定）。
+    アプリはsignUp応答のsession有無で自動追従するため signUp のコードは無変更。
+  - **ログイン時の自動確認（T-M8-377 `confirmLegacyUnconfirmedEmail`）は廃止**——残すと「登録→コードを入れずにログイン」で
+    確認を素通りできる。未確認のまま放置した登録はログインでコード画面（自動再送・T-M8-153）へ回す。確認済みはパスワードだけ。
+  - E2E: 登録→コード→着地、未確認ログイン→コード画面（DBは未確認のまま）→コードで着地、招待の確認コード時フォールバック（T-M8-191）を復元。
+  - **staging/本番への反映は運営者作業**: `npm run auth:templates -- --target staging --apply` と `--target production --apply`
+    を実行しないと、デプロイしても登録即ログインのまま（deployment.md §2 手順5）。
 
 ### T-M8-405: プロンプト画面の区分の先頭を「AIモデル設定」にする `done`
 - 参照: 要件06 §1（SC-11 `/app/prompts`） / 依存: T-M8-401 / サイズ: S
