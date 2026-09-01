@@ -131,7 +131,7 @@ export async function listPromptPresets(
   const rows = await db.query<PresetRow>(
     `select ${PRESET_COLUMNS} from prompt_presets
       where x_account_id = $1 and kind = $2
-      order by is_default desc, created_at`,
+      order by created_at, id`,
     [params.xAccountId, params.kind],
   );
   /*
@@ -162,8 +162,8 @@ export async function listPromptPresets(
      returning ${PRESET_COLUMNS}`,
     [params.xAccountId, params.kind, params.fallbackContent],
   );
-  // 使用中が先頭（上の `order by is_default desc, created_at` と同じ並び）。
-  return [...seeded.rows, ...rows.rows].map(toView);
+  // 作成順（上の `order by created_at` と同じ並び）。いま作った1件は末尾。
+  return [...rows.rows, ...seeded.rows].map(toView);
 }
 
 

@@ -169,7 +169,16 @@ export function PersonaSettingsForm({
       toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
       return;
     }
-    toast.show({ tone: "success", title: "アカウント設定を保存しました" });
+    // 本棚に何が起きたかを言う（T-M8-411）。追加できなかった（上限）ときは書き換えたと言う。
+    toast.show({
+      tone: "success",
+      title: "アカウント設定を保存しました",
+      description: result.preset?.added
+        ? `アカウント.md「${result.preset.name}」を下の一覧に追加し、使用中にしました。`
+        : result.preset?.name
+          ? `アカウント.mdが上限（5件）のため、使用中の「${result.preset.name}」を書き換えました。`
+          : undefined,
+    });
     if (result.version !== undefined) {
       setVersion(result.version);
       setDirty(false);

@@ -320,9 +320,11 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   emptyContentTemplate={account.base_md || BLANK_BASE_MD_TEMPLATE}
                   initialPresets={presets}
                   // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
-                  key={`${section}:${account.id}`}
+                  // **設定の保存（version更新）でも作り直す**（T-M8-411）——保存で本棚に1件増えるので、
+                  // 古い一覧のままだと「追加された」と言われたのに画面に出ない。
+                  key={`${section}:${account.id}:v${account.base_md_version}`}
                   kind="base_md"
-                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。上の入力項目を保存すると、使用中のアカウント.mdへ反映されます。"
+                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。上の入力項目を保存するたびに、一番下に1件追加されて使用中になります（前のものは控えとして残ります）。"
                   xAccountId={account.id}
                 />
                 </div>

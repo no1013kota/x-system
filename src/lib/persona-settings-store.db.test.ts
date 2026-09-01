@@ -192,6 +192,90 @@ describe("updatePersonaSettings transaction", () => {
   });
 
   /**
+   * **保存のたびに本棚へ1件追加して使用中にする**（T-M8-411・運営者の指示 2026-09-01）。
+   * 以前は使用中の1件を書き換えていた（前の本文が消える）。上限では失敗させず書き換えに戻る。
+   */
+  it("保存すると本棚の末尾に「アカウント設定 vN」が増えて使用中になり、上限なら使用中を書き換える", async (context) => {
+    if (!database) return context.skip();
+    const db = database;
+    const userId = randomUUID();
+    const xAccountId = randomUUID();
+    await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000',
+               'authenticated', 'authenticated', $2)`,
+      [userId, `${userId}@example.com`],
+    );
+    await db.query(
+      `insert into x_accounts
+        (id, user_id, x_user_id, handle, name, auth_type, status)
+       values ($1, $2, $3, 'preset_add', 'Preset Add', 'byok', 'active')`,
+      [xAccountId, userId, `x_${xAccountId}`],
+    );
+    await db.query(
+      `update profiles
+          set plan = 'standard', subscription_status = 'active', active_x_account_id = $2
+        where id = $1`,
+      [userId, xAccountId],
+    );
+    const list = async () =>
+      (
+        await db.query<{ name: string; is_default: boolean; content: string }>(
+          `select name, is_default, content from prompt_presets
+            where x_account_id = $1 and kind = 'base_md' order by created_at, id`,
+          [xAccountId],
+        )
+      ).rows;
+
+    const first = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: 0,
+      settings: settings("1回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(first.preset).toEqual({ added: true, name: "アカウント設定 v1" });
+    let rows = await list();
+    expect(rows.map((r) => [r.name, r.is_default])).toEqual([["アカウント設定 v1", true]]);
+
+    const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: first.version,
+      settings: settings("2回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(second.preset).toEqual({ added: true, name: "アカウント設定 v2" });
+    rows = await list();
+    // 末尾に増え、使用中が切り替わる。前の1件は控えとして残る。
+    expect(rows.map((r) => [r.name, r.is_default])).toEqual([
+      ["アカウント設定 v1", false],
+      ["アカウント設定 v2", true],
+    ]);
+    expect(rows[1].content).toContain("2回目の発信者");
+    expect(rows[0].content).toContain("1回目の発信者");
+
+    // 上限（5件）まで埋めると、追加せず使用中を書き換える（失敗させない）。
+    for (const n of [1, 2, 3]) {
+      await db.query(
+        `insert into prompt_presets (x_account_id, kind, name, content, is_default)
+         values ($1, 'base_md', $2, $3, false)`,
+        [xAccountId, `控え${n}`, rows[0].content],
+      );
+    }
+    const third = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
+      expectedBaseMdVersion: second.version,
+      settings: settings("3回目の発信者"),
+      userId,
+      xAccountId,
+    });
+    expect(third.preset).toEqual({ added: false, name: "アカウント設定 v2" });
+    rows = await list();
+    expect(rows).toHaveLength(5);
+    const inUse = rows.find((r) => r.is_default);
+    expect(inUse?.name).toBe("アカウント設定 v2");
+    expect(inUse?.content).toContain("3回目の発信者");
+  });
+
+  /**
    * 参考ソースからの反映は**保存前の提案**（T-M8-349・運営者の指示 2026-08-28）。
    *
    * 保存で提案を消さないと、画面を開き直すたびに「参考ソースから作った内容を入れました。

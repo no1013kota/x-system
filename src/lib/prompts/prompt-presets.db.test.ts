@@ -159,9 +159,10 @@ describe("prompt presets（local DB）", () => {
         kind: "base_md",
       });
       expect(listed, "控え1件＋いま効いている内容").toHaveLength(2);
-      expect(listed[0].inUse, "使用中が先頭に来る").toBe(true);
-      expect(listed[0].content, "使用中は生成が読む内容と同じ").toBe(VALID_BASE_MD);
-      expect(listed[1].inUse).toBe(false);
+      // 並びは作成順（T-M8-411）。いま作った「使用中」は末尾に来る。
+      expect(listed[0].inUse).toBe(false);
+      expect(listed[1].inUse, "使用中は作成順で末尾").toBe(true);
+      expect(listed[1].content, "使用中は生成が読む内容と同じ").toBe(VALID_BASE_MD);
     } finally {
       await cleanup(uid);
     }

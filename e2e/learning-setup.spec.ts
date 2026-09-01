@@ -138,6 +138,21 @@ test("反映した内容（提案）がアカウント設定の欄に入り、�
   // 保存で確定し、提案は消える（開き直すたびに「反映しました」が出続けない）。
   await page.getByRole("button", { name: "アカウント設定を保存" }).click();
   await expect(page.getByText("まだ保存されていません。")).toHaveCount(0, { timeout: 20_000 });
+  /*
+    **保存すると本棚の一番下にアカウント.mdが1件増えて使用中になる**（T-M8-411・運営者の指示 2026-09-01）。
+    トーストがそう言い、一覧の末尾のカードが「アカウント設定 vN」で「使用中」バッジを持つ。
+  */
+  await expect(page.getByText("を下の一覧に追加し、使用中にしました", { exact: false })).toBeVisible({
+    timeout: 20_000,
+  });
+  const cards = page.locator("li").filter({ hasText: /アカウント設定 v\d+/ });
+  await expect(cards).toHaveCount(1, { timeout: 20_000 });
+  await expect(cards.first().getByText("使用中", { exact: true })).toBeVisible();
+  const [presetRows] = await query<{ n: string }>(
+    `select count(*)::text as n from prompt_presets where x_account_id = $1 and kind = 'base_md' and is_default and name like 'アカウント設定 v%'`,
+    [account.xAccountId],
+  );
+  expect(presetRows.n).toBe("1");
   const [row] = await query<{ speaker: string; proposal: unknown }>(
     `select settings->'persona'->>'speaker' as speaker, settings_proposal as proposal
        from x_accounts where id = $1`,

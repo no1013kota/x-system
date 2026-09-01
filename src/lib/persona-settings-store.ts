@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
+import { addPresetAndSetInUse, type AddPresetInUseResult } from "@/lib/prompts/prompt-preset-sync";
 
 import { withTransaction } from "@/lib/db/pool";
 import { AppError } from "@/lib/observability/errors";
@@ -29,6 +29,8 @@ export interface UpdatePersonaSettingsInput {
 export interface UpdatePersonaSettingsResult {
   baseMd: string;
   version: number;
+  /** 本棚へ追加した（または上限で書き換えた）アカウント.md（T-M8-411）。 */
+  preset: AddPresetInUseResult;
 }
 
 /** Transaction body exported for DB-backed integration tests. */
@@ -115,10 +117,19 @@ export async function applyPersonaSettingsUpdate(
       details: { reason: "base_md_version_changed" },
     });
   }
-  // 本棚の「使用中」へも写す（T-M8-332）。アカウント設定はセクション1〜4を書き換えるので、
-  // 写さないとプロンプト画面が古い本文を出したままになる。
-  await syncInUsePreset(client, { xAccountId: account.id, kind: "base_md", content: baseMd });
-  return { baseMd, version };
+  /*
+    **本棚へ1件追加して使用中にする**（T-M8-411・運営者の指示 2026-09-01）。
+    T-M8-332以来は使用中の1件を書き換えていたが、保存のたびに前の本文が消えていた。
+    追加して切り替えれば前の内容は控えとして残り、本棚が「保存の履歴」を兼ねる。
+    名前は version で一意にする（上限に達していたら書き換えに戻る・失敗させない）。
+  */
+  const preset = await addPresetAndSetInUse(client, {
+    xAccountId: account.id,
+    kind: "base_md",
+    name: `アカウント設定 v${version}`,
+    content: baseMd,
+  });
+  return { baseMd, version, preset };
 }
 
 export async function updatePersonaSettingsForUser(

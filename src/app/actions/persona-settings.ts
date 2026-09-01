@@ -21,6 +21,8 @@ export interface UpdatePersonaSettingsActionResult {
   message: string;
   status: "error" | "success";
   version?: number;
+  /** 本棚へ追加した（または上限で書き換えた）アカウント.md（T-M8-411）。 */
+  preset?: { added: boolean; name: string | null };
 }
 
 export async function updatePersonaSettings(
@@ -46,6 +48,7 @@ export async function updatePersonaSettings(
       message: "アカウント設定を保存しました。",
       status: "success",
       version: result.version,
+      preset: result.preset,
     };
   } catch (error) {
     return errorResult(error);
