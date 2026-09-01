@@ -32,10 +32,13 @@ test("アカウント設定が未保存でも参考ソースを登録でき、�
   const order = await page.evaluate(() =>
     [...document.querySelectorAll("h2")].map((h) => (h.textContent ?? "").trim()),
   );
-  expect(order.slice(0, 3)).toEqual(["参考ソースからアカウント設定を作る", "ペルソナ", "テーマ"]);
+  /*
+    このタブは参考アカウント専用（T-M8-396・運営者の指示 2026-09-01）。
+    5項目の入力欄（ペルソナ〜NG設定）は プロンプト > アカウント.md にある。
+  */
+  expect(order[0]).toBe("参考ソースからアカウント設定を作る");
+  expect(order).not.toContain("ペルソナ");
   expect(order).not.toContain("アカウント設定");
-  // 廃止した見出し（T-M8-356・運営者の指示）。
-  expect(order).not.toContain("文体・自分らしさ（任意）");
   // 対象アカウントはタブの直下（編集を始める前に見えている必要がある）。
   await expect(page.getByText(/対象アカウント: @/)).toBeVisible();
 
@@ -92,7 +95,7 @@ test("反映した内容（提案）がアカウント設定の欄に入り、�
       emoji_policy: "limited",
       first_person: "私",
       hashtags_max: 0,
-      sentence_style: "polite",
+      sentence_style: "です・ます調",
       thread_numbering: true,
     },
   };
@@ -102,7 +105,7 @@ test("反映した内容（提案）がアカウント設定の欄に入り、�
   );
 
   await signIn(page, account);
-  await page.goto("/app/settings?tab=account");
+  await page.goto("/app/prompts?sec=account-md");
 
   // 欄が提案の値で埋まっている（ここが本題）。
   await expect(page.getByLabel("発信者")).toHaveValue("提案された発信者");

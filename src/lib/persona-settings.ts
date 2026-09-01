@@ -12,9 +12,14 @@ export const DEFAULT_TONE_SETTINGS = {
   emoji_policy: "limited",
   first_person: "私",
   hashtags_max: 0,
-  sentence_style: "polite",
+  // 文末は自由入力（T-M8-395・運営者の指示 2026-09-01。旧 polite/assertive のenumは廃止し、
+  // 既存値はmigrationで「です・ます調」「断定調」へ置換した）。
+  sentence_style: "です・ます調",
   thread_numbering: true,
 } as const;
+
+/** スレッド量や文章量（アカウント.md §4）の既定。空は「指定なし＝投稿の型の設定に従う」。 */
+export const DEFAULT_VOLUME_SETTINGS = { free_text: "" } as const;
 
 export const personaSettingsSchema = z
   .object({
@@ -46,13 +51,28 @@ export const personaSettingsSchema = z
           });
         }
       }),
+    /*
+      スレッド量や文章量（T-M8-395・運営者の指示 2026-09-01）。自由入力1欄。
+      旧データにはキーが無いため default で受ける（migration不要の後方互換）。
+    */
+    volume: z
+      .object({
+        free_text: z
+          .string()
+          .trim()
+          .max(500, "スレッド量や文章量は500字以内で入力してください。")
+          .default(""),
+      })
+      .default({ free_text: "" }),
     tone: z
       .object({
         emoji_max_per_post: z.number().int().min(0),
         emoji_policy: z.enum(["none", "limited"]),
         first_person: requiredText,
         hashtags_max: z.number().int().min(0),
-        sentence_style: z.enum(["polite", "assertive"]),
+        sentence_style: requiredText.pipe(
+          z.string().max(60, "文末の指定は60字以内で入力してください。"),
+        ),
         thread_numbering: z.boolean(),
       })
       .superRefine((tone, context) => {
@@ -71,18 +91,19 @@ export type PersonaSettings = z.infer<typeof personaSettingsSchema>;
 
 const BASE_MD_HEADING_PATTERN = /^## ([1-5])\.[^\n]*$/gm;
 /**
- * アカウント.mdの見出し（T-M8-356・運営者の指示 2026-08-28で「文体・自分らしさ」を廃止）。
+ * アカウント.mdの見出し（T-M8-395・運営者の指示 2026-09-01で5項目へ再編。
+ * 旧「参考にする型」は廃止——参考アカウント分析（設定＞アカウント設定）と
+ * パターンごとの参考投稿（T-M8-397）がその役割を継いだ）。
  *
- * 1〜4はアカウント設定から機械生成し、5（参考にする型）は人が書く。
- * **既存の「## 5. 文体・自分らしさ」はmigrationで参考にする型へ畳んだ**——
- * 書いてあった内容を黙って消さないため（原則1）。
+ * **5セクションすべて設定フォームから機械生成する。** 手書きセクションは無くなった。
+ * 旧形式の保存済みmd（見出し名が違う）はそのまま有効で、次の保存時に新形式で作り直される。
  */
 export const BASE_MD_SECTION_TITLES = [
   "ペルソナ",
-  "発信テーマ",
-  "トーン&マナー",
-  "やらないこと",
-  "参考にする型",
+  "テーマ",
+  "トーン",
+  "スレッド量や文章量",
+  "NG設定",
 ] as const;
 
 function listOrFallback(values: string[], fallback = "指定なし"): string {
@@ -107,8 +128,8 @@ function buildSettingsSections(input: unknown): string {
   const thread = settings.tone.thread_numbering
     ? "付ける（例 1/5）"
     : "付けない";
-  const sentence =
-    settings.tone.sentence_style === "polite" ? "です・ます調" : "断定調";
+  // 文末は自由入力の値をそのまま載せる（T-M8-395。旧enum値はmigrationで日本語へ置換済み）。
+  const sentence = settings.tone.sentence_style;
   const ngLines = [
     ...settings.ng.topics.map((topic) => `- ${topic}には触れない`),
     ...(settings.ng.words.length > 0
@@ -141,41 +162,13 @@ function buildSettingsSections(input: unknown): string {
 - スレッド番号表記: ${thread}
 
 ## 4. ${BASE_MD_SECTION_TITLES[3]}
+${settings.volume.free_text.trim() || "指定なし（投稿の型の設定に従う）"}
+
+## 5. ${BASE_MD_SECTION_TITLES[4]}
 ${ngLines.join("\n")}`;
 }
 
-/**
- * 手で書くセクション（5・6）の最大文字数（T-M8-355）。
- * アカウント.md全体の上限（5,000字）に対して、1〜4の生成分の余地を残す。
- */
-export const FREE_SECTION_MAX_CHARS = 1000;
 
-/** 手で書くセクションの本文。空文字は「書いていない」（見出しだけ残す）。 */
-export interface FreeSections {
-  /** `## 5. 参考にする型` */
-  referenceStyle: string;
-}
-
-/**
- * アカウント.mdの5セクション（参考にする型）の本文を差し替える（T-M8-355／T-M8-356）。
- *
- * **1〜4はアカウント設定から機械生成されるが、5は人が書く場所**で、これまでは
- * プロンプト画面のmdエディタからしか触れなかった。アカウント設定の画面に記入欄を置くため、
- * 保存時にここへ書き戻す。**渡されなければ既存を1バイトも変えない**——
- * 他の経路（学習・ロールバック）が触った内容を、知らないうちに消さないため。
- */
-export function replaceFreeSections(content: string, sections: FreeSections): string {
-  validateBaseMdStructure(content);
-  const fifth = /^## 5\.[^\n]*$/m.exec(content);
-  if (fifth?.index === undefined) {
-    throw new Error("アカウント.mdのセクション5を特定できません。");
-  }
-  const head = content.slice(0, fifth.index).replace(/\s+$/, "");
-  const reference = sections.referenceStyle.trim();
-  const rebuilt = `${head}\n\n## 5. ${BASE_MD_SECTION_TITLES[4]}\n${reference ? `${reference}\n` : ""}`;
-  validateBaseMdStructure(rebuilt);
-  return rebuilt;
-}
 
 /** Enforces exactly one ordered `## 1.` through `## 5.` heading. */
 export function validateBaseMdStructure(content: string): void {
@@ -214,29 +207,26 @@ export const BLANK_BASE_MD_TEMPLATE = BASE_MD_SECTION_TITLES.map(
   (title, index) => `## ${index + 1}. ${title}\n`,
 ).join("\n");
 
-/** Creates version 1 without learned content in sections 5 and 6. */
+/** 初版のアカウント.md（5セクションすべて設定から生成・T-M8-395）。 */
 export function generateInitialBaseMd(input: unknown): string {
-  const content = `${buildSettingsSections(input)}
-
-## 5. ${BASE_MD_SECTION_TITLES[4]}
-`;
+  const content = buildSettingsSections(input);
   validateBaseMdStructure(content);
   return content;
 }
 
-/** Rebuilds sections 1-4 while preserving the existing 5 byte-for-byte. */
+/**
+ * 設定からアカウント.md全文を作り直す（T-M8-395で全セクション生成へ）。
+ *
+ * 旧形式（`## 5. 参考にする型` が手書き）の内容は**保存し直した時点で新形式に置き換わる**。
+ * 旧「参考にする型」の役割は参考アカウント分析とパターン別の参考投稿が継いだため、
+ * 引き継ぎはしない（2026-09-01時点で本番の該当データは期限切れアカウントの1件のみ）。
+ */
 export function rebuildSettingsSections(
   existingContent: string,
   input: unknown,
 ): string {
   validateBaseMdStructure(existingContent);
-  const sectionFive = /^## 5\.[^\n]*$/m.exec(existingContent);
-  if (sectionFive?.index === undefined) {
-    throw new Error("アカウント.mdのセクション5を特定できません。");
-  }
-  const rebuilt = `${buildSettingsSections(input)}\n\n${existingContent.slice(
-    sectionFive.index,
-  )}`;
+  const rebuilt = buildSettingsSections(input);
   validateBaseMdStructure(rebuilt);
   return rebuilt;
 }

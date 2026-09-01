@@ -27,6 +27,7 @@ export function DraftImagePanel({
   hasImage,
   imageUrl,
   uploaded,
+  postLocalId,
 }: {
   /** 自分の画像を添えられるか（編集できる下書きで、投稿処理中でない）。 */
   canUpload: boolean;
@@ -37,12 +38,14 @@ export function DraftImagePanel({
   imageUrl?: string;
   /** いまの画像が自分でアップロードしたものか（生成物と区別して出す）。 */
   uploaded: boolean;
+  /** このパネルが担当するポスト（T-M8-398。スレッド内のポストごとに1枚）。 */
+  postLocalId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [jobId, setJobId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputId = `draft-image-${draftId}`;
+  const fileInputId = `draft-image-${draftId}-${postLocalId}`;
   const toast = useToast();
 
   const running = pending || jobId !== null || uploading;
@@ -55,6 +58,7 @@ export function DraftImagePanel({
     setUploading(true);
     const form = new FormData();
     form.set("draft_id", draftId);
+    form.set("post_local_id", postLocalId);
     form.set("file", file);
     void uploadDraftImageAction(form)
       .then((res) => {
@@ -74,7 +78,7 @@ export function DraftImagePanel({
 
   function removeImage() {
     startTransition(async () => {
-      const res = await removeDraftImageAction({ draft_id: draftId });
+      const res = await removeDraftImageAction({ draft_id: draftId, post_local_id: postLocalId });
       if (res.status === "success") {
         toast.show({ tone: "success", title: "画像を外しました" });
         router.refresh();
@@ -123,6 +127,7 @@ export function DraftImagePanel({
       const res = await regenerateImageAction({
         request_key: crypto.randomUUID(),
         draft_id: draftId,
+        post_local_id: postLocalId,
       });
       if (res.status !== "success" || !res.jobId) {
         toast.show({
@@ -161,7 +166,7 @@ export function DraftImagePanel({
       {hasImage ? (
         <p className="text-xs text-muted-foreground">
           {uploaded ? "自分でアップロードした画像です。" : "AIが生成した画像です。"}
-          投稿するとこの画像が添付されます。
+          このポストに添付されます。
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
@@ -172,7 +177,7 @@ export function DraftImagePanel({
           type="button"
           variant="outline"
         >
-          {running ? "再生成中…" : "画像を再生成"}
+          {running ? "生成中…" : hasImage ? "画像を再生成" : "画像を生成する"}
         </Button>
         {/*
           **自分の画像を添える**（T-M8-353）。`<label>` で `<input type="file">` を包み、
@@ -183,7 +188,7 @@ export function DraftImagePanel({
             className="inline-flex min-h-9 cursor-pointer items-center rounded-card border border-hairline bg-surface px-3 text-sm font-medium text-ink transition-colors duration-150 hover:bg-page focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
             htmlFor={fileInputId}
           >
-            {hasImage ? "画像を差し替える" : "画像をアップロード"}
+            {hasImage ? "画像を差し替える" : "画像をアップロードする"}
             <input
               accept="image/png,image/jpeg,image/webp"
               className="sr-only"

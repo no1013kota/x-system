@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.71 |
-| 更新日 | 2026-08-31 |
+| バージョン | v1.74 |
+| 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -374,6 +374,9 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.69 | 2026-08-28 | updatePersonaSettings に reference_style（アカウント.mdの5章「参考にする型」）を追加（T-M8-355／T-M8-356） |
 | v1.70 | 2026-08-29 | rollbackBaseMd を削除（アカウント.mdの変更履歴を廃止・T-M8-362）。discardSettingsProposal を追加（T-M8-360） |
 | v1.71 | 2026-08-31 | 生成userの構造タグ `<input>` を `<user_input>` へ改名（T-M8-387）。参考URLの記載も更新 |
+| v1.72 | 2026-09-01 | updatePersonaSettings の reference_style を廃止（手書き章の廃止・T-M8-395）。settings へ volume（スレッド量や文章量）を追加 |
+| v1.73 | 2026-09-01 | generatePatternPromptAction を追加（参考投稿×3→プロンプト生成・同期実行・原価台帳とAIクレジットへ記録・T-M8-397） |
+| v1.74 | 2026-09-01 | regenerateImageAction / uploadDraftImageAction / removeDraftImageAction へ post_local_id を追加（ポスト別画像・T-M8-398） |
 
 ### 下書きの投稿予約（T-M8-157）
 

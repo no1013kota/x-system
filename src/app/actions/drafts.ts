@@ -26,11 +26,11 @@ import { getValidXAccessToken } from "@/lib/x/token-refresh-server";
 import { randomUUID } from "node:crypto";
 
 import { EXT_BY_FORMAT, normalizeForX } from "@/lib/ai/image-normalize";
+import { effectiveImagePost, imagePathsForPost, imagesReplacingPost } from "@/lib/post/draft-images";
 import {
   assertUploadableImage,
   draftImagePath,
   replacedImagePaths,
-  uploadedImagesJson,
 } from "@/lib/post/draft-image-upload";
 import type { DraftImage } from "@/lib/drafts";
 import { AppError } from "@/lib/observability/errors";
@@ -317,6 +317,8 @@ export async function uploadDraftImageAction(formData: FormData): Promise<BaseRe
   if (!auth.ok) return auth.result;
   const draftId = formData.get("draft_id");
   const file = formData.get("file");
+  // 対象ポスト（T-M8-398）。未指定は1ポスト目（従来互換）。
+  const requestedPost = formData.get("post_local_id");
   if (typeof draftId !== "string" || !UUID_RE.test(draftId)) {
     return { message: "下書きが見つかりません。", status: "error" };
   }
@@ -331,6 +333,14 @@ export async function uploadDraftImageAction(formData: FormData): Promise<BaseRe
         message: "この下書きはもう編集できません（投稿済み・処理中）。",
         details: { reason: `not_editable:${target.status}` },
       });
+    }
+    const postLocalId =
+      typeof requestedPost === "string" && requestedPost !== ""
+        ? requestedPost
+        : (target.firstPostLocalId ?? undefined);
+    // 実在しないポストへは付けない（編集でポストが消えた等。黙って1ポスト目に付け替えない）。
+    if (postLocalId && !target.postLocalIds.includes(postLocalId)) {
+      throw new AppError("not_found", { details: { reason: "post_not_found" } });
     }
 
     const normalized = await normalizeForX(Buffer.from(await file.arrayBuffer()));
@@ -350,23 +360,30 @@ export async function uploadDraftImageAction(formData: FormData): Promise<BaseRe
 
     const image = {
       local_id: localId,
-      post_local_id: target.firstPostLocalId ?? undefined,
+      post_local_id: postLocalId,
       storage_path: path,
       provider: "upload",
       mime_type: normalized.mime,
       size_bytes: normalized.bytes.length,
       status: "ready",
     };
+    // 対象ポストの画像だけ差し替える（他ポストの画像は残す・T-M8-398）。
     await pooledDb.query(`update drafts set images = $2::jsonb, updated_at = now() where id = $1`, [
       draftId,
-      JSON.stringify(uploadedImagesJson(image)),
+      JSON.stringify(
+        imagesReplacingPost(target.images, target.firstPostLocalId ?? "p1", image),
+      ),
     ]);
     /*
       **差し替えた古い画像は消す**（原則4）。DBから外れただけの実体が残ると、
       使われないファイルがStorageの課金対象として増え続ける。
       消せなくても本体の操作は成功しているので、失敗は記録だけして進む。
     */
-    const stale = replacedImagePaths(target.images, path);
+    const stale = imagePathsForPost(
+      target.images,
+      target.firstPostLocalId ?? "p1",
+      postLocalId ?? target.firstPostLocalId ?? "p1",
+    ).filter((p) => p !== path);
     if (stale.length > 0) {
       const removed = await admin.storage.from(IMAGE_BUCKET).remove(stale);
       if (removed.error) {
@@ -382,7 +399,14 @@ export async function uploadDraftImageAction(formData: FormData): Promise<BaseRe
 
 /** 添えた画像を外す（生成した画像も外せる。外すと画像なしで投稿される）。 */
 export async function removeDraftImageAction(input: unknown): Promise<BaseResult> {
-  const parsed = parseUserInput(z.object({ draft_id: z.string().uuid() }), input);
+  const parsed = parseUserInput(
+    z.object({
+      draft_id: z.string().uuid(),
+      /** 対象ポスト（T-M8-398）。未指定は全ポストの画像を外す（従来互換）。 */
+      post_local_id: z.string().min(1).max(20).optional(),
+    }),
+    input,
+  );
   if (!parsed.success) return validationErrorResult(parsed.error);
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
@@ -394,10 +418,18 @@ export async function removeDraftImageAction(input: unknown): Promise<BaseResult
         details: { reason: `not_editable:${target.status}` },
       });
     }
-    await pooledDb.query(`update drafts set images = '[]'::jsonb, updated_at = now() where id = $1`, [
+    const firstId = target.firstPostLocalId ?? "p1";
+    const targetPost = parsed.data.post_local_id ?? null;
+    const remaining = targetPost
+      ? target.images.filter((img) => effectiveImagePost(img, firstId) !== targetPost)
+      : [];
+    await pooledDb.query(`update drafts set images = $2::jsonb, updated_at = now() where id = $1`, [
       parsed.data.draft_id,
+      JSON.stringify(remaining),
     ]);
-    const stale = replacedImagePaths(target.images, "");
+    const stale = targetPost
+      ? imagePathsForPost(target.images, firstId, targetPost)
+      : replacedImagePaths(target.images, "");
     if (stale.length > 0) {
       const removed = await createSupabaseAdminClient()
         .storage.from(IMAGE_BUCKET)
@@ -425,6 +457,7 @@ async function loadDraftImageTarget(
   xAccountId: string;
   images: DraftImage[];
   firstPostLocalId: string | null;
+  postLocalIds: string[];
 }> {
   const { rows } = await pooledDb.query<{
     status: string;
@@ -444,5 +477,8 @@ async function loadDraftImageTarget(
     xAccountId: row.x_account_id,
     images: row.images ?? [],
     firstPostLocalId: row.thread?.[0]?.local_id ?? null,
+    postLocalIds: (row.thread ?? [])
+      .map((p) => p.local_id)
+      .filter((id): id is string => Boolean(id)),
   };
 }

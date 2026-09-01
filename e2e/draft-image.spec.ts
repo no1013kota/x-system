@@ -174,7 +174,7 @@ test("下書きに自分の画像をアップロードでき、外せる", async
   await page.goto(`/app/posts?tab=drafts&draftId=${draft.id}`);
 
   // 画像が無い下書きでも入口が出る（無いと「AIに作らせるしかない」と受け取られる）。
-  const label = page.getByText("画像をアップロード", { exact: true });
+  const label = page.getByText("画像をアップロードする", { exact: true });
   await expect(label).toBeVisible();
 
   const sharp = (await import("sharp")).default;
@@ -183,7 +183,7 @@ test("下書きに自分の画像をアップロードでき、外せる", async
   })
     .png()
     .toBuffer();
-  await page.locator(`#draft-image-${draft.id}`).setInputFiles({
+  await page.locator(`#draft-image-${draft.id}-p1`).setInputFiles({
     name: "mine.png",
     mimeType: "image/png",
     buffer: png,
@@ -222,7 +222,7 @@ test("下書きに自分の画像をアップロードでき、外せる", async
     .png()
     .toBuffer();
   expect(big.length, "1MBを超える画像で検査する").toBeGreaterThan(1024 * 1024);
-  await page.locator(`#draft-image-${draft.id}`).setInputFiles({
+  await page.locator(`#draft-image-${draft.id}-p1`).setInputFiles({
     name: "big.png",
     mimeType: "image/png",
     buffer: big,

@@ -353,6 +353,8 @@ export async function regenerateDraft(
 export const regenerateImageSchema = z.object({
   request_key: z.string().min(1).max(200),
   draft_id: z.string().uuid(),
+  /** 対象ポスト（T-M8-398）。未指定は1ポスト目（従来互換）。 */
+  post_local_id: z.string().min(1).max(20).optional(),
 });
 export type RegenerateImageInput = z.infer<typeof regenerateImageSchema>;
 
@@ -413,7 +415,12 @@ export async function regenerateImage(
          values ($1, 'image_generation', 'manual', $2, $3::jsonb, $4, 'queued')
          on conflict do nothing
          returning id`,
-        [draft.x_account_id, input.draft_id, JSON.stringify({ regenerate: true }), key],
+        [
+          draft.x_account_id,
+          input.draft_id,
+          JSON.stringify({ regenerate: true, post_local_id: input.post_local_id }),
+          key,
+        ],
       )
     ).rows[0];
     if (inserted) return { jobId: inserted.id, deduped: false };

@@ -8,6 +8,7 @@ import {
   PT_L1,
   PT_L2,
   PT_MD_MERGE,
+  PT_PATTERN_GEN,
   PT_SUGGEST,
   SYS_GEN,
   SYS_NEWS_SUM,
@@ -16,7 +17,7 @@ import {
 
 describe("GEN prompt constants", () => {
   it("match the design doc §6 snapshot (drift detection)", () => {
-    expect({ SYS_GEN, SYS_NEWS_SUM, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
+    expect({ SYS_GEN, SYS_NEWS_SUM, PT_FIX, PT_L1, PT_L2, PT_MD_MERGE, PT_PATTERN_GEN, PT_SUGGEST, ...SYSTEM_DEFAULT_TEMPLATES }).toMatchSnapshot();
   });
 
   it("PT-MD-MERGE はアカウント設定のJSONを返す契約（§6.14, T-M8-341）", () => {

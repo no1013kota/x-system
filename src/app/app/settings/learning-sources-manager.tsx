@@ -224,8 +224,9 @@ export function LearningSourcesManager({
         router.refresh();
         toast.show({
           tone: "success",
-          title: "アカウント設定の欄へ反映しました",
-          description: "内容を確認して「アカウント設定を保存」を押すと確定します。",
+          title: "アカウント.mdの入力項目へ反映しました",
+          description:
+            "プロンプト > アカウント.md で内容を確認し、「アカウント設定を保存」を押すと確定します。",
         });
       }
     }, 5_000);

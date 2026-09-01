@@ -8,6 +8,11 @@ import { resolvePromptTemplate } from "@/lib/prompts/prompt-templates";
 import type { ThreadItem } from "../ai/gen-output";
 import type { AspectRatio, ImageGen } from "../ai/image";
 import { EXT_BY_FORMAT, normalizeForX } from "../ai/image-normalize";
+import {
+  imagePathsForPost,
+  imagesReplacingPost,
+  readyImageForPost,
+} from "../post/draft-images";
 import type { ProviderCall } from "../ai/normalize";
 import { providerRawOutputOf, runTextGeneration } from "../ai/pipeline";
 import { formatFailureRawError } from "../ai/raw-error";
@@ -85,6 +90,8 @@ interface ImageJobRow {
   plan: string;
   input: {
     regenerate?: boolean;
+    /** 対象ポスト（T-M8-398）。未指定は1ポスト目。 */
+    post_local_id?: string;
     /** この生成にだけ使う画像プロンプト／アカウント.md（T-M8-93）。親jobから引き継がれる。再生成では引き継がない。 */
     image_prompt_override?: string | null;
     base_md_override?: string | null;
@@ -98,7 +105,7 @@ interface ImageJobRow {
 
 interface DraftRow {
   thread: ThreadItem[];
-  images: { status?: string; storage_path?: string }[];
+  images: { local_id?: string; post_local_id?: string; status?: string; storage_path?: string }[];
 }
 
 export interface ImageGenerationDeps {
@@ -185,19 +192,22 @@ async function persistImageFailure(
   newId: () => string,
 ): Promise<void> {
   const { db, jobId } = deps;
+  // 失敗印も**対象ポストだけ**差し替える（他ポストのready画像を消さない・T-M8-398）。
+  const current = await loadDraft(db, ctx.draftId);
+  const firstLocalId = current?.thread[0]?.local_id ?? ctx.postLocalId ?? "p1";
   await db.query(
     `update drafts set images = $2::jsonb, updated_at = now() where id = $1`,
     [
       ctx.draftId,
-      JSON.stringify([
-        {
+      JSON.stringify(
+        imagesReplacingPost(current?.images ?? [], firstLocalId, {
           local_id: newId(),
           post_local_id: ctx.postLocalId ?? undefined,
           storage_path: "",
           provider: ctx.provider ?? undefined,
           status: "failed",
-        },
-      ]),
+        }),
+      ),
     ],
   );
   const usage: GenerationUsage = {
@@ -245,19 +255,37 @@ export async function executeImageGeneration(
   if (!draft) throw new ImageGenerationTerminalError("not_found", "draft not found");
 
   const isRegenerate = Boolean(job.input?.regenerate);
-  // 冪等: 初回生成は既に画像が確定していれば作り直さない（worker再実行安全）。
-  // 再生成(regenerate)は既存画像があっても新規生成する（成功後に置換する）。
-  if (!isRegenerate && draft.images.some((img) => img.status === "ready")) {
-    return { status: "already_done", draftId };
-  }
-  // 置換前の既存ready画像のpath（成功後に best-effort 削除する。要件04 §9）。
-  const oldReadyPaths = draft.images
-    .filter((img) => img.status === "ready" && img.storage_path)
-    .map((img) => img.storage_path as string);
 
   const firstPost = draft.thread[0];
   if (!firstPost) throw new ImageGenerationTerminalError("empty_thread", "draft has no posts");
-  const postLocalId = firstPost.local_id;
+  /*
+    対象ポスト（T-M8-398・運営者の指示 2026-09-01）。inputの `post_local_id` で
+    スレッド内のどのポストの画像かを指定できる。未指定は従来どおり1ポスト目。
+    指定が実在しない（編集でポストが消えた等）ときは黙って別のポストへ付けない。
+  */
+  const requestedPost =
+    typeof job.input?.post_local_id === "string" ? job.input.post_local_id : null;
+  const targetPost = requestedPost
+    ? draft.thread.find((p) => p.local_id === requestedPost)
+    : firstPost;
+  if (!targetPost) {
+    throw new ImageGenerationTerminalError("not_found", "target post not found in thread");
+  }
+  const postLocalId = targetPost.local_id;
+
+  // 冪等: 初回生成は**対象ポストに**画像が確定していれば作り直さない（worker再実行安全）。
+  // 再生成(regenerate)は既存画像があっても新規生成する（成功後に置換する）。
+  if (
+    !isRegenerate &&
+    readyImageForPost(draft.images, firstPost.local_id, postLocalId)
+  ) {
+    return { status: "already_done", draftId };
+  }
+  // 置換前の**対象ポストの**既存画像path（成功後に best-effort 削除。他ポストの画像は残す）。
+  const oldReadyPaths = imagePathsForPost(draft.images, firstPost.local_id, postLocalId).filter(
+    (path) =>
+      draft.images.some((img) => img.storage_path === path && img.status === "ready"),
+  );
 
   const recordStage = deps.recordStage ?? defaultRecordStage(jobId);
   await recordStage("image");
@@ -288,7 +316,7 @@ export async function executeImageGeneration(
       }));
     const toneSection = extractBaseMdSection(baseMdOverride ?? job.base_md, 3);
     const promptUser = template
-      .replaceAll("{{post_text}}", firstPost.text)
+      .replaceAll("{{post_text}}", targetPost.text)
       .replaceAll("{{tone_section}}", toneSection);
 
     const { textGen, provider: textProviderId, model } = await deps.resolveTextProvider({
@@ -355,11 +383,13 @@ export async function executeImageGeneration(
     const path = `${job.user_id}/${job.x_account_id}/${draftId}/${localId}.${ext}`;
     await deps.uploadImage({ path, bytes: normalized.bytes, contentType: normalized.mime });
 
-    // --- drafts.images 更新（成功印）→ usage 保存 → 通知 ---
+    // --- drafts.images 更新（対象ポストだけ差し替え・T-M8-398）→ usage 保存 → 通知 ---
+    // 並行編集での紛失を避けるため、書き込み直前の配列を読み直してから差し替える。
+    const latest = await loadDraft(db, draftId);
     await db.query(`update drafts set images = $2::jsonb, updated_at = now() where id = $1`, [
       draftId,
-      JSON.stringify([
-        {
+      JSON.stringify(
+        imagesReplacingPost(latest?.images ?? draft.images, firstPost.local_id, {
           local_id: localId,
           post_local_id: postLocalId,
           storage_path: path,
@@ -367,8 +397,8 @@ export async function executeImageGeneration(
           mime_type: normalized.mime,
           size_bytes: normalized.bytes.length,
           status: "ready",
-        },
-      ]),
+        }),
+      ),
     ]);
     await saveJobUsage(db, { jobId, userId: job.user_id, xAccountId: job.x_account_id }, calls);
     // AIクレジットを実費で精算（premium・T-M8-109）。画像分はモデル別の概算単価が実費になる。

@@ -296,6 +296,7 @@ const [patterns, setPatterns] = useState(initialPatterns);
             <PatternFields
               listPlaceholders
               draft={creating}
+              generatorXAccountId={xAccountId}
               idPrefix="new"
               onChange={(next) => setCreating((cur) => (cur ? { ...cur, ...next } : cur))}
               promptRequired

@@ -50,7 +50,9 @@ export async function settleIfPremium(
   runInTx: RunInTx,
   params: {
     plan: string;
-    jobId: string;
+    /** null = jobを作らない同期実行。あわせて idempotencyKey を渡す（T-M8-397）。 */
+    jobId: string | null;
+    idempotencyKey?: string;
     type: UsageReserveType;
     estimatedCostUsdTotal: number;
     /** 実費の書き込み先（T-M8-324で予約を廃止したため、精算時にも利用者が要る）。 */
@@ -63,6 +65,7 @@ export async function settleIfPremium(
   await runInTx((tx) =>
     settleUsage(tx, {
       jobId: params.jobId,
+      idempotencyKey: params.idempotencyKey,
       type: params.type,
       actualCredits: creditsFromUsd(params.estimatedCostUsdTotal),
       userId: params.userId,

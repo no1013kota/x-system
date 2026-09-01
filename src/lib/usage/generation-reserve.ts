@@ -96,14 +96,25 @@ export async function reserveUsage(
 export async function settleUsage(
   tx: Queryable,
   params: {
-    jobId: string;
+    /**
+     * null = jobを作らない同期実行（T-M8-397のパターン生成など）。
+     * `usage_events.job_id` はFKなので、実在しないIDを入れると必ず失敗する——
+     * job以外の実行は null＋明示の冪等キーで記録する。
+     */
+    jobId: string | null;
+    /** jobId が null のとき必須。「1回の実行」を一意に表すキー。 */
+    idempotencyKey?: string;
     type: UsageReserveType;
     actualCredits: number;
     userId: string;
     xAccountId?: string | null;
   },
 ): Promise<boolean> {
-  const chargeKey = `job:${params.jobId}:${params.type}:charge`;
+  const chargeKey =
+    params.idempotencyKey ?? `job:${params.jobId}:${params.type}:charge`;
+  if (params.jobId === null && !params.idempotencyKey) {
+    throw new Error("settleUsage: jobId が null のときは idempotencyKey が必要です");
+  }
   const amount = Math.max(1, Math.ceil(params.actualCredits));
   const period = await currentUsagePeriodKey(tx, params.userId);
   await tx.query(

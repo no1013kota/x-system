@@ -176,7 +176,6 @@ function DraftCard({
   const [regenerating, setRegenerating] = useState(false);
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
 
-  const readyImage = draft.images.find((img) => img.status === "ready");
   // 下書きから決まる可否は純関数へ（T-M8-41）。`.tsx` は単体テストの網に入らないため、
   // 「Xに残ったポストをどう扱うか」のルールをここに置いておくとテストで守れない。
   const {
@@ -421,21 +420,6 @@ function DraftCard({
         <RegenerateBox draftId={draft.id} onDone={() => setRegenerating(false)} />
       ) : null}
 
-      {/*
-        **画像の欄は編集できる下書きなら常に出す**（T-M8-353・運営者の指示 2026-08-28）。
-        自分の画像を添えられるようになったので、いま画像が無い下書きでも入口が要る。
-      */}
-      {readyImage || imageFailed || editable ? (
-        <DraftImagePanel
-          canUpload={editable && !publishing}
-          draftId={draft.id}
-          enabled={imageRegenEnabled && !publishing && !p5Disabled}
-          failed={imageFailed && !readyImage}
-          hasImage={Boolean(readyImage)}
-          imageUrl={readyImage?.signed_url}
-          uploaded={readyImage?.provider === "upload"}
-        />
-      ) : null}
 
       {draft.parent_draft_id ? (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -449,17 +433,46 @@ function DraftCard({
         <DraftEditor draft={draft} onDone={() => setEditing(false)} xPremium={xPremium} />
       ) : (
         <ol className="mt-3 space-y-2">
-          {draft.thread.map((post) => (
-            <li className="rounded-lg border bg-background p-3" key={post.local_id}>
-              <p className="text-sm whitespace-pre-wrap">{post.text}</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">{post.weighted_length} / 280</span>
-                {post.warnings.map((w) => (
-                  <WarningBadge code={w} key={w} />
-                ))}
-              </div>
-            </li>
-          ))}
+          {draft.thread.map((post) => {
+            /*
+              画像は**ポストごとに1枚**（T-M8-398・運営者の指示 2026-09-01）。
+              旧データ（post_local_id無し）は1ポスト目のものとして表示する。
+            */
+            const firstLocalId = draft.thread[0]?.local_id ?? "p1";
+            const postImage = draft.images.find(
+              (img) =>
+                img.status === "ready" &&
+                (img.post_local_id ?? firstLocalId) === post.local_id,
+            );
+            const postImageFailed = draft.images.some(
+              (img) =>
+                img.status === "failed" &&
+                (img.post_local_id ?? firstLocalId) === post.local_id,
+            );
+            return (
+              <li className="rounded-lg border bg-background p-3" key={post.local_id}>
+                <p className="text-sm whitespace-pre-wrap">{post.text}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{post.weighted_length} / 280</span>
+                  {post.warnings.map((w) => (
+                    <WarningBadge code={w} key={w} />
+                  ))}
+                </div>
+                {postImage || postImageFailed || editable ? (
+                  <DraftImagePanel
+                    canUpload={editable && !publishing}
+                    draftId={draft.id}
+                    enabled={imageRegenEnabled && !publishing && !p5Disabled}
+                    failed={postImageFailed && !postImage}
+                    hasImage={Boolean(postImage)}
+                    imageUrl={postImage?.signed_url}
+                    postLocalId={post.local_id}
+                    uploaded={postImage?.provider === "upload"}
+                  />
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       )}
     </li>

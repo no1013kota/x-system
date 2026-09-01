@@ -135,12 +135,26 @@ describe("KPIスナップショット（db）", () => {
     const nowIso = new Date().toISOString();
     await runDailyKpiSnapshot(db, nowIso);
     const today = jstDateOf(nowIso);
-    const { rows } = await db.query<{ d: string }>(
-      `select max(metric_date)::text as d from kpi_daily where metric = 'users_total'`,
+    /*
+      **この実行が書いたはずの行**を直接見る（max() を見ない）。共有DBでは並行テストが
+      別の日付（scheduler-tickテストは2098年へ時計を固定して全段を回す）で同じ表へ書くため、
+      max() は自分の書き込みの検証にならない（2026-09-01に実際に混線して落ちた）。
+    */
+    const yesterday = new Date(new Date(nowIso).getTime() + 9 * 3600_000 - 24 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const { rows } = await db.query<{ n: string }>(
+      `select count(*)::text as n from kpi_daily
+        where metric = 'users_total' and metric_date = $1`,
+      [yesterday],
     );
-    // 前日の日付 < 今日。
-    expect(rows[0]?.d ?? "").not.toBe(today);
-    expect((rows[0]?.d ?? "") < today).toBe(true);
+    expect(Number(rows[0]?.n ?? 0)).toBeGreaterThanOrEqual(1);
+    const todayRows = await db.query<{ n: string }>(
+      `select count(*)::text as n from kpi_daily
+        where metric = 'users_total' and metric_date = $1`,
+      [today],
+    );
+    expect(Number(todayRows.rows[0]?.n ?? 0)).toBe(0);
   });
 
   /**

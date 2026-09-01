@@ -132,11 +132,11 @@ describe("executeMdMerge", () => {
 
     const upd = writes.find((w) => UPDATE_ACCT.test(w.sql))!;
     const newBaseMd = upd.params[1] as string;
-    expect(newBaseMd).toContain("# 発信定義書（アカウント.md）"); // 前文は保持
+    expect(newBaseMd).toContain("# 発信定義書（アカウント.md）");
     // アカウント.mdは**設定から作り直す**ので、書き換えた値がそのまま本文に出る（T-M8-341）。
     expect(newBaseMd).toContain("- 発信者: A（現場の実務者へ手順で説明する）");
     expect(newBaseMd).toContain("- 一人称: 自分");
-    expect(newBaseMd).toContain("## 5. 参考にする型\n旧セクション5"); // 5は不変
+    expect(newBaseMd).toContain("## 5. NG設定"); // 全5セクションを設定から生成（T-M8-395）
     // 設定そのものも同じUPDATEで保存する（画面の表示と本文が食い違わない）。
     expect(JSON.parse(upd.params[4] as string).persona.speaker).toBe("A（現場の実務者へ手順で説明する）");
     /*

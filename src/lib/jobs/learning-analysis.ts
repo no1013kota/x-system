@@ -68,7 +68,7 @@ export interface LearningAnalysisDeps {
     userId: string;
     deadline: Deadline;
   }) => Promise<{ textGen: TextGen; provider: Provider; model: string }>;
-  /** ref_account: handle の直近ポスト本文（最大20件）。 */
+  /** ref_account: handle の直近ポスト本文（最大30件・T-M8-396）。 */
   fetchReferenceAccountPosts: (input: { handle: string }) => Promise<string[]>;
   /** ref_post: 対象1件の本文＋public metrics。 */
   fetchReferencePost: (input: {
@@ -141,7 +141,7 @@ async function buildUserInput(deps: LearningAnalysisDeps, source: SourceRow & { 
     const handle = parseHandle(source.url);
     if (!handle) throw new LearningAnalysisTerminalError("invalid_source", "bad ref_account url");
     const posts = await deps.fetchReferenceAccountPosts({ handle });
-    return `<posts>\n${JSON.stringify(posts.slice(0, 20))}\n</posts>`;
+    return `<posts>\n${JSON.stringify(posts.slice(0, 30))}\n</posts>`;
   }
   const tweetId = parseTweetId(source.url);
   if (!tweetId) throw new LearningAnalysisTerminalError("invalid_source", "bad ref_post url");

@@ -1,3 +1,4 @@
+import { effectiveImagePost } from "../post/draft-images";
 import { CURRENT_AUTOMATION_CONSENT_VERSION } from "@/lib/legal";
 import {
   concealsUsageLimits,
@@ -162,7 +163,7 @@ interface PublishDraftRow {
   /** 生成時に写した「引用URLを毎回指定する」か（T-M8-129 U5。旧enumは撤去した）。 */
   requires_quote_url: boolean;
   thread: ThreadItem[];
-  images: { status?: string; storage_path?: string; mime_type?: string }[];
+  images: { post_local_id?: string; status?: string; storage_path?: string; mime_type?: string }[];
   tweet_ids: string[];
   quote_url: string | null;
 }
@@ -629,17 +630,26 @@ export async function executePostPublish(
 
   const usageCtx = { userId, xAccountId, jobId };
 
-  // --- 画像があれば media upload（失敗時は本文を投稿せず failed・要件06 §6）---
-  let mediaIds: string[] | undefined;
-  const readyImage = draft.images?.find((img) => img.status === "ready" && img.storage_path);
-  if (readyImage?.storage_path) {
+  /*
+    --- 画像があれば media upload（失敗時は本文を投稿せず failed・要件06 §6）---
+    ポストごとに1枚まで（T-M8-398・運営者の指示 2026-09-01）。`post_local_id` で
+    対応するポストへ添付する。旧データ（post_local_id無し）は1ポスト目扱い。
+    どれか1枚でも上げられなければ**本文を1件も投稿せず**失敗にする——
+    「画像だけ欠けた投稿」が黙って世に出る形にしない（原則1）。
+  */
+  const firstLocalId = thread[0]?.local_id ?? "p1";
+  const mediaIdByPost = new Map<string, string>();
+  const readyImages = (draft.images ?? []).filter(
+    (img) => img.status === "ready" && img.storage_path,
+  );
+  for (const image of readyImages) {
     try {
-      const file = await deps.downloadImage(readyImage.storage_path);
+      const file = await deps.downloadImage(image.storage_path as string);
       const up = await deps.uploadMedia(accessToken, {
         data: file.data,
-        mimeType: readyImage.mime_type ?? file.mimeType,
+        mimeType: image.mime_type ?? file.mimeType,
       });
-      mediaIds = [up.mediaId];
+      mediaIdByPost.set(effectiveImagePost(image, firstLocalId), up.mediaId);
     } catch (error) {
       // 「画像のアップロードに失敗」はStorage権限ミスでもX側障害でも同じ文言になるため記録する。
       recordUnexpectedError(error, { at: "post-publish:media-upload", draftId });
@@ -717,7 +727,11 @@ export async function executePostPublish(
           deps.createPost(accessToken, {
             text,
             inReplyToTweetId: i === 0 ? undefined : tweetIds[i - 1],
-            mediaIds: i === 0 ? mediaIds : undefined,
+            // 各ポストに紐づく画像を添付する（T-M8-398）。
+            mediaIds: (() => {
+              const id = mediaIdByPost.get(thread[i]?.local_id ?? "");
+              return id ? [id] : undefined;
+            })(),
           }),
       );
       await saveCreatedTweet(i, result.tweetId);

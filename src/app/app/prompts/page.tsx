@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -11,7 +10,13 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { appLockFor } from "@/lib/auth/subscription-access";
-import { BLANK_BASE_MD_TEMPLATE } from "@/lib/persona-settings";
+import {
+  BLANK_BASE_MD_TEMPLATE,
+  DEFAULT_TONE_SETTINGS,
+  baseMdSettingsDiffer,
+  personaSettingsSchema,
+  type PersonaSettings,
+} from "@/lib/persona-settings";
 import { isLearningRunningForUser } from "@/lib/base-md-server";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
 import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
@@ -24,6 +29,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readSingleRow } from "@/lib/supabase/single-row";
 
 import { PatternManager } from "../settings/pattern-manager";
+import { PersonaSettingsForm } from "../settings/persona-settings-form";
 import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
 
 /**
@@ -46,7 +52,18 @@ interface AccountRow {
   base_md_version: number;
   handle: string;
   id: string;
+  settings: unknown;
+  /** 参考ソースから作った保存前の提案（T-M8-349）。無ければ null。 */
+  settings_proposal: unknown;
 }
+
+const EMPTY_SETTINGS: PersonaSettings = {
+  ng: { rules: [], topics: [], words: [] },
+  persona: { audience: "", speaker: "", value: "" },
+  themes: { free_text: "", primary: [], secondary: [] },
+  tone: { ...DEFAULT_TONE_SETTINGS },
+  volume: { free_text: "" },
+};
 
 interface PromptsPageProps {
   searchParams: Promise<{ sec?: string }>;
@@ -82,7 +99,7 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   const accountResult = profile.active_x_account_id
     ? await admin
         .from("x_accounts")
-        .select("id, handle, base_md, base_md_version")
+        .select("id, handle, base_md, base_md_version, settings, settings_proposal")
         .eq("id", profile.active_x_account_id)
         .eq("user_id", user.id)
         .eq("status", "active")
@@ -95,6 +112,30 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
     : null;
 
   const editable = promptEditablePlan(plan ?? "");
+
+  /*
+    アカウント.mdの入力項目（5項目フォーム・T-M8-396で設定タブから移設）。
+    保存済み設定・保存前の提案（参考アカウントの反映・T-M8-349）を読み、
+    提案が変わったらフォームを作り直す（proposalKey・T-M8-356/357の教訓）。
+  */
+  const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
+  const initialSettings = parsedSettings?.success ? parsedSettings.data : EMPTY_SETTINGS;
+  const parsedProposal =
+    account && account.settings_proposal
+      ? personaSettingsSchema.safeParse(account.settings_proposal)
+      : null;
+  const settingsProposal = parsedProposal?.success ? parsedProposal.data : null;
+  const proposalKey = settingsProposal
+    ? `p${[...JSON.stringify(settingsProposal)].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
+    : "saved";
+  let initialDifference = false;
+  if (account && account.base_md_version >= 1 && parsedSettings?.success) {
+    try {
+      initialDifference = baseMdSettingsDiffer(account.base_md, parsedSettings.data);
+    } catch {
+      initialDifference = true;
+    }
+  }
 
   let baseMdLearningRunning = false;
   /** 本棚（複数持てるプロンプト・T-M8-332）。区分ごとに読む。 */
@@ -175,19 +216,19 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   </Notice>
                 ) : null}
                 {/*
-                  **1本目はアカウント設定から作られる**（T-M8-350・運営者の指示 2026-08-28）。
-                  まだ無いときに「作れません」で止めない——自由入力で足せるので、
-                  どちらから始めてもよいことを言う（原則2）。
+                  **5項目の入力欄はここに置く**（T-M8-396・運営者の指示 2026-09-01。
+                  設定＞アカウント設定は参考アカウント専用にした）。
+                  参考アカウントの反映（settings_proposal）が届いたらフォームを作り直す。
                 */}
-                {account.base_md_version < 1 ? (
-                  <Notice tone="info">
-                    1本目のアカウント.mdは、
-                    <Link className="mx-1 font-medium underline underline-offset-4" href="/app/settings?tab=account">
-                      アカウント設定
-                    </Link>
-                    を保存すると作られます。ここで自分で書いて追加することもできます。
-                  </Notice>
-                ) : null}
+                <PersonaSettingsForm
+                  baseMdVersion={account.base_md_version}
+                  initialDifference={initialDifference}
+                  initialSettings={initialSettings}
+                  key={`form:${account.id}:${proposalKey}`}
+                  proposal={settingsProposal}
+                  xAccountId={account.id}
+                />
+                <div className="border-t border-hairline pt-6">
                 <PromptPresetManager
                   bodyLabel="アカウント.mdの本文"
                   emptyContentTemplate={account.base_md || BLANK_BASE_MD_TEMPLATE}
@@ -195,9 +236,10 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
                   key={`${section}:${account.id}`}
                   kind="base_md"
-                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。"
+                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。上の入力項目を保存すると、使用中のアカウント.mdへ反映されます。"
                   xAccountId={account.id}
                 />
+                </div>
               </div>
             ) : section === "image-prompt" ? (
               <PromptPresetManager

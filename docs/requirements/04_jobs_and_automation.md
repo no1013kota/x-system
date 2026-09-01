@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.66 |
-| 更新日 | 2026-08-31 |
+| バージョン | v1.67 |
+| 更新日 | 2026-09-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -187,12 +187,12 @@ enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成
 `image_generation`は画像ONの`post_generation`成功後に連鎖起動される子job（§1(3)）。親workerが決定的 request_key `parent:{parent_job_id}:image_generation:{draft_id}`＋on conflictで作成するため、worker再実行時も子jobは重複作成されない。親jobのinputに`image_prompt_override`/`base_md_override`（T-M8-93・投稿作成画面の「この生成にだけ使う」）があれば子jobのinputへ引き継ぎ、子はPT-IMGの解決と保存版base_md（セクション3抽出）を飛ばしてそれを使う。手動の画像再生成（`regenerateImage`）へは引き継がない。
 
 1. premiumは**AIクレジット**を画像の見積もり分reserveする（文章と同じ1本の枠・要件03 §7）。
-2. PT-IMG（アカウント.mdセクション3＋1ポスト目本文）でprompt作成後、画像providerを呼ぶ。
+2. PT-IMG（アカウント.mdセクション3＋**対象ポスト**の本文）でprompt作成後、画像providerを呼ぶ。対象はinputの`post_local_id`（T-M8-398。未指定は1ポスト目＝従来互換。指定が実在しないポストならjob失敗——黙って別ポストへ付けない）。
 3. JPG/PNG/WEBP・5MB以下へ正規化する。
-4. private Storageへ保存し、`drafts.images`（`storage_path`・`status`等）を更新する。
+4. private Storageへ保存し、`drafts.images`を更新する。**差し替えは対象ポストの分だけ**（T-M8-398。他ポストの画像は残す。失敗印も同様）。
 5. 最終失敗はreserve分を全額refundし、警告と再生成操作を残す。
 
-Storage upload失敗も画像job失敗としてrefundする。X media uploadはAIクレジットと無関係で、投稿job内で行う。
+Storage upload失敗も画像job失敗としてrefundする。X media uploadはAIクレジットと無関係で、投稿job内で行う。**投稿時の添付はポスト別**（T-M8-398）: `drafts.images`の各`ready`画像を`post_local_id`（無印は1ポスト目扱い）で対応するポストへ添付する（1ポスト1枚）。1枚でも上げられなければ本文を1件も投稿せず失敗にする。
 
 `draft_created`通知の送信主体: 画像ON時は本文確定後に画像job（成功・失敗いずれも）が送る（画像OFFは`post_generation`が送る）。画像/Storage/PT-IMGの最終失敗時は本文を画像なしで確定し、`drafts.images`へ`status=failed`の印を残して`draft_created`を送り、子jobは`failed`にする（本文生成jobは失敗させない）。画像のreserve/refund（1・5）は実装済み（`reserveIfPremium`／`settleIfPremium`・`src/lib/usage/reserve-if-premium.ts`）。
 
@@ -404,3 +404,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.64 | 2026-08-30 | ニュース取得をAIリサーチ（Message Batches・1日2回）からRSS巡回（20分おき＋新着だけ安いモデルで要約）へ置き換え（T-M8-380・運営者の指示）。news_batch_collect と news_batches を廃止し、定時トリガーは4本へ |
 | v1.65 | 2026-08-31 | news_itemsの保存上限を全体500件から分野別150件へ（T-M8-382）。監視フィードの実測見直し（sns差し替え・AI英語速報追加・T-M8-381） |
 | v1.66 | 2026-08-31 | ニュース取得を20分間隔→10分間隔へ（T-M8-383・運営者の指示。費用は新着数にのみ比例するため増加は月$1未満） |
+| v1.67 | 2026-09-01 | 画像生成・投稿添付をポスト別へ（`post_local_id`・1ポスト1枚・差し替えは対象ポストのみ・T-M8-398） |
