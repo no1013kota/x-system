@@ -228,3 +228,80 @@ describe("利用枠の消費（db・T-M8-324）", () => {
     }
   });
 });
+
+describe("settleUsage jobless (T-M8-397)", () => {
+  let available = false;
+  beforeAll(async () => {
+    try {
+      const c = await getPool().connect();
+      c.release();
+      available = true;
+    } catch {
+      available = false;
+    }
+  });
+  beforeEach((ctx) => {
+    if (!available) ctx.skip();
+  });
+
+  async function mkAccount(c: PoolClient): Promise<{ uid: string; xid: string }> {
+    const uid = randomUUID();
+    await c.query(
+      `insert into auth.users (id, instance_id, aud, role, email)
+       values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $2)`,
+      [uid, `${uid}@example.com`],
+    );
+    await c.query(`insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`, [
+      uid,
+      `${uid}@example.com`,
+    ]);
+    const xid = (
+      await c.query<{ id: string }>(
+        `insert into x_accounts (user_id, x_user_id, handle, name, auth_type)
+         values ($1, $2, 'h', 'n', 'byok') returning id`,
+        [uid, `x-${randomUUID()}`],
+      )
+    ).rows[0].id;
+    return { uid, xid };
+  }
+
+  it("jobId null＋明示の冪等キーで記録できる（usage_events.job_idのFKを踏まない）", async () => {
+    await withTransaction(async (c) => {
+      const { uid, xid } = await mkAccount(c);
+      const key = `patgen:${randomUUID()}:charge`;
+      const first = await settleUsage(c, {
+        jobId: null,
+        idempotencyKey: key,
+        type: "generation",
+        actualCredits: 1,
+        userId: uid,
+        xAccountId: xid,
+      });
+      expect(first).toBe(true);
+      // 同じキーの2回目は書かない（冪等）。
+      const second = await settleUsage(c, {
+        jobId: null,
+        idempotencyKey: key,
+        type: "generation",
+        actualCredits: 1,
+        userId: uid,
+        xAccountId: xid,
+      });
+      expect(second).toBe(false);
+      const { rows } = await c.query<{ job_id: string | null }>(
+        `select job_id from usage_events where idempotency_key = $1`,
+        [key],
+      );
+      expect(rows[0]).toMatchObject({ job_id: null });
+    });
+  });
+
+  it("jobId null なのに冪等キーが無ければ例外（黙って重複計上しない）", async () => {
+    await withTransaction(async (c) => {
+      const { uid } = await mkAccount(c);
+      await expect(
+        settleUsage(c, { jobId: null, type: "generation", actualCredits: 1, userId: uid }),
+      ).rejects.toThrow(/idempotencyKey/);
+    });
+  });
+});

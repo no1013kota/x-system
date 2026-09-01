@@ -595,6 +595,7 @@ function removePattern(target: PatternOption) {
               {newPatternError ? <Notice tone="danger">{newPatternError}</Notice> : null}
               <PatternFields
                 draft={newPattern}
+                generatorXAccountId={xAccountId}
                 idPrefix="new-pattern"
                 onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
                 promptRequired

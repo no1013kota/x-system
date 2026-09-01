@@ -1129,6 +1129,7 @@ function SlotFields({
             {newPatternError ? <Notice tone="danger">{newPatternError}</Notice> : null}
             <PatternFields
               draft={newPattern}
+              generatorXAccountId={xAccountId}
               idPrefix={`slot-new-pattern-${target.kind === "edit" ? target.slotId : "new"}`}
               onChange={(next) => setNewPattern((cur) => (cur ? { ...cur, ...next } : cur))}
               promptRequired

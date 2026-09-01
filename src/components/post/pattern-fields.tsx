@@ -1,6 +1,10 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { useState, useTransition } from "react";
+
+import { generatePatternPromptAction } from "@/app/actions/pattern-prompt";
+import { useToast } from "@/components/ui/toast";
 
 import {
   alertDialogBackdropClassName,
@@ -157,6 +161,7 @@ export function PatternFields({
   onChange,
   promptRequired,
   listPlaceholders = false,
+  generatorXAccountId,
 }: {
   draft: PatternDraft;
   idPrefix: string;
@@ -164,10 +169,28 @@ export function PatternFields({
   promptRequired: boolean;
   /** true = カラウト内にプレースホルダー一覧も出す（設定＞プロンプト・運営者の指示 2026-08-22）。 */
   listPlaceholders?: boolean;
+  /** 渡すと「参考投稿からAIで作る」を出す（T-M8-397）。生成にはXアカウントの指定が要る。 */
+  generatorXAccountId?: string;
 }) {
   const over = draft.prompt.length > PATTERN_PROMPT_MAX_CHARS;
   return (
     <div className="mt-3 space-y-3">
+      {generatorXAccountId ? (
+        <PatternExampleGenerator
+          idPrefix={idPrefix}
+          onGenerated={(gen) =>
+            onChange({
+              // 名前・説明は空欄のときだけ埋める（書きかけを上書きしない）。本文は生成が目的なので入れ替える。
+              ...(draft.name.trim() === "" && gen.name ? { name: gen.name } : {}),
+              ...(draft.description.trim() === "" && gen.description
+                ? { description: gen.description }
+                : {}),
+              prompt: gen.prompt,
+            })
+          }
+          xAccountId={generatorXAccountId}
+        />
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-body">
           <span className="block font-medium">名前</span>
@@ -301,5 +324,105 @@ export function DeletePatternButton({
         </AlertDialog.Popup>
       </AlertDialog.Portal>
     </AlertDialog.Root>
+  );
+}
+
+/**
+ * 参考投稿からプロンプトを自動生成する記入補助（T-M8-397・運営者の指示 2026-09-01）。
+ *
+ * 参考投稿を最大3件貼って「AIでプロンプトを生成」を押すと、生成結果が
+ * 名前・説明・生成プロンプトの記入欄へ入る（プレースホルダーは本文の {名前} から
+ * 従来どおり自動検出される・T-M8-186）。**保存はしない**——内容を確認して
+ * 保存するかは利用者が決める。
+ */
+export function PatternExampleGenerator({
+  idPrefix,
+  onGenerated,
+  xAccountId,
+}: {
+  idPrefix: string;
+  onGenerated: (gen: { name: string; description: string; prompt: string }) => void;
+  xAccountId: string;
+}) {
+  const toast = useToast();
+  const [posts, setPosts] = useState<string[]>([""]);
+  const [pending, startTransition] = useTransition();
+  const filled = posts.map((p) => p.trim()).filter(Boolean);
+
+  function generate() {
+    startTransition(async () => {
+      const res = await generatePatternPromptAction({
+        x_account_id: xAccountId,
+        reference_posts: filled,
+        hint: "",
+      });
+      if (res.status !== "success" || !res.prompt) {
+        toast.show({ tone: "error", title: "生成できませんでした", description: res.message });
+        return;
+      }
+      onGenerated({
+        name: res.name ?? "",
+        description: res.description ?? "",
+        prompt: res.prompt,
+      });
+      toast.show({
+        tone: "success",
+        title: "プロンプトを作成しました",
+        description: "記入欄に入れました。内容を確認して保存してください。",
+      });
+    });
+  }
+
+  return (
+    <fieldset className="rounded-card border border-hairline p-3">
+      <legend className="px-1 text-body font-medium text-ink">
+        参考投稿からAIで作る（任意）
+      </legend>
+      <p className="text-caption text-ink-3">
+        真似したい投稿を最大3件貼ると、AIが型を分析して下の記入欄（プレースホルダー込み）を
+        自動で埋めます。
+      </p>
+      <div className="mt-2 space-y-2">
+        {posts.map((value, index) => (
+          <div key={index}>
+            <label className="sr-only" htmlFor={`${idPrefix}-example-${index + 1}`}>
+              参考投稿{index + 1}
+            </label>
+            <textarea
+              className="w-full rounded-card border border-hairline bg-surface px-3 py-2 text-body"
+              id={`${idPrefix}-example-${index + 1}`}
+              onChange={(e) =>
+                setPosts((cur) => cur.map((v, i) => (i === index ? e.target.value : v)))
+              }
+              placeholder={`参考投稿${index + 1}の本文を貼り付け`}
+              rows={3}
+              value={value}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {posts.length < 3 ? (
+          <button
+            className="inline-flex h-9 items-center rounded-card border border-hairline px-3 text-body text-ink-2 transition-colors duration-150 hover:bg-surface-2"
+            onClick={() => setPosts((cur) => [...cur, ""])}
+            type="button"
+          >
+            ＋ 参考投稿を追加
+          </button>
+        ) : null}
+        <button
+          className="inline-flex h-9 items-center rounded-card bg-brand px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:opacity-50"
+          disabled={pending || filled.length === 0}
+          onClick={generate}
+          type="button"
+        >
+          {pending ? "生成しています…（10〜20秒）" : "AIでプロンプトを生成"}
+        </button>
+        {filled.length === 0 ? (
+          <span className="text-caption text-ink-3">参考投稿を1件以上入力すると押せます。</span>
+        ) : null}
+      </div>
+    </fieldset>
   );
 }
