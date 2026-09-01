@@ -38,7 +38,7 @@ const ITEM_PATH: Record<PrereqItem, string> = {
   x_account: "/app/settings?tab=x-accounts",
   text_ai_key: "/app/settings?tab=api-keys",
   image_ai_key: "/app/settings?tab=api-keys",
-  persona: "/app/settings?tab=account",
+  persona: "/app/prompts?sec=account-md",
 };
 
 const ITEM_CODE: Record<PrereqItem, PrereqCode> = {

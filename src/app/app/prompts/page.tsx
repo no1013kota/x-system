@@ -18,6 +18,10 @@ import {
   type PersonaSettings,
 } from "@/lib/persona-settings";
 import { isLearningRunningForUser } from "@/lib/base-md-server";
+import { pooledQueryable } from "@/lib/db/pool";
+import type { LearningSourceView } from "@/lib/learning-sources";
+import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
+import { serverNowMs } from "@/lib/time/server-now";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
 import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
 import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
@@ -31,6 +35,9 @@ import { readSingleRow } from "@/lib/supabase/single-row";
 import { PatternManager } from "../settings/pattern-manager";
 import { PersonaSettingsForm } from "../settings/persona-settings-form";
 import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
+import { LearningSourcesManager } from "./learning-sources-manager";
+
+const pooledDb = pooledQueryable();
 
 /**
  * プロンプト管理（T-M8-328・運営者の指示 2026-08-27）。
@@ -138,6 +145,13 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   }
 
   let baseMdLearningRunning = false;
+  /**
+   * 参考アカウント（T-M8-400・運営者の指示 2026-09-01。設定＞アカウント設定タブから移設）。
+   * 記入 → 分析 → 反映で `settings_proposal` が入り、下の5項目フォームへ提案として届く。
+   */
+  let learningSources: LearningSourceView[] = [];
+  /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
+  let learningApplying = false;
   /** 本棚（複数持てるプロンプト・T-M8-332）。区分ごとに読む。 */
   let presets: PromptPresetView[] = [];
   let patterns: PatternOption[] = [];
@@ -151,10 +165,23 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
         アカウント.mdは自由入力で何本でも作れるようにしたので、
         「アカウント設定を保存するまで1本も作れない」形にはできない。
       */
-      [presets, baseMdLearningRunning] = await Promise.all([
+      /*
+        **設定が未保存でも参考アカウントの一覧を読む**（T-M8-349）。登録しても一覧が空のままだと
+        「登録できたのか」が画面から分からない。4本は互いに依存しないので1波で投げる。
+      */
+      let running: { rows: { n: number }[] };
+      [presets, baseMdLearningRunning, learningSources, running] = await Promise.all([
         listPromptPresetsForUser({ userId: user.id, xAccountId: account.id, kind: "base_md" }),
         isLearningRunningForUser(user.id, account.id),
+        listLearningSourcesForUser(user.id, account.id),
+        pooledDb.query<{ n: number }>(
+          `select count(*)::int as n from generation_jobs
+            where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
+              and status in ('queued', 'running')`,
+          [account.id],
+        ),
       ]);
+      learningApplying = (running.rows[0]?.n ?? 0) > 0;
     } else if (section === "image-prompt") {
       presets = await listPromptPresetsForUser({
         userId: user.id,
@@ -176,6 +203,9 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
       );
     }
   }
+
+  // 参考アカウントの滞留判定に使う基準時刻（T-M8-113）。サーバーとブラウザで同じ値を使う。
+  const nowMs = await serverNowMs();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6">
@@ -216,10 +246,25 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   </Notice>
                 ) : null}
                 {/*
-                  **5項目の入力欄はここに置く**（T-M8-396・運営者の指示 2026-09-01。
-                  設定＞アカウント設定は参考アカウント専用にした）。
-                  参考アカウントの反映（settings_proposal）が届いたらフォームを作り直す。
+                  **並びは 参考アカウント → 5項目の入力欄 → 本棚**（T-M8-400・運営者の指示
+                  2026-09-01「参考アカウントからアカウント.mdを作る機能はペルソナの上に」）。
+                  設定＞アカウント設定タブは廃止し、材料（参考アカウント）と結果（入力欄）を
+                  同じ画面に並べる。反映（settings_proposal）が届いたらフォームを作り直す。
                 */}
+                <p className="text-caption text-ink-3">
+                  対象アカウント: <strong className="text-ink-2">@{account.handle}</strong>
+                  {account.base_md_version >= 1
+                    ? "（保存すると次の生成から反映されます）"
+                    : "（まだ保存されていません）"}
+                </p>
+                <LearningSourcesManager
+                  initialApplying={learningApplying}
+                  initialNowMs={nowMs}
+                  initialSources={learningSources}
+                  key={`sources:${account.id}`}
+                  settingsMissing={account.base_md_version < 1}
+                  xAccountId={account.id}
+                />
                 <PersonaSettingsForm
                   baseMdVersion={account.base_md_version}
                   initialDifference={initialDifference}

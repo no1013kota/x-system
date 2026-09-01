@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.75 |
+| バージョン | v1.76 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -230,7 +230,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 |---|---|---|---|
 | `listLearningSources` | none | sources | active_x_account |
 | `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
-| `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで。removed再追加は既存rowを復元 |
+| `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで（**画面から登録できるのは ref_account のみ**・T-M8-400。ref_post は既存データ・API互換のため残す）。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
 | `listPromptPresets` | x_account_id, kind | presets | 本棚の一覧（T-M8-332）。空なら「いま効いている内容」を使用中の1件として作る |
 | `createPromptPreset` | x_account_id, kind, name, content | preset | 契約中のみ。**追加しただけでは使用中にならない** |
@@ -379,6 +379,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.73 | 2026-09-01 | generatePatternPromptAction を追加（参考投稿×3→プロンプト生成・同期実行・原価台帳とAIクレジットへ記録・T-M8-397） |
 | v1.74 | 2026-09-01 | regenerateImageAction / uploadDraftImageAction / removeDraftImageAction へ post_local_id を追加（ポスト別画像・T-M8-398） |
 | v1.75 | 2026-09-01 | generatePatternPromptAction の表行を追加。参考投稿にX投稿のURLを受け付け本文へ引き直す・読めないURLは理由つきで拒否・Sonnet 5固定（T-M8-399） |
+| v1.76 | 2026-09-01 | addLearningSource: 画面から登録できるのは ref_account のみ（ref_post はAPI互換で残置・T-M8-400） |
 
 ### 下書きの投稿予約（T-M8-157）
 

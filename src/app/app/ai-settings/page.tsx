@@ -9,8 +9,9 @@ import { redirect } from "next/navigation";
  */
 
 const TAB_MAP: Record<string, string> = {
-  persona: "/app/settings?tab=account",
-  learning: "/app/settings?tab=account", // 学習ソースタブは廃止（T-M8-103）
+  // アカウント設定（参考アカウント＋5項目）は プロンプト＞アカウント.md へ（T-M8-396/T-M8-400）。
+  persona: "/app/prompts?sec=account-md",
+  learning: "/app/prompts?sec=account-md",
   purposes: "/app/settings?tab=purposes",
   "base-md": "/app/prompts?sec=account-md",
   prompts: "/app/prompts?sec=post-prompt",
@@ -22,5 +23,5 @@ interface AiSettingsPageProps {
 
 export default async function AiSettingsPage({ searchParams }: AiSettingsPageProps) {
   const params = await searchParams;
-  redirect(TAB_MAP[params.tab ?? ""] ?? "/app/settings?tab=account");
+  redirect(TAB_MAP[params.tab ?? ""] ?? "/app/prompts?sec=account-md");
 }

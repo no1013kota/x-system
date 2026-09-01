@@ -5904,7 +5904,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 検証: 単体13件＋Action実DBテスト4件（X HTTP・AI・tokenだけ偽）。**実X APIでのURL読取は手元に
     連携済みアカウントが無く未実施**——staging/本番で運営者のアカウントから1回試すこと（$0.005/投稿＋AI約$0.01）。
 
-### T-M8-400: 設定＞アカウント設定タブを廃止し、参考アカウントの反映をプロンプト＞アカウント.mdのペルソナの上へ移す `todo`
+### T-M8-400: 設定＞アカウント設定タブを廃止し、参考アカウントの反映をプロンプト＞アカウント.mdのペルソナの上へ移す `done`
 - 参照: 要件06 §1（SC-11タブ）・§3.1（参考ソース）・§3.6 / 依存: なし / サイズ: M
 - 完了条件:
   - 設定のタブから「アカウント設定」が消え、旧slug（`account`／`persona`／`learning`）は `/app/prompts?sec=account-md` へ転送される
@@ -5913,6 +5913,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 反映中・待ち切れ・失敗の表示と、反映結果がフォームへ提案として入り「アカウント設定を保存」で確定する挙動は移設前と同じ（E2E `learning-setup` を移設先で通す）
   - 反映完了トーストと案内文が「プロンプト＞アカウント.md」を指さない（同じ画面になるため「下の入力項目」へ）
 - メモ: 運営者の指示（2026-09-01）。T-M8-396 で参考アカウント専用にしたタブを丸ごと移す。参考投稿（`ref_post`）のサーバー側（`addLearningSource` の型・上限）は残す（既存データ・APIの互換）。`learning_analysis`/`md_merge` の進行判定（`learningApplying`）の読み込みも prompts page へ移す。
+- 実装メモ（2026-09-01 完了）:
+  - `learning-sources-manager.tsx` を `app/prompts/` へ移し、記入欄は参考アカウントのみ（既存の参考投稿は一覧に残り削除可）。
+    プロンプト＞アカウント.md の並びは「対象アカウント → 参考アカウントの枠 → 5項目フォーム → 本棚」。
+  - 旧slug `account`/`persona`/`learning` は `SETTINGS_TAB_REDIRECTS`（tabs.ts）で `/app/prompts?sec=account-md` へ転送。
+    通知リンク・前提不足の導線・`/app/ai-settings` の転送先も同じ場所へ。
+  - PRD L-2（参考投稿学習）はアカウント.md側のUIを廃止と明記（型はパターン追加の「参考投稿からAIで作る」が担う）。
+  - 検証: 単体全件緑、E2E（learning-setup・ai-settings・mobile-layout・settings-account・app-shell・prompt-presets）、
+    実ブラウザのキャプチャ（1280/390px）で並びと折返しを確認。
 
 ### T-M8-401: AIモデル設定をプロンプトページへ移し、「文章生成」表記・画像生成の既定（OpenAI / GPT Image 1.5）を出す `todo`
 - 参照: 要件06 §1（SC-11）・§3.6（`purposes`） / 依存: なし / サイズ: M

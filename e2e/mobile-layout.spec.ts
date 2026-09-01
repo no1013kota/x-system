@@ -28,8 +28,8 @@ test("ログイン後の主要画面が横に伸びない（390px）", async ({ 
     "/app/news",
     "/app/schedule",
     "/app/analytics",
-    // /app/ai-settings はリダイレクト専用（T-M8-104）。実体の統合設定タブを検査する。
-    "/app/settings?tab=account",
+    // /app/ai-settings はリダイレクト専用（T-M8-104）。アカウント設定はプロンプト＞アカウント.md（T-M8-400）。
+    "/app/prompts?sec=account-md",
     "/app/settings",
   ]) {
     await page.goto(path);
