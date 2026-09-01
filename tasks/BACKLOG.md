@@ -5885,7 +5885,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
     その後のイベントを1件も受け取っていない契約の件数。0件なら無音でも ok。
   - あわせて「イベント0件」もwarn→okへ（契約に動きが無ければ正常）。
 
-### T-M8-399: 「参考投稿からAIで作る」がX投稿のURLでも動くようにし、Sonnet 5固定・3欄を常に自動入力 `todo`
+### T-M8-399: 「参考投稿からAIで作る」がX投稿のURLでも動くようにし、Sonnet 5固定・3欄を常に自動入力 `done`
 - 参照: プロンプト設計書 §6.16（PT-PATTERN-GEN） / 要件05（`generatePatternPromptAction`） / 要件06 §4.1 / 依存: なし / サイズ: M
 - 完了条件:
   - 参考投稿の欄にX投稿のURL（`https://x.com/<handle>/status/<id>`）を貼っても生成できる（本文をX APIで取得して分析する。本文貼り付けとURLの混在も可）
@@ -5894,6 +5894,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 生成結果で名前・説明・生成プロンプトの3欄が**すべて**置き換わる（空欄のときだけ埋める挙動をやめる）。投稿作成・スケジュール・プロンプトの3画面とも同じ
   - 費用（X読取・AI）が原価台帳とAIクレジットへ記録される
 - メモ: 運営者の報告（2026-09-01）: 投稿作成ページでURLを貼ると「生成できませんでした 参考投稿がURLのみで本文内容を取得できず、型（フック・構成・語り口）を分析できないため。」。X投稿の取得は学習分析の `fetchReferencePost`（`readTweetMetrics`・user token）と同じ経路を使い、X未連携なら理由つきで断る。URL判定は `normalizeLearningUrl("ref_post")` を再利用する。
+- 実装メモ（2026-09-01 完了）:
+  - 純粋層 `src/lib/prompts/pattern-reference-posts.ts`（URL判定・本文への引き直し・読めない行の列挙）を足し、
+    Action は「残量確認 → X読取（`readTweetMetrics`・台帳へ x_post_read）→ AI」の順。X連携が無い／切れている
+    ときは `details.settingsPath=/app/settings?tab=x-accounts` を添えて断り、トーストから設定を開ける。
+  - モデルは `PATTERN_GEN_MODEL_PURPOSE="analysis"`（Anthropic=Sonnet 5）を定数化しテストで固定。
+    **BYOKでOpenAI/Googleしか無い利用者はClaudeを呼べない**ので同格のanalysis層（gpt-5.6-terra / gemini-3.7-flash）のまま。
+  - フォームは名前・説明・本文の3欄を常に置き換える（空欄だけ埋める挙動を廃止）。
+  - 検証: 単体13件＋Action実DBテスト4件（X HTTP・AI・tokenだけ偽）。**実X APIでのURL読取は手元に
+    連携済みアカウントが無く未実施**——staging/本番で運営者のアカウントから1回試すこと（$0.005/投稿＋AI約$0.01）。
 
 ### T-M8-400: 設定＞アカウント設定タブを廃止し、参考アカウントの反映をプロンプト＞アカウント.mdのペルソナの上へ移す `todo`
 - 参照: 要件06 §1（SC-11タブ）・§3.1（参考ソース）・§3.6 / 依存: なし / サイズ: M

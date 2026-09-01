@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.74 |
+| バージョン | v1.75 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -243,6 +243,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
 | `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
 | `updatePatternPrompt` | pattern_id, content, expected_updated_at | prompt | md/premiumのみ。楽観lock（投稿作成画面の「保存して以後も使う」） |
+| `generatePatternPromptAction` | x_account_id, reference_posts（1〜3件・本文またはX投稿のURL）, hint | name, description, prompt | プロンプト編集可プランのみ。**同期実行**（jobを作らない）。URLは対象アカウントのuser tokenで本文へ引き直す（T-M8-399。X未連携・読めない投稿は理由と `details.settingsPath` を返す）。AIはanalysis層（Anthropic=Sonnet 5）。X読取・AI呼び出しを原価台帳へ、premiumはAIクレジットへ精算（冪等キー `patgen:<id>:charge`）。保存はしない（T-M8-397） |
 
 `removeLearningSource`は同じXアカウントにqueued/runningの`learning_analysis`/`md_merge`または`removing` sourceがある場合は`job_conflict`にする。`addLearningSource`も`removing`中は拒否し、削除mergeへ別のsource変更を混ぜない。（`reimportOwnPosts`は2026-08-15に廃止・T-M8-103）
 
@@ -377,6 +378,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.72 | 2026-09-01 | updatePersonaSettings の reference_style を廃止（手書き章の廃止・T-M8-395）。settings へ volume（スレッド量や文章量）を追加 |
 | v1.73 | 2026-09-01 | generatePatternPromptAction を追加（参考投稿×3→プロンプト生成・同期実行・原価台帳とAIクレジットへ記録・T-M8-397） |
 | v1.74 | 2026-09-01 | regenerateImageAction / uploadDraftImageAction / removeDraftImageAction へ post_local_id を追加（ポスト別画像・T-M8-398） |
+| v1.75 | 2026-09-01 | generatePatternPromptAction の表行を追加。参考投稿にX投稿のURLを受け付け本文へ引き直す・読めないURLは理由つきで拒否・Sonnet 5固定（T-M8-399） |
 
 ### 下書きの投稿予約（T-M8-157）
 

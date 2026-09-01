@@ -179,14 +179,10 @@ export function PatternFields({
         <PatternExampleGenerator
           idPrefix={idPrefix}
           onGenerated={(gen) =>
-            onChange({
-              // 名前・説明は空欄のときだけ埋める（書きかけを上書きしない）。本文は生成が目的なので入れ替える。
-              ...(draft.name.trim() === "" && gen.name ? { name: gen.name } : {}),
-              ...(draft.description.trim() === "" && gen.description
-                ? { description: gen.description }
-                : {}),
-              prompt: gen.prompt,
-            })
+            // 名前・説明・本文の3欄を**すべて**生成結果で置き換える（T-M8-399・運営者の指示
+            // 2026-09-01「名前、説明、生成プロンプトが自動で入力される形に」）。以前は名前・説明を
+            // 空欄のときだけ埋めていたため、雛形や書きかけが残ると2欄が入らなかった。
+            onChange({ name: gen.name, description: gen.description, prompt: gen.prompt })
           }
           xAccountId={generatorXAccountId}
         />
@@ -357,7 +353,14 @@ export function PatternExampleGenerator({
         hint: "",
       });
       if (res.status !== "success" || !res.prompt) {
-        toast.show({ tone: "error", title: "生成できませんでした", description: res.message });
+        // 直せる場所（X連携など）があるならトーストから開ける（T-M8-399）。
+        const path = res.details?.settingsPath;
+        toast.show({
+          tone: "error",
+          title: "生成できませんでした",
+          description: res.message,
+          ...(typeof path === "string" ? { action: { href: path, label: "設定を開く" } } : {}),
+        });
         return;
       }
       onGenerated({
@@ -379,8 +382,9 @@ export function PatternExampleGenerator({
         参考投稿からAIで作る（任意）
       </legend>
       <p className="text-caption text-ink-3">
-        真似したい投稿を最大3件貼ると、AIが型を分析して下の記入欄（プレースホルダー込み）を
-        自動で埋めます。
+        真似したい投稿の本文か、X投稿のURL（https://x.com/…/status/…）を最大3件入れると、
+        AIが型を分析して名前・説明・生成プロンプト（プレースホルダー込み）を自動で埋めます。
+        URLの本文は連携中のXアカウントで読み取ります。
       </p>
       <div className="mt-2 space-y-2">
         {posts.map((value, index) => (
@@ -394,7 +398,7 @@ export function PatternExampleGenerator({
               onChange={(e) =>
                 setPosts((cur) => cur.map((v, i) => (i === index ? e.target.value : v)))
               }
-              placeholder={`参考投稿${index + 1}の本文を貼り付け`}
+              placeholder={`参考投稿${index + 1}の本文、またはX投稿のURLを貼り付け`}
               rows={3}
               value={value}
             />
