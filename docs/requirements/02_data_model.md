@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.87 |
+| バージョン | v1.88 |
 | 更新日 | 2026-09-01 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -385,7 +385,7 @@ RLS: 本人select可。writeはServer only。
 | `month` | `text` | not null | 利用枠の期間キー（`usage_events.month`と同じ。T-M8-258） |
 | `normal_posts_count` | `integer` | not null default 0 | URLなし通常投稿枠 |
 | `url_posts_count` | `integer` | not null default 0 | URL付き投稿枠 |
-| `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109。1クレジット=1円相当・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
+| `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109→T-M8-325。1クレジット=0.01円相当・プレミアム上限100,000＝1,000円ぶん・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
 PK: (`user_id`, `month`)
@@ -1097,3 +1097,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.85 | 2026-08-30 | news_batches を廃止（ニュース取得をRSS巡回へ・31テーブルへ・T-M8-380） |
 | v1.86 | 2026-09-01 | follower_snapshots の書き込み元を毎時cronだけに（「分析を開始」からの書き込みを廃止・T-M8-403。スキーマ変更なし） |
 | v1.87 | 2026-09-01 | notification_config.news に email（メール通知・既定OFF）を追加（T-M8-407・スキーマ変更なし） |
+| v1.88 | 2026-09-01 | ai_credits_used の単位を現行（1クレジット=0.01円）へ訂正（T-M8-325の反映漏れ） |
