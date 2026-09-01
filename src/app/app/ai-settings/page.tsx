@@ -12,7 +12,7 @@ const TAB_MAP: Record<string, string> = {
   // アカウント設定（参考アカウント＋5項目）は プロンプト＞アカウント.md へ（T-M8-396/T-M8-400）。
   persona: "/app/prompts?sec=account-md",
   learning: "/app/prompts?sec=account-md",
-  purposes: "/app/settings?tab=purposes",
+  purposes: "/app/prompts?sec=ai-models", // AIモデル設定はプロンプト画面へ（T-M8-401）
   "base-md": "/app/prompts?sec=account-md",
   prompts: "/app/prompts?sec=post-prompt",
 };

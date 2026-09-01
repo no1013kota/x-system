@@ -11,10 +11,8 @@ import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { PortalButton } from "@/components/billing/portal-button";
 import { ResumePlanButton } from "@/components/billing/resume-plan-button";
-import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
-import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 import { getSettingsForUser } from "@/lib/settings-server";
 import type { UserSettings } from "@/lib/settings";
@@ -27,7 +25,6 @@ import {
   type XAccountListItem,
 } from "@/lib/x/account-actions-server";
 
-import { AiPurposeSettings } from "./ai-purpose-settings";
 import { ApiKeySettings } from "./api-key-settings";
 import { SettingsPreferences } from "./settings-preferences";
 import {
@@ -53,7 +50,8 @@ import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
  * 設定（T-M8-104で旧「設定」と旧「AI設定」を統合）。タブ構成:
- * 設定（Xアカウント＋APIキー＋通知）／課金・プラン／AIモデル設定。
+ * 設定（Xアカウント＋APIキー＋通知）／課金・プラン。
+ * **AIモデル設定はプロンプト画面へ移設**（T-M8-401・運営者の指示 2026-09-01。旧slug `purposes` は転送）。
  * 問い合わせタブは廃止（2026-08-15 運営者の指示）。旧slugは tabs.ts のエイリアスが受ける。
  * **アカウント設定タブは廃止**（T-M8-400・運営者の指示 2026-09-01）——参考アカウントから
  * アカウント設定を作る機能ごと プロンプト＞アカウント.md へ移し、旧slugはそこへ転送する。
@@ -200,7 +198,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
   //   （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
   // - 利用枠: premium の利用枠（契約期間ごと）の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
-  const [apiKeys, usage, purposeKeys] = await Promise.all([
+  const [apiKeys, usage] = await Promise.all([
     tab === "general" && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
@@ -210,21 +208,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
         )
       : Promise.resolve(null as UsageSummary | null),
-    tab === "purposes" && !isOperatorManagedPlan(plan)
-      ? listApiKeyViewsForUser(user.id)
-      : Promise.resolve(null),
   ]);
-  // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
-  /* プロンプト関連の読み込みは `/app/prompts` へ移設（T-M8-328）。 */
-  let validUserProviders: AiKeyProvider[] = [];
-  if (purposeKeys) {
-    validUserProviders = purposeKeys
-      .filter(
-        (key): key is typeof key & { provider: AiKeyProvider } =>
-          key.provider !== "x" && key.status === "valid",
-      )
-      .map((key) => key.provider);
-  }
+  /* プロンプト・AIモデル設定の読み込みは `/app/prompts` へ移設（T-M8-328／T-M8-401）。 */
 
   return (
     <main className="px-4 py-[26px] lg:px-8">
@@ -393,18 +378,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <UsageSummaryCard nextResetLabel={usageResetLabel(usage)} summary={usage} />
             ) : null}
           </section>
-        ) : tab === "purposes" ? (
-          <AiPurposeSettings
-            initialConfig={
-              (profile.ai_purpose_config as { image: string | null; text: string | null } | null) ?? {
-                image: null,
-                text: null,
-              }
-            }
-            operatorImageProviders={[...operatorImageProviders()]}
-            plan={plan}
-            validUserProviders={validUserProviders}
-          />
         ) : null}
       </div>
     </main>

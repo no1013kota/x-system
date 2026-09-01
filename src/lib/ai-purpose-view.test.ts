@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
+  defaultImageProvider,
 } from "./ai-purpose-view";
 
 describe("AI purpose settings view", () => {
@@ -30,5 +31,15 @@ describe("AI purpose settings view", () => {
     const config = { image: "openai", text: "anthropic" };
     expect(configuredPurpose(config, "text", ["anthropic"])).toBe("anthropic");
     expect(configuredPurpose(config, "image", ["google"])).toBeNull();
+  });
+});
+
+describe("defaultImageProvider (T-M8-401)", () => {
+  it("OpenAIが使えればOpenAI（既定モデル GPT Image 1.5 の provider）", () => {
+    expect(defaultImageProvider(["google", "openai"])).toBe("openai");
+  });
+  it("OpenAIが無ければ使える先頭、何も無ければ null", () => {
+    expect(defaultImageProvider(["google"])).toBe("google");
+    expect(defaultImageProvider([])).toBeNull();
   });
 });

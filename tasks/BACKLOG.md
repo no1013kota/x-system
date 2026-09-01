@@ -5922,7 +5922,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 検証: 単体全件緑、E2E（learning-setup・ai-settings・mobile-layout・settings-account・app-shell・prompt-presets）、
     実ブラウザのキャプチャ（1280/390px）で並びと折返しを確認。
 
-### T-M8-401: AIモデル設定をプロンプトページへ移し、「文章生成」表記・画像生成の既定（OpenAI / GPT Image 1.5）を出す `todo`
+### T-M8-401: AIモデル設定をプロンプトページへ移し、「文章生成」表記・画像生成の既定（OpenAI / GPT Image 1.5）を出す `done`
 - 参照: 要件06 §1（SC-11）・§3.6（`purposes`） / 依存: なし / サイズ: M
 - 完了条件:
   - `/app/prompts?sec=ai-models`（区分「AIモデル設定」）でAIモデル設定を編集できる。設定の旧slug `purposes` はここへ転送される
@@ -5932,6 +5932,16 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - premium で画像providerを未保存のとき、実行時にOpenAI / GPT Image 1.5 が使われる（`resolveImageKey` のフォールバックと画面表示が一致する）
   - ホームの初期設定ガイド・APIキー疎通後の「AIモデル設定を開く」など既存の導線が新しい場所へ向く
 - メモ: 運営者の指示（2026-09-01「文章生成・リサーチのモデルと同様に、画像生成にもデフォルト（ChatGPTの真ん中のプラン）を入れて」「今は文章生成だけ指定できる形」）。既定モデルは `DEFAULT_IMAGE_MODELS`（gpt-image-1.5）が正本で、画面はそれを写す（数字を2か所に置かない）。premium の「画像生成を使用しない」optionは実際には効いていなかった（`resolveImageKey` が openai へフォールバックする）ので、premium では出さない。
+- 実装メモ（2026-09-01 完了）:
+  - 部品を `app/prompts/ai-model-settings.tsx` へ移し、`PROMPT_SECTIONS` に `ai-models` を追加。設定タブから `purposes` を外し
+    `SETTINGS_TAB_REDIRECTS` で転送（APIキー保存後の導線・初期設定ガイド・`/app/ai-settings` も新URLへ）。
+  - 画像の既定は `defaultImageProvider`（OpenAI優先＝`resolveImageKey` のフォールバック順）で選んだ形にし、
+    「おまかせ」に `DEFAULT_IMAGE_MODELS` の表示名と目安を出す。BYOKは未保存の間「まだ保存されていません」を出す
+    （保存するまで効かないため）。premium は「使用しない」optionを廃止（効いていなかった）。
+  - 「文章生成・リサーチ」表記はこの画面と初期設定ガイドの説明だけ「文章生成」へ。APIキー画面のバッジ
+    （Anthropic=文章生成・リサーチ）は対応範囲の説明なので据え置き。
+  - 検証: 単体全件緑、E2E（転送・見出し・保存・設定タブに無いこと＋app-shell/mobile-layout/prompt-presets/x-oauth 他）、
+    実ブラウザのキャプチャ（1280/390px）。
 
 ### T-M8-402: 設定ページのタブを「Xアカウント／APIキー／通知／課金・プラン」へ分ける `todo`
 - 参照: 要件06 §1（SC-11）・§1.2.1・§1.2.2 / 依存: T-M8-400, T-M8-401 / サイズ: S

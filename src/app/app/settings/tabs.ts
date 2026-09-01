@@ -7,7 +7,6 @@
 export const SETTINGS_TABS = [
   ["general", "設定"],
   ["billing", "課金・プラン"],
-  ["purposes", "AIモデル設定"],
   /*
     **「プロンプト」タブは廃止**（T-M8-328・運営者の指示 2026-08-27）。
     `/app/prompts` の独立した画面へ移した。旧slugは下のエイリアスで転送する——
@@ -43,11 +42,13 @@ const TAB_ALIASES: Record<string, SettingsTab> = {
  * ここへ転送する——DBに保存済みの通知リンクや利用者のブックマークが旧slugのまま届くため、
  * 「押しても違う画面が出る」を作らない（原則2）。
  * - `account`／`persona`／`learning`: 参考アカウント＋5項目の入力欄は プロンプト＞アカウント.md
+ * - `purposes`: AIモデル設定は プロンプト＞AIモデル設定（T-M8-401）
  */
 export const SETTINGS_TAB_REDIRECTS: Record<string, string> = {
   account: "/app/prompts?sec=account-md",
   persona: "/app/prompts?sec=account-md",
   learning: "/app/prompts?sec=account-md",
+  purposes: "/app/prompts?sec=ai-models",
 };
 
 /** 旧slugが別画面へ移っていれば転送先URLを返す（無ければ null）。 */
@@ -69,11 +70,16 @@ export function normalizeSettingsTab(slug: string | undefined): SettingsTab {
   return "general";
 }
 
-/** プロンプトタブ内の区分（アカウント.md／投稿作成プロンプト／画像生成プロンプト・T-M8-104）。 */
+/**
+ * プロンプト画面の区分（アカウント.md／投稿作成プロンプト／画像生成プロンプト・T-M8-104）。
+ * **AIモデル設定もここ**（T-M8-401・運営者の指示 2026-09-01）——どのAI・モデルで作るかは
+ * 「AIへ渡す指示」と同じ場所で決める方が、設定（連携・課金・通知）に混ざるより探しやすい。
+ */
 export const PROMPT_SECTIONS = [
   ["account-md", "アカウント.md"],
   ["post-prompt", "投稿作成プロンプト"],
   ["image-prompt", "画像生成プロンプト"],
+  ["ai-models", "AIモデル設定"],
 ] as const;
 
 export type PromptSection = (typeof PROMPT_SECTIONS)[number][0];

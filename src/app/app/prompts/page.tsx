@@ -17,7 +17,12 @@ import {
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
+import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
+import type { ImageAiProvider } from "@/lib/ai-purpose-config";
+import type { AiKeyProvider } from "@/lib/api-keys";
+import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
 import { isLearningRunningForUser } from "@/lib/base-md-server";
+import { isOperatorManagedPlan } from "@/lib/plans";
 import { pooledQueryable } from "@/lib/db/pool";
 import type { LearningSourceView } from "@/lib/learning-sources";
 import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
@@ -35,6 +40,7 @@ import { readSingleRow } from "@/lib/supabase/single-row";
 import { PatternManager } from "../settings/pattern-manager";
 import { PersonaSettingsForm } from "../settings/persona-settings-form";
 import { PROMPT_SECTIONS, normalizePromptSection } from "../settings/tabs";
+import { AiModelSettings } from "./ai-model-settings";
 import { LearningSourcesManager } from "./learning-sources-manager";
 
 const pooledDb = pooledQueryable();
@@ -119,6 +125,26 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
     : null;
 
   const editable = promptEditablePlan(plan ?? "");
+
+  /*
+    AIモデル設定（T-M8-401・運営者の指示 2026-09-01。設定タブから移設）。
+    **profile単位**で、Xアカウント未連携・プロンプト編集不可プランでも編集できる（従来どおり）。
+    BYOKでは疎通確認済みのAIキーだけが選択肢になる。
+  */
+  let aiModelValidProviders: AiKeyProvider[] = [];
+  let aiModelOperatorImageProviders: ImageAiProvider[] = [];
+  if (section === "ai-models") {
+    aiModelOperatorImageProviders = [...operatorImageProviders()];
+    if (!isOperatorManagedPlan(plan)) {
+      const keys = await listApiKeyViewsForUser(user.id);
+      aiModelValidProviders = keys
+        .filter(
+          (key): key is typeof key & { provider: AiKeyProvider } =>
+            key.provider !== "x" && key.status === "valid",
+        )
+        .map((key) => key.provider);
+    }
+  }
 
   /*
     アカウント.mdの入力項目（5項目フォーム・T-M8-396で設定タブから移設）。
@@ -211,18 +237,33 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
     <main className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6">
       <h1 className={pageTitleClassName}>プロンプト</h1>
       <p className="mt-1.5 text-sm text-ink-2">
-        AIへ渡す指示をここでまとめて育てます。変更は次の生成から反映されます。
+        AIへ渡す指示と、使うAI・モデルをここでまとめて決めます。変更は次の生成から反映されます。
       </p>
 
       <div className="mt-5 space-y-4">
+        {/* 区分が4つになったので、狭い幅では折り返さず横スクロール（設定タブと同じ・T-M8-401）。 */}
         <TabNav
           active={section}
+          className="gap-1 overflow-x-auto"
           hrefFor={(slug) => `/app/prompts?sec=${slug}`}
           items={PROMPT_SECTIONS.map(([value, label]) => ({ value, label }))}
           label="プロンプトの区分"
+          linkClassName="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
         />
 
-        {!editable ? (
+        {section === "ai-models" ? (
+          <AiModelSettings
+            initialConfig={
+              (profile.ai_purpose_config as { image: string | null; text: string | null } | null) ?? {
+                image: null,
+                text: null,
+              }
+            }
+            operatorImageProviders={aiModelOperatorImageProviders}
+            plan={plan}
+            validUserProviders={aiModelValidProviders}
+          />
+        ) : !editable ? (
           <LockedState
             actionHref="/plans"
             actionLabel="プランを見る"

@@ -42,3 +42,15 @@ export function configuredPurpose(
   const value = (config as Record<string, unknown>)[purpose];
   return typeof value === "string" && available.includes(value) ? value : null;
 }
+
+/**
+ * 画像providerの既定（T-M8-401・運営者の指示 2026-09-01「画像生成にもデフォルトを」）。
+ * OpenAIが使えればOpenAI（既定モデルは `DEFAULT_IMAGE_MODELS.openai`＝GPT Image 1.5）、
+ * 無ければ使える先頭、何も無ければ null。premiumの実行時フォールバック（`resolveImageKey` の
+ * openai優先）と同じ順にして、画面の既定表示と実際に使われるものを一致させる。
+ */
+export function defaultImageProvider(
+  available: readonly ImageAiProvider[],
+): ImageAiProvider | null {
+  return available.includes("openai") ? "openai" : (available[0] ?? null);
+}

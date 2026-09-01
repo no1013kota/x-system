@@ -10,16 +10,18 @@ import { useToast } from "@/components/ui/toast";
 import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ImageAiProvider } from "@/lib/ai-purpose-config";
 import {
-  IMAGE_DEFAULT_ESTIMATE_CREDITS,
+  DEFAULT_IMAGE_MODELS,
   IMAGE_MODEL_OPTIONS,
   TEXT_DEFAULT_ESTIMATE_CREDITS,
   TEXT_MODEL_OPTIONS,
+  imageEstimateCredits,
   isCatalogImageModel,
   isCatalogTextModel,
 } from "@/lib/ai/model-catalog";
 import {
   buildAiPurposeProviderOptions,
   configuredPurpose,
+  defaultImageProvider,
 } from "@/lib/ai-purpose-view";
 import { concealsUsageLimits, isOperatorManagedPlan, type PlanId } from "@/lib/plans";
 import { CardTitle, cardClassName } from "@/components/ui/card";
@@ -27,25 +29,42 @@ import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { yen } from "@/lib/format";
 
+/**
+ * AIモデル設定（旧・設定＞AIモデル設定。T-M8-401・運営者の指示 2026-09-01でプロンプト画面へ移設）。
+ *
+ * - 見出しは「文章生成」（旧「文章生成・リサーチ」）。利用者が指定できるのは文章生成のAIと
+ *   モデルだけなので、そのとおりに呼ぶ（Webリサーチは同じAIで裏側が行う）。
+ * - **画像生成にも既定を出す**。何も保存していなくても OpenAI／GPT Image 1.5（バランス）が
+ *   選ばれた形で表示し、「おまかせ」には既定モデル名と目安を明示する。既定の正本は
+ *   `DEFAULT_IMAGE_MODELS`（コード）で、画面はそれを写すだけ（数字を2か所に置かない）。
+ */
+
 const PROVIDER_LABELS: Record<AiKeyProvider, string> = {
   anthropic: "Anthropic (Claude)",
   google: "Google (Gemini)",
   openai: "OpenAI",
 };
 
-interface AiPurposeSettingsProps {
+/** 画像の既定モデル（provider別）の表示名と目安。カタログに無ければ null。 */
+function imageDefaultModel(provider: ImageAiProvider): { label: string; estimateCredits: number } | null {
+  const id = DEFAULT_IMAGE_MODELS[provider];
+  const option = IMAGE_MODEL_OPTIONS[provider].find((m) => m.id === id);
+  return option ? { label: option.label, estimateCredits: imageEstimateCredits(provider, id) } : null;
+}
+
+interface AiModelSettingsProps {
   initialConfig: unknown;
   operatorImageProviders: ImageAiProvider[];
   plan: PlanId | null;
   validUserProviders: AiKeyProvider[];
 }
 
-export function AiPurposeSettings({
+export function AiModelSettings({
   initialConfig,
   operatorImageProviders,
   plan,
   validUserProviders,
-}: AiPurposeSettingsProps) {
+}: AiModelSettingsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const options = buildAiPurposeProviderOptions({
@@ -56,10 +75,19 @@ export function AiPurposeSettings({
   const [textProvider, setTextProvider] = useState<AiKeyProvider | "">(() =>
     (configuredPurpose(initialConfig, "text", options.text) as AiKeyProvider | null) ?? "",
   );
-  const [imageProvider, setImageProvider] = useState<ImageAiProvider | "">(() =>
-    (configuredPurpose(initialConfig, "image", options.image) as ImageAiProvider | null) ?? "",
+  /*
+    **画像は既定を選んだ形で出す**（T-M8-401）。保存済みの選択があればそれ、無ければ
+    `defaultImageProvider`（OpenAI優先＝premiumの実行時フォールバックと同じ順）。
+    BYOKは保存するまで実際には効かないので、その間は下の Notice で「まだ保存されていません」と言う。
+  */
+  const savedImageProvider = configuredPurpose(initialConfig, "image", options.image) as
+    | ImageAiProvider
+    | null;
+  const imageDefault = defaultImageProvider(options.image);
+  const [imageProvider, setImageProvider] = useState<ImageAiProvider | "">(
+    () => savedImageProvider ?? imageDefault ?? "",
   );
-  // 選択モデル（T-M8-107）。空=おまかせ（運営の既定モデル）。保存値がカタログ外なら空扱い。
+  // 選択モデル（T-M8-107）。空=おまかせ（既定モデル）。保存値がカタログ外なら空扱い。
   const cfg = (initialConfig ?? {}) as Record<string, unknown>;
   const [textModel, setTextModel] = useState<string>(() => {
     const saved = typeof cfg.text_model === "string" ? cfg.text_model : "";
@@ -68,12 +96,14 @@ export function AiPurposeSettings({
   });
   const [imageModel, setImageModel] = useState<string>(() => {
     const saved = typeof cfg.image_model === "string" ? cfg.image_model : "";
-    const provider = configuredPurpose(initialConfig, "image", options.image) as ImageAiProvider | null;
-    return provider && saved && isCatalogImageModel(provider, saved) ? saved : "";
+    return savedImageProvider && saved && isCatalogImageModel(savedImageProvider, saved) ? saved : "";
   });
   const toast = useToast();
   // premiumの文章providerは運営固定（anthropic）。モデル選択の対象provider。
   const effectiveTextProvider: AiKeyProvider | "" = isOperatorManagedPlan(plan) ? "anthropic" : textProvider;
+  const imageDefaultInfo = imageProvider ? imageDefaultModel(imageProvider) : null;
+  /** 画像のAIが未保存のまま既定を出しているか（BYOKは保存するまで効かない）。 */
+  const imageUnsavedDefault = !isOperatorManagedPlan(plan) && !savedImageProvider && imageProvider !== "";
 
   function save() {
     startTransition(async () => {
@@ -111,9 +141,9 @@ export function AiPurposeSettings({
             <Icon name="smart_toy" size={20} />
           </span>
           <div>
-            <CardTitle id="text-purpose-heading">文章生成・リサーチ</CardTitle>
+            <CardTitle id="text-purpose-heading">文章生成</CardTitle>
             <p className="mt-1 text-caption leading-6 text-ink-3">
-              投稿文の生成とWebリサーチには同じAIを使います。
+              投稿文を書くAIとモデルです。
             </p>
           </div>
         </div>
@@ -139,7 +169,7 @@ export function AiPurposeSettings({
           </>
         ) : options.text.length > 0 ? (
           <label className="mt-5 block max-w-xl space-y-2 text-body font-medium">
-            文章生成・リサーチに使うAI
+            文章生成に使うAI
             <select
               className="h-11 w-full rounded-lg border bg-background px-3"
               disabled={isPending}
@@ -157,7 +187,7 @@ export function AiPurposeSettings({
             </select>
           </label>
         ) : (
-          <MissingProviderMessage purpose="文章生成・リサーチ" />
+          <MissingProviderMessage purpose="文章生成" />
         )}
         {!isOperatorManagedPlan(plan) && effectiveTextProvider ? (
           <ModelSelect
@@ -181,6 +211,9 @@ export function AiPurposeSettings({
             <CardTitle id="image-purpose-heading">画像生成</CardTitle>
             <p className="mt-1 text-caption leading-6 text-ink-3">
               OpenAIまたはGoogleのうち、利用できるAIだけを選べます。
+              {imageDefault && imageDefaultModel(imageDefault)
+                ? `何も変えなければ ${PROVIDER_LABELS[imageDefault]} / ${imageDefaultModel(imageDefault)?.label} を使います。`
+                : null}
             </p>
           </div>
         </div>
@@ -197,7 +230,12 @@ export function AiPurposeSettings({
               }}
               value={imageProvider}
             >
-              <option value="">画像生成を使用しない</option>
+              {/*
+                premium は「使用しない」を出さない（T-M8-401）——実行時は運営キーのOpenAIへ
+                フォールバックするので、選んでも効かない選択肢になる。画像を付けるかは
+                投稿作成の「画像生成」で毎回決める。BYOKは未設定＝画像生成できない、なので残す。
+              */}
+              {isOperatorManagedPlan(plan) ? null : <option value="">画像生成を使用しない</option>}
               {options.image.map((provider) => (
                 <option key={provider} value={provider}>{PROVIDER_LABELS[provider]}</option>
               ))}
@@ -206,7 +244,8 @@ export function AiPurposeSettings({
         ) : null}
         {options.image.length > 0 && imageProvider ? (
           <ModelSelect
-            defaultEstimate={IMAGE_DEFAULT_ESTIMATE_CREDITS}
+            defaultEstimate={imageDefaultInfo?.estimateCredits ?? imageEstimateCredits(imageProvider, null)}
+            defaultLabel={imageDefaultInfo?.label}
             disabled={isPending}
             label="画像生成に使うモデル"
             onChange={setImageModel}
@@ -214,6 +253,13 @@ export function AiPurposeSettings({
             plan={plan}
             value={imageModel}
           />
+        ) : null}
+        {imageUnsavedDefault ? (
+          <Notice className="mt-4" role="status" tone="info">
+            画像生成のAIはまだ保存されていません。このまま「AIモデル設定を保存」を押すと、
+            {PROVIDER_LABELS[imageProvider as ImageAiProvider]}
+            {imageDefaultInfo ? `（${imageDefaultInfo.label}）` : ""}で画像を作れるようになります。
+          </Notice>
         ) : null}
         {options.image.length === 0 ? (
           <Notice className="mt-5" tone="warn">
@@ -246,12 +292,14 @@ export function AiPurposeSettings({
 }
 
 /**
- * モデル選択（T-M8-107/110）。空=おまかせ（運営の既定モデル）。
+ * モデル選択（T-M8-107/110）。空=おまかせ（既定モデル）。
  * 消費目安は「1回あたり」で出す（per MTok表記は分かりにくいため廃止・2026-08-16 運営者の指示）:
  * premium=「約Nクレジット/回」、BYOK=「約N円/回」（自分のAPI課金の目安。1クレジット=1円相当で同値）。
  * 実費消費のため確定値ではなく目安（成功時に実費で精算・T-M8-109）。
  * **利用枠を出さないプラン（expert）には消費目安ごと出さない**（T-M8-168。「無制限」の画面に
  * クレジット単位の消費を見せると内部で計量していることを悟らせる）。
+ * `defaultLabel` を渡すと「おまかせ」に既定モデル名を添える（画像・T-M8-401。文章の既定は
+ * 環境変数で決まりコードに名前が無いので「運営の既定モデル」のまま）。
  */
 function ModelSelect({
   disabled,
@@ -260,6 +308,7 @@ function ModelSelect({
   options,
   plan,
   defaultEstimate,
+  defaultLabel,
   value,
 }: {
   disabled: boolean;
@@ -267,12 +316,15 @@ function ModelSelect({
   onChange: (value: string) => void;
   options: readonly { id: string; label: string; estimateCredits: number }[];
   plan: PlanId | null;
-  /** 「おまかせ」の消費目安（運営の既定モデル想定）。 */
+  /** 「おまかせ」の消費目安（既定モデル想定）。 */
   defaultEstimate: number;
+  /** 「おまかせ」で使われる既定モデルの表示名（分かるときだけ）。 */
+  defaultLabel?: string;
   value: string;
 }) {
   const unit = isOperatorManagedPlan(plan) ? "クレジット/回" : "円/回";
   const showEstimate = !concealsUsageLimits(plan);
+  const defaultName = defaultLabel ?? "運営の既定モデル";
   return (
     <label className="mt-3 block max-w-xl space-y-2 text-body font-medium">
       {label}
@@ -284,8 +336,8 @@ function ModelSelect({
       >
         <option value="">
           {showEstimate
-            ? `おまかせ（運営の既定モデル・約${defaultEstimate}${unit}）`
-            : "おまかせ（運営の既定モデル）"}
+            ? `おまかせ（${defaultName}・約${yen(defaultEstimate)}${unit}）`
+            : `おまかせ（${defaultName}）`}
         </option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
