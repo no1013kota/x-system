@@ -33,9 +33,11 @@ URL、スレッド番号、固有名詞、数値は削除・変更しない。
 - persona（発信者・読者・読者が得るもの）と tone.first_person は、抽象的な記述を
   観察された具体へ言い換えてよい。ただし別人にはしない（同じ人物・同じ立場のまま鮮明にする）
 - themes.primary / themes.secondary は <current> にある値の中から選び直すだけ。新しいテーマを作らない
-- tone.sentence_style（polite/assertive）・tone.emoji_policy（none/limited）・
-  tone.emoji_max_per_post・tone.hashtags_max・tone.thread_numbering は、
-  分析で明確な根拠があるときだけ変える
+- tone.sentence_style（自由記述。例「です・ます調」「言い切りと体言止め中心」）・
+  tone.emoji_policy（none/limited）・tone.emoji_max_per_post・tone.hashtags_max・
+  tone.thread_numbering は、分析で明確な根拠があるときだけ変える
+- volume.free_text（スレッド量や文章量の指定）は、分析から読み取れた分量の傾向
+  （1ポストの行数・スレッドの長さ）があるときだけ書き換える
 - ng.topics / ng.rules は<removed>だけに由来する項目を取り除き、分析で分かった避けるべき表現を足す。
   ng.words は変えない（利用者が個別に管理している）
 - 各文字列は1〜200字。配列は10件以内

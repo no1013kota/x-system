@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.71 |
+| バージョン | v1.72 |
 | 更新日 | 2026-08-31 |
 | 関連 | 全画面、全ジョブ |
 
@@ -374,6 +374,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.69 | 2026-08-28 | updatePersonaSettings に reference_style（アカウント.mdの5章「参考にする型」）を追加（T-M8-355／T-M8-356） |
 | v1.70 | 2026-08-29 | rollbackBaseMd を削除（アカウント.mdの変更履歴を廃止・T-M8-362）。discardSettingsProposal を追加（T-M8-360） |
 | v1.71 | 2026-08-31 | 生成userの構造タグ `<input>` を `<user_input>` へ改名（T-M8-387）。参考URLの記載も更新 |
+| v1.72 | 2026-09-01 | updatePersonaSettings の reference_style を廃止（手書き章の廃止・T-M8-395）。settings へ volume（スレッド量や文章量）を追加 |
 
 ### 下書きの投稿予約（T-M8-157）
 

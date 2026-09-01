@@ -11,7 +11,6 @@ import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 import {
-  FREE_SECTION_MAX_CHARS,
   personaSettingsSchema,
   type PersonaSettings,
 } from "@/lib/persona-settings";
@@ -34,7 +33,6 @@ interface PersonaSettingsFormProps {
    * 1〜4はこのフォームから機械生成されるが、5（参考にする型）は人が書く場所で、
    * これまではプロンプト画面のmdエディタからしか触れなかった。**同じ画面で書けるようにする。**
    */
-  initialReferenceStyle: string;
   xAccountId: string;
 }
 
@@ -66,7 +64,6 @@ function lines(value: string): string[] {
 export function PersonaSettingsForm({
   baseMdVersion,
   initialDifference,
-  initialReferenceStyle,
   initialSettings,
   proposal,
   xAccountId,
@@ -98,11 +95,6 @@ export function PersonaSettingsForm({
       })
       .finally(() => setDiscarding(false));
   }
-  /*
-    アカウント.mdの5セクション（T-M8-355）。**参考ソースの反映では変わらない**——
-    反映が書き換えるのは1〜4（ペルソナ〜NG設定）だけで、ここは人が書く場所。
-  */
-  const [referenceStyle, setReferenceStyle] = useState(initialReferenceStyle);
   const [savedDifference, setSavedDifference] = useState(initialDifference);
   const [submitting, setSubmitting] = useState(false);
   /**
@@ -169,7 +161,6 @@ export function PersonaSettingsForm({
     setSubmitting(true);
     const result = await updatePersonaSettings({
       expected_base_md_version: version,
-      reference_style: referenceStyle,
       settings: parsed.data,
       x_account_id: xAccountId,
     });
@@ -371,23 +362,22 @@ export function PersonaSettingsForm({
             <label className="text-sm font-medium" htmlFor="tone.sentence_style">
               文末
             </label>
-            <select
+            {/* 自由入力（T-M8-395・運営者の指示 2026-09-01）。旧enumの2択は廃止。 */}
+            <input
               className={inputClassName}
               id="tone.sentence_style"
               onChange={(event) =>
                 updateSettings({
                   ...settings,
-                  tone: {
-                    ...settings.tone,
-                    sentence_style: event.target.value as "polite" | "assertive",
-                  },
+                  tone: { ...settings.tone, sentence_style: event.target.value },
                 })
               }
+              placeholder="例: です・ます調／断定調／言い切りと体言止め中心"
               value={settings.tone.sentence_style}
-            >
-              <option value="polite">です・ます調</option>
-              <option value="assertive">断定調</option>
-            </select>
+            />
+            {errorFor("tone.sentence_style") ? (
+              <p className="mt-1 text-caption text-danger-fg">{errorFor("tone.sentence_style")}</p>
+            ) : null}
           </div>
           <div>
             <label className="text-sm font-medium" htmlFor="tone.first_person">
@@ -533,35 +523,39 @@ export function PersonaSettingsForm({
       </section>
 
       {/*
-        **アカウント.mdの手書きセクション**（T-M8-355／T-M8-356・運営者の指示 2026-08-28）。
-        1〜4はこの画面から機械生成されるが、5は人が書く場所で、これまでは
-        プロンプト画面のmdエディタからしか触れなかった。同じ画面で書けるようにする。
-        **参考ソースの反映では変わらない**——反映が書き換えるのは1〜4だけ。
+        スレッド量や文章量（T-M8-395・運営者の指示 2026-09-01）。アカウント.mdの4章に入る。
+        旧「参考にする型」（手書きセクション）は廃止——役割は参考アカウント分析と
+        パターン別の参考投稿が継いだ。
       */}
-      <section aria-labelledby="free-group" className={groupClassName} role="group">
-        <CardTitle id="free-group">参考にする型（任意）</CardTitle>
+      <section aria-labelledby="volume-group" className={groupClassName} role="group">
+        <CardTitle id="volume-group">スレッド量や文章量（任意）</CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          アカウント.mdの5章にそのまま入ります。空でも保存できます。
+          アカウント.mdの4章にそのまま入ります。空なら「投稿の型の設定に従う」になります。
         </p>
         <div className="mt-5">
-          <label className="sr-only" htmlFor="free.reference">
-            参考にする型
+          <label className="sr-only" htmlFor="volume.free_text">
+            スレッド量や文章量
           </label>
           <textarea
             className={inputClassName}
-            id="free.reference"
-            maxLength={FREE_SECTION_MAX_CHARS}
-            onChange={(event) => {
-              setReferenceStyle(event.target.value);
-              setDirty(true);
-            }}
-            placeholder="例: 結論→理由→具体例→まとめ の4段で書く。"
-            rows={4}
-            value={referenceStyle}
+            id="volume.free_text"
+            maxLength={500}
+            onChange={(event) =>
+              updateSettings({
+                ...settings,
+                volume: { free_text: event.target.value },
+              })
+            }
+            placeholder="例: 1ポストは3〜5行で読み切れる密度に。スレッドは長くても4ポストまで。"
+            rows={3}
+            value={settings.volume.free_text}
           />
           <p className="mt-1 text-caption text-ink-3">
-            {referenceStyle.length} / {FREE_SECTION_MAX_CHARS}字
+            {settings.volume.free_text.length} / 500字
           </p>
+          {errorFor("volume.free_text") ? (
+            <p className="mt-1 text-caption text-danger-fg">{errorFor("volume.free_text")}</p>
+          ) : null}
         </div>
       </section>
 

@@ -23,6 +23,7 @@ function settings(speaker: string) {
       secondary: ["ai" as const],
     },
     tone: { ...DEFAULT_TONE_SETTINGS },
+    volume: { free_text: "" },
   };
 }
 
@@ -74,7 +75,7 @@ describe("updatePersonaSettings transaction", () => {
     });
     expect(first.version).toBe(1);
     expect(first.baseMd).toContain("- 発信者: 初回の発信者");
-    expect(first.baseMd).toMatch(/## 5\.[^\n]*\n$/);
+    expect(first.baseMd).toContain("## 5. NG設定");
     const firstRows = await db.query(
       `select x.settings, x.base_md, x.base_md_version from x_accounts x where x.id = $1`,
       [xAccountId],
@@ -82,15 +83,12 @@ describe("updatePersonaSettings transaction", () => {
     expect(firstRows.rows).toHaveLength(1);
     expect(firstRows.rows[0]).toMatchObject({ base_md: first.baseMd, base_md_version: 1 });
 
-    const learned = first.baseMd.replace(
-      "## 5. 参考にする型\n",
-      "## 5. 参考にする型\n- 学習済み構成\n",
-    );
+    // 別経路が書き換えた版があっても、保存は設定から全文を作り直す（T-M8-395）。
+    const learned = first.baseMd.replace("## 5. NG設定", "## 5. NG設定\n- 学習済み構成");
     await db.query(
       "update x_accounts set base_md = $2, base_md_version = 2 where id = $1",
       [xAccountId, learned],
     );
-    const learnedTail = learned.slice(learned.indexOf("## 5."));
     const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
       expectedBaseMdVersion: 2,
       settings: settings("更新後の発信者"),
@@ -99,9 +97,7 @@ describe("updatePersonaSettings transaction", () => {
     });
     expect(second).toMatchObject({ version: 3 });
     expect(second.baseMd).toContain("- 発信者: 更新後の発信者");
-    expect(second.baseMd.slice(second.baseMd.indexOf("## 5."))).toBe(
-      learnedTail,
-    );
+    expect(second.baseMd).not.toContain("学習済み構成");
 
     await expect(
       applyPersonaSettingsUpdate(db as unknown as PoolClient, {
@@ -146,12 +142,10 @@ describe("updatePersonaSettings transaction", () => {
   });
 
   /**
-   * アカウント.mdの5・6章を画面から書ける（T-M8-355・運営者の指示 2026-08-28）。
-   *
-   * **渡されなければ1バイトも変えない。** 学習・mdエディタ・ロールバックが書いた内容を、
-   * 別経路の保存で知らないうちに消さないため（原則1）。
+   * アカウント.mdは全5セクションを設定から生成する（T-M8-395・運営者の指示 2026-09-01）。
+   * 旧・手書き5章（参考にする型）は保存し直した時点で新形式に置き換わる。
    */
-  it("5章（参考にする型）は渡したときだけ書き換わる（渡さなければそのまま）", async (context) => {
+  it("保存のたびに全5セクション（新見出し）で作り直される", async (context) => {
     if (!database) return context.skip();
     const db = database;
     const userId = randomUUID();
@@ -175,35 +169,26 @@ describe("updatePersonaSettings transaction", () => {
       [userId, xAccountId],
     );
 
+    const withVolume = settings("初回の発信者");
+    withVolume.volume = { free_text: "1ポストは3〜5行。" };
     const first = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
       expectedBaseMdVersion: 0,
-      freeSections: { referenceStyle: "結論→理由→具体例。" },
-      settings: settings("初回の発信者"),
+      settings: withVolume,
       userId,
       xAccountId,
     });
-    expect(first.baseMd).toContain("## 5. 参考にする型\n結論→理由→具体例。");
+    expect(first.baseMd).toContain("## 4. スレッド量や文章量\n1ポストは3〜5行。");
+    expect(first.baseMd).toContain("## 5. NG設定");
 
-    // 渡さない保存では**触らない**（別経路が書いた内容を消さない）。
+    // 2回目の保存でも全文が設定から作り直される（手書き章の温存機構は無い）。
     const second = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
       expectedBaseMdVersion: first.version,
       settings: settings("2回目の発信者"),
       userId,
       xAccountId,
     });
-    expect(second.baseMd).toContain("結論→理由→具体例。");
     expect(second.baseMd).toContain("2回目の発信者");
-
-    // 空文字を渡したら消える（「書かない」を選べる）。
-    const third = await applyPersonaSettingsUpdate(db as unknown as PoolClient, {
-      expectedBaseMdVersion: second.version,
-      freeSections: { referenceStyle: "" },
-      settings: settings("3回目の発信者"),
-      userId,
-      xAccountId,
-    });
-    expect(third.baseMd).not.toContain("結論→理由→具体例。");
-    expect(third.baseMd, "見出しは残る（5見出し構造）").toContain("## 5. 参考にする型");
+    expect(second.baseMd).toContain("指定なし（投稿の型の設定に従う）");
   });
 
   /**

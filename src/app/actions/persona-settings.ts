@@ -6,17 +6,12 @@ import { z } from "zod";
 import { errorResult, requireUserId, type BaseResult } from "./_helpers";
 import { parseUserInput } from "@/lib/validation/user-input";
 import { AppError, toUserFacingError } from "@/lib/observability/errors";
-import { FREE_SECTION_MAX_CHARS, personaSettingsSchema } from "@/lib/persona-settings";
+import { personaSettingsSchema } from "@/lib/persona-settings";
 import { updatePersonaSettingsForUser } from "@/lib/persona-settings-store";
 
 const inputSchema = z.object({
   expected_base_md_version: z.number().int().min(0),
   settings: personaSettingsSchema,
-  /*
-    アカウント.mdの手書きセクション（T-M8-355）。**画面から来なければ触らない**——
-    古い画面や別経路の保存で、書いてある内容を知らないうちに消さないため。
-  */
-  reference_style: z.string().max(FREE_SECTION_MAX_CHARS).optional(),
   x_account_id: z.string().uuid(),
 });
 
@@ -42,9 +37,6 @@ export async function updatePersonaSettings(
     const result = await updatePersonaSettingsForUser({
       expectedBaseMdVersion: parsed.data.expected_base_md_version,
       settings: parsed.data.settings,
-      ...(parsed.data.reference_style !== undefined
-        ? { freeSections: { referenceStyle: parsed.data.reference_style } }
-        : {}),
       userId: auth.userId,
       xAccountId: parsed.data.x_account_id,
     });

@@ -92,7 +92,7 @@ test("反映した内容（提案）がアカウント設定の欄に入り、�
       emoji_policy: "limited",
       first_person: "私",
       hashtags_max: 0,
-      sentence_style: "polite",
+      sentence_style: "です・ます調",
       thread_numbering: true,
     },
   };

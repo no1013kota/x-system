@@ -24,6 +24,7 @@ function validSettings() {
       secondary: ["ai"],
     },
     tone: { ...DEFAULT_TONE_SETTINGS },
+    volume: { free_text: "" },
   };
 }
 
@@ -67,9 +68,21 @@ describe("personaSettingsSchema", () => {
       emoji_policy: "limited",
       first_person: "私",
       hashtags_max: 0,
-      sentence_style: "polite",
+      // 文末は自由入力（T-M8-395）。既定は従来の丁寧文体に相当する日本語。
+      sentence_style: "です・ます調",
       thread_numbering: true,
     });
+  });
+
+  it("文末は自由入力を受け、volumeはキーが無くても既定で埋まる（旧データ互換・T-M8-395）", () => {
+    const legacy = {
+      ...validSettings(),
+      tone: { ...DEFAULT_TONE_SETTINGS, sentence_style: "言い切りと体言止め中心" },
+    } as Record<string, unknown>;
+    delete legacy.volume;
+    const parsed = personaSettingsSchema.parse(legacy);
+    expect(parsed.tone.sentence_style).toBe("言い切りと体言止め中心");
+    expect(parsed.volume).toEqual({ free_text: "" });
   });
 });
 
@@ -83,37 +96,35 @@ describe("base md generation", () => {
     expect(() => validateBaseMdStructure(content)).not.toThrow();
   });
 
-  it("writes settings into sections 1-4 and leaves 5 empty", () => {
+  it("5項目（ペルソナ・テーマ・トーン・スレッド量や文章量・NG設定）を設定から生成する（T-M8-395）", () => {
     const content = generateInitialBaseMd(validSettings());
     expect(content).toContain("- 発信者: 中小企業向け業務改善コンサルタント");
     expect(content).toContain("- 主テーマ: 業務改善");
     expect(content).toContain("- 扱う範囲: AI、個人事業主向け");
     expect(content).toContain("- 文末: です・ます調");
-    expect(content).toMatch(/## 5\. 参考にする型\n$/);
+    expect(content).toContain("## 4. スレッド量や文章量\n指定なし（投稿の型の設定に従う）");
+    expect(content).toContain("## 5. NG設定");
   });
 
-  it("rebuilds only sections 1-4 and preserves the hand-written section 5", () => {
-    const current = generateInitialBaseMd(validSettings()).replace(
-      "## 5. 参考にする型\n",
-      "## 5. 参考にする型\n- @example: 構成\n",
-    );
-    const sectionFive = current.slice(current.indexOf("## 5."));
+  it("スレッド量や文章量の入力はそのまま4章へ入る", () => {
+    const input = validSettings();
+    input.volume.free_text = "1ポストは3〜5行。スレッドは4ポストまで。";
+    const content = generateInitialBaseMd(input);
+    expect(content).toContain("## 4. スレッド量や文章量\n1ポストは3〜5行。スレッドは4ポストまで。");
+  });
+
+  it("rebuildは全5セクションを設定から作り直す（旧・手書き5章は引き継がない・T-M8-395）", () => {
+    const current = generateInitialBaseMd(validSettings());
     const changed = validSettings();
     changed.persona.speaker = "更新後の発信者";
-
     const rebuilt = rebuildSettingsSections(current, changed);
     expect(rebuilt).toContain("- 発信者: 更新後の発信者");
-    expect(rebuilt.slice(rebuilt.indexOf("## 5."))).toBe(sectionFive);
+    expect(rebuilt).toBe(generateInitialBaseMd(changed));
   });
 
-  it("detects manual differences in sections 1-4 but ignores learned content", () => {
+  it("detects manual differences from the generated document", () => {
     const generated = generateInitialBaseMd(validSettings());
     expect(baseMdSettingsDiffer(generated, validSettings())).toBe(false);
-    const learned = generated.replace(
-      "## 5. 参考にする型",
-      "## 5. 参考にする型\n- 学習済み",
-    );
-    expect(baseMdSettingsDiffer(learned, validSettings())).toBe(false);
     const manuallyEdited = generated.replace(
       "- 発信者: 中小企業向け業務改善コンサルタント",
       "- 発信者: 手動編集した内容",

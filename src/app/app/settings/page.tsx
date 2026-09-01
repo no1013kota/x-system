@@ -83,6 +83,7 @@ const EMPTY_SETTINGS: PersonaSettings = {
   persona: { audience: "", speaker: "", value: "" },
   themes: { free_text: "", primary: [], secondary: [] },
   tone: { ...DEFAULT_TONE_SETTINGS },
+  volume: { free_text: "" },
 };
 
 interface SettingsPageProps {
@@ -296,13 +297,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const proposalKey = settingsProposal
     ? `p${[...JSON.stringify(settingsProposal)].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1_000_000_007, 7)}`
     : "saved";
-  /*
-    アカウント.mdの手書きセクション5・6（T-M8-355）。**mdから読む**——設定には持っていない
-    （生成されるのは1〜4だけ）。まだmdが無ければ空欄から書き始められる。
-  */
-  const freeSections = {
-    referenceStyle: account ? extractBaseMdSection(account.base_md, 5) : "",
-  };
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
     try {
@@ -551,7 +545,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 <PersonaSettingsForm
                   baseMdVersion={account.base_md_version}
                   initialDifference={initialDifference}
-                  initialReferenceStyle={freeSections.referenceStyle}
                   initialSettings={initialSettings}
                   /*
                     **提案が届いたら作り直す**（T-M8-356）。フォームの初期値は
