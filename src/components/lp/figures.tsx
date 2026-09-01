@@ -14,15 +14,16 @@ import { SLOT_DOT_CLASS, type SlotDotKind, WEEKDAY_LABELS_LP } from "./dots";
  * 以前は見出しを灰色のバーで表していたが、それでは「ニュースが並んでいる」ようには見えなかった。
  * 見出しは文字で書く（ヒーローのモックが既に架空の例文を使っているのと同じ扱い）。
  * **実在の記事・企業名は書かない。** 分野・時刻・重要度は実際の仕様と揃える
- * （運用6分野の一部を例示・毎日12時と19時・重要度 高中低。T-M8-189／T-M8-337）。
+ * （運用6分野の一部を例示・10分おきの巡回・重要度 高中低。T-M8-189／T-M8-337／T-M8-408）。
  */
 export function NewsFeedFigure() {
   // 新着が上に積まれるフィードに見えるよう時刻は降順。収集の間隔はヘッダーが担うので行を6本にしない。
   const items: { field: string; time: string; headline: string; level: "high" | "mid" | "low" }[] = [
-    { field: "SNS運用", time: "18:00", headline: "投稿の時間帯で表示回数に差", level: "high" },
-    { field: "AI", time: "15:00", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
-    { field: "美容", time: "12:00", headline: "スキンケアの新常識が話題に", level: "low" },
-    { field: "AI", time: "9:00", headline: "画像生成の新しいモデルが公開", level: "high" },
+    // 10分おきの巡回なので時刻は揃えない（正時に並べると「決まった時刻に取る」ように見える・T-M8-408）。
+    { field: "SNS運用", time: "18:40", headline: "投稿の時間帯で表示回数に差", level: "high" },
+    { field: "AI", time: "15:10", headline: "生成AIの業務利用がさらに拡大", level: "mid" },
+    { field: "美容", time: "12:20", headline: "スキンケアの新常識が話題に", level: "low" },
+    { field: "AI", time: "9:50", headline: "画像生成の新しいモデルが公開", level: "high" },
   ];
   // 重要度は仕様どおり3段。既存トークンだけで濃淡を作る（新しい面の色を増やさない）。
   const levelClass = {

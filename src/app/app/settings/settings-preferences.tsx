@@ -187,7 +187,7 @@ function NewsForm({ config }: { config: NewsConfig }) {
       <CardTitle>ニュース通知</CardTitle>
       {/* 集約仕様・0件時の配信条件は読まなくても操作できる内部説明のため書かない（T-M8-66）。 */}
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        ニュースは毎日12時と19時（日本時間）に届きます。ここでは通知するニュースの条件を選びます。
+        ニュースは10分おきに新着を確認し、該当する新着があった時間帯に1時間1回までまとめて届きます。ここでは通知するニュースの条件を選びます。
       </p>
 
       <fieldset className="mt-4">
