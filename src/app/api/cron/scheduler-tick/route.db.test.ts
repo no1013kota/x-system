@@ -153,6 +153,8 @@ describe("GET /api/cron/scheduler-tick（route 実装・実DB）", () => {
   });
 
   afterAll(async () => {
+    // 2098年へ固定した時計で書いたKPI行を残さない（共有DBの他テストのmax()検査を汚す・T-M8-398で実害）。
+    await sql(`delete from kpi_daily where metric_date >= '2090-01-01'`).catch(() => undefined);
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
