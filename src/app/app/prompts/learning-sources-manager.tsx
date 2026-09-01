@@ -142,6 +142,12 @@ export function LearningSourcesManager({
    * **「押したのに何も起きない」を作らない**——理由を画面に出して、押し直せるようにする。
    */
   const [waitingAnalysis, setWaitingAnalysis] = useState(false);
+  /**
+   * 直近の反映が失敗した理由（T-M8-410・運営者の報告 2026-09-01）。
+   * 以前はjobが失敗しても「反映しました」と出していた（進行中かどうかしか見ていなかった）。
+   * 失敗はトーストで流さず、押し直すまで画面に残す。
+   */
+  const [applyFailure, setApplyFailure] = useState<string | null>(null);
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
   useEffect(() => {
@@ -216,16 +222,30 @@ export function LearningSourcesManager({
     if (!applying) return;
     const timer = setInterval(async () => {
       const res = await learningApplyStatusAction({ x_account_id: xAccountId });
-      if (res.status === "success" && res.running === false) {
-        setApplying(false);
-        // 設定そのものはサーバーが描画しているので、画面ごと取り直す。
-        router.refresh();
-        toast.show({
-          tone: "success",
-          title: "アカウント設定の入力項目へ反映しました",
-          description: "下の入力項目で内容を確認し、「アカウント設定を保存」を押すと確定します。",
-        });
+      if (res.status !== "success" || res.running !== false) return;
+      setApplying(false);
+      // 一覧の状態（分析待ち→反映済み）を取り直す。取り直さないと古い「分析待ち」が
+      // 60秒後に「開始が遅れています」へ化ける（T-M8-410）。
+      await refresh();
+      /*
+        **jobの成否で言い分ける**（T-M8-410）。提案が入ったときだけ成功と言う。
+        失敗は理由を画面に残す（トーストは消えるので、押し直す判断ができない）。
+      */
+      if (res.lastApply?.status === "failed" || !res.proposalReady) {
+        setApplyFailure(
+          res.lastApply?.message ??
+            "アカウント設定への反映が完了しませんでした。もう一度お試しください。",
+        );
+        return;
       }
+      setApplyFailure(null);
+      // 設定そのものはサーバーが描画しているので、画面ごと取り直す。
+      router.refresh();
+      toast.show({
+        tone: "success",
+        title: "アカウント設定の入力項目へ反映しました",
+        description: "下の入力項目で内容を確認し、「アカウント設定を保存」を押すと確定します。",
+      });
     }, 5_000);
     return () => clearInterval(timer);
   }, [applying, router, toast, xAccountId]);
@@ -242,6 +262,7 @@ export function LearningSourcesManager({
     startTransition(async () => {
       setApplying(true);
       setWaitingAnalysis(false);
+      setApplyFailure(null);
       for (const row of entered) {
         const res = await addLearningSourceAction({
           request_key: uuid(),
@@ -335,6 +356,18 @@ export function LearningSourcesManager({
         <Notice role="status" tone="warn">
           参考アカウントの分析がまだ終わっていません。下の一覧が「反映済み」になったら、
           もう一度「アカウント設定を反映する」を押してください。
+        </Notice>
+      ) : null}
+
+      {/* 反映の失敗は理由と次の一手を残す（T-M8-410。成功扱いにしない・原則1）。 */}
+      {applyFailure ? (
+        <Notice role="alert" tone="danger">
+          <p className="font-medium">アカウント設定へ反映できませんでした</p>
+          <p className="mt-1 leading-6">{applyFailure}</p>
+          <p className="mt-1 leading-6 text-caption">
+            分析は済んでいるので、そのままもう一度「アカウント設定を反映する」を押せます。
+            うまくいかないときは、下の「自由入力で…」の項目を自分で書いて保存してください。
+          </p>
         </Notice>
       ) : null}
 

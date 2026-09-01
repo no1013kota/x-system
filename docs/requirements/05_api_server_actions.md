@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.79 |
+| バージョン | v1.80 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -233,6 +233,8 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
 | `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで（**画面から登録できるのは ref_account のみ**・T-M8-400。ref_post は既存データ・API互換のため残す）。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
+| `applyLearningToSettings` | request_key, x_account_id | job_id | 「アカウント設定を反映する」（T-M8-344/349）。分析済みが1件以上あるときだけ `md_merge`（`learning_source_id` 無し＝提案モード）を起票し、結果は `settings_proposal` へ |
+| `learningApplyStatus` | x_account_id | running, lastApply（直近の反映jobの succeeded/failed と理由）, proposalReady | 本人のみ。反映の進行と**結果**を返す（T-M8-410。以前は進行中かどうかだけで、失敗も成功扱いになっていた） |
 | `listPromptPresets` | x_account_id, kind | presets | 本棚の一覧（T-M8-332）。空なら「いま効いている内容」を使用中の1件として作る |
 | `createPromptPreset` | x_account_id, kind, name, content | preset | 契約中のみ。**追加しただけでは使用中にならない** |
 | `updatePromptPreset` | x_account_id, preset_id, name, content, expected_updated_at | preset | 楽観lock。使用中なら生成が読む置き場へ同じtxで写す |
@@ -384,6 +386,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.77 | 2026-09-01 | `startAnalysisAction` からフォロワー数の当日記録を外す（`followerRecorded` を廃止・T-M8-403） |
 | v1.78 | 2026-09-01 | signUp: メール確認（6桁コード）を必須へ戻す。signIn: 未確認アカウントの自動確認を廃止し `email_not_confirmed` はコード画面へ（T-M8-404） |
 | v1.79 | 2026-09-01 | updateNewsEmailNotification を追加、updateNotificationConfig はニュースの email 省略可（T-M8-407） |
+| v1.80 | 2026-09-01 | applyLearningToSettings／learningApplyStatus の表行を追加。learningApplyStatus は直近の反映jobの結果（lastApply）と提案の有無（proposalReady）を返す（T-M8-410） |
 
 ### 下書きの投稿予約（T-M8-157）
 

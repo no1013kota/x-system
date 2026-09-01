@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.70 |
+| バージョン | v1.71 |
 | 更新日 | 2026-09-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -302,6 +302,7 @@ rowの作成と同時に同じ内容（件数・上位5件・一覧の絶対URL�
 | 下書き作成 | `draft_created` | `draft:{id}:created` | `/app/posts?tab=drafts&draftId=...` |
 | 自動投稿完了 | `posted` | `draft:{id}:posted` | `/app/posts?tab=history&draftId=...` |
 | job失敗 | `error` | `job:{id}:failed` | 対象画面 |
+| md_merge失敗（反映／削除で文言を分ける・T-M8-410） | `error` | `job:{id}:failed` | `/app/prompts?sec=account-md`（`learning_source_id` 無し＝反映: 「参考アカウントの反映ができませんでした」／有り＝削除: 「学習ソースの削除が完了しませんでした」。jobの `error.message` も同じ言い分け） |
 | 時間単位ニュースダイジェスト | `news` | `news-digest:{window_started_at}` | `/app/news?from=...&to=...` |
 | X/key失効 | `error` | 対象ID＋失効時刻 | `/app/settings` |
 
@@ -412,3 +413,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.68 | 2026-09-01 | フォロワー数記録の入口を毎時cronだけに（「分析を開始」からの当日上書きを廃止・T-M8-403）。§12/§13を更新 |
 | v1.69 | 2026-09-01 | §14 ニュースダイジェストの時間窓をRSS10分巡回の実態に合わせて記述（1時間に1回まで・T-M8-408） |
 | v1.70 | 2026-09-01 | §14 ニュースダイジェストをメールでも送る（news.email ON・新規rowぶんだけ・失敗はSentry＋cron応答の件数・T-M8-407） |
+| v1.71 | 2026-09-01 | §14 md_merge の失敗通知・error.message を反映／削除で言い分ける（T-M8-410） |
