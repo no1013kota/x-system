@@ -56,11 +56,12 @@ export const OUTBOUND_CHANNELS: readonly OutboundChannel[] = [
   },
   {
     id: "smtp",
-    label: "運営者への状態メールの送信（利用者向け通知メールはT-M8-222で廃止）",
+    label: "メール送信（運営者への状態メール・利用者へのニュースダイジェスト〔T-M8-407〕）",
     guard:
       "`canSendViaSmtp` が production 以外ではループバック宛（localhost/127.0.0.1）以外を拒否し、" +
       "transport を作らない。2026-07-27に98通の誤送信を起こした経路（T-M7-23）。",
-    files: ["lib/email/operator-mail-server.ts"],
+    // 送信の実体はこの1ファイルだけ（T-M8-407で共通化）。運営者メール・ニュースメールはここを呼ぶ。
+    files: ["lib/email/smtp-mail-server.ts"],
   },
   {
     id: "ai_provider",

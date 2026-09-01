@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
   updateNewsConfigAction,
+  updateNewsEmailNotificationAction,
   updateNotificationConfigAction,
 } from "@/app/actions/settings";
 import {
@@ -123,7 +124,7 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
   const toggle = (type: (typeof NOTIFICATION_TYPES)[number]) =>
     setState((prev) => ({
       ...prev,
-      [type]: { in_app: !prev[type].in_app },
+      [type]: { ...prev[type], in_app: !prev[type].in_app },
     }));
   return (
     <Card as="section" className="px-5 py-4">
@@ -154,7 +155,13 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              const res = await updateNotificationConfigAction(state);
+              // **in_app だけを送る**（T-M8-407）。ニュースの email はニュース通知カードが持つ値なので、
+              // ここから送ると画面を開いた時点の古い値で上書きしてしまう（省略＝保存済みを保つ）。
+              const res = await updateNotificationConfigAction(
+                Object.fromEntries(
+                  NOTIFICATION_TYPES.map((type) => [type, { in_app: state[type].in_app }]),
+                ),
+              );
               toast.show({
                 tone: res.status === "success" ? "success" : "error",
                 title: res.status === "success" ? "通知設定を保存しました" : "保存できませんでした",
@@ -173,9 +180,17 @@ function NotificationForm({ config }: { config: NotificationConfig }) {
   );
 }
 
-function NewsForm({ config }: { config: NewsConfig }) {
+function NewsForm({
+  config,
+  emailEnabled,
+}: {
+  config: NewsConfig;
+  /** ニュース通知をメールでも受け取るか（`notification_config.news.email`・T-M8-407）。 */
+  emailEnabled: boolean;
+}) {
   const [categories, setCategories] = useState<string[]>(config.categories);
   const [impacts, setImpacts] = useState<string[]>(config.impact_filter);
+  const [email, setEmail] = useState(emailEnabled);
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
@@ -218,6 +233,26 @@ function NewsForm({ config }: { config: NewsConfig }) {
         </div>
       </fieldset>
 
+      {/*
+        **メールでも受け取る**（T-M8-407・運営者の指示 2026-09-01）。アプリ内通知（左のカード）とは
+        別に保存する（`updateNewsEmailNotificationAction`）——2つの画面が互いの値を上書きしない。
+        宛先はログイン中のメールアドレス（変更欄は持たない）。
+      */}
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-hairline pt-4">
+        <span className="min-w-0">
+          <span className="block text-body font-medium text-ink">メールでも受け取る</span>
+          <span className="mt-0.5 block text-caption leading-4 text-ink-3">
+            登録メールアドレス宛に、アプリ内通知と同じ内容（件数・見出し・一覧リンク）が届きます。
+          </span>
+        </span>
+        <ToggleSwitch
+          checked={email}
+          disabled={pending}
+          label="ニュース通知をメールでも受け取る"
+          onChange={() => setEmail((v) => !v)}
+        />
+      </div>
+
       <div className="mt-4">
         <Button
           disabled={pending || invalid}
@@ -227,10 +262,20 @@ function NewsForm({ config }: { config: NewsConfig }) {
                 categories,
                 impact_filter: impacts,
               });
+              // 条件が保存できたらメール設定も保存する（片方だけ失敗したときは、その旨を言う）。
+              const mail =
+                res.status === "success"
+                  ? await updateNewsEmailNotificationAction({ email })
+                  : null;
+              const ok = res.status === "success" && mail?.status === "success";
               toast.show({
-                tone: res.status === "success" ? "success" : "error",
-                title: res.status === "success" ? "ニュース設定を保存しました" : "保存できませんでした",
-                description: res.status === "success" ? undefined : res.message,
+                tone: ok ? "success" : "error",
+                title: ok ? "ニュース設定を保存しました" : "保存できませんでした",
+                description: ok
+                  ? undefined
+                  : res.status !== "success"
+                    ? res.message
+                    : `通知の条件は保存しましたが、メール設定を保存できませんでした。${mail?.message ?? ""}`,
               });
             })
           }
@@ -264,7 +309,7 @@ export function SettingsPreferences({
       <NotificationForm config={notificationConfig} />
       {/* 表示名（プロフィール）は削除した（T-M8-59）。どこにも使われておらず、
           「何のための入力か分からない欄」だけが残っていた（2026-08-05 ユーザー判断）。 */}
-      <NewsForm config={newsConfig} />
+      <NewsForm config={newsConfig} emailEnabled={notificationConfig.news.email} />
     </div>
   );
 }

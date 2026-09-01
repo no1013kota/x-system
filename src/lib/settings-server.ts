@@ -4,9 +4,10 @@ import { pooledQueryable } from "./db/pool";
 import {
   readSettings,
   saveNewsConfig,
+  saveNewsEmailNotification,
   saveNotificationConfig,
   type NewsConfig,
-  type NotificationConfig,
+  type NotificationConfigInput,
   type UserSettings,
 } from "./settings";
 
@@ -23,9 +24,14 @@ export function getSettingsForUser(userId: string): Promise<UserSettings | null>
 
 export function saveNotificationConfigForUser(
   userId: string,
-  config: NotificationConfig,
+  config: NotificationConfigInput,
 ): Promise<void> {
   return saveNotificationConfig(pooledDb, userId, config);
+}
+
+/** ニュースのメール通知だけを切り替える（T-M8-407）。 */
+export function saveNewsEmailNotificationForUser(userId: string, email: boolean): Promise<void> {
+  return saveNewsEmailNotification(pooledDb, userId, email);
 }
 
 export function saveNewsConfigForUser(

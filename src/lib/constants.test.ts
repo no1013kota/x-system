@@ -130,10 +130,15 @@ describe("theme master", () => {
 });
 
 describe("config defaults", () => {
-  it("通知既定はアプリ内のみ・全種別ON（メールチャネルは持たない・T-M8-222）", () => {
+  it("通知既定はアプリ内が全種別ON。メールはニュースだけ持ち、既定OFF（T-M8-222→T-M8-407）", () => {
     for (const [key, v] of Object.entries(DEFAULT_NOTIFICATION_CONFIG)) {
       expect(v.in_app, `${key} のアプリ内通知は既定ON`).toBe(true);
-      expect("email" in v, `${key} にemailチャネルを復活させない`).toBe(false);
+      if (key === "news") {
+        // 頼んでいないメールを送り始めない（受け取りたい人が設定＞通知でONにする）。
+        expect((v as { email?: boolean }).email, "news のメールは既定OFF").toBe(false);
+      } else {
+        expect("email" in v, `${key} にemailチャネルを復活させない（T-M8-222）`).toBe(false);
+      }
     }
   });
 

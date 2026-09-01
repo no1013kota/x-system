@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.86 |
+| バージョン | v1.87 |
 | 更新日 | 2026-09-01 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -818,9 +818,11 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 ### 4.3 `profiles.notification_config`
 
+**ニュースだけ `email`（メール通知）を持つ**（T-M8-407・運営者の指示 2026-09-01。既定OFF。他の種別のメールはT-M8-222で廃止したまま）。`email` キーが無い保存値は OFF として読む。保存は `saveNotificationConfig`（入力に `email` が無ければ保存済みの値を保つ）と `saveNewsEmailNotification`（`email` だけ書く）の2口で、画面の2つのカードが互いを上書きしない。
+
 ```json
 {
-  "news": { "in_app": true },
+  "news": { "in_app": true, "email": false },
   "draft_created": { "in_app": true },
   "posted": { "in_app": true },
   "error": { "in_app": true },
@@ -832,7 +834,7 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
 
-**チャネルはアプリ内のみ・既定は全種別ON**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止。認証メールと運営者向けopsアラートは別系統で残る）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
+**アプリ内は全種別ON。メールはニュースだけ持ち既定OFF**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止→T-M8-407・2026-09-01でニュースだけ復活。認証メールと運営者向けopsアラートは別系統）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
 
 ### 4.4 `x_accounts.settings`
 
@@ -1094,3 +1096,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.84 | 2026-08-30 | page_views を追加（公開3ページの閲覧記録・Cookieなし日替わりハッシュ・32テーブルへ・T-M8-378） |
 | v1.85 | 2026-08-30 | news_batches を廃止（ニュース取得をRSS巡回へ・31テーブルへ・T-M8-380） |
 | v1.86 | 2026-09-01 | follower_snapshots の書き込み元を毎時cronだけに（「分析を開始」からの書き込みを廃止・T-M8-403。スキーマ変更なし） |
+| v1.87 | 2026-09-01 | notification_config.news に email（メール通知・既定OFF）を追加（T-M8-407・スキーマ変更なし） |

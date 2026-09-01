@@ -5925,7 +5925,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - メモ: 運営者の指示（2026-09-01「対比として、ペルソナの文字の上に『自由入力でアカウント設定を作る』と書いて」）。T-M8-346で消した「アカウント設定」見出しの代わりに、入口の対比が分かる見出しを置く。
 - 実装メモ（2026-09-01 完了）: `PersonaSettingsForm` の先頭に見出し（保存済みなら「自由入力で設定を更新する」）＋1行説明。E2E learning-setup の見出し順を更新。
 
-### T-M8-407: ニュース通知をメールでも受け取れるようにする（設定＞通知にON/OFF） `todo`
+### T-M8-407: ニュース通知をメールでも受け取れるようにする（設定＞通知にON/OFF） `done`
 - 参照: PRD N-3 / 要件02 §4.3（`notification_config`） / 要件04 §14（ダイジェスト） / 要件05（通知設定Action） / 要件06 §1.2.2 / 依存: なし / サイズ: M
 - 完了条件:
   - 設定＞通知の「ニュース通知」に「メールでも受け取る（登録メールアドレス宛）」のON/OFFがあり、保存できる（既定はOFF）
@@ -5933,6 +5933,16 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 非production からは外部SMTPへ送らない（`canSendViaSmtp`）。送信失敗は利用者1人ごとに隔離し、Sentryへ記録し、cronの結果に件数（送信・失敗）が出る
   - `outbound-channels` に送信ファイルを登録し、単体・実DBテストで「ONの人にだけ送る」「失敗しても他の人へ送る」を守る
 - メモ: 運営者の指示（2026-09-01）。T-M8-222 で廃止したメールチャネルのうちニュースだけを戻す。配送台帳（旧 `email_status` 列）は復活させず、失敗はSentry＋cron結果で見える形にする（必要になったら別タスク）。送信の実体は `operator-mail-server.ts` の transport を共通化して使う。
+- 実装メモ（2026-09-01 完了）:
+  - `notification_config.news.email`（既定OFF）を追加。保存は `saveNotificationConfig`（email省略＝保存値を保つ）と
+    `saveNewsEmailNotification`（emailだけ）の2口にし、アプリ内通知カードとニュース通知カードが互いを上書きしない。
+    新規登録triggerの既定は migration `20260901000002` で `"email": false` を追加（既存の保存値は触らない・無ければOFFとして読む）。
+  - ダイジェストは in_app か email のどちらかONの人へ行を作り（`in_app_enabled` はアプリ内のON/OFF）、**今回作れた行**からだけ
+    メールの宛先を作る（再実行で二重送信しない）。送信は `email/smtp-mail-server.ts` に共通化（運営者メールも同じ出口・
+    `canSendViaSmtp` で非productionは外部へ送らない）。失敗は利用者ごとに隔離してSentryへ、件数は `news_fetch` の応答 `emails` に出す。
+  - **staging/本番のmigration適用が要る**（`npm run release:staging` / `release:production` の手順内）。
+  - 検証: 単体（schema・resolve・保存の2口・宛先抽出・送信の隔離）＋実DB（digest fan-out にメールだけの人を追加、
+    設定の2口、Action）。**実SMTPでの送信は未実施**——本番は `news_fetch` 応答の `emails.sent` で確認する。
 
 ### T-M8-408: ニュースの取得・通知の時刻の文言を実態（10分おき巡回・新着があった時間帯に1回）へ直す `done`
 - 参照: PRD N-1/N-3 / 要件04 §2・§14 / 要件06 §1.2.2・§1.5（LP） / 依存: なし / サイズ: S

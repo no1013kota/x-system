@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.69 |
+| バージョン | v1.70 |
 | 更新日 | 2026-09-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -287,11 +287,15 @@ flowchart TD
 
 ## 14. 通知
 
-**通知はアプリ内のみ**（T-M8-222・運営者の指示 2026-08-22。利用者向けメール通知は廃止し、
-`notifications`のメール配送台帳列・送信/回収/再送コードを削除した。メール送信が残るのは
-認証メール＝Supabase Authと、運営者向けopsアラート＝§15の2系統だけで、どちらも
-`canSendViaSmtp`（`src/lib/email/smtp-guard.ts`）の「production 以外は外部SMTPへ送信しない」
-ガードの対象。開発機の`.env.local`に実SMTP資格情報が入っていた2026-07-27の98通誤送信が起点）。
+**通知はアプリ内が基本**（T-M8-222・運営者の指示 2026-08-22。利用者向けメール通知は廃止し、
+`notifications`のメール配送台帳列・送信/回収/再送コードを削除した）。**例外はニュースダイジェスト**
+（T-M8-407・運営者の指示 2026-09-01）: `notification_config.news.email` がONの利用者へ、ダイジェスト
+rowの作成と同時に同じ内容（件数・上位5件・一覧の絶対URL）をメールで送る。宛先は**その実行で新規に
+作れたrow**からだけ作る（窓のdedupeで2回目以降は行が無い＝二重送信しない）。送信は
+`lib/email/smtp-mail-server.ts`（`canSendViaSmtp`＝production以外は外部SMTPへ送らない。2026-07-27の
+98通誤送信が起点）で、失敗は利用者ごとに隔離してSentryへ記録し、`news_fetch` の応答に
+`emails: {targets, sent, skipped, failed}` として件数を出す（配送台帳・再送は持たない。必要になったら別タスク）。
+メール送信の系統は 認証メール＝Supabase Auth／運営者向けopsアラート＝§15／ニュースダイジェスト の3つ。
 
 | event | type | dedupe key例 | link |
 |---|---|---|---|
@@ -304,7 +308,7 @@ flowchart TD
 通知row作成時に`notification_config.{type}.in_app`をsnapshotする（OFFならrowを作らない）。
 
 - ニュースは個別通知しない。news_fetch（10分おき・T-M8-383）の起動時刻をUTC時単位に丸めた1時間窓ごとに、`news_config.categories`と`impact_filter`へ一致する新着をユーザー単位で集約する。複数分野を1件へまとめ、該当0件なら通知rowを作らない。窓のdedupeにより**利用者1人につき1時間に1回まで**（同じ窓で後から入った新着は次の窓へは持ち越さない）。画面の文言は「10分おきに新着を確認し、該当する新着があった時間帯に1時間1回までまとめて届く」（T-M8-408）。
-- ダイジェストは`subscription_status in (trialing, active)`かつニュース通知（in_app）がONのユーザーだけへ、一括`insert ... select`相当でfan-outする。`user_id + dedupe_key`で再実行を冪等化し、OFFならrowを作らない。
+- ダイジェストは`subscription_status in (trialing, active)`かつニュース通知のアプリ内（in_app）またはメール（email・T-M8-407）がONのユーザーだけへ、一括`insert ... select`相当でfan-outする。rowの`in_app_enabled`はアプリ内のON/OFF（メールだけの人はfalse＝一覧に出ないがメールは届く）。`user_id + dedupe_key`で再実行を冪等化し、両方OFFならrowを作らない。
 - タイトル・本文には高impact、同一impactなら新しい順で最大5件を掲載し、全件数と一覧リンクを付ける。対象IDは**固定20件**まで（旧`news_config.max_items`はT-M8-187で廃止）、時間窓とともに`payload`へ保存する。
 - 一部分野が失敗した時間帯は成功分野だけでダイジェストを作り、失敗そのものを利用者へニュース通知として送らない。運営監視へ記録し、次回取得を継続する。
 - アプリ内一覧は`in_app_enabled = true`だけを返す。
@@ -407,3 +411,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.67 | 2026-09-01 | 画像生成・投稿添付をポスト別へ（`post_local_id`・1ポスト1枚・差し替えは対象ポストのみ・T-M8-398） |
 | v1.68 | 2026-09-01 | フォロワー数記録の入口を毎時cronだけに（「分析を開始」からの当日上書きを廃止・T-M8-403）。§12/§13を更新 |
 | v1.69 | 2026-09-01 | §14 ニュースダイジェストの時間窓をRSS10分巡回の実態に合わせて記述（1時間に1回まで・T-M8-408） |
+| v1.70 | 2026-09-01 | §14 ニュースダイジェストをメールでも送る（news.email ON・新規rowぶんだけ・失敗はSentry＋cron応答の件数・T-M8-407） |

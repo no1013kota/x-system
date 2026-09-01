@@ -29,9 +29,18 @@ const channelSchema = z
   .object({ in_app: z.boolean() })
   .strip();
 
+/**
+ * **ニュースだけメールも選べる**（T-M8-407・運営者の指示 2026-09-01）。
+ * 入力では `email` を省略できる——省略は「保存済みの値を保つ」（アプリ内通知の画面は
+ * in_app だけを送るので、ニュース設定の画面で付けたメールONを黙って外さない）。
+ */
+const newsChannelInputSchema = z
+  .object({ in_app: z.boolean(), email: z.boolean().optional() })
+  .strip();
+
 export const notificationConfigSchema = z
   .object({
-    news: channelSchema,
+    news: newsChannelInputSchema,
     draft_created: channelSchema,
     posted: channelSchema,
     error: channelSchema,
@@ -40,6 +49,9 @@ export const notificationConfigSchema = z
     summary: channelSchema,
   })
   .strict();
+
+/** ニュースのメール通知だけを切り替える入力（T-M8-407）。 */
+export const newsEmailNotificationSchema = z.object({ email: z.boolean() }).strict();
 
 const newsCategorySchema = z.enum(
   DB_ENUMS.news_category as unknown as [string, ...string[]],
@@ -65,21 +77,35 @@ export const newsConfigSchema = z
   .strip();
 
 
-export type NotificationConfig = z.infer<typeof notificationConfigSchema>;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+/** 保存の入力（ニュースの `email` は省略可）。 */
+export type NotificationConfigInput = z.infer<typeof notificationConfigSchema>;
+/** 読み出した設定（ニュースの `email` は必ず埋まる）。 */
+export type NotificationConfig = {
+  [T in Exclude<NotificationType, "news">]: { in_app: boolean };
+} & { news: { in_app: boolean; email: boolean } };
 export type NewsConfig = z.infer<typeof newsConfigSchema>;
 
 /** 通知設定を読み出す。未設定/不正は種別ごとに §3.4 既定値へフォールバックする。 */
 export function resolveNotificationConfig(raw: unknown): NotificationConfig {
   const parsed = notificationConfigSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-  const source = (raw ?? {}) as Record<string, unknown>;
-  const out = {} as NotificationConfig;
+  const source: Record<string, unknown> = parsed.success
+    ? parsed.data
+    : ((raw ?? {}) as Record<string, unknown>);
+  const out: Record<string, { in_app: boolean; email?: boolean }> = {};
   for (const type of NOTIFICATION_TYPES) {
-    const value = source[type];
-    const channel = channelSchema.safeParse(value);
+    if (type === "news") continue;
+    const channel = channelSchema.safeParse(source[type]);
     out[type] = channel.success ? channel.data : { in_app: DEFAULT_NOTIFICATION_CONFIG[type].in_app };
   }
-  return out;
+  const news = newsChannelInputSchema.safeParse(source.news);
+  out.news = {
+    in_app: news.success ? news.data.in_app : DEFAULT_NOTIFICATION_CONFIG.news.in_app,
+    email: news.success
+      ? (news.data.email ?? DEFAULT_NOTIFICATION_CONFIG.news.email)
+      : DEFAULT_NOTIFICATION_CONFIG.news.email,
+  };
+  return out as NotificationConfig;
 }
 
 /** ニュース設定を読み出す。未設定/不正は §3.4 既定値へフォールバックする。 */
@@ -116,14 +142,44 @@ export async function readSettings(
 }
 
 
+/**
+ * 通知設定を保存する。**ニュースの `email` が入力に無ければ保存済みの値を保つ**（T-M8-407）。
+ * アプリ内通知の画面は in_app だけを送るため、そこで保存してもメールONが外れない。
+ */
 export async function saveNotificationConfig(
   db: Queryable,
   userId: string,
-  config: NotificationConfig,
+  config: NotificationConfigInput,
 ): Promise<void> {
   await db.query(
-    `update profiles set notification_config = $2::jsonb, updated_at = now() where id = $1`,
+    `update profiles
+        set notification_config = jsonb_set(
+              $2::jsonb, '{news,email}',
+              to_jsonb(coalesce(($2::jsonb->'news'->>'email')::boolean,
+                                (notification_config->'news'->>'email')::boolean,
+                                false)),
+              true),
+            updated_at = now()
+      where id = $1`,
     [userId, JSON.stringify(config)],
+  );
+}
+
+/** ニュースのメール通知（ON/OFF）だけを書き換える（T-M8-407）。他の種別・in_app は触らない。 */
+export async function saveNewsEmailNotification(
+  db: Queryable,
+  userId: string,
+  email: boolean,
+): Promise<void> {
+  await db.query(
+    `update profiles
+        set notification_config = jsonb_set(
+              jsonb_set(coalesce(notification_config, '{}'::jsonb), '{news}',
+                        coalesce(notification_config->'news', '{}'::jsonb), true),
+              '{news,email}', to_jsonb($2::boolean), true),
+            updated_at = now()
+      where id = $1`,
+    [userId, email],
   );
 }
 

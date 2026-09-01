@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.78 |
+| バージョン | v1.79 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -123,8 +123,9 @@
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `setActiveXAccount` | `x_account_id` | active account | 所有者かつ`status=active` |
-| `updateNotificationConfig` | `notification_config` | config | 本人のみ |
+| `updateNotificationConfig` | `notification_config` | config | 本人のみ。ニュースの `email` は省略可（省略は保存済みの値を保つ・T-M8-407） |
 | `updateNewsConfig` | `news_config` | config | 本人のみ |
+| `updateNewsEmailNotification` | email（boolean） | — | 本人のみ。`notification_config.news.email` だけを書く（T-M8-407。ニュース通知カードの「メールでも受け取る」） |
 | `updateAiPurposeConfig` | `ai_purpose_config` | config | 文章生成・リサーチは単一provider（`text`）。standard/mdは登録済みかつvalidなproviderだけ選択可。premiumの`text`は運営文章provider（既定Claude）でread-only、画像だけ利用可能なOpenAI/Geminiから選択可 |
 
 `updateAiPurposeConfig`は`text`／`image`の部分更新と`null`による解除を受け付ける。standard／mdで非`null`を指定する場合は対象`user_api_keys.status=valid`を同一transactionで検証し、`image`はOpenAI／Googleだけを許可する。premiumは`text`を入力した時点で拒否してDB値を変更せず、`image`も運営APIキーが設定済みのproviderだけを許可する。premium文章providerはユーザーDB設定を参照せず実行時に解決し、運営設定がない場合は`anthropic`とする。
@@ -382,6 +383,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.76 | 2026-09-01 | addLearningSource: 画面から登録できるのは ref_account のみ（ref_post はAPI互換で残置・T-M8-400） |
 | v1.77 | 2026-09-01 | `startAnalysisAction` からフォロワー数の当日記録を外す（`followerRecorded` を廃止・T-M8-403） |
 | v1.78 | 2026-09-01 | signUp: メール確認（6桁コード）を必須へ戻す。signIn: 未確認アカウントの自動確認を廃止し `email_not_confirmed` はコード画面へ（T-M8-404） |
+| v1.79 | 2026-09-01 | updateNewsEmailNotification を追加、updateNotificationConfig はニュースの email 省略可（T-M8-407） |
 
 ### 下書きの投稿予約（T-M8-157）
 

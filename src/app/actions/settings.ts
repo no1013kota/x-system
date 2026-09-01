@@ -6,10 +6,12 @@ import { type BaseResult, errorResult, requireUserId, validationErrorResult } fr
 import { parseUserInput } from "@/lib/validation/user-input";
 import {
   newsConfigSchema,
+  newsEmailNotificationSchema,
   notificationConfigSchema,
 } from "@/lib/settings";
 import {
   saveNewsConfigForUser,
+  saveNewsEmailNotificationForUser,
   saveNotificationConfigForUser,
 } from "@/lib/settings-server";
 
@@ -51,6 +53,27 @@ export async function updateNewsConfigAction(input: unknown): Promise<BaseResult
     revalidatePath("/app/settings");
     revalidatePath("/app/news");
     return { message: "ニュース設定を保存しました。", status: "success" };
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+/**
+ * ニュースのメール通知（ON/OFF）だけを保存する（T-M8-407・運営者の指示 2026-09-01）。
+ * 設定＞通知の「ニュース通知」カードから、テーマ・インパクトと一緒に押される。
+ * 他の種別・アプリ内通知の値は触らない（画面ごとの保存が互いを上書きしないため）。
+ */
+export async function updateNewsEmailNotificationAction(input: unknown): Promise<BaseResult> {
+  const parsed = parseUserInput(newsEmailNotificationSchema, input);
+  if (!parsed.success) {
+    return validationErrorResult(parsed.error);
+  }
+  const auth = await requireUserId();
+  if (!auth.ok) return auth.result;
+  try {
+    await saveNewsEmailNotificationForUser(auth.userId, parsed.data.email);
+    revalidatePath("/app/settings");
+    return { message: "ニュースのメール通知を保存しました。", status: "success" };
   } catch (error) {
     return errorResult(error);
   }

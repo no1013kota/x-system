@@ -44,6 +44,8 @@ describe("fanOutNewsDigest (db)", () => {
       categories: string[];
       impact: string[];
       newsInApp: boolean;
+      /** ニュースのメール通知（T-M8-407）。省略はOFF。 */
+      newsEmail?: boolean;
     },
   ): Promise<string> {
     const uid = randomUUID();
@@ -56,7 +58,7 @@ describe("fanOutNewsDigest (db)", () => {
       `insert into profiles (id, email, subscription_status, news_config, notification_config)
        values ($1, $2, $3::subscription_status,
                jsonb_build_object('categories', $4::jsonb, 'impact_filter', $5::jsonb, 'max_items', 20),
-               jsonb_build_object('news', jsonb_build_object('in_app', $6::boolean)))
+               jsonb_build_object('news', jsonb_build_object('in_app', $6::boolean, 'email', $7::boolean)))
        on conflict (id) do update set
          subscription_status = excluded.subscription_status,
          news_config = excluded.news_config,
@@ -68,6 +70,7 @@ describe("fanOutNewsDigest (db)", () => {
         JSON.stringify(opts.categories),
         JSON.stringify(opts.impact),
         opts.newsInApp,
+        opts.newsEmail ?? false,
       ],
     );
     return uid;
@@ -96,7 +99,15 @@ describe("fanOutNewsDigest (db)", () => {
         status: "trialing",
         categories: ["ai"],
         impact: ["high"],
-        newsInApp: false, // in_app off → excluded（メール通知はT-M8-222で廃止）
+        newsInApp: false, // 両channel off → excluded
+      });
+      // メールだけON（T-M8-407）: 行は作る（in_app_enabled=false）＋メールの宛先になる。
+      const userEmailOnly = await makeUser(c, {
+        status: "active",
+        categories: ["ai"],
+        impact: ["high"],
+        newsInApp: false,
+        newsEmail: true,
       });
       const userCanceled = await makeUser(c, {
         status: "canceled",
@@ -125,7 +136,7 @@ describe("fanOutNewsDigest (db)", () => {
       const web3Mid = await mk("web3", "mid");
       await mk("ai", "low"); // excluded by impact_filter for both A and B
       await mk("business", "high"); // excluded by category for both
-      return { userA, userB, userOff, userCanceled, userNoMatch, aiHigh, web3Mid };
+      return { userA, userB, userOff, userEmailOnly, userCanceled, userNoMatch, aiHigh, web3Mid };
     });
 
     try {
@@ -188,12 +199,24 @@ describe("fanOutNewsDigest (db)", () => {
       expect(await load(seed.userCanceled)).toHaveLength(0);
       expect(await load(seed.userNoMatch)).toHaveLength(0);
 
+      // メールだけの人: 行はあるがアプリ内一覧には出ない。宛先は本人のメールアドレス（T-M8-407）。
+      const e = await load(seed.userEmailOnly);
+      expect(e).toHaveLength(1);
+      expect(e[0].in_app_enabled).toBe(false);
+      const target = res.emailTargets.find((t) => t.userId === seed.userEmailOnly);
+      expect(target?.to).toBe(`${seed.userEmailOnly}@example.com`);
+      expect(target?.totalCount).toBe(1);
+      // アプリ内だけの人（A/B）はメールの宛先にならない。
+      expect(res.emailTargets.some((t) => t.userId === seed.userA)).toBe(false);
+
       // re-run: dedupe_key prevents new rows。`matchedUsers`/`notified` はDB全体の集計で、
       // 並行して走る他のDBテストがこの窓のnews_items・ユーザーを増減させるため値を固定できない。
       // dedupeの検査は「対象ユーザーの行数が増えない」ことで行う。
-      await fanOutNewsDigest({ db: pooledDb, windowStart });
+      const rerun = await fanOutNewsDigest({ db: pooledDb, windowStart });
       expect(await load(seed.userA)).toHaveLength(1); // 重複行が作られない
       expect(await load(seed.userB)).toHaveLength(1);
+      // 再実行ではメールの宛先も作らない（二重送信しない）。
+      expect(rerun.emailTargets.some((t) => t.userId === seed.userEmailOnly)).toBe(false);
     } finally {
       // **通知は窓のdedupe keyで消す**（T-M8-64・bug）。fan-outは条件が合う全利用者へ配るので、
       // テスト用ユーザーの行だけ消すと、共有ローカルDBの**実アカウントに未来窓の偽ダイジェスト
@@ -205,7 +228,7 @@ describe("fanOutNewsDigest (db)", () => {
       );
       await withTransaction((c) =>
         c.query(`delete from auth.users where id = any($1)`, [
-          [seed.userA, seed.userB, seed.userOff, seed.userCanceled, seed.userNoMatch],
+          [seed.userA, seed.userB, seed.userOff, seed.userEmailOnly, seed.userCanceled, seed.userNoMatch],
         ]),
       );
       await withTransaction((c) =>

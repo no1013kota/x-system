@@ -183,7 +183,8 @@ describe("主要 Server Action（本番実装 × 実DB）", () => {
         [userId],
       ),
     );
-    expect(saved.rows[0].notification_config.news).toEqual({ in_app: true });
+    // ニュースの email は入力に無ければ保存済みの値（既定OFF）を保つ（T-M8-407）。
+    expect(saved.rows[0].notification_config.news).toEqual({ in_app: true, email: false });
   });
 
   it("Xアカウント: 一覧・active切替が本番実装で通る", async () => {

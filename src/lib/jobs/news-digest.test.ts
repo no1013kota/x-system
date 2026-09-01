@@ -20,12 +20,15 @@ function mockDb(
       writes.push({ sql, params });
       if (SELECT.test(sql)) return { rows: digestRows as T[], rowCount: digestRows.length };
       if (INSERT.test(sql)) {
-        // returning id: 挿入成功(rowCount 1)なら id 行を返し、conflict(0)なら空。
+        // returning id, user_id: 挿入成功(rowCount 1)なら行を返し、conflict(0)なら空。
         const inserted = insertRowCount(params) > 0;
         insertSeq += 1;
+        const userIds = params[0] as string[];
         return {
-          rows: (inserted ? [{ id: `notif-${insertSeq}` }] : []) as T[],
-          rowCount: inserted ? 1 : 0,
+          rows: (inserted
+            ? userIds.map((userId, i) => ({ id: `notif-${insertSeq}-${i}`, user_id: userId }))
+            : []) as T[],
+          rowCount: inserted ? userIds.length : 0,
         };
       }
       return { rows: [] as T[], rowCount: 0 };
@@ -37,6 +40,8 @@ function mockDb(
 const aggRow = (over: Partial<Row> = {}): Row => ({
   user_id: "u1",
   in_app: true,
+  email_on: false,
+  email_address: "u1@example.com",
   total_count: 7,
   item_ids: ["id1", "id2", "id3"],
   top_titles: ["t1", "t2", "t3", "t4", "t5"],
@@ -86,13 +91,36 @@ describe("fanOutNewsDigest", () => {
   it("creates nothing when no user matches", async () => {
     const { db, writes } = mockDb([]);
     const res = await fanOutNewsDigest({ db, windowStart });
-    expect(res).toEqual({ matchedUsers: 0, notified: 0, createdIds: [] });
+    expect(res).toEqual({ matchedUsers: 0, notified: 0, createdIds: [], emailTargets: [] });
     expect(writes.some((w) => INSERT.test(w.sql))).toBe(false);
   });
 
   it("counts a deduped (already-existing) row as not newly notified", async () => {
-    const { db } = mockDb([aggRow()], () => 0); // on conflict do nothing → 0 rows
+    const { db } = mockDb([aggRow({ email_on: true })], () => 0); // on conflict do nothing → 0 rows
     const res = await fanOutNewsDigest({ db, windowStart });
-    expect(res).toEqual({ matchedUsers: 1, notified: 0, createdIds: [] });
+    // 再実行ではメールの宛先も作らない（二重送信しない・T-M8-407）。
+    expect(res).toEqual({ matchedUsers: 1, notified: 0, createdIds: [], emailTargets: [] });
+  });
+
+  it("メール通知ONの利用者ぶんだけ、作れた行からメールの宛先を作る（T-M8-407）", async () => {
+    const { db, writes } = mockDb([
+      aggRow({ user_id: "u1", email_on: true, email_address: "u1@example.com" }),
+      aggRow({ user_id: "u2", in_app: false, email_on: true, email_address: "u2@example.com", total_count: 2, top_titles: ["a", "b"] }),
+      aggRow({ user_id: "u3", email_on: false }),
+      aggRow({ user_id: "u4", email_on: true, email_address: null }),
+    ]);
+    const res = await fanOutNewsDigest({ db, windowStart });
+    expect(res.notified).toBe(4);
+    // メールだけの人（u2）も行は作る（in_app_enabled=false でアプリ内には出ない）。
+    const ins = writes.find((w) => INSERT.test(w.sql))!;
+    expect(ins.params[6]).toEqual([true, false, true, true]);
+    expect(res.emailTargets.map((t) => t.userId)).toEqual(["u1", "u2"]);
+    expect(res.emailTargets[1]).toMatchObject({
+      to: "u2@example.com",
+      title: "ニュースダイジェスト 2件",
+      body: "・a\n・b",
+      totalCount: 2,
+    });
+    expect(res.emailTargets[1].link).toMatch(/^\/app\/news\?from=/);
   });
 });

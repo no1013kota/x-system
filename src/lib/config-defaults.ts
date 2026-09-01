@@ -5,12 +5,13 @@
  */
 
 /**
- * 通知の既定: **チャネルはアプリ内のみ・全種別ON**（運営者の指示 2026-08-22・T-M8-222。
- * メール通知は廃止した。認証メールと運営者向けopsアラートは通知とは別系統で残る）。
- * 既存利用者の保存値はmigration 20260823000002が email キーを剥がすだけで、in_app は変えない。
+ * 通知の既定: **アプリ内は全種別ON**（運営者の指示 2026-08-22・T-M8-222）。
+ * **ニュースだけメールも選べる**（T-M8-407・運営者の指示 2026-09-01）。既定はOFF——
+ * 頼んでいないメールを送り始めない（受け取りたい人が設定＞通知でONにする）。
+ * 他の種別のメールはT-M8-222で廃止したまま。認証メールと運営者向けopsアラートは別系統。
  */
 export const DEFAULT_NOTIFICATION_CONFIG = {
-  news: { in_app: true },
+  news: { in_app: true, email: false },
   draft_created: { in_app: true },
   posted: { in_app: true },
   error: { in_app: true },
