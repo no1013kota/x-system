@@ -1,19 +1,22 @@
 /**
- * 設定のタブ（要件06 §3、T-M8-104で旧「設定」と旧「AI設定」を統合）。
+ * 設定のタブ（要件06 §1.2、T-M8-104で旧「設定」と旧「AI設定」を統合→T-M8-402で4タブへ再分割）。
  * 定義を1か所に置く理由: 画面とリンク元で同じ定義を使い、存在しないタブへの導線を
  * コンパイルで落とす（T-M8-18）。
  */
 
 export const SETTINGS_TABS = [
-  ["general", "設定"],
-  ["billing", "課金・プラン"],
   /*
-    **「プロンプト」タブは廃止**（T-M8-328・運営者の指示 2026-08-27）。
-    `/app/prompts` の独立した画面へ移した。旧slugは下のエイリアスで転送する——
-    DBに保存済みの通知リンクや利用者のブックマークが `?tab=prompts` のまま届くため。
-    **「アカウント設定」タブも廃止**（T-M8-400・運営者の指示 2026-09-01）。参考アカウントから
-    アカウント設定を作る機能ごと プロンプト＞アカウント.md へ移した（`SETTINGS_TAB_REDIRECTS`）。
+    **4タブへ再分割**（T-M8-402・運営者の指示 2026-09-01「設定と課金・プランしかタブがなく質素」）。
+    T-M8-104 で Xアカウント／APIキー／通知 を1つの「設定」タブへ畳んでいたが、
+    アカウント設定（T-M8-400）・AIモデル設定（T-M8-401）がプロンプト画面へ移ったので、
+    残った3つを元の区分へ戻す。旧 `general` は先頭タブへのエイリアス。
+    **「プロンプト」タブは廃止**（T-M8-328）、**「アカウント設定」「AIモデル設定」も廃止**
+    （T-M8-400/401）。それぞれ `/app/prompts` へ転送する（`SETTINGS_TAB_REDIRECTS`）。
   */
+  ["x-accounts", "Xアカウント"],
+  ["api-keys", "APIキー"],
+  ["notifications", "通知"],
+  ["billing", "課金・プラン"],
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number][0];
@@ -24,17 +27,11 @@ export type SettingsTab = (typeof SETTINGS_TABS)[number][0];
  * エイリアスは消せない。未知の値は先頭タブへ丸める（不正slugで白画面にしない）。
  */
 const TAB_ALIASES: Record<string, SettingsTab> = {
-  // 旧・設定（T-M8-104でひとつの「設定」タブへ）
-  "x-accounts": "general",
-  "api-keys": "general",
-  notifications: "general",
+  // T-M8-104〜T-M8-401 の間の統合「設定」タブ（Xアカウント＋APIキー＋通知）。先頭タブへ。
+  general: "x-accounts",
   // 問い合わせタブは廃止（T-M8-104）。契約切れでも開ける限定タブ（route-guard）だったため、
   // 同じく限定タブの billing へ寄せる（旧リンクで一般設定が開く/弾かれるの不整合を作らない）。
   support: "billing",
-  // プロンプト関連は `/app/prompts` へ移設（T-M8-328）。設定側へ来たら先頭タブへ丸め、
-  // 画面側で新しい場所を案内する（白画面にしない）。
-  prompts: "general",
-  "base-md": "general",
 };
 
 /**
@@ -43,12 +40,15 @@ const TAB_ALIASES: Record<string, SettingsTab> = {
  * 「押しても違う画面が出る」を作らない（原則2）。
  * - `account`／`persona`／`learning`: 参考アカウント＋5項目の入力欄は プロンプト＞アカウント.md
  * - `purposes`: AIモデル設定は プロンプト＞AIモデル設定（T-M8-401）
+ * - `prompts`／`base-md`: プロンプト画面（T-M8-328）
  */
 export const SETTINGS_TAB_REDIRECTS: Record<string, string> = {
   account: "/app/prompts?sec=account-md",
   persona: "/app/prompts?sec=account-md",
   learning: "/app/prompts?sec=account-md",
   purposes: "/app/prompts?sec=ai-models",
+  prompts: "/app/prompts?sec=post-prompt",
+  "base-md": "/app/prompts?sec=account-md",
 };
 
 /** 旧slugが別画面へ移っていれば転送先URLを返す（無ければ null）。 */
@@ -67,7 +67,7 @@ export const ACCEPTED_SETTINGS_TAB_SLUGS: readonly string[] = [
 export function normalizeSettingsTab(slug: string | undefined): SettingsTab {
   if (slug && SETTINGS_TABS.some(([value]) => value === slug)) return slug as SettingsTab;
   if (slug && slug in TAB_ALIASES) return TAB_ALIASES[slug];
-  return "general";
+  return "x-accounts";
 }
 
 /**

@@ -211,7 +211,7 @@ export function ApiKeySettings({
         tone: "success",
         title: result.message,
         description: "次に「Xアカウント」タブから、投稿するアカウントを連携してください。",
-        action: { href: settingsTabHref("general"), label: "Xアカウント連携を開く" },
+        action: { href: settingsTabHref("x-accounts"), label: "Xアカウント連携を開く" },
       });
       router.refresh();
     });

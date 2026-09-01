@@ -49,9 +49,9 @@ import {
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
- * 設定（T-M8-104で旧「設定」と旧「AI設定」を統合）。タブ構成:
- * 設定（Xアカウント＋APIキー＋通知）／課金・プラン。
- * **AIモデル設定はプロンプト画面へ移設**（T-M8-401・運営者の指示 2026-09-01。旧slug `purposes` は転送）。
+ * 設定。タブ構成: Xアカウント／APIキー／通知／課金・プラン（T-M8-402・運営者の指示 2026-09-01）。
+ * T-M8-104 で1つの「設定」タブへ畳んでいた3区分を、アカウント設定（T-M8-400）・AIモデル設定
+ * （T-M8-401）がプロンプト画面へ移ったのを機に元へ戻した。旧slug（general 等）は tabs.ts が受ける。
  * 問い合わせタブは廃止（2026-08-15 運営者の指示）。旧slugは tabs.ts のエイリアスが受ける。
  * **アカウント設定タブは廃止**（T-M8-400・運営者の指示 2026-09-01）——参考アカウントから
  * アカウント設定を作る機能ごと プロンプト＞アカウント.md へ移し、旧slugはそこへ転送する。
@@ -108,8 +108,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   */
   const [profile, xAccounts, userSettings] = await Promise.all([
     loadRequestProfile(user.id),
-    tab === "general" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
-    tab === "general"
+    tab === "x-accounts" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
+    tab === "notifications"
       ? getSettingsForUser(user.id)
       : Promise.resolve(null as UserSettings | null),
   ]);
@@ -195,15 +195,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     billingReturn && !prorationCharge ? await loadPendingProration(stripe, billingReturn) : null;
 
   // planに依存する第2波。
-  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
+  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも読む
   //   （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
   // - 利用枠: premium の利用枠（契約期間ごと）の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
   const [apiKeys, usage] = await Promise.all([
-    tab === "general" && !isOperatorManagedPlan(plan)
+    (tab === "api-keys" || tab === "x-accounts") && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
     // 利用枠は App Shell と同じ1行から作る（T-M8-295。専用クエリを持つと往復が1本増える）。
-    tab === "billing" || tab === "general"
+    tab === "billing" || tab === "api-keys"
       ? loadRequestProfile(user.id).then((bundle) =>
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
         )
@@ -245,44 +245,45 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             description="Xアカウントの連携やAIの設定がご利用いただけます。"
             reason={lock}
           />
-        ) : tab === "general" ? (
+        ) : tab === "x-accounts" ? (
           <div className="space-y-8">
-            {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で設定タブ先頭へ移動・運営者の指示）。
+            {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で先頭タブの一番上・運営者の指示）。
                 確認メール・領収書の宛先でもある。 */}
             <p className="text-body text-ink-2">
               ログイン中のアカウント:{" "}
               <span className="font-medium text-ink">{profile.email ?? user.email ?? "不明"}</span>
             </p>
-            {/* 旧・Xアカウント／APIキー／通知タブを1タブへ（T-M8-104）。
-                各部品が自前の見出しを持つため、ここでは見出しを重ねない（重複headingはE2EのstrictモードとAT読み上げの両方を壊す）。 */}
+            {/* 部品が自前の見出しを持つため、ここでは見出しを重ねない（重複headingはE2EのstrictモードとAT読み上げの両方を壊す）。 */}
             <XAccountsSettings
-                accounts={xAccounts}
-                connected={params.x_connected === "1"}
-                oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
-                  "/app/settings?tab=general",
-                )}`}
-                plan={plan}
-                xApiKeyRegistered={
-                  isOperatorManagedPlan(plan) || apiKeys.some((key) => key.provider === "x")
-                }
-              />
-            <ApiKeySettings
-                // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
-                // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
-                // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
-                callbackUrl={xRedirectUri()}
-                initialKeys={apiKeys}
-                plan={plan}
-                usage={usage}
-                usageResetLabel={usage ? usageResetLabel(usage) : "次回の更新日"}
-              />
-            {userSettings ? (
-              <SettingsPreferences
-                newsConfig={userSettings.newsConfig}
-                notificationConfig={userSettings.notificationConfig}
-              />
-            ) : null}
+              accounts={xAccounts}
+              connected={params.x_connected === "1"}
+              oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
+                "/app/settings?tab=x-accounts",
+              )}`}
+              plan={plan}
+              xApiKeyRegistered={
+                isOperatorManagedPlan(plan) || apiKeys.some((key) => key.provider === "x")
+              }
+            />
           </div>
+        ) : tab === "api-keys" ? (
+          <ApiKeySettings
+            // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
+            // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
+            // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
+            callbackUrl={xRedirectUri()}
+            initialKeys={apiKeys}
+            plan={plan}
+            usage={usage}
+            usageResetLabel={usage ? usageResetLabel(usage) : "次回の更新日"}
+          />
+        ) : tab === "notifications" ? (
+          userSettings ? (
+            <SettingsPreferences
+              newsConfig={userSettings.newsConfig}
+              notificationConfig={userSettings.notificationConfig}
+            />
+          ) : null
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
             <Card as="div" className="px-5 py-4">
