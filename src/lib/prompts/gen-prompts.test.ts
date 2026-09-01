@@ -24,11 +24,14 @@ describe("GEN prompt constants", () => {
     expect(PT_MD_MERGE).toContain("{{current_section}}");
     expect(PT_MD_MERGE).toContain("{{active_analyses}}");
     expect(PT_MD_MERGE).toContain("{{removed_analyses}}");
+    // 初回でも形と許容値が伝わる（T-M8-409）。
+    expect(PT_MD_MERGE).toContain("{{allowed_values}}");
+    expect(PT_MD_MERGE).toContain("{{mode_note}}");
     // 出力は設定と同じ形のJSON（`md-merge.ts` が personaSettingsSchema で検証する）。
     expect(PT_MD_MERGE).toContain("**同じ形のJSON**");
     expect(PT_MD_MERGE).toContain("JSONのみ");
     // **新しいテーマを作らせない**（画面の選択肢に無い値は設定として保存できない）。
-    expect(PT_MD_MERGE).toContain("新しいテーマを作らない");
+    expect(PT_MD_MERGE).toContain("<allowed> の themes にある id だけ");
     // NGワードは利用者が個別に管理している欄なので触らせない。
     expect(PT_MD_MERGE).toContain("ng.words は変えない");
     expect(PT_MD_MERGE).toBe(PT_MD_MERGE.trim());
