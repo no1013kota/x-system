@@ -5,25 +5,22 @@ import { after } from "next/server";
 import { type BaseResult, errorResult, requireUserId } from "./_helpers";
 import { pooledQueryable } from "@/lib/db/pool";
 import { dispatchJob } from "@/lib/jobs/dispatch";
-import { snapshotFollowerTodayForAccount } from "@/lib/jobs/follower-snapshot-server";
 import {
   createManualSuggestionJob,
   type ManualSuggestionRejection,
 } from "@/lib/jobs/suggestion-jobs";
-import { recordUnexpectedError } from "@/lib/observability/sentry";
 import { resolveActiveXAccountForUser } from "@/lib/x/account-actions-server";
 
 /**
- * 「分析を開始」の Server Action（K-2/K-3, 要件05 §9, T-M8-255）。本人のみ。
+ * 「分析を開始」の Server Action（K-2, 要件05 §9, T-M8-255）。本人のみ。
  *
- * 1つのボタンで2つを行う:
- * 1. フォロワー数の当日分を記録する（K-3。押した時点の最新値で上書き。毎日の記録自体は
- *    毎時cron follower_snapshot が担う——T-M8-257。X APIに履歴は無く、過去日は遡れない）
- * 2. 投稿分析（SUGGEST）を起票する（K-2。1日1回・冪等キーが上限を兼ねる）
- *
+ * 投稿分析（SUGGEST）を起票する（1日1回・冪等キーが上限を兼ねる）。
  * ゲート（所有・active・契約・BYOKキー）は中核（suggestion-jobs.ts）が判定する。
- * フォロワー記録は**ゲートを通ったときだけ**行う——契約が無効な利用者の操作で
- * X読取費用（$0.010/件）を発生させない。記録の失敗は分析を止めない（別系統の値のため）。
+ *
+ * **フォロワー数はここでは記録しない**（T-M8-403・運営者の指示 2026-09-01「フォロワー数は
+ * cronのみで良い」）。T-M8-257までは押した時点の最新値で当日分を上書きしていたが、
+ * 記録の入口は毎時cron `follower_snapshot` の1つにする——ボタン1つに2つの意味を
+ * 持たせない（何が起きたかを利用者が数えなくて済む）。
  */
 
 const pooledDb = pooledQueryable();
@@ -39,9 +36,7 @@ const REJECTION_MESSAGES: Record<ManualSuggestionRejection, string> = {
   x_account_inactive: "このXアカウントは停止中のため分析を開始できません。",
 };
 
-export async function startAnalysisAction(): Promise<
-  BaseResult & { jobId?: string; followerRecorded?: boolean }
-> {
+export async function startAnalysisAction(): Promise<BaseResult & { jobId?: string }> {
   const auth = await requireUserId();
   if (!auth.ok) return auth.result;
   try {
@@ -54,35 +49,19 @@ export async function startAnalysisAction(): Promise<
       xAccountId,
     });
 
-    // 既に実行済み/実行中でもゲートは通っている＝フォロワー記録だけは更新する
-    // （同日中の再押下は上書き・原価台帳はJST日付キーでdedup）。
-    let followerRecorded = false;
-    if (res.ok || res.reason === "already_running" || res.reason === "already_done_today") {
-      try {
-        const snap = await snapshotFollowerTodayForAccount(xAccountId, auth.userId);
-        followerRecorded = snap.written;
-      } catch (error) {
-        // 記録失敗で分析まで止めない。ただし黙らず記録する（原則1）。
-        recordUnexpectedError(error, { at: "startAnalysisAction:follower", xAccountId });
-      }
-    }
-
     if (!res.ok) {
       const message = REJECTION_MESSAGES[res.reason!];
       // 「今日はもう済み」はエラーではなく現状の説明として返す。
       if (res.reason === "already_done_today" || res.reason === "already_running") {
-        return { followerRecorded, message, status: "success" };
+        return { message, status: "success" };
       }
-      return { followerRecorded, message, status: "error" };
+      return { message, status: "error" };
     }
 
     after(() => dispatchJob(res.jobId!));
     return {
-      followerRecorded,
       jobId: res.jobId,
-      message: followerRecorded
-        ? "分析を開始しました。フォロワー数も本日分として記録しました。"
-        : "分析を開始しました。フォロワー数は記録できませんでした（X連携を確認してください）。",
+      message: "分析を開始しました。完了するとこの画面にレポートが表示されます。",
       status: "success",
     };
   } catch (error) {

@@ -5891,13 +5891,18 @@ UI側boolean を壊しても投稿は誤爆しない）。
     その後のイベントを1件も受け取っていない契約の件数。0件なら無音でも ok。
   - あわせて「イベント0件」もwarn→okへ（契約に動きが無ければ正常）。
 
-### T-M8-403: 「分析を開始」ボタンからフォロワー数の記録を外す（記録は毎時cronのみ） `todo`
+### T-M8-403: 「分析を開始」ボタンからフォロワー数の記録を外す（記録は毎時cronのみ） `done`
 - 参照: PRD K-3 / 要件04 §13 / 要件05 §9（`startAnalysisAction`） / 要件06 §8（SC-09） / 依存: なし / サイズ: S
 - 完了条件:
   - 「分析を開始」を押しても `follower_snapshots` へ書き込まない（X user読取 $0.010 も発生しない）。トーストは分析の起票結果だけを言う
   - フォロワー数の記録は毎時cron `follower_snapshot` だけ（挙動は変えない）。連携直後は次の毎時起動で最初の点が付く旨を画面の空状態で言う
   - `snapshotFollowerToday` 系のコード・テスト・docsの「2入口」の記述を消し、入口が1つであることが正本と一致する
 - メモ: 運営者の指示（2026-09-01「フォロワー数はcronのみで良い。分析を開始ボタンでのフォロワー数取得は不要」）。T-M8-255→257 で残していたボタン側の当日上書きを廃止する。
+- 実装メモ（2026-09-01 完了）:
+  - `startAnalysisAction` から `snapshotFollowerTodayForAccount` を外し（`followerRecorded` 廃止）、
+    `snapshotFollowerToday` 系のコード・DBテストを削除。cron側（`executeFollowerSnapshot`）は無変更。
+  - フォロワー推移の空状態に「連携直後は次の毎時の記録（最長1時間）で最初の点が付く」を追記。
+  - docs: PRD K-3・要件02 §3.11・要件04 §12/§13・要件05 §9・要件06 §8・local-development を「入口はcronのみ」へ。
 
 ### T-M8-399: 「参考投稿からAIで作る」がX投稿のURLでも動くようにし、Sonnet 5固定・3欄を常に自動入力 `done`
 - 参照: プロンプト設計書 §6.16（PT-PATTERN-GEN） / 要件05（`generatePatternPromptAction`） / 要件06 §4.1 / 依存: なし / サイズ: M

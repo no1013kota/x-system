@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.15 |
-| 更新日 | 2026-08-31 |
+| 更新日 | 2026-09-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -215,7 +215,7 @@ npm run dev                  # → http://127.0.0.1:3000
 - 毎時のフォロワー数記録（follower-snapshot）→ 投稿分析画面の「フォロワー数の推移」が空のまま
 - メトリクス収集（metrics-collector）・ニュース取得（news-fetch）・スケジュール投稿の起票
 
-投稿分析は cron ではなく**投稿分析画面の「分析を開始」ボタン**で動く（T-M8-255で毎朝の自動起票を廃止）。ボタンはフォロワー数の当日分も記録するため、ローカルはcronを叩かなくても画面から点を付けられる。
+投稿分析は cron ではなく**投稿分析画面の「分析を開始」ボタン**で動く（T-M8-255で毎朝の自動起票を廃止）。フォロワー数はボタンでは記録しない（T-M8-403）ので、ローカルで点を付けたいときは下の `follower-snapshot` を叩く。
 
 手動起動（`npm run dev` 起動中に。同一時間窓の重複起動は `cron_runs` の窓claimで無害）:
 

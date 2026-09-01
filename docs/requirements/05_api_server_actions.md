@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.76 |
+| バージョン | v1.77 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -251,9 +251,9 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 返却 | 備考 |
 |---|---|---|---|
-| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId?, followerRecorded? | 「分析を開始」ボタン（T-M8-255）。フォロワー数の当日記録（押した時点の最新値で上書き。毎日の記録自体は毎時cronが担う・T-M8-257）→ `suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
+| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId? | 「分析を開始」ボタン（T-M8-255）。`suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
 
-2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー記録は起票ゲートを通ったときだけ行い、記録の失敗は分析を止めない。
+2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー数の記録はこのActionでは行わない（毎時cronだけ・T-M8-403）。
 
 実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
@@ -380,6 +380,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.74 | 2026-09-01 | regenerateImageAction / uploadDraftImageAction / removeDraftImageAction へ post_local_id を追加（ポスト別画像・T-M8-398） |
 | v1.75 | 2026-09-01 | generatePatternPromptAction の表行を追加。参考投稿にX投稿のURLを受け付け本文へ引き直す・読めないURLは理由つきで拒否・Sonnet 5固定（T-M8-399） |
 | v1.76 | 2026-09-01 | addLearningSource: 画面から登録できるのは ref_account のみ（ref_post はAPI互換で残置・T-M8-400） |
+| v1.77 | 2026-09-01 | `startAnalysisAction` からフォロワー数の当日記録を外す（`followerRecorded` を廃止・T-M8-403） |
 
 ### 下書きの投稿予約（T-M8-157）
 

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.67 |
+| バージョン | v1.68 |
 | 更新日 | 2026-09-01 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -266,7 +266,7 @@ flowchart TD
 - **日次サマリ**（`type=summary`・T-M7-29）は`scheduler_tick`が作る。JST8時以降の最初のtickで、Xアカウント連携済みかつ`notification_config.summary.in_app`がONの利用者へ1通だけ作成する（冪等keyは`summary:{JSTの日付}`で、5分ごとのtickから何度呼ばれても1日1通）。内容は直近24時間の生成・投稿の成否、**テーマごとの連続0件日数**（3日以上を強調）、直近の取得で全件破棄されたテーマと理由（**「窓より古いだけ」は除く**）、**取れた数より捨てた数が多かったテーマ**（警告にはせず数字のみ）、止まっている処理、当月費用、**データベースの使用量**（無料枠500MBに対する割合。80%で注意・95%で異常。超えると組織内の全プロジェクトが停止するため手前で知らせる・T-M7-43）。「いまの状態」を見る`npm run doctor`と違い、**日をまたぐ推移**＝静かな劣化を見るのが役割。問題が無い日も数字を出す（「問題なし」だけでは止まっていても同じに見える）。
 - 適用済み学習sourceの削除はstatusを`removing`にして単独`md_merge` jobを作り、premiumのAIクレジットを消費する（実費ベース）。削除対象のanalysisと、残る全active sourceのanalysisからセクション1〜4を作り直し、削除sourceだけに由来する知見を残さない（T-M8-336）。merge成功時にbase_md新version作成とsourceの`removed`化を同一transactionで確定する。
 - `removing`中は古い知見での生成を避けるため対象Xアカウントの新規生成を停止する。merge最終失敗時はsourceを`analyzed`へ戻して削除未完了を通知する。未適用のpending/failed sourceはAIを呼ばず直接removedにする。
-- SUGGESTは**利用者が投稿分析画面の「分析を開始」ボタンで実行する**（2026-08-23・T-M8-255。2026-08-15〜の毎朝8:00 JST自動実行`enqueueDailySuggestions`は廃止した——利用者数×毎日のAI・X読取費用が利用の有無に関わらず積み上がるため）。起票はServer Action `startAnalysisAction`の`createManualSuggestionJob`——対象ゲート（`status='active'`かつ契約が`trialing/active`かつ〔premium/expert または validなAIキーあり〕）を通れば`suggestion` jobを`trigger='manual'`・request_key `sug-manual:{x_account_id}:{JST日付}`で冪等作成する（uniqueが1日1回を保証し、これが費用の上限を兼ねる。作れなかったときは実行中か当日実行済みかを言い分けて画面へ返す）。dispatchはActionの`after()`が行い、失敗分はtickのdispatchフェーズが回収する。同じActionがフォロワー数の当日記録（§13）も行う。
+- SUGGESTは**利用者が投稿分析画面の「分析を開始」ボタンで実行する**（2026-08-23・T-M8-255。2026-08-15〜の毎朝8:00 JST自動実行`enqueueDailySuggestions`は廃止した——利用者数×毎日のAI・X読取費用が利用の有無に関わらず積み上がるため）。起票はServer Action `startAnalysisAction`の`createManualSuggestionJob`——対象ゲート（`status='active'`かつ契約が`trialing/active`かつ〔premium/expert または validなAIキーあり〕）を通れば`suggestion` jobを`trigger='manual'`・request_key `sug-manual:{x_account_id}:{JST日付}`で冪等作成する（uniqueが1日1回を保証し、これが費用の上限を兼ねる。作れなかったときは実行中か当日実行済みかを言い分けて画面へ返す）。dispatchはActionの`after()`が行い、失敗分はtickのdispatchフェーズが回収する。フォロワー数の記録はこのActionでは行わない（§13。T-M8-403で廃止）。
 - **取得は増分・過去7日まで**: ハンドラが`GET /2/users/:id/tweets`（リポスト・返信を除く・メトリクス付き）を、保存済み最新投稿の**48時間前**から取得する（初回は実行時点の7日前から。いずれも**7日前より過去へは遡らない**——手動実行化で、長期間押していない利用者が押した瞬間の大量取得を防ぐ・T-M8-255。1回最大100件=X読取費用の上限$0.50）。48時間の重なり分はupsertでメトリクス（表示回数等）を追い直す——重なりが無いと直近投稿の実績が「取得した朝の値」で凍結される。表示回数（`non_public_metrics`）はX公称では投稿から30日以内しか提供されないためnull許容で扱う（実挙動では30日超の投稿にも返る場合があることを2026-08-15に実アカウントで確認。nullは「表示回数が不明」であり0と区別する）。取得結果は`x_timeline_posts`（要件02 §3.20）へ保存し、本サービス経由の投稿には`drafts.tweet_ids`の突合で型とテーマを付与する（一度付いたら保持。外部の投稿はnull）。分析時は**直前のレポート**（format=2）を読み込みプロンプトへ渡す（前回の推奨の効果検証と提案の連続性のため。前回以降の新規投稿数はコードで数えて渡す。参照したレポートidはevidence.previous_idに残る・T-M8-98）。
 - **分析は保存済みの全投稿**（新しい順に最大300件=AI入力の上限）を対象にする。固定の分析軸と「3投稿以上・差20%以上」の条件は持たない。良かった投稿の特徴づけはPT-SUGGESTの自由分析に任せ、出力を実行可能な設定（推奨パターン・テーマ・画像有無・そのまま貼れるプロンプト全文）に固定する（検証はプロンプト設計書 §6.15）。
 - **AIクレジットは消費しない**（premium含む・2026-08-15変更のまま維持）。費用は原価台帳（X読取・AI）が記録する。保存済み投稿が0件ならLLMを呼ばずレポート0件で正常終了する。SUGGESTはbase_mdを読まない。X取得の失敗は`x_fetch_failed`として理由を保存・通知する（静かに0件にしない・原則1）。
@@ -283,7 +283,7 @@ flowchart TD
 - 1起動あたり50 account・500 tweet_id・外部request最大10並列を上限とし、Function deadline超過分は次回毎時起動へ委ねる。1アカウントのtoken取得失敗（失効）や読取失敗（401/403/429枯渇/5xx）はそのaccount/draft単位で隔離してスキップし、run全体を落とさない（失効はaccountスキップ、一時失敗は`next_metrics_at`据え置きで次窓が再走査）。
 - 30日表示用checkpointはnon-public metricsの取得期限を越えないよう投稿後29日〜30日未満で取得する。期限内の取得に失敗したprivate fieldはnullのまま確定し、public metricsもMVPでは更新終了する。
 - X上で削除済み・取得不能と確定したtweet_idは`unavailable`として以後のcheckpoint対象から外し、他のtweet_idの実績は継続する。
-- フォロワー数の記録の入口は2つで、どちらも`(x_account_id, snapshot_date)`＝JST当日分へのupsert（unique制約で同日は上書き・重複rowを作らない）。(1)**毎時cron `follower_snapshot`**（毎時00分。旧10分から2026-08-23に揃えた——metrics_collectorと同時刻でも、tokenのrefreshは行lease（`token_refresh_lock_id`）で直列化されるため競合しない）——JST当日分snapshotが無い`status=active`のXアカウントのうち**所有者の契約が有効（trialing/active）なものだけ**を対象に（T-M8-257。解約済み利用者の読取費用$0.010/アカ/日を出さない）、user token別で自アカウントの`followers_count`を読んでupsertする。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。T-M8-255でいったんボタンのみへ移したが、推移グラフ（K-3）は毎日の点が揃って初めて意味を持つためT-M8-257で毎時cronを復活した（高コストだった投稿分析AIは手動のまま）。(2)**投稿分析画面の「分析を開始」ボタン**（`startAnalysisAction`→`snapshotFollowerToday`）——押した時点の最新値で当日分を上書きする（初回連携直後でも次のcronを待たずグラフに点が付く。原価台帳の冪等キーはJST日付単位で同日再押下をdedup。記録の失敗は分析の起票を止めない）。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
+- フォロワー数の記録の入口は**毎時cron `follower_snapshot` の1つだけ**（T-M8-403・運営者の指示 2026-09-01。「分析を開始」ボタンからの当日上書きは廃止した——ボタン1つに2つの意味を持たせない）。`(x_account_id, snapshot_date)`＝JST当日分へのupsert（unique制約で同日は上書き・重複rowを作らない）。**毎時cron `follower_snapshot`**（毎時00分。旧10分から2026-08-23に揃えた——metrics_collectorと同時刻でも、tokenのrefreshは行lease（`token_refresh_lock_id`）で直列化されるため競合しない）——JST当日分snapshotが無い`status=active`のXアカウントのうち**所有者の契約が有効（trialing/active）なものだけ**を対象に（T-M8-257。解約済み利用者の読取費用$0.010/アカ/日を出さない）、user token別で自アカウントの`followers_count`を読んでupsertする。1起動100 account・最大10並列。token取得失敗（失効）や読取失敗・`followers_count`取得不能はaccount単位で隔離してskipし、書き込まず次回毎時起動へ委ねる。T-M8-255でいったんボタンのみへ移したが、推移グラフ（K-3）は毎日の点が揃って初めて意味を持つためT-M8-257で毎時cronを復活した（高コストだった投稿分析AIは手動のまま）。連携直後は次の毎時起動で最初の点が付く（最大1時間待つ。画面の空状態でその旨を言う）。**X APIはフォロワー数の履歴を提供しないため過去日の遡り記録はできない**——記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。
 
 ## 14. 通知
 
@@ -405,3 +405,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.65 | 2026-08-31 | news_itemsの保存上限を全体500件から分野別150件へ（T-M8-382）。監視フィードの実測見直し（sns差し替え・AI英語速報追加・T-M8-381） |
 | v1.66 | 2026-08-31 | ニュース取得を20分間隔→10分間隔へ（T-M8-383・運営者の指示。費用は新着数にのみ比例するため増加は月$1未満） |
 | v1.67 | 2026-09-01 | 画像生成・投稿添付をポスト別へ（`post_local_id`・1ポスト1枚・差し替えは対象ポストのみ・T-M8-398） |
+| v1.68 | 2026-09-01 | フォロワー数記録の入口を毎時cronだけに（「分析を開始」からの当日上書きを廃止・T-M8-403）。§12/§13を更新 |

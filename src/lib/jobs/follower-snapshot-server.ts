@@ -6,17 +6,12 @@ import { readUserFollowers } from "../x/read-client";
 import { getValidXAccessToken } from "../x/token-refresh-server";
 import { createDeadline } from "./deadline";
 import { recordUnexpectedError } from "../observability/sentry";
-import {
-  executeFollowerSnapshot,
-  snapshotFollowerToday,
-  type FollowerSnapshotResult,
-  type SnapshotFollowerOutcome,
-} from "./follower-snapshot";
+import { executeFollowerSnapshot, type FollowerSnapshotResult } from "./follower-snapshot";
 
 /**
  * フォロワー数記録の server-only 配線（K-3, 要件04 §6/§13, T-M5-14→T-M8-257）。
- * pool・token復号/refresh・X user読取（・cronはFunction deadline）を束ねて中核へ渡す。
- * 入口は毎時cron（`runFollowerSnapshot`）と「分析を開始」ボタン（`snapshotFollowerTodayForAccount`）の2つ。
+ * pool・token復号/refresh・X user読取・Function deadline を束ねて中核へ渡す。
+ * 入口は毎時cron（`runFollowerSnapshot`）の1つだけ（「分析を開始」からの記録はT-M8-403で廃止）。
  */
 
 const pooledDb = pooledQueryable();
@@ -54,35 +49,4 @@ export async function runFollowerSnapshot(windowKey: string): Promise<FollowerSn
       return users[0]?.followersCount ?? null;
     },
   });
-}
-
-/** 「分析を開始」ボタンからの当日分記録（押した時点の最新値で上書き）。 */
-export async function snapshotFollowerTodayForAccount(
-  xAccountId: string,
-  userId: string,
-): Promise<SnapshotFollowerOutcome | { written: false; reason: "not_found" }> {
-  const { rows } = await pooledDb.query<{ x_user_id: string }>(
-    `select x_user_id from x_accounts where id = $1 and user_id = $2 and status = 'active'`,
-    [xAccountId, userId],
-  );
-  if (!rows[0]) return { written: false, reason: "not_found" };
-  const xUserId = rows[0].x_user_id;
-
-  return snapshotFollowerToday(
-    {
-      db: pooledDb,
-      getAccessToken: getAccessTokenSafely("follower-snapshot:manual:token"),
-      readFollowersCount: async ({ xAccountId: id, userId: uid, xUserId: xuid, accessToken }) => {
-        const deps = buildXReadDeps(accessToken, { userId: uid, xAccountId: id, jobId: null });
-        // 原価台帳の冪等キーはJST日付単位（同日中の再押下は読み直すが台帳はdedup）。
-        const day = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
-        const { users } = await readUserFollowers(deps, {
-          userIds: [xuid],
-          idempotencyKey: `follower:manual:${day}:${id}`,
-        });
-        return users[0]?.followersCount ?? null;
-      },
-    },
-    { xAccountId, userId, xUserId },
-  );
 }

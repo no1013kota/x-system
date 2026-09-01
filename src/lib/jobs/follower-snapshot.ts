@@ -4,14 +4,14 @@ import type { Queryable } from "../x/token-refresh";
 /**
  * フォロワー数の記録（K-3, 要件04 §6/§13, 要件02 §3.11, T-M5-14→T-M8-255→T-M8-257）。
  *
- * 記録の入口は2つ（どちらも同じJST当日分へのupsertで、同日は上書き・重複rowを作らない）:
- * 1. **毎時の定時トリガー**（`executeFollowerSnapshot`）——当日分が無いアカウントを毎日1回読む。
- *    推移グラフ（K-3）は毎日の点が揃って初めて意味を持つため自動で記録する（読取$0.010/アカ/日）。
- *    T-M8-255でいったん廃止したが、費用が小さい一方で欠測のグラフは価値が無いためT-M8-257で復活。
- *    復活時に**契約が有効（trialing/active）な利用者だけ読む**ゲートを追加した——解約済み利用者の
- *    アカウントを読み続けると使われない費用が毎日積み上がる。
- * 2. **投稿分析画面の「分析を開始」ボタン**（`snapshotFollowerToday`）——押した時点の最新値で
- *    当日分を上書きする（初回連携直後でも次のcronを待たずグラフに点が付く）。
+ * 記録の入口は**毎時の定時トリガー**（`executeFollowerSnapshot`）の1つだけ——当日分が無い
+ * アカウントを毎日1回読み、JST当日分へupsertする（同日は上書き・重複rowを作らない）。
+ * 推移グラフ（K-3）は毎日の点が揃って初めて意味を持つため自動で記録する（読取$0.010/アカ/日）。
+ * T-M8-255でいったん廃止したが、費用が小さい一方で欠測のグラフは価値が無いためT-M8-257で復活。
+ * 復活時に**契約が有効（trialing/active）な利用者だけ読む**ゲートを追加した——解約済み利用者の
+ * アカウントを読み続けると使われない費用が毎日積み上がる。
+ * 「分析を開始」ボタンからの当日上書きはT-M8-403で廃止した（運営者の指示 2026-09-01。
+ * ボタン1つに2つの意味を持たせない）。連携直後は次の毎時起動で最初の点が付く。
  *
  * **過去日の遡り記録はできない**——X API はフォロワー数の履歴を提供せず、取れるのは現在値だけ。
  * 記録が無い日はグラフ上の欠測になる（偽の値で埋めない・原則1）。DB・X読取は注入し純粋に保つ。
@@ -47,10 +47,6 @@ export interface FollowerSnapshotDeps extends SnapshotFollowerDeps {
   limits?: { accounts?: number; parallel?: number };
 }
 
-export type SnapshotFollowerOutcome =
-  | { written: true; followersCount: number }
-  | { written: false; reason: "token_unavailable" | "count_unavailable" };
-
 async function upsertToday(db: Queryable, xAccountId: string, count: number): Promise<number> {
   const res = await db.query(
     `insert into follower_snapshots (x_account_id, snapshot_date, followers_count)
@@ -60,24 +56,6 @@ async function upsertToday(db: Queryable, xAccountId: string, count: number): Pr
     [xAccountId, count],
   );
   return res.rowCount ?? 0;
-}
-
-/**
- * 「分析を開始」からの単一アカウント記録。フォロワー数を読み、JST当日分として upsert する
- * （同日再実行は上書き）。token・読取の失敗は理由つきで返す（黙って0件にしない・原則1）。
- */
-export async function snapshotFollowerToday(
-  deps: SnapshotFollowerDeps,
-  acct: { xAccountId: string; userId: string; xUserId: string },
-): Promise<SnapshotFollowerOutcome> {
-  const token = await deps.getAccessToken(acct.xAccountId);
-  if (!token) return { written: false, reason: "token_unavailable" };
-
-  const count = await deps.readFollowersCount({ ...acct, accessToken: token });
-  if (count === null) return { written: false, reason: "count_unavailable" };
-
-  await upsertToday(deps.db, acct.xAccountId, count);
-  return { written: true, followersCount: count };
 }
 
 export interface FollowerSnapshotResult {
