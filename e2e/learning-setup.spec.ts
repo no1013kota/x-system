@@ -34,7 +34,9 @@ test("アカウント設定が未保存でも参考ソースを登録でき、�
     [...document.querySelectorAll("h2")].map((h) => (h.textContent ?? "").trim()),
   );
   expect(order[0]).toBe("参考アカウントからアカウント設定を作る");
-  expect(order.indexOf("ペルソナ")).toBeGreaterThan(0);
+  // 入口の対比（T-M8-406）: 参考アカウント → 自由入力 → ペルソナ の順。
+  expect(order[1]).toBe("自由入力でアカウント設定を作る");
+  expect(order.indexOf("ペルソナ")).toBeGreaterThan(1);
   expect(order).not.toContain("アカウント設定");
   // 対象アカウントは先頭（編集を始める前に見えている必要がある）。
   await expect(page.getByText(/対象アカウント: @/)).toBeVisible();
