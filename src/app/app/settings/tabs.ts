@@ -74,12 +74,14 @@ export function normalizeSettingsTab(slug: string | undefined): SettingsTab {
  * プロンプト画面の区分（アカウント.md／投稿作成プロンプト／画像生成プロンプト・T-M8-104）。
  * **AIモデル設定もここ**（T-M8-401・運営者の指示 2026-09-01）——どのAI・モデルで作るかは
  * 「AIへ渡す指示」と同じ場所で決める方が、設定（連携・課金・通知）に混ざるより探しやすい。
+ * **先頭はAIモデル設定**（T-M8-405・運営者の指示 2026-09-01）。区分指定なしで開いたときも
+ * 先頭（＝AIモデル設定）を出す——先頭と既定がずれると「押した区分と違う画面」に見える。
  */
 export const PROMPT_SECTIONS = [
+  ["ai-models", "AIモデル設定"],
   ["account-md", "アカウント.md"],
   ["post-prompt", "投稿作成プロンプト"],
   ["image-prompt", "画像生成プロンプト"],
-  ["ai-models", "AIモデル設定"],
 ] as const;
 
 export type PromptSection = (typeof PROMPT_SECTIONS)[number][0];
@@ -87,7 +89,7 @@ export type PromptSection = (typeof PROMPT_SECTIONS)[number][0];
 export function normalizePromptSection(slug: string | undefined): PromptSection {
   return PROMPT_SECTIONS.some(([value]) => value === slug)
     ? (slug as PromptSection)
-    : "account-md";
+    : PROMPT_SECTIONS[0][0];
 }
 
 /** タブを開くURL。slug は型で縛るので綴り間違いはコンパイルで落ちる。 */
