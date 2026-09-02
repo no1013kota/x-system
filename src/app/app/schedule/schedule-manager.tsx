@@ -1365,7 +1365,7 @@ function SlotFields({
       </p>
       {v.image_enabled && imageProviders.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          画像を生成するAIが未設定です。設定の「AIモデル設定」で画像AIを選ぶまでは画像なしで作成されます。
+          画像を生成するAIが未設定です。プロンプトの「AIモデル設定」で画像AIを選ぶまでは画像なしで作成されます。
         </p>
       ) : null}
 

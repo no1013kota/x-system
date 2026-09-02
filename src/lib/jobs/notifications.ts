@@ -27,11 +27,13 @@ import type { JobKind } from "./handlers";
  * `image_generation` は本文が使えるため error 通知を出さない（テーブル外・
  * `finalizeImageStale` が draft確定/子job作成を担う）。
  */
+/** 文言・linkの解決に使う job の列（`JobTerminalRow` が構造的に満たす）。 */
+export type FailedNoticeJob = { draft_id: string | null; learning_source_id?: string | null };
+
 export type FailedNotice = {
-  title: string;
-  body: string;
-  /** 引数は `draft_id` を持つ行（`JobTerminalRow` が構造的に満たす）。 */
-  link: string | ((job: { draft_id: string | null }) => string);
+  title: string | ((job: FailedNoticeJob) => string);
+  body: string | ((job: FailedNoticeJob) => string);
+  link: string | ((job: FailedNoticeJob) => string);
 };
 
 /** 未知kindの既定文言。 */
@@ -56,12 +58,23 @@ export const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
   learning_analysis: {
     title: "学習ソースの分析に失敗しました",
     body: "時間をおいて再度お試しください。対象アカウント・投稿が非公開/削除されていないかもご確認ください。",
-    link: "/app/settings?tab=account",
+    link: "/app/prompts?sec=account-md",
   },
   md_merge: {
-    title: "学習ソースの削除が完了しませんでした",
-    body: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
-    link: "/app/settings?tab=account",
+    /*
+      **反映（提案）と削除で言い分ける**（T-M8-410・運営者の報告 2026-09-01）。
+      `learning_source_id` があれば削除に伴う作り直し、無ければ「アカウント設定を反映する」の反映。
+      反映の失敗に「削除に失敗しました」と出していた。
+    */
+    title: (job) =>
+      job.learning_source_id
+        ? "学習ソースの削除が完了しませんでした"
+        : "参考アカウントの反映ができませんでした",
+    body: (job) =>
+      job.learning_source_id
+        ? "学習ソースの削除に失敗しました。時間をおいて再度お試しください。"
+        : "参考アカウントの内容をアカウント設定の形にまとめられませんでした。もう一度「アカウント設定を反映する」を押すか、自由入力で作成してください。",
+    link: "/app/prompts?sec=account-md",
   },
   suggestion: {
     title: "投稿分析に失敗しました",
@@ -73,14 +86,12 @@ export const FAILED_NOTICE: Partial<Record<JobKind, FailedNotice>> = {
 /** kind から文言を引き、link を解決して返す。 */
 export function resolveFailedNotice(
   kind: JobKind,
-  job: { draft_id: string | null },
+  job: FailedNoticeJob,
 ): { title: string; body: string; link: string } {
   const notice = FAILED_NOTICE[kind] ?? DEFAULT_FAILED_NOTICE;
-  return {
-    title: notice.title,
-    body: notice.body,
-    link: typeof notice.link === "function" ? notice.link(job) : notice.link,
-  };
+  const pick = (value: string | ((job: FailedNoticeJob) => string)) =>
+    typeof value === "function" ? value(job) : value;
+  return { title: pick(notice.title), body: pick(notice.body), link: pick(notice.link) };
 }
 
 /**

@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { emptyUsage, type TextGen } from "../ai/types";
 import type { Queryable } from "../x/token-refresh";
 import {
+  allowedValuesForMerge,
   executeMdMerge,
+  firstSetupCurrent,
+  MD_MERGE_FAILURE_MESSAGES,
   MdMergeConflictError,
   MdMergeStructureError,
   mergeModeFor,
@@ -57,21 +60,26 @@ const POLISHED = JSON.stringify({
   tone: { ...SETTINGS.tone, first_person: "自分" },
 });
 
-function textGen(body: string): TextGen {
+function textGen(body: string, seen: string[] = []): TextGen {
   return {
-    generate: async () => ({
-      provider: "anthropic",
-      requestId: "r",
-      text: body,
-      citations: [],
-      usage: emptyUsage(),
-      stopReason: "end_turn",
-    }),
+    generate: async (req) => {
+      seen.push(req.user);
+      return {
+        provider: "anthropic",
+        requestId: "r",
+        text: body,
+        citations: [],
+        usage: emptyUsage(),
+        stopReason: "end_turn",
+      };
+    },
   };
 }
 
 interface DbOpts {
   version?: number;
+  /** x_accounts.settings。省略は保存済み（SETTINGS）。`{}` で未保存の初回を作る。 */
+  settings?: unknown;
   analyses?: { analysis_summary: unknown }[];
   removedAnalysis?: unknown; // removedSourceId の analysis_summary
   updateRowCounts?: number[];
@@ -89,7 +97,7 @@ function mockDb(opts: DbOpts) {
         return { rows: (opts.removedAnalysis ? [{ analysis_summary: opts.removedAnalysis }] : []) as T[], rowCount: opts.removedAnalysis ? 1 : 0 };
       if (LOAD_ACCT.test(sql))
         return {
-          rows: [{ base_md: BASE_MD, base_md_version: acctVersion, settings: SETTINGS }] as T[],
+          rows: [{ base_md: BASE_MD, base_md_version: acctVersion, settings: opts.settings ?? SETTINGS }] as T[],
           rowCount: 1,
         };
       if (LOAD_ANALYSES.test(sql)) return { rows: (opts.analyses ?? []) as T[], rowCount: (opts.analyses ?? []).length };
@@ -224,6 +232,54 @@ describe("executeMdMerge", () => {
  * **ここが逆に配線されると、押した瞬間に本番の設定が書き換わる／削除したのに知見が残る**、
  * というどちらも画面からは説明できない壊れ方をする（原則1）。1行の判定でも網へ入れておく。
  */
+describe("初回（アカウント設定が未保存）の反映（T-M8-409）", () => {
+  it("<current> は全キーを持つ雛形、<allowed> にテーマidと列挙値、初回の指示が付く", async () => {
+    const seen: string[] = [];
+    const { db } = mockDb({
+      version: 0,
+      settings: {}, // 未保存
+      analyses: [{ analysis_summary: { style: "短文・明るい" } }],
+    });
+    await executeMdMerge(deps(db, textGen(POLISHED, seen)), { proposalOnly: true });
+    expect(seen).toHaveLength(1);
+    const user = seen[0];
+    // "none" ではなく雛形（全キー）を渡す。
+    expect(user).not.toContain("<current>none</current>");
+    expect(user).toContain(`<current>${firstSetupCurrent()}</current>`);
+    for (const key of ['"persona"', '"themes"', '"tone"', '"volume"', '"ng"', '"speaker"', '"primary"', '"emoji_policy"']) {
+      expect(firstSetupCurrent(), key).toContain(key);
+    }
+    // 許容値（運用中テーマのid・列挙）が渡る。
+    expect(user).toContain(`<allowed>${allowedValuesForMerge()}</allowed>`);
+    expect(allowedValuesForMerge()).toContain('"id":"ai"');
+    expect(allowedValuesForMerge()).toContain('"limited"');
+    // 初回の指示（埋める項目）が付く。
+    expect(user).toContain("**初回**");
+  });
+
+  it("保存済みなら雛形ではなく現在の設定を渡し、初回の指示は付かない", async () => {
+    const seen: string[] = [];
+    const { db } = mockDb({ analyses: [{ analysis_summary: {} }] });
+    await executeMdMerge(deps(db, textGen(POLISHED, seen)), { proposalOnly: true });
+    // 検証済みの現在値（schemaが既定を補うので SETTINGS そのものではない）を渡し、雛形は渡さない。
+    expect(seen[0]).toContain('"speaker":"A"');
+    expect(seen[0]).not.toContain(firstSetupCurrent());
+    expect(seen[0]).not.toContain("**初回**");
+    expect(seen[0]).toContain("<allowed>");
+  });
+
+  it("失敗の利用者向け文言は反映と削除で言い分ける（T-M8-410）", async () => {
+    const { db } = mockDb({ analyses: [{ analysis_summary: {} }] });
+    await expect(
+      executeMdMerge(deps(db, textGen("not json")), { proposalOnly: true }),
+    ).rejects.toMatchObject({ userMessage: MD_MERGE_FAILURE_MESSAGES.reflect });
+    const removal = mockDb({ analyses: [{ analysis_summary: {} }], removedAnalysis: {} });
+    await expect(
+      executeMdMerge(deps(removal.db, textGen("not json")), { removedSourceId: "src1" }),
+    ).rejects.toMatchObject({ userMessage: MD_MERGE_FAILURE_MESSAGES.remove });
+  });
+});
+
 describe("mergeModeFor", () => {
   it("学習ソースの削除は、その場で確定させる", () => {
     expect(mergeModeFor("src-1")).toEqual({ removedSourceId: "src-1" });

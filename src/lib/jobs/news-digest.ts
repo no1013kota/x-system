@@ -3,8 +3,11 @@ import type { Queryable } from "../x/token-refresh";
 /**
  * 時間単位ニュースダイジェスト通知の fan-out（要件04 §14, 要件02 §4.2/§4.3, N-3/O-2, T-M4-12）。
  * news_fetch の6分野settle後に、当該1時間窓（UTC hour-aligned）で新規保存された news_items を対象に、
- * `subscription_status in (trialing, active)` かつニュース通知のいずれかのchannelがONのユーザーへ、
- * 各自の `news_config`（categories ∩ impact_filter）で一致する新着を集約して通知rowを1件作る。
+ * `subscription_status in (trialing, active)` かつニュース通知のいずれかのchannel（アプリ内／メール・
+ * T-M8-407）がONのユーザーへ、各自の `news_config`（categories ∩ impact_filter）で一致する新着を
+ * 集約して通知rowを1件作る。rowの `in_app_enabled` はアプリ内チャネルのON/OFF（メールだけの人は
+ * false＝アプリ内一覧には出ない）。**メールの宛先は新規に作れたrowだけから作る**——dedupeで
+ * 2回目以降の実行は行が作られないので、メールも2度送らない（送信の実体は呼び出し側）。
  *
  * - 該当0件・両channel OFF・非契約ユーザーには作らない（一致集合が空なら行が出ない）。
  * - `user_id + dedupe_key`（`news-digest:{window_started_at}`）で同一窓の再実行を冪等化する。
@@ -19,13 +22,27 @@ export interface NewsDigestDeps {
   windowStart: Date;
 }
 
+/** メールで送る1通ぶん（T-M8-407）。本文の組み立てと送信は `news-digest-mail.ts` が担う。 */
+export interface NewsDigestEmailTarget {
+  notificationId: string;
+  userId: string;
+  to: string;
+  title: string;
+  body: string;
+  /** アプリ内の一覧へのリンク（相対）。絶対URLは送信側が `APP_BASE_URL` で組む。 */
+  link: string;
+  totalCount: number;
+}
+
 export interface NewsDigestResult {
   /** 一致新着があり通知対象になったユーザー数。 */
   matchedUsers: number;
   /** 実際に作成した通知row数（再実行時の重複はdedupeで0）。 */
   notified: number;
-  /** 新規作成した通知のid（commit後の after() メール送信に渡す）。 */
+  /** 新規作成した通知のid。 */
   createdIds: string[];
+  /** 新規作成した通知のうち、メール通知ONの利用者ぶん（再実行では空・T-M8-407）。 */
+  emailTargets: NewsDigestEmailTarget[];
 }
 
 /** hour-aligned ISO（millisを除去し `...:00:00Z` 形へ。dedupe/payload/link で一貫使用）。 */
@@ -48,6 +65,10 @@ export function newsDigestDedupeKey(windowStart: Date): string {
 interface DigestRow {
   user_id: string;
   in_app: boolean;
+  /** メール通知ON（T-M8-407）。 */
+  email_on: boolean;
+  /** 送信先（profiles.email）。無ければ null＝メールは送れない。 */
+  email_address: string | null;
   total_count: number;
   item_ids: string[];
   top_titles: string[];
@@ -70,14 +91,17 @@ async function loadDigestRows(
               coalesce(p.news_config->'categories', '[]'::jsonb) as categories,
               coalesce(p.news_config->'impact_filter', '[]'::jsonb) as impact_filter,
               20 as max_items, -- 旧news_config.max_itemsはT-M8-187で廃止（payload上限は固定20）
-              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app
+              coalesce((p.notification_config->'news'->>'in_app')::boolean, false) as in_app,
+              coalesce((p.notification_config->'news'->>'email')::boolean, false) as email_on,
+              p.email as email_address
          from profiles p
         where p.subscription_status in ('trialing', 'active')
-          -- 通知はアプリ内のみ（メールはT-M8-222で廃止）。in_app OFF の利用者には行を作らない。
-          and coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
+          -- アプリ内・メール（T-M8-407）のどちらかがONの利用者だけ。両方OFFには行を作らない。
+          and (coalesce((p.notification_config->'news'->>'in_app')::boolean, false)
+               or coalesce((p.notification_config->'news'->>'email')::boolean, false))
      ),
      matched as (
-       select e.user_id, e.max_items, e.in_app, ni.id, ni.title, ni.impact,
+       select e.user_id, e.max_items, e.in_app, e.email_on, e.email_address, ni.id, ni.title, ni.impact,
               row_number() over (
                 partition by e.user_id
                 order by case ni.impact when 'high' then 0 when 'mid' then 1 else 2 end,
@@ -87,7 +111,7 @@ async function loadDigestRows(
          join new_items ni
            on (e.categories ? ni.category) and (e.impact_filter ? ni.impact)
      )
-     select user_id, in_app,
+     select user_id, in_app, email_on, email_address,
             count(*)::int as total_count,
             coalesce(
               jsonb_agg(id order by rn) filter (where rn <= max_items),
@@ -98,7 +122,7 @@ async function loadDigestRows(
               '{}'
             ) as top_titles
        from matched
-      group by user_id, in_app`,
+      group by user_id, in_app, email_on, email_address`,
     [windowStart.toISOString(), windowEnd.toISOString()],
   );
   return rows;
@@ -138,9 +162,9 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
     親行を先にロックしておけば、退会はこの文の完了まで待たされ、先に消えていれば0行になる。
   */
   if (digestRows.length === 0) {
-    return { matchedUsers: 0, notified: 0, createdIds: [] };
+    return { matchedUsers: 0, notified: 0, createdIds: [], emailTargets: [] };
   }
-  const { rows: created } = await deps.db.query<{ id: string }>(
+  const { rows: created } = await deps.db.query<{ id: string; user_id: string }>(
     `insert into notifications
        (user_id, type, dedupe_key, title, body, link, payload, in_app_enabled)
      select p.id, 'news', $2, u.title, u.body, $3, u.payload::jsonb, u.in_app
@@ -149,7 +173,7 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
        join profiles p on p.id = u.user_id
         for key share of p
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
-     returning id`,
+     returning id, user_id`,
     [
       digestRows.map((row) => row.user_id),
       dedupeKey,
@@ -169,7 +193,24 @@ export async function fanOutNewsDigest(deps: NewsDigestDeps): Promise<NewsDigest
   );
   const createdIds = created.map((row) => row.id);
 
-  return { matchedUsers: digestRows.length, notified: createdIds.length, createdIds };
+  // メールの宛先は**今回作れた行**からだけ作る（dedupeされた再実行では0件＝二重送信しない）。
+  const byUser = new Map(digestRows.map((row) => [row.user_id, row]));
+  const emailTargets: NewsDigestEmailTarget[] = [];
+  for (const row of created) {
+    const digest = byUser.get(row.user_id);
+    if (!digest || !digest.email_on || !digest.email_address) continue;
+    emailTargets.push({
+      notificationId: row.id,
+      userId: row.user_id,
+      to: digest.email_address,
+      title: `ニュースダイジェスト ${digest.total_count}件`,
+      body: buildBody(digest.top_titles, digest.total_count),
+      link,
+      totalCount: digest.total_count,
+    });
+  }
+
+  return { matchedUsers: digestRows.length, notified: createdIds.length, createdIds, emailTargets };
 }
 
 /** UTC hour-aligned な窓開始（news_fetch起動時刻から算出）。 */

@@ -120,7 +120,9 @@ test("見出し構造が壊れた内容は保存されず、何を直せばよ�
 test("学習ソースを追加すると分析中として並び、削除できる", async ({ accounts, page }) => {
   const account = await accounts.create("learning");
   await signIn(page, account);
-  await page.goto("/app/ai-settings?tab=persona"); // 参考ソースはアカウント設定タブの先頭（T-M8-344）
+  // 旧URLは プロンプト＞アカウント.md へ転送される（T-M8-400）。参考アカウントは5項目フォームの上。
+  await page.goto("/app/ai-settings?tab=persona");
+  await expect(page).toHaveURL(/\/app\/prompts\?sec=account-md/);
 
   /*
     **登録専用のボタンは無い**（T-M8-346）。記入して「アカウント設定を作る」を押すと、
@@ -243,7 +245,7 @@ test("学習ソースを追加すると分析中として並び、削除でき�
       [account.xAccountId],
     );
     await page.getByRole("button", { name: "削除", exact: true }).first().click();
-    const ok = toastIn(page).getByText("参考ソースを削除しました");
+    const ok = toastIn(page).getByText("参考アカウントを削除しました");
     const conflict = toastIn(page).getByText("実行できませんでした");
     // 成功トーストが出れば終わり。conflictトーストが出たら畳み直して再試行。
     // 待ちは長めに取る（負荷で結果が変わらないように・T-M8-368）。どちらのトーストが出たかで
@@ -252,7 +254,7 @@ test("学習ソースを追加すると分析中として並び、削除でき�
     if (await ok.isVisible()) break;
     await page.reload();
   }
-  await expect(toastIn(page).getByText("参考ソースを削除しました")).toBeVisible();
+  await expect(toastIn(page).getByText("参考アカウントを削除しました")).toBeVisible();
 });
 
 // 旧standard（編集不可プラン）の検証はT-M8-168で削除した（プラン自体を撤廃。全プランが編集可能になった）。

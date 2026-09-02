@@ -19,7 +19,7 @@ import { CardTitle } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 
 /**
- * 参考ソース（L-1/L-2, 要件06 §9, T-M5-07）。参考アカウント/参考投稿の追加（type別上限）、
+ * 参考アカウント（L-1, 要件06 §3.1, T-M5-07）。参考アカウントの追加（上限3件）、
  * 削除、進行/失敗表示、removing中の生成停止案内。
  *
  * **アカウント設定を作る入口**（T-M8-344・運営者の指示 2026-08-27）。以前は
@@ -27,11 +27,16 @@ import { Notice } from "@/components/ui/notice";
  * 「誰に何を発信するか」を最初から言葉にできる人ばかりではないので、
  * **真似したいアカウントを挙げるところから始められる**方が入口として易しい。
  * 反映は登録時の自動ではなく**ボタンを押したとき**に行う（いつ設定が変わるかを利用者が決める）。
+ *
+ * **置き場所は プロンプト＞アカウント.md の5項目フォームの上**（T-M8-400・運営者の指示
+ * 2026-09-01。設定＞アカウント設定タブは廃止）。**参考投稿の記入欄は持たない**——投稿の型は
+ * パターン追加の「参考投稿からAIで作る」（T-M8-397/399）が担う。登録済みの参考投稿（旧データ）は
+ * 一覧に残り、削除できる（サーバー側の `ref_post` は互換のため残す）。
  */
 
 type RefType = "ref_account" | "ref_post";
 
-/** 種別ごとの上限・入力例・説明（T-M8-112。欄を分けたので1か所にまとめる）。 */
+/** 記入欄を出す種別（参考アカウントのみ・T-M8-400）。上限・入力例は1か所にまとめる（T-M8-112）。 */
 const REF_FIELDS: {
   type: RefType;
   max: number;
@@ -42,13 +47,7 @@ const REF_FIELDS: {
     type: "ref_account",
     max: 3,
     placeholder: "https://x.com/handle",
-    hint: "文体・構成・題材の傾向を学びます（直近20投稿）。",
-  },
-  {
-    type: "ref_post",
-    max: 10,
-    placeholder: "https://x.com/handle/status/123",
-    hint: "伸びた投稿1件から、再現できる型を学びます。",
+    hint: "文体・構成・題材の傾向を学びます（直近30投稿）。",
   },
 ];
 const TYPE_LABEL: Record<string, string> = {
@@ -124,7 +123,6 @@ export function LearningSourcesManager({
    */
   const [rows, setRows] = useState<{ type: RefType; url: string }[]>([
     { type: "ref_account", url: "" },
-    { type: "ref_post", url: "" },
   ]);
   const toast = useToast();
   /**
@@ -144,6 +142,12 @@ export function LearningSourcesManager({
    * **「押したのに何も起きない」を作らない**——理由を画面に出して、押し直せるようにする。
    */
   const [waitingAnalysis, setWaitingAnalysis] = useState(false);
+  /**
+   * 直近の反映が失敗した理由（T-M8-410・運営者の報告 2026-09-01）。
+   * 以前はjobが失敗しても「反映しました」と出していた（進行中かどうかしか見ていなかった）。
+   * 失敗はトーストで流さず、押し直すまで画面に残す。
+   */
+  const [applyFailure, setApplyFailure] = useState<string | null>(null);
 
   // pending の経過秒（>60秒で遅延案内）を判定するため定期的に現在時刻を更新する。
   useEffect(() => {
@@ -192,11 +196,11 @@ export function LearningSourcesManager({
   }
 
   function remove(sourceId: string) {
-    if (!confirm("この参考ソースを削除しますか？反映済みの場合は、アカウント設定からその知見を取り除く処理が走ります。")) return;
+    if (!confirm("この参考アカウントを削除しますか？反映済みの場合は、アカウント設定からその知見を取り除く処理が走ります。")) return;
     startTransition(async () => {
       const res = await removeLearningSourceAction({ request_key: uuid(), x_account_id: xAccountId, source_id: sourceId });
       if (res.status === "success") {
-        toast.show({ tone: "success", title: "参考ソースを削除しました" });
+        toast.show({ tone: "success", title: "参考アカウントを削除しました" });
         await refresh();
       } else {
         showError(res);
@@ -218,17 +222,30 @@ export function LearningSourcesManager({
     if (!applying) return;
     const timer = setInterval(async () => {
       const res = await learningApplyStatusAction({ x_account_id: xAccountId });
-      if (res.status === "success" && res.running === false) {
-        setApplying(false);
-        // 設定そのものはサーバーが描画しているので、画面ごと取り直す。
-        router.refresh();
-        toast.show({
-          tone: "success",
-          title: "アカウント.mdの入力項目へ反映しました",
-          description:
-            "プロンプト > アカウント.md で内容を確認し、「アカウント設定を保存」を押すと確定します。",
-        });
+      if (res.status !== "success" || res.running !== false) return;
+      setApplying(false);
+      // 一覧の状態（分析待ち→反映済み）を取り直す。取り直さないと古い「分析待ち」が
+      // 60秒後に「開始が遅れています」へ化ける（T-M8-410）。
+      await refresh();
+      /*
+        **jobの成否で言い分ける**（T-M8-410）。提案が入ったときだけ成功と言う。
+        失敗は理由を画面に残す（トーストは消えるので、押し直す判断ができない）。
+      */
+      if (res.lastApply?.status === "failed" || !res.proposalReady) {
+        setApplyFailure(
+          res.lastApply?.message ??
+            "アカウント設定への反映が完了しませんでした。もう一度お試しください。",
+        );
+        return;
       }
+      setApplyFailure(null);
+      // 設定そのものはサーバーが描画しているので、画面ごと取り直す。
+      router.refresh();
+      toast.show({
+        tone: "success",
+        title: "アカウント設定の入力項目へ反映しました",
+        description: "下の入力項目で内容を確認し、「アカウント設定を保存」を押すと確定します。",
+      });
     }, 5_000);
     return () => clearInterval(timer);
   }, [applying, router, toast, xAccountId]);
@@ -245,6 +262,7 @@ export function LearningSourcesManager({
     startTransition(async () => {
       setApplying(true);
       setWaitingAnalysis(false);
+      setApplyFailure(null);
       for (const row of entered) {
         const res = await addLearningSourceAction({
           request_key: uuid(),
@@ -314,7 +332,7 @@ export function LearningSourcesManager({
     <div className="space-y-6">
       {removing ? (
         <Notice tone="warn">
-          参考ソースの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
+          参考アカウントの削除処理中です。削除が完了するまで、このアカウントの新規生成を一時停止しています。
         </Notice>
       ) : null}
 
@@ -325,7 +343,7 @@ export function LearningSourcesManager({
       */}
       {applying ? (
         <Notice role="status" tone="info">
-          参考ソースを読み込んでアカウント設定を作っています。1〜2分ほどで、上の欄へ入ります
+          参考アカウントを読み込んでアカウント設定を作っています。1〜2分ほどで、下の入力項目へ入ります
           （この画面を離れても続きます）。
         </Notice>
       ) : null}
@@ -336,8 +354,20 @@ export function LearningSourcesManager({
       */}
       {waitingAnalysis ? (
         <Notice role="status" tone="warn">
-          参考ソースの分析がまだ終わっていません。下の一覧が「反映済み」になったら、
+          参考アカウントの分析がまだ終わっていません。下の一覧が「反映済み」になったら、
           もう一度「アカウント設定を反映する」を押してください。
+        </Notice>
+      ) : null}
+
+      {/* 反映の失敗は理由と次の一手を残す（T-M8-410。成功扱いにしない・原則1）。 */}
+      {applyFailure ? (
+        <Notice role="alert" tone="danger">
+          <p className="font-medium">アカウント設定へ反映できませんでした</p>
+          <p className="mt-1 leading-6">{applyFailure}</p>
+          <p className="mt-1 leading-6 text-caption">
+            分析は済んでいるので、そのままもう一度「アカウント設定を反映する」を押せます。
+            うまくいかないときは、下の「自由入力で…」の項目を自分で書いて保存してください。
+          </p>
         </Notice>
       ) : null}
 
@@ -350,10 +380,10 @@ export function LearningSourcesManager({
       */}
       <section className="border-b border-hairline pb-6">
         <CardTitle>
-          {settingsMissing ? "参考ソースからアカウント設定を作る" : "参考ソースで設定を更新する"}
+          {settingsMissing ? "参考アカウントからアカウント設定を作る" : "参考アカウントで設定を更新する"}
         </CardTitle>
         <p className="mt-1 text-body leading-6 text-ink-2">
-          真似したいXアカウントや投稿のURLを入れて、下のボタンを押してください。
+          真似したいXアカウントのURLを入れて、下のボタンを押してください（直近30投稿を分析し、下の入力項目へ入れます）。
         </p>
 
         <div className="mt-4 space-y-3">
@@ -416,10 +446,10 @@ export function LearningSourcesManager({
 
         {/* 登録済みの一覧はこの枠の中（実行ボタンの上）。**押す前に何が材料か見える。** */}
         <div className="mt-5 border-t border-hairline pt-4">
-          <p className="text-body font-medium text-ink">登録済みの参考ソース</p>
+          <p className="text-body font-medium text-ink">登録済みの参考アカウント</p>
         {sources.length === 0 ? (
           <p className="mt-2 rounded-card border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-            まだ参考ソースはありません。上の欄から追加してください。
+            まだ参考アカウントはありません。上の欄から追加してください。
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
@@ -471,11 +501,11 @@ export function LearningSourcesManager({
           {/* **押せない理由を出す**（T-M8-37）。無効化だけでは壊れているのか分からない。 */}
           {!hasEnteredUrl && analyzedCount === 0 ? (
             <span className="text-caption text-ink-3">
-              XのURLを入れると押せます（{TYPE_LABEL.ref_account}か{TYPE_LABEL.ref_post}）。
+              XアカウントのURLを入れると押せます。
             </span>
           ) : (
             <span className="text-caption text-ink-3">
-              押すと登録・分析して、上のアカウント設定の欄へ入れます（1〜2分）。
+              押すと登録・分析して、下の入力項目へ入れます（1〜2分）。
               内容を確認して「アカウント設定を保存」を押すと確定します。
             </span>
           )}

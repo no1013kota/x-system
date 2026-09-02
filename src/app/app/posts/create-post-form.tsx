@@ -92,7 +92,7 @@ const PREREQ_FAILURE_PATH: Record<string, string> = {
   subscription_required: "/app/settings?tab=billing",
   api_key_required: "/app/settings?tab=api-keys",
   x_account_required: "/app/settings?tab=x-accounts",
-  persona_required: "/app/settings?tab=account",
+  persona_required: "/app/prompts?sec=account-md",
 };
 const PREREQ_FAILURE_CODES = new Set(Object.keys(PREREQ_FAILURE_PATH));
 const QUEUED_SLOW_MS = 60_000;

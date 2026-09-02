@@ -169,7 +169,16 @@ export function PersonaSettingsForm({
       toast.show({ tone: "error", title: "保存できませんでした", description: result.message });
       return;
     }
-    toast.show({ tone: "success", title: "アカウント設定を保存しました" });
+    // 本棚に何が起きたかを言う（T-M8-411）。追加できなかった（上限）ときは書き換えたと言う。
+    toast.show({
+      tone: "success",
+      title: "アカウント設定を保存しました",
+      description: result.preset?.added
+        ? `アカウント.md「${result.preset.name}」を下の一覧に追加し、使用中にしました。`
+        : result.preset?.name
+          ? `アカウント.mdが上限（5件）のため、使用中の「${result.preset.name}」を書き換えました。`
+          : undefined,
+    });
     if (result.version !== undefined) {
       setVersion(result.version);
       setDirty(false);
@@ -230,6 +239,21 @@ export function PersonaSettingsForm({
           で控えを作ってください。
         </Notice>
       ) : null}
+
+      {/*
+        **入口の対比を見出しで言う**（T-M8-406・運営者の指示 2026-09-01）。上の枠が
+        「参考アカウントからアカウント設定を作る」なので、こちらは「自由入力で〜作る」。
+        T-M8-346で「アカウント設定」という見出しは消したが、入口が2つ並ぶ今は
+        どちらの入口かが分かる見出しが要る。文言は上の枠と同じく保存の有無で切り替える。
+      */}
+      <div className={groupClassName}>
+        <CardTitle id="free-input-heading">
+          {version >= 1 ? "自由入力で設定を更新する" : "自由入力でアカウント設定を作る"}
+        </CardTitle>
+        <p className="mt-1 text-body leading-6 text-ink-2">
+          参考アカウントを使わず、下の項目を自分の言葉で書いて保存します（参考アカウントの反映結果を手直しする場所でもあります）。
+        </p>
+      </div>
 
       <section aria-labelledby="persona-group" className={groupClassName} role="group">
         <CardTitle id="persona-group">

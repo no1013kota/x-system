@@ -22,6 +22,13 @@ import { PT_PATTERN_GEN } from "./gen-prompts";
  */
 
 export const PATTERN_GEN_MAX_POSTS = 3;
+/**
+ * 生成に使うモデルの層（T-M8-399・運営者の指示 2026-09-01「sonnet5で固定」）。
+ * `analysis` 層は Anthropic では `claude-sonnet-5` に固定される（`PURPOSE_TEXT_MODELS`）。
+ * BYOKでOpenAI/Googleしか無い利用者はClaudeを呼べないため、同格の analysis 層モデルになる。
+ * 対応はテスト（pattern-prompt-gen.test.ts）で守る。
+ */
+export const PATTERN_GEN_MODEL_PURPOSE = "analysis" as const;
 /** 参考投稿1件の受理上限。Xの長文上限（25,000加重）を全角で超える貼り付けは弾く。 */
 export const PATTERN_GEN_POST_MAX_CHARS = 15_000;
 

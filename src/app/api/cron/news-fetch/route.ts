@@ -55,6 +55,12 @@ export async function GET(request: Request): Promise<Response> {
       });
       // 新着があった分だけ時間単位ダイジェストを fan-out する（旧仕組みと同じ・要件04 §14）。
       const digest = await fanOutNewsDigest({ db: pooledDb, windowStart: newsDigestWindowStart(now) });
+      /*
+        メール通知ONの利用者へ同じ内容を送る（T-M8-407）。宛先は**今回作れた通知行**からだけ
+        作られるので、同じ窓の再実行で二重送信にならない。失敗は利用者ごとに隔離して数える。
+      */
+      const { sendNewsDigestMails } = await import("@/lib/jobs/news-digest-mail-server");
+      const emails = await sendNewsDigestMails(digest.emailTargets);
       return {
         totalSaved: fetched.totalSaved,
         categories: fetched.categories.map((c) => ({
@@ -67,6 +73,8 @@ export async function GET(request: Request): Promise<Response> {
           errorCode: c.errorCode,
         })),
         digest: { matchedUsers: digest.matchedUsers, notified: digest.notified },
+        // 送れなかった件数を結果に出す（原則1。0件と「全部失敗」を区別する）。
+        emails,
       };
     },
     response: ({ ran, windowKey, result }) => ({

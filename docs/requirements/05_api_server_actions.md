@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.74 |
+| バージョン | v1.81 |
 | 更新日 | 2026-09-01 |
 | 関連 | 全画面、全ジョブ |
 
@@ -116,15 +116,16 @@
 
 **登録済みアドレスの扱い**（T-M8-149）: Supabaseの応答は環境で違う。ローカルは`user_already_exists`を返すが、**ホスト版は列挙対策で成功と同じ形（`identities`が空配列）を返しメールを送らない**。エラーコードだけを見ていると本番でだけ通り抜けるため、成功応答も`classifySignUpUser`で判定し、登録済みならログイン導線付きのエラーへ振り分ける（文言の正本は`signup-errors.ts`）。**未確認アドレスの再登録は「作成」として扱う**——Supabaseが毎回コードを再送するため、そのまま進めてよい。
 
-`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認は省略中**（T-M8-202・`mailer_autoconfirm`）: signUp応答に**sessionが付いていれば登録完了として`/plans?signup=1`へredirect**し、無ければ従来どおりコード入力へ切り替わる（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
+`signUp`はSupabase Authへ`emailRedirectTo={APP_BASE_URL}/auth/confirm`を指定する（recovery用の設定と共通）。**メール確認（6桁コード）は必須**（T-M8-404・運営者の指示 2026-09-01。T-M8-202の省略は2026-08-22〜09-01のみ）: signUp応答は**sessionなし**で返り、同じ画面がコード入力へ切り替わる。設定が自動確認ならsession付きで`/app?welcome=signup`へredirectする（判定は設定値ではなくsessionの有無——Supabase設定と食い違っても自動追従する）。`classifySignUpUser`はsession付きを必ず新規と判定する（autoconfirmでは新規でも`email_confirmed_at`が即入るため）。確認必須モードでは成功すると同じ画面がコード入力へ切り替わり、そこから`resend(type=signup)`でコードを再送できる。signup／確認メール再送／login／password reset申請は明示renderしたTurnstile widgetの`captcha_token`を必須とし、Server ActionからSupabase Authへ渡す。欠落はprovider呼び出し前に拒否し、Supabaseの安定コード`captcha_failed`（不正・期限切れ・再利用を含む）だけを共通CAPTCHAエラーへ正規化する。各widgetはAction完了後にresetする。6桁コード画面の再送widgetは`appearance=interaction-only`とし、追加操作が必要な場合だけ表示する（2026-08-19 [Cloudflare公式Widget configurations](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)を確認）。`size=invisible`は有効なsize値ではないため使用しない。未確認ログインではログイン用tokenを再利用せず、切替後の再送widgetから受け取った新しいtokenで自動再送を1回だけ行う（Turnstile tokenは5分・1回限り。2026-08-19 [Cloudflare公式server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)と[Supabase `resend`](https://supabase.com/docs/reference/javascript/auth-resend)を確認）。Action完了後はwidgetをresetし、手動再送にはさらに新しいtokenを使う。
 
 ### 4.1 アカウント・設定
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `setActiveXAccount` | `x_account_id` | active account | 所有者かつ`status=active` |
-| `updateNotificationConfig` | `notification_config` | config | 本人のみ |
+| `updateNotificationConfig` | `notification_config` | config | 本人のみ。ニュースの `email` は省略可（省略は保存済みの値を保つ・T-M8-407） |
 | `updateNewsConfig` | `news_config` | config | 本人のみ |
+| `updateNewsEmailNotification` | email（boolean） | — | 本人のみ。`notification_config.news.email` だけを書く（T-M8-407。ニュース通知カードの「メールでも受け取る」） |
 | `updateAiPurposeConfig` | `ai_purpose_config` | config | 文章生成・リサーチは単一provider（`text`）。standard/mdは登録済みかつvalidなproviderだけ選択可。premiumの`text`は運営文章provider（既定Claude）でread-only、画像だけ利用可能なOpenAI/Geminiから選択可 |
 
 `updateAiPurposeConfig`は`text`／`image`の部分更新と`null`による解除を受け付ける。standard／mdで非`null`を指定する場合は対象`user_api_keys.status=valid`を同一transactionで検証し、`image`はOpenAI／Googleだけを許可する。premiumは`text`を入力した時点で拒否してDB値を変更せず、`image`も運営APIキーが設定済みのproviderだけを許可する。premium文章providerはユーザーDB設定を参照せず実行時に解決し、運営設定がない場合は`anthropic`とする。
@@ -229,9 +230,11 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
 | `listLearningSources` | none | sources | active_x_account |
-| `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version | active選択中アカウントの所有権を再検証し、セクション1〜4を機械更新して新versionを作成。`base_md_version = 0`の初回保存はテンプレート全体から初版（version 1）を作成する（セクション5〜6は空欄） |
-| `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで。removed再追加は既存rowを復元 |
+| `updatePersonaSettings` | x_account_id, settings, expected_base_md_version | version, preset{added, name} | active選択中アカウントの所有権を再検証し、全5セクションを設定から生成して新versionを作成。**本棚へ「アカウント設定 vN」を1件追加して使用中にする**（T-M8-411。上限5件なら使用中の1件を書き換え `added=false`） |
+| `addLearningSource` | request_key, type, url | job_id/source | ref_accountは3件、ref_postは10件まで（**画面から登録できるのは ref_account のみ**・T-M8-400。ref_post は既存データ・API互換のため残す）。removed再追加は既存rowを復元 |
 | `removeLearningSource` | request_key, source_id | job_id/null | analyzedはremoving化してMD-MERGE。未適用sourceは直接removed |
+| `applyLearningToSettings` | request_key, x_account_id | job_id | 「アカウント設定を反映する」（T-M8-344/349）。分析済みが1件以上あるときだけ `md_merge`（`learning_source_id` 無し＝提案モード）を起票し、結果は `settings_proposal` へ |
+| `learningApplyStatus` | x_account_id | running, lastApply（直近の反映jobの succeeded/failed と理由）, proposalReady | 本人のみ。反映の進行と**結果**を返す（T-M8-410。以前は進行中かどうかだけで、失敗も成功扱いになっていた） |
 | `listPromptPresets` | x_account_id, kind | presets | 本棚の一覧（T-M8-332）。空なら「いま効いている内容」を使用中の1件として作る |
 | `createPromptPreset` | x_account_id, kind, name, content | preset | 契約中のみ。**追加しただけでは使用中にならない** |
 | `updatePromptPreset` | x_account_id, preset_id, name, content, expected_updated_at | preset | 楽観lock。使用中なら生成が読む置き場へ同じtxで写す |
@@ -243,6 +246,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `deletePattern` | pattern_id | deletedName, disabledSlots | md/premiumのみ。**最後の1件は拒否**（`last_pattern`）。停止した予約の件数を返す |
 | `restoreDefaultPatterns` | none | restored | md/premiumのみ。欠けている既定パターンを戻した件数 |
 | `updatePatternPrompt` | pattern_id, content, expected_updated_at | prompt | md/premiumのみ。楽観lock（投稿作成画面の「保存して以後も使う」） |
+| `generatePatternPromptAction` | x_account_id, reference_posts（1〜3件・本文またはX投稿のURL）, hint | name, description, prompt | プロンプト編集可プランのみ。**同期実行**（jobを作らない）。URLは対象アカウントのuser tokenで本文へ引き直す（T-M8-399。X未連携・読めない投稿は理由と `details.settingsPath` を返す）。AIはanalysis層（Anthropic=Sonnet 5）。X読取・AI呼び出しを原価台帳へ、premiumはAIクレジットへ精算（冪等キー `patgen:<id>:charge`）。保存はしない（T-M8-397） |
 
 `removeLearningSource`は同じXアカウントにqueued/runningの`learning_analysis`/`md_merge`または`removing` sourceがある場合は`job_conflict`にする。`addLearningSource`も`removing`中は拒否し、削除mergeへ別のsource変更を混ぜない。（`reimportOwnPosts`は2026-08-15に廃止・T-M8-103）
 
@@ -250,9 +254,9 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 返却 | 備考 |
 |---|---|---|---|
-| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId?, followerRecorded? | 「分析を開始」ボタン（T-M8-255）。フォロワー数の当日記録（押した時点の最新値で上書き。毎日の記録自体は毎時cronが担う・T-M8-257）→ `suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
+| `startAnalysisAction` | none（操作中のXアカウントが対象） | message, jobId? | 「分析を開始」ボタン（T-M8-255）。`suggestion` jobの冪等起票（`sug-manual:{x_account_id}:{JST日付}`＝1日1回）→ `after()`でdispatch。起票できない理由（実行中／当日実行済み／契約無効／アカウント停止中／BYOKキー未登録）は利用者向けの文言で返す |
 
-2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー記録は起票ゲートを通ったときだけ行い、記録の失敗は分析を止めない。
+2026-08-15〜2026-08-23は毎朝8:00 JSTの自動起票（`enqueueDailySuggestions`・Server Actionなし）だったが、T-M8-255で手動実行へ戻した（要件04 §12。費用が利用の有無に関わらず積み上がるため）。フォロワー数の記録はこのActionでは行わない（毎時cronだけ・T-M8-403）。
 
 実績集計（ホームSC-01の「直近の実績」）と分析レポートの一覧は**読み取り専用のためServer Actionを置かず、Server Componentから直接読む**（要件06 §8）。読取だけの集計に外から叩けるPOST受け口を増やさない。`"use server"` の export が呼び出し元ゼロで残らないことは `src/app/actions/server-action-reachability.test.ts` が検査する（F12）。
 
@@ -377,6 +381,13 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.72 | 2026-09-01 | updatePersonaSettings の reference_style を廃止（手書き章の廃止・T-M8-395）。settings へ volume（スレッド量や文章量）を追加 |
 | v1.73 | 2026-09-01 | generatePatternPromptAction を追加（参考投稿×3→プロンプト生成・同期実行・原価台帳とAIクレジットへ記録・T-M8-397） |
 | v1.74 | 2026-09-01 | regenerateImageAction / uploadDraftImageAction / removeDraftImageAction へ post_local_id を追加（ポスト別画像・T-M8-398） |
+| v1.75 | 2026-09-01 | generatePatternPromptAction の表行を追加。参考投稿にX投稿のURLを受け付け本文へ引き直す・読めないURLは理由つきで拒否・Sonnet 5固定（T-M8-399） |
+| v1.76 | 2026-09-01 | addLearningSource: 画面から登録できるのは ref_account のみ（ref_post はAPI互換で残置・T-M8-400） |
+| v1.77 | 2026-09-01 | `startAnalysisAction` からフォロワー数の当日記録を外す（`followerRecorded` を廃止・T-M8-403） |
+| v1.78 | 2026-09-01 | signUp: メール確認（6桁コード）を必須へ戻す。signIn: 未確認アカウントの自動確認を廃止し `email_not_confirmed` はコード画面へ（T-M8-404） |
+| v1.79 | 2026-09-01 | updateNewsEmailNotification を追加、updateNotificationConfig はニュースの email 省略可（T-M8-407） |
+| v1.80 | 2026-09-01 | applyLearningToSettings／learningApplyStatus の表行を追加。learningApplyStatus は直近の反映jobの結果（lastApply）と提案の有無（proposalReady）を返す（T-M8-410） |
+| v1.81 | 2026-09-01 | updatePersonaSettings が本棚へ1件追加して使用中にし、結果に preset を返す（T-M8-411） |
 
 ### 下書きの投稿予約（T-M8-157）
 

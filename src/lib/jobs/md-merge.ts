@@ -1,4 +1,5 @@
 import {
+  DEFAULT_TONE_SETTINGS,
   generateInitialBaseMd,
   personaSettingsSchema,
   rebuildSettingsSections,
@@ -9,6 +10,7 @@ import { syncInUsePreset } from "@/lib/prompts/prompt-preset-sync";
 import { toProviderCall, type ProviderCall } from "../ai/normalize";
 import { estimateProviderCost } from "../ai/pricing";
 import { PT_MD_MERGE } from "../prompts/gen-prompts";
+import { OPERATED_THEME_OPTIONS } from "../themes";
 import type { Provider, TextGen } from "../ai/types";
 import { recordProviderCalls } from "../db/api-usage-ledger";
 import { settleIfPremium, type RunInTx as SettleRunInTx } from "../usage/reserve-if-premium";
@@ -38,11 +40,24 @@ export class MdMergeConflictError extends Error {
 
 export class MdMergeStructureError extends Error {
   readonly retryable = false;
-  constructor(message = "md merge output broke base_md structure") {
-    super(message);
+  /**
+   * 利用者向けの理由（T-M8-410）。job の `error.message` と失敗通知の本文に使う。
+   * 反映（提案）と削除で言い分ける——「削除に失敗しました」を反映の失敗に出さない。
+   */
+  readonly userMessage: string;
+  constructor(userMessage: string = MD_MERGE_FAILURE_MESSAGES.reflect) {
+    super("md merge output broke base_md structure");
     this.name = "MdMergeStructureError";
+    this.userMessage = userMessage;
   }
 }
+
+/** md_merge 失敗の利用者向け文言（反映＝提案モード／削除）。通知（notifications.ts）と共有する。 */
+export const MD_MERGE_FAILURE_MESSAGES = {
+  reflect:
+    "参考アカウントの内容をアカウント設定の形にまとめられませんでした。もう一度「アカウント設定を反映する」を押すか、自由入力で作成してください。",
+  remove: "学習ソースの削除に失敗しました。時間をおいて再度お試しください。",
+} as const;
 
 export type RunInTx = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 
@@ -157,14 +172,60 @@ async function loadMergeState(
  * 出力は `personaSettingsSchema` と同じ形のJSON。読めない・形が違うものは1回だけ直させ、
  * それでも駄目なら構造エラー（学習を捨てるより、設定を壊さない方を採る）。
  */
+/**
+ * **初回（アカウント設定が未保存）の `<current>`**（T-M8-409・運営者の報告 2026-09-01）。
+ *
+ * 以前は `"none"` を渡しつつ「<current>と同じ形・キーを増減しない」「テーマは<current>の値から
+ * 選び直すだけ」と指示していたため、AIは**形も許容値も知らされないまま**出力し、検証
+ * （`personaSettingsSchema`）に通らず、新規利用者では決定的に失敗していた。
+ * 全キーを持つ空の雛形を渡し、埋めるべき項目をAIに見せる。
+ */
+export function firstSetupCurrent(): string {
+  const template: PersonaSettings = {
+    persona: { speaker: "", audience: "", value: "" },
+    themes: { primary: [], secondary: [], free_text: "" },
+    tone: { ...DEFAULT_TONE_SETTINGS },
+    volume: { free_text: "" },
+    ng: { words: [], topics: [], rules: [] },
+  };
+  return JSON.stringify(template);
+}
+
+/** `<allowed>`（テーマの許容id＋列挙値）。テーマは運用中の6分野（`OPERATED_THEME_OPTIONS`）だけ。 */
+export function allowedValuesForMerge(): string {
+  return JSON.stringify({
+    themes: OPERATED_THEME_OPTIONS.map((t) => ({ id: t.id, label: t.label })),
+    "tone.emoji_policy": ["none", "limited"],
+    "tone.sentence_style": "自由記述（60字以内）",
+    "tone.first_person": "自由記述（例: 私・僕・当社）",
+    "volume.free_text": "自由記述（500字以内・分量の指定が無ければ空）",
+  });
+}
+
+const MODE_NOTES = {
+  first: "**初回**: <current> は空の雛形。persona の3項目と themes.primary（<allowed> の id から1〜2件）を<analyses>から埋め、tone・volume・ng は根拠があるところだけ書く。",
+  refine: "",
+} as const;
+
 async function mergeSection(
   provider: { textGen: TextGen; model: string },
-  input: { current: string; analyses: unknown[]; removed: unknown[]; deadline: Deadline },
+  input: {
+    current: string;
+    /** 初回（雛形を渡している）か。指示の一文を切り替える。 */
+    firstSetup: boolean;
+    analyses: unknown[];
+    removed: unknown[];
+    deadline: Deadline;
+    /** 失敗時の利用者向け文言（反映／削除で言い分ける・T-M8-410）。 */
+    failureMessage: string;
+  },
   now: () => number,
 ): Promise<{ settings: PersonaSettings; calls: ProviderCall[] }> {
   const calls: ProviderCall[] = [];
   const buildUser = (): string =>
-    PT_MD_MERGE.replaceAll("{{current_section}}", input.current)
+    PT_MD_MERGE.replaceAll("{{mode_note}}", input.firstSetup ? MODE_NOTES.first : MODE_NOTES.refine)
+      .replaceAll("{{current_section}}", input.current)
+      .replaceAll("{{allowed_values}}", allowedValuesForMerge())
       .replaceAll("{{active_analyses}}", JSON.stringify(input.analyses))
       .replaceAll("{{removed_analyses}}", JSON.stringify(input.removed));
 
@@ -203,7 +264,7 @@ async function mergeSection(
       ),
     );
   }
-  if (!settings) throw new MdMergeStructureError();
+  if (!settings) throw new MdMergeStructureError(input.failureMessage);
   return { settings, calls };
 }
 
@@ -274,18 +335,24 @@ export async function executeMdMerge(
     */
     const currentSettings = personaSettingsSchema.safeParse(state.settings);
     const isFirstSetup = !currentSettings.success;
+    const failureMessage = opts.removedSourceId
+      ? MD_MERGE_FAILURE_MESSAGES.remove
+      : MD_MERGE_FAILURE_MESSAGES.reflect;
     if (isFirstSetup && state.analyses.length === 0) {
       // 材料も土台も無い。**空の設定を作らない**（何を根拠に決めたか説明できない設定になる）。
-      throw new MdMergeStructureError();
+      throw new MdMergeStructureError(failureMessage);
     }
 
     const { settings: merged, calls } = await mergeSection(
       { textGen, model },
       {
-        current: currentSettings.success ? JSON.stringify(currentSettings.data) : "none",
+        // 未保存なら全キーを持つ空の雛形を渡す（"none" では形が伝わらない・T-M8-409）。
+        current: currentSettings.success ? JSON.stringify(currentSettings.data) : firstSetupCurrent(),
+        firstSetup: isFirstSetup,
         analyses: state.analyses,
         removed: state.removed,
         deadline,
+        failureMessage,
       },
       now,
     );

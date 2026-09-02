@@ -4,16 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { closePool, getPool, withTransaction } from "../db/pool";
 
-import { confirmLegacyUnconfirmedEmail, isRegisteredEmail } from "./registered-email-server";
+import { isRegisteredEmail } from "./registered-email-server";
 
 /**
- * 未確認アカウントのログイン時確認（T-M8-377）の実DB検証。
+ * 登録の有無の判定（T-M8-295）の実DB検証。
  *
- * 新規登録は確認なしで完了する設定なのに、設定変更前に登録された未確認アカウントは
- * ログインで6桁コード画面へ回されていた（運営者の指摘 2026-08-30）。
- * この関数がログイン試行の前に確認済みへ揃えることで、コード画面の分岐へ入らなくなる。
+ * ログイン時の自動確認（T-M8-377）は、新規登録の6桁コード確認を必須へ戻したT-M8-404で
+ * 廃止した（残すと「コードを入れずにログイン」で確認を素通りできる）。
  */
-describe("confirmLegacyUnconfirmedEmail（db）", () => {
+describe("isRegisteredEmail（db）", () => {
   let available = false;
   const created: string[] = [];
 
@@ -51,24 +50,14 @@ describe("confirmLegacyUnconfirmedEmail（db）", () => {
     return { id, email };
   }
 
-  it("未確認のアカウントを確認済みへ揃える（大文字小文字は無視）", async () => {
+  it("登録済み（未確認でも）は true、存在しないメールは false（大文字小文字は無視）", async () => {
     if (!available) return;
-    const { email } = await makeUser(false);
-    expect(await confirmLegacyUnconfirmedEmail(email.toUpperCase())).toBe(true);
-    const { rows } = await getPool().query<{ confirmed: boolean }>(
-      `select email_confirmed_at is not null as confirmed from auth.users where email = $1`,
-      [email],
-    );
-    expect(rows[0]?.confirmed).toBe(true);
-    // 2回目は対象なし（冪等・確認日時を上書きしない）。
-    expect(await confirmLegacyUnconfirmedEmail(email)).toBe(false);
-  });
-
-  it("確認済み・存在しないメールには何もしない", async () => {
-    if (!available) return;
-    const { email } = await makeUser(true);
-    expect(await confirmLegacyUnconfirmedEmail(email)).toBe(false);
-    expect(await confirmLegacyUnconfirmedEmail(`none-${randomUUID()}@example.com`)).toBe(false);
-    expect(await isRegisteredEmail(email)).toBe(true);
+    const confirmed = await makeUser(true);
+    const unconfirmed = await makeUser(false);
+    expect(await isRegisteredEmail(confirmed.email)).toBe(true);
+    expect(await isRegisteredEmail(confirmed.email.toUpperCase())).toBe(true);
+    // 未確認のままの登録も「登録あり」——ログインでは確認済みへ揃えず、コード画面へ回す（T-M8-404）。
+    expect(await isRegisteredEmail(unconfirmed.email)).toBe(true);
+    expect(await isRegisteredEmail(`none-${randomUUID()}@example.com`)).toBe(false);
   });
 });

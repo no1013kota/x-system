@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | バージョン | v1.20 |
-| 更新日 | 2026-08-31 |
+| 更新日 | 2026-09-01 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -211,7 +211,7 @@ stagingのStripeアカウントには **Stripeが自動生成した既定の構�
 
 3. seed（`prompt_templates` 等）が必要なら投入する。`supabase/seed.sql` はローカル用なので、本番へ入れる範囲を確認してから流す。
 4. Auth 設定: メール確認を有効化、**rate limit** を設定、Turnstile（CAPTCHA）を有効化。
-5. **メール確認は省略中**（T-M8-202・運営者の決定 2026-08-22）。`npm run auth:templates -- --target <env> --apply` が `mailer_autoconfirm: true` を反映し、**登録即ログイン**になる（確認メールは送られない）。**戻す手順**: (1) `scripts/auth-settings.mjs` の `mailer_autoconfirm` を false (2) `supabase/config.toml` の `enable_confirmations` を true (3) `npm run auth:templates -- --target <env> --apply` を再実行 (4) E2E `invite.spec.ts` のフォールバックテストをgit履歴から復元。アプリはsignUp応答のsession有無で自動追従するためコード変更は不要。以下の確認メールの説明は**確認を戻した場合**の話。
+5. **メール確認（6桁コード）は必須**（T-M8-404・運営者の指示 2026-09-01。2026-08-22〜09-01はT-M8-202で省略していた）。`npm run auth:templates -- --target <env> --apply` が `mailer_autoconfirm: false` を反映する——**コードを変えただけでは staging/本番に効かない**ので、この変更を出すデプロイでは両環境で実行する（`doctor -- --base <URL>` の「登録/再設定メールの行き先」で反映を確認）。
 5.1. **確認メールの送信元を決める。** サインアップ確認・パスワード再設定のメールは**Supabase Authが送る**（アプリの `SMTP_*` は通知メール用で別物）。Supabase内蔵の送信は **2通/時**、かつ**その組織のメンバーのアドレス宛にしか届かない**（それ以外は `Email address not authorized`）。
    - **stagingの動作確認だけなら**: 自分（Supabaseの組織メンバー）のアドレスで登録すれば内蔵送信で足りる。
    - **本番、または他人のアドレスで試すなら**: Supabase の Authentication → Emails → SMTP Settings へ**カスタムSMTPを設定する**（アプリ用と同じGmail App Passwordを流用できる）。設定後の上限は 30通/時から。

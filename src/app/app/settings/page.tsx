@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { APP_NAME } from "@/lib/app-config";
@@ -8,42 +7,33 @@ import { appLockFor } from "@/lib/auth/subscription-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { yen } from "@/lib/format";
 import { serverNowMs } from "@/lib/time/server-now";
-import { EmptyState } from "@/components/app-shell/page-state";
 import { TabNav } from "@/components/app-shell/tab-nav";
 import { XOAuthErrorNotice } from "@/components/app-shell/x-oauth-error-notice";
 import { PortalButton } from "@/components/billing/portal-button";
 import { ResumePlanButton } from "@/components/billing/resume-plan-button";
-import type { AiKeyProvider } from "@/lib/api-keys";
 import type { ApiKeyViewState } from "@/lib/api-key-view";
 import { listApiKeyViewsForUser } from "@/lib/api-key-view-server";
-import { operatorImageProviders } from "@/lib/ai-purpose-config-server";
-import type { LearningSourceView } from "@/lib/learning-sources";
-import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
 import { isOperatorManagedPlan, PLANS, type PlanId } from "@/lib/plans";
 import { getSettingsForUser } from "@/lib/settings-server";
-import { pooledQueryable } from "@/lib/db/pool";
 import type { UserSettings } from "@/lib/settings";
 import { UsageSummaryCard } from "@/components/app-shell/usage-summary-card";
 import { usageResetLabel, type UsageSummary } from "@/lib/usage/usage-summary";
 import { loadRequestProfile } from "@/lib/profile/request-profile-server";
 import { usageSummaryFrom } from "@/lib/usage/usage-summary";
-import { readSingleRow } from "@/lib/supabase/single-row";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   listXAccounts,
   type XAccountListItem,
 } from "@/lib/x/account-actions-server";
 
-import { AiPurposeSettings } from "./ai-purpose-settings";
 import { ApiKeySettings } from "./api-key-settings";
-import { LearningSourcesManager } from "./learning-sources-manager";
 import { SettingsPreferences } from "./settings-preferences";
 import {
   SETTINGS_TABS,
   normalizeSettingsTab,
+  settingsTabRedirect,
 } from "./tabs";
 import { XAccountsSettings } from "./x-accounts-settings";
-import { Card, CardTitle, cardClassName, pageTitleClassName } from "@/components/ui/card";
+import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { planChangeEffects } from "@/lib/billing/plan-change-effects";
 import { cancellationEffects } from "@/lib/billing/cancellation-reasons";
@@ -59,13 +49,13 @@ import {
 import { xRedirectUri } from "@/lib/x/oauth-server";
 
 /**
- * 設定（T-M8-104で旧「設定」と旧「AI設定」を統合）。タブ構成:
- * 設定（Xアカウント＋APIキー＋通知）／課金・プラン／アカウント設定（＋参考ソース）／
- * AIモデル設定／プロンプト（アカウント.md・投稿作成・画像生成）。
+ * 設定。タブ構成: Xアカウント／APIキー／通知／課金・プラン（T-M8-402・運営者の指示 2026-09-01）。
+ * T-M8-104 で1つの「設定」タブへ畳んでいた3区分を、アカウント設定（T-M8-400）・AIモデル設定
+ * （T-M8-401）がプロンプト画面へ移ったのを機に元へ戻した。旧slug（general 等）は tabs.ts が受ける。
  * 問い合わせタブは廃止（2026-08-15 運営者の指示）。旧slugは tabs.ts のエイリアスが受ける。
+ * **アカウント設定タブは廃止**（T-M8-400・運営者の指示 2026-09-01）——参考アカウントから
+ * アカウント設定を作る機能ごと プロンプト＞アカウント.md へ移し、旧slugはそこへ転送する。
  */
-
-const pooledDb = pooledQueryable();
 
 export const metadata: Metadata = {
   title: `設定 | ${APP_NAME}`,
@@ -82,12 +72,6 @@ interface SettingsPageProps {
   }>;
 }
 
-
-interface AccountRow {
-  base_md_version: number;
-  handle: string;
-  id: string;
-}
 
 const STATUS_LABELS: Record<string, string> = {
   incomplete: "お申し込み未完了",
@@ -108,24 +92,14 @@ function formatPeriodEnd(value: string | null): string {
   }).format(new Date(value));
 }
 
-/** アカウント設定・プロンプトタブの共通前提: 操作対象のXアカウント。無ければ連携導線を出す。 */
-function NoAccountState() {
-  return (
-    <EmptyState
-      actionHref="/app/settings?tab=general"
-      actionLabel="Xアカウント設定へ"
-      description="アカウント設定は連携済みのXアカウントごとに保存されます。"
-      title="Xアカウントを選択してください"
-    />
-  );
-}
-
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   if (!user) redirect("/login?next=/app/settings");
 
+  // 別画面へ移ったタブ（アカウント設定→プロンプト＞アカウント.md）は転送する（T-M8-400）。
+  const movedTo = settingsTabRedirect(params.tab);
+  if (movedTo) redirect(movedTo);
   const tab = normalizeSettingsTab(params.tab);
-  const admin = createSupabaseAdminClient();
   // profile取得と、planに依存しないタブ別データは1波にまとめる（T-M8-67。以前は最大4段直列）。
   /*
     **profiles は1リクエストにつき1回だけ読む**（T-M8-286→T-M8-361）。以前はここで
@@ -134,8 +108,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   */
   const [profile, xAccounts, userSettings] = await Promise.all([
     loadRequestProfile(user.id),
-    tab === "general" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
-    tab === "general"
+    tab === "x-accounts" ? listXAccounts(user.id) : Promise.resolve([] as XAccountListItem[]),
+    tab === "notifications"
       ? getSettingsForUser(user.id)
       : Promise.resolve(null as UserSettings | null),
   ]);
@@ -221,80 +195,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     billingReturn && !prorationCharge ? await loadPendingProration(stripe, billingReturn) : null;
 
   // planに依存する第2波。
-  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、設定タブで一緒に読む
+  // - APIキー: BYOK（standard/md）はX APIキーの登録がX連携の前提なので、Xアカウントタブでも読む
   //   （前提未達のまま「追加」を押して無言で戻される事故を防ぐ・要件06 §1.2.1）。
   // - 利用枠: premium の利用枠（契約期間ごと）の残量（設定タブ・課金タブ, 要件03 §8・T-M6-12/T-M8-25）。
-  // - アカウント行: アカウント設定／プロンプトタブの対象Xアカウント。
-  const [apiKeys, usage, accountResult, purposeKeys] = await Promise.all([
-    tab === "general" && !isOperatorManagedPlan(plan)
+  const [apiKeys, usage] = await Promise.all([
+    (tab === "api-keys" || tab === "x-accounts") && !isOperatorManagedPlan(plan)
       ? listApiKeyViewsForUser(user.id)
       : Promise.resolve([] as ApiKeyViewState[]),
     // 利用枠は App Shell と同じ1行から作る（T-M8-295。専用クエリを持つと往復が1本増える）。
-    tab === "billing" || tab === "general"
+    tab === "billing" || tab === "api-keys"
       ? loadRequestProfile(user.id).then((bundle) =>
           usageSummaryFrom(bundle, plan ?? "", bundle?.usage_resets_at ?? null),
         )
       : Promise.resolve(null as UsageSummary | null),
-    tab === "account" && profile.active_x_account_id
-      ? admin
-          .from("x_accounts")
-          .select("id, handle, base_md_version")
-          .eq("id", profile.active_x_account_id)
-          .eq("user_id", user.id)
-          .eq("status", "active")
-          .maybeSingle<AccountRow>()
-      : Promise.resolve(null),
-    tab === "purposes" && !isOperatorManagedPlan(plan)
-      ? listApiKeyViewsForUser(user.id)
-      : Promise.resolve(null),
   ]);
-  // 取得失敗を「未選択」にしない（T-M8-158）。null へ潰すと、連携済み・選択済みの利用者へ
-  // 「Xアカウントを選択してください」の空状態が出て行き止まりになる。
-  const account: AccountRow | null = accountResult
-    ? readSingleRow(accountResult, "settings x_account")
-    : null;
-  // 参考ソースの滞留判定に使う基準時刻（T-M8-113）。サーバーとブラウザで同じ値を使わないと
-  // ちょうど60秒あたりで判定が割れ、表示が食い違って描き直しになる。
-  const nowMs = await serverNowMs();
-
-  // 参考ソースはアカウント設定タブの**先頭**に置く（T-M8-344。設定を作る入口だから）。
-  let learningSources: LearningSourceView[] = [];
-  /** 反映のjobが動いているか（再訪しても「書き換え中」を出すため・T-M8-344）。 */
-  let learningApplying = false;
-  /*
-    **設定が未保存でも読む**（T-M8-349）。以前は `base_md_version >= 1` を条件にしていたため、
-    参考ソースを登録しても一覧が空のままで、「登録できたのか」が画面から分からなかった
-    ——参考ソースはアカウント設定を作る入口なので、未保存のときこそ要る（原則1）。
-  */
-  if (tab === "account" && account) {
-    /*
-      **2本を同時に投げる**（T-M8-355）。互いに依存しないので直列にすると往復が2回ぶん
-      待ち時間に乗る。片方が失敗したときにもう片方だけで描かないよう、Promise.all で揃える。
-    */
-    const [sources, running] = await Promise.all([
-      listLearningSourcesForUser(user.id, account.id),
-      pooledDb.query<{ n: number }>(
-        `select count(*)::int as n from generation_jobs
-          where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
-            and status in ('queued', 'running')`,
-        [account.id],
-      ),
-    ]);
-    learningSources = sources;
-    learningApplying = (running.rows[0]?.n ?? 0) > 0;
-  }
-
-  // プロンプトタブ: アカウント.md（履歴・学習中表示）とテンプレート。
-  /* プロンプト関連の読み込みは `/app/prompts` へ移設（T-M8-328）。 */
-  let validUserProviders: AiKeyProvider[] = [];
-  if (purposeKeys) {
-    validUserProviders = purposeKeys
-      .filter(
-        (key): key is typeof key & { provider: AiKeyProvider } =>
-          key.provider !== "x" && key.status === "valid",
-      )
-      .map((key) => key.provider);
-  }
+  /* プロンプト・AIモデル設定の読み込みは `/app/prompts` へ移設（T-M8-328／T-M8-401）。 */
 
   return (
     <main className="px-4 py-[26px] lg:px-8">
@@ -330,44 +245,45 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             description="Xアカウントの連携やAIの設定がご利用いただけます。"
             reason={lock}
           />
-        ) : tab === "general" ? (
+        ) : tab === "x-accounts" ? (
           <div className="space-y-8">
-            {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で設定タブ先頭へ移動・運営者の指示）。
+            {/* どのアカウントでログインしているか（T-M8-95→T-M8-109で先頭タブの一番上・運営者の指示）。
                 確認メール・領収書の宛先でもある。 */}
             <p className="text-body text-ink-2">
               ログイン中のアカウント:{" "}
               <span className="font-medium text-ink">{profile.email ?? user.email ?? "不明"}</span>
             </p>
-            {/* 旧・Xアカウント／APIキー／通知タブを1タブへ（T-M8-104）。
-                各部品が自前の見出しを持つため、ここでは見出しを重ねない（重複headingはE2EのstrictモードとAT読み上げの両方を壊す）。 */}
+            {/* 部品が自前の見出しを持つため、ここでは見出しを重ねない（重複headingはE2EのstrictモードとAT読み上げの両方を壊す）。 */}
             <XAccountsSettings
-                accounts={xAccounts}
-                connected={params.x_connected === "1"}
-                oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
-                  "/app/settings?tab=general",
-                )}`}
-                plan={plan}
-                xApiKeyRegistered={
-                  isOperatorManagedPlan(plan) || apiKeys.some((key) => key.provider === "x")
-                }
-              />
-            <ApiKeySettings
-                // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
-                // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
-                // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
-                callbackUrl={xRedirectUri()}
-                initialKeys={apiKeys}
-                plan={plan}
-                usage={usage}
-                usageResetLabel={usage ? usageResetLabel(usage) : "次回の更新日"}
-              />
-            {userSettings ? (
-              <SettingsPreferences
-                newsConfig={userSettings.newsConfig}
-                notificationConfig={userSettings.notificationConfig}
-              />
-            ) : null}
+              accounts={xAccounts}
+              connected={params.x_connected === "1"}
+              oauthStartPath={`/api/x/oauth/start?return=${encodeURIComponent(
+                "/app/settings?tab=x-accounts",
+              )}`}
+              plan={plan}
+              xApiKeyRegistered={
+                isOperatorManagedPlan(plan) || apiKeys.some((key) => key.provider === "x")
+              }
+            />
           </div>
+        ) : tab === "api-keys" ? (
+          <ApiKeySettings
+            // **OAuthが実際に送る値と同じ関数から取る**（T-M8-58）。式を二重に書くと、片方だけ
+            // 変えたときに「Consoleへ登録した表示値」と「実送信値」が食い違い、Xは完全一致で
+            // 照合するため連携が全滅する——この画面が防ごうとしている事故そのもの。
+            callbackUrl={xRedirectUri()}
+            initialKeys={apiKeys}
+            plan={plan}
+            usage={usage}
+            usageResetLabel={usage ? usageResetLabel(usage) : "次回の更新日"}
+          />
+        ) : tab === "notifications" ? (
+          userSettings ? (
+            <SettingsPreferences
+              newsConfig={userSettings.newsConfig}
+              notificationConfig={userSettings.notificationConfig}
+            />
+          ) : null
         ) : tab === "billing" ? (
           <section className="space-y-6" aria-labelledby="billing-heading">
             <Card as="div" className="px-5 py-4">
@@ -463,58 +379,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <UsageSummaryCard nextResetLabel={usageResetLabel(usage)} summary={usage} />
             ) : null}
           </section>
-        ) : tab === "account" ? (
-          !account ? (
-            <NoAccountState />
-          ) : (
-            <div className="space-y-8">
-              {/*
-                **どのアカウントを直しているかを最初に言う**（T-M8-349・運営者の指示 2026-08-28）。
-                アカウント切替を使う人にとっては、編集を始める前に見えている必要がある。
-              */}
-              <p className="text-caption text-ink-3">
-                対象アカウント: <strong className="text-ink-2">@{account.handle}</strong>
-                {account.base_md_version >= 1
-                  ? "（保存すると次の生成から反映されます）"
-                  : "（まだ保存されていません）"}
-              </p>
-
-              {/*
-                **このタブは参考アカウントの登録・反映だけにする**（T-M8-396・運営者の指示
-                2026-09-01）。5項目の入力欄（ペルソナ〜NG設定）は プロンプト > アカウント.md へ
-                移した——参考アカウントを材料に、反映結果はそちらの入力欄へ入る。
-              */}
-              <div className={`${cardClassName} space-y-6 p-5 sm:p-6`}>
-                <LearningSourcesManager
-                  initialApplying={learningApplying}
-                  initialNowMs={nowMs}
-                  initialSources={learningSources}
-                  key={`sources:${account.id}`}
-                  settingsMissing={account.base_md_version < 1}
-                  xAccountId={account.id}
-                />
-                <p className="border-t border-hairline pt-4 text-caption text-ink-3">
-                  反映した内容は
-                  <Link className="mx-1 font-medium underline underline-offset-4" href="/app/prompts?sec=account-md">
-                    プロンプト &gt; アカウント.md
-                  </Link>
-                  の入力項目に入ります。確認して保存すると確定します。
-                </p>
-              </div>
-            </div>
-          )
-        ) : tab === "purposes" ? (
-          <AiPurposeSettings
-            initialConfig={
-              (profile.ai_purpose_config as { image: string | null; text: string | null } | null) ?? {
-                image: null,
-                text: null,
-              }
-            }
-            operatorImageProviders={[...operatorImageProviders()]}
-            plan={plan}
-            validUserProviders={validUserProviders}
-          />
         ) : null}
       </div>
     </main>

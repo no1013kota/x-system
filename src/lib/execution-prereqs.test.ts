@@ -223,7 +223,7 @@ describe("buildSetupChecklist", () => {
     const textKey = list.find((i) => i.item === "text_ai_key")!;
     expect(textKey.satisfied).toBe(false);
     expect(textKey.label).toBe("文章AIの割り当て");
-    expect(textKey.settingsPath).toBe("/app/settings?tab=purposes");
+    expect(textKey.settingsPath).toBe("/app/prompts?sec=ai-models");
   });
 
   it("keeps pointing to the API key tab when no valid AI key exists yet", () => {

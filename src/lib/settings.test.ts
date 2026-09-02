@@ -24,13 +24,26 @@ describe("notificationConfigSchema", () => {
   it("accepts all types (in_app only)", () => {
     expect(notificationConfigSchema.safeParse(fullNotification).success).toBe(true);
   });
-  it("旧保存値の email キーは黙って落とす（strictにすると全既存レコードが既定へ戻る・T-M8-222）", () => {
+  it("旧保存値の email キー（ニュース以外）は黙って落とす（strictにすると全既存レコードが既定へ戻る・T-M8-222）", () => {
     const legacy = Object.fromEntries(
       Object.entries(fullNotification).map(([k, v]) => [k, { ...v, email: true }]),
     );
     const parsed = notificationConfigSchema.safeParse(legacy);
     expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.posted).toEqual({ in_app: false });
+      // ニュースだけはメールも選べる（T-M8-407）。
+      expect(parsed.data.news).toEqual({ in_app: true, email: true });
+    }
+  });
+  it("ニュースの email は省略できる（省略＝保存済みの値を保つ・T-M8-407）", () => {
+    const parsed = notificationConfigSchema.safeParse(fullNotification);
+    expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.news).toEqual({ in_app: true });
+    expect(
+      notificationConfigSchema.safeParse({ ...fullNotification, news: { in_app: true, email: "yes" } })
+        .success,
+    ).toBe(false);
   });
   it("rejects a missing type", () => {
     const { posted, ...rest } = fullNotification;
@@ -101,11 +114,20 @@ describe("resolveNotificationConfig (fallback)", () => {
   });
   it("keeps valid per-type overrides and defaults the rest", () => {
     const resolved = resolveNotificationConfig({
-      news: { in_app: false, email: false }, // 旧email キーは落とす
+      news: { in_app: false, email: false },
       bogus: 1,
     });
-    expect(resolved.news).toEqual({ in_app: false });
+    expect(resolved.news).toEqual({ in_app: false, email: false });
     expect(resolved.posted).toEqual(DEFAULT_NOTIFICATION_CONFIG.posted);
+  });
+  it("ニュースの email は保存値が無ければ OFF、あればその値（T-M8-407）", () => {
+    expect(resolveNotificationConfig({ news: { in_app: true } }).news).toEqual({ in_app: true, email: false });
+    expect(resolveNotificationConfig({ news: { in_app: true, email: true } }).news).toEqual({
+      in_app: true,
+      email: true,
+    });
+    // 他の種別の email（旧保存値）は読まない。
+    expect(resolveNotificationConfig({ posted: { in_app: true, email: true } }).posted).toEqual({ in_app: true });
   });
 });
 

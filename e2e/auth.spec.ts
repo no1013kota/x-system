@@ -5,21 +5,24 @@ import {
   alertIn,
   expect,
   signIn,
+  signUpCodeFromMail,
   test,
   openAccountMenu,
+  waitForMail,
 } from "./fixtures/test";
 
 /**
- * A-1/A-2 サインアップ→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
+ * A-1/A-2 サインアップ→メール確認→ログイン（PRD §A、要件03 §1、要件06 SC-01/SC-02）。
  *
- * メール確認（6桁コード）はT-M8-202で省略中（登録即ログイン）。コード画面・自動再送の経路は
- * 「未確認アカウントのログイン」テストが未確認ユーザー（Admin APIで作成）経由で守り続ける。
+ * メール確認（6桁コード）は**必須**（T-M8-404・運営者の指示 2026-09-01。T-M8-202で
+ * 2026-08-22〜09-01の間だけ省略していた）。ログインではコードを求めない——確認済みなら
+ * パスワードだけ、未確認のまま放置した登録だけコード画面（自動再送）へ回す。
  * Turnstile・同意チェック・確認後の遷移先が絡む全利用者の最初の経路。
  *
  * メールはローカルのMailpit（`supabase start` が起動）が受け取り、外部へは送信されない。
  */
 
-test("サインアップは確認コードなしで完了し、そのままアプリへ着地する（T-M8-202→T-M8-268）", async ({ page }) => {
+test("サインアップ→6桁コードで確認→アプリへ着地し、以後はパスワードだけでログインできる（T-M8-404）", async ({ page }) => {
   const suffix = `signup-${randomUUID().slice(0, 8)}`;
   const email = `e2e-${suffix}@example.com`;
   const password = `E2e-${suffix}-Pw1`;
@@ -46,24 +49,38 @@ test("サインアップは確認コードなしで完了し、そのままア�
     await page.getByRole("button", { name: "メールアドレスで登録" }).click();
 
     /*
-      メール確認は省略（T-M8-202・運営者の決定 2026-08-22）。登録と同時にセッションが張られ、
-      **そのままアプリ本体へ着地し、成功の文言が出る**（T-M8-268で行き先を /plans から /app へ。
-      いきなり料金表へ送らず、中を見てもらってから実行時にプランへ案内する）。
-      確認コード画面には入らない。
-      （戻す場合の挙動は supabase/config.toml と scripts/auth-settings.mjs のコメント参照。
-      コード検証・再送のUIは次のテストが未確認ユーザー経由で引き続き検証している。）
+      登録後は**同じ画面が6桁コードの入力へ切り替わる**（T-M8-121→T-M8-404）。メールのリンクを
+      追わせない。セッションはまだ張られず、確認するまでアプリへは入れない。
     */
-    await expect(page).toHaveURL(/\/app(\/|$|\?)/, { timeout: 30_000 });
-    await expect(page.getByText("登録が完了しました", { exact: false })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible({
+      timeout: 30_000,
+    });
     expect(turnstileErrors, "Turnstileの設定エラーが発生しないこと").toEqual([]);
-
-    // 登録と同時にconfirmedになっている。
+    // 確認前は未確認ユーザーとして存在する。
     const [created] = await query<{ confirmed_at: string | null }>(
       `select email_confirmed_at as confirmed_at from auth.users where email = $1`,
       [email],
     );
-    expect(created.confirmed_at, "登録と同時にemail_confirmed_atが入ること").not.toBeNull();
+    expect(created, "サインアップで利用者が作られること").toBeTruthy();
+    expect(created.confirmed_at, "コードを入れる前は未確認であること").toBeNull();
+
+    // 届いた6桁コードを入力すると確認済みになり、アプリ本体へ着地する。
+    const mail = await waitForMail(email);
+    expect(mail.Subject).toContain("確認");
+    const code = await signUpCodeFromMail(mail.ID);
+    const submit = page.getByRole("button", { name: "登録を完了する" });
+    await expect(submit).toBeDisabled();
+    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/, { timeout: 30_000 });
+    // **確認が済んだことを画面が言う**（T-M8-58）。
+    await expect(page.getByText("メールアドレスの確認が完了しました", { exact: false })).toBeVisible();
+    const [confirmed] = await query<{ confirmed_at: string | null }>(
+      `select email_confirmed_at as confirmed_at from auth.users where email = $1`,
+      [email],
+    );
+    expect(confirmed.confirmed_at, "確認後は email_confirmed_at が入ること").not.toBeNull();
 
     // 同意は profiles に記録されている（要件03 §1）
     const [profile] = await query<{ terms_version: string | null }>(
@@ -127,7 +144,7 @@ test("未登録のメールでは登録が無いと伝え、新規登録へ案�
   await expect(alert).toContainText("登録されていません");
 });
 
-test("未確認アカウントでもコード画面なしでログインできる（登録時に確認を求めないため）", async ({
+test("未確認のまま放置した登録は、ログインでコード画面（自動再送）へ回り、勝手に確認済みにならない（T-M8-404）", async ({
   page,
 }) => {
   const suffix = `unconfirmed-login-${randomUUID().slice(0, 8)}`;
@@ -136,10 +153,11 @@ test("未確認アカウントでもコード画面なしでログインでき�
 
   try {
     /*
-      未確認アカウントをAdmin APIで作る（T-M8-202以降、画面からの登録は即confirmedになる）。
-      **以前はこの経路が6桁コード画面へ回されていた**（T-M8-377・運営者の指摘 2026-08-30）。
-      新規登録は確認なしで完了する設定なので、ログインでも確認を求めない——
-      ログイン時にその場で確認済みへ揃え、そのままアプリへ入れることを守る。
+      未確認アカウントをAdmin APIで作る（登録してコードを入れずに離れた人と同じ状態）。
+      T-M8-377ではログイン時に確認済みへ揃えていたが、登録の6桁コード確認を必須へ戻した
+      T-M8-404で廃止した——揃えると「コードを入れずにログイン」で確認を素通りできる。
+      ここで守るのは、コード画面へ回ること・新しいコードが自動で送られること（T-M8-153）・
+      DBが未確認のままなこと。
     */
     await createUnconfirmedAuthUser(email, password);
 
@@ -152,16 +170,26 @@ test("未確認アカウントでもコード画面なしでログインでき�
       .not.toBe("");
     await page.getByTestId("login-submit").click();
 
-    // コード画面を出さず、契約なしの着地（/plans）かアプリ本体へ入る。
-    await expect(page).toHaveURL(/\/(app|plans)(\/|$|\?)/, { timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toHaveCount(0);
+    // コード画面へ回り、新しいコードが自動で送られる（T-M8-153）。
+    await expect(page.getByRole("heading", { name: "確認コードを入力してください" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/login/);
+    const mail = await waitForMail(email);
+    expect(mail.Subject).toContain("確認");
 
-    // DB上も確認済みへ揃っている（次回以降のログインで同じ分岐を通らない）。
+    // DB上は未確認のまま（ログインで勝手に確認済みにしない）。
     const rows = await query<{ confirmed: boolean }>(
       `select email_confirmed_at is not null as confirmed from auth.users where email = $1`,
       [email],
     );
-    expect(rows[0]?.confirmed).toBe(true);
+    expect(rows[0]?.confirmed).toBe(false);
+
+    // 届いたコードを入れれば確認済みになりアプリへ入れる。
+    const code = await signUpCodeFromMail(mail.ID);
+    await page.getByRole("textbox", { name: "確認コード" }).fill(code);
+    await page.getByRole("button", { name: "登録を完了する" }).click();
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/, { timeout: 30_000 });
   } finally {
     await destroyUserByEmail(email);
   }

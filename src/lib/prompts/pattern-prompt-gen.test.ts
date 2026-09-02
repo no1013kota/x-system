@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createDeadline } from "@/lib/jobs/deadline";
 import type { TextGen } from "@/lib/ai/types";
 
-import { generatePatternFromExamples } from "./pattern-prompt-gen";
+import { purposeTextModel } from "@/lib/ai/model-catalog";
+
+import { PATTERN_GEN_MODEL_PURPOSE, generatePatternFromExamples } from "./pattern-prompt-gen";
 
 /** 応答列を順に返す偽TextGen。 */
 function fakeTextGen(responses: string[]): TextGen {
@@ -18,6 +20,12 @@ function fakeTextGen(responses: string[]): TextGen {
 }
 
 const deadline = createDeadline();
+
+describe("参考投稿からのプロンプト生成に使うモデル (T-M8-399)", () => {
+  it("Anthropic では Claude Sonnet 5 に固定される（運営者の指示 2026-09-01）", () => {
+    expect(purposeTextModel(PATTERN_GEN_MODEL_PURPOSE, "anthropic")).toBe("claude-sonnet-5");
+  });
+});
 
 describe("generatePatternFromExamples (T-M8-397)", () => {
   const ok = JSON.stringify({

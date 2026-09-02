@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.85 |
-| 更新日 | 2026-08-30 |
+| バージョン | v1.88 |
+| 更新日 | 2026-09-01 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -319,7 +319,7 @@ RLS: x_account所有者select可。writeはServer Actionのみ。
 
 ### 3.11 `follower_snapshots`
 
-フォロワー数の日次記録（K-3）。書き込みは毎時cron `follower_snapshot`（契約が有効な利用者のみ・T-M8-257）と投稿分析画面の「分析を開始」ボタンの2入口（要件04 §13）。X APIは履歴を提供しないため、記録が無い日は行が無い＝グラフ上の欠測になる（偽の値で埋めない）。
+フォロワー数の日次記録（K-3）。書き込みは毎時cron `follower_snapshot`（契約が有効な利用者のみ・T-M8-257）の1入口だけ（要件04 §13。「分析を開始」ボタンからの書き込みはT-M8-403で廃止）。X APIは履歴を提供しないため、記録が無い日は行が無い＝グラフ上の欠測になる（偽の値で埋めない）。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -385,7 +385,7 @@ RLS: 本人select可。writeはServer only。
 | `month` | `text` | not null | 利用枠の期間キー（`usage_events.month`と同じ。T-M8-258） |
 | `normal_posts_count` | `integer` | not null default 0 | URLなし通常投稿枠 |
 | `url_posts_count` | `integer` | not null default 0 | URL付き投稿枠 |
-| `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109。1クレジット=1円相当・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
+| `ai_credits_used` | `integer` | not null default 0 | **AIクレジット**使用量（T-M8-109→T-M8-325。1クレジット=0.01円相当・プレミアム上限100,000＝1,000円ぶん・文章/画像のAI実行が実費消費。旧`generations_count`/`images_count`は回数制のため移行せず削除） |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
 PK: (`user_id`, `month`)
@@ -818,9 +818,11 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 ### 4.3 `profiles.notification_config`
 
+**ニュースだけ `email`（メール通知）を持つ**（T-M8-407・運営者の指示 2026-09-01。既定OFF。他の種別のメールはT-M8-222で廃止したまま）。`email` キーが無い保存値は OFF として読む。保存は `saveNotificationConfig`（入力に `email` が無ければ保存済みの値を保つ）と `saveNewsEmailNotification`（`email` だけ書く）の2口で、画面の2つのカードが互いを上書きしない。
+
 ```json
 {
-  "news": { "in_app": true },
+  "news": { "in_app": true, "email": false },
   "draft_created": { "in_app": true },
   "posted": { "in_app": true },
   "error": { "in_app": true },
@@ -832,7 +834,7 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 決済停止と利用枠100%到達の常設バナーはこの設定にかかわらず表示する。
 
-**チャネルはアプリ内のみ・既定は全種別ON**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止。認証メールと運営者向けopsアラートは別系統で残る）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
+**アプリ内は全種別ON。メールはニュースだけ持ち既定OFF**（T-M8-222・運営者の指示 2026-08-22でメール通知を廃止→T-M8-407・2026-09-01でニュースだけ復活。認証メールと運営者向けopsアラートは別系統）。この既定はコード（`DEFAULT_NOTIFICATION_CONFIG`）とprofile作成trigger（migration `20260823000002`）の両方に持つため、変更時は両方を揃える（片方だけだと新規利用者にだけ届かない）。既存利用者の保存値は同migrationが旧`email`キーを剥がすだけで、`in_app`の値は変えない（schemaも旧キーを黙って落とす）。
 
 ### 4.4 `x_accounts.settings`
 
@@ -1093,3 +1095,6 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.83 | 2026-08-29 | kpi_daily を追加（事業KPIの日次スナップショット・31テーブルへ・T-M8-373）。external_api_usage_events の保持を40→400日へ（運営者の決定「明細も400日残す」） |
 | v1.84 | 2026-08-30 | page_views を追加（公開3ページの閲覧記録・Cookieなし日替わりハッシュ・32テーブルへ・T-M8-378） |
 | v1.85 | 2026-08-30 | news_batches を廃止（ニュース取得をRSS巡回へ・31テーブルへ・T-M8-380） |
+| v1.86 | 2026-09-01 | follower_snapshots の書き込み元を毎時cronだけに（「分析を開始」からの書き込みを廃止・T-M8-403。スキーマ変更なし） |
+| v1.87 | 2026-09-01 | notification_config.news に email（メール通知・既定OFF）を追加（T-M8-407・スキーマ変更なし） |
+| v1.88 | 2026-09-01 | ai_credits_used の単位を現行（1クレジット=0.01円）へ訂正（T-M8-325の反映漏れ） |

@@ -211,7 +211,7 @@ export function ApiKeySettings({
         tone: "success",
         title: result.message,
         description: "次に「Xアカウント」タブから、投稿するアカウントを連携してください。",
-        action: { href: settingsTabHref("general"), label: "Xアカウント連携を開く" },
+        action: { href: settingsTabHref("x-accounts"), label: "Xアカウント連携を開く" },
       });
       router.refresh();
     });
@@ -257,8 +257,8 @@ export function ApiKeySettings({
         toast.show({
           tone: "success",
           title: "APIキーを保存し、疎通を確認しました",
-          description: "「AIモデル設定」でこのAIを文章生成に割り当てると投稿を作成できます。",
-          action: { href: settingsTabHref("purposes"), label: "AIモデル設定を開く" },
+          description: "プロンプト＞「AIモデル設定」でこのAIを文章生成に割り当てると投稿を作成できます。",
+          action: { href: "/app/prompts?sec=ai-models", label: "AIモデル設定を開く" },
         });
         router.refresh();
       } else {

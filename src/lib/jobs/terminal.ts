@@ -13,6 +13,7 @@ import {
   DEFAULT_FAILED_NOTICE,
   FAILED_NOTICE,
   resolveFailedNotice,
+  type FailedNotice,
 } from "./notifications";
 import { ensureAutoPostPublishJob } from "./publish-chain";
 
@@ -181,10 +182,28 @@ export function fallbackJobError(
   error: unknown,
 ): { code: string; message: string } {
   const code = safeCodeOf(error) ?? GENERIC_JOB_ERROR_CODE;
+  /*
+   * 自前のエラーが利用者向け文言（`userMessage`）を持っていればそれを使う（T-M8-410）。
+   * kind別の定型文は「削除」と「反映」のように同じkindでも状況が違うと合わない。
+   * 例外の message そのものは使わない（provider応答等が混ざりうる）。
+   */
+  const own =
+    error && typeof error === "object" && typeof (error as { userMessage?: unknown }).userMessage === "string"
+      ? (error as { userMessage: string }).userMessage
+      : null;
   const message = isErrorCode(code)
     ? userMessageForCode(code)
-    : (FAILED_NOTICE[kind]?.body ?? DEFAULT_FAILED_NOTICE.body);
+    : (own ??
+      pickBody(FAILED_NOTICE[kind]?.body) ??
+      pickBody(DEFAULT_FAILED_NOTICE.body) ??
+      "時間をおいて再度お試しください。");
   return { code, message };
+}
+
+/** kind別の本文（関数なら job 情報無しの既定＝反映側）。 */
+function pickBody(body: FailedNotice["body"] | undefined): string | undefined {
+  if (body === undefined) return undefined;
+  return typeof body === "function" ? body({ draft_id: null, learning_source_id: null }) : body;
 }
 
 /**

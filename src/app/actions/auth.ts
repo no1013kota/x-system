@@ -30,7 +30,6 @@ import {
 } from "@/lib/auth/recovery";
 import { signInInputFromFormData } from "@/lib/auth/signin";
 import { signUpInputFromFormData } from "@/lib/auth/signup";
-import { confirmLegacyUnconfirmedEmail } from "@/lib/auth/registered-email-server";
 import { getAppEncryptionKey } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from "@/lib/legal";
@@ -204,11 +203,10 @@ export async function signUp(
     }
 
     /*
-      メール確認を省略している間（T-M8-202・運営者の決定 2026-08-22）は、Supabaseが
-      登録と同時にセッションを返す。**判定は設定値ではなく session の有無で行う**——
-      Supabase側の設定（mailer_autoconfirm / enable_confirmations）とアプリの分岐が
-      食い違っても、確認が必要ならコード画面へ、不要なら即プランへと自動で追従する。
-      確認を戻すときは設定だけ変えればよい（scripts/auth-settings.mjs のコメント参照）。
+      メール確認は必須（T-M8-404・運営者の指示 2026-09-01。T-M8-202で一時省略していた）。
+      Supabaseは確認必須ならsessionを返さずコードを送る。**判定は設定値ではなく session の
+      有無で行う**——Supabase側の設定（mailer_autoconfirm / enable_confirmations）とアプリの
+      分岐が食い違っても、確認が必要ならコード画面へ、不要なら即アプリへと自動で追従する。
     */
     if (data.session) {
       confirmedImmediately = true;
@@ -480,16 +478,12 @@ export async function signIn(
   > | null = null;
   try {
     /*
-      **未確認アカウントを先に確認済みへ揃える**（T-M8-377・運営者の指示 2026-08-30）。
-      新規登録は確認なしで完了する設定なのに、設定変更前に登録された未確認アカウントは
-      Supabase がログインを拒否して6桁コード画面へ回していた。失敗しても止めない——
-      その場合は従来どおり下の email_not_confirmed 分岐（コード画面）が受ける。
+      **ログインで未確認アカウントを勝手に確認済みにしない**（T-M8-404・運営者の指示 2026-09-01）。
+      新規登録の6桁コード確認を必須に戻したので、T-M8-377の「ログイン前に確認済みへ揃える」は
+      廃止した——残すと「登録→コードを入れずにログイン」で確認を素通りできてしまう。
+      未確認のまま放置した登録は下の email_not_confirmed 分岐がコード画面（自動再送・T-M8-153）へ
+      回す。確認済みの利用者はパスワードだけで入る（ログインでコードは求めない）。
     */
-    try {
-      await confirmLegacyUnconfirmedEmail(input.email);
-    } catch (cause) {
-      recordUnexpectedError(cause, { at: "sign-in:legacy-confirm" });
-    }
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: input.email,

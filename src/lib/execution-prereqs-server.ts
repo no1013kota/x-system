@@ -4,7 +4,7 @@ import { getPool } from "./db/pool";
 import type { ExecutionPrereqInput } from "./execution-prereqs";
 import type { PlanId } from "./plans";
 
-/** 文章生成・リサーチに使えるprovider（AIモデル設定 text の選択肢）。 */
+/** 文章生成に使えるprovider（AIモデル設定 text の選択肢）。 */
 const TEXT_CAPABLE_PROVIDERS = ["anthropic", "openai", "google"] as const;
 
 /**

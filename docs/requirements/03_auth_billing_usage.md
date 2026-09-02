@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.66 |
-| 更新日 | 2026-08-30 |
+| バージョン | v1.68 |
+| 更新日 | 2026-09-01 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -11,7 +11,7 @@
 | 項目 | 仕様 |
 |---|---|
 | 登録 | Supabase Authのメール＋パスワード。確認メールを必須にする |
-| ログイン | `signInWithPassword`の**前に、未確認アカウントをその場で確認済みへ揃える**（T-M8-377・運営者の指示 2026-08-30。新規登録は確認なしで完了する設定なので、ログインでも確認を求めない。確認を付けてもセッションはパスワードが正しいときしか発行されない）。成功後に欠損profileを補完し、安全な`next`または`/app`へ遷移する（契約状態で行き先を変えない・T-M8-268）。`email_not_confirmed`は本来到達しないが、確認揃えの書き込みが失敗した場合の受け皿として6桁コード画面＋自動再送を残す（T-M8-153）。**失敗は原因ごとに言い分ける**（§1.1） |
+| ログイン | `signInWithPassword`でログインする（確認済みの利用者はパスワードだけ・コードは求めない）。**未確認アカウントをログインで勝手に確認済みにしない**（T-M8-404・運営者の指示 2026-09-01。T-M8-377の「ログイン前に揃える」は、新規登録の6桁コード確認を必須へ戻したので廃止——残すと「コードを入れずにログイン」で確認を素通りできる）。成功後に欠損profileを補完し、安全な`next`または`/app`へ遷移する（契約状態で行き先を変えない・T-M8-268）。`email_not_confirmed`は本来到達しないが、確認揃えの書き込みが失敗した場合の受け皿として6桁コード画面＋自動再送を残す（T-M8-153）。**失敗は原因ごとに言い分ける**（§1.1） |
 | パスワード再設定 | `resetPasswordForEmail`は登録有無にかかわらず同じ受理応答を返す。recoveryリンクで確立したsessionと、user_idを束縛した15分TTLの改ざん検知HttpOnly cookieが一致するときだけ`updateUser`を許可し、成功後は両方を破棄する |
 | パスワード | 8文字以上64文字以内かつUTF-8で72 bytes以下。ブラウザ・password managerの生成/貼り付けを妨げず、確認用入力と一致検証を行う |
 | セッション | `@supabase/ssr`でリクエスト単位のServer clientを作り、proxyが`getUser()`でsessionを検証する。Server Components／Server Actions／API Routeの共通helperは同一リクエストへ引き継いだ検証済みuserを再利用し、proxyを通らない呼び出しだけ`getUser()`へフォールバックする。refreshはproxyで後段request cookieとブラウザ向けcookie／cache禁止headerへ反映し、session tokenをブラウザclientから直接扱わない |
@@ -44,7 +44,7 @@ Supabase は「登録が無い」も「パスワードが違う」も同じ `inv
 **パスワード再設定は従来どおり有無を明かさない**——メールを送る経路なので、存在確認と同時に
 第三者へメールを送りつける手段になり得る。伏せる方へ戻すときはこの3点をまとめて見直すこと。
 
-ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。未確認アカウントはログイン試行の前に`confirmLegacyUnconfirmedEmail`が確認済みへ揃えるため`email_not_confirmed`は本来出ない（T-M8-377）。出た場合（揃え書き込みの失敗時）はSupabaseの安定した`email_not_confirmed`コードだけを6桁コード入力状態として扱い、providerのmessage文字列では分岐しない。ログイン用Turnstile tokenは検証済みで1回限りのため再送へ使い回さず、切替後の`signup-resend` widgetが発行したtokenで`resend({type:'signup'})`を1回だけ自動実行する。自動再送後も手動再送を残し、失敗時の行き止まりを作らない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する（2026-08-19 [Supabase resend](https://supabase.com/docs/reference/javascript/auth-resend)と[Cloudflare Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)を確認）。
+ログイン失敗はinvalid credentials、rate limit、provider障害を同じ汎用文言へまとめる。未確認のまま放置した登録は`email_not_confirmed`になる（T-M8-404で確認必須へ戻した）。その場合はSupabaseの安定した`email_not_confirmed`コードだけを6桁コード入力状態として扱い、providerのmessage文字列では分岐しない。ログイン用Turnstile tokenは検証済みで1回限りのため再送へ使い回さず、切替後の`signup-resend` widgetが発行したtokenで`resend({type:'signup'})`を1回だけ自動実行する。自動再送後も手動再送を残し、失敗時の行き止まりを作らない。ログインの`next`は`/plans`、`/reset-password`、`/app`配下だけを許可し、外部URLや認証routeは破棄する（2026-08-19 [Supabase resend](https://supabase.com/docs/reference/javascript/auth-resend)と[Cloudflare Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)を確認）。
 
 **確認メールは6桁コード方式**（T-M8-121）。テンプレートに `{{ .Token }}` を入れ、登録画面から離れずに入力させる（`verifySignUpCode` が `verifyOtp({email, token, type:'signup'})` で検証しcookie sessionを確立する）。**リンク方式をやめた理由**: メールクライアントのURL先読みで1回きりのトークンが使い切られる／スマホで開くと別ブラウザになる／リモートのテンプレートが既定のままだとリンクが必ず失敗する（2026-08-02・08-18に2回発生）。password resetは引き続きリンク方式で、カスタムテンプレートから`/auth/confirm?token_hash=...&type=recovery`へ送りServer側の`verifyOtp`でcookie sessionを確立する。成功後はtoken情報を残さずsignupを`/plans`、recoveryを`/reset-password`へ遷移させる。recovery成功時だけ`APP_ENCRYPTION_KEY`で封緘したuser_id・発行時刻をHttpOnly／SameSite=Lax／15分TTL cookieへ保存し、password更新時に現在sessionのuser_idとの一致とTTLを検証する。期限切れ・使用済み・不正token/コードまたはmarkerはprovider理由を出さない汎用エラーへまとめ（**コードは「違う」と「期限切れ」を断定せず、次にやることだけを示す**——Supabaseがどちらも同じ系統で返すため断定すると嘘になる）、signup確認は同じ画面の再送フォーム、recoveryは再申請導線を表示する。**入力コードは全角数字・空白・ハイフンを吸収してから検証する**（メールからのコピーで混ざるため。正しく写しているのに弾かれる形を作らない）。productionはSupabase Authのrate limit、Turnstile、Gmail custom SMTPを有効化する。Supabase Freeでは利用できない漏洩パスワード保護はPro移行後に有効化する。
 
@@ -67,7 +67,7 @@ Supabase は「登録が無い」も「パスワードが違う」も同じ `inv
 |---|---:|---:|---|---|
 | `standard`（スタンダード） | 1,480円（終了後 2,960円） | 1 | BYOK必須 | アプリ側上限なし |
 | `premium`（プレミアム） | 3,980円（終了後 7,960円） | 1 | 不要 | AIクレジット100,000、通常投稿200件、URL付き投稿20件 |
-| `expert`（エキスパート） | 14,800円（終了後 29,600円） | 3（利用枠は合算） | 不要 | **画面表示は「無制限」**。内部ガードとしてAIクレジット5000、通常投稿1,000件、URL付き投稿100件（T-M8-168） |
+| `expert`（エキスパート） | 14,800円（終了後 29,600円） | 3（利用枠は合算） | 不要 | **画面表示は「無制限」**。内部ガードとしてAIクレジット500,000（＝5,000円ぶん・T-M8-325）、通常投稿1,000件、URL付き投稿100件（T-M8-168） |
 
 **プラン再編（2026-08-20・T-M8-168・運営者の指示）**: 旧standard（500円・上限1・md編集不可）を撤廃し、旧mdを`standard`（スタンダード）へ改定、`expert`を新設した。DB enumも入れ替え済み（migration `20260820000003`。旧md行→standard、旧standard行→NULL＝未契約。本番は該当5件すべて未契約を実測確認済み）。**md/プロンプト編集は全プラン可**になった。
 
@@ -475,3 +475,5 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.64 | 2026-08-27 | AIクレジットの粒度を100倍に（1クレジット=0.01円相当・プレミアム100,000／エキスパート500,000）。金額は据え置きで丸め損を1/100に。単位変更に伴い世代を進めて全員0から数え直した（T-M8-325） |
 | v1.65 | 2026-08-27 | AIクレジットの予約（reserve）を廃止し、実費が確定したときだけ書く形へ（T-M8-324）。残量が尽きたら新しい生成を始めさせないが、走り出した分は通すので上限を超えうる。超過は次の期間へ繰り越す。残量表示はマイナスを見せる |
 | v1.66 | 2026-08-30 | ログインで未確認アカウントを確認済みへ揃え、6桁コード画面へ回さない（T-M8-377・運営者の指示。新規登録が確認なしで完了する設定と一貫させる。コード画面は揃え失敗時の受け皿として残す） |
+| v1.67 | 2026-09-01 | 新規登録のメール確認（6桁コード）を必須へ戻し、ログイン時の自動確認（T-M8-377）を廃止（T-M8-404・運営者の指示） |
+| v1.68 | 2026-09-01 | エキスパートの内部ガードを現行（AIクレジット500,000）へ訂正 |

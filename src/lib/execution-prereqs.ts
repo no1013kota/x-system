@@ -38,7 +38,7 @@ const ITEM_PATH: Record<PrereqItem, string> = {
   x_account: "/app/settings?tab=x-accounts",
   text_ai_key: "/app/settings?tab=api-keys",
   image_ai_key: "/app/settings?tab=api-keys",
-  persona: "/app/settings?tab=account",
+  persona: "/app/prompts?sec=account-md",
 };
 
 const ITEM_CODE: Record<PrereqItem, PrereqCode> = {
@@ -59,7 +59,7 @@ export interface ExecutionPrereqInput {
   /** BYOKの文章providerキーがvalidか。 */
   textAiKeyValid: boolean;
   /**
-   * 設定「AIモデル設定」で文章生成のproviderが割り当て済みか。キーがvalidでも未割り当てだと
+   * プロンプト＞「AIモデル設定」で文章生成のproviderが割り当て済みか。キーがvalidでも未割り当てだと
    * `textAiKeyValid` は false になるため、初期設定ガイドで不足理由を出し分けるのに使う。
    */
   textProviderAssigned?: boolean;
@@ -247,9 +247,9 @@ const ITEM_DESCRIPTION: Record<PrereqItem, string> = {
 /** 文章AIキーは valid でも「AIモデル設定」で割り当てないと充足しないため、不足理由で表示を出し分ける。 */
 const TEXT_PROVIDER_UNASSIGNED = {
   label: "文章AIの割り当て",
-  path: "/app/settings?tab=purposes",
+  path: "/app/prompts?sec=ai-models",
   description:
-    "登録済みのAI APIキーのうち、どれで文章生成・リサーチを行うかを選びます。",
+    "登録済みのAI APIキーのうち、どれで文章生成を行うかを選びます。",
 } as const;
 
 /**
