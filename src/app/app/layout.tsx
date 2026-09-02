@@ -84,7 +84,33 @@ export default async function AppLayout({
         </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-36 lg:pb-0">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-24 lg:pb-0">
+
+        {/*
+          モバイル上部ヘッダー（T-M8-416・運営者の指摘 2026-09-03「ヘッダーが変な位置」）。
+          T-M8-328では下部バーの上段に置いていたが、ロゴ・お知らせ・アカウントは
+          一般的な位置（上部固定）へ戻す。下部バーはナビ7タブだけにする。
+        */}
+        <header className="sticky top-0 z-30 flex items-center gap-1 border-b border-hairline bg-background/95 px-2 py-1 backdrop-blur lg:hidden">
+          <BrandLogo className="mr-auto" priority />
+          <NotificationBell
+            initialCursor={notificationCursor}
+            initialItems={notifications}
+            initialUnread={unreadCount}
+            listNotificationsAction={listNotificationsAction}
+            markAllNotificationsReadAction={markAllNotificationsReadAction}
+            markNotificationReadAction={markNotificationReadAction}
+          />
+          <div className="w-[190px]">
+            <AccountMenu
+              accounts={switcherAccounts}
+              activeId={activeAccountId}
+              settingsLinks={ACCOUNT_MENU_SETTINGS_LINKS}
+              signOutAction={signOut}
+              switchAccountAction={setActiveXAccountAction}
+            />
+          </div>
+        </header>
 
         {banner ? (
           <aside
@@ -165,31 +191,8 @@ export default async function AppLayout({
         <LegalFooter className="mt-auto" />
       </div>
 
-      {/*
-        モバイル: ヘッダーを廃止したので、お知らせとアカウントを下部バーの上段へ置く
-        （T-M8-328）。ナビは7枠が上限なので同じ行には入れない。
-      */}
+      {/* モバイル下部バーはナビ7タブだけ（T-M8-416。ロゴ・お知らせ・アカウントは上部ヘッダーへ）。 */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="flex items-center gap-1 border-b border-hairline px-2 py-1">
-          <BrandLogo className="mr-auto" priority />
-          <NotificationBell
-            initialCursor={notificationCursor}
-            initialItems={notifications}
-            initialUnread={unreadCount}
-            listNotificationsAction={listNotificationsAction}
-            markAllNotificationsReadAction={markAllNotificationsReadAction}
-            markNotificationReadAction={markNotificationReadAction}
-          />
-          <div className="w-[190px]">
-            <AccountMenu
-              accounts={switcherAccounts}
-              activeId={activeAccountId}
-              settingsLinks={ACCOUNT_MENU_SETTINGS_LINKS}
-              signOutAction={signOut}
-              switchAccountAction={setActiveXAccountAction}
-            />
-          </div>
-        </div>
         <div className="px-1">
           <AppNavigation mobile />
         </div>
