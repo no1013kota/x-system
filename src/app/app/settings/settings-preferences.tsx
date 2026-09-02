@@ -16,7 +16,7 @@ import {
 } from "@/lib/settings";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { Card, CardTitle } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
+import { ChipCheckbox } from "@/components/ui/chip-checkbox";
 
 /**
  * 通知はアプリ内のみ（メール通知はT-M8-222で廃止・運営者の指示 2026-08-22）。
@@ -88,31 +88,6 @@ function ToggleSwitch({
       />
       <span className="h-6 w-10 rounded-pill bg-black/15 transition-colors duration-150 peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50" />
       <span className="pointer-events-none absolute left-1.5 top-1/2 size-5 -translate-y-1/2 rounded-pill bg-surface shadow-sm transition-transform duration-150 motion-reduce:transition-none peer-checked:translate-x-4" />
-    </label>
-  );
-}
-
-/** チップ型の複数選択。選択中は色だけでなくチェックアイコンでも示す（色覚に依存しない）。 */
-function ChipCheckbox({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  onChange: () => void;
-}) {
-  return (
-    <label
-      className={`inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-pill border px-3 text-body transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring ${
-        checked
-          ? "border-brand/50 bg-brand-subtle font-medium text-brand"
-          : "border-hairline bg-surface text-ink-2 hover:bg-black/[0.02]"
-      }`}
-    >
-      <input checked={checked} className="sr-only" onChange={onChange} type="checkbox" />
-      {checked ? <Icon name="check" size={14} /> : null}
-      {label}
     </label>
   );
 }

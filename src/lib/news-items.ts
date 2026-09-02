@@ -9,9 +9,9 @@ import type { Queryable } from "./x/token-refresh";
  * SC-06 ニュース一覧の中核（要件05 §6, 要件06 §10, N-2, T-M4-14／T-M8-188）。
  *
  * **新着順（取得時刻の新しい順）が基本**で、最新 `NEWS_MAX_STORED_ITEMS` 件までを
- * 50件ずつのページで返す（運営者の指示 2026-08-22）。テーマ・インパクトは**選択式のソート**：
- * 選んだ値に一致する記事が先頭へ集まり、その中と残りはそれぞれ新着順（絞り込みではない——
- * 選んでも記事は消えない）。取得は従来どおり全ユーザー共通なので、表示をどう変えても費用は
+ * 50件ずつのページで返す（運営者の指示 2026-08-22）。テーマ・インパクトは**複数選択の選択式ソート**
+ * （T-M8-412）：選んだ値の**いずれか**に一致する記事が先頭へ集まり、その中と残りはそれぞれ新着順
+ * （絞り込みではない——選んでも記事は消えない）。取得は従来どおり全ユーザー共通なので、表示をどう変えても費用は
  * 変わらない。通知の条件（news_config）とは独立。
  *
  * 時間窓（from/to・最大24時間）は通知のダイジェストからの深リンク用に残す。
@@ -42,10 +42,10 @@ export const NEWS_IMPACTS = ["high", "mid", "low"] as const;
 export const listNewsItemsSchema = z
   .object({
     page: z.number().int().min(1).max(10_000).optional(),
-    /** 選択式ソート: このテーマの記事を先頭へ（値は news_category。未知値は弾く）。 */
-    theme: z.enum(NEWS_CATEGORIES).optional(),
-    /** 選択式ソート: このインパクトの記事を先頭へ。 */
-    impact: z.enum(NEWS_IMPACTS).optional(),
+    /** 選択式ソート: これらのテーマの記事を先頭へ（複数可・T-M8-412。値は news_category。未知値は弾く）。 */
+    themes: z.array(z.enum(NEWS_CATEGORIES)).max(NEWS_CATEGORIES.length).optional(),
+    /** 選択式ソート: これらのインパクトの記事を先頭へ（複数可）。 */
+    impacts: z.array(z.enum(NEWS_IMPACTS)).max(NEWS_IMPACTS.length).optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
   })
@@ -137,15 +137,17 @@ export async function listNewsItems(
   // 範囲外のページ要求は最終ページへ丸める（空ページで「消えた」と誤解させない・原則1）。
   const page = Math.min(value.page ?? 1, pageCount);
 
-  // 選択式ソート: 一致行を先頭へ（一致・不一致の中はどちらも新着順）。
+  // 選択式ソート: いずれかに一致する行を先頭へ（複数選択・T-M8-412。一致・不一致の中はどちらも新着順）。
   const rank: string[] = [];
-  if (value.theme) {
-    params.push(value.theme);
-    rank.push(`(category::text = $${params.length}) desc`);
+  const themes = [...new Set(value.themes ?? [])];
+  if (themes.length > 0) {
+    params.push(themes);
+    rank.push(`(category::text = any($${params.length}::text[])) desc`);
   }
-  if (value.impact) {
-    params.push(value.impact);
-    rank.push(`(impact::text = $${params.length}) desc`);
+  const impacts = [...new Set(value.impacts ?? [])];
+  if (impacts.length > 0) {
+    params.push(impacts);
+    rank.push(`(impact::text = any($${params.length}::text[])) desc`);
   }
 
   const offset = (page - 1) * NEWS_PAGE_SIZE;

@@ -32,6 +32,9 @@ describe("listNewsItems validation（T-M8-188）", () => {
     await expect(listNewsItems(db, { sort: "impact" })).rejects.toBeInstanceOf(AppError);
     await expect(listNewsItems(db, { limit: 20 })).rejects.toBeInstanceOf(AppError);
     await expect(listNewsItems(db, { categories: ["ai"] })).rejects.toBeInstanceOf(AppError);
+    // 単数キー（T-M8-412で複数選択の themes/impacts へ改名）も同様に弾く。
+    await expect(listNewsItems(db, { theme: "ai" })).rejects.toBeInstanceOf(AppError);
+    await expect(listNewsItems(db, { impact: "high" })).rejects.toBeInstanceOf(AppError);
   });
 
   it("from/toは両方そろえる・窓は最大24時間", async () => {
@@ -58,16 +61,29 @@ describe("listNewsItems query（T-M8-188）", () => {
     expect(page).toMatchObject({ page: 1, pageCount: 1, total: 10 });
   });
 
-  it("テーマ・インパクトを選ぶと一致行が先頭へ並ぶ（絞り込みはしない）", async () => {
+  it("テーマ・インパクトを選ぶと一致行が先頭へ並ぶ（複数選択・絞り込みはしない・T-M8-412）", async () => {
     const { db, calls } = mockDb(10);
-    await listNewsItems(db, { theme: "ai", impact: "high" });
+    await listNewsItems(db, { themes: ["ai", "sns"], impacts: ["high"] });
     const sql = calls[1].sql;
-    // where では絞らず（where true のみ）、order by の一致判定で先頭へ寄せる。
+    // where では絞らず（where true のみ）、order by の一致判定（いずれかに一致）で先頭へ寄せる。
     expect(sql).toMatch(/where true\n/);
-    expect(sql).toMatch(/order by \(category::text = \$1\) desc, \(impact::text = \$2\) desc/);
-    expect(calls[1].params.slice(0, 2)).toEqual(["ai", "high"]);
-    // 未知のテーマは弾く（selectの選択肢とzodの語彙がズレたら気付けるように）。
-    await expect(listNewsItems(db, { theme: "unknown" })).rejects.toBeInstanceOf(AppError);
+    expect(sql).toMatch(
+      /order by \(category::text = any\(\$1::text\[\]\)\) desc, \(impact::text = any\(\$2::text\[\]\)\) desc/,
+    );
+    expect(calls[1].params.slice(0, 2)).toEqual([
+      ["ai", "sns"],
+      ["high"],
+    ]);
+    // 未知のテーマは弾く（チップの選択肢とzodの語彙がズレたら気付けるように）。
+    await expect(listNewsItems(db, { themes: ["unknown"] })).rejects.toBeInstanceOf(AppError);
+    // 重複は1つに畳む（URL手打ちで同じ値が並んでもSQLに重複を渡さない）。
+    const dup = mockDb(10);
+    await listNewsItems(dup.db, { themes: ["ai", "ai"] });
+    expect(dup.calls[1].params[0]).toEqual(["ai"]);
+    // 空配列は「選択なし」と同じ（rankを作らず新着順のまま）。
+    const empty = mockDb(10);
+    await listNewsItems(empty.db, { themes: [], impacts: [] });
+    expect(empty.calls[1].sql).not.toMatch(/any\(/);
   });
 
   it("ページはoffsetで進み、範囲外は最終ページへ丸める", async () => {

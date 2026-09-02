@@ -120,8 +120,12 @@ test("ニュース一覧は低インパクトも表示し、テーマ・イン�
       return (needle: string) => titles.findIndex((t) => t.includes(needle));
     };
 
+    // チップは fieldset（グループ名）でスコープする。カード内のバッジ「高」等と衝突させない。
+    const themeChips = page.getByRole("group", { name: /テーマ/ });
+    const impactChips = page.getByRole("group", { name: /インパクト/ });
+
     // インパクト「高」を選ぶと高が先頭へ（低は残るが後ろ。記事は消えない）。
-    await page.getByLabel("インパクト").selectOption("high");
+    await impactChips.getByText("高", { exact: true }).click();
     await expect(page).toHaveURL(/impact=high/);
     await expect(page.getByText(`E2E-${run} AI重要`)).toBeVisible();
     let idx = await orderOf();
@@ -129,11 +133,33 @@ test("ニュース一覧は低インパクトも表示し、テーマ・イン�
     expect(idx("AI重要")).toBeLessThan(idx("AI軽微"));
 
     // テーマ「投資」を足すと投資が最優先（テーマ→インパクト→新着の順で寄る）。
-    await page.getByLabel("テーマ").selectOption("investment");
+    await themeChips.getByText("投資", { exact: true }).click();
     await expect(page).toHaveURL(/theme=investment/);
     await expect(page.getByText(`E2E-${run} 投資中`)).toBeVisible();
     idx = await orderOf();
     expect(idx("投資中")).toBeLessThan(idx("AI重要"));
+
+    /*
+      複数選択（T-M8-412）: テーマへ「AI」を足すと3件ともテーマ一致になり、
+      その中はインパクト（高）→新着順で並ぶ。選択はURLに繰り返しで載る。
+    */
+    await themeChips.getByText("AI", { exact: true }).click();
+    await expect(page).toHaveURL(/theme=investment&theme=ai|theme=ai&theme=investment/);
+    idx = await orderOf();
+    expect(idx("AI重要")).toBeLessThan(idx("AI軽微"));
+    expect(idx("AI軽微")).toBeLessThan(idx("投資中")); // 同順位はseedの新着順
+
+    // 全解除で新着順に戻る（チップの再クリックで外れる）。1クリックずつURL反映を待つ
+    // （連打の合成はローカル状態が担うが、E2Eは決定的な待ち方に揃える）。
+    await themeChips.getByText("AI", { exact: true }).click();
+    await expect(page).not.toHaveURL(/theme=ai/);
+    await themeChips.getByText("投資", { exact: true }).click();
+    await expect(page).not.toHaveURL(/theme=/);
+    await impactChips.getByText("高", { exact: true }).click();
+    await expect(page).not.toHaveURL(/theme=|impact=/);
+    idx = await orderOf();
+    expect(idx("AI軽微")).toBeLessThan(idx("AI重要")); // minutesAgo 5 < 10
+    expect(idx("AI重要")).toBeLessThan(idx("投資中")); // 10 < 15
   } finally {
     await removeNews(items.map((i) => i.id));
   }

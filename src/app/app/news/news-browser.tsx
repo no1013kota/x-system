@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { formatJst, yen } from "@/lib/format";
 import type { NewsItemsPage } from "@/lib/news-items";
 import { NEWS_FETCH_CATEGORIES } from "@/lib/news";
 import { newsCategoryLabel } from "@/lib/themes";
 import { Badge, CategoryChip, type BadgeTone } from "@/components/ui/badge";
+import { ChipCheckbox } from "@/components/ui/chip-checkbox";
 import { Icon } from "@/components/ui/icon";
 import { cardClassName } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
@@ -16,8 +18,9 @@ import { Notice } from "@/components/ui/notice";
  * SC-06 最新ニュース（T-M8-188・運営者の指示 2026-08-22）。
  *
  * **最新500件までを新着順（取得時刻の新しい順）が基本**で50件ずつのページ表示する。
- * 新着順のボタンは置かず、テーマ・インパクトの**選択式ソート**を置く：選ぶと一致する記事が
- * 先頭へ集まる（絞り込みではないので記事は消えない）。状態はURL（?page=&theme=&impact=）で
+ * 新着順のボタンは置かず、テーマ・インパクトの**選択式ソート（チップ型・複数選択）**を置く
+ * （T-M8-412）：選んだ値のいずれかに一致する記事が先頭へ集まる（絞り込みではないので記事は
+ * 消えない。全解除で新着順）。状態はURL（?page=&theme=…&impact=…・選択数ぶん繰り返す）で
  * サーバー描画し、この部品は表示と「すぐに投稿作成」だけを持つ。
  */
 
@@ -65,10 +68,23 @@ export function NewsBrowser({
   initialError: boolean;
   initialCreatedIds: string[];
   window: { from: string; to: string } | null;
-  /** 選択式ソートの現在値（URL由来）。 */
-  selected: { theme: string; impact: string };
+  /** 選択式ソートの現在値（URL由来・複数選択）。 */
+  selected: { themes: string[]; impacts: string[] };
 }) {
   const router = useRouter();
+  /*
+    チップの見た目と連続タップは**ローカル状態で即時に合成する**（T-M8-412）。
+    URL由来のpropsだけを正にすると、サーバー再描画（数百ms）が終わる前に2個目を
+    タップしたとき、古い選択状態から次のURLを作って**1個目の選択が黙って消える**。
+    サーバーから新しいselectedが来たら同期する（最終的にはURLが正）。
+  */
+  const [sel, setSel] = useState(selected);
+  const [prevSelected, setPrevSelected] = useState(selected);
+  if (prevSelected !== selected) {
+    // propsが変わったらレンダー中に同期する（公式の「propsに応じたstate調整」パターン）。
+    setPrevSelected(selected);
+    setSel(selected);
+  }
   // 「作成済み」バッジ（下書き化済みのnews_item）。作成は投稿作成画面が担う（T-M8-210）。
   const created = new Set(initialCreatedIds);
   // 最新取得に失敗した場合は空扱いにせず注記する（要件06 §10）。
@@ -76,15 +92,13 @@ export function NewsBrowser({
     ? "最新のニュースを取得できませんでした。時間をおいて再度お試しください。"
     : null;
 
-  /** ?page=&theme=&impact= を組む（時間窓が付いていれば維持する）。 */
-  function hrefFor(next: { page?: number; theme?: string; impact?: string }): string {
+  /** ?page=&theme=&impact= を組む（theme/impactは選択数ぶん繰り返す。時間窓が付いていれば維持する）。 */
+  function hrefFor(next: { page?: number; themes?: string[]; impacts?: string[] }): string {
     const params = new URLSearchParams();
     const target = next.page ?? 1;
     if (target > 1) params.set("page", String(target));
-    const theme = next.theme ?? selected.theme;
-    const impact = next.impact ?? selected.impact;
-    if (theme) params.set("theme", theme);
-    if (impact) params.set("impact", impact);
+    for (const theme of next.themes ?? sel.themes) params.append("theme", theme);
+    for (const impact of next.impacts ?? sel.impacts) params.append("impact", impact);
     if (window) {
       params.set("from", window.from);
       params.set("to", window.to);
@@ -93,9 +107,16 @@ export function NewsBrowser({
     return qs ? `/app/news?${qs}` : "/app/news";
   }
 
+  /** チップの選択／解除（複数選択・T-M8-412）。 */
+  function toggled(list: string[], value: string): string[] {
+    return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  }
+
   /** ソート選択はページ1へ戻して反映する（選んだ結果が先頭に見えるように）。 */
-  function applySort(next: { theme?: string; impact?: string }): void {
-    router.push(hrefFor({ ...next, page: 1 }));
+  function applySort(next: { themes?: string[]; impacts?: string[] }): void {
+    const merged = { themes: next.themes ?? sel.themes, impacts: next.impacts ?? sel.impacts };
+    setSel(merged);
+    router.push(hrefFor({ ...merged, page: 1 }));
   }
 
   const pager = page.pageCount > 1 && (
@@ -142,38 +163,38 @@ export function NewsBrowser({
         </p>
       )}
 
-      {/* 選択式ソート（T-M8-188）。選ぶと一致する記事が先頭へ。URLで持つのでリロード・共有でも保たれる。 */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block text-caption font-medium text-ink-2">
-          テーマ
-          <select
-            className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
-            onChange={(event) => applySort({ theme: event.target.value })}
-            value={selected.theme}
-          >
-            <option value="">指定なし（新着順）</option>
+      {/*
+        選択式ソート（T-M8-188→複数選択化T-M8-412）。選んだ値のいずれかに一致する記事が先頭へ。
+        チップ型は設定＞通知と同じ部品（選択中はチェックアイコン併記・色だけに依存しない）。
+        URLで持つのでリロード・共有でも保たれる。全解除＝新着順。
+      */}
+      <div className="space-y-2.5">
+        <fieldset>
+          <legend className="text-caption font-medium text-ink-2">テーマ（複数選択できます）</legend>
+          <div className="mt-1.5 flex flex-wrap gap-2">
             {NEWS_FETCH_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {newsCategoryLabel(category)}
-              </option>
+              <ChipCheckbox
+                checked={sel.themes.includes(category)}
+                key={category}
+                label={newsCategoryLabel(category)}
+                onChange={() => applySort({ themes: toggled(sel.themes, category) })}
+              />
             ))}
-          </select>
-        </label>
-        <label className="block text-caption font-medium text-ink-2">
-          インパクト
-          <select
-            className="mt-1 block h-10 min-w-40 rounded-lg border bg-background px-3 text-body text-ink"
-            onChange={(event) => applySort({ impact: event.target.value })}
-            value={selected.impact}
-          >
-            <option value="">指定なし（新着順）</option>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-caption font-medium text-ink-2">インパクト（複数選択できます）</legend>
+          <div className="mt-1.5 flex flex-wrap gap-2">
             {IMPACT_SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+              <ChipCheckbox
+                checked={sel.impacts.includes(option.value)}
+                key={option.value}
+                label={option.label}
+                onChange={() => applySort({ impacts: toggled(sel.impacts, option.value) })}
+              />
             ))}
-          </select>
-        </label>
+          </div>
+        </fieldset>
       </div>
 
       {/* ここに残すのは**画面の状態**だけ。操作の結果はトーストへ（T-M8-18）。 */}
