@@ -360,7 +360,8 @@ export function ConceptCycleFigure() {
             「SNS運用プラットフォーム」を1行にしていたため、コンセプト図の列が
             狭い帯（タブレット2カラム）で円からはみ出し、両脇のカードに文字が隠れた。
           */}
-          <p className="mt-1 px-1 text-[10px] leading-[1.5] text-ink-2 min-[880px]:text-[11px]">
+          {/* 10pxはtype-scale検査（15px未満の任意値禁止）に反するため11px＋字間詰めで余白を確保。 */}
+          <p className="mt-1 px-1 tracking-tight text-[11px] leading-[1.5] text-ink-2">
             プロンプト駆動の
             <br />
             SNS運用
