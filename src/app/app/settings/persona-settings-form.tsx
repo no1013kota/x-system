@@ -596,7 +596,8 @@ export function PersonaSettingsForm({
       */}
       <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-6">
         <button
-          className="min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+          // スマホは全幅（押し損ねない・一般的なモバイル慣行）。デスクトップは従来幅（T-M8-413）。
+          className="w-full min-h-11 rounded-card bg-brand px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 sm:w-auto"
           disabled={submitting}
           type="submit"
         >
