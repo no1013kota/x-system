@@ -126,7 +126,8 @@ function PlanCard({
         <span className="text-[32px] font-extrabold tracking-tight tabular-nums text-ink">
           ¥{yen(plan.monthlyPriceJpy)}
         </span>
-        <span className="ml-1 text-caption text-ink-3">／月（税込）</span>
+        {/* 狭い幅で「／月」と「（税込）」が別々に折れて基線が揃わないため、1語として折る（T-M8-415）。 */}
+        <span className="ml-1 inline-block whitespace-nowrap text-caption text-ink-3">／月（税込）</span>
       </p>
       {/* 行数を全カードで一定に保つため、キャンペーン無しでも空行として描画する（subgrid前提）。 */}
       <p className="mt-0.5 text-caption text-ink-3">

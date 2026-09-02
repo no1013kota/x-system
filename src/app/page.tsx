@@ -6,17 +6,9 @@ import Link from "next/link";
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
-import {
-  ConceptCycleFigure,
-  GrowthChartFigure,
-  PromptEditorFigure,
-  PostComposeFigure,
-  AnalyticsFigure,
-  NewsFeedFigure,
-  ScheduleFigure,
-} from "@/components/lp/figures";
+import { ConceptCycleFigure, GrowthChartFigure } from "@/components/lp/figures";
 import { FaqList } from "@/components/lp/faq";
-import { HeroMock } from "@/components/lp/hero-mock";
+import { AppShot } from "@/components/lp/screenshot";
 import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
@@ -128,7 +120,7 @@ const NAV_LINKS: [string, string][] = [
 
 const HOW_TO_STEPS: [string, string][] = [
   ["アカウント作成", "メールアドレスで登録し、確認メールで本人認証。"],
-  ["カード登録", "ここから7日間の無料トライアルが始まります。"],
+  ["カード登録", "ここから7日間の無料トライアルが始まります。期間中に解約すれば料金はかかりません。"],
   ["初期設定", "Xアカウントを連携し、発信の設定をする。順番は自由。"],
   ["運用開始", "下書きの確認から、あなたのペースで。"],
 ];
@@ -145,39 +137,44 @@ const FEATURES: {
   figure: ReactNode;
   gradientTop?: boolean;
 }[] = [
+  // 図版は実アプリのスクリーンショット（T-M8-415・運営者提供）。本文は1〜2文へ短縮した。
   {
     eyebrow: "情報収集の自動化",
     title: "ニュースが毎日届く",
-    // 重要度チップと時刻は図版が示すので文からは外してある（T-M8-76）。
     // 取得はRSSの10分おき巡回（T-M8-380/383）。**実際の仕様と揃える**（T-M8-337→T-M8-408）。
-    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、10分おきに自動収集します。気になった記事から、そのまま投稿の作成に進めます。",
-    figure: <NewsFeedFigure />,
+    body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、10分おきに自動収集。気になった記事から、そのまま投稿の作成へ進めます。",
+    figure: <AppShot alt="Exos AIの最新ニュース画面（実際の管理画面）" src="/lp-shots/news.jpg" />,
   },
   {
     eyebrow: "プロンプトの設計・編集",
     title: "AIへの指示を、自分の言葉で磨ける",
-    body: "投稿の土台になるアカウント.md、投稿の型、画像生成のプロンプトを、そのまま確認・編集できます。テンプレートから始めて、反応を見ながらあなた用に育てられます。",
-    figure: <PromptEditorFigure />,
+    body: "投稿の土台になるアカウント.mdも、投稿の型も、そのまま確認・編集できます。テンプレートから始めて、あなた用に育てる。",
+    figure: <AppShot alt="Exos AIのプロンプト編集画面（実際の管理画面）" src="/lp-shots/prompts.jpg" />,
   },
   {
     eyebrow: "投稿・画像の自動作成",
     title: "5種類の型で、文章も画像も",
-    body: "スレッド形式の文章と、添える画像をまとめて生成します。編集や、追加指示つきの再生成もできます。",
+    body: "スレッド形式の文章と、添える画像をまとめて生成。編集も、追加指示つきの再生成もできます。",
     gradientTop: true,
-    figure: <PostComposeFigure />,
+    figure: <AppShot alt="Exos AIの投稿作成画面（実際の管理画面）" src="/lp-shots/compose.jpg" />,
   },
   {
     eyebrow: "融通の効くスケジュール設定",
     title: "曜日×時刻で、自分の型に合わせて",
-    body: "9:00〜22:00の30分刻みで枠を組めます。枠ごとに「下書きまで」か「そのまま投稿」かを選べるので、忙しい日は下書きだけにもできます。",
-    figure: <ScheduleFigure />,
+    body: "9:00〜22:00の30分刻みで枠を設定。枠ごとに「下書きまで」か「そのまま投稿」かを選べます。",
+    figure: <AppShot alt="Exos AIのスケジュール画面（実際の管理画面）" src="/lp-shots/schedule.jpg" />,
   },
   {
     eyebrow: "結果分析・プロンプト改善",
     title: "何が伸びたかを分析して、改善案まで届く",
-    // 記録タイミングは図版が示すので文からは外してある（T-M8-76）。
-    body: "表示回数・いいね・リポスト・フォロワー数を自動で記録します。ボタン1つで、どの投稿が伸びたかを根拠つきのレポートにし、アカウント.mdとプロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
-    figure: <AnalyticsFigure />,
+    body: "表示回数・いいね・フォロワー数を自動で記録。ボタン1つで伸びた投稿を根拠つきのレポートにし、プロンプトの改善案まで用意します（反映するかはあなたが選べます）。",
+    // レビュー3周目: CSS図版をやめ、記録が並ぶ実ホーム画面へ（5枚すべて実画面に統一）。
+    figure: (
+      <AppShot
+        alt="Exos AIのホーム画面 — フォロワー数・今週の投稿・実績の記録が一目で分かる（実際の管理画面）"
+        src="/lp-shots/app-home.jpg"
+      />
+    ),
   },
 ];
 
@@ -314,8 +311,19 @@ export default async function Home() {
                 </div>
               </div>
             </div>
-            <div className="min-w-0 duration-[800ms]">
-              <HeroMock />
+            <div className="min-w-0">
+              {/*
+                実アプリの投稿作成画面（T-M8-415・レビュー3周目で差し替え）。
+                「AIが投稿を作る」中核価値が一目で伝わり、h1のプロンプトドリブンとも合う。
+              */}
+              <AppShot
+                alt="Exos AIの投稿作成画面 — 5種類の型とプロンプトを選んで生成できる（実際の管理画面）"
+                className="shadow-[var(--shadow-pop)]"
+                height={808}
+                priority
+                sizes="(min-width: 880px) 560px, 100vw"
+                src="/lp-shots/compose-hero.jpg"
+              />
             </div>
           </div>
         </section>
@@ -325,6 +333,32 @@ export default async function Home() {
           4項目すべてが後続セクションの再掲で、新しい情報が1つも無かった:
           前3つは「02 できること」、月額はヒーローのチェックと料金セクションの見出し。
         */}
+
+        {/*
+          信頼ストリップ（T-M8-415）。申込みの最大の不安（勝手に投稿される・解約できない）へ
+          先に答える。**事実ベースのみ**（保証・実績数・架空の声は禁止表現）。
+        */}
+        <section aria-label="安心して始められる理由" className="border-b border-hairline">
+          <div className={`${CONTAINER} grid gap-x-8 gap-y-4 py-7 sm:grid-cols-3`}>
+            {(
+              [
+                ["まず下書きから", "勝手に投稿しない設計。自動投稿は、設定と同意をしたときだけ動きます。"],
+                ["投稿前に確認・編集", "生成した文章も画像も、出す前にあなたが直せます。"],
+                ["決済はStripe", "カード情報は当方で保持しません。解約はいつでも設定からできます。"],
+              ] as const
+            ).map(([title, body]) => (
+              <div className="flex items-start gap-2.5" key={title}>
+                <span aria-hidden="true" className="mt-0.5 font-bold text-brand">
+                  ✓
+                </span>
+                <div>
+                  <p className="text-body font-bold">{title}</p>
+                  <p className="mt-0.5 text-caption leading-5 text-ink-2">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* 01 コンセプト（T-M8-172・運営者の指示 2026-08-21。旧「01 課題」を置き換えた） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
@@ -337,7 +371,7 @@ export default async function Home() {
                 プロンプトが磨かれる。
               </h2>
               <p className="mt-4 max-w-[38em] text-sm text-ink-2">
-                {APP_NAME}はプロンプト駆動のSNS運用プラットフォームです。プロンプトを設計し、投稿を生成・運用し、結果を分析して、プロンプトを改善する——この1周を回すたびに、あなたのアカウントとプロンプトが育ちます。
+                {APP_NAME}はプロンプト駆動のSNS運用プラットフォーム。設計→生成→投稿→分析→改善の1周を回すたびに、あなたのプロンプトとアカウントが育ちます。
               </p>
             </div>
             <div className="min-w-0">
@@ -365,7 +399,8 @@ export default async function Home() {
               760px未満では本文→図版の縦積みに戻る。
             */}
             <div className="mt-[30px] grid gap-3.5">
-              {FEATURES.map((feature) => (
+              {/* 偶数カードは図版を左へ反転（同型5連続の単調さを崩す・レビュー3周目）。 */}
+              {FEATURES.map((feature, index) => (
                 <div
                   className={cn(
                     cardClassName,
@@ -380,7 +415,7 @@ export default async function Home() {
                     />
                   )}
                   <div className="grid items-center gap-x-8 gap-y-4 min-[760px]:grid-cols-2">
-                    <div className="min-w-0">
+                    <div className={cn("min-w-0", index % 2 === 1 && "min-[760px]:order-2")}>
                       <p className="text-caption font-bold tracking-[0.06em] text-brand">
                         {feature.eyebrow}
                       </p>
@@ -458,6 +493,10 @@ export default async function Home() {
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="料金" no="05" />
                           <h2 className={H2}>月額{startingPrice}から。全プラン7日間の無料トライアル付き。</h2>
+            {/* 3枚のカードを読み比べる前に、差分だけ先に言う（走査性・レビュー3周目）。 */}
+            <p className="mt-3 max-w-[42em] text-sm text-ink-2">
+              3プランの違いは「APIキーをご自身で用意するか」と「利用上限」だけ。あとからプランは変更できます。
+            </p>
             <PricingCards />
             {/*
               友達招待キャンペーン（T-M8-268）。**料金の直後・同じ白い面に置く**
@@ -558,7 +597,8 @@ export default async function Home() {
           <SectionMark label="よくある質問" no="06" />
           {/* 見出しの言い換え（「気になることは、先に答えておきます」）を置かず、
               質問と回答そのものを大きく出す（2026-08-20 運営者の指示）。 */}
-          <div className="mt-[clamp(24px,3vw,38px)] max-w-[840px]">
+          {/* PCは2カラム（1カラム約2,400pxの「灰色の長文」を体感半減・レビュー3周目）。 */}
+          <div className="mt-[clamp(24px,3vw,38px)]">
             <FaqList />
           </div>
         </section>

@@ -355,11 +355,16 @@ export function ConceptCycleFigure() {
         {/* 中央: サービス名。 */}
         <div className="absolute top-1/2 left-1/2 flex size-[44%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-pill border border-hairline bg-surface text-center shadow-[var(--shadow-card)]">
           <p className="text-[17px] leading-tight font-bold tracking-tight sm:text-[20px]">Exos AI</p>
-          <p className="mt-1 px-3 text-[11px] leading-[1.5] text-ink-2 sm:text-caption">
+          {/*
+            常に3行で折る（レビュー3周目・T-M8-415）。以前は sm 以上で
+            「SNS運用プラットフォーム」を1行にしていたため、コンセプト図の列が
+            狭い帯（タブレット2カラム）で円からはみ出し、両脇のカードに文字が隠れた。
+          */}
+          <p className="mt-1 px-1 text-[10px] leading-[1.5] text-ink-2 min-[880px]:text-[11px]">
             プロンプト駆動の
             <br />
             SNS運用
-            <br className="sm:hidden" />
+            <br />
             プラットフォーム
           </p>
         </div>
