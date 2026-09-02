@@ -40,7 +40,7 @@ function NavigationLinkContent({
           />
         ) : null}
       </span>
-      <span className={mobile ? "" : "leading-tight"}>{label}</span>
+      <span className={mobile ? "whitespace-nowrap tracking-tight" : "leading-tight"}>{label}</span>
     </>
   );
 }
@@ -81,7 +81,7 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
             <NavigationLinkContent
               current={current}
               icon={item.icon}
-              label={item.label}
+              label={mobile && "mobileLabel" in item ? item.mobileLabel : item.label}
               mobile={mobile}
             />
             {/* App Shellの外へ遷移する項目にはマークを付ける（T-M8-175）。 */}

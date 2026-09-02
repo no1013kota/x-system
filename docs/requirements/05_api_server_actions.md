@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.81 |
-| 更新日 | 2026-09-01 |
+| バージョン | v1.82 |
+| 更新日 | 2026-09-03 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -207,10 +207,10 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `listNewsItems` | categories, impacts, from, to, cursor, limit | items | 認証済み。from/toは最大24時間、limitは1〜100 |
+| `listNewsItems` | page, themes[], impacts[], from, to | items（50件ずつ） | 認証済み。from/toは最大24時間。themes/impactsは複数選択ソート（T-M8-412） |
 | `createDraftFromNews` | request_key, news_item_id, instructions, image_enabled | job_id | N-4。バックグラウンド生成 |
 
-`listNewsItems`は**新着順（`fetched_at`）で数えた最新500件**（`NEWS_MAX_STORED_ITEMS`）を対象に、`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-188。範囲外のpageは最終ページへ丸める）。`theme`（news_category）・`impact`（high|mid|low）は**選択式ソート**で、一致する記事を先頭へ寄せる（whereでは絞らない——記事は消えない）。SC-06はサーバー描画＋URLの`?theme=&impact=&page=`で遷移する。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
+`listNewsItems`は**新着順（`fetched_at`）で数えた最新500件**（`NEWS_MAX_STORED_ITEMS`）を対象に、`page`で**50件ずつのoffsetページ**（`NEWS_PAGE_SIZE`）を返す（T-M8-188。範囲外のpageは最終ページへ丸める）。`themes[]`（news_category）・`impacts[]`（high|mid|low）は**複数選択の選択式ソート**（T-M8-412）で、**いずれかに一致**する記事を先頭へ寄せる（whereでは絞らない——記事は消えない。重複値は畳む・空配列は選択なしと同じ・単数キー`theme`/`impact`は弾く）。SC-06はサーバー描画＋URLの`?theme=…&impact=…&page=`（選択数ぶん繰り返し。カンマ区切りの手打ちも受ける・未知値は黙って捨てる）で遷移し、チップ型の複数選択UI（通知設定と同じ`ChipCheckbox`部品）で切り替える。`from`/`to`が揃う場合だけ`fetched_at`の時間窓（ダイジェスト深リンク・≤24h）で絞る。ホームの重要ニュースは専用の`listTopHighImpactNews`（high・利用者分野・新しい順N件）。作成済みバッジは`drafts.source_news_item_id`の存在から導出する。
 
 ## 7. スケジュール
 
@@ -388,6 +388,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.79 | 2026-09-01 | updateNewsEmailNotification を追加、updateNotificationConfig はニュースの email 省略可（T-M8-407） |
 | v1.80 | 2026-09-01 | applyLearningToSettings／learningApplyStatus の表行を追加。learningApplyStatus は直近の反映jobの結果（lastApply）と提案の有無（proposalReady）を返す（T-M8-410） |
 | v1.81 | 2026-09-01 | updatePersonaSettings が本棚へ1件追加して使用中にし、結果に preset を返す（T-M8-411） |
+| v1.82 | 2026-09-03 | listNewsItems の theme/impact を themes[]/impacts[] の複数選択ソートへ（いずれか一致を先頭へ・T-M8-412） |
 
 ### 下書きの投稿予約（T-M8-157）
 

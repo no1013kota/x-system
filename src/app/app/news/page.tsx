@@ -26,8 +26,8 @@ interface NewsPageProps {
     from?: string;
     to?: string;
     page?: string;
-    theme?: string;
-    impact?: string;
+    theme?: string | string[];
+    impact?: string | string[];
   }>;
 }
 
@@ -40,6 +40,18 @@ function parseWindow(from?: string, to?: string): { from: string; to: string } |
   const span = t - f;
   if (span <= 0 || span > NEWS_WINDOW_MAX_HOURS * 3600 * 1000) return null;
   return { from: new Date(f).toISOString(), to: new Date(t).toISOString() };
+}
+
+/**
+ * 複数値パラメータを既知の値だけへ正規化する（T-M8-412）。
+ * `?theme=a&theme=b`（繰り返し）と `?theme=a,b`（カンマ区切りの手打ち）の両方を受ける。
+ */
+function parseMulti(raw: string | string[] | undefined, allowed: readonly string[]): string[] {
+  const values = (Array.isArray(raw) ? raw : raw ? [raw] : [])
+    .flatMap((v) => v.split(","))
+    .map((v) => v.trim())
+    .filter((v) => allowed.includes(v));
+  return [...new Set(values)];
 }
 
 /**
@@ -77,21 +89,17 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     10_000,
     Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1),
   );
-  // 未知の値は黙って「指定なし」へ落とす（URL手打ちでエラー画面にしない）。
-  const theme = (NEWS_CATEGORIES as readonly string[]).includes(params.theme ?? "")
-    ? (params.theme as (typeof NEWS_CATEGORIES)[number])
-    : undefined;
-  const impact = (NEWS_IMPACTS as readonly string[]).includes(params.impact ?? "")
-    ? (params.impact as (typeof NEWS_IMPACTS)[number])
-    : undefined;
+  // 未知の値は黙って落とす（URL手打ちでエラー画面にしない）。複数選択はT-M8-412。
+  const themes = parseMulti(params.theme, NEWS_CATEGORIES);
+  const impacts = parseMulti(params.impact, NEWS_IMPACTS);
 
   let initial: NewsItemsPage = { items: [], page: 1, pageCount: 1, total: 0 };
   let initialError = false;
   try {
     initial = await listNewsItemsForUser({
       page: requestedPage,
-      ...(theme ? { theme } : {}),
-      ...(impact ? { impact } : {}),
+      ...(themes.length > 0 ? { themes } : {}),
+      ...(impacts.length > 0 ? { impacts } : {}),
       ...(window ?? {}),
     });
   } catch {
@@ -111,7 +119,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         initialCreatedIds={createdIds}
         initialError={initialError}
         page={initial}
-        selected={{ theme: theme ?? "", impact: impact ?? "" }}
+        selected={{ themes, impacts }}
         window={window}
       />
     </main>

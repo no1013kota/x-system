@@ -197,9 +197,10 @@ export default async function AppHomePage({
         </Notice>
       ) : null}
 
-      {/* KPI 4カード。実データに繋ぐ（記録が無いときは0ではなく「記録なし」と出す）。 */}
+      {/* KPI 4カード。実データに繋ぐ（記録が無いときは0ではなく「記録なし」と出す）。
+          モバイルは2×2（縦1列だと4枚で画面2つぶんを占めた・T-M8-413）。 */}
       {kpis ? (
-        <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-3.5 xl:grid-cols-4">
           <KpiCard kpi={kpis.followers} label="フォロワー数" />
           <KpiCard kpi={kpis.postsThisWeek} label="今週の投稿" />
           <KpiCard kpi={kpis.pendingDrafts} label="未確認の下書き" />

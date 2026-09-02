@@ -54,7 +54,7 @@ const FAQ_ITEMS: [question: string, answer: string][] = [
   ],
   [
     "そもそもXに時間をかけるべきか迷っています。",
-    "Xは、始めた翌日に結果が出るものではありません。数週間から数か月を「継続的に」続けて、ようやく反応が積み上がってきます。継続的に続けることは忍耐力を必要としますが、Exos AIは高品質で運用の自動化をサポートできます。少しでもX運用を試してみたいと思った場合はExos AIと共に初めてみませんか？失った時間を後から取り戻す方法はありません。",
+    "Xは、始めた翌日に結果が出るものではありません。数週間から数か月を「継続的に」続けて、ようやく反応が積み上がってきます。継続的に続けることは忍耐力を必要としますが、Exos AIは高品質で運用の自動化をサポートできます。少しでもX運用を試してみたいと思った場合はExos AIと共に始めてみませんか？失った時間を後から取り戻す方法はありません。",
   ],
   [
     "「APIキー」とは何ですか？むずかしくありませんか？",
@@ -80,9 +80,13 @@ const FAQ_ITEMS: [question: string, answer: string][] = [
 
 export function FaqList() {
   return (
-    <dl className="grid gap-[clamp(28px,4vw,44px)]">
+    // PC幅は2カラム（レビュー3周目・T-M8-415）。折りたたみ禁止のまま縦の長さを半減する。
+    <dl className="grid gap-[clamp(28px,4vw,44px)] min-[880px]:block min-[880px]:columns-2 min-[880px]:gap-x-14">
       {FAQ_ITEMS.map(([question, answer]) => (
-        <div className="border-t border-hairline pt-[clamp(20px,2.6vw,28px)]" key={question}>
+        <div
+          className="border-t border-hairline pt-[clamp(20px,2.6vw,28px)] min-[880px]:mb-9 min-[880px]:break-inside-avoid"
+          key={question}
+        >
           <dt
             className={cn(
               "text-[length:clamp(17px,calc(13px_+_0.7vw),21px)] leading-[1.5]",

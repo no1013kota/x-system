@@ -78,6 +78,17 @@ describe("listNewsItems (db)", () => {
       expect(wIds).toEqual(expect.arrayContaining([seed.aiHigh, seed.web3Mid, seed.aiLow]));
       expect(wIds).not.toContain(seed.oldFetch);
 
+      // 複数選択ソート（T-M8-412）: テーマ一致（web3）→インパクト一致（low）→不一致 の順に寄る。
+      // 実DBで any($::text[]) が enum 列に対して効くことまで確認する（形式の変更・CLAUDE.md）。
+      const ranked = await listNewsItems(pooledDb, {
+        from: base.toISOString(),
+        to: new Date(base.getTime() + 3600 * 1000).toISOString(),
+        themes: ["web3"],
+        impacts: ["low"],
+      });
+      const rIds = onlyMine(ranked.items).map((i) => i.id);
+      expect(rIds).toEqual([seed.web3Mid, seed.aiLow, seed.aiHigh]);
+
       // 窓なし: 最新500件が対象（7日制限・分野/インパクトの絞りは無い）。
       const all = await listNewsItems(pooledDb, {});
       expect(all.total).toBeGreaterThanOrEqual(Math.min(4, all.total));
