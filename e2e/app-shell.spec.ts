@@ -1,19 +1,19 @@
 /**
- * App Shell の骨格（T-M8-328・運営者の指示 2026-08-27）。
+ * App Shell の骨格（T-M8-328→T-M8-416・運営者の指示 2026-09-03）。
  *
- * **ヘッダーを廃止し、その導線をサイドバー下部へ集めた。** 戻ってしまうと
- * 「お知らせが開けない」「ログアウトできない」が起きるので、位置ではなく
- * **到達できること**を検査で固定する。
+ * デスクトップはヘッダー無し（導線はサイドバー下部）。モバイルは**上部の固定ヘッダー**に
+ * ロゴ・お知らせ・アカウントを置き、下部バーはナビ7タブだけ。戻ってしまうと
+ * 「お知らせが開けない」「ログアウトできない」が起きるので、**到達できること**を検査で固定する。
  */
 import { expect, signIn, test } from "./fixtures/test";
 
-test("App Shell: ヘッダーが無く、ナビ下部にお知らせとアカウントがある", async ({ accounts, page }) => {
+test("App Shell: デスクトップはヘッダー非表示・モバイルは上部ヘッダー（T-M8-416）", async ({ accounts, page }) => {
   const account = await accounts.create("shell-check");
   await signIn(page, account);
   await page.goto("/app");
 
-  // ヘッダーが消えていること
-  expect(await page.locator("header").count(), "ヘッダーが残っている").toBe(0);
+  // デスクトップではヘッダーが見えない（モバイル用ヘッダーはDOMにあるが lg:hidden）。
+  await expect(page.locator("header"), "デスクトップにヘッダーが出ている").toBeHidden();
 
   const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
   await expect(nav.getByRole("link", { exact: true, name: "プロンプト" })).toBeVisible();
@@ -29,4 +29,10 @@ test("App Shell: ヘッダーが無く、ナビ下部にお知らせとアカウ
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/app");
   await expect(page.getByRole("navigation", { name: "メインナビゲーション（モバイル）" })).toBeVisible();
+  // モバイルは上部ヘッダーが見え、お知らせがその中にある（T-M8-416）。
+  const mobileHeader = page.locator("header");
+  await expect(mobileHeader).toBeVisible();
+  const headerBox = await mobileHeader.boundingBox();
+  expect(headerBox!.y, "ヘッダーが画面上部にある").toBeLessThan(50);
+  await expect(mobileHeader.getByRole("button", { name: /お知らせ/ })).toBeVisible();
 });

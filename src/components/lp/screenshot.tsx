@@ -79,7 +79,6 @@ export function AppShot({
         className="block h-auto w-full"
         height={height}
         priority={priority}
-        quality={82}
         sizes={sizes}
         src={src}
         width={width}
