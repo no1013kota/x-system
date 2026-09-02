@@ -334,31 +334,7 @@ export default async function Home() {
           前3つは「02 できること」、月額はヒーローのチェックと料金セクションの見出し。
         */}
 
-        {/*
-          信頼ストリップ（T-M8-415）。申込みの最大の不安（勝手に投稿される・解約できない）へ
-          先に答える。**事実ベースのみ**（保証・実績数・架空の声は禁止表現）。
-        */}
-        <section aria-label="安心して始められる理由" className="border-b border-hairline">
-          <div className={`${CONTAINER} grid gap-x-8 gap-y-4 py-7 sm:grid-cols-3`}>
-            {(
-              [
-                ["まず下書きから", "勝手に投稿しない設計。自動投稿は、設定と同意をしたときだけ動きます。"],
-                ["投稿前に確認・編集", "生成した文章も画像も、出す前にあなたが直せます。"],
-                ["決済はStripe", "カード情報は当方で保持しません。解約はいつでも設定からできます。"],
-              ] as const
-            ).map(([title, body]) => (
-              <div className="flex items-start gap-2.5" key={title}>
-                <span aria-hidden="true" className="mt-0.5 font-bold text-brand">
-                  ✓
-                </span>
-                <div>
-                  <p className="text-body font-bold">{title}</p>
-                  <p className="mt-0.5 text-caption leading-5 text-ink-2">{body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* 信頼ストリップはT-M8-417で削除（運営者の指示 2026-09-03「不要」）。開示は帯・FAQ・特商法が担う。 */}
 
         {/* 01 コンセプト（T-M8-172・運営者の指示 2026-08-21。旧「01 課題」を置き換えた） */}
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
