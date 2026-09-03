@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * 実画面だと分かる形で出す。元画像は public/lp-shots/*.jpg（1600×1171へ最適化済み）。
  * LPは server component のまま（クライアント化はlanding-page.test.tsが禁止している）。
  */
-/** ブラウザ風フレーム（装飾）。CSS図版も同じ枠に入れて見た目を揃える（レビュー1周目）。 */
+/** 図版の共通フレーム（角丸カード＋影。上部のブラウザ風バーはT-M8-418で撤去・運営者の指示）。 */
 export function ShotFrame({
   children,
   className,
@@ -34,14 +34,6 @@ export function ShotFrame({
         className,
       )}
     >
-      <div
-        aria-hidden="true"
-        className="flex items-center gap-1.5 border-b border-hairline bg-page px-3 py-2"
-      >
-        <span className="size-2 rounded-full bg-black/[0.12]" />
-        <span className="size-2 rounded-full bg-black/[0.12]" />
-        <span className="size-2 rounded-full bg-black/[0.12]" />
-      </div>
       <div className={inset ? "relative p-3" : "relative"}>
         {children}
         {fadeBottom ? (

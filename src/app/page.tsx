@@ -573,8 +573,8 @@ export default async function Home() {
           <SectionMark label="よくある質問" no="06" />
           {/* 見出しの言い換え（「気になることは、先に答えておきます」）を置かず、
               質問と回答そのものを大きく出す（2026-08-20 運営者の指示）。 */}
-          {/* PCは2カラム（1カラム約2,400pxの「灰色の長文」を体感半減・レビュー3周目）。 */}
-          <div className="mt-[clamp(24px,3vw,38px)]">
+          {/* 縦1カラム・最大幅840px（T-M8-418・運営者の指示。2カラムは差し戻し）。 */}
+          <div className="mt-[clamp(24px,3vw,38px)] max-w-[840px]">
             <FaqList />
           </div>
         </section>
