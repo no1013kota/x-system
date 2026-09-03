@@ -1,3 +1,4 @@
+import { APP_NAME } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
 import { CHIP_LABEL, H3, type Who } from "./tokens";
@@ -5,12 +6,13 @@ import { CHIP_LABEL, H3, type Who } from "./tokens";
 /**
  * 「手を動かす時間が、こう変わる」の図面板（T-M8-419）。このページ唯一の暗色面。
  *
- * 上段: ある1日の Before/After タイムライン（6:00〜24:00 を横軸に、1行＝1つの作業・工程）。
- * 下段: 自動で回る4工程・押すだけの分析・あなたが握る2つの判断のリング図。
+ * 上段: 手作業 3h の棒と、Exos AI 5m の点（同じ尺。棒の長さ＝手を動かす時間。After は棒ではなく
+ * 目盛り線の左端に白い点1つ——6周目）。
+ * 下段: 自動で回る4工程・押すだけの分析・あなたが握る2つの判断のリング図。上下は板の内側の罫線1本で
+ * 「上＝結果・下＝仕組み」の2段に切る（5周目）。
  *
  * 製品の仕組みは曲げない: 分析は「分析を開始」ボタン起点・1日1回・表示専用（「自動」と書かない）、
- * 既定は下書きまで（After にも「確認」の白ピルを必ず残す）、投稿の枠は 9:00〜22:00・30分刻み
- * （PRD S-2・DB CHECK `schedule_slots_time_valid`）なので例の枠も 9:00 と 21:00 にする。
+ * 既定は下書きまで（After にも「確認」の白い点を必ず残す）。
  * 暗色は固定色の面であり、dark: バリアントや prefers-color-scheme は使わない。
  * 文字の薄さは white/60 まで（#2b0f29 上で 4.5:1 以上）。opacity プロパティは使わない。
  */
@@ -18,293 +20,230 @@ import { CHIP_LABEL, H3, type Who } from "./tokens";
 const BOARD_BG = "#2b0f29";
 
 /*
- * ─── ある1日のタイムライン ───────────────────────────────────────────────
- * 6:00〜24:00 を横軸に、Before は「人が手を動かす作業」5行、After は「自動で回る工程」4行＋
- * 「確認（あなた）」1行。位置は分単位（left/width を %）。JS 不要・CSS のみ。
- * 数字は例なので figcaption で明示し、「平均◯時間削減」の断定は書かない。
+ * ─── 手作業 3h と Exos AI 5m の比例バー ─────────────────────────────────
+ * 旧「ある1日のタイムライン」（6:00〜24:00 の横軸に行ごとの帯・ドット・目盛り）は、何を比べているかが
+ * 3秒で読めなかった（運営者の指摘 2026-09-04）。同じ尺の棒にし、棒の長さそのものが時間を表すようにする。
+ * After は同じ尺の**目盛り線**（1px・white/30）の左端に白い点1つ＋「5分」（6周目。5周目の「薄いトラック」
+ * は Before と同じ長さの暗い棒に見え、「棒2本が同じ長さ」に読めた。線なら形が無いので棒と競わず、
+ * 右へ空のまま続くことで「残りは空」が読める。白い点の直後に和文の「5分」を置き、点が bullet でなく
+ * 尺の上の量であること、左列の「5m」が5分であることを同時に示す）。数字は例なので figcaption で
+ * 明示し、「平均◯時間削減」の断定は書かない。JS 不要・CSS のみ。比例幅は inline style で書く
+ * （Tailwind の動的クラスは JIT に拾われない）。
  */
-const DAY_START = 6 * 60;
-const DAY_END = 24 * 60;
-const DAY = DAY_END - DAY_START;
 
-function at(hour: number, minute = 0): number {
-  return hour * 60 + minute;
-}
-function pct(minutes: number): string {
-  return `${(((minutes - DAY_START) / DAY) * 100).toFixed(3)}%`;
-}
-function widthPct(minutes: number): string {
-  return `max(${((minutes / DAY) * 100).toFixed(3)}%, 12px)`;
-}
-function formatMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-/** Before: 人が手を動かす作業（例）。ラベルは狭い幅でも1行に収まる長さ（6文字以内）。 */
-const BEFORE: { label: string; start: number; minutes: number }[] = [
-  { label: "ニュース確認", start: at(7, 30), minutes: 30 },
-  { label: "ネタ探し", start: at(12), minutes: 20 },
-  { label: "執筆", start: at(21), minutes: 60 },
-  { label: "画像を用意", start: at(22), minutes: 15 },
-  { label: "数字を見る", start: at(23), minutes: 10 },
+/** 手作業の内訳（例・合計180分）。PRD §1.1 の6作業を5語へ（情報収集＋ネタ探し＝探す）。ラベルは5文字以内。 */
+const BEFORE: { label: string; minutes: number }[] = [
+  { label: "探す", minutes: 45 },
+  { label: "書く", minutes: 60 },
+  { label: "画像作り", minutes: 30 },
+  { label: "投稿", minutes: 15 },
+  { label: "数字を見る", minutes: 30 },
 ];
-
-/** After: 自動で回る工程（ドット＝自動）と、あなたの確認（白ピル）。 */
-type AfterRow =
-  | {
-      kind: "dots";
-      label: string;
-      note: string;
-      /** ドット間隔（background-size）。640px未満は間隔を広げないと実線に見える。 */
-      sizeClass: string;
-    }
-  | { kind: "marks"; label: string; note: string; times: number[] }
-  | {
-      kind: "you";
-      label: string;
-      note: string;
-      times: { start: number; minutes: number }[];
-    };
-
-const AFTER: AfterRow[] = [
-  {
-    kind: "dots",
-    label: "収集",
-    note: "10分おき",
-    // 18時間 = 10分おきで108個。狭い幅では30分刻み（36個）で「間隔がある」ことだけ示す。
-    sizeClass:
-      "bg-[size:calc(100%/36)_100%] min-[640px]:bg-[size:calc(100%/108)_100%]",
-  },
-  { kind: "marks", label: "生成", note: "定刻", times: [at(9), at(21)] },
-  {
-    kind: "marks",
-    label: "投稿",
-    note: "予約・定刻",
-    times: [at(12), at(21, 2)],
-  },
-  {
-    kind: "dots",
-    label: "記録",
-    note: "毎時",
-    sizeClass: "bg-[size:calc(100%/18)_100%]",
-  },
-  {
-    kind: "you",
-    label: "確認",
-    note: "あなた",
-    times: [
-      { start: at(9, 5), minutes: 3 },
-      { start: at(21, 5), minutes: 2 },
-    ],
-  },
+/** Exos AI で残る手作業。既定は下書きまでなので「確認（あなた）」を必ず残す。 */
+const AFTER: { label: string; note: string; minutes: number }[] = [
+  { label: "確認", note: "下書きを見るだけ", minutes: 5 },
 ];
 
 const BEFORE_TOTAL = BEFORE.reduce((sum, item) => sum + item.minutes, 0);
-const AFTER_TOTAL = AFTER.reduce(
-  (sum, row) =>
-    row.kind === "you"
-      ? sum + row.times.reduce((s, t) => s + t.minutes, 0)
-      : sum,
-  0,
-);
+const AFTER_TOTAL = AFTER.reduce((sum, item) => sum + item.minutes, 0);
 
-/** 見出しで引用する合計（例の値。直書きせずここから描く）。 */
+/** 見出し・図内の表記（"3h"・"5m"）。0分の端数は出さない（旧実装は 180 → "3h 0m" だった）。 */
+export function formatMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+/** 読み上げ・本文・図内の和文（"3時間"・"5分"）。図の中でも "5m" は5メートルと読まれうるので、点の隣はこちら。 */
+function formatMinutesJa(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}分`;
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`;
+}
+
+/**
+ * 見出し・サブ文で引用する合計（例の値。直書きせずここから描く。`loop-board.test.ts` が固定）。
+ * `before`/`after` は見出しの "3h"・"5m"（運営者指定の表記・視覚用）、`beforeJa`/`afterJa` は
+ * 読み上げ用の見出しとサブ文の「3時間」「5分」（読み上げでは "3h → 5m" が「3エイチ 5エム」になる）。
+ */
 export const LOOP_TOTALS = {
   before: formatMinutes(BEFORE_TOTAL),
   after: formatMinutes(AFTER_TOTAL),
+  beforeJa: formatMinutesJa(BEFORE_TOTAL),
+  afterJa: formatMinutesJa(AFTER_TOTAL),
 };
 
-const TICKS = ["6:00", "12:00", "18:00", "24:00"];
-/** 行のグリッド: 左にラベル、右に軌道。 */
-const ROW =
-  "grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 min-[760px]:grid-cols-[140px_minmax(0,1fr)]";
-/** 軌道の背景: 6:00／12:00／18:00 の縦の目安線。 */
-const TRACK =
-  "relative h-6 bg-[linear-gradient(to_right,rgba(255,255,255,0.14)_1px,transparent_1px)] bg-[size:33.3333%_100%]";
-const LABEL = "text-caption leading-tight whitespace-nowrap";
+/** Before の棒の区切り（板の色が透ける隙間）px。 */
+const SEG_GAP = 2;
+const GAPS_PX = SEG_GAP * (BEFORE.length - 1);
 
-function BlockHead({
+/** 行のグリッド: 640px以上は左にラベル＋合計、右に棒。未満は縦積み。 */
+const ROW =
+  "grid grid-cols-1 gap-y-2 min-[640px]:grid-cols-[116px_minmax(0,1fr)] min-[640px]:items-center min-[640px]:gap-x-3 min-[760px]:grid-cols-[140px_minmax(0,1fr)]";
+
+/** 棒の高さ。After の白い点（最小幅＝高さ）が正円になる寸法（1280幅で比例幅 約27px ≒ 32px）。 */
+const BAR_H = "h-7 min-[640px]:h-8";
+
+function Row({
   label,
   total,
   note,
-  bar,
+  children,
 }: {
   label: string;
   total: string;
+  /** 合計の直下の一言（「全部、手で」「確認だけ」）。数字を裸にせず左列だけで意味が読めるように。640px未満は出さない（棒の凡例と重複し、数字の尾ひれに読める）。 */
   note: string;
-  /** 合計を1本の帯で比較する（Before は全幅の白、After は比率ぶんの brand）。 */
-  bar: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-caption font-medium tracking-[0.08em] text-white/75">
+    <div className={ROW}>
+      <div className="flex flex-wrap items-baseline gap-x-2 min-[640px]:block">
+        <span className="text-caption font-medium tracking-[0.08em] whitespace-nowrap text-white/75">
           {label}
         </span>
-        <span className="text-[length:clamp(28px,calc(18px_+_1.4vw),40px)] font-medium leading-none tabular-nums">
+        <span className="text-[length:clamp(28px,calc(18px_+_1.4vw),40px)] font-medium leading-none tabular-nums text-white min-[640px]:mt-1 min-[640px]:block">
           {total}
         </span>
-        <span className="text-caption text-white/60">{note}</span>
+        <span className="hidden text-caption whitespace-nowrap text-white/60 min-[640px]:mt-1.5 min-[640px]:block">
+          {note}
+        </span>
       </div>
-      <div className="mt-3 h-2 w-full">{bar}</div>
+      {children}
     </div>
   );
 }
 
-function Ticks() {
+/**
+ * 上段の比例バー。Before は1本のピルを隙間で5つに刻む（幅＝分に比例・flex-grow）。
+ * After は同じ尺の目盛り線の左端に白い点1つ（＝あなたの「確認」・LEGEND の「あなた」と同じ白の記法）
+ * ＋「5分 下書きを見るだけ」。「確認」の語は左列の注記（確認だけ）に1回だけ（線上にも太字で置くと
+ * 100px以内に2回並んだ）。
+ */
+function Bars() {
   return (
-    <div className={ROW} aria-hidden="true">
-      <span />
-      <div className="relative h-4 text-caption leading-4 text-white/60">
-        {TICKS.map((tick, index) => (
-          <span
-            className={cn(
-              "absolute",
-              index === TICKS.length - 1 && "right-0",
-              // 狭い幅では 18:00 と 24:00 が重なるので 18:00 を出さない。
-              index === TICKS.length - 2 && "hidden min-[640px]:inline",
-            )}
-            key={tick}
-            style={
-              index === TICKS.length - 1
-                ? undefined
-                : { left: `${(index / (TICKS.length - 1)) * 100}%` }
-            }
-          >
-            {tick}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Timeline() {
-  return (
-    <figure>
-      <div className="grid gap-10">
-        {/* Before */}
-        <div>
-          <BlockHead
-            bar={<div className="h-2 w-full rounded-pill bg-white/30" />}
-            label="BEFORE"
-            note="手を動かす時間"
-            total={LOOP_TOTALS.before}
-          />
-          <div className="mt-4 grid gap-1.5">
-            {BEFORE.map((item) => (
-              <div className={ROW} key={item.label}>
-                <span className={`${LABEL} text-white/75`}>
-                  {item.label}{" "}
-                  <s className="decoration-white/50">{item.minutes}分</s>
-                </span>
-                <div className={TRACK}>
+    <figure
+      aria-label={`手作業だと1日${formatMinutesJa(BEFORE_TOTAL)}の作業が、${APP_NAME} では下書きの確認${formatMinutesJa(AFTER_TOTAL)}だけになる（例）。`}
+    >
+      <div className="grid gap-6 min-[640px]:gap-7">
+        <Row label="手作業なら" note="全部、手で" total={LOOP_TOTALS.before}>
+          <div className="min-w-0">
+            <ol
+              className={cn("flex w-full overflow-hidden rounded-pill", BAR_H)}
+              style={{ gap: SEG_GAP }}
+            >
+              {BEFORE.map((item, index) => (
+                <li
+                  className="flex min-w-0 items-center justify-center bg-white/40 px-1 text-body font-medium text-white"
+                  key={item.label}
+                  style={{ flex: `${item.minutes} 1 0%` }}
+                >
+                  {/*
+                    760px未満は番号だけ（作業名は下の凡例へ）。読み上げは作業名＋分で1回。
+                    閾値は 640 でなく 760: 640〜759px では最後の区切りが約68pxで「数字を見る」（65px）が
+                    縁に触れる（実測 2026-09-04）。
+                  */}
+                  <span aria-hidden="true" className="min-[760px]:hidden">
+                    {index + 1}
+                  </span>
                   <span
-                    className="absolute top-0.5 h-5 rounded-pill bg-white/30"
-                    style={{
-                      left: pct(item.start),
-                      width: widthPct(item.minutes),
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-            <Ticks />
+                    className="sr-only min-[760px]:not-sr-only"
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    {item.label}
+                  </span>
+                  <span className="sr-only">{item.minutes}分</span>
+                </li>
+              ))}
+            </ol>
+            <ol
+              aria-hidden="true"
+              className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-caption text-white/75 min-[760px]:hidden"
+            >
+              {BEFORE.map((item, index) => (
+                <li className="whitespace-nowrap" key={item.label}>
+                  <span className="mr-1 font-medium text-white">{index + 1}</span>
+                  {item.label}
+                </li>
+              ))}
+            </ol>
           </div>
-        </div>
-
-        {/* After */}
-        <div>
-          <BlockHead
-            bar={
-              <div
-                className="h-2 min-w-[12px] rounded-pill bg-brand ring-1 ring-white/50"
-                style={{
-                  width: `${((AFTER_TOTAL / BEFORE_TOTAL) * 100).toFixed(2)}%`,
-                }}
-              />
-            }
-            label="AFTER"
-            note="手を動かす時間"
-            total={LOOP_TOTALS.after}
-          />
-          <div className="mt-4 grid gap-1.5">
-            {AFTER.map((row) => (
-              <div className={ROW} key={row.label}>
-                <span className={`${LABEL} text-white`}>
-                  {row.label}
-                  <span className="ml-1 text-white/60">{row.note}</span>
+        </Row>
+        <Row label={`${APP_NAME} なら`} note="確認だけ" total={LOOP_TOTALS.after}>
+          <div className={cn("relative flex min-w-0 items-center", BAR_H)}>
+            {/*
+              Before と同じ尺の目盛り線（棒ではない）。塗った面だと「同じ長さの棒が2本」に見える。
+              線は点とラベルの後ろも右端まで通し、ラベル側が板の色で線を切る。
+            */}
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/30"
+            />
+            {AFTER.map((item) => (
+              <span className="contents" key={item.label}>
+                {/* 幅は分に比例（min-w＝高さで、狭い幅でも点として残る）。relative で線の上に載せる。 */}
+                <span
+                  aria-hidden="true"
+                  className="relative h-full min-w-7 shrink-0 rounded-pill bg-white min-[640px]:min-w-8"
+                  style={{
+                    width: `calc((100% - ${GAPS_PX}px) * ${item.minutes / BEFORE_TOTAL})`,
+                  }}
+                />
+                <span
+                  className="relative flex items-baseline gap-2 px-2.5 text-body whitespace-nowrap"
+                  style={{ backgroundColor: BOARD_BG }}
+                >
+                  <span className="sr-only">{item.label}</span>
+                  <span className="font-medium text-white">{formatMinutesJa(item.minutes)}</span>
+                  <span className="text-white/60">{item.note}</span>
                 </span>
-                <div className={TRACK}>
-                  {row.kind === "dots" ? (
-                    <span
-                      className={cn(
-                        "absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.6)_1.5px,transparent_2.2px)]",
-                        row.sizeClass,
-                      )}
-                    />
-                  ) : null}
-                  {row.kind === "marks"
-                    ? row.times.map((time) => (
-                        <span
-                          className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-brand ring-2 ring-white/50"
-                          key={time}
-                          style={{ left: pct(time) }}
-                        />
-                      ))
-                    : null}
-                  {row.kind === "you"
-                    ? row.times.map((time) => (
-                        <span
-                          className="absolute top-1/2 inline-flex h-5 -translate-y-1/2 items-center rounded-pill bg-white px-2 text-caption font-medium whitespace-nowrap text-brand"
-                          key={time.start}
-                          style={{ left: pct(time.start) }}
-                        >
-                          {time.minutes}分
-                        </span>
-                      ))
-                    : null}
-                </div>
-              </div>
+              </span>
             ))}
-            <Ticks />
           </div>
-        </div>
+        </Row>
       </div>
-      <figcaption className="mt-4 text-caption text-white/60">
-        ある1日の例（9:00は下書きまで、21:00はそのまま投稿の枠）。時間は目安です。
+      {/* 上段→下段の橋は1文だけ。同意・ボタンの開示は下段の本文が担う（重複させない）。 */}
+      <figcaption className="mt-5 text-caption text-white/60">
+        棒の長さ＝手を動かす時間（ある1日の例・目安）。あとの工程は {APP_NAME} が回します（仕組みは下の図）。
       </figcaption>
     </figure>
   );
 }
 
-/** リング図の7ノード。並び順＝工程の順（時計回り、上から）。 */
+/** リング図の7ノード。並び順＝工程の順（時計回り、上から）。note は行の配列（リング図では改行、縦リストでは「、」で連結）。 */
 const NODES: {
   label: string;
-  note: string;
+  note: readonly string[];
   who: Who;
-  highlight?: boolean;
 }[] = [
-  { label: "集める", note: "10分おき", who: "auto" },
-  { label: "作る", note: "定刻・60〜90秒", who: "auto", highlight: true },
-  { label: "確認", note: "あなた・省略可", who: "you" },
-  // 要件04 §8: 定刻から「概ね」5分以内（断定しない）。同意後にだけ動く。
-  { label: "投稿", note: "同意後・定刻から概ね5分以内", who: "auto" },
-  { label: "記録", note: "毎時・1/7/30日後", who: "auto" },
-  { label: "分析", note: "ボタン1つ・1日1回", who: "ai" },
-  { label: "反映", note: "あなた・選べる", who: "you" },
+  { label: "集める", note: ["10分おき"], who: "auto" },
+  { label: "作る", note: ["定刻・60〜90秒"], who: "auto" },
+  // 「確認」は一番右のノード。1行だと 640〜1024px で板の右端を越える（実測 最大28px）ので2行。
+  { label: "確認", note: ["あなた", "飛ばしてもOK"], who: "you" },
+  // 要件04 §8: 定刻から「概ね」5分以内（断定しない）。自動投稿をオンにした後にだけ動く
+  // （「同意後」は仕様書の語で、初心者には「何に同意？」となる——6周目）。
+  { label: "投稿", note: ["自動投稿ONのとき", "定刻から概ね5分以内"], who: "auto" },
+  // 表示回数などの反応を毎時、投稿の1・7・30日後にも記録する（要件04）。「反応」だけでは何を指すか
+  // 曖昧なので「表示回数など」（6周目）。2行に分けるのは 640px でラベルが板の外へ出るため。
+  { label: "記録", note: ["表示回数などを毎時", "1・7・30日後も"], who: "auto" },
+  // 「分析」は一番左のノード。1行だと 640px で板の左端まで3pxしか残らないので2行。
+  { label: "分析", note: ["ボタン1つ", "1日1回"], who: "ai" },
+  { label: "反映", note: ["あなたが選ぶ"], who: "you" },
 ];
 
-/** ノード円の見た目（記法チップと同じ意味: 自動＝brand塗り／AI・押すだけ＝薄紫／あなた＝白）。 */
+/**
+ * ノード円の見た目（記法チップと同じ意味: 自動＝brand塗り／AI・押すだけ＝薄紫／あなた＝白）。
+ * 板の暗色（#2b0f29）の上では brand 塗りが最も沈む（面の対比 約1.9:1）ので、板の上だけ白い輪郭を
+ * 2px・white/60 に上げて「自動4工程」が主役として立つようにする（6周目。凡例チップも同じ値）。
+ */
 const NODE_CLASS: Record<Who, string> = {
-  auto: "bg-brand text-white ring-1 ring-white/35",
+  auto: "bg-brand text-white ring-2 ring-white/60",
   ai: "bg-brand-subtle text-brand ring-2 ring-brand",
   you: "bg-white text-brand ring-2 ring-brand",
 };
 const LEGEND_CLASS: Record<Who, string> = {
-  auto: "bg-brand text-white ring-1 ring-white/35",
+  auto: "bg-brand text-white ring-2 ring-white/60",
   ai: "bg-brand-subtle text-brand ring-2 ring-brand",
   you: "bg-white text-brand",
 };
@@ -341,9 +280,17 @@ const LABEL_CLASS: Record<ReturnType<typeof labelPlacement>, string> = {
   left: "right-[calc(100%+10px)] top-1/2 -translate-y-1/2 text-right",
 };
 
+/**
+ * 「作る」の外周にあった赤→紫→青のグラデの輪は撤去（5周目）。凡例に無い第4の記法で、暗色の上では
+ * 「2番だけ赤＝警告？」に読めた。強調は置かない（4工程はどれも同じ「自動」）。
+ */
 function Ring() {
   return (
-    <div className="mx-auto w-full max-w-[560px] px-8 min-[960px]:px-10">
+    /*
+     * 正方形の下 19%（最下ノード y=81% より下）はそのまま余白になるので、負の margin で板の底に寄せる
+     * （最下ラベルは y=81%＋約36px で板内に収まる）。
+     */
+    <div className="mx-auto w-full max-w-[560px] px-8 min-[640px]:-mb-[clamp(24px,5%,48px)] min-[960px]:px-10">
       <div className="relative aspect-square w-full">
         <svg
           aria-hidden="true"
@@ -363,12 +310,6 @@ function Ring() {
             >
               <path d="M 0 0 L 4 2 L 0 4 z" fill="rgba(255,255,255,0.7)" />
             </marker>
-            {/* var(--brand-gradient) は SVG の stroke に使えないため3色を再現（「AIが動く瞬間」＝このページ2回目で最後）。 */}
-            <linearGradient id="loop-brand-grad" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#ff0000" />
-              <stop offset="50%" stopColor="#7d1f75" />
-              <stop offset="100%" stopColor="#00afff" />
-            </linearGradient>
           </defs>
           {NODES.map((node, index) => (
             <path
@@ -380,20 +321,6 @@ function Ring() {
               strokeWidth={0.4}
             />
           ))}
-          {NODES.map((node, index) => {
-            if (!node.highlight) return null;
-            const { x, y } = polar(-90 + STEP * index, RADIUS);
-            return (
-              <circle
-                cx={x}
-                cy={y}
-                key={node.label}
-                r={6.2}
-                stroke="url(#loop-brand-grad)"
-                strokeWidth={0.6}
-              />
-            );
-          })}
         </svg>
         {/* 中心は薄い輪1本だけ（同心円の「印」は撤去・3周目）。 */}
         <div
@@ -418,21 +345,19 @@ function Ring() {
                 {index + 1}
               </span>
               <span
-                className={cn(
-                  "absolute whitespace-nowrap",
-                  LABEL_CLASS[placement],
-                  // 「作る」だけ外周にグラデの輪があるぶん、ラベルを離す。
-                  node.highlight &&
-                    placement === "right" &&
-                    "left-[calc(100%+20px)]",
-                )}
+                className={cn("absolute whitespace-nowrap", LABEL_CLASS[placement])}
               >
                 <span className="block text-base font-medium leading-tight text-white">
                   {node.label}
                 </span>
-                <span className="block text-body leading-tight text-white/75">
-                  {node.note}
-                </span>
+                {node.note.map((line) => (
+                  <span
+                    className="block text-body leading-tight text-white/75"
+                    key={line}
+                  >
+                    {line}
+                  </span>
+                ))}
               </span>
             </div>
           );
@@ -456,8 +381,9 @@ function StepList() {
           >
             {index + 1}
           </span>
-          <span className="text-base font-medium">{node.label}</span>
-          <span className="text-body text-white/75">{node.note}</span>
+          {/* 工程名は折らない（注記が長い行で「投／稿」と縦に折れた・6周目）。折れるのは注記側。 */}
+          <span className="shrink-0 text-base font-medium whitespace-nowrap">{node.label}</span>
+          <span className="text-body text-white/75">{node.note.join("、")}</span>
         </li>
       ))}
     </ol>
@@ -467,11 +393,13 @@ function StepList() {
 export function LoopBoard() {
   return (
     <div
-      className="rounded-[24px] px-[clamp(24px,4vw,48px)] pt-[clamp(24px,4vw,48px)] pb-[clamp(16px,3vw,32px)] text-white"
+      className="rounded-[24px] px-[clamp(24px,4vw,48px)] pt-[clamp(24px,4vw,48px)] pb-[clamp(16px,2vw,24px)] text-white"
       style={{ backgroundColor: BOARD_BG }}
     >
-      <Timeline />
-      <div className="mt-[clamp(40px,6vw,72px)] grid grid-cols-1 items-start gap-10 min-[960px]:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
+      <Bars />
+      {/* 板の内側の罫線1本で「上＝結果・下＝仕組み」を切る（空きだけだと2図の関係が構造として見えない）。 */}
+      {/* 960px以上は左列（約230px）をリング図（約470px）の縦中央に置く（上寄せだと左下が空き、文字が板の上端に貼り付く）。 */}
+      <div className="mt-[clamp(32px,5vw,56px)] grid grid-cols-1 items-start gap-10 border-t border-white/10 pt-[clamp(32px,5vw,56px)] min-[960px]:grid-cols-[minmax(0,4fr)_minmax(0,8fr)] min-[960px]:items-center">
         <div>
           <h3 className={H3}>
             <span className="inline-block">自動で回る4工程。</span>
@@ -491,8 +419,9 @@ export function LoopBoard() {
               </span>
             ))}
           </div>
+          {/* 「同意」「表示専用」は仕様書の語なので、初心者の言葉に開く（6周目）。事実は同じ: 同意後にだけ自動投稿・分析は1日1回・結果は表示のみ。 */}
           <p className="mt-4 text-sm leading-[1.8] text-white/75">
-            自動投稿は同意の後にだけ始まり、設定から即時に停止できます。分析は「分析を開始」を押したときだけ（1日1回・表示専用）。
+            自動投稿は、あなたがオンにした後にだけ始まり、設定からすぐ止められます。分析は「分析を開始」を押したときだけ（1日1回。結果を見るだけで、勝手には反映しません）。
           </p>
         </div>
         <figure aria-label="集める・作る・投稿・記録は自動、分析は押したときだけAIが行い、確認と反映はあなた。">

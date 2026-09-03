@@ -74,7 +74,7 @@ async function warmUpRoutes(baseUrl: string): Promise<void> {
     "/login",
     "/signup",
     "/plans",
-    "/new",
+    "/old",
     "/app",
     "/app/posts",
     "/app/settings",

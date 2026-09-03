@@ -7,7 +7,11 @@ import { OPERATOR_X_URL } from "@/lib/app-config";
 import { RELEASE_CAMPAIGN } from "@/lib/plans";
 
 /**
- * SC-01 LP（T-M8-74, design_handoff_lp）の構造検査。
+ * SC-01 LP（T-M8-74, design_handoff_lp → T-M8-419/420 で「AIクローン」LPへ全面刷新）の構造検査。
+ *
+ * 2026-09-04（T-M8-420）、`/new` で先行公開していた新LPを `/` へ昇格し、旧LPは `/old`（noindex・
+ * 比較用）へ退避した。ここで検査するのは **`/`（新LP）だけ**。旧LPの部品 `src/components/lp/`
+ * は共有部品（スクショ枠）を新LPも使うため走査に含めるが、旧LP固有の規則（グラデの枚数など）は外した。
  *
  * LPは静的な1ページだが、法令・仕様上の固定要件が多い（カード登録注記・BYOK注記・禁止表現・
  * グラデーションの使用箇所制限・価格の plans.ts 一元化）。これらは見た目のテストでは守れず、
@@ -22,7 +26,6 @@ function read(path: string): string {
 }
 
 const PAGE = read("src/app/page.tsx");
-const PRICING = read("src/components/lp/pricing.tsx");
 /**
  * **キャンペーン価格を実際に描いている画面を見る**（T-M8-137）。
  *
@@ -47,26 +50,41 @@ const CSS_RULES = GLOBALS_CSS.replace(/\/\*[\s\S]*?\*\//g, "");
  * 以前はファイル名の手書き列挙だったため、`src/components/lp/` へコンポーネントを足すと
  * 禁止表現・価格の直書き・`opacity-0`・`use client` の検査が**全部すり抜けた**
  * （列挙への追記が人の記憶に依存する・CLAUDE.md 原則3）。
+ *
+ * 新LP（T-M8-420）は `src/components/lp-new/` が本体で、`src/components/lp/` からはスクショ枠
+ * （`screenshot.tsx`）だけを共有する。両方を走査する（`lp/` の残りは `/old` 専用）。
  */
-const LP_DIR = fileURLToPath(new URL("src/components/lp/", ROOT));
-const LP_FILES = readdirSync(LP_DIR)
-  .filter((name) => name.endsWith(".tsx"))
-  .sort();
+const LP_DIRS = ["src/components/lp/", "src/components/lp-new/"] as const;
 const LP_SOURCE_BY_FILE = new Map(
-  LP_FILES.map((name) => [name, read(`src/components/lp/${name}`)] as const),
+  LP_DIRS.flatMap((dir) =>
+    readdirSync(fileURLToPath(new URL(dir, ROOT)))
+      .filter((name) => name.endsWith(".tsx"))
+      .sort()
+      .map((name) => [`${dir}${name}` as string, read(`${dir}${name}`)] as const),
+  ),
 );
+const LP_FILES = [...LP_SOURCE_BY_FILE.keys()];
 const LP_SOURCES = [PAGE, ...LP_SOURCE_BY_FILE.values()].join("\n");
+/** 新LPを描くソースだけ（旧LP専用の部品を除く）。新LP固有の規則はこちらで見る。 */
+const NEW_LP_SOURCES = [
+  PAGE,
+  ...[...LP_SOURCE_BY_FILE.entries()]
+    .filter(([path]) => path.startsWith("src/components/lp-new/"))
+    .map(([, source]) => source),
+].join("\n");
 
 /** 個別に見たいファイル（無ければ即座に落として、名前の変更に気付けるようにする）。 */
-function lpFile(name: string): string {
-  const source = LP_SOURCE_BY_FILE.get(name);
+function lpFile(path: string): string {
+  const source = LP_SOURCE_BY_FILE.get(path);
   if (!source) {
-    throw new Error(`${name} が src/components/lp/ に見つかりません（改名したら検査も直す）`);
+    throw new Error(`${path} が見つかりません（改名したら検査も直す）`);
   }
   return source;
 }
 
-const FAQ = lpFile("faq.tsx");
+const FAQ = lpFile("src/components/lp-new/faq.tsx");
+/** 新LPの料金（推奨先行）。共通の `CampaignCallout`＋`PlanPricingCards` をここで組む（T-M8-419）。 */
+const PRICING = lpFile("src/components/lp-new/pricing-recommend-first.tsx");
 
 /**
  * **利用者に見える回答だけを検査対象にする**（2026-08-24）。
@@ -87,7 +105,7 @@ describe("SC-01 LP: 導線", () => {
     expect(PAGE).toContain('href="/signup"');
     expect(PAGE).toContain('href="/login"');
     expect(PRICING).toContain('href="/signup"'); // プランカードのCTA
-    for (const anchor of ["#features", "#how", "#pricing"]) {
+    for (const anchor of ["#loop", "#tour", "#pricing", "#faq"]) {
       expect(PAGE, `ヘッダーnavに ${anchor} がある`).toContain(`"${anchor}"`);
       expect(PAGE, `セクションに id=${anchor.slice(1)} がある`).toContain(
         `id="${anchor.slice(1)}"`,
@@ -133,9 +151,9 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
     expect(lp, "期間中に解約すれば無料である事実が消えている").toMatch(
       /期間中に解約すれば料金はかかりません/,
     );
-    // CTA直下の注記そのものは2箇所（ヒーロー・最終CTA）に残す。
-    const usages = PAGE.match(/\{CARD_REGISTRATION_NOTE\}/g) ?? [];
-    expect(usages.length, "ヒーローと最終CTAの2箇所で使う").toBeGreaterThanOrEqual(2);
+    // CTA直下の注記（`TRIAL_NOTE`）は CtaRow（ヒーロー・画面ツアー直後）と最終CTAに残す。
+    const usages = PAGE.match(/\{TRIAL_NOTE\}/g) ?? [];
+    expect(usages.length, "CtaRow と最終CTAの2箇所で使う").toBeGreaterThanOrEqual(2);
   });
 
   /**
@@ -255,26 +273,14 @@ describe("SC-01 LP: デザイン制約", () => {
     expect(LP_SOURCES.length).toBeGreaterThan(5000);
   });
 
-  it("ブランドグラデーションは規定の2箇所だけ（ロゴはLogoTile側なので数えない）", () => {
-    // 生成中バー1本（ヒーローモックの「投稿作成」）＋上端3pxバー1本（02の「投稿作成」カード）
-    // ＋生成画像のサムネイル1枚（02「投稿・画像の自動作成」の簡易画像・T-M8-201）。
-    // 3つとも「AIが作る瞬間・作った物」なのでブランドグラデの意味（デザイン §カラー）に合う。
-    const direct = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
-    expect(direct.length).toBe(3);
-  });
-
-  /**
-   * **出現数だけでは足りない**（R35）。
-   *
-   * 上端3pxバーと生成中バーは、どちらも1行のJSXを**データ配列のフラグでループ描画**する。
-   * そのため2枚目以降のカードへフラグを足しても `var(--brand-gradient)` の出現数は5のままで、
-   * **画面上のグラデだけが黙って増える**。フラグの数そのものを数える。
-   */
-  it("グラデを出すカードの枚数が増えていない（フラグの数を数える）", () => {
-    const count = (source: string, pattern: RegExp) => (source.match(pattern) ?? []).length;
-    // 02できることの「投稿作成」1枚だけ（T-M8-172で03しくみのカード列が無くなった）。
-    expect(count(PAGE, /gradientTop: true/g), "上端グラデのカードが増えている").toBe(1);
-    expect(count(PAGE, /\bbar: true/g), "生成中バーのカードが増えている").toBe(0);
+  it("新LPはブランドグラデーションを直接使わない（ロゴは LogoTile 側・T-M8-419）", () => {
+    // 新LPの記法は「自動／ボタン1つ／あなた」のチップ3色で、ブランドグラデは使わない
+    // （3周目で「作る」のグラデ輪を撤去した。凡例に無い記法は足さない）。
+    const direct = NEW_LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
+    expect(direct.length).toBe(0);
+    // 旧LP部品（hero-mock・figures）の2箇所は /old だけが使う。lp/ を消すときに一緒に消える。
+    const legacy = LP_SOURCES.match(/var\(--brand-gradient\)/g) ?? [];
+    expect(legacy.length).toBe(2);
   });
 
   it("reduced-motion で生成ループの装飾が止まる", () => {
@@ -292,11 +298,11 @@ describe("SC-01 LP: デザイン制約", () => {
     //
     // **除外は名前で列挙し、それ以外は自動で対象にする**（R35）。以前は対象側を手書きで
     // 列挙していたため、`src/components/lp/` へファイルを足すと検査から漏れた。
-    const DECORATION_ONLY = new Set(["hero-mock.tsx"]);
+    const DECORATION_ONLY = new Set(["src/components/lp/hero-mock.tsx"]);
     const CONTENT_SOURCES = [
       PAGE,
       ...[...LP_SOURCE_BY_FILE.entries()]
-        .filter(([name]) => !DECORATION_ONLY.has(name))
+        .filter(([path]) => !DECORATION_ONLY.has(path))
         .map(([, source]) => source),
     ].join("\n");
     expect(CONTENT_SOURCES, "LPの内容を透明にしない").not.toContain("opacity-0");
@@ -313,14 +319,18 @@ describe("SC-01 LP: デザイン制約", () => {
     }
   });
 
-  it("ヒーローの見出しと固定コピーがハンドオフどおり（2026-08-22の運営者指示で改定）", () => {
-    expect(PAGE).toContain("プロンプトドリブンの");
-    expect(PAGE).toContain("使用するほど性能が上がる");
-    expect(PAGE).toContain("SNS運用プラットフォーム");
+  it("ヒーローの見出しが運営者指定の文言のまま（2026-09-04・T-M8-420 で新LPへ）", () => {
+    // 「日々のSNS活動を完全自動化　AIクローン生成プラットフォーム」を4つの span で描く。
+    for (const part of ["日々のSNS活動を", "完全自動化", "AIクローン生成", "プラットフォーム"]) {
+      expect(PAGE, `H1 の「${part}」が消えている`).toContain(part);
+    }
+    // 旧LPの見出しへ戻っていない（/old にだけ残る）。
+    expect(PAGE).not.toContain("SNS運用プラットフォーム");
   });
 
   it("安全性の説明がFAQに残っている（独立セクションを持たないため）", () => {
     // 「04 安全性」を削除し（T-M8-77）、ヒーローのチェック3点も特徴の訴求へ変わった（T-M8-79）。
+    // 新LPでも「安心3カード」は3周目で削除し FAQ へ集約した（T-M8-419）。
     // その結果、**安全性の説明はFAQだけがLP上の置き場所**になった。ここが消えると、
     // 「Xアカウントを預けて勝手に投稿されないか」という最大の購入障壁に答える記述がLPから消える。
     expect(FAQ_ANSWERS, "勝手に投稿されない説明がLPから消えている").toMatch(/下書きまで/);

@@ -43,9 +43,10 @@ test("未ログインで見える画面が横に伸びない（390px）", async 
   await page.setViewportSize({ width: WIDTH, height: 844 });
 
   for (const path of [
+    // `/` は新LP（T-M8-420）。分解ダイアグラムが画面外へはみ出す設計なので特に見張る。
     "/",
-    // 新LPのプレビュー（T-M8-419・noindex）。分解ダイアグラムが画面外へはみ出す設計なので特に見張る。
-    "/new",
+    // 旧LP（noindex・比較用に残置）。
+    "/old",
     "/login",
     "/signup",
     "/reset-password",
