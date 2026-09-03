@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/badge";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
-import { CloneMark } from "./clone-mark";
 import { GLASS, H2, SUB } from "./tokens";
 
 /**
@@ -17,11 +16,11 @@ import { GLASS, H2, SUB } from "./tokens";
 const PATHS: { icon: IconName; text: string }[] = [
   {
     icon: "account_circle",
-    text: "参考アカウント最大3件×直近30ポストから「作る／更新する」",
+    text: "参考アカウント（最大3件）の投稿から、土台を作れる",
   },
   {
     icon: "monitoring",
-    text: "「分析を開始」1回で、アカウント.mdの改訂案と投稿プロンプトの改善案。前回の効果検証つき",
+    text: "「分析を開始」を押すと、アカウント.mdとプロンプトの改善案が届く",
   },
   // T-M8-397: 参考投稿は「最大」3件（3件必須と読ませない）。
   { icon: "add", text: "参考投稿を最大3件貼ると、あなた専用の型をAIが生成" },
@@ -59,7 +58,7 @@ export function Grow() {
           <span className="inline-block">近づく</span>
         </h2>
         <p className={SUB}>
-          育つのは、アカウント.mdと投稿プロンプト。「分析を開始」を押すたび（1日1回）に改訂案が届き、取り入れた分だけ次の投稿に効きます。
+          育つのは、アカウント.mdと投稿プロンプト。改善案を取り入れた分だけ、次の投稿に効きます。
         </p>
         <ul className="mt-8 grid gap-4">
           {PATHS.map((path) => (
@@ -77,14 +76,7 @@ export function Grow() {
         </ul>
       </div>
       <div className="relative min-w-0 min-[960px]:pr-8 min-[960px]:pb-10">
-        {/* 背景の印（3輪）。輪の一部がカードの外へ出る配置で「重ねた」と分かるようにする（はみ出しは section の overflow-x-clip が受ける）。中心の点は無し。 */}
-        <CloneMark
-          className="pointer-events-none absolute -right-10 -top-14 hidden size-[220px] min-[960px]:block"
-          core={null}
-          id="clone-grow"
-          rings={3}
-          stroke="rgba(125,31,117,0.16)"
-        />
+        {/* 背景の同心円は撤去（3周目・意味の無い装飾）。 */}
         {/* 960px以上は下端にカード2が重なるため、重なる分（約96px）を余白にして内容を隠さない。 */}
         <div className={cn(GLASS, "relative p-6 min-[960px]:pb-28")}>
           <div className="flex flex-wrap items-center justify-between gap-2">

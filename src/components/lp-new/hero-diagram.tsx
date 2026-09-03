@@ -3,7 +3,6 @@ import Image from "next/image";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
-import { CloneMark } from "./clone-mark";
 import { CHIP_CLASS, CHIP_LABEL, GLASS, HERO_BOARD, type Who } from "./tokens";
 
 /**
@@ -38,23 +37,16 @@ export function HeroDiagram() {
   return (
     <div className="relative flex flex-col gap-4 min-[960px]:block min-[960px]:h-[580px] min-[960px]:w-[110%] min-[960px]:translate-x-[5%]">
       {/* 板A: 作る（型のカード2×2）。見出し行の生成中バーは「AIが動く瞬間」＝このページで1回目。PCのみ。 */}
+      {/* 3周目（運営者の指摘「不自然な動き・整頓されていない配置」）: 傾き・浮遊・生成バーの動きをやめ、板を水平に整列。 */}
       <div
         className={cn(
           BOARD,
-          "hidden min-[960px]:absolute min-[960px]:left-0 min-[960px]:top-0 min-[960px]:block min-[960px]:w-[min(560px,100%)] min-[960px]:rotate-[-1deg]",
+          "hidden min-[960px]:absolute min-[960px]:left-0 min-[960px]:top-0 min-[960px]:block min-[960px]:w-[min(560px,100%)]",
         )}
       >
         <div className={BOARD_HEAD}>
           <span className={BOARD_TAG}>作る</span>
-          {/* 数字を先に置く: 右端は画面外へはみ出すため、事実の数字（60〜90秒）を切らせない。 */}
-          <span className="shrink-0 text-caption text-ink-3">
-            生成中 通常60〜90秒
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="h-[3px] w-full rounded-pill bg-black/[0.06]">
-              <div className="lp-anim-bar h-[3px] rounded-pill [background-image:var(--brand-gradient)]" />
-            </div>
-          </div>
+          <span className="shrink-0 text-caption text-ink-3">通常60〜90秒で生成</span>
         </div>
         <Image
           alt="投稿作成画面の型（パターン）のカード4枚"
@@ -70,7 +62,7 @@ export function HeroDiagram() {
       <div
         className={cn(
           BOARD,
-          "lp-anim-float hidden min-[960px]:absolute min-[960px]:right-0 min-[960px]:top-[200px] min-[960px]:block min-[960px]:w-[min(520px,100%)]",
+          "hidden min-[960px]:absolute min-[960px]:right-0 min-[960px]:top-[200px] min-[960px]:block min-[960px]:w-[min(520px,100%)]",
         )}
       >
         <div className={BOARD_HEAD}>
@@ -90,7 +82,7 @@ export function HeroDiagram() {
       <div
         className={cn(
           BOARD,
-          "lp-anim-float w-full max-w-[460px] [animation-delay:-3s] min-[960px]:absolute min-[960px]:left-10 min-[960px]:top-[392px] min-[960px]:w-[min(340px,100%)] min-[960px]:max-w-none min-[960px]:rotate-[1deg]",
+          "w-full max-w-[460px] min-[960px]:absolute min-[960px]:left-0 min-[960px]:top-[392px] min-[960px]:w-[min(340px,100%)] min-[960px]:max-w-none",
         )}
       >
         <div className={BOARD_HEAD}>
@@ -107,16 +99,7 @@ export function HeroDiagram() {
         />
       </div>
 
-      {/*
-       * クローンの印（2輪）。板Bの下・板Cの右の空きに置く。1200px未満は板と重なるため出さない。
-       * 図全体は右へ約5%はみ出すので、印は図の右端から 48px 内側（1200px 幅で右端 1195px・
-       * 1280px 幅で 1258px）に置き、ビューポートの縁で欠けさせない。
-       */}
-      <CloneMark
-        className="hidden size-[112px] min-[1200px]:absolute min-[1200px]:right-[48px] min-[1200px]:top-[404px] min-[1200px]:block"
-        id="clone-hero"
-        rings={2}
-      />
+      {/* 同心円の「クローンの印」は撤去（3周目・意味が伝わらない装飾だった）。 */}
     </div>
   );
 }

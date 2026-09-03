@@ -75,9 +75,10 @@ export const CHIP_CLASS: Record<Who, string> = {
   ai: CHIP_AI,
   you: CHIP_YOU,
 };
+// 「AI・押すだけ」は読みにくかったため「ボタン1つ」へ（3周目・運営者の指摘「分かりにくい文言」）。
 export const CHIP_LABEL: Record<Who, string> = {
   auto: "自動",
-  ai: "AI・押すだけ",
+  ai: "ボタン1つ",
   you: "あなた",
 };
 

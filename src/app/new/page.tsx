@@ -7,19 +7,14 @@ import { LegalFooterLinks } from "@/components/legal-footer";
 import { PricingCards } from "@/components/lp/pricing";
 import { PromptCards } from "@/components/lp-new/prompts";
 import { NewFaqList } from "@/components/lp-new/faq";
-import { CloneMark } from "@/components/lp-new/clone-mark";
-import { OUTPUT_ENABLED, STATS, TECH } from "@/components/lp-new/facts";
+import { OUTPUT_ENABLED, STATS } from "@/components/lp-new/facts";
 import { Grow } from "@/components/lp-new/grow";
 import { HeroDiagram, HeroSteps } from "@/components/lp-new/hero-diagram";
 import { LOOP_TOTALS, LoopBoard } from "@/components/lp-new/loop-board";
 import styles from "@/components/lp-new/new-lp.module.css";
-import { TextCards, type TextCard } from "@/components/lp-new/text-cards";
 import { Tour } from "@/components/lp-new/tour";
 import {
   ANCHOR,
-  CHIP_AI,
-  CHIP_AUTO,
-  CHIP_YOU,
   CONTAINER,
   CTA_PRIMARY_HOVER,
   GLASS,
@@ -143,42 +138,8 @@ function CtaRow({
   );
 }
 
-const WHY_CLONE: TextCard[] = [
-  {
-    icon: "edit_square",
-    title: "あなたの言葉で書く",
-    body: "アカウント.mdと投稿プロンプトが、すべての生成の土台。全プランで編集できます。",
-  },
-  {
-    icon: "history",
-    title: "あなたの投稿を分析する",
-    body: "対象はXアカウントの投稿そのもの（最大300件）。このサービス経由でなくても構いません。",
-  },
-  {
-    icon: "check_circle",
-    title: "あなたが決める",
-    body: "改善案を反映するのも、自動投稿を許すのも、あなた。既定は下書きまで。",
-  },
-];
-
-const SAFETY: TextCard[] = [
-  {
-    icon: "lock",
-    title: "鍵は、暗号化して保存",
-    body: "APIキーとXトークンは AES-256-GCM で暗号化して保存します。",
-  },
-  {
-    // X API は投稿のほか、実績・フォロワー数・分析対象の投稿の「読み取り」も行う（K-1〜K-3）。「投稿だけ」と書かない。
-    icon: "verified_user",
-    title: "Xの公式APIで、書き込みは投稿だけ",
-    body: "読み取りは実績と分析のためだけ。自動いいね・自動フォロー・自動リプライは行いません（凍結リスクを避けるため）。",
-  },
-  {
-    icon: "key",
-    title: "費用が見える",
-    body: "プレミアム以上は追加費用なし。スタンダードは X API と生成AI API の利用料がご自身の契約で発生します（従量）。",
-  },
-];
+// 「クローンと呼ぶ理由」「安心して任せるために」の2セクションは3周目で削除（個人開発のサービスとして
+// 冗長・企業向けの説明だったため）。鍵の暗号化・書き込み範囲の開示はFAQへ集約した。
 
 export default function NewLanding() {
   const startingPrice = `${yen(PLANS.standard.monthlyPriceJpy)}円`;
@@ -288,14 +249,9 @@ export default function NewLanding() {
               <p className={cn(LEAD, "mt-6 max-w-[560px]")}>
                 <span className="inline-block">使うほど、</span>
                 <span className="inline-block">あなたのAIクローンが育つ。</span>
-                <span className="inline-block">
-                  集める→作る→記録は自動で回り、
-                </span>
-                <span className="inline-block">投稿は同意後に自動。</span>
-                <span className="inline-block">分析はボタン1つ。</span>
-                <span className="inline-block">
-                  反映するかは、あなたが決める。
-                </span>
+                <span className="inline-block">ニュース収集から投稿・記録まで自動。</span>
+                <span className="inline-block">分析はボタン1つで、</span>
+                <span className="inline-block">反映はあなたが決める。</span>
               </p>
               <div className="mt-8">
                 <CtaRow
@@ -328,9 +284,7 @@ export default function NewLanding() {
           >
             数字で見る、自動の中身
           </h2>
-          <p className="mt-2 text-sm text-ink-2">
-            どれも実装済みの設定値です（生成時間は実測の目安）。
-          </p>
+          <p className="mt-2 text-sm text-ink-2">生成時間は実測の目安です。</p>
           <div className={cn(GLASS, "mt-6 p-6 min-[1040px]:p-8")}>
             {/* 5列は 1040px 以上だけ（値が折り返さない幅）。長い値の列（分野名・1・7・30日）を少し広く取る。 */}
             <dl className="grid grid-cols-2 gap-6 min-[640px]:grid-cols-3 min-[1040px]:grid-cols-[4fr_5fr_4fr_4fr_5fr] min-[1040px]:divide-x min-[1040px]:divide-hairline">
@@ -353,28 +307,14 @@ export default function NewLanding() {
                 </div>
               ))}
             </dl>
-            {/* 利用している技術: カードの足元に文字だけのピルで（同じアイコンの連続はプレースホルダーに見える）。 */}
-            <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-hairline pt-4">
-              <span className="mr-1 text-caption text-ink-3">
-                利用している技術
-              </span>
-              {TECH.map((tech) => (
-                <span
-                  className="inline-flex h-9 items-center gap-2 rounded-pill bg-white/70 px-4 text-sm font-medium whitespace-nowrap text-ink shadow-[var(--shadow-card)]"
-                  key={tech.name}
-                >
-                  {tech.icon === "x" ? <XLogo size={14} /> : null}
-                  {tech.name}
-                </span>
-              ))}
-            </div>
+            {/* 「利用している技術」のピル列は3周目で削除（個人開発のサービスには過剰な企業風の要素）。 */}
           </div>
         </section>
 
         {/* 手を動かす時間が、こう変わる（図面板）。数字は図面板の例の合計（直書きしない）。 */}
         <section className={cn(ANCHOR, CONTAINER, SECTION)} id="loop">
           <SectionHead
-            sub="ある1日の例です。集める・作る・投稿・記録は自動、分析はボタン1つ。下書きの確認と、改善案を反映するかだけが、あなたの仕事です。"
+            sub="ある1日の例。あなたがするのは、下書きの確認と、改善案を取り入れるかの判断だけ。"
             title={
               <>
                 <span className="inline-block">手を動かす時間が、</span>
@@ -405,7 +345,7 @@ export default function NewLanding() {
                 料金を見る
               </a>
             }
-            sub="実際の管理画面のスクリーンショットです（一部を切り出し。画面は改良で変わることがあります）。"
+            sub="実際の管理画面です（一部を切り出し）。"
             title={
               <>
                 <span className="inline-block">実際の画面で、</span>
@@ -417,7 +357,7 @@ export default function NewLanding() {
           {/* 納得の直後に受け皿を置く（ヒーローから料金まで主CTAが無い区間を作らない）。 */}
           <div className="mt-[clamp(24px,4vw,48px)]">
             <CtaRow
-              primary="この画面で始める"
+              primary="無料で始める"
               secondaryHref="#pricing"
               secondaryLabel="料金を見る"
             />
@@ -460,15 +400,6 @@ export default function NewLanding() {
           <Grow />
         </section>
 
-        {/* 「クローン」と呼ぶ理由（文字だけの3カード） */}
-        <section className={cn(CONTAINER, SECTION)}>
-          <SectionHead
-            sub="テンプレの量産機ではありません。あなたの言葉で書き、あなたの投稿を分析し、あなたが決めます。"
-            title="「クローン」と呼ぶ理由"
-          />
-          <TextCards className="mt-[clamp(24px,4vw,48px)]" items={WHY_CLONE} />
-        </section>
-
         {/* 料金: PricingCards（角丸8pxの白カード）をガラスで二重に囲まず、ブロブだけで浮かせる。 */}
         <section className={cn(ANCHOR, "relative isolate")} id="pricing">
           <div
@@ -489,7 +420,7 @@ export default function NewLanding() {
                 </a>
               }
               // 連携できるXアカウント数（1／1／3）もカードに出るので「2つだけ」と断定しない。
-              sub="APIキーを自分で用意するか、利用上限か（連携できるXアカウント数はカードに記載）。全プラン、はじめての方は7日間無料です。"
+              sub="違いはAPIキーの要否と利用上限。全プラン、はじめての方は7日間無料です。"
               title={
                 <>
                   <span className="inline-block">
@@ -505,15 +436,6 @@ export default function NewLanding() {
           </div>
         </section>
 
-        {/* 安心して任せるために */}
-        <section className={cn(CONTAINER, SECTION)}>
-          <SectionHead
-            sub="自動で動く部分ほど、止め方・預かり方・費用を先に決めています。"
-            title="安心して任せるために"
-          />
-          <TextCards className="mt-[clamp(24px,4vw,48px)]" items={SAFETY} />
-        </section>
-
         {/* よくある疑問 */}
         <section className={cn(ANCHOR, CONTAINER, SECTION)} id="faq">
           <div className="grid grid-cols-1 gap-[clamp(24px,4vw,56px)] min-[880px]:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
@@ -523,8 +445,7 @@ export default function NewLanding() {
                 "self-start min-[880px]:sticky min-[880px]:top-[88px]",
               )}
             >
-              <span className="inline-block">よくある疑問に、</span>
-              <span className="inline-block">先に答える</span>
+              よくある質問
             </h2>
             <NewFaqList />
           </div>
@@ -533,60 +454,43 @@ export default function NewLanding() {
         {/* 最終CTA: 全幅帯ではなく角丸の大グラデカード。注記はグラデの濃い側でも AA を割らないよう ink。 */}
         <div className={cn(CONTAINER, "pb-[clamp(56px,8vw,96px)]")}>
           <section className="relative overflow-hidden rounded-[24px] bg-[radial-gradient(120%_120%_at_0%_0%,#ffffff_0%,#f4e8f3_45%,rgba(181,122,176,0.35)_100%)] p-[clamp(32px,6vw,80px)] shadow-[var(--shadow-pop)]">
-            <div className="grid grid-cols-1 items-center gap-8 min-[880px]:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <LogoTile size={40} />
-                  <span className="text-[17px] font-medium tracking-tight">
-                    {APP_NAME}
-                  </span>
-                </div>
-                <h2
-                  className={cn(
-                    "mt-6 text-[length:clamp(32px,calc(18px_+_2.6vw),56px)] leading-[1.15]",
-                    HEADING,
-                  )}
-                >
-                  <span className="inline-block">7日間、実物で</span>
-                  <span className="inline-block">確かめてください。</span>
-                </h2>
-                <p className="mt-4 max-w-[560px] text-sm text-ink [text-wrap:balance] [word-break:auto-phrase]">
-                  {TRIAL_NOTE}
-                </p>
-                <div className="mt-8 flex flex-wrap items-center gap-4">
-                  <Link
-                    className={cn(
-                      buttonVariants({ variant: "brand" }),
-                      PILL_LG,
-                      CTA_PRIMARY_HOVER,
-                    )}
-                    href="/signup"
-                  >
-                    無料で始める
-                  </Link>
-                  <a
-                    className="inline-flex min-h-6 items-center gap-1 text-sm font-medium text-brand"
-                    href="#tour"
-                  >
-                    もう一度、画面を見る
-                  </a>
-                </div>
+            {/* 3周目: 右列（同心円＋「自動4／AI1／あなた2」の集計）は意味が伝わらないため撤去し、1カラム中央寄せに。 */}
+            <div className="mx-auto flex max-w-[640px] flex-col items-center text-center">
+              <div className="flex items-center gap-2">
+                <LogoTile size={40} />
+                <span className="text-[17px] font-medium tracking-tight">
+                  {APP_NAME}
+                </span>
               </div>
-              <div className="flex flex-col items-center gap-4">
-                <CloneMark
-                  className="size-[160px] min-[880px]:size-[260px]"
-                  id="clone-final"
-                  rings={4}
-                  stroke="rgba(125,31,117,0.35)"
-                />
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <span className={CHIP_AUTO}>自動 4</span>
-                  <span className={CHIP_AI}>AI・押すだけ 1</span>
-                  <span className={CHIP_YOU}>あなた 2</span>
-                </div>
-                <p className="text-center text-caption text-ink">
-                  集める・作る・投稿・記録／分析／確認・反映
-                </p>
+              <h2
+                className={cn(
+                  "mt-6 text-[length:clamp(32px,calc(18px_+_2.6vw),56px)] leading-[1.15]",
+                  HEADING,
+                )}
+              >
+                <span className="inline-block">7日間、実物で</span>
+                <span className="inline-block">確かめてください。</span>
+              </h2>
+              <p className="mt-4 max-w-[560px] text-sm text-ink [text-wrap:balance] [word-break:auto-phrase]">
+                {TRIAL_NOTE}
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+                <Link
+                  className={cn(
+                    buttonVariants({ variant: "brand" }),
+                    PILL_LG,
+                    CTA_PRIMARY_HOVER,
+                  )}
+                  href="/signup"
+                >
+                  無料で始める
+                </Link>
+                <a
+                  className="inline-flex min-h-6 items-center gap-1 text-sm font-medium text-brand"
+                  href="#tour"
+                >
+                  もう一度、画面を見る
+                </a>
               </div>
             </div>
           </section>

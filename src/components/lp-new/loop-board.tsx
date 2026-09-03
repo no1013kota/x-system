@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-import { CloneMark } from "./clone-mark";
 import { CHIP_LABEL, H3, type Who } from "./tokens";
 
 /**
@@ -275,8 +274,7 @@ function Timeline() {
         </div>
       </div>
       <figcaption className="mt-4 text-caption text-white/60">
-        ある1日の例（9:00 に下書きまで、21:00
-        にそのまま投稿の枠を組んだ場合。枠は9:00〜22:00・30分刻み）。作業時間は目安です。
+        ある1日の例（9:00は下書きまで、21:00はそのまま投稿の枠）。時間は目安です。
       </figcaption>
     </figure>
   );
@@ -397,11 +395,10 @@ function Ring() {
             );
           })}
         </svg>
-        <CloneMark
-          className="absolute left-1/2 top-1/2 w-[34%] -translate-x-1/2 -translate-y-1/2"
-          id="clone-loop"
-          rings={3}
-          stroke="rgba(255,255,255,0.35)"
+        {/* 中心は薄い輪1本だけ（同心円の「印」は撤去・3周目）。 */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-[34%] rounded-full border border-white/15"
         />
         {NODES.map((node, index) => {
           const { x, y } = polar(-90 + STEP * index, RADIUS);
@@ -477,9 +474,9 @@ export function LoopBoard() {
       <div className="mt-[clamp(40px,6vw,72px)] grid grid-cols-1 items-start gap-10 min-[960px]:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
         <div>
           <h3 className={H3}>
-            <span className="inline-block">自動で回る4工程、</span>
-            <span className="inline-block">押すだけの分析、</span>
-            <span className="inline-block">あなたが握る2つの判断</span>
+            <span className="inline-block">自動で回る4工程。</span>
+            <span className="inline-block">分析はボタン1つ、</span>
+            <span className="inline-block">判断は2つだけ。</span>
           </h3>
           <div className="mt-4 flex flex-wrap gap-2">
             {WHO_ORDER.map((who) => (
