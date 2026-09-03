@@ -44,6 +44,8 @@ test("未ログインで見える画面が横に伸びない（390px）", async 
 
   for (const path of [
     "/",
+    // 新LPのプレビュー（T-M8-419・noindex）。分解ダイアグラムが画面外へはみ出す設計なので特に見張る。
+    "/new",
     "/login",
     "/signup",
     "/reset-password",

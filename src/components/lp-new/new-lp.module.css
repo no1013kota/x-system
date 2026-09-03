@@ -1,0 +1,46 @@
+/*
+ * /new の背景ブロブ（放射グラデ3個）をゆっくり漂わせる。
+ * 装飾なので prefers-reduced-motion では止める。opacity は触らない
+ * （LPは常に不透明で読める・T-M8-76。薄さは色の alpha で作る）。
+ * globals.css の @keyframes は landing-page.test.ts が4つに固定しているため、ここに置く。
+ */
+@keyframes nlpDrift1 {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: 40px 28px;
+  }
+}
+@keyframes nlpDrift2 {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: -36px 40px;
+  }
+}
+@keyframes nlpDrift3 {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: 32px -36px;
+  }
+}
+.drift1 {
+  animation: nlpDrift1 9s ease-in-out infinite alternate;
+}
+.drift2 {
+  animation: nlpDrift2 11s ease-in-out infinite alternate;
+}
+.drift3 {
+  animation: nlpDrift3 13s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drift1,
+  .drift2,
+  .drift3 {
+    animation: none;
+  }
+}
