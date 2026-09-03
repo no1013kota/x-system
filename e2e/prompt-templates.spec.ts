@@ -79,7 +79,8 @@ test("導線: LPヘッダーとappナビからプロンプト集へ辿れる（�
 }) => {
   await page.goto("/");
   // ページ遷移リンクにはマーク（open_in_newアイコン）が付く（T-M8-175）。
-  const lpLink = page.getByRole("link", { name: "プロンプト集" });
+  // 新LP（T-M8-420）はヘッダーとフッターの両方に同じリンクがあるので、ヘッダー側を見る。
+  const lpLink = page.getByRole("banner").getByRole("link", { name: "プロンプト集" });
   await expect(lpLink.locator("svg")).toBeVisible();
   await lpLink.click();
   await expect(page).toHaveURL(/\/prompt-templates/);

@@ -80,13 +80,10 @@ const FAQ_ITEMS: [question: string, answer: string][] = [
 
 export function FaqList() {
   return (
-    // PC幅は2カラム（レビュー3周目・T-M8-415）。折りたたみ禁止のまま縦の長さを半減する。
-    <dl className="grid gap-[clamp(28px,4vw,44px)] min-[880px]:block min-[880px]:columns-2 min-[880px]:gap-x-14">
+    // 縦1カラム（T-M8-418・運営者の指示 2026-09-03。T-M8-415の2カラムを差し戻し）。
+    <dl className="grid gap-[clamp(28px,4vw,44px)]">
       {FAQ_ITEMS.map(([question, answer]) => (
-        <div
-          className="border-t border-hairline pt-[clamp(20px,2.6vw,28px)] min-[880px]:mb-9 min-[880px]:break-inside-avoid"
-          key={question}
-        >
+        <div className="border-t border-hairline pt-[clamp(20px,2.6vw,28px)]" key={question}>
           <dt
             className={cn(
               "text-[length:clamp(17px,calc(13px_+_0.7vw),21px)] leading-[1.5]",

@@ -1,0 +1,83 @@
+/*
+ * /new 料金セクション「推奨先行」（recommend-first）。共通部品 PlanPricingCards の中身は変えず、
+ * 外側から包んで見せ方だけを変える。
+ *
+ * - 列幅は「上のキャップ行」と「共通部品のカード行」で同じ変数を使い、縦に揃える。
+ * - キャップとカードは密着させて1枚に見せる: カードの上の角丸を落とし、両隣は上辺の罫線も落とす
+ *   （キャップ側は border-b-0）。推奨の「おすすめ」バッジ（absolute・-top-3）は境界に跨り、直上の
+ *   「まずはこれ」と二重になるので出さない。
+ * - 「1日あたり」行はキャップが主役で持つので、カード側（4番目の p）は消す。md以上は3枚同時に消えるので
+ *   subgrid の行揃え〔T-M8-181〕は保たれる（空いた最終行は auto で 0px）。SPは両隣のキャップが無いので
+ *   推奨だけ消す。
+ * - SPの縦積みは推奨を先頭（order:-1）にし、帯の直下に推奨カードが来るようにする。DOM順は据え置きなので
+ *   読み上げ順・Tab順は共通部品のまま（スタンダード→プレミアム→エキスパート）。
+ * - 推奨カードは上下に 24px 大きく（両隣に margin を付ける。subgrid の最初／最後のトラックに
+ *   margin が足されるので、3枚の行揃えは崩れない）。
+ * - 両隣のカードはガラス（白60%・影なし）に落として控えめに。
+ *   Tailwind の utilities は @layer に入るため、この module（無レイヤー）に書かないと共通部品の
+ *   影の上書きに負ける。
+ *
+ * セレクタは共通部品の DOM（直下の grid div ＋ article[aria-labelledby=plan-card-<id>] ＋ p の並び）に
+ * 依存する。`pricing-recommend-first.test.ts` が RECOMMENDED_PLAN との一致と p の並びを固定する。
+ */
+.wrap {
+  --cols: 1fr;
+}
+
+/* 両隣はガラス（白60%・影なし）で控えめに、推奨だけ白＋大きい影。全幅で効く（SPの縦積みでも推奨が立つ）。 */
+.cards > div > article:not([aria-labelledby="plan-card-premium"]) {
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+.cards > div > article[aria-labelledby="plan-card-premium"] {
+  box-shadow: var(--shadow-pop);
+  /* キャップ（brand 帯）が全幅で直上に密着する。 */
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+/* 「おすすめ」バッジはキャップの「まずはこれ」が代わる（absolute 配置なので subgrid の行数に影響しない）。 */
+.cards > div > article[aria-labelledby="plan-card-premium"] > span:first-child {
+  display: none;
+}
+/* 推奨の「1日あたり」行はキャップにある（全幅）。 */
+.cards > div > article[aria-labelledby="plan-card-premium"] > p:nth-of-type(4) {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* 縦積みでは推奨を先頭に（帯の直下）。1カラムなので subgrid の行揃えには関係しない。 */
+  .cards > div > article[aria-labelledby="plan-card-premium"] {
+    order: -1;
+  }
+}
+
+@media (min-width: 768px) {
+  .wrap {
+    --cols: 1fr 1fr 1fr;
+  }
+  /* 3枚ともキャップの直下に密着（上の角丸を落とす）。両隣は上辺の罫線もキャップ側に任せる。 */
+  .cards > div > article {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  /* 両隣の下を詰めて推奨を一回り大きく見せる（上はキャップの高さ差で出る）。 */
+  .cards > div > article:not([aria-labelledby="plan-card-premium"]) {
+    border-top: 0;
+    margin-bottom: 24px;
+  }
+  /* 3枚とも「1日あたり」はキャップにある（3枚同時なので行揃えは保たれる）。 */
+  .cards > div > article > p:nth-of-type(4) {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .wrap {
+    --cols: 1fr 1.14fr 1fr;
+  }
+}
+
+.caps,
+.cards > div {
+  grid-template-columns: var(--cols);
+}

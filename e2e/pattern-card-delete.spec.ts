@@ -53,7 +53,8 @@ test("投稿作成: 削除は各カードの中にあり、確認の暗幕がヘ
     ヘッダーの中心にある点を拾い、そこに居る一番上の要素が暗幕であること。
     z-index を戻すとヘッダー側が拾われて落ちる。
   */
-  const headerBox = await page.locator("header").first().boundingBox();
+  // App Shellのモバイル用ヘッダー（lg:hidden・T-M8-416）を拾わないよう、見えているものに限る。
+  const headerBox = await page.locator("header:visible").first().boundingBox();
   expect(headerBox, "ヘッダーが見つからない").not.toBeNull();
   const covered = await page.evaluate(
     ({ x, y }) => {

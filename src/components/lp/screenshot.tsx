@@ -9,14 +9,21 @@ import { cn } from "@/lib/utils";
  * 実画面だと分かる形で出す。元画像は public/lp-shots/*.jpg（1600×1171へ最適化済み）。
  * LPは server component のまま（クライアント化はlanding-page.test.tsが禁止している）。
  */
-/** ブラウザ風フレーム（装飾）。CSS図版も同じ枠に入れて見た目を揃える（レビュー1周目）。 */
+/** 図版の共通フレーム（角丸カード＋影。上部のブラウザ風バーはT-M8-418で撤去・運営者の指示）。 */
 export function ShotFrame({
   children,
   className,
+  fadeBottom = false,
   inset = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  /**
+   * 下端をフェードで溶かす（T-M8-417・運営者の指摘「枠と画像の位置がずれている」）。
+   * スクショは実画面の途中で切れるため、フェード無しだと行やカードが
+   * 中途半端に断ち切られて「ずれ」に見える。意図した見切れに整える。
+   */
+  fadeBottom?: boolean;
   /** CSS図版用: 中身の周りに余白を付ける（スクショは付けない）。 */
   inset?: boolean;
 }) {
@@ -27,15 +34,15 @@ export function ShotFrame({
         className,
       )}
     >
-      <div
-        aria-hidden="true"
-        className="flex items-center gap-1.5 border-b border-hairline bg-page px-3 py-2"
-      >
-        <span className="size-2 rounded-full bg-black/[0.12]" />
-        <span className="size-2 rounded-full bg-black/[0.12]" />
-        <span className="size-2 rounded-full bg-black/[0.12]" />
+      <div className={inset ? "relative p-3" : "relative"}>
+        {children}
+        {fadeBottom ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 [background:linear-gradient(to_bottom,rgba(255,255,255,0),#fff_92%)]"
+          />
+        ) : null}
       </div>
-      <div className={inset ? "p-3" : undefined}>{children}</div>
     </figure>
   );
 }
@@ -58,13 +65,12 @@ export function AppShot({
   width?: number;
 }) {
   return (
-    <ShotFrame className={className}>
+    <ShotFrame className={className} fadeBottom>
       <Image
         alt={alt}
         className="block h-auto w-full"
         height={height}
         priority={priority}
-        quality={82}
         sizes={sizes}
         src={src}
         width={width}

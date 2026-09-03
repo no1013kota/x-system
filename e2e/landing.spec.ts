@@ -9,7 +9,8 @@ import { expect, horizontalOverflow, test } from "./fixtures/test";
 test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("SNS運用プラットフォーム");
+  // 新LP（T-M8-420）のH1。文言は運営者指定（2026-09-04）。
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("AIクローン生成");
 
   // 会員登録・ログインへの導線（ヘッダー）
   const header = page.getByRole("banner");
@@ -19,15 +20,16 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   );
   await expect(header.getByRole("link", { name: "ログイン" })).toHaveAttribute("href", "/login");
 
-  // 副CTA「料金を見る」で #pricing まで実際にスクロールする
-  await page.getByRole("link", { name: "料金を見る" }).click();
+  // 「料金を見る」で #pricing まで実際にスクロールする（新LPは画面ツアーの左列と直後のCTA行に2本ある）。
+  await page.getByRole("link", { name: "料金を見る" }).first().click();
   await expect(page.locator("#pricing")).toBeInViewport();
 
   // プランカードが plans.ts の価格・上限を実際に描画している（T-M8-171でカードへ変えた）。
   const pricing = page.locator("#pricing");
   await expect(pricing).toContainText("¥3,980");
   await expect(pricing).toContainText("AIクレジット100,000");
-  await expect(pricing.getByText(/1日あたり 約\d/).first()).toBeVisible();
+  // 1日あたりの概算は、新LPでは推奨先行のキャップ「約N円／日」が描く（カード側の同じ行はCSSで消している・T-M8-419）。
+  await expect(pricing.getByText(/円／日/).first()).toBeVisible();
   // プランごとの申込導線が3本あり、**無料で試せることが主文**になっている（T-M8-126）。
   const signupLinks = pricing.getByRole("link", { name: /7日間無料で試す/ });
   expect(await signupLinks.count()).toBeGreaterThanOrEqual(3);
@@ -46,7 +48,8 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
   // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。
   // 文言そのものは landing-page.test.ts が担当する）。
-  const autoPostQuestion = page.locator("dt").filter({ hasText: /投稿されませんか/ });
+  // 新LPのFAQ第1問「本当に全部自動ですか？」が、既定は下書きまで・同意の開示を担う（T-M8-420）。
+  const autoPostQuestion = page.locator("dt").filter({ hasText: /全部自動ですか/ });
   await expect(autoPostQuestion).toBeVisible();
   /*
     **文言ではなく「回答が読める状態か」を見る**（2026-08-24）。以前は回答の先頭
@@ -121,8 +124,9 @@ test.describe("JSが動かない環境", () => {
      * 「JSが動かなくてもLPが白紙にならない」ことで、コピーの一致ではない。ラベルは節の識別子で、
      * コピー修正では変わらない。
      */
-    for (const label of ["コンセプト", "できること", "しくみ", "初めかた", "料金", "よくある質問"]) {
-      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    // 新LP（T-M8-420）は節をidで識別する（コピーは磨かれ続けるため文言を固定しない）。
+    for (const id of ["#loop", "#tour", "#pricing", "#faq"]) {
+      await expect(page.locator(id)).toBeVisible();
     }
 
     // 法定開示は文言そのものが要件なので、ここだけは literal を見る（消えたら落とす）。
