@@ -116,13 +116,17 @@ export function Tour() {
           id={stopId(stop)}
           key={stop.no}
         >
-          {/* テキスト列に高さを持たせ、右の画像が sticky で留まる距離を作る（画像 約444px に対し 90vh）。最後の停止は次のCTAまでの空きを作らないよう短く。 */}
+          {/*
+            テキスト列に高さを持たせ、右の画像が sticky で留まる距離を作る（画像 約444px）。
+            セルフレビュー（2026-09-03）: 90vh では停止ごとに画面1つぶんの空白が出て間延びしたため
+            72vh へ（画像高さ＋余裕）。最後の停止は次のCTAまでの空きを作らないよう短く。
+          */}
           <div
             className={cn(
               "min-[880px]:flex min-[880px]:flex-col min-[880px]:justify-center",
               index === STOPS.length - 1
-                ? "min-[880px]:min-h-[60vh]"
-                : "min-[880px]:min-h-[90vh]",
+                ? "min-[880px]:min-h-[48vh]"
+                : "min-[880px]:min-h-[72vh]",
             )}
           >
             <p className="text-caption font-bold tracking-[0.08em] text-brand tabular-nums">

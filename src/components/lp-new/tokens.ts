@@ -9,7 +9,8 @@
 
 export const CONTAINER =
   "mx-auto w-full max-w-[1240px] px-[clamp(20px,4vw,40px)]";
-export const SECTION = "py-[clamp(64px,9vw,120px)]";
+// セルフレビュー（2026-09-03）: 120pxだと図面板→画面ツアーの間が約240px空いて間延びしたため詰めた。
+export const SECTION = "py-[clamp(56px,7vw,96px)]";
 
 /**
  * ガラスカード。罫線は引かない（面の差と影だけで区切る）。

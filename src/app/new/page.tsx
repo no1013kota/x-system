@@ -5,7 +5,7 @@ import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
 import { PricingCards } from "@/components/lp/pricing";
-import { ControlCards } from "@/components/lp-new/control";
+import { PromptCards } from "@/components/lp-new/prompts";
 import { NewFaqList } from "@/components/lp-new/faq";
 import { CloneMark } from "@/components/lp-new/clone-mark";
 import { OUTPUT_ENABLED, STATS, TECH } from "@/components/lp-new/facts";
@@ -63,19 +63,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** ヘッダーnav。FAQの右にページ遷移の2本（ブログ・プロンプト集）を置く（運営者の指示 2026-09-03）。 */
 const NAV_LINKS: [string, string][] = [
   ["#loop", "仕組み"],
   ["#tour", "画面"],
   ["#pricing", "料金"],
   ["#faq", "FAQ"],
-];
-
-/** 「現行ページ」への比較リンクは置かない（来訪者には意味が無く、テストページと分かるため）。 */
-const FOOTER_LINKS: [string, string][] = [
-  ...NAV_LINKS,
   ["/blog", "ブログ"],
   ["/prompt-templates", "プロンプト集"],
 ];
+
+/** 「現行ページ」への比較リンクは置かない（来訪者には意味が無く、テストページと分かるため）。 */
+const FOOTER_LINKS: [string, string][] = NAV_LINKS;
 
 /** 見出し行（左に H2＋サブ、880px以上では右端に副CTA）。 */
 function SectionHead({
@@ -226,11 +225,15 @@ export default function NewLanding() {
           >
             {NAV_LINKS.map(([href, label]) => (
               <a
-                className="inline-flex min-h-6 items-center text-sm font-medium text-ink-2 transition-colors hover:text-brand"
+                className="inline-flex min-h-6 items-center gap-1 text-sm font-medium text-ink-2 transition-colors hover:text-brand"
                 href={href}
                 key={href}
               >
                 {label}
+                {/* ページ遷移するリンクにはマークを付ける（アンカーと区別）。 */}
+                {!href.startsWith("#") ? (
+                  <Icon aria-hidden="true" name="open_in_new" size={13} />
+                ) : null}
               </a>
             ))}
           </nav>
@@ -443,13 +446,13 @@ export default function NewLanding() {
           </section>
         ) : null}
 
-        {/* 勝手には、投稿しない */}
+        {/* 複数のプロンプトを管理（運営者の指示 2026-09-03。旧「勝手には、投稿しない」を置換） */}
         <section className={cn(CONTAINER, SECTION)}>
           <SectionHead
-            sub="既定は下書きまで。自動投稿は内容と停止方法を読んで同意した後に始まり、いつでも即時に止められます。"
-            title="勝手には、投稿しない"
+            sub="投稿の型・アカウント.md・画像の指示・使うAIモデル。クローンの中身は、すべてあなたが編集できます。"
+            title="複数のプロンプトを管理"
           />
-          <ControlCards />
+          <PromptCards />
         </section>
 
         {/* 使うほど、あなたの言葉に近づく（背景の印がコンテナの外へ少し出るので、ここだけ横を clip する） */}
