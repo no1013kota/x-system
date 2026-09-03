@@ -81,7 +81,8 @@ test("ブログ: 存在しないslugは404、モバイル幅でも横に伸び�
 
 test("導線: LPヘッダーとappナビからブログへ辿れる（遷移マーク付き）", async ({ accounts, page }) => {
   await page.goto("/");
-  const lpLink = page.getByRole("link", { name: "ブログ" });
+  // 新LP（T-M8-420）はヘッダーとフッターの両方に同じリンクがあるので、ヘッダー側を見る。
+  const lpLink = page.getByRole("banner").getByRole("link", { name: "ブログ" });
   await expect(lpLink.locator("svg")).toBeVisible();
   await lpLink.click();
   await expect(page).toHaveURL(/\/blog$/);

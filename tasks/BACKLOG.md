@@ -6030,7 +6030,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `/old` で旧LPがそのまま見られ、noindex・閲覧計測なし
   - `/new` は `/` へ恒久リダイレクト（共有済みリンクを切らない）
   - LPに紐づく検査（landing-page.test／landing.spec／mobile-layout.spec／E2Eの温めルート）が新LPの不変条件で緑
-- 実装メモ（2026-09-04 完了・運営者の指示「今のホームページはoldにして、newの方をホームページに」）: `git mv` で入れ替え（`page.tsx` ⇄ `old/page.tsx`）。landing-page.test は `lp/`＋`lp-new/` の両ディレクトリを走査し、アンカーは #loop/#tour/#pricing/#faq、開示注記は `TRIAL_NOTE`、料金は `pricing-recommend-first.tsx`、FAQは `lp-new/faq.tsx` を見る。旧LP固有の規則（グラデ3箇所・`gradientTop` の枚数）は「新LPでは0・旧部品に2」へ置換。landing.spec は H1「AIクローン生成」・FAQ「全部自動ですか」・JS無効は節idで判定。旧LPと `src/components/lp/` の整理は D-53 の運営者判断後。
+- 実装メモ（2026-09-04 完了・運営者の指示「今のホームページはoldにして、newの方をホームページに」）: `git mv` で入れ替え（`page.tsx` ⇄ `old/page.tsx`）。landing-page.test は `lp/`＋`lp-new/` の両ディレクトリを走査し、アンカーは #loop/#tour/#pricing/#faq、開示注記は `TRIAL_NOTE`、料金は `pricing-recommend-first.tsx`、FAQは `lp-new/faq.tsx` を見る。旧LP固有の規則（グラデ3箇所・`gradientTop` の枚数）は「新LPでは0・旧部品に2」へ置換。landing.spec は H1「AIクローン生成」・FAQ「全部自動ですか」・JS無効は節idで判定。旧LPと `src/components/lp/` の整理は D-53 の運営者判断後。**CI（E2E）で3件検出**: blog／prompt-templates の「LPヘッダーのリンク」はヘッダーとフッターの2つになったため `banner` に限定、invite-access は新LPに友達招待の導線が無かった（要件06 §1.5・要件03 の必須導線）ため、料金直後のカードとナビ「友達招待」を新LPへ復元（ヘッダーnavは7本になるので表示を960px以上へ）。
 
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S

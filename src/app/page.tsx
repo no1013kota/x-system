@@ -21,17 +21,21 @@ import {
   ANCHOR,
   CONTAINER,
   CTA_PRIMARY_HOVER,
+  GLASS,
   H1,
   H2,
+  H3,
   HEADING,
   LEAD,
   PILL_LG,
+  PILL_MD,
   SECTION,
   SUB,
   TRIAL_NOTE,
 } from "@/components/lp-new/tokens";
 import { buttonVariants } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
 import { APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -58,7 +62,11 @@ export const metadata: Metadata = {
     "ニュース収集・投稿作成・実績の記録を自動で回し、投稿は同意後に自動。分析はボタン1つで、反映するかはあなたが決める、X（旧Twitter）運用アプリ。",
 };
 
-/** ヘッダーnav。FAQの右にページ遷移の2本（ブログ・プロンプト集）を置く（運営者の指示 2026-09-03）。 */
+/**
+ * ヘッダーnav。FAQの右にページ遷移の3本（ブログ・プロンプト集・友達招待）。
+ * 「友達招待」は契約前でも参加できる導線（T-M8-268・運営者の指示 2026-08-23）で、行き先は
+ * `/app/invite` 固定——未ログインは route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま着く。
+ */
 const NAV_LINKS: [string, string][] = [
   ["#loop", "仕組み"],
   ["#tour", "画面"],
@@ -66,6 +74,7 @@ const NAV_LINKS: [string, string][] = [
   ["#faq", "FAQ"],
   ["/blog", "ブログ"],
   ["/prompt-templates", "プロンプト集"],
+  ["/app/invite", "友達招待"],
 ];
 
 /** 「現行ページ」への比較リンクは置かない（来訪者には意味が無く、テストページと分かるため）。 */
@@ -182,7 +191,8 @@ export default async function Home() {
           <BrandLogo href="/" priority />
           <nav
             aria-label="セクション"
-            className="hidden items-center gap-6 min-[880px]:flex"
+            // 7本になったので 960px 未満は畳む（880px ではロゴ・ログイン・主CTAと合わせて容器を越える）。
+            className="hidden items-center gap-6 min-[960px]:flex"
           >
             {NAV_LINKS.map(([href, label]) => (
               <a
@@ -397,6 +407,40 @@ export default async function Home() {
             />
             <div className="mt-[clamp(16px,3vw,40px)]">
               <PricingRecommendFirst />
+            </div>
+            {/*
+              友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。料金の直後・同じ面に置く。
+              契約前でも参加できることを本文で言う（要件06 §1.5・要件03）。新LPへの差し替え（T-M8-420）で
+              一度落ちていたのを invite-access.spec が検出した。
+            */}
+            <div
+              className={cn(
+                GLASS,
+                "mt-[clamp(24px,4vw,48px)] px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]",
+              )}
+            >
+              <div className="flex flex-col gap-5 min-[880px]:flex-row min-[880px]:items-center min-[880px]:justify-between">
+                <div className="max-w-[600px]">
+                  <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                    <Icon aria-hidden="true" name="star_shine" size={13} />
+                    友達招待キャンペーン
+                  </p>
+                  <h3 className={cn(H3, "mt-3 [text-wrap:balance]")}>
+                    紹介した方の利用料から、最大
+                    {formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬に
+                  </h3>
+                  <p className="mt-2.5 text-body leading-6 text-ink-2 [text-wrap:pretty]">
+                    {/* 1行に書く（JSXは行の継ぎ目に半角空白を入れるため、「から、 最大」と空く）。 */}
+                    ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、最大{COMMISSION_MONTHS}か月分が報酬対象です（報酬率は招待人数に応じて上がります）。
+                  </p>
+                </div>
+                <Link
+                  className={cn(buttonVariants({ variant: "brand" }), PILL_MD, "shrink-0")}
+                  href="/app/invite"
+                >
+                  招待リンクを受け取る
+                </Link>
+              </div>
             </div>
           </div>
         </section>
