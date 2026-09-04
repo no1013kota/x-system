@@ -1,4 +1,5 @@
 import type { ProviderCall } from "../ai/normalize";
+import { PLANS, isOperatorManagedPlan } from "../plans";
 import { DB_ENUMS } from "./enums";
 import type { Queryable } from "./queryable";
 
@@ -10,6 +11,15 @@ import type { Queryable } from "./queryable";
 
 /** api_provider enum 値（'x' | 'anthropic' | 'openai' | 'google'）。DB_ENUMS が正本。 */
 export type ApiProvider = (typeof DB_ENUMS.api_provider)[number];
+
+/**
+ * 誰の負担か（T-M8-422・要件02 §3.17）。operator＝運営キー／運営のXアプリ、user＝利用者のAPIキー
+ * （BYOK）／利用者自身のXアプリ。/admin の「原価」は operator だけを合計する（PRD §6.1）。
+ */
+export type ApiUsagePayer = "operator" | "user";
+
+/** 運営キー同梱のプラン（plans.ts が正本。SQL の判定に渡す）。 */
+const OPERATOR_MANAGED_PLAN_IDS = Object.keys(PLANS).filter((id) => isOperatorManagedPlan(id));
 
 export interface ExternalApiUsageInput {
   /** 利用者。job外のNEWS（運営リサーチ）は null（要件02 §3.17・要件04 §10）。 */
@@ -32,6 +42,11 @@ export interface ExternalApiUsageInput {
   estimatedCostUsd: number | null;
   /** 冪等キー（例: `${jobId}:${provider}:${callSeq}` や request_id 由来）。 */
   idempotencyKey: string;
+  /**
+   * 誰の負担か。省略時は記録時点の DB から決める（X: x_accounts.auth_type が managed なら operator、
+   * AI: profiles.plan が運営キー同梱なら operator。plan が無い行は operator＝小さく見せない側）。
+   */
+  payer?: ApiUsagePayer;
 }
 
 /**
@@ -41,12 +56,27 @@ export async function recordExternalApiUsage(
   db: Queryable,
   input: ExternalApiUsageInput,
 ): Promise<boolean> {
+  // payer は呼び出し側が指定しなければ SQL で決める（呼び出し箇所が10か所あり、各所にプランを
+  // 引き回すより記録時点のDBを見る方が漏れない）。
   const { rowCount } = await db.query(
     `insert into external_api_usage_events
        (user_id, x_account_id, job_id, provider, operation, request_id, status,
         http_status, error_code, quantity, usage, unit_cost_usd, estimated_cost_usd,
-        idempotency_key)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14)
+        idempotency_key, payer)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,
+       coalesce($15::text,
+         case
+           when $4::api_provider = 'x' then coalesce(
+             (select case when xa.auth_type = 'managed' then 'operator' else 'user' end
+                from x_accounts xa where xa.id = $2::uuid),
+             'operator')
+           when $1::uuid is null then 'operator'
+           else coalesce(
+             (select case when coalesce(p.plan::text = any($16::text[]), true)
+                            then 'operator' else 'user' end
+                from profiles p where p.id = $1::uuid),
+             'operator')
+         end))
      on conflict (idempotency_key) do nothing`,
     [
       input.userId,
@@ -63,6 +93,8 @@ export async function recordExternalApiUsage(
       input.unitCostUsd,
       input.estimatedCostUsd,
       input.idempotencyKey,
+      input.payer ?? null,
+      OPERATOR_MANAGED_PLAN_IDS,
     ],
   );
   return (rowCount ?? 0) > 0;

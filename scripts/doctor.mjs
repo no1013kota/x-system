@@ -141,7 +141,11 @@ let appUp = false;
 // 反映先がどのSupabaseプロジェクトを使っているかはCSPヘッダから読める（release-gate と同じ手）。
 let appCsp = null;
 try {
-  const res = await fetch(base, { signal: AbortSignal.timeout(8000) });
+  // 監視として名乗る（入口ファネルの閲覧記録に数えられないため・T-M8-422）。
+  const res = await fetch(base, {
+    headers: { "user-agent": "exos-monitoring/1 (doctor)" },
+    signal: AbortSignal.timeout(8000),
+  });
   appUp = res.ok;
   appCsp = res.headers.get("content-security-policy");
   checks.push(

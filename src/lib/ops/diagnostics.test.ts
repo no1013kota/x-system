@@ -6,6 +6,7 @@ import {
   judgeBlog,
   judgeCost,
   judgeDatabaseSize,
+  judgeHomePageViews,
   judgePoolWaits,
   judgeJobs,
   judgeNews,
@@ -725,5 +726,13 @@ describe("judgePoolWaits が接続確立と混雑を区別する（T-M8-323）",
 
   it("queuedWaits24h が無い呼び出しは従来どおり全件を空き待ちとみなす（後方互換）", () => {
     expect(judgePoolWaits({ waits24h: 150, maxWaitedMs: 900 }).level).toBe("error");
+  });
+
+  it("ホームの閲覧記録は本番で0件のときだけ警告する（T-M8-422）", () => {
+    expect(judgeHomePageViews({ views: 0, expected: false }).level).toBe("ok");
+    expect(judgeHomePageViews({ views: 12, expected: true }).level).toBe("ok");
+    const warn = judgeHomePageViews({ views: 0, expected: true });
+    expect(warn.level).toBe("warn");
+    expect(warn.nextAction).toMatch(/入口ファネル/);
   });
 });

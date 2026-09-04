@@ -148,9 +148,10 @@ export default async function AdminPage() {
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <SummaryCard label="MRR（月間経常収益）" value={yen(summary.mrrJpy)} note={`課金中 ${summary.paying}人`} />
         <SummaryCard
-          label="今月の原価（AI・X API）"
+          label="今月の原価（AI・X API・運営負担）"
           value={yen(summary.monthCostJpy)}
-          note={usd(summary.monthCostUsd)}
+          // 利用者負担（BYOK）は原価ではないので合計に入れない。参考として額だけ添える（T-M8-422）。
+          note={`${usd(summary.monthCostUsd)}。利用者負担（BYOK）${usd(summary.monthUserPaidCostUsd)} は含まない`}
         />
         <SummaryCard
           label="今月の粗利（MRR−原価）"
@@ -158,7 +159,8 @@ export default async function AdminPage() {
           note={summary.grossProfitJpy < 0 ? "原価がMRRを上回っています" : undefined}
         />
         <SummaryCard label="トライアル中" value={`${summary.trialing}人`} />
-        <SummaryCard label="登録者（累計）" value={`${summary.usersTotal}人`} />
+        {/* auth.users の現在件数（退会で減る）。「累計」と書くと誤読する（T-M8-422）。 */}
+        <SummaryCard label="登録者（現在）" value={`${summary.usersTotal}人`} note="退会した人は含まない" />
       </div>
 
       {/* 入口ファネル（未ログイン含む・直近30日） */}
@@ -183,12 +185,16 @@ export default async function AdminPage() {
                     : Math.round((stage.uniqueVisitorDays / prev) * 100);
                 const rate = raw != null && raw > 100 ? null : raw;
                 return (
-                  <tr key={stage.path} className="border-t border-hairline">
+                  <tr key={stage.label} className="border-t border-hairline">
                     <td className="py-2 pr-3">
                       {stage.label}
-                      <span className="ml-1 text-xs text-ink-2">{stage.path}</span>
+                      {stage.path ? (
+                        <span className="ml-1 text-xs text-ink-2">{stage.path}</span>
+                      ) : null}
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono">{stage.views}</td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {stage.views == null ? "—" : stage.views}
+                    </td>
                     <td className="py-2 pr-3 text-right font-mono">{stage.uniqueVisitorDays}</td>
                     <td className="py-2 text-ink-2">{rate == null ? "—" : `${rate}%`}</td>
                   </tr>
@@ -199,7 +205,8 @@ export default async function AdminPage() {
         </div>
         <p className="mt-2 text-xs text-ink-2">
           訪問者はCookieなし・日替わりハッシュで数えるため、ユニークは「日ごとのユニークの合計」です
-          （同じ人が別の日に来ると複数回数えます）。botとページ先読みは除外。
+          （同じ人が別の日に来ると複数回数えます）。bot・ページ先読み・画面遷移でないアクセス・運営者自身は除外。
+          「登録完了」は直近30日に登録した人数（退会した人は消える）。料金画面はログイン後にしか開けないため入口には含めません。
         </p>
       </Card>
 
@@ -243,8 +250,8 @@ export default async function AdminPage() {
       <Card as="section" className="mt-6 space-y-8 px-5 py-4">
         <KpiChart points={mrrSeries} title="MRRの推移" unit="円" />
         <KpiChart points={homeVisitors} title="ホーム来訪者／日（ユニーク・今日を含む）" unit="人" />
-        <KpiChart points={usersSeries} title="登録者数（累計）の推移" unit="人" />
-        <KpiChart points={costSeriesJpy} title="原価／日（円換算）" unit="円" />
+        <KpiChart points={usersSeries} title="登録者数（現在・退会で減る）の推移" unit="人" />
+        <KpiChart points={costSeriesJpy} title="原価／日（円換算・運営負担）" unit="円" />
       </Card>
 
       {/* 原価内訳 */}
@@ -291,9 +298,9 @@ export default async function AdminPage() {
                   <th className="py-1 pr-3 font-normal">登録日</th>
                   <th className="py-1 pr-3 font-normal">プラン / 状態</th>
                   <th className="py-1 pr-3 font-normal">X連携</th>
-                  <th className="py-1 pr-3 font-normal text-right">生成</th>
+                  <th className="py-1 pr-3 font-normal text-right">生成（成功）</th>
                   <th className="py-1 pr-3 font-normal text-right">投稿</th>
-                  <th className="py-1 pr-3 font-normal text-right">今月の原価</th>
+                  <th className="py-1 pr-3 font-normal text-right">今月の原価（運営負担）</th>
                   <th className="py-1 font-normal">最終利用</th>
                 </tr>
               </thead>

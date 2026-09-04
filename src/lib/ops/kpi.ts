@@ -132,11 +132,12 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
     rows.push({ metric_date: r.d, metric: "trials_started", dimension: "", value: Number(r.n) });
   }
 
-  // 生成・投稿の実行数（usage_events の consume。予約→精算の reserve は数えない）。
+  // 生成・投稿の実行数（usage_events の consume の**行数**。予約→精算の reserve は数えない）。
+  // 生成の精算は delta がクレジット量（例 2,720）なので `delta = 1` では1件も一致しなかった（T-M8-422）。
   const usage = await db.query<{ d: string; op: string; n: string }>(
     `select ${day("created_at")}::text as d, operation::text as op, count(*)::text as n
        from usage_events
-      where reason = 'consume' and delta = 1
+      where reason = 'consume' and delta > 0
         and ${day("created_at")} between $1 and $2
       group by 1, 2`,
     range,
@@ -145,12 +146,13 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
     rows.push({ metric_date: r.d, metric: "usage_consumed", dimension: r.op, value: Number(r.n) });
   }
 
-  // 原価（provider別・USD）。円換算は読む側が JPY_PER_USD で行う（レート変更に強くする）。
+  // 原価（provider別・USD・**運営負担だけ**）。円換算は読む側が JPY_PER_USD で行う（レート変更に強くする）。
+  // 利用者負担（BYOK・payer='user'）は原価ではない（PRD §6.1・T-M8-422）。
   const cost = await db.query<{ d: string; provider: string; usd: string }>(
     `select ${day("occurred_at")}::text as d, provider::text as provider,
             coalesce(sum(estimated_cost_usd), 0)::text as usd
        from external_api_usage_events
-      where ${day("occurred_at")} between $1 and $2
+      where payer = 'operator' and ${day("occurred_at")} between $1 and $2
       group by 1, 2`,
     range,
   );
@@ -302,7 +304,8 @@ export async function readKpiSeries(
   const { rows } = await db.query<{ d: string; v: string }>(
     `select metric_date::text as d, sum(value)::text as v
        from kpi_daily
-      where metric = $1 and metric_date > current_date - make_interval(days => $2)
+      where metric = $1
+        and metric_date > (now() at time zone 'Asia/Tokyo')::date - make_interval(days => $2)
       group by 1 order by 1`,
     [metric, days],
   );
@@ -326,7 +329,7 @@ export async function readHomeVisitorSeries(
        select metric_date::text as d, sum(value)::text as v
          from kpi_daily
         where metric = 'page_uniques' and dimension = '/'
-          and metric_date > current_date - make_interval(days => $1)
+          and metric_date > (now() at time zone 'Asia/Tokyo')::date - make_interval(days => $1)
         group by 1
        union all
        select view_date::text as d, count(*)::text as v
@@ -343,37 +346,57 @@ export async function readHomeVisitorSeries(
 }
 
 export interface EntryFunnelStage {
+  /** page＝閲覧記録の行、event＝件数だけの段（登録完了）。 */
+  kind: "page" | "event";
   label: string;
-  path: string;
-  views: number;
-  /** 日次ユニークの合計（識別は日替わりハッシュなので日をまたいだ同一人物は複数回数える）。 */
+  path: string | null;
+  /** event の段は表示回数を持たない。 */
+  views: number | null;
+  /** page は日次ユニークの合計（識別は日替わりハッシュなので日をまたいだ同一人物は複数回数える）、event は件数。 */
   uniqueVisitorDays: number;
 }
 
 /**
- * 入口ファネル（直近30日・未ログイン含む）: ホーム → 新規登録 → 料金（T-M8-378）。
+ * 入口ファネル（直近30日・未ログイン含む）: ホーム → 新規登録画面 → 登録完了（T-M8-378→T-M8-422）。
  * 生の `page_views`（40日保持）から読む——kpi_daily は前日までしか無く、
  * 運営者が見たいのは「いま」を含む直近の入りだから。
  */
 export async function readEntryFunnel(db: Queryable): Promise<EntryFunnelStage[]> {
+  // 窓は JST（`current_date` は UTC で、JST 0〜9時は窓が1日ずれた・T-M8-422）。
   const { rows } = await db.query<{ path: string; views: string; uniques: string }>(
     `select path, coalesce(sum(views), 0)::text as views, count(*)::text as uniques
        from page_views
-      where view_date > current_date - 30
+      where view_date > (now() at time zone 'Asia/Tokyo')::date - 30
       group by path`,
   );
   const byPath = new Map(rows.map((r) => [r.path, r]));
-  const stages: { label: string; path: string }[] = [
-    { label: "ホーム（LP）", path: "/" },
-    { label: "新規登録画面", path: "/signup" },
-    { label: "料金画面", path: "/plans" },
+  /*
+    3段目は「登録完了」（直近30日に作られた auth.users）。以前は「料金画面（/plans）」だったが、
+    /plans はログイン必須で未ログインの人は到達できず、登録直後・プラン変更・Portal戻りでも数えるため、
+    「新規登録画面→料金画面」の通過率が意味を持たなかった（T-M8-422）。退会した人は消えるので目安。
+  */
+  const signups = await db.query<{ n: string }>(
+    `select count(*)::text as n from auth.users
+      where (created_at at time zone 'Asia/Tokyo')::date > (now() at time zone 'Asia/Tokyo')::date - 30`,
+  );
+  const pageStage = (label: string, path: string): EntryFunnelStage => ({
+    kind: "page",
+    label,
+    path,
+    views: Number(byPath.get(path)?.views ?? 0),
+    uniqueVisitorDays: Number(byPath.get(path)?.uniques ?? 0),
+  });
+  return [
+    pageStage("ホーム（LP）", "/"),
+    pageStage("新規登録画面", "/signup"),
+    {
+      kind: "event",
+      label: "登録完了",
+      path: null,
+      views: null,
+      uniqueVisitorDays: Number(signups.rows[0]?.n ?? 0),
+    },
   ];
-  return stages.map((s) => ({
-    label: s.label,
-    path: s.path,
-    views: Number(byPath.get(s.path)?.views ?? 0),
-    uniqueVisitorDays: Number(byPath.get(s.path)?.uniques ?? 0),
-  }));
 }
 
 export interface FunnelStage {
@@ -401,8 +424,9 @@ export async function readFunnel(db: Queryable): Promise<FunnelStage[]> {
        (select count(*) from auth.users)::text as total,
        (select count(*) from auth.users where email_confirmed_at is not null)::text as confirmed,
        (select count(distinct user_id) from x_accounts)::text as connected,
-       (select count(distinct user_id) from usage_events
-         where reason = 'consume' and delta = 1)::text as generated,
+       (select count(distinct xa.user_id) from generation_jobs j
+          join x_accounts xa on xa.id = j.x_account_id
+         where j.kind in ('post_generation', 'image_generation') and j.status = 'succeeded')::text as generated,
        (select count(*) from profiles where trial_used_at is not null)::text as trialed,
        (select count(*) from profiles
          where subscription_status in ('active', 'past_due'))::text as paying`,
@@ -429,17 +453,20 @@ export async function readMonthCostBreakdown(
   group: "provider" | "operation" | "user",
   limit: number,
 ): Promise<CostBreakdownRow[]> {
+  // 利用者別で user_id が null の行は「運営・共通」（ニュース基盤）と「退会済み利用者」を分ける
+  // （FK は on delete set null なので、退会者の分がニュースの費用に見えた・T-M8-422）。
   const keyExpr =
     group === "provider"
       ? "e.provider::text"
       : group === "operation"
         ? "e.operation"
-        : "coalesce(u.email, '（運営・共通）')";
+        : "coalesce(u.email, case when e.user_id is null and e.job_id is null then '（運営・共通）' else '（退会済み利用者）' end)";
   const { rows } = await db.query<{ key: string; usd: string }>(
     `select ${keyExpr} as key, coalesce(sum(e.estimated_cost_usd), 0)::text as usd
        from external_api_usage_events e
        left join auth.users u on u.id = e.user_id
-      where date_trunc('month', e.occurred_at at time zone 'Asia/Tokyo')
+      where e.payer = 'operator'
+        and date_trunc('month', e.occurred_at at time zone 'Asia/Tokyo')
             = date_trunc('month', now() at time zone 'Asia/Tokyo')
       group by 1 order by sum(e.estimated_cost_usd) desc nulls last
       limit $1`,
@@ -452,9 +479,13 @@ export interface AdminSummary {
   mrrJpy: number;
   paying: number;
   trialing: number;
+  /** いま残っている登録者数（累計ではない。退会で減る）。 */
   usersTotal: number;
+  /** 今月の原価（運営負担・payer='operator' だけ）。 */
   monthCostUsd: number;
   monthCostJpy: number;
+  /** 今月の利用者負担（BYOK）の推定額。原価ではないが参考に出す。 */
+  monthUserPaidCostUsd: number;
   grossProfitJpy: number;
 }
 
@@ -478,11 +509,16 @@ export async function readAdminSummary(db: Queryable): Promise<AdminSummary> {
       mrrJpy += (r.plan ? (PLANS[r.plan as PlanId]?.monthlyPriceJpy ?? 0) : 0) * n;
     }
   }
-  const totals = await db.query<{ users: string; usd: string }>(
+  const totals = await db.query<{ users: string; usd: string; user_usd: string }>(
     `select (select count(*) from auth.users)::text as users,
             (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
-              where date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
-                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as usd`,
+              where payer = 'operator'
+                and date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
+                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as usd,
+            (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
+              where payer = 'user'
+                and date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
+                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as user_usd`,
   );
   const monthCostUsd = Number(totals.rows[0]?.usd ?? 0);
   const monthCostJpy = Math.round(monthCostUsd * JPY_PER_USD);
@@ -493,6 +529,7 @@ export async function readAdminSummary(db: Queryable): Promise<AdminSummary> {
     usersTotal: Number(totals.rows[0]?.users ?? 0),
     monthCostUsd,
     monthCostJpy,
+    monthUserPaidCostUsd: Number(totals.rows[0]?.user_usd ?? 0),
     grossProfitJpy: mrrJpy - monthCostJpy,
   };
 }
@@ -539,14 +576,15 @@ export async function readUsersOverview(db: Queryable, limit: number): Promise<U
             p.subscription_status::text as status,
             (select string_agg('@' || xa.handle, ', ' order by xa.created_at)
                from x_accounts xa where xa.user_id = u.id) as handles,
+            (select count(*) from generation_jobs j
+               join x_accounts xa on xa.id = j.x_account_id
+              where xa.user_id = u.id and j.status = 'succeeded'
+                and j.kind in ('post_generation', 'image_generation'))::text as generations,
             (select count(*) from usage_events e
-              where e.user_id = u.id and e.reason = 'consume' and e.delta = 1
-                and e.operation in ('generation', 'image_generation'))::text as generations,
-            (select count(*) from usage_events e
-              where e.user_id = u.id and e.reason = 'consume' and e.delta = 1
+              where e.user_id = u.id and e.reason = 'consume' and e.delta > 0
                 and e.operation = 'post_create')::text as posts,
             (select coalesce(sum(c.estimated_cost_usd), 0) from external_api_usage_events c
-              where c.user_id = u.id
+              where c.user_id = u.id and c.payer = 'operator'
                 and date_trunc('month', c.occurred_at at time zone 'Asia/Tokyo')
                     = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as month_cost,
             (select max(e.created_at) from usage_events e where e.user_id = u.id)::text as last_used
