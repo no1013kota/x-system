@@ -12,9 +12,7 @@ import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 import {
-  PlanChoiceLead,
   PlanPickerRecommendFirst,
-  RECOMMENDED,
 } from "@/components/billing/plan-picker-recommend-first";
 import { RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
@@ -135,24 +133,14 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                 すべてのプランを7日間無料でお試し
               </p>
             ) : null}
-            {/* h1 は画面名のまま（<title>・読み上げの識別子）。推奨の錨は直下の1句が言う。LPと同じ見出しにするかは D-56。 */}
-            <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
-              あなたの運用に合うプランを選択
-            </h1>
             {/*
-              選び方の1文（LP `#pricing` の見出し下と同文の共用部品 `PlanChoiceLead`・T-M8-424）。h1 が中立な画面名
-              なので、先頭にLPの見出しと同じ一句「迷ったら、プレミアムプランから。」を置いて推奨を先に言う
-              （無いと「プレミアムなら…」が推奨の根拠ではなく機能説明に読め、推奨の手がかりが帯だけになる——レビュー）。
-              末尾の「はじめての方は7日間無料（カード登録が必要）です。」は**最初のCTAより上にある唯一の条件**
-              （帯はSPでCTAから約2,000px下）。トライアル消化済み・残りトライアル中の人には出さない（有利誤認の
-              回避。残りトライアルは CheckoutButton 下の note が条件を言う）。文字の大きさはLPの SUB に合わせる。
+              見出しはLPの料金セクションと同じ「業界最安価の価格設定」（運営者の指示 2026-09-04・D-56）。
+              選び方の1文とカード登録の条件はLPと同じく置かない。無料の条件（カード登録が必要・期間中解約無料）は
+              カード下の CampaignCallout（trialAvailable で出し分け）と特商法ページが担う。
             */}
-            <p className="mx-auto max-w-2xl text-[15px] leading-[1.8] text-balance text-ink-2 [word-break:auto-phrase] sm:text-[17px]">
-              <span className="inline-block font-bold text-ink">
-                迷ったら、{RECOMMENDED.displayName}から。
-              </span>{" "}
-              <PlanChoiceLead trialNote={trialAvailable && !trialLabel} />
-            </p>
+            <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
+              業界最安価の価格設定
+            </h1>
             {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチとカード下のプロモ帯にある（T-M8-66）。 */}
           </header>
 

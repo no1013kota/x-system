@@ -33,12 +33,10 @@ import styles from "./plan-picker-recommend-first.module.css";
  *   読み上げは帯の sr-only「プレミアムプラン（この帯の直下のカード）」で帯とカードの対応を補う。
  * - キャップの要約（`capSummary`）は全幅で出す——初心者が1日あたりの数字だけ見て安い方へ流れ、
  *   後で API 実費で詰まないよう「なぜ安いか」を数字の隣に置く。
- * - 法令開示は帯に置かない（運営者の指示 2026-09-04）。カード下の CampaignCallout（カード登録・7日間無料・
- *   期間中解約無料）が担い、**CTAより上**には見出し下の選び方の1文（`PlanChoiceLead`）の末尾
- *   「はじめての方は7日間無料（カード登録が必要）です。」を1行だけ残す（暫定・D-54。LP・`/plans` 同文。
- *   帯だけだとSPでは最初のCTAから約2,000px下にしか条件が無かった——T-M8-424 のレビュー）。
- *   `/plans` はトライアル消化済み・残りトライアル中の利用者へ「7日間無料」を出さないよう
- *   `trialAvailable` を帯へ、`trialNote` を1文へ渡す（有利誤認の回避・T-M8-174）。
+ * - 法令開示は帯にもCTAの上にも置かない（運営者の指示 2026-09-04・D-56。見出し下の選び方の1文と
+ *   「はじめての方は7日間無料（カード登録が必要）です。」は削除した）。カード登録・7日間無料・期間中解約無料は
+ *   カード下の CampaignCallout が担い、`/plans` はトライアル消化済み・残りトライアル中の利用者へ「7日間無料」を
+ *   出さないよう `trialAvailable` を帯へ渡す（有利誤認の回避・T-M8-174）。
  * - キャンペーン（半額）の文言はこの部品で一切持たない。バッジ・取り消し線・帯は共通部品が
  *   `RELEASE_CAMPAIGN.active` で出し分ける（消し忘れる場所を増やさない）。
  * - 共通部品の DOM（`plan-pricing-cards.tsx` の grid と `article[aria-labelledby=plan-card-<id>]`・
@@ -65,33 +63,6 @@ export function capSummary(plan: PlanDefinition): string {
     return `APIキー不要・無制限・Xアカウント${plan.xAccountLimit}件まで`;
   }
   return "APIキー不要";
-}
-
-/**
- * 選び方の1文（LP `#pricing` の見出し下と `/plans` の h1 直下で**同文**・T-M8-424）。
- * 錨を推奨（RECOMMENDED_PLAN）に置き、APIキーの一言説明と両隣の存在理由を先出しする。
- * プラン名は PLANS から（直書きしない）。主語を付ける（無いと「全プランでAPIキー不要」に読め、
- * 直下のスタンダードの要約と矛盾して見える）。文節ごとに `inline-block` で折る（LP の SUB と同じ手法）。
- *
- * 両ページへコピーせずここから呼ぶ——片方だけ直されて再びずれるのを防ぐ（T-M8-424 のレビュー）。
- *
- * @param trialNote 末尾に「はじめての方は7日間無料（カード登録が必要）です。」を添えるか。帯の注記を外したので、
- *   料金の**CTAより上**に「カード登録」の条件を一言残す（暫定・D-54）。`/plans` はトライアル消化済み・
- *   残りトライアル中の利用者には出さない（有利誤認の回避。残りトライアルは CheckoutButton 下の note が条件を言う）。
- */
-export function PlanChoiceLead({ trialNote = true }: { trialNote?: boolean } = {}) {
-  return (
-    <>
-      <span className="inline-block">
-        {RECOMMENDED.displayName}なら、APIキー（AIとX連携に使う鍵）の用意がいりません。
-      </span>
-      <span className="inline-block">自分で用意できるなら{PLANS.standard.displayName}、</span>
-      <span className="inline-block">投稿量が多いなら{PLANS.expert.displayName}。</span>
-      {trialNote ? (
-        <span className="inline-block">はじめての方は7日間無料（カード登録が必要）です。</span>
-      ) : null}
-    </>
-  );
 }
 
 function PerDay({ plan, recommended }: { plan: PlanDefinition; recommended: boolean }) {
@@ -153,7 +124,7 @@ export function PlanPickerRecommendFirst({
               {/* 「選ばれています」等の実績表現は使わない（販売実績が無い・景表法）。セクション内で最小の文字にしない（帯の役割そのもの）。 */}
               <p className="text-sm font-bold tracking-wide text-white">まずはこれ</p>
               <PerDay plan={plan} recommended />
-              {/* 帯に法令注記は置かない（運営者の指示 2026-09-04）。開示はカード下の CampaignCallout と、CTAより上の PlanChoiceLead の1文が担う。 */}
+              {/* 帯に法令注記は置かない（運営者の指示 2026-09-04）。開示はカード下の CampaignCallout が担う。 */}
             </div>
           ) : (
             <div

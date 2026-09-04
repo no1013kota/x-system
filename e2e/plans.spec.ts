@@ -73,10 +73,8 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   await expect(page.getByText(/約133円／日/)).toBeVisible();
   const premiumCard = page.getByRole("article", { name: /プレミアムプラン/ });
   await expect(premiumCard.getByText("おすすめ")).toBeHidden();
-  // 見出しの下に選び方の1文（LPの `#pricing` と同文の共用部品 `PlanChoiceLead`）。h1 は画面名なので、
-  // 先頭にLPの見出しと同じ一句で推奨を先に言う（T-M8-424 のレビュー）。
-  await expect(page.getByText(/迷ったら、プレミアムプランから。/)).toBeVisible();
-  await expect(page.getByText(/プレミアムプランなら、APIキー/)).toBeVisible();
+  // 見出しはLPの料金と同じ（運営者の指示 2026-09-04・D-56）。選び方の1文は置かない。
+  await expect(page.getByRole("heading", { level: 1, name: "業界最安価の価格設定" })).toBeVisible();
   /*
     機能リストは表と同じデータ源（`plan-comparison.ts`）から出る。
     **運営者が決めた一覧の文言を固定する**（T-M8-354・2026-08-28）——
@@ -104,7 +102,8 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   await expect(expertCard.getByText("無制限")).toBeVisible();
   await expect(page.getByText(/5,?000/)).toHaveCount(0);
   // BYOKの追加費用はスタンダードカードの「APIキーの用意」行が常時表示する（T-M8-171）
-  await expect(page.getByText(/ご自身のAPI課金/).first()).toBeVisible();
+  // 括弧書き「（利用料はご自身のAPI課金）」は運営者の指示（2026-09-04）で削除。常時表示はキャップ要約（md以上）。
+  await expect(page.getByText(/API利用料は別/).first()).toBeVisible();
 
   /**
    * 申込前の開示（T-M8-171・運営者の決定 2026-08-21）。
@@ -122,39 +121,14 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   // 申込ボタンは各プランにあるが、押さない（Stripeへ実際に作りに行くため）
   const firstCta = page.getByRole("button", { name: /7日間無料で利用/ }).first();
   await expect(firstCta).toBeVisible();
-  /*
-    **「カード登録が必要」は最初のCTAより上にある**（T-M8-424 のレビュー）。帯をカードの下へ移したので、
-    条件が帯だけだと SP では最初の「7日間無料で利用」から約2,000px下まで読まないと分からない
-    （ここは Stripe Checkout の1クリック手前）。見出し下の1文「はじめての方は7日間無料（カード登録が必要）
-    です。」（LPと同文・共用部品）が CTA より上の置き場所。DOM順（読み上げ順）と見た目の両方で見る。
-  */
-  const disclosure = page.getByText(/はじめての方は7日間無料（カード登録が必要）です。/);
-  await expect(disclosure).toBeVisible();
-  const precedes = await disclosure.evaluate(
-    (el, cta) =>
-      cta !== null && Boolean(el.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING),
-    await firstCta.elementHandle(),
-  );
-  expect(precedes, "「カード登録が必要」が最初のCTAよりDOM順で前にある").toBe(true);
-  const [disclosureBox, ctaBox] = await Promise.all([disclosure.boundingBox(), firstCta.boundingBox()]);
-  expect(disclosureBox?.y, "「カード登録が必要」が最初のCTAより上に見える").toBeLessThan(ctaBox?.y ?? 0);
-
   // スマホ幅でも読める（表はページを横に伸ばさず、自分の中でスクロールする）
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   expect(await horizontalOverflow(page), "ページ全体が横に伸びないこと").toBeLessThanOrEqual(0);
-  // SP は推奨カードが先頭（order:-1）。その CTA より上にも条件がある。
-  const premiumCta = page
-    .getByRole("article", { name: /プレミアムプラン/ })
-    .getByRole("button", { name: /7日間無料で利用/ });
-  await expect(premiumCta).toBeVisible();
-  const [spDisclosureBox, spCtaBox] = await Promise.all([
-    page.getByText(/はじめての方は7日間無料（カード登録が必要）です。/).boundingBox(),
-    premiumCta.boundingBox(),
-  ]);
-  expect(spDisclosureBox?.y, "SPでも「カード登録が必要」が推奨のCTAより上に見える").toBeLessThan(
-    spCtaBox?.y ?? 0,
-  );
+  // SP は推奨カードが先頭（order:-1）。無料の条件はカード下の帯が担う（見出し下の1文は運営者の指示 2026-09-04 で削除）。
+  await expect(
+    page.getByRole("article", { name: /プレミアムプラン/ }).getByRole("button", { name: /7日間無料で利用/ }),
+  ).toBeVisible();
 });
 
 /**
@@ -191,7 +165,7 @@ test("トライアル消化済みの利用者には「7日間無料」を出さ�
   await expect(page.getByText("すべてのプランを7日間無料でお試し")).toHaveCount(0);
   await expect(page.getByText(/カード登録が必要/)).toHaveCount(0);
   // 選び方の1文（推奨の錨）は変わらず出る。
-  await expect(page.getByText(/迷ったら、プレミアムプランから。/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "業界最安価の価格設定" })).toBeVisible();
   // 帯は半額の見出しだけ（RELEASE_CAMPAIGN.active 中。終了したら帯ごと消えるので、この行は外す）。
   await expect(page.getByText("いまだけ、リリース記念で全プラン半額")).toBeVisible();
 });

@@ -43,7 +43,8 @@ test("LPの導線: CTA・アンカー・プラン価格・FAQ・法務リンク"
   await expect(pricing.getByText("カード登録が必要", { exact: false }).first()).toBeVisible();
   // BYOK注記は折りたたみなしで最初から見えている
   // BYOKのAPI実費はスタンダードカードの「APIキーの用意」行が唯一の常時表示（T-M8-171）。
-  await expect(pricing.getByText(/ご自身のAPI課金/).first()).toBeVisible();
+  // カードの行の括弧書きは運営者の指示（2026-09-04）で削除。BYOKのAPI実費はキャップ要約「API利用料は別」が言う。
+  await expect(pricing.getByText(/API利用料は別/).first()).toBeVisible();
 
   // FAQは**折りたたまない**（2026-08-20 運営者の指示）。質問と回答が最初から見えていること。
   // 質問文そのものではなく「自動投稿への不安に答えるFAQ」を探す（文言は磨かれ続けるため。

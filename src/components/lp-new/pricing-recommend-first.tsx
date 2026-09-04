@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import {
-  PlanChoiceLead,
   PlanPickerRecommendFirst,
   RECOMMENDED,
   capSummary,
@@ -19,7 +18,7 @@ import { cn } from "@/lib/utils";
  *
  * - CTA は `lp/pricing.tsx` と同じ形（推奨だけ brand・他は subtle）。`signupHref` は流入元 `?src=` を
  *   引き継いだ `/signup`（T-M8-423。`landing-page.test.ts` が直書きの `/signup` を禁じる）。
- * - `RECOMMENDED`・`PlanChoiceLead`（見出し下の選び方の1文。`/plans` と同文）・`perDayYen`・`capSummary` は
+ * - `RECOMMENDED`・`perDayYen`・`capSummary` は
  *   共通側の再export（`page.tsx` と既存テストの参照を保つ）。
  */
 
@@ -43,4 +42,4 @@ export function PricingRecommendFirst({ signupHref = "/signup" }: { signupHref?:
   );
 }
 
-export { PlanChoiceLead, RECOMMENDED, capSummary, perDayYen };
+export { RECOMMENDED, capSummary, perDayYen };
