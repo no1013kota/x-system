@@ -93,7 +93,9 @@ export function CheckoutButton({
               ? `${planName}を7日間無料で利用`
               : `${planName}で始める`
         }
-        className="h-11 w-full"
+        // LP の料金CTA（Link・`lp-new/pricing-recommend-first.tsx`）と同じ太さ（T-M8-424 のレビュー: Button 既定の
+        // font-medium だと並べたとき一段弱く見えた）。pending 文言も同じ太さで出る。
+        className="h-11 w-full text-sm font-bold"
         disabled={pending}
         onClick={handleCheckout}
         type="button"

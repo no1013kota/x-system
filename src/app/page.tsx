@@ -13,6 +13,7 @@ import { Grow } from "@/components/lp-new/grow";
 import { HeroDiagram, HeroSteps } from "@/components/lp-new/hero-diagram";
 import { LOOP_TOTALS, LoopBoard } from "@/components/lp-new/loop-board";
 import {
+  PlanChoiceLead,
   PricingRecommendFirst,
   RECOMMENDED,
 } from "@/components/lp-new/pricing-recommend-first";
@@ -38,7 +39,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
 import { APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
-import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /**
@@ -385,25 +385,10 @@ export default async function Home({
                   <Icon name="chevron_right" size={13} />
                 </a>
               }
-              // 錨を推奨（RECOMMENDED_PLAN）に置く。APIキーの一言説明と、両隣の存在理由を1文で先出しする。
-              sub={
-                <>
-                  {/* 主語を付ける（無いと「全プランでAPIキー不要」に読め、直下のスタンダードの要約と矛盾して見える）。 */}
-                  <span className="inline-block">
-                    {RECOMMENDED.displayName}なら、APIキー（AIとX連携に使う鍵）の用意がいりません。
-                  </span>
-                  <span className="inline-block">
-                    自分で用意できるなら{PLANS.standard.displayName}、
-                  </span>
-                  <span className="inline-block">
-                    投稿量が多いなら{PLANS.expert.displayName}。
-                  </span>
-                  <span className="inline-block">
-                    {/* 帯の注記を外したので、料金のCTAより上に「カード登録」の条件を一言残す（暫定・D-54）。 */}
-                    はじめての方は7日間無料（カード登録が必要）です。
-                  </span>
-                </>
-              }
+              // 錨を推奨（RECOMMENDED_PLAN）に置く。APIキーの一言説明と、両隣の存在理由を1文で先出しし、
+              // 末尾に「カード登録」の条件を一言残す（帯の注記を外したので、料金のCTAより上に置く・暫定・D-54）。
+              // 文は `/plans` と同文の共用部品（T-M8-424。ここへ書き写すと片方だけ直されて再びずれる）。
+              sub={<PlanChoiceLead />}
               title={
                 <>
                   <span className="inline-block">迷ったら、</span>

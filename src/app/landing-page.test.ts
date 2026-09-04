@@ -40,7 +40,10 @@ const PAGE = read("src/app/page.tsx");
 const SETTINGS_BILLING = read("src/app/app/settings/page.tsx");
 /** プランカード（T-M8-171）。LPと /plans で共通。行と可否の定義は `plan-comparison.ts`。 */
 const PRICING_CARDS = read("src/components/billing/plan-pricing-cards.tsx");
-/** プロモ帯（T-M8-171）。「初回のみ」「カード登録が必要」の開示はここが唯一の常時表示。 */
+/**
+ * プロモ帯（T-M8-171）。「カード登録が必要」「期間中に解約すれば無料」の常時表示。
+ * **「初回のみ」は 2026-08-26 に帯から外した**（T-M8-321・運営者の最終レビュー）——初回限りの開示は FAQ・特商法ページが担う。
+ */
 const CAMPAIGN_CALLOUT = read("src/components/billing/campaign-callout.tsx");
 const COMPARISON = read("src/lib/plan-comparison.ts");
 const GLOBALS_CSS = read("src/app/globals.css");
@@ -86,8 +89,14 @@ function lpFile(path: string): string {
 }
 
 const FAQ = lpFile("src/components/lp-new/faq.tsx");
-/** 新LPの料金（推奨先行）。共通の `CampaignCallout`＋`PlanPricingCards` をここで組む（T-M8-419）。 */
+/** 新LPの料金（推奨先行）のLP側。`/signup` への CTA を渡す薄い層（T-M8-419 → T-M8-424 で組み立てを共用へ）。 */
 const PRICING = lpFile("src/components/lp-new/pricing-recommend-first.tsx");
+/**
+ * 料金「推奨先行」の組み立て（キャップ行＋`PlanPricingCards`＋`CampaignCallout`）。LP と `/plans` で
+ * 共用（T-M8-424）。**LP側だけを見ていると、部品へ切り出したときに検査が空振りする**ので、
+ * 帯・カードの使用はこちらで見る。
+ */
+const PLAN_PICKER = read("src/components/billing/plan-picker-recommend-first.tsx");
 
 /**
  * **利用者に見える回答だけを検査対象にする**（2026-08-24）。
@@ -151,7 +160,8 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
      * プロモ帯（CampaignCallout）**になった。LPは page.tsx と帯の合成で描かれるので、
      * 検査も合成で見る（どちらかに載っていればよい。両方から消えたら落ちる）。
      */
-    const lp = PAGE + CAMPAIGN_CALLOUT;
+    // 選び方の1文（「カード登録が必要」の、CTAより上の唯一の置き場所）は共用部品 `PlanChoiceLead` にある（T-M8-424）。
+    const lp = PAGE + PLAN_PICKER + CAMPAIGN_CALLOUT;
     expect(lp, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
     expect(lp, "無料期間の長さが消えている").toMatch(/7日間(は|の)無料/);
     expect(lp, "期間中に解約すれば無料である事実が消えている").toMatch(
@@ -181,14 +191,24 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
     expect(FAQ, "FAQを折りたたみ（details）へ戻さない").not.toContain("<details");
   });
 
-  it("無料トライアルの条件（初回のみ・カード登録）がプロモ帯に残る", () => {
-    // 「初回のみ」が消えると「無条件で7日間無料」の表示になり、2回目以降の申込みで事実と異なる
-    // （景表法の有利誤認・特商法11条）。「カード登録が必要」は無料の条件の開示。
-    // T-M8-171で申込前確認カードを畳んだため、**プロモ帯が唯一の常時表示**。
-    expect(CAMPAIGN_CALLOUT, "初回限定の開示が消えている").toMatch(/初回のみ/);
-    expect(CAMPAIGN_CALLOUT, "無料期間の長さが消えている").toMatch(/7日間/);
-    expect(CAMPAIGN_CALLOUT, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
-    expect(PRICING, "LPの料金セクションがプロモ帯を使っていない").toContain("CampaignCallout");
+  it("無料トライアルの条件（カード登録・期間中の解約）がプロモ帯に、初回限定の開示がFAQに残る", () => {
+    /*
+     * 「初回のみ」が消えると「無条件で7日間無料」の表示になり、2回目以降の申込みで事実と異なる
+     * （景表法の有利誤認・特商法11条）。**帯からは 2026-08-26 に外した**（T-M8-321・運営者の最終レビュー）ので、
+     * 初回限りの開示は FAQ（「はじめてのお申し込みに限り」）と特商法ページが担う。
+     * 以前はこのテストが帯のソース全文へ `/初回のみ/` を当てていたため、**コメントに残った語だけで緑**になっていた
+     * （T-M8-424 のレビュー）。画面に出る文字列だけを見る。
+     */
+    const rendered = CAMPAIGN_CALLOUT.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|\{\/\*[\s\S]*?\*\/\}/g, "");
+    expect(rendered, "無料期間の長さが消えている").toMatch(/7日間/);
+    expect(rendered, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
+    expect(rendered, "期間中に解約すれば無料である事実が消えている").toMatch(/期間中に解約すれば料金はかかりません/);
+    expect(FAQ_ANSWERS, "初回限定の開示がFAQから消えている").toMatch(/はじめてのお申し込みに限り/);
+    // LPは共用の組み立て（`PlanPickerRecommendFirst`）を呼び、その組み立てが帯を出す（T-M8-424）。
+    expect(PRICING, "LPの料金セクションが共用の組み立てを使っていない").toContain(
+      "PlanPickerRecommendFirst",
+    );
+    expect(PLAN_PICKER, "料金の組み立てがプロモ帯を使っていない").toContain("CampaignCallout");
   });
 });
 
@@ -196,7 +216,8 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
   it("プランの数値を参照で埋める（直書きしない）", () => {
     // T-M8-171でLPも/plansと同じプランカードにした。**数値を持つ場所を見る**——LP側だけを
     // 見ていると、部品へ切り出したときに検査が空振りする（R39と同じ形の取りこぼし）。
-    expect(PRICING, "LPは共通のプランカードを使う").toContain("PlanPricingCards");
+    expect(PRICING, "LPは共用の組み立てを使う").toContain("PlanPickerRecommendFirst");
+    expect(PLAN_PICKER, "組み立ては共通のプランカードを使う").toContain("PlanPricingCards");
     // 行の可否・件数・上限は定義側（`plan-comparison.ts`）が持つ。
     for (const ref of ["PLANS", "xAccountLimit", "usageLimits"]) {
       expect(COMPARISON, `${ref} を定義から引く`).toContain(ref);
@@ -241,6 +262,7 @@ describe("SC-01 LP: 価格・上限は plans.ts を正とする", () => {
       ["プランカード", PRICING_CARDS],
       ["設定＞課金", SETTINGS_BILLING],
       ["LP料金", PRICING],
+      ["料金の組み立て（LP・/plans 共用）", PLAN_PICKER],
       ["プロモ帯", CAMPAIGN_CALLOUT],
     ] as const) {
       expect(withoutComments(source), `${name}で「通常価格」は景表法上使えない`).not.toContain(

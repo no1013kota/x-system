@@ -11,8 +11,12 @@ import { ensureUserProfile } from "@/lib/auth/profile";
 import { subscriptionAccessFor } from "@/lib/auth/subscription-access";
 import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
-import { CampaignCallout } from "@/components/billing/campaign-callout";
-import { PlanPricingCards, RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
+import {
+  PlanChoiceLead,
+  PlanPickerRecommendFirst,
+  RECOMMENDED,
+} from "@/components/billing/plan-picker-recommend-first";
+import { RECOMMENDED_PLAN } from "@/components/billing/plan-pricing-cards";
 import { LEGAL_ENTITY } from "@/lib/legal-entity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -104,37 +108,52 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       <main className="flex-1 px-4 py-10 sm:py-14">
-        <div className="mx-auto max-w-5xl space-y-10">
-          <header className="mx-auto max-w-3xl space-y-4 text-center">
-            <div className="flex items-center justify-between gap-3">
-              <Link className="text-sm font-semibold tracking-wide" href="/">
-                {APP_NAME}
-              </Link>
-              {/* 未契約の利用者はこの画面に留められ App Shell のヘッダへ到達できないため、
-                  ログアウトの導線をここにも置く（PRD A-2・要件03 §1）。 */}
-              {user ? (
-                <SignOutButton label={false} signOutAction={signOut} />
-              ) : null}
-            </div>
-            <div className="space-y-3">
-              {/* 参考ページの「Special offer」ピルに相当（T-M8-169）。 */}
-              {trialLabel ? (
-                // 残りのトライアルがある人には「何日まで・どのプランでも無料」を出す（T-M8-298）。
-                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
-                  <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
-                  {trialLabel}まで、どのプランでも無料
-                </p>
-              ) : trialAvailable ? (
-                <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
-                  <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
-                  すべてのプランを7日間無料でお試し
-                </p>
-              ) : null}
-              <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
-                あなたの運用に合うプランを選択
-              </h1>
-              {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチと「お申し込み前の確認」にある（T-M8-66）。 */}
-            </div>
+        {/* SPは見出し→キャップ行の余白を詰める（LPの `mt-[clamp(16px,3vw,40px)]` に近づける・T-M8-424 のレビュー）。 */}
+        <div className="mx-auto max-w-5xl space-y-6 sm:space-y-10">
+          {/* ロゴ／ログアウトは全幅（キャップ行・カード・帯と左右の縁を揃える。以前は max-w-3xl の中で128px内側から始まっていた）。 */}
+          <div className="flex items-center justify-between gap-3">
+            <Link className="text-sm font-semibold tracking-wide" href="/">
+              {APP_NAME}
+            </Link>
+            {/* 未契約の利用者はこの画面に留められ App Shell のヘッダへ到達できないため、
+                ログアウトの導線をここにも置く（PRD A-2・要件03 §1）。 */}
+            {user ? (
+              <SignOutButton label={false} signOutAction={signOut} />
+            ) : null}
+          </div>
+          <header className="mx-auto max-w-3xl space-y-3 text-center">
+            {/* 参考ページの「Special offer」ピルに相当（T-M8-169）。 */}
+            {trialLabel ? (
+              // 残りのトライアルがある人には「何日まで・どのプランでも無料」を出す（T-M8-298）。
+              <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+                <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
+                {trialLabel}まで、どのプランでも無料
+              </p>
+            ) : trialAvailable ? (
+              <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-caption font-bold text-ink-2">
+                <Icon aria-hidden="true" className="text-brand" name="star_shine" size={14} />
+                すべてのプランを7日間無料でお試し
+              </p>
+            ) : null}
+            {/* h1 は画面名のまま（<title>・読み上げの識別子）。推奨の錨は直下の1句が言う。LPと同じ見出しにするかは D-56。 */}
+            <h1 className="text-[28px] font-bold tracking-tight text-balance text-ink sm:text-[34px]">
+              あなたの運用に合うプランを選択
+            </h1>
+            {/*
+              選び方の1文（LP `#pricing` の見出し下と同文の共用部品 `PlanChoiceLead`・T-M8-424）。h1 が中立な画面名
+              なので、先頭にLPの見出しと同じ一句「迷ったら、プレミアムプランから。」を置いて推奨を先に言う
+              （無いと「プレミアムなら…」が推奨の根拠ではなく機能説明に読め、推奨の手がかりが帯だけになる——レビュー）。
+              末尾の「はじめての方は7日間無料（カード登録が必要）です。」は**最初のCTAより上にある唯一の条件**
+              （帯はSPでCTAから約2,000px下）。トライアル消化済み・残りトライアル中の人には出さない（有利誤認の
+              回避。残りトライアルは CheckoutButton 下の note が条件を言う）。文字の大きさはLPの SUB に合わせる。
+            */}
+            <p className="mx-auto max-w-2xl text-[15px] leading-[1.8] text-balance text-ink-2 [word-break:auto-phrase] sm:text-[17px]">
+              <span className="inline-block font-bold text-ink">
+                迷ったら、{RECOMMENDED.displayName}から。
+              </span>{" "}
+              <PlanChoiceLead trialNote={trialAvailable && !trialLabel} />
+            </p>
+            {/* 税込は各カードの価格表記に、トライアルは上のアイキャッチとカード下のプロモ帯にある（T-M8-66）。 */}
           </header>
 
           {/*
@@ -207,21 +226,28 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           ) : (
             <>
           {/*
-            申込前の定型文はプロモ帯（CampaignCallout）へ畳んだ（T-M8-171・運営者の決定 2026-08-21）。
-            「カード登録が必要」の開示は帯の中に残る。**「初回限り」は2026-08-26に帯から外した**
-            （運営者の最終レビュー）ので、この画面の本文には出ない——開示はフッタの
-            特定商取引法ページ・利用規約が担う。自動更新・解約の法定事項も同じ。
+            料金はLP `#pricing` と同じ「推奨先行」の組み立て（`PlanPickerRecommendFirst`・T-M8-424・
+            運営者の依頼 2026-09-04「ホームページの料金に /plans も合わせる」）: 上に「約N円／日」の
+            キャップ行（推奨だけ brand 帯「まずはこれ」。カード内の「おすすめ」バッジは帯が代わる）、
+            プランカード3枚（T-M8-169。行・価格・可否は `lib/plan-comparison.ts`／`PLANS` から導き、
+            画面に書き写さない）、その下にプロモ帯（CampaignCallout）。
+            申込前の定型文は帯へ畳んである（T-M8-171・運営者の決定 2026-08-21）。「カード登録が必要」の
+            開示は帯の中と、上の選び方の1文の末尾（CTAより上）に残る。**「初回限り」は2026-08-26に帯から
+            外した**（運営者の最終レビュー）ので、この画面の本文には出ない——開示はフッタの特定商取引法
+            ページ・利用規約が担う。自動更新・解約の法定事項も同じ。トライアル消化済みの利用者には帯の
+            トライアル文を出さない（`trialAvailable`・有利誤認の回避）。
+            CTAは各カードの中（CheckoutButton）。推奨（プレミアム）だけ brand で強調する。
+            背景はLPの `#pricing` と同じ brand の radial glow（両隣の「ガラス」が平坦な面だと白い枠にしか
+            見えない——レビュー）。装飾なので読み上げ・E2E には影響しない。
           */}
-          <CampaignCallout className="mx-auto max-w-3xl" trialAvailable={trialAvailable} />
-
-          {/*
-            プランのカード型表示（T-M8-169・運営者の指示 2026-08-21。参考: tweethunter.io/pricing）。
-            T-M8-125の表を `/plans` では置き換えた（LPの料金セクションは表のまま）。
-            行・価格・可否は `lib/plan-comparison.ts`／`PLANS` から導き、画面に書き写さない。
-            CTAは各カードの中に置き、推奨（プレミアム）だけ brand で強調する。
-          */}
-          <section aria-label="料金プラン">
-            <PlanPricingCards
+          <section aria-label="料金プラン" className="relative isolate">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+            >
+              <div className="absolute left-1/2 top-1/2 size-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(125,31,117,0.10),transparent_70%)] blur-3xl" />
+            </div>
+            <PlanPickerRecommendFirst
               cta={(planId, planName) => (
                 <CheckoutButton
                   plan={planId}
@@ -231,6 +257,7 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
                   variant={planId === RECOMMENDED_PLAN ? "brand" : "subtle"}
                 />
               )}
+              trialAvailable={trialAvailable}
             />
           </section>
 
