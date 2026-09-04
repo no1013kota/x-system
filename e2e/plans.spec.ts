@@ -63,9 +63,20 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   for (const name of ["スタンダードプラン", "プレミアムプラン", "エキスパートプラン"]) {
     await expect(page.getByRole("article", { name: new RegExp(name) })).toBeVisible();
   }
-  // 推奨（プレミアム）にだけ「おすすめ」バッジが付く。
+  /*
+    推奨（プレミアム）はLPと同じ「推奨先行」で示す（T-M8-424・運営者の依頼 2026-09-04）: カードの上に
+    brand 帯「まずはこれ」と「約N円／日」のキャップ行。カード内の「おすすめ」バッジは帯が代わるので
+    CSS で消えている（見えていたら共用部品の CSS module が当たっていない）。
+  */
+  await expect(page.getByText("まずはこれ")).toBeVisible();
+  // 1日あたりは月額÷30の切り上げ（¥3,980 → 約133円／日。共通部品と同じ式）。
+  await expect(page.getByText(/約133円／日/)).toBeVisible();
   const premiumCard = page.getByRole("article", { name: /プレミアムプラン/ });
-  await expect(premiumCard.getByText("おすすめ")).toBeVisible();
+  await expect(premiumCard.getByText("おすすめ")).toBeHidden();
+  // 見出しの下に選び方の1文（LPの `#pricing` と同文の共用部品 `PlanChoiceLead`）。h1 は画面名なので、
+  // 先頭にLPの見出しと同じ一句で推奨を先に言う（T-M8-424 のレビュー）。
+  await expect(page.getByText(/迷ったら、プレミアムプランから。/)).toBeVisible();
+  await expect(page.getByText(/プレミアムプランなら、APIキー/)).toBeVisible();
   /*
     機能リストは表と同じデータ源（`plan-comparison.ts`）から出る。
     **運営者が決めた一覧の文言を固定する**（T-M8-354・2026-08-28）——
@@ -109,12 +120,80 @@ test("未契約の利用者にはプラン選択が出て、申込前の確認�
   ).toBeVisible();
 
   // 申込ボタンは各プランにあるが、押さない（Stripeへ実際に作りに行くため）
-  await expect(page.getByRole("button", { name: /7日間無料で利用/ }).first()).toBeVisible();
+  const firstCta = page.getByRole("button", { name: /7日間無料で利用/ }).first();
+  await expect(firstCta).toBeVisible();
+  /*
+    **「カード登録が必要」は最初のCTAより上にある**（T-M8-424 のレビュー）。帯をカードの下へ移したので、
+    条件が帯だけだと SP では最初の「7日間無料で利用」から約2,000px下まで読まないと分からない
+    （ここは Stripe Checkout の1クリック手前）。見出し下の1文「はじめての方は7日間無料（カード登録が必要）
+    です。」（LPと同文・共用部品）が CTA より上の置き場所。DOM順（読み上げ順）と見た目の両方で見る。
+  */
+  const disclosure = page.getByText(/はじめての方は7日間無料（カード登録が必要）です。/);
+  await expect(disclosure).toBeVisible();
+  const precedes = await disclosure.evaluate(
+    (el, cta) =>
+      cta !== null && Boolean(el.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING),
+    await firstCta.elementHandle(),
+  );
+  expect(precedes, "「カード登録が必要」が最初のCTAよりDOM順で前にある").toBe(true);
+  const [disclosureBox, ctaBox] = await Promise.all([disclosure.boundingBox(), firstCta.boundingBox()]);
+  expect(disclosureBox?.y, "「カード登録が必要」が最初のCTAより上に見える").toBeLessThan(ctaBox?.y ?? 0);
 
   // スマホ幅でも読める（表はページを横に伸ばさず、自分の中でスクロールする）
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   expect(await horizontalOverflow(page), "ページ全体が横に伸びないこと").toBeLessThanOrEqual(0);
+  // SP は推奨カードが先頭（order:-1）。その CTA より上にも条件がある。
+  const premiumCta = page
+    .getByRole("article", { name: /プレミアムプラン/ })
+    .getByRole("button", { name: /7日間無料で利用/ });
+  await expect(premiumCta).toBeVisible();
+  const [spDisclosureBox, spCtaBox] = await Promise.all([
+    page.getByText(/はじめての方は7日間無料（カード登録が必要）です。/).boundingBox(),
+    premiumCta.boundingBox(),
+  ]);
+  expect(spDisclosureBox?.y, "SPでも「カード登録が必要」が推奨のCTAより上に見える").toBeLessThan(
+    spCtaBox?.y ?? 0,
+  );
+});
+
+/**
+ * トライアル消化済み（`trial_used_at` あり・残りトライアル無し）の利用者には「7日間無料」を出さない
+ * （有利誤認の回避・T-M8-174）。共用部品化で `trialAvailable` が「/plans → PlanPickerRecommendFirst →
+ * CampaignCallout」の2段渡しになり、見出し下の1文も `trialNote` で出し分けるようになった（T-M8-424）ので、
+ * 実画面で消えていることを見る（渡し忘れは既定 true で緑のまま通るため、ソース検査だけでは足りない）。
+ */
+test("トライアル消化済みの利用者には「7日間無料」を出さない（T-M8-174・T-M8-424）", async ({
+  accounts,
+  page,
+}) => {
+  const account = await accounts.create("plans-trial-used");
+  await signIn(page, account);
+  await query(
+    `update profiles set plan = null, subscription_status = 'incomplete',
+        current_period_end = null, trial_ends_at = null, trial_used_at = now() where id = $1`,
+    [account.userId],
+  );
+  await page.goto("/plans");
+
+  // 料金は出る（推奨先行の帯・カード3枚）。
+  await expect(page.getByText("まずはこれ")).toBeVisible();
+  for (const name of ["スタンダードプラン", "プレミアムプラン", "エキスパートプラン"]) {
+    await expect(page.getByRole("article", { name: new RegExp(name) })).toBeVisible();
+  }
+  // CTA は「このプランで始める」（3枚とも。アクセシブル名は aria-label「<プラン名>で始める」）。
+  const ctas = page.getByRole("button", { name: /プランで始める/ });
+  await expect(ctas.first()).toBeVisible();
+  expect(await ctas.count()).toBeGreaterThanOrEqual(3);
+  await expect(page.getByRole("button", { name: /7日間無料で利用/ })).toHaveCount(0);
+  // 眉ピル・見出し下の1文・帯のトライアル行のどこにも「7日間無料」が無い。
+  await expect(page.getByText(/7日間の?無料/)).toHaveCount(0);
+  await expect(page.getByText("すべてのプランを7日間無料でお試し")).toHaveCount(0);
+  await expect(page.getByText(/カード登録が必要/)).toHaveCount(0);
+  // 選び方の1文（推奨の錨）は変わらず出る。
+  await expect(page.getByText(/迷ったら、プレミアムプランから。/)).toBeVisible();
+  // 帯は半額の見出しだけ（RELEASE_CAMPAIGN.active 中。終了したら帯ごと消えるので、この行は外す）。
+  await expect(page.getByText("いまだけ、リリース記念で全プラン半額")).toBeVisible();
 });
 
 test("契約中の利用者はプラン選択に留まらず、契約状態が設定画面で読める", async ({

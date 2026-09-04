@@ -1,6 +1,7 @@
 /*
- * /new 料金セクション「推奨先行」（recommend-first）。共通部品 PlanPricingCards の中身は変えず、
- * 外側から包んで見せ方だけを変える。
+ * 料金「推奨先行」（recommend-first）の外付けスタイル。LP（`#pricing`）と `/plans` が同じ
+ * `PlanPickerRecommendFirst` で使う（T-M8-419 で /new 用に作り、T-M8-424 で billing/ へ移して共用）。
+ * 共通部品 PlanPricingCards の中身は変えず、外側から包んで見せ方だけを変える。
  *
  * - 列幅は「上のキャップ行」と「共通部品のカード行」で同じ変数を使い、縦に揃える。
  * - キャップとカードは密着させて1枚に見せる: カードの上の角丸を落とし、両隣は上辺の罫線も落とす
@@ -18,7 +19,7 @@
  *   影の上書きに負ける。
  *
  * セレクタは共通部品の DOM（直下の grid div ＋ article[aria-labelledby=plan-card-<id>] ＋ p の並び）に
- * 依存する。`pricing-recommend-first.test.ts` が RECOMMENDED_PLAN との一致と p の並びを固定する。
+ * 依存する。`plan-picker-recommend-first.test.ts`（同じディレクトリ）が RECOMMENDED_PLAN との一致と p の並びを固定する。
  */
 .wrap {
   --cols: 1fr;
