@@ -28,8 +28,13 @@ const STEPS: { icon: IconName; label: string; who: Who }[] = [
 ];
 
 const BOARD = `${HERO_BOARD} relative p-3`;
-/** 板の見出し行: 左に意味ラベル（作る／投稿／集める）。画像の上に重ねず、行として持つ（実画面の文字を隠さない）。 */
+/**
+ * 板の見出し行: 左に意味ラベル（作る／投稿／集める）＋右に一言の注記。画像の上に重ねず、行として持つ（実画面の文字を隠さない）。
+ * 注記は3枚で「作る＝時間／投稿＝時刻／集める＝頻度」に揃え、ヒーローだけで自動の中身が読めるようにする（2026-09-05）。
+ * 数字は既存のもの（60〜90秒・10分おき）だけ。語はリング図・画面ツアーと同じ。
+ */
 const BOARD_HEAD = "mb-2 flex h-6 items-center gap-3";
+const BOARD_NOTE = "shrink-0 text-caption text-ink-3";
 const BOARD_TAG =
   "inline-flex h-6 shrink-0 items-center rounded-pill bg-brand-subtle px-2.5 text-caption font-medium text-brand";
 
@@ -46,7 +51,7 @@ export function HeroDiagram() {
       >
         <div className={BOARD_HEAD}>
           <span className={BOARD_TAG}>作る</span>
-          <span className="shrink-0 text-caption text-ink-3">通常60〜90秒で生成</span>
+          <span className={BOARD_NOTE}>60〜90秒で下書きに</span>
         </div>
         <Image
           alt="投稿作成画面の型（パターン）のカード4枚"
@@ -67,6 +72,7 @@ export function HeroDiagram() {
       >
         <div className={BOARD_HEAD}>
           <span className={BOARD_TAG}>投稿</span>
+          <span className={BOARD_NOTE}>予約した時刻に自動で</span>
         </div>
         <Image
           alt="スケジュール画面の設定済みの枠（自動投稿・曜日と時刻・次回の実行時刻）"
@@ -87,6 +93,7 @@ export function HeroDiagram() {
       >
         <div className={BOARD_HEAD}>
           <span className={BOARD_TAG}>集める</span>
+          <span className={BOARD_NOTE}>10分おきに新着</span>
         </div>
         <Image
           alt="ニュースカード（分野と重要度のバッジ、「すぐに投稿作成」ボタン）"
