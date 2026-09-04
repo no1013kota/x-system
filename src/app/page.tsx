@@ -49,7 +49,7 @@ import { cn } from "@/lib/utils";
  * - 価格・分野名・サービス名・URLは PLANS / yen / OPERATED_THEME_OPTIONS / APP_NAME /
  *   OPERATOR_X_URL / LegalFooterLinks から描き、直書きしない。
  * - 製品の仕組み（分析はボタン1つ・1日1回・表示専用／既定は下書きまで／60〜90秒／Xのみ）は曲げない。
- *   記法は3つ: 自動（集める・作る・投稿・記録）／AI・押すだけ（分析）／あなた（確認・反映）。
+ *   記法は3つ: 自動（集める・作る・投稿・記録）／ボタン1つ（分析）／あなた（確認・改善）。
  * - 動的レンダリングの指定は `app/layout.tsx` が一括で持つ（ここに dynamic を書かない・T-M8-87）。
  * - 入口ファネルの分母として `recordPageView("/")` を呼ぶ（T-M8-378。応答後に書くので表示は遅くならない）。
  */
@@ -291,10 +291,10 @@ export default async function Home() {
               <>
                 <span className="inline-block">手を動かす時間が、</span>
                 <span aria-hidden="true" className="inline-block tabular-nums">
-                  {LOOP_TOTALS.before} → {LOOP_TOTALS.after} に。
+                  {LOOP_TOTALS.before} → {LOOP_TOTALS.after} に
                 </span>
                 <span className="sr-only">
-                  {LOOP_TOTALS.beforeJa}から{LOOP_TOTALS.afterJa}に。
+                  {LOOP_TOTALS.beforeJa}から{LOOP_TOTALS.afterJa}に
                 </span>
               </>
             }
@@ -303,13 +303,9 @@ export default async function Home() {
             <LoopBoard />
           </div>
         </section>
-        {/* 図面板の直後: 線で切らずに次へ溶かす薄い帯（紫の空気につなげる）。 */}
-        <div
-          aria-hidden="true"
-          className="-mt-[clamp(64px,9vw,120px)] h-[160px] bg-[linear-gradient(to_bottom,rgba(125,31,117,0.07),transparent)]"
-        />
+        {/* 図面板の直後にあった「暗色→紫へ溶かす帯」は、板を白にしたので不要（T-M8-421）。 */}
 
-        {/* 実際の画面で、工程を追う: 見出し・サブ・索引は Tour が左列（sticky）に描き、CTA は右列の最後（停止04の直下）。 */}
+        {/* 投稿から改善まで（画面ツアー）: 見出し・索引は Tour が左列（sticky）に描き、CTA は右列の最後（停止04の直下）。 */}
         <section className={cn(ANCHOR, CONTAINER, SECTION)} id="tour">
           <Tour
             // 納得の直後に受け皿を置く（ヒーローから料金まで主CTAが無い区間を作らない）。
@@ -392,7 +388,8 @@ export default async function Home() {
                     投稿量が多いなら{PLANS.expert.displayName}。
                   </span>
                   <span className="inline-block">
-                    はじめての方は7日間無料です。
+                    {/* 帯の注記を外したので、料金のCTAより上に「カード登録」の条件を一言残す（暫定・D-54）。 */}
+                    はじめての方は7日間無料（カード登録が必要）です。
                   </span>
                 </>
               }
@@ -477,8 +474,9 @@ export default async function Home() {
                   HEADING,
                 )}
               >
-                <span className="inline-block">7日間、実物で</span>
-                <span className="inline-block">確かめてください。</span>
+                {/* 文言は運営者指定（2026-09-04）。「解放」＝毎日のSNS作業からの解放。 */}
+                <span className="inline-block">7日間の解放を</span>
+                <span className="inline-block">お試しください</span>
               </h2>
               <p className="mt-4 max-w-[560px] text-sm text-ink [text-wrap:balance] [word-break:auto-phrase]">
                 {TRIAL_NOTE}

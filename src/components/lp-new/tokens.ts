@@ -39,6 +39,8 @@ export const H2 = `text-[length:clamp(30px,calc(18px_+_2.2vw),46px)] leading-[1.
 export const H3 = `text-[22px] leading-[1.4] ${HEADING}`;
 export const LEAD =
   "text-[17px] leading-[1.8] text-ink-2 [word-break:auto-phrase]";
+/** 本文（カード・停止・図面板）。見出しと同じく文節で折る（語の途中で折れる「土台を作／れる」を避ける・T-M8-421）。 */
+export const BODY = "text-sm leading-[1.8] [word-break:auto-phrase]";
 export const SUB =
   "mt-4 max-w-[800px] text-[17px] leading-[1.8] text-ink-2 [word-break:auto-phrase]";
 
@@ -59,7 +61,7 @@ export const TRIAL_NOTE =
  * 記法チップ（全セクションで同じ意味）:
  * - 自動＝brand塗り: 人の操作なしに定時・毎時で回る工程（集める・作る・投稿・記録）
  * - AI・押すだけ＝薄紫: 「分析を開始」を押したときだけAIが行う（1日1回・表示専用）
- * - あなた＝白ピル: 人の判断（確認・反映）
+ * - あなた＝白ピル: 人の判断（確認・改善）
  * 分析を「自動」と書かないための第3の記法（PRD §5.6 K-2）。
  */
 export const CHIP_AUTO =
