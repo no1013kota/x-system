@@ -1,3 +1,4 @@
+import { discountedMonthlyJpy } from "@/lib/billing/discounted-price";
 import { PLANS, type PlanId } from "@/lib/plans";
 
 import type { Queryable } from "../x/token-refresh";
@@ -189,13 +190,98 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
   return rows;
 }
 
+interface SubscriptionProfileRow {
+  plan: string | null;
+  status: string;
+  discount_percent_off: number | null;
+  discount_amount_off_jpy: number | null;
+  /** pg は timestamptz を Date で返す。`::text` 経由の文字列でも受ける。 */
+  discount_ends_at: Date | string | null;
+}
+
+interface SubscriptionTotals {
+  /** 割引後の月額の合計（円）。 */
+  mrrJpy: number;
+  paying: number;
+  trialing: number;
+  /** 課金中のうち、有効な割引で月額が定価より下がっている人数。 */
+  discounted: number;
+  /** 割引による減額の合計（定価の合計 − mrrJpy・円）。運営者が「反映されたか・いくら違うか」を画面で確かめるため。 */
+  discountJpy: number;
+  /** プラン別の人数（plan=null は 'unknown'）。 */
+  payingByPlan: Map<string, number>;
+  trialingByPlan: Map<string, number>;
+}
+
+/**
+ * 契約中の profiles を**1行ずつ**読んで、契約者数とMRRを数える（/admin のサマリと日次スナップショットで共用）。
+ *
+ * MRRは **active／past_due（課金中）× 割引後のプラン月額** で数える（運営者の決定 2026-09-04・D-55(1)）。
+ * 割引は `profiles.discount_*`（引き止めクーポンの写し・T-M8-279）で、`discount_ends_at` を過ぎたものは
+ * 掛けない。**group by では割引が掛けられない**（割引は契約者ごとに率・期限が違う）ので行単位で読む。
+ * プラン月額の正本は `src/lib/plans.ts` の**現在値**——キャンペーン価格が改定されたら過去のMRRの
+ * スナップショットは改定前の値のまま残り、以後の値だけ変わる。
+ *
+ * トライアル中は課金が始まっていないので含めない（別指標 users_trialing で見る）。
+ * past_due は支払い再試行中でまだ契約が生きているので課金中に入れる。
+ *
+ * **`plan` は null があり得る**（未契約のまま status だけ動いた行。ローカルの実DBで
+ * 558行が plan=null・status=active だった——このdbテストが無ければ本番の夜間tickで
+ * 初めて not-null 制約に落ちていた）。null は 'unknown' として数え、単価は0円扱い。
+ */
+async function readSubscriptionTotals(db: Queryable, nowIso: string): Promise<SubscriptionTotals> {
+  const { rows } = await db.query<SubscriptionProfileRow>(
+    `select plan::text as plan, subscription_status::text as status,
+            discount_percent_off, discount_amount_off_jpy, discount_ends_at
+       from profiles
+      where subscription_status in ('trialing', 'active', 'past_due')`,
+  );
+  const totals: SubscriptionTotals = {
+    mrrJpy: 0,
+    paying: 0,
+    trialing: 0,
+    discounted: 0,
+    discountJpy: 0,
+    payingByPlan: new Map(),
+    trialingByPlan: new Map(),
+  };
+  const bump = (map: Map<string, number>, key: string) => map.set(key, (map.get(key) ?? 0) + 1);
+  for (const r of rows) {
+    const planKey = r.plan ?? "unknown";
+    if (r.status === "trialing") {
+      totals.trialing += 1;
+      bump(totals.trialingByPlan, planKey);
+      continue;
+    }
+    totals.paying += 1;
+    bump(totals.payingByPlan, planKey);
+    const price = r.plan ? (PLANS[r.plan as PlanId]?.monthlyPriceJpy ?? 0) : 0;
+    const net = discountedMonthlyJpy({
+      monthlyPriceJpy: price,
+      percentOff: r.discount_percent_off,
+      amountOffJpy: r.discount_amount_off_jpy,
+      discountEndsAt: r.discount_ends_at,
+      now: nowIso,
+    });
+    totals.mrrJpy += net;
+    // 「割引中」は定価より実際に下がっている契約だけ（期限切れ・plan=null の0円は数えない）。
+    if (net < price) {
+      totals.discounted += 1;
+      totals.discountJpy += price - net;
+    }
+  }
+  return totals;
+}
+
 /**
  * 状態指標を「いまの値」として計算する（metric_date は呼び出し側が決める）。
- *
- * MRRは **active（課金中）× プラン月額** で数える。トライアル中は課金が始まっていないので
- * 含めない（別指標 users_trialing で見る）。プラン月額の正本は `src/lib/plans.ts`。
+ * MRR・契約者数の数え方は `readSubscriptionTotals` を見る。
  */
-async function computeStateRows(db: Queryable, metricDate: string): Promise<KpiRow[]> {
+async function computeStateRows(
+  db: Queryable,
+  metricDate: string,
+  nowIso: string,
+): Promise<KpiRow[]> {
   const rows: KpiRow[] = [];
 
   const users = await db.query<{ total: string; confirmed: string }>(
@@ -210,37 +296,16 @@ async function computeStateRows(db: Queryable, metricDate: string): Promise<KpiR
     value: Number(users.rows[0]?.total ?? 0),
   });
 
-  /*
-    **`plan` は null があり得る**（未契約のまま status だけ動いた行。ローカルの実DBで
-    558行が plan=null・status=active だった——このdbテストが無ければ本番の夜間tickで
-    初めて not-null 制約に落ちていた）。null は 'unknown' として数え、単価は0円扱い。
-  */
-  const subs = await db.query<{ plan: string | null; status: string; n: string }>(
-    `select plan::text as plan, subscription_status::text as status, count(*)::text as n
-       from profiles
-      where subscription_status in ('trialing', 'active', 'past_due')
-      group by 1, 2`,
-  );
-  let mrrJpy = 0;
-  let paying = 0;
-  let trialing = 0;
-  for (const r of subs.rows) {
-    const n = Number(r.n);
-    const planKey = r.plan ?? "unknown";
-    if (r.status === "trialing") {
-      trialing += n;
-      rows.push({ metric_date: metricDate, metric: "users_trialing", dimension: planKey, value: n });
-      continue;
-    }
-    // active / past_due は課金中として数える（past_due は支払い再試行中でまだ契約が生きている）。
-    paying += n;
-    rows.push({ metric_date: metricDate, metric: "users_paying", dimension: planKey, value: n });
-    const price = r.plan ? (PLANS[r.plan as PlanId]?.monthlyPriceJpy ?? 0) : 0;
-    mrrJpy += price * n;
+  const subs = await readSubscriptionTotals(db, nowIso);
+  for (const [planKey, n] of subs.trialingByPlan) {
+    rows.push({ metric_date: metricDate, metric: "users_trialing", dimension: planKey, value: n });
   }
-  rows.push({ metric_date: metricDate, metric: "users_paying", dimension: "total", value: paying });
-  rows.push({ metric_date: metricDate, metric: "users_trialing", dimension: "total", value: trialing });
-  rows.push({ metric_date: metricDate, metric: "mrr_jpy", dimension: "", value: mrrJpy });
+  for (const [planKey, n] of subs.payingByPlan) {
+    rows.push({ metric_date: metricDate, metric: "users_paying", dimension: planKey, value: n });
+  }
+  rows.push({ metric_date: metricDate, metric: "users_paying", dimension: "total", value: subs.paying });
+  rows.push({ metric_date: metricDate, metric: "users_trialing", dimension: "total", value: subs.trialing });
+  rows.push({ metric_date: metricDate, metric: "mrr_jpy", dimension: "", value: subs.mrrJpy });
 
   const xAccounts = await db.query<{ n: string }>(
     `select count(*)::text as n from x_accounts where status = 'active'`,
@@ -283,7 +348,7 @@ export async function runDailyKpiSnapshot(
     : jstDaysAgo(nowIso, EVENT_RECOMPUTE_DAYS);
 
   const eventRows = await computeEventRows(db, eventFrom, yesterday);
-  const stateRows = await computeStateRows(db, yesterday);
+  const stateRows = await computeStateRows(db, yesterday, nowIso);
   const written = await upsertRows(db, [...eventRows, ...stateRows]);
   return { ran: true, written, backfilled: isFirstRun };
 }
@@ -547,9 +612,14 @@ export async function readMonthCostBreakdown(
 }
 
 export interface AdminSummary {
+  /** 割引後の月額の合計（引き止めクーポンを反映・D-55(1)）。 */
   mrrJpy: number;
   paying: number;
   trialing: number;
+  /** 課金中のうち割引で月額が下がっている人数（0なら「割引中なし」と出す）。 */
+  discounted: number;
+  /** 割引による減額の合計（定価の合計 − mrrJpy・円）。 */
+  discountJpy: number;
   /** いま残っている登録者数（累計ではない。退会で減る）。 */
   usersTotal: number;
   /** 今月の原価（運営負担・payer='operator' だけ）。 */
@@ -560,26 +630,18 @@ export interface AdminSummary {
   grossProfitJpy: number;
 }
 
-/** サマリカード用の「いま」の数字（スナップショットではなく生データから）。 */
-export async function readAdminSummary(db: Queryable): Promise<AdminSummary> {
-  const subs = await db.query<{ plan: string | null; status: string; n: string }>(
-    `select plan::text as plan, subscription_status::text as status, count(*)::text as n
-       from profiles
-      where subscription_status in ('trialing', 'active', 'past_due')
-      group by 1, 2`,
+/**
+ * サマリカード用の「いま」の数字（スナップショットではなく生データから）。
+ * `nowIso` は割引の期限判定に使う（省略時は現在時刻。テストで固定できるように引数にしている）。
+ */
+export async function readAdminSummary(
+  db: Queryable,
+  nowIso: string = new Date().toISOString(),
+): Promise<AdminSummary> {
+  const { mrrJpy, paying, trialing, discounted, discountJpy } = await readSubscriptionTotals(
+    db,
+    nowIso,
   );
-  let mrrJpy = 0;
-  let paying = 0;
-  let trialing = 0;
-  for (const r of subs.rows) {
-    const n = Number(r.n);
-    if (r.status === "trialing") trialing += n;
-    else {
-      paying += n;
-      // plan=null（未契約のままstatusだけ動いた行）は0円として数に入れる。
-      mrrJpy += (r.plan ? (PLANS[r.plan as PlanId]?.monthlyPriceJpy ?? 0) : 0) * n;
-    }
-  }
   const totals = await db.query<{ users: string; usd: string; user_usd: string }>(
     `select (select count(*) from auth.users)::text as users,
             (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
@@ -597,6 +659,8 @@ export async function readAdminSummary(db: Queryable): Promise<AdminSummary> {
     mrrJpy,
     paying,
     trialing,
+    discounted,
+    discountJpy,
     usersTotal: Number(totals.rows[0]?.users ?? 0),
     monthCostUsd,
     monthCostJpy,

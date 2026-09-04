@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { PLANS } from "@/lib/plans";
+
 import { closePool, getPool, withTransaction } from "../db/pool";
 import type { Queryable } from "../x/token-refresh";
 
@@ -174,6 +176,99 @@ describe("KPIスナップショット（db）", () => {
       expect(Array.isArray(await readMonthCostBreakdown(db, group, 5))).toBe(true);
     }
     expect(Array.isArray(await readRecentCancellations(db, 10))).toBe(true);
+  });
+
+  /**
+   * MRRは**引き止めクーポンの割引を反映**する（運営者の決定 2026-09-04・D-55(1)）。
+   * 割引は契約者ごとに率・期限が違うので、`group by plan` の合計では掛けられない——
+   * 実際の `profiles.discount_*` 列を持つ行を入れて、サマリと日次スナップショットの両方で確かめる。
+   *
+   * 共有DBで並行テストが契約者を作るため、**REPEATABLE READ のトランザクション内**で
+   * 「入れる前」と「入れた後」を同じスナップショットで読み、差分だけを検査する。
+   * 最後は rollback で消す（実DBに active な偽契約を残さない）。
+   *
+   * **時計は遠い未来（2097-06-15）へ固定する。** RR のまま `runDailyKpiSnapshot` を呼ぶと
+   * kpi_daily の「昨日」の状態行と直近3日の出来事行を upsert する。実時計だと、並行して
+   * 走る `cron.db.test.ts` の tick（(5.5) の kpi_snapshot は新規DBでは毎回実行される）が
+   * **同じ行**を書き、スナップショット取得後に他txが更新した行への upsert は
+   * `could not serialize access due to concurrent update`（40001）で落ちる（重なった回だけ）。
+   * 誰も書かない日付にすれば行が共有されない（scheduler-tick の route.db.test は 2098年
+   * とその3日前＝最短 2097-12-29 なので重ならない）。tx は rollback なので行は残らない。
+   * 割引の期限もこの時計を基準に入れる。
+   */
+  it("MRRは割引後の月額の合計で、終了した割引は掛からない（D-55(1)）", async () => {
+    if (!available) return;
+    const users = await Promise.all([
+      makeUser(),
+      makeUser(),
+      makeUser(),
+      makeUser(),
+      makeUser(),
+      makeUser(),
+    ]);
+    const nowIso = "2097-06-15T00:00:00.000Z";
+    const yesterday = new Date(new Date(nowIso).getTime() + 9 * 3600_000 - 24 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    class Rollback extends Error {}
+    await withTransaction(async (c: PoolClient) => {
+      await c.query(`set transaction isolation level repeatable read`);
+      const tx: Queryable = {
+        query: <T = unknown>(sql: string, params?: unknown[]) =>
+          c.query(sql, params) as unknown as Promise<{ rows: T[]; rowCount: number | null }>,
+      };
+      const before = await readAdminSummary(tx, nowIso);
+
+      // 1: プレミアム・50%割引・終了日は未来（掛かる）
+      // 2: プレミアム・50%割引・終了日は過去（掛からない）
+      // 3: スタンダード・480円引き・終了日なし（ずっと掛かる）
+      // 4: エキスパート・割引なし
+      // 5: トライアル中・50%割引（MRRにも割引中にも入らない——課金が始まっていない）
+      // 6: past_due・スタンダード・480円引き・終了日は未来（課金中として掛かる）
+      const [u1, u2, u3, u4, u5, u6] = users;
+      await c.query(
+        `insert into profiles (id, email, plan, subscription_status,
+                               discount_percent_off, discount_amount_off_jpy, discount_ends_at)
+         values ($1::uuid, 'kpi-' || $1 || '@example.com', 'premium',  'active',   50,   null, $7::timestamptz + interval '30 days'),
+                ($2::uuid, 'kpi-' || $2 || '@example.com', 'premium',  'active',   50,   null, $7::timestamptz - interval '1 day'),
+                ($3::uuid, 'kpi-' || $3 || '@example.com', 'standard', 'active',   null, 480,  null),
+                ($4::uuid, 'kpi-' || $4 || '@example.com', 'expert',   'active',   null, null, null),
+                ($5::uuid, 'kpi-' || $5 || '@example.com', 'premium',  'trialing', 50,   null, null),
+                ($6::uuid, 'kpi-' || $6 || '@example.com', 'standard', 'past_due', null, 480,  $7::timestamptz + interval '30 days')
+         on conflict (id) do update set
+           plan = excluded.plan, subscription_status = excluded.subscription_status,
+           discount_percent_off = excluded.discount_percent_off,
+           discount_amount_off_jpy = excluded.discount_amount_off_jpy,
+           discount_ends_at = excluded.discount_ends_at`,
+        [u1, u2, u3, u4, u5, u6, nowIso],
+      );
+      const expectedDelta =
+        PLANS.premium.monthlyPriceJpy / 2 +
+        PLANS.premium.monthlyPriceJpy +
+        (PLANS.standard.monthlyPriceJpy - 480) +
+        PLANS.expert.monthlyPriceJpy +
+        (PLANS.standard.monthlyPriceJpy - 480);
+      const expectedDiscountJpy = PLANS.premium.monthlyPriceJpy / 2 + 480 + 480;
+
+      const after = await readAdminSummary(tx, nowIso);
+      expect(after.paying - before.paying, "active と past_due が課金中").toBe(5);
+      expect(after.trialing - before.trialing).toBe(1);
+      expect(after.mrrJpy - before.mrrJpy, "サマリのMRRは割引後の合計").toBe(expectedDelta);
+      expect(after.discounted - before.discounted, "割引中は期限内の課金中だけ（1・3・6）").toBe(3);
+      expect(after.discountJpy - before.discountJpy, "減額の合計").toBe(expectedDiscountJpy);
+
+      // 日次スナップショット（computeStateRows）も同じ数え方で書く。
+      await runDailyKpiSnapshot(tx, nowIso);
+      const { rows } = await c.query<{ value: string }>(
+        `select value::text as value from kpi_daily
+          where metric = 'mrr_jpy' and dimension = '' and metric_date = $1`,
+        [yesterday],
+      );
+      expect(Number(rows[0]?.value), "スナップショットのMRRはサマリと一致").toBe(after.mrrJpy);
+      throw new Rollback();
+    }).catch((error: unknown) => {
+      if (!(error instanceof Rollback)) throw error;
+    });
   });
 
   it("利用者一覧は自分の行を代表データ付きで返す（T-M8-374）", async () => {

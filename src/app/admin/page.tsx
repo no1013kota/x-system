@@ -163,7 +163,19 @@ export default async function AdminPage() {
 
       {/* 今月のサマリ */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
-        <SummaryCard label="MRR（月間経常収益）" value={yen(summary.mrrJpy)} note={`課金中 ${summary.paying}人`} />
+        {/*
+          引き止めクーポン（profiles.discount_*）を掛けた後の合計。運営者の決定 2026-09-04・D-55(1)。
+          「反映された」と書くだけでは運営者が確かめられないので、割引中の人数と減額を添える（原則2・4）。
+        */}
+        <SummaryCard
+          label="MRR（月間経常収益）"
+          value={yen(summary.mrrJpy)}
+          note={
+            summary.discounted > 0
+              ? `課金中 ${summary.paying}人（うち引き止め割引中 ${summary.discounted}人・定価比 −${yen(summary.discountJpy)}）`
+              : `課金中 ${summary.paying}人（引き止め割引中なし）`
+          }
+        />
         <SummaryCard
           label="今月の原価（AI・X API・運営負担）"
           value={yen(summary.monthCostJpy)}

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.71 |
-| 更新日 | 2026-09-04 |
+| バージョン | v1.72 |
+| 更新日 | 2026-09-05 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -120,7 +120,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 - `trial_ends_at`
 - `trial_used_at`（trialingを初めて確認した時だけ設定し、以後保持）
 - `scheduled_plan`／`scheduled_plan_at`（期間末の下位変更の予約・§2.2・T-M8-260。schedule を読めなかった回は**上書きしない**）
-- `discount_percent_off`／`discount_amount_off_jpy`／`discount_ends_at`（適用中の割引・T-M8-279。`discounts`はexpandしないとIDだけ返り、割引率はクーポン側にあるので、割引が付いているときだけクーポンを1回引く）
+- `discount_percent_off`／`discount_amount_off_jpy`／`discount_ends_at`（適用中の割引・T-M8-279。`discounts`はexpandしないとIDだけ返り、割引率はクーポン側にあるので、割引が付いているときだけクーポンを1回引く。**/admin のMRRもこの列を掛ける**（要件04 KPI節・D-55(1)）。列の意味を変えるときはMRRへの波及も見る）
 - `subscription_event_created_at`
 
 画面表示のたびにStripe APIを呼ばない。Checkout／Portal Session作成成功時だけ、user ID・`source=checkout|portal`・開始時刻をAES-256-GCMで改ざん検知した30分TTLの`HttpOnly`／`SameSite=Lax` cookieへ保存する。`GET /api/stripe/return`は認証済みuserとcookieのuser／sourceを照合し、次の規則で一度だけ復帰同期してcookieを削除する。
@@ -480,3 +480,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.69 | 2026-09-04 | 登録時に流入元 `?src=` を `profiles.signup_source` へ記録（T-M8-423） |
 | v1.70 | 2026-09-04 | 申込前の常時表示を実装に合わせて訂正: プロモ帯は「カード登録が必要」「期間中解約無料」の2点（「初回のみ」は 2026-08-26 に帯から外した）＋CTAより上の1行「はじめての方は7日間無料（カード登録が必要）です。」（T-M8-424） |
 | v1.71 | 2026-09-04 | プラン選択の常時表示から見出し下の1行を外す（運営者の指示・D-56・T-M8-425） |
+| v1.72 | 2026-09-05 | `profiles.discount_*` の説明に /admin のMRRへの波及を追記（D-55(1)・要件04 KPI節を相互参照） |
