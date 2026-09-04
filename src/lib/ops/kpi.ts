@@ -24,6 +24,8 @@ import type { Queryable } from "../x/token-refresh";
  *   初回実行時は残っている元データの全期間をバックフィルする。
  * - **状態（state）**: その時点の契約者数・MRRなど。過去の状態は復元できないので、
  *   **日付が変わった直後に「前日の終わり」として1回だけ**書く。
+ *   解約も状態で持つ（`users_canceled`＝解約済みの人数・`users_cancel_scheduled`＝期末で
+ *   消える確定解約の人数）。実解約の日付列は無いが、状態なら毎日1行書ける（T-M8-427）。
  */
 
 /** 円換算レート。PRD §6.1 の事業計画上の仮定（1ドル=160円）と同じ値を使う。 */
@@ -40,6 +42,58 @@ export function jstDateOf(nowIso: string): string {
 function jstDaysAgo(nowIso: string, days: number): string {
   const t = new Date(nowIso).getTime() + JST_OFFSET_MS - days * 86_400_000;
   return new Date(t).toISOString().slice(0, 10);
+}
+
+export interface JstMonthProgress {
+  /** 月初からの経過日数（**今日を含む**。1〜31）。 */
+  elapsedDays: number;
+  /** 当月の日数（28〜31）。 */
+  daysInMonth: number;
+}
+
+/** nowIso がJSTで「当月の何日目か」と「当月が何日あるか」。粗利の月末見込み（日割り）に使う。 */
+export function jstMonthProgress(nowIso: string): JstMonthProgress {
+  const jst = new Date(new Date(nowIso).getTime() + JST_OFFSET_MS);
+  const daysInMonth = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + 1, 0)).getUTCDate();
+  return { elapsedDays: jst.getUTCDate(), daysInMonth };
+}
+
+/**
+ * 月初からの累計を日割りで月末まで延ばす（累計 ÷ 経過日数 × 当月の日数・円は整数へ丸める）。
+ * 累計0なら0、1日目なら「今日の額 × 日数」——どちらも割り算で壊れない。
+ */
+export function projectToMonthEnd(accumulated: number, progress: JstMonthProgress): number {
+  if (progress.elapsedDays <= 0) return Math.round(accumulated);
+  return Math.round((accumulated / progress.elapsedDays) * progress.daysInMonth);
+}
+
+/**
+ * 日割りを信用する最短の経過日数。月初は「今日の途中経過 × 当月日数」になり、原価が定時ジョブ
+ * （朝の指標収集・ニュース）で1日の中でも偏って発生するため、1〜2日目の見込みは時間帯で大きく振れる
+ * （JST 1日 00:30 は原価≒0 → 見込み粗利≒MRR。同じ日の夜は「今日の額×31」）。
+ */
+export const PRORATION_MIN_DAYS = 3;
+
+export type MonthCostForecastBasis = "prorated" | "previous_month";
+
+/**
+ * 原価の月末見込み。経過が `PRORATION_MIN_DAYS` 未満で前月の実績があるときは**前月実績を仮置き**
+ * （ただし今月すでに前月を超えていれば今月の累計。見込みが実績を下回ると嘘になる）、それ以外は日割り。
+ * 前月実績が無い（初月）ときは日割りに戻す——画面側で「月初は大きく動く」と添える。
+ */
+export function forecastMonthCost(args: {
+  accumulatedJpy: number;
+  previousMonthJpy: number;
+  progress: JstMonthProgress;
+}): { jpy: number; basis: MonthCostForecastBasis } {
+  const { accumulatedJpy, previousMonthJpy, progress } = args;
+  if (progress.elapsedDays < PRORATION_MIN_DAYS && previousMonthJpy > 0) {
+    return {
+      jpy: Math.max(Math.round(previousMonthJpy), Math.round(accumulatedJpy)),
+      basis: "previous_month",
+    };
+  }
+  return { jpy: projectToMonthEnd(accumulatedJpy, progress), basis: "prorated" };
 }
 
 /** 遅れて届く元データ（Stripe・原価）を拾うため、毎回計算し直す日数。 */
@@ -174,7 +228,13 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
     rows.push({ metric_date: r.d, metric: "page_uniques", dimension: r.path, value: Number(r.uniques) });
   }
 
-  // 解約アンケート（proceeded=true が実際に解約へ進んだ数）。
+  // 解約手続きへ進んだ数（cancellation_surveys.proceeded=true）。**実解約ではない**——
+  // 確認画面を通った後に引き止めクーポンで残った人も含むので、名前は `cancel_intents`
+  // （旧 `cancellations`・T-M8-427。既存行は migration 20260905000001 が改名）。
+  // 実解約（subscription_status が 'canceled' へ変わった日）は遷移の記録が無く
+  // （profiles に日付列が無い・stripe_events は90日で消え本番のwebhook経由だけ）、
+  // 出来事にはできない。代わりに状態指標 `users_canceled`／`users_cancel_scheduled`
+  // （computeStateRows）を毎日書き、その差分で読む。
   const cancels = await db.query<{ d: string; n: string }>(
     `select ${day("created_at")}::text as d, count(*)::text as n
        from cancellation_surveys
@@ -184,7 +244,7 @@ async function computeEventRows(db: Queryable, from: string, to: string): Promis
     range,
   );
   for (const r of cancels.rows) {
-    rows.push({ metric_date: r.d, metric: "cancellations", dimension: "", value: Number(r.n) });
+    rows.push({ metric_date: r.d, metric: "cancel_intents", dimension: "", value: Number(r.n) });
   }
 
   return rows;
@@ -307,6 +367,29 @@ async function computeStateRows(
   rows.push({ metric_date: metricDate, metric: "users_trialing", dimension: "total", value: subs.trialing });
   rows.push({ metric_date: metricDate, metric: "mrr_jpy", dimension: "", value: subs.mrrJpy });
 
+  // 解約の状態（T-M8-427）。実解約の日付列は無いので「いま何人か」を毎日写し、差分で読む。
+  // - users_canceled: subscription_status='canceled' の人数（退会すると行ごと消えて減る・再契約でも減る）
+  // - users_cancel_scheduled: 課金中（active／past_due）で期末解約が確定している人数
+  //   （引き止めで残らなかった人が「いま何人いるか」。トライアル中の解約予約は課金が無いので含めない）
+  const cancels = await db.query<{ canceled: string; scheduled: string }>(
+    `select count(*) filter (where subscription_status = 'canceled')::text as canceled,
+            count(*) filter (where cancel_at_period_end
+                               and subscription_status in ('active', 'past_due'))::text as scheduled
+       from profiles`,
+  );
+  rows.push({
+    metric_date: metricDate,
+    metric: "users_canceled",
+    dimension: "",
+    value: Number(cancels.rows[0]?.canceled ?? 0),
+  });
+  rows.push({
+    metric_date: metricDate,
+    metric: "users_cancel_scheduled",
+    dimension: "",
+    value: Number(cancels.rows[0]?.scheduled ?? 0),
+  });
+
   const xAccounts = await db.query<{ n: string }>(
     `select count(*)::text as n from x_accounts where status = 'active'`,
   );
@@ -349,6 +432,13 @@ export async function runDailyKpiSnapshot(
 
   const eventRows = await computeEventRows(db, eventFrom, yesterday);
   const stateRows = await computeStateRows(db, yesterday, nowIso);
+  // 旧名 `cancellations`（T-M8-427 で `cancel_intents` へ改名）の取り残しを掃除する。migration が
+  // 既存行を改名した後でも、release は migration→deploy の順なので、その間に日付を跨ぐと旧コードが
+  // 直近3日ぶんを旧名で書き直す。読み手が無い行は誰も消さないため、毎回この窓だけ消す（通常は0件）。
+  await db.query(
+    `delete from kpi_daily where metric = 'cancellations' and metric_date between $1 and $2`,
+    [eventFrom, yesterday],
+  );
   const written = await upsertRows(db, [...eventRows, ...stateRows]);
   return { ran: true, written, backfilled: isFirstRun };
 }
@@ -622,17 +712,35 @@ export interface AdminSummary {
   discountJpy: number;
   /** いま残っている登録者数（累計ではない。退会で減る）。 */
   usersTotal: number;
-  /** 今月の原価（運営負担・payer='operator' だけ）。 */
+  /** 今月これまでの原価（運営負担・payer='operator' だけ。JSTの月初から今日まで）。 */
   monthCostUsd: number;
   monthCostJpy: number;
   /** 今月の利用者負担（BYOK）の推定額。原価ではないが参考に出す。 */
   monthUserPaidCostUsd: number;
+  /** JSTで当月の何日目か（今日を含む）と当月の日数。「原価は◯日ぶん」の注記と日割りの根拠。 */
+  monthElapsedDays: number;
+  monthDays: number;
+  /** 前月の原価（運営負担・円）。月初 `PRORATION_MIN_DAYS` 日間の見込みの仮置きに使う（無ければ0）。 */
+  previousMonthCostJpy: number;
+  /** 今月の原価の月末見込み（円）。根拠は `monthCostForecastBasis`（`forecastMonthCost`）。 */
+  monthCostForecastJpy: number;
+  /** 見込みの根拠: 日割り（これまで ÷ 経過日数 × 当月日数）か、月初だけの前月実績の仮置きか。 */
+  monthCostForecastBasis: MonthCostForecastBasis;
+  /** 今月これまでの粗利（MRR − 月初からの原価）。月初は大きく月末へ向けて減って見える値。 */
   grossProfitJpy: number;
+  /** 月末見込みの粗利（MRR − 原価の月末見込み）。カードの主値（D-55(2)・T-M8-427）。 */
+  grossProfitForecastJpy: number;
 }
 
 /**
  * サマリカード用の「いま」の数字（スナップショットではなく生データから）。
- * `nowIso` は割引の期限判定に使う（省略時は現在時刻。テストで固定できるように引数にしている）。
+ * `nowIso` は割引の期限判定と「今月」の窓（JST）・日割りの経過日数に使う
+ * （省略時は現在時刻。テストで固定できるように引数にしている）。
+ *
+ * 粗利は「MRR（月額の走り高）− 月初からの累積原価」だと月初に大きく月末に向けて減って見える
+ * （2026-09-04 の監査・D-55(2)）。主値は**月末見込み**（原価を日割りで月末まで延ばす。月初
+ * `PRORATION_MIN_DAYS` 日間は前月実績を仮置き・`forecastMonthCost`）にし、「これまで」も返して
+ * 画面で両方読めるようにする。
  */
 export async function readAdminSummary(
   db: Queryable,
@@ -642,19 +750,31 @@ export async function readAdminSummary(
     db,
     nowIso,
   );
-  const totals = await db.query<{ users: string; usd: string; user_usd: string }>(
+  const totals = await db.query<{ users: string; usd: string; user_usd: string; prev_usd: string }>(
     `select (select count(*) from auth.users)::text as users,
             (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
               where payer = 'operator'
                 and date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
-                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as usd,
+                    = date_trunc('month', $1::timestamptz at time zone 'Asia/Tokyo'))::text as usd,
             (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
               where payer = 'user'
                 and date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
-                    = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as user_usd`,
+                    = date_trunc('month', $1::timestamptz at time zone 'Asia/Tokyo'))::text as user_usd,
+            (select coalesce(sum(estimated_cost_usd), 0) from external_api_usage_events
+              where payer = 'operator'
+                and date_trunc('month', occurred_at at time zone 'Asia/Tokyo')
+                    = date_trunc('month', $1::timestamptz at time zone 'Asia/Tokyo') - interval '1 month')::text as prev_usd`,
+    [nowIso],
   );
   const monthCostUsd = Number(totals.rows[0]?.usd ?? 0);
   const monthCostJpy = Math.round(monthCostUsd * JPY_PER_USD);
+  const previousMonthCostJpy = Math.round(Number(totals.rows[0]?.prev_usd ?? 0) * JPY_PER_USD);
+  const progress = jstMonthProgress(nowIso);
+  const forecast = forecastMonthCost({
+    accumulatedJpy: monthCostJpy,
+    previousMonthJpy: previousMonthCostJpy,
+    progress,
+  });
   return {
     mrrJpy,
     paying,
@@ -665,7 +785,13 @@ export async function readAdminSummary(
     monthCostUsd,
     monthCostJpy,
     monthUserPaidCostUsd: Number(totals.rows[0]?.user_usd ?? 0),
+    monthElapsedDays: progress.elapsedDays,
+    monthDays: progress.daysInMonth,
+    previousMonthCostJpy,
+    monthCostForecastJpy: forecast.jpy,
+    monthCostForecastBasis: forecast.basis,
     grossProfitJpy: mrrJpy - monthCostJpy,
+    grossProfitForecastJpy: mrrJpy - forecast.jpy,
   };
 }
 
@@ -677,10 +803,17 @@ export interface UserOverviewRow {
   subscriptionStatus: string | null;
   /** 連携中のXハンドル（カンマ区切り。無ければnull）。 */
   handles: string | null;
+  /** 直近90日に成功した生成ジョブ数（`generation_jobs` は終了後90日で消えるので累計ではない）。 */
   generations: number;
+  /** 投稿済みになった下書きの件数（`drafts.status='posted'`。スレッド1本＝1件）。 */
   posts: number;
   monthCostUsd: number;
-  lastUsedAt: string | null;
+  /**
+   * 利用者**自身**の最後の操作（手動の生成・画像・投稿・学習ソース・提案＝`generation_jobs.trigger='manual'`、
+   * および手動投稿＝`drafts.posted_mode='manual'` の `posted_at`）。予約枠の自動生成・自動投稿・
+   * 投稿指標の収集は含まない。手動ジョブは90日で消えるので、それより前の操作しか無い人は null。
+   */
+  lastManualActionAt: string | null;
 }
 
 /**
@@ -690,6 +823,17 @@ export interface UserOverviewRow {
  * 誰に原価がかかっているか）。登録の新しい順。運営者しか見ない画面なのでメールを出す。
  * `auth.users.created_at` はローカルのテストデータでは null があり得る（GoTrueがアプリ側で
  * 入れる値のため）——nulls last で並べ、表示は「—」にする。
+ *
+ * **投稿は `drafts.status='posted'` の件数**（所有者は drafts → x_accounts.user_id）。
+ * 以前は usage_events の `post_create` 行数で、ツイート単位（スレッド1本＝N件）かつ
+ * ロールバックの削除を差し引かず、BYOK は精算行が無いので0だった（D-55(4)・T-M8-427）。
+ *
+ * **最終操作は利用者自身の操作だけ**を源にする。`drafts.updated_at` は投稿指標の自動収集
+ * （metrics-collector・投稿後1/7/30日）や期限切れ処理が進めるので「1回投稿して離脱した人」が
+ * 最大30日「最近使った」に見え、`generation_jobs.created_at` を trigger 無条件で見ると予約枠の
+ * 自動生成（'schedule'）とその連鎖（'system'）で枠を持つ人が常に「今日」になる（反証 2026-09-05）。
+ * usage_events も自動生成の精算を含み、ジョブが消えた後は手動と区別できないので使わない。
+ * 「利用者が触った」と言えるのは trigger='manual' のジョブと posted_mode='manual' の投稿だけ。
  */
 export async function readUsersOverview(db: Queryable, limit: number): Promise<UserOverviewRow[]> {
   const { rows } = await db.query<{
@@ -702,7 +846,7 @@ export async function readUsersOverview(db: Queryable, limit: number): Promise<U
     generations: string;
     posts: string;
     month_cost: string;
-    last_used: string | null;
+    last_manual_action: string | null;
   }>(
     `select u.email,
             (u.created_at at time zone 'Asia/Tokyo')::date::text as signed_up,
@@ -715,14 +859,22 @@ export async function readUsersOverview(db: Queryable, limit: number): Promise<U
                join x_accounts xa on xa.id = j.x_account_id
               where xa.user_id = u.id and j.status = 'succeeded'
                 and j.kind in ('post_generation', 'image_generation'))::text as generations,
-            (select count(*) from usage_events e
-              where e.user_id = u.id and e.reason = 'consume' and e.delta > 0
-                and e.operation = 'post_create')::text as posts,
+            (select count(*) from drafts d
+               join x_accounts xa on xa.id = d.x_account_id
+              where xa.user_id = u.id and d.status = 'posted')::text as posts,
             (select coalesce(sum(c.estimated_cost_usd), 0) from external_api_usage_events c
               where c.user_id = u.id and c.payer = 'operator'
                 and date_trunc('month', c.occurred_at at time zone 'Asia/Tokyo')
                     = date_trunc('month', now() at time zone 'Asia/Tokyo'))::text as month_cost,
-            (select max(e.created_at) from usage_events e where e.user_id = u.id)::text as last_used
+            -- greatest() は null を無視する（全部 null のときだけ null）。
+            greatest(
+              (select max(j.created_at) from generation_jobs j
+                 join x_accounts xa on xa.id = j.x_account_id
+                where xa.user_id = u.id and j.trigger = 'manual'),
+              (select max(d.posted_at) from drafts d
+                 join x_accounts xa on xa.id = d.x_account_id
+                where xa.user_id = u.id and d.posted_mode = 'manual')
+            )::text as last_manual_action
        from auth.users u
        left join profiles p on p.id = u.id
       order by u.created_at desc nulls last
@@ -739,8 +891,61 @@ export async function readUsersOverview(db: Queryable, limit: number): Promise<U
     generations: Number(r.generations),
     posts: Number(r.posts),
     monthCostUsd: Number(r.month_cost),
-    lastUsedAt: r.last_used,
+    lastManualActionAt: r.last_manual_action,
   }));
+}
+
+export interface CancellationOutcome {
+  /** 直近30日（JST）に「解約手続きへ進んだ」回答の件数（同じ人の複数回も数える）。 */
+  intents: number;
+  /** その回答をした人数（退会した人はアンケートごと消えるので入らない）。 */
+  users: number;
+  /** うち、いま `subscription_status='canceled'` の人数。 */
+  canceled: number;
+  /** うち、契約中（active／past_due／trialing）で期末解約が確定している人数。 */
+  cancelScheduled: number;
+  /** うち、契約中で解約予約も無い＝引き止めで残っている人数。 */
+  continuing: number;
+}
+
+/**
+ * 解約手続きへ進んだ人の**いまの状態**（T-M8-427）。`cancel_intents` は引き止めで残った人を含むので、
+ * 実解約との差を画面で読めるように `cancellation_surveys.user_id → profiles` を突き合わせる。
+ * 残り（incomplete／unpaid／paused 等）は `users − canceled − cancelScheduled − continuing`。
+ */
+export async function readCancellationOutcome(db: Queryable): Promise<CancellationOutcome> {
+  const { rows } = await db.query<{
+    intents: string;
+    users: string;
+    canceled: string;
+    cancel_scheduled: string;
+    continuing: string;
+  }>(
+    `with recent as (
+       select user_id, count(*) as n
+         from cancellation_surveys
+        where proceeded = true
+          and (created_at at time zone 'Asia/Tokyo')::date > (now() at time zone 'Asia/Tokyo')::date - 30
+        group by user_id
+     )
+     select coalesce(sum(r.n), 0)::text as intents,
+            count(*)::text as users,
+            count(*) filter (where p.subscription_status = 'canceled')::text as canceled,
+            count(*) filter (where p.cancel_at_period_end
+                               and p.subscription_status in ('active', 'past_due', 'trialing'))::text as cancel_scheduled,
+            count(*) filter (where not p.cancel_at_period_end
+                               and p.subscription_status in ('active', 'past_due', 'trialing'))::text as continuing
+       from recent r
+       join profiles p on p.id = r.user_id`,
+  );
+  const r = rows[0];
+  return {
+    intents: Number(r?.intents ?? 0),
+    users: Number(r?.users ?? 0),
+    canceled: Number(r?.canceled ?? 0),
+    cancelScheduled: Number(r?.cancel_scheduled ?? 0),
+    continuing: Number(r?.continuing ?? 0),
+  };
 }
 
 export interface CancellationRow {

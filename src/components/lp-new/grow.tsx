@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { BODY, CHIP_CLASS, CHIP_LABEL, GLASS, H2, SUB, type Who } from "./tokens";
 
 /**
- * 「使うほど、あなたの言葉に近づく」（T-M8-419）。
+ * 「使うほど、あなたに似てくる」（T-M8-419。見出しは 2026-09-05 に「あなたの言葉に近づく」から変更——クローンの約束を一言に）。
  *
  * 育つ主体は AI ではなく「アカウント.md と投稿プロンプト」。改善案は「分析を開始」ボタン起点・
  * 1日1回・**表示専用（全文の改訂案＋コピー）**で、反映は利用者がコピーして貼り、保存する
@@ -19,16 +19,29 @@ import { BODY, CHIP_CLASS, CHIP_LABEL, GLASS, H2, SUB, type Who } from "./tokens
  * 架空の数値（件数・伸び率）は入れない。
  */
 // 順は「始め方（土台→型）→ 育ち方（分析）」。最後の「分析」が右図の段1へつながる（2周目）。
-const PATHS: { icon: IconName; text: string }[] = [
+/**
+ * 「発信方針」は文節折り（BudouX）が「発信方／針」で切る（「使い方」の「方」と読むらしい）。行末に来うる箇所は
+ * inline-block で句ごと括る（ここ・サブ文・画面ツアー停止04）。
+ */
+const PATHS: { icon: IconName; text: React.ReactNode }[] = [
   {
     icon: "account_circle",
-    text: "参考アカウント（最大3件）の投稿から、土台を作れる",
+    // 件数（最大3件）は売りではなく画面が示すので書かない（2026-09-05）。3行は「〜すると／〜だけで／〜と」の並行構造。
+    // 1・2行目は主語と成果物を変える（「参考アカウントの投稿から」「参考投稿を貼るだけで」だと同じ機能に読めた・レビュー 2026-09-05）。
+    // 「真似したい」は他人の投稿を写すように読めるので「参考にしたい」。
+    text: (
+      <>
+        参考にしたいアカウントを指定すると、
+        <span className="inline-block">発信方針の土台ができる</span>
+      </>
+    ),
   },
-  // T-M8-397: 参考投稿は「最大」3件（3件必須と読ませない）。
-  { icon: "add", text: "参考投稿を最大3件貼ると、あなた専用の型をAIが生成" },
+  // T-M8-397: 参考投稿は「最大」3件（3件必須と読ませない）。「貼るだけで」なら件数を書かなくても必須には読めない。
+  { icon: "add", text: "お手本の投稿を貼るだけで、あなた専用の型ができる" },
   {
     icon: "monitoring",
-    text: "「分析を開始」を押すと、アカウント.mdとプロンプトの改善案が届く",
+    // 何の改善案かは直上のサブ文が言う。「押すと」は画面ツアー停止04・sr-only と同じ語。
+    text: "「分析を開始」を押すと、改善案が届く",
   },
 ];
 
@@ -102,7 +115,8 @@ function LoopFigure() {
                 コピー
               </span>
             </div>
-            <p className="mt-1 text-ink-3">全文を書き直した案。勝手には反映しません</p>
+            {/* 「勝手には反映しません」は置かない——直下の段2「気に入った案だけ、貼って保存」とチップ「あなた」が言う（レビュー 2026-09-05）。 */}
+            <p className="mt-1 text-ink-3">全文の書き直し案</p>
             {/* 「+」の差分記法は非エンジニアに馴染みが薄いので、見出し1行で「変わるところ」と言う（3周目）。 */}
             <p className="mt-2 text-ink-3">変わるところ（例）</p>
             <div className="mt-1 grid gap-1">
@@ -124,7 +138,7 @@ function LoopFigure() {
                 使用中
               </span>
             </div>
-            <p className="mt-1 text-ink-3">アカウント.mdの新しい版。前の版は本棚に残り、いつでも戻せます</p>
+            <p className="mt-1 text-ink-3">新しい版。前の版は本棚に残り、いつでも戻せます</p>
           </div>
         </Step>
         <Step index={2} last>
@@ -153,11 +167,14 @@ export function Grow() {
       <div>
         <h2 className={H2}>
           <span className="inline-block">使うほど、</span>
-          <span className="inline-block">あなたの言葉に</span>
-          <span className="inline-block">近づく</span>
+          <span className="inline-block">あなたに</span>
+          <span className="inline-block">似てくる</span>
         </h2>
+        {/* 見出し「似てくる」の直後に「育つのは何か」を即答する。「改善案を」は箇条書き3行目と図版が言う（2026-09-05）。 */}
+        {/* アカウント.md の読者向けの語は「発信方針」（初出の画面ツアー停止04で1回だけ括弧を付け、以後はこの語で通す・レビュー 2026-09-05）。 */}
         <p className={SUB}>
-          育つのは、アカウント.mdと投稿プロンプト。改善案を取り入れた分だけ、次の投稿に効きます。
+          {/* 「取り入れた」も文節折りが「取り／入れた」で切る（複合動詞）ので句ごと括る。 */}
+          育つのは、<span className="inline-block">発信方針と投稿プロンプト。</span><span className="inline-block">取り入れた分だけ、</span>次の投稿に効く。
         </p>
         <ul className="mt-8 grid gap-4">
           {PATHS.map((path) => (
@@ -175,7 +192,7 @@ export function Grow() {
       <div className="min-w-0">
         <LoopFigure />
         <p className="sr-only">
-          「分析を開始」を押すと改善案が届き、あなたがコピーしてアカウント.mdに貼って保存すると、次の投稿からその言葉で書かれます。
+          「分析を開始」を押すと改善案が届き、あなたがコピーして発信方針（アカウント.md）に貼って保存すると、次の投稿からその言葉で書かれます。
         </p>
       </div>
     </div>

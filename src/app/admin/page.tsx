@@ -11,7 +11,9 @@ import { env } from "@/lib/env";
 import { trackingUrlFor } from "@/lib/ops/traffic-source";
 import {
   JPY_PER_USD,
+  PRORATION_MIN_DAYS,
   readAdminSummary,
+  readCancellationOutcome,
   readEntryFunnel,
   readTrafficSources,
   readFunnel,
@@ -58,8 +60,11 @@ const ENV_DASHBOARDS = [
   { env: "development", label: "ローカル", href: "http://127.0.0.1:3000/admin" },
 ] as const;
 
+/** 円表示。負値は「¥-1,200」ではなく「−¥1,200」（通貨記号の後ろの負号は読みにくい・T-M8-427）。 */
 function yen(v: number): string {
-  return `¥${Math.round(v).toLocaleString("ja-JP")}`;
+  const rounded = Math.round(v);
+  const abs = Math.abs(rounded).toLocaleString("ja-JP");
+  return rounded < 0 ? `−¥${abs}` : `¥${abs}`;
 }
 
 async function requestBaseUrl(): Promise<string> {
@@ -96,10 +101,12 @@ export default async function AdminPage() {
     mrrSeries,
     usersSeries,
     costSeries,
+    canceledSeries,
     byProvider,
     byOperation,
     byUser,
     cancels,
+    cancelOutcome,
     users,
     entryFunnel,
     homeVisitors,
@@ -110,10 +117,12 @@ export default async function AdminPage() {
     readKpiSeries(db, "mrr_jpy", SERIES_DAYS),
     readKpiSeries(db, "users_total", SERIES_DAYS),
     readKpiSeries(db, "cost_usd", SERIES_DAYS),
+    readKpiSeries(db, "users_canceled", SERIES_DAYS),
     readMonthCostBreakdown(db, "provider", 6),
     readMonthCostBreakdown(db, "operation", 8),
     readMonthCostBreakdown(db, "user", 5),
     readRecentCancellations(db, 10),
+    readCancellationOutcome(db),
     readUsersOverview(db, 200),
     readEntryFunnel(db),
     readHomeVisitorSeries(db, SERIES_DAYS),
@@ -182,10 +191,24 @@ export default async function AdminPage() {
           // 利用者負担（BYOK）は原価ではないので合計に入れない。参考として額だけ添える（T-M8-422）。
           note={`${usd(summary.monthCostUsd)}。利用者負担（BYOK）${usd(summary.monthUserPaidCostUsd)} は含まない`}
         />
+        {/*
+          主値は**月末見込み**（原価を日割りで月末まで延ばす）。「MRR − 月初からの累積原価」だけだと
+          月初に大きく月末へ向けて減って見える（D-55(2)・T-M8-427）。見出しにも「月末見込み」と書く
+          （大きい数字を実績と読ませない）。注記は金額の前に必ず何の額かを書く。
+          月初 PRORATION_MIN_DAYS 日間は日割りが時間帯で大きく振れるので前月実績を仮置きする（forecastMonthCost）。
+        */}
         <SummaryCard
-          label="今月の粗利（MRR−原価）"
-          value={yen(summary.grossProfitJpy)}
-          note={summary.grossProfitJpy < 0 ? "原価がMRRを上回っています" : undefined}
+          label="今月の粗利（月末見込み）"
+          value={yen(summary.grossProfitForecastJpy)}
+          note={
+            `MRR ${yen(summary.mrrJpy)} − 原価の月末見込み ${yen(summary.monthCostForecastJpy)}（` +
+            (summary.monthCostForecastBasis === "previous_month"
+              ? `月初${PRORATION_MIN_DAYS}日間は前月実績 ${yen(summary.previousMonthCostJpy)} を仮置き。今月これまで ${yen(summary.monthCostJpy)}`
+              : `これまで ${yen(summary.monthCostJpy)} を${summary.monthElapsedDays}日ぶん／${summary.monthDays}日で日割り` +
+                (summary.monthElapsedDays < PRORATION_MIN_DAYS ? "。月初は見込みが大きく動きます" : "")) +
+            `）。これまでの粗利 ${yen(summary.grossProfitJpy)}` +
+            (summary.grossProfitForecastJpy < 0 ? "。原価がMRRを上回る見込みです" : "")
+          }
         />
         <SummaryCard label="トライアル中" value={`${summary.trialing}人`} />
         {/* auth.users の現在件数（退会で減る）。「累計」と書くと誤読する（T-M8-422）。 */}
@@ -331,6 +354,7 @@ export default async function AdminPage() {
         </div>
         <p className="mt-2 text-xs text-ink-2">
           退会した利用者は元データごと消えるため、累計ではなく「いま残っている人」の数です。
+          「初回生成」は直近90日に成功した生成ジョブから数えます（ジョブは90日で消えるため、それより前に生成した人は落ちます）。
         </p>
       </Card>
 
@@ -340,6 +364,12 @@ export default async function AdminPage() {
         <KpiChart points={homeVisitors} title="ホーム来訪者／日（ユニーク・今日を含む）" unit="人" />
         <KpiChart points={usersSeries} title="登録者数（現在・退会で減る）の推移" unit="人" />
         <KpiChart points={costSeriesJpy} title="原価／日（円換算・運営負担）" unit="円" />
+        {/*
+          実解約は日付の記録が無いので、解約済み（subscription_status='canceled'）の人数を毎日写した
+          状態指標を描く。前日より増えたぶんが実解約（再契約・退会で減る）——「解約手続きへ進んだ数」
+          （cancel_intents・引き止めで残った人を含む）とは別物（T-M8-427）。
+        */}
+        <KpiChart points={canceledSeries} title="解約済みの契約者数（現在値・前日より増えたぶんが実解約）" unit="人" />
       </Card>
 
       {/* 原価内訳 */}
@@ -386,10 +416,10 @@ export default async function AdminPage() {
                   <th className="py-1 pr-3 font-normal">登録日</th>
                   <th className="py-1 pr-3 font-normal">プラン / 状態</th>
                   <th className="py-1 pr-3 font-normal">X連携</th>
-                  <th className="py-1 pr-3 font-normal text-right">生成（成功）</th>
-                  <th className="py-1 pr-3 font-normal text-right">投稿</th>
+                  <th className="py-1 pr-3 font-normal text-right">生成（成功・90日）</th>
+                  <th className="py-1 pr-3 font-normal text-right">投稿（済み）</th>
                   <th className="py-1 pr-3 font-normal text-right">今月の原価（運営負担）</th>
-                  <th className="py-1 font-normal">最終利用</th>
+                  <th className="py-1 font-normal">最終操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -413,11 +443,11 @@ export default async function AdminPage() {
                     <td className="py-2 pr-3 text-right font-mono">{u.posts}</td>
                     <td className="py-2 pr-3 text-right font-mono">{usd(u.monthCostUsd)}</td>
                     <td className="whitespace-nowrap py-2 text-ink-2">
-                      {u.lastUsedAt
+                      {u.lastManualActionAt
                         ? new Intl.DateTimeFormat("ja-JP", {
                             dateStyle: "short",
                             timeZone: "Asia/Tokyo",
-                          }).format(new Date(u.lastUsedAt))
+                          }).format(new Date(u.lastManualActionAt))
                         : "—"}
                     </td>
                   </tr>
@@ -427,13 +457,30 @@ export default async function AdminPage() {
           </div>
         )}
         <p className="mt-2 text-xs text-ink-2">
-          生成・投稿は累計（利用枠の消費記録から）。原価は今月のAI・X API実費（USD）。
+          生成は直近90日に成功した生成ジョブ数（ジョブは90日で消えるため累計ではない）、投稿（済み）は投稿済みになった下書きの累計（スレッド1本＝1件）。
+          最終操作は利用者自身の操作（手動の生成・画像・投稿・学習ソース・提案）の最新で、予約枠の自動生成・自動投稿・投稿指標の収集は含まない（BYOKでも入る）。
+          手動投稿以外の記録は90日で消えるため、それより前の操作しか無い人は「—」になる。原価は今月のAI・X API実費（USD）。
         </p>
       </Card>
 
       {/* 解約アンケート */}
       <Card as="section" className="mt-6 px-5 py-4">
         <CardTitle as="h2">解約アンケート（直近10件）</CardTitle>
+        {/*
+          「解約手続きへ進んだ」は引き止めで残った人を含むので、その人たちのいまの状態を添える
+          （cancel_intents と実解約の差がここで読める・T-M8-427）。退会した人はアンケートごと消える。
+        */}
+        <p className="mt-1 text-xs text-ink-2">
+          {cancelOutcome.intents === 0
+            ? "直近30日に解約手続きへ進んだ回答はありません。"
+            : `直近30日に解約手続きへ進んだ回答 ${cancelOutcome.intents}件（${cancelOutcome.users}人）。` +
+              `うち、いま解約済み ${cancelOutcome.canceled}人・期末で解約予定 ${cancelOutcome.cancelScheduled}人・` +
+              `課金を続けている ${cancelOutcome.continuing}人` +
+              (cancelOutcome.users - cancelOutcome.canceled - cancelOutcome.cancelScheduled - cancelOutcome.continuing > 0
+                ? `・その他（未払い・停止中など）${cancelOutcome.users - cancelOutcome.canceled - cancelOutcome.cancelScheduled - cancelOutcome.continuing}人`
+                : "") +
+              "（退会した人はアンケートごと消える）"}
+        </p>
         {cancels.length === 0 ? (
           <p className="mt-2 text-sm text-ink-2">まだありません。</p>
         ) : (

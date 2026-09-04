@@ -57,8 +57,10 @@ export const metadata: Metadata = {
   // ヒーローの H1 と同文（運営者の指定 2026-09-04）。
   title: `${APP_NAME} — 日々のSNS活動を完全自動化　AIクローン生成プラットフォーム`,
   // APP_DESCRIPTION の「分析改善までを自動化」は分析の起点（ボタン1つ）と合わないため、ここでは使わない。
+  // ヒーローのサブ文（LEAD）と同文＋サービスの種別。流入時に最初に読まれる文だけが旧トーン（「同意後に自動」
+  // 「反映するかは」）で残っていた（レビュー 2026-09-05）。
   description:
-    "ニュース収集・投稿作成・実績の記録を自動で回し、投稿は同意後に自動。分析はボタン1つで、反映するかはあなたが決める、X（旧Twitter）運用アプリ。",
+    "あなたの分身が、ニュース集めから投稿・記録まで自動で回す。分析はボタン1つ。決めるのは、あなた。X（旧Twitter）運用アプリ。",
 };
 
 /**
@@ -262,12 +264,13 @@ export default async function Home({
                 </span>
               </h1>
               {/* 投稿は同意後にだけ自動（S-3）。分析はボタン1つ（K-2）。文節ごとに inline-block で語の途中の折れを防ぐ。 */}
+              {/* 2026-09-05 簡潔化（運営者の依頼）: 何をしてくれるかを先に。惹き語はこの画面では「分身」1つ（「使うほど」は下の節が持つ）。 */}
               <p className={cn(LEAD, "mt-6 max-w-[560px]")}>
-                <span className="inline-block">使うほど、</span>
-                <span className="inline-block">あなたのAIクローンが育つ。</span>
-                <span className="inline-block">ニュース収集から投稿・記録まで自動。</span>
-                <span className="inline-block">分析はボタン1つで、</span>
-                <span className="inline-block">反映はあなたが決める。</span>
+                <span className="inline-block">あなたの分身が、</span>
+                <span className="inline-block">ニュース集めから</span>
+                <span className="inline-block">投稿・記録まで自動で回す。</span>
+                <span className="inline-block">分析はボタン1つ。</span>
+                <span className="inline-block">決めるのは、あなた。</span>
               </p>
               <div className="mt-8">
                 <CtaRow signupHref={signupHref}
@@ -294,7 +297,9 @@ export default async function Home({
         <section className={cn(ANCHOR, CONTAINER, SECTION)} id="loop">
           <SectionHead
             // After の棒は「確認」1本なので、サブ文も1つに揃える（改善案の判断は板の下段の h3 が担う）。
-            sub={`ある1日の例。手を動かすのは、下書きを見る${LOOP_TOTALS.afterJa}だけ。`}
+            // 「確認の5分」は板の左列「確認だけ」と同じ語。「下書きを見る」は板（棒のラベル・ノード3）が言うので
+            // サブ文では繰り返さない（同じ内容が3行続いて読めた・レビュー 2026-09-05）。
+            sub={`ある1日の例。残るのは、確認の${LOOP_TOTALS.afterJa}だけ。`}
             // 「3h → 5m」は運営者指定の表記（視覚用）。読み上げでは「3エイチ 5エム」になるので和文を別に持つ。
             title={
               <>
@@ -353,13 +358,14 @@ export default async function Home({
         {/* 複数のプロンプトを管理（運営者の指示 2026-09-03。旧「勝手には、投稿しない」を置換） */}
         <section className={cn(CONTAINER, SECTION)}>
           <SectionHead
-            sub="投稿の型・アカウント.md・画像の指示・使うAIモデル。クローンの中身は、すべてあなたが編集できます。"
+            // 4項目の列挙は直下の3カードと重複するので置かない。惹き語はこの画面では「手の中」1つ（2026-09-05）。
+            sub="投稿の型から、AIモデルまで。クローンの中身は、全部あなたの手の中。"
             title="複数のプロンプトを管理"
           />
           <PromptCards />
         </section>
 
-        {/* 使うほど、あなたの言葉に近づく（背景の印がコンテナの外へ少し出るので、ここだけ横を clip する） */}
+        {/* 使うほど、あなたに似てくる（背景の印がコンテナの外へ少し出るので、ここだけ横を clip する） */}
         <section className={cn(CONTAINER, SECTION, "overflow-x-clip")}>
           <Grow />
         </section>
@@ -408,13 +414,15 @@ export default async function Home({
                     <Icon aria-hidden="true" name="star_shine" size={13} />
                     友達招待キャンペーン
                   </p>
+                  {/* 語は「招待」で統一（バッジ・ボタンと同じ。「紹介した方の利用料」は自分の利用料にも読めた・レビュー 2026-09-05）。 */}
                   <h3 className={cn(H3, "mt-3 [text-wrap:balance]")}>
-                    紹介した方の利用料から、最大
+                    招待した友達の利用料から、最大
                     {formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬に
                   </h3>
-                  <p className="mt-2.5 text-body leading-6 text-ink-2 [text-wrap:pretty]">
-                    {/* 1行に書く（JSXは行の継ぎ目に半角空白を入れるため、「から、 最大」と空く）。 */}
-                    ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、最大{COMMISSION_MONTHS}か月分が報酬対象です（報酬率は招待人数に応じて上がります）。
+                  {/* 文節で折る（[text-wrap:pretty] だけだと 390px で「有料プ／ラン」と語の途中で折れた）。 */}
+                  <p className="mt-2.5 text-body leading-6 text-ink-2 [text-wrap:pretty] [word-break:auto-phrase]">
+                    {/* 1行に書く（JSXは行の継ぎ目に半角空白を入れるため、「から、 最大」と空く）。「〜OK」はツアー停止02に譲り、ここは「上がります」と同じ丁寧形。 */}
+                    プラン契約がなくても参加できます。友達が有料プランを使った月から、最大{COMMISSION_MONTHS}か月分。招待が増えるほど、報酬率も上がります。
                   </p>
                 </div>
                 <Link

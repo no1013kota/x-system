@@ -105,7 +105,16 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
   );
   // サマリカード（MRR・原価・粗利）とファネルが出る。
   await expect(page.getByText("MRR（月間経常収益）")).toBeVisible();
-  await expect(page.getByText("今月の粗利（MRR−原価）")).toBeVisible();
+  await expect(page.getByText("今月の粗利（月末見込み）")).toBeVisible();
+  // 粗利の主値は月末見込みで、注記は「MRR − 原価の月末見込み（根拠）。これまでの粗利」の順に
+  // 金額の前に何の額かを書く（D-55(2)・T-M8-427）。負値は「−¥」（通貨記号の前に負号）。
+  await expect(
+    page.getByText(/MRR ¥[\d,]+ − 原価の月末見込み ¥[\d,]+（.+）。これまでの粗利 −?¥[\d,]+/),
+  ).toBeVisible();
+  // 実解約の推移（解約済みの契約者数の状態指標）が時系列に出る（T-M8-427）。
+  await expect(page.getByRole("heading", { name: /解約済みの契約者数/ })).toBeVisible();
+  // 解約手続きへ進んだ人のいまの状態（cancel_intents と実解約の差）が解約アンケート節に出る。
+  await expect(page.getByText(/直近30日に解約手続きへ進んだ/)).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "ファネル（いまいる利用者の到達段階）" }),
   ).toBeVisible();
@@ -126,6 +135,11 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
   ).toBeVisible();
   const myRow = page.getByRole("row").filter({ hasText: operatorEmail! });
   await expect(myRow.first()).toBeVisible();
+  // 「投稿」は投稿済みの下書き件数、「生成」は直近90日、「最終操作」は利用者自身の操作だけ——
+  // 列名でそう読めるようにする（D-55(4)・T-M8-427。cron が進める updated_at を「最終利用」と呼ばない）。
+  await expect(page.getByRole("columnheader", { name: "投稿（済み）" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "生成（成功・90日）" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "最終操作" })).toBeVisible();
 
   // 流入元の登録（T-M8-423）: フォームから登録すると追跡URLが行に出る。
   const slug = `e2e-admin-${Date.now().toString(36)}`;

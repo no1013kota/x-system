@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.90 |
-| 更新日 | 2026-09-04 |
+| バージョン | v1.91 |
+| 更新日 | 2026-09-05 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -768,7 +768,7 @@ RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。ア
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `metric_date` | `date` | PK（複合） | JSTの日付。状態指標は「前日の終わり」として前日の日付で書く |
-| `metric` | `text` | PK（複合） | 指標名（`signups`／`email_confirmed`／`x_connected_users`／`trials_started`／`usage_consumed`／`cost_usd`〔運営負担 `payer='operator'` のみ〕／`cancellations`／`users_total`／`users_paying`／`users_trialing`／`mrr_jpy`／`x_accounts_active`／`page_views`／`page_uniques`〔dimension=path・T-M8-378〕）。`usage_consumed` は `reason='consume' and delta > 0` の**行数**（生成の精算は delta がクレジット量・T-M8-422） |
+| `metric` | `text` | PK（複合） | 指標名（`signups`／`email_confirmed`／`x_connected_users`／`trials_started`／`usage_consumed`／`cost_usd`〔運営負担 `payer='operator'` のみ〕／`cancel_intents`／`users_total`／`users_paying`／`users_trialing`／`users_canceled`／`users_cancel_scheduled`／`mrr_jpy`／`x_accounts_active`／`page_views`／`page_uniques`〔dimension=path・T-M8-378〕）。`usage_consumed` は `reason='consume' and delta > 0` の**行数**（生成の精算は delta がクレジット量・T-M8-422）。**`cancel_intents` は「解約手続きへ進んだ数」**（`cancellation_surveys.proceeded=true` の件数。確認画面の後に引き止めクーポンで残った人も含むので実解約ではない。旧名 `cancellations` は T-M8-427 で改名し、既存行は migration `20260905000001_kpi_cancel_intents.sql` が冪等に書き換える。スナップショットは毎回、直近3日の窓に残った旧名の行を消す）。**実解約**（`profiles.subscription_status` が `canceled` へ変わった日）は遷移の記録が無い（profiles に日付列が無く、`stripe_events` は90日保持・本番のwebhook経由のみ）ため出来事にはせず、**状態指標**で持つ: `users_canceled`＝`subscription_status='canceled'` の人数（前日より増えたぶんが実解約。再契約・退会で減る）、`users_cancel_scheduled`＝課金中（active／past_due）で `cancel_at_period_end=true` の人数（期末で実際に消える確定解約。トライアル中の解約予約は課金が無いので含めない） |
 | `dimension` | `text` | PK（複合）、not null default `''` | 内訳キー（provider名・プラン名・operation名）。内訳の無い指標は空文字 |
 | `value` | `numeric(14,4)` | not null | 件数・金額（`cost_usd` はUSD。円換算は読む側が1ドル=160円で行う） |
 | `updated_at` | `timestamptz` | not null default now() | |
@@ -1115,3 +1115,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.88 | 2026-09-01 | ai_credits_used の単位を現行（1クレジット=0.01円）へ訂正（T-M8-325の反映漏れ） |
 | v1.89 | 2026-09-04 | §3.17 `payer` 列（運営負担／利用者負担・CHECK・index・記録時の判定）を追加。§3.31 に `page_views`／`page_uniques` と `usage_consumed`・`cost_usd` の数え方、§3.32 に画面遷移だけ数える除外規則を追記（T-M8-422） |
 | v1.90 | 2026-09-04 | 流入元（T-M8-423）: §3.33 `traffic_sources` を追加、§3.32 `page_views.source`（PKへ追加）、§3.1 `profiles.signup_source` |
+| v1.91 | 2026-09-05 | §3.31 `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名し、実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持つ（D-55(3)・T-M8-427。既存行は migration で改名し、旧名の取り残しはスナップショットが掃除する） |
