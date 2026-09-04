@@ -399,6 +399,77 @@ export async function readEntryFunnel(db: Queryable): Promise<EntryFunnelStage[]
   ];
 }
 
+export interface TrafficSourceRow {
+  /** '' は直接・不明。 */
+  slug: string;
+  label: string;
+  createdAt: string | null;
+  homeViews: number;
+  homeUniqueVisitorDays: number;
+  signupUniqueVisitorDays: number;
+  signups: number;
+  paying: number;
+}
+
+/**
+ * 流入元ごとの入り（T-M8-423・直近30日JST）。閲覧は `page_views.source`、登録は
+ * `profiles.signup_source`（登録時に1回だけ書く）、課金中は同じ列で「いま課金中」を数える。
+ * Cookie を持たないため、LP→/signup を直接進んだ人だけが登録に紐づく（途中で別ページを挟むと切れる）。
+ * 未登録・形式外の `src` は '' に寄せて数えている（`recordPageView`）。
+ */
+export async function readTrafficSources(db: Queryable): Promise<TrafficSourceRow[]> {
+  const { rows } = await db.query<{
+    slug: string;
+    label: string;
+    created_at: string | null;
+    home_views: string;
+    home_uniques: string;
+    signup_uniques: string;
+    signups: string;
+    paying: string;
+  }>(
+    `with pv as (
+       select source,
+              coalesce(sum(views) filter (where path = '/'), 0)::text as home_views,
+              count(*) filter (where path = '/')::text as home_uniques,
+              count(*) filter (where path = '/signup')::text as signup_uniques
+         from page_views
+        where view_date > (now() at time zone 'Asia/Tokyo')::date - 30
+        group by source
+     ), su as (
+       select p.signup_source as source,
+              count(*) filter (
+                where (u.created_at at time zone 'Asia/Tokyo')::date
+                      > (now() at time zone 'Asia/Tokyo')::date - 30)::text as signups,
+              count(*) filter (where p.subscription_status in ('active', 'past_due'))::text as paying
+         from profiles p
+         join auth.users u on u.id = p.id
+        group by p.signup_source
+     )
+     select s.slug, s.label, s.created_at::text as created_at,
+            coalesce(pv.home_views, '0') as home_views,
+            coalesce(pv.home_uniques, '0') as home_uniques,
+            coalesce(pv.signup_uniques, '0') as signup_uniques,
+            coalesce(su.signups, '0') as signups,
+            coalesce(su.paying, '0') as paying
+       from (select slug, label, created_at from traffic_sources
+             union all select '', '直接・不明', null::timestamptz) s
+       left join pv on pv.source = s.slug
+       left join su on su.source = s.slug
+      order by (s.slug = '') asc, coalesce(pv.home_views, '0')::bigint desc, s.created_at desc nulls last`,
+  );
+  return rows.map((r) => ({
+    slug: r.slug,
+    label: r.label,
+    createdAt: r.created_at,
+    homeViews: Number(r.home_views),
+    homeUniqueVisitorDays: Number(r.home_uniques),
+    signupUniqueVisitorDays: Number(r.signup_uniques),
+    signups: Number(r.signups),
+    paying: Number(r.paying),
+  }));
+}
+
 export interface FunnelStage {
   label: string;
   count: number;

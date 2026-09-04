@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { recordPageView } from "@/lib/ops/page-view-server";
+import { parseTrafficSource } from "@/lib/ops/traffic-source";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -34,12 +35,12 @@ export const metadata: Metadata = {
 };
 
 interface PlansPageProps {
-  searchParams: Promise<{ checkout?: string; confirmed?: string; signup?: string }>;
+  searchParams: Promise<{ checkout?: string; confirmed?: string; signup?: string; src?: string }>;
 }
 
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   // 入口ファネル（T-M8-378）。応答後に書くので表示は遅くならない。
-  await recordPageView("/plans");
+  await recordPageView("/plans", { source: parseTrafficSource((await searchParams).src) });
 
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   // Checkout直後の反映待ち。反映が済むと下の判定で /app へリダイレクトされる。

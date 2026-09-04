@@ -105,9 +105,12 @@ const FAQ_ANSWERS = (() => {
 
 describe("SC-01 LP: 導線", () => {
   it("会員登録・ログイン・ページ内アンカーへの導線がある", () => {
-    expect(PAGE).toContain('href="/signup"');
+    // /signup へのCTAは流入元 `?src=` を引き継ぐため `signupHref`（T-M8-423）。直書きが戻ると引き継ぎが切れる。
+    expect(PAGE).toContain('withTrafficSource("/signup", source)');
+    expect(PAGE).toContain("href={signupHref}");
+    expect(PAGE).not.toContain('href="/signup"');
     expect(PAGE).toContain('href="/login"');
-    expect(PRICING).toContain('href="/signup"'); // プランカードのCTA
+    expect(PRICING).toContain("href={signupHref}"); // プランカードのCTA
     for (const anchor of ["#loop", "#tour", "#pricing", "#faq"]) {
       expect(PAGE, `ヘッダーnavに ${anchor} がある`).toContain(`"${anchor}"`);
       expect(PAGE, `セクションに id=${anchor.slice(1)} がある`).toContain(

@@ -17,6 +17,7 @@ import {
   readRecentCancellations,
   readUsersOverview,
   runDailyKpiSnapshot,
+  readTrafficSources,
 } from "./kpi";
 
 /**
@@ -232,7 +233,7 @@ describe("KPIスナップショット（db）", () => {
       for (const h of [h1, h1, h2]) {
         await db.query(
           `insert into page_views (view_date, path, visitor_hash) values ($1, '/', $2)
-           on conflict (view_date, path, visitor_hash) do update set views = page_views.views + 1`,
+           on conflict (view_date, path, visitor_hash, source) do update set views = page_views.views + 1`,
           [day, h],
         );
       }
@@ -317,6 +318,43 @@ describe("KPIスナップショット（db）", () => {
     expect(mine?.generations, "成功した生成ジョブだけを数える").toBe(2);
     const funnel = await readFunnel(db);
     expect(funnel.find((s) => s.label === "初回生成")?.count ?? 0).toBeGreaterThanOrEqual(1);
+  });
+
+  it("流入元ごとに、ホーム表示・新規登録画面・登録・課金中を数える（T-M8-423）", async () => {
+    if (!available) return;
+    const slug = `t423-${randomUUID().slice(0, 8)}`;
+    const uid = await makeUser(1);
+    const today = jstDateOf(new Date().toISOString());
+    const h = `t423-${randomUUID().slice(0, 8)}`;
+    try {
+      await db.query(`insert into traffic_sources (slug, label) values ($1, 'テスト流入元')`, [slug]);
+      await db.query(
+        `insert into page_views (view_date, path, visitor_hash, source)
+         values ($1, '/', $2, $3), ($1, '/', $2 || '-b', $3), ($1, '/signup', $2, $3)
+         on conflict do nothing`,
+        [today, h, slug],
+      );
+      await db.query(`update page_views set views = 3 where visitor_hash = $1 and path = '/'`, [h]);
+      await db.query(
+        `insert into profiles (id, email, signup_source) values ($1, $2, $3)
+         on conflict (id) do update set signup_source = excluded.signup_source`,
+        [uid, `kpi-${uid}@example.com`, slug],
+      );
+      const rows = await readTrafficSources(db);
+      const mine = rows.find((r) => r.slug === slug);
+      expect(mine?.label).toBe("テスト流入元");
+      expect(mine?.homeViews).toBe(4); // 3 + 1
+      expect(mine?.homeUniqueVisitorDays).toBe(2);
+      expect(mine?.signupUniqueVisitorDays).toBe(1);
+      expect(mine?.signups).toBe(1);
+      expect(mine?.paying).toBe(0);
+      // 直接・不明の行は最後に1つだけ。
+      expect(rows[rows.length - 1].slug).toBe("");
+      expect(rows.filter((r) => r.slug === "")).toHaveLength(1);
+    } finally {
+      await db.query(`delete from page_views where source = $1`, [slug]);
+      await db.query(`delete from traffic_sources where slug = $1`, [slug]);
+    }
   });
 
   it("ファネルは登録済みの利用者を段階別に数える", async () => {

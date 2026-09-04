@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.89 |
+| バージョン | v1.90 |
 | 更新日 | 2026-09-04 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -68,6 +68,7 @@
 | `scheduled_plan_at` | `timestamptz` | null | 予約が効く日時。`scheduled_plan` と必ず対（CHECK `profiles_scheduled_plan_pair`） |
 | `trial_ends_at` | `timestamptz` | null | trial終了 |
 | `trial_used_at` | `timestamptz` | null | 初回trial付与日時。再付与防止 |
+| `signup_source` | `text` | not null default `''`、CHECK `^[a-z0-9_-]{0,32}$` | 登録時の流入元 slug（`/signup?src=`・T-M8-423）。直接・形式外・未登録は `''`。登録直後に1回だけ書き、以後は変えない |
 | `terms_version` | `text` | null | 同意済み利用規約version |
 | `terms_accepted_at` | `timestamptz` | null | 利用規約同意日時 |
 | `privacy_version` | `text` | null | 確認済みprivacy policy version |
@@ -783,9 +784,22 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 | `view_date` | `date` | PK（複合） | JSTの日付 |
 | `path` | `text` | PK（複合） | `/`・`/signup`・`/plans` のいずれか |
 | `visitor_hash` | `text` | PK（複合） | HMAC-SHA256(日付\|IP\|UA) の先頭32桁。生のIP・UAは持たない |
+| `source` | `text` | PK（複合）、not null default `''`、CHECK `^[a-z0-9_-]{0,32}$` | 流入元 slug（`?src=`・T-M8-423）。`traffic_sources` に登録済みのものだけ入り、それ以外は `''`（直接・不明） |
 | `views` | `integer` | not null default 1 | 同一訪問者の同日再訪で加算 |
 
 RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。生記録の保持は40日（日次集計は `kpi_daily` が400日持つ・要件04 §14）。
+
+### 3.33 `traffic_sources`
+
+**流入元の台帳**（T-M8-423・運営者の依頼 2026-09-04）。運営者が `/admin` で登録すると追跡URL `https://exosai.net/?src=<slug>` が発行され、`page_views.source`・`profiles.signup_source` の集計キーになる。slug は配ったURLに入るため後から変えない。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `slug` | `text` | PK、CHECK `^[a-z0-9_-]{1,32}$` | URLの `src` に入る値（小文字英数字・`_`・`-`） |
+| `label` | `text` | not null、CHECK 1〜60文字 | 運営者向けの表示名（例: Xのプロフィール） |
+| `created_at` | `timestamptz` | not null default now() | |
+
+RLS: 有効。運営だけが書く表で、`authenticated` へは grant しない（書き込みは `/admin` の Server Action が service role で行う）。
 
 ## 4. JSONスキーマ
 
@@ -1100,3 +1114,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.87 | 2026-09-01 | notification_config.news に email（メール通知・既定OFF）を追加（T-M8-407・スキーマ変更なし） |
 | v1.88 | 2026-09-01 | ai_credits_used の単位を現行（1クレジット=0.01円）へ訂正（T-M8-325の反映漏れ） |
 | v1.89 | 2026-09-04 | §3.17 `payer` 列（運営負担／利用者負担・CHECK・index・記録時の判定）を追加。§3.31 に `page_views`／`page_uniques` と `usage_consumed`・`cost_usd` の数え方、§3.32 に画面遷移だけ数える除外規則を追記（T-M8-422） |
+| v1.90 | 2026-09-04 | 流入元（T-M8-423）: §3.33 `traffic_sources` を追加、§3.32 `page_views.source`（PKへ追加）、§3.1 `profiles.signup_source` |

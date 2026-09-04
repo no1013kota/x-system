@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { recordPageView } from "@/lib/ops/page-view-server";
+import { parseTrafficSource, withTrafficSource } from "@/lib/ops/traffic-source";
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
@@ -106,11 +107,14 @@ function CtaRow({
   primary,
   secondaryHref,
   secondaryLabel,
+  signupHref,
   fullWidthOnMobile = false,
 }: {
   primary: string;
   secondaryHref: string;
   secondaryLabel: string;
+  /** `/signup`（流入元 `?src=` を引き継いだもの・T-M8-423）。 */
+  signupHref: string;
   fullWidthOnMobile?: boolean;
 }) {
   return (
@@ -123,7 +127,7 @@ function CtaRow({
             CTA_PRIMARY_HOVER,
             fullWidthOnMobile && "w-full min-[480px]:w-auto",
           )}
-          href="/signup"
+          href={signupHref}
         >
           {primary}
         </Link>
@@ -150,8 +154,15 @@ function CtaRow({
 // 「クローンと呼ぶ理由」「安心して任せるために」の2セクションは3周目で削除（個人開発のサービスとして
 // 冗長・企業向けの説明だったため）。鍵の暗号化・書き込み範囲の開示はFAQへ集約した。
 
-export default async function Home() {
-  await recordPageView("/");
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ src?: string | string[] }>;
+}) {
+  // 流入元（T-M8-423）。追跡URL `/?src=<slug>` から来た閲覧を数え、/signup へのCTAに引き継ぐ。
+  const source = parseTrafficSource((await searchParams).src);
+  await recordPageView("/", { source });
+  const signupHref = withTrafficSource("/signup", source);
   return (
     <div className="relative isolate flex min-h-screen flex-col bg-page text-sm leading-[1.8] text-ink tabular-nums [text-wrap:pretty]">
       {/*
@@ -220,7 +231,7 @@ export default async function Home() {
                 buttonVariants({ variant: "brand" }),
                 "h-9 rounded-pill px-5 text-sm font-bold whitespace-nowrap",
               )}
-              href="/signup"
+              href={signupHref}
             >
               無料で始める
             </Link>
@@ -261,7 +272,7 @@ export default async function Home() {
                 <span className="inline-block">反映はあなたが決める。</span>
               </p>
               <div className="mt-8">
-                <CtaRow
+                <CtaRow signupHref={signupHref}
                   fullWidthOnMobile
                   primary="無料で始める"
                   secondaryHref="#tour"
@@ -310,7 +321,7 @@ export default async function Home() {
           <Tour
             // 納得の直後に受け皿を置く（ヒーローから料金まで主CTAが無い区間を作らない）。
             cta={
-              <CtaRow
+              <CtaRow signupHref={signupHref}
                 primary="無料で始める"
                 secondaryHref="#pricing"
                 secondaryLabel="料金を見る"
@@ -403,7 +414,7 @@ export default async function Home() {
               }
             />
             <div className="mt-[clamp(16px,3vw,40px)]">
-              <PricingRecommendFirst />
+              <PricingRecommendFirst signupHref={signupHref} />
             </div>
             {/*
               友達招待キャンペーン（T-M8-268・運営者の指示 2026-08-23）。料金の直後・同じ面に置く。
@@ -488,7 +499,7 @@ export default async function Home() {
                     PILL_LG,
                     CTA_PRIMARY_HOVER,
                   )}
-                  href="/signup"
+                  href={signupHref}
                 >
                   無料で始める
                 </Link>

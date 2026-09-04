@@ -6060,7 +6060,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 実装メモ（2026-09-04 完了）: `payer` は呼び出し側にプランを引き回さず、`recordExternalApiUsage` の insert 内で記録時点の `profiles.plan`（`isOperatorManagedPlan` のID一覧を渡す）／`x_accounts.auth_type` から決める（10か所の呼び出しを触らない。明示指定で上書き可）。既存行は migration で近似バックフィル（plan='standard'・auth_type='byok' → user）。生成は `generation_jobs`（post_generation／image_generation・succeeded）で数え、BYOK も入る。入口ファネルの3段目は「登録完了」（直近30日の auth.users）。閲覧記録は `sec-fetch-dest: document` のGETだけ・運営者（proxyの署名付きヘッダのメール＝SUPPORT_EMAIL）除外・release／doctor／auth-templates の fetch は `exos-monitoring/…` を名乗る。doctor に「ホームの閲覧記録」（本番で直近2日0件なら warn）。JST窓に統一、「登録者（現在）」。テスト: ledger の db.test で payer の判定と CHECK を実 insert、kpi.db.test で生成件数と入口ファネル、page-view.test・diagnostics.test。
 - メモ: 2026-09-04 の監査（運営者の依頼「各数値が適切に計測されているか確認」）で16件。上の6つが「運営者が見て誤解する」もの。残り（MRRが割引を無視・粗利の定義・退会者の費用が「運営・共通」へ・投稿はツイート単位・`cancellations` は「解約手続きへ進んだ」件数・X連携は無効も含む・docs 04 の混入行・02 §3.31 の指標欠落・スナップショットの3日窓）は D-55 と docs 更新で扱う。
 
-### T-M8-423: 流入元（`?src=`）を辿る——ダッシュボードで追跡URLを発行し、流入元ごとの表示・登録・課金を出す `todo`
+### T-M8-423: 流入元（`?src=`）を辿る——ダッシュボードで追跡URLを発行し、流入元ごとの表示・登録・課金を出す `done`
 - 参照: 要件02 §3.32（page_views・Cookieなし）・§3.2（profiles）・PRD O-6・docs/operations/monitoring.md / 依存: T-M8-422（除外ルールを先に入れて数字を汚さない） / サイズ: M
 - 完了条件:
   - admin に「流入元」カードがあり、名前（slug: `^[a-z0-9_-]{1,32}$`）を登録すると追跡URL `https://exosai.net/?src=<slug>` が表示され、コピーできる（登録は `traffic_sources` テーブル。運営者だけが書ける）
@@ -6068,6 +6068,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 登録時に `profiles.signup_source` へ写り、流入元ごとに「ホーム表示・ユニーク／新規登録画面ユニーク／登録数／課金中」が直近30日で並ぶ。`src` 無しは「直接・不明」行
   - 不正な `src`（形式外・未登録）は '' として数え、失敗は記録に残る（黙って落ちない）
   - `src/lib/db/check-constraints.db.test.ts` の REGISTRY に新しい CHECK を登録し、実 insert の db.test がある
+- 実装メモ（2026-09-04 完了）: `traffic_sources`（slug PK・label）・`page_views.source`（PKに追加・登録済み slug だけ書く。未登録は insert 時のSQLで '' に寄せる）・`profiles.signup_source`（signUp action が hidden から受けて1回だけ書く）。純粋部分は `traffic-source.ts`（`parseTrafficSource`・`withTrafficSource`・`trackingUrlFor`）。LP は `searchParams.src` を読み、`/signup` へのCTA全部を `signupHref` に置換（`landing-page.test` が直書きを禁止）。admin は Server Action `createTrafficSource`（運営者ゲート・slug の形式・重複を言い分ける）＋クライアントのフォーム＋コピー釦。集計 `readTrafficSources`（直近30日JST・「直接・不明」行を最後に1つ）。CHECK 3本は `check-constraints.db.test` の REGISTRY に登録し実 insert で検証。E2E: 未ログインで `/?src=` を開くと source 付きで記録され、ヘッダーCTAが `/signup?src=` になる／運営者がフォームから登録すると追跡URLが出る。
 - メモ: 運営者の依頼（2026-09-04）「ダッシュボード内で遷移元を辿る用のURLを発行して、各URLで遷移元の回数を計測し、ダッシュボード内で表示」。Cookie を足さない現行設計を守るため、LP→/signup を直接進んだ人だけが登録に紐づく（途中で別ページを挟むと切れる。注記に書く）。設計の詳細は監査メモ（T-M8-422）の §4。
 
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`

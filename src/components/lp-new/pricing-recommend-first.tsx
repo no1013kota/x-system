@@ -85,7 +85,8 @@ function PerDay({ plan, recommended }: { plan: PlanDefinition; recommended: bool
   );
 }
 
-export function PricingRecommendFirst() {
+/** @param signupHref `/signup`（流入元 `?src=` を引き継いだもの・T-M8-423）。 */
+export function PricingRecommendFirst({ signupHref = "/signup" }: { signupHref?: string } = {}) {
   return (
     <div className={styles.wrap}>
       {/* キャップ行: 列幅はカード行と同じ変数（CSS module）。両隣はSPでは出さない。 */}
@@ -123,7 +124,7 @@ export function PricingRecommendFirst() {
                 buttonVariants({ variant: planId === RECOMMENDED_PLAN ? "brand" : "subtle" }),
                 "h-11 w-full text-sm font-bold",
               )}
-              href="/signup"
+              href={signupHref}
             >
               7日間無料で試す
             </Link>

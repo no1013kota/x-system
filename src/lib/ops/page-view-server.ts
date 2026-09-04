@@ -26,7 +26,14 @@ import { isCountableRequest, visitorHashFor, type TrackedPage } from "./page-vie
  *   release／doctor の疎通確認やスキャナ）、運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）
  *   ——T-M8-422
  */
-export async function recordPageView(path: TrackedPage): Promise<void> {
+/**
+ * @param options.source 流入元（`?src=`・T-M8-423）。`parseTrafficSource` 済みの値を渡す。
+ *   登録済みの流入元だけを数え、未登録は ''（直接・不明）として数える（判定は書き込み時のSQL）。
+ */
+export async function recordPageView(
+  path: TrackedPage,
+  options: { source?: string } = {},
+): Promise<void> {
   try {
     const h = await headers();
     if (h.get("next-router-prefetch") !== null) return;
@@ -53,11 +60,12 @@ export async function recordPageView(path: TrackedPage): Promise<void> {
     after(async () => {
       try {
         await getPool().query(
-          `insert into page_views (view_date, path, visitor_hash)
-           values ($1, $2, $3)
-           on conflict (view_date, path, visitor_hash)
+          `insert into page_views (view_date, path, visitor_hash, source)
+           values ($1, $2, $3,
+             coalesce((select slug from traffic_sources where slug = $4), ''))
+           on conflict (view_date, path, visitor_hash, source)
            do update set views = page_views.views + 1`,
-          [date, path, hash],
+          [date, path, hash, options.source ?? ""],
         );
       } catch (err) {
         recordUnexpectedError(err, { at: "page-view", path });
