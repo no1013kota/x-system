@@ -24,8 +24,6 @@ const CSS = readFileSync(`${HERE}/plan-picker-recommend-first.module.css`, "utf8
 const SHARED_TSX = readFileSync(`${HERE}/plan-picker-recommend-first.tsx`, "utf8");
 const SHARED_CARDS = readFileSync(`${HERE}/plan-pricing-cards.tsx`, "utf8");
 /** 選び方の1文を呼ぶ2画面。 */
-const LP_PAGE = readFileSync(`${HERE}/../../app/page.tsx`, "utf8");
-const PLANS_PAGE = readFileSync(`${HERE}/../../app/plans/page.tsx`, "utf8");
 
 /** 画面に出る部分だけ（コメントに「使わない」と書いた語で落ちないように）。 */
 const withoutComments = (tsx: string) =>
@@ -81,32 +79,6 @@ describe("plan-picker-recommend-first（LP・/plans 共用）", () => {
     expect(SHARED_TSX).toContain("<CampaignCallout");
     // 帯へ trialAvailable を渡す（/plans で消化済みの利用者に「7日間無料」を出さないための最後の砦）。
     expect(SHARED_TSX).toMatch(/<CampaignCallout[^>]*trialAvailable=\{trialAvailable\}/);
-  });
-
-  /**
-   * 選び方の1文（`PlanChoiceLead`）は LP と `/plans` で同文（要件06 §1.1）。両ページへ書き写さず
-   * 共用部品を呼ぶ（片方だけ直されて再びずれるのを防ぐ・T-M8-424 のレビュー）。
-   * 末尾の「はじめての方は7日間無料（カード登録が必要）です。」は**最初のCTAより上にある唯一の条件**
-   * なので、共用側に実文があり、`/plans` はトライアル消化済み・残りトライアル中の人に出さない。
-   */
-  it("選び方の1文は共用部品にだけ実文があり、LP と /plans はそれを呼ぶ", () => {
-    const rendered = withoutComments(SHARED_TSX);
-    expect(rendered).toContain("なら、APIキー（AIとX連携に使う鍵）の用意がいりません。");
-    expect(rendered).toContain("はじめての方は7日間無料（カード登録が必要）です。");
-    for (const [name, page] of [
-      ["LP", LP_PAGE],
-      ["/plans", PLANS_PAGE],
-    ] as const) {
-      expect(page, `${name} が PlanChoiceLead を呼ぶ`).toMatch(/<PlanChoiceLead[\s/>]/);
-      expect(withoutComments(page), `${name} に選び方の1文を書き写さない`).not.toContain(
-        "APIキー（AIとX連携に使う鍵）",
-      );
-      expect(withoutComments(page), `${name} にカード登録の1文を書き写さない`).not.toContain(
-        "はじめての方は7日間無料（カード登録が必要）です。",
-      );
-    }
-    // /plans は消化済み・残りトライアル中に出さない（LPは未ログインなので常に出す）。
-    expect(PLANS_PAGE).toMatch(/<PlanChoiceLead trialNote=\{trialAvailable && !trialLabel\}/);
   });
 
   it("server component のまま・出現演出なし・価格の直書きなし・キャンペーン文言を独自に持たない", () => {

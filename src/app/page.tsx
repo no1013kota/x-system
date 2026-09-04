@@ -13,9 +13,7 @@ import { Grow } from "@/components/lp-new/grow";
 import { HeroDiagram, HeroSteps } from "@/components/lp-new/hero-diagram";
 import { LOOP_TOTALS, LoopBoard } from "@/components/lp-new/loop-board";
 import {
-  PlanChoiceLead,
   PricingRecommendFirst,
-  RECOMMENDED,
 } from "@/components/lp-new/pricing-recommend-first";
 import styles from "@/components/lp-new/new-lp.module.css";
 import { Tour } from "@/components/lp-new/tour";
@@ -385,18 +383,10 @@ export default async function Home({
                   <Icon name="chevron_right" size={13} />
                 </a>
               }
-              // 錨を推奨（RECOMMENDED_PLAN）に置く。APIキーの一言説明と、両隣の存在理由を1文で先出しし、
-              // 末尾に「カード登録」の条件を一言残す（帯の注記を外したので、料金のCTAより上に置く・暫定・D-54）。
-              // 文は `/plans` と同文の共用部品（T-M8-424。ここへ書き写すと片方だけ直されて再びずれる）。
-              sub={<PlanChoiceLead />}
-              title={
-                <>
-                  <span className="inline-block">迷ったら、</span>
-                  <span className="inline-block">
-                    {RECOMMENDED.displayName}から。
-                  </span>
-                </>
-              }
+              // 見出しは運営者指定（2026-09-04・D-56）。サブ文（選び方の1文＋カード登録の条件）は運営者の指示で置かない。
+              // 「業界最安価」は最上級表示——根拠資料（比較調査）の保持は運営者の判断（BACKLOG D-56）。
+              // 開示3点はカード下の CampaignCallout と、ツアー直後・最終CTAの TRIAL_NOTE が担う。
+              title="業界最安価の価格設定"
             />
             <div className="mt-[clamp(16px,3vw,40px)]">
               <PricingRecommendFirst signupHref={signupHref} />

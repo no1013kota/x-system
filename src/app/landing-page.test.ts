@@ -160,7 +160,7 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
      * プロモ帯（CampaignCallout）**になった。LPは page.tsx と帯の合成で描かれるので、
      * 検査も合成で見る（どちらかに載っていればよい。両方から消えたら落ちる）。
      */
-    // 選び方の1文（「カード登録が必要」の、CTAより上の唯一の置き場所）は共用部品 `PlanChoiceLead` にある（T-M8-424）。
+    // 見出し下の1文は運営者の指示（2026-09-04・D-56）で無くなり、開示はカード下の帯（CampaignCallout）に集約。
     const lp = PAGE + PLAN_PICKER + CAMPAIGN_CALLOUT;
     expect(lp, "カード登録が必要な事実が消えている").toMatch(/カード登録が必要/);
     expect(lp, "無料期間の長さが消えている").toMatch(/7日間(は|の)無料/);
@@ -186,7 +186,8 @@ describe("SC-01 LP: 法令・仕様上の固定文言", () => {
    * 行定義から消えると LP・/plans の両方から開示が消える。
    */
   it("BYOKのAPI実費の開示がプラン行定義に残る", () => {
-    expect(COMPARISON, "BYOKのAPI実費の開示が消えている").toMatch(/ご自身のAPI課金/);
+    // カードの行の括弧書き「（利用料はご自身のAPI課金）」は運営者の指示（2026-09-04）で削除。常時表示はキャップ要約だけ。
+    expect(PLAN_PICKER, "BYOKのAPI実費の開示が消えている").toMatch(/API利用料は別/);
     // FAQも折りたたまない（2026-08-20 運営者の指示。LPで最も読まれるべき内容を隠していた）。
     expect(FAQ, "FAQを折りたたみ（details）へ戻さない").not.toContain("<details");
   });

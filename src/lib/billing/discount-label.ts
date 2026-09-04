@@ -1,11 +1,14 @@
 import { PLANS, type PlanId } from "@/lib/plans";
 
+import { applyDiscount } from "./discounted-price";
+
 /**
  * 適用中の割引の表示（T-M8-279・運営者の指示 2026-08-23）。
  *
  * 解約の引き止めクーポン（半額・3か月）を受け取っても**画面のどこにも出ていなかった**。
  * 契約者がいちばん知りたいのは「次にいくら払うのか」なので、プラン名の下にそれを出す。
- * 数字は `PLANS` の月額から計算する（画面へ書き写さない）。
+ * 数字は `PLANS` の月額から計算する（画面へ書き写さない）。計算は /admin のMRRと同じ
+ * `applyDiscount`（契約者の画面と運営者の数字を食い違わせない・D-55(1)）。
  */
 
 export interface DiscountProfile {
@@ -22,9 +25,7 @@ export function discountLabel(profile: DiscountProfile): string | null {
   const amount = profile.discount_amount_off_jpy;
   if (!percent && !amount) return null;
 
-  const discounted = percent
-    ? Math.round(plan.monthlyPriceJpy * (1 - percent / 100))
-    : Math.max(0, plan.monthlyPriceJpy - (amount ?? 0));
+  const discounted = applyDiscount(plan.monthlyPriceJpy, percent, amount);
   const yen = (value: number) => new Intl.NumberFormat("ja-JP").format(value);
   const rate = percent ? `${percent}%割引` : `¥${yen(amount ?? 0)}割引`;
   const until = untilLabel(profile.discount_ends_at);

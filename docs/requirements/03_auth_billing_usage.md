@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.70 |
-| 更新日 | 2026-09-04 |
+| バージョン | v1.72 |
+| 更新日 | 2026-09-05 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -87,7 +87,7 @@ standardは利用者自身のX/AI契約へ原価が発生するため、アプ�
 - Checkout Sessionはsubscription mode、カード登録必須、quantity 1とし、session／subscriptionのmetadata（**user_id のみ。plan は持たない**——正はPriceで、metadataは変更後も古い値が残り運営者を誤解させる・T-M8-253）および`client_reference_id`へ本人user_idとplanを関連付ける。
 - `trial_used_at is null`の場合だけ`subscription_data.trial_period_days=7`を設定する。**あわせてCheckout作成時にStripeの契約一覧も見る**（T-M8-244）——`trial_start`を持つ契約が1本でもあればtrialを付けない。`profiles`だけを根拠にすると、webhookが届かなかった利用者は`trial_used_at`が永久にnullのままになり、解約→再契約で2回目の無料期間が取れる。trialing subscriptionの同期時に`trial_used_at`を初回値のまま保存し、解約・再契約でnullへ戻さない。
 - success URLは`{APP_BASE_URL}/api/stripe/return?source=checkout&session_id={CHECKOUT_SESSION_ID}`、cancel URLは`{APP_BASE_URL}/plans?checkout=canceled`としてサーバーで固定生成する。復帰同期後は`/plans?checkout=success&sync=...`へredirectする。任意の外部return URLは受け取らない。
-- プラン選択からCheckoutまでの**常時表示**は、カードの税込月額と**プロモ帯の2点**（カード登録が必要・期間中に解約すれば無料。「初回のみ」は 2026-08-26 に帯から外し、LPのFAQ・特商法ページ・利用規約が担う・T-M8-321）、および**CTAより上の1行**「はじめての方は7日間無料（カード登録が必要）です。」（LP・`/plans` で同文の共用部品 `PlanChoiceLead`。帯がカードの下になったため、最初のCTAより前に無料の条件を置く・T-M8-424・暫定 D-54）とする（T-M8-171の運営者決定・要件06 §1.1が正本）。自動更新・支払時期・解約方法・提供開始時期の法定事項は、フッタから常時到達できる**特定商取引法に基づく表記**と利用規約が担う。**同じことを2か所へ常時表示しない**（片方だけ古くなる。上の1行と帯の「カード登録が必要」の重複は、文が共用部品にある例外）。
+- プラン選択からCheckoutまでの**常時表示**は、カードの税込月額と**プロモ帯の2点**（カード登録が必要・期間中に解約すれば無料。「初回のみ」は 2026-08-26 に帯から外し、LPのFAQ・特商法ページ・利用規約が担う・T-M8-321）とする（T-M8-171の運営者決定・要件06 §1.1が正本。見出し下の1行「はじめての方は7日間無料（カード登録が必要）です。」は運営者の指示 2026-09-04・D-56 で削除。帯はカードの下にあり、条件は帯と特商法ページが担う）。自動更新・支払時期・解約方法・提供開始時期の法定事項は、フッタから常時到達できる**特定商取引法に基づく表記**と利用規約が担う。**同じことを2か所へ常時表示しない**（片方だけ古くなる）。
 
 ### 2.2 Customer Portal作成
 
@@ -120,7 +120,7 @@ Checkout／Customer Portalの全入口は、ボタン押下直後に遷移先ori
 - `trial_ends_at`
 - `trial_used_at`（trialingを初めて確認した時だけ設定し、以後保持）
 - `scheduled_plan`／`scheduled_plan_at`（期間末の下位変更の予約・§2.2・T-M8-260。schedule を読めなかった回は**上書きしない**）
-- `discount_percent_off`／`discount_amount_off_jpy`／`discount_ends_at`（適用中の割引・T-M8-279。`discounts`はexpandしないとIDだけ返り、割引率はクーポン側にあるので、割引が付いているときだけクーポンを1回引く）
+- `discount_percent_off`／`discount_amount_off_jpy`／`discount_ends_at`（適用中の割引・T-M8-279。`discounts`はexpandしないとIDだけ返り、割引率はクーポン側にあるので、割引が付いているときだけクーポンを1回引く。**/admin のMRRもこの列を掛ける**（要件04 KPI節・D-55(1)）。列の意味を変えるときはMRRへの波及も見る）
 - `subscription_event_created_at`
 
 画面表示のたびにStripe APIを呼ばない。Checkout／Portal Session作成成功時だけ、user ID・`source=checkout|portal`・開始時刻をAES-256-GCMで改ざん検知した30分TTLの`HttpOnly`／`SameSite=Lax` cookieへ保存する。`GET /api/stripe/return`は認証済みuserとcookieのuser／sourceを照合し、次の規則で一度だけ復帰同期してcookieを削除する。
@@ -479,3 +479,5 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.68 | 2026-09-01 | エキスパートの内部ガードを現行（AIクレジット500,000）へ訂正 |
 | v1.69 | 2026-09-04 | 登録時に流入元 `?src=` を `profiles.signup_source` へ記録（T-M8-423） |
 | v1.70 | 2026-09-04 | 申込前の常時表示を実装に合わせて訂正: プロモ帯は「カード登録が必要」「期間中解約無料」の2点（「初回のみ」は 2026-08-26 に帯から外した）＋CTAより上の1行「はじめての方は7日間無料（カード登録が必要）です。」（T-M8-424） |
+| v1.71 | 2026-09-04 | プラン選択の常時表示から見出し下の1行を外す（運営者の指示・D-56・T-M8-425） |
+| v1.72 | 2026-09-05 | `profiles.discount_*` の説明に /admin のMRRへの波及を追記（D-55(1)・要件04 KPI節を相互参照） |

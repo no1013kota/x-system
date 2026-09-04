@@ -78,7 +78,8 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
     label: "AI生成・X連携用の専用鍵（APIキー）",
     // BYOKかどうかはアプリ側上限の有無と一致する（plans.ts の定義参照）。
     // BYOKのAPI実費の開示はこの行が唯一の常時表示（T-M8-171で注意書きを畳んだため落とさない）。
-    cell: (plan) => (plan.usageLimits ? "不要" : "自分で用意（利用料はご自身のAPI課金）"),
+    // 「（利用料はご自身のAPI課金）」は運営者の指示（2026-09-04）で削除。BYOKのAPI実費はキャップ要約「API利用料は別」が言う。
+    cell: (plan) => (plan.usageLimits ? "不要" : "自分で用意"),
   },
   {
     label: "利用上限（契約期間ごと）",
@@ -87,7 +88,7 @@ export const PLAN_COMPARISON_ROWS: readonly PlanComparisonRow[] = [
       if (plan.concealsLimits) return "無制限";
       return plan.usageLimits
         ? `AIクレジット${yen(plan.usageLimits.aiCredits)}／通常投稿${plan.usageLimits.normalPosts}回／URL付き投稿${plan.usageLimits.urlPosts}回`
-        : "なし（ご自身のAPI課金の範囲）";
+        : "なし";
     },
   },
 ];
