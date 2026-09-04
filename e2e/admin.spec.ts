@@ -28,6 +28,31 @@ test("未ログインはログイン画面へ送られる", async ({ page }) => 
 
 test("公開ページを開くと閲覧が記録される（bot・先読み除外つき・T-M8-378)", async ({ page }) => {
   // 未ログインでLPを開くだけで page_views に行が増える（記録は応答後のafter()なのでpollで待つ）。
+  // 流入元（T-M8-423）: 登録済みの `?src=` は source 付きで数え、LPの /signup へのCTAに引き継がれる。
+  const slug = `e2e-src-${Date.now().toString(36)}`;
+  await query(`insert into traffic_sources (slug, label) values ($1, 'E2E') on conflict do nothing`, [slug]);
+  await page.goto(`/?src=${slug}`);
+  await expect(page.getByRole("banner").getByRole("link", { name: "無料で始める" })).toHaveAttribute(
+    "href",
+    `/signup?src=${slug}`,
+  );
+  await expect
+    .poll(
+      async () =>
+        Number(
+          (
+            await query<{ n: string }>(
+              `select coalesce(sum(views), 0)::text as n from page_views
+                where path = '/' and source = $1 and view_date = (now() at time zone 'Asia/Tokyo')::date`,
+              [slug],
+            )
+          )[0]?.n ?? 0,
+        ),
+      { timeout: 15_000, message: "流入元付きの閲覧が記録されること" },
+    )
+    .toBeGreaterThanOrEqual(1);
+  await query(`delete from page_views where source = $1`, [slug]);
+  await query(`delete from traffic_sources where slug = $1`, [slug]);
   await page.goto("/");
   await expect
     .poll(
@@ -101,6 +126,15 @@ test("運営者（SUPPORT_EMAILの利用者）にはKPIが表示される", asyn
   ).toBeVisible();
   const myRow = page.getByRole("row").filter({ hasText: operatorEmail! });
   await expect(myRow.first()).toBeVisible();
+
+  // 流入元の登録（T-M8-423）: フォームから登録すると追跡URLが行に出る。
+  const slug = `e2e-admin-${Date.now().toString(36)}`;
+  await page.getByLabel("表示名（例: Xのプロフィール）").fill("E2Eの流入元");
+  await page.getByLabel("URLに入る名前（小文字英数字・_・-）").fill(slug);
+  await page.getByRole("button", { name: "追跡URLを発行" }).click();
+  await expect(page.getByRole("status")).toContainText("登録しました");
+  await expect(page.getByLabel("E2Eの流入元の追跡URL")).toHaveValue(new RegExp(`/\\?src=${slug}$`));
+  await query(`delete from traffic_sources where slug = $1`, [slug]);
 
   // ページがスマホ幅で横に溢れない（管理画面も外で見ることがある）。
   await page.setViewportSize({ width: 390, height: 844 });

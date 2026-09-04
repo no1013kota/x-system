@@ -9,7 +9,6 @@ import { PLANS, type PlanDefinition } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import styles from "./pricing-recommend-first.module.css";
-import { TRIAL_NOTE } from "./tokens";
 
 /**
  * /new 料金「推奨先行」（T-M8-419・4周目 2026-09-04、5周目で継ぎ目と重複を整理）。共通部品
@@ -31,8 +30,8 @@ import { TRIAL_NOTE } from "./tokens";
  *   （この帯の直下のカード）」で帯とカードの対応を補う。
  * - キャップの要約（`capSummary`）は全幅で出す——初心者が1日あたりの数字だけ見て安い方へ流れ、
  *   後で API 実費で詰まないよう「なぜ安いか」を数字の隣に置く。
- * - 法令開示: 「カード登録が必要・期間中解約無料」（TRIAL_NOTE）は推奨キャップの中＝**最初のCTAより上**に
- *   全幅で出す。帯（CampaignCallout）はカードの下へ移すが、この開示の順序は崩さない。
+ * - 法令開示は帯に置かない（運営者の指示 2026-09-04）。カード下の CampaignCallout（カード登録・7日間無料・
+ *   期間中解約無料）と、ツアー直後・最終CTAの TRIAL_NOTE が担う。
  * - キャンペーン（半額）の文言は /new 側で一切持たない。バッジ・取り消し線・帯は共通部品が
  *   `RELEASE_CAMPAIGN.active` で出し分ける（消し忘れる場所を増やさない）。
  * - 共通部品の DOM（`plan-pricing-cards.tsx` の grid と `article[aria-labelledby=plan-card-<id>]`・
@@ -86,7 +85,8 @@ function PerDay({ plan, recommended }: { plan: PlanDefinition; recommended: bool
   );
 }
 
-export function PricingRecommendFirst() {
+/** @param signupHref `/signup`（流入元 `?src=` を引き継いだもの・T-M8-423）。 */
+export function PricingRecommendFirst({ signupHref = "/signup" }: { signupHref?: string } = {}) {
   return (
     <div className={styles.wrap}>
       {/* キャップ行: 列幅はカード行と同じ変数（CSS module）。両隣はSPでは出さない。 */}
@@ -101,8 +101,7 @@ export function PricingRecommendFirst() {
               {/* 「選ばれています」等の実績表現は使わない（販売実績が無い・景表法）。セクション内で最小の文字にしない（帯の役割そのもの）。 */}
               <p className="text-sm font-bold tracking-wide text-white">まずはこれ</p>
               <PerDay plan={plan} recommended />
-              {/* 開示は最初のCTA（直下のカード）より上に。 */}
-              <p className="mt-3 text-caption leading-[1.6] text-white/85">{TRIAL_NOTE}</p>
+              {/* 帯にあった法令注記（TRIAL_NOTE）は運営者の指示（2026-09-04）で削除。開示はカード下の CampaignCallout・ツアー直後と最終CTAの注記が担う。 */}
             </div>
           ) : (
             <div
@@ -125,7 +124,7 @@ export function PricingRecommendFirst() {
                 buttonVariants({ variant: planId === RECOMMENDED_PLAN ? "brand" : "subtle" }),
                 "h-11 w-full text-sm font-bold",
               )}
-              href="/signup"
+              href={signupHref}
             >
               7日間無料で試す
             </Link>

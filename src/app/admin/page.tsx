@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { Card, CardTitle, pageTitleClassName } from "@/components/ui/card";
@@ -7,10 +8,12 @@ import { APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 import { pooledQueryable } from "@/lib/db/pool";
 import { env } from "@/lib/env";
+import { trackingUrlFor } from "@/lib/ops/traffic-source";
 import {
   JPY_PER_USD,
   readAdminSummary,
   readEntryFunnel,
+  readTrafficSources,
   readFunnel,
   readHomeVisitorSeries,
   readKpiSeries,
@@ -19,7 +22,9 @@ import {
   readUsersOverview,
 } from "@/lib/ops/kpi";
 
+import { CopyButton } from "./copy-button";
 import { KpiChart } from "./kpi-chart";
+import { TrafficSourceForm } from "./traffic-source-form";
 
 /**
  * 運営ダッシュボード（T-M8-373・運営者の指示 2026-08-29）。
@@ -57,6 +62,13 @@ function yen(v: number): string {
   return `¥${Math.round(v).toLocaleString("ja-JP")}`;
 }
 
+async function requestBaseUrl(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
 function usd(v: number): string {
   return `$${v.toFixed(2)}`;
 }
@@ -91,6 +103,7 @@ export default async function AdminPage() {
     users,
     entryFunnel,
     homeVisitors,
+    trafficSources,
   ] = await Promise.all([
     readAdminSummary(db),
     readFunnel(db),
@@ -104,9 +117,13 @@ export default async function AdminPage() {
     readUsersOverview(db, 200),
     readEntryFunnel(db),
     readHomeVisitorSeries(db, SERIES_DAYS),
+    readTrafficSources(db),
   ]);
 
   const costSeriesJpy = costSeries.map((p) => ({ ...p, value: p.value * JPY_PER_USD }));
+  // 追跡URLの土台。本番は APP_BASE_URL、未設定の環境（ローカル・E2E）は要求ヘッダのホストから組む
+  // （undefined を new URL に渡すと画面ごと落ちる）。
+  const baseUrl = env.APP_BASE_URL ?? (await requestBaseUrl());
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8">
@@ -148,9 +165,10 @@ export default async function AdminPage() {
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
         <SummaryCard label="MRR（月間経常収益）" value={yen(summary.mrrJpy)} note={`課金中 ${summary.paying}人`} />
         <SummaryCard
-          label="今月の原価（AI・X API）"
+          label="今月の原価（AI・X API・運営負担）"
           value={yen(summary.monthCostJpy)}
-          note={usd(summary.monthCostUsd)}
+          // 利用者負担（BYOK）は原価ではないので合計に入れない。参考として額だけ添える（T-M8-422）。
+          note={`${usd(summary.monthCostUsd)}。利用者負担（BYOK）${usd(summary.monthUserPaidCostUsd)} は含まない`}
         />
         <SummaryCard
           label="今月の粗利（MRR−原価）"
@@ -158,7 +176,8 @@ export default async function AdminPage() {
           note={summary.grossProfitJpy < 0 ? "原価がMRRを上回っています" : undefined}
         />
         <SummaryCard label="トライアル中" value={`${summary.trialing}人`} />
-        <SummaryCard label="登録者（累計）" value={`${summary.usersTotal}人`} />
+        {/* auth.users の現在件数（退会で減る）。「累計」と書くと誤読する（T-M8-422）。 */}
+        <SummaryCard label="登録者（現在）" value={`${summary.usersTotal}人`} note="退会した人は含まない" />
       </div>
 
       {/* 入口ファネル（未ログイン含む・直近30日） */}
@@ -183,12 +202,16 @@ export default async function AdminPage() {
                     : Math.round((stage.uniqueVisitorDays / prev) * 100);
                 const rate = raw != null && raw > 100 ? null : raw;
                 return (
-                  <tr key={stage.path} className="border-t border-hairline">
+                  <tr key={stage.label} className="border-t border-hairline">
                     <td className="py-2 pr-3">
                       {stage.label}
-                      <span className="ml-1 text-xs text-ink-2">{stage.path}</span>
+                      {stage.path ? (
+                        <span className="ml-1 text-xs text-ink-2">{stage.path}</span>
+                      ) : null}
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono">{stage.views}</td>
+                    <td className="py-2 pr-3 text-right font-mono">
+                      {stage.views == null ? "—" : stage.views}
+                    </td>
                     <td className="py-2 pr-3 text-right font-mono">{stage.uniqueVisitorDays}</td>
                     <td className="py-2 text-ink-2">{rate == null ? "—" : `${rate}%`}</td>
                   </tr>
@@ -199,8 +222,68 @@ export default async function AdminPage() {
         </div>
         <p className="mt-2 text-xs text-ink-2">
           訪問者はCookieなし・日替わりハッシュで数えるため、ユニークは「日ごとのユニークの合計」です
-          （同じ人が別の日に来ると複数回数えます）。botとページ先読みは除外。
+          （同じ人が別の日に来ると複数回数えます）。bot・ページ先読み・画面遷移でないアクセス・運営者自身は除外。
+          「登録完了」は直近30日に登録した人数（退会した人は消える）。料金画面はログイン後にしか開けないため入口には含めません。
         </p>
+      </Card>
+
+      {/* 流入元（T-M8-423）。追跡URLを発行し、流入元ごとの入りを見る。 */}
+      <Card as="section" className="mt-6 px-5 py-4">
+        <CardTitle as="h2">流入元（直近30日・追跡URLで数える）</CardTitle>
+        <p className="mt-1 text-xs text-ink-2">
+          流入元を登録すると追跡URLが出ます。Xのプロフィール・投稿・noteなど、貼る場所ごとに分けて配ってください。
+          URLからホームを開いた人・新規登録画面まで進んだ人・登録した人・いま課金中の人を数えます
+          （Cookieを使わないため、ホームから登録へ直接進んだ人だけが「登録」に紐づきます）。
+        </p>
+        <TrafficSourceForm />
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-ink-2">
+                <th className="py-1 pr-3 font-normal">流入元</th>
+                <th className="py-1 pr-3 font-normal">追跡URL</th>
+                <th className="py-1 pr-3 font-normal text-right">ホーム表示</th>
+                <th className="py-1 pr-3 font-normal text-right">ホーム（ユニーク）</th>
+                <th className="py-1 pr-3 font-normal text-right">新規登録画面</th>
+                <th className="py-1 pr-3 font-normal text-right">登録</th>
+                <th className="py-1 font-normal text-right">課金中</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trafficSources.map((row) => {
+                const url = row.slug ? trackingUrlFor(baseUrl, row.slug) : null;
+                return (
+                  <tr key={row.slug || "(direct)"} className="border-t border-hairline">
+                    <td className="py-2 pr-3">
+                      {row.label}
+                      {row.slug ? <span className="ml-1 text-xs text-ink-2">{row.slug}</span> : null}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {url ? (
+                        <span className="flex items-center gap-2">
+                          <input
+                            aria-label={`${row.label}の追跡URL`}
+                            className="w-[260px] rounded-md border border-hairline bg-surface px-2 py-1 font-mono text-xs text-ink"
+                            readOnly
+                            value={url}
+                          />
+                          <CopyButton text={url} />
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ink-2">パラメータ無し・未登録の src</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">{row.homeViews}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{row.homeUniqueVisitorDays}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{row.signupUniqueVisitorDays}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{row.signups}</td>
+                    <td className="py-2 text-right font-mono">{row.paying}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       {/* ファネル */}
@@ -243,8 +326,8 @@ export default async function AdminPage() {
       <Card as="section" className="mt-6 space-y-8 px-5 py-4">
         <KpiChart points={mrrSeries} title="MRRの推移" unit="円" />
         <KpiChart points={homeVisitors} title="ホーム来訪者／日（ユニーク・今日を含む）" unit="人" />
-        <KpiChart points={usersSeries} title="登録者数（累計）の推移" unit="人" />
-        <KpiChart points={costSeriesJpy} title="原価／日（円換算）" unit="円" />
+        <KpiChart points={usersSeries} title="登録者数（現在・退会で減る）の推移" unit="人" />
+        <KpiChart points={costSeriesJpy} title="原価／日（円換算・運営負担）" unit="円" />
       </Card>
 
       {/* 原価内訳 */}
@@ -291,9 +374,9 @@ export default async function AdminPage() {
                   <th className="py-1 pr-3 font-normal">登録日</th>
                   <th className="py-1 pr-3 font-normal">プラン / 状態</th>
                   <th className="py-1 pr-3 font-normal">X連携</th>
-                  <th className="py-1 pr-3 font-normal text-right">生成</th>
+                  <th className="py-1 pr-3 font-normal text-right">生成（成功）</th>
                   <th className="py-1 pr-3 font-normal text-right">投稿</th>
-                  <th className="py-1 pr-3 font-normal text-right">今月の原価</th>
+                  <th className="py-1 pr-3 font-normal text-right">今月の原価（運営負担）</th>
                   <th className="py-1 font-normal">最終利用</th>
                 </tr>
               </thead>

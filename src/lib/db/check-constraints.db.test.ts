@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { parseTrafficSource } from "../ops/traffic-source";
+
 import { validatePatternInput } from "@/lib/post/post-patterns-store";
 import { createScheduleSlotSchema } from "@/lib/schedule-slots";
 import { usagePeriodKeyExpr } from "@/lib/usage/usage-period";
@@ -148,6 +150,31 @@ async function acceptedPatternNames(): Promise<string[]> {
 }
 
 const REGISTRY: Registered[] = [
+  // 流入元（T-M8-423）。値を作るのは parseTrafficSource（形式外は '' に寄せる）。
+  {
+    table: "traffic_sources",
+    constraint: "traffic_sources_slug_format",
+    column: "slug",
+    producer: "src/lib/ops/traffic-source.ts の parseTrafficSource（'' は登録側で弾く）",
+    accept: async () => ["x_bio", "note-2026", "a", "a".repeat(32)].map(parseTrafficSource),
+    reject: ["", "X_BIO", "a b", "日本語", "a".repeat(33)],
+  },
+  {
+    table: "page_views",
+    constraint: "page_views_source_format",
+    column: "source",
+    producer: "src/lib/ops/page-view-server.ts（parseTrafficSource 済みの値か ''）",
+    accept: async () => ["", "x_bio", "a".repeat(32)].map(parseTrafficSource),
+    reject: ["X", "a b", "a".repeat(33)],
+  },
+  {
+    table: "profiles",
+    constraint: "profiles_signup_source_format",
+    column: "signup_source",
+    producer: "src/app/actions/auth.ts の signUp（parseTrafficSource 済みの値か ''）",
+    accept: async () => ["", "x_bio", "a".repeat(32)].map(parseTrafficSource),
+    reject: ["X", "a b", "a".repeat(33)],
+  },
   {
     table: "usage_events",
     constraint: "usage_events_month_format",

@@ -148,7 +148,11 @@ function linkedProjectRef() {
 async function targetProjectRef() {
   if (!baseUrl) return null;
   try {
-    const res = await fetch(baseUrl, { signal: AbortSignal.timeout(10_000) });
+    // 監視として名乗る（入口ファネルの閲覧記録に数えられないため・T-M8-422）。
+    const res = await fetch(baseUrl, {
+      headers: { "user-agent": "exos-monitoring/1 (release)" },
+      signal: AbortSignal.timeout(10_000),
+    });
     return projectRefFromCsp(res.headers.get("content-security-policy"));
   } catch {
     return null;

@@ -618,6 +618,24 @@ function listHandles(rows: { handle: string }[]): string {
 const ACCOUNT_LIST_MAX = 5;
 
 /** 途中で止まったまま動いていない処理。 */
+/**
+ * ホーム（LP）の閲覧記録が止まっていないか（T-M8-422・原則1「正常な空と失敗の空を分ける」）。
+ * `recordPageView` の失敗は Sentry にしか出ないため、書き込みが壊れると /admin では「来訪が減った」に
+ * 見える。本番だけ、直近2日（JST・今日と昨日）の `/` の閲覧が0件なら知らせる。
+ */
+export function judgeHomePageViews(input: { views: number; expected: boolean }): Check {
+  const name = "ホームの閲覧記録";
+  if (!input.expected) return { name, level: "ok", detail: "ローカルでは判定しません" };
+  if (input.views > 0) return { name, level: "ok", detail: `直近2日で ${input.views} 回` };
+  return {
+    name,
+    level: "warn",
+    detail: "直近2日（今日と昨日）にホームの閲覧が1件も記録されていません",
+    nextAction:
+      "実際にブラウザでホームを開いてから /admin の入口ファネルを見てください。増えなければ記録が壊れています（Claudeに「ホームの閲覧記録を調べて」と伝えてください）",
+  };
+}
+
 export function judgeStuckJobs(input: { stuck: number }): Check {
   const name = "止まっている処理";
   if (input.stuck === 0) return { name, level: "ok", detail: "ありません" };
@@ -1042,6 +1060,17 @@ export async function collectDiagnostics(
       where status = 'running' and coalesce(locked_at, started_at) < now() - interval '30 minutes'`,
   );
   checks.push(judgeStuckJobs({ stuck: Number(stuck.rows[0]?.n ?? 0) }));
+
+  const homeViews = await db.query<{ n: string }>(
+    `select coalesce(sum(views), 0)::text as n from page_views
+      where path = '/' and view_date >= (now() at time zone 'Asia/Tokyo')::date - 1`,
+  );
+  checks.push(
+    judgeHomePageViews({
+      views: Number(homeViews.rows[0]?.n ?? 0),
+      expected: options.schedulerExpected,
+    }),
+  );
 
   const cost = await db.query<{ provider: string; usd: string }>(
     `select provider::text as provider, coalesce(sum(estimated_cost_usd), 0)::text as usd

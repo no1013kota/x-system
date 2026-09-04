@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.88 |
-| 更新日 | 2026-09-01 |
+| バージョン | v1.90 |
+| 更新日 | 2026-09-04 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -68,6 +68,7 @@
 | `scheduled_plan_at` | `timestamptz` | null | 予約が効く日時。`scheduled_plan` と必ず対（CHECK `profiles_scheduled_plan_pair`） |
 | `trial_ends_at` | `timestamptz` | null | trial終了 |
 | `trial_used_at` | `timestamptz` | null | 初回trial付与日時。再付与防止 |
+| `signup_source` | `text` | not null default `''`、CHECK `^[a-z0-9_-]{0,32}$` | 登録時の流入元 slug（`/signup?src=`・T-M8-423）。直接・形式外・未登録は `''`。登録直後に1回だけ書き、以後は変えない |
 | `terms_version` | `text` | null | 同意済み利用規約version |
 | `terms_accepted_at` | `timestamptz` | null | 利用規約同意日時 |
 | `privacy_version` | `text` | null | 確認済みprivacy policy version |
@@ -460,7 +461,7 @@ RLS: select/writeともservice roleのみ。**保持は`event_created_at`から9
 
 ### 3.17 `external_api_usage_events`
 
-プレミアム原価と外部API利用量をユーザー別・処理別に集計する台帳。利用枠を増減する`usage_events`とは責務を分ける。
+プレミアム原価と外部API利用量をユーザー別・処理別に集計する台帳。利用枠を増減する`usage_events`とは責務を分ける。BYOK（利用者のキー）の呼び出しも記録するが `payer='user'` で区別し、原価（運営負担）の集計には入れない（T-M8-422）。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -480,10 +481,11 @@ RLS: select/writeともservice roleのみ。**保持は`event_created_at`から9
 | `estimated_cost_usd` | `numeric(12,6)` | null | 推定原価。算出不能はnull |
 | `idempotency_key` | `text` | not null unique | job callまたはX操作単位の重複防止 |
 | `occurred_at` | `timestamptz` | not null default now() | 外部呼び出し時刻 |
+| `payer` | `text` | not null default `'operator'` | 誰の負担か（T-M8-422）。`operator`＝運営キー／運営のXアプリ、`user`＝利用者のAPIキー（BYOK）／利用者自身のXアプリ。書き込み時に記録時点の `profiles.plan`（運営キー同梱なら operator・無ければ operator）／`x_accounts.auth_type`（managed なら operator）から決める。`/admin` の「原価」は operator だけを合計する |
 
-Constraints: `operation`は上記列挙値、`status in ('succeeded','failed')`、`quantity >= 0`（Xは応答resource数課金のため、0件応答の読取は`quantity=0`・$0で記録する。以前の`> 0`では最低1件分を過大計上していた）、HTTP statusは100〜599、金額は0以上。X media uploadは件数を運用logへ残してよいが、本台帳の原価・サービス内利用枠には含めない。
+Constraints: `operation`は上記列挙値、`status in ('succeeded','failed')`、`payer in ('operator','user')`、`quantity >= 0`（Xは応答resource数課金のため、0件応答の読取は`quantity=0`・$0で記録する。以前の`> 0`では最低1件分を過大計上していた）、HTTP statusは100〜599、金額は0以上。X media uploadは件数を運用logへ残してよいが、本台帳の原価・サービス内利用枠には含めない。
 
-Indexes: (`user_id`, `occurred_at desc`), (`provider`, `operation`, `occurred_at desc`), `job_id`
+Indexes: (`user_id`, `occurred_at desc`), (`provider`, `operation`, `occurred_at desc`), `job_id`, (`payer`, `occurred_at desc`)
 
 RLS: select/writeともservice roleのみ。投稿本文、prompt、APIキー、token、外部レスポンス本文は保存しない。明細は`occurred_at`から**400日**保持し、期限後にcleanupする（T-M8-373・運営者の決定 2026-08-29「明細も400日残す」。誰が・どの機能で・いくら使ったかの唯一の記録で、消えるとプラン別採算を遡れない。/admin の原価内訳もここを読む）。
 
@@ -766,7 +768,7 @@ RLS: 有効。`authenticated` へは**grantしない**（T-M8-252の方針。ア
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `metric_date` | `date` | PK（複合） | JSTの日付。状態指標は「前日の終わり」として前日の日付で書く |
-| `metric` | `text` | PK（複合） | 指標名（`signups`／`email_confirmed`／`x_connected_users`／`trials_started`／`usage_consumed`／`cost_usd`／`cancellations`／`users_total`／`users_paying`／`users_trialing`／`mrr_jpy`／`x_accounts_active`） |
+| `metric` | `text` | PK（複合） | 指標名（`signups`／`email_confirmed`／`x_connected_users`／`trials_started`／`usage_consumed`／`cost_usd`〔運営負担 `payer='operator'` のみ〕／`cancellations`／`users_total`／`users_paying`／`users_trialing`／`mrr_jpy`／`x_accounts_active`／`page_views`／`page_uniques`〔dimension=path・T-M8-378〕）。`usage_consumed` は `reason='consume' and delta > 0` の**行数**（生成の精算は delta がクレジット量・T-M8-422） |
 | `dimension` | `text` | PK（複合）、not null default `''` | 内訳キー（provider名・プラン名・operation名）。内訳の無い指標は空文字 |
 | `value` | `numeric(14,4)` | not null | 件数・金額（`cost_usd` はUSD。円換算は読む側が1ドル=160円で行う） |
 | `updated_at` | `timestamptz` | not null default now() | |
@@ -775,16 +777,29 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 ### 3.32 `page_views`
 
-**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
+**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。数えるのは**画面遷移**（`sec-fetch-dest: document`。ヘッダを送らない古いブラウザは数える側に倒す）だけで、bot・先読み・運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）・監視として名乗るスクリプト（UA `exos-monitoring/…`。release／doctor の疎通確認）は数えない（T-M8-422）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `view_date` | `date` | PK（複合） | JSTの日付 |
 | `path` | `text` | PK（複合） | `/`・`/signup`・`/plans` のいずれか |
 | `visitor_hash` | `text` | PK（複合） | HMAC-SHA256(日付\|IP\|UA) の先頭32桁。生のIP・UAは持たない |
+| `source` | `text` | PK（複合）、not null default `''`、CHECK `^[a-z0-9_-]{0,32}$` | 流入元 slug（`?src=`・T-M8-423）。`traffic_sources` に登録済みのものだけ入り、それ以外は `''`（直接・不明） |
 | `views` | `integer` | not null default 1 | 同一訪問者の同日再訪で加算 |
 
 RLS: 有効。運営だけが見る表で、`authenticated` へは grant しない（T-M8-252）。生記録の保持は40日（日次集計は `kpi_daily` が400日持つ・要件04 §14）。
+
+### 3.33 `traffic_sources`
+
+**流入元の台帳**（T-M8-423・運営者の依頼 2026-09-04）。運営者が `/admin` で登録すると追跡URL `https://exosai.net/?src=<slug>` が発行され、`page_views.source`・`profiles.signup_source` の集計キーになる。slug は配ったURLに入るため後から変えない。
+
+| カラム | 型 | 制約/既定値 | 説明 |
+|---|---|---|---|
+| `slug` | `text` | PK、CHECK `^[a-z0-9_-]{1,32}$` | URLの `src` に入る値（小文字英数字・`_`・`-`） |
+| `label` | `text` | not null、CHECK 1〜60文字 | 運営者向けの表示名（例: Xのプロフィール） |
+| `created_at` | `timestamptz` | not null default now() | |
+
+RLS: 有効。運営だけが書く表で、`authenticated` へは grant しない（書き込みは `/admin` の Server Action が service role で行う）。
 
 ## 4. JSONスキーマ
 
@@ -1098,3 +1113,5 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.86 | 2026-09-01 | follower_snapshots の書き込み元を毎時cronだけに（「分析を開始」からの書き込みを廃止・T-M8-403。スキーマ変更なし） |
 | v1.87 | 2026-09-01 | notification_config.news に email（メール通知・既定OFF）を追加（T-M8-407・スキーマ変更なし） |
 | v1.88 | 2026-09-01 | ai_credits_used の単位を現行（1クレジット=0.01円）へ訂正（T-M8-325の反映漏れ） |
+| v1.89 | 2026-09-04 | §3.17 `payer` 列（運営負担／利用者負担・CHECK・index・記録時の判定）を追加。§3.31 に `page_views`／`page_uniques` と `usage_consumed`・`cost_usd` の数え方、§3.32 に画面遷移だけ数える除外規則を追記（T-M8-422） |
+| v1.90 | 2026-09-04 | 流入元（T-M8-423）: §3.33 `traffic_sources` を追加、§3.32 `page_views.source`（PKへ追加）、§3.1 `profiles.signup_source` |

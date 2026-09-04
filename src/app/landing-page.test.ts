@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { HERO_STEP_LABELS } from "@/components/lp-new/hero-diagram";
+import { LOOP_NODE_LABELS } from "@/components/lp-new/loop-board";
+import { TOUR_STOP_TITLES } from "@/components/lp-new/tour";
 import { OPERATOR_X_URL } from "@/lib/app-config";
 import { RELEASE_CAMPAIGN } from "@/lib/plans";
 
@@ -102,9 +105,12 @@ const FAQ_ANSWERS = (() => {
 
 describe("SC-01 LP: 導線", () => {
   it("会員登録・ログイン・ページ内アンカーへの導線がある", () => {
-    expect(PAGE).toContain('href="/signup"');
+    // /signup へのCTAは流入元 `?src=` を引き継ぐため `signupHref`（T-M8-423）。直書きが戻ると引き継ぎが切れる。
+    expect(PAGE).toContain('withTrafficSource("/signup", source)');
+    expect(PAGE).toContain("href={signupHref}");
+    expect(PAGE).not.toContain('href="/signup"');
     expect(PAGE).toContain('href="/login"');
-    expect(PRICING).toContain('href="/signup"'); // プランカードのCTA
+    expect(PRICING).toContain("href={signupHref}"); // プランカードのCTA
     for (const anchor of ["#loop", "#tour", "#pricing", "#faq"]) {
       expect(PAGE, `ヘッダーnavに ${anchor} がある`).toContain(`"${anchor}"`);
       expect(PAGE, `セクションに id=${anchor.slice(1)} がある`).toContain(
@@ -343,5 +349,39 @@ describe("SC-01 LP: デザイン制約", () => {
       （利用規約第7条・特定商取引法に基づく表記・設定画面）はBACKLOGに記録した。
       戻すときはここへ `toMatch` を足し直す。
     */
+  });
+});
+
+/**
+ * 運営者が指定した文言（2026-09-04・T-M8-421）。**画面の文言は他のテストでは守られない**（CLAUDE.md
+ * 落とし穴）ので、指定された語をそのまま固定する。H1 は上の「ヒーローの見出し」が担う。
+ */
+describe("SC-01 LP: 運営者指定の文言（T-M8-421）", () => {
+  it("見出し・CTAの文言が指定どおり", () => {
+    for (const phrase of [
+      "投稿から改善まで",
+      "AIモデルも自由に決定",
+      "7日間の解放を",
+      "お試しください",
+      "複数のプロンプトを管理",
+    ]) {
+      expect(NEW_LP_SOURCES, `「${phrase}」が消えている`).toContain(phrase);
+    }
+    // 図面板の見出し「手を動かす時間が、3h → 5m に」は句点なし（運営者の指示）。
+    expect(PAGE).toMatch(/\{LOOP_TOTALS\.after\} に\s*<\/span>/);
+    // 削除した文言が戻っていない。
+    for (const removed of ["繰り返す", "実際の管理画面です", "棒の長さ＝", "7日間、実物で"]) {
+      expect(NEW_LP_SOURCES.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ""), `「${removed}」が戻っている`).not.toContain(removed);
+    }
+  });
+
+  it("工程名はヒーローの帯・図面板のリング図・画面ツアーで同じ語（「改善」）", () => {
+    // 3つの配列に別々に書かれているので、片方だけ「反映」に戻ると記法がずれる。
+    expect(HERO_STEP_LABELS).toEqual(LOOP_NODE_LABELS);
+    for (const title of TOUR_STOP_TITLES) {
+      expect(LOOP_NODE_LABELS, `ツアーの停止「${title}」がリング図に無い`).toContain(title);
+    }
+    expect(LOOP_NODE_LABELS).toContain("改善");
+    expect(LOOP_NODE_LABELS).not.toContain("反映");
   });
 });

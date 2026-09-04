@@ -6,19 +6,20 @@ import { cn } from "@/lib/utils";
 import { THEME_LABELS } from "./facts";
 import {
   ANCHOR,
+  BODY,
   CHIP_CLASS,
   CHIP_LABEL,
   H2,
-  HEADING,
+  H3,
   SHOT_SHADOW,
-  SUB,
   type Who,
 } from "./tokens";
 
 /**
- * 「実際の画面で、工程を追う」（T-M8-419。4周目・2026-09-04 に構造を変更、5周目で CTA を右列末尾へ）。
+ * 「投稿から改善まで」（T-M8-419。4周目・2026-09-04 に構造を変更、5周目で CTA を右列末尾へ。
+ * 見出しは運営者の指示 2026-09-04・T-M8-421 で「実際の画面で、工程を追う」から変更、サブ文は削除）。
  *
- * FAQ と同型の2カラム。左列＝h2＋サブ＋停止の索引を sticky（top 88px＝ヘッダー64＋24。
+ * FAQ と同型の2カラム。左列＝h2＋停止の索引を sticky（top 88px＝ヘッダー64＋24。
  * FAQ の h2 と同じ値なのでページ内で見出しが止まる高さが揃う）。右列＝停止4件を静的に縦積みし、
  * 最後に CTA（`cta`・page.tsx の CtaRow）を置く。画像には sticky を付けない。動きは自然なスクロールだけ。
  *
@@ -36,9 +37,8 @@ import {
  * sticky の条件（FAQ と同じ罠）: 左列は `self-start` 必須（既定の stretch だと grid セルいっぱいに
  * 伸びて動く余地が無い）。grid・section・祖先に overflow-hidden／clip を付けない（sticky が黙って死ぬ）。
  * `overflow-y-auto` で吸収しない（overflow は sticky を殺す）。
- * ビューポート高 560px未満では sticky を外して普通に流す（左列は実測 約350〜370px〔サブ文が2行に折れる
- * 1024幅が最大〕＋top 88px。sticky は自身のはみ出しを見せないので、ズームや最小フォント設定で
- * 左列が伸びても切れない余裕を取る）。
+ * ビューポート高 560px未満では sticky を外して普通に流す（左列は実測 約300px〔サブ文の削除後〕＋top 88px。
+ * sticky は自身のはみ出しを見せないので、ズームや最小フォント設定で左列が伸びても切れない余裕を取る）。
  * 880px未満は1カラム縦積み（sticky なし）。全画面のスクショは幅350pxでは判読できないため、
  * 元画像をそのまま開く「拡大して見る」リンクを添える（JS不要）。
  */
@@ -73,8 +73,9 @@ const HOME_STOP: Omit<Stop, "no"> = {
 };
 
 /**
- * 停止の見出しは図面板のリング図の工程名に揃える（集める・作る・投稿・反映。「出す」「育てる」は
- * リングに無く対応づけられなかった——6周目で最後の停止も「育てる」→「反映」へ）。
+ * 停止の見出しは図面板のリング図の工程名に揃える（集める・作る・投稿・改善。「出す」「育てる」は
+ * リングに無く対応づけられなかった——6周目で「育てる」→「反映」、T-M8-421 で「反映」→「改善」へ。
+ * リング図の7・ヒーローの帯も同時に「改善」）。
  */
 const STOP_SOURCE: Omit<Stop, "no">[] = [
   {
@@ -87,11 +88,12 @@ const STOP_SOURCE: Omit<Stop, "no">[] = [
   },
   {
     title: "作る",
-    who: ["auto"],
-    body: "型を選んで60〜90秒。プロンプトは画面に見えて、そのまま書き換えられる。",
+    // 写真は投稿作成画面（手で作る側）なので「あなた」も付ける（「型を選んで」は読者の操作・2周目）。
+    who: ["auto", "you"],
+    body: "型を選ぶだけで60〜90秒（予約した時刻には自動で）。プロンプトは画面に見えて、そのまま書き換えられる。",
     // 画像生成の提供元はアプリ画面と同じ表示名（OpenAI／Gemini）。「ChatGPT」と書かない。
-    // BYOK の開示は「何のキーか」まで書く（「キー登録時」だけでは初心者に読めない）。
-    note: `画像も各ポストに1枚（OpenAI／Gemini）。${PLANS.standard.displayName}は自分のAPIキーで使います。`,
+    // BYOK の開示は主語（プラン全体）と「何のキーか」まで書く（「画像だけBYOK」に読めた・2周目）。
+    note: `画像も各ポストに1枚（OpenAI／Gemini）。${PLANS.standard.displayName}は、生成をご自身のAPIキー（AIの利用鍵）で行います。`,
     src: "/lp-shots/compose.jpg",
     alt: "投稿作成画面（実際の管理画面）",
   },
@@ -109,11 +111,15 @@ const STOP_SOURCE: Omit<Stop, "no">[] = [
   },
   ...(HOME_SHOT_READY ? [HOME_STOP] : []),
   {
-    title: "反映",
-    // リング図の「反映」（7）と同じ語にする（反映した改善案の行き先がこの画面）。
-    who: ["you"],
+    title: "改善",
+    // リング図の「改善」（7）と同じ語にする（改善案を取り入れる先がこの画面）。リングの 6→7 と同じく
+    // 「ボタン1つ」→「あなた」の2チップ（この4停止に分析の画面は無いので、押す→写す→効くを本文で言う）。
+    who: ["ai", "you"],
     // 「アカウント.md」はページ内でここが初出（「複数のプロンプトを管理」より前）なので、一言の補足を付ける。
-    body: "反映した改善案は、アカウント.md（あなたの発信方針のメモ）と型ごとのプロンプトに残っていく。",
+    // 改善案は表示専用（全文＋コピー）で、写すかは利用者が決める（PRD K-2）。「自動で賢くなる」とは書かない。
+    body: "「分析を開始」を押すと（1日1回）、AIが改善案を出す。気に入った案だけを、アカウント.md（あなたの発信方針のメモ）と型ごとのプロンプトに写す。次の投稿から効いてくる。",
+    // 写真はプロンプト編集画面で、「分析を開始」のボタンは写っていない（探して見つからない・2周目）。
+    note: "画面は、改善案を写す先（プロンプト編集）。",
     src: "/lp-shots/prompts.jpg",
     alt: "プロンプト編集画面（実際の管理画面）",
   },
@@ -123,6 +129,9 @@ const STOPS: Stop[] = STOP_SOURCE.map((stop, index) => ({
   ...stop,
   no: String(index + 1).padStart(2, "0"),
 }));
+
+/** 停止名（リング図の工程名の部分集合であることを `landing-page.test.ts` が固定）。 */
+export const TOUR_STOP_TITLES: readonly string[] = STOPS.map((stop) => stop.title);
 
 function stopId(stop: Stop): string {
   return `tour-${stop.no}`;
@@ -143,10 +152,9 @@ export function Tour({ cta }: { cta?: React.ReactNode }) {
       {/* 左列: self-start が必須（stretch だと sticky が動かない）。低い画面では sticky を外す。 */}
       <div className="self-start min-[880px]:top-[88px] min-[880px]:[@media(min-height:560px)]:sticky">
         <h2 className={H2}>
-          <span className="inline-block">実際の画面で、</span>
-          <span className="inline-block">工程を追う</span>
+          <span className="inline-block">投稿から</span>
+          <span className="inline-block">改善まで</span>
         </h2>
-        <p className={SUB}>実際の管理画面です（一部を切り出し）。</p>
         {/* 停止の索引（JS不要のアンカー）。現在地の追随はしない（右列の番号が常に見えている）。 */}
         <ol className="mt-6 flex flex-wrap gap-2 min-[880px]:mt-8 min-[880px]:flex-col min-[880px]:gap-0">
           {STOPS.map((stop) => (
@@ -155,7 +163,7 @@ export function Tour({ cta }: { cta?: React.ReactNode }) {
               key={stop.no}
             >
               <a className={INDEX_LINK} href={`#${stopId(stop)}`}>
-                <span className="text-brand tabular-nums">{stop.no}</span>
+                <span className="text-caption font-bold tracking-[0.08em] text-brand tabular-nums">{stop.no}</span>
                 {stop.title}
                 <span className="ml-auto hidden text-ink-3 transition-colors group-hover/index:text-brand min-[880px]:inline-flex">
                   <Icon name="chevron_right" size={16} />
@@ -183,12 +191,7 @@ export function Tour({ cta }: { cta?: React.ReactNode }) {
               <span className="text-caption font-bold tracking-[0.08em] text-brand tabular-nums">
                 {stop.no}
               </span>
-              <h3
-                className={cn(
-                  "text-[24px] leading-[1.3] transition-colors group-target/stop:text-brand",
-                  HEADING,
-                )}
-              >
+              <h3 className={cn(H3, "transition-colors group-target/stop:text-brand")}>
                 {stop.title}
               </h3>
               <span className="flex items-center gap-1">
@@ -199,9 +202,7 @@ export function Tour({ cta }: { cta?: React.ReactNode }) {
                 ))}
               </span>
             </div>
-            <p className="mt-3 max-w-[560px] text-sm leading-[1.8] text-ink-2">
-              {stop.body}
-            </p>
+            <p className={cn("mt-3 max-w-[560px] text-ink-2", BODY)}>{stop.body}</p>
             {stop.note ? (
               <p className="mt-2 max-w-[560px] text-caption text-ink-3">{stop.note}</p>
             ) : null}

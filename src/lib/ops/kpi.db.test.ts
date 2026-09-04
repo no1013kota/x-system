@@ -17,6 +17,7 @@ import {
   readRecentCancellations,
   readUsersOverview,
   runDailyKpiSnapshot,
+  readTrafficSources,
 } from "./kpi";
 
 /**
@@ -232,7 +233,7 @@ describe("KPIスナップショット（db）", () => {
       for (const h of [h1, h1, h2]) {
         await db.query(
           `insert into page_views (view_date, path, visitor_hash) values ($1, '/', $2)
-           on conflict (view_date, path, visitor_hash) do update set views = page_views.views + 1`,
+           on conflict (view_date, path, visitor_hash, source) do update set views = page_views.views + 1`,
           [day, h],
         );
       }
@@ -249,7 +250,10 @@ describe("KPIスナップショット（db）", () => {
       expect(Number(uniques?.value ?? 0)).toBeGreaterThanOrEqual(2);
 
       const entry = await readEntryFunnel(db);
-      expect(entry.map((s) => s.path)).toEqual(["/", "/signup", "/plans"]);
+      // 3段目は「登録完了」（/plans はログイン後にしか開けないので入口から外した・T-M8-422）。
+      expect(entry.map((s) => s.label)).toEqual(["ホーム（LP）", "新規登録画面", "登録完了"]);
+      expect(entry[2].kind).toBe("event");
+      expect(entry[2].views).toBeNull();
       expect(entry[0].views).toBeGreaterThanOrEqual(3);
       expect(entry[0].uniqueVisitorDays).toBeGreaterThanOrEqual(2);
 
@@ -278,6 +282,78 @@ describe("KPIスナップショット（db）", () => {
       }
     } finally {
       await db.query(`delete from page_views where visitor_hash in ($1, $2)`, [h1, h2]);
+    }
+  });
+
+  /**
+   * 「生成」は generation_jobs の成功件数で数える（T-M8-422）。以前は usage_events の
+   * `delta = 1` を数えていたが、生成の精算は delta がクレジット量（例 2,720）で1件も一致せず、
+   * BYOK は精算行そのものが無い——利用者一覧の「生成」が全員0だった。
+   */
+  it("生成は generation_jobs の成功件数（精算行の delta やプランに依らない）", async () => {
+    if (!available) return;
+    const uid = await makeUser(1);
+    await withTransaction(async (c: PoolClient) => {
+      await c.query(
+        `insert into profiles (id, email) values ($1, $2) on conflict (id) do nothing`,
+        [uid, `kpi-${uid}@example.com`],
+      );
+      const xid = (
+        await c.query<{ id: string }>(
+          `insert into x_accounts (user_id, x_user_id, handle, name, auth_type, status)
+           values ($1, $2, 'h', 'n', 'byok', 'active') returning id`,
+          [uid, `x-${uid.slice(0, 8)}`],
+        )
+      ).rows[0].id;
+      // post_generation は pattern_spec が必須（generation_jobs_pattern_spec_required）。中身は問わない。
+      await c.query(
+        `insert into generation_jobs (x_account_id, kind, trigger, status, pattern_spec)
+         values ($1, 'post_generation', 'manual', 'succeeded', '{}'::jsonb),
+                ($1, 'image_generation', 'manual', 'succeeded', null),
+                ($1, 'post_generation', 'manual', 'failed', '{}'::jsonb)`,
+        [xid],
+      );
+    });
+    const mine = (await readUsersOverview(db, 500)).find((r) => r.email === `kpi-${uid}@example.com`);
+    expect(mine?.generations, "成功した生成ジョブだけを数える").toBe(2);
+    const funnel = await readFunnel(db);
+    expect(funnel.find((s) => s.label === "初回生成")?.count ?? 0).toBeGreaterThanOrEqual(1);
+  });
+
+  it("流入元ごとに、ホーム表示・新規登録画面・登録・課金中を数える（T-M8-423）", async () => {
+    if (!available) return;
+    const slug = `t423-${randomUUID().slice(0, 8)}`;
+    const uid = await makeUser(1);
+    const today = jstDateOf(new Date().toISOString());
+    const h = `t423-${randomUUID().slice(0, 8)}`;
+    try {
+      await db.query(`insert into traffic_sources (slug, label) values ($1, 'テスト流入元')`, [slug]);
+      await db.query(
+        `insert into page_views (view_date, path, visitor_hash, source)
+         values ($1, '/', $2, $3), ($1, '/', $2 || '-b', $3), ($1, '/signup', $2, $3)
+         on conflict do nothing`,
+        [today, h, slug],
+      );
+      await db.query(`update page_views set views = 3 where visitor_hash = $1 and path = '/'`, [h]);
+      await db.query(
+        `insert into profiles (id, email, signup_source) values ($1, $2, $3)
+         on conflict (id) do update set signup_source = excluded.signup_source`,
+        [uid, `kpi-${uid}@example.com`, slug],
+      );
+      const rows = await readTrafficSources(db);
+      const mine = rows.find((r) => r.slug === slug);
+      expect(mine?.label).toBe("テスト流入元");
+      expect(mine?.homeViews).toBe(4); // 3 + 1
+      expect(mine?.homeUniqueVisitorDays).toBe(2);
+      expect(mine?.signupUniqueVisitorDays).toBe(1);
+      expect(mine?.signups).toBe(1);
+      expect(mine?.paying).toBe(0);
+      // 直接・不明の行は最後に1つだけ。
+      expect(rows[rows.length - 1].slug).toBe("");
+      expect(rows.filter((r) => r.slug === "")).toHaveLength(1);
+    } finally {
+      await db.query(`delete from page_views where source = $1`, [slug]);
+      await db.query(`delete from traffic_sources where slug = $1`, [slug]);
     }
   });
 

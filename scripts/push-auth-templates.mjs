@@ -75,7 +75,11 @@ const baseUrl = process.argv.includes("--base")
   ? process.argv[process.argv.indexOf("--base") + 1]
   : TARGETS[target];
 
-const csp = await fetch(baseUrl, { redirect: "manual", signal: AbortSignal.timeout(20_000) })
+const csp = await fetch(baseUrl, {
+  headers: { "user-agent": "exos-monitoring/1 (auth-templates)" },
+  redirect: "manual",
+  signal: AbortSignal.timeout(20_000),
+})
   .then((r) => r.headers.get("content-security-policy"))
   .catch(() => null);
 const projectRef = projectRefFromCsp(csp);

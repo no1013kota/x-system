@@ -45,7 +45,8 @@ function ResultMessage({ state }: { state: AuthFormState }) {
   );
 }
 
-export function SignUpForm() {
+/** @param signupSource 流入元 slug（ なら直接・不明・T-M8-423）。hidden で action へ渡す。 */
+export function SignUpForm({ signupSource = "" }: { signupSource?: string } = {}) {
   const [state, formAction, isPending] = useActionState(
     signUp,
     INITIAL_AUTH_FORM_STATE,
@@ -61,6 +62,7 @@ export function SignUpForm() {
   return (
     <form action={formAction} className="space-y-5" noValidate>
       <input name="terms_version" type="hidden" value={CURRENT_TERMS_VERSION} />
+      <input name="signup_source" type="hidden" value={signupSource} />
       <input
         name="privacy_version"
         type="hidden"

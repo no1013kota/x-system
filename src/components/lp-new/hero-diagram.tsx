@@ -9,14 +9,14 @@ import { CHIP_CLASS, CHIP_LABEL, GLASS, HERO_BOARD, type Who } from "./tokens";
  * ヒーロー右の「分解ダイアグラム」（T-M8-419）。
  *
  * 生スクショを丸ごと置かず、実画面の3片（型のカード・設定済みの枠・ニュースカード）を
- * ガラス板に載せ、左上の意味ラベル（作る／出す／集める）で何の画面かを一目で示す。
+ * ガラス板に載せ、左上の意味ラベル（作る／投稿／集める）で何の画面かを一目で示す。
  * 素材は `scripts/lp-new-crops.mjs` が public/lp-shots から切り出したもの（切り出しのみ・加工なし）。
  * 960px以上では板を重ねて右端を画面外へ約5%はみ出させる（section 側の overflow-x-clip で
  * body の横あふれは出ない）。960px未満は板A・板Bを出さない——幅350pxに縮むと文字が数pxの
- * 滲みになり「壊れたサムネイル」に見えるため。読める板C（ニュースカード）だけを縦積みで出す。
+ * 滲みになり「壊れたサムネイル」に見えるため。読める板C（ニュースカード）だけを縦積みで投稿。
  */
 
-/** 7工程（HeroSteps で描く）。分析だけ「AI・押すだけ」、確認と反映が「あなた」。 */
+/** 7工程（HeroSteps で描く）。分析だけ「ボタン1つ」、確認と改善が「あなた」。語は図面板のリング図・画面ツアーと同じ（テストで固定）。 */
 const STEPS: { icon: IconName; label: string; who: Who }[] = [
   { icon: "newspaper", label: "集める", who: "auto" },
   { icon: "edit_square", label: "作る", who: "auto" },
@@ -24,11 +24,11 @@ const STEPS: { icon: IconName; label: string; who: Who }[] = [
   { icon: "output", label: "投稿", who: "auto" },
   { icon: "monitoring", label: "記録", who: "auto" },
   { icon: "tune", label: "分析", who: "ai" },
-  { icon: "check_circle", label: "反映", who: "you" },
+  { icon: "check_circle", label: "改善", who: "you" },
 ];
 
 const BOARD = `${HERO_BOARD} relative p-3`;
-/** 板の見出し行: 左に意味ラベル（作る／出す／集める）。画像の上に重ねず、行として持つ（実画面の文字を隠さない）。 */
+/** 板の見出し行: 左に意味ラベル（作る／投稿／集める）。画像の上に重ねず、行として持つ（実画面の文字を隠さない）。 */
 const BOARD_HEAD = "mb-2 flex h-6 items-center gap-3";
 const BOARD_TAG =
   "inline-flex h-6 shrink-0 items-center rounded-pill bg-brand-subtle px-2.5 text-caption font-medium text-brand";
@@ -58,7 +58,7 @@ export function HeroDiagram() {
         />
       </div>
 
-      {/* 板B: 出す（設定済みの枠2行・次回の実行時刻）。PCのみ。 */}
+      {/* 板B: 投稿（設定済みの枠2行・次回の実行時刻）。PCのみ。 */}
       <div
         className={cn(
           BOARD,
@@ -66,7 +66,7 @@ export function HeroDiagram() {
         )}
       >
         <div className={BOARD_HEAD}>
-          <span className={BOARD_TAG}>出す</span>
+          <span className={BOARD_TAG}>投稿</span>
         </div>
         <Image
           alt="スケジュール画面の設定済みの枠（自動投稿・曜日と時刻・次回の実行時刻）"
@@ -78,7 +78,7 @@ export function HeroDiagram() {
         />
       </div>
 
-      {/* 板C: 集める（ニュースカード1枚）。全幅で出す唯一の板。960px未満は元画像の幅（594px）を超えて拡大しない。 */}
+      {/* 板C: 集める（ニュースカード1枚）。全幅で投稿唯一の板。960px未満は元画像の幅（594px）を超えて拡大しない。 */}
       <div
         className={cn(
           BOARD,
@@ -107,9 +107,13 @@ export function HeroDiagram() {
 /**
  * ヒーロー直下の工程帯: 7工程を順序つきリスト（ol）で1行に。記法は「自動＝brand 塗り／
  * AI・押すだけ＝薄紫／あなた＝白ピル」（図面板・最終カードと共通）。
- * 1行にするのは 1120px 以上だけ（7工程＋「繰り返す」の実測幅 約970px が収まる幅）。
- * それ未満は折り返す（960〜1039px で「反映」が板の右端を突き抜けた実績があるため）。
+ * 1行にするのは 1120px 以上だけ（7工程の実測幅 約900px が収まる幅）。末尾の「繰り返す」の印は
+ * 運営者の指示（2026-09-04）で削除した（ループは図面板のリング図が示す）。
+ * それ未満は折り返す（960〜1039px で最後の工程が板の右端を突き抜けた実績があるため）。
  */
+/** 工程名（帯・リング図・ツアーの一致を `landing-page.test.ts` が固定する）。 */
+export const HERO_STEP_LABELS: readonly string[] = STEPS.map((step) => step.label);
+
 export function HeroSteps() {
   return (
     <ol
@@ -128,10 +132,6 @@ export function HeroSteps() {
           <span className={CHIP_CLASS[step.who]}>{CHIP_LABEL[step.who]}</span>
         </li>
       ))}
-      <li className="flex shrink-0 items-center gap-1 whitespace-nowrap text-caption text-ink-3">
-        <Icon className="shrink-0" name="refresh" size={16} />
-        繰り返す
-      </li>
     </ol>
   );
 }

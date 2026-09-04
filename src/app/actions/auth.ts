@@ -22,6 +22,7 @@ import {
 import { captchaTokenSchema, emailSchema } from "@/lib/auth/form-schemas";
 import { authoredFieldErrors, parseUserInput } from "@/lib/validation/user-input";
 import { ensureUserProfileWithClient } from "@/lib/auth/profile-core";
+import { parseTrafficSource } from "@/lib/ops/traffic-source";
 import {
   passwordResetRequestInputFromFormData,
   RECOVERY_SESSION_COOKIE,
@@ -188,6 +189,8 @@ export async function signUp(
 
     const acceptedAt = new Date().toISOString();
     const admin = createSupabaseAdminClient();
+    // 流入元（T-M8-423）。hidden で届いた `src` を正規化し、値があるときだけ書く（既定は ''）。
+    const signupSource = parseTrafficSource(formData.get("signup_source"));
     const { error: profileError } = await admin
       .from("profiles")
       .update({
@@ -195,6 +198,7 @@ export async function signUp(
         privacy_version: CURRENT_PRIVACY_VERSION,
         terms_accepted_at: acceptedAt,
         terms_version: CURRENT_TERMS_VERSION,
+        ...(signupSource ? { signup_source: signupSource } : {}),
       })
       .eq("id", data.user.id);
 

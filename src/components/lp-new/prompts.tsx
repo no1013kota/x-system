@@ -1,8 +1,13 @@
 import { Icon, type IconName } from "@/components/ui/icon";
+import {
+  DEFAULT_IMAGE_MODELS,
+  IMAGE_MODEL_OPTIONS,
+  TEXT_MODEL_OPTIONS,
+} from "@/lib/ai/model-catalog";
 import { PATTERN_MAX_COUNT } from "@/lib/post/post-patterns-store";
 import { cn } from "@/lib/utils";
 
-import { GLASS, HEADING } from "./tokens";
+import { BODY, GLASS, H3 } from "./tokens";
 
 /**
  * 「複数のプロンプトを管理」の3カード（T-M8-419・運営者の指示 2026-09-03。
@@ -11,24 +16,41 @@ import { GLASS, HEADING } from "./tokens";
  *
  * 図版は aria-hidden の装飾（CSSのみ）。文字は text-caption 以上。
  * 事実: 投稿の型は標準5種類＋自作で最大 PATTERN_MAX_COUNT 件・型ごとに生成プロンプトを編集
- * （要件06 §3.6・T-M8-134/397）／アカウント.md は保存するたび本棚に版が増え「使用中」を切替
- * （T-M8-332/411）／プロンプト画面は AIモデル設定・アカウント.md・投稿作成プロンプト・
- * 画像生成プロンプトの4区分（T-M8-401）。画像生成の既定は OpenAI / GPT Image 1.5。
+ * （要件06 §3.6・T-M8-134/397）／アカウント.md と画像プロンプトは保存するたび本棚に版が並び
+ * 「使用中」を切替。**本棚は SHELF_MAX（5）件まで**で、上限では使用中の1件を書き換える
+ * （要件06 §3.7・T-M8-350/411。`prompts.test.ts` が `PRESET_MAX_COUNT` との一致を固定）／
+ * 文章生成は Claude・GPT・Gemini、画像生成は GPT Image・Nano Banana から用途ごとに選べる
+ * （`model-catalog.ts`。図版の表示名はカタログから引き、id の実在は同テストが固定）。
+ * 画像生成の既定は `DEFAULT_IMAGE_MODELS.openai`（GPT Image 1.5）。
  *
- * 3カラムは 1040px 以上だけ。640〜1039px は図版を左・文字を右に置いた横並びの1カラム。
+ * 見出し（2026-09-04・T-M8-421）: 運営者指定は「プロンプトを無限に管理」「AIモデルも自由に決定」
+ * だったが、前者は上の事実（本棚5件・型20件）と食い違うため、事実に合う「書き換えても、前の版に戻せる」
+ * を暫定にした（要決定 D-54）。カード1も「何個でも」→「自分で増やせる」（本文の最大20件と矛盾しない）。
+ *
+ * 3カラムは 1180px 以上だけ（1040px 起点だとマスが約109pxで型名が省略された・3周目）。760〜1179px は
+ * 図版を左・文字を右に置いた横並びの1カラム、760px 未満は縦積み（図版が全幅）。
  */
+// 高さは 156px（140px だと本棚3行＋注記が 22px 溢れ、上端に貼り付いた——レビュー 2026-09-04）。
 const FIGURE =
-  "flex h-[140px] flex-col justify-center gap-2.5 rounded-[16px] bg-[linear-gradient(135deg,#f4e8f3_0%,rgba(255,255,255,0.7)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]";
+  "flex h-[156px] flex-col justify-start gap-2 rounded-[16px] bg-[linear-gradient(135deg,#f4e8f3_0%,rgba(255,255,255,0.7)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]";
+
+/** 本棚の上限（Xアカウントあたり）。正本は `prompt-presets.ts` の `PRESET_MAX_COUNT.base_md`（DB層を LP に import しないため値を写し、テストで一致を固定）。 */
+export const SHELF_MAX = 5;
+/** 図版に出すモデル id（カタログに実在することをテストで固定。無ければ空欄で黙って描かれる）。 */
+export const FIGURE_TEXT_MODEL_ID = "claude-sonnet-5";
+export const FIGURE_IMAGE_MODEL_ID = DEFAULT_IMAGE_MODELS.openai;
 
 function PatternsFigure() {
-  const patterns = ["ニュース解説", "自分の考え・意見", "ノウハウ・ハウツー", "トレンド便乗"];
+  // 標準の5種類（実画面の名前）＋6マス目に「パターンを追加」。本文の「5種類」と図の数を揃える。
+  const patterns = ["ニュース解説", "自分の考え・意見", "ノウハウ・ハウツー", "トレンド便乗", "週次まとめ"];
   return (
     <div aria-hidden="true" className={FIGURE}>
       <div className="grid grid-cols-2 gap-1.5">
         {patterns.map((name, index) => (
           <span
             className={cn(
-              "truncate rounded-[10px] px-2.5 py-1.5 text-caption font-medium",
+              // palt でカナを詰める（768〜1150px の2列マスで「ノウハウ・ハウツー」が省略されないため・3周目）。
+              "truncate rounded-[10px] px-2.5 py-1.5 text-caption font-medium [font-feature-settings:'palt']",
               index === 0
                 ? "bg-brand-subtle text-brand ring-1 ring-brand/40"
                 : "bg-white/80 text-ink-2",
@@ -38,27 +60,28 @@ function PatternsFigure() {
             {name}
           </span>
         ))}
+        <span className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-[10px] border border-dashed border-brand/50 px-2.5 py-1.5 text-caption whitespace-nowrap text-brand [font-feature-settings:'palt']">
+          <Icon className="shrink-0" name="add" size={13} />
+          <span className="truncate">パターンを追加</span>
+        </span>
       </div>
-      <span className="inline-flex w-fit items-center gap-1 rounded-[10px] border border-dashed border-brand/50 px-2.5 py-1 text-caption text-brand">
-        <Icon name="add" size={13} />
-        パターンを追加
-      </span>
     </div>
   );
 }
 
 function ShelfFigure() {
+  // 名前は実画面の本棚と同じ「アカウント設定 vN」。件数は上限（SHELF_MAX）を超えて見せない。
   const versions: [string, boolean][] = [
-    ["アカウント設定 v3", true],
-    ["アカウント設定 v2", false],
-    ["アカウント設定 v1", false],
+    ["アカウント設定 v5", true],
+    ["アカウント設定 v4", false],
+    ["アカウント設定 v3", false],
   ];
   return (
     <div aria-hidden="true" className={FIGURE}>
       {versions.map(([name, inUse]) => (
         <div
           className={cn(
-            "flex items-center justify-between rounded-[10px] px-3 py-1.5 text-caption",
+            "flex items-center justify-between rounded-[10px] px-3 py-1 text-caption",
             inUse ? "bg-white shadow-[var(--shadow-card)] text-ink" : "bg-white/60 text-ink-2",
           )}
           key={name}
@@ -73,79 +96,100 @@ function ShelfFigure() {
           )}
         </div>
       ))}
+      <span className="text-caption text-ink-3">{SHELF_MAX}件まで並べて、切り替え</span>
     </div>
   );
 }
 
-function TabsFigure() {
-  const tabs = ["AIモデル設定", "アカウント.md", "投稿作成プロンプト", "画像生成プロンプト"];
+/** AIモデル設定の2行（文章・画像）。表示名はカタログから引く（架空のモデル名を書かない）。 */
+function ModelsFigure() {
+  const textModel = TEXT_MODEL_OPTIONS.anthropic.find((m) => m.id === FIGURE_TEXT_MODEL_ID);
+  const imageModel = IMAGE_MODEL_OPTIONS.openai.find((m) => m.id === FIGURE_IMAGE_MODEL_ID);
+  // 表示名の「（バランス）」などの位置づけは外す（狭い幅で省略されると「（バラ…」になる。段の説明は下の注記が担う）。
+  const short = (label: string | undefined) => (label ?? "").replace(/（[^）]*）$/, "");
+  const rows: [string, string][] = [
+    ["文章生成", short(textModel?.label)],
+    ["画像生成", short(imageModel?.label)],
+  ];
   return (
     <div aria-hidden="true" className={FIGURE}>
-      <div className="flex flex-wrap gap-1">
-        {tabs.map((tab, index) => (
-          <span
-            className={cn(
-              "rounded-pill px-2.5 py-1 text-caption font-medium whitespace-nowrap",
-              index === 3 ? "bg-white text-brand shadow-[var(--shadow-card)]" : "text-ink-2",
-            )}
-            key={tab}
-          >
-            {tab}
+      {rows.map(([purpose, model]) => (
+        <div
+          className="flex items-center justify-between gap-2 rounded-[10px] bg-white px-3 py-1.5 text-caption shadow-[var(--shadow-card)]"
+          key={purpose}
+        >
+          <span className="shrink-0 text-ink-3">{purpose}</span>
+          <span className="flex min-w-0 items-center gap-1 font-medium text-ink">
+            <span className="truncate">{model}</span>
+            <Icon className="shrink-0 rotate-90 text-ink-3" name="chevron_right" size={16} />
           </span>
-        ))}
-      </div>
-      <div className="rounded-[10px] bg-white/80 px-3 py-2 text-caption text-ink-2">
-        <span className="text-ink-3">画像生成に使うAI</span>
-        <span className="ml-2 font-medium text-ink">OpenAI / GPT Image 1.5</span>
-      </div>
+        </div>
+      ))}
+      {/* 図版の「（バランス）」の意味を補う（本文と同じ内容を繰り返さない）。段の語はカタログの表示名どおり。 */}
+      <span className="text-caption text-ink-3">最高性能・バランス・低コストから選べます</span>
     </div>
   );
 }
 
 const CARDS: {
+  id: string;
   icon: IconName;
-  title: string;
+  title: React.ReactNode;
   body: string;
   figure: React.ReactNode;
 }[] = [
   {
+    id: "patterns",
     icon: "edit_square",
-    title: "投稿の型を、何個でも",
-    body: `標準の5種類から始めて、自分の型を最大${PATTERN_MAX_COUNT}件まで。型ごとに生成プロンプトを直せます。`,
+    title: "投稿の型を、自分で増やせる",
+    // 上限は既定パターンを含めて数える（post-patterns-store.ts）ので「合わせて」。
+    body: `標準の5種類（画面では「パターン」）から始めて、合わせて最大${PATTERN_MAX_COUNT}件。型ごとにプロンプトを直せます。`,
     figure: <PatternsFigure />,
   },
   {
     icon: "history",
-    title: "アカウント.mdは、版で残す",
-    body: "誰に何を発信するかの土台。保存するたび本棚に版が増え、使用中を切り替えられます。",
+    id: "shelf",
+    // 「使い分ける」は用途別の並行運用に読め、図（時系列の版）と噛み合わなかった（2周目）。図に合わせ「戻せる」で言う。
+    // 2行に折れるとき「前の／版」で切れないよう文節で括る（3周目）。
+    title: (
+      <>
+        <span className="inline-block">書き換えても、</span>
+        <span className="inline-block">前の版に戻せる</span>
+      </>
+    ),
+    body: `アカウント.md（発信方針のメモ。画面では「アカウント設定」）と画像の指示は、保存するたびに新しい版として本棚に並びます（${SHELF_MAX}件まで）。使う版はいつでも切り替えられ、前の版にも戻せます。`,
     figure: <ShelfFigure />,
   },
   {
+    id: "models",
     icon: "tune",
-    title: "画像とAIモデルも、ここで",
-    body: "画像生成の指示と、文章・画像に使うAIモデル。クローンの中身は1画面で見渡せます。",
-    figure: <TabsFigure />,
+    title: "AIモデルも自由に決定",
+    body: "文章と画像、それぞれに使うAIモデルを選べます。文章は Claude／GPT／Gemini、画像は GPT Image／Nano Banana（Gemini の画像モデル）。迷ったら最初の設定のままで。",
+    figure: <ModelsFigure />,
   },
 ];
 
 export function PromptCards() {
   return (
-    <div className="mt-[clamp(24px,4vw,48px)] grid grid-cols-1 gap-6 min-[1040px]:grid-cols-3">
+    <div className="mt-[clamp(24px,4vw,48px)] grid grid-cols-1 gap-6 min-[1180px]:grid-cols-3">
       {CARDS.map((card) => (
         <div
           className={cn(
             GLASS,
-            "grid gap-5 p-6 min-[640px]:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] min-[640px]:items-center min-[1040px]:grid-cols-1",
+            // 1180px以上は上詰め（stretch で伸びた分が2行に等分され、本文が短いカードほど見出しが下がった・2周目）。
+            // 760〜1179px は図版に半分（5:7 だと2列マスの幅が足りず型名が省略された・3周目）。
+            "grid gap-5 p-6 min-[760px]:grid-cols-2 min-[760px]:items-center min-[1180px]:grid-cols-1 min-[1180px]:content-start min-[1180px]:items-start",
           )}
-          key={card.title}
+          key={card.id}
         >
           {card.figure}
           <div>
-            <div className="flex items-center gap-2">
-              <Icon className="text-brand" name={card.icon} size={20} />
-              <h3 className={cn("text-[20px] leading-[1.4]", HEADING)}>{card.title}</h3>
+            {/* 見出しが2行に折れてもアイコンは1行目の中央に（items-center だと行間に浮く・3周目）。 */}
+            <div className="flex items-start gap-2">
+              <Icon className="mt-[5px] shrink-0 text-brand" name={card.icon} size={20} />
+              <h3 className={H3}>{card.title}</h3>
             </div>
-            <p className="mt-2 text-sm leading-[1.8] text-ink-2">{card.body}</p>
+            <p className={cn("mt-2 text-ink-2", BODY)}>{card.body}</p>
           </div>
         </div>
       ))}
