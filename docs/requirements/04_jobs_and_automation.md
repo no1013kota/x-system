@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.73 |
+| バージョン | v1.74 |
 | 更新日 | 2026-09-05 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -382,7 +382,8 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 
 - **状態指標**（契約者数・MRR・登録者累計）は「前日の終わり」として前日の日付で1回だけ書く（過去の状態は復元できない）
 - **MRR（`mrr_jpy`）は引き止め割引を反映する**（運営者の決定 2026-09-04・D-55(1)）。課金中（active／past_due）の契約者を `profiles` から1行ずつ読み、`discount_percent_off`／`discount_amount_off_jpy`（率が先・T-M8-279の写し）を掛けた月額を合計する。`discount_ends_at` を過ぎた割引は掛けない（null は終了日なし＝`forever`。ただし **`duration=once` のクーポンも Stripe では `end` が null** で、次の請求書が確定して契約同期が写しを消すまでMRRを下げる。写しは契約に付いた割引の**先頭1件だけ**（`loadDiscount`・T-M8-279）なので、複数の割引を重ねた契約は2件目以降を取りこぼす。引き止めクーポンは `repeating`（3か月）1件なので現行運用では起きない。`coupon.duration` を写す改修は将来の候補）。**キャンペーン価格の改定は `PLANS` の現在値**で計算するため、改定前に書いたスナップショットは改定前の値のまま残る。トライアル中は含めない。計算は `src/lib/billing/discounted-price.ts`（契約者向けの割引表示と共用）。**この変更（v1.73）を本番へ出す前に書いた `mrr_jpy` は割引前の値**（過去行は計算し直さない）。以後は割引後なので、出した日の推移グラフに割引合計ぶんの段差が1回出る——解約ではない
-- **出来事指標**（登録・確認・X連携・トライアル開始・生成消費・原価・解約・**公開ページの閲覧数/ユニーク**〔T-M8-378〕）は直近3日を毎回計算し直す（遅れて届くStripeイベント・原価を拾う）
+- **出来事指標**（登録・確認・X連携・トライアル開始・生成消費・原価・解約手続きへ進んだ数・**公開ページの閲覧数/ユニーク**〔T-M8-378〕）は直近3日を毎回計算し直す（遅れて届くStripeイベント・原価を拾う）
+- **`cancel_intents` は「解約手続きへ進んだ数」**（`cancellation_surveys.proceeded=true` の件数・旧名 `cancellations`・D-55(3)・T-M8-427）。確認画面の後に引き止めクーポンで残った人も含むので**実解約ではない**。実解約（`subscription_status` が `canceled` へ変わった日）は遷移の記録が無い（`profiles` に日付列が無く、`stripe_events` は90日保持・本番のwebhook経由のみ）ため出来事指標にはせず、**状態指標 `users_canceled`**（`subscription_status='canceled'` の人数。前日より増えたぶんが実解約で、再契約・退会で減る）と **`users_cancel_scheduled`**（課金中〔active／past_due〕で `cancel_at_period_end=true` の人数＝期末で消える確定解約）を他の状態指標と同じく「前日の終わり」として毎日書く。`/admin` は `users_canceled` を時系列に描き、解約アンケート節に「直近30日に手続きへ進んだ人のいまの状態（解約済み／期末で解約予定／課金を続けている）」を出す。既存行の改名は migration `20260905000001_kpi_cancel_intents.sql`（冪等。コードが先にデプロイされて新名の行がある日は新しく書かれた方を残す）。release は migration→deploy の順なので、その間に日付を跨ぐと旧コードが旧名で直近3日ぶんを書き直し得る——スナップショットは毎回、計算し直す窓（直近3日）の旧名の行を消してから upsert する（通常0件・冪等）
 - 表が空のとき（初回）は残っている元データから出来事指標を最大400日バックフィルする（手作業のコマンドは作らない・原則3）
 - 外部APIは呼ばない（DBだけ）。失敗しても tick 本体を止めない（operator_alert と同じ扱い）
 - `usage_consumed` は `usage_events` の `reason='consume' and delta > 0` の**行数**（生成の精算は delta がクレジット量なので `= 1` では数えられない）、`cost_usd` は **運営負担（`payer='operator'`）だけ**（T-M8-422）
@@ -420,3 +421,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.71 | 2026-09-01 | §14 md_merge の失敗通知・error.message を反映／削除で言い分ける（T-M8-410） |
 | v1.72 | 2026-09-04 | 事業KPI: `usage_consumed` は行数・`cost_usd` は運営負担のみ、doctor にホームの閲覧記録の警告（T-M8-422）。Xトークン更新の2項目（環境ガード・期限切れ非警告）がKPI節に混ざっていたのを元の節へ戻す |
 | v1.73 | 2026-09-05 | 事業KPI: MRR（`mrr_jpy`）は引き止め割引（`profiles.discount_*`・期限内のみ）を反映し、価格は `PLANS` の現在値（運営者の決定 D-55(1)） |
+| v1.74 | 2026-09-05 | 事業KPI: `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名。実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持ち、旧名の取り残しはスナップショットが掃除する（D-55(3)・T-M8-427） |
