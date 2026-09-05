@@ -6242,6 +6242,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 実装メモ（2026-09-05 完了・運営者の指示「投稿作成の規定プロンプトに関して、どのパターンも必要があれば最大3回検索をするように」）: 「常に」は検索ツールを渡す意味で、使うかはモデルが決める（`usage.calls[].web_search_count` で事後に分かる）。自作パターンは元から always／3。migration は staging・本番へ `release:*` の2回実行で適用。
 
 
+### T-M8-443: `/release` を配布キット（プラグイン）と Claude Code 記事に加える `done`
+- 参照: kit/skills/release/SKILL.md・kit/templates/CLAUDE.template.md「反映コマンド」表・kit/README.md・blog/published/claude-code-non-engineer-workflow.md / 依存: T-M8-440 / サイズ: S
+- 完了条件:
+  - 配布用スキル `kit/skills/release/SKILL.md` が、本リポジトリの `/release` と同じ順（前提 → CI 要否の対応表 → push 1回 → CI 待ち → staging → 本番ブランチへ取り込み → 本番 → 実ブラウザ確認 → 報告）で、固有名（Vercel・Supabase の ref・release スクリプト名・GitHub のリポジトリ名）を含まない。反映先のコマンドは雛形 CLAUDE.md の「反映コマンド」表（staging へ反映／本番へ反映／公開先 URL。`init` のヒアリングで埋まる）を指す
+  - `npm run dev-kit` がスキル12本＋init を生成し（`release` を除外しない）、公開リポジトリが v0.1.2 になる。README・記事のスキル数と一覧に `release` がある
+- 実装メモ（2026-09-05 完了・運営者の依頼「release のスキルもプラグインやブログの説明に追加できますか」）: 汎用化は他の11本と同じ手順（書く → 原文と突き合わせて反証 → 直す）。GitHub Actions 固有の部分（PR・skip ci の印）は「GitHub を使っていれば」の条件付きで残した。CI 不要の変更（`.claude/**`・`kit/**`・ブログ・docs）なので、`/release` の対応表どおり空コミットで印を付けて反映（本番反映の初回の CI 省略ケース）。
+
+
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S
 - 完了条件:

@@ -26,7 +26,7 @@ Claude Code の中で次を順に打つ。GitHub のアカウントは要らな�
 |---|---|
 | `.claude-plugin/marketplace.json` | マーケットプレイス定義（名前 `claude-docdd-dev-kit`） |
 | `plugins/docdd/.claude-plugin/plugin.json` | プラグイン定義（名前・版） |
-| `plugins/docdd/skills/<名前>/SKILL.md` | 手順書（スキル）11本と、導入用の `init`。`add-task` `dev-loop` `doc-sync` `verify-integration` `verify-e2e` `ui-polish` `refactor` `speed-up` `security-audit` `maintenance` `playwright-cli` ＋ `init` |
+| `plugins/docdd/skills/<名前>/SKILL.md` | 手順書（スキル）12本と、導入用の `init`。`add-task` `dev-loop` `doc-sync` `verify-integration` `verify-e2e` `ui-polish` `refactor` `speed-up` `security-audit` `maintenance` `playwright-cli` `release` ＋ `init` |
 | `plugins/docdd/templates/` | `init` がプロジェクトへ置く雛形（CLAUDE.md・docs・tasks・scripts・設定） |
 | `plugins/docdd/README.md` | 利用者向けの説明書（入れ方・`init` が置くもの・手順書を自分で直したいとき・注意） |
 
