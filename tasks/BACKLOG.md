@@ -6158,7 +6158,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 各記事に `image:`（アイキャッチ。`npm run blog:eyecatch -- <slug>` で生成）があり、記事ヘッダ・一覧サムネイル・og:image に出る
   - 「非エンジニアがClaude Codeで…」は Claude Code 未経験者が読める（用語の初出説明・4つの道具の一覧・番号付き手順）
   - スキル（blog-write／blog-publish）と README に、image／eyecatch／図の作り方／AIっぽさ除去の項目／2周のセルフレビュー／「（意見）」不使用 が入っている
-- 実装メモ（2026-09-05 完了・ワークフロー22エージェント〔基盤1＋記事4本×（編集→読者レビュー→修正→編集長レビュー→最終修正）＋仕上げ1〕）: `**` が残る原因は日本語の約物「」（）に太字記号が隣接すると CommonMark が太字と解釈しないため。検出は micromark と同じ flanking 規則を `blog-content.ts` に実装し、実描画で残っていた5箇所と一致することを確認。記事ページの og:image は元々1つも出ていなかった（子セグメントの openGraph が親を置き換える）ので既定画像を明示。図は計10点、アイキャッチ4点。配布キットは T-M8-432 の実物スキル同梱に合わせて記事の手順4に「アプリ固有のコマンド名を直す」依頼文を追加。検証: blog:check 緑・vitest（blog）緑・E2E blog／mobile-layout 緑・4記事＋一覧を 1280／390 で実描画（`**` 0・横あふれ0・エラー0）。
+- 実装メモ（2026-09-05 完了・ワークフロー22エージェント〔基盤1＋記事4本×（編集→読者レビュー→修正→編集長レビュー→最終修正）＋仕上げ1〕）: `**` が残る原因は日本語の約物「」（）に太字記号が隣接すると CommonMark が太字と解釈しないため。検出は micromark と同じ flanking 規則を `blog-content.ts` に実装し、実描画で残っていた5箇所と一致することを確認。記事ページの og:image は元々1つも出ていなかった（子セグメントの openGraph が親を置き換える）ので既定画像を明示。図は計10点、アイキャッチ4点。配布キットは T-M8-432 の実物スキル同梱に合わせて記事の手順4に「アプリ固有のコマンド名を直す」依頼文を追加。検証: blog:check 緑・vitest（blog）緑・E2E blog／mobile-layout 緑・4記事＋一覧を 1280／390 で実描画（`**` 0・横あふれ0・エラー0）。 反映時の補足: 記事ページの既定 og:image を `@/app/opengraph-image.png` の静的 import で解決したところ、CI の typecheck（`next-env.d.ts` 生成前に走る）だけが落ちた。画像 import の型宣言は `src/types/next-image.d.ts`（追跡ファイル）で常に読ませる形にした（e8875e92）。本番 https://exosai.net/blog で 4記事のアイキャッチ・図・og:image・zip（82,918B・11スキル）を実ブラウザで確認済み。
 
 ### T-M8-434: 開発キット（非ブログ11スキル＋雛形）を zip と Claude Code プラグインとして生成し、公開リポジトリで配布する `done`
 - 参照: kit/README.md（利用者向け）・kit/PUBLISHING.md（運営者向け）・docs/operations/local-development.md / 依存: T-M8-432 / サイズ: M
