@@ -36,7 +36,7 @@
 
   <!-- 2 skills -->
   <rect x="100" y="800" width="1000" height="150" rx="18" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
-  <text x="130" y="858" font-size="44" font-weight="bold" fill="#1f1a1e">.claude/skills/（手順書）</text>
+  <text x="130" y="858" font-size="44" font-weight="bold" fill="#1f1a1e">手順書（skills）</text>
   <rect x="130" y="878" width="320" height="54" rx="27" fill="#ffffff" stroke="#7d1f75" stroke-width="2"/>
   <text x="290" y="916" font-size="34" fill="#7d1f75" text-anchor="middle">呼んだときに読む</text>
 
