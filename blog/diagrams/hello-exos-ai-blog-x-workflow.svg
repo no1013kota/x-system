@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" font-family="Hiragino Sans, Noto Sans JP, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7d1f75"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="860" fill="#ffffff"/>
+  <text x="600" y="66" text-anchor="middle" font-size="44" font-weight="700" fill="#7d1f75" font-family="Hiragino Sans, Noto Sans JP, sans-serif">X運用の4つの工程</text>
+
+  <!-- Frame: what Exos AI covers -->
+  <rect x="40" y="100" width="1120" height="732" rx="24" fill="#f4e8f3"/>
+  <text x="80" y="152" font-size="36" font-weight="700" fill="#7d1f75" font-family="Hiragino Sans, Noto Sans JP, sans-serif">Exos AI が担う工程</text>
+  <text x="1120" y="152" text-anchor="end" font-size="30" fill="#5c5560" font-family="Hiragino Sans, Noto Sans JP, sans-serif">1〜3は決めた時間に自動で進む</text>
+
+  <!-- 1 情報収集 -->
+  <rect x="80" y="176" width="1040" height="104" rx="16" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <circle cx="136" cy="228" r="28" fill="#7d1f75"/>
+  <text x="136" y="239" text-anchor="middle" font-size="32" font-weight="700" fill="#ffffff" font-family="Hiragino Sans, Noto Sans JP, sans-serif">1</text>
+  <text x="190" y="244" font-size="46" font-weight="700" fill="#1f1a1e" font-family="Hiragino Sans, Noto Sans JP, sans-serif">情報収集</text>
+  <text x="420" y="242" font-size="40" fill="#5c5560" font-family="Hiragino Sans, Noto Sans JP, sans-serif">ニュースや話題を集める</text>
+
+  <line x1="600" y1="280" x2="600" y2="322" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- 2 投稿作成 -->
+  <rect x="80" y="324" width="1040" height="104" rx="16" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <circle cx="136" cy="376" r="28" fill="#7d1f75"/>
+  <text x="136" y="387" text-anchor="middle" font-size="32" font-weight="700" fill="#ffffff" font-family="Hiragino Sans, Noto Sans JP, sans-serif">2</text>
+  <text x="190" y="392" font-size="46" font-weight="700" fill="#1f1a1e" font-family="Hiragino Sans, Noto Sans JP, sans-serif">投稿作成</text>
+  <text x="420" y="390" font-size="40" fill="#5c5560" font-family="Hiragino Sans, Noto Sans JP, sans-serif">投稿文を書く</text>
+
+  <!-- 2 -> 3, with the human check in between -->
+  <line x1="600" y1="428" x2="600" y2="546" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+  <rect x="262" y="456" width="676" height="62" rx="31" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <text x="600" y="500" text-anchor="middle" font-size="36" font-weight="700" fill="#7d1f75" font-family="Hiragino Sans, Noto Sans JP, sans-serif">投稿する前に自分で確認（初期設定）</text>
+
+  <!-- 3 投稿 -->
+  <rect x="80" y="548" width="1040" height="104" rx="16" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <circle cx="136" cy="600" r="28" fill="#7d1f75"/>
+  <text x="136" y="611" text-anchor="middle" font-size="32" font-weight="700" fill="#ffffff" font-family="Hiragino Sans, Noto Sans JP, sans-serif">3</text>
+  <text x="190" y="616" font-size="46" font-weight="700" fill="#1f1a1e" font-family="Hiragino Sans, Noto Sans JP, sans-serif">投稿</text>
+  <text x="420" y="614" font-size="40" fill="#5c5560" font-family="Hiragino Sans, Noto Sans JP, sans-serif">Xに投稿する</text>
+
+  <line x1="600" y1="652" x2="600" y2="694" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- 4 分析 -->
+  <rect x="80" y="696" width="1040" height="104" rx="16" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <circle cx="136" cy="748" r="28" fill="#7d1f75"/>
+  <text x="136" y="759" text-anchor="middle" font-size="32" font-weight="700" fill="#ffffff" font-family="Hiragino Sans, Noto Sans JP, sans-serif">4</text>
+  <text x="190" y="764" font-size="46" font-weight="700" fill="#1f1a1e" font-family="Hiragino Sans, Noto Sans JP, sans-serif">分析</text>
+  <text x="420" y="762" font-size="40" fill="#5c5560" font-family="Hiragino Sans, Noto Sans JP, sans-serif">反応を読む</text>
+  <rect x="830" y="717" width="270" height="62" rx="31" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="965" y="761" text-anchor="middle" font-size="36" font-weight="700" fill="#7d1f75" font-family="Hiragino Sans, Noto Sans JP, sans-serif">ボタンで実行</text>
+</svg>

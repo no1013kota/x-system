@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1245" viewBox="0 0 1200 1245">
+  <rect width="1200" height="1245" fill="#ffffff"/>
+  <g font-family="Hiragino Sans, Noto Sans JP, sans-serif">
+  <text x="60" y="93" font-size="54" font-weight="700" fill="#7d1f75">2026年8月の主な出来事</text>
+  <line x1="96" y1="210" x2="96" y2="1095" stroke="#7d1f75" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- 8/2 -->
+  <circle cx="96" cy="231" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="246" font-size="51" font-weight="700" fill="#7d1f75">8月2日</text>
+  <rect x="375" y="198" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="246" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">規制</text>
+  <text x="150" y="321" font-size="48" fill="#1f1a1e">EU AI Act、罰則付きで執行開始</text>
+
+  <!-- 8/6 -->
+  <circle cx="96" cy="399" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="414" font-size="51" font-weight="700" fill="#7d1f75">8月6日</text>
+  <rect x="375" y="366" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="414" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">配る</text>
+  <text x="150" y="489" font-size="48" fill="#1f1a1e">ChatGPT、無料でも無制限に</text>
+
+  <!-- 8/20 -->
+  <circle cx="96" cy="567" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="582" font-size="51" font-weight="700" fill="#7d1f75">8月20日</text>
+  <rect x="375" y="534" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="582" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">働かせる</text>
+  <text x="150" y="657" font-size="48" fill="#1f1a1e">Claude、PC操作などを開発者へ正式提供</text>
+
+  <!-- 8/26 -->
+  <circle cx="96" cy="735" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="750" font-size="51" font-weight="700" fill="#7d1f75">8月26日</text>
+  <rect x="375" y="702" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="750" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">投資</text>
+  <text x="150" y="825" font-size="48" fill="#1f1a1e">NVIDIA、売上962億ドル（前年比+106%）</text>
+
+  <!-- 8/27 -->
+  <circle cx="96" cy="903" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="918" font-size="51" font-weight="700" fill="#7d1f75">8月27日</text>
+  <rect x="375" y="870" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="918" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">働かせる</text>
+  <text x="150" y="993" font-size="48" fill="#1f1a1e">AIが実験機器を動かす規格MHSを発表</text>
+
+  <!-- 8/29 -->
+  <circle cx="96" cy="1071" r="16.5" fill="#7d1f75" stroke="#ffffff" stroke-width="4.5"/>
+  <text x="150" y="1086" font-size="51" font-weight="700" fill="#7d1f75">8月29日</text>
+  <rect x="375" y="1038" width="264" height="66" rx="33" fill="#f4e8f3" stroke="#7d1f75" stroke-width="2.25"/>
+  <text x="507" y="1086" text-anchor="middle" font-size="42" font-weight="600" fill="#7d1f75">規制</text>
+  <text x="150" y="1161" font-size="48" fill="#1f1a1e">EUが大手AI企業へ情報要求（報道）</text>
+  </g>
+</svg>

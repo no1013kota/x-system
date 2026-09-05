@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { BlogPostMeta } from "./blog-post-meta";
@@ -105,18 +106,33 @@ export default function BlogIndexPage() {
                     as="article"
                     className="group relative px-6 py-5 transition-colors hover:border-brand/40 focus-within:border-brand/40"
                   >
-                    <CardTitle as="h2" className="text-[17px] leading-snug" id={headingId}>
-                      <Link
-                        className="text-ink group-hover:text-brand focus-visible:underline focus-visible:outline-none"
-                        href={`/blog/${post.slug}`}
-                      >
-                        <span aria-hidden="true" className="absolute inset-0" />
-                        {post.title}
-                      </Link>
-                    </CardTitle>
-                    <p className="mt-1.5 text-body leading-relaxed text-ink-2">{post.description}</p>
-                    <div className="mt-3">
-                      <BlogPostMeta post={post} />
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <CardTitle as="h2" className="text-[17px] leading-snug" id={headingId}>
+                          <Link
+                            className="text-ink group-hover:text-brand focus-visible:underline focus-visible:outline-none"
+                            href={`/blog/${post.slug}`}
+                          >
+                            <span aria-hidden="true" className="absolute inset-0" />
+                            {post.title}
+                          </Link>
+                        </CardTitle>
+                        <p className="mt-1.5 text-body leading-relaxed text-ink-2">{post.description}</p>
+                        <div className="mt-3">
+                          <BlogPostMeta post={post} />
+                        </div>
+                      </div>
+                      {post.image ? (
+                        // アイキャッチのサムネイル（2026-09-05 のブログ改善）。題名は隣に文字であるので装飾扱い。
+                        <Image
+                          alt=""
+                          className="h-auto w-24 shrink-0 rounded-md border border-hairline sm:w-40"
+                          height={630}
+                          sizes="(min-width: 640px) 160px, 96px"
+                          src={post.image}
+                          width={1200}
+                        />
+                      ) : null}
                     </div>
                   </Card>
                 </li>

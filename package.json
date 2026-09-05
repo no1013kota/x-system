@@ -26,6 +26,8 @@
     "release:production": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/release.mjs production",
     "icons:generate": "node scripts/generate-icons.mjs",
     "blog:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/blog-check.mjs",
+    "blog:eyecatch": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/blog-image.mjs eyecatch",
+    "blog:diagram": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/blog-image.mjs diagram",
     "check:blog-trace": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-blog-trace.mjs",
     "check:sharp-trace": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-sharp-trace.mjs",
     "seed:review": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-review-account.mjs",

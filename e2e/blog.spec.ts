@@ -33,6 +33,8 @@ test("ブログ: 一覧→記事本文（Markdownの描画）→一覧へ戻る"
   await expect(card).toBeVisible();
   await expect(card.getByText(first.description)).toBeVisible();
   await expect(card.locator(`time[datetime="${first.date}"]`)).toBeVisible();
+  // アイキャッチ（front matter の image・2026-09-05 のブログ改善）がある記事はサムネイルが出る（装飾なので alt は空）。
+  if (first.image) await expect(card.locator("img")).toBeVisible();
   const titles = await page.getByRole("article").getByRole("heading", { level: 2 }).allTextContents();
   expect(titles).toEqual(posts.map((post) => post.title));
 
@@ -40,6 +42,14 @@ test("ブログ: 一覧→記事本文（Markdownの描画）→一覧へ戻る"
   await card.getByRole("link", { name: first.title }).click();
   await expect(page).toHaveURL(new RegExp(`/blog/${first.slug}$`));
   await expect(page.getByRole("heading", { level: 1, name: first.title })).toBeVisible();
+  if (first.image) {
+    // 記事ヘッダのアイキャッチと、SNS 共有用の og:image / twitter:image に同じ画像が載る。
+    await expect(page.locator("article header img")).toBeVisible();
+    const imagePattern = new RegExp(`${first.image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    await expect(page.locator('meta[property="og:image"]').first()).toHaveAttribute("content", imagePattern);
+    await expect(page.locator('meta[name="twitter:image"]').first()).toHaveAttribute("content", imagePattern);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  }
   // 本文の `## 見出し` がすべて h2 になる。コードブロック内の `##` は除き、見出し内の
   // 強調・コード・リンク記法は描画後の文字に合わせて外す。
   const sectionHeadings = [

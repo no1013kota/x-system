@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="950" viewBox="0 0 1200 950">
+  <rect width="1200" height="950" fill="#ffffff"/>
+  <g font-family="Hiragino Sans, Noto Sans JP, sans-serif" fill="#1f1a1e">
+    <text x="600" y="64" text-anchor="middle" font-size="44" font-weight="700" fill="#7d1f75">肯定と否定の重みを同じ物差しに乗せる</text>
+    <text x="600" y="112" text-anchor="middle" font-size="40" fill="#5a4f58">棒の長さは重みに比例（param.rs・2026-09-02時点）</text>
+
+    <!-- positive -->
+    <text x="40" y="180" font-size="40" font-weight="700" fill="#7d1f75">肯定（プラス）</text>
+    <line x1="40" y1="196" x2="1160" y2="196" stroke="#e3d3e1" stroke-width="3"/>
+
+    <!-- baseline x = 470; scale 580px / 234 -->
+    <text x="450" y="243" text-anchor="end" font-size="40">リンクをコピーし共有</text>
+    <rect x="470" y="215" width="50" height="40" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="534" y="243" font-size="40" font-weight="700">20.0</text>
+
+    <text x="450" y="303" text-anchor="end" font-size="40">返信・引用・DMで共有</text>
+    <rect x="470" y="275" width="12" height="40" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="496" y="303" font-size="40" font-weight="700">5.0</text>
+
+    <text x="450" y="363" text-anchor="end" font-size="40">リポスト</text>
+    <rect x="470" y="335" width="2.5" height="40" fill="#7d1f75"/>
+    <text x="488" y="363" font-size="40" font-weight="700">1.0</text>
+
+    <text x="450" y="423" text-anchor="end" font-size="40">いいね</text>
+    <rect x="470" y="395" width="1.2" height="40" fill="#7d1f75"/>
+    <text x="486" y="423" font-size="40" font-weight="700">0.5</text>
+    <text x="560" y="423" font-size="40" fill="#5a4f58">← この物差しではほぼ見えない</text>
+
+    <!-- negative -->
+    <text x="40" y="500" font-size="40" font-weight="700" fill="#7d1f75">否定（マイナス）</text>
+    <line x1="40" y1="516" x2="1160" y2="516" stroke="#e3d3e1" stroke-width="3"/>
+
+    <text x="450" y="563" text-anchor="end" font-size="40">報告（通報）</text>
+    <rect x="470" y="535" width="580" height="40" fill="#7d1f75"/>
+    <text x="1062" y="563" font-size="40" font-weight="700" fill="#7d1f75">-234</text>
+
+    <text x="450" y="623" text-anchor="end" font-size="40">著者をミュート</text>
+    <rect x="470" y="595" width="146" height="40" fill="#7d1f75"/>
+    <text x="628" y="623" font-size="40" font-weight="700" fill="#7d1f75">-58.8</text>
+
+    <text x="450" y="683" text-anchor="end" font-size="40">興味なし</text>
+    <rect x="470" y="655" width="107" height="40" fill="#7d1f75"/>
+    <text x="589" y="683" font-size="40" font-weight="700" fill="#7d1f75">-43.2</text>
+
+    <text x="450" y="743" text-anchor="end" font-size="40">著者をブロック</text>
+    <rect x="470" y="715" width="77" height="40" fill="#7d1f75"/>
+    <text x="559" y="743" font-size="40" font-weight="700" fill="#7d1f75">-31.2</text>
+
+    <!-- baseline -->
+    <line x1="470" y1="205" x2="470" y2="765" stroke="#1f1a1e" stroke-width="3"/>
+
+    <text x="600" y="830" text-anchor="middle" font-size="40" font-weight="700" fill="#7d1f75">報告の棒は、いいねの468倍の長さ</text>
+    <text x="600" y="880" text-anchor="middle" font-size="40" fill="#5a4f58">重みは件数ではなく、読者ごとの確率に掛かる。</text>
+    <text x="600" y="924" text-anchor="middle" font-size="40" fill="#5a4f58">嫌がられる見込みがわずかでも、肯定側を大きく打ち消す</text>
+  </g>
+</svg>

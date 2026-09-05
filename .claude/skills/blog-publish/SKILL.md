@@ -25,7 +25,8 @@ model: inherit
 文体の粗さは止める理由にしない（2026-08-23に上乗せ分を撤廃）——止めるのは次の3つだけ。
 
 - **Exos AI の効果を約束している**（「必ず伸びる」「フォロワー○倍」「保証」「No.1」）＝景品表示法の問題になる
-- 本文中の画像 `/blog-images/...` が `public/blog-images/` に実在しない
+- 本文中の画像 `/blog-images/...` や front matter の `image`（アイキャッチ）が `public/blog-images/` に実在しない（アイキャッチが無いなら `npm run blog:eyecatch -- <slug>` で作ってよい。本文は変えない）
+- 太字にならない `**` が残っている（`npm run blog:check` が行番号つきで出す。本文の直しなので止めて報告する）
 - 生HTMLタグ（表示されない）、`#` 見出し（h2 に落ちる。意図的でなければ `##` へ）
 
 ### 2. 検証する（公開前）
@@ -49,7 +50,8 @@ npm run blog:check -- <file>
 
 ```bash
 git status --short            # 無関係な変更を巻き込まない（並行編集中のファイルがあり得る）
-git add blog/published/<file>  # git mv 済みなら移動元も stage されている。画像を足したなら public/blog-images/<画像> も明示して add
+git add blog/published/<file>  # git mv 済みなら移動元も stage されている
+git add public/blog-images/eyecatch/<slug>.png  # アイキャッチ（front matter の image）。図を足したなら public/blog-images/<図>.png と blog/diagrams/<図>.svg も明示して add
 git commit -m "blog: <記事タイトル>"
 ```
 
