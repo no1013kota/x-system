@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.21 |
+| バージョン | v1.22 |
 | 更新日 | 2026-09-05 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
@@ -87,7 +87,9 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。
 
-**リリースの流れ（要決定D-8 案A・2026-07-30）**
+**リリースの流れ（要決定D-8 案A・2026-07-30。2026-09-05 以降の実手順は `/release` スキル＝`.claude/skills/release/SKILL.md` が正）**
+
+> **現在の流れ（2026-08-22 に stg の旧履歴を main の祖先へ取り込んで以降）**: `stg` へ push → CI（差分により省略可・[CI](./ci.md) §1）→ `npm run release:staging -- --apply` → **`stg` → `main` の PR**（`gh pr create --base main --head stg`）→ マージ → Vercel の build 完了を待つ → `npx supabase link --project-ref hvjizoahdqfvasiqzzkv` → `npm run release:production -- --apply` → staging へ link を戻す。下の D-28 の注記は当時の分岐状態の記録で、いまは `stg` → `main` の PR が使える（PR #45・#46 で実施）。
 
 **`main` への直pushは branch protection で拒否される**（実測 2026-08-18: `GH006 Protected branch update failed`・
 「Changes must be made through a pull request」「2 of 2 required status checks are expected」）。
