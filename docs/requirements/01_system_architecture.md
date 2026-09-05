@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.32 |
-| 更新日 | 2026-08-29 |
+| バージョン | v1.33 |
+| 更新日 | 2026-09-05 |
 | 関連 | PRD A/O、要件 SC-01〜11 |
 
 ## 1. 全体構成
@@ -73,6 +73,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `APP_ENCRYPTION_KEY` | dev/preview/prod | AES-256-GCM暗号化鍵 | 32 bytes相当。ローテーションは将来ADR化 |
 | `X_POSTING_MODE` | dev/preview/prod | `dry_run` / `live` | dev/previewは`dry_run`を必須、prodのみ`live`可 |
 | `FEATURE_QUOTE_POST_ENABLED` | dev/preview/prod | P-5引用ポストの有効化 | 既定値`false`。Server onlyで判定し、初期リリースでは有効化しない |
+| `FEATURE_INVITE_ENABLED` | dev/preview/prod | 友達招待の導線（LPカード・nav・アプリのナビ・ロック画面の案内文）の表示 | 既定値`false`（一時非表示・T-M8-445）。`/app/invite` 本体・`/r/{code}`・報酬処理はこの値に関係なく動く。復活は `true` を足すだけ |
 | `X_DAILY_POST_LIMIT` | dev/preview/prod | 1 XアカウントあたりのJST日次投稿上限 | 既定値50。スレッド内の各ポストを1件と数える |
 | `X_COST_CONTENT_CREATE_USD` | preview/prod | URLなし投稿作成の原価集計単価 | 公開値0.015。Developer Console確認後に設定 |
 | `X_COST_CONTENT_CREATE_WITH_URL_USD` | preview/prod | URL付き投稿作成の原価集計単価 | 公開値0.200。Developer Console確認後に設定 |
@@ -257,3 +258,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.30 | 2026-08-26 | 実行リージョンを東京（hnd1）へ固定（T-M8-320）。既定の iad1 では利用者・Supabaseとも離れ、画面遷移ごとに固定で0.2〜0.35秒かかっていた |
 | v1.31 | 2026-08-27 | Exos AIから出るメールの差出人を `support@exosai.net` へ統一（T-M8-339。既定はコード側に持ち、envは差し替え用） |
 | v1.32 | 2026-08-29 | `*_IMAGE_MODEL` を必須から任意（上書き用）へ。既定はコード（`DEFAULT_IMAGE_MODELS`）が持つ決定（T-M8-334）に合わせた。必須のままだったためVercelのbuildが止まり、stg/prdへ反映できなかった（T-M8-370） |
+| v1.33 | 2026-09-05 | 環境変数に `FEATURE_INVITE_ENABLED`（友達招待の導線の一時非表示・T-M8-445） |

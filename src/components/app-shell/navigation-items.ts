@@ -46,3 +46,12 @@ export const APP_NAVIGATION_ITEMS = [
   mobileHidden?: boolean;
 }[];
 
+
+/**
+ * 実際に出すナビ項目（T-M8-445）。友達招待の導線は `FEATURE_INVITE_ENABLED` が true のときだけ出す
+ * （運営者の指示 2026-09-05「一旦隠す。復活させるので戻しやすく」）。項目の定義自体は上に残し、
+ * ここで落とすだけにする——復活はフラグを true にするだけで、並び順もラベルも戻る。
+ */
+export function appNavigationItems(options: { inviteEnabled: boolean }) {
+  return APP_NAVIGATION_ITEMS.filter((item) => options.inviteEnabled || item.href !== "/app/invite");
+}

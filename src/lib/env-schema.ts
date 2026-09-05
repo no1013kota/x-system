@@ -112,6 +112,12 @@ const schema = z
       .string()
       .optional()
       .transform(parseBooleanFlag),
+    // 友達招待の導線（LP のカード・nav・アプリのナビ・案内文）を出すか。未設定＝非表示（T-M8-445・運営者の指示 2026-09-05「一旦隠す」）。
+    // /app/invite 本体・/r/{code}・報酬の確定と振込は止めない（既存の報酬を守る）。復活は Vercel に true を1つ足すだけ。
+    FEATURE_INVITE_ENABLED: z
+      .string()
+      .optional()
+      .transform(parseBooleanFlag),
     X_DAILY_POST_LIMIT: z.preprocess(
       blankToUndefined,
       z.coerce.number().int().positive().default(50),

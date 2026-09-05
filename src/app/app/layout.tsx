@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { env } from "@/lib/env";
 
 import { signOut } from "@/app/actions/auth";
 import {
@@ -57,7 +58,7 @@ export default async function AppLayout({
           契約中の利用者の行き先は「設定 → 課金・プラン」で、そこに「プランを見る」がある。
           未契約の利用者はそもそも `/plans` に留められる（要件03 §2）ため、常設の導線は要らない。
         */}
-        <AppNavigation />
+        <AppNavigation inviteEnabled={env.FEATURE_INVITE_ENABLED} />
 
         {/*
           **ヘッダーを廃止したので、その導線をここへ集めた**（T-M8-328・運営者の指示 2026-08-27）。
@@ -194,7 +195,7 @@ export default async function AppLayout({
       {/* モバイル下部バーはナビ7タブだけ（T-M8-416。ロゴ・お知らせ・アカウントは上部ヘッダーへ）。 */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         <div className="px-1">
-          <AppNavigation mobile />
+          <AppNavigation mobile inviteEnabled={env.FEATURE_INVITE_ENABLED} />
         </div>
       </div>
     </div>

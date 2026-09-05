@@ -216,3 +216,14 @@ describe("coerce-number blank handling", () => {
     expect(buildServerEnv({ ...devBase(), X_DAILY_POST_LIMIT: "" }).X_DAILY_POST_LIMIT).toBe(50);
   });
 });
+
+describe("FEATURE_INVITE_ENABLED（友達招待の導線・T-M8-445）", () => {
+  it("未設定なら false（導線は非表示）", () => {
+    expect(buildServerEnv(devBase()).FEATURE_INVITE_ENABLED).toBe(false);
+  });
+
+  it("リテラル 'true' のときだけ true", () => {
+    expect(buildServerEnv({ ...devBase(), FEATURE_INVITE_ENABLED: "true" }).FEATURE_INVITE_ENABLED).toBe(true);
+    expect(buildServerEnv({ ...devBase(), FEATURE_INVITE_ENABLED: "1" }).FEATURE_INVITE_ENABLED).toBe(false);
+  });
+});
