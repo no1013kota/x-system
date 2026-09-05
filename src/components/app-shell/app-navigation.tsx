@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { IntentPrefetchLink } from "@/components/navigation/intent-prefetch-link";
 import { Icon } from "@/components/ui/icon";
 
-import { APP_NAVIGATION_ITEMS } from "./navigation-items";
+import { appNavigationItems } from "./navigation-items";
 
 function isCurrentPath(pathname: string, href: string): boolean {
   return href === "/app" ? pathname === href : pathname.startsWith(href);
@@ -40,7 +40,13 @@ function NavigationLinkContent({
           />
         ) : null}
       </span>
-      <span className={mobile ? "whitespace-nowrap tracking-tight" : "leading-tight"}>{label}</span>
+      <span
+        className={
+          mobile ? "whitespace-nowrap tracking-tight" : "leading-tight"
+        }
+      >
+        {label}
+      </span>
     </>
   );
 }
@@ -51,17 +57,29 @@ function NavigationLinkContent({
  * 選択中は淡いキー色の下地＋キー色の文字＋塗りアイコン（デザイン §レイアウト骨格）。
  * 選択状態は `aria-current="page"` を正とし、**見た目のクラスを状態の表明に使わない**。
  */
-export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
+export function AppNavigation({
+  mobile = false,
+  inviteEnabled = false,
+}: {
+  mobile?: boolean;
+  /** 友達招待の導線を出すか（server 側の `env.FEATURE_INVITE_ENABLED`。client ではこの props だけを見る・T-M8-445）。 */
+  inviteEnabled?: boolean;
+}) {
   const pathname = usePathname();
+  const items = appNavigationItems({ inviteEnabled }).filter(
+    (item) => !mobile || !("mobileHidden" in item && item.mobileHidden),
+  );
+  // Tailwind は動的なクラス名を拾えないので、モバイルの列数は候補を書き分ける（7枠が上限）。
+  const mobileCols = items.length >= 7 ? "grid-cols-7" : "grid-cols-6";
 
   return (
     <nav
-      aria-label={mobile ? "メインナビゲーション（モバイル）" : "メインナビゲーション"}
-      className={mobile ? "grid grid-cols-7" : "space-y-0.5 px-3"}
+      aria-label={
+        mobile ? "メインナビゲーション（モバイル）" : "メインナビゲーション"
+      }
+      className={mobile ? `grid ${mobileCols}` : "space-y-0.5 px-3"}
     >
-      {APP_NAVIGATION_ITEMS.filter(
-        (item) => !mobile || !("mobileHidden" in item && item.mobileHidden),
-      ).map((item) => {
+      {items.map((item) => {
         const current = isCurrentPath(pathname, item.href);
         const stateClass = current
           ? "bg-brand-subtle text-brand"
@@ -81,12 +99,19 @@ export function AppNavigation({ mobile = false }: { mobile?: boolean }) {
             <NavigationLinkContent
               current={current}
               icon={item.icon}
-              label={mobile && "mobileLabel" in item ? item.mobileLabel : item.label}
+              label={
+                mobile && "mobileLabel" in item ? item.mobileLabel : item.label
+              }
               mobile={mobile}
             />
             {/* App Shellの外へ遷移する項目にはマークを付ける（T-M8-175）。 */}
             {!item.href.startsWith("/app") && !mobile ? (
-              <Icon aria-hidden="true" className="ml-auto text-ink-3" name="open_in_new" size={14} />
+              <Icon
+                aria-hidden="true"
+                className="ml-auto text-ink-3"
+                name="open_in_new"
+                size={14}
+              />
             ) : null}
           </IntentPrefetchLink>
         );

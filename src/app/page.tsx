@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+import { env } from "@/lib/env";
 import Link from "next/link";
 
 import { recordPageView } from "@/lib/ops/page-view-server";
-import { parseTrafficSource, withTrafficSource } from "@/lib/ops/traffic-source";
+import {
+  parseTrafficSource,
+  withTrafficSource,
+} from "@/lib/ops/traffic-source";
 import { BrandLogo, LogoTile } from "@/components/brand/brand-logo";
 import { XLogo } from "@/components/brand/x-logo";
 import { LegalFooterLinks } from "@/components/legal-footer";
@@ -12,9 +16,7 @@ import { OUTPUT_ENABLED } from "@/components/lp-new/facts";
 import { Grow } from "@/components/lp-new/grow";
 import { HeroDiagram, HeroSteps } from "@/components/lp-new/hero-diagram";
 import { LOOP_TOTALS, LoopBoard } from "@/components/lp-new/loop-board";
-import {
-  PricingRecommendFirst,
-} from "@/components/lp-new/pricing-recommend-first";
+import { PricingRecommendFirst } from "@/components/lp-new/pricing-recommend-first";
 import styles from "@/components/lp-new/new-lp.module.css";
 import { Tour } from "@/components/lp-new/tour";
 import {
@@ -35,7 +37,11 @@ import {
 } from "@/components/lp-new/tokens";
 import { buttonVariants } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
+import {
+  COMMISSION_MONTHS,
+  INVITE_TIERS,
+  formatRateBps,
+} from "@/lib/affiliate/config";
 import { APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
@@ -75,7 +81,10 @@ const NAV_LINKS: [string, string][] = [
   ["#faq", "FAQ"],
   ["/blog", "ブログ"],
   ["/prompt-templates", "プロンプト集"],
-  ["/app/invite", "友達招待"],
+  // 友達招待の導線は一時非表示（T-M8-445・運営者の指示 2026-09-05）。復活は FEATURE_INVITE_ENABLED=true だけ。
+  ...(env.FEATURE_INVITE_ENABLED
+    ? ([["/app/invite", "友達招待"]] as [string, string][])
+    : []),
 ];
 
 /** 「現行ページ」への比較リンクは置かない（来訪者には意味が無く、テストページと分かるため）。 */
@@ -273,7 +282,8 @@ export default async function Home({
                 <span className="inline-block">決めるのは、あなた。</span>
               </p>
               <div className="mt-8">
-                <CtaRow signupHref={signupHref}
+                <CtaRow
+                  signupHref={signupHref}
                   fullWidthOnMobile
                   primary="無料で始める"
                   secondaryHref="#tour"
@@ -324,7 +334,8 @@ export default async function Home({
           <Tour
             // 納得の直後に受け皿を置く（ヒーローから料金まで主CTAが無い区間を作らない）。
             cta={
-              <CtaRow signupHref={signupHref}
+              <CtaRow
+                signupHref={signupHref}
                 primary="無料で始める"
                 secondaryHref="#pricing"
                 secondaryLabel="料金を見る"
@@ -402,37 +413,49 @@ export default async function Home({
               契約前でも参加できることを本文で言う（要件06 §1.5・要件03）。新LPへの差し替え（T-M8-420）で
               一度落ちていたのを invite-access.spec が検出した。
             */}
-            <div
-              className={cn(
-                GLASS,
-                "mt-[clamp(24px,4vw,48px)] px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]",
-              )}
-            >
-              <div className="flex flex-col gap-5 min-[880px]:flex-row min-[880px]:items-center min-[880px]:justify-between">
-                <div className="max-w-[600px]">
-                  <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
-                    <Icon aria-hidden="true" name="star_shine" size={13} />
-                    友達招待キャンペーン
-                  </p>
-                  {/* 語は「招待」で統一（バッジ・ボタンと同じ。「紹介した方の利用料」は自分の利用料にも読めた・レビュー 2026-09-05）。 */}
-                  <h3 className={cn(H3, "mt-3 [text-wrap:balance]")}>
-                    招待した友達の利用料から、最大
-                    {formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬に
-                  </h3>
-                  {/* 文節で折る（[text-wrap:pretty] だけだと 390px で「有料プ／ラン」と語の途中で折れた）。 */}
-                  <p className="mt-2.5 text-body leading-6 text-ink-2 [text-wrap:pretty] [word-break:auto-phrase]">
-                    {/* 1行に書く（JSXは行の継ぎ目に半角空白を入れるため、「から、 最大」と空く）。「〜OK」はツアー停止02に譲り、ここは「上がります」と同じ丁寧形。 */}
-                    プラン契約がなくても参加できます。友達が有料プランを使った月から、最大{COMMISSION_MONTHS}か月分。招待が増えるほど、報酬率も上がります。
-                  </p>
+            {/* 一時非表示（T-M8-445）。フラグを true にすると、このカードと nav の「友達招待」が戻る。 */}
+            {env.FEATURE_INVITE_ENABLED ? (
+              <div
+                className={cn(
+                  GLASS,
+                  "mt-[clamp(24px,4vw,48px)] px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]",
+                )}
+              >
+                <div className="flex flex-col gap-5 min-[880px]:flex-row min-[880px]:items-center min-[880px]:justify-between">
+                  <div className="max-w-[600px]">
+                    <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                      <Icon aria-hidden="true" name="star_shine" size={13} />
+                      友達招待キャンペーン
+                    </p>
+                    {/* 語は「招待」で統一（バッジ・ボタンと同じ。「紹介した方の利用料」は自分の利用料にも読めた・レビュー 2026-09-05）。 */}
+                    <h3 className={cn(H3, "mt-3 [text-wrap:balance]")}>
+                      招待した友達の利用料から、最大
+                      {formatRateBps(
+                        INVITE_TIERS[INVITE_TIERS.length - 1].rateBps,
+                      )}
+                      が報酬に
+                    </h3>
+                    {/* 文節で折る（[text-wrap:pretty] だけだと 390px で「有料プ／ラン」と語の途中で折れた）。 */}
+                    <p className="mt-2.5 text-body leading-6 text-ink-2 [text-wrap:pretty] [word-break:auto-phrase]">
+                      {/* 1行に書く（JSXは行の継ぎ目に半角空白を入れるため、「から、 最大」と空く）。「〜OK」はツアー停止02に譲り、ここは「上がります」と同じ丁寧形。 */}
+                      プラン契約がなくても参加できます。友達が有料プランを使った月から、最大
+                      {COMMISSION_MONTHS}
+                      か月分。招待が増えるほど、報酬率も上がります。
+                    </p>
+                  </div>
+                  <Link
+                    className={cn(
+                      buttonVariants({ variant: "brand" }),
+                      PILL_MD,
+                      "shrink-0",
+                    )}
+                    href="/app/invite"
+                  >
+                    招待リンクを受け取る
+                  </Link>
                 </div>
-                <Link
-                  className={cn(buttonVariants({ variant: "brand" }), PILL_MD, "shrink-0")}
-                  href="/app/invite"
-                >
-                  招待リンクを受け取る
-                </Link>
               </div>
-            </div>
+            ) : null}
           </div>
         </section>
 

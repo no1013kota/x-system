@@ -1,6 +1,7 @@
 import { LockedState } from "@/components/app-shell/page-state";
 import { pageTitleClassName } from "@/components/ui/card";
 import type { AppLockReason } from "@/lib/auth/subscription-access";
+import { inviteEntryVisible } from "@/lib/invite/entry-visibility";
 
 /**
  * 契約が有効でないときに機能画面の代わりに出す画面（T-M8-269→T-M8-273・
@@ -20,15 +21,13 @@ const LOCK_COPY: Record<
   plan_required: {
     actionHref: "/plans",
     actionLabel: "プランを登録する",
-    suffix:
-      "ご利用にはプランの登録が必要です。先にプランを登録してください（友達招待はプランの登録がなくてもご利用いただけます）。",
+    suffix: `ご利用にはプランの登録が必要です。先にプランを登録してください${inviteEntryVisible() ? "（友達招待はプランの登録がなくてもご利用いただけます）" : ""}。`,
     title: "先にプランを登録してください",
   },
   payment_required: {
     actionHref: "/app/settings?tab=billing",
     actionLabel: "お支払い情報を更新する",
-    suffix:
-      "お支払いを確認できなかったため、一時的にご利用を停止しています。お支払い情報を更新すると、すぐに再開できます（データは保持しています。友達招待は引き続きご利用いただけます）。",
+    suffix: `お支払いを確認できなかったため、一時的にご利用を停止しています。お支払い情報を更新すると、すぐに再開できます（データは保持しています${inviteEntryVisible() ? "。友達招待は引き続きご利用いただけます" : ""}）。`,
     title: "お支払い情報を更新してください",
   },
 };

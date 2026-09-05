@@ -1,9 +1,14 @@
 import { DB_ENUMS } from "@/lib/db/enums";
+import { inviteEntryVisible } from "@/lib/invite/entry-visibility";
+
 import { AppError } from "@/lib/observability/errors";
 import { remainingTrialLabel } from "@/lib/billing/remaining-trial";
 
-export type SubscriptionStatus =
-  (typeof DB_ENUMS.subscription_status)[number];
+/** 友達招待の導線が出ているときだけ添える一文（T-M8-445。導線が無いのに「引き続き使える」と言わない）。 */
+const inviteStillAvailable = () =>
+  inviteEntryVisible() ? "友達招待は引き続きご利用いただけます。" : "";
+
+export type SubscriptionStatus = (typeof DB_ENUMS.subscription_status)[number];
 
 export interface SubscriptionAccess {
   /** 実行できないときに案内する場所。 */
@@ -176,7 +181,10 @@ function planEndDate(value: string | null | undefined): string {
   if (!value) return "現在の期間の終了日";
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return "現在の期間の終了日";
-  return new Intl.DateTimeFormat("ja-JP", { dateStyle: "long", timeZone: "Asia/Tokyo" }).format(at);
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "long",
+    timeZone: "Asia/Tokyo",
+  }).format(at);
 }
 
 function trialDate(value: string | null): string {
@@ -199,11 +207,13 @@ export function subscriptionBannerFor(
     「解約したつもりが続いている」「続けるつもりが止まる」のどちらも起こりうる。
   */
   if (profile.cancelAtPeriodEnd) {
-    const endsAt = status === "trialing" ? profile.trialEndsAt : profile.currentPeriodEnd;
+    const endsAt =
+      status === "trialing" ? profile.trialEndsAt : profile.currentPeriodEnd;
     return {
       action: profile.stripeCustomerId ? "portal" : null,
       cancelAtPeriodEnd: true,
-      description: "それまでは今までどおりご利用いただけます。続ける場合は解約の取り消しができます。",
+      description:
+        "それまでは今までどおりご利用いただけます。続ける場合は解約の取り消しができます。",
       title: `${planEndDate(endsAt)}に解約されます`,
       tone: "info",
     };
@@ -212,10 +222,14 @@ export function subscriptionBannerFor(
     **下位プランへの予約も知らせる**（T-M8-260）。「今のプランのまま続ける」は Portal に無く、
     取り消したい人が行き先を探すことになる。設定の課金タブに取り消しがある。
   */
-  if (profile.scheduledPlanChange && (status === "active" || status === "trialing")) {
+  if (
+    profile.scheduledPlanChange &&
+    (status === "active" || status === "trialing")
+  ) {
     return {
       action: "billing",
-      description: "それまでは今のプランのままご利用いただけます。予約の取り消しは設定の「課金・プラン」からできます。",
+      description:
+        "それまでは今のプランのままご利用いただけます。予約の取り消しは設定の「課金・プラン」からできます。",
       title: profile.scheduledPlanChange,
       tone: "info",
     };
@@ -233,8 +247,7 @@ export function subscriptionBannerFor(
     return {
       action: profile.stripeCustomerId ? "portal" : "checkout",
       // T-M8-273で機能画面もロックした。閲覧できると言わない（できないため）。
-      description:
-        "お支払い情報を更新すると、すぐにご利用を再開できます（データは保持しています）。友達招待は引き続きご利用いただけます。",
+      description: `お支払い情報を更新すると、すぐにご利用を再開できます（データは保持しています）。${inviteStillAvailable()}`,
       title:
         status === "past_due"
           ? "お支払いを確認できませんでした"
@@ -253,17 +266,18 @@ export function subscriptionBannerFor(
       action: "checkout",
       // 何が使えて何が使えないかを正確に言う（T-M8-269で機能画面はロック・招待だけ残る）。
       description: trialLeft
-        ? `無料トライアルは${trialLeft}まで残っています。どのプランでも、その日までは料金が発生しません。投稿の作成・予約・分析やニュースを再びご利用になるには、無料トライアルを再開してください（データは保持しています）。友達招待は引き続きご利用いただけます。`
-        : "友達招待は引き続きご利用いただけます。投稿の作成・予約・分析やニュースを再びご利用になるには、プランを再開してください（データは保持しています）。",
-      title: trialLeft ? "無料トライアルを再開できます" : "ご契約は終了しています",
+        ? `無料トライアルは${trialLeft}まで残っています。どのプランでも、その日までは料金が発生しません。投稿の作成・予約・分析やニュースを再びご利用になるには、無料トライアルを再開してください（データは保持しています）。${inviteStillAvailable()}`
+        : `${inviteStillAvailable()}投稿の作成・予約・分析やニュースを再びご利用になるには、プランを再開してください（データは保持しています）。`,
+      title: trialLeft
+        ? "無料トライアルを再開できます"
+        : "ご契約は終了しています",
       tone: "warning",
     };
   }
   // 未契約（incomplete 等）。できること／できないことを正直に言う（T-M8-269）。
   return {
     action: "checkout",
-    description:
-      "友達招待はプランの登録がなくてもご利用いただけます。投稿の作成・予約・分析やニュースをご利用になるには、プランの登録が必要です。",
+    description: `${inviteEntryVisible() ? "友達招待はプランの登録がなくてもご利用いただけます。" : ""}投稿の作成・予約・分析やニュースをご利用になるには、プランの登録が必要です。`,
     title: "プランが未登録です",
     tone: "warning",
   };

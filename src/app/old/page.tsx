@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { env } from "@/lib/env";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 
@@ -12,8 +13,17 @@ import { PricingCards } from "@/components/lp/pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cardClassName, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
-import { COMMISSION_MONTHS, INVITE_TIERS, formatRateBps } from "@/lib/affiliate/config";
-import { APP_DESCRIPTION, APP_NAME, OPERATOR_X_HANDLE, OPERATOR_X_URL } from "@/lib/app-config";
+import {
+  COMMISSION_MONTHS,
+  INVITE_TIERS,
+  formatRateBps,
+} from "@/lib/affiliate/config";
+import {
+  APP_DESCRIPTION,
+  APP_NAME,
+  OPERATOR_X_HANDLE,
+  OPERATOR_X_URL,
+} from "@/lib/app-config";
 import { yen } from "@/lib/format";
 import { PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -39,7 +49,8 @@ export const metadata: Metadata = {
 
 const CONTAINER = "mx-auto w-full max-w-[1180px] px-[clamp(16px,3.5vw,32px)]";
 const SECTION_PAD = "py-[clamp(56px,8vw,96px)]";
-const TWO_COL = "grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-[clamp(24px,4vw,56px)]";
+const TWO_COL =
+  "grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-[clamp(24px,4vw,56px)]";
 const HEADING = "font-bold tracking-[-0.01em] [font-feature-settings:'palt']";
 const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-normal ${HEADING}`;
 
@@ -48,8 +59,7 @@ const H2 = `mt-[18px] text-[length:clamp(20px,calc(12px_+_1.2vw),26px)] leading-
  * 末尾は申込前確認事項の「期間中に解約すれば料金はかかりません。」と同じ言い回しに揃える
  * （同じことを別の言い方で2箇所に書くと、読み手はどちらが正か迷う）。
  */
-const CARD_REGISTRATION_NOTE =
-  "7日間は無料でお試しいただけます。";
+const CARD_REGISTRATION_NOTE = "7日間は無料でお試しいただけます。";
 
 /** 主CTA（無料で始める）と副CTA（料金を見る）は同じ寸法にする（T-M8-79）。 */
 const CTA_SIZE = "h-11 px-7 text-sm font-bold";
@@ -76,7 +86,10 @@ const NAV_LINKS: [string, string][] = [
   // `/app/invite` 固定でよい——未ログインなら route guard が `/login?next=/app/invite` へ送り、
   // ログイン後そのまま招待画面へ着く（ログイン画面から新規登録へも行ける）。
   // 「未ログインなら登録画面」を条件分岐で書き分けると、判定が2か所（LPとguard）に増える。
-  ["/app/invite", "友達招待"],
+  // 友達招待の導線は一時非表示（T-M8-445）。復活は FEATURE_INVITE_ENABLED=true だけ。
+  ...(env.FEATURE_INVITE_ENABLED
+    ? ([["/app/invite", "友達招待"]] as [string, string][])
+    : []),
   ["/prompt-templates", "プロンプト集"],
   ["/blog", "ブログ"],
 ];
@@ -124,7 +137,10 @@ const NAV_LINKS: [string, string][] = [
 
 const HOW_TO_STEPS: [string, string][] = [
   ["アカウント作成", "メールアドレスで登録し、確認メールで本人認証。"],
-  ["カード登録", "ここから7日間の無料トライアルが始まります。期間中に解約すれば料金はかかりません。"],
+  [
+    "カード登録",
+    "ここから7日間の無料トライアルが始まります。期間中に解約すれば料金はかかりません。",
+  ],
   ["初期設定", "Xアカウントを連携し、発信の設定をする。順番は自由。"],
   ["運用開始", "下書きの確認から、あなたのペースで。"],
 ];
@@ -147,26 +163,46 @@ const FEATURES: {
     title: "ニュースが毎日届く",
     // 取得はRSSの10分おき巡回（T-M8-380/383）。**実際の仕様と揃える**（T-M8-337→T-M8-408）。
     body: "AI・Web3・SNS運用・投資・恋愛・美容の6分野を、10分おきに自動収集。気になった記事から、そのまま投稿の作成へ進めます。",
-    figure: <AppShot alt="Exos AIの最新ニュース画面（実際の管理画面）" src="/lp-shots/news.jpg" />,
+    figure: (
+      <AppShot
+        alt="Exos AIの最新ニュース画面（実際の管理画面）"
+        src="/lp-shots/news.jpg"
+      />
+    ),
   },
   {
     eyebrow: "プロンプトの設計・編集",
     title: "AIへの指示を、自分の言葉で磨ける",
     body: "投稿の土台になるアカウント.mdも、投稿の型も、そのまま確認・編集できます。テンプレートから始めて、あなた用に育てる。",
-    figure: <AppShot alt="Exos AIのプロンプト編集画面（実際の管理画面）" src="/lp-shots/prompts.jpg" />,
+    figure: (
+      <AppShot
+        alt="Exos AIのプロンプト編集画面（実際の管理画面）"
+        src="/lp-shots/prompts.jpg"
+      />
+    ),
   },
   {
     eyebrow: "投稿・画像の自動作成",
     title: "5種類の型で、文章も画像も",
     body: "スレッド形式の文章と、添える画像をまとめて生成。編集も、追加指示つきの再生成もできます。",
     gradientTop: true,
-    figure: <AppShot alt="Exos AIの投稿作成画面（実際の管理画面）" src="/lp-shots/compose.jpg" />,
+    figure: (
+      <AppShot
+        alt="Exos AIの投稿作成画面（実際の管理画面）"
+        src="/lp-shots/compose.jpg"
+      />
+    ),
   },
   {
     eyebrow: "融通の効くスケジュール設定",
     title: "曜日×時刻で、自分の型に合わせて",
     body: "9:00〜22:00の30分刻みで枠を設定。枠ごとに「下書きまで」か「そのまま投稿」かを選べます。",
-    figure: <AppShot alt="Exos AIのスケジュール画面（実際の管理画面）" src="/lp-shots/schedule.jpg" />,
+    figure: (
+      <AppShot
+        alt="Exos AIのスケジュール画面（実際の管理画面）"
+        src="/lp-shots/schedule.jpg"
+      />
+    ),
   },
   {
     eyebrow: "結果分析・プロンプト改善",
@@ -196,13 +232,18 @@ export default function OldHome() {
   return (
     <div className="flex min-h-screen flex-col bg-page text-sm leading-[1.8] text-ink tabular-nums [text-wrap:pretty]">
       <header className="sticky top-0 z-50 border-b border-hairline bg-[rgba(255,255,255,0.82)] backdrop-blur-[10px] backdrop-saturate-[1.4]">
-        <div className={`${CONTAINER} flex h-16 items-center justify-between gap-3.5`}>
+        <div
+          className={`${CONTAINER} flex h-16 items-center justify-between gap-3.5`}
+        >
           <BrandLogo href="/" priority />
           {/*
             aria-label はフッタの「法務情報」navと区別するために要る（navが2つあるため）。
             min-h-6 は WCAG 2.5.8（24x24px）。テキスト高さのままだと20pxしかなかった。
           */}
-          <nav aria-label="セクション" className="hidden items-center gap-6 min-[880px]:flex">
+          <nav
+            aria-label="セクション"
+            className="hidden items-center gap-6 min-[880px]:flex"
+          >
             {NAV_LINKS.map(([href, label]) => (
               <a
                 className="inline-flex min-h-6 items-center gap-1 text-body font-medium text-ink-2 transition-colors hover:text-brand"
@@ -228,7 +269,10 @@ export default function OldHome() {
               ログイン
             </Link>
             <Link
-              className={cn(buttonVariants({ variant: "brand" }), "h-9 px-4 text-body font-bold")}
+              className={cn(
+                buttonVariants({ variant: "brand" }),
+                "h-9 px-4 text-body font-bold",
+              )}
               href="/signup"
             >
               無料で始める
@@ -281,13 +325,18 @@ export default function OldHome() {
                     無料で始める
                   </Link>
                   <a
-                    className={cn(buttonVariants({ variant: "subtle" }), CTA_SIZE)}
+                    className={cn(
+                      buttonVariants({ variant: "subtle" }),
+                      CTA_SIZE,
+                    )}
                     href="#pricing"
                   >
                     料金を見る
                   </a>
                 </div>
-                <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
+                <p className="mt-2.5 text-caption text-ink-3">
+                  {CARD_REGISTRATION_NOTE}
+                </p>
                 {/*
                   CTAボタンと同等の文字サイズにする（運営者の指示 2026-08-22・T-M8-201）。
 
@@ -299,16 +348,21 @@ export default function OldHome() {
                   価格は `startingPrice` から作り、数値を画面へ書き写さない（R30）。
                 */}
                 <div className="mt-[22px] flex flex-wrap gap-x-[18px] gap-y-2 text-sm font-medium text-ink-2">
-                  {["高品質なプロンプトをデフォルトで完備", "プロンプトテンプレを何個でも管理", `月額${startingPrice}から`].map(
-                    (item) => (
-                      <span className="inline-flex items-center gap-1.5" key={item}>
-                        <span aria-hidden="true" className="font-bold text-brand">
-                          ✓
-                        </span>
-                        {item}
+                  {[
+                    "高品質なプロンプトをデフォルトで完備",
+                    "プロンプトテンプレを何個でも管理",
+                    `月額${startingPrice}から`,
+                  ].map((item) => (
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      key={item}
+                    >
+                      <span aria-hidden="true" className="font-bold text-brand">
+                        ✓
                       </span>
-                    ),
-                  )}
+                      {item}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -348,7 +402,8 @@ export default function OldHome() {
                 プロンプトが磨かれる。
               </h2>
               <p className="mt-4 max-w-[38em] text-sm text-ink-2">
-                {APP_NAME}はプロンプト駆動のSNS運用プラットフォーム。設計→生成→投稿→分析→改善の1周を回すたびに、あなたのプロンプトとアカウントが育ちます。
+                {APP_NAME}
+                はプロンプト駆動のSNS運用プラットフォーム。設計→生成→投稿→分析→改善の1周を回すたびに、あなたのプロンプトとアカウントが育ちます。
               </p>
             </div>
             <div className="min-w-0">
@@ -368,7 +423,9 @@ export default function OldHome() {
         >
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="できること" no="02" />
-                          <h2 className={H2}>情報収集からプロンプト改善まで、5つの仕事を引き受けます</h2>
+            <h2 className={H2}>
+              情報収集からプロンプト改善まで、5つの仕事を引き受けます
+            </h2>
             {/*
               ベントーグリッド（12col・7/5→5/7）から**4枚の縦積み**へ変更（T-M8-77）。
               各カードは全幅になるので、本文を左・図版を右の2カラムに置く
@@ -392,7 +449,12 @@ export default function OldHome() {
                     />
                   )}
                   <div className="grid items-center gap-x-8 gap-y-4 min-[760px]:grid-cols-2">
-                    <div className={cn("min-w-0", index % 2 === 1 && "min-[760px]:order-2")}>
+                    <div
+                      className={cn(
+                        "min-w-0",
+                        index % 2 === 1 && "min-[760px]:order-2",
+                      )}
+                    >
                       <p className="text-caption font-bold tracking-[0.06em] text-brand">
                         {feature.eyebrow}
                       </p>
@@ -410,12 +472,18 @@ export default function OldHome() {
         </section>
 
         {/* 03 しくみ（T-M8-172: 4ステップのカード列 → 成長グラフ） */}
-        <section className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`} id="how">
+        <section
+          className={`${CONTAINER} ${SECTION_PAD} scroll-mt-[76px]`}
+          id="how"
+        >
           <SectionMark label="しくみ" no="03" />
-          <h2 className={H2}>運用によるプロンプトの成長が、アカウントも成長させます</h2>
+          <h2 className={H2}>
+            運用によるプロンプトの成長が、アカウントも成長させます
+          </h2>
           {/* 説明は1文に簡潔化（運営者の指示 2026-08-22・T-M8-201）。 */}
           <p className="mt-3.5 max-w-[46em] text-sm text-ink-2">
-            {CYCLE_STEPS.join("→")}のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。
+            {CYCLE_STEPS.join("→")}
+            のサイクルがまわるたび、プロンプトが磨かれ、投稿があなたの言葉に近づきます。
           </p>
           <div className="mt-7">
             <GrowthChartFigure />
@@ -450,7 +518,9 @@ export default function OldHome() {
                     →
                   </div>
                 )}
-                <div className={cn(cardClassName, "flex h-full flex-col p-[18px]")}>
+                <div
+                  className={cn(cardClassName, "flex h-full flex-col p-[18px]")}
+                >
                   <span
                     aria-hidden="true"
                     className="inline-flex size-8 items-center justify-center rounded-pill bg-brand-subtle text-[15px] font-bold text-brand"
@@ -466,10 +536,15 @@ export default function OldHome() {
         </section>
 
         {/* 05 料金 */}
-        <section className="scroll-mt-[76px] border-y border-hairline bg-surface" id="pricing">
+        <section
+          className="scroll-mt-[76px] border-y border-hairline bg-surface"
+          id="pricing"
+        >
           <div className={`${CONTAINER} ${SECTION_PAD}`}>
             <SectionMark label="料金" no="05" />
-                          <h2 className={H2}>月額{startingPrice}から。全プラン7日間の無料トライアル付き。</h2>
+            <h2 className={H2}>
+              月額{startingPrice}から。全プラン7日間の無料トライアル付き。
+            </h2>
             {/* 3枚のカードを読み比べる前に、差分だけ先に言う（走査性・レビュー3周目）。 */}
             <p className="mt-3 max-w-[42em] text-sm text-ink-2">
               3プランの違いは「APIキーをご自身で用意するか」と「利用上限」だけ。あとからプランは変更できます。
@@ -481,32 +556,40 @@ export default function OldHome() {
               上下にセクション余白が二重に入って間延びする。行き先は `/app/invite` 固定——
               未ログインなら route guard が `/login?next=/app/invite` へ送り、ログイン後そのまま着く。
             */}
-            <div className="mt-12 overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
-              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                <div className="max-w-[560px]">
-                  <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
-                    <Icon aria-hidden="true" name="star_shine" size={13} />
-                    友達招待キャンペーン
-                  </p>
-                  <h2 className={`${H2} mt-3`}>
-                    紹介した方の利用料から、最大{formatRateBps(INVITE_TIERS[INVITE_TIERS.length - 1].rateBps)}が報酬に
-                  </h2>
-                  <p className="mt-2.5 text-body leading-6 text-ink-2">
-                    ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、
-                    最大{COMMISSION_MONTHS}か月分が報酬対象です（報酬率は招待人数に応じて上がります）。
-                  </p>
+            {/* 一時非表示（T-M8-445）。FEATURE_INVITE_ENABLED=true で戻る。 */}
+            {env.FEATURE_INVITE_ENABLED ? (
+              <div className="mt-12 overflow-hidden rounded-[20px] border border-hairline bg-brand-subtle px-[clamp(20px,4vw,44px)] py-[clamp(24px,4vw,40px)]">
+                <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                  <div className="max-w-[560px]">
+                    <p className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1 text-caption font-bold text-brand">
+                      <Icon aria-hidden="true" name="star_shine" size={13} />
+                      友達招待キャンペーン
+                    </p>
+                    <h2 className={`${H2} mt-3`}>
+                      紹介した方の利用料から、最大
+                      {formatRateBps(
+                        INVITE_TIERS[INVITE_TIERS.length - 1].rateBps,
+                      )}
+                      が報酬に
+                    </h2>
+                    <p className="mt-2.5 text-body leading-6 text-ink-2">
+                      ご自身のプラン契約がなくても参加できます。あなたが招待した方が有料プランを利用した月から、
+                      最大{COMMISSION_MONTHS}
+                      か月分が報酬対象です（報酬率は招待人数に応じて上がります）。
+                    </p>
+                  </div>
+                  <Link
+                    className={cn(
+                      buttonVariants({ variant: "brand" }),
+                      "h-11 shrink-0 px-6 text-body font-bold",
+                    )}
+                    href="/app/invite"
+                  >
+                    招待リンクを受け取る
+                  </Link>
                 </div>
-                <Link
-                  className={cn(
-                    buttonVariants({ variant: "brand" }),
-                    "h-11 shrink-0 px-6 text-body font-bold",
-                  )}
-                  href="/app/invite"
-                >
-                  招待リンクを受け取る
-                </Link>
               </div>
-            </div>
+            ) : null}
           </div>
         </section>
 
@@ -566,7 +649,6 @@ export default function OldHome() {
         </section>
         */}
 
-
         {/* 07 よくある質問 */}
 
         <section className={`${CONTAINER} ${SECTION_PAD}`}>
@@ -586,12 +668,16 @@ export default function OldHome() {
             aria-hidden="true"
             className="absolute inset-0 bg-[radial-gradient(rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:22px_22px] [-webkit-mask-image:radial-gradient(ellipse_at_center,rgba(0,0,0,1)_0%,transparent_70%)] [mask-image:radial-gradient(ellipse_at_center,rgba(0,0,0,1)_0%,transparent_70%)]"
           />
-          <div className={`${CONTAINER} relative py-[clamp(64px,9vw,110px)] text-center`}>
+          <div
+            className={`${CONTAINER} relative py-[clamp(64px,9vw,110px)] text-center`}
+          >
             <div className="flex justify-center">
               <LogoTile size={40} />
             </div>
             <div>
-              <h2 className={`mt-[22px] text-[length:clamp(24px,calc(14px_+_1.8vw),34px)] leading-[1.45] ${HEADING}`}>
+              <h2
+                className={`mt-[22px] text-[length:clamp(24px,calc(14px_+_1.8vw),34px)] leading-[1.45] ${HEADING}`}
+              >
                 1日数分の確認から、
                 <br />
                 始めませんか。
@@ -611,7 +697,9 @@ export default function OldHome() {
                   無料で始める
                 </Link>
               </div>
-              <p className="mt-2.5 text-caption text-ink-3">{CARD_REGISTRATION_NOTE}</p>
+              <p className="mt-2.5 text-caption text-ink-3">
+                {CARD_REGISTRATION_NOTE}
+              </p>
             </div>
           </div>
         </section>
@@ -623,7 +711,9 @@ export default function OldHome() {
           Xアイコンは1行目のロゴの右端に残る（アイコンが1つだけ3行目へ落ちて孤立しない・T-M8-183）。
           DOM順＝見た目の順（`order` を使わない。フォーカス順と視覚順をずらさない・WCAG 2.4.3）。
         */}
-        <div className={`${CONTAINER} flex flex-wrap items-center gap-x-6 gap-y-4 py-8`}>
+        <div
+          className={`${CONTAINER} flex flex-wrap items-center gap-x-6 gap-y-4 py-8`}
+        >
           <div className="flex items-center gap-2.5">
             <LogoTile size={24} />
             <span className="text-body font-bold">{APP_NAME}</span>

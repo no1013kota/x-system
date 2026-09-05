@@ -76,3 +76,17 @@ describe("APP_NAVIGATION_ITEMS", () => {
     }
   });
 });
+
+describe("appNavigationItems（友達招待の導線・T-M8-445）", () => {
+  it("フラグが false なら /app/invite を落とし、それ以外の並びは変えない", async () => {
+    const { appNavigationItems } = await import("./navigation-items");
+    const hidden = appNavigationItems({ inviteEnabled: false }).map((i) => i.href);
+    expect(hidden).not.toContain("/app/invite");
+    expect(hidden).toEqual(APP_NAVIGATION_ITEMS.map((i) => i.href).filter((h) => h !== "/app/invite"));
+  });
+
+  it("フラグが true なら定義どおり全項目を出す（復活はフラグだけ）", async () => {
+    const { appNavigationItems } = await import("./navigation-items");
+    expect(appNavigationItems({ inviteEnabled: true })).toEqual([...APP_NAVIGATION_ITEMS]);
+  });
+});

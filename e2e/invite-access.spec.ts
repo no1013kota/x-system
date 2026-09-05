@@ -12,11 +12,14 @@ import { expect, signIn, test } from "./fixtures/test";
 test("LPの招待タブは未ログインならログイン画面へ送り、ログイン後そのまま招待画面へ着く", async ({
   page,
 }) => {
+  // 友達招待の導線は一時非表示（T-M8-445）。フラグを true にした環境でだけ LP の入口を検査する。
+  test.skip(
+    process.env.FEATURE_INVITE_ENABLED !== "true",
+    "友達招待の導線は非表示（FEATURE_INVITE_ENABLED 未設定）",
+  );
   await page.goto("/");
   // 見出しのCTA（モバイルでも見える本文セクション側）。
-  await page
-    .getByRole("link", { name: "招待リンクを受け取る" })
-    .click();
+  await page.getByRole("link", { name: "招待リンクを受け取る" }).click();
 
   // 未ログインはログイン画面。戻り先が招待画面として保たれている。
   await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Finvite/);
@@ -25,7 +28,10 @@ test("LPの招待タブは未ログインならログイン画面へ送り、ロ
   const signUpLink = page.getByRole("link", { name: "会員登録" });
   await expect(signUpLink).toHaveCount(1);
   // 登録後も招待画面へ戻れるよう next を引き継ぐ。
-  await expect(signUpLink).toHaveAttribute("href", "/signup?next=%2Fapp%2Finvite");
+  await expect(signUpLink).toHaveAttribute(
+    "href",
+    "/signup?next=%2Fapp%2Finvite",
+  );
 });
 
 test("プラン未選択（登録しただけ）でも招待画面で招待リンクを受け取れる", async ({
@@ -70,14 +76,22 @@ test("プラン未登録では機能画面と設定がロックされ、友達�
   await signIn(page, account);
 
   // ホームと機能画面はロック。理由と登録導線がその場に出る。
-  for (const path of ["/app", "/app/news", "/app/posts", "/app/schedule", "/app/analytics"]) {
+  for (const path of [
+    "/app",
+    "/app/news",
+    "/app/posts",
+    "/app/schedule",
+    "/app/analytics",
+  ]) {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(path.replace(/\//g, "\\/")));
     await expect(
       page.getByRole("heading", { name: "先にプランを登録してください" }),
       `${path} がロックされていない`,
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "プランを登録する" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "プランを登録する" }),
+    ).toBeVisible();
   }
 
   /*
@@ -92,12 +106,18 @@ test("プラン未登録では機能画面と設定がロックされ、友達�
       page.getByRole("heading", { name: "先にプランを登録してください" }),
       `設定(${tab}) がロックされていない`,
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "プランを登録する" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "プランを登録する" }),
+    ).toBeVisible();
   }
   // タブ自体が出ない（押せる先が無いのに並べない）。
   await expect(page.getByRole("link", { name: "課金・プラン" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "現在のご契約" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Xアカウント", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "現在のご契約" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Xアカウント", exact: true }),
+  ).toHaveCount(0);
 
   // 友達招待はプラン未登録でも使える。
   await page.goto("/app/invite");
@@ -127,11 +147,12 @@ test("支払いが滞っている場合はロックし、お支払い情報の�
     page.getByRole("heading", { name: "お支払い情報を更新してください" }),
   ).toBeVisible();
   // プラン登録の案内は出さない（プランはあるので直し方が違う）。
-  await expect(page.getByRole("heading", { name: "先にプランを登録してください" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "お支払い情報を更新する" })).toHaveAttribute(
-    "href",
-    "/app/settings?tab=billing",
-  );
+  await expect(
+    page.getByRole("heading", { name: "先にプランを登録してください" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "お支払い情報を更新する" }),
+  ).toHaveAttribute("href", "/app/settings?tab=billing");
 
   // 友達招待は支払いが滞っていても使える。
   await page.goto("/app/invite");
@@ -139,5 +160,7 @@ test("支払いが滞っている場合はロックし、お支払い情報の�
 
   // 課金・プランタブは開けて、支払い方法の更新へ行ける。
   await page.goto("/app/settings?tab=billing");
-  await expect(page.getByRole("heading", { name: "現在のご契約" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "現在のご契約" }),
+  ).toBeVisible();
 });
