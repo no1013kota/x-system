@@ -63,10 +63,7 @@ export function WritingCheckpointsPanel({
       className="space-y-4"
     >
       <div>
-        <h3
-          className="text-[15px] font-bold text-ink"
-          id="writing-checkpoints-heading"
-        >
+        <h3 className={cardTitleClassName} id="writing-checkpoints-heading">
           書き方のチェックポイント
         </h3>
         <p className="mt-1 text-body leading-6 text-ink-2">
