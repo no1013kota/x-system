@@ -6148,7 +6148,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - zip の `.claude/skills/` が本リポジトリの `.claude/skills/`（13本・playwright-cli の references 含む）と同一
   - `npm run blog:kit` で同じ内容を再生成できる（雛形の正本は `blog/kit/`、スキルはリポジトリから直接）
   - 同封物に個人情報・鍵・プロジェクトIDが無い（例示の user@example.com のみ）
-- 実装メモ（2026-09-05 完了・運営者の指摘「配布ファイルの中身が違う。.claude/skills の実物を同封して」）: 以前の zip は各スキルを2〜4KBに簡略化した雛形だった。雛形（CLAUDE.md・docs・tasks・README）は zip から `blog/kit/` へ取り出して正本にし、`scripts/blog-kit.mjs` が `blog/kit/`＋`.claude/skills/` を zip 化する（約72KB）。記事本文の「約31KB」と中身の説明は、進行中のブログ改善（T-M8-433）の後に合わせる。
+- 実装メモ（2026-09-05 完了・運営者の指摘「配布ファイルの中身が違う。.claude/skills の実物を同封して」）: 以前の zip は各スキルを2〜4KBに簡略化した雛形だった。雛形（CLAUDE.md・docs・tasks・README）は zip から `blog/kit/` へ取り出して正本にし、`scripts/blog-kit.mjs` が `blog/kit/`＋`.claude/skills/` を zip 化する（約72KB）。記事本文の「約31KB」と中身の説明は、進行中のブログ改善（T-M8-433）の後に合わせる。 → zip・`blog/kit/`・`scripts/blog-kit.mjs`・`blog:kit` は T-M8-435 で廃止（配布はプラグイン `docdd` のみ）。
 
 ### T-M8-433: ブログ4記事の品質改善（AIっぽさ除去・図・アイキャッチ）とブログスキルへの反映 `done`
 - 参照: blog/README.md・.claude/skills/blog-write・blog-publish・要件06 §1.5「/blog」 / 依存: T-M8-432 / サイズ: L（記事4本×レビュー2周＋基盤）
@@ -6158,16 +6158,44 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 各記事に `image:`（アイキャッチ。`npm run blog:eyecatch -- <slug>` で生成）があり、記事ヘッダ・一覧サムネイル・og:image に出る
   - 「非エンジニアがClaude Codeで…」は Claude Code 未経験者が読める（用語の初出説明・4つの道具の一覧・番号付き手順）
   - スキル（blog-write／blog-publish）と README に、image／eyecatch／図の作り方／AIっぽさ除去の項目／2周のセルフレビュー／「（意見）」不使用 が入っている
-- 実装メモ（2026-09-05 完了・ワークフロー22エージェント〔基盤1＋記事4本×（編集→読者レビュー→修正→編集長レビュー→最終修正）＋仕上げ1〕）: `**` が残る原因は日本語の約物「」（）に太字記号が隣接すると CommonMark が太字と解釈しないため。検出は micromark と同じ flanking 規則を `blog-content.ts` に実装し、実描画で残っていた5箇所と一致することを確認。記事ページの og:image は元々1つも出ていなかった（子セグメントの openGraph が親を置き換える）ので既定画像を明示。図は計10点、アイキャッチ4点。配布キットは T-M8-432 の実物スキル同梱に合わせて記事の手順4に「アプリ固有のコマンド名を直す」依頼文を追加。検証: blog:check 緑・vitest（blog）緑・E2E blog／mobile-layout 緑・4記事＋一覧を 1280／390 で実描画（`**` 0・横あふれ0・エラー0）。
+- 実装メモ（2026-09-05 完了・ワークフロー22エージェント〔基盤1＋記事4本×（編集→読者レビュー→修正→編集長レビュー→最終修正）＋仕上げ1〕）: `**` が残る原因は日本語の約物「」（）に太字記号が隣接すると CommonMark が太字と解釈しないため。検出は micromark と同じ flanking 規則を `blog-content.ts` に実装し、実描画で残っていた5箇所と一致することを確認。記事ページの og:image は元々1つも出ていなかった（子セグメントの openGraph が親を置き換える）ので既定画像を明示。図は計10点、アイキャッチ4点。配布キットは T-M8-432 の実物スキル同梱に合わせて記事の手順4に「アプリ固有のコマンド名を直す」依頼文を追加。検証: blog:check 緑・vitest（blog）緑・E2E blog／mobile-layout 緑・4記事＋一覧を 1280／390 で実描画（`**` 0・横あふれ0・エラー0）。 反映時の補足: 記事ページの既定 og:image を `@/app/opengraph-image.png` の静的 import で解決したところ、CI の typecheck（`next-env.d.ts` 生成前に走る）だけが落ちた。画像 import の型宣言は `src/types/next-image.d.ts`（追跡ファイル）で常に読ませる形にした（e8875e92）。本番 https://exosai.net/blog で 4記事のアイキャッチ・図・og:image・zip（82,918B・11スキル）を実ブラウザで確認済み。（この記事の手順4と zip は T-M8-435 で廃止）
 
-### T-M8-434: 開発キット（非ブログ11スキル＋雛形）を zip と Claude Code プラグインとして生成し、公開リポジトリで配布する `done`
+### T-M8-434: 開発キット（非ブログ11スキル＋雛形）を zip と Claude Code プラグインとして生成し、公開リポジトリで配布する（zip は T-M8-435 で廃止） `done`
 - 参照: kit/README.md（利用者向け）・kit/PUBLISHING.md（運営者向け）・docs/operations/local-development.md / 依存: T-M8-432 / サイズ: M
 - 完了条件:
   - `npm run dev-kit` が、記事用 zip（`public/blog-files/claude-code-dev-kit.zip`）と、マーケットプレイス一式 `dist/docdd/`（`.claude-plugin/marketplace.json`・`plugins/docdd/`〔plugin.json・skills 11本＋init・templates〕）を同じ正本（`kit/`＋`.claude/skills/`＋ルートの `.mcp.json`／`settings.json` の permissions／検査スクリプト3本）から生成する
   - `claude plugin validate --strict` が marketplace・plugin とも通る。スキル本文の `/dev-loop` 等は `/docdd:dev-loop` に書き換わり、ブログ系スキルは入らない
   - 雛形を新規プロジェクトへ書き出す `docdd:init` スキルがあり、既存ファイルを上書きしない。空の git リポジトリで `check:doc-refs`（stage後）→ コミット → `check:doc-dates` が設計どおりの文面で通る／止まる
   - 公開リポジトリ https://github.com/no1013kota/claude-docdd-dev-kit に `dist/docdd/` の中身がある（`/plugin marketplace add no1013kota/claude-docdd-dev-kit` → `/plugin install docdd@claude-docdd-dev-kit` → `/docdd:init`）
-- 実装メモ（2026-09-05 完了・運営者の依頼「ブログ系を除いたスキル一式を新リポジトリへ入れる手順とフォルダ。プラグイン化した方が配布しやすいか」→ プラグイン形式で決定、配布先は運営者作成のリポジトリ）: ワークフロー〔実装→導入テスト＋読者視点の反証→修正〕。反証で見つかった罠: 空リポでは `check:doc-refs` が stage 前に空振り・`check:doc-dates` がコミット0件でスタックトレース・`audit-check` が lock 無しで落ちる → それぞれ日本語の理由で止まるガードを正本のスクリプトへ追加し、init の手順を「add → refs → 承知でコミット → dates」に並べ替え。二重管理を避けるため kit/ には雛形の正本（CLAUDE.template.md・docs・tasks・init スキル・README 3種）だけを置き、設定と検査スクリプトはルートの実物を生成時に取り込む。`kit/BUILD.json`（版＋中身ハッシュ）で「中身が変わったのに版が同じ」を停止（`--same-version` で明示的に許す）、`src/lib/blog/dev-kit-zip.test.ts` が zip の鮮度を守る。プラグイン名 `docdd`・マーケットプレイス名 `claude-docdd-dev-kit`・ライセンス Apache-2.0（リポジトリの LICENSE に合わせ、生成側では LICENSE を作らない）。
+- 実装メモ（2026-09-05 完了・運営者の依頼「ブログ系を除いたスキル一式を新リポジトリへ入れる手順とフォルダ。プラグイン化した方が配布しやすいか」→ プラグイン形式で決定、配布先は運営者作成のリポジトリ）: ワークフロー〔実装→導入テスト＋読者視点の反証→修正〕。反証で見つかった罠: 空リポでは `check:doc-refs` が stage 前に空振り・`check:doc-dates` がコミット0件でスタックトレース・`audit-check` が lock 無しで落ちる → それぞれ日本語の理由で止まるガードを正本のスクリプトへ追加し、init の手順を「add → refs → 承知でコミット → dates」に並べ替え。二重管理を避けるため kit/ には雛形の正本（CLAUDE.template.md・docs・tasks・init スキル・README 3種）だけを置き、設定と検査スクリプトはルートの実物を生成時に取り込む。`kit/BUILD.json`（版＋中身ハッシュ）で「中身が変わったのに版が同じ」を停止（`--same-version` で明示的に許す）、`src/lib/blog/dev-kit-zip.test.ts` が zip の鮮度を守る。 → zip 出力と `dev-kit-zip.test.ts` は T-M8-435 で廃止。鮮度検査は `src/lib/ops/dev-kit.test.ts`。プラグイン名 `docdd`・マーケットプレイス名 `claude-docdd-dev-kit`・ライセンス Apache-2.0（リポジトリの LICENSE に合わせ、生成側では LICENSE を作らない）。
+
+### T-M8-435: 開発キットの配布をプラグインに一本化（zip 配布と `.agents/skills` を廃止、記事はプラグイン導入を主手順に） `done`
+- 参照: kit/README.md・kit/PUBLISHING.md・blog/published/claude-code-non-engineer-workflow.md・docs/operations/local-development.md / 依存: T-M8-434 / サイズ: S
+- 完了条件:
+  - 記事「非エンジニアがClaude Codeで…」の「キットの使い方」が `/plugin marketplace add` → `/plugin install` → `/docdd:init` の3コマンドで書かれ、zip への言及とリンクが無い（`blog:check` 緑）
+  - `npm run dev-kit` が zip を作らず、`public/blog-files/claude-code-dev-kit.zip` が無い。`kit/BUILD.json` の鮮度は `src/lib/ops/dev-kit.test.ts` が守る
+  - プラグイン同梱の README・公開リポジトリの README・init・雛形 CLAUDE.md から「zip 版」の案内が消え（残っていれば `dev-kit` が止まる）、手順書を直したい人向けに `plugins/docdd/skills/` を写す手順がある。公開リポジトリのライセンス表記が実物（Apache-2.0）と一致する
+  - `.agents/skills/`（Codex 向けの旧版4本）が無く、AGENTS.md がそれを指していない
+- 実装メモ（2026-09-05 完了・運営者の指示「古いやつは削除」「zip の案内は不要、プラグイン導入をメインに」）: zip は記事からしか辿れず、記事から外すと誰も届かない生成物になるため生成ごと廃止した（`dev-kit.mjs` の zip 出力・記事の「約NNKB」書き換え・`dev-kit-zip.test.ts` を削除）。手順書を自分で直したい利用者の受け皿は公開リポジトリの `plugins/docdd/skills/` のコピー（README「手順書を自分で直したいとき」）。公開リポジトリ README の「MIT」は実物の LICENSE（Apache-2.0）と食い違っていたので直した。CI の typecheck 失敗（記事ページの og:image 静的 import）は `src/types/next-image.d.ts` で解消済み（T-M8-433 の補足参照）。
+
+### T-M8-436: 配布物（プラグイン）と Claude Code 記事から本リポジトリ固有の文言を除く（配布用スキル `kit/skills/` を `.claude/skills/` の汎用化した派生として持つ） `done`
+- 参照: kit/PUBLISHING.md「`.claude/skills/` と `kit/skills/` の二重管理について」・kit/README.md・docs/operations/local-development.md / 依存: T-M8-435 / サイズ: M
+- 完了条件:
+  - `dist/docdd/` の .md／.json に「Exos」「x-system」「T-M…」「REQUIRE_DB」「smoke:live 等の固有 npm script」「要件定義書.md／プロンプト設計書.md」が無い（`npm run dev-kit` が機械検査し、あれば止まる。記事へのリンクだけ許す）
+  - `kit/skills/<名前>/SKILL.md`（11本）が `.claude/skills/<名前>/SKILL.md` と同じ手順・表・停止条件を持ち、固有名・作業ID・固有コマンド・`src/` のパス・実測値を含まない（「型検査」「単体テスト」「E2E」は雛形 CLAUDE.md「検証コマンド」表を指す）
+  - `.claude/skills/<名前>/` を変えると `src/lib/ops/dev-kit.test.ts` が「派生へ反映するか判断して `npm run dev-kit`」で赤になる（`kit/BUILD.json` に元スキルのハッシュを記録）。`.claude/skills/` にスキルが増えて派生が無いときも `dev-kit` が止まる
+  - 雛形 CLAUDE.md・init・README・スキル冒頭の前提ブロックに「元のアプリ（Exos AI）」の記述が無い。配布する検査スクリプト3本のコメントに作業ID・事故の日付・固有ファイル名が無い
+  - 記事本文に「Exos AI」「私のアプリ専用のコマンド」の記述が無く、著者の経験は固有名なしで書かれている
+- 実装メモ（2026-09-05 完了・運営者の指摘「プラグインやブログは x-system に限らず汎用的なものなので、x-system に関する文言は不要」）: 以前の指示（T-M8-432「簡略化した雛形ではなく実物のスキルを同封」）と両立させるため、手順・表・停止条件はそのまま、固有文言だけを言い換えた派生を `kit/skills/` に置く方式にした（`.claude/skills/` 自体を汎用化すると本リポジトリの手順から固有の教訓が抜ける）。派生の作成はワークフロー〔書く→原文と突き合わせて反証（残存文言・失われた規則・捏造・可読性）→直す〕×11本。二重管理の drift は BUILD.json の元スキルハッシュで検知する（反映不要なら `npm run dev-kit` で記録だけ更新）。配布する検査スクリプトはルートの実物を写すため、コメントの作業ID・日付・固有ファイル名を落とした（挙動は不変）。
+
+
+### T-M8-437: AIニュース記事の時系列図を具体化、Claude Code 記事を「結論＝要約」で簡潔化、記事作成スキルを読者目線で整理 `done`
+- 参照: blog/README.md・.claude/skills/blog-write/SKILL.md・blog/published/ai-news-august-2026.md・blog/published/claude-code-non-engineer-workflow.md / 依存: T-M8-436 / サイズ: S
+- 完了条件:
+  - 「2026年8月の主な出来事」の図に「規制」「配る」等の分類札が無く、各日付の下が具体的な出来事（数字・固有名入り、1行20字以内・2行）になっている。スマホ幅プレビューで読める。alt も同じ内容
+  - Claude Code 記事の `## 結論` だけで、主張・4つのファイルの役割・効く理由・次にやることが分かる。本文は具体例（5原則・検証の表・1日の流れ・使い方の手順）を残したまま短くなっている（`blog:check` 緑）
+  - `/blog-write` に「title は読者のメリット＋注目のワード」「結論＝記事の要約」「読者目線で具体的・簡潔・構造的」の指針があり、旧版の規則・手順・しきい値（文字サイズ・字数・front matter のキー・2周レビュー・AIっぽさの項目）が1つも失われていない。行数は旧版より少ない
+- 実装メモ（2026-09-05 完了・運営者の指摘「図内の文言が分かりにくい」「結論が要約になっていない。深く考えて改善。簡潔に」「スキルにタイトルと読者目線の指針を。スキル自体も簡潔に」）: 図は分類札を外し、日付＋具体的な2行（制裁金額・利用者数・粗利率など本文の数字）にした。記事は結論を「主張→4ファイルの表→効く理由→入手方法」の要約に組み替え、「4つの道具」節を結論へ統合、前提・理由・落とし穴の重複を削って約12,000字→約10,500字（具体例は維持）。スキルは手順順（入力→掘る→構成→書く→保存・画像・検証→2周レビュー→ルール）に整理し、日付・作業IDの経緯注記を落として 114行→95行。旧版との突き合わせで失われた規則が無いことを別エージェントで確認。
 
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S

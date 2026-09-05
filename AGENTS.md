@@ -11,8 +11,7 @@
 
 ## Codex固有
 
-| パス | 内容 |
-|---|---|
-| `.agents/skills/` | Codex向けスキル。中身は `.claude/skills/<名前>/SKILL.md` が正本 |
+スキルは `.claude/skills/<名前>/SKILL.md` を直接読む。以前あった `.agents/skills/`（Codex向けの写し）は、
+写した後に `.claude/skills/` 側だけが更新されて旧版が取り残されたため 2026-09-05 に廃止した（T-M8-435）。
 
 Definition of Done は `CLAUDE.md`「Definition of Done（全タスク共通）」を見る。
