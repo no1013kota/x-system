@@ -6211,7 +6211,7 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `npm run release:staging` は、HEAD に印があり CI 結果が無いとき「自動テスト（CI）: 省略しました」として通す。印があっても CI が赤なら止まり、印が無く結果も無ければ従来どおり止まる（`release-gate.test.ts`）
   - stg → main のマージコミットでは、`release:check` ジョブがマージ元の印を見て本体をスキップする（型・lint だけ走る）
   - CLAUDE.md に「push は作業の最後に1回」「CI の有無は運営者の指示で選ぶ。動作に影響する変更には付けない」が書かれている
-- 実装メモ（2026-09-05 完了・運営者の指示「時間がかかりすぎ。CI は最後に、かつ必要な時だけ」「些細な修正なら CI 無しを選びたい」）: 同日は push 4回で CI に56分（うち1回は BACKLOG のメモだけ）。CI トリガー自体は `release.mjs` が HEAD の CI 結論を見るので外さず、(1) push を1回に減らす運用、(2) 運営者が選ぶ `[skip ci]` の2段にした。印はコミットに残るので「誰が省略を選んだか」が履歴で分かる。実物確認: 3a310253 を `[skip ci]` 付きで push → CI 実行なし → `release:staging` が「省略しました」で CI 項目を通過。
+- 実装メモ（2026-09-05 完了・運営者の指示「時間がかかりすぎ。CI は最後に、かつ必要な時だけ」「些細な修正なら CI 無しを選びたい」）: 同日は push 4回で CI に56分（うち1回は BACKLOG のメモだけ）。CI トリガー自体は `release.mjs` が HEAD の CI 結論を見るので外さず、(1) push を1回に減らす運用、(2) 運営者が選ぶ `[skip ci]` の2段にした。印はコミットに残るので「誰が省略を選んだか」が履歴で分かる。実物確認: 3a310253 を `[skip ci]` 付きで push → CI 実行なし → `release:staging` が「省略しました」で CI 項目を通過。 → **同日に修正**: GitHub 公式の印は workflow ごと止めるため branch protection の必須チェックが報告されず PR #49 がマージできなかった。印を独自の `[light ci]`（CI は走るが本体を飛ばす）に変え、公式の印は release ゲートが検出して止める形にした。
 
 ### T-M8-439: 画像プロンプト（PT-IMG）の「前提」「タスク」を運営者の文面へ `done`
 - 参照: プロンプト設計書 §6.8 / 依存: なし / サイズ: S
@@ -6240,6 +6240,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - PT-P2・PT-P5 の手順に「必要があれば（…）Web検索で確認する」があり、`<pattern_rules>` が全パターンで「Web検索: 使う（最大3回）」になる
   - `check:providers` と `smoke:live`（自分の考え・意見＝P-2 が検索ツール付きで生成）が通る
 - 実装メモ（2026-09-05 完了・運営者の指示「投稿作成の規定プロンプトに関して、どのパターンも必要があれば最大3回検索をするように」）: 「常に」は検索ツールを渡す意味で、使うかはモデルが決める（`usage.calls[].web_search_count` で事後に分かる）。自作パターンは元から always／3。migration は staging・本番へ `release:*` の2回実行で適用。
+
+
+### T-M8-443: `/release` を配布キット（プラグイン）と Claude Code 記事に加える `done`
+- 参照: kit/skills/release/SKILL.md・kit/templates/CLAUDE.template.md「反映コマンド」表・kit/README.md・blog/published/claude-code-non-engineer-workflow.md / 依存: T-M8-440 / サイズ: S
+- 完了条件:
+  - 配布用スキル `kit/skills/release/SKILL.md` が、本リポジトリの `/release` と同じ順（前提 → CI 要否の対応表 → push 1回 → CI 待ち → staging → 本番ブランチへ取り込み → 本番 → 実ブラウザ確認 → 報告）で、固有名（Vercel・Supabase の ref・release スクリプト名・GitHub のリポジトリ名）を含まない。反映先のコマンドは雛形 CLAUDE.md の「反映コマンド」表（staging へ反映／本番へ反映／公開先 URL。`init` のヒアリングで埋まる）を指す
+  - `npm run dev-kit` がスキル12本＋init を生成し（`release` を除外しない）、公開リポジトリが v0.1.2 になる。README・記事のスキル数と一覧に `release` がある
+- 実装メモ（2026-09-05 完了・運営者の依頼「release のスキルもプラグインやブログの説明に追加できますか」）: 汎用化は他の11本と同じ手順（書く → 原文と突き合わせて反証 → 直す）。GitHub Actions 固有の部分（PR・skip ci の印）は「GitHub を使っていれば」の条件付きで残した。CI 不要の変更（`.claude/**`・`kit/**`・ブログ・docs）なので、`/release` の対応表どおり空コミットで印を付けて反映（本番反映の初回の CI 省略ケース）。
 
 
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`

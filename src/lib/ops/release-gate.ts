@@ -33,8 +33,9 @@ export interface ReleaseContext {
   /** GitHub Actions の結論（`success` / `failure` / `in_progress` / null=見つからない）。 */
   ciConclusion: string | null;
   /**
-   * いまのコミットのメッセージに `[skip ci]` 等の省略指定があるか（運営者が「些細な修正」と判断して
-   * CI を回さないことを選んだ・2026-09-05）。true かつ CI 結果が無いときだけ「省略」として通す。
+   * いまのコミットのメッセージに GitHub 公式の省略の印（skip ci 等）があるか。この印は workflow ごと止めるため
+   * 必須チェックが報告されず PR がマージできない（2026-09-05 に実際に起きた）。些細な修正の軽量化は
+   * ci.yml が見る [light ci] を使う（CI は走り、本体だけ飛ばす）ので、ゲートには特別扱いが要らない。
    */
   ciSkipRequested?: boolean;
   /**
@@ -115,8 +116,9 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
   } else if (ctx.ciConclusion === null && ctx.ciSkipRequested) {
     steps.push({
       name: "自動テスト（CI）",
-      level: "ok",
-      detail: "省略しました（コミットに [skip ci]。運営者が「些細な修正」と判断した変更。動作に影響する変更では付けない）",
+      level: "stop",
+      detail: "コミットに GitHub 公式の省略の印（skip ci 等）があり、CI が走っていません",
+      nextAction: "この印では必須チェックが報告されず PR をマージできません。印を外し、些細な修正なら [light ci] を付けて push し直してください（CI は本体を飛ばして数分で終わります）",
     });
   } else if (ctx.ciConclusion === null) {
     steps.push({
@@ -359,7 +361,8 @@ export function cronSecretEnvName(
 
 /**
  * GitHub Actions が push / pull_request を省略するコミットメッセージの印（公式の5種）。
- * 運営者が「些細な修正なので CI 無しで」と選んだときにコミット末尾へ付ける（2026-09-05）。
+ * **このリポジトリでは使わない**（必須チェックが報告されず PR がマージできない）。検出して止めるための定義。
+ * 些細な修正の軽量化は ci.yml が見る [light ci]（CI は走り、本体だけ飛ばす）。
  */
 export const CI_SKIP_MARKER_RE = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
 

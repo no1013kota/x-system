@@ -50,8 +50,8 @@ Claude Code の中で次を順に打ちます（1・2はどのフォルダで起
 
 ### プラグインが提供するもの（プロジェクトには置かれない）
 
-手順書（スキル）11本と、導入用の `init`。11本は `add-task` `dev-loop` `doc-sync` `verify-integration` `verify-e2e` `ui-polish` `refactor` `speed-up` `security-audit` `maintenance` `playwright-cli`。
-`init` 以外の11本が何をするかは `CLAUDE.md` の「スキルの地図」にあります（`init` はこの README の「入れ方」）。本文は配布元（GitHub）の `plugins/docdd/skills/<名前>/SKILL.md`（この README と同じ場所にある [`skills/`](./skills/) フォルダ）で、開けば読めます。
+手順書（スキル）12本と、導入用の `init`。12本は `add-task` `dev-loop` `doc-sync` `verify-integration` `verify-e2e` `ui-polish` `refactor` `speed-up` `security-audit` `maintenance` `playwright-cli` `release`。
+`init` 以外の12本が何をするかは `CLAUDE.md` の「スキルの地図」にあります（`init` はこの README の「入れ方」）。本文は配布元（GitHub）の `plugins/docdd/skills/<名前>/SKILL.md`（この README と同じ場所にある [`skills/`](./skills/) フォルダ）で、開けば読めます。
 スキルの中の「型検査」「単体テスト」「E2E」は、`CLAUDE.md`「検証コマンド」表のコマンドを指します（`init` のヒアリングで埋まります）。
 
 ## 最初の30分

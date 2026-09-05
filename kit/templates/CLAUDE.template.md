@@ -53,8 +53,9 @@
 | `/maintenance` | 週次・月次の定期点検 | 時間経過で壊れた箇所の報告 |
 | `/speed-up` | 密結合をほどいて画面遷移を速くする（WIP=1）。**利用者に害があるならやらない** | 前後の数字つきの1単位＋落とした候補の理由 |
 | `/playwright-cli` | ブラウザ操作の道具箱（他スキルから参照） | — |
+| `/release` | 依頼を全部終えたあと、staging → 本番へ反映する（CI の要否を差分から判断・push は1回） | 反映・実ブラウザ確認・CI 要否の理由 |
 
-**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット。
+**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット → 依頼が全部終わったら `/release`。
 連続自動開発は `/loop /dev-loop`。
 スキルはプラグイン（`docdd`）が提供し、各コマンドは `/docdd:add-task` のように `docdd:` の前置きで呼ぶ（手順書を `.claude/skills/` に自分で置く形へ切り替えたら前置きを外す）。
 
@@ -72,6 +73,14 @@
 | 全検査（push 前に1回） | `<上を順に全部回すコマンド。例: npm run check:all>` |
 | docs の検査 | `npm run check:doc-dates && npm run check:doc-refs` |
 | 依存の脆弱性 | `npm run audit:check`（npm の package-lock.json があるプロジェクト向け） |
+
+## 反映コマンド（このプロジェクトのもの。`/release` が使う）
+
+| 用途 | コマンド・URL |
+|---|---|
+| staging へ反映 | `<staging へ反映するコマンド。例: npm run deploy:staging。無ければ「無い」>` |
+| 本番へ反映 | `<本番へ反映するコマンド。例: npm run deploy:production。無ければ「無い」（本番ブランチへの取り込みだけで公開されるなら、その旨）>` |
+| 公開先 URL | `<https://… 本番の URL。実ブラウザ確認に使う>` |
 
 ## 仕様の読み方（実装時に必ず該当箇所を参照）
 

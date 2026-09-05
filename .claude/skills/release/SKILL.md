@@ -25,10 +25,10 @@ model: inherit
 | `src/**`・`supabase/**`・`e2e/**`・`package.json`・`package-lock.json`・`next.config.*`・`tsconfig*.json`・`vitest.config.*`・`playwright.config.*`・`.github/workflows/**`・`scripts/**`（`dev-kit.mjs`・`blog-image.mjs`・`blog-check.mjs` を除く）・`public/**`（`public/blog-images/**` を除く）・`.env.example`・`vercel.json` | **必要** |
 | `docs/**`・`tasks/**`・`blog/**`・`public/blog-images/**`・`.claude/**`・`kit/**`・`scripts/dev-kit.mjs`・`scripts/blog-image.mjs`・`scripts/blog-check.mjs`・ルートの `*.md`（`CLAUDE.md`・`AGENTS.md`・`README.md`）・`.gitignore`・`.mcp.json` | 不要（`npm run blog:check`・`check:doc-dates`・`check:doc-refs`・単体テストが緑であること） |
 
-「不要」なら、印を HEAD に付ける（コミットを書き換えない）:
+「不要」なら、軽量化の印を HEAD に付ける（コミットを書き換えない）。CI は走るが `release:check` の本体（build・E2E）を飛ばし、型検査・lint だけで約2分で緑になる。**GitHub 公式の省略の印（skip ci 等）は使わない**——workflow ごと止まり、必須チェックが報告されず PR がマージできない（2026-09-05 に実際に起きた）。
 
 ```bash
-git commit --allow-empty -m "chore(release): CI 省略（<理由: docs・ブログのみ 等>） [skip ci]"
+git commit --allow-empty -m "chore(release): CI 軽量化（<理由: docs・ブログのみ 等>） [light ci]"
 ```
 
 ## 2. push（1回だけ）
@@ -37,7 +37,7 @@ git commit --allow-empty -m "chore(release): CI 省略（<理由: docs・ブロ�
 git push origin stg
 ```
 
-## 3. CI を待つ（「必要」のときだけ）
+## 3. CI を待つ（「必要」なら約14分、軽量化なら約2分）
 
 Monitor で `gh run list --branch stg --json headSha,status,conclusion` を HEAD の SHA で突き合わせ、`completed success` まで待つ（約14分）。赤なら **ここで止めて原因を直す**（`gh run view <id> --log-failed`）。直したら手順0からやり直す。
 
@@ -47,7 +47,7 @@ Monitor で `gh run list --branch stg --json headSha,status,conclusion` を HEAD
 npm run release:staging -- --apply     # migration があれば「適用 → もう1回」の2回
 ```
 
-出力の8項目と「デプロイ後の検証」（人間確認・実物スモーク）を読む。❌ があれば止まる。CI を省略した場合は「自動テスト（CI）: 省略しました」と出るのが正常。
+出力の8項目と「デプロイ後の検証」（人間確認・実物スモーク）を読む。❌ があれば止まる。軽量化した場合も CI は緑になるので「自動テスト（CI）: 緑です」と出る。「CI 結果が見つかりません」なら push 漏れか印の誤りを疑う。
 Vercel の build がまだなら「まだbuild中です」で止まるので、1〜2分待って再実行する。
 
 ## 5. PR → main
@@ -80,7 +80,7 @@ PR 番号・本番 URL・確認した画面・**CI の要否とその理由**・
 ## ルール
 
 - 本番 DB へは `release:production` 以外で書かない（読むのは可）。
-- force push・`git add -A`・コミットの書き換え（amend/rebase）をしない。CI 省略の印は空コミットで足す。
+- force push・`git add -A`・コミットの書き換え（amend/rebase）をしない。軽量化の印は空コミットで足す。
 - 途中で ❌ が出たら次の手順へ進まない。原因を直してから手順0へ戻る。
-- **コミットメッセージの本文に、角括弧付きの省略の印（skip ci など）を文字どおり書かない。** GitHub はメッセージ全体（本文も）を見て CI を省略する。2026-09-05、印について説明した本文が原因で、必要な CI が走らなかった。印に言及するときは角括弧を外して書く。
-- 所要の目安: CI あり 約30分（CI 14＋反映12＋確認4）、CI なし 約16分。
+- **コミットメッセージに角括弧付きの GitHub 公式の省略の印（skip ci など）を書かない**（本文で言及するときも角括弧を外す）。GitHub はメッセージ全体を見て workflow ごと止め、必須チェックが報告されず PR がマージできない。2026-09-05、説明として本文に書いただけで必要な CI が走らなかった。軽量化の印（light ci）も本文には書かず、空コミットの件名にだけ付ける。
+- 所要の目安: CI あり 約30分（CI 14＋反映12＋確認4）、軽量化 約18分。

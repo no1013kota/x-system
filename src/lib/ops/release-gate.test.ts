@@ -242,13 +242,12 @@ describe("pickCiConclusion (T-M8-389)", () => {
   });
 });
 
-describe("CI の省略（[skip ci]・運営者の選択 2026-09-05）", () => {
-  it("CI 結果が無くても、コミットに [skip ci] があれば「省略」として通す", () => {
+describe("CI の省略の印（GitHub 公式の印は止める・軽量化は light ci・2026-09-05）", () => {
+  it("GitHub 公式の省略の印（skip ci）で CI が走っていないときは止まり、[light ci] へ誘導する（PR がマージできないため）", () => {
     const steps = evaluateReleaseGate({ ...ok, ciConclusion: null, ciSkipRequested: true });
-    const ci = steps.find((s) => s.name === "自動テスト（CI）");
-    expect(ci?.level).toBe("ok");
-    expect(ci?.detail).toContain("省略");
-    expect(firstStop(steps)).toBeNull();
+    const ci = firstStop(steps);
+    expect(ci?.name).toBe("自動テスト（CI）");
+    expect(ci?.nextAction).toContain("light ci");
   });
 
   it("[skip ci] があっても、CI が走って赤なら止まる（印は結果を上書きしない）", () => {

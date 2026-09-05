@@ -39,9 +39,9 @@ const OWNER = { name: "no1013kota" };
 /** 公開リポジトリ（`<owner>/<repo>`）。README・スキルの前提ブロックの「配布リポジトリ」もここから埋める。 */
 const GITHUB_REPO = "no1013kota/claude-docdd-dev-kit";
 const DESCRIPTION =
-  "非エンジニアが Claude Code で Web アプリを作り続けるための開発キット。CLAUDE.md・仕様書・バックログの雛形と、タスク起票・開発サイクル・docs同期・検証などの手順書（スキル）11本と、雛形を置く init";
-/** 本リポジトリ専用（ブログ運用・このアプリの反映手順〔Vercel・Supabase・release スクリプト〕）。派生を作らない。 */
-const EXCLUDED_SKILLS = ["blog-write", "blog-publish", "release"];
+  "非エンジニアが Claude Code で Web アプリを作り続けるための開発キット。CLAUDE.md・仕様書・バックログの雛形と、タスク起票・開発サイクル・docs同期・検証などの手順書（スキル）12本と、雛形を置く init";
+/** ブログ運用専用（本リポジトリだけの仕組み）。派生を作らない。 */
+const EXCLUDED_SKILLS = ["blog-write", "blog-publish"];
 /**
  * 配布物（.md／.json）に残っていたら止める、本リポジトリ固有の文言（運営者の指示 2026-09-05・T-M8-436）。
  * ブログ記事へのリンク（README）だけは許す。
