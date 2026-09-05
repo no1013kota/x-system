@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { saveWritingCheckpointsAction } from "@/app/actions/writing-checkpoints";
+import { cardTitleClassName } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import {
