@@ -36,11 +36,16 @@ export const BLOG_DRAFTS_DIR = join(process.cwd(), "blog", "drafts");
 export const PUBLIC_DIR = join(process.cwd(), "public");
 
 /**
- * 本文が参照するサイト内画像のうち `public/` に無いもの。
+ * 本文が参照するサイト内画像と front matter の `image`（アイキャッチ）のうち `public/` に無いもの。
  * 画像の置き忘れ・コミット漏れは**本番で初めて壊れる**ので、不備として公開側に出さない。
  */
-export function missingLocalImages(body: string, publicDir: string = PUBLIC_DIR): string[] {
-  return localImagePaths(body).filter((src) => !existsSync(join(publicDir, decodeURI(src))));
+export function missingLocalImages(
+  post: Pick<BlogPost, "body" | "image">,
+  publicDir: string = PUBLIC_DIR,
+): string[] {
+  return localImagePaths(post.body, post.image).filter(
+    (src) => !existsSync(join(publicDir, decodeURI(src))),
+  );
 }
 
 export interface InvalidBlogFile {
@@ -78,7 +83,7 @@ export function readBlogCollection(
       invalid.push({ file: name, errors: result.errors });
       continue;
     }
-    const missing = missingLocalImages(result.post.body, publicDir);
+    const missing = missingLocalImages(result.post, publicDir);
     if (missing.length > 0) {
       invalid.push({
         file: name,

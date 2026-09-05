@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1120" viewBox="0 0 1200 1120">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7d1f75"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="1120" fill="#ffffff"/>
+  <g font-family="Hiragino Sans, Noto Sans JP, sans-serif" fill="#1f1a1e">
+    <text x="600" y="64" text-anchor="middle" font-size="44" font-weight="700" fill="#7d1f75">おすすめ表示ができるまでの8段階</text>
+    <text x="600" y="112" text-anchor="middle" font-size="40" fill="#5a4f58">公開コードの説明書「System Architecture」より</text>
+
+    <!-- left column: steps 1-4 (top to bottom). box 520x170, gap 40 -->
+    <rect x="40" y="160" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="300" y="218" text-anchor="middle" font-size="40" font-weight="700">1. 読者の情報を集める</text>
+    <text x="300" y="268" text-anchor="middle" font-size="40" fill="#5a4f58">行動履歴・フォロー・</text>
+    <text x="300" y="312" text-anchor="middle" font-size="40" fill="#5a4f58">ブロック／ミュート</text>
+    <line x1="300" y1="332" x2="300" y2="366" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="40" y="370" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="300" y="428" text-anchor="middle" font-size="40" font-weight="700">2. 候補を集める</text>
+    <text x="300" y="478" text-anchor="middle" font-size="40" fill="#5a4f58">Thunder・Phoenix・</text>
+    <text x="300" y="522" text-anchor="middle" font-size="40" fill="#5a4f58">SimClusters の3系統</text>
+    <line x1="300" y1="542" x2="300" y2="576" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="40" y="580" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="300" y="638" text-anchor="middle" font-size="40" font-weight="700">3. 候補の情報を集める</text>
+    <text x="300" y="688" text-anchor="middle" font-size="40" fill="#5a4f58">本文・メディア・</text>
+    <text x="300" y="732" text-anchor="middle" font-size="40" fill="#5a4f58">著者・反応数</text>
+    <line x1="300" y1="752" x2="300" y2="786" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="40" y="790" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="300" y="848" text-anchor="middle" font-size="40" font-weight="700">4. 採点前フィルタ</text>
+    <text x="300" y="898" text-anchor="middle" font-size="40" fill="#5a4f58">48時間より古い・既読・</text>
+    <text x="300" y="942" text-anchor="middle" font-size="40" fill="#5a4f58">ブロック相手などを除外</text>
+
+    <!-- connector: step 4 (left bottom) to step 5 (right top) through the gutter -->
+    <path d="M560,875 L600,875 L600,245 L636,245" fill="none" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <!-- right column: steps 5-8 (top to bottom) -->
+    <rect x="640" y="160" width="520" height="170" rx="16" fill="#7d1f75" stroke="#7d1f75" stroke-width="3"/>
+    <text x="900" y="218" text-anchor="middle" font-size="40" font-weight="700" fill="#ffffff">5. 採点（並べる）</text>
+    <text x="900" y="268" text-anchor="middle" font-size="40" fill="#f4e8f3">行動確率（64種類）に</text>
+    <text x="900" y="312" text-anchor="middle" font-size="40" fill="#f4e8f3">重みを掛けて合計</text>
+    <line x1="900" y1="332" x2="900" y2="366" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="640" y="370" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="900" y="428" text-anchor="middle" font-size="40" font-weight="700">6. 選抜</text>
+    <text x="900" y="478" text-anchor="middle" font-size="40" fill="#5a4f58">上位N件を残す</text>
+    <line x1="900" y1="542" x2="900" y2="576" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="640" y="580" width="520" height="170" rx="16" fill="#7d1f75" stroke="#7d1f75" stroke-width="3"/>
+    <text x="900" y="638" text-anchor="middle" font-size="40" font-weight="700" fill="#ffffff">7. 表示可否</text>
+    <text x="900" y="688" text-anchor="middle" font-size="40" fill="#f4e8f3">見せてよいかを判定：</text>
+    <text x="900" y="732" text-anchor="middle" font-size="40" fill="#f4e8f3">表示／警告付き／非表示</text>
+    <line x1="900" y1="752" x2="900" y2="786" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <rect x="640" y="790" width="520" height="170" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+    <text x="900" y="848" text-anchor="middle" font-size="40" font-weight="700">8. 混ぜる</text>
+    <text x="900" y="898" text-anchor="middle" font-size="40" fill="#5a4f58">広告・おすすめユーザー</text>
+    <text x="900" y="942" text-anchor="middle" font-size="40" fill="#5a4f58">を差し込んで表示</text>
+
+    <!-- bottom note -->
+    <text x="600" y="1030" text-anchor="middle" font-size="40" font-weight="700" fill="#7d1f75">5「並べる」と 7「見せてよいか」は別の仕組み</text>
+    <text x="600" y="1082" text-anchor="middle" font-size="40" fill="#5a4f58">「伸びない」には2種類あり、対処が違う</text>
+  </g>
+</svg>

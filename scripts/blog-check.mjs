@@ -98,15 +98,21 @@ for (const path of targetFiles()) {
     continue;
   }
   const result = parseBlogPost(readFileSync(path, "utf8"), slugFromFileName(name));
-  // 本文が参照するサイト内画像の実在（blog-files.ts の missingLocalImages と同じ規則）。
+  // 本文が参照するサイト内画像と front matter の image（アイキャッチ）の実在
+  // （blog-files.ts の missingLocalImages と同じ規則）。
   const missingImages = result.ok
-    ? localImagePaths(result.post.body).filter((src) => !existsSync(join(PUBLIC_DIR, decodeURI(src))))
+    ? localImagePaths(result.post.body, result.post.image).filter(
+        (src) => !existsSync(join(PUBLIC_DIR, decodeURI(src))),
+      )
     : [];
   if (!result.ok || missingImages.length > 0) {
     invalid += 1;
     console.log(`❌ ${name}`);
     const errors = result.ok
-      ? missingImages.map((src) => `画像 ${src} が public${src} にありません（置き忘れかコミット漏れ）`)
+      ? missingImages.map(
+          (src) =>
+            `画像 ${src} が public${src} にありません（置き忘れかコミット漏れ${src === result.post.image ? `。npm run blog:eyecatch -- ${result.post.slug} で作れます` : ""}）`,
+        )
       : result.errors;
     for (const error of errors) console.log(`   - ${error}`);
     continue;

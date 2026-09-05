@@ -9,7 +9,7 @@
 //
 // **更新日の行だけを変えたコミットは無視する。** そうしないと、日付を直すコミット自身が
 // 「また古い」と言われて永久に収束しない。
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const DATE_ROW = /\|\s*更新日\s*\|\s*([0-9]{4}-[0-9]{2}-[0-9]{2})\s*\|/;
@@ -34,6 +34,18 @@ if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
   console.error("❌ 履歴が浅いclone（shallow）のため更新日を判定できません");
   console.error("   → CIなら actions/checkout に `fetch-depth: 0` を付けてください");
   console.error("   → 手元なら `git fetch --unshallow` を実行してください");
+  process.exit(1);
+}
+
+/*
+  **コミットが1件も無いリポジトリでは判定できないので止める**（T-M8-434）。
+  `git init` 直後に実行すると `git log` が「まだコミットがありません」で失敗し、
+  Node のスタックトレースだけが出る（配布キットを空のリポジトリへ置いて実測）。
+  読む人が次の一手を分かる形で止める。
+*/
+if (spawnSync("git", ["rev-parse", "--verify", "-q", "HEAD"], { encoding: "utf8" }).status !== 0) {
+  console.error("❌ まだコミットが1件もありません。最初のコミットの後に実行してください");
+  console.error("   （この検査は「その文書を最後に変えたコミットの日付」を読むため、履歴が要ります）");
   process.exit(1);
 }
 
@@ -101,12 +113,16 @@ const CHANGELOG_ROW = /^\|\s*v([0-9.]+)(?:〜v[0-9.]+)?\s*\|/gm;
 const CHANGELOG_ROW_FIRST = /^\|\s*v[0-9.]+(?:〜v[0-9.]+)?\s*\|/m;
 
 /*
-  **変更履歴を求めるのは仕様の正本だけ**。`docs/README.md` の運用ルール
-  （「仕様変更時は冒頭の更新日と末尾の変更履歴を更新する」）は3領域の正本に対するもので、
+  **変更履歴を求めるのは仕様の正本だけ**（PRD・requirements/・要件定義書・プロンプト設計書。
+  文書を増やしたらこの正規表現へ足す）。`docs/README.md` の運用ルール
+  （「仕様変更時は冒頭の更新日と末尾の変更履歴を更新する」）は仕様の正本に対するもので、
   運営手順の文書はversionと更新日だけを持つ。全docsへ広げると、
   手順書に意味の薄い履歴表を強制することになる。
+  `requirements/README.md` は分け方の案内（配布キットの雛形は本文に `| バージョン | v1.0 |` の例を
+  含む）なので対象外。**このファイルは配布キット（`npm run dev-kit`）にそのまま同梱される**——
+  本リポジトリ固有の文書名が並ぶのはそのためで、無い文書は単に対象が無いだけ。
 */
-const SPEC_DOC = /^docs\/(requirements\/|PRD\.md|要件定義書\.md|プロンプト設計書\.md)/;
+const SPEC_DOC = /^docs\/(requirements\/(?!README\.md$)|PRD\.md|要件定義書\.md|プロンプト設計書\.md)/;
 
 const versionDrift = [];
 let versioned = 0;

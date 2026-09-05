@@ -11,6 +11,7 @@ import {
   parseBlogPost,
   publishedPosts,
   slugFromFileName,
+  unrenderableBoldMarkers,
   type BlogPost,
 } from "./blog-content";
 
@@ -167,6 +168,45 @@ describe("parseBlogPost", () => {
     expect(errorsOf(VALID + "\n![図](/blog-images/a.png)\n\n```md\n![](/x.png)\n```\n")).toEqual([]);
   });
 
+  it("image は /blog-images/ 配下のサイト内パスだけを受け付ける（任意）", () => {
+    const withImage = VALID.replace(
+      "tags: [プロンプト, X運用]",
+      "tags: [プロンプト, X運用]\nimage: /blog-images/eyecatch/x-prompt-basics.png",
+    );
+    const result = parseBlogPost(withImage, "x-prompt-basics");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.post.image).toBe("/blog-images/eyecatch/x-prompt-basics.png");
+    // 無ければ undefined（既存記事の見た目を変えない）。
+    const plain = parseBlogPost(VALID, "x-prompt-basics");
+    if (plain.ok) expect(plain.post.image).toBeUndefined();
+    // 外部URL・public 直下・拡張子違い・親ディレクトリ参照は形式外。
+    for (const bad of [
+      "https://example.com/a.png",
+      "/a.png",
+      "/blog-images/a.gif",
+      "/blog-images/../secret.png",
+      "blog-images/a.png",
+      "/blog-images/dir with space/a.png",
+    ]) {
+      expect(errorsOf(VALID.replace("date: 2026-08-21", `date: 2026-08-21\nimage: ${bad}`))).toEqual([
+        expect.stringContaining("image「"),
+      ]);
+    }
+    // 引用符で囲んでもよい。
+    expect(errorsOf(VALID.replace("date: 2026-08-21", 'date: 2026-08-21\nimage: "/blog-images/a.webp"'))).toEqual([]);
+  });
+
+  it("太字にならない ** は行番号つきで不備にする（コードブロック内は見ない）", () => {
+    const withBold = (line: string) => VALID + `\n${line}\n`;
+    // VALID は front matter（--- 込みで6行）＋空行＋見出し＋空行＋本文＋空行 → 追加行はファイルの12行目。
+    const errors = errorsOf(withBold("これは**「配る」**へ向かう"));
+    expect(errors).toEqual([expect.stringContaining("12行目の ** が太字にならず")]);
+    expect(errors[0]).toContain("直前「は」直後「「」");
+    expect(errors[0]).toContain("直前「」」直後「へ」");
+    expect(errorsOf(withBold("（**一次資料**）と **太字** です。**「配る」競争へ**（行頭）"))).toEqual([]);
+    expect(errorsOf(withBold("```md\nは**「配る」**へ\n```"))).toEqual([]);
+  });
+
   it("front matter の直後に --- を含む本文（区切り線）を壊さない", () => {
     const result = parseBlogPost(
       "---\ntitle: a\ndescription: b\ndate: 2026-08-21\n---\n段落1\n\n---\n\n段落2\n",
@@ -227,6 +267,70 @@ describe("画像の参照", () => {
       "/blog-images/a.png",
     ]);
     expect(localImagePaths(body)).toEqual(["/blog-images/a.png"]);
+  });
+
+  it("front matter の image（アイキャッチ）も localImagePaths に含める（置き忘れを実在確認で拾う）", () => {
+    expect(localImagePaths("![a](/blog-images/a.png)", "/blog-images/eyecatch/x.png")).toEqual([
+      "/blog-images/eyecatch/x.png",
+      "/blog-images/a.png",
+    ]);
+    expect(localImagePaths("本文だけ", "/blog-images/a.png")).toEqual(["/blog-images/a.png"]);
+    expect(localImagePaths("本文だけ")).toEqual([]);
+  });
+});
+
+/**
+ * `**` が太字にならない条件は CommonMark の flanking 規則で決まり、実際に描画してみないと分からない。
+ * ここでの期待値は micromark（react-markdown の中身）で描画して確かめた結果（2026-09-05）。
+ */
+describe("unrenderableBoldMarkers", () => {
+  const lines = (body: string) => unrenderableBoldMarkers(body).map((m) => m.line);
+
+  it("約物の内側に太字を置くと開始・終了になれない（実記事で起きた4パターン）", () => {
+    expect(unrenderableBoldMarkers("は**「配る」**へ")).toEqual([
+      { line: 1, before: "は", after: "「", snippet: "は**「配る」**へ" },
+      { line: 1, before: "」", after: "へ", snippet: "は**「配る」**へ" },
+    ]);
+    // 終了の直前が「）」で直後が文字。
+    expect(lines("違反には**最大1,500万ユーロ（いずれか高い方）**の制裁金")).toEqual([1, 1]);
+    // 開始の直前が「、」で直後が「「」は開始になれるが、終了側（」の直後が文字）が対にならない。
+    expect(lines("先送りされており、**「基盤モデルには早く」**という優先順位")).toEqual([1, 1]);
+    // 全角の「＝」は記号（\p{S}）なので約物扱い。
+    expect(lines("記号列＝**「意味ID」**に要約")).toEqual([1, 1]);
+    expect(lines("先に。**git（ギット）**は仕組み")).toEqual([1, 1]);
+  });
+
+  it("正しく太字になる書き方は返さない", () => {
+    for (const ok of [
+      "**太字** です",
+      "**「配る」競争へ**（行頭）",
+      "（**一次資料**）",
+      "**重み**（設定パラメータ）",
+      "日本語**太字**日本語",
+      "**強調**、次。**8月6日**: 次",
+      "「**何が起きたか**（事実）→ **深掘り**（解釈）」",
+      "- **項目**: 説明\n- **次**（補足）",
+      "| 列 | **太字**（注） |\n|---|---|\n| **a** | b |",
+      "## **見出し**の太字",
+      "> 引用の**太字**。",
+      "*斜体*と***両方***。**`code`** です",
+      "エスケープ \\*\\* はそのまま",
+    ]) {
+      expect(unrenderableBoldMarkers(ok), ok).toEqual([]);
+    }
+  });
+
+  it("行番号は本文の行、コードブロック・インラインコードの中は見ない", () => {
+    const body = "段落\n\n```\nは**「x」**へ\n```\n\n`は**「x」**へ` は無視\n\n本文の**「x」**で失敗";
+    expect(lines(body)).toEqual([9, 9]);
+  });
+
+  it("段落・箇条書きの項目・表のセルをまたいで対にしない", () => {
+    // 別の項目の ** 同士が対に見えてしまうと見逃す。
+    expect(lines("- 太字**「開始」\n- 終了」**へ")).toEqual([1, 2]);
+    expect(lines("| a**「 | 」**b |\n|---|---|\n| c | d |")).toEqual([1, 1]);
+    // 同じ段落の中なら行をまたいで対になる。
+    expect(lines("**太字の\n続き**")).toEqual([]);
   });
 });
 

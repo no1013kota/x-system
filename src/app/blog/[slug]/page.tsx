@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
@@ -9,6 +10,7 @@ import { BlogMarkdown } from "@/components/blog/blog-markdown";
 import { PublicPageShell } from "@/components/public-page-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import defaultOgImage from "@/app/opengraph-image.png";
 import { APP_NAME } from "@/lib/app-config";
 import { findPublishedPost } from "@/lib/blog/blog-files";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,13 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   const { slug } = await params;
   const post = getPost(slug);
   if (!post) return { title: `記事が見つかりません | ${APP_NAME}` };
+  // アイキャッチ（front matter の image・2026-09-05 のブログ改善）があれば OGP と Twitter card に載せる。
+  // 無い記事はルートの `app/opengraph-image.png` を明示して載せる——子セグメントの `openGraph` は
+  // 親のものと**混ざらず丸ごと置き換わる**ため、何も書かないと記事ページだけ og:image が消える
+  // （2026-09-05 に実描画で確認。ファイル規約の画像は他のページには自動で付く）。
+  const images = post.image
+    ? [{ url: post.image, width: 1200, height: 630, alt: post.title }]
+    : [{ url: defaultOgImage.src, width: defaultOgImage.width, height: defaultOgImage.height }];
   return {
     title: `${post.title} | ${APP_NAME}`,
     description: post.description,
@@ -33,7 +42,18 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       description: post.description,
       publishedTime: post.date,
       modifiedTime: post.updated ?? post.date,
+      images,
     },
+    ...(post.image
+      ? {
+          twitter: {
+            card: "summary_large_image",
+            title: post.title,
+            description: post.description,
+            images: [post.image],
+          },
+        }
+      : {}),
   };
 }
 
@@ -60,6 +80,19 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           </Link>
         </nav>
         <header className="space-y-3 border-b border-hairline pb-6">
+          {post.image ? (
+            // アイキャッチ（2026-09-05 のブログ改善）。題名の文字を含む画像で、直下の h1 が同じ題名を持つので
+            // 装飾扱い（alt=""）にし、読み上げで題名が2回出ないようにする。
+            <Image
+              alt=""
+              className="mb-5 h-auto w-full rounded-card border border-hairline"
+              height={630}
+              priority
+              sizes="(min-width: 768px) 768px, 100vw"
+              src={post.image}
+              width={1200}
+            />
+          ) : null}
           <h1 className="text-[26px] font-bold tracking-tight text-balance text-ink sm:text-[32px]">
             {post.title}
           </h1>

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.15 |
-| 更新日 | 2026-09-01 |
+| バージョン | v1.17 |
+| 更新日 | 2026-09-05 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[supabase/README.md](../../supabase/README.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[CI](./ci.md)／[リリース前チェックリスト](./release-checklist.md)／[DBバックアップ](./database-backup-restore.md) |
 
 Exos AI（Next.js 16 App Router + Supabase）をローカルで動かすための手順。**現在このマシンでは既にセットアップ済みで、アプリは http://127.0.0.1:3000 で起動中**。日常起動は §1、初回/別マシンは §2、動作範囲と「実キーが要る機能」は §5 を参照。
@@ -108,11 +108,14 @@ npm run dev                  # → http://127.0.0.1:3000
 | `npm run test:e2e` | Playwright E2E（`e2e/`）。devサーバーとローカルSupabaseが必要。安全既定を外れた環境では起動前に中止する |
 | `npm run release:check` | typecheck → lint → **check:doc-dates** → **check:doc-refs** → 依存監査 → **test:db** → build → **check:csp-nonce** → **check:csp-runtime** → **check:blog-trace** → **check:sharp-trace** → **test:e2e**（要ネットワーク＝npm audit、要ローカルSupabase、要 `npx playwright install chromium`） |
 | — | 上記ゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。手元で流し忘れても検査は走る |
-| `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗） |
+| `npm run audit:check` | 依存脆弱性ゲート（critical/allowlist外highで失敗）。据え置く high は `scripts/audit-allowlist.json` に理由付きで書く（`package-lock.json` が無ければ「npm install を1回」と案内して止まる。配布キットに同梱するため一覧をコードの外へ出した・T-M8-434） |
 | `npm run check:csp-nonce` | **ビルド成果物**（`.next/server/app/**/*.html`）を走査し、CSPのnonceを持てないHTMLが残っていないか確認する。**要 `npm run build`**（成果物が無ければ緑にせず終了コード2で止まる）。静的prerenderされたページはnonceを付けられず、`'strict-dynamic'` の下でscriptが1本も実行されない＝画面が壊れる（2026-08-14に本番の `/signup`・`/reset-password` で発生・T-M8-87）。E2Eは `next dev` で動きprerenderしないため、この不具合は**原理的に検出できない** |
 | `npm run check:blog-trace` | **ビルド成果物**（`.next/server/app/**/*.nft.json`）を走査し、公開記事 `blog/published/*.md` が `/blog`・`/blog/[slug]`・`/api/cron/doctor` の各関数へ同梱されるか確認する。**要 `npm run build`**。記事はリクエスト時にファイルから読むため、`next.config.ts` の `outputFileTracingIncludes` が欠けると**本番だけ「準備中」**になる（ローカルとdevはcwdから読めるので他の層では見えない・T-M8-184） |
 | `npm run check:sharp-trace` | **ビルド成果物**（`.next/server/app/**/*.nft.json`）を走査し、sharp（画像処理）に依存する**全route**が `next.config.ts` の `outputFileTracingIncludes` に Linux用バイナリ（`@img/sharp-linux-x64` 等）の同梱指定を持つか照合する。**要 `npm run build`**。Linux用バイナリはmacに存在しないため宣言漏れは**本番だけ500**になり、ローカル・CIでは原理的に見えない（T-M8-385。/app/posts の全Actionが本番で500になっていた） |
-| `npm run blog:check` | ブログ記事の front matter と参照画像の実在を、画面（`/blog`）と同じ判定で検証する。不備は理由つきで一覧し終了コード1。`/blog-publish` が公開前に実行する |
+| `npm run blog:check` | ブログ記事の front matter・参照画像（本文と `image`）の実在・**太字にならない `**`**（「」（）などの約物に隣接した強調記号。画面に記号のまま残る）を、画面（`/blog`）と同じ判定で検証する。不備は理由つき（行番号）で一覧し終了コード1。`/blog-publish` が公開前に実行する |
+| `npm run blog:eyecatch -- <slug>` | 記事のアイキャッチ（1200×630 PNG・題名とタグ入り・ブランド色）を `public/blog-images/eyecatch/<slug>.png` に作り、front matter に `image` が無ければ書き足す。題名を変えたら作り直す。日本語フォント（mac は Hiragino）で描くので、生成後に画像を開いて □ になっていないか見る |
+| `npm run blog:diagram -- <in.svg> <out.png>` | 記事の図（`blog/diagrams/<slug>-<name>.svg`）を2倍密度の PNG にして `public/blog-images/<out.png>` に書き、本文へ貼る Markdown を表示する |
+| `npm run dev-kit` | **配布用の Claude Code 開発キットを作る**（T-M8-434）。正本は `kit/`（利用者向け README・公開リポジトリ用 README・VERSION・雛形 `templates/`・プラグイン専用スキル `plugin-skills/`）、`.claude/skills/`（ブログ運用専用の `blog-write`・`blog-publish` を除く11本）、**ルートの `.mcp.json`・`.claude/settings.json`（permissions だけ）・`scripts/check-doc-dates.mjs`・`scripts/check-doc-refs.mjs`・`scripts/audit-check.mjs`（写しを持たず、このリポジトリのものをそのまま配る）**。出力は (a) 記事「非エンジニアがClaude Codeで…」が配る `public/blog-files/claude-code-dev-kit.zip`（README＋雛形＋スキル11本そのまま。**コミット対象**。記事の「約NNKB」も生成時に書き換える）、(b) Claude Code プラグインのマーケットプレイス一式 `dist/claude-dev-kit/`（gitignore 済み。スキル本文の `/add-task` 等を `/claude-dev-kit:add-task` へ書き換え、各 SKILL.md 冒頭に「`npm run …` は元アプリの実例」の前提を差し込み、雛形の docs・tasks も同じ書き換え。`claude` コマンドがあれば `claude plugin validate --strict` まで通す）、(c) `kit/BUILD.json`（版・中身のハッシュ・日付。**コミット対象**）。**中身が変わったのに `kit/VERSION` が同じなら止まる**（`-- --same-version` で明示的に許す）。`-- --check` は生成せず突き合わせだけ行い、`src/lib/blog/dev-kit-zip.test.ts` がこれを呼ぶので、正本を変えて再実行を忘れると `npm test` が赤になる。公開の手順は `kit/PUBLISHING.md` |
 | `npm run seed:review` | **画面確認用のアカウントを作る**（`review@example.com` / `Review-Local-Pw1`）。プレミアム契約・X連携・発信設定・下書き3件・スケジュール3件・投稿履歴と実績・フォロワー数31日分・未読通知2件を入れる。**`STRIPE_SECRET_KEY`（`sk_test_`のみ）があればStripeのテスト契約（trialing・支払い方法なし）を作って紐づけ、「プランを変更」「解約する」まで実際に試せる**（無ければその旨を出力・T-M8-56）。**何度実行しても同じ状態に戻す**（消してから入れ直す。Stripe側は同じテスト契約を再利用する）。接続先が `127.0.0.1` でなければ何もせず止まる。X APIは呼ばない |
 | `npm run doctor` | **運営者向けの状態確認**。データの保存先・未適用migration・アプリの応答・直近24hのjob成否・ニュース取得（**分野ごとに「該当なし」と「全件破棄」を区別**）・Xトークン期限・止まっている処理・**当月の従量課金実績**・**データベースの使用量**・**定時実行の最終実行**・**確認メールの行き先（ローカルはMailpit）**・**溜まったテストデータ**・**請求額と表示額の一致（Stripe）**・人間確認（CAPTCHA）の有効/無効・Stripeポータルの機能・**登録/再設定メールの行き先**（デプロイ先のみ。`SUPABASE_ACCESS_TOKEN` があるとSite URLとRedirect URLsを照合する・T-M8-90）・**設定がその環境へ反映されているか**（Xへの投稿が `live`／`dry_run` のどちらか・`APP_BASE_URL` と実際の配信元の一致・決済キーの種別。**既定値を持つ設定は欠けても起動するため、画面は全部正常に見えたまま機能だけ止まる**・T-M8-147）・**メール確認が終わっていない登録**（送信元と同じアドレスで登録した場合は受信トレイに届かないことを名指しする・T-M8-147）・**決済の受付（Stripeアカウント）**（`charges_enabled`。**Priceの金額が一致していてもアカウントが未有効化なら申し込みは必ず失敗する**・T-M8-148）を日本語で一覧し、異常には次の一手を添える。読み取りのみで費用なし。`-- --base <URL>` でデプロイ先も見られる |
 | `npm run smoke:live` | **実物スモーク**。起動中のアプリの `/api/cron/canary` を叩き、生成（Web検索あり）・生成＋画像・ニュース取得を**実APIで1周**して成果物まで検証する。`-- --account <xAccountId>` で生成系を含める（未指定はニュースのみ）。`-- --base <URL>` でデプロイ先も検査できる。**実費が発生し生成枠も消費する**（実測: 1周 約$0.30・40〜90秒） |

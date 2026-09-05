@@ -63,7 +63,12 @@ describe("readBlogCollection", () => {
     expect(collection.invalid).toEqual([
       { file: "with-images.md", errors: [expect.stringContaining("/blog-images/missing.png")] },
     ]);
-    expect(missingLocalImages("![a](/blog-images/ok.png)", publicDir)).toEqual([]);
+    expect(missingLocalImages({ body: "![a](/blog-images/ok.png)" }, publicDir)).toEqual([]);
+    // front matter の image（アイキャッチ）も同じ規則で実在を見る。
+    expect(
+      missingLocalImages({ body: "本文", image: "/blog-images/eyecatch/x.png" }, publicDir),
+    ).toEqual(["/blog-images/eyecatch/x.png"]);
+    expect(missingLocalImages({ body: "本文", image: "/blog-images/ok.png" }, publicDir)).toEqual([]);
     expect(findPublishedPost("with-images", dir, publicDir)).toBeNull();
   });
 

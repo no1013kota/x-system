@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" font-family="Hiragino Sans, Noto Sans JP, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#7d1f75"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="900" fill="#ffffff"/>
+
+  <!-- 左: いつものテスト -->
+  <rect x="40" y="30" width="550" height="840" rx="24" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <text x="315" y="96" font-size="44" font-weight="bold" fill="#7d1f75" text-anchor="middle">いつものテスト</text>
+  <text x="315" y="146" font-size="36" fill="#7d1f75" text-anchor="middle">（モック＝本物のふり）</text>
+
+  <rect x="80" y="190" width="470" height="100" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="315" y="255" font-size="40" fill="#1f1a1e" text-anchor="middle">アプリ</text>
+  <line x1="315" y1="292" x2="315" y2="352" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="80" y="360" width="470" height="150" rx="16" fill="#ffffff" stroke="#7d1f75" stroke-width="3" stroke-dasharray="12 9"/>
+  <text x="315" y="425" font-size="40" fill="#1f1a1e" text-anchor="middle">偽物のAI</text>
+  <text x="315" y="479" font-size="36" fill="#1f1a1e" text-anchor="middle">決まった返事を返す</text>
+  <line x1="315" y1="512" x2="315" y2="572" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="80" y="580" width="470" height="150" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="315" y="645" font-size="40" fill="#1f1a1e" text-anchor="middle">結果: 緑（合格）</text>
+  <text x="315" y="699" font-size="36" fill="#1f1a1e" text-anchor="middle">中身は見ていない</text>
+
+  <text x="315" y="785" font-size="36" fill="#1f1a1e" text-anchor="middle">本物のAIが変わっても</text>
+  <text x="315" y="835" font-size="38" font-weight="bold" fill="#7d1f75" text-anchor="middle">ここでは気付けない</text>
+
+  <!-- 右: 実物で1周 -->
+  <rect x="610" y="30" width="550" height="840" rx="24" fill="#ffffff" stroke="#7d1f75" stroke-width="3"/>
+  <text x="885" y="96" font-size="44" font-weight="bold" fill="#7d1f75" text-anchor="middle">実物で1周</text>
+  <text x="885" y="146" font-size="36" fill="#7d1f75" text-anchor="middle">（本物を呼んで成果物を見る）</text>
+
+  <rect x="650" y="190" width="470" height="100" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="885" y="255" font-size="40" fill="#1f1a1e" text-anchor="middle">アプリ</text>
+  <line x1="885" y1="292" x2="885" y2="352" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="650" y="360" width="470" height="150" rx="16" fill="#7d1f75"/>
+  <text x="885" y="425" font-size="40" fill="#ffffff" text-anchor="middle">本物のAIサービス</text>
+  <text x="885" y="479" font-size="36" fill="#ffffff" text-anchor="middle">約0.3ドル／周</text>
+  <line x1="885" y1="512" x2="885" y2="572" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="650" y="580" width="470" height="150" rx="16" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="885" y="645" font-size="40" fill="#1f1a1e" text-anchor="middle">結果: 中身まで見る</text>
+  <text x="885" y="699" font-size="36" fill="#1f1a1e" text-anchor="middle">（文章・画像が正しいか）</text>
+
+  <text x="885" y="785" font-size="36" fill="#1f1a1e" text-anchor="middle">壊れていれば</text>
+  <text x="885" y="835" font-size="38" font-weight="bold" fill="#7d1f75" text-anchor="middle">ここで分かる</text>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1060" viewBox="0 0 1200 1060" font-family="Hiragino Sans, Noto Sans JP, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#7d1f75"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="1060" fill="#ffffff"/>
+
+  <!-- 1 あなた -->
+  <rect x="180" y="40" width="980" height="150" rx="20" fill="#ffffff" stroke="#7d1f75" stroke-width="4"/>
+  <text x="210" y="98" font-size="44" font-weight="bold" fill="#7d1f75">あなた</text>
+  <text x="210" y="156" font-size="38" fill="#1f1a1e">要望を日本語で言う。「設定画面のタブを分けたい」</text>
+  <line x1="670" y1="192" x2="670" y2="252" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- 2 /add-task -->
+  <rect x="180" y="260" width="980" height="190" rx="20" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="210" y="318" font-size="44" font-weight="bold" fill="#7d1f75">/add-task</text>
+  <text x="440" y="318" font-size="34" fill="#7d1f75">（あなたが打つ）</text>
+  <text x="210" y="376" font-size="38" fill="#1f1a1e">Claudeが仕様書と照らし、タスクとして</text>
+  <text x="210" y="428" font-size="38" fill="#1f1a1e">一覧に書き足す（まだ作らない）</text>
+  <line x1="670" y1="452" x2="670" y2="512" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- 3 /dev-loop -->
+  <rect x="180" y="520" width="980" height="190" rx="20" fill="#f4e8f3" stroke="#7d1f75" stroke-width="3"/>
+  <text x="210" y="578" font-size="44" font-weight="bold" fill="#7d1f75">/dev-loop</text>
+  <text x="440" y="578" font-size="34" fill="#7d1f75">（あなたが打つ）</text>
+  <text x="210" y="636" font-size="38" fill="#1f1a1e">Claudeが 実装 → 表どおりに検証 → 仕様書を直す</text>
+  <text x="210" y="688" font-size="38" fill="#1f1a1e">→ コミットして報告</text>
+  <line x1="670" y1="712" x2="670" y2="772" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- 4 あなた -->
+  <rect x="180" y="780" width="980" height="190" rx="20" fill="#ffffff" stroke="#7d1f75" stroke-width="4"/>
+  <text x="210" y="838" font-size="44" font-weight="bold" fill="#7d1f75">あなた</text>
+  <text x="210" y="896" font-size="38" fill="#1f1a1e">報告を読み、画面を自分で触って確かめる</text>
+  <text x="210" y="948" font-size="38" fill="#1f1a1e">（コードは読まない）</text>
+
+  <!-- 戻りの矢印 -->
+  <path d="M180 875 L90 875 L90 115 L172 115" fill="none" stroke="#7d1f75" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="62" y="495" font-size="34" fill="#7d1f75" text-anchor="middle" transform="rotate(-90 62 495)">直したい点を言い、次の要望へ</text>
+
+  <text x="600" y="1030" font-size="34" fill="#1f1a1e" text-anchor="middle">この往復を1日に何度か繰り返す</text>
+</svg>
