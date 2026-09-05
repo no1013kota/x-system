@@ -41,7 +41,7 @@
     "affiliate:payouts": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/affiliate-payouts.mjs",
     "affiliate:moderate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/affiliate-moderate.mjs",
     "check:mail-sender": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-mail-sender.mjs",
-    "blog:kit": "node scripts/blog-kit.mjs"
+    "dev-kit": "node scripts/dev-kit.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

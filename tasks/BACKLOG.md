@@ -6160,6 +6160,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - スキル（blog-write／blog-publish）と README に、image／eyecatch／図の作り方／AIっぽさ除去の項目／2周のセルフレビュー／「（意見）」不使用 が入っている
 - 実装メモ（2026-09-05 完了・ワークフロー22エージェント〔基盤1＋記事4本×（編集→読者レビュー→修正→編集長レビュー→最終修正）＋仕上げ1〕）: `**` が残る原因は日本語の約物「」（）に太字記号が隣接すると CommonMark が太字と解釈しないため。検出は micromark と同じ flanking 規則を `blog-content.ts` に実装し、実描画で残っていた5箇所と一致することを確認。記事ページの og:image は元々1つも出ていなかった（子セグメントの openGraph が親を置き換える）ので既定画像を明示。図は計10点、アイキャッチ4点。配布キットは T-M8-432 の実物スキル同梱に合わせて記事の手順4に「アプリ固有のコマンド名を直す」依頼文を追加。検証: blog:check 緑・vitest（blog）緑・E2E blog／mobile-layout 緑・4記事＋一覧を 1280／390 で実描画（`**` 0・横あふれ0・エラー0）。
 
+### T-M8-434: 開発キット（非ブログ11スキル＋雛形）を zip と Claude Code プラグインとして生成し、公開リポジトリで配布する `done`
+- 参照: kit/README.md（利用者向け）・kit/PUBLISHING.md（運営者向け）・docs/operations/local-development.md / 依存: T-M8-432 / サイズ: M
+- 完了条件:
+  - `npm run dev-kit` が、記事用 zip（`public/blog-files/claude-code-dev-kit.zip`）と、マーケットプレイス一式 `dist/docdd/`（`.claude-plugin/marketplace.json`・`plugins/docdd/`〔plugin.json・skills 11本＋init・templates〕）を同じ正本（`kit/`＋`.claude/skills/`＋ルートの `.mcp.json`／`settings.json` の permissions／検査スクリプト3本）から生成する
+  - `claude plugin validate --strict` が marketplace・plugin とも通る。スキル本文の `/dev-loop` 等は `/docdd:dev-loop` に書き換わり、ブログ系スキルは入らない
+  - 雛形を新規プロジェクトへ書き出す `docdd:init` スキルがあり、既存ファイルを上書きしない。空の git リポジトリで `check:doc-refs`（stage後）→ コミット → `check:doc-dates` が設計どおりの文面で通る／止まる
+  - 公開リポジトリ https://github.com/no1013kota/claude-docdd-dev-kit に `dist/docdd/` の中身がある（`/plugin marketplace add no1013kota/claude-docdd-dev-kit` → `/plugin install docdd@claude-docdd-dev-kit` → `/docdd:init`）
+- 実装メモ（2026-09-05 完了・運営者の依頼「ブログ系を除いたスキル一式を新リポジトリへ入れる手順とフォルダ。プラグイン化した方が配布しやすいか」→ プラグイン形式で決定、配布先は運営者作成のリポジトリ）: ワークフロー〔実装→導入テスト＋読者視点の反証→修正〕。反証で見つかった罠: 空リポでは `check:doc-refs` が stage 前に空振り・`check:doc-dates` がコミット0件でスタックトレース・`audit-check` が lock 無しで落ちる → それぞれ日本語の理由で止まるガードを正本のスクリプトへ追加し、init の手順を「add → refs → 承知でコミット → dates」に並べ替え。二重管理を避けるため kit/ には雛形の正本（CLAUDE.template.md・docs・tasks・init スキル・README 3種）だけを置き、設定と検査スクリプトはルートの実物を生成時に取り込む。`kit/BUILD.json`（版＋中身ハッシュ）で「中身が変わったのに版が同じ」を停止（`--same-version` で明示的に許す）、`src/lib/blog/dev-kit-zip.test.ts` が zip の鮮度を守る。プラグイン名 `docdd`・マーケットプレイス名 `claude-docdd-dev-kit`・ライセンス Apache-2.0（リポジトリの LICENSE に合わせ、生成側では LICENSE を作らない）。
+
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S
 - 完了条件:

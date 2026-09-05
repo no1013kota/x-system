@@ -1,0 +1,5 @@
+{
+  "check:doc-dates": "node scripts/check-doc-dates.mjs",
+  "check:doc-refs": "node scripts/check-doc-refs.mjs",
+  "audit:check": "node scripts/audit-check.mjs"
+}

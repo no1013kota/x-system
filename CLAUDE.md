@@ -32,6 +32,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `docs/operations/development-and-testing.md` | **開発とテストの進め方**（テスト8層の役割と盲点・書き方の規約・固有の落とし穴）。実装前に読む |
 | `tasks/BACKLOG.md` | 開発バックログ（M0〜M6・エージェントループの作業キュー） |
 | `blog/` | 公開ブログの記事（Markdown・1ファイル＝1記事）。書き方と投稿の流れは`blog/README.md` |
+| `kit/` | 配布用のClaude Code開発キットの正本（README・VERSION・雛形・プラグイン専用スキル・`BUILD.json`）。`npm run dev-kit` が記事用のzipとプラグイン（`dist/`）を生成する。運営者向けの手順は`kit/PUBLISHING.md` |
 | `.claude/skills/` | 開発用スキル。一覧と使い分けは下の「スキルの地図」 |
 | `.mcp.json` | Claude Code向けMCP設定（shadcn/ui / Next.js DevTools） |
 | アプリ本体 | Next.js（App Router）。M0でリポジトリ直下にスカフォールドする |
@@ -92,6 +93,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | **レンダリングモード・CSP・proxy（middleware）** | `npm run build` ＋ **`npm run check:csp-nonce`**（`release:check` に含む）＋ **実ブラウザで公開ページのコンソールエラーと失敗リクエストまで見る**。nonceベースCSPと静的prerenderは両立しないため、prerenderされたページは**scriptが1本も実行されない**。**HTTPは200を返し本文も表示される**ので、URLを叩く検査では見えない。E2Eは `next dev` で動きprerenderしないため原理的に再現しない（2026-08-14、本番の `/signup`・`/reset-password` が18日間この状態だった・T-M8-87） |
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
+| **配布キットの入力**（`.claude/skills/**`・`kit/**`・`.mcp.json`・`.claude/settings.json`・`scripts/check-doc-dates.mjs`・`scripts/check-doc-refs.mjs`・`scripts/audit-check.mjs`） | `npm run dev-kit`（zip と `kit/BUILD.json` を作り直す。中身が変わったら `kit/VERSION` を上げる。忘れると `src/lib/blog/dev-kit-zip.test.ts` が赤になる） |
 | **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**ブログ記事 `blog/published/*.md`・`blog/drafts/*.md` は例外**で `npm run blog:check`（front matter・画像の実在）を通す |
 | 上記以外 | `npm run release:check` |
 

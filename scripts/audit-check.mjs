@@ -12,20 +12,53 @@
 // （2026-07-26: npm の audit が Content-Encoding 無しの gzip 応答を解釈できず失敗する事象を確認）。
 // 監査結果を取得できなければ **必ず exit 2 で止める**（「0件」と誤認して素通りさせない）。
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 
+const LOCK_FILE = new URL("../package-lock.json", import.meta.url);
+const ALLOWLIST_FILE = new URL("./audit-allowlist.json", import.meta.url);
+
+/*
+  **package-lock.json が無ければ、監査の前に止める**（T-M8-434）。
+  `npm audit` も下のフォールバックも lock を読むので、無いと「監査レポートを返しませんでした…
+  フォールバックも失敗しました: ENOENT」という2段の失敗文だけが出て、次の一手が読めない
+  （このスクリプトは配布キットにそのまま同梱され、npm install 前のプロジェクトで実測した）。
+*/
+if (!existsSync(LOCK_FILE)) {
+  console.error("audit-check: package-lock.json がありません。`npm install` を1回実行して作ってください");
+  console.error("  （pnpm / yarn のプロジェクトではこの検査は使えません。その場合は package.json の scripts から audit:check を消してください）");
+  process.exit(2);
+}
+
 /**
- * 既知 high のうち、対応に追加検証が要るもの（要決定 D-7 で追跡）。critical には適用しない。
- * 追加するときは必ず「なぜ今直さないか」を書く。
+ * 既知 high のうち、対応に追加検証が要るもの（要決定で追跡する）。critical には適用しない。
+ *
+ * 一覧は隣の `audit-allowlist.json`（`{ "<package>": "<なぜ今直さないか>" }`）。**理由の無い項目は受け付けない。**
+ * ファイルが無ければ「何も許さない」（最も厳しい側に倒す）。
+ * このスクリプトは配布キット（`npm run dev-kit`）に同梱するため、本リポジトリ固有の一覧を
+ * コードの外へ出した（キットには空の一覧を添える）。
+ *
+ * 経緯: sharp / postcss / next は 2026-08-01（T-M7-32）に解消した。sharp は 0.35.3 へ上げ、
+ * next が optionalDependencies で pin する nested 0.34.5 も package.json の overrides で 0.35.3 へ寄せた
+ * （0.34 系のままでは libvips CVE群が残る）。postcss も overrides で 8.5.x へ寄せ、next のビルドが
+ * 通ることを実測して確認した。
  */
-const HIGH_ALLOWLIST = new Map([
-  // sharp / postcss / next は 2026-08-01（T-M7-32）に解消した。
-  // sharp は 0.35.3 へ上げ、next が optionalDependencies で pin する nested 0.34.5 も
-  // package.json の overrides で 0.35.3 へ寄せた（0.34 系のままでは libvips CVE群が残る）。
-  // postcss も overrides で 8.5.x へ寄せ、next のビルドが通ることを実測して確認した。
-  ["brace-expansion", "DoS。到達経路はビルド時のみ（Sentry bundler plugin / lint ツールチェーン）。"],
-]);
+function loadAllowlist() {
+  if (!existsSync(ALLOWLIST_FILE)) return new Map();
+  const raw = JSON.parse(readFileSync(ALLOWLIST_FILE, "utf8"));
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    console.error("audit-check: audit-allowlist.json は { \"<package>\": \"<理由>\" } の形にしてください");
+    process.exit(2);
+  }
+  for (const [name, why] of Object.entries(raw)) {
+    if (typeof why !== "string" || why.trim() === "") {
+      console.error(`audit-check: audit-allowlist.json の "${name}" に「なぜ今直さないか」を書いてください`);
+      process.exit(2);
+    }
+  }
+  return new Map(Object.entries(raw));
+}
+const HIGH_ALLOWLIST = loadAllowlist();
 
 const BULK_ENDPOINT = "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk";
 const SEVERITY_ORDER = ["info", "low", "moderate", "high", "critical"];
@@ -68,7 +101,7 @@ function looksLikeReport(audit) {
 
 /** package-lock.json のインストール済みパッケージを {name: [version]} にする。 */
 function lockedPackages({ productionOnly }) {
-  const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+  const lock = JSON.parse(readFileSync(LOCK_FILE, "utf8"));
   const byName = new Map();
   for (const [path, info] of Object.entries(lock.packages ?? {})) {
     if (!path.startsWith("node_modules/") || !info.version) continue;
@@ -166,7 +199,7 @@ for (const [name, info] of Object.entries(prod.vulnerabilities ?? {})) {
 if (blocking.length > 0) {
   console.error("audit-check FAILED — allowlist 外の high/critical（本番依存）:");
   for (const b of blocking) console.error(`  - ${b}`);
-  console.error("修正するか、breaking upgrade を要決定で合意のうえ allowlist を更新してください。");
+  console.error("修正するか、breaking upgrade を要決定で合意のうえ scripts/audit-allowlist.json へ理由付きで足してください。");
   process.exit(1);
 }
 
