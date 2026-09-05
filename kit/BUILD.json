@@ -1,6 +1,6 @@
 {
-  "version": "0.1.2",
-  "hash": "sha256:a4be0065235646271011d7495e48d5da49f2db0b62e2b13f30969b732952322d",
+  "version": "0.1.3",
+  "hash": "sha256:a88fc24ab34a233794698bf9c4016fde8b8a1c6d9a6d33b5360f16b3c32e6bc0",
   "built": "2026-09-05",
   "sources": {
     "add-task": "sha256:10cc8998dd8e10f8f722d87b10a075a0ac35e1c593e6512d3af0ebf8666b8299",
@@ -9,7 +9,7 @@
     "maintenance": "sha256:547c7991946d3c8f4fa833df6a63142242ec160911ff44f800a3a23d3368674f",
     "playwright-cli": "sha256:b4735330d599fdc514ee7f4e1e9764f7fe9a1bb04b9d1e0505675419712f9cee",
     "refactor": "sha256:7c91040ba294378b0d7fe3727739d2b906706932378e7abb3e1204f8ea53fe63",
-    "release": "sha256:ad294575af01ab082439ef56c4d82a1da85d4b6ac8b069e58ef0d220b2c7d764",
+    "release": "sha256:5fc3715c2600e0c0ab70cce94c95f8ef04ce246026842b4713ce4fdc9def6656",
     "security-audit": "sha256:bc348fa9e4ddcc2e5f34e57eeb5d332a3d15bd2cbc8065f1cd3242f6266ad539",
     "speed-up": "sha256:7d5a47f04578372d0b81521ed69351b49cde12670a4031d814b6518e44c576ee",
     "ui-polish": "sha256:f01c9c4dc2afb9d3cb8bfdc0f9de0baf82990900273f6df7bae4e20f2fd65658",

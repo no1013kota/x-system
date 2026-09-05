@@ -74,11 +74,17 @@ jobs:
         run: |
           set -euo pipefail
           skip=false
+          # 運営者が「些細な修正」と判断した push（HEAD のメッセージに [light ci]）は本体を飛ばす。
+          # GitHub 公式の skip ci の印は使わない——workflow ごと止まり、必須チェックが報告されず PR がマージできない（2026-09-05）。
+          if git log -1 --format=%B HEAD | grep -Eiq "\[light ci\]"; then
+            echo "HEAD に [light ci]（運営者が些細な修正と判断）。release:check の本体をスキップします。"
+            skip=true
+          fi
           if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
             if [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'HEAD^2^{tree}')" ]; then
               src=$(git rev-parse HEAD^2)
-              if git log -1 --format=%B "$src" | grep -Eiq "\[(skip ci|ci skip|no ci|skip actions|actions skip)\]"; then
-                echo "マージ元 ${src} は運営者が [skip ci] を指定したコミット（些細な修正）。以降をスキップします。"
+              if git log -1 --format=%B "$src" | grep -Eiq "\[light ci\]"; then
+                echo "マージ元 ${src} は運営者が [light ci] を指定したコミット（些細な修正）。以降をスキップします。"
                 skip=true
               fi
               greens=$(gh api "repos/${{ github.repository }}/commits/${src}/check-runs" \
