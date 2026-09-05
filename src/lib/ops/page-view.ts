@@ -32,6 +32,8 @@ export interface CountableRequestInput {
   viewerEmail: string | null;
   /** 運営者のメール（`SUPPORT_EMAIL`）。未設定なら運営者除外はしない。 */
   operatorEmail: string | null;
+  /** 流入元 slug（`parseTrafficSource` 済み。'' は追跡URLなし）。 */
+  source?: string;
 }
 
 /**
@@ -40,13 +42,17 @@ export interface CountableRequestInput {
  *   このヘッダを送らないか `empty` で来る。以前は release／doctor の疎通確認（Node fetch・UA "node"）が
  *   本番 `/` に毎回1票入っていた。ヘッダを送らない古いブラウザ（Safari 16.3以前）は数える側に倒す
  *   （実利用者を消す方が数字の嘘として大きい）。
- * - **運営者自身は数えない**（proxy が検証したメールが `SUPPORT_EMAIL` と一致するとき）。
+ * - **運営者自身は数えない**（proxy が検証したメールが `SUPPORT_EMAIL` と一致するとき）——ただし
+ *   **追跡URL（`?src=` が形式に合う）付きの閲覧は運営者自身でも数える**（T-M8-429・運営者の指摘
+ *   2026-09-05「?src=x_bio を叩いても増えない」。配ったURLの動作確認は運営者自身がログイン中の
+ *   ブラウザで行うため、ここまで除外すると「動いていない」ように見える。URL無しの自分の閲覧は除外のまま）。
  */
 export function isCountableRequest(input: CountableRequestInput): boolean {
   if (!isCountableUserAgent(input.userAgent)) return false;
   if (input.secFetchDest !== null && input.secFetchDest !== "document") return false;
   if (input.secFetchMode !== null && input.secFetchMode !== "navigate") return false;
   if (
+    !(input.source ?? "") &&
     input.operatorEmail &&
     input.viewerEmail &&
     input.viewerEmail.toLowerCase() === input.operatorEmail.toLowerCase()

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.91 |
+| バージョン | v1.92 |
 | 更新日 | 2026-09-05 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -777,7 +777,7 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 ### 3.32 `page_views`
 
-**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。数えるのは**画面遷移**（`sec-fetch-dest: document`。ヘッダを送らない古いブラウザは数える側に倒す）だけで、bot・先読み・運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）・監視として名乗るスクリプト（UA `exos-monitoring/…`。release／doctor の疎通確認）は数えない（T-M8-422）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
+**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。数えるのは**画面遷移**（`sec-fetch-dest: document`。ヘッダを送らない古いブラウザは数える側に倒す）だけで、bot・先読み・運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）・監視として名乗るスクリプト（UA `exos-monitoring/…`。release／doctor の疎通確認）は数えない（T-M8-422）。ただし**追跡URL（`?src=` が形式に合う）付きの閲覧は運営者自身でも数える**（配ったURLの動作確認のため・T-M8-429）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -1116,3 +1116,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.89 | 2026-09-04 | §3.17 `payer` 列（運営負担／利用者負担・CHECK・index・記録時の判定）を追加。§3.31 に `page_views`／`page_uniques` と `usage_consumed`・`cost_usd` の数え方、§3.32 に画面遷移だけ数える除外規則を追記（T-M8-422） |
 | v1.90 | 2026-09-04 | 流入元（T-M8-423）: §3.33 `traffic_sources` を追加、§3.32 `page_views.source`（PKへ追加）、§3.1 `profiles.signup_source` |
 | v1.91 | 2026-09-05 | §3.31 `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名し、実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持つ（D-55(3)・T-M8-427。既存行は migration で改名し、旧名の取り残しはスナップショットが掃除する） |
+| v1.92 | 2026-09-05 | §3.32 追跡URL付きの閲覧は運営者自身でも数える（T-M8-429） |

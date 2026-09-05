@@ -269,6 +269,7 @@ export default async function AdminPage() {
           流入元を登録すると追跡URLが出ます。Xのプロフィール・投稿・noteなど、貼る場所ごとに分けて配ってください。
           URLからホームを開いた人・新規登録画面まで進んだ人・登録した人・いま課金中の人を数えます
           （Cookieを使わないため、ホームから登録へ直接進んだ人だけが「登録」に紐づきます）。
+          追跡URL付きの閲覧は、ログイン中のあなた自身が開いた分も数えます（動作確認のため）。URL無しのホーム閲覧はあなた自身の分を除いています。
         </p>
         <TrafficSourceForm />
         <div className="mt-4 overflow-x-auto">
