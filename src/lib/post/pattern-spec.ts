@@ -158,18 +158,19 @@ export function sourceRequiredForSpec(spec: PatternSpec, hasReferenceUrl: boolea
  * （T-M8-129 U3）。利用者が作ったパターンには `p1` のようなIDが無いため。
  *
  * 仮定は要件04 §7.1 のまま:「出典を付けるパターンは最終1件がURL付き、先行は通常」。
- * 予約実行では利用者が参考URLを渡さないので、**`with_url` のパターンはURLを付けない**
- * （`always` だけが出典URLを必ず付ける）。
+ * 「常にWeb検索する」か「出典を必ず求める」パターンは最終ポストにURLが付きうる（検証済み出典は方針に
+ * かかわらず最終ポストへ付くため、保守的にURL枠を1つ見込む）。`with_url` の出典方針だけのパターンは、
+ * 予約スロットに参考URLが入っていればURLが付くが、ここでは見込まない。
  * 必要量は `requiredPostSlots` と同じ式（全件成功と、最終失敗時のprefixロールバックの大きい方）。
  *
- * 既定6種で移行前の値と一致する: P-1=通常10+URL1、P-2=通常1+URL0、P-3=12+1、P-4=8+1、P-6=12+1。
+ * 既定6種（2026-09-05 以降・全パターンが Web検索 always）: P-1=通常10+URL1、P-2=通常0+URL1、P-3=12+1、P-4=8+1、P-6=12+1。
  */
 export function scheduledPostSlots(spec: PatternSpec): { normal: number; url: number } {
   // 上限まで作られる最悪ケースで見積もる（編集で増やせる分も含む）。
   const posts = Math.max(1, spec.maxPostsEdit);
   // **出典URLが付きうるか**を保守的に見る。予約実行では利用者が参考URLを渡さないので、
   // 「必ずWeb検索する」か「出典を必ず求める」パターンだけがURLを付ける。
-  // 既定では P-1/P-3/P-4/P-6 が該当し、単発の P-2 は該当しない（要件04 §7.1 の数値と一致）。
+  // 既定6種はすべて Web検索 always なので該当する（要件04 §7.1 の数値と一致・T-M8-442）。
   const lastIsUrl = spec.webSearchPolicy === "always" || spec.sourcePolicy === "always";
   const url = lastIsUrl ? 1 : 0;
   const normal = posts - url;

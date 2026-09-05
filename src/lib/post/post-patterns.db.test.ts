@@ -184,7 +184,7 @@ describe("post_patterns（ローカルDB）", () => {
       // 予約枠の見積りが要件04 §7.1 の値になる（実DBのseed値から導く）。
       const bySeed = new Map(rows.map((r) => [r.seed_key, parsePatternSpec(r.spec)!]));
       expect(scheduledPostSlots(bySeed.get("p1")!)).toEqual({ normal: 10, url: 1 });
-      expect(scheduledPostSlots(bySeed.get("p2")!)).toEqual({ normal: 1, url: 0 });
+      expect(scheduledPostSlots(bySeed.get("p2")!)).toEqual({ normal: 0, url: 1 }); // 単発でも Web検索 always なので URL枠1（T-M8-442）
       expect(scheduledPostSlots(bySeed.get("p3")!)).toEqual({ normal: 12, url: 1 });
       expect(scheduledPostSlots(bySeed.get("p4")!)).toEqual({ normal: 8, url: 1 });
       expect(scheduledPostSlots(bySeed.get("p6")!)).toEqual({ normal: 12, url: 1 });
