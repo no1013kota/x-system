@@ -26,6 +26,7 @@ description: 開発キットの雛形（CLAUDE.md・docs/・tasks/・scripts/・
 
 - コピー先に同名ファイルがあれば**飛ばして記録する**（`cp -n` ではなく、存在確認をしてからコピーする。OS によって `-n` の挙動が違う）。
 - `.claude/` と `.mcp.json` は隠しファイルなので、`find "${CLAUDE_PLUGIN_ROOT}/templates" -type f` で列挙して漏らさない。
+- **`.mcp.json` の初期値は Next.js 向け**（shadcn/ui と Next.js DevTools）。プロジェクトの `package.json` の `dependencies` / `devDependencies` に `next` が無ければ、雛形を写す代わりに `{"mcpServers": {}}` だけを書いた `.mcp.json` を置き、報告で「Next.js ではないので空にした。使う道具に合わせて足す」と伝える。`package.json` が無い場合も同じ。`.mcp.json` が既にあれば触らない。
 - **`CLAUDE.md` が既にあって、それが Claude Code 組み込みの `/init` が自動生成したもの**（英語・「This file provides guidance to Claude Code…」で始まる体裁）に見えるなら、「キットの CLAUDE.md（5原則・変更影響 → 必須の検証）で置き換えるか、いまのままにするか」を**1回だけ**聞く。置き換える答えなら、元のファイルを `CLAUDE.md.bak` に残してからコピーする。それ以外の既存 CLAUDE.md には触れず、「キットの CLAUDE.md（`${CLAUDE_PLUGIN_ROOT}/templates/CLAUDE.md`）と見比べて、足したい節を運営者が選ぶ」よう伝える。勝手に追記しない。
 - 作成したファイルと飛ばしたファイルを、あとで報告に載せるため控えておく。
 
@@ -47,7 +48,7 @@ description: 開発キットの雛形（CLAUDE.md・docs/・tasks/・scripts/・
    - `CLAUDE.md`「検証コマンド」表の各行: 型検査・lint・単体・DBテスト・ビルド・E2E・全検査（`package.json` の `scripts` から候補を添える。無いものは「無い」でよい）
    - `docs/PRD.md` の「やること」「やらないこと」（箇条書きで数行。あとで直せる）
 4. 答えをもらったら該当箇所へ書き込む。「無い」「分からない」と答えられた箇所は `<...>` のまま残し、報告で「未記入」と示す（勝手に作らない）。
-5. `tasks/BACKLOG.md` と `tasks/REFACTOR_PLAN.md` の `<例: ...>` は書式の見本なので、そのまま残してよい。
+5. `tasks/BACKLOG.md` と `tasks/REFACTOR_PLAN.md` の `<例: ...>` は書式の見本なので、そのまま残してよい。`tasks/BACKLOG.md` の見本タスク `T-00` は `done` なので `/docdd:dev-loop` には拾われない（実タスクは `T-01` から）。
 
 ### 4. 検査を通し、承知を得てコミットし、報告する
 
@@ -59,12 +60,12 @@ description: 開発キットの雛形（CLAUDE.md・docs/・tasks/・scripts/・
    - 作成したファイル／飛ばした（既にあった）ファイルの一覧
    - `package.json` に足した script（または足せなかった理由）
    - `<...>` が残っている箇所（ファイルと行）
-   - 次に打つコマンド: `/docdd:add-task 最初に作りたいこと` → `/docdd:dev-loop`
+   - 次に打つコマンド: `/docdd:add-task 最初に作りたいこと` → `/docdd:dev-loop`（`tasks/BACKLOG.md` の見本 `T-00` は `done` なので拾われない。残しても消してもよい）
 4. **運営者が承知したら** `chore: Claude Code 開発キットを導入` でコミットする。承知が無ければコミットしない（stage したままでよい）。
 5. コミットした後に `npm run check:doc-dates` を1回実行する。手順3で日付を埋めていれば通る。落ちたら文面をそのまま報告する。
 
 ## やらないこと
 
 - 既存ファイルの上書き・削除・改名（手順1で承知を得た `CLAUDE.md` の置き換えだけが例外。元は `.bak` に残す）
-- `.claude/skills/` へのスキルのコピー。スキルはプラグインが提供する。**手順書の本文を自分のプロジェクトに合わせて直したいなら、プラグインではなく zip 版へ切り替える**（`/plugin uninstall docdd@claude-docdd-dev-kit` のあと zip の `.claude/skills/` を置き、`CLAUDE.md` の `docdd:` の前置きを外す）。プラグインとローカルに同名のスキルが並ぶと、`CLAUDE.md` の呼び名と食い違って片方が呼ばれなくなる。
+- `.claude/skills/` へのスキルのコピー。スキルはプラグインが提供する。**手順書の本文を自分のプロジェクトに合わせて直したいなら**、README「手順書（スキルの本文）を自分で直したいとき」の順で切り替える: (1) プラグインが入った状態で Claude Code に「docdd プラグインの手順書（init 以外）を .claude/skills/ に写して、写したものと CLAUDE.md の docdd: の前置きを全部外して」と頼む → (2) `/plugin uninstall docdd@claude-docdd-dev-kit` で外す → (3) Claude Code を起動し直す。プラグインとローカルに同名のスキルが並ぶと、`CLAUDE.md` の呼び名と食い違って片方が呼ばれなくなる。
 - 雛形を置いた勢いで実装を始めること（実装は `/docdd:dev-loop` の仕事）

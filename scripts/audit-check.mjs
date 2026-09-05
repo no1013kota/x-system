@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// 依存監査ゲート（要件01 §8, T-M6-20 / T-M7-13）。
+// 依存監査ゲート。
 //
 // 判定は **本番依存（--omit=dev）** に対して行う:
 //   - critical は必ず失敗（allowlist に関わらず）
@@ -9,7 +9,7 @@
 // devDependencies だけに存在する脆弱性は利用者へ配布されないため、件数の報告に留める。
 //
 // registry が使えないときは bulk advisory endpoint へ直接問い合わせてフォールバックする
-// （2026-07-26: npm の audit が Content-Encoding 無しの gzip 応答を解釈できず失敗する事象を確認）。
+// （npm の audit が Content-Encoding 無しの gzip 応答を解釈できず失敗する事象を確認）。
 // 監査結果を取得できなければ **必ず exit 2 で止める**（「0件」と誤認して素通りさせない）。
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -19,10 +19,10 @@ const LOCK_FILE = new URL("../package-lock.json", import.meta.url);
 const ALLOWLIST_FILE = new URL("./audit-allowlist.json", import.meta.url);
 
 /*
-  **package-lock.json が無ければ、監査の前に止める**（T-M8-434）。
+  **package-lock.json が無ければ、監査の前に止める**。
   `npm audit` も下のフォールバックも lock を読むので、無いと「監査レポートを返しませんでした…
   フォールバックも失敗しました: ENOENT」という2段の失敗文だけが出て、次の一手が読めない
-  （このスクリプトは配布キットにそのまま同梱され、npm install 前のプロジェクトで実測した）。
+  （npm install 前のプロジェクトで実測した）。
 */
 if (!existsSync(LOCK_FILE)) {
   console.error("audit-check: package-lock.json がありません。`npm install` を1回実行して作ってください");
@@ -35,13 +35,10 @@ if (!existsSync(LOCK_FILE)) {
  *
  * 一覧は隣の `audit-allowlist.json`（`{ "<package>": "<なぜ今直さないか>" }`）。**理由の無い項目は受け付けない。**
  * ファイルが無ければ「何も許さない」（最も厳しい側に倒す）。
- * このスクリプトは配布キット（`npm run dev-kit`）に同梱するため、本リポジトリ固有の一覧を
- * コードの外へ出した（キットには空の一覧を添える）。
+ * 一覧はコードの外に置く（初期は空）。
  *
- * 経緯: sharp / postcss / next は 2026-08-01（T-M7-32）に解消した。sharp は 0.35.3 へ上げ、
- * next が optionalDependencies で pin する nested 0.34.5 も package.json の overrides で 0.35.3 へ寄せた
- * （0.34 系のままでは libvips CVE群が残る）。postcss も overrides で 8.5.x へ寄せ、next のビルドが
- * 通ることを実測して確認した。
+ * 据え置きを外すときは、依存を上げる（必要なら package.json の overrides で nested の版も寄せる）
+ * → ビルドが通ることを実測 → 一覧から消す、の順にする。
  */
 function loadAllowlist() {
   if (!existsSync(ALLOWLIST_FILE)) return new Map();

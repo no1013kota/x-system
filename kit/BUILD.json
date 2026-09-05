@@ -1,5 +1,18 @@
 {
-  "version": "0.1.0",
-  "hash": "sha256:813702053c2fd780274be35a07238725643218d1185cc899a8b47a5c09f03441",
-  "built": "2026-09-05"
+  "version": "0.1.1",
+  "hash": "sha256:4cf5966482ed7566604cd57530acaf1fadd06d3b64ef7851f55361953ff88937",
+  "built": "2026-09-05",
+  "sources": {
+    "add-task": "sha256:10cc8998dd8e10f8f722d87b10a075a0ac35e1c593e6512d3af0ebf8666b8299",
+    "dev-loop": "sha256:9749ae9a8abf2a02f232b7bd6d6596b6b72407baf4caf5fe68896a1030628291",
+    "doc-sync": "sha256:9145cc686a9cea1d5a4b80c1da706d4e8e3e58b8987913f57b78f2b2f2ab539b",
+    "maintenance": "sha256:547c7991946d3c8f4fa833df6a63142242ec160911ff44f800a3a23d3368674f",
+    "playwright-cli": "sha256:b4735330d599fdc514ee7f4e1e9764f7fe9a1bb04b9d1e0505675419712f9cee",
+    "refactor": "sha256:7c91040ba294378b0d7fe3727739d2b906706932378e7abb3e1204f8ea53fe63",
+    "security-audit": "sha256:bc348fa9e4ddcc2e5f34e57eeb5d332a3d15bd2cbc8065f1cd3242f6266ad539",
+    "speed-up": "sha256:7d5a47f04578372d0b81521ed69351b49cde12670a4031d814b6518e44c576ee",
+    "ui-polish": "sha256:f01c9c4dc2afb9d3cb8bfdc0f9de0baf82990900273f6df7bae4e20f2fd65658",
+    "verify-e2e": "sha256:589011ef829528ba01a3c37e0c012829bba88a838c1a9d57607e53c2803edefb",
+    "verify-integration": "sha256:7332792aeed9601a6bd9d44083a6dc7ee36c6aabb94894b674de60dc34a4b79a"
+  }
 }

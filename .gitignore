@@ -12,7 +12,7 @@ backups/
 
 # 依存・ビルド成果物
 node_modules/
-# dist/ には npm run dev-kit の出力（dist/claude-dev-kit/）も入る
+# dist/ には npm run dev-kit の出力（dist/docdd/）も入る
 dist/
 build/
 .next/
