@@ -93,7 +93,6 @@ const BAR_H = "h-7 min-[640px]:h-8";
 function Row({
   label,
   total,
-  note,
   accent = false,
   children,
 }: {
@@ -101,8 +100,6 @@ function Row({
   total: string;
   /** 合計を brand 色で（After の「5m」だけ。結果の数字を主役にする）。 */
   accent?: boolean;
-  /** 合計の直下の一言（「全部、手で」「確認だけ」）。数字を裸にせず左列だけで意味が読めるように。640px未満は出さない（棒の凡例と重複し、数字の尾ひれに読める）。 */
-  note: string;
   children: React.ReactNode;
 }) {
   return (
@@ -119,9 +116,7 @@ function Row({
         >
           {total}
         </span>
-        <span className="hidden text-caption whitespace-nowrap text-ink-2 min-[640px]:mt-1.5 min-[640px]:block">
-          {note}
-        </span>
+        {/* 合計の直下の一言（「全部、手で」「確認だけ」）は運営者の指示（2026-09-05）で削除。 */}
       </div>
       {children}
     </div>
@@ -141,7 +136,7 @@ function Bars() {
     >
       {/* 2本を1つの塊として読ませる（gap-7 だと離れて見えた）。 */}
       <div className="grid gap-6 min-[640px]:gap-5">
-        <Row label="手作業なら" note="全部、手で" total={LOOP_TOTALS.before}>
+        <Row label="手作業なら" total={LOOP_TOTALS.before}>
           <div className="min-w-0">
             <ol
               className={cn("flex w-full overflow-hidden rounded-pill", BAR_H)}
@@ -184,7 +179,7 @@ function Bars() {
             </ol>
           </div>
         </Row>
-        <Row accent label={`${APP_NAME} なら`} note="確認だけ" total={LOOP_TOTALS.after}>
+        <Row accent label={`${APP_NAME} なら`} total={LOOP_TOTALS.after}>
           <div className={cn("relative flex min-w-0 items-center", BAR_H)}>
             {/*
               Before と同じ尺の目盛り線（棒ではない）。塗った面だと「同じ長さの棒が2本」に見える。
@@ -247,12 +242,14 @@ const NODES: {
   // 表示回数などの反応を毎時、投稿の1・7・30日後にも記録する（要件04）。「反応」だけでは何を指すか
   // 曖昧なので「表示回数など」（6周目）。2行に分けるのは 640px でラベルが板の外へ出るため。
   // 左側のノードなので短く（「投稿の」は直前のノードが「投稿」なので省く・2026-09-05）。
-  { label: "記録", note: ["表示回数などを毎時", "1・7・30日後も"], who: "auto" },
+  // 「毎時／1・7・30日後」は仕組みの細部で初見に読めない（運営者の指摘 2026-09-05）。何を記録するかだけ言う。
+  { label: "記録", note: ["表示回数・いいねを", "自動で記録"], who: "auto" },
   // 「分析」は一番左のノード。1行だと 640px で板の左端まで3pxしか残らないので2行。
   { label: "分析", note: ["ボタン1つ", "1日1回"], who: "ai" },
   // 「反映」→「改善」（運営者の指示 2026-09-04。画面ツアーの停止04・ヒーローの帯と同じ語）。
   // 「分析した日に」は初見には何のことか分からない。「いい案だけ選ぶ」で主導権を1語で（2026-09-05）。
-  { label: "改善", note: ["いい案だけ", "あなたが選ぶ"], who: "you" },
+  // 「いい案だけあなたが選ぶ」は主語と目的語が読めなかった（運営者の指摘 2026-09-05）。
+  { label: "改善", note: ["AIの改善案を", "あなたが反映"], who: "you" },
 ];
 
 /** 工程名（ヒーローの帯・ツアーと同じ語であることを `landing-page.test.ts` が固定）。 */
@@ -290,19 +287,27 @@ function arcPath(index: number): string {
   return `M ${from.x.toFixed(2)} ${from.y.toFixed(2)} A ${RADIUS} ${RADIUS} 0 0 1 ${to.x.toFixed(2)} ${to.y.toFixed(2)}`;
 }
 
-/** ラベルの置き場所: 上のノードは上、下2つは下、それ以外は外側（左右）。 */
-function labelPlacement(index: number): "top" | "bottom" | "right" | "left" {
+/**
+ * ラベルの置き場所: 上のノードは上、下2つは下、それ以外は外側（左右）。
+ * 下半分（y > 70%・7ノードでは「投稿」「記録」）の左右ラベルは、弧が下へ回り込んで文字に触れるため
+ * 少し下げる（運営者の指摘 2026-09-05「図と少しかぶっている」）。
+ */
+function labelPlacement(index: number): "top" | "bottom" | "right" | "left" | "right-low" | "left-low" {
   if (index === 0) return "top";
   const { x, y } = polar(-90 + STEP * index, RADIUS);
   if (y > 80) return "bottom";
+  if (y > 70) return x >= 50 ? "right-low" : "left-low";
   return x >= 50 ? "right" : "left";
 }
 
 const LABEL_CLASS: Record<ReturnType<typeof labelPlacement>, string> = {
   top: "bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 text-center",
-  bottom: "top-[calc(100%+8px)] left-1/2 -translate-x-1/2 text-center",
+  // 下2つ（投稿・記録）のラベルは弧に触れていたので少し下げる（運営者の指摘 2026-09-05）。
+  bottom: "top-[calc(100%+14px)] left-1/2 -translate-x-1/2 text-center",
   right: "left-[calc(100%+10px)] top-1/2 -translate-y-1/2 text-left",
   left: "right-[calc(100%+10px)] top-1/2 -translate-y-1/2 text-right",
+  "right-low": "left-[calc(100%+10px)] top-[calc(50%+12px)] -translate-y-1/2 text-left",
+  "left-low": "right-[calc(100%+10px)] top-[calc(50%+12px)] -translate-y-1/2 text-right",
 };
 
 /**

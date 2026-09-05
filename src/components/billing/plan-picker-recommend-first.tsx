@@ -86,10 +86,7 @@ function PerDay({ plan, recommended }: { plan: PlanDefinition; recommended: bool
         </span>
         <span className="text-sm font-medium">円／日</span>
       </p>
-      {/* 換算の根拠は推奨の帯にだけ（行の代表。3枚に並べると同じ行が3回並ぶ）。月額そのものはカードが持つので数字は繰り返さない。 */}
-      {recommended ? (
-        <p className={cn("mt-1.5 text-caption", muted)}>月額（税込）÷30日の目安</p>
-      ) : null}
+      {/* 「月額（税込）÷30日の目安」の行は運営者の指示（2026-09-05）で削除。換算はカードの月額と対で読める。 */}
       <p className={cn("mt-1 text-caption", muted)}>{capSummary(plan)}</p>
     </>
   );
