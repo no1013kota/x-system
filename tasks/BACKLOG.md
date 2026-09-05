@@ -6142,6 +6142,14 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 下2つのノード（投稿・記録）のラベルが弧に触れない（640／760／1024／1280 で板のはみ出し0）
 - 実装メモ（2026-09-05 完了・運営者の指示）: 7ノードでは最下段の2つが y≈78% で「左右」配置になり弧が回り込んで文字に触れていたため、下半分（y>70%）の左右ラベルを12px下げる置き場所（right-low／left-low）を追加。
 
+### T-M8-432: ブログ配布キット（claude-code-dev-kit.zip）に本リポジトリの実物のスキルを同封する `done`
+- 参照: blog/README.md・blog/published/claude-code-non-engineer-workflow.md / 依存: なし / サイズ: S
+- 完了条件:
+  - zip の `.claude/skills/` が本リポジトリの `.claude/skills/`（13本・playwright-cli の references 含む）と同一
+  - `npm run blog:kit` で同じ内容を再生成できる（雛形の正本は `blog/kit/`、スキルはリポジトリから直接）
+  - 同封物に個人情報・鍵・プロジェクトIDが無い（例示の user@example.com のみ）
+- 実装メモ（2026-09-05 完了・運営者の指摘「配布ファイルの中身が違う。.claude/skills の実物を同封して」）: 以前の zip は各スキルを2〜4KBに簡略化した雛形だった。雛形（CLAUDE.md・docs・tasks・README）は zip から `blog/kit/` へ取り出して正本にし、`scripts/blog-kit.mjs` が `blog/kit/`＋`.claude/skills/` を zip 化する（約72KB）。記事本文の「約31KB」と中身の説明は、進行中のブログ改善（T-M8-433）の後に合わせる。
+
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S
 - 完了条件:
