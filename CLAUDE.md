@@ -119,6 +119,11 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 BACKLOG のメモだけの push）。docs・BACKLOG だけの変更も単独で push せず、次の push に載せる。
 `release:staging` は HEAD の CI 結論を見るので、push トリガー自体は外さない。
 
+**CI の有無は運営者が選べる。** 運営者が「CI なしで」と言った些細な修正（文言・docs・設定値・見た目の微調整など、
+動作に影響しない変更）は、コミットメッセージの末尾に `[skip ci]` を付ける。CI は走らず、`release:staging` は
+「自動テスト（CI）: 省略しました」と表示して進む（main へのマージでも CI はその印を見て本体を飛ばす）。
+動作に影響する変更（DB・API・job・課金・生成・認証）には付けない。言われていなければ付けず、CI を回す。
+
 **ただし上の表の該当行が「その変更に固有の検証」を指しているときは、段を待たずにその場で回す**
 （AI provider の `smoke:live`、外部サービス設定の `check:turnstile`、cronの実叩き、
 レンダリングモード・CSPに触ったときの `build` ＋ `check:csp-nonce`）。

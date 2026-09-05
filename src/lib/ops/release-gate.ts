@@ -33,6 +33,11 @@ export interface ReleaseContext {
   /** GitHub Actions の結論（`success` / `failure` / `in_progress` / null=見つからない）。 */
   ciConclusion: string | null;
   /**
+   * いまのコミットのメッセージに `[skip ci]` 等の省略指定があるか（運営者が「些細な修正」と判断して
+   * CI を回さないことを選んだ・2026-09-05）。true かつ CI 結果が無いときだけ「省略」として通す。
+   */
+  ciSkipRequested?: boolean;
+  /**
    * **いまのコミットに対するデプロイ（Vercel）の結論**（判定できなければ null）。
    *
    * CIが緑でも**デプロイのbuildは別に落ちる**（環境変数はCIとVercelで別物）。2026-08-29、
@@ -107,6 +112,12 @@ export function evaluateReleaseGate(ctx: ReleaseContext): GateStep[] {
 
   if (ctx.ciConclusion === "success") {
     steps.push({ name: "自動テスト（CI）", level: "ok", detail: "緑です" });
+  } else if (ctx.ciConclusion === null && ctx.ciSkipRequested) {
+    steps.push({
+      name: "自動テスト（CI）",
+      level: "ok",
+      detail: "省略しました（コミットに [skip ci]。運営者が「些細な修正」と判断した変更。動作に影響する変更では付けない）",
+    });
   } else if (ctx.ciConclusion === null) {
     steps.push({
       name: "自動テスト（CI）",
@@ -344,4 +355,15 @@ export function cronSecretEnvName(
   if (production && baseUrl.startsWith(production)) return "PRODUCTION_CRON_SECRET";
   if (staging && baseUrl.startsWith(staging)) return "STAGING_CRON_SECRET";
   return "STAGING_CRON_SECRET";
+}
+
+/**
+ * GitHub Actions が push / pull_request を省略するコミットメッセージの印（公式の5種）。
+ * 運営者が「些細な修正なので CI 無しで」と選んだときにコミット末尾へ付ける（2026-09-05）。
+ */
+export const CI_SKIP_MARKER_RE = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
+
+/** コミットメッセージに CI 省略の印があるか。 */
+export function isCiSkipRequested(commitMessage: string | null | undefined): boolean {
+  return CI_SKIP_MARKER_RE.test(commitMessage ?? "");
 }

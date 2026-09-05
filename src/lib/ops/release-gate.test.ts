@@ -7,6 +7,7 @@ import {
   judgeLinkedProject,
   onlyMigrationsPending,
   pickCiConclusion,
+  isCiSkipRequested,
   projectRefFromCsp,
   summarizeGate,
   type ReleaseContext,
@@ -238,5 +239,36 @@ describe("pickCiConclusion (T-M8-389)", () => {
   });
   it("該当SHAのrunが無ければnull（CIがまだ無い＝止める）", () => {
     expect(pickCiConclusion([{ headSha: "other", status: "completed", conclusion: "success" }], sha)).toBeNull();
+  });
+});
+
+describe("CI の省略（[skip ci]・運営者の選択 2026-09-05）", () => {
+  it("CI 結果が無くても、コミットに [skip ci] があれば「省略」として通す", () => {
+    const steps = evaluateReleaseGate({ ...ok, ciConclusion: null, ciSkipRequested: true });
+    const ci = steps.find((s) => s.name === "自動テスト（CI）");
+    expect(ci?.level).toBe("ok");
+    expect(ci?.detail).toContain("省略");
+    expect(firstStop(steps)).toBeNull();
+  });
+
+  it("[skip ci] があっても、CI が走って赤なら止まる（印は結果を上書きしない）", () => {
+    expect(firstStop(evaluateReleaseGate({ ...ok, ciConclusion: "failure", ciSkipRequested: true }))?.name).toBe(
+      "自動テスト（CI）",
+    );
+  });
+
+  it("印が無く CI 結果も無ければ従来どおり止まる", () => {
+    expect(firstStop(evaluateReleaseGate({ ...ok, ciConclusion: null, ciSkipRequested: false }))?.nextAction).toContain(
+      "push",
+    );
+  });
+
+  it("isCiSkipRequested は GitHub 公式の5種の印を大文字小文字を問わず認識する", () => {
+    for (const m of ["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]", "[SKIP CI]"]) {
+      expect(isCiSkipRequested(`fix: 文言 ${m}`)).toBe(true);
+    }
+    expect(isCiSkipRequested("fix: 文言")).toBe(false);
+    expect(isCiSkipRequested("skip ci")).toBe(false);
+    expect(isCiSkipRequested(null)).toBe(false);
   });
 });
