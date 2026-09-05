@@ -113,6 +113,12 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | コミット前 | ＋ `npm run check:doc-dates && npm run check:doc-refs` | ＋5秒 |
 | **push前（まとめて1回）** | ＋ `npm run build && npm run check:csp-nonce && npm run test:e2e` | 約10分 |
 
+**push は作業のまとまりの最後に1回だけ**（運営者の指示 2026-09-05）。途中のタスクはローカルにコミットだけ積み、
+運営者から受けた依頼を全部終えて release する直前に push する。CI は push ごとに約14分走るため、
+途中で push すると CI の回数がそのまま待ち時間になる（同日、4回の push で CI に56分かかった。うち1回は
+BACKLOG のメモだけの push）。docs・BACKLOG だけの変更も単独で push せず、次の push に載せる。
+`release:staging` は HEAD の CI 結論を見るので、push トリガー自体は外さない。
+
 **ただし上の表の該当行が「その変更に固有の検証」を指しているときは、段を待たずにその場で回す**
 （AI provider の `smoke:live`、外部サービス設定の `check:turnstile`、cronの実叩き、
 レンダリングモード・CSPに触ったときの `build` ＋ `check:csp-nonce`）。
