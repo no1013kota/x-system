@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.74 |
+| バージョン | v1.75 |
 | 更新日 | 2026-09-05 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
@@ -148,7 +148,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 
 enqueueは**パターン設定を`pattern_spec`として凍結し、枠の生成入力を生成jobの`input`へ渡す**。渡すのは`instructions`・`theme`・`image_enabled`・`mode`と、`source_url`・`placeholder_values`・`prompt_override`（T-M8-135・要件02 §3.10）。**キー名は投稿作成画面が送るものと同一にする**——ずれると「予約では設定が効かない」という、画面からは説明できない差になる（生成側は`job.input`のキー名しか見ない）。未設定は`null`で渡す（空文字や欠落を混ぜない）。**`prompt_override`は`promptEditablePlan()`が真のときだけ渡す**（T-M8-168以降は全プランで真。未契約・不明プランのみ弾く）——画面でプロンプト編集が出ない状態のまま使うと**画面に出ていない指示で生成される**（原則1・原則2に反する）。判定は保存時の拒否と同じ関数を使う。
 
-スケジュールenqueue時は、出典を付けるP-1/P-3/P-4/P-6を「最終1件がURL付き、先行ポストは通常」と保守的に仮定する。最大数に対する必要残量はP-1=通常10＋URL1、P-2=通常1＋URL0、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1。生成後の投稿直前には実際にXへ送る各payloadで再分類し、通常/URL付き枠を別々に再判定する。
+スケジュールenqueue時は、Web検索を常に使うか出典必須のパターン（2026-09-05 以降は既定6種すべて・T-M8-442）を「最終1件がURL付き、先行ポストは通常」と保守的に仮定する。最大数に対する必要残量はP-1=通常10＋URL1、P-2=通常0＋URL1、P-3=通常12＋URL1、P-4=通常8＋URL1、P-6=通常12＋URL1。生成後の投稿直前には実際にXへ送る各payloadで再分類し、通常/URL付き枠を別々に再判定する。
 
 定刻から10分を超えた未実行slot（enqueueされないままのslotを含む）は遡って自動投稿しない。`scheduler_tick`が回収ステップで`schedule_missed`のerror通知を作り（冪等key `slot:{slot_id}:{yyyy-mm-dd}:{hh:mm}:missed`）、次回定刻を待つ。
 
@@ -422,3 +422,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.72 | 2026-09-04 | 事業KPI: `usage_consumed` は行数・`cost_usd` は運営負担のみ、doctor にホームの閲覧記録の警告（T-M8-422）。Xトークン更新の2項目（環境ガード・期限切れ非警告）がKPI節に混ざっていたのを元の節へ戻す |
 | v1.73 | 2026-09-05 | 事業KPI: MRR（`mrr_jpy`）は引き止め割引（`profiles.discount_*`・期限内のみ）を反映し、価格は `PLANS` の現在値（運営者の決定 D-55(1)） |
 | v1.74 | 2026-09-05 | 事業KPI: `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名。実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持ち、旧名の取り残しはスナップショットが掃除する（D-55(3)・T-M8-427） |
+| v1.75 | 2026-09-05 | §7.1: 予約枠の見積りを「既定6種すべてがWeb検索 always」に合わせ、P-2 を通常0＋URL1 に（T-M8-442） |
