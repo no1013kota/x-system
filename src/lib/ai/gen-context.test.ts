@@ -73,3 +73,18 @@ describe("buildGenUser", () => {
     );
   });
 });
+
+describe("buildGenSystem × 書き方のチェックポイント（T-M8-447）", () => {
+  it("選んだ条項が <base_md> の末尾に「## 書き方のチェックポイント」として入り、未選択なら本文だけ", async () => {
+    const { WRITING_CHECKPOINTS, WRITING_CHECKPOINTS_GUARD } = await import("@/lib/prompts/writing-checkpoints");
+    const id = WRITING_CHECKPOINTS[0]!.id;
+    const withCp = buildGenSystem("# 発信定義\n本文", [id]);
+    expect(withCp).toHaveLength(2);
+    expect(withCp[1]).toContain("<base_md>\n# 発信定義\n本文\n\n## 書き方のチェックポイント\n");
+    expect(withCp[1]).toContain(WRITING_CHECKPOINTS_GUARD);
+    expect(withCp[1]).toContain(WRITING_CHECKPOINTS[0]!.instruction);
+    expect(buildGenSystem("# 発信定義\n本文", [])[1]).toBe("<base_md>\n# 発信定義\n本文\n</base_md>");
+    // 本文が空でも条項だけの封筒を渡す（条項を選んだ意思を落とさない）
+    expect(buildGenSystem("", [id])).toHaveLength(2);
+  });
+});

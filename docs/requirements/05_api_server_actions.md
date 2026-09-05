@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.83 |
+| バージョン | v1.84 |
 | 更新日 | 2026-09-06 |
 | 関連 | 全画面、全ジョブ |
 
@@ -249,6 +249,7 @@ v1.0初期リリースは`FEATURE_QUOTE_POST_ENABLED=false`とする。OFF時は
 | `applyLearningToSettings` | request_key, x_account_id | job_id | 「アカウント設定を反映する」（T-M8-344/349）。分析済みが1件以上あるときだけ `md_merge`（`learning_source_id` 無し＝提案モード）を起票し、結果は `settings_proposal` へ |
 | `learningApplyStatus` | x_account_id | running, lastApply（直近の反映jobの succeeded/failed と理由）, proposalReady | 本人のみ。反映の進行と**結果**を返す（T-M8-410。以前は進行中かどうかだけで、失敗も成功扱いになっていた） |
 | `listPromptPresets` | x_account_id, kind | presets | 本棚の一覧（T-M8-332）。空なら「いま効いている内容」を使用中の1件として作る |
+| `saveWritingCheckpoints` | x_account_id, checkpoint_ids[] | checkpoint_ids | 書き方のチェックポイントの選択を丸ごと置き換える（T-M8-447）。本人のアカウントのみ・全プラン。未知のIDは `validation_error` で拒否（黙って落とさない）。文面の正本はコード（`src/lib/prompts/writing-checkpoints.ts`） |
 | `createPromptPreset` | x_account_id, kind, name, content | preset | 契約中のみ。**追加しただけでは使用中にならない** |
 | `updatePromptPreset` | x_account_id, preset_id, name, content, expected_updated_at | preset | 楽観lock。使用中なら生成が読む置き場へ同じtxで写す |
 | `setPromptPresetInUse` | x_account_id, preset_id | preset | 区分ごとに1件。切り替えは置き場への写しまで含めて1tx |
@@ -403,6 +404,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.81 | 2026-09-01 | updatePersonaSettings が本棚へ1件追加して使用中にし、結果に preset を返す（T-M8-411） |
 | v1.82 | 2026-09-03 | listNewsItems の theme/impact を themes[]/impacts[] の複数選択ソートへ（いずれか一致を先頭へ・T-M8-412） |
 | v1.83 | 2026-09-06 | docs 同期監査（T-M8-446）: `signUp` に流入元 `signup_source`（hidden・T-M8-423）を追記。§4.4「運営（/admin）」を新設し `createTrafficSource` を記載 |
+| v1.84 | 2026-09-06 | §8 `saveWritingCheckpoints`（書き方のチェックポイント・T-M8-447） |
 
 ### 下書きの投稿予約（T-M8-157）
 

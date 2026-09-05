@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.93 |
+| バージョン | v1.94 |
 | 更新日 | 2026-09-06 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
@@ -136,6 +136,7 @@ RLS: 本人select可。writeはServer Actionのみ。レスポンスへ`credenti
 | `settings_proposal` | `jsonb` | null可 | 参考ソースの反映で作った**保存前**のアカウント設定（T-M8-349）。画面のフォームがこの値を読み込み、利用者が「アカウント設定を保存」を押すと`settings`へ確定して`null`へ戻る。`null`は「提案が無い」 |
 | `base_md` | `text` | not null default `''` | 現行アカウント.md |
 | `base_md_version` | `integer` | not null default 0 | 未生成は0 |
+| `writing_checkpoints` | `jsonb` | not null default `'[]'`、CHECK `jsonb_typeof = 'array'` | 「書き方のチェックポイント」の選択（条項IDの配列。T-M8-447）。文面の正本はコード（`src/lib/prompts/writing-checkpoints.ts`）で、生成時に `<base_md>` の末尾へ「## 書き方のチェックポイント」として付ける。本文（`base_md`・本棚）には書かない |
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
@@ -607,12 +608,12 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 
 | seed_key | 名前 | `max_posts`／`max_posts_edit` | `web_search_policy`／`web_search_max_uses` | `source_policy` | `include_news_digest` | `requires_quote_url` |
 |---|---|---|---|---|---|---|
-| `p1` | ニュース解説 | 4／6 | `always`／3 | `always` | false | false |
-| `p2` | 自分の考え・意見 | 1／1 | `always`／3 | `with_url` | false | false |
-| `p3` | ノウハウ・ハウツー | 6／7 | `always`／3 | `with_url` | false | false |
-| `p4` | トレンド便乗 | 2／5 | `always`／3 | `always` | false | false |
-| `p5` | 引用ポスト | 3／3 | `always`／3 | `never` | false | true |
-| `p6` | 週次まとめ | 5／7 | `always`／3 | `always` | true | false |
+| p1 | ニュース解説 | 4／6 | `always`／3 | `always` | false | false |
+| p2 | 自分の考え・意見 | 1／1 | `always`／3 | `with_url` | false | false |
+| p3 | ノウハウ・ハウツー | 6／7 | `always`／3 | `with_url` | false | false |
+| p4 | トレンド便乗 | 2／5 | `always`／3 | `always` | false | false |
+| p5 | 引用ポスト | 3／3 | `always`／3 | `never` | false | true |
+| p6 | 週次まとめ | 5／7 | `always`／3 | `always` | true | false |
 
 Web検索は**6種すべて `always`／3**（T-M8-442・運営者の指示 2026-09-05・要決定 D-57。それ以前は P-2＝`with_url`／2・P-5＝`never`／0 だった。「常に」は検索ツールを渡す意味で、使うかどうかはモデルが決める）。既存アカウントの P-2／P-5 行も同 migration が `always`／3 へ書き換える（この2項目は画面から変えられないので、seed 由来の行に利用者が変えた値は無い）。`source_policy` はパターンごとに違い、画面からは変えない（要件06 §3.8）。自作パターンは `always`／3／`with_url`（列の既定と同じ）で作られる。
 
@@ -1131,3 +1132,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.91 | 2026-09-05 | §3.31 `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名し、実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持つ（D-55(3)・T-M8-427。既存行は migration で改名し、旧名の取り残しはスナップショットが掃除する） |
 | v1.92 | 2026-09-05 | §3.32 追跡URL付きの閲覧は運営者自身でも数える（T-M8-429） |
 | v1.93 | 2026-09-06 | docs 同期監査（T-M8-446）: §3.23 に既定6種の seed 値表を追加し、Web検索を全パターン `always`／3 へ揃えた変更（T-M8-442・D-57）を反映。§3.1 `profiles_signup_source_idx`（部分索引）、§3.32 の除外規則に `sec-fetch-mode: navigate` と監視UAの例（auth-templates）を追記。スキーマ変更なし |
+| v1.94 | 2026-09-06 | §3.2 `x_accounts.writing_checkpoints`（書き方のチェックポイントの選択・T-M8-447） |

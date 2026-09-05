@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { normalizeWritingCheckpointIds } from "@/lib/prompts/writing-checkpoints";
 import { redirect } from "next/navigation";
 
 import { EmptyState, LockedState } from "@/components/app-shell/page-state";
@@ -28,12 +29,19 @@ import type { LearningSourceView } from "@/lib/learning-sources";
 import { listLearningSourcesForUser } from "@/lib/learning-sources-server";
 import { serverNowMs } from "@/lib/time/server-now";
 import { listPatternsForUser } from "@/lib/post/post-patterns-server";
-import type { PatternOption, PatternPromptView } from "@/lib/post/post-patterns-store";
-import { SYSTEM_DEFAULT_TEMPLATES, type PromptTemplateKind } from "@/lib/prompts/gen-prompts";
+import type {
+  PatternOption,
+  PatternPromptView,
+} from "@/lib/post/post-patterns-store";
+import {
+  SYSTEM_DEFAULT_TEMPLATES,
+  type PromptTemplateKind,
+} from "@/lib/prompts/gen-prompts";
 import type { PromptPresetView } from "@/lib/prompts/prompt-presets";
 import { listPromptPresetsForUser } from "@/lib/prompts/prompt-presets-server";
 import { promptEditablePlan } from "@/lib/prompts/prompt-templates";
 import { PromptPresetManager } from "@/components/prompt/prompt-preset-manager";
+import { WritingCheckpointsPanel } from "@/components/prompt/writing-checkpoints-panel";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readSingleRow } from "@/lib/supabase/single-row";
 
@@ -68,6 +76,8 @@ interface AccountRow {
   settings: unknown;
   /** 参考ソースから作った保存前の提案（T-M8-349）。無ければ null。 */
   settings_proposal: unknown;
+  /** 書き方のチェックポイントの選択（T-M8-447）。 */
+  writing_checkpoints: unknown;
 }
 
 const EMPTY_SETTINGS: PersonaSettings = {
@@ -112,7 +122,9 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   const accountResult = profile.active_x_account_id
     ? await admin
         .from("x_accounts")
-        .select("id, handle, base_md, base_md_version, settings, settings_proposal")
+        .select(
+          "id, handle, base_md, base_md_version, settings, settings_proposal, writing_checkpoints",
+        )
         .eq("id", profile.active_x_account_id)
         .eq("user_id", user.id)
         .eq("status", "active")
@@ -151,8 +163,12 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
     保存済み設定・保存前の提案（参考アカウントの反映・T-M8-349）を読み、
     提案が変わったらフォームを作り直す（proposalKey・T-M8-356/357の教訓）。
   */
-  const parsedSettings = account ? personaSettingsSchema.safeParse(account.settings) : null;
-  const initialSettings = parsedSettings?.success ? parsedSettings.data : EMPTY_SETTINGS;
+  const parsedSettings = account
+    ? personaSettingsSchema.safeParse(account.settings)
+    : null;
+  const initialSettings = parsedSettings?.success
+    ? parsedSettings.data
+    : EMPTY_SETTINGS;
   const parsedProposal =
     account && account.settings_proposal
       ? personaSettingsSchema.safeParse(account.settings_proposal)
@@ -164,7 +180,10 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
   let initialDifference = false;
   if (account && account.base_md_version >= 1 && parsedSettings?.success) {
     try {
-      initialDifference = baseMdSettingsDiffer(account.base_md, parsedSettings.data);
+      initialDifference = baseMdSettingsDiffer(
+        account.base_md,
+        parsedSettings.data,
+      );
     } catch {
       initialDifference = true;
     }
@@ -196,17 +215,22 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
         「登録できたのか」が画面から分からない。4本は互いに依存しないので1波で投げる。
       */
       let running: { rows: { n: number }[] };
-      [presets, baseMdLearningRunning, learningSources, running] = await Promise.all([
-        listPromptPresetsForUser({ userId: user.id, xAccountId: account.id, kind: "base_md" }),
-        isLearningRunningForUser(user.id, account.id),
-        listLearningSourcesForUser(user.id, account.id),
-        pooledDb.query<{ n: number }>(
-          `select count(*)::int as n from generation_jobs
+      [presets, baseMdLearningRunning, learningSources, running] =
+        await Promise.all([
+          listPromptPresetsForUser({
+            userId: user.id,
+            xAccountId: account.id,
+            kind: "base_md",
+          }),
+          isLearningRunningForUser(user.id, account.id),
+          listLearningSourcesForUser(user.id, account.id),
+          pooledDb.query<{ n: number }>(
+            `select count(*)::int as n from generation_jobs
             where x_account_id = $1 and kind in ('md_merge', 'learning_analysis')
               and status in ('queued', 'running')`,
-          [account.id],
-        ),
-      ]);
+            [account.id],
+          ),
+        ]);
       learningApplying = (running.rows[0]?.n ?? 0) > 0;
     } else if (section === "image-prompt") {
       presets = await listPromptPresetsForUser({
@@ -224,7 +248,8 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
           .filter((option) => option.isSystemDefault && option.seedKey !== null)
           .map((option) => [
             option.id,
-            SYSTEM_DEFAULT_TEMPLATES[option.seedKey as PromptTemplateKind] ?? "",
+            SYSTEM_DEFAULT_TEMPLATES[option.seedKey as PromptTemplateKind] ??
+              "",
           ]),
       );
     }
@@ -254,7 +279,10 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
         {section === "ai-models" ? (
           <AiModelSettings
             initialConfig={
-              (profile.ai_purpose_config as { image: string | null; text: string | null } | null) ?? {
+              (profile.ai_purpose_config as {
+                image: string | null;
+                text: string | null;
+              } | null) ?? {
                 image: null,
                 text: null,
               }
@@ -293,7 +321,8 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   同じ画面に並べる。反映（settings_proposal）が届いたらフォームを作り直す。
                 */}
                 <p className="text-caption text-ink-3">
-                  対象アカウント: <strong className="text-ink-2">@{account.handle}</strong>
+                  対象アカウント:{" "}
+                  <strong className="text-ink-2">@{account.handle}</strong>
                   {account.base_md_version >= 1
                     ? "（保存すると次の生成から反映されます）"
                     : "（まだ保存されていません）"}
@@ -315,18 +344,29 @@ export default async function PromptsPage({ searchParams }: PromptsPageProps) {
                   xAccountId={account.id}
                 />
                 <div className="border-t border-hairline pt-6">
-                <PromptPresetManager
-                  bodyLabel="アカウント.mdの本文"
-                  emptyContentTemplate={account.base_md || BLANK_BASE_MD_TEMPLATE}
-                  initialPresets={presets}
-                  // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
-                  // **設定の保存（version更新）でも作り直す**（T-M8-411）——保存で本棚に1件増えるので、
-                  // 古い一覧のままだと「追加された」と言われたのに画面に出ない。
-                  key={`${section}:${account.id}:v${account.base_md_version}`}
-                  kind="base_md"
-                  lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。上の入力項目を保存するたびに、一番下に1件追加されて使用中になります（前のものは控えとして残ります）。"
-                  xAccountId={account.id}
-                />
+                  <PromptPresetManager
+                    bodyLabel="アカウント.mdの本文"
+                    emptyContentTemplate={
+                      account.base_md || BLANK_BASE_MD_TEMPLATE
+                    }
+                    initialPresets={presets}
+                    // アカウント切替でstateを捨てる（切替後も前アカウントの本文を保存できた・T-M8-196）。
+                    // **設定の保存（version更新）でも作り直す**（T-M8-411）——保存で本棚に1件増えるので、
+                    // 古い一覧のままだと「追加された」と言われたのに画面に出ない。
+                    key={`${section}:${account.id}:v${account.base_md_version}`}
+                    kind="base_md"
+                    lead="AIが「誰として書くか」を決める文章です。使用中の1つが生成に使われます。上の入力項目を保存するたびに、一番下に1件追加されて使用中になります（前のものは控えとして残ります）。"
+                    xAccountId={account.id}
+                  />
+                </div>
+                <div className="border-t border-hairline pt-6">
+                  <WritingCheckpointsPanel
+                    initialIds={normalizeWritingCheckpointIds(
+                      account.writing_checkpoints,
+                    )}
+                    key={`checkpoints:${account.id}`}
+                    xAccountId={account.id}
+                  />
                 </div>
               </div>
             ) : section === "image-prompt" ? (

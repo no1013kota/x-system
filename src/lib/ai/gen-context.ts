@@ -1,4 +1,5 @@
 import { SYS_GEN } from "@/lib/prompts/gen-prompts";
+import { composeBaseMdWithCheckpoints } from "@/lib/prompts/writing-checkpoints";
 
 import type { Queryable } from "../x/token-refresh";
 
@@ -29,8 +30,13 @@ export interface NewsDigestItem {
  * わざわざ伝えることになり、モデルが「定義が無い」ことに引きずられる。
  * 渡さなければ、パターンのプロンプトと入力だけで書く。
  */
-export function buildGenSystem(baseMd: string): string[] {
-  return baseMd.trim() ? [SYS_GEN, `<base_md>\n${baseMd}\n</base_md>`] : [SYS_GEN];
+export function buildGenSystem(
+  baseMd: string,
+  writingCheckpointIds: readonly string[] = [],
+): string[] {
+  // 書き方のチェックポイント（T-M8-447）は本文の末尾に付ける。本文が空でも条項だけの封筒を渡す。
+  const full = composeBaseMdWithCheckpoints(baseMd, writingCheckpointIds);
+  return full ? [SYS_GEN, `<base_md>\n${full}\n</base_md>`] : [SYS_GEN];
 }
 
 /** codepoint単位で先頭n文字に切り詰める（絵文字のサロゲートペアを割らない）。 */
@@ -43,12 +49,15 @@ function truncateChars(text: string, max: number): string {
 export function formatRecentPosts(bodies: string[]): string {
   return bodies
     .slice(0, RECENT_POSTS_MAX)
-    .map((body) => `- ${truncateChars(body.replace(/\s+/g, " ").trim(), RECENT_POST_HEAD_CHARS)}`)
+    .map(
+      (body) =>
+        `- ${truncateChars(body.replace(/\s+/g, " ").trim(), RECENT_POST_HEAD_CHARS)}`,
+    )
     .join("\n");
 }
 
 export interface GenUserParams {
-/** 解決済みのパターン別プロンプト（利用者が編集可能）。 */
+  /** 解決済みのパターン別プロンプト（利用者が編集可能）。 */
   pattern: string;
   /**
    * パターンの設定（分量・Web検索・参考URL）を文にしたもの（T-M8-131）。
@@ -71,14 +80,19 @@ export interface GenUserParams {
 /** 可変部を組み立てる。未入力は「（未指定）」。可変値は system へ入れない。 */
 export function buildGenUser(params: GenUserParams): string {
   const parts: string[] = [];
-parts.push(`<pattern>\n${params.pattern}\n</pattern>`);
+  parts.push(`<pattern>\n${params.pattern}\n</pattern>`);
   // パターンの設定（分量・Web検索・参考URL）を明示する（T-M8-131）。
   // 指示しないまま生成後に切り詰めると「締めが落ちた」形になるため、先に伝える。
   if (params.patternRules) {
     parts.push(`<pattern_rules>\n${params.patternRules}\n</pattern_rules>`);
   }
-  parts.push(`<user_input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</user_input>`);
-  const recent = params.recentPosts.length > 0 ? formatRecentPosts(params.recentPosts) : UNSPECIFIED;
+  parts.push(
+    `<user_input>\n${params.input?.trim() ? params.input.trim() : UNSPECIFIED}\n</user_input>`,
+  );
+  const recent =
+    params.recentPosts.length > 0
+      ? formatRecentPosts(params.recentPosts)
+      : UNSPECIFIED;
   parts.push(`<recent_posts>\n${recent}\n</recent_posts>`);
   if (params.previousDraft && params.previousDraft.length > 0) {
     parts.push(
